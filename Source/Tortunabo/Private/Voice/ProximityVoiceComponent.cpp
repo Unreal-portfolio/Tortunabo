@@ -38,6 +38,7 @@ bool UProximityVoiceComponent::IsLocallyOwned() const
 void UProximityVoiceComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	bIsShuttingDown = false;
 
 	if (IsLocallyOwned())
 	{
@@ -57,11 +58,19 @@ void UProximityVoiceComponent::BeginPlay()
 			AudioCaptureSynth.Reset();
 		}
 
-		CreateVoiceIndicatorHUD();
 	}
 }
 
 void UProximityVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	bIsShuttingDown = true;
+	SetComponentTickEnabled(false);
+	CleanupRuntimeResources();
+	Super::EndPlay(EndPlayReason);
+}
+
+
+void UProximityVoiceComponent::CleanupRuntimeResources()
 {
 	if (AudioCaptureSynth)
 	{
@@ -69,20 +78,36 @@ void UProximityVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		AudioCaptureSynth.Reset();
 	}
 
-	if (PlaybackAudioComponent)
 	{
-		PlaybackAudioComponent->Stop();
-		PlaybackAudioComponent->DestroyComponent();
+		FScopeLock Lock(&CaptureBufferLock);
+		CaptureBuffer.Reset();
+	}
+
+	SendTimer = 0.f;
+	bIsSpeaking = false;
+
+	if (IsValid(PlaybackAudioComponent))
+	{
+		if (!PlaybackAudioComponent->IsBeingDestroyed())
+		{
+			PlaybackAudioComponent->Stop();
+			PlaybackAudioComponent->SetSound(nullptr);
+		}
+
+		if (PlaybackAudioComponent->IsRegistered() && !PlaybackAudioComponent->IsBeingDestroyed())
+		{
+			PlaybackAudioComponent->UnregisterComponent();
+		}
 		PlaybackAudioComponent = nullptr;
 	}
 
-	if (VoiceIndicatorWidgetInstance)
+	ProceduralSoundWave = nullptr;
+
+	if (IsValid(VoiceIndicatorWidgetInstance))
 	{
 		VoiceIndicatorWidgetInstance->RemoveFromParent();
 		VoiceIndicatorWidgetInstance = nullptr;
 	}
-
-	Super::EndPlay(EndPlayReason);
 }
 
 void UProximityVoiceComponent::CreateVoiceIndicatorHUD()
@@ -119,6 +144,11 @@ void UProximityVoiceComponent::CreateVoiceIndicatorHUD()
 
 void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 {
+	if (bIsShuttingDown)
+	{
+		return;
+	}
+
 	AActor* Owner = GetOwner();
 	if (!Owner)
 	{
@@ -160,7 +190,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (!IsLocallyOwned() || !AudioCaptureSynth)
+	if (bIsShuttingDown || !IsLocallyOwned() || !AudioCaptureSynth)
 	{
 		return;
 	}
@@ -254,7 +284,7 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 
 void UProximityVoiceComponent::Multicast_ReceiveVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
-	if (IsLocallyOwned())
+	if (bIsShuttingDown || IsLocallyOwned())
 	{
 		return;
 	}

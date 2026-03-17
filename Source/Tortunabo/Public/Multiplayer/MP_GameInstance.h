@@ -55,10 +55,10 @@ protected:
 	TSharedPtr<FOnlineSessionSearch> SessionSearch;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer")
-	FString GameMapPath = TEXT("/Engine/Maps/Templates/OpenWorld");
+	FString GameMapPath = TEXT("/Game/Maps/Lobby/LVL_HQ");
 
 	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer")
-	FString MenuMapPath = TEXT("/Engine/Maps/Templates/OpenWorld");
+	FString MenuMapPath = TEXT("/Game/Maps/Lobby/LVL_Menu");
 
 	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer")
 	int32 MaxPlayers = 4;

@@ -79,6 +79,7 @@ private:
 	TObjectPtr<USoundWaveProcedural> ProceduralSoundWave;
 
 	void SetupPlayback(int32 InSampleRate = 0);
+	void CleanupRuntimeResources();
 
 	static TArray<uint8> CompressSamples(const TArray<float>& Samples);
 	static TArray<float> DecompressSamples(const TArray<uint8>& Compressed);
@@ -87,6 +88,8 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UUserWidget> VoiceIndicatorWidgetInstance;
+
+	bool bIsShuttingDown = false;
 
 	void CreateVoiceIndicatorHUD();
 };

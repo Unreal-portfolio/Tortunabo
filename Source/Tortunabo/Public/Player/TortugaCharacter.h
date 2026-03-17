@@ -20,6 +20,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void PawnClientRestart() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -29,18 +30,34 @@ protected:
 	TObjectPtr<UCameraComponent> FollowCamera;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	TObjectPtr<UInputMappingContext> DefaultMappingContext;
+	TSoftObjectPtr<UInputMappingContext> DefaultMappingContext;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	TObjectPtr<UInputAction> MoveAction;
+	TSoftObjectPtr<UInputAction> MoveAction;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	TObjectPtr<UInputAction> LookAction;
+	TSoftObjectPtr<UInputAction> LookAction;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	TObjectPtr<UInputAction> JumpAction;
+	TSoftObjectPtr<UInputAction> JumpAction;
 
 private:
+	void CacheInputAssets();
+	void ApplyInputMappingIfLocal();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UInputMappingContext> LoadedMappingContext;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> LoadedMoveAction;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> LoadedLookAction;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> LoadedJumpAction;
+	bool bInputAssetsLoaded = false;
+
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 };

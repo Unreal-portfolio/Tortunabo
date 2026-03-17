@@ -181,6 +181,7 @@ En `MP_GamePlayerController`:
 Codigo implicado:
 - `Source/Tortunabo/Public/Voice/ProximityVoiceComponent.h`
 - `Source/Tortunabo/Public/UI/Voice/VoiceIndicatorWidget.h`
+- `Source/Tortunabo/Public/UI/HUD/TN_CoopFlowHUDWidget.h`
 - `Source/Tortunabo/Public/Player/MP_GamePlayerController.h`
 
 ### 7.1 Indicador de voz
@@ -201,6 +202,23 @@ Ajustes utiles del componente:
 - `VoiceGain`
 - `PlaybackVolume`
 
+### 7.3 HUD de flujo coop (ya montado por C++)
+
+`MP_GamePlayerController` crea automaticamente un HUD de flujo para el jugador local:
+- intenta cargar `/Game/UI/HUD/WBP_CoopFlowHUD` (si existe)
+- si no existe, usa fallback `UTN_CoopFlowHUDWidget` en runtime
+
+Ese HUD consume datos replicados (`MatchFlowState`, `CountdownValue`, `ReadyPlayers`, `ExpectedPlayers`, `FinishedPlayers`) y muestra:
+- espera en lobby
+- countdown de ready zone
+- estado de carrera
+- countdown final de resultados
+
+Si quieres estilo visual propio sin tocar logica:
+1. Crea `WBP_CoopFlowHUD` hijo de `TN_CoopFlowHUDWidget`.
+2. (Opcional) Incluye `TextBlock` llamados `PrimaryText` y `SecondaryText` para override visual.
+3. Guarda en `/Game/UI/HUD/WBP_CoopFlowHUD` para autoload.
+
 ---
 
 ## 8) Datos para UMG de flujo coop
@@ -215,6 +233,8 @@ Variables replicadas listas para UI:
 - `ATN_CoopPlayerState::FinishTimeSeconds`
 
 Con esto montas HUD de countdown, progreso y resultados.
+
+> Ya no necesitas grafo complejo en UMG para el countdown; la logica principal vive en C++.
 
 ---
 

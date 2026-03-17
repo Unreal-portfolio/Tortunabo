@@ -28,6 +28,7 @@ void ATN_RunGameMode::BeginPlay()
 	{
 		TNGS->FinishedPlayers = 0;
 		TNGS->ServerMatchElapsedTime = 0.f;
+		TNGS->CountdownValue = 0;
 	}
 }
 
@@ -98,12 +99,40 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	if (TotalPlayers > 0 && FinishedPlayers == TotalPlayers)
 	{
 		SetFlowState(ETNMatchFlowState::Results);
+		ResultsCountdownValue = FMath::CeilToInt(ResultsDurationSeconds);
+		TNGS->CountdownValue = ResultsCountdownValue;
+		GetWorldTimerManager().SetTimer(ResultsCountdownTimerHandle, this, &ATN_RunGameMode::TickResultsCountdown, 1.0f, true);
 		GetWorldTimerManager().SetTimer(ResultsTimerHandle, this, &ATN_RunGameMode::FinishRoundAndReturnToLobby, ResultsDurationSeconds, false);
+	}
+}
+
+void ATN_RunGameMode::TickResultsCountdown()
+{
+	ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>();
+	if (!TNGS)
+	{
+		GetWorldTimerManager().ClearTimer(ResultsCountdownTimerHandle);
+		return;
+	}
+
+	ResultsCountdownValue = FMath::Max(0, ResultsCountdownValue - 1);
+	TNGS->CountdownValue = ResultsCountdownValue;
+
+	if (ResultsCountdownValue <= 0)
+	{
+		GetWorldTimerManager().ClearTimer(ResultsCountdownTimerHandle);
 	}
 }
 
 void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 {
+	GetWorldTimerManager().ClearTimer(ResultsCountdownTimerHandle);
+
+	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
+	{
+		TNGS->CountdownValue = 0;
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->ServerTravel(LobbyMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_HQGameMode"));

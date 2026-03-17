@@ -26,13 +26,16 @@ protected:
 	float ResultsDurationSeconds = 8.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
-	FString LobbyMapPath = TEXT("/Engine/Maps/Templates/OpenWorld");
+	FString LobbyMapPath = TEXT("/Game/Maps/Lobby/LVL_HQ");
 
 private:
 	FTimerHandle ResultsTimerHandle;
+	FTimerHandle ResultsCountdownTimerHandle;
 	float MatchStartServerTime = 0.f;
 	int32 NextFinishRank = 1;
+	int32 ResultsCountdownValue = 0;
 
+	void TickResultsCountdown();
 	void FinishRoundAndReturnToLobby();
 	void SetFlowState(ETNMatchFlowState NewState) const;
 };

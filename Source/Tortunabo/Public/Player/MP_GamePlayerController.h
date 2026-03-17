@@ -31,10 +31,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UUserWidget> VoiceIndicatorWidgetClass;
 
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSoftClassPtr<UUserWidget> CoopFlowWidgetClass;
+
 private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> VoiceIndicatorWidget;
 
+	UPROPERTY()
+	TObjectPtr<UUserWidget> CoopFlowWidget;
+
 	void CreateVoiceHUD();
+	void CreateCoopFlowHUD();
 	void SpectateByDirection(int32 Direction);
 };

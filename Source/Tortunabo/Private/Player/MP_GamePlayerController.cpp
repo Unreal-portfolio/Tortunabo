@@ -1,12 +1,14 @@
 #include "Player/MP_GamePlayerController.h"
 #include "Blueprint/UserWidget.h"
 #include "Voice/ProximityVoiceComponent.h"
+#include "UI/HUD/TN_CoopFlowHUDWidget.h"
 #include "GameFramework/Pawn.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "GameFramework/GameStateBase.h"
 
 AMP_GamePlayerController::AMP_GamePlayerController()
 {
+	CoopFlowWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/HUD/WBP_CoopFlowHUD.WBP_CoopFlowHUD_C")));
 }
 
 void AMP_GamePlayerController::BeginPlay()
@@ -16,6 +18,11 @@ void AMP_GamePlayerController::BeginPlay()
 	if (IsLocalController() && GetPawn())
 	{
 		CreateVoiceHUD();
+	}
+
+	if (IsLocalController())
+	{
+		CreateCoopFlowHUD();
 	}
 }
 
@@ -54,6 +61,7 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 	if (IsLocalController())
 	{
 		CreateVoiceHUD();
+		CreateCoopFlowHUD();
 	}
 }
 
@@ -89,7 +97,7 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 		{
 			continue;
 		}
-		if (APawn* CandidatePawn = CoopPS->GetPawn())
+		if (CoopPS->GetPawn())
 		{
 			Candidates.Add(CoopPS);
 		}
@@ -142,3 +150,29 @@ void AMP_GamePlayerController::CreateVoiceHUD()
 		VoiceIndicatorWidget->AddToViewport(10);
 	}
 }
+
+void AMP_GamePlayerController::CreateCoopFlowHUD()
+{
+	if (CoopFlowWidget || !IsLocalController())
+	{
+		return;
+	}
+
+	UClass* WidgetClass = nullptr;
+	if (!CoopFlowWidgetClass.IsNull())
+	{
+		WidgetClass = CoopFlowWidgetClass.LoadSynchronous();
+	}
+
+	if (!WidgetClass)
+	{
+		WidgetClass = UTN_CoopFlowHUDWidget::StaticClass();
+	}
+
+	CoopFlowWidget = CreateWidget<UUserWidget>(this, WidgetClass);
+	if (CoopFlowWidget)
+	{
+		CoopFlowWidget->AddToViewport(5);
+	}
+}
+

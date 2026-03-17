@@ -16,6 +16,7 @@ public:
 	ATN_HQGameMode();
 
 	virtual void BeginPlay() override;
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 
@@ -33,7 +34,7 @@ protected:
 	float CinematicDelaySeconds = 2.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
-	FString MatchMapPath = TEXT("/Engine/Maps/Templates/OpenWorld");
+	FString MatchMapPath = TEXT("/Game/Maps/Run/LVL_Run");
 
 private:
 	FTimerHandle CountdownTimerHandle;
@@ -46,6 +47,7 @@ private:
 	void TickCountdown();
 	void ResetCountdown();
 	void BeginMatchTravel();
+	APlayerStart* EnsureFallbackPlayerStart();
 	void SetFlowState(ETNMatchFlowState NewState) const;
 };
 

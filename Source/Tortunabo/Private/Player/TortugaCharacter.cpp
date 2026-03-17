@@ -6,7 +6,6 @@
 #include "EnhancedInputComponent.h"
 #include "InputMappingContext.h"
 #include "InputAction.h"
-#include "InputModifiers.h"
 #include "GameFramework/PlayerController.h"
 
 ATortugaCharacter::ATortugaCharacter()
@@ -28,40 +27,51 @@ ATortugaCharacter::ATortugaCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
-	DefaultMappingContext = CreateDefaultSubobject<UInputMappingContext>(TEXT("DefaultMappingContext"));
-	MoveAction = CreateDefaultSubobject<UInputAction>(TEXT("MoveAction"));
-	LookAction = CreateDefaultSubobject<UInputAction>(TEXT("LookAction"));
-	JumpAction = CreateDefaultSubobject<UInputAction>(TEXT("JumpAction"));
-
-	MoveAction->ValueType = EInputActionValueType::Axis2D;
-	LookAction->ValueType = EInputActionValueType::Axis2D;
-	JumpAction->ValueType = EInputActionValueType::Boolean;
-
-	DefaultMappingContext->MapKey(MoveAction, EKeys::Gamepad_Left2D);
-	DefaultMappingContext->MapKey(LookAction, EKeys::Gamepad_Right2D);
-	DefaultMappingContext->MapKey(LookAction, EKeys::Mouse2D);
-	DefaultMappingContext->MapKey(JumpAction, EKeys::SpaceBar);
-
-	FEnhancedActionKeyMapping& WKey = DefaultMappingContext->MapKey(MoveAction, EKeys::W);
-	UInputModifierSwizzleAxis* WSwizzleModifier = CreateDefaultSubobject<UInputModifierSwizzleAxis>(TEXT("MoveW_Swizzle"));
-	WSwizzleModifier->Order = EInputAxisSwizzle::YXZ;
-	WKey.Modifiers.Add(WSwizzleModifier);
-
-	FEnhancedActionKeyMapping& SKey = DefaultMappingContext->MapKey(MoveAction, EKeys::S);
-	UInputModifierSwizzleAxis* SSwizzleModifier = CreateDefaultSubobject<UInputModifierSwizzleAxis>(TEXT("MoveS_Swizzle"));
-	SSwizzleModifier->Order = EInputAxisSwizzle::YXZ;
-	SKey.Modifiers.Add(SSwizzleModifier);
-	SKey.Modifiers.Add(CreateDefaultSubobject<UInputModifierNegate>(TEXT("MoveS_Negate")));
-
-	FEnhancedActionKeyMapping& AKey = DefaultMappingContext->MapKey(MoveAction, EKeys::A);
-	AKey.Modifiers.Add(CreateDefaultSubobject<UInputModifierNegate>(TEXT("MoveA_Negate")));
-
-	DefaultMappingContext->MapKey(MoveAction, EKeys::D);
+	DefaultMappingContext = TSoftObjectPtr<UInputMappingContext>(FSoftObjectPath(TEXT("/Game/Input/IMC_Player.IMC_Player")));
+	MoveAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Move.IA_Move")));
+	LookAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Look.IA_Look")));
+	JumpAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Jump.IA_Jump")));
 }
 
 void ATortugaCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	CacheInputAssets();
+	ApplyInputMappingIfLocal();
+}
+
+void ATortugaCharacter::PawnClientRestart()
+{
+	Super::PawnClientRestart();
+	CacheInputAssets();
+	ApplyInputMappingIfLocal();
+}
+
+void ATortugaCharacter::CacheInputAssets()
+{
+	if (bInputAssetsLoaded)
+	{
+		return;
+	}
+
+	LoadedMappingContext = DefaultMappingContext.LoadSynchronous();
+	LoadedMoveAction = MoveAction.LoadSynchronous();
+	LoadedLookAction = LookAction.LoadSynchronous();
+	LoadedJumpAction = JumpAction.LoadSynchronous();
+	bInputAssetsLoaded = true;
+
+	if (!LoadedMappingContext || !LoadedMoveAction || !LoadedLookAction || !LoadedJumpAction)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Input] Missing IMC/IA assets on TortugaCharacter. Configure /Game/Input/IMC_Player + IA_Move/IA_Look/IA_Jump."));
+	}
+}
+
+void ATortugaCharacter::ApplyInputMappingIfLocal()
+{
+	if (!LoadedMappingContext)
+	{
+		return;
+	}
 
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
@@ -70,7 +80,7 @@ void ATortugaCharacter::BeginPlay()
 			if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
 			{
 				InputSubsystem->ClearAllMappings();
-				InputSubsystem->AddMappingContext(DefaultMappingContext, 0);
+				InputSubsystem->AddMappingContext(LoadedMappingContext, 0);
 			}
 		}
 	}
@@ -82,10 +92,20 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ATortugaCharacter::Move);
-		EnhancedInput->BindAction(LookAction, ETriggerEvent::Triggered, this, &ATortugaCharacter::Look);
-		EnhancedInput->BindAction(JumpAction, ETriggerEvent::Started, this, &ATortugaCharacter::Jump);
-		EnhancedInput->BindAction(JumpAction, ETriggerEvent::Completed, this, &ATortugaCharacter::StopJumping);
+		CacheInputAssets();
+		if (LoadedMoveAction)
+		{
+			EnhancedInput->BindAction(LoadedMoveAction, ETriggerEvent::Triggered, this, &ATortugaCharacter::Move);
+		}
+		if (LoadedLookAction)
+		{
+			EnhancedInput->BindAction(LoadedLookAction, ETriggerEvent::Triggered, this, &ATortugaCharacter::Look);
+		}
+		if (LoadedJumpAction)
+		{
+			EnhancedInput->BindAction(LoadedJumpAction, ETriggerEvent::Started, this, &ATortugaCharacter::Jump);
+			EnhancedInput->BindAction(LoadedJumpAction, ETriggerEvent::Completed, this, &ATortugaCharacter::StopJumping);
+		}
 	}
 }
 

@@ -4,6 +4,8 @@
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerStart.h"
+#include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -19,12 +21,36 @@ ATN_HQGameMode::ATN_HQGameMode()
 void ATN_HQGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	EnsureFallbackPlayerStart();
 	RefreshLobbyState();
+}
+
+AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
+{
+	TArray<AActor*> PlayerStarts;
+	UGameplayStatics::GetAllActorsOfClass(this, APlayerStart::StaticClass(), PlayerStarts);
+	if (PlayerStarts.Num() > 0)
+	{
+		const int32 Index = FMath::RandRange(0, PlayerStarts.Num() - 1);
+		return PlayerStarts[Index];
+	}
+
+	if (APlayerStart* FallbackStart = EnsureFallbackPlayerStart())
+	{
+		return FallbackStart;
+	}
+
+	return Super::ChoosePlayerStart_Implementation(Player);
 }
 
 void ATN_HQGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+
+	if (NewPlayer && !NewPlayer->GetPawn())
+	{
+		RestartPlayer(NewPlayer);
+	}
 
 	if (ATN_CoopPlayerState* TNPS = NewPlayer ? NewPlayer->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
 	{
@@ -180,6 +206,34 @@ void ATN_HQGameMode::BeginMatchTravel()
 	{
 		World->ServerTravel(MatchMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_RunGameMode"));
 	}
+}
+
+APlayerStart* ATN_HQGameMode::EnsureFallbackPlayerStart()
+{
+	if (!GetWorld())
+	{
+		return nullptr;
+	}
+
+	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
+	{
+		if (APlayerStart* Existing = *It)
+		{
+			return Existing;
+		}
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.Name = TEXT("LobbyFallbackPlayerStart");
+
+	APlayerStart* Spawned = GetWorld()->SpawnActor<APlayerStart>(APlayerStart::StaticClass(), FVector(0.f, 0.f, 150.f), FRotator::ZeroRotator, SpawnParams);
+	if (Spawned)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Lobby] No PlayerStart found in lobby map. Spawned fallback PlayerStart at world origin."));
+	}
+
+	return Spawned;
 }
 
 void ATN_HQGameMode::SetFlowState(ETNMatchFlowState NewState) const
