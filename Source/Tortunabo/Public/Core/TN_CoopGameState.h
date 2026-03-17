@@ -1,12 +1,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 #include "Core/TN_MatchFlowTypes.h"
 #include "TN_CoopGameState.generated.h"
 
 UCLASS()
-class TORTUNABO_API ATN_CoopGameState : public AGameStateBase
+class TORTUNABO_API ATN_CoopGameState : public AGameState
 {
 	GENERATED_BODY()
 

@@ -7,10 +7,15 @@
 #include "InputMappingContext.h"
 #include "InputAction.h"
 #include "GameFramework/PlayerController.h"
+#include "Player/TN_InventoryComponent.h"
+#include "World/TN_InteractableBase.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 
 ATortugaCharacter::ATortugaCharacter()
 {
 	PrimaryActorTick.bCanEverTick = false;
+	SpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -31,6 +36,10 @@ ATortugaCharacter::ATortugaCharacter()
 	MoveAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Move.IA_Move")));
 	LookAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Look.IA_Look")));
 	JumpAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Jump.IA_Jump")));
+	InteractAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Interact.IA_Interact")));
+	RotateInventoryAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_RotateInventory.IA_RotateInventory")));
+
+	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 }
 
 void ATortugaCharacter::BeginPlay()
@@ -38,6 +47,17 @@ void ATortugaCharacter::BeginPlay()
 	Super::BeginPlay();
 	CacheInputAssets();
 	ApplyInputMappingIfLocal();
+
+	if (IsLocallyControlled() && InteractionScanInterval > 0.f)
+	{
+		GetWorldTimerManager().SetTimer(InteractionScanTimerHandle, this, &ATortugaCharacter::UpdateFocusedInteractable, InteractionScanInterval, true);
+	}
+}
+
+void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(InteractionScanTimerHandle);
+	Super::EndPlay(EndPlayReason);
 }
 
 void ATortugaCharacter::PawnClientRestart()
@@ -58,6 +78,8 @@ void ATortugaCharacter::CacheInputAssets()
 	LoadedMoveAction = MoveAction.LoadSynchronous();
 	LoadedLookAction = LookAction.LoadSynchronous();
 	LoadedJumpAction = JumpAction.LoadSynchronous();
+	LoadedInteractAction = InteractAction.LoadSynchronous();
+	LoadedRotateInventoryAction = RotateInventoryAction.LoadSynchronous();
 	bInputAssetsLoaded = true;
 
 	if (!LoadedMappingContext || !LoadedMoveAction || !LoadedLookAction || !LoadedJumpAction)
@@ -106,6 +128,14 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 			EnhancedInput->BindAction(LoadedJumpAction, ETriggerEvent::Started, this, &ATortugaCharacter::Jump);
 			EnhancedInput->BindAction(LoadedJumpAction, ETriggerEvent::Completed, this, &ATortugaCharacter::StopJumping);
 		}
+		if (LoadedInteractAction)
+		{
+			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Started, this, &ATortugaCharacter::TryInteract);
+		}
+		if (LoadedRotateInventoryAction)
+		{
+			EnhancedInput->BindAction(LoadedRotateInventoryAction, ETriggerEvent::Started, this, &ATortugaCharacter::RotateInventory);
+		}
 	}
 }
 
@@ -133,5 +163,97 @@ void ATortugaCharacter::Look(const FInputActionValue& Value)
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
+}
+
+void ATortugaCharacter::TryInteract()
+{
+	if (!FocusedInteractable.IsValid())
+	{
+		UpdateFocusedInteractable();
+	}
+
+	if (!FocusedInteractable.IsValid())
+	{
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		ServerTryInteract(FocusedInteractable.Get());
+	}
+	else
+	{
+		ServerTryInteract(FocusedInteractable.Get());
+	}
+}
+
+void ATortugaCharacter::RotateInventory()
+{
+	if (InventoryComponent)
+	{
+		InventoryComponent->RotateItems();
+	}
+}
+
+void ATortugaCharacter::UpdateFocusedInteractable()
+{
+	if (!GetWorld())
+	{
+		FocusedInteractable = nullptr;
+		return;
+	}
+
+	FVector ViewLocation = FVector::ZeroVector;
+	FVector ViewDirection = FVector::ForwardVector;
+	ResolveInteractionViewPoint(ViewLocation, ViewDirection);
+
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TN_InteractionTrace), false, this);
+	const FVector TraceEnd = ViewLocation + (ViewDirection * MaxInteractionDistance);
+
+	ATN_InteractableBase* NewFocused = nullptr;
+	if (GetWorld()->LineTraceSingleByChannel(Hit, ViewLocation, TraceEnd, ECC_Visibility, Params))
+	{
+		NewFocused = Cast<ATN_InteractableBase>(Hit.GetActor());
+	}
+
+	FocusedInteractable = NewFocused;
+}
+
+void ATortugaCharacter::ResolveInteractionViewPoint(FVector& OutLocation, FVector& OutDirection) const
+{
+	if (FollowCamera)
+	{
+		OutLocation = FollowCamera->GetComponentLocation();
+		OutDirection = FollowCamera->GetForwardVector();
+		return;
+	}
+
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		FRotator ViewRotation;
+		PC->GetPlayerViewPoint(OutLocation, ViewRotation);
+		OutDirection = ViewRotation.Vector();
+		return;
+	}
+
+	OutLocation = GetActorLocation();
+	OutDirection = GetActorForwardVector();
+}
+
+void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* Interactable)
+{
+	if (!Interactable || !Interactable->CanInteract(this))
+	{
+		return;
+	}
+
+	const float MaxDistance = FMath::Max(MaxInteractionDistance, Interactable->GetInteractionDistance());
+	if (FVector::DistSquared(GetActorLocation(), Interactable->GetActorLocation()) > FMath::Square(MaxDistance + 100.f))
+	{
+		return;
+	}
+
+	Interactable->Interact(this);
 }
 

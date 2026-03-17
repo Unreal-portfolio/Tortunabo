@@ -22,6 +22,12 @@ void ATN_HQGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureFallbackPlayerStart();
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		EnsurePlayerSpawned(It->Get());
+	}
+
 	RefreshLobbyState();
 }
 
@@ -43,14 +49,18 @@ AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	return Super::ChoosePlayerStart_Implementation(Player);
 }
 
+
+void ATN_HQGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+	EnsurePlayerSpawned(NewPlayer);
+}
+
 void ATN_HQGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 
-	if (NewPlayer && !NewPlayer->GetPawn())
-	{
-		RestartPlayer(NewPlayer);
-	}
+	EnsurePlayerSpawned(NewPlayer);
 
 	if (ATN_CoopPlayerState* TNPS = NewPlayer ? NewPlayer->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
 	{
@@ -61,6 +71,43 @@ void ATN_HQGameMode::PostLogin(APlayerController* NewPlayer)
 	}
 
 	RefreshLobbyState();
+}
+
+void ATN_HQGameMode::EnsurePlayerSpawned(APlayerController* PlayerController)
+{
+	if (!HasAuthority() || !PlayerController || PlayerController->GetPawn())
+	{
+		return;
+	}
+
+	RestartPlayer(PlayerController);
+	if (PlayerController->GetPawn())
+	{
+		return;
+	}
+
+	AActor* PlayerStart = FindPlayerStart(PlayerController);
+	if (!PlayerStart)
+	{
+		PlayerStart = EnsureFallbackPlayerStart();
+	}
+
+	if (!PlayerStart)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Lobby] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
+		return;
+	}
+
+	APawn* SpawnedPawn = SpawnDefaultPawnFor(PlayerController, PlayerStart);
+	if (!SpawnedPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Lobby] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
+		return;
+	}
+
+	PlayerController->Possess(SpawnedPawn);
+	SetPlayerDefaults(SpawnedPawn);
+	UE_LOG(LogTemp, Log, TEXT("[Lobby] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
 }
 
 void ATN_HQGameMode::Logout(AController* Exiting)
@@ -204,7 +251,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 {
 	if (UWorld* World = GetWorld())
 	{
-		World->ServerTravel(MatchMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_RunGameMode"));
+		World->ServerTravel(MatchMapPath + TEXT("?listen"));
 	}
 }
 

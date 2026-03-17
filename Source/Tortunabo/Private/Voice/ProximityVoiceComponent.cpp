@@ -39,6 +39,7 @@ void UProximityVoiceComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	bIsShuttingDown = false;
+	bRuntimeResourcesCleanedUp = false;
 
 	if (IsLocallyOwned())
 	{
@@ -69,9 +70,33 @@ void UProximityVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void UProximityVoiceComponent::OnUnregister()
+{
+	bIsShuttingDown = true;
+	SetComponentTickEnabled(false);
+	CleanupRuntimeResources();
+	Super::OnUnregister();
+}
+
+void UProximityVoiceComponent::BeginDestroy()
+{
+	bIsShuttingDown = true;
+	SetComponentTickEnabled(false);
+	CleanupRuntimeResources();
+	Super::BeginDestroy();
+}
+
 
 void UProximityVoiceComponent::CleanupRuntimeResources()
 {
+	if (bRuntimeResourcesCleanedUp)
+	{
+		return;
+	}
+
+	bRuntimeResourcesCleanedUp = true;
+	OnSpeakingChanged.Clear();
+
 	if (AudioCaptureSynth)
 	{
 		AudioCaptureSynth->StopCapturing();
@@ -86,19 +111,26 @@ void UProximityVoiceComponent::CleanupRuntimeResources()
 	SendTimer = 0.f;
 	bIsSpeaking = false;
 
-	if (IsValid(PlaybackAudioComponent))
+	if (UAudioComponent* AudioComponent = PlaybackAudioComponent.Get())
 	{
-		if (!PlaybackAudioComponent->IsBeingDestroyed())
+		PlaybackAudioComponent = nullptr;
+
+		if (!AudioComponent->IsBeingDestroyed())
 		{
-			PlaybackAudioComponent->Stop();
-			PlaybackAudioComponent->SetSound(nullptr);
+			AudioComponent->Stop();
+			AudioComponent->Deactivate();
+			AudioComponent->SetSound(nullptr);
 		}
 
-		if (PlaybackAudioComponent->IsRegistered() && !PlaybackAudioComponent->IsBeingDestroyed())
+		if (AudioComponent->IsRegistered() && !AudioComponent->IsBeingDestroyed())
 		{
-			PlaybackAudioComponent->UnregisterComponent();
+			AudioComponent->UnregisterComponent();
 		}
-		PlaybackAudioComponent = nullptr;
+
+		if (!AudioComponent->IsBeingDestroyed())
+		{
+			AudioComponent->DestroyComponent();
+		}
 	}
 
 	ProceduralSoundWave = nullptr;
@@ -144,7 +176,7 @@ void UProximityVoiceComponent::CreateVoiceIndicatorHUD()
 
 void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 {
-	if (bIsShuttingDown)
+	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown))
 	{
 		return;
 	}
@@ -177,10 +209,10 @@ void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 		return;
 	}
 
-	PlaybackAudioComponent->RegisterComponent();
 	PlaybackAudioComponent->SetupAttachment(Owner->GetRootComponent());
 	PlaybackAudioComponent->bAutoActivate = false;
 	PlaybackAudioComponent->bAlwaysPlay = true;
+	PlaybackAudioComponent->RegisterComponent();
 	PlaybackAudioComponent->SetVolumeMultiplier(PlaybackVolume);
 	PlaybackAudioComponent->SetSound(ProceduralSoundWave);
 	PlaybackAudioComponent->Play();
@@ -190,7 +222,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (bIsShuttingDown || !IsLocallyOwned() || !AudioCaptureSynth)
+	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || !IsLocallyOwned() || !AudioCaptureSynth)
 	{
 		return;
 	}
@@ -284,7 +316,7 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 
 void UProximityVoiceComponent::Multicast_ReceiveVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
-	if (bIsShuttingDown || IsLocallyOwned())
+	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || IsLocallyOwned())
 	{
 		return;
 	}

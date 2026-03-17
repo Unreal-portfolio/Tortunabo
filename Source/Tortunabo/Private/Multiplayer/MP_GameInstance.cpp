@@ -205,7 +205,7 @@ void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucce
 	UWorld* World = GetWorld();
 	if (World)
 	{
-		World->ServerTravel(GameMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_HQGameMode"));
+		World->ServerTravel(GameMapPath + TEXT("?listen"));
 	}
 }
 

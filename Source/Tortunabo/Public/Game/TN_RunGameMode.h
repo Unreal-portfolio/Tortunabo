@@ -17,6 +17,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void MarkPlayerFinished(APlayerController* PlayerController);
@@ -35,6 +36,8 @@ private:
 	int32 NextFinishRank = 1;
 	int32 ResultsCountdownValue = 0;
 
+	void EnsurePlayerSpawned(APlayerController* PlayerController);
+	APlayerStart* EnsureFallbackPlayerStart();
 	void TickResultsCountdown();
 	void FinishRoundAndReturnToLobby();
 	void SetFlowState(ETNMatchFlowState NewState) const;

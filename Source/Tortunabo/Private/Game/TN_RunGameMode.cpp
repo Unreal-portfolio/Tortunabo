@@ -5,6 +5,7 @@
 #include "Player/TortugaCharacter.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
+#include "EngineUtils.h"
 #include "TimerManager.h"
 
 ATN_RunGameMode::ATN_RunGameMode()
@@ -19,6 +20,12 @@ ATN_RunGameMode::ATN_RunGameMode()
 void ATN_RunGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	EnsureFallbackPlayerStart();
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		EnsurePlayerSpawned(It->Get());
+	}
 
 	MatchStartServerTime = GetWorld()->GetTimeSeconds();
 	NextFinishRank = 1;
@@ -32,6 +39,12 @@ void ATN_RunGameMode::BeginPlay()
 	}
 }
 
+void ATN_RunGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+	EnsurePlayerSpawned(NewPlayer);
+}
+
 AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
 	TArray<AActor*> PlayerStarts;
@@ -43,6 +56,71 @@ AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	}
 
 	return Super::ChoosePlayerStart_Implementation(Player);
+}
+
+void ATN_RunGameMode::EnsurePlayerSpawned(APlayerController* PlayerController)
+{
+	if (!HasAuthority() || !PlayerController || PlayerController->GetPawn())
+	{
+		return;
+	}
+
+	RestartPlayer(PlayerController);
+	if (PlayerController->GetPawn())
+	{
+		return;
+	}
+
+	AActor* PlayerStart = FindPlayerStart(PlayerController);
+	if (!PlayerStart)
+	{
+		PlayerStart = EnsureFallbackPlayerStart();
+	}
+
+	if (!PlayerStart)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Run] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
+		return;
+	}
+
+	APawn* SpawnedPawn = SpawnDefaultPawnFor(PlayerController, PlayerStart);
+	if (!SpawnedPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Run] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
+		return;
+	}
+
+	PlayerController->Possess(SpawnedPawn);
+	SetPlayerDefaults(SpawnedPawn);
+	UE_LOG(LogTemp, Log, TEXT("[Run] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
+}
+
+APlayerStart* ATN_RunGameMode::EnsureFallbackPlayerStart()
+{
+	if (!GetWorld())
+	{
+		return nullptr;
+	}
+
+	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
+	{
+		if (APlayerStart* Existing = *It)
+		{
+			return Existing;
+		}
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.Name = TEXT("RunFallbackPlayerStart");
+
+	APlayerStart* Spawned = GetWorld()->SpawnActor<APlayerStart>(APlayerStart::StaticClass(), FVector(0.f, 0.f, 150.f), FRotator::ZeroRotator, SpawnParams);
+	if (Spawned)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Run] No PlayerStart found in run map. Spawned fallback PlayerStart at world origin."));
+	}
+
+	return Spawned;
 }
 
 void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
@@ -135,7 +213,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 
 	if (UWorld* World = GetWorld())
 	{
-		World->ServerTravel(LobbyMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_HQGameMode"));
+		World->ServerTravel(LobbyMapPath + TEXT("?listen"));
 	}
 }
 

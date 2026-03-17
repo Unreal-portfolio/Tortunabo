@@ -5,6 +5,8 @@
 #include "GameFramework/Pawn.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "GameFramework/GameStateBase.h"
+#include "Engine/Engine.h"
+#include "Framework/Application/SlateApplication.h"
 
 AMP_GamePlayerController::AMP_GamePlayerController()
 {
@@ -14,6 +16,8 @@ AMP_GamePlayerController::AMP_GamePlayerController()
 void AMP_GamePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	ApplyGameplayInputMode();
 
 	if (IsLocalController() && GetPawn())
 	{
@@ -43,6 +47,8 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
+	ApplyGameplayInputMode();
+
 	if (!InPawn)
 	{
 		return;
@@ -62,6 +68,25 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 	{
 		CreateVoiceHUD();
 		CreateCoopFlowHUD();
+	}
+}
+
+void AMP_GamePlayerController::ApplyGameplayInputMode()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+	SetShowMouseCursor(false);
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
+
+	if (GEngine && GEngine->GameViewport)
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport(EFocusCause::SetDirectly);
 	}
 }
 

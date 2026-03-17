@@ -17,10 +17,13 @@ void UVoiceIndicatorWidget::NativeConstruct()
 
 void UVoiceIndicatorWidget::NativeDestruct()
 {
-	if (LocalVoiceComponent)
+	if (IsValid(LocalVoiceComponent))
 	{
 		LocalVoiceComponent->OnSpeakingChanged.RemoveDynamic(this, &UVoiceIndicatorWidget::OnSpeakingChanged);
 	}
+
+	LocalVoiceComponent = nullptr;
+	bBound = false;
 
 	Super::NativeDestruct();
 }

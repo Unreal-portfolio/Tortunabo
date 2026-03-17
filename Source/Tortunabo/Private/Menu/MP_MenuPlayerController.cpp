@@ -29,3 +29,14 @@ void AMP_MenuPlayerController::BeginPlay()
 	}
 }
 
+void AMP_MenuPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (MainMenuWidget)
+	{
+		MainMenuWidget->RemoveFromParent();
+		MainMenuWidget = nullptr;
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+

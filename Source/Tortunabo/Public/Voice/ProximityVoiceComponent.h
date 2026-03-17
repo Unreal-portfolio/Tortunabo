@@ -21,6 +21,8 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void OnUnregister() override;
+	virtual void BeginDestroy() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	UPROPERTY(BlueprintAssignable, Category = "Voice")
@@ -90,6 +92,7 @@ private:
 	TObjectPtr<UUserWidget> VoiceIndicatorWidgetInstance;
 
 	bool bIsShuttingDown = false;
+	bool bRuntimeResourcesCleanedUp = false;
 
 	void CreateVoiceIndicatorHUD();
 };

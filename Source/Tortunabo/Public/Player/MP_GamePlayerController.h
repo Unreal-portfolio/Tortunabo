@@ -41,6 +41,7 @@ private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> CoopFlowWidget;
 
+	void ApplyGameplayInputMode();
 	void CreateVoiceHUD();
 	void CreateCoopFlowHUD();
 	void SpectateByDirection(int32 Direction);

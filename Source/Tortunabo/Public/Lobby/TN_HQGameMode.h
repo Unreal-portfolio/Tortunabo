@@ -17,6 +17,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 
@@ -47,6 +48,7 @@ private:
 	void TickCountdown();
 	void ResetCountdown();
 	void BeginMatchTravel();
+	void EnsurePlayerSpawned(APlayerController* PlayerController);
 	APlayerStart* EnsureFallbackPlayerStart();
 	void SetFlowState(ETNMatchFlowState NewState) const;
 };
