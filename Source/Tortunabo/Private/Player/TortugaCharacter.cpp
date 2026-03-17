@@ -82,9 +82,21 @@ void ATortugaCharacter::CacheInputAssets()
 	LoadedRotateInventoryAction = RotateInventoryAction.LoadSynchronous();
 	bInputAssetsLoaded = true;
 
-	if (!LoadedMappingContext || !LoadedMoveAction || !LoadedLookAction || !LoadedJumpAction)
+	if (!LoadedMappingContext)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Input] Missing IMC/IA assets on TortugaCharacter. Configure /Game/Input/IMC_Player + IA_Move/IA_Look/IA_Jump."));
+		UE_LOG(LogTemp, Error, TEXT("[Input] Missing IMC_Player at /Game/Input/IMC_Player. Create it in editor or set DefaultMappingContext path."));
+	}
+	if (!LoadedMoveAction || !LoadedLookAction || !LoadedJumpAction)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Input] Missing required InputActions (Move/Look/Jump). Ensure /Game/Input/IA_Move, IA_Look, IA_Jump exist."));
+	}
+	if (!LoadedInteractAction)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Input] Missing IA_Interact. Interaction will not work."));
+	}
+	if (!LoadedRotateInventoryAction)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Input] Missing IA_RotateInventory. Inventory rotation will not work."));
 	}
 }
 
@@ -92,6 +104,7 @@ void ATortugaCharacter::ApplyInputMappingIfLocal()
 {
 	if (!LoadedMappingContext)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[Input] ApplyInputMappingIfLocal: LoadedMappingContext is null. Input will not work. Ensure /Game/Input/IMC_Player exists."));
 		return;
 	}
 
@@ -103,8 +116,21 @@ void ATortugaCharacter::ApplyInputMappingIfLocal()
 			{
 				InputSubsystem->ClearAllMappings();
 				InputSubsystem->AddMappingContext(LoadedMappingContext, 0);
+				UE_LOG(LogTemp, Log, TEXT("[Input] Applied IMC to local player: %s"), *GetNameSafe(PC));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Input] EnhancedInputLocalPlayerSubsystem not found on local player"));
 			}
 		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Input] No local player found on controller"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Input] No PlayerController found on this pawn"));
 	}
 }
 
