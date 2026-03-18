@@ -162,8 +162,6 @@ void ATN_HQGameMode::RefreshLobbyState()
 	TNGS->ExpectedPlayers = ExpectedPlayers;
 	TNGS->ReadyPlayers = ReadyPlayers;
 
-	UE_LOG(LogTemp, Verbose, TEXT("[Lobby] RefreshLobbyState: Connected=%d, Ready=%d, Expected=%d"), ConnectedPlayers, ReadyPlayers, ExpectedPlayers);
-
 	if (!bCountdownRunning)
 	{
 		SetFlowState(ETNMatchFlowState::WaitingForPlayers);
@@ -193,7 +191,6 @@ void ATN_HQGameMode::StartCountdown()
 		TNGS->CountdownValue = CurrentCountdownValue;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Lobby] Countdown started! All %d players are ready. Starting from: %d"), CountdownStartValue, CountdownStartValue);
 	GetWorldTimerManager().SetTimer(CountdownTimerHandle, this, &ATN_HQGameMode::TickCountdown, 1.0f, true);
 }
 
@@ -218,24 +215,20 @@ void ATN_HQGameMode::TickCountdown()
 		}
 	}
 
-	// Validate all expected players are still ready
 	if (ReadyPlayers != TNGS->ExpectedPlayers)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Lobby] Countdown interrupted! Expected %d ready players, but only %d are ready. Resetting countdown."), TNGS->ExpectedPlayers, ReadyPlayers);
 		ResetCountdown();
 		return;
 	}
 
 	--CurrentCountdownValue;
 	TNGS->CountdownValue = CurrentCountdownValue;
-	UE_LOG(LogTemp, Log, TEXT("[Lobby] Countdown tick: %d"), CurrentCountdownValue);
 
 	if (CurrentCountdownValue <= 0)
 	{
 		GetWorldTimerManager().ClearTimer(CountdownTimerHandle);
 		bCountdownRunning = false;
 		SetFlowState(ETNMatchFlowState::Cinematic);
-		UE_LOG(LogTemp, Log, TEXT("[Lobby] Countdown complete! Traveling to %s in %f seconds..."), *MatchMapPath, CinematicDelaySeconds);
 		GetWorldTimerManager().SetTimer(TravelTimerHandle, this, &ATN_HQGameMode::BeginMatchTravel, CinematicDelaySeconds, false);
 	}
 }
@@ -251,7 +244,6 @@ void ATN_HQGameMode::ResetCountdown()
 		TNGS->CountdownValue = 0;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Lobby] Countdown reset. Back to waiting for players."));
 	SetFlowState(ETNMatchFlowState::WaitingForPlayers);
 }
 

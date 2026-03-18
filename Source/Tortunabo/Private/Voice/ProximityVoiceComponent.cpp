@@ -72,25 +72,17 @@ void UProximityVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void UProximityVoiceComponent::OnUnregister()
 {
-	// Prevent double cleanup from EndPlay + OnUnregister sequence
-	if (!bIsShuttingDown)
-	{
-		bIsShuttingDown = true;
-		SetComponentTickEnabled(false);
-		CleanupRuntimeResources();
-	}
+	bIsShuttingDown = true;
+	SetComponentTickEnabled(false);
+	CleanupRuntimeResources();
 	Super::OnUnregister();
 }
 
 void UProximityVoiceComponent::BeginDestroy()
 {
-	// Prevent double cleanup from full lifecycle
-	if (!bIsShuttingDown)
-	{
-		bIsShuttingDown = true;
-		SetComponentTickEnabled(false);
-		CleanupRuntimeResources();
-	}
+	bIsShuttingDown = true;
+	SetComponentTickEnabled(false);
+	CleanupRuntimeResources();
 	Super::BeginDestroy();
 }
 
@@ -103,57 +95,46 @@ void UProximityVoiceComponent::CleanupRuntimeResources()
 	}
 
 	bRuntimeResourcesCleanedUp = true;
-
-	// Clear all delegates early to prevent callbacks during teardown
 	OnSpeakingChanged.Clear();
 
-	// Stop audio capture first (must happen before buffer cleanup)
 	if (AudioCaptureSynth)
 	{
 		AudioCaptureSynth->StopCapturing();
 		AudioCaptureSynth.Reset();
 	}
 
-	// Clear capture buffer under lock
 	{
 		FScopeLock Lock(&CaptureBufferLock);
 		CaptureBuffer.Reset();
 	}
 
-	// Reset send timer
 	SendTimer = 0.f;
 	bIsSpeaking = false;
 
-	// Cleanup playback audio component
 	if (UAudioComponent* AudioComponent = PlaybackAudioComponent.Get())
 	{
 		PlaybackAudioComponent = nullptr;
 
-		// Deactivate and detach before destroying
-		if (AudioComponent->IsActive())
+		if (!AudioComponent->IsBeingDestroyed())
 		{
 			AudioComponent->Stop();
+			AudioComponent->Deactivate();
+			AudioComponent->SetSound(nullptr);
 		}
-		AudioComponent->Deactivate();
-		AudioComponent->SetSound(nullptr);
 
-		// Unregister if still registered and not being destroyed
 		if (AudioComponent->IsRegistered() && !AudioComponent->IsBeingDestroyed())
 		{
 			AudioComponent->UnregisterComponent();
 		}
 
-		// Destroy only if not already being destroyed
 		if (!AudioComponent->IsBeingDestroyed())
 		{
-			AudioComponent->DestroyComponent(true);
+			AudioComponent->DestroyComponent();
 		}
 	}
 
-	// Clear procedural sound wave reference
 	ProceduralSoundWave = nullptr;
 
-	// Cleanup UI widget
 	if (IsValid(VoiceIndicatorWidgetInstance))
 	{
 		VoiceIndicatorWidgetInstance->RemoveFromParent();
@@ -208,7 +189,7 @@ void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 
 	const int32 ActualSampleRate = (InSampleRate > 0) ? InSampleRate : VoiceSampleRate;
 
-	ProceduralSoundWave = NewObject<USoundWaveProcedural>(this, USoundWaveProcedural::StaticClass(), FName(TEXT("ProceduralVoiceWave")));
+	ProceduralSoundWave = NewObject<USoundWaveProcedural>(this);
 	if (!ProceduralSoundWave)
 	{
 		return;
@@ -222,7 +203,7 @@ void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 	ProceduralSoundWave->bProcedural = true;
 	ProceduralSoundWave->Volume = PlaybackVolume;
 
-	PlaybackAudioComponent = NewObject<UAudioComponent>(Owner, UAudioComponent::StaticClass(), FName(TEXT("PlaybackAudioComponent")));
+	PlaybackAudioComponent = NewObject<UAudioComponent>(Owner);
 	if (!PlaybackAudioComponent)
 	{
 		return;

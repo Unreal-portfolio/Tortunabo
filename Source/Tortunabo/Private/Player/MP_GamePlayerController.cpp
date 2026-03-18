@@ -57,17 +57,10 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 	UProximityVoiceComponent* ExistingVoice = InPawn->FindComponentByClass<UProximityVoiceComponent>();
 	if (!ExistingVoice)
 	{
-		// Use proper component factory instead of NewObject; UE 5.6 requires valid naming context
-		UProximityVoiceComponent* VoiceComp = InPawn->FindComponentByClass<UProximityVoiceComponent>();
-		if (!VoiceComp)
+		UProximityVoiceComponent* VoiceComp = NewObject<UProximityVoiceComponent>(InPawn, TEXT("ProximityVoice"));
+		if (VoiceComp)
 		{
-			VoiceComp = NewObject<UProximityVoiceComponent>(InPawn, UProximityVoiceComponent::StaticClass(), FName(TEXT("ProximityVoiceComponent")));
-			if (VoiceComp)
-			{
-				VoiceComp->SetupAttachment(nullptr);
-				VoiceComp->RegisterComponent();
-				VoiceComp->BeginPlay();
-			}
+			VoiceComp->RegisterComponent();
 		}
 	}
 

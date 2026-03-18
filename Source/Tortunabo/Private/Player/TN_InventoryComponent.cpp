@@ -19,8 +19,7 @@ void UTN_InventoryComponent::BeginPlay()
 		return;
 	}
 
-	// Use proper factory for NewObject with valid naming context in UE 5.6
-	EquippedVisualMesh = NewObject<UStaticMeshComponent>(GetOwner(), UStaticMeshComponent::StaticClass(), FName(TEXT("EquippedItemVisual")));
+	EquippedVisualMesh = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("EquippedItemVisual"));
 	if (!EquippedVisualMesh)
 	{
 		return;
