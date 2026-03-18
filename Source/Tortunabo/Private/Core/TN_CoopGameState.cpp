@@ -5,6 +5,19 @@ ATN_CoopGameState::ATN_CoopGameState()
 {
 }
 
+void ATN_CoopGameState::OnRep_MatchFlowState()
+{
+	// Fires on remote clients when the replicated value arrives
+	OnMatchFlowStateChanged.Broadcast(MatchFlowState);
+}
+
+void ATN_CoopGameState::BroadcastFlowStateChange()
+{
+	// Must be called by game modes on the server after setting MatchFlowState.
+	// OnRep does NOT fire on the authoritative machine, so we broadcast manually.
+	OnMatchFlowStateChanged.Broadcast(MatchFlowState);
+}
+
 void ATN_CoopGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -18,4 +31,3 @@ void ATN_CoopGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ATN_CoopGameState, ServerMatchElapsedTime);
 	DOREPLIFETIME(ATN_CoopGameState, FinishedPlayers);
 }
-

@@ -5,12 +5,24 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/Widget.h"
 #include "GameFramework/PlayerController.h"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lifecycle
+// ─────────────────────────────────────────────────────────────────────────────
 
 void UTN_CoopFlowHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	EnsureRuntimeWidgets();
+
+	// Make sure ResultsOverlay starts hidden even if the designer forgot
+	if (ResultsOverlay)
+	{
+		ResultsOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
 	RefreshTexts();
 }
 
@@ -27,6 +39,10 @@ void UTN_CoopFlowHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	RefreshAccumulator = 0.f;
 	RefreshTexts();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C++ fallback runtime widget creation (used when widget has no BP designer)
+// ─────────────────────────────────────────────────────────────────────────────
 
 void UTN_CoopFlowHUDWidget::EnsureRuntimeWidgets()
 {
@@ -71,7 +87,12 @@ void UTN_CoopFlowHUDWidget::EnsureRuntimeWidgets()
 			}
 		}
 	}
+	// Note: ResultsOverlay and its children are designer-only; no C++ fallback needed.
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main refresh (called every 0.1 s)
+// ─────────────────────────────────────────────────────────────────────────────
 
 void UTN_CoopFlowHUDWidget::RefreshTexts()
 {
@@ -82,43 +103,167 @@ void UTN_CoopFlowHUDWidget::RefreshTexts()
 		return;
 	}
 
-	const ATN_CoopGameState* GameState = PC->GetWorld() ? PC->GetWorld()->GetGameState<ATN_CoopGameState>() : nullptr;
+	const ATN_CoopGameState* GameState = PC->GetWorld()
+		? PC->GetWorld()->GetGameState<ATN_CoopGameState>()
+		: nullptr;
+
 	if (!GameState)
 	{
 		SetVisibility(ESlateVisibility::Collapsed);
 		return;
 	}
 
+	// ── Detect state change ──────────────────────────────────────────────────
+	if (!bFlowStateInitialized || GameState->MatchFlowState != LastKnownFlowState)
+	{
+		LastKnownFlowState    = GameState->MatchFlowState;
+		bFlowStateInitialized = true;
+		HandleFlowStateChange(LastKnownFlowState, GameState);
+		OnFlowStateChanged(LastKnownFlowState); // optional BP hook
+	}
+
+	// ── Update status-strip texts ────────────────────────────────────────────
 	const bool bShow = ShouldBeVisible(GameState->MatchFlowState);
 	SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-	if (!bShow)
+
+	if (bShow)
+	{
+		if (PrimaryText)   { PrimaryText->SetText(BuildPrimaryText(GameState)); }
+		if (SecondaryText) { SecondaryText->SetText(BuildSecondaryText(GameState)); }
+	}
+
+	// ── Update results countdown every refresh tick ──────────────────────────
+	if (bResultsVisible)
+	{
+		RefreshResultsCountdown(GameState);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Results panel — C++ logic
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_CoopFlowHUDWidget::HandleFlowStateChange(ETNMatchFlowState NewState, const ATN_CoopGameState* GameState)
+{
+	if (NewState == ETNMatchFlowState::Results)
+	{
+		ShowResultsPanel(GameState);
+	}
+	else if (bResultsVisible)
+	{
+		HideResultsPanel();
+	}
+}
+
+void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
+{
+	bResultsVisible = true;
+
+	if (ResultsOverlay)
+	{
+		ResultsOverlay->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	// ── Gather local player stats ────────────────────────────────────────────
+	const ATN_CoopPlayerState* TNPS = nullptr;
+	if (const APlayerController* PC = GetOwningPlayer())
+	{
+		TNPS = PC->GetPlayerState<ATN_CoopPlayerState>();
+	}
+
+	const int32  Rank       = TNPS ? TNPS->FinishRank       : 0;
+	const float  Time       = TNPS ? TNPS->FinishTimeSeconds : -1.f;
+	const bool   bFinished  = TNPS && TNPS->bHasFinishedRun && Rank > 0;
+
+	// ── Title ────────────────────────────────────────────────────────────────
+	if (ResultsTitle)
+	{
+		ResultsTitle->SetText(BuildRankTitle(Rank));
+	}
+
+	// ── Rank line ────────────────────────────────────────────────────────────
+	if (ResultsRankText)
+	{
+		ResultsRankText->SetText(bFinished
+			? FText::FromString(FString::Printf(TEXT("Puesto: #%d"), Rank))
+			: FText::FromString(TEXT("Eliminado")));
+	}
+
+	// ── Time line ────────────────────────────────────────────────────────────
+	if (ResultsTimeText)
+	{
+		ResultsTimeText->SetText(Time > 0.f
+			? FText::FromString(FString::Printf(TEXT("Tiempo: %.1fs"), Time))
+			: FText::GetEmpty());
+	}
+
+	// ── Spectator hint ───────────────────────────────────────────────────────
+	if (SpectatorHint)
+	{
+		SpectatorHint->SetText(!bFinished
+			? FText::FromString(TEXT("Scroll para cambiar de jugador"))
+			: FText::GetEmpty());
+	}
+
+	// ── Initial countdown ────────────────────────────────────────────────────
+	RefreshResultsCountdown(GameState);
+}
+
+void UTN_CoopFlowHUDWidget::HideResultsPanel()
+{
+	bResultsVisible = false;
+
+	if (ResultsOverlay)
+	{
+		ResultsOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
+void UTN_CoopFlowHUDWidget::RefreshResultsCountdown(const ATN_CoopGameState* GameState)
+{
+	if (!ResultsCountdown || !GameState)
 	{
 		return;
 	}
 
-	if (PrimaryText)
-	{
-		PrimaryText->SetText(BuildPrimaryText(GameState));
-	}
+	ResultsCountdown->SetText(
+		FText::FromString(FString::Printf(TEXT("Volviendo al lobby en: %d"), GameState->CountdownValue)));
+}
 
-	if (SecondaryText)
+FText UTN_CoopFlowHUDWidget::BuildRankTitle(int32 FinishRank) const
+{
+	switch (FinishRank)
 	{
-		SecondaryText->SetText(BuildSecondaryText(GameState));
+	case 1:  return FText::FromString(TEXT("¡PRIMER LUGAR!"));
+	case 2:  return FText::FromString(TEXT("¡SEGUNDO LUGAR!"));
+	case 3:  return FText::FromString(TEXT("¡TERCER LUGAR!"));
+	default:
+		return FinishRank > 0
+			? FText::FromString(FString::Printf(TEXT("PUESTO #%d"), FinishRank))
+			: FText::FromString(TEXT("¡ELIMINADO!"));
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status-strip text builders
+// ─────────────────────────────────────────────────────────────────────────────
 
 FText UTN_CoopFlowHUDWidget::BuildPrimaryText(const ATN_CoopGameState* GameState) const
 {
 	switch (GameState->MatchFlowState)
 	{
 	case ETNMatchFlowState::WaitingForPlayers:
-		return FText::FromString(FString::Printf(TEXT("Sala: %d/%d | Zona start: %d/%d"), GameState->ConnectedPlayers, GameState->ExpectedPlayers, GameState->PlayersInStartZone, GameState->ExpectedPlayers));
+		return FText::FromString(FString::Printf(
+			TEXT("Sala: %d/%d | Zona: %d/%d"),
+			GameState->ConnectedPlayers, GameState->ExpectedPlayers,
+			GameState->PlayersInStartZone, GameState->ConnectedPlayers));
 	case ETNMatchFlowState::Countdown:
-		return FText::FromString(FString::Printf(TEXT("Todos listos. La partida empieza en: %d"), GameState->CountdownValue));
+		return FText::FromString(FString::Printf(TEXT("Todos listos! Empieza en: %d"), GameState->CountdownValue));
 	case ETNMatchFlowState::Cinematic:
-		return FText::FromString(TEXT("Preparando cinematicas..."));
+		return FText::FromString(TEXT("Preparando..."));
 	case ETNMatchFlowState::InProgress:
-		return FText::FromString(FString::Printf(TEXT("Carrera en curso. Meta: %d/%d"), GameState->FinishedPlayers, GameState->ExpectedPlayers));
+		return FText::FromString(FString::Printf(TEXT("Carrera en curso. Meta: %d/%d"),
+			GameState->FinishedPlayers, GameState->ExpectedPlayers));
 	case ETNMatchFlowState::Results:
 		return FText::FromString(FString::Printf(TEXT("Volviendo al lobby en: %d"), GameState->CountdownValue));
 	default:
@@ -131,9 +276,12 @@ FText UTN_CoopFlowHUDWidget::BuildSecondaryText(const ATN_CoopGameState* GameSta
 	switch (GameState->MatchFlowState)
 	{
 	case ETNMatchFlowState::WaitingForPlayers:
-		return FText::FromString(TEXT("El contador arranca cuando la fraccion de zona start coincide con jugadores esperados."));
+		return FText::FromString(TEXT("El contador arranca cuando todos los jugadores conectados esten en la zona."));
 	case ETNMatchFlowState::Countdown:
-		return FText::FromString(FString::Printf(TEXT("Conectados: %d/%d | Start: %d/%d"), GameState->ConnectedPlayers, GameState->ExpectedPlayers, GameState->PlayersInStartZone, GameState->ExpectedPlayers));
+		return FText::FromString(FString::Printf(
+			TEXT("Conectados: %d/%d | Zona: %d/%d"),
+			GameState->ConnectedPlayers, GameState->ExpectedPlayers,
+			GameState->PlayersInStartZone, GameState->ConnectedPlayers));
 	case ETNMatchFlowState::Cinematic:
 		return FText::FromString(TEXT("Mantente preparado para el viaje al mapa de carrera."));
 	case ETNMatchFlowState::InProgress:
@@ -143,13 +291,14 @@ FText UTN_CoopFlowHUDWidget::BuildSecondaryText(const ATN_CoopGameState* GameSta
 			{
 				if (TNPS->DeathZoneTimeRemaining >= 0.f)
 				{
-					return FText::FromString(FString::Printf(TEXT("Peligro: sal de la zona de muerte (%.1fs)"), TNPS->DeathZoneTimeRemaining));
+					return FText::FromString(FString::Printf(
+						TEXT("Peligro: sal de la zona de muerte (%.1fs)"), TNPS->DeathZoneTimeRemaining));
 				}
 			}
 		}
 		return FText::FromString(TEXT("Cruza la meta para pasar a espectador."));
 	case ETNMatchFlowState::Results:
-		return FText::FromString(TEXT("Resultados cerrados. Espera el viaje automatico."));
+		return FText::GetEmpty(); // Results panel covers this state
 	default:
 		return FText::GetEmpty();
 	}
@@ -163,6 +312,3 @@ bool UTN_CoopFlowHUDWidget::ShouldBeVisible(ETNMatchFlowState State) const
 		|| State == ETNMatchFlowState::InProgress
 		|| State == ETNMatchFlowState::Results;
 }
-
-
-

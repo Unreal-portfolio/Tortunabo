@@ -12,6 +12,66 @@ ATN_LobbyReadyZone::ATN_LobbyReadyZone()
 void ATN_LobbyReadyZone::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// Verify the game mode is reachable — common config mistake
+	if (!ResolveHQGameMode())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[LobbyReadyZone] No se encontro TN_HQGameMode en el mundo. "
+			"Asegurate de que LVL_HQ tiene GameMode Override = TN_HQGameMode (o BP derivado)."));
+	}
+
+	// Safety scan: handle pawns that spawned inside the zone before BeginPlay
+	TArray<AActor*> Overlapping;
+	GetOverlappingActors(Overlapping, APawn::StaticClass());
+	for (AActor* Actor : Overlapping)
+	{
+		HandlePawnEnter(Cast<APawn>(Actor));
+	}
+}
+
+void ATN_LobbyReadyZone::HandlePawnEnter(APawn* Pawn)
+{
+	if (!Pawn)
+	{
+		return;
+	}
+
+	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	if (ATN_HQGameMode* HQGM = ResolveHQGameMode())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[LobbyReadyZone] Jugador %s ENTRO en la zona."), *GetNameSafe(PC));
+		HQGM->SetPlayerReadyState(PC, true);
+	}
+}
+
+void ATN_LobbyReadyZone::HandlePawnExit(APawn* Pawn)
+{
+	if (!Pawn)
+	{
+		return;
+	}
+
+	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	if (ATN_HQGameMode* HQGM = ResolveHQGameMode())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[LobbyReadyZone] Jugador %s SALIO de la zona."), *GetNameSafe(PC));
+		HQGM->SetPlayerReadyState(PC, false);
+	}
 }
 
 void ATN_LobbyReadyZone::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* OtherActor)
@@ -21,16 +81,7 @@ void ATN_LobbyReadyZone::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* Oth
 		return;
 	}
 
-	if (const APawn* Pawn = Cast<APawn>(OtherActor))
-	{
-		if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
-		{
-			if (ATN_HQGameMode* HQGM = ResolveHQGameMode())
-			{
-				HQGM->SetPlayerReadyState(PC, true);
-			}
-		}
-	}
+	HandlePawnEnter(Cast<APawn>(OtherActor));
 }
 
 void ATN_LobbyReadyZone::OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor)
@@ -40,20 +91,10 @@ void ATN_LobbyReadyZone::OnZoneEndOverlap(AActor* OverlappedActor, AActor* Other
 		return;
 	}
 
-	if (const APawn* Pawn = Cast<APawn>(OtherActor))
-	{
-		if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
-		{
-			if (ATN_HQGameMode* HQGM = ResolveHQGameMode())
-			{
-				HQGM->SetPlayerReadyState(PC, false);
-			}
-		}
-	}
+	HandlePawnExit(Cast<APawn>(OtherActor));
 }
 
 ATN_HQGameMode* ATN_LobbyReadyZone::ResolveHQGameMode() const
 {
 	return GetWorld() ? GetWorld()->GetAuthGameMode<ATN_HQGameMode>() : nullptr;
 }
-

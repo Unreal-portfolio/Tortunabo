@@ -44,10 +44,10 @@ protected:
 	TSubclassOf<UUserWidget> VoiceIndicatorWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSoftClassPtr<UUserWidget> CoopFlowWidgetClass;
+	TSubclassOf<UUserWidget> CoopFlowWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSoftClassPtr<UUserWidget> CosmeticsWidgetClass;
+	TSubclassOf<UUserWidget> CosmeticsWidgetClass;
 
 private:
 	UPROPERTY()

@@ -11,8 +11,9 @@
 
 AMP_GamePlayerController::AMP_GamePlayerController()
 {
-	CoopFlowWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/HUD/WBP_CoopFlowHUD.WBP_CoopFlowHUD_C")));
-	CosmeticsWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/Menu/WBP_CosmeticsMenu.WBP_CosmeticsMenu_C")));
+	// Widget classes are assigned via EditDefaultsOnly in a BP derived class (e.g. BP_GamePlayerController).
+	// No hardcoded defaults — set CoopFlowWidgetClass, VoiceIndicatorWidgetClass and CosmeticsWidgetClass
+	// in the BP CDO so they can live at any content path.
 }
 
 void AMP_GamePlayerController::BeginPlay()
@@ -187,15 +188,15 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 		return;
 	}
 
-	UClass* WidgetClass = nullptr;
-	if (!CoopFlowWidgetClass.IsNull())
-	{
-		WidgetClass = CoopFlowWidgetClass.LoadSynchronous();
-	}
+	// CoopFlowWidgetClass is assigned in the BP derived PlayerController (e.g. BP_GamePlayerController).
+	// If not set, falls back to the C++ base class so the HUD still works without styling.
+	UClass* WidgetClass = CoopFlowWidgetClass
+		? CoopFlowWidgetClass.Get()
+		: UTN_CoopFlowHUDWidget::StaticClass();
 
-	if (!WidgetClass)
+	if (!CoopFlowWidgetClass)
 	{
-		WidgetClass = UTN_CoopFlowHUDWidget::StaticClass();
+		UE_LOG(LogTemp, Warning, TEXT("[HUD] CoopFlowWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController. Usando clase C++ como fallback."), *GetNameSafe(this));
 	}
 
 	CoopFlowWidget = CreateWidget<UUserWidget>(this, WidgetClass);
@@ -218,13 +219,13 @@ void AMP_GamePlayerController::OpenCosmeticsMenu()
 		return;
 	}
 
-	UClass* WidgetClass = CosmeticsWidgetClass.IsNull() ? nullptr : CosmeticsWidgetClass.LoadSynchronous();
-	if (!WidgetClass)
+	if (!CosmeticsWidgetClass)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[UI] CosmeticsWidgetClass no asignado en %s."), *GetNameSafe(this));
 		return;
 	}
 
-	CosmeticsWidget = CreateWidget<UUserWidget>(this, WidgetClass);
+	CosmeticsWidget = CreateWidget<UUserWidget>(this, CosmeticsWidgetClass);
 	if (!CosmeticsWidget)
 	{
 		return;

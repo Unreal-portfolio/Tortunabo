@@ -5,14 +5,14 @@
 #include "Engine/World.h"
 #include "Blueprint/UserWidget.h"
 #include "Input/Events.h"
+#include "EngineUtils.h"
 
 UProximityVoiceComponent::UProximityVoiceComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	SetIsReplicatedByDefault(true);
-
-	// Optional project widget path; if not present, the component only logs a warning.
-	VoiceIndicatorWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/WBP_VoiceIndicator.WBP_VoiceIndicator_C")));
+	// VoiceIndicatorWidgetClass is assigned via EditDefaultsOnly in the owning Blueprint
+	// (e.g. BP_GamePlayerController or the Character BP that hosts this component).
 }
 
 void UProximityVoiceComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -62,11 +62,57 @@ void UProximityVoiceComponent::BeginPlay()
 	}
 }
 
+void UProximityVoiceComponent::PrepareForLevelTransition()
+{
+	if (bRuntimeResourcesCleanedUp || bIsShuttingDown)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Voice] PrepareForLevelTransition on %s — orphaning capture, cleaning playback/UI."),
+		*GetNameSafe(GetOwner()));
+
+	bIsShuttingDown = true;
+	SetComponentTickEnabled(false);
+
+	// bForceLeakAudio = false → playback component and UI are cleaned up properly
+	// (world is still valid at this point). The capture synth is ALWAYS leaked regardless.
+	CleanupRuntimeResources(/* bForceLeakAudio */ false);
+}
+
+void UProximityVoiceComponent::ShutdownAllCapture(const UWorld* World)
+{
+	if (!World)
+	{
+		return;
+	}
+
+	for (TObjectIterator<UProximityVoiceComponent> It; It; ++It)
+	{
+		UProximityVoiceComponent* Comp = *It;
+		if (Comp && Comp->GetWorld() == World)
+		{
+			Comp->PrepareForLevelTransition();
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Voice] ShutdownAllCapture: all voice components in world cleaned up before travel."));
+}
+
 void UProximityVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	bIsShuttingDown = true;
 	SetComponentTickEnabled(false);
-	CleanupRuntimeResources();
+
+	// If PrepareForLevelTransition already ran, bRuntimeResourcesCleanedUp is true
+	// and CleanupRuntimeResources will early-out (no-op).
+	// For EndPlay(Destroyed) during gameplay (e.g. player death), the capture synth
+	// is still leaked (see comment in CleanupRuntimeResources), but playback/UI are
+	// cleaned up normally.
+	const bool bForceLeakPlayback = (EndPlayReason == EEndPlayReason::LevelTransition)
+		|| IsEngineExitRequested();
+
+	CleanupRuntimeResources(bForceLeakPlayback);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -74,7 +120,7 @@ void UProximityVoiceComponent::OnUnregister()
 {
 	bIsShuttingDown = true;
 	SetComponentTickEnabled(false);
-	CleanupRuntimeResources();
+	CleanupRuntimeResources(IsEngineExitRequested());
 	Super::OnUnregister();
 }
 
@@ -82,12 +128,12 @@ void UProximityVoiceComponent::BeginDestroy()
 {
 	bIsShuttingDown = true;
 	SetComponentTickEnabled(false);
-	CleanupRuntimeResources();
+	CleanupRuntimeResources(IsEngineExitRequested());
 	Super::BeginDestroy();
 }
 
 
-void UProximityVoiceComponent::CleanupRuntimeResources()
+void UProximityVoiceComponent::CleanupRuntimeResources(bool bForceLeakAudio)
 {
 	if (bRuntimeResourcesCleanedUp)
 	{
@@ -97,10 +143,22 @@ void UProximityVoiceComponent::CleanupRuntimeResources()
 	bRuntimeResourcesCleanedUp = true;
 	OnSpeakingChanged.Clear();
 
+	// --- Audio Capture cleanup ---
+	// ALWAYS orphan (Release) the FAudioCaptureSynth — NEVER call StopCapturing()
+	// or Reset()/destructor. In UE 5.6, the WASAPI capture handle inside the synth
+	// can become INVALID_HANDLE_VALUE at any time (the world's FAudioDevice may
+	// invalidate it during teardown, or Windows may reclaim it). Both StopCapturing()
+	// and the destructor attempt to use that handle and cause:
+	//   - StopCapturing(): ACCESS_VIOLATION reading 0xFFFFFFFFFFFFFFFF
+	//   - Destructor:      ACCESS_VIOLATION writing 0x0000000000000024
+	//
+	// Release() detaches our TUniquePtr without touching the synth internals.
+	// The synth object leaks (~KB) — its capture callback continues harmlessly
+	// writing to an internal buffer that nobody reads. The OS reclaims the memory
+	// when the process exits.
 	if (AudioCaptureSynth)
 	{
-		AudioCaptureSynth->StopCapturing();
-		AudioCaptureSynth.Reset();
+		(void)AudioCaptureSynth.Release();
 	}
 
 	{
@@ -111,23 +169,31 @@ void UProximityVoiceComponent::CleanupRuntimeResources()
 	SendTimer = 0.f;
 	bIsSpeaking = false;
 
+	// --- Playback component cleanup ---
+	// bForceLeakAudio controls whether we touch the playback component.
+	// When called proactively (PrepareForLevelTransition, bForceLeakAudio=false),
+	// the world is still valid and we can Stop/Deactivate/Destroy properly.
+	// During EndPlay(LevelTransition) or engine exit, objects may already be
+	// partially destroyed — skip interactive cleanup.
 	if (UAudioComponent* AudioComponent = PlaybackAudioComponent.Get())
 	{
 		PlaybackAudioComponent = nullptr;
 
-		if (!AudioComponent->IsBeingDestroyed())
+		const bool bSafeToTouch = !bForceLeakAudio && !AudioComponent->IsBeingDestroyed();
+
+		if (bSafeToTouch)
 		{
 			AudioComponent->Stop();
 			AudioComponent->Deactivate();
 			AudioComponent->SetSound(nullptr);
 		}
 
-		if (AudioComponent->IsRegistered() && !AudioComponent->IsBeingDestroyed())
+		if (bSafeToTouch && AudioComponent->IsRegistered())
 		{
 			AudioComponent->UnregisterComponent();
 		}
 
-		if (!AudioComponent->IsBeingDestroyed())
+		if (bSafeToTouch)
 		{
 			AudioComponent->DestroyComponent();
 		}
@@ -135,9 +201,13 @@ void UProximityVoiceComponent::CleanupRuntimeResources()
 
 	ProceduralSoundWave = nullptr;
 
-	if (IsValid(VoiceIndicatorWidgetInstance))
+	if (!bForceLeakAudio && IsValid(VoiceIndicatorWidgetInstance))
 	{
 		VoiceIndicatorWidgetInstance->RemoveFromParent();
+		VoiceIndicatorWidgetInstance = nullptr;
+	}
+	else
+	{
 		VoiceIndicatorWidgetInstance = nullptr;
 	}
 }
@@ -156,16 +226,9 @@ void UProximityVoiceComponent::CreateVoiceIndicatorHUD()
 		return;
 	}
 
-	UClass* WidgetClass = nullptr;
-	if (!VoiceIndicatorWidgetClass.IsNull())
-	{
-		WidgetClass = VoiceIndicatorWidgetClass.LoadSynchronous();
-	}
-
-	if (!WidgetClass)
-	{
-		WidgetClass = UVoiceIndicatorWidget::StaticClass();
-	}
+	UClass* WidgetClass = VoiceIndicatorWidgetClass
+		? VoiceIndicatorWidgetClass.Get()
+		: UVoiceIndicatorWidget::StaticClass();
 
 	VoiceIndicatorWidgetInstance = CreateWidget<UUserWidget>(PC, WidgetClass);
 	if (VoiceIndicatorWidgetInstance)

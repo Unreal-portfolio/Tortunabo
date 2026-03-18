@@ -3,6 +3,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
+#include "Voice/ProximityVoiceComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
@@ -282,6 +283,10 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 
 	if (UWorld* World = GetWorld())
 	{
+		// Stop all audio capture streams while WASAPI is still alive.
+		// This prevents ACCESS_VIOLATION crashes during level teardown.
+		UProximityVoiceComponent::ShutdownAllCapture(World);
+
 		World->ServerTravel(LobbyMapPath + TEXT("?listen"));
 	}
 }
@@ -291,6 +296,7 @@ void ATN_RunGameMode::SetFlowState(ETNMatchFlowState NewState) const
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
 		TNGS->MatchFlowState = NewState;
+		TNGS->BroadcastFlowStateChange();
 	}
 }
 

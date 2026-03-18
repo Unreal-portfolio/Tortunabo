@@ -25,6 +25,20 @@ public:
 	virtual void BeginDestroy() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	/**
+	 * Cleanly stop audio capture while the audio subsystem (WASAPI) is still alive.
+	 * Must be called BEFORE ServerTravel initiates world teardown.
+	 * After this call, EndPlay becomes a safe no-op for audio resources.
+	 */
+	void PrepareForLevelTransition();
+
+	/**
+	 * Find every ProximityVoiceComponent in the given world and call
+	 * PrepareForLevelTransition() on each one. Call this from GameModes
+	 * right before ServerTravel().
+	 */
+	static void ShutdownAllCapture(const UWorld* World);
+
 	UPROPERTY(BlueprintAssignable, Category = "Voice")
 	FOnSpeakingChanged OnSpeakingChanged;
 
@@ -58,7 +72,7 @@ public:
 	float PlaybackVolume = 3.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|UI")
-	TSoftClassPtr<UUserWidget> VoiceIndicatorWidgetClass;
+	TSubclassOf<UUserWidget> VoiceIndicatorWidgetClass;
 
 protected:
 	UFUNCTION(Server, Unreliable)
@@ -81,7 +95,7 @@ private:
 	TObjectPtr<USoundWaveProcedural> ProceduralSoundWave;
 
 	void SetupPlayback(int32 InSampleRate = 0);
-	void CleanupRuntimeResources();
+	void CleanupRuntimeResources(bool bForceLeakAudio = false);
 
 	static TArray<uint8> CompressSamples(const TArray<float>& Samples);
 	static TArray<float> DecompressSamples(const TArray<uint8>& Compressed);

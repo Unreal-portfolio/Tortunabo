@@ -3,6 +3,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
+#include "Voice/ProximityVoiceComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
@@ -171,7 +172,9 @@ void ATN_HQGameMode::RefreshLobbyState()
 		SetFlowState(ETNMatchFlowState::WaitingForPlayers);
 	}
 
-	if (ConnectedPlayers >= ExpectedPlayers && ReadyPlayers >= ExpectedPlayers)
+	// Countdown starts when ALL connected players are inside the ready zone.
+	// This allows solo testing (1/1) and adapts to any party size (2/2, 3/3, etc.).
+	if (ConnectedPlayers > 0 && ReadyPlayers >= ConnectedPlayers)
 	{
 		if (!bCountdownRunning)
 		{
@@ -188,6 +191,8 @@ void ATN_HQGameMode::StartCountdown()
 {
 	bCountdownRunning = true;
 	CurrentCountdownValue = CountdownStartValue;
+
+	UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Countdown iniciado: %d segundos."), CurrentCountdownValue);
 
 	SetFlowState(ETNMatchFlowState::Countdown);
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
@@ -207,19 +212,22 @@ void ATN_HQGameMode::TickCountdown()
 		return;
 	}
 
-	int32 ReadyPlayers = 0;
+	int32 ConnectedNow = 0;
+	int32 ReadyNow = 0;
 	for (APlayerState* BasePS : GameState->PlayerArray)
 	{
 		if (const ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(BasePS))
 		{
+			++ConnectedNow;
 			if (TNPS->bIsInReadyZone)
 			{
-				++ReadyPlayers;
+				++ReadyNow;
 			}
 		}
 	}
 
-	if (ReadyPlayers != TNGS->ExpectedPlayers)
+	// Cancel countdown if any connected player left the zone
+	if (ConnectedNow <= 0 || ReadyNow < ConnectedNow)
 	{
 		ResetCountdown();
 		return;
@@ -255,7 +263,17 @@ void ATN_HQGameMode::BeginMatchTravel()
 {
 	if (UWorld* World = GetWorld())
 	{
-		World->ServerTravel(MatchMapPath + TEXT("?listen"));
+		// Stop all audio capture streams while WASAPI is still alive.
+		// This prevents ACCESS_VIOLATION crashes during level teardown.
+		UProximityVoiceComponent::ShutdownAllCapture(World);
+
+		const FString TravelURL = MatchMapPath + TEXT("?listen");
+		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Iniciando ServerTravel hacia: %s"), *TravelURL);
+		World->ServerTravel(TravelURL);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] BeginMatchTravel: GetWorld() es null, travel cancelado."));
 	}
 }
 
@@ -292,6 +310,7 @@ void ATN_HQGameMode::SetFlowState(ETNMatchFlowState NewState) const
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
 		TNGS->MatchFlowState = NewState;
+		TNGS->BroadcastFlowStateChange(); // Notify server-side (listen server host); clients get OnRep
 	}
 }
 

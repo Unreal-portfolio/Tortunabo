@@ -101,7 +101,7 @@ En `LVL_HQ`:
 ### 3.3 Ajustes de flujo en GameMode
 
 En defaults de `TN_HQGameMode`:
-- `LobbyExpectedPlayers` (ej. 4)
+- `LobbyExpectedPlayers` (ej. 4) — maximo de sala para display, pero el countdown **arranca cuando todos los conectados estan en zona**, no cuando se llega al maximo.
 - `CountdownStartValue` (ej. 3)
 - `CinematicDelaySeconds` (ventana entre countdown y travel)
 - `MatchMapPath` = `/Game/Maps/Run/LVL_Run`
@@ -157,67 +157,153 @@ En un BP derivado de `TortugaCharacter` (recomendado):
 
 ---
 
-## 6) Controles (gameplay y espectador)
+## 6) Controles (Input Assets + gameplay + espectador)
 
-### 6.1 Controles de gameplay (definidos en C++)
+### 6.1 Assets de Input obligatorios (Enhanced Input)
 
-`TortugaCharacter` crea el mapping en runtime:
-- Mover: `W A S D` + `Gamepad Left Stick`
-- Mirar: `Mouse` + `Gamepad Right Stick`
-- Saltar: `Space`
+`TortugaCharacter` carga los assets por **soft-reference** a rutas especificas en `/Game/Input/`. Si no existen, el personaje NO recibe input y el log muestra warning.
 
-No depende de `InputAction` assets para esos binds base.
+**Debes crear estos assets en el Editor** (Content Browser → Input):
 
-### 6.2 Controles de espectador
+| Asset | Tipo | Ruta | Configuracion |
+|---|---|---|---|
+| `IMC_Player` | Input Mapping Context | `/Game/Input/IMC_Player` | Contiene los mappings de todas las acciones de abajo |
+| `IA_Move` | Input Action | `/Game/Input/IA_Move` | Value Type = `Axis2D (Vector2D)` |
+| `IA_Look` | Input Action | `/Game/Input/IA_Look` | Value Type = `Axis2D (Vector2D)` |
+| `IA_Jump` | Input Action | `/Game/Input/IA_Jump` | Value Type = `Digital (Bool)` |
+| `IA_Interact` | Input Action | `/Game/Input/IA_Interact` | Value Type = `Digital (Bool)` |
+| `IA_Sprint` | Input Action | `/Game/Input/IA_Sprint` | Value Type = `Digital (Bool)` |
+| `IA_RotateInventory` | Input Action | `/Game/Input/IA_RotateInventory` | Value Type = `Digital (Bool)` |
+| `IA_DropItem` | Input Action | `/Game/Input/IA_DropItem` | Value Type = `Digital (Bool)` |
 
-En `MP_GamePlayerController`:
+### 6.2 Configurar IMC_Player (mappings)
+
+Abre `IMC_Player` y añade mappings para cada accion:
+
+| Accion | Tecla sugerida | Modificadores |
+|---|---|---|
+| `IA_Move` | `W/A/S/D` | Añadir modifier `Swizzle Input Axis Values` en A/D para mapear a X; modifier `Negate` en S y A |
+| `IA_Move` | `Gamepad Left Stick 2D` | (ninguno) |
+| `IA_Look` | `Mouse XY 2D Axis` | Modifier `Negate` en Y si quieres invertir pitch |
+| `IA_Look` | `Gamepad Right Stick 2D` | (ninguno) |
+| `IA_Jump` | `Space Bar` | (ninguno) |
+| `IA_Jump` | `Gamepad Face Button Bottom` | (ninguno) |
+| `IA_Interact` | `E` | (ninguno) |
+| `IA_Sprint` | `Left Shift` | (ninguno) |
+| `IA_RotateInventory` | `Q` | (ninguno) |
+| `IA_DropItem` | `G` | (ninguno) |
+
+> **Importante**: Para WASD, cada tecla se mapea a `IA_Move` por separado. W = Y+1, S = Y-1 (Negate), D = X+1 (Swizzle), A = X-1 (Swizzle + Negate).
+
+### 6.3 Controles de espectador (hardcoded en C++)
+
+En `MP_GamePlayerController`, ya estan bindeados:
 - Siguiente jugador: `Mouse Wheel Up` o `PageDown`
 - Anterior jugador: `Mouse Wheel Down` o `PageUp`
 
 ---
 
-## 7) UI y VOIP (minimo funcional)
+## 7) UI completa — todos los widgets que debes crear
 
-Codigo implicado:
-- `Source/Tortunabo/Public/Voice/ProximityVoiceComponent.h`
-- `Source/Tortunabo/Public/UI/Voice/VoiceIndicatorWidget.h`
-- `Source/Tortunabo/Public/UI/HUD/TN_CoopFlowHUDWidget.h`
-- `Source/Tortunabo/Public/Player/MP_GamePlayerController.h`
+**Los widgets ya NO usan rutas hardcodeadas.** Puedes guardarlos donde quieras. Los asignas en el editor directamente en el Class Defaults del BP derivado del PlayerController.
 
-### 7.1 Indicador de voz
+### 7.0 Patron obligatorio: BP_GamePlayerController
 
-Opcion recomendada:
-1. Crear `WBP_VoiceIndicator` basado en `VoiceIndicatorWidget`.
-2. Incluir `Image` llamada exactamente `SpeakerIcon`.
-3. Guardarlo en `/Game/UI/WBP_VoiceIndicator` (ruta esperada por default en el componente).
+Todos los widgets del gameplay los gestiona `MP_GamePlayerController`. Como la clase C++ no tiene defaults de ruta, **debes crear un BP derivado** y asignarle los widgets ahi:
 
-### 7.2 VOIP por proximidad
+1. Content Browser → click derecho → Blueprint Class → parent `MP_GamePlayerController`
+2. Nombralo `BP_GamePlayerController` (donde quieras en Content)
+3. Abrelo → Class Defaults y asigna:
+   - `CoopFlowWidgetClass` → tu `WBP_CoopFlowHUD`
+   - `VoiceIndicatorWidgetClass` → tu `WBP_VoiceIndicator` (opcional)
+   - `CosmeticsWidgetClass` → tu `WBP_CosmeticsMenu` (futuro, deja en blanco)
+4. Guarda el BP
 
-`ProximityVoiceComponent` se anade al pawn en `OnPossess` del player controller si no existe.
+Luego en `BP_HQGameMode` (o en `TN_HQGameMode` Class Defaults si usas la clase C++ directa):
+- `PlayerControllerClass` = `BP_GamePlayerController`
 
-Ajustes utiles del componente:
-- `InnerRadius`
-- `OuterRadius`
-- `SpeakingThreshold`
-- `VoiceGain`
-- `PlaybackVolume`
+> Si no asignas `CoopFlowWidgetClass`, el HUD funciona igual con la clase C++ de fallback (texto blanco sin diseño), lo cual es suficiente para probar la logica.
 
-### 7.3 HUD de flujo coop (ya montado por C++)
+---
 
-`MP_GamePlayerController` crea automaticamente un HUD de flujo para el jugador local:
-- intenta cargar `/Game/UI/HUD/WBP_CoopFlowHUD` (si existe)
-- si no existe, usa fallback `UTN_CoopFlowHUDWidget` en runtime
+### 7.1 `WBP_MainMenu` — Menu principal (ya lo tienes)
 
-Ese HUD consume datos replicados (`MatchFlowState`, `CountdownValue`, `ReadyPlayers`, `ExpectedPlayers`, `FinishedPlayers`) y muestra:
-- espera en lobby
-- countdown de ready zone
-- estado de carrera
-- countdown final de resultados
+- Clase padre: `MP_MainMenuWidget`
+- Hijos **obligatorios** (nombres exactos): `HostButton` (Button), `FindButton` (Button), `QuitButton` (Button)
+- Hijo opcional: `StatusText` (TextBlock)
+- Se asigna en: `BP_MenuPlayerController` → `MainMenuWidgetClass`
 
-Si quieres estilo visual propio sin tocar logica:
-1. Crea `WBP_CoopFlowHUD` hijo de `TN_CoopFlowHUDWidget`.
-2. (Opcional) Incluye `TextBlock` llamados `PrimaryText` y `SecondaryText` para override visual.
-3. Guarda en `/Game/UI/HUD/WBP_CoopFlowHUD` para autoload.
+---
+
+### 7.2 `WBP_CoopFlowHUD` — HUD de flujo (countdown, carrera, resultados)
+
+- Clase padre: `TN_CoopFlowHUDWidget`
+- Guarda en: donde quieras (ej. `/Game/UI/HUD/`)
+- Hijos **opcionales** (pero recomendados para que se vea):
+  - `RootContainer` (VerticalBox) — contenedor raiz
+  - `PrimaryText` (TextBlock) — linea principal
+  - `SecondaryText` (TextBlock) — linea secundaria
+- Se asigna en: `BP_GamePlayerController` → `CoopFlowWidgetClass`
+
+Que muestra en cada estado del flujo:
+- **WaitingForPlayers**: `Sala: 2/4 | Zona: 1/2`
+- **Countdown**: `Todos listos! Empieza en: 3`
+- **Cinematic**: `Preparando...`
+- **InProgress**: `Carrera en curso. Meta: 1/2`
+- **Results**: `Volviendo al lobby en: 8`
+
+> **No necesitas nada en Event Graph.** La logica la maneja el C++.
+
+---
+
+### 7.3 `WBP_VoiceIndicator` — Icono de microfono (opcional)
+
+- Clase padre: `VoiceIndicatorWidget`
+- Hijo **obligatorio**: `SpeakerIcon` (Image)
+- Se asigna en: `BP_GamePlayerController` → `VoiceIndicatorWidgetClass`
+
+---
+
+### 7.4 `WBP_LoadingScreen` — Pantalla de carga (opcional)
+
+- Clase padre: `TN_LoadingScreenWidget`
+- Hijos opcionales: `RootOverlay` (Overlay), `StatusText` (TextBlock)
+- Se asigna en: `BP_GameInstance` (hijo de `MP_GameInstance`) → `LoadingScreenWidgetClass`
+- Si no lo asignas, usa la clase C++ base (pantalla de carga minima funcional)
+
+---
+
+### 7.5 Tabla resumen
+
+| Widget | Clase padre | Se asigna en | Obligatorio |
+|---|---|---|---|
+| `WBP_MainMenu` | `MP_MainMenuWidget` | `BP_MenuPlayerController.MainMenuWidgetClass` | **Si** |
+| `WBP_CoopFlowHUD` | `TN_CoopFlowHUDWidget` | `BP_GamePlayerController.CoopFlowWidgetClass` | Recomendado |
+| `WBP_VoiceIndicator` | `VoiceIndicatorWidget` | `BP_GamePlayerController.VoiceIndicatorWidgetClass` | Opcional |
+| `WBP_LoadingScreen` | `TN_LoadingScreenWidget` | `BP_GameInstance.LoadingScreenWidgetClass` | Opcional |
+| `WBP_CosmeticsMenu` | `UUserWidget` | `BP_GamePlayerController.CosmeticsWidgetClass` | No (futuro) |
+
+---
+
+## 7b) Checklist de configuracion del GameMode en LVL_HQ (zona ready)
+
+Si el HUD aparece pero la zona no funciona, verifica en orden:
+
+1. **World Settings de LVL_HQ** → `GameMode Override` = `TN_HQGameMode` o `BP_HQGameMode` (hijo de `TN_HQGameMode`). Si esta en None o en otro GameMode, la zona no encontrara el game mode y el Output Log mostrara el error `[LobbyReadyZone] No se encontro TN_HQGameMode`.
+
+2. **`TN_LobbyReadyZone` en el nivel** → el actor debe estar colocado en `LVL_HQ`. Al compilar verifica en Output Log que NO aparece el error de arriba.
+
+3. **Collision del TriggerBox** → selecciona el `TN_LobbyReadyZone` en el level → Details → Collision:
+   - `Collision Preset` = `Trigger` (o `OverlapAll`)
+   - `Generate Overlap Events` = **true**
+
+4. **Collision del personaje** → `TortugaCharacter` usa la capsula por defecto de `ACharacter`, que ya tiene `Generate Overlap Events = true` y profile `Pawn`. No debes cambiar nada.
+
+5. **`PlayerControllerClass` en el GameMode** → si usas `BP_HQGameMode`, asegurate de que `PlayerControllerClass` apunta a `BP_GamePlayerController` (no a `AMP_GamePlayerController` directamente si quieres que los widget defaults del BP se apliquen).
+
+6. **`MatchMapPath` en el GameMode** → en Class Defaults de `TN_HQGameMode` o `BP_HQGameMode`, el campo `MatchMapPath` debe ser la ruta EXACTA de tu mapa de carrera, ej: `/Game/Maps/Run/LVL_Run`. Si es incorrecto, el `ServerTravel` fallara (el Output Log mostrara `[HQGameMode] Iniciando ServerTravel hacia: ...`).
+
+7. **El jugador debe entrar ANDANDO a la zona**, no spawnearse dentro. Si el `PlayerStart` esta dentro del TriggerBox, el overlap puede no registrarse correctamente. Coloca el PlayerStart FUERA de la zona.
 
 ---
 
@@ -280,9 +366,10 @@ Con esto montas HUD de countdown, progreso y resultados.
 
 - **No encuentra sesiones**: comprobar Steam abierto + Standalone + mismo AppID (480 en test).
 - **Menu sin botones funcionales**: revisar nombres `HostButton/FindButton/QuitButton` en `WBP_MainMenu`.
-- **No aparece icono de voz**: revisar ruta `/Game/UI/WBP_VoiceIndicator` y `SpeakerIcon`.
-- **No empieza countdown**: confirmar `LobbyExpectedPlayers` y overlaps del `TN_LobbyReadyZone`.
-- **No vuelve al lobby**: confirmar `LobbyMapPath` en `TN_RunGameMode`.
+- **No aparece el HUD de flujo (countdown/sala)**: `CoopFlowWidgetClass` no esta asignado en `BP_GamePlayerController`. Abre el BP → Class Defaults → asigna tu `WBP_CoopFlowHUD`. Si no lo tienes, el fallback C++ funciona igualmente (texto sin estilo).
+- **No aparece icono de voz**: `VoiceIndicatorWidgetClass` no esta asignado en `BP_GamePlayerController` → Class Defaults.
+- **No empieza countdown**: (1) Verifica en Output Log que aparece `[LobbyReadyZone] Jugador X ENTRO en la zona.`. Si no aparece, el overlap no esta disparando — revisa la checklist de la seccion 7b. (2) Verifica que el GameMode en `LVL_HQ` sea `TN_HQGameMode` o derivado. (3) Si el log aparece pero no empieza, el `ResolveHQGameMode()` devuelve null — el GameMode Override esta mal configurado.
+- **Countdown arranca pero no viaja**: Revisa en Output Log `[HQGameMode] Iniciando ServerTravel hacia: ...` y verifica que la ruta coincide con tu mapa de carrera real.
 
 ---
 

@@ -15,12 +15,14 @@
 #include "Kismet/GameplayStatics.h"
 #include "Multiplayer/TN_CosmeticSaveGame.h"
 #include "UI/HUD/TN_LoadingScreenWidget.h"
+#include "Voice/ProximityVoiceComponent.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UMP_GameInstance::UMP_GameInstance()
 {
-	LoadingScreenWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/HUD/WBP_LoadingScreen.WBP_LoadingScreen_C")));
+	// LoadingScreenWidgetClass is assigned in a BP derived GameInstance.
+	// If not set, ShowLoadingScreen falls back to the C++ base widget.
 	DefaultUnlockedHelmets = { FName(TEXT("Helmet_Default")) };
 	HelmetCrateTable =
 	{
@@ -148,11 +150,9 @@ void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 		return;
 	}
 
-	UClass* WidgetClass = LoadingScreenWidgetClass.IsNull() ? nullptr : LoadingScreenWidgetClass.LoadSynchronous();
-	if (!WidgetClass)
-	{
-		WidgetClass = UTN_LoadingScreenWidget::StaticClass();
-	}
+	UClass* WidgetClass = LoadingScreenWidgetClass
+		? LoadingScreenWidgetClass.Get()
+		: UTN_LoadingScreenWidget::StaticClass();
 
 	LoadingScreenWidget = CreateWidget<UUserWidget>(PC, WidgetClass);
 	if (!LoadingScreenWidget)
@@ -579,6 +579,10 @@ void UMP_GameInstance::OnDestroySessionComplete(FName SessionName, bool bWasSucc
 void UMP_GameInstance::HandleReturnToMenu()
 {
 	ShowLoadingScreen(TEXT("Volviendo al menu..."));
+
+	// Stop all audio capture before travel to prevent WASAPI crash.
+	UProximityVoiceComponent::ShutdownAllCapture(GetWorld());
+
 	DestroyCurrentSession();
 
 	if (APlayerController* PC = GetFirstLocalPlayerController())
@@ -589,6 +593,11 @@ void UMP_GameInstance::HandleReturnToMenu()
 
 void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 {
+	// Safety net: stop all audio capture streams before any map transition.
+	// Individual GameModes already call ShutdownAllCapture explicitly, but this
+	// catches any travel path we might have missed (invites, network failures, etc.).
+	UProximityVoiceComponent::ShutdownAllCapture(GetWorld());
+
 	ShowLoadingScreen(FString::Printf(TEXT("Cargando mapa: %s"), *MapName));
 }
 

@@ -5,6 +5,9 @@
 #include "Core/TN_MatchFlowTypes.h"
 #include "TN_CoopGameState.generated.h"
 
+// Fired on clients when MatchFlowState replicates, and manually on server via BroadcastFlowStateChange()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMatchFlowStateChanged, ETNMatchFlowState, NewState);
+
 UCLASS()
 class TORTUNABO_API ATN_CoopGameState : public AGameState
 {
@@ -13,7 +16,15 @@ class TORTUNABO_API ATN_CoopGameState : public AGameState
 public:
 	ATN_CoopGameState();
 
-	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
+	// Called by game modes after changing MatchFlowState on the server so that
+	// listen-server local players also receive the notification (OnRep does not
+	// fire on the machine that owns the variable).
+	void BroadcastFlowStateChange();
+
+	UPROPERTY(BlueprintAssignable, Category = "Coop")
+	FOnMatchFlowStateChanged OnMatchFlowStateChanged;
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MatchFlowState, Category = "Coop")
 	ETNMatchFlowState MatchFlowState = ETNMatchFlowState::WaitingForPlayers;
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
@@ -38,5 +49,8 @@ public:
 	int32 FinishedPlayers = 0;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-};
 
+private:
+	UFUNCTION()
+	void OnRep_MatchFlowState();
+};

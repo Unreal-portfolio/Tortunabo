@@ -105,7 +105,7 @@ protected:
 	int32 SteamDevAppId = 480;
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Loading")
-	TSoftClassPtr<UUserWidget> LoadingScreenWidgetClass;
+	TSubclassOf<UUserWidget> LoadingScreenWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
 	TArray<FName> DefaultUnlockedHelmets;

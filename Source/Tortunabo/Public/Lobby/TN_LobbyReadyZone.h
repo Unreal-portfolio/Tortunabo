@@ -23,6 +23,8 @@ private:
 	UFUNCTION()
 	void OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
 
+	void HandlePawnEnter(APawn* Pawn);
+	void HandlePawnExit(APawn* Pawn);
 	ATN_HQGameMode* ResolveHQGameMode() const;
 };
 
