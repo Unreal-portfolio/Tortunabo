@@ -19,6 +19,9 @@ public:
 	virtual void Interact(APawn* Interactor) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	UFUNCTION(BlueprintCallable, Category = "Pickup")
+	void InitializeFromInventoryItem(const FTN_InventoryItem& NewPickupItem);
+
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pickup")
 	FTN_InventoryItem PickupItem;

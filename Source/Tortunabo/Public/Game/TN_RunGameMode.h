@@ -22,6 +22,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void MarkPlayerFinished(APlayerController* PlayerController);
 
+	UFUNCTION(BlueprintCallable, Category = "Run")
+	void MarkPlayerDead(APlayerController* PlayerController);
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	float ResultsDurationSeconds = 8.0f;
@@ -39,6 +42,8 @@ private:
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
 	APlayerStart* EnsureFallbackPlayerStart();
 	void TickResultsCountdown();
+	void UpdateRoundProgressAndMaybeFinish();
+	void MovePlayerToSpectator(APlayerController* PlayerController) const;
 	void FinishRoundAndReturnToLobby();
 	void SetFlowState(ETNMatchFlowState NewState) const;
 };

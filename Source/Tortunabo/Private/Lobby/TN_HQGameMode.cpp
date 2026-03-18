@@ -65,7 +65,9 @@ void ATN_HQGameMode::PostLogin(APlayerController* NewPlayer)
 	if (ATN_CoopPlayerState* TNPS = NewPlayer ? NewPlayer->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
 	{
 		TNPS->bIsInReadyZone = false;
+		TNPS->bIsAlive = true;
 		TNPS->bHasFinishedRun = false;
+		TNPS->DeathZoneTimeRemaining = -1.f;
 		TNPS->FinishRank = 0;
 		TNPS->FinishTimeSeconds = -1.f;
 	}
@@ -160,6 +162,8 @@ void ATN_HQGameMode::RefreshLobbyState()
 
 	const int32 ExpectedPlayers = LobbyExpectedPlayers;
 	TNGS->ExpectedPlayers = ExpectedPlayers;
+	TNGS->ConnectedPlayers = ConnectedPlayers;
+	TNGS->PlayersInStartZone = ReadyPlayers;
 	TNGS->ReadyPlayers = ReadyPlayers;
 
 	if (!bCountdownRunning)

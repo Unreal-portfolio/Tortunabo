@@ -11,6 +11,8 @@ void ATN_CoopGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 	DOREPLIFETIME(ATN_CoopGameState, MatchFlowState);
 	DOREPLIFETIME(ATN_CoopGameState, ReadyPlayers);
+	DOREPLIFETIME(ATN_CoopGameState, ConnectedPlayers);
+	DOREPLIFETIME(ATN_CoopGameState, PlayersInStartZone);
 	DOREPLIFETIME(ATN_CoopGameState, ExpectedPlayers);
 	DOREPLIFETIME(ATN_CoopGameState, CountdownValue);
 	DOREPLIFETIME(ATN_CoopGameState, ServerMatchElapsedTime);

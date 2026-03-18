@@ -76,6 +76,36 @@ bool UTN_InventoryComponent::TryAddItem(const FTN_InventoryItem& NewItem)
 	return AddItemInternal(NewItem);
 }
 
+bool UTN_InventoryComponent::TryAddOrReplaceEquipped(const FTN_InventoryItem& NewItem, bool bReplaceIfFull)
+{
+	if (!NewItem.IsValid())
+	{
+		return false;
+	}
+
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
+	return AddOrReplaceEquippedInternal(NewItem, bReplaceIfFull);
+}
+
+bool UTN_InventoryComponent::CanReceiveItem(const FTN_InventoryItem& NewItem, bool bAllowReplaceIfFull) const
+{
+	if (!NewItem.IsValid())
+	{
+		return false;
+	}
+
+	if (!bHasEquippedItem || !bHasStoredItem)
+	{
+		return true;
+	}
+
+	return bAllowReplaceIfFull;
+}
+
 void UTN_InventoryComponent::RotateItems()
 {
 	if (!GetOwner())
@@ -92,6 +122,21 @@ void UTN_InventoryComponent::RotateItems()
 	{
 		ServerRotateItems();
 	}
+}
+
+bool UTN_InventoryComponent::TryConsumeEquippedItem(FTN_InventoryItem& OutConsumedItem)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
+	return ConsumeEquippedInternal(OutConsumedItem);
+}
+
+bool UTN_InventoryComponent::TryExtractEquippedItem(FTN_InventoryItem& OutExtractedItem)
+{
+	return TryConsumeEquippedItem(OutExtractedItem);
 }
 
 void UTN_InventoryComponent::ServerRotateItems_Implementation()
@@ -146,6 +191,50 @@ bool UTN_InventoryComponent::AddItemInternal(const FTN_InventoryItem& NewItem)
 	}
 
 	return false;
+}
+
+bool UTN_InventoryComponent::AddOrReplaceEquippedInternal(const FTN_InventoryItem& NewItem, bool bReplaceIfFull)
+{
+	if (AddItemInternal(NewItem))
+	{
+		return true;
+	}
+
+	if (!bReplaceIfFull)
+	{
+		return false;
+	}
+
+	EquippedItem = NewItem;
+	bHasEquippedItem = true;
+	RefreshEquippedVisual();
+	return true;
+}
+
+bool UTN_InventoryComponent::ConsumeEquippedInternal(FTN_InventoryItem& OutItem)
+{
+	if (!bHasEquippedItem)
+	{
+		return false;
+	}
+
+	OutItem = EquippedItem;
+
+	if (bHasStoredItem)
+	{
+		EquippedItem = StoredItem;
+		bHasEquippedItem = true;
+		StoredItem = FTN_InventoryItem();
+		bHasStoredItem = false;
+	}
+	else
+	{
+		EquippedItem = FTN_InventoryItem();
+		bHasEquippedItem = false;
+	}
+
+	RefreshEquippedVisual();
+	return true;
 }
 
 void UTN_InventoryComponent::SwapSlotsInternal()

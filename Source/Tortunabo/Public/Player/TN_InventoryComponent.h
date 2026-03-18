@@ -22,7 +22,19 @@ public:
 	bool TryAddItem(const FTN_InventoryItem& NewItem);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool TryAddOrReplaceEquipped(const FTN_InventoryItem& NewItem, bool bReplaceIfFull = true);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool CanReceiveItem(const FTN_InventoryItem& NewItem, bool bAllowReplaceIfFull = true) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void RotateItems();
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool TryConsumeEquippedItem(FTN_InventoryItem& OutConsumedItem);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool TryExtractEquippedItem(FTN_InventoryItem& OutExtractedItem);
 
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	bool HasEquippedItem() const { return bHasEquippedItem; }
@@ -73,6 +85,8 @@ private:
 
 	void RefreshEquippedVisual();
 	bool AddItemInternal(const FTN_InventoryItem& NewItem);
+	bool AddOrReplaceEquippedInternal(const FTN_InventoryItem& NewItem, bool bReplaceIfFull);
+	bool ConsumeEquippedInternal(FTN_InventoryItem& OutItem);
 	void SwapSlotsInternal();
 };
 

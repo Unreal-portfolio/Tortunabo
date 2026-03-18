@@ -2,6 +2,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "UI/HUD/TN_CoopFlowHUDWidget.h"
+#include "Multiplayer/MP_GameInstance.h"
 #include "GameFramework/Pawn.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "GameFramework/GameStateBase.h"
@@ -11,6 +12,7 @@
 AMP_GamePlayerController::AMP_GamePlayerController()
 {
 	CoopFlowWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/HUD/WBP_CoopFlowHUD.WBP_CoopFlowHUD_C")));
+	CosmeticsWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/Menu/WBP_CosmeticsMenu.WBP_CosmeticsMenu_C")));
 }
 
 void AMP_GamePlayerController::BeginPlay()
@@ -27,6 +29,7 @@ void AMP_GamePlayerController::BeginPlay()
 	if (IsLocalController())
 	{
 		CreateCoopFlowHUD();
+		SyncCosmeticsToServer();
 	}
 }
 
@@ -68,6 +71,7 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 	{
 		CreateVoiceHUD();
 		CreateCoopFlowHUD();
+		SyncCosmeticsToServer();
 	}
 }
 
@@ -198,6 +202,135 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 	if (CoopFlowWidget)
 	{
 		CoopFlowWidget->AddToViewport(5);
+	}
+}
+
+void AMP_GamePlayerController::OpenCosmeticsMenu()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (CosmeticsWidget)
+	{
+		CosmeticsWidget->SetVisibility(ESlateVisibility::Visible);
+		return;
+	}
+
+	UClass* WidgetClass = CosmeticsWidgetClass.IsNull() ? nullptr : CosmeticsWidgetClass.LoadSynchronous();
+	if (!WidgetClass)
+	{
+		return;
+	}
+
+	CosmeticsWidget = CreateWidget<UUserWidget>(this, WidgetClass);
+	if (!CosmeticsWidget)
+	{
+		return;
+	}
+
+	CosmeticsWidget->AddToViewport(40);
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetHideCursorDuringCapture(false);
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	SetShowMouseCursor(true);
+}
+
+bool AMP_GamePlayerController::RequestEquipHelmet(FName HelmetId)
+{
+	if (HelmetId == NAME_None)
+	{
+		return false;
+	}
+
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		if (!GI->EquipHelmet(HelmetId))
+		{
+			return false;
+		}
+	}
+
+	ServerSetEquippedHelmet(HelmetId);
+	return true;
+}
+
+FName AMP_GamePlayerController::OpenHelmetCrate()
+{
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		const FName Result = GI->OpenHelmetCrate();
+		SyncCosmeticsToServer();
+		if (Result != NAME_None)
+		{
+			ServerSetEquippedHelmet(Result);
+		}
+		return Result;
+	}
+
+	return NAME_None;
+}
+
+void AMP_GamePlayerController::ClientOpenCosmeticsMenu_Implementation()
+{
+	OpenCosmeticsMenu();
+}
+
+void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TArray<FName>& UnlockedHelmetIds)
+{
+	ServerUnlockedHelmets.Reset();
+	for (const FName HelmetId : UnlockedHelmetIds)
+	{
+		if (HelmetId != NAME_None)
+		{
+			ServerUnlockedHelmets.Add(HelmetId);
+		}
+	}
+
+	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		if (TNPS->EquippedHelmetId == NAME_None && ServerUnlockedHelmets.Num() > 0)
+		{
+			for (const FName HelmetId : ServerUnlockedHelmets)
+			{
+				TNPS->EquippedHelmetId = HelmetId;
+				break;
+			}
+		}
+	}
+}
+
+void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName HelmetId)
+{
+	if (HelmetId == NAME_None || !ServerUnlockedHelmets.Contains(HelmetId))
+	{
+		return;
+	}
+
+	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		TNPS->EquippedHelmetId = HelmetId;
+	}
+}
+
+void AMP_GamePlayerController::SyncCosmeticsToServer()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		ServerSyncUnlockedHelmets(GI->GetUnlockedHelmetIds());
+		const FName EquippedHelmetId = GI->GetEquippedHelmetId();
+		if (EquippedHelmetId != NAME_None)
+		{
+			ServerSetEquippedHelmet(EquippedHelmetId);
+		}
 	}
 }
 

@@ -23,6 +23,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spectator")
 	void SpectatePreviousPlayer();
 
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	void OpenCosmeticsMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool RequestEquipHelmet(FName HelmetId);
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	FName OpenHelmetCrate();
+
+	UFUNCTION(Client, Reliable)
+	void ClientOpenCosmeticsMenu();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* InPawn) override;
@@ -34,6 +46,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSoftClassPtr<UUserWidget> CoopFlowWidgetClass;
 
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSoftClassPtr<UUserWidget> CosmeticsWidgetClass;
+
 private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> VoiceIndicatorWidget;
@@ -41,8 +56,21 @@ private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> CoopFlowWidget;
 
+	UPROPERTY()
+	TObjectPtr<UUserWidget> CosmeticsWidget;
+
+	UFUNCTION(Server, Reliable)
+	void ServerSyncUnlockedHelmets(const TArray<FName>& UnlockedHelmetIds);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetEquippedHelmet(FName HelmetId);
+
+	void SyncCosmeticsToServer();
+
 	void ApplyGameplayInputMode();
 	void CreateVoiceHUD();
 	void CreateCoopFlowHUD();
 	void SpectateByDirection(int32 Direction);
+
+	TSet<FName> ServerUnlockedHelmets;
 };

@@ -3,16 +3,33 @@
 #include "Online.h"
 #include "OnlineSessionSettings.h"
 #include "Engine/World.h"
+#include "Engine/LocalPlayer.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "UObject/UObjectGlobals.h"
+#include "Blueprint/UserWidget.h"
+#include "Components/TextBlock.h"
+#include "Kismet/GameplayStatics.h"
+#include "Multiplayer/TN_CosmeticSaveGame.h"
+#include "UI/HUD/TN_LoadingScreenWidget.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UMP_GameInstance::UMP_GameInstance()
 {
+	LoadingScreenWidgetClass = TSoftClassPtr<UUserWidget>(FSoftClassPath(TEXT("/Game/UI/HUD/WBP_LoadingScreen.WBP_LoadingScreen_C")));
+	DefaultUnlockedHelmets = { FName(TEXT("Helmet_Default")) };
+	HelmetCrateTable =
+	{
+		{ FName(TEXT("Helmet_Default")), 40.0f },
+		{ FName(TEXT("Helmet_Bronze")), 30.0f },
+		{ FName(TEXT("Helmet_Silver")), 20.0f },
+		{ FName(TEXT("Helmet_Gold")), 9.0f },
+		{ FName(TEXT("Helmet_Mythic")), 1.0f }
+	};
 }
 
 void UMP_GameInstance::Init()
@@ -54,6 +71,10 @@ void UMP_GameInstance::Init()
 	{
 		GEngine->OnNetworkFailure().AddUObject(this, &UMP_GameInstance::OnNetworkFailure);
 	}
+
+	FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &UMP_GameInstance::HandlePreLoadMap);
+	FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &UMP_GameInstance::HandlePostLoadMap);
+	LoadCosmeticProfile();
 }
 
 void UMP_GameInstance::EnsureSteamAppIdFile()
@@ -99,6 +120,10 @@ void UMP_GameInstance::EnsureSteamAppIdFile()
 
 void UMP_GameInstance::Shutdown()
 {
+	FCoreUObjectDelegates::PreLoadMap.RemoveAll(this);
+	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
+	SaveCosmeticProfile();
+
 	IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (Sessions.IsValid() && InviteAcceptedDelegateHandle.IsValid())
 	{
@@ -107,6 +132,124 @@ void UMP_GameInstance::Shutdown()
 	}
 
 	Super::Shutdown();
+}
+
+void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
+{
+	if (bIsLoadingScreenVisible)
+	{
+		RefreshLoadingText(Reason);
+		return;
+	}
+
+	APlayerController* PC = GetFirstLocalPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+
+	UClass* WidgetClass = LoadingScreenWidgetClass.IsNull() ? nullptr : LoadingScreenWidgetClass.LoadSynchronous();
+	if (!WidgetClass)
+	{
+		WidgetClass = UTN_LoadingScreenWidget::StaticClass();
+	}
+
+	LoadingScreenWidget = CreateWidget<UUserWidget>(PC, WidgetClass);
+	if (!LoadingScreenWidget)
+	{
+		return;
+	}
+
+	LoadingScreenWidget->AddToViewport(5000);
+	bIsLoadingScreenVisible = true;
+	RefreshLoadingText(Reason);
+}
+
+void UMP_GameInstance::HideLoadingScreen()
+{
+	if (LoadingScreenWidget)
+	{
+		LoadingScreenWidget->RemoveFromParent();
+		LoadingScreenWidget = nullptr;
+	}
+
+	bIsLoadingScreenVisible = false;
+}
+
+TArray<FName> UMP_GameInstance::GetUnlockedHelmetIds() const
+{
+	return CosmeticProfile ? CosmeticProfile->UnlockedHelmetIds : TArray<FName>();
+}
+
+bool UMP_GameInstance::IsHelmetUnlocked(FName HelmetId) const
+{
+	return CosmeticProfile && HelmetId != NAME_None && CosmeticProfile->UnlockedHelmetIds.Contains(HelmetId);
+}
+
+bool UMP_GameInstance::UnlockHelmet(FName HelmetId)
+{
+	if (!CosmeticProfile || HelmetId == NAME_None)
+	{
+		return false;
+	}
+
+	if (CosmeticProfile->UnlockedHelmetIds.Contains(HelmetId))
+	{
+		return true;
+	}
+
+	CosmeticProfile->UnlockedHelmetIds.Add(HelmetId);
+	SaveCosmeticProfile();
+	return true;
+}
+
+bool UMP_GameInstance::EquipHelmet(FName HelmetId)
+{
+	if (!IsHelmetUnlocked(HelmetId))
+	{
+		return false;
+	}
+
+	CosmeticProfile->EquippedHelmetId = HelmetId;
+	SaveCosmeticProfile();
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedHelmetId() const
+{
+	return CosmeticProfile ? CosmeticProfile->EquippedHelmetId : NAME_None;
+}
+
+FName UMP_GameInstance::OpenHelmetCrate()
+{
+	if (HelmetCrateTable.Num() == 0)
+	{
+		return NAME_None;
+	}
+
+	float TotalWeight = 0.0f;
+	for (const FTN_HelmetCrateEntry& Entry : HelmetCrateTable)
+	{
+		TotalWeight += FMath::Max(0.0f, Entry.Weight);
+	}
+
+	if (TotalWeight <= KINDA_SMALL_NUMBER)
+	{
+		return NAME_None;
+	}
+
+	float Roll = FMath::FRandRange(0.0f, TotalWeight);
+	for (const FTN_HelmetCrateEntry& Entry : HelmetCrateTable)
+	{
+		Roll -= FMath::Max(0.0f, Entry.Weight);
+		if (Roll <= 0.0f && Entry.HelmetId != NAME_None)
+		{
+			UnlockHelmet(Entry.HelmetId);
+			return Entry.HelmetId;
+		}
+	}
+
+	return NAME_None;
 }
 
 IOnlineSessionPtr UMP_GameInstance::GetSessionInterface() const
@@ -146,10 +289,13 @@ FString UMP_GameInstance::BuildStatusLog() const
 
 void UMP_GameInstance::HostSession()
 {
+	ShowLoadingScreen(TEXT("Creando lobby..."));
+
 	IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (!Sessions.IsValid())
 	{
 		UpdateStatus(TEXT("ERROR: No session interface"));
+		HideLoadingScreen();
 		return;
 	}
 
@@ -197,6 +343,7 @@ void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucce
 	if (!bWasSuccessful)
 	{
 		UpdateStatus(FString::Printf(TEXT("ERROR: Failed to create session '%s'"), *SessionName.ToString()));
+		HideLoadingScreen();
 		return;
 	}
 
@@ -211,10 +358,13 @@ void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucce
 
 void UMP_GameInstance::FindAndJoinSession()
 {
+	ShowLoadingScreen(TEXT("Buscando lobbies..."));
+
 	IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (!Sessions.IsValid())
 	{
 		UpdateStatus(TEXT("ERROR: No session interface"));
+		HideLoadingScreen();
 		return;
 	}
 
@@ -242,6 +392,7 @@ void UMP_GameInstance::OnFindSessionsComplete(bool bWasSuccessful)
 	if (!bWasSuccessful || !SessionSearch.IsValid())
 	{
 		UpdateStatus(TEXT("Search failed. Make sure Steam is online."));
+		HideLoadingScreen();
 		return;
 	}
 
@@ -260,6 +411,7 @@ void UMP_GameInstance::OnFindSessionsComplete(bool bWasSuccessful)
 	if (MatchIndex == INDEX_NONE)
 	{
 		UpdateStatus(FString::Printf(TEXT("No matching lobbies found (%d total seen)."), SessionSearch->SearchResults.Num()));
+		HideLoadingScreen();
 		return;
 	}
 
@@ -281,12 +433,14 @@ void UMP_GameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCo
 	if (Result != EOnJoinSessionCompleteResult::Success)
 	{
 		UpdateStatus(FString::Printf(TEXT("ERROR joining '%s': code %d"), *SessionName.ToString(), static_cast<int32>(Result)));
+		HideLoadingScreen();
 		return;
 	}
 
 	FString ConnectInfo;
 	if (Sessions.IsValid() && Sessions->GetResolvedConnectString(SessionName, ConnectInfo) && !ConnectInfo.IsEmpty())
 	{
+		ShowLoadingScreen(TEXT("Conectando a la partida..."));
 		APlayerController* PC = GetFirstLocalPlayerController();
 		if (PC)
 		{
@@ -296,6 +450,7 @@ void UMP_GameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCo
 	else
 	{
 		UpdateStatus(TEXT("ERROR: Could not resolve connect string"));
+		HideLoadingScreen();
 	}
 }
 
@@ -423,14 +578,101 @@ void UMP_GameInstance::OnDestroySessionComplete(FName SessionName, bool bWasSucc
 
 void UMP_GameInstance::HandleReturnToMenu()
 {
+	ShowLoadingScreen(TEXT("Volviendo al menu..."));
 	DestroyCurrentSession();
 
-	if (UWorld* World = GetWorld())
+	if (APlayerController* PC = GetFirstLocalPlayerController())
 	{
-		if (APlayerController* PC = GetFirstLocalPlayerController())
+		PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
+	}
+}
+
+void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
+{
+	ShowLoadingScreen(FString::Printf(TEXT("Cargando mapa: %s"), *MapName));
+}
+
+void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
+{
+	HideLoadingScreen();
+}
+
+void UMP_GameInstance::LoadCosmeticProfile()
+{
+	const FString SlotName = BuildCosmeticSaveSlot();
+	if (UGameplayStatics::DoesSaveGameExist(SlotName, 0))
+	{
+		CosmeticProfile = Cast<UTN_CosmeticSaveGame>(UGameplayStatics::LoadGameFromSlot(SlotName, 0));
+	}
+
+	if (!CosmeticProfile)
+	{
+		CosmeticProfile = Cast<UTN_CosmeticSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_CosmeticSaveGame::StaticClass()));
+	}
+
+	if (!CosmeticProfile)
+	{
+		return;
+	}
+
+	for (const FName DefaultHelmet : DefaultUnlockedHelmets)
+	{
+		if (DefaultHelmet != NAME_None)
 		{
-			PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
+			CosmeticProfile->UnlockedHelmetIds.AddUnique(DefaultHelmet);
 		}
+	}
+
+	if (CosmeticProfile->EquippedHelmetId == NAME_None && CosmeticProfile->UnlockedHelmetIds.Num() > 0)
+	{
+		CosmeticProfile->EquippedHelmetId = CosmeticProfile->UnlockedHelmetIds[0];
+	}
+}
+
+void UMP_GameInstance::SaveCosmeticProfile() const
+{
+	if (!CosmeticProfile)
+	{
+		return;
+	}
+
+	UGameplayStatics::SaveGameToSlot(CosmeticProfile, BuildCosmeticSaveSlot(), 0);
+}
+
+FString UMP_GameInstance::BuildCosmeticSaveSlot() const
+{
+	FString Suffix = TEXT("Local");
+	if (const ULocalPlayer* LP = GetFirstGamePlayer())
+	{
+		if (!LP->GetNickname().IsEmpty())
+		{
+			Suffix = LP->GetNickname();
+		}
+		else
+		{
+			Suffix = FString::Printf(TEXT("LocalPlayer_%d"), LP->GetLocalPlayerIndex());
+		}
+	}
+
+	return FString::Printf(TEXT("%s_%s"), *CosmeticSaveSlotPrefix, *Suffix);
+}
+
+void UMP_GameInstance::RefreshLoadingText(const FString& Reason) const
+{
+	if (!LoadingScreenWidget)
+	{
+		return;
+	}
+
+	if (UTextBlock* Status = Cast<UTextBlock>(LoadingScreenWidget->GetWidgetFromName(TEXT("StatusText"))))
+	{
+		Status->SetText(FText::FromString(Reason));
+		return;
+	}
+
+	if (UTN_LoadingScreenWidget* TypedLoading = Cast<UTN_LoadingScreenWidget>(LoadingScreenWidget))
+	{
+		TypedLoading->SetStatusMessage(FText::FromString(Reason));
 	}
 }
 

@@ -19,6 +19,15 @@ public:
 	bool bHasFinishedRun = false;
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
+	bool bIsAlive = true;
+
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
+	float DeathZoneTimeRemaining = -1.f;
+
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Cosmetics")
+	FName EquippedHelmetId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	float FinishTimeSeconds = -1.f;
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")

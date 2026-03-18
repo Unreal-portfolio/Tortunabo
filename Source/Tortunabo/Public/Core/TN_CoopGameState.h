@@ -20,6 +20,12 @@ public:
 	int32 ReadyPlayers = 0;
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
+	int32 ConnectedPlayers = 0;
+
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
+	int32 PlayersInStartZone = 0;
+
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	int32 ExpectedPlayers = 4;
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")

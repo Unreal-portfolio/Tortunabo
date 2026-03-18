@@ -11,6 +11,9 @@ void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 	DOREPLIFETIME(ATN_CoopPlayerState, bIsInReadyZone);
 	DOREPLIFETIME(ATN_CoopPlayerState, bHasFinishedRun);
+	DOREPLIFETIME(ATN_CoopPlayerState, bIsAlive);
+	DOREPLIFETIME(ATN_CoopPlayerState, DeathZoneTimeRemaining);
+	DOREPLIFETIME(ATN_CoopPlayerState, EquippedHelmetId);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishTimeSeconds);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishRank);
 }

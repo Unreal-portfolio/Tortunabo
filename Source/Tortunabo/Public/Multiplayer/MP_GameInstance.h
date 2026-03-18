@@ -8,6 +8,20 @@
 #include "MP_GameInstance.generated.h"
 
 class UNetDriver;
+class UUserWidget;
+class UTN_CosmeticSaveGame;
+
+USTRUCT(BlueprintType)
+struct FTN_HelmetCrateEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	FName HelmetId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics", meta=(ClampMin="0.0"))
+	float Weight = 1.0f;
+};
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStatusChanged, const FString&, StatusMessage);
 
@@ -40,6 +54,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void HandleReturnToMenu();
 
+	UFUNCTION(BlueprintCallable, Category = "UI|Loading")
+	void ShowLoadingScreen(const FString& Reason = TEXT("Cargando..."));
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Loading")
+	void HideLoadingScreen();
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	TArray<FName> GetUnlockedHelmetIds() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool IsHelmetUnlocked(FName HelmetId) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool UnlockHelmet(FName HelmetId);
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool EquipHelmet(FName HelmetId);
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	FName GetEquippedHelmetId() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	FName OpenHelmetCrate();
+
 	FString BuildStatusLog() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
@@ -66,6 +104,18 @@ protected:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Multiplayer|Steam", meta=(ClampMin="1"))
 	int32 SteamDevAppId = 480;
 
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Loading")
+	TSoftClassPtr<UUserWidget> LoadingScreenWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
+	TArray<FName> DefaultUnlockedHelmets;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
+	TArray<FTN_HelmetCrateEntry> HelmetCrateTable;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
+	FString CosmeticSaveSlotPrefix = TEXT("Cosmetics");
+
 	void UpdateStatus(const FString& Message);
 
 	static constexpr int32 MaxStatusLines = 12;
@@ -80,6 +130,20 @@ private:
 
 	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void EnsureSteamAppIdFile();
+	void HandlePreLoadMap(const FString& MapName);
+	void HandlePostLoadMap(UWorld* LoadedWorld);
+	void RefreshLoadingText(const FString& Reason) const;
+	void LoadCosmeticProfile();
+	void SaveCosmeticProfile() const;
+	FString BuildCosmeticSaveSlot() const;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> LoadingScreenWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_CosmeticSaveGame> CosmeticProfile;
+
+	bool bIsLoadingScreenVisible = false;
 
 	FDelegateHandle InviteAcceptedDelegateHandle;
 };

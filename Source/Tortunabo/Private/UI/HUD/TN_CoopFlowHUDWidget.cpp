@@ -1,5 +1,6 @@
 #include "UI/HUD/TN_CoopFlowHUDWidget.h"
 #include "Core/TN_CoopGameState.h"
+#include "Core/TN_CoopPlayerState.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -111,9 +112,9 @@ FText UTN_CoopFlowHUDWidget::BuildPrimaryText(const ATN_CoopGameState* GameState
 	switch (GameState->MatchFlowState)
 	{
 	case ETNMatchFlowState::WaitingForPlayers:
-		return FText::FromString(FString::Printf(TEXT("Esperando jugadores listos: %d/%d"), GameState->ReadyPlayers, GameState->ExpectedPlayers));
+		return FText::FromString(FString::Printf(TEXT("Sala: %d/%d | Zona start: %d/%d"), GameState->ConnectedPlayers, GameState->ExpectedPlayers, GameState->PlayersInStartZone, GameState->ExpectedPlayers));
 	case ETNMatchFlowState::Countdown:
-		return FText::FromString(FString::Printf(TEXT("La partida empieza en: %d"), GameState->CountdownValue));
+		return FText::FromString(FString::Printf(TEXT("Todos listos. La partida empieza en: %d"), GameState->CountdownValue));
 	case ETNMatchFlowState::Cinematic:
 		return FText::FromString(TEXT("Preparando cinematicas..."));
 	case ETNMatchFlowState::InProgress:
@@ -130,12 +131,22 @@ FText UTN_CoopFlowHUDWidget::BuildSecondaryText(const ATN_CoopGameState* GameSta
 	switch (GameState->MatchFlowState)
 	{
 	case ETNMatchFlowState::WaitingForPlayers:
-		return FText::FromString(TEXT("Entra en la zona ready para iniciar el countdown."));
+		return FText::FromString(TEXT("El contador arranca cuando la fraccion de zona start coincide con jugadores esperados."));
 	case ETNMatchFlowState::Countdown:
-		return FText::FromString(TEXT("Si alguien sale de la zona ready, se cancela."));
+		return FText::FromString(FString::Printf(TEXT("Conectados: %d/%d | Start: %d/%d"), GameState->ConnectedPlayers, GameState->ExpectedPlayers, GameState->PlayersInStartZone, GameState->ExpectedPlayers));
 	case ETNMatchFlowState::Cinematic:
 		return FText::FromString(TEXT("Mantente preparado para el viaje al mapa de carrera."));
 	case ETNMatchFlowState::InProgress:
+		if (const APlayerController* PC = GetOwningPlayer())
+		{
+			if (const ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
+			{
+				if (TNPS->DeathZoneTimeRemaining >= 0.f)
+				{
+					return FText::FromString(FString::Printf(TEXT("Peligro: sal de la zona de muerte (%.1fs)"), TNPS->DeathZoneTimeRemaining));
+				}
+			}
+		}
 		return FText::FromString(TEXT("Cruza la meta para pasar a espectador."));
 	case ETNMatchFlowState::Results:
 		return FText::FromString(TEXT("Resultados cerrados. Espera el viaje automatico."));

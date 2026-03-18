@@ -1,5 +1,6 @@
 ﻿#include "World/TN_PickupInteractableBase.h"
 #include "Player/TN_InventoryComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
 
 ATN_PickupInteractableBase::ATN_PickupInteractableBase()
@@ -20,7 +21,7 @@ bool ATN_PickupInteractableBase::CanInteract(APawn* Interactor) const
 		return false;
 	}
 
-	return !InventoryComponent->HasEquippedItem() || !InventoryComponent->HasStoredItem();
+	return InventoryComponent->CanReceiveItem(PickupItem, true);
 }
 
 void ATN_PickupInteractableBase::Interact(APawn* Interactor)
@@ -31,7 +32,7 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 	}
 
 	UTN_InventoryComponent* InventoryComponent = Interactor->FindComponentByClass<UTN_InventoryComponent>();
-	if (!InventoryComponent || !InventoryComponent->TryAddItem(PickupItem))
+	if (!InventoryComponent || !InventoryComponent->TryAddOrReplaceEquipped(PickupItem, true))
 	{
 		return;
 	}
@@ -58,5 +59,19 @@ void ATN_PickupInteractableBase::ApplyTakenState()
 {
 	SetActorHiddenInGame(bTaken);
 	SetActorEnableCollision(!bTaken);
+}
+
+void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_InventoryItem& NewPickupItem)
+{
+	if (!HasAuthority() || bTaken || !NewPickupItem.IsValid())
+	{
+		return;
+	}
+
+	PickupItem = NewPickupItem;
+	if (Mesh)
+	{
+		Mesh->SetStaticMesh(PickupItem.EquippedMesh);
+	}
 }
 

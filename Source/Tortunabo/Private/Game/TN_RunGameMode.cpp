@@ -3,6 +3,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
@@ -36,6 +37,18 @@ void ATN_RunGameMode::BeginPlay()
 		TNGS->FinishedPlayers = 0;
 		TNGS->ServerMatchElapsedTime = 0.f;
 		TNGS->CountdownValue = 0;
+	}
+
+	for (APlayerState* BasePS : GameState->PlayerArray)
+	{
+		if (ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(BasePS))
+		{
+			TNPS->bIsAlive = true;
+			TNPS->bHasFinishedRun = false;
+			TNPS->FinishRank = 0;
+			TNPS->FinishTimeSeconds = -1.f;
+			TNPS->DeathZoneTimeRemaining = -1.f;
+		}
 	}
 }
 
@@ -131,7 +144,7 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	}
 
 	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
-	if (!TNPS || TNPS->bHasFinishedRun)
+	if (!TNPS || TNPS->bHasFinishedRun || !TNPS->bIsAlive)
 	{
 		return;
 	}
@@ -139,6 +152,95 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	TNPS->bHasFinishedRun = true;
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
+
+	MovePlayerToSpectator(PlayerController);
+	UpdateRoundProgressAndMaybeFinish();
+}
+
+void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
+{
+	if (!HasAuthority() || !PlayerController)
+	{
+		return;
+	}
+
+	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
+	if (!TNPS || !TNPS->bIsAlive)
+	{
+		return;
+	}
+
+	TNPS->bIsAlive = false;
+	TNPS->bHasFinishedRun = true;
+	TNPS->FinishRank = 0;
+	TNPS->FinishTimeSeconds = -1.f;
+	TNPS->DeathZoneTimeRemaining = -1.f;
+
+	if (APawn* Pawn = PlayerController->GetPawn())
+	{
+		Pawn->DisableInput(PlayerController);
+		Pawn->Destroy();
+	}
+
+	MovePlayerToSpectator(PlayerController);
+	UpdateRoundProgressAndMaybeFinish();
+}
+
+void ATN_RunGameMode::UpdateRoundProgressAndMaybeFinish()
+{
+	ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>();
+	if (!TNGS)
+	{
+		return;
+	}
+
+	int32 TotalPlayers = 0;
+	int32 ResolvedPlayers = 0;
+	int32 AlivePlayers = 0;
+
+	for (APlayerState* BasePS : GameState->PlayerArray)
+	{
+		if (const ATN_CoopPlayerState* CastPS = Cast<ATN_CoopPlayerState>(BasePS))
+		{
+			++TotalPlayers;
+			if (CastPS->bIsAlive)
+			{
+				++AlivePlayers;
+			}
+			if (CastPS->bHasFinishedRun)
+			{
+				++ResolvedPlayers;
+			}
+		}
+	}
+
+	TNGS->FinishedPlayers = ResolvedPlayers;
+	TNGS->ExpectedPlayers = TotalPlayers;
+	TNGS->ServerMatchElapsedTime = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
+
+	if (TotalPlayers <= 0 || (ResolvedPlayers != TotalPlayers && AlivePlayers > 0))
+	{
+		return;
+	}
+
+	if (GetWorldTimerManager().IsTimerActive(ResultsTimerHandle))
+	{
+		return;
+	}
+
+	SetFlowState(ETNMatchFlowState::Results);
+	ResultsCountdownValue = FMath::CeilToInt(ResultsDurationSeconds);
+	TNGS->CountdownValue = ResultsCountdownValue;
+	GetWorldTimerManager().SetTimer(ResultsCountdownTimerHandle, this, &ATN_RunGameMode::TickResultsCountdown, 1.0f, true);
+	GetWorldTimerManager().SetTimer(ResultsTimerHandle, this, &ATN_RunGameMode::FinishRoundAndReturnToLobby, ResultsDurationSeconds, false);
+}
+
+void ATN_RunGameMode::MovePlayerToSpectator(APlayerController* PlayerController) const
+{
+	if (!PlayerController)
+	{
+		return;
+	}
 
 	if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PlayerController))
 	{
@@ -148,39 +250,6 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	{
 		PlayerController->ChangeState(NAME_Spectating);
 		PlayerController->StartSpectatingOnly();
-	}
-
-	ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>();
-	if (!TNGS)
-	{
-		return;
-	}
-
-	int32 TotalPlayers = 0;
-	int32 FinishedPlayers = 0;
-	for (APlayerState* BasePS : GameState->PlayerArray)
-	{
-		if (const ATN_CoopPlayerState* CastPS = Cast<ATN_CoopPlayerState>(BasePS))
-		{
-			++TotalPlayers;
-			if (CastPS->bHasFinishedRun)
-			{
-				++FinishedPlayers;
-			}
-		}
-	}
-
-	TNGS->FinishedPlayers = FinishedPlayers;
-	TNGS->ExpectedPlayers = TotalPlayers;
-	TNGS->ServerMatchElapsedTime = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
-
-	if (TotalPlayers > 0 && FinishedPlayers == TotalPlayers)
-	{
-		SetFlowState(ETNMatchFlowState::Results);
-		ResultsCountdownValue = FMath::CeilToInt(ResultsDurationSeconds);
-		TNGS->CountdownValue = ResultsCountdownValue;
-		GetWorldTimerManager().SetTimer(ResultsCountdownTimerHandle, this, &ATN_RunGameMode::TickResultsCountdown, 1.0f, true);
-		GetWorldTimerManager().SetTimer(ResultsTimerHandle, this, &ATN_RunGameMode::FinishRoundAndReturnToLobby, ResultsDurationSeconds, false);
 	}
 }
 
