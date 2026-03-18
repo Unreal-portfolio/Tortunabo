@@ -34,9 +34,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Stamina")
 	bool HasUnlimitedStamina() const { return bUnlimitedStamina; }
 
+	/** True mientras la stamina está penalizada por haberse agotado completamente. */
+	UFUNCTION(BlueprintPure, Category = "Stamina")
+	bool IsExhausted() const { return bIsExhausted; }
+
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "1.0"))
-	float MaxStamina = 100.0f;
+	/** Stamina máxima. Configurable desde Blueprint. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Stamina", meta = (ClampMin = "1.0"))
+	float MaxStamina = 200.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
 	float SprintDrainPerSecond = 45.0f;
@@ -50,14 +55,19 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
 	float RechargeExponentGrowth = 1.1f;
 
+	/**
+	 * Penalización por agotar la stamina completamente.
+	 * Bloquea la recuperación este tiempo extra (en segundos) además de RechargeDelaySeconds.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
+	float ExhaustionPenaltySeconds = 1.0f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina|Movement", meta = (ClampMin = "0.0"))
 	float WalkSpeed = 450.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina|Movement", meta = (ClampMin = "0.0"))
 	float SprintSpeed = 800.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina|Visual")
-	float SprintMeshPitchDegrees = 75.0f;
 
 private:
 	UFUNCTION(Server, Reliable)
@@ -81,8 +91,8 @@ private:
 	float UnlimitedStaminaRemaining = 0.0f;
 	float RechargeElapsed = 0.0f;
 	float TimeSinceSprintStopped = 0.0f;
-	FRotator CachedMeshRelativeRotation = FRotator::ZeroRotator;
-	bool bHasCachedMeshRotation = false;
+	float ExhaustionTimer = 0.0f;
+	bool bIsExhausted = false;
 
 	UFUNCTION()
 	void OnRep_CurrentStamina();

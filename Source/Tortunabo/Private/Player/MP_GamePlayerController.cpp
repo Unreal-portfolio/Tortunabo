@@ -20,6 +20,7 @@ void AMP_GamePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
+
 	ApplyGameplayInputMode();
 
 	if (IsLocalController() && GetPawn())
@@ -30,6 +31,7 @@ void AMP_GamePlayerController::BeginPlay()
 	if (IsLocalController())
 	{
 		CreateCoopFlowHUD();
+		CreatePlayerHUD();
 		SyncCosmeticsToServer();
 	}
 }
@@ -72,6 +74,7 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 	{
 		CreateVoiceHUD();
 		CreateCoopFlowHUD();
+		CreatePlayerHUD();
 		SyncCosmeticsToServer();
 	}
 }
@@ -203,6 +206,26 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 	if (CoopFlowWidget)
 	{
 		CoopFlowWidget->AddToViewport(5);
+	}
+}
+
+void AMP_GamePlayerController::CreatePlayerHUD()
+{
+	if (PlayerHUDWidget || !IsLocalController())
+	{
+		return;
+	}
+
+	if (!PlayerHUDWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[HUD] PlayerHUDWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController."), *GetNameSafe(this));
+		return;
+	}
+
+	PlayerHUDWidget = CreateWidget<UUserWidget>(this, PlayerHUDWidgetClass);
+	if (PlayerHUDWidget)
+	{
+		PlayerHUDWidget->AddToViewport(4);
 	}
 }
 

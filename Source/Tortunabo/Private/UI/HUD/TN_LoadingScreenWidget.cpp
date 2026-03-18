@@ -52,4 +52,3 @@ void UTN_LoadingScreenWidget::EnsureRuntimeLayout()
 		}
 	}
 }
-

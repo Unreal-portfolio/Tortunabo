@@ -13,12 +13,13 @@
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ThrowableItemActor.h"
 #include "GameFramework/PlayerState.h"
+#include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
 ATortugaCharacter::ATortugaCharacter()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;   // needed for leg animation
 	SpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
 	bUseControllerRotationPitch = false;
@@ -62,6 +63,82 @@ void ATortugaCharacter::BeginPlay()
 	{
 		GetWorldTimerManager().SetTimer(InteractionScanTimerHandle, this, &ATortugaCharacter::UpdateFocusedInteractable, InteractionScanInterval, true);
 	}
+
+	// Cache leg components (added in Blueprint as child SceneComponents).
+	// The cube mesh origin must be at the TOP of each cube (the hip pivot).
+	// If GetFName() doesn't match, check the component name in the BP Details panel.
+	Pata1 = FindChildByName(TEXT("Pata1"));
+	Pata2 = FindChildByName(TEXT("Pata2"));
+
+	if (Pata1.IsValid()) { Pata1RestRot = Pata1->GetRelativeRotation(); }
+	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Pata1' component not found — add a SceneComponent named exactly 'Pata1' in the Blueprint.")); }
+
+	if (Pata2.IsValid()) { Pata2RestRot = Pata2->GetRelativeRotation(); }
+	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Pata2' component not found — add a SceneComponent named exactly 'Pata2' in the Blueprint.")); }
+}
+
+void ATortugaCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	TickLegAnimation(DeltaTime);
+}
+
+void ATortugaCharacter::TickLegAnimation(float DeltaTime)
+{
+	// Bail out early if neither leg is available.
+	if (!Pata1.IsValid() && !Pata2.IsValid())
+	{
+		return;
+	}
+
+	// GetVelocity() is replicated by CharacterMovement — works on every machine.
+	const float Speed = GetVelocity().Size2D();
+
+	const bool bIsSprinting = StaminaComponent && StaminaComponent->IsSprinting();
+
+	const float TargetAmplitude = bIsSprinting ? LegSprintAmplitudeDeg : LegWalkAmplitudeDeg;
+	const float TargetFrequency = bIsSprinting ? LegSprintFrequency    : LegWalkFrequency;
+
+	// Fade the amplitude envelope smoothly when starting/stopping movement.
+	const float TargetMult = (Speed > LegMinSpeed) ? 1.f : 0.f;
+	LegAmplitudeMultiplier = FMath::FInterpTo(LegAmplitudeMultiplier, TargetMult, DeltaTime, 8.f);
+
+	// Advance phase only while the character is moving (avoids phase pop on stop/resume).
+	if (Speed > LegMinSpeed)
+	{
+		LegPhaseAccumulator += TargetFrequency * DeltaTime;
+		LegPhaseAccumulator  = FMath::Fmod(LegPhaseAccumulator, 1.f); // keep in [0,1)
+	}
+
+	// Current pendulum angle.
+	const float Angle = TargetAmplitude * LegAmplitudeMultiplier
+	                  * FMath::Sin(LegPhaseAccumulator * 2.f * PI);
+
+	// Pata1 and Pata2 are 180° out of phase → diagonal trot gait.
+	if (Pata1.IsValid()) { ApplyLegAngle(Pata1.Get(), Pata1RestRot,  Angle); }
+	if (Pata2.IsValid()) { ApplyLegAngle(Pata2.Get(), Pata2RestRot, -Angle); }
+}
+
+void ATortugaCharacter::ApplyLegAngle(USceneComponent* Comp, const FRotator& RestRot, float AngleDeg) const
+{
+	// Build an incremental rotation around the configured local axis.
+	const FQuat SwingQuat(LegSwingAxis.GetSafeNormal(), FMath::DegreesToRadians(AngleDeg));
+
+	// Compose with the rest rotation so the animation is additive.
+	const FRotator FinalRot = (FQuat(RestRot) * SwingQuat).Rotator();
+	Comp->SetRelativeRotation(FinalRot);
+}
+
+USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
+{
+	for (UActorComponent* Comp : GetComponents())
+	{
+		if (Comp && Comp->GetFName() == Name)
+		{
+			return Cast<USceneComponent>(Comp);
+		}
+	}
+	return nullptr;
 }
 
 void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)

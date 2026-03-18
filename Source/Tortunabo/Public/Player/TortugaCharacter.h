@@ -12,6 +12,7 @@ class UInputAction;
 class UTN_InventoryComponent;
 class UTN_StaminaComponent;
 class ATN_InteractableBase;
+class USceneComponent;
 
 UCLASS()
 class TORTUNABO_API ATortugaCharacter : public ACharacter
@@ -23,6 +24,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PawnClientRestart() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -62,6 +64,39 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stamina")
 	TObjectPtr<UTN_StaminaComponent> StaminaComponent;
+
+	// ── Leg Animation (blockout) ──────────────────────────────────────────────
+	// Add child SceneComponents named "Pata1" and "Pata2" in your Blueprint.
+	// Set their origin at the HIP PIVOT (see setup guide below).
+
+	/** Swing amplitude in degrees while walking. */
+	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.0", ClampMax = "180.0"))
+	float LegWalkAmplitudeDeg = 60.f;
+
+	/** Oscillation frequency (cycles/s) while walking. */
+	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.1"))
+	float LegWalkFrequency = 2.0f;
+
+	/** Swing amplitude in degrees while sprinting. */
+	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.0", ClampMax = "180.0"))
+	float LegSprintAmplitudeDeg = 90.f;
+
+	/** Oscillation frequency (cycles/s) while sprinting. */
+	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.1"))
+	float LegSprintFrequency = 3.5f;
+
+	/**
+	 * Rotation axis in the component's LOCAL space for the pendulum swing.
+	 * (0,1,0) = local Y → forward/back swing (default, works for side-mounted legs).
+	 * (1,0,0) = local X → lateral swing.
+	 * Change if your component's local axes differ.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation")
+	FVector LegSwingAxis = FVector(0.f, 1.f, 0.f);
+
+	/** Speed (cm/s) below which legs smoothly return to rest. */
+	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.0"))
+	float LegMinSpeed = 20.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
 	float InteractionScanInterval = 0.1f;
@@ -106,6 +141,15 @@ private:
 	FVector2D LastMovementInput = FVector2D::ZeroVector;
 	bool bSprintHeld = false;
 
+	// ── Leg animation state (cosmetic, local-only, never replicated) ──────────
+	float LegPhaseAccumulator    = 0.f;   // cycles [0,1)
+	float LegAmplitudeMultiplier = 0.f;   // [0,1] fade envelope
+
+	TWeakObjectPtr<USceneComponent> Pata1;
+	TWeakObjectPtr<USceneComponent> Pata2;
+	FRotator Pata1RestRot = FRotator::ZeroRotator;
+	FRotator Pata2RestRot = FRotator::ZeroRotator;
+
 	void Move(const FInputActionValue& Value);
 	void OnMoveReleased();
 	void Look(const FInputActionValue& Value);
@@ -121,6 +165,10 @@ private:
 	FVector GetItemSpawnLocation() const;
 	FVector GetItemForwardDirection() const;
 
+	void TickLegAnimation(float DeltaTime);
+	void ApplyLegAngle(USceneComponent* Comp, const FRotator& RestRot, float AngleDeg) const;
+	USceneComponent* FindChildByName(FName Name) const;
+
 	UFUNCTION(Server, Reliable)
 	void ServerTryInteract(ATN_InteractableBase* Interactable);
 
@@ -134,4 +182,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void GrantInfiniteStamina(float DurationSeconds);
 };
+
+
 

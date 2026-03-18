@@ -1,7 +1,6 @@
 ﻿#include "Player/TN_StaminaComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Components/SkeletalMeshComponent.h"
 #include "Net/UnrealNetwork.h"
 
 UTN_StaminaComponent::UTN_StaminaComponent()
@@ -16,17 +15,7 @@ void UTN_StaminaComponent::BeginPlay()
 
 	CurrentStamina = MaxStamina;
 
-	if (const ACharacter* Character = Cast<ACharacter>(GetOwner()))
-	{
-		if (const USkeletalMeshComponent* CharacterMesh = Character->GetMesh())
-		{
-			CachedMeshRelativeRotation = CharacterMesh->GetRelativeRotation();
-			bHasCachedMeshRotation = true;
-		}
-	}
-
 	ApplyMovementSpeed();
-	ApplySprintVisual();
 }
 
 void UTN_StaminaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -111,7 +100,6 @@ void UTN_StaminaComponent::OnRep_CurrentStamina()
 void UTN_StaminaComponent::OnRep_IsSprinting()
 {
 	ApplyMovementSpeed();
-	ApplySprintVisual();
 }
 
 void UTN_StaminaComponent::OnRep_UnlimitedStamina()
@@ -148,10 +136,34 @@ void UTN_StaminaComponent::TickStamina(float DeltaTime)
 		if (!bUnlimitedStamina)
 		{
 			CurrentStamina = FMath::Max(0.0f, CurrentStamina - (SprintDrainPerSecond * DeltaTime));
+
+			// Marcar agotamiento cuando la stamina llega a cero
+			if (CurrentStamina <= 0.0f && !bIsExhausted)
+			{
+				bIsExhausted = true;
+				ExhaustionTimer = ExhaustionPenaltySeconds;
+			}
 		}
 	}
 	else
 	{
+		// Contar la penalización de agotamiento antes del delay normal de recarga
+		if (bIsExhausted)
+		{
+			ExhaustionTimer -= DeltaTime;
+			if (ExhaustionTimer <= 0.0f)
+			{
+				bIsExhausted = false;
+				ExhaustionTimer = 0.0f;
+				// Reiniciar timer de delay normal también
+				TimeSinceSprintStopped = 0.0f;
+				RechargeElapsed = 0.0f;
+			}
+			// Bloquear recuperación durante la penalización
+			RecomputeSprintState();
+			return;
+		}
+
 		TimeSinceSprintStopped += DeltaTime;
 		if (TimeSinceSprintStopped >= RechargeDelaySeconds)
 		{
@@ -176,7 +188,6 @@ void UTN_StaminaComponent::RecomputeSprintState()
 	if (bIsSprinting != bCanSprint)
 	{
 		bIsSprinting = bCanSprint;
-		ApplySprintVisual();
 	}
 
 	ApplyMovementSpeed();
@@ -195,26 +206,7 @@ void UTN_StaminaComponent::ApplyMovementSpeed() const
 
 void UTN_StaminaComponent::ApplySprintVisual() const
 {
-	const ACharacter* Character = Cast<ACharacter>(GetOwner());
-	if (!Character)
-	{
-		return;
-	}
-
-	USkeletalMeshComponent* CharacterMesh = Character->GetMesh();
-	if (!CharacterMesh)
-	{
-		return;
-	}
-
-	const FRotator BaseRotation = bHasCachedMeshRotation ? CachedMeshRelativeRotation : CharacterMesh->GetRelativeRotation();
-	if (bIsSprinting)
-	{
-		CharacterMesh->SetRelativeRotation(FRotator(BaseRotation.Pitch + SprintMeshPitchDegrees, BaseRotation.Yaw, BaseRotation.Roll));
-	}
-	else
-	{
-		CharacterMesh->SetRelativeRotation(BaseRotation);
-	}
+	// La inclinación del mesh al sprintar se ha eliminado.
+	// El feedback visual de sprint viene únicamente del aumento de amplitud de las piernas.
 }
 

@@ -49,6 +49,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UUserWidget> CosmeticsWidgetClass;
 
+	/**
+	 * HUD principal del jugador (barra de stamina, etc.).
+	 * Asigna WBP_PlayerHUD en BP_GamePlayerController → Class Defaults.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUserWidget> PlayerHUDWidgetClass;
+
 private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> VoiceIndicatorWidget;
@@ -58,6 +65,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UUserWidget> CosmeticsWidget;
+
+	UPROPERTY()
+	TObjectPtr<UUserWidget> PlayerHUDWidget;
 
 	UFUNCTION(Server, Reliable)
 	void ServerSyncUnlockedHelmets(const TArray<FName>& UnlockedHelmetIds);
@@ -70,6 +80,7 @@ private:
 	void ApplyGameplayInputMode();
 	void CreateVoiceHUD();
 	void CreateCoopFlowHUD();
+	void CreatePlayerHUD();
 	void SpectateByDirection(int32 Direction);
 
 	TSet<FName> ServerUnlockedHelmets;

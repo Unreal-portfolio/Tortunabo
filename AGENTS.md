@@ -5,6 +5,10 @@
 - Entry point de módulo: `Source/Tortunabo/Tortunabo.cpp` con `IMPLEMENT_PRIMARY_GAME_MODULE`.
 - Targets estándar: `Source/Tortunabo.Target.cs` y `Source/TortunaboEditor.Target.cs`.
 - Flujo cooperativo actual en C++: `Menu -> HQ Lobby -> Countdown -> Cinematic -> Run -> Finish/Spectate -> Results -> Return HQ` (ver `Source/Tortunabo/Public/Core/TN_MatchFlowTypes.h` y `Source/Tortunabo/Private/Lobby/TN_HQGameMode.cpp`).
+- **Non-seamless Travel**: `TN_HQGameMode` y `TN_RunGameMode` usan `bUseSeamlessTravel = false`. Cada `ServerTravel` destruye el mundo viejo completo y crea uno nuevo (PCs, PlayerStates, Pawns se recrean).
+  - Consecuencia: `PostLogin` SÍ se llama en cada mapa. No hay pawns residuales ni estado espectador que persista entre mapas.
+  - **NO usar seamless travel** en este proyecto: intentos previos con `bUseSeamlessTravel = true` causaron doble spawneo de jugadores, modo espectador residual al volver al lobby, y crashes WASAPI por componentes de voz en estado inconsistente. El flujo non-seamless es la configuración validada y funcional.
+  - `OnNetworkFailure` en `MP_GameInstance` destruye la sesión Steam automáticamente si el listen socket falla (ej. `NetDriverListenFailure` por sesión zombi), permitiendo reintentar sin reiniciar Steam.
 
 ## Arquitectura por dominios (Source/Tortunabo)
 - `Public/Core`, `Private/Core`: estado replicado, tipos de flujo e inventario (`TN_CoopGameState`, `TN_CoopPlayerState`, `TN_MatchFlowTypes`, `TN_InventoryTypes`).
@@ -13,7 +17,7 @@
 - `Public/World`, `Private/World`: volúmenes de mundo e interactuables (`TN_FinishLineVolume`, `TN_DeathZoneVolume`, `TN_InteractableBase`, `TN_DirectInteractableBase`, `TN_PickupInteractableBase`, `TN_StaminaBoostPickup`, `TN_ThrowableItemActor`, `TN_CosmeticsStationInteractable`).
 - `Public/Player`, `Private/Player`: personaje/control de jugador y componentes (`TortugaCharacter`, `TortugaFirstPersonCharacter`, `MP_GamePlayerController`, `TN_StaminaComponent`, `TN_InventoryComponent`).
 - `Public/Multiplayer`, `Private/Multiplayer`: sesiones Steam, lifecycle de sesión y cosméticos persistentes (`MP_GameInstance`, `TN_CosmeticSaveGame`).
-- `Public/Menu`, `Private/Menu` y `Public/UI/*`, `Private/UI/*`: menú principal, HUDs, loading e interacción (`MP_MainMenuWidget`, `MP_MenuGameMode`, `MP_MenuPlayerController`, `TN_CoopFlowHUDWidget`, `TN_LoadingScreenWidget`, `TN_InteractPromptWidget`, `VoiceIndicatorWidget`).
+- `Public/Menu`, `Private/Menu` y `Public/UI/*`, `Private/UI/*`: menú principal, HUDs, loading e interacción (`MP_MainMenuWidget`, `MP_MenuGameMode`, `MP_MenuPlayerController`, `TN_CoopFlowHUDWidget`, `TN_LoadingScreenWidget`, `TN_InteractPromptWidget`, `VoiceIndicatorWidget`, `TN_PlayerHUDWidget`).
 - `Public/Voice`, `Private/Voice`: VOIP por proximidad (`ProximityVoiceComponent`).
 
 ### Documentación auxiliar (Docs/)
@@ -49,7 +53,34 @@
 - `MP_GamePlayerController` sincroniza helms al servidor via `ServerSyncUnlockedHelmets`/`ServerSetEquippedHelmet`.
 - `TN_CosmeticsStationInteractable` en el lobby abre el menú de cosméticos via Client RPC.
 
-## Replicación — patrón listen-server
+## Stamina system (`TN_StaminaComponent`)
+- `MaxStamina = 200.0f` (configurable desde Blueprint via `BlueprintReadWrite`).
+- `SprintDrainPerSecond = 45.0f`, `RechargeDelaySeconds = 0.8f`.
+- **Penalización por agotamiento**: si `CurrentStamina` llega a 0 mientras sprint, `bIsExhausted = true` y la recuperación se bloquea `ExhaustionPenaltySeconds = 1.0f` segundos ANTES de que empiece el `RechargeDelaySeconds` normal.
+- `IsExhausted()` (BlueprintPure) disponible para UI y lógica BP.
+- **NO hay rotación del mesh al sprintar** (`ApplySprintVisual` es no-op). El feedback visual de sprint viene solo del aumento de amplitud de piernas (60°→90°).
+- Replicación: `CurrentStamina` (owner-only), `bIsSprinting` (all), `bSprintRequested` (all), `bUnlimitedStamina` (owner-only).
+
+## Player HUD (`TN_PlayerHUDWidget`)
+- Widget C++ base para toda la UI en pantalla del jugador durante gameplay.
+- Se crea en `MP_GamePlayerController::CreatePlayerHUD()` al hacer posesión; asignar `PlayerHUDWidgetClass` en `BP_GamePlayerController → Class Defaults`.
+- Pollea `UTN_StaminaComponent` del pawn local cada ~50ms (throttle configurable).
+- Widgets opcionales (nombres exactos en BP Designer):
+  - `StaminaBar` (UProgressBar) → ratio `CurrentStamina / MaxStamina`
+  - `ExhaustedRoot` (cualquier widget) → visible solo durante penalización de agotamiento
+  - `StaminaText` (UTextBlock) → "120 / 200"
+- Hook BP: `OnStaminaUpdated(CurrentStamina, MaxStamina, bExhausted)` para animar/colorear desde Blueprint.
+- Z-order en viewport: 4 (por debajo del CoopFlowHUD en 5 y VoiceIndicator en 10).
+
+## Leg Animation (blockout en `TortugaCharacter`)
+- Animación de patas inline en `Tick` → `TickLegAnimation()`. No usa `TN_LegAnimComponent` (ese es opcional para otros actores BP).
+- Añadir en el Blueprint dos SceneComponents hijos con nombres exactos `Pata1` y `Pata2`. Origen del componente = pivote en la cadera (extremo superior del cubo).
+- `LegWalkAmplitudeDeg = 60°` (ambas patas simétricas), `LegSprintAmplitudeDeg = 90°`.
+- Las dos patas van en fase opuesta (+Angle / -Angle): efecto trote.
+- `LegSwingAxis = (0,1,0)` = eje Y local (adelante/atrás). Cambiar si los ejes locales del componente difieren.
+- **No hay rotación del mesh completo al sprintar** — ese comportamiento fue eliminado.
+
+
 - `TN_CoopGameState` centraliza todo el estado replicado de partida: `MatchFlowState`, `ReadyPlayers`, `ConnectedPlayers`, `PlayersInStartZone`, `ExpectedPlayers`, `CountdownValue`, `ServerMatchElapsedTime`, `FinishedPlayers`.
 - **Patrón crítico**: `OnRep_*` no dispara en la máquina que posee la variable (listen-server). Los game modes llaman `BroadcastFlowStateChange()` tras cambiar `MatchFlowState` para que el listen-server local también reciba la notificación via `OnMatchFlowStateChanged` delegate.
 - `TN_CoopPlayerState` replica por jugador: `bIsInReadyZone`, `bHasFinishedRun`, `bIsAlive`, `DeathZoneTimeRemaining`, `EquippedHelmetId`, `FinishTimeSeconds`, `FinishRank`.
@@ -69,7 +100,11 @@
 ## Loading screen
 - `MP_GameInstance` gestiona un loading screen global: `ShowLoadingScreen(Reason)`/`HideLoadingScreen()`.
 - Se engancha a `FCoreUObjectDelegates::PreLoadMap`/`PostLoadMapWithWorld` para mostrar/ocultar automáticamente en ServerTravel.
-- Widget class configurable via `LoadingScreenWidgetClass` (TSubclassOf). Widget base: `TN_LoadingScreenWidget` con `BindWidgetOptional` para `RootOverlay` y `StatusText`.
+- Widget class configurable via `LoadingScreenWidgetClass` (TSubclassOf). Widget base: `TN_LoadingScreenWidget` con `BindWidgetOptional` para `RootOverlay` y `StatusText`. El fallback C++ incluye fondo negro y texto centrado de tamaño 24.
+- Los GameModes **no** llaman `ShowLoadingScreen` explícitamente antes de `ServerTravel`. El callback `HandlePreLoadMap` es el encargado principal de mostrar la loading screen para cualquier transición de mapa.
+- `HandlePostLoadMap` oculta la loading screen cuando el mapa nuevo termina de cargar.
+- `ShowLoadingScreen` usa `GetFirstLocalPlayerController()` como outer para `CreateWidget`. Si no hay PC, no se muestra (falla silenciosamente).
+- Z-order: 100000 (por encima de todo otro widget).
 
 ## Interacción — jerarquía y extensión
 - `TN_InteractableBase` (Abstract): base con mesh, prompt 3D (`TN_InteractPromptWidget` via `UWidgetComponent`), distancia configurable y `bInteractionEnabled` replicado. Hook de extensión: `OnInteracted` (`BlueprintNativeEvent`).

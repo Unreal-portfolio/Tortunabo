@@ -160,7 +160,7 @@ void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 		return;
 	}
 
-	LoadingScreenWidget->AddToViewport(5000);
+	LoadingScreenWidget->AddToViewport(100000);
 	bIsLoadingScreenVisible = true;
 	RefreshLoadingText(Reason);
 }
@@ -693,16 +693,30 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	case ENetworkFailure::NetDriverAlreadyExists: FailureTypeStr = TEXT("NetDriverAlreadyExists"); break;
 	case ENetworkFailure::NetDriverCreateFailure: FailureTypeStr = TEXT("NetDriverCreateFailure"); break;
 	case ENetworkFailure::NetDriverListenFailure: FailureTypeStr = TEXT("NetDriverListenFailure"); break;
-	case ENetworkFailure::ConnectionLost: FailureTypeStr = TEXT("ConnectionLost"); break;
-	case ENetworkFailure::ConnectionTimeout: FailureTypeStr = TEXT("ConnectionTimeout"); break;
-	case ENetworkFailure::FailureReceived: FailureTypeStr = TEXT("FailureReceived"); break;
-	case ENetworkFailure::OutdatedClient: FailureTypeStr = TEXT("OutdatedClient"); break;
-	case ENetworkFailure::OutdatedServer: FailureTypeStr = TEXT("OutdatedServer"); break;
+	case ENetworkFailure::ConnectionLost:         FailureTypeStr = TEXT("ConnectionLost"); break;
+	case ENetworkFailure::ConnectionTimeout:      FailureTypeStr = TEXT("ConnectionTimeout"); break;
+	case ENetworkFailure::FailureReceived:        FailureTypeStr = TEXT("FailureReceived"); break;
+	case ENetworkFailure::OutdatedClient:         FailureTypeStr = TEXT("OutdatedClient"); break;
+	case ENetworkFailure::OutdatedServer:         FailureTypeStr = TEXT("OutdatedServer"); break;
 	case ENetworkFailure::PendingConnectionFailure: FailureTypeStr = TEXT("PendingConnectionFailure"); break;
 	default: FailureTypeStr = TEXT("Unknown"); break;
 	}
 
 	UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+
+	// Cuando el listen server falla al iniciarse, la sesión Steam sigue abierta
+	// como zombi. La destruimos para que el usuario pueda reintentar sin reiniciar Steam.
+	// NetDriverListenFailure: el socket P2P no pudo abrirse (Steam en mal estado o
+	// sesión previa no cerrada limpiamente).
+	if (FailureType == ENetworkFailure::NetDriverListenFailure ||
+		FailureType == ENetworkFailure::NetDriverCreateFailure ||
+		FailureType == ENetworkFailure::NetDriverAlreadyExists)
+	{
+		HideLoadingScreen();
+		// Destruir la sesión Steam zombi para que el próximo intento de HostSession funcione.
+		DestroyCurrentSession();
+		UE_LOG(LogTemp, Warning, TEXT("[MP] NetDriverListenFailure detectado — sesión Steam destruida. Reinicia Steam si el error persiste."));
+	}
 }
 
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

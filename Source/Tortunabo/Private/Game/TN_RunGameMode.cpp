@@ -283,6 +283,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 
 	if (UWorld* World = GetWorld())
 	{
+
 		// Stop all audio capture streams while WASAPI is still alive.
 		// This prevents ACCESS_VIOLATION crashes during level teardown.
 		UProximityVoiceComponent::ShutdownAllCapture(World);
