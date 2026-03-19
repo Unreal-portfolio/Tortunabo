@@ -7,16 +7,25 @@
 class UProgressBar;
 class UWidget;
 class UTextBlock;
+class UImage;
 class UTN_StaminaComponent;
+class UTN_InventoryComponent;
+class UTexture2D;
 
 /**
  * HUD principal del jugador.
- * Contiene la barra de stamina y será el contenedor de toda la UI en pantalla del personaje.
  *
  * Widgets opcionales — nómbralos EXACTAMENTE igual en el BP Designer:
- *   - StaminaBar       (UProgressBar)  → relleno proporcional a stamina actual/max
+ *
+ *   STAMINA:
+ *   - StaminaBar       (UProgressBar)     → relleno proporcional a stamina actual/max
  *   - ExhaustedRoot    (cualquier widget) → visible solo durante penalización por agotamiento
- *   - StaminaText      (UTextBlock)    → opcional, muestra "120 / 200"
+ *   - StaminaText      (UTextBlock)       → opcional, muestra "120 / 200"
+ *
+ *   INVENTARIO:
+ *   - SlotEquippedImage   (UImage)          → icono del ítem equipado (slot activo)
+ *   - SlotStoredImage     (UImage)          → icono del ítem guardado (slot pasivo)
+ *   - SlotEquippedSelector (cualquier widget) → borde/resaltado del slot activo (siempre visible)
  */
 UCLASS()
 class TORTUNABO_API UTN_PlayerHUDWidget : public UUserWidget
@@ -29,39 +38,71 @@ protected:
 
 	// ── Stamina bar ───────────────────────────────────────────────────────────
 
-	/** Barra de stamina. En el BP Designer nómbrala exactamente "StaminaBar". */
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UProgressBar> StaminaBar;
 
-	/** Widget que se muestra cuando el jugador está penalizado por agotamiento (ej. un icono rojo). */
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UWidget> ExhaustedRoot;
 
-	/** TextBlock opcional que muestra "120 / 200". */
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> StaminaText;
 
-	// ── Blueprint hooks ───────────────────────────────────────────────────────
+	// ── Inventory slots ───────────────────────────────────────────────────────
 
 	/**
-	 * Llamado cada tick cuando la stamina cambia. Úsalo en BP para animar la barra,
-	 * cambiar colores, etc.
-	 * @param CurrentStamina  Stamina actual (0..MaxStamina)
-	 * @param MaxStamina      Stamina máxima
-	 * @param bExhausted      True mientras dura la penalización por agotamiento
+	 * Imagen del slot equipado (activo). Muestra ItemIcon del ítem en mano.
+	 * Nómbralo exactamente "SlotEquippedImage" en el BP Designer.
 	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> SlotEquippedImage;
+
+	/**
+	 * Imagen del slot guardado (pasivo). Muestra ItemIcon del ítem en reserva.
+	 * Nómbralo exactamente "SlotStoredImage" en el BP Designer.
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> SlotStoredImage;
+
+	/**
+	 * Indicador visual del slot activo (borde, brillo, etc.).
+	 * Siempre posicionado sobre el slot equipado. Puedes animarlo desde BP.
+	 * Nómbralo exactamente "SlotEquippedSelector" en el BP Designer.
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UWidget> SlotEquippedSelector;
+
+	// ── Blueprint hooks ───────────────────────────────────────────────────────
+
 	UFUNCTION(BlueprintImplementableEvent, Category = "Stamina")
 	void OnStaminaUpdated(float CurrentStamina, float MaxStamina, bool bExhausted);
 
+	/**
+	 * Llamado cuando el inventario cambia. Úsalo en BP para animaciones de slot.
+	 * @param EquippedIcon    Icono del ítem equipado (puede ser null si no hay ítem)
+	 * @param bHasEquipped    True si hay ítem en el slot equipado
+	 * @param StoredIcon      Icono del ítem guardado (puede ser null si no hay ítem)
+	 * @param bHasStored      True si hay ítem en el slot guardado
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Inventory")
+	void OnInventoryUpdated(UTexture2D* EquippedIcon, bool bHasEquipped,
+	                        UTexture2D* StoredIcon,   bool bHasStored);
+
 private:
 	void RefreshStaminaWidgets();
+	void RefreshInventoryWidgets();
 
-	TWeakObjectPtr<UTN_StaminaComponent> CachedStamina;
+	TWeakObjectPtr<UTN_StaminaComponent>    CachedStamina;
+	TWeakObjectPtr<UTN_InventoryComponent>  CachedInventory;
 
-	float LastStamina   = -1.f;
+	// Stamina throttle
+	float LastStamina    = -1.f;
 	bool  bLastExhausted = false;
 
-	static constexpr float kRefreshInterval = 0.05f; // 20 fps de refresco UI
+	// Inventory change detection (compare by ItemId to avoid redundant refreshes)
+	FName LastEquippedId = NAME_None;
+	FName LastStoredId   = NAME_None;
+
+	static constexpr float kRefreshInterval = 0.05f;
 	float RefreshAccumulator = 0.f;
 };
 

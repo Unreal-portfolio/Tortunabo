@@ -15,6 +15,8 @@
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/AudioComponent.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "TimerManager.h"
@@ -72,6 +74,13 @@ ATortugaCharacter::ATortugaCharacter()
 
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
+
+	// Emote sounds: 10 slots (one per emote), assign in BP Class Defaults.
+	EmoteSounds.SetNum(10);
+
+	// Make capsule invisible to camera traces → the spring arm won't collide
+	// with other players' capsules. Each player's own pawn is already auto-ignored.
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 }
 
 void ATortugaCharacter::BeginPlay()
@@ -206,6 +215,8 @@ void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	FocusedInteractable = nullptr;
 	ActiveEmoteIndex   = -1;
 	bEmoteBlendingOut  = false;
+
+	StopEmoteSound();
 
 	GetWorldTimerManager().ClearTimer(InteractionScanTimerHandle);
 	GetWorldTimerManager().ClearTimer(KnockdownTimerHandle);
@@ -813,9 +824,11 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 
 	if (bKnocked)
 	{
-		FRotator WorldRot = MeshComp->GetComponentRotation();
-		WorldRot.Pitch -= 100.0f;
-		MeshComp->SetWorldRotation(WorldRot);
+		// Use RELATIVE rotation so CharacterMovementComponent replication
+		// doesn't overwrite the visual on remote clients.
+		FRotator KnockedRot = MeshDefaultRelativeRotation;
+		KnockedRot.Pitch -= 100.0f;
+		MeshComp->SetRelativeRotation(KnockedRot);
 	}
 	else
 	{
@@ -853,6 +866,9 @@ void ATortugaCharacter::StartEmoteLocally(int32 Index)
 	EmoteTime          = 0.f;
 	bEmoteBlendingOut  = false;
 	EmoteBlendOutTimer = 0.f;
+
+	// Start looping audio for this emote (proximity-attenuated).
+	PlayEmoteSound(Index);
 }
 
 void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
@@ -906,6 +922,9 @@ void ATortugaCharacter::CancelEmote()
 	ActiveEmoteIndex   = -1;
 	bEmoteBlendingOut  = true;
 	EmoteBlendOutTimer = 0.f;
+
+	// Stop looping emote audio.
+	StopEmoteSound();
 
 	// Replicar cancelación a otros clientes (solo desde el jugador que controla)
 	if (IsLocallyControlled())
@@ -1146,7 +1165,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// 0.3s para que los brazos lleguen a la posición de partida
 		const float setup = Sat(T / 0.3f);
 
-		// Palmada asimétrica: baja rápido (25% ciclo), sube lento (75% ciclo)
+		// Palmada asimétrica: baja rápido (25% ciclo), sube normal (50% ciclo), pausa (25%)
 		const float clapT     = FMath::Max(T - 0.3f, 0.f);
 		const float cycleTime = 0.5f;   // 2 palmadas/segundo
 		float palmada = 0.f;
@@ -1158,11 +1177,12 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 				// Fast down: 0 → −90° en 25% del ciclo
 				palmada = -90.f * (phase / 0.25f);
 			}
-			else
+			else if (phase < 0.75f)
 			{
-				// Slow up: −90° → 0 en 75% del ciclo
-				palmada = -90.f * (1.f - (phase - 0.25f) / 0.75f);
+				// Normal up: −90° → 0 en 50% del ciclo
+				palmada = -90.f * (1.f - (phase - 0.25f) / 0.50f);
 			}
+			// else: 25% pausa en reposo (brazos arriba antes de la siguiente palmada)
 		}
 
 		// Brazo1 (dcha): AX 90° sube + AZ 90° centra + AY palmada
@@ -1206,8 +1226,11 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// Cabeza
 		Ap(Cabeza, CabezaRestRot, 5.f * S(6.f, T), AY);
 
-		// Cola: gira 180° en eje lateral rápido y se queda ahí
-		Ap(Cola, ColaRestRot, colSnap * -185.f, TY);
+		// Cola: entra rápido por −TY (0.2s), sale por el mismo lado (0.4s a partir de T=1.5)
+		// — la vuelta es explícita para que no tome el arco opuesto en el blend-out.
+		const float colOut = T > 2.5f ? Sat((T - 2.5f) / 0.1f) : 0.f;
+		const float colEnv = colSnap * (1.f - colOut);
+		Ap(Cola, ColaRestRot, colEnv * -175.f, TY);
 
 		bEnded = (T >= 2.f);
 		break;
@@ -1386,6 +1409,68 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 	}
 
 	if (bEnded) { CancelEmote(); }
+}
+
+// ── Emote Audio ───────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::PlayEmoteSound(int32 Index)
+{
+	// Stop any previous emote sound first.
+	StopEmoteSound();
+
+	if (!EmoteSounds.IsValidIndex(Index) || !EmoteSounds[Index])
+	{
+		return;
+	}
+
+	// Lazily create the audio component on first use (attached to root, spatialized).
+	if (!EmoteAudioComponent)
+	{
+		EmoteAudioComponent = NewObject<UAudioComponent>(this, TEXT("EmoteAudio"));
+		if (!EmoteAudioComponent)
+		{
+			return;
+		}
+
+		EmoteAudioComponent->SetupAttachment(GetRootComponent());
+		EmoteAudioComponent->bAutoActivate = false;
+		EmoteAudioComponent->bAlwaysPlay = false;
+
+		// Proximity attenuation matching voice chat range.
+		EmoteAudioComponent->bAllowSpatialization = true;
+		EmoteAudioComponent->bOverrideAttenuation = true;
+		EmoteAudioComponent->AttenuationOverrides.bAttenuate = true;
+		EmoteAudioComponent->AttenuationOverrides.bSpatialize = true;
+		EmoteAudioComponent->AttenuationOverrides.FalloffDistance = FMath::Max(EmoteAudioOuterRadius - EmoteAudioInnerRadius, 100.f);
+		EmoteAudioComponent->AttenuationOverrides.AttenuationShape = EAttenuationShape::Sphere;
+		EmoteAudioComponent->AttenuationOverrides.AttenuationShapeExtents = FVector(EmoteAudioInnerRadius);
+		EmoteAudioComponent->AttenuationOverrides.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+
+		// Auto-restart when sound finishes → forced loop while emote is active.
+		EmoteAudioComponent->OnAudioFinished.AddDynamic(this, &ATortugaCharacter::OnEmoteAudioFinished);
+
+		EmoteAudioComponent->RegisterComponent();
+	}
+
+	EmoteAudioComponent->SetSound(EmoteSounds[Index]);
+	EmoteAudioComponent->Play();
+}
+
+void ATortugaCharacter::StopEmoteSound()
+{
+	if (EmoteAudioComponent && EmoteAudioComponent->IsPlaying())
+	{
+		EmoteAudioComponent->Stop();
+	}
+}
+
+void ATortugaCharacter::OnEmoteAudioFinished()
+{
+	// If an emote is still active, restart the sound for seamless looping.
+	if (ActiveEmoteIndex >= 0 && EmoteAudioComponent && EmoteAudioComponent->Sound)
+	{
+		EmoteAudioComponent->Play();
+	}
 }
 
 // ── Per-emote input handlers ──────────────────────────────────────────────────

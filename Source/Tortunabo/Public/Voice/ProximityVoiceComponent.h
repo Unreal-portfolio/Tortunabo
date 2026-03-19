@@ -51,7 +51,7 @@ public:
 	float InnerRadius = 300.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Attenuation")
-	float OuterRadius = 3000.f;
+	float OuterRadius = 2500.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Detection")
 	float SpeakingThreshold = 0.01f;

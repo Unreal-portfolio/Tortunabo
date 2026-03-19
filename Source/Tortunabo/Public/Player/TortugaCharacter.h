@@ -14,6 +14,8 @@ class UTN_InventoryComponent;
 class UTN_StaminaComponent;
 class ATN_InteractableBase;
 class USceneComponent;
+class UAudioComponent;
+class USoundBase;
 
 UCLASS()
 class TORTUNABO_API ATortugaCharacter : public ACharacter
@@ -111,6 +113,23 @@ protected:
 	/** Seconds to smoothly interpolate all limbs back to rest after an emote ends. */
 	UPROPERTY(EditDefaultsOnly, Category = "Emotes", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float EmoteBlendOutDuration = 0.25f;
+
+	/**
+	 * Sound to play for each emote (index 0–9). Assign in Blueprint Class Defaults.
+	 * Each element maps 1:1 to the emote at that index. Leave null for silent emotes.
+	 * Sound loops while the emote is active; stops on cancel/blend-out.
+	 * Uses proximity attenuation matching the voice chat range.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Emotes|Audio")
+	TArray<TObjectPtr<USoundBase>> EmoteSounds;
+
+	/** Inner radius (cm) for emote audio — full volume inside this range. Matches voice chat default. */
+	UPROPERTY(EditDefaultsOnly, Category = "Emotes|Audio", meta = (ClampMin = "0.0"))
+	float EmoteAudioInnerRadius = 300.f;
+
+	/** Outer radius (cm) for emote audio — silent beyond this range. Matches voice chat default. */
+	UPROPERTY(EditDefaultsOnly, Category = "Emotes|Audio", meta = (ClampMin = "0.0"))
+	float EmoteAudioOuterRadius = 2500.f;
 
 	/**
 	 * Eje primario de los brazos en espacio del PADRE (T-Pose).
@@ -259,6 +278,19 @@ private:
 	void CancelEmote();
 	/** Per-frame emote tick: advances animation and drives component rotations. */
 	void TickEmote(float DeltaTime);
+
+	// ── Emote Audio ──────────────────────────────────────────────────────────
+	/** Lazily-created audio component for emote sounds. Attached to root, proximity-attenuated. */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> EmoteAudioComponent;
+
+	/** Start playing the sound for the given emote index (looped, proximity-attenuated). */
+	void PlayEmoteSound(int32 Index);
+	/** Stop any currently playing emote sound. */
+	void StopEmoteSound();
+	/** Callback: restarts emote audio when the clip ends, while the emote is still active. */
+	UFUNCTION()
+	void OnEmoteAudioFinished();
 	/** Apply a single-axis rotation additively on top of a component's rest rotation. */
 	void ApplyEmoteAngle(USceneComponent* Comp, const FRotator& Rest, float AngleDeg, const FVector& Axis) const;
 	/** Apply two-axis compound rotation (e.g. tail spiralling during Fiesta). */

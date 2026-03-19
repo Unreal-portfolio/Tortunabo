@@ -10,7 +10,7 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
-	SetReplicateMovement(false); // Física local en cada cliente; solo se replica spawn+velocidad inicial
+	SetReplicateMovement(true); // Server runs physics; clients get replicated position
 
 	// Mesh ES el root: UStaticMeshComponent es UPrimitiveComponent.
 	// ProjectileMovement actualizará directamente la posición del actor.
@@ -108,7 +108,9 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 
 	SetActorLocation(ThrowData.SpawnLocation);
 
-	if (ProjectileMovement)
+	// Only the server activates ProjectileMovement — clients receive the
+	// replicated position via SetReplicateMovement(true).
+	if (HasAuthority() && ProjectileMovement)
 	{
 		ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
 		ProjectileMovement->Activate(true);
@@ -142,10 +144,13 @@ void ATN_ThrowableItemActor::OnMeshHit(UPrimitiveComponent* HitComponent, AActor
 		return;
 	}
 
-	// Golpe a otro jugador → knockdown, destruir bola y dejar pickup exactamente ahí.
-	HitPlayer->ApplyKnockdown(KnockbackDuration);
-	SpawnPickupAtLocation(GetActorLocation());
-	Destroy();
+	// Golpe a otro jugador → knockdown. The ball bounces off naturally
+	// via ProjectileMovement (bShouldBounce=true). Pickup spawns when ball stops.
+	if (!AlreadyHitPlayers.Contains(HitPlayer))
+	{
+		AlreadyHitPlayers.Add(HitPlayer);
+		HitPlayer->ApplyKnockdown(KnockbackDuration);
+	}
 }
 
 void ATN_ThrowableItemActor::OnProjectileStopped(const FHitResult& ImpactResult)

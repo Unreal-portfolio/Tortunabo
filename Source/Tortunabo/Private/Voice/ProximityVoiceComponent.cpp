@@ -274,7 +274,20 @@ void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 
 	PlaybackAudioComponent->SetupAttachment(Owner->GetRootComponent());
 	PlaybackAudioComponent->bAutoActivate = false;
-	PlaybackAudioComponent->bAlwaysPlay = true;
+	PlaybackAudioComponent->bAlwaysPlay = false; // Allow attenuation to cull distant voices
+
+	// Configure spatial attenuation for proximity voice:
+	// Full volume within InnerRadius (default 300cm = 3m),
+	// fades to silence at OuterRadius (default 2500cm = 25m).
+	PlaybackAudioComponent->bAllowSpatialization = true;
+	PlaybackAudioComponent->bOverrideAttenuation = true;
+	PlaybackAudioComponent->AttenuationOverrides.bAttenuate = true;
+	PlaybackAudioComponent->AttenuationOverrides.bSpatialize = true;
+	PlaybackAudioComponent->AttenuationOverrides.FalloffDistance = FMath::Max(OuterRadius - InnerRadius, 100.f);
+	PlaybackAudioComponent->AttenuationOverrides.AttenuationShape = EAttenuationShape::Sphere;
+	PlaybackAudioComponent->AttenuationOverrides.AttenuationShapeExtents = FVector(InnerRadius);
+	PlaybackAudioComponent->AttenuationOverrides.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+
 	PlaybackAudioComponent->RegisterComponent();
 	PlaybackAudioComponent->SetVolumeMultiplier(PlaybackVolume);
 	PlaybackAudioComponent->SetSound(ProceduralSoundWave);

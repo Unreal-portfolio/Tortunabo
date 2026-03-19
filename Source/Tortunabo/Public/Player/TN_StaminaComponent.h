@@ -92,6 +92,8 @@ private:
 	float RechargeElapsed = 0.0f;
 	float TimeSinceSprintStopped = 0.0f;
 	float ExhaustionTimer = 0.0f;
+
+	UPROPERTY(Replicated)
 	bool bIsExhausted = false;
 
 	UFUNCTION()

@@ -8,7 +8,9 @@
 - **Non-seamless Travel**: `TN_HQGameMode` y `TN_RunGameMode` usan `bUseSeamlessTravel = false`. Cada `ServerTravel` destruye el mundo viejo completo y crea uno nuevo (PCs, PlayerStates, Pawns se recrean).
   - Consecuencia: `PostLogin` SÍ se llama en cada mapa. No hay pawns residuales ni estado espectador que persista entre mapas.
   - **NO usar seamless travel** en este proyecto: intentos previos con `bUseSeamlessTravel = true` causaron doble spawneo de jugadores, modo espectador residual al volver al lobby, y crashes WASAPI por componentes de voz en estado inconsistente. El flujo non-seamless es la configuración validada y funcional.
+  - **ServerTravel con `?game=` explícito**: `BeginMatchTravel` usa `?listen?game=/Script/Tortunabo.TN_RunGameMode` y `FinishRoundAndReturnToLobby` usa `?listen?game=/Script/Tortunabo.TN_HQGameMode`. Esto evita que el mapa cargue con el GameMode equivocado si `WorldSettings` no tiene override.
   - `OnNetworkFailure` en `MP_GameInstance` destruye la sesión Steam automáticamente si el listen socket falla (ej. `NetDriverListenFailure` por sesión zombi), permitiendo reintentar sin reiniciar Steam.
+  - `NetChecksumMismatch` es detectado con mensaje claro al usuario. La causa principal es builds incompatibles (Live Coding, Hot Reload). **Ambas máquinas deben usar el mismo DLL compilado** — compilar con `-NoHotReload` y nunca usar Live Coding durante tests multiplayer.
 
 ## Arquitectura por dominios (Source/Tortunabo)
 - `Public/Core`, `Private/Core`: estado replicado, tipos de flujo e inventario (`TN_CoopGameState`, `TN_CoopPlayerState`, `TN_MatchFlowTypes`, `TN_InventoryTypes`).
@@ -31,6 +33,7 @@
   - `GlobalDefaultGameMode` apunta a BP: `/Game/Blueprints/Gameplay/GameModes/BP_MenuGameMode.BP_MenuGameMode_C` (debe existir como BP hijo de `AMP_MenuGameMode`).
   - `GameDefaultMap=/Game/Maps/Lobby/LVL_Menu`
   - NetDriver SteamSockets y `OnlineSubsystemSteam` con `SteamDevAppId=480`.
+  - `[Voice] bEnabled=false`: desactiva el VOIP nativo de UE para que no duplique audio con `ProximityVoiceComponent`.
 - `Config/DefaultInput.ini`: backend Enhanced Input (`EnhancedPlayerInput`, `EnhancedInputComponent`).
 - `Config/DefaultGame.ini`: cook de `/Game/Maps`, `/Game/UI`, `/Game/Input`. Contiene `SteamDevAppId=480` bajo `[/Script/Tortunabo.MP_GameInstance]` (UPROPERTY Config).
 
@@ -59,7 +62,7 @@
 - **Penalización por agotamiento**: si `CurrentStamina` llega a 0 mientras sprint, `bIsExhausted = true` y la recuperación se bloquea `ExhaustionPenaltySeconds = 1.0f` segundos ANTES de que empiece el `RechargeDelaySeconds` normal.
 - `IsExhausted()` (BlueprintPure) disponible para UI y lógica BP.
 - **NO hay rotación del mesh al sprintar** (`ApplySprintVisual` es no-op). El feedback visual de sprint viene solo del aumento de amplitud de piernas (60°→90°).
-- Replicación: `CurrentStamina` (owner-only), `bIsSprinting` (all), `bSprintRequested` (all), `bUnlimitedStamina` (owner-only).
+- Replicación: `CurrentStamina` (owner-only), `bIsSprinting` (all), `bSprintRequested` (all), `bUnlimitedStamina` (owner-only), `bIsExhausted` (owner-only).
 
 ## Player HUD (`TN_PlayerHUDWidget`)
 - Widget C++ base para toda la UI en pantalla del jugador durante gameplay.
@@ -79,6 +82,23 @@
 - Las dos patas van en fase opuesta (+Angle / -Angle): efecto trote.
 - `LegSwingAxis = (0,1,0)` = eje Y local (adelante/atrás). Cambiar si los ejes locales del componente difieren.
 - **No hay rotación del mesh completo al sprintar** — ese comportamiento fue eliminado.
+
+## Emote Audio
+- Cada emote (0–9) puede tener un `USoundBase` asociado: array `EmoteSounds` en `TortugaCharacter`, asignable en BP Class Defaults.
+- El audio se reproduce en loop mientras el emote está activo; se detiene al cancelar/terminar.
+- Usa atenuación de proximidad idéntica al chat de voz: `EmoteAudioInnerRadius = 300cm` (3m), `EmoteAudioOuterRadius = 2500cm` (25m), `FalloffMode = NaturalSound`.
+- `EmoteAudioComponent` se crea lazily en el primer uso, adjunto al root del personaje.
+- Loop forzado via `OnAudioFinished` delegate → funciona con cualquier `USoundWave`/`SoundCue` sin necesidad de marcar el asset como looping.
+
+## Camera y colisión entre personajes
+- `GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore)` en el constructor de `ATortugaCharacter`. El spring arm del jugador local no choca con las cápsulas de otros jugadores.
+- El spring arm ignora su propio pawn automáticamente (UE lo hace internamente). La línea anterior solo afecta a personajes remotos.
+
+## Knockdown replication
+- `bIsKnockedDown` (ReplicatedUsing = OnRep_IsKnockedDown) se replica a todos los clientes.
+- `ApplyKnockdownVisual` usa `SetRelativeRotation` (NO `SetWorldRotation`) para que `CharacterMovementComponent` no sobreescriba la rotación en clientes remotos.
+- El listen-server aplica visual y bloqueo de movimiento directamente en `ApplyKnockdown()`/`RecoverFromKnockdown()` porque `OnRep` no dispara localmente.
+- Los clientes bloquean movimiento en `OnRep_IsKnockedDown` para no enviar inputs durante knockdown.
 
 
 - `TN_CoopGameState` centraliza todo el estado replicado de partida: `MatchFlowState`, `ReadyPlayers`, `ConnectedPlayers`, `PlayersInStartZone`, `ExpectedPlayers`, `CountdownValue`, `ServerMatchElapsedTime`, `FinishedPlayers`.
@@ -110,10 +130,12 @@
 - `TN_InteractableBase` (Abstract): base con mesh, prompt 3D (`TN_InteractPromptWidget` via `UWidgetComponent`), distancia configurable y `bInteractionEnabled` replicado. Hook de extensión: `OnInteracted` (`BlueprintNativeEvent`).
 - `TN_DirectInteractableBase`: interacción directa con cooldown. Hook: `OnDirectInteraction` (`BlueprintImplementableEvent`).
 - `TN_PickupInteractableBase`: recoge item al inventario, replica `bTaken`. Hook: `OnPickedUp` (`BlueprintImplementableEvent`). Soporta inicialización runtime via `InitializeFromInventoryItem()`.
-- `TN_ThrowableItemActor`: proyectil con `UProjectileMovementComponent`. Replica datos de lanzamiento (`ReplicatedSpawnLocation`, `ReplicatedLaunchVelocity`, `bLaunchDataReady`) para sincronizar en clients.
+- `TN_ThrowableItemActor`: proyectil con `UProjectileMovementComponent`. Usa `SetReplicateMovement(true)`: el servidor ejecuta la física y los clientes reciben posición replicada. Datos de lanzamiento agrupados en `FTN_ThrowLaunchData` (struct replicado). Al golpear un jugador, aplica knockdown pero la bola **rebota** (no se destruye); `AlreadyHitPlayers` previene knockdowns duplicados en el mismo lanzamiento. Pickup se genera al detenerse (`OnProjectileStopped`) o expirar (`LifeSpanExpired`).
 
-## VOIP — notas de seguridad en shutdown
+## VOIP — proximidad y seguridad en shutdown
 - `ProximityVoiceComponent` captura audio con `FAudioCaptureSynth` (WASAPI en Windows).
+- **Atenuación por distancia**: `PlaybackAudioComponent` usa `bOverrideAttenuation` con `InnerRadius` (300cm = 3m, volumen pleno) y `OuterRadius` (2500cm = 25m, silencio). `FalloffMode = NaturalSound`. `bAlwaysPlay = false` permite que UE descarte voces lejanas.
+- **VOIP nativo desactivado**: `[Voice] bEnabled=false` en `DefaultEngine.ini`. Sin esto, UE captura/transmite audio en paralelo y se escucha doble en clientes.
 - **Bug UE 5.6**: los handles WASAPI internos del synth pueden invalidarse (`INVALID_HANDLE_VALUE`) durante el ciclo de vida del mundo. Tanto `StopCapturing()` como el destructor intentan usar esos handles y causan `ACCESS_VIOLATION`. **Nunca** llamar a ninguno de los dos.
 - **Patrón de shutdown proactivo**: antes de `ServerTravel`/`ClientTravel`, los GameModes y `MP_GameInstance` llaman `UProximityVoiceComponent::ShutdownAllCapture(World)`.
 - `PrepareForLevelTransition()` llama `CleanupRuntimeResources()` que hace `AudioCaptureSynth.Release()` (orphan sin tocar internals), limpia playback/UI, y marca el componente como cleaned up.

@@ -1,21 +1,32 @@
 ﻿#include "UI/HUD/TN_PlayerHUDWidget.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Player/TN_InventoryComponent.h"
+#include "Core/TN_InventoryTypes.h"
 #include "Components/ProgressBar.h"
 #include "Components/Widget.h"
 #include "Components/TextBlock.h"
+#include "Components/Image.h"
+#include "Styling/SlateBrush.h"
 #include "GameFramework/Pawn.h"
 
 void UTN_PlayerHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// Intentar cachear el componente de stamina del pawn local
 	if (const APawn* Pawn = GetOwningPlayerPawn())
 	{
-		CachedStamina = Pawn->FindComponentByClass<UTN_StaminaComponent>();
+		CachedStamina    = Pawn->FindComponentByClass<UTN_StaminaComponent>();
+		CachedInventory  = Pawn->FindComponentByClass<UTN_InventoryComponent>();
+	}
+
+	// El selector siempre está sobre el slot equipado — mostrarlo desde el inicio.
+	if (SlotEquippedSelector)
+	{
+		SlotEquippedSelector->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 
 	RefreshStaminaWidgets();
+	RefreshInventoryWidgets();
 }
 
 void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -23,20 +34,16 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	// Re-cachear si el pawn cambió (posesión, travel, etc.)
-	if (!CachedStamina.IsValid())
+	if (!CachedStamina.IsValid() || !CachedInventory.IsValid())
 	{
 		if (const APawn* Pawn = GetOwningPlayerPawn())
 		{
-			CachedStamina = Pawn->FindComponentByClass<UTN_StaminaComponent>();
+			CachedStamina   = Pawn->FindComponentByClass<UTN_StaminaComponent>();
+			CachedInventory = Pawn->FindComponentByClass<UTN_InventoryComponent>();
 		}
 	}
 
-	if (!CachedStamina.IsValid())
-	{
-		return;
-	}
-
-	// Throttle: refrescar a ~20 fps para no sobrecargar la UI
+	// Throttle compartido: refrescar a ~20 fps
 	RefreshAccumulator += InDeltaTime;
 	if (RefreshAccumulator < kRefreshInterval)
 	{
@@ -44,29 +51,46 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 	}
 	RefreshAccumulator = 0.f;
 
-	const float Current    = CachedStamina->GetCurrentStamina();
-	const bool  bExhausted = CachedStamina->IsExhausted();
-
-	// Solo actualizar si algo cambió (evitar llamadas redundantes a widgets)
-	if (FMath::IsNearlyEqual(Current, LastStamina, 0.5f) && bExhausted == bLastExhausted)
+	// ── Stamina ──────────────────────────────────────────────────────────────
+	if (CachedStamina.IsValid())
 	{
-		return;
+		const float Current    = CachedStamina->GetCurrentStamina();
+		const bool  bExhausted = CachedStamina->IsExhausted();
+
+		if (!FMath::IsNearlyEqual(Current, LastStamina, 0.5f) || bExhausted != bLastExhausted)
+		{
+			LastStamina    = Current;
+			bLastExhausted = bExhausted;
+			RefreshStaminaWidgets();
+		}
 	}
 
-	LastStamina    = Current;
-	bLastExhausted = bExhausted;
+	// ── Inventario ────────────────────────────────────────────────────────────
+	if (CachedInventory.IsValid())
+	{
+		const FName EquippedId = CachedInventory->HasEquippedItem()
+			? CachedInventory->GetEquippedItem().ItemId : NAME_None;
+		const FName StoredId   = CachedInventory->HasStoredItem()
+			? CachedInventory->GetStoredItem().ItemId   : NAME_None;
 
-	RefreshStaminaWidgets();
+		if (EquippedId != LastEquippedId || StoredId != LastStoredId)
+		{
+			LastEquippedId = EquippedId;
+			LastStoredId   = StoredId;
+			RefreshInventoryWidgets();
+		}
+	}
 }
+
+// ── Stamina ───────────────────────────────────────────────────────────────────
 
 void UTN_PlayerHUDWidget::RefreshStaminaWidgets()
 {
 	if (!CachedStamina.IsValid())
 	{
-		// Sin pawn todavía: ocultar todo
-		if (StaminaBar)      { StaminaBar->SetVisibility(ESlateVisibility::Hidden); }
-		if (ExhaustedRoot)   { ExhaustedRoot->SetVisibility(ESlateVisibility::Hidden); }
-		if (StaminaText)     { StaminaText->SetVisibility(ESlateVisibility::Hidden); }
+		if (StaminaBar)    { StaminaBar->SetVisibility(ESlateVisibility::Hidden); }
+		if (ExhaustedRoot) { ExhaustedRoot->SetVisibility(ESlateVisibility::Hidden); }
+		if (StaminaText)   { StaminaText->SetVisibility(ESlateVisibility::Hidden); }
 		return;
 	}
 
@@ -83,18 +107,65 @@ void UTN_PlayerHUDWidget::RefreshStaminaWidgets()
 
 	if (ExhaustedRoot)
 	{
-		ExhaustedRoot->SetVisibility(bExhaust ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+		ExhaustedRoot->SetVisibility(bExhaust
+			? ESlateVisibility::HitTestInvisible
+			: ESlateVisibility::Hidden);
 	}
 
 	if (StaminaText)
 	{
 		StaminaText->SetVisibility(ESlateVisibility::HitTestInvisible);
 		StaminaText->SetText(FText::FromString(
-			FString::Printf(TEXT("%.0f / %.0f"), Current, MaxStam)
-		));
+			FString::Printf(TEXT("%.0f / %.0f"), Current, MaxStam)));
 	}
 
 	OnStaminaUpdated(Current, MaxStam, bExhaust);
 }
 
+// ── Inventory ─────────────────────────────────────────────────────────────────
 
+void UTN_PlayerHUDWidget::RefreshInventoryWidgets()
+{
+	const bool bHasEquipped = CachedInventory.IsValid() && CachedInventory->HasEquippedItem();
+	const bool bHasStored   = CachedInventory.IsValid() && CachedInventory->HasStoredItem();
+
+	UTexture2D* EquippedIcon = bHasEquipped ? CachedInventory->GetEquippedItem().ItemIcon.Get() : nullptr;
+	UTexture2D* StoredIcon   = bHasStored   ? CachedInventory->GetStoredItem().ItemIcon.Get()   : nullptr;
+
+	// Slot equipado
+	if (SlotEquippedImage)
+	{
+		if (EquippedIcon)
+		{
+			SlotEquippedImage->SetBrushFromTexture(EquippedIcon, /*bMatchSize=*/false);
+			SlotEquippedImage->SetColorAndOpacity(FLinearColor::White);
+		}
+		else
+		{
+			// Sin ítem: mostrar el slot vacío (imagen transparente)
+			SlotEquippedImage->SetColorAndOpacity(FLinearColor::Transparent);
+		}
+	}
+
+	// Slot guardado
+	if (SlotStoredImage)
+	{
+		if (StoredIcon)
+		{
+			SlotStoredImage->SetBrushFromTexture(StoredIcon, /*bMatchSize=*/false);
+			SlotStoredImage->SetColorAndOpacity(FLinearColor::White);
+		}
+		else
+		{
+			SlotStoredImage->SetColorAndOpacity(FLinearColor::Transparent);
+		}
+	}
+
+	// Selector: siempre sobre el slot equipado
+	if (SlotEquippedSelector)
+	{
+		SlotEquippedSelector->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
+
+	OnInventoryUpdated(EquippedIcon, bHasEquipped, StoredIcon, bHasStored);
+}

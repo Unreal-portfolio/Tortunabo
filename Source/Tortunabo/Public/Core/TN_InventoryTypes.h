@@ -5,6 +5,7 @@
 #include "TN_InventoryTypes.generated.h"
 
 class UStaticMesh;
+class UTexture2D;
 class ATN_PickupInteractableBase;
 class ATN_ThrowableItemActor;
 
@@ -28,6 +29,14 @@ struct FTN_InventoryItem : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	FName ItemId = NAME_None;
+
+	/**
+	 * Icono del ítem para la UI de inventario (HUD).
+	 * Asigna una Texture2D en el DataTable o en el BP del pickup.
+	 * Si es null, el slot del HUD aparecerá vacío.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|UI")
+	TObjectPtr<UTexture2D> ItemIcon = nullptr;
 
 	/** Mesh mostrada cuando el ítem está equipado en el jugador Y en el suelo como pickup. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")

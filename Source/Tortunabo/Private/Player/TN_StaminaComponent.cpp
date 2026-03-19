@@ -45,6 +45,7 @@ void UTN_StaminaComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 	DOREPLIFETIME(UTN_StaminaComponent, bIsSprinting);
 	DOREPLIFETIME(UTN_StaminaComponent, bSprintRequested);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bUnlimitedStamina, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bIsExhausted, COND_OwnerOnly);
 }
 
 void UTN_StaminaComponent::SetSprintRequested(bool bRequested)

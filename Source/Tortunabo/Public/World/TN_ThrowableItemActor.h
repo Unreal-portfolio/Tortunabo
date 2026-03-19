@@ -95,6 +95,9 @@ private:
 	bool bLaunchApplied  = false;
 	bool bPickupSpawned  = false;
 
+	/** Players already knocked down by this throw — prevents duplicate knockdowns. */
+	TSet<TWeakObjectPtr<ATortugaCharacter>> AlreadyHitPlayers;
+
 	UFUNCTION() void OnRep_ThrowData();
 
 	void ApplyLaunchDataIfReady();
