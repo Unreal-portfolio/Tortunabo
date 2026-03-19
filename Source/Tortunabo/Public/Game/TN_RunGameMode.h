@@ -6,6 +6,7 @@
 #include "TN_RunGameMode.generated.h"
 
 class APlayerController;
+class APlayerStart;
 
 UCLASS()
 class TORTUNABO_API ATN_RunGameMode : public AGameMode

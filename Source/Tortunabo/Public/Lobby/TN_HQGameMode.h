@@ -6,6 +6,7 @@
 #include "TN_HQGameMode.generated.h"
 
 class APlayerController;
+class APlayerStart;
 
 UCLASS()
 class TORTUNABO_API ATN_HQGameMode : public AGameMode
