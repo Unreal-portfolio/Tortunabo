@@ -268,7 +268,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 		// This prevents ACCESS_VIOLATION crashes during level teardown.
 		UProximityVoiceComponent::ShutdownAllCapture(World);
 
-		const FString TravelURL = MatchMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_RunGameMode");
+		const FString TravelURL = MatchMapPath + TEXT("?listen?game=/Game/Blueprints/Gameplay/GameModes/BP_RunGameMode.BP_RunGameMode_C");
 		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Iniciando ServerTravel hacia: %s"), *TravelURL);
 		World->ServerTravel(TravelURL);
 	}

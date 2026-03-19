@@ -288,7 +288,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		// This prevents ACCESS_VIOLATION crashes during level teardown.
 		UProximityVoiceComponent::ShutdownAllCapture(World);
 
-		World->ServerTravel(LobbyMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_HQGameMode"));
+		World->ServerTravel(LobbyMapPath + TEXT("?listen?game=/Game/Blueprints/Gameplay/GameModes/BP_HQGameMode.BP_HQGameMode_C"));
 	}
 }
 

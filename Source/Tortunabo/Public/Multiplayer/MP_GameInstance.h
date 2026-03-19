@@ -36,6 +36,7 @@ public:
 	virtual void Init() override;
 	virtual void Shutdown() override;
 
+
 	UPROPERTY(BlueprintAssignable, Category = "Multiplayer")
 	FOnStatusChanged OnStatusChanged;
 
@@ -135,6 +136,14 @@ private:
 	 */
 	bool bIsPendingTravel = false;
 
+	/** Retry counter for Listen() failures during ServerTravel (Steam socket collision). */
+	int32 TravelListenRetryCount = 0;
+	static constexpr int32 MaxTravelListenRetries = 5;
+	static constexpr float TravelListenRetryDelaySec = 0.5f;
+	FTimerHandle TravelListenRetryTimerHandle;
+
+	void RetryListenAfterTravel(UWorld* World);
+	void PerformDefaultDisconnect(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType);
 	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void EnsureSteamAppIdFile();
 	void HandlePreLoadMap(const FString& MapName);

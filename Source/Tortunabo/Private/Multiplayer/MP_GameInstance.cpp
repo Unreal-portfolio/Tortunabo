@@ -2,6 +2,7 @@
 #include "OnlineSubsystem.h"
 #include "Online.h"
 #include "OnlineSessionSettings.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/LocalPlayer.h"
 #include "Misc/FileHelper.h"
@@ -71,6 +72,13 @@ void UMP_GameInstance::Init()
 
 	if (GEngine)
 	{
+		// Remove UEngine's default network failure handler and install our own.
+		// UEngine::HandleNetworkFailure calls SetClientTravel("?closed") for ALL driver
+		// failures, which navigates back to the menu immediately. We need to suppress
+		// that travel during Listen() retries (Steam socket collision during ServerTravel).
+		// By replacing the handler, we replicate UEngine's disconnect logic for all cases
+		// EXCEPT the ones we're retrying.
+		GEngine->OnNetworkFailure().RemoveAll(GEngine);
 		GEngine->OnNetworkFailure().AddUObject(this, &UMP_GameInstance::OnNetworkFailure);
 	}
 
@@ -608,7 +616,21 @@ void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 
 void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 {
+	// Si todavía estamos reintentando Listen() (colisión de socket Steam),
+	// NO resetear los flags de travel. El retry necesita bIsPendingTravel == true
+	// para que OnNetworkFailure/HandleNetworkError no destruyan el mundo.
+	if (TravelListenRetryCount > 0)
+	{
+		UE_LOG(LogTemp, Log,
+			TEXT("[MP] HandlePostLoadMap: Mapa cargado pero Listen() pendiente de retry (%d/%d). "
+			     "Manteniendo bIsPendingTravel=true."),
+			TravelListenRetryCount, MaxTravelListenRetries);
+		// NO ocultar loading screen — el retry mostrará el estado actualizado.
+		return;
+	}
+
 	bIsPendingTravel = false;
+	TravelListenRetryCount = 0;
 	HideLoadingScreen();
 }
 
@@ -691,8 +713,55 @@ void UMP_GameInstance::RefreshLoadingText(const FString& Reason) const
 	}
 }
 
+void UMP_GameInstance::RetryListenAfterTravel(UWorld* World)
+{
+	if (!World)
+	{
+		return;
+	}
+
+	// Cancelar timer previo si existe
+	World->GetTimerManager().ClearTimer(TravelListenRetryTimerHandle);
+
+	TWeakObjectPtr<UWorld> WeakWorld(World);
+	TWeakObjectPtr<UMP_GameInstance> WeakThis(this);
+
+	World->GetTimerManager().SetTimer(TravelListenRetryTimerHandle,
+		[WeakWorld, WeakThis]()
+		{
+			UWorld* W = WeakWorld.Get();
+			UMP_GameInstance* GI = WeakThis.Get();
+			if (!W || !GI) { return; }
+
+			FURL ListenURL;
+			ListenURL.AddOption(TEXT("listen"));
+			if (W->Listen(ListenURL))
+			{
+				UE_LOG(LogTemp, Log, TEXT("[MP] ✓ Listen() reintento exitoso tras colisión de socket Steam."));
+				GI->UpdateStatus(TEXT("Conexión establecida."));
+				GI->bIsPendingTravel = false;
+				GI->TravelListenRetryCount = 0;
+				GI->HideLoadingScreen();
+			}
+			else
+			{
+				// Listen() falló de nuevo — OnNetworkFailure se encargará del siguiente reintento.
+				UE_LOG(LogTemp, Warning, TEXT("[MP] Listen() reintento %d falló — esperando siguiente intento..."),
+					GI->TravelListenRetryCount);
+			}
+		},
+		TravelListenRetryDelaySec, false);
+}
+
 void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString)
 {
+	// ──────────────────────────────────────────────────────────────────────
+	// NOTA: Este handler REEMPLAZA a UEngine::HandleNetworkFailure (que fue
+	// removido del delegate en Init). Somos los ÚNICOS que escuchamos
+	// OnNetworkFailure. Eso nos da control total sobre cuándo llamar
+	// a HandleDisconnect (que navega a ?closed).
+	// ──────────────────────────────────────────────────────────────────────
+
 	FString FailureTypeStr;
 	switch (FailureType)
 	{
@@ -712,9 +781,6 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	UE_LOG(LogTemp, Warning, TEXT("[MP] NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString);
 
 	// ---------- SERVIDOR: errores de socket/driver ----------
-	// Pueden ocurrir en dos contextos:
-	// 1. Inicio de conexión (sesión zombi de Steam) → destruir sesión para permitir reintentar.
-	// 2. Durante un ServerTravel lobby→game → el socket Steam tarda en liberarse (transitorio).
 	if (FailureType == ENetworkFailure::NetDriverListenFailure ||
 		FailureType == ENetworkFailure::NetDriverCreateFailure ||
 		FailureType == ENetworkFailure::NetDriverAlreadyExists)
@@ -722,48 +788,62 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		if (bIsPendingTravel)
 		{
 			// Error durante transición de nivel (ServerTravel lobby→game).
-			// No destruir la sesión — el engine reintentará la escucha.
+			// El socket Steam del listen server anterior no se ha liberado aún.
+			if (TravelListenRetryCount < MaxTravelListenRetries)
+			{
+				++TravelListenRetryCount;
+				UE_LOG(LogTemp, Warning,
+					TEXT("[MP] %s durante transición de nivel — colisión de socket Steam. "
+					     "Reintento %d/%d en %.1fs..."),
+					*FailureTypeStr, TravelListenRetryCount, MaxTravelListenRetries, TravelListenRetryDelaySec);
+				UpdateStatus(FString::Printf(TEXT("Reintentando conexión (%d/%d)..."), TravelListenRetryCount, MaxTravelListenRetries));
+
+				RetryListenAfterTravel(World);
+
+				// NO llamamos a HandleDisconnect → NO se encola SetClientTravel("?closed").
+				// El mundo permanece vivo para que el timer de retry pueda disparar.
+				return;
+			}
+
+			// Agotados los reintentos.
 			bIsPendingTravel = false;
-			HideLoadingScreen();
-			UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
-			UE_LOG(LogTemp, Warning,
-				TEXT("[MP] %s durante transición de nivel — probable colisión de socket Steam. "
-				     "La sesión se mantiene activa; el engine reintentará la escucha."),
-				*FailureTypeStr);
+			TravelListenRetryCount = 0;
+			UpdateStatus(TEXT("ERROR: No se pudo iniciar el servidor tras el viaje. Volviendo al menú..."));
+			UE_LOG(LogTemp, Error,
+				TEXT("[MP] %s — agotados %d reintentos de Listen(). El socket Steam no se liberó a tiempo. Volviendo al menú."),
+				*FailureTypeStr, MaxTravelListenRetries);
+			HandleReturnToMenu();
+			return;
 		}
-		else
-		{
-			// Error al iniciar el listen server desde cero (sesión Steam zombi).
-			HideLoadingScreen();
-			UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
-			DestroyCurrentSession();
-			UE_LOG(LogTemp, Warning,
-				TEXT("[MP] %s en inicio de conexión — sesión Steam destruida. "
-				     "Reinicia Steam si el error persiste."),
-				*FailureTypeStr);
-		}
+
+		// Error al iniciar el listen server desde cero (sesión Steam zombi).
+		HideLoadingScreen();
+		UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+		DestroyCurrentSession();
+		UE_LOG(LogTemp, Warning,
+			TEXT("[MP] %s en inicio de conexión — sesión Steam destruida. "
+			     "Reinicia Steam si el error persiste."),
+			*FailureTypeStr);
 		return;
 	}
 
 	// ---------- CLIENTE: checksum mismatch (versiones incompatibles) ----------
-	// Ocurre cuando el cliente compiló con Live Coding o tiene un build distinto al servidor.
-	// El engine ya desconecta solo; aquí solo limpiamos la sesión y mostramos mensaje claro.
 	if (FailureType == ENetworkFailure::NetChecksumMismatch)
 	{
 		HideLoadingScreen();
 		UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
-		// Destruir la sesión huérfana del lado cliente para poder reintentar.
 		DestroyCurrentSession();
 		UE_LOG(LogTemp, Error,
 			TEXT("[MP] NetChecksumMismatch — El cliente tiene un build distinto al servidor. "
 			     "Recompila sin Live Coding y asegúrate de que todos usan el mismo binario. "
 			     "Detalle: %s"),
 			*ErrorString);
+		// Checksum mismatch en cliente → necesita navegar de vuelta al menú.
+		PerformDefaultDisconnect(World, NetDriver, FailureType);
 		return;
 	}
 
-	// ---------- CLIENTE: otras desconexiones (pérdida de conexión, timeout, etc.) ----------
-	// El engine ya gestiona el viaje de vuelta; aquí limpiamos sesión zombie si la hay.
+	// ---------- CLIENTE: otras desconexiones ----------
 	if (FailureType == ENetworkFailure::ConnectionLost   ||
 		FailureType == ENetworkFailure::ConnectionTimeout ||
 		FailureType == ENetworkFailure::FailureReceived   ||
@@ -771,16 +851,62 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	{
 		HideLoadingScreen();
 		UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
-		// Destruir la sesión cliente para evitar estado zombie al volver al menú.
 		DestroyCurrentSession();
 		UE_LOG(LogTemp, Warning,
 			TEXT("[MP] %s — Sesión cliente destruida para evitar estado zombie."),
 			*FailureTypeStr);
+		PerformDefaultDisconnect(World, NetDriver, FailureType);
 		return;
 	}
 
-	// Resto de errores (OutdatedClient, OutdatedServer, etc.) — solo loguear.
+	// Resto de errores (OutdatedClient, OutdatedServer, etc.)
 	UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+	PerformDefaultDisconnect(World, NetDriver, FailureType);
+}
+
+void UMP_GameInstance::PerformDefaultDisconnect(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType)
+{
+	// Replica la lógica de UEngine::HandleNetworkFailure para determinar si se
+	// debe navegar de vuelta al menú (SetClientTravel "?closed").
+	// Este método reemplaza al handler original que removimos del delegate.
+	if (!NetDriver || !GEngine)
+	{
+		return;
+	}
+
+	const FName DriverName = NetDriver->NetDriverName;
+	if (DriverName != NAME_GameNetDriver && DriverName != NAME_PendingNetDriver)
+	{
+		return;
+	}
+
+	// Si el driver ya fue destruido, no hacer nada.
+	if (World && !GEngine->FindNamedNetDriver(World, DriverName))
+	{
+		return;
+	}
+
+	// Determinar si debemos navegar — misma lógica que UEngine::HandleNetworkFailure.
+	const ENetMode FailureNetMode = NetDriver->GetNetMode();
+	bool bShouldTravel = true;
+
+	switch (FailureType)
+	{
+	case ENetworkFailure::ConnectionLost:
+	case ENetworkFailure::ConnectionTimeout:
+	case ENetworkFailure::NetGuidMismatch:
+	case ENetworkFailure::NetChecksumMismatch:
+		// Hosts no navegan cuando un cliente desconecta/tiene problemas.
+		bShouldTravel = (FailureNetMode == NM_Client);
+		break;
+	default:
+		break;
+	}
+
+	if (bShouldTravel && World)
+	{
+		GEngine->HandleDisconnect(World, NetDriver);
+	}
 }
 
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
