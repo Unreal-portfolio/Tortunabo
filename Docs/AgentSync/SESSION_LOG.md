@@ -114,3 +114,37 @@
 1. Validar el fix de red con 2+ clientes: probar lobby→run→lobby con Steam real.
 2. Si `NetDriverListenFailure` sigue ocurriendo durante ServerTravel, investigar si `Sessions->UpdateSession` tras el travel ayuda a re-registrar el socket Steam.
 
+## 2026-03-19 - Diagnóstico NetChecksumMismatch al unirse a partida + fix OnNetworkFailure
+
+### Contexto
+- Error al intentar acceder a la partida de un amigo desde Standalone Game.
+- Log analizado: `Source/Logs/Tortunabo_2.log` (sesión 12:24:30).
+
+### Diagnóstico (causa raíz)
+1. **Live Coding** recompiló `TN_ThrowableItemActor` en el cliente (11:24:38) antes de buscar lobbies.
+2. Esto cambió los checksums de red de `TN_InventoryComponent` y `BP_GenericPickup` en el cliente.
+3. El servidor (amigo) ya estaba corriendo con el build anterior → checksums distintos.
+4. Al completar el join y cargar `LVL_HQ`, el engine detectó el mismatch y lanzó `NetChecksumMismatch`:
+   - `BP_TortugaCharacter_C.[14]InventoryComponent` → 2196210924 vs 687168063
+   - `BP_GenericPickup_C` → 2294192916 vs 364860978
+5. El engine desconectó al cliente y lo devolvió al menú. La sesión quedó en estado zombie.
+
+### Solución operativa (requerida)
+- Ambos jugadores deben usar **el mismo binario compilado** sin Live Coding activo.
+- En desarrollo: compilar con `Build.bat TortunaboEditor Win64 Development` antes de probar.
+- No usar el botón "Hot Reload" / Live Coding durante sesiones multijugador.
+
+### Cambios de código (`MP_GameInstance.cpp`)
+- **`OnNetworkFailure`**: Refactor completo con lógica separada por categoría de error:
+  - **Servidor (socket/driver)**: sin cambios funcionales, solo se añade `UpdateStatus` antes de return.
+  - **Cliente - `NetChecksumMismatch`**: nuevo case en el switch; muestra mensaje explicativo sobre incompatibilidad de builds y destruye la sesión zombie.
+  - **Cliente - `ConnectionLost/Timeout/FailureReceived/PendingConnectionFailure`**: nuevo bloque que oculta loading screen, muestra error y destruye sesión zombie para permitir reintentar sin estado corrupto.
+  - **Resto** (OutdatedClient/Server, Unknown): solo loguea, sin acción agresiva.
+
+### Networking
+- Sin cambios en replicación ni flujo de sesión nominal.
+- La destrucción de sesión en errores de cliente evita el warning `Player is not part of session` al volver al menú.
+
+### Pendientes
+1. Validar que al recibir `NetChecksumMismatch`, el jugador vuelve al menú y puede buscar/unirse de nuevo sin reiniciar.
+2. Investigar si `BP_GenericPickup` hereda de alguna clase C++ que se modificó con el Live Coding rebuild — si es así, sería un buen candidato para añadir a un `UPROPERTY` de Blueprint estable.

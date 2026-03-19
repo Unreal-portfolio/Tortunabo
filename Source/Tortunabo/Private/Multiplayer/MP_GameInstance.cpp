@@ -696,24 +696,25 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	FString FailureTypeStr;
 	switch (FailureType)
 	{
-	case ENetworkFailure::NetDriverAlreadyExists: FailureTypeStr = TEXT("NetDriverAlreadyExists"); break;
-	case ENetworkFailure::NetDriverCreateFailure: FailureTypeStr = TEXT("NetDriverCreateFailure"); break;
-	case ENetworkFailure::NetDriverListenFailure: FailureTypeStr = TEXT("NetDriverListenFailure"); break;
-	case ENetworkFailure::ConnectionLost:         FailureTypeStr = TEXT("ConnectionLost"); break;
-	case ENetworkFailure::ConnectionTimeout:      FailureTypeStr = TEXT("ConnectionTimeout"); break;
-	case ENetworkFailure::FailureReceived:        FailureTypeStr = TEXT("FailureReceived"); break;
-	case ENetworkFailure::OutdatedClient:         FailureTypeStr = TEXT("OutdatedClient"); break;
-	case ENetworkFailure::OutdatedServer:         FailureTypeStr = TEXT("OutdatedServer"); break;
+	case ENetworkFailure::NetDriverAlreadyExists:   FailureTypeStr = TEXT("NetDriverAlreadyExists"); break;
+	case ENetworkFailure::NetDriverCreateFailure:   FailureTypeStr = TEXT("NetDriverCreateFailure"); break;
+	case ENetworkFailure::NetDriverListenFailure:   FailureTypeStr = TEXT("NetDriverListenFailure"); break;
+	case ENetworkFailure::ConnectionLost:           FailureTypeStr = TEXT("ConnectionLost"); break;
+	case ENetworkFailure::ConnectionTimeout:        FailureTypeStr = TEXT("ConnectionTimeout"); break;
+	case ENetworkFailure::FailureReceived:          FailureTypeStr = TEXT("FailureReceived"); break;
+	case ENetworkFailure::OutdatedClient:           FailureTypeStr = TEXT("OutdatedClient"); break;
+	case ENetworkFailure::OutdatedServer:           FailureTypeStr = TEXT("OutdatedServer"); break;
 	case ENetworkFailure::PendingConnectionFailure: FailureTypeStr = TEXT("PendingConnectionFailure"); break;
-	default: FailureTypeStr = TEXT("Unknown"); break;
+	case ENetworkFailure::NetChecksumMismatch:      FailureTypeStr = TEXT("NetChecksumMismatch"); break;
+	default:                                        FailureTypeStr = TEXT("Unknown"); break;
 	}
 
-	UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+	UE_LOG(LogTemp, Warning, TEXT("[MP] NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString);
 
-	// Errores de socket/driver que pueden ocurrir en dos contextos muy distintos:
+	// ---------- SERVIDOR: errores de socket/driver ----------
+	// Pueden ocurrir en dos contextos:
 	// 1. Inicio de conexión (sesión zombi de Steam) → destruir sesión para permitir reintentar.
-	// 2. Durante un ServerTravel lobby→game → el socket Steam tarda en liberarse.
-	//    En este caso el error es transitorio; destruir la sesión sería incorrecto.
+	// 2. Durante un ServerTravel lobby→game → el socket Steam tarda en liberarse (transitorio).
 	if (FailureType == ENetworkFailure::NetDriverListenFailure ||
 		FailureType == ENetworkFailure::NetDriverCreateFailure ||
 		FailureType == ENetworkFailure::NetDriverAlreadyExists)
@@ -721,11 +722,10 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		if (bIsPendingTravel)
 		{
 			// Error durante transición de nivel (ServerTravel lobby→game).
-			// El socket Steam del listener anterior no se liberó a tiempo.
 			// No destruir la sesión — el engine reintentará la escucha.
-			// Solo ocultamos la loading screen si quedó visible.
 			bIsPendingTravel = false;
 			HideLoadingScreen();
+			UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
 			UE_LOG(LogTemp, Warning,
 				TEXT("[MP] %s durante transición de nivel — probable colisión de socket Steam. "
 				     "La sesión se mantiene activa; el engine reintentará la escucha."),
@@ -734,15 +734,53 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		else
 		{
 			// Error al iniciar el listen server desde cero (sesión Steam zombi).
-			// Destruir la sesión permite reintentar sin reiniciar Steam.
 			HideLoadingScreen();
+			UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
 			DestroyCurrentSession();
 			UE_LOG(LogTemp, Warning,
 				TEXT("[MP] %s en inicio de conexión — sesión Steam destruida. "
 				     "Reinicia Steam si el error persiste."),
 				*FailureTypeStr);
 		}
+		return;
 	}
+
+	// ---------- CLIENTE: checksum mismatch (versiones incompatibles) ----------
+	// Ocurre cuando el cliente compiló con Live Coding o tiene un build distinto al servidor.
+	// El engine ya desconecta solo; aquí solo limpiamos la sesión y mostramos mensaje claro.
+	if (FailureType == ENetworkFailure::NetChecksumMismatch)
+	{
+		HideLoadingScreen();
+		UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
+		// Destruir la sesión huérfana del lado cliente para poder reintentar.
+		DestroyCurrentSession();
+		UE_LOG(LogTemp, Error,
+			TEXT("[MP] NetChecksumMismatch — El cliente tiene un build distinto al servidor. "
+			     "Recompila sin Live Coding y asegúrate de que todos usan el mismo binario. "
+			     "Detalle: %s"),
+			*ErrorString);
+		return;
+	}
+
+	// ---------- CLIENTE: otras desconexiones (pérdida de conexión, timeout, etc.) ----------
+	// El engine ya gestiona el viaje de vuelta; aquí limpiamos sesión zombie si la hay.
+	if (FailureType == ENetworkFailure::ConnectionLost   ||
+		FailureType == ENetworkFailure::ConnectionTimeout ||
+		FailureType == ENetworkFailure::FailureReceived   ||
+		FailureType == ENetworkFailure::PendingConnectionFailure)
+	{
+		HideLoadingScreen();
+		UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+		// Destruir la sesión cliente para evitar estado zombie al volver al menú.
+		DestroyCurrentSession();
+		UE_LOG(LogTemp, Warning,
+			TEXT("[MP] %s — Sesión cliente destruida para evitar estado zombie."),
+			*FailureTypeStr);
+		return;
+	}
+
+	// Resto de errores (OutdatedClient, OutdatedServer, etc.) — solo loguear.
+	UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
 }
 
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

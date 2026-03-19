@@ -62,6 +62,14 @@ ATortugaCharacter::ATortugaCharacter()
 	SprintAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Sprint.IA_Sprint")));
 	DropItemAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_DropItem.IA_DropItem")));
 
+	// Emote actions: 10 slots (0-9), override paths in BP_TortugaCharacter Class Defaults.
+	EmoteActions.SetNum(10);
+	for (int32 i = 0; i < 10; i++)
+	{
+		EmoteActions[i] = TSoftObjectPtr<UInputAction>(FSoftObjectPath(
+			FString::Printf(TEXT("/Game/Input/IA_Emote%d.IA_Emote%d"), i, i)));
+	}
+
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
 }
@@ -91,11 +99,29 @@ void ATortugaCharacter::BeginPlay()
 	Pata1 = FindChildByName(TEXT("Pata1"));
 	Pata2 = FindChildByName(TEXT("Pata2"));
 
-	if (Pata1.IsValid()) { Pata1RestRot = Pata1->GetRelativeRotation(); }
+	if (Pata1.IsValid()) { Pata1RestRot = Pata1->GetRelativeRotation(); Pata1RestLoc = Pata1->GetRelativeLocation(); }
 	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Pata1' component not found — add a SceneComponent named exactly 'Pata1' in the Blueprint.")); }
 
-	if (Pata2.IsValid()) { Pata2RestRot = Pata2->GetRelativeRotation(); }
+	if (Pata2.IsValid()) { Pata2RestRot = Pata2->GetRelativeRotation(); Pata2RestLoc = Pata2->GetRelativeLocation(); }
 	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Pata2' component not found — add a SceneComponent named exactly 'Pata2' in the Blueprint.")); }
+
+	// Cache arm, tail and head components for the emote system (same pattern as legs).
+	Brazo1 = FindChildByName(TEXT("Brazo1"));
+	Brazo2 = FindChildByName(TEXT("Brazo2"));
+	Cola   = FindChildByName(TEXT("Cola"));
+	Cabeza = FindChildByName(TEXT("Cabeza"));
+
+	if (Brazo1.IsValid()) { Brazo1RestRot = Brazo1->GetRelativeRotation(); Brazo1RestLoc = Brazo1->GetRelativeLocation(); }
+	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Brazo1' not found — emotes will be partial. Add a SceneComponent named exactly 'Brazo1' in the Blueprint.")); }
+
+	if (Brazo2.IsValid()) { Brazo2RestRot = Brazo2->GetRelativeRotation(); Brazo2RestLoc = Brazo2->GetRelativeLocation(); }
+	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Brazo2' not found — emotes will be partial.")); }
+
+	if (Cola.IsValid()) { ColaRestRot = Cola->GetRelativeRotation(); ColaRestLoc = Cola->GetRelativeLocation(); }
+	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Cola' not found — emotes will be partial.")); }
+
+	if (Cabeza.IsValid()) { CabezaRestRot = Cabeza->GetRelativeRotation(); CabezaRestLoc = Cabeza->GetRelativeLocation(); }
+	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Cabeza' not found — emotes will be partial. Add a SceneComponent named exactly 'Cabeza' in the Blueprint.")); }
 
 	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown
 	if (USkeletalMeshComponent* MeshComp = GetMesh())
@@ -107,11 +133,18 @@ void ATortugaCharacter::BeginPlay()
 void ATortugaCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	TickLegAnimation(DeltaTime);
+	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
+	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes)
 }
 
 void ATortugaCharacter::TickLegAnimation(float DeltaTime)
 {
+	// Suppressed while an emote (or its blend-out) controls all 5 components.
+	if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+	{
+		return;
+	}
+
 	// Bail out early if neither leg is available.
 	if (!Pata1.IsValid() && !Pata2.IsValid())
 	{
@@ -171,6 +204,8 @@ USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
 void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	FocusedInteractable = nullptr;
+	ActiveEmoteIndex   = -1;
+	bEmoteBlendingOut  = false;
 
 	GetWorldTimerManager().ClearTimer(InteractionScanTimerHandle);
 	GetWorldTimerManager().ClearTimer(KnockdownTimerHandle);
@@ -199,6 +234,14 @@ void ATortugaCharacter::CacheInputAssets()
 	LoadedRotateInventoryAction = RotateInventoryAction.LoadSynchronous();
 	LoadedSprintAction = SprintAction.LoadSynchronous();
 	LoadedDropItemAction = DropItemAction.LoadSynchronous();
+
+	// Load emote actions (10 slots)
+	LoadedEmoteActions.SetNum(10);
+	for (int32 i = 0; i < EmoteActions.Num() && i < 10; i++)
+	{
+		LoadedEmoteActions[i] = EmoteActions[i].LoadSynchronous();
+	}
+
 	bInputAssetsLoaded = true;
 
 	// ── Log de cada asset para diagnosticar qué falta ─────────────────────────
@@ -220,8 +263,14 @@ void ATortugaCharacter::CacheInputAssets()
 	LogAsset(TEXT("IA_Jump"), LoadedJumpAction);
 	LogAsset(TEXT("IA_Interact"), LoadedInteractAction);
 	LogAsset(TEXT("IA_RotateInventory"), LoadedRotateInventoryAction);
-	LogAsset(TEXT("IA_Sprint"), LoadedSprintAction);
-	LogAsset(TEXT("IA_DropItem"), LoadedDropItemAction);
+	LogAsset(TEXT("IA_Sprint"),           LoadedSprintAction);
+	LogAsset(TEXT("IA_DropItem"),         LoadedDropItemAction);
+
+	for (int32 i = 0; i < LoadedEmoteActions.Num(); i++)
+	{
+		const FString EmoteName = FString::Printf(TEXT("IA_Emote%d"), i);
+		LogAsset(*EmoteName, LoadedEmoteActions[i]);
+	}
 }
 
 void ATortugaCharacter::ApplyInputMappingIfLocal()
@@ -292,6 +341,24 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		{
 			EnhancedInput->BindAction(LoadedDropItemAction, ETriggerEvent::Started, this, &ATortugaCharacter::DropEquippedItem);
 		}
+
+		// ── Emotes 0–9 ────────────────────────────────────────────────────────
+		static void (ATortugaCharacter::* const EmoteHandlers[10])() =
+		{
+			&ATortugaCharacter::OnEmote0, &ATortugaCharacter::OnEmote1,
+			&ATortugaCharacter::OnEmote2, &ATortugaCharacter::OnEmote3,
+			&ATortugaCharacter::OnEmote4, &ATortugaCharacter::OnEmote5,
+			&ATortugaCharacter::OnEmote6, &ATortugaCharacter::OnEmote7,
+			&ATortugaCharacter::OnEmote8, &ATortugaCharacter::OnEmote9,
+		};
+		for (int32 i = 0; i < LoadedEmoteActions.Num() && i < 10; i++)
+		{
+			if (LoadedEmoteActions[i])
+			{
+				EnhancedInput->BindAction(LoadedEmoteActions[i], ETriggerEvent::Started, this, EmoteHandlers[i]);
+				UE_LOG(LogTemp, Log, TEXT("[Input] ✓ IA_Emote%d bound"), i);
+			}
+		}
 	}
 	else
 	{
@@ -301,6 +368,10 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 void ATortugaCharacter::Move(const FInputActionValue& Value)
 {
+	// Cancel any active emote the moment the player moves —
+	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable.
+	if (ActiveEmoteIndex >= 0 && ActiveEmoteIndex != 5 && ActiveEmoteIndex != 6) { CancelEmote(); }
+
 	const FVector2D MovementVector = Value.Get<FVector2D>();
 	if (Controller)
 	{
@@ -564,7 +635,13 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 	{
 		const FVector SpawnLocation = GetItemSpawnLocation();
 		const FVector ThrowDirection = GetItemForwardDirection();
-		const FVector LaunchVelocity = ThrowDirection * FMath::Max(EquippedItem.ThrowSpeed, 0.0f);
+
+		// Añadir ángulo hacia arriba para que el throwable haga arco
+		const FVector RightVec = FVector::CrossProduct(FVector::UpVector, ThrowDirection).GetSafeNormal();
+		const FQuat UpTilt(RightVec, FMath::DegreesToRadians(ThrowUpAngleDeg));
+		const FVector ArcedDirection = UpTilt.RotateVector(ThrowDirection).GetSafeNormal();
+
+		const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowSpeed, 0.0f);
 
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
@@ -650,6 +727,7 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	// Replicar a todos los clientes para que el visual sea visible en todos
 	DOREPLIFETIME(ATortugaCharacter, bIsKnockedDown);
+	DOREPLIFETIME(ATortugaCharacter, ReplicatedEmoteIndex);
 }
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────
@@ -734,21 +812,590 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 
 	if (bKnocked)
 	{
-		// Aplicamos el tilt en ESPACIO MUNDO para ser completamente independientes
-		// de la rotación por defecto del mesh (que suele ser Yaw=-90°, lo que
-		// hace que modificar Pitch relativo rote sobre el eje frontal en lugar del lateral).
-		// Pitch negativo en world space = eje lateral = la tortuga cae hacia atrás. ✓
-		// Como el movimiento está deshabilitado durante el knockdown, el personaje
-		// no girará mientras el mesh esté fijado en world rotation.
 		FRotator WorldRot = MeshComp->GetComponentRotation();
 		WorldRot.Pitch -= 100.0f;
 		MeshComp->SetWorldRotation(WorldRot);
 	}
 	else
 	{
-		// Restaurar a rotación RELATIVA por defecto → el mesh vuelve a
-		// seguir al capsule correctamente sin importar hacia dónde mire ahora.
 		MeshComp->SetRelativeRotation(MeshDefaultRelativeRotation);
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EMOTE SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::TriggerEmote(int32 Index)
+{
+	if (!IsLocallyControlled() || Index < 0 || Index > 9) { return; }
+
+	// Start locally for immediate visual feedback
+	StartEmoteLocally(Index);
+
+	// Replicate to server → other clients
+	ServerSetEmote(Index);
+}
+
+void ATortugaCharacter::StartEmoteLocally(int32 Index)
+{
+	// Reset all components to rest pose (clears stale location offsets)
+	if (Brazo1.IsValid()) { Brazo1->SetRelativeRotation(Brazo1RestRot); Brazo1->SetRelativeLocation(Brazo1RestLoc); }
+	if (Brazo2.IsValid()) { Brazo2->SetRelativeRotation(Brazo2RestRot); Brazo2->SetRelativeLocation(Brazo2RestLoc); }
+	if (Pata1.IsValid())  { Pata1->SetRelativeRotation(Pata1RestRot);  Pata1->SetRelativeLocation(Pata1RestLoc);  }
+	if (Pata2.IsValid())  { Pata2->SetRelativeRotation(Pata2RestRot);  Pata2->SetRelativeLocation(Pata2RestLoc);  }
+	if (Cola.IsValid())   { Cola->SetRelativeRotation(ColaRestRot);    Cola->SetRelativeLocation(ColaRestLoc);    }
+	if (Cabeza.IsValid()) { Cabeza->SetRelativeRotation(CabezaRestRot); Cabeza->SetRelativeLocation(CabezaRestLoc); }
+
+	// (Re)start — pressing the same emote while it plays restarts from the top.
+	ActiveEmoteIndex   = Index;
+	EmoteTime          = 0.f;
+	bEmoteBlendingOut  = false;
+	EmoteBlendOutTimer = 0.f;
+}
+
+void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
+{
+	ReplicatedEmoteIndex = Index;
+
+	// Listen server: OnRep no dispara en la máquina que posee la variable,
+	// así que arrancamos/cancelamos el emote directamente para pawns remotos.
+	if (!IsLocallyControlled())
+	{
+		if (Index >= 0)
+		{
+			StartEmoteLocally(Index);
+		}
+		else
+		{
+			CancelEmote();
+		}
+	}
+}
+
+void ATortugaCharacter::OnRep_ReplicatedEmoteIndex()
+{
+	// Clientes remotos: arrancar o cancelar el emote en este pawn.
+	// Saltar si es el pawn local (ya lo arrancó en TriggerEmote).
+	if (!IsLocallyControlled())
+	{
+		if (ReplicatedEmoteIndex >= 0)
+		{
+			StartEmoteLocally(ReplicatedEmoteIndex);
+		}
+		else
+		{
+			CancelEmote();
+		}
+	}
+}
+
+void ATortugaCharacter::CancelEmote()
+{
+	if (ActiveEmoteIndex < 0 && !bEmoteBlendingOut) { return; }
+
+	// Snapshot current component rotations so we can blend back to rest.
+	if (Brazo1.IsValid()) { SnapshotBrazo1 = Brazo1->GetRelativeRotation(); SnapshotBrazo1Loc = Brazo1->GetRelativeLocation(); }
+	if (Brazo2.IsValid()) { SnapshotBrazo2 = Brazo2->GetRelativeRotation(); SnapshotBrazo2Loc = Brazo2->GetRelativeLocation(); }
+	if (Pata1.IsValid())  { SnapshotPata1  = Pata1->GetRelativeRotation();  SnapshotPata1Loc  = Pata1->GetRelativeLocation();  }
+	if (Pata2.IsValid())  { SnapshotPata2  = Pata2->GetRelativeRotation();  SnapshotPata2Loc  = Pata2->GetRelativeLocation();  }
+	if (Cola.IsValid())   { SnapshotCola   = Cola->GetRelativeRotation();   SnapshotColaLoc   = Cola->GetRelativeLocation();   }
+	if (Cabeza.IsValid()) { SnapshotCabeza = Cabeza->GetRelativeRotation(); SnapshotCabezaLoc = Cabeza->GetRelativeLocation(); }
+
+	ActiveEmoteIndex   = -1;
+	bEmoteBlendingOut  = true;
+	EmoteBlendOutTimer = 0.f;
+
+	// Replicar cancelación a otros clientes (solo desde el jugador que controla)
+	if (IsLocallyControlled())
+	{
+		ServerSetEmote(-1);
+	}
+}
+
+void ATortugaCharacter::ApplyEmoteAngle(USceneComponent* Comp, const FRotator& Rest,
+                                        float AngleDeg, const FVector& Axis) const
+{
+	// Swing en ESPACIO DEL PADRE: Swing * Rest.
+	// Los ejes AX/AY/AZ son del padre (raíz del personaje), no del componente.
+	// Así AX produce el mismo efecto visual en Brazo1 y Brazo2 aunque tengan rests espejados.
+	const FQuat SwingQuat(Axis.GetSafeNormal(), FMath::DegreesToRadians(AngleDeg));
+	Comp->SetRelativeRotation((SwingQuat * FQuat(Rest)).Rotator());
+}
+
+void ATortugaCharacter::ApplyEmoteAngles2(USceneComponent* Comp, const FRotator& Rest,
+                                          float A1, const FVector& Ax1,
+                                          float A2, const FVector& Ax2) const
+{
+	const FQuat Q1(Ax1.GetSafeNormal(), FMath::DegreesToRadians(A1));
+	const FQuat Q2(Ax2.GetSafeNormal(), FMath::DegreesToRadians(A2));
+	Comp->SetRelativeRotation((Q2 * Q1 * FQuat(Rest)).Rotator());
+}
+
+void ATortugaCharacter::ApplyEmoteAngles3(USceneComponent* Comp, const FRotator& Rest,
+                                          float A1, const FVector& Ax1,
+                                          float A2, const FVector& Ax2,
+                                          float A3, const FVector& Ax3) const
+{
+	const FQuat Q1(Ax1.GetSafeNormal(), FMath::DegreesToRadians(A1));
+	const FQuat Q2(Ax2.GetSafeNormal(), FMath::DegreesToRadians(A2));
+	const FQuat Q3(Ax3.GetSafeNormal(), FMath::DegreesToRadians(A3));
+	Comp->SetRelativeRotation((Q3 * Q2 * Q1 * FQuat(Rest)).Rotator());
+}
+
+void ATortugaCharacter::TickEmote(float DeltaTime)
+{
+	// ── Blend-out: lerp all components back to rest rotations & locations ─────
+	if (bEmoteBlendingOut)
+	{
+		EmoteBlendOutTimer += DeltaTime;
+		const float Alpha = FMath::Min(EmoteBlendOutTimer / FMath::Max(EmoteBlendOutDuration, KINDA_SMALL_NUMBER), 1.f);
+
+		auto Blend = [Alpha](TWeakObjectPtr<USceneComponent>& Comp, const FRotator& SnapR, const FRotator& RestR,
+		                     const FVector& SnapL, const FVector& RestL)
+		{
+			if (Comp.IsValid())
+			{
+				Comp->SetRelativeRotation(FMath::Lerp(SnapR, RestR, Alpha));
+				Comp->SetRelativeLocation(FMath::Lerp(SnapL, RestL, Alpha));
+			}
+		};
+
+		Blend(Brazo1, SnapshotBrazo1, Brazo1RestRot, SnapshotBrazo1Loc, Brazo1RestLoc);
+		Blend(Brazo2, SnapshotBrazo2, Brazo2RestRot, SnapshotBrazo2Loc, Brazo2RestLoc);
+		Blend(Pata1,  SnapshotPata1,  Pata1RestRot,  SnapshotPata1Loc,  Pata1RestLoc);
+		Blend(Pata2,  SnapshotPata2,  Pata2RestRot,  SnapshotPata2Loc,  Pata2RestLoc);
+		Blend(Cola,   SnapshotCola,   ColaRestRot,   SnapshotColaLoc,   ColaRestLoc);
+		Blend(Cabeza, SnapshotCabeza, CabezaRestRot, SnapshotCabezaLoc, CabezaRestLoc);
+
+		if (Alpha >= 1.f) { bEmoteBlendingOut = false; }
+		return;
+	}
+
+	if (ActiveEmoteIndex < 0) { return; }
+
+	EmoteTime += DeltaTime;
+	const float T = EmoteTime;
+
+	// Trig helpers (frequency in Hz)
+	auto S    = [](float Hz, float t) { return FMath::Sin(2.f * PI * Hz * t); };
+	auto Cos  = [](float Hz, float t) { return FMath::Cos(2.f * PI * Hz * t); };
+	auto Sat  = [](float v)           { return FMath::Clamp(v, 0.f, 1.f); };
+
+	// ── Ejes de referencia (espacio del PADRE — T-Pose) ─────────────────────
+	// Setup: SceneComponents a rot (0,0,0), brazos extendidos por ±Y (T-Pose).
+	//
+	// BRAZOS (mesh por ±Y desde el joint):
+	//   AX (1,0,0) adelante  → sube/baja visto de frente  (+AX = arriba)
+	//   AY (0,1,0) lateral   → roll sobre eje largo del brazo (casi invisible en cubos)
+	//   AZ (0,0,1) arriba    → adelante/atrás             (+AZ = backward, −AZ = forward)
+	//
+	// CABEZA (mesh por +X desde el joint):
+	//   AX = roll (rara vez útil)
+	//   AY = cabeceo arriba/abajo (nod)
+	//   AZ = girar izquierda/derecha (shake)
+	//
+	// PATAS (depende de orientación del mesh — si cuelgan por −Z):
+	//   LX (1,0,0) = splay lateral (abrir/cerrar piernas)
+	//   LY (0,1,0) = stride adelante/atrás  ← LegSwingAxis configurable
+	//   LZ (0,0,1) = twist/giro
+	//   Si las patas están en T-Pose (±Y), cambiar LegSwingAxis a (0,0,1).
+	//
+	// COLA (mesh por −X desde el joint):
+	//   TY = arriba/abajo   TZ = lado a lado   TX = roll cola
+	const FVector AX(1.f, 0.f, 0.f);
+	const FVector AY(0.f, 1.f, 0.f);
+	const FVector AZ(0.f, 0.f, 1.f);
+
+	// Patas
+	const FVector LX(1.f, 0.f, 0.f);       // splay lateral
+	const FVector LY = LegSwingAxis;         // stride adelante/atrás (configurable)
+	const FVector LZ(0.f, 0.f, 1.f);       // giro pata
+
+	// Cola
+	const FVector TY = TailUpDownAxis;
+	const FVector TZ = TailSideAxis;
+	const FVector TX(1.f, 0.f, 0.f);       // roll cola
+
+	// ── Helpers de aplicación (rotación) ──────────────────────────────────────
+	auto Ap = [&](TWeakObjectPtr<USceneComponent>& Comp, const FRotator& Rest,
+	              float Angle, const FVector& Axis)
+	{
+		if (Comp.IsValid()) { ApplyEmoteAngle(Comp.Get(), Rest, Angle, Axis); }
+	};
+
+	auto Ap2 = [&](TWeakObjectPtr<USceneComponent>& Comp, const FRotator& Rest,
+	               float A1, const FVector& Ax1, float A2, const FVector& Ax2)
+	{
+		if (Comp.IsValid()) { ApplyEmoteAngles2(Comp.Get(), Rest, A1, Ax1, A2, Ax2); }
+	};
+
+	auto Ap3 = [&](TWeakObjectPtr<USceneComponent>& Comp, const FRotator& Rest,
+	               float A1, const FVector& Ax1,
+	               float A2, const FVector& Ax2,
+	               float A3, const FVector& Ax3)
+	{
+		if (Comp.IsValid()) { ApplyEmoteAngles3(Comp.Get(), Rest, A1, Ax1, A2, Ax2, A3, Ax3); }
+	};
+
+	// ── Helper de aplicación (traslación) — para Explosivo y Modo Loco 2 ────
+	auto SetLoc = [&](TWeakObjectPtr<USceneComponent>& Comp, const FVector& RestLoc, const FVector& Offset)
+	{
+		if (Comp.IsValid()) { Comp->SetRelativeLocation(RestLoc + Offset); }
+	};
+
+	bool bEnded = false;
+
+	switch (ActiveEmoteIndex)
+	{
+	// ──────────────────────────────────────────────────────────────────────────
+	// 0  SALUDAR — Brazo1 (dcha): AY 90° posiciona + AX ±75° aleteo.
+	//              Brazo2 (izq) baja.  2.5 s
+	// ──────────────────────────────────────────────────────────────────────────
+	case 0:
+	{
+		const float setup   = Sat(T / 0.3f);
+		const float fadeOut = (T > 2.0f) ? Sat((T - 2.0f) / 0.5f) : 0.f;
+		const float env     = setup * (1.f - fadeOut);
+		const float wave    = (T > 0.3f) ? S(5.f, T) : 0.f;
+
+		// Brazo1 (dcha): AY 90° posiciona brazo, AX ±75° oscila (aleteo)
+		Ap2(Brazo1, Brazo1RestRot,
+		    env * 90.f,              AY,
+		    env * 75.f * wave,       AX);
+
+		// Brazo2 (izq): baja relajado
+		Ap(Brazo2, Brazo2RestRot, env * 80.f, AX);
+
+		// Cabeza
+		Ap(Cabeza, CabezaRestRot, env * 8.f * S(2.f, T), AY);
+
+		// Cola
+		Ap(Cola, ColaRestRot, env * 10.f * S(1.5f, T), TZ);
+
+		bEnded = (T >= 2.5f);
+		break;
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 1  APLAUSO — Brazos en V cerrada, palmaditas rápidas.             3 s
+	// ──────────────────────────────────────────────────────────────────────────
+	case 1:
+	{
+		const float rise    = Sat(T / 0.4f);
+		const float fadeOut = (T > 2.5f) ? Sat((T - 2.5f) / 0.5f) : 0.f;
+		const float env     = rise * (1.f - fadeOut);
+		const float bob     = (T > 0.4f) ? 12.f * S(4.f, T) : 0.f;   // 4 Hz, ±12°
+
+		// Brazo1 (dcha): arriba +AX 50° (más cerrado) + palma al frente AY 90°
+		Ap2(Brazo1, Brazo1RestRot,
+		    env * 110.f + bob * env,   AX,
+		    env * 90.f,               AY);
+		// Brazo2 (izq): arriba −AX 50° + palma al frente AY +90°
+		Ap2(Brazo2, Brazo2RestRot,
+		    -(env * 110.f + bob * env), AX,
+		    env * 90.f,                AY);
+
+		// Cabeza
+		Ap(Cabeza, CabezaRestRot, env * (-15.f), AY);
+
+		// Patas
+		Ap(Pata1, Pata1RestRot,  10.f * S(2.f, T) * env, LY);
+		Ap(Pata2, Pata2RestRot, -10.f * S(2.f, T) * env, LY);
+
+		// Cola
+		Ap(Cola, ColaRestRot, env * 20.f * S(3.f, T), TZ);
+
+		bEnded = (T >= 3.f);
+		break;
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 2  HELICÓPTERO — Brazos giran solo en AZ a tope.                LOOP ∞
+	// ──────────────────────────────────────────────────────────────────────────
+	case 2:
+	{
+		// Spin continuo: 8 vueltas/seg en AZ, solo rotación vertical
+		const float spin = 360.f * T * 8.f;
+
+		// Brazo1 (dcha): solo spin AZ
+		Ap(Brazo1, Brazo1RestRot, spin, AZ);
+		// Brazo2 (izq): spin opuesto AZ
+		Ap(Brazo2, Brazo2RestRot, -spin, AZ);
+
+		// Cabeza
+		Ap(Cabeza, CabezaRestRot, 8.f * S(2.f, T), AY);
+
+		// Patas marchan
+		Ap(Pata1, Pata1RestRot,  25.f * S(2.f, T), LY);
+		Ap(Pata2, Pata2RestRot, -25.f * S(2.f, T), LY);
+
+		// Cola
+		Ap(Cola, ColaRestRot, 12.f * S(1.f, T), TZ);
+
+		break; // LOOP ∞
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 3  PALMADA POTENTE — Ambos brazos: AX 90° + AZ 90° posición,
+	//     luego AY oscila −90° rápido abajo, lento arriba.            LOOP ∞
+	// ──────────────────────────────────────────────────────────────────────────
+	case 3:
+	{
+		// 0.3s para que los brazos lleguen a la posición de partida
+		const float setup = Sat(T / 0.3f);
+
+		// Palmada asimétrica: baja rápido (25% ciclo), sube lento (75% ciclo)
+		const float clapT     = FMath::Max(T - 0.3f, 0.f);
+		const float cycleTime = 0.5f;   // 2 palmadas/segundo
+		float palmada = 0.f;
+		if (clapT > 0.f)
+		{
+			const float phase = FMath::Fmod(clapT, cycleTime) / cycleTime;
+			if (phase < 0.25f)
+			{
+				// Fast down: 0 → −90° en 25% del ciclo
+				palmada = -90.f * (phase / 0.25f);
+			}
+			else
+			{
+				// Slow up: −90° → 0 en 75% del ciclo
+				palmada = -90.f * (1.f - (phase - 0.25f) / 0.75f);
+			}
+		}
+
+		// Brazo1 (dcha): AX 90° sube + AZ 90° centra + AY palmada
+		Ap3(Brazo1, Brazo1RestRot,
+		    setup *  -90.f,  AX,
+		    setup *  -90.f,  AZ,
+		    palmada,        AY);
+		// Brazo2 (izq): espejo (−AX, −AZ, misma AY)
+		Ap3(Brazo2, Brazo2RestRot,
+		    setup * 90.f,  AX,
+		    setup * 90.f,  AZ,
+		    palmada,        AY);
+
+		// Cabeza asiente con cada palmada
+		Ap(Cabeza, CabezaRestRot, 8.f * (palmada / -90.f), AY);
+
+		// Cola menea
+		Ap(Cola, ColaRestRot, 15.f * S(2.f, T), TZ);
+
+		break; // LOOP ∞
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 4  APLAUDIR — Brazo1 (dcha): AX 120° + AY (20° + ±10° clap).
+	//              Brazo2 (izq): reposo abajo. Cola: TY 180° rápido.   2 s
+	// ──────────────────────────────────────────────────────────────────────────
+	case 4:
+	{
+		const float setup   = Sat(T / 0.3f);
+		const float clap    = S(6.f, T);
+		const float colSnap = Sat(T / 0.2f); // cola rápido a posición
+
+		// Brazo1 (dcha): AX 120° sube + AY 20° orienta + AY ±10° palmada rápida
+		Ap2(Brazo1, Brazo1RestRot,
+		    setup * -120.f,                      AX,
+		    setup * (-20.f - 10.f * clap),       AY);
+
+		// Brazo2 (izq): reposo abajo
+		Ap(Brazo2, Brazo2RestRot, setup * 80.f, AX);
+
+		// Cabeza
+		Ap(Cabeza, CabezaRestRot, 5.f * S(6.f, T), AY);
+
+		// Cola: gira 180° en eje lateral rápido y se queda ahí
+		Ap(Cola, ColaRestRot, colSnap * -185.f, TY);
+
+		bEnded = (T >= 2.f);
+		break;
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 5  BAILE IRLANDÉS — Ambos brazos se juntan por DETRÁS.         LOOP ∞
+	// ──────────────────────────────────────────────────────────────────────────
+	case 5:
+	{
+		const float setup = Sat(T / 0.4f);
+
+		// Brazo1 (dcha): atrás (+AZ), baja un poco (−AX)
+		Ap2(Brazo1, Brazo1RestRot,
+		    setup * (-10.f),    AX,
+		    setup *  80.f,      AZ);
+		// Brazo2 (izq):  atrás (−AZ), baja un poco (+AX = abajo para izq)
+		Ap2(Brazo2, Brazo2RestRot,
+		    setup *  10.f,      AX,
+		    setup * (-80.f),    AZ);
+
+		// Cabeza
+		Ap(Cabeza, CabezaRestRot, 5.f * S(2.5f, T), AZ);
+
+		// Patas
+		Ap2(Pata1, Pata1RestRot,
+		     30.f * S(2.5f, T),   LY,
+		     15.f * S(1.25f, T),  LX);
+		Ap2(Pata2, Pata2RestRot,
+		    -30.f * S(2.5f, T),   LY,
+		    -15.f * S(1.25f, T),  LX);
+
+		// Cola
+		Ap(Cola, ColaRestRot, 10.f * S(2.5f, T), TZ);
+
+		break; // LOOP ∞
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 6  FLOTAR (SUPERMAN) — bien                                       5 s
+	// ──────────────────────────────────────────────────────────────────────────
+	case 6:
+	{
+		const float fadeIn  = Sat(T / 1.f);
+		const float fadeOut = (T > 4.f) ? Sat((T - 4.f) / 1.f) : 0.f;
+		const float env     = fadeIn * (1.f - fadeOut);
+		const float drift   = 3.f * S(0.3f, T);
+
+		Ap2(Brazo1, Brazo1RestRot,
+		    env * 50.f + drift,    AX,
+		    env * (-80.f),         AZ);
+		Ap2(Brazo2, Brazo2RestRot,
+		    -(env * 50.f) + drift, AX,
+		    env * 80.f,            AZ);
+
+		Ap(Cabeza, CabezaRestRot, env * (-20.f) + drift, AY);
+
+		Ap(Pata1, Pata1RestRot, (env * 80.f) + drift, LY);
+		Ap(Pata2, Pata2RestRot, (env * 80.f) + drift, LY);
+
+		Ap2(Cola, ColaRestRot,
+		    env * 20.f + drift,  TY,
+		    drift * 2.f,         TZ);
+
+		bEnded = (T >= 5.f);
+		break;
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 7  SEÑALAR — Brazo1 apunta, Brazo2 baja reposo.                  1.2 s
+	// ──────────────────────────────────────────────────────────────────────────
+	case 7:
+	{
+		const float rise    = Sat(T / 0.1f);
+		const float fadeOut = (T > 0.8f) ? Sat((T - 0.8f) / 0.4f) : 0.f;
+		const float env     = rise * (1.f - fadeOut);
+
+		// Brazo1 (dcha): apunta adelante
+		Ap2(Brazo1, Brazo1RestRot,
+		    env * 25.f,        AX,
+		    env * (-80.f),     AZ);
+
+		// Brazo2 (izq): reposo abajo
+		Ap(Brazo2, Brazo2RestRot, env * 80.f, AX);
+
+		Ap(Cabeza, CabezaRestRot, env * 10.f, AY);
+		Ap(Cola, ColaRestRot, env * 8.f * S(1.5f, T), TZ);
+
+		bEnded = (T >= 1.2f);
+		break;
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 8  MODO LOCO 2 — Caos TOTAL: todos los componentes rotan y se
+	//     trasladan a lo bestia (incluye Brazo2).                     LOOP ∞
+	// ──────────────────────────────────────────────────────────────────────────
+	case 8:
+	{
+		// Rotación salvaje en TODOS los componentes
+		Ap3(Brazo1, Brazo1RestRot,
+		     50.f * S(3.0f, T),          AX,
+		     40.f * S(2.1f, T),          AY,
+		     20.f * S(4.7f, T),          AZ);
+		Ap3(Brazo2, Brazo2RestRot,
+		    -55.f * S(2.8f, T + 0.1f),   AX,
+		    -40.f * S(3.3f, T + 0.2f),   AY,
+		     25.f * S(4.1f, T),           AZ);
+		Ap3(Pata1, Pata1RestRot,
+		     35.f * S(4.0f, T),          LY,
+		     20.f * S(2.7f, T),          LX,
+		     10.f * S(5.0f, T),          LZ);
+		Ap3(Pata2, Pata2RestRot,
+		    -35.f * S(4.0f, T + 0.08f),  LY,
+		    -20.f * S(2.7f, T + 0.15f),  LX,
+		    -10.f * S(5.0f, T + 0.05f),  LZ);
+		Ap3(Cola, ColaRestRot,
+		    15.f * Cos(5.f, T),           TY,
+		    25.f * S(7.f, T),             TZ,
+		    10.f * S(3.f, T + 0.1f),      TX);
+		Ap3(Cabeza, CabezaRestRot,
+		    10.f * S(3.7f, T),            AY,
+		    15.f * S(2.3f, T + 0.07f),    AZ,
+		     5.f * S(5.5f, T),            AX);
+
+		// Traslación: HIPER-EXAGERADA tipo explosión — ±250 cm
+		const float locAmp = 250.f;
+		SetLoc(Brazo1, Brazo1RestLoc, FVector(
+		    locAmp * S(1.7f, T),  locAmp * S(2.3f, T + 0.1f),  locAmp * S(3.1f, T)));
+		SetLoc(Brazo2, Brazo2RestLoc, FVector(
+		    locAmp * S(2.1f, T + 0.05f), -locAmp * S(1.9f, T),  locAmp * S(3.5f, T + 0.1f)));
+		SetLoc(Pata1, Pata1RestLoc, FVector(
+		    locAmp * S(2.9f, T), -locAmp * S(1.3f, T + 0.15f), locAmp * S(3.7f, T)));
+		SetLoc(Pata2, Pata2RestLoc, FVector(
+		   -locAmp * S(2.3f, T + 0.1f),  locAmp * S(1.7f, T),  locAmp * Cos(3.3f, T)));
+		SetLoc(Cola, ColaRestLoc, FVector(
+		   -locAmp * S(1.1f, T), locAmp * S(2.9f, T + 0.05f), locAmp * S(4.1f, T)));
+		SetLoc(Cabeza, CabezaRestLoc, FVector(
+		    locAmp * 0.5f * S(2.5f, T), locAmp * 0.3f * S(3.1f, T + 0.12f), locAmp * 0.4f * S(4.3f, T)));
+
+		break; // LOOP ∞
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// 9  FIESTA (MODO LOCO) — Caos puro solo rotación, sin separar.     LOOP ∞
+	// ──────────────────────────────────────────────────────────────────────────
+	case 9:
+		Ap3(Brazo1, Brazo1RestRot,
+		     50.f * S(3.0f, T),          AX,
+		     40.f * S(2.1f, T),          AY,
+		     20.f * S(4.7f, T),          AZ);
+		Ap3(Brazo2, Brazo2RestRot,
+		    -55.f * S(2.3f, T + 0.13f),  AX,
+		    -35.f * S(3.1f, T),          AY,
+		     25.f * S(1.7f, T + 0.08f),  AZ);
+		Ap3(Pata1, Pata1RestRot,
+		     35.f * S(4.0f, T),          LY,
+		     20.f * S(2.7f, T),          LX,
+		     10.f * S(5.0f, T),          LZ);
+		Ap3(Pata2, Pata2RestRot,
+		    -35.f * S(4.0f, T + 0.08f),  LY,
+		    -20.f * S(2.7f, T + 0.15f),  LX,
+		    -10.f * S(5.0f, T + 0.05f),  LZ);
+		Ap3(Cola, ColaRestRot,
+		    15.f * Cos(5.f, T),           TY,
+		    25.f * S(7.f, T),             TZ,
+		    10.f * S(3.f, T + 0.1f),      TX);
+		Ap3(Cabeza, CabezaRestRot,
+		    10.f * S(3.7f, T),            AY,
+		    15.f * S(2.3f, T + 0.07f),    AZ,
+		     5.f * S(5.5f, T),            AX);
+		break; // LOOP ∞
+
+	default:
+		bEnded = true;
+		break;
+	}
+
+	if (bEnded) { CancelEmote(); }
+}
+
+// ── Per-emote input handlers ──────────────────────────────────────────────────
+void ATortugaCharacter::OnEmote0() { TriggerEmote(0); }
+void ATortugaCharacter::OnEmote1() { TriggerEmote(1); }
+void ATortugaCharacter::OnEmote2() { TriggerEmote(2); }
+void ATortugaCharacter::OnEmote3() { TriggerEmote(3); }
+void ATortugaCharacter::OnEmote4() { TriggerEmote(4); }
+void ATortugaCharacter::OnEmote5() { TriggerEmote(5); }
+void ATortugaCharacter::OnEmote6() { TriggerEmote(6); }
+void ATortugaCharacter::OnEmote7() { TriggerEmote(7); }
+void ATortugaCharacter::OnEmote8() { TriggerEmote(8); }
+void ATortugaCharacter::OnEmote9() { TriggerEmote(9); }
 

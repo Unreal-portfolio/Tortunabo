@@ -60,6 +60,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TSoftObjectPtr<UInputAction> DropItemAction;
 
+	/**
+	 * Input actions for emotes 0–9.  The array must have exactly 10 elements.
+	 * Assign IA_Emote0…IA_Emote9 here or override in your Blueprint Class Defaults.
+	 * Keys 0–9 (numrow) should be mapped to each action in IMC_Player.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Emotes")
+	TArray<TSoftObjectPtr<UInputAction>> EmoteActions;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	TObjectPtr<UTN_InventoryComponent> InventoryComponent;
 
@@ -99,6 +107,29 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.0"))
 	float LegMinSpeed = 20.f;
 
+	// ── Emote Config ─────────────────────────────────────────────────────────
+	/** Seconds to smoothly interpolate all limbs back to rest after an emote ends. */
+	UPROPERTY(EditDefaultsOnly, Category = "Emotes", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float EmoteBlendOutDuration = 0.25f;
+
+	/**
+	 * Eje primario de los brazos en espacio del PADRE (T-Pose).
+	 * Con SceneComponents a rot (0,0,0) y brazos por ±Y:
+	 *   X (1,0,0) rojo   = adelante → sube/baja visto de frente (+X=arriba)
+	 *   Y (0,1,0) verde  = derecha  → roll sobre eje largo del brazo (casi invisible en cubos)
+	 *   Z (0,0,1) azul   = arriba   → adelante/atrás (−Z=adelante, +Z=atrás)
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Emotes")
+	FVector ArmSwingAxis = FVector(1.f, 0.f, 0.f);
+
+	/** Up/down wag axis for Cola in LOCAL space.  (0,1,0) = local Y → tail wags up/down. */
+	UPROPERTY(EditDefaultsOnly, Category = "Emotes")
+	FVector TailUpDownAxis = FVector(0.f, 1.f, 0.f);
+
+	/** Side-to-side wag axis for Cola in LOCAL space.  (0,0,1) = local Z → tail wags left/right. */
+	UPROPERTY(EditDefaultsOnly, Category = "Emotes")
+	FVector TailSideAxis = FVector(0.f, 0.f, 1.f);
+
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
 	float InteractionScanInterval = 0.1f;
 
@@ -107,6 +138,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction|Networking", meta = (ClampMin = "0.0"))
 	float MaxLagCompensationDistance = 120.f;
+
+	/** Ángulo adicional hacia arriba (grados) al lanzar objetos, para que hagan arco. */
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "45.0"))
+	float ThrowUpAngleDeg = 15.f;
 
 private:
 	void CacheInputAssets();
@@ -142,6 +177,50 @@ private:
 	FVector2D LastMovementInput = FVector2D::ZeroVector;
 	bool bSprintHeld = false;
 
+	// ── Emote State ─────────────────────────────────────────────────────────
+	int32 ActiveEmoteIndex   = -1;   ///< -1 = no emote active (local animation driver)
+	float EmoteTime          =  0.f; ///< seconds since emote started
+	bool  bEmoteBlendingOut  = false;
+	float EmoteBlendOutTimer =  0.f;
+
+	/** Snapshots of component rotations captured when a blend-out begins. */
+	FRotator SnapshotBrazo1;
+	FRotator SnapshotBrazo2;
+	FRotator SnapshotPata1;
+	FRotator SnapshotPata2;
+	FRotator SnapshotCola;
+	FRotator SnapshotCabeza;
+
+	/** Snapshots of component locations captured when a blend-out begins. */
+	FVector SnapshotBrazo1Loc;
+	FVector SnapshotBrazo2Loc;
+	FVector SnapshotPata1Loc;
+	FVector SnapshotPata2Loc;
+	FVector SnapshotColaLoc;
+	FVector SnapshotCabezaLoc;
+
+	/** Cached arm, tail, and head component refs (found by name in BeginPlay, same as Pata1/Pata2). */
+	TWeakObjectPtr<USceneComponent> Brazo1;
+	TWeakObjectPtr<USceneComponent> Brazo2;
+	TWeakObjectPtr<USceneComponent> Cola;
+	TWeakObjectPtr<USceneComponent> Cabeza;
+	FRotator Brazo1RestRot = FRotator::ZeroRotator;
+	FRotator Brazo2RestRot = FRotator::ZeroRotator;
+	FRotator ColaRestRot   = FRotator::ZeroRotator;
+	FRotator CabezaRestRot = FRotator::ZeroRotator;
+
+	/** Rest locations for transform-based emotes (Explosivo, Modo Loco 2). */
+	FVector Brazo1RestLoc = FVector::ZeroVector;
+	FVector Brazo2RestLoc = FVector::ZeroVector;
+	FVector Pata1RestLoc  = FVector::ZeroVector;
+	FVector Pata2RestLoc  = FVector::ZeroVector;
+	FVector ColaRestLoc   = FVector::ZeroVector;
+	FVector CabezaRestLoc = FVector::ZeroVector;
+
+	/** Loaded emote Input Actions (one per slot 0-9, Transient). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UInputAction>> LoadedEmoteActions;
+
 	// ── Leg animation state (cosmetic, local-only, never replicated) ──────────
 	float LegPhaseAccumulator    = 0.f;   // cycles [0,1)
 	float LegAmplitudeMultiplier = 0.f;   // [0,1] fade envelope
@@ -171,6 +250,37 @@ private:
 	/** Trace descendente para encontrar el suelo bajo WorldLocation. Usado al soltar y aterrizar ítems. */
 	FVector FindGroundBelow(const FVector& WorldLocation) const;
 
+	// ── Emote system ─────────────────────────────────────────────────────────
+	/** Start emote at index (0-9). Called from input — starts locally + replicates. */
+	void TriggerEmote(int32 Index);
+	/** Internal: start emote animation on this machine (no ownership check). */
+	void StartEmoteLocally(int32 Index);
+	/** Cancel the active emote and begin a smooth blend-out back to rest. */
+	void CancelEmote();
+	/** Per-frame emote tick: advances animation and drives component rotations. */
+	void TickEmote(float DeltaTime);
+	/** Apply a single-axis rotation additively on top of a component's rest rotation. */
+	void ApplyEmoteAngle(USceneComponent* Comp, const FRotator& Rest, float AngleDeg, const FVector& Axis) const;
+	/** Apply two-axis compound rotation (e.g. tail spiralling during Fiesta). */
+	void ApplyEmoteAngles2(USceneComponent* Comp, const FRotator& Rest,
+	                       float A1, const FVector& Ax1,
+	                       float A2, const FVector& Ax2) const;
+	void ApplyEmoteAngles3(USceneComponent* Comp, const FRotator& Rest,
+	                       float A1, const FVector& Ax1,
+	                       float A2, const FVector& Ax2,
+	                       float A3, const FVector& Ax3) const;
+	// Per-emote input handlers (one-liners, bound in SetupPlayerInputComponent)
+	void OnEmote0(); void OnEmote1(); void OnEmote2(); void OnEmote3(); void OnEmote4();
+	void OnEmote5(); void OnEmote6(); void OnEmote7(); void OnEmote8(); void OnEmote9();
+
+	/** Server RPC: set emote index on the replicated property so all clients see it. */
+	UFUNCTION(Server, Reliable)
+	void ServerSetEmote(int32 Index);
+
+	/** OnRep: fired on remote clients when ReplicatedEmoteIndex changes. */
+	UFUNCTION()
+	void OnRep_ReplicatedEmoteIndex();
+
 	UFUNCTION(Server, Reliable)
 	void ServerTryInteract(ATN_InteractableBase* Interactable);
 
@@ -187,6 +297,11 @@ private:
 	void OnRep_IsKnockedDown();
 
 protected:
+	// ── Emote replication ────────────────────────────────────────────────────
+	/** Emote index replicado a todos los clientes. -1 = sin emote. */
+	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedEmoteIndex)
+	int32 ReplicatedEmoteIndex = -1;
+
 	// ── Knockdown state ──────────────────────────────────────────────────────
 	/**
 	 * Estado replicado de knockdown. true → mesh tiltado 100°, movimiento bloqueado.
