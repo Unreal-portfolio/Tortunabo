@@ -32,10 +32,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	FText GetPromptText() const { return PromptText; }
 
-protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction")
-	TObjectPtr<USceneComponent> SceneRoot;
 
+protected:
+	/**
+	 * Mesh del interactuable. Es el componente root del actor.
+	 * Ser root (UStaticMeshComponent = UPrimitiveComponent) permite que
+	 * UWorld::FindTeleportSpot calcule bounds correctamente al spawnear el actor.
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction")
 	TObjectPtr<UStaticMeshComponent> Mesh;
 

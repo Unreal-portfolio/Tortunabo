@@ -14,8 +14,21 @@
 #include "World/TN_ThrowableItemActor.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
+#include "Engine/OverlapResult.h"
 #include "TimerManager.h"
+#include "Net/UnrealNetwork.h"
+#include "DrawDebugHelpers.h"
+
+// ── CVar de debug ─────────────────────────────────────────────────────────────
+// Activar en consola con: TN.Debug.Interaction 1
+// Desactivar con: TN.Debug.Interaction 0
+static TAutoConsoleVariable<int32> CVarDebugInteraction(
+	TEXT("TN.Debug.Interaction"),
+	0,
+	TEXT("1 = Draw debug lines/spheres para el raycast de interacción y logs detallados. 0 = off."),
+	ECVF_Cheat);
 
 ATortugaCharacter::ATortugaCharacter()
 {
@@ -56,12 +69,20 @@ ATortugaCharacter::ATortugaCharacter()
 void ATortugaCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] BeginPlay '%s' — LocallyControlled=%s  HasAuthority=%s  Controller=%s"),
+		*GetName(),
+		IsLocallyControlled() ? TEXT("YES") : TEXT("NO"),
+		HasAuthority() ? TEXT("YES") : TEXT("NO"),
+		GetController() ? *GetController()->GetName() : TEXT("NULL"));
+
 	CacheInputAssets();
 	ApplyInputMappingIfLocal();
 
 	if (IsLocallyControlled() && InteractionScanInterval > 0.f)
 	{
 		GetWorldTimerManager().SetTimer(InteractionScanTimerHandle, this, &ATortugaCharacter::UpdateFocusedInteractable, InteractionScanInterval, true);
+		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Interaction scan timer started (interval=%.2fs)"), InteractionScanInterval);
 	}
 
 	// Cache leg components (added in Blueprint as child SceneComponents).
@@ -75,6 +96,12 @@ void ATortugaCharacter::BeginPlay()
 
 	if (Pata2.IsValid()) { Pata2RestRot = Pata2->GetRelativeRotation(); }
 	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Pata2' component not found — add a SceneComponent named exactly 'Pata2' in the Blueprint.")); }
+
+	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		MeshDefaultRelativeRotation = MeshComp->GetRelativeRotation();
+	}
 }
 
 void ATortugaCharacter::Tick(float DeltaTime)
@@ -143,7 +170,10 @@ USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
 
 void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	FocusedInteractable = nullptr;
+
 	GetWorldTimerManager().ClearTimer(InteractionScanTimerHandle);
+	GetWorldTimerManager().ClearTimer(KnockdownTimerHandle);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -171,10 +201,27 @@ void ATortugaCharacter::CacheInputAssets()
 	LoadedDropItemAction = DropItemAction.LoadSynchronous();
 	bInputAssetsLoaded = true;
 
-	if (!LoadedMappingContext || !LoadedMoveAction || !LoadedLookAction || !LoadedJumpAction)
+	// ── Log de cada asset para diagnosticar qué falta ─────────────────────────
+	auto LogAsset = [](const TCHAR* Name, const UObject* Asset)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Input] Missing IMC/IA assets on TortugaCharacter. Configure /Game/Input/IMC_Player + IA_Move/IA_Look/IA_Jump."));
-	}
+		if (Asset)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[Input] ✓ %s loaded: %s"), Name, *Asset->GetPathName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ %s FAILED TO LOAD — create this asset in /Game/Input/"), Name);
+		}
+	};
+
+	LogAsset(TEXT("IMC_Player"), LoadedMappingContext);
+	LogAsset(TEXT("IA_Move"), LoadedMoveAction);
+	LogAsset(TEXT("IA_Look"), LoadedLookAction);
+	LogAsset(TEXT("IA_Jump"), LoadedJumpAction);
+	LogAsset(TEXT("IA_Interact"), LoadedInteractAction);
+	LogAsset(TEXT("IA_RotateInventory"), LoadedRotateInventoryAction);
+	LogAsset(TEXT("IA_Sprint"), LoadedSprintAction);
+	LogAsset(TEXT("IA_DropItem"), LoadedDropItemAction);
 }
 
 void ATortugaCharacter::ApplyInputMappingIfLocal()
@@ -201,6 +248,9 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
+	UE_LOG(LogTemp, Log, TEXT("[Input] SetupPlayerInputComponent called on '%s' (LocallyControlled=%s)"),
+		*GetName(), IsLocallyControlled() ? TEXT("YES") : TEXT("NO"));
+
 	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		CacheInputAssets();
@@ -222,6 +272,11 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		if (LoadedInteractAction)
 		{
 			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Started, this, &ATortugaCharacter::TryInteract);
+			UE_LOG(LogTemp, Log, TEXT("[Input] ✓ IA_Interact bound to TryInteract"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ IA_Interact NOT bound — asset is null! Create /Game/Input/IA_Interact"));
 		}
 		if (LoadedRotateInventoryAction)
 		{
@@ -237,6 +292,10 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		{
 			EnhancedInput->BindAction(LoadedDropItemAction, ETriggerEvent::Started, this, &ATortugaCharacter::DropEquippedItem);
 		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Input] ✗ PlayerInputComponent is NOT an EnhancedInputComponent! Check DefaultInput.ini uses EnhancedPlayerInput."));
 	}
 }
 
@@ -277,15 +336,36 @@ void ATortugaCharacter::Look(const FInputActionValue& Value)
 
 void ATortugaCharacter::TryInteract()
 {
+	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
+
+	if (bDebug)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] === E PRESSED === FocusedInteractable: %s"),
+			FocusedInteractable.IsValid() ? *FocusedInteractable->GetName() : TEXT("(none)"));
+	}
+
+	// Si no hay foco, intentar un scan inmediato
 	if (!FocusedInteractable.IsValid())
 	{
 		UpdateFocusedInteractable();
 	}
 
+	// Si tras el scan sigue sin haber interactuable → usar ítem equipado
 	if (!FocusedInteractable.IsValid())
 	{
+		if (bDebug)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] No interactable in focus → TryUseEquippedItem"));
+		}
 		TryUseEquippedItem();
 		return;
+	}
+
+	if (bDebug)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Sending ServerTryInteract → %s (CanInteract client-side: %s)"),
+			*FocusedInteractable->GetName(),
+			FocusedInteractable->CanInteract(this) ? TEXT("YES") : TEXT("NO"));
 	}
 
 	ServerTryInteract(FocusedInteractable.Get());
@@ -334,54 +414,98 @@ void ATortugaCharacter::RefreshSprintRequest()
 
 void ATortugaCharacter::UpdateFocusedInteractable()
 {
-	if (!GetWorld())
+	if (!GetWorld()) { FocusedInteractable = nullptr; return; }
+
+	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
+
+	// ── Detección por proximidad: esfera alrededor del personaje ─────────────
+	// No usa raycast ni cámara — el jugador solo tiene que acercarse al objeto.
+	// Busca todos los actores WorldDynamic en el radio y escoge el más cercano
+	// que sea un ATN_InteractableBase válido.
+	TArray<FOverlapResult> Overlaps;
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TN_InteractionProximity), false);
+	QueryParams.AddIgnoredActor(this);
+
+	GetWorld()->OverlapMultiByObjectType(
+		Overlaps,
+		GetActorLocation(),
+		FQuat::Identity,
+		FCollisionObjectQueryParams(ECC_WorldDynamic),
+		FCollisionShape::MakeSphere(MaxInteractionDistance),
+		QueryParams);
+
+	ATN_InteractableBase* BestCandidate = nullptr;
+	float BestDistSq = FLT_MAX;
+
+	for (const FOverlapResult& Result : Overlaps)
 	{
-		FocusedInteractable = nullptr;
-		return;
+		ATN_InteractableBase* Interactable = Cast<ATN_InteractableBase>(Result.GetActor());
+		if (!Interactable || !Interactable->CanInteract(this)) { continue; }
+
+		const float DistSq = FVector::DistSquared(GetActorLocation(), Interactable->GetActorLocation());
+		if (DistSq < BestDistSq)
+		{
+			BestDistSq = DistSq;
+			BestCandidate = Interactable;
+		}
 	}
 
-	FVector ViewLocation = FVector::ZeroVector;
-	FVector ViewDirection = FVector::ForwardVector;
-	ResolveInteractionViewPoint(ViewLocation, ViewDirection);
+	if (FocusedInteractable.Get() != BestCandidate)
+	{
+		FocusedInteractable = BestCandidate;
+		if (bDebug)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Focus → %s  (dist=%.0f)"),
+				BestCandidate ? *BestCandidate->GetName() : TEXT("(none)"),
+				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetActorLocation()) : 0.f);
+		}
+	}
+
+	if (bDebug)
+	{
+		// Mostrar la esfera de detección
+		DrawDebugSphere(GetWorld(), GetActorLocation(), MaxInteractionDistance,
+			16, BestCandidate ? FColor::Green : FColor::Silver,
+			false, InteractionScanInterval * 1.5f, 0, 0.8f);
+
+		if (BestCandidate)
+		{
+			DrawDebugLine(GetWorld(), GetActorLocation(), BestCandidate->GetActorLocation(),
+				FColor::Cyan, false, InteractionScanInterval * 1.5f, 0, 2.f);
+		}
+	}
+}
+
+FVector ATortugaCharacter::FindGroundBelow(const FVector& WorldLocation) const
+{
+	if (!GetWorld()) { return WorldLocation; }
 
 	FHitResult Hit;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(TN_InteractionTrace), false, this);
-	const FVector TraceEnd = ViewLocation + (ViewDirection * MaxInteractionDistance);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TN_GroundTrace), false, this);
+	const FVector Start = WorldLocation + FVector(0.f, 0.f, 30.f);
+	const FVector End   = WorldLocation - FVector(0.f, 0.f, 1500.f);
 
-	ATN_InteractableBase* NewFocused = nullptr;
-	if (GetWorld()->LineTraceSingleByChannel(Hit, ViewLocation, TraceEnd, ECC_Visibility, Params))
+	if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, Params))
 	{
-		NewFocused = Cast<ATN_InteractableBase>(Hit.GetActor());
+		return Hit.ImpactPoint + FVector(0.f, 0.f, 5.f);
 	}
-
-	FocusedInteractable = NewFocused;
+	return WorldLocation;
 }
 
-void ATortugaCharacter::ResolveInteractionViewPoint(FVector& OutLocation, FVector& OutDirection) const
-{
-	if (FollowCamera)
-	{
-		OutLocation = FollowCamera->GetComponentLocation();
-		OutDirection = FollowCamera->GetForwardVector();
-		return;
-	}
-
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		FRotator ViewRotation;
-		PC->GetPlayerViewPoint(OutLocation, ViewRotation);
-		OutDirection = ViewRotation.Vector();
-		return;
-	}
-
-	OutLocation = GetActorLocation();
-	OutDirection = GetActorForwardVector();
-}
 
 void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* Interactable)
 {
-	if (!Interactable || !Interactable->CanInteract(this))
+	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
+
+	if (!Interactable)
 	{
+		if (bDebug) { UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] Interactable is NULL — client sent invalid reference")); }
+		return;
+	}
+
+	if (!Interactable->CanInteract(this))
+	{
+		if (bDebug) { UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] CanInteract=FALSE for '%s' — already taken? disabled? no inventory space?"), *Interactable->GetName()); }
 		return;
 	}
 
@@ -392,10 +516,16 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 		PingDistanceAllowance = FMath::Clamp(PS->ExactPing * 0.25f, 0.f, MaxLagCompensationDistance);
 	}
 
-	if (FVector::DistSquared(GetActorLocation(), Interactable->GetActorLocation()) > FMath::Square(MaxDistance + 100.f + PingDistanceAllowance))
+	const float TotalAllowed = MaxDistance + 100.f + PingDistanceAllowance;
+	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetActorLocation());
+
+	if (ActualDist > TotalAllowed)
 	{
+		if (bDebug) { UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] TOO FAR — dist=%.1f  allowed=%.1f  (MaxDist=%.1f + 100 + ping=%.1f)"), ActualDist, TotalAllowed, MaxDistance, PingDistanceAllowance); }
 		return;
 	}
+
+	if (bDebug) { UE_LOG(LogTemp, Log, TEXT("[Interact:SERVER] ✓ Calling Interact on '%s' — dist=%.1f"), *Interactable->GetName(), ActualDist); }
 
 	Interactable->Interact(this);
 }
@@ -449,6 +579,9 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 
 		if (ATN_ThrowableItemActor* ThrowableActor = GetWorld()->SpawnActor<ATN_ThrowableItemActor>(EquippedItem.ThrowableActorClass, SpawnLocation, ThrowDirection.Rotation(), SpawnParams))
 		{
+			// SourceItem lleva PickupActorClass para que el throwable sepa
+			// qué pickup spawnear cuando aterrice o impacte (se convierte en recogible)
+			ThrowableActor->SetSourceItem(ConsumedItem);
 			ThrowableActor->InitializeThrow(SpawnLocation, LaunchVelocity);
 		}
 		else
@@ -461,10 +594,7 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 
 void ATortugaCharacter::ServerDropEquippedItem_Implementation()
 {
-	if (!InventoryComponent)
-	{
-		return;
-	}
+	if (!InventoryComponent) { return; }
 
 	FTN_InventoryItem DroppedItem;
 	if (!InventoryComponent->TryExtractEquippedItem(DroppedItem) || !DroppedItem.IsValid() || !DroppedItem.PickupActorClass)
@@ -477,8 +607,11 @@ void ATortugaCharacter::ServerDropEquippedItem_Implementation()
 	SpawnParams.Instigator = this;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-	const FVector SpawnLocation = GetItemSpawnLocation();
-	if (ATN_PickupInteractableBase* PickupActor = GetWorld()->SpawnActor<ATN_PickupInteractableBase>(DroppedItem.PickupActorClass, SpawnLocation, GetActorRotation(), SpawnParams))
+	// Siempre spawnear en el suelo aunque el personaje esté en el aire
+	const FVector DropPoint = FindGroundBelow(GetItemSpawnLocation());
+
+	if (ATN_PickupInteractableBase* PickupActor = GetWorld()->SpawnActor<ATN_PickupInteractableBase>(
+		DroppedItem.PickupActorClass, DropPoint, FRotator::ZeroRotator, SpawnParams))
 	{
 		PickupActor->InitializeFromInventoryItem(DroppedItem);
 	}
@@ -508,5 +641,114 @@ void ATortugaCharacter::GrantInfiniteStamina(float DurationSeconds)
 	}
 
 	StaminaComponent->GrantUnlimitedStamina(DurationSeconds);
+}
+
+// ── Replicación ───────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	// Replicar a todos los clientes para que el visual sea visible en todos
+	DOREPLIFETIME(ATortugaCharacter, bIsKnockedDown);
+}
+
+// ── Knockdown ─────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::ApplyKnockdown(float Duration)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// Evitar solapar knockdowns
+	if (bIsKnockedDown)
+	{
+		// Si ya está en knockdown, reiniciar el timer con la nueva duración
+		GetWorldTimerManager().SetTimer(KnockdownTimerHandle, this,
+		                                &ATortugaCharacter::RecoverFromKnockdown, Duration, false);
+		return;
+	}
+
+	bIsKnockedDown = true;
+
+	// Servidor (listen server) también necesita aplicar visual y bloqueo:
+	// OnRep_IsKnockedDown no se dispara en el propietario de la variable.
+	ApplyKnockdownVisual(true);
+	if (UCharacterMovementComponent* MC = GetCharacterMovement())
+	{
+		MC->DisableMovement();
+	}
+
+	GetWorldTimerManager().SetTimer(KnockdownTimerHandle, this,
+	                                &ATortugaCharacter::RecoverFromKnockdown, Duration, false);
+}
+
+void ATortugaCharacter::RecoverFromKnockdown()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	bIsKnockedDown = false;
+
+	// Listen-server aplica recuperación localmente (OnRep no se dispara aquí)
+	ApplyKnockdownVisual(false);
+	if (UCharacterMovementComponent* MC = GetCharacterMovement())
+	{
+		MC->SetMovementMode(MOVE_Walking);
+	}
+}
+
+void ATortugaCharacter::OnRep_IsKnockedDown()
+{
+	// Aplicar visual en todos los clientes (propietario y observadores)
+	ApplyKnockdownVisual(bIsKnockedDown);
+
+	// El cliente propietario también necesita que su movimiento quede bloqueado
+	// para que no envíe inputs al servidor durante el knockdown
+	if (IsLocallyControlled())
+	{
+		if (UCharacterMovementComponent* MC = GetCharacterMovement())
+		{
+			if (bIsKnockedDown)
+			{
+				MC->DisableMovement();
+			}
+			else
+			{
+				MC->SetMovementMode(MOVE_Walking);
+			}
+		}
+	}
+}
+
+void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+
+	if (bKnocked)
+	{
+		// Aplicamos el tilt en ESPACIO MUNDO para ser completamente independientes
+		// de la rotación por defecto del mesh (que suele ser Yaw=-90°, lo que
+		// hace que modificar Pitch relativo rote sobre el eje frontal en lugar del lateral).
+		// Pitch negativo en world space = eje lateral = la tortuga cae hacia atrás. ✓
+		// Como el movimiento está deshabilitado durante el knockdown, el personaje
+		// no girará mientras el mesh esté fijado en world rotation.
+		FRotator WorldRot = MeshComp->GetComponentRotation();
+		WorldRot.Pitch -= 100.0f;
+		MeshComp->SetWorldRotation(WorldRot);
+	}
+	else
+	{
+		// Restaurar a rotación RELATIVA por defecto → el mesh vuelve a
+		// seguir al capsule correctamente sin importar hacia dónde mire ahora.
+		MeshComp->SetRelativeRotation(MeshDefaultRelativeRotation);
+	}
 }
 

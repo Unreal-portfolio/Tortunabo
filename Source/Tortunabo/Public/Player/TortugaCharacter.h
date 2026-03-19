@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
+#include "TimerManager.h"
 #include "TortugaCharacter.generated.h"
 
 class UCameraComponent;
@@ -161,13 +162,14 @@ private:
 	void TryUseEquippedItem();
 	void RefreshSprintRequest();
 	void UpdateFocusedInteractable();
-	void ResolveInteractionViewPoint(FVector& OutLocation, FVector& OutDirection) const;
 	FVector GetItemSpawnLocation() const;
 	FVector GetItemForwardDirection() const;
 
 	void TickLegAnimation(float DeltaTime);
 	void ApplyLegAngle(USceneComponent* Comp, const FRotator& RestRot, float AngleDeg) const;
 	USceneComponent* FindChildByName(FName Name) const;
+	/** Trace descendente para encontrar el suelo bajo WorldLocation. Usado al soltar y aterrizar ítems. */
+	FVector FindGroundBelow(const FVector& WorldLocation) const;
 
 	UFUNCTION(Server, Reliable)
 	void ServerTryInteract(ATN_InteractableBase* Interactable);
@@ -178,7 +180,38 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerDropEquippedItem();
 
+	void ApplyKnockdownVisual(bool bKnocked);
+	void RecoverFromKnockdown();
+
+	UFUNCTION()
+	void OnRep_IsKnockedDown();
+
+protected:
+	// ── Knockdown state ──────────────────────────────────────────────────────
+	/**
+	 * Estado replicado de knockdown. true → mesh tiltado 100°, movimiento bloqueado.
+	 * BlueprintReadOnly en protected para que BPs hijos puedan leerlo (ej. para UI).
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_IsKnockedDown, BlueprintReadOnly, Category = "Knockdown")
+	bool bIsKnockedDown = false;
+
+	FTimerHandle KnockdownTimerHandle;
+
+	/** Rotación relativa del mesh al spawnear (guardada en BeginPlay para restaurarla). */
+	FRotator MeshDefaultRelativeRotation = FRotator::ZeroRotator;
+
+
 public:
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 * Aplica knockdown a este personaje durante Duration segundos.
+	 * Solo tiene efecto si se llama en el servidor (HasAuthority).
+	 * Accesible desde TN_ThrowableItemActor y cualquier otro actor de gameplay.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Knockdown")
+	void ApplyKnockdown(float Duration);
+
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void GrantInfiniteStamina(float DurationSeconds);
 };

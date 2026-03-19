@@ -128,6 +128,13 @@ private:
 	bool bPendingJoinAfterDestroy = false;
 	FOnlineSessionSearchResult PendingInviteResult;
 
+	/**
+	 * true durante el intervalo entre PreLoadMap y PostLoadMap.
+	 * Usado para diferenciar errores de red en inicio de conexión (sesión zombi)
+	 * vs. errores transitorios durante un ServerTravel normal (no destruir sesión).
+	 */
+	bool bIsPendingTravel = false;
+
 	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void EnsureSteamAppIdFile();
 	void HandlePreLoadMap(const FString& MapName);

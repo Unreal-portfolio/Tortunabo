@@ -45,6 +45,7 @@ void UTN_InventoryComponent::BeginPlay()
 				EquippedVisualMesh->AttachToComponent(Parent, FAttachmentTransformRules::KeepRelativeTransform);
 				EquippedVisualMesh->SetRelativeLocationAndRotation(EquippedRelativeLocation, EquippedRelativeRotation);
 			}
+			VisualMeshParent = Parent;
 		}
 	}
 
@@ -171,6 +172,26 @@ void UTN_InventoryComponent::RefreshEquippedVisual()
 
 	EquippedVisualMesh->SetStaticMesh(EquippedItem.EquippedMesh);
 	EquippedVisualMesh->SetVisibility(true);
+
+	// ── Compensar escala del padre para obtener tamaño mundo correcto ─────────
+	// Si el SkeletalMesh del personaje tiene escala no unitaria (ej. en el BP),
+	// la bola heredaría esa escala y se deformaría. Calculamos la escala relativa
+	// necesaria para que el tamaño mundo sea exactamente EquippedMeshScale.
+	const FVector DesiredWorldScale = EquippedItem.EquippedMeshScale;
+	if (VisualMeshParent)
+	{
+		const FVector ParentWorldScale = VisualMeshParent->GetComponentScale();
+		const FVector RelativeScale = FVector(
+			ParentWorldScale.X > KINDA_SMALL_NUMBER ? DesiredWorldScale.X / ParentWorldScale.X : DesiredWorldScale.X,
+			ParentWorldScale.Y > KINDA_SMALL_NUMBER ? DesiredWorldScale.Y / ParentWorldScale.Y : DesiredWorldScale.Y,
+			ParentWorldScale.Z > KINDA_SMALL_NUMBER ? DesiredWorldScale.Z / ParentWorldScale.Z : DesiredWorldScale.Z
+		);
+		EquippedVisualMesh->SetRelativeScale3D(RelativeScale);
+	}
+	else
+	{
+		EquippedVisualMesh->SetRelativeScale3D(DesiredWorldScale);
+	}
 }
 
 bool UTN_InventoryComponent::AddItemInternal(const FTN_InventoryItem& NewItem)

@@ -10,15 +10,24 @@ ATN_InteractableBase::ATN_InteractableBase()
 	bReplicates = true;
 	SetReplicateMovement(false);
 
-	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
-	SetRootComponent(SceneRoot);
-
+	// Mesh es el root: UStaticMeshComponent es UPrimitiveComponent, lo que permite
+	// que UWorld::FindTeleportSpot calcule bounds al spawnear el actor dinámicamente.
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
-	Mesh->SetupAttachment(SceneRoot);
+	SetRootComponent(Mesh);
 	Mesh->SetIsReplicated(false);
+	// ── Collision para el sistema de interacción por proximidad ───────────────
+	// ObjectType = WorldDynamic → el OverlapMultiByObjectType del personaje lo detecta.
+	// Pawn = Overlap (NO Block) → el jugador atraviesa el pickup sin chocar.
+	// WorldStatic = Block → el objeto descansa sobre el suelo correctamente.
+	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+	Mesh->SetCollisionResponseToAllChannels(ECR_Block);
+	Mesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);      // traversable
+	Mesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);     // sin bloquear cámara
+	Mesh->SetGenerateOverlapEvents(true);
 
 	PromptWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("PromptWidget"));
-	PromptWidgetComponent->SetupAttachment(SceneRoot);
+	PromptWidgetComponent->SetupAttachment(Mesh);
 	PromptWidgetComponent->SetDrawAtDesiredSize(true);
 	PromptWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
 	PromptWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
@@ -97,4 +106,5 @@ void ATN_InteractableBase::SetInteractionEnabled(bool bEnabled)
 	bInteractionEnabled = bEnabled;
 	ApplyInteractionEnabledState();
 }
+
 

@@ -77,6 +77,10 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> EquippedVisualMesh;
 
+	/** Componente padre del visual equipado. Guardado para compensar escala en RefreshEquippedVisual. */
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> VisualMeshParent;
+
 	UFUNCTION()
 	void OnRep_EquippedItem();
 

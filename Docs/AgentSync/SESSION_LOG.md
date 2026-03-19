@@ -80,3 +80,37 @@
 - Memory leak de ~KB por cada FAudioCaptureSynth orphaned (1 por transición de nivel o muerte de jugador). Aceptable para sesiones de juego normales.
 - El synth orphaned sigue con callbacks WASAPI activos hasta cierre de proceso. No afecta gameplay.
 
+## 2026-03-19 - Review sistema interacción + fix Network error lobby→game + optimización replicación ThrowableItem
+
+### Contexto
+- Revisión del sistema de interacción por proximidad.
+- Error de red observado al pasar del lobby al mapa de carrera: `OnNetworkFailure` destruía la sesión Steam al recibir `NetDriverListenFailure`/`NetDriverAlreadyExists` incluso durante un `ServerTravel` normal (colisión transitoria del socket Steam).
+- Replicación redundante en `TN_ThrowableItemActor`: 3 variables con el mismo `OnRep_ThrowData`, causando hasta 3 llamadas innecesarias por envío.
+
+### Cambios clave
+
+#### `TN_ThrowableItemActor` — optimización de replicación
+- **`Public/World/TN_ThrowableItemActor.h`**: Añadido `USTRUCT FTN_ThrowLaunchData` con campos `SpawnLocation`, `LaunchVelocity` y `bReady`. Las 3 propiedades `UPROPERTY(ReplicatedUsing)` separadas se reemplazan por un único `ThrowData` de tipo `FTN_ThrowLaunchData`.
+- **`Private/World/TN_ThrowableItemActor.cpp`**: `DOREPLIFETIME` actualizado para un solo struct. `InitializeThrow()` y `ApplyLaunchDataIfReady()` actualizados para usar `ThrowData.*`.
+- **Resultado**: Un único dirty bit → un único `OnRep_ThrowData` por replicación (antes: hasta 3 llamadas por frame).
+
+#### `TortugaCharacter` — eliminación de código muerto
+- **`Public/Player/TortugaCharacter.h`** y **`Private/Player/TortugaCharacter.cpp`**: Eliminada `ResolveInteractionViewPoint()`. Esta función era residuo del antiguo sistema de raycast; el sistema actual usa proximity scan (`OverlapMultiByObjectType`) y nunca la invocaba.
+- Añadido `#include "Engine/OverlapResult.h"` explícito para resolver el tipo `FOverlapResult`.
+
+#### `MP_GameInstance` — fix error de red durante transición lobby→game
+- **`Public/Multiplayer/MP_GameInstance.h`**: Añadido flag privado `bool bIsPendingTravel = false`.
+- **`Private/Multiplayer/MP_GameInstance.cpp`**:
+  - `HandlePreLoadMap` setea `bIsPendingTravel = true`.
+  - `HandlePostLoadMap` lo resetea a `false`.
+  - `OnNetworkFailure`: cuando `FailureType` es `NetDriverListenFailure/CreateFailure/AlreadyExists` **y** `bIsPendingTravel == true`, el error se trata como transitorio (socket Steam no liberado a tiempo durante ServerTravel). La sesión NO se destruye. Solo se oculta la loading screen y se loguea warning. Cuando `bIsPendingTravel == false` (inicio de conexión), el comportamiento anterior se mantiene (destruir sesión zombi).
+
+### Networking y rendimiento
+- `ThrowableItemActor`: -2 OnRep calls por lanzamiento (de 3 a 1). Misma semántica.
+- Interacción: sin cambios en el flujo. Sistema ya correcto: scan local 0.1s → `ServerTryInteract(ATN_InteractableBase*)` → validación de distancia en servidor → `Interact()`.
+- Network error fix: no hay new allocations; solo un bool y lógica condicional en el handler.
+
+### Pendientes
+1. Validar el fix de red con 2+ clientes: probar lobby→run→lobby con Steam real.
+2. Si `NetDriverListenFailure` sigue ocurriendo durante ServerTravel, investigar si `Sessions->UpdateSession` tras el travel ayuda a re-registrar el socket Steam.
+

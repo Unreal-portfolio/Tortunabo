@@ -593,6 +593,11 @@ void UMP_GameInstance::HandleReturnToMenu()
 
 void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 {
+	// Marcar que estamos en una transición de nivel.
+	// OnNetworkFailure usa este flag para no destruir la sesión si el error
+	// es transitorio (ej. colisión de socket Steam durante ServerTravel).
+	bIsPendingTravel = true;
+
 	// Safety net: stop all audio capture streams before any map transition.
 	// Individual GameModes already call ShutdownAllCapture explicitly, but this
 	// catches any travel path we might have missed (invites, network failures, etc.).
@@ -603,6 +608,7 @@ void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 
 void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 {
+	bIsPendingTravel = false;
 	HideLoadingScreen();
 }
 
@@ -704,18 +710,38 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 
 	UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
 
-	// Cuando el listen server falla al iniciarse, la sesión Steam sigue abierta
-	// como zombi. La destruimos para que el usuario pueda reintentar sin reiniciar Steam.
-	// NetDriverListenFailure: el socket P2P no pudo abrirse (Steam en mal estado o
-	// sesión previa no cerrada limpiamente).
+	// Errores de socket/driver que pueden ocurrir en dos contextos muy distintos:
+	// 1. Inicio de conexión (sesión zombi de Steam) → destruir sesión para permitir reintentar.
+	// 2. Durante un ServerTravel lobby→game → el socket Steam tarda en liberarse.
+	//    En este caso el error es transitorio; destruir la sesión sería incorrecto.
 	if (FailureType == ENetworkFailure::NetDriverListenFailure ||
 		FailureType == ENetworkFailure::NetDriverCreateFailure ||
 		FailureType == ENetworkFailure::NetDriverAlreadyExists)
 	{
-		HideLoadingScreen();
-		// Destruir la sesión Steam zombi para que el próximo intento de HostSession funcione.
-		DestroyCurrentSession();
-		UE_LOG(LogTemp, Warning, TEXT("[MP] NetDriverListenFailure detectado — sesión Steam destruida. Reinicia Steam si el error persiste."));
+		if (bIsPendingTravel)
+		{
+			// Error durante transición de nivel (ServerTravel lobby→game).
+			// El socket Steam del listener anterior no se liberó a tiempo.
+			// No destruir la sesión — el engine reintentará la escucha.
+			// Solo ocultamos la loading screen si quedó visible.
+			bIsPendingTravel = false;
+			HideLoadingScreen();
+			UE_LOG(LogTemp, Warning,
+				TEXT("[MP] %s durante transición de nivel — probable colisión de socket Steam. "
+				     "La sesión se mantiene activa; el engine reintentará la escucha."),
+				*FailureTypeStr);
+		}
+		else
+		{
+			// Error al iniciar el listen server desde cero (sesión Steam zombi).
+			// Destruir la sesión permite reintentar sin reiniciar Steam.
+			HideLoadingScreen();
+			DestroyCurrentSession();
+			UE_LOG(LogTemp, Warning,
+				TEXT("[MP] %s en inicio de conexión — sesión Steam destruida. "
+				     "Reinicia Steam si el error persiste."),
+				*FailureTypeStr);
+		}
 	}
 }
 
