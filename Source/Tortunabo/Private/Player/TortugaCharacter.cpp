@@ -727,7 +727,8 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	// Replicar a todos los clientes para que el visual sea visible en todos
 	DOREPLIFETIME(ATortugaCharacter, bIsKnockedDown);
-	DOREPLIFETIME(ATortugaCharacter, ReplicatedEmoteIndex);
+	// SkipOwner: el owner ya arranca el emote localmente en TriggerEmote/CancelEmote.
+	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedEmoteIndex, COND_SkipOwner);
 }
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────

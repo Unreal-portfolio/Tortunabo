@@ -209,7 +209,7 @@ private:
 	FRotator ColaRestRot   = FRotator::ZeroRotator;
 	FRotator CabezaRestRot = FRotator::ZeroRotator;
 
-	/** Rest locations for transform-based emotes (Explosivo, Modo Loco 2). */
+	/** Rest locations for transform-based emotes (Palmada Potente, Modo Loco 2). */
 	FVector Brazo1RestLoc = FVector::ZeroVector;
 	FVector Brazo2RestLoc = FVector::ZeroVector;
 	FVector Pata1RestLoc  = FVector::ZeroVector;
