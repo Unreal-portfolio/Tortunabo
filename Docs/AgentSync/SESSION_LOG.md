@@ -148,3 +148,74 @@
 ### Pendientes
 1. Validar que al recibir `NetChecksumMismatch`, el jugador vuelve al menú y puede buscar/unirse de nuevo sin reiniciar.
 2. Investigar si `BP_GenericPickup` hereda de alguna clase C++ que se modificó con el Live Coding rebuild — si es así, sería un buen candidato para añadir a un `UPROPERTY` de Blueprint estable.
+
+## 2026-03-20 - Fix clientes no unen a Run, knockdown multicast, throwable rework, optimización red/audio
+
+### Contexto
+- Bugs en partida 4 jugadores: clientes no viajan a Run, knockdown visual no replica bien, emotes (cabeza) intermitentes, lag general.
+- Bola lanzable necesita parábola, rebote con jugadores, knockdown condicional por velocidad.
+
+### Cambios clave
+
+#### 1. `TN_RunGameMode` — Fix clientes no se unen al mapa Run
+- **`Public/Game/TN_RunGameMode.h`**: Añadidos overrides `PostLogin` y `Logout`.
+- **`Private/Game/TN_RunGameMode.cpp`**:
+  - `PostLogin`: llama `EnsurePlayerSpawned`, inicializa `TN_CoopPlayerState` (bIsAlive, FinishRank, etc.), actualiza `ConnectedPlayers`/`ExpectedPlayers` en GameState. **Bug raíz**: sin PostLogin, los clientes reconectando tras non-seamless travel no tenían su PlayerState inicializado ni se contaban en el GameState.
+  - `Logout`: actualiza conteo de jugadores y llama `UpdateRoundProgressAndMaybeFinish` para cerrar ronda si todos los restantes terminaron.
+  - `HandleStartingNewPlayer_Implementation`: añadidos logs de diagnóstico.
+
+#### 2. `TortugaCharacter` — Knockdown multicast RPC
+- **`Public/Player/TortugaCharacter.h`**: Añadido `UFUNCTION(NetMulticast, Reliable) MulticastApplyKnockdownVisual(bool bKnocked)`.
+- **`Private/Player/TortugaCharacter.cpp`**:
+  - `ApplyKnockdown`: tras aplicar visual en servidor, llama `MulticastApplyKnockdownVisual(true)`.
+  - `RecoverFromKnockdown`: ídem con `false`.
+  - `MulticastApplyKnockdownVisual_Implementation`: en clientes, aplica visual + bloquea/restaura movimiento del owner. Servidor es skip (ya aplicó).
+  - `OnRep_IsKnockedDown` se mantiene como fallback para late-joiners.
+  - **Belt-and-suspenders**: OnRep para estado, Multicast para inmediatez.
+
+#### 3. `TortugaCharacter` — Mejora replicación emotes (Cabeza)
+- **`Private/Player/TortugaCharacter.cpp`**:
+  - `ServerSetEmote_Implementation`: guard antes de CancelEmote — solo cancela si hay emote activo o blend. Logs verbose con estado de Cabeza.
+  - `OnRep_ReplicatedEmoteIndex`: mismo guard + logs verbose.
+  - **Nota**: la animación de Cabeza se computa localmente via `TickEmote` en cada máquina usando el index replicado. Si Cabeza no anima, verificar que el componente `Cabeza` existe en BP_TortugaCharacter con nombre exacto.
+
+#### 4. `TN_ThrowableItemActor` — Parábola + knockdown por velocidad
+- **`Public/World/TN_ThrowableItemActor.h`**:
+  - Nuevo: `float MinKnockdownSpeed = 600.0f` — velocidad mínima para noquear.
+  - `Bounciness` de 0.35 → 0.55 para rebotes más visibles.
+- **`Private/World/TN_ThrowableItemActor.cpp`**:
+  - `OnMeshHit`: check `ProjectileMovement->Velocity.Size() >= MinKnockdownSpeed`. Si la bola va lenta, rebota sin noquear.
+  - `BounceVelocityStopSimulatingThreshold` de 150 → 50 para que ruede más antes de spawn pickup.
+- **`Public/Player/TortugaCharacter.h`**: `ThrowUpAngleDeg` de 15° → 35° para parábola pronunciada. Rango extendido a 60°.
+
+#### 5. `ProximityVoiceComponent` — Optimización de audio
+- **`Public/Voice/ProximityVoiceComponent.h`**:
+  - `SendInterval` de 0.05s → 0.08s (12.5Hz vs 20Hz, -37.5% paquetes).
+  - Nuevo: `int32 VoiceDownsampleFactor = 3` (48kHz → 16kHz, -66% datos por paquete).
+  - Nuevo: `float SilenceHoldOffSeconds = 0.3f` (debounce para `bIsSpeaking`).
+  - Nuevo: `float SilenceHoldOffTimer` (estado interno).
+- **`Private/Voice/ProximityVoiceComponent.cpp`**:
+  - `TickComponent`: decimation de MonoData por `VoiceDownsampleFactor` antes de buffer.
+  - Speaking detection con hold-off: `bIsSpeaking` no vuelve a false hasta 0.3s de silencio continuo.
+  - `Server_SendVoiceData` envía sample rate efectivo (VoiceSampleRate / DownsampleFactor).
+
+#### 6. Optimización de red general
+- **`TortugaCharacter`**: `SetNetUpdateFrequency` 45→30, `SetMinNetUpdateFrequency` 20→15.
+- **`TN_StaminaComponent`**: `bIsSprinting` y `bSprintRequested` de `COND_None` → `COND_SkipOwner`.
+- **`Config/DefaultEngine.ini`**:
+  - `NetServerMaxTickRate` 60→45, `MaxNetTickRate` 60→45.
+  - `InitialConnectTimeout` 15→30s (más margen para Steam Sockets en travel).
+  - `ConnectionTimeout` 30→45s.
+
+### Networking y rendimiento (estimado)
+- **Paquetes de voz**: ~77% reducción por jugador (downsample 3x + sendInterval +60%).
+- **Character updates**: ~33% menos frecuentes (45Hz→30Hz net, 60→45 server tick).
+- **Stamina**: 2 propiedades menos replicadas al owner.
+- **Knockdown**: Multicast Reliable garantiza que el visual llega a todos los clientes inmediatamente.
+
+### Pendientes
+1. Smoke test 4 jugadores: validar que clientes llegan a Run tras countdown en HQ.
+2. Verificar en BP_TortugaCharacter que el SceneComponent `Cabeza` existe con nombre exacto.
+3. Ajustar `MinKnockdownSpeed` (600) y `ThrowUpAngleDeg` (35°) según gameplay feel.
+4. Probar calidad de voz con downsampling 3x — si es muy baja, reducir a 2x.
+5. Monitorear lag con `stat net` durante partida 4 jugadores.

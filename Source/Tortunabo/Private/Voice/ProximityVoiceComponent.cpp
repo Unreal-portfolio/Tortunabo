@@ -331,10 +331,25 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			Sample = FMath::Clamp(Sample * VoiceGain, -1.0f, 1.0f);
 		}
 
+		// ── Downsampling: reduce sample count before compression ──────────
+		// Factor=3 → 48kHz to ~16kHz. Packet size drops to 1/3.
+		const int32 DSFactor = FMath::Max(1, VoiceDownsampleFactor);
+		if (DSFactor > 1 && MonoData.Num() > DSFactor)
+		{
+			TArray<float> Downsampled;
+			Downsampled.Reserve(MonoData.Num() / DSFactor + 1);
+			for (int32 i = 0; i < MonoData.Num(); i += DSFactor)
+			{
+				Downsampled.Add(MonoData[i]);
+			}
+			MonoData = MoveTemp(Downsampled);
+		}
+
 		FScopeLock Lock(&CaptureBufferLock);
 		CaptureBuffer.Append(MonoData);
 	}
 
+	// ── Speaking detection con silence hold-off ──────────────────────────
 	{
 		FScopeLock Lock(&CaptureBufferLock);
 		if (CaptureBuffer.Num() > 0)
@@ -345,17 +360,36 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 				SumSquares += Sample * Sample;
 			}
 			const float RMS = FMath::Sqrt(SumSquares / CaptureBuffer.Num());
-			const bool bNewSpeaking = RMS > SpeakingThreshold;
-			if (bNewSpeaking != bIsSpeaking)
+			const bool bAboveThreshold = RMS > SpeakingThreshold;
+
+			if (bAboveThreshold)
 			{
-				bIsSpeaking = bNewSpeaking;
-				OnSpeakingChanged.Broadcast(bIsSpeaking);
+				SilenceHoldOffTimer = 0.f;
+				if (!bIsSpeaking)
+				{
+					bIsSpeaking = true;
+					OnSpeakingChanged.Broadcast(true);
+				}
+			}
+			else if (bIsSpeaking)
+			{
+				// Debounce: esperar SilenceHoldOffSeconds antes de marcar silencio
+				SilenceHoldOffTimer += DeltaTime;
+				if (SilenceHoldOffTimer >= SilenceHoldOffSeconds)
+				{
+					bIsSpeaking = false;
+					OnSpeakingChanged.Broadcast(false);
+				}
 			}
 		}
 		else if (bIsSpeaking)
 		{
-			bIsSpeaking = false;
-			OnSpeakingChanged.Broadcast(false);
+			SilenceHoldOffTimer += DeltaTime;
+			if (SilenceHoldOffTimer >= SilenceHoldOffSeconds)
+			{
+				bIsSpeaking = false;
+				OnSpeakingChanged.Broadcast(false);
+			}
 		}
 	}
 
@@ -379,7 +413,9 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			TArray<uint8> Compressed = CompressSamples(SamplesToSend);
 			if (Compressed.Num() > 0)
 			{
-				Server_SendVoiceData(Compressed, VoiceSampleRate);
+				// Enviar el sample rate efectivo (con downsampling aplicado)
+				const int32 EffectiveSampleRate = FMath::Max(1, VoiceSampleRate / FMath::Max(1, VoiceDownsampleFactor));
+				Server_SendVoiceData(Compressed, EffectiveSampleRate);
 			}
 		}
 	}

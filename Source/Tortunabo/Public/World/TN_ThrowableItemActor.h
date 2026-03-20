@@ -73,9 +73,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Knockback", meta = (ClampMin = "0.1"))
 	float KnockbackDuration = 2.0f;
 
+	/**
+	 * Velocidad mínima (cm/s) de la bola para noquear al jugador impactado.
+	 * Si la bola va más lenta, rebota sin noquear.
+	 * Default 600 cm/s — ajustar en BP.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Knockback", meta = (ClampMin = "0.0"))
+	float MinKnockdownSpeed = 600.0f;
+
 	/** Elasticidad al rebotar (0=sin rebote, 1=rebote perfecto). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Bounciness = 0.35f;
+	float Bounciness = 0.55f;
 
 	/** Fricción al rodar por el suelo. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0"))

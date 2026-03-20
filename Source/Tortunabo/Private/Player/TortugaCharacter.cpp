@@ -40,8 +40,8 @@ ATortugaCharacter::ATortugaCharacter()
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-	SetNetUpdateFrequency(45.f);
-	SetMinNetUpdateFrequency(20.f);
+	SetNetUpdateFrequency(30.f);
+	SetMinNetUpdateFrequency(15.f);
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
@@ -149,7 +149,38 @@ void ATortugaCharacter::BeginPlay()
 	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Cola' not found — emotes will be partial.")); }
 
 	if (Cabeza.IsValid()) { CabezaRestRot = Cabeza->GetRelativeRotation(); CabezaRestLoc = Cabeza->GetRelativeLocation(); }
-	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Cabeza' not found — emotes will be partial. Add a SceneComponent named exactly 'Cabeza' in the Blueprint.")); }
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter] ═══════════════════════════════════════════════════════════"));
+		UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter] 'Cabeza' NOT FOUND — head will NOT animate during emotes!"));
+		UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter] Add a SceneComponent named EXACTLY 'Cabeza' in BP_TortugaCharacter."));
+		UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter] Available SceneComponents on '%s':"), *GetName());
+
+		int32 SceneCompCount = 0;
+		for (UActorComponent* Comp : GetComponents())
+		{
+			if (USceneComponent* SC = Cast<USceneComponent>(Comp))
+			{
+				++SceneCompCount;
+				UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter]   [%d] '%s'  (Class: %s)"),
+					SceneCompCount, *SC->GetName(), *SC->GetClass()->GetName());
+			}
+		}
+		if (SceneCompCount == 0)
+		{
+			UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter]   (none found — BP components may not be set up)"));
+		}
+		UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter] ═══════════════════════════════════════════════════════════"));
+	}
+
+	// Log de diagnóstico: estado final de todos los componentes de emote
+	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Emote components: Brazo1=%s  Brazo2=%s  Pata1=%s  Pata2=%s  Cola=%s  Cabeza=%s"),
+		Brazo1.IsValid() ? TEXT("OK") : TEXT("MISSING"),
+		Brazo2.IsValid() ? TEXT("OK") : TEXT("MISSING"),
+		Pata1.IsValid()  ? TEXT("OK") : TEXT("MISSING"),
+		Pata2.IsValid()  ? TEXT("OK") : TEXT("MISSING"),
+		Cola.IsValid()   ? TEXT("OK") : TEXT("MISSING"),
+		Cabeza.IsValid() ? TEXT("OK") : TEXT("MISSING"));
 
 	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown
 	if (USkeletalMeshComponent* MeshComp = GetMesh())
@@ -277,6 +308,7 @@ void ATortugaCharacter::ApplyLegAngle(USceneComponent* Comp, const FRotator& Res
 
 USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
 {
+	// 1. Exact FName match (fastest)
 	for (UActorComponent* Comp : GetComponents())
 	{
 		if (Comp && Comp->GetFName() == Name)
@@ -284,6 +316,24 @@ USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
 			return Cast<USceneComponent>(Comp);
 		}
 	}
+
+	// 2. Fallback: case-insensitive substring match on the component name.
+	//    Catches "Cabeza_0", "cabeza", "SM_Cabeza", etc.
+	const FString NameStr = Name.ToString();
+	for (UActorComponent* Comp : GetComponents())
+	{
+		if (Comp)
+		{
+			const FString CompName = Comp->GetName();
+			if (CompName.Contains(NameStr, ESearchCase::IgnoreCase))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] '%s' not found as exact name — matched '%s' (fuzzy). Rename to '%s' in BP for best results."),
+					*NameStr, *CompName, *NameStr);
+				return Cast<USceneComponent>(Comp);
+			}
+		}
+	}
+
 	return nullptr;
 }
 
@@ -854,8 +904,14 @@ void ATortugaCharacter::ApplyKnockdown(float Duration)
 		MC->DisableMovement();
 	}
 
+	// Multicast fiable: garantiza que todos los clientes reciban el knockdown
+	// inmediatamente, sin depender solo de OnRep (que puede batching/perderse).
+	MulticastApplyKnockdownVisual(true);
+
 	GetWorldTimerManager().SetTimer(KnockdownTimerHandle, this,
 	                                &ATortugaCharacter::RecoverFromKnockdown, Duration, false);
+
+	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s knocked down for %.1fs"), *GetNameSafe(this), Duration);
 }
 
 void ATortugaCharacter::RecoverFromKnockdown()
@@ -873,6 +929,11 @@ void ATortugaCharacter::RecoverFromKnockdown()
 	{
 		MC->SetMovementMode(MOVE_Walking);
 	}
+
+	// Multicast fiable: todos los clientes reciben la recuperación
+	MulticastApplyKnockdownVisual(false);
+
+	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
 }
 
 void ATortugaCharacter::OnRep_IsKnockedDown()
@@ -887,6 +948,34 @@ void ATortugaCharacter::OnRep_IsKnockedDown()
 		if (UCharacterMovementComponent* MC = GetCharacterMovement())
 		{
 			if (bIsKnockedDown)
+			{
+				MC->DisableMovement();
+			}
+			else
+			{
+				MC->SetMovementMode(MOVE_Walking);
+			}
+		}
+	}
+}
+
+void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnocked)
+{
+	// El servidor ya aplicó el visual en ApplyKnockdown/RecoverFromKnockdown;
+	// aquí solo actuamos en clientes.
+	if (HasAuthority())
+	{
+		return;
+	}
+
+	ApplyKnockdownVisual(bKnocked);
+
+	// El cliente propietario bloquea/restaura movimiento
+	if (IsLocallyControlled())
+	{
+		if (UCharacterMovementComponent* MC = GetCharacterMovement())
+		{
+			if (bKnocked)
 			{
 				MC->DisableMovement();
 			}
@@ -957,6 +1046,8 @@ void ATortugaCharacter::StartEmoteLocally(int32 Index)
 
 void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 {
+	// Siempre actualizar el valor replicado, incluso si el emote ya acabó localmente.
+	// Esto garantiza que TODOS los clientes remotos reciban OnRep.
 	ReplicatedEmoteIndex = Index;
 
 	// Listen server: OnRep no dispara en la máquina que posee la variable,
@@ -969,9 +1060,17 @@ void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 		}
 		else
 		{
-			CancelEmote();
+			// Solo cancelar si hay emote activo o blend pendiente
+			if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+			{
+				CancelEmote();
+			}
 		}
 	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[Emote] ServerSetEmote(%d) on %s  Cabeza=%s"),
+		Index, *GetNameSafe(this),
+		Cabeza.IsValid() ? TEXT("OK") : TEXT("NULL"));
 }
 
 void ATortugaCharacter::OnRep_ReplicatedEmoteIndex()
@@ -986,9 +1085,17 @@ void ATortugaCharacter::OnRep_ReplicatedEmoteIndex()
 		}
 		else
 		{
-			CancelEmote();
+			if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+			{
+				CancelEmote();
+			}
 		}
 	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[Emote] OnRep_ReplicatedEmoteIndex(%d) on %s  IsLocal=%s  Cabeza=%s"),
+		ReplicatedEmoteIndex, *GetNameSafe(this),
+		IsLocallyControlled() ? TEXT("YES") : TEXT("NO"),
+		Cabeza.IsValid() ? TEXT("OK") : TEXT("NULL"));
 }
 
 void ATortugaCharacter::CancelEmote()
@@ -1171,8 +1278,8 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// Brazo2 (izq): baja relajado
 		Ap(Brazo2, Brazo2RestRot, env * 80.f, AX);
 
-		// Cabeza
-		Ap(Cabeza, CabezaRestRot, env * 8.f * S(2.f, T), AY);
+		// Cabeza — cabeceo visible mientras saluda
+		Ap(Cabeza, CabezaRestRot, env * 20.f * S(2.f, T), AY);
 
 		// Cola
 		Ap(Cola, ColaRestRot, env * 10.f * S(1.5f, T), TZ);
@@ -1200,8 +1307,8 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    -(env * 110.f + bob * env), AX,
 		    env * 90.f,                AY);
 
-		// Cabeza
-		Ap(Cabeza, CabezaRestRot, env * (-15.f), AY);
+		// Cabeza — mira hacia las manos que aplauden
+		Ap(Cabeza, CabezaRestRot, env * (-25.f), AY);
 
 		// Patas
 		Ap(Pata1, Pata1RestRot,  10.f * S(2.f, T) * env, LY);
@@ -1227,8 +1334,8 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// Brazo2 (izq): spin opuesto AZ
 		Ap(Brazo2, Brazo2RestRot, -spin, AZ);
 
-		// Cabeza
-		Ap(Cabeza, CabezaRestRot, 8.f * S(2.f, T), AY);
+		// Cabeza — cabeceo al ritmo del spin
+		Ap(Cabeza, CabezaRestRot, 20.f * S(2.f, T), AY);
 
 		// Patas marchan
 		Ap(Pata1, Pata1RestRot,  25.f * S(2.f, T), LY);
@@ -1281,7 +1388,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    palmada,        AY);
 
 		// Cabeza asiente con cada palmada
-		Ap(Cabeza, CabezaRestRot, 8.f * (palmada / -90.f), AY);
+		Ap(Cabeza, CabezaRestRot, 18.f * (palmada / -90.f), AY);
 
 		// Cola menea
 		Ap(Cola, ColaRestRot, 15.f * S(2.f, T), TZ);
@@ -1307,8 +1414,8 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// Brazo2 (izq): reposo abajo
 		Ap(Brazo2, Brazo2RestRot, setup * 80.f, AX);
 
-		// Cabeza
-		Ap(Cabeza, CabezaRestRot, 5.f * S(6.f, T), AY);
+		// Cabeza — cabeceo al ritmo del aplauso
+		Ap(Cabeza, CabezaRestRot, 15.f * S(6.f, T), AY);
 
 		// Cola: entra rápido por −TY (0.2s), sale por el mismo lado (0.4s a partir de T=1.5)
 		// — la vuelta es explícita para que no tome el arco opuesto en el blend-out.
@@ -1336,8 +1443,8 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    setup *  10.f,      AX,
 		    setup * (-80.f),    AZ);
 
-		// Cabeza
-		Ap(Cabeza, CabezaRestRot, 5.f * S(2.5f, T), AZ);
+		// Cabeza — gira al ritmo del baile
+		Ap(Cabeza, CabezaRestRot, 15.f * S(2.5f, T), AZ);
 
 		// Patas
 		Ap2(Pata1, Pata1RestRot,
@@ -1400,7 +1507,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// Brazo2 (izq): reposo abajo
 		Ap(Brazo2, Brazo2RestRot, env * 80.f, AX);
 
-		Ap(Cabeza, CabezaRestRot, env * 10.f, AY);
+		Ap(Cabeza, CabezaRestRot, env * 20.f, AY);
 		Ap(Cola, ColaRestRot, env * 8.f * S(1.5f, T), TZ);
 
 		bEnded = (T >= 1.2f);
@@ -1435,9 +1542,9 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    25.f * S(7.f, T),             TZ,
 		    10.f * S(3.f, T + 0.1f),      TX);
 		Ap3(Cabeza, CabezaRestRot,
-		    10.f * S(3.7f, T),            AY,
-		    15.f * S(2.3f, T + 0.07f),    AZ,
-		     5.f * S(5.5f, T),            AX);
+		    25.f * S(3.7f, T),            AY,
+		    30.f * S(2.3f, T + 0.07f),    AZ,
+		    15.f * S(5.5f, T),            AX);
 
 		// Traslación: HIPER-EXAGERADA tipo explosión — ±250 cm
 		const float locAmp = 250.f;
@@ -1482,9 +1589,9 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    25.f * S(7.f, T),             TZ,
 		    10.f * S(3.f, T + 0.1f),      TX);
 		Ap3(Cabeza, CabezaRestRot,
-		    10.f * S(3.7f, T),            AY,
-		    15.f * S(2.3f, T + 0.07f),    AZ,
-		     5.f * S(5.5f, T),            AX);
+		    25.f * S(3.7f, T),            AY,
+		    30.f * S(2.3f, T + 0.07f),    AZ,
+		    15.f * S(5.5f, T),            AX);
 		break; // LOOP ∞
 
 	default:

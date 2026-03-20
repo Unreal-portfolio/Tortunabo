@@ -53,10 +53,80 @@ void ATN_RunGameMode::BeginPlay()
 	}
 }
 
+void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+
+	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostLogin: %s  (Pawn=%s)"),
+		*GetNameSafe(NewPlayer),
+		NewPlayer ? *GetNameSafe(NewPlayer->GetPawn()) : TEXT("NULL"));
+
+	EnsurePlayerSpawned(NewPlayer);
+
+	// Inicializar el PlayerState del jugador que acaba de conectarse.
+	// En non-seamless travel, los PlayerStates se recrean; esto garantiza que
+	// todos los clientes (no solo los que estaban en BeginPlay) arranquen limpiamente.
+	if (ATN_CoopPlayerState* TNPS = NewPlayer ? NewPlayer->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
+	{
+		TNPS->bIsAlive = true;
+		TNPS->bHasFinishedRun = false;
+		TNPS->FinishRank = 0;
+		TNPS->FinishTimeSeconds = -1.f;
+		TNPS->DeathZoneTimeRemaining = -1.f;
+	}
+
+	// Actualizar el conteo de jugadores conectados en el GameState
+	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
+	{
+		int32 TotalPlayers = 0;
+		for (APlayerState* BasePS : GameState->PlayerArray)
+		{
+			if (Cast<ATN_CoopPlayerState>(BasePS))
+			{
+				++TotalPlayers;
+			}
+		}
+		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ExpectedPlayers = TotalPlayers;
+
+		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostLogin: ConnectedPlayers=%d  ExpectedPlayers=%d"),
+			TNGS->ConnectedPlayers, TNGS->ExpectedPlayers);
+	}
+}
+
+void ATN_RunGameMode::Logout(AController* Exiting)
+{
+	Super::Logout(Exiting);
+
+	// Actualizar conteo tras desconexión
+	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
+	{
+		int32 TotalPlayers = 0;
+		for (APlayerState* BasePS : GameState->PlayerArray)
+		{
+			if (Cast<ATN_CoopPlayerState>(BasePS))
+			{
+				++TotalPlayers;
+			}
+		}
+		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ExpectedPlayers = TotalPlayers;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Logout: %s"), *GetNameSafe(Exiting));
+
+	// Comprobar si todos los jugadores restantes han terminado
+	UpdateRoundProgressAndMaybeFinish();
+}
+
 void ATN_RunGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
 	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
 	EnsurePlayerSpawned(NewPlayer);
+
+	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] HandleStartingNewPlayer: %s  (Pawn=%s)"),
+		*GetNameSafe(NewPlayer),
+		NewPlayer ? *GetNameSafe(NewPlayer->GetPawn()) : TEXT("NULL"));
 }
 
 AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)

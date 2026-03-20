@@ -158,9 +158,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction|Networking", meta = (ClampMin = "0.0"))
 	float MaxLagCompensationDistance = 120.f;
 
-	/** Ángulo adicional hacia arriba (grados) al lanzar objetos, para que hagan arco. */
-	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "45.0"))
-	float ThrowUpAngleDeg = 15.f;
+	/** Ángulo adicional hacia arriba (grados) al lanzar objetos, para que hagan arco parabólico. */
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "60.0"))
+	float ThrowUpAngleDeg = 35.f;
 
 	// ── Camera Cinematic Settings (AAA) ───────────────────────────────────────
 
@@ -395,6 +395,13 @@ private:
 
 	void ApplyKnockdownVisual(bool bKnocked);
 	void RecoverFromKnockdown();
+
+	/**
+	 * Multicast RPC fiable — garantiza que TODOS los clientes reciban
+	 * el cambio de knockdown inmediatamente, sin depender solo de OnRep.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastApplyKnockdownVisual(bool bKnocked);
 
 	UFUNCTION()
 	void OnRep_IsKnockedDown();

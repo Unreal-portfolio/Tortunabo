@@ -63,7 +63,22 @@ public:
 	int32 VoiceNumChannels = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Network")
-	float SendInterval = 0.05f;
+	float SendInterval = 0.08f;
+
+	/**
+	 * Factor de downsampling antes de comprimir y enviar.
+	 * 3 = 48kHz → 16kHz (reduce paquete a 1/3 del tamaño).
+	 * 1 = sin downsampling.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Network", meta = (ClampMin = "1", ClampMax = "6"))
+	int32 VoiceDownsampleFactor = 3;
+
+	/**
+	 * Segundos de silencio continuo antes de marcar bIsSpeaking = false.
+	 * Evita que el flag rebote rápidamente generando tráfico de replicación.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Detection", meta = (ClampMin = "0.0"))
+	float SilenceHoldOffSeconds = 0.3f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Audio")
 	float VoiceGain = 6.0f;
@@ -86,6 +101,7 @@ private:
 	TArray<float> CaptureBuffer;
 	FCriticalSection CaptureBufferLock;
 	float SendTimer = 0.f;
+	float SilenceHoldOffTimer = 0.f;
 	int32 CaptureNumChannels = 1;
 
 	UPROPERTY()

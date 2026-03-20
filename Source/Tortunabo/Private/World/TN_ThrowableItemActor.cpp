@@ -31,7 +31,7 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 	ProjectileMovement->BounceAdditionalIterations           = 1;
 	// Cuando la velocidad baja de este umbral (cm/s) tras un rebote,
 	// ProjectileMovement llama StopSimulating → OnProjectileStop → spawn pickup.
-	ProjectileMovement->BounceVelocityStopSimulatingThreshold = 150.f;
+	ProjectileMovement->BounceVelocityStopSimulatingThreshold = 50.f;
 }
 
 void ATN_ThrowableItemActor::BeginPlay()
@@ -144,12 +144,25 @@ void ATN_ThrowableItemActor::OnMeshHit(UPrimitiveComponent* HitComponent, AActor
 		return;
 	}
 
-	// Golpe a otro jugador → knockdown. The ball bounces off naturally
-	// via ProjectileMovement (bShouldBounce=true). Pickup spawns when ball stops.
+	// Golpe a otro jugador → knockdown solo si la bola va lo bastante rápido.
+	// La bola rebota naturalmente via ProjectileMovement (bShouldBounce=true).
+	// Pickup se genera cuando la bola se detiene completamente (OnProjectileStopped).
 	if (!AlreadyHitPlayers.Contains(HitPlayer))
 	{
-		AlreadyHitPlayers.Add(HitPlayer);
-		HitPlayer->ApplyKnockdown(KnockbackDuration);
+		const float CurrentSpeed = ProjectileMovement ? ProjectileMovement->Velocity.Size() : 0.f;
+
+		if (CurrentSpeed >= MinKnockdownSpeed)
+		{
+			AlreadyHitPlayers.Add(HitPlayer);
+			HitPlayer->ApplyKnockdown(KnockbackDuration);
+			UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] Hit %s at %.0f cm/s → KNOCKDOWN (threshold=%.0f)"),
+				*GetNameSafe(HitPlayer), CurrentSpeed, MinKnockdownSpeed);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] Hit %s at %.0f cm/s → too slow, bounce only (threshold=%.0f)"),
+				*GetNameSafe(HitPlayer), CurrentSpeed, MinKnockdownSpeed);
+		}
 	}
 }
 
