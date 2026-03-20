@@ -3,10 +3,14 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
+#include "Multiplayer/MP_GameInstance.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerStart.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/Engine.h"
+#include "Engine/NetDriver.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -24,20 +28,47 @@ void ATN_RunGameMode::BeginPlay()
 	Super::BeginPlay();
 	EnsureFallbackPlayerStart();
 
+	// ── Safety check: detectar si el mapa cargó con la clase C++ base en vez del BP ──
+	// Si GetClass() es exactamente ATN_RunGameMode (no un BP hijo), significa que
+	// WorldSettings no tiene GameMode Override → se está usando la clase C++ base,
+	// que spawna TortugaCharacter sin mesh ni input en vez de BP_TortugaCharacter.
+	if (GetClass() == ATN_RunGameMode::StaticClass())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ════════════════════════════════════════════════════════"));
+		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ¡USANDO CLASE C++ BASE! No hay BP GameMode."));
+		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] Esto causa: sin tortuga visible, sin input, sin HUD."));
+		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] FIX: En LVL_Run → WorldSettings → GameMode Override"));
+		UE_LOG(LogTemp, Error, TEXT("[RunGameMode]       → seleccionar BP_RunGameMode."));
+		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ════════════════════════════════════════════════════════"));
+	}
+
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		EnsurePlayerSpawned(It->Get());
 	}
 
-	MatchStartServerTime = GetWorld()->GetTimeSeconds();
 	NextFinishRank = 1;
-	SetFlowState(ETNMatchFlowState::InProgress);
+	bMatchStarted = false;
+
+	// ── Leer cuántos jugadores había en el lobby ──────────────────────────
+	if (const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		ExpectedPlayersFromLobby = FMath::Max(1, GI->PendingTravelPlayerCount);
+	}
+	else
+	{
+		ExpectedPlayersFromLobby = 1;
+	}
+
+	// ── Fase de staging: esperar a que reconecten todos los clientes ──────
+	SetFlowState(ETNMatchFlowState::WaitingForPlayers);
 
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
 		TNGS->FinishedPlayers = 0;
 		TNGS->ServerMatchElapsedTime = 0.f;
 		TNGS->CountdownValue = 0;
+		TNGS->ExpectedPlayers = ExpectedPlayersFromLobby;
 	}
 
 	for (APlayerState* BasePS : GameState->PlayerArray)
@@ -51,6 +82,15 @@ void ATN_RunGameMode::BeginPlay()
 			TNPS->DeathZoneTimeRemaining = -1.f;
 		}
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] BeginPlay: Waiting for %d players (staging)"), ExpectedPlayersFromLobby);
+
+	// Timeout de seguridad: si no llegan todos, arranca igual
+	GetWorldTimerManager().SetTimer(WaitingTimeoutTimerHandle, this,
+		&ATN_RunGameMode::OnWaitingTimeout, WaitingForPlayersTimeoutSeconds, false);
+
+	// Intentar arrancar de inmediato si el host ya cuenta como 1/1
+	TryStartMatch();
 }
 
 void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
@@ -87,11 +127,14 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 			}
 		}
 		TNGS->ConnectedPlayers = TotalPlayers;
-		TNGS->ExpectedPlayers = TotalPlayers;
+		TNGS->ExpectedPlayers = ExpectedPlayersFromLobby;
 
-		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostLogin: ConnectedPlayers=%d  ExpectedPlayers=%d"),
-			TNGS->ConnectedPlayers, TNGS->ExpectedPlayers);
+		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostLogin: ConnectedPlayers=%d  ExpectedFromLobby=%d  MatchStarted=%s"),
+			TotalPlayers, ExpectedPlayersFromLobby, bMatchStarted ? TEXT("YES") : TEXT("NO"));
 	}
+
+	// Si aún estamos en staging, comprobar si ya tenemos a todos
+	TryStartMatch();
 }
 
 void ATN_RunGameMode::Logout(AController* Exiting)
@@ -110,13 +153,81 @@ void ATN_RunGameMode::Logout(AController* Exiting)
 			}
 		}
 		TNGS->ConnectedPlayers = TotalPlayers;
-		TNGS->ExpectedPlayers = TotalPlayers;
+		// ExpectedPlayers se mantiene desde el lobby para que la UI muestre "X / ExpectedFromLobby"
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Logout: %s"), *GetNameSafe(Exiting));
 
 	// Comprobar si todos los jugadores restantes han terminado
-	UpdateRoundProgressAndMaybeFinish();
+	if (bMatchStarted)
+	{
+		UpdateRoundProgressAndMaybeFinish();
+	}
+	else
+	{
+		// Si aún estamos en staging y alguien se desconecta,
+		// reducir la expectativa para no esperarle
+		ExpectedPlayersFromLobby = FMath::Max(1, ExpectedPlayersFromLobby - 1);
+		TryStartMatch();
+	}
+}
+
+// ── Staging: esperar a todos los jugadores antes de empezar ────────────────────
+
+void ATN_RunGameMode::TryStartMatch()
+{
+	if (bMatchStarted)
+	{
+		return;
+	}
+
+	int32 ConnectedNow = 0;
+	for (APlayerState* BasePS : GameState->PlayerArray)
+	{
+		if (Cast<ATN_CoopPlayerState>(BasePS))
+		{
+			++ConnectedNow;
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] TryStartMatch: Connected=%d  Expected=%d"),
+		ConnectedNow, ExpectedPlayersFromLobby);
+
+	if (ConnectedNow >= ExpectedPlayersFromLobby)
+	{
+		OnWaitingTimeout(); // Reutiliza la misma función de arranque
+	}
+}
+
+void ATN_RunGameMode::OnWaitingTimeout()
+{
+	if (bMatchStarted)
+	{
+		return;
+	}
+
+	bMatchStarted = true;
+	GetWorldTimerManager().ClearTimer(WaitingTimeoutTimerHandle);
+
+	MatchStartServerTime = GetWorld()->GetTimeSeconds();
+	SetFlowState(ETNMatchFlowState::InProgress);
+
+	// Actualizar conteo final
+	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
+	{
+		int32 TotalPlayers = 0;
+		for (APlayerState* BasePS : GameState->PlayerArray)
+		{
+			if (Cast<ATN_CoopPlayerState>(BasePS))
+			{
+				++TotalPlayers;
+			}
+		}
+		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ExpectedPlayers = TotalPlayers; // Ahora sí es "de verdad"
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] ═══ MATCH STARTED! ═══  (waited for players or timeout)"));
 }
 
 void ATN_RunGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -358,7 +469,51 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		// This prevents ACCESS_VIOLATION crashes during level teardown.
 		UProximityVoiceComponent::ShutdownAllCapture(World);
 
-		World->ServerTravel(LobbyMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_HQGameMode"));
+		// NO usar ?game=/Script/Tortunabo.TN_HQGameMode — eso fuerza la clase C++ base
+		// y spawna TortugaCharacter sin mesh en vez de BP_TortugaCharacter.
+		// LVL_HQ debe tener BP_HQGameMode en WorldSettings → GameMode Override.
+		PendingTravelURL = LobbyMapPath + TEXT("?listen");
+
+		// ── Pre-close del socket Steam para evitar "Cannot create listen socket" ──
+		// Steam P2P sockets tardan ~100-200ms en liberarse tras destruir el NetDriver.
+		// FIX: Notificar a clientes remotos, destruir el driver manualmente, esperar
+		// 500ms y LUEGO hacer ServerTravel.
+
+		// 1. Enviar travel a clientes remotos antes de cerrar el driver
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (PC && !PC->IsLocalController())
+			{
+				PC->ClientTravel(PendingTravelURL, TRAVEL_Relative, true);
+			}
+		}
+
+		// 2. Destruir el NetDriver para liberar el listen socket
+		if (UNetDriver* NetDriver = World->GetNetDriver())
+		{
+			UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Pre-closing NetDriver '%s' before travel to release Steam socket."),
+				*NetDriver->GetName());
+			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
+		}
+
+		// 3. Esperar a que Steam libere el socket P2P, luego viajar
+		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Waiting 0.5s for Steam socket release before ServerTravel..."));
+		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
+			&ATN_RunGameMode::ExecuteDeferredTravel, 0.5f, false);
+	}
+}
+
+void ATN_RunGameMode::ExecuteDeferredTravel()
+{
+	if (UWorld* World = GetWorld())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Iniciando ServerTravel hacia: %s"), *PendingTravelURL);
+		World->ServerTravel(PendingTravelURL);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ExecuteDeferredTravel: GetWorld() es null."));
 	}
 }
 

@@ -83,6 +83,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	int32 GetMaxPlayers() const { return MaxPlayers; }
 
+	/**
+	 * Número de jugadores conectados en el lobby ANTES de hacer ServerTravel al Run.
+	 * TN_HQGameMode lo asigna justo antes de viajar; TN_RunGameMode lo lee para
+	 * saber cuántos jugadores esperar en el nuevo mapa.
+	 * Persiste a través del non-seamless travel (GameInstance sobrevive).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Multiplayer")
+	int32 PendingTravelPlayerCount = 0;
+
 protected:
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnFindSessionsComplete(bool bWasSuccessful);

@@ -19,7 +19,8 @@ void UProximityVoiceComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UProximityVoiceComponent, bIsSpeaking);
-	DOREPLIFETIME(UProximityVoiceComponent, VoiceSampleRate);
+	// VoiceSampleRate se configura una vez al iniciar captura y no cambia → InitialOnly
+	DOREPLIFETIME_CONDITION(UProximityVoiceComponent, VoiceSampleRate, COND_InitialOnly);
 }
 
 bool UProximityVoiceComponent::IsLocallyOwned() const

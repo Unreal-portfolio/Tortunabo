@@ -28,6 +28,8 @@ void ATN_CoopGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ATN_CoopGameState, PlayersInStartZone);
 	DOREPLIFETIME(ATN_CoopGameState, ExpectedPlayers);
 	DOREPLIFETIME(ATN_CoopGameState, CountdownValue);
-	DOREPLIFETIME(ATN_CoopGameState, ServerMatchElapsedTime);
+	// ServerMatchElapsedTime cambia cada frame → SkipOwner reduce tráfico
+	// (el listen-server ya lo calcula localmente)
+	DOREPLIFETIME_CONDITION(ATN_CoopGameState, ServerMatchElapsedTime, COND_SkipOwner);
 	DOREPLIFETIME(ATN_CoopGameState, FinishedPlayers);
 }

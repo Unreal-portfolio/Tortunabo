@@ -10,6 +10,14 @@ ATN_InteractableBase::ATN_InteractableBase()
 	bReplicates = true;
 	SetReplicateMovement(false);
 
+	// ── Optimización de red: los interactuables cambian raramente ──────────
+	// NetDormancy DormantAll → el servidor NO envía actualizaciones a menos que
+	// FlushNetDormancy() se llame explícitamente (ej. al activar/desactivar).
+	// Reduce drásticamente el tráfico con muchos pickups en el nivel.
+	NetDormancy = DORM_DormantAll;
+	SetNetUpdateFrequency(4.f);   // solo 4 Hz cuando despierto
+	SetMinNetUpdateFrequency(2.f);
+
 	// Mesh es el root: UStaticMeshComponent es UPrimitiveComponent, lo que permite
 	// que UWorld::FindTeleportSpot calcule bounds al spawnear el actor dinámicamente.
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
@@ -105,6 +113,9 @@ void ATN_InteractableBase::SetInteractionEnabled(bool bEnabled)
 
 	bInteractionEnabled = bEnabled;
 	ApplyInteractionEnabledState();
+
+	// Despertar al actor dormido para que el cambio se replique inmediatamente
+	FlushNetDormancy();
 }
 
 

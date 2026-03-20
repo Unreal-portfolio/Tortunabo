@@ -124,6 +124,9 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 	ApplyTakenState();
 	OnPickedUp(Interactor);
 
+	// Despertar al actor dormido para que bTaken se replique inmediatamente
+	FlushNetDormancy();
+
 	// ── Log de confirmación de recogida ───────────────────────────────────────
 	UE_LOG(LogTemp, Log,
 		TEXT("[Pickup] ✓ '%s' recogido por '%s'  |  ItemId: %s  |  UseType: %s"),
@@ -192,6 +195,9 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 	}
 
 	PickupItem = NewPickupItem;
+
+	// Despertar al actor dormido para que PickupItem se replique a clientes
+	FlushNetDormancy();
 
 	if (Mesh && PickupItem.EquippedMesh)
 	{

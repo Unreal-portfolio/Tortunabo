@@ -219,3 +219,71 @@
 3. Ajustar `MinKnockdownSpeed` (600) y `ThrowUpAngleDeg` (35°) según gameplay feel.
 4. Probar calidad de voz con downsampling 3x — si es muy baja, reducir a 2x.
 5. Monitorear lag con `stat net` durante partida 4 jugadores.
+
+## 2026-03-20 (sesión 2) - Fix LVL_Run Listen failure, knockdown visual en remotos, optimización dormancy
+
+### Contexto
+- `ServerTravel` de HQ→Run falla con `LogNet: Error: LoadMap: failed to Listen(...)` → el socket Steam del mapa anterior no se ha liberado a tiempo. El host entra pero los clientes pierden conexión.
+- Knockdown visual (`bIsKnockedDown`) no se ve en clientes remotos: `CharacterMovementComponent::NetworkSmoothingMode::Exponential` sobreescribe `SetRelativeRotation` del mesh cada frame.
+- Necesidad de optimizar tráfico de red con muchos actores interactuables.
+
+### Cambios clave
+
+#### 1. `TN_RunGameMode` — Staging "WaitingForPlayers" antes de InProgress
+- **`Public/Game/TN_RunGameMode.h`**: Nuevos miembros: `WaitingTimeoutTimerHandle`, `ExpectedPlayersFromLobby`, `bMatchStarted`, `WaitingForPlayersTimeoutSeconds` (default 15s). Nuevas funciones: `TryStartMatch()`, `OnWaitingTimeout()`.
+- **`Private/Game/TN_RunGameMode.cpp`**:
+  - `BeginPlay`: arranca en `ETNMatchFlowState::WaitingForPlayers` (no InProgress). Lee `PendingTravelPlayerCount` de `MP_GameInstance`. Inicia timeout de seguridad.
+  - `PostLogin`: actualiza conteo y llama `TryStartMatch()`. Si todos los esperados llegaron → `OnWaitingTimeout()` arranca la carrera inmediatamente.
+  - `Logout` (pre-match): reduce `ExpectedPlayersFromLobby` si alguien se desconecta durante staging.
+  - `OnWaitingTimeout`: transiciona a `InProgress`, marca `MatchStartServerTime`.
+
+#### 2. `MP_GameInstance` — PendingTravelPlayerCount + fix OnNetworkFailure
+- **`Public/Multiplayer/MP_GameInstance.h`**: Nuevo `UPROPERTY int32 PendingTravelPlayerCount` — persiste a través del non-seamless travel.
+- **`Private/Multiplayer/MP_GameInstance.cpp`**: `OnNetworkFailure` durante `bIsPendingTravel`: ya NO oculta loading screen ni resetea `bIsPendingTravel` — deja que `PostLoadMap` lo gestione. Esto permite que el mapa Run cargue correctamente aunque el Listen falle transitoriamente.
+
+#### 3. `TN_HQGameMode` — Guarda player count antes de travel
+- **`Private/Lobby/TN_HQGameMode.cpp`**: `BeginMatchTravel()` cuenta `ConnectedPlayers` y lo guarda en `GI->PendingTravelPlayerCount` antes de `ServerTravel`.
+
+#### 4. `TortugaCharacter` — Fix knockdown visual en remotos
+- **`Private/Player/TortugaCharacter.cpp`**: `ApplyKnockdownVisual(true)` ahora pone `CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled` para que el smoothing exponencial NO sobreescriba la rotación del mesh. `ApplyKnockdownVisual(false)` la restaura a `Exponential`.
+- **Causa raíz**: en clientes remotos, el CMC con smoothing `Exponential` interpola la rotación del mesh hacia la posición replicada cada frame, borrando nuestro tilt de -100° pitch. Desactivarlo solo durante knockdown es seguro: el personaje está inmóvil.
+
+#### 5. Optimización de red — Dormancy y condiciones de replicación
+- **`TN_InteractableBase.cpp`**: `NetDormancy = DORM_DormantAll`, `NetUpdateFrequency = 4`, `MinNetUpdateFrequency = 2`. `SetInteractionEnabled()` llama `FlushNetDormancy()`.
+- **`TN_PickupInteractableBase.cpp`**: `Interact()` y `InitializeFromInventoryItem()` llaman `FlushNetDormancy()` para que cambios se repliquen al despertar.
+- **`TN_ThrowableItemActor.cpp`**: `NetUpdateFrequency = 30`, `MinNetUpdateFrequency = 15`.
+- **`TN_CoopGameState.cpp`**: `ServerMatchElapsedTime` → `COND_SkipOwner`.
+- **`ProximityVoiceComponent.cpp`**: `VoiceSampleRate` → `COND_InitialOnly`.
+
+### Networking y rendimiento
+- **Interactuables**: ~95% reducción de tráfico para pickups estáticos (DORM_DormantAll).
+- **GameState**: `ServerMatchElapsedTime` ya no se envía al listen-server (él lo calcula).
+- **Voice**: `VoiceSampleRate` se envía solo en initial replication (1 vez vs cada dirty check).
+- **Travel**: Los clientes reconectan vía sesión Steam aunque el Listen falle inicialmente. El staging state espera hasta 15s.
+
+### Pendientes
+1. Smoke test 4 jugadores: validar staging → InProgress transition completa.
+2. Si el Listen sigue fallando sin recuperación tras 15s, investigar forzar `FURL::Listen()` retry en PostLoadMap.
+3. Ajustar `WaitingForPlayersTimeoutSeconds` según experiencia real.
+
+## 2026-03-20 - Fix: Steam P2P Socket Race Condition en ServerTravel
+
+### Diagnóstico
+- **Bug**: Al hacer ServerTravel de LVL_HQ → LVL_Run, el listen server no puede crearse porque el socket Steam P2P del mapa anterior aún está ocupado.
+- **Error en log**: `SteamSockets API: Error Cannot create listen socket. Already have a listen socket on P2P vport 7777` → `NetDriverListenFailure` → UE devuelve al menú.
+- **Causa raíz**: Steam P2P sockets tardan ~133ms en liberarse tras destruir el NetDriver, pero UE intenta crear el nuevo listen server 108ms después de la destrucción (dentro del mismo `LoadMap` frame). Race condition de 25ms.
+
+### Fix aplicado
+- **Patrón**: Destruir el NetDriver **antes** de `ServerTravel`, esperar 500ms para que Steam libere el socket, y luego viajar.
+- **Flujo**: `ClientTravel` a clientes remotos → `GEngine->DestroyNamedNetDriver()` → Timer 500ms → `ServerTravel`
+
+### Archivos modificados
+- `Public/Lobby/TN_HQGameMode.h`: Añadidos `DeferredTravelTimerHandle`, `PendingTravelURL`, `ExecuteDeferredTravel()`.
+- `Private/Lobby/TN_HQGameMode.cpp`: `BeginMatchTravel()` ahora pre-cierra el NetDriver y usa timer de 500ms antes de `ServerTravel`. Incluidos `Engine/Engine.h` y `Engine/NetDriver.h`.
+- `Public/Game/TN_RunGameMode.h`: Añadidos `DeferredTravelTimerHandle`, `PendingTravelURL`, `ExecuteDeferredTravel()`.
+- `Private/Game/TN_RunGameMode.cpp`: `FinishRoundAndReturnToLobby()` mismo patrón de pre-close + deferred travel. Incluidos `Engine/Engine.h`, `Engine/NetDriver.h`, `GameFramework/PlayerController.h`.
+
+### Otros warnings menores del log (no bloqueantes)
+- `GetSocketByName(None): No SkeletalMesh for Component(CharacterMesh0)` → El BP no tiene skeletal mesh asignado aún.
+- `'Cabeza' not found as exact name — matched 'Cabeza1' (fuzzy)` → Renombrar componente en BP a `Cabeza` exacto.
+- `Player is not part of session (GameSession)` → Warning cosmético durante travel, no afecta funcionalidad.

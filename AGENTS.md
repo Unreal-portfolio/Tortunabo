@@ -8,7 +8,10 @@
 - **Non-seamless Travel**: `TN_HQGameMode` y `TN_RunGameMode` usan `bUseSeamlessTravel = false`. Cada `ServerTravel` destruye el mundo viejo completo y crea uno nuevo (PCs, PlayerStates, Pawns se recrean).
   - Consecuencia: `PostLogin` SÍ se llama en cada mapa. No hay pawns residuales ni estado espectador que persista entre mapas.
   - **NO usar seamless travel** en este proyecto: intentos previos con `bUseSeamlessTravel = true` causaron doble spawneo de jugadores, modo espectador residual al volver al lobby, y crashes WASAPI por componentes de voz en estado inconsistente. El flujo non-seamless es la configuración validada y funcional.
-  - **ServerTravel con `?game=` explícito**: `BeginMatchTravel` usa `?listen?game=/Script/Tortunabo.TN_RunGameMode` y `FinishRoundAndReturnToLobby` usa `?listen?game=/Script/Tortunabo.TN_HQGameMode`. Esto evita que el mapa cargue con el GameMode equivocado si `WorldSettings` no tiene override.
+  - **ServerTravel SIN `?game=` explícito**: `BeginMatchTravel` usa `?listen` y `FinishRoundAndReturnToLobby` usa `?listen`. El GameMode lo determina **WorldSettings → GameMode Override** de cada mapa. Usar `?game=/Script/...` forzaba la clase C++ base en vez del BP, causando spawn de `TortugaCharacter` (sin mesh/input/HUD) en vez de `BP_TortugaCharacter`. **Cada mapa DEBE tener su BP GameMode en WorldSettings**: `LVL_HQ → BP_HQGameMode`, `LVL_Run → BP_RunGameMode`.
+  - **Staging en TN_RunGameMode**: Tras el ServerTravel, el mapa Run arranca en `WaitingForPlayers` (NO InProgress). `TN_HQGameMode::BeginMatchTravel` guarda el player count en `MP_GameInstance::PendingTravelPlayerCount`. El RunGameMode espera hasta que todos reconecten (o timeout de 15s) antes de cambiar a `InProgress`.
+  - **Deferred ServerTravel (fix socket race condition)**: Steam P2P sockets tardan ~100-200ms en liberarse tras destruir el NetDriver. Si `LoadMap` destruye el viejo driver y crea uno nuevo en el mismo frame, el socket aún está ocupado → `NetDriverListenFailure`. **Fix**: `BeginMatchTravel` y `FinishRoundAndReturnToLobby` hacen: 1) `ClientTravel` a clientes remotos, 2) `GEngine->DestroyNamedNetDriver()` para cerrar el socket, 3) Timer de 500ms, 4) `ServerTravel`. Esto da tiempo a Steam para liberar el socket P2P. Los clientes reconectan vía sesión Steam + staging system.
+  - **PendingTravelPlayerCount**: `MP_GameInstance` persiste entre mapas. `TN_HQGameMode` lo escribe; `TN_RunGameMode` lo lee en `BeginPlay` para saber cuántos jugadores esperar.
   - `OnNetworkFailure` en `MP_GameInstance` destruye la sesión Steam automáticamente si el listen socket falla (ej. `NetDriverListenFailure` por sesión zombi), permitiendo reintentar sin reiniciar Steam.
   - `NetChecksumMismatch` es detectado con mensaje claro al usuario. La causa principal es builds incompatibles (Live Coding, Hot Reload). **Ambas máquinas deben usar el mismo DLL compilado** — compilar con `-NoHotReload` y nunca usar Live Coding durante tests multiplayer.
 
@@ -38,10 +41,11 @@
 - `Config/DefaultGame.ini`: cook de `/Game/Maps`, `/Game/UI`, `/Game/Input`. Contiene `SteamDevAppId=480` bajo `[/Script/Tortunabo.MP_GameInstance]` (UPROPERTY Config).
 
 ## Input System
-- `TortugaCharacter` usa Enhanced Input con soft references a assets en `/Game/Input/`:
+- `TortugaCharacter` usa Enhanced Input con soft references a assets en `/Game/Blueprints/Gameplay/Controls/`:
   - `IMC_Player` (Input Mapping Context)
   - `IA_Move`, `IA_Look`, `IA_Jump`, `IA_Interact`, `IA_RotateInventory`, `IA_Sprint`, `IA_DropItem`
-- Estos assets deben crearse en el Editor. Si faltan, el personaje loggea warning y no recibe input.
+  - `IA_Emote` (slot 0), `IA_Emote1`..`IA_Emote9` (slots 1-9)
+- Estos assets deben crearse en el Editor en `/Game/Blueprints/Gameplay/Controls/`. Si faltan, el personaje loggea warning y no recibe input.
 - El mapping se aplica en `BeginPlay` y `PawnClientRestart` via `UEnhancedInputLocalPlayerSubsystem`.
 
 ## Lobby countdown — lógica dinámica
@@ -124,8 +128,10 @@
 ## Knockdown replication
 - `bIsKnockedDown` (ReplicatedUsing = OnRep_IsKnockedDown) se replica a todos los clientes.
 - `ApplyKnockdownVisual` usa `SetRelativeRotation` (NO `SetWorldRotation`) para que `CharacterMovementComponent` no sobreescriba la rotación en clientes remotos.
+- **Fix NetworkSmoothing**: `ApplyKnockdownVisual(true)` pone `CMC->NetworkSmoothingMode = Disabled`; `ApplyKnockdownVisual(false)` lo restaura a `Exponential`. Sin esto, el smoothing exponencial del CMC sobreescribe la rotación del mesh cada frame en clientes remotos, haciendo invisible el tilt de knockdown.
 - El listen-server aplica visual y bloqueo de movimiento directamente en `ApplyKnockdown()`/`RecoverFromKnockdown()` porque `OnRep` no dispara localmente.
 - Los clientes bloquean movimiento en `OnRep_IsKnockedDown` para no enviar inputs durante knockdown.
+- `MulticastApplyKnockdownVisual` (NetMulticast, Reliable) garantiza que todos los clientes reciban el knockdown inmediatamente, sin depender solo de OnRep (que puede batching).
 
 
 - `TN_CoopGameState` centraliza todo el estado replicado de partida: `MatchFlowState`, `ReadyPlayers`, `ConnectedPlayers`, `PlayersInStartZone`, `ExpectedPlayers`, `CountdownValue`, `ServerMatchElapsedTime`, `FinishedPlayers`.

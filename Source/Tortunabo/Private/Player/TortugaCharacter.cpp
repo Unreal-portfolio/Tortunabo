@@ -74,21 +74,25 @@ ATortugaCharacter::ATortugaCharacter()
 	FollowCamera->bUsePawnControlRotation = false;
 	FollowCamera->FieldOfView = 80.f;                 // match CameraFOVDefault
 
-	DefaultMappingContext = TSoftObjectPtr<UInputMappingContext>(FSoftObjectPath(TEXT("/Game/Input/IMC_Player.IMC_Player")));
-	MoveAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Move.IA_Move")));
-	LookAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Look.IA_Look")));
-	JumpAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Jump.IA_Jump")));
-	InteractAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Interact.IA_Interact")));
-	RotateInventoryAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_RotateInventory.IA_RotateInventory")));
-	SprintAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Sprint.IA_Sprint")));
-	DropItemAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_DropItem.IA_DropItem")));
+	// Paths must match actual asset locations in Content/Blueprints/Gameplay/Controls/.
+	// BP_TortugaCharacter can override these in Class Defaults.
+	DefaultMappingContext = TSoftObjectPtr<UInputMappingContext>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IMC_Player.IMC_Player")));
+	MoveAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Move.IA_Move")));
+	LookAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Look.IA_Look")));
+	JumpAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Jump.IA_Jump")));
+	InteractAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Interact.IA_Interact")));
+	RotateInventoryAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_RotateInventory.IA_RotateInventory")));
+	SprintAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Sprint.IA_Sprint")));
+	DropItemAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_DropItem.IA_DropItem")));
 
 	// Emote actions: 10 slots (0-9), override paths in BP_TortugaCharacter Class Defaults.
 	EmoteActions.SetNum(10);
 	for (int32 i = 0; i < 10; i++)
 	{
+		// Asset IA_Emote (slot 0) + IA_Emote1..IA_Emote9
+		const FString EmoteName = (i == 0) ? TEXT("IA_Emote") : FString::Printf(TEXT("IA_Emote%d"), i);
 		EmoteActions[i] = TSoftObjectPtr<UInputAction>(FSoftObjectPath(
-			FString::Printf(TEXT("/Game/Input/IA_Emote%d.IA_Emote%d"), i, i)));
+			FString::Printf(TEXT("/Game/Blueprints/Gameplay/Controls/%s.%s"), *EmoteName, *EmoteName)));
 	}
 
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
@@ -391,7 +395,7 @@ void ATortugaCharacter::CacheInputAssets()
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ %s FAILED TO LOAD — create this asset in /Game/Input/"), Name);
+			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ %s FAILED TO LOAD — create this asset in /Game/Blueprints/Gameplay/Controls/"), Name);
 		}
 	};
 
@@ -463,7 +467,7 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ IA_Interact NOT bound — asset is null! Create /Game/Input/IA_Interact"));
+			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ IA_Interact NOT bound — asset is null! Create /Game/Blueprints/Gameplay/Controls/IA_Interact"));
 		}
 		if (LoadedRotateInventoryAction)
 		{
@@ -995,8 +999,19 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		return;
 	}
 
+	UCharacterMovementComponent* CMC = GetCharacterMovement();
+
 	if (bKnocked)
 	{
+		// ── Desactivar smoothing del CMC para que NO sobreescriba la rotación ──
+		// En clientes remotos, NetworkSmoothingMode::Exponential interpola la
+		// rotación del mesh cada frame, lo que sobreescribe nuestro tilt de knockdown.
+		// Desactivarlo durante el knockdown permite que SetRelativeRotation persista.
+		if (CMC)
+		{
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+		}
+
 		// Use RELATIVE rotation so CharacterMovementComponent replication
 		// doesn't overwrite the visual on remote clients.
 		FRotator KnockedRot = MeshDefaultRelativeRotation;
@@ -1006,6 +1021,12 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 	else
 	{
 		MeshComp->SetRelativeRotation(MeshDefaultRelativeRotation);
+
+		// ── Restaurar smoothing al salir del knockdown ─────────────────────
+		if (CMC)
+		{
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+		}
 	}
 }
 

@@ -722,14 +722,18 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		if (bIsPendingTravel)
 		{
 			// Error durante transición de nivel (ServerTravel lobby→game).
-			// No destruir la sesión — el engine reintentará la escucha.
-			bIsPendingTravel = false;
-			HideLoadingScreen();
-			UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+			// El socket Steam aún no se ha liberado. NO destruir la sesión.
+			// Los clientes seguirán conectados a través de la sesión Steam (lobby)
+			// y reconectarán cuando el socket esté disponible.
+			// El engine ya creó el nuevo mapa — simplemente seguir.
 			UE_LOG(LogTemp, Warning,
-				TEXT("[MP] %s durante transición de nivel — probable colisión de socket Steam. "
-				     "La sesión se mantiene activa; el engine reintentará la escucha."),
+				TEXT("[MP] %s durante transición de nivel — el socket Steam del mapa anterior "
+				     "probablemente no se liberó a tiempo. Los clientes reconectarán vía la sesión Steam. "
+				     "La sesión se mantiene activa."),
 				*FailureTypeStr);
+			// NO hacer bIsPendingTravel = false aquí: PostLoadMap lo reseteará.
+			// NO ocultar loading screen: PostLoadMap la ocultará.
+			return;
 		}
 		else
 		{

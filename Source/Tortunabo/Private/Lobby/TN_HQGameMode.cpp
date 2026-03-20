@@ -3,10 +3,13 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
+#include "Multiplayer/MP_GameInstance.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/Engine.h"
+#include "Engine/NetDriver.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -23,6 +26,16 @@ void ATN_HQGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureFallbackPlayerStart();
+
+	// ── Safety check: detectar si el mapa cargó con la clase C++ base en vez del BP ──
+	if (GetClass() == ATN_HQGameMode::StaticClass())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ════════════════════════════════════════════════════════"));
+		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ¡USANDO CLASE C++ BASE! No hay BP GameMode."));
+		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] FIX: En LVL_HQ → WorldSettings → GameMode Override"));
+		UE_LOG(LogTemp, Error, TEXT("[HQGameMode]       → seleccionar BP_HQGameMode."));
+		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ════════════════════════════════════════════════════════"));
+	}
 
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -263,18 +276,79 @@ void ATN_HQGameMode::BeginMatchTravel()
 {
 	if (UWorld* World = GetWorld())
 	{
+		// ── Guardar cuántos jugadores hay en el lobby ANTES de viajar ──────
+		// GameInstance sobrevive al non-seamless travel; TN_RunGameMode
+		// lo leerá en PostLogin para saber cuántos jugadores esperar.
+		if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+		{
+			int32 ConnectedCount = 0;
+			for (APlayerState* BasePS : GameState->PlayerArray)
+			{
+				if (Cast<ATN_CoopPlayerState>(BasePS))
+				{
+					++ConnectedCount;
+				}
+			}
+			GI->PendingTravelPlayerCount = ConnectedCount;
+			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
+		}
 
 		// Stop all audio capture streams while WASAPI is still alive.
 		// This prevents ACCESS_VIOLATION crashes during level teardown.
 		UProximityVoiceComponent::ShutdownAllCapture(World);
 
-		const FString TravelURL = MatchMapPath + TEXT("?listen?game=/Script/Tortunabo.TN_RunGameMode");
-		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Iniciando ServerTravel hacia: %s"), *TravelURL);
-		World->ServerTravel(TravelURL);
+		// NO usar ?game=/Script/Tortunabo.TN_RunGameMode — eso fuerza la clase C++ base
+		// y spawna TortugaCharacter (sin mesh/input) en vez de BP_TortugaCharacter.
+		// LVL_Run debe tener BP_RunGameMode en WorldSettings → GameMode Override.
+
+		PendingTravelURL = MatchMapPath + TEXT("?listen");
+
+		// ── Pre-close del socket Steam para evitar "Cannot create listen socket" ──
+		// Steam P2P sockets tardan ~100-200ms en liberarse tras destruir el NetDriver.
+		// Si ServerTravel destruye el viejo driver y crea uno nuevo en el mismo LoadMap,
+		// el socket aún está ocupado → NetDriverListenFailure → vuelta al menú.
+		// FIX: Notificar a clientes remotos, destruir el driver manualmente, esperar
+		// 500ms y LUEGO hacer ServerTravel. El nuevo listen server se creará limpio.
+
+		// 1. Enviar travel a clientes remotos antes de cerrar el driver
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (PC && !PC->IsLocalController())
+			{
+				PC->ClientTravel(PendingTravelURL, TRAVEL_Relative, true);
+			}
+		}
+
+		// 2. Destruir el NetDriver para liberar el listen socket
+		if (UNetDriver* NetDriver = World->GetNetDriver())
+		{
+			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Pre-closing NetDriver '%s' before travel to release Steam socket."),
+				*NetDriver->GetName());
+			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
+		}
+
+		// 3. Esperar a que Steam libere el socket P2P, luego viajar
+		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Waiting 0.5s for Steam socket release before ServerTravel..."));
+		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
+			&ATN_HQGameMode::ExecuteDeferredTravel, 0.5f, false);
 	}
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] BeginMatchTravel: GetWorld() es null, travel cancelado."));
+	}
+}
+
+void ATN_HQGameMode::ExecuteDeferredTravel()
+{
+	if (UWorld* World = GetWorld())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Iniciando ServerTravel hacia: %s"), *PendingTravelURL);
+		World->ServerTravel(PendingTravelURL);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ExecuteDeferredTravel: GetWorld() es null."));
 	}
 }
 

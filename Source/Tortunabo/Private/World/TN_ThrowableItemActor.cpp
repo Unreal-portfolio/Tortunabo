@@ -12,6 +12,10 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 	bReplicates = true;
 	SetReplicateMovement(true); // Server runs physics; clients get replicated position
 
+	// ── Optimización de red: alta frecuencia solo mientras vuela ───────────
+	SetNetUpdateFrequency(30.f);    // 30 Hz durante vuelo (proyectil rápido)
+	SetMinNetUpdateFrequency(15.f); // mínimo 15 Hz
+
 	// Mesh ES el root: UStaticMeshComponent es UPrimitiveComponent.
 	// ProjectileMovement actualizará directamente la posición del actor.
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
