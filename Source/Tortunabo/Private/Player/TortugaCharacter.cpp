@@ -48,12 +48,31 @@ ATortugaCharacter::ATortugaCharacter()
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 300.f;
+	CameraBoom->TargetArmLength = 350.f;
 	CameraBoom->bUsePawnControlRotation = true;
+
+	// ── Cinematic camera lag ──────────────────────────────────────────────────
+	// Suaviza la posición de la cámara para un feel AAA fluido.
+	CameraBoom->bEnableCameraLag = true;
+	CameraBoom->CameraLagSpeed = 8.f;                 // match CameraPositionLagSpeed default
+
+	// Suaviza la rotación de la cámara independientemente de la posición.
+	CameraBoom->bEnableCameraRotationLag = true;
+	CameraBoom->CameraRotationLagSpeed = 14.f;        // match CameraRotationLagSpeed default
+
+	// Distancia máxima que el lag puede acumular antes de hacer "snap".
+	CameraBoom->CameraLagMaxDistance = 180.f;
+
+	// Over-the-shoulder offset: ligeramente a la derecha y elevada.
+	CameraBoom->SocketOffset = FVector(0.f, 55.f, 65.f);
+
+	// Eleva el pivot del boom sobre la raíz del personaje (encima de la cabeza).
+	CameraBoom->SetRelativeLocation(FVector(0.f, 0.f, 40.f));
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+	FollowCamera->FieldOfView = 80.f;                 // match CameraFOVDefault
 
 	DefaultMappingContext = TSoftObjectPtr<UInputMappingContext>(FSoftObjectPath(TEXT("/Game/Input/IMC_Player.IMC_Player")));
 	MoveAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Input/IA_Move.IA_Move")));
@@ -137,6 +156,29 @@ void ATortugaCharacter::BeginPlay()
 	{
 		MeshDefaultRelativeRotation = MeshComp->GetRelativeRotation();
 	}
+
+	// ── Aplicar camera settings serializables ────────────────────────────────
+	// Los valores UPROPERTY pueden haberse sobrescrito en el BP hijo → aplicarlos aquí.
+	if (CameraBoom)
+	{
+		CameraBoom->TargetArmLength        = CameraArmLengthDefault;
+		CameraBoom->CameraLagSpeed         = CameraPositionLagSpeed;
+		CameraBoom->CameraRotationLagSpeed = CameraRotationLagSpeed;
+		CameraBoom->SocketOffset           = CameraSocketOffset;
+		CameraBoom->SetRelativeLocation(CameraBoomRelativeOffset);
+	}
+	if (FollowCamera)
+	{
+		FollowCamera->FieldOfView = CameraFOVDefault;
+	}
+
+	// ── Vincular inventario al sistema de stamina para el peso ────────────────
+	// Solo en el servidor (donde la stamina se actualiza), pero linkear en todos
+	// es inofensivo porque GetTotalCarriedWeight solo lee datos replicados.
+	if (StaminaComponent && InventoryComponent)
+	{
+		StaminaComponent->SetInventoryComponent(InventoryComponent);
+	}
 }
 
 void ATortugaCharacter::Tick(float DeltaTime)
@@ -144,6 +186,7 @@ void ATortugaCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
 	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes)
+	TickCameraInterp(DeltaTime);   // cinematic camera zoom/FOV interpolation
 }
 
 void ATortugaCharacter::TickLegAnimation(float DeltaTime)
@@ -186,6 +229,40 @@ void ATortugaCharacter::TickLegAnimation(float DeltaTime)
 	// Pata1 and Pata2 are 180° out of phase → diagonal trot gait.
 	if (Pata1.IsValid()) { ApplyLegAngle(Pata1.Get(), Pata1RestRot,  Angle); }
 	if (Pata2.IsValid()) { ApplyLegAngle(Pata2.Get(), Pata2RestRot, -Angle); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TickCameraInterp — Cinematic camera zoom & FOV interpolation (local only)
+// ─────────────────────────────────────────────────────────────────────────────
+void ATortugaCharacter::TickCameraInterp(float DeltaTime)
+{
+	// Solo aplica en el cliente local que controla este pawn.
+	if (!IsLocallyControlled()) { return; }
+	if (!CameraBoom || !FollowCamera) { return; }
+
+	const bool bSprinting = StaminaComponent && StaminaComponent->IsSprinting();
+
+	// ── Interpolación de longitud del brazo ───────────────────────────────────
+	const float TargetArmLength = bSprinting ? CameraArmLengthSprint : CameraArmLengthDefault;
+	CameraBoom->TargetArmLength = FMath::FInterpTo(
+		CameraBoom->TargetArmLength,
+		TargetArmLength,
+		DeltaTime,
+		CameraArmLengthInterpSpeed
+	);
+
+	// ── Interpolación de FOV ──────────────────────────────────────────────────
+	const float TargetFOV = bSprinting ? CameraFOVSprint : CameraFOVDefault;
+	FollowCamera->FieldOfView = FMath::FInterpTo(
+		FollowCamera->FieldOfView,
+		TargetFOV,
+		DeltaTime,
+		CameraFOVInterpSpeed
+	);
+
+	// ── Sync live lag speeds (por si se editan en runtime desde Blueprint) ────
+	CameraBoom->CameraLagSpeed         = CameraPositionLagSpeed;
+	CameraBoom->CameraRotationLagSpeed = CameraRotationLagSpeed;
 }
 
 void ATortugaCharacter::ApplyLegAngle(USceneComponent* Comp, const FRotator& RestRot, float AngleDeg) const
@@ -411,8 +488,13 @@ void ATortugaCharacter::Look(const FInputActionValue& Value)
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
 	if (Controller)
 	{
-		AddControllerYawInput(LookAxisVector.X);
-		AddControllerPitchInput(LookAxisVector.Y);
+		// Sensibilidad independiente por eje.
+		const float Yaw   =  LookAxisVector.X * LookSensitivityX;
+		// bInvertCameraY: true → invertir eje vertical (arriba/abajo del ratón).
+		const float Pitch = LookAxisVector.Y * LookSensitivityY * (bInvertCameraY ? -1.f : 1.f);
+
+		AddControllerYawInput(Yaw);
+		AddControllerPitchInput(Pitch);
 	}
 }
 
@@ -490,8 +572,10 @@ void ATortugaCharacter::RefreshSprintRequest()
 		return;
 	}
 
-	const bool bHasForwardInput = LastMovementInput.Y > 0.25f;
-	StaminaComponent->SetSprintRequested(bSprintHeld && bHasForwardInput);
+	// Sprint funciona en cualquier dirección de movimiento (delante, lateral, diagonal).
+	// Solo se desactiva cuando el jugador solta el stick/WASD por completo.
+	const bool bHasMovementInput = LastMovementInput.SizeSquared() > (0.25f * 0.25f);
+	StaminaComponent->SetSprintRequested(bSprintHeld && bHasMovementInput);
 }
 
 void ATortugaCharacter::UpdateFocusedInteractable()

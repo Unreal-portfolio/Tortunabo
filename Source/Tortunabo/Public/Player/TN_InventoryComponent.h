@@ -48,6 +48,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	FTN_InventoryItem GetStoredItem() const { return StoredItem; }
 
+	/** Devuelve la suma de ItemWeight de todos los ítems llevados (equipado + guardado). */
+	UFUNCTION(BlueprintPure, Category = "Inventory|Weight")
+	float GetTotalCarriedWeight() const;
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Inventory|Visual")
 	FName EquippedAttachSocket = NAME_None;

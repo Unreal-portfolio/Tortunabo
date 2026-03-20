@@ -62,6 +62,16 @@ struct FTN_InventoryItem : public FTableRowBase
 	float ThrowSpeed = 1800.0f;
 
 	/**
+	 * Peso del ítem en unidades arbitrarias.
+	 * Cada unidad reduce la stamina máxima efectiva del portador según
+	 * UTN_StaminaComponent::StaminaPerWeightUnit (default 20 stamina/unidad).
+	 * Ejemplo: ItemWeight=2 con StaminaPerWeightUnit=20 → -40 stamina máx.
+	 * 0 = sin penalización.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Weight", meta = (ClampMin = "0.0", ClampMax = "20.0"))
+	float ItemWeight = 0.0f;
+
+	/**
 	 * Clase del actor pickup que aparece en el mundo.
 	 * Para el sistema data-driven, apuntar siempre a BP_GenericPickup.
 	 * Solo crear clase específica si el pickup tiene lógica BP diferente.

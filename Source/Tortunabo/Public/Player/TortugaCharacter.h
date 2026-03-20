@@ -162,6 +162,76 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "45.0"))
 	float ThrowUpAngleDeg = 15.f;
 
+	// ── Camera Cinematic Settings (AAA) ───────────────────────────────────────
+
+	/** Longitud del brazo en reposo. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "50", ClampMax = "1200"))
+	float CameraArmLengthDefault = 350.f;
+
+	/** Longitud del brazo cuando el jugador está esprintando. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "50", ClampMax = "1200"))
+	float CameraArmLengthSprint = 480.f;
+
+	/** Velocidad de interpolación de la longitud del brazo (mayor = más rápido). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "0.5", ClampMax = "20.0"))
+	float CameraArmLengthInterpSpeed = 5.f;
+
+	/** Campo de visión (FOV) de la cámara en reposo. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "40.0", ClampMax = "120.0"))
+	float CameraFOVDefault = 80.f;
+
+	/** Campo de visión (FOV) de la cámara al esprintar (ligeramente mayor para sensación de velocidad). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "40.0", ClampMax = "120.0"))
+	float CameraFOVSprint = 90.f;
+
+	/** Velocidad de interpolación del FOV. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "0.5", ClampMax = "20.0"))
+	float CameraFOVInterpSpeed = 5.f;
+
+	/**
+	 * Lag de posición del spring arm (qué tan fluido sigue a la cápsula).
+	 * 6-10 = cinematic suave. 20+ = casi sin lag.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "1.0", ClampMax = "30.0"))
+	float CameraPositionLagSpeed = 8.f;
+
+	/** Lag de rotación del spring arm. 12-16 = respuesta rápida pero suavizada. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "1.0", ClampMax = "30.0"))
+	float CameraRotationLagSpeed = 14.f;
+
+	/**
+	 * Offset del socket de la cámara respecto al pivot del spring arm.
+	 * X = adelante/atrás, Y = derecha (over-the-shoulder), Z = arriba.
+	 * Default (0, 55, 65) → estilo over-the-shoulder derecho, elevada.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic")
+	FVector CameraSocketOffset = FVector(0.f, 55.f, 65.f);
+
+	/**
+	 * Offset relativo del pivot del spring arm en espacio del personaje (eleva el pivot).
+	 * Default (0, 0, 40) → eleva el pivot 40 cm por encima de la raíz.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic")
+	FVector CameraBoomRelativeOffset = FVector(0.f, 0.f, 40.f);
+
+	/** Si true, el eje Y del ratón (arriba/abajo) se invierte. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Input")
+	bool bInvertCameraY = false;
+
+	/**
+	 * Multiplicador de sensibilidad para el eje X (izquierda/derecha — Yaw).
+	 * 1.0 = por defecto.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Input", meta = (ClampMin = "0.1", ClampMax = "5.0"))
+	float LookSensitivityX = 1.0f;
+
+	/**
+	 * Multiplicador de sensibilidad para el eje Y (arriba/abajo — Pitch).
+	 * 0.5 = la mitad que el X para evitar mareo. Ajusta al gusto.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Input", meta = (ClampMin = "0.1", ClampMax = "5.0"))
+	float LookSensitivityY = 0.5f;
+
 private:
 	void CacheInputAssets();
 	void ApplyInputMappingIfLocal();
@@ -264,6 +334,7 @@ private:
 	FVector GetItemForwardDirection() const;
 
 	void TickLegAnimation(float DeltaTime);
+	void TickCameraInterp(float DeltaTime);
 	void ApplyLegAngle(USceneComponent* Comp, const FRotator& RestRot, float AngleDeg) const;
 	USceneComponent* FindChildByName(FName Name) const;
 	/** Trace descendente para encontrar el suelo bajo WorldLocation. Usado al soltar y aterrizar ítems. */

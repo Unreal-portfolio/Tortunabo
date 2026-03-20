@@ -4,6 +4,8 @@
 #include "Components/ActorComponent.h"
 #include "TN_StaminaComponent.generated.h"
 
+class UTN_InventoryComponent;
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_StaminaComponent : public UActorComponent
 {
@@ -22,11 +24,29 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void GrantUnlimitedStamina(float DurationSeconds);
 
+	/** Vincula el componente de inventario para calcular el peso total cargado. */
+	void SetInventoryComponent(UTN_InventoryComponent* InvComp);
+
 	UFUNCTION(BlueprintPure, Category = "Stamina")
 	float GetCurrentStamina() const { return CurrentStamina; }
 
 	UFUNCTION(BlueprintPure, Category = "Stamina")
 	float GetMaxStamina() const { return MaxStamina; }
+
+	/**
+	 * Stamina máxima efectiva tras aplicar la penalización por peso.
+	 * EffectiveMax = MaxStamina - (TotalWeight * StaminaPerWeightUnit).
+	 * La stamina no puede superar este valor mientras se lleva peso.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Stamina|Weight")
+	float GetEffectiveMaxStamina() const;
+
+	/**
+	 * Stamina "bloqueada" por el peso: MaxStamina - EffectiveMaxStamina.
+	 * Usar en la UI como relleno de la barra de penalización (zona oscura).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Stamina|Weight")
+	float GetWeightPenalty() const { return MaxStamina - GetEffectiveMaxStamina(); }
 
 	UFUNCTION(BlueprintPure, Category = "Stamina")
 	bool IsSprinting() const { return bIsSprinting; }
@@ -39,9 +59,16 @@ public:
 	bool IsExhausted() const { return bIsExhausted; }
 
 protected:
-	/** Stamina máxima. Configurable desde Blueprint. */
+	/** Stamina máxima base. Configurable desde Blueprint. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Stamina", meta = (ClampMin = "1.0"))
 	float MaxStamina = 200.0f;
+
+	/**
+	 * Stamina máxima que se reduce por cada unidad de peso cargado.
+	 * Ejemplo: StaminaPerWeightUnit=20, ítem con ItemWeight=2 → -40 stamina máx.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Stamina|Weight", meta = (ClampMin = "0.0"))
+	float StaminaPerWeightUnit = 20.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
 	float SprintDrainPerSecond = 45.0f;
@@ -67,7 +94,6 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina|Movement", meta = (ClampMin = "0.0"))
 	float SprintSpeed = 800.0f;
-
 
 private:
 	UFUNCTION(Server, Reliable)
@@ -95,6 +121,9 @@ private:
 
 	UPROPERTY(Replicated)
 	bool bIsExhausted = false;
+
+	/** Referencia al inventario del propietario — necesaria para calcular el peso. */
+	TWeakObjectPtr<UTN_InventoryComponent> InventoryComponentRef;
 
 	UFUNCTION()
 	void OnRep_CurrentStamina();
