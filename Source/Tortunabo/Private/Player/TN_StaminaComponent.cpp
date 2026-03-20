@@ -1,4 +1,5 @@
 ﻿#include "Player/TN_StaminaComponent.h"
+#include "Player/TN_InventoryComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -94,6 +95,23 @@ void UTN_StaminaComponent::ServerGrantUnlimitedStamina_Implementation(float Dura
 	GrantUnlimitedStamina(DurationSeconds);
 }
 
+void UTN_StaminaComponent::SetInventoryComponent(UTN_InventoryComponent* InvComp)
+{
+	InventoryComponentRef = InvComp;
+}
+
+float UTN_StaminaComponent::GetEffectiveMaxStamina() const
+{
+	float TotalWeight = 0.f;
+	if (InventoryComponentRef.IsValid())
+	{
+		TotalWeight = InventoryComponentRef->GetTotalCarriedWeight();
+	}
+	const float Penalty = TotalWeight * StaminaPerWeightUnit;
+	// La stamina efectiva nunca puede bajar de 1 (evitar división por cero en la UI)
+	return FMath::Max(1.f, MaxStamina - Penalty);
+}
+
 void UTN_StaminaComponent::OnRep_CurrentStamina()
 {
 }
@@ -129,6 +147,14 @@ void UTN_StaminaComponent::TickUnlimitedTimer(float DeltaTime)
 
 void UTN_StaminaComponent::TickStamina(float DeltaTime)
 {
+	// Techo dinámico por peso — si el jugador coge un objeto pesado,
+	// la stamina se recorta inmediatamente al nuevo máximo efectivo.
+	const float EffMax = GetEffectiveMaxStamina();
+	if (CurrentStamina > EffMax)
+	{
+		CurrentStamina = EffMax;
+	}
+
 	if (bIsSprinting)
 	{
 		TimeSinceSprintStopped = 0.0f;
@@ -170,7 +196,8 @@ void UTN_StaminaComponent::TickStamina(float DeltaTime)
 		{
 			RechargeElapsed += DeltaTime;
 			const float RechargeRate = RechargeBasePerSecond * FMath::Exp(RechargeExponentGrowth * RechargeElapsed);
-			CurrentStamina = FMath::Min(MaxStamina, CurrentStamina + (RechargeRate * DeltaTime));
+			// La recarga se limita al effective max (techo de peso), no al MaxStamina base.
+			CurrentStamina = FMath::Min(EffMax, CurrentStamina + (RechargeRate * DeltaTime));
 		}
 	}
 
@@ -183,6 +210,8 @@ void UTN_StaminaComponent::RecomputeSprintState()
 
 	if (!bUnlimitedStamina)
 	{
+		// Puede sprintar si la stamina actual supera un mínimo — comprobamos contra 0,
+		// ya que GetEffectiveMaxStamina es el techo, no el suelo.
 		bCanSprint = bCanSprint && (CurrentStamina > KINDA_SMALL_NUMBER);
 	}
 

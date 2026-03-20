@@ -10,6 +10,14 @@ UTN_InventoryComponent::UTN_InventoryComponent()
 	SetIsReplicatedByDefault(true);
 }
 
+float UTN_InventoryComponent::GetTotalCarriedWeight() const
+{
+	float Total = 0.f;
+	if (bHasEquippedItem) { Total += EquippedItem.ItemWeight; }
+	if (bHasStoredItem)   { Total += StoredItem.ItemWeight; }
+	return Total;
+}
+
 void UTN_InventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();

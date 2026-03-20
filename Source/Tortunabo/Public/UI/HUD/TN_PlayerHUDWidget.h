@@ -19,12 +19,15 @@ class UTexture2D;
  *
  *   STAMINA:
  *   - StaminaBar       (UProgressBar)     → relleno proporcional a stamina actual/max
+ *   - WeightPenaltyBar (UProgressBar)     → zona bloqueada por peso (superponer sobre StaminaBar,
+ *                                           alineada a la derecha, color distinto ej. marrón oscuro)
+ *                                           Percent = WeightPenalty / MaxStamina
  *   - ExhaustedRoot    (cualquier widget) → visible solo durante penalización por agotamiento
  *   - StaminaText      (UTextBlock)       → opcional, muestra "120 / 200"
  *
  *   INVENTARIO:
- *   - SlotEquippedImage   (UImage)          → icono del ítem equipado (slot activo)
- *   - SlotStoredImage     (UImage)          → icono del ítem guardado (slot pasivo)
+ *   - SlotEquippedImage    (UImage)           → icono del ítem equipado (slot activo)
+ *   - SlotStoredImage      (UImage)           → icono del ítem guardado (slot pasivo)
  *   - SlotEquippedSelector (cualquier widget) → borde/resaltado del slot activo (siempre visible)
  */
 UCLASS()
@@ -40,6 +43,15 @@ protected:
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UProgressBar> StaminaBar;
+
+	/**
+	 * Barra que muestra la zona de stamina bloqueada por el peso de los ítems.
+	 * Superponer sobre StaminaBar con alineación a la derecha y distinto color.
+	 * Percent = WeightPenalty / MaxStamina.
+	 * Si no hay peso, el porcentaje será 0 (invisible si el color tiene alpha 0).
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UProgressBar> WeightPenaltyBar;
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UWidget> ExhaustedRoot;
@@ -77,6 +89,16 @@ protected:
 	void OnStaminaUpdated(float CurrentStamina, float MaxStamina, bool bExhausted);
 
 	/**
+	 * Llamado cuando cambia el peso total cargado (o la stamina por peso).
+	 * Úsalo en BP para animar la zona oscura de la barra o mostrar el icono de peso.
+	 * @param WeightPenalty     Stamina "bloqueada" por el peso actual (0 = sin peso).
+	 * @param MaxStamina        Stamina máxima base (sin penalización).
+	 * @param EffectiveMaxStamina  Stamina máxima real = MaxStamina - WeightPenalty.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Stamina|Weight")
+	void OnWeightUpdated(float WeightPenalty, float MaxStamina, float EffectiveMaxStamina);
+
+	/**
 	 * Llamado cuando el inventario cambia. Úsalo en BP para animaciones de slot.
 	 * @param EquippedIcon    Icono del ítem equipado (puede ser null si no hay ítem)
 	 * @param bHasEquipped    True si hay ítem en el slot equipado
@@ -95,8 +117,9 @@ private:
 	TWeakObjectPtr<UTN_InventoryComponent>  CachedInventory;
 
 	// Stamina throttle
-	float LastStamina    = -1.f;
-	bool  bLastExhausted = false;
+	float LastStamina       = -1.f;
+	float LastWeightPenalty = -1.f;
+	bool  bLastExhausted    = false;
 
 	// Inventory change detection (compare by ItemId to avoid redundant refreshes)
 	FName LastEquippedId = NAME_None;

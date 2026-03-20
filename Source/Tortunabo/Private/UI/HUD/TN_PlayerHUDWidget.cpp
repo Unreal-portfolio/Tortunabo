@@ -54,13 +54,18 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 	// ── Stamina ──────────────────────────────────────────────────────────────
 	if (CachedStamina.IsValid())
 	{
-		const float Current    = CachedStamina->GetCurrentStamina();
-		const bool  bExhausted = CachedStamina->IsExhausted();
+		const float Current     = CachedStamina->GetCurrentStamina();
+		const float WeightPen   = CachedStamina->GetWeightPenalty();
+		const bool  bExhausted  = CachedStamina->IsExhausted();
 
-		if (!FMath::IsNearlyEqual(Current, LastStamina, 0.5f) || bExhausted != bLastExhausted)
+		const bool bStaminaChanged = !FMath::IsNearlyEqual(Current, LastStamina, 0.5f) || bExhausted != bLastExhausted;
+		const bool bWeightChanged  = !FMath::IsNearlyEqual(WeightPen, LastWeightPenalty, 0.5f);
+
+		if (bStaminaChanged || bWeightChanged)
 		{
-			LastStamina    = Current;
-			bLastExhausted = bExhausted;
+			LastStamina       = Current;
+			bLastExhausted    = bExhausted;
+			LastWeightPenalty = WeightPen;
 			RefreshStaminaWidgets();
 		}
 	}
@@ -88,21 +93,38 @@ void UTN_PlayerHUDWidget::RefreshStaminaWidgets()
 {
 	if (!CachedStamina.IsValid())
 	{
-		if (StaminaBar)    { StaminaBar->SetVisibility(ESlateVisibility::Hidden); }
-		if (ExhaustedRoot) { ExhaustedRoot->SetVisibility(ESlateVisibility::Hidden); }
-		if (StaminaText)   { StaminaText->SetVisibility(ESlateVisibility::Hidden); }
+		if (StaminaBar)      { StaminaBar->SetVisibility(ESlateVisibility::Hidden); }
+		if (WeightPenaltyBar){ WeightPenaltyBar->SetVisibility(ESlateVisibility::Hidden); }
+		if (ExhaustedRoot)   { ExhaustedRoot->SetVisibility(ESlateVisibility::Hidden); }
+		if (StaminaText)     { StaminaText->SetVisibility(ESlateVisibility::Hidden); }
 		return;
 	}
 
-	const float Current  = CachedStamina->GetCurrentStamina();
-	const float MaxStam  = CachedStamina->GetMaxStamina();
-	const bool  bExhaust = CachedStamina->IsExhausted();
-	const float Ratio    = (MaxStam > 0.f) ? FMath::Clamp(Current / MaxStam, 0.f, 1.f) : 0.f;
+	const float Current    = CachedStamina->GetCurrentStamina();
+	const float MaxStam    = CachedStamina->GetMaxStamina();
+	const float EffMax     = CachedStamina->GetEffectiveMaxStamina();
+	const float WeightPen  = CachedStamina->GetWeightPenalty();
+	const bool  bExhaust   = CachedStamina->IsExhausted();
+
+	// Ratio de stamina actual vs el máximo BASE (para que la barra de stamina
+	// y la de peso compartan la misma escala visual).
+	const float StaminaRatio = (MaxStam > 0.f) ? FMath::Clamp(Current / MaxStam, 0.f, 1.f) : 0.f;
+	// Ratio que ocupa la penalización de peso (zona oscura a la derecha).
+	const float WeightRatio  = (MaxStam > 0.f) ? FMath::Clamp(WeightPen / MaxStam, 0.f, 1.f) : 0.f;
 
 	if (StaminaBar)
 	{
 		StaminaBar->SetVisibility(ESlateVisibility::HitTestInvisible);
-		StaminaBar->SetPercent(Ratio);
+		StaminaBar->SetPercent(StaminaRatio);
+	}
+
+	// WeightPenaltyBar: superponer sobre StaminaBar, alineada a la derecha.
+	// En el Widget Designer: mismo tamaño que StaminaBar, mismo anchor,
+	// Fill Direction = Right to Left, color distinto (ej. marrón oscuro #5C3317).
+	if (WeightPenaltyBar)
+	{
+		WeightPenaltyBar->SetVisibility(ESlateVisibility::HitTestInvisible);
+		WeightPenaltyBar->SetPercent(WeightRatio);
 	}
 
 	if (ExhaustedRoot)
@@ -115,11 +137,13 @@ void UTN_PlayerHUDWidget::RefreshStaminaWidgets()
 	if (StaminaText)
 	{
 		StaminaText->SetVisibility(ESlateVisibility::HitTestInvisible);
+		// Muestra stamina actual vs el efectivo (más informativo que el máximo base)
 		StaminaText->SetText(FText::FromString(
-			FString::Printf(TEXT("%.0f / %.0f"), Current, MaxStam)));
+			FString::Printf(TEXT("%.0f / %.0f"), Current, EffMax)));
 	}
 
 	OnStaminaUpdated(Current, MaxStam, bExhaust);
+	OnWeightUpdated(WeightPen, MaxStam, EffMax);
 }
 
 // ── Inventory ─────────────────────────────────────────────────────────────────

@@ -62,17 +62,29 @@
 - **Penalización por agotamiento**: si `CurrentStamina` llega a 0 mientras sprint, `bIsExhausted = true` y la recuperación se bloquea `ExhaustionPenaltySeconds = 1.0f` segundos ANTES de que empiece el `RechargeDelaySeconds` normal.
 - `IsExhausted()` (BlueprintPure) disponible para UI y lógica BP.
 - **NO hay rotación del mesh al sprintar** (`ApplySprintVisual` es no-op). El feedback visual de sprint viene solo del aumento de amplitud de piernas (60°→90°).
+- **Sprint en cualquier dirección**: `RefreshSprintRequest` activa sprint si `LastMovementInput.SizeSquared() > 0.0625` — no requiere input hacia adelante.
 - Replicación: `CurrentStamina` (owner-only), `bIsSprinting` (all), `bSprintRequested` (all), `bUnlimitedStamina` (owner-only), `bIsExhausted` (owner-only).
+
+## Weight system (sistema de peso tipo Peak)
+- `FTN_InventoryItem::ItemWeight` (float, default 0) — asignable en el DataTable o BP del ítem.
+- `UTN_InventoryComponent::GetTotalCarriedWeight()` — suma `ItemWeight` de equipado + guardado.
+- `UTN_StaminaComponent::StaminaPerWeightUnit = 20.f` — stamina perdida por unidad de peso (configurable).
+- `GetEffectiveMaxStamina()` = `MaxStamina - (TotalWeight * StaminaPerWeightUnit)`, mínimo 1.
+- `GetWeightPenalty()` = `MaxStamina - GetEffectiveMaxStamina()` (para la UI).
+- La stamina se clampea instantáneamente al `EffectiveMaxStamina` cuando el jugador coge un objeto pesado.
+- La recarga nunca supera `EffectiveMaxStamina`.
+- Vínculo inventory↔stamina: `StaminaComponent->SetInventoryComponent(InventoryComponent)` en `ATortugaCharacter::BeginPlay()`.
 
 ## Player HUD (`TN_PlayerHUDWidget`)
 - Widget C++ base para toda la UI en pantalla del jugador durante gameplay.
 - Se crea en `MP_GamePlayerController::CreatePlayerHUD()` al hacer posesión; asignar `PlayerHUDWidgetClass` en `BP_GamePlayerController → Class Defaults`.
 - Pollea `UTN_StaminaComponent` del pawn local cada ~50ms (throttle configurable).
 - Widgets opcionales (nombres exactos en BP Designer):
-  - `StaminaBar` (UProgressBar) → ratio `CurrentStamina / MaxStamina`
+  - `StaminaBar` (UProgressBar) → `Current / MaxStamina`
+  - `WeightPenaltyBar` (UProgressBar) → `WeightPenalty / MaxStamina`. Superponer sobre `StaminaBar` con **Fill Direction = Right to Left** y color distinto (ej. marrón oscuro). Representa la zona de stamina bloqueada por peso.
   - `ExhaustedRoot` (cualquier widget) → visible solo durante penalización de agotamiento
-  - `StaminaText` (UTextBlock) → "120 / 200"
-- Hook BP: `OnStaminaUpdated(CurrentStamina, MaxStamina, bExhausted)` para animar/colorear desde Blueprint.
+  - `StaminaText` (UTextBlock) → "120 / 150" (actual vs effective max)
+- Hooks BP: `OnStaminaUpdated(CurrentStamina, MaxStamina, bExhausted)` y `OnWeightUpdated(WeightPenalty, MaxStamina, EffectiveMaxStamina)`.
 - Z-order en viewport: 4 (por debajo del CoopFlowHUD en 5 y VoiceIndicator en 10).
 
 ## Leg Animation (blockout en `TortugaCharacter`)
@@ -93,6 +105,21 @@
 ## Camera y colisión entre personajes
 - `GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore)` en el constructor de `ATortugaCharacter`. El spring arm del jugador local no choca con las cápsulas de otros jugadores.
 - El spring arm ignora su propio pawn automáticamente (UE lo hace internamente). La línea anterior solo afecta a personajes remotos.
+
+## Camera cinematográfica AAA (`TortugaCharacter`)
+- Sistema de cámara estilo over-the-shoulder con lag de posición y rotación, zoom dinámico al sprint, FOV interpolado y eje Y invertible.
+- **Spring Arm**: `bEnableCameraLag = true` + `bEnableCameraRotationLag = true`. Los lag speeds se sincronizan cada frame desde las UPROPERTYs para poder ajustarlos en runtime.
+- **Zoom al sprint**: `TickCameraInterp(DeltaTime)` (solo en cliente local) interpola `CameraBoom->TargetArmLength` y `FollowCamera->FieldOfView` según `StaminaComponent->IsSprinting()`.
+- **Defaults de los settings**:
+  - `CameraArmLengthDefault = 350`, `CameraArmLengthSprint = 480`, `CameraArmLengthInterpSpeed = 5`
+  - `CameraFOVDefault = 80`, `CameraFOVSprint = 90`, `CameraFOVInterpSpeed = 5`
+  - `CameraPositionLagSpeed = 8`, `CameraRotationLagSpeed = 14`
+  - `CameraSocketOffset = (0, 55, 65)` → over-the-shoulder derecho + elevada
+  - `CameraBoomRelativeOffset = (0, 0, 40)` → pivot del boom 40 cm sobre la raíz
+- **Eje Y invertido**: `bInvertCameraY = false` por defecto. Si el jugador quiere invertir pitch, marcar a `true` en BP_TortugaCharacter → Class Defaults.
+- **Sensibilidad**: `LookSensitivityX = 1.0` (horizontal) y `LookSensitivityY = 0.5` (vertical, más lenta para evitar mareo). Ambas `EditDefaultsOnly + BlueprintReadWrite`.
+- Todos los settings son `EditDefaultsOnly + BlueprintReadWrite` → ajustables en BP sin recompilar.
+- `BeginPlay` aplica los valores de las UPROPERTYs al spring arm y cámara para respetar overrides hechos en el BP hijo.
 
 ## Knockdown replication
 - `bIsKnockedDown` (ReplicatedUsing = OnRep_IsKnockedDown) se replica a todos los clientes.
@@ -162,7 +189,7 @@
   - Si tocas sesión/voz, verifica que sigan declaradas.
 - Si agregas dependencias nuevas (UI avanzada, networking extra, online), actualiza primero `Source/Tortunabo/Tortunabo.Build.cs`.
 - Widgets UMG C++ usan `BindWidget` (obligatorio) y `BindWidgetOptional` (tolerante) en meta. Los nombres del widget en el BP Designer **deben coincidir exactamente** con el nombre de la UPROPERTY en C++. Ver `TN_CoopFlowHUDWidget.h` y `Docs/GUIA_PANTALLA_RESULTADOS.md` como ejemplo.
-- `TortugaCharacter` es tercera persona (spring arm 300 + follow camera). `TortugaFirstPersonCharacter` hereda de él con arm length 0 (solo para cinemáticas).
+- `TortugaCharacter` es tercera persona (spring arm 350 + follow camera, over-the-shoulder). `TortugaFirstPersonCharacter` hereda de él con arm length 0 (solo para cinemáticas).
 
 ## Estructura de Content recomendada
 - Base creada para escalar: `Content/Maps/{Lobby,Run}`, `Content/UI/{Menu,HUD,Results}`, `Content/Input`, `Content/Blueprints/{Characters,Gameplay}`, `Content/Characters/Turtles`, `Content/Audio/Voice`.
