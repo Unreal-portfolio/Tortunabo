@@ -29,13 +29,13 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
-	/** Delay mínimo antes de inflar (s). */
+	/** Delay mínimo antes de inflar (s). Bajo para que infle mientras aún vuela. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish", meta = (ClampMin = "0.1"))
-	float InflateDelayMin = 1.0f;
+	float InflateDelayMin = 0.3f;
 
 	/** Delay máximo antes de inflar (s). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish", meta = (ClampMin = "0.1"))
-	float InflateDelayMax = 3.0f;
+	float InflateDelayMax = 1.0f;
 
 	/** Factor de escala al inflarse. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish", meta = (ClampMin = "1.0"))

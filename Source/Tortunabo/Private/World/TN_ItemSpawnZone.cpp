@@ -95,16 +95,36 @@ bool ATN_ItemSpawnZone::FindValidSpawnPoint(FVector& OutLocation, const TArray<F
 		return false;
 	}
 
-	const FVector BoxOrigin = SpawnBox->GetComponentLocation();
-	const FVector BoxExtent = SpawnBox->GetScaledBoxExtent();
+	// ── Generar punto aleatorio en espacio LOCAL del box, luego transformar ──
+	// Usar GetUnscaledBoxExtent() + GetComponentTransform() es correcto para
+	// cualquier combinación de rotación y escala del actor.
+	// Con GetScaledBoxExtent() + GetComponentLocation() (código anterior), si
+	// el actor tenía escala muy pequeña la extensión era ~0 → todos los
+	// offsets eran (0,0,0) → todos los ítems aparecían en el centro.
+	const FVector UnscaledExtent = SpawnBox->GetUnscaledBoxExtent();
 
-	// Posición random dentro del box (solo XY; Z se calcula desde el trace al suelo)
-	const FVector RandomOffset(
-		FMath::FRandRange(-BoxExtent.X, BoxExtent.X),
-		FMath::FRandRange(-BoxExtent.Y, BoxExtent.Y),
+	// Validación: si el box tiene extensión casi nula, loguear y salir
+	if (UnscaledExtent.X < 10.f || UnscaledExtent.Y < 10.f)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ItemSpawnZone] '%s' — BoxExtent muy pequeño (%.1f, %.1f). "
+			"Revisa el SpawnBox en el Editor o la escala del actor."),
+			*GetName(), UnscaledExtent.X, UnscaledExtent.Y);
+		return false;
+	}
+
+	// Punto en espacio local del componente (Z=0 → la capa media del box)
+	const FVector LocalPoint(
+		FMath::FRandRange(-UnscaledExtent.X, UnscaledExtent.X),
+		FMath::FRandRange(-UnscaledExtent.Y, UnscaledExtent.Y),
 		0.f
 	);
-	const FVector TestLocation = BoxOrigin + RandomOffset;
+
+	// Transformar a espacio mundo (incluye scale + rotation + translation)
+	const FVector TestLocation = SpawnBox->GetComponentTransform().TransformPosition(LocalPoint);
+
+	// Extensión en escala mundo para los rangos del line trace
+	const FVector ScaledExtent = SpawnBox->GetScaledBoxExtent();
+	const float TraceHalfZ = FMath::Max(ScaledExtent.Z, 50.f); // mínimo 50cm
 
 	// Verificar distancia mínima con ítems ya spawneados
 	for (const FVector& Existing : ExistingLocations)
@@ -115,27 +135,30 @@ bool ATN_ItemSpawnZone::FindValidSpawnPoint(FVector& OutLocation, const TArray<F
 		}
 	}
 
-	// Line trace al suelo (desde la cima del box hacia abajo)
+	// ── Line trace al suelo ───────────────────────────────────────────────────
 	FHitResult Hit;
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TN_SpawnZoneFloor), false);
-	const FVector TraceStart = TestLocation + FVector(0.f, 0.f, BoxExtent.Z);
-	const FVector TraceEnd   = TestLocation - FVector(0.f, 0.f, BoxExtent.Z + 500.f);
+	const FVector TraceStart = TestLocation + FVector(0.f, 0.f, TraceHalfZ + 50.f);
+	const FVector TraceEnd   = TestLocation - FVector(0.f, 0.f, TraceHalfZ + 500.f);
 
-	if (!GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams))
+	// Primero WorldStatic, luego Visibility como fallback
+	bool bHitFloor = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams);
+	if (!bHitFloor)
+	{
+		bHitFloor = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
+	}
+
+	if (!bHitFloor)
 	{
 		return false; // No hay suelo bajo este punto
 	}
 
 	// Centro del sweep: ENCIMA del radio de la esfera para no intersectar el suelo.
-	// Radio 30 cm → offset mínimo 30 cm. Usamos 40 cm para un margen seguro.
 	constexpr float SphereRadius  = 30.f;
 	constexpr float SphereZOffset = SphereRadius + 10.f; // 40 cm sobre el suelo
 	const FVector GroundPoint = Hit.ImpactPoint + FVector(0.f, 0.f, SphereZOffset);
 
 	// Comprobar obstáculos DINÁMICOS en esa posición (otros pickups, pawns).
-	// Usamos OverlapAnyTestByObjectType (BY OBJECT TYPE) en lugar de
-	// OverlapBlockingTestByChannel (BY TRACE CHANNEL) para que la geometría
-	// estática del suelo (WorldStatic) no sea detectada como obstáculo.
 	FCollisionObjectQueryParams ObjParams;
 	ObjParams.AddObjectTypesToQuery(ECC_WorldDynamic);
 	ObjParams.AddObjectTypesToQuery(ECC_Pawn);

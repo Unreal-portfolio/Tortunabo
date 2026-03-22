@@ -110,15 +110,20 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 		Mesh->SetRelativeScale3D(ThrowData.MeshScale);
 	}
 
-	SetActorLocation(ThrowData.SpawnLocation);
-
-	// Only the server activates ProjectileMovement — clients receive the
-	// replicated position via SetReplicateMovement(true).
-	if (HasAuthority() && ProjectileMovement)
+	if (HasAuthority())
 	{
-		ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
-		ProjectileMovement->Activate(true);
+		// El servidor posiciona el actor y activa el movimiento.
+		SetActorLocation(ThrowData.SpawnLocation);
+
+		if (ProjectileMovement)
+		{
+			ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
+			ProjectileMovement->Activate(true);
+		}
 	}
+	// En clientes NO llamamos SetActorLocation: con SetReplicateMovement(true)
+	// el servidor ya replica la posición. Llamarlo aquí snapearía la bola de vuelta
+	// al punto de lanzamiento cuando OnRep_ThrowData llega tarde.
 
 	bLaunchApplied = true;
 }

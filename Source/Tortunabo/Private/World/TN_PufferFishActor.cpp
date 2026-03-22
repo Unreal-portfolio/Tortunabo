@@ -60,6 +60,13 @@ void ATN_PufferFishActor::ApplyLaunchDataIfReady()
 		OriginalScale = Mesh->GetRelativeScale3D();
 		UE_LOG(LogTemp, Log, TEXT("[PufferFish] OriginalScale capturada: (%.2f,%.2f,%.2f)"),
 			OriginalScale.X, OriginalScale.Y, OriginalScale.Z);
+
+		// Si ThrowData llegó DESPUÉS de OnRep_PufferState (orden de replicación
+		// no garantizado), reaplicar el visual con la escala correcta.
+		if (PufferState != ETN_PufferState::Flying)
+		{
+			ApplyPufferVisual();
+		}
 	}
 }
 
@@ -73,8 +80,6 @@ void ATN_PufferFishActor::OnPufferProjectileStopped(const FHitResult& ImpactResu
 	// Flying / Inflating → no hacer nada; Deflate() se encarga.
 	if (PufferState != ETN_PufferState::Deflated) { return; }
 
-	// FVector_NetQuantize no es asignable implícitamente a FVector en un
-	// operador ternario (C2446/C2737). Usamos if/else con XYZ explícitos.
 	FVector StopLocation = GetActorLocation();
 	if (ImpactResult.IsValidBlockingHit())
 	{
@@ -96,15 +101,10 @@ void ATN_PufferFishActor::Inflate()
 	PufferState = ETN_PufferState::Inflating;
 	ApplyPufferVisual();
 
-	// ── Detener el movimiento sin disparar OnProjectileStop ──────────────────
-	// StopSimulating() dispara OnProjectileStop → el padre intentaría spawnear
-	// el pickup y destruir el pez antes del deflate. Usamos Deactivate() en
-	// su lugar, que solo pone bIsActive=false sin ningún delegate.
-	if (ProjectileMovement && ProjectileMovement->IsActive())
-	{
-		ProjectileMovement->Velocity = FVector::ZeroVector;
-		ProjectileMovement->Deactivate();
-	}
+	// ── NO detenemos la bola ─────────────────────────────────────────────────
+	// El pez se infla mientras sigue volando/rodando. Si el proyectil se detiene
+	// durante el inflado, OnPufferProjectileStopped lo ignora (PufferState != Deflated)
+	// y es Deflate() quien finalmente spawnea el pickup.
 
 	// ── Empujar a todos los personajes en rango ───────────────────────────────
 	TArray<FOverlapResult> Overlaps;

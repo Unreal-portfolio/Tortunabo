@@ -51,7 +51,7 @@ struct FTN_InventoryItem : public FTableRowBase
 	 * Ejemplo para bola pequeña: (0.25, 0.25, 0.25)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	FVector EquippedMeshScale = FVector(0.f, 1.f, 1.f);
+	FVector EquippedMeshScale = FVector(1.f, 1.f, 1.f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use")
 	ETN_ItemUseType UseType = ETN_ItemUseType::None;

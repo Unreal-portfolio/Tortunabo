@@ -11,27 +11,29 @@ ATN_InteractableBase::ATN_InteractableBase()
 	SetReplicateMovement(false);
 
 	// ── Optimización de red: los interactuables cambian raramente ──────────
-	// NetDormancy DormantAll → el servidor NO envía actualizaciones a menos que
-	// FlushNetDormancy() se llame explícitamente (ej. al activar/desactivar).
-	// Reduce drásticamente el tráfico con muchos pickups en el nivel.
 	NetDormancy = DORM_DormantAll;
-	SetNetUpdateFrequency(4.f);   // solo 4 Hz cuando despierto
+	SetNetUpdateFrequency(4.f);
 	SetMinNetUpdateFrequency(2.f);
 
-	// Mesh es el root: UStaticMeshComponent es UPrimitiveComponent, lo que permite
-	// que UWorld::FindTeleportSpot calcule bounds al spawnear el actor dinámicamente.
+	// ── SceneRoot: componente raíz invisible ─────────────────────────────────
+	// Al ser la raíz, su posición es la posición REAL del actor en el mundo.
+	// Mesh es hijo de SceneRoot: Mesh->SetRelativeLocation() solo mueve el visual
+	// sin teletransportar el actor al origen.
+	// BUG ANTERIOR: Mesh era root → SetRelativeLocation(FVector(0,0,HalfHeight))
+	// movía el actor completo a (0,0,HalfHeight) al llamar InitializeFromInventoryItem.
+	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	SetRootComponent(SceneRoot);
+
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
-	SetRootComponent(Mesh);
+	Mesh->SetupAttachment(SceneRoot);
 	Mesh->SetIsReplicated(false);
-	// ── Collision para el sistema de interacción por proximidad ───────────────
-	// ObjectType = WorldDynamic → el OverlapMultiByObjectType del personaje lo detecta.
-	// Pawn = Overlap (NO Block) → el jugador atraviesa el pickup sin chocar.
-	// WorldStatic = Block → el objeto descansa sobre el suelo correctamente.
+	// ObjectType = WorldDynamic → detectado por OverlapMultiByObjectType del personaje.
+	// Pawn = Overlap → el jugador atraviesa el pickup sin chocar.
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Mesh->SetCollisionObjectType(ECC_WorldDynamic);
 	Mesh->SetCollisionResponseToAllChannels(ECR_Block);
-	Mesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);      // traversable
-	Mesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);     // sin bloquear cámara
+	Mesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	Mesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	Mesh->SetGenerateOverlapEvents(true);
 
 	PromptWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("PromptWidget"));

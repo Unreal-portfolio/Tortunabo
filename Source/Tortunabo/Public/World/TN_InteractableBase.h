@@ -35,7 +35,18 @@ public:
 
 protected:
 	/**
-	 * Mesh del interactuable. Es el componente root del actor.
+	 * Componente raíz invisible. Al ser la raíz, su posición define la
+	 * posición del actor en el mundo. El Mesh es un hijo, por lo que
+	 * Mesh->SetRelativeLocation() solo mueve el visual, NO el actor.
+	 * Sin este componente intermedio, SetRelativeLocation en el Mesh (que era
+	 * la raíz) movía el actor completo al origen del mundo.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction")
+	TObjectPtr<USceneComponent> SceneRoot;
+
+	/**
+	 * Mesh del interactuable. Hijo de SceneRoot.
+	 * Es el componente root del actor.
 	 * Ser root (UStaticMeshComponent = UPrimitiveComponent) permite que
 	 * UWorld::FindTeleportSpot calcule bounds correctamente al spawnear el actor.
 	 */
@@ -80,4 +91,3 @@ private:
 protected:
 	void SetInteractionEnabled(bool bEnabled);
 };
-

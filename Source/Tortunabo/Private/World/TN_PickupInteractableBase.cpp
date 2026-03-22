@@ -92,10 +92,13 @@ bool ATN_PickupInteractableBase::CanInteract(APawn* Interactor) const
 		return false;
 	}
 
-	const bool bCanReceive = InventoryComponent->CanReceiveItem(PickupItem, true);
+	// Si el inventario está lleno (2 slots ocupados) NO permitir recoger:
+	// el ítem se queda en el suelo. bAllowReplaceIfFull=false evita borrar
+	// silenciosamente el ítem equipado actual al coger uno nuevo.
+	const bool bCanReceive = InventoryComponent->CanReceiveItem(PickupItem, false);
 	if (!bCanReceive)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[Pickup:CanInteract] Inventory FULL for '%s'"), *Interactor->GetName());
+		UE_LOG(LogTemp, Verbose, TEXT("[Pickup:CanInteract] Inventario lleno — '%s' no se puede recoger"), *GetName());
 	}
 	return bCanReceive;
 }
@@ -114,7 +117,10 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 		return;
 	}
 
-	if (!InventoryComponent->TryAddOrReplaceEquipped(PickupItem, true))
+	// bReplaceIfFull=false: nunca sobreescribir silenciosamente el ítem equipado.
+	// CanInteract ya garantizó que hay espacio, así que esto solo falla
+	// en condición de carrera (raro en escenarios co-op).
+	if (!InventoryComponent->TryAddOrReplaceEquipped(PickupItem, false))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Pickup:Interact] TryAddOrReplaceEquipped FAILED for '%s'"), *GetName());
 		return;
@@ -155,22 +161,16 @@ void ATN_PickupInteractableBase::OnRep_Taken()
 
 void ATN_PickupInteractableBase::OnRep_PickupItem()
 {
-	if (!Mesh || !PickupItem.EquippedMesh)
-	{
-		return;
-	}
+	if (!Mesh || !PickupItem.EquippedMesh) { return; }
 
 	Mesh->SetStaticMesh(PickupItem.EquippedMesh);
 
-	// Zero-check: rows del DataTable guardados antes de añadir EquippedMeshScale
-	// se zero-inicializan. Fallback a OneVector para evitar colapsar el mesh.
-	const FVector SafeScale = PickupItem.EquippedMeshScale.IsNearlyZero()
-		? FVector::OneVector
-		: PickupItem.EquippedMeshScale;
+	// FMath::Max por componente: evita que cualquier eje sea 0
+	// (ej. default antiguo era (0,1,1) → colapsaba el mesh en X)
+	const FVector RS1 = PickupItem.EquippedMeshScale;
+	const FVector SafeScale(FMath::Max(RS1.X, 0.01f), FMath::Max(RS1.Y, 0.01f), FMath::Max(RS1.Z, 0.01f));
 	Mesh->SetRelativeScale3D(SafeScale);
 
-	// Auto-offset de suelo: el mesh del pickup tiene el pivote en el centro → la mitad
-	// clipa en el suelo. Calculamos el semiancho Z desde los bounds del mesh.
 	const FBoxSphereBounds LocalBounds = Mesh->CalcLocalBounds();
 	const float HalfHeight = LocalBounds.BoxExtent.Z * SafeScale.Z;
 	if (HalfHeight > KINDA_SMALL_NUMBER)
@@ -179,8 +179,6 @@ void ATN_PickupInteractableBase::OnRep_PickupItem()
 		Mesh->SetRelativeLocation(FVector(0.f, 0.f, HalfHeight));
 	}
 
-	// El PromptWidget está adjunto al Mesh (root). Si el mesh es pequeño (ej. 0.25),
-	// el prompt heredaría esa escala y sería ilegible. Escala inversa → tamaño mundo fijo.
 	if (PromptWidgetComponent)
 	{
 		const FVector InvScale(
@@ -200,39 +198,28 @@ void ATN_PickupInteractableBase::ApplyTakenState()
 
 void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_InventoryItem& NewPickupItem)
 {
-	if (!HasAuthority() || bTaken || !NewPickupItem.IsValid())
-	{
-		return;
-	}
+	if (!HasAuthority() || bTaken || !NewPickupItem.IsValid()) { return; }
 
 	PickupItem = NewPickupItem;
-
-	// Forzar al actor a estar completamente despierto para que TODAS las
-	// propiedades se repliquen a los clientes (incluyendo PickupItem y el mesh).
-	// DormantAll en actores dinámicos puede impedir la replicación inicial.
 	SetNetDormancy(DORM_Awake);
 	FlushNetDormancy();
 
-	// Volver a DormantAll tras 3 segundos para no generar tráfico innecesario
 	FTimerHandle DormancyTimerHandle;
-	GetWorldTimerManager().SetTimer(DormancyTimerHandle, [WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
-	{
-		if (WeakThis.IsValid())
+	GetWorldTimerManager().SetTimer(DormancyTimerHandle,
+		[WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
 		{
-			WeakThis->SetNetDormancy(DORM_DormantAll);
-		}
-	}, 3.0f, false);
+			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_DormantAll); }
+		}, 3.0f, false);
 
 	if (Mesh && PickupItem.EquippedMesh)
 	{
 		Mesh->SetStaticMesh(PickupItem.EquippedMesh);
 
-		const FVector SafeScale = PickupItem.EquippedMeshScale.IsNearlyZero()
-			? FVector::OneVector
-			: PickupItem.EquippedMeshScale;
+		// FMath::Max por componente: evita meshes colapsados
+		const FVector RS2 = PickupItem.EquippedMeshScale;
+		const FVector SafeScale(FMath::Max(RS2.X, 0.01f), FMath::Max(RS2.Y, 0.01f), FMath::Max(RS2.Z, 0.01f));
 		Mesh->SetRelativeScale3D(SafeScale);
 
-		// Auto-offset de suelo: pivote en centro del mesh → la mitad clipa en suelo.
 		const FBoxSphereBounds LocalBounds = Mesh->CalcLocalBounds();
 		const float HalfHeight = LocalBounds.BoxExtent.Z * SafeScale.Z;
 		if (HalfHeight > KINDA_SMALL_NUMBER)
