@@ -149,6 +149,38 @@
 - Si el jugador sale del volumen antes de que expire el timer, se resetea.
 - El tiempo restante se sincroniza a clients via `TN_CoopPlayerState::DeathZoneTimeRemaining`.
 - `bDestroyOnlyDuringRun` (default true) permite que la zona solo mate durante la carrera, ignorando el lobby.
+- Cuando el countdown expira, llama `TN_RunGameMode::EnterDBNO()` en vez de `MarkPlayerDead()` (el jugador pasa a DBNO antes de morir).
+
+## DBNO system (Down But Not Out)
+- Cuando una death zone knockea a un jugador, entra en estado DBNO en vez de morir instantáneamente.
+- **Flujo**: DeathZone countdown → `EnterDBNO()` → knockdown visual + bleedout timer → {revive **o** bleedout expira → `MarkPlayerDead()`}.
+- **Estado replicado** (`TN_CoopPlayerState`):
+  - `bIsDBNO` (Replicated, all): true si el jugador está incapacitado pero vivo.
+  - `DBNOBleedoutTimeRemaining` (Replicated, COND_OwnerOnly): segundos hasta muerte real. -1 si no en DBNO.
+- **Config** (`TN_RunGameMode`, EditDefaultsOnly):
+  - `DBNOBleedoutSeconds = 15.f` — duración del bleedout.
+  - `ReviveImmunitySeconds = 2.f` — inmunidad post-revive (evita re-DBNO inmediato en death zones).
+- **Bleedout timer**: `TickDBNOBleedout()` (0.1s shared timer, idéntico al patrón de DeathZone) decrementa el tiempo de todos los jugadores en DBNO.
+- **CheckAllAliveDBNO**: Si TODOS los jugadores vivos están en DBNO (nadie puede revivir), todos mueren inmediatamente.
+- **Revive por emote**: Cualquier emote activado cerca de un jugador DBNO inicia un canal de revive.
+  - `ReviveRadiusCm = 300.f` y `ReviveDurationSeconds = 3.f` en `TortugaCharacter` (EditDefaultsOnly).
+  - `ServerSetEmote` → `TryStartReviveChannel()`: busca el DBNO más cercano en rango, inicia `TickReviveChannel` cada 0.1s.
+  - El canal se cancela si: el revividor deja de emitir, se aleja, es knockeado, o el target ya no es DBNO.
+  - Al completar: `RunGameMode->RevivePlayer()` → limpia DBNO, `RecoverFromKnockdown()`, inmunidad temporal.
+- **Replicación de revive** (`TortugaCharacter`):
+  - `bIsReviving` (Replicated, all) — para indicador visual en todos los clientes.
+  - `ReviveProgress` (Replicated, COND_OwnerOnly) — progreso [0..1] para barra de HUD del revividor.
+- **HUD hooks** (`TN_PlayerHUDWidget`, BlueprintImplementableEvent):
+  - `OnDBNOStateChanged(bIsDBNO, BleedoutRemaining)` — muestra indicador de incapacitación.
+  - `OnReviveProgressUpdated(Progress01, bIsReviving)` — barra de progreso del revive.
+- **Audio feedback DBNO/Revive** (`TortugaCharacter`, EditDefaultsOnly, categoría `DBNO|Audio`):
+  - `ReviveChannelSound` (`USoundBase*`): loop spatialized en el revividor durante el canal. Proximity-attenuated (Inner 300cm, Outer 2500cm, NaturalSound). Se reproduce en `TryStartReviveChannel()`, se detiene en `CancelReviveChannel()`.
+  - `ReviveSuccessSound` (`USoundBase*`): one-shot spatialized en el revivido al completar revive. Suena en todas las máquinas (via `RecoverFromKnockdown()` + `MulticastApplyKnockdownVisual`).
+  - `DBNOHeartbeatSound` (`USoundBase*`): loop NO-spatialized, solo para el jugador local incapacitado. Crea tensión personal. Se activa en `ApplyKnockdown()`/`OnRep_IsKnockedDown()`, se detiene en `RecoverFromKnockdown()`.
+  - `ReviveAudioComponent` (lazy-init, spatialized): maneja channel + success sounds. `OnReviveAudioFinished` re-loopea si `bIsReviving == true`.
+  - `DBNOAudioComponent` (lazy-init, non-spatialized, `bIsUISound=true`): maneja heartbeat. `OnDBNOAudioFinished` re-loopea si `bIsKnockedDown && IsLocallyControlled()`.
+  - Ambos se limpian en `EndPlay()` junto a `EmoteAudioComponent`.
+  - Asignar sonidos en **BP_TortugaCharacter → Class Defaults → DBNO|Audio**. Dejar null para desactivar.
 
 ## Loading screen
 - `MP_GameInstance` gestiona un loading screen global: `ShowLoadingScreen(Reason)`/`HideLoadingScreen()`.

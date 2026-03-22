@@ -597,6 +597,10 @@ void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 	// OnNetworkFailure usa este flag para no destruir la sesión si el error
 	// es transitorio (ej. colisión de socket Steam durante ServerTravel).
 	bIsPendingTravel = true;
+	bNeedsListenRetry = false; // Reset: se establece en OnNetworkFailure si falla el listen
+
+	// Guardar el nombre del mapa para el retry de listen server.
+	PendingListenURL = MapName;
 
 	// Safety net: stop all audio capture streams before any map transition.
 	// Individual GameModes already call ShutdownAllCapture explicitly, but this
@@ -609,7 +613,79 @@ void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 {
 	bIsPendingTravel = false;
+
+	// ── Listen retry: si el listen socket falló durante LoadMap, reintentar ──
+	if (bNeedsListenRetry && LoadedWorld)
+	{
+		bNeedsListenRetry = false;
+		ListenRetryCount = MaxListenRetries;
+
+		UE_LOG(LogTemp, Warning, TEXT("[MP] Listen socket failed during travel. Scheduling retry (%d attempts, every 400ms)..."), ListenRetryCount);
+
+		// Usar un timer del mundo nuevo para reintentar
+		if (UWorld* World = LoadedWorld)
+		{
+			World->GetTimerManager().SetTimer(
+				ListenRetryTimerHandle,
+				FTimerDelegate::CreateUObject(this, &UMP_GameInstance::RetryListenServer),
+				0.4f, true);
+		}
+		// No ocultar la loading screen todavía — la ocultamos cuando el listen tenga éxito o los reintentos se agoten.
+		return;
+	}
+
 	HideLoadingScreen();
+}
+
+void UMP_GameInstance::RetryListenServer()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[MP] RetryListenServer: World is null."));
+		if (World) { World->GetTimerManager().ClearTimer(ListenRetryTimerHandle); }
+		HideLoadingScreen();
+		return;
+	}
+
+	// Si ya tiene NetDriver, el listen server ya funciona (quizá otro path lo creó).
+	if (World->GetNetDriver())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[MP] RetryListenServer: NetDriver already exists — listen server is running."));
+		World->GetTimerManager().ClearTimer(ListenRetryTimerHandle);
+		HideLoadingScreen();
+		return;
+	}
+
+	--ListenRetryCount;
+
+	FURL ListenURL(nullptr, *PendingListenURL, TRAVEL_Absolute);
+	ListenURL.AddOption(TEXT("listen"));
+
+	FString Error;
+	if (World->Listen(ListenURL))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[MP] RetryListenServer: ✓ Listen server created successfully on retry!"));
+		World->GetTimerManager().ClearTimer(ListenRetryTimerHandle);
+		HideLoadingScreen();
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[MP] RetryListenServer: Listen failed (retries left: %d)"), ListenRetryCount);
+
+	if (ListenRetryCount <= 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[MP] RetryListenServer: All retries exhausted. Destroying session and returning to menu."));
+		World->GetTimerManager().ClearTimer(ListenRetryTimerHandle);
+		HideLoadingScreen();
+		UpdateStatus(TEXT("ERROR: No se pudo crear el servidor. Volviendo al menú..."));
+		DestroyCurrentSession();
+
+		if (APlayerController* PC = GetFirstLocalPlayerController())
+		{
+			PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
+		}
+	}
 }
 
 void UMP_GameInstance::LoadCosmeticProfile()
@@ -722,14 +798,12 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		if (bIsPendingTravel)
 		{
 			// Error durante transición de nivel (ServerTravel lobby→game).
-			// El socket Steam aún no se ha liberado. NO destruir la sesión.
-			// Los clientes seguirán conectados a través de la sesión Steam (lobby)
-			// y reconectarán cuando el socket esté disponible.
-			// El engine ya creó el nuevo mapa — simplemente seguir.
+			// El socket Steam aún no se ha liberado. Marcar para reintento
+			// en HandlePostLoadMap, donde el mundo nuevo ya existe.
+			bNeedsListenRetry = true;
 			UE_LOG(LogTemp, Warning,
-				TEXT("[MP] %s durante transición de nivel — el socket Steam del mapa anterior "
-				     "probablemente no se liberó a tiempo. Los clientes reconectarán vía la sesión Steam. "
-				     "La sesión se mantiene activa."),
+				TEXT("[MP] %s durante transición de nivel — se reintentará el listen server "
+				     "cuando el mapa nuevo termine de cargar."),
 				*FailureTypeStr);
 			// NO hacer bIsPendingTravel = false aquí: PostLoadMap lo reseteará.
 			// NO ocultar loading screen: PostLoadMap la ocultará.

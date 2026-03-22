@@ -1,7 +1,9 @@
 ﻿#include "UI/HUD/TN_PlayerHUDWidget.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_InventoryComponent.h"
+#include "Player/TortugaCharacter.h"
 #include "Core/TN_InventoryTypes.h"
+#include "Core/TN_CoopPlayerState.h"
 #include "Components/ProgressBar.h"
 #include "Components/Widget.h"
 #include "Components/TextBlock.h"
@@ -83,6 +85,42 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 			LastEquippedId = EquippedId;
 			LastStoredId   = StoredId;
 			RefreshInventoryWidgets();
+		}
+	}
+
+	// ── DBNO / Revive ────────────────────────────────────────────────────────
+	if (const APawn* Pawn = GetOwningPlayerPawn())
+	{
+		// Check DBNO via PlayerState
+		if (const APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
+		{
+			if (const ATN_CoopPlayerState* PS = PC->GetPlayerState<ATN_CoopPlayerState>())
+			{
+				const bool bNowDBNO = PS->bIsDBNO;
+				if (bNowDBNO != bLastDBNO)
+				{
+					bLastDBNO = bNowDBNO;
+					OnDBNOStateChanged(bNowDBNO, PS->DBNOBleedoutTimeRemaining);
+				}
+				else if (bNowDBNO)
+				{
+					// Update bleedout remaining even if state didn't change
+					OnDBNOStateChanged(true, PS->DBNOBleedoutTimeRemaining);
+				}
+			}
+		}
+
+		// Check revive channel via TortugaCharacter
+		if (const ATortugaCharacter* TChar = Cast<ATortugaCharacter>(Pawn))
+		{
+			const bool bNowReviving = TChar->bIsReviving;
+			const float NowProgress = TChar->ReviveProgress;
+			if (bNowReviving != bLastReviving || !FMath::IsNearlyEqual(NowProgress, LastReviveProgress, 0.01f))
+			{
+				bLastReviving = bNowReviving;
+				LastReviveProgress = NowProgress;
+				OnReviveProgressUpdated(NowProgress, bNowReviving);
+			}
 		}
 	}
 }

@@ -29,6 +29,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool RequestEquipHelmet(FName HelmetId);
 
+	/** Desequipa el casco actual. Actualiza PlayerState en el servidor. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	void RequestUnequipHelmet();
+
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	FName OpenHelmetCrate();
 

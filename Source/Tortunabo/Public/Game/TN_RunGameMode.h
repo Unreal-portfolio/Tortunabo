@@ -28,6 +28,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void MarkPlayerDead(APlayerController* PlayerController);
 
+	/** Put a player into Down But Not Out state (knocked + bleedout timer). */
+	UFUNCTION(BlueprintCallable, Category = "Run|DBNO")
+	void EnterDBNO(APlayerController* PlayerController);
+
+	/**
+	 * Revive a player that is currently in DBNO state.
+	 * Called by the server when a teammate successfully completes a revive channel.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Run|DBNO")
+	void RevivePlayer(APlayerController* PlayerController);
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	float ResultsDurationSeconds = 8.0f;
@@ -39,11 +50,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run|Staging")
 	float WaitingForPlayersTimeoutSeconds = 15.0f;
 
+	/** How many seconds a DBNO player has before bleeding out and dying for real. */
+	UPROPERTY(EditDefaultsOnly, Category = "Run|DBNO", meta = (ClampMin = "3.0"))
+	float DBNOBleedoutSeconds = 15.f;
+
+	/** Brief invulnerability after being revived (prevents instant re-death in death zones). */
+	UPROPERTY(EditDefaultsOnly, Category = "Run|DBNO", meta = (ClampMin = "0.0"))
+	float ReviveImmunitySeconds = 2.f;
+
 private:
 	FTimerHandle ResultsTimerHandle;
 	FTimerHandle ResultsCountdownTimerHandle;
 	FTimerHandle WaitingTimeoutTimerHandle;
 	FTimerHandle DeferredTravelTimerHandle;
+	FTimerHandle DBNOBleedoutTimerHandle;
 	float MatchStartServerTime = 0.f;
 	int32 NextFinishRank = 1;
 	int32 ResultsCountdownValue = 0;
@@ -55,6 +75,12 @@ private:
 	/** true cuando ya transicionamos a InProgress. */
 	bool bMatchStarted = false;
 
+	/** Players currently in DBNO with their remaining bleedout time. */
+	TMap<TWeakObjectPtr<APlayerController>, float> DBNOPlayers;
+
+	/** Players with active post-revive immunity timers. */
+	TSet<TWeakObjectPtr<APlayerController>> ReviveImmunePlayers;
+
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
 	APlayerStart* EnsureFallbackPlayerStart();
 	void TickResultsCountdown();
@@ -63,6 +89,12 @@ private:
 	void FinishRoundAndReturnToLobby();
 	void ExecuteDeferredTravel();
 	void SetFlowState(ETNMatchFlowState NewState) const;
+
+	/** Tick all DBNO bleedout timers (shared, 0.1s interval). */
+	void TickDBNOBleedout();
+
+	/** If all alive players are in DBNO, kill them all (no one can revive). */
+	void CheckAllAliveDBNO();
 
 	/** Comprueba si ya llegaron todos los jugadores esperados y arranca la carrera. */
 	void TryStartMatch();

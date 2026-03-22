@@ -329,9 +329,9 @@ void ATN_HQGameMode::BeginMatchTravel()
 		}
 
 		// 3. Esperar a que Steam libere el socket P2P, luego viajar
-		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Waiting 0.5s for Steam socket release before ServerTravel..."));
+		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Waiting 1.0s for Steam socket release before ServerTravel..."));
 		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
-			&ATN_HQGameMode::ExecuteDeferredTravel, 0.5f, false);
+			&ATN_HQGameMode::ExecuteDeferredTravel, 1.0f, false);
 	}
 	else
 	{

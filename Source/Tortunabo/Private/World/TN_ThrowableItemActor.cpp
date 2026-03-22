@@ -177,8 +177,22 @@ void ATN_ThrowableItemActor::OnProjectileStopped(const FHitResult& ImpactResult)
 		return;
 	}
 
-	// Vel = 0 → la bola para en este punto → spawn pickup exactamente aquí.
-	SpawnPickupAtLocation(GetActorLocation());
+	// ImpactResult.ImpactPoint (FVector_NetQuantize) no es asignable a FVector
+	// en un ternario (C2446/C2737). Usamos if/else con XYZ explícitos.
+	// ImpactPoint es el contacto exacto con la superficie → fuente primaria.
+	// GetActorLocation() como fallback si el hit no es válido.
+	FVector StopLocation = GetActorLocation();
+	if (ImpactResult.IsValidBlockingHit())
+	{
+		StopLocation.X = ImpactResult.ImpactPoint.X;
+		StopLocation.Y = ImpactResult.ImpactPoint.Y;
+		StopLocation.Z = ImpactResult.ImpactPoint.Z;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] OnProjectileStopped — loc=(%.0f,%.0f,%.0f) validHit=%d"),
+		StopLocation.X, StopLocation.Y, StopLocation.Z, ImpactResult.IsValidBlockingHit() ? 1 : 0);
+
+	SpawnPickupAtLocation(StopLocation);
 	Destroy();
 }
 
@@ -206,14 +220,39 @@ void ATN_ThrowableItemActor::SpawnPickupAtLocation(const FVector& Location)
 		return;
 	}
 
-	// Spawn inmediato en el punto exacto donde estaba la bola.
-	// No hay floor trace: si el punto está en el suelo (vel=0) o en el cuerpo
-	// de un jugador golpeado, el pickup aparece exactamente ahí.
+	// Floor trace: asegurar que el pickup quede apoyado en el suelo
+	FVector SpawnLocation = Location;
+	{
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(TN_PickupFloorTrace), false, this);
+		const FVector TraceStart = Location + FVector(0.f, 0.f, 80.f);
+		const FVector TraceEnd   = Location - FVector(0.f, 0.f, 600.f);
+
+		// Primero intentar WorldStatic (suelos estáticos)
+		bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, Params);
+
+		// Si no impacta, intentar Visibility (captura más tipos de geometría)
+		if (!bHit)
+		{
+			bHit = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, Params);
+		}
+
+		if (bHit)
+		{
+			SpawnLocation = Hit.ImpactPoint + FVector(0.f, 0.f, 5.f);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ThrowableItem] SpawnPickup: no floor found below %.1f,%.1f,%.1f — spawning at ball position."),
+				Location.X, Location.Y, Location.Z);
+		}
+	}
+
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	if (ATN_PickupInteractableBase* Pickup = GetWorld()->SpawnActor<ATN_PickupInteractableBase>(
-	        SourceItem.PickupActorClass, Location, FRotator::ZeroRotator, Params))
+	        SourceItem.PickupActorClass, SpawnLocation, FRotator::ZeroRotator, Params))
 	{
 		Pickup->InitializeFromInventoryItem(SourceItem);
 	}

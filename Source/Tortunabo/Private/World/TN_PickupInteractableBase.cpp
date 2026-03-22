@@ -4,6 +4,7 @@
 #include "Components/WidgetComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/DataTable.h"
+#include "TimerManager.h"
 
 ATN_PickupInteractableBase::ATN_PickupInteractableBase()
 {
@@ -168,6 +169,16 @@ void ATN_PickupInteractableBase::OnRep_PickupItem()
 		: PickupItem.EquippedMeshScale;
 	Mesh->SetRelativeScale3D(SafeScale);
 
+	// Auto-offset de suelo: el mesh del pickup tiene el pivote en el centro → la mitad
+	// clipa en el suelo. Calculamos el semiancho Z desde los bounds del mesh.
+	const FBoxSphereBounds LocalBounds = Mesh->CalcLocalBounds();
+	const float HalfHeight = LocalBounds.BoxExtent.Z * SafeScale.Z;
+	if (HalfHeight > KINDA_SMALL_NUMBER)
+	{
+		MeshFloorOffset = HalfHeight;
+		Mesh->SetRelativeLocation(FVector(0.f, 0.f, HalfHeight));
+	}
+
 	// El PromptWidget está adjunto al Mesh (root). Si el mesh es pequeño (ej. 0.25),
 	// el prompt heredaría esa escala y sería ilegible. Escala inversa → tamaño mundo fijo.
 	if (PromptWidgetComponent)
@@ -196,8 +207,21 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 
 	PickupItem = NewPickupItem;
 
-	// Despertar al actor dormido para que PickupItem se replique a clientes
+	// Forzar al actor a estar completamente despierto para que TODAS las
+	// propiedades se repliquen a los clientes (incluyendo PickupItem y el mesh).
+	// DormantAll en actores dinámicos puede impedir la replicación inicial.
+	SetNetDormancy(DORM_Awake);
 	FlushNetDormancy();
+
+	// Volver a DormantAll tras 3 segundos para no generar tráfico innecesario
+	FTimerHandle DormancyTimerHandle;
+	GetWorldTimerManager().SetTimer(DormancyTimerHandle, [WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
+	{
+		if (WeakThis.IsValid())
+		{
+			WeakThis->SetNetDormancy(DORM_DormantAll);
+		}
+	}, 3.0f, false);
 
 	if (Mesh && PickupItem.EquippedMesh)
 	{
@@ -207,6 +231,15 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 			? FVector::OneVector
 			: PickupItem.EquippedMeshScale;
 		Mesh->SetRelativeScale3D(SafeScale);
+
+		// Auto-offset de suelo: pivote en centro del mesh → la mitad clipa en suelo.
+		const FBoxSphereBounds LocalBounds = Mesh->CalcLocalBounds();
+		const float HalfHeight = LocalBounds.BoxExtent.Z * SafeScale.Z;
+		if (HalfHeight > KINDA_SMALL_NUMBER)
+		{
+			MeshFloorOffset = HalfHeight;
+			Mesh->SetRelativeLocation(FVector(0.f, 0.f, HalfHeight));
+		}
 
 		if (PromptWidgetComponent)
 		{

@@ -5,6 +5,7 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "GameFramework/Pawn.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Player/TortugaCharacter.h"
 #include "GameFramework/GameStateBase.h"
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
@@ -282,6 +283,17 @@ bool AMP_GamePlayerController::RequestEquipHelmet(FName HelmetId)
 	return true;
 }
 
+void AMP_GamePlayerController::RequestUnequipHelmet()
+{
+	// Limpiar localmente el casco equipado en el save
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		GI->EquipHelmet(NAME_None);
+	}
+	// Enviar al servidor para actualizar PlayerState + notificar a todos
+	ServerSetEquippedHelmet(NAME_None);
+}
+
 FName AMP_GamePlayerController::OpenHelmetCrate()
 {
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
@@ -329,14 +341,24 @@ void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TA
 
 void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName HelmetId)
 {
-	if (HelmetId == NAME_None || !ServerUnlockedHelmets.Contains(HelmetId))
+	// NAME_None = desequipar (siempre permitido).
+	// Otro ID: debe estar en el conjunto de cascos desbloqueados del jugador.
+	if (HelmetId != NAME_None && !ServerUnlockedHelmets.Contains(HelmetId))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC] ServerSetEquippedHelmet: '%s' no desbloqueado para %s"),
+			*HelmetId.ToString(), *GetNameSafe(this));
 		return;
 	}
 
 	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->EquippedHelmetId = HelmetId;
+
+		// El listen-server (authority) no recibe OnRep → aplica el mesh directamente.
+		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+		{
+			TurtleChar->UpdateHelmetMesh(HelmetId);
+		}
 	}
 }
 

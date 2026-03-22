@@ -15,13 +15,19 @@
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/AudioComponent.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
+#include "Engine/DataTable.h"
 #include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
 #include "DrawDebugHelpers.h"
+#include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_CosmeticsTypes.h"
+#include "Game/TN_RunGameMode.h"
+#include "Multiplayer/MP_GameInstance.h"
 
 // ── CVar de debug ─────────────────────────────────────────────────────────────
 // Activar en consola con: TN.Debug.Interaction 1
@@ -97,6 +103,14 @@ ATortugaCharacter::ATortugaCharacter()
 
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
+
+	// Casco cosmético: se adjunta al SceneComponent "Sombrero" en BeginPlay.
+	// Sin mesh asignado → invisible hasta que se equipe un casco real.
+	HelmetMeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HelmetMesh"));
+	HelmetMeshComp->SetupAttachment(RootComponent);
+	HelmetMeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HelmetMeshComp->SetIsReplicated(false); // Solo cosmético, no necesita replicación
+	HelmetMeshComp->SetHiddenInGame(true);
 
 	// Emote sounds: 10 slots (one per emote), assign in BP Class Defaults.
 	EmoteSounds.SetNum(10);
@@ -186,10 +200,40 @@ void ATortugaCharacter::BeginPlay()
 		Cola.IsValid()   ? TEXT("OK") : TEXT("MISSING"),
 		Cabeza.IsValid() ? TEXT("OK") : TEXT("MISSING"));
 
-	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown
-	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown.
+	// Buscar el componente visual principal: SkeletalMesh o fallback a primer
+	// StaticMeshComponent hijo (blockout). Guardar ref para knockdown visual.
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
 	{
-		MeshDefaultRelativeRotation = MeshComp->GetRelativeRotation();
+		if (SkelMesh->GetSkeletalMeshAsset())
+		{
+			KnockdownVisualComp = SkelMesh;
+		}
+	}
+	if (!KnockdownVisualComp.IsValid())
+	{
+		// Blockout: buscar el primer StaticMeshComponent hijo del root
+		for (UActorComponent* Comp : GetComponents())
+		{
+			if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp))
+			{
+				if (SMC != GetRootComponent() && SMC->GetStaticMesh())
+				{
+					KnockdownVisualComp = SMC;
+					break;
+				}
+			}
+		}
+	}
+	// Último fallback: el SkeletalMesh aunque esté vacío (para que el tilt se guarde)
+	if (!KnockdownVisualComp.IsValid())
+	{
+		KnockdownVisualComp = GetMesh();
+	}
+
+	if (KnockdownVisualComp.IsValid())
+	{
+		MeshDefaultRelativeRotation = KnockdownVisualComp->GetRelativeRotation();
 	}
 
 	// ── Aplicar camera settings serializables ────────────────────────────────
@@ -205,6 +249,9 @@ void ATortugaCharacter::BeginPlay()
 	if (FollowCamera)
 	{
 		FollowCamera->FieldOfView = CameraFOVDefault;
+		// Inclinar la cámara ligeramente hacia abajo para bajar el punto de mira.
+		// No afecta a Controller->GetControlRotation() — solo es cosmético en la cámara.
+		FollowCamera->SetRelativeRotation(FRotator(CameraAimPitchOffset, 0.f, 0.f));
 	}
 
 	// ── Vincular inventario al sistema de stamina para el peso ────────────────
@@ -214,6 +261,34 @@ void ATortugaCharacter::BeginPlay()
 	{
 		StaminaComponent->SetInventoryComponent(InventoryComponent);
 	}
+
+	// ── Cosmetics: socket Sombrero + casco inicial ────────────────────────────
+	// Buscar el SceneComponent "Sombrero" en la BP para adjuntar el HelmetMeshComp.
+	SombreroSocket = FindChildByName(TEXT("Sombrero"));
+	if (SombreroSocket.IsValid() && HelmetMeshComp)
+	{
+		HelmetMeshComp->AttachToComponent(SombreroSocket.Get(),
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Socket 'Sombrero' encontrado → HelmetMeshComp adjunto."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Socket 'Sombrero' NO encontrado en '%s'. "
+			"Añade un SceneComponent con nombre exacto 'Sombrero' en BP_TortugaCharacter (sobre la cabeza)."), *GetName());
+	}
+
+	// Restaurar el casco que lleva este jugador al (re)conectar al mapa.
+	// En clientes, PlayerState llega poco después de BeginPlay → usar timer lazy.
+	GetWorldTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<ATortugaCharacter>(this)]()
+	{
+		if (WeakThis.IsValid())
+		{
+			if (const ATN_CoopPlayerState* TNPS = WeakThis->GetPlayerState<ATN_CoopPlayerState>())
+			{
+				WeakThis->UpdateHelmetMesh(TNPS->EquippedHelmetId);
+			}
+		}
+	});
 }
 
 void ATortugaCharacter::Tick(float DeltaTime)
@@ -348,9 +423,12 @@ void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	bEmoteBlendingOut  = false;
 
 	StopEmoteSound();
+	StopReviveChannelSound();
+	StopDBNOHeartbeatSound();
 
 	GetWorldTimerManager().ClearTimer(InteractionScanTimerHandle);
 	GetWorldTimerManager().ClearTimer(KnockdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(ReviveChannelTimerHandle);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -707,7 +785,10 @@ FVector ATortugaCharacter::FindGroundBelow(const FVector& WorldLocation) const
 
 	if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, Params))
 	{
-		return Hit.ImpactPoint + FVector(0.f, 0.f, 5.f);
+		// Offset por la mitad de la extensión vertical del mesh para que el
+		// borde inferior del objeto quede apoyado en el suelo (no el centro).
+		// El valor por defecto de 15cm cubre la mayoría de items pequeños.
+		return Hit.ImpactPoint + FVector(0.f, 0.f, 15.f);
 	}
 	return WorldLocation;
 }
@@ -725,7 +806,22 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 
 	if (!Interactable->CanInteract(this))
 	{
-		if (bDebug) { UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] CanInteract=FALSE for '%s' — already taken? disabled? no inventory space?"), *Interactable->GetName()); }
+		// Si falla en un pickup Y tenemos ítem equipado → asumir "inventario lleno"
+		// y usar/lanzar el ítem directamente, sin desperdiciar el input del jugador.
+		if (Cast<ATN_PickupInteractableBase>(Interactable)
+			&& InventoryComponent && InventoryComponent->HasEquippedItem())
+		{
+			if (bDebug)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[Interact:SERVER] Pickup '%s' no recogible + inventario lleno → usando ítem equipado."),
+					*Interactable->GetName());
+			}
+			ServerUseEquippedItem_Implementation();
+		}
+		else if (bDebug)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] CanInteract=FALSE para '%s' — tomado, desactivado o sin espacio."), *Interactable->GetName());
+		}
 		return;
 	}
 
@@ -780,15 +876,27 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		return;
 	}
 
-	if (EquippedItem.UseType == ETN_ItemUseType::Throwable && EquippedItem.ThrowableActorClass)
+	if ((EquippedItem.UseType == ETN_ItemUseType::Throwable || EquippedItem.UseType == ETN_ItemUseType::PufferFish)
+		&& EquippedItem.ThrowableActorClass)
 	{
 		const FVector SpawnLocation = GetItemSpawnLocation();
-		const FVector ThrowDirection = GetItemForwardDirection();
 
-		// Añadir ángulo hacia arriba para que el throwable haga arco
-		const FVector RightVec = FVector::CrossProduct(FVector::UpVector, ThrowDirection).GetSafeNormal();
-		const FQuat UpTilt(RightVec, FMath::DegreesToRadians(ThrowUpAngleDeg));
-		const FVector ArcedDirection = UpTilt.RotateVector(ThrowDirection).GetSafeNormal();
+		// ── Dirección de lanzamiento con arco parabólico ─────────────────
+		// Aplanar la dirección de la cámara al plano horizontal (pitch=0),
+		// luego tiltar hacia arriba por ThrowUpAngleDeg.
+		// Así, mirar arriba/abajo NO anula el arco — siempre hay parábola.
+		const FVector RawDirection = GetItemForwardDirection();
+		const FVector FlatDirection = FVector(RawDirection.X, RawDirection.Y, 0.f).GetSafeNormal();
+		
+		// Si el jugador mira recto al suelo, fallback al forward del actor
+		const FVector SafeFlatDir = FlatDirection.IsNearlyZero() ? GetActorForwardVector().GetSafeNormal2D() : FlatDirection;
+		
+		// Tiltar hacia arriba por el ángulo configurado.
+		// FQuat usa right-hand rule: para que +angle eleve la dirección en UE (Z-up),
+		// el eje debe ser Forward × Up (= Left), no Up × Forward (= Right).
+		const FVector LeftVec = FVector::CrossProduct(SafeFlatDir, FVector::UpVector).GetSafeNormal();
+		const FQuat UpTilt(LeftVec, FMath::DegreesToRadians(ThrowUpAngleDeg));
+		const FVector ArcedDirection = UpTilt.RotateVector(SafeFlatDir).GetSafeNormal();
 
 		const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowSpeed, 0.0f);
 
@@ -803,7 +911,7 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 			return;
 		}
 
-		if (ATN_ThrowableItemActor* ThrowableActor = GetWorld()->SpawnActor<ATN_ThrowableItemActor>(EquippedItem.ThrowableActorClass, SpawnLocation, ThrowDirection.Rotation(), SpawnParams))
+		if (ATN_ThrowableItemActor* ThrowableActor = GetWorld()->SpawnActor<ATN_ThrowableItemActor>(EquippedItem.ThrowableActorClass, SpawnLocation, ArcedDirection.Rotation(), SpawnParams))
 		{
 			// SourceItem lleva PickupActorClass para que el throwable sepa
 			// qué pickup spawnear cuando aterrice o impacte (se convierte en recogible)
@@ -871,13 +979,74 @@ void ATortugaCharacter::GrantInfiniteStamina(float DurationSeconds)
 
 // ── Replicación ───────────────────────────────────────────────────────────────
 
-void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+// ── Cosmetics ─────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::UpdateHelmetMesh(FName HelmetId)
 {
+	if (!HelmetMeshComp)
+	{
+		return;
+	}
+
+	// NAME_None = desequipar
+	if (HelmetId == NAME_None)
+	{
+		HelmetMeshComp->SetStaticMesh(nullptr);
+		HelmetMeshComp->SetHiddenInGame(true);
+		return;
+	}
+
+	// Obtener DataTable desde GameInstance
+	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	if (!GI)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: GameInstance no es UMP_GameInstance."));
+		return;
+	}
+
+	const UDataTable* HelmDT = GI->GetHelmetDataTable();
+	if (!HelmDT)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetDataTable no asignado en BP_GameInstance."));
+		return;
+	}
+
+	const FTN_HelmetData* Row = HelmDT->FindRow<FTN_HelmetData>(HelmetId, TEXT("UpdateHelmetMesh"));
+	if (!Row)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetId '%s' no encontrado en DT_Helmets."), *HelmetId.ToString());
+		HelmetMeshComp->SetStaticMesh(nullptr);
+		HelmetMeshComp->SetHiddenInGame(true);
+		return;
+	}
+
+	if (!Row->DisplayMesh)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetId '%s' sin DisplayMesh asignado."), *HelmetId.ToString());
+		HelmetMeshComp->SetHiddenInGame(true);
+		return;
+	}
+
+	HelmetMeshComp->SetStaticMesh(Row->DisplayMesh);
+	HelmetMeshComp->SetRelativeScale3D(Row->MeshScale.IsNearlyZero() ? FVector::OneVector : Row->MeshScale);
+	HelmetMeshComp->SetRelativeLocation(Row->MeshOffset);
+	HelmetMeshComp->SetRelativeRotation(Row->MeshRotation);
+	HelmetMeshComp->SetHiddenInGame(false);
+
+	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' equipa casco '%s'."), *GetName(), *HelmetId.ToString());
+}
+
+// ── Replication ────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const{
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	// Replicar a todos los clientes para que el visual sea visible en todos
 	DOREPLIFETIME(ATortugaCharacter, bIsKnockedDown);
 	// SkipOwner: el owner ya arranca el emote localmente en TriggerEmote/CancelEmote.
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedEmoteIndex, COND_SkipOwner);
+	// DBNO revive state
+	DOREPLIFETIME(ATortugaCharacter, bIsReviving);
+	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReviveProgress, COND_OwnerOnly);
 }
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────
@@ -912,6 +1081,12 @@ void ATortugaCharacter::ApplyKnockdown(float Duration)
 	// inmediatamente, sin depender solo de OnRep (que puede batching/perderse).
 	MulticastApplyKnockdownVisual(true);
 
+	// ── DBNO heartbeat: solo el jugador local incapacitado oye el latido ──
+	if (IsLocallyControlled())
+	{
+		PlayDBNOHeartbeatSound();
+	}
+
 	GetWorldTimerManager().SetTimer(KnockdownTimerHandle, this,
 	                                &ATortugaCharacter::RecoverFromKnockdown, Duration, false);
 
@@ -937,6 +1112,11 @@ void ATortugaCharacter::RecoverFromKnockdown()
 	// Multicast fiable: todos los clientes reciben la recuperación
 	MulticastApplyKnockdownVisual(false);
 
+	// ── Audio feedback de revive ─────────────────────────────────────────
+	// Parar heartbeat y sonar success en todas las máquinas (via multicast visual)
+	StopDBNOHeartbeatSound();
+	PlayReviveSuccessSound();
+
 	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
 }
 
@@ -960,6 +1140,17 @@ void ATortugaCharacter::OnRep_IsKnockedDown()
 				MC->SetMovementMode(MOVE_Walking);
 			}
 		}
+
+		// ── Audio feedback DBNO (cliente local) ──────────────────────────
+		if (bIsKnockedDown)
+		{
+			PlayDBNOHeartbeatSound();
+		}
+		else
+		{
+			StopDBNOHeartbeatSound();
+			PlayReviveSuccessSound();
+		}
 	}
 }
 
@@ -973,6 +1164,12 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 	}
 
 	ApplyKnockdownVisual(bKnocked);
+
+	// ── Audio spatialized: clientes remotos oyen el success sound del revivido ──
+	if (!bKnocked && !IsLocallyControlled())
+	{
+		PlayReviveSuccessSound();
+	}
 
 	// El cliente propietario bloquea/restaura movimiento
 	if (IsLocallyControlled())
@@ -993,9 +1190,10 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 {
-	USkeletalMeshComponent* MeshComp = GetMesh();
-	if (!MeshComp)
+	USceneComponent* VisComp = KnockdownVisualComp.Get();
+	if (!VisComp)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[Knockdown] ApplyKnockdownVisual: No visual component on %s — knockdown tilt will be invisible!"), *GetNameSafe(this));
 		return;
 	}
 
@@ -1004,28 +1202,188 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 	if (bKnocked)
 	{
 		// ── Desactivar smoothing del CMC para que NO sobreescriba la rotación ──
-		// En clientes remotos, NetworkSmoothingMode::Exponential interpola la
-		// rotación del mesh cada frame, lo que sobreescribe nuestro tilt de knockdown.
-		// Desactivarlo durante el knockdown permite que SetRelativeRotation persista.
 		if (CMC)
 		{
 			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 		}
 
-		// Use RELATIVE rotation so CharacterMovementComponent replication
-		// doesn't overwrite the visual on remote clients.
 		FRotator KnockedRot = MeshDefaultRelativeRotation;
 		KnockedRot.Pitch -= 100.0f;
-		MeshComp->SetRelativeRotation(KnockedRot);
+		VisComp->SetRelativeRotation(KnockedRot);
 	}
 	else
 	{
-		MeshComp->SetRelativeRotation(MeshDefaultRelativeRotation);
+		VisComp->SetRelativeRotation(MeshDefaultRelativeRotation);
 
 		// ── Restaurar smoothing al salir del knockdown ─────────────────────
 		if (CMC)
 		{
 			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+		}
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] ApplyKnockdownVisual(%s) on %s — comp=%s"),
+		bKnocked ? TEXT("true") : TEXT("false"), *GetNameSafe(this), *VisComp->GetName());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REVIVE SYSTEM (DBNO)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::TryStartReviveChannel()
+{
+	if (!HasAuthority()) { return; }
+	if (bIsKnockedDown) { return; }  // Can't revive if you're knocked down yourself
+
+	const FVector MyLoc = GetActorLocation();
+	APlayerController* BestTargetPC = nullptr;
+	float BestDistSq = ReviveRadiusCm * ReviveRadiusCm;
+
+	// Search for the nearest DBNO player in range
+	if (const UWorld* World = GetWorld())
+	{
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* OtherPC = It->Get();
+			if (!OtherPC || OtherPC == GetController()) { continue; }
+
+			const ATN_CoopPlayerState* OtherPS = OtherPC->GetPlayerState<ATN_CoopPlayerState>();
+			if (!OtherPS || !OtherPS->bIsDBNO) { continue; }
+
+			const APawn* OtherPawn = OtherPC->GetPawn();
+			if (!OtherPawn) { continue; }
+
+			const float DistSq = FVector::DistSquared(MyLoc, OtherPawn->GetActorLocation());
+			if (DistSq < BestDistSq)
+			{
+				BestDistSq = DistSq;
+				BestTargetPC = OtherPC;
+			}
+		}
+	}
+
+	if (!BestTargetPC)
+	{
+		return;  // No DBNO player in range
+	}
+
+	// Start channeling
+	ReviveTargetPC = BestTargetPC;
+	ReviveChannelElapsed = 0.f;
+	bIsReviving = true;
+	ReviveProgress = 0.f;
+
+	// ── Audio: canal de revive (spatialized, todos los cercanos lo oyen) ──
+	PlayReviveChannelSound();
+
+	GetWorldTimerManager().SetTimer(ReviveChannelTimerHandle, this,
+		&ATortugaCharacter::TickReviveChannel, 0.1f, true);
+
+	UE_LOG(LogTemp, Log, TEXT("[Revive] %s started reviving %s (%.0fcm)"),
+		*GetNameSafe(this), *GetNameSafe(BestTargetPC),
+		FMath::Sqrt(BestDistSq));
+}
+
+void ATortugaCharacter::CancelReviveChannel()
+{
+	if (!bIsReviving) { return; }
+
+	bIsReviving = false;
+	ReviveProgress = 0.f;
+	ReviveTargetPC.Reset();
+	ReviveChannelElapsed = 0.f;
+	GetWorldTimerManager().ClearTimer(ReviveChannelTimerHandle);
+
+	// ── Parar audio del canal de revive ──
+	StopReviveChannelSound();
+
+	UE_LOG(LogTemp, Log, TEXT("[Revive] %s cancelled revive channel"), *GetNameSafe(this));
+}
+
+void ATortugaCharacter::TickReviveChannel()
+{
+	if (!HasAuthority())
+	{
+		CancelReviveChannel();
+		return;
+	}
+
+	// Validate: reviver is still emoting
+	if (ReplicatedEmoteIndex < 0)
+	{
+		CancelReviveChannel();
+		return;
+	}
+
+	// Validate: reviver is not knocked down
+	if (bIsKnockedDown)
+	{
+		CancelReviveChannel();
+		return;
+	}
+
+	// Validate: target still valid and in DBNO
+	APlayerController* TargetPC = ReviveTargetPC.Get();
+	if (!TargetPC)
+	{
+		CancelReviveChannel();
+		return;
+	}
+
+	const ATN_CoopPlayerState* TargetPS = TargetPC->GetPlayerState<ATN_CoopPlayerState>();
+	if (!TargetPS || !TargetPS->bIsDBNO)
+	{
+		CancelReviveChannel();
+		return;
+	}
+
+	// Validate: still in range
+	const APawn* TargetPawn = TargetPC->GetPawn();
+	if (!TargetPawn)
+	{
+		CancelReviveChannel();
+		return;
+	}
+
+	const float DistSq = FVector::DistSquared(GetActorLocation(), TargetPawn->GetActorLocation());
+	if (DistSq > ReviveRadiusCm * ReviveRadiusCm)
+	{
+		CancelReviveChannel();
+		return;
+	}
+
+	// Advance channel
+	ReviveChannelElapsed += 0.1f;
+	ReviveProgress = FMath::Clamp(ReviveChannelElapsed / ReviveDurationSeconds, 0.f, 1.f);
+
+	// Check if complete
+	if (ReviveChannelElapsed >= ReviveDurationSeconds)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Revive] %s successfully revived %s!"),
+			*GetNameSafe(this), *GetNameSafe(TargetPC));
+
+		// Complete the revive via GameMode
+		if (ATN_RunGameMode* RunGM = GetWorld()->GetAuthGameMode<ATN_RunGameMode>())
+		{
+			RunGM->RevivePlayer(TargetPC);
+		}
+
+		// Clean up channel state
+		CancelReviveChannel();
+
+		// Cancel the reviver's emote (revive is done)
+		if (IsLocallyControlled())
+		{
+			CancelEmote();
+		}
+		else
+		{
+			// Server-controlled pawn: force emote cancel
+			ReplicatedEmoteIndex = -1;
+			if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+			{
+				CancelEmote();
+			}
 		}
 	}
 }
@@ -1087,6 +1445,16 @@ void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 				CancelEmote();
 			}
 		}
+	}
+
+	// ── DBNO Revive: emote triggers revive channel if near a downed teammate ──
+	if (Index >= 0)
+	{
+		TryStartReviveChannel();
+	}
+	else
+	{
+		CancelReviveChannel();
 	}
 
 	UE_LOG(LogTemp, Verbose, TEXT("[Emote] ServerSetEmote(%d) on %s  Cabeza=%s"),
@@ -1343,24 +1711,31 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
-	// 2  HELICÓPTERO — Brazos giran solo en AZ a tope.                LOOP ∞
+	// 2  HELICÓPTERO — Brazos giran en AZ. Patas: ±90° en eje frontal (LX)
+	//                  y luego giran en LZ igual que los brazos.      LOOP ∞
 	// ──────────────────────────────────────────────────────────────────────────
 	case 2:
 	{
-		// Spin continuo: 8 vueltas/seg en AZ, solo rotación vertical
+		// Spin continuo: 8 vueltas/seg
 		const float spin = 360.f * T * 8.f;
 
-		// Brazo1 (dcha): solo spin AZ
-		Ap(Brazo1, Brazo1RestRot, spin, AZ);
-		// Brazo2 (izq): spin opuesto AZ
+		// Brazos: spin clásico en AZ (propulsor horizontal)
+		Ap(Brazo1, Brazo1RestRot,  spin, AZ);
 		Ap(Brazo2, Brazo2RestRot, -spin, AZ);
+
+		// Patas: en los primeros 0.4s se posicionan ±90° en el eje frontal (LX)
+		// y acto seguido giran en LZ igual que los brazos — efecto hélice
+		const float legSetup = Sat(T / 0.4f);
+		Ap2(Pata1, Pata1RestRot,
+		     legSetup *  90.f,  LX,   // eje frontal +90°
+		     spin,              LZ);  // giro continuo
+		Ap2(Pata2, Pata2RestRot,
+		     legSetup * -90.f,  LX,   // eje frontal -90° (opuesto)
+		     spin,              LZ);  // giro continuo
 
 		// Cabeza — cabeceo al ritmo del spin
 		Ap(Cabeza, CabezaRestRot, 20.f * S(2.f, T), AY);
 
-		// Patas marchan
-		Ap(Pata1, Pata1RestRot,  25.f * S(2.f, T), LY);
-		Ap(Pata2, Pata2RestRot, -25.f * S(2.f, T), LY);
 
 		// Cola
 		Ap(Cola, ColaRestRot, 12.f * S(1.f, T), TZ);
@@ -1696,4 +2071,161 @@ void ATortugaCharacter::OnEmote6() { TriggerEmote(6); }
 void ATortugaCharacter::OnEmote7() { TriggerEmote(7); }
 void ATortugaCharacter::OnEmote8() { TriggerEmote(8); }
 void ATortugaCharacter::OnEmote9() { TriggerEmote(9); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DBNO / REVIVE AUDIO
+// ─────────────────────────────────────────────────────────────────────────────
+
+UAudioComponent* ATortugaCharacter::EnsureReviveAudioComponent()
+{
+	if (ReviveAudioComponent)
+	{
+		return ReviveAudioComponent;
+	}
+
+	ReviveAudioComponent = NewObject<UAudioComponent>(this, TEXT("ReviveAudio"));
+	if (!ReviveAudioComponent)
+	{
+		return nullptr;
+	}
+
+	ReviveAudioComponent->SetupAttachment(GetRootComponent());
+	ReviveAudioComponent->bAutoActivate = false;
+	ReviveAudioComponent->bAlwaysPlay = false;
+
+	// Proximity attenuation matching voice chat / emote range.
+	ReviveAudioComponent->bAllowSpatialization = true;
+	ReviveAudioComponent->bOverrideAttenuation = true;
+	ReviveAudioComponent->AttenuationOverrides.bAttenuate = true;
+	ReviveAudioComponent->AttenuationOverrides.bSpatialize = true;
+	ReviveAudioComponent->AttenuationOverrides.FalloffDistance = FMath::Max(ReviveAudioOuterRadius - ReviveAudioInnerRadius, 100.f);
+	ReviveAudioComponent->AttenuationOverrides.AttenuationShape = EAttenuationShape::Sphere;
+	ReviveAudioComponent->AttenuationOverrides.AttenuationShapeExtents = FVector(ReviveAudioInnerRadius);
+	ReviveAudioComponent->AttenuationOverrides.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+
+	// Auto-restart loop while revive is channeling.
+	ReviveAudioComponent->OnAudioFinished.AddDynamic(this, &ATortugaCharacter::OnReviveAudioFinished);
+
+	ReviveAudioComponent->RegisterComponent();
+	return ReviveAudioComponent;
+}
+
+UAudioComponent* ATortugaCharacter::EnsureDBNOAudioComponent()
+{
+	if (DBNOAudioComponent)
+	{
+		return DBNOAudioComponent;
+	}
+
+	DBNOAudioComponent = NewObject<UAudioComponent>(this, TEXT("DBNOAudio"));
+	if (!DBNOAudioComponent)
+	{
+		return nullptr;
+	}
+
+	DBNOAudioComponent->SetupAttachment(GetRootComponent());
+	DBNOAudioComponent->bAutoActivate = false;
+	DBNOAudioComponent->bAlwaysPlay = false;
+
+	// Non-spatialized: only the local DBNO player hears the heartbeat.
+	DBNOAudioComponent->bAllowSpatialization = false;
+	DBNOAudioComponent->bIsUISound = true;  // Bypass distance culling — always audible for the local player.
+
+	// Auto-restart loop while DBNO.
+	DBNOAudioComponent->OnAudioFinished.AddDynamic(this, &ATortugaCharacter::OnDBNOAudioFinished);
+
+	DBNOAudioComponent->RegisterComponent();
+	return DBNOAudioComponent;
+}
+
+void ATortugaCharacter::PlayReviveChannelSound()
+{
+	if (!ReviveChannelSound)
+	{
+		return;
+	}
+
+	UAudioComponent* AC = EnsureReviveAudioComponent();
+	if (!AC)
+	{
+		return;
+	}
+
+	AC->SetSound(ReviveChannelSound);
+	AC->Play();
+}
+
+void ATortugaCharacter::StopReviveChannelSound()
+{
+	if (ReviveAudioComponent && ReviveAudioComponent->IsPlaying())
+	{
+		ReviveAudioComponent->Stop();
+	}
+}
+
+void ATortugaCharacter::PlayReviveSuccessSound()
+{
+	if (!ReviveSuccessSound)
+	{
+		return;
+	}
+
+	// Success sound: spatialized one-shot (reuse the ReviveAudioComponent).
+	// If channel sound was playing, Stop first so OnFinished doesn't re-loop.
+	StopReviveChannelSound();
+
+	UAudioComponent* AC = EnsureReviveAudioComponent();
+	if (!AC)
+	{
+		return;
+	}
+
+	AC->SetSound(ReviveSuccessSound);
+	AC->Play();
+	// Note: OnReviveAudioFinished will NOT re-loop because bIsReviving == false at this point.
+}
+
+void ATortugaCharacter::PlayDBNOHeartbeatSound()
+{
+	if (!DBNOHeartbeatSound)
+	{
+		return;
+	}
+
+	UAudioComponent* AC = EnsureDBNOAudioComponent();
+	if (!AC)
+	{
+		return;
+	}
+
+	AC->SetSound(DBNOHeartbeatSound);
+	AC->Play();
+}
+
+void ATortugaCharacter::StopDBNOHeartbeatSound()
+{
+	if (DBNOAudioComponent && DBNOAudioComponent->IsPlaying())
+	{
+		DBNOAudioComponent->Stop();
+	}
+}
+
+void ATortugaCharacter::OnReviveAudioFinished()
+{
+	// Re-loop revive channel sound while actively channeling.
+	if (bIsReviving && ReviveAudioComponent && ReviveAudioComponent->Sound)
+	{
+		ReviveAudioComponent->Play();
+	}
+	// If not reviving (e.g., success sound just finished), do nothing — one-shot.
+}
+
+void ATortugaCharacter::OnDBNOAudioFinished()
+{
+	// Re-loop heartbeat while knocked down (DBNO).
+	if (bIsKnockedDown && IsLocallyControlled() && DBNOAudioComponent && DBNOAudioComponent->Sound)
+	{
+		DBNOAudioComponent->Play();
+	}
+}
 

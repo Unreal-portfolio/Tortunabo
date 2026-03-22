@@ -48,6 +48,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
 	float InteractionDistance = 250.f;
 
+	/**
+	 * Desplazamiento en Z del mesh respecto al pivot del actor (cm).
+	 * Úsalo para que el mesh no clipe con el suelo cuando su pivote está en el centro.
+	 * Para pickups dinámicos, InitializeFromInventoryItem calcula este valor
+	 * automáticamente desde los bounds del mesh.
+	 * Para actores colocados en el nivel: ajusta por instancia o usa snap-to-floor (End).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
+	float MeshFloorOffset = 0.f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction|UI")
 	FText PromptText;
 

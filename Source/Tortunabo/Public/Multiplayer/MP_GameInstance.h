@@ -83,6 +83,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	int32 GetMaxPlayers() const { return MaxPlayers; }
 
+	/** Devuelve el DataTable de cascos para lookup externo (TortugaCharacter, widget). */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	UDataTable* GetHelmetDataTable() const { return HelmetDataTable; }
+
 	/**
 	 * Número de jugadores conectados en el lobby ANTES de hacer ServerTravel al Run.
 	 * TN_HQGameMode lo asigna justo antes de viajar; TN_RunGameMode lo lee para
@@ -125,6 +129,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
 	FString CosmeticSaveSlotPrefix = TEXT("Cosmetics");
 
+	/**
+	 * DataTable con filas FTN_HelmetData (ID, mesh, icono, escala, offset).
+	 * Asigna DT_Helmets aquí en BP_GameInstance → Class Defaults.
+	 * Usado por TortugaCharacter::UpdateHelmetMesh para instanciar el mesh del casco.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
+	TObjectPtr<UDataTable> HelmetDataTable;
+
 	void UpdateStatus(const FString& Message);
 
 	static constexpr int32 MaxStatusLines = 12;
@@ -153,6 +165,9 @@ private:
 	void SaveCosmeticProfile() const;
 	FString BuildCosmeticSaveSlot() const;
 
+	/** Reintenta crear el listen server tras un NetDriverListenFailure durante travel. */
+	void RetryListenServer();
+
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> LoadingScreenWidget;
 
@@ -160,6 +175,21 @@ private:
 	TObjectPtr<UTN_CosmeticSaveGame> CosmeticProfile;
 
 	bool bIsLoadingScreenVisible = false;
+
+	/** true si HandlePostLoadMap debe reintentar crear el listen server. */
+	bool bNeedsListenRetry = false;
+
+	/** URL pendiente para el listen retry (guardada desde HandlePreLoadMap). */
+	FString PendingListenURL;
+
+	/** Reintentos restantes para el listen server. */
+	int32 ListenRetryCount = 0;
+
+	/** Máximo de reintentos para crear el listen server. */
+	static constexpr int32 MaxListenRetries = 5;
+
+	/** Timer para reintentos de listen. */
+	FTimerHandle ListenRetryTimerHandle;
 
 	FDelegateHandle InviteAcceptedDelegateHandle;
 };

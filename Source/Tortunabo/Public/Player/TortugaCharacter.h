@@ -4,6 +4,7 @@
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
 #include "TimerManager.h"
+#include "Core/TN_CosmeticsTypes.h"
 #include "TortugaCharacter.generated.h"
 
 class UCameraComponent;
@@ -16,6 +17,7 @@ class ATN_InteractableBase;
 class USceneComponent;
 class UAudioComponent;
 class USoundBase;
+class UStaticMeshComponent;
 
 UCLASS()
 class TORTUNABO_API ATortugaCharacter : public ACharacter
@@ -75,6 +77,15 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stamina")
 	TObjectPtr<UTN_StaminaComponent> StaminaComponent;
+
+	/**
+	 * Mesh del casco equipado. Se adjunta al SceneComponent "Sombrero" en BeginPlay.
+	 * Añade un SceneComponent hijo en BP_TortugaCharacter con nombre exacto "Sombrero"
+	 * y colócalo sobre la cabeza de la tortuga.
+	 * Si no existe "Sombrero", el casco se adjunta al root del personaje.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cosmetics")
+	TObjectPtr<UStaticMeshComponent> HelmetMeshComp;
 
 	// ── Leg Animation (blockout) ──────────────────────────────────────────────
 	// Add child SceneComponents named "Pata1" and "Pata2" in your Blueprint.
@@ -160,7 +171,7 @@ protected:
 
 	/** Ángulo adicional hacia arriba (grados) al lanzar objetos, para que hagan arco parabólico. */
 	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "60.0"))
-	float ThrowUpAngleDeg = 35.f;
+	float ThrowUpAngleDeg = 15.f;
 
 	// ── Camera Cinematic Settings (AAA) ───────────────────────────────────────
 
@@ -214,6 +225,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic")
 	FVector CameraBoomRelativeOffset = FVector(0.f, 0.f, 40.f);
 
+	/**
+	 * Inclina la cámara hacia abajo respecto al spring arm (grados, valor negativo = abajo).
+	 * Mueve el centro visual de apuntado sin cambiar la dirección de control del jugador.
+	 * Default -6°: el crosshair apunta ligeramente por debajo del horizonte de la cámara.
+	 * Ajusta en BP_TortugaCharacter → Class Defaults.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "-30.0", ClampMax = "0.0"))
+	float CameraAimPitchOffset = -6.f;
+
 	/** Si true, el eje Y del ratón (arriba/abajo) se invierte. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Input")
 	bool bInvertCameraY = false;
@@ -265,6 +285,9 @@ private:
 	bool bInputAssetsLoaded = false;
 	FVector2D LastMovementInput = FVector2D::ZeroVector;
 	bool bSprintHeld = false;
+
+	/** Cached SceneComponent "Sombrero" found in BeginPlay. Helmet mesh attaches to it. */
+	TWeakObjectPtr<USceneComponent> SombreroSocket;
 
 	// ── Emote State ─────────────────────────────────────────────────────────
 	int32 ActiveEmoteIndex   = -1;   ///< -1 = no emote active (local animation driver)
@@ -394,7 +417,6 @@ private:
 	void ServerDropEquippedItem();
 
 	void ApplyKnockdownVisual(bool bKnocked);
-	void RecoverFromKnockdown();
 
 	/**
 	 * Multicast RPC fiable — garantiza que TODOS los clientes reciban
@@ -405,6 +427,47 @@ private:
 
 	UFUNCTION()
 	void OnRep_IsKnockedDown();
+
+	// ── Revive channeling (server-driven) ────────────────────────────────────
+	/** Try to start reviving a nearby DBNO player. Called from ServerSetEmote when emote starts. */
+	void TryStartReviveChannel();
+	/** Cancel any active revive channel. Called when emote ends, player moves, or conditions fail. */
+	void CancelReviveChannel();
+	/** Tick the revive channel (server timer, 0.1s). Checks proximity + conditions. */
+	void TickReviveChannel();
+
+	TWeakObjectPtr<APlayerController> ReviveTargetPC;
+	float ReviveChannelElapsed = 0.f;
+	FTimerHandle ReviveChannelTimerHandle;
+
+	// ── DBNO/Revive Audio (private) ─────────────────────────────────────────
+
+	/** Audio component for revive channel sound (spatialized, on the reviver). Lazy-init. */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> ReviveAudioComponent;
+
+	/** Audio component for DBNO heartbeat (non-spatialized, local player only). Lazy-init. */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> DBNOAudioComponent;
+
+	/** Create ReviveAudioComponent if it doesn't exist (spatialized, proximity-attenuated). */
+	UAudioComponent* EnsureReviveAudioComponent();
+	/** Create DBNOAudioComponent if it doesn't exist (non-spatialized, local-only). */
+	UAudioComponent* EnsureDBNOAudioComponent();
+
+	void PlayReviveChannelSound();
+	void StopReviveChannelSound();
+	void PlayReviveSuccessSound();
+	void PlayDBNOHeartbeatSound();
+	void StopDBNOHeartbeatSound();
+
+	/** Callback for ReviveAudioComponent: re-loops revive channel sound while channeling. */
+	UFUNCTION()
+	void OnReviveAudioFinished();
+
+	/** Callback for DBNOAudioComponent: re-loops heartbeat while DBNO. */
+	UFUNCTION()
+	void OnDBNOAudioFinished();
 
 protected:
 	// ── Emote replication ────────────────────────────────────────────────────
@@ -425,6 +488,9 @@ protected:
 	/** Rotación relativa del mesh al spawnear (guardada en BeginPlay para restaurarla). */
 	FRotator MeshDefaultRelativeRotation = FRotator::ZeroRotator;
 
+	/** Componente visual para el tilt de knockdown (SkeletalMesh o StaticMesh blockout). */
+	TWeakObjectPtr<USceneComponent> KnockdownVisualComp;
+
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -437,9 +503,76 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
 	void ApplyKnockdown(float Duration);
 
-	UFUNCTION(BlueprintCallable, Category = "Stamina")
+	/** Recover from knockdown immediately (server-only). Used by RunGameMode::RevivePlayer. */
+	UFUNCTION(BlueprintCallable, Category = "Knockdown")
+	void RecoverFromKnockdown();
+
+	UFUNCTION(BlueprintCallable, Category = "Knockdown")
 	void GrantInfiniteStamina(float DurationSeconds);
+
+	/**
+	 * Actualiza el mesh del casco en el socket "Sombrero" del personaje.
+	 * Llamado desde TN_CoopPlayerState::OnRep_EquippedHelmetId (clientes)
+	 * y desde MP_GamePlayerController::ServerSetEquippedHelmet (servidor/listen-server).
+	 * HelmetId == NAME_None → oculta el casco.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	void UpdateHelmetMesh(FName HelmetId);
+
+	// ── Revive system (DBNO) ─────────────────────────────────────────────────
+
+	/** Radius in cm within which a teammate can revive a DBNO player. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "DBNO", meta = (ClampMin = "50.0"))
+	float ReviveRadiusCm = 300.f;
+
+	/** Seconds required to channel a revive (must stay in range and keep emoting). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "DBNO", meta = (ClampMin = "0.5"))
+	float ReviveDurationSeconds = 3.f;
+
+	/**
+	 * True while this character is actively channeling a revive on a DBNO teammate.
+	 * Replicated for HUD visualization on all clients.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "DBNO")
+	bool bIsReviving = false;
+
+	/**
+	 * Revive channel progress [0..1]. Owner-only replication for the reviver's HUD.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "DBNO")
+	float ReviveProgress = 0.f;
+
+	// ── DBNO/Revive Audio ────────────────────────────────────────────────────
+
+	/**
+	 * Sound played in loop on the REVIVER while channeling a revive.
+	 * Proximity-attenuated so nearby players hear it.
+	 * Assign in Blueprint Class Defaults. Leave null for silence.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "DBNO|Audio")
+	TObjectPtr<USoundBase> ReviveChannelSound;
+
+	/**
+	 * One-shot sound played on the REVIVED player when revive completes.
+	 * Proximity-attenuated — all nearby players hear the success cue.
+	 * Assign in Blueprint Class Defaults. Leave null for silence.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "DBNO|Audio")
+	TObjectPtr<USoundBase> ReviveSuccessSound;
+
+	/**
+	 * Looped sound played locally on the DBNO player (heartbeat / tension).
+	 * Only the incapacitated player hears this (non-spatialized, local only).
+	 * Assign in Blueprint Class Defaults. Leave null for silence.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "DBNO|Audio")
+	TObjectPtr<USoundBase> DBNOHeartbeatSound;
+
+	/** Inner radius (cm) for DBNO/revive audio attenuation (full volume). */
+	UPROPERTY(EditDefaultsOnly, Category = "DBNO|Audio", meta = (ClampMin = "0.0"))
+	float ReviveAudioInnerRadius = 300.f;
+
+	/** Outer radius (cm) for DBNO/revive audio attenuation (silence). */
+	UPROPERTY(EditDefaultsOnly, Category = "DBNO|Audio", meta = (ClampMin = "0.0"))
+	float ReviveAudioOuterRadius = 2500.f;
 };
-
-
-

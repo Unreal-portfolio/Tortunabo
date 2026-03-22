@@ -33,10 +33,13 @@ private:
 	void OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
 
 	void HandlePlayerDeath(APlayerController* PlayerController);
-	void TickPlayerCountdown(APlayerController* PlayerController);
+	/** Single shared timer that ticks ALL players inside the zone at once. */
+	void TickAllCountdowns();
 	ATN_RunGameMode* ResolveRunGameMode() const;
 
-	TMap<TWeakObjectPtr<APlayerController>, FTimerHandle> PendingDeathTimers;
+	/** Single shared timer handle — replaces N per-player timers. */
+	FTimerHandle SharedCountdownTimerHandle;
+
 	TMap<TWeakObjectPtr<APlayerController>, float> PendingDeathRemaining;
 };
 

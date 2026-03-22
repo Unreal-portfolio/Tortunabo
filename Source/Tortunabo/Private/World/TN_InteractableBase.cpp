@@ -62,6 +62,13 @@ void ATN_InteractableBase::BeginPlay()
 		PromptWidget->SetPromptText(PromptText);
 	}
 
+	// Aplicar offset de suelo: evita que el mesh clipe con el suelo cuando el pivote
+	// está en el centro. Se aplica solo si no se ha sobreescrito en InitializeFromInventoryItem.
+	if (Mesh && !FMath::IsNearlyZero(MeshFloorOffset))
+	{
+		Mesh->SetRelativeLocation(FVector(0.f, 0.f, MeshFloorOffset));
+	}
+
 	ApplyInteractionEnabledState();
 }
 

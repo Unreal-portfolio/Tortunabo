@@ -109,6 +109,22 @@ protected:
 	void OnInventoryUpdated(UTexture2D* EquippedIcon, bool bHasEquipped,
 	                        UTexture2D* StoredIcon,   bool bHasStored);
 
+	/**
+	 * Llamado cuando cambia el estado DBNO del jugador local.
+	 * @param bIsDBNO             True si está en estado Down But Not Out.
+	 * @param BleedoutRemaining   Segundos restantes antes de morir (−1 si no DBNO).
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "DBNO")
+	void OnDBNOStateChanged(bool bIsDBNO, float BleedoutRemaining);
+
+	/**
+	 * Llamado cuando el jugador local está canalizando un revive a un compañero.
+	 * @param Progress01   Progreso de 0 a 1 (1 = revive completo).
+	 * @param bIsReviving  True si está canalizando activamente.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "DBNO")
+	void OnReviveProgressUpdated(float Progress01, bool bIsReviving);
+
 private:
 	void RefreshStaminaWidgets();
 	void RefreshInventoryWidgets();
@@ -124,6 +140,11 @@ private:
 	// Inventory change detection (compare by ItemId to avoid redundant refreshes)
 	FName LastEquippedId = NAME_None;
 	FName LastStoredId   = NAME_None;
+
+	// DBNO state change detection
+	bool  bLastDBNO       = false;
+	bool  bLastReviving   = false;
+	float LastReviveProgress = -1.f;
 
 	static constexpr float kRefreshInterval = 0.05f;
 	float RefreshAccumulator = 0.f;

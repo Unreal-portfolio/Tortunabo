@@ -6,6 +6,8 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -77,6 +79,8 @@ void ATN_RunGameMode::BeginPlay()
 		{
 			TNPS->bIsAlive = true;
 			TNPS->bHasFinishedRun = false;
+			TNPS->bIsDBNO = false;
+			TNPS->DBNOBleedoutTimeRemaining = -1.f;
 			TNPS->FinishRank = 0;
 			TNPS->FinishTimeSeconds = -1.f;
 			TNPS->DeathZoneTimeRemaining = -1.f;
@@ -110,6 +114,8 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		TNPS->bIsAlive = true;
 		TNPS->bHasFinishedRun = false;
+		TNPS->bIsDBNO = false;
+		TNPS->DBNOBleedoutTimeRemaining = -1.f;
 		TNPS->FinishRank = 0;
 		TNPS->FinishTimeSeconds = -1.f;
 		TNPS->DeathZoneTimeRemaining = -1.f;
@@ -335,6 +341,17 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
 
+	// ── Detener el pawn para que no siga avanzando desde el POV de otros jugadores ──
+	if (APawn* Pawn = PlayerController->GetPawn())
+	{
+		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
+		{
+			CMC->StopMovementImmediately();
+			CMC->DisableMovement();
+		}
+		Pawn->DisableInput(PlayerController);
+	}
+
 	MovePlayerToSpectator(PlayerController);
 	UpdateRoundProgressAndMaybeFinish();
 }
@@ -354,18 +371,207 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 
 	TNPS->bIsAlive = false;
 	TNPS->bHasFinishedRun = true;
+	TNPS->bIsDBNO = false;
+	TNPS->DBNOBleedoutTimeRemaining = -1.f;
 	TNPS->FinishRank = 0;
 	TNPS->FinishTimeSeconds = -1.f;
 	TNPS->DeathZoneTimeRemaining = -1.f;
 
+	// Clean up from DBNO tracking if present
+	DBNOPlayers.Remove(PlayerController);
+	ReviveImmunePlayers.Remove(PlayerController);
+
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
+		// Detener antes de destruir para que no haya un frame con velocidad residual
+		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
+		{
+			CMC->StopMovementImmediately();
+			CMC->DisableMovement();
+		}
 		Pawn->DisableInput(PlayerController);
 		Pawn->Destroy();
 	}
 
 	MovePlayerToSpectator(PlayerController);
 	UpdateRoundProgressAndMaybeFinish();
+}
+
+// ── DBNO (Down But Not Out) ────────────────────────────────────────────────────
+
+void ATN_RunGameMode::EnterDBNO(APlayerController* PlayerController)
+{
+	if (!HasAuthority() || !PlayerController)
+	{
+		return;
+	}
+
+	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
+	if (!TNPS || !TNPS->bIsAlive || TNPS->bIsDBNO)
+	{
+		return;  // Already dead, already DBNO, or invalid
+	}
+
+	// Check revive immunity — recently revived players can't be downed again immediately
+	if (ReviveImmunePlayers.Contains(PlayerController))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[DBNO] %s has revive immunity — ignoring DBNO trigger"), *GetNameSafe(PlayerController));
+		return;
+	}
+
+	TNPS->bIsDBNO = true;
+	TNPS->DBNOBleedoutTimeRemaining = DBNOBleedoutSeconds;
+
+	// Apply infinite knockdown (Duration=0 means permanent — we'll clear it manually on revive/death)
+	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(PlayerController->GetPawn()))
+	{
+		Character->ApplyKnockdown(DBNOBleedoutSeconds + 5.f);  // Generous duration, death/revive clears it
+	}
+
+	// Register in DBNO tracking map
+	DBNOPlayers.Add(PlayerController, DBNOBleedoutSeconds);
+
+	// Start the shared bleedout timer if not already running
+	if (!GetWorldTimerManager().IsTimerActive(DBNOBleedoutTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(DBNOBleedoutTimerHandle, this,
+			&ATN_RunGameMode::TickDBNOBleedout, 0.1f, true);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[DBNO] %s entered DBNO state (%.1fs bleedout)"), *GetNameSafe(PlayerController), DBNOBleedoutSeconds);
+
+	// Check if ALL alive players are now in DBNO (no one to revive)
+	CheckAllAliveDBNO();
+}
+
+void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
+{
+	if (!HasAuthority() || !PlayerController)
+	{
+		return;
+	}
+
+	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
+	if (!TNPS || !TNPS->bIsDBNO)
+	{
+		return;
+	}
+
+	// Clear DBNO state
+	TNPS->bIsDBNO = false;
+	TNPS->DBNOBleedoutTimeRemaining = -1.f;
+
+	// Remove from tracking
+	DBNOPlayers.Remove(PlayerController);
+	if (DBNOPlayers.Num() == 0)
+	{
+		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
+	}
+
+	// Recover from knockdown
+	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(PlayerController->GetPawn()))
+	{
+		Character->RecoverFromKnockdown();
+	}
+
+	// Grant brief immunity
+	ReviveImmunePlayers.Add(PlayerController);
+	FTimerHandle ImmunityTimer;
+	TWeakObjectPtr<APlayerController> WeakPC = PlayerController;
+	GetWorldTimerManager().SetTimer(ImmunityTimer, [this, WeakPC]()
+	{
+		ReviveImmunePlayers.Remove(WeakPC);
+	}, ReviveImmunitySeconds, false);
+
+	UE_LOG(LogTemp, Log, TEXT("[DBNO] %s revived! (%.1fs immunity)"), *GetNameSafe(PlayerController), ReviveImmunitySeconds);
+}
+
+void ATN_RunGameMode::TickDBNOBleedout()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	TArray<TWeakObjectPtr<APlayerController>> Keys;
+	DBNOPlayers.GetKeys(Keys);
+
+	for (const TWeakObjectPtr<APlayerController>& WeakPC : Keys)
+	{
+		APlayerController* PC = WeakPC.Get();
+		if (!PC)
+		{
+			DBNOPlayers.Remove(WeakPC);
+			continue;
+		}
+
+		float* Remaining = DBNOPlayers.Find(WeakPC);
+		if (!Remaining) { continue; }
+
+		*Remaining = FMath::Max(0.f, *Remaining - 0.1f);
+
+		// Sync to PlayerState for HUD
+		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
+		{
+			TNPS->DBNOBleedoutTimeRemaining = *Remaining;
+		}
+
+		if (*Remaining <= KINDA_SMALL_NUMBER)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[DBNO] %s bleedout expired → dying for real"), *GetNameSafe(PC));
+			DBNOPlayers.Remove(WeakPC);
+			MarkPlayerDead(PC);
+		}
+	}
+
+	if (DBNOPlayers.Num() == 0)
+	{
+		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
+	}
+}
+
+void ATN_RunGameMode::CheckAllAliveDBNO()
+{
+	if (!HasAuthority() || !GameState)
+	{
+		return;
+	}
+
+	int32 AliveCount = 0;
+	int32 DBNOCount = 0;
+
+	for (APlayerState* BasePS : GameState->PlayerArray)
+	{
+		if (const ATN_CoopPlayerState* CastPS = Cast<ATN_CoopPlayerState>(BasePS))
+		{
+			if (CastPS->bIsAlive)
+			{
+				++AliveCount;
+				if (CastPS->bIsDBNO)
+				{
+					++DBNOCount;
+				}
+			}
+		}
+	}
+
+	// If ALL alive players are in DBNO, no one can revive → kill everyone
+	if (AliveCount > 0 && AliveCount == DBNOCount)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[DBNO] All %d alive players are in DBNO — killing everyone"), AliveCount);
+
+		TArray<TWeakObjectPtr<APlayerController>> Keys;
+		DBNOPlayers.GetKeys(Keys);
+		for (const TWeakObjectPtr<APlayerController>& WeakPC : Keys)
+		{
+			if (APlayerController* PC = WeakPC.Get())
+			{
+				MarkPlayerDead(PC);
+			}
+		}
+		DBNOPlayers.Empty();
+		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
+	}
 }
 
 void ATN_RunGameMode::UpdateRoundProgressAndMaybeFinish()
@@ -498,9 +704,9 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		}
 
 		// 3. Esperar a que Steam libere el socket P2P, luego viajar
-		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Waiting 0.5s for Steam socket release before ServerTravel..."));
+		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Waiting 1.0s for Steam socket release before ServerTravel..."));
 		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
-			&ATN_RunGameMode::ExecuteDeferredTravel, 0.5f, false);
+			&ATN_RunGameMode::ExecuteDeferredTravel, 1.0f, false);
 	}
 }
 

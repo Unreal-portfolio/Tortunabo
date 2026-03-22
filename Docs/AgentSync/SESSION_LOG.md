@@ -287,3 +287,239 @@
 - `GetSocketByName(None): No SkeletalMesh for Component(CharacterMesh0)` → El BP no tiene skeletal mesh asignado aún.
 - `'Cabeza' not found as exact name — matched 'Cabeza1' (fuzzy)` → Renombrar componente en BP a `Cabeza` exacto.
 - `Player is not part of session (GameSession)` → Warning cosmético durante travel, no afecta funcionalidad.
+
+## 2026-03-20 - Megasprint: Bugs críticos + Nuevos sistemas + Optimización MP
+
+### Fase 1: Fix SteamSocket Race Condition (Listen Retry)
+- **Problema**: El deferred travel de 0.5s no era suficiente. El socket Steam P2P seguía ocupado al crear el nuevo listen server.
+- **Fix**: 
+  - Delay aumentado a 1.0s en `TN_HQGameMode` y `TN_RunGameMode`.
+  - Nuevo **retry de listen server** en `MP_GameInstance::HandlePostLoadMap`: si `OnNetworkFailure` detecta `NetDriverListenFailure` durante travel, marca `bNeedsListenRetry=true`. Tras cargar el mapa, un timer cada 400ms intenta `World->Listen()` hasta 5 veces. Si agota reintentos → destruye sesión y vuelve al menú.
+- **Archivos**: `MP_GameInstance.h`, `MP_GameInstance.cpp`, `TN_HQGameMode.cpp`, `TN_RunGameMode.cpp`
+
+### Fase 2: Fix Knockdown Visual en Otros Clientes
+- **Problema**: `ApplyKnockdownVisual` usaba `GetMesh()` (SkeletalMeshComponent) que devolvía un componente sin mesh asignado en personajes blockout con StaticMesh.
+- **Fix**: Nuevo campo `KnockdownVisualComp` (`TWeakObjectPtr<USceneComponent>`) cacheado en `BeginPlay`. Busca primero StaticMeshComponent hijo con mesh, fallback a SkeletalMesh. Logs de diagnóstico si el componente es null.
+- **Archivos**: `TortugaCharacter.h`, `TortugaCharacter.cpp`
+
+### Fase 3: Fix Jugador Fantasma Tras Terminar + "Eliminado" Erróneo
+- **Problema**: `MarkPlayerFinished` no detenía el pawn → el CMC mantenía velocidad residual → otros jugadores veían al personaje avanzar infinitamente.
+- **Fix**: Antes de `MovePlayerToSpectator`, llamar `StopMovementImmediately()` + `DisableMovement()` + `DisableInput`. Mismo patrón en `MarkPlayerDead`.
+- **Archivos**: `TN_RunGameMode.cpp` (+ include `Character.h`, `CharacterMovementComponent.h`)
+
+### Fase 4: Fix Bola Recta + Pickup Fantasma + Clipping Suelo
+- **Bola recta**: La dirección de cámara incluía pitch → mirar abajo anulaba el arco. Fix: aplanar a pitch=0 antes de tiltar por `ThrowUpAngleDeg`.
+- **Pickup fantasma**: `DORM_DormantAll` impedía replicación inicial de pickups dinámicos. Fix: `SetNetDormancy(DORM_Awake)` al inicializar, timer de 3s para volver a `DormantAll`.
+- **Clipping suelo**: `FindGroundBelow` offset subido de 5cm a 15cm. `SpawnPickupAtLocation` ahora hace floor trace propio.
+- **Archivos**: `TortugaCharacter.cpp`, `TN_PickupInteractableBase.cpp`, `TN_ThrowableItemActor.cpp`
+
+### Fase 5A: TN_ItemSpawnZone (Nuevo)
+- Actor con `UBoxComponent` como zona de spawn. Configurable: DataTable + RowNames + SpawnCount + MinSpacing + MaxRetries.
+- BeginPlay (server): genera N posiciones random, valida suelo (line trace) y obstáculos (sweep), spawna pickups.
+- **Archivos**: `Public/World/TN_ItemSpawnZone.h`, `Private/World/TN_ItemSpawnZone.cpp`
+
+### Fase 5B: TN_ButtonInteractable (Nuevo)
+- Hijo de `TN_DirectInteractableBase`. Al interactuar, avanza un `MoveTarget` al siguiente waypoint (array de FTransform, cíclico).
+- Interpolación fluida en Tick (server, `FMath::VInterpConstantTo`). `MoveTarget` usa `SetReplicateMovement(true)`.
+- Multicast cosmético para feedback BP.
+- **Archivos**: `Public/World/TN_ButtonInteractable.h`, `Private/World/TN_ButtonInteractable.cpp`
+
+### Fase 5C: TN_PufferFishActor — Pez Globo (Nuevo)
+- Hijo de `ATN_ThrowableItemActor`. Tras delay aleatorio (1-3s), se infla ×5, empuja pawns en radio (400cm) con `LaunchCharacter`, knockdown si fuerza > umbral. Tras 1.5s, desinfla y spawna pickup.
+- Estado replicado: `ETN_PufferState {Flying, Inflating, Deflated}` — un solo byte + OnRep.
+- Nuevo `ETN_ItemUseType::PufferFish` en `TN_InventoryTypes.h`.
+- `SpawnPickupAtLocation` y `bPickupSpawned` movidos de `private` a `protected` en `TN_ThrowableItemActor.h`.
+- **Archivos**: `Public/World/TN_PufferFishActor.h`, `Private/World/TN_PufferFishActor.cpp`, `TN_ThrowableItemActor.h`, `TN_InventoryTypes.h`, `TortugaCharacter.cpp`
+
+### Fase 7 (parcial): Optimización de Red
+- `TN_CoopPlayerState`: `DeathZoneTimeRemaining` → `COND_OwnerOnly` (reduce tráfico 75% en zona de muerte).
+- `TN_DeathZoneVolume`: Refactorizado de N timers por jugador a **1 timer compartido** (`TickAllCountdowns`). Reduce timers de 40 tick/s a 10 tick/s con 4 jugadores.
+- `ATortugaCharacter`: `NetUpdateFrequency=30`, `MinNetUpdateFrequency=15` (ya estaba).
+- **Archivos**: `TN_CoopPlayerState.cpp`, `TN_DeathZoneVolume.h`, `TN_DeathZoneVolume.cpp`
+
+### Pendientes
+1. **Fase 6: Sistema DBNO (Down But Not Out)** con revive por emote — no implementado aún.
+2. Smoke test 4 jugadores para validar el listen retry.
+3. Validar que el Pez Globo replica correctamente el inflado en 4 clientes.
+4. Crear filas en DT_Items para Item_PufferFish con UseType=PufferFish.
+5. Crear BP_PufferFishThrowable como BP hijo de TN_PufferFishActor.
+6. Crear BP_ButtonInteractable y BP_ItemSpawnZone en el Editor.
+
+## 2026-03-20 (sesión 4) - Fase 6: Sistema DBNO (Down But Not Out) con revive por emote
+
+### Contexto
+- Pendiente desde la sesión anterior: implementar sistema DBNO para que los jugadores no mueran instantáneamente al caer en una death zone.
+- Objetivo: dar a los compañeros una ventana de tiempo para revivir al jugador caído.
+
+### Cambios clave
+
+#### 1. `TN_CoopPlayerState` — Estado DBNO replicado
+- **`Public/Core/TN_CoopPlayerState.h`**: Nuevas propiedades `bIsDBNO` (Replicated, all) y `DBNOBleedoutTimeRemaining` (Replicated, COND_OwnerOnly).
+- **`Private/Core/TN_CoopPlayerState.cpp`**: Registradas en `GetLifetimeReplicatedProps`.
+
+#### 2. `TN_RunGameMode` — Gestión del ciclo DBNO
+- **`Public/Game/TN_RunGameMode.h`**: Nuevas funciones `EnterDBNO()`, `RevivePlayer()`. Nuevos settings `DBNOBleedoutSeconds=15`, `ReviveImmunitySeconds=2`. Miembros privados `DBNOPlayers` (TMap), `ReviveImmunePlayers` (TSet), `DBNOBleedoutTimerHandle`.
+- **`Private/Game/TN_RunGameMode.cpp`**:
+  - `EnterDBNO`: valida estado, aplica knockdown al pawn, registra en `DBNOPlayers`, inicia timer compartido `TickDBNOBleedout` (0.1s). Respeta inmunidad post-revive.
+  - `RevivePlayer`: limpia DBNO, recupera de knockdown, otorga inmunidad temporal via lambda timer.
+  - `TickDBNOBleedout`: decrementa bleedout, sincroniza `DBNOBleedoutTimeRemaining` al PlayerState, ejecuta `MarkPlayerDead` al expirar.
+  - `CheckAllAliveDBNO`: si todos los vivos están en DBNO (nadie puede revivir), mata a todos inmediatamente.
+  - `MarkPlayerDead` actualizado: limpia DBNO state del jugador al morir.
+  - `BeginPlay` y `PostLogin`: inicializan `bIsDBNO=false`, `DBNOBleedoutTimeRemaining=-1`.
+
+#### 3. `TN_DeathZoneVolume` — DBNO en vez de muerte directa
+- **`Private/World/TN_DeathZoneVolume.cpp`**: `HandlePlayerDeath` ahora llama `RunGameMode->EnterDBNO(PC)` en vez de `MarkPlayerDead(PC)`.
+
+#### 4. `TortugaCharacter` — Revive por emote canalizado
+- **`Public/Player/TortugaCharacter.h`**:
+  - `RecoverFromKnockdown` movido a `public` (necesario desde RunGameMode).
+  - Nuevos settings: `ReviveRadiusCm=300`, `ReviveDurationSeconds=3`.
+  - Nuevas propiedades replicadas: `bIsReviving` (all), `ReviveProgress` (COND_OwnerOnly).
+  - Nuevas funciones privadas: `TryStartReviveChannel()`, `CancelReviveChannel()`, `TickReviveChannel()`.
+  - Miembros privados: `ReviveTargetPC`, `ReviveChannelElapsed`, `ReviveChannelTimerHandle`.
+- **`Private/Player/TortugaCharacter.cpp`**:
+  - Nuevos includes: `Core/TN_CoopPlayerState.h`, `Game/TN_RunGameMode.h`.
+  - `GetLifetimeReplicatedProps`: registra `bIsReviving` y `ReviveProgress`.
+  - `TryStartReviveChannel`: busca el DBNO más cercano dentro del radio, inicia timer de 0.1s.
+  - `TickReviveChannel`: valida emote activo, no knockeado, target DBNO en rango. Avanza progreso. Al completar llama `RunGameMode->RevivePlayer()` y cancela emote.
+  - `CancelReviveChannel`: limpia todo el estado de canal.
+  - `ServerSetEmote_Implementation`: hook de revive — `TryStartReviveChannel()` al empezar emote, `CancelReviveChannel()` al terminar.
+
+#### 5. `TN_PlayerHUDWidget` — Hooks BP para DBNO/Revive
+- **`Public/UI/HUD/TN_PlayerHUDWidget.h`**: Nuevos BlueprintImplementableEvent `OnDBNOStateChanged(bIsDBNO, BleedoutRemaining)` y `OnReviveProgressUpdated(Progress01, bIsReviving)`. Nuevo tracking state: `bLastDBNO`, `bLastReviving`, `LastReviveProgress`.
+- **`Private/UI/HUD/TN_PlayerHUDWidget.cpp`**: NativeTick pollea `TN_CoopPlayerState::bIsDBNO` y `TortugaCharacter::bIsReviving/ReviveProgress` para disparar hooks BP.
+
+#### 6. `AGENTS.md` — Documentación DBNO
+- Nueva sección "## DBNO system (Down But Not Out)" con flujo, estado replicado, config, mecánica de revive y hooks de HUD.
+
+### Networking y rendimiento
+- **Nuevas propiedades replicadas**: 2 en PlayerState (`bIsDBNO`, `DBNOBleedoutTimeRemaining`), 2 en Character (`bIsReviving`, `ReviveProgress`). `DBNOBleedoutTimeRemaining` y `ReviveProgress` son COND_OwnerOnly.
+- **Timers**: `TickDBNOBleedout` solo corre si hay jugadores en DBNO. `TickReviveChannel` solo corre si alguien está canalizando.
+- **CheckAllAliveDBNO**: O(N) sobre PlayerArray, solo se llama al entrar en DBNO (no cada tick).
+
+### Pendientes
+1. Crear widgets BP en WBP_PlayerHUD para mostrar indicador de DBNO (contador de bleedout) y barra de revive.
+2. Smoke test: validar flujo DeathZone → DBNO → Emote → Revive con 2+ jugadores.
+3. Smoke test: validar que si todos caen en DBNO, todos mueren y se muestran resultados.
+4. Ajustar `DBNOBleedoutSeconds` (15s) y `ReviveDurationSeconds` (3s) según gameplay feel.
+5. Considerar feedback visual/audio adicional para el canal de revive (partículas, sonido).
+
+## 2026-03-20 (sesión 6) - Fix Clipping Pickups + Sistema Cosméticos Completo + Guía Editor
+
+### Contexto
+- Pickups colocados en nivel clipean en el suelo (pivote del mesh en centro).
+- Sistema de cosméticos requería: socket Sombrero en personaje, DataTable de cascos, replicación de mesh por HelmetId, widget C++ de menú.
+
+### Cambios clave
+
+#### 1. Fix Clipping — `TN_InteractableBase` + `TN_PickupInteractableBase`
+- **`Public/World/TN_InteractableBase.h`**: Nueva UPROPERTY `float MeshFloorOffset = 0.f` (`EditAnywhere, BlueprintReadWrite`). Permite ajuste per-instancia desde el editor.
+- **`Private/World/TN_InteractableBase.cpp`**: `BeginPlay` aplica `Mesh->SetRelativeLocation(FVector(0,0,MeshFloorOffset))` si el offset no es cero.
+- **`Private/World/TN_PickupInteractableBase.cpp`**: `InitializeFromInventoryItem` y `OnRep_PickupItem` usan `Mesh->CalcLocalBounds()` para auto-calcular `MeshFloorOffset = BoxExtent.Z * ScaleZ`. Pickups dinámicos (spawneados en runtime) se auto-ajustan siempre.
+- **Para pickups ya colocados en nivel**: ajustar `MeshFloorOffset` por instancia en Details, o usar End (snap to floor) en el editor.
+
+#### 2. Sistema de Cosméticos — Nuevo tipo `FTN_HelmetData`
+- **`Public/Core/TN_CosmeticsTypes.h`** (NUEVO): `USTRUCT FTN_HelmetData : FTableRowBase` con campos: `HelmetId`, `DisplayName`, `DisplayMesh` (UStaticMesh*), `Icon` (UTexture2D*), `MeshScale`, `MeshOffset`, `MeshRotation`. DataTable `DT_Helmets` debe crearse en `Content/Blueprints/Gameplay/Cosmetics/`.
+
+#### 3. Sistema de Cosméticos — DataTable en GameInstance
+- **`Public/Multiplayer/MP_GameInstance.h`**: Nueva UPROPERTY `TObjectPtr<UDataTable> HelmetDataTable` + getter público `GetHelmetDataTable()`. Asignar `DT_Helmets` en `BP_GameInstance → Class Defaults → Cosmetics`.
+
+#### 4. Sistema de Cosméticos — Replicación `OnRep_EquippedHelmetId`
+- **`Public/Core/TN_CoopPlayerState.h`**: `EquippedHelmetId` cambia de `Replicated` a `ReplicatedUsing = OnRep_EquippedHelmetId`.
+- **`Private/Core/TN_CoopPlayerState.cpp`**: `OnRep_EquippedHelmetId` → `GetPawn()` → cast a `ATortugaCharacter` → llama `UpdateHelmetMesh(EquippedHelmetId)`. Include de `TortugaCharacter.h`.
+
+#### 5. Sistema de Cosméticos — Socket Sombrero + Mesh en Personaje
+- **`Public/Player/TortugaCharacter.h`**:
+  - Include `Core/TN_CosmeticsTypes.h` y `UStaticMeshComponent` forward-declared.
+  - Nueva UPROPERTY `VisibleAnywhere UStaticMeshComponent* HelmetMeshComp`.
+  - Nueva función pública `BlueprintCallable UpdateHelmetMesh(FName HelmetId)`.
+  - Nuevo campo privado `TWeakObjectPtr<USceneComponent> SombreroSocket`.
+- **`Private/Player/TortugaCharacter.cpp`**:
+  - Includes añadidos: `StaticMeshComponent.h`, `Engine/DataTable.h`, `Core/TN_CosmeticsTypes.h`, `Multiplayer/MP_GameInstance.h`.
+  - Constructor: `HelmetMeshComp` creado adjunto a root, `NoCollision`, `bIsReplicated=false`, `HiddenInGame=true`.
+  - `BeginPlay`: busca `Sombrero` via `FindChildByName`, re-adjunta `HelmetMeshComp` al socket. Timer-for-next-tick aplica `UpdateHelmetMesh` desde `CoopPlayerState::EquippedHelmetId` (el PlayerState puede no estar disponible en el mismo frame de BeginPlay).
+  - `UpdateHelmetMesh`: obtiene `HelmetDataTable` desde `UMP_GameInstance`, lookup por `HelmetId`, aplica mesh/escala/offset/rotación/visibilidad.
+
+#### 6. Sistema de Cosméticos — Fix Desequipar + Apply en Servidor
+- **`Private/Player/MP_GamePlayerController.cpp`**:
+  - `ServerSetEquippedHelmet_Implementation`: permite `NAME_None` (desequipar). Tras setear `EquippedHelmetId` en PlayerState, llama `TurtleChar->UpdateHelmetMesh(HelmetId)` directamente (OnRep no dispara en authority).
+  - Nueva función `RequestUnequipHelmet()`: llama `GI->EquipHelmet(NAME_None)` + `ServerSetEquippedHelmet(NAME_None)`.
+  - Include de `Player/TortugaCharacter.h`.
+- **`Public/Player/MP_GamePlayerController.h`**: Declaración de `RequestUnequipHelmet()`.
+
+#### 7. Sistema de Cosméticos — Widget `UTN_CosmeticsMenuWidget` (NUEVO)
+- **`Public/UI/HUD/TN_CosmeticsMenuWidget.h`** y **`Private/UI/HUD/TN_CosmeticsMenuWidget.cpp`**: Base C++ del menú de cosméticos.
+  - Widgets `BindWidgetOptional`: `UnequipButton`, `CloseButton`, `HelmetGrid`.
+  - `NativeConstruct`: vincula botones + llama `RefreshHelmetGrid()`.
+  - `RefreshHelmetGrid()`: obtiene `UnlockedHelmetIds` de `GI` → dispara `OnHelmetGridRefreshed(Ids, CurrentEquipped)` (BlueprintImplementableEvent).
+  - `RequestEquip(FName)` / `RequestUnequip()`: llaman a `PC::RequestEquipHelmet` / `PC::RequestUnequipHelmet` + disparan `OnHelmetEquipped` localmente para feedback inmediato.
+  - `CloseMenu()`: oculta widget + restaura `FInputModeGameOnly` + foco al viewport.
+  - `GetHelmetData(FName, OutData)`: lookup en DT_Helmets para que el BP construya cada entrada del grid.
+  - `GetEquippedHelmetId()`: consulta `GI->GetEquippedHelmetId()`.
+
+### Pasos Editor tras compilar
+1. **DT_Helmets**: DataTable → Row Struct = `FTN_HelmetData`. Una fila por casco: asignar `HelmetId` (= RowName), `DisplayMesh`, `Icon`, `DisplayName`.
+2. **BP_GameInstance → Class Defaults → Cosmetics → HelmetDataTable**: asignar `DT_Helmets`.
+3. **BP_TortugaCharacter**: añadir SceneComponent hijo con nombre exacto `Sombrero`, posicionarlo sobre la cabeza de la tortuga.
+4. **WBP_CosmeticsMenu** (hijo de `UTN_CosmeticsMenuWidget`): implementar `OnHelmetGridRefreshed` y `OnHelmetEquipped`. Opcional: añadir `UnequipButton` y `CloseButton` con esos nombres exactos.
+5. **BP_GamePlayerController → Class Defaults → CosmeticsWidgetClass**: asignar `WBP_CosmeticsMenu`.
+6. **BP_CosmeticsStation** (hijo de `ATN_CosmeticsStationInteractable`) en el lobby: al interactuar abre el menú automáticamente.
+7. **Pickups en nivel**: seleccionar todos los pickup actors y ajustar `MeshFloorOffset` (Details) o pulsar `End` para snap to floor.
+
+### Networking
+- `EquippedHelmetId` ya replicado (DOREPLIFETIME sin cambio de condición). OnRep añadido.
+- `HelmetMeshComp`: `bIsReplicated=false` — solo cosmético local, driven por el `EquippedHelmetId` replicado.
+- Sin nuevas RPCs. Flujo: widget → `RequestEquipHelmet` → `ServerSetEquippedHelmet` (Server RPC ya existente) → `EquippedHelmetId` replicado → `OnRep_EquippedHelmetId` en clientes → `UpdateHelmetMesh`.
+
+### Pendientes
+1. Crear `DT_Helmets` con filas de prueba en el Editor.
+2. Añadir SceneComponent `Sombrero` en `BP_TortugaCharacter`.
+3. Crear `WBP_CosmeticsMenu` y diseñar el grid (evento `OnHelmetGridRefreshed`).
+4. Asignar `WBP_CosmeticsMenu` en `BP_GamePlayerController`.
+5. Colocar `BP_CosmeticsStation` en el lobby.
+
+```
+
+### Contexto
+- Pendiente de la sesión 4: "Considerar feedback visual/audio adicional para el canal de revive (partículas, sonido)."
+- Sistema DBNO/revive ya completo en lógica; faltaba feedback auditivo.
+
+### Cambios clave
+
+#### 1. `TortugaCharacter.h` — Nuevas UPROPERTYs y audio components
+- **Nuevas propiedades** (EditDefaultsOnly, categoría `DBNO|Audio`):
+  - `ReviveChannelSound` (`USoundBase*`): loop spatialized durante el canal de revive.
+  - `ReviveSuccessSound` (`USoundBase*`): one-shot spatialized al completar revive.
+  - `DBNOHeartbeatSound` (`USoundBase*`): loop local (no-spatialized) para el jugador DBNO.
+  - `ReviveAudioInnerRadius = 300cm`, `ReviveAudioOuterRadius = 2500cm`.
+- **Nuevos audio components** (private, lazy-init):
+  - `ReviveAudioComponent`: spatialized, proximity-attenuated (NaturalSound). Maneja channel + success sounds.
+  - `DBNOAudioComponent`: non-spatialized, `bIsUISound=true`. Solo el jugador local lo oye.
+- **Nuevas funciones privadas**: `EnsureReviveAudioComponent()`, `EnsureDBNOAudioComponent()`, `PlayReviveChannelSound()`, `StopReviveChannelSound()`, `PlayReviveSuccessSound()`, `PlayDBNOHeartbeatSound()`, `StopDBNOHeartbeatSound()`, `OnReviveAudioFinished()`, `OnDBNOAudioFinished()`.
+
+#### 2. `TortugaCharacter.cpp` — Implementación e integración
+- **Lazy-init**: misma arquitectura que `EmoteAudioComponent` — `NewObject<UAudioComponent>`, attach a root, `RegisterComponent()`.
+- **Puntos de integración**:
+  - `ApplyKnockdown()`: `PlayDBNOHeartbeatSound()` si `IsLocallyControlled()`.
+  - `RecoverFromKnockdown()`: `StopDBNOHeartbeatSound()` + `PlayReviveSuccessSound()` (en servidor, propagado via multicast).
+  - `OnRep_IsKnockedDown()`: heartbeat start/stop para clientes + success sound on recovery.
+  - `MulticastApplyKnockdownVisual(false)`: `PlayReviveSuccessSound()` en clientes remotos (spatialized).
+  - `TryStartReviveChannel()`: `PlayReviveChannelSound()`.
+  - `CancelReviveChannel()`: `StopReviveChannelSound()`.
+  - `EndPlay()`: cleanup de ambos audio components.
+- **Loop forzado**: `OnReviveAudioFinished` re-loopea si `bIsReviving == true`. `OnDBNOAudioFinished` re-loopea si `bIsKnockedDown && IsLocallyControlled()`.
+
+#### 3. `AGENTS.md` — Documentación actualizada
+- Nueva subsección "Audio feedback DBNO/Revive" bajo el sistema DBNO con todos los detalles de configuración.
+
+### Networking y rendimiento
+- Sin nuevas propiedades replicadas. Los audio components son puramente locales/cosméticos.
+- Lazy-init: no hay coste en partidas sin sonidos asignados.
+- Los callbacks `OnAudioFinished` solo disparan si hay audio reproduciéndose.
+
+### Pendientes
+1. Asignar assets de sonido en BP_TortugaCharacter → Class Defaults → DBNO|Audio.
+2. Crear widgets BP en WBP_PlayerHUD para indicador DBNO (bleedout bar) y barra de revive.
+3. Smoke test: validar flujo DeathZone → DBNO (heartbeat) → Emote (channel sound) → Revive (success sound).
+4. Smoke test: validar que si todos caen en DBNO, todos mueren y se muestran resultados.
+5. Considerar feedback visual adicional para el canal de revive (partículas VFX).

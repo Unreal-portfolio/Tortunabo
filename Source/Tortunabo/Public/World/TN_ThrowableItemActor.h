@@ -89,6 +89,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RollingFriction = 0.25f;
 
+protected:
+	/**
+	 * Aplica los datos de lanzamiento (escala, posición, velocidad) cuando están listos.
+	 * Virtual para que subclases (PufferFish) capturen OriginalScale tras la escala real.
+	 * Solo debe llamarse una vez gracias a bLaunchApplied.
+	 */
+	virtual void ApplyLaunchDataIfReady();
+
 private:
 	// Datos del ítem — servidor únicamente, sin replicar
 	FTN_InventoryItem SourceItem;
@@ -101,15 +109,12 @@ private:
 	FTN_ThrowLaunchData ThrowData;
 
 	bool bLaunchApplied  = false;
-	bool bPickupSpawned  = false;
 
 	/** Players already knocked down by this throw — prevents duplicate knockdowns. */
 	TSet<TWeakObjectPtr<ATortugaCharacter>> AlreadyHitPlayers;
 
 	UFUNCTION() void OnRep_ThrowData();
 
-	void ApplyLaunchDataIfReady();
-	void SpawnPickupAtLocation(const FVector& Location);
 
 	/** Golpe contra jugador → knockdown + spawn pickup. Superficie → rebota, no destruir. */
 	UFUNCTION()
@@ -120,4 +125,10 @@ private:
 	/** Proyectil se detuvo completamente → spawn pickup en posición final. */
 	UFUNCTION()
 	void OnProjectileStopped(const FHitResult& ImpactResult);
+
+protected:
+	/** Spawna un pickup en la posición dada. Accesible para clases hijas (PufferFish). */
+	void SpawnPickupAtLocation(const FVector& Location);
+
+	bool bPickupSpawned  = false;
 };

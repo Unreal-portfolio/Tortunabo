@@ -36,7 +36,7 @@ void ATN_DeathZoneVolume::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* Ot
 		return;
 	}
 
-	if (PendingDeathTimers.Contains(PC))
+	if (PendingDeathRemaining.Contains(PC))
 	{
 		return;
 	}
@@ -47,11 +47,12 @@ void ATN_DeathZoneVolume::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* Ot
 		TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
 	}
 
-	FTimerHandle TimerHandle;
-	FTimerDelegate TimerDelegate;
-	TimerDelegate.BindUObject(this, &ATN_DeathZoneVolume::TickPlayerCountdown, PC);
-	GetWorldTimerManager().SetTimer(TimerHandle, TimerDelegate, CountdownTickInterval, true);
-	PendingDeathTimers.Add(PC, TimerHandle);
+	// Arrancar el timer compartido si no está activo
+	if (!GetWorldTimerManager().IsTimerActive(SharedCountdownTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(SharedCountdownTimerHandle, this,
+			&ATN_DeathZoneVolume::TickAllCountdowns, CountdownTickInterval, true);
+	}
 }
 
 void ATN_DeathZoneVolume::OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor)
@@ -68,16 +69,16 @@ void ATN_DeathZoneVolume::OnZoneEndOverlap(AActor* OverlappedActor, AActor* Othe
 		return;
 	}
 
-	if (FTimerHandle* TimerHandle = PendingDeathTimers.Find(PC))
-	{
-		GetWorldTimerManager().ClearTimer(*TimerHandle);
-		PendingDeathTimers.Remove(PC);
-	}
-
 	PendingDeathRemaining.Remove(PC);
 	if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->DeathZoneTimeRemaining = -1.f;
+	}
+
+	// Detener el timer compartido si no queda nadie
+	if (PendingDeathRemaining.Num() == 0)
+	{
+		GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
 	}
 }
 
@@ -90,43 +91,62 @@ void ATN_DeathZoneVolume::HandlePlayerDeath(APlayerController* PlayerController)
 
 	if (ATN_RunGameMode* RunGameMode = ResolveRunGameMode())
 	{
-		RunGameMode->MarkPlayerDead(PlayerController);
+		// Enter DBNO instead of killing immediately — teammates can revive
+		RunGameMode->EnterDBNO(PlayerController);
 	}
 
-	PendingDeathTimers.Remove(PlayerController);
 	PendingDeathRemaining.Remove(PlayerController);
 	if (ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->DeathZoneTimeRemaining = -1.f;
 	}
+
+	// Detener el timer compartido si no queda nadie
+	if (PendingDeathRemaining.Num() == 0)
+	{
+		GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
+	}
 }
 
-void ATN_DeathZoneVolume::TickPlayerCountdown(APlayerController* PlayerController)
+void ATN_DeathZoneVolume::TickAllCountdowns()
 {
-	if (!HasAuthority() || !PlayerController)
+	if (!HasAuthority())
 	{
 		return;
 	}
 
-	float* Remaining = PendingDeathRemaining.Find(PlayerController);
-	if (!Remaining)
-	{
-		return;
-	}
+	// Iterar sobre una copia de las claves para poder modificar el map durante el loop
+	TArray<TWeakObjectPtr<APlayerController>> Keys;
+	PendingDeathRemaining.GetKeys(Keys);
 
-	*Remaining = FMath::Max(0.f, *Remaining - CountdownTickInterval);
-	if (ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>())
+	for (const TWeakObjectPtr<APlayerController>& WeakPC : Keys)
 	{
-		TNPS->DeathZoneTimeRemaining = *Remaining;
-	}
-
-	if (*Remaining <= KINDA_SMALL_NUMBER)
-	{
-		if (FTimerHandle* TimerHandle = PendingDeathTimers.Find(PlayerController))
+		APlayerController* PC = WeakPC.Get();
+		if (!PC)
 		{
-			GetWorldTimerManager().ClearTimer(*TimerHandle);
+			PendingDeathRemaining.Remove(WeakPC);
+			continue;
 		}
-		HandlePlayerDeath(PlayerController);
+
+		float* Remaining = PendingDeathRemaining.Find(WeakPC);
+		if (!Remaining) { continue; }
+
+		*Remaining = FMath::Max(0.f, *Remaining - CountdownTickInterval);
+		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
+		{
+			TNPS->DeathZoneTimeRemaining = *Remaining;
+		}
+
+		if (*Remaining <= KINDA_SMALL_NUMBER)
+		{
+			HandlePlayerDeath(PC);
+		}
+	}
+
+	// Si tras procesar todos no queda nadie, detener el timer
+	if (PendingDeathRemaining.Num() == 0)
+	{
+		GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
 	}
 }
 
