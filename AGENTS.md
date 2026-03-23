@@ -19,7 +19,10 @@
 - `Public/Core`, `Private/Core`: estado replicado, tipos de flujo e inventario (`TN_CoopGameState`, `TN_CoopPlayerState`, `TN_MatchFlowTypes`, `TN_InventoryTypes`).
 - `Public/Lobby`, `Private/Lobby`: cuartel general y zona ready (`TN_HQGameMode`, `TN_LobbyReadyZone`).
 - `Public/Game`, `Private/Game`: reglas de la carrera (`TN_RunGameMode`).
-- `Public/World`, `Private/World`: volúmenes de mundo e interactuables (`TN_FinishLineVolume`, `TN_DeathZoneVolume`, `TN_InteractableBase`, `TN_DirectInteractableBase`, `TN_PickupInteractableBase`, `TN_StaminaBoostPickup`, `TN_ThrowableItemActor`, `TN_CosmeticsStationInteractable`).
+- `Public/World`, `Private/World`: volúmenes de mundo e interactuables (`TN_FinishLineVolume`, `TN_DeathZoneVolume`, `TN_InteractableBase`, `TN_DirectInteractableBase`, `TN_PickupInteractableBase`, `TN_StaminaBoostPickup`, `TN_ThrowableItemActor`, `TN_CosmeticsStationInteractable`, `TN_ButtonInteractable`, `TN_ItemSpawnZone`, `TN_PufferFishActor`).
+  - **`TN_ButtonInteractable`** (hereda `TN_DirectInteractableBase`): mueve un actor `MoveTarget` a través de waypoints al interactuar. `CurrentWaypointIndex` replicado; `MoveTarget` debe tener `SetReplicateMovement(true)`. Multicast unreliable para feedback cosmético (sonido/VFX en BP).
+  - **`TN_ItemSpawnZone`**: actor (BeginPlay server-only) que spawnea ítems aleatorios dentro de un `UBoxComponent`. Configurar `ItemDataTable`, `ItemRowNames`, `SpawnCount` y `MinSpacing` por instancia en el nivel.
+  - **`TN_PufferFishActor`** (hereda `TN_ThrowableItemActor`): throwable especial que tras un delay aleatorio (`InflateDelayMin`/`Max`) se infla (`InflateScale`, `InflateRadius`, `InflatePushForce`) empujando y potencialmente knockeando a jugadores cercanos, luego se desinfla. `PufferState` replicado con `OnRep_PufferState` para visual en clientes.
 - `Public/Player`, `Private/Player`: personaje/control de jugador y componentes (`TortugaCharacter`, `TortugaFirstPersonCharacter`, `MP_GamePlayerController`, `TN_StaminaComponent`, `TN_InventoryComponent`).
 - `Public/Multiplayer`, `Private/Multiplayer`: sesiones Steam, lifecycle de sesión y cosméticos persistentes (`MP_GameInstance`, `TN_CosmeticSaveGame`).
 - `Public/Menu`, `Private/Menu` y `Public/UI/*`, `Private/UI/*`: menú principal, HUDs, loading e interacción (`MP_MainMenuWidget`, `MP_MenuGameMode`, `MP_MenuPlayerController`, `TN_CoopFlowHUDWidget`, `TN_LoadingScreenWidget`, `TN_InteractPromptWidget`, `VoiceIndicatorWidget`, `TN_PlayerHUDWidget`).
@@ -59,6 +62,7 @@
 - Crate table con pesos configurable en `HelmetCrateTable`.
 - `MP_GamePlayerController` sincroniza helms al servidor via `ServerSyncUnlockedHelmets`/`ServerSetEquippedHelmet`.
 - `TN_CosmeticsStationInteractable` en el lobby abre el menú de cosméticos via Client RPC.
+- **Race condition OnRep vs BeginPlay**: `OnRep_EquippedHelmetId` en PlayerState llama `GetPawn()` que puede ser null si el PlayerState llega antes de que se posea el pawn. Fix: `ATortugaCharacter::OnRep_PlayerState()` (override) re-aplica el casco al recibir el PlayerState tardío, cubriendo el caso donde el timer `SetTimerForNextTick` de BeginPlay ya expiró sin datos válidos.
 
 ## Stamina system (`TN_StaminaComponent`)
 - `MaxStamina = 200.0f` (configurable desde Blueprint via `BlueprintReadWrite`).
@@ -136,13 +140,25 @@
 
 - `TN_CoopGameState` centraliza todo el estado replicado de partida: `MatchFlowState`, `ReadyPlayers`, `ConnectedPlayers`, `PlayersInStartZone`, `ExpectedPlayers`, `CountdownValue`, `ServerMatchElapsedTime`, `FinishedPlayers`.
 - **Patrón crítico**: `OnRep_*` no dispara en la máquina que posee la variable (listen-server). Los game modes llaman `BroadcastFlowStateChange()` tras cambiar `MatchFlowState` para que el listen-server local también reciba la notificación via `OnMatchFlowStateChanged` delegate.
-- `TN_CoopPlayerState` replica por jugador: `bIsInReadyZone`, `bHasFinishedRun`, `bIsAlive`, `DeathZoneTimeRemaining`, `EquippedHelmetId`, `FinishTimeSeconds`, `FinishRank`.
+- `TN_CoopPlayerState` replica por jugador: `bIsInReadyZone`, `bHasFinishedRun`, `bIsAlive`, `DeathZoneTimeRemaining`, `EquippedHelmetId`, `FinishTimeSeconds`, `FinishRank`, **`bIsEliminated`** (true cuando el jugador murió en vez de llegar a la meta — reset a false en `PostLogin` de cada mapa).
 
 ## Results y espectador
 - Al terminar la carrera o morir, `TN_RunGameMode` llama `MarkPlayerFinished()`/`MarkPlayerDead()` → asigna rank/tiempo en `TN_CoopPlayerState` → mueve al jugador a espectador via `MovePlayerToSpectator()`.
-- `MP_GamePlayerController` ofrece `EnterSpectateMode()`, `SpectateNextPlayer()`, `SpectatePreviousPlayer()` para navegar entre jugadores vivos.
+- **`bIsEliminated`** (Replicated, `TN_CoopPlayerState`): `true` si el jugador murió en vez de terminar. `MarkPlayerDead` asigna `FinishRank = NextFinishRank++` Y `bIsEliminated = true`. La UI lee `bIsEliminated` para mostrar "ELIMINADO" y `FinishRank` para el orden en resultados. **No usar `FinishRank == 0` para detectar eliminados** — todos tienen rank ≥ 1.
+- `MP_GamePlayerController` ofrece `EnterSpectateMode()`, `SpectateNextPlayer()`, `SpectatePreviousPlayer()` para navegar entre jugadores.
+- **Candidatos de espectador**: `SpectateByDirection` incluye a todos los jugadores que **tienen pawn activo** (runners vivos + finishers con pawn), excluyendo muertos (pawn destruido en `MarkPlayerDead`) y al propio jugador. No filtra por `bHasFinishedRun` — finishers son espectables.
 - `TN_CoopFlowHUDWidget` detecta `ETNMatchFlowState::Results` y muestra automáticamente el panel de resultados con rank, tiempo y countdown de vuelta a lobby. Ver `Docs/GUIA_PANTALLA_RESULTADOS.md` para la jerarquía de widgets requerida.
 - Countdown de resultados configurable en `TN_RunGameMode::ResultsDurationSeconds` (default 8s).
+
+## Quick Chat (Rocket League style)
+- `FTN_QuickChatEntry { SenderName, MessageID, Timestamp }` — struct en `TN_MatchFlowTypes.h`.
+- `ATN_CoopGameState::QuickChatHistory` — `TArray<FTN_QuickChatEntry>` (max 10, Replicated + OnRep). `AddQuickChatEntry()` (server-only) añade un entry y hace broadcast local; `OnRep_QuickChatHistory` hace broadcast en clientes. Delegate: `OnQuickChatReceived(Entry)` (BlueprintAssignable).
+- `AMP_GamePlayerController::SendQuickChat(int32 MessageID)` — callable desde Blueprint. Llama `ServerSendQuickChat` (Reliable RPC). Rate limit: 1 mensaje / `QuickChatCooldownSeconds` (default 2s) por PC en servidor. Valida `MessageID` contra `QuickChatMessages.Num()`.
+- `QuickChatMessages` — `TArray<FString>` con 8 mensajes predefinidos, `EditDefaultsOnly + BlueprintReadWrite`, customizable en `BP_GamePlayerController → Class Defaults`. Default: "¡Vamos!", "Buen juego", "Lo siento", "Gracias", "¡Necesito ayuda!", "¡Cuidado!", "Nos vemos en la meta", "¡Eso estuvo bien!".
+- **UI**: Bind `ATN_CoopGameState::OnQuickChatReceived` en `TN_CoopFlowHUDWidget` o en el BP del HUD. Cada entry contiene `SenderName` + índice `MessageID` (la UI localiza el string desde el array del PC local).
+
+## Colisión de componentes del personaje
+- La `Cola` (SceneComponent hijo en `BP_TortugaCharacter`) puede empujar a otros jugadores si sus meshes hijos tienen colisión con el canal Pawn. Fix aplicado en `ATortugaCharacter::BeginPlay`: tras encontrar el componente Cola por nombre, itera sus hijos con `GetChildrenComponents(true)` y setea `SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore)` en cada `UPrimitiveComponent`.
 
 ## Death zones
 - `TN_DeathZoneVolume` hereda `ATriggerVolume`. No mata instantáneamente: usa un countdown por jugador (`SecondsInsideToDie`, default 3s) con ticks cada `CountdownTickInterval` (default 0.1s).
@@ -195,17 +211,18 @@
 - `TN_InteractableBase` (Abstract): base con mesh, prompt 3D (`TN_InteractPromptWidget` via `UWidgetComponent`), distancia configurable y `bInteractionEnabled` replicado. Hook de extensión: `OnInteracted` (`BlueprintNativeEvent`).
 - `TN_DirectInteractableBase`: interacción directa con cooldown. Hook: `OnDirectInteraction` (`BlueprintImplementableEvent`).
 - `TN_PickupInteractableBase`: recoge item al inventario, replica `bTaken`. Hook: `OnPickedUp` (`BlueprintImplementableEvent`). Soporta inicialización runtime via `InitializeFromInventoryItem()`.
-- `TN_ThrowableItemActor`: proyectil con `UProjectileMovementComponent`. Usa `SetReplicateMovement(true)`: el servidor ejecuta la física y los clientes reciben posición replicada. Datos de lanzamiento agrupados en `FTN_ThrowLaunchData` (struct replicado). Al golpear un jugador, aplica knockdown pero la bola **rebota** (no se destruye); `AlreadyHitPlayers` previene knockdowns duplicados en el mismo lanzamiento. Pickup se genera al detenerse (`OnProjectileStopped`) o expirar (`LifeSpanExpired`).
+- `TN_ThrowableItemActor`: proyectil con `UProjectileMovementComponent`. Usa `SetReplicateMovement(true)`: el servidor ejecuta la física y los clientes reciben posición replicada. Datos de lanzamiento agrupados en `FTN_ThrowLaunchData` (struct replicado). **`FTN_ThrowLaunchData` incluye `EquippedMesh` (TObjectPtr<UStaticMesh>)** para que los jugadores que se unan tarde (JIP) vean el mesh correcto en vez del placeholder gigante. Al golpear un jugador, aplica knockdown pero la bola **rebota** (no se destruye); `AlreadyHitPlayers` previene knockdowns duplicados en el mismo lanzamiento. Pickup se genera al detenerse (`OnProjectileStopped`) o expirar (`LifeSpanExpired`). Al detenerse, la bola pasa a `DORM_DormantAll` para no consumir bandwidth de red.
 
 ## VOIP — proximidad y seguridad en shutdown
 - `ProximityVoiceComponent` captura audio con `FAudioCaptureSynth` (WASAPI en Windows).
 - **Atenuación por distancia**: `PlaybackAudioComponent` usa `bOverrideAttenuation` con `InnerRadius` (300cm = 3m, volumen pleno) y `OuterRadius` (2500cm = 25m, silencio). `FalloffMode = NaturalSound`. `bAlwaysPlay = false` permite que UE descarte voces lejanas.
 - **VOIP nativo desactivado**: `[Voice] bEnabled=false` en `DefaultEngine.ini`. Sin esto, UE captura/transmite audio en paralelo y se escucha doble en clientes.
 - **Bug UE 5.6**: los handles WASAPI internos del synth pueden invalidarse (`INVALID_HANDLE_VALUE`) durante el ciclo de vida del mundo. Tanto `StopCapturing()` como el destructor intentan usar esos handles y causan `ACCESS_VIOLATION`. **Nunca** llamar a ninguno de los dos.
-- **Patrón de shutdown proactivo**: antes de `ServerTravel`/`ClientTravel`, los GameModes y `MP_GameInstance` llaman `UProximityVoiceComponent::ShutdownAllCapture(World)`.
-- `PrepareForLevelTransition()` llama `CleanupRuntimeResources()` que hace `AudioCaptureSynth.Release()` (orphan sin tocar internals), limpia playback/UI, y marca el componente como cleaned up.
-- `CleanupRuntimeResources` **siempre** usa `Release()` para el capture synth, incluso en `EndPlay(Destroyed)` durante gameplay. El leak es ~KB por destrucción y el SO lo recoge al cerrar proceso.
-- Safety net en `MP_GameInstance::HandlePreLoadMap` captura cualquier transición de mapa no cubierta explícitamente.
+- **Patrón de shutdown validado (despawn-before-travel)**: antes de `ServerTravel`/`ClientTravel`, los GameModes **destruyen todos los Pawns** (`Pawn->Destroy()` para cada PC conectado). `EndPlay(Destroyed)` dispara `CleanupRuntimeResources(false)` **mientras WASAPI está todavía activo** → cleanup seguro sin crash. Esto reemplaza el antiguo patrón de `ShutdownAllCapture` directo.
+  - `HandlePreLoadMap` en `MP_GameInstance` sigue llamando `ShutdownAllCapture` como red de seguridad, pero con los Pawns ya destruidos, todos los componentes tienen `bRuntimeResourcesCleanedUp=true` → la llamada es un no-op seguro.
+  - **NO llamar `ShutdownAllCapture` directamente desde GameModes** — causar que fire con WASAPI en estado incierto produce `ACCESS_VIOLATION writing 0x24` o `reading 0xffffffffffffffff`.
+- `CleanupRuntimeResources` **siempre** usa `Release()` para el capture synth (no destructor). El leak es ~KB por sesión y el SO lo recupera al cerrar el proceso.
+- Safety net en `MP_GameInstance::HandlePreLoadMap` captura cualquier transición no cubierta explícitamente.
 - `EndPlay` con `bRuntimeResourcesCleanedUp == true` es un no-op seguro.
 
 ## Workflows prácticos

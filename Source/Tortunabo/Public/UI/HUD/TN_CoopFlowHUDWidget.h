@@ -6,6 +6,7 @@
 #include "TN_CoopFlowHUDWidget.generated.h"
 
 class UTextBlock;
+class UTexture2D;
 class UVerticalBox;
 class UWidget;
 class ATN_CoopGameState;
@@ -18,6 +19,7 @@ class TORTUNABO_API UTN_CoopFlowHUDWidget : public UUserWidget
 
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	// ── Lobby / In-progress status strip ──────────────────────────────────────
@@ -60,9 +62,19 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Flow")
 	void OnFlowStateChanged(ETNMatchFlowState NewState);
 
+	/** Hook puramente visual para pintar una línea nueva en el feed de quick chat. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "QuickChat")
+	void OnQuickChatEntryReceived(int32 Sequence, const FText& SenderName, const FText& MessageText, UTexture2D* Icon, float ServerTimeSeconds);
+
 private:
 	void EnsureRuntimeWidgets();
 	void RefreshTexts();
+	void BindQuickChat(ATN_CoopGameState* GameState);
+	void UnbindQuickChat();
+	void ReplayQuickChatHistory(const ATN_CoopGameState* GameState);
+
+	UFUNCTION()
+	void HandleQuickChatReceived(const FTN_QuickChatEntry& Entry);
 
 	// ── Status strip helpers ───────────────────────────────────────────────────
 	FText BuildPrimaryText(const ATN_CoopGameState* GameState) const;
@@ -83,4 +95,9 @@ private:
 	ETNMatchFlowState LastKnownFlowState = ETNMatchFlowState::WaitingForPlayers;
 	bool bFlowStateInitialized = false;
 	bool bResultsVisible       = false;
+	int32 LastQuickChatSequenceSeen = 0;
+	bool bQuickChatHistoryReplayed = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ATN_CoopGameState> BoundQuickChatGameState;
 };

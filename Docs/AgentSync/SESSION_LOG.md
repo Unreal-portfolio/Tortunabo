@@ -523,3 +523,117 @@
 3. Smoke test: validar flujo DeathZone → DBNO (heartbeat) → Emote (channel sound) → Revive (success sound).
 4. Smoke test: validar que si todos caen en DBNO, todos mueren y se muestran resultados.
 5. Considerar feedback visual adicional para el canal de revive (partículas VFX).
+
+## 2026-03-22 - Sistema radial de Emotes + Quick Chat estilo GTA
+
+### Contexto
+- Se pidió reemplazar la selección por múltiples inputs discretos con dos ruedas radiales hold-to-open: una para emotes y otra para quick chat.
+- Requisito clave: lógica completa en C++, soporte mouse+gamepad, multiplayer server-authoritative, sin spam de RPCs ni replicación por frame.
+
+### Cambios clave
+
+#### 1. UI radial base reutilizable
+- Nuevos archivos:
+  - `Source/Tortunabo/Public/UI/HUD/TN_RadialWheelTypes.h`
+  - `Source/Tortunabo/Public/UI/HUD/TN_RadialWheelWidgetBase.h`
+  - `Source/Tortunabo/Private/UI/HUD/TN_RadialWheelWidgetBase.cpp`
+- `UTN_RadialWheelWidgetBase` calcula selección angular en C++ (`atan2`, deadzone, confirmación) y expone solo eventos/hooks BP para renderizar highlight, iconos y animaciones.
+- La actualización del vector de selección no usa tick global: se alimenta desde un timer del `PlayerController` solo mientras la rueda está abierta.
+
+#### 2. Catálogos editables por DataAsset
+- Nuevos archivos:
+  - `Source/Tortunabo/Public/UI/HUD/TN_EmoteWheelDataAsset.h`
+  - `Source/Tortunabo/Private/UI/HUD/TN_EmoteWheelDataAsset.cpp`
+  - `Source/Tortunabo/Public/UI/HUD/TN_QuickChatWheelDataAsset.h`
+  - `Source/Tortunabo/Private/UI/HUD/TN_QuickChatWheelDataAsset.cpp`
+- Ambos catálogos validan IDs únicos en editor (`IsDataValid`) y generan una vista compacta para la rueda (`FTN_RadialWheelEntryView`).
+- El orden visual queda desacoplado del networking: la rueda pinta según el array del DataAsset, pero la red solo usa IDs compactos (`uint8`).
+
+#### 3. `MP_GamePlayerController` — apertura/cierre de ruedas e input mínimo
+- `Source/Tortunabo/Public/Player/MP_GamePlayerController.h`
+- `Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp`
+- Nuevas soft references por defecto:
+  - `IA_OpenEmoteWheel`
+  - `IA_OpenChatWheel`
+  - `IA_RadialNavigate`
+- El controller ahora:
+  - crea `WBP` de rueda radial (`EmoteWheelWidgetClass`, `QuickChatWheelWidgetClass`)
+  - abre la rueda en `Started`
+  - confirma al soltar (`Completed/Canceled`)
+  - usa mouse (cursor vs centro viewport) o stick (`Axis2D`) sin crear 10 acciones de emote/chat
+  - bloquea solo el look mientras la rueda está abierta, restaurando `GameOnly` al cerrar
+- El update de selección usa `SetTimer(..., 1/60s, true)` únicamente mientras la rueda está visible.
+
+#### 4. Quick Chat — red compacta + JIP-friendly
+- `Source/Tortunabo/Public/Core/TN_MatchFlowTypes.h`
+- `Source/Tortunabo/Public/Core/TN_CoopGameState.h`
+- `Source/Tortunabo/Private/Core/TN_CoopGameState.cpp`
+- `FTN_QuickChatEntry` deja de replicar `SenderName` y ahora usa:
+  - `Sequence` (`uint16`)
+  - `SenderPlayerId` (`uint16`)
+  - `MessageID` (`uint8`)
+  - `ServerTime` (`float`)
+- `ATN_CoopGameState` mantiene historial rolling de 32 mensajes y en `OnRep_QuickChatHistory` hace broadcast incremental por secuencia para que la UI pueda appendear mensajes nuevos y para que join-in-progress reciba el buffer actual.
+- `AMP_GamePlayerController::ResolveQuickChatDisplayData()` resuelve localmente nombre+texto+icono usando `GameState + QuickChatWheelDataAsset`.
+
+#### 5. Rate limiting server-side por jugador
+- `Source/Tortunabo/Public/Core/TN_CoopPlayerState.h`
+- `Source/Tortunabo/Private/Core/TN_CoopPlayerState.cpp`
+- Nuevos cooldown helpers server-only:
+  - `CanServerSendQuickChat/MarkServerQuickChatSent`
+  - `CanServerPlayEmote/MarkServerEmotePlayed`
+- El estado anti-spam vive en `PlayerState`, no en UI ni en GameMode, así funciona igual en listen y dedicated.
+
+#### 6. `TortugaCharacter` — integración segura con rueda de emotes
+- `Source/Tortunabo/Public/Player/TortugaCharacter.h`
+- `Source/Tortunabo/Private/Player/TortugaCharacter.cpp`
+- Nuevo `EmoteWheelDataAsset` para validar IDs/cooldowns desde el mismo personaje.
+- `RequestWheelEmote(uint8)` reutiliza el backend existente (`TriggerEmote` / `ServerSetEmote`) para no romper revive DBNO ni la replicación actual de `ReplicatedEmoteIndex`.
+- `ServerSetEmote_Implementation` ahora valida en servidor:
+  - ID válido en catálogo
+  - jugador vivo / no DBNO / no knockdown
+  - cooldown por emote en `TN_CoopPlayerState`
+- Se añadió `ClientRejectEmote` para corregir la predicción local si el servidor rechaza el emote (evita que el owner se quede viendo un emote inválido).
+
+### Networking y rendimiento
+- Sin replicación por frame de hover/selección radial: solo se replica el resultado confirmado.
+- Quick chat usa `Reliable Server RPC + historial replicado`, apropiado porque debe llegar y soportar join-in-progress.
+- Emotes reutilizan el estado replicado existente del personaje; no se añadió multicast extra para cada hover ni selección intermedia.
+- El timer 60 Hz existe solo con la rueda abierta; coste cero en gameplay normal.
+
+### Pendientes
+1. Crear assets Enhanced Input en `/Game/Blueprints/Gameplay/Controls/`: `IA_OpenEmoteWheel`, `IA_OpenChatWheel`, `IA_RadialNavigate`.
+2. Crear `WBP_EmoteWheel` y `WBP_QuickChatWheel` heredando de `UTN_RadialWheelWidgetBase`.
+3. Asignar `EmoteWheelDataAsset`, `QuickChatWheelDataAsset` y widget classes en `BP_GamePlayerController`.
+4. Smoke test con 2-4 jugadores: host/listen + dedicated PIE, deadzone cancel, gamepad stick, join-in-progress quick chat history.
+5. Si más adelante los emotes migran de blockout a `AnimMontage`, reutilizar `FTN_EmoteWheelEntry::Montage` sin tocar la rueda ni el networking.
+
+## 2026-03-23 - Ruedas radiales: hook C++ de quick chat al HUD + soporte de AnimMontage en emotes
+
+### Contexto
+- El backend radial ya existía en C++, pero quedaban dos huecos de integración para dejar la solución alineada con la arquitectura pedida:
+  1. El `HUD` aún no consumía en C++ el historial replicado de quick chat para alimentar un feed visual sin lógica en Blueprint.
+  2. El catálogo de emotes ya exponía `UAnimMontage* Montage`, pero el personaje todavía no lo usaba al arrancar/cancelar emotes desde la rueda.
+
+### Cambios clave
+- `Source/Tortunabo/Public/UI/HUD/TN_CoopFlowHUDWidget.h`
+- `Source/Tortunabo/Private/UI/HUD/TN_CoopFlowHUDWidget.cpp`
+  - Nuevo binding/unbinding automático a `ATN_CoopGameState::OnQuickChatReceived`.
+  - Replay del historial `QuickChatHistory` al crear/recrear el HUD (importante tras non-seamless travel y join-in-progress).
+  - Nuevo evento visual `OnQuickChatEntryReceived(...)` para que el WBP solo pinte líneas/iconos, sin lógica de red ni parsing.
+- `Source/Tortunabo/Public/Player/TortugaCharacter.h`
+- `Source/Tortunabo/Private/Player/TortugaCharacter.cpp`
+  - Nuevos helpers `ResolveWheelEmoteEntry`, `PlayWheelEmoteMontage` y `StopWheelEmoteMontage`.
+  - `StartEmoteLocally()` ahora reinicia el montage configurado en el `DataAsset` si existe.
+  - `CancelEmoteLocalOnly()` hace stop con blend-out del montage del emote activo, manteniendo el blockout actual como fallback visual.
+
+### Networking y rendimiento
+- Quick chat sigue sin RPC spam: solo `ServerSendQuickChat` al confirmar y luego historial replicado compacto en `GameState`.
+- El feed del HUD se reconstruye desde el buffer replicado; no hay polling adicional por frame aparte del refresh ya existente del widget.
+- Emotes no replican montages ni assets: solo `EmoteID`/estado existente; cada cliente resuelve localmente el montage desde su `DataAsset`.
+
+### Pendientes
+1. Crear en UMG el feed visual que consuma `OnQuickChatEntryReceived`.
+2. Asignar montages reales en `DA_EmoteWheelCatalog` si se quiere reemplazar el blockout por animación de personaje.
+3. Smoke test de listen/dedicated con host + cliente: abrir rueda, confirmar chat, verificar replay del historial tras travel y que el montage se vea en proxies remotos.
+

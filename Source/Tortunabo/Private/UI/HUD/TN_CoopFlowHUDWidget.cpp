@@ -7,6 +7,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Components/Widget.h"
 #include "GameFramework/PlayerController.h"
+#include "Player/MP_GamePlayerController.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lifecycle
@@ -24,6 +25,12 @@ void UTN_CoopFlowHUDWidget::NativeConstruct()
 	}
 
 	RefreshTexts();
+}
+
+void UTN_CoopFlowHUDWidget::NativeDestruct()
+{
+	UnbindQuickChat();
+	Super::NativeDestruct();
 }
 
 void UTN_CoopFlowHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -103,15 +110,18 @@ void UTN_CoopFlowHUDWidget::RefreshTexts()
 		return;
 	}
 
-	const ATN_CoopGameState* GameState = PC->GetWorld()
+	ATN_CoopGameState* GameState = PC->GetWorld()
 		? PC->GetWorld()->GetGameState<ATN_CoopGameState>()
 		: nullptr;
 
 	if (!GameState)
 	{
+		UnbindQuickChat();
 		SetVisibility(ESlateVisibility::Collapsed);
 		return;
 	}
+
+	BindQuickChat(GameState);
 
 	// ── Detect state change ──────────────────────────────────────────────────
 	if (!bFlowStateInitialized || GameState->MatchFlowState != LastKnownFlowState)
@@ -137,6 +147,91 @@ void UTN_CoopFlowHUDWidget::RefreshTexts()
 	{
 		RefreshResultsCountdown(GameState);
 	}
+}
+
+void UTN_CoopFlowHUDWidget::BindQuickChat(ATN_CoopGameState* GameState)
+{
+	if (!GameState)
+	{
+		UnbindQuickChat();
+		return;
+	}
+
+	if (BoundQuickChatGameState == GameState)
+	{
+		if (!bQuickChatHistoryReplayed)
+		{
+			ReplayQuickChatHistory(GameState);
+		}
+		return;
+	}
+
+	UnbindQuickChat();
+	BoundQuickChatGameState = GameState;
+	GameState->OnQuickChatReceived.AddUniqueDynamic(this, &UTN_CoopFlowHUDWidget::HandleQuickChatReceived);
+	ReplayQuickChatHistory(GameState);
+}
+
+void UTN_CoopFlowHUDWidget::UnbindQuickChat()
+{
+	if (BoundQuickChatGameState)
+	{
+		BoundQuickChatGameState->OnQuickChatReceived.RemoveDynamic(this, &UTN_CoopFlowHUDWidget::HandleQuickChatReceived);
+		BoundQuickChatGameState = nullptr;
+	}
+
+	bQuickChatHistoryReplayed = false;
+	LastQuickChatSequenceSeen = 0;
+}
+
+void UTN_CoopFlowHUDWidget::ReplayQuickChatHistory(const ATN_CoopGameState* GameState)
+{
+	if (!GameState)
+	{
+		return;
+	}
+
+	for (const FTN_QuickChatEntry& Entry : GameState->QuickChatHistory)
+	{
+		HandleQuickChatReceived(Entry);
+	}
+
+	bQuickChatHistoryReplayed = true;
+}
+
+void UTN_CoopFlowHUDWidget::HandleQuickChatReceived(const FTN_QuickChatEntry& Entry)
+{
+	if (Entry.Sequence <= LastQuickChatSequenceSeen)
+	{
+		return;
+	}
+
+	LastQuickChatSequenceSeen = Entry.Sequence;
+
+	FText SenderName = FText::GetEmpty();
+	FText MessageText = FText::GetEmpty();
+	UTexture2D* Icon = nullptr;
+
+	bool bResolved = false;
+	if (const AMP_GamePlayerController* PC = Cast<AMP_GamePlayerController>(GetOwningPlayer()))
+	{
+		bResolved = PC->ResolveQuickChatDisplayData(Entry, SenderName, MessageText, Icon);
+	}
+
+	if (!bResolved)
+	{
+		if (BoundQuickChatGameState)
+		{
+			SenderName = BoundQuickChatGameState->ResolveQuickChatSenderName(Entry.SenderPlayerId);
+		}
+
+		if (MessageText.IsEmpty())
+		{
+			MessageText = FText::FromString(FString::Printf(TEXT("Mensaje #%d"), static_cast<int32>(Entry.MessageID)));
+		}
+	}
+
+	OnQuickChatEntryReceived(Entry.Sequence, SenderName, MessageText, Icon, Entry.ServerTime);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -84,6 +84,7 @@ void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const
 	ThrowData.SpawnLocation  = SpawnLocation;
 	ThrowData.LaunchVelocity = InitialVelocity;
 	ThrowData.MeshScale      = SafeScale;
+	ThrowData.EquippedMesh   = SourceItem.EquippedMesh;  // Fix JIP: replicate mesh with the struct
 	ThrowData.bReady         = true;
 	ApplyLaunchDataIfReady();
 }
@@ -103,6 +104,12 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 	if (!ThrowData.bReady || bLaunchApplied)
 	{
 		return;
+	}
+
+	// Apply the replicated mesh first so JIP clients see the correct asset instead of the placeholder.
+	if (ThrowData.EquippedMesh)
+	{
+		Mesh->SetStaticMesh(ThrowData.EquippedMesh);
 	}
 
 	if (!ThrowData.MeshScale.IsNearlyZero())
@@ -198,6 +205,9 @@ void ATN_ThrowableItemActor::OnProjectileStopped(const FHitResult& ImpactResult)
 		StopLocation.X, StopLocation.Y, StopLocation.Z, ImpactResult.IsValidBlockingHit() ? 1 : 0);
 
 	SpawnPickupAtLocation(StopLocation);
+	// Go dormant once stopped — the pickup actor handles the rest.
+	// Dormancy stops net updates so clients don't keep receiving position packets for a static ball.
+	SetNetDormancy(DORM_DormantAll);
 	Destroy();
 }
 

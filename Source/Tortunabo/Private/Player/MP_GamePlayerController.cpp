@@ -1,11 +1,19 @@
 #include "Player/MP_GamePlayerController.h"
 #include "Blueprint/UserWidget.h"
+#include "EnhancedInputComponent.h"
+#include "InputAction.h"
+#include "InputActionValue.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "UI/HUD/TN_CoopFlowHUDWidget.h"
+#include "UI/HUD/TN_RadialWheelWidgetBase.h"
+#include "UI/HUD/TN_EmoteWheelDataAsset.h"
+#include "UI/HUD/TN_QuickChatWheelDataAsset.h"
 #include "Multiplayer/MP_GameInstance.h"
-#include "GameFramework/Pawn.h"
+#include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_MatchFlowTypes.h"
 #include "Player/TortugaCharacter.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/GameStateBase.h"
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
@@ -15,6 +23,9 @@ AMP_GamePlayerController::AMP_GamePlayerController()
 	// Widget classes are assigned via EditDefaultsOnly in a BP derived class (e.g. BP_GamePlayerController).
 	// No hardcoded defaults — set CoopFlowWidgetClass, VoiceIndicatorWidgetClass and CosmeticsWidgetClass
 	// in the BP CDO so they can live at any content path.
+	OpenEmoteWheelAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_OpenEmoteWheel.IA_OpenEmoteWheel")));
+	OpenQuickChatWheelAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_OpenChatWheel.IA_OpenChatWheel")));
+	RadialNavigateAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_RadialNavigate.IA_RadialNavigate")));
 }
 
 void AMP_GamePlayerController::BeginPlay()
@@ -31,8 +42,10 @@ void AMP_GamePlayerController::BeginPlay()
 
 	if (IsLocalController())
 	{
+		CacheRadialInputAssets();
 		CreateCoopFlowHUD();
 		CreatePlayerHUD();
+		CreateRadialWidgets();
 		SyncCosmeticsToServer();
 	}
 }
@@ -47,6 +60,32 @@ void AMP_GamePlayerController::SetupInputComponent()
 		InputComponent->BindKey(EKeys::MouseScrollDown, IE_Pressed, this, &AMP_GamePlayerController::SpectatePreviousPlayer);
 		InputComponent->BindKey(EKeys::PageDown, IE_Pressed, this, &AMP_GamePlayerController::SpectateNextPlayer);
 		InputComponent->BindKey(EKeys::PageUp, IE_Pressed, this, &AMP_GamePlayerController::SpectatePreviousPlayer);
+	}
+
+	CacheRadialInputAssets();
+
+	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(InputComponent))
+	{
+		if (LoadedOpenEmoteWheelAction)
+		{
+			EnhancedInput->BindAction(LoadedOpenEmoteWheelAction, ETriggerEvent::Started, this, &AMP_GamePlayerController::OnOpenEmoteWheelStarted);
+			EnhancedInput->BindAction(LoadedOpenEmoteWheelAction, ETriggerEvent::Completed, this, &AMP_GamePlayerController::OnOpenEmoteWheelReleased);
+			EnhancedInput->BindAction(LoadedOpenEmoteWheelAction, ETriggerEvent::Canceled, this, &AMP_GamePlayerController::OnOpenEmoteWheelReleased);
+		}
+
+		if (LoadedOpenQuickChatWheelAction)
+		{
+			EnhancedInput->BindAction(LoadedOpenQuickChatWheelAction, ETriggerEvent::Started, this, &AMP_GamePlayerController::OnOpenQuickChatWheelStarted);
+			EnhancedInput->BindAction(LoadedOpenQuickChatWheelAction, ETriggerEvent::Completed, this, &AMP_GamePlayerController::OnOpenQuickChatWheelReleased);
+			EnhancedInput->BindAction(LoadedOpenQuickChatWheelAction, ETriggerEvent::Canceled, this, &AMP_GamePlayerController::OnOpenQuickChatWheelReleased);
+		}
+
+		if (LoadedRadialNavigateAction)
+		{
+			EnhancedInput->BindAction(LoadedRadialNavigateAction, ETriggerEvent::Triggered, this, &AMP_GamePlayerController::OnRadialNavigateTriggered);
+			EnhancedInput->BindAction(LoadedRadialNavigateAction, ETriggerEvent::Completed, this, &AMP_GamePlayerController::OnRadialNavigateCompleted);
+			EnhancedInput->BindAction(LoadedRadialNavigateAction, ETriggerEvent::Canceled, this, &AMP_GamePlayerController::OnRadialNavigateCompleted);
+		}
 	}
 }
 
@@ -76,6 +115,7 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 		CreateVoiceHUD();
 		CreateCoopFlowHUD();
 		CreatePlayerHUD();
+		CreateRadialWidgets();
 		SyncCosmeticsToServer();
 	}
 }
@@ -96,6 +136,44 @@ void AMP_GamePlayerController::ApplyGameplayInputMode()
 	if (GEngine && GEngine->GameViewport)
 	{
 		FSlateApplication::Get().SetAllUserFocusToGameViewport(EFocusCause::SetDirectly);
+	}
+}
+
+void AMP_GamePlayerController::ApplyRadialInputMode()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetHideCursorDuringCapture(false);
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	SetShowMouseCursor(true);
+	SetIgnoreLookInput(true);
+}
+
+void AMP_GamePlayerController::RestorePostRadialInputMode()
+{
+	ApplyGameplayInputMode();
+}
+
+void AMP_GamePlayerController::CacheRadialInputAssets()
+{
+	if (!LoadedOpenEmoteWheelAction && !OpenEmoteWheelAction.IsNull())
+	{
+		LoadedOpenEmoteWheelAction = OpenEmoteWheelAction.LoadSynchronous();
+	}
+
+	if (!LoadedOpenQuickChatWheelAction && !OpenQuickChatWheelAction.IsNull())
+	{
+		LoadedOpenQuickChatWheelAction = OpenQuickChatWheelAction.LoadSynchronous();
+	}
+
+	if (!LoadedRadialNavigateAction && !RadialNavigateAction.IsNull())
+	{
+		LoadedRadialNavigateAction = RadialNavigateAction.LoadSynchronous();
 	}
 }
 
@@ -127,7 +205,9 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 	for (APlayerState* PS : GetWorld()->GetGameState()->PlayerArray)
 	{
 		ATN_CoopPlayerState* CoopPS = Cast<ATN_CoopPlayerState>(PS);
-		if (!CoopPS || CoopPS == PlayerState || CoopPS->bHasFinishedRun)
+		// Skip self and players without a live pawn (dead players had their pawn destroyed).
+		// Finished players still have their pawn standing at the finish line — they CAN be spectated.
+		if (!CoopPS || CoopPS == Cast<ATN_CoopPlayerState>(PlayerState))
 		{
 			continue;
 		}
@@ -227,6 +307,220 @@ void AMP_GamePlayerController::CreatePlayerHUD()
 	if (PlayerHUDWidget)
 	{
 		PlayerHUDWidget->AddToViewport(4);
+	}
+}
+
+void AMP_GamePlayerController::CreateRadialWidgets()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (!EmoteWheelWidget && EmoteWheelWidgetClass)
+	{
+		EmoteWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, EmoteWheelWidgetClass);
+		if (EmoteWheelWidget)
+		{
+			EmoteWheelWidget->AddToViewport(30);
+			EmoteWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
+	if (!QuickChatWheelWidget && QuickChatWheelWidgetClass)
+	{
+		QuickChatWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, QuickChatWheelWidgetClass);
+		if (QuickChatWheelWidget)
+		{
+			QuickChatWheelWidget->AddToViewport(31);
+			QuickChatWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+}
+
+void AMP_GamePlayerController::OnOpenEmoteWheelStarted()
+{
+	OpenRadialWheel(ETN_RadialWheelType::Emote);
+}
+
+void AMP_GamePlayerController::OnOpenEmoteWheelReleased()
+{
+	if (ActiveWheelType == ETN_RadialWheelType::Emote)
+	{
+		CloseRadialWheel(true);
+	}
+}
+
+void AMP_GamePlayerController::OnOpenQuickChatWheelStarted()
+{
+	OpenRadialWheel(ETN_RadialWheelType::QuickChat);
+}
+
+void AMP_GamePlayerController::OnOpenQuickChatWheelReleased()
+{
+	if (ActiveWheelType == ETN_RadialWheelType::QuickChat)
+	{
+		CloseRadialWheel(true);
+	}
+}
+
+void AMP_GamePlayerController::OnRadialNavigateTriggered(const FInputActionValue& Value)
+{
+	CachedStickVector = Value.Get<FVector2D>().GetClampedToMaxSize(1.f);
+	LastStickInputRealTime = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.f;
+}
+
+void AMP_GamePlayerController::OnRadialNavigateCompleted(const FInputActionValue& Value)
+{
+	CachedStickVector = FVector2D::ZeroVector;
+}
+
+UTN_RadialWheelWidgetBase* AMP_GamePlayerController::GetActiveWheelWidget() const
+{
+	switch (ActiveWheelType)
+	{
+	case ETN_RadialWheelType::Emote:
+		return EmoteWheelWidget;
+	case ETN_RadialWheelType::QuickChat:
+		return QuickChatWheelWidget;
+	default:
+		return nullptr;
+	}
+}
+
+void AMP_GamePlayerController::OpenRadialWheel(ETN_RadialWheelType WheelType)
+{
+	if (!IsLocalController() || ActiveWheelType != ETN_RadialWheelType::None)
+	{
+		return;
+	}
+
+	CreateRadialWidgets();
+
+	UTN_RadialWheelWidgetBase* Widget = nullptr;
+	TArray<FTN_RadialWheelEntryView> Entries;
+
+	if (WheelType == ETN_RadialWheelType::Emote)
+	{
+		Widget = EmoteWheelWidget;
+		if (EmoteWheelDataAsset)
+		{
+			Entries = EmoteWheelDataAsset->BuildWheelEntries();
+		}
+	}
+	else if (WheelType == ETN_RadialWheelType::QuickChat)
+	{
+		Widget = QuickChatWheelWidget;
+		if (QuickChatWheelDataAsset)
+		{
+			Entries = QuickChatWheelDataAsset->BuildWheelEntries();
+		}
+	}
+
+	if (!Widget || Entries.Num() == 0)
+	{
+		return;
+	}
+
+	ActiveWheelType = WheelType;
+	Widget->SetEntries(Entries);
+	Widget->SetVisibility(ESlateVisibility::Visible);
+
+	float MouseX = 0.f;
+	float MouseY = 0.f;
+	bHadMousePositionBeforeWheel = GetMousePosition(MouseX, MouseY);
+	if (bHadMousePositionBeforeWheel)
+	{
+		CachedMousePositionBeforeWheel = FVector2D(MouseX, MouseY);
+	}
+
+	int32 ViewX = 0;
+	int32 ViewY = 0;
+	GetViewportSize(ViewX, ViewY);
+	SetMouseLocation(ViewX / 2, ViewY / 2);
+
+	CachedStickVector = FVector2D::ZeroVector;
+	ApplyRadialInputMode();
+
+	if (GetWorld())
+	{
+		GetWorldTimerManager().SetTimer(RadialWheelUpdateTimerHandle, this, &AMP_GamePlayerController::UpdateRadialWheelInput, 1.f / 60.f, true);
+	}
+}
+
+void AMP_GamePlayerController::CloseRadialWheel(bool bConfirmSelection)
+{
+	UTN_RadialWheelWidgetBase* Widget = GetActiveWheelWidget();
+	if (!Widget)
+	{
+		ActiveWheelType = ETN_RadialWheelType::None;
+		return;
+	}
+
+	if (GetWorld())
+	{
+		GetWorldTimerManager().ClearTimer(RadialWheelUpdateTimerHandle);
+	}
+
+	if (bConfirmSelection)
+	{
+		FTN_RadialWheelEntryView SelectedEntry;
+		if (Widget->TryConfirmSelection(SelectedEntry))
+		{
+			if (ActiveWheelType == ETN_RadialWheelType::Emote)
+			{
+				RequestPlayEmoteById(SelectedEntry.EntryId);
+			}
+			else if (ActiveWheelType == ETN_RadialWheelType::QuickChat)
+			{
+				SendQuickChat(SelectedEntry.EntryId);
+			}
+		}
+	}
+
+	Widget->ClearSelection();
+	Widget->SetVisibility(ESlateVisibility::Collapsed);
+	ActiveWheelType = ETN_RadialWheelType::None;
+
+	if (bHadMousePositionBeforeWheel)
+	{
+		SetMouseLocation(FMath::RoundToInt(CachedMousePositionBeforeWheel.X), FMath::RoundToInt(CachedMousePositionBeforeWheel.Y));
+	}
+
+	RestorePostRadialInputMode();
+}
+
+FVector2D AMP_GamePlayerController::ComputeMouseWheelVector() const
+{
+	float MouseX = 0.f;
+	float MouseY = 0.f;
+	if (!GetMousePosition(MouseX, MouseY))
+	{
+		return FVector2D::ZeroVector;
+	}
+
+	int32 ViewX = 0;
+	int32 ViewY = 0;
+	GetViewportSize(ViewX, ViewY);
+
+	const FVector2D Center(ViewX * 0.5f, ViewY * 0.5f);
+	const FVector2D Delta(MouseX - Center.X, MouseY - Center.Y);
+	const float Radius = FMath::Max(1.f, FMath::Min(ViewX, ViewY) * 0.25f);
+	return FVector2D(Delta.X / Radius, -Delta.Y / Radius).GetClampedToMaxSize(1.f);
+}
+
+FVector2D AMP_GamePlayerController::ResolveCurrentWheelVector() const
+{
+	const float Now = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.f;
+	const bool bUseStick = CachedStickVector.SizeSquared() > 0.04f && (Now - LastStickInputRealTime) <= 0.2f;
+	return bUseStick ? CachedStickVector : ComputeMouseWheelVector();
+}
+
+void AMP_GamePlayerController::UpdateRadialWheelInput()
+{
+	if (UTN_RadialWheelWidgetBase* Widget = GetActiveWheelWidget())
+	{
+		Widget->UpdateInputVector(ResolveCurrentWheelVector());
 	}
 }
 
@@ -380,3 +674,83 @@ void AMP_GamePlayerController::SyncCosmeticsToServer()
 	}
 }
 
+// ── Quick Chat ────────────────────────────────────────────────────────────────
+
+void AMP_GamePlayerController::SendQuickChat(uint8 MessageID)
+{
+	if (!IsLocalController()) { return; }
+	ServerSendQuickChat(MessageID);
+}
+
+void AMP_GamePlayerController::RequestPlayEmoteById(uint8 EmoteID)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(GetPawn()))
+	{
+		Turtle->RequestWheelEmote(EmoteID);
+	}
+}
+
+bool AMP_GamePlayerController::ResolveQuickChatDisplayData(const FTN_QuickChatEntry& Entry, FText& OutSenderName, FText& OutMessageText, UTexture2D*& OutIcon) const
+{
+	OutSenderName = FText::GetEmpty();
+	OutMessageText = FText::GetEmpty();
+	OutIcon = nullptr;
+
+	const ATN_CoopGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATN_CoopGameState>() : nullptr;
+	if (GS)
+	{
+		OutSenderName = GS->ResolveQuickChatSenderName(Entry.SenderPlayerId);
+	}
+
+	if (!QuickChatWheelDataAsset)
+	{
+		return false;
+	}
+
+	if (const FTN_QuickChatWheelEntry* ChatEntry = QuickChatWheelDataAsset->FindEntryById(Entry.MessageID))
+	{
+		OutMessageText = ChatEntry->Text;
+		OutIcon = ChatEntry->Icon;
+		return true;
+	}
+
+	return false;
+}
+
+void AMP_GamePlayerController::ServerSendQuickChat_Implementation(uint8 MessageID)
+{
+	UWorld* World = GetWorld();
+	if (!World || !QuickChatWheelDataAsset) { return; }
+
+	const FTN_QuickChatWheelEntry* ChatEntry = QuickChatWheelDataAsset->FindEntryById(MessageID);
+	if (!ChatEntry)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[QuickChat] Invalid MessageID %d from %s"), static_cast<int32>(MessageID), *GetNameSafe(this));
+		return;
+	}
+
+	ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>();
+	if (!TNPS)
+	{
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	const float Cooldown = ChatEntry->CooldownOverride > 0.f ? ChatEntry->CooldownOverride : QuickChatCooldownSeconds;
+	if (!TNPS->CanServerSendQuickChat(Now, Cooldown))
+	{
+		return;
+	}
+	TNPS->MarkServerQuickChatSent(Now);
+
+	ATN_CoopGameState* GS = World->GetGameState<ATN_CoopGameState>();
+	if (!GS) { return; }
+
+	const int32 SenderId = PlayerState ? PlayerState->GetPlayerId() : 0;
+	GS->AddQuickChatEntry(SenderId, MessageID, Now);
+}

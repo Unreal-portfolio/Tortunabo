@@ -18,6 +18,8 @@ class USceneComponent;
 class UAudioComponent;
 class USoundBase;
 class UStaticMeshComponent;
+class UTN_EmoteWheelDataAsset;
+struct FTN_EmoteWheelEntry;
 
 UCLASS()
 class TORTUNABO_API ATortugaCharacter : public ACharacter
@@ -33,6 +35,13 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PawnClientRestart() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	/**
+	 * Called when the PlayerState reference is replicated to this client.
+	 * Used to apply cosmetics (helmet) in case they arrived BEFORE the pawn was
+	 * possessed and the BeginPlay timer-for-next-tick already fired without them.
+	 */
+	virtual void OnRep_PlayerState() override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
@@ -124,6 +133,10 @@ protected:
 	/** Seconds to smoothly interpolate all limbs back to rest after an emote ends. */
 	UPROPERTY(EditDefaultsOnly, Category = "Emotes", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float EmoteBlendOutDuration = 0.25f;
+
+	/** Catálogo editable de emotes para la rueda radial y validación de cooldown/IDs. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Emotes|Data")
+	TObjectPtr<UTN_EmoteWheelDataAsset> EmoteWheelDataAsset;
 
 	/**
 	 * Sound to play for each emote (index 0–9). Assign in Blueprint Class Defaults.
@@ -366,12 +379,16 @@ private:
 	// ── Emote system ─────────────────────────────────────────────────────────
 	/** Start emote at index (0-9). Called from input — starts locally + replicates. */
 	void TriggerEmote(int32 Index);
+	void CancelEmoteLocalOnly();
 	/** Internal: start emote animation on this machine (no ownership check). */
 	void StartEmoteLocally(int32 Index);
 	/** Cancel the active emote and begin a smooth blend-out back to rest. */
 	void CancelEmote();
 	/** Per-frame emote tick: advances animation and drives component rotations. */
 	void TickEmote(float DeltaTime);
+	const FTN_EmoteWheelEntry* ResolveWheelEmoteEntry(int32 EmoteID) const;
+	void PlayWheelEmoteMontage(int32 EmoteID);
+	void StopWheelEmoteMontage(int32 EmoteID, float BlendOutTime);
 
 	// ── Emote Audio ──────────────────────────────────────────────────────────
 	/** Lazily-created audio component for emote sounds. Attached to root, proximity-attenuated. */
@@ -406,6 +423,9 @@ private:
 	/** OnRep: fired on remote clients when ReplicatedEmoteIndex changes. */
 	UFUNCTION()
 	void OnRep_ReplicatedEmoteIndex();
+
+	UFUNCTION(Client, Reliable)
+	void ClientRejectEmote(int32 Index);
 
 	UFUNCTION(Server, Reliable)
 	void ServerTryInteract(ATN_InteractableBase* Interactable);
@@ -507,6 +527,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
 	void RecoverFromKnockdown();
 
+	UFUNCTION(BlueprintCallable, Category = "Emotes")
+	void RequestWheelEmote(uint8 EmoteID);
+
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
 	void GrantInfiniteStamina(float DurationSeconds);
 
@@ -575,4 +598,8 @@ public:
 	/** Outer radius (cm) for DBNO/revive audio attenuation (silence). */
 	UPROPERTY(EditDefaultsOnly, Category = "DBNO|Audio", meta = (ClampMin = "0.0"))
 	float ReviveAudioOuterRadius = 2500.f;
+
+private:
+	bool IsValidWheelEmoteId(int32 EmoteID) const;
+	float GetWheelEmoteCooldown(int32 EmoteID) const;
 };

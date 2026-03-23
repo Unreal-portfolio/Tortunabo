@@ -4,7 +4,6 @@
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
-#include "Voice/ProximityVoiceComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -82,6 +81,7 @@ void ATN_RunGameMode::BeginPlay()
 			TNPS->bIsDBNO = false;
 			TNPS->DBNOBleedoutTimeRemaining = -1.f;
 			TNPS->FinishRank = 0;
+			TNPS->bIsEliminated = false;
 			TNPS->FinishTimeSeconds = -1.f;
 			TNPS->DeathZoneTimeRemaining = -1.f;
 		}
@@ -117,6 +117,7 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 		TNPS->bIsDBNO = false;
 		TNPS->DBNOBleedoutTimeRemaining = -1.f;
 		TNPS->FinishRank = 0;
+		TNPS->bIsEliminated = false;
 		TNPS->FinishTimeSeconds = -1.f;
 		TNPS->DeathZoneTimeRemaining = -1.f;
 	}
@@ -373,7 +374,10 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	TNPS->bHasFinishedRun = true;
 	TNPS->bIsDBNO = false;
 	TNPS->DBNOBleedoutTimeRemaining = -1.f;
-	TNPS->FinishRank = 0;
+	// Assign an ordered rank even to eliminated players so UI can sort the results screen.
+	// bIsEliminated distinguishes "dead" from "finished normally".
+	TNPS->FinishRank = NextFinishRank++;
+	TNPS->bIsEliminated = true;
 	TNPS->FinishTimeSeconds = -1.f;
 	TNPS->DeathZoneTimeRemaining = -1.f;
 
@@ -670,22 +674,27 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 
 	if (UWorld* World = GetWorld())
 	{
-
-		// Stop all audio capture streams while WASAPI is still alive.
-		// This prevents ACCESS_VIOLATION crashes during level teardown.
-		UProximityVoiceComponent::ShutdownAllCapture(World);
+		// ── Step 1: Destroy all pawns BEFORE any travel code ─────────────────
+		// This fires EndPlay(Destroyed) on ProximityVoiceComponents while WASAPI
+		// is still fully alive → safe audio cleanup, no ACCESS_VIOLATION.
+		// After destruction, there are no active voice components to crash.
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (!PC) { continue; }
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				// Destroy fires EndPlay → ProximityVoiceComponent::CleanupRuntimeResources safely.
+				Pawn->Destroy();
+			}
+		}
 
 		// NO usar ?game=/Script/Tortunabo.TN_HQGameMode — eso fuerza la clase C++ base
 		// y spawna TortugaCharacter sin mesh en vez de BP_TortugaCharacter.
 		// LVL_HQ debe tener BP_HQGameMode en WorldSettings → GameMode Override.
 		PendingTravelURL = LobbyMapPath + TEXT("?listen");
 
-		// ── Pre-close del socket Steam para evitar "Cannot create listen socket" ──
-		// Steam P2P sockets tardan ~100-200ms en liberarse tras destruir el NetDriver.
-		// FIX: Notificar a clientes remotos, destruir el driver manualmente, esperar
-		// 500ms y LUEGO hacer ServerTravel.
-
-		// 1. Enviar travel a clientes remotos antes de cerrar el driver
+		// ── Step 2: Enviar travel a clientes remotos ──────────────────────────
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			APlayerController* PC = It->Get();
@@ -695,7 +704,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 			}
 		}
 
-		// 2. Destruir el NetDriver para liberar el listen socket
+		// ── Step 3: Destruir el NetDriver para liberar el listen socket ───────
 		if (UNetDriver* NetDriver = World->GetNetDriver())
 		{
 			UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Pre-closing NetDriver '%s' before travel to release Steam socket."),
@@ -703,7 +712,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
 		}
 
-		// 3. Esperar a que Steam libere el socket P2P, luego viajar
+		// ── Step 4: Esperar a que Steam libere el socket P2P, luego viajar ───
 		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Waiting 1.0s for Steam socket release before ServerTravel..."));
 		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
 			&ATN_RunGameMode::ExecuteDeferredTravel, 1.0f, false);

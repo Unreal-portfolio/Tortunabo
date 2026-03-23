@@ -4,7 +4,6 @@
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Multiplayer/MP_GameInstance.h"
-#include "Voice/ProximityVoiceComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
@@ -293,24 +292,24 @@ void ATN_HQGameMode::BeginMatchTravel()
 			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
 		}
 
-		// Stop all audio capture streams while WASAPI is still alive.
-		// This prevents ACCESS_VIOLATION crashes during level teardown.
-		UProximityVoiceComponent::ShutdownAllCapture(World);
-
-		// NO usar ?game=/Script/Tortunabo.TN_RunGameMode — eso fuerza la clase C++ base
-		// y spawna TortugaCharacter (sin mesh/input) en vez de BP_TortugaCharacter.
-		// LVL_Run debe tener BP_RunGameMode en WorldSettings → GameMode Override.
+		// ── Step 1: Destroy all pawns BEFORE any travel code ─────────────────
+		// This fires EndPlay(Destroyed) on ProximityVoiceComponents while WASAPI
+		// is still fully alive → safe audio cleanup, no ACCESS_VIOLATION.
+		// HandlePreLoadMap's ShutdownAllCapture safety net will be a no-op because
+		// all voice components will already have bRuntimeResourcesCleanedUp=true.
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (!PC) { continue; }
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				Pawn->Destroy();
+			}
+		}
 
 		PendingTravelURL = MatchMapPath + TEXT("?listen");
 
-		// ── Pre-close del socket Steam para evitar "Cannot create listen socket" ──
-		// Steam P2P sockets tardan ~100-200ms en liberarse tras destruir el NetDriver.
-		// Si ServerTravel destruye el viejo driver y crea uno nuevo en el mismo LoadMap,
-		// el socket aún está ocupado → NetDriverListenFailure → vuelta al menú.
-		// FIX: Notificar a clientes remotos, destruir el driver manualmente, esperar
-		// 500ms y LUEGO hacer ServerTravel. El nuevo listen server se creará limpio.
-
-		// 1. Enviar travel a clientes remotos antes de cerrar el driver
+		// ── Step 2: Enviar travel a clientes remotos ──────────────────────────
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			APlayerController* PC = It->Get();
@@ -320,7 +319,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 			}
 		}
 
-		// 2. Destruir el NetDriver para liberar el listen socket
+		// ── Step 3: Destruir el NetDriver para liberar el listen socket ───────
 		if (UNetDriver* NetDriver = World->GetNetDriver())
 		{
 			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Pre-closing NetDriver '%s' before travel to release Steam socket."),
@@ -328,7 +327,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
 		}
 
-		// 3. Esperar a que Steam libere el socket P2P, luego viajar
+		// ── Step 4: Esperar a que Steam libere el socket P2P, luego viajar ───
 		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Waiting 1.0s for Steam socket release before ServerTravel..."));
 		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
 			&ATN_HQGameMode::ExecuteDeferredTravel, 1.0f, false);

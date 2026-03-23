@@ -34,6 +34,14 @@ struct FTN_ThrowLaunchData
 	UPROPERTY()
 	FVector MeshScale = FVector::OneVector;
 
+	/**
+	 * Mesh del proyectil. Se toma de SourceItem.EquippedMesh en el servidor y se replica
+	 * dentro del struct para que los clientes que se unan tarde (JIP) vean el mesh correcto
+	 * en lugar del placeholder gigante del actor por defecto.
+	 */
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> EquippedMesh = nullptr;
+
 	/** true cuando los datos están listos para aplicarse en clientes. */
 	UPROPERTY()
 	bool bReady = false;

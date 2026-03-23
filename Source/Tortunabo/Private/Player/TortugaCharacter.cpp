@@ -18,6 +18,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/AudioComponent.h"
+#include "Animation/AnimInstance.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/DataTable.h"
@@ -28,6 +29,7 @@
 #include "Core/TN_CosmeticsTypes.h"
 #include "Game/TN_RunGameMode.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "UI/HUD/TN_EmoteWheelDataAsset.h"
 
 // ── CVar de debug ─────────────────────────────────────────────────────────────
 // Activar en consola con: TN.Debug.Interaction 1
@@ -165,6 +167,20 @@ void ATortugaCharacter::BeginPlay()
 
 	if (Cola.IsValid()) { ColaRestRot = Cola->GetRelativeRotation(); ColaRestLoc = Cola->GetRelativeLocation(); }
 	else { UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] 'Cola' not found — emotes will be partial.")); }
+
+	// Disable pawn collision on all child meshes of Cola so the tail doesn't push other players.
+	if (Cola.IsValid())
+	{
+		TArray<USceneComponent*> ColaChildren;
+		Cola->GetChildrenComponents(true, ColaChildren);
+		for (USceneComponent* Child : ColaChildren)
+		{
+			if (UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(Child))
+			{
+				Prim->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+			}
+		}
+	}
 
 	if (Cabeza.IsValid()) { CabezaRestRot = Cabeza->GetRelativeRotation(); CabezaRestLoc = Cabeza->GetRelativeLocation(); }
 	else
@@ -977,7 +993,17 @@ void ATortugaCharacter::GrantInfiniteStamina(float DurationSeconds)
 	StaminaComponent->GrantUnlimitedStamina(DurationSeconds);
 }
 
-// ── Replicación ───────────────────────────────────────────────────────────────
+void ATortugaCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	// Re-apply helmet when PlayerState is replicated late (after BeginPlay timer already fired).
+	// This covers the race condition where PlayerState arrives long after pawn possession.
+	if (const ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		UpdateHelmetMesh(TNPS->EquippedHelmetId);
+	}
+}
 
 // ── Cosmetics ─────────────────────────────────────────────────────────────────
 
@@ -1394,7 +1420,7 @@ void ATortugaCharacter::TickReviveChannel()
 
 void ATortugaCharacter::TriggerEmote(int32 Index)
 {
-	if (!IsLocallyControlled() || Index < 0 || Index > 9) { return; }
+	if (!IsLocallyControlled() || !IsValidWheelEmoteId(Index)) { return; }
 
 	// Start locally for immediate visual feedback
 	StartEmoteLocally(Index);
@@ -1403,8 +1429,92 @@ void ATortugaCharacter::TriggerEmote(int32 Index)
 	ServerSetEmote(Index);
 }
 
+void ATortugaCharacter::RequestWheelEmote(uint8 EmoteID)
+{
+	TriggerEmote(static_cast<int32>(EmoteID));
+}
+
+bool ATortugaCharacter::IsValidWheelEmoteId(int32 EmoteID) const
+{
+	if (EmoteID < 0)
+	{
+		return false;
+	}
+
+	if (!EmoteWheelDataAsset)
+	{
+		return EmoteID >= 0 && EmoteID <= 9;
+	}
+
+	return EmoteWheelDataAsset->FindEntryById(static_cast<uint8>(EmoteID)) != nullptr;
+}
+
+const FTN_EmoteWheelEntry* ATortugaCharacter::ResolveWheelEmoteEntry(int32 EmoteID) const
+{
+	if (!EmoteWheelDataAsset || EmoteID < 0)
+	{
+		return nullptr;
+	}
+
+	return EmoteWheelDataAsset->FindEntryById(static_cast<uint8>(EmoteID));
+}
+
+float ATortugaCharacter::GetWheelEmoteCooldown(int32 EmoteID) const
+{
+	if (const FTN_EmoteWheelEntry* Entry = ResolveWheelEmoteEntry(EmoteID))
+	{
+		return Entry->Cooldown;
+	}
+
+	return 0.f;
+}
+
+void ATortugaCharacter::PlayWheelEmoteMontage(int32 EmoteID)
+{
+	const FTN_EmoteWheelEntry* Entry = ResolveWheelEmoteEntry(EmoteID);
+	if (!Entry || !Entry->Montage)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(0.05f, Entry->Montage);
+		AnimInstance->Montage_Play(Entry->Montage, 1.f);
+	}
+}
+
+void ATortugaCharacter::StopWheelEmoteMontage(int32 EmoteID, float BlendOutTime)
+{
+	const FTN_EmoteWheelEntry* Entry = ResolveWheelEmoteEntry(EmoteID);
+	if (!Entry || !Entry->Montage)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(FMath::Max(0.f, BlendOutTime), Entry->Montage);
+	}
+}
+
 void ATortugaCharacter::StartEmoteLocally(int32 Index)
 {
+	const int32 PreviousEmoteIndex = ActiveEmoteIndex;
+	StopWheelEmoteMontage(PreviousEmoteIndex, 0.05f);
+
 	// Reset all components to rest pose (clears stale location offsets)
 	if (Brazo1.IsValid()) { Brazo1->SetRelativeRotation(Brazo1RestRot); Brazo1->SetRelativeLocation(Brazo1RestLoc); }
 	if (Brazo2.IsValid()) { Brazo2->SetRelativeRotation(Brazo2RestRot); Brazo2->SetRelativeLocation(Brazo2RestLoc); }
@@ -1421,10 +1531,40 @@ void ATortugaCharacter::StartEmoteLocally(int32 Index)
 
 	// Start looping audio for this emote (proximity-attenuated).
 	PlayEmoteSound(Index);
+	PlayWheelEmoteMontage(Index);
 }
 
 void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 {
+	if (Index >= 0)
+	{
+		if (!IsValidWheelEmoteId(Index))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Emote] ID inválido %d en %s"), Index, *GetNameSafe(this));
+			ClientRejectEmote(Index);
+			return;
+		}
+
+		if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+		{
+			if (!TNPS->bIsAlive || TNPS->bIsDBNO || bIsKnockedDown)
+			{
+				ClientRejectEmote(Index);
+				return;
+			}
+
+			const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+			const float Cooldown = GetWheelEmoteCooldown(Index);
+			if (!TNPS->CanServerPlayEmote(static_cast<uint8>(Index), Now, Cooldown))
+			{
+				ClientRejectEmote(Index);
+				return;
+			}
+
+			TNPS->MarkServerEmotePlayed(static_cast<uint8>(Index), Now);
+		}
+	}
+
 	// Siempre actualizar el valor replicado, incluso si el emote ya acabó localmente.
 	// Esto garantiza que TODOS los clientes remotos reciban OnRep.
 	ReplicatedEmoteIndex = Index;
@@ -1487,11 +1627,20 @@ void ATortugaCharacter::OnRep_ReplicatedEmoteIndex()
 		Cabeza.IsValid() ? TEXT("OK") : TEXT("NULL"));
 }
 
-void ATortugaCharacter::CancelEmote()
+void ATortugaCharacter::ClientRejectEmote_Implementation(int32 Index)
+{
+	if (ActiveEmoteIndex == Index || bEmoteBlendingOut)
+	{
+		CancelEmoteLocalOnly();
+	}
+}
+
+void ATortugaCharacter::CancelEmoteLocalOnly()
 {
 	if (ActiveEmoteIndex < 0 && !bEmoteBlendingOut) { return; }
 
-	// Snapshot current component rotations so we can blend back to rest.
+	const int32 EmoteIdToStop = ActiveEmoteIndex;
+
 	if (Brazo1.IsValid()) { SnapshotBrazo1 = Brazo1->GetRelativeRotation(); SnapshotBrazo1Loc = Brazo1->GetRelativeLocation(); }
 	if (Brazo2.IsValid()) { SnapshotBrazo2 = Brazo2->GetRelativeRotation(); SnapshotBrazo2Loc = Brazo2->GetRelativeLocation(); }
 	if (Pata1.IsValid())  { SnapshotPata1  = Pata1->GetRelativeRotation();  SnapshotPata1Loc  = Pata1->GetRelativeLocation();  }
@@ -1502,9 +1651,18 @@ void ATortugaCharacter::CancelEmote()
 	ActiveEmoteIndex   = -1;
 	bEmoteBlendingOut  = true;
 	EmoteBlendOutTimer = 0.f;
-
-	// Stop looping emote audio.
 	StopEmoteSound();
+	StopWheelEmoteMontage(EmoteIdToStop, EmoteBlendOutDuration);
+}
+
+void ATortugaCharacter::CancelEmote()
+{
+	if (ActiveEmoteIndex < 0 && !bEmoteBlendingOut)
+	{
+		return;
+	}
+
+	CancelEmoteLocalOnly();
 
 	// Replicar cancelación a otros clientes (solo desde el jugador que controla)
 	if (IsLocallyControlled())

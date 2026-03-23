@@ -12,6 +12,12 @@ class TORTUNABO_API ATN_CoopPlayerState : public APlayerState
 public:
 	ATN_CoopPlayerState();
 
+	bool CanServerSendQuickChat(float Now, float CooldownSeconds) const;
+	void MarkServerQuickChatSent(float Now);
+
+	bool CanServerPlayEmote(uint8 EmoteID, float Now, float CooldownSeconds) const;
+	void MarkServerEmotePlayed(uint8 EmoteID, float Now);
+
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	bool bIsInReadyZone = false;
 
@@ -50,6 +56,18 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	int32 FinishRank = 0;
 
+	/**
+	 * True if this player was eliminated (killed) rather than finishing normally.
+	 * UI should display "ELIMINADO" when this is true, using FinishRank for ordering
+	 * among eliminated players (assigned by death order on server).
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
+	bool bIsEliminated = false;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+private:
+	float ServerLastQuickChatTime = -10000.f;
+	TMap<uint8, float> ServerLastEmoteTimes;
 };
 

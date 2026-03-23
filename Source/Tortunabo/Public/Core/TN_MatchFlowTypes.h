@@ -2,6 +2,29 @@
 
 #include "TN_MatchFlowTypes.generated.h"
 
+/** One entry in the Quick Chat history (replicated on CoopGameState). */
+USTRUCT(BlueprintType)
+struct FTN_QuickChatEntry
+{
+	GENERATED_BODY()
+
+	/** Monotonic server sequence for dedup / JIP processing. */
+	UPROPERTY(BlueprintReadOnly)
+	int32 Sequence = 0;
+
+	/** Compact sender identifier (PlayerState::PlayerId clamped to uint16). */
+	UPROPERTY(BlueprintReadOnly)
+	int32 SenderPlayerId = 0;
+
+	/** Message catalog ID resolved locally via DataAsset. */
+	UPROPERTY(BlueprintReadOnly)
+	uint8 MessageID = 0;
+
+	/** Server world time when the message was sent (for ordering). */
+	UPROPERTY(BlueprintReadOnly)
+	float ServerTime = 0.f;
+};
+
 UENUM(BlueprintType)
 enum class ETNMatchFlowState : uint8
 {
