@@ -10,7 +10,7 @@
   - **NO usar seamless travel** en este proyecto: intentos previos con `bUseSeamlessTravel = true` causaron doble spawneo de jugadores, modo espectador residual al volver al lobby, y crashes WASAPI por componentes de voz en estado inconsistente. El flujo non-seamless es la configuración validada y funcional.
   - **ServerTravel SIN `?game=` explícito**: `BeginMatchTravel` usa `?listen` y `FinishRoundAndReturnToLobby` usa `?listen`. El GameMode lo determina **WorldSettings → GameMode Override** de cada mapa. Usar `?game=/Script/...` forzaba la clase C++ base en vez del BP, causando spawn de `TortugaCharacter` (sin mesh/input/HUD) en vez de `BP_TortugaCharacter`. **Cada mapa DEBE tener su BP GameMode en WorldSettings**: `LVL_HQ → BP_HQGameMode`, `LVL_Run → BP_RunGameMode`.
   - **Staging en TN_RunGameMode**: Tras el ServerTravel, el mapa Run arranca en `WaitingForPlayers` (NO InProgress). `TN_HQGameMode::BeginMatchTravel` guarda el player count en `MP_GameInstance::PendingTravelPlayerCount`. El RunGameMode espera hasta que todos reconecten (o timeout de 15s) antes de cambiar a `InProgress`.
-  - **Deferred ServerTravel (fix socket race condition + client auto-rejoin)**: Steam P2P sockets tardan ~100-200ms en liberarse. **Fix de 4 pasos**: `BeginMatchTravel` y `FinishRoundAndReturnToLobby` hacen: 1) `Pawn->Destroy()` para todos los PCs (WASAPI cleanup), 2) `ClientNotifyServerTravel` (Client RPC) a todos los clientes → marca `bIsPendingTravel` en su GameInstance + muestra loading screen, 3) `FlushNet` + `DestroyNamedNetDriver` (libera socket Steam; clientes reciben ConnectionLost → auto-rejoin porque bIsPendingTravel=true), 4) Timer 1s + `ServerTravel(URL)`. **NO llamar `ClientTravel` manualmente** (la URL sería un path de mapa local, no un connect string Steam, y el cliente cargaría en standalone). Red de seguridad: si el RPC no llega y `bIsPendingTravel` es false, `OnNetworkFailure` también intenta auto-rejoin si hay sesión Steam activa.
+  - **Deferred ServerTravel (fix socket race condition + client auto-rejoin)**: Steam P2P sockets tardan ~100-200ms en liberarse. **Fix de 4 pasos**: `BeginMatchTravel` y `FinishRoundAndReturnToLobby` hacen: 1) `Pawn->Destroy()` para todos los PCs (WASAPI cleanup), 2) `ClientNotifyServerTravel` (Client RPC) a todos los clientes → marca `bIsPendingTravel` en su GameInstance + muestra loading screen, 3) `FlushNet` + `DestroyNamedNetDriver` (libera socket Steam; clientes reciben ConnectionLost → auto-rejoin porque bIsPendingTravel=true), 4) Timer 1.5s + `ServerTravel(URL)`. **NO llamar `ClientTravel` manualmente** (la URL sería un path de mapa local, no un connect string Steam, y el cliente cargaría en standalone). Red de seguridad: si el RPC no llega y `bIsPendingTravel` es false, `OnNetworkFailure` también intenta auto-rejoin si hay sesión Steam activa. Auto-rejoin: primer intento a los 3s, luego cada 2.5s, hasta 8 reintentos (ventana total ~20.5s).
   - **PendingTravelPlayerCount**: `MP_GameInstance` persiste entre mapas. `TN_HQGameMode` lo escribe; `TN_RunGameMode` lo lee en `BeginPlay` para saber cuántos jugadores esperar.
   - `OnNetworkFailure` en `MP_GameInstance` destruye la sesión Steam automáticamente si el listen socket falla (ej. `NetDriverListenFailure` por sesión zombi), permitiendo reintentar sin reiniciar Steam.
   - `NetChecksumMismatch` es detectado con mensaje claro al usuario. La causa principal es builds incompatibles (Live Coding, Hot Reload). **Ambas máquinas deben usar el mismo DLL compilado** — compilar con `-NoHotReload` y nunca usar Live Coding durante tests multiplayer.
@@ -22,7 +22,7 @@
 - `Public/World`, `Private/World`: volúmenes de mundo e interactuables (`TN_FinishLineVolume`, `TN_DeathZoneVolume`, `TN_InteractableBase`, `TN_DirectInteractableBase`, `TN_PickupInteractableBase`, `TN_StaminaBoostPickup`, `TN_ThrowableItemActor`, `TN_CosmeticsStationInteractable`, `TN_ButtonInteractable`, `TN_ItemSpawnZone`, `TN_PufferFishActor`, `TN_RescuePickup`).
   - **`TN_ButtonInteractable`** (hereda `TN_DirectInteractableBase`): mueve un actor `MoveTarget` a través de waypoints al interactuar. `CurrentWaypointIndex` replicado; `MoveTarget` debe tener `SetReplicateMovement(true)`. Multicast unreliable para feedback cosmético (sonido/VFX en BP).
   - **`TN_ItemSpawnZone`**: actor (BeginPlay server-only) que spawnea ítems aleatorios dentro de un `UBoxComponent`. Configurar `ItemDataTable`, `ItemRowNames`, `SpawnCount` y `MinSpacing` por instancia en el nivel.
-  - **`TN_PufferFishActor`** (hereda `TN_ThrowableItemActor`): throwable especial que tras un delay aleatorio (`InflateDelayMin`/`Max`) se infla (`InflateScale`, `InflateRadius`, `InflatePushForce`) empujando y potencialmente knockeando a jugadores cercanos, luego se desinfla. `PufferState` replicado con `OnRep_PufferState` para visual en clientes. **NO knockea por impacto directo** (OnMeshHit del padre está deshabilitado en BeginPlay); el knockdown solo ocurre durante la explosión de inflación.
+  - **`TN_PufferFishActor`** (hereda `TN_ThrowableItemActor`): throwable especial que tras un delay aleatorio (`InflateDelayMin`/`Max`) se infla (`InflateScale`, `InflateRadius=800`, `InflatePushForce=4000`) empujando y potencialmente knockeando a **TODOS** los jugadores cercanos **incluido el lanzador**, luego se desinfla. `PufferState` replicado con `OnRep_PufferState` para visual en clientes. **NO knockea por impacto directo** (OnMeshHit del padre está deshabilitado en BeginPlay); el knockdown solo ocurre durante la explosión de inflación. Componente vertical del empuje exagerado (`Z ≥ 0.7`).
 - `Public/Player`, `Private/Player`: personaje/control de jugador y componentes (`TortugaCharacter`, `TortugaFirstPersonCharacter`, `MP_GamePlayerController`, `TN_StaminaComponent`, `TN_InventoryComponent`).
 - `Public/Multiplayer`, `Private/Multiplayer`: sesiones Steam, lifecycle de sesión y cosméticos persistentes (`MP_GameInstance`, `TN_CosmeticSaveGame`).
 - `Public/Menu`, `Private/Menu` y `Public/UI/*`, `Private/UI/*`: menú principal, HUDs, loading e interacción (`MP_MainMenuWidget`, `MP_MenuGameMode`, `MP_MenuPlayerController`, `TN_CoopFlowHUDWidget`, `TN_LoadingScreenWidget`, `TN_InteractPromptWidget`, `VoiceIndicatorWidget`, `TN_PlayerHUDWidget`).
@@ -131,8 +131,10 @@
 
 ## Knockdown replication
 - `bIsKnockedDown` (ReplicatedUsing = OnRep_IsKnockedDown) se replica a todos los clientes.
+- **`KnockdownComponentName`** (`EditDefaultsOnly`, default `"Cuerpo"`): nombre del SceneComponent en el BP que se rota durante el knockdown. `BeginPlay` y `ApplyKnockdownVisual` buscan primero por este nombre configurable; si no existe, fallback a primer StaticMesh/SkeletalMesh con asset. **Verificar en BP_TortugaCharacter que coincide con el componente principal del cuerpo.**
 - `ApplyKnockdownVisual` usa `SetRelativeRotation` (NO `SetWorldRotation`) para que `CharacterMovementComponent` no sobreescriba la rotación en clientes remotos.
 - **Fix NetworkSmoothing**: `ApplyKnockdownVisual(true)` pone `CMC->NetworkSmoothingMode = Disabled`; `ApplyKnockdownVisual(false)` lo restaura a `Exponential`. Sin esto, el smoothing exponencial del CMC sobreescribe la rotación del mesh cada frame en clientes remotos, haciendo invisible el tilt de knockdown.
+- **`TickLegAnimation` suprimida durante knockdown**: si `bIsKnockedDown == true`, las patas no animan. Esto evita que la animación de piernas sobreescriba la rotación del componente de knockdown cada frame.
 - El listen-server aplica visual y bloqueo de movimiento directamente en `ApplyKnockdown()`/`RecoverFromKnockdown()` porque `OnRep` no dispara localmente.
 - Los clientes bloquean movimiento en `OnRep_IsKnockedDown` para no enviar inputs durante knockdown.
 - `MulticastApplyKnockdownVisual` (NetMulticast, Reliable) garantiza que todos los clientes reciban el knockdown inmediatamente, sin depender solo de OnRep (que puede batching).
@@ -160,9 +162,10 @@
   - El jugador muerto no puede rescatarse a sí mismo (`CanInteract` lo impide).
 - **`RescuePickupClass`** (`TSubclassOf<ATN_RescuePickup>`, EditDefaultsOnly en `TN_RunGameMode`): clase del pickup a spawnear. Asignar en `BP_RunGameMode → Class Defaults`. **Si no se asigna, los jugadores muertos no tendrán pickup y no podrán ser rescatados.**
 - **`RescuePickups`** (`TMap<int32, TWeakObjectPtr<ATN_RescuePickup>>`): tracking map en `TN_RunGameMode` para limpiar pickups al revivir.
-- **Flujo completo**: muerte → ocultar pawn → spawnear pickup → espectador → compañero interactúa con pickup → respawn del muerto en posición del pickup → pickup se destruye.
+- **`DeadPlayerPawns`** (`TMap<int32, TWeakObjectPtr<APawn>>`): referencia al pawn guardada en `MarkPlayerDead` **ANTES** de `MovePlayerToSpectator`. Necesario porque `EnterSpectateMode()` → `ChangeState(Spectating)` → UE llama `UnPossess()` internamente → `PC->GetPawn()` devuelve nullptr. `RevivePlayer` y `TN_RescuePickup::Interact` usan `GetDeadPlayerPawn(PlayerId)` para recuperar el pawn.
+- **Flujo completo**: muerte → guardar ref pawn → ocultar pawn → spawnear pickup → espectador → compañero interactúa con pickup → teletransportar pawn a pos del pickup → `RevivePlayer` re-posee pawn → pickup se destruye.
 - **Revive vía Interact (DBNO)**: `TryInteract()` busca jugadores `bIsKnockedDown` (DBNO) dentro del `ReviveRadiusCm`. Si lo hay, envía `ServerTryReviveNearby()`. Los jugadores muertos (no DBNO) se rescatan vía el pickup.
-- **`RevivePlayer` actualizado**: maneja tanto DBNO como jugadores muertos. Restaura visibilidad del pawn (`SetActorHiddenInGame(false) + SetActorEnableCollision(true)`), `bIsAlive`, `bHasFinishedRun=false`, `bIsEliminated=false`. Llama `SetDeadVisual(false)` + `RecoverFromKnockdown()`. Re-posee el pawn y restaura input/movement. Otorga inmunidad temporal. Destruye el pickup de rescate.
+- **`RevivePlayer` actualizado**: maneja tanto DBNO como jugadores muertos. Busca pawn en `DeadPlayerPawns` si `GetPawn()` es null. Restaura visibilidad del pawn (`SetActorHiddenInGame(false) + SetActorEnableCollision(true)`), `bIsAlive`, `bHasFinishedRun=false`, `bIsEliminated=false`. Llama `SetDeadVisual(false)` + `RecoverFromKnockdown()`. Re-posee el pawn y restaura input/movement. Otorga inmunidad temporal. Destruye el pickup de rescate. Limpia `DeadPlayerPawns`.
 
 ## Quick Chat (Rocket League style)
 - `FTN_QuickChatEntry { SenderName, MessageID, Timestamp }` — struct en `TN_MatchFlowTypes.h`.
@@ -179,38 +182,13 @@
 - Si el jugador sale del volumen antes de que expire el timer, se resetea.
 - El tiempo restante se sincroniza a clients via `TN_CoopPlayerState::DeathZoneTimeRemaining`.
 - `bDestroyOnlyDuringRun` (default true) permite que la zona solo mate durante la carrera, ignorando el lobby.
-- Cuando el countdown expira, llama `TN_RunGameMode::EnterDBNO()` en vez de `MarkPlayerDead()` (el jugador pasa a DBNO antes de morir).
+- Cuando el countdown expira, llama `TN_RunGameMode::MarkPlayerDead()` directamente — **muerte instantánea, sin DBNO/bleedout**. El pawn se oculta, se spawnea un `TN_RescuePickup` y el jugador pasa a espectador.
 
-## DBNO system (Down But Not Out)
-- Cuando una death zone knockea a un jugador, entra en estado DBNO en vez de morir instantáneamente.
-- **Flujo**: DeathZone countdown → `EnterDBNO()` → knockdown visual + bleedout timer → {revive **o** bleedout expira → `MarkPlayerDead()`}.
-- **Estado replicado** (`TN_CoopPlayerState`):
-  - `bIsDBNO` (Replicated, all): true si el jugador está incapacitado pero vivo.
-  - `DBNOBleedoutTimeRemaining` (Replicated, COND_OwnerOnly): segundos hasta muerte real. -1 si no en DBNO.
-- **Config** (`TN_RunGameMode`, EditDefaultsOnly):
-  - `DBNOBleedoutSeconds = 15.f` — duración del bleedout.
-  - `ReviveImmunitySeconds = 2.f` — inmunidad post-revive (evita re-DBNO inmediato en death zones).
-- **Bleedout timer**: `TickDBNOBleedout()` (0.1s shared timer, idéntico al patrón de DeathZone) decrementa el tiempo de todos los jugadores en DBNO.
-- **CheckAllAliveDBNO**: Si TODOS los jugadores vivos están en DBNO (nadie puede revivir), todos mueren inmediatamente.
-- **Revive por emote**: Cualquier emote activado cerca de un jugador DBNO inicia un canal de revive.
-  - `ReviveRadiusCm = 300.f` y `ReviveDurationSeconds = 3.f` en `TortugaCharacter` (EditDefaultsOnly).
-  - `ServerSetEmote` → `TryStartReviveChannel()`: busca el DBNO más cercano en rango, inicia `TickReviveChannel` cada 0.1s.
-  - El canal se cancela si: el revividor deja de emitir, se aleja, es knockeado, o el target ya no es DBNO.
-  - Al completar: `RunGameMode->RevivePlayer()` → limpia DBNO, `RecoverFromKnockdown()`, inmunidad temporal.
-- **Replicación de revive** (`TortugaCharacter`):
-  - `bIsReviving` (Replicated, all) — para indicador visual en todos los clientes.
-  - `ReviveProgress` (Replicated, COND_OwnerOnly) — progreso [0..1] para barra de HUD del revividor.
-- **HUD hooks** (`TN_PlayerHUDWidget`, BlueprintImplementableEvent):
-  - `OnDBNOStateChanged(bIsDBNO, BleedoutRemaining)` — muestra indicador de incapacitación.
-  - `OnReviveProgressUpdated(Progress01, bIsReviving)` — barra de progreso del revive.
-- **Audio feedback DBNO/Revive** (`TortugaCharacter`, EditDefaultsOnly, categoría `DBNO|Audio`):
-  - `ReviveChannelSound` (`USoundBase*`): loop spatialized en el revividor durante el canal. Proximity-attenuated (Inner 300cm, Outer 2500cm, NaturalSound). Se reproduce en `TryStartReviveChannel()`, se detiene en `CancelReviveChannel()`.
-  - `ReviveSuccessSound` (`USoundBase*`): one-shot spatialized en el revivido al completar revive. Suena en todas las máquinas (via `RecoverFromKnockdown()` + `MulticastApplyKnockdownVisual`).
-  - `DBNOHeartbeatSound` (`USoundBase*`): loop NO-spatialized, solo para el jugador local incapacitado. Crea tensión personal. Se activa en `ApplyKnockdown()`/`OnRep_IsKnockedDown()`, se detiene en `RecoverFromKnockdown()`.
-  - `ReviveAudioComponent` (lazy-init, spatialized): maneja channel + success sounds. `OnReviveAudioFinished` re-loopea si `bIsReviving == true`.
-  - `DBNOAudioComponent` (lazy-init, non-spatialized, `bIsUISound=true`): maneja heartbeat. `OnDBNOAudioFinished` re-loopea si `bIsKnockedDown && IsLocallyControlled()`.
-  - Ambos se limpian en `EndPlay()` junto a `EmoteAudioComponent`.
-  - Asignar sonidos en **BP_TortugaCharacter → Class Defaults → DBNO|Audio**. Dejar null para desactivar.
+## DBNO system (Down But Not Out) — NO ACTIVO
+- El sistema DBNO existe en el código (`EnterDBNO`, `TickDBNOBleedout`, `CheckAllAliveDBNO`) pero **NO se usa actualmente**. Las death zones llaman `MarkPlayerDead()` directamente → muerte instantánea.
+- **El revive de jugadores muertos es SOLO vía `TN_RescuePickup`**: al morir se spawnea un pickup en el suelo, un compañero interactúa con él, y el jugador muerto respawnea en esa posición.
+- El código DBNO se conserva por si en el futuro se quiere un estado intermedio de incapacitación antes de la muerte real. Para activarlo, cambiar `TN_DeathZoneVolume::HandlePlayerDeath` de `MarkPlayerDead` a `EnterDBNO`.
+- Las propiedades `bIsDBNO` y `DBNOBleedoutTimeRemaining` en `TN_CoopPlayerState` siguen replicadas pero siempre valen `false` / `-1` en el flujo actual.
 
 ## Loading screen
 - `MP_GameInstance` gestiona un loading screen global: `ShowLoadingScreen(Reason)`/`HideLoadingScreen()`.

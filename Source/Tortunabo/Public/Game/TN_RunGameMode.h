@@ -40,6 +40,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Run|DBNO")
 	void RevivePlayer(APlayerController* PlayerController);
 
+	/**
+	 * Devuelve el pawn guardado de un jugador muerto (almacenado antes del UnPossess).
+	 * Usado por TN_RescuePickup::Interact para teletransportar el pawn.
+	 */
+	APawn* GetDeadPlayerPawn(int32 PlayerId) const;
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	float ResultsDurationSeconds = 8.0f;
@@ -53,7 +59,7 @@ protected:
 
 	/** How many seconds a DBNO player has before bleeding out and dying for real. */
 	UPROPERTY(EditDefaultsOnly, Category = "Run|DBNO", meta = (ClampMin = "3.0"))
-	float DBNOBleedoutSeconds = 15.f;
+	float DBNOBleedoutSeconds = 8.f;
 
 	/** Brief invulnerability after being revived (prevents instant re-death in death zones). */
 	UPROPERTY(EditDefaultsOnly, Category = "Run|DBNO", meta = (ClampMin = "0.0"))
@@ -92,6 +98,14 @@ private:
 
 	/** Rescue pickups spawned for dead players. Key = PlayerId. */
 	TMap<int32, TWeakObjectPtr<ATN_RescuePickup>> RescuePickups;
+
+	/**
+	 * Pawns de jugadores muertos. Key = PlayerId.
+	 * Guardamos la referencia ANTES de que EnterSpectateMode haga UnPossess,
+	 * porque tras entrar en espectador, PC->GetPawn() devuelve nullptr.
+	 * RevivePlayer y TN_RescuePickup usan esto para recuperar el pawn.
+	 */
+	TMap<int32, TWeakObjectPtr<APawn>> DeadPlayerPawns;
 
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
 	APlayerStart* EnsureFallbackPlayerStart();

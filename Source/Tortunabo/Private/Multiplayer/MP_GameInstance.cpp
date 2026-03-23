@@ -138,6 +138,14 @@ void UMP_GameInstance::Shutdown()
 
 void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 {
+	// Si la loading screen ya estaba "visible" pero el widget fue destruido
+	// (ej. map transition destruye el PC que era outer del widget), resetear estado.
+	if (bIsLoadingScreenVisible && (!LoadingScreenWidget || !LoadingScreenWidget->IsInViewport()))
+	{
+		bIsLoadingScreenVisible = false;
+		LoadingScreenWidget = nullptr;
+	}
+
 	if (bIsLoadingScreenVisible)
 	{
 		RefreshLoadingText(Reason);
@@ -624,6 +632,10 @@ void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 	// ── Si un auto-rejoin estaba pendiente y llegamos a un mapa ──
 	if (bPendingAutoRejoin)
 	{
+		// Recrear la loading screen si fue destruida durante el map transition
+		// (el widget se destruye junto al PC viejo que era su outer).
+		ShowLoadingScreen(TEXT("Reconectando a la partida..."));
+
 		if (LoadedWorld)
 		{
 			// Si no se pudo arrancar el timer antes (no había World), arrancarlo ahora
@@ -633,7 +645,7 @@ void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 				LoadedWorld->GetTimerManager().SetTimer(
 					AutoRejoinTimerHandle,
 					FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
-					2.0f, false);
+					3.0f, false);
 			}
 		}
 		// No ocultar loading screen — AttemptAutoRejoin lo hace
@@ -781,13 +793,13 @@ void UMP_GameInstance::AttemptAutoRejoin()
 		return;
 	}
 
-	// Reintentar en 2 segundos
+	// Reintentar en 2.5 segundos
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
 			AutoRejoinTimerHandle,
 			FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
-			2.0f, false);
+			2.5f, false);
 	}
 }
 
@@ -980,12 +992,13 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 				TEXT("[MP] %s durante travel — NO destruyendo sesión. Intentando auto-rejoin en 2s (%d reintentos)."),
 				*FailureTypeStr, AutoRejoinRetryCount);
 
-			// Esperar un poco a que el host arranque su listen server en el nuevo mapa
+			// Esperar a que el host arranque su listen server en el nuevo mapa
+			// 3s da margen para que el host cargue el mapa + cree listen server
 			if (UWorld* CurrentWorld = GetWorld())
 			{
 				CurrentWorld->GetTimerManager().SetTimer(
 					AutoRejoinTimerHandle, FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
-					2.0f, false);
+					3.0f, false);
 			}
 			else
 			{

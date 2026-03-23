@@ -87,8 +87,15 @@ void ATN_RescuePickup::Interact(APawn* Interactor)
 	// Llamar a RevivePlayer del GameMode
 	if (ATN_RunGameMode* RunGM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode()))
 	{
-		// Teletransportar el pawn del muerto a la posición del pickup ANTES de revivir
-		if (APawn* DeadPawn = DeadPC->GetPawn())
+		// Teletransportar el pawn del muerto a la posición del pickup ANTES de revivir.
+		// GetPawn() es null si el jugador está en espectador (UnPossess).
+		// Usamos GetDeadPlayerPawn del RunGameMode que guarda la referencia.
+		APawn* DeadPawn = DeadPC->GetPawn();
+		if (!DeadPawn)
+		{
+			DeadPawn = RunGM->GetDeadPlayerPawn(DeadPlayerId);
+		}
+		if (DeadPawn)
 		{
 			DeadPawn->SetActorLocation(GetActorLocation() + FVector(0.f, 0.f, 50.f));
 		}

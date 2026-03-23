@@ -209,7 +209,7 @@ private:
 	bool bPendingAutoRejoin = false;
 
 	int32 AutoRejoinRetryCount = 0;
-	static constexpr int32 MaxAutoRejoinRetries = 5;
+	static constexpr int32 MaxAutoRejoinRetries = 8;
 
 	FTimerHandle AutoRejoinTimerHandle;
 

@@ -664,6 +664,7 @@ void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName Helm
 	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->EquippedHelmetId = HelmetId;
+		TNPS->ForceNetUpdate(); // Forzar replicación inmediata del helmet a todos los clientes
 
 		// El listen-server (authority) no recibe OnRep → aplica el mesh directamente.
 		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))

@@ -4,6 +4,10 @@
 
 ATN_CoopPlayerState::ATN_CoopPlayerState()
 {
+	// Frecuencia de replicación alta para que cambios de estado (helmet, alive, DBNO)
+	// lleguen rápido a todos los clientes. Default de APlayerState es ~1-2 Hz.
+	SetNetUpdateFrequency(30.f);
+	SetMinNetUpdateFrequency(15.f);
 }
 
 bool ATN_CoopPlayerState::CanServerSendQuickChat(float Now, float CooldownSeconds) const

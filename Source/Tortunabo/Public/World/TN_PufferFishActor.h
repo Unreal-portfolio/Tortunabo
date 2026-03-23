@@ -43,11 +43,11 @@ protected:
 
 	/** Radio de empuje al inflarse (cm). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish", meta = (ClampMin = "50.0"))
-	float InflateRadius = 400.f;
+	float InflateRadius = 800.f;
 
 	/** Fuerza base de empuje (cm/s). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish", meta = (ClampMin = "0.0"))
-	float InflatePushForce = 1500.f;
+	float InflatePushForce = 4000.f;
 
 	/** Duración del estado inflado (s). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish", meta = (ClampMin = "0.1"))
@@ -55,7 +55,7 @@ protected:
 
 	/** Velocidad mínima del empuje para causar knockdown. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish", meta = (ClampMin = "0.0"))
-	float MinKnockdownForce = 800.f;
+	float MinKnockdownForce = 400.f;
 
 	/** Duración del knockdown al empujar (s). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PufferFish|Knockback", meta = (ClampMin = "0.1"))

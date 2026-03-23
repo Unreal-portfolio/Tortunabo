@@ -526,6 +526,14 @@ protected:
 	bool bIsKnockedDown = false;
 
 	/**
+	 * Nombre del componente visual a rotar durante knockdown.
+	 * Debe coincidir con el nombre de un SceneComponent en el Blueprint (ej. "Cuerpo").
+	 * Si está vacío o no se encuentra, se usa el fallback automático (primer StaticMesh).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
+	FName KnockdownComponentName = TEXT("Cuerpo");
+
+	/**
 	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
 	 * El pawn NO se destruye: queda como cadáver interactuable para revive.
 	 */

@@ -115,10 +115,9 @@ void ATN_PufferFishActor::Inflate()
 	// durante el inflado, OnPufferProjectileStopped lo ignora (PufferState != Deflated)
 	// y es Deflate() quien finalmente spawnea el pickup.
 
-	// ── Empujar a todos los personajes en rango ───────────────────────────────
+	// ── Empujar a todos los personajes en rango (incluido el lanzador) ────
 	TArray<FOverlapResult> Overlaps;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TN_PufferInflate), false, this);
-	if (GetInstigator()) { Params.AddIgnoredActor(GetInstigator()); }
 
 	GetWorld()->OverlapMultiByObjectType(
 		Overlaps,
@@ -138,7 +137,7 @@ void ATN_PufferFishActor::Inflate()
 		const float ForceMagnitude = InflatePushForce * (1.f - NormalizedDist);
 
 		FVector PushDir = (HitCharacter->GetActorLocation() - GetActorLocation()).GetSafeNormal();
-		PushDir.Z = FMath::Max(PushDir.Z, 0.3f);
+		PushDir.Z = FMath::Max(PushDir.Z, 0.7f);
 		PushDir.Normalize();
 
 		HitCharacter->LaunchCharacter(PushDir * ForceMagnitude, true, true);

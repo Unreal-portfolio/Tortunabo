@@ -437,6 +437,15 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		UE_LOG(LogTemp, Warning, TEXT("[Death] RescuePickupClass is not set! Assign it in BP_RunGameMode → Class Defaults."));
 	}
 
+	// ── Guardar referencia al pawn ANTES de entrar en espectador ──────────
+	// EnterSpectateMode → ChangeState(Spectating) → UnPossess → GetPawn() devuelve nullptr.
+	// Sin esta referencia, RevivePlayer no podría encontrar el pawn para re-poseerlo.
+	if (APawn* DeadPawn = PlayerController->GetPawn())
+	{
+		DeadPlayerPawns.Add(TNPS->GetPlayerId(), DeadPawn);
+		UE_LOG(LogTemp, Log, TEXT("[Death] Saved pawn ref for PlayerId=%d → %s"), TNPS->GetPlayerId(), *GetNameSafe(DeadPawn));
+	}
+
 	MovePlayerToSpectator(PlayerController);
 	UpdateRoundProgressAndMaybeFinish();
 }
@@ -536,7 +545,17 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	}
 
 	// ── Restaurar pawn visual y movimiento ────────────────────────────────
-	if (APawn* Pawn = PlayerController->GetPawn())
+	// GetPawn() puede ser null si el jugador está en modo espectador (UnPossess).
+	// En ese caso, buscamos el pawn guardado en DeadPlayerPawns.
+	APawn* Pawn = PlayerController->GetPawn();
+	if (!Pawn)
+	{
+		if (TWeakObjectPtr<APawn>* PawnPtr = DeadPlayerPawns.Find(TNPS->GetPlayerId()))
+		{
+			Pawn = PawnPtr->Get();
+		}
+	}
+	if (Pawn)
 	{
 		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
 		Pawn->SetActorHiddenInGame(false);
@@ -557,6 +576,14 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
 		PlayerController->Possess(Pawn);
 	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Revive] No pawn found for %s (PlayerId=%d) — cannot restore visual/control!"),
+			*GetNameSafe(PlayerController), TNPS->GetPlayerId());
+	}
+
+	// Limpiar la entrada de DeadPlayerPawns
+	DeadPlayerPawns.Remove(TNPS->GetPlayerId());
 
 	// Grant brief immunity
 	ReviveImmunePlayers.Add(PlayerController);
@@ -571,6 +598,15 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		*GetNameSafe(PlayerController), ReviveImmunitySeconds,
 		bWasDBNO ? TEXT("YES") : TEXT("NO"),
 		bWasDead ? TEXT("YES") : TEXT("NO"));
+}
+
+APawn* ATN_RunGameMode::GetDeadPlayerPawn(int32 PlayerId) const
+{
+	if (const TWeakObjectPtr<APawn>* PawnPtr = DeadPlayerPawns.Find(PlayerId))
+	{
+		return PawnPtr->Get();
+	}
+	return nullptr;
 }
 
 void ATN_RunGameMode::TickDBNOBleedout()
@@ -614,6 +650,13 @@ void ATN_RunGameMode::TickDBNOBleedout()
 	if (DBNOPlayers.Num() == 0)
 	{
 		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
+	}
+	else
+	{
+		// Comprobar si TODOS los vivos están ahora en DBNO (nadie puede revivir).
+		// Esto cubre el caso de que el segundo jugador caiga mientras el primero
+		// ya estaba en DBNO via el bleedout tick (EnterDBNO no se llama de nuevo).
+		CheckAllAliveDBNO();
 	}
 }
 
@@ -806,9 +849,9 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		}
 
 		// ── Step 4: Esperar a que Steam libere el socket P2P, luego viajar ───
-		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Waiting 1.0s for Steam socket release before ServerTravel..."));
+		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Waiting 1.5s for Steam socket release before ServerTravel..."));
 		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
-			&ATN_RunGameMode::ExecuteDeferredTravel, 1.0f, false);
+			&ATN_RunGameMode::ExecuteDeferredTravel, 1.5f, false);
 	}
 }
 

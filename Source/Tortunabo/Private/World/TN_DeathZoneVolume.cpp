@@ -91,8 +91,8 @@ void ATN_DeathZoneVolume::HandlePlayerDeath(APlayerController* PlayerController)
 
 	if (ATN_RunGameMode* RunGameMode = ResolveRunGameMode())
 	{
-		// Enter DBNO instead of killing immediately — teammates can revive
-		RunGameMode->EnterDBNO(PlayerController);
+		// Muerte instantánea — sin DBNO/bleedout
+		RunGameMode->MarkPlayerDead(PlayerController);
 	}
 
 	PendingDeathRemaining.Remove(PlayerController);

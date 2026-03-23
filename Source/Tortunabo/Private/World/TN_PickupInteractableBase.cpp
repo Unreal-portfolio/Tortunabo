@@ -126,13 +126,26 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 		return;
 	}
 
+	// Despertar el actor ANTES de cambiar bTaken para que la replicación funcione.
+	// Con DORM_DormantAll, FlushNetDormancy() sola no despierta el canal de replicación.
+	SetNetDormancy(DORM_Awake);
+
 	bTaken = true;
 	SetInteractionEnabled(false);
 	ApplyTakenState();
 	OnPickedUp(Interactor);
 
-	// Despertar al actor dormido para que bTaken se replique inmediatamente
+	// Forzar net update inmediato para que el cliente vea la desaparición sin delay.
 	FlushNetDormancy();
+	ForceNetUpdate();
+
+	// Re-dormir tras 2s para dejar de consumir bandwidth.
+	FTimerHandle DormancyTimerHandle;
+	GetWorldTimerManager().SetTimer(DormancyTimerHandle,
+		[WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
+		{
+			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_DormantAll); }
+		}, 2.0f, false);
 
 	// ── Log de confirmación de recogida ───────────────────────────────────────
 	UE_LOG(LogTemp, Log,

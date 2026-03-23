@@ -49,8 +49,8 @@ ATortugaCharacter::ATortugaCharacter()
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-	SetNetUpdateFrequency(30.f);
-	SetMinNetUpdateFrequency(15.f);
+	SetNetUpdateFrequency(60.f);
+	SetMinNetUpdateFrequency(30.f);
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
@@ -218,13 +218,24 @@ void ATortugaCharacter::BeginPlay()
 		Cabeza.IsValid() ? TEXT("OK") : TEXT("MISSING"));
 
 	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown.
-	// Buscar el componente visual principal: SkeletalMesh o fallback a primer
-	// StaticMeshComponent hijo (blockout). Guardar ref para knockdown visual.
-	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	// 1) Buscar por nombre configurable (KnockdownComponentName).
+	if (KnockdownComponentName != NAME_None)
 	{
-		if (SkelMesh->GetSkeletalMeshAsset())
+		if (USceneComponent* Named = FindChildByName(KnockdownComponentName))
 		{
-			KnockdownVisualComp = SkelMesh;
+			KnockdownVisualComp = Named;
+			UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] KnockdownVisualComp → '%s' (por KnockdownComponentName)"), *Named->GetName());
+		}
+	}
+	// 2) Fallback: SkeletalMesh con asset.
+	if (!KnockdownVisualComp.IsValid())
+	{
+		if (USkeletalMeshComponent* SkelMesh = GetMesh())
+		{
+			if (SkelMesh->GetSkeletalMeshAsset())
+			{
+				KnockdownVisualComp = SkelMesh;
+			}
 		}
 	}
 	if (!KnockdownVisualComp.IsValid())
@@ -351,6 +362,12 @@ void ATortugaCharacter::TickLegAnimation(float DeltaTime)
 {
 	// Suppressed while an emote (or its blend-out) controls all 5 components.
 	if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+	{
+		return;
+	}
+
+	// Suppressed during knockdown — the character is tipped over, legs shouldn't animate.
+	if (bIsKnockedDown)
 	{
 		return;
 	}
@@ -694,38 +711,9 @@ void ATortugaCharacter::TryInteract()
 		UpdateFocusedInteractable();
 	}
 
-	// Si tras el scan sigue sin haber interactuable → intentar revivir DBNO cercano
+	// Si tras el scan sigue sin haber interactuable → usar ítem equipado (lanzar bola, etc.)
 	if (!FocusedInteractable.IsValid())
 	{
-		// Comprobar si hay un jugador en DBNO (knockdown) cerca para revivir.
-		// Los jugadores muertos se manejan vía pickup de rescate (TN_RescuePickup).
-		bool bFoundDBNO = false;
-		const float SearchRadius = ReviveRadiusCm > 0.f ? ReviveRadiusCm : 300.f;
-		const FVector MyLoc = GetActorLocation();
-
-		for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
-		{
-			ATortugaCharacter* Other = *It;
-			if (!Other || Other == this) { continue; }
-			if (!Other->bIsKnockedDown) { continue; }
-
-			const float DistSq = FVector::DistSquared(MyLoc, Other->GetActorLocation());
-			if (DistSq < SearchRadius * SearchRadius)
-			{
-				bFoundDBNO = true;
-				break;
-			}
-		}
-
-		if (bFoundDBNO)
-		{
-			if (bDebug)
-			{
-				UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Found DBNO player nearby → ServerTryReviveNearby"));
-			}
-			ServerTryReviveNearby();
-			return;
-		}
 
 		if (bDebug)
 		{
@@ -1285,11 +1273,23 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 	// intentar resolverlo ahora con la misma lógica de búsqueda ──
 	if (!VisComp)
 	{
-		if (USkeletalMeshComponent* SkelMesh = GetMesh())
+		// 1) Buscar por nombre configurable
+		if (KnockdownComponentName != NAME_None)
 		{
-			if (SkelMesh->GetSkeletalMeshAsset())
+			if (USceneComponent* Named = FindChildByName(KnockdownComponentName))
 			{
-				KnockdownVisualComp = SkelMesh;
+				KnockdownVisualComp = Named;
+			}
+		}
+		// 2) Fallback: SkeletalMesh con asset
+		if (!KnockdownVisualComp.IsValid())
+		{
+			if (USkeletalMeshComponent* SkelMesh = GetMesh())
+			{
+				if (SkelMesh->GetSkeletalMeshAsset())
+				{
+					KnockdownVisualComp = SkelMesh;
+				}
 			}
 		}
 		if (!KnockdownVisualComp.IsValid())

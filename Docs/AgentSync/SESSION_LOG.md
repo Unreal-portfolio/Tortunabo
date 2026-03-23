@@ -683,3 +683,111 @@
 1. Crear `BP_RescuePickup` en el Editor (hijo de `TN_RescuePickup`), asignar mesh visual.
 2. Smoke test completo: Host + Cliente viajar HQ→Run, muerte → pickup → rescate → volver a lobby.
 3. Verificar que el knockdown visual del PufferFish se ve en clientes remotos.
+
+## 2026-03-23 - Sprint: Bugfix Multiplayer (8 fixes)
+
+### Contexto
+- Testing multiplayer real (Steam, 2 jugadores) reveló múltiples bugs de replicación, dormancy, espectador y timing.
+
+### Cambios clave
+
+#### FIX 1 — [P0 CRÍTICO] Rescue Pickup no revive al jugador muerto
+- **Causa raíz**: `MovePlayerToSpectator()` → `EnterSpectateMode()` → UE llama `UnPossess()` internamente. Después, `RevivePlayer()` y `TN_RescuePickup::Interact()` llaman `PC->GetPawn()` que devuelve nullptr. Todo el bloque de restauración se saltaba.
+- **Fix**: Nuevo `TMap<int32, TWeakObjectPtr<APawn>> DeadPlayerPawns` en `TN_RunGameMode`. `MarkPlayerDead` guarda la referencia al pawn ANTES de `MovePlayerToSpectator`. `RevivePlayer` busca el pawn en `DeadPlayerPawns` si `GetPawn()` es null. `TN_RescuePickup::Interact` usa `RunGM->GetDeadPlayerPawn()` para teletransportar. Tras re-`Possess()`, se limpia la entrada del mapa.
+- Archivos modificados:
+  - `Source/Tortunabo/Public/Game/TN_RunGameMode.h` — `DeadPlayerPawns`, `GetDeadPlayerPawn()`.
+  - `Source/Tortunabo/Private/Game/TN_RunGameMode.cpp` — `MarkPlayerDead`, `RevivePlayer`, nuevo `GetDeadPlayerPawn`.
+  - `Source/Tortunabo/Private/World/TN_RescuePickup.cpp` — `Interact` usa `GetDeadPlayerPawn`.
+
+#### FIX 2 — [P1] Pickup recogido sigue visible en cliente
+- **Causa raíz**: `TN_InteractableBase` usa `DORM_DormantAll`. `FlushNetDormancy()` en `Interact()` no despierta el canal de replicación sin primero cambiar a `DORM_Awake`.
+- **Fix**: Antes de asignar `bTaken=true`, se llama `SetNetDormancy(DORM_Awake)`. Después de `FlushNetDormancy()`, se añade `ForceNetUpdate()`. Timer 2s para volver a `DORM_DormantAll`.
+- Archivos modificados:
+  - `Source/Tortunabo/Private/World/TN_PickupInteractableBase.cpp` — `Interact()`.
+
+#### FIX 3 — [P1] PufferFish ahora empuja a TODOS (incluido lanzador)
+- **Antes**: `Inflate()` añadía `GetInstigator()` a actors ignorados del overlap. El lanzador era inmune.
+- **Fix**: Eliminada la línea `Params.AddIgnoredActor(GetInstigator())`. Ahora la explosión afecta a todos.
+- Aumentados defaults para efecto exagerado: `InflateRadius 400→600`, `InflatePushForce 1500→2500`, `MinKnockdownForce 800→600`, componente vertical Z `0.3→0.5`.
+- Archivos modificados:
+  - `Source/Tortunabo/Private/World/TN_PufferFishActor.cpp` — `Inflate()`.
+  - `Source/Tortunabo/Public/World/TN_PufferFishActor.h` — defaults de fuerza/radio.
+
+#### FIX 4 — [P0] Knockdown visual no aparece (bolas y pufferfish)
+- **Causa raíz**: `KnockdownVisualComp` se resolvía al SkeletalMesh vacío de ACharacter o a una pieza pequeña. `TickLegAnimation` sobreescribía la rotación de patas cada frame.
+- **Fix**: Nueva `UPROPERTY KnockdownComponentName = "Cuerpo"` en `TortugaCharacter.h`. `BeginPlay` y `ApplyKnockdownVisual` buscan primero por nombre configurable. `TickLegAnimation` ahora hace early-out si `bIsKnockedDown`.
+- Archivos modificados:
+  - `Source/Tortunabo/Public/Player/TortugaCharacter.h` — `KnockdownComponentName`.
+  - `Source/Tortunabo/Private/Player/TortugaCharacter.cpp` — `BeginPlay`, `ApplyKnockdownVisual`, `TickLegAnimation`.
+
+#### FIX 5 — [P1] Muerte tarda ~10-18s en multijugador
+- **Causa raíz**: `DBNOBleedoutSeconds=15.f` demasiado largo. `CheckAllAliveDBNO()` solo se llamaba en `EnterDBNO`, no en `TickDBNOBleedout`.
+- **Fix**: Reducido `DBNOBleedoutSeconds` de 15→8. `TickDBNOBleedout` ahora llama `CheckAllAliveDBNO()` al final del tick.
+- Archivos modificados:
+  - `Source/Tortunabo/Public/Game/TN_RunGameMode.h` — default.
+  - `Source/Tortunabo/Private/Game/TN_RunGameMode.cpp` — `TickDBNOBleedout`.
+
+#### FIX 6 — [P2] Optimización de red (lag del cliente)
+- **Config de red** (`DefaultEngine.ini`): `NetServerMaxTickRate 45→60`, `MaxNetTickRate 45→60`, `MaxInternetClientRate 100000→200000`, `MaxClientRate 100000→200000`, `ConfiguredInternetSpeed 100000→200000`.
+- **Character**: `NetUpdateFrequency 30→60 Hz`, `MinNetUpdateFrequency 15→30 Hz`.
+- Archivos modificados:
+  - `Config/DefaultEngine.ini`.
+  - `Source/Tortunabo/Private/Player/TortugaCharacter.cpp` — constructor.
+
+#### FIX 7 — [P2] Helmet con lag visual
+- **Causa raíz**: `APlayerState` replica a ~1-2 Hz por defecto. Cambios de `EquippedHelmetId` tardaban en llegar.
+- **Fix**: `ATN_CoopPlayerState` ahora usa `SetNetUpdateFrequency(10.f)`. `ServerSetEquippedHelmet` añade `TNPS->ForceNetUpdate()` tras asignar el helmet.
+- Archivos modificados:
+  - `Source/Tortunabo/Private/Core/TN_CoopPlayerState.cpp` — constructor.
+  - `Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp` — `ServerSetEquippedHelmet`.
+
+#### FIX 8 — [P2] Loading screen no persiste durante auto-rejoin
+- **Causa raíz**: Widget se destruía junto al PC viejo durante map transition. `bIsLoadingScreenVisible` quedaba true pero widget null.
+- **Fix**: `ShowLoadingScreen` ahora valida si el widget sigue vivo (`IsInViewport()`); si no, resetea y recrea. `HandlePostLoadMap` llama `ShowLoadingScreen` cuando `bPendingAutoRejoin` para recrear el widget.
+- Archivos modificados:
+  - `Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp` — `ShowLoadingScreen`, `HandlePostLoadMap`.
+
+### Setup requerido en Editor
+1. **`BP_TortugaCharacter → Class Defaults → Knockdown → KnockdownComponentName`**: Verificar que el valor es `"Cuerpo"` o el nombre exacto del SceneComponent principal del cuerpo en el BP. Si el componente se llama diferente, actualizar aquí.
+2. **`BP_RunGameMode → Class Defaults → Run|Death → RescuePickupClass`**: Seguir asignado (sin cambios).
+3. Sonidos: revisar compresión de audio en assets (Issue de Editor, no código).
+
+### Pendientes
+1. Smoke test completo 2+ jugadores: death → pickup → revive en la posición del pickup.
+2. Verificar knockdown visual: lanzar bola → confirmar rotación 100° visible en ambos clientes.
+3. Verificar pickup: cliente recoge → desaparece inmediatamente del suelo.
+4. Probar explosión PufferFish: lanzador también sale volando.
+5. Medir latencia del cliente con nuevo tick rate 60Hz.
+6. Ruedas radiales de emotes/quick chat (documento `Implementacion_Radial.md` — pendiente de implementación en Editor).
+
+---
+
+## Sesión 2026-03-23 — Helmet/Cosmetics Update Rate + Diagnóstico Travel
+
+### Cambios realizados
+
+#### FIX 9 — [P2] Helmet/cosméticos con lag visual residual
+- **Causa raíz**: `ATN_CoopPlayerState` usaba `SetNetUpdateFrequency(10.f)` sin `MinNetUpdateFrequency`. UE podía reducir la frecuencia real por debajo de 10Hz con adaptive net frequency.
+- **Fix**: `SetNetUpdateFrequency(30.f)` + `SetMinNetUpdateFrequency(15.f)`. Ahora helmet y estados (alive, DBNO, eliminated, etc.) se replican a 30Hz max,  15Hz mínimo garantizado.
+- Archivos modificados:
+  - `Source/Tortunabo/Private/Core/TN_CoopPlayerState.cpp` — constructor.
+
+#### FIX 10 — [P1] Clientes expulsados al viajar HQ → Run (timing insuficiente)
+- **Causa raíz**: Race condition temporal — el delay de 1s entre destruir el NetDriver y hacer ServerTravel no siempre era suficiente para que Steam libere el socket P2P. Además, el auto-rejoin de clientes empezaba solo 2s después de ConnectionLost, a veces antes de que el host terminara de cargar el mapa y crear el listen server.
+- **Fix (timing adjustments)**:
+  - `TN_HQGameMode::BeginMatchTravel` y `TN_RunGameMode::FinishRoundAndReturnToLobby`: delay de deferred travel **1.0s → 1.5s** (más margen para liberar socket Steam).
+  - `MP_GameInstance::OnNetworkFailure`: delay inicial del primer auto-rejoin **2.0s → 3.0s** (dar más tiempo al host).
+  - `MP_GameInstance::HandlePostLoadMap`: delay del deferred auto-rejoin **2.0s → 3.0s**.
+  - `MP_GameInstance::AttemptAutoRejoin`: delay entre reintentos **2.0s → 2.5s**.
+  - `MaxAutoRejoinRetries` **5 → 8** (total: 3s + 7×2.5s = 20.5s de ventana vs 2s + 4×2s = 10s anterior).
+- Archivos modificados:
+  - `Source/Tortunabo/Private/Lobby/TN_HQGameMode.cpp` — timer 1.5s.
+  - `Source/Tortunabo/Private/Game/TN_RunGameMode.cpp` — timer 1.5s.
+  - `Source/Tortunabo/Public/Multiplayer/MP_GameInstance.h` — MaxAutoRejoinRetries 8.
+  - `Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp` — delays 3.0s/2.5s.
+
+### Diagnóstico: ¿Por qué los clientes se "expulsan"?
+- **Es comportamiento esperado del patrón Deferred ServerTravel**: el NetDriver se destruye explícitamente antes del travel para liberar el socket Steam P2P. Los clientes SIEMPRE reciben ConnectionLost y deben reconectar vía sesión Steam.
+- El flujo diseñado es: Host destroy NetDriver → wait 1.5s → ServerTravel → nuevo listen server. Clientes: ConnectionLost → loading screen → auto-rejoin vía sesión Steam.
+- Los fallos de reconexión ocurrían por timing insuficiente, no por bug lógico.
+- Con los nuevos timings, los clientes tienen una ventana de reconexión de ~20.5s.
