@@ -614,6 +614,25 @@ void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 {
 	bIsPendingTravel = false;
 
+	// ── Si un auto-rejoin estaba pendiente y llegamos a un mapa ──
+	if (bPendingAutoRejoin)
+	{
+		if (LoadedWorld)
+		{
+			// Si no se pudo arrancar el timer antes (no había World), arrancarlo ahora
+			if (!LoadedWorld->GetTimerManager().IsTimerActive(AutoRejoinTimerHandle))
+			{
+				UE_LOG(LogTemp, Log, TEXT("[MP] PostLoadMap: arrancando auto-rejoin timer (deferred)."));
+				LoadedWorld->GetTimerManager().SetTimer(
+					AutoRejoinTimerHandle,
+					FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
+					2.0f, false);
+			}
+		}
+		// No ocultar loading screen — AttemptAutoRejoin lo hace
+		return;
+	}
+
 	// ── Listen retry: si el listen socket falló durante LoadMap, reintentar ──
 	if (bNeedsListenRetry && LoadedWorld)
 	{
@@ -685,6 +704,83 @@ void UMP_GameInstance::RetryListenServer()
 		{
 			PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
 		}
+	}
+}
+
+void UMP_GameInstance::AttemptAutoRejoin()
+{
+	if (!bPendingAutoRejoin)
+	{
+		return;
+	}
+
+	--AutoRejoinRetryCount;
+
+	IOnlineSessionPtr Sessions = GetSessionInterface();
+	if (!Sessions.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[MP] AttemptAutoRejoin: No session interface."));
+		bPendingAutoRejoin = false;
+		HideLoadingScreen();
+		UpdateStatus(TEXT("ERROR: No se pudo reconectar — sin interfaz de sesión."));
+		return;
+	}
+
+	// Verificar que la sesión sigue existiendo
+	FNamedOnlineSession* ExistingSession = Sessions->GetNamedSession(NAME_GameSession);
+	if (!ExistingSession)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MP] AttemptAutoRejoin: No hay sesión activa. Buscando sesión..."));
+		// La sesión se perdió — intentar buscar vía Find
+		bPendingAutoRejoin = false;
+		HideLoadingScreen();
+		UpdateStatus(TEXT("Sesión perdida. Usa 'Buscar Partida' para reconectar."));
+		return;
+	}
+
+	FString ConnectInfo;
+	if (Sessions->GetResolvedConnectString(NAME_GameSession, ConnectInfo) && !ConnectInfo.IsEmpty())
+	{
+		ShowLoadingScreen(FString::Printf(TEXT("Reconectando... (intento %d)"), MaxAutoRejoinRetries - AutoRejoinRetryCount));
+		APlayerController* PC = GetFirstLocalPlayerController();
+		if (PC)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[MP] AttemptAutoRejoin: ClientTravel to '%s'"), *ConnectInfo);
+			bPendingAutoRejoin = false; // El travel cargará un mapa → HandlePostLoadMap limpiará
+			PC->ClientTravel(ConnectInfo, TRAVEL_Absolute);
+			return;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MP] AttemptAutoRejoin: No PlayerController for ClientTravel."));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MP] AttemptAutoRejoin: Could not resolve connect string (retries left: %d)"), AutoRejoinRetryCount);
+	}
+
+	if (AutoRejoinRetryCount <= 0)
+	{
+		bPendingAutoRejoin = false;
+		HideLoadingScreen();
+		UpdateStatus(TEXT("ERROR: No se pudo reconectar tras varios intentos. Volviendo al menú..."));
+		DestroyCurrentSession();
+		APlayerController* PC = GetFirstLocalPlayerController();
+		if (PC)
+		{
+			PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
+		}
+		return;
+	}
+
+	// Reintentar en 2 segundos
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			AutoRejoinTimerHandle,
+			FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
+			2.0f, false);
 	}
 }
 
@@ -841,12 +937,40 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	}
 
 	// ---------- CLIENTE: otras desconexiones (pérdida de conexión, timeout, etc.) ----------
-	// El engine ya gestiona el viaje de vuelta; aquí limpiamos sesión zombie si la hay.
 	if (FailureType == ENetworkFailure::ConnectionLost   ||
 		FailureType == ENetworkFailure::ConnectionTimeout ||
 		FailureType == ENetworkFailure::FailureReceived   ||
 		FailureType == ENetworkFailure::PendingConnectionFailure)
 	{
+		// ── Si estamos en medio de un travel del servidor (lobby→game, game→lobby),
+		//    el host destruyó el NetDriver antes de que llegara el ClientTravel RPC.
+		//    NO destruir la sesión Steam — la usaremos para reconectar. ──
+		if (bIsPendingTravel)
+		{
+			bPendingAutoRejoin = true;
+			AutoRejoinRetryCount = MaxAutoRejoinRetries;
+			ShowLoadingScreen(TEXT("Reconectando a la partida..."));
+			UpdateStatus(FString::Printf(TEXT("Conexión perdida durante travel (%s). Reconectando..."), *FailureTypeStr));
+			UE_LOG(LogTemp, Warning,
+				TEXT("[MP] %s durante travel — NO destruyendo sesión. Intentando auto-rejoin en 2s (%d reintentos)."),
+				*FailureTypeStr, AutoRejoinRetryCount);
+
+			// Esperar un poco a que el host arranque su listen server en el nuevo mapa
+			if (UWorld* CurrentWorld = GetWorld())
+			{
+				CurrentWorld->GetTimerManager().SetTimer(
+					AutoRejoinTimerHandle, FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
+					2.0f, false);
+			}
+			else
+			{
+				// Sin world activo — intentar directamente tras un breve delay
+				// PostLoadMap disparará el rejoin si estamos en transición.
+				UE_LOG(LogTemp, Warning, TEXT("[MP] No World for timer — AttemptAutoRejoin will fire from HandlePostLoadMap or next world."));
+			}
+			return;
+		}
+
 		HideLoadingScreen();
 		UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
 		// Destruir la sesión cliente para evitar estado zombie al volver al menú.

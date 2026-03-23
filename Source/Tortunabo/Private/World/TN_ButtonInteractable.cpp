@@ -13,6 +13,12 @@ void ATN_ButtonInteractable::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 	DOREPLIFETIME(ATN_ButtonInteractable, CurrentWaypointIndex);
 }
 
+void ATN_ButtonInteractable::OnRep_CurrentWaypointIndex()
+{
+	// Cuando el cliente recibe un nuevo waypoint, activar el movimiento local
+	bIsMoving = true;
+}
+
 void ATN_ButtonInteractable::Interact(APawn* Interactor)
 {
 	if (!HasAuthority() || !CanInteract(Interactor))
@@ -42,8 +48,10 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// Solo el servidor mueve el target; clients ven la posición via replicación de movimiento del target.
-	if (!HasAuthority() || !bIsMoving || !MoveTarget || Waypoints.Num() == 0)
+	// Tanto servidor como clientes interpolan MoveTarget hacia el waypoint actual.
+	// El servidor avanza CurrentWaypointIndex (replicado); los clientes reciben
+	// OnRep_CurrentWaypointIndex que activa bIsMoving para interpolar localmente.
+	if (!bIsMoving || !MoveTarget || Waypoints.Num() == 0)
 	{
 		return;
 	}

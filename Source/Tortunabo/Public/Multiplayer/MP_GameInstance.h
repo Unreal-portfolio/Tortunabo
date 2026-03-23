@@ -192,5 +192,20 @@ private:
 	FTimerHandle ListenRetryTimerHandle;
 
 	FDelegateHandle InviteAcceptedDelegateHandle;
+
+	// ── Auto-rejoin tras ConnectionLost durante travel ─────────────────────
+	/**
+	 * true cuando el cliente pierde conexión durante un travel legítimo del servidor.
+	 * En vez de destruir la sesión, intentamos reconectar vía Steam session.
+	 */
+	bool bPendingAutoRejoin = false;
+
+	int32 AutoRejoinRetryCount = 0;
+	static constexpr int32 MaxAutoRejoinRetries = 5;
+
+	FTimerHandle AutoRejoinTimerHandle;
+
+	/** Intenta reconectar al host resolviendo el connect string de la sesión Steam. */
+	void AttemptAutoRejoin();
 };
 

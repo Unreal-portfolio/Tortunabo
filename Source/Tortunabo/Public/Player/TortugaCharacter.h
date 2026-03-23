@@ -448,6 +448,28 @@ private:
 	UFUNCTION()
 	void OnRep_IsKnockedDown();
 
+	UFUNCTION()
+	void OnRep_IsDead();
+
+	/**
+	 * Multicast fiable: fuerza el visual de muerte en todos los clientes.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastSetDeadVisual(bool bDead);
+
+	/** Oculta extremidades, cabeza, cola y casco (solo visual). */
+	void HideLimbs();
+
+	/** Restaura la visibilidad de extremidades, cabeza, cola y casco. */
+	void ShowLimbs();
+
+	/**
+	 * Server RPC: el jugador interactuando intenta revivir a un cadáver cercano.
+	 * Busca el TortugaCharacter muerto más cercano y llama RevivePlayer del GameMode.
+	 */
+	UFUNCTION(Server, Reliable)
+	void ServerTryReviveNearby();
+
 	// ── Revive channeling (server-driven) ────────────────────────────────────
 	/** Try to start reviving a nearby DBNO player. Called from ServerSetEmote when emote starts. */
 	void TryStartReviveChannel();
@@ -503,6 +525,13 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_IsKnockedDown, BlueprintReadOnly, Category = "Knockdown")
 	bool bIsKnockedDown = false;
 
+	/**
+	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
+	 * El pawn NO se destruye: queda como cadáver interactuable para revive.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_IsDead, BlueprintReadOnly, Category = "Death")
+	bool bIsDead = false;
+
 	FTimerHandle KnockdownTimerHandle;
 
 	/** Rotación relativa del mesh al spawnear (guardada en BeginPlay para restaurarla). */
@@ -526,6 +555,14 @@ public:
 	/** Recover from knockdown immediately (server-only). Used by RunGameMode::RevivePlayer. */
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
 	void RecoverFromKnockdown();
+
+	/**
+	 * Activa/desactiva el visual de muerte: oculta extremidades, cola, cabeza, casco.
+	 * El pawn permanece en el mundo como cadáver interactuable.
+	 * Solo llamar desde el servidor — replica via OnRep + Multicast.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Death")
+	void SetDeadVisual(bool bDead);
 
 	UFUNCTION(BlueprintCallable, Category = "Emotes")
 	void RequestWheelEmote(uint8 EmoteID);

@@ -71,7 +71,7 @@ public:
 	TArray<FTN_QuickChatEntry> QuickChatHistory;
 
 	/** Maximum number of entries kept in QuickChatHistory. */
-	static constexpr int32 MaxQuickChatEntries = 32;
+	static constexpr int32 MaxQuickChatEntries = 10;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 

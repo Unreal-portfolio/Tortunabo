@@ -144,11 +144,21 @@
 
 ## Results y espectador
 - Al terminar la carrera o morir, `TN_RunGameMode` llama `MarkPlayerFinished()`/`MarkPlayerDead()` → asigna rank/tiempo en `TN_CoopPlayerState` → mueve al jugador a espectador via `MovePlayerToSpectator()`.
+- **`MarkPlayerFinished`**: oculta el pawn (`SetActorHiddenInGame + disable collision`) y mueve a espectador. El personaje "desaparece" al terminar.
+- **`MarkPlayerDead`**: **NO destruye el pawn**. Aplica `SetDeadVisual(true)` (oculta extremidades/cabeza/cola/casco), desactiva input y movimiento. El pawn queda como "cadáver" interactuable para revive vía `IA_Interact`.
 - **`bIsEliminated`** (Replicated, `TN_CoopPlayerState`): `true` si el jugador murió en vez de terminar. `MarkPlayerDead` asigna `FinishRank = NextFinishRank++` Y `bIsEliminated = true`. La UI lee `bIsEliminated` para mostrar "ELIMINADO" y `FinishRank` para el orden en resultados. **No usar `FinishRank == 0` para detectar eliminados** — todos tienen rank ≥ 1.
 - `MP_GamePlayerController` ofrece `EnterSpectateMode()`, `SpectateNextPlayer()`, `SpectatePreviousPlayer()` para navegar entre jugadores.
-- **Candidatos de espectador**: `SpectateByDirection` incluye a todos los jugadores que **tienen pawn activo** (runners vivos + finishers con pawn), excluyendo muertos (pawn destruido en `MarkPlayerDead`) y al propio jugador. No filtra por `bHasFinishedRun` — finishers son espectables.
+- **Candidatos de espectador**: `SpectateByDirection` incluye solo jugadores con pawn activo que están **vivos y no eliminados** (`bIsAlive && !bIsEliminated`). Los cadáveres y pawns ocultos de finishers no se espectean.
 - `TN_CoopFlowHUDWidget` detecta `ETNMatchFlowState::Results` y muestra automáticamente el panel de resultados con rank, tiempo y countdown de vuelta a lobby. Ver `Docs/GUIA_PANTALLA_RESULTADOS.md` para la jerarquía de widgets requerida.
 - Countdown de resultados configurable en `TN_RunGameMode::ResultsDurationSeconds` (default 8s).
+
+## Death Visual y Revive por Interact
+- **`bIsDead`** (ReplicatedUsing=OnRep_IsDead, `TortugaCharacter`): estado visual de muerte. El pawn NO se destruye.
+- `SetDeadVisual(true)`: oculta `Brazo1`, `Brazo2`, `Pata1`, `Pata2`, `Cola`, `Cabeza`, `HelmetMeshComp` vía `SetVisibility(false, true)`. Multicast fiable a todos los clientes.
+- `SetDeadVisual(false)`: restaura visibilidad de todas las extremidades.
+- **Revive vía Interact**: `TryInteract()` detecta si hay un `ATortugaCharacter` con `bIsDead || bIsKnockedDown` dentro del `ReviveRadiusCm`. Si lo hay, envía `ServerTryReviveNearby()` (Server RPC) que llama `TN_RunGameMode::RevivePlayer()`.
+- **`RevivePlayer` actualizado**: maneja tanto DBNO como jugadores muertos. Restaura `bIsAlive`, `bHasFinishedRun=false`, `bIsEliminated=false`. Llama `SetDeadVisual(false)` + `RecoverFromKnockdown()`. Re-posee el pawn y restaura input/movement. Otorga inmunidad temporal.
+- **Flujo completo**: muerte → ocultar extremidades → espectador → otro jugador pulsa E cerca del cadáver → revive → restaurar visual → volver a jugar.
 
 ## Quick Chat (Rocket League style)
 - `FTN_QuickChatEntry { SenderName, MessageID, Timestamp }` — struct en `TN_MatchFlowTypes.h`.

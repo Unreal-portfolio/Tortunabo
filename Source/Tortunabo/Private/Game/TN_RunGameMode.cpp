@@ -12,6 +12,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "Engine/NetDriver.h"
+#include "Engine/NetConnection.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -342,7 +343,7 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
 
-	// ── Detener el pawn para que no siga avanzando desde el POV de otros jugadores ──
+	// ── Detener el pawn y ocultarlo para que no se vea en la meta ──
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
 		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
@@ -351,6 +352,10 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 			CMC->DisableMovement();
 		}
 		Pawn->DisableInput(PlayerController);
+
+		// Ocultar al jugador que terminó (su personaje "desaparece")
+		Pawn->SetActorHiddenInGame(true);
+		Pawn->SetActorEnableCollision(false);
 	}
 
 	MovePlayerToSpectator(PlayerController);
@@ -387,14 +392,20 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
-		// Detener antes de destruir para que no haya un frame con velocidad residual
+		// ── NO destruir el pawn — aplicar visual de muerte (ocultar extremidades) ──
+		// El pawn queda como "cadáver" para que otro jugador pueda revivir vía Interact.
+		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+		{
+			Character->RecoverFromKnockdown(); // Limpiar knockdown visual si lo tenía
+			Character->SetDeadVisual(true);    // Ocultar extremidades/casco
+		}
+
 		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
 		{
 			CMC->StopMovementImmediately();
 			CMC->DisableMovement();
 		}
 		Pawn->DisableInput(PlayerController);
-		Pawn->Destroy();
 	}
 
 	MovePlayerToSpectator(PlayerController);
@@ -456,26 +467,56 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	}
 
 	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
-	if (!TNPS || !TNPS->bIsDBNO)
+	if (!TNPS)
 	{
 		return;
 	}
 
-	// Clear DBNO state
+	const bool bWasDBNO = TNPS->bIsDBNO;
+	const bool bWasDead = !TNPS->bIsAlive && TNPS->bIsEliminated;
+
+	if (!bWasDBNO && !bWasDead)
+	{
+		return; // Nothing to revive
+	}
+
+	// ── Restaurar estado ──────────────────────────────────────────────────
 	TNPS->bIsDBNO = false;
 	TNPS->DBNOBleedoutTimeRemaining = -1.f;
+	TNPS->bIsAlive = true;
+	TNPS->bHasFinishedRun = false;
+	TNPS->bIsEliminated = false;
+	TNPS->FinishRank = 0;
+	TNPS->FinishTimeSeconds = -1.f;
 
-	// Remove from tracking
+	// Ajustar NextFinishRank si necesario (el revivido ya no ocupa un rank)
+	// No decrementamos porque otros ya podrían tener ranks asignados.
+
+	// Remove from DBNO tracking
 	DBNOPlayers.Remove(PlayerController);
 	if (DBNOPlayers.Num() == 0)
 	{
 		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
 	}
 
-	// Recover from knockdown
+	// ── Restaurar pawn visual y movimiento ────────────────────────────────
 	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(PlayerController->GetPawn()))
 	{
 		Character->RecoverFromKnockdown();
+		Character->SetDeadVisual(false); // Restaurar extremidades
+	}
+
+	// Restaurar input y movimiento
+	if (APawn* Pawn = PlayerController->GetPawn())
+	{
+		Pawn->EnableInput(PlayerController);
+		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
+		{
+			CMC->SetMovementMode(MOVE_Walking);
+		}
+
+		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
+		PlayerController->Possess(Pawn);
 	}
 
 	// Grant brief immunity
@@ -487,7 +528,10 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		ReviveImmunePlayers.Remove(WeakPC);
 	}, ReviveImmunitySeconds, false);
 
-	UE_LOG(LogTemp, Log, TEXT("[DBNO] %s revived! (%.1fs immunity)"), *GetNameSafe(PlayerController), ReviveImmunitySeconds);
+	UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s"),
+		*GetNameSafe(PlayerController), ReviveImmunitySeconds,
+		bWasDBNO ? TEXT("YES") : TEXT("NO"),
+		bWasDead ? TEXT("YES") : TEXT("NO"));
 }
 
 void ATN_RunGameMode::TickDBNOBleedout()
@@ -701,6 +745,22 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 			if (PC && !PC->IsLocalController())
 			{
 				PC->ClientTravel(PendingTravelURL, TRAVEL_Relative, true);
+			}
+		}
+
+		// ── Step 2b: Flush net para asegurar que ClientTravel llegue ──────────
+		if (UNetDriver* NetDriver = World->GetNetDriver())
+		{
+			if (NetDriver->ServerConnection)
+			{
+				NetDriver->ServerConnection->FlushNet();
+			}
+			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
+			{
+				if (ClientConn)
+				{
+					ClientConn->FlushNet();
+				}
 			}
 		}
 

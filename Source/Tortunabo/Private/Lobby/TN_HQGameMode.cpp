@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "Engine/NetDriver.h"
+#include "Engine/NetConnection.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -316,6 +317,24 @@ void ATN_HQGameMode::BeginMatchTravel()
 			if (PC && !PC->IsLocalController())
 			{
 				PC->ClientTravel(PendingTravelURL, TRAVEL_Relative, true);
+			}
+		}
+
+		// ── Step 2b: Flush net para asegurar que ClientTravel llegue ──────────
+		// Sin esto, destruir el NetDriver puede ocurrir antes de que los RPCs
+		// pendientes (ClientTravel) se envíen por el socket.
+		if (UNetDriver* NetDriver = World->GetNetDriver())
+		{
+			if (NetDriver->ServerConnection)
+			{
+				NetDriver->ServerConnection->FlushNet();
+			}
+			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
+			{
+				if (ClientConn)
+				{
+					ClientConn->FlushNet();
+				}
 			}
 		}
 

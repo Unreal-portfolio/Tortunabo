@@ -40,12 +40,15 @@ protected:
 	float RotateSpeed = 180.f;
 
 	/** Índice del waypoint actual al que se dirige. Replicado para sincronizar. */
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Button")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentWaypointIndex, BlueprintReadOnly, Category = "Button")
 	int32 CurrentWaypointIndex = 0;
 
 	/** Multicast cosmético: feedback al pulsar (override en BP para sonido/VFX). */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPlayButtonFeedback();
+
+	UFUNCTION()
+	void OnRep_CurrentWaypointIndex();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 

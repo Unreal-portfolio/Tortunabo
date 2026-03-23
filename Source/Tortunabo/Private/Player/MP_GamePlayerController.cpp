@@ -205,16 +205,22 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 	for (APlayerState* PS : GetWorld()->GetGameState()->PlayerArray)
 	{
 		ATN_CoopPlayerState* CoopPS = Cast<ATN_CoopPlayerState>(PS);
-		// Skip self and players without a live pawn (dead players had their pawn destroyed).
-		// Finished players still have their pawn standing at the finish line — they CAN be spectated.
+		// Skip self
 		if (!CoopPS || CoopPS == Cast<ATN_CoopPlayerState>(PlayerState))
 		{
 			continue;
 		}
-		if (CoopPS->GetPawn())
+		// Skip players without a live pawn
+		if (!CoopPS->GetPawn())
 		{
-			Candidates.Add(CoopPS);
+			continue;
 		}
+		// Skip eliminated/dead players (their pawn stays as corpse but shouldn't be spectated)
+		if (CoopPS->bIsEliminated || !CoopPS->bIsAlive)
+		{
+			continue;
+		}
+		Candidates.Add(CoopPS);
 	}
 
 	if (Candidates.Num() == 0)

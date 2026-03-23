@@ -30,6 +30,7 @@
 #include "Game/TN_RunGameMode.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "UI/HUD/TN_EmoteWheelDataAsset.h"
+#include "EngineUtils.h"
 
 // ── CVar de debug ─────────────────────────────────────────────────────────────
 // Activar en consola con: TN.Debug.Interaction 1
@@ -228,12 +229,32 @@ void ATortugaCharacter::BeginPlay()
 	}
 	if (!KnockdownVisualComp.IsValid())
 	{
-		// Blockout: buscar el primer StaticMeshComponent hijo del root
+		// Blockout: buscar el primer StaticMeshComponent hijo (directo)
 		for (UActorComponent* Comp : GetComponents())
 		{
 			if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp))
 			{
-				if (SMC != GetRootComponent() && SMC->GetStaticMesh())
+				if (SMC != GetRootComponent() && SMC != HelmetMeshComp && SMC->GetStaticMesh())
+				{
+					KnockdownVisualComp = SMC;
+					break;
+				}
+			}
+		}
+	}
+	if (!KnockdownVisualComp.IsValid())
+	{
+		// Blockout con SceneComponents anidados: buscar recursivamente en hijos del root
+		TArray<USceneComponent*> AllChildren;
+		if (GetRootComponent())
+		{
+			GetRootComponent()->GetChildrenComponents(true, AllChildren);
+		}
+		for (USceneComponent* Child : AllChildren)
+		{
+			if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+			{
+				if (SMC != HelmetMeshComp && SMC->GetStaticMesh())
 				{
 					KnockdownVisualComp = SMC;
 					break;
@@ -280,6 +301,8 @@ void ATortugaCharacter::BeginPlay()
 
 	// ── Cosmetics: socket Sombrero + casco inicial ────────────────────────────
 	// Buscar el SceneComponent "Sombrero" en la BP para adjuntar el HelmetMeshComp.
+	// IMPORTANTE: "Sombrero" debe ser hijo de "Cabeza" (o del mesh visual),
+	// NO del root/capsule — si no, el casco se mueve desfasado por NetworkSmoothing.
 	SombreroSocket = FindChildByName(TEXT("Sombrero"));
 	if (SombreroSocket.IsValid() && HelmetMeshComp)
 	{
@@ -287,10 +310,19 @@ void ATortugaCharacter::BeginPlay()
 			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Socket 'Sombrero' encontrado → HelmetMeshComp adjunto."));
 	}
+	else if (Cabeza.IsValid() && HelmetMeshComp)
+	{
+		// Fallback: adjuntar directamente a Cabeza para evitar lag por smoothing
+		HelmetMeshComp->AttachToComponent(Cabeza.Get(),
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Socket 'Sombrero' NO encontrado en '%s'. "
+			"Usando 'Cabeza' como fallback para el casco. "
+			"Añade un SceneComponent 'Sombrero' como HIJO de 'Cabeza' para mejor control."), *GetName());
+	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Socket 'Sombrero' NO encontrado en '%s'. "
-			"Añade un SceneComponent con nombre exacto 'Sombrero' en BP_TortugaCharacter (sobre la cabeza)."), *GetName());
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Ni 'Sombrero' ni 'Cabeza' encontrados en '%s'. "
+			"El casco quedará adjunto al root (puede causar lag visual)."), *GetName());
 	}
 
 	// Restaurar el casco que lleva este jugador al (re)conectar al mapa.
@@ -662,9 +694,38 @@ void ATortugaCharacter::TryInteract()
 		UpdateFocusedInteractable();
 	}
 
-	// Si tras el scan sigue sin haber interactuable → usar ítem equipado
+	// Si tras el scan sigue sin haber interactuable → intentar revivir cadáver cercano
 	if (!FocusedInteractable.IsValid())
 	{
+		// Comprobar si hay un jugador muerto/DBNO cerca para revivir
+		bool bFoundCorpse = false;
+		const float SearchRadius = ReviveRadiusCm > 0.f ? ReviveRadiusCm : 300.f;
+		const FVector MyLoc = GetActorLocation();
+
+		for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
+		{
+			ATortugaCharacter* Other = *It;
+			if (!Other || Other == this) { continue; }
+			if (!Other->bIsDead && !Other->bIsKnockedDown) { continue; }
+
+			const float DistSq = FVector::DistSquared(MyLoc, Other->GetActorLocation());
+			if (DistSq < SearchRadius * SearchRadius)
+			{
+				bFoundCorpse = true;
+				break;
+			}
+		}
+
+		if (bFoundCorpse)
+		{
+			if (bDebug)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Found dead/DBNO player nearby → ServerTryReviveNearby"));
+			}
+			ServerTryReviveNearby();
+			return;
+		}
+
 		if (bDebug)
 		{
 			UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] No interactable in focus → TryUseEquippedItem"));
@@ -1068,6 +1129,7 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	// Replicar a todos los clientes para que el visual sea visible en todos
 	DOREPLIFETIME(ATortugaCharacter, bIsKnockedDown);
+	DOREPLIFETIME(ATortugaCharacter, bIsDead);
 	// SkipOwner: el owner ya arranca el emote localmente en TriggerEmote/CancelEmote.
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedEmoteIndex, COND_SkipOwner);
 	// DBNO revive state
@@ -1219,7 +1281,13 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 	USceneComponent* VisComp = KnockdownVisualComp.Get();
 	if (!VisComp)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Knockdown] ApplyKnockdownVisual: No visual component on %s — knockdown tilt will be invisible!"), *GetNameSafe(this));
+		UE_LOG(LogTemp, Error, TEXT("[Knockdown] ApplyKnockdownVisual(%s): No visual component on %s — knockdown tilt invisible! "
+			"HasAuthority=%s IsLocal=%s Mesh=%s"),
+			bKnocked ? TEXT("true") : TEXT("false"),
+			*GetNameSafe(this),
+			HasAuthority() ? TEXT("Y") : TEXT("N"),
+			IsLocallyControlled() ? TEXT("Y") : TEXT("N"),
+			GetMesh() ? *GetNameSafe(GetMesh()) : TEXT("NULL"));
 		return;
 	}
 
@@ -1250,6 +1318,172 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 
 	UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] ApplyKnockdownVisual(%s) on %s — comp=%s"),
 		bKnocked ? TEXT("true") : TEXT("false"), *GetNameSafe(this), *VisComp->GetName());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEATH VISUAL SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::SetDeadVisual(bool bDead)
+{
+	if (!HasAuthority()) { return; }
+
+	bIsDead = bDead;
+
+	// Listen-server: OnRep no se dispara localmente
+	if (bDead) { HideLimbs(); } else { ShowLimbs(); }
+
+	// Multicast fiable para todos los clientes
+	MulticastSetDeadVisual(bDead);
+
+	UE_LOG(LogTemp, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("HIDDEN") : TEXT("VISIBLE"));
+}
+
+void ATortugaCharacter::OnRep_IsDead()
+{
+	if (bIsDead) { HideLimbs(); } else { ShowLimbs(); }
+}
+
+void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
+{
+	// El servidor ya lo aplicó en SetDeadVisual
+	if (HasAuthority()) { return; }
+	if (bDead) { HideLimbs(); } else { ShowLimbs(); }
+}
+
+void ATortugaCharacter::HideLimbs()
+{
+	auto HideComp = [](TWeakObjectPtr<USceneComponent>& Comp)
+	{
+		if (Comp.IsValid())
+		{
+			Comp->SetVisibility(false, true);
+		}
+	};
+	HideComp(Brazo1);
+	HideComp(Brazo2);
+	HideComp(Pata1);
+	HideComp(Pata2);
+	HideComp(Cola);
+	HideComp(Cabeza);
+
+	if (HelmetMeshComp)
+	{
+		HelmetMeshComp->SetVisibility(false, true);
+	}
+}
+
+void ATortugaCharacter::ShowLimbs()
+{
+	auto ShowComp = [](TWeakObjectPtr<USceneComponent>& Comp)
+	{
+		if (Comp.IsValid())
+		{
+			Comp->SetVisibility(true, true);
+		}
+	};
+	ShowComp(Brazo1);
+	ShowComp(Brazo2);
+	ShowComp(Pata1);
+	ShowComp(Pata2);
+	ShowComp(Cola);
+	ShowComp(Cabeza);
+
+	if (HelmetMeshComp)
+	{
+		HelmetMeshComp->SetVisibility(true, true);
+	}
+}
+
+void ATortugaCharacter::ServerTryReviveNearby_Implementation()
+{
+	if (!HasAuthority()) { return; }
+
+	// Solo se puede revivir a jugadores muertos (bIsDead) o DBNO
+	const float ReviveSearchRadius = ReviveRadiusCm > 0.f ? ReviveRadiusCm : 300.f;
+	const FVector MyLocation = GetActorLocation();
+
+	ATortugaCharacter* ClosestCorpse = nullptr;
+	float ClosestDistSq = ReviveSearchRadius * ReviveSearchRadius;
+
+	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
+	{
+		ATortugaCharacter* Other = *It;
+		if (!Other || Other == this) { continue; }
+
+		// Buscar jugadores muertos (bIsDead) o en DBNO
+		bool bIsValidTarget = Other->bIsDead;
+		if (!bIsValidTarget)
+		{
+			// También comprobar DBNO
+			if (APlayerController* OtherPC = Cast<APlayerController>(Other->GetController()))
+			{
+				if (ATN_CoopPlayerState* OtherPS = OtherPC->GetPlayerState<ATN_CoopPlayerState>())
+				{
+					bIsValidTarget = OtherPS->bIsDBNO;
+				}
+			}
+		}
+		if (!bIsValidTarget) { continue; }
+
+		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+		if (DistSq < ClosestDistSq)
+		{
+			ClosestDistSq = DistSq;
+			ClosestCorpse = Other;
+		}
+	}
+
+	if (!ClosestCorpse)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Revive] %s tried to revive but no corpse in range"), *GetNameSafe(this));
+		return;
+	}
+
+	// Encontrar el PC del cadáver para llamar RevivePlayer en el GameMode
+	APlayerController* CorpsePC = Cast<APlayerController>(ClosestCorpse->GetController());
+	// Si el controller fue removido (modo espectador), buscarlo por PlayerState
+	if (!CorpsePC)
+	{
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (PC && PC->GetPawn() == ClosestCorpse)
+			{
+				CorpsePC = PC;
+				break;
+			}
+		}
+	}
+	// Buscar también por el previous pawn
+	if (!CorpsePC)
+	{
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (!PC) continue;
+			ATN_CoopPlayerState* PS = PC->GetPlayerState<ATN_CoopPlayerState>();
+			if (PS && !PS->bIsAlive && ClosestCorpse->bIsDead)
+			{
+				// Verificar proximidad al cadáver
+				CorpsePC = PC;
+				break;
+			}
+		}
+	}
+
+	if (!CorpsePC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Revive] Found corpse %s but no associated PC"), *GetNameSafe(ClosestCorpse));
+		return;
+	}
+
+	ATN_RunGameMode* RunGM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode());
+	if (RunGM)
+	{
+		RunGM->RevivePlayer(CorpsePC);
+		UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived %s via interact"), *GetNameSafe(this), *GetNameSafe(CorpsePC));
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
