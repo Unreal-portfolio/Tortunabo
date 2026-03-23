@@ -591,6 +591,13 @@ void UMP_GameInstance::HandleReturnToMenu()
 	}
 }
 
+void UMP_GameInstance::NotifyClientPendingTravel()
+{
+	bIsPendingTravel = true;
+	ShowLoadingScreen(TEXT("El servidor está cambiando de mapa..."));
+	UE_LOG(LogTemp, Log, TEXT("[MP] NotifyClientPendingTravel: bIsPendingTravel=true, loading screen shown."));
+}
+
 void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 {
 	// Marcar que estamos en una transición de nivel.
@@ -942,10 +949,28 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		FailureType == ENetworkFailure::FailureReceived   ||
 		FailureType == ENetworkFailure::PendingConnectionFailure)
 	{
-		// ── Si estamos en medio de un travel del servidor (lobby→game, game→lobby),
-		//    el host destruyó el NetDriver antes de que llegara el ClientTravel RPC.
-		//    NO destruir la sesión Steam — la usaremos para reconectar. ──
-		if (bIsPendingTravel)
+		// ── Determinar si debemos intentar auto-rejoin ────────────────────────
+		// Caso 1: bIsPendingTravel (set por ClientNotifyServerTravel RPC o HandlePreLoadMap).
+		// Caso 2: Hay sesión Steam activa → probablemente el servidor viajó y no llegó el RPC.
+		bool bShouldAutoRejoin = bIsPendingTravel;
+
+		if (!bShouldAutoRejoin)
+		{
+			// Fallback: si tenemos una sesión Steam activa, asumir que el servidor viajó
+			IOnlineSessionPtr Sessions = GetSessionInterface();
+			if (Sessions.IsValid())
+			{
+				FNamedOnlineSession* ExistingSession = Sessions->GetNamedSession(NAME_GameSession);
+				if (ExistingSession)
+				{
+					bShouldAutoRejoin = true;
+					UE_LOG(LogTemp, Log, TEXT("[MP] %s sin bIsPendingTravel pero con sesión activa — intentando auto-rejoin."),
+						*FailureTypeStr);
+				}
+			}
+		}
+
+		if (bShouldAutoRejoin)
 		{
 			bPendingAutoRejoin = true;
 			AutoRejoinRetryCount = MaxAutoRejoinRetries;

@@ -46,6 +46,15 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientOpenCosmeticsMenu();
 
+	/**
+	 * Server → Client: "Prepárate, el servidor va a hacer ServerTravel."
+	 * El cliente marca bIsPendingTravel en su GameInstance y muestra loading screen.
+	 * Cuando el NetDriver se destruya y el cliente reciba ConnectionLost,
+	 * OnNetworkFailure verá bIsPendingTravel=true y activará auto-rejoin.
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientNotifyServerTravel();
+
 	// ── Quick Chat (Rocket League style) ─────────────────────────────────────
 
 	/**

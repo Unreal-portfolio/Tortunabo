@@ -33,6 +33,15 @@ void ATN_PufferFishActor::BeginPlay()
 				this, &ATN_PufferFishActor::OnPufferProjectileStopped);
 		}
 
+		// ── Desactivar knockdown por impacto directo (heredado del padre) ────
+		// El PufferFish solo knockea mediante la explosión de inflación.
+		// Removemos el OnComponentHit del padre para que los impactos directos
+		// solo reboten sin noquear.
+		if (Mesh)
+		{
+			Mesh->OnComponentHit.RemoveAll(this);
+		}
+
 		const float Delay = FMath::FRandRange(InflateDelayMin, InflateDelayMax);
 		GetWorldTimerManager().SetTimer(
 			InflateDelayTimerHandle, this, &ATN_PufferFishActor::Inflate, Delay, false);

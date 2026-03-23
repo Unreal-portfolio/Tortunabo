@@ -694,11 +694,12 @@ void ATortugaCharacter::TryInteract()
 		UpdateFocusedInteractable();
 	}
 
-	// Si tras el scan sigue sin haber interactuable → intentar revivir cadáver cercano
+	// Si tras el scan sigue sin haber interactuable → intentar revivir DBNO cercano
 	if (!FocusedInteractable.IsValid())
 	{
-		// Comprobar si hay un jugador muerto/DBNO cerca para revivir
-		bool bFoundCorpse = false;
+		// Comprobar si hay un jugador en DBNO (knockdown) cerca para revivir.
+		// Los jugadores muertos se manejan vía pickup de rescate (TN_RescuePickup).
+		bool bFoundDBNO = false;
 		const float SearchRadius = ReviveRadiusCm > 0.f ? ReviveRadiusCm : 300.f;
 		const FVector MyLoc = GetActorLocation();
 
@@ -706,21 +707,21 @@ void ATortugaCharacter::TryInteract()
 		{
 			ATortugaCharacter* Other = *It;
 			if (!Other || Other == this) { continue; }
-			if (!Other->bIsDead && !Other->bIsKnockedDown) { continue; }
+			if (!Other->bIsKnockedDown) { continue; }
 
 			const float DistSq = FVector::DistSquared(MyLoc, Other->GetActorLocation());
 			if (DistSq < SearchRadius * SearchRadius)
 			{
-				bFoundCorpse = true;
+				bFoundDBNO = true;
 				break;
 			}
 		}
 
-		if (bFoundCorpse)
+		if (bFoundDBNO)
 		{
 			if (bDebug)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Found dead/DBNO player nearby → ServerTryReviveNearby"));
+				UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Found DBNO player nearby → ServerTryReviveNearby"));
 			}
 			ServerTryReviveNearby();
 			return;
@@ -1279,6 +1280,62 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 {
 	USceneComponent* VisComp = KnockdownVisualComp.Get();
+
+	// ── Fallback: si el multicast llegó antes de que BeginPlay encontrara el componente,
+	// intentar resolverlo ahora con la misma lógica de búsqueda ──
+	if (!VisComp)
+	{
+		if (USkeletalMeshComponent* SkelMesh = GetMesh())
+		{
+			if (SkelMesh->GetSkeletalMeshAsset())
+			{
+				KnockdownVisualComp = SkelMesh;
+			}
+		}
+		if (!KnockdownVisualComp.IsValid())
+		{
+			for (UActorComponent* Comp : GetComponents())
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp))
+				{
+					if (SMC != GetRootComponent() && SMC != HelmetMeshComp && SMC->GetStaticMesh())
+					{
+						KnockdownVisualComp = SMC;
+						break;
+					}
+				}
+			}
+		}
+		if (!KnockdownVisualComp.IsValid())
+		{
+			TArray<USceneComponent*> AllChildren;
+			if (GetRootComponent())
+			{
+				GetRootComponent()->GetChildrenComponents(true, AllChildren);
+			}
+			for (USceneComponent* Child : AllChildren)
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+				{
+					if (SMC != HelmetMeshComp && SMC->GetStaticMesh())
+					{
+						KnockdownVisualComp = SMC;
+						break;
+					}
+				}
+			}
+		}
+		if (!KnockdownVisualComp.IsValid())
+		{
+			KnockdownVisualComp = GetMesh();
+		}
+		if (KnockdownVisualComp.IsValid())
+		{
+			MeshDefaultRelativeRotation = KnockdownVisualComp->GetRelativeRotation();
+		}
+		VisComp = KnockdownVisualComp.Get();
+	}
+
 	if (!VisComp)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[Knockdown] ApplyKnockdownVisual(%s): No visual component on %s — knockdown tilt invisible! "
@@ -1399,90 +1456,43 @@ void ATortugaCharacter::ServerTryReviveNearby_Implementation()
 {
 	if (!HasAuthority()) { return; }
 
-	// Solo se puede revivir a jugadores muertos (bIsDead) o DBNO
+	// Solo busca jugadores en DBNO (knockdown). Los muertos se reviven vía TN_RescuePickup.
 	const float ReviveSearchRadius = ReviveRadiusCm > 0.f ? ReviveRadiusCm : 300.f;
 	const FVector MyLocation = GetActorLocation();
 
-	ATortugaCharacter* ClosestCorpse = nullptr;
+	APlayerController* ClosestDBNO_PC = nullptr;
 	float ClosestDistSq = ReviveSearchRadius * ReviveSearchRadius;
 
-	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
-		ATortugaCharacter* Other = *It;
-		if (!Other || Other == this) { continue; }
+		APlayerController* OtherPC = It->Get();
+		if (!OtherPC || OtherPC == GetController()) { continue; }
 
-		// Buscar jugadores muertos (bIsDead) o en DBNO
-		bool bIsValidTarget = Other->bIsDead;
-		if (!bIsValidTarget)
-		{
-			// También comprobar DBNO
-			if (APlayerController* OtherPC = Cast<APlayerController>(Other->GetController()))
-			{
-				if (ATN_CoopPlayerState* OtherPS = OtherPC->GetPlayerState<ATN_CoopPlayerState>())
-				{
-					bIsValidTarget = OtherPS->bIsDBNO;
-				}
-			}
-		}
-		if (!bIsValidTarget) { continue; }
+		const ATN_CoopPlayerState* OtherPS = OtherPC->GetPlayerState<ATN_CoopPlayerState>();
+		if (!OtherPS || !OtherPS->bIsDBNO) { continue; }
 
-		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+		const APawn* OtherPawn = OtherPC->GetPawn();
+		if (!OtherPawn) { continue; }
+
+		const float DistSq = FVector::DistSquared(MyLocation, OtherPawn->GetActorLocation());
 		if (DistSq < ClosestDistSq)
 		{
 			ClosestDistSq = DistSq;
-			ClosestCorpse = Other;
+			ClosestDBNO_PC = OtherPC;
 		}
 	}
 
-	if (!ClosestCorpse)
+	if (!ClosestDBNO_PC)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[Revive] %s tried to revive but no corpse in range"), *GetNameSafe(this));
-		return;
-	}
-
-	// Encontrar el PC del cadáver para llamar RevivePlayer en el GameMode
-	APlayerController* CorpsePC = Cast<APlayerController>(ClosestCorpse->GetController());
-	// Si el controller fue removido (modo espectador), buscarlo por PlayerState
-	if (!CorpsePC)
-	{
-		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-		{
-			APlayerController* PC = It->Get();
-			if (PC && PC->GetPawn() == ClosestCorpse)
-			{
-				CorpsePC = PC;
-				break;
-			}
-		}
-	}
-	// Buscar también por el previous pawn
-	if (!CorpsePC)
-	{
-		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-		{
-			APlayerController* PC = It->Get();
-			if (!PC) continue;
-			ATN_CoopPlayerState* PS = PC->GetPlayerState<ATN_CoopPlayerState>();
-			if (PS && !PS->bIsAlive && ClosestCorpse->bIsDead)
-			{
-				// Verificar proximidad al cadáver
-				CorpsePC = PC;
-				break;
-			}
-		}
-	}
-
-	if (!CorpsePC)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Revive] Found corpse %s but no associated PC"), *GetNameSafe(ClosestCorpse));
+		UE_LOG(LogTemp, Log, TEXT("[Revive] %s tried to revive but no DBNO player in range"), *GetNameSafe(this));
 		return;
 	}
 
 	ATN_RunGameMode* RunGM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode());
 	if (RunGM)
 	{
-		RunGM->RevivePlayer(CorpsePC);
-		UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived %s via interact"), *GetNameSafe(this), *GetNameSafe(CorpsePC));
+		RunGM->RevivePlayer(ClosestDBNO_PC);
+		UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived %s via interact"), *GetNameSafe(this), *GetNameSafe(ClosestDBNO_PC));
 	}
 }
 

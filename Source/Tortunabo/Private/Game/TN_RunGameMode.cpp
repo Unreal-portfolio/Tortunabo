@@ -4,6 +4,7 @@
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "World/TN_RescuePickup.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -390,22 +391,50 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	DBNOPlayers.Remove(PlayerController);
 	ReviveImmunePlayers.Remove(PlayerController);
 
+	FVector DeathLocation = FVector::ZeroVector;
+
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
-		// ── NO destruir el pawn — aplicar visual de muerte (ocultar extremidades) ──
-		// El pawn queda como "cadáver" para que otro jugador pueda revivir vía Interact.
+		DeathLocation = Pawn->GetActorLocation();
+
+		// ── Limpiar knockdown visual si lo tenía ──
 		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
 		{
-			Character->RecoverFromKnockdown(); // Limpiar knockdown visual si lo tenía
-			Character->SetDeadVisual(true);    // Ocultar extremidades/casco
+			Character->RecoverFromKnockdown();
 		}
 
+		// ── Ocultar el pawn completamente (no dejar cadáver) ──
 		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
 		{
 			CMC->StopMovementImmediately();
 			CMC->DisableMovement();
 		}
 		Pawn->DisableInput(PlayerController);
+		Pawn->SetActorHiddenInGame(true);
+		Pawn->SetActorEnableCollision(false);
+	}
+
+	// ── Spawnear pickup de rescate en la posición de muerte ──
+	if (RescuePickupClass)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		ATN_RescuePickup* Pickup = GetWorld()->SpawnActor<ATN_RescuePickup>(
+			RescuePickupClass, DeathLocation + FVector(0.f, 0.f, 30.f), FRotator::ZeroRotator, SpawnParams);
+
+		if (Pickup)
+		{
+			Pickup->SetDeadPlayerId(TNPS->GetPlayerId());
+			RescuePickups.Add(TNPS->GetPlayerId(), Pickup);
+			UE_LOG(LogTemp, Log, TEXT("[Death] Spawned RescuePickup for %s (PlayerId=%d) at (%.0f,%.0f,%.0f)"),
+				*GetNameSafe(PlayerController), TNPS->GetPlayerId(),
+				DeathLocation.X, DeathLocation.Y, DeathLocation.Z);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Death] RescuePickupClass is not set! Assign it in BP_RunGameMode → Class Defaults."));
 	}
 
 	MovePlayerToSpectator(PlayerController);
@@ -489,9 +518,6 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	TNPS->FinishRank = 0;
 	TNPS->FinishTimeSeconds = -1.f;
 
-	// Ajustar NextFinishRank si necesario (el revivido ya no ocupa un rank)
-	// No decrementamos porque otros ya podrían tener ranks asignados.
-
 	// Remove from DBNO tracking
 	DBNOPlayers.Remove(PlayerController);
 	if (DBNOPlayers.Num() == 0)
@@ -499,16 +525,29 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
 	}
 
-	// ── Restaurar pawn visual y movimiento ────────────────────────────────
-	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(PlayerController->GetPawn()))
+	// ── Destruir el pickup de rescate si existe ───────────────────────────
+	if (TWeakObjectPtr<ATN_RescuePickup>* PickupPtr = RescuePickups.Find(TNPS->GetPlayerId()))
 	{
-		Character->RecoverFromKnockdown();
-		Character->SetDeadVisual(false); // Restaurar extremidades
+		if (PickupPtr->IsValid())
+		{
+			(*PickupPtr)->Destroy();
+		}
+		RescuePickups.Remove(TNPS->GetPlayerId());
 	}
 
-	// Restaurar input y movimiento
+	// ── Restaurar pawn visual y movimiento ────────────────────────────────
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
+		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
+		Pawn->SetActorHiddenInGame(false);
+		Pawn->SetActorEnableCollision(true);
+
+		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+		{
+			Character->RecoverFromKnockdown();
+			Character->SetDeadVisual(false); // Restaurar extremidades
+		}
+
 		Pawn->EnableInput(PlayerController);
 		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
 		{
@@ -738,36 +777,30 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		// LVL_HQ debe tener BP_HQGameMode en WorldSettings → GameMode Override.
 		PendingTravelURL = LobbyMapPath + TEXT("?listen");
 
-		// ── Step 2: Enviar travel a clientes remotos ──────────────────────────
+		// ── Step 2: Avisar a clientes remotos que viene un ServerTravel ───────
+		// ClientNotifyServerTravel marca bIsPendingTravel en el GameInstance del
+		// cliente. Cuando el NetDriver se destruya y reciban ConnectionLost,
+		// OnNetworkFailure verá bIsPendingTravel=true → auto-rejoin vía sesión Steam.
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			APlayerController* PC = It->Get();
-			if (PC && !PC->IsLocalController())
+			if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PC))
 			{
-				PC->ClientTravel(PendingTravelURL, TRAVEL_Relative, true);
-			}
-		}
-
-		// ── Step 2b: Flush net para asegurar que ClientTravel llegue ──────────
-		if (UNetDriver* NetDriver = World->GetNetDriver())
-		{
-			if (NetDriver->ServerConnection)
-			{
-				NetDriver->ServerConnection->FlushNet();
-			}
-			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
-			{
-				if (ClientConn)
+				if (!TNPC->IsLocalController())
 				{
-					ClientConn->FlushNet();
+					TNPC->ClientNotifyServerTravel();
 				}
 			}
 		}
 
-		// ── Step 3: Destruir el NetDriver para liberar el listen socket ───────
+		// ── Step 3: Flush + Destruir NetDriver para liberar el socket Steam P2P ─
 		if (UNetDriver* NetDriver = World->GetNetDriver())
 		{
-			UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Pre-closing NetDriver '%s' before travel to release Steam socket."),
+			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
+			{
+				if (ClientConn) { ClientConn->FlushNet(); }
+			}
+			UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Destroying NetDriver '%s' to release Steam socket."),
 				*NetDriver->GetName());
 			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
 		}

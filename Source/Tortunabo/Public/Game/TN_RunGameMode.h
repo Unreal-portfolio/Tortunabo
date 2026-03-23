@@ -7,6 +7,7 @@
 
 class APlayerController;
 class APlayerStart;
+class ATN_RescuePickup;
 
 UCLASS()
 class TORTUNABO_API ATN_RunGameMode : public AGameMode
@@ -58,6 +59,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run|DBNO", meta = (ClampMin = "0.0"))
 	float ReviveImmunitySeconds = 2.f;
 
+	/**
+	 * Clase de pickup de rescate que se spawnea al morir un jugador.
+	 * Cuando un compañero interactúa con él, revive al muerto en esa posición.
+	 * Asignar en BP_RunGameMode → Class Defaults.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Run|Death")
+	TSubclassOf<ATN_RescuePickup> RescuePickupClass;
+
 private:
 	FTimerHandle ResultsTimerHandle;
 	FTimerHandle ResultsCountdownTimerHandle;
@@ -80,6 +89,9 @@ private:
 
 	/** Players with active post-revive immunity timers. */
 	TSet<TWeakObjectPtr<APlayerController>> ReviveImmunePlayers;
+
+	/** Rescue pickups spawned for dead players. Key = PlayerId. */
+	TMap<int32, TWeakObjectPtr<ATN_RescuePickup>> RescuePickups;
 
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
 	APlayerStart* EnsureFallbackPlayerStart();

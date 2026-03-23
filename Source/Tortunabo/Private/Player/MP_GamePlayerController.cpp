@@ -615,6 +615,17 @@ void AMP_GamePlayerController::ClientOpenCosmeticsMenu_Implementation()
 	OpenCosmeticsMenu();
 }
 
+void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
+{
+	// Marcar que estamos en travel para que OnNetworkFailure active auto-rejoin
+	// en vez de destruir la sesión y mostrar error.
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		GI->NotifyClientPendingTravel();
+	}
+	UE_LOG(LogTemp, Log, TEXT("[PC] ClientNotifyServerTravel received — prepared for reconnection."));
+}
+
 void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TArray<FName>& UnlockedHelmetIds)
 {
 	ServerUnlockedHelmets.Reset();

@@ -54,6 +54,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void HandleReturnToMenu();
 
+	/**
+	 * Llamado por ClientNotifyServerTravel (Client RPC) en el lado del CLIENTE.
+	 * Marca bIsPendingTravel = true y muestra loading screen, de modo que cuando
+	 * el servidor destruya el NetDriver y el cliente reciba ConnectionLost,
+	 * OnNetworkFailure active auto-rejoin en vez de destruir la sesión.
+	 */
+	void NotifyClientPendingTravel();
+
 	UFUNCTION(BlueprintCallable, Category = "UI|Loading")
 	void ShowLoadingScreen(const FString& Reason = TEXT("Cargando..."));
 

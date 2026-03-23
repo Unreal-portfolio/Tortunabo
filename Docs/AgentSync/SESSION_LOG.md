@@ -632,14 +632,54 @@
 2. Asignar montages reales en `DA_EmoteWheelCatalog` si se quiere reemplazar el blockout por animación de personaje.
 3. Smoke test de listen/dedicated con host + cliente: abrir rueda, confirmar chat, verificar replay del historial tras travel y que el montage se vea en proxies remotos.
 
-## 2026-03-23 - Bugfix Multiplayer: Travel, Replication, Death, Visual
+## 2026-03-23 - Bugfix Multiplayer: Travel, PufferFish, Death System
 
 ### Contexto
-- Múltiples bugs de networking y gameplay detectados durante smoke tests multiplayer.
+- Tres bugs críticos detectados durante smoke tests multiplayer.
 
 ### Cambios clave
 
-#### FIX 1 — Cliente expulsado al viajar HQ→Game (P1 CRÍTICO)
-- `Source/Tortunabo/Private/Lobby/TN_HQGameMode.cpp`
-  - Añadido `FlushNet()` a todas las conexiones DESPUÉS de `ClientTravel` y ANTES de destruir el NetDriver. Esto asegura que el RPC de travel llegue al cliente antes de cerrar el socket.
-  - Añadido `#include "Engine/NetConnection.h"`.
+#### FIX 1 — Cliente/Host no viajan a LVL_Run (P1 CRÍTICO)
+- **Causa raíz (host)**: Sin `DestroyNamedNetDriver`, el socket Steam P2P no se libera antes de que `ServerTravel` intente crear un listen server nuevo → `NetDriverListenFailure` → host no entra al mapa.
+- **Causa raíz (cliente)**: `ClientTravel` manual con URL de mapa local (path, no connect string Steam) → el cliente cargaba el mapa en standalone → no reconectaba al host.
+- **Fix — flujo de 4 pasos**:
+  1. `Pawn->Destroy()` para todos los PCs (WASAPI cleanup).
+  2. `ClientNotifyServerTravel` (nuevo Client RPC en `AMP_GamePlayerController`) → marca `bIsPendingTravel` en el GameInstance del cliente + muestra loading screen.
+  3. `FlushNet` + `DestroyNamedNetDriver` (libera socket Steam; clientes reciben ConnectionLost → auto-rejoin porque `bIsPendingTravel=true`).
+  4. Timer 1s + `ServerTravel(URL)` (host carga nuevo mapa, crea listen server nuevo).
+- **Red de seguridad**: `OnNetworkFailure` ahora también intenta auto-rejoin si hay sesión Steam activa (fallback si el RPC no llegó).
+- Archivos nuevos/modificados:
+  - `Source/Tortunabo/Public/Player/MP_GamePlayerController.h` — Nuevo `ClientNotifyServerTravel` (Client, Reliable).
+  - `Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp` — Implementación del RPC.
+  - `Source/Tortunabo/Public/Multiplayer/MP_GameInstance.h` — Nuevo `NotifyClientPendingTravel()`.
+  - `Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp` — Implementación + fallback en `OnNetworkFailure`.
+  - `Source/Tortunabo/Private/Lobby/TN_HQGameMode.cpp` — BeginMatchTravel con flujo de 4 pasos.
+  - `Source/Tortunabo/Private/Game/TN_RunGameMode.cpp` — FinishRoundAndReturnToLobby con mismo patrón.
+
+#### FIX 2 — PufferFish: knockdown visual no se muestra + knockdown por impacto directo
+- **Causa 1**: `OnMeshHit` heredado del padre (`TN_ThrowableItemActor`) aplicaba knockdown al impactar directamente. El PufferFish solo debe knockear durante la inflación.
+- **Fix**: En `ATN_PufferFishActor::BeginPlay`, se remueve `Mesh->OnComponentHit` del padre. Solo la explosión de inflación aplica knockdown.
+- **Causa 2**: `KnockdownVisualComp` podía ser null en clientes remotos si el multicast llegaba antes de que BeginPlay encontrara el componente.
+- **Fix**: `ApplyKnockdownVisual` ahora intenta resolver `KnockdownVisualComp` en el momento si es null, usando la misma lógica de búsqueda que BeginPlay.
+- Archivos modificados:
+  - `Source/Tortunabo/Private/World/TN_PufferFishActor.cpp` — Removido OnComponentHit binding.
+  - `Source/Tortunabo/Private/Player/TortugaCharacter.cpp` — Fallback de resolución de KnockdownVisualComp en ApplyKnockdownVisual.
+
+#### FIX 3 — Rework sistema de muerte: ocultar pawn + spawn pickup de rescate
+- **Antes**: `MarkPlayerDead` ocultaba extremidades y dejaba el pawn como cadáver interactuable.
+- **Ahora**: `MarkPlayerDead` oculta el pawn completamente (`SetActorHiddenInGame + disable collision`) y spawnea un `TN_RescuePickup` en la posición de muerte. El compañero interactúa con el pickup para revivir al muerto en esa ubicación.
+- Nuevos archivos:
+  - `Source/Tortunabo/Public/World/TN_RescuePickup.h`
+  - `Source/Tortunabo/Private/World/TN_RescuePickup.cpp`
+- Archivos modificados:
+  - `Source/Tortunabo/Public/Game/TN_RunGameMode.h` — Añadido `RescuePickupClass` (EditDefaultsOnly), `RescuePickups` tracking map.
+  - `Source/Tortunabo/Private/Game/TN_RunGameMode.cpp` — `MarkPlayerDead` oculta pawn y spawnea pickup. `RevivePlayer` restaura visibilidad y destruye pickup.
+  - `Source/Tortunabo/Private/Player/TortugaCharacter.cpp` — `TryInteract` y `ServerTryReviveNearby` solo buscan DBNO, no muertos. Muertos se rescatan vía pickup.
+
+### Setup requerido en Editor
+1. **`BP_RunGameMode → Class Defaults → Run|Death → RescuePickupClass`**: Crear un BP hijo de `TN_RescuePickup`, asignar mesh de caparazón/alma, y configurar aquí. Sin esto, los muertos no tendrán pickup de rescate.
+
+### Pendientes
+1. Crear `BP_RescuePickup` en el Editor (hijo de `TN_RescuePickup`), asignar mesh visual.
+2. Smoke test completo: Host + Cliente viajar HQ→Run, muerte → pickup → rescate → volver a lobby.
+3. Verificar que el knockdown visual del PufferFish se ve en clientes remotos.

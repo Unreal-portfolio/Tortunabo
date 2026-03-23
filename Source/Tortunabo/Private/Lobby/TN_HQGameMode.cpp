@@ -310,38 +310,34 @@ void ATN_HQGameMode::BeginMatchTravel()
 
 		PendingTravelURL = MatchMapPath + TEXT("?listen");
 
-		// ── Step 2: Enviar travel a clientes remotos ──────────────────────────
+		// ── Step 2: Avisar a clientes remotos que viene un ServerTravel ───────
+		// ClientNotifyServerTravel marca bIsPendingTravel en el GameInstance del
+		// cliente. Cuando el NetDriver se destruya y reciban ConnectionLost,
+		// OnNetworkFailure verá bIsPendingTravel=true → auto-rejoin vía sesión Steam.
+		// NO enviar ClientTravel con URL de mapa: esa URL es un path local, no un
+		// connect string Steam. El cliente cargaría en standalone y no reconectaría.
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			APlayerController* PC = It->Get();
-			if (PC && !PC->IsLocalController())
+			if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PC))
 			{
-				PC->ClientTravel(PendingTravelURL, TRAVEL_Relative, true);
-			}
-		}
-
-		// ── Step 2b: Flush net para asegurar que ClientTravel llegue ──────────
-		// Sin esto, destruir el NetDriver puede ocurrir antes de que los RPCs
-		// pendientes (ClientTravel) se envíen por el socket.
-		if (UNetDriver* NetDriver = World->GetNetDriver())
-		{
-			if (NetDriver->ServerConnection)
-			{
-				NetDriver->ServerConnection->FlushNet();
-			}
-			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
-			{
-				if (ClientConn)
+				if (!TNPC->IsLocalController())
 				{
-					ClientConn->FlushNet();
+					TNPC->ClientNotifyServerTravel();
 				}
 			}
 		}
 
-		// ── Step 3: Destruir el NetDriver para liberar el listen socket ───────
+		// ── Step 3: Flush + Destruir NetDriver para liberar el socket Steam P2P ─
+		// Sin esto, ServerTravel intenta crear un listen server nuevo mientras el
+		// socket viejo aún está ocupado → NetDriverListenFailure.
 		if (UNetDriver* NetDriver = World->GetNetDriver())
 		{
-			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Pre-closing NetDriver '%s' before travel to release Steam socket."),
+			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
+			{
+				if (ClientConn) { ClientConn->FlushNet(); }
+			}
+			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Destroying NetDriver '%s' to release Steam socket."),
 				*NetDriver->GetName());
 			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
 		}
