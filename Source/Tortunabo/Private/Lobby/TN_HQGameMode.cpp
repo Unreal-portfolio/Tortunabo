@@ -8,8 +8,6 @@
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
-#include "Engine/NetDriver.h"
-#include "Engine/NetConnection.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -19,7 +17,7 @@ ATN_HQGameMode::ATN_HQGameMode()
 	PlayerStateClass = ATN_CoopPlayerState::StaticClass();
 	PlayerControllerClass = AMP_GamePlayerController::StaticClass();
 	DefaultPawnClass = ATortugaCharacter::StaticClass();
-	bUseSeamlessTravel = false;
+	bUseSeamlessTravel = true;
 }
 
 void ATN_HQGameMode::BeginPlay()
@@ -274,96 +272,48 @@ void ATN_HQGameMode::ResetCountdown()
 
 void ATN_HQGameMode::BeginMatchTravel()
 {
-	if (UWorld* World = GetWorld())
-	{
-		// ── Guardar cuántos jugadores hay en el lobby ANTES de viajar ──────
-		// GameInstance sobrevive al non-seamless travel; TN_RunGameMode
-		// lo leerá en PostLogin para saber cuántos jugadores esperar.
-		if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
-		{
-			int32 ConnectedCount = 0;
-			for (APlayerState* BasePS : GameState->PlayerArray)
-			{
-				if (Cast<ATN_CoopPlayerState>(BasePS))
-				{
-					++ConnectedCount;
-				}
-			}
-			GI->PendingTravelPlayerCount = ConnectedCount;
-			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
-		}
-
-		// ── Step 1: Destroy all pawns BEFORE any travel code ─────────────────
-		// This fires EndPlay(Destroyed) on ProximityVoiceComponents while WASAPI
-		// is still fully alive → safe audio cleanup, no ACCESS_VIOLATION.
-		// HandlePreLoadMap's ShutdownAllCapture safety net will be a no-op because
-		// all voice components will already have bRuntimeResourcesCleanedUp=true.
-		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-		{
-			APlayerController* PC = It->Get();
-			if (!PC) { continue; }
-			if (APawn* Pawn = PC->GetPawn())
-			{
-				Pawn->Destroy();
-			}
-		}
-
-		PendingTravelURL = MatchMapPath + TEXT("?listen");
-
-		// ── Step 2: Avisar a clientes remotos que viene un ServerTravel ───────
-		// ClientNotifyServerTravel marca bIsPendingTravel en el GameInstance del
-		// cliente. Cuando el NetDriver se destruya y reciban ConnectionLost,
-		// OnNetworkFailure verá bIsPendingTravel=true → auto-rejoin vía sesión Steam.
-		// NO enviar ClientTravel con URL de mapa: esa URL es un path local, no un
-		// connect string Steam. El cliente cargaría en standalone y no reconectaría.
-		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-		{
-			APlayerController* PC = It->Get();
-			if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PC))
-			{
-				if (!TNPC->IsLocalController())
-				{
-					TNPC->ClientNotifyServerTravel();
-				}
-			}
-		}
-
-		// ── Step 3: Flush + Destruir NetDriver para liberar el socket Steam P2P ─
-		// Sin esto, ServerTravel intenta crear un listen server nuevo mientras el
-		// socket viejo aún está ocupado → NetDriverListenFailure.
-		if (UNetDriver* NetDriver = World->GetNetDriver())
-		{
-			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
-			{
-				if (ClientConn) { ClientConn->FlushNet(); }
-			}
-			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Destroying NetDriver '%s' to release Steam socket."),
-				*NetDriver->GetName());
-			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
-		}
-
-		// ── Step 4: Esperar a que Steam libere el socket P2P, luego viajar ───
-		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Waiting 1.5s for Steam socket release before ServerTravel..."));
-		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
-			&ATN_HQGameMode::ExecuteDeferredTravel, 1.5f, false);
-	}
-	else
+	UWorld* World = GetWorld();
+	if (!World)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] BeginMatchTravel: GetWorld() es null, travel cancelado."));
+		return;
 	}
-}
 
-void ATN_HQGameMode::ExecuteDeferredTravel()
-{
-	if (UWorld* World = GetWorld())
+	// ── Guardar cuántos jugadores hay en el lobby ANTES de viajar ──────
+	// GameInstance persiste entre mapas; TN_RunGameMode lo lee para saber cuántos esperar.
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Iniciando ServerTravel hacia: %s"), *PendingTravelURL);
-		World->ServerTravel(PendingTravelURL);
+		int32 ConnectedCount = 0;
+		for (APlayerState* BasePS : GameState->PlayerArray)
+		{
+			if (Cast<ATN_CoopPlayerState>(BasePS))
+			{
+				++ConnectedCount;
+			}
+		}
+		GI->PendingTravelPlayerCount = ConnectedCount;
+		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
 	}
-	else
+
+	// ── Destroy all pawns BEFORE travel for WASAPI cleanup ───────────────
+	// EndPlay(Destroyed) fires on ProximityVoiceComponents while WASAPI
+	// is still alive → safe audio cleanup, no ACCESS_VIOLATION.
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ExecuteDeferredTravel: GetWorld() es null."));
+		APlayerController* PC = It->Get();
+		if (!PC) { continue; }
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			Pawn->Destroy();
+		}
 	}
+
+	// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─
+	// Con bUseSeamlessTravel=true, el NetDriver se mantiene vivo. Los clientes
+	// NO se desconectan. No necesitamos ?listen (el servidor ya está escuchando).
+	const FString TravelURL = MatchMapPath;
+	UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Seamless ServerTravel to: %s"), *TravelURL);
+	World->ServerTravel(TravelURL);
 }
 
 APlayerStart* ATN_HQGameMode::EnsureFallbackPlayerStart()

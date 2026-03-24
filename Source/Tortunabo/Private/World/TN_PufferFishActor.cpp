@@ -1,4 +1,5 @@
 ﻿#include "World/TN_PufferFishActor.h"
+#include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/Character.h"
@@ -32,9 +33,9 @@ void ATN_PufferFishActor::BeginPlay()
 		}
 
 		// ── Desactivar knockdown por impacto directo (heredado del padre) ────
-		if (Mesh)
+		if (CollisionSphere)
 		{
-			Mesh->OnComponentHit.RemoveAll(this);
+			CollisionSphere->OnComponentHit.RemoveAll(this);
 		}
 
 		const float Delay = FMath::FRandRange(InflateDelayMin, InflateDelayMax);
@@ -98,10 +99,14 @@ void ATN_PufferFishActor::Inflate()
 
 	PufferState = ETN_PufferState::Inflating;
 
-	// ── Desactivar colisión del mesh ANTES de escalar ─────────────────────
-	// Sin esto, al escalar 5x la geometría del mesh se solapa con las cápsulas
+	// ── Desactivar colisión ANTES de escalar ─────────────────────
+	// Sin esto, al escalar 5x la geometría se solapa con las cápsulas
 	// de personajes cercanos y el motor de físicas puede depenetrarlos de forma
 	// errática. El empuje de bomba lo manejamos nosotros en BombExplosionTick.
+	if (CollisionSphere)
+	{
+		CollisionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
 	if (Mesh)
 	{
 		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -231,9 +236,13 @@ void ATN_PufferFishActor::ApplyPufferVisual()
 		break;
 
 	case ETN_PufferState::Inflating:
-		// Desactivar colisión del mesh en TODAS las máquinas: evita que el motor
+		// Desactivar colisión en TODAS las máquinas: evita que el motor
 		// de físicas depenetere jugadores por solapamiento con el mesh escalado.
 		// El empuje real se maneja por BombExplosionTick (servidor).
+		if (CollisionSphere)
+		{
+			CollisionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
 		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Mesh->SetRelativeScale3D(OriginalScale * InflateScale);
 		break;
