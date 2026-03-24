@@ -2,10 +2,12 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
+#include "EngineUtils.h"
 #include "TimerManager.h"
 
 ATN_PufferFishActor::ATN_PufferFishActor()
@@ -22,10 +24,6 @@ void ATN_PufferFishActor::BeginPlay()
 	if (HasAuthority())
 	{
 		// ── Reemplazar el binding de OnProjectileStop del padre ───────────────
-		// El padre enlaza OnProjectileStopped que spawnea pickup + Destroy.
-		// Nosotros necesitamos uno propio que solo actúe cuando el ciclo
-		// inflate/deflate ya terminó (estado Deflated). De lo contrario,
-		// StopSimulating() durante el inflado destruiría el pez antes del deflate.
 		if (ProjectileMovement)
 		{
 			ProjectileMovement->OnProjectileStop.RemoveAll(this);
@@ -34,9 +32,6 @@ void ATN_PufferFishActor::BeginPlay()
 		}
 
 		// ── Desactivar knockdown por impacto directo (heredado del padre) ────
-		// El PufferFish solo knockea mediante la explosión de inflación.
-		// Removemos el OnComponentHit del padre para que los impactos directos
-		// solo reboten sin noquear.
 		if (Mesh)
 		{
 			Mesh->OnComponentHit.RemoveAll(this);
@@ -62,16 +57,12 @@ void ATN_PufferFishActor::ApplyLaunchDataIfReady()
 {
 	Super::ApplyLaunchDataIfReady();
 
-	// El padre acaba de llamar Mesh->SetRelativeScale3D(ThrowData.MeshScale).
-	// Capturamos la escala resultante como "original" para inflate/deflate.
 	if (Mesh)
 	{
 		OriginalScale = Mesh->GetRelativeScale3D();
 		UE_LOG(LogTemp, Log, TEXT("[PufferFish] OriginalScale capturada: (%.2f,%.2f,%.2f)"),
 			OriginalScale.X, OriginalScale.Y, OriginalScale.Z);
 
-		// Si ThrowData llegó DESPUÉS de OnRep_PufferState (orden de replicación
-		// no garantizado), reaplicar el visual con la escala correcta.
 		if (PufferState != ETN_PufferState::Flying)
 		{
 			ApplyPufferVisual();
@@ -85,8 +76,6 @@ void ATN_PufferFishActor::OnPufferProjectileStopped(const FHitResult& ImpactResu
 {
 	if (!HasAuthority() || bPickupSpawned) { return; }
 
-	// Solo spawnear pickup si el ciclo inflate/deflate ya completó.
-	// Flying / Inflating → no hacer nada; Deflate() se encarga.
 	if (PufferState != ETN_PufferState::Deflated) { return; }
 
 	FVector StopLocation = GetActorLocation();
@@ -108,43 +97,85 @@ void ATN_PufferFishActor::Inflate()
 	if (!HasAuthority()) { return; }
 
 	PufferState = ETN_PufferState::Inflating;
+
+	// ── Desactivar colisión del mesh ANTES de escalar ─────────────────────
+	// Sin esto, al escalar 5x la geometría del mesh se solapa con las cápsulas
+	// de personajes cercanos y el motor de físicas puede depenetrarlos de forma
+	// errática. El empuje de bomba lo manejamos nosotros en BombExplosionTick.
+	if (Mesh)
+	{
+		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
 	ApplyPufferVisual();
 
-	// ── NO detenemos la bola ─────────────────────────────────────────────────
-	// El pez se infla mientras sigue volando/rodando. Si el proyectil se detiene
-	// durante el inflado, OnPufferProjectileStopped lo ignora (PufferState != Deflated)
-	// y es Deflate() quien finalmente spawnea el pickup.
+	// ── Bomba: empujar con ventana multi-frame ────────────────────────────
+	// Tickeamos a ~60fps durante BombWindowSeconds (0.15s).
+	// Garantiza que personajes que entren en rango durante la expansión
+	// también sean empujados como por una bomba.
+	BombElapsedTime = 0.f;
+	BombHitCharacters.Reset();
 
-	// ── Empujar a todos los personajes en rango (incluido el lanzador) ────
-	TArray<FOverlapResult> Overlaps;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(TN_PufferInflate), false, this);
+	// Primer tick inmediato (no esperar al próximo frame)
+	BombExplosionTick();
 
-	GetWorld()->OverlapMultiByObjectType(
-		Overlaps,
-		GetActorLocation(),
-		FQuat::Identity,
-		FCollisionObjectQueryParams(ECC_Pawn),
-		FCollisionShape::MakeSphere(InflateRadius),
-		Params);
+	// Timer repetitivo para el resto de la ventana
+	GetWorldTimerManager().SetTimer(
+		BombTickTimerHandle, this, &ATN_PufferFishActor::BombExplosionTick,
+		BombTickInterval, true);
 
-	for (const FOverlapResult& Result : Overlaps)
+	// Programar desinflado
+	GetWorldTimerManager().SetTimer(
+		DeflatTimerHandle, this, &ATN_PufferFishActor::Deflate, InflateDuration, false);
+}
+
+// ── BombExplosionTick ─────────────────────────────────────────────────────────
+
+void ATN_PufferFishActor::BombExplosionTick()
+{
+	BombElapsedTime += BombTickInterval;
+
+	// Ventana expirada → detener el tick
+	if (BombElapsedTime > BombWindowSeconds)
 	{
-		ACharacter* HitCharacter = Cast<ACharacter>(Result.GetActor());
-		if (!HitCharacter) { continue; }
+		GetWorldTimerManager().ClearTimer(BombTickTimerHandle);
+		return;
+	}
 
-		const float Dist = FVector::Dist(GetActorLocation(), HitCharacter->GetActorLocation());
+	if (!GetWorld() || !HasAuthority()) { return; }
+
+	const FVector Origin = GetActorLocation();
+
+	// ── Búsqueda directa por TActorIterator ──────────────────────────────
+	// Más fiable que OverlapMultiByObjectType que depende de canales/responses.
+	for (TActorIterator<ACharacter> It(GetWorld()); It; ++It)
+	{
+		ACharacter* HitCharacter = *It;
+		if (!HitCharacter || HitCharacter->IsPendingKillPending()) { continue; }
+
+		// No re-empujar al mismo personaje
+		TWeakObjectPtr<ACharacter> WeakChar(HitCharacter);
+		if (BombHitCharacters.Contains(WeakChar)) { continue; }
+
+		const float Dist = FVector::Dist(Origin, HitCharacter->GetActorLocation());
+		if (Dist > InflateRadius) { continue; }
+
+		// ── Calcular fuerza de empuje ─────────────────────────────────────
 		const float NormalizedDist = FMath::Clamp(Dist / InflateRadius, 0.f, 1.f);
 		const float ForceMagnitude = InflatePushForce * (1.f - NormalizedDist);
 
-		FVector PushDir = (HitCharacter->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+		FVector PushDir = (HitCharacter->GetActorLocation() - Origin).GetSafeNormal();
+		// Componente vertical mínimo para lanzar por los aires
 		PushDir.Z = FMath::Max(PushDir.Z, 0.7f);
 		PushDir.Normalize();
 
-		HitCharacter->LaunchCharacter(PushDir * ForceMagnitude, true, true);
+		// Marcar como empujado ANTES de aplicar efectos
+		BombHitCharacters.Add(WeakChar);
 
-		UE_LOG(LogTemp, Log, TEXT("[PufferFish] Pushed %s force=%.0f dist=%.0f"),
-			*GetNameSafe(HitCharacter), ForceMagnitude, Dist);
+		UE_LOG(LogTemp, Log, TEXT("[PufferFish] BOMB pushed %s — force=%.0f dist=%.0f elapsed=%.3fs"),
+			*GetNameSafe(HitCharacter), ForceMagnitude, Dist, BombElapsedTime);
 
+		// ── Knockdown PRIMERO (bloquea input + visual) ────────────────────
 		if (ForceMagnitude >= MinKnockdownForce)
 		{
 			if (ATortugaCharacter* Tortuga = Cast<ATortugaCharacter>(HitCharacter))
@@ -152,11 +183,15 @@ void ATN_PufferFishActor::Inflate()
 				Tortuga->ApplyKnockdown(PufferKnockdownDuration);
 			}
 		}
-	}
 
-	// Programar desinflado
-	GetWorldTimerManager().SetTimer(
-		DeflatTimerHandle, this, &ATN_PufferFishActor::Deflate, InflateDuration, false);
+		// ── Lanzar DESPUÉS ────────────────────────────────────────────────
+		// ApplyKnockdown setea MOVE_None, pero LaunchCharacter pone
+		// PendingLaunchVelocity que en el siguiente tick fuerza MOVE_Falling
+		// via HandlePendingLaunch → el personaje vuela por los aires.
+		// Al aterrizar, TortugaCharacter::Tick re-desactiva el movimiento
+		// si sigue knocked down.
+		HitCharacter->LaunchCharacter(PushDir * ForceMagnitude, true, true);
+	}
 }
 
 // ── Deflate ───────────────────────────────────────────────────────────────────
@@ -164,6 +199,9 @@ void ATN_PufferFishActor::Inflate()
 void ATN_PufferFishActor::Deflate()
 {
 	if (!HasAuthority()) { return; }
+
+	// Limpiar timer de bomba si aún estuviera activo
+	GetWorldTimerManager().ClearTimer(BombTickTimerHandle);
 
 	PufferState = ETN_PufferState::Deflated;
 	ApplyPufferVisual();
@@ -193,7 +231,10 @@ void ATN_PufferFishActor::ApplyPufferVisual()
 		break;
 
 	case ETN_PufferState::Inflating:
-		// OriginalScale ya tiene la escala real del DataTable (capturada en ApplyLaunchDataIfReady)
+		// Desactivar colisión del mesh en TODAS las máquinas: evita que el motor
+		// de físicas depenetere jugadores por solapamiento con el mesh escalado.
+		// El empuje real se maneja por BombExplosionTick (servidor).
+		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Mesh->SetRelativeScale3D(OriginalScale * InflateScale);
 		break;
 
@@ -202,9 +243,3 @@ void ATN_PufferFishActor::ApplyPufferVisual()
 		break;
 	}
 }
-
-
-
-
-
-

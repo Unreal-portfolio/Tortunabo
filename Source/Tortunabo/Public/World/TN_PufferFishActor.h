@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "GameFramework/Character.h"
 #include "World/TN_ThrowableItemActor.h"
 #include "TN_PufferFishActor.generated.h"
 
@@ -71,11 +72,30 @@ private:
 	FTimerHandle InflateDelayTimerHandle;
 	FTimerHandle DeflatTimerHandle;
 
+	// ── Bomb explosion window ─────────────────────────────────────────────
+	/** Timer que tickea a ~60fps durante la ventana de explosión. */
+	FTimerHandle BombTickTimerHandle;
+
+	/** Personajes ya empujados por esta explosión (evitar doble push). */
+	TSet<TWeakObjectPtr<ACharacter>> BombHitCharacters;
+
+	/** Tiempo acumulado desde el inicio de la explosión. */
+	float BombElapsedTime = 0.f;
+
+	/** Duración de la ventana de explosión (s). */
+	static constexpr float BombWindowSeconds = 0.15f;
+
+	/** Intervalo del tick de bomba (~60fps). */
+	static constexpr float BombTickInterval = 0.016f;
+
 	/** Server: llamado tras el delay aleatorio. */
 	void Inflate();
 
 	/** Server: llamado tras InflateDuration. */
 	void Deflate();
+
+	/** Server: tick rápido durante la ventana de explosión. Empuja personajes cercanos. */
+	void BombExplosionTick();
 
 	UFUNCTION()
 	void OnRep_PufferState();

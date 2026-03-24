@@ -519,7 +519,7 @@ protected:
 
 	// ── Knockdown state ──────────────────────────────────────────────────────
 	/**
-	 * Estado replicado de knockdown. true → mesh tiltado 100°, movimiento bloqueado.
+	 * Estado replicado de knockdown. true → mesh tiltado 180°, movimiento bloqueado.
 	 * BlueprintReadOnly en protected para que BPs hijos puedan leerlo (ej. para UI).
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_IsKnockedDown, BlueprintReadOnly, Category = "Knockdown")

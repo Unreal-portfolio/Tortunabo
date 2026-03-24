@@ -353,6 +353,23 @@ void ATortugaCharacter::BeginPlay()
 void ATortugaCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// ── Knockdown ground lock ─────────────────────────────────────────────
+	// Si el personaje fue lanzado por una bomba (PufferFish) durante knockdown,
+	// HandlePendingLaunch pone MOVE_Falling para que vuele por los aires.
+	// Cuando aterriza, CMC pone MOVE_Walking. Re-desactivamos movimiento aquí
+	// para que siga inmovilizado mientras dure el knockdown.
+	if (HasAuthority() && bIsKnockedDown)
+	{
+		if (UCharacterMovementComponent* MC = GetCharacterMovement())
+		{
+			if (MC->IsMovingOnGround())
+			{
+				MC->DisableMovement();
+			}
+		}
+	}
+
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
 	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes)
 	TickCameraInterp(DeltaTime);   // cinematic camera zoom/FOV interpolation
@@ -1359,7 +1376,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		}
 
 		FRotator KnockedRot = MeshDefaultRelativeRotation;
-		KnockedRot.Pitch -= 100.0f;
+		KnockedRot.Pitch -= 180.0f;
 		VisComp->SetRelativeRotation(KnockedRot);
 	}
 	else

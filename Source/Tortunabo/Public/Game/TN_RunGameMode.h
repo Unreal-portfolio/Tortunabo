@@ -23,6 +23,12 @@ public:
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
+	/** Seamless travel: limpiar estado espectador ANTES de que UE intente spawnear. */
+	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
+
+	/** Seamless travel: setup final después de que todos los jugadores viajaron. */
+	virtual void PostSeamlessTravel() override;
+
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void MarkPlayerFinished(APlayerController* PlayerController);
 
@@ -77,12 +83,10 @@ private:
 	FTimerHandle ResultsTimerHandle;
 	FTimerHandle ResultsCountdownTimerHandle;
 	FTimerHandle WaitingTimeoutTimerHandle;
-	FTimerHandle DeferredTravelTimerHandle;
 	FTimerHandle DBNOBleedoutTimerHandle;
 	float MatchStartServerTime = 0.f;
 	int32 NextFinishRank = 1;
 	int32 ResultsCountdownValue = 0;
-	FString PendingTravelURL;
 
 	/** Cuántos jugadores esperamos del lobby (leído de GameInstance). */
 	int32 ExpectedPlayersFromLobby = 1;
@@ -113,7 +117,6 @@ private:
 	void UpdateRoundProgressAndMaybeFinish();
 	void MovePlayerToSpectator(APlayerController* PlayerController) const;
 	void FinishRoundAndReturnToLobby();
-	void ExecuteDeferredTravel();
 	void SetFlowState(ETNMatchFlowState NewState) const;
 
 	/** Tick all DBNO bleedout timers (shared, 0.1s interval). */

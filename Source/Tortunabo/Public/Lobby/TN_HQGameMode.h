@@ -22,6 +22,12 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 
+	/** Seamless travel: limpiar estado espectador ANTES de que UE intente spawnear. */
+	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
+
+	/** Seamless travel: setup final después de que todos los jugadores viajaron. */
+	virtual void PostSeamlessTravel() override;
+
 	UFUNCTION(BlueprintCallable, Category = "Lobby")
 	void SetPlayerReadyState(APlayerController* PlayerController, bool bReady);
 
@@ -42,9 +48,9 @@ private:
 	FTimerHandle CountdownTimerHandle;
 	FTimerHandle TravelTimerHandle;
 	FTimerHandle DeferredTravelTimerHandle;
+	FString PendingTravelURL;
 	bool bCountdownRunning = false;
 	int32 CurrentCountdownValue = 0;
-	FString PendingTravelURL;
 
 	void RefreshLobbyState();
 	void StartCountdown();

@@ -403,5 +403,72 @@ void ATN_HQGameMode::SetFlowState(ETNMatchFlowState NewState) const
 	}
 }
 
+// ── Seamless Travel Handlers ──────────────────────────────────────────────────
+
+void ATN_HQGameMode::HandleSeamlessTravelPlayer(AController*& C)
+{
+	// Limpiar estado espectador ANTES de Super — jugadores que murieron/terminaron
+	// en la carrera estaban en modo espectador. Sin esto, PlayerCanRestart() devuelve
+	// false y Super no les spawnea pawn.
+	if (APlayerController* PC = Cast<APlayerController>(C))
+	{
+		if (PC->PlayerState)
+		{
+			PC->PlayerState->SetIsOnlyASpectator(false);
+		}
+	}
+
+	Super::HandleSeamlessTravelPlayer(C);
+}
+
+void ATN_HQGameMode::PostSeamlessTravel()
+{
+	Super::PostSeamlessTravel();
+
+	UE_LOG(LogTemp, Log, TEXT("[HQGameMode] PostSeamlessTravel: resetting all players for lobby."));
+
+	// Resetear estado de todos los jugadores que viajaron y asegurar que tienen pawn
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		if (!PC) { continue; }
+
+		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
+		{
+			TNPS->bIsAlive = true;
+			TNPS->bHasFinishedRun = false;
+			TNPS->bIsDBNO = false;
+			TNPS->DBNOBleedoutTimeRemaining = -1.f;
+			TNPS->FinishRank = 0;
+			TNPS->bIsEliminated = false;
+			TNPS->FinishTimeSeconds = -1.f;
+			TNPS->DeathZoneTimeRemaining = -1.f;
+			TNPS->bIsInReadyZone = false;
+		}
+
+		EnsurePlayerSpawned(PC);
+	}
+
+	// Actualizar conteo en el GameState
+	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
+	{
+		int32 TotalPlayers = 0;
+		for (APlayerState* BasePS : GameState->PlayerArray)
+		{
+			if (Cast<ATN_CoopPlayerState>(BasePS))
+			{
+				++TotalPlayers;
+			}
+		}
+		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ReadyPlayers = 0;
+		TNGS->FinishedPlayers = 0;
+		TNGS->ServerMatchElapsedTime = 0.f;
+		TNGS->CountdownValue = 0;
+	}
+
+	RefreshLobbyState();
+}
+
 
 

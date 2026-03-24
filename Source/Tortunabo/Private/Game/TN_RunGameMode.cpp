@@ -11,9 +11,6 @@
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
-#include "Engine/Engine.h"
-#include "Engine/NetDriver.h"
-#include "Engine/NetConnection.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -23,7 +20,7 @@ ATN_RunGameMode::ATN_RunGameMode()
 	PlayerStateClass = ATN_CoopPlayerState::StaticClass();
 	PlayerControllerClass = AMP_GamePlayerController::StaticClass();
 	DefaultPawnClass = ATortugaCharacter::StaticClass();
-	bUseSeamlessTravel = false;
+	bUseSeamlessTravel = true;
 }
 
 void ATN_RunGameMode::BeginPlay()
@@ -800,72 +797,89 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 
 	if (UWorld* World = GetWorld())
 	{
-		// ── Step 1: Destroy all pawns BEFORE any travel code ─────────────────
-		// This fires EndPlay(Destroyed) on ProximityVoiceComponents while WASAPI
-		// is still fully alive → safe audio cleanup, no ACCESS_VIOLATION.
-		// After destruction, there are no active voice components to crash.
+		// ── Destroy all pawns for WASAPI cleanup ─────────────────────────────
+		// ProximityVoiceComponent::EndPlay(Destroyed) fires while audio is alive.
+		// With seamless travel the connection stays alive — no socket race condition.
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			APlayerController* PC = It->Get();
 			if (!PC) { continue; }
 			if (APawn* Pawn = PC->GetPawn())
 			{
-				// Destroy fires EndPlay → ProximityVoiceComponent::CleanupRuntimeResources safely.
 				Pawn->Destroy();
 			}
 		}
 
-		// NO usar ?game=/Script/Tortunabo.TN_HQGameMode — eso fuerza la clase C++ base
-		// y spawna TortugaCharacter sin mesh en vez de BP_TortugaCharacter.
-		// LVL_HQ debe tener BP_HQGameMode en WorldSettings → GameMode Override.
-		PendingTravelURL = LobbyMapPath + TEXT("?listen");
-
-		// ── Step 2: Avisar a clientes remotos que viene un ServerTravel ───────
-		// ClientNotifyServerTravel marca bIsPendingTravel en el GameInstance del
-		// cliente. Cuando el NetDriver se destruya y reciban ConnectionLost,
-		// OnNetworkFailure verá bIsPendingTravel=true → auto-rejoin vía sesión Steam.
-		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-		{
-			APlayerController* PC = It->Get();
-			if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PC))
-			{
-				if (!TNPC->IsLocalController())
-				{
-					TNPC->ClientNotifyServerTravel();
-				}
-			}
-		}
-
-		// ── Step 3: Flush + Destruir NetDriver para liberar el socket Steam P2P ─
-		if (UNetDriver* NetDriver = World->GetNetDriver())
-		{
-			for (UNetConnection* ClientConn : NetDriver->ClientConnections)
-			{
-				if (ClientConn) { ClientConn->FlushNet(); }
-			}
-			UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Destroying NetDriver '%s' to release Steam socket."),
-				*NetDriver->GetName());
-			GEngine->DestroyNamedNetDriver(World, NetDriver->NetDriverName);
-		}
-
-		// ── Step 4: Esperar a que Steam libere el socket P2P, luego viajar ───
-		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Waiting 1.5s for Steam socket release before ServerTravel..."));
-		GetWorldTimerManager().SetTimer(DeferredTravelTimerHandle, this,
-			&ATN_RunGameMode::ExecuteDeferredTravel, 1.5f, false);
+		// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─
+		const FString TravelURL = LobbyMapPath;
+		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Seamless ServerTravel to: %s"), *TravelURL);
+		World->ServerTravel(TravelURL);
 	}
 }
 
-void ATN_RunGameMode::ExecuteDeferredTravel()
+// ── Seamless Travel Handlers ──────────────────────────────────────────────────
+
+void ATN_RunGameMode::HandleSeamlessTravelPlayer(AController*& C)
 {
-	if (UWorld* World = GetWorld())
+	// Limpiar estado espectador ANTES de Super — jugadores que murieron/terminaron
+	// en la carrera estaban en modo espectador. Sin esto, PlayerCanRestart() devuelve
+	// false y Super no les spawnea pawn.
+	if (APlayerController* PC = Cast<APlayerController>(C))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Iniciando ServerTravel hacia: %s"), *PendingTravelURL);
-		World->ServerTravel(PendingTravelURL);
+		if (PC->PlayerState)
+		{
+			PC->PlayerState->SetIsOnlyASpectator(false);
+		}
 	}
-	else
+
+	Super::HandleSeamlessTravelPlayer(C);
+}
+
+void ATN_RunGameMode::PostSeamlessTravel()
+{
+	Super::PostSeamlessTravel();
+
+	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostSeamlessTravel: initializing all players for run."));
+
+	// Resetear estado de todos los jugadores que viajaron
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ExecuteDeferredTravel: GetWorld() es null."));
+		APlayerController* PC = It->Get();
+		if (!PC) { continue; }
+
+		// Reset PlayerState para la carrera
+		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
+		{
+			TNPS->bIsAlive = true;
+			TNPS->bHasFinishedRun = false;
+			TNPS->bIsDBNO = false;
+			TNPS->DBNOBleedoutTimeRemaining = -1.f;
+			TNPS->FinishRank = 0;
+			TNPS->bIsEliminated = false;
+			TNPS->FinishTimeSeconds = -1.f;
+			TNPS->DeathZoneTimeRemaining = -1.f;
+		}
+
+		// Asegurar que tiene pawn
+		EnsurePlayerSpawned(PC);
 	}
+
+	// Actualizar conteo y comprobar si podemos arrancar
+	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
+	{
+		int32 TotalPlayers = 0;
+		for (APlayerState* BasePS : GameState->PlayerArray)
+		{
+			if (Cast<ATN_CoopPlayerState>(BasePS))
+			{
+				++TotalPlayers;
+			}
+		}
+		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ExpectedPlayers = ExpectedPlayersFromLobby;
+	}
+
+	TryStartMatch();
 }
 
 void ATN_RunGameMode::SetFlowState(ETNMatchFlowState NewState) const
