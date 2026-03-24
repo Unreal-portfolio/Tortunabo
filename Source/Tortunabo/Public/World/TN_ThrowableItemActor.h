@@ -7,7 +7,6 @@
 
 class UProjectileMovementComponent;
 class UStaticMeshComponent;
-class USphereComponent;
 class ATortugaCharacter;
 class ATN_PickupInteractableBase;
 
@@ -67,13 +66,8 @@ public:
 	void SetSourceItem(const FTN_InventoryItem& Item);
 
 protected:
-	/** Esfera de colisión raíz del actor. ProjectileMovement usa esta como UpdatedComponent
-	 *  para sweeps y rebotes. Garantiza colisión válida aunque el mesh no tenga collision model. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable")
-	TObjectPtr<USphereComponent> CollisionSphere;
-
-	/** Mesh visual del proyectil. Hijo de CollisionSphere (no es root).
-	 *  Su colisión se desactiva: la física la maneja CollisionSphere. */
+	/** Root del actor. Al ser UStaticMeshComponent (UPrimitiveComponent), el
+	 *  ProjectileMovement mueve el actor completo (no solo un hijo relativo). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable")
 	TObjectPtr<UStaticMeshComponent> Mesh;
 

@@ -144,7 +144,7 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 	GetWorldTimerManager().SetTimer(DormancyTimerHandle,
 		[WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
 		{
-			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_Initial); }
+			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_DormantAll); }
 		}, 2.0f, false);
 
 	// ── Log de confirmación de recogida ───────────────────────────────────────
@@ -221,7 +221,7 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 	GetWorldTimerManager().SetTimer(DormancyTimerHandle,
 		[WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
 		{
-			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_Initial); }
+			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_DormantAll); }
 		}, 3.0f, false);
 
 	if (Mesh && PickupItem.EquippedMesh)

@@ -320,14 +320,6 @@ void ATortugaCharacter::BeginPlay()
 		HelmetMeshComp->AttachToComponent(SombreroSocket.Get(),
 			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Socket 'Sombrero' encontrado → HelmetMeshComp adjunto."));
-
-		// Verificar que Sombrero NO es hijo directo de la cápsula (causa jitter)
-		if (SombreroSocket->GetAttachParent() == GetRootComponent())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] ⚠ 'Sombrero' es hijo DIRECTO de la cápsula (root). "
-				"Esto causa JITTER del casco porque la cápsula no tiene network smoothing. "
-				"FIX: En BP_TortugaCharacter, mover 'Sombrero' como hijo de 'Cabeza' o 'Cuerpo'."));
-		}
 	}
 	else if (Cabeza.IsValid() && HelmetMeshComp)
 	{
@@ -338,20 +330,10 @@ void ATortugaCharacter::BeginPlay()
 			"Usando 'Cabeza' como fallback para el casco. "
 			"Añade un SceneComponent 'Sombrero' como HIJO de 'Cabeza' para mejor control."), *GetName());
 	}
-	else if (KnockdownVisualComp.IsValid() && HelmetMeshComp)
-	{
-		// Último fallback: adjuntar al mesh visual (Cuerpo) para que al menos
-		// siga el network smoothing correctamente (sin jitter).
-		HelmetMeshComp->AttachToComponent(KnockdownVisualComp.Get(),
-			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Ni 'Sombrero' ni 'Cabeza' encontrados en '%s'. "
-			"Adjuntando casco al mesh visual '%s' (evita jitter, pero posición manual)."),
-			*GetName(), *KnockdownVisualComp->GetName());
-	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Ni 'Sombrero', 'Cabeza' ni mesh visual encontrados en '%s'. "
-			"El casco quedará adjunto al root (causará jitter visual)."), *GetName());
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Ni 'Sombrero' ni 'Cabeza' encontrados en '%s'. "
+			"El casco quedará adjunto al root (puede causar lag visual)."), *GetName());
 	}
 
 	// Restaurar el casco que lleva este jugador al (re)conectar al mapa.
@@ -1394,13 +1376,8 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		}
 
 		FRotator KnockedRot = MeshDefaultRelativeRotation;
-		KnockedRot.Roll += 180.0f;
+		KnockedRot.Pitch -= 180.0f;
 		VisComp->SetRelativeRotation(KnockedRot);
-
-		UE_LOG(LogTemp, Log, TEXT("[Knockdown] ApplyKnockdownVisual(true) on %s — comp=%s  defaultRot=(P=%.1f Y=%.1f R=%.1f) → knockedRot=(P=%.1f Y=%.1f R=%.1f)"),
-			*GetNameSafe(this), *VisComp->GetName(),
-			MeshDefaultRelativeRotation.Pitch, MeshDefaultRelativeRotation.Yaw, MeshDefaultRelativeRotation.Roll,
-			KnockedRot.Pitch, KnockedRot.Yaw, KnockedRot.Roll);
 	}
 	else
 	{
@@ -1411,11 +1388,10 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		{
 			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 		}
-
-		UE_LOG(LogTemp, Log, TEXT("[Knockdown] ApplyKnockdownVisual(false) on %s — comp=%s  restored defaultRot=(P=%.1f Y=%.1f R=%.1f)"),
-			*GetNameSafe(this), *VisComp->GetName(),
-			MeshDefaultRelativeRotation.Pitch, MeshDefaultRelativeRotation.Yaw, MeshDefaultRelativeRotation.Roll);
 	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] ApplyKnockdownVisual(%s) on %s — comp=%s"),
+		bKnocked ? TEXT("true") : TEXT("false"), *GetNameSafe(this), *VisComp->GetName());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1988,17 +1964,6 @@ void ATortugaCharacter::ApplyEmoteAngles3(USceneComponent* Comp, const FRotator&
 
 void ATortugaCharacter::TickEmote(float DeltaTime)
 {
-	// Suppressed during knockdown — the character is tipped over, emotes shouldn't play.
-	if (bIsKnockedDown)
-	{
-		if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
-		{
-			CancelEmoteLocalOnly();
-			bEmoteBlendingOut = false;
-		}
-		return;
-	}
-
 	// ── Blend-out: lerp all components back to rest rotations & locations ─────
 	if (bEmoteBlendingOut)
 	{

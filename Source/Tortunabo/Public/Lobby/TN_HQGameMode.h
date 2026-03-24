@@ -47,6 +47,8 @@ protected:
 private:
 	FTimerHandle CountdownTimerHandle;
 	FTimerHandle TravelTimerHandle;
+	FTimerHandle DeferredTravelTimerHandle;
+	FString PendingTravelURL;
 	bool bCountdownRunning = false;
 	int32 CurrentCountdownValue = 0;
 
@@ -55,6 +57,7 @@ private:
 	void TickCountdown();
 	void ResetCountdown();
 	void BeginMatchTravel();
+	void ExecuteDeferredTravel();
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
 	APlayerStart* EnsureFallbackPlayerStart();
 	void SetFlowState(ETNMatchFlowState NewState) const;

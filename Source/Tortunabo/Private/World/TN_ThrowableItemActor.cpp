@@ -1,5 +1,4 @@
 ﻿#include "World/TN_ThrowableItemActor.h"
-#include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -17,28 +16,17 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 	SetNetUpdateFrequency(30.f);    // 30 Hz durante vuelo (proyectil rápido)
 	SetMinNetUpdateFrequency(15.f); // mínimo 15 Hz
 
-	// Sphere collision como root: garantiza que ProjectileMovement siempre tenga
-	// geometría de colisión válida para sweeps, independientemente de si el mesh
-	// tiene collision model o no. Esto previene que el proyectil caiga al infinito.
-	CollisionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionSphere"));
-	CollisionSphere->InitSphereRadius(20.f);
-	CollisionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	CollisionSphere->SetCollisionObjectType(ECC_WorldDynamic);
-	CollisionSphere->SetCollisionResponseToAllChannels(ECR_Block);
-	CollisionSphere->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	CollisionSphere->SetNotifyRigidBodyCollision(true);
-	SetRootComponent(CollisionSphere);
-
-	// Mesh visual como hijo: su colisión se desactiva para que no interfiera
-	// con los sweeps del ProjectileMovement.
+	// Mesh ES el root: UStaticMeshComponent es UPrimitiveComponent.
+	// ProjectileMovement actualizará directamente la posición del actor.
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
-	Mesh->SetupAttachment(CollisionSphere);
+	SetRootComponent(Mesh);
 	Mesh->SetIsReplicated(false);
 	Mesh->SetSimulatePhysics(false);
-	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Mesh->SetNotifyRigidBodyCollision(true);
 
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
-	ProjectileMovement->SetUpdatedComponent(CollisionSphere);
+	ProjectileMovement->SetUpdatedComponent(Mesh);
 	ProjectileMovement->bAutoActivate                        = false;
 	ProjectileMovement->InitialSpeed                         = 0.0f;
 	ProjectileMovement->MaxSpeed                             = 6000.0f;
@@ -63,13 +51,13 @@ void ATN_ThrowableItemActor::BeginPlay()
 	// al salir de la mano del personaje.
 	if (APawn* ThrowInstigator = GetInstigator())
 	{
-		CollisionSphere->IgnoreActorWhenMoving(ThrowInstigator, true);
+		Mesh->IgnoreActorWhenMoving(ThrowInstigator, true);
 	}
 
 	// Solo el servidor valida impactos y detenciones.
 	if (HasAuthority())
 	{
-		CollisionSphere->OnComponentHit.AddDynamic(this, &ATN_ThrowableItemActor::OnMeshHit);
+		Mesh->OnComponentHit.AddDynamic(this, &ATN_ThrowableItemActor::OnMeshHit);
 		ProjectileMovement->OnProjectileStop.AddDynamic(this, &ATN_ThrowableItemActor::OnProjectileStopped);
 	}
 

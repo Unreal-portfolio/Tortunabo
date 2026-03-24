@@ -11,11 +11,7 @@ ATN_InteractableBase::ATN_InteractableBase()
 	SetReplicateMovement(false);
 
 	// ── Optimización de red: los interactuables cambian raramente ──────────
-	// DORM_Initial: replica al menos una vez a cada cliente que abre el canal,
-	// luego duerme. Esto garantiza que join-in-progress vea el estado correcto.
-	// DORM_DormantAll era problemático: el canal podía no existir en el cliente
-	// cuando se intentaba despertar con ForceNetUpdate.
-	NetDormancy = DORM_Initial;
+	NetDormancy = DORM_DormantAll;
 	SetNetUpdateFrequency(4.f);
 	SetMinNetUpdateFrequency(2.f);
 

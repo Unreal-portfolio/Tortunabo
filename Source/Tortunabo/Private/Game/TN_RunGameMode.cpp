@@ -570,24 +570,8 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			CMC->SetMovementMode(MOVE_Walking);
 		}
 
-		// ── Sacar del modo espectador ANTES de Possess ────────────────────
-		// EnterSpectateMode setea bIsOnlyASpectator=true y ChangeState(Spectating).
-		// Sin limpiarlo, Possess no restaura correctamente el estado del cliente
-		// (sigue spectating aunque posea el pawn, no recibe input ni cámara).
-		if (PlayerController->PlayerState)
-		{
-			PlayerController->PlayerState->SetIsOnlyASpectator(false);
-		}
-		PlayerController->ChangeState(NAME_Playing);
-
-		// Re-poseer el pawn
+		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
 		PlayerController->Possess(Pawn);
-
-		// Forzar que el cliente re-inicialice su pawn (input, cámara, HUD)
-		PlayerController->ClientRestart(Pawn);
-
-		// Asegurar que la cámara apunte al pawn, no al target del espectador anterior
-		PlayerController->SetViewTarget(Pawn);
 	}
 	else
 	{
