@@ -10,11 +10,15 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
-	SetReplicateMovement(true); // Server runs physics; clients get replicated position
+	// NO replicar movimiento: cada máquina simula la física localmente desde
+	// los mismos parámetros de lanzamiento (MulticastLaunch) → sin tirones a 30 Hz.
+	// El servidor sigue siendo autoridad para hit-detection (OnMeshHit).
+	SetReplicateMovement(false);
 
-	// ── Optimización de red: alta frecuencia solo mientras vuela ───────────
-	SetNetUpdateFrequency(30.f);    // 30 Hz durante vuelo (proyectil rápido)
-	SetMinNetUpdateFrequency(15.f); // mínimo 15 Hz
+	// Frecuencia reducida: solo se replica el struct ThrowData (para JIP late-joiners)
+	// y eventos discretos. No necesitamos alta frecuencia para posición.
+	SetNetUpdateFrequency(10.f);
+	SetMinNetUpdateFrequency(5.f);
 
 	// Mesh ES el root: UStaticMeshComponent es UPrimitiveComponent.
 	// ProjectileMovement actualizará directamente la posición del actor.
@@ -86,7 +90,14 @@ void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const
 	ThrowData.MeshScale      = SafeScale;
 	ThrowData.EquippedMesh   = SourceItem.EquippedMesh;  // Fix JIP: replicate mesh with the struct
 	ThrowData.bReady         = true;
+
+	// ── Aplicar localmente en el servidor ─────────────────────────────────────
 	ApplyLaunchDataIfReady();
+
+	// ── Emitir a todos los clientes para simulación local simultánea ──────────
+	// Esto garantiza que todos los clientes inicien la física desde el mismo
+	// origen y velocidad → trayectorias idénticas sin replicación de posición.
+	MulticastLaunch(SpawnLocation, InitialVelocity, SafeScale, SourceItem.EquippedMesh);
 }
 
 void ATN_ThrowableItemActor::SetSourceItem(const FTN_InventoryItem& Item)
@@ -97,6 +108,38 @@ void ATN_ThrowableItemActor::SetSourceItem(const FTN_InventoryItem& Item)
 void ATN_ThrowableItemActor::OnRep_ThrowData()
 {
 	ApplyLaunchDataIfReady();
+}
+
+// ── MulticastLaunch: simulación local en servidor + todos los clientes ────────
+
+void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
+	FVector Origin, FVector Velocity, FVector Scale, UStaticMesh* MeshAsset)
+{
+	// En el servidor ya se aplicó en InitializeThrow → evitar doble activación.
+	if (HasAuthority())
+	{
+		return;
+	}
+
+	// Aplicar mesh y escala
+	if (MeshAsset)
+	{
+		Mesh->SetStaticMesh(MeshAsset);
+	}
+	if (!Scale.IsNearlyZero())
+	{
+		Mesh->SetRelativeScale3D(Scale);
+	}
+
+	// Posicionar e iniciar simulación local — igual que el servidor.
+	SetActorLocation(Origin);
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->Velocity = Velocity;
+		ProjectileMovement->Activate(true);
+	}
+
+	bLaunchApplied = true;
 }
 
 void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
@@ -117,20 +160,15 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 		Mesh->SetRelativeScale3D(ThrowData.MeshScale);
 	}
 
-	if (HasAuthority())
+	// Servidor y clientes: posicionar desde origen y activar física local.
+	// Para JIP late-joiners: ThrowData está replicado pero la bola ya se movió;
+	// la arrancamos desde el origen (ligero desfase aceptable en party game).
+	SetActorLocation(ThrowData.SpawnLocation);
+	if (ProjectileMovement)
 	{
-		// El servidor posiciona el actor y activa el movimiento.
-		SetActorLocation(ThrowData.SpawnLocation);
-
-		if (ProjectileMovement)
-		{
-			ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
-			ProjectileMovement->Activate(true);
-		}
+		ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
+		ProjectileMovement->Activate(true);
 	}
-	// En clientes NO llamamos SetActorLocation: con SetReplicateMovement(true)
-	// el servidor ya replica la posición. Llamarlo aquí snapearía la bola de vuelta
-	// al punto de lanzamiento cuando OnRep_ThrowData llega tarde.
 
 	bLaunchApplied = true;
 }

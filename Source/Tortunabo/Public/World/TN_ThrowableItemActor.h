@@ -105,6 +105,15 @@ protected:
 	 */
 	virtual void ApplyLaunchDataIfReady();
 
+	/**
+	 * Emite los parámetros de lanzamiento a TODAS las máquinas (servidor + clientes)
+	 * para que cada una simule la física localmente.
+	 * Enfoque AAA: sin replicación de posición a 30 Hz → 0 tirones visuales.
+	 * El servidor sigue siendo la autoridad para hit-detection (OnMeshHit).
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastLaunch(FVector Origin, FVector Velocity, FVector Scale, UStaticMesh* MeshAsset);
+
 private:
 	// Datos del ítem — servidor únicamente, sin replicar
 	FTN_InventoryItem SourceItem;

@@ -15,6 +15,13 @@ class TORTUNABO_API ATN_DeathZoneVolume : public ATriggerVolume
 public:
 	ATN_DeathZoneVolume();
 
+	/**
+	 * Reinicia el countdown de un jugador dentro de la zona.
+	 * Llamar tras RecoverFromKnockdown si el jugador sigue dentro del volumen,
+	 * para evitar que muera instantáneamente al ser revivido.
+	 */
+	void ResetPlayerTimer(APlayerController* PC);
+
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DeathZone", meta = (ClampMin = "0.1"))
 	float SecondsInsideToDie = 3.0f;

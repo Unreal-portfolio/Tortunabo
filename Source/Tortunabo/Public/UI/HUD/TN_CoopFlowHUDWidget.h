@@ -62,9 +62,30 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Flow")
 	void OnFlowStateChanged(ETNMatchFlowState NewState);
 
-	/** Hook puramente visual para pintar una línea nueva en el feed de quick chat. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "QuickChat")
+	/**
+	 * Pinta una línea nueva en el feed de quick chat.
+	 * La implementación C++ escribe automáticamente en ChatHistoryBox.
+	 * Blueprint puede sobreescribir para añadir efectos extra; si lo hace,
+	 * llamar a Super para que el C++ también se ejecute.
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "QuickChat")
 	void OnQuickChatEntryReceived(int32 Sequence, const FText& SenderName, const FText& MessageText, UTexture2D* Icon, float ServerTimeSeconds);
+
+	/**
+	 * VerticalBox donde se añaden los mensajes de quick chat.
+	 * Añadir en el Designer del Blueprint con el nombre exacto "ChatHistoryBox".
+	 * Sin nodos en Event Graph necesarios: la implementación C++ lo rellena.
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UVerticalBox> ChatHistoryBox;
+
+	/** Máximo de líneas visibles en el feed de chat (las más antiguas se eliminan). */
+	UPROPERTY(EditDefaultsOnly, Category = "QuickChat")
+	int32 MaxChatLines = 8;
+
+	/** Color del texto de los mensajes de chat. */
+	UPROPERTY(EditDefaultsOnly, Category = "QuickChat")
+	FLinearColor ChatTextColor = FLinearColor::White;
 
 private:
 	void EnsureRuntimeWidgets();

@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
+#include "GameFramework/Pawn.h"
 #include "TimerManager.h"
 
 ATN_HQGameMode::ATN_HQGameMode()
@@ -457,6 +458,21 @@ void ATN_HQGameMode::PostSeamlessTravel()
 	}
 
 	RefreshLobbyState();
+
+	// ── Destruir pawns huérfanos (sin controller) ─────────────────────────────
+	// HandleSeamlessTravelPlayer destruye los pawns "prematuros" de cada PC, pero
+	// pueden quedar actores APawn sin controller (p.ej. del RunGameMode) que no
+	// fueron destruidos antes del travel. Los eliminamos aquí para evitar
+	// los "cuerpos fantasma" visibles en el lobby.
+	TArray<AActor*> OrphanPawns;
+	for (TActorIterator<APawn> It(GetWorld()); It; ++It)
+	{
+		APawn* P = *It;
+		if (P && !P->GetController())
+		{
+			P->Destroy();
+		}
+	}
 }
 
 

@@ -1,6 +1,7 @@
 ﻿#include "World/TN_DeathZoneVolume.h"
 #include "Game/TN_RunGameMode.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Player/TortugaCharacter.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "TimerManager.h"
@@ -131,6 +132,24 @@ void ATN_DeathZoneVolume::TickAllCountdowns()
 		float* Remaining = PendingDeathRemaining.Find(WeakPC);
 		if (!Remaining) { continue; }
 
+		// ── Pausar el countdown mientras el jugador está derribado (DBNO) ──────
+		// Si el jugador fue noqueado dentro de la zona y un compañero lo revive,
+		// sin esta pausa el contador llega a 0 y lo mata inmediatamente al revivir.
+		// Al estar derribado reseteamos a SecondsInsideToDie → cuando se levante
+		// tendrá el tiempo completo para salir.
+		if (const ATortugaCharacter* Char = Cast<ATortugaCharacter>(PC->GetPawn()))
+		{
+			if (Char->IsKnockedDown())
+			{
+				*Remaining = SecondsInsideToDie;
+				if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
+				{
+					TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
+				}
+				continue;
+			}
+		}
+
 		*Remaining = FMath::Max(0.f, *Remaining - CountdownTickInterval);
 		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 		{
@@ -147,6 +166,24 @@ void ATN_DeathZoneVolume::TickAllCountdowns()
 	if (PendingDeathRemaining.Num() == 0)
 	{
 		GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
+	}
+}
+
+void ATN_DeathZoneVolume::ResetPlayerTimer(APlayerController* PC)
+{
+	if (!HasAuthority() || !PC)
+	{
+		return;
+	}
+
+	float* Remaining = PendingDeathRemaining.Find(PC);
+	if (Remaining)
+	{
+		*Remaining = SecondsInsideToDie;
+		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
+		{
+			TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
+		}
 	}
 }
 

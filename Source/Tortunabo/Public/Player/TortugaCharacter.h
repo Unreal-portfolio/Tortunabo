@@ -595,6 +595,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
 	void RecoverFromKnockdown();
 
+	/** Returns true if this character is currently in a knockdown/DBNO state. */
+	UFUNCTION(BlueprintPure, Category = "Knockdown")
+	bool IsKnockedDown() const { return bIsKnockedDown; }
+
 	/**
 	 * Activa/desactiva el visual de muerte: oculta extremidades, cola, cabeza, casco.
 	 * El pawn permanece en el mundo como cadáver interactuable.

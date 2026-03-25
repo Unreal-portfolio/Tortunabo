@@ -5,6 +5,10 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/Image.h"
+#include "Engine/Texture2D.h"
 #include "Components/Widget.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/MP_GamePlayerController.h"
@@ -421,4 +425,55 @@ bool UTN_CoopFlowHUDWidget::ShouldBeVisible(ETNMatchFlowState State) const
 		|| State == ETNMatchFlowState::Cinematic
 		|| State == ETNMatchFlowState::InProgress
 		|| State == ETNMatchFlowState::Results;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quick Chat feed — C++ implementation
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
+	int32 Sequence, const FText& SenderName, const FText& MessageText,
+	UTexture2D* Icon, float ServerTimeSeconds)
+{
+	if (!ChatHistoryBox)
+	{
+		return;
+	}
+
+	// ── Build entry row: [Icon?] [Sender: Message] ────────────────────────────
+	UHorizontalBox* Row = NewObject<UHorizontalBox>(this);
+
+	if (Icon)
+	{
+		UImage* IconWidget = NewObject<UImage>(this);
+		IconWidget->SetBrushFromTexture(Icon, false);
+		IconWidget->SetBrushSize(FVector2D(20.f, 20.f));
+		if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(IconWidget))
+		{
+			HSlot->SetVerticalAlignment(VAlign_Center);
+			HSlot->SetPadding(FMargin(0.f, 0.f, 4.f, 0.f));
+		}
+	}
+
+	const FString FullText = FString::Printf(TEXT("%s: %s"), *SenderName.ToString(), *MessageText.ToString());
+	UTextBlock* TextWidget = NewObject<UTextBlock>(this);
+	TextWidget->SetText(FText::FromString(FullText));
+	TextWidget->SetColorAndOpacity(FSlateColor(FLinearColor(ChatTextColor)));
+	TextWidget->SetAutoWrapText(true);
+	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(TextWidget))
+	{
+		HSlot->SetVerticalAlignment(VAlign_Center);
+		HSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	}
+
+	// ── Add to feed and enforce max line count ────────────────────────────────
+	if (UVerticalBoxSlot* VSlot = ChatHistoryBox->AddChildToVerticalBox(Row))
+	{
+		VSlot->SetPadding(FMargin(0.f, 2.f));
+	}
+
+	while (ChatHistoryBox->GetChildrenCount() > MaxChatLines)
+	{
+		ChatHistoryBox->RemoveChildAt(0);
+	}
 }

@@ -31,6 +31,7 @@
 #include "Game/TN_RunGameMode.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "UI/HUD/TN_EmoteWheelDataAsset.h"
+#include "World/TN_DeathZoneVolume.h"
 #include "EngineUtils.h"
 
 // ── CVar de debug ─────────────────────────────────────────────────────────────
@@ -108,10 +109,11 @@ ATortugaCharacter::ATortugaCharacter()
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
 
-	// Casco cosmético: se adjunta al SceneComponent "Sombrero" en BeginPlay.
+	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).
+	// Al estar en el árbol del mesh, recibe el network smoothing del CMC → sin lag.
 	// Sin mesh asignado → invisible hasta que se equipe un casco real.
 	HelmetMeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HelmetMesh"));
-	HelmetMeshComp->SetupAttachment(RootComponent);
+	HelmetMeshComp->SetupAttachment(GetMesh()); // IMPORTANTE: GetMesh, no RootComponent
 	HelmetMeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HelmetMeshComp->SetIsReplicated(false); // Solo cosmético, no necesita replicación
 	HelmetMeshComp->SetHiddenInGame(true);
@@ -311,10 +313,11 @@ void ATortugaCharacter::BeginPlay()
 		StaminaComponent->SetInventoryComponent(InventoryComponent);
 	}
 
-	// ── Cosmetics: socket Sombrero + casco inicial ────────────────────────────
-	// Buscar el SceneComponent "Sombrero" en la BP para adjuntar el HelmetMeshComp.
-	// IMPORTANTE: "Sombrero" debe ser hijo de "Cabeza" (o del mesh visual),
-	// NO del root/capsule — si no, el casco se mueve desfasado por NetworkSmoothing.
+	// ── Cosmetics: casco inicial ──────────────────────────────────────────────
+	// HelmetMeshComp ya está adjunto a GetMesh() desde el constructor → hereda el
+	// network smoothing del CMC automáticamente (sin lag visual en clientes remotos).
+	// Si existe el SceneComponent "Sombrero" (p.ej. hijo de Cabeza en el BP),
+	// re-adjuntar a él para respetar el offset configurado en el Blueprint.
 	SombreroSocket = FindChildByName(TEXT("Sombrero"));
 	if (SombreroSocket.IsValid() && HelmetMeshComp)
 	{
@@ -322,19 +325,10 @@ void ATortugaCharacter::BeginPlay()
 			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Socket 'Sombrero' encontrado → HelmetMeshComp adjunto."));
 	}
-	else if (Cabeza.IsValid() && HelmetMeshComp)
-	{
-		// Fallback: adjuntar directamente a Cabeza para evitar lag por smoothing
-		HelmetMeshComp->AttachToComponent(Cabeza.Get(),
-			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Socket 'Sombrero' NO encontrado en '%s'. "
-			"Usando 'Cabeza' como fallback para el casco. "
-			"Añade un SceneComponent 'Sombrero' como HIJO de 'Cabeza' para mejor control."), *GetName());
-	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Ni 'Sombrero' ni 'Cabeza' encontrados en '%s'. "
-			"El casco quedará adjunto al root (puede causar lag visual)."), *GetName());
+		// Permanece adjunto a GetMesh() desde el constructor — sin lag, sin warning.
+		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Socket 'Sombrero' no encontrado → HelmetMeshComp en GetMesh()."));
 	}
 
 	// Restaurar el casco que lleva este jugador al (re)conectar al mapa.
@@ -1267,6 +1261,21 @@ void ATortugaCharacter::RecoverFromKnockdown()
 	// ── Audio feedback de revive ─────────────────────────────────────────
 	StopDBNOHeartbeatSound();
 	PlayReviveSuccessSound();
+
+	// ── Resetear timer en DeathZones activas ──────────────────────────────────
+	// Si el jugador fue revivido DENTRO de una death zone, el overlap no se
+	// re-dispara (nunca salió del volumen). Reseteamos el countdown a su valor
+	// máximo para que tenga tiempo de salir en lugar de morir al instante.
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		for (TActorIterator<ATN_DeathZoneVolume> It(GetWorld()); It; ++It)
+		{
+			if (IsOverlappingActor(*It))
+			{
+				(*It)->ResetPlayerTimer(PC);
+			}
+		}
+	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
 }

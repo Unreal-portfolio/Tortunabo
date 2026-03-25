@@ -5,6 +5,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "World/TN_RescuePickup.h"
+#include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -855,6 +856,20 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 			}
 		}
 
+		// ── Destruir spectator pawns de jugadores eliminados ──────────────────
+		// Los SpectatorPawns NO están controlados por PlayerController.GetPawn()
+		// en el loop anterior → quedan como "cuerpos fantasma" en el lobby.
+		for (TActorIterator<ASpectatorPawn> It(World); It; ++It)
+		{
+			It->Destroy();
+		}
+
+		// ── Destruir RescuePickups residuales ─────────────────────────────────
+		for (TActorIterator<ATN_RescuePickup> It(World); It; ++It)
+		{
+			It->Destroy();
+		}
+
 		// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─
 		const FString TravelURL = LobbyMapPath;
 		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Seamless ServerTravel to: %s"), *TravelURL);
@@ -908,6 +923,9 @@ void ATN_RunGameMode::PostSeamlessTravel()
 		// Reset PlayerState para la carrera
 		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 		{
+			// Preservar helmet antes del reset para forzar re-replicación después.
+			const FName SavedHelmet = TNPS->EquippedHelmetId;
+
 			TNPS->bIsAlive = true;
 			TNPS->bHasFinishedRun = false;
 			TNPS->bIsDBNO = false;
@@ -916,6 +934,18 @@ void ATN_RunGameMode::PostSeamlessTravel()
 			TNPS->bIsEliminated = false;
 			TNPS->FinishTimeSeconds = -1.f;
 			TNPS->DeathZoneTimeRemaining = -1.f;
+
+			// Forzar re-replicación del helmet ID a los clientes.
+			// UE solo replica propiedades cuyo valor cambia; como EquippedHelmetId
+			// persiste con el PlayerState a través del seamless travel y no se
+			// modificó, OnRep_EquippedHelmetId no dispara en los clientes al
+			// spawnearse el nuevo pawn. Alternando el valor forzamos el dirty flag.
+			if (SavedHelmet != NAME_None)
+			{
+				TNPS->EquippedHelmetId = NAME_None;
+				TNPS->EquippedHelmetId = SavedHelmet;
+			}
+			TNPS->ForceNetUpdate();
 		}
 
 		// Asegurar que tiene pawn

@@ -5,6 +5,8 @@
 #include "UI/HUD/TN_RadialWheelTypes.h"
 #include "TN_RadialWheelWidgetBase.generated.h"
 
+class UCanvasPanel;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FTN_OnRadialSelectionChanged, int32, SelectedIndex, uint8, EntryId, FText, Label);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTN_OnRadialSelectionCleared);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FTN_OnRadialSelectionConfirmed, int32, SelectedIndex, uint8, EntryId, FText, Label);
@@ -62,7 +64,28 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial")
 	float SelectionAngleOffsetDegrees = 90.f;
 
-	UFUNCTION(BlueprintImplementableEvent, Category = "Radial")
+	/** Radio en píxeles al que se colocan los labels/iconos dentro de RadialSlotsContainer. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial")
+	float SlotRadius = 150.f;
+
+	/** Tamaño del icono de cada slot (píxeles). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial")
+	FVector2D SlotIconSize = FVector2D(48.f, 48.f);
+
+	/** Punto central dentro de RadialSlotsContainer desde el que se distribuyen los slots.
+	 *  Ajustar a la mitad del tamaño del CanvasPanel en el Blueprint. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial")
+	FVector2D RadialCenter = FVector2D(0.f, 0.f);
+
+	/**
+	 * CanvasPanel en el que se generan automáticamente los widgets de cada slot.
+	 * Añadir en el Designer del Blueprint hijo con el nombre exacto "RadialSlotsContainer".
+	 * Sin nodos en el Event Graph: la implementación C++ de BP_OnEntriesSet lo rellena.
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UCanvasPanel> RadialSlotsContainer;
+
+	UFUNCTION(BlueprintNativeEvent, Category = "Radial")
 	void BP_OnEntriesSet(const TArray<FTN_RadialWheelEntryView>& InEntries);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Radial")
