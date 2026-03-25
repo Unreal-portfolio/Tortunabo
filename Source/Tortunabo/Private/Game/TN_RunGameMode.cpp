@@ -610,6 +610,13 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		//    y restaura el viewtarget (la cámara vuelve a su pawn).
 		//    Sin esto el jugador seguiría viendo la cámara del espectador.
 		PlayerController->ClientRestart(Pawn);
+		// 4) ClientRestorePlayerInput: limpia IgnoreMoveInput/IgnoreLookInput
+		//    que quedaron incrementados por ChangeState(Spectating) en el cliente.
+		//    Sin esto el jugador se mueve con la cámara pero no puede moverse.
+		if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PlayerController))
+		{
+			TNPC->ClientRestorePlayerInput();
+		}
 	}
 	else
 	{

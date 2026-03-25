@@ -266,28 +266,38 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 		TNPS = PC->GetPlayerState<ATN_CoopPlayerState>();
 	}
 
-	const int32  Rank       = TNPS ? TNPS->FinishRank       : 0;
-	const float  Time       = TNPS ? TNPS->FinishTimeSeconds : -1.f;
-	const bool   bFinished  = TNPS && TNPS->bHasFinishedRun && Rank > 0;
+	const int32  Rank          = TNPS ? TNPS->FinishRank       : 0;
+	const float  Time          = TNPS ? TNPS->FinishTimeSeconds : -1.f;
+	const bool   bEliminated   = TNPS && TNPS->bIsEliminated;
+	const bool   bFinishedNorm = TNPS && TNPS->bHasFinishedRun && Rank > 0 && !bEliminated;
 
 	// ── Title ────────────────────────────────────────────────────────────────
 	if (ResultsTitle)
 	{
-		ResultsTitle->SetText(BuildRankTitle(Rank));
+		ResultsTitle->SetText(BuildRankTitle(Rank, bEliminated));
 	}
 
 	// ── Rank line ────────────────────────────────────────────────────────────
 	if (ResultsRankText)
 	{
-		ResultsRankText->SetText(bFinished
-			? FText::FromString(FString::Printf(TEXT("Puesto: #%d"), Rank))
-			: FText::FromString(TEXT("Eliminado")));
+		if (bEliminated)
+		{
+			ResultsRankText->SetText(FText::FromString(TEXT("Eliminado")));
+		}
+		else if (bFinishedNorm)
+		{
+			ResultsRankText->SetText(FText::FromString(FString::Printf(TEXT("Puesto: #%d"), Rank)));
+		}
+		else
+		{
+			ResultsRankText->SetText(FText::GetEmpty());
+		}
 	}
 
 	// ── Time line ────────────────────────────────────────────────────────────
 	if (ResultsTimeText)
 	{
-		ResultsTimeText->SetText(Time > 0.f
+		ResultsTimeText->SetText((bFinishedNorm && Time > 0.f)
 			? FText::FromString(FString::Printf(TEXT("Tiempo: %.1fs"), Time))
 			: FText::GetEmpty());
 	}
@@ -295,7 +305,7 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 	// ── Spectator hint ───────────────────────────────────────────────────────
 	if (SpectatorHint)
 	{
-		SpectatorHint->SetText(!bFinished
+		SpectatorHint->SetText(bEliminated
 			? FText::FromString(TEXT("Scroll para cambiar de jugador"))
 			: FText::GetEmpty());
 	}
@@ -325,17 +335,22 @@ void UTN_CoopFlowHUDWidget::RefreshResultsCountdown(const ATN_CoopGameState* Gam
 		FText::FromString(FString::Printf(TEXT("Volviendo al lobby en: %d"), GameState->CountdownValue)));
 }
 
-FText UTN_CoopFlowHUDWidget::BuildRankTitle(int32 FinishRank) const
+FText UTN_CoopFlowHUDWidget::BuildRankTitle(int32 FinishRank, bool bEliminated) const
 {
+	if (bEliminated)
+	{
+		return FText::FromString(TEXT("¡Eliminado!"));
+	}
+
 	switch (FinishRank)
 	{
-	case 1:  return FText::FromString(TEXT("¡PRIMER LUGAR!"));
-	case 2:  return FText::FromString(TEXT("¡SEGUNDO LUGAR!"));
-	case 3:  return FText::FromString(TEXT("¡TERCER LUGAR!"));
+	case 1:  return FText::FromString(TEXT("¡Primero!"));
+	case 2:  return FText::FromString(TEXT("Segundo"));
+	case 3:  return FText::FromString(TEXT("Tercero"));
 	default:
 		return FinishRank > 0
-			? FText::FromString(FString::Printf(TEXT("PUESTO #%d"), FinishRank))
-			: FText::FromString(TEXT("¡ELIMINADO!"));
+			? FText::FromString(FString::Printf(TEXT("Puesto #%d"), FinishRank))
+			: FText::FromString(TEXT("¡Eliminado!"));
 	}
 }
 

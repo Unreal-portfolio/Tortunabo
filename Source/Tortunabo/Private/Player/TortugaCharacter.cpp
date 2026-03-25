@@ -1930,6 +1930,13 @@ void ATortugaCharacter::CancelEmoteLocalOnly()
 	if (Cola.IsValid())   { SnapshotCola   = Cola->GetRelativeRotation();   SnapshotColaLoc   = Cola->GetRelativeLocation();   }
 	if (Cabeza.IsValid()) { SnapshotCabeza = Cabeza->GetRelativeRotation(); SnapshotCabezaLoc = Cabeza->GetRelativeLocation(); }
 
+	// Si cancela el emote de knockdown, capturar también la rotación del cuerpo para restaurarla.
+	bKnockdownCompSnapshotValid = (EmoteIdToStop == KNOCKDOWN_EMOTE_ID) && KnockdownVisualComp.IsValid();
+	if (bKnockdownCompSnapshotValid)
+	{
+		SnapshotKnockdownComp = KnockdownVisualComp->GetRelativeRotation();
+	}
+
 	ActiveEmoteIndex   = -1;
 	bEmoteBlendingOut  = true;
 	EmoteBlendOutTimer = 0.f;
@@ -2008,7 +2015,23 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		Blend(Cola,   SnapshotCola,   ColaRestRot,   SnapshotColaLoc,   ColaRestLoc);
 		Blend(Cabeza, SnapshotCabeza, CabezaRestRot, SnapshotCabezaLoc, CabezaRestLoc);
 
-		if (Alpha >= 1.f) { bEmoteBlendingOut = false; }
+		// Restaurar la rotación del cuerpo si era un knockdown emote
+		if (bKnockdownCompSnapshotValid && KnockdownVisualComp.IsValid())
+		{
+			KnockdownVisualComp->SetRelativeRotation(
+				FMath::Lerp(SnapshotKnockdownComp, MeshDefaultRelativeRotation, Alpha));
+		}
+
+		if (Alpha >= 1.f)
+		{
+			bEmoteBlendingOut = false;
+			bKnockdownCompSnapshotValid = false;
+			// Asegurar restauración exacta al finalizar blend-out
+			if (KnockdownVisualComp.IsValid())
+			{
+				KnockdownVisualComp->SetRelativeRotation(MeshDefaultRelativeRotation);
+			}
+		}
 		return;
 	}
 
@@ -2432,26 +2455,37 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 
 	default:
 		// ── KNOCKDOWN EMOTE (ID = 100) ─────────────────────────────────────
-		// Tortuga boca arriba: todas las patas/brazos apuntan hacia arriba con
-		// una pequeña oscilación de "lucha" para dar sensación de vida.
+		// Tortuga boca arriba: el CUERPO completo rota 90° hacia atrás,
+		// patas/brazos apuntan hacia arriba con pequeña oscilación.
 		if (ActiveEmoteIndex == KNOCKDOWN_EMOTE_ID)
 		{
-			const float Struggle = FMath::Sin(T * 4.f) * 5.f;   // ±5° oscilación suave
-			const float Setup    = FMath::Min(T / 0.15f, 1.f);  // Llega a la pose en 0.15s
+			const float Setup    = FMath::Min(T / 0.2f, 1.f);  // Pose completada en 0.2s
+			const float EasedSetup = FMath::InterpEaseOut(0.f, 1.f, Setup, 2.f); // Deceleración natural
+			const float Struggle = FMath::Sin(T * 4.f) * 5.f;  // ±5° oscilación suave de "lucha"
 
-			// Patas hacia arriba (eje de swing normal pero invertido)
-			Ap(Pata1, Pata1RestRot,  Setup * (80.f + Struggle), LY);
-			Ap(Pata2, Pata2RestRot,  Setup * (-80.f + Struggle), LY);
+			// ── Rotar el cuerpo entero hacia atrás (componente "Cuerpo" / KnockdownVisualComp) ──
+			// Este es el efecto principal: la tortuga cae de espaldas (como una tortuga real).
+			if (KnockdownVisualComp.IsValid())
+			{
+				FRotator TargetRot = MeshDefaultRelativeRotation;
+				TargetRot.Pitch -= 90.f;  // 90° hacia atrás = patas arriba
+				KnockdownVisualComp->SetRelativeRotation(
+					FMath::Lerp(MeshDefaultRelativeRotation, TargetRot, EasedSetup));
+			}
+
+			// Patas hacia arriba (eje de swing normal)
+			Ap(Pata1, Pata1RestRot,  EasedSetup * (80.f + Struggle), LY);
+			Ap(Pata2, Pata2RestRot,  EasedSetup * (-80.f + Struggle), LY);
 
 			// Brazos extendidos hacia arriba
-			Ap(Brazo1, Brazo1RestRot,  Setup * (70.f + Struggle * 0.7f), AX);
-			Ap(Brazo2, Brazo2RestRot,  Setup * (-70.f + Struggle * 0.7f), AX);
+			Ap(Brazo1, Brazo1RestRot,  EasedSetup * (70.f + Struggle * 0.7f), AX);
+			Ap(Brazo2, Brazo2RestRot,  EasedSetup * (-70.f + Struggle * 0.7f), AX);
 
-			// Cabeza caída hacia abajo (gravedad)
-			Ap(Cabeza, CabezaRestRot, Setup * 25.f, TY);
+			// Cabeza caída hacia atrás por gravedad
+			Ap(Cabeza, CabezaRestRot, EasedSetup * 25.f, TY);
 
 			// Cola ligeramente levantada
-			Ap(Cola, ColaRestRot, Setup * (-35.f + Struggle * 0.5f), TY);
+			Ap(Cola, ColaRestRot, EasedSetup * (-35.f + Struggle * 0.5f), TY);
 
 			// NO termina (bEnded queda false) — se mantiene hasta RecoverFromKnockdown
 		}

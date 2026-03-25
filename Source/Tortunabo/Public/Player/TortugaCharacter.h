@@ -321,6 +321,9 @@ private:
 	FRotator SnapshotPata2;
 	FRotator SnapshotCola;
 	FRotator SnapshotCabeza;
+	/** Snapshot of KnockdownVisualComp rotation — captured when knockdown emote blend-out begins. */
+	FRotator SnapshotKnockdownComp;
+	bool     bKnockdownCompSnapshotValid = false;
 
 	/** Snapshots of component locations captured when a blend-out begins. */
 	FVector SnapshotBrazo1Loc;

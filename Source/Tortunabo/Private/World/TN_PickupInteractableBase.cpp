@@ -148,13 +148,16 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 	FlushNetDormancy();
 	ForceNetUpdate();
 
-	// Re-dormir tras 2s para dejar de consumir bandwidth.
-	FTimerHandle DormancyTimerHandle;
-	GetWorldTimerManager().SetTimer(DormancyTimerHandle,
-		[WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
+	// Destruir el actor en el siguiente frame — la destrucción replicada es más
+	// fiable que la dormancy para garantizar que los clientes eliminen el mesh.
+	// Un actor destruido siempre se propaga; un actor dormante puede quedar desync.
+	GetWorldTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
+	{
+		if (WeakThis.IsValid())
 		{
-			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_DormantAll); }
-		}, 2.0f, false);
+			WeakThis->Destroy();
+		}
+	});
 
 	// ── Log de confirmación de recogida ───────────────────────────────────────
 	UE_LOG(LogTemp, Log,

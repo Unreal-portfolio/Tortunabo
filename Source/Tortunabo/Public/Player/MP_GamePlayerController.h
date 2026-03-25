@@ -75,6 +75,16 @@ public:
 	 */
 	void RefreshHUDAfterPossession();
 
+	/**
+	 * Client RPC: limpia flags de ignorar input (del modo espectador)
+	 * y restaura el modo de juego. Llamado desde RevivePlayer en el servidor.
+	 * Sin esto, tras ser revivido el jugador no puede moverse porque
+	 * ChangeState(Spectating) / BeginSpectatingState incrementa IgnoreMoveInput
+	 * y la secuencia Possess+ClientRestart no lo decrementa en el cliente.
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientRestorePlayerInput();
+
 	UFUNCTION(BlueprintPure, Category = "QuickChat")
 	bool ResolveQuickChatDisplayData(const FTN_QuickChatEntry& Entry, FText& OutSenderName, FText& OutMessageText, UTexture2D*& OutIcon) const;
 

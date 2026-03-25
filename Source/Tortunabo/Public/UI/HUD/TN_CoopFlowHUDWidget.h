@@ -86,7 +86,7 @@ private:
 	void ShowResultsPanel(const ATN_CoopGameState* GameState);
 	void HideResultsPanel();
 	void RefreshResultsCountdown(const ATN_CoopGameState* GameState);
-	FText BuildRankTitle(int32 FinishRank) const;
+	FText BuildRankTitle(int32 FinishRank, bool bEliminated) const;
 
 	// ── State tracking ─────────────────────────────────────────────────────────
 	float RefreshAccumulator  = 0.f;

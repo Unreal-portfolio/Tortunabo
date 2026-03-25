@@ -159,6 +159,18 @@ void AMP_GamePlayerController::RestorePostRadialInputMode()
 	ApplyGameplayInputMode();
 }
 
+void AMP_GamePlayerController::ClientRestorePlayerInput_Implementation()
+{
+	// ResetIgnoreInputFlags() establece IgnoreMoveInput = 0 e IgnoreLookInput = 0.
+	// Esto limpia cualquier contador incremental dejado por ChangeState(Spectating)
+	// / StartSpectatingOnly, que incrementa IgnoreMoveInput y no lo decrementa
+	// cuando el servidor llama Possess + ClientRestart.
+	ResetIgnoreInputFlags();
+	ApplyGameplayInputMode();
+
+	UE_LOG(LogTemp, Log, TEXT("[PC] ClientRestorePlayerInput: input flags reset, gameplay mode restored."));
+}
+
 void AMP_GamePlayerController::CacheRadialInputAssets()
 {
 	if (!LoadedOpenEmoteWheelAction && !OpenEmoteWheelAction.IsNull())
