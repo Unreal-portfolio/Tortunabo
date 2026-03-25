@@ -41,6 +41,15 @@ void ATN_CoopPlayerState::OnRep_EquippedHelmetId()
 	}
 }
 
+void ATN_CoopPlayerState::MulticastForceApplyHelmet_Implementation(FName HelmId)
+{
+	EquippedHelmetId = HelmId;
+	if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+	{
+		TurtleChar->UpdateHelmetMesh(HelmId);
+	}
+}
+
 void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);

@@ -159,14 +159,32 @@ void AMP_GamePlayerController::RestorePostRadialInputMode()
 	ApplyGameplayInputMode();
 }
 
+void AMP_GamePlayerController::ForceRestoreInput()
+{
+	ResetIgnoreInputFlags();
+	ApplyGameplayInputMode();
+}
+
+void AMP_GamePlayerController::ClientReceiveVoice_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor)
+{
+	if (!SpeakerActor)
+	{
+		return;
+	}
+
+	if (UProximityVoiceComponent* VoiceComp = SpeakerActor->FindComponentByClass<UProximityVoiceComponent>())
+	{
+		VoiceComp->PlayRemoteVoice(CompressedData, SenderSampleRate);
+	}
+}
+
 void AMP_GamePlayerController::ClientRestorePlayerInput_Implementation()
 {
 	// ResetIgnoreInputFlags() establece IgnoreMoveInput = 0 e IgnoreLookInput = 0.
 	// Esto limpia cualquier contador incremental dejado por ChangeState(Spectating)
 	// / StartSpectatingOnly, que incrementa IgnoreMoveInput y no lo decrementa
 	// cuando el servidor llama Possess + ClientRestart.
-	ResetIgnoreInputFlags();
-	ApplyGameplayInputMode();
+	ForceRestoreInput();
 
 	UE_LOG(LogTemp, Log, TEXT("[PC] ClientRestorePlayerInput: input flags reset, gameplay mode restored."));
 }

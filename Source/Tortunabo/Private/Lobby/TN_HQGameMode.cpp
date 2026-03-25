@@ -459,20 +459,24 @@ void ATN_HQGameMode::PostSeamlessTravel()
 
 	RefreshLobbyState();
 
-	// ── Destruir pawns huérfanos (sin controller) ─────────────────────────────
-	// HandleSeamlessTravelPlayer destruye los pawns "prematuros" de cada PC, pero
-	// pueden quedar actores APawn sin controller (p.ej. del RunGameMode) que no
-	// fueron destruidos antes del travel. Los eliminamos aquí para evitar
-	// los "cuerpos fantasma" visibles en el lobby.
-	TArray<AActor*> OrphanPawns;
-	for (TActorIterator<APawn> It(GetWorld()); It; ++It)
+	// ── Destruir pawns huérfanos (sin controller) un frame después ───────────
+	// HandleSeamlessTravelPlayer + EnsurePlayerSpawned pueden crear/destruir pawns
+	// en este mismo tick; diferir un frame garantiza que todos los pawns legítimos
+	// ya están poseídos antes del barrido.
+	GetWorldTimerManager().SetTimerForNextTick([this]()
 	{
-		APawn* P = *It;
-		if (P && !P->GetController())
+		UWorld* World = GetWorld();
+		if (!World) { return; }
+
+		for (TActorIterator<APawn> It(World); It; ++It)
 		{
-			P->Destroy();
+			APawn* P = *It;
+			if (P && !P->GetController())
+			{
+				P->Destroy();
+			}
 		}
-	}
+	});
 }
 
 

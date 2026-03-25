@@ -686,8 +686,9 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 void ATortugaCharacter::Move(const FInputActionValue& Value)
 {
 	// Cancel any active emote the moment the player moves —
-	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable.
-	if (ActiveEmoteIndex >= 0 && ActiveEmoteIndex != 5 && ActiveEmoteIndex != 6) { CancelEmote(); }
+	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable,
+	// and the knockdown emote which must not be interrupted by movement input.
+	if (!bIsKnockedDown && ActiveEmoteIndex >= 0 && ActiveEmoteIndex != 5 && ActiveEmoteIndex != 6) { CancelEmote(); }
 
 	const FVector2D MovementVector = Value.Get<FVector2D>();
 	if (Controller)

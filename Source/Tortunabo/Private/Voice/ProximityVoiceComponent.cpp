@@ -1,5 +1,6 @@
 #include "Voice/ProximityVoiceComponent.h"
 #include "UI/Voice/VoiceIndicatorWidget.h"
+#include "Player/MP_GamePlayerController.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
@@ -332,8 +333,10 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			Sample = FMath::Clamp(Sample * VoiceGain, -1.0f, 1.0f);
 		}
 
-		// ── Downsampling: reduce sample count before compression ──────────
-		// Factor=3 → 48kHz to ~16kHz. Packet size drops to 1/3.
+		// ── Downsampling con box filter (anti-aliasing) ───────────────────
+		// Promedia DSFactor muestras antes de decimar → evita el efecto "lata"
+		// que produce la decimación simple (nth-sample sin filtro pasa-bajos).
+		// Factor=2 → 48kHz a 24kHz. Packet size drops to 1/2.
 		const int32 DSFactor = FMath::Max(1, VoiceDownsampleFactor);
 		if (DSFactor > 1 && MonoData.Num() > DSFactor)
 		{
@@ -341,7 +344,15 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			Downsampled.Reserve(MonoData.Num() / DSFactor + 1);
 			for (int32 i = 0; i < MonoData.Num(); i += DSFactor)
 			{
-				Downsampled.Add(MonoData[i]);
+				float Sum = 0.f;
+				int32 Count = 0;
+				const int32 End = FMath::Min(i + DSFactor, MonoData.Num());
+				for (int32 k = i; k < End; ++k)
+				{
+					Sum += MonoData[k];
+					++Count;
+				}
+				Downsampled.Add(Count > 0 ? Sum / Count : 0.f);
 			}
 			MonoData = MoveTemp(Downsampled);
 		}
@@ -424,10 +435,44 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
-	Multicast_ReceiveVoiceData(CompressedData, SenderSampleRate);
+	// Enviar solo a clientes dentro del OuterRadius — evita enviar audio a todos.
+	AActor* SpeakerActor = GetOwner();
+	if (!SpeakerActor || !GetWorld())
+	{
+		return;
+	}
+
+	const FVector SpeakerLoc = SpeakerActor->GetActorLocation();
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		AMP_GamePlayerController* PC = Cast<AMP_GamePlayerController>(It->Get());
+		if (!PC)
+		{
+			continue;
+		}
+
+		// Saltar al propio hablante
+		APawn* ListenerPawn = PC->GetPawn();
+		if (!ListenerPawn || ListenerPawn == SpeakerActor)
+		{
+			continue;
+		}
+
+		if (FVector::Dist(ListenerPawn->GetActorLocation(), SpeakerLoc) <= OuterRadius)
+		{
+			PC->ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor);
+		}
+	}
 }
 
 void UProximityVoiceComponent::Multicast_ReceiveVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
+{
+	// Mantenido para compatibilidad — ya no se llama desde Server_SendVoiceData.
+	PlayRemoteVoice(CompressedData, SenderSampleRate);
+}
+
+void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
 	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || IsLocallyOwned())
 	{

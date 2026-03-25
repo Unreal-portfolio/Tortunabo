@@ -85,6 +85,13 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientRestorePlayerInput();
 
+	/** Versión sin RPC para el listen-server (los Client RPCs no se ejecutan en el host). */
+	void ForceRestoreInput();
+
+	/** Recibe audio de voz filtrado por proximidad desde el servidor. */
+	UFUNCTION(Client, Unreliable)
+	void ClientReceiveVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor);
+
 	UFUNCTION(BlueprintPure, Category = "QuickChat")
 	bool ResolveQuickChatDisplayData(const FTN_QuickChatEntry& Entry, FText& OutSenderName, FText& OutMessageText, UTexture2D*& OutIcon) const;
 

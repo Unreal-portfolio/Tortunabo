@@ -50,6 +50,10 @@ public:
 	UFUNCTION()
 	void OnRep_EquippedHelmetId();
 
+	/** Fuerza la aplicación del casco a todos los clientes (evita la race condition del dirty-trick). */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastForceApplyHelmet(FName HelmId);
+
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	float FinishTimeSeconds = -1.f;
 

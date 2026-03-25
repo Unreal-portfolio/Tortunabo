@@ -12,18 +12,6 @@ void ATN_CoopGameState::OnRep_MatchFlowState()
 	OnMatchFlowStateChanged.Broadcast(MatchFlowState);
 }
 
-void ATN_CoopGameState::OnRep_QuickChatHistory()
-{
-	for (const FTN_QuickChatEntry& Entry : QuickChatHistory)
-	{
-		if (Entry.Sequence > LastProcessedQuickChatSequence)
-		{
-			LastProcessedQuickChatSequence = Entry.Sequence;
-			OnQuickChatReceived.Broadcast(Entry);
-		}
-	}
-}
-
 void ATN_CoopGameState::AddQuickChatEntry(int32 SenderPlayerId, uint8 MessageID, float ServerTimeSeconds)
 {
 	FTN_QuickChatEntry Entry;
@@ -32,6 +20,13 @@ void ATN_CoopGameState::AddQuickChatEntry(int32 SenderPlayerId, uint8 MessageID,
 	Entry.MessageID = MessageID;
 	Entry.ServerTime = ServerTimeSeconds;
 
+	// Multicast envía la entrada individualmente — más eficiente que replicar todo el array.
+	// MulticastNewChatEntry_Implementation actualiza el historial local y dispara el delegate.
+	MulticastNewChatEntry(Entry);
+}
+
+void ATN_CoopGameState::MulticastNewChatEntry_Implementation(FTN_QuickChatEntry Entry)
+{
 	QuickChatHistory.Add(Entry);
 	if (QuickChatHistory.Num() > MaxQuickChatEntries)
 	{
@@ -82,7 +77,6 @@ void ATN_CoopGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	// (el listen-server ya lo calcula localmente)
 	DOREPLIFETIME_CONDITION(ATN_CoopGameState, ServerMatchElapsedTime, COND_SkipOwner);
 	DOREPLIFETIME(ATN_CoopGameState, FinishedPlayers);
-	DOREPLIFETIME(ATN_CoopGameState, QuickChatHistory);
 }
 
 

@@ -67,11 +67,17 @@ public:
 
 	/**
 	 * Factor de downsampling antes de comprimir y enviar.
-	 * 3 = 48kHz → 16kHz (reduce paquete a 1/3 del tamaño).
+	 * 2 = 48kHz → 24kHz (reduce paquete a 1/2; box filter evita aliasing).
 	 * 1 = sin downsampling.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Network", meta = (ClampMin = "1", ClampMax = "6"))
-	int32 VoiceDownsampleFactor = 3;
+	int32 VoiceDownsampleFactor = 2;
+
+	/**
+	 * Reproduce datos de voz remotos en este componente.
+	 * Llamado desde AMP_GamePlayerController::ClientReceiveVoice tras el filtro de distancia.
+	 */
+	void PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate);
 
 	/**
 	 * Segundos de silencio continuo antes de marcar bIsSpeaking = false.

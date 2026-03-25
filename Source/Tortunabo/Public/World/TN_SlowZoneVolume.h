@@ -45,6 +45,6 @@ private:
 	void OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
-	/** Velocidad original de cada personaje dentro de la zona (por máquina). */
-	TMap<TWeakObjectPtr<ATortugaCharacter>, float> OriginalSpeeds;
+	/** Personajes actualmente dentro de la zona — para evitar aplicar el cap dos veces. */
+	TSet<TWeakObjectPtr<ATortugaCharacter>> CharactersInZone;
 };

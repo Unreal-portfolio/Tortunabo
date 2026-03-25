@@ -1,7 +1,7 @@
 #include "World/TN_SlowZoneVolume.h"
 #include "Components/BoxComponent.h"
 #include "Player/TortugaCharacter.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "Player/TN_StaminaComponent.h"
 
 ATN_SlowZoneVolume::ATN_SlowZoneVolume()
 {
@@ -21,40 +21,35 @@ void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
-	if (!Char || OriginalSpeeds.Contains(Char))
+	if (!Char || CharactersInZone.Contains(Char))
 	{
 		return;
 	}
 
-	UCharacterMovementComponent* CMC = Char->GetCharacterMovement();
-	if (!CMC)
+	UTN_StaminaComponent* StaminaComp = Char->FindComponentByClass<UTN_StaminaComponent>();
+	if (!StaminaComp)
 	{
 		return;
 	}
 
-	OriginalSpeeds.Add(Char, CMC->MaxWalkSpeed);
-	CMC->MaxWalkSpeed = MaxSlowSpeed;
+	CharactersInZone.Add(Char);
+	StaminaComp->SetSpeedCap(MaxSlowSpeed);
 }
 
 void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
-	if (!Char)
+	if (!Char || !CharactersInZone.Contains(Char))
 	{
 		return;
 	}
 
-	float* Original = OriginalSpeeds.Find(Char);
-	if (!Original)
-	{
-		return;
-	}
+	CharactersInZone.Remove(Char);
 
-	if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+	UTN_StaminaComponent* StaminaComp = Char->FindComponentByClass<UTN_StaminaComponent>();
+	if (StaminaComp)
 	{
-		CMC->MaxWalkSpeed = *Original;
+		StaminaComp->ClearSpeedCap();
 	}
-
-	OriginalSpeeds.Remove(Char);
 }

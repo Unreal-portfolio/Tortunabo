@@ -24,6 +24,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void GrantUnlimitedStamina(float DurationSeconds);
 
+	/**
+	 * Limita MaxWalkSpeed a Cap mientras sea activo (ej. zona de ralentización).
+	 * ApplyMovementSpeed lo respeta: MaxWalkSpeed = Min(WalkSpeed|SprintSpeed, ActiveSpeedCap).
+	 * Llamar en todas las máquinas (sin HasAuthority) — cada una aplica localmente.
+	 */
+	void SetSpeedCap(float Cap);
+	void ClearSpeedCap();
+
 	/** Vincula el componente de inventario para calcular el peso total cargado. */
 	void SetInventoryComponent(UTN_InventoryComponent* InvComp);
 
@@ -124,6 +132,12 @@ private:
 
 	/** Referencia al inventario del propietario — necesaria para calcular el peso. */
 	TWeakObjectPtr<UTN_InventoryComponent> InventoryComponentRef;
+
+	/**
+	 * Velocidad máxima impuesta por zonas externas (ej. TN_SlowZoneVolume).
+	 * MAX_FLT = sin límite activo. ApplyMovementSpeed hace Min(baseSpeed, cap).
+	 */
+	float ActiveSpeedCap = TNumericLimits<float>::Max();
 
 	UFUNCTION()
 	void OnRep_CurrentStamina();

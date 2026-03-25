@@ -41,6 +41,23 @@ void UTN_CoopFlowHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
+	// ── Chat fade-out ─────────────────────────────────────────────────────────
+	if (bChatFadingOut && ChatHistoryBox)
+	{
+		ChatCurrentOpacity -= InDeltaTime / FMath::Max(ChatFadeOutSeconds, KINDA_SMALL_NUMBER);
+		if (ChatCurrentOpacity <= 0.f)
+		{
+			ChatCurrentOpacity = 0.f;
+			bChatFadingOut = false;
+			ChatHistoryBox->SetVisibility(ESlateVisibility::Collapsed);
+			ChatHistoryBox->ClearChildren();
+		}
+		else
+		{
+			ChatHistoryBox->SetRenderOpacity(ChatCurrentOpacity);
+		}
+	}
+
 	RefreshAccumulator += InDeltaTime;
 	if (RefreshAccumulator < RefreshInterval)
 	{
@@ -440,6 +457,13 @@ void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
 		return;
 	}
 
+	// Si el feed ya estaba oculto o casi invisible, limpiar historial para
+	// que solo aparezca el nuevo mensaje (no los mensajes viejos de golpe).
+	if (ChatCurrentOpacity < 0.1f || ChatHistoryBox->GetVisibility() == ESlateVisibility::Collapsed)
+	{
+		ChatHistoryBox->ClearChildren();
+	}
+
 	// ── Build entry row: [Icon?] [Sender: Message] ────────────────────────────
 	UHorizontalBox* Row = NewObject<UHorizontalBox>(this);
 
@@ -476,4 +500,22 @@ void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
 	{
 		ChatHistoryBox->RemoveChildAt(0);
 	}
+
+	// Restaurar visibilidad y opacidad; resetear timer de inactividad.
+	ChatHistoryBox->SetVisibility(ESlateVisibility::HitTestInvisible);
+	ChatHistoryBox->SetRenderOpacity(1.f);
+	bChatFadingOut     = false;
+	ChatCurrentOpacity = 1.f;
+
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		PC->GetWorldTimerManager().SetTimer(
+			ChatFadeTimer, this, &UTN_CoopFlowHUDWidget::StartChatFade,
+			ChatInactivitySeconds, false);
+	}
+}
+
+void UTN_CoopFlowHUDWidget::StartChatFade()
+{
+	bChatFadingOut = true;
 }

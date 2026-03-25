@@ -44,7 +44,7 @@ void UTN_StaminaComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, CurrentStamina, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bIsSprinting, COND_SkipOwner);
-	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bSprintRequested, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bSprintRequested, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bUnlimitedStamina, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bIsExhausted, COND_OwnerOnly);
 }
@@ -229,9 +229,21 @@ void UTN_StaminaComponent::ApplyMovementSpeed() const
 	{
 		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
 		{
-			Movement->MaxWalkSpeed = bIsSprinting ? SprintSpeed : WalkSpeed;
+			Movement->MaxWalkSpeed = FMath::Min(bIsSprinting ? SprintSpeed : WalkSpeed, ActiveSpeedCap);
 		}
 	}
+}
+
+void UTN_StaminaComponent::SetSpeedCap(float Cap)
+{
+	ActiveSpeedCap = Cap;
+	ApplyMovementSpeed();
+}
+
+void UTN_StaminaComponent::ClearSpeedCap()
+{
+	ActiveSpeedCap = TNumericLimits<float>::Max();
+	ApplyMovementSpeed();
 }
 
 void UTN_StaminaComponent::ApplySprintVisual() const

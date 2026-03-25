@@ -87,6 +87,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "QuickChat")
 	FLinearColor ChatTextColor = FLinearColor::White;
 
+	/** Segundos de inactividad antes de que el feed de chat empiece a desaparecer. */
+	UPROPERTY(EditDefaultsOnly, Category = "QuickChat")
+	float ChatInactivitySeconds = 3.f;
+
+	/** Duración del fade-out del feed de chat (segundos). */
+	UPROPERTY(EditDefaultsOnly, Category = "QuickChat")
+	float ChatFadeOutSeconds = 0.5f;
+
 private:
 	void EnsureRuntimeWidgets();
 	void RefreshTexts();
@@ -109,6 +117,8 @@ private:
 	void RefreshResultsCountdown(const ATN_CoopGameState* GameState);
 	FText BuildRankTitle(int32 FinishRank, bool bEliminated) const;
 
+	void StartChatFade();
+
 	// ── State tracking ─────────────────────────────────────────────────────────
 	float RefreshAccumulator  = 0.f;
 	float RefreshInterval     = 0.1f;
@@ -121,4 +131,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<ATN_CoopGameState> BoundQuickChatGameState;
+
+	// ── Chat fade state ────────────────────────────────────────────────────────
+	FTimerHandle ChatFadeTimer;
+	bool  bChatFadingOut     = false;
+	float ChatCurrentOpacity = 1.f;
 };

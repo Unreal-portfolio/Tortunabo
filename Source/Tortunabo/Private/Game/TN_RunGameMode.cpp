@@ -617,6 +617,11 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PlayerController))
 		{
 			TNPC->ClientRestorePlayerInput();
+			// Client RPCs no se ejecutan en el listen-server — llamada directa para el host.
+			if (TNPC->IsLocalController())
+			{
+				TNPC->ForceRestoreInput();
+			}
 		}
 	}
 	else
@@ -870,6 +875,13 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 			It->Destroy();
 		}
 
+		// ── Destruir TortugaCharacters sin controller (por si el loop anterior los dejó)
+		// Evita que lleguen al lobby como meshes fantasma.
+		for (TActorIterator<ATortugaCharacter> It(World); It; ++It)
+		{
+			It->Destroy();
+		}
+
 		// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─
 		const FString TravelURL = LobbyMapPath;
 		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Seamless ServerTravel to: %s"), *TravelURL);
@@ -923,7 +935,6 @@ void ATN_RunGameMode::PostSeamlessTravel()
 		// Reset PlayerState para la carrera
 		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 		{
-			// Preservar helmet antes del reset para forzar re-replicación después.
 			const FName SavedHelmet = TNPS->EquippedHelmetId;
 
 			TNPS->bIsAlive = true;
@@ -935,21 +946,22 @@ void ATN_RunGameMode::PostSeamlessTravel()
 			TNPS->FinishTimeSeconds = -1.f;
 			TNPS->DeathZoneTimeRemaining = -1.f;
 
-			// Forzar re-replicación del helmet ID a los clientes.
-			// UE solo replica propiedades cuyo valor cambia; como EquippedHelmetId
-			// persiste con el PlayerState a través del seamless travel y no se
-			// modificó, OnRep_EquippedHelmetId no dispara en los clientes al
-			// spawnearse el nuevo pawn. Alternando el valor forzamos el dirty flag.
+			// Asegurar que tiene pawn
+			EnsurePlayerSpawned(PC);
+
+			// Forzar aplicación del helmet en todos los clientes una vez que el pawn existe.
+			// MulticastForceApplyHelmet evita la race condition del dirty-trick (NAME_None → valor)
+			// que podía llegar primero y dejar el casco sin aplicar permanentemente.
 			if (SavedHelmet != NAME_None)
 			{
-				TNPS->EquippedHelmetId = NAME_None;
-				TNPS->EquippedHelmetId = SavedHelmet;
+				TNPS->MulticastForceApplyHelmet(SavedHelmet);
 			}
-			TNPS->ForceNetUpdate();
 		}
-
-		// Asegurar que tiene pawn
-		EnsurePlayerSpawned(PC);
+		else
+		{
+			// Asegurar que tiene pawn aunque no tenga PlayerState
+			EnsurePlayerSpawned(PC);
+		}
 	}
 
 	// Actualizar conteo y comprobar si podemos arrancar

@@ -24,8 +24,12 @@ public:
 	// fire on the machine that owns the variable).
 	void BroadcastFlowStateChange();
 
-	/** Appends a Quick Chat entry on the server and notifies all clients via replication. */
+	/** Appends a Quick Chat entry on the server and notifies all clients via Multicast. */
 	void AddQuickChatEntry(int32 SenderPlayerId, uint8 MessageID, float ServerTimeSeconds);
+
+	/** Envía una entrada individual a todos los clientes (más eficiente que replicar el array completo). */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastNewChatEntry(FTN_QuickChatEntry Entry);
 
 	UFUNCTION(BlueprintPure, Category = "QuickChat")
 	FText ResolveQuickChatSenderName(int32 SenderPlayerId) const;
@@ -64,10 +68,11 @@ public:
 	FOnQuickChatReceived OnQuickChatReceived;
 
 	/**
-	 * Rolling history of the last MaxQuickChatEntries messages.
-	 * Replicated to all clients. OnRep fires the OnQuickChatReceived delegate.
+	 * Historial local de los últimos MaxQuickChatEntries mensajes.
+	 * Mantenido localmente en todas las máquinas via MulticastNewChatEntry.
+	 * Ya no se replica como array completo — ahorro de ~130 bytes por mensaje.
 	 */
-	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_QuickChatHistory, Category = "QuickChat")
+	UPROPERTY(BlueprintReadOnly, Category = "QuickChat")
 	TArray<FTN_QuickChatEntry> QuickChatHistory;
 
 	/** Maximum number of entries kept in QuickChatHistory. */
@@ -78,9 +83,6 @@ public:
 private:
 	UFUNCTION()
 	void OnRep_MatchFlowState();
-
-	UFUNCTION()
-	void OnRep_QuickChatHistory();
 
 	int32 NextQuickChatSequence = 0;
 	int32 LastProcessedQuickChatSequence = 0;
