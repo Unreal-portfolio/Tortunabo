@@ -521,6 +521,16 @@ void ATortugaCharacter::PawnClientRestart()
 	CacheInputAssets();
 	ApplyInputMappingIfLocal();
 
+	// ── Re-aplicar casco tras seamless travel ────────────────────────────────
+	// Después del viaje, el pawn es nuevo. OnRep_EquippedHelmetId no se dispara
+	// (el valor no cambió) y OnRep_PlayerState puede llegar antes de que la ref
+	// al pawn sea válida en el PlayerState. PawnClientRestart es el hook seguro:
+	// en este punto el PlayerController y PlayerState ya están disponibles en el cliente.
+	if (const ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		UpdateHelmetMesh(TNPS->EquippedHelmetId);
+	}
+
 	// ── Re-añadir HUD widgets al viewport (cliente tras seamless travel) ─────
 	// OnPossess solo se ejecuta en el SERVIDOR. En el cliente, PawnClientRestart
 	// es el hook equivalente (disparado por ClientRestart RPC).
@@ -1263,29 +1273,34 @@ void ATortugaCharacter::RecoverFromKnockdown()
 
 void ATortugaCharacter::OnRep_IsKnockedDown()
 {
-	// El visual del knockdown es manejado por OnRep_ReplicatedEmoteIndex (emote ID=100).
-	// Aquí solo gestionamos el bloqueo de input en el cliente local.
+	// ReplicatedEmoteIndex usa COND_SkipOwner: el DUEÑO del pawn nunca recibe
+	// OnRep_ReplicatedEmoteIndex cuando el servidor pone KNOCKDOWN_EMOTE_ID.
+	// Por eso manejamos aquí TANTO el input COMO el visual del knockdown para
+	// el cliente que es el dueño (IsLocallyControlled). Los otros clientes
+	// (no dueños) reciben el emote via OnRep_ReplicatedEmoteIndex normalmente.
 	if (IsLocallyControlled())
 	{
 		if (UCharacterMovementComponent* MC = GetCharacterMovement())
 		{
-			if (bIsKnockedDown)
-			{
-				MC->DisableMovement();
-			}
-			else
-			{
-				MC->SetMovementMode(MOVE_Walking);
-			}
+			if (bIsKnockedDown) { MC->DisableMovement(); }
+			else                { MC->SetMovementMode(MOVE_Walking); }
 		}
 
-		// ── Audio feedback DBNO (cliente local) ──────────────────────────
+		// ── Visual knockdown para el dueño (ruta alternativa a OnRep_ReplicatedEmoteIndex) ─
 		if (bIsKnockedDown)
 		{
+			// Arrancar el emote de knockdown localmente — igual que hace el servidor
+			// en ApplyKnockdown() para el listen-server player.
+			StartEmoteLocally(KNOCKDOWN_EMOTE_ID);
 			PlayDBNOHeartbeatSound();
 		}
 		else
 		{
+			// Cancelar el emote de knockdown al recuperarse
+			if (ActiveEmoteIndex == KNOCKDOWN_EMOTE_ID || bEmoteBlendingOut)
+			{
+				CancelEmoteLocalOnly();
+			}
 			StopDBNOHeartbeatSound();
 			PlayReviveSuccessSound();
 		}
