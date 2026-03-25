@@ -257,15 +257,39 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 	SetViewTargetWithBlend(Candidates[NextIndex]->GetPawn(), 0.25f);
 }
 
-void AMP_GamePlayerController::CreateVoiceHUD()
+void AMP_GamePlayerController::RefreshHUDAfterPossession()
 {
-	if (VoiceIndicatorWidget || !VoiceIndicatorWidgetClass || !IsLocalController())
+	if (!IsLocalController())
 	{
 		return;
 	}
 
-	VoiceIndicatorWidget = CreateWidget<UUserWidget>(this, VoiceIndicatorWidgetClass);
-	if (VoiceIndicatorWidget)
+	// Re-añadir todos los widgets al viewport.
+	// Necesario después de seamless travel: UWorld::CleanupWorld elimina todos los
+	// widgets del viewport, pero el PC persiste y los widgets siguen vivos en memoria.
+	// Sin esto, los widgets existen (pointer no nulo) pero no son visibles.
+	CreateVoiceHUD();
+	CreateCoopFlowHUD();
+	CreatePlayerHUD();
+	CreateRadialWidgets();
+}
+
+void AMP_GamePlayerController::CreateVoiceHUD()
+{
+	if (!IsLocalController() || !VoiceIndicatorWidgetClass)
+	{
+		return;
+	}
+
+	// Crear el widget solo si no existe.
+	if (!VoiceIndicatorWidget)
+	{
+		VoiceIndicatorWidget = CreateWidget<UUserWidget>(this, VoiceIndicatorWidgetClass);
+	}
+
+	// Re-añadir al viewport si fue eliminado durante seamless travel.
+	// AddToViewport es idempotente: no-op si el widget ya está en el viewport.
+	if (VoiceIndicatorWidget && !VoiceIndicatorWidget->IsInViewport())
 	{
 		VoiceIndicatorWidget->AddToViewport(10);
 	}
@@ -273,24 +297,28 @@ void AMP_GamePlayerController::CreateVoiceHUD()
 
 void AMP_GamePlayerController::CreateCoopFlowHUD()
 {
-	if (CoopFlowWidget || !IsLocalController())
+	if (!IsLocalController())
 	{
 		return;
 	}
 
-	// CoopFlowWidgetClass is assigned in the BP derived PlayerController (e.g. BP_GamePlayerController).
-	// If not set, falls back to the C++ base class so the HUD still works without styling.
-	UClass* WidgetClass = CoopFlowWidgetClass
-		? CoopFlowWidgetClass.Get()
-		: UTN_CoopFlowHUDWidget::StaticClass();
-
-	if (!CoopFlowWidgetClass)
+	// Crear el widget solo si no existe.
+	if (!CoopFlowWidget)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[HUD] CoopFlowWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController. Usando clase C++ como fallback."), *GetNameSafe(this));
+		UClass* WidgetClass = CoopFlowWidgetClass
+			? CoopFlowWidgetClass.Get()
+			: UTN_CoopFlowHUDWidget::StaticClass();
+
+		if (!CoopFlowWidgetClass)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[HUD] CoopFlowWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController. Usando clase C++ como fallback."), *GetNameSafe(this));
+		}
+
+		CoopFlowWidget = CreateWidget<UUserWidget>(this, WidgetClass);
 	}
 
-	CoopFlowWidget = CreateWidget<UUserWidget>(this, WidgetClass);
-	if (CoopFlowWidget)
+	// Re-añadir al viewport si fue eliminado durante seamless travel.
+	if (CoopFlowWidget && !CoopFlowWidget->IsInViewport())
 	{
 		CoopFlowWidget->AddToViewport(5);
 	}
@@ -298,21 +326,30 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 
 void AMP_GamePlayerController::CreatePlayerHUD()
 {
-	if (PlayerHUDWidget || !IsLocalController())
+	if (!IsLocalController())
 	{
 		return;
 	}
 
-	if (!PlayerHUDWidgetClass)
+	// Crear el widget solo si no existe.
+	if (!PlayerHUDWidget)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[HUD] PlayerHUDWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController."), *GetNameSafe(this));
-		return;
+		if (!PlayerHUDWidgetClass)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[HUD] PlayerHUDWidgetClass no asignado en %s. Asignalo en BP_GamePlayerController → Class Defaults."), *GetNameSafe(this));
+			return;
+		}
+
+		PlayerHUDWidget = CreateWidget<UUserWidget>(this, PlayerHUDWidgetClass);
 	}
 
-	PlayerHUDWidget = CreateWidget<UUserWidget>(this, PlayerHUDWidgetClass);
-	if (PlayerHUDWidget)
+	// Re-añadir al viewport si fue eliminado durante seamless travel.
+	// Tras travel, OnPossess llama a esta función. El widget existe (pointer no nulo)
+	// pero fue eliminado del viewport por UWorld::CleanupWorld → RemoveAllViewportWidgets.
+	if (PlayerHUDWidget && !PlayerHUDWidget->IsInViewport())
 	{
 		PlayerHUDWidget->AddToViewport(4);
+		UE_LOG(LogTemp, Log, TEXT("[HUD] PlayerHUDWidget re-añadido al viewport (tras seamless travel)"));
 	}
 }
 
@@ -326,21 +363,21 @@ void AMP_GamePlayerController::CreateRadialWidgets()
 	if (!EmoteWheelWidget && EmoteWheelWidgetClass)
 	{
 		EmoteWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, EmoteWheelWidgetClass);
-		if (EmoteWheelWidget)
-		{
-			EmoteWheelWidget->AddToViewport(30);
-			EmoteWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
-		}
+	}
+	if (EmoteWheelWidget && !EmoteWheelWidget->IsInViewport())
+	{
+		EmoteWheelWidget->AddToViewport(30);
+		EmoteWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
 	if (!QuickChatWheelWidget && QuickChatWheelWidgetClass)
 	{
 		QuickChatWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, QuickChatWheelWidgetClass);
-		if (QuickChatWheelWidget)
-		{
-			QuickChatWheelWidget->AddToViewport(31);
-			QuickChatWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
-		}
+	}
+	if (QuickChatWheelWidget && !QuickChatWheelWidget->IsInViewport())
+	{
+		QuickChatWheelWidget->AddToViewport(31);
+		QuickChatWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
 

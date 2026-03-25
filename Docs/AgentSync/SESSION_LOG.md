@@ -1,6 +1,96 @@
 ﻿# SESSION LOG
 
-## 2026-03-17 - Sprint 1 Kickoff
+## 2026-03-24 — Fix: HUD widgets no aparecen tras seamless travel
+
+### Causa raíz
+Con **Seamless Travel** el `APlayerController` **persiste** entre mapas. Durante la transición, `UWorld::CleanupWorld()` llama a `RemoveAllViewportWidgets()` que **elimina todos los widgets UMG del viewport** (pero NO los destruye; el puntero del PC sigue siendo válido).
+
+Había **dos bugs combinados**:
+1. **Guardia falsa positiva**: `CreatePlayerHUD` hacía `if (PlayerHUDWidget) return;` — el widget existía en memoria pero ya no estaba en el viewport → nunca se re-añadía.
+2. **`OnPossess` solo dispara en el servidor**: el cliente nunca llamaba a `CreatePlayerHUD` tras el travel; solo lo hacía en `BeginPlay` (primera vez) y en `OnPossess` (que en el cliente no se ejecuta). El hook correcto para el cliente es `PawnClientRestart`.
+
+### Cambios
+- **`MP_GamePlayerController.cpp/.h`**:
+  - `CreateVoiceHUD`, `CreateCoopFlowHUD`, `CreatePlayerHUD`, `CreateRadialWidgets`: la guardia ahora es `if (widget && widget->IsInViewport()) return;`. Si el widget existe pero fue eliminado del viewport → se re-añade.
+  - Nuevo `RefreshHUDAfterPossession()`: llama a todos los `Create*` de una sola vez. Pensado para ser invocado desde el cliente.
+- **`TortugaCharacter.cpp`**: `PawnClientRestart()` llama `PC->RefreshHUDAfterPossession()`. Este es el hook del cliente equivalente a `OnPossess` del servidor; se ejecuta cuando `ClientRestart` RPC notifica al cliente de su nuevo pawn.
+- **`TN_PlayerHUDWidget.cpp`**: `NativeTick` fuerza `LastStamina = -1.f` cuando los componentes del nuevo pawn se re-encuentran tras haber sido inválidos (evita que la comparación de valores iguales impida el refresh de los widgets).
+
+### Archivos modificados
+- `Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp`
+- `Source/Tortunabo/Public/Player/MP_GamePlayerController.h`
+- `Source/Tortunabo/Private/Player/TortugaCharacter.cpp`
+- `Source/Tortunabo/Private/UI/HUD/TN_PlayerHUDWidget.cpp`
+
+---
+
+## 2026-03-24 - Sprint: Fixes multijugador + Knockdown emote + BigHead + Ghost pawn
+
+### Contexto
+- Fixes tras primera sesión multijugador funcional.
+- Objetivo: visual de knockdown, pickup desync, cámara en revive, tortugas fantasma, nuevo consumible.
+
+### Cambios clave
+
+#### Eliminado
+- **`TN_PufferFishActor.h/.cpp`** eliminados por completo. Reemplazado por consumible BigHead.
+- `ETN_ItemUseType::PufferFish` renombrado a `BigHead` en `TN_InventoryTypes.h`.
+
+#### Knockdown visual vía sistema de emotes
+- **Causa raíz anterior**: `ApplyKnockdownVisual` intentaba rotar un componente "Cuerpo" que podía no existir, y el tick del sistema de emotes/patas sobreescribía la rotación cada frame.
+- **Solución**: knockdown usa `ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID (100)`. El mismo canal de replicación de emotes (que ya funciona perfectamente) propaga la animación a todos los clientes.
+- `ApplyKnockdown` (server): establece `bIsKnockedDown=true`, `ReplicatedEmoteIndex=100`, llama `StartEmoteLocally(100)`.
+- `RecoverFromKnockdown` (server): restaura `bIsKnockedDown=false`, `ReplicatedEmoteIndex=-1`, cancela emote localmente.
+- `OnRep_IsKnockedDown`: solo bloquea/desbloquea input local. Visual via `OnRep_ReplicatedEmoteIndex`.
+- `OnRep_ReplicatedEmoteIndex`: corregido para cancelar emote en **TODOS** los clientes (incluyendo el localmente controlado) cuando el índice es -1, permitiendo que la recuperación del knockdown funcione incluso tras el revive.
+- `TickEmote case 100 (KNOCKDOWN_EMOTE_ID)`: anima tortuga boca arriba (patas/brazos hacia arriba) con oscilación de lucha.
+- `StartEmoteLocally`: skipea audio y montaje para emote ID=100 (es interno, no una animación de jugador).
+- `MulticastApplyKnockdownVisual_Implementation`: reducido a no-op (mantenido por compatibilidad API).
+
+#### BigHead consumible
+- `TortugaCharacter.h/.cpp`: añadidos `bBigHead` (Replicated+OnRep), `BigHeadScale=3.5f`, `BigHeadDurationSeconds=8f`, `BigHeadTimerHandle`, `CabezaRestScale`, `ApplyBigHeadVisual(bool)`, `OnRep_bBigHead`.
+- `ServerUseEquippedItem`: maneja `ETN_ItemUseType::BigHead` — consume ítem, escala Cabeza x3.5, timer para restaurar.
+- `BeginPlay`: cachea `CabezaRestScale = Cabeza->GetRelativeScale3D()`.
+- **En Editor**: crear fila `BigHead` en DT_Items con UseType=BigHead y asignar mesh de pez globo.
+
+#### Pickup desync
+- `TN_PickupInteractableBase::BeginPlay`: añadido `if (bTaken) ApplyTakenState()` para que clientes que se unen tarde reciban el estado correcto del pickup desde la replicación inicial.
+
+#### Fix revive cámara
+- `TN_RunGameMode::RevivePlayer`: tras `Possess(Pawn)` se añaden:
+  - `PlayerController->PlayerState->SetIsOnlyASpectator(false)` (antes del Possess)
+  - `PlayerController->ClientRestart(Pawn)` — dice al cliente que ahora controla el pawn y restaura el viewtarget (cámara vuelve al personaje en lugar de quedarse en el espectador).
+
+#### Fix ghost pawn (tercera tortuga inmóvil en spawn)
+- **Causa raíz**: `BeginPlay` itera PCs y llama `EnsurePlayerSpawned`. Con seamless travel, el PC host ya existe en la nueva escena cuando `BeginPlay` dispara → se spawnea un pawn. Después, `HandleSeamlessTravelPlayer` → `Super::RestartPlayer` spawnea OTRO pawn → dos pawns simultáneos.
+- **Solución**: `ATN_RunGameMode::HandleSeamlessTravelPlayer` y `ATN_HQGameMode::HandleSeamlessTravelPlayer` ahora destruyen el pawn existente antes de llamar a Super.
+
+#### Fix spawn en mismo PlayerStart
+- `ChoosePlayerStart_Implementation` en ambos GameModes: busca primero un PlayerStart sin pawns cercanos (< 200cm) usando `TActorIterator<APawn>`. Si todos están ocupados, usa fallback. El array se baraja para aleatorizar.
+
+### Archivos modificados
+- `Source/Tortunabo/Public/Core/TN_InventoryTypes.h`
+- `Source/Tortunabo/Public/Player/TortugaCharacter.h`
+- `Source/Tortunabo/Private/Player/TortugaCharacter.cpp`
+- `Source/Tortunabo/Private/World/TN_PickupInteractableBase.cpp`
+- `Source/Tortunabo/Private/Game/TN_RunGameMode.cpp`
+- `Source/Tortunabo/Private/Lobby/TN_HQGameMode.cpp`
+- `Source/Tortunabo/Public/World/TN_ThrowableItemActor.h` (limpieza de comentarios)
+
+### Archivos eliminados
+- `Source/Tortunabo/Public/World/TN_PufferFishActor.h`
+- `Source/Tortunabo/Private/World/TN_PufferFishActor.cpp`
+
+### Checklist Editor (acciones manuales requeridas)
+- [ ] En `BP_TortugaCharacter`: verificar que existe componente llamado exactamente `Cabeza` (BigHead lo necesita)
+- [ ] Crear fila `BigHead` en DT_Items: UseType=BigHead, mesh de pez globo, sin ThrowableActorClass
+- [ ] Crear `BP_BigHeadPickup` heredando `BP_GenericPickup` y añadir al nivel de Run/HQ
+- [ ] Añadir múltiples `PlayerStart` bien separados en LVL_Run y LVL_HQ (mínimo 4, separados > 300cm)
+- [ ] Asignar `KNOCKDOWN_EMOTE_ID` no requiere nada en Editor: es interno (100), no aparece en la rueda de emotes
+
+---
+
+
 
 ### Contexto
 - Inicio de implementacion de base modular para interaccion + inventario 1+1.

@@ -15,6 +15,15 @@ void ATN_PickupInteractableBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// ── Aplicar estado "taken" desde la replicación inicial ──────────────────
+	// Si un cliente se une tarde y el pickup ya fue recogido, bTaken=true
+	// llegará en la replicación inicial. OnRep_Taken dispara al recibir el valor
+	// pero como seguridad extra también lo aplicamos aquí.
+	if (bTaken)
+	{
+		ApplyTakenState();
+	}
+
 	// ── Auto-configuración desde DataTable ────────────────────────────────────
 	// Solo el servidor inicializa; PickupItem está replicado y llegará a clientes.
 	if (HasAuthority() && ItemDataTable && !ItemRowName.IsNone())

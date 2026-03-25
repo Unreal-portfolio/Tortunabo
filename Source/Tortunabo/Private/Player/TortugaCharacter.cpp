@@ -1,4 +1,5 @@
 #include "Player/TortugaCharacter.h"
+#include "Player/MP_GamePlayerController.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -183,7 +184,7 @@ void ATortugaCharacter::BeginPlay()
 		}
 	}
 
-	if (Cabeza.IsValid()) { CabezaRestRot = Cabeza->GetRelativeRotation(); CabezaRestLoc = Cabeza->GetRelativeLocation(); }
+	if (Cabeza.IsValid()) { CabezaRestRot = Cabeza->GetRelativeRotation(); CabezaRestLoc = Cabeza->GetRelativeLocation(); CabezaRestScale = Cabeza->GetRelativeScale3D(); }
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("[TortugaCharacter] ═══════════════════════════════════════════════════════════"));
@@ -519,6 +520,16 @@ void ATortugaCharacter::PawnClientRestart()
 	Super::PawnClientRestart();
 	CacheInputAssets();
 	ApplyInputMappingIfLocal();
+
+	// ── Re-añadir HUD widgets al viewport (cliente tras seamless travel) ─────
+	// OnPossess solo se ejecuta en el SERVIDOR. En el cliente, PawnClientRestart
+	// es el hook equivalente (disparado por ClientRestart RPC).
+	// Los widgets del PC persisten entre mapas pero son eliminados del viewport
+	// por UWorld::CleanupWorld durante la transición. Aquí los volvemos a añadir.
+	if (AMP_GamePlayerController* PC = Cast<AMP_GamePlayerController>(GetController()))
+	{
+		PC->RefreshHUDAfterPossession();
+	}
 }
 
 void ATortugaCharacter::CacheInputAssets()
@@ -959,7 +970,33 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		return;
 	}
 
-	if ((EquippedItem.UseType == ETN_ItemUseType::Throwable || EquippedItem.UseType == ETN_ItemUseType::PufferFish)
+	if (EquippedItem.UseType == ETN_ItemUseType::BigHead)
+	{
+		FTN_InventoryItem ConsumedItem;
+		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
+		{
+			return;
+		}
+
+		bBigHead = true;
+		ApplyBigHeadVisual(true);
+
+		// Timer para restablecer al tamaño original
+		TWeakObjectPtr<ATortugaCharacter> WeakSelf(this);
+		GetWorldTimerManager().SetTimer(BigHeadTimerHandle,
+			[WeakSelf]()
+			{
+				if (ATortugaCharacter* C = WeakSelf.Get())
+				{
+					C->bBigHead = false;
+					C->ApplyBigHeadVisual(false);
+				}
+			}, BigHeadDurationSeconds, false);
+
+		return;
+	}
+
+	if ((EquippedItem.UseType == ETN_ItemUseType::Throwable)
 		&& EquippedItem.ThrowableActorClass)
 	{
 		const FVector SpawnLocation = GetItemSpawnLocation();
@@ -1141,6 +1178,8 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	// DBNO revive state
 	DOREPLIFETIME(ATortugaCharacter, bIsReviving);
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReviveProgress, COND_OwnerOnly);
+	// BigHead consumable
+	DOREPLIFETIME(ATortugaCharacter, bBigHead);
 }
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────
@@ -1163,17 +1202,18 @@ void ATortugaCharacter::ApplyKnockdown(float Duration)
 
 	bIsKnockedDown = true;
 
-	// Servidor (listen server) también necesita aplicar visual y bloqueo:
-	// OnRep_IsKnockedDown no se dispara en el propietario de la variable.
-	ApplyKnockdownVisual(true);
+	// Bloquear movimiento en servidor
 	if (UCharacterMovementComponent* MC = GetCharacterMovement())
 	{
 		MC->DisableMovement();
 	}
 
-	// Multicast fiable: garantiza que todos los clientes reciban el knockdown
-	// inmediatamente, sin depender solo de OnRep (que puede batching/perderse).
-	MulticastApplyKnockdownVisual(true);
+	// ── Knockdown visual via sistema de emotes ───────────────────────────────
+	// ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID replica la animación a todos los clientes
+	// usando el mismo canal de replicación que los emotes normales (funciona perfectamente).
+	ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID;
+	// Servidor: aplicar localmente (OnRep no dispara en quien posee la variable)
+	StartEmoteLocally(KNOCKDOWN_EMOTE_ID);
 
 	// ── DBNO heartbeat: solo el jugador local incapacitado oye el latido ──
 	if (IsLocallyControlled())
@@ -1196,18 +1236,25 @@ void ATortugaCharacter::RecoverFromKnockdown()
 
 	bIsKnockedDown = false;
 
-	// Listen-server aplica recuperación localmente (OnRep no se dispara aquí)
-	ApplyKnockdownVisual(false);
+	// Restaurar movimiento
 	if (UCharacterMovementComponent* MC = GetCharacterMovement())
 	{
 		MC->SetMovementMode(MOVE_Walking);
 	}
 
-	// Multicast fiable: todos los clientes reciben la recuperación
-	MulticastApplyKnockdownVisual(false);
+	// ── Cancelar el knockdown emote ───────────────────────────────────────────
+	// Establecer -1 hace que OnRep_ReplicatedEmoteIndex cancele el emote en todos los clientes
+	if (ReplicatedEmoteIndex == KNOCKDOWN_EMOTE_ID)
+	{
+		ReplicatedEmoteIndex = -1;
+		// Servidor: cancelar emote localmente (OnRep no dispara en quien posee la variable)
+		if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+		{
+			CancelEmoteLocalOnly();
+		}
+	}
 
 	// ── Audio feedback de revive ─────────────────────────────────────────
-	// Parar heartbeat y sonar success en todas las máquinas (via multicast visual)
 	StopDBNOHeartbeatSound();
 	PlayReviveSuccessSound();
 
@@ -1216,11 +1263,8 @@ void ATortugaCharacter::RecoverFromKnockdown()
 
 void ATortugaCharacter::OnRep_IsKnockedDown()
 {
-	// Aplicar visual en todos los clientes (propietario y observadores)
-	ApplyKnockdownVisual(bIsKnockedDown);
-
-	// El cliente propietario también necesita que su movimiento quede bloqueado
-	// para que no envíe inputs al servidor durante el knockdown
+	// El visual del knockdown es manejado por OnRep_ReplicatedEmoteIndex (emote ID=100).
+	// Aquí solo gestionamos el bloqueo de input en el cliente local.
 	if (IsLocallyControlled())
 	{
 		if (UCharacterMovementComponent* MC = GetCharacterMovement())
@@ -1250,36 +1294,9 @@ void ATortugaCharacter::OnRep_IsKnockedDown()
 
 void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnocked)
 {
-	// El servidor ya aplicó el visual en ApplyKnockdown/RecoverFromKnockdown;
-	// aquí solo actuamos en clientes.
-	if (HasAuthority())
-	{
-		return;
-	}
-
-	ApplyKnockdownVisual(bKnocked);
-
-	// ── Audio spatialized: clientes remotos oyen el success sound del revivido ──
-	if (!bKnocked && !IsLocallyControlled())
-	{
-		PlayReviveSuccessSound();
-	}
-
-	// El cliente propietario bloquea/restaura movimiento
-	if (IsLocallyControlled())
-	{
-		if (UCharacterMovementComponent* MC = GetCharacterMovement())
-		{
-			if (bKnocked)
-			{
-				MC->DisableMovement();
-			}
-			else
-			{
-				MC->SetMovementMode(MOVE_Walking);
-			}
-		}
-	}
+	// El visual del knockdown ahora es manejado por el sistema de emotes
+	// (ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID = 100).
+	// Esta función se mantiene por compatibilidad de API pero es un no-op.
 }
 
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
@@ -1790,9 +1807,12 @@ void ATortugaCharacter::StartEmoteLocally(int32 Index)
 	bEmoteBlendingOut  = false;
 	EmoteBlendOutTimer = 0.f;
 
-	// Start looping audio for this emote (proximity-attenuated).
-	PlayEmoteSound(Index);
-	PlayWheelEmoteMontage(Index);
+	// El knockdown emote (ID=100) es interno — no tiene audio ni montaje.
+	if (Index != KNOCKDOWN_EMOTE_ID)
+	{
+		PlayEmoteSound(Index);
+		PlayWheelEmoteMontage(Index);
+	}
 }
 
 void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
@@ -1865,22 +1885,23 @@ void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 
 void ATortugaCharacter::OnRep_ReplicatedEmoteIndex()
 {
-	// Clientes remotos: arrancar o cancelar el emote en este pawn.
-	// Saltar si es el pawn local (ya lo arrancó en TriggerEmote).
-	if (!IsLocallyControlled())
+	if (ReplicatedEmoteIndex < 0)
 	{
-		if (ReplicatedEmoteIndex >= 0)
+		// Cancelación forzada por el servidor (ej: recuperación de knockdown).
+		// Cancelar en TODOS los clientes, independientemente del control local.
+		// CancelEmoteLocalOnly es un no-op si ya no hay emote activo.
+		if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
 		{
-			StartEmoteLocally(ReplicatedEmoteIndex);
-		}
-		else
-		{
-			if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
-			{
-				CancelEmote();
-			}
+			CancelEmoteLocalOnly();  // NO llama ServerSetEmote(-1) — evita bucle
 		}
 	}
+	else if (!IsLocallyControlled())
+	{
+		// Emote arrancado remotamente: aplicar en clientes que no controlan este pawn
+		StartEmoteLocally(ReplicatedEmoteIndex);
+	}
+	// Si IsLocallyControlled() y el índice >= 0: el jugador ya arrancó el emote
+	// localmente en TriggerEmote() antes de enviar el RPC, no hay que hacer nada.
 
 	UE_LOG(LogTemp, Verbose, TEXT("[Emote] OnRep_ReplicatedEmoteIndex(%d) on %s  IsLocal=%s  Cabeza=%s"),
 		ReplicatedEmoteIndex, *GetNameSafe(this),
@@ -2410,7 +2431,34 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		break; // LOOP ∞
 
 	default:
-		bEnded = true;
+		// ── KNOCKDOWN EMOTE (ID = 100) ─────────────────────────────────────
+		// Tortuga boca arriba: todas las patas/brazos apuntan hacia arriba con
+		// una pequeña oscilación de "lucha" para dar sensación de vida.
+		if (ActiveEmoteIndex == KNOCKDOWN_EMOTE_ID)
+		{
+			const float Struggle = FMath::Sin(T * 4.f) * 5.f;   // ±5° oscilación suave
+			const float Setup    = FMath::Min(T / 0.15f, 1.f);  // Llega a la pose en 0.15s
+
+			// Patas hacia arriba (eje de swing normal pero invertido)
+			Ap(Pata1, Pata1RestRot,  Setup * (80.f + Struggle), LY);
+			Ap(Pata2, Pata2RestRot,  Setup * (-80.f + Struggle), LY);
+
+			// Brazos extendidos hacia arriba
+			Ap(Brazo1, Brazo1RestRot,  Setup * (70.f + Struggle * 0.7f), AX);
+			Ap(Brazo2, Brazo2RestRot,  Setup * (-70.f + Struggle * 0.7f), AX);
+
+			// Cabeza caída hacia abajo (gravedad)
+			Ap(Cabeza, CabezaRestRot, Setup * 25.f, TY);
+
+			// Cola ligeramente levantada
+			Ap(Cola, ColaRestRot, Setup * (-35.f + Struggle * 0.5f), TY);
+
+			// NO termina (bEnded queda false) — se mantiene hasta RecoverFromKnockdown
+		}
+		else
+		{
+			bEnded = true;
+		}
 		break;
 	}
 
@@ -2645,6 +2693,33 @@ void ATortugaCharacter::OnDBNOAudioFinished()
 	if (bIsKnockedDown && IsLocallyControlled() && DBNOAudioComponent && DBNOAudioComponent->Sound)
 	{
 		DBNOAudioComponent->Play();
+	}
+}
+
+// ── Big Head Consumable ───────────────────────────────────────────────────────
+
+void ATortugaCharacter::OnRep_bBigHead()
+{
+	ApplyBigHeadVisual(bBigHead);
+}
+
+void ATortugaCharacter::ApplyBigHeadVisual(bool bBig)
+{
+	if (!Cabeza.IsValid())
+	{
+		return;
+	}
+
+	if (bBig)
+	{
+		const FVector NewScale = CabezaRestScale * BigHeadScale;
+		Cabeza->SetRelativeScale3D(NewScale);
+		UE_LOG(LogTemp, Log, TEXT("[BigHead] %s — cabeza escalada x%.1f"), *GetNameSafe(this), BigHeadScale);
+	}
+	else
+	{
+		Cabeza->SetRelativeScale3D(CabezaRestScale);
+		UE_LOG(LogTemp, Log, TEXT("[BigHead] %s — cabeza restaurada"), *GetNameSafe(this));
 	}
 }
 

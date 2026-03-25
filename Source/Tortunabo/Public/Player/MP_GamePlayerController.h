@@ -67,6 +67,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Emotes")
 	void RequestPlayEmoteById(uint8 EmoteID);
 
+	/**
+	 * Llamado desde ATortugaCharacter::PawnClientRestart (cliente) para re-añadir
+	 * los widgets del HUD al viewport tras seamless travel.
+	 * En seamless travel el PC persiste pero UWorld::CleanupWorld elimina todos
+	 * los widgets del viewport. Este método los vuelve a añadir.
+	 */
+	void RefreshHUDAfterPossession();
+
 	UFUNCTION(BlueprintPure, Category = "QuickChat")
 	bool ResolveQuickChatDisplayData(const FTN_QuickChatEntry& Entry, FText& OutSenderName, FText& OutMessageText, UTexture2D*& OutIcon) const;
 

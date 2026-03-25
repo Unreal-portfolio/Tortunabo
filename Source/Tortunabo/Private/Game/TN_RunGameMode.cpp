@@ -250,13 +250,41 @@ AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
 	TArray<AActor*> PlayerStarts;
 	UGameplayStatics::GetAllActorsOfClass(this, APlayerStart::StaticClass(), PlayerStarts);
-	if (PlayerStarts.Num() > 0)
+	if (PlayerStarts.Num() == 0)
 	{
-		const int32 Index = FMath::RandRange(0, PlayerStarts.Num() - 1);
-		return PlayerStarts[Index];
+		return Super::ChoosePlayerStart_Implementation(Player);
 	}
 
-	return Super::ChoosePlayerStart_Implementation(Player);
+	// Barajar para evitar siempre el mismo orden
+	for (int32 i = PlayerStarts.Num() - 1; i > 0; --i)
+	{
+		const int32 j = FMath::RandRange(0, i);
+		PlayerStarts.Swap(i, j);
+	}
+
+	// Primera pasada: buscar un PlayerStart sin ningún pawn cerca (< 200 cm)
+	for (AActor* Start : PlayerStarts)
+	{
+		bool bOccupied = false;
+		for (TActorIterator<APawn> PawnIt(GetWorld()); PawnIt; ++PawnIt)
+		{
+			const APawn* P = *PawnIt;
+			if (P && P->Controller != Player &&
+			    FVector::DistSquared(Start->GetActorLocation(), P->GetActorLocation()) < 200.f * 200.f)
+			{
+				bOccupied = true;
+				break;
+			}
+		}
+		if (!bOccupied)
+		{
+			return Start;
+		}
+	}
+
+	// Fallback: todos ocupados → devolver el primero (barajado)
+	UE_LOG(LogTemp, Warning, TEXT("[RunGameMode] ChoosePlayerStart: todos los PlayerStarts ocupados — usando fallback"));
+	return PlayerStarts[0];
 }
 
 void ATN_RunGameMode::EnsurePlayerSpawned(APlayerController* PlayerController)
@@ -571,7 +599,17 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		}
 
 		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
+		// 1) Resetear flag de espectador en el PlayerState
+		if (PlayerController->PlayerState)
+		{
+			PlayerController->PlayerState->SetIsOnlyASpectator(false);
+		}
+		// 2) Re-poseer el pawn
 		PlayerController->Possess(Pawn);
+		// 3) ClientRestart: dice al cliente que ahora controla este pawn
+		//    y restaura el viewtarget (la cámara vuelve a su pawn).
+		//    Sin esto el jugador seguiría viendo la cámara del espectador.
+		PlayerController->ClientRestart(Pawn);
 	}
 	else
 	{
@@ -826,6 +864,19 @@ void ATN_RunGameMode::HandleSeamlessTravelPlayer(AController*& C)
 	// false y Super no les spawnea pawn.
 	if (APlayerController* PC = Cast<APlayerController>(C))
 	{
+		// ── Destruir pawn prematuro ────────────────────────────────────────────
+		// BeginPlay itera los PCs y llama EnsurePlayerSpawned, lo que puede
+		// spawnear un pawn ANTES de que HandleSeamlessTravelPlayer lo haga.
+		// Super::HandleSeamlessTravelPlayer → RestartPlayer NO destruye el pawn
+		// existente → quedarían DOS pawns (ghost pawn).
+		// Solución: destruir el pawn existente aquí para que Super spawne uno limpio.
+		if (APawn* OldPawn = PC->GetPawn())
+		{
+			UE_LOG(LogTemp, Log, TEXT("[RunGameMode] HandleSeamlessTravelPlayer: destruyendo pawn prematuro '%s' de %s"),
+				*GetNameSafe(OldPawn), *GetNameSafe(PC));
+			OldPawn->Destroy();
+		}
+
 		if (PC->PlayerState)
 		{
 			PC->PlayerState->SetIsOnlyASpectator(false);

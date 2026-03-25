@@ -47,18 +47,44 @@ AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
 	TArray<AActor*> PlayerStarts;
 	UGameplayStatics::GetAllActorsOfClass(this, APlayerStart::StaticClass(), PlayerStarts);
-	if (PlayerStarts.Num() > 0)
+	if (PlayerStarts.Num() == 0)
 	{
-		const int32 Index = FMath::RandRange(0, PlayerStarts.Num() - 1);
-		return PlayerStarts[Index];
+		if (APlayerStart* FallbackStart = EnsureFallbackPlayerStart())
+		{
+			return FallbackStart;
+		}
+		return Super::ChoosePlayerStart_Implementation(Player);
 	}
 
-	if (APlayerStart* FallbackStart = EnsureFallbackPlayerStart())
+	// Barajar para evitar siempre el mismo orden
+	for (int32 i = PlayerStarts.Num() - 1; i > 0; --i)
 	{
-		return FallbackStart;
+		const int32 j = FMath::RandRange(0, i);
+		PlayerStarts.Swap(i, j);
 	}
 
-	return Super::ChoosePlayerStart_Implementation(Player);
+	// Primera pasada: buscar un PlayerStart sin ningún pawn cerca (< 200 cm)
+	for (AActor* Start : PlayerStarts)
+	{
+		bool bOccupied = false;
+		for (TActorIterator<APawn> PawnIt(GetWorld()); PawnIt; ++PawnIt)
+		{
+			const APawn* P = *PawnIt;
+			if (P && P->Controller != Player &&
+			    FVector::DistSquared(Start->GetActorLocation(), P->GetActorLocation()) < 200.f * 200.f)
+			{
+				bOccupied = true;
+				break;
+			}
+		}
+		if (!bOccupied)
+		{
+			return Start;
+		}
+	}
+
+	// Fallback: todos ocupados
+	return PlayerStarts[0];
 }
 
 
@@ -364,6 +390,17 @@ void ATN_HQGameMode::HandleSeamlessTravelPlayer(AController*& C)
 	// false y Super no les spawnea pawn.
 	if (APlayerController* PC = Cast<APlayerController>(C))
 	{
+		// ── Destruir pawn prematuro ────────────────────────────────────────────
+		// BeginPlay puede spawnear un pawn antes de que HandleSeamlessTravelPlayer
+		// lo haga. Super::HandleSeamlessTravelPlayer → RestartPlayer NO destruye
+		// el pawn existente → quedarían DOS pawns (ghost pawn inmóvil en spawn).
+		if (APawn* OldPawn = PC->GetPawn())
+		{
+			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] HandleSeamlessTravelPlayer: destruyendo pawn prematuro '%s' de %s"),
+				*GetNameSafe(OldPawn), *GetNameSafe(PC));
+			OldPawn->Destroy();
+		}
+
 		if (PC->PlayerState)
 		{
 			PC->PlayerState->SetIsOnlyASpectator(false);

@@ -40,8 +40,25 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 	{
 		if (const APawn* Pawn = GetOwningPlayerPawn())
 		{
+			const bool bHadStamina   = CachedStamina.IsValid();
+			const bool bHadInventory = CachedInventory.IsValid();
+
 			CachedStamina   = Pawn->FindComponentByClass<UTN_StaminaComponent>();
 			CachedInventory = Pawn->FindComponentByClass<UTN_InventoryComponent>();
+
+			// Forzar refresh completo cuando los componentes se re-encuentran
+			// (nuevo pawn tras seamless travel). Sin esto, si la stamina tiene
+			// el mismo valor que el último frame, bStaminaChanged=false y los
+			// widgets permanecen ocultos indefinidamente.
+			if ((!bHadStamina && CachedStamina.IsValid()) || (!bHadInventory && CachedInventory.IsValid()))
+			{
+				LastStamina       = -1.f;
+				LastWeightPenalty = -1.f;
+				bLastExhausted    = false;
+				LastEquippedId    = NAME_None;
+				LastStoredId      = NAME_None;
+				UE_LOG(LogTemp, Log, TEXT("[PlayerHUD] Componentes re-encontrados tras travel — forzando refresh."));
+			}
 		}
 	}
 

@@ -29,6 +29,12 @@ class TORTUNABO_API ATortugaCharacter : public ACharacter
 public:
 	ATortugaCharacter();
 
+	/** Índice de emote reservado para el knockdown visual.
+	 *  Cuando el servidor aplica knockdown, establece ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID.
+	 *  El sistema de emotes maneja toda la replicación visual automáticamente.
+	 */
+	static constexpr int32 KNOCKDOWN_EMOTE_ID = 100;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
@@ -333,6 +339,7 @@ private:
 	FRotator Brazo2RestRot = FRotator::ZeroRotator;
 	FRotator ColaRestRot   = FRotator::ZeroRotator;
 	FRotator CabezaRestRot = FRotator::ZeroRotator;
+	FVector  CabezaRestScale = FVector::OneVector; // Escala original de Cabeza (para restaurar tras BigHead)
 
 	/** Rest locations for transform-based emotes (Palmada Potente, Modo Loco 2). */
 	FVector Brazo1RestLoc = FVector::ZeroVector;
@@ -451,6 +458,12 @@ private:
 	UFUNCTION()
 	void OnRep_IsDead();
 
+	UFUNCTION()
+	void OnRep_bBigHead();
+
+	/** Escala la Cabeza al BigHeadScale en reposo o la restaura. */
+	void ApplyBigHeadVisual(bool bBig);
+
 	/**
 	 * Multicast fiable: fuerza el visual de muerte en todos los clientes.
 	 */
@@ -541,6 +554,21 @@ protected:
 	bool bIsDead = false;
 
 	FTimerHandle KnockdownTimerHandle;
+
+	// ── Big Head consumable ──────────────────────────────────────────────────
+	/** true mientras el efecto de cabeza grande está activo. Replicado para que todos los clientes lo vean. */
+	UPROPERTY(ReplicatedUsing = OnRep_bBigHead, BlueprintReadOnly, Category = "BigHead")
+	bool bBigHead = false;
+
+	/** Factor de escala de la cabeza cuando el efecto está activo (multiplicador sobre la escala en reposo). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "BigHead", meta = (ClampMin = "1.5", ClampMax = "10.0"))
+	float BigHeadScale = 3.5f;
+
+	/** Duración en segundos del efecto de cabeza grande. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "BigHead", meta = (ClampMin = "1.0"))
+	float BigHeadDurationSeconds = 8.f;
+
+	FTimerHandle BigHeadTimerHandle;
 
 	/** Rotación relativa del mesh al spawnear (guardada en BeginPlay para restaurarla). */
 	FRotator MeshDefaultRelativeRotation = FRotator::ZeroRotator;

@@ -15,7 +15,7 @@ enum class ETN_ItemUseType : uint8
 	None UMETA(DisplayName = "None"),
 	SelfStaminaBoost UMETA(DisplayName = "Self Stamina Boost"),
 	Throwable UMETA(DisplayName = "Throwable"),
-	PufferFish UMETA(DisplayName = "Puffer Fish")
+	BigHead UMETA(DisplayName = "Big Head")
 };
 
 /**
