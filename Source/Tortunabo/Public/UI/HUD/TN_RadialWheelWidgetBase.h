@@ -6,6 +6,8 @@
 #include "TN_RadialWheelWidgetBase.generated.h"
 
 class UCanvasPanel;
+class UBorder;
+class USizeBox;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FTN_OnRadialSelectionChanged, int32, SelectedIndex, uint8, EntryId, FText, Label);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTN_OnRadialSelectionCleared);
@@ -77,6 +79,32 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial")
 	FVector2D RadialCenter = FVector2D(0.f, 0.f);
 
+	/** Maximum width (px) of each slot widget — prevents label overflow into adjacent slices. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial")
+	float SlotMaxWidth = 100.f;
+
+	// ── Visuales del fondo de la rueda ───────────────────────────────────────
+
+	/** Radio (px) del círculo exterior dibujado en NativePaint. Debe coincidir con SlotRadius. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial|Visuals")
+	float WheelRadius = 150.f;
+
+	/** Color de fondo de los quesitos no seleccionados. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial|Visuals")
+	FLinearColor SliceNormalColor = FLinearColor(0.05f, 0.05f, 0.05f, 0.6f);
+
+	/** Color de fondo del quesito seleccionado. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial|Visuals")
+	FLinearColor SliceSelectedColor = FLinearColor(0.3f, 0.3f, 0.3f, 0.85f);
+
+	/** Color de las líneas divisorias y el círculo exterior. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial|Visuals")
+	FLinearColor DividerColor = FLinearColor(1.f, 1.f, 1.f, 0.4f);
+
+	/** Grosor de las líneas divisorias (px). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Radial|Visuals")
+	float DividerThickness = 1.5f;
+
 	/**
 	 * CanvasPanel en el que se generan automáticamente los widgets de cada slot.
 	 * Añadir en el Designer del Blueprint hijo con el nombre exacto "RadialSlotsContainer".
@@ -84,6 +112,10 @@ protected:
 	 */
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UCanvasPanel> RadialSlotsContainer;
+
+	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+		const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
+		int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 
 	UFUNCTION(BlueprintNativeEvent, Category = "Radial")
 	void BP_OnEntriesSet(const TArray<FTN_RadialWheelEntryView>& InEntries);
@@ -99,5 +131,8 @@ protected:
 
 private:
 	void SetSelectedIndexInternal(int32 NewIndex);
+
+	/** Un UBorder por slot — actualizado en SetSelectedIndexInternal para el highlight. */
+	TArray<TObjectPtr<UBorder>> SlotBorders;
 };
 

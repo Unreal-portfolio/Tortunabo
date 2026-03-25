@@ -1,22 +1,27 @@
 #include "World/TN_SlowZoneVolume.h"
+#include "Components/BoxComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 ATN_SlowZoneVolume::ATN_SlowZoneVolume()
 {
-	OnActorBeginOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnZoneBeginOverlap);
-	OnActorEndOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnZoneEndOverlap);
+	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
+	SetRootComponent(TriggerBox);
+
+	TriggerBox->SetBoxExtent(FVector(200.f, 200.f, 100.f));
+	TriggerBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	TriggerBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+	TriggerBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxBeginOverlap);
+	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxEndOverlap);
 }
 
-void ATN_SlowZoneVolume::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* OtherActor)
+void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority() || !OtherActor)
-	{
-		return;
-	}
-
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
-	if (!Char)
+	if (!Char || OriginalSpeeds.Contains(Char))
 	{
 		return;
 	}
@@ -27,24 +32,13 @@ void ATN_SlowZoneVolume::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* Oth
 		return;
 	}
 
-	// Solo aplicar si aún no está registrado (evitar doble-slow)
-	if (OriginalSpeeds.Contains(Char))
-	{
-		return;
-	}
-
-	const float Original = CMC->MaxWalkSpeed;
-	OriginalSpeeds.Add(Char, Original);
-	CMC->MaxWalkSpeed = Original * SlowMultiplier;
+	OriginalSpeeds.Add(Char, CMC->MaxWalkSpeed);
+	CMC->MaxWalkSpeed = MaxSlowSpeed;
 }
 
-void ATN_SlowZoneVolume::OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor)
+void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (!HasAuthority() || !OtherActor)
-	{
-		return;
-	}
-
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
 	if (!Char)
 	{

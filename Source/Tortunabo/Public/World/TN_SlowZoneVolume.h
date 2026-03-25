@@ -1,22 +1,24 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/TriggerVolume.h"
+#include "GameFramework/Actor.h"
 #include "TN_SlowZoneVolume.generated.h"
 
+class UBoxComponent;
 class ATortugaCharacter;
 
 /**
- * Volumen que reduce la velocidad máxima de movimiento de los jugadores
- * que entren en él. Al salir, se restaura la velocidad original.
+ * Zona que limita la velocidad máxima de cualquier TortugaCharacter que entre.
  *
- * Solo ejecuta lógica en el servidor (HasAuthority). El CMC replica
- * MaxWalkSpeed automáticamente a todos los clientes.
+ * Lógica 100% local en cada máquina — no necesita replicación.
+ * Cada cliente limita su propia velocidad; el servidor hace lo mismo,
+ * por lo que el CMC predice y valida con el mismo MaxWalkSpeed en todos lados.
  *
- * Uso en Editor: colocar en el nivel, ajustar SlowMultiplier por instancia.
+ * Uso: colocar BP_SlowZoneVolume en el nivel y ajustar MaxSlowSpeed y el
+ * tamaño del BoxComponent desde el Editor.
  */
-UCLASS()
-class TORTUNABO_API ATN_SlowZoneVolume : public ATriggerVolume
+UCLASS(Blueprintable)
+class TORTUNABO_API ATN_SlowZoneVolume : public AActor
 {
 	GENERATED_BODY()
 
@@ -24,18 +26,25 @@ public:
 	ATN_SlowZoneVolume();
 
 protected:
-	/** Factor de reducción de velocidad (0.5 = mitad de velocidad). */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "SlowZone",
-		meta = (ClampMin = "0.05", ClampMax = "0.99"))
-	float SlowMultiplier = 0.5f;
+	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SlowZone")
+	TObjectPtr<UBoxComponent> TriggerBox;
+
+	/** Velocidad máxima (cm/s) mientras el jugador está dentro. */
+	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "SlowZone",
+		meta = (ClampMin = "50.0"))
+	float MaxSlowSpeed = 300.f;
 
 private:
 	UFUNCTION()
-	void OnZoneBeginOverlap(AActor* OverlappedActor, AActor* OtherActor);
+	void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+		bool bFromSweep, const FHitResult& SweepResult);
 
 	UFUNCTION()
-	void OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
+	void OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
-	/** MaxWalkSpeed original de cada jugador dentro del volumen. */
+	/** Velocidad original de cada personaje dentro de la zona (por máquina). */
 	TMap<TWeakObjectPtr<ATortugaCharacter>, float> OriginalSpeeds;
 };

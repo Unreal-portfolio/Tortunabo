@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
+#include "Game/TN_RunGameMode.h"
 
 ATN_SeagullActor::ATN_SeagullActor()
 {
@@ -221,8 +222,14 @@ void ATN_SeagullActor::TickStrikeCountdowns()
 			// Resetear countdown para este jugador (puede picar de nuevo)
 			PendingStrikeRemaining.Remove(WeakPC);
 
-			// Emitir el strike a todos los clientes
+			// Emitir el strike visual a todos los clientes
 			MulticastDoStrike(TargetLoc);
+
+			// Matar al jugador (mismo efecto que zona de muerte)
+			if (ATN_RunGameMode* RunGameMode = GetWorld()->GetAuthGameMode<ATN_RunGameMode>())
+			{
+				RunGameMode->MarkPlayerDead(PC);
+			}
 		}
 	}
 
