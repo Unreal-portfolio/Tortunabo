@@ -313,6 +313,10 @@ private:
 	/** Cached SceneComponent "Sombrero" found in BeginPlay. Helmet mesh attaches to it. */
 	TWeakObjectPtr<USceneComponent> SombreroSocket;
 
+	/** Timer handle for repeating cosmetic application retry in BeginPlay. */
+	FTimerHandle CosmeticRetryTimerHandle;
+	int32 CosmeticRetryCount = 0;
+
 	// ── Emote State ─────────────────────────────────────────────────────────
 	int32 ActiveEmoteIndex   = -1;   ///< -1 = no emote active (local animation driver)
 	float EmoteTime          =  0.f; ///< seconds since emote started

@@ -24,11 +24,14 @@
 - `Public/Lobby`, `Private/Lobby`: cuartel general y zona ready (`TN_HQGameMode`, `TN_LobbyReadyZone`).
 - `Public/Game`, `Private/Game`: reglas de la carrera (`TN_RunGameMode`).
 - `Public/World`, `Private/World`: volúmenes de mundo e interactuables (`TN_FinishLineVolume`, `TN_DeathZoneVolume`, `TN_InteractableBase`, `TN_DirectInteractableBase`, `TN_PickupInteractableBase`, `TN_StaminaBoostPickup`, `TN_ThrowableItemActor`, `TN_CosmeticsStationInteractable`, `TN_ButtonInteractable`, `TN_ItemSpawnZone`, `TN_PufferFishActor`, `TN_RescuePickup`).
-  - **`TN_ButtonInteractable`** (hereda `TN_DirectInteractableBase`): mueve un actor `MoveTarget` a través de waypoints al interactuar. `CurrentWaypointIndex` replicado; tanto servidor como clientes interpolan `MoveTarget` localmente en `Tick` hacia el waypoint actual (no se usa `SetReplicateMovement(true)` para evitar conflictos entre posición replicada e interpolación local). Multicast unreliable para feedback cosmético (sonido/VFX en BP). **Chunk-compatible**: `MoveTargetTag` (FName) busca el target **dentro del chunk BP (Owner)** en 3 pasos:
-    1. Itera `UChildActorComponent`s del Owner → comprueba ActorTag en cada ChildActor.
-    2. Fallback: `GetAttachedActors` del Owner (targets no-ChildActor).
-    3. Fallback clientes: `TActorIterator` filtrando por mismo Owner + tag (cubre replicación tardía donde el attachment aún no está listo).
-  `bUseRelativeWaypoints` convierte waypoints de espacio local **del MoveTarget** (no del botón) a mundo en BeginPlay, garantizando posiciones correctas cuando botón y target están a distancias distintas. Timers diferidos usan `FTimerDelegate::CreateUObject` (no lambdas) para que `EndPlay→ClearAllTimersForObject` los cancele si el actor es destruido (ej. chunk temporal del ChunkManager).
+  - **`TN_ButtonInteractable`** (hereda `TN_DirectInteractableBase`): mueve un actor o componente target a través de waypoints al interactuar. `CurrentWaypointIndex` replicado; tanto servidor como clientes interpolan el target localmente en `Tick` hacia el waypoint actual (no se usa `SetReplicateMovement(true)` para evitar conflictos entre posición replicada e interpolación local). Multicast unreliable para feedback cosmético (sonido/VFX en BP). **Chunk-compatible**: `MoveTargetTag` (FName) busca el target **dentro del chunk BP padre** en 4 pasos:
+    1. Busca un `USceneComponent` por **nombre** en el chunk BP padre (ej. `"wall1"` = StaticMeshComponent del BP). Permite mover componentes directamente sin ChildActor.
+    2. Itera `UChildActorComponent`s del padre → comprueba ActorTag en cada ChildActor.
+    3. Fallback: `GetAttachedActors` del padre (targets attached no-ChildActor).
+    4. Fallback clientes: `TActorIterator` filtrando por mismo padre + tag (cubre replicación tardía).
+  **Resolución del chunk padre**: `GetParentActor()` → `GetOwner()` → `GetAttachParentActor()` (3 fallbacks para cubrir todas las formas de embedding en un BP).
+  **Target dual (actor o componente)**: `MoveTarget` (AActor*) para actores, `ResolvedMoveComponent` (USceneComponent*) para componentes del BP. `HasValidTarget()`, `GetTargetTransform()`, `SetTargetTransform()`, `InterpTargetToward()` abstraen ambos.
+  `bUseRelativeWaypoints` convierte waypoints de espacio local **del target** (no del botón) a mundo en BeginPlay, garantizando posiciones correctas cuando botón y target están a distancias distintas. Timers diferidos usan `FTimerDelegate::CreateUObject` (no lambdas) para que `EndPlay→ClearAllTimersForObject` los cancele si el actor es destruido (ej. chunk temporal del ChunkManager).
   - **`TN_ItemSpawnZone`**: actor (BeginPlay server-only) que spawnea ítems aleatorios dentro de un `UBoxComponent`. Configurar `ItemDataTable`, `ItemRowNames`, `SpawnCount` y `MinSpacing` por instancia en el nivel. Timer diferido usa `FTimerDelegate::CreateUObject` (no lambda) para que `EndPlay→ClearAllTimersForObject` lo cancele si el actor es destruido (ej. chunk temporal del ChunkManager que spawnea en Identity para leer InSocket y destruye inmediatamente).
   - **`TN_PufferFishActor`** (hereda `TN_ThrowableItemActor`): throwable especial que tras un delay aleatorio (`InflateDelayMin`/`Max`) se infla (`InflateScale`, `InflateRadius=800`, `InflatePushForce=4000`) empujando y potencialmente knockeando a **TODOS** los jugadores cercanos **incluido el lanzador**, luego se desinfla. `PufferState` replicado con `OnRep_PufferState` para visual en clientes. **NO knockea por impacto directo** (OnMeshHit del padre está deshabilitado en BeginPlay); el knockdown solo ocurre durante la explosión de inflación. Componente vertical del empuje exagerado (`Z ≥ 0.7`).
   - **Bomb explosion window**: `BombExplosionTick` tickea a ~60fps durante `BombWindowSeconds` (0.15s) usando `TActorIterator<ACharacter>` para búsqueda directa por distancia (no OverlapMulti). `BombHitCharacters` (TSet) evita doble empuje. Colisión del mesh se desactiva antes de escalar para evitar depenetración errática del motor de físicas.
@@ -72,7 +75,13 @@
 - Crate table con pesos configurable en `HelmetCrateTable`.
 - `MP_GamePlayerController` sincroniza helms al servidor via `ServerSyncUnlockedHelmets`/`ServerSetEquippedHelmet`.
 - `TN_CosmeticsStationInteractable` en el lobby abre el menú de cosméticos via Client RPC.
-- **Race condition OnRep vs BeginPlay**: `OnRep_EquippedHelmetId` en PlayerState llama `GetPawn()` que puede ser null si el PlayerState llega antes de que se posea el pawn. Fix: `ATortugaCharacter::OnRep_PlayerState()` (override) re-aplica el casco al recibir el PlayerState tardío, cubriendo el caso donde el timer `SetTimerForNextTick` de BeginPlay ya expiró sin datos válidos.
+- **Race condition OnRep vs BeginPlay**: `OnRep_EquippedHelmetId` en PlayerState llama `GetPawn()` que puede ser null si el PlayerState llega antes de que se posea el pawn. Fix multi-capa:
+  1. `ATortugaCharacter::BeginPlay` usa timer repetitivo (10 reintentos × 0.3s = 3s) para aplicar cosméticos cuando el PlayerState esté disponible. Cubre pawns remotos cuyo PlayerState tarda en replicar.
+  2. `ATortugaCharacter::OnRep_PlayerState()` re-aplica cosméticos al recibir el PlayerState.
+  3. `ATortugaCharacter::PawnClientRestart()` re-aplica cosméticos (solo pawn local del cliente).
+  4. `MulticastForceApplyHelmet/Skin` (15 reintentos × 0.2s = 3s) tras seamless travel.
+  5. `RefreshHUDAfterPossession` llama `SyncCosmeticsToServer()` para que el cliente re-envíe sus cosméticos al servidor después de seamless travel (ni BeginPlay ni OnPossess del PC se ejecutan en el cliente tras travel).
+  6. `OnPossess` aplica cosméticos al pawn de TODOS los jugadores en el servidor (no solo el local), cinturón de seguridad para el listen-server.
 
 ## Stamina system (`TN_StaminaComponent`)
 - `MaxStamina = 200.0f` (configurable desde Blueprint via `BlueprintReadWrite`).

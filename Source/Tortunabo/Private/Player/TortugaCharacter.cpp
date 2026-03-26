@@ -383,19 +383,32 @@ void ATortugaCharacter::BeginPlay()
 		}
 	}
 
-	// Restaurar el casco que lleva este jugador al (re)conectar al mapa.
-	// En clientes, PlayerState llega poco después de BeginPlay → usar timer lazy.
-	GetWorldTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<ATortugaCharacter>(this)]()
-	{
-		if (WeakThis.IsValid())
+	// Restaurar cosméticos al (re)spawnar en el mapa.
+	// En clientes, PlayerState puede llegar tarde → timer repetitivo que reintenta
+	// cada 0.3s hasta éxito o 10 intentos (3s). Cubre pawns remotos cuyo
+	// PlayerState no está disponible en el primer tick.
+	CosmeticRetryCount = 0;
+	GetWorldTimerManager().SetTimer(CosmeticRetryTimerHandle,
+		[WeakThis = TWeakObjectPtr<ATortugaCharacter>(this)]()
 		{
+			if (!WeakThis.IsValid())
+			{
+				return;
+			}
 			if (const ATN_CoopPlayerState* TNPS = WeakThis->GetPlayerState<ATN_CoopPlayerState>())
 			{
 				WeakThis->UpdateHelmetMesh(TNPS->EquippedHelmetId);
 				WeakThis->UpdateSkinVisual(TNPS->EquippedSkinId);
+				WeakThis->GetWorldTimerManager().ClearTimer(WeakThis->CosmeticRetryTimerHandle);
+				return;
 			}
-		}
-	});
+			if (++WeakThis->CosmeticRetryCount >= 10)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] '%s' — cosméticos: agotados 10 reintentos sin PlayerState."),
+					*WeakThis->GetName());
+				WeakThis->GetWorldTimerManager().ClearTimer(WeakThis->CosmeticRetryTimerHandle);
+			}
+		}, 0.3f, true, 0.1f);  // first fire at 0.1s, repeat every 0.3s
 }
 
 void ATortugaCharacter::Tick(float DeltaTime)
@@ -552,6 +565,7 @@ void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	ActiveEmoteIndex   = -1;
 	bEmoteBlendingOut  = false;
 
+	GetWorldTimerManager().ClearTimer(CosmeticRetryTimerHandle);
 	StopEmoteSound();
 	StopReviveChannelSound();
 	StopDBNOHeartbeatSound();

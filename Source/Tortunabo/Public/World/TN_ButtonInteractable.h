@@ -6,26 +6,29 @@
 
 /**
  * Botón interactuable que, al pulsar (Enhanced Input IA_Interact),
- * mueve un actor target a través de una lista de waypoints de forma fluida.
+ * mueve un actor/componente target a través de una lista de waypoints de forma fluida.
  * Cada interacción avanza al siguiente waypoint (cíclico).
  *
  * Replicación: CurrentWaypointIndex se replica a los clientes; tanto servidor
- * como clientes interpolan el MoveTarget localmente en Tick hacia el waypoint
+ * como clientes interpolan el target localmente en Tick hacia el waypoint
  * actual. No se usa SetReplicateMovement(true) para evitar conflictos entre
  * la posición replicada y la interpolación local.
  *
  * Waypoints relativos (bUseRelativeWaypoints): los offsets se interpretan
- * relativos al transform del MoveTarget al iniciar (no al botón). Esto
+ * relativos al transform del target al iniciar (no al botón). Esto
  * garantiza posiciones correctas cuando botón y target están a distancias
  * distintas dentro de un chunk.
  *
  * Dentro de un chunk spawneado en runtime, MoveTarget (eyedropper) no funciona.
- * Usa MoveTargetTag para que el botón busque en BeginPlay un ChildActor con ese
- * tag dentro del chunk BP (Owner). Búsqueda en 3 pasos:
- *   1. Itera los UChildActorComponents del Owner → comprueba tag en cada ChildActor.
- *   2. Fallback: GetAttachedActors del Owner (targets no-ChildActor).
- *   3. Fallback clientes: TActorIterator filtrando por mismo Owner + tag
- *      (cubre el caso donde el attachment aún no está listo por replicación).
+ * Usa MoveTargetTag para resolver el target automáticamente en BeginPlay.
+ * Búsqueda en 4 pasos (primero en el chunk BP padre, luego en el mundo):
+ *   1. Busca un USceneComponent por nombre (MoveTargetTag) en el chunk BP padre.
+ *      Esto permite mover componentes del BP directamente (ej. "wall1").
+ *   2. Itera los UChildActorComponents del padre → comprueba ActorTag en cada ChildActor.
+ *   3. Fallback: GetAttachedActors del padre (targets attached).
+ *   4. Fallback clientes: TActorIterator filtrando por mismo padre + tag.
+ *
+ * El chunk BP padre se resuelve via GetParentActor() > GetOwner() > GetAttachParentActor().
  */
 UCLASS()
 class TORTUNABO_API ATN_ButtonInteractable : public ATN_DirectInteractableBase
@@ -49,22 +52,24 @@ protected:
 	TObjectPtr<AActor> MoveTarget;
 
 	/**
-	 * Si MoveTarget está vacío al iniciar, busca en el Owner (chunk BP)
-	 * un actor hijo con este ActorTag. Útil para chunks spawneados en runtime.
+	 * Nombre/tag para resolver el target automáticamente en BeginPlay.
+	 * Busca PRIMERO un componente por nombre en el chunk BP padre (ej. "wall1"),
+	 * luego busca un ChildActor con este ActorTag.
+	 * Útil para chunks spawneados en runtime donde el eyedropper no funciona.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
 	FName MoveTargetTag;
 
 	/**
 	 * Puntos de destino. Si bUseRelativeWaypoints es false, en espacio mundo.
-	 * Si es true, relativos al transform del MoveTarget al iniciar (para chunks).
+	 * Si es true, relativos al transform del target al iniciar (para chunks).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
 	TArray<FTransform> Waypoints;
 
 	/**
 	 * Si true, los Waypoints se interpretan como offsets relativos al transform
-	 * del MoveTarget al iniciar. Se convierten a espacio mundo en BeginPlay.
+	 * del target al iniciar. Se convierten a espacio mundo en BeginPlay.
 	 * Activar cuando el botón está dentro de un chunk (posición desconocida en design time).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
@@ -96,13 +101,28 @@ private:
 	bool bIsMoving = false;
 
 	/**
+	 * Componente resuelto como target (cuando el target es un componente del chunk BP,
+	 * no un actor separado). Usado en Tick cuando MoveTarget es null.
+	 */
+	TWeakObjectPtr<USceneComponent> ResolvedMoveComponent;
+
+	/**
 	 * Inicialización diferida un tick:
-	 * - Resuelve MoveTarget por tag si es necesario (3 estrategias de búsqueda:
-	 *   ChildActorComponents del Owner → attached actors → TActorIterator con mismo Owner).
-	 * - Convierte waypoints relativos a espacio mundo (base = MoveTarget).
+	 * - Resuelve MoveTarget/ResolvedMoveComponent por tag/nombre si es necesario.
+	 *   Estrategias: componente por nombre en chunk BP → ChildActors por tag →
+	 *   attached actors → TActorIterator con mismo padre.
+	 * - Convierte waypoints relativos a espacio mundo (base = target).
 	 * Usa binding a UObject para que se cancele automáticamente si el actor
 	 * es destruido (ej. chunk temporal del ChunkManager).
 	 */
 	void DeferredInit();
-};
 
+	/** Resuelve el actor chunk BP padre: GetParentActor → GetOwner → GetAttachParentActor. */
+	AActor* ResolveParentChunk() const;
+
+	// ── Helpers para leer/escribir el transform del target ────────────────────
+	FTransform GetTargetTransform() const;
+	void SetTargetTransform(const FTransform& T);
+	void InterpTargetToward(const FTransform& Goal, float DeltaTime);
+	bool HasValidTarget() const;
+};

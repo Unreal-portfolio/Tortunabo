@@ -26,37 +26,138 @@ void ATN_ButtonInteractable::BeginPlay()
 		FTimerDelegate::CreateUObject(this, &ATN_ButtonInteractable::DeferredInit));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ResolveParentChunk — busca el actor BP padre del chunk
+// ─────────────────────────────────────────────────────────────────────────────
+
+AActor* ATN_ButtonInteractable::ResolveParentChunk() const
+{
+	// 1. GetParentActor — para actores creados por UChildActorComponent.
+	//    En UE 5.x, esta es la forma canónica de obtener el actor dueño del CAC.
+	if (AActor* Parent = GetParentActor())
+	{
+		return Parent;
+	}
+
+	// 2. GetOwner — fallback clásico (el Owner se replica).
+	if (AActor* Owner = GetOwner())
+	{
+		return Owner;
+	}
+
+	// 3. GetAttachParentActor — para actores attached por medios no-ChildActor.
+	if (AActor* AttachParent = GetAttachParentActor())
+	{
+		return AttachParent;
+	}
+
+	return nullptr;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Target helpers — abstraen si el target es un actor o un componente
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool ATN_ButtonInteractable::HasValidTarget() const
+{
+	return MoveTarget != nullptr || ResolvedMoveComponent.IsValid();
+}
+
+FTransform ATN_ButtonInteractable::GetTargetTransform() const
+{
+	if (MoveTarget)
+	{
+		return MoveTarget->GetActorTransform();
+	}
+	if (ResolvedMoveComponent.IsValid())
+	{
+		return ResolvedMoveComponent->GetComponentTransform();
+	}
+	return FTransform::Identity;
+}
+
+void ATN_ButtonInteractable::SetTargetTransform(const FTransform& T)
+{
+	if (MoveTarget)
+	{
+		MoveTarget->SetActorTransform(T);
+	}
+	else if (ResolvedMoveComponent.IsValid())
+	{
+		ResolvedMoveComponent->SetWorldTransform(T);
+	}
+}
+
+void ATN_ButtonInteractable::InterpTargetToward(const FTransform& Goal, float DeltaTime)
+{
+	const FTransform Current = GetTargetTransform();
+
+	const FVector NewLoc = FMath::VInterpConstantTo(
+		Current.GetLocation(), Goal.GetLocation(), DeltaTime, MoveSpeed);
+	const FRotator NewRot = FMath::RInterpConstantTo(
+		Current.GetRotation().Rotator(), Goal.GetRotation().Rotator(), DeltaTime, RotateSpeed);
+
+	if (MoveTarget)
+	{
+		MoveTarget->SetActorLocationAndRotation(NewLoc, NewRot);
+	}
+	else if (ResolvedMoveComponent.IsValid())
+	{
+		ResolvedMoveComponent->SetWorldLocationAndRotation(NewLoc, NewRot);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeferredInit — resuelve target + convierte waypoints
+// ─────────────────────────────────────────────────────────────────────────────
+
 void ATN_ButtonInteractable::DeferredInit()
 {
-	// ── Resolver MoveTarget por tag si no está asignado ──────────────────────
-	if (!MoveTarget && MoveTargetTag != NAME_None)
+	// ── Resolver target por tag/nombre si no está asignado ───────────────────
+	if (!MoveTarget && !ResolvedMoveComponent.IsValid() && MoveTargetTag != NAME_None)
 	{
-		AActor* OwnerActor = GetOwner();
+		AActor* ParentChunk = ResolveParentChunk();
 
-		if (OwnerActor)
+		if (ParentChunk)
 		{
-			// ── 1. Buscar en los ChildActorComponents del Owner (chunk BP) ──
-			// Esta es la forma más fiable: accede directamente a los componentes
-			// del chunk y sus child actors, sin depender del árbol de attachment
-			// (que puede no estar listo en clientes donde los actores llegan
-			// replicados antes de que el ChildActorComponent los reclame).
-			TArray<UChildActorComponent*> ChildActorComps;
-			OwnerActor->GetComponents<UChildActorComponent>(ChildActorComps);
-			for (UChildActorComponent* CAC : ChildActorComps)
+			// ── 1. Buscar un COMPONENTE por nombre en el chunk BP padre ─────
+			// Permite mover directamente un StaticMesh/SceneComponent del BP
+			// sin necesidad de un ChildActor separado. Ej: "wall1" es un
+			// StaticMeshComponent en el BP del chunk.
+			const FString TagStr = MoveTargetTag.ToString();
+			for (UActorComponent* Comp : ParentChunk->GetComponents())
 			{
-				AActor* ChildActor = CAC ? CAC->GetChildActor() : nullptr;
-				if (ChildActor && ChildActor != this && ChildActor->ActorHasTag(MoveTargetTag))
+				USceneComponent* SC = Cast<USceneComponent>(Comp);
+				if (SC && SC->GetName() == TagStr)
 				{
-					MoveTarget = ChildActor;
+					ResolvedMoveComponent = SC;
+					UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró componente '%s' en chunk '%s'."),
+						*GetName(), *TagStr, *GetNameSafe(ParentChunk));
 					break;
 				}
 			}
 
-			// ── 2. Fallback: buscar attached actors (targets no-ChildActor) ──
-			if (!MoveTarget)
+			// ── 2. Buscar ChildActor por ActorTag ───────────────────────────
+			if (!ResolvedMoveComponent.IsValid() && !MoveTarget)
+			{
+				TArray<UChildActorComponent*> ChildActorComps;
+				ParentChunk->GetComponents<UChildActorComponent>(ChildActorComps);
+				for (UChildActorComponent* CAC : ChildActorComps)
+				{
+					AActor* ChildActor = CAC ? CAC->GetChildActor() : nullptr;
+					if (ChildActor && ChildActor != this && ChildActor->ActorHasTag(MoveTargetTag))
+					{
+						MoveTarget = ChildActor;
+						break;
+					}
+				}
+			}
+
+			// ── 3. Fallback: buscar attached actors ─────────────────────────
+			if (!MoveTarget && !ResolvedMoveComponent.IsValid())
 			{
 				TArray<AActor*> AttachedActors;
-				OwnerActor->GetAttachedActors(AttachedActors, /*bResetArray=*/ true,
+				ParentChunk->GetAttachedActors(AttachedActors, /*bResetArray=*/ true,
 					/*bRecursivelyIncludeAttachedActors=*/ true);
 				for (AActor* Attached : AttachedActors)
 				{
@@ -68,16 +169,14 @@ void ATN_ButtonInteractable::DeferredInit()
 				}
 			}
 
-			// ── 3. Fallback clientes: actores con mismo Owner y tag ──────────
-			// En clientes, el child actor replicado puede no estar attached aún
-			// al chunk pero SÍ tiene Owner replicado correctamente.
-			if (!MoveTarget)
+			// ── 4. Fallback clientes: TActorIterator con mismo padre ────────
+			if (!MoveTarget && !ResolvedMoveComponent.IsValid())
 			{
 				for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 				{
 					AActor* Candidate = *It;
 					if (Candidate && Candidate != this
-						&& Candidate->GetOwner() == OwnerActor
+						&& (Candidate->GetOwner() == ParentChunk || Candidate->GetParentActor() == ParentChunk)
 						&& Candidate->ActorHasTag(MoveTargetTag))
 					{
 						MoveTarget = Candidate;
@@ -87,35 +186,40 @@ void ATN_ButtonInteractable::DeferredInit()
 			}
 		}
 
-		if (MoveTarget)
+		if (HasValidTarget())
 		{
-			UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró MoveTarget por tag '%s' → '%s' (Owner='%s')"),
-				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(MoveTarget), *GetNameSafe(OwnerActor));
+			const FString FoundName = MoveTarget
+				? GetNameSafe(MoveTarget)
+				: (ResolvedMoveComponent.IsValid() ? ResolvedMoveComponent->GetName() : TEXT("?"));
+			UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró target '%s' por tag '%s' (chunk='%s')."),
+				*GetName(), *FoundName, *MoveTargetTag.ToString(), *GetNameSafe(ResolveParentChunk()));
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — MoveTargetTag='%s' no encontrado en chunk '%s'. "
-				"Verifica que el target tenga ActorTag='%s' y sea un ChildActor del mismo BP."),
-				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(OwnerActor), *MoveTargetTag.ToString());
+			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — MoveTargetTag='%s' no encontrado. "
+				"Chunk padre='%s'. Verifica que exista un componente o ChildActor con ese nombre/tag en el BP."),
+				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(ResolveParentChunk()));
 		}
 	}
 
 	// ── Convertir waypoints relativos a espacio mundo ────────────────────────
-	// Los waypoints se interpretan como offsets relativos al MOVETARGET, no al
+	// Los waypoints se interpretan como offsets relativos al TARGET, no al
 	// botón. Esto garantiza que la posición destino es correcta incluso cuando
 	// el botón y el target están en posiciones distintas dentro del chunk.
-	// Ambos (servidor y cliente) ejecutan esta conversión con el mismo MoveTarget
+	// Ambos (servidor y cliente) ejecutan esta conversión con el mismo target
 	// local → los waypoints en mundo coinciden → la interpolación local en Tick
 	// produce el mismo resultado visual en ambos lados.
 	if (bUseRelativeWaypoints && Waypoints.Num() > 0)
 	{
-		const FTransform BaseTransform = MoveTarget
-			? MoveTarget->GetActorTransform()
-			: GetActorTransform(); // Fallback al botón si no hay MoveTarget
-
-		if (!MoveTarget)
+		FTransform BaseTransform;
+		if (HasValidTarget())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — bUseRelativeWaypoints activo pero sin MoveTarget. "
+			BaseTransform = GetTargetTransform();
+		}
+		else
+		{
+			BaseTransform = GetActorTransform(); // Fallback al botón
+			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — bUseRelativeWaypoints activo pero sin target. "
 				"Usando transform del botón como base (posición destino puede ser incorrecta)."), *GetName());
 		}
 
@@ -126,6 +230,10 @@ void ATN_ButtonInteractable::DeferredInit()
 		bUseRelativeWaypoints = false;
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Replication
+// ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_ButtonInteractable::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -139,6 +247,10 @@ void ATN_ButtonInteractable::OnRep_CurrentWaypointIndex()
 	bIsMoving = true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Interact
+// ─────────────────────────────────────────────────────────────────────────────
+
 void ATN_ButtonInteractable::Interact(APawn* Interactor)
 {
 	if (!HasAuthority() || !CanInteract(Interactor))
@@ -146,16 +258,13 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 		return;
 	}
 
-	if (!MoveTarget || Waypoints.Num() == 0)
+	if (!HasValidTarget() || Waypoints.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — Sin MoveTarget o sin Waypoints."), *GetName());
+		UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — Sin target válido o sin Waypoints."), *GetName());
 		return;
 	}
 
 	// Despertar de dormancy para que CurrentWaypointIndex replique a clientes.
-	// ATN_InteractableBase usa DORM_DormantAll → sin esto, los cambios de
-	// propiedades nunca llegan a clientes remotos. FlushNetDormancy transiciona
-	// a DORM_DormantPartial (despierta para este cambio y futuros).
 	FlushNetDormancy();
 
 	// Avanzar al siguiente waypoint (wrap around)
@@ -173,14 +282,18 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 	UE_LOG(LogTemp, Log, TEXT("[Button] '%s' → Waypoint %d/%d"), *GetName(), CurrentWaypointIndex + 1, Waypoints.Num());
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tick — interpola el target hacia el waypoint actual
+// ─────────────────────────────────────────────────────────────────────────────
+
 void ATN_ButtonInteractable::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// Tanto servidor como clientes interpolan MoveTarget hacia el waypoint actual.
+	// Tanto servidor como clientes interpolan el target hacia el waypoint actual.
 	// El servidor avanza CurrentWaypointIndex (replicado); los clientes reciben
 	// OnRep_CurrentWaypointIndex que activa bIsMoving para interpolar localmente.
-	if (!bIsMoving || !MoveTarget || Waypoints.Num() == 0)
+	if (!bIsMoving || !HasValidTarget() || Waypoints.Num() == 0)
 	{
 		return;
 	}
@@ -191,31 +304,28 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 		return;
 	}
 
-	const FTransform& TargetTransform = Waypoints[CurrentWaypointIndex];
-	const FVector CurrentLoc = MoveTarget->GetActorLocation();
-	const FRotator CurrentRot = MoveTarget->GetActorRotation();
+	const FTransform& GoalTransform = Waypoints[CurrentWaypointIndex];
 
-	// Interpolar posición a velocidad constante
-	const FVector NewLoc = FMath::VInterpConstantTo(CurrentLoc, TargetTransform.GetLocation(), DeltaTime, MoveSpeed);
-
-	// Interpolar rotación a velocidad constante
-	const FRotator NewRot = FMath::RInterpConstantTo(CurrentRot, TargetTransform.GetRotation().Rotator(), DeltaTime, RotateSpeed);
-
-	MoveTarget->SetActorLocationAndRotation(NewLoc, NewRot);
+	InterpTargetToward(GoalTransform, DeltaTime);
 
 	// Verificar si llegó al destino
-	const float DistSq = FVector::DistSquared(NewLoc, TargetTransform.GetLocation());
-	const float AngleDiff = (NewRot - TargetTransform.GetRotation().Rotator()).GetNormalized().GetManhattanDistance(FRotator::ZeroRotator);
+	const FTransform CurrentT = GetTargetTransform();
+	const float DistSq = FVector::DistSquared(CurrentT.GetLocation(), GoalTransform.GetLocation());
+	const float AngleDiff = (CurrentT.GetRotation().Rotator() - GoalTransform.GetRotation().Rotator())
+		.GetNormalized().GetManhattanDistance(FRotator::ZeroRotator);
 
 	if (DistSq < 4.f && AngleDiff < 1.f) // 2cm y 1°
 	{
-		MoveTarget->SetActorTransform(TargetTransform);
+		SetTargetTransform(GoalTransform);
 		bIsMoving = false;
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multicast feedback
+// ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_ButtonInteractable::MulticastPlayButtonFeedback_Implementation()
 {
 	// Override en Blueprint para añadir sonido/VFX/animación del botón.
 }
-

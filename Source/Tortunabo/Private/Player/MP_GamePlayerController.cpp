@@ -110,6 +110,18 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 		}
 	}
 
+	// Aplicar cosméticos al pawn recién poseído (server-side, para TODOS los jugadores).
+	// El listen-server no recibe OnRep de su propio PlayerState → aplica directamente.
+	// Para jugadores remotos, esto asegura que el pawn del servidor tenga el visual correcto.
+	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(InPawn))
+		{
+			TurtleChar->UpdateHelmetMesh(TNPS->EquippedHelmetId);
+			TurtleChar->UpdateSkinVisual(TNPS->EquippedSkinId);
+		}
+	}
+
 	if (IsLocalController())
 	{
 		CreateVoiceHUD();
@@ -310,6 +322,13 @@ void AMP_GamePlayerController::RefreshHUDAfterPossession()
 	CreateCoopFlowHUD();
 	CreatePlayerHUD();
 	CreateRadialWidgets();
+
+	// Re-sincronizar cosméticos al servidor tras seamless travel.
+	// Después del viaje, ni BeginPlay ni OnPossess se ejecutan en el cliente (el PC
+	// persiste). Este es el único hook del cliente post-travel para re-enviar los
+	// cosméticos locales al servidor, cubriendo cualquier caso donde el PlayerState
+	// haya perdido los valores durante la transición.
+	SyncCosmeticsToServer();
 }
 
 void AMP_GamePlayerController::CreateVoiceHUD()

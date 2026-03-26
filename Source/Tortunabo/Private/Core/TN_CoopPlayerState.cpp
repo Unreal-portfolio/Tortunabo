@@ -54,9 +54,9 @@ void ATN_CoopPlayerState::MulticastForceApplyHelmet_Implementation(FName HelmId)
 	else if (UWorld* World = GetWorld())
 	{
 		// Pawn no está disponible aún (race condition post-seamless-travel).
-		// Reintentamos varias veces con intervalo de 0.1s hasta encontrar el pawn.
+		// Reintentamos con margen amplio: 15 intentos × 0.2s = 3s de ventana.
 		TWeakObjectPtr<ATN_CoopPlayerState> WeakThis(this);
-		struct FRetryState { int32 Remaining = 5; };
+		struct FRetryState { int32 Remaining = 15; };
 		TSharedPtr<FRetryState> Retry = MakeShared<FRetryState>();
 		TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
 		World->GetTimerManager().SetTimer(*RetryHandle, [WeakThis, HelmId, Retry, RetryHandle, World]()
@@ -74,9 +74,11 @@ void ATN_CoopPlayerState::MulticastForceApplyHelmet_Implementation(FName HelmId)
 			}
 			if (--Retry->Remaining <= 0)
 			{
+				UE_LOG(LogTemp, Warning, TEXT("[CoopPlayerState] MulticastForceApplyHelmet: agotados reintentos para '%s'."),
+					*WeakThis->GetPlayerName());
 				World->GetTimerManager().ClearTimer(*RetryHandle);
 			}
-		}, 0.1f, true);
+		}, 0.2f, true);
 	}
 }
 
@@ -99,9 +101,9 @@ void ATN_CoopPlayerState::MulticastForceApplySkin_Implementation(FName SkinId)
 	else if (UWorld* World = GetWorld())
 	{
 		// Pawn no está disponible aún (race condition post-seamless-travel).
-		// Reintentamos varias veces con intervalo de 0.1s hasta encontrar el pawn.
+		// Reintentamos con margen amplio: 15 intentos × 0.2s = 3s de ventana.
 		TWeakObjectPtr<ATN_CoopPlayerState> WeakThis(this);
-		struct FRetryState { int32 Remaining = 5; };
+		struct FRetryState { int32 Remaining = 15; };
 		TSharedPtr<FRetryState> Retry = MakeShared<FRetryState>();
 		TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
 		World->GetTimerManager().SetTimer(*RetryHandle, [WeakThis, SkinId, Retry, RetryHandle, World]()
@@ -119,9 +121,11 @@ void ATN_CoopPlayerState::MulticastForceApplySkin_Implementation(FName SkinId)
 			}
 			if (--Retry->Remaining <= 0)
 			{
+				UE_LOG(LogTemp, Warning, TEXT("[CoopPlayerState] MulticastForceApplySkin: agotados reintentos para '%s'."),
+					*WeakThis->GetPlayerName());
 				World->GetTimerManager().ClearTimer(*RetryHandle);
 			}
-		}, 0.1f, true);
+		}, 0.2f, true);
 	}
 }
 
