@@ -13,8 +13,9 @@ ATN_ChunkManager::ATN_ChunkManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// Este actor no necesita replicarse — sólo existe en el servidor.
-	// Los chunks que spawnea sí replican (configurado en cada chunk BP).
+	// El ChunkManager en sí no se replica — sólo existe en el servidor.
+	// Los chunks que spawnea tienen SetReplicates(true) activado en SpawnAlignedChunk,
+	// por lo que UE los envía automáticamente a todos los clientes.
 	bReplicates = false;
 }
 
@@ -238,7 +239,7 @@ void ATN_ChunkManager::SpawnFinalChunk()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SpawnAlignedChunk — núcleo de alineación InSocket→Target
+// SpawnAlignedChunk — núcleo de alineación InSocket→Target con replicación
 // ─────────────────────────────────────────────────────────────────────────────
 
 AActor* ATN_ChunkManager::SpawnAlignedChunk(TSubclassOf<AActor> ChunkClass, const FTransform& TargetTransform)
@@ -249,48 +250,60 @@ AActor* ATN_ChunkManager::SpawnAlignedChunk(TSubclassOf<AActor> ChunkClass, cons
 		return nullptr;
 	}
 
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	// ── Paso 1: Spawn diferido en identidad ───────────────────────────────────
+	// SpawnActorDeferred no llama a BeginPlay todavía. El actor existe con todos
+	// sus componentes accesibles, lo que nos permite leer el InSocket y configurar
+	// la replicación antes de que sea visible para nadie.
+	AActor* Chunk = World->SpawnActorDeferred<AActor>(
+		ChunkClass,
+		FTransform::Identity,
+		/*Owner=*/nullptr,
+		/*Instigator=*/nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
-	// Paso 1: Spawnear temporalmente en la identidad para leer el offset del InSocket
-	AActor* TempActor = World->SpawnActor<AActor>(ChunkClass, FTransform::Identity, SpawnParams);
-	if (!TempActor)
+	if (!Chunk)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] No se pudo spawnear '%s'."),
+		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] SpawnActorDeferred falló para '%s'."),
 			*ChunkClass->GetName());
 		return nullptr;
 	}
 
-	// Paso 2: Localizar el InSocket y obtener su transform relativo al actor
-	USceneComponent* InSocket = FindSceneComponentByName(TempActor, TEXT("InSocket"));
-	FTransform InSocketRelative = FTransform::Identity;
+	// ── Paso 2: Activar replicación ANTES de FinishSpawning ──────────────────
+	// Con bReplicates=true establecido antes de FinishSpawning, UE registra el actor
+	// como replicado desde el primer momento y lo envía a todos los clientes
+	// (presentes y futuros) en su posición final — sin teleport visible.
+	Chunk->SetReplicates(true);
+	Chunk->SetReplicateMovement(false); // Los chunks son estáticos
 
-	if (InSocket)
+	// ── Paso 3: Calcular transform final (InSocket → TargetTransform) ─────────
+	// Con el actor en identidad, world transform del InSocket == su offset local.
+	FTransform FinalTransform = TargetTransform; // fallback si no hay InSocket
+
+	if (USceneComponent* InSocket = FindSceneComponentByName(Chunk, TEXT("InSocket")))
 	{
-		// GetRelativeTransform devuelve el offset relativo al actor (no al mundo)
-		InSocketRelative = InSocket->GetComponentTransform().GetRelativeTransform(
-			TempActor->GetActorTransform());
+		// Actor en identidad → ComponentTransform == offset local respecto al actor root
+		const FTransform InSocketLocal = InSocket->GetComponentTransform();
+		FinalTransform = InSocketLocal.Inverse() * TargetTransform;
 
 		if (bDebugDrawSockets)
 		{
-			DrawDebugSphere(GetWorld(), InSocket->GetComponentLocation(), 25.f, 8,
+			// Dibujar dónde quedará el InSocket en el mundo (= TargetTransform.Location)
+			DrawDebugSphere(World, TargetTransform.GetLocation(), 25.f, 8,
 				FColor::Red, false, 10.f);
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] '%s' no tiene SceneComponent 'InSocket'. "
-			"Se usará la posición del actor como punto de entrada."), *ChunkClass->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] '%s' no tiene 'InSocket'. "
+			"Se usará la posición del actor como entrada."), *ChunkClass->GetName());
 	}
 
-	// Paso 3: Calcular el transform final del actor para que InSocket quede en TargetTransform
-	// FinalActorTransform = TargetTransform * InSocketRelative.Inverse()
-	FTransform FinalTransform = InSocketRelative.Inverse() * TargetTransform;
+	// ── Paso 4: FinishSpawning con el transform correcto ─────────────────────
+	// BeginPlay se ejecuta aquí. El actor aparece en el servidor y en todos los
+	// clientes directamente en FinalTransform — cero teleport.
+	Chunk->FinishSpawning(FinalTransform);
 
-	// Paso 4: Mover el actor a la posición correcta
-	TempActor->SetActorTransform(FinalTransform);
-
-	return TempActor;
+	return Chunk;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
