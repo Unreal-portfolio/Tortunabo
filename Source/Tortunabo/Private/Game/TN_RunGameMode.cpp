@@ -406,11 +406,12 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	TNPS->bHasFinishedRun = true;
 	TNPS->bIsDBNO = false;
 	TNPS->DBNOBleedoutTimeRemaining = -1.f;
-	// Assign an ordered rank even to eliminated players so UI can sort the results screen.
-	// bIsEliminated distinguishes "dead" from "finished normally".
-	TNPS->FinishRank = NextFinishRank++;
+	// Los eliminados NO consumen un puesto de carrera (NextFinishRank sólo avanza al cruzar la meta).
+	// FinishRank = 0 para eliminados; la UI usa bIsEliminated para distinguirlos.
+	// Guardamos el tiempo real de muerte para que la UI pueda ordenar eliminados por tiempo.
+	TNPS->FinishRank = 0;
 	TNPS->bIsEliminated = true;
-	TNPS->FinishTimeSeconds = -1.f;
+	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->DeathZoneTimeRemaining = -1.f;
 
 	// Clean up from DBNO tracking if present
@@ -621,6 +622,24 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			if (TNPC->IsLocalController())
 			{
 				TNPC->ForceRestoreInput();
+
+				// Belt-and-suspenders: en el siguiente tick re-aplicamos el mapping context
+				// de Enhanced Input + limpiamos los flags de ignore. Esto cubre el edge case
+				// donde la cadena Possess → AcknowledgedPawn → ClientRestart → PawnClientRestart
+				// no ha completado del todo antes de que ForceRestoreInput() termine.
+				TWeakObjectPtr<ATortugaCharacter> WeakChar(Cast<ATortugaCharacter>(Pawn));
+				TWeakObjectPtr<AMP_GamePlayerController> WeakPC(TNPC);
+				GetWorldTimerManager().SetTimerForNextTick([WeakChar, WeakPC]()
+				{
+					if (WeakChar.IsValid())
+					{
+						WeakChar->ReapplyInputMapping();
+					}
+					if (WeakPC.IsValid())
+					{
+						WeakPC->ForceRestoreInput();
+					}
+				});
 			}
 		}
 	}

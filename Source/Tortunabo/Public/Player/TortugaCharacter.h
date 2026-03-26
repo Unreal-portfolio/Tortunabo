@@ -35,6 +35,13 @@ public:
 	 */
 	static constexpr int32 KNOCKDOWN_EMOTE_ID = 100;
 
+	/**
+	 * Re-aplica el Enhanced Input Mapping Context localmente.
+	 * Llamar desde el servidor para el listen-server tras un revival, un tick después
+	 * de Possess + ClientRestart, para garantizar que el input queda activo.
+	 */
+	void ReapplyInputMapping();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
@@ -195,80 +202,78 @@ protected:
 	// ── Camera Cinematic Settings (AAA) ───────────────────────────────────────
 
 	/** Longitud del brazo en reposo. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "50", ClampMax = "1200"))
-	float CameraArmLengthDefault = 350.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "50", ClampMax = "1200"))
+	float CameraArmLengthDefault = 170.f;
 
 	/** Longitud del brazo cuando el jugador está esprintando. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "50", ClampMax = "1200"))
-	float CameraArmLengthSprint = 480.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "50", ClampMax = "1200"))
+	float CameraArmLengthSprint = 240.f;
 
 	/** Velocidad de interpolación de la longitud del brazo (mayor = más rápido). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "0.5", ClampMax = "20.0"))
-	float CameraArmLengthInterpSpeed = 5.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "0.5", ClampMax = "20.0"))
+	float CameraArmLengthInterpSpeed = 6.f;
 
 	/** Campo de visión (FOV) de la cámara en reposo. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "40.0", ClampMax = "120.0"))
-	float CameraFOVDefault = 80.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "40.0", ClampMax = "120.0"))
+	float CameraFOVDefault = 72.f;
 
 	/** Campo de visión (FOV) de la cámara al esprintar (ligeramente mayor para sensación de velocidad). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "40.0", ClampMax = "120.0"))
-	float CameraFOVSprint = 90.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "40.0", ClampMax = "120.0"))
+	float CameraFOVSprint = 82.f;
 
 	/** Velocidad de interpolación del FOV. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "0.5", ClampMax = "20.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "0.5", ClampMax = "20.0"))
 	float CameraFOVInterpSpeed = 5.f;
 
 	/**
 	 * Lag de posición del spring arm (qué tan fluido sigue a la cápsula).
 	 * 6-10 = cinematic suave. 20+ = casi sin lag.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "1.0", ClampMax = "30.0"))
-	float CameraPositionLagSpeed = 8.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "1.0", ClampMax = "30.0"))
+	float CameraPositionLagSpeed = 14.f;
 
 	/** Lag de rotación del spring arm. 12-16 = respuesta rápida pero suavizada. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "1.0", ClampMax = "30.0"))
-	float CameraRotationLagSpeed = 14.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "1.0", ClampMax = "30.0"))
+	float CameraRotationLagSpeed = 20.f;
 
 	/**
 	 * Offset del socket de la cámara respecto al pivot del spring arm.
 	 * X = adelante/atrás, Y = derecha (over-the-shoulder), Z = arriba.
-	 * Default (0, 55, 65) → estilo over-the-shoulder derecho, elevada.
+	 * (0, 80, 70) → over-the-shoulder derecho ajustado, estilo God of War.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic")
-	FVector CameraSocketOffset = FVector(0.f, 55.f, 65.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic")
+	FVector CameraSocketOffset = FVector(0.f, 80.f, 70.f);
 
 	/**
 	 * Offset relativo del pivot del spring arm en espacio del personaje (eleva el pivot).
-	 * Default (0, 0, 40) → eleva el pivot 40 cm por encima de la raíz.
+	 * (0, 0, 55) → pivot en zona del tronco/hombros de la tortuga.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic")
-	FVector CameraBoomRelativeOffset = FVector(0.f, 0.f, 40.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic")
+	FVector CameraBoomRelativeOffset = FVector(0.f, 0.f, 55.f);
 
 	/**
 	 * Inclina la cámara hacia abajo respecto al spring arm (grados, valor negativo = abajo).
-	 * Mueve el centro visual de apuntado sin cambiar la dirección de control del jugador.
-	 * Default -6°: el crosshair apunta ligeramente por debajo del horizonte de la cámara.
-	 * Ajusta en BP_TortugaCharacter → Class Defaults.
+	 * -14°: cámara más picada sobre el personaje, estilo God of War.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "-30.0", ClampMax = "0.0"))
-	float CameraAimPitchOffset = -6.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Cinematic", meta = (ClampMin = "-30.0", ClampMax = "0.0"))
+	float CameraAimPitchOffset = -14.f;
 
 	/** Si true, el eje Y del ratón (arriba/abajo) se invierte. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Input")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Input")
 	bool bInvertCameraY = false;
 
 	/**
 	 * Multiplicador de sensibilidad para el eje X (izquierda/derecha — Yaw).
 	 * 1.0 = por defecto.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Input", meta = (ClampMin = "0.1", ClampMax = "5.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Input", meta = (ClampMin = "0.1", ClampMax = "5.0"))
 	float LookSensitivityX = 1.0f;
 
 	/**
 	 * Multiplicador de sensibilidad para el eje Y (arriba/abajo — Pitch).
 	 * 0.5 = la mitad que el X para evitar mareo. Ajusta al gusto.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera|Input", meta = (ClampMin = "0.1", ClampMax = "5.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Input", meta = (ClampMin = "0.1", ClampMax = "5.0"))
 	float LookSensitivityY = 0.5f;
 
 private:

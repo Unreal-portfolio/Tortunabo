@@ -220,6 +220,49 @@ void ATortugaCharacter::BeginPlay()
 		Cola.IsValid()   ? TEXT("OK") : TEXT("MISSING"),
 		Cabeza.IsValid() ? TEXT("OK") : TEXT("MISSING"));
 
+	// ── Fix de network smoothing para skins en clientes remotos ──────────────
+	// El CMC sólo aplica smoothing al SkeletalMesh (GetMesh()) y sus hijos.
+	// Si los componentes de skin están en CapsuleComponent (root), se mueven con
+	// la posición raw (no suavizada) → lag visual en clientes remotos.
+	// Solución: si están en el root o en el capsule, re-adjuntarlos a GetMesh().
+	// Se preserva el transform relativo para no cambiar posiciones configuradas en BP.
+	{
+		USkeletalMeshComponent* MainMesh = GetMesh();
+		USceneComponent* RootComp = GetRootComponent();
+
+		// Lista de componentes cosméticos que deben ser hijos de GetMesh()
+		TWeakObjectPtr<USceneComponent> CosmeticComps[] = {
+			Pata1, Pata2, Brazo1, Brazo2, Cola, Cabeza
+		};
+
+		for (TWeakObjectPtr<USceneComponent>& WeakComp : CosmeticComps)
+		{
+			if (!WeakComp.IsValid() || !MainMesh)
+			{
+				continue;
+			}
+
+			USceneComponent* Comp = WeakComp.Get();
+			USceneComponent* AttachParent = Comp->GetAttachParent();
+
+			// Si ya está en GetMesh() o en un descendiente suyo, no hacer nada.
+			// Sólo reatamos si está en el root/capsule directamente.
+			if (AttachParent == RootComp || AttachParent == MainMesh->GetAttachParent())
+			{
+				// Guardar el transform relativo antes de re-adjuntar
+				const FTransform SavedRelTransform = Comp->GetRelativeTransform();
+
+				Comp->AttachToComponent(MainMesh,
+					FAttachmentTransformRules::KeepRelativeTransform);
+				Comp->SetRelativeTransform(SavedRelTransform);
+
+				UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' re-adjuntado a GetMesh() "
+					"para network smoothing (era hijo de '%s')."),
+					*Comp->GetName(), AttachParent ? *AttachParent->GetName() : TEXT("null"));
+			}
+		}
+	}
+
 	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown.
 	// 1) Buscar por nombre configurable (KnockdownComponentName).
 	if (KnockdownComponentName != NAME_None)
@@ -608,6 +651,12 @@ void ATortugaCharacter::ApplyInputMappingIfLocal()
 			}
 		}
 	}
+}
+
+void ATortugaCharacter::ReapplyInputMapping()
+{
+	CacheInputAssets();
+	ApplyInputMappingIfLocal();
 }
 
 void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
