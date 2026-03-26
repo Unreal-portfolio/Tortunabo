@@ -1,4 +1,6 @@
 ﻿#include "World/TN_ButtonInteractable.h"
+#include "Components/ChildActorComponent.h"
+#include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 
@@ -29,26 +31,72 @@ void ATN_ButtonInteractable::DeferredInit()
 	// ── Resolver MoveTarget por tag si no está asignado ──────────────────────
 	if (!MoveTarget && MoveTargetTag != NAME_None)
 	{
-		AActor* SearchRoot = GetOwner() ? GetOwner() : this;
+		AActor* OwnerActor = GetOwner();
 
-		// Buscar en los ChildActors del Owner (chunk BP)
-		TArray<AActor*> AttachedActors;
-		SearchRoot->GetAttachedActors(AttachedActors, /*bResetArray=*/ true, /*bRecursivelyIncludeAttachedActors=*/ true);
-		for (AActor* Attached : AttachedActors)
+		if (OwnerActor)
 		{
-			if (Attached && Attached->ActorHasTag(MoveTargetTag))
+			// ── 1. Buscar en los ChildActorComponents del Owner (chunk BP) ──
+			// Esta es la forma más fiable: accede directamente a los componentes
+			// del chunk y sus child actors, sin depender del árbol de attachment
+			// (que puede no estar listo en clientes donde los actores llegan
+			// replicados antes de que el ChildActorComponent los reclame).
+			TArray<UChildActorComponent*> ChildActorComps;
+			OwnerActor->GetComponents<UChildActorComponent>(ChildActorComps);
+			for (UChildActorComponent* CAC : ChildActorComps)
 			{
-				MoveTarget = Attached;
-				UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró MoveTarget por tag '%s' → '%s'"),
-					*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(MoveTarget));
-				break;
+				AActor* ChildActor = CAC ? CAC->GetChildActor() : nullptr;
+				if (ChildActor && ChildActor != this && ChildActor->ActorHasTag(MoveTargetTag))
+				{
+					MoveTarget = ChildActor;
+					break;
+				}
+			}
+
+			// ── 2. Fallback: buscar attached actors (targets no-ChildActor) ──
+			if (!MoveTarget)
+			{
+				TArray<AActor*> AttachedActors;
+				OwnerActor->GetAttachedActors(AttachedActors, /*bResetArray=*/ true,
+					/*bRecursivelyIncludeAttachedActors=*/ true);
+				for (AActor* Attached : AttachedActors)
+				{
+					if (Attached && Attached != this && Attached->ActorHasTag(MoveTargetTag))
+					{
+						MoveTarget = Attached;
+						break;
+					}
+				}
+			}
+
+			// ── 3. Fallback clientes: actores con mismo Owner y tag ──────────
+			// En clientes, el child actor replicado puede no estar attached aún
+			// al chunk pero SÍ tiene Owner replicado correctamente.
+			if (!MoveTarget)
+			{
+				for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+				{
+					AActor* Candidate = *It;
+					if (Candidate && Candidate != this
+						&& Candidate->GetOwner() == OwnerActor
+						&& Candidate->ActorHasTag(MoveTargetTag))
+					{
+						MoveTarget = Candidate;
+						break;
+					}
+				}
 			}
 		}
 
-		if (!MoveTarget)
+		if (MoveTarget)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — MoveTargetTag='%s' no encontrado en Owner '%s'."),
-				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(SearchRoot));
+			UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró MoveTarget por tag '%s' → '%s' (Owner='%s')"),
+				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(MoveTarget), *GetNameSafe(OwnerActor));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — MoveTargetTag='%s' no encontrado en chunk '%s'. "
+				"Verifica que el target tenga ActorTag='%s' y sea un ChildActor del mismo BP."),
+				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(OwnerActor), *MoveTargetTag.ToString());
 		}
 	}
 

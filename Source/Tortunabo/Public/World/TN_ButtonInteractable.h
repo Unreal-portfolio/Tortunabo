@@ -21,8 +21,11 @@
  *
  * Dentro de un chunk spawneado en runtime, MoveTarget (eyedropper) no funciona.
  * Usa MoveTargetTag para que el botón busque en BeginPlay un ChildActor con ese
- * tag dentro del Owner o en su propio actor. Alternativa: asignar MoveTarget
- * directamente desde Blueprint con un Get Child Actor By Tag / por referencia.
+ * tag dentro del chunk BP (Owner). Búsqueda en 3 pasos:
+ *   1. Itera los UChildActorComponents del Owner → comprueba tag en cada ChildActor.
+ *   2. Fallback: GetAttachedActors del Owner (targets no-ChildActor).
+ *   3. Fallback clientes: TActorIterator filtrando por mismo Owner + tag
+ *      (cubre el caso donde el attachment aún no está listo por replicación).
  */
 UCLASS()
 class TORTUNABO_API ATN_ButtonInteractable : public ATN_DirectInteractableBase
@@ -94,7 +97,8 @@ private:
 
 	/**
 	 * Inicialización diferida un tick:
-	 * - Resuelve MoveTarget por tag si es necesario.
+	 * - Resuelve MoveTarget por tag si es necesario (3 estrategias de búsqueda:
+	 *   ChildActorComponents del Owner → attached actors → TActorIterator con mismo Owner).
 	 * - Convierte waypoints relativos a espacio mundo (base = MoveTarget).
 	 * Usa binding a UObject para que se cancele automáticamente si el actor
 	 * es destruido (ej. chunk temporal del ChunkManager).
