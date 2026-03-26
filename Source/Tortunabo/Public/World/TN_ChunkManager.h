@@ -138,8 +138,9 @@ private:
 	// Si ya se spawneó el chunk final.
 	bool bFinalSpawned = false;
 
-	// Chunks cuyo EndTrigger ya se disparó (evita doble-trigger por múltiples jugadores).
-	TSet<TWeakObjectPtr<AActor>> EndTriggeredChunks;
+	// El único EndTrigger activo en cada momento.
+	// Solo el trigger del chunk más adelantado está conectado → imposible doble-spawn.
+	TWeakObjectPtr<UBoxComponent> ActiveEndTrigger;
 
 	// ── Spawning ─────────────────────────────────────────────────────────────
 

@@ -54,6 +54,17 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastForceApplyHelmet(FName HelmId);
 
+	/** ID del skin de personaje activo. NAME_None = aspecto por defecto del BP. */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedSkinId, Category = "Cosmetics")
+	FName EquippedSkinId = NAME_None;
+
+	UFUNCTION()
+	void OnRep_EquippedSkinId();
+
+	/** Fuerza la aplicación del skin en todos los clientes (cubre race condition post-travel). */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastForceApplySkin(FName SkinId);
+
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	float FinishTimeSeconds = -1.f;
 

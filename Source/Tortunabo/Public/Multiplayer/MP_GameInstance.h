@@ -80,6 +80,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool EquipHelmet(FName HelmetId);
 
+	/**
+	 * Equipa el helmet directamente sin verificar si está desbloqueado.
+	 * Usado por las estatuas de cosmético del lobby (donde el helmet siempre está disponible).
+	 * Si HelmetId != NAME_None, lo añade automáticamente a la lista de desbloqueados.
+	 * NAME_None = desequipar (válido siempre).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool ForceEquipHelmet(FName HelmetId);
+
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	FName GetEquippedHelmetId() const;
 
@@ -94,6 +103,20 @@ public:
 	/** Devuelve el DataTable de cascos para lookup externo (TortugaCharacter, widget). */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	UDataTable* GetHelmetDataTable() const { return HelmetDataTable; }
+
+	// ── Skin de personaje ────────────────────────────────────────────────────
+
+	/** Equipa el skin de personaje indicado y lo persiste. NAME_None = sin skin. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool EquipSkin(FName SkinId);
+
+	/** Devuelve el skin equipado actualmente (NAME_None = sin skin). */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	FName GetEquippedSkinId() const;
+
+	/** Devuelve el DataTable de skins para lookup externo. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	UDataTable* GetSkinDataTable() const { return SkinDataTable; }
 
 	/**
 	 * Número de jugadores conectados en el lobby ANTES de hacer ServerTravel al Run.
@@ -144,6 +167,14 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
 	TObjectPtr<UDataTable> HelmetDataTable;
+
+	/**
+	 * DataTable con filas FTN_SkinData (ID, material de cuerpo, icono).
+	 * Asigna DT_Skins aquí en BP_GameInstance → Class Defaults.
+	 * Usado por TortugaCharacter::UpdateSkinVisual para cambiar el material del personaje.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
+	TObjectPtr<UDataTable> SkinDataTable;
 
 	void UpdateStatus(const FString& Message);
 

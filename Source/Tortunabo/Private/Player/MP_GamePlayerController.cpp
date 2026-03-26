@@ -749,6 +749,47 @@ void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName Helm
 	}
 }
 
+void AMP_GamePlayerController::ServerSetEquippedSkin_Implementation(FName SkinId)
+{
+	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		TNPS->EquippedSkinId = SkinId;
+		TNPS->ForceNetUpdate();
+
+		// El listen-server (authority) no recibe OnRep → aplica visualmente de forma directa.
+		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+		{
+			TurtleChar->UpdateSkinVisual(SkinId);
+		}
+	}
+}
+
+void AMP_GamePlayerController::ClientSaveSkin_Implementation(FName SkinId)
+{
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		GI->EquipSkin(SkinId);
+	}
+}
+
+void AMP_GamePlayerController::ClientSaveHelmet_Implementation(FName HelmetId)
+{
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		GI->ForceEquipHelmet(HelmetId);
+	}
+}
+
+void AMP_GamePlayerController::NotifySkinEquipped(FName SkinId)
+{
+	ClientSaveSkin(SkinId);
+}
+
+void AMP_GamePlayerController::NotifyHelmetEquipped(FName HelmetId)
+{
+	ClientSaveHelmet(HelmetId);
+}
+
 void AMP_GamePlayerController::SyncCosmeticsToServer()
 {
 	if (!IsLocalController())
@@ -764,6 +805,8 @@ void AMP_GamePlayerController::SyncCosmeticsToServer()
 		{
 			ServerSetEquippedHelmet(EquippedHelmetId);
 		}
+		// Sincronizar skin (NAME_None = sin skin, siempre enviar)
+		ServerSetEquippedSkin(GI->GetEquippedSkinId());
 	}
 }
 

@@ -19,6 +19,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/AudioComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "Animation/AnimInstance.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
@@ -96,15 +97,8 @@ ATortugaCharacter::ATortugaCharacter()
 	SprintAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Sprint.IA_Sprint")));
 	DropItemAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_DropItem.IA_DropItem")));
 
-	// Emote actions: 10 slots (0-9), override paths in BP_TortugaCharacter Class Defaults.
-	EmoteActions.SetNum(10);
-	for (int32 i = 0; i < 10; i++)
-	{
-		// Asset IA_Emote (slot 0) + IA_Emote1..IA_Emote9
-		const FString EmoteName = (i == 0) ? TEXT("IA_Emote") : FString::Printf(TEXT("IA_Emote%d"), i);
-		EmoteActions[i] = TSoftObjectPtr<UInputAction>(FSoftObjectPath(
-			FString::Printf(TEXT("/Game/Blueprints/Gameplay/Controls/%s.%s"), *EmoteName, *EmoteName)));
-	}
+	// Emote actions: configured in BP_TortugaCharacter Class Defaults.
+	// Array vacío por defecto para que el editor permita añadir/borrar filas individualmente.
 
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
@@ -118,12 +112,12 @@ ATortugaCharacter::ATortugaCharacter()
 	HelmetMeshComp->SetIsReplicated(false); // Solo cosmético, no necesita replicación
 	HelmetMeshComp->SetHiddenInGame(true);
 
-	// Emote sounds: 10 slots (one per emote), assign in BP Class Defaults.
-	EmoteSounds.SetNum(10);
+	// Emote sounds: assign in BP Class Defaults. Array vacío por defecto.
 
-	// Make capsule invisible to camera traces → the spring arm won't collide
-	// with other players' capsules. Each player's own pawn is already auto-ignored.
+	// Make capsule AND mesh invisible to camera traces → the spring arm won't collide
+	// with other players. Each player's own pawn is already auto-ignored.
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 }
 
 void ATortugaCharacter::BeginPlay()
@@ -374,6 +368,21 @@ void ATortugaCharacter::BeginPlay()
 		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Socket 'Sombrero' no encontrado → HelmetMeshComp en GetMesh()."));
 	}
 
+	// Cachear materiales originales de todos los StaticMeshComponents del cuerpo.
+	// Deben guardarse ANTES del timer para que UpdateSkinVisual(NAME_None) pueda restaurarlos.
+	DefaultBodyMaterials.Reset();
+	for (UActorComponent* Comp : GetComponents())
+	{
+		UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp);
+		if (!SMC || SMC == HelmetMeshComp) { continue; }
+
+		TArray<TObjectPtr<UMaterialInterface>>& Mats = DefaultBodyMaterials.Add(SMC);
+		for (int32 i = 0; i < SMC->GetNumMaterials(); ++i)
+		{
+			Mats.Add(SMC->GetMaterial(i));
+		}
+	}
+
 	// Restaurar el casco que lleva este jugador al (re)conectar al mapa.
 	// En clientes, PlayerState llega poco después de BeginPlay → usar timer lazy.
 	GetWorldTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<ATortugaCharacter>(this)]()
@@ -383,6 +392,7 @@ void ATortugaCharacter::BeginPlay()
 			if (const ATN_CoopPlayerState* TNPS = WeakThis->GetPlayerState<ATN_CoopPlayerState>())
 			{
 				WeakThis->UpdateHelmetMesh(TNPS->EquippedHelmetId);
+				WeakThis->UpdateSkinVisual(TNPS->EquippedSkinId);
 			}
 		}
 	});
@@ -566,6 +576,7 @@ void ATortugaCharacter::PawnClientRestart()
 	if (const ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
 	{
 		UpdateHelmetMesh(TNPS->EquippedHelmetId);
+		UpdateSkinVisual(TNPS->EquippedSkinId);
 	}
 
 	// ── Re-añadir HUD widgets al viewport (cliente tras seamless travel) ─────
@@ -595,9 +606,9 @@ void ATortugaCharacter::CacheInputAssets()
 	LoadedSprintAction = SprintAction.LoadSynchronous();
 	LoadedDropItemAction = DropItemAction.LoadSynchronous();
 
-	// Load emote actions (10 slots)
-	LoadedEmoteActions.SetNum(10);
-	for (int32 i = 0; i < EmoteActions.Num() && i < 10; i++)
+	// Load emote actions (tamaño dinámico — configurado en el BP)
+	LoadedEmoteActions.SetNum(EmoteActions.Num());
+	for (int32 i = 0; i < EmoteActions.Num(); i++)
 	{
 		LoadedEmoteActions[i] = EmoteActions[i].LoadSynchronous();
 	}
@@ -1160,6 +1171,7 @@ void ATortugaCharacter::OnRep_PlayerState()
 	if (const ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
 	{
 		UpdateHelmetMesh(TNPS->EquippedHelmetId);
+		UpdateSkinVisual(TNPS->EquippedSkinId);
 	}
 }
 
@@ -1218,6 +1230,80 @@ void ATortugaCharacter::UpdateHelmetMesh(FName HelmetId)
 	HelmetMeshComp->SetHiddenInGame(false);
 
 	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' equipa casco '%s'."), *GetName(), *HelmetId.ToString());
+}
+
+void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
+{
+	// Sin skin equipado → restaurar materiales originales cacheados en BeginPlay.
+	if (SkinId == NAME_None)
+	{
+		for (auto& Pair : DefaultBodyMaterials)
+		{
+			if (UStaticMeshComponent* SMC = Pair.Key.Get())
+			{
+				for (int32 i = 0; i < Pair.Value.Num(); ++i)
+				{
+					SMC->SetMaterial(i, Pair.Value[i]);
+				}
+			}
+		}
+		return;
+	}
+
+	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	const UDataTable* SkinDT = GI ? GI->GetSkinDataTable() : nullptr;
+	if (!SkinDT)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinDataTable no asignado en BP_GameInstance."));
+		return;
+	}
+
+	const FTN_SkinData* Row = SkinDT->FindRow<FTN_SkinData>(SkinId, TEXT("UpdateSkinVisual"));
+	if (!Row || !Row->BodyMaterial)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinId '%s' no encontrado o sin material."), *SkinId.ToString());
+		return;
+	}
+
+	// Componentes que reciben BodyMaterial (cuerpo principal).
+	static const TArray<FName> BodyNames = { TEXT("Body"), TEXT("Body1") };
+
+	// Componentes que reciben SkinMaterial (extremidades / detalles).
+	static const TArray<FName> SkinNames = {
+		TEXT("Mesh1"), TEXT("Mesh2"), TEXT("Mesh3"),
+		TEXT("Mesh4"), TEXT("Mesh5"), TEXT("Mesh13")
+	};
+
+	int32 NumApplied = 0;
+	for (UActorComponent* Comp : GetComponents())
+	{
+		UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp);
+		if (!SMC || SMC == HelmetMeshComp) { continue; }
+
+		const FName CompName = SMC->GetFName();
+
+		UMaterialInterface* MatToApply = nullptr;
+		if (BodyNames.Contains(CompName) && Row->BodyMaterial)
+		{
+			MatToApply = Row->BodyMaterial;
+		}
+		else if (SkinNames.Contains(CompName) && Row->SkinMaterial)
+		{
+			MatToApply = Row->SkinMaterial;
+		}
+
+		if (!MatToApply) { continue; }
+
+		const int32 NumMats = SMC->GetNumMaterials();
+		for (int32 i = 0; i < NumMats; ++i)
+		{
+			SMC->SetMaterial(i, MatToApply);
+		}
+		++NumApplied;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' skin '%s' aplicado a %d componentes."),
+		*GetName(), *SkinId.ToString(), NumApplied);
 }
 
 // ── Replication ────────────────────────────────────────────────────────────────

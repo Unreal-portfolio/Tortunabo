@@ -92,6 +92,12 @@ public:
 	UFUNCTION(Client, Unreliable)
 	void ClientReceiveVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor);
 
+	/** Notifica al cliente dueño que guarde el SkinId. Llamado desde estatuas del lobby (servidor). */
+	void NotifySkinEquipped(FName SkinId);
+
+	/** Notifica al cliente dueño que guarde el HelmetId. Llamado desde estatuas del lobby (servidor). */
+	void NotifyHelmetEquipped(FName HelmetId);
+
 	UFUNCTION(BlueprintPure, Category = "QuickChat")
 	bool ResolveQuickChatDisplayData(const FTN_QuickChatEntry& Entry, FText& OutSenderName, FText& OutMessageText, UTexture2D*& OutIcon) const;
 
@@ -174,6 +180,18 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetEquippedHelmet(FName HelmetId);
+
+	/** Server RPC: aplica el skin de personaje en el PlayerState (llamado desde SyncCosmeticsToServer). */
+	UFUNCTION(Server, Reliable)
+	void ServerSetEquippedSkin(FName SkinId);
+
+	/** Client RPC: guarda SkinId en GameInstance del cliente dueño. */
+	UFUNCTION(Client, Reliable)
+	void ClientSaveSkin(FName SkinId);
+
+	/** Client RPC: guarda HelmetId en GameInstance del cliente dueño. */
+	UFUNCTION(Client, Reliable)
+	void ClientSaveHelmet(FName HelmetId);
 
 	void SyncCosmeticsToServer();
 

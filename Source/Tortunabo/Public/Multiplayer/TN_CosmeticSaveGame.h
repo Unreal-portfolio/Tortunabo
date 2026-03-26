@@ -15,5 +15,9 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
 	FName EquippedHelmetId = NAME_None;
+
+	/** ID del skin de personaje activo. NAME_None = aspecto por defecto. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
+	FName EquippedSkinId = NAME_None;
 };
 

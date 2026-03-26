@@ -228,6 +228,38 @@ FName UMP_GameInstance::GetEquippedHelmetId() const
 	return CosmeticProfile ? CosmeticProfile->EquippedHelmetId : NAME_None;
 }
 
+bool UMP_GameInstance::ForceEquipHelmet(FName HelmetId)
+{
+	if (!CosmeticProfile)
+	{
+		return false;
+	}
+	// Auto-desbloquear si viene de una estatua de lobby
+	if (HelmetId != NAME_None)
+	{
+		UnlockHelmet(HelmetId);
+	}
+	CosmeticProfile->EquippedHelmetId = HelmetId; // NAME_None = desequipar
+	SaveCosmeticProfile();
+	return true;
+}
+
+bool UMP_GameInstance::EquipSkin(FName SkinId)
+{
+	if (!CosmeticProfile)
+	{
+		return false;
+	}
+	CosmeticProfile->EquippedSkinId = SkinId; // NAME_None = sin skin (válido)
+	SaveCosmeticProfile();
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedSkinId() const
+{
+	return CosmeticProfile ? CosmeticProfile->EquippedSkinId : NAME_None;
+}
+
 FName UMP_GameInstance::OpenHelmetCrate()
 {
 	if (HelmetCrateTable.Num() == 0)

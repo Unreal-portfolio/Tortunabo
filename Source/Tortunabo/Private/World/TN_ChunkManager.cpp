@@ -171,13 +171,22 @@ void ATN_ChunkManager::SpawnNextChunk()
 
 	LastSelectedIndex = SelectedIndex;
 
-	// Registrar el EndTrigger de este chunk para detectar el paso del jugador
+	// Desconectar el trigger anterior y conectar solo el del nuevo chunk.
+	// Tener un único trigger activo garantiza que un solo SpawnNextChunk se llame
+	// por chunk cruzado, independientemente de cuántos jugadores haya.
+	if (ActiveEndTrigger.IsValid())
+	{
+		ActiveEndTrigger->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
+	}
+
 	if (UBoxComponent* EndTrigger = FindBoxComponentByName(SpawnedChunk, TEXT("EndTrigger")))
 	{
 		EndTrigger->OnComponentBeginOverlap.AddDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
+		ActiveEndTrigger = EndTrigger;
 	}
 	else
 	{
+		ActiveEndTrigger = nullptr;
 		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene BoxComponent 'EndTrigger'. "
 			"El jugador no podrá avanzar."), *GetNameSafe(SpawnedChunk));
 	}
@@ -250,58 +259,57 @@ AActor* ATN_ChunkManager::SpawnAlignedChunk(TSubclassOf<AActor> ChunkClass, cons
 		return nullptr;
 	}
 
-	// ── Paso 1: Spawn diferido en identidad ───────────────────────────────────
-	// SpawnActorDeferred no llama a BeginPlay todavía. El actor existe con todos
-	// sus componentes accesibles, lo que nos permite leer el InSocket y configurar
-	// la replicación antes de que sea visible para nadie.
-	AActor* Chunk = World->SpawnActorDeferred<AActor>(
-		ChunkClass,
-		FTransform::Identity,
-		/*Owner=*/nullptr,
-		/*Instigator=*/nullptr,
-		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
+	// ── Paso 1: Spawn en Identity (replicación desactivada por ahora) ─────────
+	// Al spawnar en Identity el Construction Script del Blueprint se ejecuta de
+	// inmediato: InSocket/OutSocket quedan con sus transforms reales del editor.
+	// NO leemos del CDO — sus transforms SCS son siempre (0,0,0) hasta que el
+	// Construction Script corre, por lo que el enfoque CDO producía posiciones erróneas.
+	AActor* Chunk = World->SpawnActor<AActor>(ChunkClass, FTransform::Identity, Params);
 	if (!Chunk)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] SpawnActorDeferred falló para '%s'."),
+		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] SpawnActor falló para '%s'."),
 			*ChunkClass->GetName());
 		return nullptr;
 	}
 
-	// ── Paso 2: Activar replicación ANTES de FinishSpawning ──────────────────
-	// Con bReplicates=true establecido antes de FinishSpawning, UE registra el actor
-	// como replicado desde el primer momento y lo envía a todos los clientes
-	// (presentes y futuros) en su posición final — sin teleport visible.
-	Chunk->SetReplicates(true);
-	Chunk->SetReplicateMovement(false); // Los chunks son estáticos
-
-	// ── Paso 3: Calcular transform final (InSocket → TargetTransform) ─────────
-	// Con el actor en identidad, world transform del InSocket == su offset local.
+	// ── Paso 2: Leer el InSocket REAL del chunk ya spawneado ─────────────────
+	// Con el actor en Identity, GetComponentTransform() == transform relativo al root.
+	// FinalTransform = InSocketWorld.Inverse() * TargetTransform
+	// → hace que InSocket.World == TargetTransform tras el teleport.
 	FTransform FinalTransform = TargetTransform; // fallback si no hay InSocket
 
 	if (USceneComponent* InSocket = FindSceneComponentByName(Chunk, TEXT("InSocket")))
 	{
-		// Actor en identidad → ComponentTransform == offset local respecto al actor root
-		const FTransform InSocketLocal = InSocket->GetComponentTransform();
-		FinalTransform = InSocketLocal.Inverse() * TargetTransform;
+		const FTransform InSocketWorld = InSocket->GetComponentTransform();
+		FinalTransform = InSocketWorld.Inverse() * TargetTransform;
 
 		if (bDebugDrawSockets)
 		{
-			// Dibujar dónde quedará el InSocket en el mundo (= TargetTransform.Location)
 			DrawDebugSphere(World, TargetTransform.GetLocation(), 25.f, 8,
 				FColor::Red, false, 10.f);
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] '%s' no tiene 'InSocket'. "
+		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene 'InSocket'. "
 			"Se usará la posición del actor como entrada."), *ChunkClass->GetName());
 	}
 
-	// ── Paso 4: FinishSpawning con el transform correcto ─────────────────────
-	// BeginPlay se ejecuta aquí. El actor aparece en el servidor y en todos los
-	// clientes directamente en FinalTransform — cero teleport.
-	Chunk->FinishSpawning(FinalTransform);
+	// ── Paso 3: Teleportar al transform final ────────────────────────────────
+	// TeleportPhysics evita recomputar la física (chunk estático).
+	// Después de este SetActorTransform, OutSocket->GetComponentTransform() ya devuelve
+	// la posición world correcta para encadenar el siguiente chunk.
+	Chunk->SetActorTransform(FinalTransform, false, nullptr, ETeleportType::TeleportPhysics);
+
+	// ── Paso 4: Activar replicación DESPUÉS del teleport ─────────────────────
+	// La red no ha enviado este actor a los clientes todavía (el tick de red ocurre
+	// al menos un frame después). Los clientes recibirán el actor ya en la posición
+	// definitiva — nunca verán la posición Identity temporal.
+	Chunk->SetReplicates(true);
+	Chunk->SetReplicateMovement(false); // chunks son estáticos
 
 	return Chunk;
 }
@@ -328,7 +336,6 @@ void ATN_ChunkManager::CleanupChunks()
 
 		if (OldestChunk.IsValid())
 		{
-			EndTriggeredChunks.Remove(OldestChunk);
 			OldestChunk->Destroy();
 		}
 	}
@@ -359,19 +366,19 @@ void ATN_ChunkManager::OnChunkEndOverlap(
 	}
 
 	// El chunk que contiene este EndTrigger
+	// (no hace falta dedup: solo hay un trigger activo a la vez)
 	AActor* OwnerChunk = OverlappedComp ? OverlappedComp->GetOwner() : nullptr;
 	if (!OwnerChunk)
 	{
 		return;
 	}
 
-	// Evitar doble-trigger: en multijugador varios jugadores pueden pasar por el mismo chunk
-	TWeakObjectPtr<AActor> WeakChunk(OwnerChunk);
-	if (EndTriggeredChunks.Contains(WeakChunk))
+	// Desconectar inmediatamente para que ningún otro jugador vuelva a dispararlo.
+	if (ActiveEndTrigger.IsValid())
 	{
-		return;
+		ActiveEndTrigger->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
+		ActiveEndTrigger = nullptr;
 	}
-	EndTriggeredChunks.Add(WeakChunk);
 
 	// Avanzar el contador de progreso
 	++PassedChunkCount;

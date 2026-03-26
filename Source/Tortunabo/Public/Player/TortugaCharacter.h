@@ -361,6 +361,13 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UInputAction>> LoadedEmoteActions;
 
+	/**
+	 * Materiales originales de cada StaticMeshComponent del cuerpo, cacheados en BeginPlay.
+	 * Usados para restaurar el aspecto por defecto cuando se desequipa un skin (NAME_None).
+	 * Transient: se recalcula cada vez que spawnea el pawn.
+	 */
+	TMap<TWeakObjectPtr<UStaticMeshComponent>, TArray<TObjectPtr<UMaterialInterface>>> DefaultBodyMaterials;
+
 	// ── Leg animation state (cosmetic, local-only, never replicated) ──────────
 	float LegPhaseAccumulator    = 0.f;   // cycles [0,1)
 	float LegAmplitudeMultiplier = 0.f;   // [0,1] fade envelope
@@ -626,6 +633,16 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	void UpdateHelmetMesh(FName HelmetId);
+
+	/**
+	 * Aplica el skin de personaje indicado.
+	 * Busca FTN_SkinData en DT_Skins (vía MP_GameInstance::GetSkinDataTable) y aplica
+	 * el BodyMaterial en todos los componentes del cuerpo (Cuerpo, Pata1, Pata2, Cola, Cabeza).
+	 * SkinId == NAME_None → restaura los materiales por defecto del BP.
+	 * Implementable en BP para personalizar el comportamiento visual.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	void UpdateSkinVisual(FName SkinId);
 
 	// ── Revive system (DBNO) ─────────────────────────────────────────────────
 

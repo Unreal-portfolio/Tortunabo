@@ -1,6 +1,8 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
 #include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
+#include "Engine/World.h"
 
 ATN_CoopPlayerState::ATN_CoopPlayerState()
 {
@@ -44,9 +46,58 @@ void ATN_CoopPlayerState::OnRep_EquippedHelmetId()
 void ATN_CoopPlayerState::MulticastForceApplyHelmet_Implementation(FName HelmId)
 {
 	EquippedHelmetId = HelmId;
+
 	if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
 	{
 		TurtleChar->UpdateHelmetMesh(HelmId);
+	}
+	else if (UWorld* World = GetWorld())
+	{
+		// Pawn no está disponible aún (race condition post-seamless-travel).
+		// Reintentamos un tick después — para entonces el pawn ya está replicado.
+		TWeakObjectPtr<ATN_CoopPlayerState> WeakThis(this);
+		World->GetTimerManager().SetTimerForNextTick([WeakThis, HelmId]()
+		{
+			if (WeakThis.IsValid())
+			{
+				if (ATortugaCharacter* TurtleChar2 = Cast<ATortugaCharacter>(WeakThis->GetPawn()))
+				{
+					TurtleChar2->UpdateHelmetMesh(HelmId);
+				}
+			}
+		});
+	}
+}
+
+void ATN_CoopPlayerState::OnRep_EquippedSkinId()
+{
+	if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+	{
+		TurtleChar->UpdateSkinVisual(EquippedSkinId);
+	}
+}
+
+void ATN_CoopPlayerState::MulticastForceApplySkin_Implementation(FName SkinId)
+{
+	EquippedSkinId = SkinId;
+
+	if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+	{
+		TurtleChar->UpdateSkinVisual(SkinId);
+	}
+	else if (UWorld* World = GetWorld())
+	{
+		TWeakObjectPtr<ATN_CoopPlayerState> WeakThis(this);
+		World->GetTimerManager().SetTimerForNextTick([WeakThis, SkinId]()
+		{
+			if (WeakThis.IsValid())
+			{
+				if (ATortugaCharacter* TurtleChar2 = Cast<ATortugaCharacter>(WeakThis->GetPawn()))
+				{
+					TurtleChar2->UpdateSkinVisual(SkinId);
+				}
+			}
+		});
 	}
 }
 
@@ -61,6 +112,7 @@ void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME_CONDITION(ATN_CoopPlayerState, DBNOBleedoutTimeRemaining, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ATN_CoopPlayerState, DeathZoneTimeRemaining, COND_OwnerOnly);
 	DOREPLIFETIME(ATN_CoopPlayerState, EquippedHelmetId);
+	DOREPLIFETIME(ATN_CoopPlayerState, EquippedSkinId);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishTimeSeconds);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishRank);
 	DOREPLIFETIME(ATN_CoopPlayerState, bIsEliminated);
