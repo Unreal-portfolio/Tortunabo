@@ -425,6 +425,9 @@ void ATN_HQGameMode::PostSeamlessTravel()
 
 		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 		{
+			const FName SavedHelmet = TNPS->EquippedHelmetId;
+			const FName SavedSkin   = TNPS->EquippedSkinId;
+
 			TNPS->bIsAlive = true;
 			TNPS->bHasFinishedRun = false;
 			TNPS->bIsDBNO = false;
@@ -434,9 +437,23 @@ void ATN_HQGameMode::PostSeamlessTravel()
 			TNPS->FinishTimeSeconds = -1.f;
 			TNPS->DeathZoneTimeRemaining = -1.f;
 			TNPS->bIsInReadyZone = false;
-		}
 
-		EnsurePlayerSpawned(PC);
+			EnsurePlayerSpawned(PC);
+
+			// Forzar aplicación del helmet y skin en todos los clientes.
+			// El Multicast incluye un retry deferred para cubrir la race condition
+			// donde el pawn aún no ha replicado en los clientes cuando el RPC llega.
+			if (SavedHelmet != NAME_None)
+			{
+				TNPS->MulticastForceApplyHelmet(SavedHelmet);
+			}
+			// Skin siempre se fuerza (NAME_None = sin skin, también válido de restaurar)
+			TNPS->MulticastForceApplySkin(SavedSkin);
+		}
+		else
+		{
+			EnsurePlayerSpawned(PC);
+		}
 	}
 
 	// Actualizar conteo en el GameState

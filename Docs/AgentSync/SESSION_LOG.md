@@ -1,5 +1,104 @@
 ﻿# SESSION LOG
 
+## 2026-03-26 (Part 2) — Fix: Child Actors en chunks se posicionan incorrectamente
+
+### Causa raíz
+`SpawnAlignedChunk` spawneaba el chunk en `FTransform::Identity` (origen del mundo) y luego lo teleportaba con `SetActorTransform`. Los **Child Actor Components** creaban sus actores hijos durante el spawn, **antes del teleport**. Cualquier actor hijo que cacheaba su posición en `BeginPlay` (SeagullActor → `InitialLocation`, ButtonInteractable → waypoints, ItemSpawnZone → posiciones de spawn) usaba coordenadas del origen en vez de la posición final del chunk.
+
+### Solución: spawn en posición final
+Refactorizado `SpawnAlignedChunk` con un enfoque de **2 fases**:
+1. **Calcular primero**: La primera vez que se spawnea una clase, se crea un actor temporal en Identity solo para leer el InSocket. El offset se cachea en `InSocketCache` (TMap por clase) → nunca se re-calcula.
+2. **Spawnar en posición final**: El chunk real se spawnea directamente en `InSocket.Inverse() * TargetTransform`. `BeginPlay` de TODOS los actores y Child Actors corre en la posición world correcta.
+
+### Cambios por archivo
+
+#### `TN_ChunkManager.h/.cpp`
+- Nuevo `TMap<UClass*, FTransform> InSocketCache` y `GetOrComputeInSocketTransform()`.
+- `SpawnAlignedChunk` ya no spawnea en Identity+teleport. Usa el caché para calcular la posición final y spawnea el chunk real directamente ahí.
+
+#### `TN_SeagullActor.cpp`
+- `BeginPlay`: `InitialLocation = GetActorLocation()` + `MulticastSyncInitialPosition()` diferidos un tick con `SetTimerForNextTick` para garantizar que el ChildActorComponent ha terminado de posicionar.
+
+#### `TN_ButtonInteractable.cpp`
+- `BeginPlay`: Toda la lógica de resolución de `MoveTargetTag` y conversión de `bUseRelativeWaypoints` diferida un tick. Asegura que todos los Child Actors hermanos existen y están en su posición final.
+- Añadido `MoveTarget->SetReplicateMovement(true)` automático al encontrar el target por tag.
+
+#### `TN_ItemSpawnZone.h/.cpp`
+- Extraída lógica de spawn a nuevo método `SpawnItems()`.
+- `BeginPlay` difiere `SpawnItems()` un tick para que `SpawnBox->GetComponentTransform()` refleje la posición final.
+
+### Archivos modificados
+- `Source/Tortunabo/Public/World/TN_ChunkManager.h`
+- `Source/Tortunabo/Private/World/TN_ChunkManager.cpp`
+- `Source/Tortunabo/Private/World/TN_SeagullActor.cpp`
+- `Source/Tortunabo/Private/World/TN_ButtonInteractable.cpp`
+- `Source/Tortunabo/Public/World/TN_ItemSpawnZone.h`
+- `Source/Tortunabo/Private/World/TN_ItemSpawnZone.cpp`
+
+---
+
+## 2026-03-26 — Fix: Espectador, Cosméticos, Chunks, Build
+
+### Problemas resueltos
+
+#### 1. Espectador no funciona al terminar la carrera
+- **Causa raíz**: `SpectateByDirection` tenía `if (LocalPS->bIsAlive && !LocalPS->bIsEliminated) return;`. Los jugadores que terminaron (`MarkPlayerFinished`) tienen `bIsAlive=true` y `bIsEliminated=false` → la condición bloqueaba el especteo.
+- **Fix**: Añadido `&& !LocalPS->bHasFinishedRun` al check. Ahora finishers, muertos y eliminados pueden espectear.
+- **Archivos**: `MP_GamePlayerController.cpp`
+
+#### 2. Skin/casco del cliente no aparece al entrar al nivel
+- **Causa raíz**: `TN_HQGameMode::PostSeamlessTravel` NO forzaba cosméticos vía Multicast (a diferencia de `TN_RunGameMode`). Al volver del Run al HQ, los clientes no veían skins/cascos de otros jugadores.
+- **Fix A**: Añadido `MulticastForceApplyHelmet` + `MulticastForceApplySkin` en `TN_HQGameMode::PostSeamlessTravel`, replicando el patrón de `TN_RunGameMode::PostSeamlessTravel`.
+- **Fix B**: El retry de `MulticastForceApply*` era de 1 solo `SetTimerForNextTick`. Si el pawn tardaba >1 frame en estar disponible, el cosmético se perdía. Cambiado a un timer repetitivo: 5 reintentos a 0.1s cada uno.
+- **Archivos**: `TN_HQGameMode.cpp`, `TN_CoopPlayerState.cpp`
+
+#### 3. DeathZone, FinishLine, Gaviota, etc. no visibles en chunks
+- **Causa raíz**: `TN_DeathZoneVolume` heredaba de `ATriggerVolume` y `TN_FinishLineVolume` de `ATriggerBox`. Ambos heredan de `ABrush` → **no se pueden colocar como componentes hijo dentro de un Blueprint Actor** (chunk).
+- **Fix**: Refactorizados a `AActor` + `UBoxComponent`, siguiendo el patrón de `TN_SlowZoneVolume`. Overlap events migrados de `OnActorBeginOverlap` a `OnComponentBeginOverlap`.
+- **Archivos**: `TN_DeathZoneVolume.h/.cpp`, `TN_FinishLineVolume.h/.cpp`
+
+#### 4. ButtonInteractable y SeagullActor incompatibles con chunks
+- `TN_ButtonInteractable.MoveTarget` era `EditInstanceOnly` (eyedropper de nivel). Dentro de un chunk spawneado en runtime no hay actores de nivel para referenciar.
+  - Añadido `MoveTargetTag` (FName): en BeginPlay, si MoveTarget es null, busca en el Owner (chunk BP) un actor hijo con ese ActorTag.
+  - Añadido `bUseRelativeWaypoints`: si true, los waypoints se interpretan como offsets relativos al transform del botón y se convierten a mundo en BeginPlay.
+  - `MoveTarget` cambiado a `EditAnywhere`.
+- `TN_SeagullActor`: todas las propiedades cambiadas de `EditInstanceOnly` a `EditAnywhere + BlueprintReadWrite` para que sean configurables en Class Defaults de BP hijo (necesario para chunks).
+- **Archivos**: `TN_ButtonInteractable.h/.cpp`, `TN_SeagullActor.h`
+
+#### 5. Mapas no incluidos correctamente en la build
+- `DefaultGame.ini` tenía `+MapsToCook=(FilePath="/Engine/Maps/Templates/OpenWorld")` (template espurio de UE).
+- Eliminado y añadidos los 4 mapas del juego: `LVL_Menu`, `LVL_HQ`, `LVL_Run`, `LVL_Transition`.
+- **Archivos**: `Config/DefaultGame.ini`
+
+### Verificación de compatibilidad chunk de todos los actores del mundo
+| Actor | Base class | Compatible con chunks | Notas |
+|-------|-----------|----------------------|-------|
+| `TN_DeathZoneVolume` | `AActor` ✅ | Sí (refactorizado) | Antes: `ATriggerVolume` (ABrush) |
+| `TN_FinishLineVolume` | `AActor` ✅ | Sí (refactorizado) | Antes: `ATriggerBox` (ABrush) |
+| `TN_SlowZoneVolume` | `AActor` ✅ | Sí | Ya usaba UBoxComponent |
+| `TN_SeagullActor` | `AActor` ✅ | Sí | Props ahora EditAnywhere |
+| `TN_ItemSpawnZone` | `AActor` ✅ | Sí | Server-only spawn, pickups replican |
+| `TN_ButtonInteractable` | `TN_InteractableBase` → `AActor` ✅ | Sí (mejorado) | Nuevo: MoveTargetTag + relative waypoints |
+| `TN_PufferFishActor` | `TN_ThrowableItemActor` → `AActor` ✅ | Sí | Sin cambios necesarios |
+| `TN_PickupInteractableBase` | `TN_InteractableBase` → `AActor` ✅ | Sí | Sin cambios necesarios |
+| `TN_RescuePickup` | `TN_InteractableBase` → `AActor` ✅ | Sí | Spawneado dinámicamente |
+| `TN_SkinStatueActor` | `TN_InteractableBase` → `AActor` ✅ | Sí | Solo lobby, no en chunks |
+
+### Archivos modificados
+- `Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp`
+- `Source/Tortunabo/Private/Core/TN_CoopPlayerState.cpp`
+- `Source/Tortunabo/Private/Lobby/TN_HQGameMode.cpp`
+- `Source/Tortunabo/Public/World/TN_DeathZoneVolume.h`
+- `Source/Tortunabo/Private/World/TN_DeathZoneVolume.cpp`
+- `Source/Tortunabo/Public/World/TN_FinishLineVolume.h`
+- `Source/Tortunabo/Private/World/TN_FinishLineVolume.cpp`
+- `Source/Tortunabo/Public/World/TN_ButtonInteractable.h`
+- `Source/Tortunabo/Private/World/TN_ButtonInteractable.cpp`
+- `Source/Tortunabo/Public/World/TN_SeagullActor.h`
+- `Config/DefaultGame.ini`
+
+---
+
 ## 2026-03-24 — Fix: HUD widgets no aparecen tras seamless travel
 
 ### Causa raíz

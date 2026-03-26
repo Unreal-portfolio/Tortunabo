@@ -55,38 +55,38 @@ protected:
 	// ── Propiedades configurables ─────────────────────────────────────────────
 
 	/** Rango total de movimiento a ambos lados del origen (cm). */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Movement")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Movement")
 	float MoveRange = 500.f;
 
 	/** Velocidad de desplazamiento lateral (cm/s). */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Movement")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Movement")
 	float MoveSpeed = 200.f;
 
 	/** Altura de reposo del cubo sobre el root (cm). */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Strike")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Strike")
 	float SeagullRestHeight = 800.f;
 
 	/** Tiempo para bajar completamente al objetivo (s). Cuanto menor, más rápido. */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Strike",
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Strike",
 		meta = (ClampMin = "0.01"))
 	float StrikeDuration = 0.12f;
 
 	/** Tiempo para volver a subir (s). */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Strike",
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Strike",
 		meta = (ClampMin = "0.01"))
 	float RiseDuration = 0.5f;
 
 	/** Segundos que un jugador debe estar en la zona antes de que la gaviota pique. */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Strike",
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Strike",
 		meta = (ClampMin = "0.1"))
 	float DangerTimeToStrike = 1.f;
 
 	/** Radio de la cápsula de peligro (cm). */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Zone")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Zone")
 	float DangerCapsuleRadius = 150.f;
 
 	/** Semialtura de la cápsula de peligro (cm). */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seagull|Zone")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Seagull|Zone")
 	float DangerCapsuleHalfHeight = 100.f;
 
 private:
@@ -136,4 +136,7 @@ private:
 	UFUNCTION()
 	void OnDangerEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	/** Captura posición inicial (diferida un tick para ChildActorComponent). */
+	void DeferredCaptureInitialLocation();
 };

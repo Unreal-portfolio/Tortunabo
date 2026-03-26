@@ -178,6 +178,19 @@ private:
 	/** Busca un UBoxComponent hijo por nombre exacto. */
 	static UBoxComponent* FindBoxComponentByName(AActor* Actor, FName Name);
 
+	/**
+	 * Caché de InSocket transform por clase de chunk.
+	 * El offset de InSocket es fijo para cada BP — no cambia entre instancias.
+	 * Calculamos una vez spawneando un temporal y reutilizamos para el resto.
+	 */
+	TMap<UClass*, FTransform> InSocketCache;
+
+	/**
+	 * Obtiene o calcula el InSocket relative transform para una clase de chunk.
+	 * Si no está en caché, spawnea un temporal en Identity para leerlo.
+	 */
+	FTransform GetOrComputeInSocketTransform(TSubclassOf<AActor> ChunkClass);
+
 	// ── Callbacks de overlap ─────────────────────────────────────────────────
 
 	UFUNCTION()

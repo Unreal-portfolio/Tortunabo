@@ -1,14 +1,33 @@
 #include "World/TN_FinishLineVolume.h"
 #include "Game/TN_RunGameMode.h"
+#include "Components/BoxComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
 ATN_FinishLineVolume::ATN_FinishLineVolume()
 {
-	OnActorBeginOverlap.AddDynamic(this, &ATN_FinishLineVolume::OnFinishBeginOverlap);
+	PrimaryActorTick.bCanEverTick = false;
+
+	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
+	SetRootComponent(TriggerBox);
+	TriggerBox->SetBoxExtent(FVector(200.f, 200.f, 200.f));
+	TriggerBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	TriggerBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+	TriggerBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	TriggerBox->SetGenerateOverlapEvents(true);
+	TriggerBox->SetHiddenInGame(true);
+
+#if WITH_EDITORONLY_DATA
+	TriggerBox->ShapeColor = FColor::Green;
+	TriggerBox->SetLineThickness(2.f);
+#endif
+
+	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_FinishLineVolume::OnBoxBeginOverlap);
 }
 
-void ATN_FinishLineVolume::OnFinishBeginOverlap(AActor* OverlappedActor, AActor* OtherActor)
+void ATN_FinishLineVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+	bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (!HasAuthority() || !OtherActor)
 	{

@@ -2,17 +2,36 @@
 #include "Game/TN_RunGameMode.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
+#include "Components/BoxComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "TimerManager.h"
 
 ATN_DeathZoneVolume::ATN_DeathZoneVolume()
 {
-	OnActorBeginOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnZoneBeginOverlap);
-	OnActorEndOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnZoneEndOverlap);
+	PrimaryActorTick.bCanEverTick = false;
+
+	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
+	SetRootComponent(TriggerBox);
+	TriggerBox->SetBoxExtent(FVector(200.f, 200.f, 200.f));
+	TriggerBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	TriggerBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+	TriggerBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	TriggerBox->SetGenerateOverlapEvents(true);
+	TriggerBox->SetHiddenInGame(true);
+
+#if WITH_EDITORONLY_DATA
+	TriggerBox->ShapeColor = FColor::Red;
+	TriggerBox->SetLineThickness(2.f);
+#endif
+
+	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnBoxBeginOverlap);
+	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnBoxEndOverlap);
 }
 
-void ATN_DeathZoneVolume::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* OtherActor)
+void ATN_DeathZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+	bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (!HasAuthority() || !OtherActor)
 	{
@@ -56,7 +75,8 @@ void ATN_DeathZoneVolume::OnZoneBeginOverlap(AActor* OverlappedActor, AActor* Ot
 	}
 }
 
-void ATN_DeathZoneVolume::OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor)
+void ATN_DeathZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
 	if (!HasAuthority() || !OtherActor)
 	{
@@ -191,4 +211,3 @@ ATN_RunGameMode* ATN_DeathZoneVolume::ResolveRunGameMode() const
 {
 	return GetWorld() ? GetWorld()->GetAuthGameMode<ATN_RunGameMode>() : nullptr;
 }
-

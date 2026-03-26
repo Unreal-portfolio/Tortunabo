@@ -1,10 +1,82 @@
 ﻿#include "World/TN_ButtonInteractable.h"
 #include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
 
 ATN_ButtonInteractable::ATN_ButtonInteractable()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PromptText = FText::FromString(TEXT("Activar"));
+}
+
+void ATN_ButtonInteractable::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// ── Defer inicialización dependiente de posición/siblings a next tick ────
+	// ChildActorComponents crean sus hijos durante el SCS, pero el orden de
+	// inicialización entre hermanos no está garantizado. Un tick de delay asegura
+	// que todos los Child Actors del chunk existen y están en su posición final.
+	//
+	// IMPORTANTE: Usar binding a UObject (no lambda) para que EndPlay→
+	// ClearAllTimersForObject(this) cancele el timer si el actor es destruido
+	// antes del tick (ej. chunk temporal del ChunkManager::GetOrComputeInSocketTransform).
+	GetWorldTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateUObject(this, &ATN_ButtonInteractable::DeferredInit));
+}
+
+void ATN_ButtonInteractable::DeferredInit()
+{
+	// ── Resolver MoveTarget por tag si no está asignado ──────────────────────
+	if (!MoveTarget && MoveTargetTag != NAME_None)
+	{
+		AActor* SearchRoot = GetOwner() ? GetOwner() : this;
+
+		// Buscar en los ChildActors del Owner (chunk BP)
+		TArray<AActor*> AttachedActors;
+		SearchRoot->GetAttachedActors(AttachedActors, /*bResetArray=*/ true, /*bRecursivelyIncludeAttachedActors=*/ true);
+		for (AActor* Attached : AttachedActors)
+		{
+			if (Attached && Attached->ActorHasTag(MoveTargetTag))
+			{
+				MoveTarget = Attached;
+				UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró MoveTarget por tag '%s' → '%s'"),
+					*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(MoveTarget));
+				break;
+			}
+		}
+
+		if (!MoveTarget)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — MoveTargetTag='%s' no encontrado en Owner '%s'."),
+				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(SearchRoot));
+		}
+	}
+
+	// ── Convertir waypoints relativos a espacio mundo ────────────────────────
+	// Los waypoints se interpretan como offsets relativos al MOVETARGET, no al
+	// botón. Esto garantiza que la posición destino es correcta incluso cuando
+	// el botón y el target están en posiciones distintas dentro del chunk.
+	// Ambos (servidor y cliente) ejecutan esta conversión con el mismo MoveTarget
+	// local → los waypoints en mundo coinciden → la interpolación local en Tick
+	// produce el mismo resultado visual en ambos lados.
+	if (bUseRelativeWaypoints && Waypoints.Num() > 0)
+	{
+		const FTransform BaseTransform = MoveTarget
+			? MoveTarget->GetActorTransform()
+			: GetActorTransform(); // Fallback al botón si no hay MoveTarget
+
+		if (!MoveTarget)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — bUseRelativeWaypoints activo pero sin MoveTarget. "
+				"Usando transform del botón como base (posición destino puede ser incorrecta)."), *GetName());
+		}
+
+		for (FTransform& WP : Waypoints)
+		{
+			WP = WP * BaseTransform;
+		}
+		bUseRelativeWaypoints = false;
+	}
 }
 
 void ATN_ButtonInteractable::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -32,9 +104,18 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 		return;
 	}
 
+	// Despertar de dormancy para que CurrentWaypointIndex replique a clientes.
+	// ATN_InteractableBase usa DORM_DormantAll → sin esto, los cambios de
+	// propiedades nunca llegan a clientes remotos. FlushNetDormancy transiciona
+	// a DORM_DormantPartial (despierta para este cambio y futuros).
+	FlushNetDormancy();
+
 	// Avanzar al siguiente waypoint (wrap around)
 	CurrentWaypointIndex = (CurrentWaypointIndex + 1) % Waypoints.Num();
 	bIsMoving = true;
+
+	// Forzar replicación inmediata del nuevo índice
+	ForceNetUpdate();
 
 	MulticastPlayButtonFeedback();
 

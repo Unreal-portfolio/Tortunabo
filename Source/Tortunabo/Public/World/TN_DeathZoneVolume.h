@@ -1,14 +1,24 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/TriggerVolume.h"
+#include "GameFramework/Actor.h"
 #include "TN_DeathZoneVolume.generated.h"
 
+class UBoxComponent;
 class APlayerController;
 class ATN_RunGameMode;
 
-UCLASS()
-class TORTUNABO_API ATN_DeathZoneVolume : public ATriggerVolume
+/**
+ * Zona de muerte por countdown.
+ *
+ * Refactorizado de ATriggerVolume a AActor + UBoxComponent para poder
+ * ser colocado dentro de Blueprint Actors (chunks spawneados en runtime).
+ * ATriggerVolume hereda de ABrush y NO puede vivir dentro de un BP hijo.
+ *
+ * Patrón: idéntico a TN_SlowZoneVolume.
+ */
+UCLASS(Blueprintable)
+class TORTUNABO_API ATN_DeathZoneVolume : public AActor
 {
 	GENERATED_BODY()
 
@@ -23,21 +33,28 @@ public:
 	void ResetPlayerTimer(APlayerController* PC);
 
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DeathZone", meta = (ClampMin = "0.1"))
+	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeathZone")
+	TObjectPtr<UBoxComponent> TriggerBox;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DeathZone", meta = (ClampMin = "0.1"))
 	float SecondsInsideToDie = 3.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DeathZone")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DeathZone")
 	bool bDestroyOnlyDuringRun = true;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DeathZone", meta = (ClampMin = "0.05"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DeathZone", meta = (ClampMin = "0.05"))
 	float CountdownTickInterval = 0.1f;
 
 private:
 	UFUNCTION()
-	void OnZoneBeginOverlap(AActor* OverlappedActor, AActor* OtherActor);
+	void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+		bool bFromSweep, const FHitResult& SweepResult);
 
 	UFUNCTION()
-	void OnZoneEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
+	void OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 	void HandlePlayerDeath(APlayerController* PlayerController);
 	/** Single shared timer that ticks ALL players inside the zone at once. */
@@ -49,4 +66,3 @@ private:
 
 	TMap<TWeakObjectPtr<APlayerController>, float> PendingDeathRemaining;
 };
-

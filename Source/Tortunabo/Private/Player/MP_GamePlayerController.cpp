@@ -231,10 +231,10 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 		return;
 	}
 
-	// Solo permitir espectear si el jugador local está muerto/eliminado.
-	// Evita que la rueda del ratón cambie la cámara mientras se está vivo.
+	// Solo permitir espectear si el jugador local terminó, murió o fue eliminado.
+	// Evita que la rueda del ratón cambie la cámara mientras se está jugando.
 	const ATN_CoopPlayerState* LocalPS = GetPlayerState<ATN_CoopPlayerState>();
-	if (!LocalPS || (LocalPS->bIsAlive && !LocalPS->bIsEliminated))
+	if (!LocalPS || (LocalPS->bIsAlive && !LocalPS->bIsEliminated && !LocalPS->bHasFinishedRun))
 	{
 		return;
 	}

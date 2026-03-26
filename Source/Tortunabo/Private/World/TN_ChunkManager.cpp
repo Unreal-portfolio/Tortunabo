@@ -248,6 +248,54 @@ void ATN_ChunkManager::SpawnFinalChunk()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetOrComputeInSocketTransform — caché de InSocket por clase
+// ─────────────────────────────────────────────────────────────────────────────
+
+FTransform ATN_ChunkManager::GetOrComputeInSocketTransform(TSubclassOf<AActor> ChunkClass)
+{
+	// Buscar en caché
+	if (FTransform* Cached = InSocketCache.Find(ChunkClass.Get()))
+	{
+		return *Cached;
+	}
+
+	// No está en caché → spawnar un temporal en Identity solo para leer InSocket.
+	// El temporal se destruye inmediatamente; su BeginPlay puede tener side effects
+	// menores (timers, spawns en Identity) pero se limpian al destruir.
+	FTransform InSocketTransform = FTransform::Identity;
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		InSocketCache.Add(ChunkClass.Get(), InSocketTransform);
+		return InSocketTransform;
+	}
+
+	FActorSpawnParameters TempParams;
+	TempParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	TempParams.bNoFail = true;
+
+	AActor* Temp = World->SpawnActor<AActor>(ChunkClass, FTransform::Identity, TempParams);
+	if (Temp)
+	{
+		if (USceneComponent* InSocket = FindSceneComponentByName(Temp, TEXT("InSocket")))
+		{
+			// En Identity, GetComponentTransform() == transform relativo al root.
+			InSocketTransform = InSocket->GetComponentTransform();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene 'InSocket'. "
+				"Se usará la posición del actor como entrada."), *ChunkClass->GetName());
+		}
+		Temp->Destroy();
+	}
+
+	InSocketCache.Add(ChunkClass.Get(), InSocketTransform);
+	return InSocketTransform;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SpawnAlignedChunk — núcleo de alineación InSocket→Target con replicación
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -259,15 +307,31 @@ AActor* ATN_ChunkManager::SpawnAlignedChunk(TSubclassOf<AActor> ChunkClass, cons
 		return nullptr;
 	}
 
+	// ── Paso 1: Calcular la posición final ANTES de spawnar ─────────────────
+	// El enfoque anterior (spawn en Identity + teleport) rompía los Child Actors:
+	// BeginPlay de los hijos (SeagullActor, ButtonInteractable, ItemSpawnZone,
+	// DeathZone, etc.) corría en (0,0,0) y cacheaba posiciones erróneas.
+	//
+	// Solución: obtener el InSocket offset (cacheado por clase) y calcular la
+	// posición final. Spawnar el chunk real directamente en esa posición.
+	// BeginPlay de TODOS los actores y Child Actors corre en la posición correcta.
+
+	const FTransform InSocketTransform = GetOrComputeInSocketTransform(ChunkClass);
+	const FTransform FinalTransform = InSocketTransform.Inverse() * TargetTransform;
+
+	if (bDebugDrawSockets)
+	{
+		DrawDebugSphere(World, TargetTransform.GetLocation(), 25.f, 8,
+			FColor::Red, false, 10.f);
+	}
+
+	// ── Paso 2: Spawnar el chunk REAL en la posición final ───────────────────
+	// BeginPlay de todos los componentes y Child Actors corre en la posición
+	// world correcta → InitialLocation, Waypoints, SpawnZone, todo bien.
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	// ── Paso 1: Spawn en Identity (replicación desactivada por ahora) ─────────
-	// Al spawnar en Identity el Construction Script del Blueprint se ejecuta de
-	// inmediato: InSocket/OutSocket quedan con sus transforms reales del editor.
-	// NO leemos del CDO — sus transforms SCS son siempre (0,0,0) hasta que el
-	// Construction Script corre, por lo que el enfoque CDO producía posiciones erróneas.
-	AActor* Chunk = World->SpawnActor<AActor>(ChunkClass, FTransform::Identity, Params);
+	AActor* Chunk = World->SpawnActor<AActor>(ChunkClass, FinalTransform, Params);
 	if (!Chunk)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] SpawnActor falló para '%s'."),
@@ -275,39 +339,8 @@ AActor* ATN_ChunkManager::SpawnAlignedChunk(TSubclassOf<AActor> ChunkClass, cons
 		return nullptr;
 	}
 
-	// ── Paso 2: Leer el InSocket REAL del chunk ya spawneado ─────────────────
-	// Con el actor en Identity, GetComponentTransform() == transform relativo al root.
-	// FinalTransform = InSocketWorld.Inverse() * TargetTransform
-	// → hace que InSocket.World == TargetTransform tras el teleport.
-	FTransform FinalTransform = TargetTransform; // fallback si no hay InSocket
-
-	if (USceneComponent* InSocket = FindSceneComponentByName(Chunk, TEXT("InSocket")))
-	{
-		const FTransform InSocketWorld = InSocket->GetComponentTransform();
-		FinalTransform = InSocketWorld.Inverse() * TargetTransform;
-
-		if (bDebugDrawSockets)
-		{
-			DrawDebugSphere(World, TargetTransform.GetLocation(), 25.f, 8,
-				FColor::Red, false, 10.f);
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene 'InSocket'. "
-			"Se usará la posición del actor como entrada."), *ChunkClass->GetName());
-	}
-
-	// ── Paso 3: Teleportar al transform final ────────────────────────────────
-	// TeleportPhysics evita recomputar la física (chunk estático).
-	// Después de este SetActorTransform, OutSocket->GetComponentTransform() ya devuelve
-	// la posición world correcta para encadenar el siguiente chunk.
-	Chunk->SetActorTransform(FinalTransform, false, nullptr, ETeleportType::TeleportPhysics);
-
-	// ── Paso 4: Activar replicación DESPUÉS del teleport ─────────────────────
-	// La red no ha enviado este actor a los clientes todavía (el tick de red ocurre
-	// al menos un frame después). Los clientes recibirán el actor ya en la posición
-	// definitiva — nunca verán la posición Identity temporal.
+	// ── Paso 3: Activar replicación ──────────────────────────────────────────
+	// La red envía el actor ya en la posición final al primer tick de red.
 	Chunk->SetReplicates(true);
 	Chunk->SetReplicateMovement(false); // chunks son estáticos
 

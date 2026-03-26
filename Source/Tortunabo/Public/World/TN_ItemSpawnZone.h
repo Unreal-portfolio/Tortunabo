@@ -57,6 +57,9 @@ protected:
 	int32 MaxRetries = 10;
 
 private:
+	/** Lógica de spawn de ítems (deferred desde BeginPlay). */
+	void SpawnItems();
+
 	/** Genera una posición random dentro del box, valida suelo y obstáculos. */
 	bool FindValidSpawnPoint(FVector& OutLocation, const TArray<FVector>& ExistingLocations) const;
 };

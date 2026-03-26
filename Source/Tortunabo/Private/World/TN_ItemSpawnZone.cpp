@@ -38,6 +38,22 @@ void ATN_ItemSpawnZone::BeginPlay()
 		return;
 	}
 
+	// Diferir el spawn de ítems un tick.
+	// Cuando este actor es un ChildActor dentro de un chunk, necesitamos que
+	// SpawnBox->GetComponentTransform() refleje la posición final del chunk.
+	//
+	// IMPORTANTE: Usar FTimerDelegate bound a UObject (no lambda) para que EndPlay→
+	// ClearAllTimersForObject(this) cancele el timer si el actor es destruido
+	// antes del tick (ej. chunk temporal del ChunkManager::GetOrComputeInSocketTransform
+	// que spawnea un chunk en Identity solo para leer el InSocket y lo destruye enseguida).
+	// Con la lambda anterior, el timer NO se cancelaba → SpawnItems() disparaba en el
+	// tick siguiente sobre un actor pendiente de GC en posición Identity → ítems en (0,0,0).
+	GetWorldTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateUObject(this, &ATN_ItemSpawnZone::SpawnItems));
+}
+
+void ATN_ItemSpawnZone::SpawnItems()
+{
 	TArray<FVector> SpawnedLocations;
 	int32 SuccessCount = 0;
 

@@ -1,26 +1,37 @@
 ﻿# Guía de Setup — Death Zone · Button Interactable · Item Spawn Zone · Puffer Fish
 
-> Fecha: 2026-03-21 | Válida para UE 5.6 — Tortunabo
+> Fecha: 2026-03-26 | Válida para UE 5.6 — Tortunabo
 
 ---
 
 ## 1. Death Zone (`ATN_DeathZoneVolume`)
 
 ### Qué hace
-Volumen que mata (o pone en DBNO) a cualquier tortuga que permanezca dentro más de `SecondsInsideToDie` segundos. Con `bDestroyOnlyDuringRun = true` solo actúa durante la carrera (ignorada en el lobby).
+Actor con `UBoxComponent` que mata a cualquier tortuga que permanezca dentro más de `SecondsInsideToDie` segundos. Con `bDestroyOnlyDuringRun = true` solo actúa durante la carrera (ignorada en el lobby). **Chunk-compatible**: puede colocarse dentro de un Blueprint Actor (chunk) spawneado en runtime.
 
 ### Pasos
 
+#### A) Crear Blueprint hijo (recomendado para chunks)
 | # | Paso |
 |---|------|
-| 1 | En el **Content Browser** busca `TN_DeathZoneVolume` (clase C++). |
-| 2 | **Arrástrala al nivel** (LVL_Run). Se coloca como un `TriggerVolume` con forma de caja. |
-| 3 | Selecciona el actor → panel **Details → DeathZone**: |
-| | • `SecondsInsideToDie` → cuántos segundos aguanta el jugador dentro (default **3 s**). |
-| | • `bDestroyOnlyDuringRun` → dejar **true** para que en el lobby no mate. |
-| | • `CountdownTickInterval` → frecuencia del tick (default **0.1 s**, no tocar). |
-| 4 | Redimensiona el volumen con la herramienta **Brush Editing** (tecla `B`) o desde Details → `Brush Settings`. |
-| 5 | **Guarda** el nivel. No necesita Blueprint hijo. |
+| 1 | Content Browser → clic derecho → **Blueprint Class** → buscar `TN_DeathZoneVolume` como padre. |
+| 2 | Nombrar `BP_DeathZoneVolume`. |
+| 3 | Abrir el BP → seleccionar `TriggerBox` → ajustar **Box Extent** al tamaño deseado. |
+| 4 | En Class Defaults → **DeathZone**: configurar `SecondsInsideToDie`, `bDestroyOnlyDuringRun`, etc. |
+
+#### B) Colocar directamente en el nivel (uso simple)
+| # | Paso |
+|---|------|
+| 1 | Arrastra `BP_DeathZoneVolume` (o la clase C++ directamente) al nivel. |
+| 2 | Redimensiona el `TriggerBox` en el viewport con la herramienta Scale o desde Details → Box Extent. |
+| 3 | Ajusta propiedades en Details → DeathZone. |
+
+#### C) Colocar dentro de un Chunk BP
+| # | Paso |
+|---|------|
+| 1 | Abre el BP del chunk → Add Child Actor Component → clase `BP_DeathZoneVolume`. |
+| 2 | Posiciona y escala el child actor dentro del chunk. |
+| 3 | Las propiedades se heredan del BP hijo. |
 
 ### Notas
 - El actor es solo servidor. Los clientes ven el efecto a través de `TN_CoopPlayerState::DeathZoneTimeRemaining` (replicado).
@@ -32,7 +43,7 @@ Volumen que mata (o pone en DBNO) a cualquier tortuga que permanezca dentro más
 ## 2. Button Interactable (`ATN_ButtonInteractable`)
 
 ### Qué hace
-Botón físico en el mundo que, al pulsar **IA_Interact**, mueve de forma fluida un actor (puertas, plataformas, palancas, etc.) a través de una lista de waypoints. Cada interacción avanza al siguiente waypoint (cíclico). Multijugador: el movimiento se replica automáticamente vía `SetReplicateMovement`.
+Botón físico en el mundo que, al pulsar **IA_Interact**, mueve de forma fluida un actor (puertas, plataformas, palancas, etc.) a través de una lista de waypoints. Cada interacción avanza al siguiente waypoint (cíclico). Multijugador: `CurrentWaypointIndex` se replica a todos los clientes; tanto servidor como clientes interpolan el MoveTarget localmente en `Tick` hacia el waypoint actual.
 
 ### Pasos
 
@@ -55,8 +66,8 @@ Botón físico en el mundo que, al pulsar **IA_Interact**, mueve de forma fluida
 | # | Paso |
 |---|------|
 | 1 | Coloca en el nivel el actor que quieres que se mueva (ej. una plataforma, puerta). |
-| 2 | Selecciónalo → Details → **Replication**: activa **Replicates** y **Replicate Movement**. |
-| 3 | Si es un Static Mesh Actor puro, también activa **Replicate Movement** en la pestaña Physics. |
+| 2 | Selecciónalo → Details → **Replication**: activa **Replicates**. |
+| 3 | No es necesario activar **Replicate Movement**: tanto servidor como clientes interpolan localmente usando `CurrentWaypointIndex`. |
 
 #### C) Colocar y configurar en el nivel
 | # | Paso |
@@ -66,6 +77,18 @@ Botón físico en el mundo que, al pulsar **IA_Interact**, mueve de forma fluida
 | | • `MoveTarget` → con el **eyedropper** selecciona el actor del nivel que debe moverse. |
 | | • `Waypoints` → añade tantos elementos como posiciones necesites. Cada elemento es un `FTransform` (Location + Rotation + Scale en espacio mundo). Usa "Copy Actor Transform" en el nivel para obtener los valores exactos. |
 | 3 | Pulsa **Play** → acércate al botón → **E** (IA_Interact) → el actor debe moverse al waypoint 0, 1, 2... cíclicamente. |
+
+#### C-bis) Dentro de un Chunk BP (runtime)
+| # | Paso |
+|---|------|
+| 1 | En el chunk BP, añade un **Child Actor Component** para la puerta/plataforma. Dale un **Actor Tag** (ej. `Door`). |
+| 2 | Añade otro Child Actor Component con `BP_ButtonInteractable`. |
+| 3 | En el BP_ButtonInteractable Class Defaults: |
+| | • `MoveTarget` → dejar vacío. |
+| | • `MoveTargetTag` → `Door` (el tag del Child Actor del paso 1). |
+| | • `bUseRelativeWaypoints` → **true** (los waypoints se interpretan como offsets relativos al MoveTarget). |
+| | • `Waypoints` → definir como offsets locales del MoveTarget (ej. `(0, 0, 300)` = "sube el target 300 cm desde su posición inicial"). |
+| 4 | Al spawnear el chunk, `BeginPlay` busca el `MoveTarget` por tag automáticamente y convierte waypoints a mundo usando el transform del MoveTarget como base. |
 
 #### D) Waypoints: cómo obtener los valores
 1. Coloca un **Empty Actor** (o un cubo temporal) en la posición destino.

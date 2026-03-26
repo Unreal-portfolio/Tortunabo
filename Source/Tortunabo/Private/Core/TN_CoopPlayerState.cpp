@@ -54,18 +54,29 @@ void ATN_CoopPlayerState::MulticastForceApplyHelmet_Implementation(FName HelmId)
 	else if (UWorld* World = GetWorld())
 	{
 		// Pawn no está disponible aún (race condition post-seamless-travel).
-		// Reintentamos un tick después — para entonces el pawn ya está replicado.
+		// Reintentamos varias veces con intervalo de 0.1s hasta encontrar el pawn.
 		TWeakObjectPtr<ATN_CoopPlayerState> WeakThis(this);
-		World->GetTimerManager().SetTimerForNextTick([WeakThis, HelmId]()
+		struct FRetryState { int32 Remaining = 5; };
+		TSharedPtr<FRetryState> Retry = MakeShared<FRetryState>();
+		TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
+		World->GetTimerManager().SetTimer(*RetryHandle, [WeakThis, HelmId, Retry, RetryHandle, World]()
 		{
-			if (WeakThis.IsValid())
+			if (!WeakThis.IsValid())
 			{
-				if (ATortugaCharacter* TurtleChar2 = Cast<ATortugaCharacter>(WeakThis->GetPawn()))
-				{
-					TurtleChar2->UpdateHelmetMesh(HelmId);
-				}
+				World->GetTimerManager().ClearTimer(*RetryHandle);
+				return;
 			}
-		});
+			if (ATortugaCharacter* TurtleChar2 = Cast<ATortugaCharacter>(WeakThis->GetPawn()))
+			{
+				TurtleChar2->UpdateHelmetMesh(HelmId);
+				World->GetTimerManager().ClearTimer(*RetryHandle);
+				return;
+			}
+			if (--Retry->Remaining <= 0)
+			{
+				World->GetTimerManager().ClearTimer(*RetryHandle);
+			}
+		}, 0.1f, true);
 	}
 }
 
@@ -87,17 +98,30 @@ void ATN_CoopPlayerState::MulticastForceApplySkin_Implementation(FName SkinId)
 	}
 	else if (UWorld* World = GetWorld())
 	{
+		// Pawn no está disponible aún (race condition post-seamless-travel).
+		// Reintentamos varias veces con intervalo de 0.1s hasta encontrar el pawn.
 		TWeakObjectPtr<ATN_CoopPlayerState> WeakThis(this);
-		World->GetTimerManager().SetTimerForNextTick([WeakThis, SkinId]()
+		struct FRetryState { int32 Remaining = 5; };
+		TSharedPtr<FRetryState> Retry = MakeShared<FRetryState>();
+		TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
+		World->GetTimerManager().SetTimer(*RetryHandle, [WeakThis, SkinId, Retry, RetryHandle, World]()
 		{
-			if (WeakThis.IsValid())
+			if (!WeakThis.IsValid())
 			{
-				if (ATortugaCharacter* TurtleChar2 = Cast<ATortugaCharacter>(WeakThis->GetPawn()))
-				{
-					TurtleChar2->UpdateSkinVisual(SkinId);
-				}
+				World->GetTimerManager().ClearTimer(*RetryHandle);
+				return;
 			}
-		});
+			if (ATortugaCharacter* TurtleChar2 = Cast<ATortugaCharacter>(WeakThis->GetPawn()))
+			{
+				TurtleChar2->UpdateSkinVisual(SkinId);
+				World->GetTimerManager().ClearTimer(*RetryHandle);
+				return;
+			}
+			if (--Retry->Remaining <= 0)
+			{
+				World->GetTimerManager().ClearTimer(*RetryHandle);
+			}
+		}, 0.1f, true);
 	}
 }
 

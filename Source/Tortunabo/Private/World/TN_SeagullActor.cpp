@@ -49,10 +49,20 @@ void ATN_SeagullActor::BeginPlay()
 		DangerZone->OnComponentBeginOverlap.AddDynamic(this, &ATN_SeagullActor::OnDangerBeginOverlap);
 		DangerZone->OnComponentEndOverlap.AddDynamic(this, &ATN_SeagullActor::OnDangerEndOverlap);
 
-		// Emitir posición inicial a todos los clientes para que arranquen en sync
-		InitialLocation = GetActorLocation();
-		MulticastSyncInitialPosition(InitialLocation);
+		// Capturar posición de inicio (ahora correcta: el chunk ya está en su posición final).
+		// Un tick de delay para garantizar que ChildActorComponent ha terminado de posicionar.
+		// Usar FTimerDelegate bound a UObject (no lambda) para que EndPlay→
+		// ClearAllTimersForObject(this) cancele el timer si el actor es destruido
+		// (ej. chunk temporal del ChunkManager).
+		GetWorldTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(this, &ATN_SeagullActor::DeferredCaptureInitialLocation));
 	}
+}
+
+void ATN_SeagullActor::DeferredCaptureInitialLocation()
+{
+	InitialLocation = GetActorLocation();
+	MulticastSyncInitialPosition(InitialLocation);
 }
 
 void ATN_SeagullActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
