@@ -5,27 +5,19 @@
 #include "TN_ButtonInteractable.generated.h"
 
 /**
- * Botón interactuable que, al pulsar (Enhanced Input IA_Interact),
- * mueve un actor/componente target a través de una lista de waypoints de forma fluida.
- * Cada interacción avanza al siguiente waypoint (cíclico).
+ * Botón interactuable tipo toggle: al pulsar aplica un offset de transform
+ * al target, al volver a pulsar lo devuelve a su posición original.
  *
- * Replicación: CurrentWaypointIndex se replica a los clientes; tanto servidor
- * como clientes interpolan el target localmente en Tick hacia el waypoint
- * actual. No se usa SetReplicateMovement(true) para evitar conflictos entre
- * la posición replicada y la interpolación local.
+ * Diseñado para funcionar dentro de chunks (BP actors spawneados en runtime):
+ * el offset es relativo, así que no importa dónde se coloque el chunk en el mundo.
  *
- * Waypoints relativos (bUseRelativeWaypoints): los offsets se interpretan
- * relativos al transform del target al iniciar (no al botón). Esto
- * garantiza posiciones correctas cuando botón y target están a distancias
- * distintas dentro de un chunk.
+ * Replicación: bIsActivated (bool) se replica; tanto servidor como clientes
+ * interpolan el target localmente en Tick hacia la posición destino.
  *
- * Dentro de un chunk spawneado en runtime, MoveTarget (eyedropper) no funciona.
- * Usa MoveTargetTag para resolver el target automáticamente en BeginPlay.
- * Búsqueda en 4 pasos (primero en el chunk BP padre, luego en el mundo):
- *   1. Busca un USceneComponent por nombre (MoveTargetTag) en el chunk BP padre.
- *      Esto permite mover componentes del BP directamente (ej. "wall1").
- *   2. Itera los UChildActorComponents del padre → comprueba ActorTag en cada ChildActor.
- *   3. Fallback: GetAttachedActors del padre (targets attached).
+ * Resolución del target por MoveTargetTag dentro del chunk BP padre:
+ *   1. Busca un USceneComponent por nombre en el chunk BP padre.
+ *   2. Itera UChildActorComponents del padre → comprueba ActorTag.
+ *   3. Fallback: GetAttachedActors del padre.
  *   4. Fallback clientes: TActorIterator filtrando por mismo padre + tag.
  *
  * El chunk BP padre se resuelve via GetParentActor() > GetOwner() > GetAttachParentActor().
@@ -55,25 +47,17 @@ protected:
 	 * Nombre/tag para resolver el target automáticamente en BeginPlay.
 	 * Busca PRIMERO un componente por nombre en el chunk BP padre (ej. "wall1"),
 	 * luego busca un ChildActor con este ActorTag.
-	 * Útil para chunks spawneados en runtime donde el eyedropper no funciona.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
 	FName MoveTargetTag;
 
 	/**
-	 * Puntos de destino. Si bUseRelativeWaypoints es false, en espacio mundo.
-	 * Si es true, relativos al transform del target al iniciar (para chunks).
+	 * Offset de transform que se SUMA a la posición original del target
+	 * cuando el botón está activado. Al desactivar, vuelve al original.
+	 * Configurar en el BP del chunk (ej. mover 300 cm en Z → Location Z=300).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
-	TArray<FTransform> Waypoints;
-
-	/**
-	 * Si true, los Waypoints se interpretan como offsets relativos al transform
-	 * del target al iniciar. Se convierten a espacio mundo en BeginPlay.
-	 * Activar cuando el botón está dentro de un chunk (posición desconocida en design time).
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
-	bool bUseRelativeWaypoints = false;
+	FTransform ActivatedOffset;
 
 	/** Velocidad de movimiento (cm/s). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button", meta = (ClampMin = "1.0"))
@@ -83,22 +67,31 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button", meta = (ClampMin = "1.0"))
 	float RotateSpeed = 180.f;
 
-	/** Índice del waypoint actual al que se dirige. Replicado para sincronizar. */
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentWaypointIndex, BlueprintReadOnly, Category = "Button")
-	int32 CurrentWaypointIndex = 0;
+	/** Estado del botón: false=posición original, true=posición con offset. Replicado. */
+	UPROPERTY(ReplicatedUsing = OnRep_IsActivated, BlueprintReadOnly, Category = "Button")
+	bool bIsActivated = false;
 
 	/** Multicast cosmético: feedback al pulsar (override en BP para sonido/VFX). */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPlayButtonFeedback();
 
 	UFUNCTION()
-	void OnRep_CurrentWaypointIndex();
+	void OnRep_IsActivated();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
-	/** true mientras el target se está moviendo hacia el waypoint actual. */
+	/** true mientras el target se está moviendo hacia su destino. */
 	bool bIsMoving = false;
+
+	/** Transform original del target, capturado en DeferredInit. */
+	FTransform OriginalTransform;
+
+	/** Transform activado (original + offset), calculado en DeferredInit. */
+	FTransform ActivatedTransform;
+
+	/** true cuando DeferredInit ha ejecutado y los transforms están listos. */
+	bool bInitialized = false;
 
 	/**
 	 * Componente resuelto como target (cuando el target es un componente del chunk BP,
@@ -109,16 +102,15 @@ private:
 	/**
 	 * Inicialización diferida un tick:
 	 * - Resuelve MoveTarget/ResolvedMoveComponent por tag/nombre si es necesario.
-	 *   Estrategias: componente por nombre en chunk BP → ChildActors por tag →
-	 *   attached actors → TActorIterator con mismo padre.
-	 * - Convierte waypoints relativos a espacio mundo (base = target).
-	 * Usa binding a UObject para que se cancele automáticamente si el actor
-	 * es destruido (ej. chunk temporal del ChunkManager).
+	 * - Captura el transform original del target y calcula el transform activado.
 	 */
 	void DeferredInit();
 
-	/** Resuelve el actor chunk BP padre: GetParentActor → GetOwner → GetAttachParentActor. */
+	/** Resuelve el actor chunk BP padre. */
 	AActor* ResolveParentChunk() const;
+
+	/** Calcula el goal transform actual según bIsActivated. */
+	FTransform GetGoalTransform() const;
 
 	// ── Helpers para leer/escribir el transform del target ────────────────────
 	FTransform GetTargetTransform() const;

@@ -606,13 +606,27 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		{
 			PlayerController->PlayerState->SetIsOnlyASpectator(false);
 		}
-		// 2) Re-poseer el pawn
+		// 2) Forzar UnPossess si el PC aún posee al pawn.
+		//    En el listen-server, ChangeState(Spectating) puede NO llamar UnPossess
+		//    internamente, dejando al PC poseyendo al pawn muerto. Si Possess(Pawn)
+		//    recibe el mismo pawn que ya posee, es un no-op → ChangeState(Playing)
+		//    nunca se llama y el host se queda atrapado en estado Spectating.
+		if (PlayerController->GetPawn() == Pawn)
+		{
+			PlayerController->UnPossess();
+		}
+		// 3) Re-poseer el pawn (ahora garantizado que no es no-op)
 		PlayerController->Possess(Pawn);
-		// 3) ClientRestart: dice al cliente que ahora controla este pawn
+		// 4) Safety: forzar ChangeState(Playing) por si Possess no lo hizo
+		//    (cubre edge cases de UE donde el estado no se resetea correctamente)
+		PlayerController->ChangeState(NAME_Playing);
+		// 5) ClientRestart: dice al cliente que ahora controla este pawn
 		//    y restaura el viewtarget (la cámara vuelve a su pawn).
 		//    Sin esto el jugador seguiría viendo la cámara del espectador.
 		PlayerController->ClientRestart(Pawn);
-		// 4) ClientRestorePlayerInput: limpia IgnoreMoveInput/IgnoreLookInput
+		// 6) Apuntar cámara al pawn (limpia el ViewTarget del espectador)
+		PlayerController->SetViewTarget(Pawn);
+		// 7) ClientRestorePlayerInput: limpia IgnoreMoveInput/IgnoreLookInput
 		//    que quedaron incrementados por ChangeState(Spectating) en el cliente.
 		//    Sin esto el jugador se mueve con la cámara pero no puede moverse.
 		if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PlayerController))

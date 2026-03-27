@@ -36,9 +36,16 @@ void ATN_SeagullActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Aplicar propiedades de la cápsula según los valores del BP/instancia
-	DangerZone->SetCapsuleRadius(DangerCapsuleRadius);
-	DangerZone->SetCapsuleHalfHeight(DangerCapsuleHalfHeight);
+	// Compensar escala heredada del chunk padre.
+	// SetCapsuleRadius/HalfHeight establece valores UNSCALED; si el actor tiene
+	// escala 2x (heredada del chunk), la cápsula en mundo sería el doble.
+	// Dividimos por la escala del actor para que el radio/semialtura mundo
+	// coincida con los valores configurados en las UPROPERTYs.
+	const FVector WorldScale = GetActorScale3D();
+	const float ScaleXY = FMath::Max(FMath::Abs(WorldScale.X), 0.001f);
+	const float ScaleZ  = FMath::Max(FMath::Abs(WorldScale.Z), 0.001f);
+	DangerZone->SetCapsuleRadius(DangerCapsuleRadius / ScaleXY);
+	DangerZone->SetCapsuleHalfHeight(DangerCapsuleHalfHeight / ScaleZ);
 
 	// Posición de reposo del cubo
 	SeagullMesh->SetRelativeLocation(FVector(0.f, 0.f, SeagullRestHeight));
