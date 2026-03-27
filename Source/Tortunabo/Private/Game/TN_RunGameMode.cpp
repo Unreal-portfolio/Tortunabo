@@ -594,7 +594,7 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			Character->SetDeadVisual(false); // Restaurar extremidades
 		}
 
-		Pawn->EnableInput(PlayerController);
+		// Restaurar CMC antes de re-poseer
 		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
 		{
 			CMC->SetMovementMode(MOVE_Walking);
@@ -618,17 +618,19 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		// 3) Re-poseer el pawn (ahora garantizado que no es no-op)
 		PlayerController->Possess(Pawn);
 		// 4) Safety: forzar ChangeState(Playing) por si Possess no lo hizo
-		//    (cubre edge cases de UE donde el estado no se resetea correctamente)
 		PlayerController->ChangeState(NAME_Playing);
-		// 5) ClientRestart: dice al cliente que ahora controla este pawn
-		//    y restaura el viewtarget (la cámara vuelve a su pawn).
-		//    Sin esto el jugador seguiría viendo la cámara del espectador.
+
+		// 5) EnableInput DESPUÉS de Possess — APawn::EnableInput verifica
+		//    que el PC == Pawn->Controller. Si se llama antes de Possess,
+		//    Controller es nullptr (por UnPossess) y EnableInput falla
+		//    silenciosamente, dejando bInputEnabled = false para siempre.
+		Pawn->EnableInput(PlayerController);
+
+		// 6) ClientRestart: dice al cliente que ahora controla este pawn
 		PlayerController->ClientRestart(Pawn);
-		// 6) Apuntar cámara al pawn (limpia el ViewTarget del espectador)
+		// 7) Apuntar cámara al pawn (limpia el ViewTarget del espectador)
 		PlayerController->SetViewTarget(Pawn);
-		// 7) ClientRestorePlayerInput: limpia IgnoreMoveInput/IgnoreLookInput
-		//    que quedaron incrementados por ChangeState(Spectating) en el cliente.
-		//    Sin esto el jugador se mueve con la cámara pero no puede moverse.
+		// 8) ClientRestorePlayerInput: limpia IgnoreMoveInput/IgnoreLookInput
 		if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PlayerController))
 		{
 			TNPC->ClientRestorePlayerInput();
@@ -636,25 +638,50 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			if (TNPC->IsLocalController())
 			{
 				TNPC->ForceRestoreInput();
-
-				// Belt-and-suspenders: en el siguiente tick re-aplicamos el mapping context
-				// de Enhanced Input + limpiamos los flags de ignore. Esto cubre el edge case
-				// donde la cadena Possess → AcknowledgedPawn → ClientRestart → PawnClientRestart
-				// no ha completado del todo antes de que ForceRestoreInput() termine.
-				TWeakObjectPtr<ATortugaCharacter> WeakChar(Cast<ATortugaCharacter>(Pawn));
-				TWeakObjectPtr<AMP_GamePlayerController> WeakPC(TNPC);
-				GetWorldTimerManager().SetTimerForNextTick([WeakChar, WeakPC]()
-				{
-					if (WeakChar.IsValid())
-					{
-						WeakChar->ReapplyInputMapping();
-					}
-					if (WeakPC.IsValid())
-					{
-						WeakPC->ForceRestoreInput();
-					}
-				});
 			}
+
+			// 9) Timer repetitivo de seguridad: re-aplica input cada 0.1s durante 1s.
+			//    Cubre TODOS los edge cases donde la cadena
+			//    Possess → AcknowledgedPawn → ClientRestart → PawnClientRestart
+			//    no ha terminado, o donde UE re-incrementa IgnoreMoveInput internamente.
+			TWeakObjectPtr<ATortugaCharacter> WeakChar(Cast<ATortugaCharacter>(Pawn));
+			TWeakObjectPtr<AMP_GamePlayerController> WeakPC(TNPC);
+			TWeakObjectPtr<APawn> WeakPawn(Pawn);
+			TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
+			TSharedPtr<int32> RetryCount = MakeShared<int32>(10); // 10 × 0.1s = 1s
+			GetWorldTimerManager().SetTimer(*RetryHandle,
+				[WeakChar, WeakPC, WeakPawn, RetryCount, RetryHandle, this]()
+			{
+				if (*RetryCount <= 0)
+				{
+					GetWorldTimerManager().ClearTimer(*RetryHandle);
+					return;
+				}
+				--(*RetryCount);
+
+				if (WeakPawn.IsValid())
+				{
+					WeakPawn->EnableInput(nullptr); // nullptr bypasses Controller check
+				}
+				if (WeakChar.IsValid())
+				{
+					WeakChar->ReapplyInputMapping();
+				}
+				if (WeakPC.IsValid())
+				{
+					WeakPC->ForceRestoreInput();
+				}
+				if (WeakPawn.IsValid() && WeakPawn->GetController())
+				{
+					if (UCharacterMovementComponent* CMC = Cast<ACharacter>(WeakPawn.Get()) ? Cast<ACharacter>(WeakPawn.Get())->GetCharacterMovement() : nullptr)
+					{
+						if (CMC->MovementMode == MOVE_None)
+						{
+							CMC->SetMovementMode(MOVE_Walking);
+						}
+					}
+				}
+			}, 0.1f, true);
 		}
 	}
 	else

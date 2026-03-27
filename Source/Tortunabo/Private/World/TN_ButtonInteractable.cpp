@@ -195,14 +195,21 @@ void ATN_ButtonInteractable::DeferredInit()
 	{
 		OriginalTransform = GetTargetTransform();
 
-		// ActivatedTransform = OriginalTransform + ActivatedOffset (en espacio local del target)
-		ActivatedTransform = ActivatedOffset * OriginalTransform;
+		// ActivatedTransform = OriginalTransform + ActivatedOffset (suma simple)
+		// NO usar multiplicación de FTransform (ActivatedOffset * Original) porque
+		// eso escala el offset por la Scale3D del original → valores absurdos
+		// cuando el target hereda escala del chunk.
+		ActivatedTransform = OriginalTransform;
+		ActivatedTransform.SetLocation(OriginalTransform.GetLocation() + ActivatedOffset.GetLocation());
+		ActivatedTransform.SetRotation(ActivatedOffset.GetRotation() * OriginalTransform.GetRotation());
+		// Mantener la escala original (el offset no debería cambiar la escala)
 
 		bInitialized = true;
 
-		UE_LOG(LogTemp, Log, TEXT("[Button] '%s' — Original: %s | Activado: %s"),
+		UE_LOG(LogTemp, Log, TEXT("[Button] '%s' — Original: %s | Offset: %s | Activado: %s"),
 			*GetName(),
 			*OriginalTransform.GetLocation().ToString(),
+			*ActivatedOffset.GetLocation().ToString(),
 			*ActivatedTransform.GetLocation().ToString());
 
 		// Si el botón ya estaba activado (por replicación antes de init), empezar a mover
