@@ -193,3 +193,70 @@ ATN_RunGameMode* ATN_DeathZoneVolume::ResolveRunGameMode() const
 {
 	return GetWorld() ? GetWorld()->GetAuthGameMode<ATN_RunGameMode>() : nullptr;
 }
+
+void ATN_DeathZoneVolume::ForceCheckPlayer(APlayerController* PC)
+{
+	if (!HasAuthority() || !PC || !TriggerBox)
+	{
+		return;
+	}
+
+	// Ya está siendo rastreado → no duplicar
+	if (PendingDeathRemaining.Contains(PC))
+	{
+		return;
+	}
+
+	// Verificar que el jugador está vivo
+	ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>();
+	if (!TNPS || !TNPS->bIsAlive)
+	{
+		return;
+	}
+
+	// Verificar restricción de fase de juego
+	if (bDestroyOnlyDuringRun)
+	{
+		ATN_RunGameMode* RunGameMode = ResolveRunGameMode();
+		if (!RunGameMode || RunGameMode->GetMatchState() != MatchState::InProgress)
+		{
+			return;
+		}
+	}
+
+	APawn* Pawn = PC->GetPawn();
+	if (!Pawn)
+	{
+		return;
+	}
+
+	// ── Comprobación geométrica: ¿está el pawn dentro del TriggerBox? ──
+	// No depende de la lista de overlaps del motor de físicas, que puede estar
+	// desactualizada tras togglear SetActorEnableCollision.
+	const FTransform BoxTransform = TriggerBox->GetComponentTransform();
+	const FVector LocalPos = BoxTransform.InverseTransformPosition(Pawn->GetActorLocation());
+	const FVector Extent = TriggerBox->GetUnscaledBoxExtent();
+
+	const bool bInside = FMath::Abs(LocalPos.X) <= Extent.X
+	                  && FMath::Abs(LocalPos.Y) <= Extent.Y
+	                  && FMath::Abs(LocalPos.Z) <= Extent.Z;
+
+	if (!bInside)
+	{
+		return;
+	}
+
+	// ── Iniciar countdown ──
+	PendingDeathRemaining.Add(PC, SecondsInsideToDie);
+	TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
+
+	if (!GetWorldTimerManager().IsTimerActive(SharedCountdownTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(SharedCountdownTimerHandle, this,
+			&ATN_DeathZoneVolume::TickAllCountdowns, CountdownTickInterval, true);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[DeathZone] ForceCheckPlayer: '%s' está dentro de '%s' — countdown reiniciado (%.1fs)"),
+		*GetNameSafe(PC), *GetName(), SecondsInsideToDie);
+}
+

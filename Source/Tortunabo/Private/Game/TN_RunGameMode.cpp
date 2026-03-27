@@ -5,6 +5,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "World/TN_RescuePickup.h"
+#include "World/TN_DeathZoneVolume.h"
 #include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
@@ -553,6 +554,7 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	TNPS->bIsEliminated = false;
 	TNPS->FinishRank = 0;
 	TNPS->FinishTimeSeconds = -1.f;
+	TNPS->DeathZoneTimeRemaining = -1.f;
 
 	// Remove from DBNO tracking
 	DBNOPlayers.Remove(PlayerController);
@@ -696,10 +698,22 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	// Grant brief immunity
 	ReviveImmunePlayers.Add(PlayerController);
 	FTimerHandle ImmunityTimer;
-	TWeakObjectPtr<APlayerController> WeakPC = PlayerController;
-	GetWorldTimerManager().SetTimer(ImmunityTimer, [this, WeakPC]()
+	TWeakObjectPtr<APlayerController> WeakImmunityPC = PlayerController;
+	GetWorldTimerManager().SetTimer(ImmunityTimer, [this, WeakImmunityPC]()
 	{
-		ReviveImmunePlayers.Remove(WeakPC);
+		ReviveImmunePlayers.Remove(WeakImmunityPC);
+
+		// ── Forzar re-evaluación de death zones ──────────────────────────────
+		// SetActorEnableCollision(true) no dispara OnBoxBeginOverlap de forma
+		// fiable cuando el pawn ya estaba geométricamente dentro del volumen.
+		// Tras expirar la inmunidad, comprobamos manualmente todas las death zones.
+		if (APlayerController* ImmunityPC = WeakImmunityPC.Get())
+		{
+			for (TActorIterator<ATN_DeathZoneVolume> It(GetWorld()); It; ++It)
+			{
+				(*It)->ForceCheckPlayer(ImmunityPC);
+			}
+		}
 	}, ReviveImmunitySeconds, false);
 
 	UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s"),

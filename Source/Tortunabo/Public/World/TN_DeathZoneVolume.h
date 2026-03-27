@@ -32,6 +32,15 @@ public:
 	 */
 	void ResetPlayerTimer(APlayerController* PC);
 
+	/**
+	 * Comprueba geométricamente si el pawn del jugador está dentro del TriggerBox.
+	 * Si lo está y no hay countdown activo, inicia uno nuevo.
+	 * Llamar desde RunGameMode cuando la inmunidad post-revive expira,
+	 * porque SetActorEnableCollision(true) no siempre dispara OnBoxBeginOverlap
+	 * de forma fiable cuando el pawn ya está geométricamente dentro del volumen.
+	 */
+	void ForceCheckPlayer(APlayerController* PC);
+
 protected:
 	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeathZone")

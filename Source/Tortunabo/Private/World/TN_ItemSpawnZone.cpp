@@ -27,7 +27,10 @@ void ATN_ItemSpawnZone::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!HasAuthority())
+	// HasAuthority() devuelve true en clientes para actores NO replicados
+	// (bReplicates=false + ChildActorComponent lo crea localmente en cada máquina).
+	// Usar GetNetMode() para garantizar que solo el servidor spawnee pickups.
+	if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client)
 	{
 		return;
 	}
