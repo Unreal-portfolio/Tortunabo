@@ -40,9 +40,9 @@ AActor* ATN_ButtonInteractable::ResolveParentChunk() const
 	}
 
 	// 2. GetOwner — fallback clásico (el Owner se replica).
-	if (AActor* Owner = GetOwner())
+	if (AActor* OwnerActor = GetOwner())
 	{
-		return Owner;
+		return OwnerActor;
 	}
 
 	// 3. GetAttachParentActor — para actores attached por medios no-ChildActor.

@@ -52,7 +52,7 @@ void UTN_RadialWheelWidgetBase::BP_OnEntriesSet_Implementation(const TArray<FTN_
 		{
 			UImage* IconWidget = NewObject<UImage>(this);
 			IconWidget->SetBrushFromTexture(Entry.Icon, false);
-			IconWidget->SetBrushSize(SlotIconSize);
+			IconWidget->SetDesiredSizeOverride(SlotIconSize);
 			if (UVerticalBoxSlot* VSlot = SlotBox->AddChildToVerticalBox(IconWidget))
 			{
 				VSlot->SetHorizontalAlignment(HAlign_Center);

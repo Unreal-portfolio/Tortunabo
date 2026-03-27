@@ -471,7 +471,7 @@ void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
 	{
 		UImage* IconWidget = NewObject<UImage>(this);
 		IconWidget->SetBrushFromTexture(Icon, false);
-		IconWidget->SetBrushSize(FVector2D(20.f, 20.f));
+		IconWidget->SetDesiredSizeOverride(FVector2D(20.f, 20.f));
 		if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(IconWidget))
 		{
 			HSlot->SetVerticalAlignment(VAlign_Center);
