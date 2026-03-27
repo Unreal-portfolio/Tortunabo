@@ -32,8 +32,6 @@
 #include "Game/TN_RunGameMode.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "UI/HUD/TN_EmoteWheelDataAsset.h"
-#include "World/TN_DeathZoneVolume.h"
-#include "EngineUtils.h"
 
 // ── CVar de debug ─────────────────────────────────────────────────────────────
 // Activar en consola con: TN.Debug.Interaction 1
@@ -601,6 +599,20 @@ void ATortugaCharacter::PawnClientRestart()
 	if (AMP_GamePlayerController* PC = Cast<AMP_GamePlayerController>(GetController()))
 	{
 		PC->RefreshHUDAfterPossession();
+	}
+
+	// ── Scan timer de interacción ─────────────────────────────────────────────
+	// BeginPlay no puede arrancar el timer porque IsLocallyControlled() es false
+	// antes de que el PC posea el pawn. PawnClientRestart se dispara DESPUÉS de
+	// la posesión (vía ClientRestart RPC), cuando IsLocallyControlled() ya es true.
+	// Cubre tanto la posesión inicial como la re-posesión tras seamless travel.
+	if (IsLocallyControlled() && InteractionScanInterval > 0.f
+		&& !GetWorldTimerManager().IsTimerActive(InteractionScanTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(InteractionScanTimerHandle, this,
+			&ATortugaCharacter::UpdateFocusedInteractable, InteractionScanInterval, true);
+		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Interaction scan timer started in PawnClientRestart (interval=%.2fs)"),
+			InteractionScanInterval);
 	}
 }
 
@@ -1411,21 +1423,6 @@ void ATortugaCharacter::RecoverFromKnockdown()
 	// ── Audio feedback de revive ─────────────────────────────────────────
 	StopDBNOHeartbeatSound();
 	PlayReviveSuccessSound();
-
-	// ── Resetear timer en DeathZones activas ──────────────────────────────────
-	// Si el jugador fue revivido DENTRO de una death zone, el overlap no se
-	// re-dispara (nunca salió del volumen). Reseteamos el countdown a su valor
-	// máximo para que tenga tiempo de salir en lugar de morir al instante.
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		for (TActorIterator<ATN_DeathZoneVolume> It(GetWorld()); It; ++It)
-		{
-			if (IsOverlappingActor(*It))
-			{
-				(*It)->ResetPlayerTimer(PC);
-			}
-		}
-	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
 }
