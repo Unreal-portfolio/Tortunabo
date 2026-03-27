@@ -221,8 +221,19 @@ void AMP_GamePlayerController::CacheRadialInputAssets()
 
 void AMP_GamePlayerController::EnterSpectateMode()
 {
+	// ── Cambiar estado en el servidor ─────────────────────────────────────────
 	ChangeState(NAME_Spectating);
 	StartSpectatingOnly();
+
+	// ── Notificar al CLIENTE que entre en modo espectador ─────────────────────
+	// ChangeState/StartSpectatingOnly solo afectan al servidor.
+	// Sin esta llamada, el cliente mantiene el input activo, su cámara pegada
+	// al pawn (ahora oculto) y puede seguir "caminando" por predicción local.
+	// ClientGotoState envía un RPC fiable al cliente que llama ChangeState(Spectating)
+	// localmente → BeginSpectatingState() → IgnoreMoveInput = MAX_uint8.
+	// Para el listen-server, los Client RPCs también se ejecutan localmente.
+	ClientGotoState(NAME_Spectating);
+
 	SpectateNextPlayer();
 }
 
@@ -265,8 +276,11 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 		{
 			continue;
 		}
-		// Skip eliminated/dead players (their pawn stays as corpse but shouldn't be spectated)
-		if (CoopPS->bIsEliminated || !CoopPS->bIsAlive)
+		// Skip eliminated/dead/finished players.
+		// Finished players (bHasFinishedRun=true) have their pawn hidden via
+		// SetActorHiddenInGame(true) in MarkPlayerFinished → spectating them
+		// results in a black/invisible screen.
+		if (CoopPS->bIsEliminated || !CoopPS->bIsAlive || CoopPS->bHasFinishedRun)
 		{
 			continue;
 		}

@@ -6,7 +6,12 @@
 
 ATN_FinishLineVolume::ATN_FinishLineVolume()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Tick habilitado como red de seguridad: si el chunk spawneó alrededor
+	// del jugador, OnBeginOverlap no dispara. El tick lo detecta cada 0.5s.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.TickInterval  = 0.5f;
+
+	bReplicates = false; // solo existe en el servidor
 
 	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
 	SetRootComponent(TriggerBox);
@@ -25,6 +30,57 @@ ATN_FinishLineVolume::ATN_FinishLineVolume()
 	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_FinishLineVolume::OnBoxBeginOverlap);
 }
 
+void ATN_FinishLineVolume::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (!HasAuthority() || !TriggerBox)
+	{
+		SetActorTickEnabled(false);
+		return;
+	}
+
+	// Forzar recálculo de overlaps para detectar pawns que YA estén dentro
+	// (el FinalChunk a menudo spawnea justo donde el jugador cruzó el trigger anterior).
+	TriggerBox->UpdateOverlaps(); // defaults: NewPendingOverlaps=nullptr, bDoNotifies=true
+}
+
+void ATN_FinishLineVolume::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (!HasAuthority() || !TriggerBox)
+	{
+		return;
+	}
+
+	ATN_RunGameMode* RunGM = ResolveRunGameMode();
+	if (!RunGM)
+	{
+		return;
+	}
+
+	// Red de seguridad: consultar todos los pawns dentro del box cada 0.5s.
+	// MarkPlayerFinished tiene sus propios guards (bHasFinishedRun, bIsAlive)
+	// por lo que llamarlo varias veces es completamente seguro.
+	TArray<AActor*> Overlapping;
+	TriggerBox->GetOverlappingActors(Overlapping, APawn::StaticClass());
+
+	for (AActor* Actor : Overlapping)
+	{
+		APawn* Pawn = Cast<APawn>(Actor);
+		if (!Pawn) { continue; }
+
+		APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
+		if (!PC) { continue; }
+
+		UE_LOG(LogTemp, Log, TEXT("[FinishLine] Tick: '%s' dentro de '%s' → MarkPlayerFinished."),
+			*GetNameSafe(PC), *GetName());
+
+		RunGM->MarkPlayerFinished(PC);
+	}
+}
+
 void ATN_FinishLineVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 	bool bFromSweep, const FHitResult& SweepResult)
@@ -34,16 +90,33 @@ void ATN_FinishLineVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp
 		return;
 	}
 
-	if (const APawn* Pawn = Cast<APawn>(OtherActor))
+	const APawn* Pawn = Cast<APawn>(OtherActor);
+	if (!Pawn)
 	{
-		if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
-		{
-			if (ATN_RunGameMode* RunGM = ResolveRunGameMode())
-			{
-				RunGM->MarkPlayerFinished(PC);
-			}
-		}
+		return;
 	}
+
+	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FinishLine] '%s' — Pawn '%s' sin PlayerController. "
+			"¿Pawn no poseído? Si ya terminó/murió su colisión debería estar desactivada."),
+			*GetName(), *GetNameSafe(Pawn));
+		return;
+	}
+
+	ATN_RunGameMode* RunGM = ResolveRunGameMode();
+	if (!RunGM)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FinishLine] '%s' — ResolveRunGameMode() null. "
+			"¿BP_RunGameMode asignado en WorldSettings?"), *GetName());
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[FinishLine] '%s' — OnBeginOverlap: ¡META! → MarkPlayerFinished('%s')."),
+		*GetName(), *GetNameSafe(PC));
+
+	RunGM->MarkPlayerFinished(PC);
 }
 
 ATN_RunGameMode* ATN_FinishLineVolume::ResolveRunGameMode() const

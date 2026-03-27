@@ -362,11 +362,23 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	}
 
 	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
-	if (!TNPS || TNPS->bHasFinishedRun || !TNPS->bIsAlive)
+	if (!TNPS)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[MarkPlayerFinished] '%s' — sin PlayerState, ignorado."), *GetNameSafe(PlayerController));
+		return;
+	}
+	if (TNPS->bHasFinishedRun)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[MarkPlayerFinished] '%s' — ya terminó (bHasFinishedRun=true), ignorado."), *GetNameSafe(PlayerController));
+		return;
+	}
+	if (!TNPS->bIsAlive)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MarkPlayerFinished] '%s' — bIsAlive=false, ignorado (¿murió antes de llegar?)."), *GetNameSafe(PlayerController));
 		return;
 	}
 
+	UE_LOG(LogTemp, Log, TEXT("[MarkPlayerFinished] ══ '%s' cruzó la meta ══ Rank=%d"), *GetNameSafe(PlayerController), NextFinishRank);
 	TNPS->bHasFinishedRun = true;
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
