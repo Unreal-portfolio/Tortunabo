@@ -34,15 +34,16 @@ void ATN_FinishLineVolume::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Deshabilitar tick en clientes — la detección de meta es solo servidor.
+	// El Tick (0.5s) maneja el caso en que el chunk spawnea alrededor del jugador,
+	// usando GetOverlappingActors. NO usar UpdateOverlaps() aquí: llamarlo en BeginPlay
+	// dispara OnBoxBeginOverlap sincrónicamente si el jugador ya está dentro del volumen,
+	// lo que causa un MarkPlayerFinished prematuro (el jugador pasa a espectador antes
+	// de cruzar visualmente la meta, y al llegar a ella bHasFinishedRun=true la bloquea).
 	if (!HasAuthority() || !TriggerBox)
 	{
 		SetActorTickEnabled(false);
-		return;
 	}
-
-	// Forzar recálculo de overlaps para detectar pawns que YA estén dentro
-	// (el FinalChunk a menudo spawnea justo donde el jugador cruzó el trigger anterior).
-	TriggerBox->UpdateOverlaps(); // defaults: NewPendingOverlaps=nullptr, bDoNotifies=true
 }
 
 void ATN_FinishLineVolume::Tick(float DeltaTime)

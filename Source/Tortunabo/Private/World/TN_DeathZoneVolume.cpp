@@ -61,6 +61,14 @@ void ATN_DeathZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 		return;
 	}
 
+	// No iniciar el countdown si el jugador tiene inmunidad post-revive activa.
+	// Esto evita que un jugador recién revivido muera instantáneamente si cae
+	// dentro de una death zone antes de que expire su periodo de gracia.
+	if (RunGameMode->IsPlayerReviveImmune(PC))
+	{
+		return;
+	}
+
 	PendingDeathRemaining.Add(PC, SecondsInsideToDie);
 	if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 	{
@@ -151,6 +159,13 @@ void ATN_DeathZoneVolume::TickAllCountdowns()
 
 		float* Remaining = PendingDeathRemaining.Find(WeakPC);
 		if (!Remaining) { continue; }
+
+		// Pausar el countdown mientras el jugador está noquedado por puffer-fish.
+		// bIsKnockedDown=true → bIsAlive=true, no puede moverse; matarlo sería injusto.
+		if (const ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(PC->GetPawn()))
+		{
+			if (Turtle->IsKnockedDown()) { continue; }
+		}
 
 		*Remaining = FMath::Max(0.f, *Remaining - CountdownTickInterval);
 		if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())

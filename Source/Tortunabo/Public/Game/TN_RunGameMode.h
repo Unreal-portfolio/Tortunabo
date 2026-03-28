@@ -52,6 +52,13 @@ public:
 	 */
 	APawn* GetDeadPlayerPawn(int32 PlayerId) const;
 
+	/**
+	 * true si el jugador tiene inmunidad post-revive activa.
+	 * Consultado por TN_DeathZoneVolume para no iniciar el countdown
+	 * mientras el jugador recién revivido está protegido.
+	 */
+	bool IsPlayerReviveImmune(APlayerController* PC) const;
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	float ResultsDurationSeconds = 8.0f;

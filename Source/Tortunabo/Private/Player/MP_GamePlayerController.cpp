@@ -221,6 +221,19 @@ void AMP_GamePlayerController::CacheRadialInputAssets()
 
 void AMP_GamePlayerController::EnterSpectateMode()
 {
+	// Cerrar cualquier rueda radial o menú de cosméticos para evitar que queden
+	// visibles con cursor en pantalla durante el modo espectador, lo que bloquea
+	// el scroll de cambio de cámara y deja FInputModeGameAndUI activo.
+	if (ActiveWheelType != ETN_RadialWheelType::None)
+	{
+		CloseRadialWheel(false);
+	}
+	if (CosmeticsWidget && CosmeticsWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		CosmeticsWidget->SetVisibility(ESlateVisibility::Hidden);
+		ApplyGameplayInputMode();
+	}
+
 	// ── Cambiar estado en el servidor ─────────────────────────────────────────
 	ChangeState(NAME_Spectating);
 	StartSpectatingOnly();
@@ -289,6 +302,13 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 
 	if (Candidates.Num() == 0)
 	{
+		// No hay jugadores vivos para espectear. Apuntar al propio pawn (oculto pero
+		// válido) para evitar que el ViewTarget quede apuntando a un actor destruido
+		// o null, lo que causaría pantalla negra hasta que aparezca la pantalla de resultados.
+		if (APawn* OwnPawn = GetPawn())
+		{
+			SetViewTargetWithBlend(OwnPawn, 0.f);
+		}
 		return;
 	}
 
@@ -725,6 +745,20 @@ void AMP_GamePlayerController::ClientOpenCosmeticsMenu_Implementation()
 
 void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
 {
+	// Cerrar cualquier menú o rueda abiertos antes del travel para restaurar el
+	// input mode. Si el jugador tiene FInputModeGameAndUI activo (cosméticos,
+	// rueda de emotes) y el travel ocurre, los widgets se destruyen pero el
+	// input mode no se restaura automáticamente → input bloqueado en el Run.
+	if (ActiveWheelType != ETN_RadialWheelType::None)
+	{
+		CloseRadialWheel(false);
+	}
+	if (CosmeticsWidget && CosmeticsWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		CosmeticsWidget->SetVisibility(ESlateVisibility::Hidden);
+		ApplyGameplayInputMode();
+	}
+
 	// Marcar que estamos en travel para que OnNetworkFailure active auto-rejoin
 	// en vez de destruir la sesión y mostrar error.
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))

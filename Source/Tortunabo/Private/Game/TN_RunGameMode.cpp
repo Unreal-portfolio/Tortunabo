@@ -414,6 +414,12 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	{
 		return;
 	}
+	// Un jugador que ya cruzó la meta no puede morir retroactivamente.
+	// Evita que un countdown de death zone rezagado sobreescriba el rank ganado.
+	if (TNPS->bHasFinishedRun)
+	{
+		return;
+	}
 
 	TNPS->bIsAlive = false;
 	TNPS->bHasFinishedRun = true;
@@ -550,12 +556,25 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		return;
 	}
 
-	const bool bWasDBNO = TNPS->bIsDBNO;
-	const bool bWasDead = !TNPS->bIsAlive && TNPS->bIsEliminated;
+	const bool bWasDBNO        = TNPS->bIsDBNO;
+	const bool bWasDead        = !TNPS->bIsAlive && TNPS->bIsEliminated;
+	const ATortugaCharacter* TurtleCheck = Cast<ATortugaCharacter>(PlayerController->GetPawn());
+	const bool bWasKnockedDown = TurtleCheck ? TurtleCheck->IsKnockedDown() : false;
 
-	if (!bWasDBNO && !bWasDead)
+	if (!bWasDBNO && !bWasDead && !bWasKnockedDown)
 	{
 		return; // Nothing to revive
+	}
+
+	// ── Knockdown-only revival: pawn sigue poseído, solo cancelar el knockdown ──
+	// bIsAlive=true, bIsDBNO=false → no hay que re-poseer ni restaurar estado.
+	if (bWasKnockedDown && !bWasDBNO && !bWasDead)
+	{
+		if (ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(PlayerController->GetPawn()))
+		{
+			Turtle->RecoverFromKnockdown();
+		}
+		return;
 	}
 
 	// ── Restaurar estado ──────────────────────────────────────────────────
@@ -596,6 +615,31 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			Pawn = PawnPtr->Get();
 		}
 	}
+	// ── Conceder inmunidad ANTES de re-habilitar colisión ────────────────────
+	// SetActorEnableCollision(true) dispara OnBoxBeginOverlap sincrónicamente.
+	// Si el pawn revivido cae dentro de una death zone, OnBoxBeginOverlap ve
+	// IsPlayerReviveImmune=false si la inmunidad se añade después → B6 ineficaz.
+	// Al añadirla aquí, OnBoxBeginOverlap recibe PC ya inmune → descarta el overlap.
+	ReviveImmunePlayers.Add(PlayerController);
+	FTimerHandle ImmunityTimer;
+	TWeakObjectPtr<APlayerController> WeakImmunityPC = PlayerController;
+	GetWorldTimerManager().SetTimer(ImmunityTimer, [this, WeakImmunityPC]()
+	{
+		ReviveImmunePlayers.Remove(WeakImmunityPC);
+
+		// ── Forzar re-evaluación de death zones ──────────────────────────────
+		// SetActorEnableCollision(true) no dispara OnBoxBeginOverlap de forma
+		// fiable cuando el pawn ya estaba geométricamente dentro del volumen.
+		// Tras expirar la inmunidad, comprobamos manualmente todas las death zones.
+		if (APlayerController* ImmunityPC = WeakImmunityPC.Get())
+		{
+			for (TActorIterator<ATN_DeathZoneVolume> It(GetWorld()); It; ++It)
+			{
+				(*It)->ForceCheckPlayer(ImmunityPC);
+			}
+		}
+	}, ReviveImmunitySeconds, false);
+
 	if (Pawn)
 	{
 		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
@@ -707,31 +751,11 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	// Limpiar la entrada de DeadPlayerPawns
 	DeadPlayerPawns.Remove(TNPS->GetPlayerId());
 
-	// Grant brief immunity
-	ReviveImmunePlayers.Add(PlayerController);
-	FTimerHandle ImmunityTimer;
-	TWeakObjectPtr<APlayerController> WeakImmunityPC = PlayerController;
-	GetWorldTimerManager().SetTimer(ImmunityTimer, [this, WeakImmunityPC]()
-	{
-		ReviveImmunePlayers.Remove(WeakImmunityPC);
-
-		// ── Forzar re-evaluación de death zones ──────────────────────────────
-		// SetActorEnableCollision(true) no dispara OnBoxBeginOverlap de forma
-		// fiable cuando el pawn ya estaba geométricamente dentro del volumen.
-		// Tras expirar la inmunidad, comprobamos manualmente todas las death zones.
-		if (APlayerController* ImmunityPC = WeakImmunityPC.Get())
-		{
-			for (TActorIterator<ATN_DeathZoneVolume> It(GetWorld()); It; ++It)
-			{
-				(*It)->ForceCheckPlayer(ImmunityPC);
-			}
-		}
-	}, ReviveImmunitySeconds, false);
-
-	UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s"),
+	UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s wasKnocked=%s"),
 		*GetNameSafe(PlayerController), ReviveImmunitySeconds,
 		bWasDBNO ? TEXT("YES") : TEXT("NO"),
-		bWasDead ? TEXT("YES") : TEXT("NO"));
+		bWasDead ? TEXT("YES") : TEXT("NO"),
+		bWasKnockedDown ? TEXT("YES") : TEXT("NO"));
 }
 
 APawn* ATN_RunGameMode::GetDeadPlayerPawn(int32 PlayerId) const
@@ -741,6 +765,11 @@ APawn* ATN_RunGameMode::GetDeadPlayerPawn(int32 PlayerId) const
 		return PawnPtr->Get();
 	}
 	return nullptr;
+}
+
+bool ATN_RunGameMode::IsPlayerReviveImmune(APlayerController* PC) const
+{
+	return PC && ReviveImmunePlayers.Contains(PC);
 }
 
 void ATN_RunGameMode::TickDBNOBleedout()

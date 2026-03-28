@@ -816,6 +816,8 @@ void ATortugaCharacter::Look(const FInputActionValue& Value)
 
 void ATortugaCharacter::TryInteract()
 {
+	if (bIsKnockedDown) { return; }
+
 	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
 
 	if (bDebug)
@@ -897,7 +899,9 @@ void ATortugaCharacter::RefreshSprintRequest()
 
 void ATortugaCharacter::UpdateFocusedInteractable()
 {
-	if (!GetWorld()) { FocusedInteractable = nullptr; return; }
+	// Si el pawn ya no tiene controlador (terminó la carrera, murió, espectador)
+	// limpiar el foco y no hacer overlap queries sobre el pawn oculto.
+	if (!GetWorld() || !GetController()) { FocusedInteractable = nullptr; return; }
 
 	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
 
@@ -1714,7 +1718,9 @@ void ATortugaCharacter::TryStartReviveChannel()
 	APlayerController* BestTargetPC = nullptr;
 	float BestDistSq = ReviveRadiusCm * ReviveRadiusCm;
 
-	// Search for the nearest DBNO player in range
+	// Buscar el jugador más cercano que esté en DBNO o noquedado (puffer-fish).
+	// bIsDBNO: sistema de bleedout (actualmente desactivado).
+	// bIsKnockedDown: knockdown por puffer-fish — también revivible por compañero.
 	if (const UWorld* World = GetWorld())
 	{
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
@@ -1723,10 +1729,13 @@ void ATortugaCharacter::TryStartReviveChannel()
 			if (!OtherPC || OtherPC == GetController()) { continue; }
 
 			const ATN_CoopPlayerState* OtherPS = OtherPC->GetPlayerState<ATN_CoopPlayerState>();
-			if (!OtherPS || !OtherPS->bIsDBNO) { continue; }
-
 			const APawn* OtherPawn = OtherPC->GetPawn();
 			if (!OtherPawn) { continue; }
+
+			const ATortugaCharacter* OtherTurtle = Cast<ATortugaCharacter>(OtherPawn);
+			const bool bTargetNeedsRevive = (OtherPS && OtherPS->bIsDBNO)
+				|| (OtherTurtle && OtherTurtle->IsKnockedDown());
+			if (!bTargetNeedsRevive) { continue; }
 
 			const float DistSq = FVector::DistSquared(MyLoc, OtherPawn->GetActorLocation());
 			if (DistSq < BestDistSq)
@@ -1797,6 +1806,19 @@ void ATortugaCharacter::TickReviveChannel()
 		return;
 	}
 
+	// Validate: reviver hasn't finished the race or died
+	if (APlayerController* MyPC = Cast<APlayerController>(GetController()))
+	{
+		if (const ATN_CoopPlayerState* MyPS = MyPC->GetPlayerState<ATN_CoopPlayerState>())
+		{
+			if (!MyPS->bIsAlive || MyPS->bHasFinishedRun)
+			{
+				CancelReviveChannel();
+				return;
+			}
+		}
+	}
+
 	// Validate: target still valid and in DBNO
 	APlayerController* TargetPC = ReviveTargetPC.Get();
 	if (!TargetPC)
@@ -1806,16 +1828,22 @@ void ATortugaCharacter::TickReviveChannel()
 	}
 
 	const ATN_CoopPlayerState* TargetPS = TargetPC->GetPlayerState<ATN_CoopPlayerState>();
-	if (!TargetPS || !TargetPS->bIsDBNO)
-	{
-		CancelReviveChannel();
-		return;
-	}
 
 	// Validate: still in range
 	const APawn* TargetPawn = TargetPC->GetPawn();
 	if (!TargetPawn)
 	{
+		CancelReviveChannel();
+		return;
+	}
+
+	// Validate: target still needs reviving (DBNO o noquedado por puffer-fish)
+	const ATortugaCharacter* TargetTurtle = Cast<ATortugaCharacter>(TargetPawn);
+	const bool bTargetStillRevivable = (TargetPS && TargetPS->bIsDBNO)
+		|| (TargetTurtle && TargetTurtle->IsKnockedDown());
+	if (!bTargetStillRevivable)
+	{
+		// Target ya se recuperó (auto-recover) — cancelar canal limpiamente
 		CancelReviveChannel();
 		return;
 	}
