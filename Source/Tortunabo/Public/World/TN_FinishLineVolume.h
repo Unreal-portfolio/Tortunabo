@@ -23,9 +23,6 @@ public:
 	ATN_FinishLineVolume();
 
 protected:
-	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaTime) override;
-
 	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FinishLine")
 	TObjectPtr<UBoxComponent> TriggerBox;
