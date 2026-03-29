@@ -1303,8 +1303,11 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 		return;
 	}
 
-	// Componentes que reciben BodyMaterial (cuerpo principal).
-	static const TArray<FName> BodyNames = { TEXT("Body"), TEXT("Body1") };
+	// Componentes que reciben BodyMaterial (caparazón).
+	static const TArray<FName> BodyNames = { TEXT("Body") };
+
+	// Componente que recibe BellyMaterial (panza). Fallback a BodyMaterial si BellyMaterial es null.
+	static const TArray<FName> BellyNames = { TEXT("Body1") };
 
 	// Componentes que reciben SkinMaterial (extremidades / detalles).
 	static const TArray<FName> SkinNames = {
@@ -1324,6 +1327,11 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 		if (BodyNames.Contains(CompName) && Row->BodyMaterial)
 		{
 			MatToApply = Row->BodyMaterial;
+		}
+		else if (BellyNames.Contains(CompName))
+		{
+			// BellyMaterial para la panza; si no está configurado, usa BodyMaterial como fallback.
+			MatToApply = Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial;
 		}
 		else if (SkinNames.Contains(CompName) && Row->SkinMaterial)
 		{

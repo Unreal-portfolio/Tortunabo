@@ -91,11 +91,18 @@ struct FTN_SkinData : public FTableRowBase
 	FText DisplayName;
 
 	/**
-	 * Material que se aplica a los componentes "Body" y "Body1" del personaje y la estatua.
+	 * Material que se aplica al componente "Body" del personaje y la estatua (caparazón).
 	 * Si es null, se restaura el material por defecto (sin skin).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	TObjectPtr<UMaterialInterface> BodyMaterial = nullptr;
+
+	/**
+	 * Material que se aplica al componente "Body1" del personaje y la estatua (panza/vientre).
+	 * Si es null, se usa BodyMaterial como fallback.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	TObjectPtr<UMaterialInterface> BellyMaterial = nullptr;
 
 	/**
 	 * Material que se aplica a los componentes "Mesh1"–"Mesh5" y "Mesh13" del personaje y la estatua.

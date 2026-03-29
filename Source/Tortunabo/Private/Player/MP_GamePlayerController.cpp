@@ -139,11 +139,14 @@ void AMP_GamePlayerController::ApplyGameplayInputMode()
 		return;
 	}
 
+	// ResetIgnoreInputFlags() pone los contadores a 0 en lugar de solo decrementar.
+	// Esto es crítico en builds empaquetados donde el contador puede estar > 0
+	// por alguna llamada previa de la inicialización del engine antes de BeginPlay.
+	ResetIgnoreInputFlags();
+
 	FInputModeGameOnly InputMode;
 	SetInputMode(InputMode);
 	SetShowMouseCursor(false);
-	SetIgnoreMoveInput(false);
-	SetIgnoreLookInput(false);
 
 	if (GEngine && GEngine->GameViewport)
 	{

@@ -60,9 +60,11 @@ void ATN_SkinStatueActor::ApplyPreviewCosmetic()
 			const FTN_SkinData* Row = SkinDT->FindRow<FTN_SkinData>(CosmeticId, TEXT("StatuePreview"));
 			if (!Row) { break; }
 
-			// Nombres de componentes que reciben BodyMaterial.
-			static const TArray<FName> BodyNames = { TEXT("Body"), TEXT("Body1") };
-			// Nombres de componentes que reciben SkinMaterial.
+			// Nombres de componentes que reciben BodyMaterial (caparazón).
+			static const TArray<FName> BodyNames = { TEXT("Body") };
+			// Componente que recibe BellyMaterial (panza). Fallback a BodyMaterial.
+			static const TArray<FName> BellyNames = { TEXT("Body1") };
+			// Nombres de componentes que reciben SkinMaterial (extremidades).
 			static const TArray<FName> SkinNames = {
 				TEXT("Mesh1"), TEXT("Mesh2"), TEXT("Mesh3"),
 				TEXT("Mesh4"), TEXT("Mesh5"), TEXT("Mesh13")
@@ -83,6 +85,10 @@ void ATN_SkinStatueActor::ApplyPreviewCosmetic()
 				if (BodyNames.Contains(CompName) && Row->BodyMaterial)
 				{
 					MatToApply = Row->BodyMaterial;
+				}
+				else if (BellyNames.Contains(CompName))
+				{
+					MatToApply = Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial;
 				}
 				else if (SkinNames.Contains(CompName) && Row->SkinMaterial)
 				{
