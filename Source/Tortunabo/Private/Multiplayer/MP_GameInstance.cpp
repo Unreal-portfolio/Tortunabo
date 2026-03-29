@@ -414,8 +414,11 @@ void UMP_GameInstance::FindAndJoinSession()
 
 	SessionSearch = MakeShareable(new FOnlineSessionSearch());
 	SessionSearch->bIsLanQuery = false;
-	SessionSearch->MaxSearchResults = 50;
+	SessionSearch->MaxSearchResults = 100;
 	SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCESEARCH")), true, EOnlineComparisonOp::Equals);
+	// Filtro servidor: Steam solo devuelve lobbies con SEARCH_KEYWORDS == "TortunaboLobby".
+	// Evita saturar el límite de resultados con lobbies de otros proyectos (App ID 480 es compartido).
+	SessionSearch->QuerySettings.Set(FName(TEXT("SEARCH_KEYWORDS")), FString(TEXT("TortunaboLobby")), EOnlineComparisonOp::Equals);
 
 	UpdateStatus(TEXT("Searching Steam lobbies..."));
 	Sessions->FindSessions(0, SessionSearch.ToSharedRef());
