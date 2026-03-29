@@ -31,7 +31,7 @@ protected:
 	TObjectPtr<UBoxComponent> TriggerBox;
 
 	/** Velocidad máxima (cm/s) mientras el jugador está dentro. */
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "SlowZone",
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone",
 		meta = (ClampMin = "50.0"))
 	float MaxSlowSpeed = 300.f;
 

@@ -64,14 +64,36 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Hard")
 	TArray<TSubclassOf<AActor>> HardChunkClasses;
 
-	// ── Umbrales de dificultad ───────────────────────────────────────────────
+	// ── Modo de generación ───────────────────────────────────────────────────
+
+	/**
+	 * Si true, la dificultad de cada chunk se determina automáticamente según los
+	 * umbrales EasyToMediumThreshold / MediumToHardThreshold (comportamiento original).
+	 *
+	 * Si false, se usa CustomChunkSequence: cada posición del array indica la dificultad
+	 * del chunk correspondiente. Dentro de esa dificultad se elige un BP aleatorio del pool.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Difficulty")
+	bool bUseRandomGeneration = true;
+
+	/**
+	 * Secuencia de dificultades personalizada, usada cuando bUseRandomGeneration = false.
+	 * El índice 0 corresponde al primer chunk, el índice 1 al segundo, etc.
+	 * Si el número de chunks pasados supera el tamaño del array, se usa Hard como fallback.
+	 * Cada valor elige aleatoriamente entre los BPs del pool de esa dificultad.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Difficulty",
+		meta = (EditCondition = "!bUseRandomGeneration", EditConditionHides))
+	TArray<ETNChunkDifficulty> CustomChunkSequence;
+
+	// ── Umbrales de dificultad (solo aplican con bUseRandomGeneration = true) ─
 
 	/**
 	 * Número de chunks pasados a partir del cual el pool cambia de EASY a MEDIUM.
 	 * Ejemplo: 3 → los chunks 0, 1, 2 son EASY; el 3 en adelante es MEDIUM.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Difficulty",
-		meta = (ClampMin = "1"))
+		meta = (ClampMin = "1", EditCondition = "bUseRandomGeneration", EditConditionHides))
 	int32 EasyToMediumThreshold = 3;
 
 	/**
@@ -79,7 +101,7 @@ public:
 	 * Debe ser mayor que EasyToMediumThreshold.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Difficulty",
-		meta = (ClampMin = "2"))
+		meta = (ClampMin = "2", EditCondition = "bUseRandomGeneration", EditConditionHides))
 	int32 MediumToHardThreshold = 7;
 
 	// ── Chunk final ──────────────────────────────────────────────────────────

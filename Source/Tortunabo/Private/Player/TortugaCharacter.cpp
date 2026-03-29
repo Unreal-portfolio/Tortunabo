@@ -591,13 +591,21 @@ void ATortugaCharacter::PawnClientRestart()
 		UpdateSkinVisual(TNPS->EquippedSkinId);
 	}
 
-	// ── Re-añadir HUD widgets al viewport (cliente tras seamless travel) ─────
-	// OnPossess solo se ejecuta en el SERVIDOR. En el cliente, PawnClientRestart
-	// es el hook equivalente (disparado por ClientRestart RPC).
-	// Los widgets del PC persisten entre mapas pero son eliminados del viewport
-	// por UWorld::CleanupWorld durante la transición. Aquí los volvemos a añadir.
+	// ── Restaurar input mode y foco del viewport ─────────────────────────────
+	// ApplyGameplayInputMode() se llama en BeginPlay del PC, pero en ese momento
+	// el viewport puede no estar completamente listo (especialmente en builds
+	// empaquetados). PawnClientRestart se dispara DESPUÉS de que la posesión es
+	// confirmada en el cliente, garantizando que el foco se aplica correctamente.
+	// ForceRestoreInput = ResetIgnoreInputFlags + ApplyGameplayInputMode.
 	if (AMP_GamePlayerController* PC = Cast<AMP_GamePlayerController>(GetController()))
 	{
+		PC->ForceRestoreInput();
+
+		// ── Re-añadir HUD widgets al viewport (cliente tras seamless travel) ─
+		// OnPossess solo se ejecuta en el SERVIDOR. En el cliente, PawnClientRestart
+		// es el hook equivalente (disparado por ClientRestart RPC).
+		// Los widgets del PC persisten entre mapas pero son eliminados del viewport
+		// por UWorld::CleanupWorld durante la transición. Aquí los volvemos a añadir.
 		PC->RefreshHUDAfterPossession();
 	}
 

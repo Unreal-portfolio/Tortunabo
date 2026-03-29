@@ -42,6 +42,15 @@ void ATN_ChunkManager::BeginPlay()
 		return;
 	}
 
+	// Validar secuencia personalizada si está activa
+	if (!bUseRandomGeneration && CustomChunkSequence.Num() < TotalChunksBeforeFinal)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[ChunkManager] CustomChunkSequence tiene %d entradas pero TotalChunksBeforeFinal=%d. "
+			     "Los chunks restantes usarán Hard como fallback."),
+			CustomChunkSequence.Num(), TotalChunksBeforeFinal);
+	}
+
 	// El punto de spawn del primer chunk = la posición del ChunkManager en el mapa.
 	NextSpawnTransform = GetActorTransform();
 
@@ -115,8 +124,27 @@ void ATN_ChunkManager::SpawnNextChunk()
 		return;
 	}
 
-	// Determinar pool según dificultad actual, con fallback a otros pools
-	ETNChunkDifficulty Difficulty = GetCurrentDifficulty();
+	// Determinar dificultad: modo aleatorio (umbrales) o secuencia personalizada
+	ETNChunkDifficulty Difficulty;
+	if (!bUseRandomGeneration)
+	{
+		if (CustomChunkSequence.IsValidIndex(PassedChunkCount))
+		{
+			Difficulty = CustomChunkSequence[PassedChunkCount];
+		}
+		else
+		{
+			// Fuera del rango de la secuencia → Hard como fallback
+			Difficulty = ETNChunkDifficulty::Hard;
+			UE_LOG(LogTemp, Warning,
+				TEXT("[ChunkManager] SpawnNextChunk: PassedChunkCount=%d supera CustomChunkSequence.Num()=%d — usando Hard."),
+				PassedChunkCount, CustomChunkSequence.Num());
+		}
+	}
+	else
+	{
+		Difficulty = GetCurrentDifficulty();
+	}
 
 	// Intentar el pool primario, luego los otros como fallback
 	const TArray<TSubclassOf<AActor>>* PrimaryPool   = nullptr;
