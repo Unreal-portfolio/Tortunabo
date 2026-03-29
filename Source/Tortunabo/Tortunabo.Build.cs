@@ -23,7 +23,9 @@ public class Tortunabo : ModuleRules
 			"AudioCapture",
 			"AudioCaptureCore",
 			"AudioMixer",
-			"SignalProcessing"
+			"SignalProcessing",
+			"Niagara",
+			"NiagaraCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
