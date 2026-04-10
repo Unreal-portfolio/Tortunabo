@@ -142,6 +142,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.0"))
 	float LegMinSpeed = 20.f;
 
+	// ── Air Dash (double-jump) ────────────────────────────────────────────────
+	/** Horizontal velocity applied on air dash (cm/s). Overrides current XY velocity. */
+	UPROPERTY(EditDefaultsOnly, Category = "Movement|AirDash", meta = (ClampMin = "0.0"))
+	float AirDashHorizontalForce = 1400.f;
+
+	/** Vertical velocity applied on air dash (cm/s). Overrides current Z velocity. */
+	UPROPERTY(EditDefaultsOnly, Category = "Movement|AirDash", meta = (ClampMin = "0.0"))
+	float AirDashVerticalBoost = 300.f;
+
 	// ── Emote Config ─────────────────────────────────────────────────────────
 	/** Seconds to smoothly interpolate all limbs back to rest after an emote ends. */
 	UPROPERTY(EditDefaultsOnly, Category = "Emotes", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -380,6 +389,17 @@ private:
 	TWeakObjectPtr<USceneComponent> Pata2;
 	FRotator Pata1RestRot = FRotator::ZeroRotator;
 	FRotator Pata2RestRot = FRotator::ZeroRotator;
+
+	// ── Air Dash internals ────────────────────────────────────────────────────
+	/** True after landing; false after the first air dash of a jump. Not replicated — tracked per-machine. */
+	bool bCanAirDash = true;
+
+	virtual void Jump() override;
+	virtual void Landed(const FHitResult& Hit) override;
+	void PerformAirDashLocally();
+
+	UFUNCTION(Server, Reliable)
+	void ServerPerformAirDash(FVector ClientForwardDirection);
 
 	void Move(const FInputActionValue& Value);
 	void OnMoveReleased();

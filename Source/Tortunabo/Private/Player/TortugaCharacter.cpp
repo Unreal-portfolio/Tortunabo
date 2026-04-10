@@ -777,6 +777,46 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 	}
 }
 
+void ATortugaCharacter::Jump()
+{
+	// While airborne and dash is available → perform the air dash instead of a second jump.
+	if (GetCharacterMovement()->IsFalling() && bCanAirDash && !bIsKnockedDown && !bIsDead)
+	{
+		PerformAirDashLocally();
+		if (!HasAuthority())
+		{
+			ServerPerformAirDash(GetActorForwardVector());
+		}
+		return;
+	}
+	Super::Jump();
+}
+
+void ATortugaCharacter::PerformAirDashLocally()
+{
+	bCanAirDash = false;
+	const FVector DashVelocity = GetActorForwardVector() * AirDashHorizontalForce
+	                           + FVector::UpVector * AirDashVerticalBoost;
+	LaunchCharacter(DashVelocity, true, true);
+}
+
+void ATortugaCharacter::ServerPerformAirDash_Implementation(FVector ClientForwardDirection)
+{
+	if (!GetCharacterMovement()->IsFalling() || !bCanAirDash || bIsKnockedDown || bIsDead)
+	{
+		return;
+	}
+	const FVector SafeDir = ClientForwardDirection.GetSafeNormal();
+	if (SafeDir.IsNearlyZero())
+	{
+		return;
+	}
+	bCanAirDash = false;
+	const FVector DashVelocity = SafeDir * AirDashHorizontalForce
+	                           + FVector::UpVector * AirDashVerticalBoost;
+	LaunchCharacter(DashVelocity, true, true);
+}
+
 void ATortugaCharacter::Move(const FInputActionValue& Value)
 {
 	// Cancel any active emote the moment the player moves —
@@ -1008,6 +1048,10 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 		if (Cast<ATN_PickupInteractableBase>(Interactable)
 			&& InventoryComponent && InventoryComponent->HasEquippedItem())
 		{
+			if (bIsKnockedDown || bIsDead)
+			{
+				return;
+			}
 			if (bDebug)
 			{
 				UE_LOG(LogTemp, Log, TEXT("[Interact:SERVER] Pickup '%s' no recogible + inventario lleno → usando ítem equipado."),
@@ -1155,6 +1199,7 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 
 void ATortugaCharacter::ServerDropEquippedItem_Implementation()
 {
+	if (bIsKnockedDown || bIsDead) { return; }
 	if (!InventoryComponent) { return; }
 
 	FTN_InventoryItem DroppedItem;
@@ -1356,6 +1401,12 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 		*GetName(), *SkinId.ToString(), NumApplied);
 }
 
+void ATortugaCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+	bCanAirDash = true;
+}
+
 // ── Replication ────────────────────────────────────────────────────────────────
 
 void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const{
@@ -1483,6 +1534,7 @@ void ATortugaCharacter::OnRep_IsKnockedDown()
 			}
 			StopDBNOHeartbeatSound();
 			PlayReviveSuccessSound();
+			bCanAirDash = true;  // Restore air dash after knockdown recovery
 		}
 	}
 }
@@ -1627,7 +1679,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 
 void ATortugaCharacter::OnRep_IsDead()
 {
-	if (bIsDead) { HideLimbs(); } else { ShowLimbs(); }
+	if (bIsDead) { HideLimbs(); } else { ShowLimbs(); bCanAirDash = true; }
 }
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
@@ -1683,7 +1735,7 @@ void ATortugaCharacter::ShowLimbs()
 
 void ATortugaCharacter::ServerTryReviveNearby_Implementation()
 {
-	if (!HasAuthority()) { return; }
+	if (bIsKnockedDown || bIsDead) { return; }
 
 	// Solo busca jugadores en DBNO (knockdown). Los muertos se reviven vía TN_RescuePickup.
 	const float ReviveSearchRadius = ReviveRadiusCm > 0.f ? ReviveRadiusCm : 300.f;
