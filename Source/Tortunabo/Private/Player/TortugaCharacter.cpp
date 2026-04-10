@@ -785,7 +785,7 @@ void ATortugaCharacter::Jump()
 		PerformAirDashLocally();
 		if (!HasAuthority())
 		{
-			ServerPerformAirDash(GetActorForwardVector());
+			ServerPerformAirDash();
 		}
 		return;
 	}
@@ -800,19 +800,15 @@ void ATortugaCharacter::PerformAirDashLocally()
 	LaunchCharacter(DashVelocity, true, true);
 }
 
-void ATortugaCharacter::ServerPerformAirDash_Implementation(FVector ClientForwardDirection)
+void ATortugaCharacter::ServerPerformAirDash_Implementation()
 {
 	if (!GetCharacterMovement()->IsFalling() || !bCanAirDash || bIsKnockedDown || bIsDead)
 	{
 		return;
 	}
-	const FVector SafeDir = ClientForwardDirection.GetSafeNormal();
-	if (SafeDir.IsNearlyZero())
-	{
-		return;
-	}
 	bCanAirDash = false;
-	const FVector DashVelocity = SafeDir * AirDashHorizontalForce
+	// Use the server's authoritative forward vector — never trust client-supplied directions.
+	const FVector DashVelocity = GetActorForwardVector() * AirDashHorizontalForce
 	                           + FVector::UpVector * AirDashVerticalBoost;
 	LaunchCharacter(DashVelocity, true, true);
 }

@@ -130,6 +130,9 @@ private:
 	bool bIsShuttingDown = false;
 	bool bRuntimeResourcesCleanedUp = false;
 
+	// Server-side rate limiting for voice packets.
+	float LastVoicePacketServerTime = -1.f;
+
 	void CreateVoiceIndicatorHUD();
 };
 

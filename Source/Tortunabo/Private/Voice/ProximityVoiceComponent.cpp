@@ -435,6 +435,26 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
+	// Payload cap: ~8 KB covers 80ms at 48kHz stereo with headroom.
+	// Larger packets indicate a malicious or bugged client.
+	constexpr int32 MaxVoicePayloadBytes = 8192;
+	if (CompressedData.Num() > MaxVoicePayloadBytes)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Voice] Server_SendVoiceData: oversized payload (%d bytes) from %s — dropped"),
+			CompressedData.Num(), *GetNameSafe(GetOwner()));
+		return;
+	}
+
+	// Server-side rate limit: allow at most 25 Hz (min 40ms between packets).
+	// The client enforces 80ms (12.5 Hz) via SendInterval, so 40ms gives 2× headroom for jitter.
+	constexpr float MinVoicePacketInterval = 0.04f;
+	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.f;
+	if (Now >= 0.f && (Now - LastVoicePacketServerTime) < MinVoicePacketInterval)
+	{
+		return;
+	}
+	LastVoicePacketServerTime = Now;
+
 	// Enviar solo a clientes dentro del OuterRadius — evita enviar audio a todos.
 	AActor* SpeakerActor = GetOwner();
 	if (!SpeakerActor || !GetWorld())

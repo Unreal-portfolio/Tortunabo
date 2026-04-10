@@ -773,6 +773,15 @@ void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
 
 void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TArray<FName>& UnlockedHelmetIds)
 {
+	// Cap to prevent clients from flooding the server with a massive array.
+	constexpr int32 MaxSyncedHelmets = 50;
+	if (UnlockedHelmetIds.Num() > MaxSyncedHelmets)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC] ServerSyncUnlockedHelmets: oversized array (%d) from %s — rejected"),
+			UnlockedHelmetIds.Num(), *GetNameSafe(this));
+		return;
+	}
+
 	ServerUnlockedHelmets.Reset();
 	for (const FName HelmetId : UnlockedHelmetIds)
 	{
@@ -821,6 +830,20 @@ void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName Helm
 
 void AMP_GamePlayerController::ServerSetEquippedSkin_Implementation(FName SkinId)
 {
+	// NAME_None = unequip (always allowed).
+	// Any other ID must exist in the server's SkinDataTable to prevent spoofing.
+	if (SkinId != NAME_None)
+	{
+		const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+		const UDataTable* SkinTable = GI ? GI->GetSkinDataTable() : nullptr;
+		if (!SkinTable || !SkinTable->GetRowNames().Contains(SkinId))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[PC] ServerSetEquippedSkin: '%s' not in SkinDataTable for %s"),
+				*SkinId.ToString(), *GetNameSafe(this));
+			return;
+		}
+	}
+
 	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->EquippedSkinId = SkinId;

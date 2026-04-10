@@ -399,7 +399,7 @@ private:
 	void PerformAirDashLocally();
 
 	UFUNCTION(Server, Reliable)
-	void ServerPerformAirDash(FVector ClientForwardDirection);
+	void ServerPerformAirDash();
 
 	void Move(const FInputActionValue& Value);
 	void OnMoveReleased();

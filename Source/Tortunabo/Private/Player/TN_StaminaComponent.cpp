@@ -92,7 +92,9 @@ void UTN_StaminaComponent::ServerSetSprintRequested_Implementation(bool bRequest
 
 void UTN_StaminaComponent::ServerGrantUnlimitedStamina_Implementation(float DurationSeconds)
 {
-	GrantUnlimitedStamina(DurationSeconds);
+	// Clamp to prevent clients from granting themselves permanent unlimited stamina.
+	constexpr float MaxGrantDuration = 15.f;
+	GrantUnlimitedStamina(FMath::Clamp(DurationSeconds, 0.f, MaxGrantDuration));
 }
 
 void UTN_StaminaComponent::SetInventoryComponent(UTN_InventoryComponent* InvComp)
