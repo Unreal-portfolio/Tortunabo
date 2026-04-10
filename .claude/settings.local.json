@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(find 'C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo/Source' -type f \\\\\\(-name *.h -o -name *.cpp \\\\\\))",
-      "Bash(grep -E \"\\\\.\\(h|cpp\\)$\")"
+      "Bash(grep -E \"\\\\.\\(h|cpp\\)$\")",
+      "Bash(xargs grep:*)"
     ]
   }
 }
