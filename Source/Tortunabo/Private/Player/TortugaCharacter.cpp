@@ -1045,6 +1045,10 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 
 void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 {
+	if (bIsKnockedDown || bIsDead)
+	{
+		return;
+	}
 	if (!InventoryComponent || !StaminaComponent)
 	{
 		return;
