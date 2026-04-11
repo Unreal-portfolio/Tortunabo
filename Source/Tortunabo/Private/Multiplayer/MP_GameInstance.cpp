@@ -14,6 +14,7 @@
 #include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"
 #include "Multiplayer/TN_CosmeticSaveGame.h"
+#include "Multiplayer/TN_TutorialSaveGame.h"
 #include "UI/HUD/TN_LoadingScreenWidget.h"
 #include "Voice/ProximityVoiceComponent.h"
 
@@ -77,6 +78,7 @@ void UMP_GameInstance::Init()
 	FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &UMP_GameInstance::HandlePreLoadMap);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &UMP_GameInstance::HandlePostLoadMap);
 	LoadCosmeticProfile();
+	LoadTutorialProfile();
 }
 
 void UMP_GameInstance::EnsureSteamAppIdFile()
@@ -125,6 +127,7 @@ void UMP_GameInstance::Shutdown()
 	FCoreUObjectDelegates::PreLoadMap.RemoveAll(this);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
 	SaveCosmeticProfile();
+	SaveTutorialProfile();
 
 	IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (Sessions.IsValid() && InviteAcceptedDelegateHandle.IsValid())
@@ -896,6 +899,45 @@ FString UMP_GameInstance::BuildCosmeticSaveSlot() const
 	}
 
 	return FString::Printf(TEXT("%s_%s"), *CosmeticSaveSlotPrefix, *Suffix);
+}
+
+// ── Tutorial state ────────────────────────────────────────────────────────────
+
+bool UMP_GameInstance::HasCompletedTutorial() const
+{
+	return TutorialProfile && TutorialProfile->bHasCompletedTutorial;
+}
+
+void UMP_GameInstance::SetTutorialCompleted()
+{
+	if (!TutorialProfile)
+	{
+		return;
+	}
+	TutorialProfile->bHasCompletedTutorial = true;
+	SaveTutorialProfile();
+	UE_LOG(LogTemp, Log, TEXT("[GameInstance] Tutorial marcado como completado y guardado."));
+}
+
+void UMP_GameInstance::LoadTutorialProfile()
+{
+	if (UGameplayStatics::DoesSaveGameExist(TEXT("TutorialState_0"), 0))
+	{
+		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("TutorialState_0"), 0));
+	}
+
+	if (!TutorialProfile)
+	{
+		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_TutorialSaveGame::StaticClass()));
+	}
+}
+
+void UMP_GameInstance::SaveTutorialProfile() const
+{
+	if (TutorialProfile)
+	{
+		UGameplayStatics::SaveGameToSlot(TutorialProfile, TEXT("TutorialState_0"), 0);
+	}
 }
 
 void UMP_GameInstance::RefreshLoadingText(const FString& Reason) const

@@ -26,6 +26,12 @@ void ATN_HQGameMode::BeginPlay()
 	Super::BeginPlay();
 	EnsureFallbackPlayerStart();
 
+	// ── Tutorial first-time check (fallback para join directo sin seamless) ──
+	// Para seamless travel, el flag se evalúa en HandleSeamlessTravelPlayer
+	// ANTES de que Super spawne el pawn.  Este bloque cubre el caso en que el
+	// jugador accede directamente al mapa sin pasar por LVL_Menu.
+	CheckAndSetTutorialFlag();
+
 	// ── Safety check: detectar si el mapa cargó con la clase C++ base en vez del BP ──
 	if (GetClass() == ATN_HQGameMode::StaticClass())
 	{
@@ -46,8 +52,39 @@ void ATN_HQGameMode::BeginPlay()
 
 AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
+	// ── Tutorial check — aquí es el único sitio donde SIEMPRE se ejecuta ─────
+	// Llamarlo aquí garantiza que el flag está evaluado justo antes de decidir
+	// el spawn, independientemente del camino (seamless travel, PostLogin, etc.)
+	// CheckAndSetTutorialFlag es idempotente: llamadas repetidas no hacen nada.
+	CheckAndSetTutorialFlag();
+
+	// ── Primera vez: dirigir al spawn del tutorial ───────────────────────────
+	if (bShouldUseTutorialStart)
+	{
+		for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
+		{
+			if ((*It)->PlayerStartTag == TutorialStartTag)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[HQGameMode] ChoosePlayerStart → tutorial start encontrado."));
+				return *It;
+			}
+		}
+		UE_LOG(LogTemp, Warning,
+			TEXT("[HQGameMode] bShouldUseTutorialStart=true pero no hay PlayerStart con tag '%s' — spawn normal."),
+			*TutorialStartTag.ToString());
+	}
+
+	// ── Selección normal: excluir spawns reservados para el tutorial ─────────
 	TArray<AActor*> PlayerStarts;
 	UGameplayStatics::GetAllActorsOfClass(this, APlayerStart::StaticClass(), PlayerStarts);
+
+	// Quitar del pool cualquier PlayerStart con el tag de tutorial
+	PlayerStarts.RemoveAll([this](const AActor* A)
+	{
+		const APlayerStart* PS = Cast<APlayerStart>(A);
+		return PS && PS->PlayerStartTag == TutorialStartTag;
+	});
+
 	if (PlayerStarts.Num() == 0)
 	{
 		if (APlayerStart* FallbackStart = EnsureFallbackPlayerStart())
@@ -97,6 +134,10 @@ void ATN_HQGameMode::HandleStartingNewPlayer_Implementation(APlayerController* N
 
 void ATN_HQGameMode::PostLogin(APlayerController* NewPlayer)
 {
+	// Tutorial check aquí cubre el caso de un join fresco (sin seamless travel).
+	// En seamless travel PostLogin NO se llama → lo cubre HandleSeamlessTravelPlayer.
+	CheckAndSetTutorialFlag();
+
 	Super::PostLogin(NewPlayer);
 
 	EnsurePlayerSpawned(NewPlayer);
@@ -175,6 +216,25 @@ void ATN_HQGameMode::SetPlayerReadyState(APlayerController* PlayerController, bo
 	}
 
 	RefreshLobbyState();
+}
+
+void ATN_HQGameMode::CheckAndSetTutorialFlag()
+{
+	// Idempotente: si ya detectamos primera vez en esta sesión, no repetir.
+	if (bShouldUseTutorialStart)
+	{
+		return;
+	}
+
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		if (!GI->HasCompletedTutorial())
+		{
+			bShouldUseTutorialStart = true;
+			GI->SetTutorialCompleted();
+			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Primera partida detectada — spawn en zona tutorial (tag: '%s')."), *TutorialStartTag.ToString());
+		}
+	}
 }
 
 void ATN_HQGameMode::RefreshLobbyState()
@@ -386,6 +446,11 @@ void ATN_HQGameMode::SetFlowState(ETNMatchFlowState NewState) const
 
 void ATN_HQGameMode::HandleSeamlessTravelPlayer(AController*& C)
 {
+	// ── Tutorial check — DEBE ir ANTES de Super ───────────────────────────────
+	// Super::HandleSeamlessTravelPlayer → RestartPlayer → ChoosePlayerStart.
+	// Si ponemos el flag después, el pawn ya está spawneado en el sitio normal.
+	CheckAndSetTutorialFlag();
+
 	// Limpiar estado espectador ANTES de Super — jugadores que murieron/terminaron
 	// en la carrera estaban en modo espectador. Sin esto, PlayerCanRestart() devuelve
 	// false y Super no les spawnea pawn.

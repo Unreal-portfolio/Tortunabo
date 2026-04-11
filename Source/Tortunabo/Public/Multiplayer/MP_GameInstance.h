@@ -10,6 +10,7 @@
 class UNetDriver;
 class UUserWidget;
 class UTN_CosmeticSaveGame;
+class UTN_TutorialSaveGame;
 
 USTRUCT(BlueprintType)
 struct FTN_HelmetCrateEntry
@@ -118,6 +119,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	UDataTable* GetSkinDataTable() const { return SkinDataTable; }
 
+	// ── Tutorial state ───────────────────────────────────────────────────────
+
+	/**
+	 * Returns true if this machine's player has already been spawned in the
+	 * tutorial zone at least once (flag is persisted across sessions).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	bool HasCompletedTutorial() const;
+
+	/**
+	 * Marks the tutorial as completed and immediately persists the flag to disk.
+	 * Called by TN_HQGameMode the first time it routes a player to the tutorial zone.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void SetTutorialCompleted();
+
 	/**
 	 * Número de jugadores conectados en el lobby ANTES de hacer ServerTravel al Run.
 	 * TN_HQGameMode lo asigna justo antes de viajar; TN_RunGameMode lo lee para
@@ -204,6 +221,9 @@ private:
 	void SaveCosmeticProfile() const;
 	FString BuildCosmeticSaveSlot() const;
 
+	void LoadTutorialProfile();
+	void SaveTutorialProfile() const;
+
 	/** Reintenta crear el listen server tras un NetDriverListenFailure durante travel. */
 	void RetryListenServer();
 
@@ -212,6 +232,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_CosmeticSaveGame> CosmeticProfile;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_TutorialSaveGame> TutorialProfile;
 
 	bool bIsLoadingScreenVisible = false;
 

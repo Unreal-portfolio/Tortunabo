@@ -48,6 +48,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PawnClientRestart() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual void Jump() override;
 
 	/**
 	 * Called when the PlayerState reference is replicated to this client.
@@ -94,6 +95,35 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Emotes")
 	TArray<TSoftObjectPtr<UInputAction>> EmoteActions;
 
+	// ── Dive Config ───────────────────────────────────────────────────────────
+
+	/** Horizontal impulse speed applied on dive (cm/s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="200.0", ClampMax="3000.0"))
+	float DiveForwardSpeed = 420.f;
+
+	/** Downward component of the dive impulse (cm/s, ≥0 pushes toward ground). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0"))
+	float DiveDownwardSpeed = 200.f;
+
+	/** Speed threshold below which the dive recovery ends (cm/s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
+	float DiveStopSpeedThreshold = 80.f;
+
+	/** Minimum lock duration after a dive, even if the character stops early (s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0"))
+	float DiveMinLockDuration = 0.65f;
+
+	/** How fast (1/s) the body tilts into/out of the dive pose (lerp speed). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
+	float DiveTiltSpeed = 12.f;
+
+	/**
+	 * CapsuleHalfHeight while diving — shrinks the hitbox to match the horizontal pose.
+	 * The capsule radius stays unchanged; halving the height makes it a flat disc shape.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="15.0"))
+	float DiveCapsuleHalfHeight = 35.f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	TObjectPtr<UTN_InventoryComponent> InventoryComponent;
 
@@ -108,6 +138,23 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cosmetics")
 	TObjectPtr<UStaticMeshComponent> HelmetMeshComp;
+
+	// ── Arm Animation (blockout) ─────────────────────────────────────────────
+	// Requires SceneComponents named "Brazo1" and "Brazo2" in the Blueprint.
+	// Pivot must be at the SHOULDER joint.
+
+	/** Resting offset from T-pose (degrees). Brazo1 applies -value, Brazo2 applies +value.
+	 *  70° makes both arms hang down naturally from T-pose. */
+	UPROPERTY(EditDefaultsOnly, Category = "Arm Animation", meta = (ClampMin = "0.0", ClampMax = "180.0"))
+	float ArmRestAngleDeg = 70.f;
+
+	/** Swing amplitude while walking (degrees). Matches style of leg animation. */
+	UPROPERTY(EditDefaultsOnly, Category = "Arm Animation", meta = (ClampMin = "0.0", ClampMax = "180.0"))
+	float ArmWalkAmplitudeDeg = 35.f;
+
+	/** Swing amplitude while sprinting (degrees). */
+	UPROPERTY(EditDefaultsOnly, Category = "Arm Animation", meta = (ClampMin = "0.0", ClampMax = "180.0"))
+	float ArmSprintAmplitudeDeg = 65.f;
 
 	// ── Leg Animation (blockout) ──────────────────────────────────────────────
 	// Add child SceneComponents named "Pata1" and "Pata2" in your Blueprint.
@@ -394,7 +441,6 @@ private:
 	/** True after landing; false after the first air dash of a jump. Not replicated — tracked per-machine. */
 	bool bCanAirDash = true;
 
-	virtual void Jump() override;
 	virtual void Landed(const FHitResult& Hit) override;
 	void PerformAirDashLocally();
 
@@ -418,6 +464,7 @@ private:
 	void TickLegAnimation(float DeltaTime);
 	void TickCameraInterp(float DeltaTime);
 	void ApplyLegAngle(USceneComponent* Comp, const FRotator& RestRot, float AngleDeg) const;
+	void ApplyArmAngle(USceneComponent* Comp, const FRotator& RestRot, float RestOffsetDeg, float SwingDeg) const;
 	USceneComponent* FindChildByName(FName Name) const;
 	/** Trace descendente para encontrar el suelo bajo WorldLocation. Usado al soltar y aterrizar ítems. */
 	FVector FindGroundBelow(const FVector& WorldLocation) const;
@@ -615,6 +662,46 @@ protected:
 	/** Componente visual para el tilt de knockdown (SkeletalMesh o StaticMesh blockout). */
 	TWeakObjectPtr<USceneComponent> KnockdownVisualComp;
 
+	// ── Dive state ────────────────────────────────────────────────────────────
+
+	/**
+	 * true durante toda la fase de dive (vuelo + slide de recuperación).
+	 * OnRep aplica el visual (tilt + capsule resize) en todos los clientes.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_IsDiving, BlueprintReadOnly, Category = "Dive")
+	bool bIsDiving = false;
+
+	/** Tiempo acumulado desde que comenzó el dive (para DiveMinLockDuration). */
+	float DiveLockTimer = 0.f;
+
+	/** Alpha del tilt del cuerpo [0 = reposo, 1 = pose completa de dive]. Cosmético, local. */
+	float DiveTiltAlpha = 0.f;
+
+	/** HalfHeight original de la cápsula (guardada en BeginPlay). */
+	float DiveCapsuleOrigHalfHeight = 88.f;
+
+	/** Rotación relativa por defecto de GetMesh() (guardada en BeginPlay). */
+	FRotator DiveMeshDefaultRot = FRotator::ZeroRotator;
+
+	// ── Jump Animation state (cosmetic, local-only) ───────────────────────────
+	bool  bJumpAnimActive = false;
+	float JumpAnimTime    = 0.f;
+
+	void TryDive();
+
+	UFUNCTION(Server, Reliable)
+	void Server_StartDive(FVector DiveDir);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnDiveVisual(bool bEnter);
+
+	UFUNCTION()
+	void OnRep_IsDiving();
+
+	void EndDive();
+	void TickDive(float DeltaTime);
+	void TickJumpAnim(float DeltaTime);
+
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -634,6 +721,10 @@ public:
 	/** Returns true if this character is currently in a knockdown/DBNO state. */
 	UFUNCTION(BlueprintPure, Category = "Knockdown")
 	bool IsKnockedDown() const { return bIsKnockedDown; }
+
+	/** Returns true while the character is diving or in the locked recovery slide. */
+	UFUNCTION(BlueprintPure, Category = "Dive")
+	bool IsDiving() const { return bIsDiving; }
 
 	/**
 	 * Activa/desactiva el visual de muerte: oculta extremidades, cola, cabeza, casco.

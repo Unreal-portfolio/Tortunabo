@@ -322,6 +322,13 @@ void ATortugaCharacter::BeginPlay()
 		MeshDefaultRelativeRotation = KnockdownVisualComp->GetRelativeRotation();
 	}
 
+	// ── Dive: guardar rotaciones por defecto y HalfHeight de la cápsula ─────────
+	DiveCapsuleOrigHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	{
+		DiveMeshDefaultRot = SkelMesh->GetRelativeRotation();
+	}
+
 	// ── Aplicar camera settings serializables ────────────────────────────────
 	// Los valores UPROPERTY pueden haberse sobrescrito en el BP hijo → aplicarlos aquí.
 	if (CameraBoom)
@@ -429,8 +436,10 @@ void ATortugaCharacter::Tick(float DeltaTime)
 		}
 	}
 
+	TickDive(DeltaTime);           // dive physics recovery + procedural animation
+	TickJumpAnim(DeltaTime);       // jump procedural animation (suppressed during dive)
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
-	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes)
+	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes/dive/jump)
 	TickCameraInterp(DeltaTime);   // cinematic camera zoom/FOV interpolation
 }
 
@@ -444,6 +453,12 @@ void ATortugaCharacter::TickLegAnimation(float DeltaTime)
 
 	// Suppressed during knockdown — the character is tipped over, legs shouldn't animate.
 	if (bIsKnockedDown)
+	{
+		return;
+	}
+
+	// Suppressed during dive and jump anim — those systems drive the leg components.
+	if (bIsDiving || DiveTiltAlpha > 0.f || bJumpAnimActive)
 	{
 		return;
 	}
@@ -480,6 +495,20 @@ void ATortugaCharacter::TickLegAnimation(float DeltaTime)
 	// Pata1 and Pata2 are 180° out of phase → diagonal trot gait.
 	if (Pata1.IsValid()) { ApplyLegAngle(Pata1.Get(), Pata1RestRot,  Angle); }
 	if (Pata2.IsValid()) { ApplyLegAngle(Pata2.Get(), Pata2RestRot, -Angle); }
+
+	// ── Arm swing — same phase accumulator, contralateral to legs ────────────
+	// Arms hang down at ArmRestAngleDeg from T-pose (applied in parent space via
+	// ArmSwingAxis / ApplyArmAngle). Brazo1 swings opposite to Pata1 for natural gait.
+	const float ArmAmplitude = bIsSprinting ? ArmSprintAmplitudeDeg : ArmWalkAmplitudeDeg;
+	const float ArmAngle     = ArmAmplitude * LegAmplitudeMultiplier
+	                         * FMath::Sin(LegPhaseAccumulator * 2.f * PI);
+
+	// Brazo1 (right): -ArmRestAngleDeg → arm falls DOWN (+AX = up, so -AX = down).
+	// Brazo2 (left, mirrored): +ArmRestAngleDeg → arm falls DOWN (-AX = up for left arm).
+	// Swing uses AZ axis: +ArmAngle naturally pushes right arm BACK and left arm FORWARD
+	// because they sit on opposite sides of the body (+Y vs -Y in T-pose).
+	if (Brazo1.IsValid()) { ApplyArmAngle(Brazo1.Get(), Brazo1RestRot, -ArmRestAngleDeg, ArmAngle); }
+	if (Brazo2.IsValid()) { ApplyArmAngle(Brazo2.Get(), Brazo2RestRot,  ArmRestAngleDeg, -ArmAngle); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -526,6 +555,23 @@ void ATortugaCharacter::ApplyLegAngle(USceneComponent* Comp, const FRotator& Res
 	Comp->SetRelativeRotation(FinalRot);
 }
 
+void ATortugaCharacter::ApplyArmAngle(USceneComponent* Comp, const FRotator& RestRot,
+                                       float RestOffsetDeg, float SwingDeg) const
+{
+	// Two-axis composition in PARENT space (same convention as ApplyEmoteAngles2):
+	//   RestOffsetDeg — around ArmSwingAxis (AX = 1,0,0): positive = UP for right arm,
+	//                   DOWN for left arm (caller negates for mirrored Brazo2).
+	//   SwingDeg      — around AZ (0,0,1): +AZ swings right arm BACK / left arm FORWARD
+	//                   naturally because both arms share the same parent-space axis but
+	//                   their T-pose orientations are mirrored (+Y vs -Y).
+	// Order: Swing * Offset * Rest
+	const FVector RestAxis  = ArmSwingAxis.GetSafeNormal();          // (1,0,0)  up/down
+	const FVector SwingAxis = FVector(0.f, 1.f, 0.f);                 // AY       forward/back
+	const FQuat   OffsetQuat(RestAxis,  FMath::DegreesToRadians(RestOffsetDeg));
+	const FQuat   SwingQuat (SwingAxis, FMath::DegreesToRadians(SwingDeg));
+	Comp->SetRelativeRotation((SwingQuat * OffsetQuat * FQuat(RestRot)).Rotator());
+}
+
 USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
 {
 	// 1. Exact FName match (fastest)
@@ -562,6 +608,11 @@ void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	FocusedInteractable = nullptr;
 	ActiveEmoteIndex   = -1;
 	bEmoteBlendingOut  = false;
+	bIsDiving          = false;
+	DiveLockTimer      = 0.f;
+	DiveTiltAlpha      = 0.f;
+	bJumpAnimActive    = false;
+	JumpAnimTime       = 0.f;
 
 	GetWorldTimerManager().ClearTimer(CosmeticRetryTimerHandle);
 	StopEmoteSound();
@@ -752,7 +803,6 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		{
 			EnhancedInput->BindAction(LoadedDropItemAction, ETriggerEvent::Started, this, &ATortugaCharacter::DropEquippedItem);
 		}
-
 		// ── Emotes 0–9 ────────────────────────────────────────────────────────
 		static void (ATortugaCharacter::* const EmoteHandlers[10])() =
 		{
@@ -779,17 +829,25 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 void ATortugaCharacter::Jump()
 {
-	// While airborne and dash is available → perform the air dash instead of a second jump.
-	if (GetCharacterMovement()->IsFalling() && bCanAirDash && !bIsKnockedDown && !bIsDead)
+	if (bIsKnockedDown || bIsDead) { return; }
+
+	// Segundo press de salto en el aire → dive (igual que Fall Guys)
+	if (GetCharacterMovement()->IsFalling())
 	{
-		PerformAirDashLocally();
-		if (!HasAuthority())
-		{
-			ServerPerformAirDash();
-		}
+		TryDive();
 		return;
 	}
-	Super::Jump();
+
+	// Grounded y no en dive → salto normal + trigger jump procedural animation
+	if (!bIsDiving)
+	{
+		if (CanJump())
+		{
+			bJumpAnimActive = true;
+			JumpAnimTime    = 0.f;
+		}
+		Super::Jump();
+	}
 }
 
 void ATortugaCharacter::PerformAirDashLocally()
@@ -807,7 +865,6 @@ void ATortugaCharacter::ServerPerformAirDash_Implementation()
 		return;
 	}
 	bCanAirDash = false;
-	// Use the server's authoritative forward vector — never trust client-supplied directions.
 	const FVector DashVelocity = GetActorForwardVector() * AirDashHorizontalForce
 	                           + FVector::UpVector * AirDashVerticalBoost;
 	LaunchCharacter(DashVelocity, true, true);
@@ -815,6 +872,9 @@ void ATortugaCharacter::ServerPerformAirDash_Implementation()
 
 void ATortugaCharacter::Move(const FInputActionValue& Value)
 {
+	// Movement is locked during the dive and recovery slide
+	if (bIsDiving) { return; }
+
 	// Cancel any active emote the moment the player moves —
 	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable,
 	// and the knockdown emote which must not be interrupted by movement input.
@@ -908,6 +968,7 @@ void ATortugaCharacter::RotateInventory()
 
 void ATortugaCharacter::StartSprint()
 {
+	if (bIsDiving) { return; }
 	bSprintHeld = true;
 	RefreshSprintRequest();
 }
@@ -1417,6 +1478,8 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReviveProgress, COND_OwnerOnly);
 	// BigHead consumable
 	DOREPLIFETIME(ATortugaCharacter, bBigHead);
+	// Dive
+	DOREPLIFETIME(ATortugaCharacter, bIsDiving);
 }
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────
@@ -1435,6 +1498,12 @@ void ATortugaCharacter::ApplyKnockdown(float Duration)
 		GetWorldTimerManager().SetTimer(KnockdownTimerHandle, this,
 		                                &ATortugaCharacter::RecoverFromKnockdown, Duration, false);
 		return;
+	}
+
+	// Cancelar dive si estaba activo — knockdown tiene prioridad
+	if (bIsDiving)
+	{
+		EndDive();
 	}
 
 	bIsKnockedDown = true;
@@ -2259,6 +2328,9 @@ void ATortugaCharacter::ApplyEmoteAngles3(USceneComponent* Comp, const FRotator&
 
 void ATortugaCharacter::TickEmote(float DeltaTime)
 {
+	// Dive owns all limb components while active — skip emote updates entirely
+	if (bIsDiving || DiveTiltAlpha > 0.f) { return; }
+
 	// ── Blend-out: lerp all components back to rest rotations & locations ─────
 	if (bEmoteBlendingOut)
 	{
@@ -3024,3 +3096,317 @@ void ATortugaCharacter::ApplyBigHeadVisual(bool bBig)
 	}
 }
 
+// ── Dive System ───────────────────────────────────────────────────────────────
+//
+// Flow:
+//   Input (client)  → TryDive()
+//   → Server_StartDive(DiveDir)      — validates, applies physics, sets bIsDiving
+//   → Multicast_OnDiveVisual(true)   — all clients apply tilt + capsule resize
+//   TickDive (server) watches speed  → EndDive() when stopped
+//   → bIsDiving = false              — OnRep_IsDiving fires on clients → restore
+//
+// Visual pattern mirrors knockdown: same KnockdownVisualComp, same NetworkSmoothingMode
+// disable, but pitch is FORWARD (-85°) instead of backward.
+// Capsule HalfHeight is reduced to simulate a horizontal hitbox.
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::TryDive()
+{
+	// Only locally controlled, not already diving, not knocked down
+	if (!IsLocallyControlled() || bIsDiving || bIsKnockedDown || bIsDead)
+	{
+		return;
+	}
+
+	// Direction: use CURRENT INPUT at the moment of press (not velocity)
+	FVector DiveDir = FVector::ZeroVector;
+	if (const AController* C = GetController())
+	{
+		const FRotator YawRot(0.f, C->GetControlRotation().Yaw, 0.f);
+		const FVector Fwd   = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
+		const FVector Right = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
+		DiveDir = Fwd * LastMovementInput.Y + Right * LastMovementInput.X;
+	}
+	if (DiveDir.IsNearlyZero())
+	{
+		DiveDir = GetActorForwardVector();
+	}
+	DiveDir.Z = 0.f;
+	DiveDir.Normalize();
+
+	// Client-side prediction: face dive direction immediately so the tilt looks correct
+	SetActorRotation(FRotator(0.f, DiveDir.ToOrientationRotator().Yaw, 0.f));
+
+	Server_StartDive(DiveDir);
+}
+
+void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
+{
+	// Server-side guards
+	if (bIsDiving || bIsKnockedDown || bIsDead)
+	{
+		return;
+	}
+
+	// Sanitize direction
+	DiveDir.Z = 0.f;
+	if (!DiveDir.Normalize())
+	{
+		DiveDir = GetActorForwardVector();
+		DiveDir.Z = 0.f;
+		DiveDir.Normalize();
+	}
+
+	// Cancel any active emote
+	if (ReplicatedEmoteIndex >= 0)
+	{
+		ReplicatedEmoteIndex = -1;
+		CancelEmoteLocalOnly();
+	}
+
+	// Face the dive direction so the forward-tilt visual is always correct
+	SetActorRotation(FRotator(0.f, DiveDir.ToOrientationRotator().Yaw, 0.f));
+
+	// Apply impulse: forward + small downward component
+	const FVector DiveVelocity = DiveDir * DiveForwardSpeed + FVector(0.f, 0.f, -DiveDownwardSpeed);
+	LaunchCharacter(DiveVelocity, /*bXYOverride=*/true, /*bZOverride=*/true);
+
+	// Activate dive state — triggers OnRep on clients
+	bIsDiving     = true;
+	DiveLockTimer = 0.f;
+
+	// Apply visual on all machines (server runs Multicast locally too)
+	Multicast_OnDiveVisual(true);
+
+	UE_LOG(LogTemp, Log, TEXT("[Dive] %s — dive started, dir=%s"), *GetNameSafe(this), *DiveDir.ToString());
+}
+
+void ATortugaCharacter::Multicast_OnDiveVisual_Implementation(bool bEnter)
+{
+	UCharacterMovementComponent* CMC = GetCharacterMovement();
+
+	if (bEnter)
+	{
+		// Disable CMC smoothing so it won't fight our manual rotation
+		if (CMC)
+		{
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+		}
+
+		// Shrink capsule to represent horizontal hitbox
+		GetCapsuleComponent()->SetCapsuleHalfHeight(DiveCapsuleHalfHeight);
+
+		// Abort any active emote or blend-out — dive takes full control of limbs.
+		// Snap all limb components to rest immediately so the dive pose starts clean.
+		if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+		{
+			if (Brazo1.IsValid())  Brazo1->SetRelativeRotation(Brazo1RestRot);
+			if (Brazo2.IsValid())  Brazo2->SetRelativeRotation(Brazo2RestRot);
+			if (Pata1.IsValid())   Pata1->SetRelativeRotation(Pata1RestRot);
+			if (Pata2.IsValid())   Pata2->SetRelativeRotation(Pata2RestRot);
+			if (Cola.IsValid())    Cola->SetRelativeRotation(ColaRestRot);
+			if (Cabeza.IsValid())  Cabeza->SetRelativeRotation(CabezaRestRot);
+			bEmoteBlendingOut           = false;
+			bKnockdownCompSnapshotValid = false;
+			EmoteBlendOutTimer          = 0.f;
+			ActiveEmoteIndex            = -1;
+			EmoteTime                   = 0.f;
+		}
+		// Abort jump animation if it was running
+		bJumpAnimActive = false;
+		JumpAnimTime    = 0.f;
+
+		// DiveTiltAlpha will be driven smoothly by TickDive (starts lerping to 1)
+	}
+	else
+	{
+		// Restore capsule size
+		GetCapsuleComponent()->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+
+		// Restore CMC smoothing
+		if (CMC)
+		{
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+		}
+
+		// TickDive lerps DiveTiltAlpha back to 0 and restores rotations at that point.
+		// No immediate snap needed here — the lerp handles the smooth return.
+	}
+}
+
+void ATortugaCharacter::OnRep_IsDiving()
+{
+	// Called on REMOTE clients when bIsDiving changes.
+	// The server already ran Multicast_OnDiveVisual, but OnRep covers clients
+	// that joined late or missed the multicast.
+	Multicast_OnDiveVisual_Implementation(bIsDiving);
+}
+
+void ATortugaCharacter::EndDive()
+{
+	if (!HasAuthority()) { return; }
+
+	bIsDiving     = false;
+	DiveLockTimer = 0.f;
+
+	// Multicast restore visual
+	Multicast_OnDiveVisual(false);
+
+	UE_LOG(LogTemp, Log, TEXT("[Dive] %s — dive ended."), *GetNameSafe(this));
+}
+
+void ATortugaCharacter::TickDive(float DeltaTime)
+{
+	// ── Whole-character forward tilt (all machines, cosmetic) ─────────────────
+	// Rotate GetMesh() (carries all re-attached limbs) AND KnockdownVisualComp
+	// (Cuerpo) by the same pitch so the entire character tilts as one solid unit.
+	// If Cuerpo is a child of GetMesh() the runtime ancestor check skips the
+	// separate rotation to prevent double-rotation.
+	if (bIsDiving || DiveTiltAlpha > 0.f)
+	{
+		const float TargetAlpha = bIsDiving ? 1.f : 0.f;
+		DiveTiltAlpha = FMath::FInterpTo(DiveTiltAlpha, TargetAlpha, DeltaTime, DiveTiltSpeed);
+		if (FMath::Abs(DiveTiltAlpha - TargetAlpha) < 0.005f)
+		{
+			DiveTiltAlpha = TargetAlpha;
+		}
+
+		constexpr float DivePitch = -80.f;
+		const float     env       = DiveTiltAlpha;
+
+		// 1) SkeletalMesh — all re-attached limbs (Brazo1/2, Pata1/2, Cola, Cabeza) follow
+		if (USkeletalMeshComponent* SkelMesh = GetMesh())
+		{
+			FRotator Rot = DiveMeshDefaultRot;
+			Rot.Pitch   += DivePitch * env;
+			SkelMesh->SetRelativeRotation(Rot);
+		}
+
+		// 2) KnockdownVisualComp (Cuerpo) — only if NOT already a descendant of GetMesh()
+		if (KnockdownVisualComp.IsValid())
+		{
+			bool bIsChildOfMesh = false;
+			for (USceneComponent* Cur = KnockdownVisualComp->GetAttachParent(); Cur; Cur = Cur->GetAttachParent())
+			{
+				if (Cur == GetMesh()) { bIsChildOfMesh = true; break; }
+			}
+			if (!bIsChildOfMesh)
+			{
+				FRotator Rot = MeshDefaultRelativeRotation;
+				Rot.Pitch   += DivePitch * env;
+				KnockdownVisualComp->SetRelativeRotation(Rot);
+			}
+		}
+
+		// Snap everything back to exact rest once fade-out completes
+		if (!bIsDiving && DiveTiltAlpha == 0.f)
+		{
+			GetCapsuleComponent()->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+			if (USkeletalMeshComponent* SkelMesh = GetMesh())
+			{
+				SkelMesh->SetRelativeRotation(DiveMeshDefaultRot);
+			}
+			if (KnockdownVisualComp.IsValid())
+			{
+				KnockdownVisualComp->SetRelativeRotation(MeshDefaultRelativeRotation);
+			}
+		}
+	}
+
+	// ── Recovery check (server only) ─────────────────────────────────────────
+	if (!HasAuthority() || !bIsDiving) { return; }
+
+	DiveLockTimer += DeltaTime;
+
+	// Wait for minimum lock duration first, then check if character has stopped
+	if (DiveLockTimer < DiveMinLockDuration) { return; }
+
+	const float Speed2D = GetVelocity().Size2D();
+	if (Speed2D <= DiveStopSpeedThreshold)
+	{
+		EndDive();
+	}
+}
+
+// ── Jump Procedural Animation ─────────────────────────────────────────────────
+//
+// Triggered locally when the character jumps from the ground.
+// Cosmetic-only; runs only on the local machine (no replication needed).
+// Arms shoot up, legs kick back, head tilts back, tail rises.
+// Duration: ~0.8s total (fast rise 0.12s → hold → blend back 0.35s).
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::TickJumpAnim(float DeltaTime)
+{
+	if (!bJumpAnimActive) { return; }
+
+	// Cancelled by dive or incapacitation — snap back to rest
+	if (bIsDiving || bIsKnockedDown || bIsDead)
+	{
+		if (Brazo1.IsValid())  Brazo1->SetRelativeRotation(Brazo1RestRot);
+		if (Brazo2.IsValid())  Brazo2->SetRelativeRotation(Brazo2RestRot);
+		if (Pata1.IsValid())   Pata1->SetRelativeRotation(Pata1RestRot);
+		if (Pata2.IsValid())   Pata2->SetRelativeRotation(Pata2RestRot);
+		if (Cola.IsValid())    Cola->SetRelativeRotation(ColaRestRot);
+		if (Cabeza.IsValid())  Cabeza->SetRelativeRotation(CabezaRestRot);
+		bJumpAnimActive = false;
+		JumpAnimTime    = 0.f;
+		return;
+	}
+
+	JumpAnimTime += DeltaTime;
+	const float T = JumpAnimTime;
+
+	const auto Sat = [](float v) { return FMath::Clamp(v, 0.f, 1.f); };
+
+	const FVector AX = ArmSwingAxis;              // (1,0,0)  arm up/down
+	const FVector AY = FVector(0.f, 1.f, 0.f);    // arm roll (head nod)
+	const FVector AZ = FVector(0.f, 0.f, 1.f);    // arm forward/back
+	const FVector LY = LegSwingAxis;              // (0,1,0)  leg swing
+	const FVector TY = TailUpDownAxis;
+
+	auto Ap  = [this](TWeakObjectPtr<USceneComponent>& Comp, const FRotator& Rest,
+	                  float Angle, const FVector& Axis)
+	{
+		if (Comp.IsValid()) { ApplyEmoteAngle(Comp.Get(), Rest, Angle, Axis); }
+	};
+	auto Ap2 = [this](TWeakObjectPtr<USceneComponent>& Comp, const FRotator& Rest,
+	                  float A1, const FVector& Ax1, float A2, const FVector& Ax2)
+	{
+		if (Comp.IsValid()) { ApplyEmoteAngles2(Comp.Get(), Rest, A1, Ax1, A2, Ax2); }
+	};
+
+	// Envelope: fast rise (0.12s), hold, then blend back to rest (0.35s from t=0.45)
+	const float rise    = Sat(T / 0.12f);
+	const float fadeOut = T > 0.45f ? Sat((T - 0.45f) / 0.35f) : 0.f;
+	const float env     = FMath::InterpEaseOut(0.f, 1.f, rise, 2.f) * (1.f - fadeOut);
+
+	// Both arms shoot up wide — "weeee!" jump pose
+	Ap2(Brazo1, Brazo1RestRot,  env *  90.f,  AX,  env * (-25.f), AZ);
+	Ap2(Brazo2, Brazo2RestRot, -env *  90.f,  AX,  env *   25.f,  AZ);
+
+	// Legs kick back (both same direction — frog jump)
+	Ap(Pata1, Pata1RestRot, env * 70.f, LY);
+	Ap(Pata2, Pata2RestRot, env * 70.f, LY);
+
+	// Head tilts back slightly (looking up with excitement)
+	Ap(Cabeza, CabezaRestRot, env * (-18.f), AY);
+
+	// Tail rises
+	Ap(Cola, ColaRestRot, env * 22.f, TY);
+
+	if (T >= 0.8f)
+	{
+		// Snap exactly to rest at end (env ≈ 0 already via fadeOut, but be exact)
+		if (Brazo1.IsValid())  Brazo1->SetRelativeRotation(Brazo1RestRot);
+		if (Brazo2.IsValid())  Brazo2->SetRelativeRotation(Brazo2RestRot);
+		if (Pata1.IsValid())   Pata1->SetRelativeRotation(Pata1RestRot);
+		if (Pata2.IsValid())   Pata2->SetRelativeRotation(Pata2RestRot);
+		if (Cola.IsValid())    Cola->SetRelativeRotation(ColaRestRot);
+		if (Cabeza.IsValid())  Cabeza->SetRelativeRotation(CabezaRestRot);
+		bJumpAnimActive = false;
+		JumpAnimTime    = 0.f;
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────

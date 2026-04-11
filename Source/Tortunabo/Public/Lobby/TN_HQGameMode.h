@@ -35,6 +35,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
 	int32 LobbyExpectedPlayers = 4;
 
+	/**
+	 * PlayerStartTag value used to identify spawn points inside the tutorial zone.
+	 * Place at least one APlayerStart in LVL_HQ with this tag to enable tutorial routing.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Tutorial")
+	FName TutorialStartTag = TEXT("TutorialStart");
+
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
 	int32 CountdownStartValue = 3;
 
@@ -45,10 +52,24 @@ protected:
 	FString MatchMapPath = TEXT("/Game/Maps/Run/LVL_Run");
 
 private:
+	/**
+	 * Set to true in BeginPlay when the server's GameInstance reports first-time play.
+	 * Used by ChoosePlayerStart_Implementation to route all players to the tutorial zone.
+	 * Cleared once the tutorial save flag is written, so the next HQ visit spawns normally.
+	 */
+	bool bShouldUseTutorialStart = false;
+
 	FTimerHandle CountdownTimerHandle;
 	FTimerHandle TravelTimerHandle;
 	bool bCountdownRunning = false;
 	int32 CurrentCountdownValue = 0;
+
+	/**
+	 * Evalúa el flag de tutorial en el GameInstance UNA SOLA VEZ por sesión de HQ.
+	 * Si es la primera partida activa bShouldUseTutorialStart y persiste el flag.
+	 * Idempotente: llamadas posteriores no hacen nada si ya está activado.
+	 */
+	void CheckAndSetTutorialFlag();
 
 	void RefreshLobbyState();
 	void StartCountdown();
