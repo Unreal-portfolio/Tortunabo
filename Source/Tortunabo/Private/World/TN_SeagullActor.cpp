@@ -69,7 +69,7 @@ void ATN_SeagullActor::BeginPlay()
 void ATN_SeagullActor::DeferredCaptureInitialLocation()
 {
 	InitialLocation = GetActorLocation();
-	MulticastSyncInitialPosition(InitialLocation);
+	bPositionSynced = true; // Servidor: posición correcta; clientes reciben vía OnRep_InitialLocation
 }
 
 void ATN_SeagullActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -85,19 +85,6 @@ void ATN_SeagullActor::OnRep_InitialLocation()
 	bPositionSynced = true;
 }
 
-void ATN_SeagullActor::MulticastSyncInitialPosition_Implementation(FVector WorldLocation)
-{
-	if (HasAuthority())
-	{
-		// El servidor ya fijó InitialLocation en BeginPlay
-		bPositionSynced = true;
-		return;
-	}
-
-	InitialLocation = WorldLocation;
-	SetActorLocation(InitialLocation);
-	bPositionSynced = true;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tick — movimiento lateral (local en todas las máquinas) + animación de strike
@@ -147,9 +134,13 @@ void ATN_SeagullActor::Tick(float DeltaTime)
 			StrikeAlpha = FMath::Max(StrikeAlpha - Delta, 0.f);
 		}
 
-		// Interpolar entre posición de reposo y objetivo
+		// Interpolar entre posición de reposo y objetivo.
+		// TargetZ: delta Z mundo (jugador - actor root) dividido por escala Z del actor.
+		// SetRelativeLocation trabaja en espacio local (sin escalar); sin esta división
+		// el strike sobrepasa/no alcanza al jugador cuando el chunk tiene escala ≠ 1.
 		const float RestZ   = SeagullRestHeight;
-		const float TargetZ = StrikeTargetZ - GetActorLocation().Z; // relativo al actor
+		const float ScaleZ  = FMath::Max(GetActorScale3D().Z, 0.001f);
+		const float TargetZ = (StrikeTargetZ - GetActorLocation().Z) / ScaleZ;
 		const float CurrentZ = FMath::Lerp(RestZ, TargetZ, StrikeAlpha);
 		SeagullMesh->SetRelativeLocation(FVector(0.f, 0.f, CurrentZ));
 

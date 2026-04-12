@@ -386,10 +386,13 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	// ── Detener el pawn y ocultarlo para que no se vea en la meta ──
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
-		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
+		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
 		{
-			CMC->StopMovementImmediately();
-			CMC->DisableMovement();
+			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
+			{
+				CMC->StopMovementImmediately();
+				CMC->DisableMovement();
+			}
 		}
 		Pawn->DisableInput(PlayerController);
 
@@ -437,6 +440,14 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	DBNOPlayers.Remove(PlayerController);
 	ReviveImmunePlayers.Remove(PlayerController);
 
+	// Cancelar el timer de inmunidad post-revive si sigue activo.
+	// Sin esto, un timer antiguo puede eliminar la inmunidad de una segunda revivida.
+	if (FTimerHandle* T = ImmunityTimers.Find(PlayerController))
+	{
+		GetWorldTimerManager().ClearTimer(*T);
+		ImmunityTimers.Remove(PlayerController);
+	}
+
 	FVector DeathLocation = FVector::ZeroVector;
 
 	if (APawn* Pawn = PlayerController->GetPawn())
@@ -450,10 +461,13 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		}
 
 		// ── Ocultar el pawn completamente (no dejar cadáver) ──
-		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
+		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
 		{
-			CMC->StopMovementImmediately();
-			CMC->DisableMovement();
+			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
+			{
+				CMC->StopMovementImmediately();
+				CMC->DisableMovement();
+			}
 		}
 		Pawn->DisableInput(PlayerController);
 		Pawn->SetActorHiddenInGame(true);
@@ -621,11 +635,18 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	// IsPlayerReviveImmune=false si la inmunidad se añade después → B6 ineficaz.
 	// Al añadirla aquí, OnBoxBeginOverlap recibe PC ya inmune → descarta el overlap.
 	ReviveImmunePlayers.Add(PlayerController);
-	FTimerHandle ImmunityTimer;
+	// Cancelar timer anterior si existe (ej: jugador revivido dos veces rápido).
+	// Sin esto, el timer antiguo expiraría y eliminaría la inmunidad activa de la segunda revivida.
+	FTimerHandle& ImmunityTimer = ImmunityTimers.FindOrAdd(PlayerController);
+	GetWorldTimerManager().ClearTimer(ImmunityTimer);
 	TWeakObjectPtr<APlayerController> WeakImmunityPC = PlayerController;
-	GetWorldTimerManager().SetTimer(ImmunityTimer, [this, WeakImmunityPC]()
+	TWeakObjectPtr<ATN_RunGameMode> WeakGM(this);
+	GetWorldTimerManager().SetTimer(ImmunityTimer, [WeakGM, WeakImmunityPC]()
 	{
-		ReviveImmunePlayers.Remove(WeakImmunityPC);
+		ATN_RunGameMode* GM = WeakGM.Get();
+		if (!GM) { return; }
+		GM->ReviveImmunePlayers.Remove(WeakImmunityPC);
+		GM->ImmunityTimers.Remove(WeakImmunityPC);
 
 		// ── Forzar re-evaluación de death zones ──────────────────────────────
 		// SetActorEnableCollision(true) no dispara OnBoxBeginOverlap de forma
@@ -633,7 +654,7 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		// Tras expirar la inmunidad, comprobamos manualmente todas las death zones.
 		if (APlayerController* ImmunityPC = WeakImmunityPC.Get())
 		{
-			for (TActorIterator<ATN_DeathZoneVolume> It(GetWorld()); It; ++It)
+			for (TActorIterator<ATN_DeathZoneVolume> It(GM->GetWorld()); It; ++It)
 			{
 				(*It)->ForceCheckPlayer(ImmunityPC);
 			}
@@ -653,9 +674,12 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		}
 
 		// Restaurar CMC antes de re-poseer
-		if (UCharacterMovementComponent* CMC = Cast<ACharacter>(Pawn) ? Cast<ACharacter>(Pawn)->GetCharacterMovement() : nullptr)
+		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
 		{
-			CMC->SetMovementMode(MOVE_Walking);
+			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
+			{
+				CMC->SetMovementMode(MOVE_Walking);
+			}
 		}
 
 		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
@@ -705,14 +729,16 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			TWeakObjectPtr<ATortugaCharacter> WeakChar(Cast<ATortugaCharacter>(Pawn));
 			TWeakObjectPtr<AMP_GamePlayerController> WeakPC(TNPC);
 			TWeakObjectPtr<APawn> WeakPawn(Pawn);
+			TWeakObjectPtr<ATN_RunGameMode> WeakGM2(this);
 			TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
 			TSharedPtr<int32> RetryCount = MakeShared<int32>(10); // 10 × 0.1s = 1s
 			GetWorldTimerManager().SetTimer(*RetryHandle,
-				[WeakChar, WeakPC, WeakPawn, RetryCount, RetryHandle, this]()
+				[WeakChar, WeakPC, WeakPawn, RetryCount, RetryHandle, WeakGM2]()
 			{
-				if (*RetryCount <= 0)
+				ATN_RunGameMode* GM2 = WeakGM2.Get();
+				if (!GM2 || *RetryCount <= 0)
 				{
-					GetWorldTimerManager().ClearTimer(*RetryHandle);
+					if (GM2) { GM2->GetWorldTimerManager().ClearTimer(*RetryHandle); }
 					return;
 				}
 				--(*RetryCount);
@@ -731,11 +757,14 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 				}
 				if (WeakPawn.IsValid() && WeakPawn->GetController())
 				{
-					if (UCharacterMovementComponent* CMC = Cast<ACharacter>(WeakPawn.Get()) ? Cast<ACharacter>(WeakPawn.Get())->GetCharacterMovement() : nullptr)
+					if (ACharacter* Ch = Cast<ACharacter>(WeakPawn.Get()))
 					{
-						if (CMC->MovementMode == MOVE_None)
+						if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
 						{
-							CMC->SetMovementMode(MOVE_Walking);
+							if (CMC->MovementMode == MOVE_None)
+							{
+								CMC->SetMovementMode(MOVE_Walking);
+							}
 						}
 					}
 				}

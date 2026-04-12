@@ -135,8 +135,8 @@ private:
 	UFUNCTION()
 	void OnRep_InitialLocation();
 
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastSyncInitialPosition(FVector WorldLocation);
+	// Posición inicial replicada vía DOREPLIFETIME + OnRep_InitialLocation.
+	// No se necesita Multicast adicional — el OnRep cubre clientes conectados y JIP.
 
 	bool bPositionSynced = false;
 

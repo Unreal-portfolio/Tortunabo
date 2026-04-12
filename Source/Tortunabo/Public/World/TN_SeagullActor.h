@@ -15,7 +15,7 @@ class UStaticMeshComponent;
  *
  * Optimización multijugador:
  * - Movimiento: 100% local en cada máquina (determinista).
- *   El host emite la posición inicial una vez (MulticastSyncInitialPosition).
+ *   El host fija InitialLocation (replicada vía DOREPLIFETIME); OnRep la aplica en clientes.
  * - Strike visual: NetMulticast Reliable para que TODOS los clientes lo vean.
  * - Hit detection: solo en el servidor.
  *
@@ -104,9 +104,8 @@ private:
 	float MoveDirection  = 1.f; // +1 o -1
 	bool  bPositionSynced = false;
 
-	/** Emite la posición inicial a todos los clientes (llamado solo por el host). */
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastSyncInitialPosition(FVector WorldLocation);
+	// Posición inicial replicada vía DOREPLIFETIME + OnRep_InitialLocation.
+	// No se necesita Multicast adicional — el OnRep cubre clientes conectados y JIP.
 
 	// ── Strike ────────────────────────────────────────────────────────────────
 

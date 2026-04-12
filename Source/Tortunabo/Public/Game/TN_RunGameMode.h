@@ -107,6 +107,9 @@ private:
 	/** Players with active post-revive immunity timers. */
 	TSet<TWeakObjectPtr<APlayerController>> ReviveImmunePlayers;
 
+	/** Active immunity timer handle per player — allows cancellation on rapid re-revive. */
+	TMap<TWeakObjectPtr<APlayerController>, FTimerHandle> ImmunityTimers;
+
 	/** Rescue pickups spawned for dead players. Key = PlayerId. */
 	TMap<int32, TWeakObjectPtr<ATN_RescuePickup>> RescuePickups;
 

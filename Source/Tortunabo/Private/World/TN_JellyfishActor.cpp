@@ -139,7 +139,7 @@ void ATN_JellyfishActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 void ATN_JellyfishActor::DeferredCaptureInitialLocation()
 {
 	InitialLocation = GetActorLocation();
-	MulticastSyncInitialPosition(InitialLocation);
+	bPositionSynced = true; // Servidor: posición correcta; clientes reciben vía OnRep_InitialLocation
 }
 
 void ATN_JellyfishActor::OnRep_InitialLocation()
@@ -148,18 +148,6 @@ void ATN_JellyfishActor::OnRep_InitialLocation()
 	bPositionSynced = true;
 }
 
-void ATN_JellyfishActor::MulticastSyncInitialPosition_Implementation(FVector WorldLocation)
-{
-	if (HasAuthority())
-	{
-		bPositionSynced = true;
-		return;
-	}
-
-	InitialLocation = WorldLocation;
-	SetActorLocation(InitialLocation);
-	bPositionSynced = true;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Overlap — detección del rebote (solo servidor)
