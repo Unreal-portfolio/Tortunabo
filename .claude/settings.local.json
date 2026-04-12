@@ -1,9 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find 'C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo/Source' -type f \\\\\\(-name *.h -o -name *.cpp \\\\\\))",
-      "Bash(grep -E \"\\\\.\\(h|cpp\\)$\")",
-      "Bash(xargs grep:*)"
+      "Bash(python -c ':*)",
+      "Bash(python:*)",
+      "mcp__claude_ai_Notion__notion-search",
+      "mcp__claude_ai_Notion__notion-create-pages",
+      "Bash(cmd /c '\"C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\" TortunaboEditor Win64 Development \"C:\\\\Users\\\\Rodrigo\\\\CARRERA\\\\PROYECTOS_PERSONALES\\\\Unreal Engine\\\\Tortunabo\\\\Tortunabo.uproject\" -WaitMutex -NoHotReload')",
+      "Bash(powershell -Command \"& 'C:\\\\\\\\Program Files\\\\\\\\Epic Games\\\\\\\\UE_5.6\\\\\\\\Engine\\\\\\\\Build\\\\\\\\BatchFiles\\\\\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\\\\\Users\\\\\\\\Rodrigo\\\\\\\\CARRERA\\\\\\\\PROYECTOS_PERSONALES\\\\\\\\Unreal Engine\\\\\\\\Tortunabo\\\\\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1 | Tee-Object -FilePath C:\\\\\\\\Users\\\\\\\\Rodrigo\\\\\\\\build_output.txt\")",
+      "Read(//c/Users/Rodrigo/**)",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "mcp__claude_ai_Notion__notion-update-page",
+      "Bash(\"/c/Program Files/Epic Games/UE_5.6/Engine/Build/BatchFiles/Build.bat\" TortunaboEditor Win64 Development \"C:/Users/Rodrigo/CARRERA/PROYECTOS_PERSONALES/Unreal Engine/Tortunabo/Tortunabo.uproject\" -WaitMutex -NoHotReload)",
+      "Bash(cmd /c \"\\\\\"C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\\\\\" TortunaboEditor Win64 Development \\\\\"C:\\\\Users\\\\Rodrigo\\\\CARRERA\\\\PROYECTOS_PERSONALES\\\\Unreal Engine\\\\Tortunabo\\\\Tortunabo.uproject\\\\\" -WaitMutex -NoHotReload 2>&1\")",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\Users\\\\Rodrigo\\\\CARRERA\\\\PROYECTOS_PERSONALES\\\\Unreal Engine\\\\Tortunabo\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1\")"
     ]
   }
 }

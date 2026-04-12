@@ -671,6 +671,15 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_IsDiving, BlueprintReadOnly, Category = "Dive")
 	bool bIsDiving = false;
 
+	// ── Head Look replication ─────────────────────────────────────────────────
+	/** Yaw (°) de la cabeza relativo al cuerpo. Positivo = mira a la derecha. Replicado a clientes remotos. */
+	UPROPERTY(Replicated)
+	float ReplicatedHeadYaw   = 0.f;
+
+	/** Pitch (°) de la cabeza. Positivo = mira hacia arriba. Replicado a clientes remotos. */
+	UPROPERTY(Replicated)
+	float ReplicatedHeadPitch = 0.f;
+
 	/** Tiempo acumulado desde que comenzó el dive (para DiveMinLockDuration). */
 	float DiveLockTimer = 0.f;
 
@@ -686,6 +695,18 @@ protected:
 	// ── Jump Animation state (cosmetic, local-only) ───────────────────────────
 	bool  bJumpAnimActive = false;
 	float JumpAnimTime    = 0.f;
+
+	// ── Head Look state (local + smoothing para clientes remotos) ─────────────
+	float LocalHeadRelativeYaw = 0.f;   ///< calculado cada tick en el owner, nunca va a la red
+	float LocalHeadPitch       = 0.f;
+	float SmoothedHeadYaw      = 0.f;   ///< interpolado en clientes remotos hacia ReplicatedHead*
+	float SmoothedHeadPitch    = 0.f;
+
+	void TickHeadLook(float DeltaTime);
+	void ApplyHeadLookToCabeza(float Yaw, float Pitch);
+
+	UFUNCTION(Server, Unreliable)
+	void ServerUpdateHeadRotation(float Yaw, float Pitch);
 
 	void TryDive();
 

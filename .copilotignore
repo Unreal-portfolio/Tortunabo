@@ -1,0 +1,25 @@
+﻿# Unreal Engine — binaries and generated files
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Build/
+.vs/
+
+# Binary assets (Copilot can't read these anyway)
+Content/**/*.uasset
+Content/**/*.umap
+Content/**/*.ubulk
+Content/**/*.uptnl
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build artifacts
+*.pdb
+*.lib
+*.a
+*.o
+*.obj
+*.exp

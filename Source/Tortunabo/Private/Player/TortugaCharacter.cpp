@@ -441,6 +441,7 @@ void ATortugaCharacter::Tick(float DeltaTime)
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
 	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes/dive/jump)
 	TickCameraInterp(DeltaTime);   // cinematic camera zoom/FOV interpolation
+	TickHeadLook(DeltaTime);       // head tracks camera direction, replicated a todos los clientes
 }
 
 void ATortugaCharacter::TickLegAnimation(float DeltaTime)
@@ -1480,6 +1481,9 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ATortugaCharacter, bBigHead);
 	// Dive
 	DOREPLIFETIME(ATortugaCharacter, bIsDiving);
+	// Head look — SkipOwner: el owner aplica la rotación localmente sin pasar por la red
+	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadYaw,   COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadPitch, COND_SkipOwner);
 }
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────
@@ -3409,4 +3413,75 @@ void ATortugaCharacter::TickJumpAnim(float DeltaTime)
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Head Look ─────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::TickHeadLook(float DeltaTime)
+{
+	// No animar la cabeza durante emotes, blend-out, knockdown, muerte, dive o jump anim.
+	// Esos sistemas son dueños de Cabeza durante su ciclo de vida.
+	if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut) { return; }
+	if (bIsKnockedDown || bIsDead)                  { return; }
+	if (bIsDiving || DiveTiltAlpha > 0.f)           { return; }
+	if (bJumpAnimActive)                             { return; }
+	if (!Cabeza.IsValid())                           { return; }
+
+	if (IsLocallyControlled())
+	{
+		// Calcular offset de la cámara respecto al cuerpo
+		const APlayerController* PC = Cast<APlayerController>(GetController());
+		if (!PC) { return; }
+
+		const FRotator ControlRot = PC->GetControlRotation();
+		const float ActorYaw      = GetActorRotation().Yaw;
+
+		// Yaw relativo: cuánto a la derecha/izquierda está la cámara respecto al cuerpo
+		const float RawYaw   = FRotator::NormalizeAxis(ControlRot.Yaw - ActorYaw);
+		LocalHeadRelativeYaw = FMath::Clamp(RawYaw, -90.f, 90.f);
+
+		// Pitch: en UE el pitch es negativo al mirar arriba; lo invertimos para nuestra convención
+		const float RawPitch = FRotator::NormalizeAxis(ControlRot.Pitch);
+		LocalHeadPitch       = FMath::Clamp(-RawPitch, -80.f, 80.f);
+
+		// Aplicar inmediatamente en local (sin lag)
+		ApplyHeadLookToCabeza(LocalHeadRelativeYaw, LocalHeadPitch);
+
+		// Enviar al servidor (listen-server escribe directo; cliente dedicado usa RPC unreliable)
+		if (HasAuthority())
+		{
+			ReplicatedHeadYaw   = LocalHeadRelativeYaw;
+			ReplicatedHeadPitch = LocalHeadPitch;
+		}
+		else
+		{
+			ServerUpdateHeadRotation(LocalHeadRelativeYaw, LocalHeadPitch);
+		}
+	}
+	else
+	{
+		// Cliente remoto: interpolar hacia los valores replicados para suavidad
+		SmoothedHeadYaw   = FMath::FInterpTo(SmoothedHeadYaw,   ReplicatedHeadYaw,   DeltaTime, 15.f);
+		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, ReplicatedHeadPitch, DeltaTime, 15.f);
+		ApplyHeadLookToCabeza(SmoothedHeadYaw, SmoothedHeadPitch);
+	}
+}
+
+void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
+{
+	if (!Cabeza.IsValid()) { return; }
+
+	// Ejes en espacio local del padre (cuerpo):
+	//   AZ(0,0,1) = arriba  → giro horizontal (yaw).  FQuat con ángulo positivo = gira a la IZQUIERDA.
+	//   AY(0,1,0) = derecha → inclinación vertical.   FQuat con ángulo positivo = inclina hacia adelante.
+	// Por eso negamos ambos ángulos: Yaw>0 = mira derecha, Pitch>0 = mira arriba.
+	const FQuat YawQ  (FVector(0.f, 0.f, 1.f), FMath::DegreesToRadians(Yaw));
+	const FQuat PitchQ(FVector(0.f, 1.f, 0.f), FMath::DegreesToRadians(Pitch));
+
+	Cabeza->SetRelativeRotation((YawQ * PitchQ * FQuat(CabezaRestRot)).Rotator());
+}
+
+void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(float Yaw, float Pitch)
+{
+	// Validar rangos en el servidor para prevenir manipulación del cliente
+	ReplicatedHeadYaw   = FMath::Clamp(Yaw,   -90.f,  90.f);
+	ReplicatedHeadPitch = FMath::Clamp(Pitch,  -80.f,  80.f);
+}
