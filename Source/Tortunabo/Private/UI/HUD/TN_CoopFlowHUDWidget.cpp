@@ -184,6 +184,18 @@ void UTN_CoopFlowHUDWidget::BindQuickChat(ATN_CoopGameState* GameState)
 		{
 			ReplayQuickChatHistory(GameState);
 		}
+		// ── Bind flow state delegate si no está ya bound ──────────────────────
+		if (BoundFlowGameState != GameState)
+		{
+			if (BoundFlowGameState)
+			{
+				BoundFlowGameState->OnMatchFlowStateChanged.RemoveDynamic(
+					this, &UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler);
+			}
+			GameState->OnMatchFlowStateChanged.AddUniqueDynamic(
+				this, &UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler);
+			BoundFlowGameState = GameState;
+		}
 		return;
 	}
 
@@ -191,6 +203,19 @@ void UTN_CoopFlowHUDWidget::BindQuickChat(ATN_CoopGameState* GameState)
 	BoundQuickChatGameState = GameState;
 	GameState->OnQuickChatReceived.AddUniqueDynamic(this, &UTN_CoopFlowHUDWidget::HandleQuickChatReceived);
 	ReplayQuickChatHistory(GameState);
+
+	// ── Bind flow state delegate ──────────────────────────────────────────────
+	if (BoundFlowGameState != GameState)
+	{
+		if (BoundFlowGameState)
+		{
+			BoundFlowGameState->OnMatchFlowStateChanged.RemoveDynamic(
+				this, &UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler);
+		}
+		GameState->OnMatchFlowStateChanged.AddUniqueDynamic(
+			this, &UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler);
+		BoundFlowGameState = GameState;
+	}
 }
 
 void UTN_CoopFlowHUDWidget::UnbindQuickChat()
@@ -203,6 +228,14 @@ void UTN_CoopFlowHUDWidget::UnbindQuickChat()
 
 	bQuickChatHistoryReplayed = false;
 	LastQuickChatSequenceSeen = 0;
+
+	// ── Unbind flow state delegate ────────────────────────────────────────────
+	if (BoundFlowGameState)
+	{
+		BoundFlowGameState->OnMatchFlowStateChanged.RemoveDynamic(
+			this, &UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler);
+		BoundFlowGameState = nullptr;
+	}
 }
 
 void UTN_CoopFlowHUDWidget::ReplayQuickChatHistory(const ATN_CoopGameState* GameState)
@@ -530,4 +563,30 @@ void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
 void UTN_CoopFlowHUDWidget::StartChatFade()
 {
 	bChatFadingOut = true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OnMatchFlowStateChanged delegate handler — backup channel beside polling
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler(ETNMatchFlowState NewState)
+{
+	ATN_CoopGameState* GameState = GetOwningPlayer() && GetOwningPlayer()->GetWorld()
+		? GetOwningPlayer()->GetWorld()->GetGameState<ATN_CoopGameState>()
+		: nullptr;
+
+	if (!GameState)
+	{
+		return;
+	}
+
+	// Sync polling state to avoid double-firing when RefreshTexts next runs
+	LastKnownFlowState    = NewState;
+	bFlowStateInitialized = true;
+
+	HandleFlowStateChange(NewState, GameState);
+	OnFlowStateChanged(NewState);
+
+	const bool bShow = ShouldBeVisible(NewState);
+	SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 }

@@ -136,4 +136,14 @@ private:
 	FTimerHandle ChatFadeTimer;
 	bool  bChatFadingOut     = false;
 	float ChatCurrentOpacity = 1.f;
+
+	// ── OnMatchFlowStateChanged binding — backup channel besides polling ──────
+	// Binding allows immediate response when state changes, covering the case
+	// where the widget is recreated (e.g. after ClientRestart on revive) and
+	// the polling misses the transition because the timer hasn't fired yet.
+	UFUNCTION()
+	void OnMatchFlowStateChangedHandler(ETNMatchFlowState NewState);
+
+	UPROPERTY(Transient)
+	TObjectPtr<ATN_CoopGameState> BoundFlowGameState;
 };
