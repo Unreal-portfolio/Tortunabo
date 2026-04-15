@@ -6,6 +6,7 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "World/TN_RescuePickup.h"
 #include "World/TN_DeathZoneVolume.h"
+#include "World/TN_ChunkManager.h"
 #include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
@@ -663,6 +664,28 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 
 	if (Pawn)
 	{
+		// ── Teleportar a zona de chunks activa antes de revivir ───────────────
+		// El pawn estuvo hidden en la posición de muerte. CleanupChunks puede haber
+		// destruido el chunk que lo rodeaba mientras el líder avanzaba. Si se revive
+		// en esa posición, el cliente verá al pawn en una zona sin chunks → errores
+		// de replicación. Buscamos el ChunkManager y teleportamos a zona segura.
+		{
+			ATN_ChunkManager* ChunkManager = nullptr;
+			for (TActorIterator<ATN_ChunkManager> It(GetWorld()); It; ++It)
+			{
+				ChunkManager = *It;
+				break;
+			}
+
+			if (ChunkManager)
+			{
+				const FVector SafeLocation = ChunkManager->GetSafeReviveLocation();
+				Pawn->SetActorLocation(SafeLocation, false, nullptr, ETeleportType::TeleportPhysics);
+				UE_LOG(LogTemp, Log, TEXT("[Revive] Teleported dead pawn to safe chunk area (%.0f,%.0f,%.0f)"),
+					SafeLocation.X, SafeLocation.Y, SafeLocation.Z);
+			}
+		}
+
 		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
 		Pawn->SetActorHiddenInGame(false);
 		Pawn->SetActorEnableCollision(true);
