@@ -26,6 +26,7 @@ public:
 	ATN_BreakablePlatform();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
@@ -86,6 +87,7 @@ private:
 	/** Número de pawns actualmente encima de la plataforma. */
 	int32 PawnsOnPlatform = 0;
 
+	FTimerHandle ShakeTimerHandle;
 	FTimerHandle BreakTimerHandle;
 	FTimerHandle RespawnTimerHandle;
 };

@@ -324,10 +324,11 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 	const float AngleDiff = (CurrentT.GetRotation().Rotator() - Goal.GetRotation().Rotator())
 		.GetNormalized().GetManhattanDistance(FRotator::ZeroRotator);
 
-	if (DistSq < 4.f && AngleDiff < 1.f) // 2cm y 1°
+	bool bAllArrived = (DistSq < 4.f && AngleDiff < 1.f);
+
+	if (bAllArrived)
 	{
 		SetTargetTransform(Goal);
-		bIsMoving = false;
 	}
 
 	// ── Mover targets adicionales (#15) ──────────────────────────────────────
@@ -348,6 +349,21 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 		const FRotator NewExtraRot = FMath::RInterpConstantTo(
 			Extra->GetActorRotation(), ExtraGoal.GetRotation().Rotator(), DeltaTime, RotateSpeed);
 		Extra->SetActorLocationAndRotation(NewExtraLoc, NewExtraRot);
+
+		// Verificar convergencia del target adicional
+		const float ExtraDistSq = FVector::DistSquared(Extra->GetActorLocation(), ExtraGoal.GetLocation());
+		const float ExtraAngle  = (Extra->GetActorRotation() - ExtraGoal.GetRotation().Rotator())
+			.GetNormalized().GetManhattanDistance(FRotator::ZeroRotator);
+		if (ExtraDistSq >= 4.f || ExtraAngle >= 1.f)
+		{
+			bAllArrived = false;
+		}
+	}
+
+	// Detener Tick solo cuando TODOS los targets (primario + adicionales) han llegado
+	if (bAllArrived)
+	{
+		bIsMoving = false;
 	}
 }
 

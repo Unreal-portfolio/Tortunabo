@@ -66,4 +66,8 @@ private:
 
 	/** Gravedad original por personaje — para restaurar al salir cuando bSlowFall=true. */
 	TMap<TWeakObjectPtr<ATortugaCharacter>, float> OriginalGravityScales;
+
+	/** Limpia el estado de un personaje que se destruyó dentro de la zona. */
+	UFUNCTION()
+	void OnCharacterDestroyed(AActor* DestroyedActor);
 };

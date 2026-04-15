@@ -36,6 +36,9 @@ void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 	CharactersInZone.Add(Char);
 	StaminaComp->SetSpeedCap(MaxSlowSpeed);
 
+	// Registrar callback de destrucción para limpiar si el personaje muere dentro
+	Char->OnDestroyed.AddUniqueDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
+
 	if (bSlowFall)
 	{
 		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
@@ -74,4 +77,20 @@ void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AA
 		}
 		OriginalGravityScales.Remove(Char);
 	}
+
+	Char->OnDestroyed.RemoveDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
+}
+
+void ATN_SlowZoneVolume::OnCharacterDestroyed(AActor* DestroyedActor)
+{
+	ATortugaCharacter* Char = Cast<ATortugaCharacter>(DestroyedActor);
+	if (!Char)
+	{
+		return;
+	}
+
+	// El personaje se destruyó dentro de la zona — limpiar sin restaurar GravityScale
+	// (el CMC ya no existe; restaurar aquí causaría crash)
+	CharactersInZone.Remove(Char);
+	OriginalGravityScales.Remove(Char);
 }

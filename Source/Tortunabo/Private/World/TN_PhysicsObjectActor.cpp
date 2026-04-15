@@ -18,6 +18,12 @@ ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 	NetDormancy = DORM_DormantAll;
 }
 
+void ATN_PhysicsObjectActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(DormancyCheckTimer);
+	Super::EndPlay(EndPlayReason);
+}
+
 void ATN_PhysicsObjectActor::BeginPlay()
 {
 	Super::BeginPlay();

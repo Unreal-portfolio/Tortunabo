@@ -51,11 +51,11 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 
 	if (PawnsOnPlatform == 1 && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
 	{
-		// Vibración a mitad del timer
+		// Vibración a mitad del timer — handle separado para no sobrescribir el de rotura
 		const float ShakeAt = TimeToBreak * 0.5f;
 		FTimerDelegate ShakeDelegate;
 		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::MulticastShake);
-		GetWorldTimerManager().SetTimer(BreakTimerHandle, ShakeDelegate, ShakeAt, false);
+		GetWorldTimerManager().SetTimer(ShakeTimerHandle, ShakeDelegate, ShakeAt, false);
 
 		// Rotura al final del timer completo
 		FTimerDelegate BreakDelegate;
@@ -77,6 +77,7 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	// Si nadie queda encima, cancelar el timer (la plataforma "aguanta")
 	if (PawnsOnPlatform == 0)
 	{
+		GetWorldTimerManager().ClearTimer(ShakeTimerHandle);
 		GetWorldTimerManager().ClearTimer(BreakTimerHandle);
 	}
 }
@@ -162,4 +163,12 @@ void ATN_BreakablePlatform::BeginPlay()
 		StandTrigger->OnComponentEndOverlap.AddDynamic(
 			this, &ATN_BreakablePlatform::OnStandTriggerEndOverlap);
 	}
+}
+
+void ATN_BreakablePlatform::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(ShakeTimerHandle);
+	GetWorldTimerManager().ClearTimer(BreakTimerHandle);
+	GetWorldTimerManager().ClearTimer(RespawnTimerHandle);
+	Super::EndPlay(EndPlayReason);
 }
