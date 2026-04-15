@@ -232,8 +232,11 @@ void UTN_CoopFlowHUDWidget::UnbindQuickChat()
 	// ── Unbind flow state delegate ────────────────────────────────────────────
 	if (BoundFlowGameState)
 	{
-		BoundFlowGameState->OnMatchFlowStateChanged.RemoveDynamic(
-			this, &UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler);
+		if (IsValid(BoundFlowGameState))
+		{
+			BoundFlowGameState->OnMatchFlowStateChanged.RemoveDynamic(
+				this, &UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler);
+		}
 		BoundFlowGameState = nullptr;
 	}
 }
@@ -571,6 +574,12 @@ void UTN_CoopFlowHUDWidget::StartChatFade()
 
 void UTN_CoopFlowHUDWidget::OnMatchFlowStateChangedHandler(ETNMatchFlowState NewState)
 {
+	// Guard: abort if we already processed this state (prevents double-fire with the 0.1s polling path)
+	if (bFlowStateInitialized && NewState == LastKnownFlowState)
+	{
+		return;
+	}
+
 	ATN_CoopGameState* GameState = GetOwningPlayer() && GetOwningPlayer()->GetWorld()
 		? GetOwningPlayer()->GetWorld()->GetGameState<ATN_CoopGameState>()
 		: nullptr;
