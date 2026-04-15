@@ -143,6 +143,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Chunks|Debug")
 	bool bDebugDrawSockets = false;
 
+	/**
+	 * Devuelve la posición del OutSocket del último chunk spawneado + 100z,
+	 * que es un área garantizada como activa (nunca destruida por CleanupChunks).
+	 * Usado por TN_RunGameMode::RevivePlayer para teleportar pawns muertos
+	 * a un área con chunks válidos antes de revivir.
+	 * Retorna FVector::ZeroVector si aún no se ha spawneado ningún chunk.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Chunks")
+	FVector GetSafeReviveLocation() const;
+
 private:
 
 	// Lista de chunks actualmente activos (FIFO: [0] = más viejo).

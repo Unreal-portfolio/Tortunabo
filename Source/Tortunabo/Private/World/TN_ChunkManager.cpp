@@ -501,3 +501,15 @@ UBoxComponent* ATN_ChunkManager::FindBoxComponentByName(AActor* Actor, FName Nam
 	USceneComponent* Found = FindSceneComponentByName(Actor, Name);
 	return Found ? Cast<UBoxComponent>(Found) : nullptr;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetSafeReviveLocation
+// ─────────────────────────────────────────────────────────────────────────────
+
+FVector ATN_ChunkManager::GetSafeReviveLocation() const
+{
+	// NextSpawnTransform es el OutSocket del último chunk spawneado.
+	// Siempre apunta a un área activa (el próximo chunk se spawneará aquí).
+	// Elevamos 100 cm para evitar que el pawn aparezca dentro del suelo.
+	return NextSpawnTransform.GetLocation() + FVector(0.f, 0.f, 100.f);
+}
