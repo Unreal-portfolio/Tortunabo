@@ -311,13 +311,6 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 {
 	bResultsVisible = true;
 
-	// ── Diagnóstico de BindWidget ──────────────────────────────────────────
-	UE_LOG(LogTemp, Warning, TEXT("[HUD] ShowResultsPanel called. ResultsOverlay=%s ResultsTitle=%s ResultsRankText=%s ResultsCountdown=%s"),
-		ResultsOverlay   ? TEXT("OK") : TEXT("NULL — check BP Designer widget name"),
-		ResultsTitle     ? TEXT("OK") : TEXT("NULL"),
-		ResultsRankText  ? TEXT("OK") : TEXT("NULL"),
-		ResultsCountdown ? TEXT("OK") : TEXT("NULL"));
-
 	if (ResultsOverlay)
 	{
 		ResultsOverlay->SetVisibility(ESlateVisibility::Visible);
@@ -328,11 +321,6 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 	if (const APlayerController* PC = GetOwningPlayer())
 	{
 		TNPS = PC->GetPlayerState<ATN_CoopPlayerState>();
-	}
-
-	if (!TNPS)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[HUD] ShowResultsPanel: TNPS is null — PlayerState not yet replicated. Results content will be empty."));
 	}
 
 	const int32  Rank          = TNPS ? TNPS->FinishRank       : 0;
