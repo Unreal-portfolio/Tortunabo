@@ -79,12 +79,34 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_IsActivated, BlueprintReadOnly, Category = "Button")
 	bool bIsActivated = false;
 
+	/**
+	 * Número de pulsaciones necesarias para activar/desactivar el botón.
+	 * 1 = comportamiento clásico toggle inmediato.
+	 * 2 = primera pulsación da feedback "medio pulsado", la segunda activa.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button", meta = (ClampMin = "1", ClampMax = "10"))
+	int32 PressesRequired = 1;
+
+	/** Pulsaciones acumuladas en el ciclo actual. Replicado para feedback en clientes. */
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentPresses, BlueprintReadOnly, Category = "Button")
+	int32 CurrentPresses = 0;
+
 	/** Multicast cosmético: feedback al pulsar (override en BP para sonido/VFX). */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPlayButtonFeedback();
 
+	/**
+	 * Multicast cosmético: feedback de pulsación parcial (override en BP).
+	 * Se llama cuando CurrentPresses > 0 pero aún no llega a PressesRequired.
+	 */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayHalfPressedFeedback();
+
 	UFUNCTION()
 	void OnRep_IsActivated();
+
+	UFUNCTION()
+	void OnRep_CurrentPresses();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 

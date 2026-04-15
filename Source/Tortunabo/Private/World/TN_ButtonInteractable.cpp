@@ -248,6 +248,7 @@ void ATN_ButtonInteractable::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_ButtonInteractable, bIsActivated);
+	DOREPLIFETIME(ATN_ButtonInteractable, CurrentPresses);
 }
 
 void ATN_ButtonInteractable::OnRep_IsActivated()
@@ -256,6 +257,12 @@ void ATN_ButtonInteractable::OnRep_IsActivated()
 	{
 		bIsMoving = true;
 	}
+}
+
+void ATN_ButtonInteractable::OnRep_CurrentPresses()
+{
+	// BP puede reaccionar al cambio de pulsaciones parciales (ej. cambiar color del botón).
+	// No hay lógica de movimiento aquí — el movimiento lo controla OnRep_IsActivated.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,12 +288,26 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 		return;
 	}
 
-	// Despertar de dormancy para que bIsActivated replique a clientes.
 	FlushNetDormancy();
 
-	// Toggle
-	bIsActivated = !bIsActivated;
-	bIsMoving = true;
+	++CurrentPresses;
+
+	if (CurrentPresses < PressesRequired)
+	{
+		// Pulsación parcial — dar feedback pero no activar todavía.
+		ForceNetUpdate();
+		MulticastPlayHalfPressedFeedback();
+		Super::Interact(Interactor);
+
+		UE_LOG(LogTemp, Log, TEXT("[Button] '%s' — pulsación %d/%d"),
+			*GetName(), CurrentPresses, PressesRequired);
+		return;
+	}
+
+	// Pulsaciones completas: toggle y resetear contador.
+	CurrentPresses = 0;
+	bIsActivated   = !bIsActivated;
+	bIsMoving      = true;
 
 	ForceNetUpdate();
 
@@ -374,4 +395,9 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 void ATN_ButtonInteractable::MulticastPlayButtonFeedback_Implementation()
 {
 	// Override en Blueprint para añadir sonido/VFX/animación del botón.
+}
+
+void ATN_ButtonInteractable::MulticastPlayHalfPressedFeedback_Implementation()
+{
+	// Override en Blueprint para feedback de pulsación parcial (ej. click leve, cambio de color).
 }

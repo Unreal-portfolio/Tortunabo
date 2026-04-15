@@ -6,6 +6,7 @@
 
 class UStaticMesh;
 class UTexture2D;
+class USoundBase;
 class ATN_PickupInteractableBase;
 class ATN_ThrowableItemActor;
 
@@ -59,8 +60,23 @@ struct FTN_InventoryItem : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
 	float StaminaUnlimitedDurationSeconds = 4.0f;
 
+	/**
+	 * Segundos de penalización de exhaustión tras que el boost de stamina expire.
+	 * 0 = sin penalización. Permite configurar penalizaciones distintas por ítem.
+	 * Sobreescribe el valor global de TN_StaminaComponent::PostBoostExhaustionSeconds.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
+	float PostBoostExhaustionSeconds = 2.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
 	float ThrowSpeed = 1800.0f;
+
+	/**
+	 * Duración de vida del proyectil (s). 0 = usar el default del BP del lanzable (MaxLifeSeconds).
+	 * Permite que ítems distintos tengan proyectiles que duren más o menos.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
+	float ThrowableLifeSpanSeconds = 0.f;
 
 	/**
 	 * Peso del ítem en unidades arbitrarias.
@@ -71,6 +87,19 @@ struct FTN_InventoryItem : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Weight", meta = (ClampMin = "0.0", ClampMax = "20.0"))
 	float ItemWeight = 0.0f;
+
+	/**
+	 * Sonido que se reproduce al recoger el ítem. Nulo = sin sonido.
+	 * Se reproduce localmente en el cliente que recoge (spatialized = false).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Audio")
+	TObjectPtr<USoundBase> PickupSound = nullptr;
+
+	/**
+	 * Sonido que se reproduce al consumir/usar el ítem. Nulo = sin sonido.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Audio")
+	TObjectPtr<USoundBase> UseSound = nullptr;
 
 	/**
 	 * Clase del actor pickup que aparece en el mundo.

@@ -633,6 +633,20 @@ protected:
 	FName KnockdownComponentName = TEXT("Cuerpo");
 
 	/**
+	 * Multiplicador aplicado a la velocidad horizontal del jugador en el momento del knockdown.
+	 * 1.0 = conserva el momentum actual, 0.0 = caída vertical, >1.0 = amplifica el impulso.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0", ClampMax = "3.0"))
+	float KnockdownHorizontalMultiplier = 1.0f;
+
+	/**
+	 * Fuerza hacia abajo (cm/s, valor positivo → se aplica en -Z) añadida al momentum de knockdown.
+	 * Asegura que el personaje caiga aunque tenga velocidad vertical neutra o positiva.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0", ClampMax = "1500.0"))
+	float KnockdownDownwardForce = 400.f;
+
+	/**
 	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
 	 * El pawn NO se destruye: queda como cadáver interactuable para revive.
 	 */
@@ -701,6 +715,8 @@ protected:
 	float LocalHeadPitch       = 0.f;
 	float SmoothedHeadYaw      = 0.f;   ///< interpolado en clientes remotos hacia ReplicatedHead*
 	float SmoothedHeadPitch    = 0.f;
+	/** Yaw crudo del frame anterior (sin clamp). Mantiene continuidad entre frames para evitar el snap a ±180°. */
+	float LastHeadRawYaw       = 0.f;
 
 	void TickHeadLook(float DeltaTime);
 	void ApplyHeadLookToCabeza(float Yaw, float Pitch);

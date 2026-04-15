@@ -875,6 +875,8 @@ void ATortugaCharacter::Move(const FInputActionValue& Value)
 {
 	// Movement is locked during the dive and recovery slide
 	if (bIsDiving) { return; }
+	// Movement is locked during knockdown — momentum from LaunchCharacter takes over
+	if (bIsKnockedDown) { return; }
 
 	// Cancel any active emote the moment the player moves —
 	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable,
@@ -1175,6 +1177,8 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 			return;
 		}
 
+		// Aplicar penalización post-boost específica del ítem (sobreescribe el valor global del componente).
+		StaminaComponent->SetPostBoostExhaustionSeconds(EquippedItem.PostBoostExhaustionSeconds);
 		GrantInfiniteStamina(EquippedItem.StaminaUnlimitedDurationSeconds);
 		return;
 	}
@@ -1512,10 +1516,18 @@ void ATortugaCharacter::ApplyKnockdown(float Duration)
 
 	bIsKnockedDown = true;
 
-	// Bloquear movimiento en servidor
+	// Aplicar momentum físico al knockdown: mantener velocidad horizontal actual
+	// + añadir impulso hacia abajo. CMC permanece activo (MOVE_Falling).
+	// Move() bloquea el input mientras bIsKnockedDown = true.
 	if (UCharacterMovementComponent* MC = GetCharacterMovement())
 	{
-		MC->DisableMovement();
+		const FVector CurrentVel = MC->Velocity;
+		const FVector KnockImpulse(
+			CurrentVel.X * KnockdownHorizontalMultiplier,
+			CurrentVel.Y * KnockdownHorizontalMultiplier,
+			FMath::Min(CurrentVel.Z, 0.f) - KnockdownDownwardForce
+		);
+		LaunchCharacter(KnockImpulse, /*bXYOverride=*/true, /*bZOverride=*/true);
 	}
 
 	// ── Knockdown visual via sistema de emotes ───────────────────────────────
@@ -1534,7 +1546,7 @@ void ATortugaCharacter::ApplyKnockdown(float Duration)
 	GetWorldTimerManager().SetTimer(KnockdownTimerHandle, this,
 	                                &ATortugaCharacter::RecoverFromKnockdown, Duration, false);
 
-	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s knocked down for %.1fs"), *GetNameSafe(this), Duration);
+	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s knocked down for %.1fs (momentum activo)"), *GetNameSafe(this), Duration);
 }
 
 void ATortugaCharacter::RecoverFromKnockdown()
@@ -1580,10 +1592,15 @@ void ATortugaCharacter::OnRep_IsKnockedDown()
 	// (no dueños) reciben el emote via OnRep_ReplicatedEmoteIndex normalmente.
 	if (IsLocallyControlled())
 	{
-		if (UCharacterMovementComponent* MC = GetCharacterMovement())
+		// El momentum viene del servidor vía replicación de movimiento.
+		// Move() bloquea el input mientras bIsKnockedDown = true.
+		// Al recuperar, restaurar Walking por si el timer llegó antes de aterrizar.
+		if (!bIsKnockedDown)
 		{
-			if (bIsKnockedDown) { MC->DisableMovement(); }
-			else                { MC->SetMovementMode(MOVE_Walking); }
+			if (UCharacterMovementComponent* MC = GetCharacterMovement())
+			{
+				MC->SetMovementMode(MOVE_Walking);
+			}
 		}
 
 		// ── Visual knockdown para el dueño (ruta alternativa a OnRep_ReplicatedEmoteIndex) ─
@@ -3434,8 +3451,14 @@ void ATortugaCharacter::TickHeadLook(float DeltaTime)
 		const FRotator ControlRot = PC->GetControlRotation();
 		const float ActorYaw      = GetActorRotation().Yaw;
 
-		// Yaw relativo: cuánto a la derecha/izquierda está la cámara respecto al cuerpo
-		const float RawYaw   = FRotator::NormalizeAxis(ControlRot.Yaw - ActorYaw);
+		// Yaw relativo: cuánto a la derecha/izquierda está la cámara respecto al cuerpo.
+		// Usamos el valor acumulado del frame anterior (LastHeadRawYaw) para elegir
+		// siempre el camino continuo, evitando el snap instantáneo de ±180° cuando
+		// el eje de normalización cruza la discontinuidad.
+		float RawYaw = ControlRot.Yaw - ActorYaw;
+		while (RawYaw - LastHeadRawYaw >  180.f) { RawYaw -= 360.f; }
+		while (RawYaw - LastHeadRawYaw < -180.f) { RawYaw += 360.f; }
+		LastHeadRawYaw       = RawYaw;
 		LocalHeadRelativeYaw = FMath::Clamp(RawYaw, -90.f, 90.f);
 
 		// Pitch: en UE el pitch es negativo al mirar arriba; lo invertimos para nuestra convención

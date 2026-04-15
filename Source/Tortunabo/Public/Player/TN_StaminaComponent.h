@@ -28,6 +28,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void RestoreStaminaToFull();
 
+	/** Sobreescribe en tiempo de ejecución la penalización post-boost (útil para ítems con distinto penalty). */
+	void SetPostBoostExhaustionSeconds(float NewValue) { PostBoostExhaustionSeconds = FMath::Max(0.f, NewValue); }
+
 	/**
 	 * Limita MaxWalkSpeed a Cap mientras sea activo (ej. zona de ralentización).
 	 * ApplyMovementSpeed lo respeta: MaxWalkSpeed = Min(WalkSpeed|SprintSpeed, ActiveSpeedCap).
