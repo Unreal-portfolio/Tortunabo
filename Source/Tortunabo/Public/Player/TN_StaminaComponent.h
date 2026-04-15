@@ -24,6 +24,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void GrantUnlimitedStamina(float DurationSeconds);
 
+	/** Restaura la stamina al máximo efectivo e invalida la penalización de agotamiento. */
+	UFUNCTION(BlueprintCallable, Category = "Stamina")
+	void RestoreStaminaToFull();
+
 	/**
 	 * Limita MaxWalkSpeed a Cap mientras sea activo (ej. zona de ralentización).
 	 * ApplyMovementSpeed lo respeta: MaxWalkSpeed = Min(WalkSpeed|SprintSpeed, ActiveSpeedCap).
@@ -66,6 +70,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Stamina")
 	bool IsExhausted() const { return bIsExhausted; }
 
+	/** True si el efecto post-boost está activo (penalización tras expirar stamina ilimitada). */
+	UFUNCTION(BlueprintPure, Category = "Stamina")
+	bool IsPostBoostPenalized() const { return bPostBoostPenaltyActive; }
+
 protected:
 	/** Stamina máxima base. Configurable desde Blueprint. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Stamina", meta = (ClampMin = "1.0"))
@@ -96,6 +104,13 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
 	float ExhaustionPenaltySeconds = 1.0f;
+
+	/**
+	 * Segundos de agotamiento forzado al expirar la stamina ilimitada (Barrita Energética).
+	 * 0 = sin penalización (comportamiento original). Configurable por BP.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
+	float PostBoostExhaustionSeconds = 2.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina|Movement", meta = (ClampMin = "0.0"))
 	float WalkSpeed = 450.0f;
@@ -129,6 +144,9 @@ private:
 
 	UPROPERTY(Replicated)
 	bool bIsExhausted = false;
+
+	UPROPERTY(Replicated)
+	bool bPostBoostPenaltyActive = false;
 
 	/** Referencia al inventario del propietario — necesaria para calcular el peso. */
 	TWeakObjectPtr<UTN_InventoryComponent> InventoryComponentRef;

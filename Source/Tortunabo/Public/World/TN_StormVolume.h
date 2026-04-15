@@ -102,7 +102,7 @@ protected:
 	 * La pared trasera permanece fija; sólo avanza la frontal.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Storm|Growth", meta = (ClampMin = "0.0"))
-	float GrowthSpeed = 80.0f;
+	float GrowthSpeed = 150.0f;
 
 	/**
 	 * Dirección LOCAL en la que avanza el borde frontal (se normaliza en runtime).

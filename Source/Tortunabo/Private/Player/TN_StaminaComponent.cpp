@@ -47,6 +47,7 @@ void UTN_StaminaComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bSprintRequested, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bUnlimitedStamina, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bIsExhausted, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bPostBoostPenaltyActive, COND_OwnerOnly);
 }
 
 void UTN_StaminaComponent::SetSprintRequested(bool bRequested)
@@ -97,6 +98,24 @@ void UTN_StaminaComponent::ServerGrantUnlimitedStamina_Implementation(float Dura
 	GrantUnlimitedStamina(FMath::Clamp(DurationSeconds, 0.f, MaxGrantDuration));
 }
 
+void UTN_StaminaComponent::RestoreStaminaToFull()
+{
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		// El servidor aplica el efecto; el cliente solo lo solicita.
+		// Reutilizamos el patron de GrantUnlimitedStamina sin RPC dedicada:
+		// el item pickup ya debería ejecutarse via Server RPC en el pickup base.
+		return;
+	}
+
+	CurrentStamina    = GetEffectiveMaxStamina();
+	bIsExhausted      = false;
+	ExhaustionTimer   = 0.f;
+	RechargeElapsed   = 0.f;
+	TimeSinceSprintStopped = 0.f;
+	RecomputeSprintState();
+}
+
 void UTN_StaminaComponent::SetInventoryComponent(UTN_InventoryComponent* InvComp)
 {
 	InventoryComponentRef = InvComp;
@@ -144,6 +163,15 @@ void UTN_StaminaComponent::TickUnlimitedTimer(float DeltaTime)
 	{
 		bUnlimitedStamina = false;
 		UnlimitedStaminaRemaining = 0.0f;
+
+		// Penalización post-boost: forzar agotamiento al expirar el efecto (#1)
+		if (PostBoostExhaustionSeconds > 0.f)
+		{
+			bIsExhausted           = true;
+			bPostBoostPenaltyActive = true;
+			ExhaustionTimer        = PostBoostExhaustionSeconds;
+			CurrentStamina         = 0.f;
+		}
 	}
 }
 
@@ -182,8 +210,9 @@ void UTN_StaminaComponent::TickStamina(float DeltaTime)
 			ExhaustionTimer -= DeltaTime;
 			if (ExhaustionTimer <= 0.0f)
 			{
-				bIsExhausted = false;
-				ExhaustionTimer = 0.0f;
+				bIsExhausted            = false;
+				bPostBoostPenaltyActive = false;
+				ExhaustionTimer         = 0.0f;
 				// Reiniciar timer de delay normal también
 				TimeSinceSprintStopped = 0.0f;
 				RechargeElapsed = 0.0f;

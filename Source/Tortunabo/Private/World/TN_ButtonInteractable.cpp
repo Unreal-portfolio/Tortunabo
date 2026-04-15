@@ -8,6 +8,7 @@ ATN_ButtonInteractable::ATN_ButtonInteractable()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PromptText = FText::FromString(TEXT("Activar"));
+	bAlwaysRelevant = true; // El cliente nunca pierde el estado de bIsActivated (#B4/#B8)
 }
 
 void ATN_ButtonInteractable::BeginPlay()
@@ -204,6 +205,25 @@ void ATN_ButtonInteractable::DeferredInit()
 		ActivatedTransform.SetRotation(ActivatedOffset.GetRotation() * OriginalTransform.GetRotation());
 		// Mantener la escala original (el offset no debería cambiar la escala)
 
+		// ── Capturar transforms de targets adicionales (#15) ─────────────────────
+		AdditionalOriginalTransforms.Reset();
+		AdditionalActivatedTransforms.Reset();
+		for (AActor* Extra : AdditionalMoveTargets)
+		{
+			if (!IsValid(Extra))
+			{
+				AdditionalOriginalTransforms.Add(FTransform::Identity);
+				AdditionalActivatedTransforms.Add(FTransform::Identity);
+				continue;
+			}
+			FTransform ExtraOriginal = Extra->GetActorTransform();
+			FTransform ExtraActivated = ExtraOriginal;
+			ExtraActivated.SetLocation(ExtraOriginal.GetLocation() + ActivatedOffset.GetLocation());
+			ExtraActivated.SetRotation(ActivatedOffset.GetRotation() * ExtraOriginal.GetRotation());
+			AdditionalOriginalTransforms.Add(ExtraOriginal);
+			AdditionalActivatedTransforms.Add(ExtraActivated);
+		}
+
 		bInitialized = true;
 
 		UE_LOG(LogTemp, Log, TEXT("[Button] '%s' — Original: %s | Offset: %s | Activado: %s"),
@@ -308,6 +328,26 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 	{
 		SetTargetTransform(Goal);
 		bIsMoving = false;
+	}
+
+	// ── Mover targets adicionales (#15) ──────────────────────────────────────
+	for (int32 i = 0; i < AdditionalMoveTargets.Num(); ++i)
+	{
+		AActor* Extra = AdditionalMoveTargets[i];
+		if (!IsValid(Extra) || !AdditionalOriginalTransforms.IsValidIndex(i))
+		{
+			continue;
+		}
+
+		const FTransform& ExtraGoal = bIsActivated
+			? AdditionalActivatedTransforms[i]
+			: AdditionalOriginalTransforms[i];
+
+		const FVector ExtraLoc = Extra->GetActorLocation();
+		const FVector NewExtraLoc = FMath::VInterpConstantTo(ExtraLoc, ExtraGoal.GetLocation(), DeltaTime, MoveSpeed);
+		const FRotator NewExtraRot = FMath::RInterpConstantTo(
+			Extra->GetActorRotation(), ExtraGoal.GetRotation().Rotator(), DeltaTime, RotateSpeed);
+		Extra->SetActorLocationAndRotation(NewExtraLoc, NewExtraRot);
 	}
 }
 

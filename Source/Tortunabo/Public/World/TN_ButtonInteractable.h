@@ -44,6 +44,14 @@ protected:
 	TObjectPtr<AActor> MoveTarget;
 
 	/**
+	 * Actores adicionales que se mueven junto con MoveTarget al activar el botón.
+	 * Todos reciben el mismo ActivatedOffset relativo a su posición original.
+	 * Útil para puzzles que mueven múltiples plataformas o puertas a la vez.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
+	TArray<TObjectPtr<AActor>> AdditionalMoveTargets;
+
+	/**
 	 * Nombre/tag para resolver el target automáticamente en BeginPlay.
 	 * Busca PRIMERO un componente por nombre en el chunk BP padre (ej. "wall1"),
 	 * luego busca un ChildActor con este ActorTag.
@@ -89,6 +97,12 @@ private:
 
 	/** Transform activado (original + offset), calculado en DeferredInit. */
 	FTransform ActivatedTransform;
+
+	/** Transforms originales de AdditionalMoveTargets — índice sincronizado con el array. */
+	TArray<FTransform> AdditionalOriginalTransforms;
+
+	/** Transforms activados de AdditionalMoveTargets — índice sincronizado con el array. */
+	TArray<FTransform> AdditionalActivatedTransforms;
 
 	/** true cuando DeferredInit ha ejecutado y los transforms están listos. */
 	bool bInitialized = false;

@@ -30,10 +30,26 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SlowZone")
 	TObjectPtr<UBoxComponent> TriggerBox;
 
-	/** Velocidad máxima (cm/s) mientras el jugador está dentro. */
+	/** Velocidad máxima horizontal (cm/s) mientras el jugador está dentro. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone",
 		meta = (ClampMin = "50.0"))
 	float MaxSlowSpeed = 300.f;
+
+	/**
+	 * Si true, reduce la gravedad del jugador mientras está en la zona.
+	 * Produce efecto "vuelo lento" / flotación — limita el movimiento en Z.
+	 * Configurable desde el Blueprint hijo.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Gravity")
+	bool bSlowFall = false;
+
+	/**
+	 * Escala de gravedad aplicada cuando bSlowFall=true.
+	 * 0.0 = sin gravedad, 1.0 = gravedad normal. Default: 0.3 (caída lenta).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Gravity",
+		meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bSlowFall"))
+	float GravityScaleInZone = 0.3f;
 
 private:
 	UFUNCTION()
@@ -47,4 +63,7 @@ private:
 
 	/** Personajes actualmente dentro de la zona — para evitar aplicar el cap dos veces. */
 	TSet<TWeakObjectPtr<ATortugaCharacter>> CharactersInZone;
+
+	/** Gravedad original por personaje — para restaurar al salir cuando bSlowFall=true. */
+	TMap<TWeakObjectPtr<ATortugaCharacter>, float> OriginalGravityScales;
 };

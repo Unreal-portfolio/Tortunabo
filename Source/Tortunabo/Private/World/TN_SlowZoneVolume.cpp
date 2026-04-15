@@ -1,5 +1,6 @@
 #include "World/TN_SlowZoneVolume.h"
 #include "Components/BoxComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_StaminaComponent.h"
 
@@ -34,6 +35,15 @@ void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 
 	CharactersInZone.Add(Char);
 	StaminaComp->SetSpeedCap(MaxSlowSpeed);
+
+	if (bSlowFall)
+	{
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		{
+			OriginalGravityScales.Add(Char, CMC->GravityScale);
+			CMC->GravityScale = GravityScaleInZone;
+		}
+	}
 }
 
 void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
@@ -51,5 +61,17 @@ void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AA
 	if (StaminaComp)
 	{
 		StaminaComp->ClearSpeedCap();
+	}
+
+	if (bSlowFall)
+	{
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		{
+			if (const float* Original = OriginalGravityScales.Find(Char))
+			{
+				CMC->GravityScale = *Original;
+			}
+		}
+		OriginalGravityScales.Remove(Char);
 	}
 }
