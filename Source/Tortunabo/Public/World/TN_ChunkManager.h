@@ -148,7 +148,8 @@ public:
 	 * que es un área garantizada como activa (nunca destruida por CleanupChunks).
 	 * Usado por TN_RunGameMode::RevivePlayer para teleportar pawns muertos
 	 * a un área con chunks válidos antes de revivir.
-	 * Retorna FVector::ZeroVector si aún no se ha spawneado ningún chunk.
+	 * Si aún no hay chunks spawneados, retorna la posición inicial del ChunkManager + 100z
+	 * (el punto donde se spawneará el primer chunk — válido como fallback).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Chunks")
 	FVector GetSafeReviveLocation() const;
