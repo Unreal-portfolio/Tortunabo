@@ -25,6 +25,12 @@ ATN_DeathZoneVolume::ATN_DeathZoneVolume()
 	TriggerBox->SetLineThickness(2.f);
 #endif
 
+}
+
+void ATN_DeathZoneVolume::BeginPlay()
+{
+	Super::BeginPlay();
+
 	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnBoxBeginOverlap);
 	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnBoxEndOverlap);
 }
@@ -95,9 +101,37 @@ void ATN_DeathZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, A
 	}
 
 	const APawn* Pawn = Cast<APawn>(OtherActor);
-	APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+	if (!Pawn) { return; }
+
+	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
 	if (!PC)
 	{
+		// Pawn exited without a controller (destroyed or unpossessed) —
+		// find and remove any stale entry keyed by the PC that owned this pawn
+		TWeakObjectPtr<APlayerController> StalePC;
+		for (auto& Pair : PendingDeathRemaining)
+		{
+			if (APlayerController* StoredPC = Pair.Key.Get())
+			{
+				if (StoredPC->GetPawn() == nullptr || StoredPC->GetPawn() == Pawn)
+				{
+					StalePC = StoredPC;
+					break;
+				}
+			}
+		}
+		if (StalePC.IsValid())
+		{
+			PendingDeathRemaining.Remove(StalePC);
+			if (ATN_CoopPlayerState* TNPS = StalePC->GetPlayerState<ATN_CoopPlayerState>())
+			{
+				TNPS->DeathZoneTimeRemaining = -1.f;
+			}
+		}
+		if (PendingDeathRemaining.Num() == 0)
+		{
+			GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
+		}
 		return;
 	}
 

@@ -34,9 +34,6 @@ ATN_StormVolume::ATN_StormVolume()
 	TriggerBox->SetLineThickness(2.f);
 #endif
 
-	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
-	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
-
 	// ─── StormVolumeMesh ─────────────────────────────────────────────────
 	// Cubo de 100x100x100 UU — se escala en SyncVisualToBox para cubrir TriggerBox.
 	StormVolumeMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StormVolumeMesh"));
@@ -96,6 +93,9 @@ ATN_StormVolume::ATN_StormVolume()
 void ATN_StormVolume::BeginPlay()
 {
 	Super::BeginPlay();
+
+	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
+	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
 
 	NormalizedGrowthDir = GrowthDirection.GetSafeNormal();
 	if (NormalizedGrowthDir.IsNearlyZero())

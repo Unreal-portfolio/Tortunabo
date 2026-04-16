@@ -78,6 +78,9 @@ ATN_InkProjectile* ATN_InkProjectile::Spawn(const UObject* WorldContextObject,
 	UWorld* World = WorldContextObject->GetWorld();
 	if (!World) { return nullptr; }
 
+	// Only the server can spawn replicated projectiles
+	if (World->GetNetMode() == NM_Client) { return nullptr; }
+
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
@@ -100,19 +103,18 @@ void ATN_InkProjectile::OnSphereHit(UPrimitiveComponent* /*HitComponent*/, AActo
 {
 	if (!HasAuthority() || bHasHit) { return; }
 
+	bHasHit = true;
+
 	ATortugaCharacter* HitCharacter = Cast<ATortugaCharacter>(OtherActor);
 	if (HitCharacter)
 	{
-		bHasHit = true;
 		MulticastApplyInkEffect(HitCharacter, InkDurationSeconds);
-		Destroy();
 	}
-	else
-	{
-		// Impacto contra geometría — destruir igualmente
-		bHasHit = true;
-		Destroy();
-	}
+
+	// Defer destruction to let the reliable multicast flush before the actor is torn down
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+	SetLifeSpan(1.0f);
 }
 
 // ── Multicast ──────────────────────────────────────────────────────────────────

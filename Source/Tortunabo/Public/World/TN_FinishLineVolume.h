@@ -22,12 +22,17 @@ class TORTUNABO_API ATN_FinishLineVolume : public AActor
 public:
 	ATN_FinishLineVolume();
 
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 protected:
 	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FinishLine")
 	TObjectPtr<UBoxComponent> TriggerBox;
 
 private:
+	void DeferredInit();
+
 	UFUNCTION()
 	void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,

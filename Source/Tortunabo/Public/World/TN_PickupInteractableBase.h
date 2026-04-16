@@ -17,6 +17,7 @@ public:
 	ATN_PickupInteractableBase();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual bool CanInteract(APawn* Interactor) const override;
 	virtual void Interact(APawn* Interactor) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -63,5 +64,9 @@ private:
 	void OnRep_PickupItem();
 
 	void ApplyTakenState();
+	void HandleDeferredDestroy();
+	void HandleRestoreDormancy();
+
+	FTimerHandle DormancyTimerHandle;
 };
 

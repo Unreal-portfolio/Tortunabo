@@ -13,7 +13,6 @@ void ATN_ScriptedDeathZone::OnPlayerEnteredZone(APawn* Pawn)
 	if (!HasAuthority() || bOnActivateFired) { return; }
 
 	bOnActivateFired = true;
-	ExecuteActions(OnActivateActions);
 	MulticastNotifyActivate();
 }
 
@@ -22,7 +21,6 @@ void ATN_ScriptedDeathZone::OnPlayerDiedInZone(APlayerController* PC)
 	if (!HasAuthority() || bOnFirstKillFired) { return; }
 
 	bOnFirstKillFired = true;
-	ExecuteActions(OnFirstKillActions);
 	MulticastNotifyFirstKill();
 }
 
@@ -61,10 +59,12 @@ void ATN_ScriptedDeathZone::ExecuteActions(const TArray<FTN_WorldAction>& Action
 
 void ATN_ScriptedDeathZone::MulticastNotifyActivate_Implementation()
 {
+	ExecuteActions(OnActivateActions);
 	OnScriptedActivate();
 }
 
 void ATN_ScriptedDeathZone::MulticastNotifyFirstKill_Implementation()
 {
+	ExecuteActions(OnFirstKillActions);
 	OnScriptedFirstKill();
 }

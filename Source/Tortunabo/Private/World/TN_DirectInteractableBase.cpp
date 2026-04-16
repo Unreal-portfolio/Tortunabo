@@ -20,6 +20,8 @@ void ATN_DirectInteractableBase::Interact(APawn* Interactor)
 
 	LastInteractionServerTime = GetWorld()->GetTimeSeconds();
 	OnDirectInteraction(Interactor);
-	Super::Interact(Interactor);
+	// Call OnInteracted directly instead of Super::Interact — the base class
+	// re-checks CanInteract() which fails because we just set the cooldown timestamp
+	OnInteracted(Interactor);
 }
 

@@ -8,6 +8,7 @@
 ATN_RescuePickup::ATN_RescuePickup()
 {
 	bReplicates = true;
+	bAlwaysRelevant = true;
 	PromptText = FText::FromString(TEXT("Rescatar"));
 	InteractionDistance = 300.f;
 }

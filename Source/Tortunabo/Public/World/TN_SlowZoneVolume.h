@@ -25,6 +25,8 @@ class TORTUNABO_API ATN_SlowZoneVolume : public AActor
 public:
 	ATN_SlowZoneVolume();
 
+	virtual void BeginPlay() override;
+
 protected:
 	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SlowZone")

@@ -13,6 +13,11 @@ ATN_SlowZoneVolume::ATN_SlowZoneVolume()
 	TriggerBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	TriggerBox->SetCollisionResponseToAllChannels(ECR_Ignore);
 	TriggerBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+}
+
+void ATN_SlowZoneVolume::BeginPlay()
+{
+	Super::BeginPlay();
 
 	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxBeginOverlap);
 	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxEndOverlap);
@@ -68,11 +73,28 @@ void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AA
 
 	if (bSlowFall)
 	{
-		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		// Only restore gravity if the character isn't inside another slow-fall zone
+		bool bStillInSlowFall = false;
+		TArray<AActor*> Overlapping;
+		Char->GetOverlappingActors(Overlapping, ATN_SlowZoneVolume::StaticClass());
+		for (AActor* OA : Overlapping)
 		{
-			if (const float* Original = OriginalGravityScales.Find(Char))
+			ATN_SlowZoneVolume* Other = Cast<ATN_SlowZoneVolume>(OA);
+			if (Other && Other != this && Other->bSlowFall)
 			{
-				CMC->GravityScale = *Original;
+				bStillInSlowFall = true;
+				break;
+			}
+		}
+
+		if (!bStillInSlowFall)
+		{
+			if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+			{
+				if (const float* Original = OriginalGravityScales.Find(Char))
+				{
+					CMC->GravityScale = *Original;
+				}
 			}
 		}
 		OriginalGravityScales.Remove(Char);

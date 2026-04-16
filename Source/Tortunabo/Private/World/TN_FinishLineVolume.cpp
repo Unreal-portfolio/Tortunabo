@@ -3,6 +3,7 @@
 #include "Components/BoxComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "TimerManager.h"
 
 ATN_FinishLineVolume::ATN_FinishLineVolume()
 {
@@ -22,7 +23,38 @@ ATN_FinishLineVolume::ATN_FinishLineVolume()
 	TriggerBox->SetLineThickness(2.f);
 #endif
 
+}
+
+void ATN_FinishLineVolume::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (!HasAuthority()) { return; }
+
+	// Defer binding by one tick so chunk-spawned actors have their final world position
+	GetWorldTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateUObject(this, &ATN_FinishLineVolume::DeferredInit));
+}
+
+void ATN_FinishLineVolume::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearAllTimersForObject(this);
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_FinishLineVolume::DeferredInit()
+{
+	if (!TriggerBox) { return; }
+
 	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_FinishLineVolume::OnBoxBeginOverlap);
+
+	// Process any pawns already overlapping at the final position
+	TArray<AActor*> Overlapping;
+	TriggerBox->GetOverlappingActors(Overlapping, APawn::StaticClass());
+	for (AActor* Actor : Overlapping)
+	{
+		OnBoxBeginOverlap(TriggerBox, Actor, nullptr, 0, false, FHitResult());
+	}
 }
 
 void ATN_FinishLineVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,

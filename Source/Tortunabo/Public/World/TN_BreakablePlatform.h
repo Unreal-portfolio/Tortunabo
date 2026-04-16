@@ -6,6 +6,7 @@
 
 class UStaticMeshComponent;
 class UBoxComponent;
+class APawn;
 
 /**
  * Plataforma que se rompe tras aguantar el peso de un jugador durante TimeToBreak segundos.
@@ -92,8 +93,8 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastShake();
 
-	/** Número de pawns actualmente encima de la plataforma. */
-	int32 PawnsOnPlatform = 0;
+	/** Pawns actualmente encima de la plataforma — TSet avoids desyncing if a pawn is destroyed on it. */
+	TSet<TWeakObjectPtr<APawn>> PawnsOnPlatform;
 
 	FTimerHandle ShakeTimerHandle;
 	FTimerHandle BreakTimerHandle;

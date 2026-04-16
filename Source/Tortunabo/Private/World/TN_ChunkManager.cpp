@@ -287,9 +287,9 @@ FTransform ATN_ChunkManager::GetOrComputeInSocketTransform(TSubclassOf<AActor> C
 		return *Cached;
 	}
 
-	// No está en caché → spawnar un temporal en Identity solo para leer InSocket.
-	// El temporal se destruye inmediatamente; su BeginPlay puede tener side effects
-	// menores (timers, spawns en Identity) pero se limpian al destruir.
+	// No está en caché → spawnar un temporal lejos del área de juego para leer InSocket.
+	// Se spawnea en una posición remota para que los Child Actors no puedan
+	// causar overlaps con jugadores en (0,0,0). Se destruye inmediatamente.
 	FTransform InSocketTransform = FTransform::Identity;
 
 	UWorld* World = GetWorld();
@@ -299,17 +299,23 @@ FTransform ATN_ChunkManager::GetOrComputeInSocketTransform(TSubclassOf<AActor> C
 		return InSocketTransform;
 	}
 
+	// Spawn far away from gameplay — prevents false overlaps with pawns at/near origin
+	const FTransform TempSpawnTransform(FRotator::ZeroRotator, FVector(0.f, 0.f, -50000.f));
+
 	FActorSpawnParameters TempParams;
 	TempParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	TempParams.bNoFail = true;
 
-	AActor* Temp = World->SpawnActor<AActor>(ChunkClass, FTransform::Identity, TempParams);
+	AActor* Temp = World->SpawnActor<AActor>(ChunkClass, TempSpawnTransform, TempParams);
 	if (Temp)
 	{
 		if (USceneComponent* InSocket = FindSceneComponentByName(Temp, TEXT("InSocket")))
 		{
-			// En Identity, GetComponentTransform() == transform relativo al root.
-			InSocketTransform = InSocket->GetComponentTransform();
+			// InSocket's world transform at TempSpawnTransform minus the spawn location
+			// gives us the relative offset (same as spawning at Identity).
+			// Since we only care about the relative transform from actor root to InSocket,
+			// compute it explicitly.
+			InSocketTransform = InSocket->GetComponentTransform().GetRelativeTransform(Temp->GetActorTransform());
 		}
 		else
 		{

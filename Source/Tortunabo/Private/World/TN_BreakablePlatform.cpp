@@ -42,22 +42,21 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 	AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority() || bBroken || !Cast<APawn>(OtherActor))
-	{
-		return;
-	}
+	if (!HasAuthority() || bBroken) { return; }
 
-	++PawnsOnPlatform;
+	APawn* Pawn = Cast<APawn>(OtherActor);
+	if (!Pawn) { return; }
 
-	if (PawnsOnPlatform >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
+	PawnsOnPlatform.Remove(nullptr);  // Clean stale refs
+	PawnsOnPlatform.Add(Pawn);
+
+	if (PawnsOnPlatform.Num() >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
 	{
-		// Vibración a mitad del timer — handle separado para no sobrescribir el de rotura
 		const float ShakeAt = TimeToBreak * 0.5f;
 		FTimerDelegate ShakeDelegate;
 		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::MulticastShake);
 		GetWorldTimerManager().SetTimer(ShakeTimerHandle, ShakeDelegate, ShakeAt, false);
 
-		// Rotura al final del timer completo
 		FTimerDelegate BreakDelegate;
 		BreakDelegate.BindUObject(this, &ATN_BreakablePlatform::BreakPlatform);
 		GetWorldTimerManager().SetTimer(BreakTimerHandle, BreakDelegate, TimeToBreak, false);
@@ -67,15 +66,15 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* OverlappedComp,
 	AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (!HasAuthority() || !Cast<APawn>(OtherActor))
-	{
-		return;
-	}
+	if (!HasAuthority()) { return; }
 
-	PawnsOnPlatform = FMath::Max(0, PawnsOnPlatform - 1);
+	APawn* Pawn = Cast<APawn>(OtherActor);
+	if (!Pawn) { return; }
 
-	// Cancelar el timer si el número de jugadores cae por debajo del umbral
-	if (PawnsOnPlatform < PlayerThreshold)
+	PawnsOnPlatform.Remove(Pawn);
+	PawnsOnPlatform.Remove(nullptr);  // Clean stale refs
+
+	if (PawnsOnPlatform.Num() < PlayerThreshold)
 	{
 		GetWorldTimerManager().ClearTimer(ShakeTimerHandle);
 		GetWorldTimerManager().ClearTimer(BreakTimerHandle);
@@ -103,7 +102,7 @@ void ATN_BreakablePlatform::BreakPlatform()
 void ATN_BreakablePlatform::RespawnPlatform()
 {
 	bBroken = false;
-	PawnsOnPlatform = 0;
+	PawnsOnPlatform.Empty();
 
 	PlatformMesh->SetVisibility(true);
 	PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);

@@ -151,13 +151,8 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 	// Destruir el actor en el siguiente frame — la destrucción replicada es más
 	// fiable que la dormancy para garantizar que los clientes eliminen el mesh.
 	// Un actor destruido siempre se propaga; un actor dormante puede quedar desync.
-	GetWorldTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
-	{
-		if (WeakThis.IsValid())
-		{
-			WeakThis->Destroy();
-		}
-	});
+	GetWorldTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateUObject(this, &ATN_PickupInteractableBase::HandleDeferredDestroy));
 
 	// ── Log de confirmación de recogida ───────────────────────────────────────
 	UE_LOG(LogTemp, Log,
@@ -221,6 +216,22 @@ void ATN_PickupInteractableBase::ApplyTakenState()
 	SetActorEnableCollision(!bTaken);
 }
 
+void ATN_PickupInteractableBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearAllTimersForObject(this);
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_PickupInteractableBase::HandleDeferredDestroy()
+{
+	Destroy();
+}
+
+void ATN_PickupInteractableBase::HandleRestoreDormancy()
+{
+	SetNetDormancy(DORM_DormantAll);
+}
+
 void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_InventoryItem& NewPickupItem)
 {
 	if (!HasAuthority() || bTaken || !NewPickupItem.IsValid()) { return; }
@@ -229,12 +240,9 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 	SetNetDormancy(DORM_Awake);
 	FlushNetDormancy();
 
-	FTimerHandle DormancyTimerHandle;
 	GetWorldTimerManager().SetTimer(DormancyTimerHandle,
-		[WeakThis = TWeakObjectPtr<ATN_PickupInteractableBase>(this)]()
-		{
-			if (WeakThis.IsValid()) { WeakThis->SetNetDormancy(DORM_DormantAll); }
-		}, 3.0f, false);
+		FTimerDelegate::CreateUObject(this, &ATN_PickupInteractableBase::HandleRestoreDormancy),
+		3.0f, false);
 
 	if (Mesh && PickupItem.EquippedMesh)
 	{

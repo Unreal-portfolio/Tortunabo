@@ -25,6 +25,8 @@ class TORTUNABO_API ATN_DeathZoneVolume : public AActor
 public:
 	ATN_DeathZoneVolume();
 
+	virtual void BeginPlay() override;
+
 	/**
 	 * Reinicia el countdown de un jugador dentro de la zona.
 	 * Llamar tras RecoverFromKnockdown si el jugador sigue dentro del volumen,
