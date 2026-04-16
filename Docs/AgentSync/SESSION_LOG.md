@@ -1,9 +1,9 @@
 ﻿# SESSION LOG
 
-## 2026-04-16 — Backlog sweep completo: #4 Item Table refactor + sistemas restantes
+## 2026-04-16 — Backlog sweep completo: #4 Item Table refactor + 5 critical fixes + compile verified
 
 ### Resumen
-Sesión de continuación. Se completaron todos los ítems pendientes del BACKLOG.
+Sesión de continuación. Se completaron todos los ítems pendientes del BACKLOG. Auditoría técnica completa ejecutada. 5 bugs críticos encontrados y corregidos. Compilación verificada: **Result: Succeeded** (16/16, 17.65s). Commit: `6e670bc`.
 
 ### Items implementados en esta sesión
 - **#4 Item Table refactor**: `FTN_InventoryItem` refactorizado de struct plano a sub-structs tipados (`FTN_StaminaBoostParams`, `FTN_ThrowableParams`, `FTN_ConchParams`, `FTN_InkThrowerParams`). Eliminados campos planos `StaminaUnlimitedDurationSeconds`, `PostBoostExhaustionSeconds`, `ThrowSpeed`, `ThrowableActorClass`, `ThrowableLifeSpanSeconds`. `ETN_ItemUseType` ampliado con `Conch` y `InkThrower`.
@@ -16,11 +16,30 @@ Sesión de continuación. Se completaron todos los ítems pendientes del BACKLOG
 - #26A race clock + #26B score/persistencia ✅, #1 PostBoostExhaustionSeconds ✅
 - #19 TN_StormVolume con NiagaraComponent + PostProcessComponent ✅
 
+### Critical fixes (auditoría 2026-04-16)
+- **RISK-1** `TN_CoopGameState`: `bLocalScorePersisted` idempotency guard — evita doble-escritura de RaceScore cuando tanto `BroadcastFlowStateChange` como `OnRep_MatchFlowState` disparan en el mismo ciclo Results.
+- **RISK-2** `TN_QuicksandVolume`: escrituras en CMC gateadas a `HasAuthority() || IsLocallyControlled()` — previene corrupción de CMC de pawns remotos en clientes.
+- **RISK-3** `TN_ScriptedDeathZone`: `ExecuteActions` movido al path server-only; Multicast solo dispara evento cosmético BP (`OnScriptedActivate`). Ya no ejecuta moves/destroys en clientes.
+- **RISK-4** `TortugaCharacter`: timers de BigHead y Mareo convertidos de lambdas a `FTimerDelegate::CreateUObject` — cancelables por `ClearAllTimersForObject` en EndPlay. Nuevo método `ClearMareoSpeedCap()`.
+- **RISK-6** `TN_CrabActor`: `AddDynamic` movido al final de `InitializePatrolPoints()` (después de `SpawnLocation = GetActorLocation()`) — previene check de `MaxChaseDistance` contra (0,0,0) en tick 0.
+
+### Compile fix
+- `RequestKill(AActor* Instigator)` → `RequestKill(AActor* KillInstigator)` — UHT no permite shadowing de `AActor::Instigator`.
+
 ### Archivos modificados
 - `Source/Tortunabo/Public/Core/TN_InventoryTypes.h` — refactor completo
-- `Source/Tortunabo/Private/Player/TortugaCharacter.cpp` — includes + dispatch Conch/Ink + field migration
+- `Source/Tortunabo/Private/Player/TortugaCharacter.cpp` — includes + dispatch + field migration + timer fixes
+- `Source/Tortunabo/Public/Player/TortugaCharacter.h` — ClearMareoSpeedCap() + KillInstigator rename
+- `Source/Tortunabo/Private/Core/TN_CoopGameState.cpp` — bLocalScorePersisted guard
+- `Source/Tortunabo/Public/Core/TN_CoopGameState.h` — bLocalScorePersisted field
+- `Source/Tortunabo/Private/World/TN_QuicksandVolume.cpp` — CMC authority guard
+- `Source/Tortunabo/Private/World/TN_CrabActor.cpp` — AddDynamic deferred
+- `Source/Tortunabo/Private/World/TN_ScriptedDeathZone.cpp` — authority split
 
 ### Pendiente (no blocker)
+- `DT_Items`: añadir fila Concha (`UseType=Conch`, `ConchData.ActorClass=BP_ConchPickup`)
+- `DT_Items`: añadir fila Tinta (`UseType=InkThrower`, `InkData.ProjectileClass=BP_InkProjectile`, `InkData.ThrowSpeed=1200`)
+- Crear `BP_ConchPickup` / `BP_InkProjectile` (subclasses BP con mesh y evento `OnInkEffect`)
 - #26C Supabase leaderboard — diferido explícitamente
 - #8 Arpón, #9 Charcos, #32 UI skins — P3, fuera de alcance MVP
 
