@@ -89,6 +89,7 @@ protected:
 
 private:
 	bool bTriggered = false;
+	bool bCurrentlyActivated = false;
 
 	void OnButtonActivationChanged(ATN_ButtonInteractable* Button, bool bActivated);
 	void CheckAndTrigger();

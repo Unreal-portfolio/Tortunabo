@@ -172,7 +172,7 @@ void ATN_PressurePlateGroupManager::Tick(float DeltaTime)
 
 		if (!bConditionMet)
 		{
-			MulticastNotifyConditionMet(); // re-use as "lost" — BP distinguishes by state
+			MulticastNotifyConditionChange(false);
 		}
 	}
 
@@ -183,7 +183,7 @@ void ATN_PressurePlateGroupManager::Tick(float DeltaTime)
 		{
 			bTriggered = bOneShot;
 			ApplyTriggerActions();
-			MulticastNotifyConditionMet();
+			MulticastNotifyConditionChange(true);
 		}
 	}
 }
@@ -237,8 +237,8 @@ void ATN_PressurePlateGroupManager::ApplyTriggerActions()
 	}
 }
 
-void ATN_PressurePlateGroupManager::MulticastNotifyConditionMet_Implementation()
+void ATN_PressurePlateGroupManager::MulticastNotifyConditionChange_Implementation(bool bMet)
 {
-	if (bTriggered) { OnConditionMet(); }
-	else            { OnConditionLost(); }
+	if (bMet) { OnConditionMet(); }
+	else      { OnConditionLost(); }
 }

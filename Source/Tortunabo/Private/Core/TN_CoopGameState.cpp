@@ -82,10 +82,11 @@ void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
 	}
 
 	// Find the local player's PlayerState and persist their race score.
-	// IsLocalPlayerState() correctly identifies the owning player on each machine.
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalPC = World ? World->GetFirstPlayerController() : nullptr;
 	for (APlayerState* PS : PlayerArray)
 	{
-		if (PS && PS->IsLocalPlayerState())
+		if (PS && LocalPC && PS == LocalPC->PlayerState)
 		{
 			if (const ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(PS))
 			{

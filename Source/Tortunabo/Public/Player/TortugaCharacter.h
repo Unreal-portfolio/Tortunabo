@@ -61,6 +61,12 @@ public:
 	/** Devuelve true si el efecto Big Head está activo en este momento. */
 	bool HasBigHeadActive() const { return bBigHead; }
 
+	/** Devuelve true si la protección de sombrilla está activa (#29). */
+	bool HasUmbrellaProtection() const { return bHasUmbrellaProtection; }
+
+	/** Activa/desactiva la protección de sombrilla. Solo llamar desde el servidor. */
+	void SetUmbrellaProtection(bool bActive) { bHasUmbrellaProtection = bActive; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;

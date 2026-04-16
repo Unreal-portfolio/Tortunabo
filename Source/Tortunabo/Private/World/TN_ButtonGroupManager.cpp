@@ -37,22 +37,42 @@ void ATN_ButtonGroupManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void ATN_ButtonGroupManager::OnButtonActivationChanged(ATN_ButtonInteractable* /*Button*/, bool /*bActivated*/)
 {
-	if (!HasAuthority() || bTriggered) { return; }
+	if (!HasAuthority()) { return; }
+
+	// Si ya se disparó y es one-shot, no procesar más cambios
+	if (bTriggered) { return; }
+
 	CheckAndTrigger();
 }
 
 void ATN_ButtonGroupManager::CheckAndTrigger()
 {
 	// Comprobar si todos los botones gestionados están activados
+	bool bAllActivated = true;
 	for (const ATN_ButtonInteractable* Button : ManagedButtons)
 	{
-		if (!Button || !Button->IsActivated()) { return; }
+		if (!Button || !Button->IsActivated())
+		{
+			bAllActivated = false;
+			break;
+		}
 	}
 
-	// Todos activados
-	bTriggered = bOneShot;
-	ApplyTriggerActions(true);
-	MulticastNotifyActivated();
+	if (bAllActivated && !bCurrentlyActivated)
+	{
+		// Todos activados — disparar
+		bCurrentlyActivated = true;
+		bTriggered = bOneShot;
+		ApplyTriggerActions(true);
+		MulticastNotifyActivated();
+	}
+	else if (!bAllActivated && bCurrentlyActivated && !bOneShot)
+	{
+		// Ya no todos activados y no es one-shot — revertir
+		bCurrentlyActivated = false;
+		ApplyTriggerActions(false);
+		MulticastNotifyDeactivated();
+	}
 }
 
 void ATN_ButtonGroupManager::ApplyTriggerActions(bool bForward)

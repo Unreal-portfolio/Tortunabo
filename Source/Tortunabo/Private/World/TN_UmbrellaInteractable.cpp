@@ -21,7 +21,7 @@ void ATN_UmbrellaInteractable::Interact(APawn* Interactor)
 	CooldownSeconds = ReuseDelaySecs;
 
 	// Activar protección
-	Char->bHasUmbrellaProtection = true;
+	Char->SetUmbrellaProtection(true);
 
 	UE_LOG(LogTemp, Log, TEXT("[Umbrella] %s abrió sombrilla (%.1fs)"), *GetNameSafe(Char), UmbrellaDurationSeconds);
 
@@ -36,7 +36,7 @@ void ATN_UmbrellaInteractable::Interact(APawn* Interactor)
 		{
 			if (WeakChar.IsValid())
 			{
-				WeakChar->bHasUmbrellaProtection = false;
+				WeakChar->SetUmbrellaProtection(false);
 			}
 			if (WeakSelf.IsValid())
 			{

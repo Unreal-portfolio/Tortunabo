@@ -112,8 +112,6 @@ private:
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
 
-	FTimerHandle LifetimeTimerHandle;
-
 	/** Evita múltiples hits en el mismo frame. */
 	bool bHasHit = false;
 };

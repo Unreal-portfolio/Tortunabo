@@ -151,7 +151,7 @@ void ATN_EnemySeagull::ResolveAttack()
 	if (bInKillZone)
 	{
 		// ── Sombrilla bloquea el ataque (#29) ──────────────────────────────────
-		if (Target->bHasUmbrellaProtection)
+		if (Target->HasUmbrellaProtection())
 		{
 			UE_LOG(LogTemp, Log, TEXT("[EnemySeagull] Umbrella blocked attack on '%s'"), *GetNameSafe(Target));
 			MulticastResolveResult(false, false, Target);  // Missed visually

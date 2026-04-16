@@ -38,7 +38,7 @@ void ATN_DeathZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 		return;
 	}
 
-	const APawn* Pawn = Cast<APawn>(OtherActor);
+	APawn* Pawn = Cast<APawn>(OtherActor);
 	APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
 	if (!PC)
 	{
@@ -76,7 +76,7 @@ void ATN_DeathZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 	}
 
 	// Notificar a subclases (ej. TN_ScriptedDeathZone)
-	OnPlayerEnteredZone(const_cast<APawn*>(Pawn));
+	OnPlayerEnteredZone(Pawn);
 
 	// Arrancar el timer compartido si no está activo
 	if (!GetWorldTimerManager().IsTimerActive(SharedCountdownTimerHandle))

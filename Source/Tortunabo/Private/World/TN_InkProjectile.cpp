@@ -39,8 +39,7 @@ void ATN_InkProjectile::BeginPlay()
 		CollisionSphere->OnComponentHit.AddDynamic(this, &ATN_InkProjectile::OnSphereHit);
 
 		// Auto-destroy tras LifetimeSeconds
-		FTimerDelegate Del = FTimerDelegate::CreateUObject(this, &AActor::Destroy);
-		GetWorldTimerManager().SetTimer(LifetimeTimerHandle, Del, LifetimeSeconds, false);
+		SetLifeSpan(LifetimeSeconds);
 	}
 
 	// El Tick solo importa en el servidor (mueve el actor)
@@ -49,7 +48,6 @@ void ATN_InkProjectile::BeginPlay()
 
 void ATN_InkProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	GetWorldTimerManager().ClearTimer(LifetimeTimerHandle);
 	Super::EndPlay(EndPlayReason);
 }
 

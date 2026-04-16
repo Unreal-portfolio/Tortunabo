@@ -146,5 +146,5 @@ private:
 	void ApplyTriggerActions();
 
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastNotifyConditionMet();
+	void MulticastNotifyConditionChange(bool bMet);
 };
