@@ -1556,7 +1556,7 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────
 
-void ATortugaCharacter::ApplyKnockdown(float Duration)
+void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 {
 	if (!HasAuthority())
 	{
@@ -1580,17 +1580,23 @@ void ATortugaCharacter::ApplyKnockdown(float Duration)
 
 	bIsKnockedDown = true;
 
-	// Aplicar momentum físico al knockdown: mantener velocidad horizontal actual
-	// + añadir impulso hacia abajo. CMC permanece activo (MOVE_Falling).
-	// Move() bloquea el input mientras bIsKnockedDown = true.
+	// Impulso: usar override si se proporcionó, si no calcular del momentum actual
 	if (UCharacterMovementComponent* MC = GetCharacterMovement())
 	{
-		const FVector CurrentVel = MC->Velocity;
-		const FVector KnockImpulse(
-			CurrentVel.X * KnockdownHorizontalMultiplier,
-			CurrentVel.Y * KnockdownHorizontalMultiplier,
-			FMath::Min(CurrentVel.Z, 0.f) - KnockdownDownwardForce
-		);
+		FVector KnockImpulse;
+		if (!ImpulseOverride.IsZero())
+		{
+			KnockImpulse = ImpulseOverride;
+		}
+		else
+		{
+			const FVector CurrentVel = MC->Velocity;
+			KnockImpulse = FVector(
+				CurrentVel.X * KnockdownHorizontalMultiplier,
+				CurrentVel.Y * KnockdownHorizontalMultiplier,
+				FMath::Min(CurrentVel.Z, 0.f) - KnockdownDownwardForce
+			);
+		}
 		LaunchCharacter(KnockImpulse, /*bXYOverride=*/true, /*bZOverride=*/true);
 	}
 
@@ -1809,6 +1815,24 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Kill interface ────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::RequestKill(AActor* Instigator)
+{
+	if (!HasAuthority()) { return; }
+
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC) { return; }
+
+	ATN_RunGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ATN_RunGameMode>() : nullptr;
+	if (!GM) { return; }
+
+	UE_LOG(LogTemp, Log, TEXT("[Character] RequestKill on '%s' by '%s'"),
+		*GetNameSafe(this), *GetNameSafe(Instigator));
+
+	GM->MarkPlayerDead(PC);
+}
+
 // DEATH VISUAL SYSTEM
 // ─────────────────────────────────────────────────────────────────────────────
 

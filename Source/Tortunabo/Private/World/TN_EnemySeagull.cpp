@@ -1,7 +1,6 @@
 #include "World/TN_EnemySeagull.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
-#include "Game/TN_RunGameMode.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/DecalComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -170,12 +169,8 @@ void ATN_EnemySeagull::ResolveAttack()
 		}
 
 		// ── Matar al jugador ───────────────────────────────────────────────────
-		ATN_RunGameMode* GM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode());
-		if (GM && TargetController.IsValid())
-		{
-			MulticastResolveResult(true, false, Target);
-			GM->MarkPlayerDead(TargetController.Get());
-		}
+		MulticastResolveResult(true, false, Target);
+		Target->RequestKill(this);
 	}
 	else
 	{

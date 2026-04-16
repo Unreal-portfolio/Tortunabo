@@ -109,7 +109,6 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	virtual void Tick(float DeltaTime) override;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PlateGroup")
@@ -137,12 +136,15 @@ protected:
 	void OnConditionLost();
 
 private:
-	bool  bTriggered    = false;
-	float HoldElapsed   = 0.f;
-	bool  bConditionMet = false;
+	bool bTriggered    = false;
+	bool bConditionMet = false;
+
+	FTimerHandle HoldTimerHandle;
 
 	void OnOccupancyChanged(ATN_PressurePlate* Plate, bool bOccupied);
+	void EvaluateAndHandleCondition();
 	bool EvaluateCondition() const;
+	void OnHoldTimerExpired();
 	void ApplyTriggerActions();
 
 	UFUNCTION(NetMulticast, Reliable)

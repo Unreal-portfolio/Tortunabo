@@ -804,8 +804,12 @@ public:
 	 * Solo tiene efecto si se llama en el servidor (HasAuthority).
 	 * Accesible desde TN_ThrowableItemActor y cualquier otro actor de gameplay.
 	 */
+	/**
+	 * @param Duration      Segundos que dura el knockdown.
+	 * @param ImpulseOverride Si != ZeroVector, usa este impulso en vez del momentum actual.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
-	void ApplyKnockdown(float Duration);
+	void ApplyKnockdown(float Duration, FVector ImpulseOverride = FVector::ZeroVector);
 
 	/** Recover from knockdown immediately (server-only). Used by RunGameMode::RevivePlayer. */
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
@@ -824,6 +828,15 @@ public:
 	 * El pawn permanece en el mundo como cadáver interactuable.
 	 * Solo llamar desde el servidor — replica via OnRep + Multicast.
 	 */
+	/**
+	 * Punto centralizado para matar a este personaje.
+	 * Resuelve RunGameMode y PlayerController internamente.
+	 * Los actores del mundo llaman esto en vez de acceder a GameMode directamente.
+	 * Solo tiene efecto en el servidor (HasAuthority).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Death")
+	void RequestKill(AActor* Instigator = nullptr);
+
 	UFUNCTION(BlueprintCallable, Category = "Death")
 	void SetDeadVisual(bool bDead);
 

@@ -1,6 +1,25 @@
 #include "World/TN_ButtonGroupManager.h"
 #include "World/TN_ButtonInteractable.h"
 
+// ── FTN_TransformAction ───────────────────────────────────────────────────────
+
+void FTN_TransformAction::ApplyAll(const TArray<FTN_TransformAction>& Actions, bool bForward)
+{
+	for (const FTN_TransformAction& Action : Actions)
+	{
+		if (!Action.TargetActor) { continue; }
+
+		AActor* Target = Action.TargetActor;
+		const FVector  LocDelta = bForward ? Action.LocationOffset : -Action.LocationOffset;
+		const FRotator RotDelta = bForward
+			? Action.RotationOffset
+			: FRotator(-Action.RotationOffset.Pitch, -Action.RotationOffset.Yaw, -Action.RotationOffset.Roll);
+
+		Target->SetActorLocation(Target->GetActorLocation() + LocDelta);
+		Target->SetActorRotation(Target->GetActorRotation() + RotDelta);
+	}
+}
+
 ATN_ButtonGroupManager::ATN_ButtonGroupManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -77,31 +96,7 @@ void ATN_ButtonGroupManager::CheckAndTrigger()
 
 void ATN_ButtonGroupManager::ApplyTriggerActions(bool bForward)
 {
-	for (const FTN_TransformAction& Action : TriggerActions)
-	{
-		if (!Action.TargetActor) { continue; }
-
-		AActor* Target = Action.TargetActor;
-		const FVector  LocDelta = bForward ? Action.LocationOffset : -Action.LocationOffset;
-		const FRotator RotDelta = bForward
-			? Action.RotationOffset
-			: FRotator(-Action.RotationOffset.Pitch, -Action.RotationOffset.Yaw, -Action.RotationOffset.Roll);
-		FVector  NewLoc = Target->GetActorLocation() + LocDelta;
-		FRotator NewRot = Target->GetActorRotation() + RotDelta;
-
-		if (Action.TransitionDuration <= 0.f)
-		{
-			Target->SetActorLocation(NewLoc);
-			Target->SetActorRotation(NewRot);
-		}
-		else
-		{
-			// Lerp-based move: use a timer to interpolate over TransitionDuration
-			// For simplicity: snap immediately (designers can override with BP via OnAllButtonsActivated)
-			Target->SetActorLocation(NewLoc);
-			Target->SetActorRotation(NewRot);
-		}
-	}
+	FTN_TransformAction::ApplyAll(TriggerActions, bForward);
 }
 
 void ATN_ButtonGroupManager::MulticastNotifyActivated_Implementation()

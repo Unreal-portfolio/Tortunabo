@@ -2,7 +2,6 @@
 #include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
 
 ATN_BananaPeel::ATN_BananaPeel()
@@ -79,13 +78,7 @@ void ATN_BananaPeel::OnTriggerBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 	                                          MinSlideForce);
 	const FVector SlideImpulse = Velocity * ImpulseStrength + FVector(0.f, 0.f, 200.f);
 
-	// Inyectar velocidad de deslizamiento ANTES del knockdown.
-	// ApplyKnockdown leerá esta velocidad y la multiplicará como impulso de caída.
-	if (UCharacterMovementComponent* MC = Character->GetCharacterMovement())
-	{
-		MC->Velocity = SlideImpulse;
-	}
-	Character->ApplyKnockdown(KnockdownDuration);
+	Character->ApplyKnockdown(KnockdownDuration, SlideImpulse);
 
 	// Feedback visual en todos los clientes
 	MulticastOnTriggered();

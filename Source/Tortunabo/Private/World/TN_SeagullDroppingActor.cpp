@@ -1,7 +1,6 @@
 #include "World/TN_SeagullDroppingActor.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
-#include "Game/TN_RunGameMode.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/DecalComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -110,14 +109,8 @@ void ATN_SeagullDroppingActor::ResolveImpact()
 		const float DistXY = FVector::Dist2D(C->GetActorLocation(), ImpactPoint);
 		if (DistXY <= ImpactRadius)
 		{
-			// Matar al jugador
-			ATN_RunGameMode* GM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode());
-			APlayerController* PC = Cast<APlayerController>(C->GetController());
-			if (GM && PC)
-			{
-				GM->MarkPlayerDead(PC);
-				bHitPlayer = true;
-			}
+			C->RequestKill(this);
+			bHitPlayer = true;
 		}
 	}
 

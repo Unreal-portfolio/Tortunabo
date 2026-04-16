@@ -127,16 +127,13 @@ void ATN_PressurePlate::MulticastOnOccupancyChanged_Implementation(bool bNewOccu
 
 ATN_PressurePlateGroupManager::ATN_PressurePlateGroupManager()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 }
 
 void ATN_PressurePlateGroupManager::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// Solo servidor maneja lógica
-	SetActorTickEnabled(HasAuthority());
 
 	if (!HasAuthority()) { return; }
 
@@ -151,6 +148,7 @@ void ATN_PressurePlateGroupManager::BeginPlay()
 
 void ATN_PressurePlateGroupManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	GetWorldTimerManager().ClearTimer(HoldTimerHandle);
 	for (ATN_PressurePlate* Plate : ManagedPlates)
 	{
 		if (Plate) { Plate->OnOccupancyChanged.RemoveAll(this); }
@@ -158,39 +156,55 @@ void ATN_PressurePlateGroupManager::EndPlay(const EEndPlayReason::Type EndPlayRe
 	Super::EndPlay(EndPlayReason);
 }
 
-void ATN_PressurePlateGroupManager::Tick(float DeltaTime)
+void ATN_PressurePlateGroupManager::OnOccupancyChanged(ATN_PressurePlate* /*Plate*/, bool /*bOccupied*/)
 {
-	Super::Tick(DeltaTime);
 	if (!HasAuthority() || bTriggered) { return; }
+	EvaluateAndHandleCondition();
+}
 
-	const bool bCurrentlyMet = EvaluateCondition();
+void ATN_PressurePlateGroupManager::EvaluateAndHandleCondition()
+{
+	const bool bNowMet = EvaluateCondition();
 
-	if (bCurrentlyMet != bConditionMet)
+	if (bNowMet && !bConditionMet)
 	{
-		bConditionMet = bCurrentlyMet;
-		HoldElapsed = 0.f;
+		// Condición recién cumplida — arrancar hold timer
+		bConditionMet = true;
 
-		if (!bConditionMet)
+		if (HoldDurationRequired <= 0.f)
 		{
-			MulticastNotifyConditionChange(false);
+			OnHoldTimerExpired();
+		}
+		else
+		{
+			FTimerDelegate Del = FTimerDelegate::CreateUObject(this, &ATN_PressurePlateGroupManager::OnHoldTimerExpired);
+			GetWorldTimerManager().SetTimer(HoldTimerHandle, Del, HoldDurationRequired, false);
 		}
 	}
-
-	if (bConditionMet)
+	else if (!bNowMet && bConditionMet)
 	{
-		HoldElapsed += DeltaTime;
-		if (HoldElapsed >= HoldDurationRequired)
-		{
-			bTriggered = bOneShot;
-			ApplyTriggerActions();
-			MulticastNotifyConditionChange(true);
-		}
+		// Condición perdida — cancelar hold
+		bConditionMet = false;
+		GetWorldTimerManager().ClearTimer(HoldTimerHandle);
+		MulticastNotifyConditionChange(false);
 	}
 }
 
-void ATN_PressurePlateGroupManager::OnOccupancyChanged(ATN_PressurePlate* /*Plate*/, bool /*bOccupied*/)
+void ATN_PressurePlateGroupManager::OnHoldTimerExpired()
 {
-	// Tick re-evaluará en el próximo frame — nada que hacer aquí
+	if (!bConditionMet || bTriggered) { return; }
+
+	// Re-verificar por si alguien salió entre el último callback y el timer
+	if (!EvaluateCondition())
+	{
+		bConditionMet = false;
+		MulticastNotifyConditionChange(false);
+		return;
+	}
+
+	bTriggered = bOneShot;
+	ApplyTriggerActions();
+	MulticastNotifyConditionChange(true);
 }
 
 bool ATN_PressurePlateGroupManager::EvaluateCondition() const
@@ -227,14 +241,7 @@ bool ATN_PressurePlateGroupManager::EvaluateCondition() const
 
 void ATN_PressurePlateGroupManager::ApplyTriggerActions()
 {
-	for (const FTN_TransformAction& Action : TriggerActions)
-	{
-		if (!Action.TargetActor) { continue; }
-
-		AActor* Target = Action.TargetActor;
-		Target->SetActorLocation(Target->GetActorLocation() + Action.LocationOffset);
-		Target->SetActorRotation(Target->GetActorRotation() + Action.RotationOffset);
-	}
+	FTN_TransformAction::ApplyAll(TriggerActions, true);
 }
 
 void ATN_PressurePlateGroupManager::MulticastNotifyConditionChange_Implementation(bool bMet)

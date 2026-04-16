@@ -30,6 +30,12 @@ struct FTN_TransformAction
 	/** Duración de la transición de movimiento (segundos). 0 = instantáneo. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TransformAction", meta = (ClampMin = "0.0"))
 	float TransitionDuration = 1.0f;
+
+	/**
+	 * Aplica un array de acciones. bForward=true añade offsets, false los revierte.
+	 * Punto centralizado para evitar duplicar la lógica en cada Manager.
+	 */
+	static void ApplyAll(const TArray<FTN_TransformAction>& Actions, bool bForward = true);
 };
 
 /**
