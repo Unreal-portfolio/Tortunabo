@@ -54,7 +54,7 @@ void ATN_CollectionZone::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 
 	if (!CheckPlayerHasItem(Char)) { return; }
 
-	ConsumeItemFromPlayer(Char);
+	if (!ConsumeItemFromPlayer(Char)) { return; }
 	++DepositedCount;
 
 	UE_LOG(LogTemp, Log, TEXT("[CollectionZone] Deposited by %s → %d/%d"),
@@ -88,15 +88,15 @@ bool ATN_CollectionZone::CheckPlayerHasItem(ATortugaCharacter* Char) const
 	return Equipped.ItemId == CollectibleTag;
 }
 
-void ATN_CollectionZone::ConsumeItemFromPlayer(ATortugaCharacter* Char)
+bool ATN_CollectionZone::ConsumeItemFromPlayer(ATortugaCharacter* Char)
 {
-	if (!Char) { return; }
+	if (!Char) { return false; }
 
 	UTN_InventoryComponent* Inv = Char->FindComponentByClass<UTN_InventoryComponent>();
-	if (!Inv) { return; }
+	if (!Inv) { return false; }
 
 	FTN_InventoryItem Consumed;
-	Inv->TryConsumeEquippedItem(Consumed);
+	return Inv->TryConsumeEquippedItem(Consumed);
 }
 
 void ATN_CollectionZone::ApplyTargetTransforms()

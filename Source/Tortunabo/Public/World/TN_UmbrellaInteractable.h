@@ -4,6 +4,8 @@
 #include "World/TN_DirectInteractableBase.h"
 #include "TN_UmbrellaInteractable.generated.h"
 
+class ATortugaCharacter;
+
 /**
  * Sombrilla interactuable (#29).
  *
@@ -30,6 +32,7 @@ public:
 	ATN_UmbrellaInteractable();
 
 	virtual void Interact(APawn* Interactor) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 protected:
 	/** Segundos de protección contra gaviota tras abrir la sombrilla. */
@@ -58,5 +61,8 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastOnUmbrellaClosed();
 
+	void HandleUmbrellaExpired();
+
 	FTimerHandle UmbrellaActiveTimerHandle;
+	TWeakObjectPtr<ATortugaCharacter> ProtectedCharacter;
 };

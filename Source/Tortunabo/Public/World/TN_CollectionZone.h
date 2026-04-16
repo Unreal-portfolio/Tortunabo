@@ -93,7 +93,7 @@ private:
 		bool bFromSweep, const FHitResult& SweepResult);
 
 	bool CheckPlayerHasItem(ATortugaCharacter* Char) const;
-	void ConsumeItemFromPlayer(ATortugaCharacter* Char);
+	bool ConsumeItemFromPlayer(ATortugaCharacter* Char);
 	void ApplyTargetTransforms();
 
 	UFUNCTION(NetMulticast, Reliable)

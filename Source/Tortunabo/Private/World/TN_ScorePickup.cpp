@@ -59,6 +59,7 @@ void ATN_ScorePickup::OnSphereOverlap(UPrimitiveComponent* OverlappedComp, AActo
 
 	// Sumar puntos
 	PS->RaceScore += ScoreValue;
+	PS->ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[ScorePickup] %s recogió %d puntos → total %d"),
 		*GetNameSafe(Pawn), ScoreValue, PS->RaceScore);
 

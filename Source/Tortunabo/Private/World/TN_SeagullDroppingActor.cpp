@@ -12,6 +12,7 @@ ATN_SeagullDroppingActor::ATN_SeagullDroppingActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
+	bAlwaysRelevant = true;
 	SetReplicateMovement(true);
 
 	DroppingMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DroppingMesh"));
@@ -19,18 +20,19 @@ ATN_SeagullDroppingActor::ATN_SeagullDroppingActor()
 	DroppingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DroppingMesh->SetIsReplicated(false);
 
+	// Decal attached to root but with absolute transforms — stays pinned to ground
 	ShadowDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("ShadowDecal"));
 	ShadowDecal->SetupAttachment(DroppingMesh);
-	// El Decal se mueve con la caca — pero queremos que la sombra esté en el suelo.
-	// La proyectamos desde la posición de la caca hacia abajo (UpdateShadowScale la reposiciona).
-	ShadowDecal->SetRelativeRotation(FRotator(-90.f, 0.f, 0.f));
+	ShadowDecal->SetAbsolute(true, true, true);
+	ShadowDecal->SetWorldRotation(FRotator(-90.f, 0.f, 0.f));
 	ShadowDecal->DecalSize = FVector(DecalDepth, MaxShadowRadius, MaxShadowRadius);
 }
 
 void ATN_SeagullDroppingActor::BeginPlay()
 {
 	Super::BeginPlay();
-	SetActorTickEnabled(HasAuthority());
+	// Tick on ALL machines: server runs gameplay, clients update shadow visual
+	// Shadow position is set once GroundTargetZ replicates (see UpdateShadowScale)
 }
 
 void ATN_SeagullDroppingActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -50,17 +52,18 @@ void ATN_SeagullDroppingActor::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 void ATN_SeagullDroppingActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	if (!HasAuthority() || bImpacted) { return; }
+	if (bImpacted) { return; }
 
-	// Caer en línea recta
+	// Visual: todos los clientes actualizan la sombra en el suelo
+	UpdateShadowScale();
+
+	if (!HasAuthority()) { return; }
+
+	// Servidor: caída + detección de impacto
 	FVector Loc = GetActorLocation();
 	Loc.Z -= FallSpeed * DeltaTime;
 	SetActorLocation(Loc);
 
-	// Actualizar escala de la sombra (radio encoge conforme nos acercamos al suelo)
-	UpdateShadowScale();
-
-	// Impacto: hemos llegado al nivel del suelo
 	if (Loc.Z <= GroundTargetZ)
 	{
 		Loc.Z = GroundTargetZ;
@@ -75,9 +78,11 @@ void ATN_SeagullDroppingActor::UpdateShadowScale()
 {
 	if (!ShadowDecal) { return; }
 
+	// Pin decal at ground level (absolute transform, doesn't follow mesh)
+	ShadowDecal->SetWorldLocation(FVector(ImpactXY.X, ImpactXY.Y, GroundTargetZ + 5.f));
+
 	const float TotalHeight  = DropSpawnHeight;
 	const float CurrentHeight = FMath::Max(0.f, GetActorLocation().Z - GroundTargetZ);
-	// NormalizedHeight: 1.0 = en el origen (alto), 0.0 = en el suelo
 	const float NormalizedHeight = FMath::Clamp(CurrentHeight / TotalHeight, 0.f, 1.f);
 	const float Radius = FMath::Lerp(MinShadowRadius, MaxShadowRadius, NormalizedHeight);
 

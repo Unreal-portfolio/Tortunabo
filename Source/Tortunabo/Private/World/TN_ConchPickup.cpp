@@ -65,11 +65,8 @@ void ATN_ConchPickup::PlaceAsTrap(const FVector& WorldLocation)
 	bIsPlacedTrap = true;
 	bTrapUsed = false;
 
-	// Notificar VFX en todos los clientes (y listen-server)
-	MulticastOnTrapped(nullptr);  // nullptr: aún no hay víctima
-	// Reutilizamos el multicast de "placed" a través del evento BP OnTrapActivated
-	// (el multicast OnTrapped con víctima=null sirve de señal de colocación)
-	// Para separar la semántica correctamente llamamos a OnTrapActivated localmente:
+	// OnRep_IsPlacedTrap dispara OnTrapActivated en clientes.
+	// En listen-server OnRep no dispara, así que llamamos manualmente.
 	OnTrapActivated();
 }
 
@@ -119,7 +116,7 @@ void ATN_ConchPickup::RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakChar
 	if (!WeakCharacter.IsValid()) { return; }
 
 	UCharacterMovementComponent* MoveComp = WeakCharacter->GetCharacterMovement();
-	if (MoveComp)
+	if (MoveComp && MoveComp->MovementMode == MOVE_None)
 	{
 		MoveComp->SetMovementMode(MOVE_Walking);
 	}

@@ -9,6 +9,19 @@ ATN_UmbrellaInteractable::ATN_UmbrellaInteractable()
 	CooldownSeconds = ReuseDelaySecs;
 }
 
+void ATN_UmbrellaInteractable::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(UmbrellaActiveTimerHandle);
+
+	// Si destruido mientras la protección está activa, limpiar
+	if (ATortugaCharacter* Char = ProtectedCharacter.Get())
+	{
+		Char->SetUmbrellaProtection(false);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void ATN_UmbrellaInteractable::Interact(APawn* Interactor)
 {
 	if (!HasAuthority() || !Interactor) { return; }
@@ -22,27 +35,25 @@ void ATN_UmbrellaInteractable::Interact(APawn* Interactor)
 
 	// Activar protección
 	Char->SetUmbrellaProtection(true);
+	ProtectedCharacter = Char;
 
 	UE_LOG(LogTemp, Log, TEXT("[Umbrella] %s abrió sombrilla (%.1fs)"), *GetNameSafe(Char), UmbrellaDurationSeconds);
 
 	MulticastOnUmbrellaOpened(Interactor);
 
-	// Timer para cerrar la sombrilla
-	TWeakObjectPtr<ATortugaCharacter> WeakChar(Char);
-	TWeakObjectPtr<ATN_UmbrellaInteractable> WeakSelf(this);
+	// Timer para cerrar la sombrilla — CreateUObject, no lambda
+	FTimerDelegate Del = FTimerDelegate::CreateUObject(this, &ATN_UmbrellaInteractable::HandleUmbrellaExpired);
+	GetWorldTimerManager().SetTimer(UmbrellaActiveTimerHandle, Del, UmbrellaDurationSeconds, false);
+}
 
-	GetWorldTimerManager().SetTimer(UmbrellaActiveTimerHandle,
-		[WeakChar, WeakSelf]()
-		{
-			if (WeakChar.IsValid())
-			{
-				WeakChar->SetUmbrellaProtection(false);
-			}
-			if (WeakSelf.IsValid())
-			{
-				WeakSelf->MulticastOnUmbrellaClosed();
-			}
-		}, UmbrellaDurationSeconds, false);
+void ATN_UmbrellaInteractable::HandleUmbrellaExpired()
+{
+	if (ATortugaCharacter* Char = ProtectedCharacter.Get())
+	{
+		Char->SetUmbrellaProtection(false);
+	}
+	ProtectedCharacter.Reset();
+	MulticastOnUmbrellaClosed();
 }
 
 void ATN_UmbrellaInteractable::MulticastOnUmbrellaOpened_Implementation(APawn* User)

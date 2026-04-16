@@ -13,6 +13,7 @@ ATN_EnemySeagull::ATN_EnemySeagull()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
+	bAlwaysRelevant = true;
 	SetReplicateMovement(true);
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));

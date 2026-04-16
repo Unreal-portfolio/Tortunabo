@@ -50,13 +50,18 @@ void ATN_TotemInteractable::Interact(APawn* Interactor)
 	GM->RevivePlayer(TargetPC);
 
 	// ── Teleportar al revivido cerca del activador ────────────────────────────
-	// RevivePlayer ya hizo Possess y situó el pawn en zona segura de chunks.
-	// Sobreescribimos la posición para que aparezca al lado del activador.
+	// GetPawn() puede ser null si el spawn falló (no había spawn point, etc.)
 	APawn* RevivedPawn = TargetPC->GetPawn();
-	if (RevivedPawn)
+	if (!RevivedPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Totem] RevivePlayer succeeded but GetPawn() returned null for '%s'"),
+			*GetNameSafe(TargetPC));
+		MulticastOnNoTarget();
+		return;
+	}
+
 	{
 		const FVector ActivatorLoc = Interactor->GetActorLocation();
-		// Offset lateral para no aparecer encima del activador
 		const FVector RightOffset  = Interactor->GetActorRightVector() * ReviveSpawnOffset;
 		const FVector SpawnLoc     = ActivatorLoc + RightOffset;
 		RevivedPawn->TeleportTo(SpawnLoc, Interactor->GetActorRotation());
