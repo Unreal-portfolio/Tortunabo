@@ -1,0 +1,181 @@
+#include "World/TN_SeagullDroppingActor.h"
+#include "Player/TortugaCharacter.h"
+#include "Core/TN_CoopPlayerState.h"
+#include "Game/TN_RunGameMode.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/DecalComponent.h"
+#include "Net/UnrealNetwork.h"
+#include "EngineUtils.h"
+#include "CollisionQueryParams.h"
+
+ATN_SeagullDroppingActor::ATN_SeagullDroppingActor()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	bReplicates = true;
+	SetReplicateMovement(true);
+
+	DroppingMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DroppingMesh"));
+	SetRootComponent(DroppingMesh);
+	DroppingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	DroppingMesh->SetIsReplicated(false);
+
+	ShadowDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("ShadowDecal"));
+	ShadowDecal->SetupAttachment(DroppingMesh);
+	// El Decal se mueve con la caca — pero queremos que la sombra esté en el suelo.
+	// La proyectamos desde la posición de la caca hacia abajo (UpdateShadowScale la reposiciona).
+	ShadowDecal->SetRelativeRotation(FRotator(-90.f, 0.f, 0.f));
+	ShadowDecal->DecalSize = FVector(DecalDepth, MaxShadowRadius, MaxShadowRadius);
+}
+
+void ATN_SeagullDroppingActor::BeginPlay()
+{
+	Super::BeginPlay();
+	SetActorTickEnabled(HasAuthority());
+}
+
+void ATN_SeagullDroppingActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_SeagullDroppingActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATN_SeagullDroppingActor, GroundTargetZ);
+	DOREPLIFETIME(ATN_SeagullDroppingActor, ImpactXY);
+}
+
+// ── Tick ────────────────────────────────────────────────────────────────────────
+
+void ATN_SeagullDroppingActor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!HasAuthority() || bImpacted) { return; }
+
+	// Caer en línea recta
+	FVector Loc = GetActorLocation();
+	Loc.Z -= FallSpeed * DeltaTime;
+	SetActorLocation(Loc);
+
+	// Actualizar escala de la sombra (radio encoge conforme nos acercamos al suelo)
+	UpdateShadowScale();
+
+	// Impacto: hemos llegado al nivel del suelo
+	if (Loc.Z <= GroundTargetZ)
+	{
+		Loc.Z = GroundTargetZ;
+		SetActorLocation(Loc);
+		ResolveImpact();
+	}
+}
+
+// ── Lógica ─────────────────────────────────────────────────────────────────────
+
+void ATN_SeagullDroppingActor::UpdateShadowScale()
+{
+	if (!ShadowDecal) { return; }
+
+	const float TotalHeight  = DropSpawnHeight;
+	const float CurrentHeight = FMath::Max(0.f, GetActorLocation().Z - GroundTargetZ);
+	// NormalizedHeight: 1.0 = en el origen (alto), 0.0 = en el suelo
+	const float NormalizedHeight = FMath::Clamp(CurrentHeight / TotalHeight, 0.f, 1.f);
+	const float Radius = FMath::Lerp(MinShadowRadius, MaxShadowRadius, NormalizedHeight);
+
+	ShadowDecal->DecalSize = FVector(DecalDepth, Radius, Radius);
+}
+
+void ATN_SeagullDroppingActor::ResolveImpact()
+{
+	if (bImpacted) { return; }
+	bImpacted = true;
+
+	bool bHitPlayer = false;
+
+	// Hitbox esférico en el punto de impacto
+	const FVector ImpactPoint = FVector(ImpactXY.X, ImpactXY.Y, GroundTargetZ);
+
+	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
+	{
+		ATortugaCharacter* C = *It;
+		if (!C || !C->GetController()) { continue; }
+
+		ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>();
+		if (!PS || !PS->bIsAlive || PS->bIsEliminated) { continue; }
+
+		const float DistXY = FVector::Dist2D(C->GetActorLocation(), ImpactPoint);
+		if (DistXY <= ImpactRadius)
+		{
+			// Matar al jugador
+			ATN_RunGameMode* GM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode());
+			APlayerController* PC = Cast<APlayerController>(C->GetController());
+			if (GM && PC)
+			{
+				GM->MarkPlayerDead(PC);
+				bHitPlayer = true;
+			}
+		}
+	}
+
+	MulticastOnImpact(bHitPlayer);
+	Destroy();
+}
+
+// ── Multicast ─────────────────────────────────────────────────────────────────
+
+void ATN_SeagullDroppingActor::MulticastOnImpact_Implementation(bool bHitPlayer)
+{
+	OnImpact(bHitPlayer);
+}
+
+// ── Spawn helpers ──────────────────────────────────────────────────────────────
+
+ATN_SeagullDroppingActor* ATN_SeagullDroppingActor::SpawnDroppingOnPlayer(
+	const UObject* WorldContextObject, TSubclassOf<ATN_SeagullDroppingActor> DroppingClass,
+	ATortugaCharacter* Target)
+{
+	if (!WorldContextObject || !DroppingClass || !Target) { return nullptr; }
+
+	return SpawnDroppingAtLocation(WorldContextObject, DroppingClass, Target->GetActorLocation());
+}
+
+ATN_SeagullDroppingActor* ATN_SeagullDroppingActor::SpawnDroppingAtLocation(
+	const UObject* WorldContextObject, TSubclassOf<ATN_SeagullDroppingActor> DroppingClass,
+	FVector GroundTarget)
+{
+	UWorld* World = WorldContextObject ? WorldContextObject->GetWorld() : nullptr;
+	if (!World || !DroppingClass) { return nullptr; }
+
+	// Obtener la altura del suelo real mediante line trace
+	float GroundZ = GroundTarget.Z;
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SeagullDropping), true);
+	if (World->LineTraceSingleByChannel(Hit, GroundTarget + FVector(0,0,500.f),
+		GroundTarget - FVector(0,0,5000.f), ECC_WorldStatic, Params))
+	{
+		GroundZ = Hit.ImpactPoint.Z;
+	}
+
+	// Spawn de la caca a DropSpawnHeight sobre el suelo
+	// Usamos el default de DropSpawnHeight — recuperamos el CDO para leerlo
+	float SpawnHeightOffset = 1200.f;
+	if (ATN_SeagullDroppingActor* CDO = DroppingClass->GetDefaultObject<ATN_SeagullDroppingActor>())
+	{
+		SpawnHeightOffset = CDO->DropSpawnHeight;
+	}
+
+	FVector SpawnLoc = FVector(GroundTarget.X, GroundTarget.Y, GroundZ + SpawnHeightOffset);
+
+	FActorSpawnParameters Params2;
+	Params2.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ATN_SeagullDroppingActor* Dropping = World->SpawnActor<ATN_SeagullDroppingActor>(
+		DroppingClass, SpawnLoc, FRotator::ZeroRotator, Params2);
+
+	if (Dropping)
+	{
+		Dropping->GroundTargetZ = GroundZ;
+		Dropping->ImpactXY      = FVector2D(GroundTarget.X, GroundTarget.Y);
+	}
+
+	return Dropping;
+}

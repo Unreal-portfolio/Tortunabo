@@ -91,6 +91,7 @@ private:
 	FTimerHandle ResultsCountdownTimerHandle;
 	FTimerHandle WaitingTimeoutTimerHandle;
 	FTimerHandle DBNOBleedoutTimerHandle;
+	FTimerHandle RaceClockTimerHandle;
 	float MatchStartServerTime = 0.f;
 	int32 NextFinishRank = 1;
 	int32 ResultsCountdownValue = 0;
@@ -140,5 +141,8 @@ private:
 
 	/** Timeout: arranca la carrera aunque no hayan llegado todos. */
 	void OnWaitingTimeout();
+
+	/** Tick periódico (0.5s) que actualiza ServerMatchElapsedTime en el GameState. */
+	void TickRaceClock();
 };
 

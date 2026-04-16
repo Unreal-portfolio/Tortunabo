@@ -42,6 +42,25 @@ public:
 	 */
 	void ReapplyInputMapping();
 
+	/**
+	 * Cancela el efecto Big Head activo (si lo hay): restaura tamaño de cabeza,
+	 * limpia el timer y marca bBigHead = false.
+	 * Disparado en el servidor. Aplica el efecto de mareo en todas las máquinas (#2).
+	 * Solo ejecutar en el servidor.
+	 */
+	void RemoveBigHeadEffect();
+
+	/**
+	 * Aplica el efecto de mareo (ralentización + feedback visual) en todas las máquinas.
+	 * Llamado automáticamente desde RemoveBigHeadEffect.
+	 * También disponible para otros sistemas que quieran causar mareo (#2).
+	 */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastApplyMareoEffect(float Duration);
+
+	/** Devuelve true si el efecto Big Head está activo en este momento. */
+	bool HasBigHeadActive() const { return bBigHead; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
@@ -668,7 +687,28 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "BigHead", meta = (ClampMin = "1.0"))
 	float BigHeadDurationSeconds = 8.f;
 
+	// ── Mareo (#2) ────────────────────────────────────────────────────────────
+
+	/** Duración del efecto de mareo al expirar/cancelar el BigHead (segundos). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "BigHead|Mareo", meta = (ClampMin = "0.0"))
+	float MareoDurationSeconds = 3.f;
+
+	/**
+	 * Velocidad máxima durante el mareo (cm/s). Por defecto ~55% de la velocidad base.
+	 * 0 = sin penalización de velocidad.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "BigHead|Mareo", meta = (ClampMin = "0.0"))
+	float MareoSpeedCap = 250.f;
+
+	/**
+	 * Evento de mareo disparado en el cliente local (usa para camera shake, VFX, audio).
+	 * Duration = MareoDurationSeconds del servidor.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "BigHead|Mareo")
+	void OnMareoEffect(float Duration);
+
 	FTimerHandle BigHeadTimerHandle;
+	FTimerHandle MareoTimerHandle;
 
 	/** Rotación relativa del mesh al spawnear (guardada en BeginPlay para restaurarla). */
 	FRotator MeshDefaultRelativeRotation = FRotator::ZeroRotator;
@@ -684,6 +724,16 @@ protected:
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_IsDiving, BlueprintReadOnly, Category = "Dive")
 	bool bIsDiving = false;
+
+	// ── Sombrilla (#29) ───────────────────────────────────────────────────────
+
+	/**
+	 * true mientras la sombrilla está abierta y protege de la gaviota.
+	 * La gaviota dinámica (TN_EnemySeagull) comprueba este flag antes de matar.
+	 * Replicado para que todos los clientes puedan mostrar el estado visual.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Umbrella")
+	bool bHasUmbrellaProtection = false;
 
 	// ── Head Look replication ─────────────────────────────────────────────────
 	/** Yaw (°) de la cabeza relativo al cuerpo. Positivo = mira a la derecha. Replicado a clientes remotos. */

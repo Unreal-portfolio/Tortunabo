@@ -901,6 +901,24 @@ FString UMP_GameInstance::BuildCosmeticSaveSlot() const
 	return FString::Printf(TEXT("%s_%s"), *CosmeticSaveSlotPrefix, *Suffix);
 }
 
+// ── Race Score ────────────────────────────────────────────────────────────────
+
+void UMP_GameInstance::AddRaceScore(int32 Points)
+{
+	if (Points <= 0 || !CosmeticProfile)
+	{
+		return;
+	}
+	CosmeticProfile->AccumulatedRaceScore += Points;
+	SaveCosmeticProfile();
+	UE_LOG(LogTemp, Log, TEXT("[GameInstance] AddRaceScore: +%d → total=%d"), Points, CosmeticProfile->AccumulatedRaceScore);
+}
+
+int32 UMP_GameInstance::GetAccumulatedRaceScore() const
+{
+	return CosmeticProfile ? CosmeticProfile->AccumulatedRaceScore : 0;
+}
+
 // ── Tutorial state ────────────────────────────────────────────────────────────
 
 bool UMP_GameInstance::HasCompletedTutorial() const

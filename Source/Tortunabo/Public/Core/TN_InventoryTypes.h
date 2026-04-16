@@ -15,6 +15,8 @@ enum class ETN_ItemUseType : uint8
 {
 	None UMETA(DisplayName = "None"),
 	SelfStaminaBoost UMETA(DisplayName = "Self Stamina Boost"),
+	/** Barrita Energética: restaura la stamina al máximo efectivo instantáneamente. Sin penalización post-uso. */
+	SelfStaminaFull UMETA(DisplayName = "Self Stamina Full Restore"),
 	Throwable UMETA(DisplayName = "Throwable"),
 	BigHead UMETA(DisplayName = "Big Head")
 };

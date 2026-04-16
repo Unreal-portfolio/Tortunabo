@@ -311,6 +311,9 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 
 	ForceNetUpdate();
 
+	// Notificar al ButtonGroupManager si está suscrito (servidor-only)
+	OnActivationChanged.Broadcast(this, bIsActivated);
+
 	MulticastPlayButtonFeedback();
 
 	// Cooldown via padre (TN_DirectInteractableBase)

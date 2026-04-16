@@ -84,6 +84,9 @@ private:
 	UFUNCTION()
 	void OnRep_MatchFlowState();
 
+	/** Saves the local player's RaceScore to the save game when Results state is entered. */
+	void PersistLocalPlayerScoreIfResults();
+
 	int32 NextQuickChatSequence = 0;
 	int32 LastProcessedQuickChatSequence = 0;
 };

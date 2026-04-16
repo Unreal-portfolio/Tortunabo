@@ -37,6 +37,14 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Platform")
 	TObjectPtr<UBoxComponent> StandTrigger;
 
+	/**
+	 * Mínimo de jugadores encima para que empiece el timer de rotura.
+	 * 1 = cualquier jugador la rompe (plataforma individual, #21).
+	 * 2+ = necesita X jugadores simultáneamente (puente cooperativo, #20).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 PlayerThreshold = 1;
+
 	/** Segundos que aguanta el peso antes de romperse. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "0.1"))
 	float TimeToBreak = 2.0f;

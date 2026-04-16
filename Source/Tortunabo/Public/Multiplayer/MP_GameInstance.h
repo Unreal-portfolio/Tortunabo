@@ -119,6 +119,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	UDataTable* GetSkinDataTable() const { return SkinDataTable; }
 
+	// ── Race Score ───────────────────────────────────────────────────────────
+
+	/**
+	 * Añade puntos al marcador acumulado del jugador local y los persiste (#26).
+	 * Llamado al entrar en Results cuando RaceScore del PlayerState es > 0.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Score")
+	void AddRaceScore(int32 Points);
+
+	/** Devuelve el total de puntos de carrera acumulados del jugador local. */
+	UFUNCTION(BlueprintCallable, Category = "Score")
+	int32 GetAccumulatedRaceScore() const;
+
 	// ── Tutorial state ───────────────────────────────────────────────────────
 
 	/**

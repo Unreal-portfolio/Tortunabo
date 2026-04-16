@@ -49,7 +49,7 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 
 	++PawnsOnPlatform;
 
-	if (PawnsOnPlatform == 1 && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
+	if (PawnsOnPlatform >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
 	{
 		// Vibración a mitad del timer — handle separado para no sobrescribir el de rotura
 		const float ShakeAt = TimeToBreak * 0.5f;
@@ -74,8 +74,8 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 
 	PawnsOnPlatform = FMath::Max(0, PawnsOnPlatform - 1);
 
-	// Si nadie queda encima, cancelar el timer (la plataforma "aguanta")
-	if (PawnsOnPlatform == 0)
+	// Cancelar el timer si el número de jugadores cae por debajo del umbral
+	if (PawnsOnPlatform < PlayerThreshold)
 	{
 		GetWorldTimerManager().ClearTimer(ShakeTimerHandle);
 		GetWorldTimerManager().ClearTimer(BreakTimerHandle);

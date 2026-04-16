@@ -55,6 +55,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DeathZone", meta = (ClampMin = "0.05"))
 	float CountdownTickInterval = 0.1f;
 
+	/** Called on the server when a player's death countdown starts in this zone. Override in subclasses. */
+	virtual void OnPlayerEnteredZone(APawn* Pawn) {}
+
+	/** Called on the server when a player dies in this zone. Override in subclasses. */
+	virtual void OnPlayerDiedInZone(APlayerController* PC) {}
+
 private:
 	UFUNCTION()
 	void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,

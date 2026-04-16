@@ -75,6 +75,9 @@ void ATN_DeathZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 		TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
 	}
 
+	// Notificar a subclases (ej. TN_ScriptedDeathZone)
+	OnPlayerEnteredZone(const_cast<APawn*>(Pawn));
+
 	// Arrancar el timer compartido si no está activo
 	if (!GetWorldTimerManager().IsTimerActive(SharedCountdownTimerHandle))
 	{
@@ -123,6 +126,9 @@ void ATN_DeathZoneVolume::HandlePlayerDeath(APlayerController* PlayerController)
 		// Muerte instantánea — sin DBNO/bleedout
 		RunGameMode->MarkPlayerDead(PlayerController);
 	}
+
+	// Notificar a subclases (ej. TN_ScriptedDeathZone)
+	OnPlayerDiedInZone(PlayerController);
 
 	PendingDeathRemaining.Remove(PlayerController);
 	if (ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>())

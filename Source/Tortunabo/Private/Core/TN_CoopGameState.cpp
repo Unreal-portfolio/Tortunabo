@@ -1,4 +1,7 @@
 #include "Core/TN_CoopGameState.h"
+#include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_MatchFlowTypes.h"
+#include "Multiplayer/MP_GameInstance.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 
@@ -9,6 +12,7 @@ ATN_CoopGameState::ATN_CoopGameState()
 void ATN_CoopGameState::OnRep_MatchFlowState()
 {
 	// Fires on remote clients when the replicated value arrives
+	PersistLocalPlayerScoreIfResults();
 	OnMatchFlowStateChanged.Broadcast(MatchFlowState);
 }
 
@@ -60,7 +64,41 @@ void ATN_CoopGameState::BroadcastFlowStateChange()
 {
 	// Must be called by game modes on the server after setting MatchFlowState.
 	// OnRep does NOT fire on the authoritative machine, so we broadcast manually.
+	PersistLocalPlayerScoreIfResults();
 	OnMatchFlowStateChanged.Broadcast(MatchFlowState);
+}
+
+void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
+{
+	if (MatchFlowState != ETNMatchFlowState::Results)
+	{
+		return;
+	}
+
+	UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	if (!GI)
+	{
+		return;
+	}
+
+	// Find the local player's PlayerState and persist their race score.
+	// IsLocalPlayerState() correctly identifies the owning player on each machine.
+	for (APlayerState* PS : PlayerArray)
+	{
+		if (PS && PS->IsLocalPlayerState())
+		{
+			if (const ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(PS))
+			{
+				if (TNPS->RaceScore > 0)
+				{
+					GI->AddRaceScore(TNPS->RaceScore);
+					UE_LOG(LogTemp, Log, TEXT("[CoopGameState] Persisted RaceScore=%d for local player '%s'"),
+						TNPS->RaceScore, *PS->GetPlayerName());
+				}
+			}
+			break;
+		}
+	}
 }
 
 void ATN_CoopGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

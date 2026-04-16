@@ -13,7 +13,13 @@
       "Bash(\"/c/Program Files/Epic Games/UE_5.6/Engine/Build/BatchFiles/Build.bat\" TortunaboEditor Win64 Development \"C:/Users/Rodrigo/CARRERA/PROYECTOS_PERSONALES/Unreal Engine/Tortunabo/Tortunabo.uproject\" -WaitMutex -NoHotReload)",
       "Bash(cmd /c \"\\\\\"C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\\\\\" TortunaboEditor Win64 Development \\\\\"C:\\\\Users\\\\Rodrigo\\\\CARRERA\\\\PROYECTOS_PERSONALES\\\\Unreal Engine\\\\Tortunabo\\\\Tortunabo.uproject\\\\\" -WaitMutex -NoHotReload 2>&1\")",
       "Bash(powershell -Command \"& 'C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\Users\\\\Rodrigo\\\\CARRERA\\\\PROYECTOS_PERSONALES\\\\Unreal Engine\\\\Tortunabo\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1\")",
-      "Skill(commit-commands:commit)"
+      "Skill(commit-commands:commit)",
+      "Bash(\"C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat\" TortunaboEditor Win64 Development \"C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo\\\\Tortunabo.uproject\" -WaitMutex -NoHotReload)",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1 | Select-Object -Last 60\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1 | Select-Object -Last 30\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1 | Select-Object -Last 35\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1 | Select-Object -Last 40\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Program Files\\\\Epic Games\\\\UE_5.6\\\\Engine\\\\Build\\\\BatchFiles\\\\Build.bat' TortunaboEditor Win64 Development 'C:\\\\Users\\\\mokiu\\\\Documents\\\\Unreal Projects\\\\Tortunabo\\\\Tortunabo.uproject' -WaitMutex -NoHotReload 2>&1 | Select-Object -Last 25\")"
     ]
   }
 }

@@ -756,6 +756,51 @@ void ATortugaCharacter::ReapplyInputMapping()
 	ApplyInputMappingIfLocal();
 }
 
+void ATortugaCharacter::RemoveBigHeadEffect()
+{
+	if (!bBigHead) { return; }
+
+	GetWorldTimerManager().ClearTimer(BigHeadTimerHandle);
+	bBigHead = false;
+	ApplyBigHeadVisual(false);
+
+	// Disparar efecto de mareo en todas las máquinas (#2).
+	if (HasAuthority() && MareoDurationSeconds > 0.f)
+	{
+		MulticastApplyMareoEffect(MareoDurationSeconds);
+	}
+}
+
+void ATortugaCharacter::MulticastApplyMareoEffect_Implementation(float Duration)
+{
+	// ── Reducir velocidad durante la duración del mareo ───────────────────────
+	if (MareoSpeedCap > 0.f)
+	{
+		if (UTN_StaminaComponent* SC = FindComponentByClass<UTN_StaminaComponent>())
+		{
+			SC->SetSpeedCap(MareoSpeedCap);
+
+			TWeakObjectPtr<ATortugaCharacter> WeakSelf(this);
+			GetWorldTimerManager().SetTimer(MareoTimerHandle, [WeakSelf]()
+			{
+				if (ATortugaCharacter* C = WeakSelf.Get())
+				{
+					if (UTN_StaminaComponent* S = C->FindComponentByClass<UTN_StaminaComponent>())
+					{
+						S->ClearSpeedCap();
+					}
+				}
+			}, Duration, false);
+		}
+	}
+
+	// ── Feedback local (camera shake, VFX, audio) — solo cliente local ───────
+	if (IsLocallyControlled())
+	{
+		OnMareoEffect(Duration);
+	}
+}
+
 void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -1183,6 +1228,22 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		return;
 	}
 
+	// #3 — Barrita Energética: recuperación instantánea al máximo, sin boost de duración ni penalización.
+	if (EquippedItem.UseType == ETN_ItemUseType::SelfStaminaFull)
+	{
+		FTN_InventoryItem ConsumedItem;
+		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
+		{
+			return;
+		}
+
+		// Resetear penalización post-boost heredada antes de restaurar,
+		// para que no se aplique agotamiento si el jugador usó un boost antes.
+		StaminaComponent->SetPostBoostExhaustionSeconds(0.f);
+		StaminaComponent->RestoreStaminaToFull();
+		return;
+	}
+
 	if (EquippedItem.UseType == ETN_ItemUseType::BigHead)
 	{
 		FTN_InventoryItem ConsumedItem;
@@ -1194,15 +1255,16 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		bBigHead = true;
 		ApplyBigHeadVisual(true);
 
-		// Timer para restablecer al tamaño original
+		// Timer para restablecer al tamaño original + efecto de mareo (#2)
 		TWeakObjectPtr<ATortugaCharacter> WeakSelf(this);
 		GetWorldTimerManager().SetTimer(BigHeadTimerHandle,
 			[WeakSelf]()
 			{
 				if (ATortugaCharacter* C = WeakSelf.Get())
 				{
-					C->bBigHead = false;
-					C->ApplyBigHeadVisual(false);
+					// RemoveBigHeadEffect cancela el timer (no-op cuando se llama desde dentro)
+					// y dispara MulticastApplyMareoEffect para el efecto de mareo.
+					C->RemoveBigHeadEffect();
 				}
 			}, BigHeadDurationSeconds, false);
 
@@ -1485,6 +1547,8 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ATortugaCharacter, bBigHead);
 	// Dive
 	DOREPLIFETIME(ATortugaCharacter, bIsDiving);
+	// Umbrella protection (#29)
+	DOREPLIFETIME(ATortugaCharacter, bHasUmbrellaProtection);
 	// Head look — SkipOwner: el owner aplica la rotación localmente sin pasar por la red
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadYaw,   COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadPitch, COND_SkipOwner);

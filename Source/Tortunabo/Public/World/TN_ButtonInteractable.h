@@ -4,6 +4,9 @@
 #include "World/TN_DirectInteractableBase.h"
 #include "TN_ButtonInteractable.generated.h"
 
+/** Delegate disparado en el servidor cuando bIsActivated cambia. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnButtonActivationChanged, ATN_ButtonInteractable* /*Button*/, bool /*bActivated*/);
+
 /**
  * Botón interactuable tipo toggle: al pulsar aplica un offset de transform
  * al target, al volver a pulsar lo devuelve a su posición original.
@@ -33,6 +36,12 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void Interact(APawn* Interactor) override;
+
+	/** Delegate servidor-only: disparado cuando bIsActivated cambia. ButtonGroupManager lo escucha. */
+	FOnButtonActivationChanged OnActivationChanged;
+
+	/** Estado de activación actual. Público para que ButtonGroupManager pueda consultarlo. */
+	bool IsActivated() const { return bIsActivated; }
 
 protected:
 	/**

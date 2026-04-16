@@ -79,6 +79,14 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	bool bIsEliminated = false;
 
+	/**
+	 * Puntos ganados en esta carrera (#26).
+	 * Calculados por ATN_RunGameMode al cruzar la meta según posición de llegada.
+	 * Replicado para que la UI de resultados lo muestre en todos los clientes.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Score")
+	int32 RaceScore = 0;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:

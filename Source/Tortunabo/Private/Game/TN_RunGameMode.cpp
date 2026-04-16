@@ -86,6 +86,7 @@ void ATN_RunGameMode::BeginPlay()
 			TNPS->bIsEliminated = false;
 			TNPS->FinishTimeSeconds = -1.f;
 			TNPS->DeathZoneTimeRemaining = -1.f;
+			TNPS->RaceScore = 0;
 		}
 	}
 
@@ -122,6 +123,7 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 		TNPS->bIsEliminated = false;
 		TNPS->FinishTimeSeconds = -1.f;
 		TNPS->DeathZoneTimeRemaining = -1.f;
+		TNPS->RaceScore = 0;
 	}
 
 	// Actualizar el conteo de jugadores conectados en el GameState
@@ -220,6 +222,10 @@ void ATN_RunGameMode::OnWaitingTimeout()
 
 	MatchStartServerTime = GetWorld()->GetTimeSeconds();
 	SetFlowState(ETNMatchFlowState::InProgress);
+
+	// ── Iniciar cronómetro de carrera (actualiza ServerMatchElapsedTime cada 0.5s) ──
+	GetWorldTimerManager().SetTimer(RaceClockTimerHandle, this,
+		&ATN_RunGameMode::TickRaceClock, 0.5f, true);
 
 	// Actualizar conteo final
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
@@ -383,6 +389,14 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	TNPS->bHasFinishedRun = true;
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
+
+	// ── Asignar puntos según posición de llegada (#26) ──────────────────────
+	// 1º=400, 2º=300, 3º=200, 4º=100. Más de 4 jugadores → 50 pts por seguridad.
+	static const int32 RankScoreTable[] = { 400, 300, 200, 100 };
+	const int32 RankIndex = TNPS->FinishRank - 1;
+	TNPS->RaceScore = (RankIndex >= 0 && RankIndex < 4) ? RankScoreTable[RankIndex] : 50;
+	UE_LOG(LogTemp, Log, TEXT("[MarkPlayerFinished] RaceScore=%d para '%s' (Rank=%d)"),
+		TNPS->RaceScore, *GetNameSafe(PlayerController), TNPS->FinishRank);
 
 	// ── Detener el pawn y ocultarlo para que no se vea en la meta ──
 	if (APawn* Pawn = PlayerController->GetPawn())
@@ -601,6 +615,7 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	TNPS->FinishRank = 0;
 	TNPS->FinishTimeSeconds = -1.f;
 	TNPS->DeathZoneTimeRemaining = -1.f;
+	TNPS->RaceScore = 0;
 
 	// Remove from DBNO tracking
 	DBNOPlayers.Remove(PlayerController);
@@ -919,6 +934,14 @@ void ATN_RunGameMode::CheckAllAliveDBNO()
 	}
 }
 
+void ATN_RunGameMode::TickRaceClock()
+{
+	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
+	{
+		TNGS->ServerMatchElapsedTime = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
+	}
+}
+
 void ATN_RunGameMode::UpdateRoundProgressAndMaybeFinish()
 {
 	ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>();
@@ -1007,6 +1030,7 @@ void ATN_RunGameMode::TickResultsCountdown()
 void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 {
 	GetWorldTimerManager().ClearTimer(ResultsCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(RaceClockTimerHandle);
 
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
@@ -1113,6 +1137,7 @@ void ATN_RunGameMode::PostSeamlessTravel()
 			TNPS->bIsEliminated = false;
 			TNPS->FinishTimeSeconds = -1.f;
 			TNPS->DeathZoneTimeRemaining = -1.f;
+			TNPS->RaceScore = 0;
 
 			// Asegurar que tiene pawn
 			EnsurePlayerSpawned(PC);

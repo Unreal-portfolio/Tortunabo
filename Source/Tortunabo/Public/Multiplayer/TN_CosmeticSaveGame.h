@@ -19,5 +19,13 @@ public:
 	/** ID del skin de personaje activo. NAME_None = aspecto por defecto. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
 	FName EquippedSkinId = NAME_None;
+
+	/**
+	 * Puntos de carrera acumulados (#26).
+	 * Se suman al terminar cada carrera según posición de llegada.
+	 * 1º=400, 2º=300, 3º=200, 4º=100. Eliminados = 0.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Score")
+	int32 AccumulatedRaceScore = 0;
 };
 
