@@ -84,8 +84,14 @@ private:
 	UFUNCTION()
 	void OnRep_MatchFlowState();
 
-	/** Saves the local player's RaceScore to the save game when Results state is entered. */
+	/** Saves the local player's RaceScore to the save game when Results state is entered.
+	 *  Idempotente: usa bLocalScorePersisted para evitar doble-escritura si se llama
+	 *  varias veces en el mismo ciclo de Results (ej. BroadcastFlowStateChange + OnRep). */
 	void PersistLocalPlayerScoreIfResults();
+
+	/** True después de la primera llamada exitosa a PersistLocalPlayerScoreIfResults en Results.
+	 *  Se resetea en BeginPlay para que una nueva run pueda persistir su propio score. */
+	bool bLocalScorePersisted = false;
 
 	int32 NextQuickChatSequence = 0;
 	int32 LastProcessedQuickChatSequence = 0;

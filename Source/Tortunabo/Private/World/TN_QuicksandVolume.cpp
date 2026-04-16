@@ -55,14 +55,20 @@ void ATN_QuicksandVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 		Stamina->SetSpeedCap(SlowSpeed);
 	}
 
-	// Aumentar gravedad + deshabilitar salto: cachear originales para restaurar al salir
-	if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+	// Aumentar gravedad + deshabilitar salto: solo en servidor O en el pawn local del cliente.
+	// No modificar CMC de pawns remotos en clientes — causaría corrupción si los overlaps
+	// llegan desordenados o el actor se destruye antes del EndOverlap.
+	const bool bShouldModifyCMC = HasAuthority() || Char->IsLocallyControlled();
+	if (bShouldModifyCMC)
 	{
-		State.OrigGravityScale = CMC->GravityScale;
-		State.OrigJumpZVel     = CMC->JumpZVelocity;
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		{
+			State.OrigGravityScale = CMC->GravityScale;
+			State.OrigJumpZVel     = CMC->JumpZVelocity;
 
-		CMC->GravityScale  = 3.f;
-		CMC->JumpZVelocity = 50.f; // Prácticamente imposible salir
+			CMC->GravityScale  = 3.f;
+			CMC->JumpZVelocity = 50.f; // Prácticamente imposible salir
+		}
 	}
 
 	Char->OnDestroyed.AddUniqueDynamic(this, &ATN_QuicksandVolume::OnCharacterDestroyed);
@@ -91,13 +97,16 @@ void ATN_QuicksandVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, A
 		Stamina->ClearSpeedCap();
 	}
 
-	// Restaurar valores originales del CMC cacheados en BeginOverlap
-	if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+	// Restaurar valores del CMC solo en la máquina que los modificó
+	if (HasAuthority() || Char->IsLocallyControlled())
 	{
-		if (const FSandState* State = ActiveChars.Find(TWeakObjectPtr<ATortugaCharacter>(Char)))
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
 		{
-			CMC->GravityScale  = State->OrigGravityScale;
-			CMC->JumpZVelocity = State->OrigJumpZVel;
+			if (const FSandState* State = ActiveChars.Find(TWeakObjectPtr<ATortugaCharacter>(Char)))
+			{
+				CMC->GravityScale  = State->OrigGravityScale;
+				CMC->JumpZVelocity = State->OrigJumpZVel;
+			}
 		}
 	}
 

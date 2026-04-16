@@ -13,6 +13,9 @@ void ATN_ScriptedDeathZone::OnPlayerEnteredZone(APawn* Pawn)
 	if (!HasAuthority() || bOnActivateFired) { return; }
 
 	bOnActivateFired = true;
+	// Actions run server-only so that SetActorLocation/Destroy are authoritative.
+	// The multicast only fires the cosmetic BP event on all machines.
+	ExecuteActions(OnActivateActions);
 	MulticastNotifyActivate();
 }
 
@@ -21,6 +24,7 @@ void ATN_ScriptedDeathZone::OnPlayerDiedInZone(APlayerController* PC)
 	if (!HasAuthority() || bOnFirstKillFired) { return; }
 
 	bOnFirstKillFired = true;
+	ExecuteActions(OnFirstKillActions);
 	MulticastNotifyFirstKill();
 }
 
@@ -59,12 +63,11 @@ void ATN_ScriptedDeathZone::ExecuteActions(const TArray<FTN_WorldAction>& Action
 
 void ATN_ScriptedDeathZone::MulticastNotifyActivate_Implementation()
 {
-	ExecuteActions(OnActivateActions);
+	// Cosmético solamente: los cambios de estado de mundo ya se aplicaron en el servidor.
 	OnScriptedActivate();
 }
 
 void ATN_ScriptedDeathZone::MulticastNotifyFirstKill_Implementation()
 {
-	ExecuteActions(OnFirstKillActions);
 	OnScriptedFirstKill();
 }

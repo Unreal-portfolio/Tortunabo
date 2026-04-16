@@ -13,6 +13,8 @@
 #include "World/TN_InteractableBase.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ThrowableItemActor.h"
+#include "World/TN_ConchPickup.h"
+#include "World/TN_InkProjectile.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -780,17 +782,8 @@ void ATortugaCharacter::MulticastApplyMareoEffect_Implementation(float Duration)
 		{
 			SC->SetSpeedCap(MareoSpeedCap);
 
-			TWeakObjectPtr<ATortugaCharacter> WeakSelf(this);
-			GetWorldTimerManager().SetTimer(MareoTimerHandle, [WeakSelf]()
-			{
-				if (ATortugaCharacter* C = WeakSelf.Get())
-				{
-					if (UTN_StaminaComponent* S = C->FindComponentByClass<UTN_StaminaComponent>())
-					{
-						S->ClearSpeedCap();
-					}
-				}
-			}, Duration, false);
+			FTimerDelegate Del = FTimerDelegate::CreateUObject(this, &ATortugaCharacter::ClearMareoSpeedCap);
+			GetWorldTimerManager().SetTimer(MareoTimerHandle, Del, Duration, false);
 		}
 	}
 
@@ -798,6 +791,14 @@ void ATortugaCharacter::MulticastApplyMareoEffect_Implementation(float Duration)
 	if (IsLocallyControlled())
 	{
 		OnMareoEffect(Duration);
+	}
+}
+
+void ATortugaCharacter::ClearMareoSpeedCap()
+{
+	if (UTN_StaminaComponent* SC = FindComponentByClass<UTN_StaminaComponent>())
+	{
+		SC->ClearSpeedCap();
 	}
 }
 
@@ -1223,8 +1224,8 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		}
 
 		// Aplicar penalización post-boost específica del ítem (sobreescribe el valor global del componente).
-		StaminaComponent->SetPostBoostExhaustionSeconds(EquippedItem.PostBoostExhaustionSeconds);
-		GrantInfiniteStamina(EquippedItem.StaminaUnlimitedDurationSeconds);
+		StaminaComponent->SetPostBoostExhaustionSeconds(EquippedItem.StaminaBoostData.PostBoostExhaustionSeconds);
+		GrantInfiniteStamina(EquippedItem.StaminaBoostData.DurationSeconds);
 		return;
 	}
 
@@ -1255,24 +1256,16 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		bBigHead = true;
 		ApplyBigHeadVisual(true);
 
-		// Timer para restablecer al tamaño original + efecto de mareo (#2)
-		TWeakObjectPtr<ATortugaCharacter> WeakSelf(this);
-		GetWorldTimerManager().SetTimer(BigHeadTimerHandle,
-			[WeakSelf]()
-			{
-				if (ATortugaCharacter* C = WeakSelf.Get())
-				{
-					// RemoveBigHeadEffect cancela el timer (no-op cuando se llama desde dentro)
-					// y dispara MulticastApplyMareoEffect para el efecto de mareo.
-					C->RemoveBigHeadEffect();
-				}
-			}, BigHeadDurationSeconds, false);
+		// Timer para restablecer al tamaño original + efecto de mareo (#2).
+		// CreateUObject en lugar de lambda: ClearAllTimersForObject lo cancela en EndPlay.
+		FTimerDelegate BigHeadDel = FTimerDelegate::CreateUObject(this, &ATortugaCharacter::RemoveBigHeadEffect);
+		GetWorldTimerManager().SetTimer(BigHeadTimerHandle, BigHeadDel, BigHeadDurationSeconds, false);
 
 		return;
 	}
 
 	if ((EquippedItem.UseType == ETN_ItemUseType::Throwable)
-		&& EquippedItem.ThrowableActorClass)
+		&& EquippedItem.ThrowableData.ActorClass)
 	{
 		const FVector SpawnLocation = GetItemSpawnLocation();
 
@@ -1293,7 +1286,7 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		const FQuat UpTilt(LeftVec, FMath::DegreesToRadians(ThrowUpAngleDeg));
 		const FVector ArcedDirection = UpTilt.RotateVector(SafeFlatDir).GetSafeNormal();
 
-		const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowSpeed, 0.0f);
+		const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
 
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
@@ -1306,7 +1299,7 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 			return;
 		}
 
-		if (ATN_ThrowableItemActor* ThrowableActor = GetWorld()->SpawnActor<ATN_ThrowableItemActor>(EquippedItem.ThrowableActorClass, SpawnLocation, ArcedDirection.Rotation(), SpawnParams))
+		if (ATN_ThrowableItemActor* ThrowableActor = GetWorld()->SpawnActor<ATN_ThrowableItemActor>(EquippedItem.ThrowableData.ActorClass, SpawnLocation, ArcedDirection.Rotation(), SpawnParams))
 		{
 			// SourceItem lleva PickupActorClass para que el throwable sepa
 			// qué pickup spawnear cuando aterrice o impacte (se convierte en recogible)
@@ -1317,6 +1310,43 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		{
 			InventoryComponent->TryAddOrReplaceEquipped(ConsumedItem, true);
 		}
+		return;
+	}
+
+	// ── #22 Concha trampa ────────────────────────────────────────────────────────
+	if ((EquippedItem.UseType == ETN_ItemUseType::Conch)
+		&& EquippedItem.ConchData.ActorClass)
+	{
+		FTN_InventoryItem ConsumedItem;
+		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
+
+		// Colocar la concha en el suelo justo debajo del jugador
+		const FVector PlaceLoc = FindGroundBelow(GetActorLocation());
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner     = this;
+		SpawnParams.Instigator = this;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		if (ATN_ConchPickup* Conch = GetWorld()->SpawnActor<ATN_ConchPickup>(
+			ConsumedItem.ConchData.ActorClass, PlaceLoc, FRotator::ZeroRotator, SpawnParams))
+		{
+			Conch->PlaceAsTrap(PlaceLoc);
+		}
+		return;
+	}
+
+	// ── #13 Tinta de calamar ─────────────────────────────────────────────────────
+	if ((EquippedItem.UseType == ETN_ItemUseType::InkThrower)
+		&& EquippedItem.InkData.ProjectileClass)
+	{
+		FTN_InventoryItem ConsumedItem;
+		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
+
+		const FVector Origin    = GetItemSpawnLocation();
+		const FVector Direction = GetItemForwardDirection();
+		ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
+			Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
 		return;
 	}
 }
@@ -1817,7 +1847,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 // ─────────────────────────────────────────────────────────────────────────────
 // ── Kill interface ────────────────────────────────────────────────────────────
 
-void ATortugaCharacter::RequestKill(AActor* Instigator)
+void ATortugaCharacter::RequestKill(AActor* KillInstigator)
 {
 	if (!HasAuthority()) { return; }
 
@@ -1828,7 +1858,7 @@ void ATortugaCharacter::RequestKill(AActor* Instigator)
 	if (!GM) { return; }
 
 	UE_LOG(LogTemp, Log, TEXT("[Character] RequestKill on '%s' by '%s'"),
-		*GetNameSafe(this), *GetNameSafe(Instigator));
+		*GetNameSafe(this), *GetNameSafe(KillInstigator));
 
 	GM->MarkPlayerDead(PC);
 }

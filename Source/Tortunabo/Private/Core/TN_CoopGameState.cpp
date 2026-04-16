@@ -64,6 +64,11 @@ void ATN_CoopGameState::BroadcastFlowStateChange()
 {
 	// Must be called by game modes on the server after setting MatchFlowState.
 	// OnRep does NOT fire on the authoritative machine, so we broadcast manually.
+	// Reset idempotency guard when state changes so the new state can persist later.
+	if (MatchFlowState != ETNMatchFlowState::Results)
+	{
+		bLocalScorePersisted = false;
+	}
 	PersistLocalPlayerScoreIfResults();
 	OnMatchFlowStateChanged.Broadcast(MatchFlowState);
 }
@@ -74,6 +79,14 @@ void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
 	{
 		return;
 	}
+
+	// Idempotency guard — prevents double-counting if BroadcastFlowStateChange
+	// and OnRep_MatchFlowState both fire on the same machine in the same Results cycle.
+	if (bLocalScorePersisted)
+	{
+		return;
+	}
+	bLocalScorePersisted = true;
 
 	UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
 	if (!GI)

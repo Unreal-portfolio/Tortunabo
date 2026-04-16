@@ -1,5 +1,31 @@
 ﻿# SESSION LOG
 
+## 2026-04-16 — Backlog sweep completo: #4 Item Table refactor + sistemas restantes
+
+### Resumen
+Sesión de continuación. Se completaron todos los ítems pendientes del BACKLOG.
+
+### Items implementados en esta sesión
+- **#4 Item Table refactor**: `FTN_InventoryItem` refactorizado de struct plano a sub-structs tipados (`FTN_StaminaBoostParams`, `FTN_ThrowableParams`, `FTN_ConchParams`, `FTN_InkThrowerParams`). Eliminados campos planos `StaminaUnlimitedDurationSeconds`, `PostBoostExhaustionSeconds`, `ThrowSpeed`, `ThrowableActorClass`, `ThrowableLifeSpanSeconds`. `ETN_ItemUseType` ampliado con `Conch` y `InkThrower`.
+- **#22 Concha (dispatch)**: `ServerUseEquippedItem_Implementation` despacha `ETN_ItemUseType::Conch` → spawna `ATN_ConchPickup` y llama `PlaceAsTrap`.
+- **#13 Tinta (dispatch)**: `ETN_ItemUseType::InkThrower` → llama `ATN_InkProjectile::Spawn`.
+
+### Items verificados presentes (de sesiones anteriores)
+- #10 TN_CrabActor ✅, #16 TN_QuicksandVolume ✅, #18 TN_QuadActor + QuadSpawner ✅
+- #29 TN_UmbrellaInteractable + SetUmbrellaProtection(bool) en TortugaCharacter ✅
+- #26A race clock + #26B score/persistencia ✅, #1 PostBoostExhaustionSeconds ✅
+- #19 TN_StormVolume con NiagaraComponent + PostProcessComponent ✅
+
+### Archivos modificados
+- `Source/Tortunabo/Public/Core/TN_InventoryTypes.h` — refactor completo
+- `Source/Tortunabo/Private/Player/TortugaCharacter.cpp` — includes + dispatch Conch/Ink + field migration
+
+### Pendiente (no blocker)
+- #26C Supabase leaderboard — diferido explícitamente
+- #8 Arpón, #9 Charcos, #32 UI skins — P3, fuera de alcance MVP
+
+---
+
 ## 2026-03-26 (Part 2) — Fix: Child Actors en chunks se posicionan incorrectamente
 
 ### Causa raíz

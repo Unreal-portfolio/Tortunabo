@@ -40,8 +40,8 @@ void ATN_CrabActor::BeginPlay()
 	GetWorld()->GetTimerManager().SetTimerForNextTick(Delegate);
 
 	DetectionSphere->SetSphereRadius(DetectionRadius);
-	DetectionSphere->OnComponentBeginOverlap.AddDynamic(
-		this, &ATN_CrabActor::OnDetectionBeginOverlap);
+	// OnDetectionBeginOverlap se registra en InitializePatrolPoints (deferred 1 tick)
+	// para garantizar que SpawnLocation está inicializado antes de que pueda dispararse.
 }
 
 void ATN_CrabActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -65,6 +65,12 @@ void ATN_CrabActor::InitializePatrolPoints()
 	{
 		WorldPatrolPoints.Add(SpawnLocation);
 	}
+
+	// Registrar el overlap AHORA que SpawnLocation está inicializado.
+	// Si lo registráramos en BeginPlay, podría dispararse en el tick 0 antes de que
+	// SpawnLocation esté seteado, causando un MaxChaseDistance check contra (0,0,0).
+	DetectionSphere->OnComponentBeginOverlap.AddDynamic(
+		this, &ATN_CrabActor::OnDetectionBeginOverlap);
 }
 
 void ATN_CrabActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

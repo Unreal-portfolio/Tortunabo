@@ -716,6 +716,10 @@ protected:
 	FTimerHandle BigHeadTimerHandle;
 	FTimerHandle MareoTimerHandle;
 
+	/** Llamado cuando expira el timer de mareo — restaura el speed cap de stamina.
+	 *  Usa CreateUObject (no lambda) para que ClearAllTimersForObject lo cancele en EndPlay. */
+	void ClearMareoSpeedCap();
+
 	/** Rotación relativa del mesh al spawnear (guardada en BeginPlay para restaurarla). */
 	FRotator MeshDefaultRelativeRotation = FRotator::ZeroRotator;
 
@@ -835,7 +839,7 @@ public:
 	 * Solo tiene efecto en el servidor (HasAuthority).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Death")
-	void RequestKill(AActor* Instigator = nullptr);
+	void RequestKill(AActor* KillInstigator = nullptr);
 
 	UFUNCTION(BlueprintCallable, Category = "Death")
 	void SetDeadVisual(bool bDead);

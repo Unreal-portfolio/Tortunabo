@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
@@ -9,118 +9,211 @@ class UTexture2D;
 class USoundBase;
 class ATN_PickupInteractableBase;
 class ATN_ThrowableItemActor;
+class ATN_ConchPickup;
+class ATN_InkProjectile;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enum de tipos de uso
+// ─────────────────────────────────────────────────────────────────────────────
 
 UENUM(BlueprintType)
 enum class ETN_ItemUseType : uint8
 {
-	None UMETA(DisplayName = "None"),
+	None             UMETA(DisplayName = "None"),
+	/** Stamina ilimitada durante X segundos + penalización post-boost. */
 	SelfStaminaBoost UMETA(DisplayName = "Self Stamina Boost"),
-	/** Barrita Energética: restaura la stamina al máximo efectivo instantáneamente. Sin penalización post-uso. */
-	SelfStaminaFull UMETA(DisplayName = "Self Stamina Full Restore"),
-	Throwable UMETA(DisplayName = "Throwable"),
-	BigHead UMETA(DisplayName = "Big Head")
+	/** Barrita Energética: restaura stamina al máximo instantáneamente. Sin penalización post-uso. */
+	SelfStaminaFull  UMETA(DisplayName = "Self Stamina Full Restore"),
+	/** Proyectil lanzable con rebote (TN_ThrowableItemActor). */
+	Throwable        UMETA(DisplayName = "Throwable"),
+	/** Cabeza grande; un impacto de gaviota la quita en lugar de matar. */
+	BigHead          UMETA(DisplayName = "Big Head"),
+	/** Concha marina: se coloca en el suelo como trampa que inmoviliza. */
+	Conch            UMETA(DisplayName = "Conch Trap"),
+	/** Proyectil de tinta: oscurece la pantalla del jugador impactado. */
+	InkThrower       UMETA(DisplayName = "Ink Thrower"),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-structs por tipo de ítem — solo aparecen campos relevantes en el editor
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Parámetros específicos del Stamina Boost (#3, #1).
+ * Solo relevantes cuando UseType == SelfStaminaBoost.
+ */
+USTRUCT(BlueprintType)
+struct FTN_StaminaBoostParams
+{
+	GENERATED_BODY()
+
+	/** Segundos de stamina ilimitada al usar el boost. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StaminaBoost",
+		meta = (ClampMin = "0.1"))
+	float DurationSeconds = 4.f;
+
+	/**
+	 * Segundos de agotamiento forzado al expirar el boost.
+	 * 0 = sin penalización. Sobreescribe el default global del StaminaComponent.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StaminaBoost",
+		meta = (ClampMin = "0.0"))
+	float PostBoostExhaustionSeconds = 2.f;
 };
 
 /**
+ * Parámetros específicos del lanzable (#6 Bola, etc.).
+ * Solo relevantes cuando UseType == Throwable.
+ */
+USTRUCT(BlueprintType)
+struct FTN_ThrowableParams
+{
+	GENERATED_BODY()
+
+	/** Clase del proyectil ATN_ThrowableItemActor a spawnear. Apuntar al BP hijo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable")
+	TSubclassOf<ATN_ThrowableItemActor> ActorClass;
+
+	/** Velocidad de lanzamiento (cm/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable",
+		meta = (ClampMin = "0.0"))
+	float ThrowSpeed = 1800.f;
+
+	/**
+	 * Duración de vida del proyectil (s). 0 = usar MaxLifeSeconds del BP.
+	 * Permite ítems distintos con proyectiles de distinta duración.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable",
+		meta = (ClampMin = "0.0"))
+	float LifeSpanSeconds = 0.f;
+};
+
+/**
+ * Parámetros específicos de la Concha trampa (#22).
+ * Solo relevantes cuando UseType == Conch.
+ */
+USTRUCT(BlueprintType)
+struct FTN_ConchParams
+{
+	GENERATED_BODY()
+
+	/** Clase de TN_ConchPickup a spawnear al usar el ítem. Apuntar al BP hijo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conch")
+	TSubclassOf<ATN_ConchPickup> ActorClass;
+};
+
+/**
+ * Parámetros específicos del lanzador de tinta (#13).
+ * Solo relevantes cuando UseType == InkThrower.
+ */
+USTRUCT(BlueprintType)
+struct FTN_InkThrowerParams
+{
+	GENERATED_BODY()
+
+	/** Clase de TN_InkProjectile a spawnear al usar el ítem. Apuntar al BP hijo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "InkThrower")
+	TSubclassOf<ATN_InkProjectile> ProjectileClass;
+
+	/** Velocidad del proyectil de tinta (cm/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "InkThrower",
+		meta = (ClampMin = "100.0"))
+	float ThrowSpeed = 1200.f;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Definición del ítem
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
  * Definición completa de un ítem del juego.
- * Hereda FTableRowBase → se puede usar directamente como fila de DataTable.
- * Para añadir un ítem nuevo: añadir fila en DT_Items, sin crear clases nuevas.
+ * Hereda FTableRowBase → se usa directamente como fila de DataTable (DT_Items).
+ * Para añadir un ítem nuevo: añadir fila en DT_Items, sin crear clases C++ nuevas.
+ *
+ * Patrón de sub-structs:
+ *   Los campos genéricos se definen aquí directamente.
+ *   Los campos específicos de cada UseType viven en su propio sub-struct;
+ *   solo configura el sub-struct correspondiente a tu UseType.
  */
 USTRUCT(BlueprintType)
 struct FTN_InventoryItem : public FTableRowBase
 {
 	GENERATED_BODY()
 
+	// ── Campos genéricos ──────────────────────────────────────────────────────
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	FName ItemId = NAME_None;
 
 	/**
 	 * Icono del ítem para la UI de inventario (HUD).
-	 * Asigna una Texture2D en el DataTable o en el BP del pickup.
 	 * Si es null, el slot del HUD aparecerá vacío.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|UI")
 	TObjectPtr<UTexture2D> ItemIcon = nullptr;
 
-	/** Mesh mostrada cuando el ítem está equipado en el jugador Y en el suelo como pickup. */
+	/** Mesh mostrado cuando el ítem está equipado en el jugador Y como pickup en el suelo. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TObjectPtr<UStaticMesh> EquippedMesh = nullptr;
 
 	/**
-	 * Escala del mesh en espacio mundo.
-	 * Se aplica al visual equipado en mano (compensando la escala del personaje para
-	 * evitar deformaciones) y al mesh del pickup en el suelo.
-	 * Ajusta este valor en DT_Items para cambiar el tamaño sin tocar el asset.
-	 * Ejemplo para bola pequeña: (0.25, 0.25, 0.25)
+	 * Escala del mesh equipado.
+	 * Se aplica al visual en mano y al pickup en suelo.
+	 * Ejemplo: (0.25, 0.25, 0.25) para bola pequeña.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	FVector EquippedMeshScale = FVector(1.f, 1.f, 1.f);
 
+	/** Tipo de acción al pulsar Usar. Determina qué sub-struct es relevante. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use")
 	ETN_ItemUseType UseType = ETN_ItemUseType::None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
-	float StaminaUnlimitedDurationSeconds = 4.0f;
-
-	/**
-	 * Segundos de penalización de exhaustión tras que el boost de stamina expire.
-	 * 0 = sin penalización. Permite configurar penalizaciones distintas por ítem.
-	 * Sobreescribe el valor global de TN_StaminaComponent::PostBoostExhaustionSeconds.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
-	float PostBoostExhaustionSeconds = 2.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
-	float ThrowSpeed = 1800.0f;
-
-	/**
-	 * Duración de vida del proyectil (s). 0 = usar el default del BP del lanzable (MaxLifeSeconds).
-	 * Permite que ítems distintos tengan proyectiles que duren más o menos.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use", meta = (ClampMin = "0.0"))
-	float ThrowableLifeSpanSeconds = 0.f;
-
 	/**
 	 * Peso del ítem en unidades arbitrarias.
-	 * Cada unidad reduce la stamina máxima efectiva del portador según
-	 * UTN_StaminaComponent::StaminaPerWeightUnit (default 20 stamina/unidad).
-	 * Ejemplo: ItemWeight=2 con StaminaPerWeightUnit=20 → -40 stamina máx.
+	 * Reduce la stamina máxima efectiva (StaminaPerWeightUnit por unidad).
 	 * 0 = sin penalización.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Weight", meta = (ClampMin = "0.0", ClampMax = "20.0"))
-	float ItemWeight = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Weight",
+		meta = (ClampMin = "0.0", ClampMax = "20.0"))
+	float ItemWeight = 0.f;
 
-	/**
-	 * Sonido que se reproduce al recoger el ítem. Nulo = sin sonido.
-	 * Se reproduce localmente en el cliente que recoge (spatialized = false).
-	 */
+	/** Sonido al recoger el ítem. Nulo = sin sonido. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Audio")
 	TObjectPtr<USoundBase> PickupSound = nullptr;
 
-	/**
-	 * Sonido que se reproduce al consumir/usar el ítem. Nulo = sin sonido.
-	 */
+	/** Sonido al usar/consumir el ítem. Nulo = sin sonido. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Audio")
 	TObjectPtr<USoundBase> UseSound = nullptr;
 
 	/**
 	 * Clase del actor pickup que aparece en el mundo.
-	 * Para el sistema data-driven, apuntar siempre a BP_GenericPickup.
-	 * Solo crear clase específica si el pickup tiene lógica BP diferente.
+	 * Apuntar siempre a BP_GenericPickup salvo que el pickup tenga lógica BP especial.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|World")
 	TSubclassOf<ATN_PickupInteractableBase> PickupActorClass;
 
-	/**
-	 * Clase del proyectil que se lanza.
-	 * Para el sistema data-driven, apuntar siempre a BP_GenericThrowable.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|World")
-	TSubclassOf<ATN_ThrowableItemActor> ThrowableActorClass;
+	// ── Parámetros por tipo de uso ────────────────────────────────────────────
+	// Solo configura el sub-struct que corresponde a tu UseType.
+	// Los demás sub-structs se ignoran en el dispatch.
+
+	/** UseType == SelfStaminaBoost → duración del boost + penalización post-boost. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|StaminaBoost")
+	FTN_StaminaBoostParams StaminaBoostData;
+
+	/** UseType == Throwable → clase del proyectil, velocidad y vida. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Throwable")
+	FTN_ThrowableParams ThrowableData;
+
+	/** UseType == Conch → clase del pickup de concha trampa. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Conch")
+	FTN_ConchParams ConchData;
+
+	/** UseType == InkThrower → clase del proyectil de tinta + velocidad. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|InkThrower")
+	FTN_InkThrowerParams InkData;
 
 	bool IsValid() const
 	{
 		return ItemId != NAME_None;
 	}
 };
-
