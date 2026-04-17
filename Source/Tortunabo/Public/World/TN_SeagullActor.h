@@ -8,21 +8,15 @@ class UCapsuleComponent;
 class UStaticMeshComponent;
 
 /**
- * Enemigo gaviota: se desplaza en bucle a lo largo de su eje X local.
- * Tiene una zona de peligro (cápsula). Si un jugador permanece en ella más de
- * DangerTimeToStrike segundos, el cubo ("gaviota") baja RÁPIDO hasta la
- * posición del jugador y vuelve a subir.
+ * @deprecated Usar ATN_EnemySeagull + ATN_SeagullSpawnZone en su lugar (#11).
  *
- * Optimización multijugador:
- * - Movimiento: 100% local en cada máquina (determinista).
- *   El host fija InitialLocation (replicada vía DOREPLIFETIME); OnRep la aplica en clientes.
- * - Strike visual: NetMulticast Reliable para que TODOS los clientes lo vean.
- * - Hit detection: solo en el servidor.
+ * Gaviota de carril estática — ya no se usa en el proyecto.
+ * Conservada temporalmente para no romper assets existentes. No crear nuevas instancias.
  *
- * Uso: colocar BP_SeagullActor en el nivel y ajustar las propiedades.
- * Rotar el actor para cambiar el eje de movimiento.
+ * El sistema activo es ATN_EnemySeagull (gaviota dinámica que sigue al jugador,
+ * detecta cubierta, y pica en picado físico) spawneada por ATN_SeagullSpawnZone.
  */
-UCLASS()
+UCLASS(Blueprintable)
 class TORTUNABO_API ATN_SeagullActor : public AActor
 {
 	GENERATED_BODY()

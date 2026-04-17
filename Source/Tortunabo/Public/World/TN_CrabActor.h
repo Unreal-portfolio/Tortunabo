@@ -4,8 +4,10 @@
 #include "GameFramework/Actor.h"
 #include "TN_CrabActor.generated.h"
 
-class UStaticMeshComponent;
+class USkeletalMeshComponent;
 class USphereComponent;
+class UAnimMontage;
+class USoundBase;
 class ATortugaCharacter;
 
 UENUM(BlueprintType)
@@ -22,7 +24,8 @@ enum class ETNCrabState : uint8
  * dentro del radio de detección y aplica knockdown al alcanzarlo.
  *
  * Servidor autoritario — tick desactivado en clientes.
- * CrabState replicado para animaciones Blueprint.
+ * CrabState replicado para animaciones. Las montages y sonidos se asignan
+ * en el Blueprint hijo y se reproducen directamente en C++ sin lógica BP.
  * Compatible con chunks: PatrolPoints son offsets relativos al spawn.
  */
 UCLASS(Blueprintable)
@@ -40,7 +43,7 @@ public:
 protected:
 	// ── Componentes ──────────────────────────────────────────────────────────────
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Crab")
-	TObjectPtr<UStaticMeshComponent> CrabMesh;
+	TObjectPtr<USkeletalMeshComponent> CrabMesh;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Crab")
 	TObjectPtr<USphereComponent> DetectionSphere;
@@ -93,13 +96,37 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crab|Patrol")
 	TArray<FVector> PatrolPoints;
 
-	// ── Estado replicado (animaciones) ───────────────────────────────────────────
+	// ── Animaciones (asignar en el BP hijo) ──────────────────────────────────────
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crab|Animation")
+	TObjectPtr<UAnimMontage> PatrolMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crab|Animation")
+	TObjectPtr<UAnimMontage> ChaseMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crab|Animation")
+	TObjectPtr<UAnimMontage> AttackMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crab|Animation")
+	TObjectPtr<UAnimMontage> CooldownMontage;
+
+	// ── Audio (asignar en el BP hijo) ─────────────────────────────────────────────
+
+	UPROPERTY(EditDefaultsOnly, Category = "Crab|Audio")
+	TObjectPtr<USoundBase> PatrolSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Crab|Audio")
+	TObjectPtr<USoundBase> ChaseSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Crab|Audio")
+	TObjectPtr<USoundBase> AttackSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Crab|Audio")
+	TObjectPtr<USoundBase> CooldownSound;
+
+	// ── Estado replicado ─────────────────────────────────────────────────────────
 	UPROPERTY(ReplicatedUsing = OnRep_CrabState, BlueprintReadOnly, Category = "Crab")
 	ETNCrabState CrabState = ETNCrabState::Patrol;
-
-	/** Evento Blueprint: se dispara en todas las máquinas cuando cambia el estado. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Crab")
-	void OnCrabStateChanged(ETNCrabState NewState);
 
 private:
 	FVector SpawnLocation;
@@ -109,8 +136,7 @@ private:
 	TWeakObjectPtr<ATortugaCharacter> ChaseTarget;
 	float CooldownRemaining = 0.f;
 
-	// Deferred init para compatibilidad con chunks (#BeginPlay se ejecuta antes de
-	// que el ChildActorComponent haya posicionado el actor en su lugar final)
+	// Deferred init para compatibilidad con chunks
 	FTimerHandle InitTimerHandle;
 	void InitializePatrolPoints();
 

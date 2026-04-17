@@ -123,9 +123,6 @@ void ATN_InkProjectile::MulticastApplyInkEffect_Implementation(ATortugaCharacter
 {
 	if (!Target) { return; }
 
-	// Solo la máquina que controla localmente al jugador afectado muestra el efecto
-	if (Target->IsLocallyControlled())
-	{
-		OnInkEffect(Duration);
-	}
+	// ApplyInkEffect comprueba internamente IsLocallyControlled — seguro llamar en todos
+	Target->ApplyInkEffect(Duration);
 }

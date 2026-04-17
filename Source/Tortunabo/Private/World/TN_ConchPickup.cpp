@@ -4,6 +4,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
 
 ATN_ConchPickup::ATN_ConchPickup()
 {
@@ -65,9 +67,9 @@ void ATN_ConchPickup::PlaceAsTrap(const FVector& WorldLocation)
 	bIsPlacedTrap = true;
 	bTrapUsed = false;
 
-	// OnRep_IsPlacedTrap dispara OnTrapActivated en clientes.
-	// En listen-server OnRep no dispara, así que llamamos manualmente.
-	OnTrapActivated();
+	// OnRep_IsPlacedTrap dispara los efectos en clientes.
+	// En listen-server OnRep no dispara, así que los ejecutamos directamente.
+	PlayPlaceEffects();
 }
 
 // ── Overlap ────────────────────────────────────────────────────────────────────
@@ -126,22 +128,22 @@ void ATN_ConchPickup::RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakChar
 
 void ATN_ConchPickup::MulticastOnTrapped_Implementation(APawn* Victim)
 {
-	if (Victim)
-	{
-		// Trampa activada sobre una víctima
-		OnTrapped(Victim);
-	}
-	// Nota: si Victim == nullptr el BP puede filtrar en OnTrapActivated (ver PlaceAsTrap).
+	const FVector Loc = Victim ? Victim->GetActorLocation() : GetActorLocation();
+	if (TrapSound) { UGameplayStatics::SpawnSoundAtLocation(this, TrapSound, Loc); }
+	if (TrapVFX)   { UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, TrapVFX, Loc); }
 }
 
 // ── OnRep ──────────────────────────────────────────────────────────────────────
 
 void ATN_ConchPickup::OnRep_IsPlacedTrap()
 {
-	// Los clientes actualizan el visual cuando bIsPlacedTrap cambia.
-	// La lógica visual concreta (cambio de material, efectos) se implementa en BP.
-	if (bIsPlacedTrap)
-	{
-		OnTrapActivated();
-	}
+	if (bIsPlacedTrap) { PlayPlaceEffects(); }
+}
+
+// ── Efectos de colocación ─────────────────────────────────────────────────────
+
+void ATN_ConchPickup::PlayPlaceEffects()
+{
+	if (PlaceSound) { UGameplayStatics::SpawnSoundAtLocation(this, PlaceSound, GetActorLocation()); }
+	if (PlaceVFX)   { UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, PlaceVFX, GetActorLocation()); }
 }

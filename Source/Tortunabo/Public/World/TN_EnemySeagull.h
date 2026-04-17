@@ -6,27 +6,31 @@
 
 class UStaticMeshComponent;
 class UDecalComponent;
+class USoundBase;
+class UNiagaraSystem;
 class ATortugaCharacter;
 class APlayerController;
-class ATN_RunGameMode;
 
 /**
- * Gaviota dinámica enemiga (#11).
+ * Gaviota dinámica enemiga (#11) — versión unificada.
  *
- * Comportamiento:
- *   1. Aparece de repente encima del jugador objetivo (sin telegrafía prolongada).
- *   2. Sigue al jugador a FollowSpeed (< velocidad de paseo) — el jugador puede escapar corriendo.
- *   3. Un círculo en el suelo (Decal) muestra la zona de peligro y SE ENCOGE con el tiempo.
- *   4. Cuando el cronómetro llega a 0: si el jugador está dentro de MinKillRadius → muerte.
- *   5. Si el jugador lleva Big Head activo (#2): el impacto quita el efecto en lugar de matar.
+ * Ciclo de vida:
+ *   1. ATN_SeagullSpawnZone spawnea esta gaviota encima del jugador objetivo
+ *      que está dentro de la zona, y llama InitializeWithTarget.
+ *   2. La gaviota sigue al jugador a FollowSpeed, proyectando un decal (círculo)
+ *      que se encoge con el tiempo.
+ *   3. ESCAPE: si el jugador permanece fuera del círculo EscapeSeconds seguidos
+ *      → la gaviota sube y desaparece (AbortAndRetreat).
+ *   4. CUBIERTA: cada RoofCheckInterval el servidor lanza un LineTrace desde la
+ *      gaviota hacia el jugador. Si hay geometría entre ambos → AbortAndRetreat.
+ *   5. ATAQUE: cuando el cronómetro llega a 0 y el jugador está dentro de
+ *      MinKillRadius → picotazo físico (dive hacia abajo, aplica kill, sube y se destruye).
+ *      Sombrilla (#29) y BigHead (#2) abortan el kill según sus reglas habituales.
  *
- * Autoridad: servidor controla movimiento, cronómetro y detección de muerte.
- *   CountdownRemaining se replica → los clientes pueden mostrar HUD/efectos.
- *
- * Uso:
- *   1. Crear BP_EnemySeagull hijo de este actor.
- *   2. Asignar SeagullMesh y DecalMaterial en el BP.
- *   3. Llamar SpawnOnRandomPlayer() desde el RunGameMode o TimedEvent en el nivel.
+ * Red:
+ *   Servidor controla todo (movimiento, escape, kill).
+ *   bReplicateMovement=true → el dive es visible en todos los clientes.
+ *   CountdownRemaining y TargetPlayerIndex replicados para feedback visual de clientes.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_EnemySeagull : public AActor
@@ -42,106 +46,112 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/**
-	 * Inicializa la gaviota con un objetivo. Llamar desde el servidor inmediatamente tras spawnear.
-	 * Equivalente al "activar" del sistema.
+	 * Inicializa la gaviota con un objetivo. Llamar desde ATN_SeagullSpawnZone tras spawnear.
+	 * Solo servidor.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "EnemySeagull")
 	void InitializeWithTarget(ATortugaCharacter* Target);
 
-	/**
-	 * Helper de spawn: selecciona un jugador vivo aleatorio y spawnea esta clase encima de él.
-	 * Devuelve null si no hay jugadores vivos o si WorldContext no es válido.
-	 *
-	 * Ejemplo de uso en BP Level Blueprint:
-	 *   ATN_EnemySeagull::SpawnOnRandomPlayer(this, BP_EnemySeagull::StaticClass());
-	 */
-	UFUNCTION(BlueprintCallable, Category = "EnemySeagull",
-		meta = (WorldContext = "WorldContextObject"))
-	static ATN_EnemySeagull* SpawnOnRandomPlayer(const UObject* WorldContextObject,
-		TSubclassOf<ATN_EnemySeagull> SeagullClass);
-
-	/** Cronómetro restante replicado (segundos). Usar en UI/VFX para feedback al jugador. */
+	/** Cronómetro restante (s). Replicado para HUD/VFX. */
 	UFUNCTION(BlueprintPure, Category = "EnemySeagull")
 	float GetCountdownRemaining() const { return CountdownRemaining; }
 
-	/** Radio de peligro actual (normalizado con el tiempo). Usar para escalar efectos BP. */
+	/** Radio de peligro actual interpolado con el tiempo. */
 	UFUNCTION(BlueprintPure, Category = "EnemySeagull")
 	float GetCurrentDangerRadius() const;
 
 protected:
-	// ── Componentes ──────────────────────────────────────────────────────────
+	// ── Componentes ────────────────────────────────────────────────────────────
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "EnemySeagull")
 	TObjectPtr<USceneComponent> SceneRoot;
 
-	/** Mesh visual de la gaviota. Asignar en el BP hijo. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "EnemySeagull")
 	TObjectPtr<UStaticMeshComponent> SeagullMesh;
 
-	/**
-	 * Decal proyectado hacia abajo que representa el círculo de peligro.
-	 * Asignar un material de decal (anillo/círculo rojo) en el BP hijo.
-	 * Su tamaño se actualiza cada tick según GetCurrentDangerRadius().
-	 */
+	/** Decal proyectado hacia abajo. Radio se actualiza cada tick. Asignar material de círculo en el BP. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "EnemySeagull")
 	TObjectPtr<UDecalComponent> DangerDecal;
 
-	// ── Configuración ─────────────────────────────────────────────────────────
+	// ── Seguimiento ────────────────────────────────────────────────────────────
 
-	/**
-	 * Velocidad de seguimiento (cm/s). Debe ser menor que la velocidad de paseo
-	 * del jugador (WalkSpeed = 450) para que pueda escapar corriendo.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow",
-		meta = (ClampMin = "50.0"))
+	/** Velocidad de seguimiento (cm/s). Debe ser menor que WalkSpeed (450) para que el jugador pueda escapar. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow", meta = (ClampMin = "50.0"))
 	float FollowSpeed = 280.f;
 
 	/** Altura de vuelo sobre el objetivo (cm). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow",
-		meta = (ClampMin = "100.0"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow", meta = (ClampMin = "100.0"))
 	float FollowHeight = 400.f;
 
-	/** Duración total del cronómetro de ataque (segundos). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Attack",
-		meta = (ClampMin = "1.0"))
+	// ── Ataque ─────────────────────────────────────────────────────────────────
+
+	/** Duración total del cronómetro antes del ataque (s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Attack", meta = (ClampMin = "1.0"))
 	float AttackTimerSeconds = 8.f;
 
 	/** Radio inicial del círculo de peligro (cm). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Attack",
-		meta = (ClampMin = "50.0"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Attack", meta = (ClampMin = "50.0"))
 	float MaxDangerRadius = 500.f;
 
-	/**
-	 * Radio mínimo de muerte cuando el cronómetro llega a 0 (cm).
-	 * El jugador debe estar más lejos que este valor para sobrevivir.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Attack",
-		meta = (ClampMin = "10.0"))
+	/** Radio mínimo al expirar el cronómetro. El jugador debe estar fuera de este radio para sobrevivir. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Attack", meta = (ClampMin = "10.0"))
 	float MinKillRadius = 150.f;
 
-	/**
-	 * Profundidad del Decal (cm). Ajustar si el decal no se proyecta bien en superficies irregulares.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Visual",
-		meta = (ClampMin = "50.0"))
+	// ── Escape ─────────────────────────────────────────────────────────────────
+
+	/** Segundos fuera del círculo de peligro para que la gaviota se retire. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Escape", meta = (ClampMin = "0.5"))
+	float EscapeSeconds = 3.f;
+
+	// ── Cubierta ───────────────────────────────────────────────────────────────
+
+	/** Intervalo entre comprobaciones de techo (s). Menor = más reactivo pero más caro. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Cover", meta = (ClampMin = "0.05"))
+	float RoofCheckInterval = 0.25f;
+
+	// ── Picotazo físico ────────────────────────────────────────────────────────
+
+	/** Duración del dive hacia abajo (s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Strike", meta = (ClampMin = "0.05"))
+	float StrikeDuration = 0.15f;
+
+	/** Duración de la subida tras el picotazo (s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Strike", meta = (ClampMin = "0.1"))
+	float RiseDuration = 0.5f;
+
+	/** Altura adicional sobre el spawn point a la que sube al retirarse (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Strike", meta = (ClampMin = "100.0"))
+	float RetreatHeight = 800.f;
+
+	// ── Visual ─────────────────────────────────────────────────────────────────
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Visual", meta = (ClampMin = "50.0"))
 	float DecalDepth = 800.f;
 
-	// ── Eventos Blueprint ─────────────────────────────────────────────────────
+	// ── Audio / VFX ────────────────────────────────────────────────────────────
 
-	/** Llamado en TODAS las máquinas cuando la gaviota mata al objetivo. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "EnemySeagull")
-	void OnSeagullKill(ATortugaCharacter* Victim);
+	/** Sonido al hacer el picotazo. Reproducido en el punto del objetivo en todas las máquinas. */
+	UPROPERTY(EditDefaultsOnly, Category = "EnemySeagull|Audio")
+	TObjectPtr<USoundBase> StrikeSound;
 
-	/** Llamado en TODAS las máquinas cuando el objetivo escapa (cronómetro = 0, fuera del radio). */
-	UFUNCTION(BlueprintImplementableEvent, Category = "EnemySeagull")
-	void OnSeagullMissed(ATortugaCharacter* Escapee);
+	/** Sonido al retirarse (escape o cubierta detectada). */
+	UPROPERTY(EditDefaultsOnly, Category = "EnemySeagull|Audio")
+	TObjectPtr<USoundBase> RetreatSound;
 
-	/** Llamado en TODAS las máquinas cuando el Big Head absorbe el golpe en lugar de la muerte. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "EnemySeagull")
-	void OnBigHeadAbsorbed(ATortugaCharacter* Target);
+	/** Sonido al matar al jugador. */
+	UPROPERTY(EditDefaultsOnly, Category = "EnemySeagull|Audio")
+	TObjectPtr<USoundBase> KillSound;
+
+	/** Sonido al absorber el BigHead en lugar de matar. */
+	UPROPERTY(EditDefaultsOnly, Category = "EnemySeagull|Audio")
+	TObjectPtr<USoundBase> BigHeadAbsorbSound;
+
+	/** VFX spawneado en el punto del objetivo al hacer el picotazo. */
+	UPROPERTY(EditDefaultsOnly, Category = "EnemySeagull|VFX")
+	TObjectPtr<UNiagaraSystem> StrikeVFX;
 
 private:
-	// ── Estado replicado ──────────────────────────────────────────────────────
+	// ── Estado replicado ───────────────────────────────────────────────────────
 
 	UPROPERTY(ReplicatedUsing = OnRep_CountdownRemaining)
 	float CountdownRemaining = 0.f;
@@ -149,8 +159,7 @@ private:
 	UFUNCTION()
 	void OnRep_CountdownRemaining();
 
-	/** Índice en PlayerArray del objetivo — se replica para que los clientes puedan
-	 *  referenciar el mismo personaje sin puntero directo. */
+	/** Índice en PlayerArray del objetivo — replicado para que clientes resuelvan la referencia. */
 	UPROPERTY(ReplicatedUsing = OnRep_TargetPlayerIndex)
 	int32 TargetPlayerIndex = -1;
 
@@ -159,19 +168,48 @@ private:
 
 	// ── Estado solo servidor ──────────────────────────────────────────────────
 
-	TWeakObjectPtr<ATortugaCharacter>  TargetCharacter;
-	TWeakObjectPtr<APlayerController>  TargetController;
+	TWeakObjectPtr<ATortugaCharacter> TargetCharacter;
+	TWeakObjectPtr<APlayerController> TargetController;
 
-	bool bAttackResolved = false;
+	float TimeOutsideShadow = 0.f;
+	float NextRoofCheckTime = 0.f;
+	bool  bAttackResolved   = false;
 
-	// ── Lógica interna ────────────────────────────────────────────────────────
+	// ── Strike state machine ───────────────────────────────────────────────────
+
+	bool  bIsStriking       = false;
+	bool  bIsRetreating     = false;
+	bool  bStrikeGoingDown  = true;
+	float StrikeAlpha       = 0.f;
+	float StrikeStartZ      = 0.f;
+	float StrikeTargetZ     = 0.f;
+	float RetreatStartZ     = 0.f;
+	float RetreatEndZ       = 0.f;
+
+	// ── Lógica ────────────────────────────────────────────────────────────────
 
 	void TickFollowTarget(float DeltaTime);
 	void TickCountdown(float DeltaTime);
+	void TickEscapeCheck(float DeltaTime);
+	void TickRoofCheck(float DeltaTime);
+	void TickStrike(float DeltaTime);
+	void TickRetreat(float DeltaTime);
+
 	void ResolveAttack();
+	void AbortAndRetreat();
+	bool HasRoofBetweenSeagullAndTarget() const;
+
 	void UpdateDecalSize();
 
-	/** Envía el resultado (kill/miss/bighead) a todos los clientes para feedback visual. */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastResolveResult(bool bKilled, bool bBigHeadAbsorbed, ATortugaCharacter* VictimOrEscapee);
+	void MulticastPlayStrikeEffects(FVector TargetLocation);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayRetreatEffect();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayKillEffect(ATortugaCharacter* Victim);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayBigHeadAbsorbEffect(ATortugaCharacter* Target);
 };

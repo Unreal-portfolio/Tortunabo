@@ -2,7 +2,8 @@
 #include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
-#include "Net/UnrealNetwork.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
 
 ATN_BananaPeel::ATN_BananaPeel()
 {
@@ -38,39 +39,24 @@ void ATN_BananaPeel::BeginPlay()
 	}
 }
 
-void ATN_BananaPeel::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	GetWorldTimerManager().ClearTimer(RespawnTimerHandle);
-	Super::EndPlay(EndPlayReason);
-}
-
-void ATN_BananaPeel::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(ATN_BananaPeel, bActive);
-}
-
 // ── Overlap ────────────────────────────────────────────────────────────────────
 
 void ATN_BananaPeel::OnTriggerBeginOverlap(UPrimitiveComponent* /*OverlappedComp*/, AActor* OtherActor,
 	UPrimitiveComponent* /*OtherComp*/, int32 /*OtherBodyIndex*/,
 	bool /*bFromSweep*/, const FHitResult& /*SweepResult*/)
 {
-	if (!HasAuthority() || !bActive) { return; }
+	if (!HasAuthority() || bTriggered) { return; }
+	bTriggered = true;
 
 	ATortugaCharacter* Character = Cast<ATortugaCharacter>(OtherActor);
-	if (!Character) { return; }
+	if (!Character) { bTriggered = false; return; }
 
-	// Desactivar para que no se active dos veces mientras el personaje todavía overlappea
-	bActive = false;
-	ApplyActiveState();
-
-	// ── Deslizamiento: mantener XY del momentum actual + componente downward ──
+	// ── Deslizamiento: mantener XY del momentum actual + componente upward ──
 	FVector Velocity = Character->GetVelocity();
 	Velocity.Z = 0.f;
 	if (Velocity.SizeSquared() < 1.f)
 	{
-		// Parado: empujar en la dirección opuesta al forward del personaje (resbalón aleatorio)
+		// Parado: empujar en la dirección opuesta al forward (resbalón)
 		Velocity = -Character->GetActorForwardVector();
 	}
 	Velocity.Normalize();
@@ -80,37 +66,23 @@ void ATN_BananaPeel::OnTriggerBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 
 	Character->ApplyKnockdown(KnockdownDuration, SlideImpulse);
 
-	// Feedback visual en todos los clientes
-	MulticastOnTriggered();
+	// VFX/audio en todos los clientes antes de destruir
+	MulticastOnTriggered(GetActorLocation());
 
-	// Respawn
-	if (RespawnSeconds > 0.f)
+	// SetLifeSpan garantiza que el Multicast llegue a los clientes antes de la destrucción
+	SetLifeSpan(0.2f);
+}
+
+// ── Multicast ─────────────────────────────────────────────────────────────────
+
+void ATN_BananaPeel::MulticastOnTriggered_Implementation(FVector Location)
+{
+	if (TriggerVFX)
 	{
-		FTimerDelegate Del = FTimerDelegate::CreateUObject(this, &ATN_BananaPeel::Respawn);
-		GetWorldTimerManager().SetTimer(RespawnTimerHandle, Del, RespawnSeconds, false);
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, TriggerVFX, Location);
 	}
-}
-
-// ── Estado visual ──────────────────────────────────────────────────────────────
-
-void ATN_BananaPeel::ApplyActiveState()
-{
-	SetActorEnableCollision(bActive);
-	if (PeelMesh) { PeelMesh->SetVisibility(bActive); }
-}
-
-void ATN_BananaPeel::OnRep_bActive()
-{
-	ApplyActiveState();
-}
-
-void ATN_BananaPeel::Respawn()
-{
-	bActive = true;
-	ApplyActiveState();
-}
-
-void ATN_BananaPeel::MulticastOnTriggered_Implementation()
-{
-	OnPeelTriggered(this);
+	if (TriggerSound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, TriggerSound, Location);
+	}
 }

@@ -4,9 +4,10 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/DecalComponent.h"
 #include "Net/UnrealNetwork.h"
-#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/GameStateBase.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
 
 ATN_EnemySeagull::ATN_EnemySeagull()
 {
@@ -33,15 +34,14 @@ ATN_EnemySeagull::ATN_EnemySeagull()
 void ATN_EnemySeagull::BeginPlay()
 {
 	Super::BeginPlay();
-
 	CountdownRemaining = AttackTimerSeconds;
-
-	// Solo el servidor hace tick de lógica de juego
+	// Solo el servidor ejecuta la lógica de juego
 	SetActorTickEnabled(HasAuthority());
 }
 
 void ATN_EnemySeagull::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
 	TargetCharacter.Reset();
 	TargetController.Reset();
 	Super::EndPlay(EndPlayReason);
@@ -60,10 +60,10 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 {
 	if (!HasAuthority() || !Target) { return; }
 
-	TargetCharacter = Target;
+	TargetCharacter  = Target;
 	TargetController = Cast<APlayerController>(Target->GetController());
 
-	// Resolver TargetPlayerIndex para replicar a clientes
+	// Resolver índice para que los clientes puedan identificar al objetivo
 	if (AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr)
 	{
 		for (int32 i = 0; i < GS->PlayerArray.Num(); ++i)
@@ -76,51 +76,70 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 		}
 	}
 
-	// Spawnear directamente encima del objetivo
 	const FVector StartLoc = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
 	SetActorLocation(StartLoc);
 
 	CountdownRemaining = AttackTimerSeconds;
 	UpdateDecalSize();
 
-	UE_LOG(LogTemp, Log, TEXT("[EnemySeagull] Spawned on '%s' — countdown %.1fs"),
+	UE_LOG(LogTemp, Log, TEXT("[EnemySeagull] Initialized on '%s' — countdown %.1fs"),
 		*GetNameSafe(Target), AttackTimerSeconds);
 }
 
-// ── Tick ────────────────────────────────────────────────────────────────────────
+float ATN_EnemySeagull::GetCurrentDangerRadius() const
+{
+	if (AttackTimerSeconds <= 0.f) { return MinKillRadius; }
+	const float NormT = FMath::Clamp(CountdownRemaining / AttackTimerSeconds, 0.f, 1.f);
+	return FMath::Lerp(MinKillRadius, MaxDangerRadius, NormT);
+}
+
+// ── Tick principal ─────────────────────────────────────────────────────────────
 
 void ATN_EnemySeagull::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	if (!HasAuthority()) { return; }
 
-	if (!HasAuthority() || bAttackResolved) { return; }
+	// Máquinas de estado tienen prioridad — early-out garantiza que solo una corre
+	if (bIsStriking)
+	{
+		TickStrike(DeltaTime);
+		return;
+	}
+	if (bIsRetreating)
+	{
+		TickRetreat(DeltaTime);
+		return;
+	}
+	if (bAttackResolved) { return; }
 
 	TickFollowTarget(DeltaTime);
+	TickEscapeCheck(DeltaTime);
+	TickRoofCheck(DeltaTime);
 	TickCountdown(DeltaTime);
 }
+
+// ── Sub-ticks del estado de seguimiento ───────────────────────────────────────
 
 void ATN_EnemySeagull::TickFollowTarget(float DeltaTime)
 {
 	ATortugaCharacter* Target = TargetCharacter.Get();
 	if (!Target) { return; }
 
-	// Destino: encima del objetivo en Z
-	const FVector TargetLoc = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
+	const FVector TargetLoc  = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
 	const FVector CurrentLoc = GetActorLocation();
-	const FVector Dir = (TargetLoc - CurrentLoc).GetSafeNormal();
-	const float StepDist = FollowSpeed * DeltaTime;
-
-	// Mover suavemente — no teletransportar si ya está cerca
-	const float DistToTarget = FVector::Dist(CurrentLoc, TargetLoc);
-	if (DistToTarget > 1.f)
+	const float   Dist       = FVector::Dist(CurrentLoc, TargetLoc);
+	if (Dist > 1.f)
 	{
-		const FVector NewLoc = CurrentLoc + Dir * FMath::Min(StepDist, DistToTarget);
-		SetActorLocation(NewLoc);
+		const FVector Dir = (TargetLoc - CurrentLoc).GetSafeNormal();
+		SetActorLocation(CurrentLoc + Dir * FMath::Min(FollowSpeed * DeltaTime, Dist));
 	}
 }
 
 void ATN_EnemySeagull::TickCountdown(float DeltaTime)
 {
+	if (bAttackResolved) { return; }
+
 	CountdownRemaining -= DeltaTime;
 	UpdateDecalSize();
 
@@ -131,6 +150,129 @@ void ATN_EnemySeagull::TickCountdown(float DeltaTime)
 	}
 }
 
+void ATN_EnemySeagull::TickEscapeCheck(float DeltaTime)
+{
+	if (bAttackResolved) { return; }
+
+	// TargetPlayerIndex == -1 → InitializeWithTarget aún no fue llamado
+	if (TargetPlayerIndex == -1) { return; }
+
+	ATortugaCharacter* Target = TargetCharacter.Get();
+	if (!Target)
+	{
+		AbortAndRetreat();
+		return;
+	}
+
+	const float DistXY = FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
+	if (DistXY > GetCurrentDangerRadius())
+	{
+		TimeOutsideShadow += DeltaTime;
+		if (TimeOutsideShadow >= EscapeSeconds)
+		{
+			AbortAndRetreat();
+		}
+	}
+	else
+	{
+		TimeOutsideShadow = 0.f;
+	}
+}
+
+void ATN_EnemySeagull::TickRoofCheck(float DeltaTime)
+{
+	if (bAttackResolved) { return; }
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now < NextRoofCheckTime) { return; }
+	NextRoofCheckTime = Now + RoofCheckInterval;
+
+	if (HasRoofBetweenSeagullAndTarget())
+	{
+		AbortAndRetreat();
+	}
+}
+
+// ── Máquina de estado: picotazo físico ────────────────────────────────────────
+
+void ATN_EnemySeagull::TickStrike(float DeltaTime)
+{
+	if (bStrikeGoingDown)
+	{
+		StrikeAlpha += DeltaTime / FMath::Max(StrikeDuration, KINDA_SMALL_NUMBER);
+
+		const float ClampedAlpha = FMath::Min(StrikeAlpha, 1.f);
+		const float NewZ = FMath::Lerp(StrikeStartZ, StrikeTargetZ, ClampedAlpha);
+		SetActorLocation(FVector(GetActorLocation().X, GetActorLocation().Y, NewZ));
+
+		if (StrikeAlpha >= 1.f)
+		{
+			// Punto de impacto alcanzado — resolver daño
+			ATortugaCharacter* Target = TargetCharacter.Get();
+			MulticastPlayStrikeEffects(GetActorLocation());
+
+			if (Target)
+			{
+				if (Target->HasUmbrellaProtection())
+				{
+					// Sombrilla bloquea el golpe; la gaviota retrocede sin matar
+					MulticastPlayRetreatEffect();
+				}
+				else if (Target->HasBigHeadActive())
+				{
+					Target->RemoveBigHeadEffect();
+					MulticastPlayBigHeadAbsorbEffect(Target);
+				}
+				else
+				{
+					MulticastPlayKillEffect(Target);
+					Target->RequestKill(this);
+				}
+			}
+
+			// Iniciar subida de vuelta
+			bStrikeGoingDown = false;
+			StrikeAlpha      = 0.f;
+			RetreatStartZ    = StrikeTargetZ;
+			RetreatEndZ      = StrikeStartZ + RetreatHeight;
+		}
+	}
+	else
+	{
+		// Fase de subida tras el picotazo
+		StrikeAlpha += DeltaTime / FMath::Max(RiseDuration, KINDA_SMALL_NUMBER);
+
+		const float ClampedAlpha = FMath::Min(StrikeAlpha, 1.f);
+		const float NewZ = FMath::Lerp(RetreatStartZ, RetreatEndZ, ClampedAlpha);
+		SetActorLocation(FVector(GetActorLocation().X, GetActorLocation().Y, NewZ));
+
+		if (StrikeAlpha >= 1.f)
+		{
+			bIsStriking = false;
+			SetLifeSpan(0.2f); // Dar tiempo a que los Multicasts lleguen a clientes
+		}
+	}
+}
+
+// ── Máquina de estado: retirada ───────────────────────────────────────────────
+
+void ATN_EnemySeagull::TickRetreat(float DeltaTime)
+{
+	StrikeAlpha += DeltaTime / FMath::Max(RiseDuration, KINDA_SMALL_NUMBER);
+
+	const float ClampedAlpha = FMath::Min(StrikeAlpha, 1.f);
+	const float NewZ = FMath::Lerp(RetreatStartZ, RetreatEndZ, ClampedAlpha);
+	SetActorLocation(FVector(GetActorLocation().X, GetActorLocation().Y, NewZ));
+
+	if (StrikeAlpha >= 1.f)
+	{
+		bIsRetreating = false;
+		SetLifeSpan(0.2f);
+	}
+}
+
+// ── Lógica de ataque / retirada ───────────────────────────────────────────────
+
 void ATN_EnemySeagull::ResolveAttack()
 {
 	if (bAttackResolved) { return; }
@@ -138,57 +280,70 @@ void ATN_EnemySeagull::ResolveAttack()
 
 	ATortugaCharacter* Target = TargetCharacter.Get();
 
-	// Sin objetivo válido (murió antes) → gaviota simplemente desaparece
 	if (!Target)
 	{
-		Destroy();
+		AbortAndRetreat();
 		return;
 	}
 
+	// Cubierta detectada en el último check periódico → abortar
+	if (HasRoofBetweenSeagullAndTarget())
+	{
+		AbortAndRetreat();
+		return;
+	}
+
+	// Jugador fuera del radio de kill → escapó en el último momento
 	const float DistXY = FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
-	const bool bInKillZone = (DistXY <= MinKillRadius);
-
-	if (bInKillZone)
+	if (DistXY > MinKillRadius)
 	{
-		// ── Sombrilla bloquea el ataque (#29) ──────────────────────────────────
-		if (Target->HasUmbrellaProtection())
-		{
-			UE_LOG(LogTemp, Log, TEXT("[EnemySeagull] Umbrella blocked attack on '%s'"), *GetNameSafe(Target));
-			MulticastResolveResult(false, false, Target);  // Missed visually
-			Destroy();
-			return;
-		}
-
-		// ── Big Head absorbe el golpe (#2) ─────────────────────────────────────
-		if (Target->HasBigHeadActive())
-		{
-			Target->RemoveBigHeadEffect();
-			MulticastResolveResult(false, true, Target);
-			Destroy();
-			return;
-		}
-
-		// ── Matar al jugador ───────────────────────────────────────────────────
-		MulticastResolveResult(true, false, Target);
-		Target->RequestKill(this);
-	}
-	else
-	{
-		// Escapó — feedback visual
-		MulticastResolveResult(false, false, Target);
+		AbortAndRetreat();
+		return;
 	}
 
-	Destroy();
+	// Iniciar picotazo físico
+	bIsStriking      = true;
+	bStrikeGoingDown = true;
+	StrikeAlpha      = 0.f;
+	StrikeStartZ     = GetActorLocation().Z;
+	StrikeTargetZ    = Target->GetActorLocation().Z;
+}
+
+void ATN_EnemySeagull::AbortAndRetreat()
+{
+	if (bIsRetreating || bIsStriking) { return; }
+
+	bIsRetreating   = true;
+	bAttackResolved = true;
+	StrikeAlpha     = 0.f;
+	RetreatStartZ   = GetActorLocation().Z;
+	RetreatEndZ     = RetreatStartZ + RetreatHeight;
+
+	MulticastPlayRetreatEffect();
+}
+
+bool ATN_EnemySeagull::HasRoofBetweenSeagullAndTarget() const
+{
+	ATortugaCharacter* Target = TargetCharacter.Get();
+	if (!Target) { return false; }
+
+	FHitResult Hit;
+	FCollisionQueryParams Params(TEXT("SeagullRoofCheck"), false);
+	Params.AddIgnoredActor(this);
+	Params.AddIgnoredActor(Target);
+
+	GetWorld()->LineTraceSingleByChannel(
+		Hit,
+		GetActorLocation(),
+		Target->GetActorLocation(),
+		ECC_WorldStatic,
+		Params
+	);
+
+	return Hit.bBlockingHit;
 }
 
 // ── Visual ────────────────────────────────────────────────────────────────────
-
-float ATN_EnemySeagull::GetCurrentDangerRadius() const
-{
-	if (AttackTimerSeconds <= 0.f) { return MinKillRadius; }
-	const float NormT = FMath::Clamp(CountdownRemaining / AttackTimerSeconds, 0.f, 1.f);
-	return FMath::Lerp(MinKillRadius, MaxDangerRadius, NormT);
-}
 
 void ATN_EnemySeagull::UpdateDecalSize()
 {
@@ -197,15 +352,16 @@ void ATN_EnemySeagull::UpdateDecalSize()
 	DangerDecal->DecalSize = FVector(DecalDepth, R, R);
 }
 
+// ── OnRep ─────────────────────────────────────────────────────────────────────
+
 void ATN_EnemySeagull::OnRep_CountdownRemaining()
 {
-	// En clientes: actualizar visual del decal cuando llega el valor replicado
+	// Clientes actualizan el visual del decal cuando llega el valor replicado
 	UpdateDecalSize();
 }
 
 void ATN_EnemySeagull::OnRep_TargetPlayerIndex()
 {
-	// Clientes resuelven la referencia local al personaje objetivo (para eventos BP)
 	if (!GetWorld()) { return; }
 	AGameStateBase* GS = GetWorld()->GetGameState();
 	if (!GS || !GS->PlayerArray.IsValidIndex(TargetPlayerIndex)) { return; }
@@ -216,70 +372,42 @@ void ATN_EnemySeagull::OnRep_TargetPlayerIndex()
 	}
 }
 
-// ── Multicast resultado ───────────────────────────────────────────────────────
+// ── Multicast — efectos visuales/sonoros ──────────────────────────────────────
 
-void ATN_EnemySeagull::MulticastResolveResult_Implementation(bool bKilled, bool bBigHeadAbsorbed,
-	ATortugaCharacter* VictimOrEscapee)
+void ATN_EnemySeagull::MulticastPlayStrikeEffects_Implementation(FVector TargetLocation)
 {
-	if (bBigHeadAbsorbed)
+	if (StrikeVFX)
 	{
-		OnBigHeadAbsorbed(VictimOrEscapee);
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, StrikeVFX, TargetLocation);
 	}
-	else if (bKilled)
+	if (StrikeSound)
 	{
-		OnSeagullKill(VictimOrEscapee);
-	}
-	else
-	{
-		OnSeagullMissed(VictimOrEscapee);
+		UGameplayStatics::SpawnSoundAtLocation(this, StrikeSound, TargetLocation);
 	}
 }
 
-// ── Spawn helper estático ─────────────────────────────────────────────────────
-
-ATN_EnemySeagull* ATN_EnemySeagull::SpawnOnRandomPlayer(const UObject* WorldContextObject,
-	TSubclassOf<ATN_EnemySeagull> SeagullClass)
+void ATN_EnemySeagull::MulticastPlayRetreatEffect_Implementation()
 {
-	UWorld* World = WorldContextObject ? WorldContextObject->GetWorld() : nullptr;
-	if (!World || !SeagullClass) { return nullptr; }
-
-	// Recopilar todos los personajes vivos
-	TArray<ATortugaCharacter*> AlivePlayers;
-	for (TActorIterator<ATortugaCharacter> It(World); It; ++It)
+	if (RetreatSound)
 	{
-		ATortugaCharacter* C = *It;
-		if (!C || !C->GetController()) { continue; }
-
-		if (ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>())
-		{
-			if (PS->bIsAlive && !PS->bIsEliminated)
-			{
-				AlivePlayers.Add(C);
-			}
-		}
+		UGameplayStatics::SpawnSoundAtLocation(this, RetreatSound, GetActorLocation());
 	}
+}
 
-	if (AlivePlayers.Num() == 0)
+void ATN_EnemySeagull::MulticastPlayKillEffect_Implementation(ATortugaCharacter* Victim)
+{
+	if (!Victim) { return; }
+	if (KillSound)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[EnemySeagull] SpawnOnRandomPlayer: no alive players found."));
-		return nullptr;
+		UGameplayStatics::SpawnSoundAtLocation(this, KillSound, Victim->GetActorLocation());
 	}
+}
 
-	// Seleccionar aleatoriamente
-	const int32 Idx = FMath::RandRange(0, AlivePlayers.Num() - 1);
-	ATortugaCharacter* Target = AlivePlayers[Idx];
-
-	const FVector SpawnLoc = Target->GetActorLocation() + FVector(0.f, 0.f, 400.f);
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	ATN_EnemySeagull* Seagull = World->SpawnActor<ATN_EnemySeagull>(SeagullClass, SpawnLoc,
-		FRotator::ZeroRotator, Params);
-
-	if (Seagull)
+void ATN_EnemySeagull::MulticastPlayBigHeadAbsorbEffect_Implementation(ATortugaCharacter* Target)
+{
+	if (!Target) { return; }
+	if (BigHeadAbsorbSound)
 	{
-		Seagull->InitializeWithTarget(Target);
+		UGameplayStatics::SpawnSoundAtLocation(this, BigHeadAbsorbSound, Target->GetActorLocation());
 	}
-
-	return Seagull;
 }

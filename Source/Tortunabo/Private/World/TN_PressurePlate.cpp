@@ -7,6 +7,7 @@
 #include "Net/UnrealNetwork.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
+#include "Kismet/GameplayStatics.h"
 
 // ────────────────────────────────────────────────────────────────────────────
 // ATN_PressurePlate
@@ -117,8 +118,11 @@ void ATN_PressurePlate::OnRep_bOccupied()
 
 void ATN_PressurePlate::MulticastOnOccupancyChanged_Implementation(bool bNewOccupied)
 {
-	if (bNewOccupied) { OnPlatePressed(); }
-	else              { OnPlateReleased(); }
+	USoundBase* Sound = bNewOccupied ? PressSound : ReleaseSound;
+	if (Sound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, Sound, GetActorLocation());
+	}
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -246,6 +250,9 @@ void ATN_PressurePlateGroupManager::ApplyTriggerActions()
 
 void ATN_PressurePlateGroupManager::MulticastNotifyConditionChange_Implementation(bool bMet)
 {
-	if (bMet) { OnConditionMet(); }
-	else      { OnConditionLost(); }
+	USoundBase* Sound = bMet ? ConditionMetSound : ConditionLostSound;
+	if (Sound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, Sound, GetActorLocation());
+	}
 }

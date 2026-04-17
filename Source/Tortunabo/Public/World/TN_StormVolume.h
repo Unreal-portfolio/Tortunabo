@@ -101,7 +101,7 @@ protected:
 	 * Velocidad de avance del borde frontal (UU/s).
 	 * La pared trasera permanece fija; sólo avanza la frontal.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Storm|Growth", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm|Growth", meta = (ClampMin = "0.0"))
 	float GrowthSpeed = 150.0f;
 
 	/**

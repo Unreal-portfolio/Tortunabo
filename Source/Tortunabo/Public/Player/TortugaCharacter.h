@@ -18,6 +18,7 @@ class USceneComponent;
 class UAudioComponent;
 class USoundBase;
 class UStaticMeshComponent;
+class UPostProcessComponent;
 class UTN_EmoteWheelDataAsset;
 struct FTN_EmoteWheelEntry;
 
@@ -66,6 +67,13 @@ public:
 
 	/** Activa/desactiva la protección de sombrilla. Solo llamar desde el servidor. */
 	void SetUmbrellaProtection(bool bActive) { bHasUmbrellaProtection = bActive; }
+
+	/**
+	 * Aplica el efecto de tinta de calamar (#13) en la máquina local del jugador afectado.
+	 * Muestra un overlay de material sobre la cámara durante Duration segundos.
+	 * Solo surte efecto en la máquina que controla localmente este personaje (IsLocallyControlled).
+	 */
+	void ApplyInkEffect(float Duration);
 
 protected:
 	virtual void BeginPlay() override;
@@ -715,6 +723,9 @@ protected:
 
 	FTimerHandle BigHeadTimerHandle;
 	FTimerHandle MareoTimerHandle;
+	FTimerHandle InkEffectTimerHandle;
+
+	void ClearInkEffect();
 
 	/** Llamado cuando expira el timer de mareo — restaura el speed cap de stamina.
 	 *  Usa CreateUObject (no lambda) para que ClearAllTimersForObject lo cancele en EndPlay. */
@@ -744,6 +755,19 @@ protected:
 	 */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Umbrella")
 	bool bHasUmbrellaProtection = false;
+
+	// ── Tinta de calamar (#13) ────────────────────────────────────────────────
+
+	/**
+	 * Material de overlay de tinta. Asignar un material de post-process (Domain=PostProcess)
+	 * en BP_TortugaCharacter. Solo se muestra en la máquina local del jugador afectado.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ink")
+	TObjectPtr<UMaterialInterface> InkOverlayMaterial;
+
+	/** Post-process local que aplica el overlay de tinta. bEnabled=false en reposo. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ink")
+	TObjectPtr<UPostProcessComponent> InkPostProcess;
 
 	// ── Head Look replication ─────────────────────────────────────────────────
 	/** Yaw (°) de la cabeza relativo al cuerpo. Positivo = mira a la derecha. Replicado a clientes remotos. */

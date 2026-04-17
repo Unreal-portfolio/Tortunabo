@@ -26,6 +26,7 @@ public:
 	ATN_SlowZoneVolume();
 
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 
 protected:
 	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */

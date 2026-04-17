@@ -1,8 +1,10 @@
 #include "World/TN_CrabActor.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
-#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/SphereComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
 ATN_CrabActor::ATN_CrabActor()
@@ -12,7 +14,7 @@ ATN_CrabActor::ATN_CrabActor()
 	bAlwaysRelevant = true;
 	SetReplicateMovement(true);
 
-	CrabMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CrabMesh"));
+	CrabMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("CrabMesh"));
 	SetRootComponent(CrabMesh);
 	CrabMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	CrabMesh->SetIsReplicated(false);
@@ -215,7 +217,40 @@ void ATN_CrabActor::SetCrabState(ETNCrabState NewState)
 
 void ATN_CrabActor::OnRep_CrabState()
 {
-	OnCrabStateChanged(CrabState);
+	// Reproducir montage y sonido directamente — sin Blueprint
+	UAnimInstance* AnimInst = CrabMesh ? CrabMesh->GetAnimInstance() : nullptr;
+
+	UAnimMontage* Montage = nullptr;
+	USoundBase*   Sound   = nullptr;
+
+	switch (CrabState)
+	{
+	case ETNCrabState::Patrol:
+		Montage = PatrolMontage;
+		Sound   = PatrolSound;
+		break;
+	case ETNCrabState::Chase:
+		Montage = ChaseMontage;
+		Sound   = ChaseSound;
+		break;
+	case ETNCrabState::Attack:
+		Montage = AttackMontage;
+		Sound   = AttackSound;
+		break;
+	case ETNCrabState::Cooldown:
+		Montage = CooldownMontage;
+		Sound   = CooldownSound;
+		break;
+	}
+
+	if (AnimInst && Montage)
+	{
+		AnimInst->Montage_Play(Montage);
+	}
+	if (Sound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, Sound, GetActorLocation());
+	}
 }
 
 // ── Overlap de detección ──────────────────────────────────────────────────────

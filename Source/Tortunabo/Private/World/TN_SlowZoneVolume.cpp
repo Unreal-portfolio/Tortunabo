@@ -6,6 +6,8 @@
 
 ATN_SlowZoneVolume::ATN_SlowZoneVolume()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
 	SetRootComponent(TriggerBox);
 
@@ -21,6 +23,31 @@ void ATN_SlowZoneVolume::BeginPlay()
 
 	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxBeginOverlap);
 	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxEndOverlap);
+}
+
+void ATN_SlowZoneVolume::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// Durante el vuelo, MaxWalkSpeed no se aplica — clampear velocidad horizontal manualmente.
+	// Lógica local en todas las máquinas (igual que OnBoxBeginOverlap).
+	for (const TWeakObjectPtr<ATortugaCharacter>& WeakChar : CharactersInZone)
+	{
+		ATortugaCharacter* Char = WeakChar.Get();
+		if (!Char) { continue; }
+
+		UCharacterMovementComponent* CMC = Char->GetCharacterMovement();
+		if (!CMC || !CMC->IsFalling()) { continue; }
+
+		FVector HorizVel = FVector(CMC->Velocity.X, CMC->Velocity.Y, 0.f);
+		const float HorizSpeed = HorizVel.Size();
+		if (HorizSpeed > MaxSlowSpeed)
+		{
+			HorizVel = HorizVel.GetSafeNormal() * MaxSlowSpeed;
+			CMC->Velocity.X = HorizVel.X;
+			CMC->Velocity.Y = HorizVel.Y;
+		}
+	}
 }
 
 void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,

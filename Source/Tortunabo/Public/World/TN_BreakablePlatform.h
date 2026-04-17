@@ -6,6 +6,8 @@
 
 class UStaticMeshComponent;
 class UBoxComponent;
+class USoundBase;
+class UNiagaraSystem;
 class APawn;
 
 /**
@@ -15,8 +17,8 @@ class APawn;
  * Clientes:  OnRep_bBroken oculta la plataforma y desactiva la colisión.
  * Respawn:   si RespawnTime > 0, la plataforma reaparece automáticamente.
  *
- * Uso: crear BP hijo, asignar StaticMesh, ajustar TimeToBreak y RespawnTime.
- * Implementar OnPlatformShake y OnPlatformBreak en el BP para VFX/audio.
+ * Todos los efectos de audio/VFX se configuran aquí como UPROPERTY — sin Blueprints.
+ * Uso: crear BP hijo, asignar StaticMesh y los assets de audio/VFX.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_BreakablePlatform : public AActor
@@ -57,17 +59,29 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "0.0"))
 	float RespawnTime = 6.0f;
 
-	/** Llamado en todas las máquinas cuando el timer de rotura está a punto de expirar. Override en BP para VFX de vibración. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Platform")
-	void OnPlatformShake();
+	// ── Audio ─────────────────────────────────────────────────────────────────
 
-	/** Llamado en todas las máquinas cuando la plataforma se rompe. Override en BP para VFX/audio. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Platform")
-	void OnPlatformBreak();
+	/** Sonido de vibración (jugadores encima, a mitad del timer). */
+	UPROPERTY(EditDefaultsOnly, Category = "Platform|Audio")
+	TObjectPtr<USoundBase> ShakeSound;
 
-	/** Llamado en todas las máquinas cuando la plataforma reaparece. Override en BP para VFX/audio. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Platform")
-	void OnPlatformRespawn();
+	/** Sonido al romperse. */
+	UPROPERTY(EditDefaultsOnly, Category = "Platform|Audio")
+	TObjectPtr<USoundBase> BreakSound;
+
+	/** Sonido al reaparecer. */
+	UPROPERTY(EditDefaultsOnly, Category = "Platform|Audio")
+	TObjectPtr<USoundBase> RespawnSound;
+
+	// ── VFX ───────────────────────────────────────────────────────────────────
+
+	/** VFX de vibración. */
+	UPROPERTY(EditDefaultsOnly, Category = "Platform|VFX")
+	TObjectPtr<UNiagaraSystem> ShakeVFX;
+
+	/** VFX de rotura. */
+	UPROPERTY(EditDefaultsOnly, Category = "Platform|VFX")
+	TObjectPtr<UNiagaraSystem> BreakVFX;
 
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_bBroken)
@@ -89,11 +103,14 @@ private:
 	void BreakPlatform();
 	void RespawnPlatform();
 
-	/** Multicast para VFX de vibración (cosmético, no reliable). */
-	UFUNCTION(NetMulticast, Unreliable)
+	/**
+	 * Vibración antes del colapso — Reliable porque es gameplay-crítico:
+	 * señaliza visualmente al jugador que la plataforma está a punto de ceder.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
 	void MulticastShake();
 
-	/** Pawns actualmente encima de la plataforma — TSet avoids desyncing if a pawn is destroyed on it. */
+	/** Pawns actualmente encima de la plataforma. */
 	TSet<TWeakObjectPtr<APawn>> PawnsOnPlatform;
 
 	FTimerHandle ShakeTimerHandle;

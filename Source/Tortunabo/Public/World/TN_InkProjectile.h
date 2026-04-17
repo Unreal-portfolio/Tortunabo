@@ -11,8 +11,8 @@ class ATortugaCharacter;
 /**
  * Proyectil de tinta de calamar — ítem lanzable de un uso (#13).
  *
- * Al impactar a un jugador: emite MulticastApplyInkEffect → el cliente
- * del jugador afectado muestra OnInkEffect(Duration) (mancha negra en pantalla).
+ * Al impactar a un jugador: emite MulticastApplyInkEffect → llama a
+ * ATortugaCharacter::ApplyInkEffect(Duration) en la máquina local del afectado.
  *
  * Movimiento: el servidor mueve el actor en Tick (SetActorLocation) con LaunchVelocity.
  * SetReplicateMovement(true) propaga la posición a los clientes.
@@ -77,15 +77,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InkProjectile",
 		meta = (ClampMin = "0.5"))
 	float LifetimeSeconds = 4.0f;
-
-	// ── Evento Blueprint ──────────────────────────────────────────────────────
-
-	/**
-	 * Llamado únicamente en la máquina propietaria del jugador afectado.
-	 * Implementar en BP: mostrar overlay negro en pantalla durante Duration segundos.
-	 */
-	UFUNCTION(BlueprintImplementableEvent, Category = "InkProjectile")
-	void OnInkEffect(float Duration);
 
 private:
 	// ── Movimiento ────────────────────────────────────────────────────────────

@@ -14,6 +14,10 @@ ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 	bReplicates = true;
 	SetReplicatingMovement(true);
 
+	// Actualizaciones frecuentes para un objeto físico preciso en todos los clientes.
+	SetNetUpdateFrequency(50.f);
+	SetMinNetUpdateFrequency(10.f);
+
 	// Empieza dormido — 0 bytes hasta que algo lo golpee.
 	NetDormancy = DORM_DormantAll;
 }
@@ -30,6 +34,8 @@ void ATN_PhysicsObjectActor::BeginPlay()
 
 	if (HasAuthority())
 	{
+		// Despertarse inmediatamente para que los clientes reciban la posición inicial.
+		FlushNetDormancy();
 		Mesh->OnComponentHit.AddDynamic(this, &ATN_PhysicsObjectActor::OnMeshHit);
 	}
 	else

@@ -8,6 +8,7 @@
 #include "InputMappingContext.h"
 #include "InputAction.h"
 #include "GameFramework/PlayerController.h"
+#include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "World/TN_InteractableBase.h"
@@ -113,6 +114,14 @@ ATortugaCharacter::ATortugaCharacter()
 	HelmetMeshComp->SetHiddenInGame(true);
 
 	// Emote sounds: assign in BP Class Defaults. Array vacío por defecto.
+
+	// Overlay de tinta: PostProcess local, desactivado por defecto.
+	// bUnbound=true → afecta toda la pantalla del cliente local.
+	// Se activa solo en IsLocallyControlled() — los demás clientes nunca lo ven.
+	InkPostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("InkPostProcess"));
+	InkPostProcess->SetupAttachment(RootComponent);
+	InkPostProcess->bEnabled = false;
+	InkPostProcess->bUnbound = true;
 
 	// Make capsule AND mesh invisible to camera traces → the spring arm won't collide
 	// with other players. Each player's own pawn is already auto-ignored.
@@ -800,6 +809,28 @@ void ATortugaCharacter::ClearMareoSpeedCap()
 	{
 		SC->ClearSpeedCap();
 	}
+}
+
+// ── Tinta de calamar (#13) ─────────────────────────────────────────────────────
+
+void ATortugaCharacter::ApplyInkEffect(float Duration)
+{
+	if (!IsLocallyControlled() || !InkOverlayMaterial || !InkPostProcess) { return; }
+
+	// Registrar el material en el PostProcess local y activarlo.
+	// AddOrUpdateBlendable garantiza que no se acumulan entradas duplicadas
+	// si ApplyInkEffect se llama varias veces antes de que expire el timer.
+	InkPostProcess->AddOrUpdateBlendable(InkOverlayMaterial, 1.f);
+	InkPostProcess->bEnabled = true;
+
+	GetWorldTimerManager().ClearTimer(InkEffectTimerHandle);
+	FTimerDelegate Del = FTimerDelegate::CreateUObject(this, &ATortugaCharacter::ClearInkEffect);
+	GetWorldTimerManager().SetTimer(InkEffectTimerHandle, Del, Duration, false);
+}
+
+void ATortugaCharacter::ClearInkEffect()
+{
+	if (InkPostProcess) { InkPostProcess->bEnabled = false; }
 }
 
 void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

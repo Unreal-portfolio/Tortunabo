@@ -7,6 +7,7 @@
 
 class UStaticMeshComponent;
 class UBoxComponent;
+class USoundBase;
 class ATortugaCharacter;
 
 /**
@@ -55,13 +56,13 @@ protected:
 		meta = (ClampMin = "0.0"))
 	float HoldDurationRequired = 0.f;  // 0 = activación inmediata
 
-	/** Llamado en TODAS las máquinas cuando la placa es pisada. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "PressurePlate")
-	void OnPlatePressed();
+	/** Sonido al pisar la placa. */
+	UPROPERTY(EditDefaultsOnly, Category = "PressurePlate|Audio")
+	TObjectPtr<USoundBase> PressSound;
 
-	/** Llamado en TODAS las máquinas cuando la placa se libera. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "PressurePlate")
-	void OnPlateReleased();
+	/** Sonido al liberar la placa. */
+	UPROPERTY(EditDefaultsOnly, Category = "PressurePlate|Audio")
+	TObjectPtr<USoundBase> ReleaseSound;
 
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_bOccupied)
@@ -129,11 +130,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PlateGroup")
 	bool bOneShot = true;
 
-	UFUNCTION(BlueprintImplementableEvent, Category = "PlateGroup")
-	void OnConditionMet();
+	/** Sonido al cumplirse la condición de todas las placas. */
+	UPROPERTY(EditDefaultsOnly, Category = "PlateGroup|Audio")
+	TObjectPtr<USoundBase> ConditionMetSound;
 
-	UFUNCTION(BlueprintImplementableEvent, Category = "PlateGroup")
-	void OnConditionLost();
+	/** Sonido al perderse la condición. */
+	UPROPERTY(EditDefaultsOnly, Category = "PlateGroup|Audio")
+	TObjectPtr<USoundBase> ConditionLostSound;
 
 private:
 	bool bTriggered    = false;

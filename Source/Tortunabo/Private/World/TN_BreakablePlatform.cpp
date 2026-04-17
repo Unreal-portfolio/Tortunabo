@@ -4,6 +4,8 @@
 #include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
 
 ATN_BreakablePlatform::ATN_BreakablePlatform()
 {
@@ -47,7 +49,7 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 	APawn* Pawn = Cast<APawn>(OtherActor);
 	if (!Pawn) { return; }
 
-	PawnsOnPlatform.Remove(nullptr);  // Clean stale refs
+	PawnsOnPlatform.Remove(nullptr);
 	PawnsOnPlatform.Add(Pawn);
 
 	if (PawnsOnPlatform.Num() >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
@@ -72,7 +74,7 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	if (!Pawn) { return; }
 
 	PawnsOnPlatform.Remove(Pawn);
-	PawnsOnPlatform.Remove(nullptr);  // Clean stale refs
+	PawnsOnPlatform.Remove(nullptr);
 
 	if (PawnsOnPlatform.Num() < PlayerThreshold)
 	{
@@ -88,8 +90,16 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 void ATN_BreakablePlatform::BreakPlatform()
 {
 	bBroken = true;
-	ApplyBrokenState();         // Servidor aplica inmediatamente
-	OnPlatformBreak();          // VFX en servidor / listen-server
+	ApplyBrokenState();
+
+	if (BreakSound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, BreakSound, GetActorLocation());
+	}
+	if (BreakVFX)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, BreakVFX, GetActorLocation());
+	}
 
 	if (RespawnTime > 0.f)
 	{
@@ -108,7 +118,10 @@ void ATN_BreakablePlatform::RespawnPlatform()
 	PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	StandTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
-	OnPlatformRespawn();
+	if (RespawnSound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, RespawnSound, GetActorLocation());
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,14 +133,24 @@ void ATN_BreakablePlatform::OnRep_bBroken()
 	if (bBroken)
 	{
 		ApplyBrokenState();
-		OnPlatformBreak();
+		if (BreakSound)
+		{
+			UGameplayStatics::SpawnSoundAtLocation(this, BreakSound, GetActorLocation());
+		}
+		if (BreakVFX)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, BreakVFX, GetActorLocation());
+		}
 	}
 	else
 	{
 		PlatformMesh->SetVisibility(true);
 		PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		StandTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-		OnPlatformRespawn();
+		if (RespawnSound)
+		{
+			UGameplayStatics::SpawnSoundAtLocation(this, RespawnSound, GetActorLocation());
+		}
 	}
 }
 
@@ -139,16 +162,23 @@ void ATN_BreakablePlatform::ApplyBrokenState()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VFX de vibración (multicast cosmético)
+// Vibración (Reliable — es señal de gameplay, no cosmético puro)
 // ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_BreakablePlatform::MulticastShake_Implementation()
 {
-	OnPlatformShake();
+	if (ShakeSound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, ShakeSound, GetActorLocation());
+	}
+	if (ShakeVFX)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ShakeVFX, GetActorLocation());
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registrar overlaps en BeginPlay (no en constructor — componentes aún no listos)
+// Registrar overlaps en BeginPlay
 // ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_BreakablePlatform::BeginPlay()

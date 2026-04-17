@@ -6,6 +6,8 @@
 
 class USphereComponent;
 class UStaticMeshComponent;
+class USoundBase;
+class UNiagaraSystem;
 class ATortugaCharacter;
 
 /**
@@ -78,15 +80,23 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_IsPlacedTrap, BlueprintReadOnly, Category = "Conch")
 	bool bIsPlacedTrap = false;
 
-	// ── Eventos Blueprint ─────────────────────────────────────────────────────
+	// ── Audio / VFX ───────────────────────────────────────────────────────────
 
-	/** Llamado en TODAS las máquinas cuando la trampa inmoviliza a un jugador. Implementar VFX/audio en BP. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Conch")
-	void OnTrapped(APawn* Victim);
+	/** Sonido al colocar la trampa. */
+	UPROPERTY(EditDefaultsOnly, Category = "Conch|Audio")
+	TObjectPtr<USoundBase> PlaceSound;
 
-	/** Llamado en TODAS las máquinas cuando la concha es colocada como trampa. Implementar VFX en BP. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Conch")
-	void OnTrapActivated();
+	/** Sonido al atrapar a un jugador. */
+	UPROPERTY(EditDefaultsOnly, Category = "Conch|Audio")
+	TObjectPtr<USoundBase> TrapSound;
+
+	/** VFX al colocar la trampa. */
+	UPROPERTY(EditDefaultsOnly, Category = "Conch|VFX")
+	TObjectPtr<UNiagaraSystem> PlaceVFX;
+
+	/** VFX al atrapar a un jugador. */
+	UPROPERTY(EditDefaultsOnly, Category = "Conch|VFX")
+	TObjectPtr<UNiagaraSystem> TrapVFX;
 
 private:
 	// ── Overlap ───────────────────────────────────────────────────────────────
@@ -109,6 +119,9 @@ private:
 
 	/** Restaura el movimiento del jugador tras TrapDurationSeconds. */
 	void RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakCharacter);
+
+	/** Reproduce sonido y VFX de colocación de trampa en la máquina local. */
+	void PlayPlaceEffects();
 
 	FTimerHandle TrapTimerHandle;
 
