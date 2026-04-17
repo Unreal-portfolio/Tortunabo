@@ -69,10 +69,14 @@ protected:
 		meta = (ClampMin = "20.0"))
 	float WheelCapsuleRadius = 90.f;
 
-	/** Mitad de altura de la cápsula de rueda (cm). Controla el largo de la huella. */
+	/**
+	 * Mitad del ancho de la rueda (cm). Con la nueva orientación (eje = axle Y),
+	 * este valor controla el grosor del cilindro, no el largo de la huella.
+	 * Default 55 = rueda de 110 cm de ancho — ajustar al mesh en el BP hijo.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quad",
 		meta = (ClampMin = "20.0"))
-	float WheelCapsuleHalfHeight = 150.f;
+	float WheelCapsuleHalfHeight = 55.f;
 
 private:
 	FVector EndLocation;

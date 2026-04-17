@@ -5,6 +5,7 @@
 #include "TN_QuicksandVolume.generated.h"
 
 class UBoxComponent;
+class UStaticMeshComponent;
 class ATortugaCharacter;
 
 /**
@@ -34,6 +35,13 @@ public:
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Quicksand")
 	TObjectPtr<UBoxComponent> TriggerBox;
+
+	/**
+	 * Mesh visual de la arena. Sin colisión bloqueante — el jugador entra al volumen.
+	 * Asignar en BP_QuicksandVolume un plane/quad mesh de arena.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Quicksand")
+	TObjectPtr<UStaticMeshComponent> SandMesh;
 
 	/** Velocidad máxima dentro de la arena (cm/s). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quicksand",

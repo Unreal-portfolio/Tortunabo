@@ -26,7 +26,9 @@ ATN_QuadActor::ATN_QuadActor()
 	WheelLeft = CreateDefaultSubobject<UCapsuleComponent>(TEXT("WheelLeft"));
 	WheelLeft->SetupAttachment(QuadMesh);
 	// Rotar 90° para que la cápsula quede horizontal (orientada en la dirección de avance)
-	WheelLeft->SetRelativeRotation(FRotator(90.f, 0.f, 0.f));
+	// Roll=90 orienta el eje de la cápsula a lo largo del eje Y (axle del quad),
+	// dando forma de disco/cilindro visto desde el frente.
+	WheelLeft->SetRelativeRotation(FRotator(0.f, 0.f, 90.f));
 	WheelLeft->SetRelativeLocation(FVector(0.f, -WheelLateralOffset, 0.f));
 	WheelLeft->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	WheelLeft->SetCollisionResponseToAllChannels(ECR_Ignore);
@@ -35,7 +37,7 @@ ATN_QuadActor::ATN_QuadActor()
 	// ── Rueda derecha ────────────────────────────────────────────────────────────
 	WheelRight = CreateDefaultSubobject<UCapsuleComponent>(TEXT("WheelRight"));
 	WheelRight->SetupAttachment(QuadMesh);
-	WheelRight->SetRelativeRotation(FRotator(90.f, 0.f, 0.f));
+	WheelRight->SetRelativeRotation(FRotator(0.f, 0.f, 90.f));
 	WheelRight->SetRelativeLocation(FVector(0.f, WheelLateralOffset, 0.f));
 	WheelRight->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	WheelRight->SetCollisionResponseToAllChannels(ECR_Ignore);

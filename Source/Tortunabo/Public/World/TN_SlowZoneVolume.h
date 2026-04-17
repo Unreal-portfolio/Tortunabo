@@ -39,20 +39,24 @@ protected:
 	float MaxSlowSpeed = 300.f;
 
 	/**
-	 * Si true, reduce la gravedad del jugador mientras está en la zona.
-	 * Produce efecto "vuelo lento" / flotación — limita el movimiento en Z.
-	 * Configurable desde el Blueprint hijo.
+	 * Efecto "sirope": limita la velocidad vertical en ambas direcciones.
+	 * Al subir: velocidad Z máxima = MaxUpwardVelocity (salto rasante).
+	 * Al bajar: velocidad Z mínima = -MaxFallVelocity (descenso lento).
+	 * Aplica siempre (no requiere flag — el comportamiento de zona lenta ES sirope).
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Gravity")
-	bool bSlowFall = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Syrup",
+		meta = (ClampMin = "0.0"))
+	float MaxUpwardVelocity = 120.f;
 
-	/**
-	 * Escala de gravedad aplicada cuando bSlowFall=true.
-	 * 0.0 = sin gravedad, 1.0 = gravedad normal. Default: 0.3 (caída lenta).
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Gravity",
-		meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bSlowFall"))
-	float GravityScaleInZone = 0.3f;
+	/** Velocidad máxima de caída (cm/s, valor positivo). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Syrup",
+		meta = (ClampMin = "50.0"))
+	float MaxFallVelocity = 200.f;
+
+	/** Velocidad de salto dentro de la zona (cm/s). Muy baja para el efecto sirope. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Syrup",
+		meta = (ClampMin = "50.0"))
+	float JumpVelocityInZone = 150.f;
 
 private:
 	UFUNCTION()
@@ -67,8 +71,9 @@ private:
 	/** Personajes actualmente dentro de la zona — para evitar aplicar el cap dos veces. */
 	TSet<TWeakObjectPtr<ATortugaCharacter>> CharactersInZone;
 
-	/** Gravedad original por personaje — para restaurar al salir cuando bSlowFall=true. */
-	TMap<TWeakObjectPtr<ATortugaCharacter>, float> OriginalGravityScales;
+	struct FSyrupState { float OrigGravityScale = 1.f; float OrigJumpZVel = 600.f; };
+	/** Valores CMC originales por personaje — restaurados al salir de la zona. */
+	TMap<TWeakObjectPtr<ATortugaCharacter>, FSyrupState> OriginalCMCState;
 
 	/** Limpia el estado de un personaje que se destruyó dentro de la zona. */
 	UFUNCTION()

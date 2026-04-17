@@ -3,6 +3,7 @@
 #include "Player/TN_StaminaComponent.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 ATN_QuicksandVolume::ATN_QuicksandVolume()
@@ -13,6 +14,11 @@ ATN_QuicksandVolume::ATN_QuicksandVolume()
 
 	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
 	SetRootComponent(TriggerBox);
+
+	SandMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SandMesh"));
+	SandMesh->SetupAttachment(TriggerBox);
+	// Sin colisión con pawns — el TriggerBox maneja el overlap
+	SandMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	TriggerBox->SetBoxExtent(FVector(300.f, 300.f, 100.f));
 	TriggerBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	TriggerBox->SetCollisionResponseToAllChannels(ECR_Ignore);
@@ -66,8 +72,8 @@ void ATN_QuicksandVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 			State.OrigGravityScale = CMC->GravityScale;
 			State.OrigJumpZVel     = CMC->JumpZVelocity;
 
-			CMC->GravityScale  = 3.f;
-			CMC->JumpZVelocity = 50.f; // Prácticamente imposible salir
+			CMC->GravityScale  = 0.4f; // Caída lenta — efecto sirope
+			CMC->JumpZVelocity = 100.f; // Apenas puede saltar
 		}
 	}
 

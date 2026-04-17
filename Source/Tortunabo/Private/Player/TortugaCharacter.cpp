@@ -1300,22 +1300,20 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 	{
 		const FVector SpawnLocation = GetItemSpawnLocation();
 
-		// ── Dirección de lanzamiento con arco parabólico ─────────────────
-		// Aplanar la dirección de la cámara al plano horizontal (pitch=0),
-		// luego tiltar hacia arriba por ThrowUpAngleDeg.
-		// Así, mirar arriba/abajo NO anula el arco — siempre hay parábola.
-		const FVector RawDirection = GetItemForwardDirection();
-		const FVector FlatDirection = FVector(RawDirection.X, RawDirection.Y, 0.f).GetSafeNormal();
-		
-		// Si el jugador mira recto al suelo, fallback al forward del actor
-		const FVector SafeFlatDir = FlatDirection.IsNearlyZero() ? GetActorForwardVector().GetSafeNormal2D() : FlatDirection;
-		
-		// Tiltar hacia arriba por el ángulo configurado.
-		// FQuat usa right-hand rule: para que +angle eleve la dirección en UE (Z-up),
-		// el eje debe ser Forward × Up (= Left), no Up × Forward (= Right).
-		const FVector LeftVec = FVector::CrossProduct(SafeFlatDir, FVector::UpVector).GetSafeNormal();
-		const FQuat UpTilt(LeftVec, FMath::DegreesToRadians(ThrowUpAngleDeg));
-		const FVector ArcedDirection = UpTilt.RotateVector(SafeFlatDir).GetSafeNormal();
+		// ── Dirección de lanzamiento: cámara + arco parabólico ────────────
+		// Usar la dirección de cámara directamente (incluye pitch) para que
+		// apuntar arriba/abajo cambie la trayectoria del lanzamiento.
+		// ThrowUpAngleDeg se añade ENCIMA de la dirección de cámara como arco extra.
+		const FVector CamDir     = GetItemForwardDirection(); // incluye pitch del controlador
+		const FVector SafeCamDir = CamDir.IsNearlyZero() ? GetActorForwardVector() : CamDir.GetSafeNormal();
+
+		// Eje de inclinación: perpendicular a la proyección horizontal de la cámara.
+		const FVector HorizProj = FVector(SafeCamDir.X, SafeCamDir.Y, 0.f).GetSafeNormal();
+		const FVector TiltAxis  = HorizProj.IsNearlyZero()
+			? GetActorRightVector().GetSafeNormal()
+			: FVector::CrossProduct(HorizProj, FVector::UpVector).GetSafeNormal();
+		const FQuat   UpTilt(TiltAxis, FMath::DegreesToRadians(ThrowUpAngleDeg));
+		const FVector ArcedDirection = UpTilt.RotateVector(SafeCamDir).GetSafeNormal();
 
 		const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
 
@@ -3614,8 +3612,12 @@ void ATortugaCharacter::TickHeadLook(float DeltaTime)
 		const float RawPitch = FRotator::NormalizeAxis(ControlRot.Pitch);
 		LocalHeadPitch       = FMath::Clamp(-RawPitch, -80.f, 80.f);
 
-		// Aplicar inmediatamente en local (sin lag)
-		ApplyHeadLookToCabeza(LocalHeadRelativeYaw, LocalHeadPitch);
+		// Interpolación local: suaviza snaps cuando el cuerpo rota hacia la cámara.
+		// Velocidad alta (20/s) → no se nota para input directo de cámara,
+		// pero evita el snap de 90° cuando el character body rota.
+		SmoothedHeadYaw   = FMath::FInterpTo(SmoothedHeadYaw,   LocalHeadRelativeYaw, DeltaTime, 20.f);
+		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, LocalHeadPitch,        DeltaTime, 20.f);
+		ApplyHeadLookToCabeza(SmoothedHeadYaw, SmoothedHeadPitch);
 
 		// Enviar al servidor (listen-server escribe directo; cliente dedicado usa RPC unreliable)
 		if (HasAuthority())

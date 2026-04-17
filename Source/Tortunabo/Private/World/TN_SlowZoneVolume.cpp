@@ -29,23 +29,37 @@ void ATN_SlowZoneVolume::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// Durante el vuelo, MaxWalkSpeed no se aplica — clampear velocidad horizontal manualmente.
-	// Lógica local en todas las máquinas (igual que OnBoxBeginOverlap).
 	for (const TWeakObjectPtr<ATortugaCharacter>& WeakChar : CharactersInZone)
 	{
 		ATortugaCharacter* Char = WeakChar.Get();
 		if (!Char) { continue; }
 
-		UCharacterMovementComponent* CMC = Char->GetCharacterMovement();
-		if (!CMC || !CMC->IsFalling()) { continue; }
+		// Solo modificar CMC en servidor o pawn local (igual que QuicksandVolume).
+		if (!HasAuthority() && !Char->IsLocallyControlled()) { continue; }
 
-		FVector HorizVel = FVector(CMC->Velocity.X, CMC->Velocity.Y, 0.f);
-		const float HorizSpeed = HorizVel.Size();
-		if (HorizSpeed > MaxSlowSpeed)
+		UCharacterMovementComponent* CMC = Char->GetCharacterMovement();
+		if (!CMC) { continue; }
+
+		// ── Clamp horizontal (en vuelo) ──────────────────────────────────────────
+		if (CMC->IsFalling())
 		{
-			HorizVel = HorizVel.GetSafeNormal() * MaxSlowSpeed;
-			CMC->Velocity.X = HorizVel.X;
-			CMC->Velocity.Y = HorizVel.Y;
+			FVector HorizVel = FVector(CMC->Velocity.X, CMC->Velocity.Y, 0.f);
+			if (HorizVel.Size() > MaxSlowSpeed)
+			{
+				HorizVel = HorizVel.GetSafeNormal() * MaxSlowSpeed;
+				CMC->Velocity.X = HorizVel.X;
+				CMC->Velocity.Y = HorizVel.Y;
+			}
+		}
+
+		// ── Clamp vertical (efecto sirope): apenas sube, baja lento ─────────────
+		if (CMC->Velocity.Z > MaxUpwardVelocity)
+		{
+			CMC->Velocity.Z = MaxUpwardVelocity;
+		}
+		else if (CMC->Velocity.Z < -MaxFallVelocity)
+		{
+			CMC->Velocity.Z = -MaxFallVelocity;
 		}
 	}
 }
@@ -54,29 +68,27 @@ void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
-	if (!Char || CharactersInZone.Contains(Char))
-	{
-		return;
-	}
+	if (!Char || CharactersInZone.Contains(Char)) { return; }
 
 	UTN_StaminaComponent* StaminaComp = Char->FindComponentByClass<UTN_StaminaComponent>();
-	if (!StaminaComp)
-	{
-		return;
-	}
+	if (!StaminaComp) { return; }
 
 	CharactersInZone.Add(Char);
 	StaminaComp->SetSpeedCap(MaxSlowSpeed);
-
-	// Registrar callback de destrucción para limpiar si el personaje muere dentro
 	Char->OnDestroyed.AddUniqueDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
 
-	if (bSlowFall)
+	// Guardar y reducir GravityScale + JumpZVelocity (sirope)
+	if (HasAuthority() || Char->IsLocallyControlled())
 	{
 		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
 		{
-			OriginalGravityScales.Add(Char, CMC->GravityScale);
-			CMC->GravityScale = GravityScaleInZone;
+			FSyrupState State;
+			State.OrigGravityScale = CMC->GravityScale;
+			State.OrigJumpZVel     = CMC->JumpZVelocity;
+			OriginalCMCState.Add(Char, State);
+
+			CMC->GravityScale  = 0.35f; // caída lenta
+			CMC->JumpZVelocity = JumpVelocityInZone;
 		}
 	}
 }
@@ -85,61 +97,44 @@ void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AA
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
-	if (!Char || !CharactersInZone.Contains(Char))
-	{
-		return;
-	}
+	if (!Char || !CharactersInZone.Contains(Char)) { return; }
 
 	CharactersInZone.Remove(Char);
-
-	UTN_StaminaComponent* StaminaComp = Char->FindComponentByClass<UTN_StaminaComponent>();
-	if (StaminaComp)
-	{
-		StaminaComp->ClearSpeedCap();
-	}
-
-	if (bSlowFall)
-	{
-		// Only restore gravity if the character isn't inside another slow-fall zone
-		bool bStillInSlowFall = false;
-		TArray<AActor*> Overlapping;
-		Char->GetOverlappingActors(Overlapping, ATN_SlowZoneVolume::StaticClass());
-		for (AActor* OA : Overlapping)
-		{
-			ATN_SlowZoneVolume* Other = Cast<ATN_SlowZoneVolume>(OA);
-			if (Other && Other != this && Other->bSlowFall)
-			{
-				bStillInSlowFall = true;
-				break;
-			}
-		}
-
-		if (!bStillInSlowFall)
-		{
-			if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
-			{
-				if (const float* Original = OriginalGravityScales.Find(Char))
-				{
-					CMC->GravityScale = *Original;
-				}
-			}
-		}
-		OriginalGravityScales.Remove(Char);
-	}
-
 	Char->OnDestroyed.RemoveDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
+
+	if (UTN_StaminaComponent* Stamina = Char->FindComponentByClass<UTN_StaminaComponent>())
+	{
+		Stamina->ClearSpeedCap();
+	}
+
+	// Restaurar CMC solo si no está en otra SlowZone
+	bool bStillInSlowZone = false;
+	TArray<AActor*> Overlapping;
+	Char->GetOverlappingActors(Overlapping, ATN_SlowZoneVolume::StaticClass());
+	for (AActor* OA : Overlapping)
+	{
+		if (OA && OA != this) { bStillInSlowZone = true; break; }
+	}
+
+	if (!bStillInSlowZone && (HasAuthority() || Char->IsLocallyControlled()))
+	{
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		{
+			if (const FSyrupState* State = OriginalCMCState.Find(Char))
+			{
+				CMC->GravityScale  = State->OrigGravityScale;
+				CMC->JumpZVelocity = State->OrigJumpZVel;
+			}
+		}
+	}
+	OriginalCMCState.Remove(Char);
 }
 
 void ATN_SlowZoneVolume::OnCharacterDestroyed(AActor* DestroyedActor)
 {
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(DestroyedActor);
-	if (!Char)
-	{
-		return;
-	}
+	if (!Char) { return; }
 
-	// El personaje se destruyó dentro de la zona — limpiar sin restaurar GravityScale
-	// (el CMC ya no existe; restaurar aquí causaría crash)
 	CharactersInZone.Remove(Char);
-	OriginalGravityScales.Remove(Char);
+	OriginalCMCState.Remove(Char);
 }
