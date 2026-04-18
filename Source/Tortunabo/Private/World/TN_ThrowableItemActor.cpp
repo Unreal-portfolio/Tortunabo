@@ -152,7 +152,12 @@ void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
 	FVector Origin, FVector Velocity, FVector Scale, UStaticMesh* MeshAsset)
 {
 	// En el servidor ya se aplicó en InitializeThrow → evitar doble activación.
-	if (HasAuthority())
+	// bLaunchApplied: CRÍTICO para Q4-04. En el cliente, OnRep_ThrowData suele
+	// procesarse ANTES que este Multicast durante la apertura del actor-channel.
+	// Si aplicáramos sin el guard, haríamos SetActorLocation(Origin) sobre una
+	// bola que ya llevaba varios frames volando → teleport-back rubberband, la
+	// bola "desaparece" de cámara y el usuario solo vuelve a verla como pickup.
+	if (HasAuthority() || bLaunchApplied)
 	{
 		return;
 	}
@@ -166,6 +171,10 @@ void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
 	{
 		Mesh->SetRelativeScale3D(Scale);
 	}
+
+	// Garantizar visibilidad — defensa frente a BPs con defaults raros.
+	Mesh->SetHiddenInGame(false);
+	Mesh->SetVisibility(true, true);
 
 	// Asegurar que ignoramos al lanzador ANTES de activar el ProjectileMovement.
 	// Si el MulticastLaunch llega antes de que Instigator haya replicado, será
@@ -201,6 +210,10 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 		Mesh->SetRelativeScale3D(ThrowData.MeshScale);
 	}
 
+	// Garantizar visibilidad — defensa frente a BPs con defaults raros.
+	Mesh->SetHiddenInGame(false);
+	Mesh->SetVisibility(true, true);
+
 	// Asegurar ignore del lanzador antes de activar ProjectileMovement.
 	// En el cliente-lanzador, Instigator puede haber llegado entre BeginPlay
 	// y OnRep_ThrowData — este retry cubre esa ventana.
@@ -217,6 +230,12 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 	}
 
 	bLaunchApplied = true;
+
+	UE_LOG(LogTemp, Verbose, TEXT("[ThrowableItem] Apply auth=%d origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s"),
+		HasAuthority() ? 1 : 0,
+		ThrowData.SpawnLocation.X, ThrowData.SpawnLocation.Y, ThrowData.SpawnLocation.Z,
+		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
+		*GetNameSafe(ThrowData.EquippedMesh));
 }
 
 // ── Colisión y ciclo de vida ──────────────────────────────────────────────────

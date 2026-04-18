@@ -10,7 +10,8 @@ Registro de bugs, mejoras y decisiones detectadas durante testing en PIE.
 
 ```
 <!-- DROP_ZONE: pegar notas crudas debajo de esta línea -->
-<!-- FIN_DROP_ZONE -->   
+
+<!-- FIN_DROP_ZONE -->
 ```
 
 ---
@@ -302,6 +303,49 @@ Efecto: el resbalón se extiende por el suelo post-aterrizaje hasta detenerse de
 
 ---
 
+### Q4-04 🔴 Cliente no ve la bola lanzada — regresión de Q4-02
+**Componente:** `ATN_ThrowableItemActor`
+**Estado:** ✅ Resuelto (pendiente de re-test en PIE 2P)
+**Origen:** Testing 2026-04-19 (reaparece tras `84fd833`)
+
+**Causa raíz (teleport-back race):**
+En el cliente, al abrir el actor-channel, el orden REAL de procesamiento es:
+1. Replicación inicial de props → `OnRep_ThrowData` → `ApplyLaunchDataIfReady` activa el `ProjectileMovement` → la bola empieza a volar localmente (varios frames).
+2. Llega el RPC `MulticastLaunch` que fue emitido en el mismo bunch.
+3. `MulticastLaunch_Implementation` **no comprobaba `bLaunchApplied`** → re-hacía `SetActorLocation(Origin)` sobre la bola ya volando → **rubberband** de vuelta al punto de lanzamiento + re-activación con la velocidad inicial. Con la velocidad alta (`ThrowSpeed=1800 cm/s`), el stutter visual desplaza la bola fuera de cámara antes de que el usuario la vea; solo reaparece como pickup final.
+
+El fix Q4-02 (`84fd833`) cubrió el race de `Instigator`, pero `MulticastLaunch` quedó sin idempotencia frente a la ruta de OnRep, que es la que gana en la práctica.
+
+**Fix aplicado:**
+- `MulticastLaunch_Implementation` ahora sale temprano si `bLaunchApplied == true` (además del check de authority). El Multicast queda como fallback defensivo para el improbable caso de que OnRep no haya corrido aún.
+- Belt-and-suspenders en ambos paths (`ApplyLaunchDataIfReady` + `MulticastLaunch`): `Mesh->SetHiddenInGame(false)` + `SetVisibility(true, true)` explícitos — protege frente a BPs con defaults de visibilidad raros.
+- `UE_LOG Verbose` en `ApplyLaunchDataIfReady` para observabilidad futura (authority, origen, velocidad, mesh).
+
+**Queda por validar (PIE):**
+- Smoke test con listen-server + 1 cliente: el cliente-lanzador debe ver la bola en vuelo parabólico desde el primer frame hasta el impacto/pickup.
+- Verificar que el host sigue viendo su propia bola (no debería haber regresión en authority path).
+
+---
+
+### Q4-05 🟠 Concha — spawn del PickUp debe diferirse hasta final del block timeout
+**Componente:** `ATN_ConchPickup`
+**Estado:** ⬜ Abierto
+**Origen:** Testing 2026-04-19 (refinamiento de B3 `7089989`)
+
+**Observación:**
+Actualmente B3 spawnea el pickup de repuesto **inmediatamente** al auto-destruirse la trampa activada (`SetLifeSpan(0.2f)` → spawn en el mismo frame). Rodrigo quiere que el pickup aparezca al **finalizar el block timeout** del jugador atrapado — así la concha "se consume" durante el castigo y reaparece justo cuando el jugador se libera.
+
+**Diseño propuesto:**
+- Diferir el `SpawnActor` del nuevo `ATN_ConchPickup` ítem hasta que `RestoreMovement` (o equivalente del timer de inmovilización) dispare.
+- Mantener el `SetLifeSpan(0.2f)` de la concha activada: el spawn del repuesto no depende de la vida de la trampa, sino del timer del player.
+- Guardar la `SpawnLocation` + `GetClass()` antes de destruir la trampa.
+- `UPROPERTY PickupRespawnDelaySeconds` (default = `BlockDuration`) para permitir ajuste independiente si el diseñador lo quiere desacoplado.
+
+**Acción:**
+- Implementar en C++ + testear en PIE 2P.
+
+---
+
 ## Fase 5 — Especiales (Jellyfish, Storm, ScriptedDeathZone)
 
 *(pendiente de testing)*
@@ -341,6 +385,7 @@ Nuevo `ATN_BouncePhysicsObject` hereda de `ATN_PhysicsObjectActor`, libera los 3
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q4-04 | 2026-04-19 | (pending) | ThrowableItem — guard `bLaunchApplied` en MulticastLaunch (teleport-back race tras OnRep_ThrowData) |
 | BALL | 2026-04-18 | `ada082c` | TN_BouncePhysicsObject — hijo con bote vertical + rotación libre |
 | B5 | 2026-04-18 | `c4ba273` | PhysicsObject — crush detection anti-clipping (3 pares de rays) |
 | B4 | 2026-04-18 | `5d5a9f6` | StaminaBoost — penalización blanda (speed×0.75, drain×2) |
@@ -364,4 +409,4 @@ Nuevo `ATN_BouncePhysicsObject` hereda de `ATN_PhysicsObjectActor`, libera los 3
 
 ---
 
-*QA Testing · Tortunabo · Última actualización: 2026-04-18 (batch drop-zone tarde — B1a/B2/B3/B4/B5/BALL)*
+*QA Testing · Tortunabo · Última actualización: 2026-04-19 (Q4-04 resuelto — guard `bLaunchApplied` en MulticastLaunch)*
