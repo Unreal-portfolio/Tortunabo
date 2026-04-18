@@ -117,6 +117,14 @@ void ATN_BreakablePlatform::BreakPlatform()
 		FTimerDelegate RespawnDelegate;
 		RespawnDelegate.BindUObject(this, &ATN_BreakablePlatform::RespawnPlatform);
 		GetWorldTimerManager().SetTimer(RespawnTimerHandle, RespawnDelegate, RespawnTime, false);
+		UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s broke — respawn en %.1fs"),
+			*GetNameSafe(this), RespawnTime);
+	}
+	else
+	{
+		// Si el BP dejó RespawnTime=0 y el diseñador esperaba respawn, lo avisamos
+		UE_LOG(LogTemp, Warning, TEXT("[BreakablePlatform] %s broke con RespawnTime=0 — "
+			"no reaparecerá. Ajustar en BP si se esperaba respawn."), *GetNameSafe(this));
 	}
 }
 
@@ -133,6 +141,8 @@ void ATN_BreakablePlatform::RespawnPlatform()
 	{
 		UGameplayStatics::SpawnSoundAtLocation(this, RespawnSound, GetActorLocation());
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s respawned"), *GetNameSafe(this));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
