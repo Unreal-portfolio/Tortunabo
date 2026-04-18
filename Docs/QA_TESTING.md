@@ -10,7 +10,6 @@ Registro de bugs, mejoras y decisiones detectadas durante testing en PIE.
 
 ```
 <!-- DROP_ZONE: pegar notas crudas debajo de esta línea -->
-
 <!-- FIN_DROP_ZONE -->
 ```
 
@@ -309,10 +308,45 @@ Efecto: el resbalón se extiende por el suelo post-aterrizaje hasta detenerse de
 
 ---
 
+## Batch drop-zone 2026-04-18 (tarde)
+
+### B1a 🟡 BananaPeel — potencia excesiva en defaults
+**Estado:** ✅ Resuelto (`574db5d`)
+Bajar defaults del impulso de slide ahora que el momentum se preserva.
+`SlideImpulseMultiplier 1.5→1.0`, `MinSlideForce 600→350`.
+
+### B2 🔴 BreakablePlatform — vibración reinicia los timers
+**Estado:** ✅ Resuelto (`0f7728a`)
+El `StandTrigger` está attacheado al mesh y oscila con él durante el shake. Esa oscilación generaba `EndOverlap` espurios → cancelaba timers → `BeginOverlap` al re-tocar → loop infinito. Guard `if (bIsShaking) return;` en `OnStandTriggerEndOverlap`.
+
+### B3 🟠 ConchPickup — trampa desaparece sin dejar pickup
+**Estado:** ✅ Resuelto (`7089989`)
+Al auto-destruirse tras atrapar, ahora spawnea un nuevo `ATN_ConchPickup` (via `GetClass()` para preservar el BP hijo) en modo ítem en la misma ubicación, que se puede recoger de nuevo.
+
+### B4 🟠 StaminaBoost — penalización actual demasiado punitiva
+**Estado:** ✅ Resuelto (`5d5a9f6`)
+Penalización blanda post-boost: durante `PostBoostExhaustionSeconds` (4s) el jugador va a `0.75×` velocidad y el sprint drena a `2×`. No se resetea CurrentStamina ni se bloquea recuperación. Dos nuevas UPROPERTY (`PostBoostSpeedMultiplier`, `PostBoostDrainMultiplier`) + timer dedicado `PostBoostPenaltyTimer`.
+
+### B5 🟠 PhysicsObject — clipping al quedar atrapados en geometría
+**Estado:** ✅ Resuelto (`c4ba273`)
+Timer periódico (`CrushCheckInterval=1s`, opt-in `bEnableCrushDetection`) lanza 3 pares de rays opuestos (±X ±Y ±Z) contra WorldStatic. Si ≥2 ejes bloqueados → `MulticastCrushPoof` + `SetLifeSpan(0.2)`. VFX/sonido opcionales.
+
+### BALL 🔵 PhysicsObject — hijo con bote vertical y rotación libre
+**Estado:** ✅ Resuelto (`ada082c`)
+Nuevo `ATN_BouncePhysicsObject` hereda de `ATN_PhysicsObjectActor`, libera los 3 locks de rotación y al impactar con `ATortugaCharacter` aplica `LaunchCharacter` con componente Z (`PlayerBounceImpulseZ=700`) + empuje horizontal en dirección bola→jugador. `PerPlayerCooldown=0.25s` evita disparos múltiples por un mismo contacto.
+
+---
+
 ## Historial de resoluciones
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| BALL | 2026-04-18 | `ada082c` | TN_BouncePhysicsObject — hijo con bote vertical + rotación libre |
+| B5 | 2026-04-18 | `c4ba273` | PhysicsObject — crush detection anti-clipping (3 pares de rays) |
+| B4 | 2026-04-18 | `5d5a9f6` | StaminaBoost — penalización blanda (speed×0.75, drain×2) |
+| B3 | 2026-04-18 | `7089989` | ConchPickup — spawn pickup-item al auto-destruirse |
+| B2 | 2026-04-18 | `0f7728a` | BreakablePlatform — ignorar EndOverlap espurios durante shake |
+| B1a | 2026-04-18 | `574db5d` | BananaPeel — bajar potencia default del slide |
 | Q4-03 fase 2 | 2026-04-18 | `2becf55` | BananaPeel — Tick ground-lock ahora respeta momentum (`KnockdownGroundLockSpeed`) |
 | Q1-09 | 2026-04-18 | `903c293` | Quicksand deprecado — unificado en SlowZone con `GravityScaleInZone` expuesto |
 | Q1-07 | 2026-04-18 | `5aca4a5` | Knockdown — ragdoll físico opcional (`bUsePhysicsRagdoll`, requiere PhysicsAsset en BP) |
@@ -330,4 +364,4 @@ Efecto: el resbalón se extiende por el suelo post-aterrizaje hasta detenerse de
 
 ---
 
-*QA Testing · Tortunabo · Última actualización: 2026-04-18 (drop zone procesada)*
+*QA Testing · Tortunabo · Última actualización: 2026-04-18 (batch drop-zone tarde — B1a/B2/B3/B4/B5/BALL)*
