@@ -84,10 +84,17 @@ void ATN_InkProjectile::Tick(float DeltaTime)
 
 	if (!HasAuthority() || bHasHit) { return; }
 
-	// Movimiento lineal: sin gravedad, sin proyectil movement component —
-	// simplificado según la spec. Si se quiere gravedad, ajustar LaunchVelocity.Z aquí.
+	// Gravedad manual → trayectoria parabólica. Con GravityAcceleration=0 queda recto.
+	LaunchVelocity.Z -= GravityAcceleration * DeltaTime;
+
 	const FVector NewLocation = GetActorLocation() + LaunchVelocity * DeltaTime;
 	SetActorLocation(NewLocation, true);  // bSweep=true → genera hit events al barrer
+
+	// Rotar el actor para que el mesh apunte en la dirección del vuelo
+	if (!LaunchVelocity.IsNearlyZero())
+	{
+		SetActorRotation(LaunchVelocity.Rotation());
+	}
 }
 
 // ── Spawn helper ───────────────────────────────────────────────────────────────

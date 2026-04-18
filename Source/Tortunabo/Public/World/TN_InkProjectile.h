@@ -78,6 +78,12 @@ protected:
 		meta = (ClampMin = "0.5"))
 	float LifetimeSeconds = 4.0f;
 
+	/** Aceleración vertical aplicada cada tick (cm/s²). 980 ≈ gravedad terrestre.
+	 *  0 = trayectoria recta. Valores >0 curvan la tinta hacia abajo en parábola. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InkProjectile",
+		meta = (ClampMin = "0.0"))
+	float GravityAcceleration = 980.f;
+
 private:
 	// ── Movimiento ────────────────────────────────────────────────────────────
 
