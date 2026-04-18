@@ -385,7 +385,7 @@ Nuevo `ATN_BouncePhysicsObject` hereda de `ATN_PhysicsObjectActor`, libera los 3
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
-| Q4-04 | 2026-04-19 | (pending) | ThrowableItem — guard `bLaunchApplied` en MulticastLaunch (teleport-back race tras OnRep_ThrowData) |
+| Q4-04 | 2026-04-19 | `b815205` | ThrowableItem — guard `bLaunchApplied` en MulticastLaunch (teleport-back race tras OnRep_ThrowData) |
 | BALL | 2026-04-18 | `ada082c` | TN_BouncePhysicsObject — hijo con bote vertical + rotación libre |
 | B5 | 2026-04-18 | `c4ba273` | PhysicsObject — crush detection anti-clipping (3 pares de rays) |
 | B4 | 2026-04-18 | `5d5a9f6` | StaminaBoost — penalización blanda (speed×0.75, drain×2) |
