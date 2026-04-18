@@ -84,6 +84,15 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	APawn* Pawn = Cast<APawn>(OtherActor);
 	if (!Pawn) { return; }
 
+	// Durante la vibración, el StandTrigger se mueve con el mesh (±ShakeAmplitude)
+	// y puede "soltar" momentáneamente los pies del jugador → EndOverlap espurio
+	// cada ~1/ShakeFrequencyHz segundos. Sin este guard, los timers se cancelan,
+	// el shake se detiene, el BeginOverlap re-arma todo desde cero y el puente
+	// nunca llega a romperse (loop infinito de shake-cancel-shake).
+	// Los EndOverlap reales mientras vibra son raros: si el jugador salta fuera
+	// durante el shake, lo re-evaluamos al final en BreakPlatform.
+	if (bIsShaking) { return; }
+
 	PawnsOnPlatform.Remove(Pawn);
 	PawnsOnPlatform.Remove(nullptr);
 
@@ -94,11 +103,6 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	{
 		GetWorldTimerManager().ClearTimer(ShakeTimerHandle);
 		GetWorldTimerManager().ClearTimer(BreakTimerHandle);
-		// Si la vibración ya había empezado, cancelarla en todas las máquinas
-		if (bIsShaking)
-		{
-			MulticastStopShake();
-		}
 	}
 }
 
