@@ -1676,6 +1676,10 @@ void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 	// Servidor: aplicar localmente (OnRep no dispara en quien posee la variable)
 	StartEmoteLocally(KNOCKDOWN_EMOTE_ID);
 
+	// Tilt del cuerpo (pitch -180°) — se ejecuta en servidor + todos los clientes.
+	// Sin esto el emote solo agita brazos y el jugador se ve flotando, no tumbado.
+	MulticastApplyKnockdownVisual(true);
+
 	// ── DBNO heartbeat: solo el jugador local incapacitado oye el latido ──
 	if (IsLocallyControlled())
 	{
@@ -1714,6 +1718,9 @@ void ATortugaCharacter::RecoverFromKnockdown()
 			CancelEmoteLocalOnly();
 		}
 	}
+
+	// Restaurar rotación del cuerpo en todas las máquinas
+	MulticastApplyKnockdownVisual(false);
 
 	// ── Audio feedback de revive ─────────────────────────────────────────
 	StopDBNOHeartbeatSound();
@@ -1766,9 +1773,13 @@ void ATortugaCharacter::OnRep_IsKnockedDown()
 
 void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnocked)
 {
-	// El visual del knockdown ahora es manejado por el sistema de emotes
-	// (ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID = 100).
-	// Esta función se mantiene por compatibilidad de API pero es un no-op.
+	// La animación de agitar brazos la emite el sistema de emotes via
+	// ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID. Aquí aplicamos la rotación
+	// simulada del cuerpo (pitch -180°) encima del emote — sin tilt el
+	// jugador se ve "flotando" en vez de tumbado. Se ejecuta en TODAS las
+	// máquinas para cubrir listen-server + todos los clientes (incluido el
+	// dueño, que no recibe OnRep_ReplicatedEmoteIndex por COND_SkipOwner).
+	ApplyKnockdownVisual(bKnocked);
 }
 
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
