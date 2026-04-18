@@ -153,7 +153,7 @@ Tras el fix de Q1-01 (`beb9b53`) el tilt 180° ya se aplica, pero el jugador **s
 
 ### Q1-08 🟠 BreakablePlatform — bridge no se elimina
 **Componente:** `ATN_BreakablePlatform` (uso cooperativo / puente)
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto en C++ (pendiente validar BP en PIE)
 **Origen:** Testing 2026-04-18
 
 **Observación:**
@@ -162,12 +162,16 @@ El bridge (BreakablePlatform con `PlayerThreshold=2+`) **no se rompe** durante e
 **Causas posibles:**
 - Testeando con 1 solo player y `PlayerThreshold=2` → el timer nunca arranca (comportamiento correcto, pero confuso en testing).
 - El StandTrigger del BP del bridge no está bien dimensionado y los pawns no generan overlap.
-- `PawnsOnPlatform` no cuenta bien si ambos jugadores entran simultáneamente (con el `Remove(nullptr)` previo se filtran los weak refs).
+- Tras respawn, pawns que no salieron del trigger ya no generan `BeginOverlap` → plataforma "invencible" para ese player.
 
-**Acción:**
-- Verificar en PIE con 2 players simultáneamente encima.
-- Añadir un `UE_LOG` temporal en `OnStandTriggerBeginOverlap` mostrando `PawnsOnPlatform.Num()` y `PlayerThreshold`.
-- Confirmar que el BP hijo del bridge no pisa `PlayerThreshold=1` ni el StandTrigger.
+**Solución aplicada:**
+1. Logs permanentes (`Verbose` en entries/exits, `Log` al cruzar threshold) para diagnosticar en runtime sin recompilar. Usar `LogTemp Verbose` en `Saved/Config/Windows/Engine.ini` o via `Log LogTemp Verbose` en consola.
+2. `RespawnPlatform` ahora re-detecta pawns que permanezcan sobre el trigger al respawnear (via `GetOverlappingActors`) y re-arranca el ciclo shake+break si se cumple el threshold. Antes, un jugador que no salió del trigger quedaba "huérfano" y el puente no volvía a romperse para él.
+
+**Queda por validar (BP/editor):**
+- Que el `StandTrigger` en el BP hijo cubra toda la superficie del mesh del bridge.
+- Que `PlayerThreshold` esté configurado correctamente (2 para puente cooperativo).
+- Testing en PIE con 2 players simultáneos.
 
 ---
 

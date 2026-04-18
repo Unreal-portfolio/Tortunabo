@@ -56,8 +56,14 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 	PawnsOnPlatform.Remove(nullptr);
 	PawnsOnPlatform.Add(Pawn);
 
+	UE_LOG(LogTemp, Verbose, TEXT("[BreakablePlatform] %s ENTER by %s — count=%d threshold=%d"),
+		*GetNameSafe(this), *GetNameSafe(Pawn), PawnsOnPlatform.Num(), PlayerThreshold);
+
 	if (PawnsOnPlatform.Num() >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
 	{
+		UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s threshold reached — break in %.1fs"),
+			*GetNameSafe(this), TimeToBreak);
+
 		// La vibración arranca ShakeDuration segundos antes del break
 		const float ShakeAt = FMath::Max(0.f, TimeToBreak - ShakeDuration);
 		FTimerDelegate ShakeDelegate;
@@ -80,6 +86,9 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 
 	PawnsOnPlatform.Remove(Pawn);
 	PawnsOnPlatform.Remove(nullptr);
+
+	UE_LOG(LogTemp, Verbose, TEXT("[BreakablePlatform] %s EXIT by %s — count=%d threshold=%d"),
+		*GetNameSafe(this), *GetNameSafe(Pawn), PawnsOnPlatform.Num(), PlayerThreshold);
 
 	if (PawnsOnPlatform.Num() < PlayerThreshold)
 	{
@@ -142,7 +151,34 @@ void ATN_BreakablePlatform::RespawnPlatform()
 		UGameplayStatics::SpawnSoundAtLocation(this, RespawnSound, GetActorLocation());
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s respawned"), *GetNameSafe(this));
+	// Re-detectar pawns que sigan sobre la plataforma al respawnear. Si la
+	// plataforma reaparece bajo un jugador que NO salió del volumen, UE no
+	// emite BeginOverlap (ya estaba dentro) → el threshold nunca volvería
+	// a dispararse y el puente se volvería "invencible" para ese player.
+	TArray<AActor*> OverlappingActors;
+	StandTrigger->GetOverlappingActors(OverlappingActors, APawn::StaticClass());
+	for (AActor* A : OverlappingActors)
+	{
+		if (APawn* P = Cast<APawn>(A))
+		{
+			PawnsOnPlatform.Add(P);
+		}
+	}
+
+	if (PawnsOnPlatform.Num() >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
+	{
+		const float ShakeAt = FMath::Max(0.f, TimeToBreak - ShakeDuration);
+		FTimerDelegate ShakeDelegate;
+		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::MulticastShake);
+		GetWorldTimerManager().SetTimer(ShakeTimerHandle, ShakeDelegate, ShakeAt, false);
+
+		FTimerDelegate BreakDelegate;
+		BreakDelegate.BindUObject(this, &ATN_BreakablePlatform::BreakPlatform);
+		GetWorldTimerManager().SetTimer(BreakTimerHandle, BreakDelegate, TimeToBreak, false);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s respawned — count=%d threshold=%d"),
+		*GetNameSafe(this), PawnsOnPlatform.Num(), PlayerThreshold);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
