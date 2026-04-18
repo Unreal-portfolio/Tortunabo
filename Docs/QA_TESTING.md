@@ -10,7 +10,7 @@ Registro de bugs, mejoras y decisiones detectadas durante testing en PIE.
 
 ```
 <!-- DROP_ZONE: pegar notas crudas debajo de esta línea -->
-<!-- FIN_DROP_ZONE -->
+<!-- FIN_DROP_ZONE -->   
 ```
 
 ---
