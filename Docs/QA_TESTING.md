@@ -278,7 +278,7 @@ Cualquier orden de llegada de replicación garantiza que el ignore está configu
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
-| Q4-03 | 2026-04-18 | pendiente | BananaPeel — slide hacia delante + `SlideVerticalForce` tunable |
+| Q4-03 | 2026-04-18 | `7dbc3e3` | BananaPeel — slide hacia delante + `SlideVerticalForce` tunable |
 | Q4-02 | 2026-04-18 | `84fd833` | ThrowableItem — cover-all de `IgnoreInstigatorCollision` (race con `OnRep_Instigator`) |
 | Q4-01 | 2026-04-18 | `635377e` | InkProjectile parabólico (`GravityAcceleration`) |
 | Q1-03 | 2026-04-18 | `65446f6` | BreakablePlatform shake antes de romperse |
