@@ -55,6 +55,16 @@ protected:
 		meta = (ClampMin = "0.0"))
 	float MinSlideForce = 600.f;
 
+	/**
+	 * Componente vertical (cm/s) aplicado junto al impulso horizontal. Necesario
+	 * para que LaunchCharacter ponga al CMC en MOVE_Falling → sin contacto con el
+	 * suelo, la fricción no mata el slide. Valores más altos = arco más largo.
+	 * 350–450 da un resbalón cartoon visible de ~0.7–0.9 s de vuelo.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BananaPeel",
+		meta = (ClampMin = "0.0"))
+	float SlideVerticalForce = 400.f;
+
 	/** Sonido reproducido al activar la trampa. */
 	UPROPERTY(EditDefaultsOnly, Category = "BananaPeel|Audio")
 	TObjectPtr<USoundBase> TriggerSound;

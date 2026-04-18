@@ -255,15 +255,16 @@ Cualquier orden de llegada de replicación garantiza que el ignore está configu
 
 ### Q4-03 🟠 BananaPeel — no desliza hacia delante al pisarla
 **Componente:** `ATN_BananaPeel`
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto — pendiente de re-test en PIE
 
-**Observación:** pisar la cáscara dispara el knockdown correctamente, pero el personaje **no desliza** — se queda caído en el sitio como si `SlideImpulse = 0`.
+**Causa raíz:**
+1. El fallback para jugador **parado** usaba `-ActorForwardVector` → el impulso iba hacia **atrás**, no hacia delante como espera el usuario.
+2. La componente Z era `200.f` hardcoded — muy baja. LaunchCharacter sí entraba en MOVE_Falling, pero el arco duraba ~0.4 s. Al aterrizar, la fricción del suelo mataba el deslizamiento en 0.2 s más → el slide quedaba en ~2 m, casi invisible dentro de la animación del knockdown.
 
-**Causa probable:** en `ATortugaCharacter::ApplyKnockdown`, si `ImpulseOverride.IsZero()` (default del BP de BananaPeel) el impulso se calcula desde la velocidad actual. Si el jugador venía quieto o casi quieto, el resultado es un impulso insignificante y no desliza.
-
-**Acción sugerida:**
-1. Configurar `SlideImpulse` con un forward-vector fuerte en `BP_BananaPeel` (ej. `(800, 0, 200)` en local space del peel, transformado a world en C++).
-2. Fallback en `ApplyKnockdown`: si `ImpulseOverride.IsZero() && Velocity.Size() < UmbralMin`, aplicar impulso default en `GetActorForwardVector() * DefaultSlideSpeed`.
+**Fix aplicado:**
+- Fallback estacionario ahora usa `+ActorForwardVector` (resbalón cartoon clásico — los pies van hacia delante, el cuerpo cae hacia atrás a partir del tilt -180° del knockdown).
+- Nueva `UPROPERTY SlideVerticalForce` (default 400) — sustituye el hardcode Z=200. Tunable desde `BP_BananaPeel` sin recompilar. 400 da ~0.8 s de vuelo → slide visible de ~4–7 m según la velocidad previa.
+- Log añadido para diagnosticar dirección e intensidad desde el output log.
 
 ---
 
@@ -277,6 +278,7 @@ Cualquier orden de llegada de replicación garantiza que el ignore está configu
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q4-03 | 2026-04-18 | pendiente | BananaPeel — slide hacia delante + `SlideVerticalForce` tunable |
 | Q4-02 | 2026-04-18 | `84fd833` | ThrowableItem — cover-all de `IgnoreInstigatorCollision` (race con `OnRep_Instigator`) |
 | Q4-01 | 2026-04-18 | `635377e` | InkProjectile parabólico (`GravityAcceleration`) |
 | Q1-03 | 2026-04-18 | `65446f6` | BreakablePlatform shake antes de romperse |

@@ -51,18 +51,28 @@ void ATN_BananaPeel::OnTriggerBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 	ATortugaCharacter* Character = Cast<ATortugaCharacter>(OtherActor);
 	if (!Character) { bTriggered = false; return; }
 
-	// ── Deslizamiento: mantener XY del momentum actual + componente upward ──
-	FVector Velocity = Character->GetVelocity();
-	Velocity.Z = 0.f;
-	if (Velocity.SizeSquared() < 1.f)
+	// ── Deslizamiento: preferir el momentum actual; si está parado, usar
+	// la dirección en que mira el personaje (resbalón clásico hacia delante).
+	// Antes el fallback era -ActorForwardVector → el jugador salía hacia atrás,
+	// que es el bug Q4-03 reportado: "el plátano no desliza hacia delante".
+	FVector SlideDir = Character->GetVelocity();
+	SlideDir.Z = 0.f;
+	if (SlideDir.SizeSquared() < 1.f)
 	{
-		// Parado: empujar en la dirección opuesta al forward (resbalón)
-		Velocity = -Character->GetActorForwardVector();
+		SlideDir = Character->GetActorForwardVector();
 	}
-	Velocity.Normalize();
-	const float ImpulseStrength = FMath::Max(Character->GetVelocity().Size2D() * SlideImpulseMultiplier,
-	                                          MinSlideForce);
-	const FVector SlideImpulse = Velocity * ImpulseStrength + FVector(0.f, 0.f, 200.f);
+	SlideDir = SlideDir.GetSafeNormal();
+
+	const float ImpulseStrength = FMath::Max(
+		Character->GetVelocity().Size2D() * SlideImpulseMultiplier,
+		MinSlideForce);
+
+	// Componente Z alto para que LaunchCharacter meta al CMC en MOVE_Falling —
+	// sin contacto con el suelo la fricción no mata el slide. Tunable desde BP.
+	const FVector SlideImpulse = SlideDir * ImpulseStrength + FVector(0.f, 0.f, SlideVerticalForce);
+
+	UE_LOG(LogTemp, Log, TEXT("[BananaPeel] %s hit peel — slide dir=(%.2f,%.2f,%.2f) mag=%.0f z=%.0f"),
+		*GetNameSafe(Character), SlideDir.X, SlideDir.Y, SlideDir.Z, ImpulseStrength, SlideVerticalForce);
 
 	Character->ApplyKnockdown(KnockdownDuration, SlideImpulse);
 
