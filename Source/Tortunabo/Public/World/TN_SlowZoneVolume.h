@@ -50,12 +50,12 @@ protected:
 
 	/** Velocidad máxima de caída (cm/s, valor positivo). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Syrup",
-		meta = (ClampMin = "50.0"))
+		meta = (ClampMin = "0.0"))
 	float MaxFallVelocity = 200.f;
 
 	/** Velocidad de salto dentro de la zona (cm/s). Muy baja para el efecto sirope. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Syrup",
-		meta = (ClampMin = "50.0"))
+		meta = (ClampMin = "0.0"))
 	float JumpVelocityInZone = 150.f;
 
 	/**
