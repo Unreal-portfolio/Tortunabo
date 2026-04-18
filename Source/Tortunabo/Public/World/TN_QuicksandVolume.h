@@ -9,16 +9,15 @@ class UStaticMeshComponent;
 class ATortugaCharacter;
 
 /**
- * Zona de arena movediza: ralentiza al jugador drásticamente y lo mata
- * tras un tiempo configurable si no escapa.
+ * Zona de arena movediza: ralentiza al jugador y aumenta la gravedad para
+ * dar sensación de "pegado al suelo". **No mata** — el rediseño delega la
+ * muerte a un patrón compuesto en el nivel:
+ *   1. Este volumen (ralentiza + anula salto + gravedad x2.5)
+ *   2. TN_DeathZoneVolume a ras de suelo (kill por countdown estándar)
+ *   3. Static mesh sólido debajo (evita caída infinita)
  *
- * Ralentización: local en todas las máquinas (igual que TN_SlowZoneVolume),
- * no necesita replicación — CMC predice correctamente al usar el mismo speed cap.
- *
- * Hundimiento y muerte: servidor autoritario.
- * Un timer de servidor procesa todos los jugadores activos cada SandTickInterval:
- *   - Aplica impulso descendente gradual (efecto visual de hundimiento)
- *   - Acumula tiempo y mata al jugador al llegar a SinkDuration
+ * Ralentización: local en todas las máquinas (igual que TN_SlowZoneVolume).
+ * El CMC predice correctamente al usar el mismo speed cap en server y cliente.
  *
  * Compatible con chunks: sin lógica dependiente de posición en BeginPlay.
  */
@@ -48,32 +47,25 @@ protected:
 		meta = (ClampMin = "50.0", ClampMax = "400.0"))
 	float SlowSpeed = 150.f;
 
-	/** Segundos dentro de la arena antes de morir. */
+	/** Multiplicador de gravedad dentro de la arena. Valores altos "pegan" al jugador. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quicksand",
-		meta = (ClampMin = "1.0"))
-	float SinkDuration = 4.f;
+		meta = (ClampMin = "0.1"))
+	float GravityScaleOverride = 2.5f;
 
-	/** Fuerza hacia abajo por tick (cm/s) — produce el efecto visual de hundimiento. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quicksand")
-	float SinkForce = 60.f;
-
-	/** Intervalo del tick de servidor (s). */
+	/** Altura de salto dentro de la arena — 0 lo desactiva efectivamente. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quicksand",
-		meta = (ClampMin = "0.05"))
-	float SandTickInterval = 0.15f;
+		meta = (ClampMin = "0.0"))
+	float JumpZVelocityOverride = 100.f;
 
 private:
 	struct FSandState
 	{
-		float TimeInSand       = 0.f;
-		// CMC originals — cacheados en el momento de entrar, restaurados al salir
 		float OrigGravityScale = 1.f;
 		float OrigJumpZVel     = 600.f;
 	};
 
-	// Activos en servidor (muerte) + en todas las máquinas (CMC cache)
+	// Cache de valores originales del CMC por personaje — restaurados en EndOverlap
 	TMap<TWeakObjectPtr<ATortugaCharacter>, FSandState> ActiveChars;
-	FTimerHandle SandTickHandle;
 
 	UFUNCTION()
 	void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
@@ -86,8 +78,4 @@ private:
 
 	UFUNCTION()
 	void OnCharacterDestroyed(AActor* DestroyedActor);
-
-	void ServerSandTick();
-	void StartSandTick();
-	void StopSandTick();
 };

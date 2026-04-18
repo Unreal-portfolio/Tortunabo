@@ -1,24 +1,22 @@
 #include "World/TN_QuicksandVolume.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_StaminaComponent.h"
-#include "Core/TN_CoopPlayerState.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 ATN_QuicksandVolume::ATN_QuicksandVolume()
 {
-	// Sin tick propio — usamos un timer de servidor
 	PrimaryActorTick.bCanEverTick = false;
-	bReplicates = false; // El volumen no se replica: lógica local + servidor autoritario
+	bReplicates = false; // Lógica local en cada máquina — CMC predice igual en servidor y cliente
 
 	TriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerBox"));
 	SetRootComponent(TriggerBox);
 
 	SandMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SandMesh"));
 	SandMesh->SetupAttachment(TriggerBox);
-	// Sin colisión con pawns — el TriggerBox maneja el overlap
 	SandMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
 	TriggerBox->SetBoxExtent(FVector(300.f, 300.f, 100.f));
 	TriggerBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	TriggerBox->SetCollisionResponseToAllChannels(ECR_Ignore);
@@ -35,10 +33,6 @@ void ATN_QuicksandVolume::BeginPlay()
 
 void ATN_QuicksandVolume::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	if (GetWorld())
-	{
-		GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
-	}
 	ActiveChars.Empty();
 	Super::EndPlay(EndPlayReason);
 }
@@ -52,18 +46,16 @@ void ATN_QuicksandVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
 	if (!IsValid(Char)) { return; }
 
-	// ── Efectos locales en TODAS las máquinas (igual que SlowZoneVolume) ─────────
 	FSandState State;
 
-	// Speed cap — CMC predice correctamente al usar el mismo valor en servidor y cliente
 	if (UTN_StaminaComponent* Stamina = Char->FindComponentByClass<UTN_StaminaComponent>())
 	{
 		Stamina->SetSpeedCap(SlowSpeed);
 	}
 
-	// Aumentar gravedad + deshabilitar salto: solo en servidor O en el pawn local del cliente.
-	// No modificar CMC de pawns remotos en clientes — causaría corrupción si los overlaps
-	// llegan desordenados o el actor se destruye antes del EndOverlap.
+	// Gravedad + salto solo en la máquina autoritativa para este pawn (servidor o dueño).
+	// Modificar el CMC de pawns remotos en clientes corrompería el estado si los
+	// overlaps llegan desordenados o el actor se destruye antes del EndOverlap.
 	const bool bShouldModifyCMC = HasAuthority() || Char->IsLocallyControlled();
 	if (bShouldModifyCMC)
 	{
@@ -72,23 +64,13 @@ void ATN_QuicksandVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 			State.OrigGravityScale = CMC->GravityScale;
 			State.OrigJumpZVel     = CMC->JumpZVelocity;
 
-			CMC->GravityScale  = 0.4f; // Caída lenta — efecto sirope
-			CMC->JumpZVelocity = 100.f; // Apenas puede saltar
+			CMC->GravityScale  = GravityScaleOverride;
+			CMC->JumpZVelocity = JumpZVelocityOverride;
 		}
 	}
 
 	Char->OnDestroyed.AddUniqueDynamic(this, &ATN_QuicksandVolume::OnCharacterDestroyed);
-
-	// Registrar en todas las máquinas para poder restaurar CMC en EndOverlap
 	ActiveChars.FindOrAdd(TWeakObjectPtr<ATortugaCharacter>(Char)) = State;
-
-	// ── Lógica de muerte: solo servidor ──────────────────────────────────────────
-	if (!HasAuthority()) { return; }
-
-	const ATN_CoopPlayerState* PS = Char->GetPlayerState<ATN_CoopPlayerState>();
-	if (!PS || !PS->bIsAlive || PS->bIsEliminated) { return; }
-
-	StartSandTick();
 }
 
 void ATN_QuicksandVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
@@ -97,13 +79,11 @@ void ATN_QuicksandVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, A
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
 	if (!IsValid(Char)) { return; }
 
-	// ── Restaurar efectos locales en TODAS las máquinas ───────────────────────────
 	if (UTN_StaminaComponent* Stamina = Char->FindComponentByClass<UTN_StaminaComponent>())
 	{
 		Stamina->ClearSpeedCap();
 	}
 
-	// Restaurar valores del CMC solo en la máquina que los modificó
 	if (HasAuthority() || Char->IsLocallyControlled())
 	{
 		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
@@ -118,12 +98,6 @@ void ATN_QuicksandVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, A
 
 	Char->OnDestroyed.RemoveDynamic(this, &ATN_QuicksandVolume::OnCharacterDestroyed);
 	ActiveChars.Remove(TWeakObjectPtr<ATortugaCharacter>(Char));
-
-	// ── Servidor: parar tick si no queda nadie ────────────────────────────────────
-	if (HasAuthority() && ActiveChars.IsEmpty())
-	{
-		StopSandTick();
-	}
 }
 
 void ATN_QuicksandVolume::OnCharacterDestroyed(AActor* DestroyedActor)
@@ -131,78 +105,6 @@ void ATN_QuicksandVolume::OnCharacterDestroyed(AActor* DestroyedActor)
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(DestroyedActor);
 	if (!Char) { return; }
 
-	// Limpieza sin restaurar (el CMC ya no existe)
-	if (HasAuthority())
-	{
-		ActiveChars.Remove(TWeakObjectPtr<ATortugaCharacter>(Char));
-		if (ActiveChars.IsEmpty()) { StopSandTick(); }
-	}
-}
-
-// ── Server sand tick ──────────────────────────────────────────────────────────
-
-void ATN_QuicksandVolume::StartSandTick()
-{
-	if (!HasAuthority() || GetWorld()->GetTimerManager().IsTimerActive(SandTickHandle)) { return; }
-
-	FTimerDelegate Delegate;
-	Delegate.BindUObject(this, &ATN_QuicksandVolume::ServerSandTick);
-	GetWorld()->GetTimerManager().SetTimer(SandTickHandle, Delegate, SandTickInterval, true);
-}
-
-void ATN_QuicksandVolume::StopSandTick()
-{
-	if (GetWorld())
-	{
-		GetWorld()->GetTimerManager().ClearTimer(SandTickHandle);
-	}
-}
-
-void ATN_QuicksandVolume::ServerSandTick()
-{
-	if (!HasAuthority()) { return; }
-
-	TArray<TWeakObjectPtr<ATortugaCharacter>> ToRemove;
-
-	for (auto& Pair : ActiveChars)
-	{
-		ATortugaCharacter* Char = Pair.Key.Get();
-		if (!IsValid(Char))
-		{
-			ToRemove.Add(Pair.Key);
-			continue;
-		}
-
-		const ATN_CoopPlayerState* PS = Char->GetPlayerState<ATN_CoopPlayerState>();
-		if (!PS || !PS->bIsAlive || PS->bIsEliminated)
-		{
-			ToRemove.Add(Pair.Key);
-			continue;
-		}
-
-		Pair.Value.TimeInSand += SandTickInterval;
-
-		// Impulso descendente en cada tick — crea el efecto de hundimiento gradual.
-		// bZOverride=false: se suma a la velocidad actual (no teleporta).
-		// bXYOverride=false: no interfiere con el movimiento horizontal.
-		// La gravedad alta (3x) + impulso hacia abajo presionan al personaje contra el suelo.
-		Char->LaunchCharacter(FVector(0.f, 0.f, -SinkForce), false, false);
-
-		// Muerte por hundimiento total
-		if (Pair.Value.TimeInSand >= SinkDuration)
-		{
-			Char->RequestKill(this);
-			ToRemove.Add(Pair.Key);
-		}
-	}
-
-	for (const TWeakObjectPtr<ATortugaCharacter>& Key : ToRemove)
-	{
-		ActiveChars.Remove(Key);
-	}
-
-	if (ActiveChars.IsEmpty())
-	{
-		StopSandTick();
-	}
+	// CMC ya no existe — solo limpiamos la entrada
+	ActiveChars.Remove(TWeakObjectPtr<ATortugaCharacter>(Char));
 }
