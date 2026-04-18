@@ -35,7 +35,7 @@ protected:
 
 	/** Velocidad máxima horizontal (cm/s) mientras el jugador está dentro. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone",
-		meta = (ClampMin = "50.0"))
+		meta = (ClampMin = "0.0"))
 	float MaxSlowSpeed = 300.f;
 
 	/**
