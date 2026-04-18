@@ -72,13 +72,23 @@ protected:
 
 	/**
 	 * Segundos tras liberar a la víctima antes de que la trampa vuelva a poder atrapar.
-	 * Evita que la misma víctima se re-atrape inmediatamente al salir del inmovilizado.
-	 * Default 1.0s — ajustar en BP si se quiere una trampa de un solo uso (poner a 0 y
-	 * destruir la concha al finalizar; actualmente la concha persiste para reutilización).
+	 * Solo se aplica si bDestroyAfterActivation=false. Evita que la misma víctima
+	 * se re-atrape inmediatamente al salir del inmovilizado.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Conch",
-		meta = (ClampMin = "0.0"))
+		meta = (ClampMin = "0.0", EditCondition = "!bDestroyAfterActivation"))
 	float ResetCooldownSeconds = 1.0f;
+
+	/**
+	 * true  → la trampa se consume tras atrapar a su primera víctima (one-shot).
+	 *         La concha se destruye cuando expira el immobilize → nunca más podrá
+	 *         atrapar ni ser confundida con un pickup por el sistema externo.
+	 * false → la trampa se re-arma tras ResetCooldownSeconds y persiste en el mapa.
+	 *
+	 * Default true: respeta el balance original del ítem (un uso por concha equipada).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Conch")
+	bool bDestroyAfterActivation = true;
 
 	// ── Estado replicado ──────────────────────────────────────────────────────
 

@@ -125,10 +125,16 @@ void ATN_ConchPickup::RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakChar
 		}
 	}
 
-	// Tras liberar a la víctima, arma de nuevo la trampa (tras un pequeño cooldown)
-	// para que otros jugadores — o incluso la misma víctima si sigue encima — puedan
-	// volver a activarla. Sin esto, la trampa se usaba una sola vez y se quedaba
-	// muerta visualmente en el mapa.
+	if (bDestroyAfterActivation)
+	{
+		// One-shot: tras liberar a la víctima, la concha se destruye → el sistema
+		// externo de ítems no puede volver a interpretarla como pickup recolectable.
+		// SetLifeSpan permite que cualquier callback pendiente termine en paz.
+		SetLifeSpan(0.2f);
+		return;
+	}
+
+	// Modo persistente: tras el cooldown, re-armar para que pueda volver a atrapar.
 	if (ResetCooldownSeconds > 0.f)
 	{
 		GetWorldTimerManager().SetTimer(RearmTimerHandle, this,

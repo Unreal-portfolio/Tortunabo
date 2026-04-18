@@ -209,17 +209,20 @@ Con el default a `true/true/true` el cubo se comporta como caja slide-only (ni v
 ## Fase 2 — Interactables
 
 ### Q2-01 🟠 Trampa — al pillar, vuelve a pickup
-**Componente:** Trap/Trampa (BP pickup-to-deploy)
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_ConchPickup` (concha marina, único ítem-trampa del juego)
+**Estado:** ✅ Resuelto
 **Origen:** Testing 2026-04-18
 
 **Observación:**
 Cuando la trampa desplegada pilla a un jugador, en vez de destruirse o quedarse consumida, **vuelve a convertirse en un pickup** recolectable. Efectivamente da usos infinitos a la trampa y rompe el balance del item.
 
-**Acción:**
-- Localizar el BP/actor de la trampa (probable `ATN_ThrowableItemActor` en modo trap, o derivado de `ATN_PickupInteractableBase`).
-- Tras `OnTrigger`: `Destroy()` (o `SetLifeSpan(0.5f)` para que el multicast de efectos se entregue antes).
-- Confirmar que no hay un `Spawn` de pickup en la cadena de callbacks (OnRep, etc.).
+**Causa raíz:**
+`ATN_ConchPickup::RestoreMovement` re-armaba incondicionalmente la trampa (via `RearmTrap`) tras el timer de inmovilización. La concha persistía en el mapa indefinidamente y el sistema externo de pickup podía re-interpretarla como recolectable.
+
+**Solución aplicada:**
+Nuevo `UPROPERTY bDestroyAfterActivation` (default **true**). En modo one-shot (default) la concha llama a `SetLifeSpan(0.2f)` tras la primera activación → se destruye limpiamente, el multicast de VFX se entrega, y nunca más puede ser tratada como pickup. En modo persistente (si el BP lo destilda) mantiene el comportamiento anterior con `ResetCooldownSeconds`.
+
+El `EditCondition = "!bDestroyAfterActivation"` oculta `ResetCooldownSeconds` del editor cuando es irrelevante, evitando confusión del diseñador.
 
 ---
 
