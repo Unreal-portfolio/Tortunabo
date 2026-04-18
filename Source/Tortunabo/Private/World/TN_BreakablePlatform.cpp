@@ -9,7 +9,8 @@
 
 ATN_BreakablePlatform::ATN_BreakablePlatform()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;  // solo tickea durante el shake
 
 	PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
 	SetRootComponent(PlatformMesh);
@@ -28,6 +29,9 @@ ATN_BreakablePlatform::ATN_BreakablePlatform()
 
 	bReplicates = true;
 	bAlwaysRelevant = true;
+	// La oscilación se calcula localmente en cada máquina — evitar que el server
+	// envíe snapshots de posición durante el shake (introduciría jitter en clientes).
+	SetReplicateMovement(false);
 }
 
 void ATN_BreakablePlatform::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -54,7 +58,8 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 
 	if (PawnsOnPlatform.Num() >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
 	{
-		const float ShakeAt = TimeToBreak * 0.5f;
+		// La vibración arranca ShakeDuration segundos antes del break
+		const float ShakeAt = FMath::Max(0.f, TimeToBreak - ShakeDuration);
 		FTimerDelegate ShakeDelegate;
 		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::MulticastShake);
 		GetWorldTimerManager().SetTimer(ShakeTimerHandle, ShakeDelegate, ShakeAt, false);
@@ -80,6 +85,11 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	{
 		GetWorldTimerManager().ClearTimer(ShakeTimerHandle);
 		GetWorldTimerManager().ClearTimer(BreakTimerHandle);
+		// Si la vibración ya había empezado, cancelarla en todas las máquinas
+		if (bIsShaking)
+		{
+			MulticastStopShake();
+		}
 	}
 }
 
@@ -90,6 +100,7 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 void ATN_BreakablePlatform::BreakPlatform()
 {
 	bBroken = true;
+	StopShakeAndResetPosition();
 	ApplyBrokenState();
 
 	if (BreakSound)
@@ -132,6 +143,7 @@ void ATN_BreakablePlatform::OnRep_bBroken()
 {
 	if (bBroken)
 	{
+		StopShakeAndResetPosition();
 		ApplyBrokenState();
 		if (BreakSound)
 		{
@@ -175,6 +187,44 @@ void ATN_BreakablePlatform::MulticastShake_Implementation()
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ShakeVFX, GetActorLocation());
 	}
+
+	StartShake();
+}
+
+void ATN_BreakablePlatform::MulticastStopShake_Implementation()
+{
+	StopShakeAndResetPosition();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Oscilación visual — ejecutada localmente en cada máquina mientras bIsShaking
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_BreakablePlatform::StartShake()
+{
+	bIsShaking = true;
+	ShakeElapsedSeconds = 0.f;
+	OriginalRootLocation = GetActorLocation();
+	SetActorTickEnabled(true);
+}
+
+void ATN_BreakablePlatform::StopShakeAndResetPosition()
+{
+	if (!bIsShaking) { return; }
+	bIsShaking = false;
+	SetActorTickEnabled(false);
+	// Volver a posición original para evitar deriva si la oscilación terminó fuera de 0
+	SetActorLocation(OriginalRootLocation);
+}
+
+void ATN_BreakablePlatform::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!bIsShaking) { return; }
+
+	ShakeElapsedSeconds += DeltaTime;
+	const float OffsetZ = FMath::Sin(ShakeElapsedSeconds * ShakeFrequencyHz * 2.f * PI) * ShakeAmplitude;
+	SetActorLocation(OriginalRootLocation + FVector(0.f, 0.f, OffsetZ));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

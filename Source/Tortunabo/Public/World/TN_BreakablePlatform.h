@@ -29,6 +29,7 @@ public:
 	ATN_BreakablePlatform();
 
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -58,6 +59,23 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "0.0"))
 	float RespawnTime = 6.0f;
+
+	// ── Shake visual ──────────────────────────────────────────────────────────
+
+	/** Segundos antes del break en que empieza la agitación visual + audio/VFX. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform|Shake",
+		meta = (ClampMin = "0.1"))
+	float ShakeDuration = 1.0f;
+
+	/** Amplitud vertical de la oscilación visual (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform|Shake",
+		meta = (ClampMin = "0.0"))
+	float ShakeAmplitude = 3.0f;
+
+	/** Frecuencia de la oscilación (Hz). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform|Shake",
+		meta = (ClampMin = "1.0"))
+	float ShakeFrequencyHz = 25.0f;
 
 	// ── Audio ─────────────────────────────────────────────────────────────────
 
@@ -110,10 +128,22 @@ private:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastShake();
 
+	/** Para la vibración (cuando los jugadores salen antes de que rompa). */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastStopShake();
+
 	/** Pawns actualmente encima de la plataforma. */
 	TSet<TWeakObjectPtr<APawn>> PawnsOnPlatform;
 
 	FTimerHandle ShakeTimerHandle;
 	FTimerHandle BreakTimerHandle;
 	FTimerHandle RespawnTimerHandle;
+
+	// ── Shake state (local, no replicado — MulticastShake lo activa en cada máquina) ─
+	bool bIsShaking = false;
+	float ShakeElapsedSeconds = 0.f;
+	FVector OriginalRootLocation = FVector::ZeroVector;
+
+	void StartShake();
+	void StopShakeAndResetPosition();
 };
