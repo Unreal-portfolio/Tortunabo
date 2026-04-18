@@ -190,17 +190,25 @@ El bridge (BreakablePlatform con `PlayerThreshold=2+`) **no se rompe** durante e
 
 ### Q1-09 🔵 Quicksand — deprecar, reemplazar por SlowZone "Sticky"
 **Componente:** `ATN_QuicksandVolume` → `ATN_SlowZoneVolume` (variante sticky)
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto en C++ (pendiente re-parentar BP en editor)
 **Origen:** Decisión 2026-04-18 (invalida Q1-04)
 
-**Decisión:**
-Tras el rediseño de Q1-04 el Quicksand quedó funcionalmente muy cerca del SlowZone. En vez de mantener dos actores paralelos, **eliminar `ATN_QuicksandVolume` por completo** y crear una **copia/variante del SlowZone** con slow mucho más agresivo ("atascándote muchos más") — mismo patrón, parámetros más duros.
+**Solución aplicada:**
 
-**Acción:**
-- Crear `ATN_SlowZoneStickyVolume` (o exponer `SlowMultiplier` muy bajo como parámetro en `ATN_SlowZoneVolume` y usar un BP hijo "BP_SlowZoneSticky").
-- Sustituir usos de `BP_QuicksandVolume` en niveles por el nuevo BP.
-- Eliminar `TN_QuicksandVolume.{h,cpp}` del módulo una vez migrado.
-- La muerte, si se quiere, sigue el mismo patrón compuesto (DeathZone a ras de suelo).
+1. **`ATN_SlowZoneVolume` ahora expone `GravityScaleInZone` (default 0.35)** como `UPROPERTY`. Antes estaba hardcoded en 0.35f. Un BP hijo puede setear 2.5+ para conseguir el comportamiento sticky/quicksand original — gravedad alta pega al jugador al suelo.
+2. **Eliminadas `TN_QuicksandVolume.h` y `TN_QuicksandVolume.cpp`** del módulo. Toda su funcionalidad es ahora un caso particular de `TN_SlowZoneVolume` configurando los defaults adecuados.
+
+Los parámetros "sticky" recomendados para un BP hijo `BP_SlowZoneSticky`:
+- `MaxSlowSpeed = 150` (antes `SlowSpeed` en Quicksand)
+- `JumpVelocityInZone = 100` (antes `JumpZVelocityOverride`)
+- `GravityScaleInZone = 2.5` (antes `GravityScaleOverride`)
+- `MaxUpwardVelocity = 120` / `MaxFallVelocity = 1200` (alta velocidad de caída = sticky, no sirope)
+
+**Queda pendiente (BP/editor):**
+- Re-parentar `BP_QuicksandVolume` → `ATN_SlowZoneVolume` (o borrarlo y crear `BP_SlowZoneSticky` desde cero).
+- Ajustar los defaults del BP sticky con los valores listados arriba.
+- Sustituir instancias de `BP_QuicksandVolume` en los niveles por el nuevo BP.
+- La muerte, si se quiere, sigue el mismo patrón compuesto (DeathZone a ras de suelo debajo).
 
 ---
 

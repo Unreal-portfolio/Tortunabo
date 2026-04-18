@@ -58,6 +58,17 @@ protected:
 		meta = (ClampMin = "50.0"))
 	float JumpVelocityInZone = 150.f;
 
+	/**
+	 * Multiplicador de gravedad dentro de la zona.
+	 * Default 0.35 = efecto sirope (caída lenta, flotación).
+	 * Valores >1 convierten el volumen en "sticky" / quicksand
+	 * (pegado al suelo, caída acelerada). BP hijos pueden setear 2.5+
+	 * para reemplazar al deprecado `TN_QuicksandVolume`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SlowZone|Syrup",
+		meta = (ClampMin = "0.0"))
+	float GravityScaleInZone = 0.35f;
+
 private:
 	UFUNCTION()
 	void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,

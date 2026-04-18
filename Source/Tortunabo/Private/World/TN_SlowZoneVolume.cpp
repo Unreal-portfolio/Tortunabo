@@ -34,7 +34,7 @@ void ATN_SlowZoneVolume::Tick(float DeltaTime)
 		ATortugaCharacter* Char = WeakChar.Get();
 		if (!Char) { continue; }
 
-		// Solo modificar CMC en servidor o pawn local (igual que QuicksandVolume).
+		// Solo modificar CMC en servidor o pawn local (evita corromper clientes remotos).
 		if (!HasAuthority() && !Char->IsLocallyControlled()) { continue; }
 
 		UCharacterMovementComponent* CMC = Char->GetCharacterMovement();
@@ -87,7 +87,7 @@ void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 			State.OrigJumpZVel     = CMC->JumpZVelocity;
 			OriginalCMCState.Add(Char, State);
 
-			CMC->GravityScale  = 0.35f; // caída lenta
+			CMC->GravityScale  = GravityScaleInZone;
 			CMC->JumpZVelocity = JumpVelocityInZone;
 		}
 	}
