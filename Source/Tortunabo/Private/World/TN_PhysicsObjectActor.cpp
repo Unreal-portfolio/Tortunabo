@@ -11,6 +11,11 @@ ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 	Mesh->SetSimulatePhysics(true);
 	Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
 
+	// CCD: evita el tunneling clásico cuando el jugador empuja el objeto
+	// contra un muro estático y se mete dentro de la geometría.
+	// Coste pequeño para actores puntuales — aceptable aquí.
+	Mesh->SetUseCCD(true);
+
 	bReplicates = true;
 	SetReplicatingMovement(true);
 
