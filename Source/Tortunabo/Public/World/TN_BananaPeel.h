@@ -48,12 +48,12 @@ protected:
 	/** Multiplicador del impulso de deslizamiento basado en la velocidad actual del jugador. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BananaPeel",
 		meta = (ClampMin = "0.0"))
-	float SlideImpulseMultiplier = 1.5f;
+	float SlideImpulseMultiplier = 1.0f;
 
 	/** Fuerza mínima de deslizamiento (cm/s) si el jugador está casi parado. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BananaPeel",
 		meta = (ClampMin = "0.0"))
-	float MinSlideForce = 600.f;
+	float MinSlideForce = 350.f;
 
 	/**
 	 * Componente vertical (cm/s) aplicado junto al impulso horizontal. Necesario
