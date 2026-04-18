@@ -306,6 +306,7 @@ Cualquier orden de llegada de replicación garantiza que el ignore está configu
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q1-09 | 2026-04-18 | `903c293` | Quicksand deprecado — unificado en SlowZone con `GravityScaleInZone` expuesto |
 | Q1-07 | 2026-04-18 | `5aca4a5` | Knockdown — ragdoll físico opcional (`bUsePhysicsRagdoll`, requiere PhysicsAsset en BP) |
 | Q2-01 | 2026-04-18 | `7ef8d40` | ConchPickup — one-shot por defecto (bDestroyAfterActivation) |
 | Q1-08 | 2026-04-18 | `2020d9c` | BreakablePlatform — re-detecta pawns al respawnear + logs permanentes |
