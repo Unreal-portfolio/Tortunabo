@@ -442,15 +442,21 @@ void ATortugaCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// ── Knockdown ground lock ─────────────────────────────────────────────
-	// Si el personaje fue lanzado por una bomba (PufferFish) durante knockdown,
+	// Si el personaje fue lanzado (PufferFish, banana) durante knockdown,
 	// HandlePendingLaunch pone MOVE_Falling para que vuele por los aires.
 	// Cuando aterriza, CMC pone MOVE_Walking. Re-desactivamos movimiento aquí
 	// para que siga inmovilizado mientras dure el knockdown.
+	//
+	// IMPORTANTE: sólo lockeamos si la velocidad horizontal ya cayó por debajo
+	// del umbral. Así un knockdown con deslizamiento (banana) sigue rodando por
+	// el suelo hasta que la fricción del CMC lo frena de forma natural.
+	// Sin este chequeo, DisableMovement se dispara en el primer tick de contacto
+	// con el suelo y corta en seco el slide (bug Q4-03 residual).
 	if (HasAuthority() && bIsKnockedDown)
 	{
 		if (UCharacterMovementComponent* MC = GetCharacterMovement())
 		{
-			if (MC->IsMovingOnGround())
+			if (MC->IsMovingOnGround() && MC->Velocity.Size2D() < KnockdownGroundLockSpeed)
 			{
 				MC->DisableMovement();
 			}

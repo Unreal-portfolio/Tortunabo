@@ -680,6 +680,15 @@ protected:
 	float KnockdownDownwardForce = 400.f;
 
 	/**
+	 * Umbral de velocidad horizontal (cm/s) bajo el cual el CMC se bloquea al
+	 * aterrizar durante knockdown. Sobre este umbral, el slide continúa y la
+	 * fricción del CMC lo va frenando de forma natural (resbalón del plátano).
+	 * Bajarlo a 0 = desliza hasta parar completamente. Subirlo = stop más brusco.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
+	float KnockdownGroundLockSpeed = 50.f;
+
+	/**
 	 * Si true y el SkelMesh (GetMesh) tiene PhysicsAsset asignado, el knockdown
 	 * activa ragdoll físico completo (`SetSimulatePhysics(true)`) en lugar del
 	 * tilt de -180° manual. El ragdoll se desactiva en RecoverFromKnockdown y

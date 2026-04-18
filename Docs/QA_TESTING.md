@@ -282,17 +282,24 @@ Cualquier orden de llegada de replicación garantiza que el ignore está configu
 ---
 
 ### Q4-03 🟠 BananaPeel — no desliza hacia delante al pisarla
-**Componente:** `ATN_BananaPeel`
-**Estado:** ✅ Resuelto — pendiente de re-test en PIE
+**Componente:** `ATN_BananaPeel` + `ATortugaCharacter::Tick` (ground lock)
+**Estado:** ✅ Resuelto (2 fixes)
 
-**Causa raíz:**
-1. El fallback para jugador **parado** usaba `-ActorForwardVector` → el impulso iba hacia **atrás**, no hacia delante como espera el usuario.
-2. La componente Z era `200.f` hardcoded — muy baja. LaunchCharacter sí entraba en MOVE_Falling, pero el arco duraba ~0.4 s. Al aterrizar, la fricción del suelo mataba el deslizamiento en 0.2 s más → el slide quedaba en ~2 m, casi invisible dentro de la animación del knockdown.
+**Causa raíz (fase 1):**
+1. El fallback para jugador **parado** usaba `-ActorForwardVector` → el impulso iba hacia **atrás**.
+2. La componente Z era `200.f` hardcoded — muy baja. Slide de ~2 m, casi invisible.
 
-**Fix aplicado:**
-- Fallback estacionario ahora usa `+ActorForwardVector` (resbalón cartoon clásico — los pies van hacia delante, el cuerpo cae hacia atrás a partir del tilt -180° del knockdown).
-- Nueva `UPROPERTY SlideVerticalForce` (default 400) — sustituye el hardcode Z=200. Tunable desde `BP_BananaPeel` sin recompilar. 400 da ~0.8 s de vuelo → slide visible de ~4–7 m según la velocidad previa.
-- Log añadido para diagnosticar dirección e intensidad desde el output log.
+**Fix fase 1 (`7dbc3e3`):**
+- Fallback estacionario ahora usa `+ActorForwardVector`.
+- Nueva `UPROPERTY SlideVerticalForce` (default 400). Log añadido.
+
+**Causa raíz (fase 2 — reportada 2026-04-18 tras re-test):**
+`ATortugaCharacter::Tick` hacía `MC->DisableMovement()` **en cuanto** `IsMovingOnGround()` daba `true` durante `bIsKnockedDown`. Justo al aterrizar el arco del plátano, el CMC entraba en `MOVE_None` → el impulso horizontal se perdía en seco. No había decaimiento por fricción, el slide se notaba sólo durante el vuelo. El momentum que traía el jugador no se respetaba en el suelo.
+
+**Fix fase 2:**
+Nueva `UPROPERTY KnockdownGroundLockSpeed` (default 50 cm/s) en `TortugaCharacter`. El Tick ahora sólo lockea el movimiento cuando `Velocity.Size2D() < KnockdownGroundLockSpeed` — mientras la velocidad horizontal siga siendo significativa, el CMC permanece en `MOVE_Walking` y la fricción natural desacelera el slide. Al caer por debajo del umbral se aplica el lock.
+
+Efecto: el resbalón se extiende por el suelo post-aterrizaje hasta detenerse de forma orgánica, respetando el momentum del jugador. Compatible con PufferFish (que aterriza sin impulso horizontal → velocidad ~0 → lock inmediato, comportamiento inalterado).
 
 ---
 
