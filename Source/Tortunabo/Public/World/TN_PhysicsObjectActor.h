@@ -43,6 +43,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "0.1"))
 	float DormancyCheckInterval = 0.5f;
 
+	/** Bloquear rotación alrededor del eje X (roll). Evita que el actor ruede de lado. */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Constraints")
+	bool bLockRotationX = true;
+
+	/** Bloquear rotación alrededor del eje Y (pitch). Evita que el actor vuelque hacia delante/atrás. */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Constraints")
+	bool bLockRotationY = true;
+
+	/**
+	 * Bloquear rotación alrededor del eje Z (yaw). Evita que el actor spinee
+	 * verticalmente cuando el jugador lo empuja oblicuo. Default: true → el
+	 * cubo de empuje se comporta como caja slide-only.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Constraints")
+	bool bLockRotationZ = true;
+
 private:
 	UFUNCTION()
 	void OnMeshHit(UPrimitiveComponent* HitComp, AActor* OtherActor,

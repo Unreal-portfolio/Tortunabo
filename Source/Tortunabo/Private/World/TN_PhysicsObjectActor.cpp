@@ -37,6 +37,17 @@ void ATN_PhysicsObjectActor::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Locks de rotación — aplicar antes de que el cuerpo físico arranque para
+	// que el constraint DOF se construya con los ejes ya fijados. CreateDOFLock
+	// fuerza la reconstrucción si el body ya existía (seguridad ante reruns).
+	if (Mesh)
+	{
+		Mesh->BodyInstance.bLockXRotation = bLockRotationX;
+		Mesh->BodyInstance.bLockYRotation = bLockRotationY;
+		Mesh->BodyInstance.bLockZRotation = bLockRotationZ;
+		Mesh->BodyInstance.CreateDOFLock();
+	}
+
 	if (HasAuthority())
 	{
 		// Despertarse inmediatamente para que los clientes reciban la posición inicial.

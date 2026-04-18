@@ -189,16 +189,16 @@ Tras el rediseño de Q1-04 el Quicksand quedó funcionalmente muy cerca del Slow
 
 ### Q1-10 🟠 PhysicsObject — atasco en esquinas, bloquear rotación Z
 **Componente:** `ATN_PhysicsObjectActor`
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto (pendiente validar en PIE)
 **Origen:** Testing 2026-04-18
 
 **Observación:**
 Al forzar al objeto contra ciertas esquinas geometría+geometría, entra en un estado inestable (oscila, vibra o queda trabado). Propuesta del usuario: **bloquear rotación en el eje vertical** para evitar que el cubo rote sobre sí mismo en Z y caiga en configuraciones imposibles.
 
-**Acción:**
-- En el ctor: `Mesh->BodyInstance.bLockZRotation = true;` (o `SetConstraintMode(EDOFMode::SixDOF)` + lockar rotaciones X/Y/Z según el eje de pie).
-- Alternativa más conservadora: `Mesh->BodyInstance.bLockXRotation = true` + `bLockYRotation = true` (mantener solo yaw). Evita que caiga de lado.
-- Tuning a ojo en PIE tras probar cada combinación.
+**Solución aplicada:**
+Tres `UPROPERTY EditDefaultsOnly` en la nueva categoría `Physics|Constraints` — `bLockRotationX` / `bLockRotationY` / `bLockRotationZ`, todas default `true`. En `BeginPlay` se aplican al `Mesh->BodyInstance` y se llama a `CreateDOFLock()` para forzar la reconstrucción del constraint DOF.
+
+Con el default a `true/true/true` el cubo se comporta como caja slide-only (ni vuelca ni spinea). Cada BP hijo puede destildar los ejes que necesite desde el editor sin tocar C++.
 
 ---
 
@@ -278,6 +278,7 @@ Cualquier orden de llegada de replicación garantiza que el ignore está configu
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q1-10 | 2026-04-18 | _pendiente_ | PhysicsObject — locks rotación X/Y/Z (default slide-only) |
 | Q4-03 | 2026-04-18 | `7dbc3e3` | BananaPeel — slide hacia delante + `SlideVerticalForce` tunable |
 | Q4-02 | 2026-04-18 | `84fd833` | ThrowableItem — cover-all de `IgnoreInstigatorCollision` (race con `OnRep_Instigator`) |
 | Q4-01 | 2026-04-18 | `635377e` | InkProjectile parabólico (`GravityAcceleration`) |
