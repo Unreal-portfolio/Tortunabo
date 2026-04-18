@@ -59,6 +59,26 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Constraints")
 	bool bLockRotationZ = true;
 
+	/**
+	 * Detecta clipping contra geometría estática: si el objeto queda atrapado
+	 * entre dos superficies (penetración en direcciones opuestas en ≥2 ejes),
+	 * se destruye con un "poof" en lugar de quedarse vibrando dentro de paredes.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush")
+	bool bEnableCrushDetection = true;
+
+	/** Intervalo (s) entre chequeos de crush. 0 = solo al detenerse. */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush", meta = (ClampMin = "0.2"))
+	float CrushCheckInterval = 1.0f;
+
+	/** VFX opcional al destruirse por crush. */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush")
+	TObjectPtr<class UNiagaraSystem> CrushPoofVFX;
+
+	/** Sonido opcional al destruirse por crush. */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush")
+	TObjectPtr<class USoundBase> CrushPoofSound;
+
 private:
 	UFUNCTION()
 	void OnMeshHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
@@ -66,6 +86,11 @@ private:
 	               const FHitResult& Hit);
 
 	void TryEnterDormancy();
+	void CheckForCrush();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastCrushPoof();
 
 	FTimerHandle DormancyCheckTimer;
+	FTimerHandle CrushCheckTimer;
 };
