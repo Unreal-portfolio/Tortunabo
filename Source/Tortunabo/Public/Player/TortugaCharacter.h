@@ -680,6 +680,26 @@ protected:
 	float KnockdownDownwardForce = 400.f;
 
 	/**
+	 * Si true y el SkelMesh (GetMesh) tiene PhysicsAsset asignado, el knockdown
+	 * activa ragdoll físico completo (`SetSimulatePhysics(true)`) en lugar del
+	 * tilt de -180° manual. El ragdoll se desactiva en RecoverFromKnockdown y
+	 * el mesh se re-attachea al capsule + restaura pose por defecto.
+	 *
+	 * Si el BP no tiene PhysicsAsset, se cae silenciosamente al tilt tradicional
+	 * — ningún cambio visible respecto al comportamiento previo.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
+	bool bUsePhysicsRagdoll = true;
+
+	/**
+	 * Perfil de colisión aplicado al SkelMesh durante ragdoll. "Ragdoll" es el
+	 * preset estándar de UE que permite físicas pero ignora al pawn. Cambiar
+	 * sólo si el proyecto define perfiles custom.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
+	FName RagdollCollisionProfile = TEXT("Ragdoll");
+
+	/**
 	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
 	 * El pawn NO se destruye: queda como cadáver interactuable para revive.
 	 */
@@ -736,6 +756,14 @@ protected:
 
 	/** Componente visual para el tilt de knockdown (SkeletalMesh o StaticMesh blockout). */
 	TWeakObjectPtr<USceneComponent> KnockdownVisualComp;
+
+	// ── Ragdoll knockdown state ─────────────────────────────────────────────
+	/** Transform relativo del SkelMesh antes de activar ragdoll — para restaurar pose. */
+	FTransform SnapshotSkelMeshRelTransform;
+	/** Perfil de colisión del SkelMesh antes del ragdoll — para restaurar al recover. */
+	FName SnapshotSkelMeshCollisionProfile = NAME_None;
+	/** true mientras el ragdoll físico está activo (evita doble-activación y no-ops al recover). */
+	bool bKnockdownRagdollActive = false;
 
 	// ── Dive state ────────────────────────────────────────────────────────────
 

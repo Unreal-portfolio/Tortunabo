@@ -135,19 +135,32 @@ Con `Mass=200000` el jugador aún puede empujarlo con facilidad. No es bug (el p
 
 ### Q1-07 🔴 Knockdown — rediseño necesario (sigue vertical con errores)
 **Componente:** `ATortugaCharacter` (sistema de knockdown completo)
-**Estado:** ⬜ Abierto — followup de Q1-01
-**Origen:** Testing 2026-04-18
+**Estado:** ✅ Resuelto en C++ (pendiente asignar PhysicsAsset al SkelMesh del BP)
+**Origen:** Testing 2026-04-18 — followup de Q1-01
 
 **Observación:**
-Tras el fix de Q1-01 (`beb9b53`) el tilt 180° ya se aplica, pero el jugador **sigue viéndose vertical y con errores visuales** al recibir knockdown. Posibles causas:
-- El emote de knockdown sobreescribe la rotación relativa del componente durante el blend.
-- El hueso sobre el que aplicamos tilt (`KnockdownComponentName = "Cuerpo"`) puede no ser el correcto en el BP actual.
-- La rotación se aplica relativa al mesh pero el mesh tiene su propia rotación por `RelativeRotation` (-90º típico) — componer mal da resultados raros.
+Tras el fix de Q1-01 (`beb9b53`) el tilt 180° ya se aplica, pero el jugador **sigue viéndose vertical y con errores visuales** al recibir knockdown.
 
-**Acción:**
-- Grabar un PIE con 2 players: uno sufre knockdown, otro observa. Comparar con animación objetivo (tumbado panza arriba).
-- Considerar **ragdoll físico breve** como alternativa: `GetMesh()->SetSimulatePhysics(true)` durante la duración, y al recuperar volver a `Animation`. Coste de replicación aceptable para eventos puntuales.
-- Alternativa simple: animación de knockdown dedicada en lugar de pitch por código — el anim blueprint controla la pose completa.
+**Solución aplicada (opción 2 del QA: ragdoll físico breve):**
+
+Nueva ruta A en `ApplyKnockdownVisual`: si `bUsePhysicsRagdoll == true` (default) y el SkelMesh tiene `PhysicsAsset` asignado, activa ragdoll físico completo:
+
+1. Snapshot de `RelativeTransform` + `CollisionProfileName` del SkelMesh
+2. `SetCollisionProfileName(RagdollCollisionProfile)` (default `"Ragdoll"`)
+3. `SetSimulatePhysics(true)` + `WakeAllRigidBodies()`
+4. Desactiva `NetworkSmoothingMode` en el CMC para evitar que la corrección de red "tire" del mesh ragdolleado
+
+Al `RecoverFromKnockdown`:
+- `SetSimulatePhysics(false)` → restaura colisión snapshot
+- `AttachToComponent(Capsule)` con `KeepRelativeTransform` (SetSimulatePhysics(true) había detachado el mesh)
+- Restaura el `RelativeTransform` snapshot → pose por defecto
+
+Si el SkelMesh **no tiene** PhysicsAsset, cae silenciosamente a la Ruta B (tilt manual pre-existente) — no rompe nada.
+
+**Queda pendiente (BP/editor):**
+- Asignar un `PhysicsAsset` al `USkeletalMeshComponent` del `BP_TortugaCharacter` (Mesh component).
+- Ajustar los bodies del PhysicsAsset para que el ragdoll caiga de forma natural ("panza arriba" es cuestión de densidades de masa + orientación inicial).
+- Testear en PIE: si el ragdoll no luce bien, se puede destildar `bUsePhysicsRagdoll` desde el BP para volver al tilt manual sin recompilar.
 
 ---
 

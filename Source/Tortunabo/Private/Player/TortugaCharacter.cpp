@@ -1784,6 +1784,61 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 {
+	// ── Ruta A: ragdoll físico (opción 2 del rediseño Q1-07) ───────────────────
+	// Si el BP configuró bUsePhysicsRagdoll=true y el SkelMesh tiene PhysicsAsset,
+	// activamos ragdoll completo. Sin PhysicsAsset no hay ragdoll posible → cae
+	// silenciosamente al tilt manual (Ruta B más abajo) y no rompe nada.
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	const bool bCanRagdoll = bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset() != nullptr;
+	if (bCanRagdoll)
+	{
+		UCharacterMovementComponent* CMC_Ragdoll = GetCharacterMovement();
+
+		if (bKnocked)
+		{
+			if (bKnockdownRagdollActive) { return; } // idempotente
+
+			SnapshotSkelMeshRelTransform = SkelMesh->GetRelativeTransform();
+			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+
+			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->SetSimulatePhysics(true);
+			SkelMesh->WakeAllRigidBodies();
+
+			// Sin esto, el CMC suaviza la posición de la cápsula y puede
+			// "tirar" del mesh ragdolleado durante la corrección de red.
+			if (CMC_Ragdoll) { CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled; }
+
+			bKnockdownRagdollActive = true;
+
+			UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] Ragdoll activated on %s"), *GetNameSafe(this));
+		}
+		else
+		{
+			if (!bKnockdownRagdollActive) { return; }
+
+			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+
+			// SetSimulatePhysics(true) detachea el mesh del parent — hay que re-attachear
+			// manualmente al capsule con la transform relativa original para restaurar la pose.
+			if (USceneComponent* Capsule = GetCapsuleComponent())
+			{
+				SkelMesh->AttachToComponent(Capsule,
+					FAttachmentTransformRules::KeepRelativeTransform);
+			}
+			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
+
+			if (CMC_Ragdoll) { CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential; }
+
+			bKnockdownRagdollActive = false;
+
+			UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] Ragdoll deactivated on %s"), *GetNameSafe(this));
+		}
+		return;
+	}
+
+	// ── Ruta B: fallback tilt manual (comportamiento pre-Q1-07) ────────────────
 	USceneComponent* VisComp = KnockdownVisualComp.Get();
 
 	// ── Fallback: si el multicast llegó antes de que BeginPlay encontrara el componente,
@@ -1801,11 +1856,11 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		// 2) Fallback: SkeletalMesh con asset
 		if (!KnockdownVisualComp.IsValid())
 		{
-			if (USkeletalMeshComponent* SkelMesh = GetMesh())
+			if (USkeletalMeshComponent* FallbackSkelMesh = GetMesh())
 			{
-				if (SkelMesh->GetSkeletalMeshAsset())
+				if (FallbackSkelMesh->GetSkeletalMeshAsset())
 				{
-					KnockdownVisualComp = SkelMesh;
+					KnockdownVisualComp = FallbackSkelMesh;
 				}
 			}
 		}
