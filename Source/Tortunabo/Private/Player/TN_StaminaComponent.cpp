@@ -164,13 +164,14 @@ void UTN_StaminaComponent::TickUnlimitedTimer(float DeltaTime)
 		bUnlimitedStamina = false;
 		UnlimitedStaminaRemaining = 0.0f;
 
-		// Penalización post-boost: forzar agotamiento al expirar el efecto (#1)
+		// Penalización blanda post-boost: durante PostBoostExhaustionSeconds el
+		// jugador se mueve más lento y drena stamina x2. NO se bloquea recuperación
+		// ni se resetea CurrentStamina — queremos desincentivar el sprint sin castrar
+		// al jugador.
 		if (PostBoostExhaustionSeconds > 0.f)
 		{
-			bIsExhausted           = true;
 			bPostBoostPenaltyActive = true;
-			ExhaustionTimer        = PostBoostExhaustionSeconds;
-			CurrentStamina         = 0.f;
+			PostBoostPenaltyTimer   = PostBoostExhaustionSeconds;
 		}
 	}
 }
@@ -185,6 +186,20 @@ void UTN_StaminaComponent::TickStamina(float DeltaTime)
 		CurrentStamina = EffMax;
 	}
 
+	// Penalización blanda post-boost corre en paralelo — no bloquea nada,
+	// solo escala drain y velocidad mientras el timer expira.
+	if (bPostBoostPenaltyActive)
+	{
+		PostBoostPenaltyTimer -= DeltaTime;
+		if (PostBoostPenaltyTimer <= 0.0f)
+		{
+			bPostBoostPenaltyActive = false;
+			PostBoostPenaltyTimer   = 0.0f;
+			// ApplyMovementSpeed al quitar el flag — restaura velocidad completa.
+			ApplyMovementSpeed();
+		}
+	}
+
 	if (bIsSprinting)
 	{
 		TimeSinceSprintStopped = 0.0f;
@@ -192,7 +207,8 @@ void UTN_StaminaComponent::TickStamina(float DeltaTime)
 
 		if (!bUnlimitedStamina)
 		{
-			CurrentStamina = FMath::Max(0.0f, CurrentStamina - (SprintDrainPerSecond * DeltaTime));
+			const float DrainMul = bPostBoostPenaltyActive ? PostBoostDrainMultiplier : 1.0f;
+			CurrentStamina = FMath::Max(0.0f, CurrentStamina - (SprintDrainPerSecond * DrainMul * DeltaTime));
 
 			// Marcar agotamiento cuando la stamina llega a cero
 			if (CurrentStamina <= 0.0f && !bIsExhausted)
@@ -211,7 +227,6 @@ void UTN_StaminaComponent::TickStamina(float DeltaTime)
 			if (ExhaustionTimer <= 0.0f)
 			{
 				bIsExhausted            = false;
-				bPostBoostPenaltyActive = false;
 				ExhaustionTimer         = 0.0f;
 				// Reiniciar timer de delay normal también
 				TimeSinceSprintStopped = 0.0f;
@@ -260,7 +275,12 @@ void UTN_StaminaComponent::ApplyMovementSpeed() const
 	{
 		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
 		{
-			Movement->MaxWalkSpeed = FMath::Min(bIsSprinting ? SprintSpeed : WalkSpeed, ActiveSpeedCap);
+			float BaseSpeed = bIsSprinting ? SprintSpeed : WalkSpeed;
+			if (bPostBoostPenaltyActive)
+			{
+				BaseSpeed *= PostBoostSpeedMultiplier;
+			}
+			Movement->MaxWalkSpeed = FMath::Min(BaseSpeed, ActiveSpeedCap);
 		}
 	}
 }

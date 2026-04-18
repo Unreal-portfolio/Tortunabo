@@ -109,11 +109,21 @@ protected:
 	float ExhaustionPenaltySeconds = 1.0f;
 
 	/**
-	 * Segundos de agotamiento forzado al expirar la stamina ilimitada (Barrita Energética).
-	 * 0 = sin penalización (comportamiento original). Configurable por BP.
+	 * Segundos de penalización al expirar la stamina ilimitada (Barrita Energética).
+	 * Durante este tiempo: MaxWalkSpeed *= PostBoostSpeedMultiplier y el sprint drena
+	 * a PostBoostDrainMultiplier × ritmo normal. La recarga NO se bloquea.
+	 * 0 = sin penalización. Configurable por BP.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
-	float PostBoostExhaustionSeconds = 2.0f;
+	float PostBoostExhaustionSeconds = 4.0f;
+
+	/** Multiplicador de velocidad máxima mientras dura la penalización post-boost. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.1", ClampMax = "1.0"))
+	float PostBoostSpeedMultiplier = 0.75f;
+
+	/** Multiplicador de drenaje de stamina al sprintar durante la penalización. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "1.0"))
+	float PostBoostDrainMultiplier = 2.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina|Movement", meta = (ClampMin = "0.0"))
 	float WalkSpeed = 450.0f;
@@ -144,6 +154,7 @@ private:
 	float RechargeElapsed = 0.0f;
 	float TimeSinceSprintStopped = 0.0f;
 	float ExhaustionTimer = 0.0f;
+	float PostBoostPenaltyTimer = 0.0f;
 
 	UPROPERTY(Replicated)
 	bool bIsExhausted = false;
