@@ -127,8 +127,21 @@ void ATN_ConchPickup::RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakChar
 
 	if (bDestroyAfterActivation)
 	{
-		// One-shot: tras liberar a la víctima, la concha se destruye → el sistema
-		// externo de ítems no puede volver a interpretarla como pickup recolectable.
+		// Antes de auto-destruirse, dejar un pickup-ítem en la misma ubicación para
+		// que la trampa sea recuperable como recurso y el flujo de rescate del item
+		// no acabe en "trampa consumida y nada en el suelo".
+		if (UWorld* World = GetWorld())
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.SpawnCollisionHandlingOverride =
+				ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+			SpawnParams.Owner = GetOwner();
+			// GetClass() preserva el BP hijo configurado (mesh/audio/VFX) en lugar
+			// de spawnear el ATN_ConchPickup nativo "pelado".
+			World->SpawnActor<ATN_ConchPickup>(
+				GetClass(), GetActorLocation(), GetActorRotation(), SpawnParams);
+		}
+
 		// SetLifeSpan permite que cualquier callback pendiente termine en paz.
 		SetLifeSpan(0.2f);
 		return;
