@@ -59,12 +59,12 @@ void ATN_ThrowableItemActor::BeginPlay()
 	ProjectileMovement->Bounciness = Bounciness;
 	ProjectileMovement->Friction   = RollingFriction;
 
-	// Ignorar colisión con el lanzador para que la bola no se auto-destruya
-	// al salir de la mano del personaje.
-	if (APawn* ThrowInstigator = GetInstigator())
-	{
-		Mesh->IgnoreActorWhenMoving(ThrowInstigator, true);
-	}
+	// Ignorar colisión con el lanzador. En autoridad, Instigator está resuelto.
+	// En clientes, puede no estarlo aún — OnRep_Instigator lo cubre cuando llegue,
+	// y ApplyLaunchDataIfReady también lo reintenta justo antes de activar el
+	// ProjectileMovement. Sin este cover-all, en el cliente-lanzador la bola
+	// chocaba con la cápsula del propio personaje y rebotaba fuera de cámara.
+	IgnoreInstigatorCollision();
 
 	// Solo el servidor valida impactos y detenciones.
 	if (HasAuthority())
@@ -128,6 +128,24 @@ void ATN_ThrowableItemActor::OnRep_ThrowData()
 	ApplyLaunchDataIfReady();
 }
 
+void ATN_ThrowableItemActor::OnRep_Instigator()
+{
+	Super::OnRep_Instigator();
+	// Cliente-lanzador: Instigator puede replicar después del BeginPlay si el
+	// bunch inicial se fragmenta. Sin este retry, la bola colisionaba con la
+	// propia cápsula del lanzador → rebote hacia atrás → salía de cámara.
+	IgnoreInstigatorCollision();
+}
+
+void ATN_ThrowableItemActor::IgnoreInstigatorCollision()
+{
+	if (!Mesh) { return; }
+	if (APawn* ThrowInstigator = GetInstigator())
+	{
+		Mesh->IgnoreActorWhenMoving(ThrowInstigator, true);
+	}
+}
+
 // ── MulticastLaunch: simulación local en servidor + todos los clientes ────────
 
 void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
@@ -148,6 +166,11 @@ void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
 	{
 		Mesh->SetRelativeScale3D(Scale);
 	}
+
+	// Asegurar que ignoramos al lanzador ANTES de activar el ProjectileMovement.
+	// Si el MulticastLaunch llega antes de que Instigator haya replicado, será
+	// no-op aquí y OnRep_Instigator lo resolverá luego.
+	IgnoreInstigatorCollision();
 
 	// Posicionar e iniciar simulación local — igual que el servidor.
 	SetActorLocation(Origin);
@@ -177,6 +200,11 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 	{
 		Mesh->SetRelativeScale3D(ThrowData.MeshScale);
 	}
+
+	// Asegurar ignore del lanzador antes de activar ProjectileMovement.
+	// En el cliente-lanzador, Instigator puede haber llegado entre BeginPlay
+	// y OnRep_ThrowData — este retry cubre esa ventana.
+	IgnoreInstigatorCollision();
 
 	// Servidor y clientes: posicionar desde origen y activar física local.
 	// Para JIP late-joiners: ThrowData está replicado pero la bola ya se movió;

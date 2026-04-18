@@ -237,23 +237,19 @@ Nuevo `UPROPERTY GravityAcceleration` (default 980 cm/s²). En Tick, `LaunchVelo
 ---
 
 ### Q4-02 🔴 Cliente no ve la bola lanzada hasta aparecer el pickup
-**Componente:** proyectil tirable (probable `ATN_ThrowableItemActor` o equivalente del sistema de throwables).
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_ThrowableItemActor`
+**Estado:** ✅ Resuelto — pendiente de re-test en PIE 2P
 
-**Observación:** cuando el **host** lanza la bola, todos ven la trayectoria correctamente. Cuando el **cliente** lanza la bola, el cliente no ve el proyectil en vuelo — sólo aparece al rebotar/aterrizar como pickup. El host sí ve el proyectil del cliente.
+**Causa raíz identificada:**
+En el cliente-lanzador, `AActor::Instigator` puede replicarse **después** del primer `BeginPlay` si el bunch inicial se fragmenta. Como `Mesh->IgnoreActorWhenMoving(GetInstigator(), true)` sólo se llamaba en `BeginPlay`, si el Instigator era null en ese frame la llamada era no-op → al activar el `ProjectileMovement` la bola colisionaba con la cápsula del propio lanzador → rebote fuerte hacia atrás → salía de cámara antes de que el usuario la viera. El host no sufría esto porque en authority el Instigator está siempre resuelto. Todos los demás clientes tampoco lo veían porque su cámara no estaba detrás de la bola que rebotaba.
 
-**Causas probables:**
-- Spawn del proyectil sólo ocurre en el servidor (OK) pero el actor no está marcado `bReplicates = true` en el ctor.
-- Falta `SetReplicateMovement(true)` o `bAlwaysRelevant = true` → el cliente que lanzó no está dentro del radio de relevancia mientras el proyectil se mueve.
-- El proyectil se oculta localmente en el lanzador (anti-clip visual) pero no se vuelve a mostrar hasta el impacto.
-
-**Acción sugerida:** auditar ctor del throwable — debe replicar movimiento como `ATN_InkProjectile`:
-```cpp
-bReplicates = true;
-bAlwaysRelevant = true; // o garantizar relevancy por distancia
-SetReplicateMovement(true);
-```
-Si se oculta localmente al lanzar (para no chocar con la cámara), añadir un timer que lo muestre de nuevo tras 0.1–0.2s.
+**Fix aplicado (cover-all):**
+Nuevo helper `IgnoreInstigatorCollision()` llamado desde cuatro puntos idempotentes:
+1. `BeginPlay` — intento inicial (ok en authority).
+2. `OnRep_Instigator` (override) — cubre replicación tardía del Instigator.
+3. `ApplyLaunchDataIfReady` — reintento antes de `ProjectileMovement->Activate`.
+4. `MulticastLaunch_Implementation` — reintento antes de activar el mov. local.
+Cualquier orden de llegada de replicación garantiza que el ignore está configurado antes de que la bola se mueva un solo frame.
 
 ---
 
@@ -281,6 +277,7 @@ Si se oculta localmente al lanzar (para no chocar con la cámara), añadir un ti
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q4-02 | 2026-04-18 | pendiente | ThrowableItem — cover-all de `IgnoreInstigatorCollision` (race con `OnRep_Instigator`) |
 | Q4-01 | 2026-04-18 | `635377e` | InkProjectile parabólico (`GravityAcceleration`) |
 | Q1-03 | 2026-04-18 | `65446f6` | BreakablePlatform shake antes de romperse |
 | Q1-02 | 2026-04-18 | `c3a0a12` | BreakablePlatform logs de respawn |
