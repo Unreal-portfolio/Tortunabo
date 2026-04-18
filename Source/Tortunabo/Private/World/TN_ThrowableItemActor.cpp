@@ -10,9 +10,17 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+
+	// bAlwaysRelevant: CRÍTICO para el bug de "bola invisible en vuelo".
+	// Antes, si el lanzador estaba lejos del otro jugador, la bola no era
+	// network-relevant para ese cliente → el MulticastLaunch nunca llegaba →
+	// el cliente solo veía el pickup final teletransportado. Con AlwaysRelevant
+	// el cliente recibe el actor (y su ThrowData replicado) en el primer bunch.
+	bAlwaysRelevant = true;
+
 	// NO replicar movimiento: cada máquina simula la física localmente desde
-	// los mismos parámetros de lanzamiento (MulticastLaunch) → sin tirones a 30 Hz.
-	// El servidor sigue siendo autoridad para hit-detection (OnMeshHit).
+	// los mismos parámetros de lanzamiento (ThrowData + MulticastLaunch) → sin
+	// tirones a 30 Hz. El servidor sigue siendo autoridad para hit-detection.
 	SetReplicateMovement(false);
 
 	// Frecuencia reducida: solo se replica el struct ThrowData (para JIP late-joiners)
@@ -94,9 +102,19 @@ void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const
 	// ── Aplicar localmente en el servidor ─────────────────────────────────────
 	ApplyLaunchDataIfReady();
 
+	// ── Forzar replicación inmediata ─────────────────────────────────────────
+	// ForceNetUpdate + FlushNetDormancy garantiza que el primer bunch hacia
+	// cualquier cliente incluye YA el ThrowData con bReady=true — el cliente
+	// recibe el actor y dispara OnRep_ThrowData en el primer frame que lo ve,
+	// sin esperar al ciclo de replicación normal (que podía retrasar la bola
+	// varios frames y provocar el "freeze + teleport" que reportabas).
+	FlushNetDormancy();
+	ForceNetUpdate();
+
 	// ── Emitir a todos los clientes para simulación local simultánea ──────────
-	// Esto garantiza que todos los clientes inicien la física desde el mismo
-	// origen y velocidad → trayectorias idénticas sin replicación de posición.
+	// Redundante con OnRep_ThrowData, pero cubre el caso en que el cliente
+	// ya tenía el actor y solo necesita el trigger — RPC Reliable se procesa
+	// aunque ThrowData llegue en el mismo bunch.
 	MulticastLaunch(SpawnLocation, InitialVelocity, SafeScale, SourceItem.EquippedMesh);
 }
 

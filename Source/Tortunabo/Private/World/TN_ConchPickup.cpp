@@ -48,6 +48,7 @@ void ATN_ConchPickup::BeginPlay()
 void ATN_ConchPickup::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(TrapTimerHandle);
+	GetWorldTimerManager().ClearTimer(RearmTimerHandle);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -115,13 +116,34 @@ void ATN_ConchPickup::OnSphereBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 
 void ATN_ConchPickup::RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakCharacter)
 {
-	if (!WeakCharacter.IsValid()) { return; }
-
-	UCharacterMovementComponent* MoveComp = WeakCharacter->GetCharacterMovement();
-	if (MoveComp && MoveComp->MovementMode == MOVE_None)
+	if (WeakCharacter.IsValid())
 	{
-		MoveComp->SetMovementMode(MOVE_Walking);
+		UCharacterMovementComponent* MoveComp = WeakCharacter->GetCharacterMovement();
+		if (MoveComp && MoveComp->MovementMode == MOVE_None)
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+		}
 	}
+
+	// Tras liberar a la víctima, arma de nuevo la trampa (tras un pequeño cooldown)
+	// para que otros jugadores — o incluso la misma víctima si sigue encima — puedan
+	// volver a activarla. Sin esto, la trampa se usaba una sola vez y se quedaba
+	// muerta visualmente en el mapa.
+	if (ResetCooldownSeconds > 0.f)
+	{
+		GetWorldTimerManager().SetTimer(RearmTimerHandle, this,
+			&ATN_ConchPickup::RearmTrap, ResetCooldownSeconds, false);
+	}
+	else
+	{
+		RearmTrap();
+	}
+}
+
+void ATN_ConchPickup::RearmTrap()
+{
+	if (!HasAuthority()) { return; }
+	bTrapUsed = false;
 }
 
 // ── Multicast ──────────────────────────────────────────────────────────────────

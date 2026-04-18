@@ -41,22 +41,45 @@ void ATN_ItemSpawnZone::BeginPlay()
 		return;
 	}
 
-	// Diferir el spawn de ítems un tick.
+	// Diferir el spawn de ítems un pequeño delay (50 ms ≈ 3 ticks a 60 fps).
 	// Cuando este actor es un ChildActor dentro de un chunk, necesitamos que
 	// SpawnBox->GetComponentTransform() refleje la posición final del chunk.
 	//
-	// IMPORTANTE: Usar FTimerDelegate bound a UObject (no lambda) para que EndPlay→
-	// ClearAllTimersForObject(this) cancele el timer si el actor es destruido
-	// antes del tick (ej. chunk temporal del ChunkManager::GetOrComputeInSocketTransform
-	// que spawnea un chunk en Identity solo para leer el InSocket y lo destruye enseguida).
-	// Con la lambda anterior, el timer NO se cancelaba → SpawnItems() disparaba en el
-	// tick siguiente sobre un actor pendiente de GC en posición Identity → ítems en (0,0,0).
-	GetWorldTimerManager().SetTimerForNextTick(
-		FTimerDelegate::CreateUObject(this, &ATN_ItemSpawnZone::SpawnItems));
+	// IMPORTANTE: usamos SetTimer con un FTimerHandle (no SetTimerForNextTick).
+	// Razón: SetTimerForNextTick mete el callback en una cola "tick stream" que
+	// NO se vacía con ClearAllTimersForObject(this) en AActor::EndPlay. Si el
+	// chunk temporal del ChunkManager (GetOrComputeInSocketTransform) se destruye
+	// el mismo frame en que esta zona schedula el callback, el callback dispara
+	// igualmente al tick siguiente sobre un actor pendiente de GC → primer pickup
+	// fantasma en (0,0,0) del nivel. SetTimer + ClearTimer en EndPlay sí lo cancela.
+	GetWorldTimerManager().SetTimer(SpawnTimerHandle, this,
+		&ATN_ItemSpawnZone::SpawnItems, 0.05f, false);
+}
+
+void ATN_ItemSpawnZone::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+	Super::EndPlay(EndPlayReason);
 }
 
 void ATN_ItemSpawnZone::SpawnItems()
 {
+	// Defensa contra chunks temporales del ChunkManager: si nos disparan en
+	// posición Identity o muy lejos del nivel jugable, abortamos. Sin esto el
+	// floor trace impactaba el suelo cerca del origen y aparecía un pickup
+	// fantasma en (0,0,0) cada partida.
+	if (IsActorBeingDestroyed() || !IsValid(this))
+	{
+		return;
+	}
+	const FVector ZoneWorld = GetActorLocation();
+	if (ZoneWorld.Z < -10000.f)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[ItemSpawnZone] '%s' — SpawnZone fuera del mapa (z=%.0f). "
+			"Probable chunk temporal del ChunkManager. Abortando spawn."), *GetName(), ZoneWorld.Z);
+		return;
+	}
+
 	TArray<FVector> SpawnedLocations;
 	int32 SuccessCount = 0;
 

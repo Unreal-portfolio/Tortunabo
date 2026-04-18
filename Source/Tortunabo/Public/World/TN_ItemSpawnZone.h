@@ -25,6 +25,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/** Zona de spawn visible en editor. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpawnZone")
@@ -62,5 +63,12 @@ private:
 
 	/** Genera una posición random dentro del box, valida suelo y obstáculos. */
 	bool FindValidSpawnPoint(FVector& OutLocation, const TArray<FVector>& ExistingLocations) const;
+
+	/** Handle del timer diferido. Lo cancelamos en EndPlay para que un chunk
+	 *  temporal destruido (ChunkManager::GetOrComputeInSocketTransform) no dispare
+	 *  SpawnItems sobre un actor pending-kill — lo que provocaba el primer pickup
+	 *  fantasma en (0,0,0) del nivel. SetTimerForNextTick no siempre se cancela
+	 *  con ClearAllTimersForObject porque va por una cola distinta. */
+	FTimerHandle SpawnTimerHandle;
 };
 

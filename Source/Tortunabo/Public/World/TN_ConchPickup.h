@@ -70,6 +70,16 @@ protected:
 		meta = (ClampMin = "10.0"))
 	float TrapRadius = 60.f;
 
+	/**
+	 * Segundos tras liberar a la víctima antes de que la trampa vuelva a poder atrapar.
+	 * Evita que la misma víctima se re-atrape inmediatamente al salir del inmovilizado.
+	 * Default 1.0s — ajustar en BP si se quiere una trampa de un solo uso (poner a 0 y
+	 * destruir la concha al finalizar; actualmente la concha persiste para reutilización).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Conch",
+		meta = (ClampMin = "0.0"))
+	float ResetCooldownSeconds = 1.0f;
+
 	// ── Estado replicado ──────────────────────────────────────────────────────
 
 	/**
@@ -123,7 +133,11 @@ private:
 	/** Reproduce sonido y VFX de colocación de trampa en la máquina local. */
 	void PlayPlaceEffects();
 
+	/** Re-arma la trampa (bTrapUsed=false) una vez expira el cooldown. */
+	void RearmTrap();
+
 	FTimerHandle TrapTimerHandle;
+	FTimerHandle RearmTimerHandle;
 
 	/** Evita que la trampa se active dos veces mientras el personaje sigue en overlap. */
 	bool bTrapUsed = false;

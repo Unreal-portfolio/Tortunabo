@@ -378,6 +378,15 @@ AActor* ATN_ChunkManager::SpawnAlignedChunk(TSubclassOf<AActor> ChunkClass, cons
 	Chunk->SetReplicates(true);
 	Chunk->SetReplicateMovement(false); // chunks son estáticos
 
+	// bAlwaysRelevant: los chunks deben permanecer relevantes incluso cuando el
+	// cliente cambia de ViewTarget (muerte → spectator). Sin esto, al morir el
+	// cliente su relevancy se recalculaba desde la posición del spectador; los
+	// chunks lejos del spectador se descargaban y al respawnear las puertas,
+	// zonas de spawn y triggers llegaban desincronizados. NO usamos DORM_Initial
+	// porque los ChildActorComponents (puertas, botones) cambian de estado en
+	// runtime y necesitan replicar esos cambios — DORM_Initial los congelaría.
+	Chunk->bAlwaysRelevant = true;
+
 	return Chunk;
 }
 

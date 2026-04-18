@@ -799,8 +799,6 @@ protected:
 	float LocalHeadPitch       = 0.f;
 	float SmoothedHeadYaw      = 0.f;   ///< interpolado en clientes remotos hacia ReplicatedHead*
 	float SmoothedHeadPitch    = 0.f;
-	/** Yaw crudo del frame anterior (sin clamp). Mantiene continuidad entre frames para evitar el snap a ±180°. */
-	float LastHeadRawYaw       = 0.f;
 
 	void TickHeadLook(float DeltaTime);
 	void ApplyHeadLookToCabeza(float Yaw, float Pitch);

@@ -64,6 +64,16 @@ ATortugaCharacter::ATortugaCharacter()
 	CameraBoom->TargetArmLength = 350.f;
 	CameraBoom->bUsePawnControlRotation = true;
 
+	// ── Colisión del spring arm con paredes ───────────────────────────────────
+	// Usamos el comportamiento nativo del SpringArm (bDoCollisionTest) en lugar de
+	// casts manuales: es O(1) por frame, se ejecuta dentro del componente y ya
+	// gestiona interpolación de retracción/extensión. Explicitamos los campos
+	// por si algún Class Default en BP los hubiera puesto a false.
+	CameraBoom->bDoCollisionTest = true;
+	CameraBoom->ProbeChannel     = ECC_Camera;  // todas las paredes bloquean ECC_Camera por defecto
+	CameraBoom->ProbeSize        = 14.f;         // radio del sweep; un poco mayor que el default (12)
+	                                             // para evitar clipping con esquinas afiladas.
+
 	// ── Cinematic camera lag ──────────────────────────────────────────────────
 	// Suaviza la posición de la cámara para un feel AAA fluido.
 	CameraBoom->bEnableCameraLag = true;
@@ -3598,14 +3608,14 @@ void ATortugaCharacter::TickHeadLook(float DeltaTime)
 		const FRotator ControlRot = PC->GetControlRotation();
 		const float ActorYaw      = GetActorRotation().Yaw;
 
-		// Yaw relativo: cuánto a la derecha/izquierda está la cámara respecto al cuerpo.
-		// Usamos el valor acumulado del frame anterior (LastHeadRawYaw) para elegir
-		// siempre el camino continuo, evitando el snap instantáneo de ±180° cuando
-		// el eje de normalización cruza la discontinuidad.
-		float RawYaw = ControlRot.Yaw - ActorYaw;
-		while (RawYaw - LastHeadRawYaw >  180.f) { RawYaw -= 360.f; }
-		while (RawYaw - LastHeadRawYaw < -180.f) { RawYaw += 360.f; }
-		LastHeadRawYaw       = RawYaw;
+		// Yaw relativo del control respecto al cuerpo, siempre normalizado a [-180, 180].
+		// NOTA: antes manteníamos un acumulador (LastHeadRawYaw) para "continuidad",
+		// pero si el usuario giraba la cámara continuamente en la misma dirección, el
+		// acumulador crecía sin tope y la cabeza quedaba encallada en ±90°: había que
+		// rotar el mismo número de vueltas en sentido opuesto para desbloquearla.
+		// NormalizeAxis + Clamp es suficiente: la cabeza simplemente se queda en el
+		// tope visual cuando la cámara está >90° detrás del cuerpo. Sin latch.
+		const float RawYaw   = FRotator::NormalizeAxis(ControlRot.Yaw - ActorYaw);
 		LocalHeadRelativeYaw = FMath::Clamp(RawYaw, -90.f, 90.f);
 
 		// Pitch: en UE el pitch es negativo al mirar arriba; lo invertimos para nuestra convención

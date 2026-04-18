@@ -3,6 +3,8 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Engine/StaticMesh.h"
 
 ATN_InkProjectile::ATN_InkProjectile()
 {
@@ -25,6 +27,20 @@ ATN_InkProjectile::ATN_InkProjectile()
 	InkMesh->SetupAttachment(CollisionSphere);
 	InkMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	InkMesh->SetIsReplicated(false);
+
+	// Fallback a la esfera básica del engine si el BP no asigna mesh.
+	// Sin esto, el proyectil era invisible y no se podía apuntar: el jugador
+	// no veía la tinta volar, solo el efecto de pantalla al impactar.
+	// El BP de InkProjectile puede sobrescribirlo con un mesh custom + material.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> FallbackSphere(
+		TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	if (FallbackSphere.Succeeded())
+	{
+		InkMesh->SetStaticMesh(FallbackSphere.Object);
+		// Escalar la esfera del engine (50cm radio nativo) al ProjectileRadius por defecto.
+		const float DefaultScale = (ProjectileRadius * 2.f) / 100.f;
+		InkMesh->SetRelativeScale3D(FVector(DefaultScale));
+	}
 }
 
 void ATN_InkProjectile::BeginPlay()
@@ -33,6 +49,15 @@ void ATN_InkProjectile::BeginPlay()
 
 	// Actualizar el radio de la esfera con el valor configurado (puede diferir del default del ctor)
 	CollisionSphere->SetSphereRadius(ProjectileRadius);
+
+	// Reescalar el mesh fallback al radio real configurado (el BP podría haber cambiado ProjectileRadius).
+	// Si el BP asignó un mesh custom no queremos pisarlo — detectamos por nombre del engine sphere.
+	if (InkMesh && InkMesh->GetStaticMesh() &&
+	    InkMesh->GetStaticMesh()->GetFName() == TEXT("Sphere"))
+	{
+		const float Scale = (ProjectileRadius * 2.f) / 100.f;
+		InkMesh->SetRelativeScale3D(FVector(Scale));
+	}
 
 	if (HasAuthority())
 	{
