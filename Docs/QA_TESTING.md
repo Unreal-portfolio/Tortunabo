@@ -313,6 +313,7 @@ Efecto: el resbalón se extiende por el suelo post-aterrizaje hasta detenerse de
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q4-03 fase 2 | 2026-04-18 | `2becf55` | BananaPeel — Tick ground-lock ahora respeta momentum (`KnockdownGroundLockSpeed`) |
 | Q1-09 | 2026-04-18 | `903c293` | Quicksand deprecado — unificado en SlowZone con `GravityScaleInZone` expuesto |
 | Q1-07 | 2026-04-18 | `5aca4a5` | Knockdown — ragdoll físico opcional (`bUsePhysicsRagdoll`, requiere PhysicsAsset en BP) |
 | Q2-01 | 2026-04-18 | `7ef8d40` | ConchPickup — one-shot por defecto (bDestroyAfterActivation) |
