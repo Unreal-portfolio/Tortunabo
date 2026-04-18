@@ -133,9 +133,89 @@ Con `Mass=200000` el jugador aún puede empujarlo con facilidad. No es bug (el p
 
 ---
 
+### Q1-07 🔴 Knockdown — rediseño necesario (sigue vertical con errores)
+**Componente:** `ATortugaCharacter` (sistema de knockdown completo)
+**Estado:** ⬜ Abierto — followup de Q1-01
+**Origen:** Testing 2026-04-18
+
+**Observación:**
+Tras el fix de Q1-01 (`beb9b53`) el tilt 180° ya se aplica, pero el jugador **sigue viéndose vertical y con errores visuales** al recibir knockdown. Posibles causas:
+- El emote de knockdown sobreescribe la rotación relativa del componente durante el blend.
+- El hueso sobre el que aplicamos tilt (`KnockdownComponentName = "Cuerpo"`) puede no ser el correcto en el BP actual.
+- La rotación se aplica relativa al mesh pero el mesh tiene su propia rotación por `RelativeRotation` (-90º típico) — componer mal da resultados raros.
+
+**Acción:**
+- Grabar un PIE con 2 players: uno sufre knockdown, otro observa. Comparar con animación objetivo (tumbado panza arriba).
+- Considerar **ragdoll físico breve** como alternativa: `GetMesh()->SetSimulatePhysics(true)` durante la duración, y al recuperar volver a `Animation`. Coste de replicación aceptable para eventos puntuales.
+- Alternativa simple: animación de knockdown dedicada en lugar de pitch por código — el anim blueprint controla la pose completa.
+
+---
+
+### Q1-08 🟠 BreakablePlatform — bridge no se elimina
+**Componente:** `ATN_BreakablePlatform` (uso cooperativo / puente)
+**Estado:** ⬜ Abierto
+**Origen:** Testing 2026-04-18
+
+**Observación:**
+El bridge (BreakablePlatform con `PlayerThreshold=2+`) **no se rompe** durante el test, incluso tras configurar la variable de respawn y sus subparámetros.
+
+**Causas posibles:**
+- Testeando con 1 solo player y `PlayerThreshold=2` → el timer nunca arranca (comportamiento correcto, pero confuso en testing).
+- El StandTrigger del BP del bridge no está bien dimensionado y los pawns no generan overlap.
+- `PawnsOnPlatform` no cuenta bien si ambos jugadores entran simultáneamente (con el `Remove(nullptr)` previo se filtran los weak refs).
+
+**Acción:**
+- Verificar en PIE con 2 players simultáneamente encima.
+- Añadir un `UE_LOG` temporal en `OnStandTriggerBeginOverlap` mostrando `PawnsOnPlatform.Num()` y `PlayerThreshold`.
+- Confirmar que el BP hijo del bridge no pisa `PlayerThreshold=1` ni el StandTrigger.
+
+---
+
+### Q1-09 🔵 Quicksand — deprecar, reemplazar por SlowZone "Sticky"
+**Componente:** `ATN_QuicksandVolume` → `ATN_SlowZoneVolume` (variante sticky)
+**Estado:** ⬜ Abierto
+**Origen:** Decisión 2026-04-18 (invalida Q1-04)
+
+**Decisión:**
+Tras el rediseño de Q1-04 el Quicksand quedó funcionalmente muy cerca del SlowZone. En vez de mantener dos actores paralelos, **eliminar `ATN_QuicksandVolume` por completo** y crear una **copia/variante del SlowZone** con slow mucho más agresivo ("atascándote muchos más") — mismo patrón, parámetros más duros.
+
+**Acción:**
+- Crear `ATN_SlowZoneStickyVolume` (o exponer `SlowMultiplier` muy bajo como parámetro en `ATN_SlowZoneVolume` y usar un BP hijo "BP_SlowZoneSticky").
+- Sustituir usos de `BP_QuicksandVolume` en niveles por el nuevo BP.
+- Eliminar `TN_QuicksandVolume.{h,cpp}` del módulo una vez migrado.
+- La muerte, si se quiere, sigue el mismo patrón compuesto (DeathZone a ras de suelo).
+
+---
+
+### Q1-10 🟠 PhysicsObject — atasco en esquinas, bloquear rotación Z
+**Componente:** `ATN_PhysicsObjectActor`
+**Estado:** ⬜ Abierto
+**Origen:** Testing 2026-04-18
+
+**Observación:**
+Al forzar al objeto contra ciertas esquinas geometría+geometría, entra en un estado inestable (oscila, vibra o queda trabado). Propuesta del usuario: **bloquear rotación en el eje vertical** para evitar que el cubo rote sobre sí mismo en Z y caiga en configuraciones imposibles.
+
+**Acción:**
+- En el ctor: `Mesh->BodyInstance.bLockZRotation = true;` (o `SetConstraintMode(EDOFMode::SixDOF)` + lockar rotaciones X/Y/Z según el eje de pie).
+- Alternativa más conservadora: `Mesh->BodyInstance.bLockXRotation = true` + `bLockYRotation = true` (mantener solo yaw). Evita que caiga de lado.
+- Tuning a ojo en PIE tras probar cada combinación.
+
+---
+
 ## Fase 2 — Interactables
 
-*(pendiente de testing)*
+### Q2-01 🟠 Trampa — al pillar, vuelve a pickup
+**Componente:** Trap/Trampa (BP pickup-to-deploy)
+**Estado:** ⬜ Abierto
+**Origen:** Testing 2026-04-18
+
+**Observación:**
+Cuando la trampa desplegada pilla a un jugador, en vez de destruirse o quedarse consumida, **vuelve a convertirse en un pickup** recolectable. Efectivamente da usos infinitos a la trampa y rompe el balance del item.
+
+**Acción:**
+- Localizar el BP/actor de la trampa (probable `ATN_ThrowableItemActor` en modo trap, o derivado de `ATN_PickupInteractableBase`).
+- Tras `OnTrigger`: `Destroy()` (o `SetLifeSpan(0.5f)` para que el multicast de efectos se entregue antes).
+- Confirmar que no hay un `Spawn` de pickup en la cadena de callbacks (OnRep, etc.).
 
 ---
 
@@ -153,6 +233,41 @@ Con `Mass=200000` el jugador aún puede empujarlo con facilidad. No es bug (el p
 
 **Fix aplicado:**
 Nuevo `UPROPERTY GravityAcceleration` (default 980 cm/s²). En Tick, `LaunchVelocity.Z -= GravityAcceleration * DeltaTime` antes de aplicar el desplazamiento. El actor se rota hacia `LaunchVelocity.Rotation()` para que el mesh mire en dirección del vuelo. Ajustable por BP sin recompilar — `0` da trayectoria recta.
+
+---
+
+### Q4-02 🔴 Cliente no ve la bola lanzada hasta aparecer el pickup
+**Componente:** proyectil tirable (probable `ATN_ThrowableItemActor` o equivalente del sistema de throwables).
+**Estado:** ⬜ Abierto
+
+**Observación:** cuando el **host** lanza la bola, todos ven la trayectoria correctamente. Cuando el **cliente** lanza la bola, el cliente no ve el proyectil en vuelo — sólo aparece al rebotar/aterrizar como pickup. El host sí ve el proyectil del cliente.
+
+**Causas probables:**
+- Spawn del proyectil sólo ocurre en el servidor (OK) pero el actor no está marcado `bReplicates = true` en el ctor.
+- Falta `SetReplicateMovement(true)` o `bAlwaysRelevant = true` → el cliente que lanzó no está dentro del radio de relevancia mientras el proyectil se mueve.
+- El proyectil se oculta localmente en el lanzador (anti-clip visual) pero no se vuelve a mostrar hasta el impacto.
+
+**Acción sugerida:** auditar ctor del throwable — debe replicar movimiento como `ATN_InkProjectile`:
+```cpp
+bReplicates = true;
+bAlwaysRelevant = true; // o garantizar relevancy por distancia
+SetReplicateMovement(true);
+```
+Si se oculta localmente al lanzar (para no chocar con la cámara), añadir un timer que lo muestre de nuevo tras 0.1–0.2s.
+
+---
+
+### Q4-03 🟠 BananaPeel — no desliza hacia delante al pisarla
+**Componente:** `ATN_BananaPeel`
+**Estado:** ⬜ Abierto
+
+**Observación:** pisar la cáscara dispara el knockdown correctamente, pero el personaje **no desliza** — se queda caído en el sitio como si `SlideImpulse = 0`.
+
+**Causa probable:** en `ATortugaCharacter::ApplyKnockdown`, si `ImpulseOverride.IsZero()` (default del BP de BananaPeel) el impulso se calcula desde la velocidad actual. Si el jugador venía quieto o casi quieto, el resultado es un impulso insignificante y no desliza.
+
+**Acción sugerida:**
+1. Configurar `SlideImpulse` con un forward-vector fuerte en `BP_BananaPeel` (ej. `(800, 0, 200)` en local space del peel, transformado a world en C++).
+2. Fallback en `ApplyKnockdown`: si `ImpulseOverride.IsZero() && Velocity.Size() < UmbralMin`, aplicar impulso default en `GetActorForwardVector() * DefaultSlideSpeed`.
 
 ---
 
@@ -175,4 +290,4 @@ Nuevo `UPROPERTY GravityAcceleration` (default 980 cm/s²). En Tick, `LaunchVelo
 
 ---
 
-*QA Testing · Tortunabo · Última actualización: 2026-04-18*
+*QA Testing · Tortunabo · Última actualización: 2026-04-18 (drop zone procesada)*
