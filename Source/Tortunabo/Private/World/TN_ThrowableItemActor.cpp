@@ -55,6 +55,10 @@ void ATN_ThrowableItemActor::BeginPlay()
 	Super::BeginPlay();
 	SetLifeSpan(MaxLifeSeconds);
 
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] BeginPlay auth=%d bReady=%d bLaunchApplied=%d inst=%s"),
+		HasAuthority() ? 1 : 0, ThrowData.bReady ? 1 : 0, bLaunchApplied ? 1 : 0,
+		*GetNameSafe(GetInstigator()));
+
 	// Aplicar propiedades de física desde las Class Defaults del BP.
 	ProjectileMovement->Bounciness = Bounciness;
 	ProjectileMovement->Friction   = RollingFriction;
@@ -88,6 +92,11 @@ void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const
 	{
 		return;
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] SERVER InitializeThrow origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s"),
+		SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z,
+		InitialVelocity.X, InitialVelocity.Y, InitialVelocity.Z,
+		*GetNameSafe(SourceItem.EquippedMesh));
 
 	const FVector SafeScale = SourceItem.EquippedMeshScale.IsNearlyZero()
 		? FVector::OneVector
@@ -125,12 +134,17 @@ void ATN_ThrowableItemActor::SetSourceItem(const FTN_InventoryItem& Item)
 
 void ATN_ThrowableItemActor::OnRep_ThrowData()
 {
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] OnRep_ThrowData bReady=%d v=(%.0f,%.0f,%.0f) mesh=%s"),
+		ThrowData.bReady ? 1 : 0,
+		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
+		*GetNameSafe(ThrowData.EquippedMesh));
 	ApplyLaunchDataIfReady();
 }
 
 void ATN_ThrowableItemActor::OnRep_Instigator()
 {
 	Super::OnRep_Instigator();
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] OnRep_Instigator = %s"), *GetNameSafe(GetInstigator()));
 	// Cliente-lanzador: Instigator puede replicar después del BeginPlay si el
 	// bunch inicial se fragmenta. Sin este retry, la bola colisionaba con la
 	// propia cápsula del lanzador → rebote hacia atrás → salía de cámara.
@@ -157,6 +171,10 @@ void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
 	// Si aplicáramos sin el guard, haríamos SetActorLocation(Origin) sobre una
 	// bola que ya llevaba varios frames volando → teleport-back rubberband, la
 	// bola "desaparece" de cámara y el usuario solo vuelve a verla como pickup.
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] MulticastLaunch auth=%d bLaunchApplied=%d v=(%.0f,%.0f,%.0f)"),
+		HasAuthority() ? 1 : 0, bLaunchApplied ? 1 : 0,
+		Velocity.X, Velocity.Y, Velocity.Z);
+
 	if (HasAuthority() || bLaunchApplied)
 	{
 		return;
@@ -231,11 +249,12 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 
 	bLaunchApplied = true;
 
-	UE_LOG(LogTemp, Verbose, TEXT("[ThrowableItem] Apply auth=%d origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s"),
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady auth=%d origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s pmActive=%d"),
 		HasAuthority() ? 1 : 0,
 		ThrowData.SpawnLocation.X, ThrowData.SpawnLocation.Y, ThrowData.SpawnLocation.Z,
 		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
-		*GetNameSafe(ThrowData.EquippedMesh));
+		*GetNameSafe(ThrowData.EquippedMesh),
+		ProjectileMovement && ProjectileMovement->IsActive() ? 1 : 0);
 }
 
 // ── Colisión y ciclo de vida ──────────────────────────────────────────────────
