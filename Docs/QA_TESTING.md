@@ -278,7 +278,7 @@ Cualquier orden de llegada de replicación garantiza que el ignore está configu
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
-| Q1-10 | 2026-04-18 | _pendiente_ | PhysicsObject — locks rotación X/Y/Z (default slide-only) |
+| Q1-10 | 2026-04-18 | `6768e1c` | PhysicsObject — locks rotación X/Y/Z (default slide-only) |
 | Q4-03 | 2026-04-18 | `7dbc3e3` | BananaPeel — slide hacia delante + `SlideVerticalForce` tunable |
 | Q4-02 | 2026-04-18 | `84fd833` | ThrowableItem — cover-all de `IgnoreInstigatorCollision` (race con `OnRep_Instigator`) |
 | Q4-01 | 2026-04-18 | `635377e` | InkProjectile parabólico (`GravityAcceleration`) |
