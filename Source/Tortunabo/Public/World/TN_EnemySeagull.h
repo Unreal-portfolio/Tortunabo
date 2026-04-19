@@ -77,7 +77,7 @@ protected:
 
 	/** Velocidad de seguimiento (cm/s). Debe ser menor que WalkSpeed (450) para que el jugador pueda escapar. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow", meta = (ClampMin = "50.0"))
-	float FollowSpeed = 280.f;
+	float FollowSpeed = 350.f;
 
 	/** Altura de vuelo sobre el objetivo (cm). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow", meta = (ClampMin = "100.0"))

@@ -60,6 +60,11 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 {
 	if (!HasAuthority() || !Target) { return; }
 
+	// Alinear tamaño de decal en frame 1 antes de cualquier otra lógica —
+	// evita el pop visual entre el default del ctor y el primer tick.
+	CountdownRemaining = AttackTimerSeconds;
+	UpdateDecalSize();
+
 	TargetCharacter  = Target;
 	TargetController = Cast<APlayerController>(Target->GetController());
 
@@ -78,9 +83,6 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 
 	const FVector StartLoc = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
 	SetActorLocation(StartLoc);
-
-	CountdownRemaining = AttackTimerSeconds;
-	UpdateDecalSize();
 
 	UE_LOG(LogTemp, Log, TEXT("[EnemySeagull] Initialized on '%s' — countdown %.1fs"),
 		*GetNameSafe(Target), AttackTimerSeconds);
