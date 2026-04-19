@@ -11,6 +11,18 @@ class USoundBase;
 class ATortugaCharacter;
 
 /**
+ * Modo de comportamiento de la placa.
+ * Momentary: bOccupied=true sólo mientras haya alguien encima (default).
+ * Latched:   tras la primera activación queda "pegada" hasta que se llame ResetLatch().
+ */
+UENUM(BlueprintType)
+enum class EPressurePlateMode : uint8
+{
+	Momentary UMETA(DisplayName = "Momentary"),
+	Latched   UMETA(DisplayName = "Latched")
+};
+
+/**
  * Placa de activación (#30).
  *
  * Cada placa detecta si tiene un jugador vivo encima.
@@ -36,9 +48,16 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	/** True si hay al menos un jugador vivo encima en este momento. */
+	/** True si la placa cuenta como activa (en modo Latched puede ser sin nadie encima). */
 	UFUNCTION(BlueprintPure, Category = "PressurePlate")
 	bool IsOccupied() const { return bOccupied; }
+
+	/**
+	 * Resetea manualmente una placa Latched. Solo authority.
+	 * No-op en modo Momentary.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "PressurePlate")
+	void ResetLatch();
 
 	/** Delegate servidor-only para que el GroupManager escuche cambios. */
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnOccupancyChanged, ATN_PressurePlate*, bool);
@@ -50,6 +69,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PressurePlate")
 	TObjectPtr<UBoxComponent> TriggerBox;
+
+	/** Modo de comportamiento: Momentary (default) o Latched. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PressurePlate")
+	EPressurePlateMode Mode = EPressurePlateMode::Momentary;
 
 	/** Duración mínima que todos deben estar en sus placas para activar el evento (s). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PressurePlate",

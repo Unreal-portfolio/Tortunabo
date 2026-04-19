@@ -103,12 +103,43 @@ void ATN_PressurePlate::RefreshOccupancy()
 		}
 	}
 
+	// Modo Latched: una vez activada, ignoramos transiciones a false mientras no
+	// se llame a ResetLatch(). Las transiciones a true (primera activación) sí pasan.
+	if (Mode == EPressurePlateMode::Latched && bOccupied && !bAnyAliveOccupying)
+	{
+		return;
+	}
+
 	if (bAnyAliveOccupying != bOccupied)
 	{
 		bOccupied = bAnyAliveOccupying;
 		MulticastOnOccupancyChanged(bOccupied);
 		OnOccupancyChanged.Broadcast(this, bOccupied);
 	}
+}
+
+void ATN_PressurePlate::ResetLatch()
+{
+	if (!HasAuthority()) { return; }
+	if (Mode != EPressurePlateMode::Latched || !bOccupied) { return; }
+
+	// Si hay alguien vivo encima todavía, la placa seguirá activa en el próximo
+	// RefreshOccupancy — así que sólo forzamos el reset cuando esté vacía.
+	OccupyingCharacters.Remove(nullptr);
+	for (const TWeakObjectPtr<ATortugaCharacter>& Weak : OccupyingCharacters)
+	{
+		if (ATortugaCharacter* C = Weak.Get())
+		{
+			if (ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>())
+			{
+				if (PS->bIsAlive && !PS->bIsEliminated) { return; }
+			}
+		}
+	}
+
+	bOccupied = false;
+	MulticastOnOccupancyChanged(false);
+	OnOccupancyChanged.Broadcast(this, false);
 }
 
 void ATN_PressurePlate::OnRep_bOccupied()
