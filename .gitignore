@@ -1,6 +1,8 @@
 # Visual Studio 2015 user specific files
 .vs/
 .idea/
+.idea/.idea.Tortunabo.dir
+.idea/.idea.Tortunabo
 .claude/
 # Compiled Object files
 *.slo
