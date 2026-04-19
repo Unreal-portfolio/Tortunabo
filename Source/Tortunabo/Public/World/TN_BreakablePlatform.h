@@ -67,7 +67,7 @@ protected:
 		meta = (ClampMin = "0.1"))
 	float ShakeDuration = 1.0f;
 
-	/** Amplitud vertical de la oscilación visual (cm). */
+	/** Amplitud vertical de la oscilación visual (cm). Usado cuando bScaleShakeByPlayerCount=false. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform|Shake",
 		meta = (ClampMin = "0.0"))
 	float ShakeAmplitude = 3.0f;
@@ -76,6 +76,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform|Shake",
 		meta = (ClampMin = "1.0"))
 	float ShakeFrequencyHz = 25.0f;
+
+	/**
+	 * Si true, la amplitud visual del shake escala con el nº de jugadores encima
+	 * (hace obvio que más peso = más riesgo). Lee ShakeAmplitudeByPlayerCount.
+	 * Default false → retrocompat con las plataformas existentes.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform|Shake")
+	bool bScaleShakeByPlayerCount = false;
+
+	/**
+	 * Amplitud (cm) indexada por nº de jugadores encima: índice 0 = 1 jugador,
+	 * índice 1 = 2 jugadores, etc. Si el nº real excede la longitud del array,
+	 * se usa el último elemento. Solo se consulta si bScaleShakeByPlayerCount=true.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform|Shake")
+	TArray<float> ShakeAmplitudeByPlayerCount = { 3.f, 6.f, 10.f, 15.f };
 
 	// ── Audio ─────────────────────────────────────────────────────────────────
 
@@ -124,13 +140,17 @@ private:
 	/**
 	 * Vibración antes del colapso — Reliable porque es gameplay-crítico:
 	 * señaliza visualmente al jugador que la plataforma está a punto de ceder.
+	 * PlayerCount = pawns encima en el momento del disparo (para escalar amplitud).
 	 */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastShake();
+	void MulticastShake(int32 PlayerCount);
 
 	/** Para la vibración (cuando los jugadores salen antes de que rompa). */
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastStopShake();
+
+	/** Entry-point server: resuelve PlayerCount actual y dispara el multicast. */
+	void FireShake();
 
 	/** Pawns actualmente encima de la plataforma. */
 	TSet<TWeakObjectPtr<APawn>> PawnsOnPlatform;
@@ -143,7 +163,12 @@ private:
 	bool bIsShaking = false;
 	float ShakeElapsedSeconds = 0.f;
 	FVector OriginalRootLocation = FVector::ZeroVector;
+	/** Amplitud efectiva para el shake en curso — resuelta al arrancar, no se tocar en Tick. */
+	float EffectiveShakeAmplitude = 0.f;
 
-	void StartShake();
+	void StartShake(int32 PlayerCount);
 	void StopShakeAndResetPosition();
+
+	/** Resuelve la amplitud según bScaleShakeByPlayerCount + array + PlayerCount. */
+	float ResolveShakeAmplitude(int32 PlayerCount) const;
 };

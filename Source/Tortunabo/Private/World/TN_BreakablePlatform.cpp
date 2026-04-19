@@ -67,7 +67,7 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 		// La vibración arranca ShakeDuration segundos antes del break
 		const float ShakeAt = FMath::Max(0.f, TimeToBreak - ShakeDuration);
 		FTimerDelegate ShakeDelegate;
-		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::MulticastShake);
+		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::FireShake);
 		GetWorldTimerManager().SetTimer(ShakeTimerHandle, ShakeDelegate, ShakeAt, false);
 
 		FTimerDelegate BreakDelegate;
@@ -173,7 +173,7 @@ void ATN_BreakablePlatform::RespawnPlatform()
 	{
 		const float ShakeAt = FMath::Max(0.f, TimeToBreak - ShakeDuration);
 		FTimerDelegate ShakeDelegate;
-		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::MulticastShake);
+		ShakeDelegate.BindUObject(this, &ATN_BreakablePlatform::FireShake);
 		GetWorldTimerManager().SetTimer(ShakeTimerHandle, ShakeDelegate, ShakeAt, false);
 
 		FTimerDelegate BreakDelegate;
@@ -227,7 +227,14 @@ void ATN_BreakablePlatform::ApplyBrokenState()
 // Vibración (Reliable — es señal de gameplay, no cosmético puro)
 // ─────────────────────────────────────────────────────────────────────────────
 
-void ATN_BreakablePlatform::MulticastShake_Implementation()
+void ATN_BreakablePlatform::FireShake()
+{
+	if (!HasAuthority()) { return; }
+	PawnsOnPlatform.Remove(nullptr);
+	MulticastShake(PawnsOnPlatform.Num());
+}
+
+void ATN_BreakablePlatform::MulticastShake_Implementation(int32 PlayerCount)
 {
 	if (ShakeSound)
 	{
@@ -238,7 +245,7 @@ void ATN_BreakablePlatform::MulticastShake_Implementation()
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ShakeVFX, GetActorLocation());
 	}
 
-	StartShake();
+	StartShake(PlayerCount);
 }
 
 void ATN_BreakablePlatform::MulticastStopShake_Implementation()
@@ -250,12 +257,23 @@ void ATN_BreakablePlatform::MulticastStopShake_Implementation()
 // Oscilación visual — ejecutada localmente en cada máquina mientras bIsShaking
 // ─────────────────────────────────────────────────────────────────────────────
 
-void ATN_BreakablePlatform::StartShake()
+void ATN_BreakablePlatform::StartShake(int32 PlayerCount)
 {
 	bIsShaking = true;
 	ShakeElapsedSeconds = 0.f;
 	OriginalRootLocation = GetActorLocation();
+	EffectiveShakeAmplitude = ResolveShakeAmplitude(PlayerCount);
 	SetActorTickEnabled(true);
+}
+
+float ATN_BreakablePlatform::ResolveShakeAmplitude(int32 PlayerCount) const
+{
+	if (!bScaleShakeByPlayerCount || ShakeAmplitudeByPlayerCount.Num() == 0)
+	{
+		return ShakeAmplitude;
+	}
+	const int32 Idx = FMath::Clamp(PlayerCount - 1, 0, ShakeAmplitudeByPlayerCount.Num() - 1);
+	return ShakeAmplitudeByPlayerCount[Idx];
 }
 
 void ATN_BreakablePlatform::StopShakeAndResetPosition()
@@ -273,7 +291,7 @@ void ATN_BreakablePlatform::Tick(float DeltaTime)
 	if (!bIsShaking) { return; }
 
 	ShakeElapsedSeconds += DeltaTime;
-	const float OffsetZ = FMath::Sin(ShakeElapsedSeconds * ShakeFrequencyHz * 2.f * PI) * ShakeAmplitude;
+	const float OffsetZ = FMath::Sin(ShakeElapsedSeconds * ShakeFrequencyHz * 2.f * PI) * EffectiveShakeAmplitude;
 	SetActorLocation(OriginalRootLocation + FVector(0.f, 0.f, OffsetZ));
 }
 
