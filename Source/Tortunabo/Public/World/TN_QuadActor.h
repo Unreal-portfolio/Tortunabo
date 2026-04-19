@@ -112,9 +112,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner")
 	TSubclassOf<ATN_QuadActor> QuadClass;
 
-	/** Posición world donde el quad se autodestruye. */
+	/**
+	 * Offset LOCAL desde el spawner (cm) hasta donde el quad se autodestruye.
+	 * Ejemplo: (5000, 0, 0) = el quad recorre 5000 cm en X local desde el spawner.
+	 * Usa el transform del spawner: si rotas el actor, el offset rota con él.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner")
-	FVector EndLocation = FVector(5000.f, 0.f, 0.f);
+	FVector EndOffsetLocal = FVector(5000.f, 0.f, 0.f);
 
 	/** Velocidad del quad (cm/s). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner",

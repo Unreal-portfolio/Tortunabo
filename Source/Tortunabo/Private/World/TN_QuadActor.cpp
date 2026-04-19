@@ -161,6 +161,9 @@ void ATN_QuadSpawner::SpawnQuad()
 
 	if (Quad)
 	{
-		Quad->InitializeTravel(EndLocation, QuadSpeed);
+		// EndOffsetLocal está en local space — transformarlo al world space del
+		// spawner para que el quad viaje respecto a su posición de spawn.
+		const FVector WorldEnd = GetActorTransform().TransformPosition(EndOffsetLocal);
+		Quad->InitializeTravel(WorldEnd, QuadSpeed);
 	}
 }
