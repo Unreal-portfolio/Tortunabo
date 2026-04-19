@@ -96,6 +96,11 @@ void ATN_ButtonInteractable::InterpTargetToward(const FTransform& Goal, float De
 
 FTransform ATN_ButtonInteractable::GetGoalTransform() const
 {
+	if (OffsetMode == EButtonOffsetMode::CyclicStates && CyclicResolvedTransforms.Num() > 0)
+	{
+		const int32 Idx = FMath::Clamp(CurrentStateIndex, 0, CyclicResolvedTransforms.Num() - 1);
+		return CyclicResolvedTransforms[Idx];
+	}
 	return bIsActivated ? ActivatedTransform : OriginalTransform;
 }
 
@@ -224,6 +229,39 @@ void ATN_ButtonInteractable::DeferredInit()
 			AdditionalActivatedTransforms.Add(ExtraActivated);
 		}
 
+		// ── Precomputar transforms cíclicos (#Q2-05) ─────────────────────────
+		CyclicResolvedTransforms.Reset();
+		CyclicAdditionalResolvedTransforms.Reset();
+		if (OffsetMode == EButtonOffsetMode::CyclicStates)
+		{
+			for (const FTransform& StateOffset : CyclicStateTransforms)
+			{
+				FTransform Resolved = OriginalTransform;
+				Resolved.SetLocation(OriginalTransform.GetLocation() + StateOffset.GetLocation());
+				Resolved.SetRotation(StateOffset.GetRotation() * OriginalTransform.GetRotation());
+				CyclicResolvedTransforms.Add(Resolved);
+			}
+
+			// Precomputar para targets adicionales
+			CyclicAdditionalResolvedTransforms.Reserve(AdditionalMoveTargets.Num());
+			for (int32 i = 0; i < AdditionalMoveTargets.Num(); ++i)
+			{
+				TArray<FTransform> PerStateResolved;
+				if (AdditionalOriginalTransforms.IsValidIndex(i))
+				{
+					const FTransform& ExtraOriginal = AdditionalOriginalTransforms[i];
+					for (const FTransform& StateOffset : CyclicStateTransforms)
+					{
+						FTransform Resolved = ExtraOriginal;
+						Resolved.SetLocation(ExtraOriginal.GetLocation() + StateOffset.GetLocation());
+						Resolved.SetRotation(StateOffset.GetRotation() * ExtraOriginal.GetRotation());
+						PerStateResolved.Add(Resolved);
+					}
+				}
+				CyclicAdditionalResolvedTransforms.Add(MoveTemp(PerStateResolved));
+			}
+		}
+
 		bInitialized = true;
 
 		UE_LOG(LogTemp, Log, TEXT("[Button] '%s' — Original: %s | Offset: %s | Activado: %s"),
@@ -234,6 +272,11 @@ void ATN_ButtonInteractable::DeferredInit()
 
 		// Si el botón ya estaba activado (por replicación antes de init), empezar a mover
 		if (bIsActivated)
+		{
+			bIsMoving = true;
+		}
+		// En cíclico, si el índice ya no es 0 (replicado tarde), empezar a mover
+		if (OffsetMode == EButtonOffsetMode::CyclicStates && CurrentStateIndex != 0)
 		{
 			bIsMoving = true;
 		}
@@ -249,6 +292,7 @@ void ATN_ButtonInteractable::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_ButtonInteractable, bIsActivated);
 	DOREPLIFETIME(ATN_ButtonInteractable, CurrentPresses);
+	DOREPLIFETIME(ATN_ButtonInteractable, CurrentStateIndex);
 }
 
 void ATN_ButtonInteractable::OnRep_IsActivated()
@@ -263,6 +307,14 @@ void ATN_ButtonInteractable::OnRep_CurrentPresses()
 {
 	// BP puede reaccionar al cambio de pulsaciones parciales (ej. cambiar color del botón).
 	// No hay lógica de movimiento aquí — el movimiento lo controla OnRep_IsActivated.
+}
+
+void ATN_ButtonInteractable::OnRep_CurrentStateIndex()
+{
+	if (bInitialized)
+	{
+		bIsMoving = true;
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,10 +356,20 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 		return;
 	}
 
-	// Pulsaciones completas: toggle y resetear contador.
+	// Pulsaciones completas: avanzar ciclo o togglear según modo.
 	CurrentPresses = 0;
-	bIsActivated   = !bIsActivated;
 	bIsMoving      = true;
+
+	if (OffsetMode == EButtonOffsetMode::CyclicStates && CyclicStateTransforms.Num() > 0)
+	{
+		CurrentStateIndex = (CurrentStateIndex + 1) % CyclicStateTransforms.Num();
+		// bIsActivated refleja "estado != 0" para mantener compat con ButtonGroupManager
+		bIsActivated = (CurrentStateIndex != 0);
+	}
+	else
+	{
+		bIsActivated = !bIsActivated;
+	}
 
 	ForceNetUpdate();
 
@@ -364,9 +426,21 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 			continue;
 		}
 
-		const FTransform& ExtraGoal = bIsActivated
-			? AdditionalActivatedTransforms[i]
-			: AdditionalOriginalTransforms[i];
+		FTransform ExtraGoal;
+		if (OffsetMode == EButtonOffsetMode::CyclicStates
+			&& CyclicAdditionalResolvedTransforms.IsValidIndex(i)
+			&& CyclicAdditionalResolvedTransforms[i].Num() > 0)
+		{
+			const int32 Idx = FMath::Clamp(CurrentStateIndex, 0,
+				CyclicAdditionalResolvedTransforms[i].Num() - 1);
+			ExtraGoal = CyclicAdditionalResolvedTransforms[i][Idx];
+		}
+		else
+		{
+			ExtraGoal = bIsActivated
+				? AdditionalActivatedTransforms[i]
+				: AdditionalOriginalTransforms[i];
+		}
 
 		const FVector ExtraLoc = Extra->GetActorLocation();
 		const FVector NewExtraLoc = FMath::VInterpConstantTo(ExtraLoc, ExtraGoal.GetLocation(), DeltaTime, MoveSpeed);

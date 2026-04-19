@@ -8,6 +8,19 @@
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnButtonActivationChanged, ATN_ButtonInteractable* /*Button*/, bool /*bActivated*/);
 
 /**
+ * Modo de comportamiento del botón respecto al offset aplicado al target.
+ * DoUndo:       toggle clásico — activado aplica ActivatedOffset, desactivado revierte.
+ * CyclicStates: cada pulsación avanza a la siguiente entrada de CyclicStateTransforms.
+ *               Al llegar al final vuelve a 0 (ciclo). El índice está replicado.
+ */
+UENUM(BlueprintType)
+enum class EButtonOffsetMode : uint8
+{
+	DoUndo       UMETA(DisplayName = "Do / Undo"),
+	CyclicStates UMETA(DisplayName = "Cyclic States")
+};
+
+/**
  * Botón interactuable tipo toggle: al pulsar aplica un offset de transform
  * al target, al volver a pulsar lo devuelve a su posición original.
  *
@@ -43,6 +56,10 @@ public:
 	/** Estado de activación actual. Público para que ButtonGroupManager pueda consultarlo. */
 	bool IsActivated() const { return bIsActivated; }
 
+	/** Índice actual del ciclo (solo relevante en modo CyclicStates). */
+	UFUNCTION(BlueprintPure, Category = "Button")
+	int32 GetCurrentStateIndex() const { return CurrentStateIndex; }
+
 protected:
 	/**
 	 * Actor que se moverá al interactuar.
@@ -69,12 +86,32 @@ protected:
 	FName MoveTargetTag;
 
 	/**
+	 * Modo de offset aplicado al target.
+	 * DoUndo: toggle clásico usando ActivatedOffset.
+	 * CyclicStates: cada pulsación pasa al siguiente FTransform de CyclicStateTransforms.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
+	EButtonOffsetMode OffsetMode = EButtonOffsetMode::DoUndo;
+
+	/**
 	 * Offset de transform que se SUMA a la posición original del target
 	 * cuando el botón está activado. Al desactivar, vuelve al original.
 	 * Configurar en el BP del chunk (ej. mover 300 cm en Z → Location Z=300).
+	 * Solo se usa en modo DoUndo.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button",
+		meta = (EditCondition = "OffsetMode == EButtonOffsetMode::DoUndo"))
 	FTransform ActivatedOffset;
+
+	/**
+	 * Estados cíclicos: cada pulsación avanza al siguiente offset de este array.
+	 * El offset se aplica como suma respecto al transform original del target.
+	 * Ej: 4 entradas de rotación Yaw=0/90/180/270 → rotación cíclica.
+	 * Solo se usa en modo CyclicStates.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button",
+		meta = (EditCondition = "OffsetMode == EButtonOffsetMode::CyclicStates"))
+	TArray<FTransform> CyclicStateTransforms;
 
 	/** Velocidad de movimiento (cm/s). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button", meta = (ClampMin = "1.0"))
@@ -100,6 +137,10 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentPresses, BlueprintReadOnly, Category = "Button")
 	int32 CurrentPresses = 0;
 
+	/** Índice del estado cíclico actual (solo modo CyclicStates). Replicado. */
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentStateIndex, BlueprintReadOnly, Category = "Button")
+	int32 CurrentStateIndex = 0;
+
 	/** Multicast cosmético: feedback al pulsar (override en BP para sonido/VFX). */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPlayButtonFeedback();
@@ -116,6 +157,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_CurrentPresses();
+
+	UFUNCTION()
+	void OnRep_CurrentStateIndex();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -134,6 +178,12 @@ private:
 
 	/** Transforms activados de AdditionalMoveTargets — índice sincronizado con el array. */
 	TArray<FTransform> AdditionalActivatedTransforms;
+
+	/** Transforms finales absolutos por estado cíclico (Original + CyclicStateTransforms[i]). */
+	TArray<FTransform> CyclicResolvedTransforms;
+
+	/** Transforms finales de AdditionalMoveTargets por estado cíclico (externa: targets, interna: estados). */
+	TArray<TArray<FTransform>> CyclicAdditionalResolvedTransforms;
 
 	/** true cuando DeferredInit ha ejecutado y los transforms están listos. */
 	bool bInitialized = false;
