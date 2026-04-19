@@ -596,6 +596,92 @@ Actualmente B3 spawnea el pickup de repuesto **inmediatamente** al auto-destruir
 
 ---
 
+## Batch drop-zone 2026-04-19 (tarde)
+
+### Q4-07 🔴 ThrowableItem — bola invisible en cliente (regresión de Q4-04)
+**Componente:** `ATN_ThrowableItemActor`
+**Estado:** ✅ Resuelto — commit `9c0c9dc`
+**Origen:** Drop-zone 2026-04-19 (tarde) + log cliente `Tortunabo_2.log`
+
+**Observación:**
+Tras Q4-04, el cliente todavía pierde la parábola de la bola de forma intermitente. Log `Tortunabo_2.log` trace 2:
+
+```
+[964] MulticastLaunch auth=0 bLaunchApplied=0 v=(-1394,98,1135)
+[964] OnRep_Instigator = BP_TortugaCharacter_C_1
+[964] OnRep_ThrowData bReady=1 v=(-1394,98,1135) mesh=Sphere
+[964] BeginPlay auth=0 bReady=1 bLaunchApplied=1 inst=BP_TortugaCharacter_C_1
+```
+
+Ningún `ApplyLaunchDataIfReady` entre OnRep_ThrowData y BeginPlay — lo cual indica early-return porque `bLaunchApplied` ya era `1` (lo puso el `MulticastLaunch` previo).
+
+**Causa raíz:**
+Cuando el RPC llega en el mismo bunch que la replicación inicial del actor, el orden puede ser **MulticastLaunch → OnReps → BeginPlay**. Al ejecutarse MulticastLaunch antes de BeginPlay, `Mesh` y `ProjectileMovement` aún no están registrados con la escena — `SetStaticMesh`, `SetActorLocation`, `SetVelocity`, `Activate(true)` son silently-noop. El flag `bLaunchApplied=true` que queda tras MulticastLaunch bloquea la ruta canónica (`OnRep_ThrowData → ApplyLaunchDataIfReady`) cuando ya sí podría aplicarlo.
+
+**Fix aplicado:**
+Early-return en `MulticastLaunch_Implementation` si `!HasActorBegunPlay()`. `bLaunchApplied` queda en `0`. Cuando después llegan OnReps + BeginPlay, la ruta canónica aplica el launch con el actor totalmente inicializado. Se añade `hasBP` al log para diagnosticar futuros casos.
+
+---
+
+### Q4-08 🟠 BouncePhysicsObject — feel de balón de fútbol en césped
+**Componente:** `ATN_BouncePhysicsObject`
+**Estado:** ✅ Resuelto — commit `63e63fa`
+**Origen:** Drop-zone 2026-04-19 (tarde)
+
+**Observación:**
+La bola física rueda sin parar tras un kick, sin fricción perceptible, y tampoco entra en dormancy porque su velocidad a bajo tempo queda por encima del `SleepVelocityThreshold=15` del padre. Feel deseado por Rodrigo: *"balón de fútbol en césped — rueda, decelera y se detiene, no pegajoso"*.
+
+**Fix aplicado:**
+- Nueva UPROPERTY `LinearDamping` (default `0.3`) aplicada al `BodyInstance` en `BeginPlay` tras el Super.
+- Nueva UPROPERTY `AngularDamping` (default `0.6`).
+- `SleepVelocityThreshold` override `15→30` en constructor del hijo (para que la bola sí entre en dormancy tras rodar).
+
+**Ajuste fino pendiente (si se nota):**
+- Ajustar `Bounciness` en el `PhysicalMaterial` del mesh (asset-work BP).
+- Si `KickVerticalBoost=350` sigue sintiéndose bajo, Rodrigo puede tunear desde el BP sin tocar C++.
+
+---
+
+### Q3-04 🟡 SeagullDropping — mesh encoge al caer + sombras circulares (asset)
+**Componente:** `ATN_SeagullDroppingActor` + material de decal (shared con `ATN_EnemySeagull`)
+**Estado:** ✅ Parcial — commit `2aae0dd` (C++ mesh shrink). Sombras circulares = asset-work BP.
+**Origen:** Drop-zone 2026-04-19 (tarde)
+
+**Observación:**
+1. La caca cae a tamaño constante. Rodrigo pide que vaya **haciéndose más pequeña** conforme baja (feedback visual de distancia).
+2. Las sombras (caca y gaviota) se ven como **cubos**, no como círculos.
+
+**Fix aplicado (C++):**
+- Nueva UPROPERTY `MinMeshScaleFactor` (default `0.35`) en `ATN_SeagullDroppingActor`.
+- En `BeginPlay` se cachea `InitialMeshScaleCache = DroppingMesh->GetRelativeScale3D()` (preserva la escala del BP).
+- En `UpdateShadowScale` (llamada cada Tick), el mesh escala linealmente desde `InitialMeshScaleCache` (spawn, `NormalizedHeight=1`) hasta `InitialMeshScaleCache * MinMeshScaleFactor` (impacto, `NormalizedHeight=0`), en paralelo al decal.
+
+**Pendiente (asset-work BP, fuera de scope C++):**
+- Crear/asignar un material de decal con máscara alpha circular al `ShadowDecal` del dropping y al `DangerDecal` del EnemySeagull. Con el material default de UE se ve el cuboide completo del decal → apariencia de cubo. El material correcto recorta con alpha circular y muestra solo la silueta redonda.
+- Asignar en `BP_SeagullDropping` y `BP_EnemySeagull`, Details → Decal → Material.
+
+---
+
+### Q1-12 🟡 BreakablePlatform — modos Reversible/Latched
+**Componente:** `ATN_BreakablePlatform`
+**Estado:** ✅ Resuelto — commit `1951270`
+**Origen:** Drop-zone 2026-04-19 (tarde)
+
+**Observación:**
+Rodrigo pide dos modos:
+1. **Latched:** si el threshold (X jugadores) se alcanza, el puente cae aunque todos se bajen.
+2. **Reversible:** si el threshold se alcanza pero un jugador se baja antes de la rotura, el puente recupera integridad.
+
+El comportamiento actual (pre-fix) es Reversible por defecto.
+
+**Fix aplicado:**
+- Nuevo UENUM `EBreakablePlatformMode { Reversible, Latched }` (BlueprintType).
+- UPROPERTY `BreakMode` default `Reversible` (retrocompat).
+- En `OnStandTriggerEndOverlap`, si `BreakMode == Latched` y `BreakTimerHandle` está activo, early-return sin cancelar timers.
+- El shake ya no se cancela al salir pawns (guard existente `if (bIsShaking) return`), así que Latched simplemente extiende esa política al período pre-shake.
+
+---
+
 ## Batch drop-zone 2026-04-18 (tarde)
 
 ### B1a 🟡 BananaPeel — potencia excesiva en defaults
@@ -629,6 +715,10 @@ Nuevo `ATN_BouncePhysicsObject` hereda de `ATN_PhysicsObjectActor`, libera los 3
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q1-12 | 2026-04-19 | `1951270` | BreakablePlatform — UENUM `EBreakablePlatformMode` con modos Reversible/Latched |
+| Q3-04 | 2026-04-19 | `2aae0dd` | SeagullDropping — mesh shrink lineal al caer (`MinMeshScaleFactor`) |
+| Q4-08 | 2026-04-19 | `63e63fa` | BouncePhysicsObject — `LinearDamping`/`AngularDamping` + `SleepVelocityThreshold` 15→30 |
+| Q4-07 | 2026-04-19 | `9c0c9dc` | ThrowableItem — defer MulticastLaunch si `!HasActorBegunPlay()` (ruta canónica aplica después) |
 | Q4-06 | 2026-04-19 | `e50b056` | PhysicsObjectActor — NetUpdate 50→30Hz, ForceNetUpdate en hits, Crush off en Bounce |
 | Q2-05 | 2026-04-19 | `dde37a1` | ButtonInteractable — `EButtonOffsetMode` con estados cíclicos replicados |
 | Q2-04 | 2026-04-19 | `79f5174` | ButtonGroupManager + PressurePlateGroupManager — `TriggerThreshold` configurable |
@@ -690,6 +780,21 @@ Validación en PIE listen-server **2 jugadores** tras compilar con `-NoHotReload
 - [ ] Los tickets previos (Q4-01..Q4-04, Q1-01..Q1-10, Q2-01, B1..B5, BALL) siguen funcionando; ningún cambio nuevo pisa sus fixes.
 - [ ] Compilación limpia sin warnings nuevos en los archivos modificados.
 - [ ] No hay pérdida visible de replicación de `bOccupied` (PressurePlate) ni de `bIsActivated`/`CurrentStateIndex` (Button) en tests con >1 cliente.
+
+---
+
+## Smoke test checklist — 2026-04-19 (tarde, batch Q4-07/Q4-08/Q3-04/Q1-12)
+
+PIE listen-server 2 jugadores, `-NoHotReload`. Buscar regresiones de los fixes previos también.
+
+- [ ] **Q4-07** — En un cliente no-host, pedir al host lanzar la bola (`ATN_ThrowableItem`). El cliente ve la **parábola completa** desde el spawn hasta el impacto. No hay frames en los que la bola "desaparezca y aparezca como pickup". Repetir 3×.
+  - Si falla, buscar en `Saved/Logs/Tortunabo_2.log` el bloque `[TN_Throwable]` — el campo `hasBP=0` indicará si MulticastLaunch llegó pre-BeginPlay (el defer debería actuar).
+- [ ] **Q4-08 (feel)** — Patear la bola: rueda un trecho, decelera visiblemente y se detiene. No rueda eternamente; no se pega al suelo. Al pararse, entra en dormancy (verificable con `stat net` observando los OutBytes/s de la bola bajar a ≈0).
+- [ ] **Q4-08 (damping)** — Ajustar en BP `LinearDamping=0.6` y volver a patear: la bola decelera más rápido. Con `LinearDamping=0.0` rueda largo. (Confirma que el UPROPERTY se aplica al BodyInstance.)
+- [ ] **Q3-04 (shrink)** — Spawnear una caca: conforme cae, el mesh disminuye linealmente de tamaño, llegando a `MinMeshScaleFactor × initial` al impactar. La sombra sigue encogiendo en paralelo.
+- [ ] **Q3-04 (sombras)** — Una vez el artista asigne el material circular al decal en `BP_SeagullDropping` y `BP_EnemySeagull`, la sombra se ve redonda (no cuboide). *(Asset-work; C++ no bloquea este ticket.)*
+- [ ] **Q1-12 (Reversible)** — BP_BreakablePlatform con `BreakMode=Reversible`: dos jugadores suben; antes de que rompa, uno sale → el shake se cancela, el puente no rompe. Comportamiento idéntico al pre-fix.
+- [ ] **Q1-12 (Latched)** — BP_BreakablePlatform con `BreakMode=Latched`: dos jugadores suben, uno se baja antes del shake → el puente **igualmente** cae al completarse `TimeToBreak`. El shake sigue ejecutándose.
 
 ---
 
