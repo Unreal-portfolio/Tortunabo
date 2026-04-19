@@ -24,8 +24,9 @@ ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 	bReplicates = true;
 	SetReplicatingMovement(true);
 
-	// Actualizaciones frecuentes para un objeto físico preciso en todos los clientes.
-	SetNetUpdateFrequency(50.f);
+	// Actualizaciones para un objeto físico — 30Hz es suficiente para objetos
+	// que rebotan (no son jugadores) y reduce ancho de banda a la mitad.
+	SetNetUpdateFrequency(30.f);
 	SetMinNetUpdateFrequency(10.f);
 
 	// Empieza dormido — 0 bytes hasta que algo lo golpee.
@@ -99,7 +100,10 @@ void ATN_PhysicsObjectActor::TryEnterDormancy()
 		return; // Aún en movimiento — seguir comprobando.
 	}
 
-	// Detenido: volver a dormir y cancelar el timer.
+	// Detenido: un último ForceNetUpdate antes de dormir para que el cliente
+	// reciba la posición final exacta (si no, podría quedarse "a medio parar"
+	// respecto al servidor cuando entra dormancy).
+	ForceNetUpdate();
 	SetNetDormancy(DORM_DormantAll);
 	GetWorldTimerManager().ClearTimer(DormancyCheckTimer);
 }

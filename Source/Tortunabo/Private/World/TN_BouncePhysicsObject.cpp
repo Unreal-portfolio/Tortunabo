@@ -8,6 +8,11 @@ ATN_BouncePhysicsObject::ATN_BouncePhysicsObject()
 	bLockRotationX = false;
 	bLockRotationY = false;
 	bLockRotationZ = false;
+
+	// Crush detection está pensado para cajas empujables que se atascan entre
+	// paredes; una bola que rebota libremente nunca debería destruirse sola, así
+	// que desactivamos la detección (también ahorra 1 timer + 6 raycasts/2s).
+	bEnableCrushDetection = false;
 }
 
 void ATN_BouncePhysicsObject::BeginPlay()
@@ -47,4 +52,10 @@ void ATN_BouncePhysicsObject::OnKickHit(UPrimitiveComponent* /*HitComp*/,
 	// bVelChange=true → el impulso se aplica como cambio directo de velocidad
 	// ignorando la masa, así el "feel" del kick no depende del Mass Scale del BP.
 	Mesh->AddImpulse(DeltaVelocity, NAME_None, /*bVelChange=*/true);
+
+	// Empujar el snapshot al cliente inmediatamente para que el feel del kick
+	// no se perciba desincronizado (sin esto, a 30Hz el cliente podría ver la
+	// bola moverse ~33ms después del impacto).
+	FlushNetDormancy();
+	ForceNetUpdate();
 }

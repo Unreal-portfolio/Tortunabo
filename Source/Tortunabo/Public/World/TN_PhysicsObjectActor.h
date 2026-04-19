@@ -41,7 +41,7 @@ protected:
 
 	/** Intervalo (s) entre comprobaciones de velocidad tras un impacto. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "0.1"))
-	float DormancyCheckInterval = 0.5f;
+	float DormancyCheckInterval = 1.5f;
 
 	/** Bloquear rotación alrededor del eje X (roll). Evita que el actor ruede de lado. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Constraints")
@@ -69,7 +69,7 @@ protected:
 
 	/** Intervalo (s) entre chequeos de crush. 0 = solo al detenerse. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush", meta = (ClampMin = "0.2"))
-	float CrushCheckInterval = 1.0f;
+	float CrushCheckInterval = 2.0f;
 
 	/** VFX opcional al destruirse por crush. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush")
