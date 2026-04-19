@@ -229,8 +229,11 @@ Con el default a `true/true/true` el cubo se comporta como caja slide-only (ni v
 
 ### Q1-11 🔵 Bridge — vibración escalada por nº de jugadores
 **Componente:** `ATN_BreakablePlatform` (variante bridge cooperativo)
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto — commit `1e37de8`
 **Origen:** Drop-zone 2026-04-19
+
+**Fix aplicado:**
+Nuevos `UPROPERTY` `bScaleShakeByPlayerCount` (default **false** — compat) + `TArray<float> ShakeAmplitudeByPlayerCount` (default `[3, 6, 10, 15]`). `MulticastShake(int32 PlayerCount)` ahora lleva el count del servidor; `FireShake()` server-only muestrea `PawnsOnPlatform.Num()` al dispararse. `EffectiveShakeAmplitude` se resuelve por clamp del índice y se usa en Tick en lugar del antiguo `ShakeAmplitude` fijo. Timers rebind a `FireShake` para preservar el count al disparar.
 
 **Observación:**
 El bridge actual (con `PlayerThreshold`) decide romperse de forma binaria: umbral cumplido → shake + break. Rodrigo quiere una curva: la intensidad de la vibración debe **escalar con el número de jugadores encima**, no ser un estado on/off.
@@ -271,9 +274,14 @@ El `EditCondition = "!bDestroyAfterActivation"` oculta `ResetCooldownSeconds` de
 ---
 
 ### Q2-02 🟠 ItemSpawnZone — ubicación final debe ser offset relativo al spawn + escalado del Quad
-**Componente:** `ATN_ItemSpawnZone` (quad spawner)
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_QuadSpawner` (el ticket original apuntaba a `ItemSpawnZone`, pero el bug real estaba en el spawner del quad)
+**Estado:** ✅ Resuelto — commit `d17e1be`
 **Origen:** Drop-zone 2026-04-19
+
+**Fix aplicado:**
+`UPROPERTY EndLocation` renombrado a `EndOffsetLocal` con docstring explícito "offset local desde el spawner, en cm". `SpawnQuad` ahora calcula `WorldEnd = GetActorTransform().TransformPosition(EndOffsetLocal)` antes de llamar a `InitializeTravel(WorldEnd, QuadSpeed)`. Con esto el quad viaja relativo al spawner, permitiendo mover/reparentar el spawner sin que el destino del quad quede desalineado.
+
+**Nota al diseñador:** tras este cambio los BPs hijos pierden el valor serializado (UPROPERTY renombrado). Re-asignar `EndOffsetLocal` desde el editor. El "escalado del Quad" es asset-work en el BP (`QuadMesh->RelativeScale3D`); no requiere C++.
 
 **Observación:**
 El "quad spawner" (ItemSpawnZone) actualmente coloca el ítem en una ubicación absoluta. Debería calcularse como **offset relativo al spawn** para que al mover/reparentar el spawner el ítem viaje con él. Además hay problemas con el **escalado del Quad** (mesh de visualización): al escalarlo en el editor la zona de spawn y/o la visualización no coinciden.
@@ -292,9 +300,12 @@ El "quad spawner" (ItemSpawnZone) actualmente coloca el ítem en una ubicación 
 ---
 
 ### Q2-03 🔵 PressurePlate — dos modos de activación (momentáneo / latch)
-**Componente:** `ATN_PressurePlateInteractable` (placa de presión)
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_PressurePlate` (placa de presión)
+**Estado:** ✅ Resuelto — commit `4ebe3b7`
 **Origen:** Drop-zone 2026-04-19
+
+**Fix aplicado:**
+Nuevo `UENUM(BlueprintType) EPressurePlateMode { Momentary, Latched }` + `UPROPERTY EPressurePlateMode Mode` (default **Momentary**, preserva comportamiento). En `Latched`, `RefreshOccupancy()` salta las transiciones a `false` cuando ya está activada. Método `ResetLatch()` BlueprintCallable (authority-only, no-op si `Momentary` o aún hay jugadores vivos encima). Reutiliza la replicación existente de `bOccupied` — no hay propiedad adicional.
 
 **Diseño propuesto:**
 La placa debe exponer dos modos via `UPROPERTY`:
@@ -311,9 +322,12 @@ Esto encaja con la lógica de managers: se pueden combinar varias placas moment�
 ---
 
 ### Q2-04 🔵 ButtonManager — rediseño: acción sumatoria, botones individuales indiferentes
-**Componente:** `ATN_ButtonManager` (nuevo o existente, revisar)
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_ButtonGroupManager` + `ATN_PressurePlateGroupManager`
+**Estado:** ✅ Resuelto — commit `79f5174`
 **Origen:** Drop-zone 2026-04-19
+
+**Fix aplicado:**
+Ambos managers reciben un nuevo `UPROPERTY int32 TriggerThreshold` con default `-1` (= "todos", compat con comportamiento previo). Helper `GetEffectiveThreshold()` que clampea a `[1, N]`. En `ATN_ButtonGroupManager::CheckAndTrigger`, sustituido el loop "todos activados" por `ActiveCount >= Required`. En `ATN_PressurePlateGroupManager::EvaluateCondition`, la comparación `PlatesOccupied >= GetEffectiveThreshold(AlivePlayers)` usa el threshold si está definido, o el count de vivos como antes (preservando la semántica original de "todos los vivos encima"). Simetría on/off respetada (off dispara `UntriggerActions` al bajar del umbral en ButtonGroupManager).
 
 **Decisión de diseño:**
 Los managers **no reaccionan a la acción individual de cada botón**. Su única responsabilidad es detectar cuándo **la suma de botones activados cruza el umbral configurado** (ej. "todos activados", "≥2 activados") y, en ese momento, aplicar un **offset al array final de objetos que maneja**.
@@ -335,9 +349,12 @@ Esto simplifica drásticamente el modelo mental: los botones son sensores tontos
 ---
 
 ### Q2-05 🔵 Button/Manager — sistema de offsets Do/Undo + estados rotacionales múltiples
-**Componente:** `ATN_ButtonInteractable` + `ATN_ButtonManager`
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_ButtonInteractable`
+**Estado:** ✅ Resuelto — commit `dde37a1`
 **Origen:** Drop-zone 2026-04-19 (extensión de Q2-04)
+
+**Fix aplicado:**
+Nuevo `UENUM(BlueprintType) EButtonOffsetMode { DoUndo, CyclicStates }` (default **DoUndo**, comportamiento original preservado). `CyclicStates` añade `UPROPERTY TArray<FTransform> CyclicStateTransforms` (visible solo con `EditCondition`). `CurrentStateIndex` replicado con `OnRep_CurrentStateIndex` y getter `GetCurrentStateIndex()` expuesto a BP. En `Interact`, modo cíclico avanza `CurrentStateIndex = (CurrentStateIndex + 1) % N` y `bIsActivated` refleja "estado != 0" para mantener compat con `ButtonGroupManager`. `DeferredInit` precomputa `CyclicResolvedTransforms` (y equivalentes por `AdditionalMoveTargets`) para evitar recalcular cada Tick.
 
 **Decisión de diseño:**
 Cada botón expone un **offset que aplica (Do) y revierte (Undo)** al array de actores del manager. Además, se quiere soporte de **múltiples estados rotacionales** (ej. 0° → 90° → 180° → 270° → 0°), de modo que cada pulsación avance el botón un paso en el ciclo y el manager conozca la **posición actual** (índice de estado) de cada botón.
@@ -363,8 +380,14 @@ Esto desbloquea puzzles tipo "alinea los cuatro botones en la misma rotación" o
 
 ### Q3-01 🟡 Gaviota — sombra cambia de tamaño al spawn + velocidad y tasa serializables
 **Componente:** `ATN_EnemySeagull` + `ATN_SeagullSpawnZone`
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto — commit `5c9d5e4`
 **Origen:** Drop-zone 2026-04-19
+
+**Fix aplicado:**
+1. `InitializeWithTarget()` ahora llama `UpdateDecalSize()` **antes** del resto de la inicialización → la sombra se dimensiona correctamente desde frame 1, sin pop visual.
+2. Subido default `FollowSpeed` **280 → 350 cm/s** (ya era UPROPERTY serializable).
+3. `SpawnInterval` del `SeagullSpawnZone` ya era UPROPERTY serializable (no requería cambio).
+4. La sombra circular (material) es asset-work BP, fuera del scope C++.
 
 **Observación:**
 1. Al spawnear la gaviota, la **sombra aparece con un tamaño** y un instante después **cambia a otro** — se nota un pop visual. Debería estabilizarse desde el primer frame.
@@ -385,9 +408,14 @@ Esto desbloquea puzzles tipo "alinea los cuatro botones en la misma rotación" o
 ---
 
 ### Q3-02 🟠 SeagullSpawnZone — gaviotas y cacas aparecen fuera de la zona de spawn
-**Componente:** `ATN_SeagullSpawnZone` (y proyectil caca del `ATN_EnemySeagull`)
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_SeagullSpawnZone` + `ATN_DroppingSpawnZone`
+**Estado:** ✅ Resuelto — commit `6ee19d9`
 **Origen:** Drop-zone 2026-04-19
+
+**Clarificación (post-respuesta Rodrigo):** que la gaviota persiga al player fuera del zone es intencional. El bug era que **spawneaban** actores fuera (el target podía estar cerca del borde, y el spawn añadía offset que sacaba la posición del volumen).
+
+**Fix aplicado:**
+Nuevo helper `ClampXYToVolume(FVector) const` en ambos spawn zones: transforma el punto a local space del volumen, lo clampea a los extents del `UBoxComponent`, y lo convierte de vuelta a world. `TrySpawnSeagull` y `TrySpawnDropping` clampean la posición XY del target antes de generar el `SpawnLoc`. Así, aunque el player esté al borde, el enemy/caca siempre nace dentro del AABB del volumen.
 
 **Observación:**
 En el mapa de testing, se observan **gaviotas y cacas aparecer fuera de las zonas de spawn** colocadas. Revisar si:
@@ -407,9 +435,14 @@ En el mapa de testing, se observan **gaviotas y cacas aparecer fuera de las zona
 ---
 
 ### Q3-03 🟡 SeagullPoop — polish: sombra circular, sin movimiento, caída constante tras spawn
-**Componente:** proyectil caca lanzado por `ATN_EnemySeagull`
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_SeagullDroppingActor`
+**Estado:** ✅ Resuelto — commit `6196ebf`
 **Origen:** Drop-zone 2026-04-19
+
+**Fix aplicado:**
+La caída vertical pura y el `SetAbsolute(true,true,true)` del decal ya existían (caída `Loc.Z -= FallSpeed * DeltaTime`, sin herencia de velocidad horizontal). Lo único que pulía era un pop inicial de la sombra antes de que replicara `ImpactXY`: añadido guard en `UpdateShadowScale()` que retorna temprano si `ImpactXY.IsNearlyZero() && GroundTargetZ == 0.f` — así la sombra queda oculta hasta que llegue el target real, evitando el flash de tamaño inicial.
+
+La sombra circular/material es asset-work BP (no requiere C++).
 
 **Observación:**
 La caca de gaviota necesita tratamiento visual coherente con la gaviota:
@@ -500,9 +533,21 @@ El fix Q4-02 (`84fd833`) cubrió el race de `Instigator`, pero `MulticastLaunch`
 ---
 
 ### Q4-06 🔴 BallThrowable — lag/problemas, buscar alternativa al sistema actual
-**Componente:** `ATN_ThrowableItemActor` (bola) + posible interacción con `ATN_BouncePhysicsObject`
-**Estado:** ⬜ Abierto
+**Componente:** `ATN_PhysicsObjectActor` + `ATN_BouncePhysicsObject`
+**Estado:** ✅ Resuelto — commit `e50b056`
 **Origen:** Drop-zone 2026-04-19
+
+**Decisión (post-respuesta Rodrigo):** mantener simulación física, priorizar **consistencia visual cliente/servidor** en lugar de crear una clase cinemática nueva. Ajustes de tuning y flush explícito en hits.
+
+**Fix aplicado:**
+- `NetUpdateFrequency` **50→30 Hz** (suficiente para objetos no-player; reduce ancho de banda).
+- `DormancyCheckInterval` **0.5→1.5 s** (reduce coste del timer de chequeo de velocidad sin perder precisión al dormir).
+- `CrushCheckInterval` **1.0→2.0 s**.
+- `bEnableCrushDetection = false` por default en `ATN_BouncePhysicsObject` — una bola que rebota libre no debe auto-destruirse, y así ahorra 6 raycasts/2s.
+- `TryEnterDormancy` llama `ForceNetUpdate()` antes de `SetNetDormancy(DORM_DormantAll)` → el cliente recibe el estado final exacto justo antes del dormir.
+- `OnKickHit` llama `FlushNetDormancy() + ForceNetUpdate()` al final → el empuje de la bola por el player se ve alineado cliente/servidor sin el retardo de ~33 ms típico de 30 Hz.
+
+**Pendiente si persiste desync:** segundo commit con replicación explícita de `LinearVelocity`/`AngularVelocity` (ticket separado si el smoke test revela drift).
 
 **Observación:**
 El sistema de BallThrowable actual está causando **lag y problemas** no acotados en los tests. Se pide **explorar alternativas** antes de seguir parcheando síntomas.
@@ -584,6 +629,15 @@ Nuevo `ATN_BouncePhysicsObject` hereda de `ATN_PhysicsObjectActor`, libera los 3
 
 | ID | Fecha | Commit | Resumen |
 |---|---|---|---|
+| Q4-06 | 2026-04-19 | `e50b056` | PhysicsObjectActor — NetUpdate 50→30Hz, ForceNetUpdate en hits, Crush off en Bounce |
+| Q2-05 | 2026-04-19 | `dde37a1` | ButtonInteractable — `EButtonOffsetMode` con estados cíclicos replicados |
+| Q2-04 | 2026-04-19 | `79f5174` | ButtonGroupManager + PressurePlateGroupManager — `TriggerThreshold` configurable |
+| Q2-03 | 2026-04-19 | `4ebe3b7` | PressurePlate — modo `Momentary`/`Latched` + `ResetLatch()` |
+| Q2-02 | 2026-04-19 | `d17e1be` | QuadSpawner — `EndLocation` → `EndOffsetLocal` (local space) |
+| Q3-02 | 2026-04-19 | `6ee19d9` | SeagullSpawnZone + DroppingSpawnZone — clamp XY al volumen |
+| Q1-11 | 2026-04-19 | `1e37de8` | BreakablePlatform — shake escalada por `PawnsOnPlatform.Num()` |
+| Q3-03 | 2026-04-19 | `6196ebf` | SeagullDroppingActor — guard sombra hasta que replique `ImpactXY` |
+| Q3-01 | 2026-04-19 | `5c9d5e4` | EnemySeagull — sombra estable frame 1 + `FollowSpeed` 280→350 |
 | Q4-04 | 2026-04-19 | `b815205` | ThrowableItem — guard `bLaunchApplied` en MulticastLaunch (teleport-back race tras OnRep_ThrowData) |
 | BALL | 2026-04-18 | `ada082c` | TN_BouncePhysicsObject — hijo con bote vertical + rotación libre |
 | B5 | 2026-04-18 | `c4ba273` | PhysicsObject — crush detection anti-clipping (3 pares de rays) |
@@ -608,4 +662,35 @@ Nuevo `ATN_BouncePhysicsObject` hereda de `ATN_PhysicsObjectActor`, libera los 3
 
 ---
 
-*QA Testing · Tortunabo · Última actualización: 2026-04-19 (drop-zone procesada: Q1-11, Q2-02..Q2-05, Q3-01..Q3-03, Q4-06 abiertos)*
+## Smoke test checklist — 2026-04-19 (batch cierre 9 tickets)
+
+Validación en PIE listen-server **2 jugadores** tras compilar con `-NoHotReload`. Cada ítem ≤30 s. Marcar ✅ al verificar, ❌ si falla.
+
+### Fase 3 — Enemies
+- [ ] **Q3-01** — Spawnear gaviota: su sombra aparece con tamaño correcto desde el primer frame (sin pop). `FollowSpeed` default se percibe más ágil que antes (350 cm/s).
+- [ ] **Q3-02** — Con el player al borde del `SeagullSpawnZone`/`DroppingSpawnZone`: las gaviotas/cacas **siempre** nacen dentro del volumen (no salen fuera aunque el target esté en la frontera).
+- [ ] **Q3-03** — Caca de gaviota: sombra no parpadea antes de caer; caída vertical pura, sin arrastre horizontal.
+
+### Fase 1 — Hazards
+- [ ] **Q1-11** — BP_BreakablePlatform con `bScaleShakeByPlayerCount=true` + array `[3,6,10,15]`: 1 jugador encima → shake leve; 2 → shake intermedio; 3+ → shake fuerte. Con `bScaleShakeByPlayerCount=false` comportamiento original.
+
+### Fase 2 — Interactables
+- [ ] **Q2-02** — BP_QuadSpawner con `EndOffsetLocal=(5000,0,0)`: al mover el spawner por el mapa, el quad viaja 50 m en dirección forward del spawner (no al origen del mundo).
+  *Nota: tras renombre, los valores BP previos se pierden — re-setear en editor.*
+- [ ] **Q2-03** — Placa en modo `Latched`: al subir-bajar-subir-bajar, permanece activada hasta llamar `ResetLatch()`. En modo `Momentary` vuelve a false al salir.
+- [ ] **Q2-04** — ButtonGroupManager con `TriggerThreshold=2` (4 botones): se dispara la acción con 2 botones activados. PlateGroupManager con `TriggerThreshold=-1`: se dispara cuando todos los vivos están encima (comportamiento original).
+- [ ] **Q2-05** — Botón en modo `CyclicStates` con 4 entradas de rotación: cada pulsación avanza 90°, en la 4ª vuelve a 0°. `CurrentStateIndex` se ve correctamente replicado en el cliente.
+
+### Fase 4 — Physics & throwables
+- [ ] **Q4-06 (a)** — Con varias bolas activas y `stat net`: `OutBytes/s` por bola reducido respecto a antes (objetivo: <500 B/s vs ~800 B/s previo).
+- [ ] **Q4-06 (b)** — Pegar a la bola con el player: cliente y servidor ven el empuje en el mismo instante (sin retardo perceptible de ~33 ms). Bola al parar queda en el mismo sitio en ambas máquinas.
+- [ ] **Q4-06 (c)** — `stat unit`: frame time <16.6 ms con 2 bolas activas + 2 jugadores. Sin spikes al activarse/desactivarse dormancy.
+
+### Regresiones a vigilar
+- [ ] Los tickets previos (Q4-01..Q4-04, Q1-01..Q1-10, Q2-01, B1..B5, BALL) siguen funcionando; ningún cambio nuevo pisa sus fixes.
+- [ ] Compilación limpia sin warnings nuevos en los archivos modificados.
+- [ ] No hay pérdida visible de replicación de `bOccupied` (PressurePlate) ni de `bIsActivated`/`CurrentStateIndex` (Button) en tests con >1 cliente.
+
+---
+
+*QA Testing · Tortunabo · Última actualización: 2026-04-19 (batch cierre 9 tickets: Q3-01, Q3-02, Q3-03, Q1-11, Q2-02, Q2-03, Q2-04, Q2-05, Q4-06)*
