@@ -13,11 +13,26 @@ ATN_BouncePhysicsObject::ATN_BouncePhysicsObject()
 	// paredes; una bola que rebota libremente nunca debería destruirse sola, así
 	// que desactivamos la detección (también ahorra 1 timer + 6 raycasts/2s).
 	bEnableCrushDetection = false;
+
+	// Umbral de velocidad para dormir más alto que el default del padre (15 cm/s).
+	// Una bola con inercia rueda largo rato a <30 cm/s sin llegar a reposo real;
+	// si no subimos el umbral, nunca entra dormancy y sigue enviando packets.
+	SleepVelocityThreshold = 30.f;
 }
 
 void ATN_BouncePhysicsObject::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Damping en BodyInstance — tras Super::BeginPlay() el BodyInstance ya
+	// existe (Super configuró DOF locks). Aplicar damping aquí hace que la
+	// bola decelere como sobre césped en lugar de rodar indefinidamente.
+	if (Mesh)
+	{
+		Mesh->BodyInstance.LinearDamping  = LinearDamping;
+		Mesh->BodyInstance.AngularDamping = AngularDamping;
+		Mesh->BodyInstance.UpdateDampingProperties();
+	}
 
 	if (HasAuthority() && Mesh)
 	{
