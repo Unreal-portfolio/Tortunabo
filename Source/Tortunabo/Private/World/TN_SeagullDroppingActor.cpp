@@ -77,6 +77,11 @@ void ATN_SeagullDroppingActor::UpdateShadowScale()
 {
 	if (!ShadowDecal) { return; }
 
+	// Guard: en clientes la repl de ImpactXY/GroundTargetZ puede llegar tras el
+	// primer tick. Si aún no ha llegado, no reubicamos el decal (evita el salto
+	// al origen del mundo durante 1–2 frames).
+	if (ImpactXY.IsNearlyZero() && GroundTargetZ == 0.f) { return; }
+
 	// Pin decal at ground level (absolute transform, doesn't follow mesh)
 	ShadowDecal->SetWorldLocation(FVector(ImpactXY.X, ImpactXY.Y, GroundTargetZ + 5.f));
 
