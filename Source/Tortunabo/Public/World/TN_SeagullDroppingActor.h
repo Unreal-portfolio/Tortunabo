@@ -107,6 +107,16 @@ protected:
 		meta = (ClampMin = "50.0"))
 	float DecalDepth = 600.f;
 
+	/**
+	 * Factor de escala mínima del mesh en el momento del impacto (0..1).
+	 * El mesh encoge linealmente desde 1.0 (spawn) hasta este factor aplicado
+	 * sobre la escala original del BP, dando feedback de "se aproxima" sin
+	 * cambios de velocidad de caída.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SeagullDropping",
+		meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float MinMeshScaleFactor = 0.35f;
+
 	// ── Eventos BP ───────────────────────────────────────────────────────────
 
 	/** Llamado en TODAS las máquinas al impactar en el suelo. */
@@ -123,6 +133,9 @@ private:
 	FVector2D ImpactXY = FVector2D::ZeroVector;
 
 	bool bImpacted = false;
+
+	/** Escala original del mesh capturada en BeginPlay (respeta el valor del BP). */
+	FVector InitialMeshScaleCache = FVector::OneVector;
 
 	void UpdateShadowScale();
 	void ResolveImpact();

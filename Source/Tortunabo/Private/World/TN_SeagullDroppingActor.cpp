@@ -32,6 +32,14 @@ void ATN_SeagullDroppingActor::BeginPlay()
 	Super::BeginPlay();
 	// Tick on ALL machines: server runs gameplay, clients update shadow visual
 	// Shadow position is set once GroundTargetZ replicates (see UpdateShadowScale)
+
+	// Capturamos la escala que el BP haya configurado para el DroppingMesh, para
+	// interpolar entre ella (top) y ella * MinMeshScaleFactor (impacto). Sin esta
+	// cache, al modificar el scale en Tick perderíamos el valor original del BP.
+	if (DroppingMesh)
+	{
+		InitialMeshScaleCache = DroppingMesh->GetRelativeScale3D();
+	}
 }
 
 void ATN_SeagullDroppingActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -91,6 +99,14 @@ void ATN_SeagullDroppingActor::UpdateShadowScale()
 	const float Radius = FMath::Lerp(MinShadowRadius, MaxShadowRadius, NormalizedHeight);
 
 	ShadowDecal->DecalSize = FVector(DecalDepth, Radius, Radius);
+
+	// Mesh shrink: spawn scale → MinMeshScaleFactor * spawn scale en el impacto.
+	// NormalizedHeight=1 al spawn, 0 en suelo, por eso Lerp(min, 1, h) aumenta con h.
+	if (DroppingMesh)
+	{
+		const float Factor = FMath::Lerp(MinMeshScaleFactor, 1.f, NormalizedHeight);
+		DroppingMesh->SetRelativeScale3D(InitialMeshScaleCache * Factor);
+	}
 }
 
 void ATN_SeagullDroppingActor::ResolveImpact()
