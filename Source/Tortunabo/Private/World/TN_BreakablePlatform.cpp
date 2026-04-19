@@ -96,8 +96,17 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	PawnsOnPlatform.Remove(Pawn);
 	PawnsOnPlatform.Remove(nullptr);
 
-	UE_LOG(LogTemp, Verbose, TEXT("[BreakablePlatform] %s EXIT by %s — count=%d threshold=%d"),
-		*GetNameSafe(this), *GetNameSafe(Pawn), PawnsOnPlatform.Num(), PlayerThreshold);
+	UE_LOG(LogTemp, Verbose, TEXT("[BreakablePlatform] %s EXIT by %s — count=%d threshold=%d mode=%d"),
+		*GetNameSafe(this), *GetNameSafe(Pawn), PawnsOnPlatform.Num(), PlayerThreshold,
+		static_cast<int32>(BreakMode));
+
+	// Modo Latched: si el timer de rotura ya está corriendo (threshold alcanzado
+	// en algún momento), el puente caerá sí o sí — ignorar la bajada de count.
+	if (BreakMode == EBreakablePlatformMode::Latched &&
+		GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
+	{
+		return;
+	}
 
 	if (PawnsOnPlatform.Num() < PlayerThreshold)
 	{

@@ -11,6 +11,20 @@ class UNiagaraSystem;
 class APawn;
 
 /**
+ * Modo de rotura del puente:
+ *  - Reversible: si el nº de jugadores baja del threshold ANTES del shake, el
+ *                timer se cancela y el puente recupera integridad. (Default.)
+ *  - Latched:    una vez alcanzado el threshold, el puente caerá aunque los
+ *                jugadores se bajen — sin marcha atrás.
+ */
+UENUM(BlueprintType)
+enum class EBreakablePlatformMode : uint8
+{
+	Reversible UMETA(DisplayName = "Reversible"),
+	Latched    UMETA(DisplayName = "Latched"),
+};
+
+/**
  * Plataforma que se rompe tras aguantar el peso de un jugador durante TimeToBreak segundos.
  *
  * Autoridad: el servidor controla el timer y el estado bBroken.
@@ -48,6 +62,13 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 PlayerThreshold = 1;
+
+	/**
+	 * Modo de rotura: Reversible (retrocompat) o Latched (irrevocable tras
+	 * alcanzar threshold). Ver EBreakablePlatformMode para detalles.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform")
+	EBreakablePlatformMode BreakMode = EBreakablePlatformMode::Reversible;
 
 	/** Segundos que aguanta el peso antes de romperse. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "0.1"))
