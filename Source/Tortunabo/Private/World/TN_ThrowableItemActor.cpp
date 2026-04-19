@@ -171,11 +171,24 @@ void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
 	// Si aplicáramos sin el guard, haríamos SetActorLocation(Origin) sobre una
 	// bola que ya llevaba varios frames volando → teleport-back rubberband, la
 	// bola "desaparece" de cámara y el usuario solo vuelve a verla como pickup.
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] MulticastLaunch auth=%d bLaunchApplied=%d v=(%.0f,%.0f,%.0f)"),
-		HasAuthority() ? 1 : 0, bLaunchApplied ? 1 : 0,
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] MulticastLaunch auth=%d bLaunchApplied=%d hasBP=%d v=(%.0f,%.0f,%.0f)"),
+		HasAuthority() ? 1 : 0, bLaunchApplied ? 1 : 0, HasActorBegunPlay() ? 1 : 0,
 		Velocity.X, Velocity.Y, Velocity.Z);
 
 	if (HasAuthority() || bLaunchApplied)
+	{
+		return;
+	}
+
+	// Q4-07: Si el RPC llega antes de BeginPlay (mismo bunch que la replicación
+	// inicial del actor, orden no determinista), Mesh y ProjectileMovement aún
+	// no están registrados en el mundo — SetActorLocation/SetStaticMesh/Activate
+	// son silently-noop y la bola queda invisible/inerte en el cliente.
+	// Deferimos: la ruta canónica (OnRep_ThrowData → ApplyLaunchDataIfReady en
+	// BeginPlay) aplicará el launch con el actor totalmente inicializado.
+	// ThrowData ya viaja replicado en el mismo bunch con bReady=true, así que
+	// OnRep_ThrowData disparará sí o sí.
+	if (!HasActorBegunPlay())
 	{
 		return;
 	}
