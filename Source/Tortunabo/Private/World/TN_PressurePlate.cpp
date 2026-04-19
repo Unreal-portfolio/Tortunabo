@@ -264,14 +264,26 @@ bool ATN_PressurePlateGroupManager::EvaluateCondition() const
 
 	if (AlivePlayers == 0) { return false; }
 
-	// Contar cuántos jugadores vivos están en alguna placa
-	int32 PlayersOnPlates = 0;
+	// Contar cuántas placas están ocupadas
+	int32 PlatesOccupied = 0;
 	for (const ATN_PressurePlate* Plate : ManagedPlates)
 	{
-		if (Plate && Plate->IsOccupied()) { ++PlayersOnPlates; }
+		if (Plate && Plate->IsOccupied()) { ++PlatesOccupied; }
 	}
 
-	return PlayersOnPlates >= AlivePlayers;
+	return PlatesOccupied >= GetEffectiveThreshold(AlivePlayers);
+}
+
+int32 ATN_PressurePlateGroupManager::GetEffectiveThreshold(int32 AlivePlayers) const
+{
+	const int32 N = ManagedPlates.Num();
+	if (N <= 0) { return 1; }
+	if (TriggerThreshold <= 0)
+	{
+		// Comportamiento original: tantas placas ocupadas como jugadores vivos
+		return FMath::Clamp(AlivePlayers, 1, N);
+	}
+	return FMath::Clamp(TriggerThreshold, 1, N);
 }
 
 void ATN_PressurePlateGroupManager::ApplyTriggerActions()

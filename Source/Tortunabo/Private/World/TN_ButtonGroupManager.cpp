@@ -66,32 +66,39 @@ void ATN_ButtonGroupManager::OnButtonActivationChanged(ATN_ButtonInteractable* /
 
 void ATN_ButtonGroupManager::CheckAndTrigger()
 {
-	// Comprobar si todos los botones gestionados están activados
-	bool bAllActivated = true;
+	// Contar cuántos botones están activados actualmente
+	int32 ActiveCount = 0;
 	for (const ATN_ButtonInteractable* Button : ManagedButtons)
 	{
-		if (!Button || !Button->IsActivated())
-		{
-			bAllActivated = false;
-			break;
-		}
+		if (Button && Button->IsActivated()) { ++ActiveCount; }
 	}
 
-	if (bAllActivated && !bCurrentlyActivated)
+	const int32 Required = GetEffectiveThreshold();
+	const bool  bMet     = ActiveCount >= Required;
+
+	if (bMet && !bCurrentlyActivated)
 	{
-		// Todos activados — disparar
+		// Umbral alcanzado — disparar
 		bCurrentlyActivated = true;
 		bTriggered = bOneShot;
 		ApplyTriggerActions(true);
 		MulticastNotifyActivated();
 	}
-	else if (!bAllActivated && bCurrentlyActivated && !bOneShot)
+	else if (!bMet && bCurrentlyActivated && !bOneShot)
 	{
-		// Ya no todos activados y no es one-shot — revertir
+		// Bajamos de umbral y no es one-shot — revertir
 		bCurrentlyActivated = false;
 		ApplyTriggerActions(false);
 		MulticastNotifyDeactivated();
 	}
+}
+
+int32 ATN_ButtonGroupManager::GetEffectiveThreshold() const
+{
+	const int32 N = ManagedButtons.Num();
+	if (N <= 0) { return 1; }
+	if (TriggerThreshold <= 0) { return N; }
+	return FMath::Clamp(TriggerThreshold, 1, N);
 }
 
 void ATN_ButtonGroupManager::ApplyTriggerActions(bool bForward)

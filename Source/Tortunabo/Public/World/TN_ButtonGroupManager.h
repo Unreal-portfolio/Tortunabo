@@ -85,6 +85,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ButtonGroup")
 	bool bOneShot = true;
 
+	/**
+	 * Nº mínimo de botones activados para disparar. -1 (default) = TODOS.
+	 * Ej: 4 botones, Threshold=2 → basta con 2 activados para aplicar las acciones.
+	 * Se clampea a [1, ManagedButtons.Num()].
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ButtonGroup")
+	int32 TriggerThreshold = -1;
+
 	/** Llamado en TODAS las máquinas cuando todos los botones están activados. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "ButtonGroup")
 	void OnAllButtonsActivated();
@@ -100,6 +108,8 @@ private:
 	void OnButtonActivationChanged(ATN_ButtonInteractable* Button, bool bActivated);
 	void CheckAndTrigger();
 	void ApplyTriggerActions(bool bForward);
+
+	int32 GetEffectiveThreshold() const;
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastNotifyActivated();

@@ -153,6 +153,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PlateGroup")
 	bool bOneShot = true;
 
+	/**
+	 * Nº mínimo de placas ocupadas para disparar. -1 (default) = tantas como
+	 * jugadores vivos (comportamiento original).
+	 * Ej: 4 placas, Threshold=2 → basta con 2 ocupadas aunque haya 4 jugadores vivos.
+	 * Se clampea a [1, ManagedPlates.Num()].
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PlateGroup")
+	int32 TriggerThreshold = -1;
+
 	/** Sonido al cumplirse la condición de todas las placas. */
 	UPROPERTY(EditDefaultsOnly, Category = "PlateGroup|Audio")
 	TObjectPtr<USoundBase> ConditionMetSound;
@@ -172,6 +181,8 @@ private:
 	bool EvaluateCondition() const;
 	void OnHoldTimerExpired();
 	void ApplyTriggerActions();
+
+	int32 GetEffectiveThreshold(int32 AlivePlayers) const;
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastNotifyConditionChange(bool bMet);
