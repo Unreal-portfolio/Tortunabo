@@ -52,8 +52,12 @@ void ATN_DroppingSpawnZone::TrySpawnDropping()
 	const int32 Idx = FMath::RandRange(0, Candidates.Num() - 1);
 	ATortugaCharacter* Target = Candidates[Idx];
 
-	ATN_SeagullDroppingActor* Dropping = ATN_SeagullDroppingActor::SpawnDroppingOnPlayer(
-		this, DroppingClass, Target);
+	// La caca cae sobre la XY del jugador, pero si éste está en el borde del
+	// volumen podría impactar fuera. Clampeamos al AABB para garantizar que el
+	// impacto siempre cae dentro de la zona dueña.
+	const FVector ClampedGround = ClampXYToVolume(Target->GetActorLocation());
+	ATN_SeagullDroppingActor* Dropping = ATN_SeagullDroppingActor::SpawnDroppingAtLocation(
+		this, DroppingClass, ClampedGround);
 
 	if (Dropping)
 	{
@@ -92,4 +96,17 @@ void ATN_DroppingSpawnZone::PruneActiveDroppings()
 	{
 		return !Ptr.IsValid();
 	});
+}
+
+FVector ATN_DroppingSpawnZone::ClampXYToVolume(const FVector& WorldLoc) const
+{
+	if (!SpawnVolume) { return WorldLoc; }
+
+	const FTransform ZoneTransform = SpawnVolume->GetComponentTransform();
+	const FVector    HalfExtent    = SpawnVolume->GetScaledBoxExtent();
+
+	FVector Local = ZoneTransform.InverseTransformPosition(WorldLoc);
+	Local.X = FMath::Clamp(Local.X, -HalfExtent.X, HalfExtent.X);
+	Local.Y = FMath::Clamp(Local.Y, -HalfExtent.Y, HalfExtent.Y);
+	return ZoneTransform.TransformPosition(Local);
 }

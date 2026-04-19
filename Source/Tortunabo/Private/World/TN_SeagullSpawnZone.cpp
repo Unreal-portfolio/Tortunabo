@@ -61,7 +61,10 @@ void ATN_SeagullSpawnZone::TrySpawnSeagull()
 	const int32 Idx = FMath::RandRange(0, Candidates.Num() - 1);
 	ATortugaCharacter* Target = Candidates[Idx];
 
-	const FVector SpawnLoc = Target->GetActorLocation() + FVector(0.f, 0.f, 400.f);
+	// Si el jugador está en el borde, la gaviota quedaría (en XY) fuera del volumen.
+	// Clampeamos al AABB para que el spawn siempre caiga dentro de la zona dueña.
+	const FVector ClampedXY = ClampXYToVolume(Target->GetActorLocation());
+	const FVector SpawnLoc = ClampedXY + FVector(0.f, 0.f, 400.f);
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
@@ -108,4 +111,17 @@ void ATN_SeagullSpawnZone::PruneActiveSeagulls()
 	{
 		return !Ptr.IsValid();
 	});
+}
+
+FVector ATN_SeagullSpawnZone::ClampXYToVolume(const FVector& WorldLoc) const
+{
+	if (!SpawnVolume) { return WorldLoc; }
+
+	const FTransform ZoneTransform = SpawnVolume->GetComponentTransform();
+	const FVector    HalfExtent    = SpawnVolume->GetScaledBoxExtent();
+
+	FVector Local = ZoneTransform.InverseTransformPosition(WorldLoc);
+	Local.X = FMath::Clamp(Local.X, -HalfExtent.X, HalfExtent.X);
+	Local.Y = FMath::Clamp(Local.Y, -HalfExtent.Y, HalfExtent.Y);
+	return ZoneTransform.TransformPosition(Local);
 }

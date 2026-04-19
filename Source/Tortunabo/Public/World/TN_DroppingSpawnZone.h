@@ -66,4 +66,7 @@ private:
 	void TrySpawnDropping();
 	void GetPlayersInsideZone(TArray<ATortugaCharacter*>& OutPlayers) const;
 	void PruneActiveDroppings();
+
+	/** Clampea WorldLoc al AABB XY del SpawnVolume. Preserva Z. */
+	FVector ClampXYToVolume(const FVector& WorldLoc) const;
 };

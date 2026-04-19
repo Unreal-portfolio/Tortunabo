@@ -70,4 +70,7 @@ private:
 
 	/** Elimina entradas caducadas de ActiveSeagulls. */
 	void PruneActiveSeagulls();
+
+	/** Clampea WorldLoc al AABB XY del SpawnVolume. Preserva Z. */
+	FVector ClampXYToVolume(const FVector& WorldLoc) const;
 };
