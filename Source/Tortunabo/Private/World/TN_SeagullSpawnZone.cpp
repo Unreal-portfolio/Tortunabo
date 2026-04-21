@@ -84,7 +84,7 @@ void ATN_SeagullSpawnZone::TrySpawnSeagull()
 void ATN_SeagullSpawnZone::GetPlayersInsideZone(TArray<ATortugaCharacter*>& OutPlayers) const
 {
 	const FTransform ZoneTransform  = SpawnVolume->GetComponentTransform();
-	const FVector    HalfExtent     = SpawnVolume->GetScaledBoxExtent();
+	const FVector    HalfExtent     = SpawnVolume->GetUnscaledBoxExtent();
 
 	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
 	{
@@ -118,10 +118,15 @@ FVector ATN_SeagullSpawnZone::ClampXYToVolume(const FVector& WorldLoc) const
 	if (!SpawnVolume) { return WorldLoc; }
 
 	const FTransform ZoneTransform = SpawnVolume->GetComponentTransform();
-	const FVector    HalfExtent    = SpawnVolume->GetScaledBoxExtent();
+	const FVector    HalfExtent    = SpawnVolume->GetUnscaledBoxExtent();
 
 	FVector Local = ZoneTransform.InverseTransformPosition(WorldLoc);
 	Local.X = FMath::Clamp(Local.X, -HalfExtent.X, HalfExtent.X);
 	Local.Y = FMath::Clamp(Local.Y, -HalfExtent.Y, HalfExtent.Y);
-	return ZoneTransform.TransformPosition(Local);
+	// No clampeamos Z local para no distorsionar la altura del mundo.
+	FVector WorldClamped = ZoneTransform.TransformPosition(Local);
+	// Preservar la Z original: TransformPosition con una caja rotada puede
+	// desplazar la Z en coordenadas mundo; restauramos la altura del jugador.
+	WorldClamped.Z = WorldLoc.Z;
+	return WorldClamped;
 }

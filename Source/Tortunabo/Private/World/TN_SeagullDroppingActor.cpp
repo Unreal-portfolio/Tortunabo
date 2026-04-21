@@ -141,6 +141,14 @@ void ATN_SeagullDroppingActor::ResolveImpact()
 		const float DistXY = FVector::Dist2D(C->GetActorLocation(), ImpactPoint);
 		if (DistXY <= ImpactRadius)
 		{
+			// Respetar la protección de sombrilla: si el jugador está bajo una sombrilla
+			// abierta, la caca no lo mata (igual que la gaviota en TN_EnemySeagull).
+			if (C->HasUmbrellaProtection())
+			{
+				UE_LOG(LogTemp, Log, TEXT("[SeagullDropping] %s protegido por sombrilla — impacto ignorado"),
+					*GetNameSafe(C));
+				continue;
+			}
 			C->RequestKill(this);
 			bHitPlayer = true;
 		}

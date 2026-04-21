@@ -39,6 +39,9 @@ void ATN_ConchPickup::BeginPlay()
 	// La esfera de detección se ajusta al radio configurado
 	OverlapSphere->SetSphereRadius(TrapRadius);
 
+	// Aplicar mesh normal al inicio (ítem sin activar)
+	if (ConchMesh && MeshNormal) { ConchMesh->SetStaticMesh(MeshNormal); }
+
 	if (HasAuthority())
 	{
 		OverlapSphere->OnComponentBeginOverlap.AddDynamic(this, &ATN_ConchPickup::OnSphereBeginOverlap);
@@ -163,6 +166,9 @@ void ATN_ConchPickup::RearmTrap()
 {
 	if (!HasAuthority()) { return; }
 	bTrapUsed = false;
+
+	// Volver al mesh normal cuando la trampa se re-arma (bDestroyAfterActivation=false)
+	if (ConchMesh && MeshNormal) { ConchMesh->SetStaticMesh(MeshNormal); }
 }
 
 // ── Multicast ──────────────────────────────────────────────────────────────────
@@ -172,13 +178,21 @@ void ATN_ConchPickup::MulticastOnTrapped_Implementation(APawn* Victim)
 	const FVector Loc = Victim ? Victim->GetActorLocation() : GetActorLocation();
 	if (TrapSound) { UGameplayStatics::SpawnSoundAtLocation(this, TrapSound, Loc); }
 	if (TrapVFX)   { UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, TrapVFX, Loc); }
+
+	// Swap al mesh "activado" en todas las máquinas
+	if (ConchMesh && MeshTriggered) { ConchMesh->SetStaticMesh(MeshTriggered); }
 }
 
 // ── OnRep ──────────────────────────────────────────────────────────────────────
 
 void ATN_ConchPickup::OnRep_IsPlacedTrap()
 {
-	if (bIsPlacedTrap) { PlayPlaceEffects(); }
+	if (bIsPlacedTrap)
+	{
+		// Sincronizar mesh normal en clientes cuando la trampa se coloca
+		if (ConchMesh && MeshNormal) { ConchMesh->SetStaticMesh(MeshNormal); }
+		PlayPlaceEffects();
+	}
 }
 
 // ── Efectos de colocación ─────────────────────────────────────────────────────

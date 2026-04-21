@@ -42,13 +42,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DroppingSpawnZone")
 	TSubclassOf<ATN_SeagullDroppingActor> DroppingClass;
 
-	/** Intervalo entre intentos de spawn (s). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DroppingSpawnZone",
+	/** Intervalo entre intentos de spawn (s). Editable por instancia. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DroppingSpawnZone",
 		meta = (ClampMin = "1.0"))
 	float SpawnInterval = 8.f;
 
-	/** Retardo inicial antes del primer intento (s). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DroppingSpawnZone",
+	/** Retardo inicial antes del primer intento (s). Editable por instancia. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DroppingSpawnZone",
 		meta = (ClampMin = "0.0"))
 	float InitialDelay = 3.f;
 

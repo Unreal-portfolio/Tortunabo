@@ -8,30 +8,27 @@ class ATortugaCharacter;
 class USoundBase;
 class UParticleSystem;
 class UStaticMesh;
+class UStaticMeshComponent;
 
 /**
  * Sombrilla interactuable (#29).
  *
- * Al pulsar E:
- *   - Activa bHasUmbrellaProtection en el TortugaCharacter del interactor.
- *   - La protección dura UmbrellaDurationSeconds.
- *   - Después se cierra sola (bHasUmbrellaProtection = false).
- *   - La sombrilla entra en cooldown (CooldownSeconds de la base, o ReuseDelay).
+ * Comportamiento de toggle:
+ *   - Pulsar E → abre la sombrilla (activa protección, inicia timer 8s).
+ *   - Pulsar E con la sombrilla abierta → la cierra manualmente.
+ *   - Al cerrarse (manual o por timer) → puede reabrirse instantáneamente.
+ *   - El timer de 8s siempre corre mientras está abierta.
  *
- * Mesh visual:
- *   - MeshClosed: mesh cuando está plegada (default: Cylinder).
- *   - MeshOpen:   mesh cuando está desplegada (default: Cone).
- *   - Si se asignan en el BP hijo, se usan los assets personalizados.
- *   - El swap de mesh ocurre en TODAS las máquinas vía NetMulticast.
+ * Mesh visual (compound sin assets personalizados):
+ *   - Palo (Mesh heredado): cilindro fino 0→200 cm.
+ *   - Mango (HandleMeshComp): cilindro más grueso 100→240 cm.
+ *   - Cúpula (CanopyMeshComp): cono achatado invertido, r=150 cm, solo visible abierta.
+ *   - Si se asignan MeshClosed + MeshOpen en el BP hijo, se usan y se ocultan
+ *     los componentes compound.
  *
- * La gaviota dinámica (TN_EnemySeagull) comprueba bHasUmbrellaProtection
- * antes de matar al jugador. Si está activo, cancela el ataque.
- *
- * Uso:
- *   1. Crear BP_UmbrellaInteractable como hijo.
- *   2. (Opcional) Asignar MeshClosed/MeshOpen con tus propios assets.
- *   3. (Opcional) Asignar SoundOpen/SoundClose/VFXOpen/VFXClose.
- *   4. Colocar en el nivel o en chunks.
+ * Protección activa (bHasUmbrellaProtection en TortugaCharacter):
+ *   - La gaviota dinámica (TN_EnemySeagull) ya comprueba el flag.
+ *   - La caca (TN_SeagullDroppingActor) también lo comprueba en ResolveImpact.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_UmbrellaInteractable : public ATN_DirectInteractableBase
@@ -43,6 +40,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void Interact(APawn* Interactor) override;
+	virtual bool CanInteract(APawn* Interactor) const override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 protected:
@@ -50,15 +48,19 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella", meta = (ClampMin = "1.0"))
 	float UmbrellaDurationSeconds = 8.f;
 
-	/**
-	 * Tiempo de recarga de la sombrilla tras ser usada (segundos).
-	 * Durante este tiempo no puede interactuarse de nuevo.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella", meta = (ClampMin = "1.0"))
-	float ReuseDelaySecs = 15.f;
+	// ── Componentes compound (activos cuando NO se asignan assets personalizados) ─
 
-	// ── Meshes de estado ──────────────────────────────────────────────────────
-	// Si se dejan vacíos, C++ usa Cylinder (cerrada) y Cone (abierta) por defecto.
+	/** Mango: cilindro más grueso, desde mitad del palo hasta arriba. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Umbrella|Mesh")
+	TObjectPtr<UStaticMeshComponent> HandleMeshComp;
+
+	/** Cúpula: cono achatado invertido en la punta del palo, solo visible abierta. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Umbrella|Mesh")
+	TObjectPtr<UStaticMeshComponent> CanopyMeshComp;
+
+	// ── Assets opcionales de override ────────────────────────────────────────────
+	// Si ambos se asignan en el BP hijo se usan los assets personalizados y los
+	// componentes compound se ocultan. Si alguno falta → modo compound.
 
 	/** Mesh cuando la sombrilla está plegada/cerrada. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Mesh")
@@ -68,33 +70,27 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Mesh")
 	TObjectPtr<UStaticMesh> MeshOpen;
 
-	// ── Audio/VFX automáticos ─────────────────────────────────────────────────
+	// ── Audio/VFX ─────────────────────────────────────────────────────────────────
 
-	/** Sonido al abrir la sombrilla. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Audio")
 	TObjectPtr<USoundBase> SoundOpen;
 
-	/** Sonido al cerrarse la sombrilla (protección expiró). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Audio")
 	TObjectPtr<USoundBase> SoundClose;
 
-	/** VFX al abrir la sombrilla. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|FX")
 	TObjectPtr<UParticleSystem> VFXOpen;
 
-	/** VFX al cerrarse la sombrilla. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|FX")
 	TObjectPtr<UParticleSystem> VFXClose;
 
-	// ── Eventos BP opcionales ─────────────────────────────────────────────────
+	// ── Eventos BP opcionales ─────────────────────────────────────────────────────
 
-	/** Llamado en TODAS las máquinas cuando la sombrilla se abre.
-	 *  Mesh, audio y VFX ya se gestionan solos. Usar para lógica BP extra. */
+	/** Llamado en TODAS las máquinas cuando la sombrilla se abre. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Umbrella")
 	void OnUmbrellaOpened(APawn* User);
 
-	/** Llamado en TODAS las máquinas cuando la sombrilla se cierra.
-	 *  Mesh, audio y VFX ya se gestionan solos. Usar para lógica BP extra. */
+	/** Llamado en TODAS las máquinas cuando la sombrilla se cierra. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Umbrella")
 	void OnUmbrellaClosed();
 
@@ -105,11 +101,19 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastOnUmbrellaClosed();
 
+	/** Timer de auto-cierre (8 s). */
 	void HandleUmbrellaExpired();
 
-	/** Aplica un mesh al componente Mesh heredado. No hace nada si NewMesh es null. */
-	void ApplyUmbrellaMesh(UStaticMesh* NewMesh);
+	/**
+	 * Aplica el estado visual (abierto/cerrado) en la máquina local.
+	 * — Si MeshClosed && MeshOpen están asignados: single-mesh mode.
+	 * — En caso contrario: compound mode (palo + mango + cúpula).
+	 */
+	void ApplyUmbrellaState(bool bOpen);
 
 	FTimerHandle UmbrellaActiveTimerHandle;
 	TWeakObjectPtr<ATortugaCharacter> ProtectedCharacter;
+
+	/** true mientras la protección está activa (sombrilla abierta). */
+	bool bIsOpen = false;
 };

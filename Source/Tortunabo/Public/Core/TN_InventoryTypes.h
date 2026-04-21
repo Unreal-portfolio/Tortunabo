@@ -167,6 +167,14 @@ struct FTN_InventoryItem : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	FVector EquippedMeshScale = FVector(1.f, 1.f, 1.f);
 
+	/**
+	 * Rotación relativa del mesh equipado.
+	 * Permite corregir la orientación del asset en la mano del jugador sin
+	 * modificar el mesh original. Ejemplo: (0, 90, 0) para rotar 90° en Yaw.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	FRotator EquippedMeshRotation = FRotator::ZeroRotator;
+
 	/** Tipo de acción al pulsar Usar. Determina qué sub-struct es relevante. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Use")
 	ETN_ItemUseType UseType = ETN_ItemUseType::None;

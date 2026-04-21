@@ -50,8 +50,16 @@ protected:
 	FVector SpawnOffset = FVector::ZeroVector;
 
 	/**
+	 * Número de cangrejos spawneados cada vez que un jugador entra en la zona.
+	 * Se spawnean en posiciones aleatorias dentro del ProximityVolume.
+	 * Default 3. Serializable por instancia.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CrabSpawnZone", meta = (ClampMin = "1", ClampMax = "10"))
+	int32 SpawnCountOnEnter = 3;
+
+	/**
 	 * Si true (default), el volumen se desactiva tras el primer spawn.
-	 * Evita múltiples cangrejos desde la misma zona.
+	 * Evita múltiples oleadas desde la misma zona.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CrabSpawnZone")
 	bool bOneShot = true;

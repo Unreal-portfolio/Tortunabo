@@ -44,12 +44,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SeagullSpawnZone")
 	TSubclassOf<ATN_EnemySeagull> SeagullClass;
 
-	/** Intervalo de tiempo entre intentos de spawn (s). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SeagullSpawnZone", meta = (ClampMin = "1.0"))
+	/** Intervalo de tiempo entre intentos de spawn (s). Editable por instancia. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SeagullSpawnZone", meta = (ClampMin = "1.0"))
 	float SpawnInterval = 15.f;
 
-	/** Retardo inicial antes del primer intento de spawn (s). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SeagullSpawnZone", meta = (ClampMin = "0.0"))
+	/** Retardo inicial antes del primer intento de spawn (s). Editable por instancia. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SeagullSpawnZone", meta = (ClampMin = "0.0"))
 	float InitialDelay = 3.f;
 
 	/** Número máximo de gaviotas activas originadas por esta zona simultáneamente. */

@@ -226,6 +226,9 @@ void UTN_InventoryComponent::RefreshEquippedVisual()
 	{
 		EquippedVisualMesh->SetRelativeScale3D(DesiredWorldScale);
 	}
+
+	// Aplicar rotación del ítem (corrige orientación del asset en mano)
+	EquippedVisualMesh->SetRelativeRotation(EquippedItem.EquippedMeshRotation);
 }
 
 bool UTN_InventoryComponent::AddItemInternal(const FTN_InventoryItem& NewItem)

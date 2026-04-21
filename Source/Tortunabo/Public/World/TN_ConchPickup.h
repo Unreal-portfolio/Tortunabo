@@ -6,6 +6,7 @@
 
 class USphereComponent;
 class UStaticMeshComponent;
+class UStaticMesh;
 class USoundBase;
 class UNiagaraSystem;
 class ATortugaCharacter;
@@ -99,6 +100,24 @@ protected:
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_IsPlacedTrap, BlueprintReadOnly, Category = "Conch")
 	bool bIsPlacedTrap = false;
+
+	// ── Meshes de estado ──────────────────────────────────────────────────────
+	// Si se dejan vacíos el ConchMesh no tendrá mesh visual por defecto.
+	// Asignar en el BP hijo para ver la concha en el nivel.
+
+	/**
+	 * Mesh cuando la concha está en modo ítem o trampa sin activar.
+	 * Se aplica al colocar la trampa y al rearmarse.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Conch|Mesh")
+	TObjectPtr<UStaticMesh> MeshNormal;
+
+	/**
+	 * Mesh cuando la trampa ha capturado a alguien (trampa activada).
+	 * Se aplica vía Multicast cuando un jugador pisa la concha.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Conch|Mesh")
+	TObjectPtr<UStaticMesh> MeshTriggered;
 
 	// ── Audio / VFX ───────────────────────────────────────────────────────────
 

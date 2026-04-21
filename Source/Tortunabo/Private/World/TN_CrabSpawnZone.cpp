@@ -55,18 +55,39 @@ void ATN_CrabSpawnZone::SpawnCrab()
 		return;
 	}
 
-	const FVector SpawnLoc = GetActorTransform().TransformPosition(SpawnOffset);
-	const FRotator SpawnRot = GetActorRotation();
+	// Extents en espacio local del volumen (sin escala del actor aplicada)
+	const FTransform VolumeTransform = ProximityVolume->GetComponentTransform();
+	const FVector    HalfExtent      = ProximityVolume->GetUnscaledBoxExtent();
 
+	int32 SpawnedCount = 0;
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-	ATN_CrabActor* Crab = GetWorld()->SpawnActor<ATN_CrabActor>(CrabClass, SpawnLoc, SpawnRot, Params);
+	for (int32 i = 0; i < SpawnCountOnEnter; ++i)
+	{
+		// Posición aleatoria dentro del volumen (local), luego a world space.
+		// Z=0 local → el cangrejo queda en el plano del volumen; el actor ajusta Z si tiene navmesh.
+		const FVector LocalRandom(
+			FMath::RandRange(-HalfExtent.X, HalfExtent.X),
+			FMath::RandRange(-HalfExtent.Y, HalfExtent.Y),
+			0.f
+		);
+		const FVector WorldSpawnLoc = VolumeTransform.TransformPosition(LocalRandom);
 
-	if (Crab)
+		// Yaw aleatorio para que los cangrejos no se queden todos mirando la misma dirección
+		const FRotator SpawnRot(0.f, FMath::RandRange(0.f, 359.f), 0.f);
+
+		ATN_CrabActor* Crab = GetWorld()->SpawnActor<ATN_CrabActor>(
+			CrabClass, WorldSpawnLoc, SpawnRot, Params);
+
+		if (Crab) { ++SpawnedCount; }
+	}
+
+	if (SpawnedCount > 0)
 	{
 		bAlreadySpawned = true;
-		UE_LOG(LogTemp, Log, TEXT("[CrabSpawnZone] '%s': cangrejo spawneado."), *GetName());
+		UE_LOG(LogTemp, Log, TEXT("[CrabSpawnZone] '%s': %d/%d cangrejos spawneados."),
+			*GetName(), SpawnedCount, SpawnCountOnEnter);
 
 		// Desactivar detección en one-shot para no volver a disparar
 		if (bOneShot)

@@ -52,6 +52,19 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Quad")
 	TObjectPtr<UCapsuleComponent> WheelRight;
 
+	/**
+	 * Mesh visual de la rueda izquierda (cilindro por defecto).
+	 * Hijo de WheelLeft: hereda posición, rotación y escala de la cápsula.
+	 * Escala se ajusta automáticamente en BeginPlay para coincidir con
+	 * WheelCapsuleRadius y WheelCapsuleHalfHeight.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Quad")
+	TObjectPtr<UStaticMeshComponent> WheelLeftMesh;
+
+	/** Mesh visual de la rueda derecha. Igual que WheelLeftMesh. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Quad")
+	TObjectPtr<UStaticMeshComponent> WheelRightMesh;
+
 	/** Velocidad por defecto (cm/s). Sobreescrita por InitializeTravel. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quad",
 		meta = (ClampMin = "100.0"))
