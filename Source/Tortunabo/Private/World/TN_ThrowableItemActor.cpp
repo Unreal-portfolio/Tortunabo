@@ -17,7 +17,7 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 
 	// Servidor es autoridad: ProjectileMovement corre solo en el servidor y su
 	// posición se replica a los clientes. Enfoque idéntico al de TN_PhysicsObjectActor.
-	// SetReplicateMovement es true por defecto; lo dejamos así intencionadamente.
+	SetReplicateMovement(true);
 
 	// 20 Hz durante el vuelo: suficiente para un party game (NetworkSmoothing cubre
 	// los huecos). Al detenerse el actor entra en DORM_DormantAll → 0 updates.
