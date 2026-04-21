@@ -6,6 +6,7 @@
 #include "Net/UnrealNetwork.h"
 #include "EngineUtils.h"
 #include "CollisionQueryParams.h"
+#include "UObject/ConstructorHelpers.h"
 
 ATN_SeagullDroppingActor::ATN_SeagullDroppingActor()
 {
@@ -18,6 +19,16 @@ ATN_SeagullDroppingActor::ATN_SeagullDroppingActor()
 	SetRootComponent(DroppingMesh);
 	DroppingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DroppingMesh->SetIsReplicated(false);
+
+	// Mesh por defecto: cilindro del engine — el objeto que cae tiene sombra circular.
+	// El Decal ya era circular; ahora el mesh también coincide.
+	// BP hijo puede sobreescribir con caca personalizada.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMeshAsset(
+		TEXT("/Engine/BasicShapes/Cylinder"));
+	if (CylinderMeshAsset.Succeeded())
+	{
+		DroppingMesh->SetStaticMesh(CylinderMeshAsset.Object);
+	}
 
 	// Decal attached to root but with absolute transforms — stays pinned to ground
 	ShadowDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("ShadowDecal"));

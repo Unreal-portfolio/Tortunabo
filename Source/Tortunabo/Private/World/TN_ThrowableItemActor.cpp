@@ -15,17 +15,21 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 	// no sería network-relevant → el cliente nunca vería el proyectil en vuelo.
 	bAlwaysRelevant = true;
 
-	// Servidor es autoridad: ProjectileMovement corre solo en el servidor y su
-	// posición se replica a los clientes. Enfoque idéntico al de TN_PhysicsObjectActor.
-	// bReplicateMovement=false: el cliente simula ProjectileMovement localmente
-	// desde las mismas condiciones iniciales (SpawnLocation + LaunchVelocity del
-	// struct replicado). Esto da 60fps fluidos sin depender de updates de red.
-	// El servidor sigue siendo la autoridad para hits y pickup spawn.
-	SetReplicateMovement(false);
+	// bReplicateMovement=true: el servidor replica posición+velocidad a los clientes.
+	// El PM solo corre en el servidor (autoridad). Los clientes reciben actualizaciones
+	// de posición que UE interpola con NetworkSmoothing.
+	//
+	// POR QUÉ se cambió el enfoque "cliente simula localmente":
+	//   ThrowData (struct que dispara el PM) llega en un paquete separado al spawn.
+	//   El cliente recibe el actor con ThrowData.bReady=false, BeginPlay no activa
+	//   el PM, y cuando ThrowData llega el servidor ya destruyó la bola.
+	//   Resultado: cliente ve la bola paralizada → aparece el pickup en destino.
+	//   Con bReplicateMovement=true este race condition desaparece.
+	SetReplicateMovement(true);
 
-	// 20 Hz durante el vuelo: suficiente para un party game (NetworkSmoothing cubre
-	// los huecos). Al detenerse el actor entra en DORM_DormantAll → 0 updates.
-	SetNetUpdateFrequency(20.f);
+	// 30 Hz durante el vuelo — UE NetworkSmoothing interpolates the gaps.
+	// Al detenerse → DORM_DormantAll → 0 updates.
+	SetNetUpdateFrequency(30.f);
 	SetMinNetUpdateFrequency(5.f);
 
 	// Mesh ES el root: UStaticMeshComponent es UPrimitiveComponent.
@@ -75,13 +79,15 @@ void ATN_ThrowableItemActor::BeginPlay()
 	// (50 cm/s) y StopSimulating() detiene el PM permanentemente en el primer frame.
 	IgnoreInstigatorCollision();
 
-	// Solo el servidor valida impactos y detenciones.
+	// Solo el servidor valida impactos, detenciones y activa el PM.
 	if (HasAuthority())
 	{
 		Mesh->OnComponentHit.AddDynamic(this, &ATN_ThrowableItemActor::OnMeshHit);
 		ProjectileMovement->OnProjectileStop.AddDynamic(this, &ATN_ThrowableItemActor::OnProjectileStopped);
 	}
 
+	// ApplyLaunchDataIfReady en BeginPlay: solo aplica mesh/escala en clientes.
+	// El PM lo activa únicamente en servidor (ver ApplyLaunchDataIfReady).
 	ApplyLaunchDataIfReady();
 }
 
@@ -169,26 +175,22 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 
 	bLaunchApplied = true;
 
-	// Ignorar instigator en todas las máquinas antes de activar el PM.
-	// (Ver comentario en BeginPlay para la razón completa.)
+	// El PM solo corre en el servidor — posición replicada vía bReplicateMovement.
+	// En cliente el instigator sigue siendo necesario ignorarlo (puede recibir hit).
 	IgnoreInstigatorCollision();
 
-	// Solo el servidor reposiciona el actor: el cliente ya recibió la posición
-	// inicial en el spawn bunch y moverlo aquí causaría un salto visual.
 	if (HasAuthority())
 	{
 		SetActorLocation(ThrowData.SpawnLocation);
-	}
 
-	// ProjectileMovement se activa en TODAS las máquinas para conseguir 60fps
-	// fluidos en cliente. Ambas simulan desde las mismas condiciones iniciales
-	// (SpawnLocation + LaunchVelocity). Sin bReplicateMovement no hay updates
-	// de posición de red — cada máquina simula de forma determinista.
-	if (ProjectileMovement)
-	{
-		ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
-		ProjectileMovement->Activate(true);
+		if (ProjectileMovement)
+		{
+			ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
+			ProjectileMovement->Activate(true);
+		}
 	}
+	// Clientes: solo aplican mesh/escala (ya hechos arriba). La posición les llega
+	// vía replicación de movimiento del servidor. No activan PM localmente.
 
 	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s pmActive=%d"),
 		HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"),

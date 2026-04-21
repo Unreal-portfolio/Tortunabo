@@ -6,6 +6,7 @@
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "Game/TN_RunGameMode.h"
+#include "UObject/ConstructorHelpers.h"
 
 ATN_SeagullActor::ATN_SeagullActor()
 {
@@ -30,6 +31,16 @@ ATN_SeagullActor::ATN_SeagullActor()
 	SeagullMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SeagullMesh"));
 	SeagullMesh->SetupAttachment(Root);
 	SeagullMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Mesh por defecto: cilindro del engine — sombra circular en vez de cuadrada.
+	// BP hijo puede sobreescribir con un mesh personalizado.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMeshAsset(
+		TEXT("/Engine/BasicShapes/Cylinder"));
+	if (CylinderMeshAsset.Succeeded())
+	{
+		BodyMesh->SetStaticMesh(CylinderMeshAsset.Object);
+		SeagullMesh->SetStaticMesh(CylinderMeshAsset.Object);
+	}
 }
 
 void ATN_SeagullActor::BeginPlay()
