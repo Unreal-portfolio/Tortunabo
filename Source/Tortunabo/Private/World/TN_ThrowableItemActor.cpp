@@ -131,11 +131,22 @@ void ATN_ThrowableItemActor::Multicast_InitializeThrow_Implementation(
 
 void ATN_ThrowableItemActor::Multicast_BallStopped_Implementation(FVector FinalLocation)
 {
-	// Sincronizar la simulación local al punto de parada del servidor.
-	// Evita que la bola del cliente quede flotando en una posición ligeramente distinta.
-	if (ProjectileMovement && ProjectileMovement->IsActive())
+	// SERVIDOR: el PM ya se detuvo solo — fue OnProjectileStop quien disparó esto.
+	// Si volvemos a llamar StopSimulating desde dentro del delegate OnProjectileStop,
+	// genera recursión infinita (Broadcast → OnProjectileStopped → Multicast → Broadcast…)
+	// y crashea el host. El servidor no necesita hacer nada aquí.
+	if (HasAuthority())
 	{
-		ProjectileMovement->StopSimulating(FHitResult());
+		return;
+	}
+
+	// CLIENTES: detener la simulación local y sincronizar al punto final del servidor.
+	// Usamos SetActive(false) en lugar de StopSimulating para NO volver a disparar
+	// el delegate OnProjectileStop (aunque en cliente no está ligado, es más seguro).
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->SetActive(false);
+		ProjectileMovement->Velocity = FVector::ZeroVector;
 	}
 	SetActorLocation(FinalLocation);
 }
