@@ -36,6 +36,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool TryExtractEquippedItem(FTN_InventoryItem& OutExtractedItem);
 
+	/**
+	 * Busca en equipado y almacenado un ítem con UseType == InUseType.
+	 * Si lo encuentra, lo consume (igual que TryConsumeEquippedItem) y lo devuelve.
+	 * Útil para auto-consumo en eventos externos (ej: Tótem al morir).
+	 * Solo funciona en autoridad.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool TryConsumeItemByUseType(ETN_ItemUseType InUseType, FTN_InventoryItem& OutConsumedItem);
+
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	bool HasEquippedItem() const { return bHasEquippedItem; }
 

@@ -1,6 +1,8 @@
 #include "World/TN_UmbrellaInteractable.h"
 #include "Player/TortugaCharacter.h"
 #include "TimerManager.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystem.h"
 
 ATN_UmbrellaInteractable::ATN_UmbrellaInteractable()
 {
@@ -58,10 +60,27 @@ void ATN_UmbrellaInteractable::HandleUmbrellaExpired()
 
 void ATN_UmbrellaInteractable::MulticastOnUmbrellaOpened_Implementation(APawn* User)
 {
+	// Auto-reproducción — arrastra el asset en el BP y suena/aparece solo.
+	if (SoundOpen)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SoundOpen, GetActorLocation());
+	}
+	if (VFXOpen)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), VFXOpen, GetActorLocation());
+	}
 	OnUmbrellaOpened(User);
 }
 
 void ATN_UmbrellaInteractable::MulticastOnUmbrellaClosed_Implementation()
 {
+	if (SoundClose)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SoundClose, GetActorLocation());
+	}
+	if (VFXClose)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), VFXClose, GetActorLocation());
+	}
 	OnUmbrellaClosed();
 }

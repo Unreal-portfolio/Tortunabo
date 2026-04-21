@@ -15,22 +15,16 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 	// no sería network-relevant → el cliente nunca vería el proyectil en vuelo.
 	bAlwaysRelevant = true;
 
-	// bReplicateMovement=true: el servidor replica posición+velocidad a los clientes.
-	// El PM solo corre en el servidor (autoridad). Los clientes reciben actualizaciones
-	// de posición que UE interpola con NetworkSmoothing.
-	//
-	// POR QUÉ se cambió el enfoque "cliente simula localmente":
-	//   ThrowData (struct que dispara el PM) llega en un paquete separado al spawn.
-	//   El cliente recibe el actor con ThrowData.bReady=false, BeginPlay no activa
-	//   el PM, y cuando ThrowData llega el servidor ya destruyó la bola.
-	//   Resultado: cliente ve la bola paralizada → aparece el pickup en destino.
-	//   Con bReplicateMovement=true este race condition desaparece.
-	SetReplicateMovement(true);
+	// bReplicateMovement=false: el PM corre en TODAS las máquinas desde las mismas
+	// condiciones iniciales → trayectoria 100% fluida en cada cliente sin ancho de banda.
+	// Los parámetros se distribuyen via Multicast_InitializeThrow (Reliable), que
+	// garantiza llegada DESPUÉS del spawn → sin race condition.
+	SetReplicateMovement(false);
 
-	// 30 Hz durante el vuelo — UE NetworkSmoothing interpolates the gaps.
-	// Al detenerse → DORM_DormantAll → 0 updates.
-	SetNetUpdateFrequency(30.f);
-	SetMinNetUpdateFrequency(5.f);
+	// NetUpdateFrequency mínima: el actor existe en red pero no envía posición.
+	// Solo necesita existir para recibir el Multicast y el Destroy final.
+	SetNetUpdateFrequency(2.f);
+	SetMinNetUpdateFrequency(1.f);
 
 	// Mesh ES el root: UStaticMeshComponent es UPrimitiveComponent.
 	// ProjectileMovement actualizará directamente la posición del actor.
@@ -91,14 +85,6 @@ void ATN_ThrowableItemActor::BeginPlay()
 	ApplyLaunchDataIfReady();
 }
 
-void ATN_ThrowableItemActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	// REPNOTIFY_Always: garantiza que OnRep_ThrowData dispara para la replicación
-	// inicial aunque el cliente ya tuviera ThrowData en estado default.
-	DOREPLIFETIME_CONDITION_NOTIFY(ATN_ThrowableItemActor, ThrowData, COND_None, REPNOTIFY_Always);
-}
-
 void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const FVector& InitialVelocity)
 {
 	if (!HasAuthority())
@@ -115,19 +101,10 @@ void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const
 		? FVector::OneVector
 		: SourceItem.EquippedMeshScale;
 
-	ThrowData.SpawnLocation  = SpawnLocation;
-	ThrowData.LaunchVelocity = InitialVelocity;
-	ThrowData.MeshScale      = SafeScale;
-	ThrowData.EquippedMesh   = SourceItem.EquippedMesh;  // Fix JIP: replicate mesh with the struct
-	ThrowData.bReady         = true;
-
-	// ── Aplicar localmente en el servidor ─────────────────────────────────────
-	ApplyLaunchDataIfReady();
-
-	// Forzar replicación inmediata: el primer bunch que el cliente recibe ya
-	// lleva ThrowData con bReady=true + la posición actual del actor.
-	FlushNetDormancy();
-	ForceNetUpdate();
+	// Distribuye a TODAS las máquinas: servidor + todos los clientes.
+	// Reliable → llega garantizado DESPUÉS de que el spawn del actor ya existe en cliente.
+	// Cada máquina activa su propio PM desde las mismas condiciones → fluido sin bandwidth.
+	Multicast_InitializeThrow(SpawnLocation, InitialVelocity, SourceItem.EquippedMesh, SafeScale);
 }
 
 void ATN_ThrowableItemActor::SetSourceItem(const FTN_InventoryItem& Item)
@@ -135,13 +112,32 @@ void ATN_ThrowableItemActor::SetSourceItem(const FTN_InventoryItem& Item)
 	SourceItem = Item;
 }
 
-void ATN_ThrowableItemActor::OnRep_ThrowData()
+void ATN_ThrowableItemActor::Multicast_InitializeThrow_Implementation(
+	FVector Origin, FVector Velocity, UStaticMesh* MeshAsset, FVector Scale)
 {
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] OnRep_ThrowData bReady=%d v=(%.0f,%.0f,%.0f) mesh=%s"),
-		ThrowData.bReady ? 1 : 0,
-		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
-		*GetNameSafe(ThrowData.EquippedMesh));
+	// Aplicar en TODAS las máquinas — mismo código, mismo resultado.
+	ThrowData.SpawnLocation  = Origin;
+	ThrowData.LaunchVelocity = Velocity;
+	ThrowData.MeshScale      = Scale;
+	ThrowData.EquippedMesh   = MeshAsset;
+	ThrowData.bReady         = true;
+
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] Multicast_InitializeThrow %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f)"),
+		HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"),
+		Origin.X, Origin.Y, Origin.Z, Velocity.X, Velocity.Y, Velocity.Z);
+
 	ApplyLaunchDataIfReady();
+}
+
+void ATN_ThrowableItemActor::Multicast_BallStopped_Implementation(FVector FinalLocation)
+{
+	// Sincronizar la simulación local al punto de parada del servidor.
+	// Evita que la bola del cliente quede flotando en una posición ligeramente distinta.
+	if (ProjectileMovement && ProjectileMovement->IsActive())
+	{
+		ProjectileMovement->StopSimulating(FHitResult());
+	}
+	SetActorLocation(FinalLocation);
 }
 
 void ATN_ThrowableItemActor::IgnoreInstigatorCollision()
@@ -174,29 +170,21 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 	Mesh->SetVisibility(true, true);
 
 	bLaunchApplied = true;
-
-	// El PM solo corre en el servidor — posición replicada vía bReplicateMovement.
-	// En cliente el instigator sigue siendo necesario ignorarlo (puede recibir hit).
 	IgnoreInstigatorCollision();
 
-	if (HasAuthority())
+	// TODAS las máquinas: mismas condiciones iniciales → misma trayectoria determinista.
+	// Sin bReplicateMovement → cero actualizaciones de posición por red.
+	SetActorLocation(ThrowData.SpawnLocation);
+	if (ProjectileMovement)
 	{
-		SetActorLocation(ThrowData.SpawnLocation);
-
-		if (ProjectileMovement)
-		{
-			ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
-			ProjectileMovement->Activate(true);
-		}
+		ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
+		ProjectileMovement->Activate(true);
 	}
-	// Clientes: solo aplican mesh/escala (ya hechos arriba). La posición les llega
-	// vía replicación de movimiento del servidor. No activan PM localmente.
 
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s pmActive=%d"),
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) pmActive=%d"),
 		HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"),
 		ThrowData.SpawnLocation.X, ThrowData.SpawnLocation.Y, ThrowData.SpawnLocation.Z,
 		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
-		*GetNameSafe(ThrowData.EquippedMesh),
 		ProjectileMovement && ProjectileMovement->IsActive() ? 1 : 0);
 }
 
@@ -269,9 +257,11 @@ void ATN_ThrowableItemActor::OnProjectileStopped(const FHitResult& ImpactResult)
 	UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] OnProjectileStopped — loc=(%.0f,%.0f,%.0f) validHit=%d"),
 		StopLocation.X, StopLocation.Y, StopLocation.Z, ImpactResult.IsValidBlockingHit() ? 1 : 0);
 
+	// Sincronizar todas las simulaciones locales a la posición final del servidor.
+	// Garantiza que la bola visualmente snap-ea al mismo punto antes de desaparecer.
+	Multicast_BallStopped(StopLocation);
+
 	SpawnPickupAtLocation(StopLocation);
-	// Go dormant once stopped — the pickup actor handles the rest.
-	// Dormancy stops net updates so clients don't keep receiving position packets for a static ball.
 	SetNetDormancy(DORM_DormantAll);
 	Destroy();
 }

@@ -20,14 +20,14 @@ ATN_SeagullDroppingActor::ATN_SeagullDroppingActor()
 	DroppingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DroppingMesh->SetIsReplicated(false);
 
-	// Mesh por defecto: cilindro del engine — el objeto que cae tiene sombra circular.
-	// El Decal ya era circular; ahora el mesh también coincide.
-	// BP hijo puede sobreescribir con caca personalizada.
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMeshAsset(
-		TEXT("/Engine/BasicShapes/Cylinder"));
-	if (CylinderMeshAsset.Succeeded())
+	// Mesh por defecto: esfera del engine — la caca es una bola.
+	// El Decal (sombra en el suelo) ya era circular.
+	// BP hijo puede sobreescribir con un mesh personalizado.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMeshAsset(
+		TEXT("/Engine/BasicShapes/Sphere"));
+	if (SphereMeshAsset.Succeeded())
 	{
-		DroppingMesh->SetStaticMesh(CylinderMeshAsset.Object);
+		DroppingMesh->SetStaticMesh(SphereMeshAsset.Object);
 	}
 
 	// Decal attached to root but with absolute transforms — stays pinned to ground

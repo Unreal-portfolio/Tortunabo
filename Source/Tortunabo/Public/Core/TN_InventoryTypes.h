@@ -32,6 +32,9 @@ enum class ETN_ItemUseType : uint8
 	Conch            UMETA(DisplayName = "Conch Trap"),
 	/** Proyectil de tinta: oscurece la pantalla del jugador impactado. */
 	InkThrower       UMETA(DisplayName = "Ink Thrower"),
+	/** Tótem: si está en el inventario al morir → auto-revive.
+	 *  Si se usa manualmente → revive a un jugador eliminado. */
+	Totem            UMETA(DisplayName = "Totem"),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

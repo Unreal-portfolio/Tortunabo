@@ -4,6 +4,8 @@
 #include "Game/TN_RunGameMode.h"
 #include "GameFramework/PlayerController.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystem.h"
 
 ATN_TotemInteractable::ATN_TotemInteractable()
 {
@@ -86,10 +88,22 @@ void ATN_TotemInteractable::Interact(APawn* Interactor)
 void ATN_TotemInteractable::MulticastOnActivated_Implementation(ATortugaCharacter* RevivedCharacter,
 	ATortugaCharacter* Activator)
 {
+	if (SoundActivate)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SoundActivate, GetActorLocation());
+	}
+	if (VFXActivate)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), VFXActivate, GetActorLocation());
+	}
 	OnTotemActivated(RevivedCharacter, Activator);
 }
 
 void ATN_TotemInteractable::MulticastOnNoTarget_Implementation()
 {
+	if (SoundNoTarget)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, SoundNoTarget, GetActorLocation());
+	}
 	OnTotemNoTarget();
 }

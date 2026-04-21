@@ -5,6 +5,8 @@
 #include "TN_UmbrellaInteractable.generated.h"
 
 class ATortugaCharacter;
+class USoundBase;
+class UParticleSystem;
 
 /**
  * Sombrilla interactuable (#29).
@@ -46,11 +48,34 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella", meta = (ClampMin = "1.0"))
 	float ReuseDelaySecs = 15.f;
 
-	/** Llamado en TODAS las máquinas cuando la sombrilla se abre. Override en BP para VFX/audio. */
+	// ── Audio/VFX automáticos ─────────────────────────────────────────────────
+	// Arrastra un asset directamente — C++ lo reproduce sin necesitar nodos BP.
+
+	/** Sonido al abrir la sombrilla. Arrastra tu SoundCue/Wave aquí. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Audio")
+	TObjectPtr<USoundBase> SoundOpen;
+
+	/** Sonido al cerrarse la sombrilla (protección expiró). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Audio")
+	TObjectPtr<USoundBase> SoundClose;
+
+	/** VFX al abrir la sombrilla (Niagara/Cascade). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|FX")
+	TObjectPtr<UParticleSystem> VFXOpen;
+
+	/** VFX al cerrarse la sombrilla. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|FX")
+	TObjectPtr<UParticleSystem> VFXClose;
+
+	// ── Eventos BP (opcional si quieres lógica adicional) ─────────────────────
+
+	/** Llamado en TODAS las máquinas cuando la sombrilla se abre.
+	 *  Usar para lógica BP extra (animación, HUD, etc.). Audio/VFX ya se reproducen solos. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Umbrella")
 	void OnUmbrellaOpened(APawn* User);
 
-	/** Llamado en TODAS las máquinas cuando la sombrilla se cierra (protección expiró). Override en BP. */
+	/** Llamado en TODAS las máquinas cuando la sombrilla se cierra.
+	 *  Usar para lógica BP extra. Audio/VFX ya se reproducen solos. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Umbrella")
 	void OnUmbrellaClosed();
 

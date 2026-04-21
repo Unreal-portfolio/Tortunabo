@@ -68,6 +68,9 @@ public:
 	/** Activa/desactiva la protección de sombrilla. Solo llamar desde el servidor. */
 	void SetUmbrellaProtection(bool bActive) { bHasUmbrellaProtection = bActive; }
 
+	/** Devuelve el componente de inventario (acceso de solo lectura para sistemas externos). */
+	UTN_InventoryComponent* GetInventoryComponent() const { return InventoryComponent; }
+
 	/**
 	 * Aplica el efecto de tinta de calamar (#13) en la máquina local del jugador afectado.
 	 * Muestra un overlay de material sobre la cámara durante Duration segundos.
@@ -902,6 +905,34 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Death")
 	void SetDeadVisual(bool bDead);
+
+	// ── Tótem auto-revive ─────────────────────────────────────────────────────
+
+	/**
+	 * Sonido reproducido en todas las máquinas cuando el tótem del inventario
+	 * te salva de morir. Arrastra tu SoundCue/Wave aquí — sin nodos BP.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Totem|Audio")
+	TObjectPtr<USoundBase> TotemSelfReviveSound;
+
+	/**
+	 * VFX reproducido en todas las máquinas al auto-revivir con el tótem.
+	 * Arrastra tu Particle System aquí — sin nodos BP.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|Totem|FX")
+	TObjectPtr<UParticleSystem> TotemSelfReviveVFX;
+
+	/**
+	 * Evento BP disparado en TODAS las máquinas cuando el tótem del inventario
+	 * impide tu muerte. Usar para lógica BP extra (HUD, cámara shake, etc.).
+	 * Audio/VFX básicos ya se reproducen solos.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Inventory|Totem")
+	void OnTotemAutoRevive();
+
+	/** Notifica a todos los clientes del auto-revive (dispara OnTotemAutoRevive + Audio/VFX). */
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_OnTotemAutoRevive();
 
 	UFUNCTION(BlueprintCallable, Category = "Emotes")
 	void RequestWheelEmote(uint8 EmoteID);

@@ -5,6 +5,8 @@
 #include "TN_TotemInteractable.generated.h"
 
 class ATortugaCharacter;
+class USoundBase;
+class UParticleSystem;
 
 /**
  * Tótem (#5).
@@ -47,11 +49,28 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Totem")
 	bool bDestroyAfterUse = true;
 
-	/** Llamado en todas las máquinas cuando el tótem revive a un jugador. BP implementable. */
+	// ── Audio/VFX automáticos ─────────────────────────────────────────────────
+
+	/** Sonido al activar el tótem con éxito (revive a alguien). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Totem|Audio")
+	TObjectPtr<USoundBase> SoundActivate;
+
+	/** Sonido cuando no hay nadie a quien revivir. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Totem|Audio")
+	TObjectPtr<USoundBase> SoundNoTarget;
+
+	/** VFX al activar con éxito. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Totem|FX")
+	TObjectPtr<UParticleSystem> VFXActivate;
+
+	// ── Eventos BP (opcional) ────────────────────────────────────────────────
+
+	/** Llamado en TODAS las máquinas cuando el tótem revive a un jugador.
+	 *  Audio/VFX básicos ya se reproducen solos. Usa este evento para lógica extra (HUD, cámara). */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Totem")
 	void OnTotemActivated(ATortugaCharacter* RevivedCharacter, ATortugaCharacter* Activator);
 
-	/** Llamado en todas las máquinas cuando no hay nadie a quien revivir. */
+	/** Llamado en TODAS las máquinas cuando no hay nadie a quien revivir. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Totem")
 	void OnTotemNoTarget();
 

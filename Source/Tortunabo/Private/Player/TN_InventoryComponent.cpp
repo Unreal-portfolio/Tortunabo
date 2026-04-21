@@ -148,6 +148,32 @@ bool UTN_InventoryComponent::TryExtractEquippedItem(FTN_InventoryItem& OutExtrac
 	return TryConsumeEquippedItem(OutExtractedItem);
 }
 
+bool UTN_InventoryComponent::TryConsumeItemByUseType(ETN_ItemUseType InUseType, FTN_InventoryItem& OutConsumedItem)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
+	// Comprobar slot equipado primero
+	if (bHasEquippedItem && EquippedItem.UseType == InUseType)
+	{
+		return ConsumeEquippedInternal(OutConsumedItem);
+	}
+
+	// Comprobar slot almacenado
+	if (bHasStoredItem && StoredItem.UseType == InUseType)
+	{
+		OutConsumedItem = StoredItem;
+		StoredItem      = FTN_InventoryItem();
+		bHasStoredItem  = false;
+		// RefreshEquippedVisual no cambia aquí (slot equipado intacto)
+		return true;
+	}
+
+	return false;
+}
+
 void UTN_InventoryComponent::ServerRotateItems_Implementation()
 {
 	SwapSlotsInternal();

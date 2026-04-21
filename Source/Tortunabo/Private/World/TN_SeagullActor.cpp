@@ -32,13 +32,20 @@ ATN_SeagullActor::ATN_SeagullActor()
 	SeagullMesh->SetupAttachment(Root);
 	SeagullMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// Mesh por defecto: cilindro del engine — sombra circular en vez de cuadrada.
-	// BP hijo puede sobreescribir con un mesh personalizado.
+	// BodyMesh: cono — silueta de pájaro que produce sombra en punta.
+	// SeagullMesh (el "cuerpo volante"): cilindro — sombra circular.
+	// BP hijo puede sobreescribir ambos con assets personalizados.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> ConeMeshAsset(
+		TEXT("/Engine/BasicShapes/Cone"));
+	if (ConeMeshAsset.Succeeded())
+	{
+		BodyMesh->SetStaticMesh(ConeMeshAsset.Object);
+	}
+
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMeshAsset(
 		TEXT("/Engine/BasicShapes/Cylinder"));
 	if (CylinderMeshAsset.Succeeded())
 	{
-		BodyMesh->SetStaticMesh(CylinderMeshAsset.Object);
 		SeagullMesh->SetStaticMesh(CylinderMeshAsset.Object);
 	}
 }

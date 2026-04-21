@@ -35,6 +35,8 @@
 #include "Game/TN_RunGameMode.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "UI/HUD/TN_EmoteWheelDataAsset.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystem.h"
 
 // ── CVar de debug ─────────────────────────────────────────────────────────────
 // Activar en consola con: TN.Debug.Interaction 1
@@ -1398,6 +1400,49 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		const FVector Direction = GetItemForwardDirection();
 		ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
 			Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
+		return;
+	}
+
+	// ── #5 Tótem — uso manual: revivir a un jugador muerto aleatorio ──────────
+	if (EquippedItem.UseType == ETN_ItemUseType::Totem)
+	{
+		// Buscar jugadores eliminados
+		TArray<APlayerController*> DeadPlayers;
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (!PC || PC == GetController()) { continue; }
+			ATN_CoopPlayerState* PS = PC->GetPlayerState<ATN_CoopPlayerState>();
+			if (PS && PS->bIsEliminated)
+			{
+				DeadPlayers.Add(PC);
+			}
+		}
+
+		if (DeadPlayers.Num() == 0)
+		{
+			// Nadie a quien revivir — no consumir el ítem
+			return;
+		}
+
+		FTN_InventoryItem ConsumedItem;
+		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
+
+		// Seleccionar y revivir
+		const int32 Idx = FMath::RandRange(0, DeadPlayers.Num() - 1);
+		APlayerController* TargetPC = DeadPlayers[Idx];
+
+		if (ATN_RunGameMode* GM = GetWorld()->GetAuthGameMode<ATN_RunGameMode>())
+		{
+			GM->RevivePlayer(TargetPC);
+
+			APawn* RevivedPawn = TargetPC->GetPawn();
+			if (RevivedPawn)
+			{
+				const FVector RightOffset = GetActorRightVector() * 150.f;
+				RevivedPawn->TeleportTo(GetActorLocation() + RightOffset, GetActorRotation());
+			}
+		}
 		return;
 	}
 }
@@ -3746,4 +3791,21 @@ void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(float Yaw, float
 	// Validar rangos en el servidor para prevenir manipulación del cliente
 	ReplicatedHeadYaw   = FMath::Clamp(Yaw,   -90.f,  90.f);
 	ReplicatedHeadPitch = FMath::Clamp(Pitch,  -80.f,  80.f);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tótem auto-revive — feedback visual/sonoro en todas las máquinas
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::Multicast_OnTotemAutoRevive_Implementation()
+{
+	if (TotemSelfReviveSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, TotemSelfReviveSound, GetActorLocation());
+	}
+	if (TotemSelfReviveVFX)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), TotemSelfReviveVFX, GetActorLocation());
+	}
+	OnTotemAutoRevive();
 }

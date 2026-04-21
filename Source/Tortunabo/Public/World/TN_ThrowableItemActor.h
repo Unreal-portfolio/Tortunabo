@@ -56,7 +56,6 @@ public:
 	ATN_ThrowableItemActor();
 
 	virtual void BeginPlay() override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void LifeSpanExpired() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Throwable")
@@ -110,11 +109,7 @@ private:
 	// Datos del ítem — servidor únicamente, sin replicar
 	FTN_InventoryItem SourceItem;
 
-	/**
-	 * Datos de lanzamiento: spawn location + velocidad inicial + flag de ready.
-	 * Un único struct replicado → un solo OnRep en lugar de tres.
-	 */
-	UPROPERTY(ReplicatedUsing = OnRep_ThrowData)
+	/** Datos de lanzamiento: almacenados localmente tras el Multicast. Sin replicar. */
 	FTN_ThrowLaunchData ThrowData;
 
 	bool bLaunchApplied  = false;
@@ -122,8 +117,21 @@ private:
 	/** Players already knocked down by this throw — prevents duplicate knockdowns. */
 	TSet<TWeakObjectPtr<ATortugaCharacter>> AlreadyHitPlayers;
 
-	UFUNCTION() void OnRep_ThrowData();
+	/**
+	 * Distribuye los parámetros de lanzamiento a TODAS las máquinas (Reliable).
+	 * Cada máquina simula el ProjectileMovement localmente desde las mismas
+	 * condiciones iniciales → trayectoria completamente fluida sin updates de red.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_InitializeThrow(FVector Origin, FVector Velocity,
+	                               UStaticMesh* MeshAsset, FVector Scale);
 
+	/**
+	 * Notifica la posición final a todos los clientes antes de destruir el actor.
+	 * Sincroniza visualmente las simulaciones locales al punto de parada del servidor.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_BallStopped(FVector FinalLocation);
 
 	/** Golpe contra jugador → knockdown + spawn pickup. Superficie → rebota, no destruir. */
 	UFUNCTION()

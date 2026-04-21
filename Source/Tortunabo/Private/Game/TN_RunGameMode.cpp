@@ -5,6 +5,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "World/TN_RescuePickup.h"
+#include "Player/TN_InventoryComponent.h"
 #include "World/TN_DeathZoneVolume.h"
 #include "World/TN_ChunkManager.h"
 #include "GameFramework/SpectatorPawn.h"
@@ -437,6 +438,27 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	if (TNPS->bHasFinishedRun)
 	{
 		return;
+	}
+
+	// ── Tótem auto-revive: si el jugador lleva un tótem en el inventario,
+	//    se consume automáticamente y cancela la muerte. ─────────────────────────
+	if (APawn* DyingPawn = PlayerController->GetPawn())
+	{
+		if (ATortugaCharacter* DyingChar = Cast<ATortugaCharacter>(DyingPawn))
+		{
+			if (UTN_InventoryComponent* Inv = DyingChar->GetInventoryComponent())
+			{
+				FTN_InventoryItem ConsumedTotem;
+				if (Inv->TryConsumeItemByUseType(ETN_ItemUseType::Totem, ConsumedTotem))
+				{
+					// Tótem consumido → cancelar muerte + feedback visual
+					UE_LOG(LogTemp, Log, TEXT("[Totem] Auto-revive activado para %s — totem consumido."),
+						*GetNameSafe(PlayerController));
+					DyingChar->Multicast_OnTotemAutoRevive();
+					return;
+				}
+			}
+		}
 	}
 
 	TNPS->bIsAlive = false;
