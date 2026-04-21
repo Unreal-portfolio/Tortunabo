@@ -59,6 +59,12 @@ void ATN_ThrowableItemActor::BeginPlay()
 	ProjectileMovement->Bounciness = Bounciness;
 	ProjectileMovement->Friction   = RollingFriction;
 
+	// Visibilidad incondicional: el mesh es visible desde el primer frame en TODAS
+	// las máquinas. El mesh correcto llega vía ThrowData (OnRep), pero no podemos
+	// esperar a él para mostrar la bola — el BP puede tener el placeholder oculto.
+	Mesh->SetHiddenInGame(false);
+	Mesh->SetVisibility(true, true);
+
 	// En el servidor Instigator está resuelto desde el spawn — ignorar su colisión
 	// antes de que el ProjectileMovement arranque evita auto-impactos.
 	if (HasAuthority())
@@ -79,7 +85,9 @@ void ATN_ThrowableItemActor::BeginPlay()
 void ATN_ThrowableItemActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(ATN_ThrowableItemActor, ThrowData);
+	// REPNOTIFY_Always: garantiza que OnRep_ThrowData dispara para la replicación
+	// inicial aunque el cliente ya tuviera ThrowData en estado default.
+	DOREPLIFETIME_CONDITION_NOTIFY(ATN_ThrowableItemActor, ThrowData, COND_None, REPNOTIFY_Always);
 }
 
 void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const FVector& InitialVelocity)
