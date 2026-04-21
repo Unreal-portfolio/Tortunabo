@@ -48,6 +48,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "100.0"))
 	float MaxPushVelocity = 1200.f;
 
+	/** Velocidad (cm/s) aplicada cuando una tortuga empuja el objeto.
+	 *  El CMC tiene bPushesRigidBodies=false → el impulso se aplica aquí, en OnMeshHit,
+	 *  de forma controlada y segura para CCD. */
+	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "50.0"))
+	float CharacterPushVelocity = 400.f;
+
 	/** Bloquear rotación alrededor del eje X (roll). Evita que el actor ruede de lado. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Constraints")
 	bool bLockRotationX = true;

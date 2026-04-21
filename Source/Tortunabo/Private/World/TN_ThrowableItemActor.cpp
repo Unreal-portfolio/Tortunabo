@@ -69,12 +69,11 @@ void ATN_ThrowableItemActor::BeginPlay()
 	Mesh->SetHiddenInGame(false);
 	Mesh->SetVisibility(true, true);
 
-	// En el servidor Instigator está resuelto desde el spawn — ignorar su colisión
-	// antes de que el ProjectileMovement arranque evita auto-impactos.
-	if (HasAuthority())
-	{
-		IgnoreInstigatorCollision();
-	}
+	// Ignorar colisión del lanzador en TODAS las máquinas. En cliente, el PM corre
+	// localmente desde SpawnLocation (120 cm delante del char) — sin esto la bola
+	// colisiona con el char lanzador, cae por debajo del BounceVelocityStopThreshold
+	// (50 cm/s) y StopSimulating() detiene el PM permanentemente en el primer frame.
+	IgnoreInstigatorCollision();
 
 	// Solo el servidor valida impactos y detenciones.
 	if (HasAuthority())
@@ -170,12 +169,14 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 
 	bLaunchApplied = true;
 
-	// Solo el servidor posiciona el actor: el cliente ya recibió la posición
-	// inicial en el spawn bunch. IgnoreInstigatorCollision solo es relevante
-	// en servidor (el cliente no valida hits).
+	// Ignorar instigator en todas las máquinas antes de activar el PM.
+	// (Ver comentario en BeginPlay para la razón completa.)
+	IgnoreInstigatorCollision();
+
+	// Solo el servidor reposiciona el actor: el cliente ya recibió la posición
+	// inicial en el spawn bunch y moverlo aquí causaría un salto visual.
 	if (HasAuthority())
 	{
-		IgnoreInstigatorCollision();
 		SetActorLocation(ThrowData.SpawnLocation);
 	}
 
