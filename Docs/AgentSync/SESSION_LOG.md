@@ -1,5 +1,60 @@
 ﻿# SESSION LOG
 
+## 2026-04-21 — Ball replication resuelto + Umbrella/Totem C++ audio-VFX + Totem auto-revive
+
+### Resumen
+4 commits encadenados que resolvieron todos los bugs de la bola y completaron los sistemas de Sombrilla y Tótem. Commits: `d9556f7` → `6c13a11` → `6ce76fa` → `f400401`.
+
+### Bug fixes — TN_ThrowableItemActor (bola)
+
+**d9556f7 — Bola congelada en cliente + PhysicsObject tunneling**
+- Root cause bola: `IgnoreInstigatorCollision` solo se llamaba bajo `HasAuthority()`. El PM local en el cliente colisionaba con el lanzador en frame 0 → velocidad < 50 cm/s → `StopSimulating()` anulaba `UpdatedComponent` para siempre.
+- Fix: `IgnoreInstigatorCollision()` llamado sin guarda de autoridad en `BeginPlay` y `ApplyLaunchDataIfReady`.
+- Root cause tunneling: `CMC.ApplyImpactPhysicsForces` se ejecuta cada frame de contacto → velocidades de decenas de miles cm/s superan CCD.
+- Fix: `bPushesRigidBodies=false` en CMC + impulso controlado (400 cm/s) en `TN_PhysicsObjectActor::OnMeshHit` solo cuando velocidad actual < umbral.
+
+**6c13a11 — Primer intento replication fix (superado)**
+- `SetReplicateMovement(false→true)`, PM solo en servidor, `NetUpdateFrequency 20→30 Hz`.
+- Posteriormente reemplazado por arquitectura multicast-simulation (6ce76fa).
+
+**6ce76fa — Arquitectura definitiva: Multicast-simulation**
+- Reemplaza `ReplicatedUsing ThrowData` con `NetMulticast Reliable`.
+- Todas las máquinas reciben `Origin+Velocity+MeshAsset+Scale` y simulan el PM localmente (determinista, cero bandwidth de posición).
+- `Multicast_BallStopped(FinalLocation)` sincroniza posición final antes de Destroy → elimina divergencia visual residual.
+- Config final: `bReplicateMovement=false`, `NetUpdateFrequency=2`, `bAlwaysRelevant=true`.
+
+**f400401 — Crash host (stack overflow) al parar la bola**
+- Root cause: `OnProjectileStopped` llamaba `StopSimulating()` desde dentro de `OnProjectileStop.Broadcast` → recursión infinita. Solo en host porque el delegate solo se registra con `HasAuthority()`.
+- Fix: `Multicast_BallStopped_Implementation` retorna inmediatamente en servidor. Clientes usan `SetActive(false) + Velocity=Zero` en lugar de `StopSimulating()`.
+
+### Features — Sombrilla y Tótem (commit 6ce76fa)
+
+**TN_UmbrellaInteractable**
+- `UPROPERTY EditDefaultsOnly`: `SoundOpen`, `SoundClose`, `VFXOpen`, `VFXClose` (drag-and-drop en BP, C++ reproduce automáticamente vía Multicast).
+- `OnUmbrellaOpened(User)` / `OnUmbrellaClosed()` como `BlueprintImplementableEvent` opcionales.
+
+**TN_TotemInteractable**
+- `UPROPERTY EditDefaultsOnly`: `SoundActivate`, `SoundNoTarget`, `VFXActivate`.
+- `ETN_ItemUseType::Totem` añadido al enum de inventario.
+- `TN_InventoryComponent::TryConsumeItemByUseType` — utilidad para consumir ítem por tipo.
+- Auto-revive: `TN_RunGameMode::MarkPlayerDead` comprueba inventario antes de matar — si lleva Tótem, lo consume y cancela la muerte.
+- Uso manual (ServerUseEquippedItem): revive jugador muerto aleatorio.
+- `TortugaCharacter`: `TotemSelfReviveSound`, `TotemSelfReviveVFX` (UPROPERTY en `BP_TortugaCharacter`), `OnTotemAutoRevive` (BIE opcional), `Multicast_OnTotemAutoRevive` (Unreliable).
+
+### Otras fixes (commit 6ce76fa)
+- `TN_SeagullActor`: `BodyMesh=Cone`, `SeagullMesh=Cylinder` (sombra circular).
+- `TN_SeagullDroppingActor`: `DroppingMesh=Sphere`.
+
+### Patrones aprendidos
+- Guardados en `project_ue5_patterns.md`: Multicast-simulation para proyectiles, IgnoreInstigatorCollision sin HasAuthority, Multicast_BallStopped seguro (no StopSimulating desde callback).
+
+### Pendiente editor/BP
+- `BP_UmbrellaInteractable` Class Defaults: asignar `SoundOpen/Close`, `VFXOpen/Close`.
+- `BP_TotemInteractable` Class Defaults: asignar `SoundActivate`, `SoundNoTarget`, `VFXActivate`.
+- `BP_TortugaCharacter` Class Defaults: asignar `TotemSelfReviveSound`, `TotemSelfReviveVFX`.
+
+---
+
 ## 2026-04-16 — Backlog sweep completo: #4 Item Table refactor + 5 critical fixes + compile verified
 
 ### Resumen
