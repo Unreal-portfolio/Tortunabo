@@ -7,6 +7,7 @@
 class ATortugaCharacter;
 class USoundBase;
 class UParticleSystem;
+class UStaticMesh;
 
 /**
  * Sombrilla interactuable (#29).
@@ -17,13 +18,20 @@ class UParticleSystem;
  *   - Después se cierra sola (bHasUmbrellaProtection = false).
  *   - La sombrilla entra en cooldown (CooldownSeconds de la base, o ReuseDelay).
  *
+ * Mesh visual:
+ *   - MeshClosed: mesh cuando está plegada (default: Cylinder).
+ *   - MeshOpen:   mesh cuando está desplegada (default: Cone).
+ *   - Si se asignan en el BP hijo, se usan los assets personalizados.
+ *   - El swap de mesh ocurre en TODAS las máquinas vía NetMulticast.
+ *
  * La gaviota dinámica (TN_EnemySeagull) comprueba bHasUmbrellaProtection
  * antes de matar al jugador. Si está activo, cancela el ataque.
  *
  * Uso:
  *   1. Crear BP_UmbrellaInteractable como hijo.
- *   2. Asignar mesh y VFX.
- *   3. Colocar en el nivel o en chunks.
+ *   2. (Opcional) Asignar MeshClosed/MeshOpen con tus propios assets.
+ *   3. (Opcional) Asignar SoundOpen/SoundClose/VFXOpen/VFXClose.
+ *   4. Colocar en el nivel o en chunks.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_UmbrellaInteractable : public ATN_DirectInteractableBase
@@ -33,6 +41,7 @@ class TORTUNABO_API ATN_UmbrellaInteractable : public ATN_DirectInteractableBase
 public:
 	ATN_UmbrellaInteractable();
 
+	virtual void BeginPlay() override;
 	virtual void Interact(APawn* Interactor) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -48,10 +57,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella", meta = (ClampMin = "1.0"))
 	float ReuseDelaySecs = 15.f;
 
-	// ── Audio/VFX automáticos ─────────────────────────────────────────────────
-	// Arrastra un asset directamente — C++ lo reproduce sin necesitar nodos BP.
+	// ── Meshes de estado ──────────────────────────────────────────────────────
+	// Si se dejan vacíos, C++ usa Cylinder (cerrada) y Cone (abierta) por defecto.
 
-	/** Sonido al abrir la sombrilla. Arrastra tu SoundCue/Wave aquí. */
+	/** Mesh cuando la sombrilla está plegada/cerrada. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Mesh")
+	TObjectPtr<UStaticMesh> MeshClosed;
+
+	/** Mesh cuando la sombrilla está desplegada/abierta. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Mesh")
+	TObjectPtr<UStaticMesh> MeshOpen;
+
+	// ── Audio/VFX automáticos ─────────────────────────────────────────────────
+
+	/** Sonido al abrir la sombrilla. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Audio")
 	TObjectPtr<USoundBase> SoundOpen;
 
@@ -59,7 +78,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|Audio")
 	TObjectPtr<USoundBase> SoundClose;
 
-	/** VFX al abrir la sombrilla (Niagara/Cascade). */
+	/** VFX al abrir la sombrilla. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|FX")
 	TObjectPtr<UParticleSystem> VFXOpen;
 
@@ -67,15 +86,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Umbrella|FX")
 	TObjectPtr<UParticleSystem> VFXClose;
 
-	// ── Eventos BP (opcional si quieres lógica adicional) ─────────────────────
+	// ── Eventos BP opcionales ─────────────────────────────────────────────────
 
 	/** Llamado en TODAS las máquinas cuando la sombrilla se abre.
-	 *  Usar para lógica BP extra (animación, HUD, etc.). Audio/VFX ya se reproducen solos. */
+	 *  Mesh, audio y VFX ya se gestionan solos. Usar para lógica BP extra. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Umbrella")
 	void OnUmbrellaOpened(APawn* User);
 
 	/** Llamado en TODAS las máquinas cuando la sombrilla se cierra.
-	 *  Usar para lógica BP extra. Audio/VFX ya se reproducen solos. */
+	 *  Mesh, audio y VFX ya se gestionan solos. Usar para lógica BP extra. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Umbrella")
 	void OnUmbrellaClosed();
 
@@ -87,6 +106,9 @@ private:
 	void MulticastOnUmbrellaClosed();
 
 	void HandleUmbrellaExpired();
+
+	/** Aplica un mesh al componente Mesh heredado. No hace nada si NewMesh es null. */
+	void ApplyUmbrellaMesh(UStaticMesh* NewMesh);
 
 	FTimerHandle UmbrellaActiveTimerHandle;
 	TWeakObjectPtr<ATortugaCharacter> ProtectedCharacter;
