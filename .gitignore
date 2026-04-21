@@ -3,6 +3,8 @@
 .idea/
 .idea/.idea.Tortunabo.dir
 .idea/.idea.Tortunabo
+.idea/.idea.Tortunabo/.idea
+.idea/.idea.Tortunabo/.idea/workspace.xml
 .claude/
 # Compiled Object files
 *.slo
