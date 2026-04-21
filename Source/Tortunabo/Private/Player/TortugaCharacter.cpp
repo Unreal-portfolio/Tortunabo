@@ -59,10 +59,11 @@ ATortugaCharacter::ATortugaCharacter()
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 
-	// CMC aplica ApplyImpactPhysicsForces cada frame de contacto → masa cancela →
-	// incluso PushForceFactor pequeño da decenas de miles cm/s → tunneling CCD.
-	// TN_PhysicsObjectActor::OnMeshHit aplica un impulso controlado en su lugar.
-	GetCharacterMovement()->bPushesRigidBodies = false;
+	// PushForceFactor=0 anula ApplyImpactPhysicsForces del CMC (fuerza = factor × 0 = 0).
+	// Sin esto, el CMC aplica fuerza cada frame de contacto y la masa cancela en la
+	// fórmula → velocidades de decenas de miles cm/s → tunneling pese a CCD.
+	// TN_PhysicsObjectActor::OnMeshHit aplica el impulso controlado en su lugar.
+	GetCharacterMovement()->PushForceFactor = 0.f;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
