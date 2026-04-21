@@ -11,21 +11,17 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 
-	// bAlwaysRelevant: CRÍTICO para el bug de "bola invisible en vuelo".
-	// Antes, si el lanzador estaba lejos del otro jugador, la bola no era
-	// network-relevant para ese cliente → el MulticastLaunch nunca llegaba →
-	// el cliente solo veía el pickup final teletransportado. Con AlwaysRelevant
-	// el cliente recibe el actor (y su ThrowData replicado) en el primer bunch.
+	// bAlwaysRelevant: sin esto, si el lanzador está lejos del cliente, la bola
+	// no sería network-relevant → el cliente nunca vería el proyectil en vuelo.
 	bAlwaysRelevant = true;
 
-	// NO replicar movimiento: cada máquina simula la física localmente desde
-	// los mismos parámetros de lanzamiento (ThrowData + MulticastLaunch) → sin
-	// tirones a 30 Hz. El servidor sigue siendo autoridad para hit-detection.
-	SetReplicateMovement(false);
+	// Servidor es autoridad: ProjectileMovement corre solo en el servidor y su
+	// posición se replica a los clientes. Enfoque idéntico al de TN_PhysicsObjectActor.
+	// SetReplicateMovement es true por defecto; lo dejamos así intencionadamente.
 
-	// Frecuencia reducida: solo se replica el struct ThrowData (para JIP late-joiners)
-	// y eventos discretos. No necesitamos alta frecuencia para posición.
-	SetNetUpdateFrequency(10.f);
+	// 20 Hz durante el vuelo: suficiente para un party game (NetworkSmoothing cubre
+	// los huecos). Al detenerse el actor entra en DORM_DormantAll → 0 updates.
+	SetNetUpdateFrequency(20.f);
 	SetMinNetUpdateFrequency(5.f);
 
 	// Mesh ES el root: UStaticMeshComponent es UPrimitiveComponent.
@@ -63,12 +59,12 @@ void ATN_ThrowableItemActor::BeginPlay()
 	ProjectileMovement->Bounciness = Bounciness;
 	ProjectileMovement->Friction   = RollingFriction;
 
-	// Ignorar colisión con el lanzador. En autoridad, Instigator está resuelto.
-	// En clientes, puede no estarlo aún — OnRep_Instigator lo cubre cuando llegue,
-	// y ApplyLaunchDataIfReady también lo reintenta justo antes de activar el
-	// ProjectileMovement. Sin este cover-all, en el cliente-lanzador la bola
-	// chocaba con la cápsula del propio personaje y rebotaba fuera de cámara.
-	IgnoreInstigatorCollision();
+	// En el servidor Instigator está resuelto desde el spawn — ignorar su colisión
+	// antes de que el ProjectileMovement arranque evita auto-impactos.
+	if (HasAuthority())
+	{
+		IgnoreInstigatorCollision();
+	}
 
 	// Solo el servidor valida impactos y detenciones.
 	if (HasAuthority())
@@ -111,20 +107,10 @@ void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const
 	// ── Aplicar localmente en el servidor ─────────────────────────────────────
 	ApplyLaunchDataIfReady();
 
-	// ── Forzar replicación inmediata ─────────────────────────────────────────
-	// ForceNetUpdate + FlushNetDormancy garantiza que el primer bunch hacia
-	// cualquier cliente incluye YA el ThrowData con bReady=true — el cliente
-	// recibe el actor y dispara OnRep_ThrowData en el primer frame que lo ve,
-	// sin esperar al ciclo de replicación normal (que podía retrasar la bola
-	// varios frames y provocar el "freeze + teleport" que reportabas).
+	// Forzar replicación inmediata: el primer bunch que el cliente recibe ya
+	// lleva ThrowData con bReady=true + la posición actual del actor.
 	FlushNetDormancy();
 	ForceNetUpdate();
-
-	// ── Emitir a todos los clientes para simulación local simultánea ──────────
-	// Redundante con OnRep_ThrowData, pero cubre el caso en que el cliente
-	// ya tenía el actor y solo necesita el trigger — RPC Reliable se procesa
-	// aunque ThrowData llegue en el mismo bunch.
-	MulticastLaunch(SpawnLocation, InitialVelocity, SafeScale, SourceItem.EquippedMesh);
 }
 
 void ATN_ThrowableItemActor::SetSourceItem(const FTN_InventoryItem& Item)
@@ -141,16 +127,6 @@ void ATN_ThrowableItemActor::OnRep_ThrowData()
 	ApplyLaunchDataIfReady();
 }
 
-void ATN_ThrowableItemActor::OnRep_Instigator()
-{
-	Super::OnRep_Instigator();
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] OnRep_Instigator = %s"), *GetNameSafe(GetInstigator()));
-	// Cliente-lanzador: Instigator puede replicar después del BeginPlay si el
-	// bunch inicial se fragmenta. Sin este retry, la bola colisionaba con la
-	// propia cápsula del lanzador → rebote hacia atrás → salía de cámara.
-	IgnoreInstigatorCollision();
-}
-
 void ATN_ThrowableItemActor::IgnoreInstigatorCollision()
 {
 	if (!Mesh) { return; }
@@ -160,68 +136,6 @@ void ATN_ThrowableItemActor::IgnoreInstigatorCollision()
 	}
 }
 
-// ── MulticastLaunch: simulación local en servidor + todos los clientes ────────
-
-void ATN_ThrowableItemActor::MulticastLaunch_Implementation(
-	FVector Origin, FVector Velocity, FVector Scale, UStaticMesh* MeshAsset)
-{
-	// En el servidor ya se aplicó en InitializeThrow → evitar doble activación.
-	// bLaunchApplied: CRÍTICO para Q4-04. En el cliente, OnRep_ThrowData suele
-	// procesarse ANTES que este Multicast durante la apertura del actor-channel.
-	// Si aplicáramos sin el guard, haríamos SetActorLocation(Origin) sobre una
-	// bola que ya llevaba varios frames volando → teleport-back rubberband, la
-	// bola "desaparece" de cámara y el usuario solo vuelve a verla como pickup.
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] MulticastLaunch auth=%d bLaunchApplied=%d hasBP=%d v=(%.0f,%.0f,%.0f)"),
-		HasAuthority() ? 1 : 0, bLaunchApplied ? 1 : 0, HasActorBegunPlay() ? 1 : 0,
-		Velocity.X, Velocity.Y, Velocity.Z);
-
-	if (HasAuthority() || bLaunchApplied)
-	{
-		return;
-	}
-
-	// Q4-07: Si el RPC llega antes de BeginPlay (mismo bunch que la replicación
-	// inicial del actor, orden no determinista), Mesh y ProjectileMovement aún
-	// no están registrados en el mundo — SetActorLocation/SetStaticMesh/Activate
-	// son silently-noop y la bola queda invisible/inerte en el cliente.
-	// Deferimos: la ruta canónica (OnRep_ThrowData → ApplyLaunchDataIfReady en
-	// BeginPlay) aplicará el launch con el actor totalmente inicializado.
-	// ThrowData ya viaja replicado en el mismo bunch con bReady=true, así que
-	// OnRep_ThrowData disparará sí o sí.
-	if (!HasActorBegunPlay())
-	{
-		return;
-	}
-
-	// Aplicar mesh y escala
-	if (MeshAsset)
-	{
-		Mesh->SetStaticMesh(MeshAsset);
-	}
-	if (!Scale.IsNearlyZero())
-	{
-		Mesh->SetRelativeScale3D(Scale);
-	}
-
-	// Garantizar visibilidad — defensa frente a BPs con defaults raros.
-	Mesh->SetHiddenInGame(false);
-	Mesh->SetVisibility(true, true);
-
-	// Asegurar que ignoramos al lanzador ANTES de activar el ProjectileMovement.
-	// Si el MulticastLaunch llega antes de que Instigator haya replicado, será
-	// no-op aquí y OnRep_Instigator lo resolverá luego.
-	IgnoreInstigatorCollision();
-
-	// Posicionar e iniciar simulación local — igual que el servidor.
-	SetActorLocation(Origin);
-	if (ProjectileMovement)
-	{
-		ProjectileMovement->Velocity = Velocity;
-		ProjectileMovement->Activate(true);
-	}
-
-	bLaunchApplied = true;
-}
 
 void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 {
@@ -230,29 +144,31 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 		return;
 	}
 
-	// Apply the replicated mesh first so JIP clients see the correct asset instead of the placeholder.
+	// Mesh y visibilidad: todos (servidor + clientes + JIP late-joiners).
 	if (ThrowData.EquippedMesh)
 	{
 		Mesh->SetStaticMesh(ThrowData.EquippedMesh);
 	}
-
 	if (!ThrowData.MeshScale.IsNearlyZero())
 	{
 		Mesh->SetRelativeScale3D(ThrowData.MeshScale);
 	}
-
-	// Garantizar visibilidad — defensa frente a BPs con defaults raros.
 	Mesh->SetHiddenInGame(false);
 	Mesh->SetVisibility(true, true);
 
-	// Asegurar ignore del lanzador antes de activar ProjectileMovement.
-	// En el cliente-lanzador, Instigator puede haber llegado entre BeginPlay
-	// y OnRep_ThrowData — este retry cubre esa ventana.
-	IgnoreInstigatorCollision();
+	bLaunchApplied = true;
 
-	// Servidor y clientes: posicionar desde origen y activar física local.
-	// Para JIP late-joiners: ThrowData está replicado pero la bola ya se movió;
-	// la arrancamos desde el origen (ligero desfase aceptable en party game).
+	// Física: solo en el servidor. El servidor corre el ProjectileMovement y
+	// replica la posición resultante a los clientes vía bReplicateMovement=true.
+	// Los clientes son observadores pasivos — no necesitan simular localmente.
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady client — mesh=%s (posición replicada por servidor)"),
+			*GetNameSafe(ThrowData.EquippedMesh));
+		return;
+	}
+
+	IgnoreInstigatorCollision();
 	SetActorLocation(ThrowData.SpawnLocation);
 	if (ProjectileMovement)
 	{
@@ -260,10 +176,7 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 		ProjectileMovement->Activate(true);
 	}
 
-	bLaunchApplied = true;
-
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady auth=%d origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s pmActive=%d"),
-		HasAuthority() ? 1 : 0,
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady SERVER origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s pmActive=%d"),
 		ThrowData.SpawnLocation.X, ThrowData.SpawnLocation.Y, ThrowData.SpawnLocation.Z,
 		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
 		*GetNameSafe(ThrowData.EquippedMesh),

@@ -59,14 +59,6 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void LifeSpanExpired() override;
 
-	/**
-	 * Override para cubrir el caso en que Instigator replique tarde en el cliente-lanzador.
-	 * Sin esto, si BeginPlay corría antes de recibir Instigator, IgnoreActorWhenMoving
-	 * era no-op → la bola colisionaba con la cápsula del propio lanzador, rebotaba
-	 * hacia atrás y salía de cámara (el cliente solo veía el pickup final).
-	 */
-	virtual void OnRep_Instigator() override;
-
 	UFUNCTION(BlueprintCallable, Category = "Throwable")
 	void InitializeThrow(const FVector& SpawnLocation, const FVector& InitialVelocity);
 
@@ -113,14 +105,6 @@ protected:
 	 */
 	virtual void ApplyLaunchDataIfReady();
 
-	/**
-	 * Emite los parámetros de lanzamiento a TODAS las máquinas (servidor + clientes)
-	 * para que cada una simule la física localmente.
-	 * Enfoque AAA: sin replicación de posición a 30 Hz → 0 tirones visuales.
-	 * El servidor sigue siendo la autoridad para hit-detection (OnMeshHit).
-	 */
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastLaunch(FVector Origin, FVector Velocity, FVector Scale, UStaticMesh* MeshAsset);
 
 private:
 	// Datos del ítem — servidor únicamente, sin replicar
@@ -155,11 +139,7 @@ protected:
 	/** Spawna un pickup en la posición dada. Accesible para clases hijas. */
 	void SpawnPickupAtLocation(const FVector& Location);
 
-	/**
-	 * Aplica IgnoreActorWhenMoving sobre el Instigator (si ya está resuelto).
-	 * Idempotente — se llama desde BeginPlay, OnRep_Instigator, ApplyLaunchDataIfReady
-	 * y MulticastLaunch para cubrir todos los órdenes de llegada de la replicación.
-	 */
+	/** Aplica IgnoreActorWhenMoving sobre el Instigator — solo relevante en servidor. */
 	void IgnoreInstigatorCollision();
 
 	bool bPickupSpawned  = false;
