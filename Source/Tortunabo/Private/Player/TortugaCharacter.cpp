@@ -59,6 +59,11 @@ ATortugaCharacter::ATortugaCharacter()
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 
+	// UE5 default PushForceFactor=750000 genera velocidades masivas en física a
+	// velocidades de sprint → objetos atraviesan paredes pese a CCD.
+	// 1500 da un empuje perceptible sin superar el umbral de tunneling.
+	GetCharacterMovement()->PushForceFactor = 1500.f;
+
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = 350.f;

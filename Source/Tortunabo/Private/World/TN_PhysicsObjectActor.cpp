@@ -82,6 +82,19 @@ void ATN_PhysicsObjectActor::OnMeshHit(UPrimitiveComponent* HitComp, AActor* Oth
 	// Despertar: el servidor empieza a enviar actualizaciones de posición.
 	FlushNetDormancy();
 
+	// Cap de velocidad post-impacto: el CMC puede impartir velocidades masivas
+	// al colisionar a sprint, superando el umbral de tunneling de CCD.
+	// Aplicar aquí (servidor) antes de que el physics step propague la velocidad.
+	if (Mesh)
+	{
+		const FVector Vel = Mesh->GetComponentVelocity();
+		const float SpeedSq = Vel.SizeSquared();
+		if (SpeedSq > MaxPushVelocity * MaxPushVelocity)
+		{
+			Mesh->SetPhysicsLinearVelocity(Vel.GetSafeNormal() * MaxPushVelocity);
+		}
+	}
+
 	// Iniciar comprobación periódica para volver a dormir cuando pare.
 	if (!GetWorldTimerManager().IsTimerActive(DormancyCheckTimer))
 	{

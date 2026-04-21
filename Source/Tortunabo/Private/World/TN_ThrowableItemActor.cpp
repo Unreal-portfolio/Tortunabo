@@ -17,7 +17,11 @@ ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 
 	// Servidor es autoridad: ProjectileMovement corre solo en el servidor y su
 	// posición se replica a los clientes. Enfoque idéntico al de TN_PhysicsObjectActor.
-	SetReplicateMovement(true);
+	// bReplicateMovement=false: el cliente simula ProjectileMovement localmente
+	// desde las mismas condiciones iniciales (SpawnLocation + LaunchVelocity del
+	// struct replicado). Esto da 60fps fluidos sin depender de updates de red.
+	// El servidor sigue siendo la autoridad para hits y pickup spawn.
+	SetReplicateMovement(false);
 
 	// 20 Hz durante el vuelo: suficiente para un party game (NetworkSmoothing cubre
 	// los huecos). Al detenerse el actor entra en DORM_DormantAll → 0 updates.
@@ -166,25 +170,27 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 
 	bLaunchApplied = true;
 
-	// Física: solo en el servidor. El servidor corre el ProjectileMovement y
-	// replica la posición resultante a los clientes vía bReplicateMovement=true.
-	// Los clientes son observadores pasivos — no necesitan simular localmente.
-	if (!HasAuthority())
+	// Solo el servidor posiciona el actor: el cliente ya recibió la posición
+	// inicial en el spawn bunch. IgnoreInstigatorCollision solo es relevante
+	// en servidor (el cliente no valida hits).
+	if (HasAuthority())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady client — mesh=%s (posición replicada por servidor)"),
-			*GetNameSafe(ThrowData.EquippedMesh));
-		return;
+		IgnoreInstigatorCollision();
+		SetActorLocation(ThrowData.SpawnLocation);
 	}
 
-	IgnoreInstigatorCollision();
-	SetActorLocation(ThrowData.SpawnLocation);
+	// ProjectileMovement se activa en TODAS las máquinas para conseguir 60fps
+	// fluidos en cliente. Ambas simulan desde las mismas condiciones iniciales
+	// (SpawnLocation + LaunchVelocity). Sin bReplicateMovement no hay updates
+	// de posición de red — cada máquina simula de forma determinista.
 	if (ProjectileMovement)
 	{
 		ProjectileMovement->Velocity = ThrowData.LaunchVelocity;
 		ProjectileMovement->Activate(true);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady SERVER origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s pmActive=%d"),
+	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s pmActive=%d"),
+		HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"),
 		ThrowData.SpawnLocation.X, ThrowData.SpawnLocation.Y, ThrowData.SpawnLocation.Z,
 		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
 		*GetNameSafe(ThrowData.EquippedMesh),
