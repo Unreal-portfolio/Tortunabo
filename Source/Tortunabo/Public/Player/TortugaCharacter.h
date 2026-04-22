@@ -402,8 +402,9 @@ private:
 	FVector2D LastMovementInput = FVector2D::ZeroVector;
 	bool bSprintHeld = false;
 
-	/** Cached SceneComponent "Sombrero" found in BeginPlay. Helmet mesh attaches to it. */
-	TWeakObjectPtr<USceneComponent> SombreroSocket;
+	/** Socket name on the Skeletal Mesh where the helmet attaches. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
+	FName HelmetSocketName = TEXT("Sombrero");
 
 	/** Timer handle for repeating cosmetic application retry in BeginPlay. */
 	FTimerHandle CosmeticRetryTimerHandle;
@@ -434,18 +435,18 @@ private:
 	FVector SnapshotColaLoc;
 	FVector SnapshotCabezaLoc;
 
-	/** Cached arm, tail, and head component refs (found by name in BeginPlay, same as Pata1/Pata2). */
-	TWeakObjectPtr<USceneComponent> Brazo1;
-	TWeakObjectPtr<USceneComponent> Brazo2;
-	TWeakObjectPtr<USceneComponent> Cola;
-	TWeakObjectPtr<USceneComponent> Cabeza;
+	/** Bone names resolved from sockets in BeginPlay. Used by SetAnimBoneRot. */
+	FName Brazo1Bone;
+	FName Brazo2Bone;
+	FName ColaBone;
+	FName CabezaBone;
 	FRotator Brazo1RestRot = FRotator::ZeroRotator;
 	FRotator Brazo2RestRot = FRotator::ZeroRotator;
 	FRotator ColaRestRot   = FRotator::ZeroRotator;
 	FRotator CabezaRestRot = FRotator::ZeroRotator;
-	FVector  CabezaRestScale = FVector::OneVector; // Escala original de Cabeza (para restaurar tras BigHead)
+	FVector  CabezaRestScale = FVector::OneVector;
 
-	/** Rest locations for transform-based emotes (Palmada Potente, Modo Loco 2). */
+	/** Rest locations in component space (for SetLoc emotes). Re-derived in BeginPlay. */
 	FVector Brazo1RestLoc = FVector::ZeroVector;
 	FVector Brazo2RestLoc = FVector::ZeroVector;
 	FVector Pata1RestLoc  = FVector::ZeroVector;
@@ -468,8 +469,8 @@ private:
 	float LegPhaseAccumulator    = 0.f;   // cycles [0,1)
 	float LegAmplitudeMultiplier = 0.f;   // [0,1] fade envelope
 
-	TWeakObjectPtr<USceneComponent> Pata1;
-	TWeakObjectPtr<USceneComponent> Pata2;
+	FName Pata1Bone;
+	FName Pata2Bone;
 	FRotator Pata1RestRot = FRotator::ZeroRotator;
 	FRotator Pata2RestRot = FRotator::ZeroRotator;
 
@@ -499,8 +500,8 @@ private:
 
 	void TickLegAnimation(float DeltaTime);
 	void TickCameraInterp(float DeltaTime);
-	void ApplyLegAngle(USceneComponent* Comp, const FRotator& RestRot, float AngleDeg) const;
-	void ApplyArmAngle(USceneComponent* Comp, const FRotator& RestRot, float RestOffsetDeg, float SwingDeg) const;
+	void ApplyLegAngle(FName BoneName, const FRotator& RestRot, float AngleDeg) const;
+	void ApplyArmAngle(FName BoneName, const FRotator& RestRot, float RestOffsetDeg, float SwingDeg) const;
 	USceneComponent* FindChildByName(FName Name) const;
 	/** Trace descendente para encontrar el suelo bajo WorldLocation. Usado al soltar y aterrizar ítems. */
 	FVector FindGroundBelow(const FVector& WorldLocation) const;
@@ -531,16 +532,25 @@ private:
 	/** Callback: restarts emote audio when the clip ends, while the emote is still active. */
 	UFUNCTION()
 	void OnEmoteAudioFinished();
-	/** Apply a single-axis rotation additively on top of a component's rest rotation. */
-	void ApplyEmoteAngle(USceneComponent* Comp, const FRotator& Rest, float AngleDeg, const FVector& Axis) const;
-	/** Apply two-axis compound rotation (e.g. tail spiralling during Fiesta). */
-	void ApplyEmoteAngles2(USceneComponent* Comp, const FRotator& Rest,
+	/** Apply a single-axis rotation additively on top of a bone's rest rotation. */
+	void ApplyEmoteAngle(FName BoneName, const FRotator& Rest, float AngleDeg, const FVector& Axis) const;
+	/** Apply two-axis compound rotation on a bone. */
+	void ApplyEmoteAngles2(FName BoneName, const FRotator& Rest,
 	                       float A1, const FVector& Ax1,
 	                       float A2, const FVector& Ax2) const;
-	void ApplyEmoteAngles3(USceneComponent* Comp, const FRotator& Rest,
+	void ApplyEmoteAngles3(FName BoneName, const FRotator& Rest,
 	                       float A1, const FVector& Ax1,
 	                       float A2, const FVector& Ax2,
 	                       float A3, const FVector& Ax3) const;
+
+	/** Set a bone's rotation in component space. No-op if bone is NAME_None or mesh is null. */
+	void SetAnimBoneRot(FName BoneName, const FRotator& Rot) const;
+	/** Get a bone's current rotation in component space. */
+	FRotator GetAnimBoneRot(FName BoneName) const;
+	/** Set a bone's location in component space. */
+	void SetAnimBoneLoc(FName BoneName, const FVector& Loc) const;
+	/** Get a bone's current location in component space. */
+	FVector GetAnimBoneLoc(FName BoneName) const;
 	// Per-emote input handlers (one-liners, bound in SetupPlayerInputComponent)
 	void OnEmote0(); void OnEmote1(); void OnEmote2(); void OnEmote3(); void OnEmote4();
 	void OnEmote5(); void OnEmote6(); void OnEmote7(); void OnEmote8(); void OnEmote9();
@@ -661,12 +671,11 @@ protected:
 	bool bIsKnockedDown = false;
 
 	/**
-	 * Nombre del componente visual a rotar durante knockdown.
-	 * Debe coincidir con el nombre de un SceneComponent en el Blueprint (ej. "Cuerpo").
-	 * Si está vacío o no se encuentra, se usa el fallback automático (primer StaticMesh).
+	 * Nombre del componente visual a rotar durante knockdown (Ruta B: tilt manual).
+	 * NAME_None → usa GetMesh() directamente (correcto con mesh único sin SCs adicionales).
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
-	FName KnockdownComponentName = TEXT("Cuerpo");
+	FName KnockdownComponentName = NAME_None;
 
 	/**
 	 * Multiplicador aplicado a la velocidad horizontal del jugador en el momento del knockdown.
