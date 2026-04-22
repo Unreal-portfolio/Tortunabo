@@ -11,6 +11,7 @@
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Player/TN_ProcAnimInstance.h"
 #include "World/TN_InteractableBase.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ThrowableItemActor.h"
@@ -164,6 +165,13 @@ void ATortugaCharacter::BeginPlay()
 	{
 		GetWorldTimerManager().SetTimer(InteractionScanTimerHandle, this, &ATortugaCharacter::UpdateFocusedInteractable, InteractionScanInterval, true);
 		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Interaction scan timer started (interval=%.2fs)"), InteractionScanInterval);
+	}
+
+	// Set the procedural anim instance so C++ can drive bone transforms without an AnimBP.
+	// Must be called before InitBone so the instance exists when the first Tick fires.
+	if (GetMesh() && GetMesh()->GetAnimInstance() == nullptr)
+	{
+		GetMesh()->SetAnimInstanceClass(UTN_ProcAnimInstance::StaticClass());
 	}
 
 	// Resolve socket names to bone names on the Skeletal Mesh and capture rest poses.
@@ -2484,25 +2492,35 @@ void ATortugaCharacter::CancelEmote()
 
 void ATortugaCharacter::SetAnimBoneRot(FName BoneName, const FRotator& Rot) const
 {
-	if (BoneName != NAME_None && GetMesh())
-		GetMesh()->SetBoneRotationByName(BoneName, Rot, EBoneSpaces::ComponentSpace);
+	if (BoneName == NAME_None) { return; }
+	if (UTN_ProcAnimInstance* Inst = Cast<UTN_ProcAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr))
+		Inst->BoneQuat.Add(BoneName, FQuat(Rot));
 }
 
 FRotator ATortugaCharacter::GetAnimBoneRot(FName BoneName) const
 {
-	if (BoneName == NAME_None || !GetMesh()) return FRotator::ZeroRotator;
+	if (BoneName == NAME_None || !GetMesh()) { return FRotator::ZeroRotator; }
+	if (const UTN_ProcAnimInstance* Inst = Cast<UTN_ProcAnimInstance>(GetMesh()->GetAnimInstance()))
+	{
+		if (const FQuat* Q = Inst->BoneQuat.Find(BoneName)) { return Q->Rotator(); }
+	}
 	return GetMesh()->GetBoneQuaternion(BoneName, EBoneSpaces::ComponentSpace).Rotator();
 }
 
 void ATortugaCharacter::SetAnimBoneLoc(FName BoneName, const FVector& Loc) const
 {
-	if (BoneName != NAME_None && GetMesh())
-		GetMesh()->SetBoneLocationByName(BoneName, Loc, EBoneSpaces::ComponentSpace);
+	if (BoneName == NAME_None) { return; }
+	if (UTN_ProcAnimInstance* Inst = Cast<UTN_ProcAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr))
+		Inst->BoneLoc.Add(BoneName, Loc);
 }
 
 FVector ATortugaCharacter::GetAnimBoneLoc(FName BoneName) const
 {
-	if (BoneName == NAME_None || !GetMesh()) return FVector::ZeroVector;
+	if (BoneName == NAME_None || !GetMesh()) { return FVector::ZeroVector; }
+	if (const UTN_ProcAnimInstance* Inst = Cast<UTN_ProcAnimInstance>(GetMesh()->GetAnimInstance()))
+	{
+		if (const FVector* L = Inst->BoneLoc.Find(BoneName)) { return *L; }
+	}
 	return GetMesh()->GetBoneLocation(BoneName, EBoneSpaces::ComponentSpace);
 }
 
@@ -2930,11 +2948,11 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    -55.f * S(2.8f, T + 0.1f),   AX,
 		    -40.f * S(3.3f, T + 0.2f),   AY,
 		     25.f * S(4.1f, T),           AZ);
-		Ap3(Pata1, Pata1RestRot,
+		Ap3(Pata1Bone, Pata1RestRot,
 		     35.f * S(4.0f, T),          LY,
 		     20.f * S(2.7f, T),          LX,
 		     10.f * S(5.0f, T),          LZ);
-		Ap3(Pata2, Pata2RestRot,
+		Ap3(Pata2Bone, Pata2RestRot,
 		    -35.f * S(4.0f, T + 0.08f),  LY,
 		    -20.f * S(2.7f, T + 0.15f),  LX,
 		    -10.f * S(5.0f, T + 0.05f),  LZ);
@@ -2942,7 +2960,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    15.f * Cos(5.f, T),           TY,
 		    25.f * S(7.f, T),             TZ,
 		    10.f * S(3.f, T + 0.1f),      TX);
-		Ap3(Cabeza, CabezaRestRot,
+		Ap3(CabezaBone, CabezaRestRot,
 		    25.f * S(3.7f, T),            AY,
 		    30.f * S(2.3f, T + 0.07f),    AZ,
 		    15.f * S(5.5f, T),            AX);
@@ -2977,11 +2995,11 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    -55.f * S(2.3f, T + 0.13f),  AX,
 		    -35.f * S(3.1f, T),          AY,
 		     25.f * S(1.7f, T + 0.08f),  AZ);
-		Ap3(Pata1, Pata1RestRot,
+		Ap3(Pata1Bone, Pata1RestRot,
 		     35.f * S(4.0f, T),          LY,
 		     20.f * S(2.7f, T),          LX,
 		     10.f * S(5.0f, T),          LZ);
-		Ap3(Pata2, Pata2RestRot,
+		Ap3(Pata2Bone, Pata2RestRot,
 		    -35.f * S(4.0f, T + 0.08f),  LY,
 		    -20.f * S(2.7f, T + 0.15f),  LX,
 		    -10.f * S(5.0f, T + 0.05f),  LZ);
@@ -2989,7 +3007,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    15.f * Cos(5.f, T),           TY,
 		    25.f * S(7.f, T),             TZ,
 		    10.f * S(3.f, T + 0.1f),      TX);
-		Ap3(Cabeza, CabezaRestRot,
+		Ap3(CabezaBone, CabezaRestRot,
 		    25.f * S(3.7f, T),            AY,
 		    30.f * S(2.3f, T + 0.07f),    AZ,
 		    15.f * S(5.5f, T),            AX);
