@@ -190,6 +190,14 @@ void ATortugaCharacter::BeginPlay()
 	InitBone(TEXT("Cola"),   ColaBone,   ColaRestRot,   ColaRestLoc);
 	InitBone(TEXT("Cabeza"), CabezaBone, CabezaRestRot, CabezaRestLoc);
 
+	// Capture rest scale for the Cabeza bone (used by BigHead effect).
+	if (CabezaBone != NAME_None)
+	{
+		const int32 Idx = GetMesh()->GetBoneIndex(CabezaBone);
+		if (Idx != INDEX_NONE)
+			CabezaRestScale = GetMesh()->GetBoneTransform(Idx, EBoneSpaces::ComponentSpace).GetScale3D();
+	}
+
 	// Log de diagnóstico: estado final de todos los huesos de emote
 	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Emote bones: Brazo1=%s  Brazo2=%s  Pata1=%s  Pata2=%s  Cola=%s  Cabeza=%s"),
 		Brazo1Bone != NAME_None ? TEXT("OK") : TEXT("MISSING"),
