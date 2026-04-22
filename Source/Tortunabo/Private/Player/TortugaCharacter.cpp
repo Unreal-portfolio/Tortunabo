@@ -167,9 +167,9 @@ void ATortugaCharacter::BeginPlay()
 		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Interaction scan timer started (interval=%.2fs)"), InteractionScanInterval);
 	}
 
-	// Set the procedural anim instance so C++ can drive bone transforms without an AnimBP.
-	// Must be called before InitBone so the instance exists when the first Tick fires.
-	if (GetMesh() && GetMesh()->GetAnimInstance() == nullptr)
+	// Force UTN_ProcAnimInstance regardless of any AnimBP set in Blueprint.
+	// Must run before InitBone so the instance exists when the first Tick fires.
+	if (GetMesh())
 	{
 		GetMesh()->SetAnimInstanceClass(UTN_ProcAnimInstance::StaticClass());
 	}
@@ -202,13 +202,10 @@ void ATortugaCharacter::BeginPlay()
 	CabezaRestScale = FVector::OneVector;
 
 	// Log de diagnóstico: estado final de todos los huesos de emote
-	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Emote bones: Brazo1=%s  Brazo2=%s  Pata1=%s  Pata2=%s  Cola=%s  Cabeza=%s"),
-		Brazo1Bone != NAME_None ? TEXT("OK") : TEXT("MISSING"),
-		Brazo2Bone != NAME_None ? TEXT("OK") : TEXT("MISSING"),
-		Pata1Bone  != NAME_None ? TEXT("OK") : TEXT("MISSING"),
-		Pata2Bone  != NAME_None ? TEXT("OK") : TEXT("MISSING"),
-		ColaBone   != NAME_None ? TEXT("OK") : TEXT("MISSING"),
-		CabezaBone != NAME_None ? TEXT("OK") : TEXT("MISSING"));
+	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Resolved bones — Brazo1='%s' Brazo2='%s' Pata1='%s' Pata2='%s' Cola='%s' Cabeza='%s'"),
+		*Brazo1Bone.ToString(), *Brazo2Bone.ToString(),
+		*Pata1Bone.ToString(),  *Pata2Bone.ToString(),
+		*ColaBone.ToString(),   *CabezaBone.ToString());
 
 	// Network smoothing: con el mesh unificado GetMesh() es el único componente visual.
 	// El CMC ya aplica smoothing a GetMesh() y sus hijos directamente — no se necesita
