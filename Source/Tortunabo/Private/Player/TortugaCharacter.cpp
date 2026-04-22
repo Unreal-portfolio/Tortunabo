@@ -190,13 +190,8 @@ void ATortugaCharacter::BeginPlay()
 	InitBone(TEXT("Cola"),   ColaBone,   ColaRestRot,   ColaRestLoc);
 	InitBone(TEXT("Cabeza"), CabezaBone, CabezaRestRot, CabezaRestLoc);
 
-	// Capture rest scale for the Cabeza bone (used by BigHead effect).
-	if (CabezaBone != NAME_None)
-	{
-		const int32 Idx = GetMesh()->GetBoneIndex(CabezaBone);
-		if (Idx != INDEX_NONE)
-			CabezaRestScale = GetMesh()->GetBoneTransform(Idx, EBoneSpaces::ComponentSpace).GetScale3D();
-	}
+	// Bone scale at rest is (1,1,1) in all UE5 skeletons — no query needed.
+	CabezaRestScale = FVector::OneVector;
 
 	// Log de diagnóstico: estado final de todos los huesos de emote
 	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Emote bones: Brazo1=%s  Brazo2=%s  Pata1=%s  Pata2=%s  Cola=%s  Cabeza=%s"),
@@ -207,48 +202,9 @@ void ATortugaCharacter::BeginPlay()
 		ColaBone   != NAME_None ? TEXT("OK") : TEXT("MISSING"),
 		CabezaBone != NAME_None ? TEXT("OK") : TEXT("MISSING"));
 
-	// ── Fix de network smoothing para skins en clientes remotos ──────────────
-	// El CMC sólo aplica smoothing al SkeletalMesh (GetMesh()) y sus hijos.
-	// Si los componentes de skin están en CapsuleComponent (root), se mueven con
-	// la posición raw (no suavizada) → lag visual en clientes remotos.
-	// Solución: si están en el root o en el capsule, re-adjuntarlos a GetMesh().
-	// Se preserva el transform relativo para no cambiar posiciones configuradas en BP.
-	{
-		USkeletalMeshComponent* MainMesh = GetMesh();
-		USceneComponent* RootComp = GetRootComponent();
-
-		// Lista de componentes cosméticos que deben ser hijos de GetMesh()
-		TWeakObjectPtr<USceneComponent> CosmeticComps[] = {
-			Pata1, Pata2, Brazo1, Brazo2, Cola, Cabeza
-		};
-
-		for (TWeakObjectPtr<USceneComponent>& WeakComp : CosmeticComps)
-		{
-			if (!WeakComp.IsValid() || !MainMesh)
-			{
-				continue;
-			}
-
-			USceneComponent* Comp = WeakComp.Get();
-			USceneComponent* AttachParent = Comp->GetAttachParent();
-
-			// Si ya está en GetMesh() o en un descendiente suyo, no hacer nada.
-			// Sólo reatamos si está en el root/capsule directamente.
-			if (AttachParent == RootComp || AttachParent == MainMesh->GetAttachParent())
-			{
-				// Guardar el transform relativo antes de re-adjuntar
-				const FTransform SavedRelTransform = Comp->GetRelativeTransform();
-
-				Comp->AttachToComponent(MainMesh,
-					FAttachmentTransformRules::KeepRelativeTransform);
-				Comp->SetRelativeTransform(SavedRelTransform);
-
-				UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' re-adjuntado a GetMesh() "
-					"para network smoothing (era hijo de '%s')."),
-					*Comp->GetName(), AttachParent ? *AttachParent->GetName() : TEXT("null"));
-			}
-		}
-	}
+	// Network smoothing: con el mesh unificado GetMesh() es el único componente visual.
+	// El CMC ya aplica smoothing a GetMesh() y sus hijos directamente — no se necesita
+	// re-adjuntar nada. El HelmetMeshComp está adjunto al socket "Sombrero" en GetMesh().
 
 	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown.
 	// 1) Buscar por nombre configurable (KnockdownComponentName).
@@ -3325,17 +3281,11 @@ void ATortugaCharacter::OnRep_bBigHead()
 
 void ATortugaCharacter::ApplyBigHeadVisual(bool bBig)
 {
-	if (CabezaBone == NAME_None || !GetMesh()) { return; }
-
-	const FVector TargetScale = bBig ? CabezaRestScale * BigHeadScale : CabezaRestScale;
-	const FQuat   CurrentRot  = GetMesh()->GetBoneQuaternion(CabezaBone, EBoneSpaces::ComponentSpace);
-	const FVector CurrentLoc  = GetMesh()->GetBoneLocation(CabezaBone, EBoneSpaces::ComponentSpace);
-	GetMesh()->SetBoneTransformByName(CabezaBone,
-		FTransform(CurrentRot, CurrentLoc, TargetScale),
-		EBoneSpaces::ComponentSpace);
-
-	UE_LOG(LogTemp, Log, TEXT("[BigHead] %s — %s"), *GetNameSafe(this),
-		bBig ? *FString::Printf(TEXT("cabeza escalada x%.1f"), BigHeadScale) : TEXT("cabeza restaurada"));
+	// TODO: USkeletalMeshComponent no expone SetBoneTransformByName (solo UPoseableMeshComponent).
+	// BigHead con mesh unificado requiere morph target o un UStaticMeshComponent secundario
+	// para la cabeza que se pueda escalar de forma independiente.
+	// Por ahora es un no-op visual; la lógica de duración/replicación sigue activa.
+	UE_LOG(LogTemp, Warning, TEXT("[BigHead] %s — efecto visual pendiente (necesita morph target)"), *GetNameSafe(this));
 }
 
 // ── Dive System ───────────────────────────────────────────────────────────────
