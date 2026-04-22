@@ -176,14 +176,18 @@ void ATortugaCharacter::BeginPlay()
 
 	// Resolve socket names to bone names on the Skeletal Mesh and capture rest poses.
 	// Sockets must exist on the mesh with these exact names; angles will be tuned later.
+	// Rest pose is read from the SOCKET transform (component-space), not directly from
+	// the bone. This lets artists correct the rest orientation per-bone by rotating the
+	// socket in the Skeleton Editor without recompiling.
 	auto InitBone = [&](FName SocketName, FName& OutBone, FRotator& OutRestRot, FVector& OutRestLoc)
 	{
 		if (!GetMesh()) { return; }
 		OutBone = GetMesh()->GetSocketBoneName(SocketName);
 		if (OutBone != NAME_None)
 		{
-			OutRestRot = GetMesh()->GetBoneQuaternion(OutBone, EBoneSpaces::ComponentSpace).Rotator();
-			OutRestLoc = GetMesh()->GetBoneLocation(OutBone, EBoneSpaces::ComponentSpace);
+			const FTransform SocketTM = GetMesh()->GetSocketTransform(SocketName, RTS_Component);
+			OutRestRot = SocketTM.Rotator();
+			OutRestLoc = SocketTM.GetTranslation();
 		}
 		else
 		{
@@ -1771,9 +1775,13 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
 
-			// Sin esto, el CMC suaviza la posición de la cápsula y puede
-			// "tirar" del mesh ragdolleado durante la corrección de red.
-			if (CMC_Ragdoll) { CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled; }
+			// Parar el CMC para que no intente mover el mesh mientras simula física.
+			// Sin esto genera "Attempting to move a fully simulated skeletal mesh" cada Tick.
+			if (CMC_Ragdoll)
+			{
+				CMC_Ragdoll->DisableMovement();
+				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+			}
 
 			bKnockdownRagdollActive = true;
 
@@ -1808,7 +1816,11 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			}
 			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 
-			if (CMC_Ragdoll) { CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential; }
+			if (CMC_Ragdoll)
+			{
+				CMC_Ragdoll->SetMovementMode(MOVE_Walking);
+				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+			}
 
 			bKnockdownRagdollActive = false;
 
