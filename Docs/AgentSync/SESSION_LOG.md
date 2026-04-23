@@ -1,5 +1,85 @@
 ﻿# SESSION LOG
 
+## 2026-04-24 — QA Drop Zone formateada + NEW-01 anti-sandwich + diseño SKIN-01
+
+### Resumen
+1 commit (`5da1608`). Drop zone procesada: 7 nuevos tickets registrados. Fix del sandwich del cubo físico. Doc de diseño del nuevo sistema de skins.
+
+### Bug fix — NEW-01: PhysicsObject anti-sandwich (commit `5da1608`)
+
+**Root cause identificada:**
+El CMC ya tenía `PushForceFactor=0` (desactiva `ApplyImpactPhysicsForces`). El único push que quedaba era el bloque manual en `ATN_PhysicsObjectActor::OnMeshHit`:
+```cpp
+// ELIMINADO:
+if (Cast<ATortugaCharacter>(OtherActor) && SpeedSq < CharacterPushVelocity * CharacterPushVelocity)
+{
+    const FVector PushDir = (GetActorLocation() - OtherActor->GetActorLocation()).GetSafeNormal2D();
+    Mesh->SetPhysicsLinearVelocity(PushDir * CharacterPushVelocity);
+}
+```
+
+El sandwich ocurría porque este bloque mandaba velocidad apuntando INTO la pared cuando el cubo ya estaba pegado a ella. CCD protege contra colisiones discretas rápidas pero no contra presión sostenida frame-a-frame.
+
+**Fix:** Bloque eliminado + `CharacterPushVelocity` UPROPERTY eliminada (huérfana). Cap `MaxPushVelocity` para fuentes externas se mantiene. La tortuga bloquea al cubo via cápsula pero no lo empuja.
+
+**Lección clave:** `SetPhysicsLinearVelocity` apuntando a geometría sólida = tunneling garantizado. Si quieres que un objeto sea inmóvil para ciertos actores, confía en la colisión y no apliques fuerza.
+
+---
+
+### Documentación — SKIN-01: diseño sistema de skins para SKM único
+
+**Contexto:** Personaje migró de múltiples `UStaticMeshComponent` individuales a un único `USkeletalMeshComponent`. El sistema de skins anterior iteraba sobre componentes. Ahora debe iterar sobre material slots del SKM.
+
+**Infraestructura existente que NO cambia:**
+- `FTN_SkinData` struct (3 materiales: `BodyMaterial`, `BellyMaterial`, `SkinMaterial`) — ya OK
+- `DT_Skins` DataTable — no tocar
+- `EquippedSkinId` replicación en `TN_CoopPlayerState` — no tocar
+- Helmets (socket `Sombrero`) — no tocar
+
+**Lo que SÍ cambia (C++):**
+- `DefaultBodyMaterials` TMap → `DefaultSkelMeshMaterials` TArray por slot
+- `BeginPlay`: cachear slots del SKM en lugar de SMC materials
+- `UpdateSkinVisual`: `SetMaterial(slotIndex, material)` por los 3 campos de `FTN_SkinData`
+- Añadir call a skin en `OnRep_PlayerState` y `PostSeamlessTravel` (igual que helmets)
+
+**Pendiente bloqueante (editor):** Verificar que slot 0=caparazón, slot 1=panza, slot 2=piel en el nuevo SKM.
+
+**Diseño completo:** `Docs/SISTEMA_SKINS.md`
+
+---
+
+### CC-02: Cámara clip — ya estaba en C++
+
+`bDoCollisionTest=true`, `ProbeSize=14.f`, `ProbeChannel=ECC_Camera` ya estaban seteados en el constructor de `ATortugaCharacter`. Si sigue clipando en PIE → verificar que el BP_TortugaCharacter no sobrescribe estos valores en sus Class Defaults.
+
+---
+
+### Nuevos tickets registrados en QA_TESTING.md
+
+| Ticket | Descripción | Estado |
+|---|---|---|
+| CC-02 | Cámara clip con geometría | ✅ C++ ya ok — verificar BP |
+| NEW-01 | Physics sandwich cubo/pared | ✅ Resuelto `5da1608` |
+| SKIN-01 | Nueva solución skins SKM único | 🔵 Diseño en SISTEMA_SKINS.md |
+| SOCKET-01 | Rotaciones incorrectas post-migración SKM | ⬜ Editor work |
+| Q4-09 | ThrowBall torque en vuelo | ⬜ Abierto |
+| Q4-10 | ThrowBall dato intermitente | ⬜ Abierto |
+| Q1-13 | Muerte aplica ragdoll | ⬜ Abierto |
+| Q1-14 | Revive item como SKM con ragdoll | 🔵 Decisión pendiente |
+
+---
+
+### Pendiente para próximas sesiones (Bloque A)
+
+Por orden de prioridad:
+1. **Q4-10** 🟠 ThrowBall intermittente — timeout fallback en cliente si `bLaunchApplied=false` tras 0.5s
+2. **Q1-13** 🟡 Death ragdoll — reutilizar `bUsePhysicsRagdoll` de Q1-07 en `SetDeadVisual(true)`
+3. **Q4-09** 🟡 ThrowBall torque — `SetPhysicsAngularVelocityInDegrees` en `ApplyLaunchDataIfReady`
+4. **SKIN-01** 🔵 — requiere confirmar slot indices en editor primero
+5. **SOCKET-01** 🟠 — mayormente editor work, C++ solo audit de bone names
+
+---
+
 ## 2026-04-21 — Ball replication resuelto + Umbrella/Totem C++ audio-VFX + Totem auto-revive
 
 ### Resumen
