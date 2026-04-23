@@ -6,7 +6,6 @@
 #include "NiagaraFunctionLibrary.h"
 #include "Sound/SoundBase.h"
 #include "NiagaraSystem.h"
-#include "Player/TortugaCharacter.h"
 
 ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 {
@@ -86,16 +85,7 @@ void ATN_PhysicsObjectActor::OnMeshHit(UPrimitiveComponent* HitComp, AActor* Oth
 	if (Mesh)
 	{
 		const FVector Vel = Mesh->GetComponentVelocity();
-		const float SpeedSq = Vel.SizeSquared();
-
-		if (Cast<ATortugaCharacter>(OtherActor) && SpeedSq < CharacterPushVelocity * CharacterPushVelocity)
-		{
-			// El CMC tiene bPushesRigidBodies=false → la tortuga no aplica fuerza
-			// automática. Aquí aplicamos un impulso único, controlado y seguro para CCD.
-			const FVector PushDir = (GetActorLocation() - OtherActor->GetActorLocation()).GetSafeNormal2D();
-			Mesh->SetPhysicsLinearVelocity(PushDir * CharacterPushVelocity);
-		}
-		else if (SpeedSq > MaxPushVelocity * MaxPushVelocity)
+		if (Vel.SizeSquared() > MaxPushVelocity * MaxPushVelocity)
 		{
 			// Cap de seguridad para fuentes de impulso externas (bola lanzada, etc.)
 			Mesh->SetPhysicsLinearVelocity(Vel.GetSafeNormal() * MaxPushVelocity);

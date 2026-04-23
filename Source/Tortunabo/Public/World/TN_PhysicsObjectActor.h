@@ -43,16 +43,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "0.1"))
 	float DormancyCheckInterval = 1.5f;
 
-	/** Velocidad máxima (cm/s) que puede alcanzar el objeto tras un impacto.
-	 *  Evita tunneling a través de paredes cuando el personaje empuja a alta velocidad. */
+	/** Velocidad máxima (cm/s) que puede alcanzar el objeto tras un impacto de fuente externa.
+	 *  Cap de seguridad contra bolas lanzadas u otros physics actors de alta velocidad. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "100.0"))
 	float MaxPushVelocity = 1200.f;
-
-	/** Velocidad (cm/s) aplicada cuando una tortuga empuja el objeto.
-	 *  El CMC tiene bPushesRigidBodies=false → el impulso se aplica aquí, en OnMeshHit,
-	 *  de forma controlada y segura para CCD. */
-	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "50.0"))
-	float CharacterPushVelocity = 400.f;
 
 	/** Bloquear rotación alrededor del eje X (roll). Evita que el actor ruede de lado. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Constraints")

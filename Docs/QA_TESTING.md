@@ -35,6 +35,23 @@ Registro de bugs, mejoras y decisiones detectadas durante testing en PIE.
 
 ## Cross-cutting — Player & Movement
 
+### CC-02 🔴 Cámara — clip con geometría
+**Componente:** `ATortugaCharacter` (SpringArmComponent)
+**Estado:** ✅ Resuelto en C++ (pendiente verificar override en BP)
+**Origen:** Drop-zone 2026-04-24
+
+**Observación:**
+La cámara no debería clipear con ninguna geometría.
+
+**Análisis:**
+`CameraBoom->bDoCollisionTest=true`, `ProbeSize=14.f`, `ProbeChannel=ECC_Camera` ya están seteados en el constructor de `ATortugaCharacter` (líneas 81-83 del `.cpp`). Si aún clipea en PIE, el motivo es que **el BP_TortugaCharacter tiene Class Defaults que sobrescriben estos valores**.
+
+**Acción (editor):**
+- Abrir `BP_TortugaCharacter` → seleccionar `CameraBoom` → Details → verificar que `Do Collision Test = true` y `Probe Size = 14`.
+- Si el BP los sobreescribe: dejar en blanco para que hereden el C++ default.
+
+---
+
 ### CC-01 🟠 Second jump landing — clip y "pegado al suelo" al levantarse
 **Componente:** `ATortugaCharacter` (CharacterMovementComponent / aterrizaje)
 **Estado:** ⬜ Abierto
@@ -352,6 +369,7 @@ Esto simplifica drásticamente el modelo mental: los botones son sensores tontos
 **Componente:** `ATN_ButtonInteractable`
 **Estado:** ✅ Resuelto — commit `dde37a1`
 **Origen:** Drop-zone 2026-04-19 (extensión de Q2-04)
+
 
 **Fix aplicado:**
 Nuevo `UENUM(BlueprintType) EButtonOffsetMode { DoUndo, CyclicStates }` (default **DoUndo**, comportamiento original preservado). `CyclicStates` añade `UPROPERTY TArray<FTransform> CyclicStateTransforms` (visible solo con `EditCondition`). `CurrentStateIndex` replicado con `OnRep_CurrentStateIndex` y getter `GetCurrentStateIndex()` expuesto a BP. En `Interact`, modo cíclico avanza `CurrentStateIndex = (CurrentStateIndex + 1) % N` y `bIsActivated` refleja "estado != 0" para mantener compat con `ButtonGroupManager`. `DeferredInit` precomputa `CyclicResolvedTransforms` (y equivalentes por `AdditionalMoveTargets`) para evitar recalcular cada Tick.
@@ -679,6 +697,139 @@ El comportamiento actual (pre-fix) es Reversible por defecto.
 - UPROPERTY `BreakMode` default `Reversible` (retrocompat).
 - En `OnStandTriggerEndOverlap`, si `BreakMode == Latched` y `BreakTimerHandle` está activo, early-return sin cancelar timers.
 - El shake ya no se cancela al salir pawns (guard existente `if (bIsShaking) return`), así que Latched simplemente extiende esa política al período pre-shake.
+
+---
+
+## Batch drop-zone 2026-04-24
+
+### NEW-01 🟠 PhysicsObject — sandwich cubo/pared al empujar
+**Componente:** `ATN_PhysicsObjectActor`
+**Estado:** ✅ Resuelto — pendiente compilar y verificar en PIE
+**Origen:** Drop-zone 2026-04-24
+
+**Observación:**
+La tortuga podía crear un "sandwich": caminar contra el cubo hasta pegarlo a una pared, y `OnMeshHit` seguía aplicando `SetPhysicsLinearVelocity` apuntando a la pared → el cubo la traspasaba. El `PushForceFactor=0` del CMC ya desactivaba el push automático, pero el impulso manual en `OnMeshHit` persistía.
+
+**Fix aplicado:**
+Eliminado el bloque `Cast<ATortugaCharacter>` + `SetPhysicsLinearVelocity` de `OnMeshHit`. La tortuga **ya no puede aplicar fuerza al cubo caminando/corriendo**. El cap `MaxPushVelocity` para fuentes externas (bola lanzada) se mantiene. Eliminado `CharacterPushVelocity` del header (propiedad huérfana). Eliminado el include de `TortugaCharacter.h` del `.cpp`.
+
+**Comportamiento resultante:**
+- Tortuga camina contra cubo → bloqueada por la colisión, cubo no se mueve. ✅
+- Cubo puede ser movido por bolas lanzadas (fuentes externas) con cap de velocidad. ✅
+- `ATN_BouncePhysicsObject::OnKickHit` (kick explícito) funciona igual — usa `AddImpulse` directo, independiente de este bloque. ✅
+
+---
+
+### SKIN-01 🔵 Skins — nueva solución para SKM único
+**Componente:** `ATortugaCharacter::UpdateSkinVisual` + `FTN_SkinData`
+**Estado:** ⬜ Abierto (diseño documentado, pendiente implementar)
+**Origen:** Drop-zone 2026-04-24
+
+**Contexto:**
+El personaje migró de múltiples StaticMeshComponents a un único SkeletalMeshComponent. El sistema de skins anterior aplicaba materiales por componente (Cuerpo, Pata1, Pata2, Cola, Cabeza). Ahora debe aplicarse por slot del SKM.
+
+**Diseño propuesto:**
+Ver `Docs/SISTEMA_SKINS.md` para el diseño completo, checklist de implementación y código propuesto.
+
+Resumen de cambios:
+- `DefaultBodyMaterials` (TMap de SMCs) → `DefaultSkelMeshMaterials` (TArray por slot)
+- `BeginPlay` cachea slots del SKM en lugar de SMCs
+- `UpdateSkinVisual` itera slots del SKM: Slot 0=BodyMaterial, Slot 1=BellyMaterial, Slot 2=SkinMaterial
+- `DT_Skins` y `FTN_SkinData` no cambian
+- Helmets (socket `Sombrero`) no cambian
+
+**Pendiente editor (bloqueante):**
+Verificar índices de material slots del nuevo SKM en UE5 antes de implementar el C++.
+
+---
+
+### SOCKET-01 🟠 Animaciones — rotaciones incorrectas tras migración a SKM
+**Componente:** `ATortugaCharacter` (SkeletalMesh sockets + ABP)
+**Estado:** ⬜ Abierto
+**Origen:** Drop-zone 2026-04-24
+
+**Contexto:**
+Antes: múltiples SceneComponents con meshes individuales (cabeza, brazos, piernas, cola). Ahora: un único Skeletal Mesh. Los sockets del nuevo SM tienen rotaciones incorrectas → las animaciones de walk/run/emotes/look/jump muestran offsets erróneos en huesos.
+
+**Capas del problema:**
+1. **Editor (80%):** Los sockets deben reposicionarse/rerotarse en el Skeleton Editor del SM. No es código.
+2. **C++ (20%):** Si hay nombres de sockets hardcodeados en código que no existen en el nuevo SM → attaches silenciosamente rotos.
+
+**Audit de socket names en C++:**
+Sockets referenciados en código:
+- `"Sombrero"` — `HelmetSocketName` en `TortugaCharacter.h:407` (helmet attach)
+- Bones: `Brazo1Bone`, `Brazo2Bone`, `ColaBone`, `CabezaBone`, `Pata1Bone`, `Pata2Bone` → resueltos en BeginPlay desde sockets del SM
+
+**Acción:**
+- En editor: abrir el nuevo SM → Skeleton → verificar que existen sockets con los nombres exactos `Brazo1`, `Brazo2`, `Pata1`, `Pata2`, `Cola`, `Cabeza`, `Sombrero`.
+- Si los huesos/sockets del nuevo SM tienen nombres diferentes → actualizar `BeginPlay` en `TortugaCharacter.cpp` donde se resuelven los bone names.
+- El ajuste de rotaciones de las animaciones es trabajo de editor (ABP blend spaces, pose correciva, o reposicionamiento de sockets).
+
+---
+
+### Q4-09 🟡 ThrowBall — torque de rotación en vuelo
+**Componente:** `ATN_ThrowableItemActor`
+**Estado:** ⬜ Abierto
+**Origen:** Drop-zone 2026-04-24
+
+**Observación:**
+La bola lanzada vuela sin girar. Se quiere aplicar un **torque predefinido** (rotación constante, no dependiente de la dirección del lanzador) para dar realismo visual. No debe romper el sistema actual de `ProjectileMovement` ni la replicación.
+
+**Diseño propuesto:**
+- Nueva `UPROPERTY FVector ThrowAngularVelocityDegSec` (default `(0, 360, 0)` — giro sobre eje Y = backspin natural).
+- En `ApplyLaunchDataIfReady`: `Mesh->SetPhysicsAngularVelocityInDegrees(ThrowAngularVelocityDegSec)`.
+- No afecta la trayectoria (solo es cosmético sobre el mesh, el `ProjectileMovement` controla la posición).
+- `(0,0,0)` = sin rotación (retrocompat).
+
+---
+
+### Q4-10 🟠 ThrowBall — dato no se envía correctamente de forma intermitente
+**Componente:** `ATN_ThrowableItemActor`
+**Estado:** ⬜ Abierto
+**Origen:** Drop-zone 2026-04-24
+
+**Observación:**
+Muy de vez en cuando, la bola lanzada "se queda" — parece que el dato de lanzamiento no llega. Ocurre raramente pero es un bug real de replicación intermitente.
+
+**Hipótesis más probable:**
+El timeout del guard `bLaunchApplied` — si `ApplyLaunchDataIfReady` nunca se dispara (OnRep llega corrupto o se pierde en un bunch fragmentado), la bola queda en spawn sin activar. No hay retry activo.
+
+**Acción propuesta:**
+- En `BeginPlay`, después de N ticks sin `bLaunchApplied=true`, forzar `ApplyLaunchDataIfReady` si los datos están listos.
+- Timer de 0.5s en clientes: si `bLaunchApplied==false && ThrowData.IsReady()` → reintentar.
+
+---
+
+### Q1-13 🟡 Muerte — aplicar ragdoll igual que knockdown
+**Componente:** `ATortugaCharacter` (sistema de muerte + `bUsePhysicsRagdoll`)
+**Estado:** ⬜ Abierto
+**Origen:** Drop-zone 2026-04-24
+
+**Observación:**
+Cuando un jugador muere, debería caer con ragdoll físico (igual que el knockdown de Q1-07) en lugar de simplemente ocultarse o quedarse rígido. El ragdoll de Q1-07 ya está implementado y funciona — reutilizarlo para muerte.
+
+**Diseño propuesto:**
+- En `SetDeadVisual(true)`: si `bUsePhysicsRagdoll && GetMesh()->GetPhysicsAsset()` → activar ragdoll físico sin timer de recovery (muerte es permanente en este contexto).
+- El `MulticastSetDeadVisual` ya existe y replica a todos — solo añadir la activación de ragdoll dentro de él.
+- No hay recovery: `SetSimulatePhysics(false)` nunca se llama al morir.
+
+---
+
+### Q1-14 🔵 Revive item — ¿skeletal mesh con ragdoll activo?
+**Componente:** `ATN_RescuePickup`
+**Estado:** ⬜ Decisión pendiente
+**Origen:** Drop-zone 2026-04-24
+
+**Pregunta de diseño:**
+¿Debería el item de revive (`TN_RescuePickup`) ser un skeletal mesh con ragdoll activo, que represente visualmente el cuerpo caído del jugador?
+
+**Consideraciones:**
+- El pawn muerto ya existe en el mundo como cadáver interactuable — hay un `ATortugaCharacter` con `bIsDead=true` en el punto de muerte.
+- El `TN_RescuePickup` actual es un actor separado spawnedo en la posición de muerte.
+- Si el pawn muerto ya tiene ragdoll (Q1-13), podría eliminarse el `RescuePickup` visual y usar el propio pawn como visual + trigger de revive.
+- O: mantener el RescuePickup como interactuable pero hacerlo coincidir con el pawn ragdolleado visualmente.
+
+**Acción:** Decisión de diseño antes de implementar. Depende de si Q1-13 queda bien visualmente.
 
 ---
 
