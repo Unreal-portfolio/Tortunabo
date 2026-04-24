@@ -2139,7 +2139,13 @@ void ATortugaCharacter::OnRep_IsDead()
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 			SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
-			SkelMesh->SetSimulatePhysics(true);
+			// CRÍTICO (bug "ragdoll no cae, vibra tieso"): en clientes, SetSimulatePhysics
+			// activa los bodies pero el PhysicsBlendWeight queda en 0 (default del ACharacter)
+			// → simulación existe pero la pose del anim domina → ragdoll kinematic.
+			// BlendWeight=1 + EnableGravity replican el setup del servidor.
+			SkelMesh->SetAllBodiesSimulatePhysics(true);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+			SkelMesh->SetEnableGravity(true);
 			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
@@ -2191,7 +2197,10 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 			SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
-			SkelMesh->SetSimulatePhysics(true);
+			// Mismo setup que el servidor — sin BlendWeight=1 + Gravity el ragdoll no cae.
+			SkelMesh->SetAllBodiesSimulatePhysics(true);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+			SkelMesh->SetEnableGravity(true);
 			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
