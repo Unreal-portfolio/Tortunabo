@@ -62,10 +62,10 @@ ATortugaCharacter::ATortugaCharacter()
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 
-	// bPushesRigidBodies empuja física con PushForceFactor por frame de contacto.
-	// Con valor bajo (2.0) la fuerza es suave y no provoca tunneling.
+	// bEnablePhysicsInteraction habilita PushForceFactor/TouchForceFactor sobre rigid bodies
+	// por contacto. Valor bajo (2.0) = empujón suave sin tunneling.
 	// OnMeshHit de TN_PhysicsObjectActor ya no aplica impulso por TortugaCharacter.
-	GetCharacterMovement()->bPushesRigidBodies = true;
+	GetCharacterMovement()->bEnablePhysicsInteraction = true;
 	GetCharacterMovement()->PushForceFactor = 2.f;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
