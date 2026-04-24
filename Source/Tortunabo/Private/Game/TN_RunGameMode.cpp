@@ -588,8 +588,11 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 void ATN_RunGameMode::FinalizeDeathVisual(int32 PlayerId)
 {
 	// DEATH-01 · callback del timer lanzado en MarkPlayerDead.
-	// Tras DeathRagdollDurationSeconds: capturamos la pos actual del ragdoll,
-	// ocultamos el pawn y movemos el pickup a esa posición — efecto "Roblox death".
+	// Diseño (2026-04-24 rev 2): el ragdoll del pawn es el visual PERMANENTE del
+	// pickup. Tras DeathRagdollDurationSeconds (cuando el ragdoll ya ha caído y
+	// se ha estabilizado), sincronizamos la posición del trigger del pickup con
+	// la pos real del cuerpo. El mesh del pickup NUNCA se muestra — el body del
+	// ragdoll ES el visual. El trigger captura la interacción para revive.
 	DeathFinalizeTimers.Remove(PlayerId);
 
 	// Si el jugador ya revivió, RevivePlayer habrá destruido el pickup → salimos.
@@ -602,11 +605,8 @@ void ATN_RunGameMode::FinalizeDeathVisual(int32 PlayerId)
 
 	if (DeadPawn)
 	{
-		// Si el ragdoll está activo, leer la pos y yaw del root bone para colocar
-		// el pickup donde realmente ha caído el cuerpo (puede haber rodado por
-		// pendientes, chocado, etc.). Mantenemos la simulación activa hasta que
-		// RevivePlayer llame a SetDeadVisual(false) — el re-attach en SetDeadVisual
-		// requiere IsSimulatingPhysics()==true para ejecutarse correctamente.
+		// Leer pos y yaw del root bone del ragdoll para colocar el trigger del pickup
+		// donde realmente ha caído el cuerpo (puede haber rodado por pendientes, etc.).
 		if (const ATortugaCharacter* Character = Cast<ATortugaCharacter>(DeadPawn))
 		{
 			if (USkeletalMeshComponent* SKM = Character->GetMesh())
@@ -618,15 +618,20 @@ void ATN_RunGameMode::FinalizeDeathVisual(int32 PlayerId)
 					const FRotator BodyYaw(0.f, SKM->GetComponentRotation().Yaw, 0.f);
 					Pickup->SetActorLocationAndRotation(RagdollLoc, BodyYaw);
 				}
+				else
+				{
+					// Fallback: sin PhysicsAsset el ragdoll no cayó. El pawn quedó en
+					// MarkPlayerDead oculto (línea 531) — en ese caso sí mostramos el
+					// mesh del pickup para que haya algo visible con lo que interactuar.
+					Pickup->ShowInteractableMesh();
+				}
 			}
 		}
-		// Ocultamos el pawn en cualquier caso (ragdoll o fallback sin PhysicsAsset).
-		// RevivePlayer ya llama SetActorHiddenInGame(false) para restaurarlo.
-		DeadPawn->SetActorHiddenInGame(true);
+		// NOTA: NO ocultamos el pawn. El ragdoll es el visual del pickup.
+		// RevivePlayer reataca el mesh al capsule cuando el jugador revive.
 	}
 
-	Pickup->ShowInteractableMesh();
-	UE_LOG(LogTemp, Log, TEXT("[Death] FinalizeDeathVisual PlayerId=%d → pickup visible, pawn hidden"), PlayerId);
+	UE_LOG(LogTemp, Log, TEXT("[Death] FinalizeDeathVisual PlayerId=%d → trigger sincronizado con ragdoll"), PlayerId);
 }
 
 // ── DBNO (Down But Not Out) ────────────────────────────────────────────────────
