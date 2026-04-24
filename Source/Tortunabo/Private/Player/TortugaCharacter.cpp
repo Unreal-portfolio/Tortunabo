@@ -1825,25 +1825,22 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SnapshotSkelMeshRelTransform = SkelMesh->GetRelativeTransform();
 			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 
-			// CRÍTICO (warning "fully simulated skeletal mesh"): detener replicación
-			// de movimiento del actor antes de la simulación. Sin esto, el server
-			// sigue replicando Transform y el cliente intenta reconciliar posición
-			// con el mesh ya simulando.
 			if (HasAuthority())
 			{
 				SetReplicateMovement(false);
 			}
+
+			// KNOCKDOWN: preservar el momentum del LaunchCharacter (plátano, golpes).
+			// Capturamos la velocity del CMC ANTES de pararlo para transferirla a los
+			// bodies del ragdoll después — si no, el ragdoll arranca inerte y se cae
+			// donde estabas sin "resbalar" por el impulso del plátano.
+			const FVector KnockdownInitialVel = CMC_Ragdoll ? CMC_Ragdoll->Velocity : FVector::ZeroVector;
 
 			if (CMC_Ragdoll)
 			{
 				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 				CMC_Ragdoll->DisableMovement();
 				CMC_Ragdoll->StopMovementImmediately();
-				// CRÍTICO (warning "fully simulated skeletal mesh"): DisableMovement solo
-				// cambia MovementMode a MOVE_None. El tick del CMC sigue activo y llama
-				// UpdateBasedMovement que arrastra la capsule → propaga move al mesh child
-				// simulado cada frame. Apagar el tick del CMC corta la raíz del warning.
-				// Source: UE-76457, forums.unrealengine.com/t/rag-doll-attached-to-parent.
 				CMC_Ragdoll->SetComponentTickEnabled(false);
 			}
 
@@ -1857,14 +1854,14 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
-			// CRÍTICO (ragdoll "sale disparado"): los bodies heredan la velocity
-			// world del component padre al activar simulate. Zero-out para que el
-			// ragdoll empiece inerte y caiga solo por gravedad.
-			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+			// Transferir el momentum capturado a los bodies → resbalón del plátano.
+			// Angular=0 para que no spine raro al iniciar.
+			SkelMesh->SetAllPhysicsLinearVelocity(KnockdownInitialVel);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
-			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s"),
-				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"));
+			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s InitVel=(%.0f,%.0f,%.0f)"),
+				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"),
+				KnockdownInitialVel.X, KnockdownInitialVel.Y, KnockdownInitialVel.Z);
 
 			bKnockdownRagdollActive = true;
 		}
@@ -3796,7 +3793,11 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 		if (USkeletalMeshComponent* SkelMesh = GetMesh())
 		{
 			const FQuat BaseQuat = DiveMeshDefaultRot.Quaternion();
-			const FQuat TiltQuat(FVector(0.f, 1.f, 0.f), FMath::DegreesToRadians(DivePitch * env));
+			// Axis configurable en BP para ajustar sin recompilar: user puede probar
+			// (1,0,0) vs (0,1,0) vs (-1,0,0) etc según la orientación default del
+			// mesh post-ANIM-01. Default (1,0,0) asume Yaw=90 en rest.
+			const FVector TiltAxisNorm = DiveTiltAxis.IsNearlyZero() ? FVector(1.f, 0.f, 0.f) : DiveTiltAxis.GetSafeNormal();
+			const FQuat TiltQuat(TiltAxisNorm, FMath::DegreesToRadians(DivePitch * env));
 			SkelMesh->SetRelativeRotation(TiltQuat * BaseQuat);
 		}
 

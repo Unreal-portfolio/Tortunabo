@@ -137,6 +137,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="200.0", ClampMax="3000.0"))
 	float DiveForwardSpeed = 420.f;
 
+	/**
+	 * Eje de rotación del tilt del dive EN ESPACIO LOCAL DEL MESH (component frame).
+	 * Default (1,0,0) = rota sobre X local — que con DiveMeshDefaultRot Yaw=90
+	 * equivale a pitch lateral world (tortuga se inclina adelante).
+	 * Probar (0,1,0) si rota sobre el eje frontal en vez del lateral (o viceversa).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive")
+	FVector DiveTiltAxis = FVector(1.f, 0.f, 0.f);
+
 	/** Downward component of the dive impulse (cm/s, ≥0 pushes toward ground). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0"))
 	float DiveDownwardSpeed = 200.f;

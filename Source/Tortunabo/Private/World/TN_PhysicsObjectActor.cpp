@@ -9,9 +9,11 @@
 
 ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 {
-	// Tick activo en servidor para el sweep anti phase-through. Early-exit si la
-	// velocidad horizontal está bajo umbral → coste despreciable en reposo.
-	PrimaryActorTick.bCanEverTick = true;
+	// Tick DESHABILITADO por default. Solo se activa en BeginPlay si
+	// bEnableAntiPhaseThrough=true en el BP. Sin esto, el Tick corría aunque
+	// bEnableAntiPhaseThrough=false (early-exit) y podía interferir en algunos
+	// casos. Ahora el actor no tiene tick hasta que explícitamente se activa.
+	PrimaryActorTick.bCanEverTick = false;
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
@@ -70,6 +72,13 @@ void ATN_PhysicsObjectActor::BeginPlay()
 				CrushCheckTimer, this,
 				&ATN_PhysicsObjectActor::CheckForCrush,
 				CrushCheckInterval, /*bLoop=*/true);
+		}
+
+		// Activar Tick solo si el BP activó anti-phase-through. Default off.
+		if (bEnableAntiPhaseThrough)
+		{
+			PrimaryActorTick.bCanEverTick = true;
+			SetActorTickEnabled(true);
 		}
 	}
 }
