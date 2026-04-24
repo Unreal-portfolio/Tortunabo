@@ -24,4 +24,10 @@ void UTN_ProcAnimInstance::NativePostEvaluateAnimation()
 		const int32 Idx = Mesh->GetBoneIndex(BoneName);
 		if (Transforms.IsValidIndex(Idx)) { Transforms[Idx].SetTranslation(Loc); }
 	}
+
+	for (const auto& [BoneName, Scale] : BoneScale)
+	{
+		const int32 Idx = Mesh->GetBoneIndex(BoneName);
+		if (Transforms.IsValidIndex(Idx)) { Transforms[Idx].SetScale3D(Scale); }
+	}
 }

@@ -463,11 +463,11 @@ private:
 	TArray<TObjectPtr<UInputAction>> LoadedEmoteActions;
 
 	/**
-	 * Materiales originales de cada StaticMeshComponent del cuerpo, cacheados en BeginPlay.
+	 * Materiales originales del SkeletalMesh unificado, cacheados en BeginPlay.
 	 * Usados para restaurar el aspecto por defecto cuando se desequipa un skin (NAME_None).
 	 * Transient: se recalcula cada vez que spawnea el pawn.
 	 */
-	TMap<TWeakObjectPtr<UStaticMeshComponent>, TArray<TObjectPtr<UMaterialInterface>>> DefaultBodyMaterials;
+	TArray<TObjectPtr<UMaterialInterface>> DefaultSkelMeshMaterials;
 
 	// ── Leg animation state (cosmetic, local-only, never replicated) ──────────
 	float LegPhaseAccumulator    = 0.f;   // cycles [0,1)
@@ -555,6 +555,8 @@ private:
 	void SetAnimBoneLoc(FName BoneName, const FVector& Loc) const;
 	/** Get a bone's current location in component space. */
 	FVector GetAnimBoneLoc(FName BoneName) const;
+	/** Set a bone's scale in component space. Pass FVector::OneVector to clear override. */
+	void SetAnimBoneScale(FName BoneName, const FVector& Scale) const;
 	// Per-emote input handlers (one-liners, bound in SetupPlayerInputComponent)
 	void OnEmote0(); void OnEmote1(); void OnEmote2(); void OnEmote3(); void OnEmote4();
 	void OnEmote5(); void OnEmote6(); void OnEmote7(); void OnEmote8(); void OnEmote9();

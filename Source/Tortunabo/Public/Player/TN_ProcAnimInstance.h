@@ -18,6 +18,7 @@ public:
 	// Component-space bone overrides — keyed by resolved bone name (not socket name).
 	TMap<FName, FQuat>   BoneQuat;
 	TMap<FName, FVector> BoneLoc;
+	TMap<FName, FVector> BoneScale;
 
 protected:
 	virtual void NativePostEvaluateAnimation() override;

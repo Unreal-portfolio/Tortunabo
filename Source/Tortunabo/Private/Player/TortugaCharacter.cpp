@@ -62,11 +62,11 @@ ATortugaCharacter::ATortugaCharacter()
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 
-	// PushForceFactor=0 anula ApplyImpactPhysicsForces del CMC (fuerza = factor × 0 = 0).
-	// Sin esto, el CMC aplica fuerza cada frame de contacto y la masa cancela en la
-	// fórmula → velocidades de decenas de miles cm/s → tunneling pese a CCD.
-	// TN_PhysicsObjectActor::OnMeshHit aplica el impulso controlado en su lugar.
-	GetCharacterMovement()->PushForceFactor = 0.f;
+	// bPushesRigidBodies empuja física con PushForceFactor por frame de contacto.
+	// Con valor bajo (2.0) la fuerza es suave y no provoca tunneling.
+	// OnMeshHit de TN_PhysicsObjectActor ya no aplica impulso por TortugaCharacter.
+	GetCharacterMovement()->bPushesRigidBodies = true;
+	GetCharacterMovement()->PushForceFactor = 2.f;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -326,18 +326,14 @@ void ATortugaCharacter::BeginPlay()
 		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] HelmetMeshComp adjunto al socket '%s'."), *HelmetSocketName.ToString());
 	}
 
-	// Cachear materiales originales de todos los StaticMeshComponents del cuerpo.
+	// Cachear materiales originales del SKM unificado (slots 0-4).
 	// Deben guardarse ANTES del timer para que UpdateSkinVisual(NAME_None) pueda restaurarlos.
-	DefaultBodyMaterials.Reset();
-	for (UActorComponent* Comp : GetComponents())
+	DefaultSkelMeshMaterials.Reset();
+	if (USkeletalMeshComponent* SKM = GetMesh())
 	{
-		UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp);
-		if (!SMC || SMC == HelmetMeshComp) { continue; }
-
-		TArray<TObjectPtr<UMaterialInterface>>& Mats = DefaultBodyMaterials.Add(SMC);
-		for (int32 i = 0; i < SMC->GetNumMaterials(); ++i)
+		for (int32 i = 0; i < SKM->GetNumMaterials(); ++i)
 		{
-			Mats.Add(SMC->GetMaterial(i));
+			DefaultSkelMeshMaterials.Add(SKM->GetMaterial(i));
 		}
 	}
 
@@ -1484,18 +1480,15 @@ void ATortugaCharacter::UpdateHelmetMesh(FName HelmetId)
 
 void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 {
+	USkeletalMeshComponent* SKM = GetMesh();
+	if (!SKM) { return; }
+
 	// Sin skin equipado → restaurar materiales originales cacheados en BeginPlay.
 	if (SkinId == NAME_None)
 	{
-		for (auto& Pair : DefaultBodyMaterials)
+		for (int32 i = 0; i < DefaultSkelMeshMaterials.Num(); ++i)
 		{
-			if (UStaticMeshComponent* SMC = Pair.Key.Get())
-			{
-				for (int32 i = 0; i < Pair.Value.Num(); ++i)
-				{
-					SMC->SetMaterial(i, Pair.Value[i]);
-				}
-			}
+			SKM->SetMaterial(i, DefaultSkelMeshMaterials[i]);
 		}
 		return;
 	}
@@ -1515,53 +1508,16 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 		return;
 	}
 
-	// Componentes que reciben BodyMaterial (caparazón).
-	static const TArray<FName> BodyNames = { TEXT("Body") };
+	// Slot 0 = caparazón (BodyMaterial)
+	// Slot 1 = panza (BellyMaterial, fallback a BodyMaterial)
+	// Slot 2 = extremidades (SkinMaterial, fallback a BodyMaterial)
+	// Slots 3-4 = sin tocar (complementos del mesh unificado)
+	SKM->SetMaterial(0, Row->BodyMaterial);
+	SKM->SetMaterial(1, Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial);
+	SKM->SetMaterial(2, Row->SkinMaterial  ? Row->SkinMaterial  : Row->BodyMaterial);
 
-	// Componente que recibe BellyMaterial (panza). Fallback a BodyMaterial si BellyMaterial es null.
-	static const TArray<FName> BellyNames = { TEXT("Body1") };
-
-	// Componentes que reciben SkinMaterial (extremidades / detalles).
-	static const TArray<FName> SkinNames = {
-		TEXT("Mesh1"), TEXT("Mesh2"), TEXT("Mesh3"),
-		TEXT("Mesh4"), TEXT("Mesh5"), TEXT("Mesh13")
-	};
-
-	int32 NumApplied = 0;
-	for (UActorComponent* Comp : GetComponents())
-	{
-		UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp);
-		if (!SMC || SMC == HelmetMeshComp) { continue; }
-
-		const FName CompName = SMC->GetFName();
-
-		UMaterialInterface* MatToApply = nullptr;
-		if (BodyNames.Contains(CompName) && Row->BodyMaterial)
-		{
-			MatToApply = Row->BodyMaterial;
-		}
-		else if (BellyNames.Contains(CompName))
-		{
-			// BellyMaterial para la panza; si no está configurado, usa BodyMaterial como fallback.
-			MatToApply = Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial;
-		}
-		else if (SkinNames.Contains(CompName) && Row->SkinMaterial)
-		{
-			MatToApply = Row->SkinMaterial;
-		}
-
-		if (!MatToApply) { continue; }
-
-		const int32 NumMats = SMC->GetNumMaterials();
-		for (int32 i = 0; i < NumMats; ++i)
-		{
-			SMC->SetMaterial(i, MatToApply);
-		}
-		++NumApplied;
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' skin '%s' aplicado a %d componentes."),
-		*GetName(), *SkinId.ToString(), NumApplied);
+	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' skin '%s' aplicado."),
+		*GetName(), *SkinId.ToString());
 }
 
 void ATortugaCharacter::Landed(const FHitResult& Hit)
@@ -1924,7 +1880,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		}
 
 		FRotator KnockedRot = MeshDefaultRelativeRotation;
-		KnockedRot.Pitch -= 180.0f;
+		KnockedRot.Roll += 180.0f;
 		VisComp->SetRelativeRotation(KnockedRot);
 	}
 	else
@@ -2637,6 +2593,16 @@ void ATortugaCharacter::SetAnimBoneLoc(FName BoneName, const FVector& Loc) const
 	if (BoneName == NAME_None) { return; }
 	if (UTN_ProcAnimInstance* Inst = Cast<UTN_ProcAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr))
 		Inst->BoneLoc.Add(BoneName, Loc);
+}
+
+void ATortugaCharacter::SetAnimBoneScale(FName BoneName, const FVector& Scale) const
+{
+	if (BoneName == NAME_None) { return; }
+	if (UTN_ProcAnimInstance* Inst = Cast<UTN_ProcAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr))
+	{
+		if (Scale.Equals(FVector::OneVector)) { Inst->BoneScale.Remove(BoneName); }
+		else                                  { Inst->BoneScale.Add(BoneName, Scale); }
+	}
 }
 
 FVector ATortugaCharacter::GetAnimBoneLoc(FName BoneName) const
@@ -3412,11 +3378,13 @@ void ATortugaCharacter::OnRep_bBigHead()
 
 void ATortugaCharacter::ApplyBigHeadVisual(bool bBig)
 {
-	// TODO: USkeletalMeshComponent no expone SetBoneTransformByName (solo UPoseableMeshComponent).
-	// BigHead con mesh unificado requiere morph target o un UStaticMeshComponent secundario
-	// para la cabeza que se pueda escalar de forma independiente.
-	// Por ahora es un no-op visual; la lógica de duración/replicación sigue activa.
-	UE_LOG(LogTemp, Warning, TEXT("[BigHead] %s — efecto visual pendiente (necesita morph target)"), *GetNameSafe(this));
+	if (CabezaBone == NAME_None)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BigHead] CabezaBone not resolved on %s"), *GetNameSafe(this));
+		return;
+	}
+	const float S = bBig ? BigHeadScale : 1.f;
+	SetAnimBoneScale(CabezaBone, FVector(S));
 }
 
 // ── Dive System ───────────────────────────────────────────────────────────────
@@ -3799,7 +3767,7 @@ void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
 
 	const FQuat RestQ (FVector(0.f, 0.f, 1.f), FMath::DegreesToRadians(HeadRestYawDeg));
 	const FQuat YawQ  (FVector(0.f, 0.f, 1.f), FMath::DegreesToRadians(Yaw));
-	const FQuat PitchQ(FVector(1.f, 0.f, 0.f), FMath::DegreesToRadians(Pitch));
+	const FQuat PitchQ(FVector(-1.f, 0.f, 0.f), FMath::DegreesToRadians(Pitch));
 	SetAnimBoneRot(CabezaBone, (RestQ * YawQ * PitchQ * FQuat(CabezaRestRot)).Rotator());
 }
 
