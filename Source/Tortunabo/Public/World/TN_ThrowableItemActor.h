@@ -96,6 +96,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RollingFriction = 0.25f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable|Physics")
+	FVector ThrowAngularVelocityDegSec = FVector(0.f, 360.f, 0.f);
+
 protected:
 	/**
 	 * Aplica los datos de lanzamiento (escala, posición, velocidad) cuando están listos.

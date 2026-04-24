@@ -192,6 +192,11 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 		ProjectileMovement->Activate(true);
 	}
 
+	if (!ThrowAngularVelocityDegSec.IsNearlyZero())
+	{
+		Mesh->SetPhysicsAngularVelocityInDegrees(ThrowAngularVelocityDegSec);
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) pmActive=%d"),
 		HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"),
 		ThrowData.SpawnLocation.X, ThrowData.SpawnLocation.Y, ThrowData.SpawnLocation.Z,
