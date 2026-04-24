@@ -94,9 +94,13 @@ void ATN_PhysicsObjectActor::Tick(float DeltaTime)
 	const float HorizSpeed = FMath::Sqrt(HorizSpeedSq);
 	const FVector Dir = HorizVel / HorizSpeed;
 	const FVector Origin = GetActorLocation();
-	const float Radius = Mesh->Bounds.SphereRadius;
-	// Anticipamos 2 frames de movimiento + padding → detecta la pared antes
-	// de que el empuje del player acumule penetración.
+
+	// Radius FIJO pequeño — no usamos Bounds.SphereRadius porque para meshes
+	// grandes la esfera engloba todo el entorno cercano y reporta Hit.Time=0
+	// (bStartPenetrating) cada tick → velocidad cancelada siempre → objeto
+	// anclado aunque no haya pared en dirección del movimiento.
+	const float SweepRadius = FMath::Max(AntiPhaseSweepRadius, 1.f);
+	// Anticipamos 2 frames de movimiento + padding.
 	const float SweepDist = HorizSpeed * DeltaTime * 2.f + AntiPhaseProbePadding;
 
 	UWorld* World = GetWorld();
@@ -104,12 +108,17 @@ void ATN_PhysicsObjectActor::Tick(float DeltaTime)
 
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(PhysicsObjectAntiPhase), /*bTraceComplex=*/false, this);
-	const FCollisionShape Shape = FCollisionShape::MakeSphere(Radius);
+	const FCollisionShape Shape = FCollisionShape::MakeSphere(SweepRadius);
 
 	const bool bHit = World->SweepSingleByChannel(
 		Hit, Origin, Origin + Dir * SweepDist, FQuat::Identity,
 		ECC_WorldStatic, Shape, Params);
 	if (!bHit) { return; }
+
+	// Ignorar contactos ya presentes al iniciar el sweep (objeto pegado a una
+	// pared lateral). Sin este filtro el sweep cancelaría la velocidad cada
+	// tick incluso cuando el objeto se mueve tangente a la pared (slide OK).
+	if (Hit.bStartPenetrating) { return; }
 
 	// Filtrar superficies no-verticales: suelos/techos los maneja la física.
 	// Solo aplicamos fuerza normal simulada contra paredes (Normal ~ horizontal).

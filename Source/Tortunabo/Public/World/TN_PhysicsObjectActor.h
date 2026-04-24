@@ -101,6 +101,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough", meta = (ClampMin = "0.0"))
 	float AntiPhaseProbePadding = 8.f;
 
+	/** Radio (cm) de la esfera del sweep. Fijo pequeño para que no dependa del
+	 *  tamaño del mesh. Valor alto = más propenso a false positives. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough", meta = (ClampMin = "1.0"))
+	float AntiPhaseSweepRadius = 10.f;
+
 	/** Tolerancia de verticalidad: |Normal.Z| ≤ este valor → pared.
 	 *  0.4 descarta suelos (~66°) y techos. Ajustable para rampas. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough", meta = (ClampMin = "0.0", ClampMax = "1.0"))
