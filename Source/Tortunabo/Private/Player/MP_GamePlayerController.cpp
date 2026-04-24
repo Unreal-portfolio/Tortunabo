@@ -86,6 +86,24 @@ void AMP_GamePlayerController::SetupInputComponent()
 			EnhancedInput->BindAction(LoadedRadialNavigateAction, ETriggerEvent::Completed, this, &AMP_GamePlayerController::OnRadialNavigateCompleted);
 			EnhancedInput->BindAction(LoadedRadialNavigateAction, ETriggerEvent::Canceled, this, &AMP_GamePlayerController::OnRadialNavigateCompleted);
 		}
+
+		if (LoadedReturnToMenuAction)
+		{
+			EnhancedInput->BindAction(LoadedReturnToMenuAction, ETriggerEvent::Started, this, &AMP_GamePlayerController::OnReturnToMenuPressed);
+		}
+	}
+}
+
+void AMP_GamePlayerController::OnReturnToMenuPressed()
+{
+	ServerRequestReturnToMenu();
+}
+
+void AMP_GamePlayerController::ServerRequestReturnToMenu_Implementation()
+{
+	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		GI->HandleReturnToMenu();
 	}
 }
 
@@ -219,6 +237,11 @@ void AMP_GamePlayerController::CacheRadialInputAssets()
 	if (!LoadedRadialNavigateAction && !RadialNavigateAction.IsNull())
 	{
 		LoadedRadialNavigateAction = RadialNavigateAction.LoadSynchronous();
+	}
+
+	if (!LoadedReturnToMenuAction && !ReturnToMenuAction.IsNull())
+	{
+		LoadedReturnToMenuAction = ReturnToMenuAction.LoadSynchronous();
 	}
 }
 

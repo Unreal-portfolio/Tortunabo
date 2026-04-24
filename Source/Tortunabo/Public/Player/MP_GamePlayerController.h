@@ -147,6 +147,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Radial")
 	TSoftObjectPtr<UInputAction> RadialNavigateAction;
 
+	/** Input Action para volver al menú principal. Asignar IA_ReturnToMenu en el BP hijo. */
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Menu")
+	TSoftObjectPtr<UInputAction> ReturnToMenuAction;
+
 private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> VoiceIndicatorWidget;
@@ -174,6 +178,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> LoadedRadialNavigateAction;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> LoadedReturnToMenuAction;
 
 	UFUNCTION(Server, Reliable)
 	void ServerSyncUnlockedHelmets(const TArray<FName>& UnlockedHelmetIds);
@@ -212,6 +219,11 @@ private:
 
 	void OnRadialNavigateTriggered(const FInputActionValue& Value);
 	void OnRadialNavigateCompleted(const FInputActionValue& Value);
+
+	void OnReturnToMenuPressed();
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestReturnToMenu();
 
 	void OpenRadialWheel(ETN_RadialWheelType WheelType);
 	void CloseRadialWheel(bool bConfirmSelection);

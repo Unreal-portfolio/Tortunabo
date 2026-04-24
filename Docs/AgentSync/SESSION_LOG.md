@@ -1,5 +1,43 @@
 ﻿# SESSION LOG
 
+## 2026-04-24 — Batch fix 10 bugs (PHYS/ENEMY/JELLY/LOBBY/RUN/DZ/INK) + Q1-13 ragdoll death + Return to Menu
+
+### Resumen
+11 fixes en una sesión. Q1-13 (ragdoll on death) ya commitado en sesiones previas (commits `f443d72`, `dc618a0`). Esta sesión aplica 10 bugs adicionales mediante 4 agentes Opus paralelos: fixes de física, enemies chunk-compat, game mode races, y una feature nueva de Return to Menu.
+
+### Batch fixes — 4 agentes Opus paralelos
+
+#### Agente A — PHYS-1/2/3: Physics object desync (`TN_PhysicsObjectActor.cpp`)
+- **PHYS-1**: Constructor cambiado `SetSimulatePhysics(true→false)` — física solo debe correr en servidor.
+- **PHYS-2**: BeginPlay servidor branch añade `SetSimulatePhysics(true)` después de `FlushNetDormancy`. Rama `else` (cliente) eliminada — redundante.
+- **PHYS-3**: `TryEnterDormancy` cambiado `ForceNetUpdate()→FlushNetDormancy()` para garantizar snapshot final antes de `DORM_DormantAll`. Cubre JIP clients.
+
+#### Agente B — ENEMY-3 + JELLY-1/2: SetTimerForNextTick en chunk actors
+- **ENEMY-3** (`TN_CrabActor.cpp`): `SetTimerForNextTick(Delegate)` → `GetWorldTimerManager().SetTimer(InitTimerHandle, Delegate, 0.05f, false)`. Handle ya existía en el header.
+- **JELLY-1/2** (`TN_JellyfishActor.h/.cpp`): Mismo fix + añadido `EndPlay` override con `ClearAllTimersForObject` + nuevo `FTimerHandle DeferredInitHandle`.
+- Razón: `SetTimerForNextTick` usa una cola separada no limpiada por `ClearAllTimersForObject`. Con chunks destruibles esto causa crash/UB.
+
+#### Agente C — LOBBY-1 + RUN-1 + RUN-4 + DZ-1
+- **LOBBY-1** (`TN_HQGameMode.h/.cpp`): Añadida prop `LobbyMinPlayersForStart=1` (EditDefaultsOnly). Guard en `RefreshLobbyState`: `ConnectedPlayers > 0` → `ConnectedPlayers >= LobbyMinPlayersForStart`.
+- **RUN-1** (`TN_RunGameMode.cpp` `MarkPlayerFinished`): Añadido cleanup de DBNO al cruzar la meta — reset `bIsDBNO`, `DBNOBleedoutTimeRemaining`, remove de `DBNOPlayers`, clear timer si vacío.
+- **RUN-4** (`TN_RunGameMode.cpp` `FinishRoundAndReturnToLobby`): Guard `IsValid(Char) && !Char->IsActorBeingDestroyed()` en el loop final `TActorIterator<ATortugaCharacter>` para evitar double-Destroy.
+- **DZ-1** (`TN_DeathZoneVolume.h/.cpp`): Añadido `TMap<TWeakObjectPtr<APawn>, TWeakObjectPtr<APlayerController>> EntryPawnToPC`. Registrado en BeginOverlap/ForceCheckPlayer. EndOverlap usa lookup preciso en lugar del stale-search ambiguo (`GetPawn()==nullptr` matcheaba cualquier PC muerto). HandlePlayerDeath limpia el mapa al destruir.
+
+#### Agente D — INK-1 + Return to Menu
+- **INK-1** (`TN_InkProjectile.h/.cpp`): `LaunchVelocity` ahora `UPROPERTY(Replicated)`. Añadido `GetLifetimeReplicatedProps` con `DOREPLIFETIME`. Cubre JIP y debug de trayectoria.
+- **Return to Menu** (`MP_GamePlayerController.h/.cpp`): Nueva `ReturnToMenuAction TSoftObjectPtr<UInputAction>` (EditDefaultsOnly). `ServerRequestReturnToMenu` Server/Reliable RPC → llama `GI->HandleReturnToMenu()`. Binding en `SetupInputComponent` + carga en `CacheRadialInputAssets`.
+  - **Pendiente editor**: Crear asset `IA_ReturnToMenu` + añadir a `IMC_Player` + asignar en `BP_GamePlayerController`.
+
+---
+
+### Q1-13: Ragdoll on death (commitado en sesión anterior)
+- `SetDeadVisual(true)`: desactiva CMC, snapshot del collision profile y RelTransform, `SetSimulatePhysics(true)` + `WakeAllRigidBodies()`.
+- `SetDeadVisual(false)`: restaura physics=false, collision profile, reattach a cápsula, restore RelTransform.
+- `OnRep_IsDead` y `MulticastSetDeadVisual` con la misma lógica. Guard `IsSimulatingPhysics()` para no sobrescribir snapshot si venía del knockdown.
+- `HideLimbs()` eliminado de todos los death paths (personaje es SKM único, ragdoll es el visual de muerte).
+
+---
+
 ## 2026-04-24 — QA Drop Zone formateada + NEW-01 anti-sandwich + diseño SKIN-01
 
 ### Resumen

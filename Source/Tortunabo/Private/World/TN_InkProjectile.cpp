@@ -76,6 +76,12 @@ void ATN_InkProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void ATN_InkProjectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATN_InkProjectile, LaunchVelocity);
+}
+
 // ── Tick ────────────────────────────────────────────────────────────────────────
 
 void ATN_InkProjectile::Tick(float DeltaTime)

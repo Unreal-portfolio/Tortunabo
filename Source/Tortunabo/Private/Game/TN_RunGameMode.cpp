@@ -399,6 +399,18 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	UE_LOG(LogTemp, Log, TEXT("[MarkPlayerFinished] RaceScore=%d para '%s' (Rank=%d)"),
 		TNPS->RaceScore, *GetNameSafe(PlayerController), TNPS->FinishRank);
 
+	// Limpiar DBNO si llegaron a meta mientras estaban noqueados
+	if (TNPS->bIsDBNO)
+	{
+		TNPS->bIsDBNO = false;
+		TNPS->DBNOBleedoutTimeRemaining = -1.f;
+		DBNOPlayers.Remove(PlayerController);
+		if (DBNOPlayers.Num() == 0)
+		{
+			GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
+		}
+	}
+
 	// ── Detener el pawn y ocultarlo para que no se vea en la meta ──
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
@@ -1092,7 +1104,11 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		// Evita que lleguen al lobby como meshes fantasma.
 		for (TActorIterator<ATortugaCharacter> It(World); It; ++It)
 		{
-			It->Destroy();
+			ATortugaCharacter* Char = *It;
+			if (IsValid(Char) && !Char->IsActorBeingDestroyed())
+			{
+				Char->Destroy();
+			}
 		}
 
 		// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─

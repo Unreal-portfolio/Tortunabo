@@ -35,6 +35,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	/**
 	 * Helper estático para spawnear y lanzar el proyectil desde el servidor.
 	 * Devuelve nullptr si WorldContextObject no tiene autoridad o si Class es nulo.
@@ -87,7 +89,8 @@ protected:
 private:
 	// ── Movimiento ────────────────────────────────────────────────────────────
 
-	/** Velocidad actual del proyectil (establecida al spawnear). Solo servidor. */
+	/** Velocidad actual del proyectil (establecida al spawnear). Replicada para JIP y debug. */
+	UPROPERTY(Replicated)
 	FVector LaunchVelocity = FVector::ZeroVector;
 
 	// ── Colisión ──────────────────────────────────────────────────────────────

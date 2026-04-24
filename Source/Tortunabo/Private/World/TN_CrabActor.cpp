@@ -39,7 +39,7 @@ void ATN_CrabActor::BeginPlay()
 	// de posicionarse después de BeginPlay)
 	FTimerDelegate Delegate;
 	Delegate.BindUObject(this, &ATN_CrabActor::InitializePatrolPoints);
-	GetWorld()->GetTimerManager().SetTimerForNextTick(Delegate);
+	GetWorldTimerManager().SetTimer(InitTimerHandle, Delegate, 0.05f, false);
 
 	DetectionSphere->SetSphereRadius(DetectionRadius);
 	// OnDetectionBeginOverlap se registra en InitializePatrolPoints (deferred 1 tick)

@@ -76,6 +76,7 @@ void ATN_DeathZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp,
 	}
 
 	PendingDeathRemaining.Add(PC, SecondsInsideToDie);
+	EntryPawnToPC.Add(Pawn, PC);
 	if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
@@ -106,26 +107,19 @@ void ATN_DeathZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, A
 	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
 	if (!PC)
 	{
-		// Pawn exited without a controller (destroyed or unpossessed) —
-		// find and remove any stale entry keyed by the PC that owned this pawn
-		TWeakObjectPtr<APlayerController> StalePC;
-		for (auto& Pair : PendingDeathRemaining)
+		// Pawn exited without a controller — use entry-time pawn→PC map for precise lookup
+		TWeakObjectPtr<APawn> WeakPawn(const_cast<APawn*>(Pawn));
+		if (TWeakObjectPtr<APlayerController>* FoundPC = EntryPawnToPC.Find(WeakPawn))
 		{
-			if (APlayerController* StoredPC = Pair.Key.Get())
+			TWeakObjectPtr<APlayerController> StalePC = *FoundPC;
+			EntryPawnToPC.Remove(WeakPawn);
+			if (StalePC.IsValid())
 			{
-				if (StoredPC->GetPawn() == nullptr || StoredPC->GetPawn() == Pawn)
+				PendingDeathRemaining.Remove(StalePC);
+				if (ATN_CoopPlayerState* TNPS = StalePC->GetPlayerState<ATN_CoopPlayerState>())
 				{
-					StalePC = StoredPC;
-					break;
+					TNPS->DeathZoneTimeRemaining = -1.f;
 				}
-			}
-		}
-		if (StalePC.IsValid())
-		{
-			PendingDeathRemaining.Remove(StalePC);
-			if (ATN_CoopPlayerState* TNPS = StalePC->GetPlayerState<ATN_CoopPlayerState>())
-			{
-				TNPS->DeathZoneTimeRemaining = -1.f;
 			}
 		}
 		if (PendingDeathRemaining.Num() == 0)
@@ -136,6 +130,8 @@ void ATN_DeathZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, A
 	}
 
 	PendingDeathRemaining.Remove(PC);
+	TWeakObjectPtr<APawn> WeakPawn(const_cast<APawn*>(Pawn));
+	EntryPawnToPC.Remove(WeakPawn);
 	if (ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->DeathZoneTimeRemaining = -1.f;
@@ -165,6 +161,10 @@ void ATN_DeathZoneVolume::HandlePlayerDeath(APlayerController* PlayerController)
 	OnPlayerDiedInZone(PlayerController);
 
 	PendingDeathRemaining.Remove(PlayerController);
+	if (APawn* DeadPawn = PlayerController->GetPawn())
+	{
+		EntryPawnToPC.Remove(TWeakObjectPtr<APawn>(DeadPawn));
+	}
 	if (ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->DeathZoneTimeRemaining = -1.f;
@@ -303,6 +303,10 @@ void ATN_DeathZoneVolume::ForceCheckPlayer(APlayerController* PC)
 
 	// ── Iniciar countdown ──
 	PendingDeathRemaining.Add(PC, SecondsInsideToDie);
+	if (Pawn)
+	{
+		EntryPawnToPC.Add(TWeakObjectPtr<APawn>(Pawn), TWeakObjectPtr<APlayerController>(PC));
+	}
 	TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
 
 	if (!GetWorldTimerManager().IsTimerActive(SharedCountdownTimerHandle))

@@ -82,4 +82,7 @@ private:
 	FTimerHandle SharedCountdownTimerHandle;
 
 	TMap<TWeakObjectPtr<APlayerController>, float> PendingDeathRemaining;
+
+	/** Mapa pawn→PC para resolver el PC en OnBoxEndOverlap cuando el pawn ya fue unpossessed. */
+	TMap<TWeakObjectPtr<APawn>, TWeakObjectPtr<APlayerController>> EntryPawnToPC;
 };

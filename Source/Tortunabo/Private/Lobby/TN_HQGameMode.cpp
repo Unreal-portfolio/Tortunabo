@@ -272,7 +272,7 @@ void ATN_HQGameMode::RefreshLobbyState()
 
 	// Countdown starts when ALL connected players are inside the ready zone.
 	// This allows solo testing (1/1) and adapts to any party size (2/2, 3/3, etc.).
-	if (ConnectedPlayers > 0 && ReadyPlayers >= ConnectedPlayers)
+	if (ConnectedPlayers >= LobbyMinPlayersForStart && ReadyPlayers >= ConnectedPlayers)
 	{
 		if (!bCountdownRunning)
 		{

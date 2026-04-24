@@ -35,6 +35,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
 	int32 LobbyExpectedPlayers = 4;
 
+	/** Mínimo de jugadores conectados para que el countdown pueda arrancar. Default=1 para pruebas en solitario. */
+	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
+	int32 LobbyMinPlayersForStart = 1;
+
 	/**
 	 * PlayerStartTag value used to identify spawn points inside the tutorial zone.
 	 * Place at least one APlayerStart in LVL_HQ with this tag to enable tutorial routing.

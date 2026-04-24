@@ -54,9 +54,20 @@ void ATN_JellyfishActor::BeginPlay()
 
 		// Capturar posición inicial un tick después (patrón chunk: ChildActorComponent
 		// puede no haber terminado de posicionar en este mismo tick).
-		GetWorldTimerManager().SetTimerForNextTick(
-			FTimerDelegate::CreateUObject(this, &ATN_JellyfishActor::DeferredCaptureInitialLocation));
+		FTimerDelegate Delegate;
+		Delegate.BindUObject(this, &ATN_JellyfishActor::DeferredCaptureInitialLocation);
+		GetWorldTimerManager().SetTimer(DeferredInitHandle, Delegate, 0.05f, false);
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EndPlay
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_JellyfishActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearAllTimersForObject(this);
+	Super::EndPlay(EndPlayReason);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

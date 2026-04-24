@@ -39,6 +39,7 @@ public:
 	ATN_JellyfishActor();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -139,6 +140,8 @@ private:
 	// No se necesita Multicast adicional — el OnRep cubre clientes conectados y JIP.
 
 	bool bPositionSynced = false;
+
+	FTimerHandle DeferredInitHandle;
 
 	void DeferredCaptureInitialLocation();
 

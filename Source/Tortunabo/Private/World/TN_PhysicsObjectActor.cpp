@@ -13,7 +13,7 @@ ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
-	Mesh->SetSimulatePhysics(true);
+	Mesh->SetSimulatePhysics(false);
 	Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
 
 	// CCD: evita el tunneling clásico cuando el jugador empuja el objeto
@@ -59,6 +59,7 @@ void ATN_PhysicsObjectActor::BeginPlay()
 	{
 		// Despertarse inmediatamente para que los clientes reciban la posición inicial.
 		FlushNetDormancy();
+		Mesh->SetSimulatePhysics(true);
 		Mesh->OnComponentHit.AddDynamic(this, &ATN_PhysicsObjectActor::OnMeshHit);
 
 		if (bEnableCrushDetection && CrushCheckInterval > 0.f)
@@ -68,11 +69,6 @@ void ATN_PhysicsObjectActor::BeginPlay()
 				&ATN_PhysicsObjectActor::CheckForCrush,
 				CrushCheckInterval, /*bLoop=*/true);
 		}
-	}
-	else
-	{
-		// Clientes no simulan — la posición llega replicada desde el servidor.
-		Mesh->SetSimulatePhysics(false);
 	}
 }
 
@@ -110,10 +106,10 @@ void ATN_PhysicsObjectActor::TryEnterDormancy()
 		return; // Aún en movimiento — seguir comprobando.
 	}
 
-	// Detenido: un último ForceNetUpdate antes de dormir para que el cliente
+	// Detenido: un último FlushNetDormancy antes de dormir para que el cliente
 	// reciba la posición final exacta (si no, podría quedarse "a medio parar"
 	// respecto al servidor cuando entra dormancy).
-	ForceNetUpdate();
+	FlushNetDormancy();
 	SetNetDormancy(DORM_DormantAll);
 	GetWorldTimerManager().ClearTimer(DormancyCheckTimer);
 }
