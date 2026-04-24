@@ -34,6 +34,16 @@ ATN_SkinStatueActor::ATN_SkinStatueActor()
 void ATN_SkinStatueActor::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Statues tipo Helmet no asignan SkeletalMesh al PreviewMesh → el componente
+	// spamea "GetSocketByName(None): No SkeletalMesh". Si está vacío, deshabilitamos
+	// tick y lo ocultamos — nadie lo usa, pero sin esto el warning llena el log.
+	if (PreviewMesh && !PreviewMesh->GetSkeletalMeshAsset())
+	{
+		PreviewMesh->SetComponentTickEnabled(false);
+		PreviewMesh->SetVisibility(false);
+	}
+
 	ApplyPreviewCosmetic();
 }
 
