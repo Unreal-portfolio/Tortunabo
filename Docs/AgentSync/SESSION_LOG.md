@@ -1198,3 +1198,42 @@ Había **dos bugs combinados**:
 - El flujo diseñado es: Host destroy NetDriver → wait 1.5s → ServerTravel → nuevo listen server. Clientes: ConnectionLost → loading screen → auto-rejoin vía sesión Steam.
 - Los fallos de reconexión ocurrían por timing insuficiente, no por bug lógico.
 - Con los nuevos timings, los clientes tienen una ventana de reconexión de ~20.5s.
+
+---
+
+## SESIÓN 2026-04-24 — ULTRON ULTRA CONTRAST · post-ANIM-01 aftermath
+**11 commits 24h · descubrimiento crítico DLL mismatch · sprint 3 días planificado**
+
+### Meta-descubrimiento
+Editor Unreal carga `UnrealEditor-Tortunabo-Win64-DebugGame.dll`. Builds de CLAUDE.md iban a Development. Los fixes de ROUND 1-3 no se cargaban en editor hasta commit `dd3abfe` (rebuild DebugGame explícito). **Regla actualizada en memoria ULTRON**: usar `Win64 DebugGame` para este proyecto.
+
+### Commits (orden cronológico)
+- `ee3a5d0` · fix: CMC bPushesRigidBodies → bEnablePhysicsInteraction (UE5.6 — la property no existe)
+- `951e59f` · fix: guard IsSimulatingPhysics() en TN_ProcAnimInstance::NativePostEvaluateAnimation (ragdoll glitch)
+- `ccd957c` · feat: DEATH-01 Roblox death visual — timer DeathRagdollDurationSeconds + FinalizeDeathVisual (captura root bone, hide pawn, mover+mostrar pickup)
+- `3c9bb22` · fix: DASH-01 (remove SetActorRotation TryDive) + EMOTE-01 (saludo env*80 → *-80) + CAM-01 v1 (ProbeSize 14 → 22)
+- `e618163` · fix: HQ-WARN-01 safety net PostSeamlessTravel (reset SkM si simulating)
+- `67a450c` · fix: SlowZone AddDynamic → AddUniqueDynamic (delegate duplicate ensure)
+- `93fa1a7` · fix: ROUND 2 — ragdoll bPauseAnims en 4 paths + dash quaternion compose + Kirk negate values + sandwich PushForceFactor 0.5 + CAM v2 floor clamp
+- `5841e1f` · fix: SkinStatue SetComponentTickEnabled(false) si PreviewMesh sin SkeletalMesh
+- `c063639` · fix: ROUND 3 — force values BeginPlay (bypass BP override) + SetAllBodiesPhysicsBlendWeight(1.f) + SetEnableGravity(true) + diagnostic logs
+- `dd3abfe` · fix: HEAD-NECK follow — NeckFollowBone + NeckFollowRatio UPROPERTY; rota hueso cuello por Yaw*ratio para arrastrar piel del cuello
+
+### Bugs con status real (tras rebuild DebugGame pendiente de test)
+**Fixed alta confianza**: SlowZone ensure, SkinStatue spam, ragdoll no cae (blend weight 1.0 + gravity), physics immovibles (PushForce 1.0 forzado), sandwich (CCD + force 1.0), DEATH-01 swap.
+
+**Requiere verificación con DLL nuevo**: ragdoll glitch, dash rotación (log `DiveMeshDefaultRot`), Kirk (puede estar oculto por guard), HQ warning (confirmar con `[Diagnostic]` log), CAM-01 clipping, saludo mano, cara cuello.
+
+**Arquitectónico pendiente**: Kirk siempre suprimido si ragdoll activa (guard PostEval). Refactor futuro: separar knockdown (pose) de death (ragdoll).
+
+### Sprint 3 días pedido por Rodrigo
+Item ↔ Enemigo interactions nuevas: concha aturde · calamar ciega · bola aturde. **Gap C++**: no existe interface común. Plan día 2: crear `ITN_StunnableInterface` + integrar en Seagull/Crab/Jellyfish + triggers desde ConchPickup/InkProjectile/ThrowableItemActor.
+
+Pendiente BP (código listo): BP_EnemySeagull, BP_CrabActor, BP_QuadActor, BP_JellyfishActor, BP_ButtonInteractable, BP_PressurePlate, BP_ConchPickup, DT_Items filas Concha+Tinta.
+
+### Nuevos UPROPERTY tunables
+- `BP_TortugaCharacter → Head Animation → NeckFollowBone` (FName) + `NeckFollowRatio` (0..1, default 0.3)
+- `BP_RunGameMode → Run|Death → DeathRagdollDurationSeconds` (default 1.5s)
+
+### Al retomar próxima sesión
+Leer: `~/.claude/projects/.../memory/project_diagnostic_2026-04-24.md` + esta entrada. Empezar por logs `[Diagnostic]` que Rodrigo compartirá tras test.
