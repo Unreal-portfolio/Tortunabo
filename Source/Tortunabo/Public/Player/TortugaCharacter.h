@@ -457,6 +457,27 @@ private:
 	FRotator CabezaRestRot = FRotator::ZeroRotator;
 	FVector  CabezaRestScale = FVector::OneVector;
 
+	/**
+	 * HEAD-NECK FOLLOW — workaround para skinning de la cara del cuello:
+	 * los polígonos del mesh que están pesados al hueso del cuerpo/cuello se quedan
+	 * fijos cuando la cabeza rota. Definir aquí el nombre del hueso padre/cuello
+	 * en el skeleton (p.ej. "Cuerpo" o "Neck") y un ratio [0..1]: la cabeza rota
+	 * 100% del yaw/pitch y este hueso rota RATIO× lo mismo → la piel del cuello
+	 * se arrastra parcialmente y oculta la discontinuidad.
+	 *
+	 * Configurar en BP_TortugaCharacter → Class Defaults → Head Animation:
+	 *  - NeckFollowBone: nombre exacto del hueso del cuello/tronco en el skeleton
+	 *  - NeckFollowRatio: 0.3f por defecto; subir si la piel sigue pegada.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Head Animation")
+	FName NeckFollowBone = NAME_None;
+
+	UPROPERTY(EditDefaultsOnly, Category="Head Animation", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float NeckFollowRatio = 0.3f;
+
+	/** Rest rot del NeckFollowBone capturada en BeginPlay. */
+	FRotator NeckFollowRestRot = FRotator::ZeroRotator;
+
 	/** Rest locations in component space (for SetLoc emotes). Re-derived in BeginPlay. */
 	FVector Brazo1RestLoc = FVector::ZeroVector;
 	FVector Brazo2RestLoc = FVector::ZeroVector;

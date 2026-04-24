@@ -239,6 +239,22 @@ void ATortugaCharacter::BeginPlay()
 	InitBone(TEXT("Cola"),   ColaBone,   ColaRestRot,   ColaRestLoc);
 	InitBone(TEXT("Cabeza"), CabezaBone, CabezaRestRot, CabezaRestLoc);
 
+	// NeckFollow: capturar rest rot del hueso del cuello/tronco (si está configurado)
+	// para poder aplicar rotación parcial en ApplyHeadLookToCabeza.
+	if (NeckFollowBone != NAME_None && GetMesh())
+	{
+		if (GetMesh()->GetBoneIndex(NeckFollowBone) != INDEX_NONE)
+		{
+			// Rest rot en component space usando socket transform (igual que InitBone).
+			NeckFollowRestRot = GetMesh()->GetSocketTransform(NeckFollowBone, RTS_Component).Rotator();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] NeckFollowBone '%s' no existe en el skeleton — head-neck follow DESACTIVADO."),
+				*NeckFollowBone.ToString());
+		}
+	}
+
 	// Bone scale at rest is (1,1,1) in all UE5 skeletons — no query needed.
 	CabezaRestScale = FVector::OneVector;
 
@@ -3908,6 +3924,16 @@ void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
 	const FQuat YawQ  (FVector(0.f, 0.f, 1.f), FMath::DegreesToRadians(Yaw));
 	const FQuat PitchQ(FVector(-1.f, 0.f, 0.f), FMath::DegreesToRadians(Pitch));
 	SetAnimBoneRot(CabezaBone, (RestQ * YawQ * PitchQ * FQuat(CabezaRestRot)).Rotator());
+
+	// Head-neck follow workaround: rotar el hueso del cuello/tronco por una fracción
+	// del yaw/pitch para arrastrar la piel del cuello (que está pesada a ese hueso).
+	// Configurar NeckFollowBone + NeckFollowRatio en BP si la cara del cuello se queda fija.
+	if (NeckFollowBone != NAME_None && NeckFollowRatio > 0.f)
+	{
+		const FQuat NeckYawQ  (FVector(0.f, 0.f, 1.f),  FMath::DegreesToRadians(Yaw   * NeckFollowRatio));
+		const FQuat NeckPitchQ(FVector(-1.f, 0.f, 0.f), FMath::DegreesToRadians(Pitch * NeckFollowRatio));
+		SetAnimBoneRot(NeckFollowBone, (NeckYawQ * NeckPitchQ * FQuat(NeckFollowRestRot)).Rotator());
+	}
 }
 
 void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(float Yaw, float Pitch)
