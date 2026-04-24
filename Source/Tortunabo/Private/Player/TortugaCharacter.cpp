@@ -1850,15 +1850,15 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			}
 
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			SkelMesh->bPauseAnims = true;
+			// Orden Epic: SIMULAR primero, pausar anims DESPUÉS. Evita el frame
+			// "semitieso" (bPauseAnims=true congela pose antes de que física arranque).
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
-			// Transferir el momentum capturado a los bodies → resbalón del plátano.
-			// Angular=0 para que no spine raro al iniciar.
 			SkelMesh->SetAllPhysicsLinearVelocity(KnockdownInitialVel);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
+			SkelMesh->bPauseAnims = true;  // después de simulación activa
 			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s InitVel=(%.0f,%.0f,%.0f)"),
 				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"),
 				KnockdownInitialVel.X, KnockdownInitialVel.Y, KnockdownInitialVel.Z);
@@ -2078,14 +2078,14 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 					Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 				}
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-				SkelMesh->bPauseAnims = true;
+				// Orden Epic: simular primero, pausar anims después.
 				SkelMesh->SetAllBodiesSimulatePhysics(true);
 				SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 				SkelMesh->SetEnableGravity(true);
-				// Zero-out vel inherited — gravedad hará el resto (ver comentario knockdown).
 				SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
 				SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 				SkelMesh->WakeAllRigidBodies();
+				SkelMesh->bPauseAnims = true;
 				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f"),
 					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f);
 			}
@@ -2140,13 +2140,13 @@ void ATortugaCharacter::OnRep_IsDead()
 				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			}
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			SkelMesh->bPauseAnims = true;
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
 			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
+			SkelMesh->bPauseAnims = true;
 		}
 	}
 	else
@@ -2194,13 +2194,13 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			}
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			SkelMesh->bPauseAnims = true;
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
 			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
+			SkelMesh->bPauseAnims = true;
 		}
 	}
 	else
@@ -3623,12 +3623,11 @@ void ATortugaCharacter::TryDive()
 	}
 
 	UE_LOG(LogTemp, Warning,
-		TEXT("[Diagnostic] Dash dir=(%.2f,%.2f,%.2f)  CMC.Vel=(%.1f,%.1f,%.1f)  ActorFwd=(%.2f,%.2f,%.2f)"),
+		TEXT("[Diagnostic] Dash dir=(%.2f,%.2f,%.2f)  ActorFwd=(%.2f,%.2f,%.2f)  DiveTiltAxis=(%.2f,%.2f,%.2f)  DiveMeshDefaultRot=(P=%.1f Y=%.1f R=%.1f)"),
 		DiveDir.X, DiveDir.Y, DiveDir.Z,
-		GetCharacterMovement() ? GetCharacterMovement()->Velocity.X : 0.f,
-		GetCharacterMovement() ? GetCharacterMovement()->Velocity.Y : 0.f,
-		GetCharacterMovement() ? GetCharacterMovement()->Velocity.Z : 0.f,
-		GetActorForwardVector().X, GetActorForwardVector().Y, GetActorForwardVector().Z);
+		GetActorForwardVector().X, GetActorForwardVector().Y, GetActorForwardVector().Z,
+		DiveTiltAxis.X, DiveTiltAxis.Y, DiveTiltAxis.Z,
+		DiveMeshDefaultRot.Pitch, DiveMeshDefaultRot.Yaw, DiveMeshDefaultRot.Roll);
 
 	Server_StartDive(DiveDir);
 }
