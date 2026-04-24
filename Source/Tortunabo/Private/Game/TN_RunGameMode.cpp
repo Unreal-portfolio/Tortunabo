@@ -14,6 +14,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/PlayerController.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
@@ -556,6 +557,14 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 			UE_LOG(LogTemp, Log, TEXT("[Death] Spawned RescuePickup for %s (PlayerId=%d) at (%.0f,%.0f,%.0f)"),
 				*GetNameSafe(PlayerController), TNPS->GetPlayerId(),
 				DeathLocation.X, DeathLocation.Y, DeathLocation.Z);
+
+			// DEATH-01: timer para swap ragdoll→pickup tras DeathRagdollDurationSeconds.
+			// CreateUObject permite que ClearAllTimersForObject en EndPlay cancele si el
+			// game mode se destruye. El PlayerId viaja como payload del delegate.
+			FTimerDelegate Del = FTimerDelegate::CreateUObject(
+				this, &ATN_RunGameMode::FinalizeDeathVisual, TNPS->GetPlayerId());
+			FTimerHandle& H = DeathFinalizeTimers.FindOrAdd(TNPS->GetPlayerId());
+			GetWorldTimerManager().SetTimer(H, Del, DeathRagdollDurationSeconds, false);
 		}
 	}
 	else
@@ -574,6 +583,50 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 
 	MovePlayerToSpectator(PlayerController);
 	UpdateRoundProgressAndMaybeFinish();
+}
+
+void ATN_RunGameMode::FinalizeDeathVisual(int32 PlayerId)
+{
+	// DEATH-01 · callback del timer lanzado en MarkPlayerDead.
+	// Tras DeathRagdollDurationSeconds: capturamos la pos actual del ragdoll,
+	// ocultamos el pawn y movemos el pickup a esa posición — efecto "Roblox death".
+	DeathFinalizeTimers.Remove(PlayerId);
+
+	// Si el jugador ya revivió, RevivePlayer habrá destruido el pickup → salimos.
+	TWeakObjectPtr<ATN_RescuePickup>* PickupPtr = RescuePickups.Find(PlayerId);
+	ATN_RescuePickup* Pickup = PickupPtr ? PickupPtr->Get() : nullptr;
+	if (!Pickup) { return; }
+
+	TWeakObjectPtr<APawn>* PawnPtr = DeadPlayerPawns.Find(PlayerId);
+	APawn* DeadPawn = PawnPtr ? PawnPtr->Get() : nullptr;
+
+	if (DeadPawn)
+	{
+		// Si el ragdoll está activo, leer la pos y yaw del root bone para colocar
+		// el pickup donde realmente ha caído el cuerpo (puede haber rodado por
+		// pendientes, chocado, etc.). Mantenemos la simulación activa hasta que
+		// RevivePlayer llame a SetDeadVisual(false) — el re-attach en SetDeadVisual
+		// requiere IsSimulatingPhysics()==true para ejecutarse correctamente.
+		if (const ATortugaCharacter* Character = Cast<ATortugaCharacter>(DeadPawn))
+		{
+			if (USkeletalMeshComponent* SKM = Character->GetMesh())
+			{
+				if (SKM->IsSimulatingPhysics())
+				{
+					const FName RootBone = SKM->GetBoneName(0);
+					const FVector RagdollLoc = SKM->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
+					const FRotator BodyYaw(0.f, SKM->GetComponentRotation().Yaw, 0.f);
+					Pickup->SetActorLocationAndRotation(RagdollLoc, BodyYaw);
+				}
+			}
+		}
+		// Ocultamos el pawn en cualquier caso (ragdoll o fallback sin PhysicsAsset).
+		// RevivePlayer ya llama SetActorHiddenInGame(false) para restaurarlo.
+		DeadPawn->SetActorHiddenInGame(true);
+	}
+
+	Pickup->ShowInteractableMesh();
+	UE_LOG(LogTemp, Log, TEXT("[Death] FinalizeDeathVisual PlayerId=%d → pickup visible, pawn hidden"), PlayerId);
 }
 
 // ── DBNO (Down But Not Out) ────────────────────────────────────────────────────
@@ -673,6 +726,15 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	if (DBNOPlayers.Num() == 0)
 	{
 		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
+	}
+
+	// DEATH-01: cancelar el timer de swap ragdoll→pickup si aún no disparó.
+	// Sin esto: si revives antes de DeathRagdollDurationSeconds, el timer
+	// ejecutaría FinalizeDeathVisual tras la revivida → ocultaría el pawn vivo.
+	if (FTimerHandle* DeathTimer = DeathFinalizeTimers.Find(TNPS->GetPlayerId()))
+	{
+		GetWorldTimerManager().ClearTimer(*DeathTimer);
+		DeathFinalizeTimers.Remove(TNPS->GetPlayerId());
 	}
 
 	// ── Destruir el pickup de rescate si existe ───────────────────────────

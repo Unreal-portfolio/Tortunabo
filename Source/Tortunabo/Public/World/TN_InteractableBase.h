@@ -36,6 +36,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void HideInteractableMesh();
 
+	/** Muestra el mesh estático del interactuable (reverso de HideInteractableMesh). */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void ShowInteractableMesh();
+
 
 protected:
 	/**
