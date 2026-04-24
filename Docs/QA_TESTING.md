@@ -10,10 +10,15 @@ Registro de bugs, mejoras y decisiones detectadas durante testing en PIE.
 
 ```
 <!-- DROP_ZONE: pegar notas crudas debajo de esta línea -->
-Le falta la rotación al lanzaar la bola (es algo predefinido, siempre se aplicaría la misma rotación, pero para que le de más vida, y serializable)
-Sigo pudiendo empujar a lo sandwich los cubos, quizás impedir que la tortuga se pueda mover si la caja esta atravesando colisiones? Yo que se
-Igual que el platano aplica un movimiento al ragdoll, al ser noqueado por la bola, la dirección que la bola había tomado aplicará una fuerza pequeña sobre el ragdoll para empujarlo hacia ese lado, algo sencillo.
-¿Que pasa cuando noqueas a alguien en el aire? Respawnea a los X segundos, o hasta que llega al suelo? No entiendo?
+No puedo mover los physics objects ahora, los brazos y las piernas siguen igual.
+Attempting to move a fully simulated skeletal mesh /Game/Maps/Lobby/UEDPIE_0_LVL_HQ.LVL_HQ:PersistentLevel.BP_TortugaCharacter_C_0.CharacterMesh0. Please use the Teleport flag este error sigue estando, activa modo CONTRAST; 0 memoria, buscar soluciones. 
+Rotación de Cabeza invertida, miro arriba la cabeza baja, revisa.
+El "doble salto" o dash aéreo rota la tortuga 90 grados hacia la izquierda.
+Baile Kirk, está bien pero tiene el eje lateral invertido (cabeza mira abajo, brazos hacia abajo, piernas hacia delante, cuando debería ser al reves) El saludo pone la mano que no oscila hacia arriba debería ser hacia abajo.
+El personaje se buguea al morir, se queda raro, con el helmet haciendo movimientos raros (el bug no será este, será algo más serio, echarle un vistazo) El plan es que muera como en Roblox.
+Ahora Big Head ya no puede crecer el Mesh, hay alguna manera de que crezca el Socket o algo? Sino poner algo visual? Alternativa?
+Los Slots de los materiales son del 0-4. 
+El clipping de camara funciona salvo con el suelo??
 <!-- FIN_DROP_ZONE -->
 ```
 
