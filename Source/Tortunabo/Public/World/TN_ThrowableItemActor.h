@@ -56,6 +56,7 @@ public:
 	ATN_ThrowableItemActor();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void LifeSpanExpired() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Throwable")
@@ -116,6 +117,10 @@ private:
 	FTN_ThrowLaunchData ThrowData;
 
 	bool bLaunchApplied  = false;
+
+	FTimerHandle LaunchRetryTimerHandle;
+
+	void RetryApplyLaunch();
 
 	/** Players already knocked down by this throw — prevents duplicate knockdowns. */
 	TSet<TWeakObjectPtr<ATortugaCharacter>> AlreadyHitPlayers;

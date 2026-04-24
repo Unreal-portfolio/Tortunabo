@@ -5,6 +5,7 @@
 #include "Player/TortugaCharacter.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 
 ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 {
@@ -83,6 +84,28 @@ void ATN_ThrowableItemActor::BeginPlay()
 	// ApplyLaunchDataIfReady en BeginPlay: solo aplica mesh/escala en clientes.
 	// El PM lo activa únicamente en servidor (ver ApplyLaunchDataIfReady).
 	ApplyLaunchDataIfReady();
+
+	if (!HasAuthority() && !bLaunchApplied)
+	{
+		FTimerDelegate Del;
+		Del.BindUObject(this, &ATN_ThrowableItemActor::RetryApplyLaunch);
+		GetWorldTimerManager().SetTimer(LaunchRetryTimerHandle, Del, 0.5f, false);
+	}
+}
+
+void ATN_ThrowableItemActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(LaunchRetryTimerHandle);
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_ThrowableItemActor::RetryApplyLaunch()
+{
+	if (!bLaunchApplied && ThrowData.bReady)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[TN_Throwable] RetryApplyLaunch: forcing launch apply after timeout"));
+		ApplyLaunchDataIfReady();
+	}
 }
 
 void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const FVector& InitialVelocity)
