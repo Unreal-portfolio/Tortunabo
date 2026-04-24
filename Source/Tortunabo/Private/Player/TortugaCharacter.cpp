@@ -1968,9 +1968,6 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 
 	bIsDead = bDead;
 
-	// Listen-server: OnRep no se dispara localmente
-	if (bDead) { HideLimbs(); } else { ShowLimbs(); }
-
 	if (HasAuthority())
 	{
 		USkeletalMeshComponent* SkelMesh = GetMesh();
@@ -1978,6 +1975,11 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 		{
 			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset())
 			{
+				if (!SkelMesh->IsSimulatingPhysics())
+				{
+					SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
+					SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+				}
 				if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 				{
 					CMC->DisableMovement();
@@ -1990,6 +1992,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 		}
 		else
 		{
+			bCanAirDash = true;
 			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 			{
 				SkelMesh->SetSimulatePhysics(false);
@@ -1999,30 +2002,25 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 					SkelMesh->AttachToComponent(Capsule,
 						FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
 				}
+				SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 			}
 		}
 	}
 
-	// Multicast fiable para todos los clientes
 	MulticastSetDeadVisual(bDead);
 
-	UE_LOG(LogTemp, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("HIDDEN") : TEXT("VISIBLE"));
+	UE_LOG(LogTemp, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("RAGDOLL") : TEXT("ALIVE"));
 }
 
 void ATortugaCharacter::OnRep_IsDead()
 {
-	if (bIsDead) { HideLimbs(); } else { ShowLimbs(); bCanAirDash = true; }
-}
-
-void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
-{
-	if (HasAuthority()) { return; }
-	if (bDead)
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (bIsDead)
 	{
-		HideLimbs();
-		USkeletalMeshComponent* SkelMesh = GetMesh();
-		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset())
+		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset() && !SkelMesh->IsSimulatingPhysics())
 		{
+			SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
+			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 			{
 				CMC->DisableMovement();
@@ -2035,9 +2033,7 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 	}
 	else
 	{
-		ShowLimbs();
 		bCanAirDash = true;
-		USkeletalMeshComponent* SkelMesh = GetMesh();
 		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 		{
 			SkelMesh->SetSimulatePhysics(false);
@@ -2047,6 +2043,44 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 				SkelMesh->AttachToComponent(Capsule,
 					FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
 			}
+			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
+		}
+	}
+}
+
+void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
+{
+	if (HasAuthority()) { return; }
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (bDead)
+	{
+		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset() && !SkelMesh->IsSimulatingPhysics())
+		{
+			SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
+			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+			{
+				CMC->DisableMovement();
+				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+			}
+			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->SetSimulatePhysics(true);
+			SkelMesh->WakeAllRigidBodies();
+		}
+	}
+	else
+	{
+		bCanAirDash = true;
+		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
+		{
+			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+			if (USceneComponent* Capsule = GetCapsuleComponent())
+			{
+				SkelMesh->AttachToComponent(Capsule,
+					FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
+			}
+			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 		}
 	}
 }
