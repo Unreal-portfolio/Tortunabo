@@ -1781,6 +1781,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			}
 
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
 
@@ -1987,6 +1988,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 					CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 				}
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+				SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 				SkelMesh->SetSimulatePhysics(true);
 				SkelMesh->WakeAllRigidBodies();
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -2033,6 +2035,7 @@ void ATortugaCharacter::OnRep_IsDead()
 				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 			}
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -2075,6 +2078,7 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 			}
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -3793,9 +3797,10 @@ void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
 {
 	if (CabezaBone == NAME_None) { return; }
 
+	const FQuat RestQ (FVector(0.f, 0.f, 1.f), FMath::DegreesToRadians(HeadRestYawDeg));
 	const FQuat YawQ  (FVector(0.f, 0.f, 1.f), FMath::DegreesToRadians(Yaw));
 	const FQuat PitchQ(FVector(1.f, 0.f, 0.f), FMath::DegreesToRadians(Pitch));
-	SetAnimBoneRot(CabezaBone, (YawQ * PitchQ * FQuat(CabezaRestRot)).Rotator());
+	SetAnimBoneRot(CabezaBone, (RestQ * YawQ * PitchQ * FQuat(CabezaRestRot)).Rotator());
 }
 
 void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(float Yaw, float Pitch)

@@ -192,6 +192,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Arm Animation", meta = (ClampMin = "0.0", ClampMax = "180.0"))
 	float ArmSprintAmplitudeDeg = 65.f;
 
+	// ── Head Animation ───────────────────────────────────────────────────────
+	/** Yaw offset (°) que corrige la dirección en reposo del hueso Cabeza.
+	 *  Incrementar si la cabeza mira a la izquierda en reposo; decrementar si mira a la derecha. */
+	UPROPERTY(EditDefaultsOnly, Category = "Head Animation", meta = (ClampMin = "-180.0", ClampMax = "180.0"))
+	float HeadRestYawDeg = 0.f;
+
 	// ── Leg Animation (blockout) ──────────────────────────────────────────────
 	// Add child SceneComponents named "Pata1" and "Pata2" in your Blueprint.
 	// Set their origin at the HIP PIVOT (see setup guide below).
@@ -219,7 +225,7 @@ protected:
 	 * Change if your component's local axes differ.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation")
-	FVector LegSwingAxis = FVector(0.f, 1.f, 0.f);
+	FVector LegSwingAxis = FVector(1.f, 0.f, 0.f);
 
 	/** Speed (cm/s) below which legs smoothly return to rest. */
 	UPROPERTY(EditDefaultsOnly, Category = "Leg Animation", meta = (ClampMin = "0.0"))

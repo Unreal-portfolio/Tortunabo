@@ -521,6 +521,15 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
 		{
 			Character->SetDeadVisual(true);
+			// Fallback: si el SKM no tiene PhysicsAsset asignado en BP_TortugaCharacter,
+			// el ragdoll no se activa → ocultar el pawn para evitar "vivo-muerto" visible.
+			USkeletalMeshComponent* SM = Character->GetMesh();
+			if (!SM || !SM->IsSimulatingPhysics())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Death] Ragdoll inactive (sin PhysicsAsset en BP?) — ocultando pawn %s"), *GetNameSafe(Pawn));
+				Pawn->SetActorHiddenInGame(true);
+				Pawn->SetActorEnableCollision(false);
+			}
 		}
 		else
 		{

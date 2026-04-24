@@ -9,7 +9,7 @@
 
 ATN_ThrowableItemActor::ATN_ThrowableItemActor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 
 	// bAlwaysRelevant: sin esto, si el lanzador está lejos del cliente, la bola
@@ -91,6 +91,22 @@ void ATN_ThrowableItemActor::BeginPlay()
 		Del.BindUObject(this, &ATN_ThrowableItemActor::RetryApplyLaunch);
 		GetWorldTimerManager().SetTimer(LaunchRetryTimerHandle, Del, 0.5f, false);
 	}
+}
+
+void ATN_ThrowableItemActor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!ProjectileMovement || !ProjectileMovement->IsActive() || ThrowAngularVelocityDegSec.IsNearlyZero())
+	{
+		return;
+	}
+	// Rotación visual de la bola mientras vuela — puramente cosmético, cada
+	// máquina la calcula localmente. Mapeo: X→Roll, Y→Pitch, Z→Yaw (convención UE).
+	Mesh->AddLocalRotation(FRotator(
+		ThrowAngularVelocityDegSec.Y * DeltaTime,
+		ThrowAngularVelocityDegSec.Z * DeltaTime,
+		ThrowAngularVelocityDegSec.X * DeltaTime
+	));
 }
 
 void ATN_ThrowableItemActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
