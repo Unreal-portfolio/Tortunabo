@@ -186,6 +186,31 @@ void ATortugaCharacter::BeginPlay()
 		}
 	}
 
+	// ── ROUND 3 · FORZAR valores críticos sobre cualquier override de BP ──
+	// Los UPROPERTY EditDefaultsOnly permiten al BP grabar valores antiguos que
+	// pisan el constructor. Reasignar aquí garantiza que los fixes aplican.
+	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	{
+		CMC->bEnablePhysicsInteraction = true;
+		CMC->PushForceFactor           = 1.0f;  // 2.0 tunneleaba · 0.5 no movía · 1.0 middle ground
+		CMC->TouchForceFactor          = 1.0f;
+	}
+	if (CameraBoom)
+	{
+		CameraBoom->ProbeSize        = 30.f;
+		CameraBoom->ProbeChannel     = ECC_Camera;
+		CameraBoom->bDoCollisionTest = true;
+	}
+
+	// ── ROUND 3 · DIAGNOSTIC LOGS ──
+	// Si los fixes siguen sin aplicar, estos logs revelan el estado real en runtime.
+	UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] %s BeginPlay: PushForceFactor=%.2f ProbeSize=%.2f bUsePhysicsRagdoll=%s PhysicsAsset=%s"),
+		*GetName(),
+		GetCharacterMovement() ? GetCharacterMovement()->PushForceFactor : -1.f,
+		CameraBoom ? CameraBoom->ProbeSize : -1.f,
+		bUsePhysicsRagdoll ? TEXT("Y") : TEXT("N"),
+		(GetMesh() && GetMesh()->GetPhysicsAsset()) ? TEXT("ASSIGNED") : TEXT("NULL"));
+
 	// Resolve socket names to bone names on the Skeletal Mesh and capture rest poses.
 	// Sockets must exist on the mesh with these exact names; angles will be tuned later.
 	// Rest pose is read from the SOCKET transform (component-space), not directly from
@@ -513,35 +538,48 @@ void ATortugaCharacter::TickCameraInterp(float DeltaTime)
 	CameraBoom->CameraRotationLagSpeed = CameraRotationLagSpeed;
 
 	// ── CAM-01 floor clamp ────────────────────────────────────────────────────
-	// El SpringArm->bDoCollisionTest atrapa paredes bien, pero el suelo puede
-	// quedar fuera del barrido cuando el brazo desciende detrás del pawn al
-	// mirar hacia arriba. Trace vertical desde la cámara → si está a <MinFloor
-	// cm del suelo, empujamos hacia arriba el pivot del boom.
+	// Prueba ambos canales (ECC_Camera + ECC_Visibility) — si el suelo no bloquea
+	// Camera en este proyecto, Visibility suele bloquear seguro.
 	{
 		const FVector CamWorld = FollowCamera->GetComponentLocation();
-		const FVector TraceEnd = CamWorld - FVector(0.f, 0.f, 80.f);
-		FHitResult FloorHit;
+		const FVector TraceEnd = CamWorld - FVector(0.f, 0.f, 120.f);
+		FHitResult HitCam, HitVis;
 		FCollisionQueryParams QP(SCENE_QUERY_STAT(CamFloorClamp), /*bTraceComplex=*/false, this);
-		const bool bHit = GetWorld() && GetWorld()->LineTraceSingleByChannel(
-			FloorHit, CamWorld, TraceEnd, ECC_Camera, QP);
+		const bool bHitCam = GetWorld() && GetWorld()->LineTraceSingleByChannel(
+			HitCam, CamWorld, TraceEnd, ECC_Camera, QP);
+		const bool bHitVis = GetWorld() && GetWorld()->LineTraceSingleByChannel(
+			HitVis, CamWorld, TraceEnd, ECC_Visibility, QP);
+
+		// Usa el hit más cercano entre ambos canales.
+		float DistToFloor = TNumericLimits<float>::Max();
+		if (bHitCam) { DistToFloor = FMath::Min(DistToFloor, CamWorld.Z - HitCam.ImpactPoint.Z); }
+		if (bHitVis) { DistToFloor = FMath::Min(DistToFloor, CamWorld.Z - HitVis.ImpactPoint.Z); }
 
 		float DesiredLiftZ = 0.f;
-		constexpr float MinFloor = 30.f; // cm mínimos entre cámara y suelo
-		if (bHit)
+		constexpr float MinFloor = 40.f;
+		if (DistToFloor < MinFloor)
 		{
-			const float DistToFloor = CamWorld.Z - FloorHit.ImpactPoint.Z;
-			if (DistToFloor < MinFloor)
-			{
-				DesiredLiftZ = (MinFloor - DistToFloor);
-			}
+			DesiredLiftZ = (MinFloor - DistToFloor);
 		}
-		// Interpola suavemente para evitar saltos.
 		CameraFloorLiftCurrent = FMath::FInterpTo(CameraFloorLiftCurrent, DesiredLiftZ, DeltaTime, 10.f);
 
-		// Aplica como offset Z al relative location del boom (en espacio de la cápsula).
 		FVector RelLoc = CameraBoomRelativeOffset;
 		RelLoc.Z += CameraFloorLiftCurrent;
 		CameraBoom->SetRelativeLocation(RelLoc);
+
+		// DIAGNOSTIC: log cada 1s con datos del trace (para depurar si clamp activa).
+		static float LogAccumulator = 0.f;
+		LogAccumulator += DeltaTime;
+		if (LogAccumulator > 1.0f)
+		{
+			LogAccumulator = 0.f;
+			UE_LOG(LogTemp, Verbose,
+				TEXT("[Diagnostic] FloorClamp HitCam=%s HitVis=%s DistToFloor=%.1f Lift=%.1f"),
+				bHitCam ? TEXT("Y") : TEXT("N"),
+				bHitVis ? TEXT("Y") : TEXT("N"),
+				DistToFloor > 1e8f ? -1.f : DistToFloor,
+				CameraFloorLiftCurrent);
+		}
 	}
 }
 
@@ -1786,8 +1824,12 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			// Sin esto, el AnimBP sigue produciendo pose cada frame y compite con la
 			// simulación → ragdoll glitcheado y movimiento errático.
 			SkelMesh->bPauseAnims = true;
-			SkelMesh->SetSimulatePhysics(true);
+			SkelMesh->SetAllBodiesSimulatePhysics(true);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+			SkelMesh->SetEnableGravity(true);
 			SkelMesh->WakeAllRigidBodies();
+			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s"),
+				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"));
 
 			bKnockdownRagdollActive = true;
 
@@ -1810,7 +1852,8 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 				                 false, nullptr, ETeleportType::TeleportPhysics);
 			}
 
-			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);  // restore anim-driven pose
+			SkelMesh->SetAllBodiesSimulatePhysics(false);
 			SkelMesh->bPauseAnims = false;  // Re-activa AnimBP tras salir del ragdoll
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 
@@ -1995,8 +2038,12 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 				SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 				SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
-				SkelMesh->SetSimulatePhysics(true);
+				SkelMesh->SetAllBodiesSimulatePhysics(true);       // canonical full ragdoll
+				SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);     // pure physics, no anim blend
+				SkelMesh->SetEnableGravity(true);                  // defensive vs BP override
 				SkelMesh->WakeAllRigidBodies();
+				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f"),
+					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f);
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
 				{
 					Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -2008,7 +2055,8 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 			bCanAirDash = true;
 			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 			{
-				SkelMesh->SetSimulatePhysics(false);
+				SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);  // restore anim-driven pose
+				SkelMesh->SetAllBodiesSimulatePhysics(false);
 				SkelMesh->bPauseAnims = false;
 				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -3154,6 +3202,16 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// patas/brazos apuntan hacia arriba con pequeña oscilación.
 		if (ActiveEmoteIndex == KNOCKDOWN_EMOTE_ID)
 		{
+			// DIAGNOSTIC: confirmar que entramos al case (si Kirk sigue mal aunque
+			// modifique valores, puede que el emote nunca entre aquí).
+			static bool bLoggedKirk = false;
+			if (!bLoggedKirk)
+			{
+				bLoggedKirk = true;
+				UE_LOG(LogTemp, Warning,
+					TEXT("[Diagnostic] KNOCKDOWN case ENTRADA · IsSimulating=%s (si true, BoneQuat suppressed by ProcAnim guard)"),
+					(GetMesh() && GetMesh()->IsSimulatingPhysics()) ? TEXT("Y") : TEXT("N"));
+			}
 			const float Setup    = FMath::Min(T / 0.2f, 1.f);  // Pose completada en 0.2s
 			const float EasedSetup = FMath::InterpEaseOut(0.f, 1.f, Setup, 2.f); // Deceleración natural
 			const float Struggle = FMath::Sin(T * 4.f) * 5.f;  // ±5° oscilación suave de "lucha"
@@ -3615,6 +3673,21 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 	// separate rotation to prevent double-rotation.
 	if (bIsDiving || DiveTiltAlpha > 0.f)
 	{
+		// DASH-01 v3 DIAGNOSTIC: imprime DiveMeshDefaultRot la primera vez para ver
+		// qué Yaw/Pitch/Roll tiene realmente el mesh post-ANIM-01 (hipótesis: si
+		// DiveMeshDefaultRot tiene un eje distinto al asumido, el quaternion fix
+		// del round 2 rota por el eje incorrecto).
+		static bool bLoggedDiveRot = false;
+		if (!bLoggedDiveRot && bIsDiving)
+		{
+			bLoggedDiveRot = true;
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Diagnostic] DiveMeshDefaultRot = Rotator(P=%.2f Y=%.2f R=%.2f) · MeshRel = Rotator(P=%.2f Y=%.2f R=%.2f)"),
+				DiveMeshDefaultRot.Pitch, DiveMeshDefaultRot.Yaw, DiveMeshDefaultRot.Roll,
+				GetMesh() ? GetMesh()->GetRelativeRotation().Pitch : 0.f,
+				GetMesh() ? GetMesh()->GetRelativeRotation().Yaw   : 0.f,
+				GetMesh() ? GetMesh()->GetRelativeRotation().Roll  : 0.f);
+		}
 		const float TargetAlpha = bIsDiving ? 1.f : 0.f;
 		DiveTiltAlpha = FMath::FInterpTo(DiveTiltAlpha, TargetAlpha, DeltaTime, DiveTiltSpeed);
 		if (FMath::Abs(DiveTiltAlpha - TargetAlpha) < 0.005f)
