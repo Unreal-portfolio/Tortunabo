@@ -735,13 +735,15 @@ protected:
 	float KnockdownGroundLockSpeed = 50.f;
 
 	/**
-	 * Si true y el SkelMesh (GetMesh) tiene PhysicsAsset asignado, el knockdown
-	 * activa ragdoll físico completo (`SetSimulatePhysics(true)`) en lugar del
-	 * tilt de -180° manual. El ragdoll se desactiva en RecoverFromKnockdown y
-	 * el mesh se re-attachea al capsule + restaura pose por defecto.
+	 * Si true y el SkelMesh tiene PhysicsAsset asignado, la MUERTE activa ragdoll
+	 * físico completo (SetAllBodiesSimulatePhysics(true)) en SetDeadVisual.
 	 *
-	 * Si el BP no tiene PhysicsAsset, se cae silenciosamente al tilt tradicional
-	 * — ningún cambio visible respecto al comportamiento previo.
+	 * KIRK-01 (2026-04-24): el knockdown YA NO usa esta ruta — queda exclusivo
+	 * para muerte. Razón: el guard IsSimulatingPhysics() de TN_ProcAnimInstance
+	 * suprime todos los BoneQuat overrides durante ragdoll físico → el emote
+	 * KNOCKDOWN_EMOTE_ID se volvía invisible (solo se veía ragdoll desnudo).
+	 * Knockdown ahora es SIEMPRE tilt manual (Roll+180) + emote Kirk agitando
+	 * brazos. Ruta B en ApplyKnockdownVisual.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
 	bool bUsePhysicsRagdoll = true;

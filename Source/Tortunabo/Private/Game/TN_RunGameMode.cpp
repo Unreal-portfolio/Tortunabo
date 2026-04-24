@@ -792,6 +792,28 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 
 	if (Pawn)
 	{
+		// ORDEN CRÍTICO (2026-04-24):
+		// 1. SetDeadVisual(false) PRIMERO → apaga ragdoll, re-attachea mesh al capsule,
+		//    restaura bReplicateMovement=true. Sin este paso previo, SetActorLocation
+		//    sobre un pawn con mesh fully-simulated dispara el warning
+		//    "Attempting to move a fully simulated skeletal mesh".
+		// 2. SetActorLocation DESPUÉS → teleporta a zona segura con capsule+mesh ya
+		//    re-sincronizados.
+		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+		{
+			Character->RecoverFromKnockdown();
+			Character->SetDeadVisual(false); // Restaurar extremidades + apagar ragdoll
+		}
+
+		// Restaurar CMC antes del teleport
+		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
+		{
+			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
+			{
+				CMC->SetMovementMode(MOVE_Walking);
+			}
+		}
+
 		// ── Teleportar a zona de chunks activa antes de revivir ───────────────
 		// El pawn estuvo hidden en la posición de muerte. CleanupChunks puede haber
 		// destruido el chunk que lo rodeaba mientras el líder avanzaba. Si se revive
@@ -817,21 +839,6 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
 		Pawn->SetActorHiddenInGame(false);
 		Pawn->SetActorEnableCollision(true);
-
-		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
-		{
-			Character->RecoverFromKnockdown();
-			Character->SetDeadVisual(false); // Restaurar extremidades
-		}
-
-		// Restaurar CMC antes de re-poseer
-		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
-		{
-			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
-			{
-				CMC->SetMovementMode(MOVE_Walking);
-			}
-		}
 
 		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
 		// 1) Resetear flag de espectador en el PlayerState
