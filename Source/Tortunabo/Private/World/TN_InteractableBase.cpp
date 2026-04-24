@@ -113,6 +113,11 @@ void ATN_InteractableBase::ApplyInteractionEnabledState()
 	}
 }
 
+void ATN_InteractableBase::HideInteractableMesh()
+{
+	if (Mesh) { Mesh->SetVisibility(false); }
+}
+
 void ATN_InteractableBase::SetInteractionEnabled(bool bEnabled)
 {
 	if (bInteractionEnabled == bEnabled)

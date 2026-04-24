@@ -10,7 +10,10 @@ Registro de bugs, mejoras y decisiones detectadas durante testing en PIE.
 
 ```
 <!-- DROP_ZONE: pegar notas crudas debajo de esta línea -->
-
+Le falta la rotación al lanzaar la bola (es algo predefinido, siempre se aplicaría la misma rotación, pero para que le de más vida, y serializable)
+Sigo pudiendo empujar a lo sandwich los cubos, quizás impedir que la tortuga se pueda mover si la caja esta atravesando colisiones? Yo que se
+Igual que el platano aplica un movimiento al ragdoll, al ser noqueado por la bola, la dirección que la bola había tomado aplicará una fuerza pequeña sobre el ragdoll para empujarlo hacia ese lado, algo sencillo.
+¿Que pasa cuando noqueas a alguien en el aire? Respawnea a los X segundos, o hasta que llega al suelo? No entiendo?
 <!-- FIN_DROP_ZONE -->
 ```
 
@@ -704,19 +707,20 @@ El comportamiento actual (pre-fix) es Reversible por defecto.
 
 ### NEW-01 🟠 PhysicsObject — sandwich cubo/pared al empujar
 **Componente:** `ATN_PhysicsObjectActor`
-**Estado:** ✅ Resuelto — pendiente compilar y verificar en PIE
+**Estado:** 🟠 Reabierto — fix anterior insuficiente (verificado en PIE 2026-04-24)
 **Origen:** Drop-zone 2026-04-24
 
 **Observación:**
 La tortuga podía crear un "sandwich": caminar contra el cubo hasta pegarlo a una pared, y `OnMeshHit` seguía aplicando `SetPhysicsLinearVelocity` apuntando a la pared → el cubo la traspasaba. El `PushForceFactor=0` del CMC ya desactivaba el push automático, pero el impulso manual en `OnMeshHit` persistía.
 
-**Fix aplicado:**
-Eliminado el bloque `Cast<ATortugaCharacter>` + `SetPhysicsLinearVelocity` de `OnMeshHit`. La tortuga **ya no puede aplicar fuerza al cubo caminando/corriendo**. El cap `MaxPushVelocity` para fuentes externas (bola lanzada) se mantiene. Eliminado `CharacterPushVelocity` del header (propiedad huérfana). Eliminado el include de `TortugaCharacter.h` del `.cpp`.
+**Fix anterior (insuficiente):**
+Eliminado el bloque `Cast<ATortugaCharacter>` + `SetPhysicsLinearVelocity` de `OnMeshHit`. La tortuga **ya no puede aplicar fuerza al cubo caminando/corriendo**. El cap `MaxPushVelocity` para fuentes externas (bola lanzada) se mantiene.
 
-**Comportamiento resultante:**
-- Tortuga camina contra cubo → bloqueada por la colisión, cubo no se mueve. ✅
-- Cubo puede ser movido por bolas lanzadas (fuentes externas) con cap de velocidad. ✅
-- `ATN_BouncePhysicsObject::OnKickHit` (kick explícito) funciona igual — usa `AddImpulse` directo, independiente de este bloque. ✅
+**Reabierto 2026-04-24:**
+El sandwich sigue reproduciéndose. La causa probable es que el CMC kinematic sigue generando contacto físico a través de PhysX aunque `PushForceFactor=0` — la resolución de colisiones de PhysX aplica fuerzas de contacto independientes del CMC push force. El cubo recibe fuerza de contacto acumulada hasta clavarse en la pared.
+
+**Enfoque propuesto:**
+Detectar en el `ATN_PhysicsObjectActor` cuando el objeto está penetrando geometría estática (similar a `CheckForCrush`) y bloquear temporalmente el movimiento del character que lo está empujando, o aplicar una fuerza de separación sobre el cubo alejándolo del muro. Alternativa: aumentar la masa del cubo hasta que el CMC no pueda desplazarlo notablemente.
 
 ---
 
@@ -745,7 +749,7 @@ Verificar índices de material slots del nuevo SKM en UE5 antes de implementar e
 
 ### SOCKET-01 🟠 Animaciones — rotaciones incorrectas tras migración a SKM
 **Componente:** `ATortugaCharacter` (SkeletalMesh sockets + ABP)
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto — commit `7ca9b6d` (ANIM-01) + verificado en PIE 2026-04-24
 **Origen:** Drop-zone 2026-04-24
 
 **Contexto:**
@@ -802,7 +806,7 @@ El timeout del guard `bLaunchApplied` — si `ApplyLaunchDataIfReady` nunca se d
 
 ### Q1-13 🟡 Muerte — aplicar ragdoll igual que knockdown
 **Componente:** `ATortugaCharacter` (sistema de muerte + `bUsePhysicsRagdoll`)
-**Estado:** ⬜ Abierto
+**Estado:** ✅ Resuelto — pendiente compilar y verificar en PIE
 **Origen:** Drop-zone 2026-04-24
 
 **Observación:**
@@ -815,9 +819,43 @@ Cuando un jugador muere, debería caer con ragdoll físico (igual que el knockdo
 
 ---
 
-### Q1-14 🔵 Revive item — ¿skeletal mesh con ragdoll activo?
-**Componente:** `ATN_RescuePickup`
-**Estado:** ⬜ Decisión pendiente
+### Q4-11 🟡 BouncePhysicsObject — impulso direccional al ragdoll del noqueado
+**Componente:** `ATN_BouncePhysicsObject` + `ATortugaCharacter` (ragdoll)
+**Estado:** ⬜ Abierto
+**Origen:** Drop-zone 2026-04-24
+
+**Observación:**
+Al ser noqueado por la bola, el ragdoll no recibe ninguna fuerza direccional — cae en vertical en el sitio. El plátano ya aplica un impulso sobre el ragdoll en la dirección del slide; la bola debería hacer lo mismo: una fuerza pequeña en la dirección en la que viajaba la bola en el momento del impacto.
+
+**Diseño propuesto:**
+- En `ATN_BouncePhysicsObject::OnKickHit` (o donde se llama `RequestKill`/`ApplyKnockdown`): capturar la velocidad de la bola en ese momento (`Mesh->GetComponentVelocity().GetSafeNormal2D()`).
+- Pasar ese vector direccional a `ApplyKnockdownVisual` (o a un nuevo método `AddRagdollImpulse(FVector)`).
+- En `ATortugaCharacter`: cuando el ragdoll se activa, si hay un impulso pendiente, llamar `SkelMesh->AddImpulse(Dir * KnockImpulseMagnitude, NAME_None, /*bVelChange=*/false)`.
+- Nueva `UPROPERTY float BallKnockImpulseMagnitude` en `ATN_BouncePhysicsObject` (default `200`). Serializable.
+
+---
+
+### Q1-15 🟠 Knockdown en el aire — comportamiento indefinido
+**Componente:** `ATortugaCharacter` (sistema de knockdown)
+**Estado:** ⬜ Investigación pendiente
+**Origen:** Drop-zone 2026-04-24
+
+**Observación:**
+No está claro qué ocurre cuando un jugador es noqueado estando en el aire (saltando, cayendo). ¿El ragdoll cae y se recupera al tocar el suelo? ¿Se recupera por timer aunque esté en el aire? ¿Se queda suspendido?
+
+**Comportamiento esperado (propuesta):**
+El timer de recovery debería empezar solo cuando el ragdoll toca el suelo, no desde el momento del knockdown. Si arranca en el aire, puede que el jugador se recupere antes de aterrizar, lo que visualmente es raro.
+
+**Acción:**
+- Reproducir en PIE: saltar + recibir knockdown en el aire (bola o plátano). Observar comportamiento.
+- Si el timer de recovery empieza inmediatamente: cambiar a "iniciar timer en primer `OnMeshHit` del ragdoll contra `WorldStatic`".
+- Documentar comportamiento actual aquí antes de decidir el fix.
+
+---
+
+### Q1-14 🔵 Revive item — pawn ragdolleado como visual del rescate
+**Componente:** `ATN_RescuePickup` + `ATortugaCharacter` + `ATN_RunGameMode`
+**Estado:** ✅ Resuelto — pendiente compilar y verificar en PIE
 **Origen:** Drop-zone 2026-04-24
 
 **Pregunta de diseño:**

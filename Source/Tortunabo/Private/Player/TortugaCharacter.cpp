@@ -1989,6 +1989,10 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 				SkelMesh->SetSimulatePhysics(true);
 				SkelMesh->WakeAllRigidBodies();
+				if (UCapsuleComponent* Cap = GetCapsuleComponent())
+				{
+					Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
 			}
 		}
 		else
@@ -1998,10 +2002,11 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 			{
 				SkelMesh->SetSimulatePhysics(false);
 				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
-				if (USceneComponent* Capsule = GetCapsuleComponent())
+				if (UCapsuleComponent* Cap = GetCapsuleComponent())
 				{
-					SkelMesh->AttachToComponent(Capsule,
+					SkelMesh->AttachToComponent(Cap,
 						FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
+					Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 				}
 				SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 			}
@@ -2030,6 +2035,10 @@ void ATortugaCharacter::OnRep_IsDead()
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
+			if (UCapsuleComponent* Cap = GetCapsuleComponent())
+			{
+				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			}
 		}
 	}
 	else
@@ -2039,10 +2048,11 @@ void ATortugaCharacter::OnRep_IsDead()
 		{
 			SkelMesh->SetSimulatePhysics(false);
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
-			if (USceneComponent* Capsule = GetCapsuleComponent())
+			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
-				SkelMesh->AttachToComponent(Capsule,
+				SkelMesh->AttachToComponent(Cap,
 					FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
+				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			}
 			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 		}
@@ -2067,6 +2077,10 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
+			if (UCapsuleComponent* Cap = GetCapsuleComponent())
+			{
+				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			}
 		}
 	}
 	else
@@ -2076,10 +2090,11 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 		{
 			SkelMesh->SetSimulatePhysics(false);
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
-			if (USceneComponent* Capsule = GetCapsuleComponent())
+			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
-				SkelMesh->AttachToComponent(Capsule,
+				SkelMesh->AttachToComponent(Cap,
 					FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
+				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			}
 			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 		}

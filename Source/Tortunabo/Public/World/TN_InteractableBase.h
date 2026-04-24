@@ -32,6 +32,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	FText GetPromptText() const { return PromptText; }
 
+	/** Oculta el mesh estático del interactuable; la hitbox de overlap permanece activa. */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void HideInteractableMesh();
+
 
 protected:
 	/**

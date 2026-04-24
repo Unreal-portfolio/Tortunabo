@@ -503,24 +503,30 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	{
 		DeathLocation = Pawn->GetActorLocation();
 
-		// ── Limpiar knockdown visual si lo tenía ──
 		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
 		{
 			Character->RecoverFromKnockdown();
 		}
 
-		// ── Ocultar el pawn completamente (no dejar cadáver) ──
 		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
 		{
 			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
 			{
 				CMC->StopMovementImmediately();
-				CMC->DisableMovement();
 			}
 		}
 		Pawn->DisableInput(PlayerController);
-		Pawn->SetActorHiddenInGame(true);
-		Pawn->SetActorEnableCollision(false);
+
+		// Q1-13: activar ragdoll de muerte — pawn queda visible (es el visual del rescate)
+		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+		{
+			Character->SetDeadVisual(true);
+		}
+		else
+		{
+			Pawn->SetActorHiddenInGame(true);
+			Pawn->SetActorEnableCollision(false);
+		}
 	}
 
 	// ── Spawnear pickup de rescate en la posición de muerte ──
@@ -535,6 +541,8 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		if (Pickup)
 		{
 			Pickup->SetDeadPlayerId(TNPS->GetPlayerId());
+			// Q1-14: el pawn ragdolleado es el visual — ocultar la malla del pickup
+			Pickup->HideInteractableMesh();
 			RescuePickups.Add(TNPS->GetPlayerId(), Pickup);
 			UE_LOG(LogTemp, Log, TEXT("[Death] Spawned RescuePickup for %s (PlayerId=%d) at (%.0f,%.0f,%.0f)"),
 				*GetNameSafe(PlayerController), TNPS->GetPlayerId(),
