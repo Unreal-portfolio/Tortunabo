@@ -1857,6 +1857,11 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
+			// CRÍTICO (ragdoll "sale disparado"): los bodies heredan la velocity
+			// world del component padre al activar simulate. Zero-out para que el
+			// ragdoll empiece inerte y caiga solo por gravedad.
+			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
 			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s"),
 				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"));
@@ -2080,6 +2085,9 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				SkelMesh->SetAllBodiesSimulatePhysics(true);
 				SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 				SkelMesh->SetEnableGravity(true);
+				// Zero-out vel inherited — gravedad hará el resto (ver comentario knockdown).
+				SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+				SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 				SkelMesh->WakeAllRigidBodies();
 				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f"),
 					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f);
@@ -2139,6 +2147,8 @@ void ATortugaCharacter::OnRep_IsDead()
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
+			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
 		}
 	}
@@ -2191,6 +2201,8 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
+			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
 		}
 	}
@@ -3255,6 +3267,17 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		// patas/brazos apuntan hacia arriba con pequeña oscilación.
 		if (ActiveEmoteIndex == KNOCKDOWN_EMOTE_ID)
 		{
+			// CRÍTICO: si el ragdoll físico está activo, la física dicta el visual.
+			// Cualquier SetRelativeRotation del KnockdownVisualComp o BoneQuat
+			// override aquí es:
+			//   (a) inútil — el guard IsSimulatingPhysics del ProcAnimInstance los suprime
+			//   (b) peligroso — el SetRelativeRotation sobre el mesh simulado dispara
+			//       el warning "Attempting to move a fully simulated skeletal mesh"
+			// Early-exit: la física ragdoll es el visual de knockdown cuando bUsePhysicsRagdoll.
+			if (bKnockdownRagdollActive)
+			{
+				break;
+			}
 			// DIAGNOSTIC: confirmar que entramos al case (si Kirk sigue mal aunque
 			// modifique valores, puede que el emote nunca entre aquí).
 			static bool bLoggedKirk = false;
@@ -3579,25 +3602,37 @@ void ATortugaCharacter::TryDive()
 		return;
 	}
 
-	// Direction: use CURRENT INPUT at the moment of press (not velocity)
+	// DASH-02 (2026-04-24): usar VELOCIDAD ACTUAL en vez de LastMovementInput.
+	// El CMC ya aplicó los inputs a la Velocity, que es la fuente de verdad
+	// sobre "a dónde va el jugador". LastMovementInput sufría ambigüedad con
+	// la convención X/Y del IA_Move en diferentes IMC setups y a veces daba
+	// la dirección equivocada (dash lateral en vez de frontal).
 	FVector DiveDir = FVector::ZeroVector;
-	if (const AController* C = GetController())
+	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 	{
-		const FRotator YawRot(0.f, C->GetControlRotation().Yaw, 0.f);
-		const FVector Fwd   = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
-		const FVector Right = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
-		DiveDir = Fwd * LastMovementInput.Y + Right * LastMovementInput.X;
+		FVector Vel = CMC->Velocity;
+		Vel.Z = 0.f;
+		if (Vel.SizeSquared() > 1.f)
+		{
+			DiveDir = Vel.GetSafeNormal();
+		}
 	}
 	if (DiveDir.IsNearlyZero())
 	{
+		// Fallback: sin velocity (parado en el aire) → frente del actor
 		DiveDir = GetActorForwardVector();
+		DiveDir.Z = 0.f;
+		DiveDir.Normalize();
 	}
-	DiveDir.Z = 0.f;
-	DiveDir.Normalize();
 
-	// DASH-01: bOrientRotationToMovement ya orienta el capsule suavemente a la
-	// dirección del movimiento. Un SetActorRotation aquí snappeaba 90° el mesh
-	// tras ANIM-01 (SKM unificado con orientación distinta al blockout).
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Diagnostic] Dash dir=(%.2f,%.2f,%.2f)  CMC.Vel=(%.1f,%.1f,%.1f)  ActorFwd=(%.2f,%.2f,%.2f)"),
+		DiveDir.X, DiveDir.Y, DiveDir.Z,
+		GetCharacterMovement() ? GetCharacterMovement()->Velocity.X : 0.f,
+		GetCharacterMovement() ? GetCharacterMovement()->Velocity.Y : 0.f,
+		GetCharacterMovement() ? GetCharacterMovement()->Velocity.Z : 0.f,
+		GetActorForwardVector().X, GetActorForwardVector().Y, GetActorForwardVector().Z);
+
 	Server_StartDive(DiveDir);
 }
 
