@@ -348,6 +348,13 @@ protected:
 	FVector CameraBoomRelativeOffset = FVector(0.f, 0.f, 55.f);
 
 	/**
+	 * CAM-01 floor clamp: estado interno del lift actual aplicado al boom relative
+	 * Z para evitar clipping contra el suelo. Interpola suavemente hacia el valor
+	 * deseado calculado cada tick en TickCameraInterp.
+	 */
+	float CameraFloorLiftCurrent = 0.f;
+
+	/**
 	 * Inclina la cámara hacia abajo respecto al spring arm (grados, valor negativo = abajo).
 	 * -14°: cámara más picada sobre el personaje, estilo God of War.
 	 */

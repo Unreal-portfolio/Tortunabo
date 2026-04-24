@@ -63,10 +63,11 @@ ATortugaCharacter::ATortugaCharacter()
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 
 	// bEnablePhysicsInteraction habilita PushForceFactor/TouchForceFactor sobre rigid bodies
-	// por contacto. Valor bajo (2.0) = empujón suave sin tunneling.
-	// OnMeshHit de TN_PhysicsObjectActor ya no aplica impulso por TortugaCharacter.
+	// por contacto. 0.5 = empuje sutil suficiente para mover cajas/bolas en abierto pero
+	// NO para tunnelearlas contra paredes estáticas (sandwich-through). Tunable en runtime
+	// desde BP si se quiere iterar.
 	GetCharacterMovement()->bEnablePhysicsInteraction = true;
-	GetCharacterMovement()->PushForceFactor = 2.f;
+	GetCharacterMovement()->PushForceFactor = 0.5f;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -80,10 +81,9 @@ ATortugaCharacter::ATortugaCharacter()
 	// por si algún Class Default en BP los hubiera puesto a false.
 	CameraBoom->bDoCollisionTest = true;
 	CameraBoom->ProbeChannel     = ECC_Camera;  // todas las paredes bloquean ECC_Camera por defecto
-	CameraBoom->ProbeSize        = 22.f;         // CAM-01: con 14 la cámara clipaba el suelo al mirar
-	                                             // hacia arriba (el brazo desciende detrás del pawn y
-	                                             // entra en el suelo antes de que el sweep lo atrape).
-	                                             // 22 da margen de seguridad sin recortar vista en zonas estrechas.
+	CameraBoom->ProbeSize        = 30.f;         // CAM-01 iter 2: 22 seguía clipando suelo al mirar arriba.
+	                                             // 30 cubre la mayoría de casos. Complementado con un
+	                                             // floor-clamp manual en Tick (ver ClampCameraAboveFloor).
 
 	// ── Cinematic camera lag ──────────────────────────────────────────────────
 	// Suaviza la posición de la cámara para un feel AAA fluido.
@@ -174,6 +174,16 @@ void ATortugaCharacter::BeginPlay()
 	if (GetMesh())
 	{
 		GetMesh()->SetAnimInstanceClass(UTN_ProcAnimInstance::StaticClass());
+
+		// HQ-WARN-01 defensive: si BP defaults o seamless travel dejan el SkM en
+		// modo simulate-physics, el primer SetActorLocation/AttachToComponent dispara
+		// "Attempting to move a fully simulated skeletal mesh". Reset explícito aquí.
+		if (GetMesh()->IsSimulatingPhysics())
+		{
+			GetMesh()->SetSimulatePhysics(false);
+			GetMesh()->bPauseAnims = false;
+			UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] BeginPlay: reset stale physics on %s"), *GetName());
+		}
 	}
 
 	// Resolve socket names to bone names on the Skeletal Mesh and capture rest poses.
@@ -501,6 +511,38 @@ void ATortugaCharacter::TickCameraInterp(float DeltaTime)
 	// ── Sync live lag speeds (por si se editan en runtime desde Blueprint) ────
 	CameraBoom->CameraLagSpeed         = CameraPositionLagSpeed;
 	CameraBoom->CameraRotationLagSpeed = CameraRotationLagSpeed;
+
+	// ── CAM-01 floor clamp ────────────────────────────────────────────────────
+	// El SpringArm->bDoCollisionTest atrapa paredes bien, pero el suelo puede
+	// quedar fuera del barrido cuando el brazo desciende detrás del pawn al
+	// mirar hacia arriba. Trace vertical desde la cámara → si está a <MinFloor
+	// cm del suelo, empujamos hacia arriba el pivot del boom.
+	{
+		const FVector CamWorld = FollowCamera->GetComponentLocation();
+		const FVector TraceEnd = CamWorld - FVector(0.f, 0.f, 80.f);
+		FHitResult FloorHit;
+		FCollisionQueryParams QP(SCENE_QUERY_STAT(CamFloorClamp), /*bTraceComplex=*/false, this);
+		const bool bHit = GetWorld() && GetWorld()->LineTraceSingleByChannel(
+			FloorHit, CamWorld, TraceEnd, ECC_Camera, QP);
+
+		float DesiredLiftZ = 0.f;
+		constexpr float MinFloor = 30.f; // cm mínimos entre cámara y suelo
+		if (bHit)
+		{
+			const float DistToFloor = CamWorld.Z - FloorHit.ImpactPoint.Z;
+			if (DistToFloor < MinFloor)
+			{
+				DesiredLiftZ = (MinFloor - DistToFloor);
+			}
+		}
+		// Interpola suavemente para evitar saltos.
+		CameraFloorLiftCurrent = FMath::FInterpTo(CameraFloorLiftCurrent, DesiredLiftZ, DeltaTime, 10.f);
+
+		// Aplica como offset Z al relative location del boom (en espacio de la cápsula).
+		FVector RelLoc = CameraBoomRelativeOffset;
+		RelLoc.Z += CameraFloorLiftCurrent;
+		CameraBoom->SetRelativeLocation(RelLoc);
+	}
 }
 
 void ATortugaCharacter::ApplyLegAngle(FName BoneName, const FRotator& RestRot, float AngleDeg) const
@@ -1740,6 +1782,10 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+			// bPauseAnims: detiene la evaluación del AnimBP mientras la física domina.
+			// Sin esto, el AnimBP sigue produciendo pose cada frame y compite con la
+			// simulación → ragdoll glitcheado y movimiento errático.
+			SkelMesh->bPauseAnims = true;
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
 
@@ -1765,6 +1811,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			}
 
 			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->bPauseAnims = false;  // Re-activa AnimBP tras salir del ragdoll
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 
 			// SetSimulatePhysics(true) detachea el mesh del parent — hay que re-attachear
@@ -1947,6 +1994,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				}
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 				SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+				SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
 				SkelMesh->SetSimulatePhysics(true);
 				SkelMesh->WakeAllRigidBodies();
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -1961,6 +2009,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 			{
 				SkelMesh->SetSimulatePhysics(false);
+				SkelMesh->bPauseAnims = false;
 				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
 				{
@@ -1994,6 +2043,7 @@ void ATortugaCharacter::OnRep_IsDead()
 			}
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+			SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -2008,6 +2058,7 @@ void ATortugaCharacter::OnRep_IsDead()
 		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 		{
 			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->bPauseAnims = false;
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
@@ -2037,6 +2088,7 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 			}
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+			SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -2051,6 +2103,7 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 		{
 			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->bPauseAnims = false;
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
@@ -3105,29 +3158,32 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 			const float EasedSetup = FMath::InterpEaseOut(0.f, 1.f, Setup, 2.f); // Deceleración natural
 			const float Struggle = FMath::Sin(T * 4.f) * 5.f;  // ±5° oscilación suave de "lucha"
 
-			// ── Rotar el cuerpo entero hacia atrás (componente "Cuerpo" / KnockdownVisualComp) ──
-			// Este es el efecto principal: la tortuga cae de espaldas (como una tortuga real).
+			// ── Rotar el cuerpo entero (componente "Cuerpo" / KnockdownVisualComp) ──
+			// KIRK-FIX: post-ANIM-01 los signos quedaron invertidos. User: "todos hacia
+			// abajo en vez de arriba; en vez de -30 → +30, salvo patas que en eje vertical
+			// -30 → 30". Flipeo en eje HORIZONTAL para cuerpo/brazos/cabeza/cola; patas
+			// cambian a eje VERTICAL (LZ) con sus signos re-orientados.
 			if (KnockdownVisualComp.IsValid())
 			{
 				FRotator TargetRot = MeshDefaultRelativeRotation;
-				TargetRot.Pitch -= 90.f;  // 90° hacia atrás = patas arriba
+				TargetRot.Pitch += 90.f;  // flipeo: -=90 → +=90 (eje horizontal)
 				KnockdownVisualComp->SetRelativeRotation(
 					FMath::Lerp(MeshDefaultRelativeRotation, TargetRot, EasedSetup));
 			}
 
-			// Patas hacia arriba (eje de swing normal)
-			Ap(Pata1Bone, Pata1RestRot,  EasedSetup * (80.f + Struggle), LY);
-			Ap(Pata2Bone, Pata2RestRot,  EasedSetup * (-80.f + Struggle), LY);
+			// Patas: cambio de eje LY (horizontal stride) → LZ (vertical twist) + signo invertido
+			Ap(Pata1Bone, Pata1RestRot,  EasedSetup * (-80.f - Struggle), LZ);
+			Ap(Pata2Bone, Pata2RestRot,  EasedSetup * ( 80.f - Struggle), LZ);
 
-			// Brazos extendidos hacia arriba
-			Ap(Brazo1Bone, Brazo1RestRot,  EasedSetup * (70.f + Struggle * 0.7f), AX);
-			Ap(Brazo2Bone, Brazo2RestRot,  EasedSetup * (-70.f + Struggle * 0.7f), AX);
+			// Brazos: mismo eje AX, signo negado
+			Ap(Brazo1Bone, Brazo1RestRot,  EasedSetup * (-70.f - Struggle * 0.7f), AX);
+			Ap(Brazo2Bone, Brazo2RestRot,  EasedSetup * ( 70.f - Struggle * 0.7f), AX);
 
-			// Cabeza caída hacia atrás por gravedad
-			Ap(CabezaBone, CabezaRestRot, EasedSetup * 25.f, TY);
+			// Cabeza: signo negado
+			Ap(CabezaBone, CabezaRestRot, EasedSetup * -25.f, TY);
 
-			// Cola ligeramente levantada
-			Ap(ColaBone, ColaRestRot, EasedSetup * (-35.f + Struggle * 0.5f), TY);
+			// Cola: signo negado (expresión original -(−35 + S·0.5) = 35 − S·0.5)
+			Ap(ColaBone, ColaRestRot, EasedSetup * (35.f - Struggle * 0.5f), TY);
 
 			// NO termina (bEnded queda false) — se mantiene hasta RecoverFromKnockdown
 		}
@@ -3569,12 +3625,18 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 		constexpr float DivePitch = -80.f;
 		const float     env       = DiveTiltAlpha;
 
-		// 1) SkeletalMesh — all re-attached limbs (Brazo1/2, Pata1/2, Cola, Cabeza) follow
+		// 1) SkeletalMesh — all re-attached limbs follow.
+		// DASH-01 v2: DiveMeshDefaultRot post-ANIM-01 incluye Yaw=90 (SKM unificado).
+		// Sumar al componente Pitch del rotator producía tilt lateral (orden ZYX:
+		// Yaw→Pitch→Roll hacía que el Pitch rote alrededor del eje ya rotado por Yaw).
+		// Composición con quaterniones: aplicar BaseQuat primero (orientación del mesh)
+		// y después un TiltQuat en espacio PADRE (capsule), cuyo eje Y = actor-right →
+		// Pitch puro del actor → tilt hacia adelante real.
 		if (USkeletalMeshComponent* SkelMesh = GetMesh())
 		{
-			FRotator Rot = DiveMeshDefaultRot;
-			Rot.Pitch   += DivePitch * env;
-			SkelMesh->SetRelativeRotation(Rot);
+			const FQuat BaseQuat = DiveMeshDefaultRot.Quaternion();
+			const FQuat TiltQuat(FVector(0.f, 1.f, 0.f), FMath::DegreesToRadians(DivePitch * env));
+			SkelMesh->SetRelativeRotation(TiltQuat * BaseQuat);
 		}
 
 		// 2) KnockdownVisualComp (Cuerpo) — only if NOT already a descendant of GetMesh()
