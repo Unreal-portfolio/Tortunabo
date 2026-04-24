@@ -6,6 +6,8 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
+#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
@@ -504,6 +506,28 @@ void ATN_HQGameMode::PostSeamlessTravel()
 			TNPS->bIsInReadyZone = false;
 
 			EnsurePlayerSpawned(PC);
+
+			// HQ-WARN-01: salvaguarda contra "Attempting to move a fully simulated
+			// skeletal mesh". Si el pawn recién spawneado llega con el SkM simulando
+			// (edge case: OnRep_IsDead llegó antes de BeginPlay, ragdoll sobrevive
+			// un tick, etc.), el MulticastForceApplyHelmet/Skin que sigue puede
+			// mover el mesh y disparar el warning. Reset defensivo aquí.
+			if (APawn* FreshPawn = PC->GetPawn())
+			{
+				if (ACharacter* Ch = Cast<ACharacter>(FreshPawn))
+				{
+					if (USkeletalMeshComponent* SKM = Ch->GetMesh())
+					{
+						if (SKM->IsSimulatingPhysics())
+						{
+							SKM->SetSimulatePhysics(false);
+							UE_LOG(LogTemp, Warning,
+								TEXT("[HQGameMode] Reset stale physics sim on pawn %s post-travel"),
+								*GetNameSafe(FreshPawn));
+						}
+					}
+				}
+			}
 
 			// Forzar aplicación del helmet y skin en todos los clientes.
 			// El Multicast incluye un retry deferred para cubrir la race condition
