@@ -1808,17 +1808,110 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 {
-	// KIRK-01 (2026-04-24): knockdown = SIEMPRE tilt manual + emote Kirk.
-	// El ragdoll físico queda exclusivo de SetDeadVisual (muerte). Razón:
-	// TN_ProcAnimInstance::NativePostEvaluateAnimation usa el guard
-	// `if (Mesh->IsSimulatingPhysics()) return;` para no pisar la simulación
-	// durante ragdoll. Ese guard también bloquea el emote de knockdown
-	// (brazos agitados) si activamos physics aquí → Kirk invisible.
-	//
-	// Ruta A eliminada. Si quieres reintroducir ragdoll en knockdown, antes
-	// hay que separar semánticamente el guard (p.ej. flag dedicado para muerte).
+	// ── Ruta A: ragdoll físico (opción 2 del rediseño Q1-07) ───────────────────
+	// Si el BP configuró bUsePhysicsRagdoll=true y el SkelMesh tiene PhysicsAsset,
+	// activamos ragdoll completo. Sin PhysicsAsset no hay ragdoll posible → cae
+	// silenciosamente al tilt manual (Ruta B más abajo) y no rompe nada.
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	const bool bCanRagdoll = bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset() != nullptr;
+	if (bCanRagdoll)
+	{
+		UCharacterMovementComponent* CMC_Ragdoll = GetCharacterMovement();
 
-	// ── Ruta B: tilt manual con SetRelativeRotation ───────────────────────────
+		if (bKnocked)
+		{
+			if (bKnockdownRagdollActive) { return; } // idempotente
+
+			SnapshotSkelMeshRelTransform = SkelMesh->GetRelativeTransform();
+			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+
+			// CRÍTICO: detener replicación de movimiento del actor antes de la
+			// simulación. Sin esto, el server sigue replicando Transform y el
+			// cliente dispara "Attempting to move a fully simulated skeletal mesh"
+			// al intentar reconciliar posición con el mesh ya detached+simulando.
+			// Idéntico tratamiento que SetDeadVisual — mismo warning en ambos estados.
+			if (HasAuthority())
+			{
+				SetReplicateMovement(false);
+			}
+
+			// Deshabilitar CMC ANTES de activar física — el network smoothing puede mover
+			// el mesh en el mismo tick, generando "Attempting to move a fully simulated
+			// skeletal mesh". NetworkSmoothingMode::Disabled previene el offset cosmético.
+			if (CMC_Ragdoll)
+			{
+				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+				CMC_Ragdoll->DisableMovement();
+			}
+
+			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+			// bPauseAnims: detiene la evaluación del AnimBP mientras la física domina.
+			// Sin esto, el AnimBP sigue produciendo pose cada frame y compite con la
+			// simulación → ragdoll glitcheado y movimiento errático.
+			SkelMesh->bPauseAnims = true;
+			SkelMesh->SetAllBodiesSimulatePhysics(true);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+			SkelMesh->SetEnableGravity(true);
+			SkelMesh->WakeAllRigidBodies();
+			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s"),
+				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"));
+
+			bKnockdownRagdollActive = true;
+
+			UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] Ragdoll activated on %s"), *GetNameSafe(this));
+		}
+		else
+		{
+			if (!bKnockdownRagdollActive) { return; }
+
+			// Before disabling physics, move the capsule to where the ragdoll landed so the
+			// character doesn't teleport back to the pre-knockdown position. We use the root
+			// bone (index 0) as the ragdoll floor reference and offset by capsule half-height.
+			{
+				const FName  RootBone      = SkelMesh->GetBoneName(0);
+				const FVector RagdollLoc   = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
+				const float  HalfH         = GetCapsuleComponent()
+				                             ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight()
+				                             : 0.f;
+				SetActorLocation(RagdollLoc + FVector(0.f, 0.f, HalfH),
+				                 false, nullptr, ETeleportType::TeleportPhysics);
+			}
+
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);  // restore anim-driven pose
+			SkelMesh->SetAllBodiesSimulatePhysics(false);
+			SkelMesh->bPauseAnims = false;  // Re-activa AnimBP tras salir del ragdoll
+			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+
+			// SetSimulatePhysics(true) detachea el mesh del parent — hay que re-attachear
+			// manualmente al capsule con la transform relativa original para restaurar la pose.
+			if (USceneComponent* Capsule = GetCapsuleComponent())
+			{
+				SkelMesh->AttachToComponent(Capsule,
+					FAttachmentTransformRules::KeepRelativeTransform);
+			}
+			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
+
+			if (CMC_Ragdoll)
+			{
+				CMC_Ragdoll->SetMovementMode(MOVE_Walking);
+				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+			}
+
+			// Restaurar replicación de movimiento tras salir del ragdoll.
+			if (HasAuthority())
+			{
+				SetReplicateMovement(true);
+			}
+
+			bKnockdownRagdollActive = false;
+
+			UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] Ragdoll deactivated on %s"), *GetNameSafe(this));
+		}
+		return;
+	}
+
+	// ── Ruta B: fallback tilt manual (comportamiento pre-Q1-07) ────────────────
 	USceneComponent* VisComp = KnockdownVisualComp.Get();
 
 	// ── Fallback: si el multicast llegó antes de que BeginPlay encontrara el componente,
