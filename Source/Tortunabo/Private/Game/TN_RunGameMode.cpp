@@ -518,6 +518,14 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		}
 		Pawn->DisableInput(PlayerController);
 
+		// Pawn muerto SIEMPRE relevante para todos los clientes. Sin esto, cuando el
+		// PC muerto entra espectador y la cámara se aleja (ej. viendo a un compañero
+		// vivo que avanza), el netcull quita el pawn muerto del cliente → ragdoll
+		// "desaparece tras unos segundos" aunque el servidor lo tenga vivo. Restaurado
+		// a default en RevivePlayer.
+		Pawn->bAlwaysRelevant = true;
+		Pawn->SetNetDormancy(DORM_Awake);
+
 		// Q1-13: activar ragdoll de muerte — pawn queda visible (es el visual del rescate)
 		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
 		{
@@ -848,6 +856,8 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
 		Pawn->SetActorHiddenInGame(false);
 		Pawn->SetActorEnableCollision(true);
+		// Restaurar relevancy default (tras MarkPlayerDead forzado bAlwaysRelevant=true)
+		Pawn->bAlwaysRelevant = false;
 
 		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
 		// 1) Resetear flag de espectador en el PlayerState

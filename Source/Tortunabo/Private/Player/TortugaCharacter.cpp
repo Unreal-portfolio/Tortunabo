@@ -3801,7 +3801,11 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 		}
 
 		// 2) KnockdownVisualComp (Cuerpo) — only if NOT already a descendant of GetMesh()
-		if (KnockdownVisualComp.IsValid())
+		//    AND not GetMesh() itself. Sin este segundo check, cuando
+		//    KnockdownVisualComp == GetMesh() (fallback del BeginPlay), este bloque
+		//    SOBREESCRIBE la rotación quaternion-correcta del bloque 1 con una suma
+		//    de FRotator (incorrecta) → dash rotaba sobre eje equivocado.
+		if (KnockdownVisualComp.IsValid() && KnockdownVisualComp.Get() != GetMesh())
 		{
 			bool bIsChildOfMesh = false;
 			for (USceneComponent* Cur = KnockdownVisualComp->GetAttachParent(); Cur; Cur = Cur->GetAttachParent())
