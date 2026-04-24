@@ -9,7 +9,9 @@
 
 ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Tick activo en servidor para el sweep anti phase-through. Early-exit si la
+	// velocidad horizontal está bajo umbral → coste despreciable en reposo.
+	PrimaryActorTick.bCanEverTick = true;
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
@@ -69,6 +71,60 @@ void ATN_PhysicsObjectActor::BeginPlay()
 				&ATN_PhysicsObjectActor::CheckForCrush,
 				CrushCheckInterval, /*bLoop=*/true);
 		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tick — anti phase-through sweep (server only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_PhysicsObjectActor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (!HasAuthority() || !Mesh || !bEnableAntiPhaseThrough) { return; }
+
+	// Sólo componentes horizontales — la caída libre (Vel.Z) la gestiona la
+	// gravedad nativa; el suelo aplica su propia fuerza normal por contacto.
+	const FVector Vel = Mesh->GetPhysicsLinearVelocity();
+	const FVector HorizVel(Vel.X, Vel.Y, 0.f);
+	const float HorizSpeedSq = HorizVel.SizeSquared();
+	if (HorizSpeedSq < AntiPhaseMinSpeed * AntiPhaseMinSpeed) { return; }
+
+	const float HorizSpeed = FMath::Sqrt(HorizSpeedSq);
+	const FVector Dir = HorizVel / HorizSpeed;
+	const FVector Origin = GetActorLocation();
+	const float Radius = Mesh->Bounds.SphereRadius;
+	// Anticipamos 2 frames de movimiento + padding → detecta la pared antes
+	// de que el empuje del player acumule penetración.
+	const float SweepDist = HorizSpeed * DeltaTime * 2.f + AntiPhaseProbePadding;
+
+	UWorld* World = GetWorld();
+	if (!World) { return; }
+
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(PhysicsObjectAntiPhase), /*bTraceComplex=*/false, this);
+	const FCollisionShape Shape = FCollisionShape::MakeSphere(Radius);
+
+	const bool bHit = World->SweepSingleByChannel(
+		Hit, Origin, Origin + Dir * SweepDist, FQuat::Identity,
+		ECC_WorldStatic, Shape, Params);
+	if (!bHit) { return; }
+
+	// Filtrar superficies no-verticales: suelos/techos los maneja la física.
+	// Solo aplicamos fuerza normal simulada contra paredes (Normal ~ horizontal).
+	if (FMath::Abs(Hit.ImpactNormal.Z) > AntiPhaseMaxNormalZ) { return; }
+
+	// Cancelar la componente de velocidad "into wall" — proyección escalar de
+	// Vel sobre -Normal. Si es positiva, el objeto se mueve CONTRA la pared →
+	// añadimos Normal * esa magnitud para anular la componente normal, dejando
+	// el slide tangencial intacto.
+	const FVector Normal = Hit.ImpactNormal;
+	const float IntoWallSpeed = -FVector::DotProduct(Vel, Normal);
+	if (IntoWallSpeed > 0.f)
+	{
+		const FVector ClampedVel = Vel + Normal * IntoWallSpeed;
+		Mesh->SetPhysicsLinearVelocity(ClampedVel);
 	}
 }
 

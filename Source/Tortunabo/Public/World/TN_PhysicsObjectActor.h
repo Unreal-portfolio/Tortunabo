@@ -28,6 +28,8 @@ class TORTUNABO_API ATN_PhysicsObjectActor : public AActor
 public:
 	ATN_PhysicsObjectActor();
 
+	virtual void Tick(float DeltaTime) override;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -71,6 +73,38 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush")
 	bool bEnableCrushDetection = true;
+
+	// ── Anti phase-through (2026-04-24) ──────────────────────────────────────
+	// Cuando la tortuga (u otro physics object) empuja horizontalmente un objeto
+	// contra una pared estática, la fuerza aplicada por frame puede superar lo
+	// que CCD compensa → el objeto atraviesa la pared (phase-through).
+	//
+	// Solución: cada tick server-authoritative, proyectamos un sweep en la
+	// dirección de la velocidad horizontal. Si impacta con geometría estática
+	// vertical (una pared), cancelamos la componente de velocidad normal a la
+	// pared — equivale a la fuerza normal que una pared real aplicaría. El
+	// componente tangencial (slide) queda intacto. La gravedad y los contactos
+	// con suelo/techo los sigue manejando la física nativa.
+
+	/** Habilita el sistema anti phase-through. Si desactivado, la simulación
+	 *  queda 100% a cargo de Chaos/CCD (comportamiento previo). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough")
+	bool bEnableAntiPhaseThrough = true;
+
+	/** Velocidad horizontal mínima (cm/s) para que el sweep se ejecute. Por
+	 *  debajo no hay riesgo de tunneling — ahorro de queries. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough", meta = (ClampMin = "10.0"))
+	float AntiPhaseMinSpeed = 50.f;
+
+	/** Padding extra (cm) añadido a la distancia del sweep — anticipa la pared
+	 *  antes de impactarla. Valor alto = detección temprana + más overhead. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough", meta = (ClampMin = "0.0"))
+	float AntiPhaseProbePadding = 8.f;
+
+	/** Tolerancia de verticalidad: |Normal.Z| ≤ este valor → pared.
+	 *  0.4 descarta suelos (~66°) y techos. Ajustable para rampas. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AntiPhaseMaxNormalZ = 0.4f;
 
 	/** Intervalo (s) entre chequeos de crush. 0 = solo al detenerse. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Crush", meta = (ClampMin = "0.2"))
