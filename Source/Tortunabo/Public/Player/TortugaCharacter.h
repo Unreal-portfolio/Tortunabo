@@ -261,20 +261,18 @@ protected:
 	float EmoteAudioOuterRadius = 2500.f;
 
 	/**
-	 * Eje primario de los brazos en espacio del PADRE (T-Pose).
-	 * Con SceneComponents a rot (0,0,0) y brazos por ±Y:
-	 *   X (1,0,0) rojo   = adelante → sube/baja visto de frente (+X=arriba)
-	 *   Y (0,1,0) verde  = derecha  → roll sobre eje largo del brazo (casi invisible en cubos)
-	 *   Z (0,0,1) azul   = arriba   → adelante/atrás (−Z=adelante, +Z=atrás)
+	 * Eje de reposo/swing de los brazos en component space del SKM unificado.
+	 * Corregido R_z(-90°) respecto al blockout: (0,-1,0) = -Y → sube/baja visto de frente.
+	 * Ajustar en BP si el binding pose del nuevo SKM requiere otro valor.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Emotes")
-	FVector ArmSwingAxis = FVector(1.f, 0.f, 0.f);
+	FVector ArmSwingAxis = FVector(0.f, -1.f, 0.f);
 
-	/** Up/down wag axis for Cola in LOCAL space.  (0,1,0) = local Y → tail wags up/down. */
+	/** Up/down wag axis for Cola in component space. R_z(-90°) corrected: (1,0,0) = X. */
 	UPROPERTY(EditDefaultsOnly, Category = "Emotes")
-	FVector TailUpDownAxis = FVector(0.f, 1.f, 0.f);
+	FVector TailUpDownAxis = FVector(1.f, 0.f, 0.f);
 
-	/** Side-to-side wag axis for Cola in LOCAL space.  (0,0,1) = local Z → tail wags left/right. */
+	/** Side-to-side wag axis for Cola in component space. Z is invariant: (0,0,1). */
 	UPROPERTY(EditDefaultsOnly, Category = "Emotes")
 	FVector TailSideAxis = FVector(0.f, 0.f, 1.f);
 

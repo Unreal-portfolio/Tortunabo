@@ -515,7 +515,7 @@ void ATortugaCharacter::ApplyArmAngle(FName BoneName, const FRotator& RestRot,
                                        float RestOffsetDeg, float SwingDeg) const
 {
 	const FVector RestAxis  = ArmSwingAxis.GetSafeNormal();
-	const FVector SwingAxis = FVector(0.f, 1.f, 0.f);
+	const FVector SwingAxis = FVector(1.f, 0.f, 0.f);
 	const FQuat   OffsetQuat(RestAxis,  FMath::DegreesToRadians(RestOffsetDeg));
 	const FQuat   SwingQuat (SwingAxis, FMath::DegreesToRadians(SwingDeg));
 	SetAnimBoneRot(BoneName, (SwingQuat * OffsetQuat * FQuat(RestRot)).Rotator());
@@ -1771,17 +1771,18 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SnapshotSkelMeshRelTransform = SkelMesh->GetRelativeTransform();
 			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 
+			// Deshabilitar CMC ANTES de activar física — el network smoothing puede mover
+			// el mesh en el mismo tick, generando "Attempting to move a fully simulated
+			// skeletal mesh". NetworkSmoothingMode::Disabled previene el offset cosmético.
+			if (CMC_Ragdoll)
+			{
+				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+				CMC_Ragdoll->DisableMovement();
+			}
+
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			SkelMesh->SetSimulatePhysics(true);
 			SkelMesh->WakeAllRigidBodies();
-
-			// Parar el CMC para que no intente mover el mesh mientras simula física.
-			// Sin esto genera "Attempting to move a fully simulated skeletal mesh" cada Tick.
-			if (CMC_Ragdoll)
-			{
-				CMC_Ragdoll->DisableMovement();
-				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
-			}
 
 			bKnockdownRagdollActive = true;
 
@@ -2711,40 +2712,28 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 	auto Cos  = [](float Hz, float t) { return FMath::Cos(2.f * PI * Hz * t); };
 	auto Sat  = [](float v)           { return FMath::Clamp(v, 0.f, 1.f); };
 
-	// ── Ejes de referencia (espacio del PADRE — T-Pose) ─────────────────────
-	// Setup: SceneComponents a rot (0,0,0), brazos extendidos por ±Y (T-Pose).
+	// ── Ejes de referencia (espacio de componente — SKM unificado) ──────────
+	// El nuevo SKM unificado tiene los huesos rotados ~90° Z respecto al blockout.
+	// Todos los ejes se han rotado R_z(-90°): (1,0,0)→(0,-1,0), (0,1,0)→(1,0,0).
+	// AZ y LZ permanecen iguales (Z es invariante bajo rotaciones Z).
 	//
-	// BRAZOS (mesh por ±Y desde el joint):
-	//   AX (1,0,0) adelante  → sube/baja visto de frente  (+AX = arriba)
-	//   AY (0,1,0) lateral   → roll sobre eje largo del brazo (casi invisible en cubos)
-	//   AZ (0,0,1) arriba    → adelante/atrás             (+AZ = backward, −AZ = forward)
-	//
-	// CABEZA (mesh por +X desde el joint):
-	//   AX = roll (rara vez útil)
-	//   AY = cabeceo arriba/abajo (nod)
-	//   AZ = girar izquierda/derecha (shake)
-	//
-	// PATAS (depende de orientación del mesh — si cuelgan por −Z):
-	//   LX (1,0,0) = splay lateral (abrir/cerrar piernas)
-	//   LY (0,1,0) = stride adelante/atrás  ← LegSwingAxis configurable
-	//   LZ (0,0,1) = twist/giro
-	//   Si las patas están en T-Pose (±Y), cambiar LegSwingAxis a (0,0,1).
-	//
-	// COLA (mesh por −X desde el joint):
-	//   TY = arriba/abajo   TZ = lado a lado   TX = roll cola
-	const FVector AX(1.f, 0.f, 0.f);
-	const FVector AY(0.f, 1.f, 0.f);
-	const FVector AZ(0.f, 0.f, 1.f);
+	// BRAZOS: AX sube/baja (+AX arriba), AY roll eje largo, AZ adelante/atrás
+	// CABEZA: AX = roll, AY = cabeceo nod, AZ = shake izq/dcha
+	// PATAS:  LX = splay lateral (abrir/cerrar), LY = stride (configurable), LZ = twist
+	// COLA:   TY = arriba/abajo, TZ = lado a lado, TX = roll
+	const FVector AX(0.f, -1.f, 0.f);
+	const FVector AY(1.f,  0.f, 0.f);
+	const FVector AZ(0.f,  0.f, 1.f);
 
 	// Patas
-	const FVector LX(1.f, 0.f, 0.f);       // splay lateral
-	const FVector LY = LegSwingAxis;         // stride adelante/atrás (configurable)
-	const FVector LZ(0.f, 0.f, 1.f);       // giro pata
+	const FVector LX(0.f, -1.f, 0.f);       // splay lateral
+	const FVector LY = LegSwingAxis;          // stride adelante/atrás (configurable)
+	const FVector LZ(0.f,  0.f, 1.f);       // giro pata
 
 	// Cola
 	const FVector TY = TailUpDownAxis;
 	const FVector TZ = TailSideAxis;
-	const FVector TX(1.f, 0.f, 0.f);       // roll cola
+	const FVector TX(0.f, -1.f, 0.f);       // roll cola
 
 	// ── Helpers de aplicación (rotación) ──────────────────────────────────────
 	auto Ap = [&](FName Bone, const FRotator& Rest, float Angle, const FVector& Axis)
@@ -3674,8 +3663,8 @@ void ATortugaCharacter::TickJumpAnim(float DeltaTime)
 
 	const auto Sat = [](float v) { return FMath::Clamp(v, 0.f, 1.f); };
 
-	const FVector AX = ArmSwingAxis;              // (1,0,0)  arm up/down
-	const FVector AY = FVector(0.f, 1.f, 0.f);    // arm roll (head nod)
+	const FVector AX = ArmSwingAxis;               // arm up/down (R_z(-90°) corrected via UPROPERTY)
+	const FVector AY = FVector(1.f, 0.f, 0.f);    // arm roll / head nod (R_z(-90°) corrected)
 	const FVector AZ = FVector(0.f, 0.f, 1.f);    // arm forward/back
 	const FVector LY = LegSwingAxis;              // (0,1,0)  leg swing
 	const FVector TY = TailUpDownAxis;
@@ -3790,7 +3779,7 @@ void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
 	if (CabezaBone == NAME_None) { return; }
 
 	const FQuat YawQ  (FVector(0.f, 0.f, 1.f), FMath::DegreesToRadians(Yaw));
-	const FQuat PitchQ(FVector(0.f, 1.f, 0.f), FMath::DegreesToRadians(Pitch));
+	const FQuat PitchQ(FVector(1.f, 0.f, 0.f), FMath::DegreesToRadians(Pitch));
 	SetAnimBoneRot(CabezaBone, (YawQ * PitchQ * FQuat(CabezaRestRot)).Rotator());
 }
 
