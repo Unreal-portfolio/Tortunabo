@@ -1971,6 +1971,38 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	// Listen-server: OnRep no se dispara localmente
 	if (bDead) { HideLimbs(); } else { ShowLimbs(); }
 
+	if (HasAuthority())
+	{
+		USkeletalMeshComponent* SkelMesh = GetMesh();
+		if (bDead)
+		{
+			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset())
+			{
+				if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+				{
+					CMC->DisableMovement();
+					CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+				}
+				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+				SkelMesh->SetSimulatePhysics(true);
+				SkelMesh->WakeAllRigidBodies();
+			}
+		}
+		else
+		{
+			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
+			{
+				SkelMesh->SetSimulatePhysics(false);
+				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+				if (USceneComponent* Capsule = GetCapsuleComponent())
+				{
+					SkelMesh->AttachToComponent(Capsule,
+						FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
+				}
+			}
+		}
+	}
+
 	// Multicast fiable para todos los clientes
 	MulticastSetDeadVisual(bDead);
 
@@ -1984,9 +2016,39 @@ void ATortugaCharacter::OnRep_IsDead()
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 {
-	// El servidor ya lo aplicó en SetDeadVisual
 	if (HasAuthority()) { return; }
-	if (bDead) { HideLimbs(); } else { ShowLimbs(); }
+	if (bDead)
+	{
+		HideLimbs();
+		USkeletalMeshComponent* SkelMesh = GetMesh();
+		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset())
+		{
+			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+			{
+				CMC->DisableMovement();
+				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+			}
+			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->SetSimulatePhysics(true);
+			SkelMesh->WakeAllRigidBodies();
+		}
+	}
+	else
+	{
+		ShowLimbs();
+		bCanAirDash = true;
+		USkeletalMeshComponent* SkelMesh = GetMesh();
+		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
+		{
+			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+			if (USceneComponent* Capsule = GetCapsuleComponent())
+			{
+				SkelMesh->AttachToComponent(Capsule,
+					FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
+			}
+		}
+	}
 }
 
 void ATortugaCharacter::HideLimbs()
