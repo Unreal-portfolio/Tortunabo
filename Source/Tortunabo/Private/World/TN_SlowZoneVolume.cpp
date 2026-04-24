@@ -21,8 +21,10 @@ void ATN_SlowZoneVolume::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxBeginOverlap);
-	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_SlowZoneVolume::OnBoxEndOverlap);
+	// AddUniqueDynamic: idempotente. Evita el ensure "InvocationList[CurFunctionIndex] != InDelegate"
+	// cuando el BP child ya bindea el evento O BeginPlay se re-ejecuta (edge case).
+	TriggerBox->OnComponentBeginOverlap.AddUniqueDynamic(this, &ATN_SlowZoneVolume::OnBoxBeginOverlap);
+	TriggerBox->OnComponentEndOverlap.AddUniqueDynamic(this, &ATN_SlowZoneVolume::OnBoxEndOverlap);
 }
 
 void ATN_SlowZoneVolume::Tick(float DeltaTime)
