@@ -8,6 +8,12 @@ void UTN_ProcAnimInstance::NativePostEvaluateAnimation()
 	USkeletalMeshComponent* Mesh = GetSkelMeshComponent();
 	if (!Mesh) { return; }
 
+	// Ragdoll (knockdown Ruta A, death): la simulación física escribe los bone
+	// transforms cada frame. Si pisamos aquí los overrides cosméticos (head,
+	// leg, belly, bighead) sobre la pose física → twitch/glitch visible.
+	// Cuando hay simulación, la física manda — no tocar.
+	if (Mesh->IsSimulatingPhysics()) { return; }
+
 	// GetEditableComponentSpaceTransforms() holds the freshly evaluated pose.
 	// Overriding here runs BEFORE FinalizeBoneTransform() flips the buffers,
 	// so our values end up in the readable buffer this frame.
