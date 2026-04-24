@@ -1825,30 +1825,34 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SnapshotSkelMeshRelTransform = SkelMesh->GetRelativeTransform();
 			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 
-			// CRÍTICO: detener replicación de movimiento del actor antes de la
-			// simulación. Sin esto, el server sigue replicando Transform y el
-			// cliente dispara "Attempting to move a fully simulated skeletal mesh"
-			// al intentar reconciliar posición con el mesh ya detached+simulando.
-			// Idéntico tratamiento que SetDeadVisual — mismo warning en ambos estados.
+			// CRÍTICO (warning "fully simulated skeletal mesh"): detener replicación
+			// de movimiento del actor antes de la simulación. Sin esto, el server
+			// sigue replicando Transform y el cliente intenta reconciliar posición
+			// con el mesh ya simulando.
 			if (HasAuthority())
 			{
 				SetReplicateMovement(false);
 			}
 
-			// Deshabilitar CMC ANTES de activar física — el network smoothing puede mover
-			// el mesh en el mismo tick, generando "Attempting to move a fully simulated
-			// skeletal mesh". NetworkSmoothingMode::Disabled previene el offset cosmético.
 			if (CMC_Ragdoll)
 			{
 				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 				CMC_Ragdoll->DisableMovement();
+				CMC_Ragdoll->StopMovementImmediately();
+				// CRÍTICO (warning "fully simulated skeletal mesh"): DisableMovement solo
+				// cambia MovementMode a MOVE_None. El tick del CMC sigue activo y llama
+				// UpdateBasedMovement que arrastra la capsule → propaga move al mesh child
+				// simulado cada frame. Apagar el tick del CMC corta la raíz del warning.
+				// Source: UE-76457, forums.unrealengine.com/t/rag-doll-attached-to-parent.
+				CMC_Ragdoll->SetComponentTickEnabled(false);
+			}
+
+			if (UCapsuleComponent* Cap = GetCapsuleComponent())
+			{
+				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			}
 
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-			// bPauseAnims: detiene la evaluación del AnimBP mientras la física domina.
-			// Sin esto, el AnimBP sigue produciendo pose cada frame y compite con la
-			// simulación → ragdoll glitcheado y movimiento errático.
 			SkelMesh->bPauseAnims = true;
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
@@ -1858,16 +1862,13 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"));
 
 			bKnockdownRagdollActive = true;
-
-			UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] Ragdoll activated on %s"), *GetNameSafe(this));
 		}
 		else
 		{
 			if (!bKnockdownRagdollActive) { return; }
 
-			// Before disabling physics, move the capsule to where the ragdoll landed so the
-			// character doesn't teleport back to the pre-knockdown position. We use the root
-			// bone (index 0) as the ragdoll floor reference and offset by capsule half-height.
+			// Mover el capsule a donde cayó el ragdoll antes de desactivar física,
+			// para que no teleporte de vuelta a la pos pre-knockdown.
 			{
 				const FName  RootBone      = SkelMesh->GetBoneName(0);
 				const FVector RagdollLoc   = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
@@ -1878,35 +1879,33 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 				                 false, nullptr, ETeleportType::TeleportPhysics);
 			}
 
-			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);  // restore anim-driven pose
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
 			SkelMesh->SetAllBodiesSimulatePhysics(false);
-			SkelMesh->bPauseAnims = false;  // Re-activa AnimBP tras salir del ragdoll
+			SkelMesh->bPauseAnims = false;
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 
-			// SetSimulatePhysics(true) detachea el mesh del parent — hay que re-attachear
-			// manualmente al capsule con la transform relativa original para restaurar la pose.
-			if (USceneComponent* Capsule = GetCapsuleComponent())
-			{
-				SkelMesh->AttachToComponent(Capsule,
-					FAttachmentTransformRules::KeepRelativeTransform);
-			}
+			// NO AttachToComponent: nunca hicimos detach. Solo restaurar la relative
+			// transform al snapshot para devolver el mesh a su pose "vivo" sobre el capsule.
 			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
+
+			if (UCapsuleComponent* Cap = GetCapsuleComponent())
+			{
+				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			}
 
 			if (CMC_Ragdoll)
 			{
+				CMC_Ragdoll->SetComponentTickEnabled(true);
 				CMC_Ragdoll->SetMovementMode(MOVE_Walking);
 				CMC_Ragdoll->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 			}
 
-			// Restaurar replicación de movimiento tras salir del ragdoll.
 			if (HasAuthority())
 			{
 				SetReplicateMovement(true);
 			}
 
 			bKnockdownRagdollActive = false;
-
-			UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] Ragdoll deactivated on %s"), *GetNameSafe(this));
 		}
 		return;
 	}
@@ -2062,31 +2061,28 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 					SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
 					SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 				}
-				// CRÍTICO: detener replicación de movimiento del actor antes de activar
-				// la simulación. Si el server sigue replicando su Transform a los clientes
-				// mientras el mesh está detached+simulando, UE dispara "Attempting to move
-				// a fully simulated skeletal mesh" cada vez que el cliente intenta
-				// reconciliar posición. La simulación local en cada máquina se sincroniza
-				// vía OnRep_IsDead + Multicast; el pickup marca la posición final real.
 				SetReplicateMovement(false);
 				if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 				{
 					CMC->DisableMovement();
+					CMC->StopMovementImmediately();
 					CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+					// Ver comentario en ApplyKnockdownVisual — mata el tick que propaga
+					// moves de la capsule al mesh simulado.
+					CMC->SetComponentTickEnabled(false);
 				}
-				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-				SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-				SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
-				SkelMesh->SetAllBodiesSimulatePhysics(true);       // canonical full ragdoll
-				SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);     // pure physics, no anim blend
-				SkelMesh->SetEnableGravity(true);                  // defensive vs BP override
-				SkelMesh->WakeAllRigidBodies();
-				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f"),
-					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f);
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
 				{
 					Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 				}
+				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+				SkelMesh->bPauseAnims = true;
+				SkelMesh->SetAllBodiesSimulatePhysics(true);
+				SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+				SkelMesh->SetEnableGravity(true);
+				SkelMesh->WakeAllRigidBodies();
+				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f"),
+					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f);
 			}
 		}
 		else
@@ -2094,24 +2090,20 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 			bCanAirDash = true;
 			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 			{
-				SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);  // restore anim-driven pose
+				SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
 				SkelMesh->SetAllBodiesSimulatePhysics(false);
 				SkelMesh->bPauseAnims = false;
 				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+				SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
 				{
-					SkelMesh->AttachToComponent(Cap,
-						FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
 					Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 				}
-				SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 			}
-			// Restaurar replicación de movimiento + smoothing tras salir del ragdoll.
-			// SetDeadVisual(true) puso SetReplicateMovement(false) y NetworkSmoothing=Disabled;
-			// hay que revertirlos aquí para que el pawn revivido reciba actualizaciones.
 			SetReplicateMovement(true);
 			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 			{
+				CMC->SetComponentTickEnabled(true);
 				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 			}
 		}
@@ -2134,23 +2126,20 @@ void ATortugaCharacter::OnRep_IsDead()
 			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 			{
 				CMC->DisableMovement();
+				CMC->StopMovementImmediately();
 				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+				CMC->SetComponentTickEnabled(false);  // evita arrastre capsule→mesh
 			}
-			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-			SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
-			// CRÍTICO (bug "ragdoll no cae, vibra tieso"): en clientes, SetSimulatePhysics
-			// activa los bodies pero el PhysicsBlendWeight queda en 0 (default del ACharacter)
-			// → simulación existe pero la pose del anim domina → ragdoll kinematic.
-			// BlendWeight=1 + EnableGravity replican el setup del servidor.
-			SkelMesh->SetAllBodiesSimulatePhysics(true);
-			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
-			SkelMesh->SetEnableGravity(true);
-			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
 				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			}
+			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->bPauseAnims = true;
+			SkelMesh->SetAllBodiesSimulatePhysics(true);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+			SkelMesh->SetEnableGravity(true);
+			SkelMesh->WakeAllRigidBodies();
 		}
 	}
 	else
@@ -2158,22 +2147,19 @@ void ATortugaCharacter::OnRep_IsDead()
 		bCanAirDash = true;
 		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 		{
-			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
+			SkelMesh->SetAllBodiesSimulatePhysics(false);
 			SkelMesh->bPauseAnims = false;
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
-				SkelMesh->AttachToComponent(Cap,
-					FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
 				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			}
-			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 		}
-		// Restaurar smoothing en cliente al salir del ragdoll. Sin esto, el cliente
-		// seguiría con NetworkSmoothingMode=Disabled → el pawn revivido teletransportaría
-		// cada update de posición en lugar de interpolar suavemente.
 		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 		{
+			CMC->SetComponentTickEnabled(true);
 			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 		}
 	}
@@ -2192,20 +2178,20 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 			{
 				CMC->DisableMovement();
+				CMC->StopMovementImmediately();
 				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+				CMC->SetComponentTickEnabled(false);
 			}
-			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			SkelMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-			SkelMesh->bPauseAnims = true;  // AnimBP off → física manda sin competencia
-			// Mismo setup que el servidor — sin BlendWeight=1 + Gravity el ragdoll no cae.
-			SkelMesh->SetAllBodiesSimulatePhysics(true);
-			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
-			SkelMesh->SetEnableGravity(true);
-			SkelMesh->WakeAllRigidBodies();
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
 				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			}
+			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			SkelMesh->bPauseAnims = true;
+			SkelMesh->SetAllBodiesSimulatePhysics(true);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+			SkelMesh->SetEnableGravity(true);
+			SkelMesh->WakeAllRigidBodies();
 		}
 	}
 	else
@@ -2213,20 +2199,19 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 		bCanAirDash = true;
 		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
 		{
-			SkelMesh->SetSimulatePhysics(false);
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
+			SkelMesh->SetAllBodiesSimulatePhysics(false);
 			SkelMesh->bPauseAnims = false;
 			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
+			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 			if (UCapsuleComponent* Cap = GetCapsuleComponent())
 			{
-				SkelMesh->AttachToComponent(Cap,
-					FAttachmentTransformRules(EAttachmentRule::SnapToTarget, false));
 				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			}
-			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 		}
-		// Restaurar smoothing en cliente — igual que en OnRep_IsDead.
 		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 		{
+			CMC->SetComponentTickEnabled(true);
 			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 		}
 	}

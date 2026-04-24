@@ -522,12 +522,16 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
 		{
 			Character->SetDeadVisual(true);
-			// Fallback: si el SKM no tiene PhysicsAsset asignado en BP_TortugaCharacter,
-			// el ragdoll no se activa → ocultar el pawn para evitar "vivo-muerto" visible.
+			// Fallback: si no hay PhysicsAsset, ragdoll imposible → ocultar pawn.
+			// NO usar IsSimulatingPhysics() aquí: Chaos puede devolver false
+			// inmediatamente tras SetAllBodiesSimulatePhysics(true) por asincronía
+			// → el pawn se ocultaba por error aunque el ragdoll se activara bien
+			// en el tick siguiente. Check estático: existe PhysicsAsset → ragdoll OK.
 			USkeletalMeshComponent* SM = Character->GetMesh();
-			if (!SM || !SM->IsSimulatingPhysics())
+			const bool bHasRagdollSetup = SM && SM->GetPhysicsAsset();
+			if (!bHasRagdollSetup)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[Death] Ragdoll inactive (sin PhysicsAsset en BP?) — ocultando pawn %s"), *GetNameSafe(Pawn));
+				UE_LOG(LogTemp, Warning, TEXT("[Death] Sin PhysicsAsset en BP — ocultando pawn %s (fallback sin ragdoll)"), *GetNameSafe(Pawn));
 				Pawn->SetActorHiddenInGame(true);
 				Pawn->SetActorEnableCollision(false);
 			}
