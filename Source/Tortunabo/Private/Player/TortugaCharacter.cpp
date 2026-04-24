@@ -80,8 +80,10 @@ ATortugaCharacter::ATortugaCharacter()
 	// por si algún Class Default en BP los hubiera puesto a false.
 	CameraBoom->bDoCollisionTest = true;
 	CameraBoom->ProbeChannel     = ECC_Camera;  // todas las paredes bloquean ECC_Camera por defecto
-	CameraBoom->ProbeSize        = 14.f;         // radio del sweep; un poco mayor que el default (12)
-	                                             // para evitar clipping con esquinas afiladas.
+	CameraBoom->ProbeSize        = 22.f;         // CAM-01: con 14 la cámara clipaba el suelo al mirar
+	                                             // hacia arriba (el brazo desciende detrás del pawn y
+	                                             // entra en el suelo antes de que el sweep lo atrape).
+	                                             // 22 da margen de seguridad sin recortar vista en zonas estrechas.
 
 	// ── Cinematic camera lag ──────────────────────────────────────────────────
 	// Suaviza la posición de la cámara para un feel AAA fluido.
@@ -2766,8 +2768,9 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		    env * 90.f,              AY,
 		    env * 75.f * wave,       AX);
 
-		// Brazo2 (izq): baja relajado
-		Ap(Brazo2Bone, Brazo2RestRot, env * 80.f, AX);
+		// Brazo2 (izq): baja relajado. EMOTE-01: signo negado — con ANIM-01 el eje AX
+		// apunta a (0,-1,0), así que para que la mano quede ABAJO hace falta -80°.
+		Ap(Brazo2Bone, Brazo2RestRot, env * -80.f, AX);
 
 		// Cabeza — cabeceo visible mientras saluda
 		Ap(CabezaBone, CabezaRestRot, env * 20.f * S(2.f, T), AY);
@@ -3425,9 +3428,9 @@ void ATortugaCharacter::TryDive()
 	DiveDir.Z = 0.f;
 	DiveDir.Normalize();
 
-	// Client-side prediction: face dive direction immediately so the tilt looks correct
-	SetActorRotation(FRotator(0.f, DiveDir.ToOrientationRotator().Yaw, 0.f));
-
+	// DASH-01: bOrientRotationToMovement ya orienta el capsule suavemente a la
+	// dirección del movimiento. Un SetActorRotation aquí snappeaba 90° el mesh
+	// tras ANIM-01 (SKM unificado con orientación distinta al blockout).
 	Server_StartDive(DiveDir);
 }
 
@@ -3455,8 +3458,9 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 		CancelEmoteLocalOnly();
 	}
 
-	// Face the dive direction so the forward-tilt visual is always correct
-	SetActorRotation(FRotator(0.f, DiveDir.ToOrientationRotator().Yaw, 0.f));
+	// DASH-01: idem que cliente — CMC::bOrientRotationToMovement interpola hacia
+	// la nueva velocidad (DiveVelocity) sin snap. SetActorRotation aquí producía
+	// un giro visible de 90° post ANIM-01 (mesh reorientado).
 
 	// Apply impulse: forward + small downward component
 	const FVector DiveVelocity = DiveDir * DiveForwardSpeed + FVector(0.f, 0.f, -DiveDownwardSpeed);
