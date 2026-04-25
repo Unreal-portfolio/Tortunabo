@@ -163,6 +163,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
 	float DiveTiltSpeed = 12.f;
 
+	/** Velocidad de rotación del actor Yaw hacia DiveDir al iniciar el dash (deg/seg).
+	 *  720 → completa 180° en 250 ms. Subir = más responsivo (más cerca de snap).
+	 *  Bajar = más fluido (puede no completar la rotación durante el dash). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="60.0", ClampMax="3600.0"))
+	float DiveYawInterpSpeed = 720.f;
+
 	// ── Dive momentum preservation ─────────────────────────────────────────────
 	// Captura velocity horizontal AL SALTAR. En el dash, compara cámara ACTUAL
 	// contra dirección del salto. Bonus = JumpStartSpeed * Factor(alignment).
@@ -194,6 +200,17 @@ protected:
 	 *  necesita replicar — cada máquina captura localmente al saltar y la usa
 	 *  para el dash posterior (el server-side cálculo del dash lee la del server). */
 	FVector JumpStartHorizontalVelocity = FVector::ZeroVector;
+
+	/** Yaw target hacia el que el actor interpola al iniciar el dash. Replicado
+	 *  para que clientes remotos (no owner) también interpolen suavemente al
+	 *  recibir la dirección. */
+	UPROPERTY(Replicated)
+	float DiveTargetYaw = 0.f;
+
+	/** Activo mientras la rotación del dash se está interpolando. Se desactiva
+	 *  al alcanzar el target (ε ≤ 1°) o al terminar el dash. */
+	UPROPERTY(Replicated)
+	bool bDiveYawInterpActive = false;
 
 	/**
 	 * CapsuleHalfHeight while diving — shrinks the hitbox to match the horizontal pose.

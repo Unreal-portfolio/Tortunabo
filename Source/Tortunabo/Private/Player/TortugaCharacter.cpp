@@ -1682,6 +1682,8 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ATortugaCharacter, bBigHead);
 	// Dive
 	DOREPLIFETIME(ATortugaCharacter, bIsDiving);
+	DOREPLIFETIME(ATortugaCharacter, DiveTargetYaw);
+	DOREPLIFETIME(ATortugaCharacter, bDiveYawInterpActive);
 	// Umbrella protection (#29)
 	DOREPLIFETIME(ATortugaCharacter, bHasUmbrellaProtection);
 	// Head look — SkipOwner: el owner aplica la rotación localmente sin pasar por la red
@@ -3692,20 +3694,15 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 		CancelEmoteLocalOnly();
 	}
 
-	// DASH-04: snap del Yaw del actor hacia DiveDir. Sin esto, el tilt visual del
-	// dash se aplica sobre el eje "frente del actor" anterior, no hacia donde
-	// realmente dasheas → el cuerpo se tira hacia el sitio frontal original.
-	// CMC::bOrientRotationToMovement interpola gradualmente y el dash dura 150ms
-	// → no completa la rotación a tiempo.
+	// DASH-05: rotación fluida hacia DiveDir. En lugar de snap instantáneo,
+	// se setea DiveTargetYaw + flag bDiveYawInterpActive que TickDive (corre en
+	// owner + server) consume cada frame para interpolar el actor hacia el
+	// target con velocidad DiveYawInterpSpeed (deg/seg).
 	//
-	// El issue de "snap de 90° post ANIM-01" (DASH-01) NO aplica aquí porque
-	// rotamos el actor, no el SkelMesh — DiveMeshDefaultRot (Yaw=90 del SKM
-	// unificado) sigue siendo relativo al actor, así que el SkM mantiene su
-	// orientación visual correcta tras la rotación.
-	{
-		const float TargetYaw = DiveDir.Rotation().Yaw;
-		SetActorRotation(FRotator(0.f, TargetYaw, 0.f));
-	}
+	// Replicado: clientes remotos también interpolan tras recibir el target —
+	// feel suave en todos los puntos de vista.
+	DiveTargetYaw         = DiveDir.Rotation().Yaw;
+	bDiveYawInterpActive  = true;
 
 	// ── Momentum preservation: cámara ACTUAL vs salto ORIGINAL ─────────────────
 	// La velocity horizontal AL SALTAR (capturada en OnJumped) marca la dirección
@@ -3842,8 +3839,9 @@ void ATortugaCharacter::EndDive()
 {
 	if (!HasAuthority()) { return; }
 
-	bIsDiving     = false;
-	DiveLockTimer = 0.f;
+	bIsDiving             = false;
+	bDiveYawInterpActive  = false;
+	DiveLockTimer         = 0.f;
 
 	// Multicast restore visual
 	Multicast_OnDiveVisual(false);
@@ -3863,6 +3861,7 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 		if (SkelMeshGuard && SkelMeshGuard->IsSimulatingPhysics())
 		{
 			DiveTiltAlpha = 0.f;
+			bDiveYawInterpActive = false;
 			return;
 		}
 		if (bIsKnockedDown || bIsDead)
@@ -3870,7 +3869,34 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 			// Cancelar interpolación pendiente sin tocar el mesh — ya lo
 			// gestiona ApplyKnockdownVisual / SetDeadVisual.
 			DiveTiltAlpha = 0.f;
+			bDiveYawInterpActive = false;
 			return;
+		}
+	}
+
+	// ── DASH-05: interpolación fluida del actor Yaw hacia DiveTargetYaw ────────
+	// Owner + server interpolan localmente para feel inmediato. Clientes remotos
+	// también: bDiveYawInterpActive y DiveTargetYaw replican, así que el cliente
+	// remoto ejecuta el mismo path con valores autoritativos.
+	if (bDiveYawInterpActive)
+	{
+		const FRotator CurrentRot = GetActorRotation();
+		const float DeltaYaw = FMath::FindDeltaAngleDegrees(CurrentRot.Yaw, DiveTargetYaw);
+		const float MaxStep  = DiveYawInterpSpeed * DeltaTime;
+		const float StepYaw  = FMath::Clamp(DeltaYaw, -MaxStep, MaxStep);
+		const float NewYaw   = CurrentRot.Yaw + StepYaw;
+
+		// Solo aplicamos en owner (cliente local) y server. Clientes remotos no-owner
+		// reciben la rotation por bReplicateMovement con smoothing — si llamamos
+		// SetActorRotation en ellos, peleamos contra la replicación.
+		if (IsLocallyControlled() || HasAuthority())
+		{
+			SetActorRotation(FRotator(0.f, NewYaw, 0.f));
+		}
+
+		if (FMath::Abs(DeltaYaw) <= 1.f)
+		{
+			bDiveYawInterpActive = false; // alcanzado el target → desactivar
 		}
 	}
 
