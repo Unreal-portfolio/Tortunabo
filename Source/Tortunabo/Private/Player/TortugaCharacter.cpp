@@ -3769,6 +3769,27 @@ void ATortugaCharacter::EndDive()
 
 void ATortugaCharacter::TickDive(float DeltaTime)
 {
+	// ── Guard: si el mesh ya está en ragdoll (knockdown post-dash a plátano,
+	//    o muerte durante dive), NO tocar SetRelativeRotation. Hacerlo dispara
+	//    "Attempting to move a fully simulated skeletal mesh" y desincroniza
+	//    los bodies del ragdoll. La interpolación visual del dive deja de
+	//    importar — el ragdoll es el visual canonico. ──────────────────────
+	{
+		USkeletalMeshComponent* SkelMeshGuard = GetMesh();
+		if (SkelMeshGuard && SkelMeshGuard->IsSimulatingPhysics())
+		{
+			DiveTiltAlpha = 0.f;
+			return;
+		}
+		if (bIsKnockedDown || bIsDead)
+		{
+			// Cancelar interpolación pendiente sin tocar el mesh — ya lo
+			// gestiona ApplyKnockdownVisual / SetDeadVisual.
+			DiveTiltAlpha = 0.f;
+			return;
+		}
+	}
+
 	// ── Whole-character forward tilt (all machines, cosmetic) ─────────────────
 	// Rotate GetMesh() (carries all re-attached limbs) AND KnockdownVisualComp
 	// (Cuerpo) by the same pitch so the entire character tilts as one solid unit.
