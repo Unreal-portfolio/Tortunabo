@@ -303,6 +303,7 @@ void ATN_EnemySeagull::ResolveAttack()
 
 	if (!Target)
 	{
+		UE_LOG(LogTemp, Log, TEXT("[SEAGULL] ResolveAttack: target lost → retreat"));
 		AbortAndRetreat();
 		return;
 	}
@@ -310,6 +311,8 @@ void ATN_EnemySeagull::ResolveAttack()
 	// Cubierta detectada en el último check periódico → abortar
 	if (HasRoofBetweenSeagullAndTarget())
 	{
+		UE_LOG(LogTemp, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' under roof → retreat"),
+			*GetNameSafe(Target));
 		AbortAndRetreat();
 		return;
 	}
@@ -318,9 +321,14 @@ void ATN_EnemySeagull::ResolveAttack()
 	const float DistXY = FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
 	if (DistXY > MinKillRadius)
 	{
+		UE_LOG(LogTemp, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' escaped (dist=%.0f > %.0f) → retreat"),
+			*GetNameSafe(Target), DistXY, MinKillRadius);
 		AbortAndRetreat();
 		return;
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("[SEAGULL] STRIKE on '%s' (dist=%.0f)"),
+		*GetNameSafe(Target), DistXY);
 
 	// Iniciar picotazo físico
 	bIsStriking      = true;
