@@ -622,6 +622,18 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	{
 		DeadPlayerPawns.Add(TNPS->GetPlayerId(), DeadPawn);
 		UE_LOG(LogTemp, Log, TEXT("[Death] Saved pawn ref for PlayerId=%d → %s"), TNPS->GetPlayerId(), *GetNameSafe(DeadPawn));
+
+		// FIX ragdoll despawn intermitente: cambiar el Owner del pawn muerto al
+		// GameMode. Sin este cambio, si el PC hace Logout (timeout, quit,
+		// PIE-shutdown), UE engine puede destruir cascada los actors Owner=PC
+		// → ragdoll se evapora junto al PC. Owner=GameMode desliga el pawn del
+		// ciclo de vida del PC. El pawn solo se destruirá explícitamente desde
+		// RevivePlayer (cuando se reataca el mesh) o FinishRoundAndReturnToLobby.
+		DeadPawn->SetOwner(this);
+		// Garantía adicional: lifespan infinito (por si algo lo asignó por otro lado).
+		DeadPawn->SetLifeSpan(0.f);
+		UE_LOG(LogTemp, Log, TEXT("[Death] Detached pawn from PC ownership · pawn=%s now owned by GameMode"),
+			*GetNameSafe(DeadPawn));
 	}
 
 	MovePlayerToSpectator(PlayerController);

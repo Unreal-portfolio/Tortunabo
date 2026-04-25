@@ -86,14 +86,24 @@ void ATN_PhysicsObjectActor::BeginPlay()
 			Mesh->SetSimulatePhysics(false);
 			Mesh->SetMobility(EComponentMobility::Movable);
 
-			// PushDetector: radio = bounding del mesh + extra
+			// IMPORTANTE: kinematic-push requiere que el Mesh BLOQUEE Pawns para
+			// que la tortuga lo "toque" físicamente y el PushDetector se active.
+			// Sin esto el jugador atravesaría el cubo sin empujarlo.
+			Mesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+
+			// PushDetector: radio basado en bounds del componente (incluye
+			// escala del actor). GetActorBounds en world space da el tamaño REAL.
+			FVector BoundsOrigin = FVector::ZeroVector;
 			FVector BoundsExtent = FVector::ZeroVector;
-			if (Mesh->GetStaticMesh())
-			{
-				BoundsExtent = Mesh->GetStaticMesh()->GetBounds().BoxExtent;
-			}
+			GetActorBounds(/*bOnlyCollidingComponents=*/true, BoundsOrigin, BoundsExtent);
 			const float MeshRadius = BoundsExtent.Size2D();
-			PushDetector->SetSphereRadius(MeshRadius + PushDetectionRadiusExtra);
+
+			// Mínimo 50cm para evitar que un mesh diminuto desactive el push.
+			const float DetectorRadius = FMath::Max(MeshRadius + PushDetectionRadiusExtra, 50.f);
+			PushDetector->SetSphereRadius(DetectorRadius);
+
+			UE_LOG(LogTemp, Log, TEXT("[PhysicsObject] '%s' kinematic-push setup · BoundsExtent=%s · DetectorRadius=%.1f"),
+				*GetName(), *BoundsExtent.ToString(), DetectorRadius);
 
 			PrimaryActorTick.bCanEverTick = true;
 			SetActorTickEnabled(true);

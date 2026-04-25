@@ -657,6 +657,16 @@ USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
 
 void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Log diagnóstico para investigar despawn intermitente del ragdoll-pickup.
+	// Si veo "EndPlay reason=Destroyed bIsDead=true" justo después de
+	// FinalizeDeathVisual → algo destruye el pawn que está siendo el visual
+	// del rescue pickup. Casos legítimos: Logout del PC propietario, travel,
+	// quit. Casos buggy: alguien llama Destroy() directo sin checks.
+	UE_LOG(LogTemp, Log,
+		TEXT("[DEATH-DEBUG] %s EndPlay reason=%d bIsDead=%d bIsKnocked=%d HasOwner=%d"),
+		*GetName(), (int32)EndPlayReason, bIsDead ? 1 : 0, bIsKnockedDown ? 1 : 0,
+		GetOwner() != nullptr);
+
 	FocusedInteractable = nullptr;
 	ActiveEmoteIndex   = -1;
 	bEmoteBlendingOut  = false;
