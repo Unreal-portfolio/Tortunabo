@@ -162,6 +162,30 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
 	float DiveTiltSpeed = 12.f;
 
+	// ── Dive momentum preservation ─────────────────────────────────────────────
+	// Bonus de velocidad sumado al DiveForwardSpeed según el alineamiento entre
+	// la velocity horizontal pre-dive y la dirección del dash:
+	//   alignment = 1 (frente)  → bonus = PreSpeed * Forward factor
+	//   alignment = 0 (lateral) → bonus = PreSpeed * Lateral factor
+	//   alignment = -1 (atrás)  → bonus = PreSpeed * Backward factor (default 0)
+	// Lerp lineal entre los 3 factores según alignment ∈ [-1, 1].
+
+	/** Multiplicador del momentum cuando el dash va EN LA MISMA DIRECCIÓN del movimiento previo. >1.0 = el dash acelera más allá de la velocity actual. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
+	float DiveMomentumForwardFactor = 1.1f;
+
+	/** Multiplicador del momentum cuando el dash va PERPENDICULAR al movimiento previo (90°). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
+	float DiveMomentumLateralFactor = 0.5f;
+
+	/** Multiplicador del momentum cuando el dash va EN CONTRA del movimiento previo. Default 0 = anula el momentum atrás. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
+	float DiveMomentumBackwardFactor = 0.f;
+
+	/** Cap absoluto al DiveForwardSpeed + bonus combinado. Evita que múltiples bonus apilados den velocidades absurdas. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="200.0", ClampMax="5000.0"))
+	float DiveMaxTotalSpeed = 1500.f;
+
 	/**
 	 * CapsuleHalfHeight while diving — shrinks the hitbox to match the horizontal pose.
 	 * The capsule radius stays unchanged; halving the height makes it a flat disc shape.

@@ -3689,8 +3689,40 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	// la nueva velocidad (DiveVelocity) sin snap. SetActorRotation aquí producía
 	// un giro visible de 90° post ANIM-01 (mesh reorientado).
 
-	// Apply impulse: forward + small downward component
-	const FVector DiveVelocity = DiveDir * DiveForwardSpeed + FVector(0.f, 0.f, -DiveDownwardSpeed);
+	// ── Momentum preservation del salto/movimiento previo ──────────────────────
+	// Bonus de speed proporcional a cómo el DiveDir se alinea con la velocity
+	// horizontal previa. Frente→bonus alto, lateral→medio, atrás→0.
+	float MomentumBonus = 0.f;
+	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	{
+		FVector PreHoriz = CMC->Velocity;
+		PreHoriz.Z = 0.f;
+		const float PreSpeed = PreHoriz.Size();
+		if (PreSpeed > 1.f)
+		{
+			const FVector PreDir = PreHoriz / PreSpeed;
+			const float Alignment = FVector::DotProduct(DiveDir, PreDir); // [-1, 1]
+
+			float Factor;
+			if (Alignment >= 0.f)
+			{
+				// Lerp lateral→forward conforme alignment 0→1
+				Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumForwardFactor, Alignment);
+			}
+			else
+			{
+				// Lerp lateral→backward conforme alignment 0→-1
+				Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumBackwardFactor, -Alignment);
+			}
+			MomentumBonus = PreSpeed * Factor;
+
+			UE_LOG(LogTemp, Verbose, TEXT("[Dive] Momentum: PreSpeed=%.0f Alignment=%.2f Factor=%.2f Bonus=%.0f"),
+				PreSpeed, Alignment, Factor, MomentumBonus);
+		}
+	}
+
+	const float CombinedForwardSpeed = FMath::Min(DiveForwardSpeed + MomentumBonus, DiveMaxTotalSpeed);
+	const FVector DiveVelocity = DiveDir * CombinedForwardSpeed + FVector(0.f, 0.f, -DiveDownwardSpeed);
 	LaunchCharacter(DiveVelocity, /*bXYOverride=*/true, /*bZOverride=*/true);
 
 	// Activate dive state — triggers OnRep on clients
