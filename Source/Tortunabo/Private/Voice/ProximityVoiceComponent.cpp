@@ -359,6 +359,20 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 		FScopeLock Lock(&CaptureBufferLock);
 		CaptureBuffer.Append(MonoData);
+
+		// ── Cap buffer size ──────────────────────────────────────────────────
+		// Si el SendInterval no se cumplió en mucho tiempo (lag spike, pawn
+		// estaba pausado durante death/revive), CaptureBuffer crece sin control
+		// y el RPC siguiente excede el límite UE5 de 65535 elementos por array
+		// replicado (UE5 ensure crash en RepLayout::ValidateArraySize).
+		// Cap a 8000 samples (~330ms a 24kHz) → siempre cabe en RPC tras compress.
+		constexpr int32 MaxBufferedSamples = 8000;
+		if (CaptureBuffer.Num() > MaxBufferedSamples)
+		{
+			const int32 Excess = CaptureBuffer.Num() - MaxBufferedSamples;
+			CaptureBuffer.RemoveAt(0, Excess, EAllowShrinking::No);
+			UE_LOG(LogTemp, Verbose, TEXT("[Voice] CaptureBuffer cap: dropped %d old samples"), Excess);
+		}
 	}
 
 	// ── Speaking detection con silence hold-off ──────────────────────────
@@ -423,11 +437,22 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		if (SamplesToSend.Num() > 0 && bIsSpeaking)
 		{
 			TArray<uint8> Compressed = CompressSamples(SamplesToSend);
-			if (Compressed.Num() > 0)
+
+			// CRITICAL: UE5 RepLayout::ValidateArraySize hace ensure si el array
+			// supera 65535 elementos. MaxVoicePayloadBytes=8192 es el cap server.
+			// Replicarlo client-side previene el ensure crash al serializar el
+			// RPC (que el server iba a rechazar igual). Drop silencioso del
+			// frame es preferible al crash del editor.
+			constexpr int32 ClientPayloadCap = 8192;
+			if (Compressed.Num() > 0 && Compressed.Num() <= ClientPayloadCap)
 			{
-				// Enviar el sample rate efectivo (con downsampling aplicado)
 				const int32 EffectiveSampleRate = FMath::Max(1, VoiceSampleRate / FMath::Max(1, VoiceDownsampleFactor));
 				Server_SendVoiceData(Compressed, EffectiveSampleRate);
+			}
+			else if (Compressed.Num() > ClientPayloadCap)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Voice] Drop oversized compressed payload (%d > %d) — frame skipped"),
+					Compressed.Num(), ClientPayloadCap);
 			}
 		}
 	}
