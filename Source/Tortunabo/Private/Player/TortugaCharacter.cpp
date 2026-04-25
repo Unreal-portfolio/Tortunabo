@@ -3754,7 +3754,11 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 			DiveForwardSpeed);
 	}
 
-	const float CombinedForwardSpeed = FMath::Min(DiveForwardSpeed + MomentumBonus, DiveMaxTotalSpeed);
+	// Cap simétrico: permite valores negativos (dash hacia atrás cuando la cámara
+	// está opuesta al salto y BackwardFactor es lo bastante negativo). El char
+	// invierte la DiveDir naturalmente porque DiveDir * (-Speed) = -DiveDir * Speed.
+	const float CombinedForwardSpeed = FMath::Clamp(DiveForwardSpeed + MomentumBonus,
+		-DiveMaxTotalSpeed, DiveMaxTotalSpeed);
 	const FVector DiveVelocity = DiveDir * CombinedForwardSpeed + FVector(0.f, 0.f, -DiveDownwardSpeed);
 	LaunchCharacter(DiveVelocity, /*bXYOverride=*/true, /*bZOverride=*/true);
 

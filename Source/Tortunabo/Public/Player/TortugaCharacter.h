@@ -164,27 +164,28 @@ protected:
 	float DiveTiltSpeed = 12.f;
 
 	// ── Dive momentum preservation ─────────────────────────────────────────────
-	// Captura la velocity horizontal AL INICIAR EL SALTO. En el dash posterior,
-	// se compara la dirección de la CÁMARA ACTUAL contra esa dirección original
-	// del salto. Bonus = JumpStartSpeed * Factor(alignment_camera_vs_jump):
-	//   alignment = +1 → cámara apunta donde estaba yendo al saltar → Forward factor
-	//   alignment =  0 → cámara apunta lateral al salto              → Lateral factor
-	//   alignment = -1 → cámara apunta opuesta al salto              → Backward (0)
-	// Si rotaste la cámara para mirar hacia atrás del salto, el momentum se anula.
+	// Captura velocity horizontal AL SALTAR. En el dash, compara cámara ACTUAL
+	// contra dirección del salto. Bonus = JumpStartSpeed * Factor(alignment).
+	// El bonus puede ser NEGATIVO (resta de la base) si miras opuesto al salto:
+	//   alignment = +1 → cámara coincide con salto → Forward factor (positivo, suma)
+	//   alignment =  0 → cámara lateral al salto    → Lateral factor (default 0, no efecto)
+	//   alignment = -1 → cámara opuesta al salto    → Backward factor (negativo, resta)
+	// Si Backward es lo bastante negativo, TotalSpeed sale negativo → DiveDir
+	// invierte → el char "vuelve" hacia donde había saltado.
 
-	/** Multiplicador cuando la cámara apunta EN LA MISMA DIRECCIÓN del salto inicial. */
+	/** Multiplicador cuando la cámara coincide con la dirección del salto. >0 suma. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
-	float DiveMomentumForwardFactor = 1.1f;
+	float DiveMomentumForwardFactor = 1.0f;
 
-	/** Multiplicador cuando la cámara apunta PERPENDICULAR al salto inicial (90°). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
-	float DiveMomentumLateralFactor = 0.5f;
+	/** Multiplicador cuando la cámara está PERPENDICULAR al salto (90°). Default 0 = sin efecto. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="-1.0", ClampMax="2.0"))
+	float DiveMomentumLateralFactor = 0.0f;
 
-	/** Multiplicador cuando la cámara apunta EN CONTRA del salto inicial. Default 0 = anula el momentum. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
-	float DiveMomentumBackwardFactor = 0.f;
+	/** Multiplicador cuando la cámara está OPUESTA al salto. Negativo = resta de la base. -0.5 hace que dashear atrás vaya un poco hacia el salto original. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="-2.0", ClampMax="0.0"))
+	float DiveMomentumBackwardFactor = -0.5f;
 
-	/** Cap absoluto al DiveForwardSpeed + bonus combinado. */
+	/** Cap absoluto del speed combinado |TotalSpeed| ≤ Max. Permite valores negativos (dash retroceso). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="200.0", ClampMax="5000.0"))
 	float DiveMaxTotalSpeed = 1500.f;
 
