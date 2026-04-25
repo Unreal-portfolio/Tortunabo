@@ -6,6 +6,7 @@
 #include "Animation/AnimInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "NiagaraFunctionLibrary.h"
 
 ATN_CrabActor::ATN_CrabActor()
 {
@@ -79,6 +80,8 @@ void ATN_CrabActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_CrabActor, CrabState);
+	DOREPLIFETIME(ATN_CrabActor, StunRemaining);
+	DOREPLIFETIME(ATN_CrabActor, BlindRemaining);
 }
 
 // ── Tick ─────────────────────────────────────────────────────────────────────
@@ -87,6 +90,24 @@ void ATN_CrabActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	if (!HasAuthority()) { return; }
+
+	// Stun: pausa toda la IA. Cangrejo queda inmóvil hasta que expira.
+	if (StunRemaining > 0.f)
+	{
+		StunRemaining = FMath::Max(0.f, StunRemaining - DeltaTime);
+		return;
+	}
+	// Blind: pierde target de chase y vuelve a patrol. Detection sphere ignorada
+	// vía guard en OnDetectionBeginOverlap.
+	if (BlindRemaining > 0.f)
+	{
+		BlindRemaining = FMath::Max(0.f, BlindRemaining - DeltaTime);
+		if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack)
+		{
+			ChaseTarget.Reset();
+			SetCrabState(ETNCrabState::Patrol);
+		}
+	}
 
 	switch (CrabState)
 	{
@@ -259,9 +280,10 @@ void ATN_CrabActor::OnDetectionBeginOverlap(UPrimitiveComponent* OverlappedComp,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 	bool bFromSweep, const FHitResult& SweepResult)
 {
-	// No interrumpir si ya está en cooldown o persiguiendo
+	// No interrumpir si ya está en cooldown, persiguiendo, aturdido o cegado
 	if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack) { return; }
 	if (CooldownRemaining > 0.f) { return; }
+	if (StunRemaining > 0.f || BlindRemaining > 0.f) { return; }
 
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
 	if (!IsAliveAndValid(Char)) { return; }
@@ -272,4 +294,38 @@ void ATN_CrabActor::OnDetectionBeginOverlap(UPrimitiveComponent* OverlappedComp,
 
 	ChaseTarget = Char;
 	SetCrabState(ETNCrabState::Chase);
+}
+
+// ── ITN_EnemyTargetInterface ──────────────────────────────────────────────────
+
+void ATN_CrabActor::ApplyStun(float Duration)
+{
+	if (!HasAuthority() || Duration <= 0.f) { return; }
+	StunRemaining = FMath::Max(StunRemaining, Duration);
+	UE_LOG(LogTemp, Log, TEXT("[STUN] Crab '%s' stunned for %.2fs"), *GetName(), Duration);
+	MulticastPlayStunEffect(Duration);
+}
+
+void ATN_CrabActor::ApplyBlind(float Duration)
+{
+	if (!HasAuthority() || Duration <= 0.f) { return; }
+	BlindRemaining = FMath::Max(BlindRemaining, Duration);
+	UE_LOG(LogTemp, Log, TEXT("[BLIND] Crab '%s' blinded for %.2fs"), *GetName(), Duration);
+	if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack)
+	{
+		ChaseTarget.Reset();
+		SetCrabState(ETNCrabState::Patrol);
+	}
+}
+
+void ATN_CrabActor::MulticastPlayStunEffect_Implementation(float Duration)
+{
+	if (StunSound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, StunSound, GetActorLocation());
+	}
+	if (StunVFX)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, StunVFX, GetActorLocation());
+	}
 }

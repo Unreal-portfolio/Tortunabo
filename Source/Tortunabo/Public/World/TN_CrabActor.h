@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Core/ITN_EnemyTargetInterface.h"
 #include "TN_CrabActor.generated.h"
 
 class USkeletalMeshComponent;
@@ -29,7 +30,7 @@ enum class ETNCrabState : uint8
  * Compatible con chunks: PatrolPoints son offsets relativos al spawn.
  */
 UCLASS(Blueprintable)
-class TORTUNABO_API ATN_CrabActor : public AActor
+class TORTUNABO_API ATN_CrabActor : public AActor, public ITN_EnemyTargetInterface
 {
 	GENERATED_BODY()
 
@@ -39,6 +40,12 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	// ── ITN_EnemyTargetInterface ────────────────────────────────────────────────
+	virtual void ApplyStun(float Duration) override;
+	virtual void ApplyBlind(float Duration) override;
+	virtual bool IsStunned() const override { return StunRemaining > 0.f; }
+	virtual bool IsBlinded() const override { return BlindRemaining > 0.f; }
 
 protected:
 	// ── Componentes ──────────────────────────────────────────────────────────────
@@ -127,6 +134,24 @@ protected:
 	// ── Estado replicado ─────────────────────────────────────────────────────────
 	UPROPERTY(ReplicatedUsing = OnRep_CrabState, BlueprintReadOnly, Category = "Crab")
 	ETNCrabState CrabState = ETNCrabState::Patrol;
+
+	/** Tiempo restante de stun (s). Replicado para VFX cliente. */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Crab|Stun")
+	float StunRemaining = 0.f;
+
+	/** Tiempo restante de ceguera (s). */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Crab|Stun")
+	float BlindRemaining = 0.f;
+
+	/** VFX/sonido al ser aturdido. Asignar en BP. */
+	UPROPERTY(EditDefaultsOnly, Category = "Crab|Stun")
+	TObjectPtr<class UNiagaraSystem> StunVFX;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Crab|Stun")
+	TObjectPtr<class USoundBase> StunSound;
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayStunEffect(float Duration);
 
 private:
 	FVector SpawnLocation;

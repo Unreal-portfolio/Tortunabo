@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Core/ITN_EnemyTargetInterface.h"
 #include "TN_EnemySeagull.generated.h"
 
 class UStaticMeshComponent;
@@ -33,7 +34,7 @@ class APlayerController;
  *   CountdownRemaining y TargetPlayerIndex replicados para feedback visual de clientes.
  */
 UCLASS(Blueprintable)
-class TORTUNABO_API ATN_EnemySeagull : public AActor
+class TORTUNABO_API ATN_EnemySeagull : public AActor, public ITN_EnemyTargetInterface
 {
 	GENERATED_BODY()
 
@@ -44,6 +45,12 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	// ── ITN_EnemyTargetInterface ────────────────────────────────────────────────
+	virtual void ApplyStun(float Duration) override;
+	virtual void ApplyBlind(float Duration) override;
+	virtual bool IsStunned() const override { return StunRemaining > 0.f; }
+	virtual bool IsBlinded() const override { return BlindRemaining > 0.f; }
 
 	/**
 	 * Inicializa la gaviota con un objetivo. Llamar desde ATN_SeagullSpawnZone tras spawnear.
@@ -166,6 +173,17 @@ private:
 	UFUNCTION()
 	void OnRep_TargetPlayerIndex();
 
+	/** Tiempo restante de stun (s). Replicado para que clientes muestren VFX local. */
+	UPROPERTY(ReplicatedUsing = OnRep_StunRemaining)
+	float StunRemaining = 0.f;
+
+	UFUNCTION()
+	void OnRep_StunRemaining();
+
+	/** Tiempo restante de ceguera (s). */
+	UPROPERTY(Replicated)
+	float BlindRemaining = 0.f;
+
 	// ── Estado solo servidor ──────────────────────────────────────────────────
 
 	TWeakObjectPtr<ATortugaCharacter> TargetCharacter;
@@ -212,4 +230,15 @@ private:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastPlayBigHeadAbsorbEffect(ATortugaCharacter* Target);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayStunEffect(float Duration);
+
+protected:
+	/** VFX/sonido al ser aturdido. Asignar en BP. */
+	UPROPERTY(EditDefaultsOnly, Category = "EnemySeagull|Stun")
+	TObjectPtr<class UNiagaraSystem> StunVFX;
+
+	UPROPERTY(EditDefaultsOnly, Category = "EnemySeagull|Stun")
+	TObjectPtr<class USoundBase> StunSound;
 };

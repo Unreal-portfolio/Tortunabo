@@ -52,6 +52,8 @@ void ATN_EnemySeagull::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_EnemySeagull, CountdownRemaining);
 	DOREPLIFETIME(ATN_EnemySeagull, TargetPlayerIndex);
+	DOREPLIFETIME(ATN_EnemySeagull, StunRemaining);
+	DOREPLIFETIME(ATN_EnemySeagull, BlindRemaining);
 }
 
 // ── API Pública ────────────────────────────────────────────────────────────────
@@ -101,6 +103,23 @@ void ATN_EnemySeagull::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	if (!HasAuthority()) { return; }
+
+	// Stun congela completamente la IA. El countdown del ataque no avanza.
+	if (StunRemaining > 0.f)
+	{
+		StunRemaining = FMath::Max(0.f, StunRemaining - DeltaTime);
+		return;
+	}
+	if (BlindRemaining > 0.f)
+	{
+		BlindRemaining = FMath::Max(0.f, BlindRemaining - DeltaTime);
+		// Ciega: pierde target → retreat. Solo dispara una vez al inicio del blind.
+		if (!bAttackResolved && !bIsRetreating && !bIsStriking)
+		{
+			AbortAndRetreat();
+			return;
+		}
+	}
 
 	// Máquinas de estado tienen prioridad — early-out garantiza que solo una corre
 	if (bIsStriking)
@@ -411,5 +430,39 @@ void ATN_EnemySeagull::MulticastPlayBigHeadAbsorbEffect_Implementation(ATortugaC
 	if (BigHeadAbsorbSound)
 	{
 		UGameplayStatics::SpawnSoundAtLocation(this, BigHeadAbsorbSound, Target->GetActorLocation());
+	}
+}
+
+// ── ITN_EnemyTargetInterface ──────────────────────────────────────────────────
+
+void ATN_EnemySeagull::ApplyStun(float Duration)
+{
+	if (!HasAuthority() || Duration <= 0.f) { return; }
+	StunRemaining = FMath::Max(StunRemaining, Duration);
+	UE_LOG(LogTemp, Log, TEXT("[STUN] Seagull '%s' stunned for %.2fs"), *GetName(), Duration);
+	MulticastPlayStunEffect(Duration);
+}
+
+void ATN_EnemySeagull::ApplyBlind(float Duration)
+{
+	if (!HasAuthority() || Duration <= 0.f) { return; }
+	BlindRemaining = FMath::Max(BlindRemaining, Duration);
+	UE_LOG(LogTemp, Log, TEXT("[BLIND] Seagull '%s' blinded for %.2fs"), *GetName(), Duration);
+}
+
+void ATN_EnemySeagull::OnRep_StunRemaining()
+{
+	// Cliente recibe inicio del stun → spawn VFX local (multicast es respaldo).
+}
+
+void ATN_EnemySeagull::MulticastPlayStunEffect_Implementation(float Duration)
+{
+	if (StunSound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, StunSound, GetActorLocation());
+	}
+	if (StunVFX)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, StunVFX, GetActorLocation());
 	}
 }
