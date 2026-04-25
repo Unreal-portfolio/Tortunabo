@@ -126,6 +126,9 @@ private:
 	/** Players already knocked down by this throw — prevents duplicate knockdowns. */
 	TSet<TWeakObjectPtr<ATortugaCharacter>> AlreadyHitPlayers;
 
+	/** Enemies already stunned by this throw — prevents duplicate stuns en rebotes. */
+	TSet<TWeakObjectPtr<AActor>> AlreadyHitEnemies;
+
 	/**
 	 * Distribuye los parámetros de lanzamiento a TODAS las máquinas (Reliable).
 	 * Cada máquina simula el ProjectileMovement localmente desde las mismas

@@ -1,5 +1,6 @@
 #include "World/TN_BananaPeel.h"
 #include "Player/TortugaCharacter.h"
+#include "Core/ITN_EnemyTargetInterface.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -46,6 +47,17 @@ void ATN_BananaPeel::OnTriggerBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 	bool /*bFromSweep*/, const FHitResult& /*SweepResult*/)
 {
 	if (!HasAuthority() || bTriggered) { return; }
+
+	// Enemigo pisa el plátano → stun como knockdown equivalente.
+	if (ITN_EnemyTargetInterface* Enemy = Cast<ITN_EnemyTargetInterface>(OtherActor))
+	{
+		bTriggered = true;
+		Enemy->ApplyStun(KnockdownDuration);
+		MulticastOnTriggered(GetActorLocation());
+		SetLifeSpan(0.2f);
+		return;
+	}
+
 	bTriggered = true;
 
 	ATortugaCharacter* Character = Cast<ATortugaCharacter>(OtherActor);

@@ -1,5 +1,6 @@
 #include "World/TN_InkProjectile.h"
 #include "Player/TortugaCharacter.h"
+#include "Core/ITN_EnemyTargetInterface.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -143,10 +144,15 @@ void ATN_InkProjectile::OnSphereHit(UPrimitiveComponent* /*HitComponent*/, AActo
 
 	bHasHit = true;
 
-	ATortugaCharacter* HitCharacter = Cast<ATortugaCharacter>(OtherActor);
-	if (HitCharacter)
+	if (ATortugaCharacter* HitCharacter = Cast<ATortugaCharacter>(OtherActor))
 	{
 		MulticastApplyInkEffect(HitCharacter, InkDurationSeconds);
+	}
+	else if (ITN_EnemyTargetInterface* Enemy = Cast<ITN_EnemyTargetInterface>(OtherActor))
+	{
+		// Tinta sobre enemigo → ceguera (mismo concepto que el blackout del jugador,
+		// pero cada enemy decide cómo reacciona en su ApplyBlind).
+		Enemy->ApplyBlind(InkDurationSeconds);
 	}
 
 	// Defer destruction to let the reliable multicast flush before the actor is torn down

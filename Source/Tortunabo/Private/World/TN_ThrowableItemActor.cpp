@@ -3,6 +3,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/TortugaCharacter.h"
+#include "Core/ITN_EnemyTargetInterface.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
@@ -251,6 +252,23 @@ void ATN_ThrowableItemActor::OnMeshHit(UPrimitiveComponent* HitComponent, AActor
 {
 	if (!HasAuthority() || bPickupSpawned)
 	{
+		return;
+	}
+
+	// Enemigo → stun si la bola va rápida. Una sola vez por enemy (track via AlreadyHitActors).
+	if (ITN_EnemyTargetInterface* Enemy = Cast<ITN_EnemyTargetInterface>(OtherActor))
+	{
+		if (!AlreadyHitEnemies.Contains(OtherActor))
+		{
+			const float CurrentSpeed = ProjectileMovement ? ProjectileMovement->Velocity.Size() : 0.f;
+			if (CurrentSpeed >= MinKnockdownSpeed)
+			{
+				AlreadyHitEnemies.Add(OtherActor);
+				Enemy->ApplyStun(KnockbackDuration);
+				UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] Hit enemy %s at %.0f cm/s → STUN %.2fs"),
+					*GetNameSafe(OtherActor), CurrentSpeed, KnockbackDuration);
+			}
+		}
 		return;
 	}
 

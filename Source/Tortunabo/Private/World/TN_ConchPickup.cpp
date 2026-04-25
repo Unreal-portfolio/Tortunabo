@@ -1,5 +1,6 @@
 #include "World/TN_ConchPickup.h"
 #include "Player/TortugaCharacter.h"
+#include "Core/ITN_EnemyTargetInterface.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -82,7 +83,22 @@ void ATN_ConchPickup::OnSphereBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 	UPrimitiveComponent* /*OtherComp*/, int32 /*OtherBodyIndex*/,
 	bool /*bFromSweep*/, const FHitResult& /*SweepResult*/)
 {
-	if (!HasAuthority()) { return; }
+	if (!HasAuthority() || !OtherActor) { return; }
+
+	// ── Modo trampa vs enemigo ─────────────────────────────────────────────────
+	// Si está colocada como trap y un enemigo (Cangrejo, Gaviota...) la pisa,
+	// lo aturde con la misma duración que aturde a un jugador.
+	if (bIsPlacedTrap && !bTrapUsed)
+	{
+		if (ITN_EnemyTargetInterface* Enemy = Cast<ITN_EnemyTargetInterface>(OtherActor))
+		{
+			bTrapUsed = true;
+			Enemy->ApplyStun(TrapDurationSeconds);
+			MulticastOnTrapped(nullptr);
+			SetLifeSpan(0.2f);
+			return;
+		}
+	}
 
 	ATortugaCharacter* Character = Cast<ATortugaCharacter>(OtherActor);
 	if (!Character) { return; }
