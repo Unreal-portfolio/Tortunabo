@@ -57,6 +57,33 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> SpectatorHint;
 
+	// ── Scoreboard global (Results) ─────────────────────────────────────────────
+	// Hasta 4 filas (max coop). En el BP nómbralas exactamente:
+	//   Row1RankText, Row1NameText, Row1TimeText, Row1ScoreText
+	//   Row2... Row3... Row4...
+	// Si una fila no tiene datos (ej: solo 3 jugadores), sus textos se vacían.
+	// El número del rank: "1º"/"2º"/"3º"/"4º" o "✗" si eliminado.
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row1RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row1NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row1TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row1ScoreText;
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row2RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row2NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row2TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row2ScoreText;
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row3RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row3NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row3TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row3ScoreText;
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row4RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row4NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row4TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row4ScoreText;
+
 	// Optional Blueprint hook — called when the flow state changes.
 	// Override in BP if you need extra visual effects; all logic is already in C++.
 	UFUNCTION(BlueprintImplementableEvent, Category = "Flow")
@@ -116,6 +143,12 @@ private:
 	void HideResultsPanel();
 	void RefreshResultsCountdown(const ATN_CoopGameState* GameState);
 	FText BuildRankTitle(int32 FinishRank, bool bEliminated) const;
+
+	void RefreshScoreboard(const ATN_CoopGameState* GameState);
+	void FillScoreboardRow(int32 RowIndex, const struct FTN_RaceResultEntry* Entry);
+
+	UFUNCTION()
+	void HandleRaceResultsUpdated();
 
 	void StartChatFade();
 

@@ -369,6 +369,86 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 
 	// ── Initial countdown ────────────────────────────────────────────────────
 	RefreshResultsCountdown(GameState);
+
+	// ── Scoreboard global ────────────────────────────────────────────────────
+	RefreshScoreboard(GameState);
+
+	// Suscribirse al delegate para refresh si llegan results más tarde
+	// (ej: jugador termina al final mientras Results ya se mostraba para los demás)
+	if (ATN_CoopGameState* MutGS = const_cast<ATN_CoopGameState*>(GameState))
+	{
+		MutGS->OnRaceResultsUpdated.RemoveDynamic(this, &UTN_CoopFlowHUDWidget::HandleRaceResultsUpdated);
+		MutGS->OnRaceResultsUpdated.AddDynamic(this, &UTN_CoopFlowHUDWidget::HandleRaceResultsUpdated);
+	}
+}
+
+void UTN_CoopFlowHUDWidget::HandleRaceResultsUpdated()
+{
+	if (!bResultsVisible) { return; }
+	if (const APlayerController* PC = GetOwningPlayer())
+	{
+		if (const ATN_CoopGameState* GS = PC->GetWorld()->GetGameState<ATN_CoopGameState>())
+		{
+			RefreshScoreboard(GS);
+		}
+	}
+}
+
+void UTN_CoopFlowHUDWidget::RefreshScoreboard(const ATN_CoopGameState* GameState)
+{
+	if (!GameState) { return; }
+
+	const TArray<FTN_RaceResultEntry>& Results = GameState->RaceResults;
+
+	for (int32 i = 0; i < 4; ++i)
+	{
+		const FTN_RaceResultEntry* Entry = (i < Results.Num()) ? &Results[i] : nullptr;
+		FillScoreboardRow(i, Entry);
+	}
+}
+
+void UTN_CoopFlowHUDWidget::FillScoreboardRow(int32 RowIndex, const FTN_RaceResultEntry* Entry)
+{
+	UTextBlock* Rank = nullptr;
+	UTextBlock* Name = nullptr;
+	UTextBlock* Time = nullptr;
+	UTextBlock* Score = nullptr;
+
+	switch (RowIndex)
+	{
+	case 0: Rank = Row1RankText; Name = Row1NameText; Time = Row1TimeText; Score = Row1ScoreText; break;
+	case 1: Rank = Row2RankText; Name = Row2NameText; Time = Row2TimeText; Score = Row2ScoreText; break;
+	case 2: Rank = Row3RankText; Name = Row3NameText; Time = Row3TimeText; Score = Row3ScoreText; break;
+	case 3: Rank = Row4RankText; Name = Row4NameText; Time = Row4TimeText; Score = Row4ScoreText; break;
+	default: return;
+	}
+
+	if (!Entry)
+	{
+		// Fila vacía: limpiar texto
+		if (Rank)  Rank->SetText(FText::GetEmpty());
+		if (Name)  Name->SetText(FText::GetEmpty());
+		if (Time)  Time->SetText(FText::GetEmpty());
+		if (Score) Score->SetText(FText::GetEmpty());
+		return;
+	}
+
+	if (Rank)
+	{
+		const FString RankStr = Entry->bIsEliminated
+			? TEXT("✗")
+			: FString::Printf(TEXT("%dº"), Entry->FinishRank);
+		Rank->SetText(FText::FromString(RankStr));
+	}
+	if (Name)  Name->SetText(FText::FromString(Entry->PlayerName));
+	if (Time)
+	{
+		const FString TimeStr = Entry->bIsEliminated
+			? TEXT("—")
+			: FString::Printf(TEXT("%.1fs"), Entry->FinishTimeSeconds);
+		Time->SetText(FText::FromString(TimeStr));
+	}
+	if (Score) Score->SetText(FText::AsNumber(Entry->RaceScore));
 }
 
 void UTN_CoopFlowHUDWidget::HideResultsPanel()
