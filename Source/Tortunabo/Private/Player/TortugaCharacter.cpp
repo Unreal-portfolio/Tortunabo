@@ -384,9 +384,18 @@ void ATortugaCharacter::BeginPlay()
 	DefaultSkelMeshMaterials.Reset();
 	if (USkeletalMeshComponent* SKM = GetMesh())
 	{
-		for (int32 i = 0; i < SKM->GetNumMaterials(); ++i)
+		const int32 NumMats = SKM->GetNumMaterials();
+		for (int32 i = 0; i < NumMats; ++i)
 		{
 			DefaultSkelMeshMaterials.Add(SKM->GetMaterial(i));
+		}
+		UE_LOG(LogTemp, Log, TEXT("[SKIN-DEBUG] '%s' cached %d default materials from SKM"),
+			*GetName(), NumMats);
+		for (int32 i = 0; i < DefaultSkelMeshMaterials.Num(); ++i)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("[SKIN-DEBUG]   slot %d: %s"),
+				i,
+				DefaultSkelMeshMaterials[i] ? *DefaultSkelMeshMaterials[i]->GetName() : TEXT("NULL"));
 		}
 	}
 
@@ -1610,12 +1619,22 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 	// Slot 1 = panza (BellyMaterial, fallback a BodyMaterial)
 	// Slot 2 = extremidades (SkinMaterial, fallback a BodyMaterial)
 	// Slots 3-4 = sin tocar (complementos del mesh unificado)
-	SKM->SetMaterial(0, Row->BodyMaterial);
-	SKM->SetMaterial(1, Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial);
-	SKM->SetMaterial(2, Row->SkinMaterial  ? Row->SkinMaterial  : Row->BodyMaterial);
+	UMaterialInterface* const Slot0 = Row->BodyMaterial;
+	UMaterialInterface* const Slot1 = Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial;
+	UMaterialInterface* const Slot2 = Row->SkinMaterial  ? Row->SkinMaterial  : Row->BodyMaterial;
+	SKM->SetMaterial(0, Slot0);
+	SKM->SetMaterial(1, Slot1);
+	SKM->SetMaterial(2, Slot2);
 
-	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' skin '%s' aplicado."),
-		*GetName(), *SkinId.ToString());
+	// Forzar refresh del render state. Sin esto, SetMaterial puede no actualizar
+	// visualmente con el SKM unificado en algunas configuraciones (overrideMaterials cache).
+	SKM->MarkRenderStateDirty();
+
+	UE_LOG(LogTemp, Log, TEXT("[SKIN-DEBUG] '%s' skin '%s' aplicado · slots=[0:%s 1:%s 2:%s]"),
+		*GetName(), *SkinId.ToString(),
+		*GetNameSafe(Slot0),
+		*GetNameSafe(Slot1),
+		*GetNameSafe(Slot2));
 }
 
 void ATortugaCharacter::Landed(const FHitResult& Hit)
