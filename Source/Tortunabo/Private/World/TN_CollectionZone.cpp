@@ -67,6 +67,11 @@ void ATN_CollectionZone::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 		bGoalReached = true;
 		ApplyTargetTransforms();
 		MulticastOnGoalReached();
+		// Notificar al GameMode (server-side). El GameMode bindea OnZoneGoalReached
+		// en BeginPlay iterando todas las CollectionZones del mundo.
+		OnZoneGoalReached.Broadcast(this);
+		UE_LOG(LogTemp, Log, TEXT("[COLLECTION] Zone '%s' goal reached (RequiredCount=%d)"),
+			*GetName(), RequiredCount);
 	}
 }
 

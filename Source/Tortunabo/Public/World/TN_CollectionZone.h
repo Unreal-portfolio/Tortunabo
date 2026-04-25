@@ -7,6 +7,13 @@
 class UBoxComponent;
 class UStaticMeshComponent;
 class ATortugaCharacter;
+class ATN_CollectionZone;
+
+/**
+ * Server-side delegate disparado cuando una CollectionZone alcanza RequiredCount.
+ * RunGameMode lo bindea en BeginPlay para reaccionar (sumar bonus, abrir ruta, etc).
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnCollectionZoneGoalReached, ATN_CollectionZone*);
 
 /**
  * Zona de recogida (#28).
@@ -38,6 +45,19 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 * Delegate server-side. Disparado cuando esta zona alcanza RequiredCount.
+	 * Suscribirse en RunGameMode::BeginPlay (TActorIterator + AddUObject).
+	 * Pasa la zona como parámetro para que el handler distinga entre múltiples
+	 * instancias en el mismo nivel.
+	 */
+	FOnCollectionZoneGoalReached OnZoneGoalReached;
+
+	/** Bonus sumado al RaceScore del depositante cuando la zona se completa.
+	 *  El RunGameMode (no el zone) aplica este bonus a TODOS los players activos. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CollectionZone")
+	int32 GoalReachedBonusScore = 100;
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "CollectionZone")

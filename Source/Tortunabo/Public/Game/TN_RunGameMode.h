@@ -8,6 +8,7 @@
 class APlayerController;
 class APlayerStart;
 class ATN_RescuePickup;
+class ATN_CollectionZone;
 
 UCLASS()
 class TORTUNABO_API ATN_RunGameMode : public AGameMode
@@ -34,6 +35,11 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void MarkPlayerDead(APlayerController* PlayerController);
+
+	/** Server-side callback cuando una CollectionZone alcanza su RequiredCount.
+	 *  Bindeado en BeginPlay vía OnZoneGoalReached. Suma GoalReachedBonusScore
+	 *  al RaceScore de todos los jugadores activos (no eliminados). */
+	void HandleCollectionZoneGoal(ATN_CollectionZone* Zone);
 
 	/** Put a player into Down But Not Out state (knocked + bleedout timer). */
 	UFUNCTION(BlueprintCallable, Category = "Run|DBNO")

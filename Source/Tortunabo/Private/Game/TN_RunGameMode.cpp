@@ -8,6 +8,7 @@
 #include "Player/TN_InventoryComponent.h"
 #include "World/TN_DeathZoneVolume.h"
 #include "World/TN_ChunkManager.h"
+#include "World/TN_CollectionZone.h"
 #include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
@@ -54,6 +55,16 @@ void ATN_RunGameMode::BeginPlay()
 
 	NextFinishRank = 1;
 	bMatchStarted = false;
+
+	// Suscribirse a las CollectionZones del nivel para que el GameMode reaccione
+	// cuando completen su goal (sumar bonus, log, futuras señales de progresión).
+	for (TActorIterator<ATN_CollectionZone> It(GetWorld()); It; ++It)
+	{
+		if (ATN_CollectionZone* Zone = *It)
+		{
+			Zone->OnZoneGoalReached.AddUObject(this, &ATN_RunGameMode::HandleCollectionZoneGoal);
+		}
+	}
 
 	// ── Leer cuántos jugadores había en el lobby ──────────────────────────
 	if (const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
@@ -1349,4 +1360,27 @@ void ATN_RunGameMode::SetFlowState(ETNMatchFlowState NewState) const
 	}
 }
 
+void ATN_RunGameMode::HandleCollectionZoneGoal(ATN_CollectionZone* Zone)
+{
+	if (!HasAuthority() || !Zone) { return; }
+
+	const int32 Bonus = Zone->GoalReachedBonusScore;
+	if (Bonus <= 0) { return; }
+
+	// Bonus a TODOS los jugadores activos (no eliminados, no terminados aún).
+	// Cooperativo: completar la zona beneficia al equipo entero.
+	int32 Beneficiaries = 0;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		if (!PC) { continue; }
+		ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>();
+		if (!TNPS || TNPS->bIsEliminated || TNPS->bHasFinishedRun) { continue; }
+		TNPS->RaceScore += Bonus;
+		++Beneficiaries;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[COLLECTION] GameMode reaccionó a zone '%s' goal · +%d a %d players activos"),
+		*Zone->GetName(), Bonus, Beneficiaries);
+}
 
