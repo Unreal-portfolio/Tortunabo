@@ -95,7 +95,35 @@ void ATN_ConchPickup::OnSphereBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 			bTrapUsed = true;
 			Enemy->ApplyStun(TrapDurationSeconds);
 			MulticastOnTrapped(nullptr);
-			SetLifeSpan(0.2f);
+
+			// Mismo comportamiento que con jugador: tras consumir la trampa, dejar
+			// un pickup recogible en la posición — la concha es reciclable.
+			if (bDestroyAfterActivation)
+			{
+				if (UWorld* World = GetWorld())
+				{
+					FActorSpawnParameters SpawnParams;
+					SpawnParams.SpawnCollisionHandlingOverride =
+						ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+					SpawnParams.Owner = GetOwner();
+					World->SpawnActor<ATN_ConchPickup>(
+						GetClass(), GetActorLocation(), GetActorRotation(), SpawnParams);
+				}
+				SetLifeSpan(0.2f);
+			}
+			else
+			{
+				// Modo persistente: rearm tras cooldown.
+				if (ResetCooldownSeconds > 0.f)
+				{
+					GetWorldTimerManager().SetTimer(RearmTimerHandle, this,
+						&ATN_ConchPickup::RearmTrap, ResetCooldownSeconds, false);
+				}
+				else
+				{
+					RearmTrap();
+				}
+			}
 			return;
 		}
 	}
