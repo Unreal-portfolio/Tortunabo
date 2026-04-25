@@ -85,6 +85,7 @@ protected:
 	virtual void PawnClientRestart() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void Jump() override;
+	virtual void OnJumped_Implementation() override;
 
 	/**
 	 * Called when the PlayerState reference is replicated to this client.
@@ -163,28 +164,35 @@ protected:
 	float DiveTiltSpeed = 12.f;
 
 	// ── Dive momentum preservation ─────────────────────────────────────────────
-	// Bonus de velocidad sumado al DiveForwardSpeed según el alineamiento entre
-	// la velocity horizontal pre-dive y la dirección del dash:
-	//   alignment = 1 (frente)  → bonus = PreSpeed * Forward factor
-	//   alignment = 0 (lateral) → bonus = PreSpeed * Lateral factor
-	//   alignment = -1 (atrás)  → bonus = PreSpeed * Backward factor (default 0)
-	// Lerp lineal entre los 3 factores según alignment ∈ [-1, 1].
+	// Captura la velocity horizontal AL INICIAR EL SALTO. En el dash posterior,
+	// se compara la dirección de la CÁMARA ACTUAL contra esa dirección original
+	// del salto. Bonus = JumpStartSpeed * Factor(alignment_camera_vs_jump):
+	//   alignment = +1 → cámara apunta donde estaba yendo al saltar → Forward factor
+	//   alignment =  0 → cámara apunta lateral al salto              → Lateral factor
+	//   alignment = -1 → cámara apunta opuesta al salto              → Backward (0)
+	// Si rotaste la cámara para mirar hacia atrás del salto, el momentum se anula.
 
-	/** Multiplicador del momentum cuando el dash va EN LA MISMA DIRECCIÓN del movimiento previo. >1.0 = el dash acelera más allá de la velocity actual. */
+	/** Multiplicador cuando la cámara apunta EN LA MISMA DIRECCIÓN del salto inicial. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
 	float DiveMomentumForwardFactor = 1.1f;
 
-	/** Multiplicador del momentum cuando el dash va PERPENDICULAR al movimiento previo (90°). */
+	/** Multiplicador cuando la cámara apunta PERPENDICULAR al salto inicial (90°). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
 	float DiveMomentumLateralFactor = 0.5f;
 
-	/** Multiplicador del momentum cuando el dash va EN CONTRA del movimiento previo. Default 0 = anula el momentum atrás. */
+	/** Multiplicador cuando la cámara apunta EN CONTRA del salto inicial. Default 0 = anula el momentum. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="0.0", ClampMax="2.0"))
 	float DiveMomentumBackwardFactor = 0.f;
 
-	/** Cap absoluto al DiveForwardSpeed + bonus combinado. Evita que múltiples bonus apilados den velocidades absurdas. */
+	/** Cap absoluto al DiveForwardSpeed + bonus combinado. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive|Momentum", meta=(ClampMin="200.0", ClampMax="5000.0"))
 	float DiveMaxTotalSpeed = 1500.f;
+
+	/** Velocity horizontal capturada en OnJumped (justo cuando el char salta).
+	 *  Multi-safe: OnJumped se llama en todas las máquinas autoritativas. No
+	 *  necesita replicar — cada máquina captura localmente al saltar y la usa
+	 *  para el dash posterior (el server-side cálculo del dash lee la del server). */
+	FVector JumpStartHorizontalVelocity = FVector::ZeroVector;
 
 	/**
 	 * CapsuleHalfHeight while diving — shrinks the hitbox to match the horizontal pose.

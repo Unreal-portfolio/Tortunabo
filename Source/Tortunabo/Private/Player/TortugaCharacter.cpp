@@ -955,6 +955,19 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 	}
 }
 
+void ATortugaCharacter::OnJumped_Implementation()
+{
+	Super::OnJumped_Implementation();
+
+	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	{
+		JumpStartHorizontalVelocity = CMC->Velocity;
+		JumpStartHorizontalVelocity.Z = 0.f;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[Jump] %s jumped · captured horizontal velocity=%s (speed=%.0f)"),
+		*GetName(), *JumpStartHorizontalVelocity.ToString(), JumpStartHorizontalVelocity.Size());
+}
+
 void ATortugaCharacter::Jump()
 {
 	if (bIsKnockedDown || bIsDead) { return; }
@@ -3689,51 +3702,56 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	// la nueva velocidad (DiveVelocity) sin snap. SetActorRotation aquí producía
 	// un giro visible de 90° post ANIM-01 (mesh reorientado).
 
-	// ── Momentum preservation con referencia a CÁMARA ──────────────────────────
-	// IMPORTANTE: la referencia es el FORWARD de la cámara (control rotation),
-	// NO el CMC->Velocity previo. Si usáramos PreVel, alignment siempre sería ~1
-	// porque DiveDir se calcula a partir de CMC->Velocity (fix DASH-02).
+	// ── Momentum preservation: cámara ACTUAL vs salto ORIGINAL ─────────────────
+	// La velocity horizontal AL SALTAR (capturada en OnJumped) marca la dirección
+	// del salto. Comparamos la cámara ACTUAL (donde apunta el jugador al dashear)
+	// contra esa dirección original.
 	//
-	// Con cámara como referencia:
-	//   alignment = +1 → dashing donde el jugador mira (frente real)  → bonus máximo
-	//   alignment =  0 → lateral respecto a la cámara                  → bonus medio
-	//   alignment = -1 → dashing hacia atrás de la cámara              → bonus 0
+	//   alignment = +1 → cámara apunta donde estaba yendo al saltar  → Forward factor (bonus máx)
+	//   alignment =  0 → cámara apunta lateral al salto              → Lateral factor (bonus medio)
+	//   alignment = -1 → cámara apunta opuesta al salto              → Backward factor (0 default)
 	//
-	// La MAGNITUD del bonus sigue siendo proporcional a la velocity previa
-	// (cuán "lanzado" venías). El alignment con cámara solo decide el FACTOR.
+	// Si rotaste la cámara para mirar atrás del salto, el momentum se anula —
+	// el jugador "decide" no preservar el momentum cambiando hacia donde mira.
 	float MomentumBonus = 0.f;
-	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	const float JumpStartSpeed = JumpStartHorizontalVelocity.Size();
+	if (JumpStartSpeed > 1.f)
 	{
-		const float PreSpeed = CMC->Velocity.Size2D();
-		if (PreSpeed > 1.f)
+		const FVector JumpStartDir = JumpStartHorizontalVelocity / JumpStartSpeed;
+
+		// Forward cámara (control rotation Yaw, plano horizontal)
+		const FRotator ControlRot = GetControlRotation();
+		FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
+		CamForward.Z = 0.f;
+		if (!CamForward.Normalize())
 		{
-			// Forward de la cámara en plano horizontal (sin pitch)
-			const FRotator ControlRot = GetControlRotation();
-			FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
+			CamForward = GetActorForwardVector();
 			CamForward.Z = 0.f;
-			if (!CamForward.Normalize())
-			{
-				CamForward = GetActorForwardVector();
-				CamForward.Z = 0.f;
-				CamForward.Normalize();
-			}
-
-			const float Alignment = FVector::DotProduct(DiveDir, CamForward); // [-1, 1]
-
-			float Factor;
-			if (Alignment >= 0.f)
-			{
-				Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumForwardFactor, Alignment);
-			}
-			else
-			{
-				Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumBackwardFactor, -Alignment);
-			}
-			MomentumBonus = PreSpeed * Factor;
-
-			UE_LOG(LogTemp, Log, TEXT("[Dive] Momentum: PreSpeed=%.0f CamAlign=%.2f Factor=%.2f Bonus=%.0f → Total=%.0f"),
-				PreSpeed, Alignment, Factor, MomentumBonus, DiveForwardSpeed + MomentumBonus);
+			CamForward.Normalize();
 		}
+
+		const float Alignment = FVector::DotProduct(CamForward, JumpStartDir); // [-1, 1]
+
+		float Factor;
+		if (Alignment >= 0.f)
+		{
+			Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumForwardFactor, Alignment);
+		}
+		else
+		{
+			Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumBackwardFactor, -Alignment);
+		}
+		MomentumBonus = JumpStartSpeed * Factor;
+
+		UE_LOG(LogTemp, Log,
+			TEXT("[Dive] Momentum · JumpStartSpeed=%.0f CamVsJumpAlign=%.2f Factor=%.2f Bonus=%.0f → Total=%.0f"),
+			JumpStartSpeed, Alignment, Factor, MomentumBonus, DiveForwardSpeed + MomentumBonus);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log,
+			TEXT("[Dive] Momentum · sin salto registrado (JumpStartSpeed=0) → bonus 0, dash a velocidad base %.0f"),
+			DiveForwardSpeed);
 	}
 
 	const float CombinedForwardSpeed = FMath::Min(DiveForwardSpeed + MomentumBonus, DiveMaxTotalSpeed);
