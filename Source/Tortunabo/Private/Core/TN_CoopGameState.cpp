@@ -129,6 +129,47 @@ void ATN_CoopGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	// (el listen-server ya lo calcula localmente)
 	DOREPLIFETIME_CONDITION(ATN_CoopGameState, ServerMatchElapsedTime, COND_SkipOwner);
 	DOREPLIFETIME(ATN_CoopGameState, FinishedPlayers);
+	DOREPLIFETIME(ATN_CoopGameState, RaceResults);
+}
+
+void ATN_CoopGameState::OnRep_RaceResults()
+{
+	OnRaceResultsUpdated.Broadcast();
+}
+
+void ATN_CoopGameState::Server_UpsertRaceResult(int32 InPlayerId, const FString& InPlayerName,
+	int32 InFinishRank, float InFinishTime, int32 InRaceScore, bool bInEliminated)
+{
+	if (!HasAuthority()) { return; }
+
+	FTN_RaceResultEntry NewEntry;
+	NewEntry.PlayerId          = InPlayerId;
+	NewEntry.PlayerName        = InPlayerName;
+	NewEntry.FinishRank        = InFinishRank;
+	NewEntry.FinishTimeSeconds = InFinishTime;
+	NewEntry.RaceScore         = InRaceScore;
+	NewEntry.bIsEliminated     = bInEliminated;
+
+	const int32 ExistingIdx = RaceResults.IndexOfByKey(NewEntry);
+	if (ExistingIdx != INDEX_NONE)
+	{
+		RaceResults[ExistingIdx] = NewEntry;
+	}
+	else
+	{
+		RaceResults.Add(NewEntry);
+	}
+
+	// Sort: ranks 1,2,3,4 primero, eliminados al final (FinishRank=0).
+	RaceResults.Sort([](const FTN_RaceResultEntry& A, const FTN_RaceResultEntry& B)
+	{
+		const int32 RankA = A.bIsEliminated ? INT32_MAX : (A.FinishRank > 0 ? A.FinishRank : INT32_MAX - 1);
+		const int32 RankB = B.bIsEliminated ? INT32_MAX : (B.FinishRank > 0 ? B.FinishRank : INT32_MAX - 1);
+		return RankA < RankB;
+	});
+
+	// Listen-server: dispara delegate manualmente (OnRep no llega al host).
+	OnRaceResultsUpdated.Broadcast();
 }
 
 

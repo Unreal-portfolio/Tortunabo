@@ -35,3 +35,37 @@ enum class ETNMatchFlowState : uint8
 	Results UMETA(DisplayName = "Results")
 };
 
+/**
+ * Entrada del scoreboard global.
+ * Replicado en TN_CoopGameState — todos los clientes ven la lista completa
+ * tras Results, ordenada por FinishRank (eliminados al final).
+ */
+USTRUCT(BlueprintType)
+struct FTN_RaceResultEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 PlayerId = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString PlayerName;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 FinishRank = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	float FinishTimeSeconds = 0.f;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 RaceScore = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool bIsEliminated = false;
+
+	bool operator==(const FTN_RaceResultEntry& Other) const
+	{
+		return PlayerId == Other.PlayerId;
+	}
+};
+

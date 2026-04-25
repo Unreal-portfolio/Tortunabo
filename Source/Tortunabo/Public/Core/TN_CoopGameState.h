@@ -11,6 +11,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMatchFlowStateChanged, ETNMatchFl
 /** Fired on all machines whenever a new Quick Chat message arrives. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnQuickChatReceived, const FTN_QuickChatEntry&, Entry);
 
+/** Fired on all machines whenever the global RaceResults array is updated. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRaceResultsUpdated);
+
 UCLASS()
 class TORTUNABO_API ATN_CoopGameState : public AGameState
 {
@@ -62,6 +65,27 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	int32 FinishedPlayers = 0;
 
+	// ── Scoreboard global ─────────────────────────────────────────────────────
+
+	/**
+	 * Resultados de carrera replicados a todos los clientes.
+	 * Se actualiza desde TN_RunGameMode tras MarkPlayerFinished/MarkPlayerDead.
+	 * El widget Results lee esto para mostrar el ranking completo de todos los
+	 * jugadores ordenado (1º, 2º, 3º, 4º, eliminados al final).
+	 */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RaceResults, Category = "Coop|Score")
+	TArray<FTN_RaceResultEntry> RaceResults;
+
+	UPROPERTY(BlueprintAssignable, Category = "Coop|Score")
+	FOnRaceResultsUpdated OnRaceResultsUpdated;
+
+	/**
+	 * Server-only: añade o actualiza la entrada de un jugador.
+	 * El array se mantiene ordenado por FinishRank (eliminados al final con rank=0).
+	 */
+	void Server_UpsertRaceResult(int32 InPlayerId, const FString& InPlayerName,
+		int32 InFinishRank, float InFinishTime, int32 InRaceScore, bool bInEliminated);
+
 	// ── Quick Chat ────────────────────────────────────────────────────────────
 	/** Broadcast on all machines when a new Quick Chat message arrives. Bind in BP or C++. */
 	UPROPERTY(BlueprintAssignable, Category = "QuickChat")
@@ -83,6 +107,9 @@ public:
 private:
 	UFUNCTION()
 	void OnRep_MatchFlowState();
+
+	UFUNCTION()
+	void OnRep_RaceResults();
 
 	/** Saves the local player's RaceScore to the save game when Results state is entered.
 	 *  Idempotente: usa bLocalScorePersisted para evitar doble-escritura si se llama

@@ -394,11 +394,21 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 
 	// ── Asignar puntos según posición de llegada (#26) ──────────────────────
 	// 1º=400, 2º=300, 3º=200, 4º=100. Más de 4 jugadores → 50 pts por seguridad.
+	// Nota: RaceScore se SUMA al actual (que puede traer score de ScorePickups
+	// recogidos durante la run), no se sobrescribe.
 	static const int32 RankScoreTable[] = { 400, 300, 200, 100 };
 	const int32 RankIndex = TNPS->FinishRank - 1;
-	TNPS->RaceScore = (RankIndex >= 0 && RankIndex < 4) ? RankScoreTable[RankIndex] : 50;
-	UE_LOG(LogTemp, Log, TEXT("[MarkPlayerFinished] RaceScore=%d para '%s' (Rank=%d)"),
-		TNPS->RaceScore, *GetNameSafe(PlayerController), TNPS->FinishRank);
+	const int32 RankScore = (RankIndex >= 0 && RankIndex < 4) ? RankScoreTable[RankIndex] : 50;
+	TNPS->RaceScore += RankScore;
+	UE_LOG(LogTemp, Log, TEXT("[FINISH] RaceScore+=%d → total=%d para '%s' (Rank=%d)"),
+		RankScore, TNPS->RaceScore, *GetNameSafe(PlayerController), TNPS->FinishRank);
+
+	// Scoreboard global
+	if (ATN_CoopGameState* GS = GetGameState<ATN_CoopGameState>())
+	{
+		GS->Server_UpsertRaceResult(TNPS->GetPlayerId(), TNPS->GetPlayerName(),
+			TNPS->FinishRank, TNPS->FinishTimeSeconds, TNPS->RaceScore, false);
+	}
 
 	// Limpiar DBNO si llegaron a meta mientras estaban noqueados
 	if (TNPS->bIsDBNO)
@@ -485,6 +495,16 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	TNPS->bIsEliminated = true;
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->DeathZoneTimeRemaining = -1.f;
+
+	UE_LOG(LogTemp, Log, TEXT("[DEATH] '%s' eliminated · time=%.2fs · score=%d"),
+		*GetNameSafe(PlayerController), TNPS->FinishTimeSeconds, TNPS->RaceScore);
+
+	// Scoreboard global — eliminado al final del array
+	if (ATN_CoopGameState* GS = GetGameState<ATN_CoopGameState>())
+	{
+		GS->Server_UpsertRaceResult(TNPS->GetPlayerId(), TNPS->GetPlayerName(),
+			0, TNPS->FinishTimeSeconds, TNPS->RaceScore, true);
+	}
 
 	// Clean up from DBNO tracking if present
 	DBNOPlayers.Remove(PlayerController);
