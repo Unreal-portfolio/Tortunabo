@@ -29,11 +29,24 @@ void UTN_PlayerHUDWidget::NativeConstruct()
 
 	RefreshStaminaWidgets();
 	RefreshInventoryWidgets();
+	BindToPlayerStateScore();
+}
+
+void UTN_PlayerHUDWidget::NativeDestruct()
+{
+	UnbindFromPlayerStateScore();
+	Super::NativeDestruct();
 }
 
 void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// PlayerState puede llegar tarde (post-travel). Reintentar bind si está pendiente.
+	if (LastRaceScore < 0 && !BoundPlayerState.IsValid())
+	{
+		BindToPlayerStateScore();
+	}
 
 	// Re-cachear si el pawn cambió (posesión, travel, etc.)
 	if (!CachedStamina.IsValid() || !CachedInventory.IsValid())
@@ -247,4 +260,45 @@ void UTN_PlayerHUDWidget::RefreshInventoryWidgets()
 	}
 
 	OnInventoryUpdated(EquippedIcon, bHasEquipped, StoredIcon, bHasStored);
+}
+
+// ── Score live ───────────────────────────────────────────────────────────────
+
+void UTN_PlayerHUDWidget::BindToPlayerStateScore()
+{
+	APlayerController* PC = GetOwningPlayer();
+	if (!PC) { return; }
+	ATN_CoopPlayerState* PS = PC->GetPlayerState<ATN_CoopPlayerState>();
+	if (!PS)
+	{
+		// Race condition: PS aún no asignado al PC en BeginPlay del widget.
+		// Reintentar en el siguiente tick. Como el HUD ya tiene NativeTick activo,
+		// chequea allí cada vez que LastRaceScore < 0 (sentinel).
+		LastRaceScore = -1;
+		return;
+	}
+	BoundPlayerState = PS;
+	PS->OnRaceScoreChanged.AddDynamic(this, &UTN_PlayerHUDWidget::HandleRaceScoreChanged);
+	HandleRaceScoreChanged(PS->RaceScore);
+}
+
+void UTN_PlayerHUDWidget::UnbindFromPlayerStateScore()
+{
+	if (ATN_CoopPlayerState* PS = BoundPlayerState.Get())
+	{
+		PS->OnRaceScoreChanged.RemoveDynamic(this, &UTN_PlayerHUDWidget::HandleRaceScoreChanged);
+	}
+	BoundPlayerState.Reset();
+}
+
+void UTN_PlayerHUDWidget::HandleRaceScoreChanged(int32 NewScore)
+{
+	const int32 Delta = NewScore - LastRaceScore;
+	LastRaceScore = NewScore;
+
+	if (ScoreText)
+	{
+		ScoreText->SetText(FText::AsNumber(NewScore));
+	}
+	OnRaceScoreUpdated(NewScore, FMath::Max(0, Delta));
 }

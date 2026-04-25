@@ -147,3 +147,8 @@ void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(ATN_CoopPlayerState, RaceScore);
 }
 
+void ATN_CoopPlayerState::OnRep_RaceScore()
+{
+	OnRaceScoreChanged.Broadcast(RaceScore);
+}
+

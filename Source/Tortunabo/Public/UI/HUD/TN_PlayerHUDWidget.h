@@ -11,6 +11,7 @@ class UImage;
 class UTN_StaminaComponent;
 class UTN_InventoryComponent;
 class UTexture2D;
+class ATN_CoopPlayerState;
 
 /**
  * HUD principal del jugador.
@@ -37,6 +38,7 @@ class TORTUNABO_API UTN_PlayerHUDWidget : public UUserWidget
 
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	// ── Stamina bar ───────────────────────────────────────────────────────────
@@ -58,6 +60,16 @@ protected:
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> StaminaText;
+
+	// ── Score (RaceScore live) ────────────────────────────────────────────────
+
+	/**
+	 * TextBlock que muestra el RaceScore del jugador local en tiempo real.
+	 * Nómbralo exactamente "ScoreText" en el BP Designer. Si no existe → no se muestra.
+	 * Se actualiza vía OnRaceScoreChanged delegate del PlayerState (ScorePickup/MarkPlayerFinished).
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> ScoreText;
 
 	// ── Inventory slots ───────────────────────────────────────────────────────
 
@@ -125,9 +137,21 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "DBNO")
 	void OnReviveProgressUpdated(float Progress01, bool bIsReviving);
 
+	/** Hook BP para animar incrementos de score (popup, scale tween, etc). */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Score")
+	void OnRaceScoreUpdated(int32 NewScore, int32 Delta);
+
 private:
 	void RefreshStaminaWidgets();
 	void RefreshInventoryWidgets();
+	void BindToPlayerStateScore();
+	void UnbindFromPlayerStateScore();
+
+	UFUNCTION()
+	void HandleRaceScoreChanged(int32 NewScore);
+
+	TWeakObjectPtr<ATN_CoopPlayerState> BoundPlayerState;
+	int32 LastRaceScore = 0;
 
 	TWeakObjectPtr<UTN_StaminaComponent>    CachedStamina;
 	TWeakObjectPtr<UTN_InventoryComponent>  CachedInventory;

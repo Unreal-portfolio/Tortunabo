@@ -4,6 +4,8 @@
 #include "GameFramework/PlayerState.h"
 #include "TN_CoopPlayerState.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRaceScoreChanged, int32, NewScore);
+
 UCLASS()
 class TORTUNABO_API ATN_CoopPlayerState : public APlayerState
 {
@@ -11,6 +13,10 @@ class TORTUNABO_API ATN_CoopPlayerState : public APlayerState
 
 public:
 	ATN_CoopPlayerState();
+
+	/** Disparado en clientes cuando RaceScore cambia. HUD se suscribe en NativeConstruct. */
+	UPROPERTY(BlueprintAssignable, Category = "Coop|Score")
+	FOnRaceScoreChanged OnRaceScoreChanged;
 
 	bool CanServerSendQuickChat(float Now, float CooldownSeconds) const;
 	void MarkServerQuickChatSent(float Now);
@@ -81,11 +87,15 @@ public:
 
 	/**
 	 * Puntos ganados en esta carrera (#26).
-	 * Calculados por ATN_RunGameMode al cruzar la meta según posición de llegada.
-	 * Replicado para que la UI de resultados lo muestre en todos los clientes.
+	 * Calculados por ATN_RunGameMode al cruzar la meta según posición de llegada
+	 * + sumas de ScorePickups durante la run.
+	 * Replicado para que el HUD lo muestre en tiempo real (delegate OnRaceScoreChanged).
 	 */
-	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Score")
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RaceScore, Category = "Coop|Score")
 	int32 RaceScore = 0;
+
+	UFUNCTION()
+	void OnRep_RaceScore();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
