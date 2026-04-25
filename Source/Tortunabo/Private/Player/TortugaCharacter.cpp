@@ -3689,35 +3689,50 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	// la nueva velocidad (DiveVelocity) sin snap. SetActorRotation aquí producía
 	// un giro visible de 90° post ANIM-01 (mesh reorientado).
 
-	// ── Momentum preservation del salto/movimiento previo ──────────────────────
-	// Bonus de speed proporcional a cómo el DiveDir se alinea con la velocity
-	// horizontal previa. Frente→bonus alto, lateral→medio, atrás→0.
+	// ── Momentum preservation con referencia a CÁMARA ──────────────────────────
+	// IMPORTANTE: la referencia es el FORWARD de la cámara (control rotation),
+	// NO el CMC->Velocity previo. Si usáramos PreVel, alignment siempre sería ~1
+	// porque DiveDir se calcula a partir de CMC->Velocity (fix DASH-02).
+	//
+	// Con cámara como referencia:
+	//   alignment = +1 → dashing donde el jugador mira (frente real)  → bonus máximo
+	//   alignment =  0 → lateral respecto a la cámara                  → bonus medio
+	//   alignment = -1 → dashing hacia atrás de la cámara              → bonus 0
+	//
+	// La MAGNITUD del bonus sigue siendo proporcional a la velocity previa
+	// (cuán "lanzado" venías). El alignment con cámara solo decide el FACTOR.
 	float MomentumBonus = 0.f;
 	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 	{
-		FVector PreHoriz = CMC->Velocity;
-		PreHoriz.Z = 0.f;
-		const float PreSpeed = PreHoriz.Size();
+		const float PreSpeed = CMC->Velocity.Size2D();
 		if (PreSpeed > 1.f)
 		{
-			const FVector PreDir = PreHoriz / PreSpeed;
-			const float Alignment = FVector::DotProduct(DiveDir, PreDir); // [-1, 1]
+			// Forward de la cámara en plano horizontal (sin pitch)
+			const FRotator ControlRot = GetControlRotation();
+			FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
+			CamForward.Z = 0.f;
+			if (!CamForward.Normalize())
+			{
+				CamForward = GetActorForwardVector();
+				CamForward.Z = 0.f;
+				CamForward.Normalize();
+			}
+
+			const float Alignment = FVector::DotProduct(DiveDir, CamForward); // [-1, 1]
 
 			float Factor;
 			if (Alignment >= 0.f)
 			{
-				// Lerp lateral→forward conforme alignment 0→1
 				Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumForwardFactor, Alignment);
 			}
 			else
 			{
-				// Lerp lateral→backward conforme alignment 0→-1
 				Factor = FMath::Lerp(DiveMomentumLateralFactor, DiveMomentumBackwardFactor, -Alignment);
 			}
 			MomentumBonus = PreSpeed * Factor;
 
-			UE_LOG(LogTemp, Verbose, TEXT("[Dive] Momentum: PreSpeed=%.0f Alignment=%.2f Factor=%.2f Bonus=%.0f"),
-				PreSpeed, Alignment, Factor, MomentumBonus);
+			UE_LOG(LogTemp, Log, TEXT("[Dive] Momentum: PreSpeed=%.0f CamAlign=%.2f Factor=%.2f Bonus=%.0f → Total=%.0f"),
+				PreSpeed, Alignment, Factor, MomentumBonus, DiveForwardSpeed + MomentumBonus);
 		}
 	}
 
