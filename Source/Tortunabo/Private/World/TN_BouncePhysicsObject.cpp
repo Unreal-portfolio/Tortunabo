@@ -14,6 +14,11 @@ ATN_BouncePhysicsObject::ATN_BouncePhysicsObject()
 	// que desactivamos la detección (también ahorra 1 timer + 6 raycasts/2s).
 	bEnableCrushDetection = false;
 
+	// CLAVE: la bola SÍ usa físicas reales (rebota, rueda, recibe impulsos al
+	// patearla). El padre por defecto pasó a kinematic-push para el cubo —
+	// aquí lo apagamos para mantener Chaos behavior.
+	bUseKinematicPush = false;
+
 	// Umbral de velocidad para dormir más alto que el default del padre (15 cm/s).
 	// Una bola con inercia rueda largo rato a <30 cm/s sin llegar a reposo real;
 	// si no subimos el umbral, nunca entra dormancy y sigue enviando packets.

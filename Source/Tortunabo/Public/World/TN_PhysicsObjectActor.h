@@ -5,6 +5,7 @@
 #include "TN_PhysicsObjectActor.generated.h"
 
 class UStaticMeshComponent;
+class USphereComponent;
 
 /**
  * Actor físico replicado con gestión automática de dormancia.
@@ -36,6 +37,44 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Physics")
 	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	/** Sphere overlap usada para detectar tortugas en contacto cuando el modo
+	 *  kinematic-push está activo. Radio = collision del mesh + extra. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Physics|KinematicPush")
+	TObjectPtr<USphereComponent> PushDetector;
+
+	// ── Modo kinematic-push (cubo empujable sin físicas reales) ──────────────
+	// Default: true. Cubo NO simula físicas — se mueve solo cuando una tortuga
+	// está en contacto y caminando hacia él. Sweep cancela componente normal
+	// vs paredes/colliders → el cubo nunca atraviesa geometría ni se queda
+	// "tieso" por simulación divergente entre máquinas (server-auth puro).
+	//
+	// Hijos (BouncePhysicsObject) deben establecer bUseKinematicPush=false en
+	// su ctor para mantener simulación física real (balón rebotando).
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Physics|KinematicPush")
+	bool bUseKinematicPush = true;
+
+	/** Radio extra (cm) del PushDetector más allá del bounding del mesh.
+	 *  Margen para que el overlap detecte la tortuga antes de que la collision
+	 *  del mesh la bloquee — sino el cubo nunca empieza a moverse. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Physics|KinematicPush",
+		meta = (ClampMin = "5.0", EditCondition = "bUseKinematicPush"))
+	float PushDetectionRadiusExtra = 25.f;
+
+	/** Velocidad máxima (cm/s) que el cubo puede alcanzar siendo empujado.
+	 *  Cap de seguridad — incluso con varios jugadores empujando, el cubo no
+	 *  vuela. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Physics|KinematicPush",
+		meta = (ClampMin = "50.0", EditCondition = "bUseKinematicPush"))
+	float MaxKinematicPushSpeed = 600.f;
+
+	/** Multiplicador aplicado a la velocity proyectada de la tortuga. Si la
+	 *  tortuga camina a 450 cm/s contra el cubo y el factor es 0.6 → cubo se
+	 *  mueve a 270 cm/s (más lento que la tortuga, como empujar peso real). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Physics|KinematicPush",
+		meta = (ClampMin = "0.1", ClampMax = "1.0", EditCondition = "bUseKinematicPush"))
+	float PushSpeedFactor = 0.6f;
 
 	/** Velocidad (UU/s) por debajo de la cual el actor vuelve a dormancy. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "1.0"))
@@ -132,6 +171,7 @@ private:
 
 	void TryEnterDormancy();
 	void CheckForCrush();
+	void TickKinematicPush(float DeltaTime);
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastCrushPoof();

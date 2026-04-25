@@ -1,11 +1,14 @@
 #include "World/TN_PhysicsObjectActor.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SphereComponent.h"
+#include "Player/TortugaCharacter.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Sound/SoundBase.h"
 #include "NiagaraSystem.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 {
@@ -24,6 +27,15 @@ ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 	// contra un muro estático y se mete dentro de la geometría.
 	// Coste pequeño para actores puntuales — aceptable aquí.
 	Mesh->SetUseCCD(true);
+
+	// PushDetector: sphere overlap usada en modo kinematic-push para detectar
+	// tortugas en contacto. En modo físico (BouncePhysicsObject) queda inerte.
+	PushDetector = CreateDefaultSubobject<USphereComponent>(TEXT("PushDetector"));
+	PushDetector->SetupAttachment(Mesh);
+	PushDetector->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	PushDetector->SetCollisionResponseToAllChannels(ECR_Ignore);
+	PushDetector->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	PushDetector->SetGenerateOverlapEvents(true);
 
 	bReplicates = true;
 	SetReplicatingMovement(true);
@@ -63,22 +75,52 @@ void ATN_PhysicsObjectActor::BeginPlay()
 	{
 		// Despertarse inmediatamente para que los clientes reciban la posición inicial.
 		FlushNetDormancy();
-		Mesh->SetSimulatePhysics(true);
-		Mesh->OnComponentHit.AddDynamic(this, &ATN_PhysicsObjectActor::OnMeshHit);
 
-		if (bEnableCrushDetection && CrushCheckInterval > 0.f)
+		if (bUseKinematicPush)
 		{
-			GetWorldTimerManager().SetTimer(
-				CrushCheckTimer, this,
-				&ATN_PhysicsObjectActor::CheckForCrush,
-				CrushCheckInterval, /*bLoop=*/true);
-		}
+			// ── Modo kinematic-push ──────────────────────────────────────────
+			// El cubo NO simula físicas. Se mueve por SetActorLocation desde
+			// TickKinematicPush cuando una tortuga lo empuja. Sweep cancela
+			// componente normal vs paredes. Server-auth puro → sin divergencia
+			// entre máquinas, sin "tieso a veces".
+			Mesh->SetSimulatePhysics(false);
+			Mesh->SetMobility(EComponentMobility::Movable);
 
-		// Activar Tick solo si el BP activó anti-phase-through. Default off.
-		if (bEnableAntiPhaseThrough)
-		{
+			// PushDetector: radio = bounding del mesh + extra
+			FVector BoundsExtent = FVector::ZeroVector;
+			if (Mesh->GetStaticMesh())
+			{
+				BoundsExtent = Mesh->GetStaticMesh()->GetBounds().BoxExtent;
+			}
+			const float MeshRadius = BoundsExtent.Size2D();
+			PushDetector->SetSphereRadius(MeshRadius + PushDetectionRadiusExtra);
+
 			PrimaryActorTick.bCanEverTick = true;
 			SetActorTickEnabled(true);
+		}
+		else
+		{
+			// ── Modo físico tradicional (BouncePhysicsObject hijo) ───────────
+			Mesh->SetSimulatePhysics(true);
+			Mesh->OnComponentHit.AddDynamic(this, &ATN_PhysicsObjectActor::OnMeshHit);
+
+			// PushDetector inerte en modo físico
+			PushDetector->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+			if (bEnableCrushDetection && CrushCheckInterval > 0.f)
+			{
+				GetWorldTimerManager().SetTimer(
+					CrushCheckTimer, this,
+					&ATN_PhysicsObjectActor::CheckForCrush,
+					CrushCheckInterval, /*bLoop=*/true);
+			}
+
+			// Activar Tick solo si el BP activó anti-phase-through. Default off.
+			if (bEnableAntiPhaseThrough)
+			{
+				PrimaryActorTick.bCanEverTick = true;
+				SetActorTickEnabled(true);
+			}
 		}
 	}
 }
@@ -91,7 +133,16 @@ void ATN_PhysicsObjectActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!HasAuthority() || !Mesh || !bEnableAntiPhaseThrough) { return; }
+	if (!HasAuthority() || !Mesh) { return; }
+
+	// Modo kinematic-push tiene su propio path; los demás siguen con anti-phase.
+	if (bUseKinematicPush)
+	{
+		TickKinematicPush(DeltaTime);
+		return;
+	}
+
+	if (!bEnableAntiPhaseThrough) { return; }
 
 	// Sólo componentes horizontales — la caída libre (Vel.Z) la gestiona la
 	// gravedad nativa; el suelo aplica su propia fuerza normal por contacto.
@@ -251,4 +302,127 @@ void ATN_PhysicsObjectActor::MulticastCrushPoof_Implementation()
 		Mesh->SetVisibility(false);
 		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TickKinematicPush — empuje server-auth sin físicas reales
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Diseño:
+//   1. Detectar tortugas en overlap del PushDetector (sphere ligeramente más
+//      grande que la collision del mesh).
+//   2. Para cada una, calcular cuánto está empujando hacia el cubo:
+//        push = max(0, dot(velocity, dir_a_cubo)) * factor
+//   3. Sumar contribuciones de varias tortugas (multi-jugador empujando junto).
+//   4. Sweep en la dirección resultante:
+//        - Si impacta WorldStatic / WorldDynamic con normal vertical-ish,
+//          cancelar componente de la velocidad en la normal (la pared "absorbe"
+//          su parte). Slide tangencial libre.
+//   5. SetActorLocation con sweep — server-auth, replica vía bReplicateMovement.
+//
+// Multiplayer: solo server hace cálculo + movement. Clientes interpolan posición
+// recibida (sin SimulatePhysics → cero divergencia, cero "tieso ↔ móvil").
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
+{
+	if (!PushDetector) { return; }
+
+	// 1. Detectar tortugas en overlap
+	TArray<AActor*> Overlapping;
+	PushDetector->GetOverlappingActors(Overlapping, ATortugaCharacter::StaticClass());
+	if (Overlapping.Num() == 0)
+	{
+		return; // sin contacto, cubo estático
+	}
+
+	const FVector CubeLoc = GetActorLocation();
+	FVector AccumulatedPush = FVector::ZeroVector;
+
+	// 2. Sumar empuje de cada tortuga que se mueve hacia el cubo
+	for (AActor* A : Overlapping)
+	{
+		ATortugaCharacter* Char = Cast<ATortugaCharacter>(A);
+		if (!Char) { continue; }
+
+		FVector CharVel = Char->GetVelocity();
+		CharVel.Z = 0.f;
+		const float CharSpeed = CharVel.Size();
+		if (CharSpeed < 5.f) { continue; } // tortuga prácticamente parada
+
+		FVector ToCube = CubeLoc - Char->GetActorLocation();
+		ToCube.Z = 0.f;
+		if (!ToCube.Normalize()) { continue; }
+
+		const FVector CharVelDir = CharVel / CharSpeed;
+		const float Alignment = FVector::DotProduct(CharVelDir, ToCube);
+		if (Alignment <= 0.05f) { continue; } // no va hacia el cubo
+
+		// Magnitud = velocity proyectada sobre dir_a_cubo (escalar) * factor
+		const float ProjectedSpeed = CharSpeed * Alignment * PushSpeedFactor;
+		AccumulatedPush += ToCube * ProjectedSpeed;
+	}
+
+	if (AccumulatedPush.SizeSquared() < KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
+	// 3. Cap de seguridad
+	const float PushSpeed = AccumulatedPush.Size();
+	if (PushSpeed > MaxKinematicPushSpeed)
+	{
+		AccumulatedPush = (AccumulatedPush / PushSpeed) * MaxKinematicPushSpeed;
+	}
+
+	// 4. Sweep contra paredes — cancelar componente normal
+	const FVector StartLoc  = CubeLoc;
+	FVector       Velocity  = AccumulatedPush;
+	FVector       Delta     = Velocity * DeltaTime;
+	FVector       EndLoc    = StartLoc + Delta;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(KinematicPushSweep), false, this);
+	FHitResult Hit;
+	const FQuat ActorQuat = GetActorQuat();
+
+	// Usar bounding del mesh como shape del sweep
+	FVector BoxExtent = FVector(50.f);
+	if (Mesh && Mesh->GetStaticMesh())
+	{
+		BoxExtent = Mesh->GetStaticMesh()->GetBounds().BoxExtent * GetActorScale3D();
+	}
+
+	const bool bBlocked = GetWorld()->SweepSingleByChannel(
+		Hit, StartLoc, EndLoc, ActorQuat,
+		ECC_WorldStatic, FCollisionShape::MakeBox(BoxExtent), QueryParams);
+
+	if (bBlocked && Hit.bBlockingHit)
+	{
+		// Cancelar componente de velocity en la dirección de la normal de la pared.
+		// Equivale a la fuerza normal que una pared real aplicaría — el slide
+		// tangencial queda intacto, lateral siempre libre.
+		FVector Normal = Hit.Normal;
+		Normal.Z = 0.f; // ignorar suelo/techo
+		if (!Normal.IsNearlyZero())
+		{
+			Normal.Normalize();
+			const float NormalComp = FVector::DotProduct(Velocity, Normal);
+			if (NormalComp < 0.f)
+			{
+				Velocity -= Normal * NormalComp;
+				Delta = Velocity * DeltaTime;
+				EndLoc = StartLoc + Delta;
+			}
+		}
+	}
+
+	if (Delta.SizeSquared() < KINDA_SMALL_NUMBER)
+	{
+		return; // tras cancelar componente normal no queda movimiento
+	}
+
+	// 5. Aplicar movimiento con sweep — bSweep=true respeta cualquier collider
+	//    nuevo que aparezca en la trayectoria final.
+	SetActorLocation(EndLoc, /*bSweep=*/true);
 }
