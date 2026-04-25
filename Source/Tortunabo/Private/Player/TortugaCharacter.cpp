@@ -3692,9 +3692,20 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 		CancelEmoteLocalOnly();
 	}
 
-	// DASH-01: idem que cliente — CMC::bOrientRotationToMovement interpola hacia
-	// la nueva velocidad (DiveVelocity) sin snap. SetActorRotation aquí producía
-	// un giro visible de 90° post ANIM-01 (mesh reorientado).
+	// DASH-04: snap del Yaw del actor hacia DiveDir. Sin esto, el tilt visual del
+	// dash se aplica sobre el eje "frente del actor" anterior, no hacia donde
+	// realmente dasheas → el cuerpo se tira hacia el sitio frontal original.
+	// CMC::bOrientRotationToMovement interpola gradualmente y el dash dura 150ms
+	// → no completa la rotación a tiempo.
+	//
+	// El issue de "snap de 90° post ANIM-01" (DASH-01) NO aplica aquí porque
+	// rotamos el actor, no el SkelMesh — DiveMeshDefaultRot (Yaw=90 del SKM
+	// unificado) sigue siendo relativo al actor, así que el SkM mantiene su
+	// orientación visual correcta tras la rotación.
+	{
+		const float TargetYaw = DiveDir.Rotation().Yaw;
+		SetActorRotation(FRotator(0.f, TargetYaw, 0.f));
+	}
 
 	// ── Momentum preservation: cámara ACTUAL vs salto ORIGINAL ─────────────────
 	// La velocity horizontal AL SALTAR (capturada en OnJumped) marca la dirección
