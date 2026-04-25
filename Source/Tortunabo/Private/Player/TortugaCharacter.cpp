@@ -3641,35 +3641,29 @@ void ATortugaCharacter::TryDive()
 		return;
 	}
 
-	// DASH-02 (2026-04-24): usar VELOCIDAD ACTUAL en vez de LastMovementInput.
-	// El CMC ya aplicó los inputs a la Velocity, que es la fuente de verdad
-	// sobre "a dónde va el jugador". LastMovementInput sufría ambigüedad con
-	// la convención X/Y del IA_Move en diferentes IMC setups y a veces daba
-	// la dirección equivocada (dash lateral en vez de frontal).
+	// DASH-03 (2026-04-26): el dash siempre va EN LA DIRECCIÓN DE LA CÁMARA.
+	// Antes usaba CMC->Velocity (DASH-02) lo que ataba el dash al movimiento
+	// actual del char. Ahora la cámara es la fuente de verdad — feel más
+	// directo (al estilo shooter): donde miras es donde dasheas.
 	FVector DiveDir = FVector::ZeroVector;
-	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	const FRotator ControlRot = GetControlRotation();
+	FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
+	CamForward.Z = 0.f;
+	if (CamForward.Normalize())
 	{
-		FVector Vel = CMC->Velocity;
-		Vel.Z = 0.f;
-		if (Vel.SizeSquared() > 1.f)
-		{
-			DiveDir = Vel.GetSafeNormal();
-		}
+		DiveDir = CamForward;
 	}
-	if (DiveDir.IsNearlyZero())
+	else
 	{
-		// Fallback: sin velocity (parado en el aire) → frente del actor
+		// Fallback: control rotation degenerada → frente del actor
 		DiveDir = GetActorForwardVector();
 		DiveDir.Z = 0.f;
 		DiveDir.Normalize();
 	}
 
-	UE_LOG(LogTemp, Warning,
-		TEXT("[Diagnostic] Dash dir=(%.2f,%.2f,%.2f)  ActorFwd=(%.2f,%.2f,%.2f)  DiveTiltAxis=(%.2f,%.2f,%.2f)  DiveMeshDefaultRot=(P=%.1f Y=%.1f R=%.1f)"),
-		DiveDir.X, DiveDir.Y, DiveDir.Z,
-		GetActorForwardVector().X, GetActorForwardVector().Y, GetActorForwardVector().Z,
-		DiveTiltAxis.X, DiveTiltAxis.Y, DiveTiltAxis.Z,
-		DiveMeshDefaultRot.Pitch, DiveMeshDefaultRot.Yaw, DiveMeshDefaultRot.Roll);
+	UE_LOG(LogTemp, Log,
+		TEXT("[Dive] DASH-03 · DiveDir(camera)=(%.2f,%.2f,%.2f) ControlYaw=%.1f"),
+		DiveDir.X, DiveDir.Y, DiveDir.Z, ControlRot.Yaw);
 
 	Server_StartDive(DiveDir);
 }
