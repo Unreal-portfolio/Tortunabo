@@ -409,27 +409,38 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 	const FVector CubeLoc = GetActorLocation();
 	FVector AccumulatedPush = FVector::ZeroVector;
 
-	// 2. Sumar empuje de cada tortuga que se mueve hacia el cubo
+	// 2. Sumar empuje de cada tortuga que INTENTA moverse hacia el cubo.
+	// Usamos GetLastMovementInputVector (la dirección que el jugador desea)
+	// en lugar de GetVelocity (la velocity neta tras colisiones). Cuando el
+	// jugador choca contra el cubo bloqueante, su velocity cae a ~0 aunque
+	// siga presionando W → con GetVelocity nunca habría push acumulado.
+	// Con InputVector, la intención se lee mientras el botón esté presionado.
 	for (AActor* A : Overlapping)
 	{
 		ATortugaCharacter* Char = Cast<ATortugaCharacter>(A);
 		if (!Char) { continue; }
 
-		FVector CharVel = Char->GetVelocity();
-		CharVel.Z = 0.f;
-		const float CharSpeed = CharVel.Size();
-		if (CharSpeed < 5.f) { continue; } // tortuga prácticamente parada
+		FVector CharInput = Char->GetLastMovementInputVector();
+		CharInput.Z = 0.f;
+		const float InputMagnitude = CharInput.Size();
+		if (InputMagnitude < 0.05f) { continue; } // sin input
 
 		FVector ToCube = CubeLoc - Char->GetActorLocation();
 		ToCube.Z = 0.f;
 		if (!ToCube.Normalize()) { continue; }
 
-		const FVector CharVelDir = CharVel / CharSpeed;
-		const float Alignment = FVector::DotProduct(CharVelDir, ToCube);
-		if (Alignment <= 0.05f) { continue; } // no va hacia el cubo
+		const FVector InputDir = CharInput / InputMagnitude;
+		const float Alignment = FVector::DotProduct(InputDir, ToCube);
+		if (Alignment <= 0.05f) { continue; } // input no va hacia el cubo
 
-		// Magnitud = velocity proyectada sobre dir_a_cubo (escalar) * factor
-		const float ProjectedSpeed = CharSpeed * Alignment * PushSpeedFactor;
+		// Velocidad efectiva: walk speed del CMC × magnitud del input × alineación.
+		// MaxWalkSpeed default ACharacter es 600 cm/s.
+		float WalkSpeed = 600.f;
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		{
+			WalkSpeed = CMC->MaxWalkSpeed;
+		}
+		const float ProjectedSpeed = WalkSpeed * InputMagnitude * Alignment * PushSpeedFactor;
 		AccumulatedPush += ToCube * ProjectedSpeed;
 	}
 
