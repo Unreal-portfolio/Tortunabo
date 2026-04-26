@@ -339,6 +339,25 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 {
 	if (!PushDetector) { return; }
 
+	// ── Gravedad simulada (siempre, antes del empuje) ──────────────────────
+	// El cubo está en SimulatePhysics=false, no recibe gravedad nativa. Aplicamos
+	// caída por ticks acumulando velocidad y haciendo SetActorLocation con sweep:
+	// si el suelo bloquea, el sweep cancela el delta vertical y la velocidad
+	// se resetea (snap a suelo).
+	if (KinematicGravity > 0.f)
+	{
+		KinematicFallSpeed = FMath::Min(KinematicFallSpeed + KinematicGravity * DeltaTime, KinematicMaxFallSpeed);
+		const FVector FallDelta(0.f, 0.f, -KinematicFallSpeed * DeltaTime);
+
+		FHitResult FallHit;
+		AddActorWorldOffset(FallDelta, /*bSweep=*/true, &FallHit);
+		if (FallHit.bBlockingHit)
+		{
+			// Suelo (o cualquier blocker) → reset acumulador, el cubo se queda en pie.
+			KinematicFallSpeed = 0.f;
+		}
+	}
+
 	// 1. Detectar tortugas en overlap
 	TArray<AActor*> Overlapping;
 	PushDetector->GetOverlappingActors(Overlapping, ATortugaCharacter::StaticClass());

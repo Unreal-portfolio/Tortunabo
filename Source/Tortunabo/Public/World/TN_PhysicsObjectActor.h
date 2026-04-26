@@ -76,6 +76,20 @@ protected:
 		meta = (ClampMin = "0.1", ClampMax = "1.0", EditCondition = "bUseKinematicPush"))
 	float PushSpeedFactor = 0.6f;
 
+	/**
+	 * Aceleración (cm/s²) aplicada hacia abajo en modo kinematic-push para que
+	 * el cubo caiga al suelo bajo gravedad simulada. El sweep cancela el movimiento
+	 * vertical al tocar suelo. Default 980 (~gravedad terrestre).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Physics|KinematicPush",
+		meta = (ClampMin = "0.0", EditCondition = "bUseKinematicPush"))
+	float KinematicGravity = 980.f;
+
+	/** Velocidad terminal de caída en modo kinematic-push (cm/s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Physics|KinematicPush",
+		meta = (ClampMin = "100.0", EditCondition = "bUseKinematicPush"))
+	float KinematicMaxFallSpeed = 1500.f;
+
 	/** Velocidad (UU/s) por debajo de la cual el actor vuelve a dormancy. */
 	UPROPERTY(EditDefaultsOnly, Category = "Physics|Network", meta = (ClampMin = "1.0"))
 	float SleepVelocityThreshold = 15.f;
@@ -178,4 +192,7 @@ private:
 
 	FTimerHandle DormancyCheckTimer;
 	FTimerHandle CrushCheckTimer;
+
+	/** Velocidad vertical acumulada en modo kinematic-push. Reset al tocar suelo. */
+	float KinematicFallSpeed = 0.f;
 };
