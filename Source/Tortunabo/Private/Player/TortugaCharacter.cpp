@@ -1638,6 +1638,17 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 		return;
 	}
 
+	// Validar que el SkM unificado tiene los 5 slots esperados (Belly/EyeShine/
+	// EyesMouth/Skin/Shell). Si tiene menos, SetMaterial(3/4,...) crea
+	// OverrideMaterials fantasma sin warning y la skin parece aplicada pero no
+	// se ve cambio en esos slots.
+	const int32 NumMaterials = SKM->GetNumMaterials();
+	if (NumMaterials < 5)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SKIN-CONFIG] '%s' SkM tiene solo %d slots (esperados 5: Belly/EyeShine/EyesMouth/Skin/Shell). Reordenar slots o reimportar mesh."),
+			*GetName(), NumMaterials);
+	}
+
 	// Mapeo de slots del SkM unificado:
 	//   Slot 0 → Barriga                         (BellyMaterial)
 	//   Slot 1 → Brillo de los ojos              (EyeShineMaterial)
