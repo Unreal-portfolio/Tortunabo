@@ -2132,7 +2132,12 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				// corriendo desliza un poco, si murió parado cae inerte).
 				const FVector PreDeathVelocity = GetVelocity();
 
-				SetReplicateMovement(false);
+				// IMPORTANTE: durante el ragdoll el server replica la actor location
+				// vía bReplicateMovement → todos los clientes ven el cuerpo en la
+				// misma posición. Sin esto, cada máquina simulaba su ragdoll local
+				// y divergían visualmente.
+				SetReplicateMovement(true);
+				SetReplicatingMovement(true);
 				if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 				{
 					CMC->DisableMovement();
@@ -2158,6 +2163,15 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				}
 
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+
+				// AISLAR el ragdoll: SOLO bloquea WorldStatic (suelo y paredes).
+				// Ignora ECC_Pawn (otros jugadores no lo empujan), ECC_PhysicsBody
+				// (proyectiles/cajas no lo mueven) y todo lo demás. Sobreescribe el
+				// profile "Ragdoll" estándar de UE que bloquea TODO. Sin esto, otros
+				// jugadores y la bola throwable empujaban el cadáver libremente.
+				SkelMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+				SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+
 				// Orden Epic: simular primero, pausar anims después.
 				SkelMesh->SetAllBodiesSimulatePhysics(true);
 				SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
@@ -2177,16 +2191,37 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				SkelMesh->bPauseAnims = true;
 				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f LiftZ=%.0f InitVel=%s"),
 					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f, RagdollLiftZ, *InitialRagdollVel.ToCompactString());
+
+				// FREEZE multicast tras N segundos: el ragdoll cae con físicas reales,
+				// se asienta, y luego TODAS las máquinas congelan a la vez en la pose
+				// del server. Resultado: una pose final consistente en cliente+host.
+				if (RagdollFreezeAfterSeconds > 0.f)
+				{
+					GetWorldTimerManager().SetTimer(RagdollFreezeTimerHandle, this,
+						&ATortugaCharacter::MulticastFreezeRagdoll, RagdollFreezeAfterSeconds, false);
+				}
 			}
 		}
 		else
 		{
 			bCanAirDash = true;
-			if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
+
+			// Cancelar timer de freeze pendiente: si se revive antes de los 1.5s
+			// no queremos que el multicast freeze llegue a un pawn ya vivo.
+			GetWorldTimerManager().ClearTimer(RagdollFreezeTimerHandle);
+
+			if (bUsePhysicsRagdoll && SkelMesh)
 			{
+				// Restaurar siempre los blend weights y pausa de anims, simule
+				// o no — tras el freeze IsSimulatingPhysics=false pero el SKM
+				// sigue paused y con blend weight residual.
 				SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
-				SkelMesh->SetAllBodiesSimulatePhysics(false);
+				if (SkelMesh->IsSimulatingPhysics())
+				{
+					SkelMesh->SetAllBodiesSimulatePhysics(false);
+				}
 				SkelMesh->bPauseAnims = false;
+				SkelMesh->SetEnableGravity(false);
 				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 				SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
 				if (UCapsuleComponent* Cap = GetCapsuleComponent())
@@ -2259,6 +2294,25 @@ void ATortugaCharacter::OnRep_IsDead()
 			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 		}
 	}
+}
+
+void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
+{
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (!SkelMesh || !SkelMesh->IsSimulatingPhysics()) { return; }
+
+	// Detener la simulación física en TODAS las máquinas a la vez. La pose
+	// actual queda como pose final estática. Como bReplicateMovement=true,
+	// la actor location se mantuvo sincronizada hasta este punto → todos
+	// congelan en la misma posición + pose final estable.
+	SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+	SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+	SkelMesh->SetAllBodiesSimulatePhysics(false);
+	SkelMesh->SetEnableGravity(false);
+	SkelMesh->bPauseAnims = true;
+
+	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (%s) authority=%d"),
+		*GetName(), HasAuthority());
 }
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)

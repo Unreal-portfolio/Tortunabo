@@ -604,6 +604,21 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 			Pickup->SetDeadPlayerId(TNPS->GetPlayerId());
 			// Q1-14: el pawn ragdolleado es el visual — ocultar la malla del pickup
 			Pickup->HideInteractableMesh();
+
+			// ATTACH al pawn ragdoll: el pickup sigue automáticamente al cuerpo
+			// mientras el ragdoll cae/desliza. Antes el pickup se quedaba en la
+			// pos de muerte fija y el revive teleportaba el jugador ahí en vez de
+			// donde realmente estaba el ragdoll. KeepWorldTransform: el pickup
+			// arranca donde lo spawneamos y el primer tick lo recoloca al pawn.
+			if (APawn* DyingPawn = PlayerController->GetPawn())
+			{
+				// KeepWorldTransform: el pickup mantiene su pos spawneada (DeathLocation+30Z)
+				// y a partir del siguiente frame su transform relativa lo mantiene
+				// sincronizado con el pawn ragdoll mientras cae.
+				Pickup->AttachToActor(DyingPawn,
+					FAttachmentTransformRules::KeepWorldTransform);
+			}
+
 			RescuePickups.Add(TNPS->GetPlayerId(), Pickup);
 			UE_LOG(LogTemp, Log, TEXT("[Death] Spawned RescuePickup for %s (PlayerId=%d) at (%.0f,%.0f,%.0f)"),
 				*GetNameSafe(PlayerController), TNPS->GetPlayerId(),

@@ -695,6 +695,17 @@ private:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastSetDeadVisual(bool bDead);
 
+	/**
+	 * Multicast: congela la simulación física del ragdoll en todas las máquinas.
+	 * Llamado por el server tras RagdollFreezeAfterSeconds — garantiza que los
+	 * clientes y el server vean la misma pose final estable.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastFreezeRagdoll();
+
+	/** Timer del freeze post-ragdoll. Iniciado en SetDeadVisual(true). */
+	FTimerHandle RagdollFreezeTimerHandle;
+
 	/** Oculta extremidades, cabeza, cola y casco (solo visual). */
 	void HideLimbs();
 
@@ -839,6 +850,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
 		meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RagdollMomentumScale = 0.3f;
+
+	/**
+	 * Tras N segundos en SimulatePhysics, el server hace Multicast para que TODAS
+	 * las máquinas congelen la simulación (SetAllBodiesPhysicsBlendWeight(0)).
+	 * Resultado: el ragdoll cae hasta el suelo, queda en pose final y a partir de
+	 * ahí todos los clientes ven exactamente lo mismo (la pose congelada + actor
+	 * location replicada por bReplicateMovement). Sin esto, cada cliente simula
+	 * su propio ragdoll local y diverge visualmente.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
+		meta = (ClampMin = "0.1"))
+	float RagdollFreezeAfterSeconds = 1.5f;
 
 	/**
 	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
