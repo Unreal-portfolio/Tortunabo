@@ -107,7 +107,13 @@ void ATN_SeagullDroppingActor::UpdateShadowScale()
 	const float TotalHeight  = DropSpawnHeight;
 	const float CurrentHeight = FMath::Max(0.f, GetActorLocation().Z - GroundTargetZ);
 	const float NormalizedHeight = FMath::Clamp(CurrentHeight / TotalHeight, 0.f, 1.f);
-	const float Radius = FMath::Lerp(MinShadowRadius, MaxShadowRadius, NormalizedHeight);
+
+	// SmoothStep en lugar de Lerp lineal: el sombreado se mantiene grande durante
+	// el principio del trayecto y se cierra rápido cerca del impacto, telegrafiando
+	// claramente "ya casi llega". Con Lerp lineal el cierre era proporcional a la
+	// caída → sentía 'plano' y poco urgente.
+	const float SmoothAlpha = FMath::SmoothStep(0.f, 1.f, NormalizedHeight);
+	const float Radius = FMath::Lerp(MinShadowRadius, MaxShadowRadius, SmoothAlpha);
 
 	ShadowDecal->DecalSize = FVector(DecalDepth, Radius, Radius);
 
@@ -115,7 +121,7 @@ void ATN_SeagullDroppingActor::UpdateShadowScale()
 	// NormalizedHeight=1 al spawn, 0 en suelo, por eso Lerp(min, 1, h) aumenta con h.
 	if (DroppingMesh)
 	{
-		const float Factor = FMath::Lerp(MinMeshScaleFactor, 1.f, NormalizedHeight);
+		const float Factor = FMath::Lerp(MinMeshScaleFactor, 1.f, SmoothAlpha);
 		DroppingMesh->SetRelativeScale3D(InitialMeshScaleCache * Factor);
 	}
 }
