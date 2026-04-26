@@ -2178,16 +2178,16 @@ void ATortugaCharacter::EnterRagdollState()
 		return;
 	}
 
-	// 1. CRÍTICO — detener AnimInstance ANTES de simular física. Si no, el AnimBP
-	//    sigue tickeando bones y pelea con el solver físico → impulsos de torque
-	//    enormes → "ragdoll explota / sale lanzado". Causa raíz documentada en
-	//    foros Epic (search 'ragdoll launches character').
+	// 1. CRÍTICO — desactivar el AnimBP entero. SetAnimationMode(AnimationCustomMode)
+	//    apaga el AnimInstance completamente (no solo pausa montages/tick). bPauseAnims
+	//    pausaba el tick pero la pose anim final seguía influyendo en el blend →
+	//    ragdoll "medio tieso". Custom mode + bBlendPhysics=true = simulación pura.
 	if (UAnimInstance* AnimInst = SkelMesh->GetAnimInstance())
 	{
 		AnimInst->Montage_Stop(0.f);
 		AnimInst->StopAllMontages(0.f);
 	}
-	SkelMesh->bPauseAnims = true;
+	SkelMesh->SetAnimationMode(EAnimationMode::AnimationCustomMode);
 
 	// 2. Snapshot del state actual para poder revivir limpiamente.
 	SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
@@ -2248,20 +2248,39 @@ void ATortugaCharacter::EnterRagdollState()
 	//    por la diferencia → cuerpo sale despedido.
 	SkelMesh->bBlendPhysics = true;
 
-	// 8. Activar simulación física propiamente.
-	SkelMesh->SetSimulatePhysics(true);
+	// 8. Damping bajo en TODOS los bodies. LinearDamping/AngularDamping alto
+	//    hace que el cuerpo se sienta viscoso/rígido. Reset a 0 → trapo flácido.
+	//    Iteramos por bodies porque BodyInstance.UpdateDampingProperties solo
+	//    afecta el body raíz; los del physics asset usan sus instances individuales.
+	if (UPhysicsAsset* PhysAsset = SkelMesh->GetPhysicsAsset())
+	{
+		for (int32 i = 0; i < SkelMesh->Bodies.Num(); ++i)
+		{
+			FBodyInstance* Body = SkelMesh->Bodies[i];
+			if (Body)
+			{
+				Body->LinearDamping = 0.f;
+				Body->AngularDamping = 0.f;
+				Body->UpdateDampingProperties();
+			}
+		}
+	}
+
+	// 9. Activar simulación en TODOS los bodies. Llamar SOLO SetAllBodies; añadir
+	//    SetSimulatePhysics(true) puede sobrescribir el state del root body que
+	//    SetAllBodies acaba de configurar.
 	SkelMesh->SetAllBodiesSimulatePhysics(true);
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 	SkelMesh->SetEnableGravity(true);
 
-	// 9. Vel inicial CERO defensivo (después de simulate, no antes — antes los
-	//    bodies aún no existían en el simulator).
+	// 10. Vel inicial CERO defensivo (después de simulate, no antes — antes los
+	//     bodies aún no existían en el simulator).
 	SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
 	SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 	SkelMesh->WakeAllRigidBodies();
 
-	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] ENTER (%s) authority=%d — bBlendPhysics=true · AnimInst stopped"),
-		*GetName(), HasAuthority());
+	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimMode=Custom · BlendPhysics=true · damping=0 · bodies=%d"),
+		*GetName(), HasAuthority(), SkelMesh->Bodies.Num());
 }
 
 void ATortugaCharacter::ExitRagdollState()
@@ -2274,12 +2293,14 @@ void ATortugaCharacter::ExitRagdollState()
 		SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
 		SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 		SkelMesh->SetAllBodiesSimulatePhysics(false);
-		SkelMesh->SetSimulatePhysics(false);
 	}
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
 	SkelMesh->bBlendPhysics = false;
 	SkelMesh->bPauseAnims = false;
 	SkelMesh->SetEnableGravity(false);
+
+	// Restaurar AnimBP — EnterRagdollState lo apagó con AnimationCustomMode.
+	SkelMesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	if (SnapshotSkelMeshCollisionProfile != NAME_None)
 	{
 		SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
