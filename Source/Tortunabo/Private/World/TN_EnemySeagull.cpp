@@ -128,7 +128,15 @@ void ATN_EnemySeagull::TickFollowTarget(float DeltaTime)
 	ATortugaCharacter* Target = TargetCharacter.Get();
 	if (!Target) { return; }
 
-	const FVector TargetLoc  = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
+	// Bobbing natural: 3 sines desfasadas (X/Y/Z) con frecuencias ligeramente
+	// distintas para que el movimiento parezca orgánico (no un loop perfecto).
+	// Solo se aplica al TargetLoc (no acumula sobre la posición previa).
+	const float Now  = GetWorld()->GetTimeSeconds();
+	const float BobZ = FMath::Sin(Now * IdleBobFrequency)             * IdleBobAmplitude;
+	const float BobX = FMath::Sin(Now * IdleBobFrequency * 0.7f + 1.3f) * IdleBobAmplitude * 0.4f;
+	const float BobY = FMath::Sin(Now * IdleBobFrequency * 0.9f + 2.1f) * IdleBobAmplitude * 0.4f;
+
+	const FVector TargetLoc  = Target->GetActorLocation() + FVector(BobX, BobY, FollowHeight + BobZ);
 	const FVector CurrentLoc = GetActorLocation();
 	const float   Dist       = FVector::Dist(CurrentLoc, TargetLoc);
 	if (Dist > 1.f)
@@ -204,7 +212,10 @@ void ATN_EnemySeagull::TickStrike(float DeltaTime)
 		StrikeAlpha += DeltaTime / FMath::Max(StrikeDuration, KINDA_SMALL_NUMBER);
 
 		const float ClampedAlpha = FMath::Min(StrikeAlpha, 1.f);
-		const float NewZ = FMath::Lerp(StrikeStartZ, StrikeTargetZ, ClampedAlpha);
+		// SmoothStep da curva ease-in-out: arranque suave, aceleración media,
+		// frenada al impactar — más natural que el Lerp lineal anterior.
+		const float SmoothAlpha = FMath::SmoothStep(0.f, 1.f, ClampedAlpha);
+		const float NewZ = FMath::Lerp(StrikeStartZ, StrikeTargetZ, SmoothAlpha);
 		SetActorLocation(FVector(GetActorLocation().X, GetActorLocation().Y, NewZ));
 
 		if (StrikeAlpha >= 1.f)
@@ -245,7 +256,8 @@ void ATN_EnemySeagull::TickStrike(float DeltaTime)
 		StrikeAlpha += DeltaTime / FMath::Max(RiseDuration, KINDA_SMALL_NUMBER);
 
 		const float ClampedAlpha = FMath::Min(StrikeAlpha, 1.f);
-		const float NewZ = FMath::Lerp(RetreatStartZ, RetreatEndZ, ClampedAlpha);
+		const float SmoothAlpha = FMath::SmoothStep(0.f, 1.f, ClampedAlpha);
+		const float NewZ = FMath::Lerp(RetreatStartZ, RetreatEndZ, SmoothAlpha);
 		SetActorLocation(FVector(GetActorLocation().X, GetActorLocation().Y, NewZ));
 
 		if (StrikeAlpha >= 1.f)
@@ -263,7 +275,8 @@ void ATN_EnemySeagull::TickRetreat(float DeltaTime)
 	StrikeAlpha += DeltaTime / FMath::Max(RiseDuration, KINDA_SMALL_NUMBER);
 
 	const float ClampedAlpha = FMath::Min(StrikeAlpha, 1.f);
-	const float NewZ = FMath::Lerp(RetreatStartZ, RetreatEndZ, ClampedAlpha);
+	const float SmoothAlpha = FMath::SmoothStep(0.f, 1.f, ClampedAlpha);
+	const float NewZ = FMath::Lerp(RetreatStartZ, RetreatEndZ, SmoothAlpha);
 	SetActorLocation(FVector(GetActorLocation().X, GetActorLocation().Y, NewZ));
 
 	if (StrikeAlpha >= 1.f)

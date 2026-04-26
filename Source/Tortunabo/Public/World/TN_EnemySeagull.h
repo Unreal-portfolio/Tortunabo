@@ -83,6 +83,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow", meta = (ClampMin = "100.0"))
 	float FollowHeight = 400.f;
 
+	/**
+	 * Amplitud (cm) del bobbing natural mientras la gaviota sigue al objetivo.
+	 * 0 = movimiento estático rígido. Valores altos = más caricaturesco.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow", meta = (ClampMin = "0.0"))
+	float IdleBobAmplitude = 25.f;
+
+	/** Frecuencia (Hz) del bob principal en Z. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "EnemySeagull|Follow", meta = (ClampMin = "0.1"))
+	float IdleBobFrequency = 1.4f;
+
 	// ── Ataque ─────────────────────────────────────────────────────────────────
 
 	/** Duración total del cronómetro antes del ataque (s). */
