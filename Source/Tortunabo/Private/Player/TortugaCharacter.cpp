@@ -2114,7 +2114,11 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 
 	bIsDead = bDead;
 
-	if (HasAuthority())
+	// Velocidad inicial del ragdoll calculada en el server, multicasteada para
+	// que cliente arranque su simulación local con el mismo state que el server
+	// → convergencia de pose sin replicate-movement (evita jitter).
+	FVector MulticastInitialVel = FVector::ZeroVector;
+
 	{
 		USkeletalMeshComponent* SkelMesh = GetMesh();
 		if (bDead)
@@ -2132,12 +2136,13 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				// corriendo desliza un poco, si murió parado cae inerte).
 				const FVector PreDeathVelocity = GetVelocity();
 
-				// IMPORTANTE: durante el ragdoll el server replica la actor location
-				// vía bReplicateMovement → todos los clientes ven el cuerpo en la
-				// misma posición. Sin esto, cada máquina simulaba su ragdoll local
-				// y divergían visualmente.
-				SetReplicateMovement(true);
-				SetReplicatingMovement(true);
+				// SetReplicateMovement(false) durante ragdoll: cada máquina simula
+				// localmente desde el mismo state inicial (capsule pos + InitialVel
+				// multicasteada). Si pusiéramos replicate=true mientras simula
+				// localmente → jitter clásico (root replicado salta, simulación
+				// local quiere otra pos). La sincronización canónica se hace en
+				// MulticastFreezeRagdoll, que snap el actor a la pos del server.
+				SetReplicateMovement(false);
 				if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 				{
 					CMC->DisableMovement();
@@ -2185,6 +2190,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				{
 					InitialRagdollVel = FVector(PreDeathVelocity.X, PreDeathVelocity.Y, 0.f) * RagdollMomentumScale;
 				}
+				MulticastInitialVel = InitialRagdollVel;  // Propagar a clientes vía Multicast
 				SkelMesh->SetAllPhysicsLinearVelocity(InitialRagdollVel);
 				SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 				SkelMesh->WakeAllRigidBodies();
@@ -2192,13 +2198,14 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f LiftZ=%.0f InitVel=%s"),
 					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f, RagdollLiftZ, *InitialRagdollVel.ToCompactString());
 
-				// FREEZE multicast tras N segundos: el ragdoll cae con físicas reales,
-				// se asienta, y luego TODAS las máquinas congelan a la vez en la pose
-				// del server. Resultado: una pose final consistente en cliente+host.
+				// FREEZE tras N segundos: el server lee la pos final del root bone
+				// y multicastea para que TODAS las máquinas snap el actor + congelen.
+				// El handler intermedio ServerFireFreezeRagdoll calcula la pos en el
+				// momento del fire (no ahora) para que sea la pos final estable.
 				if (RagdollFreezeAfterSeconds > 0.f)
 				{
 					GetWorldTimerManager().SetTimer(RagdollFreezeTimerHandle, this,
-						&ATortugaCharacter::MulticastFreezeRagdoll, RagdollFreezeAfterSeconds, false);
+						&ATortugaCharacter::ServerFireFreezeRagdoll, RagdollFreezeAfterSeconds, false);
 				}
 			}
 		}
@@ -2238,9 +2245,29 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 		}
 	}
 
-	MulticastSetDeadVisual(bDead);
+	MulticastSetDeadVisual(bDead, FVector_NetQuantize(MulticastInitialVel));
 
 	UE_LOG(LogTemp, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("RAGDOLL") : TEXT("ALIVE"));
+}
+
+void ATortugaCharacter::ServerFireFreezeRagdoll()
+{
+	if (!HasAuthority()) { return; }
+
+	// Calcular pos canónica AHORA (1.5s tras activar ragdoll) — la pos del root
+	// bone es donde el ragdoll del server ha caído. Multicastear para que todas
+	// las máquinas snap a esa pos antes de congelar la simulación.
+	FVector AuthLoc = GetActorLocation();
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	{
+		const FName RootBone = SkelMesh->GetBoneName(0);
+		if (RootBone != NAME_None)
+		{
+			AuthLoc = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
+		}
+	}
+
+	MulticastFreezeRagdoll(AuthLoc);
 }
 
 void ATortugaCharacter::OnRep_IsDead()
@@ -2296,26 +2323,30 @@ void ATortugaCharacter::OnRep_IsDead()
 	}
 }
 
-void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
+void ATortugaCharacter::MulticastFreezeRagdoll_Implementation(FVector AuthoritativeLoc)
 {
 	USkeletalMeshComponent* SkelMesh = GetMesh();
-	if (!SkelMesh || !SkelMesh->IsSimulatingPhysics()) { return; }
+	if (!SkelMesh) { return; }
 
-	// Detener la simulación física en TODAS las máquinas a la vez. La pose
-	// actual queda como pose final estática. Como bReplicateMovement=true,
-	// la actor location se mantuvo sincronizada hasta este punto → todos
-	// congelan en la misma posición + pose final estable.
-	SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
-	SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-	SkelMesh->SetAllBodiesSimulatePhysics(false);
+	// SNAP el actor a la pos canónica del server ANTES de congelar — garantiza
+	// que todas las máquinas vean el cadáver en la misma posición. Es el único
+	// punto de la cadena ragdoll donde forzamos sincronización de posición.
+	SetActorLocation(AuthoritativeLoc, false, nullptr, ETeleportType::TeleportPhysics);
+
+	if (SkelMesh->IsSimulatingPhysics())
+	{
+		SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+		SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		SkelMesh->SetAllBodiesSimulatePhysics(false);
+	}
 	SkelMesh->SetEnableGravity(false);
 	SkelMesh->bPauseAnims = true;
 
-	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (%s) authority=%d"),
-		*GetName(), HasAuthority());
+	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (%s) authority=%d at (%.0f,%.0f,%.0f)"),
+		*GetName(), HasAuthority(), AuthoritativeLoc.X, AuthoritativeLoc.Y, AuthoritativeLoc.Z);
 }
 
-void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
+void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead, FVector_NetQuantize InitialRagdollVel)
 {
 	if (HasAuthority()) { return; }
 	USkeletalMeshComponent* SkelMesh = GetMesh();
@@ -2336,11 +2367,30 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 			{
 				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			}
+
+			// Lift Z también en cliente para consistencia con server (ver SetDeadVisual).
+			if (RagdollLiftZ > 0.f)
+			{
+				const FVector LiftedLoc = GetActorLocation() + FVector(0.f, 0.f, RagdollLiftZ);
+				SetActorLocation(LiftedLoc, false, nullptr, ETeleportType::TeleportPhysics);
+			}
+
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			// Mismo override de aislamiento que en SetDeadVisual (server). Sin esto,
+			// los clientes verían el ragdoll empujable por jugadores y proyectiles
+			// localmente (hasta el freeze).
+			SkelMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+			SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
-			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+
+			// Aplicar la MISMA velocidad inicial que el server → simulaciones locales
+			// arrancan idénticas (mismo state, misma gravedad, mismo collision setup)
+			// → convergencia natural sin necesidad de replicar transform durante el
+			// ragdoll. La sincronización dura hace MulticastFreezeRagdoll.
+			SkelMesh->SetAllPhysicsLinearVelocity(InitialRagdollVel);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
 			SkelMesh->bPauseAnims = true;

@@ -693,15 +693,20 @@ private:
 	 * Multicast fiable: fuerza el visual de muerte en todos los clientes.
 	 */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastSetDeadVisual(bool bDead);
+	void MulticastSetDeadVisual(bool bDead, FVector_NetQuantize InitialRagdollVel);
 
 	/**
-	 * Multicast: congela la simulación física del ragdoll en todas las máquinas.
-	 * Llamado por el server tras RagdollFreezeAfterSeconds — garantiza que los
-	 * clientes y el server vean la misma pose final estable.
+	 * Multicast: congela la simulación física del ragdoll en todas las máquinas
+	 * y snap el actor a la AuthoritativeLoc calculada por el server. Esto cumple
+	 * el contrato "todos los jugadores ven el ragdoll en la misma posición" — la
+	 * simulación local de cada cliente puede divergir levemente, pero al freeze
+	 * todos snap a la pos canónica del server antes de detener la simulación.
 	 */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastFreezeRagdoll();
+	void MulticastFreezeRagdoll(FVector AuthoritativeLoc);
+
+	/** Helper server-side: arma el FinalLoc desde el root bone y dispara el multicast. */
+	void ServerFireFreezeRagdoll();
 
 	/** Timer del freeze post-ragdoll. Iniciado en SetDeadVisual(true). */
 	FTimerHandle RagdollFreezeTimerHandle;
