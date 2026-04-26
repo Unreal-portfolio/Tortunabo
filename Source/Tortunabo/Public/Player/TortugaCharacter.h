@@ -1080,10 +1080,11 @@ public:
 
 	/**
 	 * Aplica el skin de personaje indicado.
-	 * Busca FTN_SkinData en DT_Skins (vía MP_GameInstance::GetSkinDataTable) y aplica
-	 * el BodyMaterial en todos los componentes del cuerpo (Cuerpo, Pata1, Pata2, Cola, Cabeza).
+	 * Busca FTN_SkinData en DT_Skins (vía MP_GameInstance::GetSkinDataTable) y mapea
+	 * 5 materiales a los slots del SkM unificado:
+	 *   0=Belly · 1=EyeShine · 2=EyesMouth · 3=Skin · 4=Shell.
+	 * Slots con material null se mantienen con el default cacheado en BeginPlay.
 	 * SkinId == NAME_None → restaura los materiales por defecto del BP.
-	 * Implementable en BP para personalizar el comportamiento visual.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	void UpdateSkinVisual(FName SkinId);

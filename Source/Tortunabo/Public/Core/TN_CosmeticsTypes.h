@@ -74,8 +74,15 @@ struct FTN_HelmetData : public FTableRowBase
  * Crear DT_Skins en Content/Blueprints/Gameplay/Cosmetics/ con esta struct.
  * La RowName debe coincidir con el SkinId usado en MP_GameInstance y PlayerState.
  *
- * El skin aplica un override de material a los componentes del cuerpo (Cuerpo, Pata1, etc.).
- * SkinId == NAME_None → sin skin (aspecto por defecto).
+ * Mapeo de slots del SkM unificado (5 slots):
+ *   Slot 0 → Barriga                         (BellyMaterial)
+ *   Slot 1 → Brillo de los ojos              (EyeShineMaterial)
+ *   Slot 2 → Ojos y boca                     (EyesMouthMaterial)
+ *   Slot 3 → Cabeza, patas, brazos, cola     (SkinMaterial)
+ *   Slot 4 → Caparazón principal             (ShellMaterial)
+ *
+ * Cada material es opcional: si está null se mantiene el material por defecto
+ * de ese slot (cacheado en BeginPlay). SkinId == NAME_None → sin skin.
  */
 USTRUCT(BlueprintType)
 struct FTN_SkinData : public FTableRowBase
@@ -90,27 +97,25 @@ struct FTN_SkinData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	FText DisplayName;
 
-	/**
-	 * Material que se aplica al componente "Body" del personaje y la estatua (caparazón).
-	 * Si es null, se restaura el material por defecto (sin skin).
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
-	TObjectPtr<UMaterialInterface> BodyMaterial = nullptr;
-
-	/**
-	 * Material que se aplica al componente "Body1" del personaje y la estatua (panza/vientre).
-	 * Si es null, se usa BodyMaterial como fallback.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	/** Slot 0 — Barriga. Si null, se mantiene el material por defecto del SkM. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Slots")
 	TObjectPtr<UMaterialInterface> BellyMaterial = nullptr;
 
-	/**
-	 * Material que se aplica a los componentes "Mesh1"–"Mesh5" y "Mesh13" del personaje y la estatua.
-	 * Suele controlar el color de extremidades / detalles de piel.
-	 * Si es null, se restaura el material por defecto de esos componentes.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	/** Slot 1 — Brillo de los ojos. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Slots")
+	TObjectPtr<UMaterialInterface> EyeShineMaterial = nullptr;
+
+	/** Slot 2 — Ojos y boca. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Slots")
+	TObjectPtr<UMaterialInterface> EyesMouthMaterial = nullptr;
+
+	/** Slot 3 — Cabeza, patas, brazos, cola. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Slots")
 	TObjectPtr<UMaterialInterface> SkinMaterial = nullptr;
+
+	/** Slot 4 — Caparazón principal. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Slots")
+	TObjectPtr<UMaterialInterface> ShellMaterial = nullptr;
 
 	/** Icono 2D para el selector de skins. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")

@@ -70,11 +70,15 @@ void ATN_SkinStatueActor::ApplyPreviewCosmetic()
 			const FTN_SkinData* Row = SkinDT->FindRow<FTN_SkinData>(CosmeticId, TEXT("StatuePreview"));
 			if (!Row) { break; }
 
-			// Nombres de componentes que reciben BodyMaterial (caparazón).
-			static const TArray<FName> BodyNames = { TEXT("Body") };
-			// Componente que recibe BellyMaterial (panza). Fallback a BodyMaterial.
+			// Mapeo de la estatua (componentes legacy con nombres) hacia los slots
+			// del nuevo sistema de 5 materiales:
+			//   "Body"             → ShellMaterial (caparazón)
+			//   "Body1"            → BellyMaterial (panza, fallback Shell)
+			//   "Mesh1..5","Mesh13"→ SkinMaterial (cabeza/patas/extremidades)
+			// Los slots EyeShineMaterial y EyesMouthMaterial son específicos del
+			// SkM unificado del personaje y no tienen target en la estatua vieja.
+			static const TArray<FName> ShellNames = { TEXT("Body") };
 			static const TArray<FName> BellyNames = { TEXT("Body1") };
-			// Nombres de componentes que reciben SkinMaterial (extremidades).
 			static const TArray<FName> SkinNames = {
 				TEXT("Mesh1"), TEXT("Mesh2"), TEXT("Mesh3"),
 				TEXT("Mesh4"), TEXT("Mesh5"), TEXT("Mesh13")
@@ -92,13 +96,13 @@ void ATN_SkinStatueActor::ApplyPreviewCosmetic()
 				const FName CompName = SMC->GetFName();
 
 				UMaterialInterface* MatToApply = nullptr;
-				if (BodyNames.Contains(CompName) && Row->BodyMaterial)
+				if (ShellNames.Contains(CompName) && Row->ShellMaterial)
 				{
-					MatToApply = Row->BodyMaterial;
+					MatToApply = Row->ShellMaterial;
 				}
 				else if (BellyNames.Contains(CompName))
 				{
-					MatToApply = Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial;
+					MatToApply = Row->BellyMaterial ? Row->BellyMaterial : Row->ShellMaterial;
 				}
 				else if (SkinNames.Contains(CompName) && Row->SkinMaterial)
 				{

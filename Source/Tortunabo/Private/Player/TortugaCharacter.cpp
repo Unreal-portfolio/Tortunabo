@@ -1632,32 +1632,51 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 	}
 
 	const FTN_SkinData* Row = SkinDT->FindRow<FTN_SkinData>(SkinId, TEXT("UpdateSkinVisual"));
-	if (!Row || !Row->BodyMaterial)
+	if (!Row)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinId '%s' no encontrado o sin material."), *SkinId.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinId '%s' no encontrado en DT_Skins."), *SkinId.ToString());
 		return;
 	}
 
-	// Slot 0 = caparazón (BodyMaterial)
-	// Slot 1 = panza (BellyMaterial, fallback a BodyMaterial)
-	// Slot 2 = extremidades (SkinMaterial, fallback a BodyMaterial)
-	// Slots 3-4 = sin tocar (complementos del mesh unificado)
-	UMaterialInterface* const Slot0 = Row->BodyMaterial;
-	UMaterialInterface* const Slot1 = Row->BellyMaterial ? Row->BellyMaterial : Row->BodyMaterial;
-	UMaterialInterface* const Slot2 = Row->SkinMaterial  ? Row->SkinMaterial  : Row->BodyMaterial;
-	SKM->SetMaterial(0, Slot0);
-	SKM->SetMaterial(1, Slot1);
-	SKM->SetMaterial(2, Slot2);
+	// Mapeo de slots del SkM unificado:
+	//   Slot 0 → Barriga                         (BellyMaterial)
+	//   Slot 1 → Brillo de los ojos              (EyeShineMaterial)
+	//   Slot 2 → Ojos y boca                     (EyesMouthMaterial)
+	//   Slot 3 → Cabeza, patas, brazos, cola     (SkinMaterial)
+	//   Slot 4 → Caparazón principal             (ShellMaterial)
+	//
+	// Si la skin no aporta material para un slot, se mantiene el material por
+	// defecto cacheado en BeginPlay → permite skins parciales (solo caparazón,
+	// solo ojos, etc.) sin tener que repetir todos los materiales.
+	auto AssignSlot = [&](int32 SlotIdx, UMaterialInterface* Mat)
+	{
+		if (Mat)
+		{
+			SKM->SetMaterial(SlotIdx, Mat);
+		}
+		else if (DefaultSkelMeshMaterials.IsValidIndex(SlotIdx))
+		{
+			SKM->SetMaterial(SlotIdx, DefaultSkelMeshMaterials[SlotIdx]);
+		}
+	};
+
+	AssignSlot(0, Row->BellyMaterial);
+	AssignSlot(1, Row->EyeShineMaterial);
+	AssignSlot(2, Row->EyesMouthMaterial);
+	AssignSlot(3, Row->SkinMaterial);
+	AssignSlot(4, Row->ShellMaterial);
 
 	// Forzar refresh del render state. Sin esto, SetMaterial puede no actualizar
 	// visualmente con el SKM unificado en algunas configuraciones (overrideMaterials cache).
 	SKM->MarkRenderStateDirty();
 
-	UE_LOG(LogTemp, Log, TEXT("[SKIN-DEBUG] '%s' skin '%s' aplicado · slots=[0:%s 1:%s 2:%s]"),
+	UE_LOG(LogTemp, Log, TEXT("[SKIN-DEBUG] '%s' skin '%s' aplicado · slots=[0:%s 1:%s 2:%s 3:%s 4:%s]"),
 		*GetName(), *SkinId.ToString(),
-		*GetNameSafe(Slot0),
-		*GetNameSafe(Slot1),
-		*GetNameSafe(Slot2));
+		*GetNameSafe(Row->BellyMaterial),
+		*GetNameSafe(Row->EyeShineMaterial),
+		*GetNameSafe(Row->EyesMouthMaterial),
+		*GetNameSafe(Row->SkinMaterial),
+		*GetNameSafe(Row->ShellMaterial));
 }
 
 void ATortugaCharacter::Landed(const FHitResult& Hit)
