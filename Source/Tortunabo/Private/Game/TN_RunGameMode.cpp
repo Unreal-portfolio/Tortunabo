@@ -889,48 +889,18 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			}
 		}
 
-		// ── Teleportar a zona de chunks activa antes de revivir ───────────────
-		// El pawn estuvo hidden en la posición de muerte. CleanupChunks puede haber
-		// destruido el chunk que lo rodeaba mientras el líder avanzaba. Pero si NO
-		// fue destruido, revivir en la posición de muerte es lo más natural y
-		// preserva la inmersión (player aparece donde se rescató).
-		//
-		// Estrategia: priorizar la pos actual del pawn (donde está el ragdoll). Si
-		// está demasiado lejos del próximo chunk a spawnear (> 4000 cm) asumimos
-		// que el chunk que lo contenía fue destruido y caemos al SafeLocation
-		// (próximo chunk) como fallback.
+		// ── Revivir en la posición exacta del RescuePickup ────────────────────
+		// El RescuePickup ya teletransportó el pawn a su propia posición justo antes
+		// de invocar RevivePlayer (ver ATN_RescuePickup::Interact). Como el pickup
+		// se sincroniza con el ragdoll en FinalizeDeathVisual, la pos actual del
+		// pawn es donde está el ragdoll → revive in-place.
+		// Solo aplicamos un offset Z de +100 cm para que el pawn no spawnee hundido
+		// en el suelo si el ragdoll estaba tendido.
 		{
-			ATN_ChunkManager* ChunkManager = nullptr;
-			for (TActorIterator<ATN_ChunkManager> It(GetWorld()); It; ++It)
-			{
-				ChunkManager = *It;
-				break;
-			}
-
-			if (ChunkManager)
-			{
-				const FVector RagdollLoc   = Pawn->GetActorLocation();
-				const FVector NextChunkLoc = ChunkManager->GetSafeReviveLocation();
-				const float DistToNext     = FVector::Dist(RagdollLoc, NextChunkLoc);
-
-				FVector ReviveLoc;
-				if (DistToNext < 4000.f)
-				{
-					// Cerca de zona activa → revivir donde cayó el ragdoll +100 Z
-					ReviveLoc = RagdollLoc + FVector(0.f, 0.f, 100.f);
-					UE_LOG(LogTemp, Log, TEXT("[Revive] In-place at ragdoll location (%.0f,%.0f,%.0f) · DistToNext=%.0f"),
-						ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z, DistToNext);
-				}
-				else
-				{
-					// Lejos del avance → chunk antiguo posiblemente destruido, fallback adelante
-					ReviveLoc = NextChunkLoc;
-					UE_LOG(LogTemp, Warning, TEXT("[Revive] Ragdoll lejos del avance (%.0f cm) → teleport adelante (%.0f,%.0f,%.0f)"),
-						DistToNext, ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z);
-				}
-
-				Pawn->SetActorLocation(ReviveLoc, false, nullptr, ETeleportType::TeleportPhysics);
-			}
+			const FVector ReviveLoc = Pawn->GetActorLocation() + FVector(0.f, 0.f, 100.f);
+			UE_LOG(LogTemp, Log, TEXT("[Revive] In-place at pickup location (%.0f,%.0f,%.0f)"),
+				ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z);
+			Pawn->SetActorLocation(ReviveLoc, false, nullptr, ETeleportType::TeleportPhysics);
 		}
 
 		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
