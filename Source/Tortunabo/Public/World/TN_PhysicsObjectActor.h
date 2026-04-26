@@ -139,11 +139,13 @@ protected:
 	// componente tangencial (slide) queda intacto. La gravedad y los contactos
 	// con suelo/techo los sigue manejando la física nativa.
 
-	/** Habilita el sistema anti phase-through. Si desactivado (default), la simulación
-	 *  queda 100% a cargo de Chaos/CCD. Activar solo si CCD resulta insuficiente —
-	 *  el sweep puede interferir con el empuje natural del player. */
+	/** Habilita el sistema anti phase-through. Default ON: en modo físico
+	 *  (BouncePhysicsObject) la bola con velocidad alta atravesaba suelos a
+	 *  pesar del CCD nativo de Chaos. El sweep manual cancela el componente
+	 *  normal contra paredes para que la bola "salga lateralmente" en vez
+	 *  de perforar. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Physics|AntiPhaseThrough")
-	bool bEnableAntiPhaseThrough = false;
+	bool bEnableAntiPhaseThrough = true;
 
 	/** Velocidad horizontal mínima (cm/s) para que el sweep se ejecute. Por
 	 *  debajo no hay riesgo de tunneling — ahorro de queries. */

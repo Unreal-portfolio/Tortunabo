@@ -162,24 +162,19 @@ void ATN_PhysicsObjectActor::Tick(float DeltaTime)
 
 	if (!bEnableAntiPhaseThrough) { return; }
 
-	// Sólo componentes horizontales — la caída libre (Vel.Z) la gestiona la
-	// gravedad nativa; el suelo aplica su propia fuerza normal por contacto.
+	// Sweep en dirección de la velocity 3D completa. Antes solo componente
+	// horizontal — pero la bola con dash + caída tunelaba el suelo (Vel.Z
+	// dominaba) y no se detectaba. Ahora cubrimos cualquier dirección.
 	const FVector Vel = Mesh->GetPhysicsLinearVelocity();
-	const FVector HorizVel(Vel.X, Vel.Y, 0.f);
-	const float HorizSpeedSq = HorizVel.SizeSquared();
-	if (HorizSpeedSq < AntiPhaseMinSpeed * AntiPhaseMinSpeed) { return; }
+	const float SpeedSq = Vel.SizeSquared();
+	if (SpeedSq < AntiPhaseMinSpeed * AntiPhaseMinSpeed) { return; }
 
-	const float HorizSpeed = FMath::Sqrt(HorizSpeedSq);
-	const FVector Dir = HorizVel / HorizSpeed;
+	const float Speed = FMath::Sqrt(SpeedSq);
+	const FVector Dir = Vel / Speed;
 	const FVector Origin = GetActorLocation();
 
-	// Radius FIJO pequeño — no usamos Bounds.SphereRadius porque para meshes
-	// grandes la esfera engloba todo el entorno cercano y reporta Hit.Time=0
-	// (bStartPenetrating) cada tick → velocidad cancelada siempre → objeto
-	// anclado aunque no haya pared en dirección del movimiento.
 	const float SweepRadius = FMath::Max(AntiPhaseSweepRadius, 1.f);
-	// Anticipamos 2 frames de movimiento + padding.
-	const float SweepDist = HorizSpeed * DeltaTime * 2.f + AntiPhaseProbePadding;
+	const float SweepDist = Speed * DeltaTime * 2.f + AntiPhaseProbePadding;
 
 	UWorld* World = GetWorld();
 	if (!World) { return; }
@@ -193,24 +188,19 @@ void ATN_PhysicsObjectActor::Tick(float DeltaTime)
 		ECC_WorldStatic, Shape, Params);
 	if (!bHit) { return; }
 
-	// Ignorar contactos ya presentes al iniciar el sweep (objeto pegado a una
-	// pared lateral). Sin este filtro el sweep cancelaría la velocidad cada
-	// tick incluso cuando el objeto se mueve tangente a la pared (slide OK).
+	// Ignorar contactos ya presentes (asentado contra pared/suelo). Sin esto
+	// el sweep cancelaría velocity cada tick aunque vaya tangente.
 	if (Hit.bStartPenetrating) { return; }
 
-	// Filtrar superficies no-verticales: suelos/techos los maneja la física.
-	// Solo aplicamos fuerza normal simulada contra paredes (Normal ~ horizontal).
-	if (FMath::Abs(Hit.ImpactNormal.Z) > AntiPhaseMaxNormalZ) { return; }
-
-	// Cancelar la componente de velocidad "into wall" — proyección escalar de
-	// Vel sobre -Normal. Si es positiva, el objeto se mueve CONTRA la pared →
-	// añadimos Normal * esa magnitud para anular la componente normal, dejando
-	// el slide tangencial intacto.
+	// Cancelar la componente de velocity "into surface" — proyección escalar
+	// sobre -Normal. Funciona igual contra paredes (slide horizontal) que contra
+	// suelo (cancela componente Z de caída → bola "se va para un lado" en lugar
+	// de atravesar). El componente tangencial queda intacto.
 	const FVector Normal = Hit.ImpactNormal;
-	const float IntoWallSpeed = -FVector::DotProduct(Vel, Normal);
-	if (IntoWallSpeed > 0.f)
+	const float IntoSurfaceSpeed = -FVector::DotProduct(Vel, Normal);
+	if (IntoSurfaceSpeed > 0.f)
 	{
-		const FVector ClampedVel = Vel + Normal * IntoWallSpeed;
+		const FVector ClampedVel = Vel + Normal * IntoSurfaceSpeed;
 		Mesh->SetPhysicsLinearVelocity(ClampedVel);
 	}
 }
