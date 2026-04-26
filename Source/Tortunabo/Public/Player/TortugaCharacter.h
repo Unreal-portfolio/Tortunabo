@@ -693,19 +693,19 @@ private:
 	 * Multicast fiable: fuerza el visual de muerte en todos los clientes.
 	 */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastSetDeadVisual(bool bDead, FVector_NetQuantize InitialRagdollVel);
+	void MulticastSetDeadVisual(bool bDead);
 
 	/**
-	 * Multicast: congela la simulación física del ragdoll en todas las máquinas
-	 * y snap el actor a la AuthoritativeLoc calculada por el server. Esto cumple
-	 * el contrato "todos los jugadores ven el ragdoll en la misma posición" — la
-	 * simulación local de cada cliente puede divergir levemente, pero al freeze
-	 * todos snap a la pos canónica del server antes de detener la simulación.
+	 * Multicast: congela el ragdoll en todas las máquinas. Al ser server-auth
+	 * (cliente NO simula físicas localmente), las máquinas remotas solo necesitan
+	 * "congelar" el SKM en su pose actual (que ya seguía la pos del server vía
+	 * bReplicateMovement). El server detiene SimulatePhysics y el resto sigue
+	 * por replicación normal de transform.
 	 */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastFreezeRagdoll(FVector AuthoritativeLoc);
+	void MulticastFreezeRagdoll();
 
-	/** Helper server-side: arma el FinalLoc desde el root bone y dispara el multicast. */
+	/** Helper server-side: line trace al suelo + freeze. */
 	void ServerFireFreezeRagdoll();
 
 	/** Timer del freeze post-ragdoll. Iniciado en SetDeadVisual(true). */
