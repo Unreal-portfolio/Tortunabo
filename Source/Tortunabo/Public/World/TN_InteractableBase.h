@@ -96,6 +96,17 @@ private:
 
 	void ApplyInteractionEnabledState();
 
+	/**
+	 * Estado replicado de visibilidad del mesh. HideInteractableMesh / ShowInteractableMesh
+	 * lo modifican y disparan OnRep_MeshHidden en clientes. Sin esto, llamar
+	 * Mesh->SetVisibility(false) solo tenía efecto en server (visibility no se replica).
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_MeshHidden)
+	bool bMeshHidden = false;
+
+	UFUNCTION()
+	void OnRep_MeshHidden();
+
 protected:
 	void SetInteractionEnabled(bool bEnabled);
 };

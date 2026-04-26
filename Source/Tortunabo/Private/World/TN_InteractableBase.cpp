@@ -78,6 +78,7 @@ void ATN_InteractableBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_InteractableBase, bInteractionEnabled);
+	DOREPLIFETIME(ATN_InteractableBase, bMeshHidden);
 }
 
 bool ATN_InteractableBase::CanInteract(APawn* Interactor) const
@@ -116,11 +117,28 @@ void ATN_InteractableBase::ApplyInteractionEnabledState()
 void ATN_InteractableBase::HideInteractableMesh()
 {
 	if (Mesh) { Mesh->SetVisibility(false); }
+	if (HasAuthority() && !bMeshHidden)
+	{
+		bMeshHidden = true;
+		// Despertar al actor dormido — sin flush, el cliente no recibe la replicación
+		// y el mesh sigue visible en su pantalla.
+		FlushNetDormancy();
+	}
 }
 
 void ATN_InteractableBase::ShowInteractableMesh()
 {
 	if (Mesh) { Mesh->SetVisibility(true); }
+	if (HasAuthority() && bMeshHidden)
+	{
+		bMeshHidden = false;
+		FlushNetDormancy();
+	}
+}
+
+void ATN_InteractableBase::OnRep_MeshHidden()
+{
+	if (Mesh) { Mesh->SetVisibility(!bMeshHidden); }
 }
 
 void ATN_InteractableBase::SetInteractionEnabled(bool bEnabled)
