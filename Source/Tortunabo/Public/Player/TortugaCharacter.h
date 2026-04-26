@@ -816,6 +816,31 @@ protected:
 	FName RagdollCollisionProfile = TEXT("Ragdoll");
 
 	/**
+	 * Cuántos cm levantamos al pawn justo antes de activar SimulatePhysics. Sin
+	 * este lift el SKM ragdoll arranca clipando con el suelo (la capsule mete el
+	 * mesh hundido) → físicas atrapadas durante 1-2 segundos, luego sale despedido.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
+		meta = (ClampMin = "0.0"))
+	float RagdollLiftZ = 50.f;
+
+	/**
+	 * Velocidad horizontal mínima (cm/s) para preservar momentum al activar ragdoll.
+	 * Por debajo el ragdoll arranca con velocidad cero (cae limpio, estilo Lethal Company).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
+		meta = (ClampMin = "0.0"))
+	float RagdollMomentumThreshold = 600.f;
+
+	/**
+	 * Factor aplicado a la velocidad horizontal preservada (0=siempre cero, 1=momentum total).
+	 * 0.3 da un slide corto natural sin que el cuerpo "salga disparado".
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
+		meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RagdollMomentumScale = 0.3f;
+
+	/**
 	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
 	 * El pawn NO se destruye: queda como cadáver interactuable para revive.
 	 */

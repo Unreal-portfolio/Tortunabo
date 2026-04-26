@@ -2107,6 +2107,12 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 					SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
 					SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 				}
+
+				// Capturar velocidad ANTES de detener al CMC para poder preservar
+				// un slide capeado en el ragdoll (estilo Lethal Company: si murió
+				// corriendo desliza un poco, si murió parado cae inerte).
+				const FVector PreDeathVelocity = GetVelocity();
+
 				SetReplicateMovement(false);
 				if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 				{
@@ -2121,17 +2127,37 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 				{
 					Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 				}
+
+				// LIFT Z antes de activar SimulatePhysics. Sin este lift el SKM
+				// arranca dentro del suelo (capsule mete el mesh hundido) → ragdoll
+				// "atascado" 1-2s mientras la física resuelve la penetración, luego
+				// sale despedido por la fuerza acumulada.
+				if (RagdollLiftZ > 0.f)
+				{
+					const FVector LiftedLoc = GetActorLocation() + FVector(0.f, 0.f, RagdollLiftZ);
+					SetActorLocation(LiftedLoc, false, nullptr, ETeleportType::TeleportPhysics);
+				}
+
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 				// Orden Epic: simular primero, pausar anims después.
 				SkelMesh->SetAllBodiesSimulatePhysics(true);
 				SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 				SkelMesh->SetEnableGravity(true);
-				SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+
+				// Velocidad inicial: cero por defecto (parado → cae limpio).
+				// Si llevaba momentum por encima del threshold, conservar componente
+				// horizontal capeada — slide corto sin disparo.
+				FVector InitialRagdollVel = FVector::ZeroVector;
+				if (PreDeathVelocity.Size2D() > RagdollMomentumThreshold)
+				{
+					InitialRagdollVel = FVector(PreDeathVelocity.X, PreDeathVelocity.Y, 0.f) * RagdollMomentumScale;
+				}
+				SkelMesh->SetAllPhysicsLinearVelocity(InitialRagdollVel);
 				SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 				SkelMesh->WakeAllRigidBodies();
 				SkelMesh->bPauseAnims = true;
-				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f"),
-					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f);
+				UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) IsSim=%s BlendWeight=%.2f LiftZ=%.0f InitVel=%s"),
+					*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"), 1.f, RagdollLiftZ, *InitialRagdollVel.ToCompactString());
 			}
 		}
 		else
