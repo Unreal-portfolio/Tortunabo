@@ -119,10 +119,13 @@ void ATN_InteractableBase::HideInteractableMesh()
 	if (Mesh) { Mesh->SetVisibility(false); }
 	if (HasAuthority() && !bMeshHidden)
 	{
-		bMeshHidden = true;
-		// Despertar al actor dormido — sin flush, el cliente no recibe la replicación
-		// y el mesh sigue visible en su pantalla.
+		// FlushNetDormancy ANTES del cambio de propiedad (patrón canónico Vorixo).
+		// Si el actor está DORM_Initial o DORM_DormantAll, cambiar la prop primero
+		// y flush después puede dejar el cambio sin replicar en algunos casos
+		// (fast arrays especialmente). Flush primero garantiza que la siguiente
+		// modificación se incluye en el próximo paquete.
 		FlushNetDormancy();
+		bMeshHidden = true;
 	}
 }
 
@@ -131,8 +134,8 @@ void ATN_InteractableBase::ShowInteractableMesh()
 	if (Mesh) { Mesh->SetVisibility(true); }
 	if (HasAuthority() && bMeshHidden)
 	{
-		bMeshHidden = false;
 		FlushNetDormancy();
+		bMeshHidden = false;
 	}
 }
 

@@ -195,4 +195,9 @@ private:
 
 	/** Velocidad vertical acumulada en modo kinematic-push. Reset al tocar suelo. */
 	float KinematicFallSpeed = 0.f;
+
+	/** Throttle per-instance para los logs [CUBE-PUSH]. Antes era `static` →
+	 *  compartido entre todos los cubos del mundo (solo loggeaba uno). */
+	double LastPushLogTime = 0.0;
+	double LastZeroPushLogTime = 0.0;
 };
