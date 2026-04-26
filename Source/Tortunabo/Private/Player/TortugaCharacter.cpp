@@ -431,29 +431,23 @@ void ATortugaCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// ── Ragdoll location sync (server-auth puro) ─────────────────────────
-	// Cuando el ragdoll está simulando físicas en el server, el SkM cae con
-	// gravedad pero el RootComponent (capsule) del actor NO se mueve por sí
-	// solo — PhysX desconecta el body al activar simulate. Resultado:
-	// bReplicateMovement replicaría la pos del capsule (estática) y los
-	// clientes verían el cadáver donde murió mientras el SkM cae a otro sitio.
-	//
-	// Solución: cada frame en el server, mover la pos del actor al root bone
-	// del SkM ragdoll. Como bReplicateMovement=true durante muerte, el cliente
-	// recibe la actor location actualizada y la usa para colocar SU capsule
-	// (con interpolación suave). Cliente NO simula físicas localmente — su
-	// SkM queda en pose anim previa y el actor se mueve por replicación.
-	if (HasAuthority() && bIsDead)
+	// ── Cadáver kinematic fall (server-only, sin SimulatePhysics) ────────
+	// Patrón idéntico al cubo kinematic-push: aceleración manual + sweep.
+	// AddActorWorldOffset con sweep=true detecta el suelo automáticamente,
+	// si bloquea cancelamos la velocity (cadáver asentado). bReplicateMovement
+	// nativo de UE replica la actor location al cliente.
+	// Sin SimulatePhysics → sin impulsos de resolución → sin lanzamientos.
+	if (HasAuthority() && bRagdollFalling)
 	{
-		USkeletalMeshComponent* SkelMesh = GetMesh();
-		if (SkelMesh && SkelMesh->IsSimulatingPhysics())
+		RagdollFallSpeed = FMath::Min(RagdollFallSpeed + RagdollGravityAccel * DeltaTime, RagdollMaxFallSpeed);
+		const FVector FallDelta(0.f, 0.f, -RagdollFallSpeed * DeltaTime);
+
+		FHitResult FallHit;
+		AddActorWorldOffset(FallDelta, /*bSweep=*/true, &FallHit);
+		if (FallHit.bBlockingHit)
 		{
-			const FName RootBone = SkelMesh->GetBoneName(0);
-			if (RootBone != NAME_None)
-			{
-				const FVector RagdollLoc = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
-				SetActorLocation(RagdollLoc, false, nullptr, ETeleportType::TeleportPhysics);
-			}
+			RagdollFallSpeed = 0.f;
+			bRagdollFalling = false;  // cadáver asentado
 		}
 	}
 
@@ -2154,120 +2148,79 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	USkeletalMeshComponent* SkelMesh = GetMesh();
 	if (bDead)
 	{
-		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset())
+		// CERO físicas. CERO SimulatePhysics. El SkM queda en pose anim previa
+		// (cuerpo rígido). Server simula gravedad manual cada Tick con sweep
+		// (igual patrón que el cubo kinematic-push). Sin impulsos de resolución
+		// = sin lanzamientos posibles.
+		if (SkelMesh)
 		{
-			if (!SkelMesh->IsSimulatingPhysics())
+			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
+			if (SkelMesh->IsSimulatingPhysics())
 			{
-				SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
-				SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+				// Defensive: si venía de un knockdown previo con simulación.
+				SkelMesh->SetAllBodiesSimulatePhysics(false);
 			}
+			SkelMesh->bPauseAnims = true;  // congelar pose actual
+			SkelMesh->SetEnableGravity(false);
+		}
 
-			// Server-auth puro: replicate movement on, server simula y mueve el
-			// actor a la pos del root bone cada Tick. Cliente recibe via interp,
-			// no simula localmente → cero divergencia. Ver Tick override para
-			// la sincronización por frame.
-			SetReplicateMovement(true);
+		// Capsule en QueryOnly bloqueando solo suelo y paredes — el sweep del
+		// Tick detecta colisiones para parar la caída. Ignora Pawn/PhysicsBody
+		// para que jugadores y proyectiles no empujen al cadáver.
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Cap->SetCollisionResponseToAllChannels(ECR_Ignore);
+			Cap->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+		}
 
-			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
-			{
-				CMC->DisableMovement();
-				CMC->StopMovementImmediately();
-				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
-				CMC->SetComponentTickEnabled(false);
-			}
-			if (UCapsuleComponent* Cap = GetCapsuleComponent())
-			{
-				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			}
+		// CMC apagado. SetReplicateMovement(true) → server replica AddActorWorldOffset
+		// vía bReplicateMovement nativo. Cliente recibe la pos interpolada.
+		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+		{
+			CMC->DisableMovement();
+			CMC->StopMovementImmediately();
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+			CMC->SetComponentTickEnabled(false);
+		}
+		SetReplicateMovement(true);
 
-			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			// Aislar: solo bloquea suelo y paredes (estáticas + dinámicas).
-			// Ignora Pawn/PhysicsBody/etc → otros jugadores y proyectiles no
-			// empujan el cuerpo. Solo gravedad pura, no lanzamientos.
-			SkelMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-			SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
-			SkelMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+		bRagdollFalling = true;
+		RagdollFallSpeed = 0.f;
 
-			// LINE TRACE AL SUELO antes de SimulatePhysics. Sin esto, el SKM
-			// arranca penetrando el suelo (la capsule mete el mesh hundido) →
-			// PhysX resuelve la penetración con un impulso enorme → cuerpo
-			// "sale volando como pala de tenis". Posicionamos el actor justo
-			// encima del suelo real para arrancar sin penetración.
-			if (UWorld* World = GetWorld())
-			{
-				const FVector ActorLoc = GetActorLocation();
-				FHitResult GroundHit;
-				FCollisionQueryParams Params(SCENE_QUERY_STAT(RagdollSpawnGround), false, this);
-				Params.AddIgnoredActor(this);
-				const FVector TraceStart = ActorLoc + FVector(0.f, 0.f, 100.f);
-				const FVector TraceEnd   = ActorLoc - FVector(0.f, 0.f, 500.f);
+		UE_LOG(LogTemp, Warning, TEXT("[Death] %s kinematic-fall ON — sin SimulatePhysics, sin impulso"),
+			*GetName());
 
-				bool bFoundGround = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldStatic, Params);
-				if (!bFoundGround)
-				{
-					bFoundGround = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldDynamic, Params);
-				}
-				if (bFoundGround)
-				{
-					float HalfHeight = 88.f;
-					if (UCapsuleComponent* Cap = GetCapsuleComponent())
-					{
-						HalfHeight = Cap->GetScaledCapsuleHalfHeight();
-					}
-					// Pawn justo encima del suelo: ImpactPoint + HalfHeight + 5cm
-					// margen para que ningún bone arranque clipando.
-					const FVector SafeLoc(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight + 5.f);
-					SetActorLocation(SafeLoc, false, nullptr, ETeleportType::TeleportPhysics);
-					UE_LOG(LogTemp, Log, TEXT("[Ragdoll] Spawn-on-ground · actor=%.0f → safe=%.0f (impact=%.0f, half=%.0f)"),
-						ActorLoc.Z, SafeLoc.Z, GroundHit.ImpactPoint.Z, HalfHeight);
-				}
-			}
-
-			SkelMesh->SetAllBodiesSimulatePhysics(true);
-			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
-			SkelMesh->SetEnableGravity(true);
-
-			// Velocidad inicial CERO siempre — spec 'solo gravedad, evitar
-			// lanzamientos'. Reset DESPUÉS de SimulatePhysics(true) para que
-			// si el SKM ya estaba simulando (knockdown previo a la muerte),
-			// la velocity acumulada no contamine el ragdoll de muerte.
-			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
-			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-			SkelMesh->WakeAllRigidBodies();
-			SkelMesh->bPauseAnims = true;
-
-			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) server-auth · vel=0 · spawn-on-ground"),
-				*GetName());
-
-			if (RagdollFreezeAfterSeconds > 0.f)
-			{
-				GetWorldTimerManager().SetTimer(RagdollFreezeTimerHandle, this,
-					&ATortugaCharacter::ServerFireFreezeRagdoll, RagdollFreezeAfterSeconds, false);
-			}
+		if (RagdollFreezeAfterSeconds > 0.f)
+		{
+			GetWorldTimerManager().SetTimer(RagdollFreezeTimerHandle, this,
+				&ATortugaCharacter::ServerFireFreezeRagdoll, RagdollFreezeAfterSeconds, false);
 		}
 	}
 	else
 	{
 		bCanAirDash = true;
-
-		// Cancelar timer de freeze pendiente.
+		bRagdollFalling = false;
+		RagdollFallSpeed = 0.f;
 		GetWorldTimerManager().ClearTimer(RagdollFreezeTimerHandle);
 
-		if (bUsePhysicsRagdoll && SkelMesh)
+		if (SkelMesh)
 		{
-			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
-			if (SkelMesh->IsSimulatingPhysics())
-			{
-				SkelMesh->SetAllBodiesSimulatePhysics(false);
-			}
 			SkelMesh->bPauseAnims = false;
 			SkelMesh->SetEnableGravity(false);
-			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
-			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
-			if (UCapsuleComponent* Cap = GetCapsuleComponent())
+			if (SnapshotSkelMeshCollisionProfile != NAME_None)
 			{
-				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 			}
+		}
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			Cap->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 		}
 		SetReplicateMovement(true);
 		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
@@ -2296,48 +2249,56 @@ void ATortugaCharacter::ServerFireFreezeRagdoll()
 
 void ATortugaCharacter::OnRep_IsDead()
 {
+	// Mismo flow que MulticastSetDeadVisual_Implementation: cliente kinematic.
+	// OnRep es el path que dispara cuando el cliente JIP recibe bIsDead=true
+	// inicial sin pasar por el Multicast (que ya se ejecutó antes de la conexión).
 	USkeletalMeshComponent* SkelMesh = GetMesh();
 	if (bIsDead)
 	{
-		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset() && !SkelMesh->IsSimulatingPhysics())
+		if (SkelMesh)
 		{
-			SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
 			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
-			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
+			if (SkelMesh->IsSimulatingPhysics())
 			{
-				CMC->DisableMovement();
-				CMC->StopMovementImmediately();
-				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
-				CMC->SetComponentTickEnabled(false);  // evita arrastre capsule→mesh
+				SkelMesh->SetAllBodiesSimulatePhysics(false);
 			}
-			if (UCapsuleComponent* Cap = GetCapsuleComponent())
-			{
-				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			}
-			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-			SkelMesh->SetAllBodiesSimulatePhysics(true);
-			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
-			SkelMesh->SetEnableGravity(true);
-			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
-			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-			SkelMesh->WakeAllRigidBodies();
 			SkelMesh->bPauseAnims = true;
+			SkelMesh->SetEnableGravity(false);
+		}
+		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+		{
+			CMC->DisableMovement();
+			CMC->StopMovementImmediately();
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+			CMC->SetComponentTickEnabled(false);
+		}
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Cap->SetCollisionResponseToAllChannels(ECR_Ignore);
+			Cap->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 		}
 	}
 	else
 	{
 		bCanAirDash = true;
-		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->IsSimulatingPhysics())
+		if (SkelMesh)
 		{
-			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
-			SkelMesh->SetAllBodiesSimulatePhysics(false);
 			SkelMesh->bPauseAnims = false;
-			SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
-			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
-			if (UCapsuleComponent* Cap = GetCapsuleComponent())
+			SkelMesh->SetEnableGravity(false);
+			if (SnapshotSkelMeshCollisionProfile != NAME_None)
 			{
-				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 			}
+		}
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			Cap->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 		}
 		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 		{
@@ -2349,23 +2310,11 @@ void ATortugaCharacter::OnRep_IsDead()
 
 void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
 {
-	USkeletalMeshComponent* SkelMesh = GetMesh();
-	if (!SkelMesh) { return; }
-
-	// Server: detiene la simulación física. El Tick override deja de mover el
-	// actor (porque IsSimulatingPhysics → false). bReplicateMovement sigue
-	// activo, así que el cliente recibe la pos final y se queda ahí.
-	if (SkelMesh->IsSimulatingPhysics())
-	{
-		SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
-		SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-		SkelMesh->SetAllBodiesSimulatePhysics(false);
-	}
-	SkelMesh->SetEnableGravity(false);
-	SkelMesh->bPauseAnims = true;
-
-	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (%s) authority=%d"),
-		*GetName(), HasAuthority());
+	// Detener fall en TODAS las máquinas. En server, el Tick deja de mover el
+	// actor porque bRagdollFalling=false. Cliente nunca simulaba físicas.
+	bRagdollFalling = false;
+	RagdollFallSpeed = 0.f;
+	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (%s) authority=%d"), *GetName(), HasAuthority());
 }
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
@@ -2374,56 +2323,54 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 	USkeletalMeshComponent* SkelMesh = GetMesh();
 	if (bDead)
 	{
-		// Cliente NO simula físicas. Solo:
-		//  - Snapshot de pose actual (para restaurar al revivir)
-		//  - Disable CMC + Capsule collision (evita interacciones del muerto)
-		//  - SkM queda en pose anim previa (visual "rígido cayendo")
-		// El actor se mueve por bReplicateMovement(true) — el server lo arrastra
-		// hacia la pos del root bone del ragdoll cada frame (ver Tick override).
-		if (bUsePhysicsRagdoll && SkelMesh && SkelMesh->GetPhysicsAsset())
+		// Cliente: snapshot pose, congelar anims, disable CMC, capsule QueryOnly
+		// (igual que server pero sin la lógica de fall — el cliente NUNCA simula
+		// físicas y NUNCA hace su propio movimiento. El actor se mueve por
+		// bReplicateMovement nativo, recibiendo la pos del server interpolada).
+		if (SkelMesh)
 		{
-			if (!SkelMesh->IsSimulatingPhysics())
-			{
-				SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
-				SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
-			}
-			if (UCharacterMovementComponent* CMC = GetCharacterMovement())
-			{
-				CMC->DisableMovement();
-				CMC->StopMovementImmediately();
-				CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
-				CMC->SetComponentTickEnabled(false);
-			}
-			if (UCapsuleComponent* Cap = GetCapsuleComponent())
-			{
-				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			}
-		}
-	}
-	else
-	{
-		bCanAirDash = true;
-		if (bUsePhysicsRagdoll && SkelMesh)
-		{
-			// Defensive: aunque cliente no debería tener SimulatePhysics activo,
-			// si por alguna razón lo está (race condition con un MulticastSetDeadVisual
-			// previo), apagarlo. Restaurar relative transform al snapshot pre-muerte.
+			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
 			if (SkelMesh->IsSimulatingPhysics())
 			{
 				SkelMesh->SetAllBodiesSimulatePhysics(false);
 			}
+			SkelMesh->bPauseAnims = true;
+			SkelMesh->SetEnableGravity(false);
+		}
+		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+		{
+			CMC->DisableMovement();
+			CMC->StopMovementImmediately();
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+			CMC->SetComponentTickEnabled(false);
+		}
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Cap->SetCollisionResponseToAllChannels(ECR_Ignore);
+			Cap->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+		}
+	}
+	else
+	{
+		bCanAirDash = true;
+		if (SkelMesh)
+		{
 			SkelMesh->bPauseAnims = false;
 			SkelMesh->SetEnableGravity(false);
 			if (SnapshotSkelMeshCollisionProfile != NAME_None)
 			{
 				SkelMesh->SetCollisionProfileName(SnapshotSkelMeshCollisionProfile);
 			}
-			SkelMesh->SetRelativeTransform(SnapshotSkelMeshRelTransform);
-			if (UCapsuleComponent* Cap = GetCapsuleComponent())
-			{
-				Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-			}
+		}
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			Cap->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+			Cap->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 		}
 		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
 		{

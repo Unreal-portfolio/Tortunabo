@@ -711,6 +711,12 @@ private:
 	/** Timer del freeze post-ragdoll. Iniciado en SetDeadVisual(true). */
 	FTimerHandle RagdollFreezeTimerHandle;
 
+	/** True mientras el cuerpo muerto cae bajo gravedad manual (server-only). */
+	bool bRagdollFalling = false;
+
+	/** Velocidad vertical acumulada del cuerpo muerto (cm/s). Reset al tocar suelo. */
+	float RagdollFallSpeed = 0.f;
+
 	/** Oculta extremidades, cabeza, cola y casco (solo visual). */
 	void HideLimbs();
 
@@ -832,31 +838,19 @@ protected:
 	FName RagdollCollisionProfile = TEXT("Ragdoll");
 
 	/**
-	 * Cuántos cm levantamos al pawn justo antes de activar SimulatePhysics. Sin
-	 * este lift el SKM ragdoll arranca clipando con el suelo (la capsule mete el
-	 * mesh hundido) → físicas atrapadas durante 1-2 segundos, luego sale despedido,
-	 * o peor, atraviesa el suelo si la geometría es WorldDynamic y no le da tiempo
-	 * de generar la fuerza normal.
+	 * Aceleración de gravedad simulada manualmente para el cuerpo muerto (cm/s²).
+	 * Sin SimulatePhysics: el server aplica AddActorWorldOffset cada tick con
+	 * sweep — equivalente al cubo kinematic-push. CERO impulsos de resolución,
+	 * CERO posibilidad de "lanzamiento" físico.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
 		meta = (ClampMin = "0.0"))
-	float RagdollLiftZ = 30.f;
+	float RagdollGravityAccel = 980.f;
 
-	/**
-	 * Velocidad horizontal mínima (cm/s) para preservar momentum al activar ragdoll.
-	 * Por debajo el ragdoll arranca con velocidad cero (cae limpio, estilo Lethal Company).
-	 */
+	/** Velocidad terminal de caída del cuerpo muerto (cm/s). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
-		meta = (ClampMin = "0.0"))
-	float RagdollMomentumThreshold = 600.f;
-
-	/**
-	 * Factor aplicado a la velocidad horizontal preservada (0=siempre cero, 1=momentum total).
-	 * 0.3 da un slide corto natural sin que el cuerpo "salga disparado".
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
-		meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float RagdollMomentumScale = 0.3f;
+		meta = (ClampMin = "100.0"))
+	float RagdollMaxFallSpeed = 1500.f;
 
 	/**
 	 * Tras N segundos en SimulatePhysics, el server hace Multicast para que TODAS
