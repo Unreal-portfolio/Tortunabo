@@ -26,16 +26,24 @@ ATN_CrabActor::ATN_CrabActor()
 	DetectionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	DetectionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 
-	// Cuerpo físico para items: Concha overlap (WorldDynamic con Pawn=Overlap →
-	// match Overlap+Overlap) y Throwable Ball Hit (WorldDynamic con Pawn=Block →
-	// match Block+Overlap = Block, dispara OnComponentHit en la bola).
+	// Cuerpo físico para items. Channel ECC_Pawn + Block to WorldDynamic.
+	// Matriz UE5: la respuesta resultante entre dos componentes es la MÁS PERMISIVA
+	// (Ignore < Overlap < Block).
+	//   Concha OverlapSphere (WorldDynamic, Pawn=Overlap) ↔ BodyCollision (Pawn,
+	//     WorldDynamic=Block) → min(Overlap,Block)=Overlap → overlap event en concha ✓
+	//   Throwable Ball Mesh (WorldDynamic, BlockAllDynamic con Pawn=Block) ↔
+	//     BodyCollision (Pawn, WorldDynamic=Block) → min(Block,Block)=Block →
+	//     OnComponentHit dispara en la bola ✓
+	// Mi intento anterior con Overlap a WorldDynamic generaba min(Block,Overlap)=
+	// Overlap y la bola NUNCA hacía Hit (commit anterior tenía un comentario
+	// erróneo justificando un comportamiento que UE5 no entrega).
 	BodyCollision = CreateDefaultSubobject<USphereComponent>(TEXT("BodyCollision"));
 	BodyCollision->SetupAttachment(CrabMesh);
 	BodyCollision->InitSphereRadius(BodyCollisionRadius);
 	BodyCollision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	BodyCollision->SetCollisionObjectType(ECC_Pawn);
 	BodyCollision->SetCollisionResponseToAllChannels(ECR_Ignore);
-	BodyCollision->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	BodyCollision->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 	BodyCollision->SetGenerateOverlapEvents(true);
 	BodyCollision->SetNotifyRigidBodyCollision(true);
 }
