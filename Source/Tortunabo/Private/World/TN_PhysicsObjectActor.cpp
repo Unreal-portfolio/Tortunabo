@@ -225,9 +225,10 @@ void ATN_PhysicsObjectActor::OnPushDetectorBeginOverlap(UPrimitiveComponent* Ove
 	// llegar dentro del PushDetector — fix: ampliar PushDetectionRadiusExtra.
 	if (OtherActor && OtherActor->IsA(ATortugaCharacter::StaticClass()))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' DETECTOR overlap BEGIN with '%s' (centro a %.0f cm)"),
+		UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' DETECTOR overlap BEGIN with '%s' (centro a %.0f cm) authority=%d"),
 			*GetName(), *OtherActor->GetName(),
-			FVector::Dist(GetActorLocation(), OtherActor->GetActorLocation()));
+			FVector::Dist(GetActorLocation(), OtherActor->GetActorLocation()),
+			HasAuthority() ? 1 : 0);
 	}
 }
 
@@ -382,21 +383,27 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 		}
 	}
 
-	// 1. Detectar tortugas en overlap
+	// 1. Detectar tortugas en overlap (server-side; Tick está guarded por
+	//    HasAuthority arriba). Probamos también sin filtro de clase para
+	//    diagnosticar si el filtro está fallando.
 	TArray<AActor*> Overlapping;
 	PushDetector->GetOverlappingActors(Overlapping, ATortugaCharacter::StaticClass());
 
-	// Diagnóstico: en el playtest el cubo no se empujaba. Throttle per-instance
-	// (member var, no static) — antes una sola variable compartida entre TODOS
-	// los cubos del mundo silenciaba 9 de 10 logs.
-	if (Overlapping.Num() > 0)
+	TArray<AActor*> AllOverlapping;
+	PushDetector->GetOverlappingActors(AllOverlapping);
+
+	// Log SIEMPRE (throttled 1s) — confirma si Tick ve overlap. Si delegate
+	// dispara overlap BEGIN pero este log dice 0, hay desync entre el state
+	// del delegate y GetOverlappingActors (autorización mismatch o el Mesh
+	// Block to Pawn empuja al char fuera del sphere antes del siguiente Tick).
 	{
 		const double Now = GetWorld()->GetTimeSeconds();
-		if (Now - LastPushLogTime > 0.5)
+		if (Now - LastPushLogTime > 1.0)
 		{
 			LastPushLogTime = Now;
-			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' overlap=%d kinematic=%d radius=%.0f"),
-				*GetName(), Overlapping.Num(), bUseKinematicPush ? 1 : 0,
+			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' Tick auth=%d · overlap(Char)=%d overlap(All)=%d radius=%.0f"),
+				*GetName(), HasAuthority() ? 1 : 0,
+				Overlapping.Num(), AllOverlapping.Num(),
 				PushDetector->GetScaledSphereRadius());
 		}
 	}
