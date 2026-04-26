@@ -55,6 +55,21 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Crab")
 	TObjectPtr<USphereComponent> DetectionSphere;
 
+	/**
+	 * Esfera de cuerpo que recibe golpes de items: Concha (overlap) y Throwable Ball (hit).
+	 * Necesaria porque CrabMesh tiene NoCollision. Channel ECC_Pawn con respuesta
+	 * Overlap a WorldDynamic — la Concha (WorldDynamic con Pawn=Overlap) dispara
+	 * overlap, la bola (WorldDynamic con Pawn=Block) dispara Hit notify.
+	 * El radio se ajusta desde BP via BodyCollisionRadius.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Crab")
+	TObjectPtr<USphereComponent> BodyCollision;
+
+	/** Radio de la esfera de cuerpo. Ajustar al tamaño visual del cangrejo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crab",
+		meta = (ClampMin = "20.0"))
+	float BodyCollisionRadius = 80.f;
+
 	// ── Movimiento ───────────────────────────────────────────────────────────────
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crab|Movement")
 	float PatrolSpeed = 250.f;

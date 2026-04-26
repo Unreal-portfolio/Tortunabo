@@ -25,6 +25,19 @@ ATN_CrabActor::ATN_CrabActor()
 	DetectionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	DetectionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	DetectionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+	// Cuerpo físico para items: Concha overlap (WorldDynamic con Pawn=Overlap →
+	// match Overlap+Overlap) y Throwable Ball Hit (WorldDynamic con Pawn=Block →
+	// match Block+Overlap = Block, dispara OnComponentHit en la bola).
+	BodyCollision = CreateDefaultSubobject<USphereComponent>(TEXT("BodyCollision"));
+	BodyCollision->SetupAttachment(CrabMesh);
+	BodyCollision->InitSphereRadius(BodyCollisionRadius);
+	BodyCollision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	BodyCollision->SetCollisionObjectType(ECC_Pawn);
+	BodyCollision->SetCollisionResponseToAllChannels(ECR_Ignore);
+	BodyCollision->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	BodyCollision->SetGenerateOverlapEvents(true);
+	BodyCollision->SetNotifyRigidBodyCollision(true);
 }
 
 void ATN_CrabActor::BeginPlay()
@@ -43,6 +56,7 @@ void ATN_CrabActor::BeginPlay()
 	GetWorldTimerManager().SetTimer(InitTimerHandle, Delegate, 0.05f, false);
 
 	DetectionSphere->SetSphereRadius(DetectionRadius);
+	BodyCollision->SetSphereRadius(BodyCollisionRadius);
 	// OnDetectionBeginOverlap se registra en InitializePatrolPoints (deferred 1 tick)
 	// para garantizar que SpawnLocation está inicializado antes de que pueda dispararse.
 }
