@@ -423,15 +423,32 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 		FVector CharInput = Char->GetLastMovementInputVector();
 		CharInput.Z = 0.f;
 		const float InputMagnitude = CharInput.Size();
-		if (InputMagnitude < 0.05f) { continue; } // sin input
 
 		FVector ToCube = CubeLoc - Char->GetActorLocation();
 		ToCube.Z = 0.f;
-		if (!ToCube.Normalize()) { continue; }
+		const bool bToCubeOK = ToCube.Normalize();
 
-		const FVector InputDir = CharInput / InputMagnitude;
-		const float Alignment = FVector::DotProduct(InputDir, ToCube);
-		if (Alignment <= 0.05f) { continue; } // input no va hacia el cubo
+		const FVector InputDir = (InputMagnitude > KINDA_SMALL_NUMBER)
+			? CharInput / InputMagnitude : FVector::ZeroVector;
+		const float Alignment = bToCubeOK ? FVector::DotProduct(InputDir, ToCube) : 0.f;
+
+		// Log diagnóstico throttled: muestra los valores que el filtro evalúa.
+		// Si InputMagnitude=0, el jugador no presiona nada (idle). Si Alignment<=0,
+		// el jugador presiona pero NO hacia el cubo. Si ambos OK pero el cubo
+		// no se mueve, hay otro problema (collision sweep, etc).
+		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (Now - LastZeroPushLogTime > 0.5)
+			{
+				LastZeroPushLogTime = Now;
+				UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH-CALC] '%s' vs '%s' · Input=%.2f Align=%.2f ToCubeOK=%d"),
+					*GetName(), *Char->GetName(), InputMagnitude, Alignment, bToCubeOK ? 1 : 0);
+			}
+		}
+
+		if (InputMagnitude < 0.05f) { continue; } // sin input
+		if (!bToCubeOK)             { continue; } // overlap pero ToCube degenerado
+		if (Alignment <= 0.05f)     { continue; } // input no va hacia el cubo
 
 		// Velocidad efectiva: walk speed del CMC × magnitud del input × alineación.
 		// MaxWalkSpeed default ACharacter es 600 cm/s.
