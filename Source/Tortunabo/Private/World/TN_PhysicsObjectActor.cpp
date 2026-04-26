@@ -102,11 +102,16 @@ void ATN_PhysicsObjectActor::BeginPlay()
 			const float DetectorRadius = FMath::Max(MeshRadius + PushDetectionRadiusExtra, 50.f);
 			PushDetector->SetSphereRadius(DetectorRadius);
 
-			UE_LOG(LogTemp, Log, TEXT("[PhysicsObject] '%s' kinematic-push setup · BoundsExtent=%s · DetectorRadius=%.1f"),
+			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' BeginPlay setup OK · bUseKinematicPush=true · BoundsExtent=%s · DetectorRadius=%.1f · ActorTickEnabled=Y"),
 				*GetName(), *BoundsExtent.ToString(), DetectorRadius);
 
 			PrimaryActorTick.bCanEverTick = true;
 			SetActorTickEnabled(true);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' BeginPlay · bUseKinematicPush=FALSE → no tick kinematic-push (fallback a SimulatePhysics tradicional)"),
+				*GetName());
 		}
 		else
 		{
