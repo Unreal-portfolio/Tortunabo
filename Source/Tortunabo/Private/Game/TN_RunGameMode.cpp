@@ -905,14 +905,14 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		}
 
 		// ── Revivir en la posición exacta del RescuePickup ────────────────────
-		// El RescuePickup ya teletransportó el pawn a su propia posición justo antes
-		// de invocar RevivePlayer (ver ATN_RescuePickup::Interact). Como el pickup
-		// se sincroniza con el ragdoll en FinalizeDeathVisual, la pos actual del
-		// pawn es donde está el ragdoll → revive in-place.
-		// Solo aplicamos un offset Z de +100 cm para que el pawn no spawnee hundido
-		// en el suelo si el ragdoll estaba tendido.
+		// El RescuePickup ya teletransportó el pawn a su propia posición + 50Z
+		// (ver ATN_RescuePickup::Interact:101). El pickup además sigue al ragdoll
+		// vía AttachToActor, así que la pos del pickup ≈ pos del cadáver real
+		// (post line-trace del freeze).
+		// Aplicamos solo +20Z aquí (no +100) para que el pawn aparezca apenas un
+		// pelín sobre el suelo, no flotando un metro arriba.
 		{
-			const FVector ReviveLoc = Pawn->GetActorLocation() + FVector(0.f, 0.f, 100.f);
+			const FVector ReviveLoc = Pawn->GetActorLocation() + FVector(0.f, 0.f, 20.f);
 			UE_LOG(LogTemp, Log, TEXT("[Revive] In-place at pickup location (%.0f,%.0f,%.0f)"),
 				ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z);
 			Pawn->SetActorLocation(ReviveLoc, false, nullptr, ETeleportType::TeleportPhysics);

@@ -840,7 +840,7 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
 		meta = (ClampMin = "0.0"))
-	float RagdollLiftZ = 100.f;
+	float RagdollLiftZ = 30.f;
 
 	/**
 	 * Velocidad horizontal mínima (cm/s) para preservar momentum al activar ragdoll.

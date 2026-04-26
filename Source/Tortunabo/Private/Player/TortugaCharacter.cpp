@@ -2268,16 +2268,37 @@ void ATortugaCharacter::ServerFireFreezeRagdoll()
 {
 	if (!HasAuthority()) { return; }
 
-	// Calcular pos canónica AHORA (1.5s tras activar ragdoll) — la pos del root
-	// bone es donde el ragdoll del server ha caído. Multicastear para que todas
-	// las máquinas snap a esa pos antes de congelar la simulación.
+	// Calcular pos canónica AHORA (tras simulación). El root bone del ragdoll
+	// puede estar PENETRANDO el suelo parcialmente (los bones del physics asset
+	// no son del todo puntos exactos del impact). Si usamos esa pos directamente,
+	// el snap multicast deja al cadáver incrustrado y se ve como teleport.
+	//
+	// Hacemos line trace desde el root bone hacia abajo para encontrar el suelo
+	// real y usar Impact.Z + offset como AuthLoc.Z.
 	FVector AuthLoc = GetActorLocation();
-	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (SkelMesh)
 	{
 		const FName RootBone = SkelMesh->GetBoneName(0);
 		if (RootBone != NAME_None)
 		{
-			AuthLoc = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
+			const FVector BoneLoc = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
+			AuthLoc = BoneLoc;
+
+			if (UWorld* World = GetWorld())
+			{
+				FHitResult Hit;
+				FCollisionQueryParams Params(SCENE_QUERY_STAT(RagdollFreezeGround), false, this);
+				const FVector TraceStart = BoneLoc + FVector(0.f, 0.f, 50.f);
+				const FVector TraceEnd   = BoneLoc - FVector(0.f, 0.f, 500.f);
+				if (World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, Params)
+					|| World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldDynamic, Params))
+				{
+					// Apoyar el cuerpo justo encima del suelo + pequeño offset para
+					// que el SKM no clipe sus bones inferiores con la geometría.
+					AuthLoc.Z = Hit.ImpactPoint.Z + 10.f;
+				}
+			}
 		}
 	}
 
