@@ -2188,19 +2188,55 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 			SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 			SkelMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 
+			// LINE TRACE AL SUELO antes de SimulatePhysics. Sin esto, el SKM
+			// arranca penetrando el suelo (la capsule mete el mesh hundido) →
+			// PhysX resuelve la penetración con un impulso enorme → cuerpo
+			// "sale volando como pala de tenis". Posicionamos el actor justo
+			// encima del suelo real para arrancar sin penetración.
+			if (UWorld* World = GetWorld())
+			{
+				const FVector ActorLoc = GetActorLocation();
+				FHitResult GroundHit;
+				FCollisionQueryParams Params(SCENE_QUERY_STAT(RagdollSpawnGround), false, this);
+				Params.AddIgnoredActor(this);
+				const FVector TraceStart = ActorLoc + FVector(0.f, 0.f, 100.f);
+				const FVector TraceEnd   = ActorLoc - FVector(0.f, 0.f, 500.f);
+
+				bool bFoundGround = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldStatic, Params);
+				if (!bFoundGround)
+				{
+					bFoundGround = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldDynamic, Params);
+				}
+				if (bFoundGround)
+				{
+					float HalfHeight = 88.f;
+					if (UCapsuleComponent* Cap = GetCapsuleComponent())
+					{
+						HalfHeight = Cap->GetScaledCapsuleHalfHeight();
+					}
+					// Pawn justo encima del suelo: ImpactPoint + HalfHeight + 5cm
+					// margen para que ningún bone arranque clipando.
+					const FVector SafeLoc(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight + 5.f);
+					SetActorLocation(SafeLoc, false, nullptr, ETeleportType::TeleportPhysics);
+					UE_LOG(LogTemp, Log, TEXT("[Ragdoll] Spawn-on-ground · actor=%.0f → safe=%.0f (impact=%.0f, half=%.0f)"),
+						ActorLoc.Z, SafeLoc.Z, GroundHit.ImpactPoint.Z, HalfHeight);
+				}
+			}
+
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
 
-			// Velocidad inicial CERO siempre — la spec es "solo gravedad,
-			// evitar lanzamientos". Sin slide momentum, sin ejecuciones de
-			// PreDeathVelocity, sin Lift Z. Cae limpio desde donde murió.
+			// Velocidad inicial CERO siempre — spec 'solo gravedad, evitar
+			// lanzamientos'. Reset DESPUÉS de SimulatePhysics(true) para que
+			// si el SKM ya estaba simulando (knockdown previo a la muerte),
+			// la velocity acumulada no contamine el ragdoll de muerte.
 			SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
 			SkelMesh->bPauseAnims = true;
 
-			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) server-auth pure — no InitVel, no Lift"),
+			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll ON (%s) server-auth · vel=0 · spawn-on-ground"),
 				*GetName());
 
 			if (RagdollFreezeAfterSeconds > 0.f)
