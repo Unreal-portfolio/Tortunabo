@@ -361,6 +361,22 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 	// 1. Detectar tortugas en overlap
 	TArray<AActor*> Overlapping;
 	PushDetector->GetOverlappingActors(Overlapping, ATortugaCharacter::StaticClass());
+
+	// Diagnóstico: en el playtest el cubo no se empujaba. Necesitamos saber qué falla.
+	// Log throttled — solo cuando hay overlap (evita spam idle).
+	if (Overlapping.Num() > 0)
+	{
+		static double LastLogTime = 0.0;
+		const double Now = GetWorld()->GetTimeSeconds();
+		if (Now - LastLogTime > 0.5)
+		{
+			LastLogTime = Now;
+			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' overlap=%d kinematic=%d radius=%.0f"),
+				*GetName(), Overlapping.Num(), bUseKinematicPush ? 1 : 0,
+				PushDetector->GetScaledSphereRadius());
+		}
+	}
+
 	if (Overlapping.Num() == 0)
 	{
 		return; // sin contacto, cubo estático
@@ -395,8 +411,21 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 
 	if (AccumulatedPush.SizeSquared() < KINDA_SMALL_NUMBER)
 	{
+		// Diagnóstico: hay tortugas en overlap pero ninguna empuja hacia el cubo.
+		// Causas comunes: tortuga parada, alineación negativa, factor cero.
+		static double LastZeroLog = 0.0;
+		const double Now = GetWorld()->GetTimeSeconds();
+		if (Now - LastZeroLog > 1.0)
+		{
+			LastZeroLog = Now;
+			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' overlap pero AccumulatedPush=0 (tortuga no empuja hacia cubo)"),
+				*GetName());
+		}
 		return;
 	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[CUBE-PUSH] '%s' applying push=%s mag=%.0f"),
+		*GetName(), *AccumulatedPush.ToCompactString(), AccumulatedPush.Size());
 
 	// 3. Cap de seguridad
 	const float PushSpeed = AccumulatedPush.Size();
