@@ -105,6 +105,11 @@ void ATN_PhysicsObjectActor::BeginPlay()
 			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' BeginPlay setup OK · bUseKinematicPush=true · BoundsExtent=%s · DetectorRadius=%.1f · ActorTickEnabled=Y"),
 				*GetName(), *BoundsExtent.ToString(), DetectorRadius);
 
+			// Delegate de overlap: sirve para diagnosticar si el detector NUNCA
+			// recibe a la tortuga (radio insuficiente, collision matrix mal,
+			// MeshBlock impide al jugador entrar al volumen del detector).
+			PushDetector->OnComponentBeginOverlap.AddDynamic(this, &ATN_PhysicsObjectActor::OnPushDetectorBeginOverlap);
+
 			PrimaryActorTick.bCanEverTick = true;
 			SetActorTickEnabled(true);
 		}
@@ -207,6 +212,22 @@ void ATN_PhysicsObjectActor::Tick(float DeltaTime)
 	{
 		const FVector ClampedVel = Vel + Normal * IntoWallSpeed;
 		Mesh->SetPhysicsLinearVelocity(ClampedVel);
+	}
+}
+
+void ATN_PhysicsObjectActor::OnPushDetectorBeginOverlap(UPrimitiveComponent* OverlappedComp,
+	AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+	bool bFromSweep, const FHitResult& SweepResult)
+{
+	// Diagnóstico: este log dispara la primera vez que una tortuga entra en
+	// el sphere del detector. Si NUNCA dispara aunque el jugador empuje el
+	// cubo, el problema es que el Mesh (Block to Pawn) impide a la tortuga
+	// llegar dentro del PushDetector — fix: ampliar PushDetectionRadiusExtra.
+	if (OtherActor && OtherActor->IsA(ATortugaCharacter::StaticClass()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' DETECTOR overlap BEGIN with '%s' (centro a %.0f cm)"),
+			*GetName(), *OtherActor->GetName(),
+			FVector::Dist(GetActorLocation(), OtherActor->GetActorLocation()));
 	}
 }
 
