@@ -7,6 +7,7 @@
 #include "World/TN_RescuePickup.h"
 #include "Player/TN_InventoryComponent.h"
 #include "World/TN_DeathZoneVolume.h"
+#include "World/TN_StormVolume.h"
 #include "World/TN_ChunkManager.h"
 #include "World/TN_CollectionZone.h"
 #include "GameFramework/SpectatorPawn.h"
@@ -875,13 +876,17 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		GM->ReviveImmunePlayers.Remove(WeakImmunityPC);
 		GM->ImmunityTimers.Remove(WeakImmunityPC);
 
-		// ── Forzar re-evaluación de death zones ──────────────────────────────
+		// ── Forzar re-evaluación de death zones y storms ─────────────────────
 		// SetActorEnableCollision(true) no dispara OnBoxBeginOverlap de forma
 		// fiable cuando el pawn ya estaba geométricamente dentro del volumen.
-		// Tras expirar la inmunidad, comprobamos manualmente todas las death zones.
+		// Tras expirar la inmunidad, comprobamos manualmente death zones y storms.
 		if (APlayerController* ImmunityPC = WeakImmunityPC.Get())
 		{
 			for (TActorIterator<ATN_DeathZoneVolume> It(GM->GetWorld()); It; ++It)
+			{
+				(*It)->ForceCheckPlayer(ImmunityPC);
+			}
+			for (TActorIterator<ATN_StormVolume> It(GM->GetWorld()); It; ++It)
 			{
 				(*It)->ForceCheckPlayer(ImmunityPC);
 			}

@@ -264,6 +264,52 @@ void ATN_StormVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AActo
 
 // ─── Muerte ───────────────────────────────────────────────────────────────────
 
+void ATN_StormVolume::ForceCheckPlayer(APlayerController* PC)
+{
+	if (!HasAuthority() || !PC || !TriggerBox) { return; }
+
+	// Ya rastreado → no duplicar.
+	if (PendingDeathRemaining.Contains(PC)) { return; }
+
+	// Solo aplicar a jugadores vivos.
+	ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>();
+	if (!TNPS || !TNPS->bIsAlive) { return; }
+
+	// Restricción de fase de juego.
+	if (bDestroyOnlyDuringRun)
+	{
+		ATN_RunGameMode* RunGameMode = ResolveRunGameMode();
+		if (!RunGameMode || RunGameMode->GetMatchState() != MatchState::InProgress) { return; }
+	}
+
+	APawn* Pawn = PC->GetPawn();
+	if (!Pawn) { return; }
+
+	// Comprobación geométrica directa (no depende del estado de overlaps que
+	// puede estar desactualizado tras togglear collision en revive).
+	const FTransform BoxTransform = TriggerBox->GetComponentTransform();
+	const FVector LocalPos = BoxTransform.InverseTransformPosition(Pawn->GetActorLocation());
+	const FVector Extent = TriggerBox->GetUnscaledBoxExtent();
+
+	const bool bInside = FMath::Abs(LocalPos.X) <= Extent.X
+	                  && FMath::Abs(LocalPos.Y) <= Extent.Y
+	                  && FMath::Abs(LocalPos.Z) <= Extent.Z;
+
+	if (!bInside) { return; }
+
+	PendingDeathRemaining.Add(PC, SecondsInsideToDie);
+	TNPS->DeathZoneTimeRemaining = SecondsInsideToDie;
+
+	if (!GetWorldTimerManager().IsTimerActive(SharedCountdownTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(SharedCountdownTimerHandle, this,
+			&ATN_StormVolume::TickAllCountdowns, CountdownTickInterval, true);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Storm] ForceCheckPlayer: '%s' dentro de '%s' tras revive — countdown reiniciado (%.1fs)"),
+		*GetNameSafe(PC), *GetName(), SecondsInsideToDie);
+}
+
 void ATN_StormVolume::HandlePlayerDeath(APlayerController* PC)
 {
 	if (!HasAuthority() || !PC) return;

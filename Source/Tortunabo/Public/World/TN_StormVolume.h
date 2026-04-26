@@ -43,6 +43,14 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/**
+	 * Fuerza un re-check del jugador. Necesario tras revivir cuando el pawn
+	 * sigue dentro del volumen — UE no re-emite OnBoxBeginOverlap si el pawn
+	 * nunca salió geométricamente. Sin esto, un jugador rescatado dentro de la
+	 * tormenta queda inmune al countdown (el temporizador no le cuenta).
+	 */
+	void ForceCheckPlayer(APlayerController* PC);
+
 protected:
 	// ─── Componentes ─────────────────────────────────────────────────────────
 
