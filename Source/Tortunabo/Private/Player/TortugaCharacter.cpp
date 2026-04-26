@@ -2180,13 +2180,16 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 
 				SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 
-				// AISLAR el ragdoll: SOLO bloquea WorldStatic (suelo y paredes).
+				// AISLAR el ragdoll: bloquea suelo y paredes (WorldStatic + WorldDynamic).
 				// Ignora ECC_Pawn (otros jugadores no lo empujan), ECC_PhysicsBody
-				// (proyectiles/cajas no lo mueven) y todo lo demás. Sobreescribe el
-				// profile "Ragdoll" estándar de UE que bloquea TODO. Sin esto, otros
-				// jugadores y la bola throwable empujaban el cadáver libremente.
+				// (proyectiles/cajas no lo mueven) y todo lo demás.
+				// Bloquear WorldDynamic es CRÍTICO: muchos chunks tienen geometría como
+				// StaticMeshActor Movable o BPs con object type WorldDynamic. Si solo
+				// bloqueábamos WorldStatic, el ragdoll atravesaba ese suelo de chunk
+				// y caía por el mundo.
 				SkelMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 				SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+				SkelMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 
 				// Orden Epic: simular primero, pausar anims después.
 				SkelMesh->SetAllBodiesSimulatePhysics(true);
@@ -2389,9 +2392,10 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead, FVecto
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
 			// Mismo override de aislamiento que en SetDeadVisual (server). Sin esto,
 			// los clientes verían el ragdoll empujable por jugadores y proyectiles
-			// localmente (hasta el freeze).
+			// localmente (hasta el freeze) y/o atravesando suelos WorldDynamic.
 			SkelMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 			SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+			SkelMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);

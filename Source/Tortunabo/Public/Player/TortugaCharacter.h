@@ -834,11 +834,13 @@ protected:
 	/**
 	 * Cuántos cm levantamos al pawn justo antes de activar SimulatePhysics. Sin
 	 * este lift el SKM ragdoll arranca clipando con el suelo (la capsule mete el
-	 * mesh hundido) → físicas atrapadas durante 1-2 segundos, luego sale despedido.
+	 * mesh hundido) → físicas atrapadas durante 1-2 segundos, luego sale despedido,
+	 * o peor, atraviesa el suelo si la geometría es WorldDynamic y no le da tiempo
+	 * de generar la fuerza normal.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
 		meta = (ClampMin = "0.0"))
-	float RagdollLiftZ = 50.f;
+	float RagdollLiftZ = 100.f;
 
 	/**
 	 * Velocidad horizontal mínima (cm/s) para preservar momentum al activar ragdoll.
