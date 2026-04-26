@@ -100,6 +100,19 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run|Death", meta = (ClampMin = "0.1"))
 	float DeathRagdollDurationSeconds = 1.5f;
 
+	// ── Sistema de puntuación final ─────────────────────────────────────────
+	// RaceScore final = RankScore (podio) + ScorePickups recogidos en la run + TimeBonus.
+	// RankScore: 1º=400, 2º=300, 3º=200, 4º=100, resto=50. Eliminados=0.
+	// TimeBonus = max(0, (TimeBonusBaselineSeconds − FinishTime) × PointsPerSecond).
+
+	/** Segundos baseline para el time bonus. Tiempos por debajo otorgan puntos. */
+	UPROPERTY(EditDefaultsOnly, Category = "Run|Scoring", meta = (ClampMin = "10.0"))
+	float TimeBonusBaselineSeconds = 120.f;
+
+	/** Puntos por cada segundo bajo el baseline. 0 = sin time bonus. */
+	UPROPERTY(EditDefaultsOnly, Category = "Run|Scoring", meta = (ClampMin = "0.0"))
+	float TimeBonusPointsPerSecond = 5.f;
+
 private:
 	FTimerHandle ResultsTimerHandle;
 	FTimerHandle ResultsCountdownTimerHandle;

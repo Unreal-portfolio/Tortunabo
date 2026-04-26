@@ -403,16 +403,24 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
 
-	// ── Asignar puntos según posición de llegada (#26) ──────────────────────
-	// 1º=400, 2º=300, 3º=200, 4º=100. Más de 4 jugadores → 50 pts por seguridad.
-	// Nota: RaceScore se SUMA al actual (que puede traer score de ScorePickups
-	// recogidos durante la run), no se sobrescribe.
+	// ── Asignar puntos finales: RankScore + TimeBonus ────────────────────────
+	// El RaceScore actual ya contiene los puntos de ScorePickups recogidos
+	// durante la run + bonus de CollectionZones. Aquí sumamos los componentes
+	// finales: posición de llegada y bonus por velocidad.
 	static const int32 RankScoreTable[] = { 400, 300, 200, 100 };
 	const int32 RankIndex = TNPS->FinishRank - 1;
 	const int32 RankScore = (RankIndex >= 0 && RankIndex < 4) ? RankScoreTable[RankIndex] : 50;
-	TNPS->RaceScore += RankScore;
-	UE_LOG(LogTemp, Log, TEXT("[FINISH] RaceScore+=%d → total=%d para '%s' (Rank=%d)"),
-		RankScore, TNPS->RaceScore, *GetNameSafe(PlayerController), TNPS->FinishRank);
+
+	// TimeBonus: premia llegar antes del baseline. Capeado a 0 (no negativo).
+	const float TimeUnderBaseline = TimeBonusBaselineSeconds - TNPS->FinishTimeSeconds;
+	const int32 TimeBonus = FMath::Max(0, FMath::FloorToInt(TimeUnderBaseline * TimeBonusPointsPerSecond));
+
+	const int32 PickupAndZoneScore = TNPS->RaceScore;  // lo que llevaba antes de finish
+	TNPS->RaceScore += RankScore + TimeBonus;
+
+	UE_LOG(LogTemp, Log, TEXT("[FINISH] '%s' Rank=%d Time=%.1fs · Rank+%d · Pickups+%d · TimeBonus+%d → Total=%d"),
+		*GetNameSafe(PlayerController), TNPS->FinishRank, TNPS->FinishTimeSeconds,
+		RankScore, PickupAndZoneScore, TimeBonus, TNPS->RaceScore);
 
 	// Scoreboard global
 	if (ATN_CoopGameState* GS = GetGameState<ATN_CoopGameState>())
