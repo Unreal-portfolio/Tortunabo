@@ -110,11 +110,9 @@ void ATN_PhysicsObjectActor::BeginPlay()
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' BeginPlay · bUseKinematicPush=FALSE → no tick kinematic-push (fallback a SimulatePhysics tradicional)"),
+			UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH] '%s' BeginPlay · bUseKinematicPush=FALSE → fallback a SimulatePhysics tradicional"),
 				*GetName());
-		}
-		else
-		{
+
 			// ── Modo físico tradicional (BouncePhysicsObject hijo) ───────────
 			Mesh->SetSimulatePhysics(true);
 			Mesh->OnComponentHit.AddDynamic(this, &ATN_PhysicsObjectActor::OnMeshHit);
