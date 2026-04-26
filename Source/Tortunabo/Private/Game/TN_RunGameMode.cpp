@@ -459,18 +459,26 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 {
 	if (!HasAuthority() || !PlayerController)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[DEATH-EARLY-OUT] MarkPlayerDead cancelado · HasAuthority=%d PC=%s"),
+			HasAuthority(), *GetNameSafe(PlayerController));
 		return;
 	}
 
 	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
 	if (!TNPS || !TNPS->bIsAlive)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[DEATH-EARLY-OUT] '%s' · TNPS=%s bIsAlive=%d (ya muerto o sin PS)"),
+			*GetNameSafe(PlayerController),
+			TNPS ? TEXT("OK") : TEXT("NULL"),
+			TNPS ? TNPS->bIsAlive : -1);
 		return;
 	}
 	// Un jugador que ya cruzó la meta no puede morir retroactivamente.
 	// Evita que un countdown de death zone rezagado sobreescriba el rank ganado.
 	if (TNPS->bHasFinishedRun)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[DEATH-EARLY-OUT] '%s' · bHasFinishedRun=true (ya cruzó meta)"),
+			*GetNameSafe(PlayerController));
 		return;
 	}
 
