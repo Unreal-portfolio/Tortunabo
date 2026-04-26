@@ -696,6 +696,24 @@ private:
 	void MulticastSetDeadVisual(bool bDead);
 
 	/**
+	 * Patrón canónico Epic para activar ragdoll sin que el cuerpo "salga lanzado":
+	 *  1. StopAllMontages + bPauseAnims=true (CRÍTICO: evita que AnimBP pelee con el solver)
+	 *  2. Capsule NoCollision
+	 *  3. CMC StopMovementImmediately + DisableMovement + tick off
+	 *  4. Line trace al suelo (evita penetración inicial → impulso de resolución)
+	 *  5. SetCollisionProfileName("Ragdoll") en SkM
+	 *  6. bBlendPhysics=true (CRÍTICO: la pose anim deja de dominar los bones)
+	 *  7. SetSimulatePhysics(true) + SetAllBodiesSimulatePhysics(true)
+	 *  8. SetAllPhysicsLinearVelocity(0) defensivo (post-simulate, no antes)
+	 *  9. WakeAllRigidBodies
+	 * Llamado en server (SetDeadVisual) y cliente (MulticastSetDeadVisual, OnRep_IsDead).
+	 */
+	void EnterRagdollState();
+
+	/** Reverso de EnterRagdollState: detiene simulación y restaura state vivo. */
+	void ExitRagdollState();
+
+	/**
 	 * Multicast: congela el ragdoll en todas las máquinas. Al ser server-auth
 	 * (cliente NO simula físicas localmente), las máquinas remotas solo necesitan
 	 * "congelar" el SKM en su pose actual (que ya seguía la pos del server vía
@@ -710,12 +728,6 @@ private:
 
 	/** Timer del freeze post-ragdoll. Iniciado en SetDeadVisual(true). */
 	FTimerHandle RagdollFreezeTimerHandle;
-
-	/** True mientras el cuerpo muerto cae bajo gravedad manual (server-only). */
-	bool bRagdollFalling = false;
-
-	/** Velocidad vertical acumulada del cuerpo muerto (cm/s). Reset al tocar suelo. */
-	float RagdollFallSpeed = 0.f;
 
 	/** Oculta extremidades, cabeza, cola y casco (solo visual). */
 	void HideLimbs();
@@ -837,20 +849,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
 	FName RagdollCollisionProfile = TEXT("Ragdoll");
 
-	/**
-	 * Aceleración de gravedad simulada manualmente para el cuerpo muerto (cm/s²).
-	 * Sin SimulatePhysics: el server aplica AddActorWorldOffset cada tick con
-	 * sweep — equivalente al cubo kinematic-push. CERO impulsos de resolución,
-	 * CERO posibilidad de "lanzamiento" físico.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
-		meta = (ClampMin = "0.0"))
-	float RagdollGravityAccel = 980.f;
-
-	/** Velocidad terminal de caída del cuerpo muerto (cm/s). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
-		meta = (ClampMin = "100.0"))
-	float RagdollMaxFallSpeed = 1500.f;
 
 	/**
 	 * Tras N segundos en SimulatePhysics, el server hace Multicast para que TODAS
