@@ -1956,16 +1956,15 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
-			// Chaos (Triple Mode round 2): bEnableGravity + UpdatePhysicsProperties
-			// fuerza al solver a aplicar el cambio inmediatamente. Mismo patrón
+			// Chaos: Body->SetEnableGravity(true) propaga internamente al solver
+			// (FPhysicsInterface::SetGravityEnabled_AssumesLocked). Mismo patrón
 			// que EnterRagdollState (death) → consistencia entre rutas.
+			// (Triple round 2 sugirió bEnableGravity + UpdatePhysicsProperties,
+			// pero esa función no existe en FBodyInstance; SetEnableGravity es
+			// la API canónica.)
 			for (FBodyInstance* Body : SkelMesh->Bodies)
 			{
-				if (Body)
-				{
-					Body->bEnableGravity = true;
-					Body->UpdatePhysicsProperties();
-				}
+				if (Body) { Body->SetEnableGravity(true); }
 			}
 			SkelMesh->SetAllPhysicsLinearVelocity(KnockdownInitialVel);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
@@ -2332,17 +2331,15 @@ void ATortugaCharacter::EnterRagdollState()
 	SkelMesh->SetAllBodiesSimulatePhysics(true);
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 	SkelMesh->SetEnableGravity(true);
-	// Chaos (Triple Mode round 2 — Gemini): Body->SetEnableGravity puede ser
-	// ignorada si los bodies aún no se "dirtied". Setear bEnableGravity directo
-	// + UpdatePhysicsProperties() fuerza al solver Chaos a aceptar el cambio
-	// inmediatamente, ANTES del primer Wake.
+	// Chaos: Body->SetEnableGravity(true) — esta API propaga al solver vía
+	// FPhysicsInterface::SetGravityEnabled_AssumesLocked cuando IsSimulatingPhysics
+	// es true. Como llegamos aquí DESPUÉS de SetAllBodiesSimulatePhysics(true),
+	// los bodies sí están simulando → propagación correcta.
+	// (Triple round 2 sugirió bEnableGravity + UpdatePhysicsProperties, pero esa
+	// función no existe en FBodyInstance; SetEnableGravity es la API canónica.)
 	for (FBodyInstance* Body : SkelMesh->Bodies)
 	{
-		if (Body)
-		{
-			Body->bEnableGravity = true;
-			Body->UpdatePhysicsProperties();
-		}
+		if (Body) { Body->SetEnableGravity(true); }
 	}
 
 	// 10. Vel inicial CERO defensivo (después de simulate, no antes — antes los
