@@ -692,8 +692,15 @@ private:
 	/**
 	 * Multicast fiable: fuerza el visual de muerte en todos los clientes.
 	 */
+	/**
+	 * Multicast con la pos suelo final como parámetro. Pattern del Codex DualMax
+	 * round 3: el dato del transform inicial viaja CON el RPC, no en canal
+	 * separado vía bReplicateMovement. Sin esto, el cliente recibe el MC antes
+	 * que la replicación de SetActorLocation server (UE replica RPCs antes que
+	 * propiedades en el mismo bunch) → arranca sim en pos vieja → divergencia.
+	 */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastSetDeadVisual(bool bDead);
+	void MulticastSetDeadVisual(bool bDead, FVector GroundLocation);
 
 	/**
 	 * Patrón canónico Epic para activar ragdoll sin que el cuerpo "salga lanzado":

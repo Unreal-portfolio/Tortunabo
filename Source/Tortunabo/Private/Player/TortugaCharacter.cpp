@@ -2173,14 +2173,40 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 		*GetName(), bDead, bIsDead, IsReplicatingMovement() ? 1 : 0, (int32)NetDormancy, (int32)GetLocalRole());
 
 	USkeletalMeshComponent* SkelMesh = GetMesh();
+	FVector GroundLocation = GetActorLocation();
 	if (bDead)
 	{
-		// Multiplayer ragdoll: cada máquina simula localmente con state idéntico.
-		// EnterRagdollState() PRIMERO (incluye line trace + SetActorLocation
-		// ground-snap). Después SetReplicateMovement(false). Triple Mode round 2
-		// — Gemini 8/10: cliente debe recibir el ground-snap server (vía
-		// bReplicateMovement aún ON) ANTES de cortar replicación, sino arranca
-		// la sim cliente desde la pos vieja y diverge inmediatamente.
+		// DualMax round 3 — Codex CRITICAL: el ground-snap se calcula AQUÍ en
+		// server (single source of truth) y viaja como param del Multicast,
+		// no vía bReplicateMovement (que llega DESPUÉS del RPC en el mismo
+		// bunch → cliente arrancaba sim en pos vieja). LineTrace movido fuera
+		// de EnterRagdollState — ahora caller (server o cliente vía MC) ya
+		// teleporta el actor a GroundLocation antes de llamar EnterRagdollState.
+		if (UWorld* World = GetWorld())
+		{
+			FHitResult GroundHit;
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(RagdollGroundSnap), false, this);
+			Params.AddIgnoredActor(this);
+			const FVector ActorLoc = GetActorLocation();
+			const FVector TraceStart = ActorLoc + FVector(0.f, 0.f, 100.f);
+			const FVector TraceEnd   = ActorLoc - FVector(0.f, 0.f, 1000.f);
+			bool bFound = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldStatic, Params);
+			if (!bFound)
+			{
+				bFound = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldDynamic, Params);
+			}
+			if (bFound)
+			{
+				float HalfHeight = 88.f;
+				if (UCapsuleComponent* Cap = GetCapsuleComponent())
+				{
+					HalfHeight = Cap->GetScaledCapsuleHalfHeight();
+				}
+				GroundLocation = FVector(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight);
+			}
+		}
+		SetActorLocation(GroundLocation, false, nullptr, ETeleportType::TeleportPhysics);
+
 		EnterRagdollState();
 		SetReplicateMovement(false);
 	}
@@ -2189,13 +2215,11 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 		bCanAirDash = true;
 		ExitRagdollState();
 
-		// Restaurar movement replication para el pawn revivido — el revive
-		// re-attachea SkM al capsule y vuelve a CMC normal, así que el pawn
-		// necesita replicar movimiento como cualquier character vivo.
+		// Restaurar movement replication para el pawn revivido.
 		SetReplicateMovement(true);
 	}
 
-	MulticastSetDeadVisual(bDead);
+	MulticastSetDeadVisual(bDead, GroundLocation);
 
 	// Servidor / listen-server: disparar el evento BP aquí (los clientes lo reciben
 	// dentro de MulticastSetDeadVisual_Implementation).
@@ -2257,44 +2281,12 @@ void ATortugaCharacter::EnterRagdollState()
 		CMC->SetComponentTickEnabled(false);
 	}
 
-	// 5. Line trace al suelo: posicionar actor encima del suelo real para que
-	//    el SkM ragdoll no arranque penetrando geometría → solver no aplica
-	//    impulso de resolución de penetración (que era la causa del lanzamiento).
-	//    v2 (Codex review): el +5cm extra metía la mitad inferior de los bodies
-	//    DENTRO del suelo (los bodies ocupan el volumen de la cápsula tras la
-	//    activación, no solo su pivot). Reposicionar al ras = body justo apoyado.
-	//    v3 (Triple Mode round 2): ResetPhysics → None. ResetPhysics zereaba
-	//    velocity acumulada del actor → "atascado" inicial.
-	//    v4 (DualMax round 1 — Codex CRITICAL): None → TeleportPhysics. None es
-	//    "continuous movement" (sweep): UE actualiza velocidad en función del
-	//    delta y permite colisiones durante el cambio → inyecta velocity justo
-	//    antes de activar Chaos = "MAYOR fuerza de lanzado" reportado.
-	//    TeleportPhysics es el punto medio: teleport sin reset físico ni
-	//    colisiones intermedias. Source: Epic UE5.6 ETeleportType docs.
-	if (UWorld* World = GetWorld())
-	{
-		const FVector ActorLoc = GetActorLocation();
-		FHitResult GroundHit;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(RagdollGround), false, this);
-		Params.AddIgnoredActor(this);
-		const FVector TraceStart = ActorLoc + FVector(0.f, 0.f, 100.f);
-		const FVector TraceEnd   = ActorLoc - FVector(0.f, 0.f, 1000.f);
-		bool bFound = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldStatic, Params);
-		if (!bFound)
-		{
-			bFound = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldDynamic, Params);
-		}
-		if (bFound)
-		{
-			float HalfHeight = 88.f;
-			if (UCapsuleComponent* Cap = GetCapsuleComponent())
-			{
-				HalfHeight = Cap->GetScaledCapsuleHalfHeight();
-			}
-			SetActorLocation(FVector(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight),
-				false, nullptr, ETeleportType::TeleportPhysics);
-		}
-	}
+	// 5. (movido al caller — DualMax round 3): el LineTrace + SetActorLocation
+	//    se hacen ANTES de EnterRagdollState. Server lo calcula en SetDeadVisual
+	//    y lo envía como param del Multicast; cliente lo aplica en
+	//    MulticastSetDeadVisual_Implementation antes de llamar EnterRagdollState.
+	//    Esto elimina la divergencia client/server por LineTrace local
+	//    inconsistente y la race condition entre RPC y bReplicateMovement.
 
 	// 6. Collision profile Ragdoll PRIMERO, luego override aislamiento.
 	SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
@@ -2402,13 +2394,24 @@ void ATortugaCharacter::OnRep_IsDead()
 	else         { ExitRagdollState();  }
 }
 
-void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
+void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead, FVector GroundLocation)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[DeathState][MC] %s bDead=%d NetMode=%d HasAuthority=%d Role=%d RemoteRole=%d"),
-		*GetName(), bDead, (int32)GetNetMode(), HasAuthority() ? 1 : 0, (int32)GetLocalRole(), (int32)GetRemoteRole());
+	UE_LOG(LogTemp, Warning, TEXT("[DeathState][MC] %s bDead=%d NetMode=%d HasAuthority=%d Role=%d RemoteRole=%d Ground=(%.0f,%.0f,%.0f)"),
+		*GetName(), bDead, (int32)GetNetMode(), HasAuthority() ? 1 : 0, (int32)GetLocalRole(), (int32)GetRemoteRole(),
+		GroundLocation.X, GroundLocation.Y, GroundLocation.Z);
 	if (HasAuthority()) { return; }  // server ya lo hizo en SetDeadVisual
-	if (bDead) { EnterRagdollState(); }
-	else       { ExitRagdollState();  }
+	if (bDead)
+	{
+		// DualMax round 3: cliente teleporta a la pos GROUND-SNAP autoritativa
+		// recibida con el RPC (no espera replicación de bReplicateMovement, que
+		// llega después del MC). Después arranca sim en la pos correcta.
+		SetActorLocation(GroundLocation, false, nullptr, ETeleportType::TeleportPhysics);
+		EnterRagdollState();
+	}
+	else
+	{
+		ExitRagdollState();
+	}
 	// Notificar BP para que active el raptor, VFX, audio de muerte, etc.
 	OnDeathVisualSet(bDead);
 }
