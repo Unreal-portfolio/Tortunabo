@@ -12,11 +12,12 @@
 
 ATN_PhysicsObjectActor::ATN_PhysicsObjectActor()
 {
-	// Tick DESHABILITADO por default. Solo se activa en BeginPlay si
-	// bEnableAntiPhaseThrough=true en el BP. Sin esto, el Tick corría aunque
-	// bEnableAntiPhaseThrough=false (early-exit) y podía interferir en algunos
-	// casos. Ahora el actor no tiene tick hasta que explícitamente se activa.
-	PrimaryActorTick.bCanEverTick = false;
+	// bCanEverTick DEBE configurarse en el ctor (el motor registra la TickFunction
+	// en PostInitializeComponents, antes de BeginPlay → cambiarlo después NO surte
+	// efecto). bStartWithTickEnabled=false mantiene el actor sin tickear hasta que
+	// BeginPlay decida activarlo según el modo (kinematic-push o anti-phase-through).
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
@@ -110,7 +111,6 @@ void ATN_PhysicsObjectActor::BeginPlay()
 			// MeshBlock impide al jugador entrar al volumen del detector).
 			PushDetector->OnComponentBeginOverlap.AddDynamic(this, &ATN_PhysicsObjectActor::OnPushDetectorBeginOverlap);
 
-			PrimaryActorTick.bCanEverTick = true;
 			SetActorTickEnabled(true);
 		}
 		else
@@ -136,7 +136,6 @@ void ATN_PhysicsObjectActor::BeginPlay()
 			// Activar Tick solo si el BP activó anti-phase-through. Default off.
 			if (bEnableAntiPhaseThrough)
 			{
-				PrimaryActorTick.bCanEverTick = true;
 				SetActorTickEnabled(true);
 			}
 		}
