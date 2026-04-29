@@ -2170,7 +2170,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	ForceNetUpdate();
 
 	UE_LOG(LogTemp, Warning, TEXT("[DeathState][SERVER] %s SetDeadVisual(%d) bIsDead=%d RepMove=%d Dormant=%d Role=%d"),
-		*GetName(), bDead, bIsDead, GetReplicateMovement(), (int32)NetDormancy, (int32)GetLocalRole());
+		*GetName(), bDead, bIsDead, IsReplicatingMovement() ? 1 : 0, (int32)NetDormancy, (int32)GetLocalRole());
 
 	USkeletalMeshComponent* SkelMesh = GetMesh();
 	if (bDead)
