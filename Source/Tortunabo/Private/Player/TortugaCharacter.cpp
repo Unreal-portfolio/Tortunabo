@@ -2161,6 +2161,16 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	if (!HasAuthority()) { return; }
 
 	bIsDead = bDead;
+	// DualMax round 2 — Codex CRITICAL: garantizar entrega del UPROPERTY replicado
+	// a clientes especteadores. ForceNetUpdate fuerza al actor a entrar en next
+	// replication pass; FlushNetDormancy despierta el actor si estaba dormant
+	// (caso reportado: tras revive previo, segunda muerte no disparaba OnRep_IsDead
+	// en cliente especteador porque cliente creía bIsDead=true).
+	FlushNetDormancy();
+	ForceNetUpdate();
+
+	UE_LOG(LogTemp, Warning, TEXT("[DeathState][SERVER] %s SetDeadVisual(%d) bIsDead=%d RepMove=%d Dormant=%d Role=%d"),
+		*GetName(), bDead, bIsDead, GetReplicateMovement(), (int32)NetDormancy, (int32)GetLocalRole());
 
 	USkeletalMeshComponent* SkelMesh = GetMesh();
 	if (bDead)
@@ -2197,6 +2207,12 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 void ATortugaCharacter::EnterRagdollState()
 {
 	USkeletalMeshComponent* SkelMesh = GetMesh();
+	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll][ENTER_BEGIN] %s NetMode=%d Role=%d MeshSim=%d Bodies=%d PA=%s"),
+		*GetName(), (int32)GetNetMode(), (int32)GetLocalRole(),
+		SkelMesh && SkelMesh->IsSimulatingPhysics() ? 1 : 0,
+		SkelMesh ? SkelMesh->Bodies.Num() : -1,
+		SkelMesh && SkelMesh->GetPhysicsAsset() ? TEXT("YES") : TEXT("NO"));
+
 	if (!SkelMesh || !SkelMesh->GetPhysicsAsset())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] EnterRagdollState abortado — SkM o PhysicsAsset null en %s"), *GetName());
@@ -2206,6 +2222,8 @@ void ATortugaCharacter::EnterRagdollState()
 	// Idempotente: si ya simula no re-arranca.
 	if (SkelMesh->IsSimulatingPhysics())
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[Ragdoll][EARLY_OUT_ALREADY_SIM] %s Bodies=%d"),
+			*GetName(), SkelMesh->Bodies.Num());
 		return;
 	}
 
@@ -2245,11 +2263,14 @@ void ATortugaCharacter::EnterRagdollState()
 	//    v2 (Codex review): el +5cm extra metía la mitad inferior de los bodies
 	//    DENTRO del suelo (los bodies ocupan el volumen de la cápsula tras la
 	//    activación, no solo su pivot). Reposicionar al ras = body justo apoyado.
-	//    v3 (Triple Mode round 2 — Gemini 9/10): ResetPhysics → None. ResetPhysics
-	//    zerea velocity acumulada del actor (player corriendo al morir) que entra
-	//    al solver como input → "atascado" inicial. None preserva momentum del
-	//    actor al teleport; el zero explícito de SetAllPhysicsLinearVelocity más
-	//    abajo garantiza que el SkM arranque sin velocity heredada del solver.
+	//    v3 (Triple Mode round 2): ResetPhysics → None. ResetPhysics zereaba
+	//    velocity acumulada del actor → "atascado" inicial.
+	//    v4 (DualMax round 1 — Codex CRITICAL): None → TeleportPhysics. None es
+	//    "continuous movement" (sweep): UE actualiza velocidad en función del
+	//    delta y permite colisiones durante el cambio → inyecta velocity justo
+	//    antes de activar Chaos = "MAYOR fuerza de lanzado" reportado.
+	//    TeleportPhysics es el punto medio: teleport sin reset físico ni
+	//    colisiones intermedias. Source: Epic UE5.6 ETeleportType docs.
 	if (UWorld* World = GetWorld())
 	{
 		const FVector ActorLoc = GetActorLocation();
@@ -2271,7 +2292,7 @@ void ATortugaCharacter::EnterRagdollState()
 				HalfHeight = Cap->GetScaledCapsuleHalfHeight();
 			}
 			SetActorLocation(FVector(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight),
-				false, nullptr, ETeleportType::None);
+				false, nullptr, ETeleportType::TeleportPhysics);
 		}
 	}
 
@@ -2288,23 +2309,12 @@ void ATortugaCharacter::EnterRagdollState()
 	//    que se veía como "vuela lentamente sin gravedad". Bodies arrancan sim
 	//    primero dictando pose; blend se activa después con bodies ya en control.)
 
-	// 8. Damping bajo en TODOS los bodies. LinearDamping/AngularDamping alto
-	//    hace que el cuerpo se sienta viscoso/rígido. Reset a 0 → trapo flácido.
-	//    Iteramos por bodies porque BodyInstance.UpdateDampingProperties solo
-	//    afecta el body raíz; los del physics asset usan sus instances individuales.
-	if (UPhysicsAsset* PhysAsset = SkelMesh->GetPhysicsAsset())
-	{
-		for (int32 i = 0; i < SkelMesh->Bodies.Num(); ++i)
-		{
-			FBodyInstance* Body = SkelMesh->Bodies[i];
-			if (Body)
-			{
-				Body->LinearDamping = 0.f;
-				Body->AngularDamping = 0.f;
-				Body->UpdateDampingProperties();
-			}
-		}
-	}
+	// 8. Damping: dejar valores del PhysicsAsset (NO forzar 0). DualMax round 2
+	//    — Codex CRITICAL: damping=0 era mala idea para cadáveres porque Chaos
+	//    tenía menos disipación de energía → micro-vibración persistente al
+	//    asentarse (jitter reportado). El PhysicsAsset del mannequin ya tiene
+	//    damping moderado calibrado. Si en playtests el ragdoll sigue
+	//    micro-vibrando, aplicar uniforme: LinearDamping=0.8, AngularDamping=1.5.
 
 	// 9. Activar simulación en TODOS los bodies. Llamar SOLO SetAllBodies; añadir
 	//    SetSimulatePhysics(true) puede sobrescribir el state del root body que
@@ -2380,6 +2390,12 @@ void ATortugaCharacter::ExitRagdollState()
 
 void ATortugaCharacter::OnRep_IsDead()
 {
+	USkeletalMeshComponent* SkM = GetMesh();
+	UE_LOG(LogTemp, Warning, TEXT("[DeathState][ONREP] %s bIsDead=%d NetMode=%d Role=%d RemoteRole=%d MeshSim=%d Bodies=%d PA=%s"),
+		*GetName(), bIsDead, (int32)GetNetMode(), (int32)GetLocalRole(), (int32)GetRemoteRole(),
+		SkM && SkM->IsSimulatingPhysics() ? 1 : 0,
+		SkM ? SkM->Bodies.Num() : -1,
+		SkM && SkM->GetPhysicsAsset() ? TEXT("YES") : TEXT("NO"));
 	// JIP late-join: cliente recibe bIsDead replicado y aplica el state
 	// correspondiente vía las helpers compartidas (mismo patrón canónico).
 	if (bIsDead) { EnterRagdollState(); }
@@ -2388,6 +2404,8 @@ void ATortugaCharacter::OnRep_IsDead()
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 {
+	UE_LOG(LogTemp, Warning, TEXT("[DeathState][MC] %s bDead=%d NetMode=%d HasAuthority=%d Role=%d RemoteRole=%d"),
+		*GetName(), bDead, (int32)GetNetMode(), HasAuthority() ? 1 : 0, (int32)GetLocalRole(), (int32)GetRemoteRole());
 	if (HasAuthority()) { return; }  // server ya lo hizo en SetDeadVisual
 	if (bDead) { EnterRagdollState(); }
 	else       { ExitRagdollState();  }
