@@ -1956,12 +1956,16 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
-			// Chaos: SetEnableGravity component-level NO propaga a FBodyInstance
-			// individuales una vez los bodies simulan. Loop explícito = mismo patrón
-			// que EnterRagdollState (death) → consistencia entre rutas knockdown/death.
+			// Chaos (Triple Mode round 2): bEnableGravity + UpdatePhysicsProperties
+			// fuerza al solver a aplicar el cambio inmediatamente. Mismo patrón
+			// que EnterRagdollState (death) → consistencia entre rutas.
 			for (FBodyInstance* Body : SkelMesh->Bodies)
 			{
-				if (Body) { Body->SetEnableGravity(true); }
+				if (Body)
+				{
+					Body->bEnableGravity = true;
+					Body->UpdatePhysicsProperties();
+				}
 			}
 			SkelMesh->SetAllPhysicsLinearVelocity(KnockdownInitialVel);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
@@ -2163,14 +2167,13 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	if (bDead)
 	{
 		// Multiplayer ragdoll: cada máquina simula localmente con state idéntico.
-		// Si bReplicateMovement queda ON durante death, el server pisa la sim del
-		// cliente con SetActorLocation(pelvis) cada tick → cliente "se atasca"
-		// momentos y luego "se suelta" cuando dejan de pelearse las correcciones
-		// de red vs sim local. Apagar replicación deja a cada máquina simular
-		// libremente; convergen porque arrancan con el mismo state inicial.
-		SetReplicateMovement(false);
-
+		// EnterRagdollState() PRIMERO (incluye line trace + SetActorLocation
+		// ground-snap). Después SetReplicateMovement(false). Triple Mode round 2
+		// — Gemini 8/10: cliente debe recibir el ground-snap server (vía
+		// bReplicateMovement aún ON) ANTES de cortar replicación, sino arranca
+		// la sim cliente desde la pos vieja y diverge inmediatamente.
 		EnterRagdollState();
+		SetReplicateMovement(false);
 
 		if (RagdollFreezeAfterSeconds > 0.f)
 		{
@@ -2262,9 +2265,11 @@ void ATortugaCharacter::EnterRagdollState()
 	//    v2 (Codex review): el +5cm extra metía la mitad inferior de los bodies
 	//    DENTRO del suelo (los bodies ocupan el volumen de la cápsula tras la
 	//    activación, no solo su pivot). Reposicionar al ras = body justo apoyado.
-	//    ResetPhysics > TeleportPhysics: además de mover sin impulso, RESETEA
-	//    la velocity acumulada que el solver hubiera previsto, eliminando el
-	//    "atrapado/rígido" inicial por penetración residual.
+	//    v3 (Triple Mode round 2 — Gemini 9/10): ResetPhysics → None. ResetPhysics
+	//    zerea velocity acumulada del actor (player corriendo al morir) que entra
+	//    al solver como input → "atascado" inicial. None preserva momentum del
+	//    actor al teleport; el zero explícito de SetAllPhysicsLinearVelocity más
+	//    abajo garantiza que el SkM arranque sin velocity heredada del solver.
 	if (UWorld* World = GetWorld())
 	{
 		const FVector ActorLoc = GetActorLocation();
@@ -2286,7 +2291,7 @@ void ATortugaCharacter::EnterRagdollState()
 				HalfHeight = Cap->GetScaledCapsuleHalfHeight();
 			}
 			SetActorLocation(FVector(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight),
-				false, nullptr, ETeleportType::ResetPhysics);
+				false, nullptr, ETeleportType::None);
 		}
 	}
 
@@ -2296,11 +2301,12 @@ void ATortugaCharacter::EnterRagdollState()
 	SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 	SkelMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 
-	// 7. CRÍTICO — bBlendPhysics=true ANTES de SimulatePhysics. Esto le dice al
-	//    SkM que la simulación física DOMINE sobre la pose anim. Sin esto, los
-	//    bones siguen mezclando con la pose anim cada frame → torque del solver
-	//    por la diferencia → cuerpo sale despedido.
-	SkelMesh->bBlendPhysics = true;
+	// 7. (movido al paso 11 — bBlendPhysics se setea AL FINAL, después de
+	//    SetSimulate + Wake. Triple Mode round 2 — Gemini 8/10: setear
+	//    bBlendPhysics ANTES de simulate hacía que los bodies pelearan con la
+	//    kinematic anim pose; el solver aplicaba constraint resolution suave
+	//    que se veía como "vuela lentamente sin gravedad". Bodies arrancan sim
+	//    primero dictando pose; blend se activa después con bodies ya en control.)
 
 	// 8. Damping bajo en TODOS los bodies. LinearDamping/AngularDamping alto
 	//    hace que el cuerpo se sienta viscoso/rígido. Reset a 0 → trapo flácido.
@@ -2326,12 +2332,17 @@ void ATortugaCharacter::EnterRagdollState()
 	SkelMesh->SetAllBodiesSimulatePhysics(true);
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 	SkelMesh->SetEnableGravity(true);
-	// CRÍTICO Chaos: SetEnableGravity en el component NO propaga a FBodyInstance
-	// individuales. Sin este loop los bodies simulan como dynamics pero sin gravity
-	// → flotan indefinidamente con cualquier impulso residual de la pose anim.
+	// Chaos (Triple Mode round 2 — Gemini): Body->SetEnableGravity puede ser
+	// ignorada si los bodies aún no se "dirtied". Setear bEnableGravity directo
+	// + UpdatePhysicsProperties() fuerza al solver Chaos a aceptar el cambio
+	// inmediatamente, ANTES del primer Wake.
 	for (FBodyInstance* Body : SkelMesh->Bodies)
 	{
-		if (Body) { Body->SetEnableGravity(true); }
+		if (Body)
+		{
+			Body->bEnableGravity = true;
+			Body->UpdatePhysicsProperties();
+		}
 	}
 
 	// 10. Vel inicial CERO defensivo (después de simulate, no antes — antes los
@@ -2340,7 +2351,12 @@ void ATortugaCharacter::EnterRagdollState()
 	SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 	SkelMesh->WakeAllRigidBodies();
 
-	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimMode=Custom · BlendPhysics=true · damping=0 · bodies=%d"),
+	// 11. bBlendPhysics AL FINAL — bodies ya simulan + están awake; ahora el
+	//     blend permite que la sim física domine sobre cualquier pose anim
+	//     residual sin que los bodies tengan que pelear con kinematic targets.
+	SkelMesh->bBlendPhysics = true;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimMode=Custom · BlendPhysics=true(post-wake) · damping=0 · bodies=%d"),
 		*GetName(), HasAuthority(), SkelMesh->Bodies.Num());
 }
 
@@ -2409,13 +2425,12 @@ void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
 		// NO SetAllBodiesSimulatePhysics(false) — eso era el bug del T-Pose.
 		SkelMesh->PutAllRigidBodiesToSleep();
 	}
-	SkelMesh->SetEnableGravity(false);
-	// Chaos: simétrico al ENTER — apagar gravity por body para que el sleep no
-	// sea reawakened por gravedad residual aplicada a bodies dynamics.
-	for (FBodyInstance* Body : SkelMesh->Bodies)
-	{
-		if (Body) { Body->SetEnableGravity(false); }
-	}
+	// Triple Mode round 2 — Codex 9/10 CRITICAL: NO desactivar gravity en freeze.
+	// Si el timer (RagdollFreezeAfterSeconds=1.5f) dispara mientras el cuerpo
+	// aún cae, apagar gravity dejaba al cuerpo suspendido. Si los bodies se
+	// despertaban por cualquier razón, salían con velocity residual SIN gravedad
+	// → "vuela lentamente sin caer" (síntoma reportado). Mantener gravity activa:
+	// el sleep es lo que congela; si algo despierta los bodies, caen normal.
 	SkelMesh->bBlendPhysics = true;
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 
