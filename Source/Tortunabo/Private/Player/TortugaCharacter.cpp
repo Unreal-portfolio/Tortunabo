@@ -2148,6 +2148,10 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 
 	MulticastSetDeadVisual(bDead);
 
+	// Servidor / listen-server: disparar el evento BP aquí (los clientes lo reciben
+	// dentro de MulticastSetDeadVisual_Implementation).
+	OnDeathVisualSet(bDead);
+
 	UE_LOG(LogTemp, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("RAGDOLL") : TEXT("ALIVE"));
 }
 
@@ -2366,6 +2370,8 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
 	if (HasAuthority()) { return; }  // server ya lo hizo en SetDeadVisual
 	if (bDead) { EnterRagdollState(); }
 	else       { ExitRagdollState();  }
+	// Notificar BP para que active el raptor, VFX, audio de muerte, etc.
+	OnDeathVisualSet(bDead);
 }
 
 void ATortugaCharacter::HideLimbs()

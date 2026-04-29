@@ -12,6 +12,7 @@ ATN_SeagullActor::ATN_SeagullActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
+	bAlwaysRelevant = true;      // Visible para espectadores aunque estén lejos
 	// No replicamos movimiento: cada máquina lo simula localmente.
 	SetReplicateMovement(false);
 

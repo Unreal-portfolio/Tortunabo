@@ -42,11 +42,13 @@ void UTN_StaminaComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, CurrentStamina, COND_OwnerOnly);
+	// CurrentStamina y bIsExhausted replican a todos (no solo al owner) para que
+	// los espectadores vean la stamina real del jugador que están mirando.
+	DOREPLIFETIME(UTN_StaminaComponent, CurrentStamina);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bIsSprinting, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bSprintRequested, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bUnlimitedStamina, COND_OwnerOnly);
-	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bIsExhausted, COND_OwnerOnly);
+	DOREPLIFETIME(UTN_StaminaComponent, bIsExhausted);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bPostBoostPenaltyActive, COND_OwnerOnly);
 }
 

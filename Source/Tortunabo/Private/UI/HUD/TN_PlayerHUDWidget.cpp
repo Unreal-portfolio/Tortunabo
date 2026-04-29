@@ -48,29 +48,52 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 		BindToPlayerStateScore();
 	}
 
-	// Re-cachear si el pawn cambió (posesión, travel, etc.)
-	if (!CachedStamina.IsValid() || !CachedInventory.IsValid())
+	// ── Stamina source: seguir el ViewTarget para que al espectear se muestre
+	// la stamina del jugador observado, no la del pawn propio (muerto/nulo). ──────
+	{
+		UTN_StaminaComponent* DesiredStamina = nullptr;
+		if (const APlayerController* PC = GetOwningPlayer())
+		{
+			// ViewTarget puede ser el pawn propio o el pawn espectado
+			if (const APawn* ViewPawn = Cast<APawn>(PC->GetViewTarget()))
+			{
+				DesiredStamina = ViewPawn->FindComponentByClass<UTN_StaminaComponent>();
+			}
+		}
+		// Fallback al pawn propio si el ViewTarget no tiene stamina
+		if (!DesiredStamina)
+		{
+			if (const APawn* OwnPawn = GetOwningPlayerPawn())
+			{
+				DesiredStamina = OwnPawn->FindComponentByClass<UTN_StaminaComponent>();
+			}
+		}
+		// Detectar cambio de fuente (propio → espectado o viceversa)
+		if (DesiredStamina != CachedStamina.Get())
+		{
+			const bool bHadStamina = CachedStamina.IsValid();
+			CachedStamina = DesiredStamina;
+			LastStamina       = -1.f;
+			LastWeightPenalty = -1.f;
+			bLastExhausted    = false;
+			UE_LOG(LogTemp, Log, TEXT("[PlayerHUD] Stamina source → %s"),
+				*GetNameSafe(DesiredStamina ? DesiredStamina->GetOwner() : nullptr));
+			(void)bHadStamina;
+		}
+	}
+
+	// ── Inventario: re-cachear si el pawn propio cambió (travel, possession). ──
+	if (!CachedInventory.IsValid())
 	{
 		if (const APawn* Pawn = GetOwningPlayerPawn())
 		{
-			const bool bHadStamina   = CachedStamina.IsValid();
 			const bool bHadInventory = CachedInventory.IsValid();
-
-			CachedStamina   = Pawn->FindComponentByClass<UTN_StaminaComponent>();
 			CachedInventory = Pawn->FindComponentByClass<UTN_InventoryComponent>();
-
-			// Forzar refresh completo cuando los componentes se re-encuentran
-			// (nuevo pawn tras seamless travel). Sin esto, si la stamina tiene
-			// el mismo valor que el último frame, bStaminaChanged=false y los
-			// widgets permanecen ocultos indefinidamente.
-			if ((!bHadStamina && CachedStamina.IsValid()) || (!bHadInventory && CachedInventory.IsValid()))
+			if (!bHadInventory && CachedInventory.IsValid())
 			{
-				LastStamina       = -1.f;
-				LastWeightPenalty = -1.f;
-				bLastExhausted    = false;
-				LastEquippedId    = NAME_None;
-				LastStoredId      = NAME_None;
-				UE_LOG(LogTemp, Log, TEXT("[PlayerHUD] Componentes re-encontrados tras travel — forzando refresh."));
+				LastEquippedId = NAME_None;
+				LastStoredId   = NAME_None;
+				UE_LOG(LogTemp, Log, TEXT("[PlayerHUD] Inventario re-encontrado tras travel — forzando refresh."));
 			}
 		}
 	}

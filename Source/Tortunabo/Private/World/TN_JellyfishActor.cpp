@@ -17,6 +17,7 @@ ATN_JellyfishActor::ATN_JellyfishActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
+	bAlwaysRelevant = true;      // Visible para espectadores aunque estén lejos
 	SetReplicateMovement(false); // La posición se sincroniza una sola vez
 
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));

@@ -714,6 +714,15 @@ private:
 	void ExitRagdollState();
 
 	/**
+	 * Evento BP: llamado en TODAS las máquinas (servidor + clientes) tras aplicar
+	 * el visual de muerte/resurrección. Úsalo en BP_TortugaCharacter para activar
+	 * el raptor, VFX de muerte, etc.
+	 * @param bDead  true = jugador acaba de morir, false = fue revivido.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Death")
+	void OnDeathVisualSet(bool bDead);
+
+	/**
 	 * Multicast: congela el ragdoll en todas las máquinas. Al ser server-auth
 	 * (cliente NO simula físicas localmente), las máquinas remotas solo necesitan
 	 * "congelar" el SKM en su pose actual (que ya seguía la pos del server vía
