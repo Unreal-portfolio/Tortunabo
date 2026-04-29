@@ -1956,6 +1956,13 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 			SkelMesh->SetEnableGravity(true);
+			// Chaos: SetEnableGravity component-level NO propaga a FBodyInstance
+			// individuales una vez los bodies simulan. Loop explícito = mismo patrón
+			// que EnterRagdollState (death) → consistencia entre rutas knockdown/death.
+			for (FBodyInstance* Body : SkelMesh->Bodies)
+			{
+				if (Body) { Body->SetEnableGravity(true); }
+			}
 			SkelMesh->SetAllPhysicsLinearVelocity(KnockdownInitialVel);
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
@@ -2390,6 +2397,12 @@ void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
 		SkelMesh->PutAllRigidBodiesToSleep();
 	}
 	SkelMesh->SetEnableGravity(false);
+	// Chaos: simétrico al ENTER — apagar gravity por body para que el sleep no
+	// sea reawakened por gravedad residual aplicada a bodies dynamics.
+	for (FBodyInstance* Body : SkelMesh->Bodies)
+	{
+		if (Body) { Body->SetEnableGravity(false); }
+	}
 	SkelMesh->bBlendPhysics = true;
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 
