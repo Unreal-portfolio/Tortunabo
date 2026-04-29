@@ -1,5 +1,6 @@
 ﻿#include "World/TN_ButtonInteractable.h"
 #include "Components/ChildActorComponent.h"
+#include "Core/TN_LevelTargetSubsystem.h"
 #include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -176,6 +177,26 @@ void ATN_ButtonInteractable::DeferredInit()
 						MoveTarget = Candidate;
 						break;
 					}
+				}
+			}
+		}
+
+		// 5. Fallback global: UTN_LevelTargetSubsystem. Permite a botones DENTRO
+		//    de un BP_Chunk runtime referenciar actores DEL NIVEL (LVL_Run) que
+		//    el editor de chunk no podía ver al editar (chunk se spawnea después).
+		//    Patrón canónico Epic: WorldSubsystem singleton + componente
+		//    UTN_RegisterAsTargetComponent que los actores del nivel exponen.
+		//    O(1) lookup, sin TActorIterator masivo, sin actor manager en nivel.
+		if (!MoveTarget && !ResolvedMoveComponent.IsValid())
+		{
+			if (UTN_LevelTargetSubsystem* Sub = UTN_LevelTargetSubsystem::Get(this))
+			{
+				MoveTarget = Sub->FindTarget(MoveTargetTag);
+				if (MoveTarget)
+				{
+					UE_LOG(LogTemp, Log,
+						TEXT("[Button] '%s' resolved global tag '%s' → '%s' via LevelTargetSubsystem"),
+						*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(MoveTarget));
 				}
 			}
 		}

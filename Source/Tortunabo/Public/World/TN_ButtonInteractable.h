@@ -30,11 +30,15 @@ enum class EButtonOffsetMode : uint8
  * Replicación: bIsActivated (bool) se replica; tanto servidor como clientes
  * interpolan el target localmente en Tick hacia la posición destino.
  *
- * Resolución del target por MoveTargetTag dentro del chunk BP padre:
+ * Resolución del target por MoveTargetTag (en orden de prioridad):
  *   1. Busca un USceneComponent por nombre en el chunk BP padre.
  *   2. Itera UChildActorComponents del padre → comprueba ActorTag.
  *   3. Fallback: GetAttachedActors del padre.
  *   4. Fallback clientes: TActorIterator filtrando por mismo padre + tag.
+ *   5. Fallback global: UTN_LevelTargetSubsystem (lookup O(1) por FName).
+ *      Permite referenciar actores DEL NIVEL desde botones embebidos en chunks
+ *      runtime. El actor del nivel debe tener UTN_RegisterAsTargetComponent
+ *      con el TargetTag coincidente — se auto-registra en BeginPlay.
  *
  * El chunk BP padre se resuelve via GetParentActor() > GetOwner() > GetAttachParentActor().
  */
