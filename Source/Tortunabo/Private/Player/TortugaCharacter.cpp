@@ -2173,17 +2173,10 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 		// la sim cliente desde la pos vieja y diverge inmediatamente.
 		EnterRagdollState();
 		SetReplicateMovement(false);
-
-		if (RagdollFreezeAfterSeconds > 0.f)
-		{
-			GetWorldTimerManager().SetTimer(RagdollFreezeTimerHandle, this,
-				&ATortugaCharacter::ServerFireFreezeRagdoll, RagdollFreezeAfterSeconds, false);
-		}
 	}
 	else
 	{
 		bCanAirDash = true;
-		GetWorldTimerManager().ClearTimer(RagdollFreezeTimerHandle);
 		ExitRagdollState();
 
 		// Restaurar movement replication para el pawn revivido — el revive
@@ -2199,18 +2192,6 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	OnDeathVisualSet(bDead);
 
 	UE_LOG(LogTemp, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("RAGDOLL") : TEXT("ALIVE"));
-}
-
-void ATortugaCharacter::ServerFireFreezeRagdoll()
-{
-	if (!HasAuthority()) { return; }
-
-	// Server-auth puro: Tick override ya ha estado sincronizando ActorLocation
-	// con root bone vía bReplicateMovement. Los clientes ya están donde toca.
-	// El freeze solo necesita: detener SimulatePhysics en server (cliente no
-	// tiene físicas activas) y multicastear para que cliente "selle" su SKM
-	// en la pose actual interpolada.
-	MulticastFreezeRagdoll();
 }
 
 void ATortugaCharacter::EnterRagdollState()
@@ -2403,35 +2384,6 @@ void ATortugaCharacter::OnRep_IsDead()
 	// correspondiente vía las helpers compartidas (mismo patrón canónico).
 	if (bIsDead) { EnterRagdollState(); }
 	else         { ExitRagdollState();  }
-}
-
-void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
-{
-	// Patrón canónico Epic (v2 — Codex+Gemini consensus): mantener SimulatePhysics
-	// VIVO, solo dormir los bodies. SimulatePhysics(false) pierde authority sobre la
-	// pose → bones recalculan desde RefSkeleton (bind pose) → T-Pose post-freeze.
-	// PutAllRigidBodiesToSleep() congela posición sin romper la fuente de pose:
-	// los bodies siguen dictando bones, pero no hay solver activo gastando ticks.
-	USkeletalMeshComponent* SkelMesh = GetMesh();
-	if (!SkelMesh) { return; }
-
-	if (SkelMesh->IsSimulatingPhysics())
-	{
-		SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
-		SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-		// NO SetAllBodiesSimulatePhysics(false) — eso era el bug del T-Pose.
-		SkelMesh->PutAllRigidBodiesToSleep();
-	}
-	// Triple Mode round 2 — Codex 9/10 CRITICAL: NO desactivar gravity en freeze.
-	// Si el timer (RagdollFreezeAfterSeconds=1.5f) dispara mientras el cuerpo
-	// aún cae, apagar gravity dejaba al cuerpo suspendido. Si los bodies se
-	// despertaban por cualquier razón, salían con velocity residual SIN gravedad
-	// → "vuela lentamente sin caer" (síntoma reportado). Mantener gravity activa:
-	// el sleep es lo que congela; si algo despierta los bodies, caen normal.
-	SkelMesh->bBlendPhysics = true;
-	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
-
-	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (sleep) (%s) authority=%d"), *GetName(), HasAuthority());
 }
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)

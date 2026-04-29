@@ -713,22 +713,6 @@ private:
 	/** Reverso de EnterRagdollState: detiene simulación y restaura state vivo. */
 	void ExitRagdollState();
 
-	/**
-	 * Multicast: congela el ragdoll en todas las máquinas. Al ser server-auth
-	 * (cliente NO simula físicas localmente), las máquinas remotas solo necesitan
-	 * "congelar" el SKM en su pose actual (que ya seguía la pos del server vía
-	 * bReplicateMovement). El server detiene SimulatePhysics y el resto sigue
-	 * por replicación normal de transform.
-	 */
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastFreezeRagdoll();
-
-	/** Helper server-side: line trace al suelo + freeze. */
-	void ServerFireFreezeRagdoll();
-
-	/** Timer del freeze post-ragdoll. Iniciado en SetDeadVisual(true). */
-	FTimerHandle RagdollFreezeTimerHandle;
-
 	/** Oculta extremidades, cabeza, cola y casco (solo visual). */
 	void HideLimbs();
 
@@ -848,19 +832,6 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
 	FName RagdollCollisionProfile = TEXT("Ragdoll");
-
-
-	/**
-	 * Tras N segundos en SimulatePhysics, el server hace Multicast para que TODAS
-	 * las máquinas congelen la simulación (SetAllBodiesPhysicsBlendWeight(0)).
-	 * Resultado: el ragdoll cae hasta el suelo, queda en pose final y a partir de
-	 * ahí todos los clientes ven exactamente lo mismo (la pose congelada + actor
-	 * location replicada por bReplicateMovement). Sin esto, cada cliente simula
-	 * su propio ragdoll local y diverge visualmente.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown",
-		meta = (ClampMin = "0.1"))
-	float RagdollFreezeAfterSeconds = 1.5f;
 
 	/**
 	 * Hueso de referencia para el tracking de posición durante el ragdoll de muerte.
