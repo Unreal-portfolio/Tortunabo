@@ -456,6 +456,30 @@ void ATortugaCharacter::Tick(float DeltaTime)
 		}
 	}
 
+	// ── Ragdoll de muerte: servidor rastrea el hueso pelvis ─────────────────────
+	// Sin este tracking, el actor (cápsula) queda fijo en el punto de muerte.
+	// bReplicateMovement enviaría esa posición estancada → clientes ven el body
+	// "flotando" (física local vs corrección de red) y el espectador lo ve
+	// enterrado (actor en Z muerte ≠ huesos físicos en Z suelo).
+	// Al mover el actor al pelvis cada tick, la posición replicada sigue al cuerpo
+	// mientras cae y los clientes/espectadores lo ven caer correctamente.
+	if (HasAuthority() && bIsDead)
+	{
+		if (USkeletalMeshComponent* SkelMesh = GetMesh())
+		{
+			if (SkelMesh->IsSimulatingPhysics())
+			{
+				const int32 BoneIdx = SkelMesh->GetBoneIndex(RagdollTrackingBone);
+				if (BoneIdx != INDEX_NONE)
+				{
+					const FVector BoneLoc = SkelMesh->GetBoneLocation(
+						RagdollTrackingBone, EBoneSpaces::WorldSpace);
+					SetActorLocation(BoneLoc, false, nullptr, ETeleportType::TeleportPhysics);
+				}
+			}
+		}
+	}
+
 	TickDive(DeltaTime);           // dive physics recovery + procedural animation
 	TickJumpAnim(DeltaTime);       // jump procedural animation (suppressed during dive)
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)

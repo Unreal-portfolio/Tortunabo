@@ -6,6 +6,8 @@
 #include "Net/UnrealNetwork.h"
 #include "EngineUtils.h"
 #include "CollisionQueryParams.h"
+#include "Engine/OverlapResult.h"
+#include "Engine/World.h"          // FOverlapResult full definition
 #include "UObject/ConstructorHelpers.h"
 
 ATN_SeagullDroppingActor::ATN_SeagullDroppingActor()

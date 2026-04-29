@@ -714,15 +714,6 @@ private:
 	void ExitRagdollState();
 
 	/**
-	 * Evento BP: llamado en TODAS las máquinas (servidor + clientes) tras aplicar
-	 * el visual de muerte/resurrección. Úsalo en BP_TortugaCharacter para activar
-	 * el raptor, VFX de muerte, etc.
-	 * @param bDead  true = jugador acaba de morir, false = fue revivido.
-	 */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Death")
-	void OnDeathVisualSet(bool bDead);
-
-	/**
 	 * Multicast: congela el ragdoll en todas las máquinas. Al ser server-auth
 	 * (cliente NO simula físicas localmente), las máquinas remotas solo necesitan
 	 * "congelar" el SKM en su pose actual (que ya seguía la pos del server vía
@@ -872,6 +863,15 @@ protected:
 	float RagdollFreezeAfterSeconds = 1.5f;
 
 	/**
+	 * Hueso de referencia para el tracking de posición durante el ragdoll de muerte.
+	 * El servidor mueve el actor a este hueso cada tick → bReplicateMovement envía
+	 * la posición real del cuerpo mientras cae, no el punto de muerte estancado.
+	 * "pelvis" es el valor correcto para el esqueleto Mannequin/UE5 estándar.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown")
+	FName RagdollTrackingBone = TEXT("pelvis");
+
+	/**
 	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
 	 * El pawn NO se destruye: queda como cadáver interactuable para revive.
 	 */
@@ -912,6 +912,15 @@ protected:
 	 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "BigHead|Mareo")
 	void OnMareoEffect(float Duration);
+
+	/**
+	 * Llamado en TODAS las máquinas (servidor + clientes) tras aplicar el visual
+	 * de muerte o resurrección. Úsalo en BP_TortugaCharacter para activar el raptor,
+	 * VFX de muerte, audio, etc.
+	 * @param bDead  true = jugador acaba de morir, false = fue revivido.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Death")
+	void OnDeathVisualSet(bool bDead);
 
 	FTimerHandle BigHeadTimerHandle;
 	FTimerHandle MareoTimerHandle;
