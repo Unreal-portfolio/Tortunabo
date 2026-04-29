@@ -57,10 +57,13 @@ protected:
 
 	/** Radio extra (cm) del PushDetector más allá del bounding del mesh.
 	 *  Margen para que el overlap detecte la tortuga antes de que la collision
-	 *  del mesh la bloquee — sino el cubo nunca empieza a moverse. */
+	 *  del mesh la bloquee — sino el cubo nunca empieza a moverse.
+	 *  60cm = la cápsula del jugador (radio ~34) entra al detector con margen
+	 *  cómodo (~26cm de overlap interior) antes de tocar la superficie del
+	 *  Mesh (Block to Pawn). Subir si el cubo es muy grande / cápsula no detecta. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Physics|KinematicPush",
 		meta = (ClampMin = "5.0", EditCondition = "bUseKinematicPush"))
-	float PushDetectionRadiusExtra = 25.f;
+	float PushDetectionRadiusExtra = 60.f;
 
 	/** Velocidad máxima (cm/s) que el cubo puede alcanzar siendo empujado.
 	 *  Cap de seguridad — incluso con varios jugadores empujando, el cubo no
