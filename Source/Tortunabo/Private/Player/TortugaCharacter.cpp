@@ -2211,6 +2211,12 @@ void ATortugaCharacter::EnterRagdollState()
 	// 5. Line trace al suelo: posicionar actor encima del suelo real para que
 	//    el SkM ragdoll no arranque penetrando geometría → solver no aplica
 	//    impulso de resolución de penetración (que era la causa del lanzamiento).
+	//    v2 (Codex review): el +5cm extra metía la mitad inferior de los bodies
+	//    DENTRO del suelo (los bodies ocupan el volumen de la cápsula tras la
+	//    activación, no solo su pivot). Reposicionar al ras = body justo apoyado.
+	//    ResetPhysics > TeleportPhysics: además de mover sin impulso, RESETEA
+	//    la velocity acumulada que el solver hubiera previsto, eliminando el
+	//    "atrapado/rígido" inicial por penetración residual.
 	if (UWorld* World = GetWorld())
 	{
 		const FVector ActorLoc = GetActorLocation();
@@ -2231,8 +2237,8 @@ void ATortugaCharacter::EnterRagdollState()
 			{
 				HalfHeight = Cap->GetScaledCapsuleHalfHeight();
 			}
-			SetActorLocation(FVector(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight + 5.f),
-				false, nullptr, ETeleportType::TeleportPhysics);
+			SetActorLocation(FVector(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight),
+				false, nullptr, ETeleportType::ResetPhysics);
 		}
 	}
 
