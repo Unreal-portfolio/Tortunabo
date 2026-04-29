@@ -63,6 +63,14 @@ public:
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnOccupancyChanged, ATN_PressurePlate*, bool);
 	FOnOccupancyChanged OnOccupancyChanged;
 
+	/**
+	 * Tag del ATN_PressurePlateGroupManager al que esta placa debe auto-registrarse.
+	 * Útil cuando la placa está en un chunk y el manager está en el nivel.
+	 * Dejar en NAME_None si el manager la referencia directamente por eyedropper.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PressurePlate")
+	FName ManagerTag = NAME_None;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PressurePlate")
 	TObjectPtr<UStaticMeshComponent> PlateMesh;
@@ -86,6 +94,10 @@ protected:
 	/** Sonido al liberar la placa. */
 	UPROPERTY(EditDefaultsOnly, Category = "PressurePlate|Audio")
 	TObjectPtr<USoundBase> ReleaseSound;
+
+protected:
+	// Deferred self-registration with manager (run one tick after BeginPlay)
+	void DeferredSelfRegisterWithManager();
 
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_bOccupied)
@@ -139,6 +151,14 @@ protected:
 	TArray<TObjectPtr<ATN_PressurePlate>> ManagedPlates;
 
 	/**
+	 * Tags para descubrir placas automáticamente en BeginPlay.
+	 * Complementa ManagedPlates para cubrir placas en chunks que no se pueden
+	 * asignar por eyedropper. Combinado con auto-registro desde la propia placa.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PlateGroup")
+	TArray<FName> ManagedPlateTags;
+
+	/**
 	 * Acciones aplicadas cuando la condición se cumple.
 	 * Reusa el struct FTN_TransformAction del ButtonGroupManager.
 	 */
@@ -170,6 +190,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "PlateGroup|Audio")
 	TObjectPtr<USoundBase> ConditionLostSound;
 
+public:
+	/**
+	 * Registra una placa con este gestor en runtime (llamado por ATN_PressurePlate
+	 * cuando tiene ManagerTag configurado). Idempotente: ignora duplicados.
+	 * Solo tiene efecto en el servidor.
+	 */
+	void RegisterPlate(ATN_PressurePlate* Plate);
+
 private:
 	bool bTriggered    = false;
 	bool bConditionMet = false;
@@ -183,6 +211,9 @@ private:
 	void ApplyTriggerActions();
 
 	int32 GetEffectiveThreshold(int32 AlivePlayers) const;
+
+	/** Scan diferido (un tick después de BeginPlay) para registrar placas por tag. */
+	void DeferredTagPlateScan();
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastNotifyConditionChange(bool bMet);

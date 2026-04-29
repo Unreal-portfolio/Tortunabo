@@ -53,9 +53,9 @@ protected:
 	float InitialDelay = 3.f;
 
 	/** Número máximo de cacas activas simultáneas de esta zona. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DroppingSpawnZone",
-		meta = (ClampMin = "1", ClampMax = "8"))
-	int32 MaxConcurrentDrops = 2;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DroppingSpawnZone",
+		meta = (ClampMin = "1", ClampMax = "20"))
+	int32 MaxConcurrentDrops = 5;
 
 private:
 	FTimerHandle SpawnTimerHandle;

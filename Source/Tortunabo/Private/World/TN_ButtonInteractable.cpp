@@ -1,4 +1,5 @@
 ﻿#include "World/TN_ButtonInteractable.h"
+#include "World/TN_ButtonGroupManager.h"
 #include "Components/ChildActorComponent.h"
 #include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
@@ -279,6 +280,21 @@ void ATN_ButtonInteractable::DeferredInit()
 		if (OffsetMode == EButtonOffsetMode::CyclicStates && CurrentStateIndex != 0)
 		{
 			bIsMoving = true;
+		}
+	}
+
+	// ── Auto-registro con ButtonGroupManager por tag ─────────────────────────
+	// Si este botón está en un chunk y el manager está en el nivel, buscamos
+	// el manager por su ActorTag y nos registramos. Solo en servidor (authority).
+	if (HasAuthority() && ManagerTag != NAME_None)
+	{
+		for (TActorIterator<ATN_ButtonGroupManager> It(GetWorld()); It; ++It)
+		{
+			if (It->ActorHasTag(ManagerTag))
+			{
+				It->RegisterButton(this);
+				break;
+			}
 		}
 	}
 }

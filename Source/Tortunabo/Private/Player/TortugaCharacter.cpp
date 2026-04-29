@@ -2166,9 +2166,47 @@ void ATortugaCharacter::ServerFireFreezeRagdoll()
 void ATortugaCharacter::EnterRagdollState()
 {
 	USkeletalMeshComponent* SkelMesh = GetMesh();
-	if (!SkelMesh || !SkelMesh->GetPhysicsAsset())
+	if (!SkelMesh) { return; }
+
+	// 1. Snapshot SIEMPRE primero — ExitRagdollState lo necesita tanto en la ruta
+	//    física como en el fallback sin PhysicsAsset.
+	SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
+	SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+
+	// ── Fallback sin PhysicsAsset ────────────────────────────────────────────
+	// Sin physics asset no podemos simular ragdoll real. En su lugar:
+	//   · SetAnimationMode(Custom) congela el ABP en la pose actual (evita T-pose).
+	//   · Tumbamos el mesh 90° (Pitch) → el personaje cae de cara hacia adelante.
+	//   · Desactivamos cápsula y CMC igual que en la ruta física.
+	// ExitRagdollState restaura todo via Snapshot + SetAnimationMode(ABP).
+	if (!SkelMesh->GetPhysicsAsset())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] EnterRagdollState abortado — SkM o PhysicsAsset null en %s"), *GetName());
+		if (UAnimInstance* AnimInst = SkelMesh->GetAnimInstance())
+		{
+			AnimInst->StopAllMontages(0.f);
+		}
+		// Congelar pose actual — previene T-pose cuando el ABP deja de tener input
+		SkelMesh->SetAnimationMode(EAnimationMode::AnimationCustomMode);
+		SkelMesh->bBlendPhysics = false;
+
+		// Tilt 90° hacia adelante: el personaje "cae de cara"
+		// Preservamos Yaw y Roll del snapshot para que caiga en la dirección que mira
+		const FRotator SnapRot = SnapshotSkelMeshRelTransform.GetRotation().Rotator();
+		SkelMesh->SetRelativeRotation(FRotator(90.f, SnapRot.Yaw, SnapRot.Roll));
+
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+		{
+			CMC->StopMovementImmediately();
+			CMC->DisableMovement();
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+			CMC->SetComponentTickEnabled(false);
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] FALLBACK (sin PhysicsAsset) — pose congelada + tilt 90 en %s"), *GetName());
 		return;
 	}
 
@@ -2178,7 +2216,7 @@ void ATortugaCharacter::EnterRagdollState()
 		return;
 	}
 
-	// 1. CRÍTICO — desactivar el AnimBP entero. SetAnimationMode(AnimationCustomMode)
+	// 2. CRÍTICO — desactivar el AnimBP entero. SetAnimationMode(AnimationCustomMode)
 	//    apaga el AnimInstance completamente (no solo pausa montages/tick). bPauseAnims
 	//    pausaba el tick pero la pose anim final seguía influyendo en el blend →
 	//    ragdoll "medio tieso". Custom mode + bBlendPhysics=true = simulación pura.
@@ -2188,10 +2226,6 @@ void ATortugaCharacter::EnterRagdollState()
 		AnimInst->StopAllMontages(0.f);
 	}
 	SkelMesh->SetAnimationMode(EAnimationMode::AnimationCustomMode);
-
-	// 2. Snapshot del state actual para poder revivir limpiamente.
-	SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
-	SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 
 	// 3. Capsule no colisiona (evita interacción con bodies del SkM ragdoll).
 	if (UCapsuleComponent* Cap = GetCapsuleComponent())

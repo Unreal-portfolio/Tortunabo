@@ -86,6 +86,15 @@ protected:
 	FName MoveTargetTag;
 
 	/**
+	 * Tag del ATN_ButtonGroupManager al que este botón debe auto-registrarse.
+	 * Útil cuando el botón está en un chunk y el manager está en el nivel:
+	 * el botón busca un manager con este ActorTag y llama RegisterButton(this).
+	 * Dejar en NAME_None si el manager referencia directamente este botón por eyedropper.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Button")
+	FName ManagerTag = NAME_None;
+
+	/**
 	 * Modo de offset aplicado al target.
 	 * DoUndo: toggle clásico usando ActivatedOffset.
 	 * CyclicStates: cada pulsación pasa al siguiente FTransform de CyclicStateTransforms.

@@ -1,12 +1,36 @@
 #include "World/TN_ButtonGroupManager.h"
 #include "World/TN_ButtonInteractable.h"
+#include "EngineUtils.h"
 
 // ── FTN_TransformAction ───────────────────────────────────────────────────────
 
-void FTN_TransformAction::ApplyAll(const TArray<FTN_TransformAction>& Actions, bool bForward)
+void FTN_TransformAction::ApplyAll(TArray<FTN_TransformAction>& Actions, bool bForward, UWorld* World)
 {
-	for (const FTN_TransformAction& Action : Actions)
+	for (FTN_TransformAction& Action : Actions)
 	{
+		// ── Lazy tag resolution ───────────────────────────────────────────────
+		// Si TargetActor es null pero hay un tag configurado, hacemos un world scan
+		// y cacheamos el resultado en TargetActor para que las llamadas siguientes
+		// sean O(1). Útil para actores spawneados desde chunks en runtime.
+		if (!Action.TargetActor && Action.TargetActorTag != NAME_None && World)
+		{
+			for (TActorIterator<AActor> It(World); It; ++It)
+			{
+				if (It->ActorHasTag(Action.TargetActorTag))
+				{
+					Action.TargetActor = *It;
+					UE_LOG(LogTemp, Log, TEXT("[TransformAction] Resolved tag '%s' → '%s'"),
+						*Action.TargetActorTag.ToString(), *GetNameSafe(*It));
+					break;
+				}
+			}
+			if (!Action.TargetActor)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[TransformAction] No actor found with tag '%s'"),
+					*Action.TargetActorTag.ToString());
+			}
+		}
+
 		if (!Action.TargetActor) { continue; }
 
 		AActor* Target = Action.TargetActor;
@@ -32,11 +56,19 @@ void ATN_ButtonGroupManager::BeginPlay()
 
 	if (!HasAuthority()) { return; }
 
-	// Suscribirse al delegate de cada botón gestionado
+	// Suscribirse al delegate de cada botón gestionado (eyedropper clásico)
 	for (ATN_ButtonInteractable* Button : ManagedButtons)
 	{
 		if (!Button) { continue; }
 		Button->OnActivationChanged.AddUObject(this, &ATN_ButtonGroupManager::OnButtonActivationChanged);
+	}
+
+	// Scan diferido: los botones en chunks spawneados en el mismo tick que el
+	// manager aún no existen en BeginPlay → esperamos un tick.
+	if (ManagedButtonTags.Num() > 0)
+	{
+		GetWorldTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(this, &ATN_ButtonGroupManager::DeferredTagButtonScan));
 	}
 }
 
@@ -103,7 +135,46 @@ int32 ATN_ButtonGroupManager::GetEffectiveThreshold() const
 
 void ATN_ButtonGroupManager::ApplyTriggerActions(bool bForward)
 {
-	FTN_TransformAction::ApplyAll(TriggerActions, bForward);
+	FTN_TransformAction::ApplyAll(TriggerActions, bForward, GetWorld());
+}
+
+void ATN_ButtonGroupManager::RegisterButton(ATN_ButtonInteractable* Button)
+{
+	if (!Button || !HasAuthority()) { return; }
+
+	// Idempotente: no añadir duplicados
+	for (const TObjectPtr<ATN_ButtonInteractable>& Existing : ManagedButtons)
+	{
+		if (Existing == Button) { return; }
+	}
+
+	ManagedButtons.Add(Button);
+	Button->OnActivationChanged.AddUObject(this, &ATN_ButtonGroupManager::OnButtonActivationChanged);
+
+	UE_LOG(LogTemp, Log, TEXT("[ButtonGroupManager] '%s' registró botón '%s' en runtime."),
+		*GetName(), *GetNameSafe(Button));
+
+	// Re-evaluar inmediatamente por si el botón ya estaba activado
+	if (!bTriggered) { CheckAndTrigger(); }
+}
+
+void ATN_ButtonGroupManager::DeferredTagButtonScan()
+{
+	if (!HasAuthority()) { return; }
+
+	for (TActorIterator<ATN_ButtonInteractable> It(GetWorld()); It; ++It)
+	{
+		ATN_ButtonInteractable* Button = *It;
+		if (!Button) { continue; }
+		for (const FName& Tag : ManagedButtonTags)
+		{
+			if (Tag != NAME_None && Button->ActorHasTag(Tag))
+			{
+				RegisterButton(Button);
+				break;  // un botón puede tener varios tags, pero solo registrar una vez
+			}
+		}
+	}
 }
 
 void ATN_ButtonGroupManager::MulticastNotifyActivated_Implementation()

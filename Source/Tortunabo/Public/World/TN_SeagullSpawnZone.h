@@ -53,8 +53,8 @@ protected:
 	float InitialDelay = 3.f;
 
 	/** Número máximo de gaviotas activas originadas por esta zona simultáneamente. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SeagullSpawnZone", meta = (ClampMin = "1", ClampMax = "4"))
-	int32 MaxConcurrentSeagulls = 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SeagullSpawnZone", meta = (ClampMin = "1", ClampMax = "20"))
+	int32 MaxConcurrentSeagulls = 3;
 
 private:
 	FTimerHandle SpawnTimerHandle;

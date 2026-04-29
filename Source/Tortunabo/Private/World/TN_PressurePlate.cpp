@@ -8,6 +8,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
 
 // ────────────────────────────────────────────────────────────────────────────
 // ATN_PressurePlate
@@ -41,6 +42,27 @@ void ATN_PressurePlate::BeginPlay()
 	{
 		TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_PressurePlate::OnTriggerBeginOverlap);
 		TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_PressurePlate::OnTriggerEndOverlap);
+
+		// Auto-registro diferido: el manager puede no existir aún en este tick
+		if (ManagerTag != NAME_None)
+		{
+			GetWorldTimerManager().SetTimerForNextTick(
+				FTimerDelegate::CreateUObject(this, &ATN_PressurePlate::DeferredSelfRegisterWithManager));
+		}
+	}
+}
+
+void ATN_PressurePlate::DeferredSelfRegisterWithManager()
+{
+	if (!HasAuthority() || ManagerTag == NAME_None) { return; }
+
+	for (TActorIterator<ATN_PressurePlateGroupManager> It(GetWorld()); It; ++It)
+	{
+		if (It->ActorHasTag(ManagerTag))
+		{
+			It->RegisterPlate(this);
+			break;
+		}
 	}
 }
 
@@ -179,6 +201,13 @@ void ATN_PressurePlateGroupManager::BeginPlay()
 			Plate->OnOccupancyChanged.AddUObject(this, &ATN_PressurePlateGroupManager::OnOccupancyChanged);
 		}
 	}
+
+	// Scan diferido por tags — placas en chunks que aún no existen en BeginPlay
+	if (ManagedPlateTags.Num() > 0)
+	{
+		GetWorldTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(this, &ATN_PressurePlateGroupManager::DeferredTagPlateScan));
+	}
 }
 
 void ATN_PressurePlateGroupManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -288,7 +317,46 @@ int32 ATN_PressurePlateGroupManager::GetEffectiveThreshold(int32 AlivePlayers) c
 
 void ATN_PressurePlateGroupManager::ApplyTriggerActions()
 {
-	FTN_TransformAction::ApplyAll(TriggerActions, true);
+	FTN_TransformAction::ApplyAll(TriggerActions, true, GetWorld());
+}
+
+void ATN_PressurePlateGroupManager::RegisterPlate(ATN_PressurePlate* Plate)
+{
+	if (!Plate || !HasAuthority()) { return; }
+
+	// Idempotente
+	for (const TObjectPtr<ATN_PressurePlate>& Existing : ManagedPlates)
+	{
+		if (Existing == Plate) { return; }
+	}
+
+	ManagedPlates.Add(Plate);
+	Plate->OnOccupancyChanged.AddUObject(this, &ATN_PressurePlateGroupManager::OnOccupancyChanged);
+
+	UE_LOG(LogTemp, Log, TEXT("[PressurePlateGroupManager] '%s' registró placa '%s' en runtime."),
+		*GetName(), *GetNameSafe(Plate));
+
+	// Re-evaluar por si la placa ya estaba activa
+	if (!bTriggered) { EvaluateAndHandleCondition(); }
+}
+
+void ATN_PressurePlateGroupManager::DeferredTagPlateScan()
+{
+	if (!HasAuthority()) { return; }
+
+	for (TActorIterator<ATN_PressurePlate> It(GetWorld()); It; ++It)
+	{
+		ATN_PressurePlate* Plate = *It;
+		if (!Plate) { continue; }
+		for (const FName& Tag : ManagedPlateTags)
+		{
+			if (Tag != NAME_None && Plate->ActorHasTag(Tag))
+			{
+				RegisterPlate(Plate);
+				break;
+			}
+		}
+	}
 }
 
 void ATN_PressurePlateGroupManager::MulticastNotifyConditionChange_Implementation(bool bMet)

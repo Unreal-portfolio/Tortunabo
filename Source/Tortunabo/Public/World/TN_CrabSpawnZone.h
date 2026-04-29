@@ -54,8 +54,8 @@ protected:
 	 * Se spawnean en posiciones aleatorias dentro del ProximityVolume.
 	 * Default 3. Serializable por instancia.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CrabSpawnZone", meta = (ClampMin = "1", ClampMax = "10"))
-	int32 SpawnCountOnEnter = 3;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CrabSpawnZone", meta = (ClampMin = "1", ClampMax = "20"))
+	int32 SpawnCountOnEnter = 5;
 
 	/**
 	 * Si true (default), el volumen se desactiva tras el primer spawn.
