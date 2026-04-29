@@ -2333,7 +2333,11 @@ void ATortugaCharacter::OnRep_IsDead()
 
 void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
 {
-	// Detener simulación en TODAS las máquinas, mantener pose final como cadáver.
+	// Patrón canónico Epic (v2 — Codex+Gemini consensus): mantener SimulatePhysics
+	// VIVO, solo dormir los bodies. SimulatePhysics(false) pierde authority sobre la
+	// pose → bones recalculan desde RefSkeleton (bind pose) → T-Pose post-freeze.
+	// PutAllRigidBodiesToSleep() congela posición sin romper la fuente de pose:
+	// los bodies siguen dictando bones, pero no hay solver activo gastando ticks.
 	USkeletalMeshComponent* SkelMesh = GetMesh();
 	if (!SkelMesh) { return; }
 
@@ -2341,20 +2345,14 @@ void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
 	{
 		SkelMesh->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
 		SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-		SkelMesh->SetAllBodiesSimulatePhysics(false);
+		// NO SetAllBodiesSimulatePhysics(false) — eso era el bug del T-Pose.
+		SkelMesh->PutAllRigidBodiesToSleep();
 	}
 	SkelMesh->SetEnableGravity(false);
-
-	// CRÍTICO — sin esto vuelve a T-Pose post-freeze:
-	// AnimMode=Custom + sin pose driver + SimulatePhysics=false → bones recalculan
-	// desde RefSkeleton (bind pose). BlendWeight=1.0 fuerza que la pose actual de los
-	// bodies (la caída del ragdoll en su último frame simulado) siga dictando los
-	// bones aunque la simulación esté apagada. bBlendPhysics=true mantiene la
-	// dominancia de los bodies sobre el AnimBP.
 	SkelMesh->bBlendPhysics = true;
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 
-	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (%s) authority=%d"), *GetName(), HasAuthority());
+	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (sleep) (%s) authority=%d"), *GetName(), HasAuthority());
 }
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead)
