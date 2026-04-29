@@ -2344,6 +2344,16 @@ void ATortugaCharacter::MulticastFreezeRagdoll_Implementation()
 		SkelMesh->SetAllBodiesSimulatePhysics(false);
 	}
 	SkelMesh->SetEnableGravity(false);
+
+	// CRÍTICO — sin esto vuelve a T-Pose post-freeze:
+	// AnimMode=Custom + sin pose driver + SimulatePhysics=false → bones recalculan
+	// desde RefSkeleton (bind pose). BlendWeight=1.0 fuerza que la pose actual de los
+	// bodies (la caída del ragdoll en su último frame simulado) siga dictando los
+	// bones aunque la simulación esté apagada. bBlendPhysics=true mantiene la
+	// dominancia de los bodies sobre el AnimBP.
+	SkelMesh->bBlendPhysics = true;
+	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
+
 	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] FROZEN (%s) authority=%d"), *GetName(), HasAuthority());
 }
 
