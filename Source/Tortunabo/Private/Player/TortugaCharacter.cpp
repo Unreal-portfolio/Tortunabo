@@ -2162,6 +2162,14 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	USkeletalMeshComponent* SkelMesh = GetMesh();
 	if (bDead)
 	{
+		// Multiplayer ragdoll: cada máquina simula localmente con state idéntico.
+		// Si bReplicateMovement queda ON durante death, el server pisa la sim del
+		// cliente con SetActorLocation(pelvis) cada tick → cliente "se atasca"
+		// momentos y luego "se suelta" cuando dejan de pelearse las correcciones
+		// de red vs sim local. Apagar replicación deja a cada máquina simular
+		// libremente; convergen porque arrancan con el mismo state inicial.
+		SetReplicateMovement(false);
+
 		EnterRagdollState();
 
 		if (RagdollFreezeAfterSeconds > 0.f)
@@ -2175,6 +2183,11 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 		bCanAirDash = true;
 		GetWorldTimerManager().ClearTimer(RagdollFreezeTimerHandle);
 		ExitRagdollState();
+
+		// Restaurar movement replication para el pawn revivido — el revive
+		// re-attachea SkM al capsule y vuelve a CMC normal, así que el pawn
+		// necesita replicar movimiento como cualquier character vivo.
+		SetReplicateMovement(true);
 	}
 
 	MulticastSetDeadVisual(bDead);
