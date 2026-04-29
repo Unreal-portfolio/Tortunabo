@@ -136,28 +136,33 @@ void ATN_SeagullDroppingActor::ResolveImpact()
 	// Hitbox esférico en el punto de impacto
 	const FVector ImpactPoint = FVector(ImpactXY.X, ImpactXY.Y, GroundTargetZ);
 
-	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
+	// G4 fix: OverlapMultiByChannel en vez de TActorIterator. El iterator visita
+	// TODOS los ATortugaCharacter del mundo (4 jugadores × N cadáveres ragdoll
+	// que también son ATortugaCharacter); el overlap con sphere ECC_Pawn solo
+	// devuelve los que tocan el hitbox real → O(few) en vez de O(all).
+	TArray<FOverlapResult> Overlaps;
+	const FCollisionShape Sphere = FCollisionShape::MakeSphere(ImpactRadius);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SeagullDroppingImpact), false);
+	GetWorld()->OverlapMultiByChannel(Overlaps, ImpactPoint, FQuat::Identity, ECC_Pawn, Sphere, Params);
+
+	for (const FOverlapResult& Hit : Overlaps)
 	{
-		ATortugaCharacter* C = *It;
+		ATortugaCharacter* C = Cast<ATortugaCharacter>(Hit.GetActor());
 		if (!C || !C->GetController()) { continue; }
 
 		ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>();
 		if (!PS || !PS->bIsAlive || PS->bIsEliminated) { continue; }
 
-		const float DistXY = FVector::Dist2D(C->GetActorLocation(), ImpactPoint);
-		if (DistXY <= ImpactRadius)
+		// Respetar la protección de sombrilla: si el jugador está bajo una sombrilla
+		// abierta, la caca no lo mata (igual que la gaviota en TN_EnemySeagull).
+		if (C->HasUmbrellaProtection())
 		{
-			// Respetar la protección de sombrilla: si el jugador está bajo una sombrilla
-			// abierta, la caca no lo mata (igual que la gaviota en TN_EnemySeagull).
-			if (C->HasUmbrellaProtection())
-			{
-				UE_LOG(LogTemp, Log, TEXT("[SeagullDropping] %s protegido por sombrilla — impacto ignorado"),
-					*GetNameSafe(C));
-				continue;
-			}
-			C->RequestKill(this);
-			bHitPlayer = true;
+			UE_LOG(LogTemp, Log, TEXT("[SeagullDropping] %s protegido por sombrilla — impacto ignorado"),
+				*GetNameSafe(C));
+			continue;
 		}
+		C->RequestKill(this);
+		bHitPlayer = true;
 	}
 
 	MulticastOnImpact(bHitPlayer);

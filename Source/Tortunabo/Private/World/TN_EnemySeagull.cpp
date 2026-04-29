@@ -8,6 +8,9 @@
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
+#include "EngineUtils.h"
+#include "World/TN_SeagullDroppingActor.h"
+#include "World/TN_PhysicsObjectActor.h"
 
 ATN_EnemySeagull::ATN_EnemySeagull()
 {
@@ -355,7 +358,20 @@ bool ATN_EnemySeagull::HasRoofBetweenSeagullAndTarget() const
 	Params.AddIgnoredActor(this);
 	Params.AddIgnoredActor(Target);
 
-	GetWorld()->LineTraceSingleByChannel(
+	// G1 fix: ignorar TODAS las cacas de gaviota y physics objects en el line trace.
+	// Sin esto, una caca o cubo cruzando momentáneamente entre la gaviota y el
+	// jugador cuenta como techo → false positive AbortAndRetreat.
+	UWorld* World = GetWorld();
+	for (TActorIterator<ATN_SeagullDroppingActor> It(World); It; ++It)
+	{
+		Params.AddIgnoredActor(*It);
+	}
+	for (TActorIterator<ATN_PhysicsObjectActor> It(World); It; ++It)
+	{
+		Params.AddIgnoredActor(*It);
+	}
+
+	World->LineTraceSingleByChannel(
 		Hit,
 		GetActorLocation(),
 		Target->GetActorLocation(),
