@@ -2306,6 +2306,13 @@ void ATortugaCharacter::EnterRagdollState()
 	SkelMesh->SetAllBodiesSimulatePhysics(true);
 	SkelMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 	SkelMesh->SetEnableGravity(true);
+	// CRÍTICO Chaos: SetEnableGravity en el component NO propaga a FBodyInstance
+	// individuales. Sin este loop los bodies simulan como dynamics pero sin gravity
+	// → flotan indefinidamente con cualquier impulso residual de la pose anim.
+	for (FBodyInstance* Body : SkelMesh->Bodies)
+	{
+		if (Body) { Body->SetEnableGravity(true); }
+	}
 
 	// 10. Vel inicial CERO defensivo (después de simulate, no antes — antes los
 	//     bodies aún no existían en el simulator).
