@@ -407,54 +407,60 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 	FVector AccumulatedPush = FVector::ZeroVector;
 
 	// 2. Sumar empuje de cada tortuga que INTENTA moverse hacia el cubo.
-	// Usamos GetLastMovementInputVector (la dirección que el jugador desea)
-	// en lugar de GetVelocity (la velocity neta tras colisiones). Cuando el
-	// jugador choca contra el cubo bloqueante, su velocity cae a ~0 aunque
-	// siga presionando W → con GetVelocity nunca habría push acumulado.
-	// Con InputVector, la intención se lee mientras el botón esté presionado.
+	// Fuente de "intención" del jugador (Codex review):
+	// GetLastMovementInputVector() NO es fiable para clientes remotos server-side
+	// (es input del pawn local consumido). El server lee la intent autoritativa
+	// del CMC vía GetCurrentAcceleration() — survives "velocity=0 por collision
+	// block". Fallback a LastMovementInputVector para listen-server local.
 	for (AActor* A : Overlapping)
 	{
 		ATortugaCharacter* Char = Cast<ATortugaCharacter>(A);
 		if (!Char) { continue; }
 
-		FVector CharInput = Char->GetLastMovementInputVector();
-		CharInput.Z = 0.f;
-		const float InputMagnitude = CharInput.Size();
+		UCharacterMovementComponent* CMC = Char->GetCharacterMovement();
+		if (!CMC) { continue; }
+
+		FVector Intent = CMC->GetCurrentAcceleration();
+		Intent.Z = 0.f;
+
+		float IntentMagnitude = 0.f;
+		if (!Intent.IsNearlyZero())
+		{
+			const float MaxAccel = FMath::Max(CMC->GetMaxAcceleration(), 1.f);
+			IntentMagnitude = FMath::Clamp(Intent.Size() / MaxAccel, 0.f, 1.f);
+			Intent.Normalize();
+		}
+		else
+		{
+			// Fallback host/listen-server local owner.
+			Intent = Char->GetLastMovementInputVector();
+			Intent.Z = 0.f;
+			IntentMagnitude = FMath::Clamp(Intent.Size(), 0.f, 1.f);
+			if (!Intent.IsNearlyZero()) { Intent.Normalize(); }
+		}
 
 		FVector ToCube = CubeLoc - Char->GetActorLocation();
 		ToCube.Z = 0.f;
 		const bool bToCubeOK = ToCube.Normalize();
+		const float Alignment = bToCubeOK ? FVector::DotProduct(Intent, ToCube) : 0.f;
 
-		const FVector InputDir = (InputMagnitude > KINDA_SMALL_NUMBER)
-			? CharInput / InputMagnitude : FVector::ZeroVector;
-		const float Alignment = bToCubeOK ? FVector::DotProduct(InputDir, ToCube) : 0.f;
-
-		// Log diagnóstico throttled: muestra los valores que el filtro evalúa.
-		// Si InputMagnitude=0, el jugador no presiona nada (idle). Si Alignment<=0,
-		// el jugador presiona pero NO hacia el cubo. Si ambos OK pero el cubo
-		// no se mueve, hay otro problema (collision sweep, etc).
+		// Log diagnóstico throttled.
 		{
 			const double Now = GetWorld()->GetTimeSeconds();
 			if (Now - LastZeroPushLogTime > 0.5)
 			{
 				LastZeroPushLogTime = Now;
-				UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH-CALC] '%s' vs '%s' · Input=%.2f Align=%.2f ToCubeOK=%d"),
-					*GetName(), *Char->GetName(), InputMagnitude, Alignment, bToCubeOK ? 1 : 0);
+				UE_LOG(LogTemp, Warning, TEXT("[CUBE-PUSH-CALC] '%s' vs '%s' · Intent=%.2f Align=%.2f ToCubeOK=%d"),
+					*GetName(), *Char->GetName(), IntentMagnitude, Alignment, bToCubeOK ? 1 : 0);
 			}
 		}
 
-		if (InputMagnitude < 0.05f) { continue; } // sin input
-		if (!bToCubeOK)             { continue; } // overlap pero ToCube degenerado
-		if (Alignment <= 0.05f)     { continue; } // input no va hacia el cubo
+		if (IntentMagnitude < 0.05f) { continue; }
+		if (!bToCubeOK)              { continue; }
+		if (Alignment <= 0.05f)      { continue; }
 
-		// Velocidad efectiva: walk speed del CMC × magnitud del input × alineación.
-		// MaxWalkSpeed default ACharacter es 600 cm/s.
-		float WalkSpeed = 600.f;
-		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
-		{
-			WalkSpeed = CMC->MaxWalkSpeed;
-		}
-		const float ProjectedSpeed = WalkSpeed * InputMagnitude * Alignment * PushSpeedFactor;
+		const float WalkSpeed = CMC->GetMaxSpeed();
+		const float ProjectedSpeed = WalkSpeed * IntentMagnitude * Alignment * PushSpeedFactor;
 		AccumulatedPush += ToCube * ProjectedSpeed;
 	}
 
@@ -528,7 +534,15 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 		return; // tras cancelar componente normal no queda movimiento
 	}
 
-	// 5. Aplicar movimiento con sweep — bSweep=true respeta cualquier collider
+	// 5. Despertar replicación: el cubo arranca con DORM_DormantAll (0 bytes en
+	//    reposo). En kinematic-push, SetActorLocation server-side no replica
+	//    al cliente si el actor sigue dormido — cliente ve el cubo congelado.
+	//    FlushNetDormancy ANTES del cambio (patrón Vorixo) garantiza que el
+	//    movimiento llegue al cliente. Cuando deja de empujarse, TryEnterDormancy
+	//    lo vuelve a dormir tras DormancyCheckInterval.
+	FlushNetDormancy();
+
+	// 6. Aplicar movimiento con sweep — bSweep=true respeta cualquier collider
 	//    nuevo que aparezca en la trayectoria final.
 	SetActorLocation(EndLoc, /*bSweep=*/true);
 }
