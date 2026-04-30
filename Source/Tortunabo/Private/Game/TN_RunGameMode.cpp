@@ -611,35 +611,18 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		if (Pickup)
 		{
 			Pickup->SetDeadPlayerId(TNPS->GetPlayerId());
-			// Q1-14: el pawn ragdolleado es el visual — ocultar la malla del pickup
+			// El ragdoll del pawn es el visual. El pickup queda invisible y solo actúa
+			// como trigger de interacción, siguiendo en servidor al hueso pelvis.
 			Pickup->HideInteractableMesh();
-
-			// ATTACH al pawn ragdoll: el pickup sigue automáticamente al cuerpo
-			// mientras el ragdoll cae/desliza. Antes el pickup se quedaba en la
-			// pos de muerte fija y el revive teleportaba el jugador ahí en vez de
-			// donde realmente estaba el ragdoll. KeepWorldTransform: el pickup
-			// arranca donde lo spawneamos y el primer tick lo recoloca al pawn.
 			if (APawn* DyingPawn = PlayerController->GetPawn())
 			{
-				// KeepWorldTransform: el pickup mantiene su pos spawneada (DeathLocation+30Z)
-				// y a partir del siguiente frame su transform relativa lo mantiene
-				// sincronizado con el pawn ragdoll mientras cae.
-				Pickup->AttachToActor(DyingPawn,
-					FAttachmentTransformRules::KeepWorldTransform);
+				Pickup->FollowDeadPawn(DyingPawn);
 			}
 
 			RescuePickups.Add(TNPS->GetPlayerId(), Pickup);
 			UE_LOG(LogTemp, Log, TEXT("[Death] Spawned RescuePickup for %s (PlayerId=%d) at (%.0f,%.0f,%.0f)"),
 				*GetNameSafe(PlayerController), TNPS->GetPlayerId(),
 				DeathLocation.X, DeathLocation.Y, DeathLocation.Z);
-
-			// DEATH-01: timer para swap ragdoll→pickup tras DeathRagdollDurationSeconds.
-			// CreateUObject permite que ClearAllTimersForObject en EndPlay cancele si el
-			// game mode se destruye. El PlayerId viaja como payload del delegate.
-			FTimerDelegate Del = FTimerDelegate::CreateUObject(
-				this, &ATN_RunGameMode::FinalizeDeathVisual, TNPS->GetPlayerId());
-			FTimerHandle& H = DeathFinalizeTimers.FindOrAdd(TNPS->GetPlayerId());
-			GetWorldTimerManager().SetTimer(H, Del, DeathRagdollDurationSeconds, false);
 		}
 	}
 	else
@@ -674,6 +657,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 
 void ATN_RunGameMode::FinalizeDeathVisual(int32 PlayerId)
 {
+	return;
 	// DEATH-01 · callback del timer lanzado en MarkPlayerDead.
 	// Diseño (2026-04-24 rev 2): el ragdoll del pawn es el visual PERMANENTE del
 	// pickup. Tras DeathRagdollDurationSeconds (cuando el ragdoll ya ha caído y
@@ -827,21 +811,18 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		GetWorldTimerManager().ClearTimer(DBNOBleedoutTimerHandle);
 	}
 
-	// DEATH-01: cancelar el timer de swap ragdoll→pickup si aún no disparó.
-	// Sin esto: si revives antes de DeathRagdollDurationSeconds, el timer
-	// ejecutaría FinalizeDeathVisual tras la revivida → ocultaría el pawn vivo.
-	if (FTimerHandle* DeathTimer = DeathFinalizeTimers.Find(TNPS->GetPlayerId()))
-	{
-		GetWorldTimerManager().ClearTimer(*DeathTimer);
-		DeathFinalizeTimers.Remove(TNPS->GetPlayerId());
-	}
+	FVector ReviveTargetLocation = FVector::ZeroVector;
+	bool bHasReviveTargetLocation = false;
 
 	// ── Destruir el pickup de rescate si existe ───────────────────────────
 	if (TWeakObjectPtr<ATN_RescuePickup>* PickupPtr = RescuePickups.Find(TNPS->GetPlayerId()))
 	{
 		if (PickupPtr->IsValid())
 		{
-			(*PickupPtr)->Destroy();
+			ATN_RescuePickup* Pickup = PickupPtr->Get();
+			ReviveTargetLocation = Pickup->GetActorLocation();
+			bHasReviveTargetLocation = true;
+			Pickup->Destroy();
 		}
 		RescuePickups.Remove(TNPS->GetPlayerId());
 	}
@@ -917,15 +898,11 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			}
 		}
 
-		// ── Revivir en la posición exacta del RescuePickup ────────────────────
-		// El RescuePickup ya teletransportó el pawn a su propia posición + 50Z
-		// (ver ATN_RescuePickup::Interact:101). El pickup además sigue al ragdoll
-		// vía AttachToActor, así que la pos del pickup ≈ pos del cadáver real
-		// (post line-trace del freeze).
-		// Aplicamos solo +20Z aquí (no +100) para que el pawn aparezca apenas un
-		// pelín sobre el suelo, no flotando un metro arriba.
+		// Revivir en la posición del RescuePickup. El pickup invisible siguió el
+		// pelvis del ragdoll; el pawn no persigue su propio ragdoll en Tick.
 		{
-			const FVector ReviveLoc = Pawn->GetActorLocation() + FVector(0.f, 0.f, 20.f);
+			const FVector BaseReviveLoc = bHasReviveTargetLocation ? ReviveTargetLocation : Pawn->GetActorLocation();
+			const FVector ReviveLoc = BaseReviveLoc + FVector(0.f, 0.f, 20.f);
 			UE_LOG(LogTemp, Log, TEXT("[Revive] In-place at pickup location (%.0f,%.0f,%.0f)"),
 				ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z);
 			Pawn->SetActorLocation(ReviveLoc, false, nullptr, ETeleportType::TeleportPhysics);

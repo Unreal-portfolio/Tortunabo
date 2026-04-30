@@ -1237,3 +1237,29 @@ Pendiente BP (código listo): BP_EnemySeagull, BP_CrabActor, BP_QuadActor, BP_Je
 
 ### Al retomar próxima sesión
 Leer: `~/.claude/projects/.../memory/project_diagnostic_2026-04-24.md` + esta entrada. Empezar por logs `[Diagnostic]` que Rodrigo compartirá tras test.
+
+---
+
+## Sesión 2026-04-30 — Death revive pickup follow ragdoll
+
+### Cambio
+- `TN_RescuePickup` ahora es un trigger invisible dinámico: `bAlwaysRelevant`, `SetReplicateMovement(true)`, `DORM_Awake`, tick server-only.
+- Al morir, `TN_RunGameMode::MarkPlayerDead` spawnea el pickup invisible y llama `FollowDeadPawn(DyingPawn)`.
+- El pickup sigue en servidor el hueso `pelvis` del ragdoll y replica su transform, para que el prompt/interacción coincidan con el cuerpo visible en clientes.
+- Se eliminó el timer `DeathRagdollDurationSeconds` del flujo principal: ya no hay swap diferido ragdoll→pickup.
+
+### Causa raíz
+- `TN_RescuePickup` heredaba `SetReplicateMovement(false)` de `TN_InteractableBase`, pero el servidor lo movía/adjuntaba durante la muerte.
+- `AttachToActor` no sigue los huesos físicos del ragdoll; seguir al actor/cápsula no garantizaba que el trigger estuviera donde cayó el cuerpo.
+
+### Pendiente de verificación
+- PIE 2 jugadores: cliente muere → ragdoll visible → jugador vivo ve prompt sobre el cuerpo → revive → pawn vuelve en posición del pickup.
+- Probar con pendiente/caída para confirmar que el trigger sigue el ragdoll mientras se asienta.
+
+### Ajuste 2026-04-30
+- Se eliminó el tracking antiguo en `ATortugaCharacter::Tick` que movía el pawn/cápsula al hueso del ragdoll cada frame durante muerte.
+- Causa: al mover el actor que contiene el skeletal mesh simulado, Chaos puede entrar en feedback visual/jitter. Ahora solo el `TN_RescuePickup` sigue el hueso.
+- `RevivePlayer` captura la posición del pickup antes de destruirlo y revive ahí después de apagar el ragdoll con `SetDeadVisual(false)`.
+- Se alineó `EnterRagdollState` con la ruta de knockdown que ya funciona: simular cuerpos primero, pausar animación después (`bPauseAnims=true`), y respetar el perfil `Ragdoll` sin pisar manualmente los canales de colisión.
+- Se eliminó el ground-snap agresivo de muerte (`ground + capsule half height`). La muerte ahora arranca el ragdoll desde la posición actual con `DeathRagdollSpawnLift=35`, para evitar que las patas físicas nazcan penetrando el suelo. Hipótesis basada en el log: `Jump` antes de muerte y `Ground.Z=88` indicaban snap directo al suelo.
+- Ajuste posterior: `DeathRagdollSpawnLift` sube a 60cm y se añade `DeathRagdollFloorClearance=25cm`. Antes de simular, el código calcula el bound inferior del SkeletalMesh y levanta dinámicamente si las patas quedarían dentro del suelo.

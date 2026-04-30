@@ -1,16 +1,38 @@
 #include "World/TN_RescuePickup.h"
 #include "Game/TN_RunGameMode.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Player/TortugaCharacter.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
 
 ATN_RescuePickup::ATN_RescuePickup()
 {
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
 	bReplicates = true;
 	bAlwaysRelevant = true;
+	SetReplicateMovement(true);
+	NetDormancy = DORM_Awake;
+	SetNetUpdateFrequency(15.f);
+	SetMinNetUpdateFrequency(5.f);
 	PromptText = FText::FromString(TEXT("Rescatar"));
 	InteractionDistance = 300.f;
+}
+
+void ATN_RescuePickup::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (!HasAuthority() || !FollowedDeadPawn.IsValid())
+	{
+		return;
+	}
+
+	const FVector FollowLocation = ResolveFollowLocation();
+	SetActorLocation(FollowLocation + FVector(0.f, 0.f, 35.f), false, nullptr, ETeleportType::TeleportPhysics);
 }
 
 void ATN_RescuePickup::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -22,6 +44,42 @@ void ATN_RescuePickup::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 void ATN_RescuePickup::SetDeadPlayerId(int32 InPlayerId)
 {
 	DeadPlayerId = InPlayerId;
+}
+
+void ATN_RescuePickup::FollowDeadPawn(APawn* InDeadPawn, FName InTrackingBone)
+{
+	FollowedDeadPawn = InDeadPawn;
+	TrackingBone = InTrackingBone.IsNone() ? TEXT("pelvis") : InTrackingBone;
+
+	if (HasAuthority())
+	{
+		FlushNetDormancy();
+		SetActorLocation(ResolveFollowLocation() + FVector(0.f, 0.f, 35.f), false, nullptr, ETeleportType::TeleportPhysics);
+		ForceNetUpdate();
+	}
+}
+
+FVector ATN_RescuePickup::ResolveFollowLocation() const
+{
+	APawn* DeadPawn = FollowedDeadPawn.Get();
+	if (!DeadPawn)
+	{
+		return GetActorLocation();
+	}
+
+	if (const ATortugaCharacter* Character = Cast<ATortugaCharacter>(DeadPawn))
+	{
+		if (USkeletalMeshComponent* RagdollMesh = Character->GetMesh())
+		{
+			const int32 BoneIdx = RagdollMesh->GetBoneIndex(TrackingBone);
+			if (BoneIdx != INDEX_NONE)
+			{
+				return RagdollMesh->GetBoneLocation(TrackingBone, EBoneSpaces::WorldSpace);
+			}
+		}
+	}
+
+	return DeadPawn->GetActorLocation();
 }
 
 bool ATN_RescuePickup::CanInteract(APawn* Interactor) const
@@ -88,19 +146,6 @@ void ATN_RescuePickup::Interact(APawn* Interactor)
 	// Llamar a RevivePlayer del GameMode
 	if (ATN_RunGameMode* RunGM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode()))
 	{
-		// Teletransportar el pawn del muerto a la posición del pickup ANTES de revivir.
-		// GetPawn() es null si el jugador está en espectador (UnPossess).
-		// Usamos GetDeadPlayerPawn del RunGameMode que guarda la referencia.
-		APawn* DeadPawn = DeadPC->GetPawn();
-		if (!DeadPawn)
-		{
-			DeadPawn = RunGM->GetDeadPlayerPawn(DeadPlayerId);
-		}
-		if (DeadPawn)
-		{
-			DeadPawn->SetActorLocation(GetActorLocation() + FVector(0.f, 0.f, 50.f));
-		}
-
 		RunGM->RevivePlayer(DeadPC);
 
 		UE_LOG(LogTemp, Log, TEXT("[RescuePickup] Revived player (Id=%d) at (%.0f,%.0f,%.0f)"),

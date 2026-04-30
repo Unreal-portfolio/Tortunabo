@@ -456,30 +456,6 @@ void ATortugaCharacter::Tick(float DeltaTime)
 		}
 	}
 
-	// ── Ragdoll de muerte: servidor rastrea el hueso pelvis ─────────────────────
-	// Sin este tracking, el actor (cápsula) queda fijo en el punto de muerte.
-	// bReplicateMovement enviaría esa posición estancada → clientes ven el body
-	// "flotando" (física local vs corrección de red) y el espectador lo ve
-	// enterrado (actor en Z muerte ≠ huesos físicos en Z suelo).
-	// Al mover el actor al pelvis cada tick, la posición replicada sigue al cuerpo
-	// mientras cae y los clientes/espectadores lo ven caer correctamente.
-	if (HasAuthority() && bIsDead)
-	{
-		if (USkeletalMeshComponent* SkelMesh = GetMesh())
-		{
-			if (SkelMesh->IsSimulatingPhysics())
-			{
-				const int32 BoneIdx = SkelMesh->GetBoneIndex(RagdollTrackingBone);
-				if (BoneIdx != INDEX_NONE)
-				{
-					const FVector BoneLoc = SkelMesh->GetBoneLocation(
-						RagdollTrackingBone, EBoneSpaces::WorldSpace);
-					SetActorLocation(BoneLoc, false, nullptr, ETeleportType::TeleportPhysics);
-				}
-			}
-		}
-	}
-
 	TickDive(DeltaTime);           // dive physics recovery + procedural animation
 	TickJumpAnim(DeltaTime);       // jump procedural animation (suppressed during dive)
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
@@ -2176,36 +2152,35 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	FVector GroundLocation = GetActorLocation();
 	if (bDead)
 	{
-		// DualMax round 3 — Codex CRITICAL: el ground-snap se calcula AQUÍ en
-		// server (single source of truth) y viaja como param del Multicast,
-		// no vía bReplicateMovement (que llega DESPUÉS del RPC en el mismo
-		// bunch → cliente arrancaba sim en pos vieja). LineTrace movido fuera
-		// de EnterRagdollState — ahora caller (server o cliente vía MC) ya
-		// teleporta el actor a GroundLocation antes de llamar EnterRagdollState.
-		if (UWorld* World = GetWorld())
+		// Do not snap death ragdoll down to the floor. Knockdown works because it
+		// starts from the current pose/location; snapping to capsule half-height can
+		// spawn low leg bodies already intersecting the ground.
+		float RequiredLift = DeathRagdollSpawnLift;
+		if (SkelMesh && GetWorld())
 		{
 			FHitResult GroundHit;
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(RagdollGroundSnap), false, this);
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(DeathRagdollFloorClearance), false, this);
 			Params.AddIgnoredActor(this);
 			const FVector ActorLoc = GetActorLocation();
-			const FVector TraceStart = ActorLoc + FVector(0.f, 0.f, 100.f);
-			const FVector TraceEnd   = ActorLoc - FVector(0.f, 0.f, 1000.f);
-			bool bFound = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldStatic, Params);
-			if (!bFound)
+			const FVector TraceStart = ActorLoc + FVector(0.f, 0.f, 150.f);
+			const FVector TraceEnd = ActorLoc - FVector(0.f, 0.f, 1000.f);
+			bool bFoundGround = GetWorld()->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldStatic, Params);
+			if (!bFoundGround)
 			{
-				bFound = World->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldDynamic, Params);
+				bFoundGround = GetWorld()->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_WorldDynamic, Params);
 			}
-			if (bFound)
+			if (bFoundGround)
 			{
-				float HalfHeight = 88.f;
-				if (UCapsuleComponent* Cap = GetCapsuleComponent())
-				{
-					HalfHeight = Cap->GetScaledCapsuleHalfHeight();
-				}
-				GroundLocation = FVector(ActorLoc.X, ActorLoc.Y, GroundHit.ImpactPoint.Z + HalfHeight);
+				const float MeshBottomZ = SkelMesh->Bounds.GetBox().Min.Z;
+				const float DesiredBottomZ = GroundHit.ImpactPoint.Z + DeathRagdollFloorClearance;
+				RequiredLift = FMath::Max(RequiredLift, DesiredBottomZ - MeshBottomZ);
 			}
 		}
+
+		GroundLocation = GetActorLocation() + FVector(0.f, 0.f, RequiredLift);
 		SetActorLocation(GroundLocation, false, nullptr, ETeleportType::TeleportPhysics);
+		UE_LOG(LogTemp, Log, TEXT("[Death] Ragdoll spawn lift %.1fcm (base=%.1f clearance=%.1f)"),
+			RequiredLift, DeathRagdollSpawnLift, DeathRagdollFloorClearance);
 
 		EnterRagdollState();
 		SetReplicateMovement(false);
@@ -2251,16 +2226,15 @@ void ATortugaCharacter::EnterRagdollState()
 		return;
 	}
 
-	// 1. CRÍTICO — desactivar el AnimBP entero. SetAnimationMode(AnimationCustomMode)
-	//    apaga el AnimInstance completamente (no solo pausa montages/tick). bPauseAnims
-	//    pausaba el tick pero la pose anim final seguía influyendo en el blend →
-	//    ragdoll "medio tieso". Custom mode + bBlendPhysics=true = simulación pura.
+	// 1. Stop montages, but keep the same startup order as knockdown ragdoll:
+	//    simulate first, pause animation after bodies are awake. This avoids a
+	//    death-only path where a frozen/custom pose starts partially interpenetrating
+	//    the floor and Chaos keeps resolving it forever.
 	if (UAnimInstance* AnimInst = SkelMesh->GetAnimInstance())
 	{
 		AnimInst->Montage_Stop(0.f);
 		AnimInst->StopAllMontages(0.f);
 	}
-	SkelMesh->SetAnimationMode(EAnimationMode::AnimationCustomMode);
 
 	// 2. Snapshot del state actual para poder revivir limpiamente.
 	SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
@@ -2288,11 +2262,9 @@ void ATortugaCharacter::EnterRagdollState()
 	//    Esto elimina la divergencia client/server por LineTrace local
 	//    inconsistente y la race condition entre RPC y bReplicateMovement.
 
-	// 6. Collision profile Ragdoll PRIMERO, luego override aislamiento.
+	// 6. Use the same collision setup as knockdown. The Ragdoll profile should be
+	//    authored in the PhysicsAsset/project settings; do not override it here.
 	SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
-	SkelMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-	SkelMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
-	SkelMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 
 	// 7. (movido al paso 11 — bBlendPhysics se setea AL FINAL, después de
 	//    SetSimulate + Wake. Triple Mode round 2 — Gemini 8/10: setear
@@ -2335,8 +2307,9 @@ void ATortugaCharacter::EnterRagdollState()
 	//     blend permite que la sim física domine sobre cualquier pose anim
 	//     residual sin que los bodies tengan que pelear con kinematic targets.
 	SkelMesh->bBlendPhysics = true;
+	SkelMesh->bPauseAnims = true;
 
-	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimMode=Custom · BlendPhysics=true(post-wake) · damping=0 · bodies=%d"),
+	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimPaused=true(post-wake) · BlendPhysics=true(post-wake) · bodies=%d"),
 		*GetName(), HasAuthority(), SkelMesh->Bodies.Num());
 }
 

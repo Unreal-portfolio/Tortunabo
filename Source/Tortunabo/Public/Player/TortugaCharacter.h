@@ -850,6 +850,17 @@ protected:
 	FName RagdollTrackingBone = TEXT("pelvis");
 
 	/**
+	 * Small upward lift applied before death ragdoll starts. Prevents low leg
+	 * bodies from spawning already penetrated into the floor.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Death", meta = (ClampMin = "0.0", ClampMax = "160.0"))
+	float DeathRagdollSpawnLift = 60.f;
+
+	/** Extra clearance between the skeletal mesh lower bound and the floor at death ragdoll startup. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Death", meta = (ClampMin = "0.0", ClampMax = "80.0"))
+	float DeathRagdollFloorClearance = 25.f;
+
+	/**
 	 * Estado replicado de "muerte visual". true → extremidades/cabeza/cola/casco ocultos.
 	 * El pawn NO se destruye: queda como cadáver interactuable para revive.
 	 */

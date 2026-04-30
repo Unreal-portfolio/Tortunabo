@@ -17,6 +17,7 @@ class TORTUNABO_API ATN_RescuePickup : public ATN_InteractableBase
 public:
 	ATN_RescuePickup();
 
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual bool CanInteract(APawn* Interactor) const override;
 	virtual void Interact(APawn* Interactor) override;
@@ -26,6 +27,9 @@ public:
 	 * Solo llamar en el servidor.
 	 */
 	void SetDeadPlayerId(int32 InPlayerId);
+
+	/** Makes the invisible rescue trigger follow the dead pawn/ragdoll on the server. */
+	void FollowDeadPawn(APawn* InDeadPawn, FName InTrackingBone = TEXT("pelvis"));
 
 	/** Devuelve el PlayerId del jugador muerto asociado a este pickup. */
 	int32 GetDeadPlayerId() const { return DeadPlayerId; }
@@ -37,5 +41,13 @@ protected:
 	 */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Rescue")
 	int32 DeadPlayerId = -1;
+
+private:
+	UPROPERTY()
+	TWeakObjectPtr<APawn> FollowedDeadPawn;
+
+	FName TrackingBone = TEXT("pelvis");
+
+	FVector ResolveFollowLocation() const;
 };
 

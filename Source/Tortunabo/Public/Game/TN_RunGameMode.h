@@ -92,14 +92,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run|Death")
 	TSubclassOf<ATN_RescuePickup> RescuePickupClass;
 
-	/**
-	 * Segundos de ragdoll antes de swap pickup (DEATH-01 efecto Roblox).
-	 * El pawn ragdollea durante este tiempo. Al expirar: captura pos final del
-	 * cuerpo, oculta el pawn y mueve el pickup ahí para hacerlo interactuable.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "Run|Death", meta = (ClampMin = "0.1"))
-	float DeathRagdollDurationSeconds = 1.5f;
-
 	// ── Sistema de puntuación final ─────────────────────────────────────────
 	// RaceScore final = RankScore (podio) + ScorePickups recogidos en la run + TimeBonus.
 	// RankScore: 1º=400, 2º=300, 3º=200, 4º=100, resto=50. Eliminados=0.
@@ -149,10 +141,8 @@ private:
 	 */
 	TMap<int32, TWeakObjectPtr<APawn>> DeadPlayerPawns;
 
-	/** Handles del timer DEATH-01 que ejecuta el swap ragdoll→pickup. Key = PlayerId. */
+	/** Legacy no-op path kept only for existing compiled references during transition. */
 	TMap<int32, FTimerHandle> DeathFinalizeTimers;
-
-	/** Callback del timer DEATH-01: captura pos del ragdoll, oculta pawn, mueve pickup. */
 	void FinalizeDeathVisual(int32 PlayerId);
 
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
