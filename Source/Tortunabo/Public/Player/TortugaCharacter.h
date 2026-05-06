@@ -1175,7 +1175,57 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "DBNO|Audio", meta = (ClampMin = "0.0"))
 	float ReviveAudioOuterRadius = 2500.f;
 
+	// ── SFX | Player Action Sounds ───────────────────────────────────────────
+	// Sonidos del propio personaje (pasos, salto, knockdown, kill, pickup,
+	// throw, consume). Se reproducen at-location en todas las máquinas vía
+	// MulticastPlaySfx → cada cliente los oye en 3D según la atenuación que
+	// traiga su SoundCue. Asignar en BP_TortugaCharacter Class Defaults.
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player")
+	TObjectPtr<USoundBase> FootstepSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player", meta = (ClampMin = "0.05"))
+	float FootstepWalkInterval = 0.45f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player", meta = (ClampMin = "0.05"))
+	float FootstepSprintInterval = 0.28f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player", meta = (ClampMin = "0.0"))
+	float FootstepMinGroundSpeed = 50.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player")
+	TObjectPtr<USoundBase> JumpSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player")
+	TObjectPtr<USoundBase> KnockdownSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player")
+	TObjectPtr<USoundBase> KillSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player")
+	TObjectPtr<USoundBase> PickupSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player")
+	TObjectPtr<USoundBase> ThrowSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SFX|Player")
+	TObjectPtr<USoundBase> ConsumeSound;
+
+	/**
+	 * Multicast: spawnea Sound at-location en todas las máquinas. Llamar SOLO
+	 * desde el servidor. Usado por TN_InventoryComponent (pickup/consume) y
+	 * por el propio Character (jump/knockdown/kill/throw).
+	 */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlaySfx(USoundBase* Sound);
+
 private:
 	bool IsValidWheelEmoteId(int32 EmoteID) const;
 	float GetWheelEmoteCooldown(int32 EmoteID) const;
+
+	/** Spawn at-location del SFX en este actor (proxy local de MulticastPlaySfx). */
+	void PlaySfxAtSelf(USoundBase* Sound) const;
+
+	/** Tiempo restante hasta el siguiente paso (cosmetic, local-only, no replicado). */
+	float FootstepCooldown = 0.f;
 };
