@@ -427,6 +427,19 @@ void ATortugaCharacter::BeginPlay()
 		}, 0.3f, true, 0.1f);  // first fire at 0.1s, repeat every 0.3s
 }
 
+// ── SFX helpers ──────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::PlaySfxAtSelf(USoundBase* Sound) const
+{
+	if (!Sound || !GetWorld()) { return; }
+	UGameplayStatics::SpawnSoundAtLocation(this, Sound, GetActorLocation());
+}
+
+void ATortugaCharacter::MulticastPlaySfx_Implementation(USoundBase* Sound)
+{
+	PlaySfxAtSelf(Sound);
+}
+
 void ATortugaCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -530,6 +543,29 @@ void ATortugaCharacter::TickLegAnimation(float DeltaTime)
 	// because they sit on opposite sides of the body (+Y vs -Y in T-pose).
 	if (Brazo1Bone != NAME_None) { ApplyArmAngle(Brazo1Bone, Brazo1RestRot, -ArmRestAngleDeg, ArmAngle); }
 	if (Brazo2Bone != NAME_None) { ApplyArmAngle(Brazo2Bone, Brazo2RestRot,  ArmRestAngleDeg, -ArmAngle); }
+
+	// ── Footsteps (cosmetic, local-only en cada máquina) ─────────────────────
+	// Cada máquina tickea TickLegAnimation para todos los pawns; Velocity está
+	// replicada. No hace falta RPC: cada cliente decide si el pawn X debe
+	// sonar paso, y todos convergen al mismo ritmo (±1 frame).
+	if (FootstepSound && !bIsDead)
+	{
+		const UCharacterMovementComponent* CMC = GetCharacterMovement();
+		const bool bGrounded = CMC && !CMC->IsFalling();
+		if (bGrounded && Speed > FootstepMinGroundSpeed)
+		{
+			FootstepCooldown -= DeltaTime;
+			if (FootstepCooldown <= 0.f)
+			{
+				PlaySfxAtSelf(FootstepSound);
+				FootstepCooldown = bIsSprinting ? FootstepSprintInterval : FootstepWalkInterval;
+			}
+		}
+		else
+		{
+			FootstepCooldown = 0.f;
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -969,6 +1005,11 @@ void ATortugaCharacter::OnJumped_Implementation()
 	}
 	UE_LOG(LogTemp, Log, TEXT("[Jump] %s jumped · captured horizontal velocity=%s (speed=%.0f)"),
 		*GetName(), *JumpStartHorizontalVelocity.ToString(), JumpStartHorizontalVelocity.Size());
+
+	if (HasAuthority() && JumpSound)
+	{
+		MulticastPlaySfx(JumpSound);
+	}
 }
 
 void ATortugaCharacter::Jump()
@@ -1400,6 +1441,8 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 			// qué pickup spawnear cuando aterrice o impacte (se convierte en recogible)
 			ThrowableActor->SetSourceItem(ConsumedItem);
 			ThrowableActor->InitializeThrow(SpawnLocation, LaunchVelocity);
+
+			if (ThrowSound) { MulticastPlaySfx(ThrowSound); }
 		}
 		else
 		{
@@ -1881,6 +1924,11 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 	// máquinas para cubrir listen-server + todos los clientes (incluido el
 	// dueño, que no recibe OnRep_ReplicatedEmoteIndex por COND_SkipOwner).
 	ApplyKnockdownVisual(bKnocked);
+
+	if (bKnocked && KnockdownSound)
+	{
+		PlaySfxAtSelf(KnockdownSound);
+	}
 }
 
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
@@ -2372,6 +2420,16 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead, FVecto
 	UE_LOG(LogTemp, Warning, TEXT("[DeathState][MC] %s bDead=%d NetMode=%d HasAuthority=%d Role=%d RemoteRole=%d Ground=(%.0f,%.0f,%.0f)"),
 		*GetName(), bDead, (int32)GetNetMode(), HasAuthority() ? 1 : 0, (int32)GetLocalRole(), (int32)GetRemoteRole(),
 		GroundLocation.X, GroundLocation.Y, GroundLocation.Z);
+
+	// Sonido de muerte: se reproduce en TODAS las máquinas (incluido listen-server)
+	// antes del early-return de autoridad. Anclado a la pos actual del actor — el
+	// teleport a GroundLocation aún no ha ocurrido, así que el sonido sale en la
+	// pos visible donde murió.
+	if (bDead && KillSound)
+	{
+		PlaySfxAtSelf(KillSound);
+	}
+
 	if (HasAuthority()) { return; }  // server ya lo hizo en SetDeadVisual
 	if (bDead)
 	{

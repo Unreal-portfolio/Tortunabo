@@ -1,4 +1,5 @@
 ﻿#include "Player/TN_InventoryComponent.h"
+#include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/Pawn.h"
@@ -158,7 +159,15 @@ bool UTN_InventoryComponent::TryConsumeItemByUseType(ETN_ItemUseType InUseType, 
 	// Comprobar slot equipado primero
 	if (bHasEquippedItem && EquippedItem.UseType == InUseType)
 	{
-		return ConsumeEquippedInternal(OutConsumedItem);
+		if (ConsumeEquippedInternal(OutConsumedItem))
+		{
+			if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
+			{
+				if (Char->ConsumeSound) { Char->MulticastPlaySfx(Char->ConsumeSound); }
+			}
+			return true;
+		}
+		return false;
 	}
 
 	// Comprobar slot almacenado
@@ -168,6 +177,10 @@ bool UTN_InventoryComponent::TryConsumeItemByUseType(ETN_ItemUseType InUseType, 
 		StoredItem      = FTN_InventoryItem();
 		bHasStoredItem  = false;
 		// RefreshEquippedVisual no cambia aquí (slot equipado intacto)
+		if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
+		{
+			if (Char->ConsumeSound) { Char->MulticastPlaySfx(Char->ConsumeSound); }
+		}
 		return true;
 	}
 
@@ -233,22 +246,32 @@ void UTN_InventoryComponent::RefreshEquippedVisual()
 
 bool UTN_InventoryComponent::AddItemInternal(const FTN_InventoryItem& NewItem)
 {
-	if (!bHasEquippedItem)
+	const bool bAdded = [&]()
 	{
-		EquippedItem = NewItem;
-		bHasEquippedItem = true;
-		RefreshEquippedVisual();
-		return true;
-	}
+		if (!bHasEquippedItem)
+		{
+			EquippedItem = NewItem;
+			bHasEquippedItem = true;
+			RefreshEquippedVisual();
+			return true;
+		}
+		if (!bHasStoredItem)
+		{
+			StoredItem = NewItem;
+			bHasStoredItem = true;
+			return true;
+		}
+		return false;
+	}();
 
-	if (!bHasStoredItem)
+	if (bAdded)
 	{
-		StoredItem = NewItem;
-		bHasStoredItem = true;
-		return true;
+		if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
+		{
+			if (Char->PickupSound) { Char->MulticastPlaySfx(Char->PickupSound); }
+		}
 	}
-
-	return false;
+	return bAdded;
 }
 
 bool UTN_InventoryComponent::AddOrReplaceEquippedInternal(const FTN_InventoryItem& NewItem, bool bReplaceIfFull)
@@ -266,6 +289,10 @@ bool UTN_InventoryComponent::AddOrReplaceEquippedInternal(const FTN_InventoryIte
 	EquippedItem = NewItem;
 	bHasEquippedItem = true;
 	RefreshEquippedVisual();
+	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
+	{
+		if (Char->PickupSound) { Char->MulticastPlaySfx(Char->PickupSound); }
+	}
 	return true;
 }
 
