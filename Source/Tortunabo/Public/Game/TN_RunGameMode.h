@@ -10,6 +10,17 @@ class APlayerStart;
 class ATN_RescuePickup;
 class ATN_CollectionZone;
 
+/**
+ * @brief GameMode de la fase Run (carrera). Orquesta el ciclo Countdown -> Race -> Results -> retorno al lobby.
+ *
+ * Responsabilidades:
+ *  - Spawnea jugadores en LVL_Run tras Seamless Travel desde LVL_HQ.
+ *  - Gestiona la línea de meta (MarkPlayerFinished) y las muertes (MarkPlayerDead).
+ *  - Sistema DBNO (Down But Not Out) con bleedout timer e inmunidad post-revive.
+ *  - Reloj de carrera replicado y countdown del pantalla de Resultados.
+ *  - Sistema de puntuación: RankScore (podio) + ScorePickups + TimeBonus.
+ *  - Retorno a LVL_HQ vía Seamless Travel cuando expira el timer de resultados.
+ */
 UCLASS()
 class TORTUNABO_API ATN_RunGameMode : public AGameMode
 {
@@ -18,50 +29,87 @@ class TORTUNABO_API ATN_RunGameMode : public AGameMode
 public:
 	ATN_RunGameMode();
 
+	/** @brief Inicializa timers, reloj de carrera y bindings con CollectionZones presentes en el mapa. */
 	virtual void BeginPlay() override;
+
+	/** @brief Llamado por UE cuando un PlayerController NUEVO entra (no por seamless travel). */
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+
+	/** @brief Limpieza al salir de un jugador: libera timers de DBNO/inmunidad y rescata pickups. */
 	virtual void Logout(AController* Exiting) override;
+
+	/** @brief Selecciona un PlayerStart libre evitando reusar el mismo en spawn paralelo. */
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+
+	/** @brief Hook de UE post-spawn del pawn: aplica cosméticos y reglas iniciales del jugador. */
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
-	/** Seamless travel: limpiar estado espectador ANTES de que UE intente spawnear. */
+	/**
+	 * @brief Seamless travel: limpia estado de espectador del PC ANTES de que UE intente respawnearlo.
+	 * @note Evita que un jugador eliminado en la run anterior llegue al lobby ya en modo espectador.
+	 */
 	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 
-	/** Seamless travel: setup final después de que todos los jugadores viajaron. */
+	/**
+	 * @brief Setup final tras Seamless Travel cuando todos los jugadores han llegado.
+	 *        Lanza countdown si ya estamos completos, o espera con timeout.
+	 */
 	virtual void PostSeamlessTravel() override;
 
+	/**
+	 * @brief Marca a un jugador como finalizado (cruzó la meta) y le asigna el siguiente FinishRank.
+	 * @param PlayerController Controller del jugador que terminó la carrera.
+	 * @note Server-only. Si era el último jugador activo, dispara el flujo de Resultados.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void MarkPlayerFinished(APlayerController* PlayerController);
 
+	/**
+	 * @brief Marca a un jugador como muerto, lo pasa a espectador y spawnea su RescuePickup.
+	 * @param PlayerController Controller del jugador eliminado.
+	 * @note Server-only. Guarda el pawn en DeadPlayerPawns para que el rescate lo pueda teletransportar.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void MarkPlayerDead(APlayerController* PlayerController);
 
-	/** Server-side callback cuando una CollectionZone alcanza su RequiredCount.
-	 *  Bindeado en BeginPlay vía OnZoneGoalReached. Suma GoalReachedBonusScore
-	 *  al RaceScore de todos los jugadores activos (no eliminados). */
+	/**
+	 * @brief Callback server-side cuando una CollectionZone alcanza su RequiredCount.
+	 *        Bindeado en BeginPlay vía OnZoneGoalReached. Suma GoalReachedBonusScore
+	 *        al RaceScore de todos los jugadores activos (no eliminados).
+	 * @param Zone CollectionZone que dispara el evento.
+	 */
 	void HandleCollectionZoneGoal(ATN_CollectionZone* Zone);
 
-	/** Put a player into Down But Not Out state (knocked + bleedout timer). */
+	/**
+	 * @brief Pone a un jugador en estado DBNO (knockdown + bleedout timer).
+	 * @param PlayerController Jugador que entra en DBNO.
+	 * @note Server-only. Si todos los vivos están en DBNO, dispara CheckAllAliveDBNO -> muerte global.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Run|DBNO")
 	void EnterDBNO(APlayerController* PlayerController);
 
 	/**
-	 * Revive a player that is currently in DBNO state.
-	 * Called by the server when a teammate successfully completes a revive channel.
+	 * @brief Revive a un jugador que está actualmente en DBNO.
+	 *        Llamado por el servidor cuando un compañero completa el canal de revive.
+	 * @param PlayerController Jugador a revivir.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Run|DBNO")
 	void RevivePlayer(APlayerController* PlayerController);
 
 	/**
-	 * Devuelve el pawn guardado de un jugador muerto (almacenado antes del UnPossess).
-	 * Usado por TN_RescuePickup::Interact para teletransportar el pawn.
+	 * @brief Devuelve el pawn cacheado de un jugador muerto (guardado antes del UnPossess).
+	 * @param PlayerId ID del PlayerState del jugador eliminado.
+	 * @return Pawn cacheado o nullptr si no hay registro.
+	 * @note Usado por TN_RescuePickup::Interact para teletransportar el pawn al lugar del rescate.
 	 */
 	APawn* GetDeadPlayerPawn(int32 PlayerId) const;
 
 	/**
-	 * true si el jugador tiene inmunidad post-revive activa.
-	 * Consultado por TN_DeathZoneVolume para no iniciar el countdown
-	 * mientras el jugador recién revivido está protegido.
+	 * @brief Indica si el jugador tiene inmunidad post-revive activa.
+	 * @param PC PlayerController a consultar.
+	 * @return true mientras dure ReviveImmunitySeconds desde el revive.
+	 * @note Consultado por TN_DeathZoneVolume para no iniciar el countdown
+	 *       mientras el jugador recién revivido está protegido.
 	 */
 	bool IsPlayerReviveImmune(APlayerController* PC) const;
 
@@ -76,11 +124,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run|Staging")
 	float WaitingForPlayersTimeoutSeconds = 15.0f;
 
-	/** How many seconds a DBNO player has before bleeding out and dying for real. */
+	/** Segundos que un jugador DBNO tiene antes de morir definitivamente por bleedout. */
 	UPROPERTY(EditDefaultsOnly, Category = "Run|DBNO", meta = (ClampMin = "3.0"))
 	float DBNOBleedoutSeconds = 8.f;
 
-	/** Brief invulnerability after being revived (prevents instant re-death in death zones). */
+	/** Invulnerabilidad breve tras un revive (evita re-muerte inmediata en death zones). */
 	UPROPERTY(EditDefaultsOnly, Category = "Run|DBNO", meta = (ClampMin = "0.0"))
 	float ReviveImmunitySeconds = 2.f;
 
@@ -121,16 +169,16 @@ private:
 	/** true cuando ya transicionamos a InProgress. */
 	bool bMatchStarted = false;
 
-	/** Players currently in DBNO with their remaining bleedout time. */
+	/** Jugadores actualmente en DBNO con su tiempo de bleedout restante. */
 	TMap<TWeakObjectPtr<APlayerController>, float> DBNOPlayers;
 
-	/** Players with active post-revive immunity timers. */
+	/** Jugadores con inmunidad post-revive activa. */
 	TSet<TWeakObjectPtr<APlayerController>> ReviveImmunePlayers;
 
-	/** Active immunity timer handle per player — allows cancellation on rapid re-revive. */
+	/** Handle de timer de inmunidad por jugador — permite cancelar en re-revive rápido. */
 	TMap<TWeakObjectPtr<APlayerController>, FTimerHandle> ImmunityTimers;
 
-	/** Rescue pickups spawned for dead players. Key = PlayerId. */
+	/** Rescue pickups spawnados para jugadores muertos. Key = PlayerId. */
 	TMap<int32, TWeakObjectPtr<ATN_RescuePickup>> RescuePickups;
 
 	/**
@@ -141,31 +189,43 @@ private:
 	 */
 	TMap<int32, TWeakObjectPtr<APawn>> DeadPlayerPawns;
 
-	/** Legacy no-op path kept only for existing compiled references during transition. */
+	/** Path legacy no-op retenido sólo para referencias compiladas durante la transición. */
 	TMap<int32, FTimerHandle> DeathFinalizeTimers;
 	void FinalizeDeathVisual(int32 PlayerId);
 
+	/** @brief Garantiza que el jugador tenga un pawn vivo en el mapa (spawnea si falta). */
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
+
+	/** @brief Devuelve un PlayerStart cualquiera como fallback si no hay otros disponibles. */
 	APlayerStart* EnsureFallbackPlayerStart();
+
+	/** @brief Tick (1Hz) que decrementa el contador de Resultados y dispara FinishRoundAndReturnToLobby al llegar a 0. */
 	void TickResultsCountdown();
+
+	/** @brief Comprueba si la ronda terminó (todos los vivos cruzaron meta o murieron) y arranca Resultados. */
 	void UpdateRoundProgressAndMaybeFinish();
+
+	/** @brief Mueve a un jugador a modo espectador (UnPossess + spectate next alive). */
 	void MovePlayerToSpectator(APlayerController* PlayerController) const;
+
+	/** @brief Cierra la ronda: persiste scores, dispara Seamless Travel de vuelta a LVL_HQ. */
 	void FinishRoundAndReturnToLobby();
+
+	/** @brief Cambia el MatchFlowState en el GameState replicado + broadcast a listen-server. */
 	void SetFlowState(ETNMatchFlowState NewState) const;
 
-	/** Tick all DBNO bleedout timers (shared, 0.1s interval). */
+	/** @brief Tick compartido (0.1s) de todos los bleedouts DBNO activos. */
 	void TickDBNOBleedout();
 
-	/** If all alive players are in DBNO, kill them all (no one can revive). */
+	/** @brief Si todos los jugadores vivos están en DBNO, los mata a todos (nadie puede revivir). */
 	void CheckAllAliveDBNO();
 
-	/** Comprueba si ya llegaron todos los jugadores esperados y arranca la carrera. */
+	/** @brief Comprueba si llegaron todos los jugadores esperados y, si sí, arranca el countdown. */
 	void TryStartMatch();
 
-	/** Timeout: arranca la carrera aunque no hayan llegado todos. */
+	/** @brief Timeout de staging: arranca la carrera aunque no hayan llegado todos. */
 	void OnWaitingTimeout();
 
-	/** Tick periódico (0.5s) que actualiza ServerMatchElapsedTime en el GameState. */
+	/** @brief Tick periódico (0.5s) que actualiza ServerMatchElapsedTime en el GameState. */
 	void TickRaceClock();
 };
-
