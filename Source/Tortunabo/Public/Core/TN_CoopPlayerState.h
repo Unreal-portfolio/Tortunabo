@@ -6,6 +6,17 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRaceScoreChanged, int32, NewScore);
 
+/**
+ * @brief PlayerState replicado por jugador — contiene estado individual de partida y cosméticos equipados.
+ *
+ * Datos replicados:
+ *  - Flujo: bIsInReadyZone, bHasFinishedRun, bIsAlive, bIsEliminated, bIsDBNO.
+ *  - Métricas: FinishRank, FinishTimeSeconds, RaceScore (con delegate OnRaceScoreChanged).
+ *  - Tiempos visibles en HUD: DBNOBleedoutTimeRemaining, DeathZoneTimeRemaining.
+ *  - Cosméticos equipados: EquippedHelmetId, EquippedSkinId (ambos con OnRep).
+ *
+ * Rate-limit server-side: timestamps para QuickChat y emotes (anti-spam por jugador).
+ */
 UCLASS()
 class TORTUNABO_API ATN_CoopPlayerState : public APlayerState
 {
@@ -18,10 +29,25 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Coop|Score")
 	FOnRaceScoreChanged OnRaceScoreChanged;
 
+	/**
+	 * @brief Indica si el servidor puede aceptar otro QuickChat de este jugador respetando el cooldown.
+	 * @param Now Tiempo actual del servidor (s).
+	 * @param CooldownSeconds Cooldown configurado entre mensajes (s).
+	 */
 	bool CanServerSendQuickChat(float Now, float CooldownSeconds) const;
+
+	/** @brief Marca el tiempo del último QuickChat aceptado (server-side). */
 	void MarkServerQuickChatSent(float Now);
 
+	/**
+	 * @brief Indica si el servidor puede aceptar otro emote del tipo dado respetando su cooldown.
+	 * @param EmoteID ID del emote consultado.
+	 * @param Now Tiempo actual del servidor (s).
+	 * @param CooldownSeconds Cooldown configurado para emotes (s).
+	 */
 	bool CanServerPlayEmote(uint8 EmoteID, float Now, float CooldownSeconds) const;
+
+	/** @brief Marca el tiempo del último emote aceptado de este tipo (server-side). */
 	void MarkServerEmotePlayed(uint8 EmoteID, float Now);
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
@@ -34,15 +60,15 @@ public:
 	bool bIsAlive = true;
 
 	/**
-	 * Down But Not Out: true when the player is incapacitated but not yet dead.
-	 * Teammates can revive via emote within range. If bleedout timer expires, player dies.
+	 * Down But Not Out: true cuando el jugador está incapacitado pero aún no muerto.
+	 * Los compañeros pueden revivirle vía emote en rango. Si expira el bleedout, muere.
 	 */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|DBNO")
 	bool bIsDBNO = false;
 
 	/**
-	 * Seconds remaining before the DBNO player bleeds out and dies for real.
-	 * -1 = not in DBNO. Replicated to owner only (for HUD bleedout bar).
+	 * Segundos restantes antes de que el DBNO bleed-out termine y el jugador muera definitivamente.
+	 * -1 = no está en DBNO. Replicado sólo al owner (para la barra de bleedout del HUD).
 	 */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|DBNO")
 	float DBNOBleedoutTimeRemaining = -1.f;
@@ -53,10 +79,11 @@ public:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedHelmetId, Category = "Cosmetics")
 	FName EquippedHelmetId = NAME_None;
 
+	/** @brief OnRep de EquippedHelmetId: reaplica el mesh del casco en el pawn local. */
 	UFUNCTION()
 	void OnRep_EquippedHelmetId();
 
-	/** Fuerza la aplicación del casco a todos los clientes (evita la race condition del dirty-trick). */
+	/** @brief Fuerza la aplicación del casco a todos los clientes (evita la race condition del dirty-trick). */
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastForceApplyHelmet(FName HelmId);
 
@@ -64,10 +91,11 @@ public:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedSkinId, Category = "Cosmetics")
 	FName EquippedSkinId = NAME_None;
 
+	/** @brief OnRep de EquippedSkinId: reaplica los materiales del skin en el pawn local. */
 	UFUNCTION()
 	void OnRep_EquippedSkinId();
 
-	/** Fuerza la aplicación del skin en todos los clientes (cubre race condition post-travel). */
+	/** @brief Fuerza la aplicación del skin en todos los clientes (cubre race condition post-travel). */
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastForceApplySkin(FName SkinId);
 
@@ -78,9 +106,9 @@ public:
 	int32 FinishRank = 0;
 
 	/**
-	 * True if this player was eliminated (killed) rather than finishing normally.
-	 * UI should display "ELIMINADO" when this is true, using FinishRank for ordering
-	 * among eliminated players (assigned by death order on server).
+	 * True si el jugador fue eliminado (muerto) en lugar de terminar normalmente.
+	 * La UI muestra "ELIMINADO" cuando esto es true, usando FinishRank para ordenar
+	 * entre jugadores eliminados (asignado por orden de muerte en el servidor).
 	 */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	bool bIsEliminated = false;
@@ -94,6 +122,7 @@ public:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RaceScore, Category = "Coop|Score")
 	int32 RaceScore = 0;
 
+	/** @brief OnRep de RaceScore: dispara OnRaceScoreChanged para refrescar el HUD. */
 	UFUNCTION()
 	void OnRep_RaceScore();
 
@@ -103,4 +132,3 @@ private:
 	float ServerLastQuickChatTime = -10000.f;
 	TMap<uint8, float> ServerLastEmoteTimes;
 };
-

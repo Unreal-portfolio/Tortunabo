@@ -5,15 +5,29 @@
 #include "Core/TN_MatchFlowTypes.h"
 #include "TN_CoopGameState.generated.h"
 
-// Fired on clients when MatchFlowState replicates, and manually on server via BroadcastFlowStateChange()
+/** @brief Disparado en clientes cuando MatchFlowState replica, y manualmente en server vía BroadcastFlowStateChange(). */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMatchFlowStateChanged, ETNMatchFlowState, NewState);
 
-/** Fired on all machines whenever a new Quick Chat message arrives. */
+/** @brief Disparado en todas las máquinas cuando llega un nuevo mensaje de Quick Chat. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnQuickChatReceived, const FTN_QuickChatEntry&, Entry);
 
-/** Fired on all machines whenever the global RaceResults array is updated. */
+/** @brief Disparado en todas las máquinas cuando el array global RaceResults se actualiza. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRaceResultsUpdated);
 
+/**
+ * @brief GameState replicado: fuente de verdad del estado de partida.
+ *
+ * Centraliza datos que todos los clientes necesitan ver:
+ *  - MatchFlowState (Waiting/Countdown/Cinematic/InProgress/Results).
+ *  - Conteos de jugadores (ConnectedPlayers, ReadyPlayers, FinishedPlayers, etc.).
+ *  - ServerMatchElapsedTime para el cronómetro de carrera.
+ *  - RaceResults: scoreboard global completo replicado al pasar a Results.
+ *  - QuickChatHistory: últimos N mensajes mantenidos localmente vía multicast.
+ *
+ * @note OnRep no dispara en la máquina dueña (server) — los GameModes llaman
+ *       BroadcastFlowStateChange() manualmente tras cambiar MatchFlowState
+ *       para que el listen-server reciba el delegate igual que un cliente.
+ */
 UCLASS()
 class TORTUNABO_API ATN_CoopGameState : public AGameState
 {
@@ -22,18 +36,33 @@ class TORTUNABO_API ATN_CoopGameState : public AGameState
 public:
 	ATN_CoopGameState();
 
-	// Called by game modes after changing MatchFlowState on the server so that
-	// listen-server local players also receive the notification (OnRep does not
-	// fire on the machine that owns the variable).
+	/**
+	 * @brief Notifica a los listeners locales que MatchFlowState ha cambiado.
+	 * @note Llamado por los GameModes tras cambiar la variable, porque OnRep
+	 *       no dispara en la máquina que es dueña de la variable replicada.
+	 */
 	void BroadcastFlowStateChange();
 
-	/** Appends a Quick Chat entry on the server and notifies all clients via Multicast. */
+	/**
+	 * @brief Añade una entrada de Quick Chat en el servidor y notifica a todos los clientes vía Multicast.
+	 * @param SenderPlayerId Id del PlayerState emisor.
+	 * @param MessageID Id del mensaje en el catálogo.
+	 * @param ServerTimeSeconds Tiempo de mundo del servidor cuando se envió.
+	 */
 	void AddQuickChatEntry(int32 SenderPlayerId, uint8 MessageID, float ServerTimeSeconds);
 
-	/** Envía una entrada individual a todos los clientes (más eficiente que replicar el array completo). */
+	/**
+	 * @brief Envía una entrada individual de Quick Chat a todos los clientes.
+	 * @note Más eficiente que replicar el array completo (ahorro ~130 bytes por mensaje).
+	 */
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastNewChatEntry(FTN_QuickChatEntry Entry);
 
+	/**
+	 * @brief Resuelve el nombre del emisor de un Quick Chat dado su PlayerId.
+	 * @param SenderPlayerId Id compacto del emisor.
+	 * @return FText con el PlayerName o un fallback si no se encuentra.
+	 */
 	UFUNCTION(BlueprintPure, Category = "QuickChat")
 	FText ResolveQuickChatSenderName(int32 SenderPlayerId) const;
 
@@ -87,7 +116,7 @@ public:
 		int32 InFinishRank, float InFinishTime, int32 InRaceScore, bool bInEliminated);
 
 	// ── Quick Chat ────────────────────────────────────────────────────────────
-	/** Broadcast on all machines when a new Quick Chat message arrives. Bind in BP or C++. */
+	/** Disparado en todas las máquinas cuando llega un nuevo mensaje de Quick Chat. Bindear en BP o C++. */
 	UPROPERTY(BlueprintAssignable, Category = "QuickChat")
 	FOnQuickChatReceived OnQuickChatReceived;
 
@@ -99,25 +128,31 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "QuickChat")
 	TArray<FTN_QuickChatEntry> QuickChatHistory;
 
-	/** Maximum number of entries kept in QuickChatHistory. */
+	/** Máximo de entradas conservadas en QuickChatHistory. */
 	static constexpr int32 MaxQuickChatEntries = 10;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
+	/** @brief OnRep de MatchFlowState: dispara el delegate OnMatchFlowStateChanged. */
 	UFUNCTION()
 	void OnRep_MatchFlowState();
 
+	/** @brief OnRep de RaceResults: dispara OnRaceResultsUpdated. */
 	UFUNCTION()
 	void OnRep_RaceResults();
 
-	/** Saves the local player's RaceScore to the save game when Results state is entered.
-	 *  Idempotente: usa bLocalScorePersisted para evitar doble-escritura si se llama
-	 *  varias veces en el mismo ciclo de Results (ej. BroadcastFlowStateChange + OnRep). */
+	/**
+	 * @brief Persiste el RaceScore del jugador local en el save game al entrar en Results.
+	 * @note Idempotente: usa bLocalScorePersisted para evitar doble escritura si se llama
+	 *       varias veces en el mismo ciclo de Results (ej. BroadcastFlowStateChange + OnRep).
+	 */
 	void PersistLocalPlayerScoreIfResults();
 
-	/** True después de la primera llamada exitosa a PersistLocalPlayerScoreIfResults en Results.
-	 *  Se resetea en BeginPlay para que una nueva run pueda persistir su propio score. */
+	/**
+	 * true tras la primera llamada exitosa a PersistLocalPlayerScoreIfResults en Results.
+	 * Se resetea en BeginPlay para que una nueva run pueda persistir su propio score.
+	 */
 	bool bLocalScorePersisted = false;
 
 	int32 NextQuickChatSequence = 0;

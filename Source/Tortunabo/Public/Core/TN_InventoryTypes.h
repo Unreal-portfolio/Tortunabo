@@ -16,6 +16,10 @@ class ATN_InkProjectile;
 // Enum de tipos de uso
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * @brief Tipo de acción al usar un ítem del inventario.
+ *        Determina qué sub-struct de FTN_InventoryItem se interpreta en el dispatch.
+ */
 UENUM(BlueprintType)
 enum class ETN_ItemUseType : uint8
 {

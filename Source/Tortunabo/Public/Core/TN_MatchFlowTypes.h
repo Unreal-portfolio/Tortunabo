@@ -2,29 +2,38 @@
 
 #include "TN_MatchFlowTypes.generated.h"
 
-/** One entry in the Quick Chat history (replicated on CoopGameState). */
+/**
+ * @brief Una entrada del historial de Quick Chat (replicada vía CoopGameState).
+ *
+ * Cada cliente reconstruye el historial localmente recibiendo entries individuales
+ * por Multicast (más eficiente que replicar el array completo).
+ */
 USTRUCT(BlueprintType)
 struct FTN_QuickChatEntry
 {
 	GENERATED_BODY()
 
-	/** Monotonic server sequence for dedup / JIP processing. */
+	/** Secuencia monótona del servidor (sirve para dedup y procesado JIP). */
 	UPROPERTY(BlueprintReadOnly)
 	int32 Sequence = 0;
 
-	/** Compact sender identifier (PlayerState::PlayerId clamped to uint16). */
+	/** Identificador compacto del emisor (PlayerState::PlayerId clamped a uint16). */
 	UPROPERTY(BlueprintReadOnly)
 	int32 SenderPlayerId = 0;
 
-	/** Message catalog ID resolved locally via DataAsset. */
+	/** ID del catálogo de mensajes — se resuelve localmente vía DataAsset. */
 	UPROPERTY(BlueprintReadOnly)
 	uint8 MessageID = 0;
 
-	/** Server world time when the message was sent (for ordering). */
+	/** Tiempo de mundo del servidor cuando se envió el mensaje (para ordering). */
 	UPROPERTY(BlueprintReadOnly)
 	float ServerTime = 0.f;
 };
 
+/**
+ * @brief Estados del flujo de partida. Replicado en TN_CoopGameState.
+ *        Lobby HQ comparte WaitingForPlayers/Countdown; Run usa Cinematic/InProgress/Results.
+ */
 UENUM(BlueprintType)
 enum class ETNMatchFlowState : uint8
 {
@@ -68,4 +77,3 @@ struct FTN_RaceResultEntry
 		return PlayerId == Other.PlayerId;
 	}
 };
-
