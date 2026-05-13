@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -7,6 +7,15 @@
 
 class UStaticMeshComponent;
 
+/**
+ * @brief Inventario de dos slots (equipado + guardado) replicado por jugador.
+ *
+ *  - Equipado: visible como mesh attacheado al socket EquippedAttachSocket; se consume con el input "Usar".
+ *  - Guardado: invisible en el mundo; rota con el equipado mediante RotateItems.
+ *  - El peso total afecta al StaminaComponent (reduce MaxStaminaEffective).
+ *  - Server-authoritative: TryAddItem/RotateItems/Consume operan sólo si HasAuthority,
+ *    aunque pueden llamarse vía wrappers desde clientes (Server RPC interno).
+ */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_InventoryComponent : public UActorComponent
 {
@@ -15,24 +24,38 @@ class TORTUNABO_API UTN_InventoryComponent : public UActorComponent
 public:
 	UTN_InventoryComponent();
 
+	/** @brief Refresca el visual del ítem equipado tras possess (cliente y servidor). */
 	virtual void BeginPlay() override;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/**
+	 * @brief Intenta añadir un ítem al primer slot disponible (equipado > guardado).
+	 * @return true si se añadió.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool TryAddItem(const FTN_InventoryItem& NewItem);
 
+	/**
+	 * @brief Añade el ítem como equipado, opcionalmente sustituyendo el actual.
+	 * @param bReplaceIfFull Si true y ya hay equipado, lo reemplaza tirando el viejo.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool TryAddOrReplaceEquipped(const FTN_InventoryItem& NewItem, bool bReplaceIfFull = true);
 
+	/** @brief Devuelve true si el ítem puede recibirse (slot libre o reemplazo permitido). */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool CanReceiveItem(const FTN_InventoryItem& NewItem, bool bAllowReplaceIfFull = true) const;
 
+	/** @brief Rota equipado ↔ guardado. RPC al servidor desde cliente. */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void RotateItems();
 
+	/** @brief Consume el ítem equipado (lo elimina del slot) y lo devuelve por referencia. */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool TryConsumeEquippedItem(FTN_InventoryItem& OutConsumedItem);
 
+	/** @brief Extrae el ítem equipado sin consumirlo (lo saca del slot pero permite reusarlo). */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool TryExtractEquippedItem(FTN_InventoryItem& OutExtractedItem);
 
@@ -57,7 +80,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	FTN_InventoryItem GetStoredItem() const { return StoredItem; }
 
-	/** Devuelve la suma de ItemWeight de todos los ítems llevados (equipado + guardado). */
+	/** @brief Devuelve la suma de ItemWeight de todos los ítems llevados (equipado + guardado). */
 	UFUNCTION(BlueprintPure, Category = "Inventory|Weight")
 	float GetTotalCarriedWeight() const;
 
@@ -72,6 +95,7 @@ protected:
 	FRotator EquippedRelativeRotation = FRotator::ZeroRotator;
 
 private:
+	/** @brief Server RPC para que un cliente solicite rotar slots. */
 	UFUNCTION(Server, Reliable)
 	void ServerRotateItems();
 
@@ -94,16 +118,26 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<USceneComponent> VisualMeshParent;
 
+	/** @brief OnRep: refresca el mesh visual del slot equipado tras una replicación. */
 	UFUNCTION()
 	void OnRep_EquippedItem();
 
+	/** @brief OnRep: hook para HUD al cambiar el guardado (no tiene visual en mundo). */
 	UFUNCTION()
 	void OnRep_StoredItem();
 
+	/** @brief Sincroniza el mesh attacheado con el EquippedItem actual. */
 	void RefreshEquippedVisual();
+
+	/** @brief Añade un ítem en el primer slot libre (server-side internal). */
 	bool AddItemInternal(const FTN_InventoryItem& NewItem);
+
+	/** @brief Reemplaza el equipado si bReplaceIfFull, si no usa el guardado (server-side internal). */
 	bool AddOrReplaceEquippedInternal(const FTN_InventoryItem& NewItem, bool bReplaceIfFull);
+
+	/** @brief Consume y devuelve el equipado (server-side internal). */
 	bool ConsumeEquippedInternal(FTN_InventoryItem& OutItem);
+
+	/** @brief Intercambia equipado ↔ guardado (server-side internal). */
 	void SwapSlotsInternal();
 };
-

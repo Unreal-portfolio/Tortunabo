@@ -22,6 +22,20 @@ class UPostProcessComponent;
 class UTN_EmoteWheelDataAsset;
 struct FTN_EmoteWheelEntry;
 
+/**
+ * @brief Personaje principal del jugador. Tortuga antropomórfica con cámara tercera persona, dive aéreo, knockdown, emotes y cosméticos.
+ *
+ * Concentra la mayoría de la lógica de gameplay del jugador:
+ *  - Movimiento: Walk, sprint vía UTN_StaminaComponent, dive aéreo con momentum preservation.
+ *  - Combate / hazards: knockdown con tilt 180° + ragdoll opcional, mareo, Big Head, sombrilla anti-tormenta.
+ *  - Items: UTN_InventoryComponent con rotación equipado/guardado y consumo de Use Type.
+ *  - Cosméticos: helmet (mesh attacheado a "Sombrero") y skin (materiales por slot del SkM).
+ *  - Animación procedural: piernas vía pendulum inline + UTN_ProcAnimInstance para overrides component-space.
+ *  - Emotes: catálogo replicado (incluido KNOCKDOWN_EMOTE_ID=100 que dispara el visual de tumbado).
+ *  - VOIP: UProximityVoiceComponent attached como child component.
+ *  - Cámara: SpringArm con lag, zoom dinámico de sprint, FOV interpolado.
+ *  - Input: Enhanced Input con soft refs a IMC_Player + IA_*. Se carga en BeginPlay.
+ */
 UCLASS()
 class TORTUNABO_API ATortugaCharacter : public ACharacter
 {
@@ -88,9 +102,9 @@ protected:
 	virtual void OnJumped_Implementation() override;
 
 	/**
-	 * Called when the PlayerState reference is replicated to this client.
-	 * Used to apply cosmetics (helmet) in case they arrived BEFORE the pawn was
-	 * possessed and the BeginPlay timer-for-next-tick already fired without them.
+	 * @brief Llamado cuando la referencia al PlayerState se replica a este cliente.
+	 *        Reaplica cosméticos (helmet/skin) en caso de que llegaran ANTES de que el pawn
+	 *        fuera poseído y el timer-for-next-tick de BeginPlay ya hubiese disparado sin ellos.
 	 */
 	virtual void OnRep_PlayerState() override;
 

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -6,6 +6,18 @@
 
 class UTN_InventoryComponent;
 
+/**
+ * @brief Componente que gobierna la stamina del personaje (sprint, recarga, agotamiento, boosts).
+ *
+ * Reglas principales:
+ *  - MaxStamina base reducida por peso del inventario (StaminaPerWeightUnit × TotalWeight).
+ *  - Sprint drena SprintDrainPerSecond. Al llegar a 0 entra en Exhausted (ExhaustionPenaltySeconds).
+ *  - Recarga tras RechargeDelaySeconds con curva exponencial.
+ *  - GrantUnlimitedStamina activa boost temporal seguido de PostBoostExhaustion (velocidad reducida + drenaje ×N).
+ *  - SetSpeedCap limita MaxWalkSpeed para zonas externas (TN_SlowZoneVolume).
+ *
+ * Replicación: CurrentStamina owner-only. bIsSprinting, bUnlimitedStamina y bIsExhausted to all.
+ */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_StaminaComponent : public UActorComponent
 {
@@ -14,32 +26,48 @@ class TORTUNABO_API UTN_StaminaComponent : public UActorComponent
 public:
 	UTN_StaminaComponent();
 
+	/** @brief Inicializa CurrentStamina al máximo y registra delegate de speed-cap si aplica. */
 	virtual void BeginPlay() override;
+
+	/** @brief Tick: gestiona timers de boost, ticks de drenaje/recarga y refresca movement speed. */
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/**
+	 * @brief Pide activar o desactivar el sprint. Server-authoritative.
+	 * @param bRequested true = mantener sprint activo si hay stamina; false = soltar.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void SetSprintRequested(bool bRequested);
 
+	/**
+	 * @brief Otorga stamina ilimitada durante DurationSeconds (Barrita Energética / boosts).
+	 * @param DurationSeconds Duración del boost.
+	 * @note Al expirar, activa PostBoostExhaustion (multiplicadores de velocidad y drenaje).
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void GrantUnlimitedStamina(float DurationSeconds);
 
-	/** Restaura la stamina al máximo efectivo e invalida la penalización de agotamiento. */
+	/** @brief Restaura la stamina al máximo efectivo e invalida la penalización de agotamiento. */
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void RestoreStaminaToFull();
 
-	/** Sobreescribe en tiempo de ejecución la penalización post-boost (útil para ítems con distinto penalty). */
+	/** @brief Sobreescribe en runtime la penalización post-boost (útil para ítems con distinto penalty). */
 	void SetPostBoostExhaustionSeconds(float NewValue) { PostBoostExhaustionSeconds = FMath::Max(0.f, NewValue); }
 
 	/**
-	 * Limita MaxWalkSpeed a Cap mientras sea activo (ej. zona de ralentización).
-	 * ApplyMovementSpeed lo respeta: MaxWalkSpeed = Min(WalkSpeed|SprintSpeed, ActiveSpeedCap).
-	 * Llamar en todas las máquinas (sin HasAuthority) — cada una aplica localmente.
+	 * @brief Limita MaxWalkSpeed a Cap mientras sea activo (ej. zona de ralentización).
+	 *        ApplyMovementSpeed lo respeta: MaxWalkSpeed = Min(WalkSpeed|SprintSpeed, ActiveSpeedCap).
+	 * @param Cap Velocidad máxima a forzar (cm/s).
+	 * @note Llamar en todas las máquinas (sin HasAuthority) — cada una aplica localmente.
 	 */
 	void SetSpeedCap(float Cap);
+
+	/** @brief Quita el speed cap dejando que MaxWalkSpeed vuelva a Walk/SprintSpeed. */
 	void ClearSpeedCap();
 
-	/** Vincula el componente de inventario para calcular el peso total cargado. */
+	/** @brief Vincula el componente de inventario para calcular el peso total cargado. */
 	void SetInventoryComponent(UTN_InventoryComponent* InvComp);
 
 	UFUNCTION(BlueprintPure, Category = "Stamina")
@@ -132,9 +160,11 @@ protected:
 	float SprintSpeed = 800.0f;
 
 private:
+	/** @brief Server RPC: confirma el estado de sprint solicitado por el cliente. */
 	UFUNCTION(Server, Reliable)
 	void ServerSetSprintRequested(bool bRequested);
 
+	/** @brief Server RPC: aplica stamina ilimitada del lado servidor. */
 	UFUNCTION(Server, Reliable)
 	void ServerGrantUnlimitedStamina(float DurationSeconds);
 
@@ -171,19 +201,30 @@ private:
 	 */
 	float ActiveSpeedCap = TNumericLimits<float>::Max();
 
+	/** @brief OnRep: refresca HUD del owner cuando la stamina cambia. */
 	UFUNCTION()
 	void OnRep_CurrentStamina();
 
+	/** @brief OnRep: aplica MovementSpeed/visual al cambiar el estado de sprint. */
 	UFUNCTION()
 	void OnRep_IsSprinting();
 
+	/** @brief OnRep: feedback visual cuando el boost de stamina ilimitada cambia. */
 	UFUNCTION()
 	void OnRep_UnlimitedStamina();
 
+	/** @brief Decrementa el timer del boost; al llegar a 0 inicia la penalización post-boost. */
 	void TickUnlimitedTimer(float DeltaTime);
+
+	/** @brief Calcula drenaje/recarga según estado y aplica a CurrentStamina. */
 	void TickStamina(float DeltaTime);
+
+	/** @brief Resuelve si bIsSprinting debe estar activo en función de bSprintRequested + stamina. */
 	void RecomputeSprintState();
+
+	/** @brief Actualiza CharacterMovement->MaxWalkSpeed respetando WalkSpeed/SprintSpeed/SpeedCap. */
 	void ApplyMovementSpeed() const;
+
+	/** @brief Aplica efectos visuales del sprint (FOV/zoom) en el owner local. */
 	void ApplySprintVisual() const;
 };
-
