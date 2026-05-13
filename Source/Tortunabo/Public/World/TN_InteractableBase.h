@@ -9,6 +9,13 @@ class UWidgetComponent;
 class UTN_InteractPromptWidget;
 class UUserWidget;
 
+/**
+ * @brief Clase base abstracta para todos los actores interactuables (pickup, estaciones, botones, etc.).
+ *
+ * Provee el contrato común: CanInteract/Interact, prompt 3D con widget, distancia máxima,
+ * helpers para ocultar/mostrar el mesh visual sin desactivar el overlap.
+ * Las subclases (TN_PickupInteractableBase, TN_DirectInteractableBase, etc.) implementan el comportamiento.
+ */
 UCLASS(Abstract)
 class TORTUNABO_API ATN_InteractableBase : public AActor
 {

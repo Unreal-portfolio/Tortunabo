@@ -47,6 +47,14 @@ struct FTN_ThrowLaunchData
 	bool bReady = false;
 };
 
+/**
+ * @brief Proyectil físico genérico para ítems lanzables (bola, etc.).
+ *
+ * El servidor lo spawnea con FTN_ThrowLaunchData (origen, velocidad, mesh, escala);
+ * el struct replicado garantiza que todos los clientes (incluido JIP) vean el lanzamiento
+ * con el mesh correcto y al mismo tamaño. Al impactar a un enemigo aplica stun vía
+ * ITN_EnemyTargetInterface; al impactar a un jugador, lo derriba (knockdown).
+ */
 UCLASS()
 class TORTUNABO_API ATN_ThrowableItemActor : public AActor
 {

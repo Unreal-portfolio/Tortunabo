@@ -8,6 +8,13 @@
 class UTN_InventoryComponent;
 class UDataTable;
 
+/**
+ * @brief Base de todos los pickups del mundo que añaden un ítem al inventario del jugador.
+ *
+ * Configurable vía DataTable (ItemDataTable + ItemRowName) o inline (PickupItem directo).
+ * Cuando un jugador interactúa: TryAddOrReplaceEquipped en su UTN_InventoryComponent y destruye el pickup.
+ * Subclases especializadas pueden override Interact para lógica adicional (ej. concha trampa, tótem).
+ */
 UCLASS()
 class TORTUNABO_API ATN_PickupInteractableBase : public ATN_InteractableBase
 {

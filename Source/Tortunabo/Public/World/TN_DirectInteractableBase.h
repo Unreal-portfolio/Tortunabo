@@ -4,6 +4,11 @@
 #include "World/TN_InteractableBase.h"
 #include "TN_DirectInteractableBase.generated.h"
 
+/**
+ * @brief Variante de TN_InteractableBase para interacciones DIRECTAS con efecto único + cooldown.
+ *        Provee CooldownSeconds anti-spam y un BP event OnDirectInteraction para implementar el efecto.
+ *        Casos de uso: estaciones de cosméticos, sombrilla, tótem manual, entry del tutorial.
+ */
 UCLASS()
 class TORTUNABO_API ATN_DirectInteractableBase : public ATN_InteractableBase
 {

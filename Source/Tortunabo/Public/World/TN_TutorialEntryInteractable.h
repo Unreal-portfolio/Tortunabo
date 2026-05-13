@@ -5,15 +5,16 @@
 #include "TN_TutorialEntryInteractable.generated.h"
 
 /**
- * Interactable placed in the HQ lobby that teleports the activating player to the
- * tutorial zone.  Available at any time so players can revisit the tutorial after
- * completing it.
+ * @brief Interactable del lobby HQ que teletransporta al jugador a la zona de tutorial.
+ *
+ * Disponible en cualquier momento — los jugadores pueden revisitar el tutorial
+ * tras haberlo completado.
  *
  * Setup:
- *   1. Place this actor (or its BP child) somewhere visible in LVL_HQ.
- *   2. Ensure at least one APlayerStart in LVL_HQ has PlayerStartTag = "TutorialStart"
- *      (or the value set in TutorialStartTag).
- *   3. Assign a prompt mesh and text in the BP child class defaults.
+ *   1. Coloca este actor (o su BP hijo) en una zona visible de LVL_HQ.
+ *   2. Asegúrate de que al menos un APlayerStart en LVL_HQ tenga PlayerStartTag = "TutorialStart"
+ *      (o el valor establecido en TutorialStartTag).
+ *   3. Asigna un prompt mesh y texto en los defaults del BP hijo.
  */
 UCLASS()
 class TORTUNABO_API ATN_TutorialEntryInteractable : public ATN_DirectInteractableBase
