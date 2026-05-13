@@ -5,6 +5,7 @@
 
 class UTexture2D;
 
+/** @brief Datos visuales de una entrada del wheel radial (no contiene lógica de gameplay). */
 USTRUCT(BlueprintType)
 struct FTN_RadialWheelEntryView
 {
@@ -23,6 +24,7 @@ struct FTN_RadialWheelEntryView
 	bool bEnabled = true;
 };
 
+/** @brief Tipos de rueda radial soportados por el PlayerController. */
 UENUM(BlueprintType)
 enum class ETN_RadialWheelType : uint8
 {

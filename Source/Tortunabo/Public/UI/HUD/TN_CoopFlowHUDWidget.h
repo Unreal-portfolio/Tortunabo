@@ -12,6 +12,16 @@ class UWidget;
 class ATN_CoopGameState;
 class ATN_CoopPlayerState;
 
+/**
+ * @brief HUD del flujo de partida cooperativa: status strip, panel de Resultados, scoreboard global y feed de Quick Chat.
+ *
+ * Responsabilidades:
+ *  - Status strip (PrimaryText/SecondaryText) con el estado actual: "Esperando jugadores", countdown, "1º / 2º / 3º", etc.
+ *  - Panel de Resultados al final de la run con scoreboard de 4 filas (Row1..Row4 RankNameTimeScore).
+ *  - Hint de espectador mientras el jugador está observando a otros.
+ *  - Feed de Quick Chat con fade-out automático tras inactividad.
+ *  - Bindings dobles: polling cada RefreshInterval + delegate OnMatchFlowStateChanged como backup.
+ */
 UCLASS()
 class TORTUNABO_API UTN_CoopFlowHUDWidget : public UUserWidget
 {

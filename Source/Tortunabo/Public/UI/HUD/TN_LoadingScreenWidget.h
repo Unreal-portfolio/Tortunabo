@@ -7,12 +7,17 @@
 class UOverlay;
 class UTextBlock;
 
+/**
+ * @brief Loading screen mostrado entre transiciones de mapa (host -> lobby, lobby -> run, etc.).
+ *        Gestionado por UMP_GameInstance::ShowLoadingScreen/HideLoadingScreen.
+ */
 UCLASS()
 class TORTUNABO_API UTN_LoadingScreenWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
 public:
+	/** @brief Cambia el mensaje de estado mostrado (ej. "Conectando...", "Cargando carrera..."). */
 	UFUNCTION(BlueprintCallable, Category = "Loading")
 	void SetStatusMessage(const FText& NewMessage);
 

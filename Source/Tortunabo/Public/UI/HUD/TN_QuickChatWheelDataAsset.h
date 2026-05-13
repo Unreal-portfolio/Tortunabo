@@ -8,6 +8,7 @@
 
 class UTexture2D;
 
+/** @brief Entrada del catálogo de Quick Chat: id, texto, icono y cooldown opcional por mensaje. */
 USTRUCT(BlueprintType)
 struct FTN_QuickChatWheelEntry
 {
@@ -26,6 +27,10 @@ struct FTN_QuickChatWheelEntry
 	float CooldownOverride = 0.f;
 };
 
+/**
+ * @brief DataAsset con el catálogo de mensajes de Quick Chat disponibles.
+ *        El PlayerController lo asigna desde Class Defaults; SendQuickChat resuelve por ID.
+ */
 UCLASS(BlueprintType)
 class TORTUNABO_API UTN_QuickChatWheelDataAsset : public UDataAsset
 {
@@ -35,8 +40,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "QuickChat")
 	TArray<FTN_QuickChatWheelEntry> Entries;
 
+	/** @brief Devuelve el puntero a la entrada con MessageID dado, o nullptr si no existe. */
 	const FTN_QuickChatWheelEntry* FindEntryById(uint8 MessageID) const;
 
+	/** @brief Construye el array de vistas consumibles por el widget de la rueda. */
 	UFUNCTION(BlueprintPure, Category = "QuickChat")
 	TArray<FTN_RadialWheelEntryView> BuildWheelEntries() const;
 

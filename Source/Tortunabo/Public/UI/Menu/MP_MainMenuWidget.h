@@ -7,6 +7,12 @@
 class UButton;
 class UTextBlock;
 
+/**
+ * @brief Widget del menú principal (botones Host / Find / Quit y log de status).
+ *
+ * Se suscribe al delegate OnStatusChanged del UMP_GameInstance para reflejar
+ * estado de sesión y errores en StatusText.
+ */
 UCLASS()
 class TORTUNABO_API UMP_MainMenuWidget : public UUserWidget
 {

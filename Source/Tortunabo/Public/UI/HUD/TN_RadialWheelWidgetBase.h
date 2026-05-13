@@ -13,6 +13,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FTN_OnRadialSelectionChanged, int
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTN_OnRadialSelectionCleared);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FTN_OnRadialSelectionConfirmed, int32, SelectedIndex, uint8, EntryId, FText, Label);
 
+/**
+ * @brief Widget base para ruedas radiales (Emote y QuickChat).
+ *
+ * Cubre la lógica común: vector de input -> índice seleccionado, render de fondo via NativePaint,
+ * disposición automática de slots en CanvasPanel, hooks Blueprint para personalización visual.
+ * Las clases hijas (WBP_EmoteWheel, WBP_QuickChatWheel) sólo deben aportar layout y estilo.
+ */
 UCLASS(Blueprintable)
 class TORTUNABO_API UTN_RadialWheelWidgetBase : public UUserWidget
 {

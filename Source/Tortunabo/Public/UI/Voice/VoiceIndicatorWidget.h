@@ -7,6 +7,12 @@
 class UImage;
 class UProximityVoiceComponent;
 
+/**
+ * @brief Indicador HUD del estado VOIP del jugador local (icono de altavoz).
+ *
+ * Se bindea al UProximityVoiceComponent del propio pawn (con retry hasta que esté disponible)
+ * y muestra/oculta el icono según el delegate OnSpeakingChanged.
+ */
 UCLASS()
 class TORTUNABO_API UVoiceIndicatorWidget : public UUserWidget
 {

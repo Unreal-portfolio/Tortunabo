@@ -31,6 +31,9 @@ class ATN_CoopPlayerState;
  *   - SlotStoredImage      (UImage)           → icono del ítem guardado (slot pasivo)
  *   - SlotEquippedSelector (cualquier widget) → borde/resaltado del slot activo (siempre visible)
  */
+/**
+ * @brief HUD principal con barra de stamina, slots de inventario, RaceScore y hooks DBNO/Revive (cabecera doxygen — el detalle del binding está arriba en este archivo).
+ */
 UCLASS()
 class TORTUNABO_API UTN_PlayerHUDWidget : public UUserWidget
 {
