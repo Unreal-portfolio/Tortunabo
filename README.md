@@ -1,6 +1,27 @@
-# Tortunabo - Setup completo (solo Setup)
+# Tortunabo
 
-Esta guia contiene unicamente el setup paso a paso para dejar el proyecto funcional en UE 5.6.
+**Tortunabo** es un juego cooperativo multijugador (1–4 jugadores) en tercera persona desarrollado en **Unreal Engine 5.6** con C++. Los jugadores controlan tortugas antropomórficas que avanzan juntas por niveles generados proceduralmente por chunks, enfrentándose a obstáculos, recogiendo y lanzando objetos, y compitiendo por llegar antes a la meta.
+
+- **Motor**: Unreal Engine 5.6
+- **Lenguaje**: C++ (módulo `Tortunabo`) + Blueprints
+- **Red**: Steam Sockets (`SteamDevAppId=480` en testing)
+- **Equipo**: Rodrigo Fernández y José Antonio (Mokius)
+- **Contexto académico**: entrega T-Day, U-tad
+
+## Documentación
+
+| Documento | Contenido |
+|---|---|
+| [`Docs/Memoria_T-Day.md`](Docs/Memoria_T-Day.md) | Memoria principal del equipo (defensa). |
+| [`Docs/Memoria_Individual_Rodrigo_T-Day.md`](Docs/Memoria_Individual_Rodrigo_T-Day.md) | Memoria individual de Rodrigo. |
+| [`Docs/Memoria_Individual_JoseAntonio_T-Day.md`](Docs/Memoria_Individual_JoseAntonio_T-Day.md) | Memoria individual de José Antonio. |
+| [`Docs/DayT_GDD_Final.pdf`](Docs/DayT_GDD_Final.pdf) | Game Design Document (PDF final). |
+| [`Docs/LDD_Tortunabo.md`](Docs/LDD_Tortunabo.md) | Level Design Document. |
+| [`Docs/Inventario_Scripts.md`](Docs/Inventario_Scripts.md) | Inventario completo de los 73 archivos `.h` del módulo, por dominio, con descripción y autores. |
+
+## Setup paso a paso
+
+Esta guia contiene el setup paso a paso para dejar el proyecto funcional en UE 5.6.
 
 ## 1) Pre-requisitos
 
