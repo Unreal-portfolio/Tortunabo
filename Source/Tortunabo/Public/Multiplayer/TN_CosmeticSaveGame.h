@@ -1,9 +1,16 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
 #include "TN_CosmeticSaveGame.generated.h"
 
+/**
+ * @brief SaveGame con el perfil cosmético del jugador local.
+ *
+ * Guarda cascos desbloqueados, equipados (helmet y skin) y el score
+ * acumulado entre carreras. Persistido por UMP_GameInstance en un slot
+ * con prefijo CosmeticSaveSlotPrefix + sufijo de Steam ID si está disponible.
+ */
 UCLASS()
 class TORTUNABO_API UTN_CosmeticSaveGame : public USaveGame
 {
@@ -28,4 +35,3 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Score")
 	int32 AccumulatedRaceScore = 0;
 };
-

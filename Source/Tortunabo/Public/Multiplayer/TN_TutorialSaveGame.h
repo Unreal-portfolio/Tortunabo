@@ -5,9 +5,10 @@
 #include "TN_TutorialSaveGame.generated.h"
 
 /**
- * Persists the player's tutorial completion state across sessions.
- * Stored locally on each machine — the listen-server's flag drives
- * first-time spawn routing in TN_HQGameMode.
+ * @brief Persiste el estado de completitud del tutorial del jugador local.
+ *
+ * Almacenado localmente en cada máquina — el flag del listen-server es el que
+ * gobierna el enrutado del spawn inicial en TN_HQGameMode (route a tutorial la primera vez).
  */
 UCLASS()
 class TORTUNABO_API UTN_TutorialSaveGame : public USaveGame
@@ -16,8 +17,9 @@ class TORTUNABO_API UTN_TutorialSaveGame : public USaveGame
 
 public:
 	/**
-	 * true once the player has been spawned in the tutorial zone for the first time.
-	 * Set to true immediately upon first spawn, so subsequent sessions use normal spawn.
+	 * true una vez que el jugador ha sido spawneado en la zona de tutorial al menos una vez.
+	 * Se pone a true inmediatamente al primer spawn, de modo que las sesiones siguientes
+	 * usen el spawn normal.
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Tutorial")
 	bool bHasCompletedTutorial = false;

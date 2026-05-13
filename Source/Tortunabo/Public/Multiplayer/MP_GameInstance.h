@@ -12,6 +12,7 @@ class UUserWidget;
 class UTN_CosmeticSaveGame;
 class UTN_TutorialSaveGame;
 
+/** @brief Entrada de la tabla de loot de cascos: id + peso para sorteo ponderado. */
 USTRUCT(BlueprintType)
 struct FTN_HelmetCrateEntry
 {
@@ -26,6 +27,15 @@ struct FTN_HelmetCrateEntry
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStatusChanged, const FString&, StatusMessage);
 
+/**
+ * @brief GameInstance global del proyecto. Sobrevive a los travels y centraliza:
+ *  - Subsistema online (sesiones Steam): host, find/join, invite, destroy.
+ *  - Persistencia de cosméticos (helmet + skin) vía UTN_CosmeticSaveGame.
+ *  - Persistencia de score acumulado y estado del tutorial.
+ *  - Loading screen entre mapas y status log.
+ *  - PendingTravelPlayerCount: contador puente HQ → Run para saber cuántos esperar.
+ *  - Auto-rejoin a la sesión Steam si el cliente pierde conexión durante un ServerTravel legítimo.
+ */
 UCLASS(Config=Game)
 class TORTUNABO_API UMP_GameInstance : public UGameInstance
 {
@@ -34,24 +44,32 @@ class TORTUNABO_API UMP_GameInstance : public UGameInstance
 public:
 	UMP_GameInstance();
 
+	/** @brief Registra delegates online, carga saveGames de cosméticos/tutorial y prepara el listener de network failures. */
 	virtual void Init() override;
+
+	/** @brief Desregistra delegates y libera handles de timer antes del shutdown del engine. */
 	virtual void Shutdown() override;
 
 	UPROPERTY(BlueprintAssignable, Category = "Multiplayer")
 	FOnStatusChanged OnStatusChanged;
 
+	/** @brief Crea una sesión Steam (presence) y carga el mapa lobby como listen-server. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void HostSession();
 
+	/** @brief Busca sesiones públicas y se une a la primera disponible. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void FindAndJoinSession();
 
+	/** @brief Destruye la sesión Steam actual liberando el slot. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void DestroyCurrentSession();
 
+	/** @brief Abre el overlay de Steam con la lista de amigos para invitar. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void InviteFriends();
 
+	/** @brief Vuelve al menú principal cerrando la sesión activa de forma limpia. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void HandleReturnToMenu();
 
@@ -63,21 +81,27 @@ public:
 	 */
 	void NotifyClientPendingTravel();
 
+	/** @brief Muestra el widget de loading screen con un mensaje opcional. */
 	UFUNCTION(BlueprintCallable, Category = "UI|Loading")
 	void ShowLoadingScreen(const FString& Reason = TEXT("Cargando..."));
 
+	/** @brief Quita el widget de loading screen del viewport. */
 	UFUNCTION(BlueprintCallable, Category = "UI|Loading")
 	void HideLoadingScreen();
 
+	/** @brief Devuelve la lista de IDs de cascos desbloqueados del save game local. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	TArray<FName> GetUnlockedHelmetIds() const;
 
+	/** @brief Indica si el casco está desbloqueado en el save game del jugador local. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool IsHelmetUnlocked(FName HelmetId) const;
 
+	/** @brief Marca el casco como desbloqueado y persiste. Devuelve false si ya lo estaba. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool UnlockHelmet(FName HelmetId);
 
+	/** @brief Equipa un casco YA desbloqueado. Devuelve false si no estaba en la lista. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool EquipHelmet(FName HelmetId);
 
@@ -90,14 +114,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool ForceEquipHelmet(FName HelmetId);
 
+	/** @brief Devuelve el ID del casco equipado actualmente (NAME_None si ninguno). */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	FName GetEquippedHelmetId() const;
 
+	/** @brief Sortea un casco aleatorio según los pesos de HelmetCrateTable, lo desbloquea y devuelve su ID. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	FName OpenHelmetCrate();
 
+	/** @brief Devuelve el log de status formateado (últimos MaxStatusLines mensajes). */
 	FString BuildStatusLog() const;
 
+	/** @brief Máximo de jugadores configurado para la sesión. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	int32 GetMaxPlayers() const { return MaxPlayers; }
 
@@ -135,15 +163,15 @@ public:
 	// ── Tutorial state ───────────────────────────────────────────────────────
 
 	/**
-	 * Returns true if this machine's player has already been spawned in the
-	 * tutorial zone at least once (flag is persisted across sessions).
+	 * @brief Devuelve true si esta máquina ya ha spawneado al jugador en la zona de tutorial.
+	 * @note El flag se persiste en disco y se consulta una sola vez al entrar al HQ.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Tutorial")
 	bool HasCompletedTutorial() const;
 
 	/**
-	 * Marks the tutorial as completed and immediately persists the flag to disk.
-	 * Called by TN_HQGameMode the first time it routes a player to the tutorial zone.
+	 * @brief Marca el tutorial como completado y persiste el flag inmediatamente.
+	 * @note Llamado por TN_HQGameMode la primera vez que enruta a un jugador a la zona de tutorial.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Tutorial")
 	void SetTutorialCompleted();
@@ -158,10 +186,19 @@ public:
 	int32 PendingTravelPlayerCount = 0;
 
 protected:
+	/** @brief Callback online: sesión Steam creada — dispara ServerTravel al mapa lobby. */
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
+
+	/** @brief Callback online: búsqueda terminada — intenta join al primer resultado. */
 	void OnFindSessionsComplete(bool bWasSuccessful);
+
+	/** @brief Callback online: join completado — resuelve connect string y conecta al host. */
 	void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
+
+	/** @brief Callback online: sesión destruida — relanza host/join si había uno pendiente. */
 	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
+
+	/** @brief Callback online: el jugador aceptó una invitación de Steam — guarda y hace join. */
 	void OnSessionUserInviteAccepted(const bool bWasSuccessful, const int32 ControllerId, FUniqueNetIdPtr UserId, const FOnlineSessionSearchResult& InviteResult);
 
 	TSharedPtr<FOnlineSessionSearch> SessionSearch;
@@ -206,12 +243,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cosmetics")
 	TObjectPtr<UDataTable> SkinDataTable;
 
+	/** @brief Añade un mensaje al log circular y emite OnStatusChanged. */
 	void UpdateStatus(const FString& Message);
 
 	static constexpr int32 MaxStatusLines = 12;
 	TArray<FString> StatusLog;
 
 private:
+	/** @brief Devuelve la interfaz online de sesiones (o nullptr si OnlineSubsystem no está disponible). */
 	IOnlineSessionPtr GetSessionInterface() const;
 
 	bool bPendingHostAfterDestroy = false;
@@ -225,16 +264,34 @@ private:
 	 */
 	bool bIsPendingTravel = false;
 
+	/** @brief Hook de fallo de red: decide si reconectar (auto-rejoin), reintentar listen o destruir sesión. */
 	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+
+	/** @brief Garantiza que existe el fichero steam_appid.txt junto al ejecutable. */
 	void EnsureSteamAppIdFile();
+
+	/** @brief Hook pre-load del mapa: muestra loading screen y captura URL para retries. */
 	void HandlePreLoadMap(const FString& MapName);
+
+	/** @brief Hook post-load del mapa: oculta loading y reanuda listen retry si aplica. */
 	void HandlePostLoadMap(UWorld* LoadedWorld);
+
+	/** @brief Actualiza el texto del loading screen sin destruir el widget. */
 	void RefreshLoadingText(const FString& Reason) const;
+
+	/** @brief Carga el UTN_CosmeticSaveGame del slot (o crea uno vacío). */
 	void LoadCosmeticProfile();
+
+	/** @brief Persiste el UTN_CosmeticSaveGame en disco. */
 	void SaveCosmeticProfile() const;
+
+	/** @brief Construye el nombre de slot del save (incluye sufijo de Steam ID si está disponible). */
 	FString BuildCosmeticSaveSlot() const;
 
+	/** @brief Carga el UTN_TutorialSaveGame del disco. */
 	void LoadTutorialProfile();
+
+	/** @brief Persiste el UTN_TutorialSaveGame en disco. */
 	void SaveTutorialProfile() const;
 
 	/** Reintenta crear el listen server tras un NetDriverListenFailure durante travel. */
@@ -283,4 +340,3 @@ private:
 	/** Intenta reconectar al host resolviendo el connect string de la sesión Steam. */
 	void AttemptAutoRejoin();
 };
-
