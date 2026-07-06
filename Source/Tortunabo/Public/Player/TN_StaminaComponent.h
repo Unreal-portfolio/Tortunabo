@@ -165,7 +165,7 @@ private:
 	void ServerSetSprintRequested(bool bRequested);
 
 	/** @brief Server RPC: aplica stamina ilimitada del lado servidor. */
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerGrantUnlimitedStamina(float DurationSeconds);
 
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentStamina)

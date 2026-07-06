@@ -93,6 +93,14 @@ void UTN_StaminaComponent::ServerSetSprintRequested_Implementation(bool bRequest
 	RecomputeSprintState();
 }
 
+bool UTN_StaminaComponent::ServerGrantUnlimitedStamina_Validate(float DurationSeconds)
+{
+	// Cota generosa: rechaza (el engine desconecta) clientes que envíen valores
+	// absurdos/NaN. El clamp real a 15s lo hace el _Implementation; esta validación
+	// es una red de seguridad a nivel de engine que no rechaza tráfico legítimo.
+	return DurationSeconds >= 0.f && DurationSeconds <= 300.f;
+}
+
 void UTN_StaminaComponent::ServerGrantUnlimitedStamina_Implementation(float DurationSeconds)
 {
 	// Clamp to prevent clients from granting themselves permanent unlimited stamina.
