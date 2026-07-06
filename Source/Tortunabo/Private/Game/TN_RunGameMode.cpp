@@ -92,15 +92,7 @@ void ATN_RunGameMode::BeginPlay()
 	{
 		if (ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(BasePS))
 		{
-			TNPS->bIsAlive = true;
-			TNPS->bHasFinishedRun = false;
-			TNPS->bIsDBNO = false;
-			TNPS->DBNOBleedoutTimeRemaining = -1.f;
-			TNPS->FinishRank = 0;
-			TNPS->bIsEliminated = false;
-			TNPS->FinishTimeSeconds = -1.f;
-			TNPS->DeathZoneTimeRemaining = -1.f;
-			TNPS->RaceScore = 0;
+			TNPS->ResetForNewRace();
 		}
 	}
 
@@ -129,15 +121,7 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 	// todos los clientes (no solo los que estaban en BeginPlay) arranquen limpiamente.
 	if (ATN_CoopPlayerState* TNPS = NewPlayer ? NewPlayer->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
 	{
-		TNPS->bIsAlive = true;
-		TNPS->bHasFinishedRun = false;
-		TNPS->bIsDBNO = false;
-		TNPS->DBNOBleedoutTimeRemaining = -1.f;
-		TNPS->FinishRank = 0;
-		TNPS->bIsEliminated = false;
-		TNPS->FinishTimeSeconds = -1.f;
-		TNPS->DeathZoneTimeRemaining = -1.f;
-		TNPS->RaceScore = 0;
+		TNPS->ResetForNewRace();
 	}
 
 	// Actualizar el conteo de jugadores conectados en el GameState
@@ -1329,15 +1313,7 @@ void ATN_RunGameMode::PostSeamlessTravel()
 			const FName SavedHelmet = TNPS->EquippedHelmetId;
 			const FName SavedSkin   = TNPS->EquippedSkinId;
 
-			TNPS->bIsAlive = true;
-			TNPS->bHasFinishedRun = false;
-			TNPS->bIsDBNO = false;
-			TNPS->DBNOBleedoutTimeRemaining = -1.f;
-			TNPS->FinishRank = 0;
-			TNPS->bIsEliminated = false;
-			TNPS->FinishTimeSeconds = -1.f;
-			TNPS->DeathZoneTimeRemaining = -1.f;
-			TNPS->RaceScore = 0;
+			TNPS->ResetForNewRace();
 
 			// Asegurar que tiene pawn
 			EnsurePlayerSpawned(PC);

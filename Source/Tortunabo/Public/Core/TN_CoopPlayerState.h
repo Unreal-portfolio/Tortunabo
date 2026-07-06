@@ -40,6 +40,14 @@ public:
 	void AddRaceScore(int32 Delta);
 
 	/**
+	 * @brief Resetea el estado a valores de ARRANQUE de carrera (vivo, sin finish/DBNO/
+	 *        eliminación, timers a -1, RaceScore 0). Server-side.
+	 * @note Usar al INICIAR una run (BeginPlay/PostLogin/PostSeamlessTravel). NO en un
+	 *       revive — el revive conserva el RaceScore ganado (ver TN_RunGameMode::RevivePlayer).
+	 */
+	void ResetForNewRace();
+
+	/**
 	 * @brief Indica si el servidor puede aceptar otro QuickChat de este jugador respetando el cooldown.
 	 * @param Now Tiempo actual del servidor (s).
 	 * @param CooldownSeconds Cooldown configurado entre mensajes (s).

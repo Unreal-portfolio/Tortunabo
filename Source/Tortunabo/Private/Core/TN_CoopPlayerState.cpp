@@ -167,3 +167,16 @@ void ATN_CoopPlayerState::AddRaceScore(int32 Delta)
 	OnRaceScoreChanged.Broadcast(RaceScore);
 }
 
+void ATN_CoopPlayerState::ResetForNewRace()
+{
+	bIsAlive = true;
+	bHasFinishedRun = false;
+	bIsDBNO = false;
+	DBNOBleedoutTimeRemaining = -1.f;
+	FinishRank = 0;
+	bIsEliminated = false;
+	FinishTimeSeconds = -1.f;
+	DeathZoneTimeRemaining = -1.f;
+	RaceScore = 0;
+}
+
