@@ -118,6 +118,27 @@ void ATN_PressurePlate::RefreshOccupancy()
 	}
 }
 
+bool ATN_PressurePlate::HasLiveOccupant() const
+{
+	// Recalcula en el acto: un jugador que muere encima de la placa puede no generar
+	// EndOverlap (el ragdoll sigue solapando), dejando bOccupied pegado en true. La
+	// condición de grupo debe mirar la ocupación VIVA real, no el flag replicado.
+	for (const TWeakObjectPtr<ATortugaCharacter>& Weak : OccupyingCharacters)
+	{
+		if (const ATortugaCharacter* C = Weak.Get())
+		{
+			if (const ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>())
+			{
+				if (PS->bIsAlive && !PS->bIsEliminated)
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
 void ATN_PressurePlate::ResetLatch()
 {
 	if (!HasAuthority()) { return; }
@@ -264,11 +285,13 @@ bool ATN_PressurePlateGroupManager::EvaluateCondition() const
 
 	if (AlivePlayers == 0) { return false; }
 
-	// Contar cuántas placas están ocupadas
+	// Contar cuántas placas tienen un jugador VIVO encima AHORA (no el bOccupied
+	// replicado, que puede quedar pegado si alguien muere sobre la placa). Evita el
+	// exploit de "morir sobre placas para mantenerlas pulsadas".
 	int32 PlatesOccupied = 0;
 	for (const ATN_PressurePlate* Plate : ManagedPlates)
 	{
-		if (Plate && Plate->IsOccupied()) { ++PlatesOccupied; }
+		if (Plate && Plate->HasLiveOccupant()) { ++PlatesOccupied; }
 	}
 
 	return PlatesOccupied >= GetEffectiveThreshold(AlivePlayers);

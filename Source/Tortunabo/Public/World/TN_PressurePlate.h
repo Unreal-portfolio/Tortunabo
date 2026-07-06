@@ -53,6 +53,14 @@ public:
 	bool IsOccupied() const { return bOccupied; }
 
 	/**
+	 * True si AHORA MISMO hay un jugador VIVO sobre la placa (recalculado en el acto).
+	 * A diferencia de IsOccupied(), no depende del bOccupied replicado, que puede quedar
+	 * pegado si un jugador muere encima sin generar EndOverlap (el ragdoll sigue solapando).
+	 * La lógica de grupo debe usar esto para no dejar que un muerto mantenga la condición.
+	 */
+	bool HasLiveOccupant() const;
+
+	/**
 	 * Resetea manualmente una placa Latched. Solo authority.
 	 * No-op en modo Momentary.
 	 */
