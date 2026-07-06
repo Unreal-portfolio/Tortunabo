@@ -1535,10 +1535,14 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 void ATortugaCharacter::ServerDropEquippedItem_Implementation()
 {
 	if (bIsKnockedDown || bIsDead) { return; }
-	if (!InventoryComponent) { return; }
+	if (!InventoryComponent || !InventoryComponent->HasEquippedItem()) { return; }
 
-	FTN_InventoryItem DroppedItem;
-	if (!InventoryComponent->TryExtractEquippedItem(DroppedItem) || !DroppedItem.IsValid() || !DroppedItem.PickupActorClass)
+	// Validar ANTES de consumir. La versión anterior extraía el ítem del inventario
+	// primero y solo después comprobaba PickupActorClass / el spawn: si la clase era
+	// null o SpawnActor fallaba, el ítem quedaba consumido pero sin pickup en el mundo
+	// (item lost). Ahora spawnamos primero y solo consumimos si el pickup existe.
+	const FTN_InventoryItem& Equipped = InventoryComponent->GetEquippedItem();
+	if (!Equipped.IsValid() || !Equipped.PickupActorClass)
 	{
 		return;
 	}
@@ -1551,11 +1555,21 @@ void ATortugaCharacter::ServerDropEquippedItem_Implementation()
 	// Siempre spawnear en el suelo aunque el personaje esté en el aire
 	const FVector DropPoint = FindGroundBelow(GetItemSpawnLocation());
 
-	if (ATN_PickupInteractableBase* PickupActor = GetWorld()->SpawnActor<ATN_PickupInteractableBase>(
-		DroppedItem.PickupActorClass, DropPoint, FRotator::ZeroRotator, SpawnParams))
+	ATN_PickupInteractableBase* PickupActor = GetWorld()->SpawnActor<ATN_PickupInteractableBase>(
+		Equipped.PickupActorClass, DropPoint, FRotator::ZeroRotator, SpawnParams);
+	if (!PickupActor)
 	{
-		PickupActor->InitializeFromInventoryItem(DroppedItem);
+		return; // Spawn falló → NO consumir el ítem (evita pérdida)
 	}
+
+	FTN_InventoryItem DroppedItem;
+	if (!InventoryComponent->TryExtractEquippedItem(DroppedItem))
+	{
+		PickupActor->Destroy();
+		return;
+	}
+
+	PickupActor->InitializeFromInventoryItem(DroppedItem);
 }
 
 FVector ATortugaCharacter::GetItemSpawnLocation() const
