@@ -15,10 +15,11 @@ Hecho y pusheado a `entrega-memoria`:
 - **Perf**: roof-check de gaviota O(mundo)→O(1).
 - **Hardening**: `WithValidation` en RPCs de stamina y voz.
 - **Higiene**: `.codegraph/` en gitignore.
-- **God class troceado**: `TortugaCharacter.cpp` **4364 → 1847 líneas (-58%)**, repartido en
-  `_Dive` / `_Knockdown` / `_Revive` / `_Emote` / `_Cosmetics` (splits de unidad de
-  traducción — misma clase, sin cambios de lógica ni replicación; comportamiento idéntico).
-  Cada extracción compilada en verde por separado.
+- **God class troceado**: `TortugaCharacter.cpp` **4364 → 1448 líneas (-67%)**, repartido en
+  `_Dive` / `_Knockdown` / `_Revive` / `_Emote` / `_Cosmetics` / `_Interaction` (splits de
+  unidad de traducción — misma clase, sin cambios de lógica ni replicación; comportamiento
+  idéntico). Cada extracción compilada en verde por separado. El archivo principal conserva
+  el core: ctor, BeginPlay/Tick, input, movimiento/cámara, leg-anim, head-look, jump-anim.
 
 Pendiente (necesita PIE o decisión): persist-score race (Fase 1), extracción a UComponents
 reales (Fase 3, cambia replicación → requiere PIE), pooling (declinado), tests (Fase 4).
