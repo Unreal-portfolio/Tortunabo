@@ -124,7 +124,7 @@ protected:
 	 * @param CompressedData Buffer comprimido.
 	 * @param SenderSampleRate SampleRate del cliente emisor.
 	 */
-	UFUNCTION(Server, Unreliable)
+	UFUNCTION(Server, Unreliable, WithValidation)
 	void Server_SendVoiceData(const TArray<uint8>& CompressedData, int32 SenderSampleRate);
 
 	/**

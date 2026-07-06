@@ -458,6 +458,14 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	}
 }
 
+bool UProximityVoiceComponent::Server_SendVoiceData_Validate(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
+{
+	// Red de seguridad a nivel de engine: rechaza payloads absurdos o sample rates
+	// fuera de todo rango humano (INT_MAX de un cliente manipulado). Cotas generosas
+	// para no desconectar clientes legítimos; el _Implementation ya acota con precisión.
+	return CompressedData.Num() <= 8192 && SenderSampleRate > 0 && SenderSampleRate <= 192000;
+}
+
 void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
 	// Payload cap: ~8 KB covers 80ms at 48kHz stereo with headroom.
