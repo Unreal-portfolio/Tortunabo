@@ -57,8 +57,9 @@ void ATN_ScorePickup::OnSphereOverlap(UPrimitiveComponent* OverlappedComp, AActo
 	ATN_CoopPlayerState* PS = Pawn->GetPlayerState<ATN_CoopPlayerState>();
 	if (!PS || !PS->bIsAlive || PS->bIsEliminated) { return; }
 
-	// Sumar puntos
-	PS->RaceScore += ScoreValue;
+	// Sumar puntos (server-auth). AddRaceScore difunde OnRaceScoreChanged también en
+	// el host del listen-server, cuyo OnRep no dispara → su HUD se refresca en vivo.
+	PS->AddRaceScore(ScoreValue);
 	PS->ForceNetUpdate();
 	UE_LOG(LogTemp, Log, TEXT("[ScorePickup] %s recogió %d puntos → total %d"),
 		*GetNameSafe(Pawn), ScoreValue, PS->RaceScore);

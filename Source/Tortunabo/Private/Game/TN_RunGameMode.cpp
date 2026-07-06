@@ -417,7 +417,7 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	const int32 TimeBonus = FMath::Max(0, FMath::FloorToInt(TimeUnderBaseline * TimeBonusPointsPerSecond));
 
 	const int32 PickupAndZoneScore = TNPS->RaceScore;  // lo que llevaba antes de finish
-	TNPS->RaceScore += RankScore + TimeBonus;
+	TNPS->AddRaceScore(RankScore + TimeBonus);         // difunde OnRaceScoreChanged en el host
 
 	UE_LOG(LogTemp, Log, TEXT("[FINISH] '%s' Rank=%d Time=%.1fs · Rank+%d · Pickups+%d · TimeBonus+%d → Total=%d"),
 		*GetNameSafe(PlayerController), TNPS->FinishRank, TNPS->FinishTimeSeconds,
@@ -1402,7 +1402,7 @@ void ATN_RunGameMode::HandleCollectionZoneGoal(ATN_CollectionZone* Zone)
 		if (!PC) { continue; }
 		ATN_CoopPlayerState* TNPS = PC->GetPlayerState<ATN_CoopPlayerState>();
 		if (!TNPS || TNPS->bIsEliminated || TNPS->bHasFinishedRun) { continue; }
-		TNPS->RaceScore += Bonus;
+		TNPS->AddRaceScore(Bonus);  // difunde OnRaceScoreChanged en el host (listen-server)
 		++Beneficiaries;
 	}
 

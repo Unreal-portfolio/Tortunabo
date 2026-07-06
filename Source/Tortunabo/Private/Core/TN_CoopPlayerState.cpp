@@ -152,3 +152,18 @@ void ATN_CoopPlayerState::OnRep_RaceScore()
 	OnRaceScoreChanged.Broadcast(RaceScore);
 }
 
+void ATN_CoopPlayerState::AddRaceScore(int32 Delta)
+{
+	if (!HasAuthority() || Delta == 0)
+	{
+		return;
+	}
+
+	RaceScore += Delta;
+
+	// Listen-server: OnRep_RaceScore no llega a la máquina con autoridad (el host),
+	// así que difundimos manualmente para refrescar su propio HUD. En clientes remotos
+	// el cambio llega vía replicación → OnRep_RaceScore (no se llama este método allí).
+	OnRaceScoreChanged.Broadcast(RaceScore);
+}
+

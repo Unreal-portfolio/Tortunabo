@@ -30,6 +30,16 @@ public:
 	FOnRaceScoreChanged OnRaceScoreChanged;
 
 	/**
+	 * @brief Suma Delta al RaceScore (server-authoritative) y refresca el HUD del host.
+	 * @param Delta Puntos a sumar (puede ser negativo; ignora 0).
+	 * @note En el listen-server OnRep_RaceScore NO dispara en la máquina con autoridad,
+	 *       así que difundimos OnRaceScoreChanged manualmente aquí para que el HUD del
+	 *       host se actualice en vivo (mismo patrón que Server_UpsertRaceResult). Usar
+	 *       este método en todos los sitios server que suman score (pickups, zonas, finish).
+	 */
+	void AddRaceScore(int32 Delta);
+
+	/**
 	 * @brief Indica si el servidor puede aceptar otro QuickChat de este jugador respetando el cooldown.
 	 * @param Now Tiempo actual del servidor (s).
 	 * @param CooldownSeconds Cooldown configurado entre mensajes (s).
