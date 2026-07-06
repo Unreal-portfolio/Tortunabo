@@ -84,10 +84,16 @@ void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 	{
 		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
 		{
-			FSyrupState State;
-			State.OrigGravityScale = CMC->GravityScale;
-			State.OrigJumpZVel     = CMC->JumpZVelocity;
-			OriginalCMCState.Add(Char, State);
+			// Guardar el estado ORIGINAL solo en la PRIMERA SlowZone que pisa el jugador.
+			// Si ya está en otra, CMC->GravityScale ya es el valor "sirope" (no el real);
+			// sobrescribirlo perdería la gravedad a la que hay que volver al salir.
+			if (!OriginalCMCState.Contains(Char))
+			{
+				FSyrupState State;
+				State.OrigGravityScale = CMC->GravityScale;
+				State.OrigJumpZVel     = CMC->JumpZVelocity;
+				OriginalCMCState.Add(Char, State);
+			}
 
 			CMC->GravityScale  = GravityScaleInZone;
 			CMC->JumpZVelocity = JumpVelocityInZone;
@@ -104,12 +110,9 @@ void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AA
 	CharactersInZone.Remove(Char);
 	Char->OnDestroyed.RemoveDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
 
-	if (UTN_StaminaComponent* Stamina = Char->FindComponentByClass<UTN_StaminaComponent>())
-	{
-		Stamina->ClearSpeedCap();
-	}
-
-	// Restaurar CMC solo si no está en otra SlowZone
+	// El jugador puede estar en varias SlowZones solapadas. Solo revertimos los
+	// efectos (speed cap + gravedad/salto) cuando sale de la ÚLTIMA: si aún está
+	// dentro de otra, mantener el ralentizado.
 	bool bStillInSlowZone = false;
 	TArray<AActor*> Overlapping;
 	Char->GetOverlappingActors(Overlapping, ATN_SlowZoneVolume::StaticClass());
@@ -118,18 +121,32 @@ void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AA
 		if (OA && OA != this) { bStillInSlowZone = true; break; }
 	}
 
-	if (!bStillInSlowZone && (HasAuthority() || Char->IsLocallyControlled()))
+	if (!bStillInSlowZone)
 	{
-		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		// SpeedCap se aplicó en todas las máquinas (ver OnBoxBeginOverlap) → limpiarlo
+		// también en todas. Antes se limpiaba al salir de CUALQUIER zona, devolviendo
+		// velocidad de suelo plena si el jugador seguía dentro de otra solapada.
+		if (UTN_StaminaComponent* Stamina = Char->FindComponentByClass<UTN_StaminaComponent>())
 		{
-			if (const FSyrupState* State = OriginalCMCState.Find(Char))
+			Stamina->ClearSpeedCap();
+		}
+
+		if (HasAuthority() || Char->IsLocallyControlled())
+		{
+			if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
 			{
-				CMC->GravityScale  = State->OrigGravityScale;
-				CMC->JumpZVelocity = State->OrigJumpZVel;
+				if (const FSyrupState* State = OriginalCMCState.Find(Char))
+				{
+					CMC->GravityScale  = State->OrigGravityScale;
+					CMC->JumpZVelocity = State->OrigJumpZVel;
+				}
 			}
 		}
+
+		// Liberar el estado guardado solo al salir de la última zona; si sigue en otra,
+		// esa zona todavía necesita el original para restaurarlo cuando el jugador salga.
+		OriginalCMCState.Remove(Char);
 	}
-	OriginalCMCState.Remove(Char);
 }
 
 void ATN_SlowZoneVolume::OnCharacterDestroyed(AActor* DestroyedActor)
