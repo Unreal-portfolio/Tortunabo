@@ -470,6 +470,12 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 		return;
 	}
 
+	// Sanitizar el sample rate reportado por el cliente antes de reenviarlo: un valor
+	// fuera de rango (p.ej. INT_MAX de un cliente manipulado) llega a
+	// USoundWaveProcedural::SetSampleRate en los receptores y corrompe/crashea su audio.
+	// Acotar al rango humano de voz.
+	SenderSampleRate = FMath::Clamp(SenderSampleRate, 8000, 96000);
+
 	// Server-side rate limit: allow at most 25 Hz (min 40ms between packets).
 	// The client enforces 80ms (12.5 Hz) via SendInterval, so 40ms gives 2× headroom for jitter.
 	constexpr float MinVoicePacketInterval = 0.04f;
@@ -524,10 +530,9 @@ void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedDa
 		return;
 	}
 
-	if (SenderSampleRate <= 0)
-	{
-		SenderSampleRate = 48000;
-	}
+	// Defensa en el consumidor (cubre también el path Multicast legacy): acotar el
+	// sample rate recibido por red al rango humano antes de configurar el playback.
+	SenderSampleRate = FMath::Clamp(SenderSampleRate <= 0 ? 48000 : SenderSampleRate, 8000, 96000);
 
 	if (!ProceduralSoundWave || !PlaybackAudioComponent)
 	{
