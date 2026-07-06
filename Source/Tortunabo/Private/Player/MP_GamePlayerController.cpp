@@ -323,8 +323,14 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 		return;
 	}
 
+	// GameState puede ser null durante travel/teardown (World existe pero el GS aún
+	// no ha replicado/spawneado). Sin este guard, la rueda del ratón al espectar en
+	// esa ventana crashea al iterar PlayerArray.
+	AGameStateBase* GS = GetWorld()->GetGameState();
+	if (!GS) { return; }
+
 	TArray<APlayerState*> Candidates;
-	for (APlayerState* PS : GetWorld()->GetGameState()->PlayerArray)
+	for (APlayerState* PS : GS->PlayerArray)
 	{
 		ATN_CoopPlayerState* CoopPS = Cast<ATN_CoopPlayerState>(PS);
 		// Skip self
