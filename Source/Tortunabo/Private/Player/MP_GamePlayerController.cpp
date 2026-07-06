@@ -96,11 +96,33 @@ void AMP_GamePlayerController::SetupInputComponent()
 
 void AMP_GamePlayerController::OnReturnToMenuPressed()
 {
+	// Un cliente remoto abandona la partida individualmente: destruye su propio
+	// registro de sesión y viaja a su menú, sin pedir al servidor que cierre la
+	// sesión de todos. Solo el host termina la partida para el resto.
+	if (GetNetMode() == NM_Client)
+	{
+		if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+		{
+			GI->HandleReturnToMenu();
+		}
+		return;
+	}
+
 	ServerRequestReturnToMenu();
 }
 
 void AMP_GamePlayerController::ServerRequestReturnToMenu_Implementation()
 {
+	// Guard server-side: solo el PlayerController del host (local en el listen-server)
+	// puede cerrar la sesión para todos. Sin esto, cualquier cliente remoto podía
+	// invocar este RPC y expulsar a toda la partida al menú (grief).
+	if (!IsLocalController())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MP] ServerRequestReturnToMenu rechazado: '%s' no es el host."),
+			*GetNameSafe(this));
+		return;
+	}
+
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
 	{
 		GI->HandleReturnToMenu();
