@@ -80,3 +80,6 @@ DerivedDataCache/*
 
 # Claude Code session log (local, ephemeral)
 .claude/session-log.md
+
+# CodeGraph index (local code-intelligence cache, regenerated on demand)
+.codegraph/
