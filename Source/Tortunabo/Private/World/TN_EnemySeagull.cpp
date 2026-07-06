@@ -8,9 +8,6 @@
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
-#include "EngineUtils.h"
-#include "World/TN_SeagullDroppingActor.h"
-#include "World/TN_PhysicsObjectActor.h"
 
 ATN_EnemySeagull::ATN_EnemySeagull()
 {
@@ -353,31 +350,27 @@ bool ATN_EnemySeagull::HasRoofBetweenSeagullAndTarget() const
 	ATortugaCharacter* Target = TargetCharacter.Get();
 	if (!Target) { return false; }
 
+	UWorld* World = GetWorld();
+	if (!World) { return false; }
+
 	FHitResult Hit;
 	FCollisionQueryParams Params(TEXT("SeagullRoofCheck"), false);
 	Params.AddIgnoredActor(this);
 	Params.AddIgnoredActor(Target);
 
-	// G1 fix: ignorar TODAS las cacas de gaviota y physics objects en el line trace.
-	// Sin esto, una caca o cubo cruzando momentáneamente entre la gaviota y el
-	// jugador cuenta como techo → false positive AbortAndRetreat.
-	UWorld* World = GetWorld();
-	for (TActorIterator<ATN_SeagullDroppingActor> It(World); It; ++It)
-	{
-		Params.AddIgnoredActor(*It);
-	}
-	for (TActorIterator<ATN_PhysicsObjectActor> It(World); It; ++It)
-	{
-		Params.AddIgnoredActor(*It);
-	}
-
-	World->LineTraceSingleByChannel(
+	// Trazar SOLO contra geometría estática del nivel (object type WorldStatic). Un techo
+	// real es geometría estática; las cacas (NoCollision) y los physics objects
+	// (WorldDynamic) quedan excluidos por su object type. Esto sustituye a las dos
+	// iteraciones sobre TODOS los ATN_SeagullDroppingActor/ATN_PhysicsObjectActor del mundo
+	// que construían una ignore-list en cada roof-check (0.25s por gaviota): pasa de
+	// O(actores del mundo) a O(1) de setup, sin cambiar el resultado.
+	FCollisionObjectQueryParams ObjParams(ECC_WorldStatic);
+	World->LineTraceSingleByObjectType(
 		Hit,
 		GetActorLocation(),
 		Target->GetActorLocation(),
-		ECC_WorldStatic,
-		Params
-	);
+		ObjParams,
+		Params);
 
 	return Hit.bBlockingHit;
 }
