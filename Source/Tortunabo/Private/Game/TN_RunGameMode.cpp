@@ -802,7 +802,9 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	TNPS->FinishRank = 0;
 	TNPS->FinishTimeSeconds = -1.f;
 	TNPS->DeathZoneTimeRemaining = -1.f;
-	TNPS->RaceScore = 0;
+	// NOTA: NO resetear RaceScore aquí. Revivir a un compañero a mitad de carrera NO
+	// debe borrar los puntos ya ganados (ScorePickups/zonas). El reset a 0 solo procede
+	// al ARRANCAR la run (BeginPlay/PostSeamlessTravel), no en un revive.
 
 	// Remove from DBNO tracking
 	DBNOPlayers.Remove(PlayerController);
