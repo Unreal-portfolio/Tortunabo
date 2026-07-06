@@ -1,7 +1,27 @@
 # Plan de corrección y optimización — Tortunabo
 
 > Generado en la sesión de macro-audit (/maxdual · ULTRON + peer Codex).
-> Estado a fecha: 6 fixes ya commiteados (Fase 0). El resto son fases planificadas.
+
+## Estado (actualizado — sesión autónoma 2026-07-06)
+
+**Todo lo de abajo está compilado en verde** (`TortunaboEditor Win64 DebugGame`) — se
+verificó que el motor UE5.6 está instalado y se compiló tras cada cambio. Falta la
+prueba en PIE (no ejecutable sin display); los cambios de red se validan en runtime.
+
+Hecho y pusheado a `entrega-memoria`:
+- **6 fixes de bugs** (Fase 0): sample-rate voz, grief return-to-menu, revive-borra-score,
+  crash SpectateByDirection, item-loss en drop, score del host en vivo.
+- **Refactor**: `ATN_SpawnZoneBase` (dedup spawn zones).
+- **Perf**: roof-check de gaviota O(mundo)→O(1).
+- **Hardening**: `WithValidation` en RPCs de stamina y voz.
+- **Higiene**: `.codegraph/` en gitignore.
+- **God class troceado**: `TortugaCharacter.cpp` **4364 → 1847 líneas (-58%)**, repartido en
+  `_Dive` / `_Knockdown` / `_Revive` / `_Emote` / `_Cosmetics` (splits de unidad de
+  traducción — misma clase, sin cambios de lógica ni replicación; comportamiento idéntico).
+  Cada extracción compilada en verde por separado.
+
+Pendiente (necesita PIE o decisión): persist-score race (Fase 1), extracción a UComponents
+reales (Fase 3, cambia replicación → requiere PIE), pooling (declinado), tests (Fase 4).
 
 ---
 
