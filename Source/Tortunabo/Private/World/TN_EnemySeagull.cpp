@@ -5,7 +5,7 @@
 #include "Components/DecalComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 
@@ -51,7 +51,7 @@ void ATN_EnemySeagull::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_EnemySeagull, CountdownRemaining);
-	DOREPLIFETIME(ATN_EnemySeagull, TargetPlayerIndex);
+	DOREPLIFETIME(ATN_EnemySeagull, TargetPlayerState);
 }
 
 // ── API Pública ────────────────────────────────────────────────────────────────
@@ -65,21 +65,9 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 	CountdownRemaining = AttackTimerSeconds;
 	UpdateDecalSize();
 
-	TargetCharacter  = Target;
-	TargetController = Cast<APlayerController>(Target->GetController());
-
-	// Resolver índice para que los clientes puedan identificar al objetivo
-	if (AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr)
-	{
-		for (int32 i = 0; i < GS->PlayerArray.Num(); ++i)
-		{
-			if (GS->PlayerArray[i] && GS->PlayerArray[i]->GetPawn() == Target)
-			{
-				TargetPlayerIndex = i;
-				break;
-			}
-		}
-	}
+	TargetCharacter   = Target;
+	TargetController  = Cast<APlayerController>(Target->GetController());
+	TargetPlayerState = Target->GetPlayerState();
 
 	const FVector StartLoc = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
 	SetActorLocation(StartLoc);
@@ -164,8 +152,8 @@ void ATN_EnemySeagull::TickEscapeCheck(float DeltaTime)
 {
 	if (bAttackResolved) { return; }
 
-	// TargetPlayerIndex == -1 → InitializeWithTarget aún no fue llamado
-	if (TargetPlayerIndex == -1) { return; }
+	// TargetPlayerState null → InitializeWithTarget aún no fue llamado
+	if (!TargetPlayerState) { return; }
 
 	ATortugaCharacter* Target = TargetCharacter.Get();
 	if (!Target)
@@ -392,16 +380,11 @@ void ATN_EnemySeagull::OnRep_CountdownRemaining()
 	UpdateDecalSize();
 }
 
-void ATN_EnemySeagull::OnRep_TargetPlayerIndex()
+void ATN_EnemySeagull::OnRep_TargetPlayerState()
 {
-	if (!GetWorld()) { return; }
-	AGameStateBase* GS = GetWorld()->GetGameState();
-	if (!GS || !GS->PlayerArray.IsValidIndex(TargetPlayerIndex)) { return; }
-
-	if (APlayerState* PS = GS->PlayerArray[TargetPlayerIndex])
-	{
-		TargetCharacter = Cast<ATortugaCharacter>(PS->GetPawn());
-	}
+	TargetCharacter = TargetPlayerState
+		? Cast<ATortugaCharacter>(TargetPlayerState->GetPawn())
+		: nullptr;
 }
 
 // ── Multicast — efectos visuales/sonoros ──────────────────────────────────────

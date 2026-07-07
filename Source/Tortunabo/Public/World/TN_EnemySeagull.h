@@ -10,6 +10,7 @@ class USoundBase;
 class UNiagaraSystem;
 class ATortugaCharacter;
 class APlayerController;
+class APlayerState;
 
 /**
  * Gaviota dinámica enemiga (#11) — versión unificada.
@@ -30,7 +31,7 @@ class APlayerController;
  * Red:
  *   Servidor controla todo (movimiento, escape, kill).
  *   bReplicateMovement=true → el dive es visible en todos los clientes.
- *   CountdownRemaining y TargetPlayerIndex replicados para feedback visual de clientes.
+ *   CountdownRemaining y TargetPlayerState replicados para feedback visual de clientes.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_EnemySeagull : public AActor
@@ -170,12 +171,16 @@ private:
 	UFUNCTION()
 	void OnRep_CountdownRemaining();
 
-	/** Índice en PlayerArray del objetivo — replicado para que clientes resuelvan la referencia. */
-	UPROPERTY(ReplicatedUsing = OnRep_TargetPlayerIndex)
-	int32 TargetPlayerIndex = -1;
+	/**
+	 * PlayerState del objetivo — replicado para que clientes resuelvan la referencia.
+	 * Puntero (NetGUID) en lugar de índice de PlayerArray: el array se reordena con
+	 * disconnects/JIP y un índice replicado apuntaría al jugador equivocado.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_TargetPlayerState)
+	TObjectPtr<APlayerState> TargetPlayerState;
 
 	UFUNCTION()
-	void OnRep_TargetPlayerIndex();
+	void OnRep_TargetPlayerState();
 
 	// ── Estado solo servidor ──────────────────────────────────────────────────
 
