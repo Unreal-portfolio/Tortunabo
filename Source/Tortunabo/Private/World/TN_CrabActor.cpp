@@ -1,5 +1,7 @@
 #include "World/TN_CrabActor.h"
 #include "Core/TN_Log.h"
+#include "Core/TN_DebugCVars.h"
+#include "DrawDebugHelpers.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -113,6 +115,25 @@ void ATN_CrabActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	if (!HasAuthority()) { return; }
+
+	// TN.Enemy.Debug: radios de detección/ataque + estado FSM (no-op en Shipping)
+	if (TNDebug::EnemyDebug != 0)
+	{
+		const FVector Loc = GetActorLocation();
+		DrawDebugCircle(GetWorld(), Loc + FVector(0, 0, 5.f), DetectionRadius, 32,
+			FColor::Yellow, false, -1.f, 0, 2.f, FVector(1, 0, 0), FVector(0, 1, 0), false);
+		DrawDebugCircle(GetWorld(), Loc + FVector(0, 0, 5.f), AttackRadius, 16,
+			FColor::Red, false, -1.f, 0, 2.f, FVector(1, 0, 0), FVector(0, 1, 0), false);
+		DrawDebugString(GetWorld(), Loc + FVector(0, 0, 120.f),
+			FString::Printf(TEXT("SRV %s stun=%.1f blind=%.1f"),
+				*UEnum::GetValueAsString(CrabState), StunRemaining, BlindRemaining),
+			nullptr, FColor::White, 0.f, true);
+		if (const ATortugaCharacter* Chased = ChaseTarget.Get())
+		{
+			DrawDebugLine(GetWorld(), Loc, Chased->GetActorLocation(), FColor::Red,
+				false, -1.f, 0, 2.f);
+		}
+	}
 
 	// Stun: pausa toda la IA. Cangrejo queda inmóvil hasta que expira.
 	if (StunRemaining > 0.f)
@@ -261,6 +282,15 @@ void ATN_CrabActor::SetCrabState(ETNCrabState NewState)
 
 void ATN_CrabActor::OnRep_CrabState()
 {
+	// TN.Enemy.Debug: estado que VE el cliente (naranja) al llegar el OnRep,
+	// para detectar desfases con el estado del servidor.
+	if (TNDebug::EnemyDebug != 0 && !HasAuthority())
+	{
+		DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 150.f),
+			FString::Printf(TEXT("CLI %s"), *UEnum::GetValueAsString(CrabState)),
+			nullptr, FColor::Orange, 1.5f, true);
+	}
+
 	// Reproducir montage y sonido directamente — sin Blueprint
 	UAnimInstance* AnimInst = CrabMesh ? CrabMesh->GetAnimInstance() : nullptr;
 

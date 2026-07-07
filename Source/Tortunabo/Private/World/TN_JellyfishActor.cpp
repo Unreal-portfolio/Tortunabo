@@ -8,6 +8,8 @@
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_DebugCVars.h"
+#include "DrawDebugHelpers.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -78,6 +80,22 @@ void ATN_JellyfishActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ATN_JellyfishActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// TN.Enemy.Debug: BounceZone en verde (servidor) / naranja (cliente) para
+	// detectar desalineaciones de la zona replicada. No-op en Shipping.
+	if (TNDebug::EnemyDebug != 0 && BounceZone)
+	{
+		const FColor Color = HasAuthority() ? FColor::Green : FColor::Orange;
+		DrawDebugBox(GetWorld(), BounceZone->GetComponentLocation(),
+			BounceZone->GetScaledBoxExtent(), BounceZone->GetComponentQuat(),
+			Color, false, -1.f, 0, 2.f);
+		if (HasAuthority() && PlayerCooldowns.Num() > 0)
+		{
+			DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100.f),
+				FString::Printf(TEXT("SRV cooldowns=%d"), PlayerCooldowns.Num()),
+				nullptr, Color, 0.f, true);
+		}
+	}
 
 	// ── Cooldowns de rebote (solo servidor) ──────────────────────────────────
 	if (HasAuthority() && PlayerCooldowns.Num() > 0)

@@ -9,6 +9,8 @@
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Core/TN_DebugCVars.h"
+#include "DrawDebugHelpers.h"
 
 ATN_EnemySeagull::ATN_EnemySeagull()
 {
@@ -90,6 +92,24 @@ void ATN_EnemySeagull::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	if (!HasAuthority()) { return; }
+
+	// TN.Enemy.Debug: círculo real del servidor + estado (no-op en Shipping)
+	if (TNDebug::EnemyDebug != 0)
+	{
+		const ATortugaCharacter* T = TargetCharacter.Get();
+		const float GroundZ = T ? T->GetActorLocation().Z : GetActorLocation().Z - FollowHeight;
+		const FColor Color = bIsStriking ? FColor::Red
+		                   : bIsRetreating ? FColor::Cyan : FColor::Green;
+		DrawDebugCircle(GetWorld(),
+			FVector(GetActorLocation().X, GetActorLocation().Y, GroundZ + 5.f),
+			GetCurrentDangerRadius(), 32, Color, false, -1.f, 0, 3.f,
+			FVector(1, 0, 0), FVector(0, 1, 0), false);
+		DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 80.f),
+			FString::Printf(TEXT("SRV %.1fs fuera=%.1fs %s"),
+				CountdownRemaining, TimeOutsideShadow,
+				bIsStriking ? TEXT("STRIKE") : bIsRetreating ? TEXT("RETREAT") : TEXT("FOLLOW")),
+			nullptr, Color, 0.f, true);
+	}
 
 	// Máquinas de estado tienen prioridad — early-out garantiza que solo una corre
 	if (bIsStriking)
@@ -379,6 +399,16 @@ void ATN_EnemySeagull::OnRep_CountdownRemaining()
 {
 	// Clientes actualizan el visual del decal cuando llega el valor replicado
 	UpdateDecalSize();
+
+	// TN.Enemy.Debug: círculo que VE el cliente (naranja), con lifetime corto,
+	// para compararlo con el círculo del servidor en PIE multi-ventana.
+	if (TNDebug::EnemyDebug != 0)
+	{
+		DrawDebugCircle(GetWorld(),
+			GetActorLocation() - FVector(0.f, 0.f, FollowHeight - 10.f),
+			GetCurrentDangerRadius(), 32, FColor::Orange, false, 0.3f, 0, 2.f,
+			FVector(1, 0, 0), FVector(0, 1, 0), false);
+	}
 }
 
 void ATN_EnemySeagull::OnRep_TargetPlayerState()
