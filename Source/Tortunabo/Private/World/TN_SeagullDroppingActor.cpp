@@ -1,4 +1,5 @@
 #include "World/TN_SeagullDroppingActor.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Components/StaticMeshComponent.h"
@@ -159,7 +160,7 @@ void ATN_SeagullDroppingActor::ResolveImpact()
 		// abierta, la caca no lo mata (igual que la gaviota en TN_EnemySeagull).
 		if (C->HasUmbrellaProtection())
 		{
-			UE_LOG(LogTemp, Log, TEXT("[SeagullDropping] %s protegido por sombrilla — impacto ignorado"),
+			UE_LOG(LogTortunabo, Log, TEXT("[SeagullDropping] %s protegido por sombrilla — impacto ignorado"),
 				*GetNameSafe(C));
 			continue;
 		}

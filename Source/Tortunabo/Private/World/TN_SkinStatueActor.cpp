@@ -1,4 +1,5 @@
 #include "World/TN_SkinStatueActor.h"
+#include "Core/TN_Log.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Pawn.h"
@@ -166,7 +167,7 @@ void ATN_SkinStatueActor::Interact(APawn* Interactor)
 			if (TurtleChar) { TurtleChar->UpdateSkinVisual(NewSkin); }
 			if (TNPC)       { TNPC->NotifySkinEquipped(NewSkin); }
 
-			UE_LOG(LogTemp, Log, TEXT("[CosmeticStatue] SKIN '%s' → '%s'"),
+			UE_LOG(LogTortunabo, Log, TEXT("[CosmeticStatue] SKIN '%s' → '%s'"),
 				*GetNameSafe(Interactor),
 				NewSkin == NAME_None ? TEXT("(ninguno)") : *NewSkin.ToString());
 			break;
@@ -181,7 +182,7 @@ void ATN_SkinStatueActor::Interact(APawn* Interactor)
 			if (TurtleChar) { TurtleChar->UpdateHelmetMesh(NewHelmet); }
 			if (TNPC)       { TNPC->NotifyHelmetEquipped(NewHelmet); }
 
-			UE_LOG(LogTemp, Log, TEXT("[CosmeticStatue] HELMET '%s' → '%s'"),
+			UE_LOG(LogTortunabo, Log, TEXT("[CosmeticStatue] HELMET '%s' → '%s'"),
 				*GetNameSafe(Interactor),
 				NewHelmet == NAME_None ? TEXT("(ninguno)") : *NewHelmet.ToString());
 			break;

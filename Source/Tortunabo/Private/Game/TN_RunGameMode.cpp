@@ -1,4 +1,5 @@
 #include "Game/TN_RunGameMode.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/MP_GamePlayerController.h"
@@ -41,12 +42,12 @@ void ATN_RunGameMode::BeginPlay()
 	// que spawna TortugaCharacter sin mesh ni input en vez de BP_TortugaCharacter.
 	if (GetClass() == ATN_RunGameMode::StaticClass())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ════════════════════════════════════════════════════════"));
-		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ¡USANDO CLASE C++ BASE! No hay BP GameMode."));
-		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] Esto causa: sin tortuga visible, sin input, sin HUD."));
-		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] FIX: En LVL_Run → WorldSettings → GameMode Override"));
-		UE_LOG(LogTemp, Error, TEXT("[RunGameMode]       → seleccionar BP_RunGameMode."));
-		UE_LOG(LogTemp, Error, TEXT("[RunGameMode] ════════════════════════════════════════════════════════"));
+		UE_LOG(LogTortunabo, Error, TEXT("[RunGameMode] ════════════════════════════════════════════════════════"));
+		UE_LOG(LogTortunabo, Error, TEXT("[RunGameMode] ¡USANDO CLASE C++ BASE! No hay BP GameMode."));
+		UE_LOG(LogTortunabo, Error, TEXT("[RunGameMode] Esto causa: sin tortuga visible, sin input, sin HUD."));
+		UE_LOG(LogTortunabo, Error, TEXT("[RunGameMode] FIX: En LVL_Run → WorldSettings → GameMode Override"));
+		UE_LOG(LogTortunabo, Error, TEXT("[RunGameMode]       → seleccionar BP_RunGameMode."));
+		UE_LOG(LogTortunabo, Error, TEXT("[RunGameMode] ════════════════════════════════════════════════════════"));
 	}
 
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -96,7 +97,7 @@ void ATN_RunGameMode::BeginPlay()
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] BeginPlay: Waiting for %d players (staging)"), ExpectedPlayersFromLobby);
+	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] BeginPlay: Waiting for %d players (staging)"), ExpectedPlayersFromLobby);
 
 	// Timeout de seguridad: si no llegan todos, arranca igual
 	GetWorldTimerManager().SetTimer(WaitingTimeoutTimerHandle, this,
@@ -110,7 +111,7 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 
-	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostLogin: %s  (Pawn=%s)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] PostLogin: %s  (Pawn=%s)"),
 		*GetNameSafe(NewPlayer),
 		NewPlayer ? *GetNameSafe(NewPlayer->GetPawn()) : TEXT("NULL"));
 
@@ -138,7 +139,7 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 		TNGS->ConnectedPlayers = TotalPlayers;
 		TNGS->ExpectedPlayers = ExpectedPlayersFromLobby;
 
-		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostLogin: ConnectedPlayers=%d  ExpectedFromLobby=%d  MatchStarted=%s"),
+		UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] PostLogin: ConnectedPlayers=%d  ExpectedFromLobby=%d  MatchStarted=%s"),
 			TotalPlayers, ExpectedPlayersFromLobby, bMatchStarted ? TEXT("YES") : TEXT("NO"));
 	}
 
@@ -165,7 +166,7 @@ void ATN_RunGameMode::Logout(AController* Exiting)
 		// ExpectedPlayers se mantiene desde el lobby para que la UI muestre "X / ExpectedFromLobby"
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Logout: %s"), *GetNameSafe(Exiting));
+	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] Logout: %s"), *GetNameSafe(Exiting));
 
 	// Comprobar si todos los jugadores restantes han terminado
 	if (bMatchStarted)
@@ -199,7 +200,7 @@ void ATN_RunGameMode::TryStartMatch()
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] TryStartMatch: Connected=%d  Expected=%d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] TryStartMatch: Connected=%d  Expected=%d"),
 		ConnectedNow, ExpectedPlayersFromLobby);
 
 	if (ConnectedNow >= ExpectedPlayersFromLobby)
@@ -240,7 +241,7 @@ void ATN_RunGameMode::OnWaitingTimeout()
 		TNGS->ExpectedPlayers = TotalPlayers; // Ahora sí es "de verdad"
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] ═══ MATCH STARTED! ═══  (waited for players or timeout)"));
+	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] ═══ MATCH STARTED! ═══  (waited for players or timeout)"));
 }
 
 void ATN_RunGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -248,7 +249,7 @@ void ATN_RunGameMode::HandleStartingNewPlayer_Implementation(APlayerController* 
 	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
 	EnsurePlayerSpawned(NewPlayer);
 
-	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] HandleStartingNewPlayer: %s  (Pawn=%s)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] HandleStartingNewPlayer: %s  (Pawn=%s)"),
 		*GetNameSafe(NewPlayer),
 		NewPlayer ? *GetNameSafe(NewPlayer->GetPawn()) : TEXT("NULL"));
 }
@@ -290,7 +291,7 @@ AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	}
 
 	// Fallback: todos ocupados → devolver el primero (barajado)
-	UE_LOG(LogTemp, Warning, TEXT("[RunGameMode] ChoosePlayerStart: todos los PlayerStarts ocupados — usando fallback"));
+	UE_LOG(LogTortunabo, Warning, TEXT("[RunGameMode] ChoosePlayerStart: todos los PlayerStarts ocupados — usando fallback"));
 	return PlayerStarts[0];
 }
 
@@ -315,20 +316,20 @@ void ATN_RunGameMode::EnsurePlayerSpawned(APlayerController* PlayerController)
 
 	if (!PlayerStart)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Run] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Run] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
 		return;
 	}
 
 	APawn* SpawnedPawn = SpawnDefaultPawnFor(PlayerController, PlayerStart);
 	if (!SpawnedPawn)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Run] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Run] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
 		return;
 	}
 
 	PlayerController->Possess(SpawnedPawn);
 	SetPlayerDefaults(SpawnedPawn);
-	UE_LOG(LogTemp, Log, TEXT("[Run] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
+	UE_LOG(LogTortunabo, Log, TEXT("[Run] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
 }
 
 APlayerStart* ATN_RunGameMode::EnsureFallbackPlayerStart()
@@ -353,7 +354,7 @@ APlayerStart* ATN_RunGameMode::EnsureFallbackPlayerStart()
 	APlayerStart* Spawned = GetWorld()->SpawnActor<APlayerStart>(APlayerStart::StaticClass(), FVector(0.f, 0.f, 150.f), FRotator::ZeroRotator, SpawnParams);
 	if (Spawned)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Run] No PlayerStart found in run map. Spawned fallback PlayerStart at world origin."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Run] No PlayerStart found in run map. Spawned fallback PlayerStart at world origin."));
 	}
 
 	return Spawned;
@@ -369,21 +370,21 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
 	if (!TNPS)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MarkPlayerFinished] '%s' — sin PlayerState, ignorado."), *GetNameSafe(PlayerController));
+		UE_LOG(LogTortunabo, Warning, TEXT("[MarkPlayerFinished] '%s' — sin PlayerState, ignorado."), *GetNameSafe(PlayerController));
 		return;
 	}
 	if (TNPS->bHasFinishedRun)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[MarkPlayerFinished] '%s' — ya terminó (bHasFinishedRun=true), ignorado."), *GetNameSafe(PlayerController));
+		UE_LOG(LogTortunabo, Log, TEXT("[MarkPlayerFinished] '%s' — ya terminó (bHasFinishedRun=true), ignorado."), *GetNameSafe(PlayerController));
 		return;
 	}
 	if (!TNPS->bIsAlive)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MarkPlayerFinished] '%s' — bIsAlive=false, ignorado (¿murió antes de llegar?)."), *GetNameSafe(PlayerController));
+		UE_LOG(LogTortunabo, Warning, TEXT("[MarkPlayerFinished] '%s' — bIsAlive=false, ignorado (¿murió antes de llegar?)."), *GetNameSafe(PlayerController));
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[MarkPlayerFinished] ══ '%s' cruzó la meta ══ Rank=%d"), *GetNameSafe(PlayerController), NextFinishRank);
+	UE_LOG(LogTortunabo, Log, TEXT("[MarkPlayerFinished] ══ '%s' cruzó la meta ══ Rank=%d"), *GetNameSafe(PlayerController), NextFinishRank);
 	TNPS->bHasFinishedRun = true;
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
@@ -403,7 +404,7 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	const int32 PickupAndZoneScore = TNPS->RaceScore;  // lo que llevaba antes de finish
 	TNPS->AddRaceScore(RankScore + TimeBonus);         // difunde OnRaceScoreChanged en el host
 
-	UE_LOG(LogTemp, Log, TEXT("[FINISH] '%s' Rank=%d Time=%.1fs · Rank+%d · Pickups+%d · TimeBonus+%d → Total=%d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[FINISH] '%s' Rank=%d Time=%.1fs · Rank+%d · Pickups+%d · TimeBonus+%d → Total=%d"),
 		*GetNameSafe(PlayerController), TNPS->FinishRank, TNPS->FinishTimeSeconds,
 		RankScore, PickupAndZoneScore, TimeBonus, TNPS->RaceScore);
 
@@ -452,7 +453,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 {
 	if (!HasAuthority() || !PlayerController)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[DEATH-EARLY-OUT] MarkPlayerDead cancelado · HasAuthority=%d PC=%s"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[DEATH-EARLY-OUT] MarkPlayerDead cancelado · HasAuthority=%d PC=%s"),
 			HasAuthority(), *GetNameSafe(PlayerController));
 		return;
 	}
@@ -460,7 +461,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	ATN_CoopPlayerState* TNPS = PlayerController->GetPlayerState<ATN_CoopPlayerState>();
 	if (!TNPS || !TNPS->bIsAlive)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[DEATH-EARLY-OUT] '%s' · TNPS=%s bIsAlive=%d (ya muerto o sin PS)"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[DEATH-EARLY-OUT] '%s' · TNPS=%s bIsAlive=%d (ya muerto o sin PS)"),
 			*GetNameSafe(PlayerController),
 			TNPS ? TEXT("OK") : TEXT("NULL"),
 			TNPS ? TNPS->bIsAlive : -1);
@@ -470,7 +471,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	// Evita que un countdown de death zone rezagado sobreescriba el rank ganado.
 	if (TNPS->bHasFinishedRun)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[DEATH-EARLY-OUT] '%s' · bHasFinishedRun=true (ya cruzó meta)"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[DEATH-EARLY-OUT] '%s' · bHasFinishedRun=true (ya cruzó meta)"),
 			*GetNameSafe(PlayerController));
 		return;
 	}
@@ -487,7 +488,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 				if (Inv->TryConsumeItemByUseType(ETN_ItemUseType::Totem, ConsumedTotem))
 				{
 					// Tótem consumido → cancelar muerte + feedback visual
-					UE_LOG(LogTemp, Log, TEXT("[Totem] Auto-revive activado para %s — totem consumido."),
+					UE_LOG(LogTortunabo, Log, TEXT("[Totem] Auto-revive activado para %s — totem consumido."),
 						*GetNameSafe(PlayerController));
 					DyingChar->Multicast_OnTotemAutoRevive();
 					return;
@@ -508,7 +509,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->DeathZoneTimeRemaining = -1.f;
 
-	UE_LOG(LogTemp, Log, TEXT("[DEATH] '%s' eliminated · time=%.2fs · score=%d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[DEATH] '%s' eliminated · time=%.2fs · score=%d"),
 		*GetNameSafe(PlayerController), TNPS->FinishTimeSeconds, TNPS->RaceScore);
 
 	// Scoreboard global — eliminado al final del array
@@ -571,7 +572,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 			const bool bHasRagdollSetup = SM && SM->GetPhysicsAsset();
 			if (!bHasRagdollSetup)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[Death] Sin PhysicsAsset en BP — ocultando pawn %s (fallback sin ragdoll)"), *GetNameSafe(Pawn));
+				UE_LOG(LogTortunabo, Warning, TEXT("[Death] Sin PhysicsAsset en BP — ocultando pawn %s (fallback sin ragdoll)"), *GetNameSafe(Pawn));
 				Pawn->SetActorHiddenInGame(true);
 				Pawn->SetActorEnableCollision(false);
 			}
@@ -604,14 +605,14 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 			}
 
 			RescuePickups.Add(TNPS->GetPlayerId(), Pickup);
-			UE_LOG(LogTemp, Log, TEXT("[Death] Spawned RescuePickup for %s (PlayerId=%d) at (%.0f,%.0f,%.0f)"),
+			UE_LOG(LogTortunabo, Log, TEXT("[Death] Spawned RescuePickup for %s (PlayerId=%d) at (%.0f,%.0f,%.0f)"),
 				*GetNameSafe(PlayerController), TNPS->GetPlayerId(),
 				DeathLocation.X, DeathLocation.Y, DeathLocation.Z);
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Death] RescuePickupClass is not set! Assign it in BP_RunGameMode → Class Defaults."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Death] RescuePickupClass is not set! Assign it in BP_RunGameMode → Class Defaults."));
 	}
 
 	// ── Guardar referencia al pawn ANTES de entrar en espectador ──────────
@@ -620,7 +621,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	if (APawn* DeadPawn = PlayerController->GetPawn())
 	{
 		DeadPlayerPawns.Add(TNPS->GetPlayerId(), DeadPawn);
-		UE_LOG(LogTemp, Log, TEXT("[Death] Saved pawn ref for PlayerId=%d → %s"), TNPS->GetPlayerId(), *GetNameSafe(DeadPawn));
+		UE_LOG(LogTortunabo, Log, TEXT("[Death] Saved pawn ref for PlayerId=%d → %s"), TNPS->GetPlayerId(), *GetNameSafe(DeadPawn));
 
 		// FIX ragdoll despawn intermitente: cambiar el Owner del pawn muerto al
 		// GameMode. Sin este cambio, si el PC hace Logout (timeout, quit,
@@ -631,7 +632,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 		DeadPawn->SetOwner(this);
 		// Garantía adicional: lifespan infinito (por si algo lo asignó por otro lado).
 		DeadPawn->SetLifeSpan(0.f);
-		UE_LOG(LogTemp, Log, TEXT("[Death] Detached pawn from PC ownership · pawn=%s now owned by GameMode"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Death] Detached pawn from PC ownership · pawn=%s now owned by GameMode"),
 			*GetNameSafe(DeadPawn));
 	}
 
@@ -657,7 +658,7 @@ void ATN_RunGameMode::EnterDBNO(APlayerController* PlayerController)
 	// Check revive immunity — recently revived players can't be downed again immediately
 	if (ReviveImmunePlayers.Contains(PlayerController))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[DBNO] %s has revive immunity — ignoring DBNO trigger"), *GetNameSafe(PlayerController));
+		UE_LOG(LogTortunabo, Log, TEXT("[DBNO] %s has revive immunity — ignoring DBNO trigger"), *GetNameSafe(PlayerController));
 		return;
 	}
 
@@ -680,7 +681,7 @@ void ATN_RunGameMode::EnterDBNO(APlayerController* PlayerController)
 			&ATN_RunGameMode::TickDBNOBleedout, 0.1f, true);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[DBNO] %s entered DBNO state (%.1fs bleedout)"), *GetNameSafe(PlayerController), DBNOBleedoutSeconds);
+	UE_LOG(LogTortunabo, Log, TEXT("[DBNO] %s entered DBNO state (%.1fs bleedout)"), *GetNameSafe(PlayerController), DBNOBleedoutSeconds);
 
 	// Check if ALL alive players are now in DBNO (no one to revive)
 	CheckAllAliveDBNO();
@@ -832,7 +833,7 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 		{
 			const FVector BaseReviveLoc = bHasReviveTargetLocation ? ReviveTargetLocation : Pawn->GetActorLocation();
 			const FVector ReviveLoc = BaseReviveLoc + FVector(0.f, 0.f, 20.f);
-			UE_LOG(LogTemp, Log, TEXT("[Revive] In-place at pickup location (%.0f,%.0f,%.0f)"),
+			UE_LOG(LogTortunabo, Log, TEXT("[Revive] In-place at pickup location (%.0f,%.0f,%.0f)"),
 				ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z);
 			Pawn->SetActorLocation(ReviveLoc, false, nullptr, ETeleportType::TeleportPhysics);
 		}
@@ -934,14 +935,14 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Revive] No pawn found for %s (PlayerId=%d) — cannot restore visual/control!"),
+		UE_LOG(LogTortunabo, Error, TEXT("[Revive] No pawn found for %s (PlayerId=%d) — cannot restore visual/control!"),
 			*GetNameSafe(PlayerController), TNPS->GetPlayerId());
 	}
 
 	// Limpiar la entrada de DeadPlayerPawns
 	DeadPlayerPawns.Remove(TNPS->GetPlayerId());
 
-	UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s wasKnocked=%s"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s wasKnocked=%s"),
 		*GetNameSafe(PlayerController), ReviveImmunitySeconds,
 		bWasDBNO ? TEXT("YES") : TEXT("NO"),
 		bWasDead ? TEXT("YES") : TEXT("NO"),
@@ -994,7 +995,7 @@ void ATN_RunGameMode::TickDBNOBleedout()
 
 		if (*Remaining <= KINDA_SMALL_NUMBER)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[DBNO] %s bleedout expired → dying for real"), *GetNameSafe(PC));
+			UE_LOG(LogTortunabo, Log, TEXT("[DBNO] %s bleedout expired → dying for real"), *GetNameSafe(PC));
 			DBNOPlayers.Remove(WeakPC);
 			MarkPlayerDead(PC);
 		}
@@ -1041,7 +1042,7 @@ void ATN_RunGameMode::CheckAllAliveDBNO()
 	// If ALL alive players are in DBNO, no one can revive → kill everyone
 	if (AliveCount > 0 && AliveCount == DBNOCount)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[DBNO] All %d alive players are in DBNO — killing everyone"), AliveCount);
+		UE_LOG(LogTortunabo, Log, TEXT("[DBNO] All %d alive players are in DBNO — killing everyone"), AliveCount);
 
 		TArray<TWeakObjectPtr<APlayerController>> Keys;
 		DBNOPlayers.GetKeys(Keys);
@@ -1202,7 +1203,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 
 		// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─
 		const FString TravelURL = LobbyMapPath;
-		UE_LOG(LogTemp, Log, TEXT("[RunGameMode] Seamless ServerTravel to: %s"), *TravelURL);
+		UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] Seamless ServerTravel to: %s"), *TravelURL);
 		World->ServerTravel(TravelURL);
 	}
 }
@@ -1224,7 +1225,7 @@ void ATN_RunGameMode::HandleSeamlessTravelPlayer(AController*& C)
 		// Solución: destruir el pawn existente aquí para que Super spawne uno limpio.
 		if (APawn* OldPawn = PC->GetPawn())
 		{
-			UE_LOG(LogTemp, Log, TEXT("[RunGameMode] HandleSeamlessTravelPlayer: destruyendo pawn prematuro '%s' de %s"),
+			UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] HandleSeamlessTravelPlayer: destruyendo pawn prematuro '%s' de %s"),
 				*GetNameSafe(OldPawn), *GetNameSafe(PC));
 			OldPawn->Destroy();
 		}
@@ -1242,7 +1243,7 @@ void ATN_RunGameMode::PostSeamlessTravel()
 {
 	Super::PostSeamlessTravel();
 
-	UE_LOG(LogTemp, Log, TEXT("[RunGameMode] PostSeamlessTravel: initializing all players for run."));
+	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] PostSeamlessTravel: initializing all players for run."));
 
 	// Resetear estado de todos los jugadores que viajaron
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -1325,7 +1326,7 @@ void ATN_RunGameMode::HandleCollectionZoneGoal(ATN_CollectionZone* Zone)
 		++Beneficiaries;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[COLLECTION] GameMode reaccionó a zone '%s' goal · +%d a %d players activos"),
+	UE_LOG(LogTortunabo, Log, TEXT("[COLLECTION] GameMode reaccionó a zone '%s' goal · +%d a %d players activos"),
 		*Zone->GetName(), Bonus, Beneficiaries);
 }
 

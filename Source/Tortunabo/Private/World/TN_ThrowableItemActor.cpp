@@ -1,5 +1,6 @@
 ﻿#include "World/TN_ThrowableItemActor.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/TN_Log.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/TortugaCharacter.h"
@@ -55,7 +56,7 @@ void ATN_ThrowableItemActor::BeginPlay()
 	Super::BeginPlay();
 	SetLifeSpan(MaxLifeSeconds);
 
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] BeginPlay auth=%d bReady=%d bLaunchApplied=%d inst=%s"),
+	UE_LOG(LogTortunabo, Log, TEXT("[TN_Throwable] BeginPlay auth=%d bReady=%d bLaunchApplied=%d inst=%s"),
 		HasAuthority() ? 1 : 0, ThrowData.bReady ? 1 : 0, bLaunchApplied ? 1 : 0,
 		*GetNameSafe(GetInstigator()));
 
@@ -120,7 +121,7 @@ void ATN_ThrowableItemActor::RetryApplyLaunch()
 {
 	if (!bLaunchApplied && ThrowData.bReady)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TN_Throwable] RetryApplyLaunch: forcing launch apply after timeout"));
+		UE_LOG(LogTortunabo, Warning, TEXT("[TN_Throwable] RetryApplyLaunch: forcing launch apply after timeout"));
 		ApplyLaunchDataIfReady();
 	}
 }
@@ -132,7 +133,7 @@ void ATN_ThrowableItemActor::InitializeThrow(const FVector& SpawnLocation, const
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] SERVER InitializeThrow origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s"),
+	UE_LOG(LogTortunabo, Log, TEXT("[TN_Throwable] SERVER InitializeThrow origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) mesh=%s"),
 		SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z,
 		InitialVelocity.X, InitialVelocity.Y, InitialVelocity.Z,
 		*GetNameSafe(SourceItem.EquippedMesh));
@@ -162,7 +163,7 @@ void ATN_ThrowableItemActor::Multicast_InitializeThrow_Implementation(
 	ThrowData.EquippedMesh   = MeshAsset;
 	ThrowData.bReady         = true;
 
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] Multicast_InitializeThrow %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[TN_Throwable] Multicast_InitializeThrow %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f)"),
 		HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"),
 		Origin.X, Origin.Y, Origin.Z, Velocity.X, Velocity.Y, Velocity.Z);
 
@@ -237,7 +238,7 @@ void ATN_ThrowableItemActor::ApplyLaunchDataIfReady()
 		Mesh->SetPhysicsAngularVelocityInDegrees(ThrowAngularVelocityDegSec);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) pmActive=%d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[TN_Throwable] ApplyLaunchDataIfReady %s origin=(%.0f,%.0f,%.0f) v=(%.0f,%.0f,%.0f) pmActive=%d"),
 		HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"),
 		ThrowData.SpawnLocation.X, ThrowData.SpawnLocation.Y, ThrowData.SpawnLocation.Z,
 		ThrowData.LaunchVelocity.X, ThrowData.LaunchVelocity.Y, ThrowData.LaunchVelocity.Z,
@@ -265,7 +266,7 @@ void ATN_ThrowableItemActor::OnMeshHit(UPrimitiveComponent* HitComponent, AActor
 			{
 				AlreadyHitEnemies.Add(OtherActor);
 				Enemy->ApplyStun(KnockbackDuration);
-				UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] Hit enemy %s at %.0f cm/s → STUN %.2fs"),
+				UE_LOG(LogTortunabo, Log, TEXT("[ThrowableItem] Hit enemy %s at %.0f cm/s → STUN %.2fs"),
 					*GetNameSafe(OtherActor), CurrentSpeed, KnockbackDuration);
 			}
 		}
@@ -297,12 +298,12 @@ void ATN_ThrowableItemActor::OnMeshHit(UPrimitiveComponent* HitComponent, AActor
 		{
 			AlreadyHitPlayers.Add(HitPlayer);
 			HitPlayer->ApplyKnockdown(KnockbackDuration);
-			UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] Hit %s at %.0f cm/s → KNOCKDOWN (threshold=%.0f)"),
+			UE_LOG(LogTortunabo, Log, TEXT("[ThrowableItem] Hit %s at %.0f cm/s → KNOCKDOWN (threshold=%.0f)"),
 				*GetNameSafe(HitPlayer), CurrentSpeed, MinKnockdownSpeed);
 		}
 		else
 		{
-			UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] Hit %s at %.0f cm/s → too slow, bounce only (threshold=%.0f)"),
+			UE_LOG(LogTortunabo, Log, TEXT("[ThrowableItem] Hit %s at %.0f cm/s → too slow, bounce only (threshold=%.0f)"),
 				*GetNameSafe(HitPlayer), CurrentSpeed, MinKnockdownSpeed);
 		}
 	}
@@ -327,7 +328,7 @@ void ATN_ThrowableItemActor::OnProjectileStopped(const FHitResult& ImpactResult)
 		StopLocation.Z = ImpactResult.ImpactPoint.Z;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[ThrowableItem] OnProjectileStopped — loc=(%.0f,%.0f,%.0f) validHit=%d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[ThrowableItem] OnProjectileStopped — loc=(%.0f,%.0f,%.0f) validHit=%d"),
 		StopLocation.X, StopLocation.Y, StopLocation.Z, ImpactResult.IsValidBlockingHit() ? 1 : 0);
 
 	// Sincronizar todas las simulaciones locales a la posición final del servidor.
@@ -359,7 +360,7 @@ void ATN_ThrowableItemActor::SpawnPickupAtLocation(const FVector& Location)
 
 	if (!SourceItem.IsValid() || !SourceItem.PickupActorClass)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ThrowableItemActor] Sin PickupActorClass en SourceItem — el ítem se pierde."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[ThrowableItemActor] Sin PickupActorClass en SourceItem — el ítem se pierde."));
 		return;
 	}
 
@@ -386,7 +387,7 @@ void ATN_ThrowableItemActor::SpawnPickupAtLocation(const FVector& Location)
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[ThrowableItem] SpawnPickup: no floor found below %.1f,%.1f,%.1f — spawning at ball position."),
+			UE_LOG(LogTortunabo, Warning, TEXT("[ThrowableItem] SpawnPickup: no floor found below %.1f,%.1f,%.1f — spawning at ball position."),
 				Location.X, Location.Y, Location.Z);
 		}
 	}

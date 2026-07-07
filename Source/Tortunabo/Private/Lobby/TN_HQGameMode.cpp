@@ -1,4 +1,5 @@
 #include "Lobby/TN_HQGameMode.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
@@ -37,11 +38,11 @@ void ATN_HQGameMode::BeginPlay()
 	// ── Safety check: detectar si el mapa cargó con la clase C++ base en vez del BP ──
 	if (GetClass() == ATN_HQGameMode::StaticClass())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ════════════════════════════════════════════════════════"));
-		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ¡USANDO CLASE C++ BASE! No hay BP GameMode."));
-		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] FIX: En LVL_HQ → WorldSettings → GameMode Override"));
-		UE_LOG(LogTemp, Error, TEXT("[HQGameMode]       → seleccionar BP_HQGameMode."));
-		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] ════════════════════════════════════════════════════════"));
+		UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode] ════════════════════════════════════════════════════════"));
+		UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode] ¡USANDO CLASE C++ BASE! No hay BP GameMode."));
+		UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode] FIX: En LVL_HQ → WorldSettings → GameMode Override"));
+		UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode]       → seleccionar BP_HQGameMode."));
+		UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode] ════════════════════════════════════════════════════════"));
 	}
 
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -67,11 +68,11 @@ AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		{
 			if ((*It)->PlayerStartTag == TutorialStartTag)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[HQGameMode] ChoosePlayerStart → tutorial start encontrado."));
+				UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] ChoosePlayerStart → tutorial start encontrado."));
 				return *It;
 			}
 		}
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogTortunabo, Warning,
 			TEXT("[HQGameMode] bShouldUseTutorialStart=true pero no hay PlayerStart con tag '%s' — spawn normal."),
 			*TutorialStartTag.ToString());
 	}
@@ -178,20 +179,20 @@ void ATN_HQGameMode::EnsurePlayerSpawned(APlayerController* PlayerController)
 
 	if (!PlayerStart)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Lobby] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Lobby] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
 		return;
 	}
 
 	APawn* SpawnedPawn = SpawnDefaultPawnFor(PlayerController, PlayerStart);
 	if (!SpawnedPawn)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Lobby] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Lobby] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
 		return;
 	}
 
 	PlayerController->Possess(SpawnedPawn);
 	SetPlayerDefaults(SpawnedPawn);
-	UE_LOG(LogTemp, Log, TEXT("[Lobby] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
+	UE_LOG(LogTortunabo, Log, TEXT("[Lobby] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
 }
 
 void ATN_HQGameMode::Logout(AController* Exiting)
@@ -234,7 +235,7 @@ void ATN_HQGameMode::CheckAndSetTutorialFlag()
 		{
 			bShouldUseTutorialStart = true;
 			GI->SetTutorialCompleted();
-			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Primera partida detectada — spawn en zona tutorial (tag: '%s')."), *TutorialStartTag.ToString());
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Primera partida detectada — spawn en zona tutorial (tag: '%s')."), *TutorialStartTag.ToString());
 		}
 	}
 }
@@ -292,7 +293,7 @@ void ATN_HQGameMode::StartCountdown()
 	bCountdownRunning = true;
 	CurrentCountdownValue = CountdownStartValue;
 
-	UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Countdown iniciado: %d segundos."), CurrentCountdownValue);
+	UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Countdown iniciado: %d segundos."), CurrentCountdownValue);
 
 	SetFlowState(ETNMatchFlowState::Countdown);
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
@@ -364,7 +365,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[HQGameMode] BeginMatchTravel: GetWorld() es null, travel cancelado."));
+		UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode] BeginMatchTravel: GetWorld() es null, travel cancelado."));
 		return;
 	}
 
@@ -382,7 +383,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 			}
 		}
 		GI->PendingTravelPlayerCount = ConnectedCount;
-		UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
 	}
 
 	// ── Destroy all pawns BEFORE travel for WASAPI cleanup ──────────────
@@ -403,7 +404,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 	// NO destroying NetDriver (that kills client connections).
 	// NO ClientNotifyServerTravel (clients travel with the server automatically).
 	const FString TravelURL = MatchMapPath;
-	UE_LOG(LogTemp, Log, TEXT("[HQGameMode] Seamless ServerTravel to: %s"), *TravelURL);
+	UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Seamless ServerTravel to: %s"), *TravelURL);
 	World->ServerTravel(TravelURL);
 }
 
@@ -429,7 +430,7 @@ APlayerStart* ATN_HQGameMode::EnsureFallbackPlayerStart()
 	APlayerStart* Spawned = GetWorld()->SpawnActor<APlayerStart>(APlayerStart::StaticClass(), FVector(0.f, 0.f, 150.f), FRotator::ZeroRotator, SpawnParams);
 	if (Spawned)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Lobby] No PlayerStart found in lobby map. Spawned fallback PlayerStart at world origin."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Lobby] No PlayerStart found in lobby map. Spawned fallback PlayerStart at world origin."));
 	}
 
 	return Spawned;
@@ -464,7 +465,7 @@ void ATN_HQGameMode::HandleSeamlessTravelPlayer(AController*& C)
 		// el pawn existente → quedarían DOS pawns (ghost pawn inmóvil en spawn).
 		if (APawn* OldPawn = PC->GetPawn())
 		{
-			UE_LOG(LogTemp, Log, TEXT("[HQGameMode] HandleSeamlessTravelPlayer: destruyendo pawn prematuro '%s' de %s"),
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] HandleSeamlessTravelPlayer: destruyendo pawn prematuro '%s' de %s"),
 				*GetNameSafe(OldPawn), *GetNameSafe(PC));
 			OldPawn->Destroy();
 		}
@@ -482,7 +483,7 @@ void ATN_HQGameMode::PostSeamlessTravel()
 {
 	Super::PostSeamlessTravel();
 
-	UE_LOG(LogTemp, Log, TEXT("[HQGameMode] PostSeamlessTravel: resetting all players for lobby."));
+	UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] PostSeamlessTravel: resetting all players for lobby."));
 
 	// Resetear estado de todos los jugadores que viajaron y asegurar que tienen pawn
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -521,7 +522,7 @@ void ATN_HQGameMode::PostSeamlessTravel()
 						if (SKM->IsSimulatingPhysics())
 						{
 							SKM->SetSimulatePhysics(false);
-							UE_LOG(LogTemp, Warning,
+							UE_LOG(LogTortunabo, Warning,
 								TEXT("[HQGameMode] Reset stale physics sim on pawn %s post-travel"),
 								*GetNameSafe(FreshPawn));
 						}

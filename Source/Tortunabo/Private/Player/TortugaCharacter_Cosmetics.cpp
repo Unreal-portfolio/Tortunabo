@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_Log.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Materials/MaterialInterface.h"
@@ -35,21 +36,21 @@ void ATortugaCharacter::UpdateHelmetMesh(FName HelmetId)
 	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
 	if (!GI)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: GameInstance no es UMP_GameInstance."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: GameInstance no es UMP_GameInstance."));
 		return;
 	}
 
 	const UDataTable* HelmDT = GI->GetHelmetDataTable();
 	if (!HelmDT)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetDataTable no asignado en BP_GameInstance."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetDataTable no asignado en BP_GameInstance."));
 		return;
 	}
 
 	const FTN_HelmetData* Row = HelmDT->FindRow<FTN_HelmetData>(HelmetId, TEXT("UpdateHelmetMesh"));
 	if (!Row)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetId '%s' no encontrado en DT_Helmets."), *HelmetId.ToString());
+		UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetId '%s' no encontrado en DT_Helmets."), *HelmetId.ToString());
 		HelmetMeshComp->SetStaticMesh(nullptr);
 		HelmetMeshComp->SetHiddenInGame(true);
 		return;
@@ -57,7 +58,7 @@ void ATortugaCharacter::UpdateHelmetMesh(FName HelmetId)
 
 	if (!Row->DisplayMesh)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetId '%s' sin DisplayMesh asignado."), *HelmetId.ToString());
+		UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] UpdateHelmetMesh: HelmetId '%s' sin DisplayMesh asignado."), *HelmetId.ToString());
 		HelmetMeshComp->SetHiddenInGame(true);
 		return;
 	}
@@ -68,7 +69,7 @@ void ATortugaCharacter::UpdateHelmetMesh(FName HelmetId)
 	HelmetMeshComp->SetRelativeRotation(Row->MeshRotation);
 	HelmetMeshComp->SetHiddenInGame(false);
 
-	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] '%s' equipa casco '%s'."), *GetName(), *HelmetId.ToString());
+	UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] '%s' equipa casco '%s'."), *GetName(), *HelmetId.ToString());
 }
 
 void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
@@ -90,14 +91,14 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 	const UDataTable* SkinDT = GI ? GI->GetSkinDataTable() : nullptr;
 	if (!SkinDT)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinDataTable no asignado en BP_GameInstance."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinDataTable no asignado en BP_GameInstance."));
 		return;
 	}
 
 	const FTN_SkinData* Row = SkinDT->FindRow<FTN_SkinData>(SkinId, TEXT("UpdateSkinVisual"));
 	if (!Row)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinId '%s' no encontrado en DT_Skins."), *SkinId.ToString());
+		UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] UpdateSkinVisual: SkinId '%s' no encontrado en DT_Skins."), *SkinId.ToString());
 		return;
 	}
 
@@ -108,7 +109,7 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 	const int32 NumMaterials = SKM->GetNumMaterials();
 	if (NumMaterials < 5)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[SKIN-CONFIG] '%s' SkM tiene solo %d slots (esperados 5: Belly/EyeShine/EyesMouth/Skin/Shell). Reordenar slots o reimportar mesh."),
+		UE_LOG(LogTortunabo, Error, TEXT("[SKIN-CONFIG] '%s' SkM tiene solo %d slots (esperados 5: Belly/EyeShine/EyesMouth/Skin/Shell). Reordenar slots o reimportar mesh."),
 			*GetName(), NumMaterials);
 	}
 
@@ -144,7 +145,7 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 	// visualmente con el SKM unificado en algunas configuraciones (overrideMaterials cache).
 	SKM->MarkRenderStateDirty();
 
-	UE_LOG(LogTemp, Log, TEXT("[SKIN-DEBUG] '%s' skin '%s' aplicado · slots=[0:%s 1:%s 2:%s 3:%s 4:%s]"),
+	UE_LOG(LogTortunabo, Log, TEXT("[SKIN-DEBUG] '%s' skin '%s' aplicado · slots=[0:%s 1:%s 2:%s 3:%s 4:%s]"),
 		*GetName(), *SkinId.ToString(),
 		*GetNameSafe(Row->BellyMaterial),
 		*GetNameSafe(Row->EyeShineMaterial),

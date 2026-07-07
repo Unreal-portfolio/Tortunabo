@@ -1,5 +1,6 @@
 ﻿#include "World/TN_DeathZoneVolume.h"
 #include "Game/TN_RunGameMode.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/BoxComponent.h"
@@ -315,7 +316,7 @@ void ATN_DeathZoneVolume::ForceCheckPlayer(APlayerController* PC)
 			&ATN_DeathZoneVolume::TickAllCountdowns, CountdownTickInterval, true);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[DeathZone] ForceCheckPlayer: '%s' está dentro de '%s' — countdown reiniciado (%.1fs)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[DeathZone] ForceCheckPlayer: '%s' está dentro de '%s' — countdown reiniciado (%.1fs)"),
 		*GetNameSafe(PC), *GetName(), SecondsInsideToDie);
 }
 

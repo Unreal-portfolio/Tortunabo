@@ -1,4 +1,5 @@
 #include "Player/MP_GamePlayerController.h"
+#include "Core/TN_Log.h"
 #include "Blueprint/UserWidget.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
@@ -118,7 +119,7 @@ void AMP_GamePlayerController::ServerRequestReturnToMenu_Implementation()
 	// invocar este RPC y expulsar a toda la partida al menú (grief).
 	if (!IsLocalController())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MP] ServerRequestReturnToMenu rechazado: '%s' no es el host."),
+		UE_LOG(LogTortunabo, Warning, TEXT("[MP] ServerRequestReturnToMenu rechazado: '%s' no es el host."),
 			*GetNameSafe(this));
 		return;
 	}
@@ -241,7 +242,7 @@ void AMP_GamePlayerController::ClientRestorePlayerInput_Implementation()
 	// cuando el servidor llama Possess + ClientRestart.
 	ForceRestoreInput();
 
-	UE_LOG(LogTemp, Log, TEXT("[PC] ClientRestorePlayerInput: input flags reset, gameplay mode restored."));
+	UE_LOG(LogTortunabo, Log, TEXT("[PC] ClientRestorePlayerInput: input flags reset, gameplay mode restored."));
 }
 
 void AMP_GamePlayerController::CacheRadialInputAssets()
@@ -456,7 +457,7 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 
 		if (!CoopFlowWidgetClass)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[HUD] CoopFlowWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController. Usando clase C++ como fallback."), *GetNameSafe(this));
+			UE_LOG(LogTortunabo, Warning, TEXT("[HUD] CoopFlowWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController. Usando clase C++ como fallback."), *GetNameSafe(this));
 		}
 
 		CoopFlowWidget = CreateWidget<UUserWidget>(this, WidgetClass);
@@ -481,7 +482,7 @@ void AMP_GamePlayerController::CreatePlayerHUD()
 	{
 		if (!PlayerHUDWidgetClass)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[HUD] PlayerHUDWidgetClass no asignado en %s. Asignalo en BP_GamePlayerController → Class Defaults."), *GetNameSafe(this));
+			UE_LOG(LogTortunabo, Warning, TEXT("[HUD] PlayerHUDWidgetClass no asignado en %s. Asignalo en BP_GamePlayerController → Class Defaults."), *GetNameSafe(this));
 			return;
 		}
 
@@ -494,7 +495,7 @@ void AMP_GamePlayerController::CreatePlayerHUD()
 	if (PlayerHUDWidget && !PlayerHUDWidget->IsInViewport())
 	{
 		PlayerHUDWidget->AddToViewport(4);
-		UE_LOG(LogTemp, Log, TEXT("[HUD] PlayerHUDWidget re-añadido al viewport (tras seamless travel)"));
+		UE_LOG(LogTortunabo, Log, TEXT("[HUD] PlayerHUDWidget re-añadido al viewport (tras seamless travel)"));
 	}
 }
 
@@ -727,7 +728,7 @@ void AMP_GamePlayerController::OpenCosmeticsMenu()
 
 	if (!CosmeticsWidgetClass)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[UI] CosmeticsWidgetClass no asignado en %s."), *GetNameSafe(this));
+		UE_LOG(LogTortunabo, Warning, TEXT("[UI] CosmeticsWidgetClass no asignado en %s."), *GetNameSafe(this));
 		return;
 	}
 
@@ -819,7 +820,7 @@ void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
 	{
 		GI->NotifyClientPendingTravel();
 	}
-	UE_LOG(LogTemp, Log, TEXT("[PC] ClientNotifyServerTravel received — prepared for reconnection."));
+	UE_LOG(LogTortunabo, Log, TEXT("[PC] ClientNotifyServerTravel received — prepared for reconnection."));
 }
 
 void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TArray<FName>& UnlockedHelmetIds)
@@ -828,7 +829,7 @@ void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TA
 	constexpr int32 MaxSyncedHelmets = 50;
 	if (UnlockedHelmetIds.Num() > MaxSyncedHelmets)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[PC] ServerSyncUnlockedHelmets: oversized array (%d) from %s — rejected"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSyncUnlockedHelmets: oversized array (%d) from %s — rejected"),
 			UnlockedHelmetIds.Num(), *GetNameSafe(this));
 		return;
 	}
@@ -861,7 +862,7 @@ void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName Helm
 	// Otro ID: debe estar en el conjunto de cascos desbloqueados del jugador.
 	if (HelmetId != NAME_None && !ServerUnlockedHelmets.Contains(HelmetId))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[PC] ServerSetEquippedHelmet: '%s' no desbloqueado para %s"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSetEquippedHelmet: '%s' no desbloqueado para %s"),
 			*HelmetId.ToString(), *GetNameSafe(this));
 		return;
 	}
@@ -889,7 +890,7 @@ void AMP_GamePlayerController::ServerSetEquippedSkin_Implementation(FName SkinId
 		const UDataTable* SkinTable = GI ? GI->GetSkinDataTable() : nullptr;
 		if (!SkinTable || !SkinTable->GetRowNames().Contains(SkinId))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[PC] ServerSetEquippedSkin: '%s' not in SkinDataTable for %s"),
+			UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSetEquippedSkin: '%s' not in SkinDataTable for %s"),
 				*SkinId.ToString(), *GetNameSafe(this));
 			return;
 		}
@@ -1010,7 +1011,7 @@ void AMP_GamePlayerController::ServerSendQuickChat_Implementation(uint8 MessageI
 	const FTN_QuickChatWheelEntry* ChatEntry = QuickChatWheelDataAsset->FindEntryById(MessageID);
 	if (!ChatEntry)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[QuickChat] Invalid MessageID %d from %s"), static_cast<int32>(MessageID), *GetNameSafe(this));
+		UE_LOG(LogTortunabo, Warning, TEXT("[QuickChat] Invalid MessageID %d from %s"), static_cast<int32>(MessageID), *GetNameSafe(this));
 		return;
 	}
 

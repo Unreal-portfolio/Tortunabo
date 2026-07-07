@@ -1,4 +1,5 @@
 #include "Core/TN_CoopGameState.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_MatchFlowTypes.h"
 #include "Multiplayer/MP_GameInstance.h"
@@ -106,7 +107,7 @@ void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
 				if (TNPS->RaceScore > 0)
 				{
 					GI->AddRaceScore(TNPS->RaceScore);
-					UE_LOG(LogTemp, Log, TEXT("[CoopGameState] Persisted RaceScore=%d for local player '%s'"),
+					UE_LOG(LogTortunabo, Log, TEXT("[CoopGameState] Persisted RaceScore=%d for local player '%s'"),
 						TNPS->RaceScore, *PS->GetPlayerName());
 				}
 			}

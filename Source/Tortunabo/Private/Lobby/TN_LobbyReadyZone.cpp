@@ -1,4 +1,5 @@
 #include "Lobby/TN_LobbyReadyZone.h"
+#include "Core/TN_Log.h"
 #include "Lobby/TN_HQGameMode.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -21,7 +22,7 @@ void ATN_LobbyReadyZone::BeginPlay()
 	// Verify the game mode is reachable — common config mistake
 	if (!ResolveHQGameMode())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[LobbyReadyZone] No se encontro TN_HQGameMode en el mundo. "
+		UE_LOG(LogTortunabo, Error, TEXT("[LobbyReadyZone] No se encontro TN_HQGameMode en el mundo. "
 			"Asegurate de que LVL_HQ tiene GameMode Override = TN_HQGameMode (o BP derivado)."));
 	}
 
@@ -49,7 +50,7 @@ void ATN_LobbyReadyZone::HandlePawnEnter(APawn* Pawn)
 
 	if (ATN_HQGameMode* HQGM = ResolveHQGameMode())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[LobbyReadyZone] Jugador %s ENTRO en la zona."), *GetNameSafe(PC));
+		UE_LOG(LogTortunabo, Log, TEXT("[LobbyReadyZone] Jugador %s ENTRO en la zona."), *GetNameSafe(PC));
 		HQGM->SetPlayerReadyState(PC, true);
 	}
 }
@@ -69,7 +70,7 @@ void ATN_LobbyReadyZone::HandlePawnExit(APawn* Pawn)
 
 	if (ATN_HQGameMode* HQGM = ResolveHQGameMode())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[LobbyReadyZone] Jugador %s SALIO de la zona."), *GetNameSafe(PC));
+		UE_LOG(LogTortunabo, Log, TEXT("[LobbyReadyZone] Jugador %s SALIO de la zona."), *GetNameSafe(PC));
 		HQGM->SetPlayerReadyState(PC, false);
 	}
 }

@@ -1,4 +1,5 @@
 #include "World/TN_ScorePickup.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
@@ -61,7 +62,7 @@ void ATN_ScorePickup::OnSphereOverlap(UPrimitiveComponent* OverlappedComp, AActo
 	// el host del listen-server, cuyo OnRep no dispara → su HUD se refresca en vivo.
 	PS->AddRaceScore(ScoreValue);
 	PS->ForceNetUpdate();
-	UE_LOG(LogTemp, Log, TEXT("[ScorePickup] %s recogió %d puntos → total %d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[ScorePickup] %s recogió %d puntos → total %d"),
 		*GetNameSafe(Pawn), ScoreValue, PS->RaceScore);
 
 	// Desactivar

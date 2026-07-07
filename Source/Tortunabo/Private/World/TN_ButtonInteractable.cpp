@@ -1,5 +1,6 @@
 ﻿#include "World/TN_ButtonInteractable.h"
 #include "Components/ChildActorComponent.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_LevelTargetSubsystem.h"
 #include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
@@ -127,7 +128,7 @@ void ATN_ButtonInteractable::DeferredInit()
 				if (SC && SC->GetName() == TagStr)
 				{
 					ResolvedMoveComponent = SC;
-					UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró componente '%s' en chunk '%s'."),
+					UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' encontró componente '%s' en chunk '%s'."),
 						*GetName(), *TagStr, *GetNameSafe(ParentChunk));
 					break;
 				}
@@ -194,7 +195,7 @@ void ATN_ButtonInteractable::DeferredInit()
 				MoveTarget = Sub->FindTarget(MoveTargetTag);
 				if (MoveTarget)
 				{
-					UE_LOG(LogTemp, Log,
+					UE_LOG(LogTortunabo, Log,
 						TEXT("[Button] '%s' resolved global tag '%s' → '%s' via LevelTargetSubsystem"),
 						*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(MoveTarget));
 				}
@@ -206,12 +207,12 @@ void ATN_ButtonInteractable::DeferredInit()
 			const FString FoundName = MoveTarget
 				? GetNameSafe(MoveTarget)
 				: (ResolvedMoveComponent.IsValid() ? ResolvedMoveComponent->GetName() : TEXT("?"));
-			UE_LOG(LogTemp, Log, TEXT("[Button] '%s' encontró target '%s' por tag '%s' (chunk='%s')."),
+			UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' encontró target '%s' por tag '%s' (chunk='%s')."),
 				*GetName(), *FoundName, *MoveTargetTag.ToString(), *GetNameSafe(ResolveParentChunk()));
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — MoveTargetTag='%s' no encontrado. "
+			UE_LOG(LogTortunabo, Warning, TEXT("[Button] '%s' — MoveTargetTag='%s' no encontrado. "
 				"Chunk padre='%s'. Verifica que exista un componente o ChildActor con ese nombre/tag en el BP."),
 				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(ResolveParentChunk()));
 		}
@@ -285,7 +286,7 @@ void ATN_ButtonInteractable::DeferredInit()
 
 		bInitialized = true;
 
-		UE_LOG(LogTemp, Log, TEXT("[Button] '%s' — Original: %s | Offset: %s | Activado: %s"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' — Original: %s | Offset: %s | Activado: %s"),
 			*GetName(),
 			*OriginalTransform.GetLocation().ToString(),
 			*ActivatedOffset.GetLocation().ToString(),
@@ -351,13 +352,13 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 
 	if (!HasValidTarget())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — Sin target válido."), *GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[Button] '%s' — Sin target válido."), *GetName());
 		return;
 	}
 
 	if (!bInitialized)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Button] '%s' — Aún no inicializado."), *GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[Button] '%s' — Aún no inicializado."), *GetName());
 		return;
 	}
 
@@ -372,7 +373,7 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 		MulticastPlayHalfPressedFeedback();
 		Super::Interact(Interactor);
 
-		UE_LOG(LogTemp, Log, TEXT("[Button] '%s' — pulsación %d/%d"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' — pulsación %d/%d"),
 			*GetName(), CurrentPresses, PressesRequired);
 		return;
 	}
@@ -402,7 +403,7 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 	// Cooldown via padre (TN_DirectInteractableBase)
 	Super::Interact(Interactor);
 
-	UE_LOG(LogTemp, Log, TEXT("[Button] '%s' → %s (destino: %s)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' → %s (destino: %s)"),
 		*GetName(),
 		bIsActivated ? TEXT("ACTIVADO") : TEXT("DESACTIVADO"),
 		*GetGoalTransform().GetLocation().ToString());

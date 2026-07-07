@@ -1,4 +1,5 @@
 #include "World/TN_CrabSpawnZone.h"
+#include "Core/TN_Log.h"
 #include "World/TN_CrabActor.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
@@ -51,7 +52,7 @@ void ATN_CrabSpawnZone::SpawnCrab()
 {
 	if (!CrabClass)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[CrabSpawnZone] '%s': CrabClass no asignada."), *GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[CrabSpawnZone] '%s': CrabClass no asignada."), *GetName());
 		return;
 	}
 
@@ -86,7 +87,7 @@ void ATN_CrabSpawnZone::SpawnCrab()
 	if (SpawnedCount > 0)
 	{
 		bAlreadySpawned = true;
-		UE_LOG(LogTemp, Log, TEXT("[CrabSpawnZone] '%s': %d/%d cangrejos spawneados."),
+		UE_LOG(LogTortunabo, Log, TEXT("[CrabSpawnZone] '%s': %d/%d cangrejos spawneados."),
 			*GetName(), SpawnedCount, SpawnCountOnEnter);
 
 		// Desactivar detección en one-shot para no volver a disparar

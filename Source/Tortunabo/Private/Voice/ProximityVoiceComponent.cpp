@@ -1,4 +1,5 @@
 #include "Voice/ProximityVoiceComponent.h"
+#include "Core/TN_Log.h"
 #include "UI/Voice/VoiceIndicatorWidget.h"
 #include "Player/MP_GamePlayerController.h"
 #include "GameFramework/PlayerController.h"
@@ -71,7 +72,7 @@ void UProximityVoiceComponent::PrepareForLevelTransition()
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Voice] PrepareForLevelTransition on %s — orphaning capture, cleaning playback/UI."),
+	UE_LOG(LogTortunabo, Log, TEXT("[Voice] PrepareForLevelTransition on %s — orphaning capture, cleaning playback/UI."),
 		*GetNameSafe(GetOwner()));
 
 	bIsShuttingDown = true;
@@ -98,7 +99,7 @@ void UProximityVoiceComponent::ShutdownAllCapture(const UWorld* World)
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Voice] ShutdownAllCapture: all voice components in world cleaned up before travel."));
+	UE_LOG(LogTortunabo, Log, TEXT("[Voice] ShutdownAllCapture: all voice components in world cleaned up before travel."));
 }
 
 void UProximityVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -371,7 +372,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		{
 			const int32 Excess = CaptureBuffer.Num() - MaxBufferedSamples;
 			CaptureBuffer.RemoveAt(0, Excess, EAllowShrinking::No);
-			UE_LOG(LogTemp, Verbose, TEXT("[Voice] CaptureBuffer cap: dropped %d old samples"), Excess);
+			UE_LOG(LogTortunabo, Verbose, TEXT("[Voice] CaptureBuffer cap: dropped %d old samples"), Excess);
 		}
 	}
 
@@ -451,7 +452,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			}
 			else if (Compressed.Num() > ClientPayloadCap)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[Voice] Drop oversized compressed payload (%d > %d) — frame skipped"),
+				UE_LOG(LogTortunabo, Warning, TEXT("[Voice] Drop oversized compressed payload (%d > %d) — frame skipped"),
 					Compressed.Num(), ClientPayloadCap);
 			}
 		}
@@ -473,7 +474,7 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 	constexpr int32 MaxVoicePayloadBytes = 8192;
 	if (CompressedData.Num() > MaxVoicePayloadBytes)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Voice] Server_SendVoiceData: oversized payload (%d bytes) from %s — dropped"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[Voice] Server_SendVoiceData: oversized payload (%d bytes) from %s — dropped"),
 			CompressedData.Num(), *GetNameSafe(GetOwner()));
 		return;
 	}

@@ -1,4 +1,5 @@
 #include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -74,7 +75,7 @@ void ATN_CoopPlayerState::MulticastForceApplyHelmet_Implementation(FName HelmId)
 			}
 			if (--Retry->Remaining <= 0)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[CoopPlayerState] MulticastForceApplyHelmet: agotados reintentos para '%s'."),
+				UE_LOG(LogTortunabo, Warning, TEXT("[CoopPlayerState] MulticastForceApplyHelmet: agotados reintentos para '%s'."),
 					*WeakThis->GetPlayerName());
 				World->GetTimerManager().ClearTimer(*RetryHandle);
 			}
@@ -121,7 +122,7 @@ void ATN_CoopPlayerState::MulticastForceApplySkin_Implementation(FName SkinId)
 			}
 			if (--Retry->Remaining <= 0)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[CoopPlayerState] MulticastForceApplySkin: agotados reintentos para '%s'."),
+				UE_LOG(LogTortunabo, Warning, TEXT("[CoopPlayerState] MulticastForceApplySkin: agotados reintentos para '%s'."),
 					*WeakThis->GetPlayerName());
 				World->GetTimerManager().ClearTimer(*RetryHandle);
 			}

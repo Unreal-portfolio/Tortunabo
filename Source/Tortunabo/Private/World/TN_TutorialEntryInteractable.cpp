@@ -1,4 +1,5 @@
 #include "World/TN_TutorialEntryInteractable.h"
+#include "Core/TN_Log.h"
 #include "GameFramework/PlayerStart.h"
 #include "EngineUtils.h"
 
@@ -37,7 +38,7 @@ void ATN_TutorialEntryInteractable::Interact(APawn* Interactor)
 
 	if (!TutorialStart)
 	{
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogTortunabo, Warning,
 			TEXT("[TutorialEntryInteractable] No PlayerStart with tag '%s' found in level — cannot teleport."),
 			*TutorialStartTag.ToString());
 		return;
@@ -45,7 +46,7 @@ void ATN_TutorialEntryInteractable::Interact(APawn* Interactor)
 
 	Interactor->TeleportTo(TutorialStart->GetActorLocation(), TutorialStart->GetActorRotation());
 
-	UE_LOG(LogTemp, Log,
+	UE_LOG(LogTortunabo, Log,
 		TEXT("[TutorialEntryInteractable] Teleported '%s' to tutorial zone at %s."),
 		*GetNameSafe(Interactor), *TutorialStart->GetActorLocation().ToString());
 

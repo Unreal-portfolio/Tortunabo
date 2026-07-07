@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_Log.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -57,7 +58,7 @@ void ATortugaCharacter::TryDive()
 		DiveDir.Normalize();
 	}
 
-	UE_LOG(LogTemp, Log,
+	UE_LOG(LogTortunabo, Log,
 		TEXT("[Dive] DASH-03 · DiveDir(camera)=(%.2f,%.2f,%.2f) ControlYaw=%.1f"),
 		DiveDir.X, DiveDir.Y, DiveDir.Z, ControlRot.Yaw);
 
@@ -139,13 +140,13 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 		}
 		MomentumBonus = JumpStartSpeed * Factor;
 
-		UE_LOG(LogTemp, Log,
+		UE_LOG(LogTortunabo, Log,
 			TEXT("[Dive] Momentum · JumpStartSpeed=%.0f CamVsJumpAlign=%.2f Factor=%.2f Bonus=%.0f → Total=%.0f"),
 			JumpStartSpeed, Alignment, Factor, MomentumBonus, DiveForwardSpeed + MomentumBonus);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Log,
+		UE_LOG(LogTortunabo, Log,
 			TEXT("[Dive] Momentum · sin salto registrado (JumpStartSpeed=0) → bonus 0, dash a velocidad base %.0f"),
 			DiveForwardSpeed);
 	}
@@ -165,7 +166,7 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	// Apply visual on all machines (server runs Multicast locally too)
 	Multicast_OnDiveVisual(true);
 
-	UE_LOG(LogTemp, Log, TEXT("[Dive] %s — dive started, dir=%s"), *GetNameSafe(this), *DiveDir.ToString());
+	UE_LOG(LogTortunabo, Log, TEXT("[Dive] %s — dive started, dir=%s"), *GetNameSafe(this), *DiveDir.ToString());
 }
 
 void ATortugaCharacter::Multicast_OnDiveVisual_Implementation(bool bEnter)
@@ -240,7 +241,7 @@ void ATortugaCharacter::EndDive()
 	// Multicast restore visual
 	Multicast_OnDiveVisual(false);
 
-	UE_LOG(LogTemp, Log, TEXT("[Dive] %s — dive ended."), *GetNameSafe(this));
+	UE_LOG(LogTortunabo, Log, TEXT("[Dive] %s — dive ended."), *GetNameSafe(this));
 }
 
 void ATortugaCharacter::TickDive(float DeltaTime)
@@ -309,7 +310,7 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 		if (!bLoggedDiveRot && bIsDiving)
 		{
 			bLoggedDiveRot = true;
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogTortunabo, Warning,
 				TEXT("[Diagnostic] DiveMeshDefaultRot = Rotator(P=%.2f Y=%.2f R=%.2f) · MeshRel = Rotator(P=%.2f Y=%.2f R=%.2f)"),
 				DiveMeshDefaultRot.Pitch, DiveMeshDefaultRot.Yaw, DiveMeshDefaultRot.Roll,
 				GetMesh() ? GetMesh()->GetRelativeRotation().Pitch : 0.f,

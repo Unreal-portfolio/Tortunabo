@@ -1,4 +1,5 @@
 #include "World/TN_BananaPeel.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
@@ -72,7 +73,7 @@ void ATN_BananaPeel::OnTriggerBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 	// sin contacto con el suelo la fricción no mata el slide. Tunable desde BP.
 	const FVector SlideImpulse = SlideDir * ImpulseStrength + FVector(0.f, 0.f, SlideVerticalForce);
 
-	UE_LOG(LogTemp, Log, TEXT("[BananaPeel] %s hit peel — slide dir=(%.2f,%.2f,%.2f) mag=%.0f z=%.0f"),
+	UE_LOG(LogTortunabo, Log, TEXT("[BananaPeel] %s hit peel — slide dir=(%.2f,%.2f,%.2f) mag=%.0f z=%.0f"),
 		*GetNameSafe(Character), SlideDir.X, SlideDir.Y, SlideDir.Z, ImpulseStrength, SlideVerticalForce);
 
 	Character->ApplyKnockdown(KnockdownDuration, SlideImpulse);

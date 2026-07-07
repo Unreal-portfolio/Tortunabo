@@ -1,4 +1,5 @@
 #include "World/TN_SeagullSpawnZone.h"
+#include "Core/TN_Log.h"
 #include "World/TN_EnemySeagull.h"
 #include "Player/TortugaCharacter.h"
 #include "Engine/World.h"
@@ -35,7 +36,7 @@ void ATN_SeagullSpawnZone::TrySpawn()
 		Seagull->InitializeWithTarget(Target);
 		RegisterActive(Seagull);
 
-		UE_LOG(LogTemp, Verbose, TEXT("[SeagullSpawnZone] '%s': gaviota spawneada sobre '%s'."),
+		UE_LOG(LogTortunabo, Verbose, TEXT("[SeagullSpawnZone] '%s': gaviota spawneada sobre '%s'."),
 			*GetName(), *GetNameSafe(Target));
 	}
 }

@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_Log.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/AudioComponent.h"
 #include "Animation/AnimInstance.h"
@@ -150,7 +151,7 @@ void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 	{
 		if (!IsValidWheelEmoteId(Index))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Emote] ID inválido %d en %s"), Index, *GetNameSafe(this));
+			UE_LOG(LogTortunabo, Warning, TEXT("[Emote] ID inválido %d en %s"), Index, *GetNameSafe(this));
 			ClientRejectEmote(Index);
 			return;
 		}
@@ -207,7 +208,7 @@ void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 		CancelReviveChannel();
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT("[Emote] ServerSetEmote(%d) on %s  CabezaBone=%s"),
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Emote] ServerSetEmote(%d) on %s  CabezaBone=%s"),
 		Index, *GetNameSafe(this),
 		CabezaBone != NAME_None ? TEXT("OK") : TEXT("NULL"));
 }
@@ -232,7 +233,7 @@ void ATortugaCharacter::OnRep_ReplicatedEmoteIndex()
 	// Si IsLocallyControlled() y el índice >= 0: el jugador ya arrancó el emote
 	// localmente en TriggerEmote() antes de enviar el RPC, no hay que hacer nada.
 
-	UE_LOG(LogTemp, Verbose, TEXT("[Emote] OnRep_ReplicatedEmoteIndex(%d) on %s  IsLocal=%s  CabezaBone=%s"),
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Emote] OnRep_ReplicatedEmoteIndex(%d) on %s  IsLocal=%s  CabezaBone=%s"),
 		ReplicatedEmoteIndex, *GetNameSafe(this),
 		IsLocallyControlled() ? TEXT("YES") : TEXT("NO"),
 		CabezaBone != NAME_None ? TEXT("OK") : TEXT("NULL"));
@@ -834,7 +835,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 			if (!bLoggedKirk)
 			{
 				bLoggedKirk = true;
-				UE_LOG(LogTemp, Warning,
+				UE_LOG(LogTortunabo, Warning,
 					TEXT("[Diagnostic] KNOCKDOWN case ENTRADA · IsSimulating=%s (si true, BoneQuat suppressed by ProcAnim guard)"),
 					(GetMesh() && GetMesh()->IsSimulatingPhysics()) ? TEXT("Y") : TEXT("N"));
 			}

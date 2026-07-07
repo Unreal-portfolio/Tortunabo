@@ -1,4 +1,5 @@
 #include "World/TN_BreakablePlatform.h"
+#include "Core/TN_Log.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "GameFramework/Pawn.h"
@@ -56,12 +57,12 @@ void ATN_BreakablePlatform::OnStandTriggerBeginOverlap(UPrimitiveComponent* Over
 	PawnsOnPlatform.Remove(nullptr);
 	PawnsOnPlatform.Add(Pawn);
 
-	UE_LOG(LogTemp, Verbose, TEXT("[BreakablePlatform] %s ENTER by %s — count=%d threshold=%d"),
+	UE_LOG(LogTortunabo, Verbose, TEXT("[BreakablePlatform] %s ENTER by %s — count=%d threshold=%d"),
 		*GetNameSafe(this), *GetNameSafe(Pawn), PawnsOnPlatform.Num(), PlayerThreshold);
 
 	if (PawnsOnPlatform.Num() >= PlayerThreshold && !GetWorldTimerManager().IsTimerActive(BreakTimerHandle))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s threshold reached — break in %.1fs"),
+		UE_LOG(LogTortunabo, Log, TEXT("[BreakablePlatform] %s threshold reached — break in %.1fs"),
 			*GetNameSafe(this), TimeToBreak);
 
 		// La vibración arranca ShakeDuration segundos antes del break
@@ -96,7 +97,7 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	PawnsOnPlatform.Remove(Pawn);
 	PawnsOnPlatform.Remove(nullptr);
 
-	UE_LOG(LogTemp, Verbose, TEXT("[BreakablePlatform] %s EXIT by %s — count=%d threshold=%d mode=%d"),
+	UE_LOG(LogTortunabo, Verbose, TEXT("[BreakablePlatform] %s EXIT by %s — count=%d threshold=%d mode=%d"),
 		*GetNameSafe(this), *GetNameSafe(Pawn), PawnsOnPlatform.Num(), PlayerThreshold,
 		static_cast<int32>(BreakMode));
 
@@ -139,13 +140,13 @@ void ATN_BreakablePlatform::BreakPlatform()
 		FTimerDelegate RespawnDelegate;
 		RespawnDelegate.BindUObject(this, &ATN_BreakablePlatform::RespawnPlatform);
 		GetWorldTimerManager().SetTimer(RespawnTimerHandle, RespawnDelegate, RespawnTime, false);
-		UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s broke — respawn en %.1fs"),
+		UE_LOG(LogTortunabo, Log, TEXT("[BreakablePlatform] %s broke — respawn en %.1fs"),
 			*GetNameSafe(this), RespawnTime);
 	}
 	else
 	{
 		// Si el BP dejó RespawnTime=0 y el diseñador esperaba respawn, lo avisamos
-		UE_LOG(LogTemp, Warning, TEXT("[BreakablePlatform] %s broke con RespawnTime=0 — "
+		UE_LOG(LogTortunabo, Warning, TEXT("[BreakablePlatform] %s broke con RespawnTime=0 — "
 			"no reaparecerá. Ajustar en BP si se esperaba respawn."), *GetNameSafe(this));
 	}
 }
@@ -190,7 +191,7 @@ void ATN_BreakablePlatform::RespawnPlatform()
 		GetWorldTimerManager().SetTimer(BreakTimerHandle, BreakDelegate, TimeToBreak, false);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[BreakablePlatform] %s respawned — count=%d threshold=%d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[BreakablePlatform] %s respawned — count=%d threshold=%d"),
 		*GetNameSafe(this), PawnsOnPlatform.Num(), PlayerThreshold);
 }
 

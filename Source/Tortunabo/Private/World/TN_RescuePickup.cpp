@@ -1,4 +1,5 @@
 #include "World/TN_RescuePickup.h"
+#include "Core/TN_Log.h"
 #include "Game/TN_RunGameMode.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
@@ -138,7 +139,7 @@ void ATN_RescuePickup::Interact(APawn* Interactor)
 
 	if (!DeadPC)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[RescuePickup] Could not find PlayerController for DeadPlayerId=%d"), DeadPlayerId);
+		UE_LOG(LogTortunabo, Warning, TEXT("[RescuePickup] Could not find PlayerController for DeadPlayerId=%d"), DeadPlayerId);
 		Destroy();
 		return;
 	}
@@ -148,12 +149,12 @@ void ATN_RescuePickup::Interact(APawn* Interactor)
 	{
 		RunGM->RevivePlayer(DeadPC);
 
-		UE_LOG(LogTemp, Log, TEXT("[RescuePickup] Revived player (Id=%d) at (%.0f,%.0f,%.0f)"),
+		UE_LOG(LogTortunabo, Log, TEXT("[RescuePickup] Revived player (Id=%d) at (%.0f,%.0f,%.0f)"),
 			DeadPlayerId, GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[RescuePickup] No TN_RunGameMode found — cannot revive"));
+		UE_LOG(LogTortunabo, Warning, TEXT("[RescuePickup] No TN_RunGameMode found — cannot revive"));
 	}
 
 	// Llamar OnInteracted para hooks BP

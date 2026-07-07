@@ -1,4 +1,5 @@
 #include "World/TN_DroppingSpawnZone.h"
+#include "Core/TN_Log.h"
 #include "World/TN_SeagullDroppingActor.h"
 #include "Player/TortugaCharacter.h"
 
@@ -31,7 +32,7 @@ void ATN_DroppingSpawnZone::TrySpawn()
 	{
 		RegisterActive(Dropping);
 
-		UE_LOG(LogTemp, Verbose, TEXT("[DroppingSpawnZone] '%s': caca spawneada sobre '%s'."),
+		UE_LOG(LogTortunabo, Verbose, TEXT("[DroppingSpawnZone] '%s': caca spawneada sobre '%s'."),
 			*GetName(), *GetNameSafe(Target));
 	}
 }

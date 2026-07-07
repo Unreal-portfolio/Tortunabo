@@ -1,4 +1,5 @@
 #include "World/TN_CollectionZone.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Core/TN_InventoryTypes.h"
@@ -57,7 +58,7 @@ void ATN_CollectionZone::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 	if (!ConsumeItemFromPlayer(Char)) { return; }
 	++DepositedCount;
 
-	UE_LOG(LogTemp, Log, TEXT("[CollectionZone] Deposited by %s → %d/%d"),
+	UE_LOG(LogTortunabo, Log, TEXT("[CollectionZone] Deposited by %s → %d/%d"),
 		*GetNameSafe(Char), DepositedCount, RequiredCount);
 
 	MulticastOnDeposit(Char, DepositedCount, RequiredCount);
@@ -70,7 +71,7 @@ void ATN_CollectionZone::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 		// Notificar al GameMode (server-side). El GameMode bindea OnZoneGoalReached
 		// en BeginPlay iterando todas las CollectionZones del mundo.
 		OnZoneGoalReached.Broadcast(this);
-		UE_LOG(LogTemp, Log, TEXT("[COLLECTION] Zone '%s' goal reached (RequiredCount=%d)"),
+		UE_LOG(LogTortunabo, Log, TEXT("[COLLECTION] Zone '%s' goal reached (RequiredCount=%d)"),
 			*GetName(), RequiredCount);
 	}
 }

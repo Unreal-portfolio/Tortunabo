@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_Log.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -87,7 +88,7 @@ void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 	GetWorldTimerManager().SetTimer(KnockdownTimerHandle, this,
 	                                &ATortugaCharacter::RecoverFromKnockdown, Duration, false);
 
-	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s knocked down for %.1fs (momentum activo)"), *GetNameSafe(this), Duration);
+	UE_LOG(LogTortunabo, Log, TEXT("[Knockdown] %s knocked down for %.1fs (momentum activo)"), *GetNameSafe(this), Duration);
 }
 
 void ATortugaCharacter::RecoverFromKnockdown()
@@ -124,7 +125,7 @@ void ATortugaCharacter::RecoverFromKnockdown()
 	StopDBNOHeartbeatSound();
 	PlayReviveSuccessSound();
 
-	UE_LOG(LogTemp, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
+	UE_LOG(LogTortunabo, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
 }
 
 void ATortugaCharacter::OnRep_IsKnockedDown()
@@ -248,7 +249,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SkelMesh->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			SkelMesh->WakeAllRigidBodies();
 			SkelMesh->bPauseAnims = true;  // después de simulación activa
-			UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s InitVel=(%.0f,%.0f,%.0f)"),
+			UE_LOG(LogTortunabo, Warning, TEXT("[Diagnostic] Ragdoll KNOCKDOWN ON (%s) IsSim=%s InitVel=(%.0f,%.0f,%.0f)"),
 				*GetName(), SkelMesh->IsSimulatingPhysics()?TEXT("Y"):TEXT("N"),
 				KnockdownInitialVel.X, KnockdownInitialVel.Y, KnockdownInitialVel.Z);
 
@@ -373,7 +374,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 
 	if (!VisComp)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Knockdown] ApplyKnockdownVisual(%s): No visual component on %s — knockdown tilt invisible! "
+		UE_LOG(LogTortunabo, Error, TEXT("[Knockdown] ApplyKnockdownVisual(%s): No visual component on %s — knockdown tilt invisible! "
 			"HasAuthority=%s IsLocal=%s Mesh=%s"),
 			bKnocked ? TEXT("true") : TEXT("false"),
 			*GetNameSafe(this),
@@ -408,7 +409,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		}
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT("[Knockdown] ApplyKnockdownVisual(%s) on %s — comp=%s"),
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Knockdown] ApplyKnockdownVisual(%s) on %s — comp=%s"),
 		bKnocked ? TEXT("true") : TEXT("false"), *GetNameSafe(this), *VisComp->GetName());
 }
 
@@ -425,7 +426,7 @@ void ATortugaCharacter::RequestKill(AActor* KillInstigator)
 	ATN_RunGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ATN_RunGameMode>() : nullptr;
 	if (!GM) { return; }
 
-	UE_LOG(LogTemp, Log, TEXT("[Character] RequestKill on '%s' by '%s'"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Character] RequestKill on '%s' by '%s'"),
 		*GetNameSafe(this), *GetNameSafe(KillInstigator));
 
 	GM->MarkPlayerDead(PC);
@@ -447,7 +448,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	FlushNetDormancy();
 	ForceNetUpdate();
 
-	UE_LOG(LogTemp, Warning, TEXT("[DeathState][SERVER] %s SetDeadVisual(%d) bIsDead=%d RepMove=%d Dormant=%d Role=%d"),
+	UE_LOG(LogTortunabo, Warning, TEXT("[DeathState][SERVER] %s SetDeadVisual(%d) bIsDead=%d RepMove=%d Dormant=%d Role=%d"),
 		*GetName(), bDead, bIsDead, IsReplicatingMovement() ? 1 : 0, (int32)NetDormancy, (int32)GetLocalRole());
 
 	USkeletalMeshComponent* SkelMesh = GetMesh();
@@ -481,7 +482,7 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 
 		GroundLocation = GetActorLocation() + FVector(0.f, 0.f, RequiredLift);
 		SetActorLocation(GroundLocation, false, nullptr, ETeleportType::TeleportPhysics);
-		UE_LOG(LogTemp, Log, TEXT("[Death] Ragdoll spawn lift %.1fcm (base=%.1f clearance=%.1f)"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Death] Ragdoll spawn lift %.1fcm (base=%.1f clearance=%.1f)"),
 			RequiredLift, DeathRagdollSpawnLift, DeathRagdollFloorClearance);
 
 		EnterRagdollState();
@@ -502,13 +503,13 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 	// dentro de MulticastSetDeadVisual_Implementation).
 	OnDeathVisualSet(bDead);
 
-	UE_LOG(LogTemp, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("RAGDOLL") : TEXT("ALIVE"));
+	UE_LOG(LogTortunabo, Log, TEXT("[Death] %s dead visual = %s"), *GetNameSafe(this), bDead ? TEXT("RAGDOLL") : TEXT("ALIVE"));
 }
 
 void ATortugaCharacter::EnterRagdollState()
 {
 	USkeletalMeshComponent* SkelMesh = GetMesh();
-	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll][ENTER_BEGIN] %s NetMode=%d Role=%d MeshSim=%d Bodies=%d PA=%s"),
+	UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll][ENTER_BEGIN] %s NetMode=%d Role=%d MeshSim=%d Bodies=%d PA=%s"),
 		*GetName(), (int32)GetNetMode(), (int32)GetLocalRole(),
 		SkelMesh && SkelMesh->IsSimulatingPhysics() ? 1 : 0,
 		SkelMesh ? SkelMesh->Bodies.Num() : -1,
@@ -516,14 +517,14 @@ void ATortugaCharacter::EnterRagdollState()
 
 	if (!SkelMesh || !SkelMesh->GetPhysicsAsset())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] EnterRagdollState abortado — SkM o PhysicsAsset null en %s"), *GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] EnterRagdollState abortado — SkM o PhysicsAsset null en %s"), *GetName());
 		return;
 	}
 
 	// Idempotente: si ya simula no re-arranca.
 	if (SkelMesh->IsSimulatingPhysics())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Ragdoll][EARLY_OUT_ALREADY_SIM] %s Bodies=%d"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll][EARLY_OUT_ALREADY_SIM] %s Bodies=%d"),
 			*GetName(), SkelMesh->Bodies.Num());
 		return;
 	}
@@ -611,7 +612,7 @@ void ATortugaCharacter::EnterRagdollState()
 	SkelMesh->bBlendPhysics = true;
 	SkelMesh->bPauseAnims = true;
 
-	UE_LOG(LogTemp, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimPaused=true(post-wake) · BlendPhysics=true(post-wake) · bodies=%d"),
+	UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimPaused=true(post-wake) · BlendPhysics=true(post-wake) · bodies=%d"),
 		*GetName(), HasAuthority(), SkelMesh->Bodies.Num());
 }
 
@@ -652,13 +653,13 @@ void ATortugaCharacter::ExitRagdollState()
 		CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Ragdoll] EXIT (%s) authority=%d"), *GetName(), HasAuthority());
+	UE_LOG(LogTortunabo, Log, TEXT("[Ragdoll] EXIT (%s) authority=%d"), *GetName(), HasAuthority());
 }
 
 void ATortugaCharacter::OnRep_IsDead()
 {
 	USkeletalMeshComponent* SkM = GetMesh();
-	UE_LOG(LogTemp, Warning, TEXT("[DeathState][ONREP] %s bIsDead=%d NetMode=%d Role=%d RemoteRole=%d MeshSim=%d Bodies=%d PA=%s"),
+	UE_LOG(LogTortunabo, Warning, TEXT("[DeathState][ONREP] %s bIsDead=%d NetMode=%d Role=%d RemoteRole=%d MeshSim=%d Bodies=%d PA=%s"),
 		*GetName(), bIsDead, (int32)GetNetMode(), (int32)GetLocalRole(), (int32)GetRemoteRole(),
 		SkM && SkM->IsSimulatingPhysics() ? 1 : 0,
 		SkM ? SkM->Bodies.Num() : -1,
@@ -671,7 +672,7 @@ void ATortugaCharacter::OnRep_IsDead()
 
 void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead, FVector GroundLocation)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[DeathState][MC] %s bDead=%d NetMode=%d HasAuthority=%d Role=%d RemoteRole=%d Ground=(%.0f,%.0f,%.0f)"),
+	UE_LOG(LogTortunabo, Warning, TEXT("[DeathState][MC] %s bDead=%d NetMode=%d HasAuthority=%d Role=%d RemoteRole=%d Ground=(%.0f,%.0f,%.0f)"),
 		*GetName(), bDead, (int32)GetNetMode(), HasAuthority() ? 1 : 0, (int32)GetLocalRole(), (int32)GetRemoteRole(),
 		GroundLocation.X, GroundLocation.Y, GroundLocation.Z);
 

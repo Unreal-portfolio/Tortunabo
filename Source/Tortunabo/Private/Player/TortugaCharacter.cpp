@@ -1,4 +1,5 @@
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -156,7 +157,7 @@ void ATortugaCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] BeginPlay '%s' — LocallyControlled=%s  HasAuthority=%s  Controller=%s"),
+	UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] BeginPlay '%s' — LocallyControlled=%s  HasAuthority=%s  Controller=%s"),
 		*GetName(),
 		IsLocallyControlled() ? TEXT("YES") : TEXT("NO"),
 		HasAuthority() ? TEXT("YES") : TEXT("NO"),
@@ -168,7 +169,7 @@ void ATortugaCharacter::BeginPlay()
 	if (IsLocallyControlled() && InteractionScanInterval > 0.f)
 	{
 		GetWorldTimerManager().SetTimer(InteractionScanTimerHandle, this, &ATortugaCharacter::UpdateFocusedInteractable, InteractionScanInterval, true);
-		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Interaction scan timer started (interval=%.2fs)"), InteractionScanInterval);
+		UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] Interaction scan timer started (interval=%.2fs)"), InteractionScanInterval);
 	}
 
 	// Force UTN_ProcAnimInstance regardless of any AnimBP set in Blueprint.
@@ -184,7 +185,7 @@ void ATortugaCharacter::BeginPlay()
 		{
 			GetMesh()->SetSimulatePhysics(false);
 			GetMesh()->bPauseAnims = false;
-			UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] BeginPlay: reset stale physics on %s"), *GetName());
+			UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] BeginPlay: reset stale physics on %s"), *GetName());
 		}
 	}
 
@@ -206,7 +207,7 @@ void ATortugaCharacter::BeginPlay()
 
 	// ── ROUND 3 · DIAGNOSTIC LOGS ──
 	// Si los fixes siguen sin aplicar, estos logs revelan el estado real en runtime.
-	UE_LOG(LogTemp, Warning, TEXT("[Diagnostic] %s BeginPlay: PushForceFactor=%.2f ProbeSize=%.2f bUsePhysicsRagdoll=%s PhysicsAsset=%s"),
+	UE_LOG(LogTortunabo, Warning, TEXT("[Diagnostic] %s BeginPlay: PushForceFactor=%.2f ProbeSize=%.2f bUsePhysicsRagdoll=%s PhysicsAsset=%s"),
 		*GetName(),
 		GetCharacterMovement() ? GetCharacterMovement()->PushForceFactor : -1.f,
 		CameraBoom ? CameraBoom->ProbeSize : -1.f,
@@ -230,7 +231,7 @@ void ATortugaCharacter::BeginPlay()
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] Socket '%s' not found on mesh — animation for this bone disabled."), *SocketName.ToString());
+			UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] Socket '%s' not found on mesh — animation for this bone disabled."), *SocketName.ToString());
 		}
 	};
 
@@ -252,7 +253,7 @@ void ATortugaCharacter::BeginPlay()
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] NeckFollowBone '%s' no existe en el skeleton — head-neck follow DESACTIVADO."),
+			UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] NeckFollowBone '%s' no existe en el skeleton — head-neck follow DESACTIVADO."),
 				*NeckFollowBone.ToString());
 		}
 	}
@@ -261,7 +262,7 @@ void ATortugaCharacter::BeginPlay()
 	CabezaRestScale = FVector::OneVector;
 
 	// Log de diagnóstico: estado final de todos los huesos de emote
-	UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Resolved bones — Brazo1='%s' Brazo2='%s' Pata1='%s' Pata2='%s' Cola='%s' Cabeza='%s'"),
+	UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] Resolved bones — Brazo1='%s' Brazo2='%s' Pata1='%s' Pata2='%s' Cola='%s' Cabeza='%s'"),
 		*Brazo1Bone.ToString(), *Brazo2Bone.ToString(),
 		*Pata1Bone.ToString(),  *Pata2Bone.ToString(),
 		*ColaBone.ToString(),   *CabezaBone.ToString());
@@ -277,7 +278,7 @@ void ATortugaCharacter::BeginPlay()
 		if (USceneComponent* Named = FindChildByName(KnockdownComponentName))
 		{
 			KnockdownVisualComp = Named;
-			UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] KnockdownVisualComp → '%s' (por KnockdownComponentName)"), *Named->GetName());
+			UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] KnockdownVisualComp → '%s' (por KnockdownComponentName)"), *Named->GetName());
 		}
 	}
 	// 2) Fallback: SkeletalMesh con asset.
@@ -378,7 +379,7 @@ void ATortugaCharacter::BeginPlay()
 		HelmetMeshComp->AttachToComponent(GetMesh(),
 			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
 			HelmetSocketName);
-		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] HelmetMeshComp adjunto al socket '%s'."), *HelmetSocketName.ToString());
+		UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] HelmetMeshComp adjunto al socket '%s'."), *HelmetSocketName.ToString());
 	}
 
 	// Cachear materiales originales del SKM unificado (slots 0-4).
@@ -391,11 +392,11 @@ void ATortugaCharacter::BeginPlay()
 		{
 			DefaultSkelMeshMaterials.Add(SKM->GetMaterial(i));
 		}
-		UE_LOG(LogTemp, Log, TEXT("[SKIN-DEBUG] '%s' cached %d default materials from SKM"),
+		UE_LOG(LogTortunabo, Log, TEXT("[SKIN-DEBUG] '%s' cached %d default materials from SKM"),
 			*GetName(), NumMats);
 		for (int32 i = 0; i < DefaultSkelMeshMaterials.Num(); ++i)
 		{
-			UE_LOG(LogTemp, Verbose, TEXT("[SKIN-DEBUG]   slot %d: %s"),
+			UE_LOG(LogTortunabo, Verbose, TEXT("[SKIN-DEBUG]   slot %d: %s"),
 				i,
 				DefaultSkelMeshMaterials[i] ? *DefaultSkelMeshMaterials[i]->GetName() : TEXT("NULL"));
 		}
@@ -422,7 +423,7 @@ void ATortugaCharacter::BeginPlay()
 			}
 			if (++WeakThis->CosmeticRetryCount >= 10)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] '%s' — cosméticos: agotados 10 reintentos sin PlayerState."),
+				UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] '%s' — cosméticos: agotados 10 reintentos sin PlayerState."),
 					*WeakThis->GetName());
 				WeakThis->GetWorldTimerManager().ClearTimer(WeakThis->CosmeticRetryTimerHandle);
 			}
@@ -639,7 +640,7 @@ void ATortugaCharacter::TickCameraInterp(float DeltaTime)
 		if (LogAccumulator > 1.0f)
 		{
 			LogAccumulator = 0.f;
-			UE_LOG(LogTemp, Verbose,
+			UE_LOG(LogTortunabo, Verbose,
 				TEXT("[Diagnostic] FloorClamp HitCam=%s HitVis=%s DistToFloor=%.1f Lift=%.1f"),
 				bHitCam ? TEXT("Y") : TEXT("N"),
 				bHitVis ? TEXT("Y") : TEXT("N"),
@@ -686,7 +687,7 @@ USceneComponent* ATortugaCharacter::FindChildByName(FName Name) const
 			const FString CompName = Comp->GetName();
 			if (CompName.Contains(NameStr, ESearchCase::IgnoreCase))
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[TortugaCharacter] '%s' not found as exact name — matched '%s' (fuzzy). Rename to '%s' in BP for best results."),
+				UE_LOG(LogTortunabo, Warning, TEXT("[TortugaCharacter] '%s' not found as exact name — matched '%s' (fuzzy). Rename to '%s' in BP for best results."),
 					*NameStr, *CompName, *NameStr);
 				return Cast<USceneComponent>(Comp);
 			}
@@ -703,7 +704,7 @@ void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// de visual del rescue pickup → algo destruye el pawn indebidamente.
 	// Casos legítimos: Logout del PC propietario, travel, quit. Casos buggy:
 	// alguien llama Destroy() directo sin checks.
-	UE_LOG(LogTemp, Log,
+	UE_LOG(LogTortunabo, Log,
 		TEXT("[DEATH-DEBUG] %s EndPlay reason=%d bIsDead=%d bIsKnocked=%d HasOwner=%d"),
 		*GetName(), (int32)EndPlayReason, bIsDead ? 1 : 0, bIsKnockedDown ? 1 : 0,
 		GetOwner() != nullptr);
@@ -773,7 +774,7 @@ void ATortugaCharacter::PawnClientRestart()
 	{
 		GetWorldTimerManager().SetTimer(InteractionScanTimerHandle, this,
 			&ATortugaCharacter::UpdateFocusedInteractable, InteractionScanInterval, true);
-		UE_LOG(LogTemp, Log, TEXT("[TortugaCharacter] Interaction scan timer started in PawnClientRestart (interval=%.2fs)"),
+		UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] Interaction scan timer started in PawnClientRestart (interval=%.2fs)"),
 			InteractionScanInterval);
 	}
 }
@@ -808,11 +809,11 @@ void ATortugaCharacter::CacheInputAssets()
 	{
 		if (Asset)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[Input] ✓ %s loaded: %s"), Name, *Asset->GetPathName());
+			UE_LOG(LogTortunabo, Log, TEXT("[Input] ✓ %s loaded: %s"), Name, *Asset->GetPathName());
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ %s FAILED TO LOAD — create this asset in /Game/Blueprints/Gameplay/Controls/"), Name);
+			UE_LOG(LogTortunabo, Error, TEXT("[Input] ✗ %s FAILED TO LOAD — create this asset in /Game/Blueprints/Gameplay/Controls/"), Name);
 		}
 	};
 
@@ -928,7 +929,7 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	UE_LOG(LogTemp, Log, TEXT("[Input] SetupPlayerInputComponent called on '%s' (LocallyControlled=%s)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Input] SetupPlayerInputComponent called on '%s' (LocallyControlled=%s)"),
 		*GetName(), IsLocallyControlled() ? TEXT("YES") : TEXT("NO"));
 
 	if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
@@ -952,11 +953,11 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		if (LoadedInteractAction)
 		{
 			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Started, this, &ATortugaCharacter::TryInteract);
-			UE_LOG(LogTemp, Log, TEXT("[Input] ✓ IA_Interact bound to TryInteract"));
+			UE_LOG(LogTortunabo, Log, TEXT("[Input] ✓ IA_Interact bound to TryInteract"));
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[Input] ✗ IA_Interact NOT bound — asset is null! Create /Game/Blueprints/Gameplay/Controls/IA_Interact"));
+			UE_LOG(LogTortunabo, Error, TEXT("[Input] ✗ IA_Interact NOT bound — asset is null! Create /Game/Blueprints/Gameplay/Controls/IA_Interact"));
 		}
 		if (LoadedRotateInventoryAction)
 		{
@@ -986,13 +987,13 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 			if (LoadedEmoteActions[i])
 			{
 				EnhancedInput->BindAction(LoadedEmoteActions[i], ETriggerEvent::Started, this, EmoteHandlers[i]);
-				UE_LOG(LogTemp, Log, TEXT("[Input] ✓ IA_Emote%d bound"), i);
+				UE_LOG(LogTortunabo, Log, TEXT("[Input] ✓ IA_Emote%d bound"), i);
 			}
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Input] ✗ PlayerInputComponent is NOT an EnhancedInputComponent! Check DefaultInput.ini uses EnhancedPlayerInput."));
+		UE_LOG(LogTortunabo, Error, TEXT("[Input] ✗ PlayerInputComponent is NOT an EnhancedInputComponent! Check DefaultInput.ini uses EnhancedPlayerInput."));
 	}
 }
 
@@ -1005,7 +1006,7 @@ void ATortugaCharacter::OnJumped_Implementation()
 		JumpStartHorizontalVelocity = CMC->Velocity;
 		JumpStartHorizontalVelocity.Z = 0.f;
 	}
-	UE_LOG(LogTemp, Log, TEXT("[Jump] %s jumped · captured horizontal velocity=%s (speed=%.0f)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Jump] %s jumped · captured horizontal velocity=%s (speed=%.0f)"),
 		*GetName(), *JumpStartHorizontalVelocity.ToString(), JumpStartHorizontalVelocity.Size());
 
 	if (HasAuthority() && JumpSound)
@@ -1115,7 +1116,7 @@ void ATortugaCharacter::TryInteract()
 
 	if (bDebug)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] === E PRESSED === FocusedInteractable: %s"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] === E PRESSED === FocusedInteractable: %s"),
 			FocusedInteractable.IsValid() ? *FocusedInteractable->GetName() : TEXT("(none)"));
 	}
 
@@ -1131,7 +1132,7 @@ void ATortugaCharacter::TryInteract()
 
 		if (bDebug)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] No interactable in focus → TryUseEquippedItem"));
+			UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] No interactable in focus → TryUseEquippedItem"));
 		}
 		TryUseEquippedItem();
 		return;
@@ -1139,7 +1140,7 @@ void ATortugaCharacter::TryInteract()
 
 	if (bDebug)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Sending ServerTryInteract → %s (CanInteract client-side: %s)"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] Sending ServerTryInteract → %s (CanInteract client-side: %s)"),
 			*FocusedInteractable->GetName(),
 			FocusedInteractable->CanInteract(this) ? TEXT("YES") : TEXT("NO"));
 	}
@@ -1256,7 +1257,7 @@ void ATortugaCharacter::ApplyBigHeadVisual(bool bBig)
 {
 	if (CabezaBone == NAME_None)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[BigHead] CabezaBone not resolved on %s"), *GetNameSafe(this));
+		UE_LOG(LogTortunabo, Warning, TEXT("[BigHead] CabezaBone not resolved on %s"), *GetNameSafe(this));
 		return;
 	}
 	const float S = bBig ? BigHeadScale : 1.f;

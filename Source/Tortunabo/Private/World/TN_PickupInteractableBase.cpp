@@ -1,5 +1,6 @@
 ﻿#include "World/TN_PickupInteractableBase.h"
 #include "Player/TN_InventoryComponent.h"
+#include "Core/TN_Log.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -35,7 +36,7 @@ void ATN_PickupInteractableBase::BeginPlay()
 		if (Row)
 		{
 			InitializeFromInventoryItem(*Row);
-			UE_LOG(LogTemp, Log, TEXT("[Pickup] ✓ '%s' auto-configurado desde DataTable row '%s' — ItemId=%s  UseType=%s"),
+			UE_LOG(LogTortunabo, Log, TEXT("[Pickup] ✓ '%s' auto-configurado desde DataTable row '%s' — ItemId=%s  UseType=%s"),
 				*GetName(),
 				*ItemRowName.ToString(),
 				*PickupItem.ItemId.ToString(),
@@ -43,7 +44,7 @@ void ATN_PickupInteractableBase::BeginPlay()
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogTortunabo, Warning,
 				TEXT("[Pickup] ✗ Fila '%s' no encontrada en DataTable '%s'. "
 				     "Verifica el nombre en DT_Items."),
 				*ItemRowName.ToString(),
@@ -52,7 +53,7 @@ void ATN_PickupInteractableBase::BeginPlay()
 	}
 	else if (HasAuthority() && PickupItem.IsValid())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[Pickup] '%s' — usando PickupItem pre-configurado (sin DataTable): ItemId=%s"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Pickup] '%s' — usando PickupItem pre-configurado (sin DataTable): ItemId=%s"),
 			*GetName(), *PickupItem.ItemId.ToString());
 	}
 	else if (HasAuthority() && !ItemDataTable)
@@ -60,7 +61,7 @@ void ATN_PickupInteractableBase::BeginPlay()
 		// Solo advertir si NO hay DataTable en absoluto: actor colocado en nivel sin configurar.
 		// Si DataTable está asignado pero RowName=None, es un spawn dinámico válido:
 		// InitializeFromInventoryItem() será llamado justo después de SpawnActor().
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogTortunabo, Warning,
 			TEXT("[Pickup] ✗ '%s' — Sin DataTable ni PickupItem. "
 			     "Asigna ItemDataTable+ItemRowName en el BP (actor de nivel), o "
 			     "llama InitializeFromInventoryItem() tras SpawnActor (spawn dinámico)."),
@@ -72,13 +73,13 @@ bool ATN_PickupInteractableBase::CanInteract(APawn* Interactor) const
 {
 	if (!Super::CanInteract(Interactor))
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[Pickup:CanInteract] Base CanInteract=FALSE (disabled or no interactor)"));
+		UE_LOG(LogTortunabo, Verbose, TEXT("[Pickup:CanInteract] Base CanInteract=FALSE (disabled or no interactor)"));
 		return false;
 	}
 
 	if (bTaken)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[Pickup:CanInteract] '%s' already taken"), *GetName());
+		UE_LOG(LogTortunabo, Verbose, TEXT("[Pickup:CanInteract] '%s' already taken"), *GetName());
 		return false;
 	}
 
@@ -89,7 +90,7 @@ bool ATN_PickupInteractableBase::CanInteract(APawn* Interactor) const
 
 	if (!PickupItem.IsValid())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Pickup:CanInteract] '%s' — PickupItem is INVALID (ItemId=None). "
+		UE_LOG(LogTortunabo, Warning, TEXT("[Pickup:CanInteract] '%s' — PickupItem is INVALID (ItemId=None). "
 			"Assign ItemDataTable + ItemRowName, or call InitializeFromInventoryItem."), *GetName());
 		return false;
 	}
@@ -97,7 +98,7 @@ bool ATN_PickupInteractableBase::CanInteract(APawn* Interactor) const
 	const UTN_InventoryComponent* InventoryComponent = Interactor->FindComponentByClass<UTN_InventoryComponent>();
 	if (!InventoryComponent)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Pickup:CanInteract] Interactor '%s' has NO InventoryComponent"), *Interactor->GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[Pickup:CanInteract] Interactor '%s' has NO InventoryComponent"), *Interactor->GetName());
 		return false;
 	}
 
@@ -107,7 +108,7 @@ bool ATN_PickupInteractableBase::CanInteract(APawn* Interactor) const
 	const bool bCanReceive = InventoryComponent->CanReceiveItem(PickupItem, false);
 	if (!bCanReceive)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[Pickup:CanInteract] Inventario lleno — '%s' no se puede recoger"), *GetName());
+		UE_LOG(LogTortunabo, Verbose, TEXT("[Pickup:CanInteract] Inventario lleno — '%s' no se puede recoger"), *GetName());
 	}
 	return bCanReceive;
 }
@@ -122,7 +123,7 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 	UTN_InventoryComponent* InventoryComponent = Interactor->FindComponentByClass<UTN_InventoryComponent>();
 	if (!InventoryComponent)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Pickup:Interact] No InventoryComponent on '%s'"), *Interactor->GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[Pickup:Interact] No InventoryComponent on '%s'"), *Interactor->GetName());
 		return;
 	}
 
@@ -131,7 +132,7 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 	// en condición de carrera (raro en escenarios co-op).
 	if (!InventoryComponent->TryAddOrReplaceEquipped(PickupItem, false))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Pickup:Interact] TryAddOrReplaceEquipped FAILED for '%s'"), *GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[Pickup:Interact] TryAddOrReplaceEquipped FAILED for '%s'"), *GetName());
 		return;
 	}
 
@@ -155,7 +156,7 @@ void ATN_PickupInteractableBase::Interact(APawn* Interactor)
 		FTimerDelegate::CreateUObject(this, &ATN_PickupInteractableBase::HandleDeferredDestroy));
 
 	// ── Log de confirmación de recogida ───────────────────────────────────────
-	UE_LOG(LogTemp, Log,
+	UE_LOG(LogTortunabo, Log,
 		TEXT("[Pickup] ✓ '%s' recogido por '%s'  |  ItemId: %s  |  UseType: %s"),
 		*GetName(),
 		*Interactor->GetName(),

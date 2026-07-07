@@ -1,4 +1,5 @@
 #include "World/TN_TotemInteractable.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Game/TN_RunGameMode.h"
@@ -45,7 +46,7 @@ void ATN_TotemInteractable::Interact(APawn* Interactor)
 	ATN_RunGameMode* GM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode());
 	if (!GM)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Totem] No ATN_RunGameMode found — cannot revive."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[Totem] No ATN_RunGameMode found — cannot revive."));
 		return;
 	}
 
@@ -56,7 +57,7 @@ void ATN_TotemInteractable::Interact(APawn* Interactor)
 	APawn* RevivedPawn = TargetPC->GetPawn();
 	if (!RevivedPawn)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Totem] RevivePlayer succeeded but GetPawn() returned null for '%s'"),
+		UE_LOG(LogTortunabo, Warning, TEXT("[Totem] RevivePlayer succeeded but GetPawn() returned null for '%s'"),
 			*GetNameSafe(TargetPC));
 		MulticastOnNoTarget();
 		return;

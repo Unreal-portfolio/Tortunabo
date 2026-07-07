@@ -1,4 +1,5 @@
 #include "World/TN_ChunkManager.h"
+#include "Core/TN_Log.h"
 
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
@@ -37,7 +38,7 @@ void ATN_ChunkManager::BeginPlay()
 	// Validar que hay al menos un pool configurado
 	if (EasyChunkClasses.Num() == 0 && MediumChunkClasses.Num() == 0 && HardChunkClasses.Num() == 0)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] No hay chunks configurados en ningún pool. "
+		UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] No hay chunks configurados en ningún pool. "
 			"Asigna BPs en EasyChunkClasses / MediumChunkClasses / HardChunkClasses."));
 		return;
 	}
@@ -45,7 +46,7 @@ void ATN_ChunkManager::BeginPlay()
 	// Validar secuencia personalizada si está activa
 	if (!bUseRandomGeneration && CustomChunkSequence.Num() < TotalChunksBeforeFinal)
 	{
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogTortunabo, Warning,
 			TEXT("[ChunkManager] CustomChunkSequence tiene %d entradas pero TotalChunksBeforeFinal=%d. "
 			     "Los chunks restantes usarán Hard como fallback."),
 			CustomChunkSequence.Num(), TotalChunksBeforeFinal);
@@ -62,7 +63,7 @@ void ATN_ChunkManager::BeginPlay()
 		SpawnNextChunk();
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[ChunkManager] Inicializado. Buffer inicial: %d chunks."), InitialCount);
+	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Inicializado. Buffer inicial: %d chunks."), InitialCount);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ void ATN_ChunkManager::SpawnNextChunk()
 		{
 			// Fuera del rango de la secuencia → Hard como fallback
 			Difficulty = ETNChunkDifficulty::Hard;
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogTortunabo, Warning,
 				TEXT("[ChunkManager] SpawnNextChunk: PassedChunkCount=%d supera CustomChunkSequence.Num()=%d — usando Hard."),
 				PassedChunkCount, CustomChunkSequence.Num());
 		}
@@ -176,18 +177,18 @@ void ATN_ChunkManager::SpawnNextChunk()
 	if (!ChunkClass && Fallback1Pool)
 	{
 		ChunkClass = SelectRandomFromPool(*Fallback1Pool, SelectedIndex);
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Pool primario vacío para dificultad %d — usando fallback 1."),
+		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Pool primario vacío para dificultad %d — usando fallback 1."),
 			(int32)Difficulty);
 	}
 	if (!ChunkClass && Fallback2Pool)
 	{
 		ChunkClass = SelectRandomFromPool(*Fallback2Pool, SelectedIndex);
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Fallback 1 vacío — usando fallback 2."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Fallback 1 vacío — usando fallback 2."));
 	}
 
 	if (!ChunkClass)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] SpawnNextChunk: Todos los pools están vacíos."));
+		UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] SpawnNextChunk: Todos los pools están vacíos."));
 		return;
 	}
 
@@ -215,7 +216,7 @@ void ATN_ChunkManager::SpawnNextChunk()
 	else
 	{
 		ActiveEndTrigger = nullptr;
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene BoxComponent 'EndTrigger'. "
+		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene BoxComponent 'EndTrigger'. "
 			"El jugador no podrá avanzar."), *GetNameSafe(SpawnedChunk));
 	}
 
@@ -232,14 +233,14 @@ void ATN_ChunkManager::SpawnNextChunk()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene SceneComponent 'OutSocket'. "
+		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene SceneComponent 'OutSocket'. "
 			"Los chunks siguientes se superpondrán."), *GetNameSafe(SpawnedChunk));
 	}
 
 	ActiveChunks.Add(SpawnedChunk);
 	CleanupChunks();
 
-	UE_LOG(LogTemp, Log, TEXT("[ChunkManager] Spawneado chunk %s (dificultad=%d, total pasados=%d)."),
+	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Spawneado chunk %s (dificultad=%d, total pasados=%d)."),
 		*GetNameSafe(SpawnedChunk), (int32)Difficulty, PassedChunkCount);
 }
 
@@ -257,7 +258,7 @@ void ATN_ChunkManager::SpawnFinalChunk()
 
 	if (!FinalChunkClass)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] FinalChunkClass no asignado. "
+		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] FinalChunkClass no asignado. "
 			"La carrera no tendrá meta. Asigna un BP con ATN_FinishLineVolume en BP_TN_ChunkManager."));
 		return;
 	}
@@ -272,7 +273,7 @@ void ATN_ChunkManager::SpawnFinalChunk()
 	// El chunk final no necesita EndTrigger — la FinishLineVolume dentro de él
 	// ya se encarga de notificar el fin de carrera al RunGameMode.
 
-	UE_LOG(LogTemp, Log, TEXT("[ChunkManager] Chunk FINAL spawneado: '%s'."), *GetNameSafe(FinalChunk));
+	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Chunk FINAL spawneado: '%s'."), *GetNameSafe(FinalChunk));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +320,7 @@ FTransform ATN_ChunkManager::GetOrComputeInSocketTransform(TSubclassOf<AActor> C
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene 'InSocket'. "
+			UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene 'InSocket'. "
 				"Se usará la posición del actor como entrada."), *ChunkClass->GetName());
 		}
 		Temp->Destroy();
@@ -368,7 +369,7 @@ AActor* ATN_ChunkManager::SpawnAlignedChunk(TSubclassOf<AActor> ChunkClass, cons
 	AActor* Chunk = World->SpawnActor<AActor>(ChunkClass, FinalTransform, Params);
 	if (!Chunk)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ChunkManager] SpawnActor falló para '%s'."),
+		UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] SpawnActor falló para '%s'."),
 			*ChunkClass->GetName());
 		return nullptr;
 	}
@@ -459,7 +460,7 @@ void ATN_ChunkManager::OnChunkEndOverlap(
 	// Avanzar el contador de progreso
 	++PassedChunkCount;
 
-	UE_LOG(LogTemp, Log, TEXT("[ChunkManager] Jugador '%s' cruzó EndTrigger del chunk '%s'. "
+	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Jugador '%s' cruzó EndTrigger del chunk '%s'. "
 		"Chunks pasados: %d / %d."),
 		*GetNameSafe(OtherActor), *GetNameSafe(OwnerChunk),
 		PassedChunkCount, TotalChunksBeforeFinal);

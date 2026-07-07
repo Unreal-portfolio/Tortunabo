@@ -1,4 +1,5 @@
 #include "Multiplayer/MP_GameInstance.h"
+#include "Core/TN_Log.h"
 #include "OnlineSubsystem.h"
 #include "Online.h"
 #include "OnlineSessionSettings.h"
@@ -305,7 +306,7 @@ IOnlineSessionPtr UMP_GameInstance::GetSessionInterface() const
 
 	if (!OSS)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[MP] Online Subsystem is NULL. Make sure Steam is running."));
+		UE_LOG(LogTortunabo, Error, TEXT("[MP] Online Subsystem is NULL. Make sure Steam is running."));
 		return nullptr;
 	}
 
@@ -314,7 +315,7 @@ IOnlineSessionPtr UMP_GameInstance::GetSessionInterface() const
 
 void UMP_GameInstance::UpdateStatus(const FString& Message)
 {
-	UE_LOG(LogTemp, Log, TEXT("[MP] %s"), *Message);
+	UE_LOG(LogTortunabo, Log, TEXT("[MP] %s"), *Message);
 
 	if (StatusLog.Num() >= MaxStatusLines)
 	{
@@ -641,7 +642,7 @@ void UMP_GameInstance::NotifyClientPendingTravel()
 {
 	bIsPendingTravel = true;
 	ShowLoadingScreen(TEXT("El servidor está cambiando de mapa..."));
-	UE_LOG(LogTemp, Log, TEXT("[MP] NotifyClientPendingTravel: bIsPendingTravel=true, loading screen shown."));
+	UE_LOG(LogTortunabo, Log, TEXT("[MP] NotifyClientPendingTravel: bIsPendingTravel=true, loading screen shown."));
 }
 
 void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
@@ -679,7 +680,7 @@ void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 			// Si no se pudo arrancar el timer antes (no había World), arrancarlo ahora
 			if (!LoadedWorld->GetTimerManager().IsTimerActive(AutoRejoinTimerHandle))
 			{
-				UE_LOG(LogTemp, Log, TEXT("[MP] PostLoadMap: arrancando auto-rejoin timer (deferred)."));
+				UE_LOG(LogTortunabo, Log, TEXT("[MP] PostLoadMap: arrancando auto-rejoin timer (deferred)."));
 				LoadedWorld->GetTimerManager().SetTimer(
 					AutoRejoinTimerHandle,
 					FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
@@ -696,7 +697,7 @@ void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 		bNeedsListenRetry = false;
 		ListenRetryCount = MaxListenRetries;
 
-		UE_LOG(LogTemp, Warning, TEXT("[MP] Listen socket failed during travel. Scheduling retry (%d attempts, every 400ms)..."), ListenRetryCount);
+		UE_LOG(LogTortunabo, Warning, TEXT("[MP] Listen socket failed during travel. Scheduling retry (%d attempts, every 400ms)..."), ListenRetryCount);
 
 		// Usar un timer del mundo nuevo para reintentar
 		if (UWorld* World = LoadedWorld)
@@ -718,7 +719,7 @@ void UMP_GameInstance::RetryListenServer()
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[MP] RetryListenServer: World is null."));
+		UE_LOG(LogTortunabo, Error, TEXT("[MP] RetryListenServer: World is null."));
 		if (World) { World->GetTimerManager().ClearTimer(ListenRetryTimerHandle); }
 		HideLoadingScreen();
 		return;
@@ -727,7 +728,7 @@ void UMP_GameInstance::RetryListenServer()
 	// Si ya tiene NetDriver, el listen server ya funciona (quizá otro path lo creó).
 	if (World->GetNetDriver())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[MP] RetryListenServer: NetDriver already exists — listen server is running."));
+		UE_LOG(LogTortunabo, Log, TEXT("[MP] RetryListenServer: NetDriver already exists — listen server is running."));
 		World->GetTimerManager().ClearTimer(ListenRetryTimerHandle);
 		HideLoadingScreen();
 		return;
@@ -741,17 +742,17 @@ void UMP_GameInstance::RetryListenServer()
 	FString Error;
 	if (World->Listen(ListenURL))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[MP] RetryListenServer: ✓ Listen server created successfully on retry!"));
+		UE_LOG(LogTortunabo, Log, TEXT("[MP] RetryListenServer: ✓ Listen server created successfully on retry!"));
 		World->GetTimerManager().ClearTimer(ListenRetryTimerHandle);
 		HideLoadingScreen();
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[MP] RetryListenServer: Listen failed (retries left: %d)"), ListenRetryCount);
+	UE_LOG(LogTortunabo, Warning, TEXT("[MP] RetryListenServer: Listen failed (retries left: %d)"), ListenRetryCount);
 
 	if (ListenRetryCount <= 0)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[MP] RetryListenServer: All retries exhausted. Destroying session and returning to menu."));
+		UE_LOG(LogTortunabo, Error, TEXT("[MP] RetryListenServer: All retries exhausted. Destroying session and returning to menu."));
 		World->GetTimerManager().ClearTimer(ListenRetryTimerHandle);
 		HideLoadingScreen();
 		UpdateStatus(TEXT("ERROR: No se pudo crear el servidor. Volviendo al menú..."));
@@ -776,7 +777,7 @@ void UMP_GameInstance::AttemptAutoRejoin()
 	IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (!Sessions.IsValid())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[MP] AttemptAutoRejoin: No session interface."));
+		UE_LOG(LogTortunabo, Error, TEXT("[MP] AttemptAutoRejoin: No session interface."));
 		bPendingAutoRejoin = false;
 		HideLoadingScreen();
 		UpdateStatus(TEXT("ERROR: No se pudo reconectar — sin interfaz de sesión."));
@@ -787,7 +788,7 @@ void UMP_GameInstance::AttemptAutoRejoin()
 	FNamedOnlineSession* ExistingSession = Sessions->GetNamedSession(NAME_GameSession);
 	if (!ExistingSession)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MP] AttemptAutoRejoin: No hay sesión activa. Buscando sesión..."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[MP] AttemptAutoRejoin: No hay sesión activa. Buscando sesión..."));
 		// La sesión se perdió — intentar buscar vía Find
 		bPendingAutoRejoin = false;
 		HideLoadingScreen();
@@ -802,19 +803,19 @@ void UMP_GameInstance::AttemptAutoRejoin()
 		APlayerController* PC = GetFirstLocalPlayerController();
 		if (PC)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[MP] AttemptAutoRejoin: ClientTravel to '%s'"), *ConnectInfo);
+			UE_LOG(LogTortunabo, Log, TEXT("[MP] AttemptAutoRejoin: ClientTravel to '%s'"), *ConnectInfo);
 			bPendingAutoRejoin = false; // El travel cargará un mapa → HandlePostLoadMap limpiará
 			PC->ClientTravel(ConnectInfo, TRAVEL_Absolute);
 			return;
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[MP] AttemptAutoRejoin: No PlayerController for ClientTravel."));
+			UE_LOG(LogTortunabo, Warning, TEXT("[MP] AttemptAutoRejoin: No PlayerController for ClientTravel."));
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MP] AttemptAutoRejoin: Could not resolve connect string (retries left: %d)"), AutoRejoinRetryCount);
+		UE_LOG(LogTortunabo, Warning, TEXT("[MP] AttemptAutoRejoin: Could not resolve connect string (retries left: %d)"), AutoRejoinRetryCount);
 	}
 
 	if (AutoRejoinRetryCount <= 0)
@@ -911,7 +912,7 @@ void UMP_GameInstance::AddRaceScore(int32 Points)
 	}
 	CosmeticProfile->AccumulatedRaceScore += Points;
 	SaveCosmeticProfile();
-	UE_LOG(LogTemp, Log, TEXT("[GameInstance] AddRaceScore: +%d → total=%d"), Points, CosmeticProfile->AccumulatedRaceScore);
+	UE_LOG(LogTortunabo, Log, TEXT("[GameInstance] AddRaceScore: +%d → total=%d"), Points, CosmeticProfile->AccumulatedRaceScore);
 }
 
 int32 UMP_GameInstance::GetAccumulatedRaceScore() const
@@ -934,7 +935,7 @@ void UMP_GameInstance::SetTutorialCompleted()
 	}
 	TutorialProfile->bHasCompletedTutorial = true;
 	SaveTutorialProfile();
-	UE_LOG(LogTemp, Log, TEXT("[GameInstance] Tutorial marcado como completado y guardado."));
+	UE_LOG(LogTortunabo, Log, TEXT("[GameInstance] Tutorial marcado como completado y guardado."));
 }
 
 void UMP_GameInstance::LoadTutorialProfile()
@@ -995,7 +996,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	default:                                        FailureTypeStr = TEXT("Unknown"); break;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[MP] NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString);
+	UE_LOG(LogTortunabo, Warning, TEXT("[MP] NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString);
 
 	// ---------- SERVIDOR: errores de socket/driver ----------
 	// Pueden ocurrir en dos contextos:
@@ -1011,7 +1012,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 			// El socket Steam aún no se ha liberado. Marcar para reintento
 			// en HandlePostLoadMap, donde el mundo nuevo ya existe.
 			bNeedsListenRetry = true;
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogTortunabo, Warning,
 				TEXT("[MP] %s durante transición de nivel — se reintentará el listen server "
 				     "cuando el mapa nuevo termine de cargar."),
 				*FailureTypeStr);
@@ -1025,7 +1026,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 			HideLoadingScreen();
 			UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
 			DestroyCurrentSession();
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogTortunabo, Warning,
 				TEXT("[MP] %s en inicio de conexión — sesión Steam destruida. "
 				     "Reinicia Steam si el error persiste."),
 				*FailureTypeStr);
@@ -1042,7 +1043,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
 		// Destruir la sesión huérfana del lado cliente para poder reintentar.
 		DestroyCurrentSession();
-		UE_LOG(LogTemp, Error,
+		UE_LOG(LogTortunabo, Error,
 			TEXT("[MP] NetChecksumMismatch — El cliente tiene un build distinto al servidor. "
 			     "Recompila sin Live Coding y asegúrate de que todos usan el mismo binario. "
 			     "Detalle: %s"),
@@ -1067,7 +1068,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 			AutoRejoinRetryCount = MaxAutoRejoinRetries;
 			ShowLoadingScreen(TEXT("Reconectando a la partida..."));
 			UpdateStatus(FString::Printf(TEXT("Conexión perdida durante travel (%s). Reconectando..."), *FailureTypeStr));
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogTortunabo, Warning,
 				TEXT("[MP] %s durante travel — NO destruyendo sesión. Intentando auto-rejoin en 3s (%d reintentos)."),
 				*FailureTypeStr, AutoRejoinRetryCount);
 
@@ -1080,7 +1081,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 			}
 			else
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[MP] No World for timer — AttemptAutoRejoin will fire from HandlePostLoadMap."));
+				UE_LOG(LogTortunabo, Warning, TEXT("[MP] No World for timer — AttemptAutoRejoin will fire from HandlePostLoadMap."));
 			}
 			return;
 		}
@@ -1090,7 +1091,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		HideLoadingScreen();
 		DestroyCurrentSession();
 		UpdateStatus(FString::Printf(TEXT("El host abandonó la partida (%s)."), *FailureTypeStr));
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogTortunabo, Warning,
 			TEXT("[MP] %s sin travel pendiente — el host se fue. Destruyendo sesión y volviendo al menú."),
 			*FailureTypeStr);
 		if (APlayerController* PC = GetFirstLocalPlayerController())

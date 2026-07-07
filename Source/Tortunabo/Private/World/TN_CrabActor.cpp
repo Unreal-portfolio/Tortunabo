@@ -1,4 +1,5 @@
 #include "World/TN_CrabActor.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -324,7 +325,7 @@ void ATN_CrabActor::ApplyStun(float Duration)
 {
 	if (!HasAuthority() || Duration <= 0.f) { return; }
 	StunRemaining = FMath::Max(StunRemaining, Duration);
-	UE_LOG(LogTemp, Log, TEXT("[STUN] Crab '%s' stunned for %.2fs"), *GetName(), Duration);
+	UE_LOG(LogTortunabo, Log, TEXT("[STUN] Crab '%s' stunned for %.2fs"), *GetName(), Duration);
 	MulticastPlayStunEffect(Duration);
 }
 
@@ -332,7 +333,7 @@ void ATN_CrabActor::ApplyBlind(float Duration)
 {
 	if (!HasAuthority() || Duration <= 0.f) { return; }
 	BlindRemaining = FMath::Max(BlindRemaining, Duration);
-	UE_LOG(LogTemp, Log, TEXT("[BLIND] Crab '%s' blinded for %.2fs"), *GetName(), Duration);
+	UE_LOG(LogTortunabo, Log, TEXT("[BLIND] Crab '%s' blinded for %.2fs"), *GetName(), Duration);
 	if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack)
 	{
 		ChaseTarget.Reset();

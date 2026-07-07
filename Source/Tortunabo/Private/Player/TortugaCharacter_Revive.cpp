@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_Log.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/AudioComponent.h"
@@ -50,7 +51,7 @@ void ATortugaCharacter::ServerTryReviveNearby_Implementation()
 
 	if (!ClosestDBNO_PC)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[Revive] %s tried to revive but no DBNO player in range"), *GetNameSafe(this));
+		UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s tried to revive but no DBNO player in range"), *GetNameSafe(this));
 		return;
 	}
 
@@ -58,7 +59,7 @@ void ATortugaCharacter::ServerTryReviveNearby_Implementation()
 	if (RunGM)
 	{
 		RunGM->RevivePlayer(ClosestDBNO_PC);
-		UE_LOG(LogTemp, Log, TEXT("[Revive] %s revived %s via interact"), *GetNameSafe(this), *GetNameSafe(ClosestDBNO_PC));
+		UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s revived %s via interact"), *GetNameSafe(this), *GetNameSafe(ClosestDBNO_PC));
 	}
 }
 
@@ -120,7 +121,7 @@ void ATortugaCharacter::TryStartReviveChannel()
 	GetWorldTimerManager().SetTimer(ReviveChannelTimerHandle, this,
 		&ATortugaCharacter::TickReviveChannel, 0.1f, true);
 
-	UE_LOG(LogTemp, Log, TEXT("[Revive] %s started reviving %s (%.0fcm)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s started reviving %s (%.0fcm)"),
 		*GetNameSafe(this), *GetNameSafe(BestTargetPC),
 		FMath::Sqrt(BestDistSq));
 }
@@ -138,7 +139,7 @@ void ATortugaCharacter::CancelReviveChannel()
 	// ── Parar audio del canal de revive ──
 	StopReviveChannelSound();
 
-	UE_LOG(LogTemp, Log, TEXT("[Revive] %s cancelled revive channel"), *GetNameSafe(this));
+	UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s cancelled revive channel"), *GetNameSafe(this));
 }
 
 void ATortugaCharacter::TickReviveChannel()
@@ -219,7 +220,7 @@ void ATortugaCharacter::TickReviveChannel()
 	// Check if complete
 	if (ReviveChannelElapsed >= ReviveDurationSeconds)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[Revive] %s successfully revived %s!"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s successfully revived %s!"),
 			*GetNameSafe(this), *GetNameSafe(TargetPC));
 
 		// Complete the revive via GameMode

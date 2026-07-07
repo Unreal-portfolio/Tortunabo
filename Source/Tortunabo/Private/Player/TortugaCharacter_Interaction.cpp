@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TortugaCharacter.h"
+#include "Core/TN_Log.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "World/TN_InteractableBase.h"
@@ -72,7 +73,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		FocusedInteractable = BestCandidate;
 		if (bDebug)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[Interact:DEBUG] Focus → %s  (dist=%.0f)"),
+			UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] Focus → %s  (dist=%.0f)"),
 				BestCandidate ? *BestCandidate->GetName() : TEXT("(none)"),
 				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetActorLocation()) : 0.f);
 		}
@@ -119,7 +120,7 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 
 	if (!Interactable)
 	{
-		if (bDebug) { UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] Interactable is NULL — client sent invalid reference")); }
+		if (bDebug) { UE_LOG(LogTortunabo, Warning, TEXT("[Interact:SERVER] Interactable is NULL — client sent invalid reference")); }
 		return;
 	}
 
@@ -136,14 +137,14 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 			}
 			if (bDebug)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[Interact:SERVER] Pickup '%s' no recogible + inventario lleno → usando ítem equipado."),
+				UE_LOG(LogTortunabo, Log, TEXT("[Interact:SERVER] Pickup '%s' no recogible + inventario lleno → usando ítem equipado."),
 					*Interactable->GetName());
 			}
 			ServerUseEquippedItem_Implementation();
 		}
 		else if (bDebug)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] CanInteract=FALSE para '%s' — tomado, desactivado o sin espacio."), *Interactable->GetName());
+			UE_LOG(LogTortunabo, Warning, TEXT("[Interact:SERVER] CanInteract=FALSE para '%s' — tomado, desactivado o sin espacio."), *Interactable->GetName());
 		}
 		return;
 	}
@@ -160,11 +161,11 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 
 	if (ActualDist > TotalAllowed)
 	{
-		if (bDebug) { UE_LOG(LogTemp, Warning, TEXT("[Interact:SERVER] TOO FAR — dist=%.1f  allowed=%.1f  (MaxDist=%.1f + 100 + ping=%.1f)"), ActualDist, TotalAllowed, MaxDistance, PingDistanceAllowance); }
+		if (bDebug) { UE_LOG(LogTortunabo, Warning, TEXT("[Interact:SERVER] TOO FAR — dist=%.1f  allowed=%.1f  (MaxDist=%.1f + 100 + ping=%.1f)"), ActualDist, TotalAllowed, MaxDistance, PingDistanceAllowance); }
 		return;
 	}
 
-	if (bDebug) { UE_LOG(LogTemp, Log, TEXT("[Interact:SERVER] ✓ Calling Interact on '%s' — dist=%.1f"), *Interactable->GetName(), ActualDist); }
+	if (bDebug) { UE_LOG(LogTortunabo, Log, TEXT("[Interact:SERVER] ✓ Calling Interact on '%s' — dist=%.1f"), *Interactable->GetName(), ActualDist); }
 
 	Interactable->Interact(this);
 }

@@ -1,4 +1,5 @@
 #include "World/TN_GoalZone.h"
+#include "Core/TN_Log.h"
 #include "World/TN_PhysicsObjectActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -54,7 +55,7 @@ void ATN_GoalZone::BeginPlay()
 
 		if (!BallSpawnTarget)
 		{
-			UE_LOG(LogTemp, Error,
+			UE_LOG(LogTortunabo, Error,
 				TEXT("[GoalZone] '%s' BallSpawnTarget NO asignado — los goles no respawnarán la bola. Asigna un Target Point en el editor."),
 				*GetName());
 		}
@@ -92,7 +93,7 @@ void ATN_GoalZone::OnBoxBeginOverlap(UPrimitiveComponent* /*OverlappedComp*/, AA
 
 	if (!BallSpawnTarget)
 	{
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogTortunabo, Warning,
 			TEXT("[GoalZone] '%s' overlap con bola '%s' pero BallSpawnTarget es NULL → ignorado."),
 			*GetName(), *Ball->GetName());
 		return;
@@ -101,7 +102,7 @@ void ATN_GoalZone::OnBoxBeginOverlap(UPrimitiveComponent* /*OverlappedComp*/, AA
 	LastGoalServerTime = Now;
 	++GoalCount;
 
-	UE_LOG(LogTemp, Log,
+	UE_LOG(LogTortunabo, Log,
 		TEXT("[GoalZone] '%s' GOL · %s · %d/%d"),
 		*GetName(), *Ball->GetName(), GoalCount, RequiredGoals);
 
@@ -115,7 +116,7 @@ void ATN_GoalZone::OnBoxBeginOverlap(UPrimitiveComponent* /*OverlappedComp*/, AA
 		MulticastOnAllGoalsReached();
 		OnZoneGoalReached.Broadcast(this);
 
-		UE_LOG(LogTemp, Log,
+		UE_LOG(LogTortunabo, Log,
 			TEXT("[GoalZone] '%s' ALL GOALS REACHED (RequiredGoals=%d)"),
 			*GetName(), RequiredGoals);
 	}

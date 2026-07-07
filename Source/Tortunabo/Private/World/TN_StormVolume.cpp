@@ -1,4 +1,5 @@
 #include "World/TN_StormVolume.h"
+#include "Core/TN_Log.h"
 #include "Game/TN_RunGameMode.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
@@ -306,7 +307,7 @@ void ATN_StormVolume::ForceCheckPlayer(APlayerController* PC)
 			&ATN_StormVolume::TickAllCountdowns, CountdownTickInterval, true);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Storm] ForceCheckPlayer: '%s' dentro de '%s' tras revive — countdown reiniciado (%.1fs)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Storm] ForceCheckPlayer: '%s' dentro de '%s' tras revive — countdown reiniciado (%.1fs)"),
 		*GetNameSafe(PC), *GetName(), SecondsInsideToDie);
 }
 

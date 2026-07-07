@@ -1,4 +1,5 @@
 #include "Core/TN_LevelTargetSubsystem.h"
+#include "Core/TN_Log.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 
@@ -18,7 +19,7 @@ void UTN_LevelTargetSubsystem::RegisterTarget(FName Tag, AActor* Actor)
 	{
 		if (Existing->IsValid() && Existing->Get() != Actor)
 		{
-			UE_LOG(LogTemp, Warning,
+			UE_LOG(LogTortunabo, Warning,
 				TEXT("[LevelTargetSubsystem] Tag '%s' already registered by '%s' — overwriting with '%s'."),
 				*Tag.ToString(),
 				*GetNameSafe(Existing->Get()),
@@ -28,7 +29,7 @@ void UTN_LevelTargetSubsystem::RegisterTarget(FName Tag, AActor* Actor)
 
 	RegisteredTargets.Add(Tag, TWeakObjectPtr<AActor>(Actor));
 
-	UE_LOG(LogTemp, Log, TEXT("[LevelTargetSubsystem] Registered '%s' → '%s' (total=%d)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[LevelTargetSubsystem] Registered '%s' → '%s' (total=%d)"),
 		*Tag.ToString(), *GetNameSafe(Actor), RegisteredTargets.Num());
 }
 
@@ -37,7 +38,7 @@ void UTN_LevelTargetSubsystem::UnregisterTarget(FName Tag)
 	if (Tag.IsNone()) { return; }
 	if (RegisteredTargets.Remove(Tag) > 0)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[LevelTargetSubsystem] Unregistered '%s' (remaining=%d)"),
+		UE_LOG(LogTortunabo, Log, TEXT("[LevelTargetSubsystem] Unregistered '%s' (remaining=%d)"),
 			*Tag.ToString(), RegisteredTargets.Num());
 	}
 }

@@ -1,4 +1,5 @@
 #include "World/TN_EnemySeagull.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Components/StaticMeshComponent.h"
@@ -72,7 +73,7 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 	const FVector StartLoc = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
 	SetActorLocation(StartLoc);
 
-	UE_LOG(LogTemp, Verbose, TEXT("[EnemySeagull] Initialized on '%s' — countdown %.1fs"),
+	UE_LOG(LogTortunabo, Verbose, TEXT("[EnemySeagull] Initialized on '%s' — countdown %.1fs"),
 		*GetNameSafe(Target), AttackTimerSeconds);
 }
 
@@ -285,7 +286,7 @@ void ATN_EnemySeagull::ResolveAttack()
 
 	if (!Target)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[SEAGULL] ResolveAttack: target lost → retreat"));
+		UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] ResolveAttack: target lost → retreat"));
 		AbortAndRetreat();
 		return;
 	}
@@ -293,7 +294,7 @@ void ATN_EnemySeagull::ResolveAttack()
 	// Cubierta detectada en el último check periódico → abortar
 	if (HasRoofBetweenSeagullAndTarget())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' under roof → retreat"),
+		UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' under roof → retreat"),
 			*GetNameSafe(Target));
 		AbortAndRetreat();
 		return;
@@ -303,13 +304,13 @@ void ATN_EnemySeagull::ResolveAttack()
 	const float DistXY = FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
 	if (DistXY > MinKillRadius)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' escaped (dist=%.0f > %.0f) → retreat"),
+		UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' escaped (dist=%.0f > %.0f) → retreat"),
 			*GetNameSafe(Target), DistXY, MinKillRadius);
 		AbortAndRetreat();
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[SEAGULL] STRIKE on '%s' (dist=%.0f)"),
+	UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] STRIKE on '%s' (dist=%.0f)"),
 		*GetNameSafe(Target), DistXY);
 
 	// Iniciar picotazo físico

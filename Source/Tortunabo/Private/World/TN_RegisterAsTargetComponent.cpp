@@ -1,4 +1,5 @@
 #include "World/TN_RegisterAsTargetComponent.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_LevelTargetSubsystem.h"
 #include "GameFramework/Actor.h"
 
@@ -14,7 +15,7 @@ void UTN_RegisterAsTargetComponent::BeginPlay()
 
 	if (TargetTag.IsNone())
 	{
-		UE_LOG(LogTemp, Warning,
+		UE_LOG(LogTortunabo, Warning,
 			TEXT("[RegisterAsTarget] '%s' tiene TargetTag=NAME_None — no se registra. Asignar tag en Details."),
 			*GetNameSafe(GetOwner()));
 		return;

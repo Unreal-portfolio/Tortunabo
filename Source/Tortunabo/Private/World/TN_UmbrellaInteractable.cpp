@@ -1,4 +1,5 @@
 #include "World/TN_UmbrellaInteractable.h"
+#include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "TimerManager.h"
@@ -107,7 +108,7 @@ void ATN_UmbrellaInteractable::Interact(APawn* Interactor)
 		ProtectedCharacter.Reset();
 		bIsOpen = false;
 
-		UE_LOG(LogTemp, Log, TEXT("[Umbrella] %s cerró sombrilla manualmente"), *GetNameSafe(Char));
+		UE_LOG(LogTortunabo, Log, TEXT("[Umbrella] %s cerró sombrilla manualmente"), *GetNameSafe(Char));
 		MulticastOnUmbrellaClosed();
 	}
 	else
@@ -117,7 +118,7 @@ void ATN_UmbrellaInteractable::Interact(APawn* Interactor)
 		ProtectedCharacter = Char;
 		bIsOpen = true;
 
-		UE_LOG(LogTemp, Log, TEXT("[Umbrella] %s abrió sombrilla (%.1fs)"),
+		UE_LOG(LogTortunabo, Log, TEXT("[Umbrella] %s abrió sombrilla (%.1fs)"),
 			*GetNameSafe(Char), UmbrellaDurationSeconds);
 
 		MulticastOnUmbrellaOpened(Interactor);

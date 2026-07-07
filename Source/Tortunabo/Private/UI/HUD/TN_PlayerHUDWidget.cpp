@@ -1,5 +1,6 @@
 ﻿#include "UI/HUD/TN_PlayerHUDWidget.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Core/TN_Log.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_InventoryTypes.h"
@@ -75,7 +76,7 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 			LastStamina       = -1.f;
 			LastWeightPenalty = -1.f;
 			bLastExhausted    = false;
-			UE_LOG(LogTemp, Verbose, TEXT("[PlayerHUD] Stamina source → %s"),
+			UE_LOG(LogTortunabo, Verbose, TEXT("[PlayerHUD] Stamina source → %s"),
 				*GetNameSafe(DesiredStamina ? DesiredStamina->GetOwner() : nullptr));
 		}
 	}
@@ -91,7 +92,7 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 			{
 				LastEquippedId = NAME_None;
 				LastStoredId   = NAME_None;
-				UE_LOG(LogTemp, Log, TEXT("[PlayerHUD] Inventario re-encontrado tras travel — forzando refresh."));
+				UE_LOG(LogTortunabo, Log, TEXT("[PlayerHUD] Inventario re-encontrado tras travel — forzando refresh."));
 			}
 		}
 	}

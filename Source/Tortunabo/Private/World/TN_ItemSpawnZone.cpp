@@ -1,5 +1,6 @@
 ﻿#include "World/TN_ItemSpawnZone.h"
 #include "Components/BoxComponent.h"
+#include "Core/TN_Log.h"
 #include "Core/TN_InventoryTypes.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "Engine/DataTable.h"
@@ -37,7 +38,7 @@ void ATN_ItemSpawnZone::BeginPlay()
 
 	if (!ItemDataTable || ItemRowNames.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ItemSpawnZone] '%s' — Sin DataTable o ItemRowNames. No se spawnean ítems."), *GetName());
+		UE_LOG(LogTortunabo, Warning, TEXT("[ItemSpawnZone] '%s' — Sin DataTable o ItemRowNames. No se spawnean ítems."), *GetName());
 		return;
 	}
 
@@ -75,7 +76,7 @@ void ATN_ItemSpawnZone::SpawnItems()
 	const FVector ZoneWorld = GetActorLocation();
 	if (ZoneWorld.Z < -10000.f)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[ItemSpawnZone] '%s' — SpawnZone fuera del mapa (z=%.0f). "
+		UE_LOG(LogTortunabo, Verbose, TEXT("[ItemSpawnZone] '%s' — SpawnZone fuera del mapa (z=%.0f). "
 			"Probable chunk temporal del ChunkManager. Abortando spawn."), *GetName(), ZoneWorld.Z);
 		return;
 	}
@@ -99,7 +100,7 @@ void ATN_ItemSpawnZone::SpawnItems()
 
 		if (!bFound)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[ItemSpawnZone] '%s' — No se encontró posición válida para ítem %d/%d tras %d intentos."),
+			UE_LOG(LogTortunabo, Warning, TEXT("[ItemSpawnZone] '%s' — No se encontró posición válida para ítem %d/%d tras %d intentos."),
 				*GetName(), i + 1, SpawnCount, MaxRetries);
 			continue;
 		}
@@ -109,7 +110,7 @@ void ATN_ItemSpawnZone::SpawnItems()
 		const FTN_InventoryItem* Row = ItemDataTable->FindRow<FTN_InventoryItem>(RowName, TEXT("TN_ItemSpawnZone::BeginPlay"));
 		if (!Row || !Row->PickupActorClass)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[ItemSpawnZone] Fila '%s' inválida o sin PickupActorClass."), *RowName.ToString());
+			UE_LOG(LogTortunabo, Warning, TEXT("[ItemSpawnZone] Fila '%s' inválida o sin PickupActorClass."), *RowName.ToString());
 			continue;
 		}
 
@@ -127,7 +128,7 @@ void ATN_ItemSpawnZone::SpawnItems()
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[ItemSpawnZone] '%s' — Spawneados %d/%d ítems."), *GetName(), SuccessCount, SpawnCount);
+	UE_LOG(LogTortunabo, Log, TEXT("[ItemSpawnZone] '%s' — Spawneados %d/%d ítems."), *GetName(), SuccessCount, SpawnCount);
 }
 
 bool ATN_ItemSpawnZone::FindValidSpawnPoint(FVector& OutLocation, const TArray<FVector>& ExistingLocations) const
@@ -148,7 +149,7 @@ bool ATN_ItemSpawnZone::FindValidSpawnPoint(FVector& OutLocation, const TArray<F
 	// Validación: si el box tiene extensión casi nula, loguear y salir
 	if (UnscaledExtent.X < 10.f || UnscaledExtent.Y < 10.f)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ItemSpawnZone] '%s' — BoxExtent muy pequeño (%.1f, %.1f). "
+		UE_LOG(LogTortunabo, Warning, TEXT("[ItemSpawnZone] '%s' — BoxExtent muy pequeño (%.1f, %.1f). "
 			"Revisa el SpawnBox en el Editor o la escala del actor."),
 			*GetName(), UnscaledExtent.X, UnscaledExtent.Y);
 		return false;
