@@ -91,8 +91,10 @@ DebugGame`) y probar.
    confirma que gaviota y medusa **no tienen vida por diseño** — la inmunidad a
    tinta/lanzables es intencional. Solo el cangrejo es golpeable. No hay trabajo pendiente.
 
-3. **Higiene de logs**: `UE_LOG(Log)` en spawn de gaviotas/cacas y en el cambio de fuente
-   de stamina del HUD → bajar a `Verbose` (se elimina en shipping, evita allocs de string).
+3. ~~**Higiene de logs**~~ **HECHO (2026-07-07)**: los logs per-spawn de las spawn zones ya
+   estaban en `Verbose` (bajados con el refactor `ATN_SpawnZoneBase`); se bajaron los dos
+   restantes: init per-spawn de `TN_EnemySeagull` y cambio de fuente de stamina en
+   `TN_PlayerHUDWidget`. Compilado en verde (DebugGame).
 
 ---
 

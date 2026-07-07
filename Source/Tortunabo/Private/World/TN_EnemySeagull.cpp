@@ -84,7 +84,7 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 	const FVector StartLoc = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);
 	SetActorLocation(StartLoc);
 
-	UE_LOG(LogTemp, Log, TEXT("[EnemySeagull] Initialized on '%s' — countdown %.1fs"),
+	UE_LOG(LogTemp, Verbose, TEXT("[EnemySeagull] Initialized on '%s' — countdown %.1fs"),
 		*GetNameSafe(Target), AttackTimerSeconds);
 }
 

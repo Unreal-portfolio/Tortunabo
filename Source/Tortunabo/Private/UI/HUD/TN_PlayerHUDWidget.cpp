@@ -76,7 +76,7 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 			LastStamina       = -1.f;
 			LastWeightPenalty = -1.f;
 			bLastExhausted    = false;
-			UE_LOG(LogTemp, Log, TEXT("[PlayerHUD] Stamina source → %s"),
+			UE_LOG(LogTemp, Verbose, TEXT("[PlayerHUD] Stamina source → %s"),
 				*GetNameSafe(DesiredStamina ? DesiredStamina->GetOwner() : nullptr));
 			(void)bHadStamina;
 		}
