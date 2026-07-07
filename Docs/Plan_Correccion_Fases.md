@@ -83,13 +83,13 @@ DebugGame`) y probar.
 
 ## Fase 1 — Bugs restantes confirmados (bajo riesgo, tras compilar Fase 0)
 
-1. **Persistencia de score con race de replicación** (`TN_CoopGameState::PersistLocalPlayerScoreIfResults`).
-   `bLocalScorePersisted = true` se marca aunque el `RaceScore` del cliente aún no haya
-   replicado (si `Results` llega antes que el score final → persiste 0 y no reintenta).
-   Ventana estrecha (el score cambia durante toda la run), pero real. **Fix recomendado**:
-   persistencia server-authoritative (el servidor conoce el score real) en lugar de que cada
-   cliente lea su copia replicada; o no marcar el guard hasta capturar un score > 0.
-   *Requiere prueba en PIE con latencia simulada.*
+1. ~~**Persistencia de score con race de replicación**~~ **HECHO (2026-07-07, `5f5ef84`)**:
+   persistencia **por delta** — `PersistedScoreThisRace` acumula lo ya guardado y cada
+   llamada suma solo la diferencia; `OnRep_RaceScore` reinvoca la persistencia, así que si
+   `Results` llega antes que el último update del score, el delta pendiente se guarda al
+   replicar. Cubre también el caso de score *parcial* (que el guard `>0` propuesto
+   originalmente no cubría) y es idempotente en el host (broadcast manual + OnRep).
+   *Verificación pendiente en PIE con `Net PktLag` (checklist).*
 
 2. ~~**Consistencia de `ITN_EnemyTargetInterface`**~~ **RESUELTO (2026-07-07)**: Rodrigo
    confirma que gaviota y medusa **no tienen vida por diseño** — la inmunidad a
@@ -216,6 +216,9 @@ DebugGame`) y probar.
 - [ ] Volver a HQ tras una carrera resetea el PlayerState completo (score, vida, DBNO).
 - [ ] El círculo de la gaviota se pinta sobre el jugador correcto en clientes, también
   después de que otro jugador desconecte mid-race (fix `c047f2a`).
+- [ ] El score acumulado (progresión de cosméticos) crece exactamente lo ganado en la
+  carrera, también en un cliente con `Net PktLag=200` (fix `5f5ef84` — mirar el log
+  `Persisted RaceScore delta=` en `LogTortunabo`).
 - [ ] Sin regresiones en cosméticos, chunks, DBNO/revive, knockdown.
 
 ---
