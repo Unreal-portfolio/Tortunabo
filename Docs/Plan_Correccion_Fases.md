@@ -11,6 +11,9 @@ prueba en PIE (no ejecutable sin display); los cambios de red se validan en runt
 Hecho y pusheado a `entrega-memoria`:
 - **6 fixes de bugs** (Fase 0): sample-rate voz, grief return-to-menu, revive-borra-score,
   crash SpectateByDirection, item-loss en drop, score del host en vivo.
+- **3 fixes nocturnos** (cierre de sesión 2026-07-06): ref-count de SlowZones solapadas
+  (sirope, `0cabb5f`), un jugador muerto ya no mantiene una placa de presión pulsada
+  (`7955a6c`), DRY del reset de PlayerState en `ResetForNewRace()` (`f7fc526`).
 - **Refactor**: `ATN_SpawnZoneBase` (dedup spawn zones).
 - **Perf**: roof-check de gaviota O(mundo)→O(1).
 - **Hardening**: `WithValidation` en RPCs de stamina y voz.
@@ -171,6 +174,10 @@ DebugGame`) y probar.
 - [ ] Espectar con rueda del ratón tras morir durante un travel no crashea.
 - [ ] Dropear un ítem siempre deja el pickup en el suelo (o conserva el ítem si no se pudo).
 - [ ] El score del **host** sube en vivo al recoger pickups / completar zonas / cruzar meta.
+- [ ] Salir de una de dos zonas de sirope solapadas mantiene el slow hasta salir de ambas
+  (y la velocidad se restaura al salir de la última).
+- [ ] Morir sobre una placa de presión la libera (la puerta/mecanismo vuelve a su estado).
+- [ ] Volver a HQ tras una carrera resetea el PlayerState completo (score, vida, DBNO).
 - [ ] Sin regresiones en cosméticos, chunks, DBNO/revive, knockdown.
 
 ---
