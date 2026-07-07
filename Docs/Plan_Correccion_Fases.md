@@ -87,10 +87,9 @@ DebugGame`) y probar.
    cliente lea su copia replicada; o no marcar el guard hasta capturar un score > 0.
    *Requiere prueba en PIE con latencia simulada.*
 
-2. **Consistencia de `ITN_EnemyTargetInterface`**. El cangrejo la implementa; gaviota y
-   medusa no, y no tienen colisión que reciba proyectiles. **Decisión de diseño, no bug**:
-   confirmar que la inmunidad de gaviota/medusa a tinta/lanzables es intencional. Si se
-   quiere que sean golpeables, es trabajo de diseño (añadir colisión + interfaz), no un fix.
+2. ~~**Consistencia de `ITN_EnemyTargetInterface`**~~ **RESUELTO (2026-07-07)**: Rodrigo
+   confirma que gaviota y medusa **no tienen vida por diseño** — la inmunidad a
+   tinta/lanzables es intencional. Solo el cangrejo es golpeable. No hay trabajo pendiente.
 
 3. **Higiene de logs**: `UE_LOG(Log)` en spawn de gaviotas/cacas y en el cambio de fuente
    de stamina del HUD → bajar a `Verbose` (se elimina en shipping, evita allocs de string).
