@@ -146,9 +146,9 @@ DebugGame`) y probar.
    bola). Cangrejo/medusa a 10-15 Hz de NetUpdateFrequency (default 100). Se suma al
    punto 5 (`bAlwaysRelevant`).
 9. **Ticks innecesarios**. Medusa: tick solo durante el squish (`SetActorTickEnabled`) y
-   cooldowns lazy por timestamp; su `TMap PlayerCooldowns` no purga jugadores
-   desconectados (leak menor). Cangrejo: `SetActorTickInterval(0.1f)` en Patrol,
-   intervalo completo solo en Chase/Attack.
+   cooldowns lazy por timestamp (verificado: el TMap sí purga entradas al expirar — no hay
+   leak). Cangrejo: `SetActorTickInterval(0.1f)` en Patrol, intervalo completo solo en
+   Chase/Attack.
 
 ---
 
@@ -194,11 +194,11 @@ DebugGame`) y probar.
    a funciones estáticas puras las decisiones de enemigos — transiciones del cangrejo,
    `GetCurrentDangerRadius`, la decisión de `ResolveAttack` (distancia/techo/escape) — y
    testearlas sin levantar mundo.
-4. **Tooling de playtest** (audit 2026-07-07, acelera el gate PIE): CVars de debug con
-   `FAutoConsoleVariableRef` (`TN.Enemy.Debug 1` → draw del círculo del servidor vs cliente,
-   estado FSM sobre cada enemigo, radios de detección) y categoría de log propia
-   (`DECLARE_LOG_CATEGORY_EXTERN(LogTortunabo)`) en vez de `LogTemp` — hoy no se puede
-   filtrar el log del juego del ruido del engine en una sesión 4P.
+4. ~~**Tooling de playtest**~~ **HECHO (2026-07-07)**: categoría `LogTortunabo` propia
+   (`2c1a8dc`, 288 usos migrados en 42 archivos — `log LogTortunabo Verbose` en consola) y
+   CVar `TN.Enemy.Debug` (`1bcae8c`): círculo real del servidor vs círculo del cliente
+   (naranja) de la gaviota, radios/FSM/stun del cangrejo, BounceZone de la medusa.
+   ECVF_Cheat, no-op en Shipping.
 
 ---
 
