@@ -44,6 +44,16 @@ public:
 	void BroadcastFlowStateChange();
 
 	/**
+	 * @brief Persiste el RaceScore del jugador local en el save game durante Results.
+	 * @note Persistencia POR DELTA: acumula en PersistedScoreThisRace lo ya guardado y
+	 *       suma solo la diferencia. Idempotente ante llamadas repetidas, y cubre la race
+	 *       de replicación en clientes (Results puede llegar antes que el último update
+	 *       de RaceScore): OnRep_RaceScore reinvoca este método y el delta pendiente se
+	 *       persiste al llegar. Público porque lo llama ATN_CoopPlayerState::OnRep_RaceScore.
+	 */
+	void PersistLocalPlayerScoreIfResults();
+
+	/**
 	 * @brief Añade una entrada de Quick Chat en el servidor y notifica a todos los clientes vía Multicast.
 	 * @param SenderPlayerId Id del PlayerState emisor.
 	 * @param MessageID Id del mensaje en el catálogo.
@@ -143,17 +153,11 @@ private:
 	void OnRep_RaceResults();
 
 	/**
-	 * @brief Persiste el RaceScore del jugador local en el save game al entrar en Results.
-	 * @note Idempotente: usa bLocalScorePersisted para evitar doble escritura si se llama
-	 *       varias veces en el mismo ciclo de Results (ej. BroadcastFlowStateChange + OnRep).
+	 * Parte del RaceScore local ya persistida en este ciclo de Results.
+	 * PersistLocalPlayerScoreIfResults suma solo RaceScore - PersistedScoreThisRace.
+	 * Se resetea al salir de Results (y el GameState es nuevo en cada nivel).
 	 */
-	void PersistLocalPlayerScoreIfResults();
-
-	/**
-	 * true tras la primera llamada exitosa a PersistLocalPlayerScoreIfResults en Results.
-	 * Se resetea en BeginPlay para que una nueva run pueda persistir su propio score.
-	 */
-	bool bLocalScorePersisted = false;
+	int32 PersistedScoreThisRace = 0;
 
 	int32 NextQuickChatSequence = 0;
 	int32 LastProcessedQuickChatSequence = 0;

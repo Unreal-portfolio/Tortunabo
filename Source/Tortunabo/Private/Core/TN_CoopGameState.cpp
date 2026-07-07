@@ -65,10 +65,10 @@ void ATN_CoopGameState::BroadcastFlowStateChange()
 {
 	// Must be called by game modes on the server after setting MatchFlowState.
 	// OnRep does NOT fire on the authoritative machine, so we broadcast manually.
-	// Reset idempotency guard when state changes so the new state can persist later.
+	// Al salir de Results, resetear el acumulador para el siguiente ciclo.
 	if (MatchFlowState != ETNMatchFlowState::Results)
 	{
-		bLocalScorePersisted = false;
+		PersistedScoreThisRace = 0;
 	}
 	PersistLocalPlayerScoreIfResults();
 	OnMatchFlowStateChanged.Broadcast(MatchFlowState);
@@ -81,14 +81,6 @@ void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
 		return;
 	}
 
-	// Idempotency guard — prevents double-counting if BroadcastFlowStateChange
-	// and OnRep_MatchFlowState both fire on the same machine in the same Results cycle.
-	if (bLocalScorePersisted)
-	{
-		return;
-	}
-	bLocalScorePersisted = true;
-
 	UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
 	if (!GI)
 	{
@@ -96,6 +88,9 @@ void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
 	}
 
 	// Find the local player's PlayerState and persist their race score.
+	// Por DELTA: si Results llegó antes que el último update replicado de RaceScore
+	// (race de replicación en clientes), aquí se suma lo visible ahora y
+	// OnRep_RaceScore reinvocará este método para persistir lo que falte.
 	const UWorld* World = GetWorld();
 	const APlayerController* LocalPC = World ? World->GetFirstPlayerController() : nullptr;
 	for (APlayerState* PS : PlayerArray)
@@ -104,11 +99,13 @@ void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
 		{
 			if (const ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(PS))
 			{
-				if (TNPS->RaceScore > 0)
+				const int32 Delta = TNPS->RaceScore - PersistedScoreThisRace;
+				if (Delta > 0)
 				{
-					GI->AddRaceScore(TNPS->RaceScore);
-					UE_LOG(LogTortunabo, Log, TEXT("[CoopGameState] Persisted RaceScore=%d for local player '%s'"),
-						TNPS->RaceScore, *PS->GetPlayerName());
+					GI->AddRaceScore(Delta);
+					PersistedScoreThisRace = TNPS->RaceScore;
+					UE_LOG(LogTortunabo, Log, TEXT("[CoopGameState] Persisted RaceScore delta=%d (total=%d) for local player '%s'"),
+						Delta, PersistedScoreThisRace, *PS->GetPlayerName());
 				}
 			}
 			break;

@@ -1,5 +1,6 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_Log.h"
+#include "Core/TN_CoopGameState.h"
 #include "Player/TortugaCharacter.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -151,6 +152,14 @@ void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 void ATN_CoopPlayerState::OnRep_RaceScore()
 {
 	OnRaceScoreChanged.Broadcast(RaceScore);
+
+	// Race de replicación: si Results llegó ANTES que este update del score, la
+	// persistencia se hizo con un valor stale. Reinvocar — persiste por delta
+	// (idempotente) y solo actúa en Results y sobre el PlayerState local.
+	if (ATN_CoopGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATN_CoopGameState>() : nullptr)
+	{
+		GS->PersistLocalPlayerScoreIfResults();
+	}
 }
 
 void ATN_CoopPlayerState::AddRaceScore(int32 Delta)
