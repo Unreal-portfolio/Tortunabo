@@ -71,14 +71,12 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 		// Detectar cambio de fuente (propio → espectado o viceversa)
 		if (DesiredStamina != CachedStamina.Get())
 		{
-			const bool bHadStamina = CachedStamina.IsValid();
 			CachedStamina = DesiredStamina;
 			LastStamina       = -1.f;
 			LastWeightPenalty = -1.f;
 			bLastExhausted    = false;
 			UE_LOG(LogTemp, Verbose, TEXT("[PlayerHUD] Stamina source → %s"),
 				*GetNameSafe(DesiredStamina ? DesiredStamina->GetOwner() : nullptr));
-			(void)bHadStamina;
 		}
 	}
 

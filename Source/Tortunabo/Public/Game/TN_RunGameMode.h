@@ -189,10 +189,6 @@ private:
 	 */
 	TMap<int32, TWeakObjectPtr<APawn>> DeadPlayerPawns;
 
-	/** Path legacy no-op retenido sólo para referencias compiladas durante la transición. */
-	TMap<int32, FTimerHandle> DeathFinalizeTimers;
-	void FinalizeDeathVisual(int32 PlayerId);
-
 	/** @brief Garantiza que el jugador tenga un pawn vivo en el mapa (spawnea si falta). */
 	void EnsurePlayerSpawned(APlayerController* PlayerController);
 
