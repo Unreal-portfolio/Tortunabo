@@ -14,6 +14,10 @@ Hecho y pusheado a `entrega-memoria`:
 - **3 fixes nocturnos** (cierre de sesión 2026-07-06): ref-count de SlowZones solapadas
   (sirope, `0cabb5f`), un jugador muerto ya no mantiene una placa de presión pulsada
   (`7955a6c`), DRY del reset de PlayerState en `ResetForNewRace()` (`f7fc526`).
+- **Sesión 2026-07-07**: higiene de logs Fase 1.3 (`289159d`), código muerto eliminado
+  (`fe0e258`), y fix de replicación: el target de la gaviota se replica como
+  `APlayerState*` en vez de índice de `PlayerArray` (`c047f2a`) — el índice apuntaba al
+  jugador equivocado tras un disconnect/JIP mid-race.
 - **Refactor**: `ATN_SpawnZoneBase` (dedup spawn zones).
 - **Perf**: roof-check de gaviota O(mundo)→O(1).
 - **Hardening**: `WithValidation` en RPCs de stamina y voz.
@@ -130,7 +134,21 @@ DebugGame`) y probar.
 6. **(Opcional, bajo)** RMS de voz incremental y HUD `FindComponentByClass` cacheado por
    ViewTarget — impacto real pequeño; solo si se perfila un cuello.
 
-**Gate**: perfilar antes/después (stat unit, stat net) para confirmar ganancia.
+**Añadido — audit de software de enemigos (2026-07-07):**
+
+7. **Timers replicados → timestamps**. `CountdownRemaining` (gaviota) y
+   `StunRemaining`/`BlindRemaining` (cangrejo) son floats que cambian cada tick y están
+   replicados → updates continuos por actor. Replicar una vez el instante de inicio
+   (`GetServerWorldTimeSeconds()`) + duración; el cliente deriva el valor localmente.
+   Menos tráfico y countdown más suave en clientes.
+8. **Dormancy + NetUpdateFrequency de enemigos**. Medusa estática tras replicar
+   `InitialLocation` → `DORM_DormantAll` + `FlushNetDormancy()` al rebotar (patrón de la
+   bola). Cangrejo/medusa a 10-15 Hz de NetUpdateFrequency (default 100). Se suma al
+   punto 5 (`bAlwaysRelevant`).
+9. **Ticks innecesarios**. Medusa: tick solo durante el squish (`SetActorTickEnabled`) y
+   cooldowns lazy por timestamp; su `TMap PlayerCooldowns` no purga jugadores
+   desconectados (leak menor). Cangrejo: `SetActorTickInterval(0.1f)` en Patrol,
+   intervalo completo solo en Chase/Attack.
 
 ---
 
@@ -151,6 +169,15 @@ DebugGame`) y probar.
    World/Core/UI.
 6. Marcar `ATN_SeagullActor` como `UCLASS(Deprecated)` y eliminarlo tras confirmar que no
    queda referenciado en niveles.
+7. **FSM explícita en la gaviota** (audit 2026-07-07): el estado vive en 6 flags sueltos
+   (`bIsStriking`, `bIsRetreating`, `bStrikeGoingDown`, `bAttackResolved`…) → estados
+   ilegales representables. Un `ETNSeagullState {Following, Striking, Retreating}` como
+   el `ETNCrabState` del cangrejo: mismo comportamiento, replicable para anim/VFX cliente.
+8. **Dedup del patrón "actor spawneado en chunk"** (audit 2026-07-07): el deferred-init +
+   captura/replicación de posición inicial está copiado en SeagullActor, medusa y cangrejo
+   (fue fuente de bugs). Extraer a base común o componente, como se hizo con
+   `ATN_SpawnZoneBase`. Ídem los 6+ multicast `PlayXEffects` (sonido+Niagara en ubicación)
+   → helper estático.
 
 ---
 
@@ -163,7 +190,15 @@ DebugGame`) y probar.
    prioridad baja salvo economía real.
 3. **Tests**: el módulo no tiene **ninguna** cobertura. Empezar por tests de lógica pura
    server-auth (scoring, inventario 2-slots, selección de chunk, máquina de estado de gaviota)
-   con el Automation framework de UE.
+   con el Automation framework de UE. Punto de entrada concreto (audit 2026-07-07): extraer
+   a funciones estáticas puras las decisiones de enemigos — transiciones del cangrejo,
+   `GetCurrentDangerRadius`, la decisión de `ResolveAttack` (distancia/techo/escape) — y
+   testearlas sin levantar mundo.
+4. **Tooling de playtest** (audit 2026-07-07, acelera el gate PIE): CVars de debug con
+   `FAutoConsoleVariableRef` (`TN.Enemy.Debug 1` → draw del círculo del servidor vs cliente,
+   estado FSM sobre cada enemigo, radios de detección) y categoría de log propia
+   (`DECLARE_LOG_CATEGORY_EXTERN(LogTortunabo)`) en vez de `LogTemp` — hoy no se puede
+   filtrar el log del juego del ruido del engine en una sesión 4P.
 
 ---
 
@@ -179,6 +214,8 @@ DebugGame`) y probar.
   (y la velocidad se restaura al salir de la última).
 - [ ] Morir sobre una placa de presión la libera (la puerta/mecanismo vuelve a su estado).
 - [ ] Volver a HQ tras una carrera resetea el PlayerState completo (score, vida, DBNO).
+- [ ] El círculo de la gaviota se pinta sobre el jugador correcto en clientes, también
+  después de que otro jugador desconecte mid-race (fix `c047f2a`).
 - [ ] Sin regresiones en cosméticos, chunks, DBNO/revive, knockdown.
 
 ---
