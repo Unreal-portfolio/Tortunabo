@@ -53,9 +53,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "EnemySeagull")
 	void InitializeWithTarget(ATortugaCharacter* Target);
 
-	/** Cronómetro restante (s). Replicado para HUD/VFX. */
+	/** Cronómetro restante (s), derivado del timestamp replicado. Para HUD/VFX. */
 	UFUNCTION(BlueprintPure, Category = "EnemySeagull")
-	float GetCountdownRemaining() const { return CountdownRemaining; }
+	float GetCountdownRemaining() const { return ComputeCountdownRemaining(); }
 
 	/** Radio de peligro actual interpolado con el tiempo. */
 	UFUNCTION(BlueprintPure, Category = "EnemySeagull")
@@ -165,11 +165,18 @@ protected:
 private:
 	// ── Estado replicado ───────────────────────────────────────────────────────
 
-	UPROPERTY(ReplicatedUsing = OnRep_CountdownRemaining)
-	float CountdownRemaining = 0.f;
+	/**
+	 * Instante del reloj sincronizado del servidor (GetServerWorldTimeSeconds) en
+	 * que arrancó el countdown. Se replica UNA VEZ en vez de replicar el countdown
+	 * cada tick: cada máquina deriva el restante localmente → menos tráfico y el
+	 * decal del cliente se anima suave (tick local) en vez de a saltos de red.
+	 * -1 = aún sin inicializar (InitializeWithTarget no llamado).
+	 */
+	UPROPERTY(Replicated)
+	float AttackStartServerTime = -1.f;
 
-	UFUNCTION()
-	void OnRep_CountdownRemaining();
+	/** Countdown restante derivado de AttackStartServerTime (clamp [0, AttackTimerSeconds]). */
+	float ComputeCountdownRemaining() const;
 
 	/**
 	 * PlayerState del objetivo — replicado para que clientes resuelvan la referencia.

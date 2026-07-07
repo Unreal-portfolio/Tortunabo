@@ -7,6 +7,7 @@
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Core/TN_DebugCVars.h"
@@ -37,9 +38,9 @@ ATN_EnemySeagull::ATN_EnemySeagull()
 void ATN_EnemySeagull::BeginPlay()
 {
 	Super::BeginPlay();
-	CountdownRemaining = AttackTimerSeconds;
-	// Solo el servidor ejecuta la lógica de juego
-	SetActorTickEnabled(HasAuthority());
+	// Tick activo también en clientes: el decal se anima localmente derivando el
+	// countdown de AttackStartServerTime (la lógica de juego sigue siendo server-only,
+	// ver el early-branch de Tick).
 }
 
 void ATN_EnemySeagull::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -53,7 +54,7 @@ void ATN_EnemySeagull::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ATN_EnemySeagull::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(ATN_EnemySeagull, CountdownRemaining);
+	DOREPLIFETIME(ATN_EnemySeagull, AttackStartServerTime);
 	DOREPLIFETIME(ATN_EnemySeagull, TargetPlayerState);
 }
 
@@ -63,9 +64,14 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 {
 	if (!HasAuthority() || !Target) { return; }
 
+	// Arrancar el countdown: timestamp del reloj sincronizado, replicado una vez.
+	if (const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr)
+	{
+		AttackStartServerTime = GS->GetServerWorldTimeSeconds();
+	}
+
 	// Alinear tamaño de decal en frame 1 antes de cualquier otra lógica —
 	// evita el pop visual entre el default del ctor y el primer tick.
-	CountdownRemaining = AttackTimerSeconds;
 	UpdateDecalSize();
 
 	TargetCharacter   = Target;
@@ -79,10 +85,22 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 		*GetNameSafe(Target), AttackTimerSeconds);
 }
 
+float ATN_EnemySeagull::ComputeCountdownRemaining() const
+{
+	// Sin inicializar (o timestamp aún no replicado) → countdown completo.
+	if (AttackStartServerTime < 0.f) { return AttackTimerSeconds; }
+
+	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GS) { return AttackTimerSeconds; }
+
+	const float Elapsed = GS->GetServerWorldTimeSeconds() - AttackStartServerTime;
+	return FMath::Clamp(AttackTimerSeconds - Elapsed, 0.f, AttackTimerSeconds);
+}
+
 float ATN_EnemySeagull::GetCurrentDangerRadius() const
 {
 	if (AttackTimerSeconds <= 0.f) { return MinKillRadius; }
-	const float NormT = FMath::Clamp(CountdownRemaining / AttackTimerSeconds, 0.f, 1.f);
+	const float NormT = FMath::Clamp(ComputeCountdownRemaining() / AttackTimerSeconds, 0.f, 1.f);
 	return FMath::Lerp(MinKillRadius, MaxDangerRadius, NormT);
 }
 
@@ -91,7 +109,24 @@ float ATN_EnemySeagull::GetCurrentDangerRadius() const
 void ATN_EnemySeagull::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	if (!HasAuthority()) { return; }
+
+	if (!HasAuthority())
+	{
+		// Cliente: solo visual — el decal se deriva del timestamp replicado y se
+		// anima localmente (suave, sin depender de updates de red).
+		UpdateDecalSize();
+
+		// TN.Enemy.Debug: círculo que VE el cliente (naranja) para compararlo
+		// con el del servidor en PIE multi-ventana.
+		if (TNDebug::EnemyDebug != 0)
+		{
+			DrawDebugCircle(GetWorld(),
+				GetActorLocation() - FVector(0.f, 0.f, FollowHeight - 10.f),
+				GetCurrentDangerRadius(), 32, FColor::Orange, false, -1.f, 0, 2.f,
+				FVector(1, 0, 0), FVector(0, 1, 0), false);
+		}
+		return;
+	}
 
 	// TN.Enemy.Debug: círculo real del servidor + estado (no-op en Shipping)
 	if (TNDebug::EnemyDebug != 0)
@@ -106,7 +141,7 @@ void ATN_EnemySeagull::Tick(float DeltaTime)
 			FVector(1, 0, 0), FVector(0, 1, 0), false);
 		DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 80.f),
 			FString::Printf(TEXT("SRV %.1fs fuera=%.1fs %s"),
-				CountdownRemaining, TimeOutsideShadow,
+				ComputeCountdownRemaining(), TimeOutsideShadow,
 				bIsStriking ? TEXT("STRIKE") : bIsRetreating ? TEXT("RETREAT") : TEXT("FOLLOW")),
 			nullptr, Color, 0.f, true);
 	}
@@ -159,12 +194,10 @@ void ATN_EnemySeagull::TickCountdown(float DeltaTime)
 {
 	if (bAttackResolved) { return; }
 
-	CountdownRemaining -= DeltaTime;
 	UpdateDecalSize();
 
-	if (CountdownRemaining <= 0.f)
+	if (ComputeCountdownRemaining() <= 0.f)
 	{
-		CountdownRemaining = 0.f;
 		ResolveAttack();
 	}
 }
@@ -394,22 +427,6 @@ void ATN_EnemySeagull::UpdateDecalSize()
 }
 
 // ── OnRep ─────────────────────────────────────────────────────────────────────
-
-void ATN_EnemySeagull::OnRep_CountdownRemaining()
-{
-	// Clientes actualizan el visual del decal cuando llega el valor replicado
-	UpdateDecalSize();
-
-	// TN.Enemy.Debug: círculo que VE el cliente (naranja), con lifetime corto,
-	// para compararlo con el círculo del servidor en PIE multi-ventana.
-	if (TNDebug::EnemyDebug != 0)
-	{
-		DrawDebugCircle(GetWorld(),
-			GetActorLocation() - FVector(0.f, 0.f, FollowHeight - 10.f),
-			GetCurrentDangerRadius(), 32, FColor::Orange, false, 0.3f, 0, 2.f,
-			FVector(1, 0, 0), FVector(0, 1, 0), false);
-	}
-}
 
 void ATN_EnemySeagull::OnRep_TargetPlayerState()
 {
