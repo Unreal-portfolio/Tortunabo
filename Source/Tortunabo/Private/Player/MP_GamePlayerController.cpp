@@ -823,6 +823,13 @@ void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
 	UE_LOG(LogTortunabo, Log, TEXT("[PC] ClientNotifyServerTravel received — prepared for reconnection."));
 }
 
+bool AMP_GamePlayerController::ServerSyncUnlockedHelmets_Validate(const TArray<FName>& UnlockedHelmetIds)
+{
+	// Gate de engine contra flooding: cota generosa (el legítimo manda ≤50, ver
+	// MaxSyncedHelmets en _Implementation). Arrays enormes = manipulado → kick.
+	return UnlockedHelmetIds.Num() <= 256;
+}
+
 void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TArray<FName>& UnlockedHelmetIds)
 {
 	// Cap to prevent clients from flooding the server with a massive array.

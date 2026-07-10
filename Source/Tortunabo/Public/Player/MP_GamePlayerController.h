@@ -228,7 +228,7 @@ private:
 	TObjectPtr<UInputAction> LoadedReturnToMenuAction;
 
 	/** @brief Server RPC: sincroniza la lista de cascos desbloqueados del cliente al PC del servidor. */
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSyncUnlockedHelmets(const TArray<FName>& UnlockedHelmetIds);
 
 	/** @brief Server RPC: asigna el casco equipado en el PlayerState. */

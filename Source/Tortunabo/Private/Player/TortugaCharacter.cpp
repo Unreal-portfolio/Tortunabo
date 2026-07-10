@@ -1426,6 +1426,15 @@ void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
 	}
 }
 
+bool ATortugaCharacter::ServerUpdateHeadRotation_Validate(float Yaw, float Pitch)
+{
+	// NaN/Inf ATRAVIESAN el clamp de _Implementation (Clamp(NaN)=NaN) y romperían
+	// la animación de cabeza replicada en todos los clientes. Cota generosa ±720°:
+	// el cliente legítimo ya manda valores acotados.
+	return FMath::IsFinite(Yaw) && FMath::IsFinite(Pitch)
+		&& FMath::Abs(Yaw) <= 720.f && FMath::Abs(Pitch) <= 720.f;
+}
+
 void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(float Yaw, float Pitch)
 {
 	// Validar rangos en el servidor para prevenir manipulación del cliente

@@ -145,6 +145,14 @@ void ATortugaCharacter::StartEmoteLocally(int32 Index)
 	}
 }
 
+bool ATortugaCharacter::ServerSetEmote_Validate(int32 Index)
+{
+	// Red de seguridad de engine: un cliente legítimo solo manda -1 (cancelar) o
+	// IDs de rueda (uint8). Índices fuera de ese rango = cliente manipulado → kick.
+	// La validación fina (catálogo, cooldown, estado) sigue en _Implementation.
+	return Index >= -1 && Index <= 255;
+}
+
 void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 {
 	if (Index >= 0)

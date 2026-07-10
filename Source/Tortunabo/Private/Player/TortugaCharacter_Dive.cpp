@@ -65,6 +65,14 @@ void ATortugaCharacter::TryDive()
 	Server_StartDive(DiveDir);
 }
 
+bool ATortugaCharacter::Server_StartDive_Validate(FVector DiveDir)
+{
+	// Red de seguridad de engine: el cliente legítimo manda una dirección (unit
+	// vector o casi). NaN o magnitudes absurdas = paquete manipulado → kick.
+	// _Implementation sigue saneando (Z=0, normalize con fallback a forward).
+	return !DiveDir.ContainsNaN() && DiveDir.SizeSquared() <= 100.f;
+}
+
 void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 {
 	// Server-side guards

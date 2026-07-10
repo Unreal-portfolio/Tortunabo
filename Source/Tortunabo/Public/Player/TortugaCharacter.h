@@ -663,7 +663,7 @@ private:
 	void OnEmote5(); void OnEmote6(); void OnEmote7(); void OnEmote8(); void OnEmote9();
 
 	/** Server RPC: set emote index on the replicated property so all clients see it. */
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSetEmote(int32 Index);
 
 	/** OnRep: fired on remote clients when ReplicatedEmoteIndex changes. */
@@ -1015,12 +1015,12 @@ protected:
 	void TickHeadLook(float DeltaTime);
 	void ApplyHeadLookToCabeza(float Yaw, float Pitch);
 
-	UFUNCTION(Server, Unreliable)
+	UFUNCTION(Server, Unreliable, WithValidation)
 	void ServerUpdateHeadRotation(float Yaw, float Pitch);
 
 	void TryDive();
 
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_StartDive(FVector DiveDir);
 
 	UFUNCTION(NetMulticast, Reliable)
