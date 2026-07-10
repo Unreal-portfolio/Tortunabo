@@ -16,8 +16,15 @@ ATN_CrabActor::ATN_CrabActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
-	bAlwaysRelevant = true;
+	// Relevancy por distancia (default del engine, ~150m): un cangrejo lejano no
+	// replica su patrol a quien no puede verlo. Espectadores no afectados — la
+	// relevancy se evalúa desde el ViewTarget del PlayerController, no desde su
+	// posición. (Fase 2.5: antes bAlwaysRelevant = true.)
 	SetReplicateMovement(true);
+	// 25Hz bastan para el movimiento del cangrejo: snaps de ~40ms poco visibles
+	// en un enemigo pequeño sin interpolación cliente. El default (100) replicaba
+	// el patrol casi cada frame de servidor a todas las conexiones.
+	SetNetUpdateFrequency(25.f);
 
 	CrabMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("CrabMesh"));
 	SetRootComponent(CrabMesh);
