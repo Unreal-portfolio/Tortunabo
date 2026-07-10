@@ -11,6 +11,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Core/TN_DebugCVars.h"
+#include "World/TN_EnemyDecisions.h"
 #include "DrawDebugHelpers.h"
 
 ATN_EnemySeagull::ATN_EnemySeagull()
@@ -87,21 +88,18 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 
 float ATN_EnemySeagull::ComputeCountdownRemaining() const
 {
-	// Sin inicializar (o timestamp aún no replicado) → countdown completo.
-	if (AttackStartServerTime < 0.f) { return AttackTimerSeconds; }
-
 	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
 	if (!GS) { return AttackTimerSeconds; }
 
-	const float Elapsed = GS->GetServerWorldTimeSeconds() - AttackStartServerTime;
-	return FMath::Clamp(AttackTimerSeconds - Elapsed, 0.f, AttackTimerSeconds);
+	// Lógica pura en TNSeagullLogic (Fase 4.3) — testeada por Automation.
+	return TNSeagullLogic::ComputeCountdownRemaining(
+		AttackStartServerTime, GS->GetServerWorldTimeSeconds(), AttackTimerSeconds);
 }
 
 float ATN_EnemySeagull::GetCurrentDangerRadius() const
 {
-	if (AttackTimerSeconds <= 0.f) { return MinKillRadius; }
-	const float NormT = FMath::Clamp(ComputeCountdownRemaining() / AttackTimerSeconds, 0.f, 1.f);
-	return FMath::Lerp(MinKillRadius, MaxDangerRadius, NormT);
+	return TNSeagullLogic::ComputeDangerRadius(
+		ComputeCountdownRemaining(), AttackTimerSeconds, MinKillRadius, MaxDangerRadius);
 }
 
 // ── Tick principal ─────────────────────────────────────────────────────────────
@@ -217,17 +215,12 @@ void ATN_EnemySeagull::TickEscapeCheck(float DeltaTime)
 	}
 
 	const float DistXY = FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
-	if (DistXY > GetCurrentDangerRadius())
+	bool bAbort = false;
+	TimeOutsideShadow = TNSeagullLogic::AdvanceEscapeTimer(
+		DistXY, GetCurrentDangerRadius(), TimeOutsideShadow, DeltaTime, EscapeSeconds, bAbort);
+	if (bAbort)
 	{
-		TimeOutsideShadow += DeltaTime;
-		if (TimeOutsideShadow >= EscapeSeconds)
-		{
-			AbortAndRetreat();
-		}
-	}
-	else
-	{
-		TimeOutsideShadow = 0.f;
+		AbortAndRetreat();
 	}
 }
 
@@ -336,42 +329,45 @@ void ATN_EnemySeagull::ResolveAttack()
 	bAttackResolved = true;
 
 	ATortugaCharacter* Target = TargetCharacter.Get();
+	const float DistXY = Target
+		? FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
+		: 0.f;
 
-	if (!Target)
+	// Decisión pura en TNSeagullLogic (Fase 4.3) — el actor solo aporta los datos
+	// del mundo (target, techo, distancia) y ejecuta el resultado.
+	using TNSeagullLogic::EAttackDecision;
+	const EAttackDecision Decision = TNSeagullLogic::DecideAttack(
+		Target != nullptr, HasRoofBetweenSeagullAndTarget(), DistXY, MinKillRadius);
+
+	switch (Decision)
 	{
+	case EAttackDecision::Retreat_TargetLost:
 		UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] ResolveAttack: target lost → retreat"));
 		AbortAndRetreat();
 		return;
-	}
 
-	// Cubierta detectada en el último check periódico → abortar
-	if (HasRoofBetweenSeagullAndTarget())
-	{
+	case EAttackDecision::Retreat_Roof:
 		UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' under roof → retreat"),
 			*GetNameSafe(Target));
 		AbortAndRetreat();
 		return;
-	}
 
-	// Jugador fuera del radio de kill → escapó en el último momento
-	const float DistXY = FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
-	if (DistXY > MinKillRadius)
-	{
+	case EAttackDecision::Retreat_Escaped:
 		UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] ResolveAttack: target '%s' escaped (dist=%.0f > %.0f) → retreat"),
 			*GetNameSafe(Target), DistXY, MinKillRadius);
 		AbortAndRetreat();
 		return;
+
+	case EAttackDecision::Strike:
+		UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] STRIKE on '%s' (dist=%.0f)"),
+			*GetNameSafe(Target), DistXY);
+		bIsStriking      = true;
+		bStrikeGoingDown = true;
+		StrikeAlpha      = 0.f;
+		StrikeStartZ     = GetActorLocation().Z;
+		StrikeTargetZ    = Target->GetActorLocation().Z;
+		return;
 	}
-
-	UE_LOG(LogTortunabo, Log, TEXT("[SEAGULL] STRIKE on '%s' (dist=%.0f)"),
-		*GetNameSafe(Target), DistXY);
-
-	// Iniciar picotazo físico
-	bIsStriking      = true;
-	bStrikeGoingDown = true;
-	StrikeAlpha      = 0.f;
-	StrikeStartZ     = GetActorLocation().Z;
-	StrikeTargetZ    = Target->GetActorLocation().Z;
 }
 
 void ATN_EnemySeagull::AbortAndRetreat()

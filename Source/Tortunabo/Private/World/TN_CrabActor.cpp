@@ -11,6 +11,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 #include "NiagaraFunctionLibrary.h"
+#include "World/TN_EnemyDecisions.h"
 
 ATN_CrabActor::ATN_CrabActor()
 {
@@ -190,31 +191,36 @@ void ATN_CrabActor::TickChase(float DeltaTime)
 {
 	ATortugaCharacter* Target = ChaseTarget.Get();
 
-	if (!IsAliveAndValid(Target))
+	// Decisión pura en TNCrabLogic (Fase 4.3) — el actor aporta distancias y
+	// validez del target, y ejecuta la transición resultante.
+	const bool  bAlive              = IsAliveAndValid(Target);
+	const float DistTargetFromSpawn = bAlive ? FVector::Dist2D(Target->GetActorLocation(), SpawnLocation) : 0.f;
+	const float DistToTarget        = bAlive ? FVector::Dist2D(GetActorLocation(), Target->GetActorLocation()) : 0.f;
+
+	using TNCrabLogic::EChaseTransition;
+	switch (TNCrabLogic::DecideChaseTransition(bAlive, DistTargetFromSpawn, MaxChaseDistance,
+		DistToTarget, AttackRadius))
 	{
+	case EChaseTransition::ReturnToPatrol_TargetLost:
 		ChaseTarget.Reset();
 		SetCrabState(ETNCrabState::Patrol);
 		return;
-	}
 
-	// Abandonar si el jugador salió de la zona delimitada del cangrejo
-	const float DistTargetFromSpawn = FVector::Dist2D(Target->GetActorLocation(), SpawnLocation);
-	if (DistTargetFromSpawn > MaxChaseDistance)
-	{
+	case EChaseTransition::ReturnToPatrol_OutOfZone:
+		// Abandonar si el jugador salió de la zona delimitada del cangrejo
 		ChaseTarget.Reset();
 		CurrentPatrolIndex = FindNearestPatrolIndex();
 		SetCrabState(ETNCrabState::Patrol);
 		return;
-	}
 
-	const float DistToTarget = FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
-	if (DistToTarget <= AttackRadius)
-	{
+	case EChaseTransition::StartAttack:
 		SetCrabState(ETNCrabState::Attack);
 		return;
-	}
 
-	MoveTowards(Target->GetActorLocation(), ChaseSpeed, DeltaTime);
+	case EChaseTransition::KeepChasing:
+		MoveTowards(Target->GetActorLocation(), ChaseSpeed, DeltaTime);
+		return;
+	}
 }
 
 // ── Attack ───────────────────────────────────────────────────────────────────
@@ -361,13 +367,13 @@ void ATN_CrabActor::OnDetectionBeginOverlap(UPrimitiveComponent* OverlappedComp,
 float ATN_CrabActor::GetStunRemaining() const
 {
 	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
-	return GS ? FMath::Max(0.f, StunEndServerTime - GS->GetServerWorldTimeSeconds()) : 0.f;
+	return GS ? TNCrabLogic::ComputeEffectRemaining(StunEndServerTime, GS->GetServerWorldTimeSeconds()) : 0.f;
 }
 
 float ATN_CrabActor::GetBlindRemaining() const
 {
 	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
-	return GS ? FMath::Max(0.f, BlindEndServerTime - GS->GetServerWorldTimeSeconds()) : 0.f;
+	return GS ? TNCrabLogic::ComputeEffectRemaining(BlindEndServerTime, GS->GetServerWorldTimeSeconds()) : 0.f;
 }
 
 void ATN_CrabActor::ApplyStun(float Duration)
@@ -375,8 +381,8 @@ void ATN_CrabActor::ApplyStun(float Duration)
 	if (!HasAuthority() || Duration <= 0.f) { return; }
 	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
 	if (!GS) { return; }
-	// Max: un stun nuevo no acorta uno en curso más largo.
-	StunEndServerTime = FMath::Max(StunEndServerTime, GS->GetServerWorldTimeSeconds() + Duration);
+	// Max: un stun nuevo no acorta uno en curso más largo (TNCrabLogic, testeado).
+	StunEndServerTime = TNCrabLogic::ExtendEffectEndTime(StunEndServerTime, GS->GetServerWorldTimeSeconds(), Duration);
 	UE_LOG(LogTortunabo, Log, TEXT("[STUN] Crab '%s' stunned for %.2fs"), *GetName(), Duration);
 	MulticastPlayStunEffect(Duration);
 }
@@ -386,7 +392,7 @@ void ATN_CrabActor::ApplyBlind(float Duration)
 	if (!HasAuthority() || Duration <= 0.f) { return; }
 	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
 	if (!GS) { return; }
-	BlindEndServerTime = FMath::Max(BlindEndServerTime, GS->GetServerWorldTimeSeconds() + Duration);
+	BlindEndServerTime = TNCrabLogic::ExtendEffectEndTime(BlindEndServerTime, GS->GetServerWorldTimeSeconds(), Duration);
 	UE_LOG(LogTortunabo, Log, TEXT("[BLIND] Crab '%s' blinded for %.2fs"), *GetName(), Duration);
 	if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack)
 	{
