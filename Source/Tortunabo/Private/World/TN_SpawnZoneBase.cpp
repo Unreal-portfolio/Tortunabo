@@ -3,7 +3,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Components/BoxComponent.h"
 #include "TimerManager.h"
-#include "EngineUtils.h"
+#include "GameFramework/GameStateBase.h"
 #include "Engine/World.h"
 
 ATN_SpawnZoneBase::ATN_SpawnZoneBase()
@@ -42,16 +42,21 @@ void ATN_SpawnZoneBase::GetLivingPlayersInside(TArray<ATortugaCharacter*>& OutPl
 {
 	if (!SpawnVolume) { return; }
 
+	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GS) { return; }
+
 	const FTransform ZoneTransform = SpawnVolume->GetComponentTransform();
 	const FVector    HalfExtent    = SpawnVolume->GetUnscaledBoxExtent();
 
-	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
+	// PlayerArray (≤4 jugadores) en vez de TActorIterator<ATortugaCharacter>:
+	// el iterador barría TODOS los actores del mundo en cada disparo de timer.
+	for (APlayerState* BasePS : GS->PlayerArray)
 	{
-		ATortugaCharacter* C = *It;
-		if (!C || !C->GetController()) { continue; }
-
-		const ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>();
+		const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(BasePS);
 		if (!PS || !PS->bIsAlive || PS->bIsEliminated) { continue; }
+
+		ATortugaCharacter* C = Cast<ATortugaCharacter>(PS->GetPawn());
+		if (!C || !C->GetController()) { continue; }
 
 		// Convertir posición del jugador al espacio local de la caja
 		const FVector LocalPos = ZoneTransform.InverseTransformPosition(C->GetActorLocation());
