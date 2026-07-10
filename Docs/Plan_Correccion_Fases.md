@@ -197,8 +197,13 @@ DebugGame`) y probar.
 
 ## Fase 4 — Hardening y robustez
 
-1. **`WithValidation`** en los Server RPC que reciben escalares del cliente (índices, floats,
-   vectores). Hoy la validación es manual en `_Implementation`; añadir el gate de engine.
+1. ~~**`WithValidation`** en los Server RPC que reciben escalares del cliente~~ **HECHO
+   (2026-07-10, `f9290ee`)**: los 4 RPCs restantes con parámetros del cliente —
+   `ServerSetEmote` (rango [-1,255]), `ServerUpdateHeadRotation` (IsFinite; cerraba un
+   hueco: NaN atravesaba el clamp), `Server_StartDive` (sin NaN, magnitud ≤10),
+   `ServerSyncUnlockedHelmets` (Num ≤256 anti-flooding). Cotas generosas, patrón de la
+   voz. No validados a propósito: `ServerSendQuickChat` (uint8 + catálogo), FNames de
+   cosméticos (su validación útil es la fuente de confianza → punto 2), RPCs sin params.
 2. **`ServerSyncUnlockedHelmets`**: no confiar en la lista de cascos que reporta el cliente;
    validar contra una fuente de confianza (Steam inventory / DLC / lista server). Cosmético,
    prioridad baja salvo economía real.
