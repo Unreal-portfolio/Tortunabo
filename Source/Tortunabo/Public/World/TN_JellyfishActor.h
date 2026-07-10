@@ -173,6 +173,10 @@ private:
 
 	// ── Cooldown por jugador ──────────────────────────────────────────────────────
 
-	/** Tiempo restante de cooldown indexado por jugador (solo servidor). */
-	TMap<TWeakObjectPtr<ATortugaCharacter>, float> PlayerCooldowns;
+	/**
+	 * Instante (world time, s) en que expira el cooldown de rebote de cada jugador
+	 * (solo servidor). Check lazy en el overlap — sin decremento por tick. Acotado
+	 * al nº de jugadores (máx 4): las entradas expiradas se sobreescriben al rebotar.
+	 */
+	TMap<TWeakObjectPtr<ATortugaCharacter>, double> PlayerCooldownExpiry;
 };

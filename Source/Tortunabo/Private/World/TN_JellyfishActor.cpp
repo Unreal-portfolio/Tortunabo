@@ -18,9 +18,16 @@
 ATN_JellyfishActor::ATN_JellyfishActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	// Tick apagado por defecto: solo se enciende durante el squish (multicast) o
+	// con TN.Enemy.Debug activo. Cooldowns y overlaps no necesitan tick.
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	bReplicates = true;
 	bAlwaysRelevant = true;      // Visible para espectadores aunque estén lejos
 	SetReplicateMovement(false); // La posición se sincroniza una sola vez
+	// Estática tras replicar InitialLocation: dormir el canal de red y despertarlo
+	// puntualmente (FlushNetDormancy) al capturar posición o rebotar. Patrón de la
+	// bola / physics object.
+	NetDormancy = DORM_DormantAll;
 
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	SetRootComponent(Root);
@@ -49,6 +56,12 @@ void ATN_JellyfishActor::BeginPlay()
 
 	// Guardar escala inicial del HeadMesh para la animación squish
 	HeadMeshDefaultScale = HeadMesh->GetRelativeScale3D();
+
+	// Con el CVar de debug activo el draw vive en Tick → mantenerlo encendido.
+	if (TNDebug::EnemyDebug != 0)
+	{
+		SetActorTickEnabled(true);
+	}
 
 	if (HasAuthority())
 	{
@@ -89,31 +102,22 @@ void ATN_JellyfishActor::Tick(float DeltaTime)
 		DrawDebugBox(GetWorld(), BounceZone->GetComponentLocation(),
 			BounceZone->GetScaledBoxExtent(), BounceZone->GetComponentQuat(),
 			Color, false, -1.f, 0, 2.f);
-		if (HasAuthority() && PlayerCooldowns.Num() > 0)
+		if (HasAuthority() && PlayerCooldownExpiry.Num() > 0)
 		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			int32 ActiveCooldowns = 0;
+			for (const auto& Pair : PlayerCooldownExpiry)
+			{
+				if (Now < Pair.Value) { ++ActiveCooldowns; }
+			}
 			DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100.f),
-				FString::Printf(TEXT("SRV cooldowns=%d"), PlayerCooldowns.Num()),
+				FString::Printf(TEXT("SRV cooldowns=%d"), ActiveCooldowns),
 				nullptr, Color, 0.f, true);
 		}
 	}
 
-	// ── Cooldowns de rebote (solo servidor) ──────────────────────────────────
-	if (HasAuthority() && PlayerCooldowns.Num() > 0)
-	{
-		TArray<TWeakObjectPtr<ATortugaCharacter>> ToRemove;
-		for (auto& Pair : PlayerCooldowns)
-		{
-			Pair.Value -= DeltaTime;
-			if (Pair.Value <= 0.f)
-			{
-				ToRemove.Add(Pair.Key);
-			}
-		}
-		for (const auto& Key : ToRemove)
-		{
-			PlayerCooldowns.Remove(Key);
-		}
-	}
+	// Cooldowns de rebote: lazy por timestamp en OnBounceZoneBeginOverlap — ya no
+	// se decrementan aquí.
 
 	// ── Animación squish (local) ──────────────────────────────────────────────
 	if (bSquishingIn)
@@ -138,6 +142,13 @@ void ATN_JellyfishActor::Tick(float DeltaTime)
 			HeadMesh->SetRelativeScale3D(HeadMeshDefaultScale);
 		}
 		ApplySquishScale();
+	}
+
+	// Auto-apagado: sin squish activo y sin debug, no hay nada que hacer por tick.
+	// Se re-enciende en MulticastPlayBounceEffects (squish) o al activar el CVar.
+	if (!bSquishingIn && !bSquishingOut && TNDebug::EnemyDebug == 0)
+	{
+		SetActorTickEnabled(false);
 	}
 }
 
@@ -170,6 +181,7 @@ void ATN_JellyfishActor::DeferredCaptureInitialLocation()
 {
 	InitialLocation = GetActorLocation();
 	bPositionSynced = true; // Servidor: posición correcta; clientes reciben vía OnRep_InitialLocation
+	FlushNetDormancy();     // Despertar el canal para que la posición viaje (DORM_DormantAll)
 }
 
 void ATN_JellyfishActor::OnRep_InitialLocation()
@@ -205,13 +217,18 @@ void ATN_JellyfishActor::OnBounceZoneBeginOverlap(
 		return;
 	}
 
-	// Cooldown por jugador para no disparar en cada tick mientras está encima
+	// Cooldown por jugador para no disparar en cada tick mientras está encima.
+	// Lazy por timestamp: se comprueba/renueva aquí, sin decremento por tick.
 	const TWeakObjectPtr<ATortugaCharacter> WeakChar(TurtleChar);
-	if (PlayerCooldowns.Contains(WeakChar))
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (const double* Expiry = PlayerCooldownExpiry.Find(WeakChar))
 	{
-		return;
+		if (Now < *Expiry)
+		{
+			return;
+		}
 	}
-	PlayerCooldowns.Add(WeakChar, BounceCooldown);
+	PlayerCooldownExpiry.Add(WeakChar, Now + BounceCooldown);
 
 	ApplyBounce(TurtleChar);
 }
@@ -234,6 +251,8 @@ void ATN_JellyfishActor::ApplyBounce(ATortugaCharacter* TurtleChar)
 	// Posición de los pies del jugador para sonido y VFX
 	const FVector EffectLocation = TurtleChar->GetActorLocation();
 
+	// DORM_DormantAll: despertar el canal para que el multicast salga.
+	FlushNetDormancy();
 	MulticastPlayBounceEffects(EffectLocation);
 }
 
@@ -264,4 +283,5 @@ void ATN_JellyfishActor::MulticastPlayBounceEffects_Implementation(FVector Effec
 	SquishAlpha = 0.f;
 	bSquishingIn = true;
 	bSquishingOut = false;
+	SetActorTickEnabled(true); // El squish vive en Tick; se auto-apaga al terminar
 }
