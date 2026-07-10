@@ -202,12 +202,15 @@ DebugGame`) y probar.
 2. **`ServerSyncUnlockedHelmets`**: no confiar en la lista de cascos que reporta el cliente;
    validar contra una fuente de confianza (Steam inventory / DLC / lista server). Cosmético,
    prioridad baja salvo economía real.
-3. **Tests**: el módulo no tiene **ninguna** cobertura. Empezar por tests de lógica pura
-   server-auth (scoring, inventario 2-slots, selección de chunk, máquina de estado de gaviota)
-   con el Automation framework de UE. Punto de entrada concreto (audit 2026-07-07): extraer
-   a funciones estáticas puras las decisiones de enemigos — transiciones del cangrejo,
-   `GetCurrentDangerRadius`, la decisión de `ResolveAttack` (distancia/techo/escape) — y
-   testearlas sin levantar mundo.
+3. **Tests**: ~~el módulo no tiene **ninguna** cobertura~~ **ARRANCADO (2026-07-10,
+   `95d0d00`)**: decisiones de enemigos extraídas a funciones puras en
+   `TN_EnemyDecisions.h` (`TNSeagullLogic`/`TNCrabLogic`) — los actores delegan, así
+   que lo testeado es lo que corre en juego. 6 tests Automation
+   (`Tortunabo.Enemies.*`) verificados headless 6/6 Success. Cubren: countdown y
+   radio por timestamp, decisión de `ResolveAttack`, escape timer, stun/blind
+   (extensión sin acortar) y transición de Chase, con los bordes de gameplay
+   (`==MinKillRadius` mata, `==AttackRadius` ataca). **Pendiente de ampliar**:
+   scoring, inventario 2-slots, selección de chunk.
 4. ~~**Tooling de playtest**~~ **HECHO (2026-07-07)**: categoría `LogTortunabo` propia
    (`2c1a8dc`, 288 usos migrados en 42 archivos — `log LogTortunabo Verbose` en consola) y
    CVar `TN.Enemy.Debug` (`1bcae8c`): círculo real del servidor vs círculo del cliente
