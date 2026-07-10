@@ -8,6 +8,7 @@
 #include "Components/SphereComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 #include "NiagaraFunctionLibrary.h"
 
@@ -105,8 +106,8 @@ void ATN_CrabActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_CrabActor, CrabState);
-	DOREPLIFETIME(ATN_CrabActor, StunRemaining);
-	DOREPLIFETIME(ATN_CrabActor, BlindRemaining);
+	DOREPLIFETIME(ATN_CrabActor, StunEndServerTime);
+	DOREPLIFETIME(ATN_CrabActor, BlindEndServerTime);
 }
 
 // ── Tick ─────────────────────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ void ATN_CrabActor::Tick(float DeltaTime)
 			FColor::Red, false, -1.f, 0, 2.f, FVector(1, 0, 0), FVector(0, 1, 0), false);
 		DrawDebugString(GetWorld(), Loc + FVector(0, 0, 120.f),
 			FString::Printf(TEXT("SRV %s stun=%.1f blind=%.1f"),
-				*UEnum::GetValueAsString(CrabState), StunRemaining, BlindRemaining),
+				*UEnum::GetValueAsString(CrabState), GetStunRemaining(), GetBlindRemaining()),
 			nullptr, FColor::White, 0.f, true);
 		if (const ATortugaCharacter* Chased = ChaseTarget.Get())
 		{
@@ -135,17 +136,16 @@ void ATN_CrabActor::Tick(float DeltaTime)
 		}
 	}
 
-	// Stun: pausa toda la IA. Cangrejo queda inmóvil hasta que expira.
-	if (StunRemaining > 0.f)
+	// Stun: pausa toda la IA hasta que expira. Derivado del timestamp replicado —
+	// sin decremento por tick (y sin tráfico de red continuo).
+	if (IsStunned())
 	{
-		StunRemaining = FMath::Max(0.f, StunRemaining - DeltaTime);
 		return;
 	}
 	// Blind: pierde target de chase y vuelve a patrol. Detection sphere ignorada
 	// vía guard en OnDetectionBeginOverlap.
-	if (BlindRemaining > 0.f)
+	if (IsBlinded())
 	{
-		BlindRemaining = FMath::Max(0.f, BlindRemaining - DeltaTime);
 		if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack)
 		{
 			ChaseTarget.Reset();
@@ -336,7 +336,7 @@ void ATN_CrabActor::OnDetectionBeginOverlap(UPrimitiveComponent* OverlappedComp,
 	// No interrumpir si ya está en cooldown, persiguiendo, aturdido o cegado
 	if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack) { return; }
 	if (CooldownRemaining > 0.f) { return; }
-	if (StunRemaining > 0.f || BlindRemaining > 0.f) { return; }
+	if (IsStunned() || IsBlinded()) { return; }
 
 	ATortugaCharacter* Char = Cast<ATortugaCharacter>(OtherActor);
 	if (!IsAliveAndValid(Char)) { return; }
@@ -351,10 +351,25 @@ void ATN_CrabActor::OnDetectionBeginOverlap(UPrimitiveComponent* OverlappedComp,
 
 // ── ITN_EnemyTargetInterface ──────────────────────────────────────────────────
 
+float ATN_CrabActor::GetStunRemaining() const
+{
+	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	return GS ? FMath::Max(0.f, StunEndServerTime - GS->GetServerWorldTimeSeconds()) : 0.f;
+}
+
+float ATN_CrabActor::GetBlindRemaining() const
+{
+	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	return GS ? FMath::Max(0.f, BlindEndServerTime - GS->GetServerWorldTimeSeconds()) : 0.f;
+}
+
 void ATN_CrabActor::ApplyStun(float Duration)
 {
 	if (!HasAuthority() || Duration <= 0.f) { return; }
-	StunRemaining = FMath::Max(StunRemaining, Duration);
+	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GS) { return; }
+	// Max: un stun nuevo no acorta uno en curso más largo.
+	StunEndServerTime = FMath::Max(StunEndServerTime, GS->GetServerWorldTimeSeconds() + Duration);
 	UE_LOG(LogTortunabo, Log, TEXT("[STUN] Crab '%s' stunned for %.2fs"), *GetName(), Duration);
 	MulticastPlayStunEffect(Duration);
 }
@@ -362,7 +377,9 @@ void ATN_CrabActor::ApplyStun(float Duration)
 void ATN_CrabActor::ApplyBlind(float Duration)
 {
 	if (!HasAuthority() || Duration <= 0.f) { return; }
-	BlindRemaining = FMath::Max(BlindRemaining, Duration);
+	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GS) { return; }
+	BlindEndServerTime = FMath::Max(BlindEndServerTime, GS->GetServerWorldTimeSeconds() + Duration);
 	UE_LOG(LogTortunabo, Log, TEXT("[BLIND] Crab '%s' blinded for %.2fs"), *GetName(), Duration);
 	if (CrabState == ETNCrabState::Chase || CrabState == ETNCrabState::Attack)
 	{

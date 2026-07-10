@@ -44,8 +44,16 @@ public:
 	// ── ITN_EnemyTargetInterface ────────────────────────────────────────────────
 	virtual void ApplyStun(float Duration) override;
 	virtual void ApplyBlind(float Duration) override;
-	virtual bool IsStunned() const override { return StunRemaining > 0.f; }
-	virtual bool IsBlinded() const override { return BlindRemaining > 0.f; }
+	virtual bool IsStunned() const override { return GetStunRemaining() > 0.f; }
+	virtual bool IsBlinded() const override { return GetBlindRemaining() > 0.f; }
+
+	/** Segundos de stun restantes, derivados del timestamp replicado. Para VFX/AnimBP. */
+	UFUNCTION(BlueprintPure, Category = "Crab|Stun")
+	float GetStunRemaining() const;
+
+	/** Segundos de ceguera restantes, derivados del timestamp replicado. */
+	UFUNCTION(BlueprintPure, Category = "Crab|Stun")
+	float GetBlindRemaining() const;
 
 protected:
 	// ── Componentes ──────────────────────────────────────────────────────────────
@@ -150,13 +158,18 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_CrabState, BlueprintReadOnly, Category = "Crab")
 	ETNCrabState CrabState = ETNCrabState::Patrol;
 
-	/** Tiempo restante de stun (s). Replicado para VFX cliente. */
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Crab|Stun")
-	float StunRemaining = 0.f;
+	/**
+	 * Instante del reloj sincronizado del servidor en que expira el stun.
+	 * Se replica UNA VEZ por aplicación (antes: float decrementado y replicado
+	 * cada tick mientras estaba activo). 0 = sin efecto.
+	 * BP/AnimBP: leer GetStunRemaining() en vez de esta variable.
+	 */
+	UPROPERTY(Replicated)
+	float StunEndServerTime = 0.f;
 
-	/** Tiempo restante de ceguera (s). */
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Crab|Stun")
-	float BlindRemaining = 0.f;
+	/** Ídem para la ceguera. BP: GetBlindRemaining(). */
+	UPROPERTY(Replicated)
+	float BlindEndServerTime = 0.f;
 
 	/** VFX/sonido al ser aturdido. Asignar en BP. */
 	UPROPERTY(EditDefaultsOnly, Category = "Crab|Stun")
