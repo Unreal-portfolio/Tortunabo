@@ -28,7 +28,15 @@ Hecho y pusheado a `entrega-memoria`:
   idéntico). Cada extracción compilada en verde por separado. El archivo principal conserva
   el core: ctor, BeginPlay/Tick, input, movimiento/cámara, leg-anim, head-look, jump-anim.
 
-Pendiente (necesita PIE o decisión): persist-score race (Fase 1), extracción a UComponents
+- **Sesión 2026-07-10 — Fase 2 CERRADA** (4 commits, todos compilados en verde):
+  stun/blind del cangrejo por timestamp (`ef3b90c`), medusa sin tick idle +
+  cooldowns lazy + `DORM_DormantAll` (`6f04b95`), spawn zones vía `PlayerArray`
+  (`ac0c561`), cangrejo a 25Hz + relevancy por distancia (`85c6cc7`).
+  Decisiones (Rodrigo): 25Hz en vez de los 10-15 del plan (AActor no interpola
+  en cliente → 10Hz = stutter visible); relevancy solo al cangrejo; rueda radial
+  y punto 6 (RMS voz / HUD cache) **declinados** — ganancia ≈ 0 medida contra coste.
+
+Pendiente (necesita PIE o decisión): extracción a UComponents
 reales (Fase 3, cambia replicación → requiere PIE), pooling (declinado), tests (Fase 4).
 
 ---
@@ -102,10 +110,16 @@ DebugGame`) y probar.
 
 ---
 
-## Fase 2 — Optimización y fluidez (object pooling + hot paths)
+## Fase 2 — Optimización y fluidez (object pooling + hot paths) ✅ CERRADA (2026-07-10)
 
 > Ganancia real **media** (los spawns están gated por timer, no es bullet-hell), pero es lo
 > que pediste explícitamente y además elimina duplicación.
+>
+> **Estado final**: 2 (`ac0c561`, vía `PlayerArray` — más simple que overlap-list),
+> 3 (roof-check O(1), sesión anterior), 7 (gaviota `b50e5b1` + cangrejo `ef3b90c`),
+> 8 (medusa `6f04b95`, cangrejo 25Hz `85c6cc7`), 9 (medusa `6f04b95`) → **HECHOS**.
+> 1 (pooling), 4 (rueda radial), 6 (RMS/HUD), tick-interval del cangrejo (parte de 9)
+> → **DECLINADOS** con decisión razonada. 5 → hecho **solo cangrejo** (decisión).
 
 1. **`ATN_SpawnZoneBase` + object pooling** (la petición de "pool en vez de crear/destruir").
    - Candidatos de churn: `TN_SeagullDroppingActor` (por caída) y `TN_EnemySeagull` (por spawn).
@@ -219,6 +233,20 @@ DebugGame`) y probar.
 - [ ] El score acumulado (progresión de cosméticos) crece exactamente lo ganado en la
   carrera, también en un cliente con `Net PktLag=200` (fix `5f5ef84` — mirar el log
   `Persisted RaceScore delta=` en `LogTortunabo`).
+- [ ] **Cangrejo (Fase 2)**: stun (bola) y blind (tinta) duran lo esperado en cliente y
+  host, y el VFX cliente coincide (`ef3b90c` — timestamps). Si algún BP/AnimBP leía
+  `StunRemaining`/`BlindRemaining` (eran BlueprintReadOnly), re-wirear a
+  `GetStunRemaining()`/`GetBlindRemaining()`.
+- [ ] **Cangrejo (Fase 2)**: se mueve razonablemente suave en clientes a 25Hz
+  (`85c6cc7`); al viajar lejos y volver, reaparece sin quedarse invisible ni
+  congelado (relevancy por distancia).
+- [ ] **Medusa (Fase 2)**: rebote funciona igual (impulso + sonido + VFX + squish en
+  todas las máquinas), el cooldown por jugador sigue funcionando, y un cliente JIP
+  ve la medusa en su posición correcta (`6f04b95` — dormancy + tick gating).
+- [ ] **Medusa (Fase 2)**: con `TN.Enemy.Debug 1` activado a mitad de partida, las
+  medusas idle vuelven a pintar su BounceZone (callback del CVar).
+- [ ] **Spawn zones (Fase 2)**: gaviotas y cacas siguen spawneando sobre jugadores
+  dentro de la zona (`ac0c561` — PlayerArray).
 - [ ] Sin regresiones en cosméticos, chunks, DBNO/revive, knockdown.
 
 ---
