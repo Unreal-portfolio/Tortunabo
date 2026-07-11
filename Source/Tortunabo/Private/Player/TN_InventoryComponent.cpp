@@ -1,4 +1,5 @@
 ﻿#include "Player/TN_InventoryComponent.h"
+#include "Player/TN_InventoryDecisions.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
@@ -108,12 +109,7 @@ bool UTN_InventoryComponent::CanReceiveItem(const FTN_InventoryItem& NewItem, bo
 		return false;
 	}
 
-	if (!bHasEquippedItem || !bHasStoredItem)
-	{
-		return true;
-	}
-
-	return bAllowReplaceIfFull;
+	return TNInventoryLogic::CanReceiveItem(bHasEquippedItem, bHasStoredItem, bAllowReplaceIfFull);
 }
 
 void UTN_InventoryComponent::RotateItems()
@@ -156,35 +152,36 @@ bool UTN_InventoryComponent::TryConsumeItemByUseType(ETN_ItemUseType InUseType, 
 		return false;
 	}
 
-	// Comprobar slot equipado primero
-	if (bHasEquippedItem && EquippedItem.UseType == InUseType)
+	using namespace TNInventoryLogic;
+
+	const bool bEquippedMatches = bHasEquippedItem && EquippedItem.UseType == InUseType;
+	const bool bStoredMatches   = bHasStoredItem && StoredItem.UseType == InUseType;
+
+	switch (DecideConsumeByUseType(bEquippedMatches, bStoredMatches))
 	{
-		if (ConsumeEquippedInternal(OutConsumedItem))
-		{
-			if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
+		case EUseTypeSource::Equipped:
+			if (!ConsumeEquippedInternal(OutConsumedItem))
 			{
-				if (Char->ConsumeSound) { Char->MulticastPlaySfx(Char->ConsumeSound); }
+				return false;
 			}
-			return true;
-		}
-		return false;
+			break;
+
+		case EUseTypeSource::Stored:
+			OutConsumedItem = StoredItem;
+			StoredItem      = FTN_InventoryItem();
+			bHasStoredItem  = false;
+			// RefreshEquippedVisual no cambia aquí (slot equipado intacto)
+			break;
+
+		default:
+			return false;
 	}
 
-	// Comprobar slot almacenado
-	if (bHasStoredItem && StoredItem.UseType == InUseType)
+	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
 	{
-		OutConsumedItem = StoredItem;
-		StoredItem      = FTN_InventoryItem();
-		bHasStoredItem  = false;
-		// RefreshEquippedVisual no cambia aquí (slot equipado intacto)
-		if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
-		{
-			if (Char->ConsumeSound) { Char->MulticastPlaySfx(Char->ConsumeSound); }
-		}
-		return true;
+		if (Char->ConsumeSound) { Char->MulticastPlaySfx(Char->ConsumeSound); }
 	}
-
-	return false;
+	return true;
 }
 
 void UTN_InventoryComponent::ServerRotateItems_Implementation()
@@ -246,42 +243,42 @@ void UTN_InventoryComponent::RefreshEquippedVisual()
 
 bool UTN_InventoryComponent::AddItemInternal(const FTN_InventoryItem& NewItem)
 {
-	const bool bAdded = [&]()
+	using namespace TNInventoryLogic;
+
+	switch (DecideAddSlot(bHasEquippedItem, bHasStoredItem))
 	{
-		if (!bHasEquippedItem)
-		{
+		case EAddDecision::ToEquipped:
 			EquippedItem = NewItem;
 			bHasEquippedItem = true;
 			RefreshEquippedVisual();
-			return true;
-		}
-		if (!bHasStoredItem)
-		{
+			break;
+		case EAddDecision::ToStored:
 			StoredItem = NewItem;
 			bHasStoredItem = true;
-			return true;
-		}
-		return false;
-	}();
-
-	if (bAdded)
-	{
-		if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
-		{
-			if (Char->PickupSound) { Char->MulticastPlaySfx(Char->PickupSound); }
-		}
+			break;
+		default:
+			return false;
 	}
-	return bAdded;
+
+	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
+	{
+		if (Char->PickupSound) { Char->MulticastPlaySfx(Char->PickupSound); }
+	}
+	return true;
 }
 
 bool UTN_InventoryComponent::AddOrReplaceEquippedInternal(const FTN_InventoryItem& NewItem, bool bReplaceIfFull)
 {
-	if (AddItemInternal(NewItem))
+	using namespace TNInventoryLogic;
+
+	const EAddDecision Decision = DecideAddOrReplace(bHasEquippedItem, bHasStoredItem, bReplaceIfFull);
+	if (Decision == EAddDecision::ToEquipped || Decision == EAddDecision::ToStored)
 	{
-		return true;
+		// La ocupación no cambia entre las dos decisiones → AddItemInternal elige el mismo slot.
+		return AddItemInternal(NewItem);
 	}
 
-	if (!bReplaceIfFull)
+	if (Decision != EAddDecision::ReplaceEquipped)
 	{
 		return false;
 	}
@@ -298,14 +295,17 @@ bool UTN_InventoryComponent::AddOrReplaceEquippedInternal(const FTN_InventoryIte
 
 bool UTN_InventoryComponent::ConsumeEquippedInternal(FTN_InventoryItem& OutItem)
 {
-	if (!bHasEquippedItem)
+	using namespace TNInventoryLogic;
+
+	const EConsumeDecision Decision = DecideConsumeEquipped(bHasEquippedItem, bHasStoredItem);
+	if (Decision == EConsumeDecision::Rejected)
 	{
 		return false;
 	}
 
 	OutItem = EquippedItem;
 
-	if (bHasStoredItem)
+	if (Decision == EConsumeDecision::ConsumeAndPromoteStored)
 	{
 		EquippedItem = StoredItem;
 		bHasEquippedItem = true;
@@ -324,7 +324,7 @@ bool UTN_InventoryComponent::ConsumeEquippedInternal(FTN_InventoryItem& OutItem)
 
 void UTN_InventoryComponent::SwapSlotsInternal()
 {
-	if (!bHasEquippedItem && !bHasStoredItem)
+	if (!TNInventoryLogic::ShouldSwapSlots(bHasEquippedItem, bHasStoredItem))
 	{
 		return;
 	}
