@@ -204,9 +204,12 @@ DebugGame`) y probar.
    `ServerSyncUnlockedHelmets` (Num ≤256 anti-flooding). Cotas generosas, patrón de la
    voz. No validados a propósito: `ServerSendQuickChat` (uint8 + catálogo), FNames de
    cosméticos (su validación útil es la fuente de confianza → punto 2), RPCs sin params.
-2. **`ServerSyncUnlockedHelmets`**: no confiar en la lista de cascos que reporta el cliente;
-   validar contra una fuente de confianza (Steam inventory / DLC / lista server). Cosmético,
-   prioridad baja salvo economía real.
+2. ~~**`ServerSyncUnlockedHelmets`**: no confiar en la lista de cascos que reporta el cliente~~
+   **HECHO (2026-07-11, `377872d`)**: cada FName sincronizado se valida contra las rows del
+   `HelmetDataTable` del servidor (paridad con `ServerSetEquippedSkin`); los desconocidos se
+   descartan con warning. Decisión (Rodrigo): DT_Helmets como fuente de confianza — Steam
+   inventory/DLC y progresión server-side descartados sin economía real. Riesgo residual
+   aceptado: reclamar cascos existentes no desbloqueados ≈ editarse el save local (cosmético).
 3. **Tests**: ~~el módulo no tiene **ninguna** cobertura~~ **HECHO (2026-07-11)**:
    patrón establecido en `95d0d00` — decisiones extraídas a funciones puras en un
    header y los actores delegan, así que lo testeado es lo que corre en juego.
