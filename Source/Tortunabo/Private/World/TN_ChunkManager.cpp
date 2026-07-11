@@ -1,4 +1,5 @@
 #include "World/TN_ChunkManager.h"
+#include "World/TN_ChunkDecisions.h"
 #include "Core/TN_Log.h"
 
 #include "Components/BoxComponent.h"
@@ -72,15 +73,8 @@ void ATN_ChunkManager::BeginPlay()
 
 ETNChunkDifficulty ATN_ChunkManager::GetCurrentDifficulty() const
 {
-	if (PassedChunkCount < EasyToMediumThreshold)
-	{
-		return ETNChunkDifficulty::Easy;
-	}
-	if (PassedChunkCount < MediumToHardThreshold)
-	{
-		return ETNChunkDifficulty::Medium;
-	}
-	return ETNChunkDifficulty::Hard;
+	return TNChunkLogic::ComputeDifficultyFromProgress(
+		PassedChunkCount, EasyToMediumThreshold, MediumToHardThreshold);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,25 +85,16 @@ TSubclassOf<AActor> ATN_ChunkManager::SelectRandomFromPool(
 	const TArray<TSubclassOf<AActor>>& Pool,
 	int32& OutSelectedIndex) const
 {
-	if (Pool.Num() == 0)
+	// Evitar repetir el mismo índice consecutivamente (RNG inyectado como functor)
+	const int32 NewIndex = TNChunkLogic::SelectIndexAvoidingRepeat(
+		Pool.Num(), LastSelectedIndex,
+		[](int32 Min, int32 Max) { return FMath::RandRange(Min, Max); });
+
+	if (NewIndex == INDEX_NONE)
 	{
 		return nullptr;
 	}
 
-	if (Pool.Num() == 1)
-	{
-		OutSelectedIndex = 0;
-		return Pool[0];
-	}
-
-	// Evitar repetir el mismo índice consecutivamente
-	int32 NewIndex = LastSelectedIndex;
-	int32 Attempts = 0;
-	while (NewIndex == LastSelectedIndex && Attempts < 10)
-	{
-		NewIndex = FMath::RandRange(0, Pool.Num() - 1);
-		++Attempts;
-	}
 	OutSelectedIndex = NewIndex;
 	return Pool[NewIndex];
 }
@@ -129,14 +114,10 @@ void ATN_ChunkManager::SpawnNextChunk()
 	ETNChunkDifficulty Difficulty;
 	if (!bUseRandomGeneration)
 	{
-		if (CustomChunkSequence.IsValidIndex(PassedChunkCount))
-		{
-			Difficulty = CustomChunkSequence[PassedChunkCount];
-		}
-		else
+		Difficulty = TNChunkLogic::ResolveCustomSequenceDifficulty(CustomChunkSequence, PassedChunkCount);
+		if (!CustomChunkSequence.IsValidIndex(PassedChunkCount))
 		{
 			// Fuera del rango de la secuencia → Hard como fallback
-			Difficulty = ETNChunkDifficulty::Hard;
 			UE_LOG(LogTortunabo, Warning,
 				TEXT("[ChunkManager] SpawnNextChunk: PassedChunkCount=%d supera CustomChunkSequence.Num()=%d — usando Hard."),
 				PassedChunkCount, CustomChunkSequence.Num());
@@ -148,28 +129,21 @@ void ATN_ChunkManager::SpawnNextChunk()
 	}
 
 	// Intentar el pool primario, luego los otros como fallback
-	const TArray<TSubclassOf<AActor>>* PrimaryPool   = nullptr;
-	const TArray<TSubclassOf<AActor>>* Fallback1Pool = nullptr;
-	const TArray<TSubclassOf<AActor>>* Fallback2Pool = nullptr;
+	const TNChunkLogic::FPoolFallbackOrder Order = TNChunkLogic::GetPoolFallbackOrder(Difficulty);
 
-	switch (Difficulty)
+	auto PoolFor = [this](ETNChunkDifficulty InDifficulty) -> const TArray<TSubclassOf<AActor>>*
 	{
-		case ETNChunkDifficulty::Easy:
-			PrimaryPool   = &EasyChunkClasses;
-			Fallback1Pool = &MediumChunkClasses;
-			Fallback2Pool = &HardChunkClasses;
-			break;
-		case ETNChunkDifficulty::Medium:
-			PrimaryPool   = &MediumChunkClasses;
-			Fallback1Pool = &EasyChunkClasses;
-			Fallback2Pool = &HardChunkClasses;
-			break;
-		case ETNChunkDifficulty::Hard:
-			PrimaryPool   = &HardChunkClasses;
-			Fallback1Pool = &MediumChunkClasses;
-			Fallback2Pool = &EasyChunkClasses;
-			break;
-	}
+		switch (InDifficulty)
+		{
+			case ETNChunkDifficulty::Easy:   return &EasyChunkClasses;
+			case ETNChunkDifficulty::Medium: return &MediumChunkClasses;
+			default:                         return &HardChunkClasses;
+		}
+	};
+
+	const TArray<TSubclassOf<AActor>>* PrimaryPool   = PoolFor(Order.Primary);
+	const TArray<TSubclassOf<AActor>>* Fallback1Pool = PoolFor(Order.Fallback1);
+	const TArray<TSubclassOf<AActor>>* Fallback2Pool = PoolFor(Order.Fallback2);
 
 	int32 SelectedIndex = LastSelectedIndex;
 	TSubclassOf<AActor> ChunkClass = SelectRandomFromPool(*PrimaryPool, SelectedIndex);
@@ -466,7 +440,7 @@ void ATN_ChunkManager::OnChunkEndOverlap(
 		PassedChunkCount, TotalChunksBeforeFinal);
 
 	// ¿Ya hemos pasado suficientes chunks? → Spawn del chunk final
-	if (PassedChunkCount >= TotalChunksBeforeFinal)
+	if (TNChunkLogic::ShouldSpawnFinalChunk(PassedChunkCount, TotalChunksBeforeFinal))
 	{
 		SpawnFinalChunk();
 	}
