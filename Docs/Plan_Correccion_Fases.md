@@ -271,6 +271,10 @@ DebugGame`) y probar.
   medusas idle vuelven a pintar su BounceZone (callback del CVar).
 - [ ] **Spawn zones (Fase 2)**: gaviotas y cacas siguen spawneando sobre jugadores
   dentro de la zona (`ac0c561` — PlayerArray).
+- [ ] **Helmets (Fase 4.2)**: los cascos desbloqueados siguen equipándose en PIE 4P
+  (`377872d` — el server ahora valida contra `DT_Helmets`; si la DataTable no está
+  asignada en el GameInstance BP, el sync se rechaza entero — mirar warning
+  `sin HelmetDataTable` en `LogTortunabo`).
 - [ ] Sin regresiones en cosméticos, chunks, DBNO/revive, knockdown.
 
 ---
