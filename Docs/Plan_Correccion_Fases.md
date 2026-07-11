@@ -207,15 +207,28 @@ DebugGame`) y probar.
 2. **`ServerSyncUnlockedHelmets`**: no confiar en la lista de cascos que reporta el cliente;
    validar contra una fuente de confianza (Steam inventory / DLC / lista server). Cosmético,
    prioridad baja salvo economía real.
-3. **Tests**: ~~el módulo no tiene **ninguna** cobertura~~ **ARRANCADO (2026-07-10,
-   `95d0d00`)**: decisiones de enemigos extraídas a funciones puras en
-   `TN_EnemyDecisions.h` (`TNSeagullLogic`/`TNCrabLogic`) — los actores delegan, así
-   que lo testeado es lo que corre en juego. 6 tests Automation
-   (`Tortunabo.Enemies.*`) verificados headless 6/6 Success. Cubren: countdown y
-   radio por timestamp, decisión de `ResolveAttack`, escape timer, stun/blind
-   (extensión sin acortar) y transición de Chase, con los bordes de gameplay
-   (`==MinKillRadius` mata, `==AttackRadius` ataca). **Pendiente de ampliar**:
-   scoring, inventario 2-slots, selección de chunk.
+3. **Tests**: ~~el módulo no tiene **ninguna** cobertura~~ **HECHO (2026-07-11)**:
+   patrón establecido en `95d0d00` — decisiones extraídas a funciones puras en un
+   header y los actores delegan, así que lo testeado es lo que corre en juego.
+   - **Enemigos** (`95d0d00`): `TN_EnemyDecisions.h` (`TNSeagullLogic`/`TNCrabLogic`),
+     6 tests `Tortunabo.Enemies.*`. Countdown y radio por timestamp, `ResolveAttack`,
+     escape timer, stun/blind (extensión sin acortar), transición de Chase, con los
+     bordes de gameplay (`==MinKillRadius` mata, `==AttackRadius` ataca).
+   - **Scoring** (`aa1e33c`): `TN_ScoreDecisions.h` (`TNScoreLogic`) — persistencia
+     por delta idempotente (anti-race Results/OnRep) y clave de orden del scoreboard
+     (ranks → sin-rank → eliminados). 2 tests `Tortunabo.Score.*`.
+   - **Inventario 2-slots** (`483164c`): `TN_InventoryDecisions.h`
+     (`TNInventoryLogic`) — add (equipado > guardado), add-or-replace (con hueco
+     nunca reemplaza), can-receive, consume (promoción guardado→mano), swap y
+     consume-by-usetype (equipado primero). 6 tests `Tortunabo.Inventory.*`.
+   - **Selección de chunk** (`7e1c832`): `TN_ChunkDecisions.h` (`TNChunkLogic`) —
+     dificultad por umbrales (borde `<`), secuencia custom (fuera de rango → Hard),
+     orden de fallback de pools, selección anti-repetición con RNG inyectado (corta
+     en 10 intentos) y disparo del chunk final (`>=`). 5 tests `Tortunabo.Chunks.*`.
+
+   Total del módulo: **19 tests Automation, verificados headless 19/19 Success**
+   (`UnrealEditor-Win64-DebugGame-Cmd -ExecCmds="Automation RunTests Tortunabo; Quit"
+   -nullrhi`).
 4. ~~**Tooling de playtest**~~ **HECHO (2026-07-07)**: categoría `LogTortunabo` propia
    (`2c1a8dc`, 288 usos migrados en 42 archivos — `log LogTortunabo Verbose` en consola) y
    CVar `TN.Enemy.Debug` (`1bcae8c`): círculo real del servidor vs círculo del cliente
