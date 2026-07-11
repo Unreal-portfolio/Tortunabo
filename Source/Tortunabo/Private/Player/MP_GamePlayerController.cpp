@@ -841,13 +841,35 @@ void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TA
 		return;
 	}
 
+	// Fase 4.2 — fuente de confianza: no creerse la lista del cliente tal cual.
+	// Paridad con ServerSetEquippedSkin: cada ID debe existir en el DataTable del
+	// servidor; FNames desconocidos (cliente manipulado) se descartan. Riesgo
+	// residual aceptado: reclamar cascos existentes no desbloqueados equivale a
+	// editarse el save local — cosmético, sin economía real detrás.
+	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	const UDataTable* HelmetTable = GI ? GI->GetHelmetDataTable() : nullptr;
+	if (!HelmetTable)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSyncUnlockedHelmets: sin HelmetDataTable en el server — sync rechazado para %s"),
+			*GetNameSafe(this));
+		return;
+	}
+	const TArray<FName> KnownHelmets = HelmetTable->GetRowNames();
+
 	ServerUnlockedHelmets.Reset();
 	for (const FName HelmetId : UnlockedHelmetIds)
 	{
-		if (HelmetId != NAME_None)
+		if (HelmetId == NAME_None)
 		{
-			ServerUnlockedHelmets.Add(HelmetId);
+			continue;
 		}
+		if (!KnownHelmets.Contains(HelmetId))
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSyncUnlockedHelmets: '%s' no existe en DT_Helmets — descartado (%s)"),
+				*HelmetId.ToString(), *GetNameSafe(this));
+			continue;
+		}
+		ServerUnlockedHelmets.Add(HelmetId);
 	}
 
 	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
