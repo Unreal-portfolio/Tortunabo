@@ -2,6 +2,7 @@
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_MatchFlowTypes.h"
+#include "Core/TN_ScoreDecisions.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
@@ -99,7 +100,7 @@ void ATN_CoopGameState::PersistLocalPlayerScoreIfResults()
 		{
 			if (const ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(PS))
 			{
-				const int32 Delta = TNPS->RaceScore - PersistedScoreThisRace;
+				const int32 Delta = TNScoreLogic::ComputePersistDelta(TNPS->RaceScore, PersistedScoreThisRace);
 				if (Delta > 0)
 				{
 					GI->AddRaceScore(Delta);
@@ -161,9 +162,8 @@ void ATN_CoopGameState::Server_UpsertRaceResult(int32 InPlayerId, const FString&
 	// Sort: ranks 1,2,3,4 primero, eliminados al final (FinishRank=0).
 	RaceResults.Sort([](const FTN_RaceResultEntry& A, const FTN_RaceResultEntry& B)
 	{
-		const int32 RankA = A.bIsEliminated ? INT32_MAX : (A.FinishRank > 0 ? A.FinishRank : INT32_MAX - 1);
-		const int32 RankB = B.bIsEliminated ? INT32_MAX : (B.FinishRank > 0 ? B.FinishRank : INT32_MAX - 1);
-		return RankA < RankB;
+		return TNScoreLogic::ComputeResultSortKey(A.bIsEliminated, A.FinishRank)
+		     < TNScoreLogic::ComputeResultSortKey(B.bIsEliminated, B.FinishRank);
 	});
 
 	// Listen-server: dispara delegate manualmente (OnRep no llega al host).
