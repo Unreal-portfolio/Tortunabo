@@ -6,6 +6,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
 
@@ -92,6 +93,29 @@ bool ATN_RescuePickup::CanInteract(APawn* Interactor) const
 
 	// No puede rescatarse a sí mismo ni interactuar si el jugador muerto ya no existe
 	if (DeadPlayerId < 0)
+	{
+		return false;
+	}
+
+	// El muerto debe seguir conectado y seguir eliminado. Sin este check, un pickup
+	// rezagado (dueño ya revivido por tótem, o desconectado) mostraría el prompt y
+	// se consumiría sin efecto. PlayerArray + flags replicados → válido también en
+	// clientes para el prompt.
+	const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GS)
+	{
+		return false;
+	}
+	const ATN_CoopPlayerState* DeadPS = nullptr;
+	for (APlayerState* BasePS : GS->PlayerArray)
+	{
+		if (BasePS && BasePS->GetPlayerId() == DeadPlayerId)
+		{
+			DeadPS = Cast<ATN_CoopPlayerState>(BasePS);
+			break;
+		}
+	}
+	if (!DeadPS || DeadPS->bIsAlive || !DeadPS->bIsEliminated)
 	{
 		return false;
 	}
