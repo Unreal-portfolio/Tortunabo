@@ -105,7 +105,9 @@ void ATN_ConchPickup::OnSphereBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 					FActorSpawnParameters SpawnParams;
 					SpawnParams.SpawnCollisionHandlingOverride =
 						ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-					SpawnParams.Owner = GetOwner();
+					// Sin Owner: heredar el pawn lanzador como Owner ataba la concha
+					// reciclada a su ciclo de vida (pawn muere/respawnea → GC destruye
+					// la concha en cascada). El mundo es el dueño.
 					World->SpawnActor<ATN_ConchPickup>(
 						GetClass(), GetActorLocation(), GetActorRotation(), SpawnParams);
 				}
@@ -182,7 +184,7 @@ void ATN_ConchPickup::RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakChar
 			FActorSpawnParameters SpawnParams;
 			SpawnParams.SpawnCollisionHandlingOverride =
 				ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-			SpawnParams.Owner = GetOwner();
+			// Sin Owner (ver spawn del modo trampa-vs-enemigo): el mundo es el dueño.
 			// GetClass() preserva el BP hijo configurado (mesh/audio/VFX) en lugar
 			// de spawnear el ATN_ConchPickup nativo "pelado".
 			World->SpawnActor<ATN_ConchPickup>(
