@@ -67,6 +67,10 @@ protected:
 private:
 	bool bAlreadySpawned = false;
 
+	/** Cangrejos vivos spawneados por esta zona — se destruyen con ella (EndPlay)
+	 *  para que no queden huérfanos cuando el chunk se recicla. */
+	TArray<TWeakObjectPtr<AActor>> SpawnedCrabs;
+
 	UFUNCTION()
 	void OnProximityBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,

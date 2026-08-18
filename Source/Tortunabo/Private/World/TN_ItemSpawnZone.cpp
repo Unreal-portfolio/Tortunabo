@@ -60,6 +60,18 @@ void ATN_ItemSpawnZone::BeginPlay()
 void ATN_ItemSpawnZone::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+
+	// La zona muere con su chunk reciclado: destruir los pickups no recogidos.
+	// Sin esto quedaban huérfanos replicando (a veces flotando sobre el hueco
+	// del chunk ya destruido) el resto de la carrera.
+	for (const TWeakObjectPtr<AActor>& Pickup : SpawnedPickups)
+	{
+		if (Pickup.IsValid())
+		{
+			Pickup->Destroy();
+		}
+	}
+	SpawnedPickups.Empty();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -124,6 +136,7 @@ void ATN_ItemSpawnZone::SpawnItems()
 		{
 			Pickup->InitializeFromInventoryItem(*Row);
 			SpawnedLocations.Add(SpawnLocation);
+			SpawnedPickups.Add(Pickup);
 			++SuccessCount;
 		}
 	}

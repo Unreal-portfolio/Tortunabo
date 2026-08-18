@@ -70,5 +70,9 @@ private:
 	 *  fantasma en (0,0,0) del nivel. SetTimerForNextTick no siempre se cancela
 	 *  con ClearAllTimersForObject porque va por una cola distinta. */
 	FTimerHandle SpawnTimerHandle;
+
+	/** Pickups spawneados por esta zona — los no recogidos se destruyen con ella
+	 *  (EndPlay) para que no queden huérfanos cuando el chunk se recicla. */
+	TArray<TWeakObjectPtr<AActor>> SpawnedPickups;
 };
 

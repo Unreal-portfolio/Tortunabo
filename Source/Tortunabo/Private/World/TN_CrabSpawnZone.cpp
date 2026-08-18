@@ -35,6 +35,16 @@ void ATN_CrabSpawnZone::BeginPlay()
 
 void ATN_CrabSpawnZone::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// La zona muere con su chunk reciclado: destruir también sus cangrejos.
+	// Sin esto quedaban huérfanos ticando y replicando el resto de la carrera.
+	for (const TWeakObjectPtr<AActor>& Crab : SpawnedCrabs)
+	{
+		if (Crab.IsValid())
+		{
+			Crab->Destroy();
+		}
+	}
+	SpawnedCrabs.Empty();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -87,7 +97,11 @@ void ATN_CrabSpawnZone::SpawnCrab()
 		ATN_CrabActor* Crab = GetWorld()->SpawnActor<ATN_CrabActor>(
 			CrabClass, WorldSpawnLoc, SpawnRot, Params);
 
-		if (Crab) { ++SpawnedCount; }
+		if (Crab)
+		{
+			++SpawnedCount;
+			SpawnedCrabs.Add(Crab);
+		}
 	}
 
 	if (SpawnedCount > 0)

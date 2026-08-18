@@ -40,6 +40,18 @@ void ATN_SpawnZoneBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		World->GetTimerManager().ClearTimer(SpawnTimerHandle);
 	}
+
+	// La zona muere con su chunk reciclado: destruir también lo que spawneó.
+	// Vaciar solo el tracking dejaba gaviotas/cacas HUÉRFANAS ticando y
+	// replicando el resto de la carrera (acumulativo con cada chunk).
+	// En clientes el array siempre está vacío (BeginPlay no spawnea).
+	for (const TWeakObjectPtr<AActor>& Instance : ActiveInstances)
+	{
+		if (Instance.IsValid())
+		{
+			Instance->Destroy();
+		}
+	}
 	ActiveInstances.Empty();
 	Super::EndPlay(EndPlayReason);
 }
