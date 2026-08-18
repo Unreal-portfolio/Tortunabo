@@ -149,6 +149,35 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 
 void ATN_RunGameMode::Logout(AController* Exiting)
 {
+	// Limpiar los restos de muerte del que se va ANTES de Super::Logout (después
+	// el PlayerState puede no ser accesible). Sin esto, su RescuePickup fantasma
+	// seguía interactuable y su pawn-cadáver (Owner reasignado al GameMode en
+	// MarkPlayerDead, así que el engine no lo destruye en cascada con el PC)
+	// sobrevivía replicando hasta el fin de la ronda.
+	if (const ATN_CoopPlayerState* ExitingPS = Exiting ? Exiting->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
+	{
+		const int32 ExitingId = ExitingPS->GetPlayerId();
+
+		if (TWeakObjectPtr<ATN_RescuePickup>* PickupPtr = RescuePickups.Find(ExitingId))
+		{
+			if (PickupPtr->IsValid())
+			{
+				PickupPtr->Get()->Destroy();
+			}
+			RescuePickups.Remove(ExitingId);
+		}
+
+		if (TWeakObjectPtr<APawn>* PawnPtr = DeadPlayerPawns.Find(ExitingId))
+		{
+			if (PawnPtr->IsValid())
+			{
+				PawnPtr->Get()->Destroy();
+			}
+			DeadPlayerPawns.Remove(ExitingId);
+			UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] Logout: limpiado cadáver+pickup de PlayerId=%d"), ExitingId);
+		}
+	}
+
 	Super::Logout(Exiting);
 
 	// Actualizar conteo tras desconexión
