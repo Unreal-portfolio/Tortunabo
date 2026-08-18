@@ -4,6 +4,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Components/BoxComponent.h"
+#include "Engine/World.h"
 
 ATN_CrabSpawnZone::ATN_CrabSpawnZone()
 {
@@ -21,7 +22,12 @@ ATN_CrabSpawnZone::ATN_CrabSpawnZone()
 void ATN_CrabSpawnZone::BeginPlay()
 {
 	Super::BeginPlay();
-	if (!HasAuthority()) { return; }
+
+	// NO usar HasAuthority(): devuelve true también en clientes para actores no
+	// replicados creados localmente (ChildActorComponent del chunk). Con ese
+	// guard, cada cliente bindeaba el overlap y spawneaba cangrejos FANTASMA
+	// locales duplicados. Patrón de TN_ItemSpawnZone.
+	if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client) { return; }
 
 	ProximityVolume->OnComponentBeginOverlap.AddDynamic(
 		this, &ATN_CrabSpawnZone::OnProximityBeginOverlap);

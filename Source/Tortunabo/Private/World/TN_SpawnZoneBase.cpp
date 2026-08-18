@@ -20,7 +20,13 @@ ATN_SpawnZoneBase::ATN_SpawnZoneBase()
 void ATN_SpawnZoneBase::BeginPlay()
 {
 	Super::BeginPlay();
-	if (!HasAuthority()) { return; }
+
+	// NO usar HasAuthority(): devuelve true también en clientes para actores no
+	// replicados (bReplicates=false — los chunks los crean localmente en cada
+	// máquina vía ChildActorComponent, y los de nivel cargan con el mapa). Con
+	// ese guard, cada cliente arrancaba su propio timer y spawneaba gaviotas/
+	// cacas FANTASMA locales duplicadas. Patrón de TN_ItemSpawnZone.
+	if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client) { return; }
 
 	// El timer llama al TrySpawn virtual → despacha a la subclase (SpawnActor concreto).
 	GetWorld()->GetTimerManager().SetTimer(
