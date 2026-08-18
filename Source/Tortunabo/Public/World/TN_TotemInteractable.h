@@ -5,6 +5,7 @@
 #include "TN_TotemInteractable.generated.h"
 
 class ATortugaCharacter;
+class APlayerState;
 class USoundBase;
 class UParticleSystem;
 
@@ -75,9 +76,19 @@ protected:
 	void OnTotemNoTarget();
 
 private:
+	/**
+	 * Viaja el PlayerState del revivido, no su pawn: el pawn recién re-poseído /
+	 * teleportado puede no tener aún canal abierto en clientes remotos y el
+	 * puntero llegaría null. El PlayerState existe en todos los clientes desde
+	 * el join, así que siempre resuelve; el pawn se deriva en destino.
+	 */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastOnActivated(ATortugaCharacter* RevivedCharacter, ATortugaCharacter* Activator);
+	void MulticastOnActivated(APlayerState* RevivedPS, ATortugaCharacter* Activator);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastOnNoTarget();
+
+	/** Resuelve el pawn del revivido (con reintentos cortos si aún no replicó)
+	 *  y dispara OnTotemActivated. Tras agotar reintentos, dispara con null. */
+	void NotifyActivatedWhenResolved(APlayerState* RevivedPS, ATortugaCharacter* Activator, int32 AttemptsLeft);
 };
