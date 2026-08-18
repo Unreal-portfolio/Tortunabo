@@ -487,10 +487,23 @@ void ATortugaCharacter::SetDeadVisual(bool bDead)
 
 		EnterRagdollState();
 		SetReplicateMovement(false);
+
+		// R2: freeze diferido. Tras RagdollFreezeDelay de simulación local, el
+		// servidor captura la posición autoritativa del cadáver y todas las
+		// máquinas congelan y snapean (bRagdollFrozen + RagdollFrozenLoc).
+		GetWorldTimerManager().SetTimer(RagdollFreezeTimerHandle,
+			FTimerDelegate::CreateUObject(this, &ATortugaCharacter::ServerFreezeRagdoll),
+			RagdollFreezeDelay, false);
 	}
 	else
 	{
 		bCanAirDash = true;
+
+		// Cancelar el freeze pendiente y limpiar el flag replicado antes de
+		// revivir (en clientes, OnRep_RagdollFrozen(false) es un no-op).
+		GetWorldTimerManager().ClearTimer(RagdollFreezeTimerHandle);
+		bRagdollFrozen = false;
+
 		ExitRagdollState();
 
 		// Restaurar movement replication para el pawn revivido.
@@ -612,6 +625,13 @@ void ATortugaCharacter::EnterRagdollState()
 	SkelMesh->bBlendPhysics = true;
 	SkelMesh->bPauseAnims = true;
 
+	// Marca local del arranque de la simulación — ApplyRagdollFreeze la usa para
+	// diferir el freeze si la sim acaba de empezar (caso JIP).
+	if (const UWorld* World = GetWorld())
+	{
+		LocalRagdollStartTime = World->GetTimeSeconds();
+	}
+
 	UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] ENTER (%s) auth=%d · AnimPaused=true(post-wake) · BlendPhysics=true(post-wake) · bodies=%d"),
 		*GetName(), HasAuthority(), SkelMesh->Bodies.Num());
 }
@@ -700,6 +720,90 @@ void ATortugaCharacter::MulticastSetDeadVisual_Implementation(bool bDead, FVecto
 	}
 	// Notificar BP para que active el raptor, VFX, audio de muerte, etc.
 	OnDeathVisualSet(bDead);
+}
+
+// ── R2: freeze/snap replicado del ragdoll de muerte ───────────────────────────
+
+void ATortugaCharacter::ServerFreezeRagdoll()
+{
+	if (!HasAuthority() || !bIsDead || bRagdollFrozen)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (!SkelMesh || !SkelMesh->IsSimulatingPhysics())
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll][FREEZE] abortado en %s — mesh null o sin simular"), *GetName());
+		return;
+	}
+
+	// Posición autoritativa del root bone. La loc se escribe ANTES que el flag:
+	// ambas propiedades viajan en el mismo bunch y el OnRep del flag la lee.
+	RagdollFrozenLoc = SkelMesh->GetBoneLocation(SkelMesh->GetBoneName(0), EBoneSpaces::WorldSpace);
+	bRagdollFrozen = true;
+	FlushNetDormancy();
+	ForceNetUpdate();
+
+	// Listen-host: OnRep no dispara en la máquina con autoridad.
+	ApplyRagdollFreeze();
+}
+
+void ATortugaCharacter::OnRep_RagdollFrozen()
+{
+	if (bRagdollFrozen && bIsDead)
+	{
+		ApplyRagdollFreeze();
+	}
+	// bRagdollFrozen=false llega con el revive: ExitRagdollState (vía
+	// OnRep_IsDead / MulticastSetDeadVisual) ya restaura el estado vivo.
+}
+
+void ATortugaCharacter::ApplyRagdollFreeze()
+{
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (!bIsDead || !bRagdollFrozen || !SkelMesh)
+	{
+		return;
+	}
+	// Ya congelado en esta máquina (o revive en vuelo apagó la sim) → no-op.
+	if (!SkelMesh->IsSimulatingPhysics())
+	{
+		return;
+	}
+
+	// JIP: bIsDead y bRagdollFrozen llegan en el mismo bunch inicial y el
+	// ragdoll local acaba de arrancar. Petrificar la pose de spawn de pie se ve
+	// roto — dejar ~0.5s de simulación para que Chaos pose el cuerpo primero.
+	if (const UWorld* World = GetWorld())
+	{
+		constexpr float MinSimSeconds = 0.5f;
+		const float SimTime = World->GetTimeSeconds() - LocalRagdollStartTime;
+		if (LocalRagdollStartTime >= 0.f && SimTime < MinSimSeconds)
+		{
+			GetWorldTimerManager().SetTimer(RagdollFreezeTimerHandle,
+				FTimerDelegate::CreateUObject(this, &ATortugaCharacter::ApplyRagdollFreeze),
+				MinSimSeconds - SimTime, false);
+			return;
+		}
+	}
+
+	// Congelar: con bPauseAnims=true + bBlendPhysics, la última pose física está
+	// cacheada en component-space → detener la simulación no produce salto.
+	SkelMesh->PutAllRigidBodiesToSleep();
+	SkelMesh->SetAllBodiesSimulatePhysics(false);
+
+	// Snap por delta a la posición autoritativa: mover el ACTOR traslada el
+	// cadáver congelado entero (la pose es component-space y el mesh sigue
+	// attachado al capsule). En el server el delta es ~0; en clientes corrige
+	// la divergencia acumulada de Chaos. Orden crítico: sim parada ANTES de
+	// mover — los bodies simulados no siguen al actor, los kinematic sí.
+	const FVector LocalRootLoc = SkelMesh->GetBoneLocation(SkelMesh->GetBoneName(0), EBoneSpaces::WorldSpace);
+	const FVector Delta = FVector(RagdollFrozenLoc) - LocalRootLoc;
+	AddActorWorldOffset(Delta, false, nullptr, ETeleportType::TeleportPhysics);
+
+	UE_LOG(LogTortunabo, Log, TEXT("[Ragdoll][FREEZE] %s auth=%d delta=(%.0f,%.0f,%.0f) |delta|=%.0fcm"),
+		*GetName(), HasAuthority() ? 1 : 0, Delta.X, Delta.Y, Delta.Z, Delta.Size());
 }
 
 void ATortugaCharacter::HideLimbs()

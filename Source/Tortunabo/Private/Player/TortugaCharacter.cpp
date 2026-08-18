@@ -726,6 +726,7 @@ void ATortugaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	GetWorldTimerManager().ClearTimer(InteractionScanTimerHandle);
 	GetWorldTimerManager().ClearTimer(KnockdownTimerHandle);
 	GetWorldTimerManager().ClearTimer(ReviveChannelTimerHandle);
+	GetWorldTimerManager().ClearTimer(RagdollFreezeTimerHandle);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -1228,6 +1229,9 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	// Replicar a todos los clientes para que el visual sea visible en todos
 	DOREPLIFETIME(ATortugaCharacter, bIsKnockedDown);
 	DOREPLIFETIME(ATortugaCharacter, bIsDead);
+	// Freeze del ragdoll de muerte — JIP-safe: llegan en el bunch inicial.
+	DOREPLIFETIME(ATortugaCharacter, bRagdollFrozen);
+	DOREPLIFETIME(ATortugaCharacter, RagdollFrozenLoc);
 	// SkipOwner: el owner ya arranca el emote localmente en TriggerEmote/CancelEmote.
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedEmoteIndex, COND_SkipOwner);
 	// DBNO revive state

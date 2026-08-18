@@ -698,6 +698,9 @@ private:
 	void OnRep_IsDead();
 
 	UFUNCTION()
+	void OnRep_RagdollFrozen();
+
+	UFUNCTION()
 	void OnRep_bBigHead();
 
 	/** Escala la Cabeza al BigHeadScale en reposo o la restaura. */
@@ -730,6 +733,17 @@ private:
 	 * Llamado en server (SetDeadVisual) y cliente (MulticastSetDeadVisual, OnRep_IsDead).
 	 */
 	void EnterRagdollState();
+
+	/** Server-only (timer RagdollFreezeDelay tras la muerte): captura la posición
+	 *  autoritativa del root bone, replica bRagdollFrozen+RagdollFrozenLoc y
+	 *  congela el ragdoll local del host. */
+	void ServerFreezeRagdoll();
+
+	/** Todas las máquinas: detiene la simulación del ragdoll (la pose queda
+	 *  cacheada en component-space) y snapea el actor por delta a
+	 *  RagdollFrozenLoc. Si el ragdoll acaba de arrancar (JIP), difiere el
+	 *  freeze ~0.5s para que Chaos pose el cuerpo antes de petrificarlo. */
+	void ApplyRagdollFreeze();
 
 	/** Reverso de EnterRagdollState: detiene simulación y restaura state vivo. */
 	void ExitRagdollState();
@@ -880,6 +894,30 @@ protected:
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_IsDead, BlueprintReadOnly, Category = "Death")
 	bool bIsDead = false;
+
+	/**
+	 * true cuando el servidor congeló el ragdoll de muerte (fin de la simulación
+	 * local divergente). Un JIP lo recibe en el bunch inicial junto a bIsDead →
+	 * aplica el cadáver ya congelado en la posición autoritativa.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_RagdollFrozen, BlueprintReadOnly, Category = "Death")
+	bool bRagdollFrozen = false;
+
+	/** Posición world autoritativa del root bone al congelar. El servidor la
+	 *  escribe ANTES que bRagdollFrozen → ambas llegan en el mismo bunch. */
+	UPROPERTY(Replicated)
+	FVector_NetQuantize RagdollFrozenLoc = FVector_NetQuantize::ZeroVector;
+
+	/** Segundos de simulación de ragdoll antes de que el servidor congele y
+	 *  snapee a todos a su posición autoritativa. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Death", meta = (ClampMin = "0.5", ClampMax = "10.0"))
+	float RagdollFreezeDelay = 2.f;
+
+	/** Instante local (GetTimeSeconds) en que arrancó el ragdoll en ESTA máquina.
+	 *  No replicado — sirve para diferir el freeze si la sim acaba de empezar (JIP). */
+	float LocalRagdollStartTime = -1.f;
+
+	FTimerHandle RagdollFreezeTimerHandle;
 
 	FTimerHandle KnockdownTimerHandle;
 
