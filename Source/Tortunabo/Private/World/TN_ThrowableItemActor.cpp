@@ -356,7 +356,6 @@ void ATN_ThrowableItemActor::SpawnPickupAtLocation(const FVector& Location)
 	{
 		return;
 	}
-	bPickupSpawned = true;
 
 	if (!SourceItem.IsValid() || !SourceItem.PickupActorClass)
 	{
@@ -399,5 +398,14 @@ void ATN_ThrowableItemActor::SpawnPickupAtLocation(const FVector& Location)
 	        SourceItem.PickupActorClass, SpawnLocation, FRotator::ZeroRotator, Params))
 	{
 		Pickup->InitializeFromInventoryItem(SourceItem);
+		// Marcar SOLO tras spawn exitoso: si SpawnActor devuelve null y el flag ya
+		// estuviera puesto, LifeSpanExpired no reintentaría y el ítem se perdería
+		// en silencio.
+		bPickupSpawned = true;
+	}
+	else
+	{
+		UE_LOG(LogTortunabo, Error, TEXT("[ThrowableItem] SpawnActor de '%s' devolvió null en (%.0f,%.0f,%.0f) — el ítem se pierde."),
+			*GetNameSafe(SourceItem.PickupActorClass), SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z);
 	}
 }
