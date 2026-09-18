@@ -195,7 +195,7 @@ ATN_SeagullDroppingActor* ATN_SeagullDroppingActor::SpawnDroppingAtLocation(
 	FVector GroundTarget)
 {
 	UWorld* World = WorldContextObject ? WorldContextObject->GetWorld() : nullptr;
-	if (!World || !DroppingClass) { return nullptr; }
+	if (!World || !DroppingClass || World->GetNetMode() == NM_Client) { return nullptr; }
 
 	// Obtener la altura del suelo real mediante line trace
 	float GroundZ = GroundTarget.Z;
