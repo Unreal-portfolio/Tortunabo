@@ -32,14 +32,13 @@ void UVoiceIndicatorWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	if (!bBound)
+	// Revalida periodicamente aunque ya este bindeado: tras un cambio de pawn
+	// (p.ej. seamless travel) el componente viejo muere y hay que rebindear.
+	RetryTimer += InDeltaTime;
+	if (RetryTimer >= 0.5f)
 	{
-		RetryTimer += InDeltaTime;
-		if (RetryTimer >= 0.5f)
-		{
-			RetryTimer = 0.f;
-			TryBindVoiceComponent();
-		}
+		RetryTimer = 0.f;
+		TryBindVoiceComponent();
 	}
 }
 
@@ -61,6 +60,16 @@ void UVoiceIndicatorWidget::TryBindVoiceComponent()
 	if (!VoiceComp)
 	{
 		return;
+	}
+
+	if (VoiceComp == LocalVoiceComponent && bBound)
+	{
+		return;
+	}
+
+	if (IsValid(LocalVoiceComponent))
+	{
+		LocalVoiceComponent->OnSpeakingChanged.RemoveDynamic(this, &UVoiceIndicatorWidget::OnSpeakingChanged);
 	}
 
 	LocalVoiceComponent = VoiceComp;
