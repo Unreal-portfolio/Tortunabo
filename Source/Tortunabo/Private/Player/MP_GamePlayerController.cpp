@@ -771,7 +771,7 @@ void AMP_GamePlayerController::RequestUnequipHelmet()
 	// Limpiar localmente el casco equipado en el save
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
 	{
-		GI->EquipHelmet(NAME_None);
+		GI->ForceEquipHelmet(NAME_None);
 	}
 	// Enviar al servidor para actualizar PlayerState + notificar a todos
 	ServerSetEquippedHelmet(NAME_None);
@@ -871,18 +871,6 @@ void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TA
 		}
 		ServerUnlockedHelmets.Add(HelmetId);
 	}
-
-	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
-	{
-		if (TNPS->EquippedHelmetId == NAME_None && ServerUnlockedHelmets.Num() > 0)
-		{
-			for (const FName HelmetId : ServerUnlockedHelmets)
-			{
-				TNPS->EquippedHelmetId = HelmetId;
-				break;
-			}
-		}
-	}
 }
 
 void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName HelmetId)
@@ -974,11 +962,8 @@ void AMP_GamePlayerController::SyncCosmeticsToServer()
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
 	{
 		ServerSyncUnlockedHelmets(GI->GetUnlockedHelmetIds());
-		const FName EquippedHelmetId = GI->GetEquippedHelmetId();
-		if (EquippedHelmetId != NAME_None)
-		{
-			ServerSetEquippedHelmet(EquippedHelmetId);
-		}
+		// Sincronizar casco (NAME_None = sin casco, siempre enviar para no revertir un desequipado explícito)
+		ServerSetEquippedHelmet(GI->GetEquippedHelmetId());
 		// Sincronizar skin (NAME_None = sin skin, siempre enviar)
 		ServerSetEquippedSkin(GI->GetEquippedSkinId());
 	}
