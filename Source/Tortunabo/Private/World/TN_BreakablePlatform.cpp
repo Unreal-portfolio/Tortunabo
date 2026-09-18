@@ -90,8 +90,9 @@ void ATN_BreakablePlatform::OnStandTriggerEndOverlap(UPrimitiveComponent* Overla
 	// cada ~1/ShakeFrequencyHz segundos. Sin este guard, los timers se cancelan,
 	// el shake se detiene, el BeginOverlap re-arma todo desde cero y el puente
 	// nunca llega a romperse (loop infinito de shake-cancel-shake).
-	// Los EndOverlap reales mientras vibra son raros: si el jugador salta fuera
-	// durante el shake, lo re-evaluamos al final en BreakPlatform.
+	// Los EndOverlap reales mientras vibra son raros: este guard los bloquea a
+	// todos, reales o espurios. Una vez arranca el shake el break es
+	// irreversible — no hay re-evaluación posterior en BreakPlatform.
 	if (bIsShaking) { return; }
 
 	PawnsOnPlatform.Remove(Pawn);
@@ -256,11 +257,6 @@ void ATN_BreakablePlatform::MulticastShake_Implementation(int32 PlayerCount)
 	}
 
 	StartShake(PlayerCount);
-}
-
-void ATN_BreakablePlatform::MulticastStopShake_Implementation()
-{
-	StopShakeAndResetPosition();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

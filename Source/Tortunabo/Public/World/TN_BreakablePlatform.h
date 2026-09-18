@@ -166,10 +166,6 @@ private:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastShake(int32 PlayerCount);
 
-	/** Para la vibración (cuando los jugadores salen antes de que rompa). */
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastStopShake();
-
 	/** Entry-point server: resuelve PlayerCount actual y dispara el multicast. */
 	void FireShake();
 
