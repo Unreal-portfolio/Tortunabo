@@ -119,13 +119,7 @@ bool UTN_CosmeticsMenuWidget::GetHelmetData(FName HelmetId, FTN_HelmetData& OutD
 		return false;
 	}
 
-	const UDataTable* HelmDT = GI->GetHelmetDataTable();
-	if (!HelmDT)
-	{
-		return false;
-	}
-
-	const FTN_HelmetData* Row = HelmDT->FindRow<FTN_HelmetData>(HelmetId, TEXT("GetHelmetData"));
+	const FTN_HelmetData* Row = GI->FindHelmetRow(HelmetId, TEXT("GetHelmetData"));
 	if (!Row)
 	{
 		return false;

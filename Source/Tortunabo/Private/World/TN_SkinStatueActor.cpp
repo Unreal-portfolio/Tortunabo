@@ -65,10 +65,7 @@ void ATN_SkinStatueActor::ApplyPreviewCosmetic()
 	{
 		case ETNCosmeticType::Skin:
 		{
-			const UDataTable* SkinDT = GI->GetSkinDataTable();
-			if (!SkinDT) { break; }
-
-			const FTN_SkinData* Row = SkinDT->FindRow<FTN_SkinData>(CosmeticId, TEXT("StatuePreview"));
+			const FTN_SkinData* Row = GI->FindSkinRow(CosmeticId, TEXT("StatuePreview"));
 			if (!Row) { break; }
 
 			// Mapeo de la estatua (componentes legacy con nombres) hacia los slots
@@ -123,10 +120,7 @@ void ATN_SkinStatueActor::ApplyPreviewCosmetic()
 
 		case ETNCosmeticType::Helmet:
 		{
-			const UDataTable* HelmDT = GI->GetHelmetDataTable();
-			if (!HelmDT) { break; }
-
-			const FTN_HelmetData* Row = HelmDT->FindRow<FTN_HelmetData>(CosmeticId, TEXT("StatuePreview"));
+			const FTN_HelmetData* Row = GI->FindHelmetRow(CosmeticId, TEXT("StatuePreview"));
 			if (!Row || !Row->DisplayMesh) { break; }
 
 			HelmetPreviewComp->SetStaticMesh(Row->DisplayMesh);

@@ -11,6 +11,8 @@ class UNetDriver;
 class UUserWidget;
 class UTN_CosmeticSaveGame;
 class UTN_TutorialSaveGame;
+struct FTN_HelmetData;
+struct FTN_SkinData;
 
 /** @brief Entrada de la tabla de loot de cascos: id + peso para sorteo ponderado. */
 USTRUCT(BlueprintType)
@@ -133,6 +135,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	UDataTable* GetHelmetDataTable() const { return HelmetDataTable; }
 
+	/**
+	 * @brief Busca una fila en HelmetDataTable. No loguea: cada llamador conserva su propio
+	 *        logging (difiere sitio a sitio) y solo comprueba el nullptr de retorno.
+	 * @param HelmetId Id de la fila buscada.
+	 * @param Ctx Texto de contexto pasado a FindRow (aparece en el log interno de FindRow si falla).
+	 * @return La fila encontrada, o nullptr si el DataTable no está asignado o el Id no existe.
+	 */
+	const FTN_HelmetData* FindHelmetRow(FName HelmetId, const TCHAR* Ctx) const;
+
 	// ── Skin de personaje ────────────────────────────────────────────────────
 
 	/** Equipa el skin de personaje indicado y lo persiste. NAME_None = sin skin. */
@@ -146,6 +157,15 @@ public:
 	/** Devuelve el DataTable de skins para lookup externo. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	UDataTable* GetSkinDataTable() const { return SkinDataTable; }
+
+	/**
+	 * @brief Busca una fila en SkinDataTable. No loguea: cada llamador conserva su propio
+	 *        logging (difiere sitio a sitio) y solo comprueba el nullptr de retorno.
+	 * @param SkinId Id de la fila buscada.
+	 * @param Ctx Texto de contexto pasado a FindRow (aparece en el log interno de FindRow si falla).
+	 * @return La fila encontrada, o nullptr si el DataTable no está asignado o el Id no existe.
+	 */
+	const FTN_SkinData* FindSkinRow(FName SkinId, const TCHAR* Ctx) const;
 
 	// ── Race Score ───────────────────────────────────────────────────────────
 
@@ -266,6 +286,15 @@ private:
 
 	/** @brief Hook de fallo de red: decide si reconectar (auto-rejoin), reintentar listen o destruir sesión. */
 	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+
+	/** @brief Rama de OnNetworkFailure para fallos de driver/listen server (inicio de conexión o durante travel). */
+	void HandleDriverFailure(const FString& FailureTypeStr, const FString& ErrorString);
+
+	/** @brief Rama de OnNetworkFailure para NetChecksumMismatch (build incompatible con el servidor). */
+	void HandleChecksumMismatch(const FString& ErrorString);
+
+	/** @brief Rama de OnNetworkFailure para desconexiones de cliente (pérdida de conexión, timeout, etc.). */
+	void HandleConnectionLost(const FString& FailureTypeStr);
 
 	/** @brief Garantiza que existe el fichero steam_appid.txt junto al ejecutable. */
 	void EnsureSteamAppIdFile();

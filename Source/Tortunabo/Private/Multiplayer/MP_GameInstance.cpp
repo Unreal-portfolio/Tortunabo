@@ -1,5 +1,7 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "Core/TN_Log.h"
+#include "Core/TN_CosmeticsTypes.h"
+#include "Engine/DataTable.h"
 #include "OnlineSubsystem.h"
 #include "Online.h"
 #include "OnlineSessionSettings.h"
@@ -10,7 +12,6 @@
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
-#include "UObject/UObjectGlobals.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"
@@ -20,6 +21,20 @@
 #include "Voice/ProximityVoiceComponent.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
+namespace
+{
+	/** @brief Devuelve el Online Subsystem preferido: Steam si esta disponible, si no el por defecto. */
+	IOnlineSubsystem* MPGameInstance_GetPreferredOnlineSubsystem()
+	{
+		IOnlineSubsystem* OSS = IOnlineSubsystem::Get(FName(TEXT("Steam")));
+		if (!OSS)
+		{
+			OSS = IOnlineSubsystem::Get();
+		}
+		return OSS;
+	}
+}
 
 UMP_GameInstance::UMP_GameInstance()
 {
@@ -41,11 +56,7 @@ void UMP_GameInstance::Init()
 	Super::Init();
 	EnsureSteamAppIdFile();
 
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(FName(TEXT("Steam")));
-	if (!OSS)
-	{
-		OSS = IOnlineSubsystem::Get();
-	}
+	IOnlineSubsystem* OSS = MPGameInstance_GetPreferredOnlineSubsystem();
 
 	if (OSS)
 	{
@@ -264,6 +275,18 @@ FName UMP_GameInstance::GetEquippedSkinId() const
 	return CosmeticProfile ? CosmeticProfile->EquippedSkinId : NAME_None;
 }
 
+const FTN_HelmetData* UMP_GameInstance::FindHelmetRow(FName HelmetId, const TCHAR* Ctx) const
+{
+	const UDataTable* HelmDT = GetHelmetDataTable();
+	return HelmDT ? HelmDT->FindRow<FTN_HelmetData>(HelmetId, Ctx) : nullptr;
+}
+
+const FTN_SkinData* UMP_GameInstance::FindSkinRow(FName SkinId, const TCHAR* Ctx) const
+{
+	const UDataTable* SkinDT = GetSkinDataTable();
+	return SkinDT ? SkinDT->FindRow<FTN_SkinData>(SkinId, Ctx) : nullptr;
+}
+
 FName UMP_GameInstance::OpenHelmetCrate()
 {
 	if (HelmetCrateTable.Num() == 0)
@@ -298,11 +321,7 @@ FName UMP_GameInstance::OpenHelmetCrate()
 
 IOnlineSessionPtr UMP_GameInstance::GetSessionInterface() const
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(FName(TEXT("Steam")));
-	if (!OSS)
-	{
-		OSS = IOnlineSubsystem::Get();
-	}
+	IOnlineSubsystem* OSS = MPGameInstance_GetPreferredOnlineSubsystem();
 
 	if (!OSS)
 	{
@@ -503,11 +522,7 @@ void UMP_GameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCo
 
 void UMP_GameInstance::InviteFriends()
 {
-	IOnlineSubsystem* OSS = IOnlineSubsystem::Get(FName(TEXT("Steam")));
-	if (!OSS)
-	{
-		OSS = IOnlineSubsystem::Get();
-	}
+	IOnlineSubsystem* OSS = MPGameInstance_GetPreferredOnlineSubsystem();
 
 	if (!OSS)
 	{
@@ -1006,31 +1021,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		FailureType == ENetworkFailure::NetDriverCreateFailure ||
 		FailureType == ENetworkFailure::NetDriverAlreadyExists)
 	{
-		if (bIsPendingTravel)
-		{
-			// Error durante transición de nivel (ServerTravel lobby→game).
-			// El socket Steam aún no se ha liberado. Marcar para reintento
-			// en HandlePostLoadMap, donde el mundo nuevo ya existe.
-			bNeedsListenRetry = true;
-			UE_LOG(LogTortunabo, Warning,
-				TEXT("[MP] %s durante transición de nivel — se reintentará el listen server "
-				     "cuando el mapa nuevo termine de cargar."),
-				*FailureTypeStr);
-			// NO hacer bIsPendingTravel = false aquí: PostLoadMap lo reseteará.
-			// NO ocultar loading screen: PostLoadMap la ocultará.
-			return;
-		}
-		else
-		{
-			// Error al iniciar el listen server desde cero (sesión Steam zombi).
-			HideLoadingScreen();
-			UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
-			DestroyCurrentSession();
-			UE_LOG(LogTortunabo, Warning,
-				TEXT("[MP] %s en inicio de conexión — sesión Steam destruida. "
-				     "Reinicia Steam si el error persiste."),
-				*FailureTypeStr);
-		}
+		HandleDriverFailure(FailureTypeStr, ErrorString);
 		return;
 	}
 
@@ -1039,15 +1030,7 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	// El engine ya desconecta solo; aquí solo limpiamos la sesión y mostramos mensaje claro.
 	if (FailureType == ENetworkFailure::NetChecksumMismatch)
 	{
-		HideLoadingScreen();
-		UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
-		// Destruir la sesión huérfana del lado cliente para poder reintentar.
-		DestroyCurrentSession();
-		UE_LOG(LogTortunabo, Error,
-			TEXT("[MP] NetChecksumMismatch — El cliente tiene un build distinto al servidor. "
-			     "Recompila sin Live Coding y asegúrate de que todos usan el mismo binario. "
-			     "Detalle: %s"),
-			*ErrorString);
+		HandleChecksumMismatch(ErrorString);
 		return;
 	}
 
@@ -1057,52 +1040,101 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 		FailureType == ENetworkFailure::FailureReceived   ||
 		FailureType == ENetworkFailure::PendingConnectionFailure)
 	{
-		// Solo intentar auto-rejoin si el cliente sabía que el servidor iba a viajar.
-		// bIsPendingTravel=true significa que ClientNotifyServerTravel llegó antes
-		// de la desconexión (o que PreLoadMap empezó el travel).
-		// Si bIsPendingTravel=false, el host se fue de verdad (crasheó, salió del juego)
-		// y NO debemos quedarnos en "Reconectando" indefinidamente.
-		if (bIsPendingTravel)
-		{
-			bPendingAutoRejoin = true;
-			AutoRejoinRetryCount = MaxAutoRejoinRetries;
-			ShowLoadingScreen(TEXT("Reconectando a la partida..."));
-			UpdateStatus(FString::Printf(TEXT("Conexión perdida durante travel (%s). Reconectando..."), *FailureTypeStr));
-			UE_LOG(LogTortunabo, Warning,
-				TEXT("[MP] %s durante travel — NO destruyendo sesión. Intentando auto-rejoin en 3s (%d reintentos)."),
-				*FailureTypeStr, AutoRejoinRetryCount);
-
-			// Esperar a que el host arranque su listen server en el nuevo mapa
-			if (UWorld* CurrentWorld = GetWorld())
-			{
-				CurrentWorld->GetTimerManager().SetTimer(
-					AutoRejoinTimerHandle, FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
-					3.0f, false);
-			}
-			else
-			{
-				UE_LOG(LogTortunabo, Warning, TEXT("[MP] No World for timer — AttemptAutoRejoin will fire from HandlePostLoadMap."));
-			}
-			return;
-		}
-
-		// El host se desconectó sin que fuera un travel → ir al menú directamente.
-		// No intentar auto-rejoin: el host se fue, la sesión ya no tiene servidor.
-		HideLoadingScreen();
-		DestroyCurrentSession();
-		UpdateStatus(FString::Printf(TEXT("El host abandonó la partida (%s)."), *FailureTypeStr));
-		UE_LOG(LogTortunabo, Warning,
-			TEXT("[MP] %s sin travel pendiente — el host se fue. Destruyendo sesión y volviendo al menú."),
-			*FailureTypeStr);
-		if (APlayerController* PC = GetFirstLocalPlayerController())
-		{
-			PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
-		}
+		HandleConnectionLost(FailureTypeStr);
 		return;
 	}
 
 	// Resto de errores (OutdatedClient, OutdatedServer, etc.) — solo loguear.
 	UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+}
+
+void UMP_GameInstance::HandleDriverFailure(const FString& FailureTypeStr, const FString& ErrorString)
+{
+	if (bIsPendingTravel)
+	{
+		// Error durante transición de nivel (ServerTravel lobby→game).
+		// El socket Steam aún no se ha liberado. Marcar para reintento
+		// en HandlePostLoadMap, donde el mundo nuevo ya existe.
+		bNeedsListenRetry = true;
+		UE_LOG(LogTortunabo, Warning,
+			TEXT("[MP] %s durante transición de nivel — se reintentará el listen server "
+			     "cuando el mapa nuevo termine de cargar."),
+			*FailureTypeStr);
+		// NO hacer bIsPendingTravel = false aquí: PostLoadMap lo reseteará.
+		// NO ocultar loading screen: PostLoadMap la ocultará.
+		return;
+	}
+	else
+	{
+		// Error al iniciar el listen server desde cero (sesión Steam zombi).
+		HideLoadingScreen();
+		UpdateStatus(FString::Printf(TEXT("NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString));
+		DestroyCurrentSession();
+		UE_LOG(LogTortunabo, Warning,
+			TEXT("[MP] %s en inicio de conexión — sesión Steam destruida. "
+			     "Reinicia Steam si el error persiste."),
+			*FailureTypeStr);
+	}
+	return;
+}
+
+void UMP_GameInstance::HandleChecksumMismatch(const FString& ErrorString)
+{
+	HideLoadingScreen();
+	UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
+	// Destruir la sesión huérfana del lado cliente para poder reintentar.
+	DestroyCurrentSession();
+	UE_LOG(LogTortunabo, Error,
+		TEXT("[MP] NetChecksumMismatch — El cliente tiene un build distinto al servidor. "
+		     "Recompila sin Live Coding y asegúrate de que todos usan el mismo binario. "
+		     "Detalle: %s"),
+		*ErrorString);
+}
+
+void UMP_GameInstance::HandleConnectionLost(const FString& FailureTypeStr)
+{
+	// Solo intentar auto-rejoin si el cliente sabía que el servidor iba a viajar.
+	// bIsPendingTravel=true significa que ClientNotifyServerTravel llegó antes
+	// de la desconexión (o que PreLoadMap empezó el travel).
+	// Si bIsPendingTravel=false, el host se fue de verdad (crasheó, salió del juego)
+	// y NO debemos quedarnos en "Reconectando" indefinidamente.
+	if (bIsPendingTravel)
+	{
+		bPendingAutoRejoin = true;
+		AutoRejoinRetryCount = MaxAutoRejoinRetries;
+		ShowLoadingScreen(TEXT("Reconectando a la partida..."));
+		UpdateStatus(FString::Printf(TEXT("Conexión perdida durante travel (%s). Reconectando..."), *FailureTypeStr));
+		UE_LOG(LogTortunabo, Warning,
+			TEXT("[MP] %s durante travel — NO destruyendo sesión. Intentando auto-rejoin en 3s (%d reintentos)."),
+			*FailureTypeStr, AutoRejoinRetryCount);
+
+		// Esperar a que el host arranque su listen server en el nuevo mapa
+		if (UWorld* CurrentWorld = GetWorld())
+		{
+			CurrentWorld->GetTimerManager().SetTimer(
+				AutoRejoinTimerHandle, FTimerDelegate::CreateUObject(this, &UMP_GameInstance::AttemptAutoRejoin),
+				3.0f, false);
+		}
+		else
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[MP] No World for timer — AttemptAutoRejoin will fire from HandlePostLoadMap."));
+		}
+		return;
+	}
+
+	// El host se desconectó sin que fuera un travel → ir al menú directamente.
+	// No intentar auto-rejoin: el host se fue, la sesión ya no tiene servidor.
+	HideLoadingScreen();
+	DestroyCurrentSession();
+	UpdateStatus(FString::Printf(TEXT("El host abandonó la partida (%s)."), *FailureTypeStr));
+	UE_LOG(LogTortunabo, Warning,
+		TEXT("[MP] %s sin travel pendiente — el host se fue. Destruyendo sesión y volviendo al menú."),
+		*FailureTypeStr);
+	if (APlayerController* PC = GetFirstLocalPlayerController())
+	{
+		PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
+	}
+	return;
 }
 
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
