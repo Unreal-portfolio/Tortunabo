@@ -301,6 +301,7 @@ void UTN_PlayerHUDWidget::BindToPlayerStateScore()
 	}
 	BoundPlayerState = PS;
 	PS->OnRaceScoreChanged.AddDynamic(this, &UTN_PlayerHUDWidget::HandleRaceScoreChanged);
+	LastRaceScore = PS->RaceScore;
 	HandleRaceScoreChanged(PS->RaceScore);
 }
 
