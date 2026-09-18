@@ -10,6 +10,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_DebugCVars.h"
 #include "DrawDebugHelpers.h"
+#include "World/TN_WorldTuning.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -72,7 +73,7 @@ void ATN_JellyfishActor::BeginPlay()
 		// puede no haber terminado de posicionar en este mismo tick).
 		FTimerDelegate Delegate;
 		Delegate.BindUObject(this, &ATN_JellyfishActor::DeferredCaptureInitialLocation);
-		GetWorldTimerManager().SetTimer(DeferredInitHandle, Delegate, 0.05f, false);
+		GetWorldTimerManager().SetTimer(DeferredInitHandle, Delegate, TNWorldTuning::ChunkChildActorSettleDelay, false);
 	}
 }
 
@@ -82,7 +83,10 @@ void ATN_JellyfishActor::BeginPlay()
 
 void ATN_JellyfishActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	GetWorldTimerManager().ClearAllTimersForObject(this);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearAllTimersForObject(this);
+	}
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -180,14 +184,12 @@ void ATN_JellyfishActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 void ATN_JellyfishActor::DeferredCaptureInitialLocation()
 {
 	InitialLocation = GetActorLocation();
-	bPositionSynced = true; // Servidor: posición correcta; clientes reciben vía OnRep_InitialLocation
 	FlushNetDormancy();     // Despertar el canal para que la posición viaje (DORM_DormantAll)
 }
 
 void ATN_JellyfishActor::OnRep_InitialLocation()
 {
 	SetActorLocation(InitialLocation);
-	bPositionSynced = true;
 }
 
 

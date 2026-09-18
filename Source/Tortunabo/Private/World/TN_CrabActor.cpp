@@ -12,6 +12,7 @@
 #include "Net/UnrealNetwork.h"
 #include "NiagaraFunctionLibrary.h"
 #include "World/TN_EnemyDecisions.h"
+#include "World/TN_WorldTuning.h"
 
 ATN_CrabActor::ATN_CrabActor()
 {
@@ -73,7 +74,7 @@ void ATN_CrabActor::BeginPlay()
 	// de posicionarse después de BeginPlay)
 	FTimerDelegate Delegate;
 	Delegate.BindUObject(this, &ATN_CrabActor::InitializePatrolPoints);
-	GetWorldTimerManager().SetTimer(InitTimerHandle, Delegate, 0.05f, false);
+	GetWorldTimerManager().SetTimer(InitTimerHandle, Delegate, TNWorldTuning::ChunkChildActorSettleDelay, false);
 
 	DetectionSphere->SetSphereRadius(DetectionRadius);
 	BodyCollision->SetSphereRadius(BodyCollisionRadius);
@@ -83,7 +84,10 @@ void ATN_CrabActor::BeginPlay()
 
 void ATN_CrabActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearAllTimersForObject(this);
+	}
 	ChaseTarget.Reset();
 	Super::EndPlay(EndPlayReason);
 }
@@ -283,7 +287,7 @@ bool ATN_CrabActor::IsAliveAndValid(ATortugaCharacter* Char) const
 {
 	if (!IsValid(Char)) { return false; }
 	const ATN_CoopPlayerState* PS = Char->GetPlayerState<ATN_CoopPlayerState>();
-	return PS && PS->bIsAlive && !PS->bIsEliminated;
+	return PS && PS->IsAliveAndPlaying();
 }
 
 void ATN_CrabActor::SetCrabState(ETNCrabState NewState)

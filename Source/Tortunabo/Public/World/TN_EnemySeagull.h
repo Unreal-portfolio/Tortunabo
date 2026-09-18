@@ -192,7 +192,6 @@ private:
 	// ── Estado solo servidor ──────────────────────────────────────────────────
 
 	TWeakObjectPtr<ATortugaCharacter> TargetCharacter;
-	TWeakObjectPtr<APlayerController> TargetController;
 
 	float TimeOutsideShadow = 0.f;
 	float NextRoofCheckTime = 0.f;

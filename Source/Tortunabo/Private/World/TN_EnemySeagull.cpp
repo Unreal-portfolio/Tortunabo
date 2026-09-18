@@ -46,9 +46,11 @@ void ATN_EnemySeagull::BeginPlay()
 
 void ATN_EnemySeagull::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearAllTimersForObject(this);
+	}
 	TargetCharacter.Reset();
-	TargetController.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -76,7 +78,6 @@ void ATN_EnemySeagull::InitializeWithTarget(ATortugaCharacter* Target)
 	UpdateDecalSize();
 
 	TargetCharacter   = Target;
-	TargetController  = Cast<APlayerController>(Target->GetController());
 	TargetPlayerState = Target->GetPlayerState();
 
 	const FVector StartLoc = Target->GetActorLocation() + FVector(0.f, 0.f, FollowHeight);

@@ -139,8 +139,6 @@ private:
 	// Posición inicial replicada vía DOREPLIFETIME + OnRep_InitialLocation.
 	// No se necesita Multicast adicional — el OnRep cubre clientes conectados y JIP.
 
-	bool bPositionSynced = false;
-
 	FTimerHandle DeferredInitHandle;
 
 	void DeferredCaptureInitialLocation();
