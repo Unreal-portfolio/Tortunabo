@@ -65,6 +65,13 @@ ATortugaCharacter::ATortugaCharacter()
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 
+	// Salto: la distancia horizontal es velocidad × tiempo en el aire, y el tiempo en el
+	// aire es 2·JumpZ / (g·GravityScale). Subir la gravedad ×2 y compensar JumpZ con √2
+	// mantiene la altura (JumpZ² / 2g·s ≈ 120 cm) y recorta el tiempo de vuelo de 0,99 s
+	// a 0,70 s (−29 % de distancia). Para iterar: altura = JumpZ²/(1960·GravityScale).
+	GetCharacterMovement()->GravityScale  = 2.0f;
+	GetCharacterMovement()->JumpZVelocity = 686.f;
+
 	// bEnablePhysicsInteraction habilita PushForceFactor/TouchForceFactor sobre rigid bodies
 	// por contacto. 0.5 = empuje sutil suficiente para mover cajas/bolas en abierto pero
 	// NO para tunnelearlas contra paredes estáticas (sandwich-through). Tunable en runtime
