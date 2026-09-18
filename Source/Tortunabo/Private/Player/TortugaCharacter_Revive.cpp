@@ -142,6 +142,20 @@ void ATortugaCharacter::CancelReviveChannel()
 	UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s cancelled revive channel"), *GetNameSafe(this));
 }
 
+void ATortugaCharacter::OnRep_IsReviving()
+{
+	// Fired on remote clients (incluido el propio reviver): el servidor ya reprodujo/paró
+	// el sonido localmente en TryStartReviveChannel/CancelReviveChannel.
+	if (bIsReviving)
+	{
+		PlayReviveChannelSound();
+	}
+	else
+	{
+		StopReviveChannelSound();
+	}
+}
+
 void ATortugaCharacter::TickReviveChannel()
 {
 	if (!HasAuthority())
@@ -361,6 +375,11 @@ void ATortugaCharacter::PlayReviveSuccessSound()
 	AC->SetSound(ReviveSuccessSound);
 	AC->Play();
 	// Note: OnReviveAudioFinished will NOT re-loop because bIsReviving == false at this point.
+}
+
+void ATortugaCharacter::MulticastPlayReviveSuccessSound_Implementation()
+{
+	PlayReviveSuccessSound();
 }
 
 void ATortugaCharacter::PlayDBNOHeartbeatSound()

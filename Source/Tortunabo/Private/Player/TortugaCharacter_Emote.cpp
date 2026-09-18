@@ -395,7 +395,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 		Blend(CabezaBone, SnapshotCabeza, CabezaRestRot, SnapshotCabezaLoc, CabezaRestLoc);
 
 		// Restaurar la rotación del cuerpo si era un knockdown emote
-		if (bKnockdownCompSnapshotValid && KnockdownVisualComp.IsValid())
+		if (!bKnockdownRagdollActive && bKnockdownCompSnapshotValid && KnockdownVisualComp.IsValid())
 		{
 			KnockdownVisualComp->SetRelativeRotation(
 				FMath::Lerp(SnapshotKnockdownComp, MeshDefaultRelativeRotation, Alpha));
@@ -406,7 +406,7 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 			bEmoteBlendingOut = false;
 			bKnockdownCompSnapshotValid = false;
 			// Asegurar restauración exacta al finalizar blend-out
-			if (KnockdownVisualComp.IsValid())
+			if (!bKnockdownRagdollActive && KnockdownVisualComp.IsValid())
 			{
 				KnockdownVisualComp->SetRelativeRotation(MeshDefaultRelativeRotation);
 			}

@@ -123,7 +123,7 @@ void ATortugaCharacter::RecoverFromKnockdown()
 
 	// ── Audio feedback de revive ─────────────────────────────────────────
 	StopDBNOHeartbeatSound();
-	PlayReviveSuccessSound();
+	MulticastPlayReviveSuccessSound();
 
 	UE_LOG(LogTortunabo, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
 }
@@ -164,7 +164,8 @@ void ATortugaCharacter::OnRep_IsKnockedDown()
 				CancelEmoteLocalOnly();
 			}
 			StopDBNOHeartbeatSound();
-			PlayReviveSuccessSound();
+			// PlayReviveSuccessSound ya no se llama aquí: MulticastPlayReviveSuccessSound
+			// (RecoverFromKnockdown) lo reproduce en todas las máquinas, incluida esta.
 			bCanAirDash = true;  // Restore air dash after knockdown recovery
 		}
 	}

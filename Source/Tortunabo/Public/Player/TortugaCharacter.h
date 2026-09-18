@@ -588,6 +588,7 @@ private:
 	 * Usados para restaurar el aspecto por defecto cuando se desequipa un skin (NAME_None).
 	 * Transient: se recalcula cada vez que spawnea el pawn.
 	 */
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> DefaultSkelMeshMaterials;
 
 	// ── Leg animation state (cosmetic, local-only, never replicated) ──────────
@@ -792,6 +793,14 @@ private:
 	void CancelReviveChannel();
 	/** Tick the revive channel (server timer, 0.1s). Checks proximity + conditions. */
 	void TickReviveChannel();
+
+	/** OnRep: fired on remote clients when bIsReviving changes — replica el audio del canal. */
+	UFUNCTION()
+	void OnRep_IsReviving();
+
+	/** Multicast: reproduce el sonido de éxito de revive en todas las máquinas. */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayReviveSuccessSound();
 
 	TWeakObjectPtr<APlayerController> ReviveTargetPC;
 	float ReviveChannelElapsed = 0.f;
@@ -1206,9 +1215,10 @@ public:
 
 	/**
 	 * True while this character is actively channeling a revive on a DBNO teammate.
-	 * Replicated for HUD visualization on all clients.
+	 * Replicated for HUD visualization on all clients. ReplicatedUsing dispara el audio
+	 * de canal de revive en los clientes remotos (ver OnRep_IsReviving).
 	 */
-	UPROPERTY(BlueprintReadOnly, Replicated, Category = "DBNO")
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_IsReviving, Category = "DBNO")
 	bool bIsReviving = false;
 
 	/**
