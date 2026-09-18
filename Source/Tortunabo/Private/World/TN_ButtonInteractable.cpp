@@ -369,9 +369,11 @@ void ATN_ButtonInteractable::Interact(APawn* Interactor)
 	if (CurrentPresses < PressesRequired)
 	{
 		// Pulsación parcial — dar feedback pero no activar todavía.
+		// No llamamos a Super::Interact aquí: rearmaría LastInteractionServerTime
+		// (CooldownSeconds, 0.25s por defecto) y descartaría pulsaciones parciales
+		// que lleguen a más de ~4 Hz, perdiéndolas en silencio.
 		ForceNetUpdate();
 		MulticastPlayHalfPressedFeedback();
-		Super::Interact(Interactor);
 
 		UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' — pulsación %d/%d"),
 			*GetName(), CurrentPresses, PressesRequired);
