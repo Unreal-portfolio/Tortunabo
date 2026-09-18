@@ -64,6 +64,15 @@ private:
 	/** Genera una posición random dentro del box, valida suelo y obstáculos. */
 	bool FindValidSpawnPoint(FVector& OutLocation, const TArray<FVector>& ExistingLocations) const;
 
+	/** Punto aleatorio en espacio local del SpawnBox, transformado a mundo. */
+	bool TryGetRandomPointInBox(FVector& OutTestLocation) const;
+
+	/** Line trace al suelo bajo TestLocation (WorldStatic, luego Visibility como fallback). */
+	bool HasFloorBelow(const FVector& TestLocation, FHitResult& OutHit) const;
+
+	/** Comprueba obstáculos dinámicos (otros pickups, pawns) en la posición dada. */
+	bool HasDynamicObstacleAt(const FVector& GroundPoint) const;
+
 	/** Handle del timer diferido. Lo cancelamos en EndPlay para que un chunk
 	 *  temporal destruido (ChunkManager::GetOrComputeInSocketTransform) no dispare
 	 *  SpawnItems sobre un actor pending-kill — lo que provocaba el primer pickup

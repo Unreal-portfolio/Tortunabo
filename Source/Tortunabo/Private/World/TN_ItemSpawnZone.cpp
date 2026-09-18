@@ -6,6 +6,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "World/TN_WorldTuning.h"
 
 ATN_ItemSpawnZone::ATN_ItemSpawnZone()
 {
@@ -54,7 +55,7 @@ void ATN_ItemSpawnZone::BeginPlay()
 	// igualmente al tick siguiente sobre un actor pendiente de GC → primer pickup
 	// fantasma en (0,0,0) del nivel. SetTimer + ClearTimer en EndPlay sí lo cancela.
 	GetWorldTimerManager().SetTimer(SpawnTimerHandle, this,
-		&ATN_ItemSpawnZone::SpawnItems, 0.05f, false);
+		&ATN_ItemSpawnZone::SpawnItems, TNWorldTuning::ChunkChildActorSettleDelay, false);
 }
 
 void ATN_ItemSpawnZone::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -151,6 +152,44 @@ bool ATN_ItemSpawnZone::FindValidSpawnPoint(FVector& OutLocation, const TArray<F
 		return false;
 	}
 
+	FVector TestLocation;
+	if (!TryGetRandomPointInBox(TestLocation))
+	{
+		return false;
+	}
+
+	// Verificar distancia mínima con ítems ya spawneados
+	for (const FVector& Existing : ExistingLocations)
+	{
+		if (FVector::DistSquared(TestLocation, Existing) < MinSpacing * MinSpacing)
+		{
+			return false;
+		}
+	}
+
+	FHitResult Hit;
+	if (!HasFloorBelow(TestLocation, Hit))
+	{
+		return false; // No hay suelo bajo este punto
+	}
+
+	// Centro del sweep: ENCIMA del radio de la esfera para no intersectar el suelo.
+	constexpr float SphereRadius  = 30.f;
+	constexpr float SphereZOffset = SphereRadius + 10.f; // 40 cm sobre el suelo
+	const FVector GroundPoint = Hit.ImpactPoint + FVector(0.f, 0.f, SphereZOffset);
+
+	if (HasDynamicObstacleAt(GroundPoint))
+	{
+		return false; // Obstáculo dinámico presente (otro pickup, personaje, etc.)
+	}
+
+	// Posición final: sobre el punto de impacto del suelo + pequeño offset para el mesh
+	OutLocation = Hit.ImpactPoint + FVector(0.f, 0.f, 5.f);
+	return true;
+}
+
+bool ATN_ItemSpawnZone::TryGetRandomPointInBox(FVector& OutTestLocation) const
+{
 	// ── Generar punto aleatorio en espacio LOCAL del box, luego transformar ──
 	// Usar GetUnscaledBoxExtent() + GetComponentTransform() es correcto para
 	// cualquier combinación de rotación y escala del actor.
@@ -176,59 +215,42 @@ bool ATN_ItemSpawnZone::FindValidSpawnPoint(FVector& OutLocation, const TArray<F
 	);
 
 	// Transformar a espacio mundo (incluye scale + rotation + translation)
-	const FVector TestLocation = SpawnBox->GetComponentTransform().TransformPosition(LocalPoint);
+	OutTestLocation = SpawnBox->GetComponentTransform().TransformPosition(LocalPoint);
+	return true;
+}
 
+bool ATN_ItemSpawnZone::HasFloorBelow(const FVector& TestLocation, FHitResult& OutHit) const
+{
 	// Extensión en escala mundo para los rangos del line trace
 	const FVector ScaledExtent = SpawnBox->GetScaledBoxExtent();
 	const float TraceHalfZ = FMath::Max(ScaledExtent.Z, 50.f); // mínimo 50cm
 
-	// Verificar distancia mínima con ítems ya spawneados
-	for (const FVector& Existing : ExistingLocations)
-	{
-		if (FVector::DistSquared(TestLocation, Existing) < MinSpacing * MinSpacing)
-		{
-			return false;
-		}
-	}
-
 	// ── Line trace al suelo ───────────────────────────────────────────────────
-	FHitResult Hit;
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TN_SpawnZoneFloor), false);
 	const FVector TraceStart = TestLocation + FVector(0.f, 0.f, TraceHalfZ + 50.f);
 	const FVector TraceEnd   = TestLocation - FVector(0.f, 0.f, TraceHalfZ + 500.f);
 
 	// Primero WorldStatic, luego Visibility como fallback
-	bool bHitFloor = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams);
+	bool bHitFloor = GetWorld()->LineTraceSingleByChannel(OutHit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams);
 	if (!bHitFloor)
 	{
-		bHitFloor = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
+		bHitFloor = GetWorld()->LineTraceSingleByChannel(OutHit, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
 	}
 
-	if (!bHitFloor)
-	{
-		return false; // No hay suelo bajo este punto
-	}
+	return bHitFloor;
+}
 
-	// Centro del sweep: ENCIMA del radio de la esfera para no intersectar el suelo.
-	constexpr float SphereRadius  = 30.f;
-	constexpr float SphereZOffset = SphereRadius + 10.f; // 40 cm sobre el suelo
-	const FVector GroundPoint = Hit.ImpactPoint + FVector(0.f, 0.f, SphereZOffset);
-
+bool ATN_ItemSpawnZone::HasDynamicObstacleAt(const FVector& GroundPoint) const
+{
 	// Comprobar obstáculos DINÁMICOS en esa posición (otros pickups, pawns).
 	FCollisionObjectQueryParams ObjParams;
 	ObjParams.AddObjectTypesToQuery(ECC_WorldDynamic);
 	ObjParams.AddObjectTypesToQuery(ECC_Pawn);
 
 	FCollisionQueryParams SweepParams(SCENE_QUERY_STAT(TN_SpawnZoneObstacle), false);
+	constexpr float SphereRadius = 30.f;
 	const FCollisionShape SweepShape = FCollisionShape::MakeSphere(SphereRadius);
 
-	if (GetWorld()->OverlapAnyTestByObjectType(GroundPoint, FQuat::Identity, ObjParams, SweepShape, SweepParams))
-	{
-		return false; // Obstáculo dinámico presente (otro pickup, personaje, etc.)
-	}
-
-	// Posición final: sobre el punto de impacto del suelo + pequeño offset para el mesh
-	OutLocation = Hit.ImpactPoint + FVector(0.f, 0.f, 5.f);
-	return true;
+	return GetWorld()->OverlapAnyTestByObjectType(GroundPoint, FQuat::Identity, ObjParams, SweepShape, SweepParams);
 }
 
