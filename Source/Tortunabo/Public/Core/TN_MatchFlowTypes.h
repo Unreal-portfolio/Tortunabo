@@ -13,7 +13,7 @@ struct FTN_QuickChatEntry
 {
 	GENERATED_BODY()
 
-	/** Secuencia monótona del servidor (sirve para dedup y procesado JIP). */
+	/** Contador monótono del servidor (orden/diagnóstico de entradas). */
 	UPROPERTY(BlueprintReadOnly)
 	int32 Sequence = 0;
 

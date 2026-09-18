@@ -39,7 +39,6 @@ void ATN_CoopGameState::MulticastNewChatEntry_Implementation(FTN_QuickChatEntry 
 		QuickChatHistory.RemoveAt(0);
 	}
 
-	LastProcessedQuickChatSequence = Entry.Sequence;
 	OnQuickChatReceived.Broadcast(Entry);
 }
 

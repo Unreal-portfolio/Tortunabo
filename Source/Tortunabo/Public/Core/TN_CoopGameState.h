@@ -160,5 +160,4 @@ private:
 	int32 PersistedScoreThisRace = 0;
 
 	int32 NextQuickChatSequence = 0;
-	int32 LastProcessedQuickChatSequence = 0;
 };
