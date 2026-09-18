@@ -93,6 +93,7 @@ public:
 	void ApplyInkEffect(float Duration);
 
 protected:
+	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -145,6 +146,25 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Emotes")
 	TArray<TSoftObjectPtr<UInputAction>> EmoteActions;
+
+	// ── Jump Config ───────────────────────────────────────────────────────────
+	// El salto se configura por resultado (altura y distancia), no por JumpZVelocity ni
+	// GravityScale: ApplyJumpTuning() deriva ambos al inicializar. Lo que se escriba a mano
+	// en el CharacterMovement del BP para esos dos campos se sobreescribe.
+
+	/** Altura máxima del salto en llano (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Jump", meta=(ClampMin="10.0", Units="cm"))
+	float JumpHeight = 120.f;
+
+	/**
+	 * Distancia horizontal de un salto en llano a velocidad de sprint (cm).
+	 * El tiempo de vuelo es único para todos los saltos, así que andando se recorre
+	 * JumpDistanceSprint × WalkSpeed / SprintSpeed (500 → 281 cm con 450/800). Para cambiar
+	 * la proporción entre ambas distancias, ajustar WalkSpeed/SprintSpeed en el StaminaComponent.
+	 * @note Sube o baja la gravedad del personaje: afecta también a dive, air dash y knockback.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Jump", meta=(ClampMin="50.0", Units="cm"))
+	float JumpDistanceSprint = 500.f;
 
 	// ── Dive Config ───────────────────────────────────────────────────────────
 
@@ -584,6 +604,10 @@ private:
 	bool bCanAirDash = true;
 
 	virtual void Landed(const FHitResult& Hit) override;
+
+	/** @brief Deriva JumpZVelocity y GravityScale del CharacterMovement a partir de JumpHeight y JumpDistanceSprint. */
+	void ApplyJumpTuning();
+
 	void PerformAirDashLocally();
 
 	UFUNCTION(Server, Reliable)
