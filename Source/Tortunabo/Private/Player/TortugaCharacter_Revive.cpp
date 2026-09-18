@@ -19,50 +19,6 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Game/TN_RunGameMode.h"
 
-void ATortugaCharacter::ServerTryReviveNearby_Implementation()
-{
-	if (bIsKnockedDown || bIsDead) { return; }
-
-	// Solo busca jugadores en DBNO (knockdown). Los muertos se reviven vía TN_RescuePickup.
-	const float ReviveSearchRadius = ReviveRadiusCm > 0.f ? ReviveRadiusCm : 300.f;
-	const FVector MyLocation = GetActorLocation();
-
-	APlayerController* ClosestDBNO_PC = nullptr;
-	float ClosestDistSq = ReviveSearchRadius * ReviveSearchRadius;
-
-	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-	{
-		APlayerController* OtherPC = It->Get();
-		if (!OtherPC || OtherPC == GetController()) { continue; }
-
-		const ATN_CoopPlayerState* OtherPS = OtherPC->GetPlayerState<ATN_CoopPlayerState>();
-		if (!OtherPS || !OtherPS->bIsDBNO) { continue; }
-
-		const APawn* OtherPawn = OtherPC->GetPawn();
-		if (!OtherPawn) { continue; }
-
-		const float DistSq = FVector::DistSquared(MyLocation, OtherPawn->GetActorLocation());
-		if (DistSq < ClosestDistSq)
-		{
-			ClosestDistSq = DistSq;
-			ClosestDBNO_PC = OtherPC;
-		}
-	}
-
-	if (!ClosestDBNO_PC)
-	{
-		UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s tried to revive but no DBNO player in range"), *GetNameSafe(this));
-		return;
-	}
-
-	ATN_RunGameMode* RunGM = Cast<ATN_RunGameMode>(GetWorld()->GetAuthGameMode());
-	if (RunGM)
-	{
-		RunGM->RevivePlayer(ClosestDBNO_PC);
-		UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s revived %s via interact"), *GetNameSafe(this), *GetNameSafe(ClosestDBNO_PC));
-	}
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // REVIVE SYSTEM (DBNO)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,7 +75,7 @@ void ATortugaCharacter::TryStartReviveChannel()
 	PlayReviveChannelSound();
 
 	GetWorldTimerManager().SetTimer(ReviveChannelTimerHandle, this,
-		&ATortugaCharacter::TickReviveChannel, 0.1f, true);
+		&ATortugaCharacter::TickReviveChannel, ReviveChannelTickInterval, true);
 
 	UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s started reviving %s (%.0fcm)"),
 		*GetNameSafe(this), *GetNameSafe(BestTargetPC),
@@ -228,7 +184,7 @@ void ATortugaCharacter::TickReviveChannel()
 	}
 
 	// Advance channel
-	ReviveChannelElapsed += 0.1f;
+	ReviveChannelElapsed += ReviveChannelTickInterval;
 	ReviveProgress = FMath::Clamp(ReviveChannelElapsed / ReviveDurationSeconds, 0.f, 1.f);
 
 	// Check if complete
@@ -275,25 +231,11 @@ UAudioComponent* ATortugaCharacter::EnsureReviveAudioComponent()
 		return ReviveAudioComponent;
 	}
 
-	ReviveAudioComponent = NewObject<UAudioComponent>(this, TEXT("ReviveAudio"));
+	ReviveAudioComponent = CreateProximityAudioComponent(TEXT("ReviveAudio"), ReviveAudioInnerRadius, ReviveAudioOuterRadius);
 	if (!ReviveAudioComponent)
 	{
 		return nullptr;
 	}
-
-	ReviveAudioComponent->SetupAttachment(GetRootComponent());
-	ReviveAudioComponent->bAutoActivate = false;
-	ReviveAudioComponent->bAlwaysPlay = false;
-
-	// Proximity attenuation matching voice chat / emote range.
-	ReviveAudioComponent->bAllowSpatialization = true;
-	ReviveAudioComponent->bOverrideAttenuation = true;
-	ReviveAudioComponent->AttenuationOverrides.bAttenuate = true;
-	ReviveAudioComponent->AttenuationOverrides.bSpatialize = true;
-	ReviveAudioComponent->AttenuationOverrides.FalloffDistance = FMath::Max(ReviveAudioOuterRadius - ReviveAudioInnerRadius, 100.f);
-	ReviveAudioComponent->AttenuationOverrides.AttenuationShape = EAttenuationShape::Sphere;
-	ReviveAudioComponent->AttenuationOverrides.AttenuationShapeExtents = FVector(ReviveAudioInnerRadius);
-	ReviveAudioComponent->AttenuationOverrides.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
 
 	// Auto-restart loop while revive is channeling.
 	ReviveAudioComponent->OnAudioFinished.AddDynamic(this, &ATortugaCharacter::OnReviveAudioFinished);

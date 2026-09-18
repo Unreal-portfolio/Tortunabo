@@ -15,10 +15,6 @@
 #include "Player/TN_JumpTuning.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "World/TN_InteractableBase.h"
-#include "World/TN_PickupInteractableBase.h"
-#include "World/TN_ThrowableItemActor.h"
-#include "World/TN_ConchPickup.h"
-#include "World/TN_InkProjectile.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -26,18 +22,12 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/AudioComponent.h"
 #include "Materials/MaterialInterface.h"
-#include "Animation/AnimInstance.h"
 #include "Engine/World.h"
-#include "Engine/OverlapResult.h"
 #include "Engine/DataTable.h"
 #include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
-#include "DrawDebugHelpers.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_CosmeticsTypes.h"
-#include "Game/TN_RunGameMode.h"
-#include "Multiplayer/MP_GameInstance.h"
-#include "UI/HUD/TN_EmoteWheelDataAsset.h"
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystem.h"
 
@@ -249,13 +239,56 @@ void ATortugaCharacter::BeginPlay()
 
 	// ── ROUND 3 · DIAGNOSTIC LOGS ──
 	// Si los fixes siguen sin aplicar, estos logs revelan el estado real en runtime.
-	UE_LOG(LogTortunabo, Warning, TEXT("[Diagnostic] %s BeginPlay: PushForceFactor=%.2f ProbeSize=%.2f bUsePhysicsRagdoll=%s PhysicsAsset=%s"),
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Diagnostic] %s BeginPlay: PushForceFactor=%.2f ProbeSize=%.2f bUsePhysicsRagdoll=%s PhysicsAsset=%s"),
 		*GetName(),
 		GetCharacterMovement() ? GetCharacterMovement()->PushForceFactor : -1.f,
 		CameraBoom ? CameraBoom->ProbeSize : -1.f,
 		bUsePhysicsRagdoll ? TEXT("Y") : TEXT("N"),
 		(GetMesh() && GetMesh()->GetPhysicsAsset()) ? TEXT("ASSIGNED") : TEXT("NULL"));
 
+	ResolveAnimationBones();
+
+	// Network smoothing: con el mesh unificado GetMesh() es el único componente visual.
+	// El CMC ya aplica smoothing a GetMesh() y sus hijos directamente — no se necesita
+	// re-adjuntar nada. El HelmetMeshComp está adjunto al socket "Sombrero" en GetMesh().
+
+	ResolveKnockdownVisualComponent();
+
+	// ── Dive: guardar rotaciones por defecto y HalfHeight de la cápsula ─────────
+	DiveCapsuleOrigHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	{
+		DiveMeshDefaultRot = SkelMesh->GetRelativeRotation();
+	}
+
+	ApplyCameraDefaultsFromProperties();
+
+	// ── Vincular inventario al sistema de stamina para el peso ────────────────
+	// Solo en el servidor (donde la stamina se actualiza), pero linkear en todos
+	// es inofensivo porque GetTotalCarriedWeight solo lee datos replicados.
+	if (StaminaComponent && InventoryComponent)
+	{
+		StaminaComponent->SetInventoryComponent(InventoryComponent);
+	}
+
+	// ── Cosmetics: casco inicial ──────────────────────────────────────────────
+	// Adjuntar HelmetMeshComp al socket del Skeletal Mesh. El socket debe existir
+	// en el mesh con el nombre configurado en HelmetSocketName.
+	if (HelmetMeshComp && GetMesh())
+	{
+		HelmetMeshComp->AttachToComponent(GetMesh(),
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+			HelmetSocketName);
+		UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] HelmetMeshComp adjunto al socket '%s'."), *HelmetSocketName.ToString());
+	}
+
+	CacheDefaultSkelMeshMaterials();
+
+	StartCosmeticRetryTimer();
+}
+
+void ATortugaCharacter::ResolveAnimationBones()
+{
 	// Resolve socket names to bone names on the Skeletal Mesh and capture rest poses.
 	// Sockets must exist on the mesh with these exact names; angles will be tuned later.
 	// Rest pose is read from the SOCKET transform (component-space), not directly from
@@ -308,11 +341,10 @@ void ATortugaCharacter::BeginPlay()
 		*Brazo1Bone.ToString(), *Brazo2Bone.ToString(),
 		*Pata1Bone.ToString(),  *Pata2Bone.ToString(),
 		*ColaBone.ToString(),   *CabezaBone.ToString());
+}
 
-	// Network smoothing: con el mesh unificado GetMesh() es el único componente visual.
-	// El CMC ya aplica smoothing a GetMesh() y sus hijos directamente — no se necesita
-	// re-adjuntar nada. El HelmetMeshComp está adjunto al socket "Sombrero" en GetMesh().
-
+void ATortugaCharacter::ResolveKnockdownVisualComponent()
+{
 	// Guardar la rotación por defecto del mesh para restaurarla tras knockdown.
 	// 1) Buscar por nombre configurable (KnockdownComponentName).
 	if (KnockdownComponentName != NAME_None)
@@ -379,14 +411,10 @@ void ATortugaCharacter::BeginPlay()
 	{
 		MeshDefaultRelativeRotation = KnockdownVisualComp->GetRelativeRotation();
 	}
+}
 
-	// ── Dive: guardar rotaciones por defecto y HalfHeight de la cápsula ─────────
-	DiveCapsuleOrigHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
-	if (USkeletalMeshComponent* SkelMesh = GetMesh())
-	{
-		DiveMeshDefaultRot = SkelMesh->GetRelativeRotation();
-	}
-
+void ATortugaCharacter::ApplyCameraDefaultsFromProperties()
+{
 	// ── Aplicar camera settings serializables ────────────────────────────────
 	// Los valores UPROPERTY pueden haberse sobrescrito en el BP hijo → aplicarlos aquí.
 	if (CameraBoom)
@@ -404,26 +432,10 @@ void ATortugaCharacter::BeginPlay()
 		// No afecta a Controller->GetControlRotation() — solo es cosmético en la cámara.
 		FollowCamera->SetRelativeRotation(FRotator(CameraAimPitchOffset, 0.f, 0.f));
 	}
+}
 
-	// ── Vincular inventario al sistema de stamina para el peso ────────────────
-	// Solo en el servidor (donde la stamina se actualiza), pero linkear en todos
-	// es inofensivo porque GetTotalCarriedWeight solo lee datos replicados.
-	if (StaminaComponent && InventoryComponent)
-	{
-		StaminaComponent->SetInventoryComponent(InventoryComponent);
-	}
-
-	// ── Cosmetics: casco inicial ──────────────────────────────────────────────
-	// Adjuntar HelmetMeshComp al socket del Skeletal Mesh. El socket debe existir
-	// en el mesh con el nombre configurado en HelmetSocketName.
-	if (HelmetMeshComp && GetMesh())
-	{
-		HelmetMeshComp->AttachToComponent(GetMesh(),
-			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
-			HelmetSocketName);
-		UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] HelmetMeshComp adjunto al socket '%s'."), *HelmetSocketName.ToString());
-	}
-
+void ATortugaCharacter::CacheDefaultSkelMeshMaterials()
+{
 	// Cachear materiales originales del SKM unificado (slots 0-4).
 	// Deben guardarse ANTES del timer para que UpdateSkinVisual(NAME_None) pueda restaurarlos.
 	DefaultSkelMeshMaterials.Reset();
@@ -443,7 +455,10 @@ void ATortugaCharacter::BeginPlay()
 				DefaultSkelMeshMaterials[i] ? *DefaultSkelMeshMaterials[i]->GetName() : TEXT("NULL"));
 		}
 	}
+}
 
+void ATortugaCharacter::StartCosmeticRetryTimer()
+{
 	// Restaurar cosméticos al (re)spawnar en el mapa.
 	// En clientes, PlayerState puede llegar tarde → timer repetitivo que reintenta
 	// cada 0.3s hasta éxito o 10 intentos (3s). Cubre pawns remotos cuyo
@@ -456,10 +471,8 @@ void ATortugaCharacter::BeginPlay()
 			{
 				return;
 			}
-			if (const ATN_CoopPlayerState* TNPS = WeakThis->GetPlayerState<ATN_CoopPlayerState>())
+			if (WeakThis->ApplyCosmeticsFromPlayerState())
 			{
-				WeakThis->UpdateHelmetMesh(TNPS->EquippedHelmetId);
-				WeakThis->UpdateSkinVisual(TNPS->EquippedSkinId);
 				WeakThis->GetWorldTimerManager().ClearTimer(WeakThis->CosmeticRetryTimerHandle);
 				return;
 			}
@@ -783,11 +796,7 @@ void ATortugaCharacter::PawnClientRestart()
 	// (el valor no cambió) y OnRep_PlayerState puede llegar antes de que la ref
 	// al pawn sea válida en el PlayerState. PawnClientRestart es el hook seguro:
 	// en este punto el PlayerController y PlayerState ya están disponibles en el cliente.
-	if (const ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
-	{
-		UpdateHelmetMesh(TNPS->EquippedHelmetId);
-		UpdateSkinVisual(TNPS->EquippedSkinId);
-	}
+	ApplyCosmeticsFromPlayerState();
 
 	// ── Restaurar input mode y foco del viewport ─────────────────────────────
 	// ApplyGameplayInputMode() se llama en BeginPlay del PC, pero en ese momento
@@ -1109,9 +1118,9 @@ void ATortugaCharacter::Move(const FInputActionValue& Value)
 	if (bIsKnockedDown) { return; }
 
 	// Cancel any active emote the moment the player moves —
-	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable,
-	// and the knockdown emote which must not be interrupted by movement input.
-	if (!bIsKnockedDown && ActiveEmoteIndex >= 0 && ActiveEmoteIndex != 5 && ActiveEmoteIndex != 6) { CancelEmote(); }
+	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable.
+	// (El knockdown emote ya está cubierto por el guard bIsKnockedDown de arriba.)
+	if (ActiveEmoteIndex >= 0 && ActiveEmoteIndex != 5 && ActiveEmoteIndex != 6) { CancelEmote(); }
 
 	const FVector2D MovementVector = Value.Get<FVector2D>();
 	if (Controller)
@@ -1231,7 +1240,8 @@ void ATortugaCharacter::RefreshSprintRequest()
 
 	// Sprint funciona en cualquier dirección de movimiento (delante, lateral, diagonal).
 	// Solo se desactiva cuando el jugador solta el stick/WASD por completo.
-	const bool bHasMovementInput = LastMovementInput.SizeSquared() > (0.25f * 0.25f);
+	static constexpr float MovementInputDeadzone = 0.25f;
+	const bool bHasMovementInput = LastMovementInput.SizeSquared() > (MovementInputDeadzone * MovementInputDeadzone);
 	StaminaComponent->SetSprintRequested(bSprintHeld && bHasMovementInput);
 }
 
@@ -1251,11 +1261,7 @@ void ATortugaCharacter::OnRep_PlayerState()
 
 	// Re-apply helmet when PlayerState is replicated late (after BeginPlay timer already fired).
 	// This covers the race condition where PlayerState arrives long after pawn possession.
-	if (const ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
-	{
-		UpdateHelmetMesh(TNPS->EquippedHelmetId);
-		UpdateSkinVisual(TNPS->EquippedSkinId);
-	}
+	ApplyCosmeticsFromPlayerState();
 }
 
 void ATortugaCharacter::Landed(const FHitResult& Hit)

@@ -13,7 +13,6 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Net/UnrealNetwork.h"
-#include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 
 // ── Dive System ───────────────────────────────────────────────────────────────
@@ -310,21 +309,6 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 	// separate rotation to prevent double-rotation.
 	if (bIsDiving || DiveTiltAlpha > 0.f)
 	{
-		// DASH-01 v3 DIAGNOSTIC: imprime DiveMeshDefaultRot la primera vez para ver
-		// qué Yaw/Pitch/Roll tiene realmente el mesh post-ANIM-01 (hipótesis: si
-		// DiveMeshDefaultRot tiene un eje distinto al asumido, el quaternion fix
-		// del round 2 rota por el eje incorrecto).
-		static bool bLoggedDiveRot = false;
-		if (!bLoggedDiveRot && bIsDiving)
-		{
-			bLoggedDiveRot = true;
-			UE_LOG(LogTortunabo, Warning,
-				TEXT("[Diagnostic] DiveMeshDefaultRot = Rotator(P=%.2f Y=%.2f R=%.2f) · MeshRel = Rotator(P=%.2f Y=%.2f R=%.2f)"),
-				DiveMeshDefaultRot.Pitch, DiveMeshDefaultRot.Yaw, DiveMeshDefaultRot.Roll,
-				GetMesh() ? GetMesh()->GetRelativeRotation().Pitch : 0.f,
-				GetMesh() ? GetMesh()->GetRelativeRotation().Yaw   : 0.f,
-				GetMesh() ? GetMesh()->GetRelativeRotation().Roll  : 0.f);
-		}
 		const float TargetAlpha = bIsDiving ? 1.f : 0.f;
 		DiveTiltAlpha = FMath::FInterpTo(DiveTiltAlpha, TargetAlpha, DeltaTime, DiveTiltSpeed);
 		if (FMath::Abs(DiveTiltAlpha - TargetAlpha) < 0.005f)

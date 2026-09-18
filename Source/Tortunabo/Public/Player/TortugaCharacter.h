@@ -21,6 +21,7 @@ class UStaticMeshComponent;
 class UPostProcessComponent;
 class UTN_EmoteWheelDataAsset;
 struct FTN_EmoteWheelEntry;
+struct FTN_InventoryItem;
 
 /**
  * @brief Personaje principal del jugador. Tortuga antropomórfica con cámara tercera persona, dive aéreo, knockdown, emotes y cosméticos.
@@ -476,6 +477,17 @@ private:
 	void CacheInputAssets();
 	void ApplyInputMappingIfLocal();
 
+	/** BeginPlay: resuelve huesos/sockets de emote (Pata1/2, Brazo1/2, Cola, Cabeza) y NeckFollow. */
+	void ResolveAnimationBones();
+	/** BeginPlay: resuelve KnockdownVisualComp (KnockdownComponentName → SkeletalMesh → StaticMesh hijo → fallback). */
+	void ResolveKnockdownVisualComponent();
+	/** BeginPlay: aplica a CameraBoom/FollowCamera los valores UPROPERTY que el BP hijo pudo sobrescribir. */
+	void ApplyCameraDefaultsFromProperties();
+	/** BeginPlay: cachea los materiales por defecto del SKM unificado en DefaultSkelMeshMaterials. */
+	void CacheDefaultSkelMeshMaterials();
+	/** BeginPlay: arranca el timer que reintenta aplicar cosméticos hasta que el PlayerState esté disponible. */
+	void StartCosmeticRetryTimer();
+
 	UPROPERTY(Transient)
 	TObjectPtr<UInputMappingContext> LoadedMappingContext;
 
@@ -704,6 +716,15 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerUseEquippedItem();
 
+	// ── ServerUseEquippedItem: una rama por ETN_ItemUseType (validar → consumir → efecto) ──
+	void HandleUseSelfStaminaBoost(const FTN_InventoryItem& EquippedItem);
+	void HandleUseSelfStaminaFull(const FTN_InventoryItem& EquippedItem);
+	void HandleUseBigHead(const FTN_InventoryItem& EquippedItem);
+	void HandleUseThrowable(const FTN_InventoryItem& EquippedItem);
+	void HandleUseConch(const FTN_InventoryItem& EquippedItem);
+	void HandleUseInkThrower(const FTN_InventoryItem& EquippedItem);
+	void HandleUseTotem(const FTN_InventoryItem& EquippedItem);
+
 	UFUNCTION(Server, Reliable)
 	void ServerDropEquippedItem();
 
@@ -779,13 +800,6 @@ private:
 	/** Restaura la visibilidad de extremidades, cabeza, cola y casco. */
 	void ShowLimbs();
 
-	/**
-	 * Server RPC: el jugador interactuando intenta revivir a un cadáver cercano.
-	 * Busca el TortugaCharacter muerto más cercano y llama RevivePlayer del GameMode.
-	 */
-	UFUNCTION(Server, Reliable)
-	void ServerTryReviveNearby();
-
 	// ── Revive channeling (server-driven) ────────────────────────────────────
 	/** Try to start reviving a nearby DBNO player. Called from ServerSetEmote when emote starts. */
 	void TryStartReviveChannel();
@@ -820,6 +834,13 @@ private:
 	UAudioComponent* EnsureReviveAudioComponent();
 	/** Create DBNOAudioComponent if it doesn't exist (non-spatialized, local-only). */
 	UAudioComponent* EnsureDBNOAudioComponent();
+
+	/**
+	 * Crea y configura (sin registrar) un UAudioComponent espacializado con atenuación
+	 * por proximidad, compartido por el setup de EmoteAudioComponent y ReviveAudioComponent.
+	 * El caller debe bindear OnAudioFinished y llamar RegisterComponent() después.
+	 */
+	UAudioComponent* CreateProximityAudioComponent(FName Name, float InnerRadius, float OuterRadius);
 
 	void PlayReviveChannelSound();
 	void StopReviveChannelSound();
@@ -1003,7 +1024,8 @@ protected:
 	void ClearInkEffect();
 
 	/** Llamado cuando expira el timer de mareo — restaura el speed cap de stamina.
-	 *  Usa CreateUObject (no lambda) para que ClearAllTimersForObject lo cancele en EndPlay. */
+	 *  Usa CreateUObject (no lambda): el binding es weak, así que si el objeto ya
+	 *  se destruyó el timer no ejecuta nada (no depende de un clear explícito en EndPlay). */
 	void ClearMareoSpeedCap();
 
 	/** Rotación relativa del mesh al spawnear (guardada en BeginPlay para restaurarla). */
@@ -1133,11 +1155,6 @@ public:
 	bool IsDiving() const { return bIsDiving; }
 
 	/**
-	 * Activa/desactiva el visual de muerte: oculta extremidades, cola, cabeza, casco.
-	 * El pawn permanece en el mundo como cadáver interactuable.
-	 * Solo llamar desde el servidor — replica via OnRep + Multicast.
-	 */
-	/**
 	 * Punto centralizado para matar a este personaje.
 	 * Resuelve RunGameMode y PlayerController internamente.
 	 * Los actores del mundo llaman esto en vez de acceder a GameMode directamente.
@@ -1146,6 +1163,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Death")
 	void RequestKill(AActor* KillInstigator = nullptr);
 
+	/**
+	 * Activa/desactiva el visual de muerte: oculta extremidades, cola, cabeza, casco.
+	 * El pawn permanece en el mundo como cadáver interactuable.
+	 * Solo llamar desde el servidor — replica via OnRep + Multicast.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Death")
 	void SetDeadVisual(bool bDead);
 
@@ -1180,7 +1202,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Emotes")
 	void RequestWheelEmote(uint8 EmoteID);
 
-	UFUNCTION(BlueprintCallable, Category = "Knockdown")
+	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void GrantInfiniteStamina(float DurationSeconds);
 
 	/**
@@ -1202,6 +1224,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	void UpdateSkinVisual(FName SkinId);
+
+	/**
+	 * @brief Re-aplica casco y skin leyendo el PlayerState actual (EquippedHelmetId/EquippedSkinId).
+	 * @return true si se encontró un ATN_CoopPlayerState y se aplicaron los cosméticos; false si aún no hay PlayerState.
+	 * @note Centraliza el patrón usado en el timer de reintento (BeginPlay), PawnClientRestart
+	 *       y OnRep_PlayerState — los tres re-aplican cosméticos desde el PlayerState del pawn.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool ApplyCosmeticsFromPlayerState();
 
 	// ── Revive system (DBNO) ─────────────────────────────────────────────────
 
@@ -1308,6 +1339,9 @@ public:
 private:
 	bool IsValidWheelEmoteId(int32 EmoteID) const;
 	float GetWheelEmoteCooldown(int32 EmoteID) const;
+
+	/** Periodo del timer de TickReviveChannel; debe coincidir con el incremento de ReviveChannelElapsed. */
+	static constexpr float ReviveChannelTickInterval = 0.1f;
 
 	/** Spawn at-location del SFX en este actor (proxy local de MulticastPlaySfx). */
 	void PlaySfxAtSelf(USoundBase* Sound) const;

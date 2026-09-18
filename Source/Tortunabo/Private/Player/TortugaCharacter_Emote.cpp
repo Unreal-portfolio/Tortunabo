@@ -892,6 +892,31 @@ void ATortugaCharacter::TickEmote(float DeltaTime)
 
 // ── Emote Audio ───────────────────────────────────────────────────────────────
 
+UAudioComponent* ATortugaCharacter::CreateProximityAudioComponent(FName Name, float InnerRadius, float OuterRadius)
+{
+	UAudioComponent* Comp = NewObject<UAudioComponent>(this, Name);
+	if (!Comp)
+	{
+		return nullptr;
+	}
+
+	Comp->SetupAttachment(GetRootComponent());
+	Comp->bAutoActivate = false;
+	Comp->bAlwaysPlay = false;
+
+	// Proximity attenuation matching voice chat range.
+	Comp->bAllowSpatialization = true;
+	Comp->bOverrideAttenuation = true;
+	Comp->AttenuationOverrides.bAttenuate = true;
+	Comp->AttenuationOverrides.bSpatialize = true;
+	Comp->AttenuationOverrides.FalloffDistance = FMath::Max(OuterRadius - InnerRadius, 100.f);
+	Comp->AttenuationOverrides.AttenuationShape = EAttenuationShape::Sphere;
+	Comp->AttenuationOverrides.AttenuationShapeExtents = FVector(InnerRadius);
+	Comp->AttenuationOverrides.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+
+	return Comp;
+}
+
 void ATortugaCharacter::PlayEmoteSound(int32 Index)
 {
 	// Stop any previous emote sound first.
@@ -905,25 +930,11 @@ void ATortugaCharacter::PlayEmoteSound(int32 Index)
 	// Lazily create the audio component on first use (attached to root, spatialized).
 	if (!EmoteAudioComponent)
 	{
-		EmoteAudioComponent = NewObject<UAudioComponent>(this, TEXT("EmoteAudio"));
+		EmoteAudioComponent = CreateProximityAudioComponent(TEXT("EmoteAudio"), EmoteAudioInnerRadius, EmoteAudioOuterRadius);
 		if (!EmoteAudioComponent)
 		{
 			return;
 		}
-
-		EmoteAudioComponent->SetupAttachment(GetRootComponent());
-		EmoteAudioComponent->bAutoActivate = false;
-		EmoteAudioComponent->bAlwaysPlay = false;
-
-		// Proximity attenuation matching voice chat range.
-		EmoteAudioComponent->bAllowSpatialization = true;
-		EmoteAudioComponent->bOverrideAttenuation = true;
-		EmoteAudioComponent->AttenuationOverrides.bAttenuate = true;
-		EmoteAudioComponent->AttenuationOverrides.bSpatialize = true;
-		EmoteAudioComponent->AttenuationOverrides.FalloffDistance = FMath::Max(EmoteAudioOuterRadius - EmoteAudioInnerRadius, 100.f);
-		EmoteAudioComponent->AttenuationOverrides.AttenuationShape = EAttenuationShape::Sphere;
-		EmoteAudioComponent->AttenuationOverrides.AttenuationShapeExtents = FVector(EmoteAudioInnerRadius);
-		EmoteAudioComponent->AttenuationOverrides.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
 
 		// Auto-restart when sound finishes → forced loop while emote is active.
 		EmoteAudioComponent->OnAudioFinished.AddDynamic(this, &ATortugaCharacter::OnEmoteAudioFinished);

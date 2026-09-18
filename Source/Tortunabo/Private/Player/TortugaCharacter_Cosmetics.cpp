@@ -13,6 +13,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Engine/DataTable.h"
 #include "Core/TN_CosmeticsTypes.h"
+#include "Core/TN_CoopPlayerState.h"
 #include "Multiplayer/MP_GameInstance.h"
 
 // ── Cosmetics ─────────────────────────────────────────────────────────────────
@@ -152,5 +153,16 @@ void ATortugaCharacter::UpdateSkinVisual(FName SkinId)
 		*GetNameSafe(Row->EyesMouthMaterial),
 		*GetNameSafe(Row->SkinMaterial),
 		*GetNameSafe(Row->ShellMaterial));
+}
+
+bool ATortugaCharacter::ApplyCosmeticsFromPlayerState()
+{
+	if (const ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		UpdateHelmetMesh(TNPS->EquippedHelmetId);
+		UpdateSkinVisual(TNPS->EquippedSkinId);
+		return true;
+	}
+	return false;
 }
 

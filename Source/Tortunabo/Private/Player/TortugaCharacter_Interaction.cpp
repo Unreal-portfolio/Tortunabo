@@ -24,6 +24,7 @@
 #include "Engine/DataTable.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/OverlapResult.h"
+#include "DrawDebugHelpers.h"
 
 // El CVar de debug se define (con linkage externo) en TortugaCharacter.cpp
 extern TAutoConsoleVariable<int32> CVarDebugInteraction;
@@ -194,99 +195,27 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 
 	if (EquippedItem.UseType == ETN_ItemUseType::SelfStaminaBoost)
 	{
-		FTN_InventoryItem ConsumedItem;
-		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
-		{
-			return;
-		}
-
-		// Aplicar penalización post-boost específica del ítem (sobreescribe el valor global del componente).
-		StaminaComponent->SetPostBoostExhaustionSeconds(EquippedItem.StaminaBoostData.PostBoostExhaustionSeconds);
-		GrantInfiniteStamina(EquippedItem.StaminaBoostData.DurationSeconds);
+		HandleUseSelfStaminaBoost(EquippedItem);
 		return;
 	}
 
 	// #3 — Barrita Energética: recuperación instantánea al máximo, sin boost de duración ni penalización.
 	if (EquippedItem.UseType == ETN_ItemUseType::SelfStaminaFull)
 	{
-		FTN_InventoryItem ConsumedItem;
-		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
-		{
-			return;
-		}
-
-		// Resetear penalización post-boost heredada antes de restaurar,
-		// para que no se aplique agotamiento si el jugador usó un boost antes.
-		StaminaComponent->SetPostBoostExhaustionSeconds(0.f);
-		StaminaComponent->RestoreStaminaToFull();
+		HandleUseSelfStaminaFull(EquippedItem);
 		return;
 	}
 
 	if (EquippedItem.UseType == ETN_ItemUseType::BigHead)
 	{
-		FTN_InventoryItem ConsumedItem;
-		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
-		{
-			return;
-		}
-
-		bBigHead = true;
-		ApplyBigHeadVisual(true);
-
-		// Timer para restablecer al tamaño original + efecto de mareo (#2).
-		// CreateUObject en lugar de lambda: ClearAllTimersForObject lo cancela en EndPlay.
-		FTimerDelegate BigHeadDel = FTimerDelegate::CreateUObject(this, &ATortugaCharacter::RemoveBigHeadEffect);
-		GetWorldTimerManager().SetTimer(BigHeadTimerHandle, BigHeadDel, BigHeadDurationSeconds, false);
-
+		HandleUseBigHead(EquippedItem);
 		return;
 	}
 
 	if ((EquippedItem.UseType == ETN_ItemUseType::Throwable)
 		&& EquippedItem.ThrowableData.ActorClass)
 	{
-		const FVector SpawnLocation = GetItemSpawnLocation();
-
-		// ── Dirección de lanzamiento: cámara + arco parabólico ────────────
-		// Usar la dirección de cámara directamente (incluye pitch) para que
-		// apuntar arriba/abajo cambie la trayectoria del lanzamiento.
-		// ThrowUpAngleDeg se añade ENCIMA de la dirección de cámara como arco extra.
-		const FVector CamDir     = GetItemForwardDirection(); // incluye pitch del controlador
-		const FVector SafeCamDir = CamDir.IsNearlyZero() ? GetActorForwardVector() : CamDir.GetSafeNormal();
-
-		// Eje de inclinación: perpendicular a la proyección horizontal de la cámara.
-		const FVector HorizProj = FVector(SafeCamDir.X, SafeCamDir.Y, 0.f).GetSafeNormal();
-		const FVector TiltAxis  = HorizProj.IsNearlyZero()
-			? GetActorRightVector().GetSafeNormal()
-			: FVector::CrossProduct(HorizProj, FVector::UpVector).GetSafeNormal();
-		const FQuat   UpTilt(TiltAxis, FMath::DegreesToRadians(ThrowUpAngleDeg));
-		const FVector ArcedDirection = UpTilt.RotateVector(SafeCamDir).GetSafeNormal();
-
-		const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
-
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.Instigator = this;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-		FTN_InventoryItem ConsumedItem;
-		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
-		{
-			return;
-		}
-
-		if (ATN_ThrowableItemActor* ThrowableActor = GetWorld()->SpawnActor<ATN_ThrowableItemActor>(EquippedItem.ThrowableData.ActorClass, SpawnLocation, ArcedDirection.Rotation(), SpawnParams))
-		{
-			// SourceItem lleva PickupActorClass para que el throwable sepa
-			// qué pickup spawnear cuando aterrice o impacte (se convierte en recogible)
-			ThrowableActor->SetSourceItem(ConsumedItem);
-			ThrowableActor->InitializeThrow(SpawnLocation, LaunchVelocity);
-
-			if (ThrowSound) { MulticastPlaySfx(ThrowSound); }
-		}
-		else
-		{
-			InventoryComponent->TryAddOrReplaceEquipped(ConsumedItem, true);
-		}
+		HandleUseThrowable(EquippedItem);
 		return;
 	}
 
@@ -294,22 +223,7 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 	if ((EquippedItem.UseType == ETN_ItemUseType::Conch)
 		&& EquippedItem.ConchData.ActorClass)
 	{
-		FTN_InventoryItem ConsumedItem;
-		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
-
-		// Colocar la concha en el suelo justo debajo del jugador
-		const FVector PlaceLoc = FindGroundBelow(GetActorLocation());
-
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner     = this;
-		SpawnParams.Instigator = this;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		if (ATN_ConchPickup* Conch = GetWorld()->SpawnActor<ATN_ConchPickup>(
-			ConsumedItem.ConchData.ActorClass, PlaceLoc, FRotator::ZeroRotator, SpawnParams))
-		{
-			Conch->PlaceAsTrap(PlaceLoc);
-		}
+		HandleUseConch(EquippedItem);
 		return;
 	}
 
@@ -317,57 +231,179 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 	if ((EquippedItem.UseType == ETN_ItemUseType::InkThrower)
 		&& EquippedItem.InkData.ProjectileClass)
 	{
-		FTN_InventoryItem ConsumedItem;
-		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
-
-		const FVector Origin    = GetItemSpawnLocation();
-		const FVector Direction = GetItemForwardDirection();
-		ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
-			Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
+		HandleUseInkThrower(EquippedItem);
 		return;
 	}
 
 	// ── #5 Tótem — uso manual: revivir a un jugador muerto aleatorio ──────────
 	if (EquippedItem.UseType == ETN_ItemUseType::Totem)
 	{
-		// Buscar jugadores eliminados
-		TArray<APlayerController*> DeadPlayers;
-		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-		{
-			APlayerController* PC = It->Get();
-			if (!PC || PC == GetController()) { continue; }
-			ATN_CoopPlayerState* PS = PC->GetPlayerState<ATN_CoopPlayerState>();
-			if (PS && PS->bIsEliminated)
-			{
-				DeadPlayers.Add(PC);
-			}
-		}
-
-		if (DeadPlayers.Num() == 0)
-		{
-			// Nadie a quien revivir — no consumir el ítem
-			return;
-		}
-
-		FTN_InventoryItem ConsumedItem;
-		if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
-
-		// Seleccionar y revivir
-		const int32 Idx = FMath::RandRange(0, DeadPlayers.Num() - 1);
-		APlayerController* TargetPC = DeadPlayers[Idx];
-
-		if (ATN_RunGameMode* GM = GetWorld()->GetAuthGameMode<ATN_RunGameMode>())
-		{
-			GM->RevivePlayer(TargetPC);
-
-			APawn* RevivedPawn = TargetPC->GetPawn();
-			if (RevivedPawn)
-			{
-				const FVector RightOffset = GetActorRightVector() * 150.f;
-				RevivedPawn->TeleportTo(GetActorLocation() + RightOffset, GetActorRotation());
-			}
-		}
+		HandleUseTotem(EquippedItem);
 		return;
+	}
+}
+
+void ATortugaCharacter::HandleUseSelfStaminaBoost(const FTN_InventoryItem& EquippedItem)
+{
+	FTN_InventoryItem ConsumedItem;
+	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
+	{
+		return;
+	}
+
+	// Aplicar penalización post-boost específica del ítem (sobreescribe el valor global del componente).
+	StaminaComponent->SetPostBoostExhaustionSeconds(EquippedItem.StaminaBoostData.PostBoostExhaustionSeconds);
+	GrantInfiniteStamina(EquippedItem.StaminaBoostData.DurationSeconds);
+}
+
+void ATortugaCharacter::HandleUseSelfStaminaFull(const FTN_InventoryItem& EquippedItem)
+{
+	FTN_InventoryItem ConsumedItem;
+	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
+	{
+		return;
+	}
+
+	// Resetear penalización post-boost heredada antes de restaurar,
+	// para que no se aplique agotamiento si el jugador usó un boost antes.
+	StaminaComponent->SetPostBoostExhaustionSeconds(0.f);
+	StaminaComponent->RestoreStaminaToFull();
+}
+
+void ATortugaCharacter::HandleUseBigHead(const FTN_InventoryItem& EquippedItem)
+{
+	FTN_InventoryItem ConsumedItem;
+	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
+	{
+		return;
+	}
+
+	bBigHead = true;
+	ApplyBigHeadVisual(true);
+
+	// Timer para restablecer al tamaño original + efecto de mareo (#2).
+	// CreateUObject en lugar de lambda: el binding es weak, así que si el objeto
+	// ya se destruyó el timer no ejecuta nada (no depende de un clear en EndPlay).
+	FTimerDelegate BigHeadDel = FTimerDelegate::CreateUObject(this, &ATortugaCharacter::RemoveBigHeadEffect);
+	GetWorldTimerManager().SetTimer(BigHeadTimerHandle, BigHeadDel, BigHeadDurationSeconds, false);
+}
+
+void ATortugaCharacter::HandleUseThrowable(const FTN_InventoryItem& EquippedItem)
+{
+	const FVector SpawnLocation = GetItemSpawnLocation();
+
+	// ── Dirección de lanzamiento: cámara + arco parabólico ────────────
+	// Usar la dirección de cámara directamente (incluye pitch) para que
+	// apuntar arriba/abajo cambie la trayectoria del lanzamiento.
+	// ThrowUpAngleDeg se añade ENCIMA de la dirección de cámara como arco extra.
+	const FVector CamDir     = GetItemForwardDirection(); // incluye pitch del controlador
+	const FVector SafeCamDir = CamDir.IsNearlyZero() ? GetActorForwardVector() : CamDir.GetSafeNormal();
+
+	// Eje de inclinación: perpendicular a la proyección horizontal de la cámara.
+	const FVector HorizProj = FVector(SafeCamDir.X, SafeCamDir.Y, 0.f).GetSafeNormal();
+	const FVector TiltAxis  = HorizProj.IsNearlyZero()
+		? GetActorRightVector().GetSafeNormal()
+		: FVector::CrossProduct(HorizProj, FVector::UpVector).GetSafeNormal();
+	const FQuat   UpTilt(TiltAxis, FMath::DegreesToRadians(ThrowUpAngleDeg));
+	const FVector ArcedDirection = UpTilt.RotateVector(SafeCamDir).GetSafeNormal();
+
+	const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	FTN_InventoryItem ConsumedItem;
+	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem))
+	{
+		return;
+	}
+
+	if (ATN_ThrowableItemActor* ThrowableActor = GetWorld()->SpawnActor<ATN_ThrowableItemActor>(EquippedItem.ThrowableData.ActorClass, SpawnLocation, ArcedDirection.Rotation(), SpawnParams))
+	{
+		// SourceItem lleva PickupActorClass para que el throwable sepa
+		// qué pickup spawnear cuando aterrice o impacte (se convierte en recogible)
+		ThrowableActor->SetSourceItem(ConsumedItem);
+		ThrowableActor->InitializeThrow(SpawnLocation, LaunchVelocity);
+
+		if (ThrowSound) { MulticastPlaySfx(ThrowSound); }
+	}
+	else
+	{
+		InventoryComponent->TryAddOrReplaceEquipped(ConsumedItem, true);
+	}
+}
+
+void ATortugaCharacter::HandleUseConch(const FTN_InventoryItem& EquippedItem)
+{
+	FTN_InventoryItem ConsumedItem;
+	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
+
+	// Colocar la concha en el suelo justo debajo del jugador
+	const FVector PlaceLoc = FindGroundBelow(GetActorLocation());
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner     = this;
+	SpawnParams.Instigator = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	if (ATN_ConchPickup* Conch = GetWorld()->SpawnActor<ATN_ConchPickup>(
+		ConsumedItem.ConchData.ActorClass, PlaceLoc, FRotator::ZeroRotator, SpawnParams))
+	{
+		Conch->PlaceAsTrap(PlaceLoc);
+	}
+}
+
+void ATortugaCharacter::HandleUseInkThrower(const FTN_InventoryItem& EquippedItem)
+{
+	FTN_InventoryItem ConsumedItem;
+	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
+
+	const FVector Origin    = GetItemSpawnLocation();
+	const FVector Direction = GetItemForwardDirection();
+	ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
+		Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
+}
+
+void ATortugaCharacter::HandleUseTotem(const FTN_InventoryItem& EquippedItem)
+{
+	// Buscar jugadores eliminados
+	TArray<APlayerController*> DeadPlayers;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		if (!PC || PC == GetController()) { continue; }
+		ATN_CoopPlayerState* PS = PC->GetPlayerState<ATN_CoopPlayerState>();
+		if (PS && PS->bIsEliminated)
+		{
+			DeadPlayers.Add(PC);
+		}
+	}
+
+	if (DeadPlayers.Num() == 0)
+	{
+		// Nadie a quien revivir — no consumir el ítem
+		return;
+	}
+
+	FTN_InventoryItem ConsumedItem;
+	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
+
+	// Seleccionar y revivir
+	const int32 Idx = FMath::RandRange(0, DeadPlayers.Num() - 1);
+	APlayerController* TargetPC = DeadPlayers[Idx];
+
+	if (ATN_RunGameMode* GM = GetWorld()->GetAuthGameMode<ATN_RunGameMode>())
+	{
+		GM->RevivePlayer(TargetPC);
+
+		APawn* RevivedPawn = TargetPC->GetPawn();
+		if (RevivedPawn)
+		{
+			const FVector RightOffset = GetActorRightVector() * 150.f;
+			RevivedPawn->TeleportTo(GetActorLocation() + RightOffset, GetActorRotation());
+		}
 	}
 }
 
