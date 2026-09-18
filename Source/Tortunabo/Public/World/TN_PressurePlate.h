@@ -82,11 +82,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PressurePlate")
 	EPressurePlateMode Mode = EPressurePlateMode::Momentary;
 
-	/** Duración mínima que todos deben estar en sus placas para activar el evento (s). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "PressurePlate",
-		meta = (ClampMin = "0.0"))
-	float HoldDurationRequired = 0.f;  // 0 = activación inmediata
-
 	/** Sonido al pisar la placa. */
 	UPROPERTY(EditDefaultsOnly, Category = "PressurePlate|Audio")
 	TObjectPtr<USoundBase> PressSound;
