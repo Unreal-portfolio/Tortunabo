@@ -3,7 +3,6 @@
 #include "Player/TortugaCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
-#include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 
 UTN_InventoryComponent::UTN_InventoryComponent()
@@ -179,7 +178,7 @@ bool UTN_InventoryComponent::TryConsumeItemByUseType(ETN_ItemUseType InUseType, 
 
 	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
 	{
-		if (Char->ConsumeSound) { Char->MulticastPlaySfx(Char->ConsumeSound); }
+		PlayInventorySfx(Char->ConsumeSound);
 	}
 	return true;
 }
@@ -262,7 +261,7 @@ bool UTN_InventoryComponent::AddItemInternal(const FTN_InventoryItem& NewItem)
 
 	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
 	{
-		if (Char->PickupSound) { Char->MulticastPlaySfx(Char->PickupSound); }
+		PlayInventorySfx(Char->PickupSound);
 	}
 	return true;
 }
@@ -288,7 +287,7 @@ bool UTN_InventoryComponent::AddOrReplaceEquippedInternal(const FTN_InventoryIte
 	RefreshEquippedVisual();
 	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
 	{
-		if (Char->PickupSound) { Char->MulticastPlaySfx(Char->PickupSound); }
+		PlayInventorySfx(Char->PickupSound);
 	}
 	return true;
 }
@@ -331,5 +330,13 @@ void UTN_InventoryComponent::SwapSlotsInternal()
 
 	Swap(EquippedItem, StoredItem);
 	Swap(bHasEquippedItem, bHasStoredItem);
+}
+
+void UTN_InventoryComponent::PlayInventorySfx(USoundBase* Sound) const
+{
+	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
+	{
+		if (Sound) { Char->MulticastPlaySfx(Sound); }
+	}
 }
 

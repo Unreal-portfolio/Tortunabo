@@ -143,10 +143,6 @@ float UTN_StaminaComponent::GetEffectiveMaxStamina() const
 	return FMath::Max(1.f, MaxStamina - Penalty);
 }
 
-void UTN_StaminaComponent::OnRep_CurrentStamina()
-{
-}
-
 void UTN_StaminaComponent::OnRep_IsSprinting()
 {
 	ApplyMovementSpeed();
@@ -305,11 +301,5 @@ void UTN_StaminaComponent::ClearSpeedCap()
 {
 	ActiveSpeedCap = TNumericLimits<float>::Max();
 	ApplyMovementSpeed();
-}
-
-void UTN_StaminaComponent::ApplySprintVisual() const
-{
-	// La inclinación del mesh al sprintar se ha eliminado.
-	// El feedback visual de sprint viene únicamente del aumento de amplitud de las piernas.
 }
 

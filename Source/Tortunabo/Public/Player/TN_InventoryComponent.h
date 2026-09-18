@@ -6,6 +6,7 @@
 #include "TN_InventoryComponent.generated.h"
 
 class UStaticMeshComponent;
+class USoundBase;
 
 /**
  * @brief Inventario de dos slots (equipado + guardado) replicado por jugador.
@@ -13,8 +14,9 @@ class UStaticMeshComponent;
  *  - Equipado: visible como mesh attacheado al socket EquippedAttachSocket; se consume con el input "Usar".
  *  - Guardado: invisible en el mundo; rota con el equipado mediante RotateItems.
  *  - El peso total afecta al StaminaComponent (reduce MaxStaminaEffective).
- *  - Server-authoritative: TryAddItem/RotateItems/Consume operan sólo si HasAuthority,
- *    aunque pueden llamarse vía wrappers desde clientes (Server RPC interno).
+ *  - Server-authoritative: todas estas operaciones exigen HasAuthority en el llamador
+ *    (pickups, ServerUseEquippedItem, GameMode). Única excepción: RotateItems, que
+ *    reenvía al servidor vía ServerRotateItems cuando se llama en un cliente.
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_InventoryComponent : public UActorComponent
@@ -140,4 +142,7 @@ private:
 
 	/** @brief Intercambia equipado ↔ guardado (server-side internal). */
 	void SwapSlotsInternal();
+
+	/** @brief Cast a ATortugaCharacter del owner + null-check de Sound + MulticastPlaySfx. */
+	void PlayInventorySfx(USoundBase* Sound) const;
 };

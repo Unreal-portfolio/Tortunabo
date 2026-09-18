@@ -174,7 +174,7 @@ private:
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerGrantUnlimitedStamina(float DurationSeconds);
 
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentStamina)
+	UPROPERTY(Replicated)
 	float CurrentStamina = 100.0f;
 
 	UPROPERTY(ReplicatedUsing = OnRep_IsSprinting)
@@ -207,10 +207,6 @@ private:
 	 */
 	float ActiveSpeedCap = TNumericLimits<float>::Max();
 
-	/** @brief OnRep: refresca HUD del owner cuando la stamina cambia. */
-	UFUNCTION()
-	void OnRep_CurrentStamina();
-
 	/** @brief OnRep: aplica MovementSpeed/visual al cambiar el estado de sprint. */
 	UFUNCTION()
 	void OnRep_IsSprinting();
@@ -228,9 +224,10 @@ private:
 	/** @brief Resuelve si bIsSprinting debe estar activo en función de bSprintRequested + stamina. */
 	void RecomputeSprintState();
 
-	/** @brief Actualiza CharacterMovement->MaxWalkSpeed respetando WalkSpeed/SprintSpeed/SpeedCap. */
+	/**
+	 * @brief Actualiza CharacterMovement->MaxWalkSpeed respetando WalkSpeed/SprintSpeed/SpeedCap.
+	 * @note La inclinación del mesh al sprintar se eliminó; el feedback visual de sprint
+	 *       viene únicamente del aumento de amplitud de las piernas.
+	 */
 	void ApplyMovementSpeed() const;
-
-	/** @brief Aplica efectos visuales del sprint (FOV/zoom) en el owner local. */
-	void ApplySprintVisual() const;
 };
