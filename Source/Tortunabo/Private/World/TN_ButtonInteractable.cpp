@@ -6,6 +6,14 @@
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 
+namespace
+{
+	// Umbral de llegada al target (posición al cuadrado y ángulo) compartido por
+	// el target primario y los targets adicionales en ATN_ButtonInteractable::Tick.
+	constexpr float TN_ButtonInteractable_ArrivalDistSqThreshold = 4.f;
+	constexpr float TN_ButtonInteractable_ArrivalAngleThreshold = 1.f;
+}
+
 ATN_ButtonInteractable::ATN_ButtonInteractable()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -112,6 +120,37 @@ FTransform ATN_ButtonInteractable::GetGoalTransform() const
 
 void ATN_ButtonInteractable::DeferredInit()
 {
+	ResolveMoveTargetByTag();
+
+	// ── Capturar transform original y calcular transform activado ────────────
+	if (HasValidTarget())
+	{
+		CaptureBaseTransforms();
+		PrecomputeCyclicTransforms();
+
+		bInitialized = true;
+
+		UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' — Original: %s | Offset: %s | Activado: %s"),
+			*GetName(),
+			*OriginalTransform.GetLocation().ToString(),
+			*ActivatedOffset.GetLocation().ToString(),
+			*ActivatedTransform.GetLocation().ToString());
+
+		// Si el botón ya estaba activado (por replicación antes de init), empezar a mover
+		if (bIsActivated)
+		{
+			bIsMoving = true;
+		}
+		// En cíclico, si el índice ya no es 0 (replicado tarde), empezar a mover
+		if (OffsetMode == EButtonOffsetMode::CyclicStates && CurrentStateIndex != 0)
+		{
+			bIsMoving = true;
+		}
+	}
+}
+
+void ATN_ButtonInteractable::ResolveMoveTargetByTag()
+{
 	// ── Resolver target por tag/nombre si no está asignado ───────────────────
 	if (!MoveTarget && !ResolvedMoveComponent.IsValid() && MoveTargetTag != NAME_None)
 	{
@@ -217,90 +256,73 @@ void ATN_ButtonInteractable::DeferredInit()
 				*GetName(), *MoveTargetTag.ToString(), *GetNameSafe(ResolveParentChunk()));
 		}
 	}
+}
 
-	// ── Capturar transform original y calcular transform activado ────────────
-	if (HasValidTarget())
+void ATN_ButtonInteractable::CaptureBaseTransforms()
+{
+	OriginalTransform = GetTargetTransform();
+
+	// ActivatedTransform = OriginalTransform + ActivatedOffset (suma simple)
+	// NO usar multiplicación de FTransform (ActivatedOffset * Original) porque
+	// eso escala el offset por la Scale3D del original → valores absurdos
+	// cuando el target hereda escala del chunk.
+	ActivatedTransform = OriginalTransform;
+	ActivatedTransform.SetLocation(OriginalTransform.GetLocation() + ActivatedOffset.GetLocation());
+	ActivatedTransform.SetRotation(ActivatedOffset.GetRotation() * OriginalTransform.GetRotation());
+	// Mantener la escala original (el offset no debería cambiar la escala)
+
+	// ── Capturar transforms de targets adicionales (#15) ─────────────────────
+	AdditionalOriginalTransforms.Reset();
+	AdditionalActivatedTransforms.Reset();
+	for (AActor* Extra : AdditionalMoveTargets)
 	{
-		OriginalTransform = GetTargetTransform();
-
-		// ActivatedTransform = OriginalTransform + ActivatedOffset (suma simple)
-		// NO usar multiplicación de FTransform (ActivatedOffset * Original) porque
-		// eso escala el offset por la Scale3D del original → valores absurdos
-		// cuando el target hereda escala del chunk.
-		ActivatedTransform = OriginalTransform;
-		ActivatedTransform.SetLocation(OriginalTransform.GetLocation() + ActivatedOffset.GetLocation());
-		ActivatedTransform.SetRotation(ActivatedOffset.GetRotation() * OriginalTransform.GetRotation());
-		// Mantener la escala original (el offset no debería cambiar la escala)
-
-		// ── Capturar transforms de targets adicionales (#15) ─────────────────────
-		AdditionalOriginalTransforms.Reset();
-		AdditionalActivatedTransforms.Reset();
-		for (AActor* Extra : AdditionalMoveTargets)
+		if (!IsValid(Extra))
 		{
-			if (!IsValid(Extra))
-			{
-				AdditionalOriginalTransforms.Add(FTransform::Identity);
-				AdditionalActivatedTransforms.Add(FTransform::Identity);
-				continue;
-			}
-			FTransform ExtraOriginal = Extra->GetActorTransform();
-			FTransform ExtraActivated = ExtraOriginal;
-			ExtraActivated.SetLocation(ExtraOriginal.GetLocation() + ActivatedOffset.GetLocation());
-			ExtraActivated.SetRotation(ActivatedOffset.GetRotation() * ExtraOriginal.GetRotation());
-			AdditionalOriginalTransforms.Add(ExtraOriginal);
-			AdditionalActivatedTransforms.Add(ExtraActivated);
+			AdditionalOriginalTransforms.Add(FTransform::Identity);
+			AdditionalActivatedTransforms.Add(FTransform::Identity);
+			continue;
+		}
+		FTransform ExtraOriginal = Extra->GetActorTransform();
+		FTransform ExtraActivated = ExtraOriginal;
+		ExtraActivated.SetLocation(ExtraOriginal.GetLocation() + ActivatedOffset.GetLocation());
+		ExtraActivated.SetRotation(ActivatedOffset.GetRotation() * ExtraOriginal.GetRotation());
+		AdditionalOriginalTransforms.Add(ExtraOriginal);
+		AdditionalActivatedTransforms.Add(ExtraActivated);
+	}
+}
+
+void ATN_ButtonInteractable::PrecomputeCyclicTransforms()
+{
+	// ── Precomputar transforms cíclicos (#Q2-05) ─────────────────────────
+	CyclicResolvedTransforms.Reset();
+	CyclicAdditionalResolvedTransforms.Reset();
+	if (OffsetMode == EButtonOffsetMode::CyclicStates)
+	{
+		for (const FTransform& StateOffset : CyclicStateTransforms)
+		{
+			FTransform Resolved = OriginalTransform;
+			Resolved.SetLocation(OriginalTransform.GetLocation() + StateOffset.GetLocation());
+			Resolved.SetRotation(StateOffset.GetRotation() * OriginalTransform.GetRotation());
+			CyclicResolvedTransforms.Add(Resolved);
 		}
 
-		// ── Precomputar transforms cíclicos (#Q2-05) ─────────────────────────
-		CyclicResolvedTransforms.Reset();
-		CyclicAdditionalResolvedTransforms.Reset();
-		if (OffsetMode == EButtonOffsetMode::CyclicStates)
+		// Precomputar para targets adicionales
+		CyclicAdditionalResolvedTransforms.Reserve(AdditionalMoveTargets.Num());
+		for (int32 i = 0; i < AdditionalMoveTargets.Num(); ++i)
 		{
-			for (const FTransform& StateOffset : CyclicStateTransforms)
+			TArray<FTransform> PerStateResolved;
+			if (AdditionalOriginalTransforms.IsValidIndex(i))
 			{
-				FTransform Resolved = OriginalTransform;
-				Resolved.SetLocation(OriginalTransform.GetLocation() + StateOffset.GetLocation());
-				Resolved.SetRotation(StateOffset.GetRotation() * OriginalTransform.GetRotation());
-				CyclicResolvedTransforms.Add(Resolved);
-			}
-
-			// Precomputar para targets adicionales
-			CyclicAdditionalResolvedTransforms.Reserve(AdditionalMoveTargets.Num());
-			for (int32 i = 0; i < AdditionalMoveTargets.Num(); ++i)
-			{
-				TArray<FTransform> PerStateResolved;
-				if (AdditionalOriginalTransforms.IsValidIndex(i))
+				const FTransform& ExtraOriginal = AdditionalOriginalTransforms[i];
+				for (const FTransform& StateOffset : CyclicStateTransforms)
 				{
-					const FTransform& ExtraOriginal = AdditionalOriginalTransforms[i];
-					for (const FTransform& StateOffset : CyclicStateTransforms)
-					{
-						FTransform Resolved = ExtraOriginal;
-						Resolved.SetLocation(ExtraOriginal.GetLocation() + StateOffset.GetLocation());
-						Resolved.SetRotation(StateOffset.GetRotation() * ExtraOriginal.GetRotation());
-						PerStateResolved.Add(Resolved);
-					}
+					FTransform Resolved = ExtraOriginal;
+					Resolved.SetLocation(ExtraOriginal.GetLocation() + StateOffset.GetLocation());
+					Resolved.SetRotation(StateOffset.GetRotation() * ExtraOriginal.GetRotation());
+					PerStateResolved.Add(Resolved);
 				}
-				CyclicAdditionalResolvedTransforms.Add(MoveTemp(PerStateResolved));
 			}
-		}
-
-		bInitialized = true;
-
-		UE_LOG(LogTortunabo, Log, TEXT("[Button] '%s' — Original: %s | Offset: %s | Activado: %s"),
-			*GetName(),
-			*OriginalTransform.GetLocation().ToString(),
-			*ActivatedOffset.GetLocation().ToString(),
-			*ActivatedTransform.GetLocation().ToString());
-
-		// Si el botón ya estaba activado (por replicación antes de init), empezar a mover
-		if (bIsActivated)
-		{
-			bIsMoving = true;
-		}
-		// En cíclico, si el índice ya no es 0 (replicado tarde), empezar a mover
-		if (OffsetMode == EButtonOffsetMode::CyclicStates && CurrentStateIndex != 0)
-		{
-			bIsMoving = true;
+			CyclicAdditionalResolvedTransforms.Add(MoveTemp(PerStateResolved));
 		}
 	}
 }
@@ -434,7 +456,8 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 	const float AngleDiff = (CurrentT.GetRotation().Rotator() - Goal.GetRotation().Rotator())
 		.GetNormalized().GetManhattanDistance(FRotator::ZeroRotator);
 
-	bool bAllArrived = (DistSq < 4.f && AngleDiff < 1.f);
+	bool bAllArrived = (DistSq < TN_ButtonInteractable_ArrivalDistSqThreshold
+		&& AngleDiff < TN_ButtonInteractable_ArrivalAngleThreshold);
 
 	if (bAllArrived)
 	{
@@ -476,7 +499,8 @@ void ATN_ButtonInteractable::Tick(float DeltaTime)
 		const float ExtraDistSq = FVector::DistSquared(Extra->GetActorLocation(), ExtraGoal.GetLocation());
 		const float ExtraAngle  = (Extra->GetActorRotation() - ExtraGoal.GetRotation().Rotator())
 			.GetNormalized().GetManhattanDistance(FRotator::ZeroRotator);
-		if (ExtraDistSq >= 4.f || ExtraAngle >= 1.f)
+		if (ExtraDistSq >= TN_ButtonInteractable_ArrivalDistSqThreshold
+			|| ExtraAngle >= TN_ButtonInteractable_ArrivalAngleThreshold)
 		{
 			bAllArrived = false;
 		}

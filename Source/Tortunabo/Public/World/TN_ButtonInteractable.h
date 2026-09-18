@@ -205,6 +205,29 @@ private:
 	 */
 	void DeferredInit();
 
+	/**
+	 * Resuelve MoveTarget/ResolvedMoveComponent por MoveTargetTag cuando aún no
+	 * están asignados, probando en orden: componente por nombre en el chunk BP
+	 * padre, ChildActor por tag, actores attacheados, TActorIterator con mismo
+	 * padre y, por último, UTN_LevelTargetSubsystem. Parte de DeferredInit.
+	 */
+	void ResolveMoveTargetByTag();
+
+	/**
+	 * Captura OriginalTransform/ActivatedTransform del target principal y de
+	 * cada AdditionalMoveTargets a partir de ActivatedOffset. Requiere que el
+	 * target ya esté resuelto (HasValidTarget()). Parte de DeferredInit.
+	 */
+	void CaptureBaseTransforms();
+
+	/**
+	 * Precomputa CyclicResolvedTransforms/CyclicAdditionalResolvedTransforms a
+	 * partir de CyclicStateTransforms cuando OffsetMode es CyclicStates.
+	 * Requiere que CaptureBaseTransforms ya se haya ejecutado. Parte de
+	 * DeferredInit.
+	 */
+	void PrecomputeCyclicTransforms();
+
 	/** Resuelve el actor chunk BP padre. */
 	AActor* ResolveParentChunk() const;
 
