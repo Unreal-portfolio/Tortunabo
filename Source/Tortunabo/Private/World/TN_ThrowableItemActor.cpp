@@ -336,8 +336,12 @@ void ATN_ThrowableItemActor::OnProjectileStopped(const FHitResult& ImpactResult)
 	Multicast_BallStopped(StopLocation);
 
 	SpawnPickupAtLocation(StopLocation);
-	SetNetDormancy(DORM_DormantAll);
-	Destroy();
+	// SetLifeSpan en vez de Destroy inmediato: da tiempo a que el snap de
+	// Multicast_BallStopped se vea en cliente antes de que el actor desaparezca.
+	// Sin dormancia: con la destrucción diferida, el canal podría cerrarse por
+	// dormancia antes del Destroy y el cliente se quedaría con una bola fantasma
+	// (un actor dinámico dormido no genera destruction info al destruirse).
+	SetLifeSpan(0.2f);
 }
 
 void ATN_ThrowableItemActor::LifeSpanExpired()
