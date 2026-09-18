@@ -104,7 +104,7 @@ void ATN_PhysicsObjectActor::BeginPlay()
 			const float DetectorRadius = FMath::Max(MeshRadius + PushDetectionRadiusExtra, 50.f);
 			PushDetector->SetSphereRadius(DetectorRadius);
 
-			UE_LOG(LogTortunabo, Warning, TEXT("[CUBE-PUSH] '%s' BeginPlay setup OK · bUseKinematicPush=true · BoundsExtent=%s · DetectorRadius=%.1f · ActorTickEnabled=Y"),
+			UE_LOG(LogTortunabo, Verbose, TEXT("[CUBE-PUSH] '%s' BeginPlay setup OK · bUseKinematicPush=true · BoundsExtent=%s · DetectorRadius=%.1f · ActorTickEnabled=Y"),
 				*GetName(), *BoundsExtent.ToString(), DetectorRadius);
 
 			// Delegate de overlap: sirve para diagnosticar si el detector NUNCA
@@ -116,7 +116,7 @@ void ATN_PhysicsObjectActor::BeginPlay()
 		}
 		else
 		{
-			UE_LOG(LogTortunabo, Warning, TEXT("[CUBE-PUSH] '%s' BeginPlay · bUseKinematicPush=FALSE → fallback a SimulatePhysics tradicional"),
+			UE_LOG(LogTortunabo, Verbose, TEXT("[CUBE-PUSH] '%s' BeginPlay · bUseKinematicPush=FALSE → fallback a SimulatePhysics tradicional"),
 				*GetName());
 
 			// ── Modo físico tradicional (BouncePhysicsObject hijo) ───────────
@@ -215,7 +215,7 @@ void ATN_PhysicsObjectActor::OnPushDetectorBeginOverlap(UPrimitiveComponent* Ove
 	// llegar dentro del PushDetector — fix: ampliar PushDetectionRadiusExtra.
 	if (OtherActor && OtherActor->IsA(ATortugaCharacter::StaticClass()))
 	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[CUBE-PUSH] '%s' DETECTOR overlap BEGIN with '%s' (centro a %.0f cm) authority=%d"),
+		UE_LOG(LogTortunabo, Verbose, TEXT("[CUBE-PUSH] '%s' DETECTOR overlap BEGIN with '%s' (centro a %.0f cm) authority=%d"),
 			*GetName(), *OtherActor->GetName(),
 			FVector::Dist(GetActorLocation(), OtherActor->GetActorLocation()),
 			HasAuthority() ? 1 : 0);
@@ -391,7 +391,7 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 		if (Now - LastPushLogTime > 1.0)
 		{
 			LastPushLogTime = Now;
-			UE_LOG(LogTortunabo, Warning, TEXT("[CUBE-PUSH] '%s' Tick auth=%d · overlap(Char)=%d overlap(All)=%d radius=%.0f"),
+			UE_LOG(LogTortunabo, Verbose, TEXT("[CUBE-PUSH] '%s' Tick auth=%d · overlap(Char)=%d overlap(All)=%d radius=%.0f"),
 				*GetName(), HasAuthority() ? 1 : 0,
 				Overlapping.Num(), AllOverlapping.Num(),
 				PushDetector->GetScaledSphereRadius());
@@ -450,7 +450,7 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 			if (Now - LastZeroPushLogTime > 0.5)
 			{
 				LastZeroPushLogTime = Now;
-				UE_LOG(LogTortunabo, Warning, TEXT("[CUBE-PUSH-CALC] '%s' vs '%s' · Intent=%.2f Align=%.2f ToCubeOK=%d"),
+				UE_LOG(LogTortunabo, Verbose, TEXT("[CUBE-PUSH-CALC] '%s' vs '%s' · Intent=%.2f Align=%.2f ToCubeOK=%d"),
 					*GetName(), *Char->GetName(), IntentMagnitude, Alignment, bToCubeOK ? 1 : 0);
 			}
 		}
@@ -472,7 +472,7 @@ void ATN_PhysicsObjectActor::TickKinematicPush(float DeltaTime)
 		if (Now - LastZeroPushLogTime > 1.0)
 		{
 			LastZeroPushLogTime = Now;
-			UE_LOG(LogTortunabo, Warning, TEXT("[CUBE-PUSH] '%s' overlap pero AccumulatedPush=0 (tortuga no empuja hacia cubo)"),
+			UE_LOG(LogTortunabo, Verbose, TEXT("[CUBE-PUSH] '%s' overlap pero AccumulatedPush=0 (tortuga no empuja hacia cubo)"),
 				*GetName());
 		}
 		return;
