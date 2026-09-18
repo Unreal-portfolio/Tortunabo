@@ -184,12 +184,17 @@ void ATN_PickupInteractableBase::OnRep_PickupItem()
 {
 	if (!Mesh || !PickupItem.EquippedMesh) { return; }
 
+	ApplyPickupMeshAndScale();
+}
+
+void ATN_PickupInteractableBase::ApplyPickupMeshAndScale()
+{
 	Mesh->SetStaticMesh(PickupItem.EquippedMesh);
 
 	// FMath::Max por componente: evita que cualquier eje sea 0
 	// (ej. default antiguo era (0,1,1) → colapsaba el mesh en X)
-	const FVector RS1 = PickupItem.EquippedMeshScale;
-	const FVector SafeScale(FMath::Max(RS1.X, 0.01f), FMath::Max(RS1.Y, 0.01f), FMath::Max(RS1.Z, 0.01f));
+	const FVector RawScale = PickupItem.EquippedMeshScale;
+	const FVector SafeScale(FMath::Max(RawScale.X, 0.01f), FMath::Max(RawScale.Y, 0.01f), FMath::Max(RawScale.Z, 0.01f));
 	Mesh->SetRelativeScale3D(SafeScale);
 
 	const FBoxSphereBounds LocalBounds = Mesh->CalcLocalBounds();
@@ -247,29 +252,6 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 
 	if (Mesh && PickupItem.EquippedMesh)
 	{
-		Mesh->SetStaticMesh(PickupItem.EquippedMesh);
-
-		// FMath::Max por componente: evita meshes colapsados
-		const FVector RS2 = PickupItem.EquippedMeshScale;
-		const FVector SafeScale(FMath::Max(RS2.X, 0.01f), FMath::Max(RS2.Y, 0.01f), FMath::Max(RS2.Z, 0.01f));
-		Mesh->SetRelativeScale3D(SafeScale);
-
-		const FBoxSphereBounds LocalBounds = Mesh->CalcLocalBounds();
-		const float HalfHeight = LocalBounds.BoxExtent.Z * SafeScale.Z;
-		if (HalfHeight > KINDA_SMALL_NUMBER)
-		{
-			MeshFloorOffset = HalfHeight;
-			Mesh->SetRelativeLocation(FVector(0.f, 0.f, HalfHeight));
-		}
-
-		if (PromptWidgetComponent)
-		{
-			const FVector InvScale(
-				SafeScale.X > KINDA_SMALL_NUMBER ? 1.f / SafeScale.X : 1.f,
-				SafeScale.Y > KINDA_SMALL_NUMBER ? 1.f / SafeScale.Y : 1.f,
-				SafeScale.Z > KINDA_SMALL_NUMBER ? 1.f / SafeScale.Z : 1.f
-			);
-			PromptWidgetComponent->SetRelativeScale3D(InvScale);
-		}
+		ApplyPickupMeshAndScale();
 	}
 }

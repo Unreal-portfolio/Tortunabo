@@ -74,6 +74,14 @@ private:
 	void HandleDeferredDestroy();
 	void HandleRestoreDormancy();
 
+	/**
+	 * Aplica el mesh y la escala de PickupItem a Mesh (con SafeScale para evitar
+	 * ejes en 0), recalcula MeshFloorOffset y compensa la escala inversa en
+	 * PromptWidgetComponent. Compartido por OnRep_PickupItem e
+	 * InitializeFromInventoryItem — ambos operan sobre el mismo estado.
+	 */
+	void ApplyPickupMeshAndScale();
+
 	FTimerHandle DormancyTimerHandle;
 };
 
