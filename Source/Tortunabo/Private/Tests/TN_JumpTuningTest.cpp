@@ -8,23 +8,23 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-namespace
+namespace TNJumpTuningTest
 {
-	constexpr float WorldGravityZ = -980.f;
-	constexpr float WalkSpeed     = 450.f;
-	constexpr float SprintSpeed   = 800.f;
+	constexpr float TestWorldGravityZ = -980.f;
+	constexpr float TestWalkSpeed     = 450.f;
+	constexpr float TestSprintSpeed   = 800.f;
 
 	/** Altura máxima de un tiro vertical: v² / 2g. */
 	float SimulatedApexHeight(const TNJumpLogic::FJumpTuning& Tuning)
 	{
-		const float Gravity = FMath::Abs(WorldGravityZ) * Tuning.GravityScale;
+		const float Gravity = FMath::Abs(TestWorldGravityZ) * Tuning.GravityScale;
 		return FMath::Square(Tuning.JumpZVelocity) / (2.f * Gravity);
 	}
 
 	/** Tiempo hasta volver a la altura de despegue: 2v / g. */
 	float SimulatedAirTime(const TNJumpLogic::FJumpTuning& Tuning)
 	{
-		const float Gravity = FMath::Abs(WorldGravityZ) * Tuning.GravityScale;
+		const float Gravity = FMath::Abs(TestWorldGravityZ) * Tuning.GravityScale;
 		return 2.f * Tuning.JumpZVelocity / Gravity;
 	}
 }
@@ -40,16 +40,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNJumpTuningMatchesTargetsTest,
 bool FTNJumpTuningMatchesTargetsTest::RunTest(const FString& Parameters)
 {
 	using namespace TNJumpLogic;
+	using namespace TNJumpTuningTest;
 
 	FJumpTuning Tuning;
 	TestTrue(TEXT("Entradas por defecto → salto definible"),
-		ComputeJumpTuning(120.f, 500.f, SprintSpeed, WorldGravityZ, Tuning));
+		ComputeJumpTuning(120.f, 500.f, TestSprintSpeed, TestWorldGravityZ, Tuning));
 
 	TestEqual(TEXT("Tiempo de vuelo = distancia / velocidad"), Tuning.AirTime, 0.625f, 0.001f);
 	TestEqual(TEXT("La física reproduce la altura pedida"), SimulatedApexHeight(Tuning), 120.f, 0.1f);
 	TestEqual(TEXT("La física reproduce el tiempo de vuelo"), SimulatedAirTime(Tuning), Tuning.AirTime, 0.001f);
-	TestEqual(TEXT("Distancia a sprint = 500 cm"), ComputeJumpDistance(SprintSpeed, Tuning.AirTime), 500.f, 0.1f);
-	TestEqual(TEXT("Distancia andando = 500 × 450/800"), ComputeJumpDistance(WalkSpeed, Tuning.AirTime), 281.25f, 0.1f);
+	TestEqual(TEXT("Distancia a sprint = 500 cm"), ComputeJumpDistance(TestSprintSpeed, Tuning.AirTime), 500.f, 0.1f);
+	TestEqual(TEXT("Distancia andando = 500 × 450/800"), ComputeJumpDistance(TestWalkSpeed, Tuning.AirTime), 281.25f, 0.1f);
 
 	return true;
 }
@@ -65,11 +66,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNJumpTuningIndependentAxesTest,
 bool FTNJumpTuningIndependentAxesTest::RunTest(const FString& Parameters)
 {
 	using namespace TNJumpLogic;
+	using namespace TNJumpTuningTest;
 
 	FJumpTuning Low, High, Far;
-	ComputeJumpTuning(120.f, 500.f, SprintSpeed, WorldGravityZ, Low);
-	ComputeJumpTuning(200.f, 500.f, SprintSpeed, WorldGravityZ, High);
-	ComputeJumpTuning(120.f, 800.f, SprintSpeed, WorldGravityZ, Far);
+	ComputeJumpTuning(120.f, 500.f, TestSprintSpeed, TestWorldGravityZ, Low);
+	ComputeJumpTuning(200.f, 500.f, TestSprintSpeed, TestWorldGravityZ, High);
+	ComputeJumpTuning(120.f, 800.f, TestSprintSpeed, TestWorldGravityZ, Far);
 
 	TestEqual(TEXT("Subir la altura no cambia el tiempo de vuelo"), High.AirTime, Low.AirTime, 0.001f);
 	TestEqual(TEXT("Subir la altura se refleja en la física"), SimulatedApexHeight(High), 200.f, 0.1f);
@@ -90,19 +92,20 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNJumpTuningInvalidInputsTest,
 bool FTNJumpTuningInvalidInputsTest::RunTest(const FString& Parameters)
 {
 	using namespace TNJumpLogic;
+	using namespace TNJumpTuningTest;
 
 	FJumpTuning Tuning;
 	Tuning.JumpZVelocity = 123.f;
 
-	TestFalse(TEXT("Altura 0 → rechazado"), ComputeJumpTuning(0.f, 500.f, SprintSpeed, WorldGravityZ, Tuning));
-	TestFalse(TEXT("Distancia 0 → rechazado (evita división por cero)"), ComputeJumpTuning(120.f, 0.f, SprintSpeed, WorldGravityZ, Tuning));
-	TestFalse(TEXT("Velocidad 0 → rechazado (evita división por cero)"), ComputeJumpTuning(120.f, 500.f, 0.f, WorldGravityZ, Tuning));
-	TestFalse(TEXT("Gravedad 0 → rechazado"), ComputeJumpTuning(120.f, 500.f, SprintSpeed, 0.f, Tuning));
+	TestFalse(TEXT("Altura 0 → rechazado"), ComputeJumpTuning(0.f, 500.f, TestSprintSpeed, TestWorldGravityZ, Tuning));
+	TestFalse(TEXT("Distancia 0 → rechazado (evita división por cero)"), ComputeJumpTuning(120.f, 0.f, TestSprintSpeed, TestWorldGravityZ, Tuning));
+	TestFalse(TEXT("Velocidad 0 → rechazado (evita división por cero)"), ComputeJumpTuning(120.f, 500.f, 0.f, TestWorldGravityZ, Tuning));
+	TestFalse(TEXT("Gravedad 0 → rechazado"), ComputeJumpTuning(120.f, 500.f, TestSprintSpeed, 0.f, Tuning));
 	TestEqual(TEXT("La salida no se toca al rechazar"), Tuning.JumpZVelocity, 123.f);
 
 	FJumpTuning Positive;
 	TestTrue(TEXT("Gravedad con signo positivo se acepta por valor absoluto"),
-		ComputeJumpTuning(120.f, 500.f, SprintSpeed, 980.f, Positive));
+		ComputeJumpTuning(120.f, 500.f, TestSprintSpeed, 980.f, Positive));
 
 	return true;
 }
