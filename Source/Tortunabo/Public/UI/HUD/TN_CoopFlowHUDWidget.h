@@ -5,6 +5,7 @@
 #include "Core/TN_MatchFlowTypes.h"
 #include "TN_CoopFlowHUDWidget.generated.h"
 
+class UHorizontalBox;
 class UTextBlock;
 class UTexture2D;
 class UVerticalBox;
@@ -161,6 +162,7 @@ private:
 	void HandleRaceResultsUpdated();
 
 	void StartChatFade();
+	UHorizontalBox* BuildChatRow(const FText& SenderName, const FText& MessageText, UTexture2D* Icon);
 
 	// ── State tracking ─────────────────────────────────────────────────────────
 	float RefreshAccumulator  = 0.f;

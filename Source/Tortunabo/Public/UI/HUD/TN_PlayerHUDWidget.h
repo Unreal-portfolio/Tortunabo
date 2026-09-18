@@ -14,7 +14,7 @@ class UTexture2D;
 class ATN_CoopPlayerState;
 
 /**
- * HUD principal del jugador.
+ * @brief HUD principal con barra de stamina, slots de inventario, RaceScore y hooks DBNO/Revive.
  *
  * Widgets opcionales — nómbralos EXACTAMENTE igual en el BP Designer:
  *
@@ -30,9 +30,6 @@ class ATN_CoopPlayerState;
  *   - SlotEquippedImage    (UImage)           → icono del ítem equipado (slot activo)
  *   - SlotStoredImage      (UImage)           → icono del ítem guardado (slot pasivo)
  *   - SlotEquippedSelector (cualquier widget) → borde/resaltado del slot activo (siempre visible)
- */
-/**
- * @brief HUD principal con barra de stamina, slots de inventario, RaceScore y hooks DBNO/Revive (cabecera doxygen — el detalle del binding está arriba en este archivo).
  */
 UCLASS()
 class TORTUNABO_API UTN_PlayerHUDWidget : public UUserWidget

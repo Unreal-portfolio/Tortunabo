@@ -564,23 +564,8 @@ bool UTN_CoopFlowHUDWidget::ShouldBeVisible(ETNMatchFlowState State) const
 // Quick Chat feed — C++ implementation
 // ─────────────────────────────────────────────────────────────────────────────
 
-void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
-	int32 Sequence, const FText& SenderName, const FText& MessageText,
-	UTexture2D* Icon, float ServerTimeSeconds)
+UHorizontalBox* UTN_CoopFlowHUDWidget::BuildChatRow(const FText& SenderName, const FText& MessageText, UTexture2D* Icon)
 {
-	if (!ChatHistoryBox)
-	{
-		return;
-	}
-
-	// Si el feed ya estaba oculto o casi invisible, limpiar historial para
-	// que solo aparezca el nuevo mensaje (no los mensajes viejos de golpe).
-	if (ChatCurrentOpacity < 0.1f || ChatHistoryBox->GetVisibility() == ESlateVisibility::Collapsed)
-	{
-		ChatHistoryBox->ClearChildren();
-	}
-
-	// ── Build entry row: [Icon?] [Sender: Message] ────────────────────────────
 	UHorizontalBox* Row = NewObject<UHorizontalBox>(this);
 
 	if (Icon)
@@ -605,6 +590,28 @@ void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
 		HSlot->SetVerticalAlignment(VAlign_Center);
 		HSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	}
+
+	return Row;
+}
+
+void UTN_CoopFlowHUDWidget::OnQuickChatEntryReceived_Implementation(
+	int32 Sequence, const FText& SenderName, const FText& MessageText,
+	UTexture2D* Icon, float ServerTimeSeconds)
+{
+	if (!ChatHistoryBox)
+	{
+		return;
+	}
+
+	// Si el feed ya estaba oculto o casi invisible, limpiar historial para
+	// que solo aparezca el nuevo mensaje (no los mensajes viejos de golpe).
+	if (ChatCurrentOpacity < 0.1f || ChatHistoryBox->GetVisibility() == ESlateVisibility::Collapsed)
+	{
+		ChatHistoryBox->ClearChildren();
+	}
+
+	// ── Build entry row: [Icon?] [Sender: Message] ────────────────────────────
+	UHorizontalBox* Row = BuildChatRow(SenderName, MessageText, Icon);
 
 	// ── Add to feed and enforce max line count ────────────────────────────────
 	if (UVerticalBoxSlot* VSlot = ChatHistoryBox->AddChildToVerticalBox(Row))
