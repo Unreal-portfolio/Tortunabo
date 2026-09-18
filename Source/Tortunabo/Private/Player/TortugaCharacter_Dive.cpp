@@ -32,7 +32,7 @@
 void ATortugaCharacter::TryDive()
 {
 	// Only locally controlled, not already diving, not knocked down
-	if (!IsLocallyControlled() || bIsDiving || bIsKnockedDown || bIsDead)
+	if (!IsLocallyControlled() || bIsDiving || bIsKnockedDown || bIsDead || IsInShell())
 	{
 		return;
 	}

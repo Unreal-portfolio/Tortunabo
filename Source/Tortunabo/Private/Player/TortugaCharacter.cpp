@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
+#include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "World/TN_InteractableBase.h"
@@ -110,6 +111,7 @@ ATortugaCharacter::ATortugaCharacter()
 	InteractAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Interact.IA_Interact")));
 	RotateInventoryAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_RotateInventory.IA_RotateInventory")));
 	SprintAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Sprint.IA_Sprint")));
+	ShellAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_Shell.IA_Shell")));
 	DropItemAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_DropItem.IA_DropItem")));
 
 	// Emote actions: configured in BP_TortugaCharacter Class Defaults.
@@ -117,6 +119,7 @@ ATortugaCharacter::ATortugaCharacter()
 
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
+	ShellComponent = CreateDefaultSubobject<UTN_ShellComponent>(TEXT("ShellComponent"));
 
 	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).
 	// Al estar en el árbol del mesh, recibe el network smoothing del CMC → sin lag.
@@ -803,6 +806,7 @@ void ATortugaCharacter::CacheInputAssets()
 	LoadedInteractAction = InteractAction.LoadSynchronous();
 	LoadedRotateInventoryAction = RotateInventoryAction.LoadSynchronous();
 	LoadedSprintAction = SprintAction.LoadSynchronous();
+	LoadedShellAction = ShellAction.LoadSynchronous();
 	LoadedDropItemAction = DropItemAction.LoadSynchronous();
 
 	// Load emote actions (tamaño dinámico — configurado en el BP)
@@ -834,6 +838,7 @@ void ATortugaCharacter::CacheInputAssets()
 	LogAsset(TEXT("IA_Interact"), LoadedInteractAction);
 	LogAsset(TEXT("IA_RotateInventory"), LoadedRotateInventoryAction);
 	LogAsset(TEXT("IA_Sprint"),           LoadedSprintAction);
+	LogAsset(TEXT("IA_Shell"),            LoadedShellAction);
 	LogAsset(TEXT("IA_DropItem"),         LoadedDropItemAction);
 
 	for (int32 i = 0; i < LoadedEmoteActions.Num(); i++)
@@ -979,6 +984,12 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 			EnhancedInput->BindAction(LoadedSprintAction, ETriggerEvent::Completed, this, &ATortugaCharacter::StopSprint);
 			EnhancedInput->BindAction(LoadedSprintAction, ETriggerEvent::Canceled, this, &ATortugaCharacter::StopSprint);
 		}
+
+		if (LoadedShellAction)
+		{
+			// Started: es un toggle de pulsacion puntual, no un hold como el sprint.
+			EnhancedInput->BindAction(LoadedShellAction, ETriggerEvent::Started, this, &ATortugaCharacter::ToggleShell);
+		}
 		if (LoadedDropItemAction)
 		{
 			EnhancedInput->BindAction(LoadedDropItemAction, ETriggerEvent::Started, this, &ATortugaCharacter::DropEquippedItem);
@@ -1027,7 +1038,7 @@ void ATortugaCharacter::OnJumped_Implementation()
 
 void ATortugaCharacter::Jump()
 {
-	if (bIsKnockedDown || bIsDead) { return; }
+	if (bIsKnockedDown || bIsDead || IsInShell()) { return; }
 
 	// Segundo press de salto en el aire → dive (igual que Fall Guys)
 	if (GetCharacterMovement()->IsFalling())
@@ -1120,7 +1131,7 @@ void ATortugaCharacter::Look(const FInputActionValue& Value)
 
 void ATortugaCharacter::TryInteract()
 {
-	if (bIsKnockedDown) { return; }
+	if (bIsKnockedDown || IsInShell()) { return; }
 
 	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
 
@@ -1166,9 +1177,41 @@ void ATortugaCharacter::RotateInventory()
 	}
 }
 
+bool ATortugaCharacter::IsInShell() const
+{
+	return ShellComponent && ShellComponent->IsInShell();
+}
+
+void ATortugaCharacter::ToggleShell()
+{
+	if (bIsKnockedDown || bIsDead) { return; }
+
+	if (ShellComponent)
+	{
+		// El componente decide: valida condiciones con autoridad y replica el estado.
+		ShellComponent->RequestToggleShell();
+	}
+}
+
+void ATortugaCharacter::OnShellStateChanged(bool bInShell)
+{
+	if (!bInShell)
+	{
+		return;
+	}
+
+	// Un emote en curso dentro del caparazon se veria como la tortuga bailando
+	// metida en su propio cascaron. CancelEmote es local: ApplyShellState corre
+	// en todas las maquinas, asi que cada una cancela el suyo.
+	if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
+	{
+		CancelEmote();
+	}
+}
+
 void ATortugaCharacter::StartSprint()
 {
-	if (bIsDiving) { return; }
+	if (bIsDiving || IsInShell()) { return; }
 	bSprintHeld = true;
 	RefreshSprintRequest();
 }

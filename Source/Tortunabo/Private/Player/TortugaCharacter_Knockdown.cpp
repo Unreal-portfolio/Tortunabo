@@ -6,6 +6,7 @@
 // lógica ni de replicación, solo organización.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include "Player/TN_ShellComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_Log.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -30,6 +31,13 @@ void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 	if (!HasAuthority())
 	{
 		return;
+	}
+
+	// Un derribo saca del caparazon: si no, el speed cap seguiria puesto al
+	// recuperarse y el personaje se quedaria inmovil.
+	if (ShellComponent)
+	{
+		ShellComponent->ForceExitShell();
 	}
 
 	// Evitar solapar knockdowns
@@ -440,6 +448,13 @@ void ATortugaCharacter::RequestKill(AActor* KillInstigator)
 void ATortugaCharacter::SetDeadVisual(bool bDead)
 {
 	if (!HasAuthority()) { return; }
+
+	// Morir saca del caparazon por el mismo motivo que el derribo: el speed cap
+	// no debe sobrevivir al revive.
+	if (bDead && ShellComponent)
+	{
+		ShellComponent->ForceExitShell();
+	}
 
 	bIsDead = bDead;
 	// DualMax round 2 — Codex CRITICAL: garantizar entrega del UPROPERTY replicado

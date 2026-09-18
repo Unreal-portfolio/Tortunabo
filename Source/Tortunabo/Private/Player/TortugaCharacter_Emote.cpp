@@ -166,7 +166,7 @@ void ATortugaCharacter::ServerSetEmote_Implementation(int32 Index)
 
 		if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
 		{
-			if (!TNPS->bIsAlive || TNPS->bIsDBNO || bIsKnockedDown)
+			if (!TNPS->bIsAlive || TNPS->bIsDBNO || bIsKnockedDown || IsInShell())
 			{
 				ClientRejectEmote(Index);
 				return;

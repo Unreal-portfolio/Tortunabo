@@ -12,6 +12,7 @@ class USpringArmComponent;
 class UInputMappingContext;
 class UInputAction;
 class UTN_InventoryComponent;
+class UTN_ShellComponent;
 class UTN_StaminaComponent;
 class ATN_InteractableBase;
 class USceneComponent;
@@ -139,6 +140,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TSoftObjectPtr<UInputAction> DropItemAction;
 
+	/** Entrar y salir del caparazon. Mapeada a Ctrl izquierdo en IMC_Player. */
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TSoftObjectPtr<UInputAction> ShellAction;
+
 	/**
 	 * Input actions for emotes 0–9.  The array must have exactly 10 elements.
 	 * Assign IA_Emote0…IA_Emote9 here or override in your Blueprint Class Defaults.
@@ -239,6 +244,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stamina")
 	TObjectPtr<UTN_StaminaComponent> StaminaComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shell")
+	TObjectPtr<UTN_ShellComponent> ShellComponent;
 
 	/**
 	 * Mesh del casco equipado. Se adjunta al SceneComponent "Sombrero" en BeginPlay.
@@ -492,6 +500,9 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> LoadedDropItemAction;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> LoadedShellAction;
+
 	TWeakObjectPtr<ATN_InteractableBase> FocusedInteractable;
 	FTimerHandle InteractionScanTimerHandle;
 	bool bInputAssetsLoaded = false;
@@ -609,6 +620,9 @@ private:
 	void RotateInventory();
 	void StartSprint();
 	void StopSprint();
+
+	/** @brief Input: pide al UTN_ShellComponent entrar o salir del caparazon. */
+	void ToggleShell();
 	void DropEquippedItem();
 	void TryUseEquippedItem();
 	void RefreshSprintRequest();
@@ -1129,6 +1143,28 @@ public:
 	/** Returns true while the character is diving or in the locked recovery slide. */
 	UFUNCTION(BlueprintPure, Category = "Dive")
 	bool IsDiving() const { return bIsDiving; }
+
+	/** Returns true once the character has died and before any revive restores it. */
+	UFUNCTION(BlueprintPure, Category = "Death")
+	bool IsDead() const { return bIsDead; }
+
+	/** Devuelve el componente de stamina (acceso de solo lectura para sistemas externos). */
+	UTN_StaminaComponent* GetStaminaComponent() const { return StaminaComponent; }
+
+	/** Devuelve el componente de caparazón (acceso de solo lectura para sistemas externos). */
+	UTN_ShellComponent* GetShellComponent() const { return ShellComponent; }
+
+	/** @brief true mientras el personaje está metido en su caparazón. */
+	UFUNCTION(BlueprintPure, Category = "Shell")
+	bool IsInShell() const;
+
+	/**
+	 * @brief Reacción del personaje a entrar o salir del caparazón.
+	 * @note La llama UTN_ShellComponent::ApplyShellState en TODAS las máquinas.
+	 *       El componente gobierna el estado y la velocidad; esto es lo que toca
+	 *       al personaje (cancelar el emote en curso, visual del caparazón).
+	 */
+	void OnShellStateChanged(bool bInShell);
 
 	/**
 	 * Punto centralizado para matar a este personaje.
