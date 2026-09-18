@@ -59,7 +59,7 @@ void ATN_CrabSpawnZone::OnProximityBeginOverlap(UPrimitiveComponent* OverlappedC
 	if (!Char) { return; }
 
 	const ATN_CoopPlayerState* PS = Char->GetPlayerState<ATN_CoopPlayerState>();
-	if (!PS || !PS->bIsAlive || PS->bIsEliminated) { return; }
+	if (!PS || !PS->IsAliveAndPlaying()) { return; }
 
 	SpawnCrab();
 }

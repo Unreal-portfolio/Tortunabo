@@ -83,7 +83,11 @@ void ATN_PressurePlate::OnTriggerEndOverlap(UPrimitiveComponent* /*OverlappedCom
 
 void ATN_PressurePlate::RefreshOccupancy()
 {
-	// Limpiar referencias inválidas (pawn destruido mientras estaba encima)
+	// No-op real: solo se añaden punteros válidos en OnTriggerBeginOverlap, así que
+	// nunca hay una entrada literalmente nula que este Remove encuentre (un
+	// TWeakObjectPtr a un pawn destruido no se vuelve == nullptr). La limpieza
+	// efectiva de referencias muertas la hace el Weak.Get() null-check del bucle
+	// de abajo y de HasLiveOccupant/ResetLatch.
 	OccupyingCharacters.Remove(nullptr);
 
 	// Comprobar si alguno de los personajes encima está vivo
@@ -94,7 +98,7 @@ void ATN_PressurePlate::RefreshOccupancy()
 		{
 			if (ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>())
 			{
-				if (PS->bIsAlive && !PS->bIsEliminated)
+				if (PS->IsAliveAndPlaying())
 				{
 					bAnyAliveOccupying = true;
 					break;
@@ -129,7 +133,7 @@ bool ATN_PressurePlate::HasLiveOccupant() const
 		{
 			if (const ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>())
 			{
-				if (PS->bIsAlive && !PS->bIsEliminated)
+				if (PS->IsAliveAndPlaying())
 				{
 					return true;
 				}
@@ -153,7 +157,7 @@ void ATN_PressurePlate::ResetLatch()
 		{
 			if (ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>())
 			{
-				if (PS->bIsAlive && !PS->bIsEliminated) { return; }
+				if (PS->IsAliveAndPlaying()) { return; }
 			}
 		}
 	}
@@ -277,7 +281,7 @@ bool ATN_PressurePlateGroupManager::EvaluateCondition() const
 			{
 				if (ATN_CoopPlayerState* TNPS = Cast<ATN_CoopPlayerState>(PS))
 				{
-					if (TNPS->bIsAlive && !TNPS->bIsEliminated) { ++AlivePlayers; }
+					if (TNPS->IsAliveAndPlaying()) { ++AlivePlayers; }
 				}
 			}
 		}

@@ -5,7 +5,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/DecalComponent.h"
 #include "Net/UnrealNetwork.h"
-#include "EngineUtils.h"
 #include "CollisionQueryParams.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"          // FOverlapResult full definition
@@ -154,7 +153,7 @@ void ATN_SeagullDroppingActor::ResolveImpact()
 		if (!C || !C->GetController()) { continue; }
 
 		ATN_CoopPlayerState* PS = C->GetPlayerState<ATN_CoopPlayerState>();
-		if (!PS || !PS->bIsAlive || PS->bIsEliminated) { continue; }
+		if (!PS || !PS->IsAliveAndPlaying()) { continue; }
 
 		// Respetar la protección de sombrilla: si el jugador está bajo una sombrilla
 		// abierta, la caca no lo mata (igual que la gaviota en TN_EnemySeagull).

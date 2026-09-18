@@ -56,7 +56,7 @@ void ATN_ScorePickup::OnSphereOverlap(UPrimitiveComponent* OverlappedComp, AActo
 
 	// Solo jugadores vivos
 	ATN_CoopPlayerState* PS = Pawn->GetPlayerState<ATN_CoopPlayerState>();
-	if (!PS || !PS->bIsAlive || PS->bIsEliminated) { return; }
+	if (!PS || !PS->IsAliveAndPlaying()) { return; }
 
 	// Sumar puntos (server-auth). AddRaceScore difunde OnRaceScoreChanged también en
 	// el host del listen-server, cuyo OnRep no dispara → su HUD se refresca en vivo.

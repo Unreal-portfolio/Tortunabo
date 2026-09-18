@@ -145,7 +145,7 @@ void ATN_QuadActor::OnWheelOverlap(UPrimitiveComponent* OverlappedComp, AActor* 
 	if (!IsValid(Char)) { return; }
 
 	const ATN_CoopPlayerState* PS = Char->GetPlayerState<ATN_CoopPlayerState>();
-	if (!PS || !PS->bIsAlive || PS->bIsEliminated) { return; }
+	if (!PS || !PS->IsAliveAndPlaying()) { return; }
 
 	Char->RequestKill(this);
 }

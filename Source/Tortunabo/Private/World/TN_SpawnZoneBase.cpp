@@ -71,7 +71,7 @@ void ATN_SpawnZoneBase::GetLivingPlayersInside(TArray<ATortugaCharacter*>& OutPl
 	for (APlayerState* BasePS : GS->PlayerArray)
 	{
 		const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(BasePS);
-		if (!PS || !PS->bIsAlive || PS->bIsEliminated) { continue; }
+		if (!PS || !PS->IsAliveAndPlaying()) { continue; }
 
 		ATortugaCharacter* C = Cast<ATortugaCharacter>(PS->GetPawn());
 		if (!C || !C->GetController()) { continue; }
