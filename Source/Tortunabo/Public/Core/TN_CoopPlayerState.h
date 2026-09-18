@@ -6,6 +6,8 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRaceScoreChanged, int32, NewScore);
 
+class ATortugaCharacter;
+
 /**
  * @brief PlayerState replicado por jugador — contiene estado individual de partida y cosméticos equipados.
  *
@@ -131,6 +133,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	bool bIsEliminated = false;
 
+	/** @brief Predicado "vivo y jugable": true si el jugador puede participar activamente (no muerto, no eliminado). */
+	UFUNCTION(BlueprintPure, Category = "Coop|Estado")
+	bool IsAliveAndPlaying() const { return bIsAlive && !bIsEliminated; }
+
 	/**
 	 * Puntos ganados en esta carrera (#26).
 	 * Calculados por ATN_RunGameMode al cruzar la meta según posición de llegada
@@ -149,4 +155,13 @@ public:
 private:
 	float ServerLastQuickChatTime = -10000.f;
 	TMap<uint8, float> ServerLastEmoteTimes;
+
+	/**
+	 * @brief Reintenta aplicar un cosmético (helmet/skin) sobre el pawn hasta que esté disponible.
+	 * @param Applier Setter concreto a invocar sobre el pawn (UpdateHelmetMesh / UpdateSkinVisual).
+	 * @param LogTag Prefijo usado en el log de reintentos agotados.
+	 * @note Server/multicast-side. El intento inmediato y la asignación del Id replicado
+	 *       corren en el llamador; este helper solo cubre el camino de reintento con timer.
+	 */
+	void RetryApplyCosmetic(TFunction<void(ATortugaCharacter*)> Applier, const TCHAR* LogTag);
 };
