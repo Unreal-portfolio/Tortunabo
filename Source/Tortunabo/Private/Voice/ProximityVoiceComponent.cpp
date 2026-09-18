@@ -444,7 +444,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			// Replicarlo client-side previene el ensure crash al serializar el
 			// RPC (que el server iba a rechazar igual). Drop silencioso del
 			// frame es preferible al crash del editor.
-			constexpr int32 ClientPayloadCap = 8192;
+			constexpr int32 ClientPayloadCap = MaxVoicePayloadBytes;
 			if (Compressed.Num() > 0 && Compressed.Num() <= ClientPayloadCap)
 			{
 				const int32 EffectiveSampleRate = FMath::Max(1, VoiceSampleRate / FMath::Max(1, VoiceDownsampleFactor));
@@ -464,14 +464,13 @@ bool UProximityVoiceComponent::Server_SendVoiceData_Validate(const TArray<uint8>
 	// Red de seguridad a nivel de engine: rechaza payloads absurdos o sample rates
 	// fuera de todo rango humano (INT_MAX de un cliente manipulado). Cotas generosas
 	// para no desconectar clientes legítimos; el _Implementation ya acota con precisión.
-	return CompressedData.Num() <= 8192 && SenderSampleRate > 0 && SenderSampleRate <= 192000;
+	return CompressedData.Num() <= MaxVoicePayloadBytes && SenderSampleRate > 0 && SenderSampleRate <= 192000;
 }
 
 void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
 	// Payload cap: ~8 KB covers 80ms at 48kHz stereo with headroom.
 	// Larger packets indicate a malicious or bugged client.
-	constexpr int32 MaxVoicePayloadBytes = 8192;
 	if (CompressedData.Num() > MaxVoicePayloadBytes)
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[Voice] Server_SendVoiceData: oversized payload (%d bytes) from %s — dropped"),
@@ -526,12 +525,6 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 	}
 }
 
-void UProximityVoiceComponent::Multicast_ReceiveVoiceData_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
-{
-	// Mantenido para compatibilidad — ya no se llama desde Server_SendVoiceData.
-	PlayRemoteVoice(CompressedData, SenderSampleRate);
-}
-
 void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
 	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || IsLocallyOwned())
@@ -539,8 +532,8 @@ void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedDa
 		return;
 	}
 
-	// Defensa en el consumidor (cubre también el path Multicast legacy): acotar el
-	// sample rate recibido por red al rango humano antes de configurar el playback.
+	// Defensa en el consumidor: acotar el sample rate recibido por red al rango
+	// humano antes de configurar el playback.
 	SenderSampleRate = FMath::Clamp(SenderSampleRate <= 0 ? 48000 : SenderSampleRate, 8000, 96000);
 
 	if (!ProceduralSoundWave || !PlaybackAudioComponent)

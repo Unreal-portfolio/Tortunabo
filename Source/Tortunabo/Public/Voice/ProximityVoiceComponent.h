@@ -127,15 +127,10 @@ protected:
 	UFUNCTION(Server, Unreliable, WithValidation)
 	void Server_SendVoiceData(const TArray<uint8>& CompressedData, int32 SenderSampleRate);
 
-	/**
-	 * @brief Reenvía un paquete de voz a todos los clientes en multicast.
-	 * @param CompressedData Buffer comprimido recibido del cliente emisor.
-	 * @param SenderSampleRate SampleRate original del emisor.
-	 */
-	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_ReceiveVoiceData(const TArray<uint8>& CompressedData, int32 SenderSampleRate);
-
 private:
+	/** @brief Cap de payload de voz compartido por cliente (envío) y servidor (validación + límite). */
+	static constexpr int32 MaxVoicePayloadBytes = 8192;
+
 	TUniquePtr<Audio::FAudioCaptureSynth> AudioCaptureSynth;
 	TArray<float> CaptureBuffer;
 	FCriticalSection CaptureBufferLock;
