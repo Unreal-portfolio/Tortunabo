@@ -12,12 +12,9 @@
 
 | Documento | Contenido |
 |---|---|
-| [`Docs/Memoria_T-Day.md`](Docs/Memoria_T-Day.md) | Memoria principal del equipo (defensa). |
-| [`Docs/Memoria_Individual_Rodrigo_T-Day.md`](Docs/Memoria_Individual_Rodrigo_T-Day.md) | Memoria individual de Rodrigo. |
-| [`Docs/Memoria_Individual_JoseAntonio_T-Day.md`](Docs/Memoria_Individual_JoseAntonio_T-Day.md) | Memoria individual de José Antonio. |
-| [`Docs/DayT_GDD_Final.pdf`](Docs/DayT_GDD_Final.pdf) | Game Design Document (PDF final). |
 | [`Docs/LDD_Tortunabo.md`](Docs/LDD_Tortunabo.md) | Level Design Document. |
 | [`Docs/Inventario_Scripts.md`](Docs/Inventario_Scripts.md) | Inventario completo de los 73 archivos `.h` del módulo, por dominio, con descripción y autores. |
+| [`Docs/Plan_Correccion_Fases.md`](Docs/Plan_Correccion_Fases.md) | Plan de correccion por fases del sprint en curso. |
 
 ## Setup paso a paso
 

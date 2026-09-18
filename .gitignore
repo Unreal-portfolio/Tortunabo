@@ -86,3 +86,6 @@ DerivedDataCache/*
 
 # MCP de Unreal (plugin de terceros, solo editor, 66 MB) — no versionar
 /Plugins/UnrealMCPython/
+
+# Documentos pesados de entrega (PDF) — fuera del repositorio
+*.pdf
