@@ -2,6 +2,7 @@
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_GameModeSpawnUtils.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Multiplayer/MP_GameInstance.h"
@@ -97,31 +98,9 @@ AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		return Super::ChoosePlayerStart_Implementation(Player);
 	}
 
-	// Barajar para evitar siempre el mismo orden
-	for (int32 i = PlayerStarts.Num() - 1; i > 0; --i)
+	if (AActor* Start = TN_PickUnoccupiedPlayerStart(GetWorld(), PlayerStarts, Player))
 	{
-		const int32 j = FMath::RandRange(0, i);
-		PlayerStarts.Swap(i, j);
-	}
-
-	// Primera pasada: buscar un PlayerStart sin ningún pawn cerca (< 200 cm)
-	for (AActor* Start : PlayerStarts)
-	{
-		bool bOccupied = false;
-		for (TActorIterator<APawn> PawnIt(GetWorld()); PawnIt; ++PawnIt)
-		{
-			const APawn* P = *PawnIt;
-			if (P && P->Controller != Player &&
-			    FVector::DistSquared(Start->GetActorLocation(), P->GetActorLocation()) < 200.f * 200.f)
-			{
-				bOccupied = true;
-				break;
-			}
-		}
-		if (!bOccupied)
-		{
-			return Start;
-		}
+		return Start;
 	}
 
 	// Fallback: todos ocupados
@@ -160,39 +139,7 @@ void ATN_HQGameMode::PostLogin(APlayerController* NewPlayer)
 
 void ATN_HQGameMode::EnsurePlayerSpawned(APlayerController* PlayerController)
 {
-	if (!HasAuthority() || !PlayerController || PlayerController->GetPawn())
-	{
-		return;
-	}
-
-	RestartPlayer(PlayerController);
-	if (PlayerController->GetPawn())
-	{
-		return;
-	}
-
-	AActor* PlayerStart = FindPlayerStart(PlayerController);
-	if (!PlayerStart)
-	{
-		PlayerStart = EnsureFallbackPlayerStart();
-	}
-
-	if (!PlayerStart)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Lobby] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
-		return;
-	}
-
-	APawn* SpawnedPawn = SpawnDefaultPawnFor(PlayerController, PlayerStart);
-	if (!SpawnedPawn)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Lobby] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
-		return;
-	}
-
-	PlayerController->Possess(SpawnedPawn);
-	SetPlayerDefaults(SpawnedPawn);
-	UE_LOG(LogTortunabo, Log, TEXT("[Lobby] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
+	TN_EnsurePlayerSpawned(this, PlayerController, [this]() { return EnsureFallbackPlayerStart(); }, TEXT("Lobby"));
 }
 
 void ATN_HQGameMode::Logout(AController* Exiting)
@@ -374,14 +321,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 	// lo leerá en BeginPlay para saber cuántos jugadores esperar.
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
 	{
-		int32 ConnectedCount = 0;
-		for (APlayerState* BasePS : GameState->PlayerArray)
-		{
-			if (Cast<ATN_CoopPlayerState>(BasePS))
-			{
-				++ConnectedCount;
-			}
-		}
+		const int32 ConnectedCount = TN_CountConnectedCoopPlayers(GameState);
 		GI->PendingTravelPlayerCount = ConnectedCount;
 		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
 	}
@@ -410,30 +350,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 
 APlayerStart* ATN_HQGameMode::EnsureFallbackPlayerStart()
 {
-	if (!GetWorld())
-	{
-		return nullptr;
-	}
-
-	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
-	{
-		if (APlayerStart* Existing = *It)
-		{
-			return Existing;
-		}
-	}
-
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	SpawnParams.Name = TEXT("LobbyFallbackPlayerStart");
-
-	APlayerStart* Spawned = GetWorld()->SpawnActor<APlayerStart>(APlayerStart::StaticClass(), FVector(0.f, 0.f, 150.f), FRotator::ZeroRotator, SpawnParams);
-	if (Spawned)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Lobby] No PlayerStart found in lobby map. Spawned fallback PlayerStart at world origin."));
-	}
-
-	return Spawned;
+	return TN_EnsureFallbackPlayerStart(GetWorld(), TEXT("LobbyFallbackPlayerStart"), TEXT("Lobby"), TEXT("lobby map"));
 }
 
 void ATN_HQGameMode::SetFlowState(ETNMatchFlowState NewState) const
@@ -549,15 +466,7 @@ void ATN_HQGameMode::PostSeamlessTravel()
 	// Actualizar conteo en el GameState
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
-		int32 TotalPlayers = 0;
-		for (APlayerState* BasePS : GameState->PlayerArray)
-		{
-			if (Cast<ATN_CoopPlayerState>(BasePS))
-			{
-				++TotalPlayers;
-			}
-		}
-		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ConnectedPlayers = TN_CountConnectedCoopPlayers(GameState);
 		TNGS->ReadyPlayers = 0;
 		TNGS->FinishedPlayers = 0;
 		TNGS->ServerMatchElapsedTime = 0.f;

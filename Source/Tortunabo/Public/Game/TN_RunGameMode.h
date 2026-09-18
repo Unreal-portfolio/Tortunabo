@@ -9,6 +9,7 @@ class APlayerController;
 class APlayerStart;
 class ATN_RescuePickup;
 class ATN_CollectionZone;
+class ATN_CoopPlayerState;
 
 /**
  * @brief GameMode de la fase Run (carrera). Orquesta el ciclo Countdown -> Race -> Results -> retorno al lobby.
@@ -224,4 +225,22 @@ private:
 
 	/** @brief Tick periódico (0.5s) que actualiza ServerMatchElapsedTime en el GameState. */
 	void TickRaceClock();
+
+	/**
+	 * @brief Consume un tótem del inventario del pawn moribundo si lleva uno, cancelando la muerte.
+	 * @return true si se consumió un tótem (la muerte queda cancelada y MarkPlayerDead debe retornar).
+	 */
+	bool TryTotemAutoRevive(APlayerController* PlayerController);
+
+	/** @brief Aplica el ragdoll/ocultación de muerte sobre el pawn (RecoverFromKnockdown → StopMovementImmediately → DisableInput → bAlwaysRelevant/DORM_Awake → SetDeadVisual). */
+	void ApplyDeathVisuals(APawn* Pawn, APlayerController* PlayerController);
+
+	/** @brief Spawnea (si hay clase asignada) el RescuePickup en la posición de muerte y lo registra en RescuePickups. */
+	void SpawnRescuePickupForDeath(ATN_CoopPlayerState* TNPS, const FVector& DeathLocation, APlayerController* PlayerController);
+
+	/** @brief Concede inmunidad post-revive y arma el timer que la retira tras ReviveImmunitySeconds. */
+	void GrantReviveImmunity(APlayerController* PlayerController);
+
+	/** @brief Restaura visual, colisión, posesión e input del pawn revivido. Solo se llama cuando Pawn es válido. */
+	void RestorePossessionAfterRevive(APlayerController* PlayerController, APawn* Pawn, const FVector& ReviveTargetLocation, bool bHasReviveTargetLocation);
 };

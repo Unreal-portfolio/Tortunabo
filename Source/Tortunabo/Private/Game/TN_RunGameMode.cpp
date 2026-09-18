@@ -2,6 +2,7 @@
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_GameModeSpawnUtils.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
@@ -128,14 +129,7 @@ void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 	// Actualizar el conteo de jugadores conectados en el GameState
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
-		int32 TotalPlayers = 0;
-		for (APlayerState* BasePS : GameState->PlayerArray)
-		{
-			if (Cast<ATN_CoopPlayerState>(BasePS))
-			{
-				++TotalPlayers;
-			}
-		}
+		const int32 TotalPlayers = TN_CountConnectedCoopPlayers(GameState);
 		TNGS->ConnectedPlayers = TotalPlayers;
 		TNGS->ExpectedPlayers = ExpectedPlayersFromLobby;
 
@@ -183,15 +177,7 @@ void ATN_RunGameMode::Logout(AController* Exiting)
 	// Actualizar conteo tras desconexión
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
-		int32 TotalPlayers = 0;
-		for (APlayerState* BasePS : GameState->PlayerArray)
-		{
-			if (Cast<ATN_CoopPlayerState>(BasePS))
-			{
-				++TotalPlayers;
-			}
-		}
-		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ConnectedPlayers = TN_CountConnectedCoopPlayers(GameState);
 		// ExpectedPlayers se mantiene desde el lobby para que la UI muestre "X / ExpectedFromLobby"
 	}
 
@@ -220,14 +206,7 @@ void ATN_RunGameMode::TryStartMatch()
 		return;
 	}
 
-	int32 ConnectedNow = 0;
-	for (APlayerState* BasePS : GameState->PlayerArray)
-	{
-		if (Cast<ATN_CoopPlayerState>(BasePS))
-		{
-			++ConnectedNow;
-		}
-	}
+	const int32 ConnectedNow = TN_CountConnectedCoopPlayers(GameState);
 
 	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] TryStartMatch: Connected=%d  Expected=%d"),
 		ConnectedNow, ExpectedPlayersFromLobby);
@@ -258,14 +237,7 @@ void ATN_RunGameMode::OnWaitingTimeout()
 	// Actualizar conteo final
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
-		int32 TotalPlayers = 0;
-		for (APlayerState* BasePS : GameState->PlayerArray)
-		{
-			if (Cast<ATN_CoopPlayerState>(BasePS))
-			{
-				++TotalPlayers;
-			}
-		}
+		const int32 TotalPlayers = TN_CountConnectedCoopPlayers(GameState);
 		TNGS->ConnectedPlayers = TotalPlayers;
 		TNGS->ExpectedPlayers = TotalPlayers; // Ahora sí es "de verdad"
 	}
@@ -292,31 +264,9 @@ AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		return Super::ChoosePlayerStart_Implementation(Player);
 	}
 
-	// Barajar para evitar siempre el mismo orden
-	for (int32 i = PlayerStarts.Num() - 1; i > 0; --i)
+	if (AActor* Start = TN_PickUnoccupiedPlayerStart(GetWorld(), PlayerStarts, Player))
 	{
-		const int32 j = FMath::RandRange(0, i);
-		PlayerStarts.Swap(i, j);
-	}
-
-	// Primera pasada: buscar un PlayerStart sin ningún pawn cerca (< 200 cm)
-	for (AActor* Start : PlayerStarts)
-	{
-		bool bOccupied = false;
-		for (TActorIterator<APawn> PawnIt(GetWorld()); PawnIt; ++PawnIt)
-		{
-			const APawn* P = *PawnIt;
-			if (P && P->Controller != Player &&
-			    FVector::DistSquared(Start->GetActorLocation(), P->GetActorLocation()) < 200.f * 200.f)
-			{
-				bOccupied = true;
-				break;
-			}
-		}
-		if (!bOccupied)
-		{
-			return Start;
-		}
+		return Start;
 	}
 
 	// Fallback: todos ocupados → devolver el primero (barajado)
@@ -326,67 +276,12 @@ AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)
 
 void ATN_RunGameMode::EnsurePlayerSpawned(APlayerController* PlayerController)
 {
-	if (!HasAuthority() || !PlayerController || PlayerController->GetPawn())
-	{
-		return;
-	}
-
-	RestartPlayer(PlayerController);
-	if (PlayerController->GetPawn())
-	{
-		return;
-	}
-
-	AActor* PlayerStart = FindPlayerStart(PlayerController);
-	if (!PlayerStart)
-	{
-		PlayerStart = EnsureFallbackPlayerStart();
-	}
-
-	if (!PlayerStart)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Run] Could not find or create a PlayerStart for %s"), *GetNameSafe(PlayerController));
-		return;
-	}
-
-	APawn* SpawnedPawn = SpawnDefaultPawnFor(PlayerController, PlayerStart);
-	if (!SpawnedPawn)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Run] Failed to spawn default pawn for %s at %s"), *GetNameSafe(PlayerController), *GetNameSafe(PlayerStart));
-		return;
-	}
-
-	PlayerController->Possess(SpawnedPawn);
-	SetPlayerDefaults(SpawnedPawn);
-	UE_LOG(LogTortunabo, Log, TEXT("[Run] Spawned and possessed pawn %s for %s"), *GetNameSafe(SpawnedPawn), *GetNameSafe(PlayerController));
+	TN_EnsurePlayerSpawned(this, PlayerController, [this]() { return EnsureFallbackPlayerStart(); }, TEXT("Run"));
 }
 
 APlayerStart* ATN_RunGameMode::EnsureFallbackPlayerStart()
 {
-	if (!GetWorld())
-	{
-		return nullptr;
-	}
-
-	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
-	{
-		if (APlayerStart* Existing = *It)
-		{
-			return Existing;
-		}
-	}
-
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	SpawnParams.Name = TEXT("RunFallbackPlayerStart");
-
-	APlayerStart* Spawned = GetWorld()->SpawnActor<APlayerStart>(APlayerStart::StaticClass(), FVector(0.f, 0.f, 150.f), FRotator::ZeroRotator, SpawnParams);
-	if (Spawned)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Run] No PlayerStart found in run map. Spawned fallback PlayerStart at world origin."));
-	}
-
-	return Spawned;
+	return TN_EnsureFallbackPlayerStart(GetWorld(), TEXT("RunFallbackPlayerStart"), TEXT("Run"), TEXT("run map"));
 }
 
 void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
@@ -507,23 +402,9 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 
 	// ── Tótem auto-revive: si el jugador lleva un tótem en el inventario,
 	//    se consume automáticamente y cancela la muerte. ─────────────────────────
-	if (APawn* DyingPawn = PlayerController->GetPawn())
+	if (TryTotemAutoRevive(PlayerController))
 	{
-		if (ATortugaCharacter* DyingChar = Cast<ATortugaCharacter>(DyingPawn))
-		{
-			if (UTN_InventoryComponent* Inv = DyingChar->GetInventoryComponent())
-			{
-				FTN_InventoryItem ConsumedTotem;
-				if (Inv->TryConsumeItemByUseType(ETN_ItemUseType::Totem, ConsumedTotem))
-				{
-					// Tótem consumido → cancelar muerte + feedback visual
-					UE_LOG(LogTortunabo, Log, TEXT("[Totem] Auto-revive activado para %s — totem consumido."),
-						*GetNameSafe(PlayerController));
-					DyingChar->Multicast_OnTotemAutoRevive();
-					return;
-				}
-			}
-		}
+		return;
 	}
 
 	TNPS->bIsAlive = false;
@@ -565,55 +446,111 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	if (APawn* Pawn = PlayerController->GetPawn())
 	{
 		DeathLocation = Pawn->GetActorLocation();
+		ApplyDeathVisuals(Pawn, PlayerController);
+	}
 
-		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
-		{
-			Character->RecoverFromKnockdown();
-		}
+	// ── Spawnear pickup de rescate en la posición de muerte ──
+	SpawnRescuePickupForDeath(TNPS, DeathLocation, PlayerController);
 
-		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
+	// ── Guardar referencia al pawn ANTES de entrar en espectador ──────────
+	// EnterSpectateMode → ChangeState(Spectating) → UnPossess → GetPawn() devuelve nullptr.
+	// Sin esta referencia, RevivePlayer no podría encontrar el pawn para re-poseerlo.
+	if (APawn* DeadPawn = PlayerController->GetPawn())
+	{
+		DeadPlayerPawns.Add(TNPS->GetPlayerId(), DeadPawn);
+		UE_LOG(LogTortunabo, Log, TEXT("[Death] Saved pawn ref for PlayerId=%d → %s"), TNPS->GetPlayerId(), *GetNameSafe(DeadPawn));
+
+		// FIX ragdoll despawn intermitente: cambiar el Owner del pawn muerto al
+		// GameMode. Sin este cambio, si el PC hace Logout (timeout, quit,
+		// PIE-shutdown), UE engine puede destruir cascada los actors Owner=PC
+		// → ragdoll se evapora junto al PC. Owner=GameMode desliga el pawn del
+		// ciclo de vida del PC. El pawn solo se destruirá explícitamente desde
+		// RevivePlayer (cuando se reataca el mesh) o FinishRoundAndReturnToLobby.
+		DeadPawn->SetOwner(this);
+		// Garantía adicional: lifespan infinito (por si algo lo asignó por otro lado).
+		DeadPawn->SetLifeSpan(0.f);
+		UE_LOG(LogTortunabo, Log, TEXT("[Death] Detached pawn from PC ownership · pawn=%s now owned by GameMode"),
+			*GetNameSafe(DeadPawn));
+	}
+
+	MovePlayerToSpectator(PlayerController);
+	UpdateRoundProgressAndMaybeFinish();
+}
+
+bool ATN_RunGameMode::TryTotemAutoRevive(APlayerController* PlayerController)
+{
+	if (APawn* DyingPawn = PlayerController->GetPawn())
+	{
+		if (ATortugaCharacter* DyingChar = Cast<ATortugaCharacter>(DyingPawn))
 		{
-			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
+			if (UTN_InventoryComponent* Inv = DyingChar->GetInventoryComponent())
 			{
-				CMC->StopMovementImmediately();
+				FTN_InventoryItem ConsumedTotem;
+				if (Inv->TryConsumeItemByUseType(ETN_ItemUseType::Totem, ConsumedTotem))
+				{
+					// Tótem consumido → cancelar muerte + feedback visual
+					UE_LOG(LogTortunabo, Log, TEXT("[Totem] Auto-revive activado para %s — totem consumido."),
+						*GetNameSafe(PlayerController));
+					DyingChar->Multicast_OnTotemAutoRevive();
+					return true;
+				}
 			}
 		}
-		Pawn->DisableInput(PlayerController);
+	}
+	return false;
+}
 
-		// Pawn muerto SIEMPRE relevante para todos los clientes. Sin esto, cuando el
-		// PC muerto entra espectador y la cámara se aleja (ej. viendo a un compañero
-		// vivo que avanza), el netcull quita el pawn muerto del cliente → ragdoll
-		// "desaparece tras unos segundos" aunque el servidor lo tenga vivo. Restaurado
-		// a default en RevivePlayer.
-		Pawn->bAlwaysRelevant = true;
-		Pawn->SetNetDormancy(DORM_Awake);
+void ATN_RunGameMode::ApplyDeathVisuals(APawn* Pawn, APlayerController* PlayerController)
+{
+	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+	{
+		Character->RecoverFromKnockdown();
+	}
 
-		// Q1-13: activar ragdoll de muerte — pawn queda visible (es el visual del rescate)
-		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+	if (ACharacter* Ch = Cast<ACharacter>(Pawn))
+	{
+		if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
 		{
-			Character->SetDeadVisual(true);
-			// Fallback: si no hay PhysicsAsset, ragdoll imposible → ocultar pawn.
-			// NO usar IsSimulatingPhysics() aquí: Chaos puede devolver false
-			// inmediatamente tras SetAllBodiesSimulatePhysics(true) por asincronía
-			// → el pawn se ocultaba por error aunque el ragdoll se activara bien
-			// en el tick siguiente. Check estático: existe PhysicsAsset → ragdoll OK.
-			USkeletalMeshComponent* SM = Character->GetMesh();
-			const bool bHasRagdollSetup = SM && SM->GetPhysicsAsset();
-			if (!bHasRagdollSetup)
-			{
-				UE_LOG(LogTortunabo, Warning, TEXT("[Death] Sin PhysicsAsset en BP — ocultando pawn %s (fallback sin ragdoll)"), *GetNameSafe(Pawn));
-				Pawn->SetActorHiddenInGame(true);
-				Pawn->SetActorEnableCollision(false);
-			}
+			CMC->StopMovementImmediately();
 		}
-		else
+	}
+	Pawn->DisableInput(PlayerController);
+
+	// Pawn muerto SIEMPRE relevante para todos los clientes. Sin esto, cuando el
+	// PC muerto entra espectador y la cámara se aleja (ej. viendo a un compañero
+	// vivo que avanza), el netcull quita el pawn muerto del cliente → ragdoll
+	// "desaparece tras unos segundos" aunque el servidor lo tenga vivo. Restaurado
+	// a default en RevivePlayer.
+	Pawn->bAlwaysRelevant = true;
+	Pawn->SetNetDormancy(DORM_Awake);
+
+	// Q1-13: activar ragdoll de muerte — pawn queda visible (es el visual del rescate)
+	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+	{
+		Character->SetDeadVisual(true);
+		// Fallback: si no hay PhysicsAsset, ragdoll imposible → ocultar pawn.
+		// NO usar IsSimulatingPhysics() aquí: Chaos puede devolver false
+		// inmediatamente tras SetAllBodiesSimulatePhysics(true) por asincronía
+		// → el pawn se ocultaba por error aunque el ragdoll se activara bien
+		// en el tick siguiente. Check estático: existe PhysicsAsset → ragdoll OK.
+		USkeletalMeshComponent* SM = Character->GetMesh();
+		const bool bHasRagdollSetup = SM && SM->GetPhysicsAsset();
+		if (!bHasRagdollSetup)
 		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Death] Sin PhysicsAsset en BP — ocultando pawn %s (fallback sin ragdoll)"), *GetNameSafe(Pawn));
 			Pawn->SetActorHiddenInGame(true);
 			Pawn->SetActorEnableCollision(false);
 		}
 	}
+	else
+	{
+		Pawn->SetActorHiddenInGame(true);
+		Pawn->SetActorEnableCollision(false);
+	}
+}
 
-	// ── Spawnear pickup de rescate en la posición de muerte ──
+void ATN_RunGameMode::SpawnRescuePickupForDeath(ATN_CoopPlayerState* TNPS, const FVector& DeathLocation, APlayerController* PlayerController)
+{
 	if (RescuePickupClass)
 	{
 		FActorSpawnParameters SpawnParams;
@@ -643,30 +580,6 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[Death] RescuePickupClass is not set! Assign it in BP_RunGameMode → Class Defaults."));
 	}
-
-	// ── Guardar referencia al pawn ANTES de entrar en espectador ──────────
-	// EnterSpectateMode → ChangeState(Spectating) → UnPossess → GetPawn() devuelve nullptr.
-	// Sin esta referencia, RevivePlayer no podría encontrar el pawn para re-poseerlo.
-	if (APawn* DeadPawn = PlayerController->GetPawn())
-	{
-		DeadPlayerPawns.Add(TNPS->GetPlayerId(), DeadPawn);
-		UE_LOG(LogTortunabo, Log, TEXT("[Death] Saved pawn ref for PlayerId=%d → %s"), TNPS->GetPlayerId(), *GetNameSafe(DeadPawn));
-
-		// FIX ragdoll despawn intermitente: cambiar el Owner del pawn muerto al
-		// GameMode. Sin este cambio, si el PC hace Logout (timeout, quit,
-		// PIE-shutdown), UE engine puede destruir cascada los actors Owner=PC
-		// → ragdoll se evapora junto al PC. Owner=GameMode desliga el pawn del
-		// ciclo de vida del PC. El pawn solo se destruirá explícitamente desde
-		// RevivePlayer (cuando se reataca el mesh) o FinishRoundAndReturnToLobby.
-		DeadPawn->SetOwner(this);
-		// Garantía adicional: lifespan infinito (por si algo lo asignó por otro lado).
-		DeadPawn->SetLifeSpan(0.f);
-		UE_LOG(LogTortunabo, Log, TEXT("[Death] Detached pawn from PC ownership · pawn=%s now owned by GameMode"),
-			*GetNameSafe(DeadPawn));
-	}
-
-	MovePlayerToSpectator(PlayerController);
-	UpdateRoundProgressAndMaybeFinish();
 }
 
 // ── DBNO (Down But Not Out) ────────────────────────────────────────────────────
@@ -802,6 +715,30 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	// Si el pawn revivido cae dentro de una death zone, OnBoxBeginOverlap ve
 	// IsPlayerReviveImmune=false si la inmunidad se añade después → B6 ineficaz.
 	// Al añadirla aquí, OnBoxBeginOverlap recibe PC ya inmune → descarta el overlap.
+	GrantReviveImmunity(PlayerController);
+
+	if (Pawn)
+	{
+		RestorePossessionAfterRevive(PlayerController, Pawn, ReviveTargetLocation, bHasReviveTargetLocation);
+	}
+	else
+	{
+		UE_LOG(LogTortunabo, Error, TEXT("[Revive] No pawn found for %s (PlayerId=%d) — cannot restore visual/control!"),
+			*GetNameSafe(PlayerController), TNPS->GetPlayerId());
+	}
+
+	// Limpiar la entrada de DeadPlayerPawns
+	DeadPlayerPawns.Remove(TNPS->GetPlayerId());
+
+	UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s wasKnocked=%s"),
+		*GetNameSafe(PlayerController), ReviveImmunitySeconds,
+		bWasDBNO ? TEXT("YES") : TEXT("NO"),
+		bWasDead ? TEXT("YES") : TEXT("NO"),
+		bWasKnockedDown ? TEXT("YES") : TEXT("NO"));
+}
+
+void ATN_RunGameMode::GrantReviveImmunity(APlayerController* PlayerController)
+{
 	ReviveImmunePlayers.Add(PlayerController);
 	// Cancelar timer anterior si existe (ej: jugador revivido dos veces rápido).
 	// Sin esto, el timer antiguo expiraría y eliminaría la inmunidad activa de la segunda revivida.
@@ -832,150 +769,136 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 			}
 		}
 	}, ReviveImmunitySeconds, false);
+}
 
-	if (Pawn)
+void ATN_RunGameMode::RestorePossessionAfterRevive(APlayerController* PlayerController, APawn* Pawn, const FVector& ReviveTargetLocation, bool bHasReviveTargetLocation)
+{
+	// ORDEN CRÍTICO (2026-04-24):
+	// 1. SetDeadVisual(false) PRIMERO → apaga ragdoll, re-attachea mesh al capsule,
+	//    restaura bReplicateMovement=true. Sin este paso previo, SetActorLocation
+	//    sobre un pawn con mesh fully-simulated dispara el warning
+	//    "Attempting to move a fully simulated skeletal mesh".
+	// 2. SetActorLocation DESPUÉS → teleporta a zona segura con capsule+mesh ya
+	//    re-sincronizados.
+	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
 	{
-		// ORDEN CRÍTICO (2026-04-24):
-		// 1. SetDeadVisual(false) PRIMERO → apaga ragdoll, re-attachea mesh al capsule,
-		//    restaura bReplicateMovement=true. Sin este paso previo, SetActorLocation
-		//    sobre un pawn con mesh fully-simulated dispara el warning
-		//    "Attempting to move a fully simulated skeletal mesh".
-		// 2. SetActorLocation DESPUÉS → teleporta a zona segura con capsule+mesh ya
-		//    re-sincronizados.
-		if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(Pawn))
+		Character->RecoverFromKnockdown();
+		Character->SetDeadVisual(false); // Restaurar extremidades + apagar ragdoll
+	}
+
+	// Restaurar CMC antes del teleport
+	if (ACharacter* Ch = Cast<ACharacter>(Pawn))
+	{
+		if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
 		{
-			Character->RecoverFromKnockdown();
-			Character->SetDeadVisual(false); // Restaurar extremidades + apagar ragdoll
+			CMC->SetMovementMode(MOVE_Walking);
+		}
+	}
+
+	// Revivir en la posición del RescuePickup. El pickup invisible siguió el
+	// pelvis del ragdoll; el pawn no persigue su propio ragdoll en Tick.
+	{
+		const FVector BaseReviveLoc = bHasReviveTargetLocation ? ReviveTargetLocation : Pawn->GetActorLocation();
+		const FVector ReviveLoc = BaseReviveLoc + FVector(0.f, 0.f, 20.f);
+		UE_LOG(LogTortunabo, Log, TEXT("[Revive] In-place at pickup location (%.0f,%.0f,%.0f)"),
+			ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z);
+		Pawn->SetActorLocation(ReviveLoc, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+
+	// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
+	Pawn->SetActorHiddenInGame(false);
+	Pawn->SetActorEnableCollision(true);
+	// Restaurar relevancy default (tras MarkPlayerDead forzado bAlwaysRelevant=true)
+	Pawn->bAlwaysRelevant = false;
+
+	// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
+	// 1) Resetear flag de espectador en el PlayerState
+	if (PlayerController->PlayerState)
+	{
+		PlayerController->PlayerState->SetIsOnlyASpectator(false);
+	}
+	// 2) Forzar UnPossess si el PC aún posee al pawn.
+	//    En el listen-server, ChangeState(Spectating) puede NO llamar UnPossess
+	//    internamente, dejando al PC poseyendo al pawn muerto. Si Possess(Pawn)
+	//    recibe el mismo pawn que ya posee, es un no-op → ChangeState(Playing)
+	//    nunca se llama y el host se queda atrapado en estado Spectating.
+	if (PlayerController->GetPawn() == Pawn)
+	{
+		PlayerController->UnPossess();
+	}
+	// 3) Re-poseer el pawn (ahora garantizado que no es no-op)
+	PlayerController->Possess(Pawn);
+	// 4) Safety: forzar ChangeState(Playing) por si Possess no lo hizo
+	PlayerController->ChangeState(NAME_Playing);
+
+	// 5) EnableInput DESPUÉS de Possess — APawn::EnableInput verifica
+	//    que el PC == Pawn->Controller. Si se llama antes de Possess,
+	//    Controller es nullptr (por UnPossess) y EnableInput falla
+	//    silenciosamente, dejando bInputEnabled = false para siempre.
+	Pawn->EnableInput(PlayerController);
+
+	// 6) ClientRestart: dice al cliente que ahora controla este pawn
+	PlayerController->ClientRestart(Pawn);
+	// 7) Apuntar cámara al pawn (limpia el ViewTarget del espectador)
+	PlayerController->SetViewTarget(Pawn);
+	// 8) ClientRestorePlayerInput: limpia IgnoreMoveInput/IgnoreLookInput
+	if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PlayerController))
+	{
+		TNPC->ClientRestorePlayerInput();
+		// Client RPCs no se ejecutan en el listen-server — llamada directa para el host.
+		if (TNPC->IsLocalController())
+		{
+			TNPC->ForceRestoreInput();
 		}
 
-		// Restaurar CMC antes del teleport
-		if (ACharacter* Ch = Cast<ACharacter>(Pawn))
+		// 9) Timer repetitivo de seguridad: re-aplica input cada 0.1s durante 1s.
+		//    Cubre TODOS los edge cases donde la cadena
+		//    Possess → AcknowledgedPawn → ClientRestart → PawnClientRestart
+		//    no ha terminado, o donde UE re-incrementa IgnoreMoveInput internamente.
+		TWeakObjectPtr<ATortugaCharacter> WeakChar(Cast<ATortugaCharacter>(Pawn));
+		TWeakObjectPtr<AMP_GamePlayerController> WeakPC(TNPC);
+		TWeakObjectPtr<APawn> WeakPawn(Pawn);
+		TWeakObjectPtr<ATN_RunGameMode> WeakGM2(this);
+		TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
+		TSharedPtr<int32> RetryCount = MakeShared<int32>(10); // 10 × 0.1s = 1s
+		GetWorldTimerManager().SetTimer(*RetryHandle,
+			[WeakChar, WeakPC, WeakPawn, RetryCount, RetryHandle, WeakGM2]()
 		{
-			if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
+			ATN_RunGameMode* GM2 = WeakGM2.Get();
+			if (!GM2 || *RetryCount <= 0)
 			{
-				CMC->SetMovementMode(MOVE_Walking);
+				if (GM2) { GM2->GetWorldTimerManager().ClearTimer(*RetryHandle); }
+				return;
 			}
-		}
+			--(*RetryCount);
 
-		// Revivir en la posición del RescuePickup. El pickup invisible siguió el
-		// pelvis del ragdoll; el pawn no persigue su propio ragdoll en Tick.
-		{
-			const FVector BaseReviveLoc = bHasReviveTargetLocation ? ReviveTargetLocation : Pawn->GetActorLocation();
-			const FVector ReviveLoc = BaseReviveLoc + FVector(0.f, 0.f, 20.f);
-			UE_LOG(LogTortunabo, Log, TEXT("[Revive] In-place at pickup location (%.0f,%.0f,%.0f)"),
-				ReviveLoc.X, ReviveLoc.Y, ReviveLoc.Z);
-			Pawn->SetActorLocation(ReviveLoc, false, nullptr, ETeleportType::TeleportPhysics);
-		}
-
-		// Restaurar visibilidad (el pawn fue ocultado en MarkPlayerDead)
-		Pawn->SetActorHiddenInGame(false);
-		Pawn->SetActorEnableCollision(true);
-		// Restaurar relevancy default (tras MarkPlayerDead forzado bAlwaysRelevant=true)
-		Pawn->bAlwaysRelevant = false;
-
-		// ── Sacar del modo espectador: re-poseer el pawn ──────────────────
-		// 1) Resetear flag de espectador en el PlayerState
-		if (PlayerController->PlayerState)
-		{
-			PlayerController->PlayerState->SetIsOnlyASpectator(false);
-		}
-		// 2) Forzar UnPossess si el PC aún posee al pawn.
-		//    En el listen-server, ChangeState(Spectating) puede NO llamar UnPossess
-		//    internamente, dejando al PC poseyendo al pawn muerto. Si Possess(Pawn)
-		//    recibe el mismo pawn que ya posee, es un no-op → ChangeState(Playing)
-		//    nunca se llama y el host se queda atrapado en estado Spectating.
-		if (PlayerController->GetPawn() == Pawn)
-		{
-			PlayerController->UnPossess();
-		}
-		// 3) Re-poseer el pawn (ahora garantizado que no es no-op)
-		PlayerController->Possess(Pawn);
-		// 4) Safety: forzar ChangeState(Playing) por si Possess no lo hizo
-		PlayerController->ChangeState(NAME_Playing);
-
-		// 5) EnableInput DESPUÉS de Possess — APawn::EnableInput verifica
-		//    que el PC == Pawn->Controller. Si se llama antes de Possess,
-		//    Controller es nullptr (por UnPossess) y EnableInput falla
-		//    silenciosamente, dejando bInputEnabled = false para siempre.
-		Pawn->EnableInput(PlayerController);
-
-		// 6) ClientRestart: dice al cliente que ahora controla este pawn
-		PlayerController->ClientRestart(Pawn);
-		// 7) Apuntar cámara al pawn (limpia el ViewTarget del espectador)
-		PlayerController->SetViewTarget(Pawn);
-		// 8) ClientRestorePlayerInput: limpia IgnoreMoveInput/IgnoreLookInput
-		if (AMP_GamePlayerController* TNPC = Cast<AMP_GamePlayerController>(PlayerController))
-		{
-			TNPC->ClientRestorePlayerInput();
-			// Client RPCs no se ejecutan en el listen-server — llamada directa para el host.
-			if (TNPC->IsLocalController())
+			if (WeakPawn.IsValid())
 			{
-				TNPC->ForceRestoreInput();
+				WeakPawn->EnableInput(nullptr); // nullptr bypasses Controller check
 			}
-
-			// 9) Timer repetitivo de seguridad: re-aplica input cada 0.1s durante 1s.
-			//    Cubre TODOS los edge cases donde la cadena
-			//    Possess → AcknowledgedPawn → ClientRestart → PawnClientRestart
-			//    no ha terminado, o donde UE re-incrementa IgnoreMoveInput internamente.
-			TWeakObjectPtr<ATortugaCharacter> WeakChar(Cast<ATortugaCharacter>(Pawn));
-			TWeakObjectPtr<AMP_GamePlayerController> WeakPC(TNPC);
-			TWeakObjectPtr<APawn> WeakPawn(Pawn);
-			TWeakObjectPtr<ATN_RunGameMode> WeakGM2(this);
-			TSharedPtr<FTimerHandle> RetryHandle = MakeShared<FTimerHandle>();
-			TSharedPtr<int32> RetryCount = MakeShared<int32>(10); // 10 × 0.1s = 1s
-			GetWorldTimerManager().SetTimer(*RetryHandle,
-				[WeakChar, WeakPC, WeakPawn, RetryCount, RetryHandle, WeakGM2]()
+			if (WeakChar.IsValid())
 			{
-				ATN_RunGameMode* GM2 = WeakGM2.Get();
-				if (!GM2 || *RetryCount <= 0)
+				WeakChar->ReapplyInputMapping();
+			}
+			if (WeakPC.IsValid())
+			{
+				WeakPC->ForceRestoreInput();
+			}
+			if (WeakPawn.IsValid() && WeakPawn->GetController())
+			{
+				if (ACharacter* Ch = Cast<ACharacter>(WeakPawn.Get()))
 				{
-					if (GM2) { GM2->GetWorldTimerManager().ClearTimer(*RetryHandle); }
-					return;
-				}
-				--(*RetryCount);
-
-				if (WeakPawn.IsValid())
-				{
-					WeakPawn->EnableInput(nullptr); // nullptr bypasses Controller check
-				}
-				if (WeakChar.IsValid())
-				{
-					WeakChar->ReapplyInputMapping();
-				}
-				if (WeakPC.IsValid())
-				{
-					WeakPC->ForceRestoreInput();
-				}
-				if (WeakPawn.IsValid() && WeakPawn->GetController())
-				{
-					if (ACharacter* Ch = Cast<ACharacter>(WeakPawn.Get()))
+					if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
 					{
-						if (UCharacterMovementComponent* CMC = Ch->GetCharacterMovement())
+						if (CMC->MovementMode == MOVE_None)
 						{
-							if (CMC->MovementMode == MOVE_None)
-							{
-								CMC->SetMovementMode(MOVE_Walking);
-							}
+							CMC->SetMovementMode(MOVE_Walking);
 						}
 					}
 				}
-			}, 0.1f, true);
-		}
+			}
+		}, 0.1f, true);
 	}
-	else
-	{
-		UE_LOG(LogTortunabo, Error, TEXT("[Revive] No pawn found for %s (PlayerId=%d) — cannot restore visual/control!"),
-			*GetNameSafe(PlayerController), TNPS->GetPlayerId());
-	}
-
-	// Limpiar la entrada de DeadPlayerPawns
-	DeadPlayerPawns.Remove(TNPS->GetPlayerId());
-
-	UE_LOG(LogTortunabo, Log, TEXT("[Revive] %s revived! (%.1fs immunity) wasDBNO=%s wasDead=%s wasKnocked=%s"),
-		*GetNameSafe(PlayerController), ReviveImmunitySeconds,
-		bWasDBNO ? TEXT("YES") : TEXT("NO"),
-		bWasDead ? TEXT("YES") : TEXT("NO"),
-		bWasKnockedDown ? TEXT("YES") : TEXT("NO"));
 }
 
 APawn* ATN_RunGameMode::GetDeadPlayerPawn(int32 PlayerId) const
@@ -1219,7 +1142,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 			It->Destroy();
 		}
 
-		// ── Destruir TortugaCharacters sin controller (por si el loop anterior los dejó)
+		// ── Destruir todos los TortugaCharacters restantes (los poseídos ya se destruyeron arriba)
 		// Evita que lleguen al lobby como meshes fantasma.
 		for (TActorIterator<ATortugaCharacter> It(World); It; ++It)
 		{
@@ -1311,15 +1234,7 @@ void ATN_RunGameMode::PostSeamlessTravel()
 	// Actualizar conteo y comprobar si podemos arrancar
 	if (ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>())
 	{
-		int32 TotalPlayers = 0;
-		for (APlayerState* BasePS : GameState->PlayerArray)
-		{
-			if (Cast<ATN_CoopPlayerState>(BasePS))
-			{
-				++TotalPlayers;
-			}
-		}
-		TNGS->ConnectedPlayers = TotalPlayers;
+		TNGS->ConnectedPlayers = TN_CountConnectedCoopPlayers(GameState);
 		TNGS->ExpectedPlayers = ExpectedPlayersFromLobby;
 	}
 
