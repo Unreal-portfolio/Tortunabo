@@ -100,31 +100,11 @@ void ATN_ConchPickup::OnSphereBeginOverlap(UPrimitiveComponent* /*OverlappedComp
 			// un pickup recogible en la posición — la concha es reciclable.
 			if (bDestroyAfterActivation)
 			{
-				if (UWorld* World = GetWorld())
-				{
-					FActorSpawnParameters SpawnParams;
-					SpawnParams.SpawnCollisionHandlingOverride =
-						ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-					// Sin Owner: heredar el pawn lanzador como Owner ataba la concha
-					// reciclada a su ciclo de vida (pawn muere/respawnea → GC destruye
-					// la concha en cascada). El mundo es el dueño.
-					World->SpawnActor<ATN_ConchPickup>(
-						GetClass(), GetActorLocation(), GetActorRotation(), SpawnParams);
-				}
-				SetLifeSpan(0.2f);
+				SpawnReplacementConch();
 			}
 			else
 			{
-				// Modo persistente: rearm tras cooldown.
-				if (ResetCooldownSeconds > 0.f)
-				{
-					GetWorldTimerManager().SetTimer(RearmTimerHandle, this,
-						&ATN_ConchPickup::RearmTrap, ResetCooldownSeconds, false);
-				}
-				else
-				{
-					RearmTrap();
-				}
+				ScheduleRearm();
 			}
 			return;
 		}
@@ -179,24 +159,36 @@ void ATN_ConchPickup::RestoreMovement(TWeakObjectPtr<ATortugaCharacter> WeakChar
 		// Antes de auto-destruirse, dejar un pickup-ítem en la misma ubicación para
 		// que la trampa sea recuperable como recurso y el flujo de rescate del item
 		// no acabe en "trampa consumida y nada en el suelo".
-		if (UWorld* World = GetWorld())
-		{
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.SpawnCollisionHandlingOverride =
-				ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-			// Sin Owner (ver spawn del modo trampa-vs-enemigo): el mundo es el dueño.
-			// GetClass() preserva el BP hijo configurado (mesh/audio/VFX) en lugar
-			// de spawnear el ATN_ConchPickup nativo "pelado".
-			World->SpawnActor<ATN_ConchPickup>(
-				GetClass(), GetActorLocation(), GetActorRotation(), SpawnParams);
-		}
-
-		// SetLifeSpan permite que cualquier callback pendiente termine en paz.
-		SetLifeSpan(0.2f);
+		SpawnReplacementConch();
 		return;
 	}
 
 	// Modo persistente: tras el cooldown, re-armar para que pueda volver a atrapar.
+	ScheduleRearm();
+}
+
+void ATN_ConchPickup::SpawnReplacementConch()
+{
+	if (UWorld* World = GetWorld())
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		// Sin Owner: heredar el pawn lanzador como Owner ataba la concha
+		// reciclada a su ciclo de vida (pawn muere/respawnea → GC destruye
+		// la concha en cascada). El mundo es el dueño. GetClass() preserva
+		// el BP hijo configurado (mesh/audio/VFX) en lugar de spawnear el
+		// ATN_ConchPickup nativo "pelado".
+		World->SpawnActor<ATN_ConchPickup>(
+			GetClass(), GetActorLocation(), GetActorRotation(), SpawnParams);
+	}
+
+	// SetLifeSpan permite que cualquier callback pendiente termine en paz.
+	SetLifeSpan(0.2f);
+}
+
+void ATN_ConchPickup::ScheduleRearm()
+{
 	if (ResetCooldownSeconds > 0.f)
 	{
 		GetWorldTimerManager().SetTimer(RearmTimerHandle, this,

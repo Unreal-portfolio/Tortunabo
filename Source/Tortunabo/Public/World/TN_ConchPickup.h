@@ -165,6 +165,21 @@ private:
 	/** Re-arma la trampa (bTrapUsed=false) una vez expira el cooldown. */
 	void RearmTrap();
 
+	/**
+	 * Spawnea una concha de repuesto reciclable en la posición/rotación actual
+	 * (sin Owner, con GetClass() para preservar el BP hijo) y se autodestruye
+	 * con SetLifeSpan(0.2f). Compartido por el modo trampa-vs-enemigo y por
+	 * RestoreMovement cuando bDestroyAfterActivation es true.
+	 */
+	void SpawnReplacementConch();
+
+	/**
+	 * Modo persistente: re-arma tras ResetCooldownSeconds (o inmediatamente si
+	 * es 0). Compartido por el modo trampa-vs-enemigo y por RestoreMovement
+	 * cuando bDestroyAfterActivation es false.
+	 */
+	void ScheduleRearm();
+
 	FTimerHandle TrapTimerHandle;
 	FTimerHandle RearmTimerHandle;
 
