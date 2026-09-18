@@ -19,6 +19,20 @@
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
 
+namespace
+{
+	// Pila de capas del HUD (ZOrder de AddToViewport): HUD < CoopFlow < Voice < ruedas < menús.
+	constexpr int32 MPGamePlayerController_ZOrderPlayerHUD = 4;
+	constexpr int32 MPGamePlayerController_ZOrderCoopFlow = 5;
+	constexpr int32 MPGamePlayerController_ZOrderVoiceIndicator = 10;
+	constexpr int32 MPGamePlayerController_ZOrderEmoteWheel = 30;
+	constexpr int32 MPGamePlayerController_ZOrderQuickChatWheel = 31;
+	constexpr int32 MPGamePlayerController_ZOrderCosmetics = 40;
+
+	// Frecuencia del timer que recalcula la opción apuntada en la rueda radial.
+	constexpr float MPGamePlayerController_RadialWheelUpdateHz = 60.f;
+}
+
 AMP_GamePlayerController::AMP_GamePlayerController()
 {
 	// Widget classes are assigned via EditDefaultsOnly in a BP derived class (e.g. BP_GamePlayerController).
@@ -95,6 +109,11 @@ void AMP_GamePlayerController::SetupInputComponent()
 	}
 }
 
+UMP_GameInstance* AMP_GamePlayerController::GetTNGameInstance() const
+{
+	return Cast<UMP_GameInstance>(GetGameInstance());
+}
+
 void AMP_GamePlayerController::OnReturnToMenuPressed()
 {
 	// Un cliente remoto abandona la partida individualmente: destruye su propio
@@ -102,7 +121,7 @@ void AMP_GamePlayerController::OnReturnToMenuPressed()
 	// sesión de todos. Solo el host termina la partida para el resto.
 	if (GetNetMode() == NM_Client)
 	{
-		if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+		if (UMP_GameInstance* GI = GetTNGameInstance())
 		{
 			GI->HandleReturnToMenu();
 		}
@@ -124,7 +143,7 @@ void AMP_GamePlayerController::ServerRequestReturnToMenu_Implementation()
 		return;
 	}
 
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		GI->HandleReturnToMenu();
 	}
@@ -319,7 +338,7 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 	// Solo permitir espectear si el jugador local terminó, murió o fue eliminado.
 	// Evita que la rueda del ratón cambie la cámara mientras se está jugando.
 	const ATN_CoopPlayerState* LocalPS = GetPlayerState<ATN_CoopPlayerState>();
-	if (!LocalPS || (LocalPS->bIsAlive && !LocalPS->bIsEliminated && !LocalPS->bHasFinishedRun))
+	if (!LocalPS || (LocalPS->IsAliveAndPlaying() && !LocalPS->bHasFinishedRun))
 	{
 		return;
 	}
@@ -330,30 +349,7 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 	AGameStateBase* GS = GetWorld()->GetGameState();
 	if (!GS) { return; }
 
-	TArray<APlayerState*> Candidates;
-	for (APlayerState* PS : GS->PlayerArray)
-	{
-		ATN_CoopPlayerState* CoopPS = Cast<ATN_CoopPlayerState>(PS);
-		// Skip self
-		if (!CoopPS || CoopPS == Cast<ATN_CoopPlayerState>(PlayerState))
-		{
-			continue;
-		}
-		// Skip players without a live pawn
-		if (!CoopPS->GetPawn())
-		{
-			continue;
-		}
-		// Skip eliminated/dead/finished players.
-		// Finished players (bHasFinishedRun=true) have their pawn hidden via
-		// SetActorHiddenInGame(true) in MarkPlayerFinished → spectating them
-		// results in a black/invisible screen.
-		if (CoopPS->bIsEliminated || !CoopPS->bIsAlive || CoopPS->bHasFinishedRun)
-		{
-			continue;
-		}
-		Candidates.Add(CoopPS);
-	}
+	TArray<APlayerState*> Candidates = BuildSpectateCandidates(GS);
 
 	if (Candidates.Num() == 0)
 	{
@@ -394,6 +390,35 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 	}
 
 	SetViewTargetWithBlend(Candidates[NextIndex]->GetPawn(), 0.25f);
+}
+
+TArray<APlayerState*> AMP_GamePlayerController::BuildSpectateCandidates(AGameStateBase* GS) const
+{
+	TArray<APlayerState*> Candidates;
+	for (APlayerState* PS : GS->PlayerArray)
+	{
+		ATN_CoopPlayerState* CoopPS = Cast<ATN_CoopPlayerState>(PS);
+		// Skip self
+		if (!CoopPS || CoopPS == Cast<ATN_CoopPlayerState>(PlayerState))
+		{
+			continue;
+		}
+		// Skip players without a live pawn
+		if (!CoopPS->GetPawn())
+		{
+			continue;
+		}
+		// Skip eliminated/dead/finished players.
+		// Finished players (bHasFinishedRun=true) have their pawn hidden via
+		// SetActorHiddenInGame(true) in MarkPlayerFinished → spectating them
+		// results in a black/invisible screen.
+		if (!CoopPS->IsAliveAndPlaying() || CoopPS->bHasFinishedRun)
+		{
+			continue;
+		}
+		Candidates.Add(CoopPS);
+	}
+	return Candidates;
 }
 
 void AMP_GamePlayerController::RefreshHUDAfterPossession()
@@ -437,7 +462,7 @@ void AMP_GamePlayerController::CreateVoiceHUD()
 	// AddToViewport es idempotente: no-op si el widget ya está en el viewport.
 	if (VoiceIndicatorWidget && !VoiceIndicatorWidget->IsInViewport())
 	{
-		VoiceIndicatorWidget->AddToViewport(10);
+		VoiceIndicatorWidget->AddToViewport(MPGamePlayerController_ZOrderVoiceIndicator);
 	}
 }
 
@@ -466,7 +491,7 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 	// Re-añadir al viewport si fue eliminado durante seamless travel.
 	if (CoopFlowWidget && !CoopFlowWidget->IsInViewport())
 	{
-		CoopFlowWidget->AddToViewport(5);
+		CoopFlowWidget->AddToViewport(MPGamePlayerController_ZOrderCoopFlow);
 	}
 }
 
@@ -494,7 +519,7 @@ void AMP_GamePlayerController::CreatePlayerHUD()
 	// pero fue eliminado del viewport por UWorld::CleanupWorld → RemoveAllViewportWidgets.
 	if (PlayerHUDWidget && !PlayerHUDWidget->IsInViewport())
 	{
-		PlayerHUDWidget->AddToViewport(4);
+		PlayerHUDWidget->AddToViewport(MPGamePlayerController_ZOrderPlayerHUD);
 		UE_LOG(LogTortunabo, Log, TEXT("[HUD] PlayerHUDWidget re-añadido al viewport (tras seamless travel)"));
 	}
 }
@@ -512,7 +537,7 @@ void AMP_GamePlayerController::CreateRadialWidgets()
 	}
 	if (EmoteWheelWidget && !EmoteWheelWidget->IsInViewport())
 	{
-		EmoteWheelWidget->AddToViewport(30);
+		EmoteWheelWidget->AddToViewport(MPGamePlayerController_ZOrderEmoteWheel);
 		EmoteWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
@@ -522,7 +547,7 @@ void AMP_GamePlayerController::CreateRadialWidgets()
 	}
 	if (QuickChatWheelWidget && !QuickChatWheelWidget->IsInViewport())
 	{
-		QuickChatWheelWidget->AddToViewport(31);
+		QuickChatWheelWidget->AddToViewport(MPGamePlayerController_ZOrderQuickChatWheel);
 		QuickChatWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
@@ -633,7 +658,7 @@ void AMP_GamePlayerController::OpenRadialWheel(ETN_RadialWheelType WheelType)
 
 	if (GetWorld())
 	{
-		GetWorldTimerManager().SetTimer(RadialWheelUpdateTimerHandle, this, &AMP_GamePlayerController::UpdateRadialWheelInput, 1.f / 60.f, true);
+		GetWorldTimerManager().SetTimer(RadialWheelUpdateTimerHandle, this, &AMP_GamePlayerController::UpdateRadialWheelInput, 1.f / MPGamePlayerController_RadialWheelUpdateHz, true);
 	}
 }
 
@@ -738,7 +763,7 @@ void AMP_GamePlayerController::OpenCosmeticsMenu()
 		return;
 	}
 
-	CosmeticsWidget->AddToViewport(40);
+	CosmeticsWidget->AddToViewport(MPGamePlayerController_ZOrderCosmetics);
 
 	FInputModeGameAndUI InputMode;
 	InputMode.SetHideCursorDuringCapture(false);
@@ -754,7 +779,7 @@ bool AMP_GamePlayerController::RequestEquipHelmet(FName HelmetId)
 		return false;
 	}
 
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		if (!GI->EquipHelmet(HelmetId))
 		{
@@ -769,7 +794,7 @@ bool AMP_GamePlayerController::RequestEquipHelmet(FName HelmetId)
 void AMP_GamePlayerController::RequestUnequipHelmet()
 {
 	// Limpiar localmente el casco equipado en el save
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		GI->ForceEquipHelmet(NAME_None);
 	}
@@ -779,7 +804,7 @@ void AMP_GamePlayerController::RequestUnequipHelmet()
 
 FName AMP_GamePlayerController::OpenHelmetCrate()
 {
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		const FName Result = GI->OpenHelmetCrate();
 		SyncCosmeticsToServer();
@@ -816,7 +841,7 @@ void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
 
 	// Marcar que estamos en travel para que OnNetworkFailure active auto-rejoin
 	// en vez de destruir la sesión y mostrar error.
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		GI->NotifyClientPendingTravel();
 	}
@@ -846,7 +871,7 @@ void AMP_GamePlayerController::ServerSyncUnlockedHelmets_Implementation(const TA
 	// servidor; FNames desconocidos (cliente manipulado) se descartan. Riesgo
 	// residual aceptado: reclamar cascos existentes no desbloqueados equivale a
 	// editarse el save local — cosmético, sin economía real detrás.
-	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	const UMP_GameInstance* GI = GetTNGameInstance();
 	const UDataTable* HelmetTable = GI ? GI->GetHelmetDataTable() : nullptr;
 	if (!HelmetTable)
 	{
@@ -903,7 +928,7 @@ void AMP_GamePlayerController::ServerSetEquippedSkin_Implementation(FName SkinId
 	// Any other ID must exist in the server's SkinDataTable to prevent spoofing.
 	if (SkinId != NAME_None)
 	{
-		const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+		const UMP_GameInstance* GI = GetTNGameInstance();
 		const UDataTable* SkinTable = GI ? GI->GetSkinDataTable() : nullptr;
 		if (!SkinTable || !SkinTable->GetRowNames().Contains(SkinId))
 		{
@@ -928,7 +953,7 @@ void AMP_GamePlayerController::ServerSetEquippedSkin_Implementation(FName SkinId
 
 void AMP_GamePlayerController::ClientSaveSkin_Implementation(FName SkinId)
 {
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		GI->EquipSkin(SkinId);
 	}
@@ -936,7 +961,7 @@ void AMP_GamePlayerController::ClientSaveSkin_Implementation(FName SkinId)
 
 void AMP_GamePlayerController::ClientSaveHelmet_Implementation(FName HelmetId)
 {
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		GI->ForceEquipHelmet(HelmetId);
 	}
@@ -959,7 +984,7 @@ void AMP_GamePlayerController::SyncCosmeticsToServer()
 		return;
 	}
 
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		ServerSyncUnlockedHelmets(GI->GetUnlockedHelmetIds());
 		// Sincronizar casco (NAME_None = sin casco, siempre enviar para no revertir un desequipado explícito)

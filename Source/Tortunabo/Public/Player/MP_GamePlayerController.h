@@ -12,6 +12,9 @@ class UTexture2D;
 class UTN_RadialWheelWidgetBase;
 class UTN_EmoteWheelDataAsset;
 class UTN_QuickChatWheelDataAsset;
+class UMP_GameInstance;
+class APlayerState;
+class AGameStateBase;
 
 /**
  * @brief PlayerController principal del gameplay. Centraliza HUD, espectador, cosméticos, ruedas radiales, VOIP, Quick Chat y emotes.
@@ -250,6 +253,9 @@ private:
 	/** @brief Empuja al servidor la lista local de unlocks + cosméticos equipados (skin/helmet). */
 	void SyncCosmeticsToServer();
 
+	/** @brief Cast centralizado de GetGameInstance() a UMP_GameInstance; nullptr si no aplica. */
+	UMP_GameInstance* GetTNGameInstance() const;
+
 	/** @brief Pone el input mode a Game (focus al viewport, sin cursor). */
 	void ApplyGameplayInputMode();
 
@@ -273,6 +279,9 @@ private:
 
 	/** @brief Cambia el target del espectador en la dirección dada (+1 / -1). */
 	void SpectateByDirection(int32 Direction);
+
+	/** @brief Recopila los PlayerState candidatos a espectar (vivos, no eliminados) a partir del GameState dado. */
+	TArray<APlayerState*> BuildSpectateCandidates(AGameStateBase* GS) const;
 
 	/** @brief Resuelve los SoftObjectPtr de InputAction a TObjectPtr cargados. */
 	void CacheRadialInputAssets();
