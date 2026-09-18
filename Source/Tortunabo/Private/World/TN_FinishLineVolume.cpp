@@ -1,4 +1,5 @@
 #include "World/TN_FinishLineVolume.h"
+#include "World/TN_RunGameModeAccess.h"
 #include "Game/TN_RunGameMode.h"
 #include "Components/BoxComponent.h"
 #include "GameFramework/Pawn.h"
@@ -80,5 +81,5 @@ void ATN_FinishLineVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp
 
 ATN_RunGameMode* ATN_FinishLineVolume::ResolveRunGameMode() const
 {
-	return GetWorld() ? GetWorld()->GetAuthGameMode<ATN_RunGameMode>() : nullptr;
+	return TN_ResolveRunGameMode(GetWorld());
 }

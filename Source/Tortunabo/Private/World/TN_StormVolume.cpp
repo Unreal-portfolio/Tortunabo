@@ -1,4 +1,5 @@
 #include "World/TN_StormVolume.h"
+#include "World/TN_RunGameModeAccess.h"
 #include "Core/TN_Log.h"
 #include "Game/TN_RunGameMode.h"
 #include "Core/TN_CoopPlayerState.h"
@@ -377,5 +378,5 @@ void ATN_StormVolume::TickAllCountdowns()
 
 ATN_RunGameMode* ATN_StormVolume::ResolveRunGameMode() const
 {
-	return GetWorld() ? GetWorld()->GetAuthGameMode<ATN_RunGameMode>() : nullptr;
+	return TN_ResolveRunGameMode(GetWorld());
 }

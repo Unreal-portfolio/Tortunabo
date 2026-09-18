@@ -1,4 +1,5 @@
 ﻿#include "World/TN_DeathZoneVolume.h"
+#include "World/TN_RunGameModeAccess.h"
 #include "Game/TN_RunGameMode.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopPlayerState.h"
@@ -247,7 +248,7 @@ void ATN_DeathZoneVolume::ResetPlayerTimer(APlayerController* PC)
 
 ATN_RunGameMode* ATN_DeathZoneVolume::ResolveRunGameMode() const
 {
-	return GetWorld() ? GetWorld()->GetAuthGameMode<ATN_RunGameMode>() : nullptr;
+	return TN_ResolveRunGameMode(GetWorld());
 }
 
 void ATN_DeathZoneVolume::ForceCheckPlayer(APlayerController* PC)
