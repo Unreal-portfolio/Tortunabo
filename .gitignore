@@ -83,3 +83,6 @@ DerivedDataCache/*
 
 # CodeGraph index (local code-intelligence cache, regenerated on demand)
 .codegraph/
+
+# MCP de Unreal (plugin de terceros, solo editor, 66 MB) — no versionar
+/Plugins/UnrealMCPython/
