@@ -91,12 +91,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Stamina|Weight")
 	float GetWeightPenalty() const { return MaxStamina - GetEffectiveMaxStamina(); }
 
-	UFUNCTION(BlueprintPure, Category = "Stamina|Movement")
-	float GetWalkSpeed() const { return WalkSpeed; }
-
-	UFUNCTION(BlueprintPure, Category = "Stamina|Movement")
-	float GetSprintSpeed() const { return SprintSpeed; }
-
 	UFUNCTION(BlueprintPure, Category = "Stamina")
 	bool IsSprinting() const { return bIsSprinting; }
 

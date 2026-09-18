@@ -12,7 +12,6 @@
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
-#include "Player/TN_JumpTuning.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "World/TN_InteractableBase.h"
 #include "GameFramework/PlayerState.h"
@@ -55,9 +54,6 @@ ATortugaCharacter::ATortugaCharacter()
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
-
-	// JumpZVelocity y GravityScale no se fijan aquí: los deriva ApplyJumpTuning() a partir de
-	// JumpHeight y JumpDistanceSprint (ver PostInitializeComponents).
 
 	// bEnablePhysicsInteraction habilita PushForceFactor/TouchForceFactor sobre rigid bodies
 	// por contacto. 0.5 = empuje sutil suficiente para mover cajas/bolas en abierto pero
@@ -145,44 +141,6 @@ ATortugaCharacter::ATortugaCharacter()
 	// with other players. Each player's own pawn is already auto-ignored.
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-}
-
-void ATortugaCharacter::PostInitializeComponents()
-{
-	Super::PostInitializeComponents();
-
-	// Antes de BeginPlay y en todas las máquinas: cualquier sistema que guarde/restaure
-	// GravityScale o JumpZVelocity (TN_SlowZoneVolume) ve ya los valores definitivos.
-	ApplyJumpTuning();
-}
-
-void ATortugaCharacter::ApplyJumpTuning()
-{
-	UCharacterMovementComponent* CMC = GetCharacterMovement();
-	const UWorld* World = GetWorld();
-	if (!CMC || !World || !StaminaComponent)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Jump] %s — sin CharacterMovement, World o StaminaComponent; el salto queda con los valores por defecto del motor"),
-			*GetName());
-		return;
-	}
-
-	const float SprintSpeed = StaminaComponent->GetSprintSpeed();
-	TNJumpLogic::FJumpTuning Tuning;
-	if (!TNJumpLogic::ComputeJumpTuning(JumpHeight, JumpDistanceSprint, SprintSpeed, World->GetGravityZ(), Tuning))
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Jump] %s — entradas no válidas (altura=%.1f distancia=%.1f SprintSpeed=%.1f gravedad=%.1f); se mantienen JumpZVelocity=%.0f GravityScale=%.2f"),
-			*GetName(), JumpHeight, JumpDistanceSprint, SprintSpeed, World->GetGravityZ(), CMC->JumpZVelocity, CMC->GravityScale);
-		return;
-	}
-
-	CMC->JumpZVelocity = Tuning.JumpZVelocity;
-	CMC->GravityScale  = Tuning.GravityScale;
-
-	UE_LOG(LogTortunabo, Log, TEXT("[Jump] %s — altura=%.0f cm · vuelo=%.2f s · distancia sprint=%.0f cm · andando=%.0f cm → JumpZVelocity=%.0f GravityScale=%.2f"),
-		*GetName(), JumpHeight, Tuning.AirTime, JumpDistanceSprint,
-		TNJumpLogic::ComputeJumpDistance(StaminaComponent->GetWalkSpeed(), Tuning.AirTime),
-		CMC->JumpZVelocity, CMC->GravityScale);
 }
 
 void ATortugaCharacter::BeginPlay()
