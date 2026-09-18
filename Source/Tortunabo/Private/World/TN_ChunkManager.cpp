@@ -85,9 +85,11 @@ TSubclassOf<AActor> ATN_ChunkManager::SelectRandomFromPool(
 	const TArray<TSubclassOf<AActor>>& Pool,
 	int32& OutSelectedIndex) const
 {
-	// Evitar repetir el mismo índice consecutivamente (RNG inyectado como functor)
+	// Evitar repetir el mismo índice consecutivamente (RNG inyectado como functor).
+	// El índice a evitar entra por OutSelectedIndex (in/out): el llamante solo lo
+	// pasa cuando el pool es el mismo que la última vez; si no, INDEX_NONE.
 	const int32 NewIndex = TNChunkLogic::SelectIndexAvoidingRepeat(
-		Pool.Num(), LastSelectedIndex,
+		Pool.Num(), OutSelectedIndex,
 		[](int32 Min, int32 Max) { return FMath::RandRange(Min, Max); });
 
 	if (NewIndex == INDEX_NONE)
@@ -145,18 +147,25 @@ void ATN_ChunkManager::SpawnNextChunk()
 	const TArray<TSubclassOf<AActor>>* Fallback1Pool = PoolFor(Order.Fallback1);
 	const TArray<TSubclassOf<AActor>>* Fallback2Pool = PoolFor(Order.Fallback2);
 
-	int32 SelectedIndex = LastSelectedIndex;
+	// LastSelectedIndex solo es comparable si viene del mismo pool: si el tier
+	// cambió (o caemos a un fallback), no tiene sentido evitar ese índice en un array distinto.
+	int32 SelectedIndex = (LastSelectedPoolDifficulty == Order.Primary) ? LastSelectedIndex : INDEX_NONE;
 	TSubclassOf<AActor> ChunkClass = SelectRandomFromPool(*PrimaryPool, SelectedIndex);
+	ETNChunkDifficulty UsedPoolDifficulty = Order.Primary;
 
 	if (!ChunkClass && Fallback1Pool)
 	{
+		SelectedIndex = (LastSelectedPoolDifficulty == Order.Fallback1) ? LastSelectedIndex : INDEX_NONE;
 		ChunkClass = SelectRandomFromPool(*Fallback1Pool, SelectedIndex);
+		UsedPoolDifficulty = Order.Fallback1;
 		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Pool primario vacío para dificultad %d — usando fallback 1."),
 			(int32)Difficulty);
 	}
 	if (!ChunkClass && Fallback2Pool)
 	{
+		SelectedIndex = (LastSelectedPoolDifficulty == Order.Fallback2) ? LastSelectedIndex : INDEX_NONE;
 		ChunkClass = SelectRandomFromPool(*Fallback2Pool, SelectedIndex);
+		UsedPoolDifficulty = Order.Fallback2;
 		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Fallback 1 vacío — usando fallback 2."));
 	}
 
@@ -173,6 +182,7 @@ void ATN_ChunkManager::SpawnNextChunk()
 	}
 
 	LastSelectedIndex = SelectedIndex;
+	LastSelectedPoolDifficulty = UsedPoolDifficulty;
 
 	// Desconectar el trigger anterior y conectar solo el del nuevo chunk.
 	// Tener un único trigger activo garantiza que un solo SpawnNextChunk se llame

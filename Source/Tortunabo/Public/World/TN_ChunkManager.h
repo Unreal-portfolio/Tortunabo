@@ -165,6 +165,10 @@ private:
 	// Índice del último chunk seleccionado (para evitar repetición inmediata).
 	int32 LastSelectedIndex = -1;
 
+	// Dificultad del pool del que salió LastSelectedIndex. Sin esto, el anti-repeat
+	// compararía índices de arrays distintos al cruzar de tier o caer a un fallback.
+	ETNChunkDifficulty LastSelectedPoolDifficulty = ETNChunkDifficulty::Easy;
+
 	// Cuántos chunks ha cruzado el jugador líder.
 	int32 PassedChunkCount = 0;
 
@@ -198,7 +202,8 @@ private:
 	/** Devuelve el pool de chunks correspondiente a la dificultad actual. */
 	ETNChunkDifficulty GetCurrentDifficulty() const;
 
-	/** Selecciona una clase de chunk aleatoria del pool dado, evitando LastSelectedIndex.
+	/** Selecciona una clase de chunk aleatoria del pool dado, evitando el índice que
+	 *  entra en OutSelectedIndex (in/out; INDEX_NONE = sin exclusión).
 	 *  Devuelve nullptr si el pool está vacío. */
 	TSubclassOf<AActor> SelectRandomFromPool(const TArray<TSubclassOf<AActor>>& Pool,
 	                                          int32& OutSelectedIndex) const;
