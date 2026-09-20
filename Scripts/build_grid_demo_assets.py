@@ -4,7 +4,8 @@ Se ejecuta DENTRO del editor de Unreal (consola Python, MCP o -run=pythonscript)
     exec(open(r"<repo>/Scripts/build_grid_demo_assets.py", encoding="utf-8").read())
 
 Crea en /Game/Blueprints/Gameplay/GridMap: material plano + instancias de color,
-tiles greybox de recta y giro, tres rellenos, el material y el BP del tile de terreno,
+tiles greybox de recta y giro, tres rellenos, los materiales de terreno y de basura, el BP
+del tile de terreno,
 el material del agua, el GameMode de la demo y BP_GridMapGenerator (en modo terreno).
 Crea el mapa /Game/Maps/Run/LVL_ProcGenDemo con luz, cielo, generador y PlayerStart.
 
@@ -209,14 +210,38 @@ def build_water_material():
     return material
 
 
-def build_terrain_tile(terrain_material):
+def build_junk_material():
+    """Material de los objetos de basura: el color llega por instancia (PerInstanceCustomData)."""
+    path = f"{ROOT}/M_GridJunk"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    material = asset_tools.create_asset("M_GridJunk", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+    mel = unreal.MaterialEditingLibrary
+    color = mel.create_material_expression(material, unreal.MaterialExpressionPerInstanceCustomData3Vector, -400, 0)
+    color.set_editor_property("data_index", 0)
+    color.set_editor_property("const_default_value", unreal.LinearColor(0.2, 0.2, 0.2, 1.0))
+    mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 300)
+    roughness.set_editor_property("r", 0.7)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.recompile_material(material)
+    asset_lib.save_loaded_asset(material)
+    return material
+
+
+def build_terrain_tile(terrain_material, junk_material):
     path = f"{ROOT}/BP_GridTerrainTile"
     blueprint = load_or_none(path)
     if not blueprint:
         blueprint = create_blueprint("BP_GridTerrainTile", unreal.load_class(None, TERRAIN_TILE_CLASS))
         unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
 
-    unreal.get_default_object(blueprint.generated_class()).set_editor_property("terrain_material", terrain_material)
+    defaults = unreal.get_default_object(blueprint.generated_class())
+    defaults.set_editor_property("terrain_material", terrain_material)
+    defaults.set_editor_property("junk_material", junk_material)
     unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
     asset_lib.save_loaded_asset(blueprint)
     return blueprint
@@ -310,7 +335,7 @@ def main():
     flat = build_flat_material()
     materials = {name: build_color_instance(name, rgb, flat) for name, rgb in COLORS.items()}
     tiles = build_tiles(materials, cube)
-    terrain_tile_bp = build_terrain_tile(build_terrain_material())
+    terrain_tile_bp = build_terrain_tile(build_terrain_material(), build_junk_material())
     generator_bp = build_generator(tiles, terrain_tile_bp, build_water_material())
     game_mode_bp = build_game_mode()
     build_map(generator_bp, game_mode_bp)
