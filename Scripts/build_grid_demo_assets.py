@@ -4,7 +4,8 @@ Se ejecuta DENTRO del editor de Unreal (consola Python, MCP o -run=pythonscript)
     exec(open(r"<repo>/Scripts/build_grid_demo_assets.py", encoding="utf-8").read())
 
 Crea en /Game/Blueprints/Gameplay/GridMap: material plano + instancias de color,
-tiles de recta y giro, tres rellenos, el GameMode de la demo y BP_GridMapGenerator.
+tiles greybox de recta y giro, tres rellenos, el material y el BP del tile de terreno,
+el material del agua, el GameMode de la demo y BP_GridMapGenerator (en modo terreno).
 Crea el mapa /Game/Maps/Run/LVL_ProcGenDemo con luz, cielo, generador y PlayerStart.
 
 Idempotente: los assets que ya existen se reutilizan, no se recrean.
@@ -18,6 +19,7 @@ MAP_PATH = "/Game/Maps/Run/LVL_ProcGenDemo"
 CUBE_PATH = "/Engine/BasicShapes/Cube"
 CHARACTER_BP = "/Game/Blueprints/Characters/BP_TortugaCharacter"
 GENERATOR_CLASS = "/Script/Tortunabo.TN_GridMapGenerator"
+TERRAIN_TILE_CLASS = "/Script/Tortunabo.TN_GridTerrainTile"
 
 CELL_SIZE = 2000.0
 CUBE_SIZE = 100.0
@@ -161,6 +163,63 @@ def build_tiles(materials, cube):
     }
 
 
+def build_terrain_material():
+    """El color del terreno llega ya calculado en el color de vértice."""
+    path = f"{ROOT}/M_GridTerrain"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    material = asset_tools.create_asset("M_GridTerrain", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+    mel = unreal.MaterialEditingLibrary
+    vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -400, 0)
+    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 300)
+    roughness.set_editor_property("r", 0.95)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.recompile_material(material)
+    asset_lib.save_loaded_asset(material)
+    return material
+
+
+def build_water_material():
+    path = f"{ROOT}/M_GridWater"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    material = asset_tools.create_asset("M_GridWater", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    material.set_editor_property("translucency_lighting_mode", unreal.TranslucencyLightingMode.TLM_SURFACE)
+    mel = unreal.MaterialEditingLibrary
+
+    color = mel.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, -400, 0)
+    color.set_editor_property("constant", unreal.LinearColor(0.03, 0.22, 0.30, 1.0))
+    mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    for value, prop, y in ((0.08, unreal.MaterialProperty.MP_ROUGHNESS, 200),
+                           (0.78, unreal.MaterialProperty.MP_OPACITY, 400)):
+        constant = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, y)
+        constant.set_editor_property("r", value)
+        mel.connect_material_property(constant, "", prop)
+
+    mel.recompile_material(material)
+    asset_lib.save_loaded_asset(material)
+    return material
+
+
+def build_terrain_tile(terrain_material):
+    path = f"{ROOT}/BP_GridTerrainTile"
+    blueprint = load_or_none(path)
+    if not blueprint:
+        blueprint = create_blueprint("BP_GridTerrainTile", unreal.load_class(None, TERRAIN_TILE_CLASS))
+        unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+
+    unreal.get_default_object(blueprint.generated_class()).set_editor_property("terrain_material", terrain_material)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
 def build_game_mode():
     path = f"{ROOT}/BP_GridDemoGameMode"
     existing = load_or_none(path)
@@ -176,7 +235,7 @@ def build_game_mode():
     return blueprint
 
 
-def build_generator(tiles):
+def build_generator(tiles, terrain_tile_bp, water_material):
     path = f"{ROOT}/BP_GridMapGenerator"
     blueprint = load_or_none(path)
     if not blueprint:
@@ -188,6 +247,10 @@ def build_generator(tiles):
     defaults.set_editor_property("turn_tile_class", tiles["turn"].generated_class())
     defaults.set_editor_property("filler_tile_classes", [bp.generated_class() for bp in tiles["fillers"]])
     defaults.set_editor_property("cell_size", CELL_SIZE)
+    # Con TerrainTileClass asignado el generador trabaja en modo terreno; los tiles
+    # greybox se quedan configurados como alternativa (basta con vaciar esta propiedad).
+    defaults.set_editor_property("terrain_tile_class", terrain_tile_bp.generated_class())
+    defaults.set_editor_property("water_material", water_material)
     # Sin recompilar, las instancias nuevas no heredan los defaults recién escritos en el CDO.
     unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
     asset_lib.save_loaded_asset(blueprint)
@@ -215,7 +278,12 @@ def build_map(generator_bp, game_mode_bp):
     ensure_actor("Sun", unreal.DirectionalLight, unreal.Vector(0, 0, 3000), unreal.Rotator(0.0, -50.0, 35.0))
     ensure_actor("SkyAtmosphere", unreal.SkyAtmosphere)
     sky_light = ensure_actor("SkyLight", unreal.SkyLight, unreal.Vector(0, 0, 3000))
-    sky_light.get_component_by_class(unreal.SkyLightComponent).set_editor_property("real_time_capture", True)
+    # Luz de cielo móvil y reforzada: el terreno es un cañón y las paredes en sombra se
+    # quedaban negras con los valores por defecto.
+    sky_component = sky_light.get_component_by_class(unreal.SkyLightComponent)
+    sky_component.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
+    sky_component.set_editor_property("real_time_capture", True)
+    sky_component.set_editor_property("intensity", 3.0)
 
     generator = ensure_actor("GridMapGenerator", generator_bp.generated_class())
     generator.call_method("Generate")
@@ -240,7 +308,8 @@ def main():
     flat = build_flat_material()
     materials = {name: build_color_instance(name, rgb, flat) for name, rgb in COLORS.items()}
     tiles = build_tiles(materials, cube)
-    generator_bp = build_generator(tiles)
+    terrain_tile_bp = build_terrain_tile(build_terrain_material())
+    generator_bp = build_generator(tiles, terrain_tile_bp, build_water_material())
     game_mode_bp = build_game_mode()
     build_map(generator_bp, game_mode_bp)
     unreal.log("[GridDemo] Assets y mapa de la demo listos.")
