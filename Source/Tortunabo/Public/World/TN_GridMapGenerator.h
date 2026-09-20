@@ -60,9 +60,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap", meta = (ClampMin = "1", ClampMax = "32"))
 	int32 GridSize = 6;
 
-	/** Lado de una celda en unidades de Unreal. Debe coincidir con el tamaño de los tiles. */
+	/** Lado de una celda en unidades de Unreal. En modo greybox debe coincidir con el
+	 *  tamaño de los tiles (2000); en modo terreno, con lo que admita FTNGridTerrainSettings. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap", meta = (ClampMin = "100.0"))
-	float CellSize = 2000.f;
+	float CellSize = 4000.f;
 
 	/** Longitud mínima del camino, en celdas. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap", meta = (ClampMin = "1"))

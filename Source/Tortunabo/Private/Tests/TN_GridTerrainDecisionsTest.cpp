@@ -14,7 +14,7 @@
 namespace
 {
 	constexpr int32 TerrainTestGridSize = 6;
-	constexpr double TerrainTestCellSize = 2000.0;
+	constexpr double TerrainTestCellSize = 4000.0;
 	constexpr int32 TerrainTestSeedCount = 50;
 
 	TArray<FIntPoint> TerrainTestPath(int32 Seed)
@@ -37,44 +37,96 @@ namespace
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// El pasillo se puede andar
+// Se llega andando de la entrada a la salida, y solo a la salida
 // ─────────────────────────────────────────────────────────────────────────────
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainCorridorWalkableTest,
-	"Tortunabo.Terrain.CorridorWalkable",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainWalkableRouteTest,
+	"Tortunabo.Terrain.WalkableRoute",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNTerrainCorridorWalkableTest::RunTest(const FString& Parameters)
+bool FTNTerrainWalkableRouteTest::RunTest(const FString& Parameters)
 {
 	using namespace TNGridTerrain;
-	constexpr double SampleStep = 50.0;
-	const double MaxWalkableSlope = TanDegrees(25.0);
 
-	for (int32 Seed = 0; Seed < TerrainTestSeedCount; ++Seed)
+	// Inundación sobre una rejilla de 100 uu desde la entrada, con el mismo criterio que
+	// el CharacterMovementComponent: un punto es pisable si la pendiente del terreno ahí
+	// está por debajo del ángulo caminable (~45°). El interior del pasillo tiene relieve
+	// y rocas, así que esto es lo que de verdad garantiza que el mapa se puede jugar:
+	//   - la salida es alcanzable,
+	//   - andando no se pasa de media pared (se puede pisar el pie del talud o una roca
+	//     baja, pero nunca llegar a la meseta),
+	//   - no se sale del grid por ningún sitio que no sea la entrada o la salida.
+	constexpr double GridStep = 100.0;
+	constexpr int32 RouteSeedCount = 20;
+	constexpr double GradientStep = 25.0;
+	const double MaxWalkableSlope = TanDegrees(45.0);
+	const double Low = -TerrainTestCellSize * 0.5;
+	const double High = (TerrainTestGridSize - 0.5) * TerrainTestCellSize;
+
+	for (int32 Seed = 0; Seed < RouteSeedCount; ++Seed)
 	{
-		const FTerrainContext Context = TerrainTestContext(Seed, TerrainTestPath(Seed));
-		double WorstSlope = 0.0;
-		double HighestFloor = 0.0;
+		const TArray<FIntPoint> Path = TerrainTestPath(Seed);
+		const FTerrainContext Context = TerrainTestContext(Seed, Path);
+		const FTNGridTerrainSettings& S = Context.Settings;
 
-		for (int32 i = 1; i < Context.Centerline.Num(); ++i)
+		const FVector2D Entry(Low, CellCenter(TerrainTestCellSize, Path[0]).Y);
+		const FVector2D Exit(High, CellCenter(TerrainTestCellSize, Path.Last()).Y);
+		const double OpeningRadius = S.CorridorHalfWidthMax + S.BankWidth;
+
+		auto ToPoint = [GridStep](const FIntPoint& Node) { return FVector2D(Node.X * GridStep, Node.Y * GridStep); };
+		const FIntPoint EntryNode(FMath::RoundToInt32(Entry.X / GridStep), FMath::RoundToInt32(Entry.Y / GridStep));
+		const FIntPoint ExitNode(FMath::RoundToInt32(Exit.X / GridStep), FMath::RoundToInt32(Exit.Y / GridStep));
+
+		TMap<FIntPoint, double> Reached;
+		TArray<FIntPoint> Frontier;
+		Reached.Add(EntryNode, SampleHeight(Context, ToPoint(EntryNode)));
+		Frontier.Add(EntryNode);
+
+		double HighestReached = 0.0;
+		FVector2D HighestPoint = FVector2D::ZeroVector;
+		int32 BorderLeaks = 0;
+		while (Frontier.Num() > 0)
 		{
-			const FVector2D A = Context.Centerline[i - 1];
-			const FVector2D B = Context.Centerline[i];
-			const int32 NumSteps = FMath::RoundToInt32(FVector2D::Distance(A, B) / SampleStep);
-			double Previous = SampleHeight(Context, A);
-			for (int32 Step = 1; Step <= NumSteps; ++Step)
+			const FIntPoint Node = Frontier.Pop(EAllowShrinking::No);
+			const double NodeHeight = Reached[Node];
+			if (NodeHeight > HighestReached)
 			{
-				const double Current = SampleHeight(Context, FMath::Lerp(A, B, static_cast<double>(Step) / NumSteps));
-				WorstSlope = FMath::Max(WorstSlope, FMath::Abs(Current - Previous) / SampleStep);
-				HighestFloor = FMath::Max(HighestFloor, FMath::Abs(Current));
-				Previous = Current;
+				HighestReached = NodeHeight;
+				HighestPoint = ToPoint(Node);
+			}
+
+			for (const FIntPoint& Offset : { FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1) })
+			{
+				const FIntPoint Next = Node + Offset;
+				if (Reached.Contains(Next)) { continue; }
+
+				const FVector2D P = ToPoint(Next);
+				if (P.X < Low || P.X > High || P.Y < Low || P.Y > High)
+				{
+					const bool bThroughOpening = FVector2D::Distance(P, Entry) <= OpeningRadius || FVector2D::Distance(P, Exit) <= OpeningRadius;
+					BorderLeaks += bThroughOpening ? 0 : 1;
+					continue;
+				}
+
+				const double SlopeX = (SampleHeight(Context, P + FVector2D(GradientStep, 0.0)) - SampleHeight(Context, P - FVector2D(GradientStep, 0.0))) / (2.0 * GradientStep);
+				const double SlopeY = (SampleHeight(Context, P + FVector2D(0.0, GradientStep)) - SampleHeight(Context, P - FVector2D(0.0, GradientStep))) / (2.0 * GradientStep);
+				if (FMath::Sqrt(SlopeX * SlopeX + SlopeY * SlopeY) >= MaxWalkableSlope) { continue; }
+
+				const double NextHeight = SampleHeight(Context, P);
+				if (FMath::Abs(NextHeight - NodeHeight) > GridStep) { continue; }
+
+				Reached.Add(Next, NextHeight);
+				Frontier.Add(Next);
 			}
 		}
 
 		const FString Ctx = FString::Printf(TEXT("semilla %d"), Seed);
-		TestTrue(Ctx + TEXT(": pendiente del pasillo < 25°"), WorstSlope < MaxWalkableSlope);
-		TestTrue(Ctx + TEXT(": el centro del pasillo queda a nivel de suelo"),
-			HighestFloor <= Context.Settings.FloorRippleAmplitude * 1.5);
+		TestTrue(Ctx + TEXT(": la salida es alcanzable andando desde la entrada"), Reached.Contains(ExitNode));
+		const FTerrainSample Top = EvaluateTerrain(Context, HighestPoint);
+		TestTrue(Ctx + FString::Printf(TEXT(": andando no se pasa de media pared (max %.0f uu en (%.0f, %.0f), pasillo=%.2f, roca=%.2f)"),
+			HighestReached, HighestPoint.X, HighestPoint.Y, Top.CorridorMask, Top.Obstacle),
+			HighestReached < S.WallHeight * 0.5);
+		TestEqual(Ctx + TEXT(": sin fugas por el perímetro"), BorderLeaks, 0);
 	}
 	return true;
 }
@@ -114,15 +166,15 @@ bool FTNTerrainWallBetweenCorridorsTest::RunTest(const FString& Parameters)
 
 				// Sin huecos: se cruza de un pasillo al otro cada 100 uu a lo largo del borde
 				// común y en TODOS los cruces tiene que haber cresta. Se deja fuera el último
-				// 30% de cada extremo: ahí puede estar la punta redondeada de la isla de un giro
+				// 15% de cada extremo: ahí puede estar la punta redondeada de la isla de un giro
 				// en U, donde ambos pasillos ya se están uniendo.
 				double LowestRidge = TNumericLimits<double>::Max();
-				for (double Offset = -700.0; Offset <= 700.0; Offset += 100.0)
+				for (double Offset = -0.35 * TerrainTestCellSize; Offset <= 0.35 * TerrainTestCellSize; Offset += 100.0)
 				{
 					double Ridge = 0.0;
-					for (int32 Step = 0; Step <= 200; ++Step)
+					for (int32 Step = 0; Step <= 160; ++Step)
 					{
-						Ridge = FMath::Max(Ridge, SampleHeight(Context, FMath::Lerp(From, To, Step / 200.0) + Along * Offset));
+						Ridge = FMath::Max(Ridge, SampleHeight(Context, FMath::Lerp(From, To, Step / 160.0) + Along * Offset));
 					}
 					LowestRidge = FMath::Min(LowestRidge, Ridge);
 				}
@@ -168,7 +220,7 @@ bool FTNTerrainBankSteepTest::RunTest(const FString& Parameters)
 			{
 				TArray<double> Heights;
 				// Hasta algo más allá del borde de la celda: el serpenteo desplaza la cresta.
-				for (double Distance = 0.0; Distance <= HalfCell + 250.0; Distance += RayStep)
+				for (double Distance = 0.0; Distance <= HalfCell + 500.0; Distance += RayStep)
 				{
 					Heights.Add(SampleHeight(Context, Center + Side * (Sign * Distance)));
 				}
@@ -181,7 +233,7 @@ bool FTNTerrainBankSteepTest::RunTest(const FString& Parameters)
 
 				const FString Ctx = FString::Printf(TEXT("semilla %d celda (%d,%d) lado %+.0f"),
 					Seed, Cell.Coord.X, Cell.Coord.Y, Sign);
-				// 0.75 * 600 en 300 uu = 56°: por encima del ángulo caminable del CMC (~45°).
+				// 0.75 * 800 en 300 uu = 63°: por encima del ángulo caminable del CMC (~45°).
 				TestTrue(Ctx + TEXT(": el talud sube >= 75% de WallHeight en 300 uu"),
 					BestGain >= Context.Settings.WallHeight * 0.75);
 				TestTrue(Ctx + TEXT(": cresta completa a ese lado del pasillo"),
@@ -232,8 +284,8 @@ bool FTNTerrainBorderClosedTest::RunTest(const FString& Parameters)
 
 		const FString Ctx = FString::Printf(TEXT("semilla %d"), Seed);
 		TestTrue(Ctx + TEXT(": perímetro cerrado fuera de las aberturas"), bClosed);
-		TestTrue(Ctx + TEXT(": la entrada queda a nivel de suelo"), SampleHeight(Context, Entry) < 50.0);
-		TestTrue(Ctx + TEXT(": la salida queda a nivel de suelo"), SampleHeight(Context, Exit) < 50.0);
+		TestTrue(Ctx + TEXT(": la entrada queda a nivel de suelo"), SampleHeight(Context, Entry) < S.InteriorReliefAmplitude * 1.5);
+		TestTrue(Ctx + TEXT(": la salida queda a nivel de suelo"), SampleHeight(Context, Exit) < S.InteriorReliefAmplitude * 1.5);
 	}
 	return true;
 }
@@ -333,19 +385,25 @@ bool FTNTerrainStylesAndDeterminismTest::RunTest(const FString& Parameters)
 	}
 
 	const TArray<FIntPoint> Path = TerrainTestPath(3);
-	const FVector2D Probe(3300.0, 4700.0);
+	const FVector2D Probe(6600.0, 9400.0);
 	TestEqual(TEXT("Misma semilla → misma altura"),
 		SampleHeight(TerrainTestContext(3, Path), Probe), SampleHeight(TerrainTestContext(3, Path), Probe));
 	TestNotEqual(TEXT("Otra semilla de ruido → otra altura"),
 		SampleHeight(TerrainTestContext(3, Path), Probe), SampleHeight(TerrainTestContext(4, Path), Probe));
 
 	FTNGridTerrainSettings TooWide;
-	TooWide.CorridorHalfWidthMax = 900.f; // 900 + 250 > 1000: no cabe la pared
+	TooWide.CorridorHalfWidthMax = 1800.f; // 1800 + 380 > 2000: no cabe la pared
 	TestTrue(TEXT("Parámetros por defecto válidos"), IsContextValid(TerrainTestContext(3, Path)));
 	TestFalse(TEXT("Pasillo + talud > media celda → contexto inválido"), IsContextValid(TerrainTestContext(3, Path, TooWide)));
 	FTNGridTerrainSettings TooWinding;
-	TooWinding.CorridorMeander = 400.f; // 400 * sqrt(2) + 80 > 550: la recta entre centros pisaría pared
+	TooWinding.CorridorMeander = 800.f; // 800 * sqrt(2) + 140 > 1100: la recta entre centros pisaría pared
 	TestFalse(TEXT("Serpenteo mayor que el pasillo → contexto inválido"), IsContextValid(TerrainTestContext(3, Path, TooWinding)));
+	FTNGridTerrainSettings LaneTooWide;
+	LaneTooWide.InteriorLaneHalfWidth = 700.f; // 700 * 1.6 + 140 > 1100: el carril no cabe en el pasillo estrecho
+	TestFalse(TEXT("Carril libre más ancho que el pasillo → contexto inválido"), IsContextValid(TerrainTestContext(3, Path, LaneTooWide)));
+	FTNGridTerrainSettings RocksTooTall;
+	RocksTooTall.InteriorRockHeight = 500.f; // >= media pared: servirían de escalón hacia la meseta
+	TestFalse(TEXT("Rocas del interior >= media pared → contexto inválido"), IsContextValid(TerrainTestContext(3, Path, RocksTooTall)));
 	TestFalse(TEXT("Sin camino → contexto inválido"), IsContextValid(TerrainTestContext(3, {})));
 	TestEqual(TEXT("Contexto inválido → malla vacía"), BuildTileMesh(TerrainTestContext(3, Path, TooWide), FIntPoint(0, 0)).Vertices.Num(), 0);
 

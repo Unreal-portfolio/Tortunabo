@@ -10,7 +10,9 @@
  * la geometría que se juega.
  *
  * Modelo: una única función de altura H(P) sobre todo el grid, derivada del camino.
- *   - Pasillo: puntos a menos de un semiancho de la línea central del camino → suelo.
+ *   - Pasillo: puntos a menos de un semiancho de la línea central del camino → suelo
+ *     con relieve propio (dunas suaves, afloramientos de roca, charcos) y un carril
+ *     central siempre libre de obstáculos.
  *   - Talud: al salir del semiancho la altura sube hasta la cresta en BankWidth.
  *     Medir distancia a una polilínea redondea los giros de forma natural.
  *   - Relleno: más allá del talud, meseta con dunas, roca o cuencas bajo el agua.
@@ -48,6 +50,8 @@ namespace TNGridTerrain
 		/** 1 en el suelo del pasillo, 0 fuera del talud. */
 		double CorridorMask = 0.0;
 		double RockWeight = 0.0;
+		/** 1 sobre un afloramiento de roca del interior del pasillo. */
+		double Obstacle = 0.0;
 	};
 
 	/** Malla de una celda, en espacio local de la celda (origen en su centro). */
@@ -69,6 +73,9 @@ namespace TNGridTerrain
 		TArray<FVector2D> Centerline;
 		TArray<FCellStyle> CellStyles;
 		FVector2D NoiseOffset = FVector2D::ZeroVector;
+		/** CellSize / 2000. Escala las longitudes de onda de los rasgos grandes (dunas,
+		 *  serpenteo, charcas) para que un grid de celdas mayores no repita más por celda. */
+		double FeatureScale = 1.0;
 	};
 
 	inline FVector2D CellCenter(double CellSize, const FIntPoint& Coord)
@@ -145,6 +152,9 @@ namespace TNGridTerrain
 			&& Context.CellStyles.Num() == Context.GridSize * Context.GridSize
 			&& S.CorridorHalfWidthMin <= S.CorridorHalfWidthMax
 			&& S.CorridorMeander * UE_DOUBLE_SQRT_2 + S.WallOutlineJitter < S.CorridorHalfWidthMin
+			&& S.InteriorLaneHalfWidth > 0.0
+			&& S.InteriorLaneHalfWidth * 1.6 + S.WallOutlineJitter < S.CorridorHalfWidthMin
+			&& S.InteriorRockHeight < S.WallHeight * 0.5
 			&& S.CorridorHalfWidthMax + S.BankWidth <= Context.CellSize * 0.5;
 	}
 
@@ -155,6 +165,7 @@ namespace TNGridTerrain
 		FTerrainContext Context;
 		Context.GridSize = GridSize;
 		Context.CellSize = CellSize;
+		Context.FeatureScale = CellSize / 2000.0;
 		Context.Settings = Settings;
 		Context.Centerline = BuildCenterline(CellSize, Path);
 
@@ -271,48 +282,82 @@ namespace TNGridTerrain
 	{
 		const FTNGridTerrainSettings& S = Context.Settings;
 
-		const double Dunes = S.DuneAmplitude * Style.DuneWeight * (Fbm(Context, P, 1600.0) * 0.5 + 0.5);
-		const double Rocks = S.RockAmplitude * Style.RockWeight * Ridged(Context, P, 700.0)
+		const double Dunes = S.DuneAmplitude * Style.DuneWeight * (Fbm(Context, P, 1600.0 * Context.FeatureScale) * 0.5 + 0.5);
+		const double Rocks = S.RockAmplitude * Style.RockWeight * Ridged(Context, P, 700.0 * Context.FeatureScale)
 			* (0.6 + 0.4 * Noise(Context, P, 230.0));
 		const double High = S.WallHeight + Dunes + FMath::Max(0.0, Rocks);
 
 		// Las cuencas solo se abren lejos del camino y del borde: nunca rebajan una pared.
 		const double HalfCell = Context.CellSize * 0.5;
-		const double FarFromPath = SmoothStep(HalfCell + 100.0, HalfCell + 500.0, CenterlineDistance);
-		const double FarFromBorder = SmoothStep(300.0, 700.0, DistanceToGridBorder(Context, P));
-		const double Pool = SmoothStep(0.30, 0.55, Style.Wetness * (Noise(Context, P, 1900.0) * 0.5 + 0.5));
+		const double Scale = Context.FeatureScale;
+		const double FarFromPath = SmoothStep(HalfCell + 100.0 * Scale, HalfCell + 500.0 * Scale, CenterlineDistance);
+		const double FarFromBorder = SmoothStep(300.0 * Scale, 700.0 * Scale, DistanceToGridBorder(Context, P));
+		const double Pool = SmoothStep(0.30, 0.55, Style.Wetness * (Noise(Context, P, 1900.0 * Scale) * 0.5 + 0.5));
 		const double BasinMask = Pool * FarFromPath * FarFromBorder;
 
 		return FMath::Lerp(High, static_cast<double>(S.WaterLevel - S.BasinDepth), BasinMask);
 	}
 
+	/**
+	 * Suelo del pasillo. No es plano: relieve suave de duna en todo el ancho, afloramientos
+	 * de roca y charcos de marisma. Los afloramientos son obstáculos de verdad (bordes casi
+	 * verticales), por eso NUNCA nacen dentro del carril central: siempre queda un paso
+	 * libre de InteriorLaneHalfWidth a cada lado de la línea central serpenteante.
+	 * @param OutObstacle Cuánto de afloramiento hay en el punto (0..1), para el color.
+	 */
+	inline double SampleCorridorFloor(const FTerrainContext& Context, const FVector2D& P,
+		const FCellStyle& Style, double CenterlineDistance, double& OutObstacle)
+	{
+		const FTNGridTerrainSettings& S = Context.Settings;
+		const double Scale = Context.FeatureScale;
+
+		const double Ripple = S.FloorRippleAmplitude * Fbm(Context, P, 320.0);
+		const double Relief = S.InteriorReliefAmplitude * (0.5 + 0.5 * Style.DuneWeight) * Fbm(Context, P, 1100.0 * Scale);
+
+		const double OffLane = SmoothStep(S.InteriorLaneHalfWidth, S.InteriorLaneHalfWidth * 1.6, CenterlineDistance);
+		const double Blob = SmoothStep(0.56, 0.72, Noise(Context, P + FVector2D(911.0, 2203.0), 430.0 * Scale) * 0.5 + 0.5);
+		OutObstacle = Blob * OffLane;
+		const double Outcrop = S.InteriorRockHeight * (0.45 + 0.55 * Style.RockWeight)
+			* (0.75 + 0.25 * Noise(Context, P, 160.0)) * OutObstacle;
+
+		const double Puddle = S.PuddleDepth * Style.Wetness
+			* SmoothStep(0.50, 0.72, Noise(Context, P + FVector2D(3301.0, 707.0), 650.0 * Scale) * 0.5 + 0.5);
+
+		return Ripple + Relief + Outcrop - Puddle;
+	}
+
 	inline FTerrainSample EvaluateTerrain(const FTerrainContext& Context, const FVector2D& P)
 	{
 		const FTNGridTerrainSettings& S = Context.Settings;
+		const double Scale = Context.FeatureScale;
 		const FCellStyle Style = SampleStyle(Context, P);
 
 		// Deformación del dominio: la distancia se mide desde un punto desplazado por ruido
 		// de baja frecuencia, así que el pasillo serpentea en vez de seguir rectas perfectas.
 		// Se apaga junto al borde del grid para no mover la entrada ni la salida.
-		const double MeanderFade = SmoothStep(0.0, 800.0, DistanceToGridBorder(Context, P));
-		const FVector2D Meander = FVector2D(Noise(Context, P, 1300.0), Noise(Context, P + FVector2D(5171.0, 3137.0), 1300.0))
+		const double MeanderFade = SmoothStep(0.0, 800.0 * Scale, DistanceToGridBorder(Context, P));
+		const FVector2D Meander = FVector2D(Noise(Context, P, 1300.0 * Scale), Noise(Context, P + FVector2D(5171.0, 3137.0), 1300.0 * Scale))
 			* (S.CorridorMeander * MeanderFade);
 		const double Distance = DistanceToCenterline(Context, P + Meander);
 
 		// El contorno irregular solo empuja la pared HACIA el pasillo (el término es >= 0):
 		// estrecha el paso, pero nunca adelgaza la pared entre dos pasillos vecinos.
+		// Su longitud de onda escala con la celda: si el ruido varía demasiado deprisa
+		// respecto a su amplitud, estira el talud y deja tramos de pared caminables.
 		const double Jitter = S.WallOutlineJitter * (0.35 + 0.65 * Style.RockWeight)
-			* (Noise(Context, P, 210.0) * 0.5 + 0.5);
+			* (Noise(Context, P, 300.0 * Scale) * 0.5 + 0.5);
 		const double WallDistance = Distance + Jitter;
 
 		FTerrainSample Sample;
 		Sample.RockWeight = Style.RockWeight;
 		// El talud solo puede estrecharse (más vertical), nunca ensancharse: así la cresta
 		// sigue completa dentro del margen que reserva el invariante de anchos.
-		const double LocalBankWidth = S.BankWidth * (0.65 + 0.35 * (Noise(Context, P, 520.0) * 0.5 + 0.5));
+		const double LocalBankWidth = S.BankWidth * (0.65 + 0.35 * (Noise(Context, P, 520.0 * Scale) * 0.5 + 0.5));
 		Sample.CorridorMask = 1.0 - SmoothStep(Style.HalfWidth, Style.HalfWidth + LocalBankWidth, WallDistance);
 
-		const double Floor = S.FloorRippleAmplitude * Fbm(Context, P, 320.0);
+		double Obstacle = 0.0;
+		const double Floor = SampleCorridorFloor(Context, P, Style, Distance, Obstacle);
+		Sample.Obstacle = Obstacle * Sample.CorridorMask;
 		const double High = SampleHighGround(Context, P, Style, Distance);
 		Sample.Height = FMath::Lerp(High, Floor, Sample.CorridorMask);
 		return Sample;
@@ -333,8 +378,10 @@ namespace TNGridTerrain
 		const double Cliff = SmoothStep(0.20, 0.55, Slope);
 		const double Rock = FMath::Clamp(
 			Cliff * (0.55 + 0.45 * Sample.RockWeight)
-			+ 0.30 * Sample.RockWeight * (1.0 - Sample.CorridorMask), 0.0, 1.0);
-		const double Wet = SmoothStep(S.WaterLevel + 140.0, S.WaterLevel + 10.0, Sample.Height);
+			+ 0.30 * Sample.RockWeight * (1.0 - Sample.CorridorMask)
+			+ 0.85 * Sample.Obstacle, 0.0, 1.0);
+		// Húmedo solo por debajo de la cota del suelo: charcos y orillas, no el pasillo entero.
+		const double Wet = SmoothStep(S.WaterLevel + 45.0, S.WaterLevel + 5.0, Sample.Height);
 
 		FLinearColor Color = FMath::Lerp(S.SandColor, S.PathColor, static_cast<float>(Sample.CorridorMask));
 		Color = FMath::Lerp(Color, S.RockColor, static_cast<float>(Rock));
