@@ -80,4 +80,7 @@ void ATN_GridTerrainTile::BuildTerrain()
 	}
 
 	bTerrainBuilt = true;
+
+	UE_LOG(LogTortunabo, Verbose, TEXT("[GridTerrain] Celda (%d, %d) construida en %s: %d vértices, semilla %d."),
+		Init.Coord.X, Init.Coord.Y, HasAuthority() ? TEXT("servidor") : TEXT("cliente"), Mesh.Vertices.Num(), Init.Seed);
 }
