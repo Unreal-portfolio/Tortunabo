@@ -25,7 +25,8 @@ public class Tortunabo : ModuleRules
 			"AudioMixer",
 			"SignalProcessing",
 			"Niagara",
-			"NiagaraCore"
+			"NiagaraCore",
+			"ProceduralMeshComponent"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

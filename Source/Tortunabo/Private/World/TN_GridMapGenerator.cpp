@@ -1,24 +1,52 @@
 #include "World/TN_GridMapGenerator.h"
 #include "World/TN_GridPathDecisions.h"
+#include "World/TN_GridTerrainTile.h"
 #include "Core/TN_Log.h"
 #include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Materials/MaterialInterface.h"
 #include "Math/RandomStream.h"
+#include "UObject/ConstructorHelpers.h"
 
 const FName ATN_GridMapGenerator::GeneratedTileTag(TEXT("TNGridTile"));
 const FName ATN_GridMapGenerator::StartTileTag(TEXT("TNGridStart"));
 const FName ATN_GridMapGenerator::EndTileTag(TEXT("TNGridEnd"));
 
+namespace
+{
+	/** Lado del plano básico del motor, en uu. */
+	constexpr float EnginePlaneSize = 100.f;
+}
+
 ATN_GridMapGenerator::ATN_GridMapGenerator()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// Demo local: sin replicación. Misma semilla → mismo mapa en cada máquina.
+	// El generador no se replica: los tiles que spawnea el servidor sí.
 	bReplicates = false;
 
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+
+	WaterPlane = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WaterPlane"));
+	WaterPlane->SetupAttachment(RootComponent);
+	WaterPlane->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WaterPlane->SetCastShadow(false);
+
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneMesh(TEXT("/Engine/BasicShapes/Plane.Plane"));
+	if (PlaneMesh.Succeeded())
+	{
+		WaterPlane->SetStaticMesh(PlaneMesh.Object);
+	}
+}
+
+void ATN_GridMapGenerator::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	UpdateWaterPlane();
 }
 
 void ATN_GridMapGenerator::BeginPlay()
@@ -39,9 +67,10 @@ void ATN_GridMapGenerator::Generate()
 {
 	Clear();
 
-	if (!StraightTileClass || !TurnTileClass)
+	if (!TerrainTileClass && (!StraightTileClass || !TurnTileClass))
 	{
-		UE_LOG(LogTortunabo, Error, TEXT("[GridMap] Faltan StraightTileClass / TurnTileClass en '%s'."), *GetName());
+		UE_LOG(LogTortunabo, Error,
+			TEXT("[GridMap] '%s' no tiene TerrainTileClass ni la pareja StraightTileClass / TurnTileClass."), *GetName());
 		return;
 	}
 
@@ -58,6 +87,27 @@ void ATN_GridMapGenerator::Generate()
 		return;
 	}
 
+	if (TerrainTileClass)
+	{
+		GenerateTerrain(Path);
+	}
+	else
+	{
+		GenerateGreybox(Path, RandRange);
+	}
+
+	if (bDebugDrawPath)
+	{
+		DrawPathDebug(Path);
+	}
+
+	UE_LOG(LogTortunabo, Log, TEXT("[GridMap] Mapa %dx%d generado (%s): camino de %d celdas, semilla %d."),
+		GridSize, GridSize, TerrainTileClass ? TEXT("terreno") : TEXT("greybox"), Path.Num(), LastUsedSeed);
+}
+
+void ATN_GridMapGenerator::GenerateGreybox(const TArray<FIntPoint>& Path,
+	TFunctionRef<int32(int32 Min, int32 Max)> RandRange)
+{
 	for (const TNGridLogic::FTNGridCell& Cell : TNGridLogic::ClassifyPath(Path))
 	{
 		const TSubclassOf<AActor> TileClass =
@@ -81,14 +131,38 @@ void ATN_GridMapGenerator::Generate()
 			}
 		}
 	}
+}
 
-	if (bDebugDrawPath)
+void ATN_GridMapGenerator::GenerateTerrain(const TArray<FIntPoint>& Path)
+{
+	FTNGridTileInit Init;
+	Init.Seed = LastUsedSeed;
+	Init.GridSize = GridSize;
+	Init.CellSize = CellSize;
+	Init.Path = Path;
+
+	const bool bIsGameWorld = GetWorld() && GetWorld()->IsGameWorld();
+
+	for (int32 Row = 0; Row < GridSize; ++Row)
 	{
-		DrawPathDebug(Path);
-	}
+		for (int32 Col = 0; Col < GridSize; ++Col)
+		{
+			Init.Coord = FIntPoint(Col, Row);
 
-	UE_LOG(LogTortunabo, Log, TEXT("[GridMap] Mapa %dx%d generado: camino de %d celdas, semilla %d."),
-		GridSize, GridSize, Path.Num(), LastUsedSeed);
+			// El terreno está expresado en ejes del grid: los tiles no se rotan.
+			FTransform TileTransform;
+			ATN_GridTerrainTile* Tile = Cast<ATN_GridTerrainTile>(BeginSpawnTile(TerrainTileClass, Init.Coord, 0, TileTransform));
+			if (!Tile) { continue; }
+
+			Tile->InitializeTile(Init);
+			if (Init.Coord == Path[0])     { Tile->Tags.AddUnique(StartTileTag); }
+			if (Init.Coord == Path.Last()) { Tile->Tags.AddUnique(EndTileTag); }
+			FinishTile(Tile, TileTransform);
+
+			// En mundo de editor los actores spawneados no ejecutan BeginPlay.
+			if (!bIsGameWorld) { Tile->BuildTerrain(); }
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,7 +206,8 @@ FVector ATN_GridMapGenerator::GetCellWorldLocation(FIntPoint Cell) const
 	return GetActorTransform().TransformPosition(Local);
 }
 
-AActor* ATN_GridMapGenerator::SpawnTile(TSubclassOf<AActor> TileClass, FIntPoint Cell, int32 YawSteps)
+AActor* ATN_GridMapGenerator::BeginSpawnTile(TSubclassOf<AActor> TileClass, FIntPoint Cell, int32 YawSteps,
+	FTransform& OutTransform)
 {
 	UWorld* World = GetWorld();
 	if (!World || !TileClass)
@@ -141,15 +216,20 @@ AActor* ATN_GridMapGenerator::SpawnTile(TSubclassOf<AActor> TileClass, FIntPoint
 	}
 
 	const FQuat LocalYaw(FRotator(0.f, YawSteps * 90.f, 0.f));
-	const FTransform TileTransform(GetActorQuat() * LocalYaw, GetCellWorldLocation(Cell));
+	OutTransform = FTransform(GetActorQuat() * LocalYaw, GetCellWorldLocation(Cell));
 
 	FActorSpawnParameters Params;
 	Params.Owner = this;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	// Transient: los tiles generados en editor no se guardan dentro del .umap.
-	Params.ObjectFlags |= RF_Transient;
+	Params.bDeferConstruction = true;
+	if (!World->IsGameWorld())
+	{
+		// Transient solo en editor: los tiles de previsualización no se guardan en el .umap.
+		// En juego son actores normales, que es lo que necesita la replicación.
+		Params.ObjectFlags |= RF_Transient;
+	}
 
-	AActor* Tile = World->SpawnActor<AActor>(TileClass, TileTransform, Params);
+	AActor* Tile = World->SpawnActor<AActor>(TileClass, OutTransform, Params);
 	if (!Tile)
 	{
 		UE_LOG(LogTortunabo, Error, TEXT("[GridMap] SpawnActor falló para '%s' en celda (%d, %d)."),
@@ -158,10 +238,50 @@ AActor* ATN_GridMapGenerator::SpawnTile(TSubclassOf<AActor> TileClass, FIntPoint
 	}
 
 	Tile->Tags.AddUnique(GeneratedTileTag);
+	return Tile;
+}
+
+void ATN_GridMapGenerator::FinishTile(AActor* Tile, const FTransform& Transform)
+{
+	Tile->FinishSpawning(Transform);
 #if WITH_EDITOR
 	Tile->SetFolderPath(TEXT("GridMap_Generated"));
 #endif
+}
+
+AActor* ATN_GridMapGenerator::SpawnTile(TSubclassOf<AActor> TileClass, FIntPoint Cell, int32 YawSteps)
+{
+	FTransform TileTransform;
+	AActor* Tile = BeginSpawnTile(TileClass, Cell, YawSteps, TileTransform);
+	if (Tile)
+	{
+		FinishTile(Tile, TileTransform);
+	}
 	return Tile;
+}
+
+void ATN_GridMapGenerator::UpdateWaterPlane()
+{
+	if (!WaterPlane)
+	{
+		return;
+	}
+
+	const ATN_GridTerrainTile* TileDefaults = TerrainTileClass ? TerrainTileClass->GetDefaultObject<ATN_GridTerrainTile>() : nullptr;
+	WaterPlane->SetVisibility(TileDefaults != nullptr);
+	if (!TileDefaults)
+	{
+		return;
+	}
+
+	const float GridExtent = GridSize * CellSize;
+	const float GridCenter = (GridSize - 1) * CellSize * 0.5f;
+	WaterPlane->SetRelativeLocation(FVector(GridCenter, GridCenter, TileDefaults->GetSettings().WaterLevel));
+	WaterPlane->SetRelativeScale3D(FVector(GridExtent / EnginePlaneSize, GridExtent / EnginePlaneSize, 1.f));
+	if (WaterMaterial)
+	{
+		WaterPlane->SetMaterial(0, WaterMaterial);
+	}
 }
 
 void ATN_GridMapGenerator::DrawPathDebug(const TArray<FIntPoint>& Path) const
