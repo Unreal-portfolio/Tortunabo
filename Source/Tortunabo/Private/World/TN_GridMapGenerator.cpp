@@ -8,6 +8,8 @@
 #include "Math/RandomStream.h"
 
 const FName ATN_GridMapGenerator::GeneratedTileTag(TEXT("TNGridTile"));
+const FName ATN_GridMapGenerator::StartTileTag(TEXT("TNGridStart"));
+const FName ATN_GridMapGenerator::EndTileTag(TEXT("TNGridEnd"));
 
 ATN_GridMapGenerator::ATN_GridMapGenerator()
 {
@@ -60,7 +62,9 @@ void ATN_GridMapGenerator::Generate()
 	{
 		const TSubclassOf<AActor> TileClass =
 			(Cell.Type == TNGridLogic::ETNGridTileType::Turn) ? TurnTileClass : StraightTileClass;
-		SpawnTile(TileClass, Cell.Coord, Cell.YawSteps);
+		AActor* Tile = SpawnTile(TileClass, Cell.Coord, Cell.YawSteps);
+		if (Tile && Cell.bIsStart) { Tile->Tags.AddUnique(StartTileTag); }
+		if (Tile && Cell.bIsEnd)   { Tile->Tags.AddUnique(EndTileTag); }
 	}
 
 	const TArray<int32> Fillers = TNGridLogic::BuildFillerMap(GridSize, Path, FillerTileClasses.Num(), RandRange);

@@ -100,4 +100,8 @@ private:
 	/** Tag de los tiles generados. Clear() los localiza por tag y no por una lista propia:
 	 *  en editor el generador se reconstruye al tocar propiedades y la lista se perdería. */
 	static const FName GeneratedTileTag;
+
+	/** Tags adicionales del primer y último tile del camino (spawn de jugadores, meta). */
+	static const FName StartTileTag;
+	static const FName EndTileTag;
 };
