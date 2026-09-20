@@ -6,6 +6,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "Math/RandomStream.h"
+#include "World/TN_GridJunkDecisions.h"
 #include "World/TN_GridPathDecisions.h"
 #include "World/TN_GridTerrainDecisions.h"
 
@@ -77,6 +78,26 @@ bool FTNTerrainWalkableRouteTest::RunTest(const FString& Parameters)
 		const FIntPoint EntryNode(FMath::RoundToInt32(Entry.X / GridStep), FMath::RoundToInt32(Entry.Y / GridStep));
 		const FIntPoint ExitNode(FMath::RoundToInt32(Exit.X / GridStep), FMath::RoundToInt32(Exit.Y / GridStep));
 
+		// Los objetos de basura sólidos también cortan el paso: se marcan sus huellas.
+		TSet<FIntPoint> BlockedByJunk;
+		for (const FIntPoint& Cell : Path)
+		{
+			for (const TNGridJunk::FJunkInstance& Junk : TNGridJunk::BuildTileJunk(Context, Seed, Cell))
+			{
+				if (!Junk.bSolid) { continue; }
+				const int32 Reach = FMath::CeilToInt32(Junk.Radius / GridStep);
+				const FIntPoint JunkNode(FMath::RoundToInt32(Junk.GridPosition.X / GridStep), FMath::RoundToInt32(Junk.GridPosition.Y / GridStep));
+				for (int32 DX = -Reach; DX <= Reach; ++DX)
+				{
+					for (int32 DY = -Reach; DY <= Reach; ++DY)
+					{
+						const FIntPoint Node = JunkNode + FIntPoint(DX, DY);
+						if (FVector2D::Distance(ToPoint(Node), Junk.GridPosition) <= Junk.Radius) { BlockedByJunk.Add(Node); }
+					}
+				}
+			}
+		}
+
 		TMap<FIntPoint, double> Reached;
 		TArray<FIntPoint> Frontier;
 		Reached.Add(EntryNode, SampleHeight(Context, ToPoint(EntryNode)));
@@ -98,7 +119,7 @@ bool FTNTerrainWalkableRouteTest::RunTest(const FString& Parameters)
 			for (const FIntPoint& Offset : { FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1) })
 			{
 				const FIntPoint Next = Node + Offset;
-				if (Reached.Contains(Next)) { continue; }
+				if (Reached.Contains(Next) || BlockedByJunk.Contains(Next)) { continue; }
 
 				const FVector2D P = ToPoint(Next);
 				if (P.X < Low || P.X > High || P.Y < Low || P.Y > High)
@@ -406,6 +427,95 @@ bool FTNTerrainStylesAndDeterminismTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Rocas del interior >= media pared → contexto inválido"), IsContextValid(TerrainTestContext(3, Path, RocksTooTall)));
 	TestFalse(TEXT("Sin camino → contexto inválido"), IsContextValid(TerrainTestContext(3, {})));
 	TestEqual(TEXT("Contexto inválido → malla vacía"), BuildTileMesh(TerrainTestContext(3, Path, TooWide), FIntPoint(0, 0)).Vertices.Num(), 0);
+
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Basura: viste la pared sin estorbar el paso ni servir de escalera
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainJunkRulesTest,
+	"Tortunabo.Terrain.JunkRules",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTerrainJunkRulesTest::RunTest(const FString& Parameters)
+{
+	using namespace TNGridTerrain;
+	using namespace TNGridJunk;
+
+	for (int32 Seed = 0; Seed < 10; ++Seed)
+	{
+		const TArray<FIntPoint> Path = TerrainTestPath(Seed);
+		const FTerrainContext Context = TerrainTestContext(Seed, Path);
+		const FTNGridTerrainSettings& S = Context.Settings;
+		const double HalfCell = TerrainTestCellSize * 0.5;
+
+		int32 SolidCount = 0;
+		int32 DecorCount = 0;
+		bool bLaneFree = true;
+		bool bSolidsLow = true;
+		bool bInsideOwnTile = true;
+
+		for (const FIntPoint& Cell : Path)
+		{
+			const FVector2D Center = CellCenter(TerrainTestCellSize, Cell);
+			for (const FJunkInstance& Junk : BuildTileJunk(Context, Seed, Cell))
+			{
+				const FTerrainSample Sample = EvaluateTerrain(Context, Junk.GridPosition);
+				const FVector2D Local = Junk.GridPosition - Center;
+				bInsideOwnTile &= FMath::Abs(Local.X) <= HalfCell && FMath::Abs(Local.Y) <= HalfCell;
+
+				if (Junk.bSolid)
+				{
+					++SolidCount;
+					bLaneFree &= Sample.CenterlineDistance - Junk.Radius >= S.InteriorLaneHalfWidth;
+					bSolidsLow &= Junk.TopHeight <= S.WallHeight * MaxSolidTopFraction;
+				}
+				else
+				{
+					++DecorCount;
+				}
+			}
+		}
+
+		const FString Ctx = FString::Printf(TEXT("semilla %d"), Seed);
+		TestTrue(Ctx + TEXT(": ningún objeto sólido invade el carril libre"), bLaneFree);
+		TestTrue(Ctx + TEXT(": ningún objeto sólido pasa del 45% de la pared"), bSolidsLow);
+		TestTrue(Ctx + TEXT(": cada objeto pertenece a su celda"), bInsideOwnTile);
+		TestTrue(Ctx + FString::Printf(TEXT(": hay fila de objetos sólidos al pie de la pared (%d)"), SolidCount), SolidCount >= Path.Num() * 10);
+		TestTrue(Ctx + FString::Printf(TEXT(": hay decorado cubriendo el talud (%d)"), DecorCount), DecorCount >= Path.Num() * 30);
+	}
+
+	// Determinismo (servidor y cliente generan lo mismo) y sin duplicados entre celdas vecinas.
+	const TArray<FIntPoint> Path = TerrainTestPath(5);
+	const FTerrainContext Context = TerrainTestContext(5, Path);
+	const TArray<FJunkInstance> First = BuildTileJunk(Context, 5, Path[1]);
+	const TArray<FJunkInstance> Again = BuildTileJunk(Context, 5, Path[1]);
+	bool bSame = First.Num() == Again.Num();
+	for (int32 i = 0; bSame && i < First.Num(); ++i)
+	{
+		bSame = First[i].GridPosition == Again[i].GridPosition && First[i].bSolid == Again[i].bSolid
+			&& First[i].Transform.Equals(Again[i].Transform, 0.0) && First[i].Color == Again[i].Color;
+	}
+	TestTrue(TEXT("Misma semilla y celda → misma basura"), bSame && First.Num() > 0);
+
+	TSet<FIntPoint> SeenPositions;
+	bool bNoDuplicates = true;
+	for (const FIntPoint& Cell : { Path[1], Path[2] })
+	{
+		for (const FJunkInstance& Junk : BuildTileJunk(Context, 5, Cell))
+		{
+			bool bAlreadySeen = false;
+			SeenPositions.Add(FIntPoint(FMath::RoundToInt32(Junk.GridPosition.X), FMath::RoundToInt32(Junk.GridPosition.Y)), &bAlreadySeen);
+			bNoDuplicates &= !bAlreadySeen;
+		}
+	}
+	TestTrue(TEXT("Dos celdas vecinas no repiten ningún objeto"), bNoDuplicates);
+
+	FTNGridTerrainSettings NoJunk;
+	NoJunk.JunkSpacing = 0.f;
+	TestEqual(TEXT("JunkSpacing 0 → sin basura"), BuildTileJunk(TerrainTestContext(5, Path, NoJunk), 5, Path[1]).Num(), 0);
 
 	return true;
 }

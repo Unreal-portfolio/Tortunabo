@@ -85,6 +85,14 @@ struct FTNGridTerrainSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Filler", meta = (ClampMin = "0.0"))
 	float BasinDepth = 220.f;
 
+	/** Separación de la rejilla de candidatos a objeto de basura. 0 = sin basura. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Junk", meta = (ClampMin = "0.0"))
+	float JunkSpacing = 130.f;
+
+	/** Hasta dónde se adentra la basura de decorado por detrás de la cresta del talud. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Junk", meta = (ClampMin = "0.0"))
+	float JunkCrestDepth = 650.f;
+
 	/** Vértices por lado de la malla de cada celda. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Mesh", meta = (ClampMin = "3", ClampMax = "129"))
 	int32 VertsPerSide = 97;
@@ -102,6 +110,14 @@ struct FTNGridTerrainSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
 	FLinearColor RockColor = FLinearColor(0.075f, 0.065f, 0.06f);
+
+	/** Color base de los montones de basura (talud, meseta y afloramientos del interior). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
+	FLinearColor HeapColor = FLinearColor(0.045f, 0.04f, 0.035f);
+
+	/** Fracción de la superficie del montón salpicada con colores de la paleta de basura. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HeapSpeckleAmount = 0.22f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
 	FLinearColor WetSandColor = FLinearColor(0.09f, 0.065f, 0.035f);

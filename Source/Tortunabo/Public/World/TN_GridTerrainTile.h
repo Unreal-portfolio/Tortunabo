@@ -5,8 +5,10 @@
 #include "World/TN_GridTerrainTypes.h"
 #include "TN_GridTerrainTile.generated.h"
 
+class UInstancedStaticMeshComponent;
 class UMaterialInterface;
 class UProceduralMeshComponent;
+namespace TNGridTerrain { struct FTerrainContext; }
 
 /**
  * ATN_GridTerrainTile
@@ -19,6 +21,10 @@ class UProceduralMeshComponent;
  * ATN_ChunkManager — sin movimiento y siempre relevante. Por la red viaja únicamente
  * FTNGridTileInit, una sola vez; cada máquina construye su malla a partir de él. Como
  * la construcción es determinista, servidor y clientes pisan exactamente el mismo suelo.
+ *
+ * La basura (TN_GridJunkDecisions.h) va en componentes de instancias: uno por forma
+ * básica y por clase de colisión. Son subobjetos por defecto —con nombre estable— para
+ * que sigan siendo direccionables por red cuando un personaje se sube a un objeto.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_GridTerrainTile : public AActor
@@ -53,7 +59,21 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Terrain")
 	TObjectPtr<UMaterialInterface> TerrainMaterial;
 
+	/** Material de la basura. Debe leer el color de PerInstanceCustomData (3 floats). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Terrain")
+	TObjectPtr<UMaterialInterface> JunkMaterial;
+
+	/** Instancias con colisión, indexadas por TNGridJunk::EJunkShape. */
+	UPROPERTY(VisibleAnywhere, Category = "Terrain")
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> SolidJunk;
+
+	/** Instancias de decorado, sin colisión, indexadas por TNGridJunk::EJunkShape. */
+	UPROPERTY(VisibleAnywhere, Category = "Terrain")
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> DecorJunk;
+
 private:
+	void BuildJunk(const TNGridTerrain::FTerrainContext& Context);
+
 	UFUNCTION()
 	void OnRep_Init();
 

@@ -13,7 +13,8 @@
  *   - Pasillo: puntos a menos de un semiancho de la línea central del camino → suelo
  *     con relieve propio (dunas suaves, afloramientos de roca, charcos) y un carril
  *     central siempre libre de obstáculos.
- *   - Talud: al salir del semiancho la altura sube hasta la cresta en BankWidth.
+ *   - Talud: al salir del semiancho la altura sube hasta la cresta en BankWidth. Es la
+ *     barrera real; visualmente es un montón de basura (ver TN_GridJunkDecisions.h).
  *     Medir distancia a una polilínea redondea los giros de forma natural.
  *   - Relleno: más allá del talud, meseta con dunas, roca o cuencas bajo el agua.
  *
@@ -52,6 +53,10 @@ namespace TNGridTerrain
 		double RockWeight = 0.0;
 		/** 1 sobre un afloramiento de roca del interior del pasillo. */
 		double Obstacle = 0.0;
+		/** Distancia a la línea central serpenteante del camino. */
+		double CenterlineDistance = 0.0;
+		/** Distancia al borde del pasillo: negativa dentro, positiva sobre el talud y más allá. */
+		double EdgeDistance = 0.0;
 	};
 
 	/** Malla de una celda, en espacio local de la celda (origen en su centro). */
@@ -350,6 +355,8 @@ namespace TNGridTerrain
 
 		FTerrainSample Sample;
 		Sample.RockWeight = Style.RockWeight;
+		Sample.CenterlineDistance = Distance;
+		Sample.EdgeDistance = WallDistance - Style.HalfWidth;
 		// El talud solo puede estrecharse (más vertical), nunca ensancharse: así la cresta
 		// sigue completa dentro del margen que reserva el invariante de anchos.
 		const double LocalBankWidth = S.BankWidth * (0.65 + 0.35 * (Noise(Context, P, 520.0 * Scale) * 0.5 + 0.5));
@@ -368,6 +375,49 @@ namespace TNGridTerrain
 		return EvaluateTerrain(Context, P).Height;
 	}
 
+	/** Paleta compartida por los objetos de basura y por el moteado de los montones. */
+	constexpr int32 JunkPaletteSize = 15;
+
+	inline FLinearColor JunkPaletteColor(int32 Index)
+	{
+		switch (((Index % JunkPaletteSize) + JunkPaletteSize) % JunkPaletteSize)
+		{
+			// Bolsas
+			case 0:  return FLinearColor(0.012f, 0.012f, 0.014f);
+			case 1:  return FLinearColor(0.16f, 0.17f, 0.18f);
+			case 2:  return FLinearColor(0.62f, 0.62f, 0.58f);
+			case 3:  return FLinearColor(0.03f, 0.16f, 0.42f);
+			// Cartón y madera
+			case 4:  return FLinearColor(0.30f, 0.19f, 0.09f);
+			case 5:  return FLinearColor(0.21f, 0.12f, 0.05f);
+			case 6:  return FLinearColor(0.40f, 0.30f, 0.17f);
+			// Bidones, tuberías y contenedores
+			case 7:  return FLinearColor(0.02f, 0.12f, 0.36f);
+			case 8:  return FLinearColor(0.26f, 0.07f, 0.02f);
+			case 9:  return FLinearColor(0.42f, 0.03f, 0.03f);
+			case 10: return FLinearColor(0.04f, 0.22f, 0.09f);
+			// Neumáticos
+			case 11: return FLinearColor(0.010f, 0.010f, 0.011f);
+			// Electrodomésticos
+			case 12: return FLinearColor(0.66f, 0.67f, 0.66f);
+			case 13: return FLinearColor(0.30f, 0.31f, 0.32f);
+			// Conos de obra
+			default: return FLinearColor(0.80f, 0.20f, 0.02f);
+		}
+	}
+
+	/** Entero pseudoaleatorio estable para una casilla de moteado (~45 uu). */
+	inline uint32 SpeckleHash(const FVector2D& P)
+	{
+		const uint32 X = static_cast<uint32>(FMath::FloorToInt32(P.X / 45.0));
+		const uint32 Y = static_cast<uint32>(FMath::FloorToInt32(P.Y / 45.0));
+		uint32 Value = X * 0x9e3779b1u ^ (Y * 0x85ebca6bu + 0x7f4a7c15u);
+		Value ^= Value >> 15;
+		Value *= 0x2c1b3c6du;
+		Value ^= Value >> 12;
+		return Value;
+	}
+
 	/** Color de vértice final: todo el "material" del terreno se decide aquí. */
 	inline FLinearColor SampleColor(const FTerrainContext& Context, const FVector2D& P,
 		const FTerrainSample& Sample, const FVector& Normal)
@@ -383,8 +433,18 @@ namespace TNGridTerrain
 		// Húmedo solo por debajo de la cota del suelo: charcos y orillas, no el pasillo entero.
 		const double Wet = SmoothStep(S.WaterLevel + 45.0, S.WaterLevel + 5.0, Sample.Height);
 
-		FLinearColor Color = FMath::Lerp(S.SandColor, S.PathColor, static_cast<float>(Sample.CorridorMask));
-		Color = FMath::Lerp(Color, S.RockColor, static_cast<float>(Rock));
+		// Todo lo que no es suelo del pasillo es montón de basura: tono oscuro salpicado de
+		// trozos de color. Es lo que hace que el talud deje de leerse como una pared de roca.
+		const uint32 Speckle = SpeckleHash(P);
+		const bool bSpeckled = (Speckle & 0xffffu) / 65535.0 < S.HeapSpeckleAmount;
+		// Entre los restos asoma arena a manchas, para que el montón no sea una masa uniforme.
+		const FLinearColor HeapBase = FMath::Lerp(S.HeapColor, S.SandColor,
+			static_cast<float>(0.22 * SmoothStep(0.45, 0.75, Noise(Context, P, 900.0) * 0.5 + 0.5)));
+		const FLinearColor Heap = bSpeckled ? JunkPaletteColor(static_cast<int32>(Speckle >> 16)) : HeapBase;
+		const double HeapMask = FMath::Clamp(FMath::Max(1.0 - Sample.CorridorMask, Sample.Obstacle), 0.0, 1.0);
+
+		FLinearColor Color = FMath::Lerp(S.PathColor, Heap, static_cast<float>(HeapMask));
+		Color = FMath::Lerp(Color, S.RockColor, static_cast<float>(Rock * 0.35));
 		Color = FMath::Lerp(Color, S.WetSandColor, static_cast<float>(Wet));
 
 		// Vetas horizontales en las paredes, onduladas por ruido: lectura de roca sedimentaria.
