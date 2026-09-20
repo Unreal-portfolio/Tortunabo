@@ -1,0 +1,415 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Math/RandomStream.h"
+#include "World/TN_GridTerrainTypes.h"
+
+/**
+ * Terreno del mapa en grid como funciones PURAS: sin UWorld, sin actores, sin estado.
+ * ATN_GridTerrainTile delega aquí, de modo que lo que cubren los tests es exactamente
+ * la geometría que se juega.
+ *
+ * Modelo: una única función de altura H(P) sobre todo el grid, derivada del camino.
+ *   - Pasillo: puntos a menos de un semiancho de la línea central del camino → suelo.
+ *   - Talud: al salir del semiancho la altura sube hasta la cresta en BankWidth.
+ *     Medir distancia a una polilínea redondea los giros de forma natural.
+ *   - Relleno: más allá del talud, meseta con dunas, roca o cuencas bajo el agua.
+ *
+ * Todo se muestrea en coordenadas LOCALES AL GRID (no a la celda): X = eje de filas
+ * (avance), Y = eje de columnas. Dos celdas vecinas evalúan el mismo punto en su borde
+ * común y obtienen el mismo valor, así que el terreno no tiene costuras.
+ */
+
+namespace TNGridTerrain
+{
+	/** Estilos de celda. El camino nunca repite el estilo de la celda anterior. */
+	enum class ETNTerrainStyle : uint8
+	{
+		Dunes,
+		Rocks,
+		Marsh
+	};
+
+	constexpr int32 NumStyles = 3;
+
+	/** Parámetros que varían de celda a celda; se interpolan entre centros de celda. */
+	struct FCellStyle
+	{
+		double HalfWidth = 0.0;
+		double DuneWeight = 0.0;
+		double RockWeight = 0.0;
+		double Wetness = 0.0;
+	};
+
+	/** Resultado de evaluar el terreno en un punto. */
+	struct FTerrainSample
+	{
+		double Height = 0.0;
+		/** 1 en el suelo del pasillo, 0 fuera del talud. */
+		double CorridorMask = 0.0;
+		double RockWeight = 0.0;
+	};
+
+	/** Malla de una celda, en espacio local de la celda (origen en su centro). */
+	struct FTileMesh
+	{
+		TArray<FVector> Vertices;
+		TArray<int32> Triangles;
+		TArray<FVector> Normals;
+		TArray<FVector2D> UVs;
+		TArray<FLinearColor> Colors;
+	};
+
+	/** Datos derivados del mapa, comunes a todas las celdas. Se construye con BuildContext. */
+	struct FTerrainContext
+	{
+		int32 GridSize = 0;
+		double CellSize = 0.0;
+		FTNGridTerrainSettings Settings;
+		TArray<FVector2D> Centerline;
+		TArray<FCellStyle> CellStyles;
+		FVector2D NoiseOffset = FVector2D::ZeroVector;
+	};
+
+	inline FVector2D CellCenter(double CellSize, const FIntPoint& Coord)
+	{
+		return FVector2D(Coord.Y * CellSize, Coord.X * CellSize);
+	}
+
+	inline FCellStyle MakeStyle(ETNTerrainStyle Style, const FTNGridTerrainSettings& Settings)
+	{
+		const double Min = Settings.CorridorHalfWidthMin;
+		const double Max = Settings.CorridorHalfWidthMax;
+		switch (Style)
+		{
+			case ETNTerrainStyle::Dunes: return { Max, 1.0, 0.1, 0.0 };
+			case ETNTerrainStyle::Rocks: return { Min, 0.4, 1.0, 0.0 };
+			default:                     return { (Min + Max) * 0.5, 0.25, 0.2, 1.0 };
+		}
+	}
+
+	/**
+	 * Estilo por celda (indexado fila * GridSize + columna). Las celdas de camino se
+	 * asignan en orden de recorrido y nunca repiten el estilo de la anterior.
+	 * @param RandRange Functor (Min, Max) → int32 en [Min, Max] inclusive.
+	 */
+	inline TArray<int32> AssignCellStyles(int32 GridSize, const TArray<FIntPoint>& Path,
+		TFunctionRef<int32(int32 Min, int32 Max)> RandRange)
+	{
+		TArray<int32> Styles;
+		if (GridSize <= 0) { return Styles; }
+		Styles.Init(INDEX_NONE, GridSize * GridSize);
+
+		int32 Previous = INDEX_NONE;
+		for (const FIntPoint& Cell : Path)
+		{
+			// Saltar 1 o 2 posiciones sobre 3 estilos nunca cae en el mismo.
+			const int32 Style = (Previous == INDEX_NONE)
+				? RandRange(0, NumStyles - 1)
+				: (Previous + 1 + RandRange(0, NumStyles - 2)) % NumStyles;
+			Styles[Cell.Y * GridSize + Cell.X] = Style;
+			Previous = Style;
+		}
+
+		for (int32& Style : Styles)
+		{
+			if (Style == INDEX_NONE) { Style = RandRange(0, NumStyles - 1); }
+		}
+		return Styles;
+	}
+
+	/** Línea central del camino, con un tramo extra de una celda hacia fuera en la
+	 *  entrada (Sur de la primera celda) y en la salida (Norte de la última). */
+	inline TArray<FVector2D> BuildCenterline(double CellSize, const TArray<FIntPoint>& Path)
+	{
+		TArray<FVector2D> Centerline;
+		if (Path.Num() == 0) { return Centerline; }
+
+		Centerline.Reserve(Path.Num() + 2);
+		Centerline.Add(CellCenter(CellSize, Path[0]) - FVector2D(CellSize, 0.0));
+		for (const FIntPoint& Cell : Path)
+		{
+			Centerline.Add(CellCenter(CellSize, Cell));
+		}
+		Centerline.Add(CellCenter(CellSize, Path.Last()) + FVector2D(CellSize, 0.0));
+		return Centerline;
+	}
+
+	/** El contexto es utilizable: hay camino y los anchos dejan sitio a una pared completa. */
+	inline bool IsContextValid(const FTerrainContext& Context)
+	{
+		const FTNGridTerrainSettings& S = Context.Settings;
+		return Context.GridSize > 0
+			&& Context.CellSize > 0.0
+			&& Context.Centerline.Num() >= 2
+			&& Context.CellStyles.Num() == Context.GridSize * Context.GridSize
+			&& S.CorridorHalfWidthMin <= S.CorridorHalfWidthMax
+			&& S.WallOutlineJitter < S.CorridorHalfWidthMin
+			&& S.CorridorHalfWidthMax + S.BankWidth <= Context.CellSize * 0.5;
+	}
+
+	/** Función pura de sus entradas: la misma semilla da siempre el mismo contexto. */
+	inline FTerrainContext BuildContext(int32 Seed, int32 GridSize, double CellSize,
+		const TArray<FIntPoint>& Path, const FTNGridTerrainSettings& Settings)
+	{
+		FTerrainContext Context;
+		Context.GridSize = GridSize;
+		Context.CellSize = CellSize;
+		Context.Settings = Settings;
+		Context.Centerline = BuildCenterline(CellSize, Path);
+
+		FRandomStream Stream(Seed);
+		// Desfase no entero: el ruido Perlin vale 0 en todos los puntos de retícula entera.
+		Context.NoiseOffset = FVector2D(Stream.FRandRange(0.f, 4096.f) + 0.37, Stream.FRandRange(0.f, 4096.f) + 0.61);
+
+		const TArray<int32> StyleIndices = AssignCellStyles(GridSize, Path,
+			[&Stream](int32 Min, int32 Max) { return Stream.RandRange(Min, Max); });
+		Context.CellStyles.Reserve(StyleIndices.Num());
+		for (const int32 Index : StyleIndices)
+		{
+			Context.CellStyles.Add(MakeStyle(static_cast<ETNTerrainStyle>(Index), Settings));
+		}
+		return Context;
+	}
+
+	inline double DistanceToSegment(const FVector2D& P, const FVector2D& A, const FVector2D& B)
+	{
+		const FVector2D AB = B - A;
+		const double LengthSquared = AB.SizeSquared();
+		const double T = LengthSquared > 0.0 ? FMath::Clamp(FVector2D::DotProduct(P - A, AB) / LengthSquared, 0.0, 1.0) : 0.0;
+		return FVector2D::Distance(P, A + AB * T);
+	}
+
+	inline double DistanceToCenterline(const FTerrainContext& Context, const FVector2D& P)
+	{
+		double Best = TNumericLimits<double>::Max();
+		for (int32 i = 1; i < Context.Centerline.Num(); ++i)
+		{
+			Best = FMath::Min(Best, DistanceToSegment(P, Context.Centerline[i - 1], Context.Centerline[i]));
+		}
+		return Best;
+	}
+
+	/** Distancia al borde exterior del grid (negativa fuera). */
+	inline double DistanceToGridBorder(const FTerrainContext& Context, const FVector2D& P)
+	{
+		const double Low = -Context.CellSize * 0.5;
+		const double High = (Context.GridSize - 0.5) * Context.CellSize;
+		return FMath::Min(FMath::Min(P.X - Low, High - P.X), FMath::Min(P.Y - Low, High - P.Y));
+	}
+
+	inline double SmoothStep01(double T)
+	{
+		const double C = FMath::Clamp(T, 0.0, 1.0);
+		return C * C * (3.0 - 2.0 * C);
+	}
+
+	inline double SmoothStep(double Edge0, double Edge1, double Value)
+	{
+		return SmoothStep01((Value - Edge0) / (Edge1 - Edge0));
+	}
+
+	/** Ruido Perlin en [-1, 1] con la longitud de onda dada en uu. */
+	inline double Noise(const FTerrainContext& Context, const FVector2D& P, double Wavelength)
+	{
+		return FMath::PerlinNoise2D(P / Wavelength + Context.NoiseOffset);
+	}
+
+	/** fBm de 3 octavas, aproximadamente en [-1, 1]. */
+	inline double Fbm(const FTerrainContext& Context, const FVector2D& P, double Wavelength)
+	{
+		return (Noise(Context, P, Wavelength)
+			+ 0.5 * Noise(Context, P, Wavelength * 0.5)
+			+ 0.25 * Noise(Context, P, Wavelength * 0.25)) / 1.75;
+	}
+
+	/** Ruido de crestas en [0, 1]: picos afilados donde el Perlin cruza por cero. */
+	inline double Ridged(const FTerrainContext& Context, const FVector2D& P, double Wavelength)
+	{
+		const double Ridge = 1.0 - FMath::Abs(Noise(Context, P, Wavelength));
+		return Ridge * Ridge;
+	}
+
+	/** Estilo interpolado entre los cuatro centros de celda más cercanos. */
+	inline FCellStyle SampleStyle(const FTerrainContext& Context, const FVector2D& P)
+	{
+		const double Row = P.X / Context.CellSize;
+		const double Col = P.Y / Context.CellSize;
+		const int32 Row0 = FMath::FloorToInt32(Row);
+		const int32 Col0 = FMath::FloorToInt32(Col);
+		const double RowAlpha = SmoothStep01(Row - Row0);
+		const double ColAlpha = SmoothStep01(Col - Col0);
+
+		auto StyleAt = [&Context](int32 InRow, int32 InCol) -> const FCellStyle&
+		{
+			const int32 R = FMath::Clamp(InRow, 0, Context.GridSize - 1);
+			const int32 C = FMath::Clamp(InCol, 0, Context.GridSize - 1);
+			return Context.CellStyles[R * Context.GridSize + C];
+		};
+
+		const FCellStyle& S00 = StyleAt(Row0, Col0);
+		const FCellStyle& S10 = StyleAt(Row0 + 1, Col0);
+		const FCellStyle& S01 = StyleAt(Row0, Col0 + 1);
+		const FCellStyle& S11 = StyleAt(Row0 + 1, Col0 + 1);
+
+		auto Blend = [RowAlpha, ColAlpha](double V00, double V10, double V01, double V11)
+		{
+			return FMath::Lerp(FMath::Lerp(V00, V10, RowAlpha), FMath::Lerp(V01, V11, RowAlpha), ColAlpha);
+		};
+
+		return {
+			Blend(S00.HalfWidth, S10.HalfWidth, S01.HalfWidth, S11.HalfWidth),
+			Blend(S00.DuneWeight, S10.DuneWeight, S01.DuneWeight, S11.DuneWeight),
+			Blend(S00.RockWeight, S10.RockWeight, S01.RockWeight, S11.RockWeight),
+			Blend(S00.Wetness, S10.Wetness, S01.Wetness, S11.Wetness)
+		};
+	}
+
+	/** Altura del terreno fuera del pasillo: cresta + dunas + roca, con cuencas de marisma. */
+	inline double SampleHighGround(const FTerrainContext& Context, const FVector2D& P,
+		const FCellStyle& Style, double CenterlineDistance)
+	{
+		const FTNGridTerrainSettings& S = Context.Settings;
+
+		const double Dunes = S.DuneAmplitude * Style.DuneWeight * (Fbm(Context, P, 1600.0) * 0.5 + 0.5);
+		const double Rocks = S.RockAmplitude * Style.RockWeight * Ridged(Context, P, 700.0)
+			* (0.6 + 0.4 * Noise(Context, P, 230.0));
+		const double High = S.WallHeight + Dunes + FMath::Max(0.0, Rocks);
+
+		// Las cuencas solo se abren lejos del camino y del borde: nunca rebajan una pared.
+		const double HalfCell = Context.CellSize * 0.5;
+		const double FarFromPath = SmoothStep(HalfCell + 100.0, HalfCell + 500.0, CenterlineDistance);
+		const double FarFromBorder = SmoothStep(300.0, 700.0, DistanceToGridBorder(Context, P));
+		const double Pool = SmoothStep(0.45, 0.70, Style.Wetness * (Noise(Context, P, 1900.0) * 0.5 + 0.5));
+		const double BasinMask = Pool * FarFromPath * FarFromBorder;
+
+		return FMath::Lerp(High, static_cast<double>(S.WaterLevel - S.BasinDepth), BasinMask);
+	}
+
+	inline FTerrainSample EvaluateTerrain(const FTerrainContext& Context, const FVector2D& P)
+	{
+		const FTNGridTerrainSettings& S = Context.Settings;
+		const FCellStyle Style = SampleStyle(Context, P);
+		const double Distance = DistanceToCenterline(Context, P);
+
+		// El contorno irregular solo empuja la pared HACIA el pasillo (el término es >= 0):
+		// estrecha el paso, pero nunca adelgaza la pared entre dos pasillos vecinos.
+		const double Jitter = S.WallOutlineJitter * (0.35 + 0.65 * Style.RockWeight)
+			* (Noise(Context, P, 210.0) * 0.5 + 0.5);
+		const double WallDistance = Distance + Jitter;
+
+		FTerrainSample Sample;
+		Sample.RockWeight = Style.RockWeight;
+		Sample.CorridorMask = 1.0 - SmoothStep(Style.HalfWidth, Style.HalfWidth + S.BankWidth, WallDistance);
+
+		const double Floor = S.FloorRippleAmplitude * Fbm(Context, P, 320.0);
+		const double High = SampleHighGround(Context, P, Style, Distance);
+		Sample.Height = FMath::Lerp(High, Floor, Sample.CorridorMask);
+		return Sample;
+	}
+
+	inline double SampleHeight(const FTerrainContext& Context, const FVector2D& P)
+	{
+		return EvaluateTerrain(Context, P).Height;
+	}
+
+	/** Color de vértice final: todo el "material" del terreno se decide aquí. */
+	inline FLinearColor SampleColor(const FTerrainContext& Context, const FVector2D& P,
+		const FTerrainSample& Sample, const FVector& Normal)
+	{
+		const FTNGridTerrainSettings& S = Context.Settings;
+
+		const double Slope = 1.0 - Normal.Z;
+		const double Rock = FMath::Clamp(
+			SmoothStep(0.18, 0.50, Slope) * (0.35 + 0.65 * Sample.RockWeight)
+			+ 0.30 * Sample.RockWeight * (1.0 - Sample.CorridorMask), 0.0, 1.0);
+		const double Wet = SmoothStep(S.WaterLevel + 140.0, S.WaterLevel + 10.0, Sample.Height);
+
+		FLinearColor Color = FMath::Lerp(S.SandColor, S.PathColor, static_cast<float>(Sample.CorridorMask));
+		Color = FMath::Lerp(Color, S.RockColor, static_cast<float>(Rock));
+		Color = FMath::Lerp(Color, S.WetSandColor, static_cast<float>(Wet));
+
+		const float Tint = static_cast<float>(1.0 + 0.09 * Noise(Context, P, 95.0) + 0.07 * Noise(Context, P, 740.0));
+		return FLinearColor(Color.R * Tint, Color.G * Tint, Color.B * Tint, 1.f);
+	}
+
+	/** Índices de una rejilla de V×V vértices (índice = i * V + j), con la cara hacia +Z. */
+	inline TArray<int32> BuildGridTriangles(int32 V)
+	{
+		TArray<int32> Triangles;
+		Triangles.Reserve((V - 1) * (V - 1) * 6);
+		for (int32 i = 0; i < V - 1; ++i)
+		{
+			for (int32 j = 0; j < V - 1; ++j)
+			{
+				const int32 I0 = i * V + j;
+				const int32 I1 = (i + 1) * V + j;
+				const int32 I2 = (i + 1) * V + (j + 1);
+				const int32 I3 = i * V + (j + 1);
+				// Mismo orden que UKismetProceduralMeshLibrary::CreateGridMeshTriangles.
+				Triangles.Append({ I0, I1, I3, I1, I2, I3 });
+			}
+		}
+		return Triangles;
+	}
+
+	/**
+	 * Malla de la celda Coord. Las alturas se muestrean en una rejilla con un anillo de
+	 * margen para sacar las normales por diferencias centrales de H (no de la malla):
+	 * el borde común de dos celdas tiene posiciones Y normales idénticas.
+	 */
+	inline FTileMesh BuildTileMesh(const FTerrainContext& Context, const FIntPoint& Coord)
+	{
+		FTileMesh Mesh;
+		const int32 V = Context.Settings.VertsPerSide;
+		if (!IsContextValid(Context) || V < 2) { return Mesh; }
+
+		const int32 Padded = V + 2;
+		const double Step = Context.CellSize / (V - 1);
+		const FVector2D Center = CellCenter(Context.CellSize, Coord);
+
+		// Coordenada de grid como (celda - 0.5 + i/(V-1)) * CellSize: el último vértice de
+		// una celda y el primero de la siguiente evalúan la MISMA expresión.
+		auto GridPoint = [&](int32 i, int32 j)
+		{
+			return FVector2D(
+				(Coord.Y - 0.5 + static_cast<double>(i) / (V - 1)) * Context.CellSize,
+				(Coord.X - 0.5 + static_cast<double>(j) / (V - 1)) * Context.CellSize);
+		};
+
+		TArray<FTerrainSample> Samples;
+		Samples.SetNum(Padded * Padded);
+		for (int32 i = -1; i <= V; ++i)
+		{
+			for (int32 j = -1; j <= V; ++j)
+			{
+				Samples[(i + 1) * Padded + (j + 1)] = EvaluateTerrain(Context, GridPoint(i, j));
+			}
+		}
+		auto HeightAt = [&](int32 i, int32 j) { return Samples[(i + 1) * Padded + (j + 1)].Height; };
+
+		Mesh.Vertices.Reserve(V * V);
+		Mesh.Normals.Reserve(V * V);
+		Mesh.UVs.Reserve(V * V);
+		Mesh.Colors.Reserve(V * V);
+		for (int32 i = 0; i < V; ++i)
+		{
+			for (int32 j = 0; j < V; ++j)
+			{
+				const FVector2D P = GridPoint(i, j);
+				const FTerrainSample& Sample = Samples[(i + 1) * Padded + (j + 1)];
+				const double SlopeX = (HeightAt(i + 1, j) - HeightAt(i - 1, j)) / (2.0 * Step);
+				const double SlopeY = (HeightAt(i, j + 1) - HeightAt(i, j - 1)) / (2.0 * Step);
+				const FVector Normal = FVector(-SlopeX, -SlopeY, 1.0).GetSafeNormal();
+
+				Mesh.Vertices.Add(FVector(P.X - Center.X, P.Y - Center.Y, Sample.Height));
+				Mesh.Normals.Add(Normal);
+				Mesh.UVs.Add(P / Context.CellSize);
+				Mesh.Colors.Add(SampleColor(Context, P, Sample, Normal));
+			}
+		}
+
+		Mesh.Triangles = BuildGridTriangles(V);
+		return Mesh;
+	}
+}
