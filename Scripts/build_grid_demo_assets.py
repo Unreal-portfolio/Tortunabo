@@ -9,7 +9,8 @@ el material del agua, el GameMode de la demo y BP_GridMapGenerator (en modo terr
 Crea el mapa /Game/Maps/Run/LVL_ProcGenDemo con luz, cielo, generador y PlayerStart.
 
 Idempotente: los assets que ya existen se reutilizan, no se recrean.
-CELL_SIZE debe coincidir con ATN_GridMapGenerator::CellSize.
+El generador queda en modo terreno con celdas de TERRAIN_CELL_SIZE. Para probar el modo
+greybox hay que vaciar TerrainTileClass y poner CellSize = CELL_SIZE en el generador.
 """
 
 import unreal
@@ -21,7 +22,8 @@ CHARACTER_BP = "/Game/Blueprints/Characters/BP_TortugaCharacter"
 GENERATOR_CLASS = "/Script/Tortunabo.TN_GridMapGenerator"
 TERRAIN_TILE_CLASS = "/Script/Tortunabo.TN_GridTerrainTile"
 
-CELL_SIZE = 2000.0
+CELL_SIZE = 2000.0  # tiles greybox
+TERRAIN_CELL_SIZE = 4000.0  # modo terreno: debe casar con FTNGridTerrainSettings
 CUBE_SIZE = 100.0
 WALL_THICKNESS = 50.0
 WALL_HEIGHT = 400.0
@@ -246,7 +248,7 @@ def build_generator(tiles, terrain_tile_bp, water_material):
     defaults.set_editor_property("straight_tile_class", tiles["straight"].generated_class())
     defaults.set_editor_property("turn_tile_class", tiles["turn"].generated_class())
     defaults.set_editor_property("filler_tile_classes", [bp.generated_class() for bp in tiles["fillers"]])
-    defaults.set_editor_property("cell_size", CELL_SIZE)
+    defaults.set_editor_property("cell_size", TERRAIN_CELL_SIZE)
     # Con TerrainTileClass asignado el generador trabaja en modo terreno; los tiles
     # greybox se quedan configurados como alternativa (basta con vaciar esta propiedad).
     defaults.set_editor_property("terrain_tile_class", terrain_tile_bp.generated_class())
@@ -283,7 +285,7 @@ def build_map(generator_bp, game_mode_bp):
     sky_component = sky_light.get_component_by_class(unreal.SkyLightComponent)
     sky_component.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
     sky_component.set_editor_property("real_time_capture", True)
-    sky_component.set_editor_property("intensity", 3.0)
+    sky_component.set_editor_property("intensity", 2.0)
 
     generator = ensure_actor("GridMapGenerator", generator_bp.generated_class())
     generator.call_method("Generate")
@@ -296,7 +298,7 @@ def build_map(generator_bp, game_mode_bp):
         raise RuntimeError("Generate() no ha producido tile de inicio; revisa el Output Log ([GridMap]).")
     player_start = ensure_actor("PlayerStart_PathStart", unreal.PlayerStart)
     player_start.set_actor_location(
-        start_tiles[0].get_actor_location() + unreal.Vector(-CELL_SIZE * 0.3, 0.0, 150.0), False, False)
+        start_tiles[0].get_actor_location() + unreal.Vector(-TERRAIN_CELL_SIZE * 0.3, 0.0, 250.0), False, False)
 
     world.get_world_settings().set_editor_property("default_game_mode", game_mode_bp.generated_class())
     level_subsystem.save_current_level()
