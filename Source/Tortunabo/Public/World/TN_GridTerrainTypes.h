@@ -7,8 +7,11 @@
  * Parámetros del terreno generado sobre el grid. Viven en los Class Defaults de
  * ATN_GridTerrainTile: servidor y clientes leen los mismos valores, no se replican.
  *
- * Invariante: CorridorHalfWidthMax + BankWidth <= CellSize / 2. Es lo que garantiza
- * pared completa entre dos pasillos paralelos de celdas vecinas.
+ * Invariantes (los valida TNGridTerrain::IsContextValid):
+ *   - CorridorHalfWidthMax + BankWidth <= CellSize / 2: pared completa entre dos pasillos
+ *     paralelos de celdas vecinas.
+ *   - CorridorMeander * sqrt(2) + WallOutlineJitter < CorridorHalfWidthMin: la línea recta
+ *     entre centros de celda siempre pisa suelo, por mucho que serpentee el pasillo.
  */
 USTRUCT(BlueprintType)
 struct FTNGridTerrainSettings
@@ -35,6 +38,11 @@ struct FTNGridTerrainSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Walls", meta = (ClampMin = "0.0"))
 	float WallOutlineJitter = 80.f;
 
+	/** Cuánto serpentea el pasillo respecto a la línea recta entre centros de celda.
+	 *  Se desvanece cerca del borde del grid para que entrada y salida no se muevan. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Corridor", meta = (ClampMin = "0.0"))
+	float CorridorMeander = 160.f;
+
 	/** Amplitud de la ondulación de arena en el suelo del pasillo. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Corridor", meta = (ClampMin = "0.0"))
 	float FloorRippleAmplitude = 12.f;
@@ -57,19 +65,24 @@ struct FTNGridTerrainSettings
 
 	/** Vértices por lado de la malla de cada celda. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Mesh", meta = (ClampMin = "3", ClampMax = "129"))
-	int32 VertsPerSide = 49;
+	int32 VertsPerSide = 65;
+
+	/** Separación vertical de las vetas de estrato que se pintan en las paredes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors", meta = (ClampMin = "50.0"))
+	float StrataPeriod = 210.f;
+
+	// Colores en espacio LINEAL: el color de vértice llega al material sin conversión sRGB.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
+	FLinearColor PathColor = FLinearColor(0.62f, 0.44f, 0.21f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
-	FLinearColor PathColor = FLinearColor(0.86f, 0.72f, 0.46f);
+	FLinearColor SandColor = FLinearColor(0.40f, 0.25f, 0.10f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
-	FLinearColor SandColor = FLinearColor(0.70f, 0.54f, 0.30f);
+	FLinearColor RockColor = FLinearColor(0.075f, 0.065f, 0.06f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
-	FLinearColor RockColor = FLinearColor(0.23f, 0.22f, 0.22f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terrain|Colors")
-	FLinearColor WetSandColor = FLinearColor(0.30f, 0.24f, 0.15f);
+	FLinearColor WetSandColor = FLinearColor(0.09f, 0.065f, 0.035f);
 };
 
 /**

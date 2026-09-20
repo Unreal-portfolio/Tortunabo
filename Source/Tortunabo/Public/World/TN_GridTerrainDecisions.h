@@ -144,7 +144,7 @@ namespace TNGridTerrain
 			&& Context.Centerline.Num() >= 2
 			&& Context.CellStyles.Num() == Context.GridSize * Context.GridSize
 			&& S.CorridorHalfWidthMin <= S.CorridorHalfWidthMax
-			&& S.WallOutlineJitter < S.CorridorHalfWidthMin
+			&& S.CorridorMeander * UE_DOUBLE_SQRT_2 + S.WallOutlineJitter < S.CorridorHalfWidthMin
 			&& S.CorridorHalfWidthMax + S.BankWidth <= Context.CellSize * 0.5;
 	}
 
@@ -280,7 +280,7 @@ namespace TNGridTerrain
 		const double HalfCell = Context.CellSize * 0.5;
 		const double FarFromPath = SmoothStep(HalfCell + 100.0, HalfCell + 500.0, CenterlineDistance);
 		const double FarFromBorder = SmoothStep(300.0, 700.0, DistanceToGridBorder(Context, P));
-		const double Pool = SmoothStep(0.45, 0.70, Style.Wetness * (Noise(Context, P, 1900.0) * 0.5 + 0.5));
+		const double Pool = SmoothStep(0.30, 0.55, Style.Wetness * (Noise(Context, P, 1900.0) * 0.5 + 0.5));
 		const double BasinMask = Pool * FarFromPath * FarFromBorder;
 
 		return FMath::Lerp(High, static_cast<double>(S.WaterLevel - S.BasinDepth), BasinMask);
@@ -290,7 +290,14 @@ namespace TNGridTerrain
 	{
 		const FTNGridTerrainSettings& S = Context.Settings;
 		const FCellStyle Style = SampleStyle(Context, P);
-		const double Distance = DistanceToCenterline(Context, P);
+
+		// Deformación del dominio: la distancia se mide desde un punto desplazado por ruido
+		// de baja frecuencia, así que el pasillo serpentea en vez de seguir rectas perfectas.
+		// Se apaga junto al borde del grid para no mover la entrada ni la salida.
+		const double MeanderFade = SmoothStep(0.0, 800.0, DistanceToGridBorder(Context, P));
+		const FVector2D Meander = FVector2D(Noise(Context, P, 1300.0), Noise(Context, P + FVector2D(5171.0, 3137.0), 1300.0))
+			* (S.CorridorMeander * MeanderFade);
+		const double Distance = DistanceToCenterline(Context, P + Meander);
 
 		// El contorno irregular solo empuja la pared HACIA el pasillo (el término es >= 0):
 		// estrecha el paso, pero nunca adelgaza la pared entre dos pasillos vecinos.
@@ -300,7 +307,10 @@ namespace TNGridTerrain
 
 		FTerrainSample Sample;
 		Sample.RockWeight = Style.RockWeight;
-		Sample.CorridorMask = 1.0 - SmoothStep(Style.HalfWidth, Style.HalfWidth + S.BankWidth, WallDistance);
+		// El talud solo puede estrecharse (más vertical), nunca ensancharse: así la cresta
+		// sigue completa dentro del margen que reserva el invariante de anchos.
+		const double LocalBankWidth = S.BankWidth * (0.65 + 0.35 * (Noise(Context, P, 520.0) * 0.5 + 0.5));
+		Sample.CorridorMask = 1.0 - SmoothStep(Style.HalfWidth, Style.HalfWidth + LocalBankWidth, WallDistance);
 
 		const double Floor = S.FloorRippleAmplitude * Fbm(Context, P, 320.0);
 		const double High = SampleHighGround(Context, P, Style, Distance);
@@ -320,8 +330,9 @@ namespace TNGridTerrain
 		const FTNGridTerrainSettings& S = Context.Settings;
 
 		const double Slope = 1.0 - Normal.Z;
+		const double Cliff = SmoothStep(0.20, 0.55, Slope);
 		const double Rock = FMath::Clamp(
-			SmoothStep(0.18, 0.50, Slope) * (0.35 + 0.65 * Sample.RockWeight)
+			Cliff * (0.55 + 0.45 * Sample.RockWeight)
 			+ 0.30 * Sample.RockWeight * (1.0 - Sample.CorridorMask), 0.0, 1.0);
 		const double Wet = SmoothStep(S.WaterLevel + 140.0, S.WaterLevel + 10.0, Sample.Height);
 
@@ -329,7 +340,10 @@ namespace TNGridTerrain
 		Color = FMath::Lerp(Color, S.RockColor, static_cast<float>(Rock));
 		Color = FMath::Lerp(Color, S.WetSandColor, static_cast<float>(Wet));
 
-		const float Tint = static_cast<float>(1.0 + 0.09 * Noise(Context, P, 95.0) + 0.07 * Noise(Context, P, 740.0));
+		// Vetas horizontales en las paredes, onduladas por ruido: lectura de roca sedimentaria.
+		const double Strata = FMath::Sin(Sample.Height * (UE_DOUBLE_TWO_PI / S.StrataPeriod) + 2.5 * Noise(Context, P, 600.0));
+		const float Tint = static_cast<float>(1.0 + 0.09 * Noise(Context, P, 95.0) + 0.07 * Noise(Context, P, 740.0)
+			+ 0.20 * Cliff * Strata);
 		return FLinearColor(Color.R * Tint, Color.G * Tint, Color.B * Tint, 1.f);
 	}
 
@@ -346,8 +360,9 @@ namespace TNGridTerrain
 				const int32 I1 = (i + 1) * V + j;
 				const int32 I2 = (i + 1) * V + (j + 1);
 				const int32 I3 = i * V + (j + 1);
-				// Mismo orden que UKismetProceduralMeshLibrary::CreateGridMeshTriangles.
-				Triangles.Append({ I0, I1, I3, I1, I2, I3 });
+				// Unreal toma como cara frontal la de sentido horario: con este orden el
+				// producto vectorial (B-A)x(C-A) apunta a -Z y la cara visible mira a +Z.
+				Triangles.Append({ I0, I3, I1, I1, I3, I2 });
 			}
 		}
 		return Triangles;

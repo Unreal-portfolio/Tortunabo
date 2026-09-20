@@ -105,10 +105,29 @@ bool FTNTerrainWallBetweenCorridorsTest::RunTest(const FString& Parameters)
 				const FIntPoint Delta = Path[j] - Path[i];
 				if (FMath::Abs(Delta.X) + FMath::Abs(Delta.Y) != 1) { continue; }
 
-				const FVector2D SharedEdgeMid = (CellCenter(TerrainTestCellSize, Path[i]) + CellCenter(TerrainTestCellSize, Path[j])) * 0.5;
+				// El pasillo serpentea, así que la cresta no cae exactamente en el borde común:
+				// lo que importa es que en la recta que une ambos centros haya pared completa.
+				const FVector2D From = CellCenter(TerrainTestCellSize, Path[i]);
+				const FVector2D To = CellCenter(TerrainTestCellSize, Path[j]);
+				const FVector2D Across = (To - From).GetSafeNormal();
+				const FVector2D Along(-Across.Y, Across.X);
+
+				// Sin huecos: se cruza de un pasillo al otro cada 100 uu a lo largo del borde
+				// común y en TODOS los cruces tiene que haber cresta. Se deja fuera el último
+				// 30% de cada extremo: ahí puede estar la punta redondeada de la isla de un giro
+				// en U, donde ambos pasillos ya se están uniendo.
+				double LowestRidge = TNumericLimits<double>::Max();
+				for (double Offset = -700.0; Offset <= 700.0; Offset += 100.0)
+				{
+					double Ridge = 0.0;
+					for (int32 Step = 0; Step <= 200; ++Step)
+					{
+						Ridge = FMath::Max(Ridge, SampleHeight(Context, FMath::Lerp(From, To, Step / 200.0) + Along * Offset));
+					}
+					LowestRidge = FMath::Min(LowestRidge, Ridge);
+				}
 				++PairsChecked;
-				TestTrue(FString::Printf(TEXT("semilla %d: pared entre celdas %d y %d"), Seed, i, j),
-					SampleHeight(Context, SharedEdgeMid) >= MinWall);
+				TestTrue(FString::Printf(TEXT("semilla %d: pared sin huecos entre celdas %d y %d"), Seed, i, j), LowestRidge >= MinWall);
 			}
 		}
 	}
@@ -148,7 +167,8 @@ bool FTNTerrainBankSteepTest::RunTest(const FString& Parameters)
 			for (const double Sign : { -1.0, 1.0 })
 			{
 				TArray<double> Heights;
-				for (double Distance = 0.0; Distance <= HalfCell; Distance += RayStep)
+				// Hasta algo más allá del borde de la celda: el serpenteo desplaza la cresta.
+				for (double Distance = 0.0; Distance <= HalfCell + 250.0; Distance += RayStep)
 				{
 					Heights.Add(SampleHeight(Context, Center + Side * (Sign * Distance)));
 				}
@@ -164,8 +184,8 @@ bool FTNTerrainBankSteepTest::RunTest(const FString& Parameters)
 				// 0.75 * 600 en 300 uu = 56°: por encima del ángulo caminable del CMC (~45°).
 				TestTrue(Ctx + TEXT(": el talud sube >= 75% de WallHeight en 300 uu"),
 					BestGain >= Context.Settings.WallHeight * 0.75);
-				TestTrue(Ctx + TEXT(": cresta completa en el límite de la celda"),
-					Heights.Last() >= Context.Settings.WallHeight * 0.9);
+				TestTrue(Ctx + TEXT(": cresta completa a ese lado del pasillo"),
+					FMath::Max(Heights) >= Context.Settings.WallHeight * 0.9);
 			}
 		}
 	}
@@ -243,6 +263,19 @@ bool FTNTerrainSeamlessTilesTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("Triángulos por celda"), Tile.Triangles.Num(), (V - 1) * (V - 1) * 6);
 
+	// Cara visible hacia arriba. Unreal usa sentido horario como cara frontal, así que
+	// el producto vectorial de las aristas debe apuntar a -Z. Con el orden contrario el
+	// terreno solo se ve desde abajo (regresión real: primera captura de la demo).
+	bool bAllFaceUp = true;
+	for (int32 t = 0; t + 2 < Tile.Triangles.Num(); t += 3)
+	{
+		const FVector& A = Tile.Vertices[Tile.Triangles[t]];
+		const FVector& B = Tile.Vertices[Tile.Triangles[t + 1]];
+		const FVector& C = Tile.Vertices[Tile.Triangles[t + 2]];
+		bAllFaceUp &= FVector::CrossProduct(B - A, C - A).Z < 0.0;
+	}
+	TestTrue(TEXT("Todos los triángulos miran hacia +Z"), bAllFaceUp);
+
 	double WorstHeight = 0.0;
 	double WorstNormal = 0.0;
 	double WorstColor = 0.0;
@@ -310,6 +343,9 @@ bool FTNTerrainStylesAndDeterminismTest::RunTest(const FString& Parameters)
 	TooWide.CorridorHalfWidthMax = 900.f; // 900 + 250 > 1000: no cabe la pared
 	TestTrue(TEXT("Parámetros por defecto válidos"), IsContextValid(TerrainTestContext(3, Path)));
 	TestFalse(TEXT("Pasillo + talud > media celda → contexto inválido"), IsContextValid(TerrainTestContext(3, Path, TooWide)));
+	FTNGridTerrainSettings TooWinding;
+	TooWinding.CorridorMeander = 400.f; // 400 * sqrt(2) + 80 > 550: la recta entre centros pisaría pared
+	TestFalse(TEXT("Serpenteo mayor que el pasillo → contexto inválido"), IsContextValid(TerrainTestContext(3, Path, TooWinding)));
 	TestFalse(TEXT("Sin camino → contexto inválido"), IsContextValid(TerrainTestContext(3, {})));
 	TestEqual(TEXT("Contexto inválido → malla vacía"), BuildTileMesh(TerrainTestContext(3, Path, TooWide), FIntPoint(0, 0)).Vertices.Num(), 0);
 
