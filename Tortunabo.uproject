@@ -44,6 +44,7 @@
 		{
 			"Name": "UnrealMCPython",
 			"Enabled": true,
+			"Optional": true,
 			"TargetAllowList": [
 				"Editor"
 			]
