@@ -73,8 +73,9 @@ repetición entre partidas.
 - `TArray<float> Heights` — `VertsPerSide * VertsPerSide` = 97 x 97 = 9409 valores, en uu
   relativas al suelo del pasillo. A 4000 uu de celda el paso de rejilla es 41,67 uu.
 - `ETNModuleShape Shape` — `Straight` | `Turn`, alineado con `TNGridLogic::ECellShape`.
-- `ETNEdgeFamily Edges[4]` — familia de perfil por borde (N/E/S/O): `None` (pared maciza),
-  `Narrow`, `Medium`, `Wide`.
+- `TArray<ETNEdgeFamily> Edges` — familia de perfil por borde, exactamente 4 entradas en
+  orden N/E/S/O: `None` (pared maciza), `Narrow`, `Medium`, `Wide`. `TArray` y no un array
+  C de tamaño fijo, que `UPROPERTY` no serializa.
 - `FName Biome`, `TArray<FName> Tags` — filtrado y selección.
 - `TSoftObjectPtr<UTexture2D> Preview` — miniatura para el catálogo del diseñador.
 
