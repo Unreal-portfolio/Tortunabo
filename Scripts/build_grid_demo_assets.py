@@ -14,11 +14,16 @@ El generador queda en modo terreno con celdas de TERRAIN_CELL_SIZE. Para probar 
 greybox hay que vaciar TerrainTileClass y poner CellSize = CELL_SIZE en el generador.
 """
 
+import os
+
 import unreal
 
 ROOT = "/Game/Blueprints/Gameplay/GridMap"
 MAP_PATH = "/Game/Maps/Run/LVL_ProcGenDemo"
 CUBE_PATH = "/Engine/BasicShapes/Cube"
+TEXTURE_ROOT = "/Game/Textures/Terrain"
+GRAIN_TEXTURE = "T_TerrainGrain"
+GRAIN_SOURCE = "Scripts/textures/T_TerrainGrain.png"  # lo genera Scripts/gen_terrain_textures.py
 CHARACTER_BP = "/Game/Blueprints/Characters/BP_TortugaCharacter"
 GENERATOR_CLASS = "/Script/Tortunabo.TN_GridMapGenerator"
 TERRAIN_TILE_CLASS = "/Script/Tortunabo.TN_GridTerrainTile"
@@ -166,20 +171,120 @@ def build_tiles(materials, cube):
     }
 
 
-def build_terrain_material():
-    """El color del terreno llega ya calculado en el color de vértice."""
-    path = f"{ROOT}/M_GridTerrain"
+def build_grain_texture():
+    """Importa la textura de grano del terreno desde el PNG versionado en Scripts/textures."""
+    path = f"{TEXTURE_ROOT}/{GRAIN_TEXTURE}"
     existing = load_or_none(path)
     if existing:
         return existing
 
-    material = asset_tools.create_asset("M_GridTerrain", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+    source = os.path.join(unreal.Paths.project_dir(), GRAIN_SOURCE)
+    if not os.path.isfile(source):
+        raise RuntimeError(f"Falta {GRAIN_SOURCE}; genéralo con Scripts/gen_terrain_textures.py.")
+
+    task = unreal.AssetImportTask()
+    task.set_editor_property("filename", source)
+    task.set_editor_property("destination_path", TEXTURE_ROOT)
+    task.set_editor_property("destination_name", GRAIN_TEXTURE)
+    task.set_editor_property("automated", True)
+    task.set_editor_property("replace_existing", True)
+    asset_tools.import_asset_tasks([task])
+
+    texture = load_or_none(path)
+    if not texture:
+        raise RuntimeError(f"La importación de {GRAIN_TEXTURE} no ha producido asset en {TEXTURE_ROOT}.")
+    # El grano es un multiplicador, no un color: se muestrea en espacio lineal.
+    texture.set_editor_property("srgb", False)
+    texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_GRAYSCALE)
+    asset_lib.save_loaded_asset(texture)
+    return texture
+
+
+# Proyección triplanar: tres muestreos en los planos locales XY, XZ e YZ, mezclados por la
+# normal elevada a Sharpness y normalizada. Mantiene el tamaño de texel constante en
+# cualquier pendiente, cosa que una UV planar no hace (el talud de una pared de 800 uu
+# estiraba el texel un factor 2,3). Devuelve un multiplicador alrededor de 1 que modula el
+# color de vértice sin desplazar su media.
+TRIPLANAR_HLSL = """\
+float3 N = abs(Normal);
+N = pow(max(N, 1e-4f), max(Sharpness, 1.0f));
+N /= max(N.x + N.y + N.z, 1e-4f);
+float Inv = 1.0f / max(TileSize, 1.0f);
+float Gx = Texture2DSample(Tex, TexSampler, P.yz * Inv).r;
+float Gy = Texture2DSample(Tex, TexSampler, P.xz * Inv).r;
+float Gz = Texture2DSample(Tex, TexSampler, P.xy * Inv).r;
+float G = Gx * N.x + Gy * N.y + Gz * N.z;
+return 1.0f + (G - 0.5f) * Contrast;
+"""
+
+
+TRIPLANAR_INPUTS = ("P", "Normal", "Tex", "TileSize", "Sharpness", "Contrast")
+
+
+def custom_input(name):
+    """FCustomInput no acepta argumentos en su constructor de Python: se rellena a posteriori."""
+    entry = unreal.CustomInput()
+    entry.set_editor_property("input_name", name)
+    return entry
+
+
+def scalar_parameter(material, name, value, x, y):
     mel = unreal.MaterialEditingLibrary
-    vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -400, 0)
-    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 300)
+    parameter = mel.create_material_expression(material, unreal.MaterialExpressionScalarParameter, x, y)
+    parameter.set_editor_property("parameter_name", name)
+    parameter.set_editor_property("default_value", value)
+    return parameter
+
+
+def build_terrain_material(grain_texture):
+    """Color de vértice (estratos, arena, moteado) modulado por grano triplanar."""
+    path = f"{ROOT}/M_GridTerrain"
+    material = load_or_none(path)
+    if not material:
+        material = asset_tools.create_asset("M_GridTerrain", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+
+    mel = unreal.MaterialEditingLibrary
+    # Se reconstruye el grafo entero en vez de recrear el asset: así el material conserva su
+    # path y las referencias del BP del tile siguen siendo válidas.
+    mel.delete_all_material_expressions(material)
+
+    # Posición local del tile: World - ObjectPosition. Restar dos posiciones LWC da un
+    # float3 de precisión normal, que es lo que el nodo Custom puede consumir.
+    world_position = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -1200, -200)
+    object_position = mel.create_material_expression(material, unreal.MaterialExpressionObjectPositionWS, -1200, -20)
+    local_position = mel.create_material_expression(material, unreal.MaterialExpressionSubtract, -1000, -120)
+    mel.connect_material_expressions(world_position, "", local_position, "A")
+    mel.connect_material_expressions(object_position, "", local_position, "B")
+
+    normal = mel.create_material_expression(material, unreal.MaterialExpressionVertexNormalWS, -1000, 60)
+    texture_object = mel.create_material_expression(
+        material, unreal.MaterialExpressionTextureObjectParameter, -1000, 180)
+    texture_object.set_editor_property("parameter_name", "GrainTexture")
+    texture_object.set_editor_property("texture", grain_texture)
+
+    tile_size = scalar_parameter(material, "GrainTileSize", 400.0, -1000, 340)
+    sharpness = scalar_parameter(material, "GrainSharpness", 4.0, -1000, 440)
+    contrast = scalar_parameter(material, "GrainContrast", 0.35, -1000, 540)
+
+    triplanar = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -600, 60)
+    triplanar.set_editor_property("code", TRIPLANAR_HLSL)
+    triplanar.set_editor_property("description", "TriplanarGrain")
+    triplanar.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+    triplanar.set_editor_property("inputs", [custom_input(name) for name in TRIPLANAR_INPUTS])
+    for expression, pin in ((local_position, "P"), (normal, "Normal"), (texture_object, "Tex"),
+                            (tile_size, "TileSize"), (sharpness, "Sharpness"), (contrast, "Contrast")):
+        mel.connect_material_expressions(expression, "", triplanar, pin)
+
+    vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -600, -180)
+    base_color = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -300, -60)
+    mel.connect_material_expressions(vertex_color, "", base_color, "A")
+    mel.connect_material_expressions(triplanar, "", base_color, "B")
+    mel.connect_material_property(base_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+
+    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -300, 300)
     roughness.set_editor_property("r", 0.95)
     mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+
     mel.recompile_material(material)
     asset_lib.save_loaded_asset(material)
     return material
@@ -331,11 +436,13 @@ def build_map(generator_bp, game_mode_bp):
 
 def main():
     asset_lib.make_directory(ROOT)
+    asset_lib.make_directory(TEXTURE_ROOT)
     cube = asset_lib.load_asset(CUBE_PATH)
     flat = build_flat_material()
     materials = {name: build_color_instance(name, rgb, flat) for name, rgb in COLORS.items()}
     tiles = build_tiles(materials, cube)
-    terrain_tile_bp = build_terrain_tile(build_terrain_material(), build_junk_material())
+    terrain_material = build_terrain_material(build_grain_texture())
+    terrain_tile_bp = build_terrain_tile(terrain_material, build_junk_material())
     generator_bp = build_generator(tiles, terrain_tile_bp, build_water_material())
     game_mode_bp = build_game_mode()
     build_map(generator_bp, game_mode_bp)

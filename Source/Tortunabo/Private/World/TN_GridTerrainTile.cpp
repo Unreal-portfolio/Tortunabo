@@ -101,8 +101,9 @@ void ATN_GridTerrainTile::BuildTerrain()
 	}
 
 	const TNGridTerrain::FTileMesh Mesh = TNGridTerrain::BuildTileMesh(Context, Init.Coord);
-	TerrainMesh->CreateMeshSection_LinearColor(0, Mesh.Vertices, Mesh.Triangles, Mesh.Normals, Mesh.UVs,
-		Mesh.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
+	// Sin UV: el material del terreno es triplanar y deriva las coordenadas de la posición.
+	TerrainMesh->CreateMeshSection_LinearColor(0, Mesh.Vertices, Mesh.Triangles, Mesh.Normals,
+		TArray<FVector2D>(), Mesh.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
 
 	if (TerrainMaterial)
 	{

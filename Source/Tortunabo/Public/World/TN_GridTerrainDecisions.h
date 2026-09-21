@@ -65,7 +65,6 @@ namespace TNGridTerrain
 		TArray<FVector> Vertices;
 		TArray<int32> Triangles;
 		TArray<FVector> Normals;
-		TArray<FVector2D> UVs;
 		TArray<FLinearColor> Colors;
 	};
 
@@ -512,7 +511,6 @@ namespace TNGridTerrain
 
 		Mesh.Vertices.Reserve(V * V);
 		Mesh.Normals.Reserve(V * V);
-		Mesh.UVs.Reserve(V * V);
 		Mesh.Colors.Reserve(V * V);
 		for (int32 i = 0; i < V; ++i)
 		{
@@ -526,7 +524,6 @@ namespace TNGridTerrain
 
 				Mesh.Vertices.Add(FVector(P.X - Center.X, P.Y - Center.Y, Sample.Height));
 				Mesh.Normals.Add(Normal);
-				Mesh.UVs.Add(P / Context.CellSize);
 				Mesh.Colors.Add(SampleColor(Context, P, Sample, Normal));
 			}
 		}
