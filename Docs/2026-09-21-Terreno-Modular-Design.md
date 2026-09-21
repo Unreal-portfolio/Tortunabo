@@ -1,7 +1,7 @@
 # Terreno modular — diseño
 
 Fecha: 2026-09-21
-Estado: diseño aprobado en brainstorming, pendiente de plan de implementación
+Estado: SUSTITUIDO por `2026-09-21-Terreno-Stamps-Design.md` (siguen vigentes el triplanar y la erosión offline)
 Rama de partida: `feat/procgen-terrain` @ e079522
 
 ## 1. Problema
