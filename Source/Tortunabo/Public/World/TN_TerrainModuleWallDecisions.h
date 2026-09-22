@@ -18,13 +18,13 @@
 namespace TNTerrainModuleWall
 {
 	/** Semiancho de la boca canónica, en uu. Debe casar con OPEN_HALF_M del generador. */
-	constexpr double MouthHalfWidth = 1800.0;
+	constexpr double MouthHalfWidth = 1200.0;
 	/** Cota de la cresta canónica, en uu. */
 	constexpr double CrestHeight = 1000.0;
 	/** Desde dónde hasta dónde, hacia dentro del borde, se apila la basura. */
 	constexpr double HeapNear = 300.0;
 	constexpr double HeapFar = 1400.0;
-	constexpr int32 PiecesPerWall = 150;
+	constexpr int32 PiecesPerWall = 110;
 
 	struct FWallPiece
 	{

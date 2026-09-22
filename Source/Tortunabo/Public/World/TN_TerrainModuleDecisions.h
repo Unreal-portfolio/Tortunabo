@@ -4,6 +4,7 @@
 #include "World/TN_GridPathDecisions.h"
 #include "World/TN_GridTerrainDecisions.h"
 #include "World/TN_TerrainModuleAsset.h"
+#include "Math/RandomStream.h"
 
 /**
  * Módulos de terreno como funciones PURAS: sin UWorld, sin actores, sin estado.
@@ -225,18 +226,6 @@ namespace TNTerrainModule
 			&& EdgeHeights(A, TNGridLogic::SideNorth) == EdgeHeights(B, TNGridLogic::SideNorth);
 	}
 
-	/**
-	 * Transform de la instancia de cubo (de CubeSize uu de lado, centrado) que materializa
-	 * un puente: escalado a Length × Width × Thickness, girado Yaw y con la cara superior
-	 * en DeckHeight.
-	 */
-	inline FTransform BridgeInstanceTransform(const FTNTerrainModuleBridge& Bridge, double CubeSize = 100.0)
-	{
-		const FVector Scale(Bridge.Length / CubeSize, Bridge.Width / CubeSize, Bridge.Thickness / CubeSize);
-		const FVector Location(Bridge.Center.X, Bridge.Center.Y, Bridge.DeckHeight - Bridge.Thickness * 0.5);
-		return FTransform(FRotator(0.f, Bridge.Yaw, 0.f), Location, Scale);
-	}
-
 	/** Colores de vértice del módulo, en espacio lineal. */
 	struct FModuleColors
 	{
@@ -262,6 +251,140 @@ namespace TNTerrainModule
 		Color = FMath::Lerp(Color, Colors.Wet, static_cast<float>(Wet));
 		Color.A = 1.f;
 		return Color;
+	}
+
+	/** Parámetros de forma del arco de roca; los valores por defecto son los de juego. */
+	struct FArchShape
+	{
+		/** Estaciones a lo largo del arco y puntos por sección. */
+		int32 Stations = 24;
+		int32 RingPoints = 16;
+		/** Exponente de la superelipse de la sección: 4 = canto redondeado y techo casi plano. */
+		double SectionPower = 4.0;
+		/** Cuánto baja la panza en los apoyos respecto al centro (uu): el arco nace de la pared. */
+		double RootDrop = 700.0;
+		/** Ensanche de la sección en los apoyos (fracción del ancho). */
+		double RootWiden = 0.35;
+		/** Irregularidad de los costados y la panza (fracción del radio). */
+		double Roughness = 0.08;
+	};
+
+	/**
+	 * Arco natural de roca a partir de un "puente" del módulo, en espacio local del módulo.
+	 * Techo plano a DeckHeight (caminable cuando la ruta alta llega a él), panza en arco que
+	 * deja paso por debajo y que en los extremos baja RootDrop para enraizar en la pared.
+	 * Sección de superelipse con irregularidad determinista por Seed. Malla cerrada, con
+	 * caras hacia fuera (horario visto desde fuera, convención de Unreal).
+	 */
+	inline TNGridTerrain::FTileMesh BuildArchMesh(const FTNTerrainModuleBridge& Bridge, int32 Seed,
+		const FModuleColors& Colors, const FArchShape& Shape = FArchShape())
+	{
+		TNGridTerrain::FTileMesh Mesh;
+		const int32 N = FMath::Max(Shape.Stations, 2);
+		const int32 M = FMath::Max(Shape.RingPoints, 4);
+		if (Bridge.Length <= 0.f || Bridge.Width <= 0.f || Bridge.Thickness <= 0.f) { return Mesh; }
+
+		const double YawRad = FMath::DegreesToRadians(static_cast<double>(Bridge.Yaw));
+		const FVector2D Axis(FMath::Cos(YawRad), FMath::Sin(YawRad));
+		const FVector2D Across(-Axis.Y, Axis.X);
+		const FVector2D Center(Bridge.Center);
+		const double HalfLength = Bridge.Length * 0.5;
+		// Fases de ruido fijas por semilla: misma semilla, misma roca en todas las máquinas.
+		FRandomStream Stream(Seed);
+		const double PhaseA = Stream.FRandRange(0.0, 2.0 * PI);
+		const double PhaseB = Stream.FRandRange(0.0, 2.0 * PI);
+		auto Rough = [&](double U, double Theta)
+		{
+			return Shape.Roughness * (0.6 * FMath::Sin(U * 0.0021 + 3.0 * Theta + PhaseA)
+				+ 0.4 * FMath::Sin(U * 0.0053 - 5.0 * Theta + PhaseB));
+		};
+
+		TArray<FVector> Centers;
+		for (int32 S = 0; S <= N; ++S)
+		{
+			const double U = -HalfLength + Bridge.Length * S / N;
+			const double A = FMath::Abs(U) / HalfLength;
+			const double HalfWidth = Bridge.Width * 0.5 * (1.0 + Shape.RootWiden * A * A);
+			const double Bottom = Bridge.DeckHeight - Bridge.Thickness - Shape.RootDrop * A * A * A;
+			const double HalfHeight = (Bridge.DeckHeight - Bottom) * 0.5;
+			const double MidZ = Bottom + HalfHeight;
+			const FVector2D Mid2D = Center + Axis * U;
+			Centers.Add(FVector(Mid2D.X, Mid2D.Y, MidZ));
+
+			for (int32 R = 0; R < M; ++R)
+			{
+				const double Theta = 2.0 * PI * R / M;
+				const double C = FMath::Cos(Theta);
+				const double Sn = FMath::Sin(Theta);
+				const double Exp = 2.0 / Shape.SectionPower;
+				double Y = HalfWidth * FMath::Sign(C) * FMath::Pow(FMath::Abs(C), Exp);
+				double Z = HalfHeight * FMath::Sign(Sn) * FMath::Pow(FMath::Abs(Sn), Exp);
+				// El techo se queda liso para poder caminar; costados y panza, irregulares.
+				if (Sn < 0.7)
+				{
+					const double Bump = 1.0 + Rough(U, Theta);
+					Y *= Bump;
+					Z = Sn < 0.0 ? Z * Bump : Z;
+				}
+				const FVector2D P = Mid2D + Across * Y;
+				Mesh.Vertices.Add(FVector(P.X, P.Y, MidZ + Z));
+			}
+		}
+
+		// Tapas en los extremos (quedan enterradas en la pared, pero cierran la colisión).
+		const int32 CapStart = Mesh.Vertices.Add(Centers[0]);
+		const int32 CapEnd = Mesh.Vertices.Add(Centers.Last());
+
+		// Cada triángulo se orienta para que su cara visible mire hacia fuera de la línea
+		// central: en Unreal (B-A)x(C-A) apunta al lado contrario de la cara visible.
+		auto AddTriangle = [&](int32 A, int32 B, int32 C, const FVector& Outward)
+		{
+			const FVector Cross = FVector::CrossProduct(Mesh.Vertices[B] - Mesh.Vertices[A], Mesh.Vertices[C] - Mesh.Vertices[A]);
+			if (FVector::DotProduct(Cross, Outward) > 0.0) { Swap(B, C); }
+			Mesh.Triangles.Append({ A, B, C });
+		};
+
+		for (int32 S = 0; S < N; ++S)
+		{
+			for (int32 R = 0; R < M; ++R)
+			{
+				const int32 A = S * M + R;
+				const int32 B = S * M + (R + 1) % M;
+				const int32 C = (S + 1) * M + R;
+				const int32 D = (S + 1) * M + (R + 1) % M;
+				const FVector QuadMid = (Mesh.Vertices[A] + Mesh.Vertices[D]) * 0.5;
+				const FVector Outward = QuadMid - (Centers[S] + Centers[S + 1]) * 0.5;
+				AddTriangle(A, B, C, Outward);
+				AddTriangle(B, D, C, Outward);
+			}
+		}
+		const FVector AxisDir(Axis.X, Axis.Y, 0.0);
+		for (int32 R = 0; R < M; ++R)
+		{
+			AddTriangle(CapStart, R, (R + 1) % M, -AxisDir);
+			AddTriangle(CapEnd, N * M + R, N * M + (R + 1) % M, AxisDir);
+		}
+
+		// Normales suaves: media de las caras que comparten vértice.
+		Mesh.Normals.Init(FVector::ZeroVector, Mesh.Vertices.Num());
+		for (int32 T = 0; T + 2 < Mesh.Triangles.Num(); T += 3)
+		{
+			const int32 A = Mesh.Triangles[T];
+			const int32 B = Mesh.Triangles[T + 1];
+			const int32 C = Mesh.Triangles[T + 2];
+			// Orden horario: la normal hacia la cara visible es (C-A)x(B-A).
+			const FVector Face = FVector::CrossProduct(Mesh.Vertices[C] - Mesh.Vertices[A], Mesh.Vertices[B] - Mesh.Vertices[A]);
+			Mesh.Normals[A] += Face;
+			Mesh.Normals[B] += Face;
+			Mesh.Normals[C] += Face;
+		}
+		Mesh.Colors.Reserve(Mesh.Vertices.Num());
+		for (int32 V = 0; V < Mesh.Vertices.Num(); ++V)
+		{
+			Mesh.Normals[V] = Mesh.Normals[V].GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
+			Mesh.Colors.Add(SampleModuleColor(Colors, Mesh.Vertices[V].Z, Mesh.Normals[V]));
+		}
+		return Mesh;
 	}
 
 	/**

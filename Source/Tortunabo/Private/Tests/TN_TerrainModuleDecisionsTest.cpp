@@ -308,32 +308,56 @@ bool FTNTerrainModuleCoveringAndWallsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainModuleBridgeTransformTest,
-	"Tortunabo.TerrainModule.BridgeTransform",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainModuleArchMeshTest,
+	"Tortunabo.TerrainModule.ArchMesh",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNTerrainModuleBridgeTransformTest::RunTest(const FString& Parameters)
+bool FTNTerrainModuleArchMeshTest::RunTest(const FString& Parameters)
 {
 	FTNTerrainModuleBridge Bridge;
 	Bridge.Center = FVector2D(1500.0, -800.0);
 	Bridge.Yaw = 90.f;
-	Bridge.Length = 6000.f;
-	Bridge.Width = 1200.f;
-	Bridge.Thickness = 120.f;
-	Bridge.DeckHeight = 1000.f;
+	Bridge.Length = 3000.f;
+	Bridge.Width = 1000.f;
+	Bridge.Thickness = 250.f;
+	Bridge.DeckHeight = 1200.f;
 
-	const FTransform Transform = TNTerrainModule::BridgeInstanceTransform(Bridge, 100.0);
+	const TNTerrainModule::FModuleColors Colors;
+	const TNTerrainModule::FArchShape Shape;
+	const TNGridTerrain::FTileMesh Mesh = TNTerrainModule::BuildArchMesh(Bridge, 7, Colors, Shape);
 
-	// Escala: cubo de 100 uu → 6000 × 1200 × 120.
-	TestEqual(TEXT("escala"), Transform.GetScale3D(), FVector(60.0, 12.0, 1.2));
-	// El centro del cubo queda medio grosor por debajo del tablero.
-	TestEqual(TEXT("posición"), Transform.GetLocation(), FVector(1500.0, -800.0, 940.0));
-	// Girado 90°: el eje largo del tablero apunta a +Y.
-	const FVector LongAxis = Transform.TransformVectorNoScale(FVector::ForwardVector);
-	TestTrue(TEXT("eje largo"), LongAxis.Equals(FVector(0.0, 1.0, 0.0), 1e-4));
-	// Los extremos del tablero, en mundo local, salen del centro a lo largo de ese eje.
-	const FVector EndA = Transform.TransformPosition(FVector(50.0, 0.0, 50.0));
-	TestEqual(TEXT("extremo A"), EndA, FVector(1500.0, 2200.0, 1000.0));
+	const int32 Expected = (Shape.Stations + 1) * Shape.RingPoints + 2;
+	TestEqual(TEXT("vértices: anillos + 2 tapas"), Mesh.Vertices.Num(), Expected);
+	TestEqual(TEXT("una normal y un color por vértice"), Mesh.Normals.Num() + Mesh.Colors.Num(), 2 * Expected);
+	TestEqual(TEXT("triángulos completos"), Mesh.Triangles.Num() % 3, 0);
+	bool bIndicesValid = true;
+	for (const int32 Index : Mesh.Triangles) { bIndicesValid &= Mesh.Vertices.IsValidIndex(Index); }
+	TestTrue(TEXT("índices válidos"), bIndicesValid);
+
+	double MaxZ = -UE_BIG_NUMBER;
+	double MinZNearCenter = UE_BIG_NUMBER;
+	double MaxAlong = 0.0;
+	for (const FVector& V : Mesh.Vertices)
+	{
+		MaxZ = FMath::Max(MaxZ, V.Z);
+		// Yaw 90: el eje del arco es +Y.
+		const double Along = V.Y - Bridge.Center.Y;
+		MaxAlong = FMath::Max(MaxAlong, FMath::Abs(Along));
+		if (FMath::Abs(Along) < Bridge.Length * 0.1) { MinZNearCenter = FMath::Min(MinZNearCenter, V.Z); }
+	}
+	TestTrue(TEXT("techo liso a la cota del tablero"), FMath::IsNearlyEqual(MaxZ, Bridge.DeckHeight, 1.0));
+	TestTrue(TEXT("longitud del arco"), FMath::IsNearlyEqual(MaxAlong, Bridge.Length * 0.5, 1.0));
+	// La panza en el centro deja paso por debajo: grosor + irregularidad acotada.
+	TestTrue(TEXT("panza del centro cerca de DeckHeight - Thickness"),
+		MinZNearCenter >= Bridge.DeckHeight - Bridge.Thickness * (1.0 + Shape.Roughness) - Shape.RootDrop * 0.01 - 1.0);
+
+	// Cara hacia fuera: la normal de un vértice del techo apunta hacia arriba.
+	const int32 TopIndex = (Shape.Stations / 2) * Shape.RingPoints + Shape.RingPoints / 4;   // theta = 90° del anillo central
+	TestTrue(TEXT("normales hacia fuera"), Mesh.Normals[TopIndex].Z > 0.5);
+
+	// Determinista: misma semilla, misma roca; otra semilla, otra roca.
+	TestTrue(TEXT("determinista"), TNTerrainModule::BuildArchMesh(Bridge, 7, Colors, Shape).Vertices == Mesh.Vertices);
+	TestFalse(TEXT("la semilla cambia la roca"), TNTerrainModule::BuildArchMesh(Bridge, 8, Colors, Shape).Vertices == Mesh.Vertices);
 	return true;
 }
 

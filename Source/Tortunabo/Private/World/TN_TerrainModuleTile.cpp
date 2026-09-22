@@ -13,8 +13,8 @@
 
 namespace
 {
-	/** Lado del cubo básico del motor, en uu. */
-	constexpr double BridgeCubeSize = 100.0;
+	/** Primera sección de TerrainMesh con arcos; la 0 es el terreno. */
+	constexpr int32 ArchSectionOffset = 1;
 
 	/** Color por instancia de basura: 3 floats de PerInstanceCustomData. */
 	constexpr int32 WallJunkCustomDataFloats = 3;
@@ -129,21 +129,26 @@ void ATN_TerrainModuleTile::BuildWalls()
 	}
 }
 
-void ATN_TerrainModuleTile::BuildBridges()
+void ATN_TerrainModuleTile::BuildArches(const TNTerrainModule::FModuleColors& Colors)
 {
-	if (!BridgeInstances || !ModuleAsset)
+	if (!TerrainMesh || !ModuleAsset)
 	{
 		return;
 	}
 
-	BridgeInstances->ClearInstances();
-	for (const FTNTerrainModuleBridge& Bridge : ModuleAsset->Bridges)
+	UMaterialInterface* ArchMaterial = BridgeMaterial ? BridgeMaterial.Get() : TerrainMaterial.Get();
+	for (int32 Index = 0; Index < ModuleAsset->Bridges.Num(); ++Index)
 	{
-		BridgeInstances->AddInstance(TNTerrainModule::BridgeInstanceTransform(Bridge, BridgeCubeSize));
-	}
-	if (BridgeMaterial)
-	{
-		BridgeInstances->SetMaterial(0, BridgeMaterial);
+		// Semilla del asset + índice: la roca sale igual en todas las máquinas y en cada build.
+		const TNGridTerrain::FTileMesh Arch = TNTerrainModule::BuildArchMesh(
+			ModuleAsset->Bridges[Index], ModuleAsset->Seed * 31 + Index, Colors);
+		const int32 Section = ArchSectionOffset + Index;
+		TerrainMesh->CreateMeshSection_LinearColor(Section, Arch.Vertices, Arch.Triangles, Arch.Normals,
+			TArray<FVector2D>(), Arch.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
+		if (ArchMaterial)
+		{
+			TerrainMesh->SetMaterial(Section, ArchMaterial);
+		}
 	}
 }
 
@@ -181,9 +186,9 @@ void ATN_TerrainModuleTile::BuildModule()
 		return;
 	}
 
-	// Puentes y muros son baratos y editables (asset / instancia): se rehacen siempre.
-	BuildBridges();
+	// Los muros son baratos y dependen de la instancia (bocas tapadas): se rehacen siempre.
 	BuildWalls();
+	if (BridgeInstances) { BridgeInstances->ClearInstances(); }
 
 	if (BuiltFromAsset.Get() == ModuleAsset && TerrainMesh->GetNumSections() > 0)
 	{
@@ -196,12 +201,14 @@ void ATN_TerrainModuleTile::BuildModule()
 	const TNGridTerrain::FTileMesh Mesh = TNTerrainModule::BuildModuleMesh(Field, Colors);
 
 	// Sin UV: el material del terreno es triplanar y deriva las coordenadas de la posición.
+	TerrainMesh->ClearAllMeshSections();
 	TerrainMesh->CreateMeshSection_LinearColor(0, Mesh.Vertices, Mesh.Triangles, Mesh.Normals,
 		TArray<FVector2D>(), Mesh.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
 	if (TerrainMaterial)
 	{
 		TerrainMesh->SetMaterial(0, TerrainMaterial);
 	}
+	BuildArches(Colors);
 	BuiltFromAsset = ModuleAsset;
 
 	UE_LOG(LogTortunabo, Verbose, TEXT("[TerrainModule] '%s' construido desde '%s': %d vértices."),

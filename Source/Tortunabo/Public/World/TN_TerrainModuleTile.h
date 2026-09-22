@@ -10,6 +10,7 @@ class UMaterialInterface;
 class UProceduralMeshComponent;
 class UTN_TerrainModuleAsset;
 enum class ETNTerrainModuleTopology : uint8;
+namespace TNTerrainModule { struct FModuleColors; }
 
 /** Lados del módulo como bits, para marcar bocas bloqueadas (mismo orden que TNGridLogic). */
 UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
@@ -85,15 +86,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module|Colors")
 	float WaterLevel = -400.f;
 
-	/** Material de los tableros de puente. Si falta, el cubo del motor sale gris. */
+	/** Material de los arcos de roca. Si falta, usan TerrainMaterial. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module")
 	TObjectPtr<UMaterialInterface> BridgeMaterial;
 
+	/** Terreno en la sección 0 y un arco de roca por puente del asset en las siguientes
+	 *  (ver TNTerrainModule::BuildArchMesh). Todas con colisión. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Module")
 	TObjectPtr<UProceduralMeshComponent> TerrainMesh;
 
-	/** Una instancia de cubo escalado por puente del asset. Subobjeto por defecto con
-	 *  nombre estable para seguir siendo direccionable por red. */
+	/** Sin uso desde que los puentes son arcos de roca en TerrainMesh. Se conserva como
+	 *  subobjeto vacío para no invalidar los Blueprints ya guardados. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Module")
 	TObjectPtr<UInstancedStaticMeshComponent> BridgeInstances;
 
@@ -120,7 +123,7 @@ protected:
 	TArray<TObjectPtr<UBoxComponent>> WallBlockers;
 
 private:
-	void BuildBridges();
+	void BuildArches(const TNTerrainModule::FModuleColors& Colors);
 	void BuildWalls();
 
 	/** Asset con el que se construyó la malla actual, para no reconstruir en balde. */
