@@ -40,13 +40,6 @@
 			"TargetAllowList": [
 				"Editor"
 			]
-		},
-		{
-			"Name": "UnrealMCPython",
-			"Enabled": true,
-			"TargetAllowList": [
-				"Editor"
-			]
 		}
 	]
 }
