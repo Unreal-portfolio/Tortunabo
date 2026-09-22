@@ -16,7 +16,8 @@ class UStaticMeshComponent;
  * El sistema activo es ATN_EnemySeagull (gaviota dinámica que sigue al jugador,
  * detecta cubierta, y pica en picado físico) spawneada por ATN_SeagullSpawnZone.
  */
-UCLASS(Blueprintable)
+// NotPlaceable impide colocar instancias nuevas; las ya guardadas en mapas siguen cargando.
+UCLASS(Blueprintable, NotPlaceable, meta = (DisplayName = "Seagull Actor (DEPRECATED)"))
 class TORTUNABO_API ATN_SeagullActor : public AActor
 {
 	GENERATED_BODY()

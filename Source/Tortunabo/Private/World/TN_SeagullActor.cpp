@@ -6,6 +6,7 @@
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "Game/TN_RunGameMode.h"
+#include "Core/TN_Log.h"
 #include "UObject/ConstructorHelpers.h"
 
 ATN_SeagullActor::ATN_SeagullActor()
@@ -54,6 +55,10 @@ ATN_SeagullActor::ATN_SeagullActor()
 void ATN_SeagullActor::BeginPlay()
 {
 	Super::BeginPlay();
+
+	UE_LOG(LogTortunabo, Warning,
+		TEXT("ATN_SeagullActor está deprecado: sustituir %s en %s por ATN_SeagullSpawnZone."),
+		*GetName(), *GetNameSafe(GetLevel() ? GetLevel()->GetOuter() : nullptr));
 
 	// Compensar escala heredada del chunk padre.
 	// SetCapsuleRadius/HalfHeight establece valores UNSCALED; si el actor tiene
