@@ -1,6 +1,9 @@
 #include "World/TN_GridMapGenerator.h"
 #include "World/TN_GridPathDecisions.h"
 #include "World/TN_GridTerrainTile.h"
+#include "World/TN_TerrainModuleAsset.h"
+#include "World/TN_TerrainModuleDecisions.h"
+#include "World/TN_TerrainModuleTile.h"
 #include "Core/TN_Log.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -20,6 +23,18 @@ namespace
 {
 	/** Lado del plano básico del motor, en uu. */
 	constexpr float EnginePlaneSize = 100.f;
+
+	/** Topología de una clase de módulo, leída de su asset en los Class Defaults. */
+	bool TryGetModuleTopology(TSubclassOf<ATN_TerrainModuleTile> ModuleClass, ETNTerrainModuleTopology& OutTopology)
+	{
+		const ATN_TerrainModuleTile* Defaults = ModuleClass ? ModuleClass->GetDefaultObject<ATN_TerrainModuleTile>() : nullptr;
+		if (!Defaults || !Defaults->GetModuleAsset() || !Defaults->GetModuleAsset()->IsValidModule())
+		{
+			return false;
+		}
+		OutTopology = Defaults->GetTopology();
+		return true;
+	}
 }
 
 ATN_GridMapGenerator::ATN_GridMapGenerator()
@@ -67,10 +82,10 @@ void ATN_GridMapGenerator::Generate()
 {
 	Clear();
 
-	if (!TerrainTileClass && (!StraightTileClass || !TurnTileClass))
+	if (!IsModuleMode() && !TerrainTileClass && (!StraightTileClass || !TurnTileClass))
 	{
 		UE_LOG(LogTortunabo, Error,
-			TEXT("[GridMap] '%s' no tiene TerrainTileClass ni la pareja StraightTileClass / TurnTileClass."), *GetName());
+			TEXT("[GridMap] '%s' no tiene ModuleClasses, TerrainTileClass ni la pareja StraightTileClass / TurnTileClass."), *GetName());
 		return;
 	}
 
@@ -87,8 +102,15 @@ void ATN_GridMapGenerator::Generate()
 		return;
 	}
 
-	if (TerrainTileClass)
+	const TCHAR* ModeName = TEXT("greybox");
+	if (IsModuleMode())
 	{
+		ModeName = TEXT("módulos");
+		GenerateModules(Path, RandRange);
+	}
+	else if (TerrainTileClass)
+	{
+		ModeName = TEXT("terreno");
 		GenerateTerrain(Path);
 	}
 	else
@@ -102,7 +124,7 @@ void ATN_GridMapGenerator::Generate()
 	}
 
 	UE_LOG(LogTortunabo, Log, TEXT("[GridMap] Mapa %dx%d generado (%s): camino de %d celdas, semilla %d."),
-		GridSize, GridSize, TerrainTileClass ? TEXT("terreno") : TEXT("greybox"), Path.Num(), LastUsedSeed);
+		GridSize, GridSize, ModeName, Path.Num(), LastUsedSeed);
 }
 
 void ATN_GridMapGenerator::GenerateGreybox(const TArray<FIntPoint>& Path,
@@ -161,6 +183,95 @@ void ATN_GridMapGenerator::GenerateTerrain(const TArray<FIntPoint>& Path)
 
 			// En mundo de editor los actores spawneados no ejecutan BeginPlay.
 			if (!bIsGameWorld) { Tile->BuildTerrain(); }
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Módulos
+// ─────────────────────────────────────────────────────────────────────────────
+
+TSubclassOf<ATN_TerrainModuleTile> ATN_GridMapGenerator::PickModuleForCell(const TNGridLogic::FTNGridCell& Cell,
+	TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps) const
+{
+	const uint8 Required = TNTerrainModule::RequiredExitMask(Cell);
+
+	TArray<TPair<TSubclassOf<ATN_TerrainModuleTile>, int32>> Candidates;
+	for (const TSubclassOf<ATN_TerrainModuleTile>& ModuleClass : ModuleClasses)
+	{
+		ETNTerrainModuleTopology Topology;
+		if (!TryGetModuleTopology(ModuleClass, Topology)) { continue; }
+
+		const int32 YawSteps = TNTerrainModule::YawStepsForExits(Topology, Required);
+		if (YawSteps != INDEX_NONE)
+		{
+			Candidates.Emplace(ModuleClass, YawSteps);
+		}
+	}
+
+	if (Candidates.Num() == 0)
+	{
+		OutYawSteps = 0;
+		return nullptr;
+	}
+
+	const TPair<TSubclassOf<ATN_TerrainModuleTile>, int32>& Chosen = Candidates[RandRange(0, Candidates.Num() - 1)];
+	OutYawSteps = Chosen.Value;
+	return Chosen.Key;
+}
+
+void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path,
+	TFunctionRef<int32(int32 Min, int32 Max)> RandRange)
+{
+	const bool bIsGameWorld = GetWorld() && GetWorld()->IsGameWorld();
+	TSet<FIntPoint> PathCells;
+
+	for (const TNGridLogic::FTNGridCell& Cell : TNGridLogic::ClassifyPath(Path))
+	{
+		PathCells.Add(Cell.Coord);
+
+		int32 YawSteps = 0;
+		const TSubclassOf<ATN_TerrainModuleTile> ModuleClass = PickModuleForCell(Cell, RandRange, YawSteps);
+		if (!ModuleClass)
+		{
+			UE_LOG(LogTortunabo, Error, TEXT("[GridMap] Ningún módulo ofrece las salidas de la celda (%d, %d) (%s, yaw %d)."),
+				Cell.Coord.X, Cell.Coord.Y,
+				Cell.Type == TNGridLogic::ETNGridTileType::Turn ? TEXT("giro") : TEXT("recta"), Cell.YawSteps);
+			continue;
+		}
+
+		AActor* Tile = SpawnTile(ModuleClass, Cell.Coord, YawSteps);
+		if (!Tile) { continue; }
+		if (Cell.bIsStart) { Tile->Tags.AddUnique(StartTileTag); }
+		if (Cell.bIsEnd)   { Tile->Tags.AddUnique(EndTileTag); }
+		if (!bIsGameWorld) { CastChecked<ATN_TerrainModuleTile>(Tile)->BuildModule(); }
+	}
+
+	if (!bFillEmptyCellsWithModules)
+	{
+		return;
+	}
+
+	TArray<TSubclassOf<ATN_TerrainModuleTile>> ValidClasses;
+	for (const TSubclassOf<ATN_TerrainModuleTile>& ModuleClass : ModuleClasses)
+	{
+		ETNTerrainModuleTopology Topology;
+		if (TryGetModuleTopology(ModuleClass, Topology)) { ValidClasses.Add(ModuleClass); }
+	}
+	if (ValidClasses.Num() == 0) { return; }
+
+	for (int32 Row = 0; Row < GridSize; ++Row)
+	{
+		for (int32 Col = 0; Col < GridSize; ++Col)
+		{
+			const FIntPoint Cell(Col, Row);
+			if (PathCells.Contains(Cell)) { continue; }
+
+			// Relleno: cualquier módulo con rotación sorteada. Sus salidas dan a rampas
+			// cerradas de los vecinos, así que quedan como pasillos sin salida.
+			const TSubclassOf<ATN_TerrainModuleTile> ModuleClass = ValidClasses[RandRange(0, ValidClasses.Num() - 1)];
+			AActor* Tile = SpawnTile(ModuleClass, Cell, RandRange(0, TNGridLogic::NumSides - 1));
+			if (Tile && !bIsGameWorld) { CastChecked<ATN_TerrainModuleTile>(Tile)->BuildModule(); }
 		}
 	}
 }
@@ -268,15 +379,17 @@ void ATN_GridMapGenerator::UpdateWaterPlane()
 	}
 
 	const ATN_GridTerrainTile* TileDefaults = TerrainTileClass ? TerrainTileClass->GetDefaultObject<ATN_GridTerrainTile>() : nullptr;
-	WaterPlane->SetVisibility(TileDefaults != nullptr);
-	if (!TileDefaults)
+	const bool bHasWater = IsModuleMode() || TileDefaults != nullptr;
+	WaterPlane->SetVisibility(bHasWater);
+	if (!bHasWater)
 	{
 		return;
 	}
 
+	const float WaterLevel = IsModuleMode() ? ModuleWaterLevel : TileDefaults->GetSettings().WaterLevel;
 	const float GridExtent = GridSize * CellSize;
 	const float GridCenter = (GridSize - 1) * CellSize * 0.5f;
-	WaterPlane->SetRelativeLocation(FVector(GridCenter, GridCenter, TileDefaults->GetSettings().WaterLevel));
+	WaterPlane->SetRelativeLocation(FVector(GridCenter, GridCenter, WaterLevel));
 	WaterPlane->SetRelativeScale3D(FVector(GridExtent / EnginePlaneSize, GridExtent / EnginePlaneSize, 1.f));
 	if (WaterMaterial)
 	{
