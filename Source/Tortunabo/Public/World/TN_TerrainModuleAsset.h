@@ -27,6 +27,55 @@ enum class ETNTerrainModuleTopology : uint8
 };
 
 /**
+ * Puente de un módulo: tablero recto que salva el hueco que un pasillo abre en una ruta
+ * alta. El heightfield no puede representar un voladizo, así que el tile lo coloca como
+ * instancia de malla. Todo en uu y en espacio local del módulo.
+ */
+USTRUCT(BlueprintType)
+struct FTNTerrainModuleBridge
+{
+	GENERATED_BODY()
+
+	/** Centro del tablero en el plano (X = Sur a Norte, Y = Oeste a Este). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge")
+	FVector2D Center = FVector2D::ZeroVector;
+
+	/** Yaw del eje largo del tablero, en grados (0 = eje X). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge")
+	float Yaw = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge", meta = (ClampMin = "100.0"))
+	float Length = 4000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge", meta = (ClampMin = "100.0"))
+	float Width = 1200.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge", meta = (ClampMin = "10.0"))
+	float Thickness = 120.f;
+
+	/** Cota de la cara superior del tablero. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge")
+	float DeckHeight = 1000.f;
+};
+
+/** Zona llana del módulo (plaza), candidata a asentar un puzzle. En uu, espacio local. */
+USTRUCT(BlueprintType)
+struct FTNTerrainModuleFlatArea
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlatArea")
+	FVector2D Center = FVector2D::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlatArea", meta = (ClampMin = "100.0"))
+	float Radius = 3000.f;
+
+	/** Cota del suelo de la plaza. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlatArea")
+	float Height = 0.f;
+};
+
+/**
  * UTN_TerrainModuleAsset
  *
  * Heightfield de un módulo de terreno: una celda del grid, de ModuleSize uu de lado
@@ -67,6 +116,14 @@ public:
 	/** Valor de Heights que corresponde a Z = 0 (cota del suelo en las salidas). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Module")
 	int32 HeightZero = 32768;
+
+	/** Puentes de las rutas altas. Editables: un diseñador puede moverlos o quitarlos. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module")
+	TArray<FTNTerrainModuleBridge> Bridges;
+
+	/** Plazas llanas (candidatas a puzzle), tal como las generó el script. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module")
+	TArray<FTNTerrainModuleFlatArea> FlatAreas;
 
 	/** Resolution * Resolution alturas, fila a fila. Oculto al panel Details: son decenas
 	 *  de miles de valores. Se rellena con SetHeightfield desde el script de importación. */

@@ -179,6 +179,18 @@ namespace TNTerrainModule
 			&& EdgeHeights(A, TNGridLogic::SideNorth) == EdgeHeights(B, TNGridLogic::SideNorth);
 	}
 
+	/**
+	 * Transform de la instancia de cubo (de CubeSize uu de lado, centrado) que materializa
+	 * un puente: escalado a Length × Width × Thickness, girado Yaw y con la cara superior
+	 * en DeckHeight.
+	 */
+	inline FTransform BridgeInstanceTransform(const FTNTerrainModuleBridge& Bridge, double CubeSize = 100.0)
+	{
+		const FVector Scale(Bridge.Length / CubeSize, Bridge.Width / CubeSize, Bridge.Thickness / CubeSize);
+		const FVector Location(Bridge.Center.X, Bridge.Center.Y, Bridge.DeckHeight - Bridge.Thickness * 0.5);
+		return FTransform(FRotator(0.f, Bridge.Yaw, 0.f), Location, Scale);
+	}
+
 	/** Colores de vértice del módulo, en espacio lineal. */
 	struct FModuleColors
 	{

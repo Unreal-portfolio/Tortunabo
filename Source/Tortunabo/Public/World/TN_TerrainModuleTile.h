@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "TN_TerrainModuleTile.generated.h"
 
+class UInstancedStaticMeshComponent;
 class UMaterialInterface;
 class UProceduralMeshComponent;
 class UTN_TerrainModuleAsset;
@@ -65,10 +66,21 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module|Colors")
 	float WaterLevel = -400.f;
 
+	/** Material de los tableros de puente. Si falta, el cubo del motor sale gris. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module")
+	TObjectPtr<UMaterialInterface> BridgeMaterial;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Module")
 	TObjectPtr<UProceduralMeshComponent> TerrainMesh;
 
+	/** Una instancia de cubo escalado por puente del asset. Subobjeto por defecto con
+	 *  nombre estable para seguir siendo direccionable por red. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Module")
+	TObjectPtr<UInstancedStaticMeshComponent> BridgeInstances;
+
 private:
+	void BuildBridges();
+
 	/** Asset con el que se construyó la malla actual, para no reconstruir en balde. */
 	TWeakObjectPtr<const UTN_TerrainModuleAsset> BuiltFromAsset;
 };

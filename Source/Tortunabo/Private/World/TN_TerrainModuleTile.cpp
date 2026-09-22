@@ -2,8 +2,17 @@
 #include "World/TN_TerrainModuleAsset.h"
 #include "World/TN_TerrainModuleDecisions.h"
 #include "Core/TN_Log.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
+#include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+	/** Lado del cubo básico del motor, en uu. */
+	constexpr double BridgeCubeSize = 100.0;
+}
 
 ATN_TerrainModuleTile::ATN_TerrainModuleTile()
 {
@@ -22,6 +31,34 @@ ATN_TerrainModuleTile::ATN_TerrainModuleTile()
 	TerrainMesh->bUseAsyncCooking = false;
 	TerrainMesh->SetCollisionProfileName(TEXT("BlockAll"));
 	TerrainMesh->SetMobility(EComponentMobility::Static);
+
+	BridgeInstances = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("BridgeInstances"));
+	BridgeInstances->SetupAttachment(RootComponent);
+	BridgeInstances->SetMobility(EComponentMobility::Static);
+	BridgeInstances->SetCollisionProfileName(TEXT("BlockAll"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	if (CubeMesh.Succeeded())
+	{
+		BridgeInstances->SetStaticMesh(CubeMesh.Object);
+	}
+}
+
+void ATN_TerrainModuleTile::BuildBridges()
+{
+	if (!BridgeInstances || !ModuleAsset)
+	{
+		return;
+	}
+
+	BridgeInstances->ClearInstances();
+	for (const FTNTerrainModuleBridge& Bridge : ModuleAsset->Bridges)
+	{
+		BridgeInstances->AddInstance(TNTerrainModule::BridgeInstanceTransform(Bridge, BridgeCubeSize));
+	}
+	if (BridgeMaterial)
+	{
+		BridgeInstances->SetMaterial(0, BridgeMaterial);
+	}
 }
 
 void ATN_TerrainModuleTile::OnConstruction(const FTransform& Transform)
@@ -53,9 +90,13 @@ void ATN_TerrainModuleTile::BuildModule()
 	if (!ModuleAsset || !ModuleAsset->IsValidModule())
 	{
 		TerrainMesh->ClearAllMeshSections();
+		if (BridgeInstances) { BridgeInstances->ClearInstances(); }
 		BuiltFromAsset.Reset();
 		return;
 	}
+
+	// Los puentes son baratos y editables en el asset: se rehacen siempre.
+	BuildBridges();
 
 	if (BuiltFromAsset.Get() == ModuleAsset && TerrainMesh->GetNumSections() > 0)
 	{

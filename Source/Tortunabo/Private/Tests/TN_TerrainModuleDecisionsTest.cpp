@@ -248,4 +248,33 @@ bool FTNTerrainModuleSampleAndMeshTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainModuleBridgeTransformTest,
+	"Tortunabo.TerrainModule.BridgeTransform",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTerrainModuleBridgeTransformTest::RunTest(const FString& Parameters)
+{
+	FTNTerrainModuleBridge Bridge;
+	Bridge.Center = FVector2D(1500.0, -800.0);
+	Bridge.Yaw = 90.f;
+	Bridge.Length = 6000.f;
+	Bridge.Width = 1200.f;
+	Bridge.Thickness = 120.f;
+	Bridge.DeckHeight = 1000.f;
+
+	const FTransform Transform = TNTerrainModule::BridgeInstanceTransform(Bridge, 100.0);
+
+	// Escala: cubo de 100 uu → 6000 × 1200 × 120.
+	TestEqual(TEXT("escala"), Transform.GetScale3D(), FVector(60.0, 12.0, 1.2));
+	// El centro del cubo queda medio grosor por debajo del tablero.
+	TestEqual(TEXT("posición"), Transform.GetLocation(), FVector(1500.0, -800.0, 940.0));
+	// Girado 90°: el eje largo del tablero apunta a +Y.
+	const FVector LongAxis = Transform.TransformVectorNoScale(FVector::ForwardVector);
+	TestTrue(TEXT("eje largo"), LongAxis.Equals(FVector(0.0, 1.0, 0.0), 1e-4));
+	// Los extremos del tablero, en mundo local, salen del centro a lo largo de ese eje.
+	const FVector EndA = Transform.TransformPosition(FVector(50.0, 0.0, 50.0));
+	TestEqual(TEXT("extremo A"), EndA, FVector(1500.0, 2200.0, 1000.0));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
