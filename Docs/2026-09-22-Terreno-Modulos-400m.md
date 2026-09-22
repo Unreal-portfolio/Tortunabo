@@ -107,7 +107,24 @@ Cifras de la tanda actual: 185 atajos, 115 rutas altas, 115 puentes; cota en
   entre ambas familias para cada giro del camino.
 - Codificación de altura: `Z_uu = (v − 32768) · 0,25` (±82 m, precisión 0,25 uu).
 
-## 6. Pendiente
+## 6. Muros de basura y cobertura de salidas (2026-09-22, tarde)
+
+- El generador acepta cualquier módulo cuyas salidas rotadas **cubran** las del camino
+  (`YawStepsCoveringExits`): una T o una cruz sirven para una recta. Las bocas que no
+  conectan con la celda anterior ni con la siguiente (`BlockedExitsLocal`) se tapan;
+  los rellenos tapan todas las suyas.
+- `ATN_TerrainModuleTile` lleva `BlockedExits` (bitmask de lados locales, editable por
+  el diseñador) y `WallSeed`, ambos replicados una vez. Por cada boca tapada levanta un
+  montón de 150 piezas de basura (ISM por forma, `BlockAll`, color por instancia) y una
+  caja de colisión invisible que garantiza el cierre (`TN_TerrainModuleWallDecisions.h`).
+- Librería ampliada a **600 módulos** (100 por topología) con 5 estilos: cañón 209,
+  rocoso 123, dunas 84, marisma 90 (charcos bajo el agua), calzada 94. 364 atajos, 245
+  rutas altas con puente.
+
+Estado al cerrar la sesión: C++ compila en el target de juego; **falta** compilar el
+editor, reimportar los 600, pasar `Tortunabo.TerrainModule.*` (6 tests) y el smoke.
+
+## 7. Pendiente
 
 - Playtest visual en `LVL_ProcGenDemo` (grid 4×4, celda 40 000) y veredicto de Rodrigo
   sobre la lectura del terreno.
