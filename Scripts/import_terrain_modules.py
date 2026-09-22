@@ -11,28 +11,33 @@ cada modulo, en /Game/Terrain/Modules/<Topologia>/:
     BP_<nombre>   Blueprint hijo de ATN_TerrainModuleTile con ese asset y el material
                   triplanar del terreno (M_GridTerrain)
 
-Ademas deja BP_GridMapGenerator en modo modulos: ModuleClasses con los 300 BP, celda de
-40000 uu y grid de 4x4 con camino de 4 a 8 celdas.
+Ademas deja BP_GridMapGenerator en modo modulos: ModuleClasses con todos los BP importados,
+celda del tamano del manifest y grid de 6x6 con camino de 6 a 12 celdas.
+
+Variables de entorno (opcionales), para probar una muestra sin tocar la libreria:
+    TN_MODULES_DIR    carpeta con manifest.json y los PNG (por defecto Scripts/terrain_modules)
+    TN_MODULES_ROOT   carpeta de destino en /Game (por defecto /Game/Terrain/Modules)
 
 Idempotente: los assets que ya existen se actualizan, no se duplican. El PNG se decodifica
 con la libreria estandar (zlib), porque el Python del editor no trae Pillow.
 """
 
 import json
+import os
 import struct
 import zlib
 
 import unreal
 
-MODULES_ROOT = "/Game/Terrain/Modules"
+MODULES_ROOT = os.environ.get("TN_MODULES_ROOT", "/Game/Terrain/Modules")
 GRIDMAP_ROOT = "/Game/Blueprints/Gameplay/GridMap"
 TERRAIN_MATERIAL_PATH = f"{GRIDMAP_ROOT}/M_GridTerrain"
 GENERATOR_BP_PATH = f"{GRIDMAP_ROOT}/BP_GridMapGenerator"
 TILE_CLASS_PATH = "/Script/Tortunabo.TN_TerrainModuleTile"
 
-GENERATOR_GRID_SIZE = 4
-GENERATOR_MIN_PATH = 4
-GENERATOR_MAX_PATH = 8
+GENERATOR_GRID_SIZE = 6
+GENERATOR_MIN_PATH = 6
+GENERATOR_MAX_PATH = 12
 
 TOPOLOGY_ENUM = {
     "Straight": unreal.TNTerrainModuleTopology.STRAIGHT,
@@ -195,7 +200,7 @@ def configure_generator(module_blueprints, module_size):
 
 
 def main():
-    library_dir = f"{project_dir()}/Scripts/terrain_modules"
+    library_dir = os.environ.get("TN_MODULES_DIR", f"{project_dir()}/Scripts/terrain_modules")
     with open(f"{library_dir}/manifest.json", encoding="utf-8") as handle:
         manifest = json.load(handle)
 

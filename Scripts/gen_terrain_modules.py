@@ -1,15 +1,16 @@
-"""Genera la libreria de modulos de terreno: heightfields de 400 m x 400 m, 50 por topologia.
+"""Genera la libreria de modulos de terreno: heightfields de 200 m x 200 m por topologia.
 
 Se ejecuta FUERA del editor:
-    uv run --with numpy --with pillow python Scripts/gen_terrain_modules.py [--count 50]
+    uv run --with numpy --with pillow python Scripts/gen_terrain_modules.py [--count 100]
+        [--out <carpeta>] [--thumb <px>]
 
-Escribe en Scripts/terrain_modules/:
-    <Topologia>/M_<Topologia>_<NN>.png   heightfield de 16 bits (201 x 201), fuente de verdad
-    manifest.json                         modulos con topologia, semilla, puentes y plazas
+Escribe en Scripts/terrain_modules/ (o en --out, para muestras de prueba):
+    <Topologia>/M_<Topologia>_<NN>.png   heightfield de 16 bits (101 x 101), fuente de verdad
+    manifest.json                         modulos con topologia, semilla, arcos y plazas
     preview_<Topologia>.png               hoja de contactos sombreada, para revisar a ojo
 
 Los PNG los importa Scripts/import_terrain_modules.py (dentro del editor) como
-UTN_TerrainModuleAsset + BP_Mod_*. Semilla fija => salida identica byte a byte.
+UTN_TerrainModuleAsset + BP_M_*. Semilla fija => salida identica byte a byte.
 
 Modelo de un modulo (alturas en metros, Z = 0 es el suelo de las salidas):
   - Borde canonico: los cuatro lados comparten el MISMO perfil simetrico (cresta de
@@ -18,14 +19,20 @@ Modelo de un modulo (alturas en metros, Z = 0 es el suelo de las salidas):
   - Pasillo principal: polilineas del centro a cada salida, con serpenteo que se apaga
     junto al borde; ancho variable; plazas (zonas llanas para puzzles) en el cruce y a lo
     largo.
-  - Rutas secundarias: un atajo a ras de suelo que corta entre dos salidas, y una ruta
-    alta que sube por el talud, recorre la meseta y cruza el pasillo por un puente para
-    volver a bajar. El puente no cabe en un heightfield: se exporta como tablero al
-    manifest y el tile lo coloca como instancia.
+  - Bifurcacion: un tramo del pasillo se abre alrededor de una isla (roca alta o loma
+    escalable) y vuelve a juntarse; dos canales de anchura distinta.
+  - Atajo: brazo curvo a ras de suelo entre dos salidas, con la misma anchura relativa y
+    el mismo talud que el pasillo, para que se lea como parte del camino.
+  - Ruta alta: sube por el talud, recorre la meseta con esquinas redondeadas y cruza el
+    pasillo por un arco de roca natural (se camina por arriba y se pasa por debajo).
+  - Arco decorativo: arco de roca de pared a pared sobre el pasillo, para pasar por debajo.
+    Los arcos no caben en un heightfield: se exportan al manifest y el tile los construye
+    como malla (TNTerrainModule::BuildArchMesh).
   - Paredes: talud corto (no escalable) hasta la meseta, con colinas suaves encima.
     Variante "calzada": el exterior baja bajo el agua y el pasillo queda como una cresta.
   - Agujeros: pozos en las plazas (fuera del carril central) y en la meseta.
-  - Ruido de pocas octavas + desenfoque final: sin picos.
+  - Validacion: borde canonico exacto, arcos apoyados y todas las salidas accesibles a pie;
+    un diseno que falla se descarta y se prueba la semilla siguiente.
 """
 
 from __future__ import annotations
@@ -40,9 +47,13 @@ import numpy as np
 from PIL import Image
 
 # ── Geometria y codificacion (deben casar con UTN_TerrainModuleAsset) ─────────────
-SIZE_M = 400.0
+SIZE_M = 200.0
 HALF_M = SIZE_M / 2.0
-RES = 201                      # 2 m entre vertices
+RES = 101                      # 2 m entre vertices
+# Escala horizontal respecto al diseno original de 400 m. Longitudes de rasgos grandes
+# (serpenteo, plazas, rutas) se multiplican por K; el detalle fino (arena, rocas, taludes)
+# y todas las alturas no escalan.
+K = SIZE_M / 400.0
 STEP_M = SIZE_M / (RES - 1)
 HEIGHT_SCALE_UU = 0.25         # uu por unidad del PNG
 HEIGHT_ZERO = 32768            # valor del PNG para Z = 0
@@ -51,22 +62,30 @@ UNITS_PER_M = UU_PER_M / HEIGHT_SCALE_UU   # 400 unidades por metro
 
 # ── Borde canonico ────────────────────────────────────────────────────────────────
 CREST_M = 10.0                 # cota de la cresta en el borde
-OPEN_HALF_M = 18.0             # semiancho de la boca del pasillo en el borde
-BANK_M = 12.0                  # anchura del talud de la boca
-UNDULATE_FROM_M = 60.0         # desde aqui la cresta ondula...
-UNDULATE_TO_M = 170.0          # ...y vuelve a ser plana antes de la esquina
-BAND_M = 16.0                  # franja en la que el diseno se funde con el borde
+OPEN_HALF_M = 12.0             # semiancho de la boca del pasillo en el borde
+BANK_M = 8.0                   # anchura del talud de la boca
+UNDULATE_FROM_M = 35.0         # desde aqui la cresta ondula...
+UNDULATE_TO_M = 85.0           # ...y vuelve a ser plana antes de la esquina
+BAND_M = 12.0                  # franja en la que el diseno se funde con el borde
 PLUG_M = 22.0                  # altura minima tras una salida cerrada: rampa no escalable
 
 # ── Rutas secundarias ─────────────────────────────────────────────────────────────
 SHORTCUT_PROB = 0.6
 UPPER_PROB = 0.55
-UPPER_OFFSET_M = 110.0         # distancia lateral de la ruta alta al eje del pasillo
-UPPER_RAMP_M = 60.0            # longitud de las rampas de subida y bajada
-BRIDGE_MIN_M = 15.0
-BRIDGE_MAX_M = 110.0
+UPPER_OFFSET_M = 110.0 * K     # distancia lateral de la ruta alta al eje del pasillo
+UPPER_RAMP_M = 60.0 * K        # longitud de las rampas de subida y bajada
+BRIDGE_MIN_M = 12.0
+BRIDGE_MAX_M = 110.0 * K
 BRIDGE_OVERLAP_M = 4.0         # apoyo del tablero sobre cada labio
-BRIDGE_THICKNESS_M = 1.2
+BRIDGE_THICKNESS_M = 2.5       # grosor del arco de roca en su centro (el tile lo engorda hacia los apoyos)
+
+# Bifurcacion: el pasillo se abre alrededor de una isla y vuelve a juntarse.
+FORK_PROB = 0.55
+FORK_LOW_ISLAND_PROB = 0.35    # isla baja (loma escalable) en vez de roca alta
+# Arco natural sobre el pasillo, solo para pasar por debajo.
+ARCH_PROB = 0.4
+ARCH_CLEARANCE_M = 6.0         # altura libre minima bajo el arco
+WALKABLE_STEP_M = 1.6          # desnivel maximo entre muestras vecinas (2 m) para caminar: ~39 grados
 
 # ── Estilos (rangos por modulo; "weight" = peso del sorteo) ─────────────────────────
 STYLES: dict[str, dict] = {
@@ -198,7 +217,7 @@ def canonical_profile(t_abs):
     """Altura del borde en funcion de |t| (t a lo largo del lado, 0 en el centro)."""
     bank = smoothstep(OPEN_HALF_M, OPEN_HALF_M + BANK_M, t_abs)
     fade = smoothstep(UNDULATE_FROM_M - 20.0, UNDULATE_FROM_M, t_abs) * (1.0 - smoothstep(UNDULATE_TO_M - 25.0, UNDULATE_TO_M, t_abs))
-    undulation = 1.3 * np.cos(2.0 * np.pi * t_abs / 61.0) + 0.7 * np.cos(2.0 * np.pi * t_abs / 23.0 + 1.1)
+    undulation = 1.3 * np.cos(2.0 * np.pi * t_abs / 31.0) + 0.7 * np.cos(2.0 * np.pi * t_abs / 13.0 + 1.1)
     return CREST_M * bank + undulation * fade
 
 
@@ -238,34 +257,112 @@ class Lane:
 
 @dataclass(frozen=True)
 class Bridge:
+    """Arco de roca. kind "bridge": lleva la ruta alta por encima (se camina por arriba y
+    por debajo); kind "arch": solo decorado sobre el pasillo (se pasa por debajo)."""
     x: float
     y: float
     yaw_deg: float
     length_m: float
     width_m: float
     deck_m: float
+    kind: str = "bridge"
+
+
+@dataclass(frozen=True)
+class Fork:
+    """Isla en mitad de un tramo del pasillo principal: el pasillo se ensancha, se parte en
+    dos canales y vuelve a ser uno. along/half_len en metros sobre el eje centro-salida."""
+    exit: str
+    along: float
+    half_len: float
+    island_half_w: float
+    offset: float
+    low: bool
+    low_height: float
+
+
+def pick_fork(rng: np.random.Generator, exits: tuple[str, ...]) -> Fork | None:
+    if rng.random() > FORK_PROB:
+        return None
+    exit_side = exits[int(rng.integers(len(exits)))]
+    half_len = float(rng.uniform(16.0, 30.0))
+    island_half_w = float(rng.uniform(4.0, 8.0))
+    # El tramo cabe entre la plaza central y la franja del borde.
+    along = float(rng.uniform(0.42, 0.62)) * HALF_M
+    offset = float(rng.uniform(-0.35, 0.35)) * island_half_w
+    low = bool(rng.random() < FORK_LOW_ISLAND_PROB)
+    return Fork(exit_side, along, half_len, island_half_w, offset, low, float(rng.uniform(1.2, 2.2)))
+
+
+def fork_fields(rng: np.random.Generator, fork: Fork, wx, wy):
+    """(ensanche del pasillo en m, mascara de isla 0..1) medidos en el espacio deformado."""
+    dx, dy = EXIT_DIR[fork.exit]
+    along = wx * dx + wy * dy
+    across = -wx * dy + wy * dx
+    taper = 14.0
+    bump = 1.0 - smoothstep(fork.half_len, fork.half_len + taper, np.abs(along - fork.along))
+    widen = (1.6 * fork.island_half_w + 3.0) * bump
+    ell = np.hypot((along - fork.along) / fork.half_len, (across - fork.offset) / fork.island_half_w)
+    ell = ell + 0.12 * value_noise(rng, 14.0)
+    island = 1.0 - smoothstep(0.78, 1.05, ell)
+    return widen, island
+
+
+def chaikin(points: tuple[Point, ...], iterations: int = 2) -> tuple[Point, ...]:
+    """Redondea las esquinas de una polilinea conservando sus extremos."""
+    pts = list(points)
+    for _ in range(iterations):
+        out = [pts[0]]
+        for a, b in zip(pts[:-1], pts[1:]):
+            out.append((0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]))
+            out.append((0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]))
+        out.append(pts[-1])
+        pts = out
+    return tuple(pts)
 
 
 def main_lanes(exits: tuple[str, ...]) -> list[Lane]:
     return [Lane(((0.0, 0.0), EXIT_POINT[e]), 0.0) for e in exits]
 
 
-def pick_shortcut(rng: np.random.Generator, exits: tuple[str, ...]) -> Lane | None:
-    """Atajo a ras de suelo entre dos salidas: cuerda de una esquina, o rodeo de la plaza."""
+def pick_shortcut(rng: np.random.Generator, exits: tuple[str, ...], base_half_width: float) -> Lane | None:
+    """Atajo a ras de suelo entre dos salidas: cuerda curva de una esquina, o rodeo de la
+    plaza. Se abre y se cierra con la misma anchura relativa y el mismo talud que el pasillo
+    principal, para que se lea como un brazo del camino y no como una zanja aparte."""
     if len(exits) < 2 or rng.random() > SHORTCUT_PROB:
         return None
     pairs = [(a, b) for i, a in enumerate(exits) for b in exits[i + 1:]]
     perpendicular_pairs = [(a, b) for a, b in pairs if EXIT_DIR[a][0] * EXIT_DIR[b][0] + EXIT_DIR[a][1] * EXIT_DIR[b][1] == 0.0]
     a, b = perpendicular_pairs[int(rng.integers(len(perpendicular_pairs)))] if perpendicular_pairs else pairs[int(rng.integers(len(pairs)))]
-    p1 = scaled(EXIT_POINT[a], float(rng.uniform(0.5, 0.7)))
-    p2 = scaled(EXIT_POINT[b], float(rng.uniform(0.5, 0.7)))
-    half_width = float(rng.uniform(7.0, 10.0))
+    p1 = scaled(EXIT_POINT[a], float(rng.uniform(0.5, 0.72)))
+    p2 = scaled(EXIT_POINT[b], float(rng.uniform(0.5, 0.72)))
+    half_width = base_half_width * float(rng.uniform(0.55, 0.8))
     if perpendicular_pairs:
-        return Lane((p1, p2), half_width)
-    side = 1.0 if rng.random() < 0.5 else -1.0
-    normal = perpendicular(EXIT_DIR[a])
-    mid = added(scaled(added(p1, p2), 0.5), scaled(normal, side * float(rng.uniform(70.0, 100.0))))
-    return Lane((p1, mid, p2), half_width)
+        # Curva de Bezier cuadratica con el control hacia la esquina: la cuerda se comba
+        # como un camino que ataja siguiendo el terreno, no en linea recta.
+        corner = added(EXIT_POINT[a], EXIT_POINT[b])
+        mid = scaled(added(p1, p2), 0.5)
+        pull = float(rng.uniform(0.1, 0.3))
+        control = added(mid, scaled(added(corner, scaled(mid, -1.0)), pull))
+    else:
+        side = 1.0 if rng.random() < 0.5 else -1.0
+        normal = perpendicular(EXIT_DIR[a])
+        control = added(scaled(added(p1, p2), 0.5), scaled(normal, side * float(rng.uniform(70.0, 100.0)) * K * 2.0))
+    samples = [((1 - t) ** 2 * p1[0] + 2 * (1 - t) * t * control[0] + t * t * p2[0],
+                (1 - t) ** 2 * p1[1] + 2 * (1 - t) * t * control[1] + t * t * p2[1])
+               for t in np.linspace(0.0, 1.0, 12)]
+    return Lane(tuple(samples), half_width)
+
+
+def smooth_lane(lane: Lane) -> Lane:
+    """Redondea las esquinas de una ruta alta sin tocar su tramo de cruce: se suaviza por
+    separado lo que va antes y despues del cruce y se recalculan sus indices."""
+    first, last = lane.crossing
+    before = chaikin(lane.points[:first + 1])
+    after = chaikin(lane.points[last:])
+    points = before + lane.points[first + 1:last] + after
+    crossing = (len(before) - 1, len(before) - 1 + (last - first))
+    return Lane(points, lane.half_width, lane.rise_m, crossing)
 
 
 def upper_lane_candidates(rng: np.random.Generator, exits: tuple[str, ...], rise_m: float) -> list[Lane]:
@@ -273,39 +370,44 @@ def upper_lane_candidates(rng: np.random.Generator, exits: tuple[str, ...], rise
     candidates = []
     order = list(exits)
     rng.shuffle(order)
+    # Varios puntos de cruce por pareja: con el modulo de 200 m las plazas ocupan buena parte
+    # del pasillo y el hueco solo es salvable por un arco donde el pasillo va estrecho.
+    crossing_fractions = [0.3, 0.42, 0.55, 0.68, 0.8]
+    rng.shuffle(crossing_fractions)
     for crossed in order:
         for branch in order:
             if branch == crossed:
                 continue
-            dir_a, dir_x = EXIT_DIR[branch], EXIT_DIR[crossed]
-            p1 = scaled(EXIT_POINT[branch], float(rng.uniform(0.55, 0.75)))
-            crossing = scaled(EXIT_POINT[crossed], float(rng.uniform(0.45, 0.62)))
-            p2 = scaled(EXIT_POINT[crossed], float(rng.uniform(0.72, 0.8)))
-            # Sale del pasillo y vuelve a entrar siempre en perpendicular: asi la rampa
-            # arranca en el talud y no hay tramos oblicuos dentro del pasillo.
-            if dir_a[0] * dir_x[0] + dir_a[1] * dir_x[1] < 0.0:
-                # Salidas opuestas: la ruta corre paralela al pasillo y lo cruza en perpendicular.
-                side = 1.0 if rng.random() < 0.5 else -1.0
-                normal = scaled(perpendicular(dir_x), side * UPPER_OFFSET_M)
-                back = scaled(normal, -1.0)
-                candidates.append(Lane((p1, added(p1, normal), added(crossing, normal),
-                                        added(crossing, back), added(p2, back), p2), 0.0, rise_m, (2, 3)))
-            else:
-                # Salidas perpendiculares: sube hacia X, cruza su pasillo y baja al otro lado.
-                w1 = added(p1, scaled(dir_x, UPPER_OFFSET_M))
-                far = added(crossing, scaled(dir_a, -UPPER_OFFSET_M))
-                far2 = added(p2, scaled(dir_a, -UPPER_OFFSET_M))
-                candidates.append(Lane((p1, w1, far, far2, p2), 0.0, rise_m, (1, 2)))
-    return candidates
+            for fraction in crossing_fractions:
+                dir_a, dir_x = EXIT_DIR[branch], EXIT_DIR[crossed]
+                p1 = scaled(EXIT_POINT[branch], float(rng.uniform(0.55, 0.75)))
+                crossing = scaled(EXIT_POINT[crossed], fraction)
+                p2 = scaled(EXIT_POINT[crossed], min(fraction + 0.15, 0.9))
+                # Sale del pasillo y vuelve a entrar siempre en perpendicular: asi la rampa
+                # arranca en el talud y no hay tramos oblicuos dentro del pasillo.
+                if dir_a[0] * dir_x[0] + dir_a[1] * dir_x[1] < 0.0:
+                    # Salidas opuestas: la ruta corre paralela al pasillo y lo cruza en perpendicular.
+                    side = 1.0 if rng.random() < 0.5 else -1.0
+                    normal = scaled(perpendicular(dir_x), side * UPPER_OFFSET_M)
+                    back = scaled(normal, -1.0)
+                    candidates.append(Lane((p1, added(p1, normal), added(crossing, normal),
+                                            added(crossing, back), added(p2, back), p2), 0.0, rise_m, (2, 3)))
+                else:
+                    # Salidas perpendiculares: sube hacia X, cruza su pasillo y baja al otro lado.
+                    w1 = added(p1, scaled(dir_x, UPPER_OFFSET_M))
+                    far = added(crossing, scaled(dir_a, -UPPER_OFFSET_M))
+                    far2 = added(p2, scaled(dir_a, -UPPER_OFFSET_M))
+                    candidates.append(Lane((p1, w1, far, far2, p2), 0.0, rise_m, (1, 2)))
+    return [smooth_lane(lane) for lane in candidates]
 
 
 def pick_rooms(rng: np.random.Generator, exits: tuple[str, ...]) -> list[Room]:
-    rooms = [Room(0.0, 0.0, float(rng.uniform(45.0, 70.0)))]
+    rooms = [Room(0.0, 0.0, float(rng.uniform(45.0, 70.0)) * K)]
     for e in exits:
         if rng.random() < 0.7:
             ex, ey = EXIT_POINT[e]
             t = float(rng.uniform(0.42, 0.68))
-            rooms.append(Room(ex * t, ey * t, float(rng.uniform(32.0, 58.0))))
+            rooms.append(Room(ex * t, ey * t, float(rng.uniform(32.0, 58.0)) * K))
     return rooms
 
 
@@ -337,7 +439,7 @@ def pits(rng: np.random.Generator, rooms: list[Room], d_corr, hw, count_range: t
             d = np.hypot(XX - cx, YY - cy)
             depression += depth * (1.0 - smoothstep(radius * 0.45, radius, d))
     for _ in range(int(rng.integers(count_range[0], count_range[1] + 1))):
-        cx, cy = rng.uniform(-140.0, 140.0, 2)
+        cx, cy = rng.uniform(-0.7 * HALF_M, 0.7 * HALF_M, 2)
         radius = float(rng.uniform(8.0, 16.0))
         depth = float(rng.uniform(4.0, 9.0))
         d = np.hypot(XX - cx, YY - cy)
@@ -429,25 +531,95 @@ def lane_profile_height(floor, d_core, lane: Lane, s, total: float):
     return f1 + (f2 - f1) * (s / max(total, 1.0)) + lane.rise_m * ramp
 
 
+def place_arch(rng: np.random.Generator, terrain, d_main, bridges: list[Bridge]) -> Bridge | None:
+    """Arco natural de pared a pared sobre el pasillo principal. Se busca un punto del eje
+    lejos del borde y de otros puentes, se estima la direccion del pasillo por PCA de su eje
+    cercano y se camina en perpendicular hasta coronar cada pared."""
+    axis_cells = np.argwhere((d_main < 1.5) & (DIST_TO_EDGE > 30.0))
+    if len(axis_cells) == 0:
+        return None
+    for _ in range(10):
+        i, j = axis_cells[int(rng.integers(len(axis_cells)))]
+        px, py = float(XX[i, j]), float(YY[i, j])
+        if any(math.hypot(px - b.x, py - b.y) < 30.0 for b in bridges):
+            continue
+        near = (np.hypot(XX - px, YY - py) < 12.0) & (d_main < 1.5)
+        xs, ys = XX[near] - px, YY[near] - py
+        if len(xs) < 4:
+            continue
+        eigen_values, eigen_vectors = np.linalg.eigh(np.cov(np.stack([xs, ys])))
+        tangent = eigen_vectors[:, int(np.argmax(eigen_values))]
+        across = (-float(tangent[1]), float(tangent[0]))
+
+        ground = float(terrain[i, j])
+        reach = []
+        for sign in (1.0, -1.0):
+            best_t, best_h = None, -np.inf
+            for t in np.arange(2.0, 60.0, 1.0):
+                h = float(terrain[grid_index((px + sign * across[0] * t, py + sign * across[1] * t))])
+                if h > best_h + 0.25:
+                    best_t, best_h = t, h
+                elif best_h >= ground + ARCH_CLEARANCE_M + 2.0:
+                    break   # coronada la pared: deja de subir
+            reach.append((best_t, best_h))
+        (t1, h1), (t2, h2) = reach
+        deck = min(h1, h2)
+        if t1 is None or t2 is None or deck - ground < ARCH_CLEARANCE_M + 2.0:
+            continue
+        length = t1 + t2 + 2.0 * BRIDGE_OVERLAP_M
+        cx = px + across[0] * (t1 - t2) * 0.5
+        cy = py + across[1] * (t1 - t2) * 0.5
+        yaw = math.degrees(math.atan2(across[1], across[0]))
+        arch = Bridge(round(cx, 2), round(cy, 2), round(yaw, 1), round(length, 2),
+                      round(float(rng.uniform(5.0, 10.0)), 2), round(deck - 0.5, 2), "arch")
+        if not BRIDGE_MIN_M <= length <= BRIDGE_MAX_M or bridge_problem(terrain, [arch]):
+            continue
+        return arch
+    return None
+
+
+def walkable_exits_connected(meters: np.ndarray, exits: tuple[str, ...]) -> bool:
+    """Todas las salidas abiertas se alcanzan a pie entre si: pasos de 2 m con desnivel
+    <= WALKABLE_STEP_M. Los arcos no cuentan (son un extra, no la unica via)."""
+    starts = [grid_index(scaled(EXIT_POINT[e], 0.99)) for e in exits]
+    seen = np.zeros(meters.shape, dtype=bool)
+    stack = [starts[0]]
+    seen[starts[0]] = True
+    while stack:
+        i, j = stack.pop()
+        for ni, nj in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)):
+            if 0 <= ni < RES and 0 <= nj < RES and not seen[ni, nj] \
+                    and abs(meters[ni, nj] - meters[i, j]) <= WALKABLE_STEP_M:
+                seen[ni, nj] = True
+                stack.append((ni, nj))
+    return all(seen[s] for s in starts)
+
+
 def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
     """Heightfield del interior (metros) antes de fundirlo con el borde canonico."""
-    edge_fade = smoothstep(0.0, 50.0, DIST_TO_EDGE)
+    edge_fade = smoothstep(0.0, 50.0 * K, DIST_TO_EDGE)
     style_name, style = pick_style(rng)
     is_causeway = bool(style["causeway"])
     wall_h = float(rng.uniform(*style["wall_h"]))
 
     # Pasillo con serpenteo (deformacion del dominio) que se apaga junto al borde. Todas
     # las rutas se miden en el mismo espacio deformado, asi que casan entre si.
-    warp_amp = float(rng.uniform(35.0, 65.0)) * smoothstep(0.0, 70.0, DIST_TO_EDGE)
-    wx = XX + warp_amp * fbm(rng, 180.0, octaves=2)
-    wy = YY + warp_amp * fbm(rng, 180.0, octaves=2)
+    warp_amp = float(rng.uniform(35.0, 65.0)) * K * smoothstep(0.0, 70.0 * K, DIST_TO_EDGE)
+    wx = XX + warp_amp * fbm(rng, 180.0 * K, octaves=2)
+    wy = YY + warp_amp * fbm(rng, 180.0 * K, octaves=2)
 
+    # Bifurcacion: ensancha el tramo de su salida antes de medir el pasillo.
+    fork = pick_fork(rng, exits)
+    fork_widen, island = (fork_fields(rng, fork, wx, wy) if fork else (0.0, np.zeros_like(XX)))
     d_main = np.full_like(XX, np.inf)
-    for lane in main_lanes(exits):
-        d_main = np.minimum(d_main, polyline_distance(wx, wy, lane.points)[0])
+    for exit_side, lane in zip(exits, main_lanes(exits)):
+        d_lane = polyline_distance(wx, wy, lane.points)[0]
+        if fork and exit_side == fork.exit:
+            d_lane = d_lane - fork_widen
+        d_main = np.minimum(d_main, d_lane)
 
-    base_hw = float(rng.uniform(*style["corridor_hw"]))
-    hw = base_hw * (1.0 + 0.3 * value_noise(rng, 110.0))
+    base_hw = float(rng.uniform(*style["corridor_hw"])) * K
+    hw = base_hw * (1.0 + 0.3 * value_noise(rng, 110.0 * K))
     hw = OPEN_HALF_M + (hw - OPEN_HALF_M) * edge_fade   # en el borde, la boca canonica
     bank = float(rng.uniform(*style["bank"]))
     bank = BANK_M + (bank - BANK_M) * edge_fade
@@ -462,16 +634,23 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
     for room in rooms:
         d_core = np.minimum(d_core, np.hypot(XX - room.x, YY - room.y) - room.radius)
 
-    shortcut = pick_shortcut(rng, exits)
+    # Atajo: misma anchura relativa (con el mismo ruido) y mismo talud que el principal.
+    shortcut = pick_shortcut(rng, exits, base_hw)
     if shortcut:
         d_sc = polyline_distance(wx, wy, shortcut.points)[0]
-        corridor = np.maximum(corridor, 1.0 - smoothstep(shortcut.half_width, shortcut.half_width + 5.0, d_sc))
-        core = np.maximum(core, 1.0 - smoothstep(shortcut.half_width - 4.0, shortcut.half_width - 1.0, d_sc))
-        d_core = np.minimum(d_core, d_sc - (shortcut.half_width - 1.0))
+        sc_hw = np.minimum(hw * shortcut.half_width / base_hw, hw)
+        corridor = np.maximum(corridor, 1.0 - smoothstep(sc_hw, sc_hw + bank, d_sc))
+        core = np.maximum(core, 1.0 - smoothstep(sc_hw - 4.0, sc_hw - 1.0, d_sc))
+        d_core = np.minimum(d_core, d_sc - (sc_hw - 1.0))
+
+    # La isla de la bifurcacion se queda fuera del pasillo: toma la cota de la meseta (roca
+    # alta) o se rebaja despues a una loma escalable.
+    corridor = corridor * (1.0 - island)
+    core = core * (1.0 - island)
 
     # Suelo: cota que ondula despacio y se aplana en las plazas; 0 junto a las salidas.
     elev_amp = float(rng.uniform(4.0, 9.0))
-    elev = elev_amp * fbm(rng, 260.0, octaves=2) * edge_fade
+    elev = elev_amp * fbm(rng, 260.0 * K, octaves=2) * edge_fade
     floor = elev.copy()
     for room in rooms:
         i, j = grid_index((room.x, room.y))
@@ -490,9 +669,9 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
     floor -= pits(rng, rooms, d_main, hw, style["pits"])
 
     # Meseta: cresta sobre el suelo local + colinas suaves. Variante calzada: exterior hundido.
-    hills = (fbm(rng, 170.0, octaves=3) * 0.5 + 0.5) * float(rng.uniform(*style["hills"]))
+    hills = (fbm(rng, 170.0 * K, octaves=3) * 0.5 + 0.5) * float(rng.uniform(*style["hills"]))
     if is_causeway:
-        high = -12.0 + 0.35 * hills + 2.0 * fbm(rng, 60.0, octaves=2)
+        high = -12.0 + 0.35 * hills + 2.0 * fbm(rng, 60.0 * K, octaves=2)
     else:
         high = elev + wall_h + hills
     # Junto al borde la meseta tiende a la cresta canonica; las salidas cerradas se tapan.
@@ -503,10 +682,16 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
             continue
         along = np.abs(YY) if side in ("N", "S") else np.abs(XX)
         toward = np.hypot(XX - ex, YY - ey)
-        closed |= (along < OPEN_HALF_M + BANK_M + 6.0) & (toward < 44.0)
+        closed |= (along < OPEN_HALF_M + BANK_M + 6.0) & (toward < 30.0)
     high = np.where(closed, np.maximum(high, PLUG_M), high)
 
     terrain = high * (1.0 - corridor) + floor * corridor
+    if fork and fork.low:
+        # Loma: poca altura y laderas suaves; se puede subir y cruzar por encima.
+        terrain = terrain * (1.0 - island) + (floor + fork.low_height) * island
+    elif fork and is_causeway:
+        # En la calzada la meseta esta bajo el agua: la isla se levanta como roca propia.
+        terrain = terrain * (1.0 - island) + (floor + wall_h) * island
 
     # Ruta alta: sube por el talud, recorre la meseta y cruza el pasillo por un puente.
     bridges: list[Bridge] = []
@@ -533,12 +718,21 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
             break
 
     terrain = blur(terrain)
+
+    arch = None
+    if not is_causeway and rng.random() < ARCH_PROB:
+        arch = place_arch(rng, terrain, d_main, bridges)
+        if arch:
+            bridges = bridges + [arch]
+
     stats = {
         "style": style_name,
         "causeway": is_causeway,
         "rooms": len(rooms),
         "shortcut": shortcut is not None,
         "upper_route": has_upper,
+        "fork": "none" if not fork else ("low" if fork.low else "high"),
+        "arch": arch is not None,
         "wall_h": round(wall_h, 2),
         "base_half_width": round(base_hw, 2),
     }
@@ -627,8 +821,7 @@ def hillshade(heights: np.ndarray, bridges: list[Bridge]) -> np.ndarray:
     return (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
 
 
-def write_contact_sheet(path: Path, thumbs: list[np.ndarray], columns: int = 10) -> None:
-    size = 120
+def write_contact_sheet(path: Path, thumbs: list[np.ndarray], columns: int = 10, size: int = 120) -> None:
     rows = int(math.ceil(len(thumbs) / columns))
     sheet = np.zeros((rows * size, columns * size, 3), dtype=np.uint8)
     for k, thumb in enumerate(thumbs):
@@ -644,6 +837,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Genera la libreria de modulos de terreno.")
     parser.add_argument("--count", type=int, default=100, help="modulos por topologia")
     parser.add_argument("--out", type=Path, default=OUTPUT_DIR)
+    parser.add_argument("--thumb", type=int, default=120, help="lado de cada miniatura de la hoja de contactos, en px")
     args = parser.parse_args()
 
     expected_edge = canonical_edge_vector()
@@ -655,21 +849,32 @@ def main() -> None:
         "modules": [],
     }
     index = 0
+    rejected = 0
     for topology, exits in TOPOLOGIES.items():
         folder = args.out / topology
         folder.mkdir(parents=True, exist_ok=True)
         thumbs = []
         for n in range(args.count):
-            seed = BASE_SEED + index
-            index += 1
             name = f"M_{topology}_{n + 1:02d}"
-            heights, stats, bridges, flat_areas = compose_module(seed, exits)
+            # Un diseno que deja alguna salida sin acceso a pie se descarta y se prueba la
+            # semilla siguiente; la semilla final queda en el manifest para reproducirlo.
+            for attempt in range(8):
+                seed = BASE_SEED + index * 16 + attempt
+                heights, stats, bridges, flat_areas = compose_module(seed, exits)
+                meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
+                # La fusion con el borde canonico puede dejar sin apoyo un arco validado
+                # antes de fundir: tambien se descarta.
+                if walkable_exits_connected(meters, exits) and bridge_problem(meters, bridges) is None:
+                    break
+                rejected += 1
+            else:
+                raise AssertionError(f"{name}: ninguna semilla da un diseno accesible y con arcos apoyados")
+            index += 1
             check_border(heights, expected_edge, name)
             check_bridges(heights, bridges, name)
             Image.fromarray(heights).save(folder / f"{name}.png")
             thumbs.append(hillshade(heights, bridges))
             slopes = slope_degrees(heights)
-            meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
             manifest["modules"].append({
                 "name": name,
                 "topology": topology,
@@ -679,12 +884,13 @@ def main() -> None:
                 "max_m": round(float(meters.max()), 2),
                 "slope_p99_deg": round(float(np.percentile(slopes, 99)), 1),
                 "bridges": [{"x_m": b.x, "y_m": b.y, "yaw_deg": b.yaw_deg, "length_m": b.length_m,
-                             "width_m": b.width_m, "thickness_m": BRIDGE_THICKNESS_M, "deck_m": b.deck_m}
+                             "width_m": b.width_m, "thickness_m": BRIDGE_THICKNESS_M, "deck_m": b.deck_m,
+                             "kind": b.kind}
                             for b in bridges],
                 "flat_areas": flat_areas,
                 **stats,
             })
-        write_contact_sheet(args.out / f"preview_{topology}.png", thumbs)
+        write_contact_sheet(args.out / f"preview_{topology}.png", thumbs, size=args.thumb)
         print(f"{topology}: {args.count} modulos")
 
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
@@ -692,7 +898,10 @@ def main() -> None:
     print(f"total {len(mods)} modulos; cota [{min(m['min_m'] for m in mods)}, {max(m['max_m'] for m in mods)}] m; "
           f"pendiente p99 max {max(m['slope_p99_deg'] for m in mods)} grados; "
           f"atajos {sum(m['shortcut'] for m in mods)}; rutas altas {sum(m['upper_route'] for m in mods)}; "
-          f"puentes {sum(len(m['bridges']) for m in mods)}; "
+          f"puentes {sum(b['kind'] == 'bridge' for m in mods for b in m['bridges'])}; "
+          f"arcos {sum(m['arch'] for m in mods)}; "
+          f"bifurcaciones {sum(m['fork'] != 'none' for m in mods)} (lomas {sum(m['fork'] == 'low' for m in mods)}); "
+          f"disenos descartados {rejected}; "
           f"estilos " + ", ".join(f"{n} {sum(m['style'] == n for m in mods)}" for n in STYLES))
 
 
