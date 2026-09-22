@@ -44,7 +44,7 @@ protected:
 	float InitialDelay = 3.f;
 
 	/** Número máximo de instancias activas simultáneas originadas por esta zona. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpawnZone", meta = (ClampMin = "1", ClampMax = "8"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpawnZone", meta = (ClampMin = "1", ClampMax = "20"))
 	int32 MaxConcurrent = 2;
 
 	/**

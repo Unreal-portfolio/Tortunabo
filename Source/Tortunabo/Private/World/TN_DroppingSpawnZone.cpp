@@ -8,7 +8,7 @@ ATN_DroppingSpawnZone::ATN_DroppingSpawnZone()
 	// Defaults específicos de la caca (la base define el resto).
 	SpawnInterval = 8.f;
 	InitialDelay  = 3.f;
-	MaxConcurrent = 2;
+	MaxConcurrent = 5;
 }
 
 void ATN_DroppingSpawnZone::TrySpawn()

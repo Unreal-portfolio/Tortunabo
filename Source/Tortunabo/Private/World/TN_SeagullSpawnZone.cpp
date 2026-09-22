@@ -9,7 +9,7 @@ ATN_SeagullSpawnZone::ATN_SeagullSpawnZone()
 	// Defaults específicos de la gaviota (la base define el resto).
 	SpawnInterval = 15.f;
 	InitialDelay  = 3.f;
-	MaxConcurrent = 1;
+	MaxConcurrent = 3;
 }
 
 void ATN_SeagullSpawnZone::TrySpawn()
