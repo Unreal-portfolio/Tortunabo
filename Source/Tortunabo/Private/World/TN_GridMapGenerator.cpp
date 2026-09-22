@@ -1,5 +1,6 @@
 #include "World/TN_GridMapGenerator.h"
 #include "World/TN_GridPathDecisions.h"
+#include "World/TN_GridRouteDecisions.h"
 #include "World/TN_GridTerrainTile.h"
 #include "World/TN_TerrainModuleAsset.h"
 #include "World/TN_TerrainModuleDecisions.h"
@@ -102,11 +103,20 @@ void ATN_GridMapGenerator::Generate()
 		return;
 	}
 
+	// Los desvíos solo existen en modo módulos: los otros dos modos no tienen piezas con
+	// más de dos salidas.
+	TArray<TNGridRoutes::FTNDetour> Detours;
 	const TCHAR* ModeName = TEXT("greybox");
 	if (IsModuleMode())
 	{
 		ModeName = TEXT("módulos");
-		GenerateModules(Path, RandRange);
+		TNGridRoutes::FTNDetourParams DetourParams;
+		DetourParams.MaxDetours = MaxDetours;
+		DetourParams.MinSpan = MinDetourSpan;
+		DetourParams.MaxSpan = FMath::Max(MinDetourSpan, MaxDetourSpan);
+		DetourParams.MaxLength = MaxDetourLength;
+		Detours = TNGridRoutes::PlanDetours(GridSize, Path, DetourParams, RandRange);
+		GenerateModules(Path, Detours, RandRange);
 	}
 	else if (TerrainTileClass)
 	{
@@ -120,11 +130,11 @@ void ATN_GridMapGenerator::Generate()
 
 	if (bDebugDrawPath)
 	{
-		DrawPathDebug(Path);
+		DrawPathDebug(Path, Detours);
 	}
 
-	UE_LOG(LogTortunabo, Log, TEXT("[GridMap] Mapa %dx%d generado (%s): camino de %d celdas, semilla %d."),
-		GridSize, GridSize, ModeName, Path.Num(), LastUsedSeed);
+	UE_LOG(LogTortunabo, Log, TEXT("[GridMap] Mapa %dx%d generado (%s): camino de %d celdas, %d desvíos, semilla %d."),
+		GridSize, GridSize, ModeName, Path.Num(), Detours.Num(), LastUsedSeed);
 }
 
 void ATN_GridMapGenerator::GenerateGreybox(const TArray<FIntPoint>& Path,
@@ -191,11 +201,9 @@ void ATN_GridMapGenerator::GenerateTerrain(const TArray<FIntPoint>& Path)
 // Módulos
 // ─────────────────────────────────────────────────────────────────────────────
 
-TSubclassOf<ATN_TerrainModuleTile> ATN_GridMapGenerator::PickModuleForCell(const TNGridLogic::FTNGridCell& Cell,
+TSubclassOf<ATN_TerrainModuleTile> ATN_GridMapGenerator::PickModuleForExits(uint8 Required,
 	TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps) const
 {
-	const uint8 Required = TNTerrainModule::RequiredExitMask(Cell);
-
 	// Vale cualquier módulo que, rotado, ofrezca al menos las salidas del camino: las
 	// sobrantes se tapan con un muro de basura. Una T o una cruz encaja en varias
 	// rotaciones y entra varias veces en la bolsa, en proporción a sus opciones.
@@ -222,7 +230,7 @@ TSubclassOf<ATN_TerrainModuleTile> ATN_GridMapGenerator::PickModuleForCell(const
 	return Chosen.Key;
 }
 
-void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path,
+void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const TArray<TNGridRoutes::FTNDetour>& Detours,
 	TFunctionRef<int32(int32 Min, int32 Max)> RandRange)
 {
 	const bool bIsGameWorld = GetWorld() && GetWorld()->IsGameWorld();
@@ -241,25 +249,23 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path,
 		return Tile;
 	};
 
-	const TArray<TNGridLogic::FTNGridCell> Cells = TNGridLogic::ClassifyPath(Path);
-	for (int32 Index = 0; Index < Cells.Num(); ++Index)
+	for (const TNGridRoutes::FTNRouteCell& Cell : TNGridRoutes::BuildRouteCells(Path, Detours))
 	{
-		const TNGridLogic::FTNGridCell& Cell = Cells[Index];
 		PathCells.Add(Cell.Coord);
 
+		const uint8 Required = TNGridRoutes::RequiredExits(Cell);
 		int32 YawSteps = 0;
-		const TSubclassOf<ATN_TerrainModuleTile> ModuleClass = PickModuleForCell(Cell, RandRange, YawSteps);
+		const TSubclassOf<ATN_TerrainModuleTile> ModuleClass = PickModuleForExits(Required, RandRange, YawSteps);
 		if (!ModuleClass)
 		{
-			UE_LOG(LogTortunabo, Error, TEXT("[GridMap] Ningún módulo ofrece las salidas de la celda (%d, %d) (%s, yaw %d)."),
-				Cell.Coord.X, Cell.Coord.Y,
-				Cell.Type == TNGridLogic::ETNGridTileType::Turn ? TEXT("giro") : TEXT("recta"), Cell.YawSteps);
+			UE_LOG(LogTortunabo, Error, TEXT("[GridMap] Ningún módulo ofrece las salidas de la celda (%d, %d) (máscara 0x%X)."),
+				Cell.Coord.X, Cell.Coord.Y, Required);
 			continue;
 		}
 
 		ETNTerrainModuleTopology Topology;
 		TryGetModuleTopology(ModuleClass, Topology);
-		const uint8 Blocked = TNTerrainModule::BlockedExitsLocal(Topology, YawSteps, TNTerrainModule::ConnectedExitMask(Cells, Index));
+		const uint8 Blocked = TNTerrainModule::BlockedExitsLocal(Topology, YawSteps, Cell.Connections);
 
 		ATN_TerrainModuleTile* Tile = SpawnModule(ModuleClass, Cell.Coord, YawSteps, Blocked);
 		if (!Tile) { continue; }
@@ -418,7 +424,7 @@ void ATN_GridMapGenerator::UpdateWaterPlane()
 	}
 }
 
-void ATN_GridMapGenerator::DrawPathDebug(const TArray<FIntPoint>& Path) const
+void ATN_GridMapGenerator::DrawPathDebug(const TArray<FIntPoint>& Path, const TArray<TNGridRoutes::FTNDetour>& Detours) const
 {
 	const UWorld* World = GetWorld();
 	if (!World)
@@ -431,6 +437,18 @@ void ATN_GridMapGenerator::DrawPathDebug(const TArray<FIntPoint>& Path) const
 	{
 		DrawDebugLine(World, GetCellWorldLocation(Path[i - 1]) + Lift, GetCellWorldLocation(Path[i]) + Lift,
 			FColor::Yellow, true, -1.f, 0, 20.f);
+	}
+	for (const TNGridRoutes::FTNDetour& Detour : Detours)
+	{
+		TArray<FIntPoint> Route;
+		Route.Add(Path[Detour.FromIndex]);
+		Route.Append(Detour.Cells);
+		Route.Add(Path[Detour.ToIndex]);
+		for (int32 i = 1; i < Route.Num(); ++i)
+		{
+			DrawDebugLine(World, GetCellWorldLocation(Route[i - 1]) + Lift, GetCellWorldLocation(Route[i]) + Lift,
+				FColor::Cyan, true, -1.f, 0, 20.f);
+		}
 	}
 	DrawDebugSphere(World, GetCellWorldLocation(Path[0]) + Lift, 120.f, 12, FColor::Green, true);
 	DrawDebugSphere(World, GetCellWorldLocation(Path.Last()) + Lift, 120.f, 12, FColor::Red, true);

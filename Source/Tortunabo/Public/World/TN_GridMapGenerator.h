@@ -8,7 +8,7 @@ class ATN_GridTerrainTile;
 class ATN_TerrainModuleTile;
 class UMaterialInterface;
 class UStaticMeshComponent;
-namespace TNGridLogic { struct FTNGridCell; }
+namespace TNGridRoutes { struct FTNDetour; }
 
 /**
  * ATN_GridMapGenerator
@@ -27,10 +27,11 @@ namespace TNGridLogic { struct FTNGridCell; }
  * su eje X y el giro abierto por -X y +Y (ver convenciones en TN_GridPathDecisions.h).
  *
  * Tres modos, por prioridad:
- *   - Módulos (ModuleClasses no vacío): un ATN_TerrainModuleTile por celda, elegido por
- *     topología y rotado para ofrecer las salidas que pide el camino. Las celdas sin
- *     camino reciben un módulo cualquiera con rotación sorteada. Ver
- *     TN_TerrainModuleDecisions.h.
+ *   - Módulos (ModuleClasses no vacío): un ATN_TerrainModuleTile por celda de ruta,
+ *     elegido por topología y rotado para ofrecer las salidas que pide la ruta. Además del
+ *     camino principal se trazan desvíos que salen de él y vuelven más adelante (ver
+ *     TN_GridRouteDecisions.h). Las celdas sin ruta solo reciben módulo con
+ *     bFillEmptyCellsWithModules. Ver TN_TerrainModuleDecisions.h.
  *   - Terreno (TerrainTileClass asignado): un ATN_GridTerrainTile replicado por celda;
  *     entre todos forman un heightfield continuo (ver TN_GridTerrainDecisions.h).
  *   - Greybox (nada de lo anterior): tiles de recta, giro y relleno hechos de cajas.
@@ -103,7 +104,23 @@ protected:
 
 	/** Si true, las celdas sin camino también reciben un módulo (rotación sorteada). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
-	bool bFillEmptyCellsWithModules = true;
+	bool bFillEmptyCellsWithModules = false;
+
+	/** Desvíos máximos: rutas alternativas que salen del camino y vuelven a él (solo módulos). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Routes", meta = (ClampMin = "0"))
+	int32 MaxDetours = 2;
+
+	/** Celdas de camino principal que salta un desvío como mínimo (2 = rodea una sola celda). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Routes", meta = (ClampMin = "2"))
+	int32 MinDetourSpan = 2;
+
+	/** Celdas de camino principal que salta un desvío como máximo. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Routes", meta = (ClampMin = "2"))
+	int32 MaxDetourSpan = 4;
+
+	/** Longitud máxima de un desvío, en celdas propias. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Routes", meta = (ClampMin = "1"))
+	int32 MaxDetourLength = 5;
 
 	/** Cota del plano de agua en modo módulos, relativa al generador. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
@@ -139,10 +156,12 @@ protected:
 private:
 	void GenerateGreybox(const TArray<FIntPoint>& Path, TFunctionRef<int32(int32 Min, int32 Max)> RandRange);
 	void GenerateTerrain(const TArray<FIntPoint>& Path);
-	void GenerateModules(const TArray<FIntPoint>& Path, TFunctionRef<int32(int32 Min, int32 Max)> RandRange);
+	void GenerateModules(const TArray<FIntPoint>& Path, const TArray<TNGridRoutes::FTNDetour>& Detours,
+		TFunctionRef<int32(int32 Min, int32 Max)> RandRange);
 
-	/** Módulo y rotación para una celda de camino, o clase nula si ninguno ofrece esas salidas. */
-	TSubclassOf<ATN_TerrainModuleTile> PickModuleForCell(const TNGridLogic::FTNGridCell& Cell,
+	/** Módulo y rotación que ofrecen al menos las salidas pedidas (espacio de mundo), o
+	 *  clase nula si ninguno las ofrece. */
+	TSubclassOf<ATN_TerrainModuleTile> PickModuleForExits(uint8 RequiredExits,
 		TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps) const;
 
 	/** Spawn diferido: devuelve el tile sin terminar para poder inicializarlo; el llamante
@@ -155,7 +174,7 @@ private:
 
 	void UpdateWaterPlane();
 
-	void DrawPathDebug(const TArray<FIntPoint>& Path) const;
+	void DrawPathDebug(const TArray<FIntPoint>& Path, const TArray<TNGridRoutes::FTNDetour>& Detours) const;
 
 	/** Tag de los tiles generados. Clear() los localiza por tag y no por una lista propia:
 	 *  en editor el generador se reconstruye al tocar propiedades y la lista se perdería. */
