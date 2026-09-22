@@ -68,6 +68,25 @@ BRIDGE_MAX_M = 110.0
 BRIDGE_OVERLAP_M = 4.0         # apoyo del tablero sobre cada labio
 BRIDGE_THICKNESS_M = 1.2
 
+# ── Estilos (rangos por modulo; "weight" = peso del sorteo) ─────────────────────────
+STYLES: dict[str, dict] = {
+    "canyon":   {"weight": 35, "wall_h": (8.0, 14.0), "bank": (6.0, 9.0), "hills": (12.0, 30.0),
+                 "corridor_hw": (18.0, 30.0), "rocks": (1.5, 3.0), "rock_threshold": (0.58, 0.76),
+                 "pits": (0, 2), "puddles": False, "causeway": False},
+    "rocky":    {"weight": 20, "wall_h": (10.0, 16.0), "bank": (5.0, 7.0), "hills": (20.0, 38.0),
+                 "corridor_hw": (16.0, 26.0), "rocks": (2.5, 4.5), "rock_threshold": (0.48, 0.66),
+                 "pits": (1, 3), "puddles": False, "causeway": False},
+    "dunes":    {"weight": 15, "wall_h": (6.0, 9.0), "bank": (4.5, 6.0), "hills": (8.0, 18.0),
+                 "corridor_hw": (22.0, 34.0), "rocks": (0.5, 1.2), "rock_threshold": (0.62, 0.8),
+                 "pits": (0, 1), "puddles": False, "causeway": False},
+    "marsh":    {"weight": 15, "wall_h": (7.0, 11.0), "bank": (6.0, 8.0), "hills": (10.0, 20.0),
+                 "corridor_hw": (20.0, 32.0), "rocks": (0.8, 1.8), "rock_threshold": (0.6, 0.78),
+                 "pits": (0, 1), "puddles": True, "causeway": False},
+    "causeway": {"weight": 15, "wall_h": (8.0, 12.0), "bank": (6.0, 8.0), "hills": (12.0, 24.0),
+                 "corridor_hw": (16.0, 26.0), "rocks": (1.0, 2.0), "rock_threshold": (0.6, 0.78),
+                 "pits": (0, 1), "puddles": False, "causeway": True},
+}
+
 BASE_SEED = 20260922
 TOPOLOGIES: dict[str, tuple[str, ...]] = {
     "Straight": ("S", "N"),
@@ -298,7 +317,14 @@ def room_mask(rooms: list[Room], feather: float = 6.0):
     return mask
 
 
-def pits(rng: np.random.Generator, rooms: list[Room], d_corr, hw):
+def pick_style(rng: np.random.Generator) -> tuple[str, dict]:
+    names = list(STYLES)
+    weights = np.array([STYLES[n]["weight"] for n in names], dtype=float)
+    name = names[int(rng.choice(len(names), p=weights / weights.sum()))]
+    return name, STYLES[name]
+
+
+def pits(rng: np.random.Generator, rooms: list[Room], d_corr, hw, count_range: tuple[int, int] = (0, 2)):
     """Pozos: en las plazas (fuera del carril central) y sueltos en la meseta."""
     depression = np.zeros_like(XX)
     for room in rooms:
@@ -310,7 +336,7 @@ def pits(rng: np.random.Generator, rooms: list[Room], d_corr, hw):
             depth = float(rng.uniform(3.5, 6.0))
             d = np.hypot(XX - cx, YY - cy)
             depression += depth * (1.0 - smoothstep(radius * 0.45, radius, d))
-    for _ in range(int(rng.integers(0, 3))):
+    for _ in range(int(rng.integers(count_range[0], count_range[1] + 1))):
         cx, cy = rng.uniform(-140.0, 140.0, 2)
         radius = float(rng.uniform(8.0, 16.0))
         depth = float(rng.uniform(4.0, 9.0))
@@ -406,8 +432,9 @@ def lane_profile_height(floor, d_core, lane: Lane, s, total: float):
 def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
     """Heightfield del interior (metros) antes de fundirlo con el borde canonico."""
     edge_fade = smoothstep(0.0, 50.0, DIST_TO_EDGE)
-    is_causeway = rng.random() < 0.2
-    wall_h = float(rng.uniform(8.0, 14.0))
+    style_name, style = pick_style(rng)
+    is_causeway = bool(style["causeway"])
+    wall_h = float(rng.uniform(*style["wall_h"]))
 
     # Pasillo con serpenteo (deformacion del dominio) que se apaga junto al borde. Todas
     # las rutas se miden en el mismo espacio deformado, asi que casan entre si.
@@ -419,10 +446,10 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
     for lane in main_lanes(exits):
         d_main = np.minimum(d_main, polyline_distance(wx, wy, lane.points)[0])
 
-    base_hw = float(rng.uniform(18.0, 30.0))
+    base_hw = float(rng.uniform(*style["corridor_hw"]))
     hw = base_hw * (1.0 + 0.3 * value_noise(rng, 110.0))
     hw = OPEN_HALF_M + (hw - OPEN_HALF_M) * edge_fade   # en el borde, la boca canonica
-    bank = float(rng.uniform(6.0, 9.0))
+    bank = float(rng.uniform(*style["bank"]))
     bank = BANK_M + (bank - BANK_M) * edge_fade
 
     rooms = pick_rooms(rng, exits)
@@ -454,12 +481,16 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
                    "height_m": round(float(floor[grid_index((r.x, r.y))]), 2)} for r in rooms]
     floor += 0.30 * fbm(rng, 18.0, octaves=2)                                  # arena
     off_lane = smoothstep(8.0, 13.0, d_main) * (1.0 - 0.6 * rmask)
-    rocks = float(rng.uniform(1.5, 3.0)) * smoothstep(0.58, 0.76, value_noise(rng, 22.0) * 0.5 + 0.5) * off_lane
+    rocks = float(rng.uniform(*style["rocks"])) * smoothstep(*style["rock_threshold"], value_noise(rng, 22.0) * 0.5 + 0.5) * off_lane
     floor += rocks * edge_fade
-    floor -= pits(rng, rooms, d_main, hw)
+    if style["puddles"]:
+        # Charcos de marisma: bajan por debajo del agua (-4 m) fuera del carril central.
+        puddles = 5.5 * smoothstep(0.55, 0.75, value_noise(rng, 40.0) * 0.5 + 0.5) * off_lane * edge_fade
+        floor -= puddles
+    floor -= pits(rng, rooms, d_main, hw, style["pits"])
 
     # Meseta: cresta sobre el suelo local + colinas suaves. Variante calzada: exterior hundido.
-    hills = (fbm(rng, 170.0, octaves=3) * 0.5 + 0.5) * float(rng.uniform(12.0, 30.0))
+    hills = (fbm(rng, 170.0, octaves=3) * 0.5 + 0.5) * float(rng.uniform(*style["hills"]))
     if is_causeway:
         high = -12.0 + 0.35 * hills + 2.0 * fbm(rng, 60.0, octaves=2)
     else:
@@ -491,13 +522,19 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...]):
             if found is None:
                 continue
             weight = lane_mask * (1.0 - core)
-            terrain = terrain * (1.0 - weight) + lane_height * weight
+            candidate = terrain * (1.0 - weight) + lane_height * weight
+            # Misma validacion que la final, sobre el candidato: si el tablero no apoya
+            # bien (p. ej. cae sobre la propia bajada de la ruta) se prueba otro trazado.
+            if bridge_problem(blur(candidate), found):
+                continue
+            terrain = candidate
             bridges = found
             has_upper = True
             break
 
     terrain = blur(terrain)
     stats = {
+        "style": style_name,
         "causeway": is_causeway,
         "rooms": len(rooms),
         "shortcut": shortcut is not None,
@@ -532,15 +569,15 @@ def check_border(heights: np.ndarray, expected: np.ndarray, name: str) -> None:
         raise AssertionError("el perfil canonico no es simetrico")
 
 
-def check_bridges(heights: np.ndarray, bridges: list[Bridge], name: str) -> None:
-    """Bajo el centro del tablero hay hueco (pasillo) y en los apoyos el terreno llega al tablero."""
-    meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
+def bridge_problem(meters: np.ndarray, bridges: list[Bridge]) -> str | None:
+    """Bajo el tablero hay hueco (pasillo) y en ambos apoyos el terreno llega al tablero.
+    Devuelve la descripcion del primer fallo, o None si todos los puentes son validos."""
     for b in bridges:
         ax, ay = math.cos(math.radians(b.yaw_deg)), math.sin(math.radians(b.yaw_deg))
         inner = int(b.length_m / 2.0 - BRIDGE_OVERLAP_M)
         under = min(meters[grid_index((b.x + ax * k, b.y + ay * k))] for k in range(-inner, inner + 1, 2))
         if b.deck_m - under < 4.0:
-            raise AssertionError(f"{name}: el puente en ({b.x}, {b.y}) no salva ningun hueco ({b.deck_m - under:.1f} m)")
+            return f"el puente en ({b.x}, {b.y}) no salva ningun hueco ({b.deck_m - under:.1f} m)"
         # Apoyos: mas alla de cada extremo, en algun punto del ancho del tablero, el terreno
         # llega al tablero (puede sobrepasarlo: el tablero se entierra un poco en la ladera).
         half_w = int(b.width_m / 2.0)
@@ -549,7 +586,15 @@ def check_bridges(heights: np.ndarray, bridges: list[Bridge], name: str) -> None
             end = max(meters[grid_index((b.x + sign * ax * reach - ay * o, b.y + sign * ay * reach + ax * o))]
                       for o in range(-half_w, half_w + 1, 2))
             if end < b.deck_m - 4.0:
-                raise AssertionError(f"{name}: apoyo del puente a {end - b.deck_m:.1f} m del tablero")
+                return f"apoyo del puente a {end - b.deck_m:.1f} m del tablero"
+    return None
+
+
+def check_bridges(heights: np.ndarray, bridges: list[Bridge], name: str) -> None:
+    meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
+    problem = bridge_problem(meters, bridges)
+    if problem:
+        raise AssertionError(f"{name}: {problem}")
 
 
 def slope_degrees(heights: np.ndarray) -> np.ndarray:
@@ -597,7 +642,7 @@ def write_contact_sheet(path: Path, thumbs: list[np.ndarray], columns: int = 10)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Genera la libreria de modulos de terreno.")
-    parser.add_argument("--count", type=int, default=50, help="modulos por topologia")
+    parser.add_argument("--count", type=int, default=100, help="modulos por topologia")
     parser.add_argument("--out", type=Path, default=OUTPUT_DIR)
     args = parser.parse_args()
 
@@ -647,7 +692,8 @@ def main() -> None:
     print(f"total {len(mods)} modulos; cota [{min(m['min_m'] for m in mods)}, {max(m['max_m'] for m in mods)}] m; "
           f"pendiente p99 max {max(m['slope_p99_deg'] for m in mods)} grados; "
           f"atajos {sum(m['shortcut'] for m in mods)}; rutas altas {sum(m['upper_route'] for m in mods)}; "
-          f"puentes {sum(len(m['bridges']) for m in mods)}")
+          f"puentes {sum(len(m['bridges']) for m in mods)}; "
+          f"estilos " + ", ".join(f"{n} {sum(m['style'] == n for m in mods)}" for n in STYLES))
 
 
 if __name__ == "__main__":
