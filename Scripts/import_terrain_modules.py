@@ -118,6 +118,27 @@ def unfilter(line, previous, filter_type, bytes_per_pixel):
 
 
 # ── Assets ────────────────────────────────────────────────────────────────────────
+def make_bridge(data):
+    """Puente del manifest (metros) a FTNTerrainModuleBridge (uu)."""
+    bridge = unreal.TNTerrainModuleBridge()
+    bridge.set_editor_property("center", unreal.Vector2D(data["x_m"] * 100.0, data["y_m"] * 100.0))
+    bridge.set_editor_property("yaw", float(data["yaw_deg"]))
+    bridge.set_editor_property("length", data["length_m"] * 100.0)
+    bridge.set_editor_property("width", data["width_m"] * 100.0)
+    bridge.set_editor_property("thickness", data["thickness_m"] * 100.0)
+    bridge.set_editor_property("deck_height", data["deck_m"] * 100.0)
+    return bridge
+
+
+def make_flat_area(data):
+    """Plaza del manifest (metros) a FTNTerrainModuleFlatArea (uu)."""
+    area = unreal.TNTerrainModuleFlatArea()
+    area.set_editor_property("center", unreal.Vector2D(data["x_m"] * 100.0, data["y_m"] * 100.0))
+    area.set_editor_property("radius", data["radius_m"] * 100.0)
+    area.set_editor_property("height", data["height_m"] * 100.0)
+    return area
+
+
 def build_module_asset(folder, module, manifest, heights):
     name = f"DA_{module['name']}"
     path = f"{folder}/{name}"
@@ -132,6 +153,8 @@ def build_module_asset(folder, module, manifest, heights):
     if not asset.set_heightfield(int(manifest["resolution"]), float(manifest["height_scale_uu"]),
                                  int(manifest["height_zero"]), heights):
         raise RuntimeError(f"{name}: SetHeightfield rechazo el heightfield")
+    asset.set_editor_property("bridges", [make_bridge(b) for b in module.get("bridges", [])])
+    asset.set_editor_property("flat_areas", [make_flat_area(a) for a in module.get("flat_areas", [])])
     asset_lib.save_loaded_asset(asset)
     return asset
 
