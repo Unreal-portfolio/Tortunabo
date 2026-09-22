@@ -1,7 +1,7 @@
 # Terreno por stamps — diseño
 
 Fecha: 2026-09-21
-Estado: diseño aprobado en brainstorming, pendiente de plan de implementación
+Estado: SUSTITUIDO el 2026-09-22 por `2026-09-22-Terreno-Modulos-400m.md` (módulos de 400 m con borde canónico). Sigue vigente solo la fase 4 (autoría en editor).
 Rama de partida: `feat/procgen-terrain` @ 78d957c
 Sustituye a: `2026-09-21-Terreno-Modular-Design.md` (ver sección 9)
 
