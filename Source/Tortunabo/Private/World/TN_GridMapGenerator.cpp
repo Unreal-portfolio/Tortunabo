@@ -12,6 +12,9 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerStart.h"
+#include "GameFramework/Pawn.h"
 #include "Materials/MaterialInterface.h"
 #include "Math/RandomStream.h"
 #include "UObject/ConstructorHelpers.h"
@@ -126,6 +129,11 @@ void ATN_GridMapGenerator::Generate()
 	else
 	{
 		GenerateGreybox(Path, RandRange);
+	}
+
+	if (bPlacePlayerStartsAtStartCell)
+	{
+		PlacePlayerStarts(Path[0]);
 	}
 
 	if (bDebugDrawPath)
@@ -422,6 +430,83 @@ void ATN_GridMapGenerator::UpdateWaterPlane()
 	{
 		WaterPlane->SetMaterial(0, WaterMaterial);
 	}
+}
+
+void ATN_GridMapGenerator::PlacePlayerStarts(FIntPoint StartCell) const
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	TArray<APlayerStart*> Starts;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Starts.Add(*It);
+	}
+	if (Starts.Num() == 0)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[GridMap] No hay PlayerStart en el nivel: nada que colocar en la celda de inicio."));
+		return;
+	}
+
+	// Mirando hacia el avance del camino (+X del generador = hacia la última fila).
+	const FRotator Facing(0.f, GetActorRotation().Yaw, 0.f);
+	const FVector Center = GetCellWorldLocation(StartCell);
+	constexpr float TraceHalfHeight = 10000.f;
+	constexpr float CapsuleLift = 100.f;
+
+	for (int32 Index = 0; Index < Starts.Num(); ++Index)
+	{
+		const float Angle = 2.f * PI * Index / Starts.Num();
+		const FVector Offset = GetActorRotation().RotateVector(
+			FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.f) * (Starts.Num() > 1 ? PlayerStartRingRadius : 0.f));
+		FVector Location = Center + Offset;
+
+		// Apoyar en el suelo real del módulo (su colisión se cocina de forma síncrona).
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(TNPlacePlayerStart), false);
+		Params.AddIgnoredActor(Starts[Index]);
+		if (World->LineTraceSingleByChannel(Hit, Location + FVector(0.f, 0.f, TraceHalfHeight),
+			Location - FVector(0.f, 0.f, TraceHalfHeight), ECC_WorldStatic, Params))
+		{
+			Location.Z = Hit.ImpactPoint.Z + CapsuleLift;
+		}
+		else
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[GridMap] Sin suelo bajo el PlayerStart %d de la celda de inicio; se deja a la cota del generador."), Index);
+			Location.Z = Center.Z + CapsuleLift;
+		}
+
+		// Los PlayerStart son estáticos por defecto: sin esto SetActorLocation no los mueve en juego.
+		if (USceneComponent* Root = Starts[Index]->GetRootComponent())
+		{
+			Root->SetMobility(EComponentMobility::Movable);
+		}
+		Starts[Index]->SetActorLocationAndRotation(Location, Facing);
+	}
+
+	// Con un GameModeBase el jugador local hace login y recibe pawn al cargar el mapa, antes
+	// del BeginPlay que genera el mapa: esos pawns ya están donde estaba el PlayerStart
+	// original y se llevan al nuevo. Los que entren después usan los PlayerStart movidos.
+	int32 MovedPawns = 0;
+	if (World->IsGameWorld() && HasAuthority())
+	{
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+			if (!Pawn) { continue; }
+			const APlayerStart* Start = Starts[MovedPawns % Starts.Num()];
+			Pawn->TeleportTo(Start->GetActorLocation(), Start->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true);
+			PC->SetControlRotation(Start->GetActorRotation());
+			++MovedPawns;
+		}
+	}
+
+	UE_LOG(LogTortunabo, Log, TEXT("[GridMap] %d PlayerStart colocados en la celda de inicio (%d, %d); %d pawns ya existentes recolocados."),
+		Starts.Num(), StartCell.X, StartCell.Y, MovedPawns);
 }
 
 void ATN_GridMapGenerator::DrawPathDebug(const TArray<FIntPoint>& Path, const TArray<TNGridRoutes::FTNDetour>& Detours) const

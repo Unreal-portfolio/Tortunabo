@@ -153,6 +153,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Debug")
 	bool bDebugDrawPath = true;
 
+	/** Si true, tras generar se mueven los APlayerStart del nivel a la celda de inicio, en
+	 *  corro alrededor de su centro y apoyados en el suelo. El nivel no sabe dónde caerá el
+	 *  inicio: sin esto los jugadores aparecen donde se dejó el PlayerStart a mano. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Spawn")
+	bool bPlacePlayerStartsAtStartCell = true;
+
+	/** Radio del corro de PlayerStarts alrededor del centro de la celda de inicio, en uu. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Spawn", meta = (ClampMin = "0.0"))
+	float PlayerStartRingRadius = 400.f;
+
 private:
 	void GenerateGreybox(const TArray<FIntPoint>& Path, TFunctionRef<int32(int32 Min, int32 Max)> RandRange);
 	void GenerateTerrain(const TArray<FIntPoint>& Path);
@@ -173,6 +183,8 @@ private:
 	bool IsModuleMode() const { return ModuleClasses.Num() > 0; }
 
 	void UpdateWaterPlane();
+
+	void PlacePlayerStarts(FIntPoint StartCell) const;
 
 	void DrawPathDebug(const TArray<FIntPoint>& Path, const TArray<TNGridRoutes::FTNDetour>& Detours) const;
 
