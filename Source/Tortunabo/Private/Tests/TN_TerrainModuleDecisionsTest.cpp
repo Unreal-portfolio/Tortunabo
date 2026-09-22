@@ -8,6 +8,7 @@
 #include "Math/RandomStream.h"
 #include "World/TN_GridPathDecisions.h"
 #include "World/TN_TerrainModuleDecisions.h"
+#include "World/TN_TerrainModuleWallDecisions.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -245,6 +246,65 @@ bool FTNTerrainModuleSampleAndMeshTest::RunTest(const FString& Parameters)
 	const FVector& B = Mesh.Vertices[Mesh.Triangles[1]];
 	const FVector& C = Mesh.Vertices[Mesh.Triangles[2]];
 	TestTrue(TEXT("cara hacia +Z"), FVector::CrossProduct(B - A, C - A).Z < 0.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainModuleCoveringAndWallsTest,
+	"Tortunabo.TerrainModule.CoveringAndWalls",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTerrainModuleCoveringAndWallsTest::RunTest(const FString& Parameters)
+{
+	using namespace TNTerrainModule;
+
+	// Una cruz cubre una recta en las cuatro rotaciones; una T S-N-E cubre S-N en 0 y 2.
+	TestEqual(TEXT("cruz cubre recta x4"), YawStepsCoveringExits(ETNTerrainModuleTopology::Cross, MaskSouth | MaskNorth).Num(), 4);
+	TestTrue(TEXT("T derecha cubre recta x2"), YawStepsCoveringExits(ETNTerrainModuleTopology::TRight, MaskSouth | MaskNorth) == TArray<int32>({ 0, 2 }));
+	TestEqual(TEXT("curva no cubre recta"), YawStepsCoveringExits(ETNTerrainModuleTopology::CurveLeft, MaskSouth | MaskNorth).Num(), 0);
+
+	// T derecha (S-N-E) sin rotar en una recta S-N: sobra el Este, en local y en mundo.
+	TestEqual(TEXT("bloqueo T en recta"), BlockedExitsLocal(ETNTerrainModuleTopology::TRight, 0, MaskSouth | MaskNorth), MaskEast);
+	// Girada 2 (S-N-W en mundo): sobra el Oeste en mundo, que sigue siendo el Este local.
+	TestEqual(TEXT("bloqueo T girada"), BlockedExitsLocal(ETNTerrainModuleTopology::TRight, 2, MaskSouth | MaskNorth), MaskEast);
+	// Cruz girada 1 en una curva S-E: sobran N y W en mundo → N-1 = W, W-1 = S en local.
+	TestEqual(TEXT("bloqueo cruz en curva"), BlockedExitsLocal(ETNTerrainModuleTopology::Cross, 1, MaskSouth | MaskEast), uint8(MaskWest | MaskSouth));
+	// Nada sobrante cuando encaja exacto.
+	TestEqual(TEXT("recta exacta sin bloqueo"), BlockedExitsLocal(ETNTerrainModuleTopology::Straight, 0, MaskSouth | MaskNorth), uint8(0));
+
+	// Conexiones de un camino: el inicio y el final no conectan con el exterior del grid.
+	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	{
+		const TArray<FIntPoint> Path = ModuleTestPath(Seed);
+		if (Path.Num() < 2) { continue; }
+		const TArray<TNGridLogic::FTNGridCell> Cells = TNGridLogic::ClassifyPath(Path);
+		TestEqual(TEXT("inicio: una conexión"), FMath::CountBits(ConnectedExitMask(Cells, 0)), 1);
+		TestEqual(TEXT("final: una conexión"), FMath::CountBits(ConnectedExitMask(Cells, Cells.Num() - 1)), 1);
+		for (int32 Index = 1; Index + 1 < Cells.Num(); ++Index)
+		{
+			TestEqual(TEXT("interior: dos conexiones"), FMath::CountBits(ConnectedExitMask(Cells, Index)), 2);
+			TestTrue(TEXT("interior: las conexiones son las salidas requeridas"),
+				ConnectedExitMask(Cells, Index) == RequiredExitMask(Cells[Index]));
+		}
+	}
+
+	// Muro: determinista, dentro de la boca del lado y por debajo de la cresta.
+	constexpr double Size = 40000.0;
+	const TArray<TNTerrainModuleWall::FWallPiece> PiecesA = TNTerrainModuleWall::BuildWallPieces(TNGridLogic::SideEast, Size, 42);
+	const TArray<TNTerrainModuleWall::FWallPiece> PiecesB = TNTerrainModuleWall::BuildWallPieces(TNGridLogic::SideEast, Size, 42);
+	TestEqual(TEXT("piezas"), PiecesA.Num(), TNTerrainModuleWall::PiecesPerWall);
+	for (int32 Index = 0; Index < PiecesA.Num(); ++Index)
+	{
+		const FVector P = PiecesA[Index].Transform.GetLocation();
+		if (!P.Equals(PiecesB[Index].Transform.GetLocation()) || !FMath::IsWithinInclusive(P.Y, Size * 0.5 - TNTerrainModuleWall::HeapFar, Size * 0.5 - TNTerrainModuleWall::HeapNear)
+			|| FMath::Abs(P.X) > TNTerrainModuleWall::MouthHalfWidth || P.Z < 0.0 || P.Z > TNTerrainModuleWall::CrestHeight * 1.05)
+		{
+			AddError(FString::Printf(TEXT("Pieza %d fuera de la boca Este o no determinista: %s"), Index, *P.ToString()));
+			return false;
+		}
+	}
+	const TNTerrainModuleWall::FWallBlocker Blocker = TNTerrainModuleWall::BuildWallBlocker(TNGridLogic::SideNorth, Size);
+	TestTrue(TEXT("caja del Norte por dentro del borde"), Blocker.Center.X < Size * 0.5 && Blocker.Center.X + Blocker.Extent.X <= Size * 0.5);
+	TestTrue(TEXT("caja del Norte cubre la boca"), Blocker.Extent.Y >= TNTerrainModuleWall::MouthHalfWidth);
 	return true;
 }
 

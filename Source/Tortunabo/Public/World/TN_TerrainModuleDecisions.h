@@ -82,6 +82,52 @@ namespace TNTerrainModule
 		return INDEX_NONE;
 	}
 
+	/**
+	 * Todos los YawSteps (0..3) con los que la topología ofrece AL MENOS las salidas
+	 * pedidas. Las salidas sobrantes se tapan con un muro de basura (ver
+	 * TN_TerrainModuleWallDecisions.h), así que una T o una cruz sirven para una recta.
+	 */
+	inline TArray<int32> YawStepsCoveringExits(ETNTerrainModuleTopology Topology, uint8 RequiredMask)
+	{
+		TArray<int32> Result;
+		const uint8 Mask = ExitMask(Topology);
+		for (int32 Steps = 0; Steps < TNGridLogic::NumSides; ++Steps)
+		{
+			if ((RotateExitMask(Mask, Steps) & RequiredMask) == RequiredMask) { Result.Add(Steps); }
+		}
+		return Result;
+	}
+
+	/**
+	 * Lados (en espacio LOCAL del módulo, sin rotar) cuya boca hay que tapar: las salidas
+	 * que el módulo abre y que no conectan con la celda anterior ni con la siguiente del
+	 * camino. Las bocas de entrada y salida del grid (Sur del inicio, Norte del final)
+	 * también se tapan: no hay nada más allá del borde.
+	 * @param ConnectedMask Lados en espacio de MUNDO que sí conectan con el camino.
+	 */
+	inline uint8 BlockedExitsLocal(ETNTerrainModuleTopology Topology, int32 YawSteps, uint8 ConnectedMask)
+	{
+		const uint8 OpenWorld = RotateExitMask(ExitMask(Topology), YawSteps);
+		const uint8 BlockedWorld = OpenWorld & static_cast<uint8>(~ConnectedMask);
+		return RotateExitMask(BlockedWorld, -YawSteps);
+	}
+
+	/** Lados de una celda del camino que conectan con sus vecinas de camino (espacio de mundo). */
+	inline uint8 ConnectedExitMask(const TArray<TNGridLogic::FTNGridCell>& Cells, int32 Index)
+	{
+		uint8 Mask = 0;
+		if (!Cells.IsValidIndex(Index)) { return Mask; }
+		if (Index > 0)
+		{
+			Mask |= SideBit(TNGridLogic::SideTowards(Cells[Index].Coord, Cells[Index - 1].Coord));
+		}
+		if (Index + 1 < Cells.Num())
+		{
+			Mask |= SideBit(TNGridLogic::SideTowards(Cells[Index].Coord, Cells[Index + 1].Coord));
+		}
+		return Mask;
+	}
+
 	/** Vista sobre el heightfield de un módulo, con su tamaño en el mundo. */
 	struct FModuleField
 	{

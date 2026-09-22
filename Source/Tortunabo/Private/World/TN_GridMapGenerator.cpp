@@ -196,14 +196,16 @@ TSubclassOf<ATN_TerrainModuleTile> ATN_GridMapGenerator::PickModuleForCell(const
 {
 	const uint8 Required = TNTerrainModule::RequiredExitMask(Cell);
 
+	// Vale cualquier módulo que, rotado, ofrezca al menos las salidas del camino: las
+	// sobrantes se tapan con un muro de basura. Una T o una cruz encaja en varias
+	// rotaciones y entra varias veces en la bolsa, en proporción a sus opciones.
 	TArray<TPair<TSubclassOf<ATN_TerrainModuleTile>, int32>> Candidates;
 	for (const TSubclassOf<ATN_TerrainModuleTile>& ModuleClass : ModuleClasses)
 	{
 		ETNTerrainModuleTopology Topology;
 		if (!TryGetModuleTopology(ModuleClass, Topology)) { continue; }
 
-		const int32 YawSteps = TNTerrainModule::YawStepsForExits(Topology, Required);
-		if (YawSteps != INDEX_NONE)
+		for (const int32 YawSteps : TNTerrainModule::YawStepsCoveringExits(Topology, Required))
 		{
 			Candidates.Emplace(ModuleClass, YawSteps);
 		}
@@ -226,8 +228,23 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path,
 	const bool bIsGameWorld = GetWorld() && GetWorld()->IsGameWorld();
 	TSet<FIntPoint> PathCells;
 
-	for (const TNGridLogic::FTNGridCell& Cell : TNGridLogic::ClassifyPath(Path))
+	// Spawn diferido: las bocas bloqueadas y la semilla del muro viajan replicadas y deben
+	// estar fijadas antes de FinishSpawning, igual que FTNGridTileInit en el modo terreno.
+	auto SpawnModule = [&](TSubclassOf<ATN_TerrainModuleTile> ModuleClass, FIntPoint Cell, int32 YawSteps, uint8 BlockedExits) -> ATN_TerrainModuleTile*
 	{
+		FTransform TileTransform;
+		ATN_TerrainModuleTile* Tile = Cast<ATN_TerrainModuleTile>(BeginSpawnTile(ModuleClass, Cell, YawSteps, TileTransform));
+		if (!Tile) { return nullptr; }
+		Tile->InitializeModule(BlockedExits, LastUsedSeed ^ (Cell.X * 73856093) ^ (Cell.Y * 19349663));
+		FinishTile(Tile, TileTransform);
+		if (!bIsGameWorld) { Tile->BuildModule(); }
+		return Tile;
+	};
+
+	const TArray<TNGridLogic::FTNGridCell> Cells = TNGridLogic::ClassifyPath(Path);
+	for (int32 Index = 0; Index < Cells.Num(); ++Index)
+	{
+		const TNGridLogic::FTNGridCell& Cell = Cells[Index];
 		PathCells.Add(Cell.Coord);
 
 		int32 YawSteps = 0;
@@ -240,11 +257,14 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path,
 			continue;
 		}
 
-		AActor* Tile = SpawnTile(ModuleClass, Cell.Coord, YawSteps);
+		ETNTerrainModuleTopology Topology;
+		TryGetModuleTopology(ModuleClass, Topology);
+		const uint8 Blocked = TNTerrainModule::BlockedExitsLocal(Topology, YawSteps, TNTerrainModule::ConnectedExitMask(Cells, Index));
+
+		ATN_TerrainModuleTile* Tile = SpawnModule(ModuleClass, Cell.Coord, YawSteps, Blocked);
 		if (!Tile) { continue; }
 		if (Cell.bIsStart) { Tile->Tags.AddUnique(StartTileTag); }
 		if (Cell.bIsEnd)   { Tile->Tags.AddUnique(EndTileTag); }
-		if (!bIsGameWorld) { CastChecked<ATN_TerrainModuleTile>(Tile)->BuildModule(); }
 	}
 
 	if (!bFillEmptyCellsWithModules)
@@ -267,11 +287,12 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path,
 			const FIntPoint Cell(Col, Row);
 			if (PathCells.Contains(Cell)) { continue; }
 
-			// Relleno: cualquier módulo con rotación sorteada. Sus salidas dan a rampas
-			// cerradas de los vecinos, así que quedan como pasillos sin salida.
+			// Relleno: cualquier módulo con rotación sorteada y TODAS sus bocas tapadas: no
+			// forma parte del camino y nadie debe poder entrar en él.
 			const TSubclassOf<ATN_TerrainModuleTile> ModuleClass = ValidClasses[RandRange(0, ValidClasses.Num() - 1)];
-			AActor* Tile = SpawnTile(ModuleClass, Cell, RandRange(0, TNGridLogic::NumSides - 1));
-			if (Tile && !bIsGameWorld) { CastChecked<ATN_TerrainModuleTile>(Tile)->BuildModule(); }
+			ETNTerrainModuleTopology Topology;
+			TryGetModuleTopology(ModuleClass, Topology);
+			SpawnModule(ModuleClass, Cell, RandRange(0, TNGridLogic::NumSides - 1), TNTerrainModule::ExitMask(Topology));
 		}
 	}
 }
