@@ -71,10 +71,32 @@ Alturas en metros; `Z = 0` es el suelo en las salidas.
    local, con colinas suaves de 12–30 m (3 octavas, longitud de onda 170 m).
 6. **Variante calzada** (20 %): el exterior baja a −12 m (bajo el agua, a −4 m) y el
    pasillo queda como una cresta fina. El borde sigue subiendo a la cresta canónica.
-7. Desenfoque final 1-4-6-4-1: sin picos de ruido.
+7. **Rutas secundarias** (pedidas por Rodrigo el 2026-09-22: "puede haber caminos
+   secundarios, sitios que mergean, una curva con un atajo o que sube y luego cruza un
+   puente"):
+   - *Atajo* (60 % de los módulos): a ras de suelo, semiancho 7–10 m. Entre dos salidas
+     perpendiculares es la cuerda que corta la esquina; en las rectas rodea la plaza
+     central. Nace y muere en el pasillo principal.
+   - *Ruta alta* (55 %, nunca en calzadas): sale del pasillo en perpendicular, sube por
+     el talud (rampa de 60 m gobernada por la distancia al núcleo del pasillo), recorre
+     la meseta a `wall_h + 2` m y cruza el pasillo por un tramo fijo en el que se
+     mantiene alta; vuelve a bajar y entra en el pasillo tras el cruce. Candidatos que
+     cruzarían una plaza (tablero > 110 m) se descartan.
+   - *Puente*: el hueco que el pasillo abre bajo el tramo de cruce se detecta por
+     componentes conexas (dilatadas 4 m, para que una horquilla atajo+pasillo lleve un
+     único tablero) y se exporta como `FTNTerrainModuleBridge` (eje por PCA, centro en
+     mitad del hueco, 15–110 m de largo, ancho de la ruta + 2 m, 1,2 m de grosor).
+     `ATN_TerrainModuleTile` lo coloca como instancia de cubo escalado; el diseñador lo
+     puede mover, quitar o sustituir por una malla real en el asset.
+   - *Plazas* exportadas como `FTNTerrainModuleFlatArea` (centro, radio, cota) para
+     asentar puzzles.
+8. Desenfoque final 1-4-6-4-1: sin picos de ruido.
 
-Cifras de la tanda actual: cota en [−12,3, 42,3] m; pendiente p99 máxima 75,6°
-(taludes, por diseño). 15 MB de PNG.
+Validación por módulo en el script: borde canónico byte a byte; bajo cada tablero hay
+≥ 4 m de hueco y en ambos apoyos el terreno llega al tablero.
+
+Cifras de la tanda actual: 185 atajos, 115 rutas altas, 115 puentes; cota en
+[−12,5, 39,3] m; pendiente p99 máxima 75,9° (taludes, por diseño). 15 MB de PNG.
 
 ## 5. Convenciones
 
