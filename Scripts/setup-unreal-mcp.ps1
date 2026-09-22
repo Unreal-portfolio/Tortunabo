@@ -3,10 +3,12 @@
     Instala el plugin de editor UnrealMCPython (MCP de Unreal) en Plugins/.
 
 .DESCRIPTION
-    El plugin NO se versiona (binarios de terceros, solo editor). En el .uproject
-    figura como "Optional": quien no lo tenga abre el proyecto con normalidad.
-    Este script lo descarga de la release oficial, verifica su SHA-256 y lo
-    descomprime en Plugins/UnrealMCPython.
+    Desde 2026-09-22 el plugin SI se versiona en Plugins/UnrealMCPython (Source,
+    Content y Resources; los binarios se compilan con el proyecto). Este script
+    solo hace falta para reinstalarlo desde la release oficial (verifica su
+    SHA-256) o, con -WithClaude, para registrar el servidor MCP en Claude Code.
+    En el .uproject figura como "Optional": quien no lo tenga abre el proyecto
+    con normalidad.
 
     Con -WithClaude ademas clona el servidor MCP y lo registra en Claude Code
     (requiere git, uv y claude en el PATH).
