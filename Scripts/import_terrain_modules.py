@@ -7,9 +7,10 @@ Se ejecuta DENTRO del editor de Unreal (consola Python, MCP o headless):
 
 Lee Scripts/terrain_modules/manifest.json (lo escribe gen_terrain_modules.py) y crea, por
 cada modulo, en /Game/Terrain/Modules/<Topologia>/:
-    DA_<nombre>   UTN_TerrainModuleAsset con el heightfield del PNG de 16 bits
-    BP_<nombre>   Blueprint hijo de ATN_TerrainModuleTile con ese asset y el material
-                  triplanar del terreno (M_GridTerrain)
+    DA_<nombre>   UTN_TerrainModuleAsset con el heightfield del PNG de 16 bits, el bioma, la
+                  mascara de bioma (<nombre>_mask.png), arcos, tuneles, monolitos y plazas
+    BP_<nombre>   Blueprint hijo de ATN_TerrainModuleTile con ese asset, el material
+                  triplanar del terreno (M_GridTerrain) y el de basura/algas (M_GridJunk)
 
 Ademas deja BP_GridMapGenerator en modo modulos: ModuleClasses con todos los BP importados,
 celda del tamano del manifest y grid de 6x6 con camino de 6 a 12 celdas.
@@ -32,6 +33,7 @@ import unreal
 MODULES_ROOT = os.environ.get("TN_MODULES_ROOT", "/Game/Terrain/Modules")
 GRIDMAP_ROOT = "/Game/Blueprints/Gameplay/GridMap"
 TERRAIN_MATERIAL_PATH = f"{GRIDMAP_ROOT}/M_GridTerrain"
+JUNK_MATERIAL_PATH = f"{GRIDMAP_ROOT}/M_GridJunk"
 GENERATOR_BP_PATH = f"{GRIDMAP_ROOT}/BP_GridMapGenerator"
 TILE_CLASS_PATH = "/Script/Tortunabo.TN_TerrainModuleTile"
 
@@ -46,6 +48,12 @@ TOPOLOGY_ENUM = {
     "TLeft": unreal.TNTerrainModuleTopology.T_LEFT,
     "TRight": unreal.TNTerrainModuleTopology.T_RIGHT,
     "Cross": unreal.TNTerrainModuleTopology.CROSS,
+}
+
+BIOME_ENUM = {
+    "sand": unreal.TNTerrainBiome.SAND,
+    "water": unreal.TNTerrainBiome.WATER,
+    "algae": unreal.TNTerrainBiome.ALGAE,
 }
 
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -135,6 +143,18 @@ def make_bridge(data):
     return bridge
 
 
+def make_monolith(data):
+    """Monolito del manifest (metros) a FTNTerrainModuleMonolith (uu)."""
+    monolith = unreal.TNTerrainModuleMonolith()
+    monolith.set_editor_property("center", unreal.Vector2D(data["x_m"] * 100.0, data["y_m"] * 100.0))
+    monolith.set_editor_property("base_height", data["base_m"] * 100.0)
+    monolith.set_editor_property("radius", data["radius_m"] * 100.0)
+    monolith.set_editor_property("height", data["height_m"] * 100.0)
+    monolith.set_editor_property("yaw", float(data["yaw_deg"]))
+    monolith.set_editor_property("lean", float(data["lean_deg"]))
+    return monolith
+
+
 def make_flat_area(data):
     """Plaza del manifest (metros) a FTNTerrainModuleFlatArea (uu)."""
     area = unreal.TNTerrainModuleFlatArea()
@@ -144,7 +164,7 @@ def make_flat_area(data):
     return area
 
 
-def build_module_asset(folder, module, manifest, heights):
+def build_module_asset(folder, module, manifest, heights, mask):
     name = f"DA_{module['name']}"
     path = f"{folder}/{name}"
     asset = load_or_none(path)
@@ -160,11 +180,16 @@ def build_module_asset(folder, module, manifest, heights):
         raise RuntimeError(f"{name}: SetHeightfield rechazo el heightfield")
     asset.set_editor_property("bridges", [make_bridge(b) for b in module.get("bridges", [])])
     asset.set_editor_property("flat_areas", [make_flat_area(a) for a in module.get("flat_areas", [])])
+    asset.set_editor_property("monoliths", [make_monolith(m) for m in module.get("monoliths", [])])
+    asset.set_editor_property("biome", BIOME_ENUM[module.get("biome", "sand")])
+    asset.set_editor_property("secondary_biome", BIOME_ENUM[module.get("secondary_biome", module.get("biome", "sand"))])
+    if not asset.set_biome_mask(mask):
+        raise RuntimeError(f"{name}: SetBiomeMask rechazo la mascara")
     asset_lib.save_loaded_asset(asset)
     return asset
 
 
-def build_module_blueprint(folder, module, asset, material, module_size):
+def build_module_blueprint(folder, module, asset, material, junk_material, module_size):
     name = f"BP_{module['name']}"
     path = f"{folder}/{name}"
     blueprint = load_or_none(path)
@@ -179,6 +204,8 @@ def build_module_blueprint(folder, module, asset, material, module_size):
     defaults.set_editor_property("module_size", module_size)
     if material:
         defaults.set_editor_property("terrain_material", material)
+    if junk_material:
+        defaults.set_editor_property("junk_material", junk_material)
     unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
     asset_lib.save_loaded_asset(blueprint)
     return blueprint
@@ -209,6 +236,9 @@ def main():
     material = load_or_none(TERRAIN_MATERIAL_PATH)
     if not material:
         unreal.log_warning(f"{TERRAIN_MATERIAL_PATH} no existe: los modulos quedan sin material")
+    junk_material = load_or_none(JUNK_MATERIAL_PATH)
+    if not junk_material:
+        unreal.log_warning(f"{JUNK_MATERIAL_PATH} no existe: basura y algas quedan sin color por instancia")
 
     blueprints = []
     with unreal.ScopedSlowTask(len(manifest["modules"]), "Importando modulos de terreno") as task:
@@ -220,9 +250,14 @@ def main():
             width, height, heights = read_png16(f"{library_dir}/{module['file']}")
             if width != resolution or height != resolution:
                 raise ValueError(f"{module['name']}: {width}x{height}, se esperaba {resolution}")
+            mask = []
+            if "mask_file" in module:
+                mask_width, mask_height, mask = read_png16(f"{library_dir}/{module['mask_file']}")
+                if mask_width != resolution or mask_height != resolution:
+                    raise ValueError(f"{module['name']}: mascara {mask_width}x{mask_height}, se esperaba {resolution}")
             folder = f"{MODULES_ROOT}/{module['topology']}"
-            asset = build_module_asset(folder, module, manifest, heights)
-            blueprints.append(build_module_blueprint(folder, module, asset, material, module_size))
+            asset = build_module_asset(folder, module, manifest, heights, mask)
+            blueprints.append(build_module_blueprint(folder, module, asset, material, junk_material, module_size))
 
     configure_generator(blueprints, module_size)
     unreal.log(f"[TerrainModules] {len(blueprints)} modulos importados en {MODULES_ROOT}")

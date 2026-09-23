@@ -1,7 +1,7 @@
 # Terreno por módulos de 400 m — diseño e implementación
 
 Fecha: 2026-09-22
-Estado: implementado en `feat/procgen-terrain`; pendiente de playtest visual
+Estado: implementado en `feat/procgen-terrain` (fases 1–4); pendiente de playtest visual
 Sustituye a: `2026-09-21-Terreno-Stamps-Design.md` (queda vigente solo su fase 4, la
 herramienta de autoría en editor) y a `2026-09-21-Terreno-Modular-Design.md`.
 
@@ -132,3 +132,49 @@ editor, reimportar los 600, pasar `Tortunabo.TerrainModule.*` (6 tests) y el smo
 - Exponer los centros de las plazas en el asset para asentar puzzles (`ATN_ChunkManager`).
 - Coste de carga: 40 401 vértices por módulo, cocinado de colisión síncrono; medir con
   16 celdas antes de subir el grid.
+
+## 8. Fases 3 y 4: rasgos de roca y biomas (2026-09-23)
+
+Decisiones de Rodrigo el 2026-09-23: tres biomas, **arena** (desolada o montañosa),
+**agua** ("el típico fuerte o foso que hace un niño con una murallita para caminar") y
+**algas** (zonas frondosas, bosque de algas en tierra); cueva = túnel sobre el pasillo;
+el agua es poco profunda y se camina (nadar queda para el futuro).
+
+### Rasgos nuevos del generador (F3)
+
+| Rasgo | Dónde | Cómo |
+|---|---|---|
+| Túnel | Tramo recto del pasillo principal sin plaza lateral (se reserva al decidirlo) | Arco (`kind: "tunnel"`) de 16–32 m a lo largo del pasillo y 4 m de grosor; las paredes deben llegar al techo en los dos extremos. Lo construye `BuildArchMesh`. |
+| Monolito | Borde de las plazas o meseta, a ≥ 7 m + radio del eje del pasillo | `FTNTerrainModuleMonolith` (radio 2,5–5 m, 10–26 m de alto, inclinación ≤ 7°), malla de `TNTerrainModule::BuildMonolithMesh`. Pie enterrado 1 m. |
+| Plaza hundida | Plazas laterales (la central nunca) | El suelo baja 3,5–6 m con una rampa de 11 m (~28°). Fuera del bioma de agua no baja del agua + 1 m. `flat_areas[].sunken`. |
+| Acantilado | Un lado del pasillo de una salida, tramo de 40–70 m | La meseta sube 12–24 m más, el talud se estrecha a 2 m y la roca se escalona cada 3 m. |
+
+### Biomas (F4)
+
+- Estilos por bioma: arena = `desert`, `canyon`, `mountain`; agua = `causeway` (el
+  pasillo es la muralla entre un mar de 1–2 m de fondo) y `fort` (foso de agua y
+  murallita de 2,2 m alrededor de la plaza central, con puerta donde entra el pasillo);
+  algas = `kelp_forest`, `kelp_meadow`.
+- Librería: 100 módulos por topología = 85 puros repartidos entre los 3 biomas + 15
+  mixtos (5 por pareja). Un mixto toma la forma de su bioma principal y un frente difuso
+  lleva hacia el secundario el color, las algas y el mar.
+- Máscara por módulo (`<nombre>_mask.png`, 16 bits como el heightfield): byte alto =
+  peso del bioma secundario, byte bajo = densidad del bosque de algas. Va al asset
+  (`BiomeMask`, `Biome`, `SecondaryBiome`).
+- `ATN_TerrainModuleTile`: paleta de color de vértice por bioma
+  (`TNTerrainBiome::ColorsFor`), fundida por la máscara en los mixtos; bosque de algas
+  sembrado de forma determinista desde la semilla del asset (tallos, hojas y matas en
+  tres ISM **sin colisión**, color por instancia con `M_GridJunk`).
+- `ATN_GridMapGenerator` (`bUseBiomeRegions`): `PlanPathBiomes` parte el camino en una
+  región por cada 4 celdas (máx. 3), con orden de biomas sorteado por la semilla; la
+  primera celda de cada región pide un módulo mixto. `BiomeMatchScore` elige el módulo
+  que mejor encaja y, si ninguno encaja, cualquiera que ofrezca las salidas. Los desvíos
+  heredan el bioma de la celda de la que salen.
+
+Cifras de la librería regenerada (600, 200 m, sustituye a la de 400 m y a la muestra
+`ModulesPreview`, ya borrada): 68 túneles, 81 arcos, 139 puentes, 690 monolitos, 101
+acantilados, 205 plazas hundidas; cota [−13,2, 57,1] m.
+
+Pendiente: playtest en PIE (lectura de cada bioma, túneles, fuerte), material propio
+para las algas (hoy reutilizan el de la basura), y el `ensure` del ISM al construir
+muros (previo a este cambio).
