@@ -158,4 +158,128 @@ namespace TNTerrainTunnel
 		TNTerrainModule::FinishRockMesh(Mesh, Colors);
 		return Mesh;
 	}
+
+	/** Cómo se cubre la bóveda de una cueva (BuildCaveMesh). */
+	struct FCaveShape
+	{
+		/** Tierra sobre el terreno que rodea la cueva: la colina asoma un poco por encima. */
+		double Cover = 150.0;
+		/** Grosor mínimo de tierra sobre la clave de la bóveda. */
+		double MinRoof = 250.0;
+		/** Joroba extra en el centro, sobre el pasillo (fracción de la media anchura). */
+		double Dome = 0.18;
+		/** Faldón: hasta dónde se extiende la colina más allá de las paredes, y cuánto se entierra. */
+		double Skirt = 1200.0;
+		double SkirtBuried = 120.0;
+	};
+
+	/**
+	 * Cueva que atraviesa una colina: misma bóveda interior que BuildTunnelMesh, pero por
+	 * fuera, en vez de un bloque de techo plano, una manta que copia el terreno que la
+	 * rodea (GroundAt, espacio local del módulo), sube en joroba sobre el pasillo y se
+	 * entierra en un faldón a ambos lados. Con los colores del terreno se lee como parte
+	 * del relieve y no como una pieza puesta encima. Las bocas quedan como la entrada de
+	 * una cueva en la ladera.
+	 */
+	inline TNGridTerrain::FTileMesh BuildCaveMesh(const FTNTerrainModuleBridge& Bridge, double FloorHeight, int32 Seed,
+		const TNTerrainModule::FModuleColors& Colors, TFunctionRef<double(const FVector2D&)> GroundAt,
+		const FTunnelShape& Shape = FTunnelShape(), const FCaveShape& Cave = FCaveShape())
+	{
+		TNGridTerrain::FTileMesh Mesh;
+		const int32 S = FMath::Max(Shape.Stations, 2);
+		const int32 N = FMath::Max(Shape.ProfilePoints, 6);
+		const double HalfOuter = Bridge.Length * 0.5;
+		const double HalfInner = FMath::Max(HalfOuter - Shape.InnerMargin, Shape.MinInnerHalfWidth);
+		const double Base = FloorHeight - Shape.BaseBuried;
+		const double Apex = Bridge.DeckHeight - Bridge.Thickness;
+		if (Bridge.Length <= 0.f || Bridge.Width <= 0.f || Apex <= FloorHeight || HalfInner >= HalfOuter) { return Mesh; }
+
+		const double YawRad = FMath::DegreesToRadians(static_cast<double>(Bridge.Yaw));
+		const FVector2D Across(FMath::Cos(YawRad), FMath::Sin(YawRad));
+		const FVector2D Along(-Across.Y, Across.X);
+		const TArray<FVector2D> Inner = InnerProfile(HalfInner, Apex, Base, N);
+		const double Reach = HalfOuter + Cave.Skirt;
+
+		FRandomStream Stream(Seed);
+		const double PhaseA = Stream.FRandRange(0.0, 2.0 * PI);
+		const double PhaseB = Stream.FRandRange(0.0, 2.0 * PI);
+		auto Bump = [&](double U, double K)
+		{
+			return 1.0 + Shape.Roughness * (0.6 * FMath::Sin(U * 0.0019 + K * 0.9 + PhaseA) + 0.4 * FMath::Sin(U * 0.0047 - K * 1.7 + PhaseB));
+		};
+
+		TArray<FVector> AxisPoints;
+		for (int32 St = 0; St <= S; ++St)
+		{
+			const double U = -Bridge.Width * 0.5 + Bridge.Width * St / S;
+			const FVector2D Mid = FVector2D(Bridge.Center) + Along * U;
+			AxisPoints.Add(FVector(Mid.X, Mid.Y, (Base + Apex) * 0.5));
+			const double Portal = 1.0 + 0.12 * FMath::Pow(FMath::Abs(U) / (Bridge.Width * 0.5), 4.0);
+			// Manta exterior: de +Reach a -Reach a través del pasillo.
+			for (int32 K = 0; K < N; ++K)
+			{
+				const double T = 1.0 - 2.0 * K / (N - 1.0);        // 1 .. -1
+				const double X = Reach * T;
+				const FVector2D P = Mid + Across * X;
+				const double Ground = GroundAt(P);
+				double Z;
+				if (K == 0 || K == N - 1)
+				{
+					Z = Ground - Cave.SkirtBuried;                  // el faldón se entierra
+				}
+				else
+				{
+					const double Inside = FMath::Clamp(1.0 - FMath::Abs(X) / HalfOuter, 0.0, 1.0);
+					const double Dome = Cave.Dome * HalfOuter * FMath::Sin(Inside * 0.5 * PI) * Bump(U, K) * 0.6;
+					const double Roof = (Apex + Cave.MinRoof) * Inside + Ground * (1.0 - Inside);
+					Z = FMath::Max(Ground + Cave.Cover, Roof + Dome);
+				}
+				Mesh.Vertices.Add(FVector(P.X, P.Y, Z));
+			}
+			for (int32 K = 0; K < N; ++K)
+			{
+				const double Scale = Portal * (2.0 - Bump(U, K + 31));
+				const FVector2D P = Mid + Across * (Inner[K].X * Scale);
+				Mesh.Vertices.Add(FVector(P.X, P.Y, Inner[K].Y));
+			}
+		}
+
+		auto AddTriangle = [&](int32 A, int32 B, int32 C, const FVector& Outward)
+		{
+			const FVector Cross = FVector::CrossProduct(Mesh.Vertices[B] - Mesh.Vertices[A], Mesh.Vertices[C] - Mesh.Vertices[A]);
+			if (FVector::DotProduct(Cross, Outward) > 0.0) { Swap(B, C); }
+			Mesh.Triangles.Append({ A, B, C });
+		};
+		const int32 Ring = 2 * N;
+		for (int32 St = 0; St < S; ++St)
+		{
+			for (int32 K = 0; K + 1 < N; ++K)
+			{
+				const int32 A = St * Ring + K, B = A + 1, C = A + Ring, D = C + 1;
+				AddTriangle(A, B, C, FVector::UpVector);
+				AddTriangle(B, D, C, FVector::UpVector);
+				const int32 E = St * Ring + N + K, F = E + 1, G = E + Ring, H = G + 1;
+				const FVector MidI = (Mesh.Vertices[E] + Mesh.Vertices[H]) * 0.5;
+				const FVector InI = (AxisPoints[St] + AxisPoints[St + 1]) * 0.5 - MidI;
+				AddTriangle(E, F, G, InI);
+				AddTriangle(F, H, G, InI);
+			}
+		}
+		// Bocas: la ladera entre la manta y la bóveda en cada extremo.
+		const FVector AlongDir(Along.X, Along.Y, 0.0);
+		for (int32 End = 0; End < 2; ++End)
+		{
+			const int32 St = End == 0 ? 0 : S;
+			const FVector Facing = End == 0 ? -AlongDir : AlongDir;
+			for (int32 K = 0; K + 1 < N; ++K)
+			{
+				const int32 A = St * Ring + K, B = A + 1, C = St * Ring + N + K, D = C + 1;
+				AddTriangle(A, B, C, Facing);
+				AddTriangle(B, D, C, Facing);
+			}
+		}
+
+		TNTerrainModule::FinishRockMesh(Mesh, Colors);
+		return Mesh;
+	}
 }

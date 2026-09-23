@@ -205,9 +205,18 @@ void ATN_TerrainModuleTile::BuildRocks(const TNTerrainModule::FModuleColors& Col
 		const int32 RockSeed = ModuleAsset->Seed * 31 + Index;
 		if (Bridge.Kind == ETNTerrainArchKind::Tunnel)
 		{
-			// Bóveda que llega al suelo del pasillo bajo su centro.
+			// Cueva: bóveda que llega al suelo del pasillo y, por fuera, una colina que copia
+			// el terreno de alrededor. Con el material del terreno, no el de roca: es relieve.
 			const double Floor = TNTerrainModule::SampleHeight(Field, FVector2D(Bridge.Center));
-			AddSection(TNTerrainTunnel::BuildTunnelMesh(Bridge, Floor, RockSeed, Colors));
+			const TNGridTerrain::FTileMesh Cave = TNTerrainTunnel::BuildCaveMesh(Bridge, Floor, RockSeed, Colors,
+				[&Field](const FVector2D& P) { return TNTerrainModule::SampleHeight(Field, P); });
+			if (Cave.Vertices.Num() > 0)
+			{
+				TerrainMesh->CreateMeshSection_LinearColor(Section, Cave.Vertices, Cave.Triangles, Cave.Normals,
+					TArray<FVector2D>(), Cave.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
+				if (TerrainMaterial) { TerrainMesh->SetMaterial(Section, TerrainMaterial); }
+				++Section;
+			}
 		}
 		else
 		{

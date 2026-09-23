@@ -414,4 +414,62 @@ bool FTNTerrainBiomeTunnelMeshTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainBiomeCaveMeshTest,
+	"Tortunabo.TerrainBiome.CaveMesh",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTerrainBiomeCaveMeshTest::RunTest(const FString& Parameters)
+{
+	// Pasillo de 16 m (suelo a 1 m) entre dos mesetas a 12 m; la cueva lo cruza en X.
+	FTNTerrainModuleBridge Tunnel;
+	Tunnel.Center = FVector2D(500.0, -300.0);
+	Tunnel.Yaw = 0.f;
+	Tunnel.Length = 4000.f;
+	Tunnel.Width = 2400.f;
+	Tunnel.Thickness = 400.f;
+	Tunnel.DeckHeight = 1200.f;
+	Tunnel.Kind = ETNTerrainArchKind::Tunnel;
+	const double Floor = 100.0;
+	auto GroundAt = [&](const FVector2D& P) { return FMath::Abs(P.X - Tunnel.Center.X) < 800.0 ? Floor : 1200.0; };
+
+	const TNTerrainModule::FModuleColors Colors;
+	const TNTerrainTunnel::FTunnelShape Shape;
+	const TNTerrainTunnel::FCaveShape Cave;
+	const TNGridTerrain::FTileMesh Mesh = TNTerrainTunnel::BuildCaveMesh(Tunnel, Floor, 5, Colors, GroundAt, Shape, Cave);
+	const int32 N = Shape.ProfilePoints;
+	TestEqual(TEXT("vértices: manta e interior por estación"), Mesh.Vertices.Num(), (Shape.Stations + 1) * 2 * N);
+	bool bIndicesValid = Mesh.Triangles.Num() > 0 && Mesh.Triangles.Num() % 3 == 0;
+	for (const int32 Index : Mesh.Triangles) { bIndicesValid &= Mesh.Vertices.IsValidIndex(Index); }
+	TestTrue(TEXT("índices válidos"), bIndicesValid);
+	bool bFinite = true;
+	for (const FVector& V : Mesh.Vertices) { bFinite &= !V.ContainsNaN(); }
+	TestTrue(TEXT("sin NaN"), bFinite);
+
+	bool bCovered = true;
+	bool bSkirtBuried = true;
+	const int32 Ring = 2 * N;
+	for (int32 St = 0; St <= Shape.Stations; ++St)
+	{
+		for (int32 K = 0; K < N; ++K)
+		{
+			const FVector& V = Mesh.Vertices[St * Ring + K];
+			const double Ground = GroundAt(FVector2D(V.X, V.Y));
+			if (K == 0 || K == N - 1) { bSkirtBuried &= V.Z < Ground; }
+			else { bCovered &= V.Z >= Ground + Cave.Cover - 1.0; }
+		}
+	}
+	TestTrue(TEXT("la manta queda por encima del terreno (colina, no losa)"), bCovered);
+	TestTrue(TEXT("el faldón se entierra"), bSkirtBuried);
+
+	double RoofOverAxis = -UE_BIG_NUMBER;
+	for (int32 St = 0; St <= Shape.Stations; ++St)
+	{
+		RoofOverAxis = FMath::Max(RoofOverAxis, static_cast<double>(Mesh.Vertices[St * Ring + N / 2].Z));
+	}
+	TestTrue(TEXT("sobre el pasillo la colina supera la clave de la bóveda"),
+		RoofOverAxis >= Tunnel.DeckHeight - Tunnel.Thickness + Cave.MinRoof - 1.0);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
