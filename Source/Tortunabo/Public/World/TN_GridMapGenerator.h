@@ -114,6 +114,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
 	bool bUseBiomeRegions = true;
 
+	/** Si true, cada módulo funde sus bordes con los de sus vecinos (TNTerrainSeam): no se
+	 *  lee la línea de cada celda y el agua de dos módulos se une. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
+	bool bBlendModuleSeams = true;
+
 	/** Si true, un módulo también se puede colocar reflejado (dobla la variedad). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
 	bool bAllowMirroredModules = true;

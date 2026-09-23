@@ -89,6 +89,19 @@ namespace TNTerrainModule
 		return Rotated;
 	}
 
+	/** Desplazamiento en celdas (X Norte, Y Este) girado Steps cuartos de vuelta, con la
+	 *  convención de FRotator: yaw +90° lleva Norte (+X) a Este (+Y). */
+	inline FIntPoint RotateCellOffset(FIntPoint Offset, int32 Steps)
+	{
+		switch (((Steps % 4) + 4) % 4)
+		{
+			case 1:  return FIntPoint(-Offset.Y, Offset.X);
+			case 2:  return FIntPoint(-Offset.X, -Offset.Y);
+			case 3:  return FIntPoint(Offset.Y, -Offset.X);
+			default: return Offset;
+		}
+	}
+
 	/** Salidas que necesita una celda de camino ya clasificada (recta o giro, con su yaw). */
 	inline uint8 RequiredExitMask(const TNGridLogic::FTNGridCell& Cell)
 	{

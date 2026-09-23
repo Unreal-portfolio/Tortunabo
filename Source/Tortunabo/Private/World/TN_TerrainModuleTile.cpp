@@ -10,6 +10,7 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
+#include "World/TN_TerrainSeamDecisions.h"
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -122,6 +123,7 @@ void ATN_TerrainModuleTile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME_CONDITION(ATN_TerrainModuleTile, WallSeed, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(ATN_TerrainModuleTile, bMirrored, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(ATN_TerrainModuleTile, OuterSides, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(ATN_TerrainModuleTile, SeamNeighbors, COND_InitialOnly);
 }
 
 void ATN_TerrainModuleTile::InitializeModule(uint8 InBlockedExits, int32 InWallSeed, bool bInMirrored, uint8 InOuterSides)
@@ -269,6 +271,44 @@ ETNTerrainModuleTopology ATN_TerrainModuleTile::GetTopology() const
 	return ModuleAsset ? ModuleAsset->Topology : ETNTerrainModuleTopology::Straight;
 }
 
+TNGridTerrain::FTileMesh ATN_TerrainModuleTile::BuildSeamedMesh(const TNTerrainModule::FModuleField& Field,
+	const TNTerrainModule::FModuleColors& Colors, const TNTerrainModule::FModuleColors& BlendColors) const
+{
+	// Las alturas de cada vecino (con su costa) viven aquí mientras se construye la malla:
+	// FSeamCell solo guarda vistas sobre ellas.
+	TArray<TArray<uint16>> NeighborHeights;
+	NeighborHeights.Reserve(SeamNeighbors.Num());
+	TArray<TNTerrainSeam::FSeamCell> Cells;
+	Cells.Reserve(SeamNeighbors.Num() + 1);
+
+	TNTerrainSeam::FSeamCell& Self = Cells.AddDefaulted_GetRef();
+	Self.Field = Field;
+	Self.Colors = Colors;
+	Self.BlendColors = BlendColors;
+	Self.BiomeMask = ModuleAsset->BiomeMask;
+	Self.bMixed = ModuleAsset->IsMixed();
+
+	for (const FTNSeamNeighbor& Neighbor : SeamNeighbors)
+	{
+		if (!Neighbor.Asset || !Neighbor.Asset->IsValidModule()) { continue; }
+		const TArray<uint16>& Heights = NeighborHeights.Add_GetRef(
+			TNTerrainCoast::ApplyCoast(*Neighbor.Asset, ModuleSize, Neighbor.bMirrored, Neighbor.OuterSides, Neighbor.Seed));
+		TNTerrainSeam::FSeamCell& Cell = Cells.AddDefaulted_GetRef();
+		Cell.Field = TNTerrainModule::MakeField(*Neighbor.Asset, ModuleSize, Neighbor.bMirrored);
+		Cell.Field.Heights = Heights;
+		Cell.Center = FVector2D(Neighbor.LocalX, Neighbor.LocalY) * ModuleSize;
+		Cell.RelYawSteps = Neighbor.RelYawSteps;
+		Cell.Colors = TNTerrainBiome::ColorsFor(Neighbor.Asset->Biome, WaterLevel);
+		Cell.BlendColors = TNTerrainBiome::ColorsFor(Neighbor.Asset->SecondaryBiome, WaterLevel);
+		Cell.BiomeMask = Neighbor.Asset->BiomeMask;
+		Cell.bMixed = Neighbor.Asset->IsMixed();
+	}
+
+	TNTerrainSeam::FSeamSettings Settings;
+	Settings.Band = SeamBand;
+	return TNTerrainSeam::BuildFusedMesh(Cells, Settings);
+}
+
 void ATN_TerrainModuleTile::BuildModule()
 {
 	if (!TerrainMesh)
@@ -293,7 +333,7 @@ void ATN_TerrainModuleTile::BuildModule()
 	if (BridgeInstances) { BridgeInstances->ClearInstances(); }
 
 	if (BuiltFromAsset.Get() == ModuleAsset && bBuiltMirrored == bMirrored && BuiltOuterSides == OuterSides
-		&& TerrainMesh->GetNumSections() > 0)
+		&& BuiltSeamNeighbors == SeamNeighbors && TerrainMesh->GetNumSections() > 0)
 	{
 		return;
 	}
@@ -305,8 +345,9 @@ void ATN_TerrainModuleTile::BuildModule()
 	PlacedHeights = TNTerrainCoast::ApplyCoast(*ModuleAsset, ModuleSize, bMirrored, OuterSides, WallSeed);
 	TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize, bMirrored);
 	Field.Heights = PlacedHeights;
-	const TNGridTerrain::FTileMesh Mesh = TNTerrainModule::BuildModuleMesh(Field, Colors,
-		ModuleAsset->IsMixed() ? &BlendColors : nullptr, ModuleAsset->BiomeMask);
+	const TNGridTerrain::FTileMesh Mesh = SeamNeighbors.Num() > 0
+		? BuildSeamedMesh(Field, Colors, BlendColors)
+		: TNTerrainModule::BuildModuleMesh(Field, Colors, ModuleAsset->IsMixed() ? &BlendColors : nullptr, ModuleAsset->BiomeMask);
 
 	// Sin UV: el material del terreno es triplanar y deriva las coordenadas de la posición.
 	TerrainMesh->ClearAllMeshSections();
@@ -321,6 +362,7 @@ void ATN_TerrainModuleTile::BuildModule()
 	BuiltFromAsset = ModuleAsset;
 	bBuiltMirrored = bMirrored;
 	BuiltOuterSides = OuterSides;
+	BuiltSeamNeighbors = SeamNeighbors;
 
 	UE_LOG(LogTortunabo, Verbose, TEXT("[TerrainModule] '%s' construido desde '%s': %d vértices."),
 		*GetName(), *ModuleAsset->GetName(), Mesh.Vertices.Num());

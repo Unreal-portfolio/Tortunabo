@@ -11,6 +11,7 @@ class UProceduralMeshComponent;
 class UTN_TerrainModuleAsset;
 enum class ETNTerrainModuleTopology : uint8;
 namespace TNTerrainModule { struct FModuleColors; struct FModuleField; }
+namespace TNGridTerrain { struct FTileMesh; }
 
 /** Lados del módulo como bits, para marcar bocas bloqueadas (mismo orden que TNGridLogic). */
 UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
@@ -23,6 +24,44 @@ enum class ETNTerrainModuleSide : uint8
 	West  = 1 << 3
 };
 ENUM_CLASS_FLAGS(ETNTerrainModuleSide);
+
+/** Módulo vecino con el que el tile funde sus bordes (TNTerrainSeam). Lo fija el generador
+ *  y viaja replicado una vez: cada máquina funde con los mismos datos. */
+USTRUCT()
+struct FTNSeamNeighbor
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TObjectPtr<UTN_TerrainModuleAsset> Asset;
+
+	/** Posición de la celda vecina en celdas, en el espacio local del tile (+X Norte, +Y Este). */
+	UPROPERTY()
+	int8 LocalX = 0;
+
+	UPROPERTY()
+	int8 LocalY = 0;
+
+	/** Cuartos de vuelta del vecino respecto al tile. */
+	UPROPERTY()
+	int8 RelYawSteps = 0;
+
+	UPROPERTY()
+	bool bMirrored = false;
+
+	/** Lados exteriores del vecino (su espacio local colocado) y su semilla: su costa. */
+	UPROPERTY()
+	uint8 OuterSides = 0;
+
+	UPROPERTY()
+	int32 Seed = 0;
+
+	bool operator==(const FTNSeamNeighbor& Other) const
+	{
+		return Asset == Other.Asset && LocalX == Other.LocalX && LocalY == Other.LocalY && RelYawSteps == Other.RelYawSteps
+			&& bMirrored == Other.bMirrored && OuterSides == Other.OuterSides && Seed == Other.Seed;
+	}
+};
 
 /**
  * ATN_TerrainModuleTile
@@ -58,6 +97,9 @@ public:
 
 	/** Fija las bocas bloqueadas y la semilla de sus muros. Solo servidor, antes de FinishSpawning. */
 	void InitializeModule(uint8 InBlockedExits, int32 InWallSeed, bool bInMirrored = false, uint8 InOuterSides = 0);
+
+	/** Fija los vecinos con los que se funden los bordes. Solo servidor, antes de FinishSpawning. */
+	void SetSeamNeighbors(const TArray<FTNSeamNeighbor>& InNeighbors) { SeamNeighbors = InNeighbors; }
 
 	uint8 GetBlockedExits() const { return BlockedExits; }
 
@@ -127,6 +169,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "Module|Walls")
 	int32 WallSeed = 0;
 
+	/** Vecinos (hasta 8) con los que se funden los bordes: sin ellos el módulo se construye
+	 *  tal cual. Replicado una vez. */
+	UPROPERTY(VisibleAnywhere, Replicated, Category = "Module|Seams")
+	TArray<FTNSeamNeighbor> SeamNeighbors;
+
+	/** Media anchura de la banda de fusión a cada lado de un borde compartido, en uu. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module|Seams", meta = (ClampMin = "0.0"))
+	float SeamBand = 4000.f;
+
 	/** Material de la basura. Debe leer el color de PerInstanceCustomData (3 floats). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module|Walls")
 	TObjectPtr<UMaterialInterface> JunkMaterial;
@@ -153,6 +204,9 @@ private:
 	void BuildRocks(const TNTerrainModule::FModuleColors& Colors, const TNTerrainModule::FModuleField& Field);
 	void BuildWalls();
 	void BuildFoliage(const TNTerrainModule::FModuleField& Field);
+	/** Malla del terreno fundida con SeamNeighbors (TNTerrainSeam::BuildFusedMesh). */
+	TNGridTerrain::FTileMesh BuildSeamedMesh(const TNTerrainModule::FModuleField& Field,
+		const TNTerrainModule::FModuleColors& Colors, const TNTerrainModule::FModuleColors& BlendColors) const;
 
 	/** Alturas con la costa exterior aplicada (las usan malla, colisión y algas). */
 	TArray<uint16> PlacedHeights;
@@ -161,4 +215,5 @@ private:
 	TWeakObjectPtr<const UTN_TerrainModuleAsset> BuiltFromAsset;
 	bool bBuiltMirrored = false;
 	uint8 BuiltOuterSides = 0;
+	TArray<FTNSeamNeighbor> BuiltSeamNeighbors;
 };
