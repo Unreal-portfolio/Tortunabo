@@ -245,6 +245,28 @@ def configure_generator(module_blueprints, module_size):
     asset_lib.save_loaded_asset(blueprint)
 
 
+def configure_preset(preset, blueprints_by_name):
+    """Mapa preparado: PresetCells del generador con el modulo de cada celda. ModuleClasses
+    (la libreria del metodo aleatorio) no se toca: vaciar PresetCells vuelve a ese modo."""
+    blueprint = load_or_none(GENERATOR_BP_PATH)
+    if not blueprint:
+        unreal.log_warning(f"{GENERATOR_BP_PATH} no existe: el mapa preparado no se configura")
+        return
+    cells = []
+    for data in preset["cells"]:
+        cell = unreal.TNPresetCell()
+        cell.set_editor_property("cell", unreal.IntPoint(data["col"], data["row"]))
+        cell.set_editor_property("module_class", blueprints_by_name[data["name"]].generated_class())
+        cell.set_editor_property("outer_sides", data["outer_sides"])
+        cell.set_editor_property("is_start", data["is_start"])
+        cell.set_editor_property("is_end", data["is_end"])
+        cells.append(cell)
+    defaults = unreal.get_default_object(blueprint.generated_class())
+    defaults.set_editor_property("preset_cells", cells)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+
+
 def main():
     library_dir = os.environ.get("TN_MODULES_DIR", f"{project_dir()}/Scripts/terrain_modules")
     with open(f"{library_dir}/manifest.json", encoding="utf-8") as handle:
@@ -290,7 +312,11 @@ def main():
             asset = build_module_asset(folder, module, manifest, heights, mask, coast)
             blueprints.append(build_module_blueprint(folder, module, asset, material, junk_material, module_size))
 
-    configure_generator(blueprints, module_size)
+    if "preset" in manifest:
+        by_name = {module["name"]: bp for module, bp in zip(manifest["modules"], blueprints)}
+        configure_preset(manifest["preset"], by_name)
+    else:
+        configure_generator(blueprints, module_size)
     unreal.log(f"[TerrainModules] {len(blueprints)} modulos importados en {MODULES_ROOT}")
 
 

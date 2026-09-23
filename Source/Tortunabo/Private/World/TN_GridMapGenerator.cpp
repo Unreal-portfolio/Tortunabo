@@ -87,6 +87,14 @@ void ATN_GridMapGenerator::Generate()
 {
 	Clear();
 
+	if (PresetCells.Num() > 0)
+	{
+		const FIntPoint Start = GeneratePreset();
+		if (bPlacePlayerStartsAtStartCell) { PlacePlayerStarts(Start); }
+		UE_LOG(LogTortunabo, Log, TEXT("[GridMap] Mapa preparado generado: %d celdas."), PresetCells.Num());
+		return;
+	}
+
 	if (!IsModuleMode() && !TerrainTileClass && (!StraightTileClass || !TurnTileClass))
 	{
 		UE_LOG(LogTortunabo, Error,
@@ -172,6 +180,27 @@ void ATN_GridMapGenerator::GenerateGreybox(const TArray<FIntPoint>& Path,
 			}
 		}
 	}
+}
+
+FIntPoint ATN_GridMapGenerator::GeneratePreset()
+{
+	const bool bIsGameWorld = GetWorld() && GetWorld()->IsGameWorld();
+	FIntPoint Start = FIntPoint::ZeroValue;
+	for (const FTNPresetCell& Cell : PresetCells)
+	{
+		if (!Cell.ModuleClass) { continue; }
+		FTransform TileTransform;
+		ATN_TerrainModuleTile* Tile = Cast<ATN_TerrainModuleTile>(BeginSpawnTile(Cell.ModuleClass, Cell.Cell, 0, TileTransform));
+		if (!Tile) { continue; }
+		// Sin bocas tapadas, sin espejo ni fusión: el terreno ya es continuo. La semilla del
+		// muro también alimenta la costa, que no hunde nada (CoastWeights a 0).
+		Tile->InitializeModule(0, LastUsedSeed ^ (Cell.Cell.X * 73856093) ^ (Cell.Cell.Y * 19349663), false, Cell.OuterSides);
+		FinishTile(Tile, TileTransform);
+		if (!bIsGameWorld) { Tile->BuildModule(); }
+		if (Cell.bIsStart) { Tile->Tags.AddUnique(StartTileTag); Start = Cell.Cell; }
+		if (Cell.bIsEnd)   { Tile->Tags.AddUnique(EndTileTag); }
+	}
+	return Start;
 }
 
 void ATN_GridMapGenerator::GenerateTerrain(const TArray<FIntPoint>& Path)

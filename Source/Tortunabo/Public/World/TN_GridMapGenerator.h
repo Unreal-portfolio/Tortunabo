@@ -38,9 +38,37 @@ namespace TNGridRoutes { struct FTNDetour; }
  *     entre todos forman un heightfield continuo (ver TN_GridTerrainDecisions.h).
  *   - Greybox (nada de lo anterior): tiles de recta, giro y relleno hechos de cajas.
  *
+ *   - Mapa preparado (PresetCells no vacío): cada celda recibe exactamente el módulo
+ *     indicado, sin girar ni reflejar. Los módulos salen de un único terreno continuo
+ *     cortado por celdas (Scripts/gen_terrain_preset.py), así que casan sin fusión.
+ *
  * El generador solo actúa con autoridad. No se integra todavía con ATN_ChunkManager ni
  * con el flujo de partida.
  */
+/** Celda de un mapa preparado: qué módulo va en ella. */
+USTRUCT(BlueprintType)
+struct FTNPresetCell
+{
+	GENERATED_BODY()
+
+	/** Celda (X columna hacia el Este, Y fila hacia el Norte). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Preset")
+	FIntPoint Cell = FIntPoint::ZeroValue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Preset")
+	TSubclassOf<ATN_TerrainModuleTile> ModuleClass;
+
+	/** Lados de la celda que dan fuera del mapa (bits de ETNTerrainModuleSide): caja invisible. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Preset")
+	uint8 OuterSides = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Preset")
+	bool bIsStart = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Preset")
+	bool bIsEnd = false;
+};
+
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_GridMapGenerator : public AActor
 {
@@ -103,6 +131,11 @@ protected:
 	 *  mapa se construye con módulos y se ignoran los otros dos modos. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
 	TArray<TSubclassOf<ATN_TerrainModuleTile>> ModuleClasses;
+
+	/** Mapa preparado. Si no está vacío, manda sobre los demás modos: se coloca cada
+	 *  módulo en su celda tal cual (ver FTNPresetCell). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Preset")
+	TArray<FTNPresetCell> PresetCells;
 
 	/** Si true, las celdas sin camino también reciben un módulo (rotación sorteada). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
@@ -185,6 +218,8 @@ protected:
 private:
 	void GenerateGreybox(const TArray<FIntPoint>& Path, TFunctionRef<int32(int32 Min, int32 Max)> RandRange);
 	void GenerateTerrain(const TArray<FIntPoint>& Path);
+	/** Coloca PresetCells; devuelve la celda de inicio (o (0,0) si ninguna lo es). */
+	FIntPoint GeneratePreset();
 	void GenerateModules(const TArray<FIntPoint>& Path, const TArray<TNGridRoutes::FTNDetour>& Detours,
 		TFunctionRef<int32(int32 Min, int32 Max)> RandRange);
 
