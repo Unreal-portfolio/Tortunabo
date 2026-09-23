@@ -7,6 +7,7 @@
 class ATN_GridTerrainTile;
 class ATN_TerrainModuleTile;
 namespace TNTerrainBiome { struct FCellBiome; }
+enum class ETNTerrainEdge : uint8;
 class UMaterialInterface;
 class UStaticMeshComponent;
 namespace TNGridRoutes { struct FTNDetour; }
@@ -181,7 +182,8 @@ private:
 	 *  encajan con ese bioma (TNTerrainBiome::BiomeMatchScore). */
 	TSubclassOf<ATN_TerrainModuleTile> PickModuleForExits(uint8 RequiredExits,
 		TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps,
-		const TNTerrainBiome::FCellBiome* Wanted = nullptr) const;
+		const TNTerrainBiome::FCellBiome* Wanted = nullptr, const ETNTerrainEdge* WantedEdges = nullptr,
+		const TSet<UClass*>* UsedClasses = nullptr) const;
 
 	/** Spawn diferido: devuelve el tile sin terminar para poder inicializarlo; el llamante
 	 *  debe cerrar con FinishTile. */

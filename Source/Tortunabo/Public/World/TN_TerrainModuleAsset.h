@@ -43,6 +43,22 @@ enum class ETNTerrainBiome : uint8
 };
 
 /**
+ * Tipo de borde de un lado del módulo. Dos módulos vecinos casan si el lado que comparten
+ * es del mismo tipo (el generador de mapa lo garantiza). Los tres perfiles valen lo mismo
+ * en las esquinas, así que lados de tipos distintos conviven en un mismo módulo.
+ */
+UENUM(BlueprintType)
+enum class ETNTerrainEdge : uint8
+{
+	/** Cresta de 10 m con boca de pasillo en el centro (el borde de siempre). */
+	Crest,
+	/** Llano de arena: se cruza por cualquier punto (explanada). */
+	Open,
+	/** Fondo de mar poco profundo: se vadea por cualquier punto. */
+	Water
+};
+
+/**
  * Monolito: pilar de roca que el heightfield no puede representar (paredes verticales de
  * pocos metros de radio). El tile lo construye con TNTerrainModule::BuildMonolithMesh.
  * Todo en uu y en espacio local del módulo.
@@ -177,6 +193,17 @@ public:
 	/** Pilares de roca. Editables como los puentes. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module")
 	TArray<FTNTerrainModuleMonolith> Monoliths;
+
+	/** Tipo de borde de cada lado sin rotar (Norte, Este, Sur, Oeste). Vacío = los cuatro
+	 *  cresta, como todos los módulos de pasillo. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module")
+	TArray<ETNTerrainEdge> SideEdges;
+
+	/** Tipo de borde del lado local Side (numeración de TNGridLogic). */
+	ETNTerrainEdge GetSideEdge(int32 Side) const
+	{
+		return SideEdges.IsValidIndex(Side) ? SideEdges[Side] : ETNTerrainEdge::Crest;
+	}
 
 	/** Bioma principal: manda en la paleta donde la máscara vale 0. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module|Biome")

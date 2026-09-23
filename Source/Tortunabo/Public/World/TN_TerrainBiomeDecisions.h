@@ -167,14 +167,45 @@ namespace TNTerrainBiome
 	// Regiones del mapa
 	// ─────────────────────────────────────────────────────────────────────────
 
-	/** Bioma deseado para una celda del camino. Secondary != Primary: celda de frontera. */
+	/** Bioma deseado para una celda del camino. Secondary != Primary: celda de frontera.
+	 *  bOpen: la región es abierta (explanada de arena o mar con islas): entre celdas
+	 *  conectadas de la misma región no hay pared. */
 	struct FCellBiome
 	{
 		ETNTerrainBiome Primary = ETNTerrainBiome::Sand;
 		ETNTerrainBiome Secondary = ETNTerrainBiome::Sand;
+		bool bOpen = false;
 
 		bool IsMixed() const { return Primary != Secondary; }
 	};
+
+	/** Probabilidad (%) de que una región de ese bioma sea abierta. Las algas son siempre
+	 *  bosque cerrado. */
+	inline int32 OpenRegionChance(ETNTerrainBiome Biome)
+	{
+		switch (Biome)
+		{
+			case ETNTerrainBiome::Sand:  return 45;
+			case ETNTerrainBiome::Water: return 55;
+			default:                     return 0;
+		}
+	}
+
+	/**
+	 * Tipo de borde del lado compartido por dos celdas: abierto (o agua) solo entre celdas
+	 * conectadas de la misma región abierta; cresta en todos los demás casos (otra región,
+	 * celdas vecinas sin conexión, fuera del mapa).
+	 */
+	inline ETNTerrainEdge EdgeBetween(const FCellBiome& A, const FCellBiome& B, bool bConnected)
+	{
+		if (!bConnected || !A.bOpen || !B.bOpen || A.Primary != B.Primary) { return ETNTerrainEdge::Crest; }
+		switch (A.Primary)
+		{
+			case ETNTerrainBiome::Sand:  return ETNTerrainEdge::Open;
+			case ETNTerrainBiome::Water: return ETNTerrainEdge::Water;
+			default:                     return ETNTerrainEdge::Crest;
+		}
+	}
 
 	/**
 	 * Reparte biomas a lo largo de un camino de PathLength celdas: 1 región por cada 4
@@ -193,6 +224,11 @@ namespace TNTerrainBiome
 			Swap(Order[I], Order[RandRange(0, I)]);
 		}
 		const int32 Regions = FMath::Clamp(PathLength / 4, 1, NumBiomes);
+		bool bOpenRegion[NumBiomes] = {};
+		for (int32 K = 0; K < Regions; ++K)
+		{
+			bOpenRegion[K] = RandRange(0, 99) < OpenRegionChance(Order[K]);
+		}
 
 		// Cortes: región k empieza en ~k * L / Regions, con ±1 celda de juego.
 		TArray<int32> Starts = { 0 };
@@ -210,6 +246,7 @@ namespace TNTerrainBiome
 			while (Region + 1 < Starts.Num() && I >= Starts[Region + 1]) { ++Region; }
 			Plan[I].Primary = Order[Region];
 			Plan[I].Secondary = Order[Region];
+			Plan[I].bOpen = bOpenRegion[Region];
 			if (Region > 0 && I == Starts[Region])
 			{
 				// Frontera: la forma es la del bioma que empieza; el color funde con el anterior.

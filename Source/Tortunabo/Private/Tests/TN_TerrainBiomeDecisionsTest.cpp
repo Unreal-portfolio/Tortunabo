@@ -50,7 +50,12 @@ bool FTNTerrainBiomeRegionsTest::RunTest(const FString& Parameters)
 			for (int32 I = 0; I < Length; ++I)
 			{
 				Seen.Add(Plan[I].Primary);
+				TestFalse(TEXT("las algas nunca son región abierta"), Plan[I].bOpen && Plan[I].Primary == ETNTerrainBiome::Algae);
 				if (I == 0) { continue; }
+				if (Plan[I].Primary == Plan[I - 1].Primary)
+				{
+					TestEqual(TEXT("toda la región es abierta o cerrada"), Plan[I].bOpen, Plan[I - 1].bOpen);
+				}
 				const bool bChanged = Plan[I].Primary != Plan[I - 1].Primary;
 				// Toda frontera es mixta y funde con el bioma anterior; nada más es mixto.
 				TestEqual(TEXT("mixta solo en la frontera"), Plan[I].IsMixed(), bChanged);
@@ -90,6 +95,42 @@ bool FTNTerrainBiomeMatchTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("frontera, misma pareja al revés"), BiomeMatchScore(Sand, Algae, Border), 2);
 	TestEqual(TEXT("frontera, puro del principal"), BiomeMatchScore(Algae, Algae, Border), 1);
 	TestEqual(TEXT("frontera, puro del secundario"), BiomeMatchScore(Sand, Sand, Border), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainBiomeEdgesTest,
+	"Tortunabo.TerrainBiome.Edges",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTerrainBiomeEdgesTest::RunTest(const FString& Parameters)
+{
+	using TNTerrainBiome::EdgeBetween;
+	const TNTerrainBiome::FCellBiome OpenSand{ ETNTerrainBiome::Sand, ETNTerrainBiome::Sand, true };
+	const TNTerrainBiome::FCellBiome ClosedSand{ ETNTerrainBiome::Sand, ETNTerrainBiome::Sand, false };
+	const TNTerrainBiome::FCellBiome OpenWater{ ETNTerrainBiome::Water, ETNTerrainBiome::Water, true };
+	const TNTerrainBiome::FCellBiome OpenAlgae{ ETNTerrainBiome::Algae, ETNTerrainBiome::Algae, true };
+
+	TestEqual(TEXT("arena abierta conectada: explanada"), EdgeBetween(OpenSand, OpenSand, true), ETNTerrainEdge::Open);
+	TestEqual(TEXT("agua abierta conectada: agua"), EdgeBetween(OpenWater, OpenWater, true), ETNTerrainEdge::Water);
+	TestEqual(TEXT("sin conexión: cresta"), EdgeBetween(OpenSand, OpenSand, false), ETNTerrainEdge::Crest);
+	TestEqual(TEXT("una región cerrada: cresta"), EdgeBetween(OpenSand, ClosedSand, true), ETNTerrainEdge::Crest);
+	TestEqual(TEXT("biomas distintos: cresta"), EdgeBetween(OpenSand, OpenWater, true), ETNTerrainEdge::Crest);
+	TestEqual(TEXT("algas: siempre cresta"), EdgeBetween(OpenAlgae, OpenAlgae, true), ETNTerrainEdge::Crest);
+	TestEqual(TEXT("simétrico"), EdgeBetween(ClosedSand, OpenSand, true), EdgeBetween(OpenSand, ClosedSand, true));
+
+	// Rotación: un módulo con el Norte abierto, girado un cuarto, lo ofrece al Este.
+	UTN_TerrainModuleAsset* Asset = NewObject<UTN_TerrainModuleAsset>();
+	Asset->SideEdges = { ETNTerrainEdge::Open, ETNTerrainEdge::Crest, ETNTerrainEdge::Crest, ETNTerrainEdge::Water };
+	TestEqual(TEXT("sin girar, Norte abierto"), TNTerrainModule::WorldSideEdge(*Asset, 0, TNGridLogic::SideNorth), ETNTerrainEdge::Open);
+	TestEqual(TEXT("un cuarto: el Norte pasa al Este"), TNTerrainModule::WorldSideEdge(*Asset, 1, TNGridLogic::SideEast), ETNTerrainEdge::Open);
+	TestEqual(TEXT("un cuarto: el Oeste pasa al Norte"), TNTerrainModule::WorldSideEdge(*Asset, 1, TNGridLogic::SideNorth), ETNTerrainEdge::Water);
+	const ETNTerrainEdge Wanted[TNGridLogic::NumSides] = { ETNTerrainEdge::Water, ETNTerrainEdge::Open, ETNTerrainEdge::Crest, ETNTerrainEdge::Crest };
+	TestTrue(TEXT("encaja girado un cuarto"), TNTerrainModule::EdgesMatch(*Asset, 1, Wanted));
+	TestFalse(TEXT("no encaja sin girar"), TNTerrainModule::EdgesMatch(*Asset, 0, Wanted));
+
+	UTN_TerrainModuleAsset* Corridor = NewObject<UTN_TerrainModuleAsset>();
+	const ETNTerrainEdge AllCrest[TNGridLogic::NumSides] = { ETNTerrainEdge::Crest, ETNTerrainEdge::Crest, ETNTerrainEdge::Crest, ETNTerrainEdge::Crest };
+	TestTrue(TEXT("sin SideEdges: los cuatro cresta"), TNTerrainModule::EdgesMatch(*Corridor, 3, AllCrest));
 	return true;
 }
 

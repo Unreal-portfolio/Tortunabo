@@ -129,6 +129,25 @@ namespace TNTerrainModule
 		return Mask;
 	}
 
+	/** Tipo de borde que queda en el lado de mundo WorldSide al girar el módulo YawSteps
+	 *  cuartos (misma convención que RotateExitMask: el lado local s pasa a s + YawSteps). */
+	inline ETNTerrainEdge WorldSideEdge(const UTN_TerrainModuleAsset& Asset, int32 YawSteps, int32 WorldSide)
+	{
+		const int32 N = TNGridLogic::NumSides;
+		return Asset.GetSideEdge(((WorldSide - YawSteps) % N + N) % N);
+	}
+
+	/** El módulo girado ofrece exactamente los tipos de borde pedidos, lado a lado
+	 *  (Wanted: NumSides valores en el orden de TNGridLogic). */
+	inline bool EdgesMatch(const UTN_TerrainModuleAsset& Asset, int32 YawSteps, const ETNTerrainEdge* Wanted)
+	{
+		for (int32 Side = 0; Side < TNGridLogic::NumSides; ++Side)
+		{
+			if (WorldSideEdge(Asset, YawSteps, Side) != Wanted[Side]) { return false; }
+		}
+		return true;
+	}
+
 	/** Vista sobre el heightfield de un módulo, con su tamaño en el mundo. */
 	struct FModuleField
 	{

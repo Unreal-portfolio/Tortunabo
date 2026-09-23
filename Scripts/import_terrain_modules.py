@@ -50,6 +50,12 @@ TOPOLOGY_ENUM = {
     "Cross": unreal.TNTerrainModuleTopology.CROSS,
 }
 
+EDGE_ENUM = {
+    "crest": unreal.TNTerrainEdge.CREST,
+    "open": unreal.TNTerrainEdge.OPEN,
+    "water": unreal.TNTerrainEdge.WATER,
+}
+
 BIOME_ENUM = {
     "sand": unreal.TNTerrainBiome.SAND,
     "water": unreal.TNTerrainBiome.WATER,
@@ -181,6 +187,8 @@ def build_module_asset(folder, module, manifest, heights, mask):
     asset.set_editor_property("bridges", [make_bridge(b) for b in module.get("bridges", [])])
     asset.set_editor_property("flat_areas", [make_flat_area(a) for a in module.get("flat_areas", [])])
     asset.set_editor_property("monoliths", [make_monolith(m) for m in module.get("monoliths", [])])
+    edges = module.get("edges", ["crest"] * 4)
+    asset.set_editor_property("side_edges", [] if all(e == "crest" for e in edges) else [EDGE_ENUM[e] for e in edges])
     asset.set_editor_property("biome", BIOME_ENUM[module.get("biome", "sand")])
     asset.set_editor_property("secondary_biome", BIOME_ENUM[module.get("secondary_biome", module.get("biome", "sand"))])
     if not asset.set_biome_mask(mask):
@@ -255,7 +263,7 @@ def main():
                 mask_width, mask_height, mask = read_png16(f"{library_dir}/{module['mask_file']}")
                 if mask_width != resolution or mask_height != resolution:
                     raise ValueError(f"{module['name']}: mascara {mask_width}x{mask_height}, se esperaba {resolution}")
-            folder = f"{MODULES_ROOT}/{module['topology']}"
+            folder = f"{MODULES_ROOT}/{module.get('folder', module['topology'])}"
             asset = build_module_asset(folder, module, manifest, heights, mask)
             blueprints.append(build_module_blueprint(folder, module, asset, material, junk_material, module_size))
 

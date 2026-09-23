@@ -211,32 +211,37 @@ void ATN_GridMapGenerator::GenerateTerrain(const TArray<FIntPoint>& Path)
 // ─────────────────────────────────────────────────────────────────────────────
 
 TSubclassOf<ATN_TerrainModuleTile> ATN_GridMapGenerator::PickModuleForExits(uint8 Required,
-	TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps, const TNTerrainBiome::FCellBiome* Wanted) const
+	TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps, const TNTerrainBiome::FCellBiome* Wanted,
+	const ETNTerrainEdge* WantedEdges, const TSet<UClass*>* UsedClasses) const
 {
-	// Vale cualquier módulo que, rotado, ofrezca al menos las salidas del camino: las
-	// sobrantes se tapan con un muro de basura. Una T o una cruz encaja en varias
-	// rotaciones y entra varias veces en la bolsa, en proporción a sus opciones. Con bioma
-	// pedido, la bolsa se queda con los de mejor encaje (puede ser 0: cualquiera).
+	// Vale cualquier módulo que, rotado, ofrezca al menos las salidas del camino (las
+	// sobrantes se tapan con un muro de basura) y, si se piden, exactamente esos tipos de
+	// borde. Una T o una cruz encaja en varias rotaciones y entra varias veces en la bolsa,
+	// en proporción a sus opciones. La bolsa se queda con el mejor encaje de bioma y, a
+	// igualdad, con los módulos que aún no salen en el mapa.
 	TArray<TPair<TSubclassOf<ATN_TerrainModuleTile>, int32>> Candidates;
-	int32 BestScore = 0;
+	int32 BestKey = -1;
 	for (const TSubclassOf<ATN_TerrainModuleTile>& ModuleClass : ModuleClasses)
 	{
 		ETNTerrainModuleTopology Topology;
 		if (!TryGetModuleTopology(ModuleClass, Topology)) { continue; }
+		const UTN_TerrainModuleAsset* Asset = ModuleClass->GetDefaultObject<ATN_TerrainModuleTile>()->GetModuleAsset();
 
-		const TArray<int32> YawOptions = TNTerrainModule::YawStepsCoveringExits(Topology, Required);
+		TArray<int32> YawOptions = TNTerrainModule::YawStepsCoveringExits(Topology, Required);
+		if (WantedEdges)
+		{
+			YawOptions.RemoveAll([&](int32 YawSteps) { return !TNTerrainModule::EdgesMatch(*Asset, YawSteps, WantedEdges); });
+		}
 		if (YawOptions.Num() == 0) { continue; }
 
-		if (Wanted)
+		const int32 BiomeScore = Wanted ? TNTerrainBiome::BiomeMatchScore(Asset->Biome, Asset->SecondaryBiome, *Wanted) : 0;
+		const bool bUnused = !UsedClasses || !UsedClasses->Contains(ModuleClass.Get());
+		const int32 Key = BiomeScore * 2 + (bUnused ? 1 : 0);
+		if (Key < BestKey) { continue; }
+		if (Key > BestKey)
 		{
-			const UTN_TerrainModuleAsset* Asset = ModuleClass->GetDefaultObject<ATN_TerrainModuleTile>()->GetModuleAsset();
-			const int32 Score = TNTerrainBiome::BiomeMatchScore(Asset->Biome, Asset->SecondaryBiome, *Wanted);
-			if (Score < BestScore) { continue; }
-			if (Score > BestScore)
-			{
-				BestScore = Score;
-				Candidates.Reset();
-			}
+			BestKey = Key;
+			Candidates.Reset();
 		}
 		for (const int32 YawSteps : YawOptions)
 		{
@@ -264,6 +269,7 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const 
 	// Biomas: regiones a lo largo del camino principal; un desvío hereda el bioma puro de
 	// la celda de la que sale.
 	TMap<FIntPoint, TNTerrainBiome::FCellBiome> CellBiomes;
+	TSet<UClass*> UsedClasses;
 	if (bUseBiomeRegions)
 	{
 		const TArray<TNTerrainBiome::FCellBiome> Plan = TNTerrainBiome::PlanPathBiomes(Path.Num(), RandRange);
@@ -277,7 +283,7 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const 
 			// Un desvío que salta una frontera la cruza en su última celda, no a corte seco.
 			if (Detour.Cells.Num() > 0 && Plan.IsValidIndex(Detour.ToIndex) && Plan[Detour.ToIndex].Primary != Inherited.Primary)
 			{
-				CellBiomes.Add(Detour.Cells.Last(), { Plan[Detour.ToIndex].Primary, Inherited.Primary });
+				CellBiomes.Add(Detour.Cells.Last(), { Plan[Detour.ToIndex].Primary, Inherited.Primary, Plan[Detour.ToIndex].bOpen });
 			}
 		}
 	}
@@ -301,8 +307,27 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const 
 
 		const uint8 Required = TNGridRoutes::RequiredExits(Cell);
 		int32 YawSteps = 0;
-		const TSubclassOf<ATN_TerrainModuleTile> ModuleClass =
-			PickModuleForExits(Required, RandRange, YawSteps, CellBiomes.Find(Cell.Coord));
+		// Tipo de borde de cada lado: abierto/agua solo hacia celdas conectadas de la misma
+		// región abierta; cresta hacia todo lo demás.
+		const TNTerrainBiome::FCellBiome* Biome = CellBiomes.Find(Cell.Coord);
+		ETNTerrainEdge WantedEdges[TNGridLogic::NumSides];
+		for (int32 Side = 0; Side < TNGridLogic::NumSides; ++Side)
+		{
+			const FIntPoint Neighbour = Cell.Coord + TNGridLogic::StepForSide(Side);
+			const TNTerrainBiome::FCellBiome* Other = CellBiomes.Find(Neighbour);
+			const bool bConnected = (Cell.Connections & TNGridRoutes::SideMask(Side)) != 0;
+			WantedEdges[Side] = (Biome && Other) ? TNTerrainBiome::EdgeBetween(*Biome, *Other, bConnected) : ETNTerrainEdge::Crest;
+		}
+
+		TSubclassOf<ATN_TerrainModuleTile> ModuleClass =
+			PickModuleForExits(Required, RandRange, YawSteps, Biome, WantedEdges, &UsedClasses);
+		if (!ModuleClass)
+		{
+			// Sin módulo con esos bordes: vale cualquiera con las salidas (quedará costura).
+			UE_LOG(LogTortunabo, Warning, TEXT("[GridMap] Ningún módulo con los bordes pedidos en (%d, %d); se ignoran los bordes."),
+				Cell.Coord.X, Cell.Coord.Y);
+			ModuleClass = PickModuleForExits(Required, RandRange, YawSteps, Biome, nullptr, &UsedClasses);
+		}
 		if (!ModuleClass)
 		{
 			UE_LOG(LogTortunabo, Error, TEXT("[GridMap] Ningún módulo ofrece las salidas de la celda (%d, %d) (máscara 0x%X)."),
@@ -316,6 +341,7 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const 
 
 		ATN_TerrainModuleTile* Tile = SpawnModule(ModuleClass, Cell.Coord, YawSteps, Blocked);
 		if (!Tile) { continue; }
+		UsedClasses.Add(ModuleClass.Get());
 		if (Cell.bIsStart) { Tile->Tags.AddUnique(StartTileTag); }
 		if (Cell.bIsEnd)   { Tile->Tags.AddUnique(EndTileTag); }
 	}

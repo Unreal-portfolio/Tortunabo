@@ -45,18 +45,38 @@ from PIL import Image
 
 from terrain_gen.core import *  # noqa: F401,F403
 from terrain_gen.design import compose_module, module_biomes
+from terrain_gen.field import FIELD_PATTERNS
 from terrain_gen.output import hillshade, write_contact_sheet
 from terrain_gen.styles import STYLES
+
+
+def library_jobs(count: int, field_count: int) -> list[dict]:
+    """Modulos a generar: count por topologia (todos los lados cresta) y field_count por
+    patron de campo (explanada de arena y mar con islas, ver terrain_gen.field)."""
+    jobs = []
+    for topology, exits in TOPOLOGIES.items():
+        for n in range(count):
+            biome, secondary = module_biomes(n, count)
+            jobs.append({"name": f"M_{topology}_{n + 1:02d}", "folder": topology, "topology": topology,
+                         "exits": exits, "biome": biome, "secondary": secondary,
+                         "edges": {side: "crest" for side in SIDES}})
+    for kind, biome, folder in (("open", "sand", "Open"), ("water", "water", "Water")):
+        for pattern, open_sides in FIELD_PATTERNS.items():
+            for n in range(field_count):
+                jobs.append({"name": f"M_{folder}_{pattern}_{n + 1:02d}", "folder": folder, "topology": "Cross",
+                             "exits": SIDES, "biome": biome, "secondary": biome,
+                             "edges": {side: (kind if side in open_sides else "crest") for side in SIDES}})
+    return jobs
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Genera la libreria de modulos de terreno.")
     parser.add_argument("--count", type=int, default=100, help="modulos por topologia")
+    parser.add_argument("--field-count", type=int, default=12, help="modulos por patron de campo (arena/agua)")
     parser.add_argument("--out", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--thumb", type=int, default=120, help="lado de cada miniatura de la hoja de contactos, en px")
     args = parser.parse_args()
 
-    expected_edge = canonical_edge_vector()
     manifest = {
         "size_uu": SIZE_M * UU_PER_M,
         "resolution": RES,
@@ -64,56 +84,58 @@ def main() -> None:
         "height_zero": HEIGHT_ZERO,
         "modules": [],
     }
-    index = 0
     rejected = 0
-    for topology, exits in TOPOLOGIES.items():
-        folder = args.out / topology
+    thumbs: dict[str, list[np.ndarray]] = {}
+    for index, job in enumerate(library_jobs(args.count, args.field_count)):
+        name, exits, edges = job["name"], job["exits"], job["edges"]
+        folder = args.out / job["folder"]
         folder.mkdir(parents=True, exist_ok=True)
-        thumbs = []
-        for n in range(args.count):
-            name = f"M_{topology}_{n + 1:02d}"
-            biome, secondary = module_biomes(n, args.count)
-            # Un diseno que deja alguna salida sin acceso a pie se descarta y se prueba la
-            # semilla siguiente; la semilla final queda en el manifest para reproducirlo.
-            for attempt in range(8):
-                seed = BASE_SEED + index * 16 + attempt
-                heights, stats, bridges, flat_areas, monoliths, mask = compose_module(seed, exits, biome, secondary)
-                meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
-                # La fusion con el borde canonico puede dejar sin apoyo un arco validado
-                # antes de fundir: tambien se descarta.
-                if walkable_exits_connected(meters, exits) and bridge_problem(meters, bridges) is None:
-                    break
-                rejected += 1
-            else:
-                raise AssertionError(f"{name}: ninguna semilla da un diseno accesible y con arcos apoyados")
-            index += 1
-            check_border(heights, expected_edge, name)
-            check_bridges(heights, bridges, name)
-            Image.fromarray(heights).save(folder / f"{name}.png")
-            Image.fromarray(mask).save(folder / f"{name}_mask.png")
-            thumbs.append(hillshade(heights, bridges, monoliths, mask, biome, secondary))
-            slopes = slope_degrees(heights)
-            manifest["modules"].append({
-                "name": name,
-                "topology": topology,
-                "seed": seed,
-                "file": f"{topology}/{name}.png",
-                "mask_file": f"{topology}/{name}_mask.png",
-                "min_m": round(float(meters.min()), 2),
-                "max_m": round(float(meters.max()), 2),
-                "slope_p99_deg": round(float(np.percentile(slopes, 99)), 1),
-                "bridges": [{"x_m": b.x, "y_m": b.y, "yaw_deg": b.yaw_deg, "length_m": b.length_m,
-                             "width_m": b.width_m, "deck_m": b.deck_m, "kind": b.kind,
-                             "thickness_m": TUNNEL_THICKNESS_M if b.kind == "tunnel" else BRIDGE_THICKNESS_M}
-                            for b in bridges],
-                "monoliths": [{"x_m": m.x, "y_m": m.y, "base_m": m.base_m, "radius_m": m.radius_m,
-                               "height_m": m.height_m, "yaw_deg": m.yaw_deg, "lean_deg": m.lean_deg}
-                              for m in monoliths],
-                "flat_areas": flat_areas,
-                **stats,
-            })
-        write_contact_sheet(args.out / f"preview_{topology}.png", thumbs, size=args.thumb)
-        print(f"{topology}: {args.count} modulos")
+        # Un diseno que deja alguna salida sin acceso a pie se descarta y se prueba la
+        # semilla siguiente; la semilla final queda en el manifest para reproducirlo.
+        for attempt in range(8):
+            seed = BASE_SEED + index * 16 + attempt
+            heights, stats, bridges, flat_areas, monoliths, mask = compose_module(
+                seed, exits, job["biome"], job["secondary"], edges)
+            meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
+            # La fusion con el borde puede dejar sin apoyo un arco validado antes de
+            # fundir: tambien se descarta.
+            if walkable_exits_connected(meters, exits) and bridge_problem(meters, bridges) is None:
+                break
+            rejected += 1
+        else:
+            raise AssertionError(f"{name}: ninguna semilla da un diseno accesible y con arcos apoyados")
+        check_border(heights, edges, name)
+        check_bridges(heights, bridges, name)
+        Image.fromarray(heights).save(folder / f"{name}.png")
+        Image.fromarray(mask).save(folder / f"{name}_mask.png")
+        thumbs.setdefault(job["folder"], []).append(
+            hillshade(heights, bridges, monoliths, mask, job["biome"], job["secondary"]))
+        slopes = slope_degrees(heights)
+        manifest["modules"].append({
+            "name": name,
+            "topology": job["topology"],
+            "folder": job["folder"],
+            "edges": [edges[side] for side in SIDES],
+            "seed": seed,
+            "file": f"{job['folder']}/{name}.png",
+            "mask_file": f"{job['folder']}/{name}_mask.png",
+            "min_m": round(float(meters.min()), 2),
+            "max_m": round(float(meters.max()), 2),
+            "slope_p99_deg": round(float(np.percentile(slopes, 99)), 1),
+            "bridges": [{"x_m": b.x, "y_m": b.y, "yaw_deg": b.yaw_deg, "length_m": b.length_m,
+                         "width_m": b.width_m, "deck_m": b.deck_m, "kind": b.kind,
+                         "thickness_m": TUNNEL_THICKNESS_M if b.kind == "tunnel" else BRIDGE_THICKNESS_M}
+                        for b in bridges],
+            "monoliths": [{"x_m": m.x, "y_m": m.y, "base_m": m.base_m, "radius_m": m.radius_m,
+                           "height_m": m.height_m, "yaw_deg": m.yaw_deg, "lean_deg": m.lean_deg}
+                          for m in monoliths],
+            "flat_areas": flat_areas,
+            **stats,
+        })
+
+    for folder_name, folder_thumbs in thumbs.items():
+        write_contact_sheet(args.out / f"preview_{folder_name}.png", folder_thumbs, size=args.thumb)
+        print(f"{folder_name}: {len(folder_thumbs)} modulos")
 
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     mods = manifest["modules"]
@@ -121,14 +143,16 @@ def main() -> None:
           f"pendiente p99 max {max(m['slope_p99_deg'] for m in mods)} grados; "
           f"atajos {sum(m['shortcut'] for m in mods)}; rutas altas {sum(m['upper_route'] for m in mods)}; "
           f"puentes {sum(b['kind'] == 'bridge' for m in mods for b in m['bridges'])}; "
-          f"arcos {sum(m['arch'] for m in mods)}; tuneles {sum(m['tunnel'] for m in mods)}; "
-          f"monolitos {sum(len(m['monoliths']) for m in mods)}; acantilados {sum(m['cliff'] for m in mods)}; "
-          f"plazas hundidas {sum(m['sunken'] for m in mods)}; "
+          f"arcos {sum(m['arch'] for m in mods)}; tuneles {sum(m['tunnel'] for m in mods)} "
+          f"(con rampa {sum(m['tunnel_ramp'] for m in mods)}); "
+          f"acantilados {sum(m['cliff'] for m in mods)}; plazas hundidas {sum(m['sunken'] for m in mods)}; "
+          f"laberintos {sum(m['maze'] for m in mods)}; "
+          f"puertas " + ", ".join(f"{g} {sum(m['gate'] == g for m in mods)}" for g in ("gorge", "flare", "arch")) + "; "
           f"bifurcaciones {sum(m['fork'] != 'none' for m in mods)} (lomas {sum(m['fork'] == 'low' for m in mods)}); "
           f"disenos descartados {rejected}; "
           f"biomas " + ", ".join(f"{b} {sum(m['biome'] == b and m['secondary_biome'] == b for m in mods)}" for b in BIOMES)
           + f", mixtos {sum(m['biome'] != m['secondary_biome'] for m in mods)}; "
-          f"estilos " + ", ".join(f"{n} {sum(m['style'] == n for m in mods)}" for n in STYLES))
+          f"estilos " + ", ".join(f"{n} {sum(m['style'] == n for m in mods)}" for n in (*STYLES, "flats", "islands")))
 
 
 if __name__ == "__main__":

@@ -309,7 +309,7 @@ def lane_profile_height(floor, d_core, lane: Lane, s, total: float):
 
 
 def place_arch(rng: np.random.Generator, terrain, d_main, bridges: list[Bridge], kind: str = "arch",
-               rooms: list[Room] | None = None) -> Bridge | None:
+               rooms: list[Room] | None = None, region=None) -> Bridge | None:
     """Arco natural de pared a pared sobre el pasillo principal. Se busca un punto del eje
     lejos del borde y de otros puentes, se estima la direccion del pasillo por PCA de su eje
     cercano y se camina en perpendicular hasta coronar cada pared.
@@ -322,7 +322,8 @@ def place_arch(rng: np.random.Generator, terrain, d_main, bridges: list[Bridge],
     min_gap = ARCH_CLEARANCE_M + (TUNNEL_THICKNESS_M if is_tunnel else BRIDGE_THICKNESS_M) + 0.5
     along_len = float(rng.uniform(*TUNNEL_LENGTH_M)) if is_tunnel else float(rng.uniform(5.0, 10.0))
     margin = 30.0 + (along_len * 0.5 if is_tunnel else 0.0)
-    axis_cells = np.argwhere((d_main < 1.5) & (DIST_TO_EDGE > margin))
+    # region: mascara opcional que limita donde se busca (p. ej. el arco sobre una puerta).
+    axis_cells = np.argwhere((d_main < 1.5) & (DIST_TO_EDGE > margin) & (True if region is None else region > 0.5))
     if len(axis_cells) == 0:
         return None
     for _ in range(30 if is_tunnel else 10):
@@ -408,3 +409,127 @@ def place_monoliths(rng: np.random.Generator, terrain, d_main, hw, rooms: list[R
                                   round(float(rng.uniform(*MONOLITH_HEIGHT_M)), 2),
                                   round(float(rng.uniform(0.0, 360.0)), 1), round(float(rng.uniform(0.0, 7.0)), 1)))
     return monoliths
+
+
+# ── Iteracion 2026-09-23 (tras el playtest de F3/F4) ─────────────────────────────
+def dunes(rng: np.random.Generator, amplitude: float, wavelength: float):
+    """Campo de dunas transversales: crestas perpendiculares a un viento sorteado, con
+    barlovento largo y suave (75 % del periodo) y cara de avalancha corta. Las crestas
+    serpentean y cambian de altura para no leerse como un patron."""
+    angle = float(rng.uniform(0.0, 2.0 * np.pi))
+    along = XX * math.cos(angle) + YY * math.sin(angle)
+    across = -XX * math.sin(angle) + YY * math.cos(angle)
+    sinuous = 0.35 * wavelength * fbm(rng, 2.5 * wavelength, octaves=2)
+    phase = (along + sinuous + 0.15 * across) / wavelength
+    frac = phase - np.floor(phase)
+    profile = np.where(frac < 0.75, frac / 0.75, (1.0 - frac) / 0.25)
+    profile = smoothstep(0.0, 1.0, profile) ** 1.2
+    height = 0.45 + 0.55 * (fbm(rng, 3.0 * wavelength, octaves=2) * 0.5 + 0.5)
+    return amplitude * profile * height
+
+
+def sharp_strata(heights, step_m: float):
+    """Terrazas de canto vivo: el acantilado se lee como bloques cuadrados, no como un pico."""
+    q = heights / step_m
+    frac = q - np.floor(q)
+    return (np.floor(q) + smoothstep(0.88, 1.0, frac)) * step_m
+
+
+def gate_mask(exits: tuple[str, ...]):
+    """0..1 en el tramo del pasillo justo detras de cada boca (entre 14 y 40 m del borde)."""
+    mask = np.zeros_like(XX)
+    for side in exits:
+        ex, ey = EXIT_POINT[side]
+        near_exit = 1.0 - smoothstep(35.0, 50.0, np.hypot(XX - ex, YY - ey))
+        band = smoothstep(12.0, 18.0, DIST_TO_EDGE) * (1.0 - smoothstep(34.0, 42.0, DIST_TO_EDGE))
+        mask = np.maximum(mask, near_exit * band)
+    return mask
+
+
+def tunnel_ramp(rng: np.random.Generator, terrain, tunnel: Bridge, rooms: list[Room]):
+    """Rampa que sube desde el pasillo, pegada a una pared, hasta la boca del tunel a la
+    cota de su techo: el tunel se atraviesa por dentro y tambien se cruza por arriba.
+    Devuelve el terreno modificado o None si no cabe (borde, plazas, pendiente)."""
+    yaw = math.radians(tunnel.yaw_deg)
+    across = (math.cos(yaw), math.sin(yaw))          # eje del arco: de pared a pared
+    tangent = (-across[1], across[0])                # a lo largo del pasillo
+    for _ in range(8):
+        side = 1.0 if rng.random() < 0.5 else -1.0
+        end = 1.0 if rng.random() < 0.5 else -1.0
+        top = added((tunnel.x, tunnel.y), added(scaled(tangent, end * (tunnel.width_m * 0.5 + 3.0)),
+                                               scaled(across, side * (tunnel.length_m * 0.5 - 3.0))))
+        rise = tunnel.deck_m - float(terrain[grid_index((tunnel.x, tunnel.y))])
+        length = rise / math.tan(math.radians(27.0))
+        start = added(top, added(scaled(tangent, end * length), scaled(across, -side * tunnel.length_m * 0.3)))
+        if DIST_TO_EDGE[grid_index(start)] < BAND_M + 6.0 or DIST_TO_EDGE[grid_index(top)] < BAND_M + 6.0:
+            continue
+        if any(math.hypot(start[0] - r.x, start[1] - r.y) < r.radius + 4.0 for r in rooms):
+            continue
+        d, s, total = polyline_distance(XX, YY, (start, top))
+        base = float(terrain[grid_index(start)])
+        ramp = base + (tunnel.deck_m - base) * np.clip(s / max(total, 1.0), 0.0, 1.0)
+        weight = 1.0 - smoothstep(2.5, 4.5, d)
+        candidate = terrain * (1.0 - weight) + ramp * weight
+        if bridge_problem(candidate, [tunnel]) is None:
+            return candidate
+    return None
+
+
+def maze_lanes(rng: np.random.Generator, exits: tuple[str, ...], cells: int = 5, loop_prob: float = 0.2) -> list[Lane]:
+    """Laberinto sobre una rejilla gruesa de cells x cells: arbol de expansion aleatorio
+    (DFS) mas algunos lazos, y un tramo de cada boca a la celda central de su lado."""
+    step = SIZE_M / cells
+    center = cells // 2
+
+    def point(i: int, j: int) -> Point:
+        return (-HALF_M + (i + 0.5) * step, -HALF_M + (j + 0.5) * step)
+
+    seen = {(center, center)}
+    stack = [(center, center)]
+    edges: set[tuple[tuple[int, int], tuple[int, int]]] = set()
+    while stack:
+        i, j = stack[-1]
+        options = [(i + di, j + dj) for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                   if 0 <= i + di < cells and 0 <= j + dj < cells and (i + di, j + dj) not in seen]
+        if not options:
+            stack.pop()
+            continue
+        nxt = options[int(rng.integers(len(options)))]
+        edges.add(((i, j), nxt))
+        seen.add(nxt)
+        stack.append(nxt)
+    for i in range(cells):
+        for j in range(cells):
+            for nxt in ((i + 1, j), (i, j + 1)):
+                if nxt[0] < cells and nxt[1] < cells and ((i, j), nxt) not in edges \
+                        and (nxt, (i, j)) not in edges and rng.random() < loop_prob:
+                    edges.add(((i, j), nxt))
+
+    lanes = [Lane((point(*a), point(*b)), 0.0) for a, b in edges]
+    mouth_cell = {"N": (cells - 1, center), "S": (0, center), "E": (center, cells - 1), "W": (center, 0)}
+    lanes += [Lane((point(*mouth_cell[e]), EXIT_POINT[e]), 0.0) for e in exits]
+    return lanes
+
+
+def island_chain(rng: np.random.Generator, start: Point, end: Point, radius: tuple[float, float],
+                 gap: tuple[float, float], bend_m: float = 35.0) -> list[Room]:
+    """Islas de start a end a lo largo de una curva (Bezier con el control desplazado hasta
+    bend_m a un lado), separadas por canales de agua de gap metros."""
+    total = math.dist(start, end)
+    if total < 1e-6:
+        return []
+    direction = ((end[0] - start[0]) / total, (end[1] - start[1]) / total)
+    control = added(scaled(added(start, end), 0.5), scaled(perpendicular(direction), float(rng.uniform(-bend_m, bend_m))))
+
+    def at(t: float) -> Point:
+        return ((1 - t) ** 2 * start[0] + 2 * (1 - t) * t * control[0] + t * t * end[0],
+                (1 - t) ** 2 * start[1] + 2 * (1 - t) * t * control[1] + t * t * end[1])
+
+    islands = []
+    pos = 0.0
+    while pos < total:
+        r = float(rng.uniform(*radius))
+        x, y = at(min((pos + r) / total, 1.0))
+        islands.append(Room(x, y, r))
+        pos += 2.0 * r + float(rng.uniform(*gap))
+    return islands

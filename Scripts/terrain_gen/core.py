@@ -73,6 +73,17 @@ BIOMES = ("sand", "water", "algae")
 MIXED_PER_PAIR = 5               # modulos mixtos por pareja de biomas y topologia
 FOLIAGE_EDGE_CLEAR_M = 6.0       # sin algas en el nucleo del pasillo ni en su borde inmediato
 
+# ── Tipos de borde (cada lado del modulo lleva uno; dos vecinos casan si comparten tipo) ─
+# crest: cresta de CREST_M con boca de pasillo (el borde de siempre).
+# open:  llano a cota 0 con dunas suaves; se cruza por cualquier punto (explanada).
+# water: fondo de mar poco profundo; se vadea por cualquier punto.
+# Los tres perfiles valen CREST_M a partir de CORNER_FROM_M: en las esquinas, donde se
+# tocan lados de tipos distintos, todos coinciden y no hay costura.
+EDGE_TYPES = ("crest", "open", "water")
+CORNER_FROM_M = 86.0
+SEA_EDGE_M = WATER_M - 1.5
+SIDES = ("N", "E", "S", "W")
+
 BASE_SEED = 20260922
 TOPOLOGIES: dict[str, tuple[str, ...]] = {
     "Straight": ("S", "N"),
@@ -86,7 +97,7 @@ TOPOLOGIES: dict[str, tuple[str, ...]] = {
 EXIT_DIR = {"N": (1.0, 0.0), "E": (0.0, 1.0), "S": (-1.0, 0.0), "W": (0.0, -1.0)}
 EXIT_POINT = {k: (dx * HALF_M, dy * HALF_M) for k, (dx, dy) in EXIT_DIR.items()}
 
-OUTPUT_DIR = Path(__file__).resolve().parent / "terrain_modules"
+OUTPUT_DIR = Path(__file__).resolve().parent.parent / "terrain_modules"   # Scripts/terrain_modules
 
 _AXIS = np.linspace(-HALF_M, HALF_M, RES)
 XX, YY = np.meshgrid(_AXIS, _AXIS, indexing="ij")
@@ -199,6 +210,34 @@ CANONICAL = canonical_border_field()
 BORDER_WEIGHT = 1.0 - smoothstep(0.0, BAND_M, DIST_TO_EDGE)
 
 
+def edge_profile(kind: str, t_abs):
+    """Altura del borde de un lado de tipo kind en funcion de |t| (0 en el centro del lado)."""
+    if kind == "crest":
+        return canonical_profile(t_abs)
+    corner = smoothstep(CORNER_FROM_M - 30.0, CORNER_FROM_M, t_abs)
+    if kind == "open":
+        # Ondulacion simetrica fija: las dunas cruzan el borde sin escalon.
+        ripple = 0.6 * np.cos(2.0 * np.pi * t_abs / 37.0) * (1.0 - corner)
+        return ripple + CREST_M * corner
+    if kind == "water":
+        return SEA_EDGE_M + (CREST_M - SEA_EDGE_M) * corner
+    raise ValueError(f"tipo de borde desconocido: {kind}")
+
+
+def border_field(edges: dict[str, str]):
+    """Perfil del lado mas cercano, con el tipo de cada lado (N, E, S, W)."""
+    if all(kind == "crest" for kind in edges.values()):
+        return CANONICAL
+    d_n, d_s = HALF_M - XX, HALF_M + XX
+    d_e, d_w = HALF_M - YY, HALF_M + YY
+    nearest = np.argmin(np.stack([d_n, d_e, d_s, d_w]), axis=0)
+    field = np.zeros_like(XX)
+    for index, side in enumerate(SIDES):
+        t_abs = np.abs(YY) if side in ("N", "S") else np.abs(XX)
+        field = np.where(nearest == index, edge_profile(edges[side], t_abs), field)
+    return field
+
+
 # ── Rutas ─────────────────────────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class Room:
@@ -303,19 +342,27 @@ def walkable_exits_connected(meters: np.ndarray, exits: tuple[str, ...]) -> bool
 
 
 # ── Validacion y salida ───────────────────────────────────────────────────────────
-def canonical_edge_vector() -> np.ndarray:
-    values = np.rint(canonical_profile(np.abs(_AXIS)) * UNITS_PER_M) + HEIGHT_ZERO
+def edge_vector(kind: str = "crest") -> np.ndarray:
+    values = np.rint(edge_profile(kind, np.abs(_AXIS)) * UNITS_PER_M) + HEIGHT_ZERO
     return values.astype(np.uint16)
 
 
-def check_border(heights: np.ndarray, expected: np.ndarray, name: str) -> None:
-    edges = (heights[0, :], heights[-1, :], heights[:, 0], heights[:, -1])
-    for k, edge in enumerate(edges):
-        if not np.array_equal(edge, expected):
-            bad = int(np.argmax(edge != expected))
-            raise AssertionError(f"{name}: lado {k} rompe el borde canonico en la muestra {bad}")
-    if not np.array_equal(expected, expected[::-1]):
-        raise AssertionError("el perfil canonico no es simetrico")
+def canonical_edge_vector() -> np.ndarray:
+    return edge_vector("crest")
+
+
+def check_border(heights: np.ndarray, edges: dict[str, str], name: str) -> None:
+    """Cada lado reproduce exactamente el perfil de su tipo, y todos los perfiles son
+    simetricos y coinciden en las esquinas."""
+    rows = {"S": heights[0, :], "N": heights[-1, :], "W": heights[:, 0], "E": heights[:, -1]}
+    for side, row in rows.items():
+        expected = edge_vector(edges[side])
+        if not np.array_equal(row, expected):
+            bad = int(np.argmax(row != expected))
+            raise AssertionError(f"{name}: lado {side} ({edges[side]}) rompe su borde en la muestra {bad}")
+    corners = {int(edge_vector(kind)[0]) for kind in EDGE_TYPES}
+    if len(corners) != 1 or any(not np.array_equal(edge_vector(k), edge_vector(k)[::-1]) for k in EDGE_TYPES):
+        raise AssertionError("los perfiles de borde no son simetricos o no casan en las esquinas")
 
 
 def bridge_problem(meters: np.ndarray, bridges: list[Bridge]) -> str | None:
