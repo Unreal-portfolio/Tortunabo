@@ -31,6 +31,7 @@ UNDULATE_FROM_M = 35.0         # desde aqui la cresta ondula...
 UNDULATE_TO_M = 85.0           # ...y vuelve a ser plana antes de la esquina
 BAND_M = 12.0                  # franja en la que el diseno se funde con el borde
 PLUG_M = 22.0                  # altura minima tras una salida cerrada: rampa no escalable
+MOUTH_TOLERANCE_M = 1.6        # desnivel admitido en la boca de una salida, en el borde
 
 # ── Rutas secundarias ─────────────────────────────────────────────────────────────
 SHORTCUT_PROB = 0.6
@@ -54,6 +55,7 @@ WALKABLE_STEP_M = 1.6          # desnivel maximo entre muestras vecinas (2 m) pa
 # Tunel: arco largo sobre un tramo recto del pasillo; se atraviesa por dentro.
 TUNNEL_LENGTH_M = (16.0, 32.0)   # a lo largo del pasillo (el "width" del arco)
 TUNNEL_THICKNESS_M = 4.0
+TUNNEL_MAX_LENGTH_M = 80.0       # de pared a pared (la cueva va dentro de una colina)
 # Monolito: pilar de roca (malla del tile, no cabe en un heightfield de 2 m).
 MONOLITH_RADIUS_M = (2.5, 5.0)
 MONOLITH_HEIGHT_M = (10.0, 26.0)
@@ -62,8 +64,8 @@ MONOLITH_LANE_CLEARANCE_M = 7.0  # distancia minima del pie al eje del pasillo
 SUNKEN_DEPTH_M = (3.5, 6.0)
 SUNKEN_FEATHER_M = 11.0          # media anchura de la rampa: 6 m en 11 m -> ~28 grados
 # Acantilado: tramo de pared mucho mas alta y casi vertical, con estratos.
-CLIFF_EXTRA_M = (5.0, 10.0)        # 2026-09-23: mas bajos (antes 12-24 m)
-CLIFF_BANK_M = 11.0                 # cara de avalancha de duna (~33 grados), no pared vertical
+CLIFF_EXTRA_M = (3.0, 6.0)         # 2026-09-23 (noche): mas bajos (antes 5-10 m)
+CLIFF_BANK_M = 8.0                  # cara de arena suelta (~45-55 grados): no se sube a pie
 CLIFF_STRATA_M = 3.0
 
 # ── F4: biomas ────────────────────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ FOLIAGE_EDGE_CLEAR_M = 6.0       # sin algas en el nucleo del pasillo ni en su b
 EDGE_TYPES = ("crest", "open", "water")
 CORNER_FROM_M = 86.0
 SEA_EDGE_M = WATER_M - 1.5
+OPEN_EDGE_BASE_M = 3.0             # cota media del borde "open" (lomas de 0 a 6 m)
 SIDES = ("N", "E", "S", "W")
 
 # ── Variedad ─────────────────────────────────────────────────────────────────────
@@ -224,9 +227,10 @@ def edge_profile(kind: str, t_abs):
         return canonical_profile(t_abs)
     corner = smoothstep(CORNER_FROM_M - 30.0, CORNER_FROM_M, t_abs)
     if kind == "open":
-        # Ondulacion simetrica fija: las dunas cruzan el borde sin escalon.
-        ripple = 0.6 * np.cos(2.0 * np.pi * t_abs / 37.0) * (1.0 - corner)
-        return ripple + CREST_M * corner
+        # Lomas simetricas fijas (0-6 m): el relieve de las explanadas cruza el borde sin
+        # escalon ni valle recto. Pendiente maxima ~23 grados: se cruza por cualquier punto.
+        hills = OPEN_EDGE_BASE_M + 2.2 * np.cos(2.0 * np.pi * t_abs / 52.0) + 0.8 * np.cos(2.0 * np.pi * t_abs / 21.0)
+        return hills * (1.0 - corner) + CREST_M * corner
     if kind == "water":
         return SEA_EDGE_M + (CREST_M - SEA_EDGE_M) * corner
     raise ValueError(f"tipo de borde desconocido: {kind}")
@@ -244,6 +248,20 @@ def border_field(edges: dict[str, str]):
         t_abs = np.abs(YY) if side in ("N", "S") else np.abs(XX)
         field = np.where(nearest == index, edge_profile(edges[side], t_abs), field)
     return field
+
+
+def natural_ridge(rng: np.random.Generator, dist_to_side, low_m, reach_m: float = 58.0):
+    """(altura, peso 0..1) de un cordon de dunas que cierra el agua contra un lado cresta.
+
+    La linea de costa y la cima serpentean (hasta ~18 m), y la cima (CREST_M + 2-7 m)
+    tambien: el cordon no se lee como una recta sobre la linea de la celda. Llega al borde
+    tal cual; la fusion de bordes del tile lo casa con el vecino. peso = 0 mar adentro, 1
+    en el cordon."""
+    shore = dist_to_side + 18.0 * fbm(rng, 55.0, octaves=2) * smoothstep(4.0, 14.0, dist_to_side)
+    peak = CREST_M + 2.0 + 5.0 * (fbm(rng, 45.0, octaves=2) * 0.5 + 0.5)
+    rise = smoothstep(reach_m, 22.0, shore) ** 1.6
+    height = low_m + (peak - low_m) * rise + 1.2 * fbm(rng, 40.0, octaves=2) * smoothstep(34.0, 12.0, shore)
+    return height, smoothstep(reach_m + 6.0, reach_m - 22.0, shore)
 
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────────
@@ -371,6 +389,21 @@ def check_border(heights: np.ndarray, edges: dict[str, str], name: str) -> None:
     corners = {int(edge_vector(kind)[0]) for kind in EDGE_TYPES}
     if len(corners) != 1 or any(not np.array_equal(edge_vector(k), edge_vector(k)[::-1]) for k in EDGE_TYPES):
         raise AssertionError("los perfiles de borde no son simetricos o no casan en las esquinas")
+
+
+def check_mouths(heights: np.ndarray, exits: tuple[str, ...], edges: dict[str, str], name: str) -> None:
+    """Los bordes son libres (la fusion de bordes del tile casa dos vecinos cualesquiera);
+    solo se exige que cada salida de tierra llegue al borde a la cota del camino, para que
+    el pasillo siga en el modulo de al lado. Las salidas por un lado de agua se vadean."""
+    meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
+    rows = {"S": meters[0, :], "N": meters[-1, :], "W": meters[:, 0], "E": meters[:, -1]}
+    mouth = np.abs(_AXIS) <= OPEN_HALF_M - 4.0
+    for side in exits:
+        if edges.get(side) == "water":
+            continue
+        worst = float(np.max(np.abs(rows[side][mouth])))
+        if worst > MOUTH_TOLERANCE_M:
+            raise AssertionError(f"{name}: la boca {side} no llega al borde a cota de camino ({worst:.1f} m)")
 
 
 def bridge_problem(meters: np.ndarray, bridges: list[Bridge]) -> str | None:

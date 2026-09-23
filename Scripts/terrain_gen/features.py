@@ -321,7 +321,7 @@ def place_arch(rng: np.random.Generator, terrain, d_main, bridges: list[Bridge],
     # Paso libre bajo la panza: el tile hunde el grosor bajo el techo (deck - 0,5 m).
     min_gap = ARCH_CLEARANCE_M + (TUNNEL_THICKNESS_M if is_tunnel else BRIDGE_THICKNESS_M) + 0.5
     along_len = float(rng.uniform(*TUNNEL_LENGTH_M)) if is_tunnel else float(rng.uniform(5.0, 10.0))
-    margin = 30.0 + (along_len * 0.5 if is_tunnel else 0.0)
+    margin = (20.0 + along_len * 0.5) if is_tunnel else 30.0
     # region: mascara opcional que limita donde se busca (p. ej. el arco sobre una puerta).
     axis_cells = np.argwhere((d_main < 1.5) & (DIST_TO_EDGE > margin) & (True if region is None else region > 0.5))
     if len(axis_cells) == 0:
@@ -365,7 +365,9 @@ def place_arch(rng: np.random.Generator, terrain, d_main, bridges: list[Bridge],
         yaw = math.degrees(math.atan2(across[1], across[0]))
         arch = Bridge(round(cx, 2), round(cy, 2), round(yaw, 1), round(length, 2),
                       round(along_len, 2), round(deck - 0.5, 2), kind)
-        if not BRIDGE_MIN_M <= length <= BRIDGE_MAX_M or bridge_problem(terrain, [arch]):
+        # Una cueva puede cruzar un pasillo mas ancho que un arco: la colina la cubre entera.
+        max_length = TUNNEL_MAX_LENGTH_M if is_tunnel else BRIDGE_MAX_M
+        if not BRIDGE_MIN_M <= length <= max_length or bridge_problem(terrain, [arch]):
             continue
         if is_tunnel and any(bridge_problem(terrain, [Bridge(round(cx + tangent[0] * t, 2), round(cy + tangent[1] * t, 2),
                                                              arch.yaw_deg, arch.length_m, 2.0, arch.deck_m)])
@@ -542,3 +544,69 @@ def island_chain(rng: np.random.Generator, start: Point, end: Point, radius: tup
         islands.append(Room(x, y, r))
         pos += 2.0 * r + float(rng.uniform(*gap))
     return islands
+
+
+# ── Iteracion 2026-09-23 (noche): acantilados de arena de varios tipos ──────────────
+CLIFF_KINDS = {"dune": 40, "terraced": 30, "fluted": 30}
+
+
+def cliff_top_field(rng: np.random.Generator, base) -> tuple[str, np.ndarray]:
+    """(tipo, cota de la cima) de un acantilado de arena sobre la cota base de la meseta:
+      - dune: duna gigante; cresta ancha que serpentea con cara de avalancha;
+      - terraced: arenisca en repisas de 2,5-3,5 m, como capas de arena compactada;
+      - fluted: pared de arena con carcavas verticales que muerden la cima."""
+    names = list(CLIFF_KINDS)
+    weights = np.array([CLIFF_KINDS[n] for n in names], dtype=float)
+    kind = names[int(rng.choice(len(names), p=weights / weights.sum()))]
+    extra = float(rng.uniform(*CLIFF_EXTRA_M))
+    if kind == "dune":
+        giant = dunes(rng, extra, float(rng.uniform(70.0, 110.0)))
+        return kind, base + 0.5 * float(np.mean(CLIFF_EXTRA_M)) + giant
+    if kind == "terraced":
+        top = base + extra + 1.5 * fbm(rng, 50.0, octaves=2)
+        return kind, sharp_strata(top, float(rng.uniform(2.5, 3.5)))
+    gullies = (1.0 - np.abs(fbm(rng, 16.0, octaves=2))) ** 3
+    return kind, base + extra + 1.0 * fbm(rng, 60.0, octaves=2) - float(rng.uniform(3.0, 5.0)) * gullies
+
+
+# ── Caminitos y charcos ──────────────────────────────────────────────────────────
+TRAIL_HALF_WIDTH_M = (3.0, 5.0)
+TRAIL_BANK_M = 3.0
+
+
+def trail_lanes(rng: np.random.Generator, exits: tuple[str, ...], count: int) -> list[tuple[Point, ...]]:
+    """Caminitos: senderos estrechos que salen del pasillo, se meten en la meseta dando
+    vueltas por 2-3 puntos de paso sorteados y vuelven a entrar en el pasillo (en otro
+    tramo o por otra salida). Se cruzan entre si y con el pasillo: una red de caminos
+    pequenos dentro del modulo, en vez de desvios que partan el camino entre modulos."""
+    lanes = []
+    for _ in range(count):
+        a = exits[int(rng.integers(len(exits)))]
+        b = exits[int(rng.integers(len(exits)))]
+        t1 = float(rng.uniform(0.2, 0.75))
+        t2 = float(rng.uniform(0.2, 0.75))
+        if a == b and abs(t1 - t2) < 0.3:
+            t2 = min(t1 + 0.35, 0.8) if t1 < 0.45 else max(t1 - 0.35, 0.15)
+        p1, p2 = scaled(EXIT_POINT[a], t1), scaled(EXIT_POINT[b], t2)
+        points = [p1]
+        waypoints = int(rng.integers(2, 4))
+        for k in range(waypoints):
+            t = (k + 1) / (waypoints + 1)
+            base = (p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t)
+            wander = tuple(float(v) for v in rng.uniform(-0.68 * HALF_M, 0.68 * HALF_M, 2))
+            points.append(added(scaled(base, 0.35), scaled(wander, 0.65)))
+        points.append(p2)
+        lanes.append(chaikin(tuple(points), 3))
+    return lanes
+
+
+def pond_field(rng: np.random.Generator, d_main, hw):
+    """(mascara 0..1, cota del fondo) de un charco: una hondonada de contorno irregular que
+    baja bajo el agua fuera del pasillo. Puede llegar al borde del modulo: si el vecino
+    tambien tiene agua alli, la fusion de bordes los une en un lago."""
+    cx, cy = (float(v) for v in rng.uniform(-0.85 * HALF_M, 0.85 * HALF_M, 2))
+    radius = float(rng.uniform(16.0, 34.0))
+    d = np.hypot(XX - cx, YY - cy) + 8.0 * fbm(rng, 30.0, octaves=2)
+    mask = 1.0 - smoothstep(radius - 10.0, radius, d)
+    mask = mask * smoothstep(hw + 4.0, hw + 14.0, d_main)     # el camino queda seco
+    return mask, WATER_M - float(rng.uniform(1.0, 2.0))

@@ -98,9 +98,9 @@ def library_jobs(count: int, field_count: int, water_variants: int) -> list[dict
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Genera la libreria de modulos de terreno.")
-    parser.add_argument("--count", type=int, default=150, help="modulos de pasillo por topologia")
+    parser.add_argument("--count", type=int, default=60, help="modulos de pasillo por topologia")
     parser.add_argument("--field-count", type=int, default=12, help="explanadas por patron de lados abiertos")
-    parser.add_argument("--water-variants", type=int, default=2, help="modulos por (camino, lados de agua)")
+    parser.add_argument("--water-variants", type=int, default=1, help="modulos por (camino, lados de agua)")
     parser.add_argument("--out", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--thumb", type=int, default=120, help="lado de cada miniatura de la hoja de contactos, en px")
     args = parser.parse_args()
@@ -136,7 +136,7 @@ def main() -> None:
             rejected += 1
         else:
             raise AssertionError(f"{name}: ninguna semilla da un diseno accesible y con arcos apoyados")
-        check_border(heights, edges, name)
+        check_mouths(heights, exits, edges, name)
         check_bridges(heights, bridges, name)
         Image.fromarray(heights).save(folder / f"{name}.png")
         Image.fromarray(mask).save(folder / f"{name}_mask.png")
@@ -179,7 +179,10 @@ def main() -> None:
           f"puentes {sum(b['kind'] == 'bridge' for m in mods for b in m['bridges'])}; "
           f"arcos {sum(m['arch'] for m in mods)}; tuneles {sum(m['tunnel'] for m in mods)} "
           f"(con rampa {sum(m['tunnel_ramp'] for m in mods)}); "
-          f"acantilados {sum(m['cliff'] for m in mods)}; plazas hundidas {sum(m['sunken'] for m in mods)}; "
+          f"acantilados {sum(m['cliff'] for m in mods)} ("
+          + ", ".join(f"{k} {sum(m.get('cliff_kind') == k for m in mods)}" for k in ("dune", "terraced", "fluted")) + "); "
+          f"caminitos {sum(m.get('trails', 0) for m in mods)} en {sum(m.get('trails', 0) > 0 for m in mods)} modulos; "
+          f"charcos {sum(bool(m.get('pond')) for m in mods)}; plazas hundidas {sum(m['sunken'] for m in mods)}; "
           f"laberintos {sum(m['maze'] for m in mods)}; "
           f"puertas " + ", ".join(f"{g} {sum(m['gate'] == g for m in mods)}" for g in ("gorge", "flare", "arch")) + "; "
           f"bifurcaciones {sum(m['fork'] != 'none' for m in mods)} (lomas {sum(m['fork'] == 'low' for m in mods)}); "

@@ -10,13 +10,13 @@ import numpy as np
 
 from .core import *  # noqa: F401,F403
 from .features import *  # noqa: F401,F403
-from .field import design_field_module
+from .field import design_field_module, side_distance
 from .styles import GATE_KINDS, STYLES
 
 
 def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, secondary: str,
                   levels: dict[str, int] | None = None):
-    """Heightfield del interior (metros) antes de fundirlo con el borde canonico.
+    """Heightfield del modulo (metros); el borde es libre salvo las bocas de salida.
 
     biome manda en la forma (estilo); secondary != biome hace un modulo mixto: un frente
     difuso (blend) lleva hacia el otro bioma el color, el bosque de algas y el mar."""
@@ -51,7 +51,9 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
 
     # Bifurcacion: ensancha el tramo de su salida antes de medir el pasillo.
     # Laberinto: sin bifurcacion; los caminos son los del laberinto, por todo el modulo.
-    fork = None if is_maze else pick_fork(rng, exits)
+    # En el agua el camino es uno solo: sin bifurcacion, atajo ni ruta alta.
+    single_path = is_maze or biome == "water"
+    fork = None if single_path else pick_fork(rng, exits)
     fork_widen, island = (fork_fields(rng, fork, wx, wy) if fork else (0.0, np.zeros_like(XX)))
     d_main = np.full_like(XX, np.inf)
     lanes = main_lanes(exits)
@@ -100,13 +102,25 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
         d_core = np.minimum(d_core, np.hypot(XX - room.x, YY - room.y) - room.radius)
 
     # Atajo: misma anchura relativa (con el mismo ruido) y mismo talud que el principal.
-    shortcut = None if is_maze else pick_shortcut(rng, exits, base_hw)
+    shortcut = None if single_path else pick_shortcut(rng, exits, base_hw)
     if shortcut:
         d_sc = polyline_distance(wx, wy, shortcut.points)[0]
         sc_hw = np.minimum(hw * shortcut.half_width / base_hw, hw)
         corridor = np.maximum(corridor, 1.0 - smoothstep(sc_hw, sc_hw + bank, d_sc))
         core = np.maximum(core, 1.0 - smoothstep(sc_hw - 4.0, sc_hw - 1.0, d_sc))
         d_core = np.minimum(d_core, d_sc - (sc_hw - 1.0))
+
+    # Caminitos: senderos estrechos (cañoncitos) que se meten en la meseta y vuelven.
+    trails = [] if single_path else trail_lanes(rng, exits, int(rng.integers(style["trails"][0], style["trails"][1] + 1)))
+    trail_keep = np.zeros_like(XX)
+    trail_core = np.zeros_like(XX)
+    for lane in trails:
+        d_trail = polyline_distance(wx, wy, lane)[0]
+        trail_hw = float(rng.uniform(*TRAIL_HALF_WIDTH_M))
+        trail = 1.0 - smoothstep(trail_hw, trail_hw + TRAIL_BANK_M, d_trail)
+        corridor = np.maximum(corridor, trail)
+        trail_core = np.maximum(trail_core, 1.0 - smoothstep(trail_hw - 1.0, trail_hw + 1.0, d_trail))
+        trail_keep = np.maximum(trail_keep, 1.0 - smoothstep(trail_hw + TRAIL_BANK_M + 2.0, trail_hw + TRAIL_BANK_M + 10.0, d_trail))
 
     # La isla de la bifurcacion se queda fuera del pasillo: toma la cota de la meseta (roca
     # alta) o se rebaja despues a una loma escalable.
@@ -156,31 +170,40 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     # un agua poco profunda que se puede caminar.
     hills = (fbm(rng, 170.0 * K, octaves=3) * 0.5 + 0.5) * pick("hills", style["hills"])
     sea = WATER_M - float(rng.uniform(*SEA_DEPTH_M)) + 0.5 * fbm(rng, 60.0 * K, octaves=2)
+    cliff_kind = "none"
     if is_causeway:
+        # El mar llega hasta los bordes: la fusion de bordes lo une con el agua del vecino
+        # (un lago grande) o lo convierte en orilla contra la tierra de otro bioma.
         high = sea
     else:
         high = elev + wall_h + hills + 1.5 * dune_field
-        # Acantilado: meseta de techo plano mucho mas alta (las colinas no llegan arriba).
-        # "Acantilado" = duna gigante: cresta ancha que serpentea, barlovento largo y cara
-        # de avalancha empinada hacia el pasillo, sin techo plano ni estratos.
-        giant = dunes(rng, float(rng.uniform(*CLIFF_EXTRA_M)), float(rng.uniform(70.0, 110.0)))
-        cliff_top = elev + wall_h + 0.5 * float(np.mean(CLIFF_EXTRA_M)) + giant
+        # Acantilado de arena, de uno de tres tipos (ver cliff_top_field).
+        cliff_kind, cliff_top = cliff_top_field(rng, elev + wall_h)
         high = high * (1.0 - cliff) + cliff_top * cliff
         # Modulo mixto con agua: el lado del agua se inunda.
         if secondary != biome and "water" in (biome, secondary):
             water_w = weight_of("water")
             high = high * (1.0 - water_w) + sea * water_w
-    # Junto al borde la meseta tiende a la cresta canonica; las salidas cerradas se tapan.
-    high = CREST_M + (high - CREST_M) * edge_fade
-    closed = np.zeros_like(XX, dtype=bool)
-    for side, (ex, ey) in EXIT_POINT.items():
-        if side in exits:
-            continue
-        along = np.abs(YY) if side in ("N", "S") else np.abs(XX)
-        toward = np.hypot(XX - ex, YY - ey)
-        closed |= (along < OPEN_HALF_M + BANK_M + 6.0) & (toward < 30.0)
-    high = np.where(closed, np.maximum(high, PLUG_M), high)
+    # Colina del tunel: las paredes bajas no llegan a la cota de una boveda, asi que donde
+    # va el tunel se levanta un cerro que el pasillo atraviesa por dentro (la cueva).
+    tunnel_hill = None
+    if wants_tunnel:
+        # Lejos de las plazas: la cueva no cabe junto a una (place_arch lo exige).
+        room_clear = np.full_like(XX, np.inf)
+        for room in rooms:
+            room_clear = np.minimum(room_clear, np.hypot(XX - room.x, YY - room.y) - room.radius)
+        axis = np.argwhere((d_main < 1.5) & (DIST_TO_EDGE > 40.0) & (room_clear > 22.0))
+        if len(axis):
+            i, j = axis[int(rng.integers(len(axis)))]
+            site = (float(XX[i, j]), float(YY[i, j]))
+            radius = float(rng.uniform(36.0, 48.0))
+            d_site = np.hypot(XX - site[0], YY - site[1]) + 6.0 * fbm(rng, 20.0, octaves=2)
+            tunnel_hill = 1.0 - smoothstep(radius * 0.45, radius, d_site)
+            summit = float(floor[i, j]) + float(rng.uniform(15.0, 19.0)) + 2.0 * fbm(rng, 25.0, octaves=2)
+            high = high * (1.0 - tunnel_hill) + np.maximum(high, summit) * tunnel_hill
 
+    # Los bordes son libres: la meseta llega al borde con su forma y la fusion de bordes
+    # del tile la casa con el vecino. Solo las bocas de salida van a cota de camino.
     terrain = high * (1.0 - corridor) + floor * corridor
     if fork and fork.low:
         # Loma: poca altura y laderas suaves; se puede subir y cruzar por encima.
@@ -196,11 +219,19 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
         terrain = terrain * (1.0 - moat) + (WATER_M - 1.5) * moat
         terrain = terrain + 2.2 * rampart
 
+    # Charco: hondonada bajo el agua fuera del camino; puede tocar el borde y unirse al
+    # agua del vecino.
+    has_pond = rng.random() < style["pond_prob"]
+    if has_pond:
+        pond, pond_floor = pond_field(rng, d_main, hw)
+        pond = pond * (1.0 - trail_keep)
+        terrain = terrain * (1.0 - pond) + np.minimum(terrain, pond_floor) * pond
+
     # Ruta alta: sube por el talud, recorre la meseta y cruza el pasillo por un puente.
     bridges: list[Bridge] = []
     has_upper = False
     upper_keep = np.zeros_like(XX)
-    if not is_causeway and not is_maze and rng.random() < UPPER_PROB:
+    if not is_causeway and not single_path and rng.random() < UPPER_PROB:
         for lane in upper_lane_candidates(rng, exits, wall_h + 2.0):
             d_up, s_up, total = polyline_distance(wx, wy, lane.points)
             lane_half = float(rng.uniform(5.0, 7.0))
@@ -226,7 +257,10 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
 
     tunnel = None
     if wants_tunnel:
-        tunnel = place_arch(rng, terrain, d_main, bridges, "tunnel", rooms)
+        region = tunnel_hill if tunnel_hill is not None else None
+        tunnel = place_arch(rng, terrain, d_main, bridges, "tunnel", rooms, region=region)
+        if tunnel is None and region is not None:
+            tunnel = place_arch(rng, terrain, d_main, bridges, "tunnel", rooms)
         if tunnel:
             bridges = bridges + [tunnel]
             # Rampa para subir al techo del tunel desde el pasillo.
@@ -245,7 +279,8 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     monoliths = place_monoliths(rng, terrain, d_main, hw, rooms, bridges,
                                 int(rng.integers(style["monoliths"][0], style["monoliths"][1] + 1)))
     foliage_amount = style["foliage"] if biome == "algae" else STYLES["kelp_forest"]["foliage"]
-    foliage = foliage_density(rng, terrain, core, weight_of("algae"), foliage_amount)
+    # Ni en el pasillo ni en los caminitos: la espesura no tapa ningun camino.
+    foliage = foliage_density(rng, terrain, np.maximum(core, trail_core), weight_of("algae"), foliage_amount)
 
     # Cuanto puede hundir la costa exterior cada punto (ver TN_TerrainCoastDecisions.h):
     # nada en pasillo, plazas, atajo, ruta alta ni junto a puentes y tuneles.
@@ -254,6 +289,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     if shortcut:
         keep = np.maximum(keep, 1.0 - smoothstep(sc_hw + bank + 3.0, sc_hw + bank + 12.0, d_sc))
     keep = np.maximum(np.maximum(keep, upper_keep), keep_mask_for_bridges(bridges))
+    keep = np.maximum(keep, trail_keep)
     coast = 1.0 - keep
 
     stats = {
@@ -269,6 +305,9 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
         "arch": arch is not None,
         "tunnel": tunnel is not None,
         "cliff": bool(np.any(cliff > 0.5)),
+        "cliff_kind": cliff_kind if bool(np.any(cliff > 0.5)) else "none",
+        "trails": len(trails),
+        "pond": has_pond,
         "maze": is_maze,
         "gate": gate,
         "tunnel_ramp": tunnel is not None and ramped is not None,
@@ -288,14 +327,24 @@ def encode_biome_mask(blend, foliage) -> np.ndarray:
 
 def compose_module(seed: int, exits: tuple[str, ...], biome: str, secondary: str,
                    edges: dict[str, str] | None = None, levels: dict[str, int] | None = None):
-    """Diseno + fusion con el borde de cada lado. edges None = los cuatro lados cresta."""
+    """Diseno del modulo. edges (tipo de cada lado; None = los cuatro cresta) solo guia el
+    diseno de campo (agua, explanada): el borde ya no se impone."""
     rng = np.random.default_rng(seed)
     edges = edges or {side: "crest" for side in SIDES}
     if any(kind != "crest" for kind in edges.values()):
         design, stats, bridges, flat_areas, monoliths, blend, foliage, coast = design_field_module(rng, edges, biome, exits, secondary)
     else:
         design, stats, bridges, flat_areas, monoliths, blend, foliage, coast = design_module(rng, exits, biome, secondary, levels)
-    heights_m = design * (1.0 - BORDER_WEIGHT) + border_field(edges) * BORDER_WEIGHT
+    # Sin borde canonico: la fusion de bordes del tile casa dos vecinos cualesquiera. Solo
+    # las bocas de las salidas de tierra se asientan a cota de camino, para que el pasillo
+    # continue en el modulo de al lado.
+    heights_m = design
+    for side in exits:
+        if edges[side] == "water":
+            continue
+        along = np.abs(YY) if side in ("N", "S") else np.abs(XX)
+        pad = (1.0 - smoothstep(OPEN_HALF_M - 4.0, OPEN_HALF_M + 4.0, along))             * (1.0 - smoothstep(6.0, 18.0, side_distance(side)))
+        heights_m = heights_m * (1.0 - pad)
     quantized = np.rint(heights_m * UNITS_PER_M) + HEIGHT_ZERO
     heights = np.clip(quantized, 0, 65535).astype(np.uint16)
     coast_mask = np.rint(np.clip(coast, 0.0, 1.0) * 255.0).astype(np.uint16)

@@ -24,11 +24,51 @@ FIELD_PATTERNS: dict[str, tuple[str, ...]] = {
 }
 CREST_BAND_M = (26.0, 8.0)        # la pared de un lado cresta sube entre estas distancias al borde
 MOUTH_LANE_M = 55.0               # tramo de pasillo que abre cada boca de un lado cresta
-CORNER_MOUND_M = (10.0, 34.0)     # loma de roca en cada esquina (los bordes valen CREST_M alli)
 
 
 def side_distance(side: str):
     return {"N": HALF_M - XX, "S": HALF_M + XX, "E": HALF_M - YY, "W": HALF_M + YY}[side]
+
+
+def open_relief(rng: np.random.Generator, route: tuple[str, ...]):
+    """(terreno, plaza, valles) de una region abierta de arena: montes y lomas en vez de
+    llano, sin paredes en los lados. Unos valles de laderas suaves unen el centro con cada
+    lado del camino (serpentean, y a veces un segundo valle rodea un monte: varias rutas
+    en el mismo modulo); fuera de ellos el relieve sube a montes de 10-24 m que se pueden
+    subir por casi todas partes. Hacia el borde el relieve se funde, en una franja ancha,
+    con el perfil de cada lado (lomas del borde open o cresta con su boca), asi que no
+    queda ningun escalon ni recta a lo largo de la linea de la celda."""
+    amplitude = float(rng.uniform(10.0, 24.0))
+    broad = fbm(rng, 130.0, octaves=3) * 0.5 + 0.5
+    ridged = 1.0 - np.abs(fbm(rng, 85.0, octaves=2))
+    mountains = amplitude * (0.6 * broad + 0.4 * ridged ** 2)
+    mountains += dunes(rng, float(rng.uniform(0.8, 2.0)), float(rng.uniform(20.0, 34.0)))
+
+    # Valles: del centro a cada lado del camino, con un recodo; a veces uno extra que
+    # une dos lados rodeando un monte.
+    lanes: list[tuple[Point, ...]] = []
+    for side in route:
+        bend = scaled(perpendicular(EXIT_DIR[side]), float(rng.uniform(-30.0, 30.0)))
+        lanes.append(chaikin(((0.0, 0.0), added(scaled(EXIT_POINT[side], 0.5), bend),
+                              scaled(EXIT_POINT[side], 0.85), EXIT_POINT[side]), 3))
+    if len(route) >= 2 and rng.random() < 0.6:
+        a, b = (route[int(k)] for k in rng.choice(len(route), 2, replace=False))
+        corner = scaled(added(EXIT_POINT[a], EXIT_POINT[b]), float(rng.uniform(0.35, 0.55)))
+        lanes.append(chaikin((scaled(EXIT_POINT[a], 0.6), corner, scaled(EXIT_POINT[b], 0.6)), 3))
+    d_valley = np.full_like(XX, np.inf)
+    for lane in lanes:
+        d_valley = np.minimum(d_valley, polyline_distance(XX, YY, lane)[0])
+    valley_hw = float(rng.uniform(9.0, 15.0))
+    valleys = 1.0 - smoothstep(valley_hw, valley_hw + float(rng.uniform(22.0, 34.0)), d_valley)
+    valley_floor = 0.8 * fbm(rng, 60.0, octaves=2)
+    ground = mountains * (1.0 - valleys) + valley_floor * valleys
+
+    plaza = Room(0.0, 0.0, float(rng.uniform(12.0, 18.0)))
+    m = 1.0 - smoothstep(plaza.radius - 5.0, plaza.radius + 5.0, np.hypot(XX, YY))
+    ground = ground * (1.0 - m) + float(ground[grid_index((0.0, 0.0))]) * m
+    # Sin franja de borde: el relieve llega al borde tal cual y la fusion de bordes del
+    # tile lo casa con el vecino.
+    return ground, plaza, valleys
 
 
 def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: str,
@@ -48,13 +88,7 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
     flat_areas = []
     islands: list[Room] = []
     if kind == "open":
-        # Explanada: dunas grandes y alguna roca baja; nada de paredes.
-        ground = swell + dunes(rng, float(rng.uniform(1.5, 3.5)), float(rng.uniform(22.0, 40.0))) * edge_fade
-        outcrops = 1.8 * smoothstep(0.7, 0.85, value_noise(rng, 30.0) * 0.5 + 0.5) * edge_fade
-        ground += outcrops
-        plaza = Room(0.0, 0.0, float(rng.uniform(16.0, 26.0)))
-        m = 1.0 - smoothstep(plaza.radius - 6.0, plaza.radius + 6.0, np.hypot(XX, YY))
-        ground = ground * (1.0 - m) + float(ground[grid_index((0.0, 0.0))]) * m
+        ground, plaza, valleys = open_relief(rng, route)
         flat_areas.append({"x_m": 0.0, "y_m": 0.0, "radius_m": round(plaza.radius, 2),
                            "height_m": round(float(ground[grid_index((0.0, 0.0))]), 2), "sunken": False})
     else:
@@ -69,10 +103,8 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
             end = scaled(EXIT_POINT[side], 0.8)
             start = scaled(EXIT_POINT[side], (central.radius + 4.0) / HALF_M)
             islands += island_chain(rng, start, end, (6.0, 11.0), (3.0, 5.0))
-        # Algun islote suelto fuera de las filas.
-        for _ in range(int(rng.integers(0, 4))):
-            x, y = (float(v) for v in rng.uniform(-0.7 * HALF_M, 0.7 * HALF_M, 2))
-            islands.append(Room(x, y, float(rng.uniform(5.0, 9.0))))
+        # Sin islotes sueltos: en el mar el camino es uno y cualquier isla fuera de la fila
+        # se lee como una segunda ruta.
         # Costas irregulares: las islas se miden en un espacio deformado por ruido.
         wx = XX + 5.0 * fbm(rng, 30.0, octaves=2)
         wy = YY + 5.0 * fbm(rng, 30.0, octaves=2)
@@ -93,27 +125,17 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
     if kind == "water":
         keep = np.maximum(keep, land)     # las islas (el camino) no se hunden
     else:
-        keep = np.maximum(keep, 1.0 - smoothstep(plaza.radius, plaza.radius + 10.0, np.hypot(XX, YY)))
+        keep = np.maximum(keep, valleys)
     for side in crest_sides:
-        band = smoothstep(CREST_BAND_M[0], CREST_BAND_M[1], side_distance(side))
-        wall = CREST_M + float(rng.uniform(0.0, 6.0)) * (fbm(rng, 60.0, octaves=2) * 0.5 + 0.5)
-        if kind == "water":
-            # El mar acaba en arena: playa baja y una duna que sube hasta la cresta del
-            # borde, con la cara alta empinada (no se trepa al modulo vecino).
-            # Linea de playa irregular: entrantes y salientes de hasta ~18 m.
-            shore = side_distance(side) + 18.0 * fbm(rng, 55.0, octaves=2) * smoothstep(8.0, 24.0, side_distance(side))
-            beach = smoothstep(62.0, 34.0, shore)
-            dune = 0.8 + (CREST_M + 1.5 - 0.8) * smoothstep(34.0, 6.0, shore) ** 1.8
-            wall = dune + 1.2 * fbm(rng, 40.0, octaves=2) * smoothstep(34.0, 12.0, shore)
-            band = beach
+        if kind == "open":
+            # Sin pared: el relieve llega al borde tal cual (open_relief); los obstaculos que
+            # cierren la region los pone el equipo.
+            continue
+        # El mar acaba en un cordon de dunas de costa y cima irregulares (natural_ridge).
+        wall, band = natural_ridge(rng, side_distance(side), 0.8)
         if side not in route:
-            # Sin camino: pared entera y la boca del borde canonico sellada por dentro.
+            # Sin camino: cordon de dunas entero.
             terrain = terrain * (1.0 - band) + wall * band
-            ex, ey = EXIT_POINT[side]
-            along = np.abs(YY) if side in ("N", "S") else np.abs(XX)
-            plug = (along < OPEN_HALF_M + BANK_M + 6.0) & (np.hypot(XX - ex, YY - ey) < 30.0)
-            seal = CREST_M + 2.0 if kind == "water" else PLUG_M   # en la playa, una duna; en tierra, roca
-            terrain = np.where(plug, np.maximum(terrain, seal), terrain)
             continue
         if secondary != biome:
             blend = np.maximum(blend, 1.0 - smoothstep(20.0, 75.0, side_distance(side)))
@@ -131,12 +153,8 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
             keep = np.maximum(keep, causeway)
         keep = np.maximum(keep, lane)
 
-    # Loma de roca en cada esquina, donde todos los bordes suben a CREST_M.
-    for cx in (-HALF_M, HALF_M):
-        for cy in (-HALF_M, HALF_M):
-            weight = 1.0 - smoothstep(*CORNER_MOUND_M, np.hypot(XX - cx, YY - cy))
-            terrain = terrain * (1.0 - weight) + np.maximum(terrain, CREST_M) * weight
-
+    # Sin lomas en las esquinas: el agua de cuatro modulos que se tocan en una esquina se
+    # une en la fusion de bordes.
     terrain = blur(terrain)
     stats = {
         "style": "flats" if kind == "open" else "islands",
