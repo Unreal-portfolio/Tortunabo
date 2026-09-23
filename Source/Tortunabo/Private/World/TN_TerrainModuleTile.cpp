@@ -1,5 +1,6 @@
 #include "World/TN_TerrainModuleTile.h"
 #include "World/TN_TerrainModuleAsset.h"
+#include "World/TN_TerrainBiomeDecisions.h"
 #include "World/TN_TerrainModuleDecisions.h"
 #include "World/TN_TerrainModuleWallDecisions.h"
 #include "Core/TN_Log.h"
@@ -21,6 +22,13 @@ namespace
 
 	const TCHAR* const WallJunkShapeNames[TNGridJunk::NumShapes] = { TEXT("Cube"), TEXT("Sphere"), TEXT("Cylinder"), TEXT("Cone") };
 	const TCHAR* const WallSideNames[TNGridLogic::NumSides] = { TEXT("North"), TEXT("East"), TEXT("South"), TEXT("West") };
+
+	/** Malla del motor por forma de alga, en el orden de TNTerrainBiome::EFoliageShape. */
+	const TCHAR* const FoliageShapeMeshes[TNTerrainBiome::NumFoliageShapes] = { TEXT("Cylinder"), TEXT("Cone"), TEXT("Sphere") };
+	const TCHAR* const FoliageShapeNames[TNTerrainBiome::NumFoliageShapes] = { TEXT("Stalk"), TEXT("Frond"), TEXT("Bush") };
+	constexpr int32 FoliageCustomDataFloats = 3;
+	constexpr int32 FoliageCullStart = 6000;
+	constexpr int32 FoliageCullEnd = 15000;
 }
 
 ATN_TerrainModuleTile::ATN_TerrainModuleTile()
@@ -74,6 +82,25 @@ ATN_TerrainModuleTile::ATN_TerrainModuleTile()
 		Blocker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Blocker->SetHiddenInGame(true);
 		WallBlockers.Add(Blocker);
+	}
+
+	// Bosque de algas: un ISM por forma, sin colisión ni sombra dinámica (cientos de instancias).
+	for (int32 Shape = 0; Shape < TNTerrainBiome::NumFoliageShapes; ++Shape)
+	{
+		const FString MeshPath = FString::Printf(TEXT("/Engine/BasicShapes/%s.%s"), FoliageShapeMeshes[Shape], FoliageShapeMeshes[Shape]);
+		ConstructorHelpers::FObjectFinder<UStaticMesh> ShapeMesh(*MeshPath);
+		UInstancedStaticMeshComponent* Instances = CreateDefaultSubobject<UInstancedStaticMeshComponent>(
+			*FString::Printf(TEXT("Foliage_%s"), FoliageShapeNames[Shape]));
+		Instances->SetupAttachment(RootComponent);
+		Instances->SetMobility(EComponentMobility::Static);
+		Instances->NumCustomDataFloats = FoliageCustomDataFloats;
+		Instances->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Instances->SetCastShadow(false);
+		// Hasta ~3000 instancias por módulo: se apagan con la distancia.
+		Instances->InstanceStartCullDistance = FoliageCullStart;
+		Instances->InstanceEndCullDistance = FoliageCullEnd;
+		if (ShapeMesh.Succeeded()) { Instances->SetStaticMesh(ShapeMesh.Object); }
+		Foliage.Add(Instances);
 	}
 }
 
@@ -129,25 +156,62 @@ void ATN_TerrainModuleTile::BuildWalls()
 	}
 }
 
-void ATN_TerrainModuleTile::BuildArches(const TNTerrainModule::FModuleColors& Colors)
+void ATN_TerrainModuleTile::BuildRocks(const TNTerrainModule::FModuleColors& Colors)
 {
+	int32 Section = ArchSectionOffset;
 	if (!TerrainMesh || !ModuleAsset)
 	{
 		return;
 	}
 
-	UMaterialInterface* ArchMaterial = BridgeMaterial ? BridgeMaterial.Get() : TerrainMaterial.Get();
+	UMaterialInterface* RockMaterial = BridgeMaterial ? BridgeMaterial.Get() : TerrainMaterial.Get();
+	auto AddSection = [&](const TNGridTerrain::FTileMesh& Rock)
+	{
+		if (Rock.Vertices.Num() == 0) { return; }   // roca degenerada editada a mano
+		TerrainMesh->CreateMeshSection_LinearColor(Section, Rock.Vertices, Rock.Triangles, Rock.Normals,
+			TArray<FVector2D>(), Rock.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
+		if (RockMaterial) { TerrainMesh->SetMaterial(Section, RockMaterial); }
+		++Section;
+	};
+
+	// Semilla del asset + índice: la roca sale igual en todas las máquinas y en cada build.
 	for (int32 Index = 0; Index < ModuleAsset->Bridges.Num(); ++Index)
 	{
-		// Semilla del asset + índice: la roca sale igual en todas las máquinas y en cada build.
-		const TNGridTerrain::FTileMesh Arch = TNTerrainModule::BuildArchMesh(
-			ModuleAsset->Bridges[Index], ModuleAsset->Seed * 31 + Index, Colors);
-		const int32 Section = ArchSectionOffset + Index;
-		TerrainMesh->CreateMeshSection_LinearColor(Section, Arch.Vertices, Arch.Triangles, Arch.Normals,
-			TArray<FVector2D>(), Arch.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
-		if (ArchMaterial)
+		AddSection(TNTerrainModule::BuildArchMesh(ModuleAsset->Bridges[Index], ModuleAsset->Seed * 31 + Index, Colors));
+	}
+	for (int32 Index = 0; Index < ModuleAsset->Monoliths.Num(); ++Index)
+	{
+		AddSection(TNTerrainModule::BuildMonolithMesh(ModuleAsset->Monoliths[Index], ModuleAsset->Seed * 53 + Index, Colors));
+	}
+}
+
+void ATN_TerrainModuleTile::BuildFoliage()
+{
+	for (UInstancedStaticMeshComponent* Instances : Foliage)
+	{
+		if (Instances) { Instances->ClearInstances(); }
+	}
+	if (!ModuleAsset || !ModuleAsset->HasBiomeMask())
+	{
+		return;
+	}
+
+	const TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize);
+	for (const TNTerrainBiome::FFoliageInstance& Plant : TNTerrainBiome::BuildFoliage(Field, ModuleAsset->BiomeMask, ModuleAsset->Seed))
+	{
+		const int32 Shape = static_cast<int32>(Plant.Shape);
+		if (!Foliage.IsValidIndex(Shape) || !Foliage[Shape]) { continue; }
+		const int32 InstanceIndex = Foliage[Shape]->AddInstance(Plant.Transform);
+		const float ColorData[FoliageCustomDataFloats] = { Plant.Color.R, Plant.Color.G, Plant.Color.B };
+		Foliage[Shape]->SetCustomData(InstanceIndex, MakeArrayView(ColorData));
+	}
+
+	UMaterialInterface* Material = FoliageMaterial ? FoliageMaterial.Get() : JunkMaterial.Get();
+	if (Material)
+	{
+		for (UInstancedStaticMeshComponent* Instances : Foliage)
 		{
-			TerrainMesh->SetMaterial(Section, ArchMaterial);
+			if (Instances) { Instances->SetMaterial(0, Material); }
 		}
 	}
 }
@@ -182,6 +246,10 @@ void ATN_TerrainModuleTile::BuildModule()
 	{
 		TerrainMesh->ClearAllMeshSections();
 		if (BridgeInstances) { BridgeInstances->ClearInstances(); }
+		for (UInstancedStaticMeshComponent* Instances : Foliage)
+		{
+			if (Instances) { Instances->ClearInstances(); }
+		}
 		BuiltFromAsset.Reset();
 		return;
 	}
@@ -195,10 +263,12 @@ void ATN_TerrainModuleTile::BuildModule()
 		return;
 	}
 
-	TNTerrainModule::FModuleColors Colors;
-	Colors.WaterLevel = WaterLevel;
+	// Paleta del bioma; un módulo mixto funde hacia la del secundario según su máscara.
+	const TNTerrainModule::FModuleColors Colors = TNTerrainBiome::ColorsFor(ModuleAsset->Biome, WaterLevel);
+	const TNTerrainModule::FModuleColors BlendColors = TNTerrainBiome::ColorsFor(ModuleAsset->SecondaryBiome, WaterLevel);
 	const TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize);
-	const TNGridTerrain::FTileMesh Mesh = TNTerrainModule::BuildModuleMesh(Field, Colors);
+	const TNGridTerrain::FTileMesh Mesh = TNTerrainModule::BuildModuleMesh(Field, Colors,
+		ModuleAsset->IsMixed() ? &BlendColors : nullptr, ModuleAsset->BiomeMask);
 
 	// Sin UV: el material del terreno es triplanar y deriva las coordenadas de la posición.
 	TerrainMesh->ClearAllMeshSections();
@@ -208,7 +278,8 @@ void ATN_TerrainModuleTile::BuildModule()
 	{
 		TerrainMesh->SetMaterial(0, TerrainMaterial);
 	}
-	BuildArches(Colors);
+	BuildRocks(Colors);
+	BuildFoliage();
 	BuiltFromAsset = ModuleAsset;
 
 	UE_LOG(LogTortunabo, Verbose, TEXT("[TerrainModule] '%s' construido desde '%s': %d vértices."),

@@ -27,6 +27,55 @@ enum class ETNTerrainModuleTopology : uint8
 };
 
 /**
+ * Bioma de un módulo. Decide la paleta de color, el bosque de algas y, en la generación
+ * offline, la forma (mar poco profundo, fuerte con foso, cañón...). Ver
+ * Scripts/gen_terrain_modules.py y TN_TerrainBiomeDecisions.h.
+ */
+UENUM(BlueprintType)
+enum class ETNTerrainBiome : uint8
+{
+	/** Arena: desierto de dunas o cañón y montaña. */
+	Sand,
+	/** Agua: la muralla del camino entre un mar poco profundo, o un fuerte con foso. */
+	Water,
+	/** Algas: bosque frondoso de algas en tierra. */
+	Algae
+};
+
+/**
+ * Monolito: pilar de roca que el heightfield no puede representar (paredes verticales de
+ * pocos metros de radio). El tile lo construye con TNTerrainModule::BuildMonolithMesh.
+ * Todo en uu y en espacio local del módulo.
+ */
+USTRUCT(BlueprintType)
+struct FTNTerrainModuleMonolith
+{
+	GENERATED_BODY()
+
+	/** Centro del pie en el plano. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monolith")
+	FVector2D Center = FVector2D::ZeroVector;
+
+	/** Cota del pie: queda enterrado bajo el punto más bajo de su huella. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monolith")
+	float BaseHeight = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monolith", meta = (ClampMin = "50.0"))
+	float Radius = 400.f;
+
+	/** Altura sobre el pie. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monolith", meta = (ClampMin = "100.0"))
+	float Height = 1800.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monolith")
+	float Yaw = 0.f;
+
+	/** Inclinación del eje en grados, hacia +X local del pilar (girado por Yaw). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monolith", meta = (ClampMin = "0.0", ClampMax = "30.0"))
+	float Lean = 0.f;
+};
+
+/**
  * Puente de un módulo: tablero recto que salva el hueco que un pasillo abre en una ruta
  * alta. El heightfield no puede representar un voladizo, así que el tile lo coloca como
  * instancia de malla. Todo en uu y en espacio local del módulo.
@@ -79,7 +128,7 @@ struct FTNTerrainModuleFlatArea
  * UTN_TerrainModuleAsset
  *
  * Heightfield de un módulo de terreno: una celda del grid, de ModuleSize uu de lado
- * (400 m por defecto). Los genera Scripts/gen_terrain_modules.py y los importa
+ * (200 m en la librería vigente). Los genera Scripts/gen_terrain_modules.py y los importa
  * Scripts/import_terrain_modules.py; los diseñadores parten de ellos como plantilla.
  *
  * Contrato del borde (lo comprueba TNTerrainModule::HasCanonicalBorder): los cuatro
@@ -124,6 +173,32 @@ public:
 	/** Plazas llanas (candidatas a puzzle), tal como las generó el script. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module")
 	TArray<FTNTerrainModuleFlatArea> FlatAreas;
+
+	/** Pilares de roca. Editables como los puentes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module")
+	TArray<FTNTerrainModuleMonolith> Monoliths;
+
+	/** Bioma principal: manda en la paleta donde la máscara vale 0. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module|Biome")
+	ETNTerrainBiome Biome = ETNTerrainBiome::Sand;
+
+	/** Bioma hacia el que funde un módulo mixto. Igual a Biome en un módulo puro. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Module|Biome")
+	ETNTerrainBiome SecondaryBiome = ETNTerrainBiome::Sand;
+
+	/** Un valor por vértice, como Heights. Byte alto: peso de SecondaryBiome (0-255).
+	 *  Byte bajo: densidad del bosque de algas (0-255). Vacío = bioma puro sin algas. */
+	UPROPERTY()
+	TArray<uint16> BiomeMask;
+
+	/** Sustituye la máscara de bioma. Debe tener Resolution² valores en [0, 65535]; llamar
+	 *  después de SetHeightfield. Un array vacío la borra. */
+	UFUNCTION(BlueprintCallable, Category = "Module|Biome")
+	bool SetBiomeMask(const TArray<int32>& InMask);
+
+	bool HasBiomeMask() const { return BiomeMask.Num() == Resolution * Resolution && Resolution >= 2; }
+
+	bool IsMixed() const { return SecondaryBiome != Biome && HasBiomeMask(); }
 
 	/** Resolution * Resolution alturas, fila a fila. Oculto al panel Details: son decenas
 	 *  de miles de valores. Se rellena con SetHeightfield desde el script de importación. */

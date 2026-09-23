@@ -86,12 +86,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module|Colors")
 	float WaterLevel = -400.f;
 
-	/** Material de los arcos de roca. Si falta, usan TerrainMaterial. */
+	/** Material de los arcos de roca y los monolitos. Si falta, usan TerrainMaterial. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module")
 	TObjectPtr<UMaterialInterface> BridgeMaterial;
 
-	/** Terreno en la sección 0 y un arco de roca por puente del asset en las siguientes
-	 *  (ver TNTerrainModule::BuildArchMesh). Todas con colisión. */
+	/** Material del bosque de algas. Debe leer el color de PerInstanceCustomData (3 floats),
+	 *  como JunkMaterial; si falta se usa JunkMaterial. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Module|Biome")
+	TObjectPtr<UMaterialInterface> FoliageMaterial;
+
+	/** Terreno en la sección 0, un arco de roca por puente del asset y un pilar por
+	 *  monolito en las siguientes (TNTerrainModule::BuildArchMesh / BuildMonolithMesh).
+	 *  Todas con colisión. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Module")
 	TObjectPtr<UProceduralMeshComponent> TerrainMesh;
 
@@ -122,9 +128,16 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Module|Walls")
 	TArray<TObjectPtr<UBoxComponent>> WallBlockers;
 
+	/** Bosque de algas, indexado por TNTerrainBiome::EFoliageShape. Sin colisión: se
+	 *  atraviesa, solo tapa la vista. Lo siembra la máscara del asset. */
+	UPROPERTY(VisibleAnywhere, Category = "Module|Biome")
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> Foliage;
+
 private:
-	void BuildArches(const TNTerrainModule::FModuleColors& Colors);
+	/** Arcos y monolitos, una sección cada uno a partir de la 1. */
+	void BuildRocks(const TNTerrainModule::FModuleColors& Colors);
 	void BuildWalls();
+	void BuildFoliage();
 
 	/** Asset con el que se construyó la malla actual, para no reconstruir en balde. */
 	TWeakObjectPtr<const UTN_TerrainModuleAsset> BuiltFromAsset;

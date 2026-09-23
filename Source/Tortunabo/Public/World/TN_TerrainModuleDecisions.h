@@ -253,6 +253,30 @@ namespace TNTerrainModule
 		return Color;
 	}
 
+	/** Normales suaves (media de las caras que comparten vértice) y color de vértice de una
+	 *  malla de roca con triángulos en orden horario, la convención de Unreal. */
+	inline void FinishRockMesh(TNGridTerrain::FTileMesh& Mesh, const FModuleColors& Colors)
+	{
+		Mesh.Normals.Init(FVector::ZeroVector, Mesh.Vertices.Num());
+		for (int32 T = 0; T + 2 < Mesh.Triangles.Num(); T += 3)
+		{
+			const int32 A = Mesh.Triangles[T];
+			const int32 B = Mesh.Triangles[T + 1];
+			const int32 C = Mesh.Triangles[T + 2];
+			// Orden horario: la normal hacia la cara visible es (C-A)x(B-A).
+			const FVector Face = FVector::CrossProduct(Mesh.Vertices[C] - Mesh.Vertices[A], Mesh.Vertices[B] - Mesh.Vertices[A]);
+			Mesh.Normals[A] += Face;
+			Mesh.Normals[B] += Face;
+			Mesh.Normals[C] += Face;
+		}
+		Mesh.Colors.Reset(Mesh.Vertices.Num());
+		for (int32 V = 0; V < Mesh.Vertices.Num(); ++V)
+		{
+			Mesh.Normals[V] = Mesh.Normals[V].GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
+			Mesh.Colors.Add(SampleModuleColor(Colors, Mesh.Vertices[V].Z, Mesh.Normals[V]));
+		}
+	}
+
 	/** Parámetros de forma del arco de roca; los valores por defecto son los de juego. */
 	struct FArchShape
 	{
@@ -365,25 +389,88 @@ namespace TNTerrainModule
 			AddTriangle(CapEnd, N * M + R, N * M + (R + 1) % M, AxisDir);
 		}
 
-		// Normales suaves: media de las caras que comparten vértice.
-		Mesh.Normals.Init(FVector::ZeroVector, Mesh.Vertices.Num());
-		for (int32 T = 0; T + 2 < Mesh.Triangles.Num(); T += 3)
+		FinishRockMesh(Mesh, Colors);
+		return Mesh;
+	}
+
+	/** Parámetros de forma del monolito; los valores por defecto son los de juego. */
+	struct FMonolithShape
+	{
+		int32 Stations = 12;
+		int32 RingPoints = 10;
+		/** Radio de la cima respecto al del pie. */
+		double TopRadiusRatio = 0.55;
+		/** Irregularidad del contorno (fracción del radio). */
+		double Roughness = 0.14;
+	};
+
+	/**
+	 * Pilar de roca vertical (monolito) en espacio local del módulo: anillos apilados que
+	 * se estrechan hacia la cima, con el eje inclinado Lean grados y contorno irregular
+	 * determinista por Seed. Malla cerrada con tapas, caras hacia fuera.
+	 */
+	inline TNGridTerrain::FTileMesh BuildMonolithMesh(const FTNTerrainModuleMonolith& Monolith, int32 Seed,
+		const FModuleColors& Colors, const FMonolithShape& Shape = FMonolithShape())
+	{
+		TNGridTerrain::FTileMesh Mesh;
+		const int32 N = FMath::Max(Shape.Stations, 2);
+		const int32 M = FMath::Max(Shape.RingPoints, 4);
+		if (Monolith.Radius <= 0.f || Monolith.Height <= 0.f) { return Mesh; }
+
+		const double YawRad = FMath::DegreesToRadians(static_cast<double>(Monolith.Yaw));
+		const FVector2D LeanDir(FMath::Cos(YawRad), FMath::Sin(YawRad));
+		const double LeanSlope = FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(static_cast<double>(Monolith.Lean), 0.0, 30.0)));
+		FRandomStream Stream(Seed);
+		const double PhaseA = Stream.FRandRange(0.0, 2.0 * PI);
+		const double PhaseB = Stream.FRandRange(0.0, 2.0 * PI);
+
+		TArray<FVector> Centers;
+		for (int32 S = 0; S <= N; ++S)
 		{
-			const int32 A = Mesh.Triangles[T];
-			const int32 B = Mesh.Triangles[T + 1];
-			const int32 C = Mesh.Triangles[T + 2];
-			// Orden horario: la normal hacia la cara visible es (C-A)x(B-A).
-			const FVector Face = FVector::CrossProduct(Mesh.Vertices[C] - Mesh.Vertices[A], Mesh.Vertices[B] - Mesh.Vertices[A]);
-			Mesh.Normals[A] += Face;
-			Mesh.Normals[B] += Face;
-			Mesh.Normals[C] += Face;
+			const double T = static_cast<double>(S) / N;
+			const double Z = Monolith.BaseHeight + Monolith.Height * T;
+			const FVector2D Mid = FVector2D(Monolith.Center) + LeanDir * (LeanSlope * Monolith.Height * T);
+			const double Radius = Monolith.Radius * FMath::Lerp(1.0, Shape.TopRadiusRatio, T);
+			Centers.Add(FVector(Mid.X, Mid.Y, Z));
+			for (int32 R = 0; R < M; ++R)
+			{
+				const double Theta = 2.0 * PI * R / M;
+				const double Bump = 1.0 + Shape.Roughness * (0.6 * FMath::Sin(3.0 * Theta + T * 4.0 + PhaseA)
+					+ 0.4 * FMath::Sin(5.0 * Theta - T * 9.0 + PhaseB));
+				Mesh.Vertices.Add(FVector(Mid.X + Radius * Bump * FMath::Cos(Theta),
+					Mid.Y + Radius * Bump * FMath::Sin(Theta), Z));
+			}
 		}
-		Mesh.Colors.Reserve(Mesh.Vertices.Num());
-		for (int32 V = 0; V < Mesh.Vertices.Num(); ++V)
+		// Cima ligeramente abombada; el pie queda enterrado.
+		const int32 CapBottom = Mesh.Vertices.Add(Centers[0]);
+		const int32 CapTop = Mesh.Vertices.Add(Centers.Last() + FVector(0.0, 0.0, Monolith.Radius * 0.25));
+
+		auto AddTriangle = [&](int32 A, int32 B, int32 C, const FVector& Outward)
 		{
-			Mesh.Normals[V] = Mesh.Normals[V].GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
-			Mesh.Colors.Add(SampleModuleColor(Colors, Mesh.Vertices[V].Z, Mesh.Normals[V]));
+			const FVector Cross = FVector::CrossProduct(Mesh.Vertices[B] - Mesh.Vertices[A], Mesh.Vertices[C] - Mesh.Vertices[A]);
+			if (FVector::DotProduct(Cross, Outward) > 0.0) { Swap(B, C); }
+			Mesh.Triangles.Append({ A, B, C });
+		};
+		for (int32 S = 0; S < N; ++S)
+		{
+			for (int32 R = 0; R < M; ++R)
+			{
+				const int32 A = S * M + R;
+				const int32 B = S * M + (R + 1) % M;
+				const int32 C = (S + 1) * M + R;
+				const int32 D = (S + 1) * M + (R + 1) % M;
+				const FVector Outward = (Mesh.Vertices[A] + Mesh.Vertices[D]) * 0.5 - (Centers[S] + Centers[S + 1]) * 0.5;
+				AddTriangle(A, B, C, Outward);
+				AddTriangle(B, D, C, Outward);
+			}
 		}
+		for (int32 R = 0; R < M; ++R)
+		{
+			AddTriangle(CapBottom, R, (R + 1) % M, -FVector::UpVector);
+			AddTriangle(CapTop, N * M + R, N * M + (R + 1) % M, FVector::UpVector);
+		}
+
+		FinishRockMesh(Mesh, Colors);
 		return Mesh;
 	}
 
@@ -392,8 +479,11 @@ namespace TNTerrainModule
 	 * por muestra del heightfield; normales por diferencias centrales de las alturas, de
 	 * modo que dos módulos vecinos, al compartir borde, comparten también posiciones.
 	 */
-	inline TNGridTerrain::FTileMesh BuildModuleMesh(const FModuleField& Field, const FModuleColors& Colors)
+	inline TNGridTerrain::FTileMesh BuildModuleMesh(const FModuleField& Field, const FModuleColors& Colors,
+		const FModuleColors* BlendColors = nullptr, TArrayView<const uint16> BiomeMask = TArrayView<const uint16>())
 	{
+		// Módulo mixto: el byte alto de la máscara es el peso de la segunda paleta.
+		const bool bBlend = BlendColors && BiomeMask.Num() == Field.Resolution * Field.Resolution;
 		TNGridTerrain::FTileMesh Mesh;
 		if (!Field.IsValid()) { return Mesh; }
 
@@ -418,7 +508,13 @@ namespace TNTerrainModule
 
 				Mesh.Vertices.Add(FVector(I * Step - Half, J * Step - Half, Height));
 				Mesh.Normals.Add(Normal);
-				Mesh.Colors.Add(SampleModuleColor(Colors, Height, Normal));
+				FLinearColor Color = SampleModuleColor(Colors, Height, Normal);
+				if (bBlend)
+				{
+					const float Weight = static_cast<float>(BiomeMask[I * R + J] >> 8) / 255.f;
+					Color = FMath::Lerp(Color, SampleModuleColor(*BlendColors, Height, Normal), Weight);
+				}
+				Mesh.Colors.Add(Color);
 			}
 		}
 

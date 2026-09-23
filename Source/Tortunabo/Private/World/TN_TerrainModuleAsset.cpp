@@ -36,3 +36,34 @@ bool UTN_TerrainModuleAsset::SetHeightfield(int32 InResolution, float InHeightSc
 	MarkPackageDirty();
 	return true;
 }
+
+bool UTN_TerrainModuleAsset::SetBiomeMask(const TArray<int32>& InMask)
+{
+	if (InMask.Num() == 0)
+	{
+		BiomeMask.Reset();
+		MarkPackageDirty();
+		return true;
+	}
+	if (InMask.Num() != Resolution * Resolution)
+	{
+		UE_LOG(LogTortunabo, Error, TEXT("[TerrainModule] '%s': SetBiomeMask con %d valores para resolución %d."),
+			*GetName(), InMask.Num(), Resolution);
+		return false;
+	}
+
+	TArray<uint16> Packed;
+	Packed.Reserve(InMask.Num());
+	for (const int32 Value : InMask)
+	{
+		if (Value < 0 || Value > MAX_uint16)
+		{
+			UE_LOG(LogTortunabo, Error, TEXT("[TerrainModule] '%s': valor de máscara %d fuera de [0, 65535]."), *GetName(), Value);
+			return false;
+		}
+		Packed.Add(static_cast<uint16>(Value));
+	}
+	BiomeMask = MoveTemp(Packed);
+	MarkPackageDirty();
+	return true;
+}
