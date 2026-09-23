@@ -305,12 +305,16 @@ namespace TNTerrainModule
 			&& EdgeHeights(A, TNGridLogic::SideNorth) == EdgeHeights(B, TNGridLogic::SideNorth);
 	}
 
-	/** Colores de vértice del módulo, en espacio lineal. */
+	/** Colores de vértice del módulo, en espacio lineal. Por defecto, la arena: montones y
+	 *  taludes en arena más oscura (no roca), con una segunda veta (Alt) que se mezcla por
+	 *  zonas para que dos acantilados no se lean iguales. */
 	struct FModuleColors
 	{
 		FLinearColor Floor = FLinearColor(0.62f, 0.44f, 0.21f);
-		FLinearColor Cliff = FLinearColor(0.075f, 0.065f, 0.06f);
-		FLinearColor High = FLinearColor(0.045f, 0.04f, 0.035f);
+		FLinearColor Cliff = FLinearColor(0.40f, 0.27f, 0.13f);
+		FLinearColor CliffAlt = FLinearColor(0.58f, 0.45f, 0.27f);
+		FLinearColor High = FLinearColor(0.48f, 0.33f, 0.16f);
+		FLinearColor HighAlt = FLinearColor(0.56f, 0.36f, 0.18f);
 		FLinearColor Wet = FLinearColor(0.09f, 0.065f, 0.035f);
 		/** Cota del agua en uu; por debajo el suelo se pinta húmedo. */
 		double WaterLevel = -400.0;
@@ -319,14 +323,21 @@ namespace TNTerrainModule
 		double HighGroundEnd = 900.0;
 	};
 
-	inline FLinearColor SampleModuleColor(const FModuleColors& Colors, double Height, const FVector& Normal)
+	/** Peso 0..1 de la veta Alt en un punto local al módulo: bandas suaves de ~30 m. */
+	inline double ColorVariation(const FVector2D& Local)
+	{
+		return 0.5 + 0.5 * FMath::Sin(Local.X / 5300.0 + 1.7) * FMath::Cos(Local.Y / 4100.0 - 0.6);
+	}
+
+	inline FLinearColor SampleModuleColor(const FModuleColors& Colors, double Height, const FVector& Normal, double Variation = 0.0)
 	{
 		const double Cliff = TNGridTerrain::SmoothStep(0.20, 0.55, 1.0 - Normal.Z);
 		const double High = TNGridTerrain::SmoothStep(Colors.HighGroundStart, Colors.HighGroundEnd, Height);
 		const double Wet = TNGridTerrain::SmoothStep(Colors.WaterLevel + 60.0, Colors.WaterLevel, Height);
+		const float Vein = static_cast<float>(FMath::Clamp(Variation, 0.0, 1.0));
 
-		FLinearColor Color = FMath::Lerp(Colors.Floor, Colors.High, static_cast<float>(High));
-		Color = FMath::Lerp(Color, Colors.Cliff, static_cast<float>(Cliff * 0.6));
+		FLinearColor Color = FMath::Lerp(Colors.Floor, FMath::Lerp(Colors.High, Colors.HighAlt, Vein), static_cast<float>(High));
+		Color = FMath::Lerp(Color, FMath::Lerp(Colors.Cliff, Colors.CliffAlt, Vein), static_cast<float>(Cliff * 0.6));
 		Color = FMath::Lerp(Color, Colors.Wet, static_cast<float>(Wet));
 		Color.A = 1.f;
 		return Color;
@@ -368,7 +379,9 @@ namespace TNTerrainModule
 		for (int32 V = 0; V < Mesh.Vertices.Num(); ++V)
 		{
 			Mesh.Normals[V] = Mesh.Normals[V].GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
-			Mesh.Colors.Add(SampleModuleColor(Colors, Mesh.Vertices[V].Z, Mesh.Normals[V]));
+			// Misma veta que el terreno en ese punto: la roca no cambia de tono al tocarlo.
+			const FVector2D Local(Mesh.Vertices[V].X, Mesh.Vertices[V].Y);
+			Mesh.Colors.Add(SampleModuleColor(Colors, Mesh.Vertices[V].Z, Mesh.Normals[V], ColorVariation(Local)));
 		}
 	}
 
@@ -603,11 +616,12 @@ namespace TNTerrainModule
 
 				Mesh.Vertices.Add(FVector(I * Step - Half, J * Step - Half, Height));
 				Mesh.Normals.Add(Normal);
-				FLinearColor Color = SampleModuleColor(Colors, Height, Normal);
+				const double Vein = ColorVariation(FVector2D(I * Step - Half, J * Step - Half));
+				FLinearColor Color = SampleModuleColor(Colors, Height, Normal, Vein);
 				if (bBlend)
 				{
 					const float Weight = static_cast<float>(BiomeMask[Field.SourceIndex(I, J)] >> 8) / 255.f;
-					Color = FMath::Lerp(Color, SampleModuleColor(*BlendColors, Height, Normal), Weight);
+					Color = FMath::Lerp(Color, SampleModuleColor(*BlendColors, Height, Normal, Vein), Weight);
 				}
 				Mesh.Colors.Add(Color);
 			}

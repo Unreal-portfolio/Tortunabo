@@ -130,11 +130,14 @@ namespace TNTerrainSeam
 		{
 			const double Weight = CellWeight(Cell, P, Settings);
 			if (Weight <= 0.0 || !Cell.Field.IsValid()) { continue; }
-			FLinearColor Color = TNTerrainModule::SampleModuleColor(Cell.Colors, Height, Normal);
-			const double Secondary = SecondaryWeight(Cell, CellLocal(Cell, P));
+			// La veta se mide en el espacio de cada celda: todos los tiles ven la misma.
+			const FVector2D Local = CellLocal(Cell, P);
+			const double Vein = TNTerrainModule::ColorVariation(Local);
+			FLinearColor Color = TNTerrainModule::SampleModuleColor(Cell.Colors, Height, Normal, Vein);
+			const double Secondary = SecondaryWeight(Cell, Local);
 			if (Secondary > 0.0)
 			{
-				Color = FMath::Lerp(Color, TNTerrainModule::SampleModuleColor(Cell.BlendColors, Height, Normal),
+				Color = FMath::Lerp(Color, TNTerrainModule::SampleModuleColor(Cell.BlendColors, Height, Normal, Vein),
 					static_cast<float>(Secondary));
 			}
 			Sum += Color * static_cast<float>(Weight);

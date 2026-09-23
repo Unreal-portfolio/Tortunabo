@@ -29,13 +29,17 @@ namespace TNTerrainBiome
 				// Castillo de arena: suelo claro y húmedo, murallas del mismo tono.
 				Colors.Floor = FLinearColor(0.58f, 0.47f, 0.29f);
 				Colors.Cliff = FLinearColor(0.30f, 0.23f, 0.14f);
+				Colors.CliffAlt = FLinearColor(0.44f, 0.36f, 0.22f);
 				Colors.High = FLinearColor(0.40f, 0.31f, 0.18f);
+				Colors.HighAlt = FLinearColor(0.47f, 0.35f, 0.19f);
 				Colors.Wet = FLinearColor(0.12f, 0.10f, 0.07f);
 				break;
 			case ETNTerrainBiome::Algae:
 				Colors.Floor = FLinearColor(0.16f, 0.25f, 0.08f);
 				Colors.Cliff = FLinearColor(0.05f, 0.07f, 0.04f);
+				Colors.CliffAlt = Colors.Cliff;
 				Colors.High = FLinearColor(0.05f, 0.09f, 0.035f);
+				Colors.HighAlt = Colors.High;
 				Colors.Wet = FLinearColor(0.04f, 0.06f, 0.03f);
 				break;
 			default:
@@ -185,7 +189,7 @@ namespace TNTerrainBiome
 	{
 		switch (Biome)
 		{
-			case ETNTerrainBiome::Sand:  return 45;
+			case ETNTerrainBiome::Sand:  return 30;
 			case ETNTerrainBiome::Water: return 55;
 			default:                     return 0;
 		}
