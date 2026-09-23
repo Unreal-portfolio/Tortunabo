@@ -1,0 +1,1090 @@
+{
+ "size_uu": 20000.0,
+ "resolution": 101,
+ "height_scale_uu": 0.25,
+ "height_zero": 32768,
+ "modules": [
+  {
+   "name": "M_Mapa01_r0c0",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r0c0.png",
+   "mask_file": "Cells/M_Mapa01_r0c0_mask.png",
+   "coast_file": "Cells/M_Mapa01_r0c0_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r0c1",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r0c1.png",
+   "mask_file": "Cells/M_Mapa01_r0c1_mask.png",
+   "coast_file": "Cells/M_Mapa01_r0c1_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r0c2",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r0c2.png",
+   "mask_file": "Cells/M_Mapa01_r0c2_mask.png",
+   "coast_file": "Cells/M_Mapa01_r0c2_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r0c3",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r0c3.png",
+   "mask_file": "Cells/M_Mapa01_r0c3_mask.png",
+   "coast_file": "Cells/M_Mapa01_r0c3_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": [
+    {
+     "x_m": -16.61,
+     "y_m": 64.44,
+     "radius_m": 20.01,
+     "height_m": -0.02,
+     "sunken": false
+    }
+   ]
+  },
+  {
+   "name": "M_Mapa01_r0c4",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r0c4.png",
+   "mask_file": "Cells/M_Mapa01_r0c4_mask.png",
+   "coast_file": "Cells/M_Mapa01_r0c4_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r0c5",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r0c5.png",
+   "mask_file": "Cells/M_Mapa01_r0c5_mask.png",
+   "coast_file": "Cells/M_Mapa01_r0c5_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r1c0",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r1c0.png",
+   "mask_file": "Cells/M_Mapa01_r1c0_mask.png",
+   "coast_file": "Cells/M_Mapa01_r1c0_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r1c1",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r1c1.png",
+   "mask_file": "Cells/M_Mapa01_r1c1_mask.png",
+   "coast_file": "Cells/M_Mapa01_r1c1_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r1c2",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r1c2.png",
+   "mask_file": "Cells/M_Mapa01_r1c2_mask.png",
+   "coast_file": "Cells/M_Mapa01_r1c2_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": [
+    {
+     "x_m": -3.17,
+     "y_m": 63.36,
+     "radius_m": 15.54,
+     "height_m": -0.22,
+     "sunken": false
+    }
+   ]
+  },
+  {
+   "name": "M_Mapa01_r1c3",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r1c3.png",
+   "mask_file": "Cells/M_Mapa01_r1c3_mask.png",
+   "coast_file": "Cells/M_Mapa01_r1c3_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r1c4",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r1c4.png",
+   "mask_file": "Cells/M_Mapa01_r1c4_mask.png",
+   "coast_file": "Cells/M_Mapa01_r1c4_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r1c5",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r1c5.png",
+   "mask_file": "Cells/M_Mapa01_r1c5_mask.png",
+   "coast_file": "Cells/M_Mapa01_r1c5_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": [
+    {
+     "x_m": 26.17,
+     "y_m": -19.43,
+     "radius_m": 19.98,
+     "height_m": -4.75,
+     "sunken": false
+    }
+   ]
+  },
+  {
+   "name": "M_Mapa01_r2c0",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r2c0.png",
+   "mask_file": "Cells/M_Mapa01_r2c0_mask.png",
+   "coast_file": "Cells/M_Mapa01_r2c0_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r2c1",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r2c1.png",
+   "mask_file": "Cells/M_Mapa01_r2c1_mask.png",
+   "coast_file": "Cells/M_Mapa01_r2c1_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r2c2",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r2c2.png",
+   "mask_file": "Cells/M_Mapa01_r2c2_mask.png",
+   "coast_file": "Cells/M_Mapa01_r2c2_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r2c3",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r2c3.png",
+   "mask_file": "Cells/M_Mapa01_r2c3_mask.png",
+   "coast_file": "Cells/M_Mapa01_r2c3_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r2c4",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r2c4.png",
+   "mask_file": "Cells/M_Mapa01_r2c4_mask.png",
+   "coast_file": "Cells/M_Mapa01_r2c4_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r2c5",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r2c5.png",
+   "mask_file": "Cells/M_Mapa01_r2c5_mask.png",
+   "coast_file": "Cells/M_Mapa01_r2c5_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r3c0",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r3c0.png",
+   "mask_file": "Cells/M_Mapa01_r3c0_mask.png",
+   "coast_file": "Cells/M_Mapa01_r3c0_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r3c1",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r3c1.png",
+   "mask_file": "Cells/M_Mapa01_r3c1_mask.png",
+   "coast_file": "Cells/M_Mapa01_r3c1_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r3c2",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r3c2.png",
+   "mask_file": "Cells/M_Mapa01_r3c2_mask.png",
+   "coast_file": "Cells/M_Mapa01_r3c2_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r3c3",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r3c3.png",
+   "mask_file": "Cells/M_Mapa01_r3c3_mask.png",
+   "coast_file": "Cells/M_Mapa01_r3c3_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r3c4",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r3c4.png",
+   "mask_file": "Cells/M_Mapa01_r3c4_mask.png",
+   "coast_file": "Cells/M_Mapa01_r3c4_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r3c5",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r3c5.png",
+   "mask_file": "Cells/M_Mapa01_r3c5_mask.png",
+   "coast_file": "Cells/M_Mapa01_r3c5_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r4c0",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r4c0.png",
+   "mask_file": "Cells/M_Mapa01_r4c0_mask.png",
+   "coast_file": "Cells/M_Mapa01_r4c0_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r4c1",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r4c1.png",
+   "mask_file": "Cells/M_Mapa01_r4c1_mask.png",
+   "coast_file": "Cells/M_Mapa01_r4c1_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r4c2",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r4c2.png",
+   "mask_file": "Cells/M_Mapa01_r4c2_mask.png",
+   "coast_file": "Cells/M_Mapa01_r4c2_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": [
+    {
+     "x_m": -68.61,
+     "y_m": -9.63,
+     "radius_m": 16.25,
+     "height_m": 0.42,
+     "sunken": false
+    }
+   ]
+  },
+  {
+   "name": "M_Mapa01_r4c3",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r4c3.png",
+   "mask_file": "Cells/M_Mapa01_r4c3_mask.png",
+   "coast_file": "Cells/M_Mapa01_r4c3_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r4c4",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r4c4.png",
+   "mask_file": "Cells/M_Mapa01_r4c4_mask.png",
+   "coast_file": "Cells/M_Mapa01_r4c4_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r4c5",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r4c5.png",
+   "mask_file": "Cells/M_Mapa01_r4c5_mask.png",
+   "coast_file": "Cells/M_Mapa01_r4c5_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r5c0",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r5c0.png",
+   "mask_file": "Cells/M_Mapa01_r5c0_mask.png",
+   "coast_file": "Cells/M_Mapa01_r5c0_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r5c1",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r5c1.png",
+   "mask_file": "Cells/M_Mapa01_r5c1_mask.png",
+   "coast_file": "Cells/M_Mapa01_r5c1_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r5c2",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r5c2.png",
+   "mask_file": "Cells/M_Mapa01_r5c2_mask.png",
+   "coast_file": "Cells/M_Mapa01_r5c2_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r5c3",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r5c3.png",
+   "mask_file": "Cells/M_Mapa01_r5c3_mask.png",
+   "coast_file": "Cells/M_Mapa01_r5c3_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r5c4",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r5c4.png",
+   "mask_file": "Cells/M_Mapa01_r5c4_mask.png",
+   "coast_file": "Cells/M_Mapa01_r5c4_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  },
+  {
+   "name": "M_Mapa01_r5c5",
+   "topology": "Cross",
+   "folder": "Cells",
+   "edges": [
+    "crest",
+    "crest",
+    "crest",
+    "crest"
+   ],
+   "seed": 20260924,
+   "file": "Cells/M_Mapa01_r5c5.png",
+   "mask_file": "Cells/M_Mapa01_r5c5_mask.png",
+   "coast_file": "Cells/M_Mapa01_r5c5_coast.png",
+   "biome": "sand",
+   "secondary_biome": "sand",
+   "bridges": [],
+   "monoliths": [],
+   "flat_areas": []
+  }
+ ],
+ "preset": {
+  "name": "Mapa01",
+  "seed": 20260924,
+  "cells": [
+   {
+    "name": "M_Mapa01_r0c0",
+    "col": 0,
+    "row": 0,
+    "outer_sides": 12,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r0c1",
+    "col": 1,
+    "row": 0,
+    "outer_sides": 4,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r0c2",
+    "col": 2,
+    "row": 0,
+    "outer_sides": 4,
+    "on_path": true,
+    "is_start": true,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r0c3",
+    "col": 3,
+    "row": 0,
+    "outer_sides": 4,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r0c4",
+    "col": 4,
+    "row": 0,
+    "outer_sides": 4,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r0c5",
+    "col": 5,
+    "row": 0,
+    "outer_sides": 6,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r1c0",
+    "col": 0,
+    "row": 1,
+    "outer_sides": 8,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r1c1",
+    "col": 1,
+    "row": 1,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r1c2",
+    "col": 2,
+    "row": 1,
+    "outer_sides": 0,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r1c3",
+    "col": 3,
+    "row": 1,
+    "outer_sides": 0,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r1c4",
+    "col": 4,
+    "row": 1,
+    "outer_sides": 0,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r1c5",
+    "col": 5,
+    "row": 1,
+    "outer_sides": 2,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r2c0",
+    "col": 0,
+    "row": 2,
+    "outer_sides": 8,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r2c1",
+    "col": 1,
+    "row": 2,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r2c2",
+    "col": 2,
+    "row": 2,
+    "outer_sides": 0,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r2c3",
+    "col": 3,
+    "row": 2,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r2c4",
+    "col": 4,
+    "row": 2,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r2c5",
+    "col": 5,
+    "row": 2,
+    "outer_sides": 2,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r3c0",
+    "col": 0,
+    "row": 3,
+    "outer_sides": 8,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r3c1",
+    "col": 1,
+    "row": 3,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r3c2",
+    "col": 2,
+    "row": 3,
+    "outer_sides": 0,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r3c3",
+    "col": 3,
+    "row": 3,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r3c4",
+    "col": 4,
+    "row": 3,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r3c5",
+    "col": 5,
+    "row": 3,
+    "outer_sides": 2,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r4c0",
+    "col": 0,
+    "row": 4,
+    "outer_sides": 8,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r4c1",
+    "col": 1,
+    "row": 4,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r4c2",
+    "col": 2,
+    "row": 4,
+    "outer_sides": 0,
+    "on_path": true,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r4c3",
+    "col": 3,
+    "row": 4,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r4c4",
+    "col": 4,
+    "row": 4,
+    "outer_sides": 0,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r4c5",
+    "col": 5,
+    "row": 4,
+    "outer_sides": 2,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r5c0",
+    "col": 0,
+    "row": 5,
+    "outer_sides": 9,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r5c1",
+    "col": 1,
+    "row": 5,
+    "outer_sides": 1,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r5c2",
+    "col": 2,
+    "row": 5,
+    "outer_sides": 1,
+    "on_path": true,
+    "is_start": false,
+    "is_end": true
+   },
+   {
+    "name": "M_Mapa01_r5c3",
+    "col": 3,
+    "row": 5,
+    "outer_sides": 1,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r5c4",
+    "col": 4,
+    "row": 5,
+    "outer_sides": 1,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   },
+   {
+    "name": "M_Mapa01_r5c5",
+    "col": 5,
+    "row": 5,
+    "outer_sides": 3,
+    "on_path": false,
+    "is_start": false,
+    "is_end": false
+   }
+  ]
+ }
+}
