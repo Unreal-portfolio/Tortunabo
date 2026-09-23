@@ -239,6 +239,8 @@ def configure_generator(module_blueprints, module_size):
     defaults.set_editor_property("grid_size", GENERATOR_GRID_SIZE)
     defaults.set_editor_property("min_path_length", GENERATOR_MIN_PATH)
     defaults.set_editor_property("max_path_length", GENERATOR_MAX_PATH)
+    # Un solo camino en el mapa: las bifurcaciones van dentro de los modulos.
+    defaults.set_editor_property("max_detours", 0)
     unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
     asset_lib.save_loaded_asset(blueprint)
 

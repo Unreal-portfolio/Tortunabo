@@ -118,9 +118,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
 	bool bAllowMirroredModules = true;
 
-	/** Desvíos máximos: rutas alternativas que salen del camino y vuelven a él (solo módulos). */
+	/** Desvíos máximos: rutas alternativas que salen del camino y vuelven a él (solo módulos).
+	 *  0 por defecto: el camino del mapa es uno solo; las bifurcaciones van dentro de cada
+	 *  módulo (caminos secundarios del propio heightfield). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Routes", meta = (ClampMin = "0"))
-	int32 MaxDetours = 2;
+	int32 MaxDetours = 0;
 
 	/** Celdas de camino principal que salta un desvío como mínimo (2 = rodea una sola celda). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Routes", meta = (ClampMin = "2"))
