@@ -50,6 +50,12 @@ TOPOLOGY_ENUM = {
     "Cross": unreal.TNTerrainModuleTopology.CROSS,
 }
 
+ARCH_KIND_ENUM = {
+    "bridge": unreal.TNTerrainArchKind.BRIDGE,
+    "arch": unreal.TNTerrainArchKind.ARCH,
+    "tunnel": unreal.TNTerrainArchKind.TUNNEL,
+}
+
 EDGE_ENUM = {
     "crest": unreal.TNTerrainEdge.CREST,
     "open": unreal.TNTerrainEdge.OPEN,
@@ -146,6 +152,7 @@ def make_bridge(data):
     bridge.set_editor_property("width", data["width_m"] * 100.0)
     bridge.set_editor_property("thickness", data["thickness_m"] * 100.0)
     bridge.set_editor_property("deck_height", data["deck_m"] * 100.0)
+    bridge.set_editor_property("kind", ARCH_KIND_ENUM[data.get("kind", "bridge")])
     return bridge
 
 
@@ -170,7 +177,7 @@ def make_flat_area(data):
     return area
 
 
-def build_module_asset(folder, module, manifest, heights, mask):
+def build_module_asset(folder, module, manifest, heights, mask, coast):
     name = f"DA_{module['name']}"
     path = f"{folder}/{name}"
     asset = load_or_none(path)
@@ -193,6 +200,8 @@ def build_module_asset(folder, module, manifest, heights, mask):
     asset.set_editor_property("secondary_biome", BIOME_ENUM[module.get("secondary_biome", module.get("biome", "sand"))])
     if not asset.set_biome_mask(mask):
         raise RuntimeError(f"{name}: SetBiomeMask rechazo la mascara")
+    if not asset.set_coast_weights(coast):
+        raise RuntimeError(f"{name}: SetCoastWeights rechazo los pesos de costa")
     asset_lib.save_loaded_asset(asset)
     return asset
 
@@ -270,8 +279,13 @@ def main():
                 mask_width, mask_height, mask = read_png16(f"{library_dir}/{module['mask_file']}")
                 if mask_width != resolution or mask_height != resolution:
                     raise ValueError(f"{module['name']}: mascara {mask_width}x{mask_height}, se esperaba {resolution}")
+            coast = []
+            if "coast_file" in module:
+                coast_width, coast_height, coast = read_png16(f"{library_dir}/{module['coast_file']}")
+                if coast_width != resolution or coast_height != resolution:
+                    raise ValueError(f"{module['name']}: costa {coast_width}x{coast_height}, se esperaba {resolution}")
             folder = f"{MODULES_ROOT}/{module.get('folder', module['topology'])}"
-            asset = build_module_asset(folder, module, manifest, heights, mask)
+            asset = build_module_asset(folder, module, manifest, heights, mask, coast)
             blueprints.append(build_module_blueprint(folder, module, asset, material, junk_material, module_size))
 
     configure_generator(blueprints, module_size)

@@ -126,7 +126,7 @@ def main() -> None:
         # semilla siguiente; la semilla final queda en el manifest para reproducirlo.
         for attempt in range(8):
             seed = BASE_SEED + index * 16 + attempt
-            heights, stats, bridges, flat_areas, monoliths, mask = compose_module(
+            heights, stats, bridges, flat_areas, monoliths, mask, coast = compose_module(
                 seed, exits, job["biome"], job["secondary"], edges, job["levels"])
             meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
             # La fusion con el borde puede dejar sin apoyo un arco validado antes de
@@ -140,6 +140,7 @@ def main() -> None:
         check_bridges(heights, bridges, name)
         Image.fromarray(heights).save(folder / f"{name}.png")
         Image.fromarray(mask).save(folder / f"{name}_mask.png")
+        Image.fromarray(coast).save(folder / f"{name}_coast.png")
         thumbs.setdefault(job["folder"], []).append(
             hillshade(heights, bridges, monoliths, mask, job["biome"], job["secondary"]))
         slopes = slope_degrees(heights)
@@ -151,6 +152,7 @@ def main() -> None:
             "seed": seed,
             "file": f"{job['folder']}/{name}.png",
             "mask_file": f"{job['folder']}/{name}_mask.png",
+            "coast_file": f"{job['folder']}/{name}_coast.png",
             "min_m": round(float(meters.min()), 2),
             "max_m": round(float(meters.max()), 2),
             "slope_p99_deg": round(float(np.percentile(slopes, 99)), 1),

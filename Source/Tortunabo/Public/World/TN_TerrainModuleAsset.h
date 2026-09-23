@@ -91,6 +91,18 @@ struct FTNTerrainModuleMonolith
 	float Lean = 0.f;
 };
 
+/** Qué es una roca-puente del módulo: cambia la malla que construye el tile. */
+UENUM(BlueprintType)
+enum class ETNTerrainArchKind : uint8
+{
+	/** Lleva la ruta alta por encima del pasillo (se camina por arriba y se pasa por debajo). */
+	Bridge,
+	/** Arco decorativo de pared a pared: se pasa por debajo. */
+	Arch,
+	/** Bóveda larga sobre el pasillo: se atraviesa por dentro (TNTerrainTunnel). */
+	Tunnel
+};
+
 /**
  * Puente de un módulo: tablero recto que salva el hueco que un pasillo abre en una ruta
  * alta. El heightfield no puede representar un voladizo, así que el tile lo coloca como
@@ -121,6 +133,9 @@ struct FTNTerrainModuleBridge
 	/** Cota de la cara superior del tablero. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge")
 	float DeckHeight = 1000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bridge")
+	ETNTerrainArchKind Kind = ETNTerrainArchKind::Bridge;
 };
 
 /** Zona llana del módulo (plaza), candidata a asentar un puzzle. En uu, espacio local. */
@@ -222,6 +237,15 @@ public:
 	 *  después de SetHeightfield. Un array vacío la borra. */
 	UFUNCTION(BlueprintCallable, Category = "Module|Biome")
 	bool SetBiomeMask(const TArray<int32>& InMask);
+
+	/** Cuánto puede hundir la costa exterior cada vértice (0 = camino, intocable; 255 =
+	 *  pared o meseta). Ver TN_TerrainCoastDecisions.h. Vacío = sin costa. */
+	UPROPERTY()
+	TArray<uint8> CoastWeights;
+
+	/** Sustituye los pesos de costa: Resolution² valores en [0, 255], o vacío para quitarla. */
+	UFUNCTION(BlueprintCallable, Category = "Module")
+	bool SetCoastWeights(const TArray<int32>& InWeights);
 
 	bool HasBiomeMask() const { return BiomeMask.Num() == Resolution * Resolution && Resolution >= 2; }
 

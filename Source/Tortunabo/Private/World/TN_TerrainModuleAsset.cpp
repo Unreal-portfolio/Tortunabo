@@ -67,3 +67,28 @@ bool UTN_TerrainModuleAsset::SetBiomeMask(const TArray<int32>& InMask)
 	MarkPackageDirty();
 	return true;
 }
+
+bool UTN_TerrainModuleAsset::SetCoastWeights(const TArray<int32>& InWeights)
+{
+	if (InWeights.Num() != 0 && InWeights.Num() != Resolution * Resolution)
+	{
+		UE_LOG(LogTortunabo, Error, TEXT("[TerrainModule] '%s': SetCoastWeights con %d valores para resolución %d."),
+			*GetName(), InWeights.Num(), Resolution);
+		return false;
+	}
+
+	TArray<uint8> Packed;
+	Packed.Reserve(InWeights.Num());
+	for (const int32 Value : InWeights)
+	{
+		if (Value < 0 || Value > MAX_uint8)
+		{
+			UE_LOG(LogTortunabo, Error, TEXT("[TerrainModule] '%s': peso de costa %d fuera de [0, 255]."), *GetName(), Value);
+			return false;
+		}
+		Packed.Add(static_cast<uint8>(Value));
+	}
+	CoastWeights = MoveTemp(Packed);
+	MarkPackageDirty();
+	return true;
+}

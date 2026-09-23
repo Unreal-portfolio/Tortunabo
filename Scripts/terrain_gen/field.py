@@ -89,16 +89,31 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
     # tramo es una calzada a cota 0 que llega a la isla central.
     terrain = ground
     blend = np.zeros_like(XX)
+    keep = np.zeros_like(XX)
+    if kind == "water":
+        keep = np.maximum(keep, land)     # las islas (el camino) no se hunden
+    else:
+        keep = np.maximum(keep, 1.0 - smoothstep(plaza.radius, plaza.radius + 10.0, np.hypot(XX, YY)))
     for side in crest_sides:
         band = smoothstep(CREST_BAND_M[0], CREST_BAND_M[1], side_distance(side))
         wall = CREST_M + float(rng.uniform(0.0, 6.0)) * (fbm(rng, 60.0, octaves=2) * 0.5 + 0.5)
+        if kind == "water":
+            # El mar acaba en arena: playa baja y una duna que sube hasta la cresta del
+            # borde, con la cara alta empinada (no se trepa al modulo vecino).
+            # Linea de playa irregular: entrantes y salientes de hasta ~18 m.
+            shore = side_distance(side) + 18.0 * fbm(rng, 55.0, octaves=2) * smoothstep(8.0, 24.0, side_distance(side))
+            beach = smoothstep(62.0, 34.0, shore)
+            dune = 0.8 + (CREST_M + 1.5 - 0.8) * smoothstep(34.0, 6.0, shore) ** 1.8
+            wall = dune + 1.2 * fbm(rng, 40.0, octaves=2) * smoothstep(34.0, 12.0, shore)
+            band = beach
         if side not in route:
             # Sin camino: pared entera y la boca del borde canonico sellada por dentro.
             terrain = terrain * (1.0 - band) + wall * band
             ex, ey = EXIT_POINT[side]
             along = np.abs(YY) if side in ("N", "S") else np.abs(XX)
             plug = (along < OPEN_HALF_M + BANK_M + 6.0) & (np.hypot(XX - ex, YY - ey) < 30.0)
-            terrain = np.where(plug, np.maximum(terrain, PLUG_M), terrain)
+            seal = CREST_M + 2.0 if kind == "water" else PLUG_M   # en la playa, una duna; en tierra, roca
+            terrain = np.where(plug, np.maximum(terrain, seal), terrain)
             continue
         if secondary != biome:
             blend = np.maximum(blend, 1.0 - smoothstep(20.0, 75.0, side_distance(side)))
@@ -113,6 +128,8 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
             path = ((0.0, 0.0), added(scaled(EXIT_POINT[side], 0.45), bend), scaled(EXIT_POINT[side], 0.8), EXIT_POINT[side])
             causeway = 1.0 - smoothstep(5.0, 9.0, polyline_distance(XX, YY, chaikin(path, 3))[0])
             terrain = np.maximum(terrain, 0.3 * causeway + SEA_EDGE_M * (1.0 - causeway))
+            keep = np.maximum(keep, causeway)
+        keep = np.maximum(keep, lane)
 
     # Loma de roca en cada esquina, donde todos los bordes suben a CREST_M.
     for cx in (-HALF_M, HALF_M):
@@ -141,4 +158,4 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
         "wall_h": 0.0,
         "base_half_width": 0.0,
     }
-    return terrain, stats, [], flat_areas, [], blend, np.zeros_like(XX)
+    return terrain, stats, [], flat_areas, [], blend, np.zeros_like(XX), 1.0 - keep

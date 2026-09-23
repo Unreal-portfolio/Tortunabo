@@ -198,6 +198,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     # Ruta alta: sube por el talud, recorre la meseta y cruza el pasillo por un puente.
     bridges: list[Bridge] = []
     has_upper = False
+    upper_keep = np.zeros_like(XX)
     if not is_causeway and not is_maze and rng.random() < UPPER_PROB:
         for lane in upper_lane_candidates(rng, exits, wall_h + 2.0):
             d_up, s_up, total = polyline_distance(wx, wy, lane.points)
@@ -217,6 +218,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
             terrain = candidate
             bridges = found
             has_upper = True
+            upper_keep = lane_mask
             break
 
     terrain = blur(terrain)
@@ -244,6 +246,15 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     foliage_amount = style["foliage"] if biome == "algae" else STYLES["kelp_forest"]["foliage"]
     foliage = foliage_density(rng, terrain, core, weight_of("algae"), foliage_amount)
 
+    # Cuanto puede hundir la costa exterior cada punto (ver TN_TerrainCoastDecisions.h):
+    # nada en pasillo, plazas, atajo, ruta alta ni junto a puentes y tuneles.
+    keep = 1.0 - smoothstep(hw + bank + 3.0, hw + bank + 12.0, d_main)
+    keep = np.maximum(keep, room_mask(rooms, 8.0))
+    if shortcut:
+        keep = np.maximum(keep, 1.0 - smoothstep(sc_hw + bank + 3.0, sc_hw + bank + 12.0, d_sc))
+    keep = np.maximum(np.maximum(keep, upper_keep), keep_mask_for_bridges(bridges))
+    coast = 1.0 - keep
+
     stats = {
         "style": style_name,
         "biome": biome,
@@ -263,7 +274,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
         "wall_h": round(wall_h, 2),
         "base_half_width": round(base_hw, 2),
     }
-    return terrain, stats, bridges, flat_areas, monoliths, blend, foliage
+    return terrain, stats, bridges, flat_areas, monoliths, blend, foliage, coast
 
 
 def encode_biome_mask(blend, foliage) -> np.ndarray:
@@ -280,13 +291,14 @@ def compose_module(seed: int, exits: tuple[str, ...], biome: str, secondary: str
     rng = np.random.default_rng(seed)
     edges = edges or {side: "crest" for side in SIDES}
     if any(kind != "crest" for kind in edges.values()):
-        design, stats, bridges, flat_areas, monoliths, blend, foliage = design_field_module(rng, edges, biome, exits, secondary)
+        design, stats, bridges, flat_areas, monoliths, blend, foliage, coast = design_field_module(rng, edges, biome, exits, secondary)
     else:
-        design, stats, bridges, flat_areas, monoliths, blend, foliage = design_module(rng, exits, biome, secondary, levels)
+        design, stats, bridges, flat_areas, monoliths, blend, foliage, coast = design_module(rng, exits, biome, secondary, levels)
     heights_m = design * (1.0 - BORDER_WEIGHT) + border_field(edges) * BORDER_WEIGHT
     quantized = np.rint(heights_m * UNITS_PER_M) + HEIGHT_ZERO
     heights = np.clip(quantized, 0, 65535).astype(np.uint16)
-    return heights, stats, bridges, flat_areas, monoliths, encode_biome_mask(blend, foliage)
+    coast_mask = np.rint(np.clip(coast, 0.0, 1.0) * 255.0).astype(np.uint16)
+    return heights, stats, bridges, flat_areas, monoliths, encode_biome_mask(blend, foliage), coast_mask
 
 
 def module_biomes(n: int, count: int) -> tuple[str, str]:

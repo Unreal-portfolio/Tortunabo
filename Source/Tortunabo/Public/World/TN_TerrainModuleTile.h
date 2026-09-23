@@ -10,7 +10,7 @@ class UMaterialInterface;
 class UProceduralMeshComponent;
 class UTN_TerrainModuleAsset;
 enum class ETNTerrainModuleTopology : uint8;
-namespace TNTerrainModule { struct FModuleColors; }
+namespace TNTerrainModule { struct FModuleColors; struct FModuleField; }
 
 /** Lados del módulo como bits, para marcar bocas bloqueadas (mismo orden que TNGridLogic). */
 UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
@@ -57,7 +57,7 @@ public:
 	void BuildModule();
 
 	/** Fija las bocas bloqueadas y la semilla de sus muros. Solo servidor, antes de FinishSpawning. */
-	void InitializeModule(uint8 InBlockedExits, int32 InWallSeed, bool bInMirrored = false);
+	void InitializeModule(uint8 InBlockedExits, int32 InWallSeed, bool bInMirrored = false, uint8 InOuterSides = 0);
 
 	uint8 GetBlockedExits() const { return BlockedExits; }
 
@@ -117,6 +117,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "Module")
 	bool bMirrored = false;
 
+	/** Lados (espacio local del módulo colocado) que dan fuera del mapa: su terreno se
+	 *  hunde en una costa irregular y una caja invisible impide salir. Replicado una vez. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "Module",
+		meta = (Bitmask, BitmaskEnum = "/Script/Tortunabo.ETNTerrainModuleSide"))
+	uint8 OuterSides = 0;
+
 	/** Semilla del montón de basura de cada muro. Replicada: mismo montón en todas las máquinas. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "Module|Walls")
 	int32 WallSeed = 0;
@@ -133,18 +139,26 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Module|Walls")
 	TArray<TObjectPtr<UBoxComponent>> WallBlockers;
 
+	/** Caja invisible a lo largo de cada lado exterior (Norte, Este, Sur, Oeste). */
+	UPROPERTY(VisibleAnywhere, Category = "Module|Walls")
+	TArray<TObjectPtr<UBoxComponent>> OuterBlockers;
+
 	/** Bosque de algas, indexado por TNTerrainBiome::EFoliageShape. Sin colisión: se
 	 *  atraviesa, solo tapa la vista. Lo siembra la máscara del asset. */
 	UPROPERTY(VisibleAnywhere, Category = "Module|Biome")
 	TArray<TObjectPtr<UInstancedStaticMeshComponent>> Foliage;
 
 private:
-	/** Arcos y monolitos, una sección cada uno a partir de la 1. */
-	void BuildRocks(const TNTerrainModule::FModuleColors& Colors);
+	/** Arcos, túneles y monolitos, una sección cada uno a partir de la 1. */
+	void BuildRocks(const TNTerrainModule::FModuleColors& Colors, const TNTerrainModule::FModuleField& Field);
 	void BuildWalls();
-	void BuildFoliage();
+	void BuildFoliage(const TNTerrainModule::FModuleField& Field);
+
+	/** Alturas con la costa exterior aplicada (las usan malla, colisión y algas). */
+	TArray<uint16> PlacedHeights;
 
 	/** Asset con el que se construyó la malla actual, para no reconstruir en balde. */
 	TWeakObjectPtr<const UTN_TerrainModuleAsset> BuiltFromAsset;
 	bool bBuiltMirrored = false;
+	uint8 BuiltOuterSides = 0;
 };

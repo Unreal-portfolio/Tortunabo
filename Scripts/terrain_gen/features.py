@@ -511,6 +511,15 @@ def maze_lanes(rng: np.random.Generator, exits: tuple[str, ...], cells: int = 5,
     return lanes
 
 
+def keep_mask_for_bridges(bridges: list[Bridge]):
+    """1 alrededor de puentes, arcos y tuneles: la costa exterior no les quita los apoyos."""
+    keep = np.zeros_like(XX)
+    for b in bridges:
+        reach = max(b.length_m, b.width_m) * 0.5
+        keep = np.maximum(keep, 1.0 - smoothstep(reach + 4.0, reach + 12.0, np.hypot(XX - b.x, YY - b.y)))
+    return keep
+
+
 def island_chain(rng: np.random.Generator, start: Point, end: Point, radius: tuple[float, float],
                  gap: tuple[float, float], bend_m: float = 35.0) -> list[Room]:
     """Islas de start a end a lo largo de una curva (Bezier con el control desplazado hasta

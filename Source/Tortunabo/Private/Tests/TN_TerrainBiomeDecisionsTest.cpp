@@ -6,6 +6,8 @@
 #include "Misc/AutomationTest.h"
 #include "Math/RandomStream.h"
 #include "World/TN_TerrainBiomeDecisions.h"
+#include "World/TN_TerrainCoastDecisions.h"
+#include "World/TN_TerrainTunnelDecisions.h"
 #include "World/TN_TerrainModuleDecisions.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -281,6 +283,10 @@ bool FTNTerrainBiomeMonolithMeshTest::RunTest(const FString& Parameters)
 	bool bIndicesValid = true;
 	for (const int32 Index : Mesh.Triangles) { bIndicesValid &= Mesh.Vertices.IsValidIndex(Index); }
 	TestTrue(TEXT("índices válidos"), bIndicesValid);
+	bool bFinite = true;
+	for (const FVector& V : Mesh.Vertices) { bFinite &= !V.ContainsNaN(); }
+	for (const FVector& Normal : Mesh.Normals) { bFinite &= !Normal.ContainsNaN(); }
+	TestTrue(TEXT("sin NaN (PI es float: sin(PI) < 0)"), bFinite);
 
 	double MinZ = UE_BIG_NUMBER;
 	double MaxZ = -UE_BIG_NUMBER;
@@ -302,6 +308,109 @@ bool FTNTerrainBiomeMonolithMeshTest::RunTest(const FString& Parameters)
 	FTNTerrainModuleMonolith Degenerate = Monolith;
 	Degenerate.Radius = 0.f;
 	TestEqual(TEXT("radio 0: sin malla"), TNTerrainModule::BuildMonolithMesh(Degenerate, 3, Colors, Shape).Vertices.Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainBiomeCoastTest,
+	"Tortunabo.TerrainBiome.Coast",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTerrainBiomeCoastTest::RunTest(const FString& Parameters)
+{
+	// Meseta plana a +10 m, toda ella hundible.
+	const int32 R = BiomeTestResolution;
+	UTN_TerrainModuleAsset* Asset = NewObject<UTN_TerrainModuleAsset>();
+	TArray<int32> Flat;
+	Flat.Init(32768 + 4000, R * R);
+	TestTrue(TEXT("heightfield"), Asset->SetHeightfield(R, 0.25f, 32768, Flat));
+	TArray<int32> Allow;
+	Allow.Init(255, R * R);
+	TestTrue(TEXT("pesos de costa"), Asset->SetCoastWeights(Allow));
+	TArray<int32> TooMany;
+	TooMany.Init(0, R * R + 1);
+	AddExpectedError(TEXT("SetCoastWeights con"), EAutomationExpectedErrorFlags::Contains, 1);
+	TestFalse(TEXT("pesos de otro tamaño: rechazados"), Asset->SetCoastWeights(TooMany));
+
+	const TArray<uint16> None = TNTerrainCoast::ApplyCoast(*Asset, BiomeTestSize, false, 0, 7);
+	TestTrue(TEXT("sin lados exteriores no cambia nada"), None == Asset->Heights);
+
+	const uint8 North = TNTerrainModule::SideBit(TNGridLogic::SideNorth);
+	const TArray<uint16> Coast = TNTerrainCoast::ApplyCoast(*Asset, BiomeTestSize, false, North, 7);
+	const uint16 Sea = static_cast<uint16>(32768 - 2800);
+	bool bSharedEdgesIntact = true;
+	bool bNeverRaised = true;
+	for (int32 K = 0; K < R; ++K)
+	{
+		bSharedEdgesIntact &= Coast[0 * R + K] == Asset->Heights[0 * R + K];         // Sur
+		bSharedEdgesIntact &= Coast[K * R + 0] == Asset->Heights[K * R + 0];         // Oeste
+		bSharedEdgesIntact &= Coast[K * R + R - 1] == Asset->Heights[K * R + R - 1]; // Este
+	}
+	for (int32 Index = 0; Index < Coast.Num(); ++Index) { bNeverRaised &= Coast[Index] <= Asset->Heights[Index]; }
+	TestTrue(TEXT("los lados compartidos no cambian"), bSharedEdgesIntact);
+	TestTrue(TEXT("la costa nunca sube terreno"), bNeverRaised);
+	TestEqual(TEXT("el centro del lado exterior baja al fondo de mar"), Coast[(R - 1) * R + R / 2], Sea);
+
+	TArray<int32> Path;
+	Path.Init(0, R * R);
+	TestTrue(TEXT("pesos a cero"), Asset->SetCoastWeights(Path));
+	TestTrue(TEXT("con peso 0 (camino) no se toca"), TNTerrainCoast::ApplyCoast(*Asset, BiomeTestSize, false, North, 7) == Asset->Heights);
+
+	// Determinista y dependiente de la semilla (la costa sale del WallSeed replicado).
+	TestTrue(TEXT("alcance determinista"), TNTerrainCoast::CoastReach(0, 1234.0, TNTerrainCoast::FCoastShape(3), {})
+		== TNTerrainCoast::CoastReach(0, 1234.0, TNTerrainCoast::FCoastShape(3), {}));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainBiomeTunnelMeshTest,
+	"Tortunabo.TerrainBiome.TunnelMesh",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTerrainBiomeTunnelMeshTest::RunTest(const FString& Parameters)
+{
+	FTNTerrainModuleBridge Tunnel;
+	Tunnel.Center = FVector2D(500.0, -300.0);
+	Tunnel.Yaw = 0.f;
+	Tunnel.Length = 4000.f;
+	Tunnel.Width = 2400.f;
+	Tunnel.Thickness = 400.f;
+	Tunnel.DeckHeight = 1200.f;
+	Tunnel.Kind = ETNTerrainArchKind::Tunnel;
+	const double Floor = 100.0;
+
+	const TNTerrainModule::FModuleColors Colors;
+	const TNTerrainTunnel::FTunnelShape Shape;
+	const TNGridTerrain::FTileMesh Mesh = TNTerrainTunnel::BuildTunnelMesh(Tunnel, Floor, 5, Colors, Shape);
+	const int32 N = Shape.ProfilePoints;
+	const int32 S = Shape.Stations;
+	TestEqual(TEXT("vértices: dos perfiles por estación"), Mesh.Vertices.Num(), (S + 1) * 2 * N);
+	TestEqual(TEXT("triángulos: exterior, bóveda y dos bocas"), Mesh.Triangles.Num(), 3 * (S * (N - 1) * 4 + 2 * (N - 1) * 2));
+	bool bIndicesValid = true;
+	for (const int32 Index : Mesh.Triangles) { bIndicesValid &= Mesh.Vertices.IsValidIndex(Index); }
+	TestTrue(TEXT("índices válidos"), bIndicesValid);
+	bool bFinite = true;
+	for (const FVector& V : Mesh.Vertices) { bFinite &= !V.ContainsNaN(); }
+	for (const FVector& Normal : Mesh.Normals) { bFinite &= !Normal.ContainsNaN(); }
+	TestTrue(TEXT("sin NaN (PI es float: sin(PI) < 0)"), bFinite);
+
+	double MinZ = UE_BIG_NUMBER;
+	double MaxZ = -UE_BIG_NUMBER;
+	double ClearanceAtAxis = UE_BIG_NUMBER;
+	for (int32 V = 0; V < Mesh.Vertices.Num(); ++V)
+	{
+		const FVector& P = Mesh.Vertices[V];
+		MinZ = FMath::Min(MinZ, P.Z);
+		MaxZ = FMath::Max(MaxZ, P.Z);
+		const bool bInner = (V % (2 * N)) >= N;
+		// Bóveda sobre el eje (Yaw 0: de pared a pared es X): la altura libre en el centro.
+		if (bInner && FMath::Abs(P.X - Tunnel.Center.X) < 300.0) { ClearanceAtAxis = FMath::Min(ClearanceAtAxis, P.Z - Floor); }
+	}
+	TestTrue(TEXT("techo a la cota del tablero"), FMath::IsNearlyEqual(MaxZ, Tunnel.DeckHeight, 1.0));
+	TestTrue(TEXT("base enterrada bajo el suelo"), FMath::IsNearlyEqual(MinZ, Floor - Shape.BaseBuried, 1.0));
+	TestTrue(TEXT("paso libre bajo la bóveda"), ClearanceAtAxis >= 0.85 * (Tunnel.DeckHeight - Tunnel.Thickness - Floor));
+
+	FTNTerrainModuleBridge Low = Tunnel;
+	Low.DeckHeight = 300.f;
+	TestEqual(TEXT("sin altura para el hueco: sin malla"), TNTerrainTunnel::BuildTunnelMesh(Low, Floor, 5, Colors, Shape).Vertices.Num(), 0);
 	return true;
 }
 

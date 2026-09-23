@@ -310,18 +310,22 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const 
 	// Spawn diferido: las bocas bloqueadas y la semilla del muro viajan replicadas y deben
 	// estar fijadas antes de FinishSpawning, igual que FTNGridTileInit en el modo terreno.
 	auto SpawnModule = [&](TSubclassOf<ATN_TerrainModuleTile> ModuleClass, FIntPoint Cell, int32 YawSteps, uint8 BlockedExits,
-		bool bMirrored) -> ATN_TerrainModuleTile*
+		bool bMirrored, uint8 OuterLocal) -> ATN_TerrainModuleTile*
 	{
 		FTransform TileTransform;
 		ATN_TerrainModuleTile* Tile = Cast<ATN_TerrainModuleTile>(BeginSpawnTile(ModuleClass, Cell, YawSteps, TileTransform));
 		if (!Tile) { return nullptr; }
-		Tile->InitializeModule(BlockedExits, LastUsedSeed ^ (Cell.X * 73856093) ^ (Cell.Y * 19349663), bMirrored);
+		Tile->InitializeModule(BlockedExits, LastUsedSeed ^ (Cell.X * 73856093) ^ (Cell.Y * 19349663), bMirrored, OuterLocal);
 		FinishTile(Tile, TileTransform);
 		if (!bIsGameWorld) { Tile->BuildModule(); }
 		return Tile;
 	};
 
-	for (const TNGridRoutes::FTNRouteCell& Cell : TNGridRoutes::BuildRouteCells(Path, Detours))
+	const TArray<TNGridRoutes::FTNRouteCell> RouteCells = TNGridRoutes::BuildRouteCells(Path, Detours);
+	TSet<FIntPoint> ModuleCells;
+	for (const TNGridRoutes::FTNRouteCell& Cell : RouteCells) { ModuleCells.Add(Cell.Coord); }
+
+	for (const TNGridRoutes::FTNRouteCell& Cell : RouteCells)
 	{
 		PathCells.Add(Cell.Coord);
 
@@ -361,8 +365,21 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const 
 		// Bocas a tapar en el espacio local del módulo tal como se coloca (reflejado o no).
 		const ETNTerrainModuleTopology Placed = bMirrored ? TNTerrainModule::MirrorTopology(Topology) : Topology;
 		const uint8 Blocked = TNTerrainModule::BlockedExitsLocal(Placed, YawSteps, Cell.Connections);
+		// Lados sin módulo al otro lado (fuera del mapa): costa. Si se rellenan las celdas
+		// vacías, nada da fuera salvo el borde del grid.
+		uint8 OuterWorld = 0;
+		for (int32 Side = 0; Side < TNGridLogic::NumSides; ++Side)
+		{
+			const FIntPoint Neighbour = Cell.Coord + TNGridLogic::StepForSide(Side);
+			const bool bInside = Neighbour.X >= 0 && Neighbour.Y >= 0 && Neighbour.X < GridSize && Neighbour.Y < GridSize;
+			if (!ModuleCells.Contains(Neighbour) && (!bFillEmptyCellsWithModules || !bInside))
+			{
+				OuterWorld |= TNTerrainModule::SideBit(Side);
+			}
+		}
+		const uint8 OuterLocal = TNTerrainModule::RotateExitMask(OuterWorld, -YawSteps);
 
-		ATN_TerrainModuleTile* Tile = SpawnModule(ModuleClass, Cell.Coord, YawSteps, Blocked, bMirrored);
+		ATN_TerrainModuleTile* Tile = SpawnModule(ModuleClass, Cell.Coord, YawSteps, Blocked, bMirrored, OuterLocal);
 		if (!Tile) { continue; }
 		UsedClasses.Add(ModuleClass.Get());
 		if (Cell.bIsStart) { Tile->Tags.AddUnique(StartTileTag); }
@@ -394,7 +411,7 @@ void ATN_GridMapGenerator::GenerateModules(const TArray<FIntPoint>& Path, const 
 			const TSubclassOf<ATN_TerrainModuleTile> ModuleClass = ValidClasses[RandRange(0, ValidClasses.Num() - 1)];
 			ETNTerrainModuleTopology Topology;
 			TryGetModuleTopology(ModuleClass, Topology);
-			SpawnModule(ModuleClass, Cell, RandRange(0, TNGridLogic::NumSides - 1), TNTerrainModule::ExitMask(Topology), false);
+			SpawnModule(ModuleClass, Cell, RandRange(0, TNGridLogic::NumSides - 1), TNTerrainModule::ExitMask(Topology), false, 0);
 		}
 	}
 }
