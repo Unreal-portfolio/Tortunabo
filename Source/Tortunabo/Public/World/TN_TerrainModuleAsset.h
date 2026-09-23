@@ -162,11 +162,11 @@ struct FTNTerrainModuleFlatArea
  * (200 m en la librería vigente). Los genera Scripts/gen_terrain_modules.py y los importa
  * Scripts/import_terrain_modules.py; los diseñadores parten de ellos como plantilla.
  *
- * Contrato del borde (lo comprueba TNTerrainModule::HasCanonicalBorder): los cuatro
- * lados de TODOS los módulos tienen el mismo perfil de alturas, simétrico respecto a
- * su punto medio. Así cualquier módulo casa con cualquier otro, con cualquier rotación,
- * sin costura. Un módulo que no usa una salida la cierra con una rampa por dentro del
- * borde, nunca modificando el borde.
+ * Contrato del borde: libre. Al colocarlo, ATN_TerrainModuleTile funde su borde con el
+ * de sus vecinos (TNTerrainSeam), así que cualquier módulo casa con cualquier otro, con
+ * cualquier rotación, sin costura. Solo se exige que cada salida llegue al centro de su
+ * lado a cota de camino (Z = 0), para que el pasillo continúe en el módulo de al lado.
+ * (TNTerrainModule::HasCanonicalBorder describe el contrato antiguo, de borde común.)
  *
  * Alturas: Z_uu = (Heights[i] - HeightZero) * HeightScale, con i = fila * Resolution +
  * columna; la fila recorre el eje X local (Sur a Norte) y la columna el eje Y (Oeste a
