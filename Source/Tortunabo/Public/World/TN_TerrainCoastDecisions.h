@@ -30,8 +30,8 @@ namespace TNTerrainCoast
 		/** Cota del fondo de mar al que baja la costa, en uu (el agua está a -400). */
 		double SeaFloor = -700.0;
 		/** Distancia al lado exterior hasta la que llega el mar, entre estos dos valores. */
-		double MinReach = 2600.0;
-		double MaxReach = 6500.0;
+		double MinReach = 3000.0;
+		double MaxReach = 9000.0;
 		/** Anchura de la orilla (de tierra a fondo de mar). */
 		double Shore = 1400.0;
 		/** A menos de esta distancia de un lado compartido no se toca nada. */
