@@ -63,7 +63,7 @@ SUNKEN_DEPTH_M = (3.5, 6.0)
 SUNKEN_FEATHER_M = 11.0          # media anchura de la rampa: 6 m en 11 m -> ~28 grados
 # Acantilado: tramo de pared mucho mas alta y casi vertical, con estratos.
 CLIFF_EXTRA_M = (5.0, 10.0)        # 2026-09-23: mas bajos (antes 12-24 m)
-CLIFF_BANK_M = 2.0
+CLIFF_BANK_M = 11.0                 # cara de avalancha de duna (~33 grados), no pared vertical
 CLIFF_STRATA_M = 3.0
 
 # ── F4: biomas ────────────────────────────────────────────────────────────────────

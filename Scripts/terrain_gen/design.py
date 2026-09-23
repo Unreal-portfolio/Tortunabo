@@ -161,7 +161,10 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     else:
         high = elev + wall_h + hills + 1.5 * dune_field
         # Acantilado: meseta de techo plano mucho mas alta (las colinas no llegan arriba).
-        cliff_top = elev + wall_h + float(rng.uniform(*CLIFF_EXTRA_M))
+        # "Acantilado" = duna gigante: cresta ancha que serpentea, barlovento largo y cara
+        # de avalancha empinada hacia el pasillo, sin techo plano ni estratos.
+        giant = dunes(rng, float(rng.uniform(*CLIFF_EXTRA_M)), float(rng.uniform(70.0, 110.0)))
+        cliff_top = elev + wall_h + 0.5 * float(np.mean(CLIFF_EXTRA_M)) + giant
         high = high * (1.0 - cliff) + cliff_top * cliff
         # Modulo mixto con agua: el lado del agua se inunda.
         if secondary != biome and "water" in (biome, secondary):
@@ -186,8 +189,6 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
         # En la calzada la meseta esta bajo el agua: la isla se levanta como roca propia.
         terrain = terrain * (1.0 - island) + (floor + wall_h) * island
 
-    # Cara del acantilado en bloques de canto vivo, no en pico.
-    terrain = terrain * (1.0 - 0.9 * cliff) + sharp_strata(terrain, 4.0) * 0.9 * cliff
 
     if style["fort"]:
         # Fuerte de arena: foso de agua y murallita alrededor de la plaza central.
