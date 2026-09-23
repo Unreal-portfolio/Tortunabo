@@ -113,6 +113,9 @@ bool FTNTerrainBiomeEdgesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("arena abierta conectada: explanada"), EdgeBetween(OpenSand, OpenSand, true), ETNTerrainEdge::Open);
 	TestEqual(TEXT("agua abierta conectada: agua"), EdgeBetween(OpenWater, OpenWater, true), ETNTerrainEdge::Water);
 	TestEqual(TEXT("sin conexión: cresta"), EdgeBetween(OpenSand, OpenSand, false), ETNTerrainEdge::Crest);
+	TestEqual(TEXT("mar sin conexión: agua (un solo mar, sin fronteras)"), EdgeBetween(OpenWater, OpenWater, false), ETNTerrainEdge::Water);
+	TestTrue(TEXT("mar abierto"), TNTerrainBiome::IsOpenWater(OpenWater));
+	TestFalse(TEXT("explanada no es mar"), TNTerrainBiome::IsOpenWater(OpenSand));
 	TestEqual(TEXT("una región cerrada: cresta"), EdgeBetween(OpenSand, ClosedSand, true), ETNTerrainEdge::Crest);
 	TestEqual(TEXT("biomas distintos: cresta"), EdgeBetween(OpenSand, OpenWater, true), ETNTerrainEdge::Crest);
 	TestEqual(TEXT("algas: siempre cresta"), EdgeBetween(OpenAlgae, OpenAlgae, true), ETNTerrainEdge::Crest);
@@ -127,6 +130,31 @@ bool FTNTerrainBiomeEdgesTest::RunTest(const FString& Parameters)
 	const ETNTerrainEdge Wanted[TNGridLogic::NumSides] = { ETNTerrainEdge::Water, ETNTerrainEdge::Open, ETNTerrainEdge::Crest, ETNTerrainEdge::Crest };
 	TestTrue(TEXT("encaja girado un cuarto"), TNTerrainModule::EdgesMatch(*Asset, 1, Wanted));
 	TestFalse(TEXT("no encaja sin girar"), TNTerrainModule::EdgesMatch(*Asset, 0, Wanted));
+
+	// Espejo: Este y Oeste se intercambian; las curvas y las T cambian de mano.
+	TestEqual(TEXT("espejo: el Oeste pasa al Este"), TNTerrainModule::WorldSideEdge(*Asset, 0, TNGridLogic::SideEast, true), ETNTerrainEdge::Water);
+	TestEqual(TEXT("espejo: el Norte no cambia"), TNTerrainModule::WorldSideEdge(*Asset, 0, TNGridLogic::SideNorth, true), ETNTerrainEdge::Open);
+	TestEqual(TEXT("espejo de curva izquierda"), TNTerrainModule::MirrorTopology(ETNTerrainModuleTopology::CurveLeft), ETNTerrainModuleTopology::CurveRight);
+	TestEqual(TEXT("espejo de T derecha"), TNTerrainModule::MirrorTopology(ETNTerrainModuleTopology::TRight), ETNTerrainModuleTopology::TLeft);
+	TestEqual(TEXT("máscara reflejada"), TNTerrainModule::MirrorMask(TNTerrainModule::MaskSouth | TNTerrainModule::MaskWest),
+		static_cast<uint8>(TNTerrainModule::MaskSouth | TNTerrainModule::MaskEast));
+	TestEqual(TEXT("la máscara de la topología reflejada es la máscara reflejada"),
+		TNTerrainModule::ExitMask(TNTerrainModule::MirrorTopology(ETNTerrainModuleTopology::TLeft)),
+		TNTerrainModule::MirrorMask(TNTerrainModule::ExitMask(ETNTerrainModuleTopology::TLeft)));
+	TestTrue(TEXT("con agua: salidas exactas"), TNTerrainModule::HasWaterEdge(*Asset));
+
+	// Heightfield reflejado: la columna J lee la R-1-J.
+	TArray<uint16> Ramp;
+	for (int32 I = 0; I < BiomeTestResolution; ++I)
+	{
+		for (int32 J = 0; J < BiomeTestResolution; ++J) { Ramp.Add(static_cast<uint16>(32768 + 40 * J)); }
+	}
+	TNTerrainModule::FModuleField Mirrored = BiomeTestFlatField(Ramp);
+	Mirrored.bMirrorY = true;
+	const TNTerrainModule::FModuleField Plain = BiomeTestFlatField(Ramp);
+	TestEqual(TEXT("altura reflejada"), Mirrored.HeightAt(3, 2), Plain.HeightAt(3, BiomeTestResolution - 1 - 2));
+	TestTrue(TEXT("muestreo reflejado en Y"), FMath::IsNearlyEqual(
+		TNTerrainModule::SampleHeight(Mirrored, FVector2D(1234.0, 3000.0)), TNTerrainModule::SampleHeight(Plain, FVector2D(1234.0, -3000.0)), 0.01));
 
 	UTN_TerrainModuleAsset* Corridor = NewObject<UTN_TerrainModuleAsset>();
 	const ETNTerrainEdge AllCrest[TNGridLogic::NumSides] = { ETNTerrainEdge::Crest, ETNTerrainEdge::Crest, ETNTerrainEdge::Crest, ETNTerrainEdge::Crest };

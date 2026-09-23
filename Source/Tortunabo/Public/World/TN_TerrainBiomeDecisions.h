@@ -90,7 +90,7 @@ namespace TNTerrainBiome
 		const double FJ = FMath::Clamp(Local.Y / Step + (R - 1) * 0.5, 0.0, R - 1.0);
 		const int32 I0 = FMath::Min(FMath::FloorToInt32(FI), R - 2);
 		const int32 J0 = FMath::Min(FMath::FloorToInt32(FJ), R - 2);
-		auto At = [&](int32 I, int32 J) { return static_cast<double>(Mask[I * R + J] & 0xFF) / 255.0; };
+		auto At = [&](int32 I, int32 J) { return static_cast<double>(Mask[Field.SourceIndex(I, J)] & 0xFF) / 255.0; };
 		return FMath::Lerp(FMath::Lerp(At(I0, J0), At(I0 + 1, J0), FI - I0),
 			FMath::Lerp(At(I0, J0 + 1), At(I0 + 1, J0 + 1), FI - I0), FJ - J0);
 	}
@@ -191,18 +191,26 @@ namespace TNTerrainBiome
 		}
 	}
 
+	/** Celda de una región de mar abierto: dentro no hay fronteras y el camino es único. */
+	inline bool IsOpenWater(const FCellBiome& Cell)
+	{
+		return Cell.bOpen && Cell.Primary == ETNTerrainBiome::Water;
+	}
+
 	/**
-	 * Tipo de borde del lado compartido por dos celdas: abierto (o agua) solo entre celdas
-	 * conectadas de la misma región abierta; cresta en todos los demás casos (otra región,
-	 * celdas vecinas sin conexión, fuera del mapa).
+	 * Tipo de borde del lado compartido por dos celdas de la misma región abierta:
+	 *   - mar: agua entre cualquier par de celdas vecinas, conectadas o no (un solo mar sin
+	 *     fronteras; el camino de islas lo marcan los módulos);
+	 *   - explanada: abierto solo entre celdas conectadas.
+	 * Cresta en todos los demás casos (otra región, fuera del mapa, explanadas sin conexión).
 	 */
 	inline ETNTerrainEdge EdgeBetween(const FCellBiome& A, const FCellBiome& B, bool bConnected)
 	{
-		if (!bConnected || !A.bOpen || !B.bOpen || A.Primary != B.Primary) { return ETNTerrainEdge::Crest; }
+		if (!A.bOpen || !B.bOpen || A.Primary != B.Primary) { return ETNTerrainEdge::Crest; }
 		switch (A.Primary)
 		{
-			case ETNTerrainBiome::Sand:  return ETNTerrainEdge::Open;
 			case ETNTerrainBiome::Water: return ETNTerrainEdge::Water;
+			case ETNTerrainBiome::Sand:  return bConnected ? ETNTerrainEdge::Open : ETNTerrainEdge::Crest;
 			default:                     return ETNTerrainEdge::Crest;
 		}
 	}

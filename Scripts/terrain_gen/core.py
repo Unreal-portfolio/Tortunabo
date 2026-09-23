@@ -62,7 +62,7 @@ MONOLITH_LANE_CLEARANCE_M = 7.0  # distancia minima del pie al eje del pasillo
 SUNKEN_DEPTH_M = (3.5, 6.0)
 SUNKEN_FEATHER_M = 11.0          # media anchura de la rampa: 6 m en 11 m -> ~28 grados
 # Acantilado: tramo de pared mucho mas alta y casi vertical, con estratos.
-CLIFF_EXTRA_M = (12.0, 24.0)
+CLIFF_EXTRA_M = (5.0, 10.0)        # 2026-09-23: mas bajos (antes 12-24 m)
 CLIFF_BANK_M = 2.0
 CLIFF_STRATA_M = 3.0
 
@@ -83,6 +83,14 @@ EDGE_TYPES = ("crest", "open", "water")
 CORNER_FROM_M = 86.0
 SEA_EDGE_M = WATER_M - 1.5
 SIDES = ("N", "E", "S", "W")
+
+# ── Variedad ─────────────────────────────────────────────────────────────────────
+# Cada parametro principal de un modulo toma uno de LEVELS valores fijos (con un poco de
+# jitter dentro del escalon). La libreria reparte los niveles como un hipercubo latino:
+# en cada topologia todos los niveles de cada parametro salen el mismo numero de veces y
+# las combinaciones no se repiten, en vez de amontonarse como con un sorteo uniforme.
+LEVELS = 7
+LEVEL_KEYS = ("wall_h", "corridor_hw", "bank", "hills", "warp", "elev", "dunes", "gate")
 
 BASE_SEED = 20260922
 TOPOLOGIES: dict[str, tuple[str, ...]] = {

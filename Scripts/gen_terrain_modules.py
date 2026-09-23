@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 
 import numpy as np
 from PIL import Image
@@ -50,32 +51,63 @@ from terrain_gen.output import hillshade, write_contact_sheet
 from terrain_gen.styles import STYLES
 
 
-def library_jobs(count: int, field_count: int) -> list[dict]:
-    """Modulos a generar: count por topologia (todos los lados cresta) y field_count por
-    patron de campo (explanada de arena y mar con islas, ver terrain_gen.field)."""
+def latin_levels(rng: np.random.Generator, count: int) -> list[dict[str, int]]:
+    """Niveles (0..LEVELS-1) de cada parametro para count modulos, repartidos como un
+    hipercubo latino: cada nivel sale count / LEVELS veces por parametro y las columnas se
+    barajan por separado, asi que dos modulos casi nunca comparten combinacion."""
+    columns = {}
+    for key in LEVEL_KEYS:
+        column = np.resize(np.arange(LEVELS), count)
+        rng.shuffle(column)
+        columns[key] = column
+    return [{key: int(columns[key][n]) for key in LEVEL_KEYS} for n in range(count)]
+
+
+def library_jobs(count: int, field_count: int, water_variants: int) -> list[dict]:
+    """Modulos a generar:
+    - count por topologia de pasillo (cuatro lados cresta), con niveles de hipercubo latino;
+    - field_count por patron de explanada de arena (lados open, todo el llano es camino);
+    - water_variants por (topologia de camino, lados de agua): en el mar el camino es uno
+      solo, asi que cada combinacion de por donde pasa y donde hay mar es un modulo aparte.
+      Si el camino sale por un lado cresta (frontera con otra region o boca del mapa), el
+      modulo es de transicion: funde con la arena junto a esa boca."""
     jobs = []
     for topology, exits in TOPOLOGIES.items():
+        levels = latin_levels(np.random.default_rng(BASE_SEED + len(jobs)), count)
         for n in range(count):
             biome, secondary = module_biomes(n, count)
-            jobs.append({"name": f"M_{topology}_{n + 1:02d}", "folder": topology, "topology": topology,
-                         "exits": exits, "biome": biome, "secondary": secondary,
+            jobs.append({"name": f"M_{topology}_{n + 1:03d}", "folder": topology, "topology": topology,
+                         "exits": exits, "biome": biome, "secondary": secondary, "levels": levels[n],
                          "edges": {side: "crest" for side in SIDES}})
-    for kind, biome, folder in (("open", "sand", "Open"), ("water", "water", "Water")):
-        for pattern, open_sides in FIELD_PATTERNS.items():
-            for n in range(field_count):
-                jobs.append({"name": f"M_{folder}_{pattern}_{n + 1:02d}", "folder": folder, "topology": "Cross",
-                             "exits": SIDES, "biome": biome, "secondary": biome,
-                             "edges": {side: (kind if side in open_sides else "crest") for side in SIDES}})
+    for pattern, open_sides in FIELD_PATTERNS.items():
+        for n in range(field_count):
+            jobs.append({"name": f"M_Open_{pattern}_{n + 1:02d}", "folder": "Open", "topology": "Cross",
+                         "exits": SIDES, "biome": "sand", "secondary": "sand", "levels": None,
+                         "edges": {side: ("open" if side in open_sides else "crest") for side in SIDES}})
+    for topology, exits in TOPOLOGIES.items():
+        for mask in range(1, 16):
+            water_sides = [side for bit, side in enumerate(SIDES) if mask & (1 << bit)]
+            transition = any(side not in water_sides for side in exits)
+            for n in range(water_variants):
+                jobs.append({"name": f"M_Water_{topology}_{''.join(water_sides)}_{n + 1}", "folder": "Water",
+                             "topology": topology, "exits": exits, "biome": "water",
+                             "secondary": "sand" if transition else "water", "levels": None,
+                             "edges": {side: ("water" if side in water_sides else "crest") for side in SIDES}})
     return jobs
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Genera la libreria de modulos de terreno.")
-    parser.add_argument("--count", type=int, default=100, help="modulos por topologia")
-    parser.add_argument("--field-count", type=int, default=12, help="modulos por patron de campo (arena/agua)")
+    parser.add_argument("--count", type=int, default=150, help="modulos de pasillo por topologia")
+    parser.add_argument("--field-count", type=int, default=12, help="explanadas por patron de lados abiertos")
+    parser.add_argument("--water-variants", type=int, default=2, help="modulos por (camino, lados de agua)")
     parser.add_argument("--out", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--thumb", type=int, default=120, help="lado de cada miniatura de la hoja de contactos, en px")
     args = parser.parse_args()
+
+    # Cada generacion sustituye la libreria entera: nada de una version anterior sobrevive.
+    if (args.out / "manifest.json").exists():
+        shutil.rmtree(args.out)
 
     manifest = {
         "size_uu": SIZE_M * UU_PER_M,
@@ -86,7 +118,7 @@ def main() -> None:
     }
     rejected = 0
     thumbs: dict[str, list[np.ndarray]] = {}
-    for index, job in enumerate(library_jobs(args.count, args.field_count)):
+    for index, job in enumerate(library_jobs(args.count, args.field_count, args.water_variants)):
         name, exits, edges = job["name"], job["exits"], job["edges"]
         folder = args.out / job["folder"]
         folder.mkdir(parents=True, exist_ok=True)
@@ -95,7 +127,7 @@ def main() -> None:
         for attempt in range(8):
             seed = BASE_SEED + index * 16 + attempt
             heights, stats, bridges, flat_areas, monoliths, mask = compose_module(
-                seed, exits, job["biome"], job["secondary"], edges)
+                seed, exits, job["biome"], job["secondary"], edges, job["levels"])
             meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
             # La fusion con el borde puede dejar sin apoyo un arco validado antes de
             # fundir: tambien se descarta.

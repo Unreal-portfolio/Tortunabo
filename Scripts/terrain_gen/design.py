@@ -14,19 +14,30 @@ from .field import design_field_module
 from .styles import GATE_KINDS, STYLES
 
 
-def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, secondary: str):
+def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, secondary: str,
+                  levels: dict[str, int] | None = None):
     """Heightfield del interior (metros) antes de fundirlo con el borde canonico.
 
     biome manda en la forma (estilo); secondary != biome hace un modulo mixto: un frente
     difuso (blend) lleva hacia el otro bioma el color, el bosque de algas y el mar."""
     edge_fade = smoothstep(0.0, 50.0 * K, DIST_TO_EDGE)
+
+    def pick(key: str, lo_hi: tuple[float, float]) -> float:
+        """Valor en lo_hi: el escalon levels[key] de LEVELS (con jitter), o uniforme sin niveles."""
+        u = float(rng.uniform())
+        t = (levels[key] + 0.15 + 0.7 * u) / LEVELS if levels and key in levels else u
+        return lo_hi[0] + (lo_hi[1] - lo_hi[0]) * t
+
     style_name, style = pick_style(rng, biome)
     is_causeway = bool(style["causeway"])
     is_maze = bool(style["maze"])
     gate_names = list(GATE_KINDS)
     gate_weights = np.array([GATE_KINDS[n] for n in gate_names], dtype=float)
-    gate = "normal" if is_maze or is_causeway else gate_names[int(rng.choice(len(gate_names), p=gate_weights / gate_weights.sum()))]
-    wall_h = float(rng.uniform(*style["wall_h"]))
+    gate = gate_names[int(rng.choice(len(gate_names), p=gate_weights / gate_weights.sum()))]
+    if levels and "gate" in levels:
+        gate = gate_names[levels["gate"] % len(gate_names)]
+    gate = "normal" if is_maze or is_causeway else gate
+    wall_h = pick("wall_h", style["wall_h"])
     blend = biome_blend_field(rng) if secondary != biome else np.zeros_like(XX)
 
     def weight_of(name: str):
@@ -34,7 +45,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
 
     # Pasillo con serpenteo (deformacion del dominio) que se apaga junto al borde. Todas
     # las rutas se miden en el mismo espacio deformado, asi que casan entre si.
-    warp_amp = float(rng.uniform(*style["warp"])) * K * smoothstep(0.0, 70.0 * K, DIST_TO_EDGE)
+    warp_amp = pick("warp", style["warp"]) * K * smoothstep(0.0, 70.0 * K, DIST_TO_EDGE)
     wx = XX + warp_amp * fbm(rng, style["warp_wave"] * K, octaves=2)
     wy = YY + warp_amp * fbm(rng, style["warp_wave"] * K, octaves=2)
 
@@ -54,7 +65,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
             d_lane = d_lane - fork_widen
         d_main = np.minimum(d_main, d_lane)
 
-    base_hw = float(rng.uniform(*style["corridor_hw"])) * K
+    base_hw = pick("corridor_hw", style["corridor_hw"]) * K
     hw = base_hw * (1.0 + 0.3 * value_noise(rng, 110.0 * K))
     # Puerta: garganta estrecha o boca abocinada en el tramo que sigue a cada salida.
     if gate in ("gorge", "flare"):
@@ -62,7 +73,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
         factor = float(rng.uniform(0.45, 0.6)) if gate == "gorge" else float(rng.uniform(1.4, 1.8))
         hw = hw * (1.0 + (factor - 1.0) * gates)
     hw = OPEN_HALF_M + (hw - OPEN_HALF_M) * edge_fade   # en el borde, la boca canonica
-    bank = float(rng.uniform(*style["bank"]))
+    bank = pick("bank", style["bank"])
     bank = BANK_M + (bank - BANK_M) * edge_fade
 
     # Acantilado: en su tramo el talud se vuelve casi vertical (ver la meseta mas abajo).
@@ -104,7 +115,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
 
     # Suelo: cota que ondula despacio y se aplana en las plazas; 0 junto a las salidas.
     # Una plaza hundida baja sunk_m con una rampa ancha (SUNKEN_FEATHER_M) que se camina.
-    elev_amp = float(rng.uniform(4.0, 9.0))
+    elev_amp = pick("elev", (2.0, 10.0))
     elev = elev_amp * fbm(rng, 260.0 * K, octaves=2) * edge_fade
     floor = elev.copy()
     # Fuera del bioma de agua la plaza hundida no baja del agua: seria un charco, no una hondonada.
@@ -136,14 +147,14 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     dune_field = np.zeros_like(XX)
     if style["dunes"]:
         (amp_lo, amp_hi), (wave_lo, wave_hi) = style["dunes"]
-        dune_field = dunes(rng, float(rng.uniform(amp_lo, amp_hi)), float(rng.uniform(wave_lo, wave_hi))) * edge_fade
+        dune_field = dunes(rng, pick("dunes", (amp_lo, amp_hi)), float(rng.uniform(wave_lo, wave_hi))) * edge_fade
         floor += dune_field * (1.0 - rmask)
     # Fuera del agua, pozos y charcos no bajan de la cota del mar: serian lagunas en el desierto.
     floor = floor + (np.maximum(floor, WATER_M + 0.5) - floor) * (1.0 - weight_of("water"))
 
     # Meseta: cresta sobre el suelo local + colinas suaves. Variante calzada: exterior bajo
     # un agua poco profunda que se puede caminar.
-    hills = (fbm(rng, 170.0 * K, octaves=3) * 0.5 + 0.5) * float(rng.uniform(*style["hills"]))
+    hills = (fbm(rng, 170.0 * K, octaves=3) * 0.5 + 0.5) * pick("hills", style["hills"])
     sea = WATER_M - float(rng.uniform(*SEA_DEPTH_M)) + 0.5 * fbm(rng, 60.0 * K, octaves=2)
     if is_causeway:
         high = sea
@@ -264,14 +275,14 @@ def encode_biome_mask(blend, foliage) -> np.ndarray:
 
 
 def compose_module(seed: int, exits: tuple[str, ...], biome: str, secondary: str,
-                   edges: dict[str, str] | None = None):
+                   edges: dict[str, str] | None = None, levels: dict[str, int] | None = None):
     """Diseno + fusion con el borde de cada lado. edges None = los cuatro lados cresta."""
     rng = np.random.default_rng(seed)
     edges = edges or {side: "crest" for side in SIDES}
     if any(kind != "crest" for kind in edges.values()):
-        design, stats, bridges, flat_areas, monoliths, blend, foliage = design_field_module(rng, edges, biome)
+        design, stats, bridges, flat_areas, monoliths, blend, foliage = design_field_module(rng, edges, biome, exits, secondary)
     else:
-        design, stats, bridges, flat_areas, monoliths, blend, foliage = design_module(rng, exits, biome, secondary)
+        design, stats, bridges, flat_areas, monoliths, blend, foliage = design_module(rng, exits, biome, secondary, levels)
     heights_m = design * (1.0 - BORDER_WEIGHT) + border_field(edges) * BORDER_WEIGHT
     quantized = np.rint(heights_m * UNITS_PER_M) + HEIGHT_ZERO
     heights = np.clip(quantized, 0, 65535).astype(np.uint16)

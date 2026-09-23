@@ -19,7 +19,7 @@ Variables de entorno (opcionales), para probar una muestra sin tocar la libreria
     TN_MODULES_DIR    carpeta con manifest.json y los PNG (por defecto Scripts/terrain_modules)
     TN_MODULES_ROOT   carpeta de destino en /Game (por defecto /Game/Terrain/Modules)
 
-Idempotente: los assets que ya existen se actualizan, no se duplican. El PNG se decodifica
+Cada importacion borra MODULES_ROOT y la crea de nuevo desde el manifest. El PNG se decodifica
 con la libreria estandar (zlib), porque el Python del editor no trae Pillow.
 """
 
@@ -247,6 +247,13 @@ def main():
     junk_material = load_or_none(JUNK_MATERIAL_PATH)
     if not junk_material:
         unreal.log_warning(f"{JUNK_MATERIAL_PATH} no existe: basura y algas quedan sin color por instancia")
+
+    # La libreria se sustituye entera: nada de una generacion anterior sobrevive (un modulo
+    # que ya no esta en el manifest seguiria entrando en ModuleClasses).
+    if asset_lib.does_directory_exist(MODULES_ROOT):
+        if not asset_lib.delete_directory(MODULES_ROOT):
+            raise RuntimeError(f"No se pudo borrar {MODULES_ROOT}: cierra los niveles que usen sus modulos")
+        unreal.log(f"[TerrainModules] {MODULES_ROOT} borrada antes de importar")
 
     blueprints = []
     with unreal.ScopedSlowTask(len(manifest["modules"]), "Importando modulos de terreno") as task:

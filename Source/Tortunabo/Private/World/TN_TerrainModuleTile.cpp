@@ -110,10 +110,12 @@ void ATN_TerrainModuleTile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 
 	DOREPLIFETIME_CONDITION(ATN_TerrainModuleTile, BlockedExits, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(ATN_TerrainModuleTile, WallSeed, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(ATN_TerrainModuleTile, bMirrored, COND_InitialOnly);
 }
 
-void ATN_TerrainModuleTile::InitializeModule(uint8 InBlockedExits, int32 InWallSeed)
+void ATN_TerrainModuleTile::InitializeModule(uint8 InBlockedExits, int32 InWallSeed, bool bInMirrored)
 {
+	bMirrored = bInMirrored;
 	BlockedExits = InBlockedExits;
 	WallSeed = InWallSeed;
 }
@@ -177,11 +179,15 @@ void ATN_TerrainModuleTile::BuildRocks(const TNTerrainModule::FModuleColors& Col
 	// Semilla del asset + índice: la roca sale igual en todas las máquinas y en cada build.
 	for (int32 Index = 0; Index < ModuleAsset->Bridges.Num(); ++Index)
 	{
-		AddSection(TNTerrainModule::BuildArchMesh(ModuleAsset->Bridges[Index], ModuleAsset->Seed * 31 + Index, Colors));
+		const FTNTerrainModuleBridge& Bridge = ModuleAsset->Bridges[Index];
+		AddSection(TNTerrainModule::BuildArchMesh(bMirrored ? TNTerrainModule::MirrorBridge(Bridge) : Bridge,
+			ModuleAsset->Seed * 31 + Index, Colors));
 	}
 	for (int32 Index = 0; Index < ModuleAsset->Monoliths.Num(); ++Index)
 	{
-		AddSection(TNTerrainModule::BuildMonolithMesh(ModuleAsset->Monoliths[Index], ModuleAsset->Seed * 53 + Index, Colors));
+		const FTNTerrainModuleMonolith& Monolith = ModuleAsset->Monoliths[Index];
+		AddSection(TNTerrainModule::BuildMonolithMesh(bMirrored ? TNTerrainModule::MirrorMonolith(Monolith) : Monolith,
+			ModuleAsset->Seed * 53 + Index, Colors));
 	}
 }
 
@@ -196,7 +202,7 @@ void ATN_TerrainModuleTile::BuildFoliage()
 		return;
 	}
 
-	const TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize);
+	const TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize, bMirrored);
 	for (const TNTerrainBiome::FFoliageInstance& Plant : TNTerrainBiome::BuildFoliage(Field, ModuleAsset->BiomeMask, ModuleAsset->Seed))
 	{
 		const int32 Shape = static_cast<int32>(Plant.Shape);
@@ -258,7 +264,7 @@ void ATN_TerrainModuleTile::BuildModule()
 	BuildWalls();
 	if (BridgeInstances) { BridgeInstances->ClearInstances(); }
 
-	if (BuiltFromAsset.Get() == ModuleAsset && TerrainMesh->GetNumSections() > 0)
+	if (BuiltFromAsset.Get() == ModuleAsset && bBuiltMirrored == bMirrored && TerrainMesh->GetNumSections() > 0)
 	{
 		return;
 	}
@@ -266,7 +272,7 @@ void ATN_TerrainModuleTile::BuildModule()
 	// Paleta del bioma; un módulo mixto funde hacia la del secundario según su máscara.
 	const TNTerrainModule::FModuleColors Colors = TNTerrainBiome::ColorsFor(ModuleAsset->Biome, WaterLevel);
 	const TNTerrainModule::FModuleColors BlendColors = TNTerrainBiome::ColorsFor(ModuleAsset->SecondaryBiome, WaterLevel);
-	const TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize);
+	const TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize, bMirrored);
 	const TNGridTerrain::FTileMesh Mesh = TNTerrainModule::BuildModuleMesh(Field, Colors,
 		ModuleAsset->IsMixed() ? &BlendColors : nullptr, ModuleAsset->BiomeMask);
 
@@ -281,6 +287,7 @@ void ATN_TerrainModuleTile::BuildModule()
 	BuildRocks(Colors);
 	BuildFoliage();
 	BuiltFromAsset = ModuleAsset;
+	bBuiltMirrored = bMirrored;
 
 	UE_LOG(LogTortunabo, Verbose, TEXT("[TerrainModule] '%s' construido desde '%s': %d vértices."),
 		*GetName(), *ModuleAsset->GetName(), Mesh.Vertices.Num());

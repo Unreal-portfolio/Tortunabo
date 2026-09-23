@@ -44,6 +44,36 @@ namespace TNTerrainModule
 		}
 	}
 
+	/** Lado tras el espejo del módulo (Y local -> -Y): Este y Oeste se intercambian. */
+	constexpr int32 MirrorSide(int32 Side)
+	{
+		return Side == TNGridLogic::SideEast ? TNGridLogic::SideWest : (Side == TNGridLogic::SideWest ? TNGridLogic::SideEast : Side);
+	}
+
+	/** Máscara de lados tras el espejo. */
+	inline uint8 MirrorMask(uint8 Mask)
+	{
+		uint8 Mirrored = 0;
+		for (int32 Side = 0; Side < TNGridLogic::NumSides; ++Side)
+		{
+			if (Mask & SideBit(Side)) { Mirrored |= SideBit(MirrorSide(Side)); }
+		}
+		return Mirrored;
+	}
+
+	/** Topología que ofrece un módulo reflejado: las curvas y las T cambian de mano. */
+	inline ETNTerrainModuleTopology MirrorTopology(ETNTerrainModuleTopology Topology)
+	{
+		switch (Topology)
+		{
+			case ETNTerrainModuleTopology::CurveLeft:  return ETNTerrainModuleTopology::CurveRight;
+			case ETNTerrainModuleTopology::CurveRight: return ETNTerrainModuleTopology::CurveLeft;
+			case ETNTerrainModuleTopology::TLeft:      return ETNTerrainModuleTopology::TRight;
+			case ETNTerrainModuleTopology::TRight:     return ETNTerrainModuleTopology::TLeft;
+			default:                                   return Topology;
+		}
+	}
+
 	/** Máscara tras girar el módulo YawSteps cuartos de vuelta (yaw +90° lleva Norte a Este). */
 	inline uint8 RotateExitMask(uint8 Mask, int32 YawSteps)
 	{
@@ -131,19 +161,27 @@ namespace TNTerrainModule
 
 	/** Tipo de borde que queda en el lado de mundo WorldSide al girar el módulo YawSteps
 	 *  cuartos (misma convención que RotateExitMask: el lado local s pasa a s + YawSteps). */
-	inline ETNTerrainEdge WorldSideEdge(const UTN_TerrainModuleAsset& Asset, int32 YawSteps, int32 WorldSide)
+	inline ETNTerrainEdge WorldSideEdge(const UTN_TerrainModuleAsset& Asset, int32 YawSteps, int32 WorldSide, bool bMirrored = false)
 	{
 		const int32 N = TNGridLogic::NumSides;
-		return Asset.GetSideEdge(((WorldSide - YawSteps) % N + N) % N);
+		const int32 Local = ((WorldSide - YawSteps) % N + N) % N;
+		return Asset.GetSideEdge(bMirrored ? MirrorSide(Local) : Local);
+	}
+
+	/** El asset tiene algún lado de agua: en el mar el camino es único y el módulo debe
+	 *  ofrecer exactamente las salidas pedidas (sin bocas sobrantes que tapar). */
+	inline bool HasWaterEdge(const UTN_TerrainModuleAsset& Asset)
+	{
+		return Asset.SideEdges.Contains(ETNTerrainEdge::Water);
 	}
 
 	/** El módulo girado ofrece exactamente los tipos de borde pedidos, lado a lado
 	 *  (Wanted: NumSides valores en el orden de TNGridLogic). */
-	inline bool EdgesMatch(const UTN_TerrainModuleAsset& Asset, int32 YawSteps, const ETNTerrainEdge* Wanted)
+	inline bool EdgesMatch(const UTN_TerrainModuleAsset& Asset, int32 YawSteps, const ETNTerrainEdge* Wanted, bool bMirrored = false)
 	{
 		for (int32 Side = 0; Side < TNGridLogic::NumSides; ++Side)
 		{
-			if (WorldSideEdge(Asset, YawSteps, Side) != Wanted[Side]) { return false; }
+			if (WorldSideEdge(Asset, YawSteps, Side, bMirrored) != Wanted[Side]) { return false; }
 		}
 		return true;
 	}
@@ -156,6 +194,16 @@ namespace TNTerrainModule
 		TArrayView<const uint16> Heights;
 		double HeightScale = 0.25;
 		int32 HeightZero = 32768;
+		/** Módulo reflejado (Y local -> -Y): la columna J lee la R-1-J del asset. */
+		bool bMirrorY = false;
+
+		/** Índice en los arrays por vértice del asset (alturas, máscara) del vértice (I, J). */
+		int32 SourceIndex(int32 I, int32 J) const
+		{
+			const int32 Row = FMath::Clamp(I, 0, Resolution - 1);
+			const int32 Col = FMath::Clamp(J, 0, Resolution - 1);
+			return Row * Resolution + (bMirrorY ? Resolution - 1 - Col : Col);
+		}
 
 		bool IsValid() const
 		{
@@ -164,18 +212,17 @@ namespace TNTerrainModule
 
 		double HeightAt(int32 I, int32 J) const
 		{
-			const int32 Row = FMath::Clamp(I, 0, Resolution - 1);
-			const int32 Col = FMath::Clamp(J, 0, Resolution - 1);
-			return (static_cast<double>(Heights[Row * Resolution + Col]) - HeightZero) * HeightScale;
+			return (static_cast<double>(Heights[SourceIndex(I, J)]) - HeightZero) * HeightScale;
 		}
 
 		/** Separación entre vértices, en uu. */
 		double Step() const { return Size / (Resolution - 1); }
 	};
 
-	inline FModuleField MakeField(const UTN_TerrainModuleAsset& Asset, double Size)
+	inline FModuleField MakeField(const UTN_TerrainModuleAsset& Asset, double Size, bool bMirrorY = false)
 	{
 		FModuleField Field;
+		Field.bMirrorY = bMirrorY;
 		Field.Resolution = Asset.Resolution;
 		Field.Size = Size;
 		Field.Heights = Asset.Heights;
@@ -270,6 +317,22 @@ namespace TNTerrainModule
 		Color = FMath::Lerp(Color, Colors.Wet, static_cast<float>(Wet));
 		Color.A = 1.f;
 		return Color;
+	}
+
+	/** Puente o arco reflejado con el módulo (Y -> -Y). */
+	inline FTNTerrainModuleBridge MirrorBridge(FTNTerrainModuleBridge Bridge)
+	{
+		Bridge.Center.Y = -Bridge.Center.Y;
+		Bridge.Yaw = -Bridge.Yaw;
+		return Bridge;
+	}
+
+	/** Monolito reflejado con el módulo (Y -> -Y). */
+	inline FTNTerrainModuleMonolith MirrorMonolith(FTNTerrainModuleMonolith Monolith)
+	{
+		Monolith.Center.Y = -Monolith.Center.Y;
+		Monolith.Yaw = -Monolith.Yaw;
+		return Monolith;
 	}
 
 	/** Normales suaves (media de las caras que comparten vértice) y color de vértice de una
@@ -530,7 +593,7 @@ namespace TNTerrainModule
 				FLinearColor Color = SampleModuleColor(Colors, Height, Normal);
 				if (bBlend)
 				{
-					const float Weight = static_cast<float>(BiomeMask[I * R + J] >> 8) / 255.f;
+					const float Weight = static_cast<float>(BiomeMask[Field.SourceIndex(I, J)] >> 8) / 255.f;
 					Color = FMath::Lerp(Color, SampleModuleColor(*BlendColors, Height, Normal), Weight);
 				}
 				Mesh.Colors.Add(Color);

@@ -31,8 +31,15 @@ def side_distance(side: str):
     return {"N": HALF_M - XX, "S": HALF_M + XX, "E": HALF_M - YY, "W": HALF_M + YY}[side]
 
 
-def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: str):
-    """Heightfield (metros) de un modulo de campo, antes de fundirlo con sus bordes."""
+def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: str,
+                        route: tuple[str, ...] = SIDES, secondary: str | None = None):
+    """Heightfield (metros) de un modulo de campo, antes de fundirlo con sus bordes.
+
+    route: lados por los que pasa el camino. En el mar solo hay islas hacia esos lados (un
+    unico camino por la region de agua); un lado cresta fuera del camino se sella. En la
+    explanada todo el llano es camino. secondary: bioma con el que funde un modulo de
+    transicion (playa junto a las bocas de cresta del camino)."""
+    secondary = secondary or biome
     kind = "water" if "water" in edges.values() else "open"
     crest_sides = [s for s in SIDES if edges[s] == "crest"]
     edge_fade = smoothstep(0.0, 30.0, DIST_TO_EDGE)
@@ -56,14 +63,14 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
         ground = SEA_EDGE_M + 0.6 * swell
         central = Room(0.0, 0.0, float(rng.uniform(14.0, 22.0)))
         islands = [central]
-        for side in SIDES:
+        for side in route:
             if edges[side] == "crest":
                 continue
             end = scaled(EXIT_POINT[side], 0.8)
             start = scaled(EXIT_POINT[side], (central.radius + 4.0) / HALF_M)
             islands += island_chain(rng, start, end, (6.0, 11.0), (3.0, 5.0))
         # Algun islote suelto fuera de las filas.
-        for _ in range(int(rng.integers(2, 6))):
+        for _ in range(int(rng.integers(0, 4))):
             x, y = (float(v) for v in rng.uniform(-0.7 * HALF_M, 0.7 * HALF_M, 2))
             islands.append(Room(x, y, float(rng.uniform(5.0, 9.0))))
         # Costas irregulares: las islas se miden en un espacio deformado por ruido.
@@ -81,9 +88,20 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
     # Lados cresta: pared con su boca y un tramo de pasillo hacia el centro. En el mar el
     # tramo es una calzada a cota 0 que llega a la isla central.
     terrain = ground
+    blend = np.zeros_like(XX)
     for side in crest_sides:
         band = smoothstep(CREST_BAND_M[0], CREST_BAND_M[1], side_distance(side))
         wall = CREST_M + float(rng.uniform(0.0, 6.0)) * (fbm(rng, 60.0, octaves=2) * 0.5 + 0.5)
+        if side not in route:
+            # Sin camino: pared entera y la boca del borde canonico sellada por dentro.
+            terrain = terrain * (1.0 - band) + wall * band
+            ex, ey = EXIT_POINT[side]
+            along = np.abs(YY) if side in ("N", "S") else np.abs(XX)
+            plug = (along < OPEN_HALF_M + BANK_M + 6.0) & (np.hypot(XX - ex, YY - ey) < 30.0)
+            terrain = np.where(plug, np.maximum(terrain, PLUG_M), terrain)
+            continue
+        if secondary != biome:
+            blend = np.maximum(blend, 1.0 - smoothstep(20.0, 75.0, side_distance(side)))
         lane_end = scaled(EXIT_POINT[side], 1.0 - MOUTH_LANE_M / HALF_M)
         d_lane = polyline_distance(XX, YY, (lane_end, EXIT_POINT[side]))[0]
         hw = OPEN_HALF_M + float(rng.uniform(0.0, 4.0))
@@ -106,7 +124,7 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
     stats = {
         "style": "flats" if kind == "open" else "islands",
         "biome": biome,
-        "secondary_biome": biome,
+        "secondary_biome": secondary,
         "causeway": False,
         "rooms": len(flat_areas),
         "sunken": 0,
@@ -123,4 +141,4 @@ def design_field_module(rng: np.random.Generator, edges: dict[str, str], biome: 
         "wall_h": 0.0,
         "base_half_width": 0.0,
     }
-    return terrain, stats, [], flat_areas, [], np.zeros_like(XX), np.zeros_like(XX)
+    return terrain, stats, [], flat_areas, [], blend, np.zeros_like(XX)

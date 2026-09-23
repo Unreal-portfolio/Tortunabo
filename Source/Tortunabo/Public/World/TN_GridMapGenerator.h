@@ -114,6 +114,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
 	bool bUseBiomeRegions = true;
 
+	/** Si true, un módulo también se puede colocar reflejado (dobla la variedad). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Modules")
+	bool bAllowMirroredModules = true;
+
 	/** Desvíos máximos: rutas alternativas que salen del camino y vuelven a él (solo módulos). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GridMap|Routes", meta = (ClampMin = "0"))
 	int32 MaxDetours = 2;
@@ -181,7 +185,7 @@ private:
 	 *  clase nula si ninguno las ofrece. Con Wanted, solo entran los módulos que mejor
 	 *  encajan con ese bioma (TNTerrainBiome::BiomeMatchScore). */
 	TSubclassOf<ATN_TerrainModuleTile> PickModuleForExits(uint8 RequiredExits,
-		TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps,
+		TFunctionRef<int32(int32 Min, int32 Max)> RandRange, int32& OutYawSteps, bool& bOutMirrored,
 		const TNTerrainBiome::FCellBiome* Wanted = nullptr, const ETNTerrainEdge* WantedEdges = nullptr,
 		const TSet<UClass*>* UsedClasses = nullptr) const;
 

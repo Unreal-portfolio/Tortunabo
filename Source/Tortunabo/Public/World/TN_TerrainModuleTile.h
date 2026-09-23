@@ -57,7 +57,7 @@ public:
 	void BuildModule();
 
 	/** Fija las bocas bloqueadas y la semilla de sus muros. Solo servidor, antes de FinishSpawning. */
-	void InitializeModule(uint8 InBlockedExits, int32 InWallSeed);
+	void InitializeModule(uint8 InBlockedExits, int32 InWallSeed, bool bInMirrored = false);
 
 	uint8 GetBlockedExits() const { return BlockedExits; }
 
@@ -112,6 +112,11 @@ protected:
 		meta = (Bitmask, BitmaskEnum = "/Script/Tortunabo.ETNTerrainModuleSide"))
 	uint8 BlockedExits = 0;
 
+	/** Módulo reflejado (Y local -> -Y): una curva a la izquierda se juega como una a la
+	 *  derecha. Duplica la variedad de la librería sin más assets. Replicado una vez. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "Module")
+	bool bMirrored = false;
+
 	/** Semilla del montón de basura de cada muro. Replicada: mismo montón en todas las máquinas. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "Module|Walls")
 	int32 WallSeed = 0;
@@ -141,4 +146,5 @@ private:
 
 	/** Asset con el que se construyó la malla actual, para no reconstruir en balde. */
 	TWeakObjectPtr<const UTN_TerrainModuleAsset> BuiltFromAsset;
+	bool bBuiltMirrored = false;
 };
