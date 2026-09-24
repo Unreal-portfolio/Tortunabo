@@ -41,6 +41,7 @@ import json
 import math
 import shutil
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 from PIL import Image
@@ -247,7 +248,14 @@ def build_relief(rng, XX, YY):
     dunes = smoothstep(0.0, 1.0, np.where(frac < 0.7, frac / 0.7, (1.0 - frac) / 0.3))
     dunes = 1.6 * dunes * smoothstep(0.45, 0.75, unit_fbm(rng, WX, WY, 200.0))
     fine = 0.5 * fbm(rng, WX, WY, 24.0, 2)
-    return 2.0 + 16.0 * broad + 24.0 * ridge_zone * ridged ** 1.5 + dunes + fine
+    # Mesetas: escalones de 4-7 m donde un ruido lento cruza unos umbrales; el escalon es
+    # estrecho (acantilado de arena que no se sube) y sigue un contorno organico.
+    mesa_zone = smoothstep(0.25, 0.5, unit_fbm(rng, WX, WY, 380.0))
+    mesa_field = fbm(rng, WX, WY, 220.0, 3)
+    mesas = np.zeros_like(XX)
+    for threshold in (-0.15, 0.05, 0.25):
+        mesas += float(rng.uniform(4.0, 7.0)) * smoothstep(threshold - 0.012, threshold + 0.012, mesa_field)
+    return 2.0 + 20.0 * broad + 28.0 * ridge_zone * ridged ** 1.5 + dunes + fine + mesas * mesa_zone
 
 
 # ── Camino principal y su valle ───────────────────────────────────────────────────
@@ -306,7 +314,18 @@ def path_profile(relief, path_points, half: float):
     return ss, heights - 1.0
 
 
-def carve_valley(rng, relief, XX, YY, path_points, plaza_count: int, half: float):
+class Valley(NamedTuple):
+    terrain: np.ndarray
+    d_main: np.ndarray       # distancia al camino (m)
+    s_main: np.ndarray       # parametro de arco del punto del camino mas cercano (m)
+    floor: np.ndarray        # cota del fondo del camino proyectada a cada muestra
+    half_width: np.ndarray   # semiancho del fondo llano
+    corridor: np.ndarray     # 1 en el fondo, 0 fuera del valle
+    flat_areas: list         # plazas (x, y, radio)
+    plaza_arcs: list         # parametro de arco de cada plaza
+
+
+def carve_valley(rng, relief, XX, YY, path_points, plaza_count: int, half: float) -> Valley:
     """Valle del camino: fondo a la cota del perfil, laderas segun el desnivel."""
     d_main, s_main = polyline_field([path_points], relief.shape, half)
     ss, profile = path_profile(relief, path_points, half)
@@ -322,7 +341,7 @@ def carve_valley(rng, relief, XX, YY, path_points, plaza_count: int, half: float
 
     # Plazas a lo largo del camino (zonas llanas para puzles), a la cota del camino.
     path_len = arc_length(path_points)
-    flat_areas = []
+    flat_areas, plaza_arcs = [], []
     for k in range(plaza_count):
         s = float(np.clip(path_len * (k + 0.5) / plaza_count + rng.uniform(-20.0, 20.0), 0.0, path_len))
         (px, py), _ = point_at(path_points, s)
@@ -330,7 +349,39 @@ def carve_valley(rng, relief, XX, YY, path_points, plaza_count: int, half: float
         weight = 1.0 - smoothstep(radius, radius + 12.0, np.hypot(XX - px, YY - py))
         terrain = terrain * (1.0 - weight) + float(np.interp(s, ss, profile)) * weight
         flat_areas.append((px, py, radius))
-    return terrain, d_main, corridor, flat_areas
+        plaza_arcs.append(s)
+    return Valley(terrain, d_main, s_main, floor, half_width, corridor, flat_areas, plaza_arcs)
+
+
+# ── Canon por tramos ──────────────────────────────────────────────────────────────
+def canyon_along_path(rng, path_len: float, openings):
+    """Peso del canon (0-1) cada 4 m de camino: tramos encajonados y tramos abiertos. Se abre
+    en el inicio, el final, las plazas y donde salen o llegan los caminitos."""
+    ss = np.arange(0.0, path_len + 4.0, 4.0)
+    knots = rng.uniform(0.0, 1.0, int(path_len / 120.0) + 3)
+    value = np.interp(ss / 120.0, np.arange(len(knots)), knots)
+    value = np.convolve(np.pad(value, 10, mode="edge"), np.ones(21) / 21.0, mode="valid")
+    weight = smoothstep(0.22, 0.38, value)
+    for s0 in openings:
+        weight = weight * smoothstep(20.0, 70.0, np.abs(ss - s0))
+    weight = weight * smoothstep(30.0, 80.0, ss) * smoothstep(path_len - 30.0, path_len - 80.0, ss)
+    return ss, weight
+
+
+def raise_canyon(rng, valley: Valley, XX, YY, ss, weight):
+    """Paredes de arena de 6-15 m a los lados del camino, con meseta detras que baja al
+    terreno natural. La linea del acantilado ondula y su altura varia."""
+    # El parametro de arco salta donde el punto mas cercano cambia de tramo (curvas cerradas):
+    # sin suavizar, peso y cota harian escarpes rectos en esas fronteras.
+    canyon = blur(np.interp(valley.s_main, ss, weight), 10)
+    base = blur(valley.floor, 10)
+    height = 6.0 + 9.0 * unit_fbm(rng, XX, YY, 160.0)
+    cliff = 4.0 + 3.0 * unit_fbm(rng, XX, YY, 90.0)
+    top = 25.0 + 30.0 * unit_fbm(rng, XX, YY, 200.0)
+    x = valley.d_main - valley.half_width - 2.0 + 6.0 * fbm(rng, XX, YY, 60.0, 2)
+    shape = smoothstep(0.0, cliff, x) * (1.0 - smoothstep(cliff + top, cliff + top + 60.0, x))
+    wall = base + height * shape
+    return valley.terrain + np.maximum(wall - valley.terrain, 0.0) * canyon
 
 
 # ── Zona jugable, agua y caminitos ────────────────────────────────────────────────
@@ -348,7 +399,7 @@ def pond_sites(terrain, XX, YY, d_main, inside, ends, count: int):
     for x, y in ends:
         clear &= np.hypot(XX - x, YY - y) > 110.0
     # Solo cuencas bajas: una cuenca alta necesitaria un crater para llegar al agua.
-    minima = (broad <= ndimage.minimum_filter(broad, size=41)) & (inside < -25.0) & clear         & (broad < WATER_M + 16.0)
+    minima = (broad <= ndimage.minimum_filter(broad, size=41)) & (inside < -25.0) & clear         & (broad < WATER_M + 22.0)
     ii, jj = np.nonzero(minima)
     order = np.argsort(broad[ii, jj])
     candidates = [(int(i), int(j)) for i, j in zip(ii[order], jj[order])]
@@ -372,14 +423,18 @@ def carve_ponds(rng, terrain, corridor, sites):
         dry = corridor < 0.3
         if not dry[i, j]:
             continue
-        while True:
+        min_area, max_area = math.pi * 30.0 ** 2, math.pi * 85.0 ** 2
+        for _ in range(24):
             labels, _ = ndimage.label((terrain < level) & dry)
             basin = labels == labels[i, j]
-            if basin.sum() * STEP_M ** 2 <= math.pi * 85.0 ** 2 or level - base < 1.0:
+            area = basin.sum() * STEP_M ** 2
+            if area > max_area and level - base > 1.0:
+                level -= 0.5
+            elif area < min_area and level - base < 9.0:
+                level += 0.5
+            else:
                 break
-            level -= 0.5
-        area = basin.sum() * STEP_M ** 2
-        if not math.pi * 18.0 ** 2 <= area <= math.pi * 85.0 ** 2:
+        if not min_area <= area <= max_area:
             continue
         # La bajada se reparte en una ladera ancha (1:6 como poco): cuenca, no crater.
         drop = level - WATER_M
@@ -395,20 +450,26 @@ def carve_ponds(rng, terrain, corridor, sites):
     return terrain + np.maximum(shallow - terrain, 0.0) * smoothstep(0.1, 0.6, corridor)
 
 
-def route_trails(rng, terrain, XX, YY, d_main, inside, path_points, count: int, half: float):
+def plan_trail_spans(rng, path_len: float, count: int):
+    """Tramos del camino (s1, s2) de los que sale y a los que vuelve cada caminito."""
+    spans = []
+    for k in range(count):
+        s1 = (0.03 + 0.8 * (k + float(rng.uniform(0.0, 1.0))) / count) * path_len
+        s2 = min(s1 + float(rng.uniform(140.0, 280.0)), path_len * 0.97)
+        if s2 - s1 >= 100.0:
+            spans.append((s1, s2))
+    return spans
+
+
+def route_trails(rng, terrain, XX, YY, d_main, inside, path_points, spans, half: float):
     """Caminitos: del camino a un punto a un lado y de vuelta, por donde menos cuesta."""
     base = (1.0 + 60.0 * slope_of(terrain) ** 2 + 40.0 * (terrain < WATER_M + 0.3)
             + 40.0 * (1.0 - smoothstep(10.0, 55.0, d_main)) + 6.0 * unit_fbm(rng, XX, YY, 70.0, 1))
     base = np.where(inside < -15.0, base, np.inf)[::COARSE, ::COARSE]
     avoid = np.zeros_like(base)
-    path_len = arc_length(path_points)
     trails = []
-    for k in range(count):
-        for _attempt in range(10):
-            s1 = (0.03 + 0.8 * (k + float(rng.uniform(0.0, 1.0))) / count) * path_len
-            s2 = min(s1 + float(rng.uniform(140.0, 280.0)), path_len * 0.97)
-            if s2 - s1 < 100.0:
-                continue
+    for s1, s2 in spans:
+        for _attempt in range(6):
             p1, _ = point_at(path_points, s1)
             p2, _ = point_at(path_points, s2)
             mid, direction = point_at(path_points, (s1 + s2) / 2.0)
@@ -446,13 +507,23 @@ def carve_trails(terrain, trails, half: float):
 
 
 def raise_rim(rng, terrain, XX, YY, inside, grid: int, half: float):
-    """Dunas altas fuera de la zona jugable y en el borde del mapa."""
+    """Exteriores: un cordon de dunas cierra la zona jugable y, mas alla, lagunas de mar,
+    dunas altas o mesetas segun la semilla. Junto a una laguna el cordon es bajo (se ve el
+    agua desde el camino). El borde del mapa siempre es un cordon de dunas."""
     lo, hi = -half, grid * SIZE_M - half
     edge = np.minimum(np.minimum(XX - lo, hi - XX), np.minimum(YY - lo, hi - YY))
     edge = edge + 45.0 * fbm(rng, XX, YY, 130.0, 3)
-    rim = np.maximum(smoothstep(0.0, 70.0, inside), smoothstep(80.0, 10.0, edge))
-    rim_height = 20.0 + 8.0 * unit_fbm(rng, XX, YY, 60.0)
-    return terrain * (1.0 - rim) + np.maximum(terrain, rim_height) * rim
+    sea = smoothstep(0.5, 0.62, unit_fbm(rng, XX, YY, 420.0, 2)) * smoothstep(60.0, 110.0, edge)
+    rim = smoothstep(0.0, 70.0, inside)
+    high = 20.0 + 8.0 * unit_fbm(rng, XX, YY, 60.0)
+    low = 4.0 + 4.0 * unit_fbm(rng, XX, YY, 60.0)
+    rim_height = high * (1.0 - sea) + low * sea
+    terrain = terrain * (1.0 - rim) + np.maximum(terrain, rim_height) * rim
+    beyond = smoothstep(70.0, 150.0, inside) * sea
+    sea_floor = WATER_M - 1.5 - 1.0 * unit_fbm(rng, XX, YY, 80.0)
+    terrain = terrain * (1.0 - beyond) + sea_floor * beyond
+    border = smoothstep(80.0, 10.0, edge)
+    return terrain * (1.0 - border) + np.maximum(terrain, high) * border
 
 
 def reachable(terrain, start, goal) -> bool:
@@ -491,12 +562,17 @@ def main() -> None:
     centers = [(row * SIZE_M, col * SIZE_M) for col, row in cells]
     relief = build_relief(rng, XX, YY)
     path_points = route_main(rng, relief, XX, YY, cells, centers, grid, half)
-    terrain, d_main, corridor, flat_areas = carve_valley(rng, relief, XX, YY, path_points,
-                                                         max(3, len(cells) // 3), half)
+    valley = carve_valley(rng, relief, XX, YY, path_points, max(3, len(cells) // 3), half)
+    d_main, corridor, flat_areas = valley.d_main, valley.corridor, valley.flat_areas
+    path_len = arc_length(path_points)
+    spans = plan_trail_spans(rng, path_len, max(4, round(len(cells) * 0.6)))
+    openings = [s for span in spans for s in span] + valley.plaza_arcs
+    canyon_ss, canyon_weight = canyon_along_path(rng, path_len, openings)
+    terrain = raise_canyon(rng, valley, XX, YY, canyon_ss, canyon_weight)
     inside = play_region(rng, XX, YY, d_main)
     sites, on_path = pond_sites(terrain, XX, YY, d_main, inside, (centers[0], centers[-1]), int(rng.integers(4, 7)))
     terrain = carve_ponds(rng, terrain, corridor, sites)
-    trails = route_trails(rng, terrain, XX, YY, d_main, inside, path_points, max(4, round(len(cells) * 0.6)), half)
+    trails = route_trails(rng, terrain, XX, YY, d_main, inside, path_points, spans, half)
     terrain = carve_trails(terrain, trails, half)
     terrain = blur(raise_rim(rng, terrain, XX, YY, inside, grid, half))
 
@@ -560,7 +636,7 @@ def main() -> None:
     Image.fromarray((np.clip(debug, 0, 1) * 255).astype(np.uint8)[::-1]).save(out / "preview_debug.png")
 
     print(f"{args.name}: camino de {len(cells)} celdas {cells}; {len(trails)} caminitos; {len(sites)} charcos "
-          f"({on_path} junto al camino); cota [{terrain.min():.1f}, {terrain.max():.1f}] m; {grid * grid} modulos en {out}")
+          f"({on_path} junto al camino); canon en el {100.0 * float(canyon_weight.mean()):.0f} % del camino; cota [{terrain.min():.1f}, {terrain.max():.1f}] m; {grid * grid} modulos en {out}")
 
 
 if __name__ == "__main__":

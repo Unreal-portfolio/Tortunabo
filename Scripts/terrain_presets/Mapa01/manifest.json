@@ -84,10 +84,10 @@
    "monoliths": [],
    "flat_areas": [
     {
-     "x_m": 33.01,
-     "y_m": 99.84,
-     "radius_m": 21.73,
-     "height_m": 23.0,
+     "x_m": -5.9,
+     "y_m": 49.62,
+     "radius_m": 15.04,
+     "height_m": 35.08,
      "sunken": false
     }
    ]
@@ -192,10 +192,10 @@
    "monoliths": [],
    "flat_areas": [
     {
-     "x_m": -2.29,
-     "y_m": 24.09,
-     "radius_m": 17.08,
-     "height_m": 9.56,
+     "x_m": 18.04,
+     "y_m": -25.21,
+     "radius_m": 20.57,
+     "height_m": -2.07,
      "sunken": false
     }
    ]
@@ -238,7 +238,15 @@
    "secondary_biome": "sand",
    "bridges": [],
    "monoliths": [],
-   "flat_areas": []
+   "flat_areas": [
+    {
+     "x_m": -33.3,
+     "y_m": 97.58,
+     "radius_m": 16.14,
+     "height_m": 7.51,
+     "sunken": false
+    }
+   ]
   },
   {
    "name": "M_Mapa01_r1c5",
@@ -258,15 +266,7 @@
    "secondary_biome": "sand",
    "bridges": [],
    "monoliths": [],
-   "flat_areas": [
-    {
-     "x_m": -1.06,
-     "y_m": -32.13,
-     "radius_m": 20.36,
-     "height_m": 4.73,
-     "sunken": false
-    }
-   ]
+   "flat_areas": []
   },
   {
    "name": "M_Mapa01_r2c0",
@@ -568,10 +568,10 @@
    "monoliths": [],
    "flat_areas": [
     {
-     "x_m": -75.61,
-     "y_m": -15.17,
-     "radius_m": 18.29,
-     "height_m": 17.61,
+     "x_m": -58.1,
+     "y_m": -12.12,
+     "radius_m": 21.02,
+     "height_m": 13.99,
      "sunken": false
     }
    ]
