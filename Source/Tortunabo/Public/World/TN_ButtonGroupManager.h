@@ -19,6 +19,16 @@ struct FTN_TransformAction
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TransformAction")
 	TObjectPtr<AActor> TargetActor = nullptr;
 
+	/**
+	 * Tag del actor objetivo (fallback cuando TargetActor es null).
+	 * Útil para actores spawneados desde chunks que no están disponibles en el editor.
+	 * La primera vez que se aplica la acción se hace un world scan y el resultado se
+	 * cachea en TargetActor para los usos posteriores.
+	 * Prioridad: TargetActor > TargetActorTag.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TransformAction")
+	FName TargetActorTag = NAME_None;
+
 	/** Desplazamiento de posición a añadir a la posición ACTUAL del actor (relativo). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TransformAction")
 	FVector LocationOffset = FVector::ZeroVector;
@@ -34,8 +44,9 @@ struct FTN_TransformAction
 	/**
 	 * Aplica un array de acciones. bForward=true añade offsets, false los revierte.
 	 * Punto centralizado para evitar duplicar la lógica en cada Manager.
+	 * World se usa para resolver TargetActorTag lazily si TargetActor es null.
 	 */
-	static void ApplyAll(const TArray<FTN_TransformAction>& Actions, bool bForward = true);
+	static void ApplyAll(TArray<FTN_TransformAction>& Actions, bool bForward = true, UWorld* World = nullptr);
 };
 
 /**
@@ -71,6 +82,16 @@ protected:
 	TArray<TObjectPtr<ATN_ButtonInteractable>> ManagedButtons;
 
 	/**
+	 * Tags de actores para descubrir botones automáticamente en BeginPlay.
+	 * Útil cuando los botones están en chunks spawneados en runtime y no se pueden
+	 * asignar por eyedropper. El manager también escanea periódicamente si llegan
+	 * tarde (los botones de chunks se registran solos vía ManagerTag).
+	 * Se combinan con ManagedButtons — no son excluyentes.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ButtonGroup")
+	TArray<FName> ManagedButtonTags;
+
+	/**
 	 * Acciones aplicadas cuando TODOS los botones están activados.
 	 * Cada acción mueve/rota un actor objetivo.
 	 */
@@ -97,6 +118,14 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "ButtonGroup")
 	void OnAllButtonsActivated();
 
+public:
+	/**
+	 * Registra un botón con este gestor en runtime (llamado por ATN_ButtonInteractable
+	 * cuando tiene ManagerTag configurado). Idempotente: ignorar duplicados.
+	 * Solo tiene efecto en el servidor.
+	 */
+	void RegisterButton(ATN_ButtonInteractable* Button);
+
 	/** Llamado en TODAS las máquinas cuando el grupo se desactiva (solo si bOneShot=false). */
 	UFUNCTION(BlueprintImplementableEvent, Category = "ButtonGroup")
 	void OnGroupDeactivated();
@@ -108,6 +137,9 @@ private:
 	void OnButtonActivationChanged(ATN_ButtonInteractable* Button, bool bActivated);
 	void CheckAndTrigger();
 	void ApplyTriggerActions(bool bForward);
+
+	/** Scan diferido (un tick después de BeginPlay) para registrar botones por tag. */
+	void DeferredTagButtonScan();
 
 	int32 GetEffectiveThreshold() const;
 

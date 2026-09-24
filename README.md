@@ -27,6 +27,17 @@ Esta guia contiene el setup paso a paso para dejar el proyecto funcional en UE 5
 3. Steam abierto (para pruebas online reales).
 4. Proyecto en: `C:\Users\Rodrigo\CARRERA\Workspace\Unreal Engine\Proyectos\Tortunabo`.
 
+### Opcional: MCP de Unreal (edicion asistida por IA)
+
+El plugin de editor `UnrealMCPython` no se versiona y figura como `"Optional"` en el
+`.uproject`: sin el, el proyecto abre con normalidad. Para instalarlo (con el editor cerrado):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Scripts\setup-unreal-mcp.ps1
+```
+
+Con `-WithClaude` ademas clona el servidor MCP y lo registra en Claude Code (requiere `git`, `uv` y `claude`).
+
 ## 2) Regenerar project files y compilar
 
 1. Cierra Unreal Editor.

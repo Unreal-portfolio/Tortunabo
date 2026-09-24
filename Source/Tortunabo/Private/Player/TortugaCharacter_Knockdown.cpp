@@ -545,9 +545,41 @@ void ATortugaCharacter::EnterRagdollState()
 		SkelMesh ? SkelMesh->Bodies.Num() : -1,
 		SkelMesh && SkelMesh->GetPhysicsAsset() ? TEXT("YES") : TEXT("NO"));
 
-	if (!SkelMesh || !SkelMesh->GetPhysicsAsset())
+	if (!SkelMesh) { return; }
+
+	// Fallback sin PhysicsAsset: no hay ragdoll real. Se congela la pose actual
+	// (AnimationCustomMode evita la T-pose), se tumba el mesh 90 grados hacia
+	// delante y se apagan capsula y CMC igual que en la ruta fisica.
+	// ExitRagdollState restaura todo via snapshot + SetAnimationMode(AnimationBlueprint).
+	if (!SkelMesh->GetPhysicsAsset())
 	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] EnterRagdollState abortado — SkM o PhysicsAsset null en %s"), *GetName());
+		SnapshotSkelMeshRelTransform     = SkelMesh->GetRelativeTransform();
+		SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+
+		if (UAnimInstance* AnimInst = SkelMesh->GetAnimInstance())
+		{
+			AnimInst->StopAllMontages(0.f);
+		}
+		SkelMesh->SetAnimationMode(EAnimationMode::AnimationCustomMode);
+		SkelMesh->bBlendPhysics = false;
+
+		// Se conservan Yaw y Roll del snapshot para que caiga en la direccion que mira.
+		const FRotator SnapRot = SnapshotSkelMeshRelTransform.GetRotation().Rotator();
+		SkelMesh->SetRelativeRotation(FRotator(90.f, SnapRot.Yaw, SnapRot.Roll));
+
+		if (UCapsuleComponent* Cap = GetCapsuleComponent())
+		{
+			Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+		if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+		{
+			CMC->StopMovementImmediately();
+			CMC->DisableMovement();
+			CMC->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+			CMC->SetComponentTickEnabled(false);
+		}
+
+		UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] FALLBACK sin PhysicsAsset: pose congelada + tilt 90 en %s"), *GetName());
 		return;
 	}
 

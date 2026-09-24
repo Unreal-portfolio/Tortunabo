@@ -84,8 +84,12 @@ DerivedDataCache/*
 # CodeGraph index (local code-intelligence cache, regenerated on demand)
 .codegraph/
 
-# MCP de Unreal (plugin de terceros, solo editor, 66 MB) — no versionar
-/Plugins/UnrealMCPython/
+# MCP de Unreal (plugin de terceros, solo editor): se versiona Source/Content/Resources
+# (1,8 MB); Binaries e Intermediate los excluyen las reglas genericas y se compilan con el proyecto.
+
+# Python
+__pycache__/
+*.pyc
 
 # Documentos pesados de entrega (PDF) — fuera del repositorio
 *.pdf
