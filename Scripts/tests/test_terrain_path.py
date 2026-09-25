@@ -57,3 +57,33 @@ def test_ruido_por_nudos_en_rango():
 
 def test_estilo_c01():
     assert C01_STYLE.loops == 7 and C01_STYLE.nested_loops >= 1 and C01_STYLE.crossings >= 1
+
+
+from terrain_path.graph import EDGE_MARGIN_M, trace_main  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def main_line():
+    return trace_main(np.random.default_rng(60001), C01_STYLE)
+
+
+def test_el_principal_va_del_sur_al_mar(main_line):
+    lo, hi = C01_STYLE.main_length_m
+    assert lo <= main_line.length <= hi
+    assert main_line.points[0][0] < MAP_MIN_M + 40.0 and main_line.points[-1][0] > MAP_MAX_M - 40.0
+
+
+def test_el_principal_no_tiene_rectas_ni_giros_bruscos(main_line):
+    assert longest_straight(main_line.points) <= 25.0
+    t = np.gradient(main_line.points, axis=0)
+    h = np.unwrap(np.arctan2(t[:, 1], t[:, 0]))
+    assert np.max(np.abs(h[10:] - h[:-10])) <= np.radians(55.0)
+
+
+def test_el_principal_no_se_acerca_a_si_mismo_ni_al_borde(main_line):
+    from scipy.spatial import cKDTree
+    pts, arc = main_line.points, main_line.arc
+    for i, j in cKDTree(pts).query_pairs(C01_STYLE.path_separation_m):
+        assert abs(arc[i] - arc[j]) <= 70.0
+    inner = pts[:-5]
+    assert inner.min() >= MAP_MIN_M + EDGE_MARGIN_M - 1.0 and inner.max() <= MAP_MAX_M - EDGE_MARGIN_M + 1.0
