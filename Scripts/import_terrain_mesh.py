@@ -49,7 +49,12 @@ def project_dir():
 
 
 def load_or_none(path):
-    return asset_lib.load_asset(path) if asset_lib.does_asset_exist(path) else None
+    """Carga por ruta de objeto completa: en el editor abierto el registro de assets puede no
+    ver aun un asset escrito por el commandlet, pero la carga directa si lo encuentra."""
+    if asset_lib.does_asset_exist(path):
+        return asset_lib.load_asset(path)
+    name = path.rsplit('/', 1)[-1]
+    return unreal.load_asset(f'{path}.{name}')
 
 
 def build_assets(volume_dir, manifest, root):
@@ -80,7 +85,11 @@ def existing_labels():
 
 def build_level(manifest, assets, level_path):
     level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
-    if asset_lib.does_asset_exist(level_path):
+    world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+    current = world.get_path_name().split('.')[0] if world else ''
+    if current == level_path:
+        pass                                          # ya abierto en el editor: se usa tal cual
+    elif asset_lib.does_asset_exist(level_path) or unreal.load_asset(level_path):
         level_subsystem.load_level(level_path)       # se conserva todo lo que haya
     else:
         level_subsystem.new_level(level_path)

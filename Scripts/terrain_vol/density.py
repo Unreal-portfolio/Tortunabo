@@ -292,7 +292,7 @@ class MapModel:
 
         # Playa final: arena que baja hasta el mar por el borde norte del mapa.
         u = MAP_MAX_M - X + 18.0 * self.n_edge(X, Y)
-        hills = 5.5 * np.clip(self.n_beach_hills(X, Y) + 0.2, 0.0, None) + 0.8 * self._dunes(X, Y, 1.6, 20.0)
+        hills = 9.0 * np.clip(self.n_beach_hills(X, Y) + 0.35, 0.0, None) + 0.8 * self._dunes(X, Y, 1.6, 20.0)
         beach = WATER_M - 2.5 + 5.0 * smooth(4.0, 70.0, u) + hills * smooth(40.0, 95.0, u)
         heights["beach"], floors["beach"] = beach, beach
         bands["beach"] = np.zeros_like(X)
