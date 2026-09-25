@@ -220,6 +220,15 @@ return 1.0f + (G - 0.5f) * Contrast;
 
 TRIPLANAR_INPUTS = ("P", "Normal", "Tex", "TileSize", "Sharpness", "Contrast")
 
+# Arena mojada (uu): la ola llega de 10 a 40 uu sobre el agua y vuelve; la arena que moja se
+# oscurece y se seca en 25 uu de altura. Multiplicador del color.
+WET_HLSL = """\
+float wave = 0.5 + 0.5 * sin(T * 6.2831853 / max(Period, 0.1));
+float reach = WaterZ + 10.0 + 30.0 * wave;
+float dry = saturate((Z - reach) / 25.0);
+return lerp(0.55, 1.0, dry);
+"""
+
 
 def custom_input(name):
     """FCustomInput no acepta argumentos en su constructor de Python: se rellena a posteriori."""
@@ -236,12 +245,16 @@ def scalar_parameter(material, name, value, x, y):
     return parameter
 
 
-def build_terrain_material(grain_texture):
-    """Color de vértice (estratos, arena, moteado) modulado por grano triplanar."""
-    path = f"{ROOT}/M_GridTerrain"
+def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False):
+    """Color de vértice (estratos, arena, moteado) modulado por grano triplanar y oscurecido
+    donde la ola moja la arena. recreate=True borra y crea el asset (en el commandlet,
+    delete_all_material_expressions sobre un material cargado revienta con !IsRooted())."""
+    path = f"{ROOT}/{name}"
+    if recreate and asset_lib.does_asset_exist(path):
+        asset_lib.delete_asset(path)
     material = load_or_none(path)
     if not material:
-        material = asset_tools.create_asset("M_GridTerrain", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+        material = asset_tools.create_asset(name, ROOT, unreal.Material, unreal.MaterialFactoryNew())
 
     mel = unreal.MaterialEditingLibrary
     # Se reconstruye el grafo entero en vez de recrear el asset: así el material conserva su
@@ -275,10 +288,31 @@ def build_terrain_material(grain_texture):
                             (tile_size, "TileSize"), (sharpness, "Sharpness"), (contrast, "Contrast")):
         mel.connect_material_expressions(expression, "", triplanar, pin)
 
+    # Arena mojada: la ola sube y baja por la orilla (periodo WetPeriod) y oscurece la arena hasta
+    # donde llega; mas arriba, seca. Mismo periodo que la espuma de M_TortunaboWaterToon. Cota del
+    # mundo (la local se mide desde el centro de los limites de cada trozo y cambia de uno a otro:
+    # salian franjas por trozo).
+    local_z = mel.create_material_expression(material, unreal.MaterialExpressionComponentMask, -900, -380)
+    local_z.set_editor_property("b", True)
+    mel.connect_material_expressions(world_position, "", local_z, "")
+    time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -900, -300)
+    water_z = scalar_parameter(material, "WaterZ", -400.0, -900, -220)
+    period = scalar_parameter(material, "WetPeriod", 4.0, -900, -140)
+    wet = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -600, -380)
+    wet.set_editor_property("code", WET_HLSL)
+    wet.set_editor_property("description", "ArenaMojada")
+    wet.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+    wet.set_editor_property("inputs", [custom_input(name) for name in ("Z", "T", "WaterZ", "Period")])
+    for expression, pin in ((local_z, "Z"), (time, "T"), (water_z, "WaterZ"), (period, "Period")):
+        mel.connect_material_expressions(expression, "", wet, pin)
+
     vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -600, -180)
-    base_color = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -300, -60)
-    mel.connect_material_expressions(vertex_color, "", base_color, "A")
-    mel.connect_material_expressions(triplanar, "", base_color, "B")
+    grained = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -400, -100)
+    mel.connect_material_expressions(vertex_color, "", grained, "A")
+    mel.connect_material_expressions(triplanar, "", grained, "B")
+    base_color = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -250, -160)
+    mel.connect_material_expressions(grained, "", base_color, "A")
+    mel.connect_material_expressions(wet, "", base_color, "B")
     mel.connect_material_property(base_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
 
     roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -300, 300)
@@ -449,4 +483,5 @@ def main():
     unreal.log("[GridDemo] Assets y mapa de la demo listos.")
 
 
-main()
+if __name__ == "__main__":
+    main()
