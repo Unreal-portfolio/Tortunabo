@@ -99,6 +99,14 @@ namespace TNTerrainTunnel
 				const uint16 Roof = FMath::Max(Layers.Roof[K], Floor);
 				const uint16 Ceiling = FMath::Clamp(Layers.Ceiling[K], Floor, Roof);
 				RoofIndex[FloorVertex] = Roof == Floor ? FloorVertex : AddVertex(Layers.Roof, I, J, false);
+				if (Roof == Floor)
+				{
+					// Vértice de la costura: ahora es borde del techo, no del talud que queda
+					// dentro de la roca. Su normal sigue a la superficie de arriba.
+					const double SlopeX = (LayerHeight(Layers.Roof, I + 1, J) - LayerHeight(Layers.Roof, I - 1, J)) / (2.0 * Step);
+					const double SlopeY = (LayerHeight(Layers.Roof, I, J + 1) - LayerHeight(Layers.Roof, I, J - 1)) / (2.0 * Step);
+					Mesh.Normals[FloorVertex] = FVector(-SlopeX, -SlopeY, 1.0).GetSafeNormal();
+				}
 				CeilingIndex[FloorVertex] = Ceiling == Floor ? FloorVertex
 					: (Ceiling == Roof ? RoofIndex[FloorVertex] : AddVertex(Layers.Ceiling, I, J, true));
 			}

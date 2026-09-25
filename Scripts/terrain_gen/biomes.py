@@ -35,6 +35,7 @@ TUNNEL_EDGE_CLEAR_M = 22.0         # la huella del tunel no se acerca mas al bor
 TUNNEL_LENGTH_M = (22.0, 32.0)     # a lo largo del camino
 TUNNEL_CLEAR_M = (5.0, 6.5)        # altura libre en el eje
 TUNNEL_MIN_ROOF_M = 2.5            # grosor minimo de roca sobre la boveda
+TUNNEL_MOUTH_M = 8.0               # tramo en el que el techo baja hacia cada boca
 
 EDGE_FADE = smoothstep(0.0, EDGE_FADE_M, DIST_TO_EDGE)
 SIDE_OUT = {"N": (1.0, 0.0), "S": (-1.0, 0.0), "E": (0.0, 1.0), "W": (0.0, -1.0)}
@@ -117,12 +118,12 @@ def corridor_of(d, hw, bank):
 
 
 # ── Arena ─────────────────────────────────────────────────────────────────────────
-def sand_plateau(rng: np.random.Generator, wall_lo: float = 9.0, wall_hi: float = 14.0):
+def sand_plateau(rng: np.random.Generator, wall_lo: float = 9.0, wall_hi: float = 14.0, raw: bool = False):
     """Meseta de arenisca en repisas (misma cota en los tres estilos de arena y en el
-    ambiente, para que casen)."""
+    ambiente, para que casen). raw: devuelve tambien la meseta sin repisas."""
     wall = float(rng.uniform(wall_lo, wall_hi))
     high = wall + 2.5 * fbm(rng, 45.0, octaves=3) + dunes(rng, float(rng.uniform(0.6, 1.2)), float(rng.uniform(16.0, 24.0)))
-    return sharp_strata(high, 2.5)
+    return (sharp_strata(high, 2.5), high) if raw else sharp_strata(high, 2.5)
 
 
 def sand_floor(rng: np.random.Generator, dune_amp: tuple[float, float] = (0.3, 0.7)):
@@ -217,7 +218,8 @@ def design_sand_tunnel(rng: np.random.Generator, mouths: dict) -> ModuleDesign |
     # Colina sobre el tunel: la meseta sube 3-5 m alrededor de su centro.
     cx, cy = point_on(lane, 0.5 * (s0 + s1))
     hill = float(rng.uniform(3.0, 5.0)) * (1.0 - smoothstep(10.0, 28.0, np.hypot(XX - cx, YY - cy)))
-    high = sand_plateau(rng, 10.0, 13.0) + hill
+    stepped, smooth = sand_plateau(rng, 10.0, 13.0, raw=True)
+    high = stepped + hill
     terrain = high * (1.0 - corridor) + floor * corridor
 
     # Huella: el pasillo (con su talud) en el tramo [s0, s1], mas un anillo de una muestra
@@ -226,11 +228,19 @@ def design_sand_tunnel(rng: np.random.Generator, mouths: dict) -> ModuleDesign |
     carved = in_span & (corridor > 1e-3)
     ring = in_span & ~carved & (d < hw + bank + 2.0)
     footprint = carved | ring
-    roof = np.where(footprint, (high - terrain).clip(min=0.0), np.nan)
-    roof[ring] = 0.0
+    # Sobre el pasillo el techo es la meseta sin repisas (boca de borde limpio, no dentado);
+    # hacia la costura lateral vuelve a la meseta en repisas, que es la del suelo.
+    top = high * (1.0 - corridor) + (smooth + hill) * corridor
     clear = float(rng.uniform(*TUNNEL_CLEAR_M))
     across = np.clip(d / (hw + bank), 0.0, 1.0)
     vault = clear * np.sqrt(np.clip(1.0 - across * across, 0.0, 1.0))
+    # Boca de cueva: junto a cada extremo el techo baja en rampa hasta dejar solo
+    # TUNNEL_MIN_ROOF_M de roca sobre el arco; la pared vertical de la boca queda corta.
+    mouth = 1.0 - smoothstep(0.0, TUNNEL_MOUTH_M, np.minimum(s - s0, s1 - s))
+    rim = terrain + vault + TUNNEL_MIN_ROOF_M
+    top = top + (np.minimum(top, rim) - top) * mouth * corridor
+    roof = np.where(footprint, (top - terrain).clip(min=0.0), np.nan)
+    roof[ring] = 0.0
     ceil = np.where(footprint, np.minimum(vault, np.maximum(roof - TUNNEL_MIN_ROOF_M, 0.0)), np.nan)
     ceil[ring] = 0.0
     return ModuleDesign(terrain, np.zeros_like(XX), "sand_tunnel", roof, ceil)
