@@ -193,6 +193,18 @@ def test_hay_tuneles_pasantes_y_todos_se_alcanzan(model, chunks, standable):
         assert near.any(), f"tunel inaccesible: {net_name} arista {edge}"
 
 
+def test_los_puentes_se_pasan_por_debajo(model, chunks, standable):
+    """Cada puente de roca deja paso por debajo (suelo con roca encima) y se llega a el."""
+    assert len(model.arches) >= 4
+    start_ij = world_index(model.route.points[0])
+    reached = walk(standable, (*start_ij, ground_level(standable, *start_ij)))
+    for c, _, _ in model.arches:
+        i, j = world_index(c)
+        levels = np.nonzero(standable[i, j])[0]
+        assert len(levels) >= 2, f"puente sin hueco en {c}: {levels}"
+        assert reached[i - 2:i + 3, j - 2:j + 3, :].any(), f"puente inaccesible en {c}"
+
+
 def test_los_tuneles_bajan_o_suben_por_dentro_y_son_parte_del_laberinto(model):
     assert all(1.0 <= abs(dip) <= 3.5 for _, _, dip in model.maze_tunnels)
     assert any(dip < 0 for _, _, dip in model.maze_tunnels), "ninguno baja por debajo"

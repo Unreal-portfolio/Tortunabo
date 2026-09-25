@@ -40,8 +40,10 @@ TUNNEL_LENGTH_M = (26.0, 36.0)         # (solo lo usa el plan antiguo, que se co
 TUNNEL_EDGE_M = (18.0, 45.0)           # longitud de las aristas del laberinto que se hacen tunel
 # Por zona: (tuneles pasantes, cuevas sin salida). Pasante: une dos pasillos abiertos (sus dos
 # nodos tienen otras aristas). Cueva: uno de sus nodos es una hoja (no lleva a ningun sitio).
-TUNNELS_PER_ZONE = {"cliffs": (3, 1), "canyon": (4, 1)}
+TUNNELS_PER_ZONE = {"cliffs": (3, 1), "canyon": (6, 1)}
 TUNNEL_CANDIDATES = {"cliffs": (10, 4), "canyon": (10, 4)}  # (pasantes, cuevas) antes de validar
+ARCHES_PER_ZONE = {"cliffs": 2, "canyon_maze": 3}    # puentes de roca que cruzan un pasillo
+ARCH_DECK_M = 7.5                        # tablero del puente sobre el suelo del pasillo
 TUNNEL_HILL_M = 7.0                      # loma de roca que se levanta sobre cada tunel
 
 CANYON_REACH_M = 70.0                  # el laberinto del canon se extiende a los lados como el de la salida
@@ -138,8 +140,8 @@ class MapModel:
         self.maze_tunnels = self._pick_maze_tunnels(extra)
         self._close_tunnel_edges()
         # Plazas llanas grandes en el canon (puzles).
-        self.clearings["canyon_maze"] = self._pick_clearings(extra, self.nets["canyon_maze"], every=7,
-                                                             radius=(6.5, 10.0))
+        self._pick_clearings(extra, self.nets["canyon_maze"], every=7, radius=(6.5, 10.0))
+        self.clearings["canyon_maze"] = np.zeros((0, 4))       # sin plazas redondas en el canon
         self._build_tunnel_samples()
         self.marsh_warp_2 = (Fbm2D(extra, 40.0, 2), Fbm2D(extra, 40.0, 2))
         self.n_hummock = Fbm2D(extra, 6.0, 2)
@@ -148,6 +150,10 @@ class MapModel:
         self.n_cliff_height = Fbm2D(extra, 55.0, 3)
         self.n_clearing = Fbm2D(extra, 9.0, 2)
         self.n_top = Fbm2D(extra, 38.0, 3)
+        self.canyon_warp = (Fbm2D(extra, 30.0, 2), Fbm2D(extra, 30.0, 2))
+        self.arches = self._pick_arches(extra)
+        self.n_top_roll = Fbm2D(extra, 17.0, 3)
+        self._build_tunnel_samples()
 
         # Campos 2D del mapa entero, con una muestra de margen alrededor.
         count = int(round((MAP_MAX_M - MAP_MIN_M) / STEP_XY_M)) + 1
@@ -176,6 +182,49 @@ class MapModel:
         levels = net.levels if net.levels is not None else np.zeros(len(net.nodes))
         return np.array([[net.nodes[k][0], net.nodes[k][1], rng.uniform(*radius), levels[k]]
                          for k in picked]).reshape(-1, 4)
+
+    def _pick_arches(self, rng: np.random.Generator) -> list[tuple[np.ndarray, np.ndarray, float]]:
+        """Puentes de roca: (centro, direccion del pasillo, cota del suelo). Una banda de roca
+        cruza un pasillo abierto y se excava un arco por debajo: se pasa por abajo y, desde las
+        repisas, se cruza por arriba."""
+        arches = []
+        for net_name, count in ARCHES_PER_ZONE.items():
+            net = self.nets[net_name]
+            closed = {e for z, e, _ in self.maze_tunnels if z == net_name}
+            lengths = [float(np.sum(np.linalg.norm(np.diff(c, axis=0), axis=1))) for c in net.curves]
+            options = [k for k in range(len(net.edges)) if k not in closed and lengths[k] >= 16.0]
+            rng.shuffle(options)
+            placed = 0
+            for k in options:
+                if placed == count:
+                    break
+                curve = net.curves[k]
+                seg = np.linalg.norm(np.diff(curve, axis=0), axis=1)
+                arc = np.concatenate(([0.0], np.cumsum(seg)))
+                mid = arc[-1] * 0.5
+                c = np.array([np.interp(mid, arc, curve[:, 0]), np.interp(mid, arc, curve[:, 1])])
+                ahead = np.array([np.interp(mid + 2.0, arc, curve[:, 0]), np.interp(mid + 2.0, arc, curve[:, 1])]) - c
+                d = ahead / max(float(np.linalg.norm(ahead)), 1e-9)
+                # Nada de puentes donde el canon ya se abre al agua (sus paredes bajan).
+                s_c = float(self.zones.nearest(np.array([[c[0]]]), np.array([[c[1]]]))[1][0, 0])
+                c0, c1 = self.route.zone_range("canyon")
+                if net_name == "canyon_maze" and (s_c - c0) / max(c1 - c0, 1.0) > 0.4:
+                    continue
+                arches.append((c, d, float(net.edge_floor(k, 0.5))))
+                placed += 1
+        return arches
+
+    def _arch_band(self, X, Y):
+        """(0..1 banda de roca que cruza el pasillo en cada puente, cota del tablero)."""
+        band = np.zeros_like(X)
+        deck = np.full_like(X, np.inf)
+        for c, d, floor in getattr(self, "arches", []):
+            along = (X - c[0]) * d[0] + (Y - c[1]) * d[1]
+            across = -(X - c[0]) * d[1] + (Y - c[1]) * d[0]
+            m = (1.0 - smooth(2.2, 3.6, np.abs(along))) * (1.0 - smooth(9.0, 12.0, np.abs(across)))
+            band = np.maximum(band, m)
+            deck = np.where(m > 0.0, np.minimum(deck, floor + ARCH_DECK_M), deck)
+        return band, deck
 
     def _close_tunnel_edges(self) -> None:
         """Las aristas de tunel no abren pasillo en el relieve (queda roca encima)."""
@@ -267,6 +316,12 @@ class MapModel:
             ts.append(t)
             floors.append(net.edge_floor(edge, t))
             dips.append(np.full_like(t, dip))
+        for c, d, floor in getattr(self, "arches", []):
+            s = np.arange(-6.0, 6.0 + 0.5, 0.5)
+            pts.append(np.stack([c[0] + d[0] * s, c[1] + d[1] * s], axis=1))
+            ts.append((s + 5.0) / 10.0)
+            floors.append(np.full_like(s, floor))
+            dips.append(np.zeros_like(s))
         if pts:
             self.tunnel_pts = np.vstack(pts)
             self.tunnel_t = np.concatenate(ts)
@@ -353,7 +408,7 @@ class MapModel:
         mix = smooth(0.35, 0.65, self.n_dune_mix.unit(X, Y))
         field = self._dune_set(X, Y, self.dune_angle, 34.0, 0.7) * (1 - mix) \
             + self._dune_set(X, Y, self.dune_angle_2, 46.0, 0.7) * mix
-        amp = scale * (1.8 + 8.2 * smooth(0.25, 0.85, self.n_beach_amp.unit(X, Y)))
+        amp = scale * (2.5 + 10.5 * smooth(0.25, 0.85, self.n_beach_amp.unit(X, Y)))
         return amp * field
 
     def _dunes(self, X, Y, amp, wave: float):
@@ -365,17 +420,22 @@ class MapModel:
         strength = smooth(0.2, 0.8, self.n_dune_amp.unit(X, Y))
         return amp * field * (0.15 + 0.85 * strength)
 
-    def _rock_walls(self, X, Y, d, hw, f, top, face_width: float = 1.1, rim: float = 0.0):
+    def _rock_walls(self, X, Y, d, hw, f, top, face_width: float = 1.1, rim: float = 0.0, bridge=None):
         """Pasillo en roca con aspecto erosionado: contrafuertes, grietas que se meten en la
         pared y un talud de derrubios al pie. face_width: anchura horizontal de la cara (1 m ~
         pared vertical; 3-4 m, 60-75 grados). rim: fraccion de la altura que se redondea en el
         borde de arriba (0 = arista viva). Devuelve (relieve, banda de pared, eje)."""
         face = d - hw                                   # > 0: detras de la cara de la pared
-        if rim > 0.0:
+        if np.any(rim > 0.0):
             # Borde superior gastado: la cima baja en curva hacia el canon.
             top = top - rim * np.maximum(top - f, 0.0) * (1.0 - smooth(0.0, 7.0 + face_width, face))
         # La cara se abre hacia arriba: el pie es estrecho y el borde queda retranqueado.
         corridor = 1.0 - smooth(0.0, face_width, face)
+        if bridge is not None:
+            # Puente: la roca cruza el pasillo a la cota del tablero (el arco se excava en 3D).
+            band, deck = bridge
+            corridor = corridor * (1.0 - band)
+            top = np.where(band > 0.0, top + (np.minimum(top, deck) - top) * band, top)
         # Grietas: lineas de ruido (pasos por cero) que cortan la pared casi hasta el suelo,
         # solo cerca de la cara y solo en parte de las paredes.
         crack = (1.0 - smooth(0.04, 0.13, np.abs(self.n_crack(X, Y)))) * smooth(0.45, 0.6, self.n_crack_mask.unit(X, Y))
@@ -415,9 +475,12 @@ class MapModel:
         # Cimas a alturas distintas (no una meseta): 8-17 m sobre el nivel y repisas a medias.
         raw_top = level_soft * (1.0 - start_w) + 8.0 + 9.0 * smooth(0.15, 0.9, self.n_top.unit(X, Y)) \
             + 2.0 * self.n_mid.unit(X, Y) + 1.2 * small
-        top = 0.45 * raw_top + 0.55 * strata(raw_top, 3.5) + tunnel_hill
+        # Cima ondulada (lomas de arena sobre la roca): nunca baja, para no quitar cubierta a los tuneles.
+        top = 0.45 * raw_top + 0.55 * strata(raw_top, 3.5) + tunnel_hill + 3.0 * np.abs(self.n_top_roll(X, Y))
         d_eff = d * (1.0 - np.maximum(clear_w, start_w))
-        heights["cliffs"], bands["cliffs"], axes["cliffs"] = self._rock_walls(X, Y, d_eff, hw, f, top, rim=0.15)
+        bridge = self._arch_band(X, Y)
+        heights["cliffs"], bands["cliffs"], axes["cliffs"] = self._rock_walls(X, Y, d_eff, hw, f, top, rim=0.15,
+                                                                             bridge=bridge)
         # Lejos de los pasillos el suelo de referencia es el nivel suavizado: el muro exterior
         # que sube desde el no marca la bisectriz entre dos caminos de niveles distintos.
         near_corridor = 1.0 - smooth(hw + 1.0, hw + 9.0, d_eff)
@@ -425,19 +488,27 @@ class MapModel:
 
         # Canon: otro laberinto de acantilados (2 niveles), de caras algo mas tendidas y cimas
         # onduladas; sus tuneles son tramos del laberinto excavados en la roca.
-        d, level = self._net("canyon_maze", X, Y)
-        _, level_soft = self._net("canyon_maze", X, Y, smooth_m=10.0)
+        # Pasillos ondulados (dominio deformado): sin tramos rectos de regla.
+        cwx = X + 4.5 * self.canyon_warp[0](X, Y)
+        cwy = Y + 4.5 * self.canyon_warp[1](X, Y)
+        d, level = self._net("canyon_maze", cwx, cwy)
+        _, level_soft = self._net("canyon_maze", cwx, cwy, smooth_m=10.0)
         clear_w, clear_level = self._clearing("canyon_maze", X, Y)
-        hw = 3.2 + 1.4 * width + 0.9 * self.n_buttress(X, Y)
+        # Apertura: a lo largo del tramo los pasillos se ensanchan y las paredes bajan, hasta
+        # fundirse con la zona encharcada (el agua entra en el final del laberinto).
+        c0, c1 = self.route.zone_range("canyon")
+        opening = smooth(0.35, 1.0, np.clip((s_route - c0) / max(c1 - c0, 1.0), 0.0, 1.0))
+        hw = 3.2 + 1.4 * width + 0.9 * self.n_buttress(X, Y) + 5.0 * opening
         f = (level * (1.0 - clear_w) + clear_level * clear_w) + 0.3 * small
         # Acantilados de altura muy distinta segun la zona (7-19 m) y cimas a repisas.
         raw_top = level_soft + 7.0 + 12.0 * smooth(0.2, 0.9, self.n_cliff_height.unit(X, Y)) + 1.5 * big + 1.2 * small
-        top = 0.35 * raw_top + 0.65 * strata(raw_top, 3.0) + tunnel_hill
+        top = 0.35 * raw_top + 0.65 * strata(raw_top, 3.0) + tunnel_hill + 3.0 * np.abs(self.n_top_roll(X, Y))
+        top = f + (top - f) * (1.0 - 0.65 * opening)
         d_eff = d * (1.0 - clear_w)
         # Pendiente que cambia por tramos: de pared casi vertical (1 m) a ladera de 55 grados.
         face_w = 1.0 + 3.2 * smooth(0.3, 0.8, self.n_steep.unit(X, Y))
         heights["canyon"], bands["canyon"], axes["canyon"] = self._rock_walls(
-            X, Y, d_eff, hw, f, top, face_width=face_w, rim=0.18)
+            X, Y, d_eff, hw, f, top, face_width=face_w + 3.0 * opening, rim=0.18 + 0.2 * opening, bridge=bridge)
         near_corridor = 1.0 - smooth(hw + 1.0, hw + 9.0, d_eff)
         floors["canyon"] = f * near_corridor + level_soft * (1.0 - near_corridor)
 
@@ -466,13 +537,16 @@ class MapModel:
         land = base * (1.0 - crest) + np.maximum(base, path_top) * crest
         heights["marsh"] = land * (1.0 - gap) + np.minimum(land, WATER_M - 0.6) * gap
         floors["marsh"] = np.full_like(X, MARSH_PATH_TOP_M)
+        # El final del canon se funde con la zona encharcada: el agua entra entre sus paredes.
+        into_water = smooth(0.4, 0.85, opening)
+        heights["canyon"] = heights["canyon"] * (1.0 - into_water) + heights["marsh"] * into_water
         bands["marsh"] = np.zeros_like(X)
         axes["marsh"] = 1.0 - smooth(0.5, 1.5, d_path)
 
         # Algas: lomas y hondonadas, red densa de sendas; el laberinto lo hace la espesura.
         d, _ = self._net("algae", X, Y)
         hw = 1.8 + 0.8 * width
-        f = 0.8 + 2.0 * self.n_big.unit(X, Y) + 1.0 * self._beach_dunes(X, Y)
+        f = 0.8 + 2.0 * self.n_big.unit(X, Y) + 1.2 * self._beach_dunes(X, Y)
         heights["algae"], floors["algae"] = f, f
         bands["algae"] = np.zeros_like(X)
         axes["algae"] = 1.0 - smooth(0.5 * hw, hw, d)
