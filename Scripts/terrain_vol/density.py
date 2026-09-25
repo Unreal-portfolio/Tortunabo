@@ -191,8 +191,8 @@ class MapModel:
             x = np.interp(s, arc, curve[:, 0])
             y = np.interp(s, arc, curve[:, 1])
             # Prolongacion recta por las bocas (interp satura en los extremos).
-            head = (curve[1] - curve[0]) / max(float(np.linalg.norm(curve[1] - curve[0])), 1e-9)
-            tail = (curve[-1] - curve[-2]) / max(float(np.linalg.norm(curve[-1] - curve[-2])), 1e-9)
+            head = end_direction(curve)
+            tail = -end_direction(curve[::-1])
             before, after = s < 0.0, s > arc[-1]
             x[before] = curve[0, 0] + head[0] * s[before]
             y[before] = curve[0, 1] + head[1] * s[before]
@@ -487,6 +487,15 @@ class MapModel:
         # Fuera del tramo (mas alla de la prolongacion de las bocas) no se excava.
         active = (t > -0.2) & (t < 1.2)
         return np.where(active[..., None], inside, -1.0)
+
+
+def end_direction(curve: np.ndarray, reach: float = 2.0) -> np.ndarray:
+    """Direccion unitaria con la que la curva sale de su primer punto, medida hasta el
+    primer punto a mas de reach metros (las curvas suavizadas repiten sus extremos)."""
+    dist = np.linalg.norm(curve - curve[0], axis=1)
+    k = int(np.argmax(dist > reach)) if np.any(dist > reach) else len(curve) - 1
+    d = curve[k] - curve[0]
+    return d / max(float(np.linalg.norm(d)), 1e-9)
 
 
 # ── Erosion (funciones puras sobre una rejilla de 1 m) ─────────────────────────────
