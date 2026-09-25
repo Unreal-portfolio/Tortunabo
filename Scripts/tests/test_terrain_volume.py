@@ -175,14 +175,11 @@ def test_sin_picos_de_una_celda_en_la_roca(model):
     assert int((spike > 4.0).sum()) == 0
 
 
-def test_los_tuneles_bajan_o_suben_por_dentro_y_el_camino_pasa_por_uno(model):
+def test_los_tuneles_bajan_o_suben_por_dentro_y_son_parte_del_laberinto(model):
     assert all(1.0 <= abs(dip) <= 3.5 for _, _, dip in model.maze_tunnels)
     assert any(dip < 0 for _, _, dip in model.maze_tunnels), "ninguno baja por debajo"
     for zone in ("cliffs", "canyon_maze"):
-        net = model.nets[zone]
-        chain = {tuple(sorted((net.chain[k], net.chain[k + 1]))) for k in range(len(net.chain) - 1)}
-        assert any(tuple(sorted(net.edges[e])) in chain for z, e, _ in model.maze_tunnels if z == zone), \
-            f"el camino bueno no pasa por un tunel en {zone}"
+        assert any(z == zone for z, _, _ in model.maze_tunnels), f"sin tuneles en {zone}"
 
 
 def test_la_semilla_aprobada_da_el_mismo_mapa(model):

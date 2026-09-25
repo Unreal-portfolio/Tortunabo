@@ -137,7 +137,7 @@ def bent_curve(rng: np.random.Generator, a: np.ndarray, b: np.ndarray, bend: flo
 def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing: float,
                   loop_share: float, loops_anywhere: bool = False, reach_share: float = 0.85,
                   bend: float = 0.22, level_step: float = 0.0, level_count: int = 1,
-                  decoys: bool = False) -> Network:
+                  decoys: bool = False, reach_m: float | None = None) -> Network:
     """Red de la zona. loops_anywhere=False: los lazos no saltan de una rama a otra, asi que la
     cadena es el unico paso de la entrada a la salida de la zona.
 
@@ -146,7 +146,8 @@ def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing
     salida de la zona a nivel 0 para casar con las vecinas.
     decoys: donde la cadena gira mas de 15 grados, una rama sigue recto (el camino recto no es el bueno)."""
     route = zones.route
-    reach = next(r for name, _, r in ZONES if name == zone) * reach_share
+    zone_reach = reach_m if reach_m is not None else next(r for name, _, r in ZONES if name == zone)
+    reach = zone_reach * reach_share
     s0, s1 = route.zone_range(zone)
     chain_s = np.arange(max(0.0, s0 - spacing * 0.5), min(route.length, s1 + spacing * 0.5), spacing)
     chain_s = np.append(chain_s, min(route.length, s1 + spacing * 0.5))
@@ -161,7 +162,11 @@ def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing
         d, s = zones.nearest(np.array([p[0]]), np.array([p[1]]))
         x, y = np.array([p[0]]), np.array([p[1]])
         w = zones.weights(x, y, s, d)[zone][0]
-        return w > 0.55 and d[0] < min(reach, 0.9 * zones.reach(zones.weights(x, y, s, d), x, y)[0])
+        if reach_m is not None:
+            limit = 0.9 * reach_m * (0.65 + 0.7 * zones.reach_noise.unit(x, y)[0])
+        else:
+            limit = 0.9 * zones.reach(zones.weights(x, y, s, d), x, y)[0]
+        return w > 0.55 and d[0] < min(reach, limit)
 
     extra = poisson_disk(rng, bounds, spacing, accept, chain_pts)
     chain = list(range(len(chain_pts)))
