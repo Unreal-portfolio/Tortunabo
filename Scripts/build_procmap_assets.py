@@ -119,21 +119,89 @@ def build_flat_material():
     return save(material)
 
 
+SIMPLE_GRASS_WIND = "/Engine/Functions/Engine_MaterialFunctions01/WorldPositionOffset/SimpleGrassWind.SimpleGrassWind"
+
+
 def build_foliage_material():
+    """Vegetación procedural (TN_ProcMapGenerator_Flora.cpp): mallas instanciadas con el color en el
+    vértice y viento simulado del motor (SimpleGrassWind). El alfa del color de vértice es el peso de
+    balanceo (0 en troncos, rocas y objetos; más en las copas y en las puntas de la hierba) y la
+    intensidad sube y baja en rachas lentas que recorren el mapa. De una cara: frondas y hojas de hierba
+    ya traen las dos caras en la malla. Si el material existe sin viento, se rehace su grafo."""
     path = f"{MATERIALS}/M_ProcFoliage"
-    existing = load_or_none(path)
-    if existing:
-        return existing
-    material = asset_tools.create_asset("M_ProcFoliage", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
-    # Vegetación procedural (TN_ProcMapGenerator_Flora.cpp): mallas instanciadas con el color en
-    # el vértice. De una cara: frondas y hojas de hierba ya traen las dos caras en la malla (con un
-    # material de dos caras se pelearían en profundidad).
+    material = load_or_none(path)
+    if material and mel.get_material_property_input_node(material, unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET):
+        return material
+    if material:
+        mel.delete_all_material_expressions(material)
+    else:
+        material = asset_tools.create_asset("M_ProcFoliage", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
     material.set_editor_property("used_with_instanced_static_meshes", True)
-    vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -400, 0)
+    try:
+        material.set_editor_property("max_world_position_offset_displacement", 120.0)
+    except Exception as error:  # solo acota los límites de la malla desplazada
+        unreal.log_warning(f"[ProcMap] M_ProcFoliage sin tope de desplazamiento: {error}")
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    def scalar(name, value, x, y):
+        e = expr(unreal.MaterialExpressionScalarParameter, x, y)
+        e.set_editor_property("parameter_name", name)
+        e.set_editor_property("default_value", value)
+        return e
+
+    def const(value, x, y):
+        e = expr(unreal.MaterialExpressionConstant, x, y)
+        e.set_editor_property("r", value)
+        return e
+
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -500, 0)
     mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 250)
-    roughness.set_editor_property("r", 0.85)
-    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.connect_material_property(const(0.85, -500, 200), "", unreal.MaterialProperty.MP_ROUGHNESS)
+
+    # Rachas: sin(Tiempo * RachaVelocidad + X / 5000) entre 0,55 y 1,15 de la intensidad.
+    time = expr(unreal.MaterialExpressionTime, -1500, 420)
+    gust_speed = scalar("GustSpeed", 0.35, -1500, 500)
+    time_scaled = expr(unreal.MaterialExpressionMultiply, -1300, 440)
+    mel.connect_material_expressions(time, "", time_scaled, "A")
+    mel.connect_material_expressions(gust_speed, "", time_scaled, "B")
+    world = expr(unreal.MaterialExpressionWorldPosition, -1500, 620)
+    mask_x = expr(unreal.MaterialExpressionComponentMask, -1300, 620)
+    mask_x.set_editor_property("r", True)
+    mask_x.set_editor_property("g", False)
+    mask_x.set_editor_property("b", False)
+    mask_x.set_editor_property("a", False)
+    mel.connect_material_expressions(world, "", mask_x, "")
+    phase = expr(unreal.MaterialExpressionDivide, -1150, 620)
+    mel.connect_material_expressions(mask_x, "", phase, "A")
+    mel.connect_material_expressions(const(5000.0, -1300, 720), "", phase, "B")
+    arg = expr(unreal.MaterialExpressionAdd, -1000, 520)
+    mel.connect_material_expressions(time_scaled, "", arg, "A")
+    mel.connect_material_expressions(phase, "", arg, "B")
+    sine = expr(unreal.MaterialExpressionSine, -850, 520)
+    mel.connect_material_expressions(arg, "", sine, "")
+    gust = expr(unreal.MaterialExpressionMultiply, -700, 520)
+    mel.connect_material_expressions(sine, "", gust, "A")
+    mel.connect_material_expressions(const(0.3, -850, 620), "", gust, "B")
+    gust_bias = expr(unreal.MaterialExpressionAdd, -550, 520)
+    mel.connect_material_expressions(gust, "", gust_bias, "A")
+    mel.connect_material_expressions(const(0.85, -700, 620), "", gust_bias, "B")
+    intensity = scalar("WindIntensity", 0.5, -700, 400)
+    gusty = expr(unreal.MaterialExpressionMultiply, -400, 440)
+    mel.connect_material_expressions(intensity, "", gusty, "A")
+    mel.connect_material_expressions(gust_bias, "", gusty, "B")
+
+    wind = expr(unreal.MaterialExpressionMaterialFunctionCall, -200, 420)
+    wind.set_editor_property("material_function", unreal.load_asset(SIMPLE_GRASS_WIND))
+    mel.connect_material_expressions(gusty, "", wind, "WindIntensity")
+    mel.connect_material_expressions(vertex_color, "A", wind, "WindWeight")
+    mel.connect_material_expressions(scalar("WindSpeed", 0.6, -400, 560), "", wind, "WindSpeed")
+    # La función exige su entrada de desplazamiento adicional (sin ella el material no compila y se ve gris).
+    zero = expr(unreal.MaterialExpressionConstant3Vector, -400, 700)
+    zero.set_editor_property("constant", unreal.LinearColor(0.0, 0.0, 0.0, 0.0))
+    mel.connect_material_expressions(zero, "", wind, "AdditionalWPO")
+    mel.connect_material_property(wind, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
     mel.recompile_material(material)
     return save(material)
 

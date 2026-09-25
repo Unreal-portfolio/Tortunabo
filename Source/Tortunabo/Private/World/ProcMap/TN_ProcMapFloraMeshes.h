@@ -888,6 +888,52 @@ namespace TNFloraMesh
 		}
 	}
 
+	/**
+	 * Viento de cada forma: rigidez (0 = no se mece: rocas, objetos), exponente del peso con la altura (los
+	 * troncos apenas se mueven y las copas sí) y distancia a la que deja de evaluarse (cm).
+	 */
+	struct FTNFloraWind
+	{
+		float Stiffness = 0.f;
+		float Exponent = 1.5f;
+		int32 DisableDistance = 0;
+	};
+
+	inline FTNFloraWind TNFloraWindOf(EFloraShape Shape)
+	{
+		switch (Shape)
+		{
+			case EFloraShape::Grass:        return { 1.0f, 1.0f, 4000 };
+			case EFloraShape::Flowers:      return { 0.9f, 1.0f, 4000 };
+			case EFloraShape::Reeds:        return { 1.0f, 1.0f, 6000 };
+			case EFloraShape::Fern:         return { 0.6f, 1.2f, 6000 };
+			case EFloraShape::Creeper:      return { 0.25f, 1.0f, 5000 };
+			case EFloraShape::Bush:
+			case EFloraShape::AshBush:
+			case EFloraShape::DryBush:      return { 0.35f, 1.3f, 7000 };
+			case EFloraShape::BananaPlant:  return { 0.6f, 1.5f, 9000 };
+			case EFloraShape::FanPalm:
+			case EFloraShape::SeaGrape:
+			case EFloraShape::Pandanus:     return { 0.5f, 1.5f, 9000 };
+			case EFloraShape::Palm:         return { 0.5f, 2.0f, 12000 };
+			case EFloraShape::Bamboo:       return { 0.6f, 1.6f, 10000 };
+			case EFloraShape::Willow:       return { 0.6f, 1.6f, 12000 };
+			case EFloraShape::Casuarina:    return { 0.5f, 1.8f, 12000 };
+			case EFloraShape::TreeFern:     return { 0.45f, 2.0f, 10000 };
+			case EFloraShape::Hedge:        return { 0.12f, 1.0f, 5000 };
+			case EFloraShape::Umbrella:     return { 0.08f, 1.0f, 5000 };
+			case EFloraShape::DeadTree:
+			case EFloraShape::CharredTree:  return { 0.12f, 2.0f, 10000 };
+			case EFloraShape::JoshuaTree:   return { 0.1f, 2.0f, 8000 };
+			case EFloraShape::Saguaro:
+			case EFloraShape::Barrel:
+			case EFloraShape::Rock:
+			case EFloraShape::Stones:
+			case EFloraShape::Prop:         return { 0.f, 1.f, 0 };
+			default:                        return { 0.3f, 2.2f, 12000 };   // árboles de copa
+		}
+	}
+
 	/** Cómo se ve cada forma: distancia de culling (cm, 0 = nunca), sombra y si su altura varía aparte. */
 	struct FTNFloraLook
 	{

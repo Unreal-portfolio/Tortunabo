@@ -31,10 +31,18 @@ namespace
 		return V <= 0.04045f ? V / 12.92f : FMath::Pow((V + 0.055f) / 1.055f, 2.4f);
 	}
 
-	/** Malla estática en ejecución a partir de unos buffers de caras planas (con una caja de colisión si se pide). */
-	UStaticMesh* TNFloraMakeStaticMesh(UObject* Outer, const FTNProcMeshBuffers& B, UMaterialInterface* Material, bool bBoxCollision = false)
+	/**
+	 * Malla estática en ejecución a partir de unos buffers de caras planas (con una caja de colisión si se
+	 * pide). El alfa del color de vértice es el peso de balanceo del viento del material: Wind x (altura
+	 * relativa)^Exponent, 0 en la base (troncos, raíces) y Wind en lo más alto.
+	 */
+	UStaticMesh* TNFloraMakeStaticMesh(UObject* Outer, const FTNProcMeshBuffers& B, UMaterialInterface* Material, bool bBoxCollision = false,
+		float Wind = 0.f, float WindExponent = 1.5f)
 	{
 		if (B.IsEmpty()) { return nullptr; }
+		double MinZ = 1e18, MaxZ = -1e18;
+		for (const FVector& V : B.Verts) { MinZ = FMath::Min(MinZ, V.Z); MaxZ = FMath::Max(MaxZ, V.Z); }
+		const double SpanZ = FMath::Max(1.0, MaxZ - FMath::Max(0.0, MinZ));
 		static const FName SlotName(TEXT("Flora"));
 		FMeshDescription Desc;
 		FStaticMeshAttributes Attributes(Desc);
@@ -68,7 +76,9 @@ namespace
 			// La malla guarda el color en sRGB (ToFColor(true)) y el nodo VertexColor lo lee tal cual:
 			// se decodifica antes para que el material reciba el color lineal de la paleta (como el
 			// de las mallas procedurales) y no uno aclarado.
-			Colors[VI] = FVector4f(TNFloraSRGBToLinear(B.Colors[i].R), TNFloraSRGBToLinear(B.Colors[i].G), TNFloraSRGBToLinear(B.Colors[i].B), 1.f);
+			const double Rel = FMath::Clamp((B.Verts[i].Z - FMath::Max(0.0, MinZ)) / SpanZ, 0.0, 1.0);
+			const float Sway = Wind > 0.f ? Wind * static_cast<float>(FMath::Pow(Rel, static_cast<double>(WindExponent))) : 0.f;
+			Colors[VI] = FVector4f(TNFloraSRGBToLinear(B.Colors[i].R), TNFloraSRGBToLinear(B.Colors[i].G), TNFloraSRGBToLinear(B.Colors[i].B), Sway);
 			UVs.Set(VI, 0, FVector2f(B.UVs[i]));
 			Instances[i] = VI;
 		}
@@ -203,7 +213,8 @@ void ATN_ProcMapGenerator::BuildFlora()
 		{
 			TNFloraBuild(Buffers, Sp.Shape, TNFloraPaletteFor(BiomeFromIndex(BiomeIdx), Ground, RockC), Variant, MeshSeed);
 		}
-		UStaticMesh* Mesh = TNFloraMakeStaticMesh(this, Buffers, Material, bSolid);
+		const FTNFloraWind Wind = TNFloraWindOf(Sp.Shape);
+		UStaticMesh* Mesh = TNFloraMakeStaticMesh(this, Buffers, Material, bSolid, Wind.Stiffness, Wind.Exponent);
 		if (!Mesh) { continue; }
 		FloraMeshes.Add(Mesh);
 
@@ -217,6 +228,15 @@ void ATN_ProcMapGenerator::BuildFlora()
 		if (bSolid) { HISM->SetCollisionProfileName(TEXT("BlockAll")); }
 		HISM->SetCanEverAffectNavigation(false);
 		HISM->SetCastShadow(Look.bShadow);
+		// Viento: solo se evalúa cerca (lo lejano apenas se ve moverse); las rocas y los objetos, nunca.
+		if (Wind.Stiffness > 0.f)
+		{
+			HISM->WorldPositionOffsetDisableDistance = Wind.DisableDistance;
+		}
+		else
+		{
+			HISM->bEvaluateWorldPositionOffset = false;
+		}
 		if (Look.Cull > 0.f)
 		{
 			HISM->SetCullDistances(FMath::RoundToInt(Look.Cull * 0.8f), FMath::RoundToInt(Look.Cull));
