@@ -297,7 +297,7 @@ void ATN_ProcMapGenerator::ResolveBiomeColors(ETNProcBiome Biome, FLinearColor& 
 void ATN_ProcMapGenerator::BuildTerrain()
 {
 	using namespace TNProcMap;
-	const double Spacing = Settings ? Settings->VertexSpacing : 250.0;
+	const double Spacing = Settings ? Settings->VertexSpacing : 150.0;
 	const int32 TileQuads = Settings ? Settings->TileQuads : 48;
 	const double Margin = Settings ? Settings->OuterMargin : 25000.0;
 	const double Sea = Settings ? Settings->SeaExtent : 30000.0;
@@ -342,93 +342,97 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	const int32 TilesX = QuadsX / TileQuads;
 	const int32 TilesY = QuadsY / TileQuads;
 	const int32 Side = TileQuads + 1;
-
-	TArray<FVector> Verts;
-	TArray<int32> Tris;
-	TArray<FVector> Normals;
-	TArray<FVector2D> UVs;
-	TArray<FLinearColor> Colors;
 	const TArray<FProcMeshTangent> NoTangents;
 
-	Tris.Reserve(TileQuads * TileQuads * 6);
-
-	for (int32 Ty = 0; Ty < TilesY; ++Ty)
+	// Datos de cada tesela en paralelo (con 1,5 m de resolución son millones de vértices); la
+	// creación de los componentes va después, en el hilo de juego.
+	struct FTileData
 	{
-		for (int32 Tx = 0; Tx < TilesX; ++Tx)
+		TArray<FVector> Verts;
+		TArray<int32> Tris;
+		TArray<FVector> Normals;
+		TArray<FVector2D> UVs;
+		TArray<FLinearColor> Colors;
+	};
+	TArray<FTileData> TileData;
+	TileData.SetNum(TilesX * TilesY);
+	ParallelFor(TileData.Num(), [&](int32 TileIndex)
+	{
+		const int32 Tx = TileIndex % TilesX;
+		const int32 Ty = TileIndex / TilesX;
+		FTileData& T = TileData[TileIndex];
+		// A=(x,y), B=(x+1,y), C=(x,y+1), D=(x+1,y+1). La cara frontal de UE es
+		// (C-A)x(B-A): (A,C,B)+(B,C,D) o (A,C,D)+(A,D,B) miran hacia +Z. La
+		// diagonal sigue la curva de nivel (TNProcMap::SplitAlongAD).
+		T.Tris.Reserve(TileQuads * TileQuads * 6);
+		for (int32 y = 0; y < TileQuads; ++y)
 		{
-			// A=(x,y), B=(x+1,y), C=(x,y+1), D=(x+1,y+1). La cara frontal de UE es
-			// (C-A)x(B-A): (A,C,B)+(B,C,D) o (A,C,D)+(A,D,B) miran hacia +Z. La
-			// diagonal sigue la curva de nivel (TNProcMap::SplitAlongAD).
-			Tris.Reset();
-			for (int32 y = 0; y < TileQuads; ++y)
+			for (int32 x = 0; x < TileQuads; ++x)
 			{
-				for (int32 x = 0; x < TileQuads; ++x)
+				const int32 GX = Tx * TileQuads + x;
+				const int32 GY = Ty * TileQuads + y;
+				const int32 A = y * Side + x;
+				const int32 B = A + 1;
+				const int32 C = A + Side;
+				const int32 D = C + 1;
+				if (TNProcMap::SplitAlongAD(HeightAt(GX, GY), HeightAt(GX + 1, GY), HeightAt(GX, GY + 1), HeightAt(GX + 1, GY + 1)))
 				{
-					const int32 GX = Tx * TileQuads + x;
-					const int32 GY = Ty * TileQuads + y;
-					const int32 A = y * Side + x;
-					const int32 B = A + 1;
-					const int32 C = A + Side;
-					const int32 D = C + 1;
-					if (TNProcMap::SplitAlongAD(HeightAt(GX, GY), HeightAt(GX + 1, GY), HeightAt(GX, GY + 1), HeightAt(GX + 1, GY + 1)))
-					{
-						Tris.Add(A); Tris.Add(C); Tris.Add(D);
-						Tris.Add(A); Tris.Add(D); Tris.Add(B);
-					}
-					else
-					{
-						Tris.Add(A); Tris.Add(C); Tris.Add(B);
-						Tris.Add(B); Tris.Add(C); Tris.Add(D);
-					}
+					T.Tris.Add(A); T.Tris.Add(C); T.Tris.Add(D);
+					T.Tris.Add(A); T.Tris.Add(D); T.Tris.Add(B);
+				}
+				else
+				{
+					T.Tris.Add(A); T.Tris.Add(C); T.Tris.Add(B);
+					T.Tris.Add(B); T.Tris.Add(C); T.Tris.Add(D);
 				}
 			}
-
-			Verts.Reset(); Normals.Reset(); UVs.Reset(); Colors.Reset();
-			for (int32 y = 0; y <= TileQuads; ++y)
-			{
-				for (int32 x = 0; x <= TileQuads; ++x)
-				{
-					const int32 GX = Tx * TileQuads + x;
-					const int32 GY = Ty * TileQuads + y;
-					const double H = HeightAt(GX, GY);
-					const FVector2D P = LatticeOrigin + FVector2D(GX * Spacing, GY * Spacing);
-					Verts.Add(FVector(P.X, P.Y, H));
-
-					const double Dx = (HeightAt(GX + 1, GY) - HeightAt(GX - 1, GY)) / (2.0 * Spacing);
-					const double Dy = (HeightAt(GX, GY + 1) - HeightAt(GX, GY - 1)) / (2.0 * Spacing);
-					const FVector N = FVector(-Dx, -Dy, 1.0).GetSafeNormal();
-					Normals.Add(N);
-					UVs.Add(P / 500.0);
-
-					double W[NumBiomes];
-					Layout.BiomeWeightsAt(P, W);
-					FLinearColor G(0.f, 0.f, 0.f, 0.f), Pc(0.f, 0.f, 0.f, 0.f), R(0.f, 0.f, 0.f, 0.f), Bd(0.f, 0.f, 0.f, 0.f);
-					for (int32 b = 0; b < NumBiomes; ++b)
-					{
-						const float Wb = static_cast<float>(W[b]);
-						G += Ground[b] * Wb; Pc += PathC[b] * Wb; R += Rock[b] * Wb; Bd += Bed[b] * Wb;
-					}
-					const float Mask = PathMask[GY * LatticeNX + GX] / 255.f;
-					FLinearColor Col = G;
-					Col = TNProcLerpColor(Col, R, static_cast<float>(TNProcMap::SmoothStep(0.84, 0.6, N.Z)));
-					Col = TNProcLerpColor(Col, Pc, Mask);
-					Col = TNProcLerpColor(Col, Bd, static_cast<float>(TNProcMap::SmoothStep(30.0, -120.0, H)));
-					const float Var = 0.9f + 0.2f * static_cast<float>(0.5 + 0.5 * TNProcMap::Noise2(ColorSeed, P.X / 700.0, P.Y / 700.0));
-					Col = Col * Var;
-					Col.A = Mask;
-					Colors.Add(Col);
-				}
-			}
-
-			UProceduralMeshComponent* Tile = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
-			Tile->SetupAttachment(RootComponent);
-			Tile->bUseAsyncCooking = true;
-			Tile->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
-			Tile->RegisterComponent();
-			Tile->CreateMeshSection_LinearColor(0, Verts, Tris, Normals, UVs, Colors, NoTangents, true);
-			if (TerrainMat) { Tile->SetMaterial(0, TerrainMat); }
-			TerrainTiles.Add(Tile);
 		}
+		T.Verts.Reserve(Side * Side); T.Normals.Reserve(Side * Side); T.UVs.Reserve(Side * Side); T.Colors.Reserve(Side * Side);
+		for (int32 y = 0; y <= TileQuads; ++y)
+		{
+			for (int32 x = 0; x <= TileQuads; ++x)
+			{
+				const int32 GX = Tx * TileQuads + x;
+				const int32 GY = Ty * TileQuads + y;
+				const double H = HeightAt(GX, GY);
+				const FVector2D P = LatticeOrigin + FVector2D(GX * Spacing, GY * Spacing);
+				T.Verts.Add(FVector(P.X, P.Y, H));
+				const double Dx = (HeightAt(GX + 1, GY) - HeightAt(GX - 1, GY)) / (2.0 * Spacing);
+				const double Dy = (HeightAt(GX, GY + 1) - HeightAt(GX, GY - 1)) / (2.0 * Spacing);
+				const FVector N = FVector(-Dx, -Dy, 1.0).GetSafeNormal();
+				T.Normals.Add(N);
+				T.UVs.Add(P / 500.0);
+				double W[NumBiomes];
+				Layout.BiomeWeightsAt(P, W);
+				FLinearColor G(0.f, 0.f, 0.f, 0.f), Pc(0.f, 0.f, 0.f, 0.f), R(0.f, 0.f, 0.f, 0.f), Bd(0.f, 0.f, 0.f, 0.f);
+				for (int32 b = 0; b < NumBiomes; ++b)
+				{
+					const float Wb = static_cast<float>(W[b]);
+					G += Ground[b] * Wb; Pc += PathC[b] * Wb; R += Rock[b] * Wb; Bd += Bed[b] * Wb;
+				}
+				const float Mask = PathMask[GY * LatticeNX + GX] / 255.f;
+				FLinearColor Col = G;
+				Col = TNProcLerpColor(Col, R, static_cast<float>(TNProcMap::SmoothStep(0.84, 0.6, N.Z)));
+				Col = TNProcLerpColor(Col, Pc, Mask);
+				Col = TNProcLerpColor(Col, Bd, static_cast<float>(TNProcMap::SmoothStep(30.0, -120.0, H)));
+				const float Var = 0.9f + 0.2f * static_cast<float>(0.5 + 0.5 * TNProcMap::Noise2(ColorSeed, P.X / 700.0, P.Y / 700.0));
+				Col = Col * Var;
+				Col.A = Mask;
+				T.Colors.Add(Col);
+			}
+		}
+	});
+
+	for (FTileData& T : TileData)
+	{
+		UProceduralMeshComponent* Tile = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
+		Tile->SetupAttachment(RootComponent);
+		Tile->bUseAsyncCooking = true;
+		Tile->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+		Tile->RegisterComponent();
+		Tile->CreateMeshSection_LinearColor(0, T.Verts, T.Tris, T.Normals, T.UVs, T.Colors, NoTangents, true);
+		if (TerrainMat) { Tile->SetMaterial(0, TerrainMat); }
+		TerrainTiles.Add(Tile);
 	}
 }
 

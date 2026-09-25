@@ -328,7 +328,7 @@ public:
 
 	/** Separación de vértices del terreno (cm). Menos = más detalle y más coste. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terreno", meta = (ClampMin = "100.0", ClampMax = "800.0"))
-	float VertexSpacing = 250.f;
+	float VertexSpacing = 150.f;
 
 	/** Cuadrados por lado de cada tile de terreno. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terreno", meta = (ClampMin = "8", ClampMax = "128"))
