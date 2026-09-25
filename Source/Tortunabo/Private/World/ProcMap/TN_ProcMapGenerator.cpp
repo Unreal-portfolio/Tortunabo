@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "TN_ProcMapAmbientFX.h"
 #include "Components/PointLightComponent.h"
 #include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
@@ -66,6 +67,8 @@ void ATN_ProcMapGenerator::BeginPlay()
 void ATN_ProcMapGenerator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	// Brasas y bandadas (locales; nada en un servidor dedicado).
+	TNAmbientFX::TickOwner(this, DeltaTime);
 
 	if (HasAuthority())
 	{
@@ -220,6 +223,7 @@ bool ATN_ProcMapGenerator::BuildLayout()
 
 void ATN_ProcMapGenerator::Clear()
 {
+	TNAmbientFX::RemoveOwner(this);
 	for (UProceduralMeshComponent* Tile : TerrainTiles)
 	{
 		if (Tile) { Tile->DestroyComponent(); }

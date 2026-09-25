@@ -167,7 +167,7 @@ namespace TNRockMesh
 					const double Z0 = -20.0 + (H + 20.0) * b / N, Z1 = -20.0 + (H + 20.0) * (b + 1) / N;
 					const double T = (b + 0.5) / N;
 					const double Rr = R * FMath::Sin(LerpD(0.45, 0.88, T) * PI) * (b % 2 ? 0.93 : 1.0);
-					TNProcAddLathe(M, O, { Z0, Z1 }, { Rr, Rr * (b == N - 1 ? 0.7 : 0.97) }, 0.1, Seed + static_cast<uint32>(b), b % 2 ? C.Band : C.Rock, 9);
+					TNProcAddLathe(M, O, { Z0, Z1 }, { Rr, Rr * (b == N - 1 ? 0.7 : 0.97) }, 0.1, Seed + static_cast<uint32>(b), b % 2 ? C.Band : C.Rock, 9, b == N - 1 ? 0.15 : 0.0);
 				}
 				break;
 			}
@@ -289,7 +289,7 @@ namespace TNRockMesh
 					const double T = static_cast<double>(b) / N;
 					const double Hb = (H - R * 0.5) / N;
 					const double Rb = R * LerpD(1.2, 0.55, T) * (b % 2 ? 0.86 : 1.0);
-					TNProcAddLathe(M, FVector(0.0, 0.0, Z), { 0.0, Hb * 0.5, Hb }, { Rb, Rb * 0.9, Rb * 0.95 }, 0.1, Seed + static_cast<uint32>(b), b % 2 ? C.Band : C.Rock, 9);
+					TNProcAddLathe(M, FVector(0.0, 0.0, Z), { 0.0, Hb * 0.5, Hb }, { Rb, Rb * 0.9, Rb * 0.95 }, 0.1, Seed + static_cast<uint32>(b), b % 2 ? C.Band : C.Rock, 9, 0.0);
 					Z += Hb;
 				}
 				TNRockSlab(M, FVector(0.0, 0.0, Z + R * 0.18), R * 0.95, R * 0.85, R * 0.2, TNRockRand(Seed, 4, 3.0, 10.0), TNRockRand(Seed, 5, 0.0, 180.0), Seed + 13u, C.Rock * 0.8f);
@@ -357,7 +357,7 @@ namespace TNRockMesh
 				{
 					const double Z0 = H * b / N, Z1 = H * (b + 1) / N;
 					const double Rb = R * LerpD(1.2, 0.9, static_cast<double>(b) / N) * (b % 2 ? 0.94 : 1.0);
-					TNProcAddLathe(M, O, { Z0, Z1 }, { Rb, Rb * 0.97 }, 0.08, Seed + static_cast<uint32>(b), b % 2 ? C.Band : C.Rock, 12);
+					TNProcAddLathe(M, O, { Z0, Z1 }, { Rb, Rb * 0.97 }, 0.08, Seed + static_cast<uint32>(b), b % 2 ? C.Band : C.Rock, 12, b == N - 1 ? 0.04 : 0.0);
 				}
 				break;
 			}

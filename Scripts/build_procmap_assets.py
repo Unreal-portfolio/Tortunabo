@@ -324,6 +324,156 @@ def build_water_anim_material():
     return save(material)
 
 
+def build_fx_soft_material():
+    """Efectos suaves (vapor de los géiseres, bruma y espuma de las cascadas): translúcido sin
+    iluminación, del color del vértice, con la opacidad del alfa del vértice por Opacity y fundido
+    suave donde toca otras superficies (DepthFade). Para mallas instanciadas."""
+    path = f"{MATERIALS}/M_ProcFXSoft"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcFXSoft", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    material.set_editor_property("two_sided", True)
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -700, 0)
+    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    opacity = expr(unreal.MaterialExpressionScalarParameter, -700, 250)
+    opacity.set_editor_property("parameter_name", "Opacity")
+    opacity.set_editor_property("default_value", 0.55)
+    alpha = expr(unreal.MaterialExpressionMultiply, -500, 200)
+    mel.connect_material_expressions(vertex_color, "A", alpha, "A")
+    mel.connect_material_expressions(opacity, "", alpha, "B")
+    fade = expr(unreal.MaterialExpressionDepthFade, -300, 200)
+    fade.set_editor_property("fade_distance_default", 80.0)
+    mel.connect_material_expressions(alpha, "", fade, "Opacity")
+    mel.connect_material_property(fade, "", unreal.MaterialProperty.MP_OPACITY)
+    mel.recompile_material(material)
+    return save(material)
+
+
+def build_bird_material():
+    """Pájaros de las bandadas (TN_ProcMapAmbientFX.h): color de vértice y aleteo en vertical con el alfa
+    del vértice como peso (0 en el cuerpo, 1 en las puntas de las alas), desfasado por instancia."""
+    path = f"{MATERIALS}/M_ProcBird"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcBird", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("two_sided", True)
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    def scalar(name, value, x, y):
+        e = expr(unreal.MaterialExpressionScalarParameter, x, y)
+        e.set_editor_property("parameter_name", name)
+        e.set_editor_property("default_value", value)
+        return e
+
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -900, 0)
+    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    time = expr(unreal.MaterialExpressionTime, -1100, 300)
+    rate = expr(unreal.MaterialExpressionMultiply, -900, 300)
+    mel.connect_material_expressions(time, "", rate, "A")
+    mel.connect_material_expressions(scalar("FlapSpeed", 9.0, -1100, 400), "", rate, "B")
+    rnd = expr(unreal.MaterialExpressionPerInstanceRandom, -1100, 520)
+    offset = expr(unreal.MaterialExpressionMultiply, -900, 520)
+    offset.set_editor_property("const_b", 6.2832)
+    mel.connect_material_expressions(rnd, "", offset, "A")
+    phase = expr(unreal.MaterialExpressionAdd, -700, 380)
+    mel.connect_material_expressions(rate, "", phase, "A")
+    mel.connect_material_expressions(offset, "", phase, "B")
+    sine = expr(unreal.MaterialExpressionSine, -550, 380)
+    mel.connect_material_expressions(phase, "", sine, "")
+    weighted = expr(unreal.MaterialExpressionMultiply, -400, 380)
+    mel.connect_material_expressions(sine, "", weighted, "A")
+    mel.connect_material_expressions(vertex_color, "A", weighted, "B")
+    amount = expr(unreal.MaterialExpressionMultiply, -250, 380)
+    mel.connect_material_expressions(weighted, "", amount, "A")
+    mel.connect_material_expressions(scalar("FlapAmount", 22.0, -400, 500), "", amount, "B")
+    zero2 = expr(unreal.MaterialExpressionConstant2Vector, -250, 250)
+    wpo = expr(unreal.MaterialExpressionAppendVector, -100, 300)
+    mel.connect_material_expressions(zero2, "", wpo, "A")
+    mel.connect_material_expressions(amount, "", wpo, "B")
+    mel.connect_material_property(wpo, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    mel.recompile_material(material)
+    return save(material)
+
+
+def build_cascade_material():
+    """Agua de las cascadas-tobogán: ondas del normal de agua del motor que corren a lo largo de la UV
+    V (ladera abajo; la malla la da en metros recorridos) en dos capas a distinta velocidad, del
+    color del vértice (espuma blanca en los bordes y al pie) y con la opacidad del alfa del vértice.
+    FlowSpeed acelera la corriente."""
+    path = f"{MATERIALS}/M_ProcCascade"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcCascade", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    try:
+        material.set_editor_property("translucency_lighting_mode",
+                                     unreal.TranslucencyLightingMode.TLM_SURFACE_PER_PIXEL_LIGHTING)
+    except Exception as error:
+        unreal.log_warning(f"[ProcMap] M_ProcCascade sin iluminación por píxel: {error}")
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    def scalar(name, value, x, y):
+        e = expr(unreal.MaterialExpressionScalarParameter, x, y)
+        e.set_editor_property("parameter_name", name)
+        e.set_editor_property("default_value", value)
+        return e
+
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -600, -300)
+    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    opacity = expr(unreal.MaterialExpressionMultiply, -350, 350)
+    mel.connect_material_expressions(vertex_color, "A", opacity, "A")
+    mel.connect_material_expressions(scalar("Opacity", 0.85, -600, 420), "", opacity, "B")
+    mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
+
+    time = expr(unreal.MaterialExpressionTime, -1600, 0)
+    flow = scalar("FlowSpeed", 1.0, -1600, 100)
+    flow_time = expr(unreal.MaterialExpressionMultiply, -1400, 50)
+    mel.connect_material_expressions(time, "", flow_time, "A")
+    mel.connect_material_expressions(flow, "", flow_time, "B")
+    uv = expr(unreal.MaterialExpressionTextureCoordinate, -1600, 250)
+    normals = []
+    for i, (scale, sx, sy) in enumerate(((1.0, 0.02, -0.9), (0.45, -0.03, -0.55))):
+        scaled = expr(unreal.MaterialExpressionMultiply, -1300, 200 + 220 * i)
+        scaled.set_editor_property("const_b", scale)
+        mel.connect_material_expressions(uv, "", scaled, "A")
+        pan = expr(unreal.MaterialExpressionPanner, -1100, 200 + 220 * i)
+        pan.set_editor_property("speed_x", sx)
+        pan.set_editor_property("speed_y", sy)
+        mel.connect_material_expressions(scaled, "", pan, "Coordinate")
+        mel.connect_material_expressions(flow_time, "", pan, "Time")
+        tex = expr(unreal.MaterialExpressionTextureSample, -850, 200 + 220 * i)
+        tex.set_editor_property("texture", unreal.load_asset(WATER_NORMAL))
+        tex.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
+        mel.connect_material_expressions(pan, "", tex, "UVs")
+        normals.append(tex)
+    blend = expr(unreal.MaterialExpressionAdd, -550, 300)
+    mel.connect_material_expressions(normals[0], "RGB", blend, "A")
+    mel.connect_material_expressions(normals[1], "RGB", blend, "B")
+    normal = expr(unreal.MaterialExpressionNormalize, -400, 300)
+    mel.connect_material_expressions(blend, "", normal, "")
+    mel.connect_material_property(normal, "", unreal.MaterialProperty.MP_NORMAL)
+    roughness = expr(unreal.MaterialExpressionConstant, -350, 550)
+    roughness.set_editor_property("r", 0.08)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.recompile_material(material)
+    return save(material)
+
+
 def build_water_material():
     path = f"{MATERIALS}/M_ProcWater"
     existing = load_or_none(path)
@@ -379,6 +529,9 @@ def build_materials():
     result = {
         "terrain": build_terrain_material(),
         "foliage": build_foliage_material(),
+        "fx_soft": build_fx_soft_material(),
+        "cascade": build_cascade_material(),
+        "bird": build_bird_material(),
         "water": build_instance("MI_ProcSea", water, {"Color": (0.05, 0.30, 0.45)}, {"Opacity": 0.72}),
     }
     for name, (rgb, rough, emissive) in FLAT_INSTANCES.items():

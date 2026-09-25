@@ -1033,7 +1033,7 @@ namespace TNPropMesh
 		const double R = P.Radius, H = P.Height;
 		const double Z0 = Ground(0.0, 0.0);
 		const FLinearColor Wet = Sand * 0.9f;
-		TNProcAddLathe(M, FVector(0.0, 0.0, Z0 - 10.0), { 0.0, 22.0, 30.0 }, { R * 1.05, R * 0.95, R * 0.8 }, 0.08, P.Seed, Sand * 0.97f, 12);
+		TNProcAddLathe(M, FVector(0.0, 0.0, Z0 - 10.0), { 0.0, 22.0, 30.0 }, { R * 1.05, R * 0.95, R * 0.8 }, 0.08, P.Seed, Sand * 0.97f, 12, 0.02);
 		const double Half = R * 0.62;
 		auto Tower = [&](const FVector& Base, double Rt, double Ht, bool bKeep)
 		{

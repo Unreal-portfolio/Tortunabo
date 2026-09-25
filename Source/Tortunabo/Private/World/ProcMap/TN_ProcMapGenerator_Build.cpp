@@ -22,6 +22,7 @@
 #include "TN_ProcMapFinishMeshes.h"
 #include "TN_ProcMapPropMeshes.h"
 #include "TN_ProcMapRockMeshes.h"
+#include "TN_ProcMapAmbientFX.h"
 #include "Components/PointLightComponent.h"
 
 using namespace TNProcMesh;
@@ -1352,17 +1353,47 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::SlideZone:
 			{
-				// Lámina de agua sobre la bajada: el tobogán en sí es terreno empinado.
+				// Lámina de agua sobre la bajada (el tobogán en sí es terreno empinado): rejilla de 60 cm a lo
+				// largo y 10 columnas a lo ancho, alzada 40 cm sobre el punto más alto del terreno alrededor de
+				// cada vértice (así no se corta con él entre vértices), con UV de flujo para que las ondas del
+				// material corran ladera abajo, espuma blanca en los bordes y al pie y el borde más transparente.
 				const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? M : Layout.Branches[F.BranchIndex].Samples;
 				const int32 From = FMath::Clamp(F.PathIndex, 0, S.Num() - 1);
 				const int32 To = FMath::Clamp(F.Aux, 0, S.Num() - 1);
-				// Rejilla fina apoyada en el terreno real (1 m a lo largo, 6 columnas a lo ancho) a 25 cm,
-				// para que la lámina no se corte con él; espuma más blanca en los bordes y al pie.
-				constexpr int32 Cols = 6;
+				constexpr int32 Cols = 10;
+				auto Lifted = [this](const FVector2D& Q, const FVector2D& Along, const FVector2D& Across)
+				{
+					double H = TerrainHeightMap(Q);
+					for (const FVector2D& D : { Along * 40.0, Along * -40.0, Across * 40.0, Across * -40.0 }) { H = FMath::Max(H, TerrainHeightMap(Q + D)); }
+					return H + 40.0;
+				};
+				auto AddFlowQuad = [&SlideWater](const FVector (&P)[4], const FVector2D (&UV)[4], const FLinearColor (&Col)[4])
+				{
+					for (int32 t = 0; t < 2; ++t)
+					{
+						const int32 I0 = 0, I1 = t == 0 ? 1 : 2, I2 = t == 0 ? 2 : 3;
+						const int32 Base = SlideWater.Verts.Num();
+						SlideWater.AddTri(P[I0], P[I1], P[I2], FVector::UpVector, Col[I0]);
+						// AddTri puede cambiar el orden para orientar la cara: UV y color por posición.
+						for (int32 v = Base; v < SlideWater.Verts.Num(); ++v)
+						{
+							int32 Best = 0;
+							for (int32 q = 1; q < 4; ++q) { if (FVector::DistSquared(SlideWater.Verts[v], P[q]) < FVector::DistSquared(SlideWater.Verts[v], P[Best])) { Best = q; } }
+							SlideWater.UVs[v] = UV[Best];
+							SlideWater.Colors[v] = Col[Best];
+						}
+					}
+				};
 				TArray<FVector> Prev;
+				TArray<FVector2D> PrevUV;
+				TArray<FLinearColor> PrevCol;
+				double Travel = 0.0;
+				FVector2D LastC = S[From].P;
+				FVector2D FootC = S[To].P, FootDir = S[To].Dir;
+				double FootW = S[To].Width;
 				for (int32 i = From; i <= To; ++i)
 				{
-					const int32 Sub = i < To ? FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(S[i].P, S[i + 1].P) / 100.0)) : 1;
+					const int32 Sub = i < To ? FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(S[i].P, S[i + 1].P) / 60.0)) : 1;
 					for (int32 k = 0; k < Sub; ++k)
 					{
 						if (i == To && k > 0) { break; }
@@ -1370,25 +1401,82 @@ void ATN_ProcMapGenerator::BuildStructures()
 						const FPathSample& A = S[i];
 						const FPathSample& B = S[FMath::Min(i + 1, To)];
 						const FVector2D C = FMath::Lerp(A.P, B.P, U);
-						const FVector2D N = LeftNormal(FMath::Lerp(A.Dir, B.Dir, U).GetSafeNormal());
-						const double Hw = FMath::Lerp(A.Width, B.Width, U) * 0.42;
+						const FVector2D Dir = FMath::Lerp(A.Dir, B.Dir, U).GetSafeNormal();
+						const FVector2D N = LeftNormal(Dir);
+						const double Hw = FMath::Lerp(A.Width, B.Width, U) * 0.39;
+						Travel += FVector2D::Distance(C, LastC);
+						LastC = C;
+						const float Foot = static_cast<float>(i - From) / FMath::Max(1, To - From);
 						TArray<FVector> Row;
+						TArray<FVector2D> RowUV;
+						TArray<FLinearColor> RowCol;
 						for (int32 c = 0; c <= Cols; ++c)
 						{
-							const FVector2D Q = C + N * (Hw * (2.0 * c / Cols - 1.0));
-							Row.Add(FVector(Q, TerrainHeightMap(Q) + 25.0));
+							const double X = 2.0 * c / Cols - 1.0;
+							const FVector2D Q = C + N * (Hw * X);
+							Row.Add(FVector(Q, Lifted(Q, Dir, N)));
+							RowUV.Add(FVector2D(static_cast<double>(c) / Cols, Travel / 300.0));
+							const float Edge = static_cast<float>(FMath::Pow(FMath::Abs(X), 3.0));
+							FLinearColor Col = TNProcLerpColor(FLinearColor(0.18f, 0.52f, 0.8f), FLinearColor(0.96f, 0.99f, 1.f), FMath::Min(1.f, 0.75f * Edge + 0.7f * Foot * Foot * Foot));
+							Col.A = FMath::Lerp(0.9f, 0.45f, Edge);
+							RowCol.Add(Col);
 						}
 						if (Prev.Num() == Row.Num())
 						{
-							const float Foot = static_cast<float>(i - From) / FMath::Max(1, To - From);
 							for (int32 c = 0; c < Cols; ++c)
 							{
-								const float Edge = (c == 0 || c == Cols - 1) ? 0.25f : 0.f;
-								const FLinearColor Col = TNProcLerpColor(FLinearColor(0.55f, 0.82f, 1.f), FLinearColor(0.95f, 0.98f, 1.f), Edge + 0.5f * Foot * Foot);
-								SlideWater.AddQuad(Prev[c], Prev[c + 1], Row[c + 1], Row[c], FVector::UpVector, Col);
+								const FVector P4[4] = { Prev[c], Prev[c + 1], Row[c + 1], Row[c] };
+								const FVector2D UV4[4] = { PrevUV[c], PrevUV[c + 1], RowUV[c + 1], RowUV[c] };
+								const FLinearColor Col4[4] = { PrevCol[c], PrevCol[c + 1], RowCol[c + 1], RowCol[c] };
+								AddFlowQuad(P4, UV4, Col4);
 							}
 						}
-						Prev = Row;
+						Prev = MoveTemp(Row);
+						PrevUV = MoveTemp(RowUV);
+						PrevCol = MoveTemp(RowCol);
+						FootC = C;
+						FootDir = Dir;
+						FootW = FMath::Lerp(A.Width, B.Width, U);
+					}
+				}
+				// Pocita al pie: disco de agua un poco adelantado con el borde de espuma, que se apoya en el
+				// suelo por fuera (sin quedar colgado) y queda plano en el centro.
+				{
+					const FVector2D PC = FootC + FootDir * (FootW * 0.35);
+					const double R = FMath::Clamp(FootW * 0.65, 250.0, 900.0);
+					const double PoolZ = TerrainHeightMap(PC) + 14.0;
+					constexpr int32 Seg = 24;
+					const FVector Center(PC, PoolZ);
+					for (int32 k = 0; k < Seg; ++k)
+					{
+						const double A0 = TNProcMap::TwoPi * k / Seg, A1 = TNProcMap::TwoPi * (k + 1) / Seg;
+						FVector Ring[2][2];
+						FVector2D RingUV[2][2];
+						for (int32 r = 0; r < 2; ++r)
+						{
+							const double Rr = r == 0 ? R * 0.72 : R;
+							for (int32 e = 0; e < 2; ++e)
+							{
+								const double Aa = e == 0 ? A0 : A1;
+								const FVector2D Q = PC + FVector2D(FMath::Cos(Aa), FMath::Sin(Aa)) * Rr;
+								const double Zr = r == 0 ? PoolZ : FMath::Max(TerrainHeightMap(Q) + 6.0, PoolZ - 25.0);
+								Ring[r][e] = FVector(Q, Zr);
+								RingUV[r][e] = FVector2D((Q.X - PC.X) / 300.0, (Q.Y - PC.Y) / 300.0 + Travel / 300.0);
+							}
+						}
+						const FLinearColor Water(0.16f, 0.5f, 0.76f, 0.88f), Foam(0.96f, 0.99f, 1.f, 0.8f);
+						const FVector2D CenterUV(0.0, Travel / 300.0);
+						const int32 Base = SlideWater.Verts.Num();
+						SlideWater.AddTri(Center, Ring[0][0], Ring[0][1], FVector::UpVector, Water);
+						for (int32 v = Base; v < SlideWater.Verts.Num(); ++v)
+						{
+							const FVector& Vv = SlideWater.Verts[v];
+							SlideWater.UVs[v] = Vv.Equals(Center, 0.5) ? CenterUV : (Vv.Equals(Ring[0][0], 0.5) ? RingUV[0][0] : RingUV[0][1]);
+						}
+						const FVector Po[4] = { Ring[0][0], Ring[0][1], Ring[1][1], Ring[1][0] };
+						const FVector2D UVo[4] = { RingUV[0][0], RingUV[0][1], RingUV[1][1], RingUV[1][0] };
+						const FLinearColor Co[4] = { Water, Water, Foam, Foam };
+						AddFlowQuad(Po, UVo, Co);
 					}
 				}
 				break;
@@ -1512,8 +1600,14 @@ void ATN_ProcMapGenerator::BuildStructures()
 	if (!SlideWater.IsEmpty())
 	{
 		DecorMesh->CreateMeshSection_LinearColor(1, SlideWater.Verts, SlideWater.Tris, SlideWater.Normals, SlideWater.UVs, SlideWater.Colors, NoTangents, false);
-		UMaterialInterface* SlideMat = Settings && Settings->SlideWaterMaterial ? Settings->SlideWaterMaterial.Get()
-			: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		// Agua de cascada con ondas que corren ladera abajo (UV de flujo de la lámina); si no existe el
+		// material, el de los ajustes.
+		UMaterialInterface* SlideMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcCascade.M_ProcCascade"));
+		if (!SlideMat)
+		{
+			SlideMat = Settings && Settings->SlideWaterMaterial ? Settings->SlideWaterMaterial.Get()
+				: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		}
 		DecorMesh->SetMaterial(1, SlideMat);
 	}
 	if (!Foliage.IsEmpty())
@@ -1543,5 +1637,89 @@ void ATN_ProcMapGenerator::BuildStructures()
 		Wall->RegisterComponent();
 		Wall->SetRelativeLocation(Def.Center);
 		BoundaryWalls.Add(Wall);
+	}
+
+	// ── Efectos ambientales (solo visuales, locales): brasas sobre la lava y bandadas de pájaros ──
+	TNAmbientFX::RemoveOwner(this);
+	for (const FFeature& F : Layout.Features)
+	{
+		const bool bPool = F.Type == EFeature::LavaPool;
+		if (!bPool && !IsLavaGap(F)) { continue; }
+		TNAmbientFX::FEmitterDesc Embers;
+		Embers.Shape = TNAmbientFX::EShape::Ember;
+		Embers.bSoft = true;
+		Embers.Color = FLinearColor(1.f, 0.45f, 0.08f);
+		Embers.Alpha = 0.95f;
+		Embers.MaxParticles = 30;
+		Embers.Rate = bPool ? 10.f : 6.f;
+		Embers.SpawnRadius = static_cast<float>(bPool ? F.Radius * 0.6 : F.Width * 0.35);
+		Embers.Speed = 150.f;
+		Embers.Spread = 0.5f;
+		Embers.Gravity = 0.f;
+		Embers.Buoyancy = 45.f;
+		Embers.Drag = 0.3f;
+		Embers.LifeMin = 2.f;
+		Embers.LifeMax = 4.f;
+		Embers.SizeStart = 7.f;
+		Embers.SizeEnd = 3.f;
+		const double LavaZ = bPool ? F.Location.Z : F.Location.Z - 450.0;
+		TNAmbientFX::AddEmitter(this, Embers, MapToWorld(FVector(F.Location.X, F.Location.Y, LavaZ + 20.0)));
+	}
+	{
+		// Gaviotas sobre la playa de la meta y la costa; guacamayos en la selva; pájaros oscuros sobre los
+		// bosques y la roca; buitres lentos en el desierto.
+		FRng BirdRng(static_cast<uint64>(Layout.Params.Seed) * 0xB1ull + 17ull);
+		for (const FFeature& F : Layout.Features)
+		{
+			if (F.Type != EFeature::Finish) { continue; }
+			TNAmbientFX::AddFlock(this, MapToWorld(FVector(F.Location.X, F.Location.Y - 2500.0, 2800.0)), 7, 3200.f, 0.22f, 1.2f,
+				FLinearColor(0.95f, 0.95f, 0.93f), FLinearColor(0.68f, 0.7f, 0.74f), 11u);
+		}
+		int32 Coastal = 0, Forest = 0, Desert = 0;
+		for (const FModule& Mod : Layout.Modules)
+		{
+			const FVector2D C = Mod.Centroid;
+			const double Ground = TerrainHeightMap(C);
+			const uint32 Seed = static_cast<uint32>(BirdRng.RangeInt(1, 1 << 20));
+			const float Dir = BirdRng.Chance(0.5) ? 1.f : -1.f;
+			switch (Mod.Biome)
+			{
+				case ETNProcBiome::Beach:
+					if (Coastal++ < 3)
+					{
+						TNAmbientFX::AddFlock(this, MapToWorld(FVector(C, Ground + BirdRng.Range(2500.0, 4000.0))), BirdRng.RangeInt(4, 7),
+							static_cast<float>(BirdRng.Range(2500.0, 4200.0)), 0.2f * Dir, 1.15f, FLinearColor(0.95f, 0.95f, 0.93f), FLinearColor(0.68f, 0.7f, 0.74f), Seed);
+					}
+					break;
+				case ETNProcBiome::Jungle:
+				case ETNProcBiome::Mangrove:
+					if (Forest++ < 6)
+					{
+						const bool bMacaw = Mod.Biome == ETNProcBiome::Jungle && BirdRng.Chance(0.6);
+						TNAmbientFX::AddFlock(this, MapToWorld(FVector(C, Ground + BirdRng.Range(3000.0, 5000.0))), BirdRng.RangeInt(5, 9),
+							static_cast<float>(BirdRng.Range(2800.0, 4800.0)), 0.3f * Dir, bMacaw ? 0.9f : 0.7f,
+							bMacaw ? FLinearColor(0.85f, 0.12f, 0.08f) : FLinearColor(0.14f, 0.13f, 0.12f),
+							bMacaw ? FLinearColor(0.1f, 0.45f, 0.85f) : FLinearColor(0.24f, 0.2f, 0.16f), Seed);
+					}
+					break;
+				case ETNProcBiome::Water:
+				case ETNProcBiome::Rocky:
+					if (Forest++ < 6)
+					{
+						TNAmbientFX::AddFlock(this, MapToWorld(FVector(C, Ground + BirdRng.Range(3500.0, 6000.0))), BirdRng.RangeInt(6, 10),
+							static_cast<float>(BirdRng.Range(3000.0, 5500.0)), 0.28f * Dir, 0.65f, FLinearColor(0.14f, 0.13f, 0.12f), FLinearColor(0.24f, 0.2f, 0.16f), Seed);
+					}
+					break;
+				case ETNProcBiome::Desert:
+					if (Desert++ < 2)
+					{
+						TNAmbientFX::AddFlock(this, MapToWorld(FVector(C, Ground + BirdRng.Range(5000.0, 7000.0))), BirdRng.RangeInt(3, 5),
+							static_cast<float>(BirdRng.Range(3500.0, 5000.0)), 0.09f * Dir, 1.7f, FLinearColor(0.2f, 0.15f, 0.1f), FLinearColor(0.3f, 0.22f, 0.14f), Seed);
+					}
+					break;
+				default:
+					break;
+			}
+		}
 	}
 }

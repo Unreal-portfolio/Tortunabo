@@ -165,6 +165,19 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Cuevas** (2-3 por mapa en volcán, roca, selva y desierto): túneles de 60-150 m bajo una
   loma, con pasos de 4-7 m, una cámara de 16-26 m, estalactitas, cristales o brasas y luz
   tenue; en las del volcán, un río de lava cruza la cámara (se salta; caer mata).
+- **Viento** en la vegetación (`M_ProcFoliage`, SimpleGrassWind del motor con rachas): el alfa del
+  color de vértice es el peso de balanceo (hierba entera, copas más que troncos, rocas y objetos
+  quietos); cada especie deja de evaluarlo a su distancia.
+- **Géiseres low-poly**: montículo de sínter en terrazas (anaranjado, crema y blanco) con poza
+  turquesa y boca oscura, chorro de agua abultado que pulsa a borbotones, gotas que suben y caen,
+  vapor y salpicadura en la boca.
+- **Cascadas-tobogán**: lámina de agua con UV de flujo (`M_ProcCascade`, ondas que corren ladera
+  abajo), alzada sobre el terreno para no cortarse con él, espuma en los bordes y al pie, y una pocita
+  con borde de espuma donde cae, con salpicaduras, espuma que se abre y bruma.
+- **Efectos ambientales** (`TN_ProcMapAmbientFX.h`, solo visuales y locales): partículas que son
+  instancias de mallas low-poly (gotas, vapor, brasas), dormidas lejos de la cámara; brasas sobre los
+  lagos y ríos de lava; bandadas de gaviotas en la costa y la meta, guacamayos en la selva, pájaros
+  sobre bosques y roca y buitres en el desierto (`M_ProcBird`, aleteo por el alfa del vértice).
 - **Agua animada** (`M_ProcWaterAnim`): ondas en dos capas que se desplazan, color de somera a
   profunda, espuma en las orillas; más clara y rápida en los toboganes.
 
@@ -256,5 +269,5 @@ Comunes por dificultad (F/N/D): densidad de peligros 0,7 / 1 / 1,4; huecos por k
 - La **vegetación** no tiene colisión (crece fuera del suelo del camino) y usa culling por
   tamaño; con ~500 mil instancias conviene vigilar el rendimiento en equipos modestos
   (`FloraDensity` la reduce).
-- Los materiales `M_ProcFoliage` y `M_ProcWaterAnim` se crean con
-  `Scripts/build_procmap_assets.py` (idempotente).
+- Los materiales `M_ProcFoliage`, `M_ProcWaterAnim`, `M_ProcCascade`, `M_ProcFXSoft` y `M_ProcBird` se
+  crean con `Scripts/build_procmap_assets.py` (idempotente; rehace `M_ProcFoliage` si no tiene viento).

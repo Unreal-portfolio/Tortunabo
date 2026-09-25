@@ -168,7 +168,7 @@ namespace TNProcMesh
 	 * de árbol (eje vertical).
 	 */
 	inline void TNProcAddLathe(FTNProcMeshBuffers& Mesh, const FVector& Base, const TArray<double>& Z, const TArray<double>& R, double Jitter,
-		uint32 Seed, const FLinearColor& Color, int32 Seg = 10)
+		uint32 Seed, const FLinearColor& Color, int32 Seg = 10, double CapRise = 0.3)
 	{
 		TArray<TArray<FVector>> Rings;
 		for (int32 r = 0; r < Z.Num(); ++r)
@@ -187,7 +187,8 @@ namespace TNProcMesh
 		FVector C = FVector::ZeroVector;
 		for (const FVector& V : Top) { C += V; }
 		C /= static_cast<double>(Top.Num());
-		C.Z += R.Last() * 0.3;
+		// La tapa sube CapRise veces el último radio (0 = techo plano: terrazas, mesas, pozas).
+		C.Z += R.Last() * CapRise;
 		for (int32 k = 0; k < Top.Num(); ++k) { Mesh.AddTri(C, Top[k], Top[(k + 1) % Top.Num()], FVector::UpVector, Color); }
 	}
 
