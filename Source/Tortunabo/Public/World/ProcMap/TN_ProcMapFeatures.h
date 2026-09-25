@@ -200,6 +200,47 @@ namespace TNProcMap
 				T.Aux = c;
 				L.Features.Add(T);
 			}
+			// Puente colgante: pilares de roca cada 70-100 m en los vanos largos, lejos de cualquier
+			// otro camino de abajo (si no cabe en su sitio se desplaza hasta 30 m; si no, se omite).
+			if (C.Type == ETNProcCrossingType::Bridge)
+			{
+				const double PillarR = 450.0;
+				const double S0 = M[High.FirstSample].S + P.TowerRadius + 2500.0;
+				const double S1 = M[High.LastSample].S - P.TowerRadius - 2500.0;
+				const int32 NumPillars = S1 - S0 > 9000.0 ? FMath::FloorToInt((S1 - S0) / 8500.0) : 0;
+				auto Clear = [&](const FVector2D& Pt)
+				{
+					auto Far = [&](const TArray<FPathSample>& Arr, int32 SkipFrom, int32 SkipTo)
+					{
+						for (int32 i = 0; i < Arr.Num(); ++i)
+						{
+							if (i >= SkipFrom && i <= SkipTo) { continue; }
+							if (FVector2D::Distance(Arr[i].P, Pt) < PillarR + 600.0 + Arr[i].Width * 0.5 + 1500.0) { return false; }
+						}
+						return true;
+					};
+					if (!Far(M, High.FirstSample, High.LastSample)) { return false; }
+					for (const FBranch& B : L.Branches) { if (!Far(B.Samples, INDEX_NONE, INDEX_NONE)) { return false; } }
+					return true;
+				};
+				for (int32 k = 1; k <= NumPillars; ++k)
+				{
+					const double Target = S0 + (S1 - S0) * k / (NumPillars + 1);
+					for (const double Off : { 0.0, 1500.0, -1500.0, 3000.0, -3000.0 })
+					{
+						int32 Idx = INDEX_NONE;
+						PathDetail::MainPointAt(M, Target + Off, nullptr, &Idx);
+						if (Idx == INDEX_NONE || !Clear(M[Idx].P)) { continue; }
+						FFeature Pl = MakeAtSample(EFeature::DeckPillar, M[Idx], Idx, INDEX_NONE);
+						Pl.Location = FVector(M[Idx].P, C.TopZ - 30.0);
+						Pl.Radius = PillarR;
+						Pl.Height = C.TopZ - 30.0;
+						Pl.Aux = c;
+						L.Features.Add(Pl);
+						break;
+					}
+				}
+			}
 			FFeature S = MakeAtSample(C.Type == ETNProcCrossingType::Bridge ? EFeature::Deck : EFeature::Mesa, M[High.FirstSample], High.FirstSample, INDEX_NONE);
 			S.Aux = c;
 			S.Aux2 = High.LastSample;

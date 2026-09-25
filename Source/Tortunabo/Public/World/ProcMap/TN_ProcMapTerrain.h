@@ -577,7 +577,8 @@ namespace TNProcMap
 				double Reach = 0.0;
 				switch (F.Type)
 				{
-					case EFeature::Tower:    Inf.Type = EInf::Tower;  Reach = F.Radius + 700.0; break;
+					case EFeature::Tower:
+					case EFeature::DeckPillar: Inf.Type = EInf::Tower; Reach = F.Radius + 700.0; break;
 					case EFeature::Gap:      Inf.Type = EInf::Gap;    Reach = FMath::Max(F.Height, F.Width) * 0.5 + 3000.0; break;
 					case EFeature::LavaPool: Inf.Type = EInf::Lava;   Reach = F.Radius + 1000.0; break;
 					case EFeature::Island:   Inf.Type = EInf::Island; Reach = F.Radius + 200.0; break;

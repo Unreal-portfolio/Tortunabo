@@ -84,6 +84,26 @@ namespace
 			AddQuad(P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1), -Y, Color);
 		}
 
+		/** Viga de sección cuadrada (semilado Half) entre dos puntos cualesquiera: cuerdas, cables, péndolas. */
+		void AddBeam(const FVector& A, const FVector& B, double Half, const FLinearColor& Color)
+		{
+			const FVector D = B - A;
+			const double Len = D.Size();
+			if (Len < 1.0) { return; }
+			const FVector X = D / Len;
+			FVector Y = FVector::CrossProduct(FVector::UpVector, X);
+			if (Y.SizeSquared() < 1e-6) { Y = FVector(0.0, 1.0, 0.0); }
+			Y.Normalize();
+			const FVector Z = FVector::CrossProduct(X, Y);
+			const FVector C[4] = { (Y + Z) * Half, (Z - Y) * Half, (-Y - Z) * Half, (Y - Z) * Half };
+			for (int32 k = 0; k < 4; ++k)
+			{
+				const FVector& P0 = C[k];
+				const FVector& P1 = C[(k + 1) % 4];
+				AddQuad(A + P0, A + P1, B + P1, B + P0, P0 + P1, Color);
+			}
+		}
+
 		/** Prisma vertical de un polígono (isletas, pozas). */
 		void AddPrism(const TArray<FVector2D>& Poly, double ZTop, double ZBottom, const FLinearColor& Color, bool bSides = true)
 		{
@@ -133,6 +153,114 @@ namespace
 	FLinearColor TNProcLerpColor(const FLinearColor& A, const FLinearColor& B, float T)
 	{
 		return A + (B - A) * FMath::Clamp(T, 0.f, 1.f);
+	}
+
+	/** Tono aleatorio estable por índice (vetas de los tablones). */
+	float TNProcTone(int32 Index, uint32 Seed)
+	{
+		uint32 H = static_cast<uint32>(Index) * 2654435761u ^ Seed;
+		H ^= H >> 15; H *= 2246822519u; H ^= H >> 13;
+		return 0.82f + 0.36f * static_cast<float>(H & 0xFFFF) / 65535.f;
+	}
+
+	/** Polilínea de un tramo de camino con cota y media anchura, recorrible por distancia en planta. */
+	struct FTNPlankLine
+	{
+		TArray<FVector> P;
+		TArray<double> HalfW;
+		TArray<double> Acc;
+
+		void Add(const FVector& Pt, double Hw)
+		{
+			Acc.Add(P.Num() == 0 ? 0.0 : Acc.Last() + FVector::Dist2D(P.Last(), Pt));
+			P.Add(Pt);
+			HalfW.Add(Hw);
+		}
+
+		double Length() const { return Acc.Num() > 0 ? Acc.Last() : 0.0; }
+
+		void At(double S, FVector& OutP, FVector& OutDir, double& OutHw) const
+		{
+			int32 i = 0;
+			while (i + 2 < Acc.Num() && Acc[i + 1] < S) { ++i; }
+			const int32 j = FMath::Min(i + 1, P.Num() - 1);
+			const double Span = FMath::Max(1e-3, Acc[j] - Acc[i]);
+			const double T = FMath::Clamp((S - Acc[i]) / Span, 0.0, 1.0);
+			OutP = FMath::Lerp(P[i], P[j], T);
+			OutDir = (P[j] - P[i]).GetSafeNormal2D();
+			if (OutDir.IsNearlyZero()) { OutDir = FVector(1.0, 0.0, 0.0); }
+			OutHw = FMath::Lerp(HalfW[i], HalfW[j], T);
+		}
+	};
+
+	/** Tablones atravesados con junta entre S0 y S1, con dos largueros debajo. */
+	void TNProcAddPlanks(FTNProcMeshBuffers& Wood, const FTNPlankLine& Line, double S0, double S1, const FLinearColor& Base, uint32 Seed)
+	{
+		constexpr double Pitch = 34.0;
+		constexpr double Board = 29.0;
+		constexpr double Thick = 6.0;
+		int32 Index = 0;
+		for (double S = S0 + Board * 0.5; S < S1; S += Pitch, ++Index)
+		{
+			FVector C, Dir;
+			double Hw = 0.0;
+			Line.At(S, C, Dir, Hw);
+			// Cada tablón algo distinto: largo, tono y un leve giro.
+			const double Jitter = (TNProcTone(Index, Seed + 7u) - 1.0f) * 0.12;
+			const FVector D = (Dir + FVector(-Dir.Y, Dir.X, 0.0) * Jitter).GetSafeNormal2D();
+			const double Len = Hw * (0.96 + 0.08 * (TNProcTone(Index, Seed + 3u) - 0.82f) / 0.36f);
+			Wood.AddBox(C - FVector(0.0, 0.0, Thick), D, FVector(Board * 0.5, Len, Thick), Base * TNProcTone(Index, Seed));
+		}
+		// Largueros: vigas a lo largo, bajo los tablones.
+		constexpr double Step = 300.0;
+		for (double S = S0; S < S1; S += Step)
+		{
+			FVector A, B, DirA, DirB;
+			double HwA = 0.0, HwB = 0.0;
+			Line.At(S, A, DirA, HwA);
+			Line.At(FMath::Min(S + Step, S1), B, DirB, HwB);
+			for (const double Side : { -0.7, 0.7 })
+			{
+				const FVector NA = FVector(-DirA.Y, DirA.X, 0.0) * (Side * HwA);
+				const FVector NB = FVector(-DirB.Y, DirB.X, 0.0) * (Side * HwB);
+				Wood.AddBeam(A + NA - FVector(0.0, 0.0, Thick * 2.0 + 8.0), B + NB - FVector(0.0, 0.0, Thick * 2.0 + 8.0), 9.0, Base * 0.6f);
+			}
+		}
+	}
+
+	/** Postes a ambos bordes cada PostEvery y cuerda de barandilla con comba entre ellos. */
+	void TNProcAddRopeRails(FTNProcMeshBuffers& Wood, const FTNPlankLine& Line, double S0, double S1, double PostEvery, double PostDown,
+		double RailH, const FLinearColor& PostColor, const FLinearColor& RopeColor)
+	{
+		const int32 NumPosts = FMath::Max(1, FMath::RoundToInt((S1 - S0) / PostEvery));
+		for (const double Side : { -1.0, 1.0 })
+		{
+			FVector PrevTop = FVector::ZeroVector;
+			for (int32 k = 0; k <= NumPosts; ++k)
+			{
+				const double S = S0 + (S1 - S0) * k / NumPosts;
+				FVector C, Dir;
+				double Hw = 0.0;
+				Line.At(S, C, Dir, Hw);
+				const FVector N(-Dir.Y, Dir.X, 0.0);
+				const FVector Base = C + N * (Side * (Hw - 12.0));
+				Wood.AddBox(Base + FVector(0.0, 0.0, (RailH + 10.0 - PostDown) * 0.5), Dir, FVector(7.0, 7.0, (RailH + 10.0 + PostDown) * 0.5), PostColor);
+				const FVector Top = Base + FVector(0.0, 0.0, RailH);
+				if (k > 0)
+				{
+					// Cuerda en tres tramos con comba.
+					FVector Last = PrevTop;
+					for (int32 t = 1; t <= 3; ++t)
+					{
+						const double U = t / 3.0;
+						const FVector Pt = FMath::Lerp(PrevTop, Top, U) - FVector(0.0, 0.0, 22.0 * 4.0 * U * (1.0 - U));
+						Wood.AddBeam(Last, Pt, 2.5, RopeColor);
+						Last = Pt;
+					}
+				}
+				PrevTop = Top;
+			}
+		}
 	}
 }
 
@@ -431,31 +559,74 @@ void ATN_ProcMapGenerator::BuildStructures()
 	const FLinearColor WoodColor(0.45f, 0.3f, 0.16f);
 	const TArray<FPathSample>& M = Layout.Main;
 
-	// ── Tableros de puentes colosales ───────────────────────────────────────
-	for (const FCrossing& C : Layout.Crossings)
+	// ── Puentes colosales: puente colgante de tablones entre las torres ─────
+	// Tablones con junta sobre dos largueros, postes y barandilla de cuerda, y en cada
+	// apoyo (borde de torre o pilar de roca) mástiles de los que cuelgan los cables
+	// principales, con comba hasta casi el tablero en mitad del vano, y sus péndolas.
+	const FLinearColor RopeColor(0.52f, 0.42f, 0.27f);
+	for (int32 c = 0; c < Layout.Crossings.Num(); ++c)
 	{
+		const FCrossing& C = Layout.Crossings[c];
 		if (C.Type != ETNProcCrossingType::Bridge) { continue; }
 		const FRouteStep& High = Layout.Route[C.HighStep];
-		TArray<TArray<FVector>> Rings;
+		FTNPlankLine Line;
 		for (int32 i = High.FirstSample; i <= High.LastSample; ++i)
 		{
-			const FPathSample& S = M[i];
-			const FVector2D N = LeftNormal(S.Dir);
-			const double Hw = S.Width * 0.5 + 120.0;
-			// Perfil de roca: cubierta plana y panza irregular (la cara superior mira arriba).
-			const double Sag = 120.0 * FMath::Sin(Pi * static_cast<double>(i - High.FirstSample) / FMath::Max(1, High.LastSample - High.FirstSample));
-			const FVector2D Profile[6] = {
-				FVector2D(-Hw, 0.0), FVector2D(Hw, 0.0), FVector2D(Hw - 90.0, -320.0),
-				FVector2D(Hw * 0.45, -700.0 - Sag), FVector2D(-Hw * 0.45, -700.0 - Sag), FVector2D(-Hw + 90.0, -320.0) };
-			TArray<FVector> Ring;
-			for (const FVector2D& Pr : Profile)
-			{
-				const FVector2D XY = S.P + N * Pr.X;
-				Ring.Add(FVector(XY.X, XY.Y, C.TopZ + Pr.Y));
-			}
-			Rings.Add(Ring);
+			Line.Add(FVector(M[i].P, C.TopZ), M[i].Width * 0.5);
 		}
-		Rock.AddSweep(Rings, true, RockColor);
+		const double TowerR = Layout.Params.TowerRadius;
+		const double S0 = TowerR - 150.0;
+		const double S1 = Line.Length() - TowerR + 150.0;
+		if (S1 <= S0) { continue; }
+		const uint32 Seed = Layout.Params.Seed ^ (0xB21D6u + static_cast<uint32>(c));
+		TNProcAddPlanks(Wood, Line, S0, S1, WoodColor, Seed);
+		TNProcAddRopeRails(Wood, Line, S0, S1, 300.0, 0.0, 105.0, WoodColor * 0.65f, RopeColor);
+
+		// Apoyos: bordes de las torres y pilares de roca de este cruce.
+		TArray<double> Supports = { S0 };
+		for (const FFeature& F : Layout.Features)
+		{
+			if (F.Type == EFeature::DeckPillar && F.Aux == c)
+			{
+				Supports.Add(M[F.PathIndex].S - M[High.FirstSample].S);
+			}
+		}
+		Supports.Add(S1);
+		Supports.Sort();
+		constexpr double MastH = 750.0;
+		constexpr double Low = 130.0;
+		for (int32 k = 0; k < Supports.Num(); ++k)
+		{
+			FVector P0, Dir0;
+			double Hw0 = 0.0;
+			Line.At(Supports[k], P0, Dir0, Hw0);
+			for (const double Side : { -1.0, 1.0 })
+			{
+				const FVector Base = P0 + FVector(-Dir0.Y, Dir0.X, 0.0) * (Side * (Hw0 + 25.0));
+				Wood.AddBox(Base + FVector(0.0, 0.0, MastH * 0.5 - 60.0), Dir0, FVector(16.0, 16.0, MastH * 0.5 + 60.0), WoodColor * 0.55f);
+			}
+			if (k == 0) { continue; }
+			// Vano entre el apoyo anterior y este: cable parabólico y péndolas cada 3 m.
+			const double A = Supports[k - 1];
+			const double B = Supports[k];
+			const int32 NumSeg = FMath::Max(2, FMath::RoundToInt((B - A) / 300.0));
+			for (const double Side : { -1.0, 1.0 })
+			{
+				FVector Prev = FVector::ZeroVector;
+				for (int32 t = 0; t <= NumSeg; ++t)
+				{
+					const double U = static_cast<double>(t) / NumSeg;
+					FVector P, Dir;
+					double Hw = 0.0;
+					Line.At(FMath::Lerp(A, B, U), P, Dir, Hw);
+					const FVector Edge = P + FVector(-Dir.Y, Dir.X, 0.0) * (Side * (Hw + 25.0));
+					const FVector Cable = Edge + FVector(0.0, 0.0, Low + (MastH - Low) * FMath::Square(2.0 * U - 1.0));
+					if (t > 0) { Wood.AddBeam(Prev, Cable, 4.5, RopeColor * 0.8f); }
+					if (t > 0 && t < NumSeg) { Wood.AddBeam(Cable, Edge + FVector(0.0, 0.0, 10.0), 2.0, RopeColor); }
+					Prev = Cable;
+				}
+			}
+		}
 	}
 
 	// ── Techos de cueva sobre el tramo bajo ─────────────────────────────────

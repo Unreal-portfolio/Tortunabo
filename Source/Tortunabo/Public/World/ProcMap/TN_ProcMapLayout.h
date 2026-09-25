@@ -257,6 +257,8 @@ namespace TNProcMap
 		Island,        ///< Isla decorativa en lagunas.
 		/** Cono volcánico: Location = centro (Z = base), Radius = base, Height = altura, Width = Ø del cráter, Length = hondura del cráter. */
 		Volcano,
+		/** Pilar de roca bajo el tablero de un puente colosal: Radius, Height = cota de su cima, Aux = cruce, PathIndex = muestra. */
+		DeckPillar,
 		Count
 	};
 
