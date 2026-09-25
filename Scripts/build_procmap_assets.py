@@ -7,6 +7,9 @@ Crea en /Game/ProcMap:
   - Materiales greybox: M_ProcTerrain (color de vértice), M_ProcFlat (+ MI de roca,
     madera, lava y tobogán), M_ProcWater (translúcido, + MI del mar) y M_ProcFoliage
     (color de vértice, para la vegetación procedural instanciada).
+  - M_ProcWaterAnim: agua animada (dos capas de ondas que se desplazan, color por
+    profundidad y espuma en las orillas) con MI_ProcSeaAnim (mar y lagunas) y
+    MI_ProcSlideWaterAnim (toboganes, más clara y rápida).
   - DA_Biome_<Bioma> (UTN_ProcBiomeDataAsset) x8 rellenos con el greybox del código.
   - DA_ProcMapSettings (UTN_ProcMapSettings) con materiales, biomas y los 9 perfiles
     (Coop/Carrera/2vs2 x Fácil/Normal/Difícil) listos para ajustar.
@@ -135,6 +138,124 @@ def build_foliage_material():
     return save(material)
 
 
+WATER_NORMAL = "/Engine/Functions/Engine_MaterialFunctions02/ExampleContent/Textures/water_n.water_n"
+
+
+def build_water_anim_material():
+    """Agua animada: ondas (dos capas del normal de agua del motor desplazándose a distinta escala y
+    velocidad, en coordenadas de mundo), color de somera a profunda según el fondo (DepthFade),
+    espuma blanca pegada a las orillas y opacidad que crece con la profundidad. FlowSpeed acelera
+    las ondas (toboganes)."""
+    path = f"{MATERIALS}/M_ProcWaterAnim"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcWaterAnim", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    try:
+        material.set_editor_property("translucency_lighting_mode",
+                                     unreal.TranslucencyLightingMode.TLM_SURFACE_PER_PIXEL_LIGHTING)
+    except Exception as error:  # el nombre del enum cambia entre versiones; el material funciona sin esto
+        unreal.log_warning(f"[ProcMap] M_ProcWaterAnim sin iluminación por píxel: {error}")
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    def scalar(name, value, x, y):
+        e = expr(unreal.MaterialExpressionScalarParameter, x, y)
+        e.set_editor_property("parameter_name", name)
+        e.set_editor_property("default_value", value)
+        return e
+
+    def vector(name, rgb, x, y):
+        e = expr(unreal.MaterialExpressionVectorParameter, x, y)
+        e.set_editor_property("parameter_name", name)
+        e.set_editor_property("default_value", unreal.LinearColor(rgb[0], rgb[1], rgb[2], 1.0))
+        return e
+
+    # Tiempo acelerable y coordenadas de mundo en planta.
+    time = expr(unreal.MaterialExpressionTime, -1600, -200)
+    flow = scalar("FlowSpeed", 1.0, -1600, -100)
+    flow_time = expr(unreal.MaterialExpressionMultiply, -1400, -150)
+    mel.connect_material_expressions(time, "", flow_time, "A")
+    mel.connect_material_expressions(flow, "", flow_time, "B")
+    world = expr(unreal.MaterialExpressionWorldPosition, -1600, 100)
+    plan = expr(unreal.MaterialExpressionComponentMask, -1400, 100)
+    plan.set_editor_property("r", True)
+    plan.set_editor_property("g", True)
+    mel.connect_material_expressions(world, "", plan, "")
+
+    normals = []
+    for i, (scale, speed) in enumerate(((900.0, (0.03, 0.018)), (2600.0, (-0.012, 0.026)))):
+        uv = expr(unreal.MaterialExpressionDivide, -1200, 50 + 250 * i)
+        uv.set_editor_property("const_b", scale)
+        mel.connect_material_expressions(plan, "", uv, "A")
+        pan = expr(unreal.MaterialExpressionPanner, -1000, 50 + 250 * i)
+        pan.set_editor_property("speed_x", speed[0])
+        pan.set_editor_property("speed_y", speed[1])
+        mel.connect_material_expressions(uv, "", pan, "Coordinate")
+        mel.connect_material_expressions(flow_time, "", pan, "Time")
+        tex = expr(unreal.MaterialExpressionTextureSample, -800, 50 + 250 * i)
+        tex.set_editor_property("texture", unreal.load_asset(WATER_NORMAL))
+        tex.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
+        mel.connect_material_expressions(pan, "", tex, "UVs")
+        normals.append(tex)
+    both = expr(unreal.MaterialExpressionAdd, -550, 150)
+    mel.connect_material_expressions(normals[0], "RGB", both, "A")
+    mel.connect_material_expressions(normals[1], "RGB", both, "B")
+    flat = expr(unreal.MaterialExpressionConstant3Vector, -550, 300)
+    flat.set_editor_property("constant", unreal.LinearColor(0.0, 0.0, 1.0, 1.0))
+    calm = scalar("Calm", 0.35, -550, 400)
+    normal = expr(unreal.MaterialExpressionLinearInterpolate, -350, 200)
+    mel.connect_material_expressions(both, "", normal, "A")
+    mel.connect_material_expressions(flat, "", normal, "B")
+    mel.connect_material_expressions(calm, "", normal, "Alpha")
+    mel.connect_material_property(normal, "", unreal.MaterialProperty.MP_NORMAL)
+
+    # Color: de somera a profunda según lo que hay debajo, y espuma pegada a las orillas.
+    depth = expr(unreal.MaterialExpressionDepthFade, -800, -500)
+    depth.set_editor_property("fade_distance_default", 500.0)
+    depth_range = scalar("DepthRange", 500.0, -1000, -450)
+    mel.connect_material_expressions(depth_range, "", depth, "FadeDistance")
+    shallow = vector("ShallowColor", (0.08, 0.5, 0.52), -800, -750)
+    deep = vector("DeepColor", (0.02, 0.16, 0.3), -800, -650)
+    water_color = expr(unreal.MaterialExpressionLinearInterpolate, -550, -650)
+    mel.connect_material_expressions(shallow, "", water_color, "A")
+    mel.connect_material_expressions(deep, "", water_color, "B")
+    mel.connect_material_expressions(depth, "", water_color, "Alpha")
+    shore = expr(unreal.MaterialExpressionDepthFade, -800, -350)
+    shore.set_editor_property("fade_distance_default", 70.0)
+    foam_width = scalar("FoamWidth", 70.0, -1000, -300)
+    mel.connect_material_expressions(foam_width, "", shore, "FadeDistance")
+    foam = expr(unreal.MaterialExpressionOneMinus, -600, -350)
+    mel.connect_material_expressions(shore, "", foam, "")
+    foam_color = vector("FoamColor", (0.9, 0.95, 0.95), -550, -500)
+    color = expr(unreal.MaterialExpressionLinearInterpolate, -300, -550)
+    mel.connect_material_expressions(water_color, "", color, "A")
+    mel.connect_material_expressions(foam_color, "", color, "B")
+    mel.connect_material_expressions(foam, "", color, "Alpha")
+    mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+
+    # Opacidad: transparente en la orilla, más opaca con la profundidad (y la espuma se ve).
+    opacity_depth = expr(unreal.MaterialExpressionDepthFade, -800, 550)
+    opacity_depth.set_editor_property("fade_distance_default", 300.0)
+    opacity = expr(unreal.MaterialExpressionLinearInterpolate, -550, 550)
+    mel.connect_material_expressions(scalar("OpacityShallow", 0.35, -800, 650), "", opacity, "A")
+    mel.connect_material_expressions(scalar("OpacityDeep", 0.85, -800, 750), "", opacity, "B")
+    mel.connect_material_expressions(opacity_depth, "", opacity, "Alpha")
+    opacity_foam = expr(unreal.MaterialExpressionMax, -300, 550)
+    mel.connect_material_expressions(opacity, "", opacity_foam, "A")
+    mel.connect_material_expressions(foam, "", opacity_foam, "B")
+    mel.connect_material_property(opacity_foam, "", unreal.MaterialProperty.MP_OPACITY)
+
+    roughness = expr(unreal.MaterialExpressionConstant, -300, 800)
+    roughness.set_editor_property("r", 0.05)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+
+    mel.recompile_material(material)
+    return save(material)
+
+
 def build_water_material():
     path = f"{MATERIALS}/M_ProcWater"
     existing = load_or_none(path)
@@ -186,6 +307,7 @@ def build_materials():
     asset_lib.make_directory(MATERIALS)
     flat = build_flat_material()
     water = build_water_material()
+    water_anim = build_water_anim_material()
     result = {
         "terrain": build_terrain_material(),
         "foliage": build_foliage_material(),
@@ -193,6 +315,10 @@ def build_materials():
     }
     for name, (rgb, rough, emissive) in FLAT_INSTANCES.items():
         result[name] = build_instance(name, flat, {"Color": rgb}, {"Roughness": rough, "Emissive": emissive})
+    result["sea_anim"] = build_instance("MI_ProcSeaAnim", water_anim)
+    result["slide_anim"] = build_instance("MI_ProcSlideWaterAnim", water_anim,
+                                          {"ShallowColor": (0.55, 0.8, 1.0), "DeepColor": (0.3, 0.6, 0.9), "FoamColor": (0.97, 0.99, 1.0)},
+                                          {"FlowSpeed": 5.0, "DepthRange": 60.0, "FoamWidth": 25.0, "OpacityShallow": 0.6, "Calm": 0.15})
     return result
 
 
@@ -224,19 +350,27 @@ def build_settings(materials, biomes):
     path = f"{ROOT}/DA_ProcMapSettings"
     existing = load_or_none(path)
     if existing:
-        # Ajustes añadidos después de crear el asset: solo si faltan.
+        # Ajustes añadidos después de crear el asset: solo si faltan o siguen con el greybox de antes.
+        changed = False
         if not existing.get_editor_property("foliage_material"):
             existing.set_editor_property("foliage_material", materials["foliage"])
+            changed = True
+        for prop, old, new in (("water_material", "MI_ProcSea", "sea_anim"), ("slide_water_material", "MI_ProcSlideWater", "slide_anim")):
+            current = existing.get_editor_property(prop)
+            if not current or current.get_name() == old:
+                existing.set_editor_property(prop, materials[new])
+                changed = True
+        if changed:
             save(existing)
         return existing
     settings = create_data_asset("DA_ProcMapSettings", ROOT, unreal.TN_ProcMapSettings)
     settings.set_editor_property("biomes", biomes)
     settings.set_editor_property("terrain_material", materials["terrain"])
-    settings.set_editor_property("water_material", materials["water"])
+    settings.set_editor_property("water_material", materials["sea_anim"])
     settings.set_editor_property("lava_material", materials["MI_ProcLava"])
     settings.set_editor_property("rock_material", materials["MI_ProcRock"])
     settings.set_editor_property("wood_material", materials["MI_ProcWood"])
-    settings.set_editor_property("slide_water_material", materials["MI_ProcSlideWater"])
+    settings.set_editor_property("slide_water_material", materials["slide_anim"])
     settings.set_editor_property("foliage_material", materials["foliage"])
     settings.fill_default_profiles()
     return save(settings)
