@@ -39,7 +39,7 @@ ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "marsh": "damp", "algae": "a
 PLANT_ALGAE = False          # 2026-09-25: sin modelos de alga; la zona se lee por el color de la arena
 
 FOLIAGE_SPACING_M = 2.0
-SMOOTH_ITERATIONS = 6                   # Taubin (encoge poco): quita el escalonado del marching cubes
+SMOOTH_ITERATIONS = 12                  # Taubin (encoge poco): quita el escalonado del marching cubes
 FOLIAGE_SHAPES = {"stalk": 0, "frond": 1, "bush": 2}      # orden de TNTerrainBiome::EFoliageShape
 FOLIAGE_COLORS = ((0.10, 0.14, 0.03), (0.27, 0.29, 0.07))
 

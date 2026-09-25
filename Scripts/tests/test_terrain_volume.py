@@ -175,6 +175,24 @@ def test_sin_picos_de_una_celda_en_la_roca(model):
     assert int((spike > 4.0).sum()) == 0
 
 
+def test_hay_tuneles_pasantes_y_todos_se_alcanzan(model, chunks, standable):
+    """Tuneles que unen dos pasillos (no solo cuevas) y ninguno inaccesible: se llega andando
+    a su tramo central desde la salida."""
+    through = 0
+    for net_name, edge, _ in model.maze_tunnels:
+        net = model.nets[net_name]
+        a, b = net.edges[edge]
+        through += int(min(net.degree()[a], net.degree()[b]) >= 2)
+    assert through >= 4
+    start_ij = world_index(model.route.points[0])
+    reached = walk(standable, (*start_ij, ground_level(standable, *start_ij)))
+    for net_name, edge, _ in model.maze_tunnels:
+        curve = model.nets[net_name].curves[edge]
+        i, j = world_index(curve[len(curve) // 2])
+        near = reached[i - 2:i + 3, j - 2:j + 3, :]
+        assert near.any(), f"tunel inaccesible: {net_name} arista {edge}"
+
+
 def test_los_tuneles_bajan_o_suben_por_dentro_y_son_parte_del_laberinto(model):
     assert all(1.0 <= abs(dip) <= 3.5 for _, _, dip in model.maze_tunnels)
     assert any(dip < 0 for _, _, dip in model.maze_tunnels), "ninguno baja por debajo"
