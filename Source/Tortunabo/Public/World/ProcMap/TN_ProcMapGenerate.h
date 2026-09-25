@@ -7,6 +7,7 @@
 #include "World/ProcMap/TN_ProcMapPath.h"
 #include "World/ProcMap/TN_ProcMapFeatures.h"
 #include "World/ProcMap/TN_ProcMapFormations.h"
+#include "World/ProcMap/TN_ProcMapCaves.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 
 /**
@@ -116,6 +117,8 @@ namespace TNProcMap
 		// Después de las ramas: un módulo vacío con desvío deja de ser macizo.
 		BuildBiomeFields(Out);
 		BuildStructuralFeatures(Out);
+		// Antes de los huecos y obstáculos: las cuevas cambian anchos y marcan sus tramos como túnel.
+		BuildCaves(Out, Root.Fork(19));
 		BuildGaps(Out, Root.Fork(10));
 		BuildWetFeatures(Out, Root.Fork(11));
 		BuildEggNests(Out, Root.Fork(12));

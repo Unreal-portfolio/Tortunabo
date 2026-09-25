@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "Components/PointLightComponent.h"
 #include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
@@ -235,6 +236,12 @@ void ATN_ProcMapGenerator::Clear()
 	}
 	ScatterComponents.Reset();
 	FloraMeshes.Reset();
+
+	for (UPointLightComponent* Light : CaveLights)
+	{
+		if (Light) { Light->DestroyComponent(); }
+	}
+	CaveLights.Reset();
 
 	for (UPCGComponent* Comp : PCGComponents)
 	{

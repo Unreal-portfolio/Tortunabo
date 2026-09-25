@@ -9,6 +9,7 @@
 
 class UProceduralMeshComponent;
 class UHierarchicalInstancedStaticMeshComponent;
+class UPointLightComponent;
 class UStaticMeshComponent;
 class UStaticMesh;
 class UPrimitiveComponent;
@@ -250,6 +251,10 @@ private:
 	/** Mallas de la vegetación procedural (una por bioma, especie y variante), construidas en ejecución. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMesh>> FloraMeshes;
+
+	/** Luces tenues dentro de las cuevas. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UPointLightComponent>> CaveLights;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPCGComponent>> PCGComponents;

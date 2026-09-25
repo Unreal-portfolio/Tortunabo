@@ -18,6 +18,8 @@
 #include "Async/ParallelFor.h"
 #include "TN_ProcMapMeshKit.h"
 #include "TN_ProcMapFormationMeshes.h"
+#include "TN_ProcMapCaveMeshes.h"
+#include "Components/PointLightComponent.h"
 
 using namespace TNProcMesh;
 
@@ -872,7 +874,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::Gap:
 			{
-				// Labios de madera que reducen la zanja al hueco exacto.
+				// Labios que reducen la zanja al hueco exacto: de madera, o de roca en el río de lava de
+				// una cueva (con la lava 1,5 m por debajo, de pared a pared).
+				const bool bLava = IsLavaGap(F);
 				const FVector2D D = F.Dir;
 				const double Outer = F.Height * 0.5 + 150.0;
 				const double Inner = F.Length * 0.5;
@@ -880,8 +884,17 @@ void ATN_ProcMapGenerator::BuildStructures()
 				for (int32 Side = -1; Side <= 1; Side += 2)
 				{
 					const FVector2D Center2 = FVector2D(F.Location.X, F.Location.Y) + D * (Side * (Inner + HalfLen));
-					Wood.AddBox(FVector(Center2.X, Center2.Y, F.Location.Z - 60.0), FVector(D.X, D.Y, 0.0),
-						FVector(HalfLen, F.Width * 0.5, 60.0), WoodColor);
+					(bLava ? Rock : Wood).AddBox(FVector(Center2.X, Center2.Y, F.Location.Z - (bLava ? 90.0 : 60.0)), FVector(D.X, D.Y, 0.0),
+						FVector(HalfLen, F.Width * 0.5 + (bLava ? GapTrenchSideOf(F) : 0.0), bLava ? 90.0 : 60.0), bLava ? RockColor : WoodColor);
+				}
+				if (bLava)
+				{
+					const FVector2D C(F.Location.X, F.Location.Y);
+					const FVector2D N = LeftNormal(D);
+					const double Hl = F.Height * 0.5 + 100.0;
+					const double Hs = F.Width * 0.5 + GapTrenchSideOf(F) + 100.0;
+					TArray<FVector2D> Poly = { C - D * Hl - N * Hs, C + D * Hl - N * Hs, C + D * Hl + N * Hs, C - D * Hl + N * Hs };
+					Lava.AddPrism(Poly, F.Location.Z - 150.0, F.Location.Z - 160.0, FLinearColor(1.f, 0.35f, 0.05f), false);
 				}
 				break;
 			}
@@ -1105,6 +1118,47 @@ void ATN_ProcMapGenerator::BuildStructures()
 				const FLinearColor Col = bLily ? FLinearColor(0.12f, 0.42f, 0.1f) : FLinearColor(0.16f, 0.3f, 0.06f) * static_cast<float>(AlgaeRng.Range(0.8, 1.2));
 				Foliage.AddPrism(Poly, TNProcMap::SeaLevel + 4.0, TNProcMap::SeaLevel - 2.0, Col, false);
 			}
+		}
+	}
+
+	// ── Cuevas: techo de roca sobre el túnel y luces tenues dentro ──────────
+	for (const FFeature& F : Layout.Features)
+	{
+		if (F.Type != EFeature::Cave || F.PathIndex < 0 || F.Aux >= M.Num()) { continue; }
+		TArray<TNCaveMesh::FTNCaveStation> Stations;
+		for (int32 i = F.PathIndex; i <= F.Aux; ++i)
+		{
+			TNCaveMesh::FTNCaveStation S;
+			S.Floor = FVector(M[i].P, M[i].Z);
+			S.Dir = M[i].Dir;
+			S.HalfWidth = M[i].Width * 0.5;
+			Stations.Add(S);
+		}
+		FLinearColor G, Pc, RockC, Bd;
+		ResolveBiomeColors(F.Biome, G, Pc, RockC, Bd);
+		const bool bVolcanic = F.Biome == ETNProcBiome::Volcanic;
+		TNCaveMesh::FTNCaveLook Look;
+		Look.Inner = RockC * 0.55f;
+		Look.Outer = RockC;
+		Look.Moss = bVolcanic ? RockC * 0.8f : TNProcLerpColor(RockC, G, 0.6f);
+		Look.Crystal = FLinearColor(0.45f, 0.8f, 0.95f);
+		Look.bCrystals = !bVolcanic;
+		TNCaveMesh::TNCaveBuildRoof(Painted, Stations, F.Height, F.Radius, static_cast<uint32>(F.Aux2), Look);
+
+		// Una luz cada ~20 m, cálida en el volcán (brasas) y azulada en el resto (cristales).
+		for (int32 i = F.PathIndex + 2; i < F.Aux - 1; i += 5)
+		{
+			UPointLightComponent* Light = NewObject<UPointLightComponent>(this, NAME_None, RF_Transient);
+			Light->SetupAttachment(RootComponent);
+			const double Clear = CaveDetail::Clearance(M[i].Width, F.Height);
+			Light->SetRelativeLocation(FVector(M[i].P, M[i].Z + Clear * 0.7));
+			Light->SetIntensityUnits(ELightUnits::Lumens);
+			Light->SetIntensity(bVolcanic ? 2500.f : 1500.f);
+			Light->SetAttenuationRadius(static_cast<float>(FMath::Max(1800.0, M[i].Width * 1.2)));
+			Light->SetLightColor(bVolcanic ? FLinearColor(1.f, 0.45f, 0.2f) : FLinearColor(0.6f, 0.75f, 1.f));
+			Light->SetCastShadows(false);
+			Light->RegisterComponent();
+			CaveLights.Add(Light);
 		}
 	}
 

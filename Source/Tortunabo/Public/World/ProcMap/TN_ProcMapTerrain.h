@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "World/ProcMap/TN_ProcMapLayout.h"
+#include "World/ProcMap/TN_ProcMapCaves.h"
 
 /**
  * Altura del terreno a partir del layout, evaluada sobre una malla regular de
@@ -97,7 +98,8 @@ namespace TNProcMap
 	/** Fondo de la zanja de un hueco de salto: 12 m bajo el camino, siempre por encima del agua. */
 	inline double GapFloorZ(const FFeature& F)
 	{
-		return FMath::Max(F.Location.Z - 1200.0, SeaLevel + 150.0);
+		// El río de lava corre 1,5 m bajo el suelo de la cueva; su cauce, 3 m más abajo.
+		return IsLavaGap(F) ? F.Location.Z - 450.0 : FMath::Max(F.Location.Z - 1200.0, SeaLevel + 150.0);
 	}
 
 	/**
@@ -277,7 +279,7 @@ namespace TNProcMap
 		TArray<int32> Volcanoes;
 
 		// ── Influencias localizadas (cubos) ─────────────────────────────────
-		enum class EInf : uint8 { Tower, Tunnel, DeckClear, Gate, Gap, Lava, Island, River };
+		enum class EInf : uint8 { Tower, Tunnel, DeckClear, Gate, Gap, Lava, Island, River, CaveMass };
 		struct FInf
 		{
 			EInf Type = EInf::Tower;
@@ -717,6 +719,15 @@ namespace TNProcMap
 				FInf Inf;
 				Inf.A = f;
 				double Reach = 0.0;
+				if (F.Type == EFeature::Cave)
+				{
+					// Loma sobre la cueva: cada tramo del túnel, con su alcance a los lados y en las bocas.
+					for (int32 j = FMath::Max(0, F.PathIndex - 1); j < FMath::Min(M.Num() - 1, F.Aux + 1); ++j)
+					{
+						AddSegmentInf(EInf::CaveMass, f, j, M[j].P, M[j + 1].P, M[j].Width * 0.5 + 4000.0);
+					}
+					continue;
+				}
 				switch (F.Type)
 				{
 					case EFeature::Tower:      Inf.Type = EInf::Tower; Reach = F.Radius + 3200.0; break;
@@ -961,7 +972,7 @@ namespace TNProcMap
 			// ── Influencias localizadas ─────────────────────────────────────
 			if (Bin.Num() > 0)
 			{
-				H = ApplyInfluences(P, H, Bin, OutMask);
+				H = ApplyInfluences(P, H, Bin, OutMask, InSeg);
 			}
 			return H;
 		}
@@ -1006,9 +1017,35 @@ namespace TNProcMap
 
 		bool TowerOpening(const FFeature& F, const FVector2D& P) const { return TowerOpeningAt(*L, F, P); }
 
-		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask) const
+		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask, int32 InSeg) const
 		{
 			const TArray<FPathSample>& M = L->Main;
+
+			// Loma sobre las cuevas: fuera del suelo del túnel el terreno sube hasta cubrir su techo (y baja
+			// en ladera más allá); en las bocas acaba en un frente de roca. Solo los vértices de ese tramo
+			// del camino (o de las muestras de justo antes y después): no tapa otros caminos cercanos.
+			double Ridge = -1e18;
+			for (const FInf& Inf : Bin)
+			{
+				if (Inf.Type != EInf::CaveMass || InSeg == INDEX_NONE) { continue; }
+				const FFeature& F = L->Features[Inf.A];
+				if (InSeg < F.PathIndex - 3 || InSeg > F.Aux + 2) { continue; }
+				const FPathSample& A = M[Inf.B];
+				const FPathSample& B = M[Inf.B + 1];
+				double T = 0.0;
+				const double D = DistPointSegment(P, A.P, B.P, T);
+				const double Hw = LerpD(A.Width, B.Width, T) * 0.5;
+				const double Eff = D - Hw;
+				if (Eff < 180.0) { continue; }
+				const double Floor = LerpD(A.Z, B.Z, T);
+				double Z = Floor + CaveDetail::Clearance(Hw * 2.0, F.Height) + F.Radius + 150.0 - FMath::Max(0.0, Eff - 700.0) * 0.7;
+				// Fuera del túnel (antes de la primera muestra o después de la última): frente casi a plomo.
+				const double Out = FMath::Max(0.0, FVector2D::DotProduct(M[F.PathIndex].P - P, M[F.PathIndex].Dir))
+					+ FMath::Max(0.0, FVector2D::DotProduct(P - M[F.Aux].P, M[F.Aux].Dir));
+				Z -= Out * 3.0;
+				Ridge = FMath::Max(Ridge, Z);
+			}
+			if (Ridge > H) { H = Ridge; }
 
 			// Torres (pilares de roca) en los extremos de las pasadas altas.
 			for (const FInf& Inf : Bin)
@@ -1066,7 +1103,7 @@ namespace TNProcMap
 				const FVector2D Rel = P - FVector2D(F.Location.X, F.Location.Y);
 				const double Along = FVector2D::DotProduct(Rel, F.Dir);
 				const double Across = FVector2D::DotProduct(Rel, LeftNormal(F.Dir));
-				if (FMath::Abs(Along) <= F.Height * 0.5 && FMath::Abs(Across) <= F.Width * 0.5 + GapTrenchSide)
+				if (FMath::Abs(Along) <= F.Height * 0.5 && FMath::Abs(Across) <= F.Width * 0.5 + GapTrenchSideOf(F))
 				{
 					H = FMath::Min(H, GapFloorZ(F));
 					OutMask = 0;

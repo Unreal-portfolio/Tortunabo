@@ -294,6 +294,11 @@ namespace TNProcMap
 		 * lejanos: Location (XY), Radius = base, Height = alto (se asientan en el terreno al construirlos).
 		 */
 		Formation,
+		/**
+		 * Cueva: el camino principal atraviesa una loma por un túnel de roca. PathIndex..Aux = primera y
+		 * última muestra, Radius = grueso del techo, Height = factor de altura libre, Aux2 = semilla.
+		 */
+		Cave,
 		Count
 	};
 
@@ -353,6 +358,15 @@ namespace TNProcMap
 	/** Cuánto se extiende la zanja de un hueco de salto a cada lado del camino (cm). */
 	constexpr double GapTrenchSide = 1500.0;
 
+	/** Aux2 de un hueco de salto que es un río de lava (en las cámaras de las cuevas del volcán). */
+	constexpr int32 GapLava = 1;
+
+	struct FFeature;
+	inline bool IsLavaGap(const FFeature& F);
+
+	/** Cuánto se extiende a cada lado del camino la zanja de un hueco (la del río de lava no sale de la cueva). */
+	inline double GapTrenchSideOf(const FFeature& F);
+
 	struct FFeature
 	{
 		EFeature Type = EFeature::Count;
@@ -371,6 +385,9 @@ namespace TNProcMap
 		ETNProcBiome Biome = ETNProcBiome::Jungle;
 		TArray<FVector2D> Polygon;
 	};
+
+	inline bool IsLavaGap(const FFeature& F) { return F.Type == EFeature::Gap && F.Aux2 == GapLava; }
+	inline double GapTrenchSideOf(const FFeature& F) { return IsLavaGap(F) ? 250.0 : GapTrenchSide; }
 
 	/**
 	 * Muralla de un cruce: el adarve (el tramo alto, del ancho del camino) entre dos parapetos que no

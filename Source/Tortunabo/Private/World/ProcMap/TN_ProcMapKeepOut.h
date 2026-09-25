@@ -68,6 +68,15 @@ struct FTNProcKeepOut
 				case EFeature::RiverBridge:    Add(C, F.Length * 0.5 + 300.0); break;
 				case EFeature::LavaPool:       Add(C, F.Radius + 300.0); break;
 				case EFeature::GiantTree:      Add(C, F.Radius * 3.0); break;
+				case EFeature::Cave:
+				{
+					// El techo de roca de las cuevas, a lo largo de todo el túnel.
+					for (int32 i = FMath::Max(0, F.PathIndex); i <= FMath::Min(Layout.Main.Num() - 1, F.Aux); ++i)
+					{
+						Add(Layout.Main[i].P, Layout.Main[i].Width * 0.5 + 600.0);
+					}
+					break;
+				}
 				case EFeature::Formation:
 				{
 					// Los arcos solo ocupan sus pies (a ambos lados del camino); el resto, su huella.
