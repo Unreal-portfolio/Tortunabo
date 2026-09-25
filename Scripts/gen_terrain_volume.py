@@ -119,7 +119,7 @@ def main() -> None:
               model.route.points)
     tris = sum(len(c.triangles) for c in chunks.values())
     plants = sum(len(c.instances) for c in chunks.values())
-    print(f"{args.name}: ruta {model.route.length:.0f} m; {len(model.tunnels)} tuneles; {tris} triangulos; "
+    print(f"{args.name}: ruta {model.route.length:.0f} m; {len(model.maze_tunnels)} tuneles; {tris} triangulos; "
           f"{plants} algas; inicio->final a pie: {'SI' if ok else 'NO'}; {time.time() - t0:.1f} s")
     if not ok:
         raise SystemExit("el final no se alcanza a pie desde el inicio")

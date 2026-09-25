@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 33080,
-   "triangles": 65486,
+   "vertices": 33554,
+   "triangles": 66440,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 33356,
-   "triangles": 65966,
+   "vertices": 33395,
+   "triangles": 66046,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 17750,
-   "triangles": 34904,
+   "vertices": 17800,
+   "triangles": 35004,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14344,
-   "triangles": 28208,
+   "vertices": 14346,
+   "triangles": 28216,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     40000.0,
     0.0
    ],
-   "vertices": 16515,
-   "triangles": 32500,
+   "vertices": 16434,
+   "triangles": 32342,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 33164,
-   "triangles": 65568,
+   "vertices": 33176,
+   "triangles": 65588,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 36399,
-   "triangles": 71912,
+   "vertices": 36591,
+   "triangles": 72242,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 23538,
-   "triangles": 46382,
+   "vertices": 23501,
+   "triangles": 46282,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 14211,
-   "triangles": 27942,
+   "vertices": 14183,
+   "triangles": 27886,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 19789,
-   "triangles": 38938,
+   "vertices": 19973,
+   "triangles": 39304,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 23805,
-   "triangles": 46830,
+   "vertices": 27647,
+   "triangles": 54494,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 16416,
-   "triangles": 32270,
+   "vertices": 16355,
+   "triangles": 32128,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 15762,
-   "triangles": 30994,
+   "vertices": 15902,
+   "triangles": 31278,
    "instances": 0
   },
   {
@@ -259,8 +259,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 28417,
-   "triangles": 56150,
+   "vertices": 26367,
+   "triangles": 52134,
    "instances": 0
   },
   {
@@ -272,8 +272,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 32230,
-   "triangles": 63688,
+   "vertices": 30538,
+   "triangles": 60432,
    "instances": 0
   },
   {
@@ -285,8 +285,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 16493,
-   "triangles": 32458,
+   "vertices": 16483,
+   "triangles": 32448,
    "instances": 0
   },
   {
@@ -298,8 +298,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 17621,
-   "triangles": 34724,
+   "vertices": 17556,
+   "triangles": 34602,
    "instances": 0
   },
   {
@@ -337,8 +337,8 @@
     0.0,
     40000.0
    ],
-   "vertices": 21374,
-   "triangles": 42136,
+   "vertices": 20622,
+   "triangles": 40640,
    "instances": 0
   },
   {
@@ -350,8 +350,8 @@
     10000.0,
     40000.0
    ],
-   "vertices": 18907,
-   "triangles": 37306,
+   "vertices": 19751,
+   "triangles": 38992,
    "instances": 0
   },
   {
@@ -363,8 +363,8 @@
     20000.0,
     40000.0
    ],
-   "vertices": 11713,
-   "triangles": 22974,
+   "vertices": 11880,
+   "triangles": 23298,
    "instances": 0
   },
   {
@@ -415,8 +415,8 @@
     0.0,
     50000.0
    ],
-   "vertices": 22498,
-   "triangles": 44452,
+   "vertices": 22349,
+   "triangles": 44150,
    "instances": 0
   },
   {
@@ -428,8 +428,8 @@
     10000.0,
     50000.0
    ],
-   "vertices": 18427,
-   "triangles": 36330,
+   "vertices": 18310,
+   "triangles": 36090,
    "instances": 0
   },
   {
@@ -441,8 +441,8 @@
     20000.0,
     50000.0
    ],
-   "vertices": 15820,
-   "triangles": 31136,
+   "vertices": 15853,
+   "triangles": 31200,
    "instances": 0
   },
   {

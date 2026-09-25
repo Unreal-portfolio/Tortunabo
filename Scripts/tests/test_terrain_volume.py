@@ -56,10 +56,13 @@ def test_se_llega_a_pie_del_inicio_al_final(model, standable):
 
 
 def test_el_tunel_tiene_roca_encima_y_se_cruza_por_dentro(model, chunks):
-    assert len(model.tunnels) >= 2
+    assert len(model.maze_tunnels) >= 3
+    zones = {z for z, _, _ in model.maze_tunnels}
+    assert zones == {"cliffs", "canyon_maze"}, "tuneles solo en una zona"
     covered = 0
-    for a, b in model.tunnels:
-        p = model.route.point_at(0.5 * (a + b))
+    for net_name, edge, _ in model.maze_tunnels:
+        curve = model.nets[net_name].curves[edge]
+        p = curve[len(curve) // 2]
         i, j = world_index(p)
         col, row = j // (CELL_SAMPLES - 1), i // (CELL_SAMPLES - 1)
         chunk = chunks[(min(col, 5), min(row, 5))]
@@ -71,7 +74,7 @@ def test_el_tunel_tiene_roca_encima_y_se_cruza_por_dentro(model, chunks):
         roof_z = Z_MIN_M + STEP_Z_M * levels.max()
         assert roof_z - floor_z >= 5.0
         covered += 1
-    assert covered == len(model.tunnels)
+    assert covered == len(model.maze_tunnels)
 
 
 def test_los_laberintos_tienen_callejones_y_un_solo_paso(model):
@@ -100,9 +103,12 @@ def test_la_zona_encharcada_tiene_laguitos_y_cresta_seca(model, chunks):
     top = global_top(chunks)
     s0, s1 = model.route.zone_range("marsh")
     samples = np.linspace(s0 + 20.0, s1 - 20.0, 60)
-    dry = [top[world_index(model.route.point_at(s))] > WATER_M + 0.2 for s in samples]
-    # La cresta es seca salvo los huecos que se saltan.
-    assert np.mean(dry) > 0.85
+    # El sendero serpentea alrededor de la ruta (hasta ~7 m): seco a menos de 8 m de cada punto.
+    dry = []
+    for s in samples:
+        i, j = world_index(model.route.point_at(s))
+        dry.append(bool(np.any(top[i - 8:i + 9, j - 8:j + 9] > WATER_M + 0.2)))
+    assert np.mean(dry) > 0.9
     # Hay agua a los lados de la cresta (laguitos), no un solo lago ni un secarral.
     around = []
     for s in samples[::6]:
@@ -169,8 +175,14 @@ def test_sin_picos_de_una_celda_en_la_roca(model):
     assert int((spike > 4.0).sum()) == 0
 
 
-def test_los_tuneles_suben_o_bajan_por_dentro(model):
-    assert all(1.0 <= abs(c) <= 3.5 for c in model.tunnel_climb)
+def test_los_tuneles_bajan_o_suben_por_dentro_y_el_camino_pasa_por_uno(model):
+    assert all(1.0 <= abs(dip) <= 3.5 for _, _, dip in model.maze_tunnels)
+    assert any(dip < 0 for _, _, dip in model.maze_tunnels), "ninguno baja por debajo"
+    for zone in ("cliffs", "canyon_maze"):
+        net = model.nets[zone]
+        chain = {tuple(sorted((net.chain[k], net.chain[k + 1]))) for k in range(len(net.chain) - 1)}
+        assert any(tuple(sorted(net.edges[e])) in chain for z, e, _ in model.maze_tunnels if z == zone), \
+            f"el camino bueno no pasa por un tunel en {zone}"
 
 
 def test_la_semilla_aprobada_da_el_mismo_mapa(model):

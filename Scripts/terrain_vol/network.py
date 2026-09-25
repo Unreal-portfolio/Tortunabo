@@ -61,12 +61,23 @@ class Network:
                     stack.append(m)
         return b in seen
 
-    def sample(self, step: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
+    def edge_floor(self, edge: int, t):
+        """Cota del suelo a lo largo de la arista (t en 0..1): rampa suave entre sus nodos."""
+        levels = self.levels if self.levels is not None else np.zeros(len(self.nodes))
+        a, b = self.edges[edge]
+        t = np.clip(t, 0.0, 1.0)
+        t = t * t * (3.0 - 2.0 * t)
+        return levels[a] + (levels[b] - levels[a]) * t
+
+    def sample(self, step: float = 0.5, exclude: set[int] | None = None) -> tuple[np.ndarray, np.ndarray]:
         """Puntos a lo largo de todas las aristas (para medir distancias con un KD-tree) y la
-        cota del suelo en cada uno: interpolada entre las de los dos nodos de su arista."""
+        cota del suelo en cada uno: interpolada entre las de los dos nodos de su arista.
+        exclude: indices de aristas que no se muestrean (tuneles: no son pasillo abierto)."""
         out, floors = [], []
         levels = self.levels if self.levels is not None else np.zeros(len(self.nodes))
-        for (a, b), curve in zip(self.edges, self.curves):
+        for index, ((a, b), curve) in enumerate(zip(self.edges, self.curves)):
+            if exclude and index in exclude:
+                continue
             seg = np.linalg.norm(np.diff(curve, axis=0), axis=1)
             arc = np.concatenate(([0.0], np.cumsum(seg)))
             s = np.arange(0.0, arc[-1] + step, step)

@@ -31,10 +31,13 @@ CLIFF_LEVEL_M = 4.5                     # separacion entre niveles del laberinto
 CLIFF_LEVELS = 3
 MARSH_PATH_TOP_M = WATER_M + 1.3        # crestas por las que se cruza la zona encharcada
 END_PLAZA_M = WATER_M + 1.8             # plaza de llegada, seca, sobre la playa
-MARSH_JUMP_EVERY_M = 48.0               # cada cuanto un canal estrecho corta la barra y se salta
-TUNNEL_HALF_WIDTH_M = 5.0
-TUNNEL_HEIGHT_M = 5.5
-TUNNEL_LENGTH_M = (26.0, 36.0)
+MARSH_JUMP_EVERY_M = 48.0               # cada cuanto un charco estrecho corta el sendero y se salta
+MARSH_WIGGLE_M = 7.0                    # cuanto se aparta el sendero de la ruta a los lados
+TUNNEL_HALF_WIDTH_M = 3.6              # semiancho de la seccion del tunel del laberinto
+TUNNEL_HEIGHT_M = 5.0
+TUNNEL_LENGTH_M = (26.0, 36.0)         # (solo lo usa el plan antiguo, que se conserva por la semilla)
+TUNNEL_EDGE_M = (14.0, 42.0)           # longitud de las aristas del laberinto que se hacen tunel
+TUNNELS_PER_ZONE = {"cliffs": 2, "canyon": 3}
 OUTER_WALL_M = 15.0
 EDGE_WALL_M = 20.0
 TOP_LIMIT_M = Z_MAX_M - 2.0
@@ -118,6 +121,18 @@ class MapModel:
         self.n_tunnel = Fbm2D(extra, 9.0, 2)
         self.n_crest = Fbm2D(extra, 11.0, 2)
         self.n_beach_hills = Fbm2D(extra, 48.0, 3)
+        self.marsh_warp = (Fbm2D(extra, 26.0, 2), Fbm2D(extra, 26.0, 2))
+        # Canon como laberinto de acantilados (enrevesado, como el de la salida) y tuneles como
+        # tramos del laberinto excavados en la roca, en los acantilados y en el canon.
+        self.nets["canyon_maze"] = build_network(extra, self.zones, "canyon", 18.0, 0.15, level_step=CLIFF_LEVEL_M,
+                                                 level_count=2, decoys=True, reach_share=0.8)
+        self.maze_tunnels = self._pick_maze_tunnels(extra)
+        for zone in ("cliffs", "canyon_maze"):
+            closed = {e for z, e, _ in self.maze_tunnels if z == zone}
+            self.net_samples[zone] = self.nets[zone].sample(exclude=closed)
+            self.net_trees[zone] = cKDTree(self.net_samples[zone][0])
+        self.clearings["canyon_maze"] = self._pick_clearings(extra, self.nets["canyon_maze"])
+        self._build_tunnel_samples()
 
         # Campos 2D del mapa entero, con una muestra de margen alrededor.
         count = int(round((MAP_MAX_M - MAP_MIN_M) / STEP_XY_M)) + 1
@@ -137,6 +152,72 @@ class MapModel:
         levels = net.levels if net.levels is not None else np.zeros(len(net.nodes))
         return np.array([[net.nodes[k][0], net.nodes[k][1], rng.uniform(5.5, 8.5), levels[k]]
                          for k in picked]).reshape(-1, 4)
+
+    def _pick_maze_tunnels(self, rng: np.random.Generator) -> list[tuple[str, int, float]]:
+        """Aristas del laberinto que se excavan como tunel: (red, arista, desnivel). En cada zona
+        al menos una esta en la cadena (el camino bueno pasa por un tunel). El desnivel es sobre
+        todo negativo: el tunel baja por dentro y vuelve a subir."""
+        picked = []
+        for zone, net_name in (("cliffs", "cliffs"), ("canyon", "canyon_maze")):
+            net = self.nets[net_name]
+            chain_edges = {tuple(sorted((net.chain[k], net.chain[k + 1]))) for k in range(2, len(net.chain) - 3)}
+            lengths = [float(np.sum(np.linalg.norm(np.diff(c, axis=0), axis=1))) for c in net.curves]
+            ok = [k for k, e in enumerate(net.edges) if TUNNEL_EDGE_M[0] <= lengths[k] <= TUNNEL_EDGE_M[1]]
+            on_chain = [k for k in ok if tuple(sorted(net.edges[k])) in chain_edges]
+            others = [k for k in ok if tuple(sorted(net.edges[k])) not in chain_edges]
+            rng.shuffle(on_chain)
+            rng.shuffle(others)
+            chosen = on_chain[:1] + others[:TUNNELS_PER_ZONE[zone] - 1]
+            used_nodes: set[int] = set()
+            for k in chosen:
+                a, b = net.edges[k]
+                if a in used_nodes or b in used_nodes:
+                    continue
+                used_nodes |= {a, b}
+                dip = float(rng.uniform(1.5, 3.2)) * (-1.0 if rng.random() < 0.75 else 1.0)
+                picked.append((net_name, k, dip))
+        return picked
+
+    def _build_tunnel_samples(self) -> None:
+        """Puntos de todos los tuneles cada 0,5 m (prolongados 2,5 m por cada boca) con su
+        parametro t (0..1 de boca a boca), la cota de su suelo y su desnivel."""
+        pts, ts, floors, dips = [], [], [], []
+        for net_name, edge, dip in self.maze_tunnels:
+            net = self.nets[net_name]
+            curve = net.curves[edge]
+            seg = np.linalg.norm(np.diff(curve, axis=0), axis=1)
+            arc = np.concatenate(([0.0], np.cumsum(seg)))
+            s = np.arange(-2.5, arc[-1] + 2.5 + 0.5, 0.5)
+            x = np.interp(s, arc, curve[:, 0])
+            y = np.interp(s, arc, curve[:, 1])
+            # Prolongacion recta por las bocas (interp satura en los extremos).
+            head = (curve[1] - curve[0]) / max(float(np.linalg.norm(curve[1] - curve[0])), 1e-9)
+            tail = (curve[-1] - curve[-2]) / max(float(np.linalg.norm(curve[-1] - curve[-2])), 1e-9)
+            before, after = s < 0.0, s > arc[-1]
+            x[before] = curve[0, 0] + head[0] * s[before]
+            y[before] = curve[0, 1] + head[1] * s[before]
+            x[after] = curve[-1, 0] + tail[0] * (s[after] - arc[-1])
+            y[after] = curve[-1, 1] + tail[1] * (s[after] - arc[-1])
+            t = s / max(arc[-1], 1e-9)
+            pts.append(np.stack([x, y], axis=1))
+            ts.append(t)
+            floors.append(net.edge_floor(edge, t))
+            dips.append(np.full_like(t, dip))
+        if pts:
+            self.tunnel_pts = np.vstack(pts)
+            self.tunnel_t = np.concatenate(ts)
+            self.tunnel_floor = np.concatenate(floors)
+            self.tunnel_dip = np.concatenate(dips)
+            self.tunnel_tree = cKDTree(self.tunnel_pts)
+        else:
+            self.tunnel_tree = None
+
+    def _tunnel_query(self, X, Y):
+        """(distancia al eje del tunel mas cercano, t, suelo, desnivel), con la forma de X."""
+        d, k = self.tunnel_tree.query(np.stack([X.ravel(), Y.ravel()], axis=1))
+        shape = X.shape
+        return (d.reshape(shape), self.tunnel_t[k].reshape(shape), self.tunnel_floor[k].reshape(shape),
+                self.tunnel_dip[k].reshape(shape))
 
     def _plan_tunnels(self, rng: np.random.Generator) -> list[tuple[float, float]]:
         """2-3 tramos de tunel en el canon, en tramos casi rectos de la ruta y separados."""
@@ -200,18 +281,6 @@ class MapModel:
         strength = smooth(0.2, 0.8, self.n_dune_amp.unit(X, Y))
         return amp * field * (0.15 + 0.85 * strength)
 
-    def _tunnel_mask(self, s, d):
-        out = np.zeros_like(s)
-        for a, b in self.tunnels:
-            out = np.maximum(out, smooth(a - 1.0, a + 1.0, s) * (1.0 - smooth(b - 1.0, b + 1.0, s)))
-        return out * (1.0 - smooth(TUNNEL_HALF_WIDTH_M + 6.0, TUNNEL_HALF_WIDTH_M + 12.0, d))
-
-    def _ridge(self, s, d):
-        out = np.zeros_like(s)
-        for a, b in self.tunnels:
-            out = np.maximum(out, smooth(a - 12.0, a + 2.0, s) * (1.0 - smooth(b - 2.0, b + 12.0, s)))
-        return 4.0 * out * (1.0 - smooth(18.0, 35.0, d))
-
     def _rock_walls(self, X, Y, d, hw, f, top, face_width: float = 1.1, rim: float = 0.0):
         """Pasillo en roca con aspecto erosionado: contrafuertes, grietas que se meten en la
         pared y un talud de derrubios al pie. face_width: anchura horizontal de la cara (1 m ~
@@ -262,38 +331,43 @@ class MapModel:
         near_corridor = 1.0 - smooth(hw + 1.0, hw + 9.0, d_eff)
         floors["cliffs"] = f * near_corridor + (level_soft * (1.0 - start_w)) * (1.0 - near_corridor)
 
-        # Canon: pasillo algo mas recto y ancho por la ruta, callejones a los lados y tuneles.
-        d_side, _ = self._net("canyon", X, Y)
-        hw_main = 5.0 + 1.8 * width + 0.7 * self.n_buttress(X, Y)
-        d_can = np.minimum(d_route - (hw_main - 4.0), d_side)      # misma cara para los dos
-        tunnel = self._tunnel_mask(s_route, d_route)
-        d_can = np.where(tunnel > 0.5, np.maximum(d_can, 30.0), d_can)
-        f = 0.8 + 0.8 * mid
-        # Cimas onduladas (no una meseta de regla): repisas solo a medias, relieve grande.
-        raw_top = f + 9.0 + 5.0 * self.n_mid.unit(X, Y) + 2.5 * big + 1.2 * small + self._ridge(s_route, d_route)
-        top = 0.5 * raw_top + 0.5 * strata(raw_top, 2.5)
-        face_w = 2.6 + 1.6 * self.n_talus.unit(X, Y)
+        # Canon: otro laberinto de acantilados (2 niveles), de caras algo mas tendidas y cimas
+        # onduladas; sus tuneles son tramos del laberinto excavados en la roca.
+        d, level = self._net("canyon_maze", X, Y)
+        _, level_soft = self._net("canyon_maze", X, Y, smooth_m=10.0)
+        clear_w, clear_level = self._clearing("canyon_maze", X, Y)
+        hw = 3.4 + 1.4 * width + 0.8 * self.n_buttress(X, Y)
+        f = (level * (1.0 - clear_w) + clear_level * clear_w) + 0.3 * small
+        raw_top = level_soft + 10.0 + 4.5 * self.n_mid.unit(X, Y) + 2.0 * big + 1.2 * small
+        top = 0.5 * raw_top + 0.5 * strata(raw_top, 3.0)
+        d_eff = d * (1.0 - clear_w)
+        face_w = 1.6 + 1.2 * self.n_talus.unit(X, Y)
         heights["canyon"], bands["canyon"], axes["canyon"] = self._rock_walls(
-            X, Y, d_can, 4.0 + width, f, top, face_width=face_w, rim=0.35)
-        floors["canyon"] = f
+            X, Y, d_eff, hw, f, top, face_width=face_w, rim=0.2)
+        near_corridor = 1.0 - smooth(hw + 1.0, hw + 9.0, d_eff)
+        floors["canyon"] = f * near_corridor + level_soft * (1.0 - near_corridor)
 
         # Zona encharcada: dunas cuyas vaguadas quedan bajo el agua (laguitos); se cruza por
         # una cresta seca que sigue la ruta, con algun hueco que se salta.
         # Laguitos en las hondonadas de un relieve de manchas (no en franjas) y dunas encima.
         base = WATER_M - 0.6 + 3.0 * self.n_pond(X, Y) + self._dunes(X, Y, 2.4, 22.0)
-        # Barra de arena natural (no un dique): ancha, de orillas suaves e irregulares, que
-        # sube y baja con las dunas; los charcos la bordean. De vez en cuando un canal
-        # estrecho y torcido la corta y se salta.
-        bar_w = 4.0 + 4.0 * self.n_width.unit(X, Y)
-        crest = 1.0 - smooth(bar_w, bar_w + 9.0, d_route + 3.0 * self.n_crest(X, Y))
-        channel_s = np.mod(s_route + 6.0 * self.n_crest(Y, X), MARSH_JUMP_EVERY_M) - MARSH_JUMP_EVERY_M / 2
-        gap = (1.0 - smooth(0.5, 1.0, np.abs(channel_s))) * smooth(0.85, 0.95, w["marsh"])
+        # Sendero de arena natural (no un dique): estrecho, de orillas suaves e irregulares,
+        # que serpentea alrededor de la ruta (dominio deformado) y sube y baja con las dunas;
+        # los charcos lo bordean. De vez en cuando un charco estrecho lo corta y se salta.
+        wx = X + MARSH_WIGGLE_M * self.marsh_warp[0](X, Y)
+        wy = Y + MARSH_WIGGLE_M * self.marsh_warp[1](X, Y)
+        d_path, s_path = self.zones.nearest(wx, wy)
+        bar_w = 2.0 + 1.3 * self.n_width.unit(X, Y)
+        crest = 1.0 - smooth(bar_w, bar_w + 3.5, d_path + 0.8 * self.n_crest(X, Y))
+        channel_s = np.mod(s_path + 4.0 * self.n_crest(Y, X), MARSH_JUMP_EVERY_M) - MARSH_JUMP_EVERY_M / 2
+        # El corte solo existe sobre el sendero: no es un rio que cruce toda la zona.
+        gap = (1.0 - smooth(0.5, 1.0, np.abs(channel_s))) * smooth(0.85, 0.95, w["marsh"]) * smooth(0.3, 0.8, crest)
         path_top = MARSH_PATH_TOP_M + 0.5 * self._dunes(X, Y, 1.2, 16.0) + 0.3 * small
         land = base * (1.0 - crest) + np.maximum(base, path_top) * crest
         heights["marsh"] = land * (1.0 - gap) + np.minimum(land, WATER_M - 0.6) * gap
         floors["marsh"] = np.full_like(X, MARSH_PATH_TOP_M)
         bands["marsh"] = np.zeros_like(X)
-        axes["marsh"] = 1.0 - smooth(0.5, 1.5, d_route)
+        axes["marsh"] = 1.0 - smooth(0.5, 1.5, d_path)
 
         # Algas: lomas y hondonadas, red densa de sendas; el laberinto lo hace la espesura.
         d, _ = self._net("algae", X, Y)
@@ -345,7 +419,11 @@ class MapModel:
         plaza = 1.0 - smooth(10.0, 16.0, np.hypot(X - end[0], Y - end[1]))
         height = height * (1 - plaza) + np.maximum(height, END_PLAZA_M) * plaza
         height = np.minimum(height, TOP_LIMIT_M)
-        tunnel_zone = w["canyon"] * self._tunnel_mask(s_route, d_route)
+        if self.tunnel_tree is not None:
+            u, _, _, _ = self._tunnel_query(X, Y)
+            tunnel_zone = 1.0 - smooth(TUNNEL_HALF_WIDTH_M + 1.5, TUNNEL_HALF_WIDTH_M + 5.0, u)
+        else:
+            tunnel_zone = np.zeros_like(X)
         return Fields(w, d_route, s_route, height, floor, np.clip(band, 0, 1), np.clip(foliage, 0, 1), tunnel_zone,
                       np.clip(path, 0, 1))
 
@@ -390,29 +468,25 @@ class MapModel:
             D = np.minimum(D, -carve)
         return D
 
-    def _tunnel_carve(self, f: Fields, Z3, X=None, Y=None):
-        """> 0 dentro del hueco del tunel: boveda irregular (anchura y altura que cambian a lo
-        largo) sobre un suelo que sube o baja por dentro, con paredes rugosas."""
-        span = np.zeros_like(f.s_route)
-        climb = np.zeros_like(f.s_route)
-        for (a, b), amp in zip(self.tunnels, self.tunnel_climb):
-            span = np.maximum(span, smooth(a - 6.0, a - 3.0, f.s_route) * (1.0 - smooth(b + 3.0, b + 6.0, f.s_route)))
-            t = np.clip((f.s_route - a) / (b - a), 0.0, 1.0)
-            climb = climb + amp * np.sin(np.pi * t) * ((f.s_route > a - 6.0) & (f.s_route < b + 6.0))
-        span = span * (f.weights["canyon"] > 0.5)
-        if X is not None:
-            wobble = self.n_tunnel(X, Y)
-            half = TUNNEL_HALF_WIDTH_M * (1.0 + 0.25 * wobble)
-            height = TUNNEL_HEIGHT_M * (1.0 + 0.2 * self.n_tunnel(Y, X))
-        else:
-            half, height = np.full_like(span, TUNNEL_HALF_WIDTH_M), np.full_like(span, TUNNEL_HEIGHT_M)
-        u = f.d_route[..., None]
-        v = Z3 - (f.floor + climb)[..., None]
-        shape = np.broadcast_shapes(u.shape, v.shape)
-        arch = height[..., None] * np.sqrt(np.clip(1.0 - (u / half[..., None]) ** 2, 0.0, 1.0)) + 0.8
-        inside = np.minimum.reduce([np.broadcast_to(arch - v, shape), np.broadcast_to(v + 0.25, shape),
-                                    np.broadcast_to(half[..., None] + 0.8 - u, shape)])
-        return np.where(span[..., None] > 0.5, inside, -1.0)
+    def _tunnel_carve(self, f: Fields, Z3, X, Y):
+        """> 0 dentro del hueco del tunel: seccion eliptica redondeada (sin cantos) que cambia
+        de ancho y alto a lo largo, sobre un suelo plano que baja (o sube) por dentro y vuelve
+        a la cota del laberinto en cada boca."""
+        if self.tunnel_tree is None:
+            return np.full(np.broadcast_shapes(X.shape + (1,), Z3.shape), -1.0)
+        u, t, floor, dip = self._tunnel_query(X, Y)
+        tc = np.clip(t, 0.0, 1.0)
+        base = floor + dip * np.sin(np.pi * tc)
+        half = TUNNEL_HALF_WIDTH_M * (1.0 + 0.22 * self.n_tunnel(X, Y))
+        height = TUNNEL_HEIGHT_M * (1.0 + 0.18 * self.n_tunnel(Y, X))
+        v = Z3 - base[..., None]
+        center = 0.42 * height[..., None]
+        radius_v = 0.62 * height[..., None]
+        ellipse = 1.0 - np.sqrt((u[..., None] / half[..., None]) ** 2 + ((v - center) / radius_v) ** 2)
+        inside = np.minimum(ellipse * half[..., None], v + 0.3)      # suelo plano para caminar
+        # Fuera del tramo (mas alla de la prolongacion de las bocas) no se excava.
+        active = (t > -0.2) & (t < 1.2)
+        return np.where(active[..., None], inside, -1.0)
 
 
 # ── Erosion (funciones puras sobre una rejilla de 1 m) ─────────────────────────────
