@@ -32,10 +32,30 @@ namespace TNProcActors
 		return Pawn && (Pawn->IsLocallyControlled() || Pawn->HasAuthority());
 	}
 
-	/** Tinte greybox: instancia dinámica del material 0 con los parámetros de color habituales. */
-	inline void Tint(UStaticMeshComponent* Comp, const FLinearColor& Color)
+	/** true si el material expone alguno de los parámetros de color que usa Tint. */
+	inline bool HasTintParameter(const UMaterialInterface* Material)
 	{
-		if (!Comp || !Comp->GetMaterial(0)) { return; }
+		FLinearColor Value;
+		return Material && (Material->GetVectorParameterValue(FHashedMaterialParameterInfo(TEXT("Color")), Value)
+			|| Material->GetVectorParameterValue(FHashedMaterialParameterInfo(TEXT("BaseColor")), Value));
+	}
+
+	/**
+	 * Tinte greybox: instancia dinámica del material 0 con los parámetros de color habituales.
+	 * Las formas básicas del motor traen DefaultMaterial o WorldGridMaterial, sin parámetros:
+	 * si el material no se puede teñir y bAllowFallback, se cambia por BasicShapeMaterial.
+	 */
+	inline void Tint(UStaticMeshComponent* Comp, const FLinearColor& Color, bool bAllowFallback = true)
+	{
+		if (!Comp) { return; }
+		if (bAllowFallback && !HasTintParameter(Comp->GetMaterial(0)))
+		{
+			if (UMaterialInterface* Tintable = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")))
+			{
+				Comp->SetMaterial(0, Tintable);
+			}
+		}
+		if (!Comp->GetMaterial(0)) { return; }
 		if (UMaterialInstanceDynamic* MID = Comp->CreateAndSetMaterialInstanceDynamic(0))
 		{
 			MID->SetVectorParameterValue(TEXT("Color"), Color);

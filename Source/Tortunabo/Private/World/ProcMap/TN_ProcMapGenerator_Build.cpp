@@ -6,6 +6,7 @@
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
+#include "World/ProcMap/TN_ProcMapActorUtils.h"
 #include "Core/TN_Log.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/BoxComponent.h"
@@ -313,9 +314,9 @@ void ATN_ProcMapGenerator::BuildWater()
 		{
 			WaterPlane->SetMaterial(0, WaterMat);
 		}
-		else if (UMaterialInstanceDynamic* MID = WaterPlane->CreateAndSetMaterialInstanceDynamic(0))
+		else
 		{
-			MID->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.05f, 0.3f, 0.5f));
+			TNProcActors::Tint(WaterPlane, FLinearColor(0.05f, 0.3f, 0.5f));
 		}
 	}
 

@@ -9,6 +9,7 @@
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "World/ProcMap/TN_ProcPuzzleActors.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
+#include "World/ProcMap/TN_ProcMapActorUtils.h"
 #include "Core/TN_Log.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -229,11 +230,8 @@ void ATN_ProcMapGenerator::BuildScatter()
 			}
 			if (Layer.bApplyTint)
 			{
-				if (UMaterialInstanceDynamic* MID = HISM->CreateAndSetMaterialInstanceDynamic(0))
-				{
-					MID->SetVectorParameterValue(TEXT("Color"), Layer.Tint);
-					MID->SetVectorParameterValue(TEXT("BaseColor"), Layer.Tint);
-				}
+				// Con material propio solo se tiñe si lo admite; sin él, material greybox tintable.
+				TNProcActors::Tint(HISM, Layer.Tint, Layer.Material == nullptr);
 			}
 			// Transformadas en espacio del mapa = espacio local del generador.
 			HISM->AddInstances(Transforms, false, false);
