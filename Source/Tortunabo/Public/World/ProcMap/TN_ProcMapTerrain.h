@@ -60,28 +60,28 @@ namespace TNProcMap
 		{
 			case ETNProcBiome::Jungle:
 				T.UndAmp = 350; T.RiseMax = 900;  T.RiseDist = 2200; T.Shoulder = 250; T.Rough = 160; T.Ridge = 0.0; T.CoastWidth = 2500;
-				T.BankMin = 550; T.BankMax = 1100; T.BankAngle = 66; T.MountainAmp = 14000; T.WallAmp = 2500; break;
+				T.BankMin = 550; T.BankMax = 1100; T.BankAngle = 66; T.MountainAmp = 8400; T.WallAmp = 800; break;
 			case ETNProcBiome::Beach:
 				T.UndAmp = 110; T.RiseMax = 300;  T.RiseDist = 3500; T.Shoulder = 300; T.Rough = 190; T.Ridge = 0.8; T.CoastWidth = 6500;
-				T.BankMin = 480; T.BankMax = 850;  T.BankAngle = 62; T.MountainAmp = 5000; T.WallAmp = 1200; break;
+				T.BankMin = 480; T.BankMax = 850;  T.BankAngle = 62; T.MountainAmp = 3000; T.WallAmp = 400; break;
 			case ETNProcBiome::Desert:
 				T.UndAmp = 300; T.RiseMax = 800;  T.RiseDist = 2200; T.Shoulder = 200; T.Rough = 380; T.Ridge = 1.0; T.CoastWidth = 3500;
-				T.BankMin = 650; T.BankMax = 1400; T.BankAngle = 72; T.MountainAmp = 12000; T.WallAmp = 3200; break;
+				T.BankMin = 650; T.BankMax = 1400; T.BankAngle = 72; T.MountainAmp = 7200; T.WallAmp = 1000; break;
 			case ETNProcBiome::Volcanic:
 				T.UndAmp = 450; T.RiseMax = 1200; T.RiseDist = 2000; T.Shoulder = 200; T.Rough = 300; T.Ridge = 0.6; T.CoastWidth = 1200;
-				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 70; T.MountainAmp = 16000; T.WallAmp = 3000; break;
+				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 70; T.MountainAmp = 9600; T.WallAmp = 1000; break;
 			case ETNProcBiome::Water:
 				T.UndAmp = 60;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -1000; T.bWet = true;
-				T.BankMin = 550; T.BankMax = 950;  T.BankAngle = 66; T.MountainAmp = 11000; T.WallAmp = 1800; break;
+				T.BankMin = 550; T.BankMax = 950;  T.BankAngle = 66; T.MountainAmp = 6600; T.WallAmp = 600; break;
 			case ETNProcBiome::Rocky:
 				T.UndAmp = 400; T.RiseMax = 1500; T.RiseDist = 1500; T.Shoulder = 150; T.Rough = 360; T.Ridge = 1.0; T.CoastWidth = 800;
-				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 75; T.MountainAmp = 24000; T.WallAmp = 4000; break;
+				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 75; T.MountainAmp = 14400; T.WallAmp = 1400; break;
 			case ETNProcBiome::Mangrove:
 				T.UndAmp = 30;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 25;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -350; T.bWet = true;
-				T.BankMin = 500; T.BankMax = 850;  T.BankAngle = 64; T.MountainAmp = 5000; T.WallAmp = 1500; break;
+				T.BankMin = 500; T.BankMax = 850;  T.BankAngle = 64; T.MountainAmp = 3000; T.WallAmp = 500; break;
 			case ETNProcBiome::Human:
 				T.UndAmp = 150; T.RiseMax = 400;  T.RiseDist = 2500; T.Shoulder = 250; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 3000;
-				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 70; T.MountainAmp = 5000; T.WallAmp = 1200; break;
+				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 70; T.MountainAmp = 3000; T.WallAmp = 400; break;
 			default: break;
 		}
 		return T;
