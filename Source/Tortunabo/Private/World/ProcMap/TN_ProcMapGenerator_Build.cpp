@@ -279,7 +279,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 				}
 			}
 
-			UProceduralMeshComponent* Tile = NewObject<UProceduralMeshComponent>(this);
+			UProceduralMeshComponent* Tile = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
 			Tile->SetupAttachment(RootComponent);
 			Tile->bUseAsyncCooking = true;
 			Tile->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
@@ -300,7 +300,7 @@ void ATN_ProcMapGenerator::BuildWater()
 	// Plano de agua a nivel del mar sobre todo el mallado: el terreno lo tapa donde está por encima.
 	if (BasicPlane)
 	{
-		WaterPlane = NewObject<UStaticMeshComponent>(this);
+		WaterPlane = NewObject<UStaticMeshComponent>(this, NAME_None, RF_Transient);
 		WaterPlane->SetupAttachment(RootComponent);
 		WaterPlane->SetStaticMesh(BasicPlane);
 		WaterPlane->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -570,7 +570,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 	UMaterialInterface* BasicMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	UMaterialInterface* VertexMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
 
-	StructureMesh = NewObject<UProceduralMeshComponent>(this);
+	StructureMesh = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
 	StructureMesh->SetupAttachment(RootComponent);
 	StructureMesh->bUseAsyncCooking = true;
 	StructureMesh->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
@@ -586,7 +586,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 		StructureMesh->SetMaterial(1, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
 	}
 
-	DecorMesh = NewObject<UProceduralMeshComponent>(this);
+	DecorMesh = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
 	DecorMesh->SetupAttachment(RootComponent);
 	DecorMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DecorMesh->SetCastShadow(false);
@@ -617,7 +617,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 		{ FVector(World * 0.5, CoastMax + 16000.0, 0.0), FVector(World, 300.0, Tall) } };
 	for (const FWallDef& Def : Walls)
 	{
-		UBoxComponent* Wall = NewObject<UBoxComponent>(this);
+		UBoxComponent* Wall = NewObject<UBoxComponent>(this, NAME_None, RF_Transient);
 		Wall->SetupAttachment(RootComponent);
 		Wall->SetBoxExtent(Def.Extent);
 		Wall->SetCollisionProfileName(TEXT("InvisibleWall"));

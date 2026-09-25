@@ -214,7 +214,7 @@ void ATN_ProcMapGenerator::BuildScatter()
 			}
 			if (Transforms.Num() == 0) { continue; }
 
-			UHierarchicalInstancedStaticMeshComponent* HISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
+			UHierarchicalInstancedStaticMeshComponent* HISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(this, NAME_None, RF_Transient);
 			HISM->SetupAttachment(RootComponent);
 			HISM->SetStaticMesh(Layer.Mesh);
 			HISM->SetCollisionProfileName(Layer.bCollision ? TEXT("BlockAll") : TEXT("NoCollision"));
@@ -567,7 +567,7 @@ void ATN_ProcMapGenerator::RunBiomePCG()
 		{
 			continue;
 		}
-		UPCGComponent* PCG = NewObject<UPCGComponent>(this);
+		UPCGComponent* PCG = NewObject<UPCGComponent>(this, NAME_None, RF_Transient);
 		PCG->RegisterComponent();
 		PCG->SetGraph(Asset->PCGGraph);
 		PCG->GenerateLocal(true);
