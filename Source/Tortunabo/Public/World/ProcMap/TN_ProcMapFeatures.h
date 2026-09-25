@@ -241,6 +241,62 @@ namespace TNProcMap
 					}
 				}
 			}
+			// Caerse del puente colgante mata: cajas desde 60 cm bajo el tablero hasta 12,5 m, en tramos
+			// de <= 20 m desde el borde de un pilar de torre hasta el del otro. Nunca sobre el vuelo del
+			// géiser (tramo de llegada a la torre de entrada) ni sobre el tobogán de la de salida.
+			if (C.Type == ETNProcCrossingType::Bridge)
+			{
+				const FVector2D TowerIn = M[High.FirstSample].P;
+				const FVector2D TowerOut = M[High.LastSample].P;
+				TArray<FVector> Avoid;
+				if (C.HighStep > 0)
+				{
+					const FRouteStep& Prev = L.Route[C.HighStep - 1];
+					for (int32 i = Prev.FirstSample; i <= Prev.LastSample; ++i)
+					{
+						if (FVector2D::Distance(M[i].P, TowerIn) < P.TowerRadius + 3500.0) { Avoid.Add(FVector(M[i].P, M[i].Z)); }
+					}
+				}
+				if (C.HighStep + 1 < L.Route.Num())
+				{
+					const FRouteStep& Next = L.Route[C.HighStep + 1];
+					for (int32 i = Next.FirstSample; i <= Next.LastSample; ++i)
+					{
+						if (FVector2D::Distance(M[i].P, TowerOut) < P.TowerRadius + 6000.0) { Avoid.Add(FVector(M[i].P, M[i].Z)); }
+					}
+				}
+				auto Emit = [&](int32 From, int32 To)
+				{
+					const FVector2D A = M[From].P;
+					const FVector2D B = M[To].P;
+					FKillBox K;
+					K.Dir = (B - A).GetSafeNormal();
+					if (K.Dir.IsNearlyZero()) { return; }
+					double HalfW = 0.0;
+					for (int32 i = From; i <= To; ++i) { HalfW = FMath::Max(HalfW, M[i].Width * 0.5); }
+					K.Center = FVector((A + B) * 0.5, C.TopZ - 655.0);
+					K.Half = FVector(FVector2D::Distance(A, B) * 0.5 + 150.0, HalfW + 800.0, 595.0);
+					for (const FVector& Q : Avoid)
+					{
+						const FVector2D Rel(Q.X - K.Center.X, Q.Y - K.Center.Y);
+						const bool bIn = FMath::Abs(FVector2D::DotProduct(Rel, K.Dir)) <= K.Half.X + 400.0
+							&& FMath::Abs(FVector2D::DotProduct(Rel, FVector2D(-K.Dir.Y, K.Dir.X))) <= K.Half.Y + 400.0;
+						if (bIn) { return; }
+					}
+					L.KillBoxes.Add(K);
+				};
+				int32 From = INDEX_NONE;
+				for (int32 i = High.FirstSample; i <= High.LastSample; ++i)
+				{
+					const bool bFree = FVector2D::Distance(M[i].P, TowerIn) > P.TowerRadius + 50.0 && FVector2D::Distance(M[i].P, TowerOut) > P.TowerRadius + 50.0;
+					if (bFree && From == INDEX_NONE) { From = i; }
+					const bool bFlush = From != INDEX_NONE && (!bFree || i == High.LastSample || M[i].S - M[From].S >= 2000.0);
+					if (!bFlush) { continue; }
+					const int32 To = bFree ? i : i - 1;
+					if (To > From) { Emit(From, To); }
+					From = bFree ? i : INDEX_NONE;
+				}
+			}
 			FFeature S = MakeAtSample(C.Type == ETNProcCrossingType::Bridge ? EFeature::Deck : EFeature::Mesa, M[High.FirstSample], High.FirstSample, INDEX_NONE);
 			S.Aux = c;
 			S.Aux2 = High.LastSample;

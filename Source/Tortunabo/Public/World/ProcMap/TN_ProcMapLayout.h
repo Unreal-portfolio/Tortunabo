@@ -262,6 +262,23 @@ namespace TNProcMap
 		Count
 	};
 
+	/** Caja de muerte orientada (en planta según Dir): caer dentro es morir y reaparecer en los huevos. */
+	struct FKillBox
+	{
+		FVector Center = FVector::ZeroVector;
+		FVector2D Dir = FVector2D(1.0, 0.0);
+		/** Semiejes: a lo largo de Dir, a lo ancho y en altura. */
+		FVector Half = FVector::ZeroVector;
+
+		bool Contains(const FVector& P) const
+		{
+			const FVector2D Rel(P.X - Center.X, P.Y - Center.Y);
+			return FMath::Abs(FVector2D::DotProduct(Rel, Dir)) <= Half.X
+				&& FMath::Abs(FVector2D::DotProduct(Rel, FVector2D(-Dir.Y, Dir.X))) <= Half.Y
+				&& FMath::Abs(P.Z - Center.Z) <= Half.Z;
+		}
+	};
+
 	/** Cuánto se extiende la zanja de un hueco de salto a cada lado del camino (cm). */
 	constexpr double GapTrenchSide = 1500.0;
 
@@ -307,6 +324,8 @@ namespace TNProcMap
 		TArray<FCrossing> Crossings;
 		TArray<FPathSample> Main;
 		TArray<FBranch> Branches;
+		/** Zonas de muerte fijas (bajo los tableros de los puentes colosales). */
+		TArray<FKillBox> KillBoxes;
 		TArray<FFeature> Features;
 
 		/** Río opcional: polilínea desde la costa hacia el interior. */

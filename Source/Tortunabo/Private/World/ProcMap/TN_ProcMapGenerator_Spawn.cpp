@@ -343,36 +343,13 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 		}
 	}
 
-	// Caerse de un puente colosal mata: zona de muerte 10 m bajo el tablero (el tramo bajo
-	// pasa mucho más abajo), en tramos de ~20 m y sin tocar las torres de los extremos.
-	for (const FCrossing& Cr : Layout.Crossings)
+	// Caerse de un puente colosal mata: cajas de muerte del layout (bajo los tableros).
+	for (const FKillBox& K : Layout.KillBoxes)
 	{
-		if (Cr.Type != ETNProcCrossingType::Bridge) { continue; }
-		const FRouteStep& High = Layout.Route[Cr.HighStep];
-		const FVector2D TowerIn = M[High.FirstSample].P;
-		const FVector2D TowerOut = M[High.LastSample].P;
-		const double Keep = Layout.Params.TowerRadius + 1500.0;
-		int32 From = INDEX_NONE;
-		for (int32 i = High.FirstSample; i <= High.LastSample; ++i)
+		if (ATN_ProcKillVolume* Kill = Cast<ATN_ProcKillVolume>(SpawnMapActor(ATN_ProcKillVolume::StaticClass(),
+			FTransform(FRotator(0.0, FMath::RadiansToDegrees(AngleOf(K.Dir)) + Yaw0, 0.0), MapToWorld(K.Center)), false)))
 		{
-			const bool bFree = FVector2D::Distance(M[i].P, TowerIn) > Keep && FVector2D::Distance(M[i].P, TowerOut) > Keep;
-			if (bFree && From == INDEX_NONE) { From = i; }
-			const bool bFlush = From != INDEX_NONE && (!bFree || i == High.LastSample || M[i].S - M[From].S >= 2000.0);
-			if (!bFlush) { continue; }
-			const int32 To = bFree ? i : i - 1;
-			if (To > From)
-			{
-				const FVector2D A = M[From].P;
-				const FVector2D B = M[To].P;
-				const FVector2D Dir = (B - A).GetSafeNormal();
-				const FVector Loc = MapToWorld2D((A + B) * 0.5, Cr.TopZ - 1000.0);
-				if (ATN_ProcKillVolume* Kill = Cast<ATN_ProcKillVolume>(SpawnMapActor(ATN_ProcKillVolume::StaticClass(),
-					FTransform(FRotator(0.0, FMath::RadiansToDegrees(AngleOf(Dir)) + Yaw0, 0.0), Loc), false)))
-				{
-					Kill->SetExtent(FVector(FVector2D::Distance(A, B) * 0.5 + 150.0, 2500.0, 250.0));
-				}
-			}
-			From = bFree ? i : INDEX_NONE;
+			Kill->SetExtent(K.Half);
 		}
 	}
 }

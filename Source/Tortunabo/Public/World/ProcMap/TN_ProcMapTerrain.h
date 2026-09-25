@@ -181,7 +181,7 @@ namespace TNProcMap
 		{
 			const FVector2D P = Origin + FVector2D(ix * Spacing, iy * Spacing);
 			const int32 Idx = iy * NX + ix;
-			return Evaluate(P, PathDist[Idx], PathSeg[Idx], PathT[Idx], GuardZ[Idx], OutMask);
+			return Evaluate(P, PathDist[Idx], PathSeg[Idx], PathT[Idx], GuardZ[Idx], DeckTop[Idx], OutMask);
 		}
 
 	private:
@@ -205,6 +205,8 @@ namespace TNProcMap
 		TArray<float> PathScore;
 		/** Altura mínima fuera de los suelos: la del suelo + talud mínimo de cualquier cauce cercano. */
 		TArray<float> GuardZ;
+		/** Cota del tablero de un puente colosal sobre cada vértice de su huella (-1e9 fuera). */
+		TArray<float> DeckTop;
 		static constexpr double GuardBandMin = 300.0;
 		static constexpr double GuardBandMax = 3500.0;
 
@@ -282,6 +284,32 @@ namespace TNProcMap
 			PathT.Init(0.0f, N);
 			PathScore.Init(1e18f, N);
 			GuardZ.Init(-1e9f, N);
+			// Huella de los tableros de los puentes colosales: bajo ellos no se levantan las guardas de
+			// otros cauces (el tobogán de la torre de salida arranca justo al lado del tablero).
+			DeckTop.Init(-1e9f, N);
+			for (const FCrossing& C : L->Crossings)
+			{
+				if (C.Type != ETNProcCrossingType::Bridge) { continue; }
+				const FRouteStep& High = L->Route[C.HighStep];
+				for (int32 i = High.FirstSample; i < High.LastSample; ++i)
+				{
+					const FPathSample& A = L->Main[i];
+					const FPathSample& B = L->Main[i + 1];
+					const double R = FMath::Max(A.Width, B.Width) * 0.5 + 300.0;
+					const int32 X0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.P.X, B.P.X) - R - Origin.X) / Spacing));
+					const int32 X1 = FMath::Min(NX - 1, FMath::CeilToInt((FMath::Max(A.P.X, B.P.X) + R - Origin.X) / Spacing));
+					const int32 Y0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.P.Y, B.P.Y) - R - Origin.Y) / Spacing));
+					const int32 Y1 = FMath::Min(NY - 1, FMath::CeilToInt((FMath::Max(A.P.Y, B.P.Y) + R - Origin.Y) / Spacing));
+					for (int32 y = Y0; y <= Y1; ++y)
+					{
+						for (int32 x = X0; x <= X1; ++x)
+						{
+							double T = 0.0;
+							if (DistPointSegment(Origin + FVector2D(x * Spacing, y * Spacing), A.P, B.P, T) <= R) { DeckTop[y * NX + x] = static_cast<float>(C.TopZ); }
+						}
+					}
+				}
+			}
 			for (int32 i = 0; i < Samples.Num(); ++i)
 			{
 				const int32 j = NextOf[i];
@@ -329,7 +357,7 @@ namespace TNProcMap
 							PathSeg[Idx] = i;
 							PathT[Idx] = static_cast<float>(T);
 						}
-						if (GuardH > 0.0 && Eff >= GuardBandMin && Eff <= GuardBandMax)
+						if (GuardH > 0.0 && Eff >= GuardBandMin && Eff <= GuardBandMax && DeckTop[Idx] < -1e8f)
 						{
 							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH);
 							GuardZ[Idx] = FMath::Max(GuardZ[Idx], G);
@@ -579,7 +607,7 @@ namespace TNProcMap
 				double Reach = 0.0;
 				switch (F.Type)
 				{
-					case EFeature::Tower:
+					case EFeature::Tower:      Inf.Type = EInf::Tower; Reach = F.Radius + 3200.0; break;
 					case EFeature::DeckPillar: Inf.Type = EInf::Tower; Reach = F.Radius + 700.0; break;
 					case EFeature::Gap:      Inf.Type = EInf::Gap;    Reach = FMath::Max(F.Height, F.Width) * 0.5 + 3000.0; break;
 					case EFeature::LavaPool: Inf.Type = EInf::Lava;   Reach = F.Radius + 1000.0; break;
@@ -632,7 +660,7 @@ namespace TNProcMap
 			OutWet = WetSum / Total;
 		}
 
-		double Evaluate(const FVector2D& P, float InPathDist, int32 InSeg, float InT, float InGuard, uint8& OutMask) const
+		double Evaluate(const FVector2D& P, float InPathDist, int32 InSeg, float InT, float InGuard, float InDeckTop, uint8& OutMask) const
 		{
 			OutMask = 0;
 			FBiomeTerrain Bt;
@@ -690,12 +718,25 @@ namespace TNProcMap
 			{
 				if (Inf.Type != EInf::DeckClear) { continue; }
 				const FCrossing& C = L->Crossings[Inf.A];
-				const FRouteStep& High = L->Route[C.HighStep];
-				const double Keep = L->Params.TowerRadius + 1500.0;
-				if (FVector2D::Distance(P, L->Main[High.FirstSample].P) < Keep || FVector2D::Distance(P, L->Main[High.LastSample].P) < Keep) { continue; }
+				// Hasta el mismo pilar (que va encima, como influencia): el puente arranca limpio de la
+				// plataforma de la torre.
 				double T = 0.0;
 				const double D = DistPointSegment(P, L->Main[Inf.B].P, L->Main[Inf.B + 1].P, T);
 				if (D < 3500.0) { Outer = FMath::Min(Outer, C.TopZ - 1700.0); }
+			}
+			// Las torres sobresalen del paisaje: alrededor de cada una (22-30 m) el terreno queda al menos
+			// 17 m bajo su cima. Si no, con paredes y montañas altas la cima quedaría a ras del paisaje y
+			// se saldría de ella andando.
+			for (const FInf& Inf : Bin)
+			{
+				if (Inf.Type != EInf::Tower) { continue; }
+				const FFeature& F = L->Features[Inf.A];
+				if (F.Type != EFeature::Tower) { continue; }
+				const double D = FVector2D::Distance(P, FVector2D(F.Location.X, F.Location.Y));
+				if (D < F.Radius + 3000.0)
+				{
+					Outer = FMath::Min(Outer, LerpD(F.Height - 1700.0, Outer, SmoothStep(F.Radius + 2200.0, F.Radius + 3000.0, D)));
+				}
 			}
 			// Mesas de los cruces cueva: son paisaje, los cauces las cortan (aproximación, géiser y túnel).
 			bool bMesaTop = false;
@@ -786,6 +827,10 @@ namespace TNProcMap
 
 			if (bMesaTop && H >= Outer - 1.0) { OutMask = 180; }
 
+			// Bajo el tablero de un puente colosal: vacío (y zona de muerte) al menos 1,5 m por debajo,
+			// sin taludes ni mesetas que lo tapen. Las torres y los pilares van encima (influencias).
+			if (InDeckTop > -1e8f) { H = FMath::Min(H, static_cast<double>(InDeckTop) - 150.0); }
+
 			// ── Influencias localizadas ─────────────────────────────────────
 			if (Bin.Num() > 0)
 			{
@@ -832,6 +877,31 @@ namespace TNProcMap
 			return LerpD(Cliff, SeaBed, SmoothStep(Coast - 400.0, Coast + 200.0, P.Y));
 		}
 
+		/**
+		 * Si P (en el borde de la plataforma de una torre) queda en una abertura del pretil: sobre el
+		 * arranque de la pasada alta (puente o mesa) o, en la torre de salida, del tobogán.
+		 */
+		bool TowerOpening(const FFeature& F, const FVector2D& P) const
+		{
+			if (F.Aux == INDEX_NONE || !L->Crossings.IsValidIndex(F.Aux)) { return true; }
+			const FCrossing& C = L->Crossings[F.Aux];
+			const FRouteStep& High = L->Route[C.HighStep];
+			const TArray<FPathSample>& M = L->Main;
+			auto Near = [&](int32 From, int32 To)
+			{
+				for (int32 i = FMath::Max(0, From); i < FMath::Min(To, M.Num() - 1); ++i)
+				{
+					double T = 0.0;
+					const double D = DistPointSegment(P, M[i].P, M[i + 1].P, T);
+					if (D <= LerpD(M[i].Width, M[i + 1].Width, T) * 0.5 + 150.0) { return true; }
+				}
+				return false;
+			};
+			if (F.PathIndex == High.FirstSample) { return Near(High.FirstSample, High.FirstSample + 10); }
+			if (Near(High.LastSample - 10, High.LastSample)) { return true; }
+			return C.HighStep + 1 < L->Route.Num() && Near(L->Route[C.HighStep + 1].FirstSample, L->Route[C.HighStep + 1].FirstSample + 10);
+		}
+
 		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask) const
 		{
 			const TArray<FPathSample>& M = L->Main;
@@ -842,8 +912,16 @@ namespace TNProcMap
 				if (Inf.Type != EInf::Tower) { continue; }
 				const FFeature& F = L->Features[Inf.A];
 				const double D = FVector2D::Distance(P, FVector2D(F.Location.X, F.Location.Y));
-				// Pilar: sube el terreno hasta la cima; el cauce del tramo alto la talla con sus taludes.
-				if (D <= F.Radius) { H = FMath::Max(H, F.Height); OutMask = FMath::Max<uint8>(OutMask, 150); }
+				// Pilar: plataforma plana a la cota de la cima en todo su radio (sin taludes ni mesetas
+				// dentro): ahí se encuentran el aterrizaje del géiser, el puente y el tobogán. Los pilares
+				// bajo el tablero solo suben hasta su cima.
+				if (D <= F.Radius)
+				{
+					// Pretil de roca de 1,8 m en el borde (no se salta), abierto hacia el puente y el tobogán.
+					const bool bParapet = F.Type == EFeature::Tower && D > F.Radius - 300.0 && !TowerOpening(F, P);
+					H = F.Type == EFeature::Tower ? F.Height + (bParapet ? 180.0 : 0.0) : FMath::Max(H, F.Height);
+					OutMask = FMath::Max<uint8>(OutMask, 150);
+				}
 				else if (D < F.Radius + 600.0) { H = FMath::Max(H, LerpD(F.Height, H, (D - F.Radius) / 600.0)); }
 			}
 
