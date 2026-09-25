@@ -658,6 +658,205 @@ namespace TNFloraMesh
 				}
 				break;
 			}
+			case EFloraShape::BananaPlant:
+			{
+				// Platanera: pseudotallo y hojas enormes en pala, algunas rasgadas; racimo en una variante.
+				const double H = Rand(1, 190.0, 240.0);
+				TNFloraLathe(M, FVector::ZeroVector, { 0.0, H * 0.5, H }, { 20.0, 16.0, 12.0 }, 0.06, Seed, TNProcLerpColor(Pal.Bark, LeafAlt, 0.55f), 7, false);
+				const int32 NL = 7 + Variant;
+				for (int32 l = 0; l < NL; ++l)
+				{
+					const FLinearColor C = (l % 3 == 0) ? LeafAlt * 1.12f : Leaf * 1.05f;
+					TNFloraFrond(M, FVector(0.0, 0.0, H - 10.0 + 12.0 * (l % 2)), DirAt(l, NL), Rand(10 + l, 170.0, 230.0), Rand(20 + l, 58.0, 72.0), Rand(30 + l, 50.0, 90.0), Rand(40 + l, 90.0, 150.0), C, 5);
+				}
+				if (Variant == 2)
+				{
+					for (int32 b = 0; b < 6; ++b)
+					{
+						TNFloraBead(M, FVector(24.0 + 5.0 * (b % 2), 8.0 * (b % 3), H - 40.0 - 12.0 * b), 10.0, Seed + 30u + b, FLinearColor(0.85f, 0.75f, 0.15f));
+					}
+				}
+				break;
+			}
+			case EFloraShape::Bamboo:
+			{
+				// Mata de bambú: cañas finas con nudos, algo inclinadas, y penachos de hojas arriba.
+				const FLinearColor Cane = TNFloraVary(FLinearColor(0.42f, 0.52f, 0.18f), Variant);
+				const int32 NC = 6 + 2 * Variant;
+				for (int32 c = 0; c < NC; ++c)
+				{
+					const FVector2D D = DirAt(c, NC);
+					const double R0 = Rand(10 + c, 5.0, 45.0);
+					const double Ht = Rand(20 + c, 620.0, 1050.0);
+					const FVector Base(D.X * R0, D.Y * R0, -20.0);
+					const FVector Top = Base + FVector(D.X * Ht * 0.08, D.Y * Ht * 0.08, Ht);
+					for (int32 s = 0; s < 4; ++s)
+					{
+						const FVector A = FMath::Lerp(Base, Top, s / 4.0);
+						const FVector B = FMath::Lerp(Base, Top, (s + 1) / 4.0);
+						TNProcAddCylinder(M, A, B - (B - A).GetSafeNormal() * 6.0, 6.0, 5.5, 5, s % 2 ? Cane : Cane * 0.88f, false);
+						TNProcAddCylinder(M, B - (B - A).GetSafeNormal() * 6.0, B, 7.0, 7.0, 5, Cane * 0.7f, false);
+					}
+					for (int32 l = 0; l < 3; ++l)
+					{
+						TNFloraFrond(M, FMath::Lerp(Base, Top, 0.7 + 0.1 * l), DirAt(c * 3 + l, NC * 3), Rand(40 + c * 3 + l, 70.0, 110.0), 16.0, 20.0, 45.0, (l % 2) ? Leaf : LeafAlt, 3);
+					}
+				}
+				break;
+			}
+			case EFloraShape::TreeFern:
+			{
+				// Helecho arbóreo: tronco fibroso y una corona de frondas enormes que se arquean.
+				const double H = Rand(1, 280.0, 420.0);
+				TNFloraLathe(M, FVector::ZeroVector, { 0.0, 40.0, H }, { 26.0, 19.0, 16.0 }, 0.14, Seed, Pal.Bark * 0.8f, 7, false);
+				const int32 NF = 9 + Variant;
+				for (int32 f = 0; f < NF; ++f)
+				{
+					TNFloraFrond(M, FVector(0.0, 0.0, H), DirAt(f, NF), Rand(10 + f, 190.0, 250.0), Rand(20 + f, 40.0, 52.0), Rand(30 + f, 60.0, 90.0), Rand(40 + f, 130.0, 190.0), (f % 2) ? Leaf : LeafAlt, 5);
+				}
+				TNFloraBlob(M, FVector(0.0, 0.0, H + 5.0), 22.0, 14.0, Seed + 3u, Leaf * 0.7f, 6);
+				break;
+			}
+			case EFloraShape::SeaGrape:
+			{
+				// Uva de playa: varios troncos cortos retorcidos y copa baja de hojas redondas grandes.
+				const double H = Rand(1, 220.0, 320.0);
+				for (int32 t = 0; t < 3; ++t)
+				{
+					const FVector2D D = DirAt(t, 3);
+					M.AddBeam(FVector(D.X * 15.0, D.Y * 15.0, -10.0), FVector(D.X * Rand(10 + t, 60.0, 110.0), D.Y * Rand(10 + t, 60.0, 110.0), H * 0.6), 8.0, Pal.Bark * 0.9f);
+				}
+				const int32 NB = 6 + Variant;
+				for (int32 b = 0; b < NB; ++b)
+				{
+					const FVector2D D = DirAt(b + 5, NB);
+					const double R = b == 0 ? 0.0 : Rand(20 + b, 50.0, 120.0);
+					const FLinearColor C = (b % 4 == 3) ? FLinearColor(0.55f, 0.25f, 0.12f) : ((b % 2) ? LeafAlt : Leaf);
+					TNFloraBlob(M, FVector(D.X * R, D.Y * R, H * Rand(30 + b, 0.6, 0.9)), Rand(40 + b, 70.0, 110.0), Rand(50 + b, 45.0, 65.0), Seed + b, C, 7);
+				}
+				break;
+			}
+			case EFloraShape::Pandanus:
+			{
+				// Pándano: raíces zancudas bajo un tronco inclinado que se ramifica en penachos de hojas
+				// largas y afiladas, con algún fruto.
+				const double H = Rand(1, 420.0, 560.0);
+				const FVector TrunkBase(0.0, 0.0, 110.0);
+				for (int32 r = 0; r < 5; ++r)
+				{
+					const FVector2D D = DirAt(r, 5);
+					M.AddBeam(TrunkBase + FVector(D.X * 8.0, D.Y * 8.0, 0.0), FVector(D.X * Rand(10 + r, 70.0, 110.0), D.Y * Rand(10 + r, 70.0, 110.0), -20.0), 5.5, Pal.Bark * 0.85f);
+				}
+				const FVector Fork = TrunkBase + FVector(Rand(2, -60.0, 60.0), Rand(3, -60.0, 60.0), H * 0.55);
+				TNProcAddCylinder(M, TrunkBase, Fork, 14.0, 11.0, 6, Pal.Bark, false);
+				const int32 Branches = 2 + Variant % 2;
+				for (int32 b = 0; b < Branches; ++b)
+				{
+					const FVector2D D = DirAt(b + 7, Branches);
+					const FVector Tip = Fork + FVector(D.X * Rand(20 + b, 90.0, 150.0), D.Y * Rand(20 + b, 90.0, 150.0), Rand(30 + b, 70.0, 140.0));
+					TNProcAddCylinder(M, Fork, Tip, 9.0, 7.0, 5, Pal.Bark * 0.95f, false);
+					for (int32 l = 0; l < 9; ++l)
+					{
+						TNFloraFrond(M, Tip, DirAt(l + b * 9, 9), Rand(40 + l + b * 9, 150.0, 210.0), 18.0, Rand(50 + l, 40.0, 70.0), Rand(60 + l, 50.0, 110.0), (l % 2) ? Leaf : LeafAlt, 3);
+					}
+					if (b == 0) { TNFloraBead(M, Tip - FVector(0.0, 0.0, 22.0), 16.0, Seed + 70u, FLinearColor(0.85f, 0.45f, 0.1f)); }
+				}
+				break;
+			}
+			case EFloraShape::FanPalm:
+			{
+				// Palmito: tronco corto y hojas en abanico sobre pecíolos.
+				const double H = Rand(1, 70.0, 150.0);
+				TNFloraLathe(M, FVector::ZeroVector, { 0.0, H }, { 22.0, 17.0 }, 0.12, Seed, Pal.Bark * 0.85f, 7, false);
+				const int32 NL = 7 + Variant;
+				for (int32 l = 0; l < NL; ++l)
+				{
+					const FVector2D D = DirAt(l, NL);
+					const FVector Stalk = FVector(0.0, 0.0, H) + FVector(D.X * Rand(10 + l, 60.0, 90.0), D.Y * Rand(10 + l, 60.0, 90.0), Rand(20 + l, 50.0, 110.0));
+					M.AddBeam(FVector(0.0, 0.0, H), Stalk, 2.5, Leaf * 0.8f);
+					// Abanico: cinco cuñas finas desde la punta del pecíolo.
+					const FVector Out = FVector(D.X, D.Y, 0.6).GetSafeNormal();
+					const FVector Side = FVector(-D.Y, D.X, 0.0);
+					for (int32 w = 0; w < 5; ++w)
+					{
+						const double A0 = -0.9 + 0.36 * w, A1 = A0 + 0.36;
+						const FVector P0 = Stalk + (Out * FMath::Cos(A0) + Side * FMath::Sin(A0)) * 70.0;
+						const FVector P1 = Stalk + (Out * FMath::Cos(A1) + Side * FMath::Sin(A1)) * 70.0;
+						const FVector Nrm = FVector::CrossProduct(P0 - Stalk, P1 - Stalk);
+						const FLinearColor C = (w % 2) ? Leaf : LeafAlt;
+						M.AddTri(Stalk, P0, P1, Nrm, C);
+						M.AddTri(Stalk, P1, P0, -Nrm, C * 0.8f);
+					}
+				}
+				break;
+			}
+			case EFloraShape::Casuarina:
+			{
+				// Casuarina: tronco esbelto y copa de ramillas finas colgantes, verde azulada.
+				const double H = Rand(1, 850.0, 1150.0);
+				const FLinearColor Needle = TNFloraVary(FLinearColor(0.16f, 0.3f, 0.22f), Variant);
+				TNFloraLathe(M, FVector::ZeroVector, { 0.0, H * 0.4, H * 0.85 }, { 22.0, 16.0, 8.0 }, 0.08, Seed, Pal.Bark, 6, false);
+				for (int32 c = 0; c < 7; ++c)
+				{
+					const double T = FMath::Lerp(0.35, 0.95, c / 6.0);
+					const double R = FMath::Lerp(200.0, 70.0, T) * Rand(10 + c, 0.85, 1.15);
+					const FVector2D D = DirAt(c, 7);
+					TNFloraBlob(M, FVector(D.X * R * 0.35, D.Y * R * 0.35, H * T), R, R * 0.55, Seed + c, (c % 2) ? Needle : Needle * 1.12f, 7);
+				}
+				for (int32 s = 0; s < 10; ++s)
+				{
+					const FVector2D D = DirAt(s + 3, 10);
+					const FVector Top(D.X * Rand(40 + s, 110.0, 180.0), D.Y * Rand(40 + s, 110.0, 180.0), H * Rand(50 + s, 0.4, 0.75));
+					M.AddBeam(Top, Top + FVector(D.X * 15.0, D.Y * 15.0, -Rand(60 + s, 120.0, 200.0)), 6.0, Needle * 0.9f);
+				}
+				break;
+			}
+			case EFloraShape::JoshuaTree:
+			{
+				// Árbol de Josué: tronco peludo que se bifurca y penachos de hojas en punta al final de cada rama.
+				const double H = Rand(1, 420.0, 600.0);
+				const FLinearColor Shaggy(0.38f, 0.3f, 0.2f);
+				const FLinearColor Spike = TNFloraVary(FLinearColor(0.33f, 0.42f, 0.16f), Variant);
+				const FVector Fork(0.0, 0.0, H * 0.45);
+				TNFloraLathe(M, FVector::ZeroVector, { 0.0, H * 0.45 }, { 24.0, 18.0 }, 0.18, Seed, Shaggy, 7, false);
+				const int32 Arms = 3 + Variant;
+				for (int32 a = 0; a < Arms; ++a)
+				{
+					const FVector2D D = DirAt(a, Arms);
+					const FVector Mid = Fork + FVector(D.X * Rand(10 + a, 60.0, 110.0), D.Y * Rand(10 + a, 60.0, 110.0), Rand(20 + a, 80.0, 140.0));
+					const FVector Tip = Mid + FVector(D.X * Rand(30 + a, 30.0, 80.0), D.Y * Rand(30 + a, 30.0, 80.0), Rand(40 + a, 60.0, 120.0));
+					TNProcAddCylinder(M, Fork, Mid, 14.0, 11.0, 6, Shaggy * 0.95f, false);
+					TNProcAddCylinder(M, Mid, Tip, 11.0, 9.0, 6, Shaggy, false);
+					for (int32 s = 0; s < 10; ++s)
+					{
+						const double A = TNProcMap::TwoPi * s / 10.0;
+						const FVector Out = FVector(FMath::Cos(A), FMath::Sin(A), 0.9 + 0.5 * TNProcHashNoise(a, s, Seed)).GetSafeNormal();
+						M.AddBeam(Tip, Tip + Out * Rand(50 + s + a * 10, 55.0, 85.0), 4.5, (s % 2) ? Spike : Spike * 1.15f);
+					}
+				}
+				break;
+			}
+			case EFloraShape::Birch:
+			{
+				// Abedul: tronco blanco con marcas negras y copa ligera de hojas pequeñas (dorada en otoño).
+				const double H = Rand(1, 850.0, 1150.0);
+				const FLinearColor White(0.86f, 0.84f, 0.78f);
+				constexpr int32 Bands = 6;
+				for (int32 b = 0; b < Bands; ++b)
+				{
+					const double Z0 = H * 0.75 * b / Bands, Z1 = H * 0.75 * (b + 1) / Bands;
+					const double R0 = FMath::Lerp(22.0, 9.0, static_cast<double>(b) / Bands), R1 = FMath::Lerp(22.0, 9.0, static_cast<double>(b + 1) / Bands);
+					TNFloraLathe(M, FVector(0.0, 0.0, Z0), { 0.0, Z1 - Z0 }, { R0, R1 }, 0.05, Seed + b, (b % 2) ? White : White * 0.35f + FLinearColor(0.05f, 0.05f, 0.05f), 6, false);
+				}
+				const FLinearColor Foliage = Variant == 2 ? FLinearColor(0.75f, 0.55f, 0.12f) : LeafAlt * 1.1f;
+				for (int32 c = 0; c < 6; ++c)
+				{
+					const FVector2D D = DirAt(c, 6);
+					const double R = Rand(10 + c, 60.0, 130.0);
+					TNFloraBlob(M, FVector(D.X * R, D.Y * R, H * Rand(20 + c, 0.6, 0.95)), Rand(30 + c, 90.0, 140.0), Rand(40 + c, 110.0, 170.0), Seed + c, (c % 2) ? Foliage : Foliage * 0.88f, 7);
+				}
+				break;
+			}
 			case EFloraShape::Rock:
 			{
 				const double Ht = Variant == 1 ? 55.0 : (Variant == 2 ? 130.0 : 90.0);
@@ -706,6 +905,9 @@ namespace TNFloraMesh
 			case EFloraShape::Stones:   return { 6000.f, false, false };
 			case EFloraShape::Reeds:    return { 7000.f, false, true };
 			case EFloraShape::Creeper:  return { 7000.f, false, false };
+			case EFloraShape::BananaPlant:
+			case EFloraShape::FanPalm:
+			case EFloraShape::SeaGrape: return { 30000.f, true, true };
 			case EFloraShape::Fern:
 			case EFloraShape::DryBush:  return { 8000.f, false, true };
 			case EFloraShape::Bush:

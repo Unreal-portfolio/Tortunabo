@@ -245,4 +245,36 @@ namespace TNProcMesh
 			Mesh.AddBeam(P0, P0 + Dir * (Radius * 2.2), Radius * 0.28, Bark * 0.9f);
 		}
 	}
+
+	/** Cilindro (o tronco de cono) de Seg lados entre A y B, con tapas opcionales. */
+	inline void TNProcAddCylinder(FTNProcMeshBuffers& M, const FVector& A, const FVector& B, double RA, double RB, int32 Seg, const FLinearColor& Color, bool bCaps = true)
+	{
+		const FVector Ax = (B - A).GetSafeNormal();
+		if (Ax.IsNearlyZero()) { return; }
+		const FVector U = FVector::CrossProduct(Ax, FMath::Abs(Ax.Z) < 0.9 ? FVector::UpVector : FVector::ForwardVector).GetSafeNormal();
+		const FVector V = FVector::CrossProduct(Ax, U);
+		TArray<FVector> RingA, RingB;
+		for (int32 k = 0; k < Seg; ++k)
+		{
+			const double Ang = TNProcMap::TwoPi * k / Seg;
+			const FVector Off = U * FMath::Cos(Ang) + V * FMath::Sin(Ang);
+			RingA.Add(A + Off * RA);
+			RingB.Add(B + Off * RB);
+		}
+		for (int32 k = 0; k < Seg; ++k)
+		{
+			const int32 K1 = (k + 1) % Seg;
+			const FVector Mid = (RingA[k] + RingA[K1]) * 0.5 - A;
+			M.AddQuad(RingA[k], RingA[K1], RingB[K1], RingB[k], Mid, Color);
+		}
+		if (bCaps)
+		{
+			for (int32 k = 0; k < Seg; ++k)
+			{
+				const int32 K1 = (k + 1) % Seg;
+				M.AddTri(A, RingA[k], RingA[K1], -Ax, Color * 0.9f);
+				M.AddTri(B, RingB[k], RingB[K1], Ax, Color * 1.05f);
+			}
+		}
+	}
 }
