@@ -18,6 +18,7 @@ import math
 from dataclasses import dataclass, fields as dataclass_fields
 
 import numpy as np
+from scipy import ndimage
 from scipy.spatial import cKDTree
 
 from .layout import CELL_M, CELL_SAMPLES, MAP_MAX_M, MAP_MIN_M, STEP_XY_M, WATER_M, Z_MAX_M
@@ -53,7 +54,7 @@ def strata(h, step: float):
     """Repisas de canto vivo (arenisca)."""
     q = h / step
     f = q - np.floor(q)
-    return (np.floor(q) + smooth(0.85, 1.0, f)) * step
+    return (np.floor(q) + smooth(0.7, 1.0, f)) * step
 
 
 @dataclass
@@ -93,6 +94,8 @@ class MapModel:
         self.net_trees = {z: cKDTree(pts) for z, (pts, _) in self.net_samples.items()}
         self.clearings = {z: self._pick_clearings(rng, n) for z, n in self.nets.items() if z != "algae"}
         self.tunnels = self._plan_tunnels(rng)
+        # Cada tunel sube (o baja) por dentro: desnivel en su centro, 0 en las bocas.
+        self.tunnel_climb = [float(rng.choice([-1.0, 1.0]) * rng.uniform(1.5, 3.0)) for _ in self.tunnels]
 
         self.n_small = Fbm2D(rng, 22.0, 2)
         self.n_mid = Fbm2D(rng, 60.0, 3)
@@ -106,6 +109,7 @@ class MapModel:
         self.n_dune_amp = Fbm2D(rng, 90.0, 2)
         self.n_edge = Fbm2D(rng, 45.0, 3)
         self.n_wall3d = ValueNoise3D(rng, 6.5)
+        self.n_tunnel = Fbm2D(rng, 9.0, 2)
         self.dune_angle = float(rng.uniform(0.0, math.pi))
         self.dune_angle_2 = self.dune_angle + float(rng.uniform(0.6, 1.1))
         self.n_dune_mix = Fbm2D(rng, 120.0, 2)
@@ -145,8 +149,9 @@ class MapModel:
             b = a + length
             if any(not (b + 20.0 < ta or a - 20.0 > tb) for ta, tb in tunnels):
                 continue
+            # Se admiten curvas (tunel natural), no un giro cerrado.
             d0, d1 = self.route.direction_at(a), self.route.direction_at(b)
-            if float(np.dot(d0, d1)) < math.cos(math.radians(25.0)):
+            if float(np.dot(d0, d1)) < math.cos(math.radians(70.0)):
                 continue
             tunnels.append((a, b))
         return sorted(tunnels)
@@ -210,8 +215,10 @@ class MapModel:
         corridor = 1.0 - smooth(0.0, 1.1, face)
         # Grietas: lineas de ruido (pasos por cero) que cortan la pared casi hasta el suelo,
         # solo cerca de la cara y solo en parte de las paredes.
-        crack = (1.0 - smooth(0.03, 0.08, np.abs(self.n_crack(X, Y)))) * smooth(0.45, 0.6, self.n_crack_mask.unit(X, Y))
-        crack = crack * (1.0 - smooth(1.0, 9.0, face)) * (face > -0.5)
+        crack = (1.0 - smooth(0.04, 0.13, np.abs(self.n_crack(X, Y)))) * smooth(0.45, 0.6, self.n_crack_mask.unit(X, Y))
+        crack = crack * (1.0 - smooth(1.0, 9.0, face)) * smooth(-1.0, 0.5, face)
+        if crack.ndim == 2 and min(crack.shape) > 8:
+            crack = ndimage.gaussian_filter(crack, 1.0)     # sin rendijas de una celda (aletas)
         top = top - crack * np.maximum(top - f - 0.8, 0.0) * 0.9
         # Talud de derrubios: rampa de arena al pie de la pared, irregular.
         talus = (top - f) * 0.28 * (0.4 + 0.6 * self.n_talus.unit(X, Y)) * smooth(-2.6, 0.4, face)
@@ -236,9 +243,9 @@ class MapModel:
         start = self.route.points[0]
         start_w = 1.0 - smooth(9.0, 13.0, np.hypot(X - start[0], Y - start[1]))
         hw = 3.2 + 1.3 * width + 0.9 * self.n_buttress(X, Y)
-        f = np.where(clear_w > 0.5, clear_level, level) * (1.0 - start_w) + 0.3 * small
+        f = (level * (1.0 - clear_w) + clear_level * clear_w) * (1.0 - start_w) + 0.3 * small
         top = strata(level_soft * (1.0 - start_w) + 9.5 + 4.0 * self.n_mid.unit(X, Y) + 1.2 * small, 3.5)
-        d_eff = np.where(np.maximum(clear_w, start_w) > 0.5, 0.0, d)
+        d_eff = d * (1.0 - np.maximum(clear_w, start_w))
         heights["cliffs"], bands["cliffs"], axes["cliffs"] = self._rock_walls(X, Y, d_eff, hw, f, top)
         # Lejos de los pasillos el suelo de referencia es el nivel suavizado: el muro exterior
         # que sube desde el no marca la bisectriz entre dos caminos de niveles distintos.
@@ -334,7 +341,8 @@ class MapModel:
         # El eje de los caminos vuelve a su cota: la erosion estrecha y ensucia sus bordes
         # (derrubios) pero no los tapa.
         keep = np.maximum(f.path, 1.0 - erodible)
-        return h * (1.0 - keep) + h0 * keep
+        h = h * (1.0 - keep) + h0 * keep
+        return despike(h, rocky)
 
     # ── Acceso por trozo ─────────────────────────────────────────────────────────
     def chunk_fields(self, col: int, row: int, pad: int = 0) -> tuple[Fields, np.ndarray, np.ndarray]:
@@ -356,21 +364,34 @@ class MapModel:
             above_floor = smooth(0.8, 2.5, Z3 - f.floor[..., None])
             D = D + 1.1 * band * above_floor * self.n_wall3d(X3, Y3, Z3)
         if np.any(f.tunnel > 0.0):
-            D = np.minimum(D, -self._tunnel_carve(f, Z3))
+            carve = self._tunnel_carve(f, Z3, X, Y)
+            # Paredes y techo rugosos, no una boveda perfecta.
+            carve = carve + 0.6 * self.n_wall3d(X3 * 1.7, Y3 * 1.7, Z3 * 1.7) * (carve > -0.5)
+            D = np.minimum(D, -carve)
         return D
 
-    def _tunnel_carve(self, f: Fields, Z3):
-        """> 0 dentro del hueco del tunel (seccion de boveda sobre el suelo del camino)."""
-        u = f.d_route[..., None]
-        v = Z3 - f.floor[..., None]
-        shape = np.broadcast_shapes(u.shape, v.shape)
-        arch = TUNNEL_HEIGHT_M * np.sqrt(np.clip(1.0 - (u / TUNNEL_HALF_WIDTH_M) ** 2, 0.0, 1.0)) + 0.8
-        inside = np.minimum.reduce([np.broadcast_to(arch - v, shape), np.broadcast_to(v + 0.25, shape),
-                                    np.broadcast_to(TUNNEL_HALF_WIDTH_M + 0.8 - u, shape)])
+    def _tunnel_carve(self, f: Fields, Z3, X=None, Y=None):
+        """> 0 dentro del hueco del tunel: boveda irregular (anchura y altura que cambian a lo
+        largo) sobre un suelo que sube o baja por dentro, con paredes rugosas."""
         span = np.zeros_like(f.s_route)
-        for a, b in self.tunnels:
+        climb = np.zeros_like(f.s_route)
+        for (a, b), amp in zip(self.tunnels, self.tunnel_climb):
             span = np.maximum(span, smooth(a - 6.0, a - 3.0, f.s_route) * (1.0 - smooth(b + 3.0, b + 6.0, f.s_route)))
+            t = np.clip((f.s_route - a) / (b - a), 0.0, 1.0)
+            climb = climb + amp * np.sin(np.pi * t) * ((f.s_route > a - 6.0) & (f.s_route < b + 6.0))
         span = span * (f.weights["canyon"] > 0.5)
+        if X is not None:
+            wobble = self.n_tunnel(X, Y)
+            half = TUNNEL_HALF_WIDTH_M * (1.0 + 0.25 * wobble)
+            height = TUNNEL_HEIGHT_M * (1.0 + 0.2 * self.n_tunnel(Y, X))
+        else:
+            half, height = np.full_like(span, TUNNEL_HALF_WIDTH_M), np.full_like(span, TUNNEL_HEIGHT_M)
+        u = f.d_route[..., None]
+        v = Z3 - (f.floor + climb)[..., None]
+        shape = np.broadcast_shapes(u.shape, v.shape)
+        arch = height[..., None] * np.sqrt(np.clip(1.0 - (u / half[..., None]) ** 2, 0.0, 1.0)) + 0.8
+        inside = np.minimum.reduce([np.broadcast_to(arch - v, shape), np.broadcast_to(v + 0.25, shape),
+                                    np.broadcast_to(half[..., None] + 0.8 - u, shape)])
         return np.where(span[..., None] > 0.5, inside, -1.0)
 
 
@@ -431,6 +452,20 @@ def hydraulic_erosion(h: np.ndarray, erodible: np.ndarray, rng: np.random.Genera
             water = water * (1 - evaporate)
             px, py = np.where(alive, nx, px), np.where(alive, ny, py)
     return h
+
+
+def despike(h: np.ndarray, where: np.ndarray, limit: float = 1.2, passes: int = 3) -> np.ndarray:
+    """Quita picos y pozos de una celda (aletas finas en la malla): donde la celda se aparta
+    de la mediana de sus vecinas mas de limit metros, toma la mediana. Luego un desenfoque
+    leve solo en la roca."""
+    h = h.copy()
+    for _ in range(passes):
+        med = ndimage.median_filter(h, size=3)
+        spike = (np.abs(h - med) > limit) & (where > 0.05)
+        h = np.where(spike, med, h)
+    soft = ndimage.gaussian_filter(h, 0.6)
+    w = np.clip(where, 0.0, 1.0) * 0.6
+    return h * (1.0 - w) + soft * w
 
 
 def thermal_erosion(h: np.ndarray, erodible: np.ndarray, talus: float, iterations: int) -> np.ndarray:

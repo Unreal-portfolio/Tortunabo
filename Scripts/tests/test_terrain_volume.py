@@ -158,3 +158,16 @@ def test_las_caras_miran_hacia_su_normal(chunks):
     n = chunk.normals[t].mean(axis=1)
     # Cara visible de Unreal = -(B-A)x(C-A): debe apuntar como la normal.
     assert np.mean(np.einsum("ij,ij->i", -cross, n) > 0.0) > 0.999
+
+
+def test_sin_picos_de_una_celda_en_la_roca(model):
+    """Picos o pozos de una sola celda se convierten en aletas finas en la malla."""
+    from scipy import ndimage
+    h = model.grid.height
+    spike = np.abs(h - ndimage.median_filter(h, size=3))
+    assert int((spike > 2.0).sum()) < 50
+    assert int((spike > 4.0).sum()) == 0
+
+
+def test_los_tuneles_suben_o_bajan_por_dentro(model):
+    assert all(1.0 <= abs(c) <= 3.5 for c in model.tunnel_climb)
