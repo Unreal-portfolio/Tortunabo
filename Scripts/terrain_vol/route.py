@@ -50,6 +50,7 @@ class Route:
     points: np.ndarray          # (N, 2) en metros, cada ROUTE_STEP_M
     arc: np.ndarray             # (N,) longitud de arco acumulada
     cells: list[tuple[int, int]]
+    zones: tuple[tuple[str, float, float], ...] = ZONES   # (nombre, fraccion, alcance): ver style.MapStyle.zones()
 
     @property
     def length(self) -> float:
@@ -57,7 +58,7 @@ class Route:
 
     def zone_range(self, name: str) -> tuple[float, float]:
         start = 0.0
-        for zone, share, _ in ZONES:
+        for zone, share, _ in self.zones:
             end = start + share * self.length
             if zone == name:
                 return start, end
@@ -96,16 +97,18 @@ def resample(points: np.ndarray, step: float) -> tuple[np.ndarray, np.ndarray]:
     return np.stack([x, y], axis=1), s
 
 
-def meander(rng: np.random.Generator, points: np.ndarray, arc: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Desplaza la ruta a los lados con un seno (fase y onda sorteadas) en las zonas de MEANDER,
-    apagado suavemente en sus extremos."""
+def meander(rng: np.random.Generator, points: np.ndarray, arc: np.ndarray, zones: tuple = ZONES,
+           meander_cfg: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Desplaza la ruta a los lados con un seno (fase y onda sorteadas) en las zonas de
+    meander_cfg, apagado suavemente en sus extremos."""
+    meander_cfg = MEANDER if meander_cfg is None else meander_cfg
     length = arc[-1]
     offset = np.zeros_like(arc)
     start = 0.0
-    for name, share, _ in ZONES:
+    for name, share, _ in zones:
         end = start + share * length
-        if name in MEANDER:
-            amp, wave = MEANDER[name]
+        if name in meander_cfg:
+            amp, wave = meander_cfg[name]
             # Curvas irregulares: desplazamientos sorteados cada media onda, unidos en suave
             # (no un seno, que se lee como una culebra dibujada).
             knots = np.arange(start - wave, end + wave, wave * 0.5)
@@ -135,7 +138,8 @@ def self_gap(points: np.ndarray, arc: np.ndarray, min_arc_apart: float = 150.0) 
     return best
 
 
-def build_route(rng: np.random.Generator, min_cells: int = 12, max_cells: int = 16, attempts: int = 60) -> Route:
+def build_route(rng: np.random.Generator, zones: tuple = ZONES, meander_cfg: dict | None = None,
+                min_cells: int = 12, max_cells: int = 16, attempts: int = 60) -> Route:
     lo, hi = MAP_MIN_M + EDGE_MARGIN_M, MAP_MAX_M - EDGE_MARGIN_M
     for _ in range(attempts):
         cells = generate_path(rng, GRID, min_cells, max_cells)
@@ -146,12 +150,12 @@ def build_route(rng: np.random.Generator, min_cells: int = 12, max_cells: int = 
         control[-1] += rng.uniform(-0.2 * CELL_M, 0.2 * CELL_M, 2)
         control = np.clip(control, lo, hi)
         points, arc = resample(catmull_rom(control), ROUTE_STEP_M)
-        points, arc = meander(rng, points, arc)
+        points, arc = meander(rng, points, arc, zones, meander_cfg)
         if points[:, 0].min() < lo - 1 or points[:, 0].max() > hi + 1 or points[:, 1].min() < lo - 1 \
                 or points[:, 1].max() > hi + 1:
             continue
         if self_gap(points, arc) >= MIN_SELF_GAP_M:
-            return Route(points, arc, cells)
+            return Route(points, arc, cells, zones)
     raise RuntimeError("sin ruta valida para esta semilla")
 
 
@@ -160,6 +164,7 @@ class ZoneField:
 
     def __init__(self, rng: np.random.Generator, route: Route):
         self.route = route
+        self.zones = route.zones
         self.tree = cKDTree(route.points)
         self.warp = Fbm2D(rng, 110.0, 2)
         self.skew = Fbm2D(rng, 150.0, 2)
@@ -170,7 +175,7 @@ class ZoneField:
         self.vote_arc = route.arc[::stride]
         self.vote_tree = cKDTree(self.vote_points)
         bounds, start = [], 0.0
-        for _, share, _ in ZONES:
+        for _, share, _ in self.zones:
             end = start + share * route.length
             bounds.append((start, end))
             start = end
@@ -185,8 +190,8 @@ class ZoneField:
 
     def _zone_of_arc(self, s) -> dict[str, np.ndarray]:
         raw = {}
-        last = len(ZONES) - 1
-        for k, (name, _, _) in enumerate(ZONES):
+        last = len(self.zones) - 1
+        for k, (name, _, _) in enumerate(self.zones):
             a, b = self.bounds[k]
             rise = 1.0 if k == 0 else _smooth(a - ZONE_BLEND_M, a + ZONE_BLEND_M, s)
             fall = 1.0 if k == last else 1.0 - _smooth(b - ZONE_BLEND_M, b + ZONE_BLEND_M, s)
@@ -218,7 +223,7 @@ class ZoneField:
     def reach(self, weights: dict[str, np.ndarray], x, y) -> np.ndarray:
         """Alcance lateral ponderado, con ruido: mas alla, muro que cierra el mapa. La silueta
         de cada zona es irregular (entrantes y salientes), no un pasillo paralelo a la ruta."""
-        base = np.sum([weights[name] * r for name, _, r in ZONES], axis=0)
+        base = np.sum([weights[name] * r for name, _, r in self.zones], axis=0)
         return base * (0.65 + 0.7 * self.reach_noise.unit(x, y))
 
 

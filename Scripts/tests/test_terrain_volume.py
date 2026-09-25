@@ -146,15 +146,42 @@ def test_los_bordes_de_trozos_vecinos_coinciden(chunks):
 
 
 def test_el_binario_va_y_vuelve(chunks, tmp_path):
+    """TNTM2 cuantiza posiciones y normales: la vuelta no es exacta, pero respeta la
+    tolerancia documentada (posicion <= 0,5*step, normal <= ~0,01 rad)."""
     chunk = chunks[(0, 0)]
     path = tmp_path / "c.bin"
     write_chunk(path, chunk)
     data = read_chunk(path)
     assert np.array_equal(data["triangles"], chunk.triangles)
-    assert np.allclose(data["vertices"], chunk.vertices)
+    span = chunk.vertices.astype(np.float64).max(axis=0) - chunk.vertices.astype(np.float64).min(axis=0)
+    step = np.maximum(span, 1e-6) / 65535.0
+    assert np.all(np.abs(data["vertices"].astype(np.float64) - chunk.vertices.astype(np.float64)) <= 0.5 * step + 1e-2)
+    cos = np.clip(np.einsum("ij,ij->i", data["normals"], chunk.normals), -1.0, 1.0)
+    assert float(np.degrees(np.arccos(cos)).max()) < 1.0     # holgado sobre los ~0,57 grados (0,01 rad) pedidos
+    assert np.array_equal(data["colors"], chunk.colors)
     path.write_bytes(path.read_bytes()[:-3])
     with pytest.raises(ValueError):
         read_chunk(path)
+
+
+def test_el_binario_v1_se_sigue_leyendo(chunks, tmp_path):
+    """El lector acepta el formato viejo (v1, sin cuantizar) ademas del nuevo (v2)."""
+    import struct
+
+    from terrain_vol.export import HEADER1, MAGIC, VERSION1
+
+    chunk = chunks[(0, 0)]
+    path = tmp_path / "v1.bin"
+    with open(path, "wb") as handle:
+        handle.write(HEADER1.pack(MAGIC, VERSION1, len(chunk.vertices), len(chunk.triangles), len(chunk.instances)))
+        handle.write(chunk.vertices.astype("<f4").tobytes())
+        handle.write(chunk.normals.astype("<f4").tobytes())
+        handle.write(chunk.colors.astype(np.uint8).tobytes())
+        handle.write(chunk.triangles.astype("<u4").tobytes())
+        handle.write(chunk.instances.astype("<f4").tobytes())
+    data = read_chunk(path)
+    assert np.array_equal(data["triangles"], chunk.triangles)
+    assert np.allclose(data["vertices"], chunk.vertices)
 
 
 def test_las_caras_miran_hacia_su_normal(chunks):

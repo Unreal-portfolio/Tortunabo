@@ -24,7 +24,8 @@ from scipy.spatial import cKDTree
 from .layout import CELL_M, CELL_SAMPLES, MAP_MAX_M, MAP_MIN_M, STEP_XY_M, WATER_M, Z_MAX_M
 from .network import Network, build_network
 from .noise import Fbm2D, ValueNoise2D, ValueNoise3D
-from .route import ZONE_NAMES, Route, ZoneField, build_route
+from .route import ZONE_NAMES, Route, ZoneField, build_route, catmull_rom, resample
+from .style import MapStyle, MAPA01_STYLE
 
 # ── Parametros ────────────────────────────────────────────────────────────────────
 CLIFF_LEVEL_M = 4.5                     # separacion entre niveles del laberinto de acantilados
@@ -91,17 +92,41 @@ class Fields:
         return Fields(**out)
 
 
+def _stub_network(zone: str) -> Network:
+    """Red minima para una zona practicamente ausente (fraccion ~0 en el estilo): dos nodos
+    lejos del mapa (un unico tramo, nunca una red vacia) para que _net()/_pick_clearings no
+    revienten. Su peso de zona es ~0 en todo el mapa (ver MapStyle.zones/FLOOR_SHARE), asi
+    que no se nota."""
+    far = MAP_MAX_M + 500.0
+    nodes = np.array([[far, far], [far + 5.0, far]])
+    return Network(zone, nodes, [0, 1], [(0, 1)], [nodes], {0: 0, 1: 0}, np.zeros(2), [])
+
+
 class MapModel:
-    def __init__(self, seed: int, erode: bool = True):
+    def __init__(self, seed: int, style: MapStyle = MAPA01_STYLE, erode: bool = True):
         self.seed = seed
+        self.style = style
         rng = np.random.default_rng(seed)
-        self.route: Route = build_route(rng)
+        # Con MAPA01_STYLE estos argumentos son bit a bit los de siempre: la secuencia de
+        # numeros aleatorios que sale de rng (todo lo de aqui hasta "extra", mas abajo) no
+        # cambia, y con ella tampoco la huella de la semilla aprobada (ver style.py).
+        self.route: Route = build_route(rng, zones=style.zones(), meander_cfg=style.meander())
         self.zones = ZoneField(rng, self.route)
+
+        def zone_network(route_zone: str, net_key: str, spacing: float, loop_share: float, **kwargs) -> Network:
+            """build_network, salvo que la zona sea casi inexistente (estilo a 0): entonces una
+            red minima (_stub_network), sin consumir rng ni arriesgar un Delaunay degenerado."""
+            s0, s1 = self.route.zone_range(route_zone)
+            if (s1 - s0) < max(30.0, 2.0 * spacing):
+                return _stub_network(net_key)
+            return build_network(rng, self.zones, route_zone, spacing, loop_share, **kwargs)
+
         self.nets: dict[str, Network] = {
-            "cliffs": build_network(rng, self.zones, "cliffs", 17.0, 0.15, level_step=CLIFF_LEVEL_M,
-                                    level_count=CLIFF_LEVELS, decoys=True),
-            "canyon": build_network(rng, self.zones, "canyon", 28.0, 0.0, reach_share=0.75, bend=0.25),
-            "algae": build_network(rng, self.zones, "algae", 14.0, 0.5, loops_anywhere=True, decoys=True),
+            "cliffs": zone_network("cliffs", "cliffs", style.cliffs_spacing_m, style.cliffs_loop_share,
+                                   level_step=style.cliffs_level_step_m, level_count=style.cliffs_level_count,
+                                   decoys=True),
+            "canyon": zone_network("canyon", "canyon", 28.0, 0.0, reach_share=0.75, bend=0.25),
+            "algae": zone_network("algae", "algae", 14.0, 0.5, loops_anywhere=True, decoys=True),
         }
         self.net_samples = {z: n.sample() for z, n in self.nets.items()}
         self.net_trees = {z: cKDTree(pts) for z, (pts, _) in self.net_samples.items()}
@@ -133,10 +158,16 @@ class MapModel:
         self.n_beach_hills = Fbm2D(extra, 48.0, 3)
         self.marsh_warp = (Fbm2D(extra, 26.0, 2), Fbm2D(extra, 26.0, 2))
         # Canon como laberinto de acantilados (enrevesado, como el de la salida) y tuneles como
-        # tramos del laberinto excavados en la roca, en los acantilados y en el canon.
-        self.nets["canyon_maze"] = build_network(extra, self.zones, "canyon", 16.0, 0.2, level_step=CLIFF_LEVEL_M,
-                                                 level_count=3, decoys=True, reach_share=0.85,
-                                                 reach_m=CANYON_REACH_M)
+        # tramos del laberinto excavados en la roca, en los acantilados y en el canon. Todo lo
+        # de aqui sale de "extra": no afecta a la huella de la semilla aprobada.
+        c0, c1 = self.route.zone_range("canyon")
+        if (c1 - c0) < max(30.0, 2.0 * style.canyon_maze_spacing_m):
+            self.nets["canyon_maze"] = _stub_network("canyon_maze")
+        else:
+            self.nets["canyon_maze"] = build_network(extra, self.zones, "canyon", style.canyon_maze_spacing_m,
+                                                     style.canyon_maze_loop_share, level_step=CLIFF_LEVEL_M,
+                                                     level_count=style.canyon_maze_level_count, decoys=True,
+                                                     reach_share=0.85, reach_m=style.canyon_maze_reach_m)
         self.maze_tunnels = self._pick_maze_tunnels(extra)
         self._close_tunnel_edges()
         # Plazas llanas grandes en el canon (puzles).
@@ -154,6 +185,11 @@ class MapModel:
         self.arches = self._pick_arches(extra)
         self.n_top_roll = Fbm2D(extra, 17.0, 3)
         self._build_tunnel_samples()
+        # Rugosidad del borde exterior (cresta irregular, nunca una ladera lisa de regla) y
+        # rios de la zona de agua: todo nuevo, sorteado al final de "extra".
+        self.n_border = Fbm2D(extra, 24.0, 3)
+        self.n_border_fine = Fbm2D(extra, 8.0, 2)
+        self.rivers, self.islands = self._plan_rivers(extra) if style.river_count > 0 else ([], [])
 
         # Campos 2D del mapa entero, con una muestra de margen alrededor.
         count = int(round((MAP_MAX_M - MAP_MIN_M) / STEP_XY_M)) + 1
@@ -188,7 +224,8 @@ class MapModel:
         cruza un pasillo abierto y se excava un arco por debajo: se pasa por abajo y, desde las
         repisas, se cruza por arriba."""
         arches = []
-        for net_name, count in ARCHES_PER_ZONE.items():
+        arches_per_zone = {"cliffs": self.style.arches_cliffs, "canyon_maze": self.style.arches_canyon}
+        for net_name, count in arches_per_zone.items():
             net = self.nets[net_name]
             closed = {e for z, e, _ in self.maze_tunnels if z == net_name}
             lengths = [float(np.sum(np.linalg.norm(np.diff(c, axis=0), axis=1))) for c in net.curves]
@@ -237,6 +274,7 @@ class MapModel:
         """Tuneles con al menos TUNNEL_MIN_COVER_M de roca sobre su suelo en el tramo central,
         TUNNELS_PER_ZONE por zona como mucho, primero los de la cadena (el camino bueno)."""
         kept = []
+        tunnels_per_zone = {"cliffs": self.style.tunnels_cliffs, "canyon": self.style.tunnels_canyon}
         for net_name, zone in (("cliffs", "cliffs"), ("canyon_maze", "canyon")):
             net = self.nets[net_name]
             chain = {tuple(sorted((net.chain[k], net.chain[k + 1]))) for k in range(len(net.chain) - 1)}
@@ -258,7 +296,7 @@ class MapModel:
                 if float(cover.min()) >= TUNNEL_MIN_COVER_M:
                     a, b = net.edges[edge]
                     good.append((min(degree[a], degree[b]) >= 2, (name, edge, dip)))
-            n_through, n_caves = TUNNELS_PER_ZONE[zone]
+            n_through, n_caves = tunnels_per_zone[zone]
             kept += [g[1] for g in good if g[0]][:n_through] + [g[1] for g in good if not g[0]][:n_caves]
         return kept
 
@@ -279,7 +317,9 @@ class MapModel:
             degree = net.degree()
             through = [k for k in on_chain + others if min(degree[net.edges[k][0]], degree[net.edges[k][1]]) >= 2]
             caves = [k for k in on_chain + others if min(degree[net.edges[k][0]], degree[net.edges[k][1]]) == 1]
-            n_through, n_caves = TUNNEL_CANDIDATES[zone]
+            base_through, base_caves = TUNNEL_CANDIDATES[zone]
+            want_through, want_caves = {"cliffs": self.style.tunnels_cliffs, "canyon": self.style.tunnels_canyon}[zone]
+            n_through, n_caves = max(base_through, 2 * want_through), max(base_caves, 2 * want_caves)
             chosen = through[:n_through] + caves[:n_caves]
             used_nodes: set[int] = set()
             for k in chosen:
@@ -360,6 +400,37 @@ class MapModel:
             tunnels.append((a, b))
         return sorted(tunnels)
 
+    def _plan_rivers(self, rng: np.random.Generator) -> tuple[list[tuple[np.ndarray, np.ndarray]], list]:
+        """style.river_count rios que nacen en la zona de agua y serpentean (Catmull-Rom con
+        control points al azar, sin tramos rectos) hasta pasar el borde norte del mapa, donde
+        se funden con el mar. islotes: peldanos de arena espaciados ~4 m (siempre saltables)
+        cuyo tamano crece con style.island_density."""
+        s0, s1 = self.route.zone_range("marsh")
+        count = self.style.river_count
+        rivers, islands = [], []
+        starts_s = np.linspace(s0 + (s1 - s0) * 0.2, s1 - (s1 - s0) * 0.1, count)
+        for s in starts_s:
+            base = self.route.point_at(float(s))
+            x, y = base + rng.uniform(-15.0, 15.0, 2)
+            ctrl = [np.array([x, y])]
+            for _ in range(4):
+                x += rng.uniform(28.0, 48.0)
+                y += rng.uniform(-32.0, 32.0)
+                ctrl.append(np.array([x, y]))
+            ctrl.append(np.array([MAP_MAX_M + 50.0, ctrl[-1][1] + rng.uniform(-25.0, 25.0)]))
+            curve = catmull_rom(np.array(ctrl), 30)
+            pts, arc = resample(curve, 1.0)
+            rivers.append((pts, arc))
+            spacing = 4.0
+            s_i = spacing * 0.5
+            while s_i < arc[-1] - 5.0:
+                idx = min(int(np.searchsorted(arc, s_i)), len(pts) - 1)
+                center = pts[idx] + rng.uniform(-1.5, 1.5, 2)
+                radius = 1.6 + 2.6 * self.style.island_density * float(rng.uniform(0.7, 1.15))
+                islands.append((center, radius))
+                s_i += spacing
+        return rivers, islands
+
     # ── Utilidades de campo ──────────────────────────────────────────────────────
     def _net(self, zone: str, X, Y, smooth_m: float = 0.0):
         """(distancia a la red, cota del suelo de la red). smooth_m > 0: la cota es una media
@@ -370,7 +441,9 @@ class MapModel:
         if smooth_m <= 0.0:
             d, k = self.net_trees[zone].query(pts)
             return d.reshape(X.shape), floors[k].reshape(X.shape)
-        d, k = self.net_trees[zone].query(pts, k=32)
+        d, k = self.net_trees[zone].query(pts, k=min(32, len(floors)))
+        if k.ndim == 1:            # solo hay 1 punto en la red: query(k=1) devuelve 1D, no (n, 1)
+            d, k = d[:, None], k[:, None]
         weight = np.exp(-0.5 * ((d - d[:, :1]) / smooth_m) ** 2)
         level = (floors[k] * weight).sum(axis=1) / weight.sum(axis=1)
         return d[:, 0].reshape(X.shape), level.reshape(X.shape)
@@ -470,16 +543,18 @@ class MapModel:
         clear_w, clear_level = self._clearing("cliffs", X, Y)
         start = self.route.points[0]
         start_w = 1.0 - smooth(9.0, 13.0, np.hypot(X - start[0], Y - start[1]))
-        hw = 3.2 + 1.3 * width + 0.9 * self.n_buttress(X, Y)
+        hw = self.style.corridor_width_m + 1.3 * width + 0.9 * self.n_buttress(X, Y)
         f = (level * (1.0 - clear_w) + clear_level * clear_w) * (1.0 - start_w) + 0.3 * small
-        # Cimas a alturas distintas (no una meseta): 8-17 m sobre el nivel y repisas a medias.
-        raw_top = level_soft * (1.0 - start_w) + 8.0 + 9.0 * smooth(0.15, 0.9, self.n_top.unit(X, Y)) \
+        # Cimas a alturas distintas (no una meseta): style.cliff_height_m sobre el nivel, repisas
+        # a medias y una ondulacion extra (n_top_roll) para que la cima nunca quede plana.
+        cliff_lo, cliff_hi = self.style.cliff_height_m
+        raw_top = level_soft * (1.0 - start_w) + cliff_lo + (cliff_hi - cliff_lo) * smooth(0.15, 0.9, self.n_top.unit(X, Y)) \
             + 2.0 * self.n_mid.unit(X, Y) + 1.2 * small
         # Cima ondulada (lomas de arena sobre la roca): nunca baja, para no quitar cubierta a los tuneles.
-        top = 0.45 * raw_top + 0.55 * strata(raw_top, 3.5) + tunnel_hill + 3.0 * np.abs(self.n_top_roll(X, Y))
+        top = 0.45 * raw_top + 0.55 * strata(raw_top, 3.5) + tunnel_hill + 4.0 * np.abs(self.n_top_roll(X, Y))
         d_eff = d * (1.0 - np.maximum(clear_w, start_w))
         bridge = self._arch_band(X, Y)
-        heights["cliffs"], bands["cliffs"], axes["cliffs"] = self._rock_walls(X, Y, d_eff, hw, f, top, rim=0.15,
+        heights["cliffs"], bands["cliffs"], axes["cliffs"] = self._rock_walls(X, Y, d_eff, hw, f, top, rim=0.22,
                                                                              bridge=bridge)
         # Lejos de los pasillos el suelo de referencia es el nivel suavizado: el muro exterior
         # que sube desde el no marca la bisectriz entre dos caminos de niveles distintos.
@@ -498,24 +573,26 @@ class MapModel:
         # fundirse con la zona encharcada (el agua entra en el final del laberinto).
         c0, c1 = self.route.zone_range("canyon")
         opening = smooth(0.35, 1.0, np.clip((s_route - c0) / max(c1 - c0, 1.0), 0.0, 1.0))
-        hw = 3.2 + 1.4 * width + 0.9 * self.n_buttress(X, Y) + 5.0 * opening
+        hw = self.style.corridor_width_m + 1.4 * width + 0.9 * self.n_buttress(X, Y) + 5.0 * opening
         f = (level * (1.0 - clear_w) + clear_level * clear_w) + 0.3 * small
-        # Acantilados de altura muy distinta segun la zona (7-19 m) y cimas a repisas.
-        raw_top = level_soft + 7.0 + 12.0 * smooth(0.2, 0.9, self.n_cliff_height.unit(X, Y)) + 1.5 * big + 1.2 * small
-        top = 0.35 * raw_top + 0.65 * strata(raw_top, 3.0) + tunnel_hill + 3.0 * np.abs(self.n_top_roll(X, Y))
+        # Acantilados de altura muy distinta segun la zona (style.canyon_height_m) y cimas a repisas.
+        canyon_lo, canyon_hi = self.style.canyon_height_m
+        raw_top = level_soft + canyon_lo + (canyon_hi - canyon_lo) * smooth(0.2, 0.9, self.n_cliff_height.unit(X, Y)) \
+            + 1.5 * big + 1.2 * small
+        top = 0.35 * raw_top + 0.65 * strata(raw_top, 3.0) + tunnel_hill + 4.0 * np.abs(self.n_top_roll(X, Y))
         top = f + (top - f) * (1.0 - 0.65 * opening)
         d_eff = d * (1.0 - clear_w)
         # Pendiente que cambia por tramos: de pared casi vertical (1 m) a ladera de 55 grados.
         face_w = 1.0 + 3.2 * smooth(0.3, 0.8, self.n_steep.unit(X, Y))
         heights["canyon"], bands["canyon"], axes["canyon"] = self._rock_walls(
-            X, Y, d_eff, hw, f, top, face_width=face_w + 3.0 * opening, rim=0.18 + 0.2 * opening, bridge=bridge)
+            X, Y, d_eff, hw, f, top, face_width=face_w + 3.0 * opening, rim=0.26 + 0.2 * opening, bridge=bridge)
         near_corridor = 1.0 - smooth(hw + 1.0, hw + 9.0, d_eff)
         floors["canyon"] = f * near_corridor + level_soft * (1.0 - near_corridor)
 
         # Zona encharcada: dunas cuyas vaguadas quedan bajo el agua (laguitos); se cruza por
         # una cresta seca que sigue la ruta, con algun hueco que se salta.
         # Laguitos en las hondonadas de un relieve de manchas (no en franjas) y dunas encima.
-        base = WATER_M - 0.6 + 3.0 * self.n_pond(X, Y) + self._dunes(X, Y, 2.4, 22.0)
+        base = WATER_M - 0.6 + self.style.pond_depth_m * self.n_pond(X, Y) + self._dunes(X, Y, 2.4, 22.0)
         # Sendero de arena natural (no un dique): estrecho, de orillas suaves e irregulares,
         # que serpentea alrededor de la ruta (dominio deformado) y sube y baja con las dunas;
         # los charcos lo bordean. De vez en cuando un charco estrecho lo corta y se salta.
@@ -543,10 +620,11 @@ class MapModel:
         bands["marsh"] = np.zeros_like(X)
         axes["marsh"] = 1.0 - smooth(0.5, 1.5, d_path)
 
-        # Algas: lomas y hondonadas, red densa de sendas; el laberinto lo hace la espesura.
+        # Dunas: la zona mas plana del recorrido, dunas de playa lisas, siempre arena (sin
+        # follaje ni verde: PLANT_ALGAE=False y su paleta es "sand", ver mesh.ZONE_PALETTE).
         d, _ = self._net("algae", X, Y)
         hw = 1.8 + 0.8 * width
-        f = 0.8 + 2.0 * self.n_big.unit(X, Y) + 1.2 * self._beach_dunes(X, Y)
+        f = 0.8 + 2.0 * self.n_big.unit(X, Y) + self.style.dune_amplitude_m * self._beach_dunes(X, Y)
         heights["algae"], floors["algae"] = f, f
         bands["algae"] = np.zeros_like(X)
         axes["algae"] = 1.0 - smooth(0.5 * hw, hw, d)
@@ -566,12 +644,33 @@ class MapModel:
         path = np.sum([w[z] * axes[z] for z in ZONE_NAMES], axis=0)
         foliage = w["algae"] * foliage
 
+        # Rios de la zona de agua: cauce por debajo de WATER_M que serpentea hasta el mar, con
+        # islitas-peldano (siempre saltables) dentro del cauce. Se aplica a todo el mapa (no por
+        # zona): el rio cruza lo que haga falta para llegar al borde norte.
+        for pts, arc in getattr(self, "rivers", []):
+            tree = cKDTree(pts)
+            d_river, k = tree.query(np.stack([X.ravel(), Y.ravel()], axis=1))
+            d_river = d_river.reshape(X.shape)
+            t = (arc[np.clip(k, 0, len(arc) - 1)] / max(arc[-1], 1e-9)).reshape(X.shape)
+            river_w = self.style.river_width_m * (0.7 + 0.6 * t) * (1.0 + 0.3 * self.n_dune_mix.unit(X, Y))
+            bank = smooth(river_w * 0.5, river_w * 1.5, d_river)
+            bed = WATER_M - self.style.river_depth_m * (0.5 + 0.5 * self.n_pond.unit(X, Y))
+            height = height * bank + np.minimum(height, bed) * (1.0 - bank)
+        for center, radius in getattr(self, "islands", []):
+            dist = np.hypot(X - center[0], Y - center[1])
+            m = 1.0 - smooth(radius * 0.6, radius, dist)
+            target = np.maximum(height, WATER_M + 1.3 + 0.4 * self.n_hummock(X, Y))
+            height = height * (1.0 - m) + target * m
+
         # Muro exterior (fuera del alcance de cada zona), con relieve: el mismo en todas las
         # zonas, asi que no marca la frontera entre ellas.
-        reach = self.zones.reach(w, X, Y) + w["canyon"] * (CANYON_REACH_M - CANYON_REACH_BASE_M) \
+        reach = self.zones.reach(w, X, Y) + w["canyon"] * (self.style.canyon_maze_reach_m - self.style.canyon_reach_m) \
             * (0.65 + 0.7 * self.zones.reach_noise.unit(X, Y))
         outer = smooth(reach, reach + 22.0, d_route)
-        relief = 4.0 * mid + 3.0 * big + self._dunes(X, Y, 2.5, 34.0)
+        # Relieve del muro: bajo (mid/big) mas una rugosidad propia (border_roughness_m, siempre
+        # activa) que rompe la ladera lisa y de pendiente constante.
+        rough = self.style.border_roughness_m * (0.5 + 0.5 * self.n_border(X, Y)) * (0.4 + 0.6 * np.abs(self.n_border_fine(Y, X)))
+        relief = 4.0 * mid + 3.0 * big + self._dunes(X, Y, 2.5, 34.0) + 0.6 * rough
         # Maximo suave: el muro sale del terreno sin arista (antes, un pliegue visible).
         rock = soft_max(height, floor + OUTER_WALL_M + relief, 3.0)
         dune_wall = soft_max(height, 6.0 + relief + self._beach_dunes(X, Y, 0.8), 5.0)
@@ -581,11 +680,12 @@ class MapModel:
         foliage = foliage * (1 - outer)
         path = path * (1 - outer)
 
-        # Borde del mapa: muro de silueta irregular al sur, este y oeste.
-        warp = 22.0 * self.n_edge(X, Y)
+        # Borde del mapa: muro de silueta irregular al sur, este y oeste, con cresta accidentada
+        # (alturas variables, sin laderas planas de regla) que sigue cerrando el mapa.
+        warp = self.style.border_roughness_m * self.n_edge(X, Y) + 0.5 * self.style.border_roughness_m * self.n_border_fine(X, Y)
         edges = [X - MAP_MIN_M + warp, Y - MAP_MIN_M + warp, MAP_MAX_M - Y + warp]
         near = np.maximum.reduce([1.0 - smooth(4.0, 28.0, e) for e in edges])
-        edge_wall = np.maximum(height, EDGE_WALL_M + relief)
+        edge_wall = np.maximum(height, EDGE_WALL_M + relief + rough)
         height = height * (1 - near) + edge_wall * near
         # Final del mapa: todo el borde norte es playa que baja al mar (sin muro).
         shore = 1.0 - smooth(70.0, 120.0, u)

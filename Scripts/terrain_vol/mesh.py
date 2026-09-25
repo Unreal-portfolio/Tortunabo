@@ -24,19 +24,15 @@ PALETTES = {
              (0.09, 0.065, 0.035)),
     "beach": ((0.58, 0.47, 0.29), (0.40, 0.31, 0.18), (0.47, 0.35, 0.19), (0.30, 0.23, 0.14), (0.44, 0.36, 0.22),
               (0.12, 0.10, 0.07)),
-    "algae": ((0.20, 0.22, 0.06), (0.12, 0.14, 0.045), (0.19, 0.20, 0.05), (0.07, 0.07, 0.03), (0.11, 0.10, 0.04),
-              (0.05, 0.06, 0.025)),
-    # Arena del bosque de algas: amarilla con un tono verdoso (sin plantas), siempre arena.
-    "algae_sand": ((0.56, 0.50, 0.22), (0.48, 0.44, 0.19), (0.54, 0.49, 0.20), (0.38, 0.33, 0.15), (0.47, 0.42, 0.19),
-                   (0.10, 0.09, 0.04)),
     # Arena humeda (zona encharcada): mas oscura y fria, siempre arena.
     "damp": ((0.47, 0.37, 0.21), (0.42, 0.32, 0.18), (0.46, 0.35, 0.19), (0.36, 0.27, 0.15), (0.44, 0.34, 0.20),
              (0.10, 0.08, 0.05)),
 }
-# Siempre playa y arena (2026-09-25): el bosque de algas crece sobre arena; la zona encharcada
-# es arena humeda.
-ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "marsh": "damp", "algae": "algae_sand", "beach": "beach"}
-PLANT_ALGAE = False          # 2026-09-25: sin modelos de alga; la zona se lee por el color de la arena
+# Todo arena (2026-09-25): sin paleta verde en ninguna zona. La antigua zona "algae" es ahora el
+# bioma DUNAS (arena lisa, sin follaje): usa la misma paleta "sand" que acantilados y canon; la
+# zona encharcada ("marsh") es arena humeda.
+ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "marsh": "damp", "algae": "sand", "beach": "beach"}
+PLANT_ALGAE = False          # 2026-09-25: sin modelos de alga ni en ninguna otra zona; solo arena
 
 FOLIAGE_SPACING_M = 2.0
 SMOOTH_ITERATIONS = 12                  # Taubin (encoge poco): quita el escalonado del marching cubes
