@@ -14,8 +14,8 @@ namespace
 	const TCHAR* const MeshTileFoliageMeshes[TNTerrainMesh::NumFoliageShapes] = { TEXT("Cylinder"), TEXT("Cone"), TEXT("Sphere") };
 	const TCHAR* const MeshTileFoliageNames[TNTerrainMesh::NumFoliageShapes] = { TEXT("Stalk"), TEXT("Frond"), TEXT("Bush") };
 	constexpr int32 MeshTileFoliageCustomData = 3;
-	constexpr int32 MeshTileFoliageCullStart = 6000;
-	constexpr int32 MeshTileFoliageCullEnd = 15000;
+	constexpr int32 MeshTileFoliageCullStart = 14000;   // el bosque se ve de lejos (2026-09-25)
+	constexpr int32 MeshTileFoliageCullEnd = 32000;
 }
 
 ATN_TerrainMeshTile::ATN_TerrainMeshTile()
