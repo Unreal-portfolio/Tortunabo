@@ -96,3 +96,6 @@ __pycache__/
 
 # Mapa volumetrico: los trozos binarios se regeneran con Scripts/gen_terrain_volume.py (semilla fija)
 Scripts/terrain_volumes/*/Chunks/
+
+# Entorno de uv de las herramientas Python
+.venv/

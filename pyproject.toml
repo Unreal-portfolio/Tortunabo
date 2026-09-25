@@ -1,0 +1,14 @@
+[project]
+name = "tortunabo-tools"
+version = "0.1.0"
+description = "Herramientas offline de Tortunabo (generacion del terreno) y sus tests."
+requires-python = ">=3.11"
+dependencies = ["numpy", "scipy", "pillow", "scikit-image", "pytest"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+# Solo los tests de Scripts: los del plugin UnrealMCPython necesitan el editor abierto.
+testpaths = ["Scripts/tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
