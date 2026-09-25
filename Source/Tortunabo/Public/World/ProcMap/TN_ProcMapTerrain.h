@@ -231,6 +231,12 @@ namespace TNProcMap
 		uint32 Seed = 0;
 		FBiomeTerrain Biomes[NumBiomes];
 		double StartZ = 0.0;
+		/** Y de la orilla del agua en la playa de la meta. */
+		double ShoreWaterY = 0.0;
+		/** Meta: X del eje, Y de la línea y semiancho de la boca (0 si no hay meta). */
+		double FinishX = 0.0;
+		double FinishLineAt = 0.0;
+		double CoveHalf = 0.0;
 
 		// ── Campo del camino ────────────────────────────────────────────────
 		TArray<FPathSample> Samples;
@@ -307,7 +313,9 @@ namespace TNProcMap
 				const FFeature& F = L->Features[f];
 				if (F.Type == EFeature::StartArea) { StartZ = F.Location.Z; }
 				if (F.Type == EFeature::Volcano) { Volcanoes.Add(f); }
+				if (F.Type == EFeature::Finish) { FinishX = F.Location.X; FinishLineAt = F.Location.Y; CoveHalf = 0.5 * F.Width; }
 			}
+			ShoreWaterY = FinishWaterY(*L);
 			BuildSamples();
 		}
 
@@ -395,6 +403,10 @@ namespace TNProcMap
 				const FBiomeTerrain& BtB = Biomes[BiomeIndex(Samples[j].Biome)];
 				const bool bWetSeg = FMath::Max(SampleWet[i], SampleWet[j]) > 0.5f;
 				const double GuardH = bWetSeg ? 0.0 : FMath::Min(BtA.BankMin, BtB.BankMin);
+				// Playa final (recta hacia +Y que se abre en campana): franja |x| <= Hw(y), cada vértice del
+				// tramo que contiene su y. Con cápsulas, las muestras anchas del fondo "ganarían" la playa
+				// entera y le pondrían su cota, ya bajo el agua.
+				const bool bShoreSeg = (Samples[i].Flags & Samples[j].Flags & PathFlags::Shore) != 0 && B.Y > A.Y;
 				// Alcance: talud y subida, o la ladera completa si el cauce va por encima del paisaje.
 				const double Raised = FMath::Max(Samples[i].Z, Samples[j].Z) - L->SampleCoarse(L->LevelField, A);
 				const double FlankReach = FMath::Clamp((Raised + 1800.0) / FlankSlope + 2000.0 + RimPlateau, 9000.0, 19000.0);
@@ -409,7 +421,17 @@ namespace TNProcMap
 					{
 						const FVector2D P = Origin + FVector2D(x * Spacing, y * Spacing);
 						double T = 0.0;
-						const double D = DistPointSegment(P, A, B, T);
+						double D = 0.0;
+						if (bShoreSeg)
+						{
+							if (P.Y < A.Y || P.Y >= B.Y) { continue; }
+							T = (P.Y - A.Y) / (B.Y - A.Y);
+							D = FMath::Abs(P.X - LerpD(A.X, B.X, T));
+						}
+						else
+						{
+							D = DistPointSegment(P, A, B, T);
+						}
 						const int32 Idx = y * NX + x;
 						// Distancia "efectiva": al borde del camino, para que el más ancho gane.
 						const double Hw = LerpD(Samples[i].Width, Samples[j].Width, T) * 0.5;
@@ -424,9 +446,11 @@ namespace TNProcMap
 						}
 						if (GuardH > 0.0 && Eff >= GuardBandMin && Eff <= GuardBandMax && DeckTop[Idx] < -1e8f)
 						{
-							// Rampa desde el borde de la franja: pared de 62°, no un escalón a plomo.
+							// Rampa desde el borde de la franja: pared de 62°, no un escalón a plomo. En la playa
+							// final desaparece al llegar al agua, como los taludes (allí los brazos son el acantilado).
+							const double Fade = bShoreSeg ? 1.0 - SmoothStep(ShoreWaterY - 800.0, ShoreWaterY + 200.0, P.Y) : 1.0;
 							const double Ramp = Saturate((Eff - GuardBandMin) * GuardSlope / GuardH);
-							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH * Ramp);
+							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH * Ramp * Fade);
 							GuardZ[Idx] = FMath::Max(GuardZ[Idx], G);
 						}
 					}
@@ -913,6 +937,12 @@ namespace TNProcMap
 				if (bLane) { BankH = FMath::Max(BankH, 1100.0); }
 				// El cauce se abre solo mar adentro: la meta es una playa encajada que da al agua.
 				BankH *= 1.0 - SmoothStep(L->CoastY(P.X) - 300.0, L->CoastY(P.X) + 1500.0, P.Y);
+				// Playa final: al llegar al agua los brazos pasan a ser el propio acantilado de la costa (pared
+				// a plomo hasta él, sin meseta ni guarda), y mar adentro fuera de la franja solo queda el fondo.
+				// Así no hay lenguas de tierra baja junto al mar por las que salir nadando del mapa.
+				const bool bShore = (A.Flags & B.Flags & PathFlags::Shore) != 0;
+				const double SeaSide = bShore ? SmoothStep(ShoreWaterY - 800.0, ShoreWaterY + 200.0, P.Y) : 0.0;
+				BankH *= 1.0 - SeaSide;
 				// Bajo una estructura la zanja es de paredes a plomo desde el borde del suelo (la tapa ella).
 				const bool bTunnel = (Flags & PathFlags::Tunnel) != 0;
 				const double Toe = (bLane || bTunnel || (Flags & (PathFlags::Slide | PathFlags::TowerTop)) != 0) ? 150.0 : Bt.Shoulder;
@@ -951,15 +981,15 @@ namespace TNProcMap
 					const double X = Beyond - Toe - Run;
 					if (Outer >= Rim)
 					{
-						// Bajo una estructura la pared sube a plomo hasta arriba.
-						const double RiseDist = bTunnel ? 150.0 : Bt.RiseDist;
+						// Bajo una estructura (y en la orilla de la playa final) la pared sube a plomo hasta arriba.
+						const double RiseDist = bTunnel ? 150.0 : LerpD(Bt.RiseDist, 150.0, SeaSide);
 						H = Rim + (Outer - Rim) * SmoothStep(0.0, FMath::Max(RiseDist, 1.0), X);
 					}
 					else
 					{
-						const double Flank = LerpD(FlankSlope, 0.45, PathWet);
-						const double Plateau = RimPlateau * (1.0 - PathWet);
-						H = FMath::Max(Outer, Rim + 120.0 * NMed * (1.0 - PathWet) - FMath::Max(0.0, X - Plateau) * Flank);
+						const double Flank = LerpD(LerpD(FlankSlope, 0.45, PathWet), 4.0, SeaSide);
+						const double Plateau = RimPlateau * (1.0 - PathWet) * (1.0 - SeaSide);
+						H = FMath::Max(Outer, Rim + 120.0 * NMed * (1.0 - PathWet) * (1.0 - SeaSide) - FMath::Max(0.0, X - Plateau) * Flank);
 					}
 					H = FMath::Max(H, Guard);
 				}
@@ -1006,7 +1036,15 @@ namespace TNProcMap
 		 */
 		double ApplyCoast(const FVector2D& P, double H, double WetT, double NMed) const
 		{
-			const double Coast = L->CoastY(P.X);
+			// Junto a la playa de la meta el acantilado llega al menos 7 m más allá de la línea: los brazos
+			// siguen en pie al cruzarla y nadie sale al mar sin pasar por ella (la costa natural ondula
+			// varios metros en pocas decenas).
+			double Coast = L->CoastY(P.X);
+			if (CoveHalf > 0.0)
+			{
+				const double W = SmoothStep(CoveHalf + 6000.0, CoveHalf + 2000.0, FMath::Abs(P.X - FinishX));
+				Coast = FMath::Max(Coast, LerpD(Coast, FinishLineAt + 700.0, W));
+			}
 			if (P.Y < Coast - 3500.0) { return H; }
 			const double SeaBed = FMath::Max(-2600.0, -450.0 - FMath::Max(0.0, P.Y - Coast) * 0.035);
 			// Solo se levanta tierra: una laguna junto a la costa no puede convertirse en rampa de salida.

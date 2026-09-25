@@ -252,6 +252,11 @@ namespace TNProcMap
 	enum class EFeature : uint8
 	{
 		StartArea,
+		/**
+		 * Meta: Location = centro de la línea (Z = fondo), Target = orilla del agua en el eje, Width = ancho
+		 * de la boca en la línea, Height = ancho al fondo del volumen, Length = fondo del volumen, Radius =
+		 * radio interior del arco, Aux = semilla.
+		 */
 		Finish,
 		Geyser,        ///< Location = base, Target = aterrizaje.
 		SlideZone,     ///< Polilínea de tobogán: PathIndex = primera muestra, Aux = última.
@@ -408,6 +413,39 @@ namespace TNProcMap
 		inline double HalfAt(double WalkHalf, double Depth) { return WalkHalf + Parapet + Batter * FMath::Max(0.0, Depth); }
 	}
 
+	/**
+	 * Playa de la meta: el camino llega recto y los brazos del cauce se abren en arco (tangentes a él)
+	 * hasta el mar, así la playa se va descubriendo al avanzar. La línea de meta cruza toda la boca
+	 * unos metros mar adentro, bajo el arco.
+	 */
+	namespace FinishDims
+	{
+		/** La orilla del agua queda esta distancia antes de la línea de costa: el acantilado (los brazos) sigue en pie pasada la línea de meta, así nadie sale al mar sin cruzarla. */
+		constexpr double WaterInset = 700.0;
+		/** Distancia de la orilla a la línea de meta, ya dentro del agua (unos 3,5 m desde donde moja). */
+		constexpr double LineInWater = 280.0;
+		/** El camino sigue bajo el agua pasada la línea. */
+		constexpr double PastLine = 1500.0;
+		/** Tramo recto del ancho de llegada antes de que los brazos empiecen a abrirse. */
+		constexpr double FlareStart = 1000.0;
+		/** Giro de los brazos (desde la dirección del camino) al llegar a la orilla. */
+		constexpr double FlareTurnDeg = 65.0;
+		/** Ancho mínimo de la llegada a la playa. */
+		constexpr double ArrivalWidth = 2000.0;
+		/** Cota de la arena al empezar la playa y en la orilla; pendiente del fondo hasta la línea y
+		 *  pasada ella (llega al fondo del mar al final del camino) y cota mínima. */
+		constexpr double BeachZ = 120.0;
+		constexpr double WaterEdgeZ = 5.0;
+		constexpr double SeaSlope = 0.22;
+		constexpr double SeaSlopePastLine = 0.3;
+		constexpr double SeaFloorMin = -650.0;
+		/** Distancia preferida de la llegada a la costa (la playa mide lo que queda hasta el agua). */
+		constexpr double EndNear = 5500.0;
+		constexpr double EndFar = 8000.0;
+		/** Fondo del volumen de meta desde la línea. */
+		constexpr double TriggerDepth = 3000.0;
+	}
+
 	/** Resultado completo. bValid=false si la generación no encontró un mapa. */
 	struct FLayout
 	{
@@ -558,4 +596,27 @@ namespace TNProcMap
 			return N;
 		}
 	};
+
+	/** Y de la orilla del agua en la playa de la meta (la llegada va recta hacia +Y desde EndPoint). */
+	inline double FinishWaterY(const FLayout& L) { return L.CoastY(L.EndPoint.X) - FinishDims::WaterInset; }
+
+	/** Y de la línea de meta. */
+	inline double FinishLineY(const FLayout& L) { return FinishWaterY(L) + FinishDims::LineInWater; }
+
+	/** Ancho del camino principal a la altura Y de la playa final (interpolado entre muestras). */
+	inline double FinishBeachWidthAt(const FLayout& L, double Y)
+	{
+		const TArray<FPathSample>& M = L.Main;
+		for (int32 i = M.Num() - 1; i > 0; --i)
+		{
+			if ((M[i - 1].Flags & PathFlags::Shore) == 0) { break; }
+			if (M[i - 1].P.Y <= Y)
+			{
+				const double Span = M[i].P.Y - M[i - 1].P.Y;
+				const double T = Span > 1.0 ? FMath::Clamp((Y - M[i - 1].P.Y) / Span, 0.0, 1.0) : 1.0;
+				return LerpD(M[i - 1].Width, M[i].Width, T);
+			}
+		}
+		return M.Num() > 0 ? (Y > M.Last().P.Y ? M.Last().Width : M[0].Width) : 0.0;
+	}
 }

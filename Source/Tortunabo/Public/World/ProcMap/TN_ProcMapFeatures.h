@@ -120,18 +120,28 @@ namespace TNProcMap
 			F.Radius = P.StartClearingRadius;
 			L.Features.Add(F);
 		}
-		for (int32 i = 0; i < M.Num(); ++i)
+		// Meta: la línea cruza toda la boca de la playa unos metros mar adentro, bajo el arco.
 		{
-			if ((M[i].Flags & PathFlags::Shore) != 0)
+			const double LineY = FinishLineY(L);
+			int32 i = M.Num() - 1;
+			for (int32 k = 0; k < M.Num(); ++k)
 			{
-				FFeature F = MakeAtSample(EFeature::Finish, M[i], i, INDEX_NONE);
-				F.Location = FVector(M[i].P, 0.0);
-				F.Width = 9000.0;
-				F.Length = 5000.0;
-				F.Dir = FVector2D(0.0, 1.0);
-				L.Features.Add(F);
-				break;
+				if ((M[k].Flags & PathFlags::Shore) != 0 && M[k].P.Y >= LineY) { i = k; break; }
 			}
+			const FPathSample& A = M[FMath::Max(0, i - 1)];
+			const double Span = M[i].P.Y - A.P.Y;
+			const double T = Span > 1.0 ? FMath::Clamp((LineY - A.P.Y) / Span, 0.0, 1.0) : 1.0;
+			FFeature F = MakeAtSample(EFeature::Finish, M[i], i, INDEX_NONE);
+			F.Location = FVector(M[i].P.X, LineY, LerpD(A.Z, M[i].Z, T));
+			F.Target = FVector(M[i].P.X, FinishWaterY(L), 0.0);
+			F.Dir = FVector2D(0.0, 1.0);
+			F.Width = FinishBeachWidthAt(L, LineY);
+			F.Length = FinishDims::TriggerDepth;
+			F.Height = FinishBeachWidthAt(L, LineY + F.Length);
+			// Arco de unos 25 m de luz, sin tocar los brazos de la playa.
+			F.Radius = FMath::Clamp(0.5 * F.Width - 1000.0, 800.0, 1250.0);
+			F.Aux = static_cast<int32>(Hash32(static_cast<uint32>(P.Seed) ^ 0xF1A15u) & 0x7fffffffu);
+			L.Features.Add(F);
 		}
 
 		// Géiseres: aterrizan en la torre (cruce colosal) o pasado el escalón.

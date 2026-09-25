@@ -107,6 +107,14 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Biomas por regiones** de varios módulos contiguos, al azar y con transición
   natural: selva, playa, desierto, volcánico, agua (isletas), acantilados rocosos,
   manglar y zona humana. El último módulo es siempre playa con mar abierto.
+- **Playa de la meta**: el camino llega recto a 55-80 m de la costa y sus brazos se abren en
+  arco (campana) hasta el agua, así la playa se descubre al avanzar; en la orilla la boca mide
+  75-110 m y los brazos son el propio acantilado, que sigue en pie pasada la línea. La **línea
+  de meta** cruza toda la boca unos 3,5 m mar adentro (agua por la rodilla): allí empieza el
+  volumen de meta. Encima, un **neumático gigante en arco** (al estilo del puente Dunlop) con
+  TORTUNABO en los flancos, pasarela a cuadros con el cartel de META, rótulo «¡AL AGUA!» y
+  banderas a cuadros; boyas marcan la línea de lado a lado y hay banderines y banderolas en la
+  arena.
 - **Agua en pozas**: en lagunas y manglar el agua no es un lago abierto sino pozas de
   25-60 m alrededor de cada tramo, con acantilado al borde; entre tramos alejados del
   recorrido (más de 90 m) y junto a la costa queda tierra alta con montañas, así que no se

@@ -100,6 +100,7 @@ namespace TNProcMap
 					case EFeature::Volcano:
 					case EFeature::GiantTree:
 					case EFeature::Cave:
+					case EFeature::Finish:
 						Reach = FMath::Max(F.Radius, FMath::Max(F.Width, F.Length) * 0.5) + 1000.0;
 						break;
 					default:

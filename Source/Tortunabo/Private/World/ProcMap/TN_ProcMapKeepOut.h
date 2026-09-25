@@ -61,6 +61,7 @@ struct FTNProcKeepOut
 				case EFeature::Tower:          Add(C, F.Radius + 900.0); break;
 				case EFeature::Gate:           Add(C, FMath::Max(F.Width, F.Length) * 0.5 + 1200.0); break;
 				case EFeature::StartArea:      Add(C, F.Radius + 600.0); break;
+				case EFeature::Finish:         Add(C, F.Radius + 800.0); break;
 				case EFeature::Gap:            Add(C, FMath::Max(F.Height, F.Width) * 0.5 + 400.0); break;
 				case EFeature::ThrowWall:      Add(C, 1800.0); break;
 				case EFeature::SabotageGate:   Add(C, 1200.0); break;

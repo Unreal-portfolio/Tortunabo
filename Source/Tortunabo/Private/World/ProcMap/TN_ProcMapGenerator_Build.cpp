@@ -19,6 +19,7 @@
 #include "TN_ProcMapMeshKit.h"
 #include "TN_ProcMapFormationMeshes.h"
 #include "TN_ProcMapCaveMeshes.h"
+#include "TN_ProcMapFinishMeshes.h"
 #include "Components/PointLightComponent.h"
 
 using namespace TNProcMesh;
@@ -1001,6 +1002,26 @@ void ATN_ProcMapGenerator::BuildStructures()
 				FTNProcMeshBuffers Local;
 				TNFormMesh::TNFormBuild(Local, Kind, Params, TNFormMesh::TNFormColorsFor(F.Biome, RockC), Ground);
 				TNFormMesh::TNFormAppend(bFar ? PaintedFar : Painted, Local, FVector(C, OriginZ), Dx);
+				break;
+			}
+			case EFeature::Finish:
+			{
+				// Meta: neumático en arco sobre la línea (ya en el agua), boyas en toda la boca, banderines y
+				// banderolas en la playa. El neumático y los mástiles llevan colisión; rótulos y telas, no.
+				const FVector2D C(F.Location.X, F.Location.Y);
+				const FVector2D Dx = F.Dir.GetSafeNormal().IsNearlyZero() ? FVector2D(0.0, 1.0) : F.Dir.GetSafeNormal();
+				const FVector2D Dy(-Dx.Y, Dx.X);
+				TNFinishMesh::FTNFinishParams Params;
+				Params.Radius = F.Radius;
+				Params.MouthHalf = F.Width * 0.5;
+				Params.FloorZ = F.Location.Z;
+				Params.Seed = static_cast<uint32>(F.Aux);
+				auto Ground = [&](double X, double Y) { return TerrainHeightMap(C + Dx * X + Dy * Y) - TNProcMap::SeaLevel; };
+				auto HalfWidthAt = [&](double X) { return 0.5 * FinishBeachWidthAt(Layout, F.Location.Y + X * Dx.Y); };
+				FTNProcMeshBuffers Solid, Deco;
+				TNFinishMesh::TNFinishBuild(Solid, Deco, Params, Ground, HalfWidthAt);
+				TNFormMesh::TNFormAppend(Painted, Solid, FVector(C, TNProcMap::SeaLevel), Dx);
+				TNFormMesh::TNFormAppend(PaintedFar, Deco, FVector(C, TNProcMap::SeaLevel), Dx);
 				break;
 			}
 			case EFeature::GiantTree:

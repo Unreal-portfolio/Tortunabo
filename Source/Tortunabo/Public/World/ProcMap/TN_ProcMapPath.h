@@ -491,22 +491,29 @@ namespace TNProcMap
 		}
 		L.StartPoint = BestStart;
 
-		// Llegada: junto a la costa, en la parte del módulo final más alejada de sus vecinos.
-		BestScore = -1e300;
+		// Llegada: a 55-80 m de la costa (desde ahí la playa final va recta y se abre hasta el agua; si el
+		// módulo no llega tan lejos, junto a la costa), en la parte del módulo final más alejada de sus vecinos.
 		FVector2D BestEnd = L.Modules[EndModule].Centroid;
-		for (int32 y = 0; y < L.RasterH; ++y)
+		for (int32 Pass = 0; Pass < 2; ++Pass)
 		{
-			for (int32 x = 0; x < L.RasterW; ++x)
+			const double Near = Pass == 0 ? FinishDims::EndNear : 1800.0;
+			const double Far = Pass == 0 ? FinishDims::EndFar : 5000.0;
+			BestScore = -1e300;
+			for (int32 y = 0; y < L.RasterH; ++y)
 			{
-				const int32 Idx = L.CellIndex(x, y);
-				if (L.ModuleOfCell[Idx] != EndModule) { continue; }
-				const FVector2D C = L.CellCenter(x, y);
-				const double Coast = L.CoastY(C.X);
-				if (C.Y < Coast - 5000.0 || C.Y > Coast - 1800.0) { continue; }
-				const double EdgeX = FMath::Min(C.X, L.WorldSize - C.X) - P.MapEdgeClearance;
-				const double Score = FMath::Min(static_cast<double>(L.ModuleDist[Idx]), EdgeX) + Rng.Range(0.0, 400.0);
-				if (Score > BestScore) { BestScore = Score; BestEnd = C; }
+				for (int32 x = 0; x < L.RasterW; ++x)
+				{
+					const int32 Idx = L.CellIndex(x, y);
+					if (L.ModuleOfCell[Idx] != EndModule) { continue; }
+					const FVector2D C = L.CellCenter(x, y);
+					const double Coast = L.CoastY(C.X);
+					if (C.Y < Coast - Far || C.Y > Coast - Near) { continue; }
+					const double EdgeX = FMath::Min(C.X, L.WorldSize - C.X) - P.MapEdgeClearance;
+					const double Score = FMath::Min(static_cast<double>(L.ModuleDist[Idx]), EdgeX) + Rng.Range(0.0, 400.0);
+					if (Score > BestScore) { BestScore = Score; BestEnd = C; }
+				}
 			}
+			if (BestScore > -1e299) { break; }
 		}
 		L.EndPoint = BestEnd;
 	}
@@ -585,10 +592,12 @@ namespace TNProcMap
 			L.Main[Step.LastSample].Flags |= (k < NumSteps - 1) ? PathFlags::Portal : PathFlags::None;
 		}
 
-		// Bajada final al mar: la meta es entrar en el agua.
+		// Playa final: recta hacia el mar desde la llegada, hasta pasada la línea de meta (la meta es
+		// entrar en el agua).
 		{
 			const FVector2D From = L.Main.Last().P;
-			const int32 Extra = FMath::CeilToInt(3600.0 / P.SampleSpacing);
+			const double EndY = FMath::Max(FinishLineY(L) + FinishDims::PastLine, From.Y + 3600.0);
+			const int32 Extra = FMath::CeilToInt((EndY - From.Y) / P.SampleSpacing);
 			for (int32 i = 1; i <= Extra; ++i)
 			{
 				FPathSample Sm = L.Main.Last();
@@ -662,7 +671,34 @@ namespace TNProcMap
 		{
 			L.Main[i].Width = Smoothed[i];
 			if ((L.Main[i].Flags & PathFlags::Start) != 0) { L.Main[i].Width = FMath::Max(L.Main[i].Width, P.StartClearingRadius * 1.2); }
-			if ((L.Main[i].Flags & PathFlags::Shore) != 0) { L.Main[i].Width = FMath::Max(L.Main[i].Width, 3000.0); }
+		}
+
+		// Playa final en campana: la llegada (al menos ArrivalWidth) sigue recta FlareStart y luego sus
+		// brazos se abren en arco de radio R, tangentes al cauce, hasta la orilla, donde han girado unos
+		// 65°; bajo el agua siguen en recta con ese ángulo. La playa no se ve entera de golpe: se
+		// descubre al avanzar. (El terreno trata esta recta como una franja, ver StampPathField.)
+		int32 FirstShore = INDEX_NONE;
+		for (int32 i = 0; i < L.Main.Num(); ++i) { if ((L.Main[i].Flags & PathFlags::Shore) != 0) { FirstShore = i; break; } }
+		if (FirstShore > 0)
+		{
+			const double W0 = FMath::Max(FinishDims::ArrivalWidth, L.Main[FirstShore - 1].Width);
+			const double S0 = L.Main[FirstShore].S + FinishDims::FlareStart;
+			const double ToWater = FMath::Max(500.0, FinishWaterY(L) - L.Main[FirstShore].P.Y - FinishDims::FlareStart);
+			const double R = ToWater / FMath::Sin(FMath::DegreesToRadians(FinishDims::FlareTurnDeg));
+			const double Rise = R - FMath::Sqrt(R * R - ToWater * ToWater);
+			const double Tangent = FMath::Tan(FMath::DegreesToRadians(FinishDims::FlareTurnDeg));
+			for (int32 i = FirstShore - 1; i >= 0; --i)
+			{
+				const double D = L.Main[FirstShore].S - L.Main[i].S;
+				if (D > 2000.0) { break; }
+				L.Main[i].Width = FMath::Max(L.Main[i].Width, LerpD(W0, L.Main[i].Width, SmoothStep(0.0, 2000.0, D)));
+			}
+			for (int32 i = FirstShore; i < L.Main.Num(); ++i)
+			{
+				const double X = FMath::Max(0.0, L.Main[i].S - S0);
+				const double Half = X <= ToWater ? R - FMath::Sqrt(R * R - X * X) : Rise + (X - ToWater) * Tangent;
+				L.Main[i].Width = W0 + 2.0 * Half;
+			}
 		}
 	}
 
@@ -865,20 +901,29 @@ namespace TNProcMap
 		}
 		int32 FirstShore = NumS;
 		for (int32 i = 0; i < NumS; ++i) { if ((L.Main[i].Flags & PathFlags::Shore) != 0) { FirstShore = i; break; } }
-		for (int32 i = FirstShore; i < NumS; ++i)
-		{
-			const double T = static_cast<double>(i - FirstShore + 1) / FMath::Max(1, NumS - FirstShore);
-			Z[i] = LerpD(Z[FMath::Max(0, FirstShore - 1)], -220.0, T);
-		}
-		// Rampa suave hacia la orilla antes de la bajada final (la playa llega a ras del agua).
+		// Rampa suave hasta la cota de la playa antes de llegar a ella.
 		if (FirstShore > 0 && FirstShore < NumS)
 		{
-			const double BeachZ = 120.0;
 			for (int32 i = FirstShore - 1; i >= 0; --i)
 			{
 				const double D = L.Main[FirstShore - 1].S - L.Main[i].S;
 				if (D > 6000.0 || (L.Main[i].Flags & PathFlags::Special & ~PathFlags::Portal) != 0) { break; }
-				Z[i] = LerpD(BeachZ, Z[i], SmoothStep(0.0, 6000.0, D));
+				Z[i] = LerpD(FinishDims::BeachZ, Z[i], SmoothStep(0.0, 6000.0, D));
+			}
+		}
+		// Playa: arena en suave pendiente hasta la orilla y fondo que baja mar adentro (en la línea de
+		// meta el agua cubre unos 75 cm; al final del camino enlaza con el fondo del mar).
+		if (FirstShore < NumS)
+		{
+			const double WaterY = FinishWaterY(L);
+			const double Land = FMath::Max(1.0, WaterY - L.Main[FirstShore].P.Y);
+			for (int32 i = FirstShore; i < NumS; ++i)
+			{
+				const double D = WaterY - L.Main[i].P.Y;
+				const double Depth = FMath::Max(0.0, -D);
+				Z[i] = D >= 0.0 ? LerpD(FinishDims::WaterEdgeZ, FinishDims::BeachZ, FMath::Min(1.0, D / Land))
+					: FMath::Max(FinishDims::SeaFloorMin, FinishDims::WaterEdgeZ - FMath::Min(Depth, FinishDims::LineInWater) * FinishDims::SeaSlope
+						- FMath::Max(0.0, Depth - FinishDims::LineInWater) * FinishDims::SeaSlopePastLine);
 			}
 		}
 

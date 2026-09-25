@@ -342,10 +342,12 @@ void ATN_ProcMapGenerator::SpawnServerActors()
 			}
 			case EFeature::Finish:
 			{
-				const FVector Loc = MapToWorld2D(C + FVector2D(0.0, 1500.0), -150.0);
-				if (ATN_ProcFinishVolume* Finish = Cast<ATN_ProcFinishVolume>(SpawnMapActor(ATN_ProcFinishVolume::StaticClass(), FTransform(Loc), true)))
+				// Empieza en la línea de meta (ya en el agua) y cubre toda la boca de la playa hasta el
+				// fondo del volumen, donde los brazos se han abierto más.
+				const FVector Loc = MapToWorld2D(C + F.Dir.GetSafeNormal() * (F.Length * 0.5), TNProcMap::SeaLevel - 300.0);
+				if (ATN_ProcFinishVolume* Finish = Cast<ATN_ProcFinishVolume>(SpawnMapActor(ATN_ProcFinishVolume::StaticClass(), FTransform(Rot, Loc), true)))
 				{
-					Finish->SetExtent(FVector(F.Width * 0.5, F.Length * 0.5, 800.0));
+					Finish->SetExtent(FVector(F.Length * 0.5, F.Height * 0.5 + 1500.0, 900.0));
 				}
 				break;
 			}
