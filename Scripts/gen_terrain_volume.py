@@ -31,12 +31,12 @@ CLIMB_STEPS = 2                  # desnivel caminable entre columnas vecinas (1 
 JUMP_CELLS = 3                   # salto en linea recta: hasta 3 m de hueco, sin subir mas de 0,5 m
 
 
-def build_all(model: MapModel) -> dict[tuple[int, int], ChunkMesh]:
-    return {(col, row): build_chunk(model, col, row) for row in range(GRID) for col in range(GRID)}
+def build_all(model: MapModel, grid: int = GRID) -> dict[tuple[int, int], ChunkMesh]:
+    return {(col, row): build_chunk(model, col, row) for row in range(grid) for col in range(grid)}
 
 
-def global_standable(chunks: dict[tuple[int, int], ChunkMesh]) -> np.ndarray:
-    size = GRID * (CELL_SAMPLES - 1) + 1
+def global_standable(chunks: dict[tuple[int, int], ChunkMesh], grid: int = GRID) -> np.ndarray:
+    size = grid * (CELL_SAMPLES - 1) + 1
     out = np.zeros((size, size, Z_SAMPLES), dtype=bool)
     for (col, row), chunk in chunks.items():
         i0, j0 = row * (CELL_SAMPLES - 1), col * (CELL_SAMPLES - 1)
@@ -87,8 +87,8 @@ def walk(standable: np.ndarray, start: tuple[int, int, int], dry_only: bool = Tr
     return seen
 
 
-def zone_map(model: MapModel, chunks) -> dict[str, np.ndarray]:
-    size = GRID * (CELL_SAMPLES - 1) + 1
+def zone_map(model: MapModel, chunks, grid: int = GRID) -> dict[str, np.ndarray]:
+    size = grid * (CELL_SAMPLES - 1) + 1
     out = {z: np.zeros((size, size)) for z in chunks[(0, 0)].fields.weights}
     for (col, row), chunk in chunks.items():
         i0, j0 = row * (CELL_SAMPLES - 1), col * (CELL_SAMPLES - 1)

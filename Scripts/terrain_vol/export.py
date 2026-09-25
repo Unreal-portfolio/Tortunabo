@@ -146,7 +146,7 @@ def read_chunk(path: Path) -> dict:
 
 
 def write_map(out: Path, name: str, seed: int, chunks: dict[tuple[int, int], ChunkMesh], start, end, zone_map,
-              route_points, style=None, extra_manifest: dict | None = None) -> None:
+              route_points, style=None, extra_manifest: dict | None = None, grid: int = GRID) -> None:
     if out.exists():
         shutil.rmtree(out)
     (out / "Chunks").mkdir(parents=True)
@@ -158,7 +158,7 @@ def write_map(out: Path, name: str, seed: int, chunks: dict[tuple[int, int], Chu
         cells.append({"name": f"M_{name}_{chunk_name(col, row)}", "col": col, "row": row, "file": file,
                       "center_uu": [cx * UU_PER_M, cy * UU_PER_M], "vertices": int(len(chunk.vertices)),
                       "triangles": int(len(chunk.triangles)), "instances": int(len(chunk.instances))})
-    manifest = {"name": name, "seed": seed, "format": "TNTM2", "cell_uu": CELL_M * UU_PER_M, "grid": GRID,
+    manifest = {"name": name, "seed": seed, "format": "TNTM2", "cell_uu": CELL_M * UU_PER_M, "grid": grid,
                 "water_uu": WATER_M * UU_PER_M, "start_uu": [v * UU_PER_M for v in start],
                 "end_uu": [v * UU_PER_M for v in end], "cells": cells}
     if style is not None:
@@ -167,11 +167,11 @@ def write_map(out: Path, name: str, seed: int, chunks: dict[tuple[int, int], Chu
     if extra_manifest:
         manifest.update(extra_manifest)
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-    write_preview(out, chunks, zone_map, route_points)
+    write_preview(out, chunks, zone_map, route_points, grid)
 
 
-def global_top(chunks: dict[tuple[int, int], ChunkMesh]) -> np.ndarray:
-    size = GRID * (CELL_SAMPLES - 1) + 1
+def global_top(chunks: dict[tuple[int, int], ChunkMesh], grid: int = GRID) -> np.ndarray:
+    size = grid * (CELL_SAMPLES - 1) + 1
     top = np.zeros((size, size))
     for (col, row), chunk in chunks.items():
         i0, j0 = row * (CELL_SAMPLES - 1), col * (CELL_SAMPLES - 1)
@@ -179,9 +179,9 @@ def global_top(chunks: dict[tuple[int, int], ChunkMesh]) -> np.ndarray:
     return top
 
 
-def write_preview(out: Path, chunks, zone_map, route_points) -> None:
+def write_preview(out: Path, chunks, zone_map, route_points, grid: int = GRID) -> None:
     """Vista cenital sombreada (Norte arriba), agua, tinte por zona y la ruta."""
-    top = global_top(chunks)
+    top = global_top(chunks, grid)
     gx, gy = np.gradient(top)
     light = np.clip((gx * 0.5 - gy * 0.35 + 1.0) / np.sqrt(gx * gx + gy * gy + 1.0) * 0.8, 0.0, 1.0)
     tint = {"cliffs": (0.80, 0.62, 0.40), "canyon": (0.85, 0.66, 0.42), "marsh": (0.88, 0.80, 0.60),
