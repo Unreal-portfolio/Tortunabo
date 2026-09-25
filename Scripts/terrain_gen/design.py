@@ -11,15 +11,16 @@ import numpy as np
 from .core import *  # noqa: F401,F403
 from .features import *  # noqa: F401,F403
 from .field import design_field_module, side_distance
-from .styles import GATE_KINDS, STYLES
+from .styles import GATE_KINDS, STYLE_TWEAK_DEFAULTS, STYLES
 
 
 def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, secondary: str,
-                  levels: dict[str, int] | None = None):
+                  levels: dict[str, int] | None = None, tweaks: dict | None = None):
     """Heightfield del modulo (metros); el borde es libre salvo las bocas de salida.
 
     biome manda en la forma (estilo); secondary != biome hace un modulo mixto: un frente
-    difuso (blend) lleva hacia el otro bioma el color, el bosque de algas y el mar."""
+    difuso (blend) lleva hacia el otro bioma el color, el bosque de algas y el mar.
+    tweaks sobrescribe claves del estilo sorteado (ver STYLE_TWEAK_DEFAULTS)."""
     edge_fade = smoothstep(0.0, 50.0 * K, DIST_TO_EDGE)
 
     def pick(key: str, lo_hi: tuple[float, float]) -> float:
@@ -29,6 +30,7 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
         return lo_hi[0] + (lo_hi[1] - lo_hi[0]) * t
 
     style_name, style = pick_style(rng, biome)
+    style = {**STYLE_TWEAK_DEFAULTS, **style, **(tweaks or {})}
     is_causeway = bool(style["causeway"])
     is_maze = bool(style["maze"])
     gate_names = list(GATE_KINDS)
@@ -117,10 +119,15 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
     for lane in trails:
         d_trail = polyline_distance(wx, wy, lane)[0]
         trail_hw = float(rng.uniform(*TRAIL_HALF_WIDTH_M))
-        trail = 1.0 - smoothstep(trail_hw, trail_hw + TRAIL_BANK_M, d_trail)
-        corridor = np.maximum(corridor, trail)
+        trail_bank = float(rng.uniform(*style["trail_bank"]))
+        trail = 1.0 - smoothstep(trail_hw, trail_hw + trail_bank, d_trail)
+        # Profundidad del caminito: 1 = hasta el suelo del pasillo (canoncito); menos de 1
+        # deja una vaguada que sube y baja a lo largo del recorrido.
+        depth_lo, depth_hi = style["trail_depth"]
+        depth = depth_lo + (depth_hi - depth_lo) * (value_noise(rng, 70.0 * K) * 0.5 + 0.5)
+        corridor = np.maximum(corridor, trail * depth)
         trail_core = np.maximum(trail_core, 1.0 - smoothstep(trail_hw - 1.0, trail_hw + 1.0, d_trail))
-        trail_keep = np.maximum(trail_keep, 1.0 - smoothstep(trail_hw + TRAIL_BANK_M + 2.0, trail_hw + TRAIL_BANK_M + 10.0, d_trail))
+        trail_keep = np.maximum(trail_keep, 1.0 - smoothstep(trail_hw + trail_bank + 2.0, trail_hw + trail_bank + 10.0, d_trail))
 
     # La isla de la bifurcacion se queda fuera del pasillo: toma la cota de la meseta (roca
     # alta) o se rebaja despues a una loma escalable.
@@ -221,11 +228,23 @@ def design_module(rng: np.random.Generator, exits: tuple[str, ...], biome: str, 
 
     # Charco: hondonada bajo el agua fuera del camino; puede tocar el borde y unirse al
     # agua del vecino.
-    has_pond = rng.random() < style["pond_prob"]
-    if has_pond:
-        pond, pond_floor = pond_field(rng, d_main, hw)
-        pond = pond * (1.0 - trail_keep)
-        terrain = terrain * (1.0 - pond) + np.minimum(terrain, pond_floor) * pond
+    if style["pond_count"]:
+        # Laguitos de orilla: junto al pasillo, con playa; el carril central queda seco.
+        pond_count = int(rng.integers(style["pond_count"][0], style["pond_count"][1] + 1))
+        has_pond = False
+        for _ in range(pond_count):
+            found = shore_pond_field(rng, d_main, hw, rooms)
+            if found is None:
+                continue
+            pond, pond_floor = found
+            terrain = terrain * (1.0 - pond) + np.minimum(terrain, pond_floor) * pond
+            has_pond = True
+    else:
+        has_pond = rng.random() < style["pond_prob"]
+        if has_pond:
+            pond, pond_floor = pond_field(rng, d_main, hw)
+            pond = pond * (1.0 - trail_keep)
+            terrain = terrain * (1.0 - pond) + np.minimum(terrain, pond_floor) * pond
 
     # Ruta alta: sube por el talud, recorre la meseta y cruza el pasillo por un puente.
     bridges: list[Bridge] = []
@@ -326,7 +345,8 @@ def encode_biome_mask(blend, foliage) -> np.ndarray:
 
 
 def compose_module(seed: int, exits: tuple[str, ...], biome: str, secondary: str,
-                   edges: dict[str, str] | None = None, levels: dict[str, int] | None = None):
+                   edges: dict[str, str] | None = None, levels: dict[str, int] | None = None,
+                   tweaks: dict | None = None):
     """Diseno del modulo. edges (tipo de cada lado; None = los cuatro cresta) solo guia el
     diseno de campo (agua, explanada): el borde ya no se impone."""
     rng = np.random.default_rng(seed)
@@ -334,7 +354,7 @@ def compose_module(seed: int, exits: tuple[str, ...], biome: str, secondary: str
     if any(kind != "crest" for kind in edges.values()):
         design, stats, bridges, flat_areas, monoliths, blend, foliage, coast = design_field_module(rng, edges, biome, exits, secondary)
     else:
-        design, stats, bridges, flat_areas, monoliths, blend, foliage, coast = design_module(rng, exits, biome, secondary, levels)
+        design, stats, bridges, flat_areas, monoliths, blend, foliage, coast = design_module(rng, exits, biome, secondary, levels, tweaks)
     # Sin borde canonico: la fusion de bordes del tile casa dos vecinos cualesquiera. Solo
     # las bocas de las salidas de tierra se asientan a cota de camino, para que el pasillo
     # continue en el modulo de al lado.

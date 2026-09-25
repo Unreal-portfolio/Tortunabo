@@ -610,3 +610,22 @@ def pond_field(rng: np.random.Generator, d_main, hw):
     mask = 1.0 - smoothstep(radius - 10.0, radius, d)
     mask = mask * smoothstep(hw + 4.0, hw + 14.0, d_main)     # el camino queda seco
     return mask, WATER_M - float(rng.uniform(1.0, 2.0))
+
+
+def shore_pond_field(rng: np.random.Generator, d_main, hw, rooms: list[Room]):
+    """(mascara 0..1, cota del fondo) de un laguito de orilla: se asoma al pasillo con una
+    playa ancha y poco fondo. El carril central (40 % del semiancho) queda seco, igual que
+    las plazas. None si no hay sitio."""
+    room_clear = np.full_like(XX, np.inf)
+    for room in rooms:
+        room_clear = np.minimum(room_clear, np.hypot(XX - room.x, YY - room.y) - room.radius)
+    sites = np.argwhere((d_main > 0.6 * hw) & (d_main < hw + 6.0) & (DIST_TO_EDGE > 30.0) & (room_clear > 12.0))
+    if not len(sites):
+        return None
+    i, j = sites[int(rng.integers(len(sites)))]
+    radius = float(rng.uniform(12.0, 22.0))
+    d = np.hypot(XX - XX[i, j], YY - YY[i, j]) + 6.0 * fbm(rng, 22.0, octaves=2)
+    mask = 1.0 - smoothstep(radius, radius + 12.0, d)          # fondo hasta radius, playa de 12 m
+    mask = mask * smoothstep(0.4 * hw, 0.4 * hw + 6.0, d_main) * smoothstep(4.0, 10.0, room_clear)
+    return mask, WATER_M - float(rng.uniform(0.8, 1.6))
+

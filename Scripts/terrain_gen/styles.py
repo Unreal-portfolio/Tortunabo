@@ -56,6 +56,13 @@ STYLES: dict[str, dict] = {
                     "warp": (40.0, 60.0), "warp_wave": 70.0},
 }
 
+# Claves que el disenador lee con estos valores si el estilo no las trae; un llamador
+# (p. ej. el mapa cosido) las cambia con tweaks= sin tocar la libreria de modulos.
+# trail_bank: talud del caminito (m); trail_depth: fraccion hundida hacia el suelo del
+# pasillo (min, max a lo largo del caminito); pond_count: laguitos de orilla (min, max),
+# None = el charco clasico de pond_prob.
+STYLE_TWEAK_DEFAULTS = {"trail_bank": (3.0, 3.0), "trail_depth": (1.0, 1.0), "pond_count": None}
+
 # Variantes de puerta (el tramo del pasillo justo detras de cada boca), independientes del
 # estilo: normal, garganta estrecha, abocinada o con un arco encima ("altura de puerta").
 GATE_KINDS = {"normal": 40, "gorge": 20, "flare": 20, "arch": 20}

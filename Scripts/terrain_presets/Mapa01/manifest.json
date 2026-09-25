@@ -67,7 +67,7 @@
      "x_m": 0.27,
      "y_m": 12.27,
      "radius_m": 30.38,
-     "height_m": 1.75,
+     "height_m": 3.13,
      "sunken": false
     }
    ]
@@ -116,39 +116,21 @@
    "coast_file": "Cells/M_Mapa01_r0c4_coast.png",
    "biome": "sand",
    "secondary_biome": "sand",
-   "bridges": [
-    {
-     "x_m": -14.44,
-     "y_m": -49.88,
-     "yaw_deg": 157.7,
-     "length_m": 42.0,
-     "width_m": 7.66,
-     "deck_m": 10.94,
-     "kind": "arch",
-     "thickness_m": 2.5
-    }
-   ],
+   "bridges": [],
    "monoliths": [],
    "flat_areas": [
     {
      "x_m": -11.09,
      "y_m": 3.89,
-     "radius_m": 26.16,
-     "height_m": 0.13,
+     "radius_m": 28.62,
+     "height_m": -2.07,
      "sunken": false
     },
     {
-     "x_m": -12.57,
-     "y_m": 63.54,
-     "radius_m": 19.55,
-     "height_m": 0.29,
-     "sunken": false
-    },
-    {
-     "x_m": -8.3,
-     "y_m": -42.12,
-     "radius_m": 22.05,
-     "height_m": -1.14,
+     "x_m": -12.26,
+     "y_m": 56.59,
+     "radius_m": 23.56,
+     "height_m": -0.29,
      "sunken": false
     }
    ]
@@ -169,28 +151,39 @@
    "coast_file": "Cells/M_Mapa01_r0c5_coast.png",
    "biome": "sand",
    "secondary_biome": "sand",
-   "bridges": [],
+   "bridges": [
+    {
+     "x_m": 33.05,
+     "y_m": -35.15,
+     "yaw_deg": -166.9,
+     "length_m": 52.45,
+     "width_m": 14.21,
+     "deck_m": 13.18,
+     "kind": "bridge",
+     "thickness_m": 2.5
+    }
+   ],
    "monoliths": [],
    "flat_areas": [
     {
      "x_m": -14.27,
      "y_m": 12.32,
-     "radius_m": 31.47,
-     "height_m": 1.47,
+     "radius_m": 26.16,
+     "height_m": 2.2,
      "sunken": false
     },
     {
-     "x_m": 52.43,
-     "y_m": 2.39,
-     "radius_m": 24.93,
-     "height_m": 1.2,
+     "x_m": 55.29,
+     "y_m": 1.94,
+     "radius_m": 19.55,
+     "height_m": 2.66,
      "sunken": false
     },
     {
-     "x_m": -14.4,
-     "y_m": -39.35,
-     "radius_m": 18.01,
-     "height_m": 0.27,
+     "x_m": -14.37,
+     "y_m": -37.81,
+     "radius_m": 22.05,
+     "height_m": 1.64,
      "sunken": false
     }
    ]
@@ -257,15 +250,15 @@
     {
      "x_m": 1.25,
      "y_m": -9.9,
-     "radius_m": 30.82,
-     "height_m": 0.02,
+     "radius_m": 28.74,
+     "height_m": 0.43,
      "sunken": false
     },
     {
-     "x_m": 56.32,
-     "y_m": -13.23,
-     "radius_m": 27.98,
-     "height_m": -3.12,
+     "x_m": 62.33,
+     "y_m": -12.78,
+     "radius_m": 27.04,
+     "height_m": -0.74,
      "sunken": false
     }
    ]
@@ -286,32 +279,21 @@
    "coast_file": "Cells/M_Mapa01_r1c3_coast.png",
    "biome": "sand",
    "secondary_biome": "sand",
-   "bridges": [
-    {
-     "x_m": -15.76,
-     "y_m": -62.04,
-     "yaw_deg": 68.8,
-     "length_m": 51.1,
-     "width_m": 13.05,
-     "deck_m": 5.85,
-     "kind": "bridge",
-     "thickness_m": 2.5
-    }
-   ],
+   "bridges": [],
    "monoliths": [],
    "flat_areas": [
     {
      "x_m": -7.33,
      "y_m": 0.85,
-     "radius_m": 28.74,
-     "height_m": 1.1,
+     "radius_m": 30.2,
+     "height_m": -2.72,
      "sunken": false
     },
     {
-     "x_m": -13.36,
-     "y_m": 60.83,
-     "radius_m": 27.04,
-     "height_m": 1.15,
+     "x_m": -9.06,
+     "y_m": -68.16,
+     "radius_m": 23.05,
+     "height_m": 4.35,
      "sunken": false
     }
    ]
@@ -338,15 +320,15 @@
     {
      "x_m": -10.95,
      "y_m": -0.33,
-     "radius_m": 30.2,
-     "height_m": -0.2,
+     "radius_m": 22.54,
+     "height_m": 0.46,
      "sunken": false
     },
     {
-     "x_m": -12.94,
-     "y_m": -64.22,
-     "radius_m": 23.05,
-     "height_m": 0.39,
+     "x_m": -5.44,
+     "y_m": 55.88,
+     "radius_m": 25.96,
+     "height_m": -3.02,
      "sunken": false
     }
    ]
@@ -367,32 +349,28 @@
    "coast_file": "Cells/M_Mapa01_r1c5_coast.png",
    "biome": "sand",
    "secondary_biome": "sand",
-   "bridges": [
-    {
-     "x_m": 9.79,
-     "y_m": -47.25,
-     "yaw_deg": 180.0,
-     "length_m": 38.0,
-     "width_m": 9.68,
-     "deck_m": 9.37,
-     "kind": "arch",
-     "thickness_m": 2.5
-    }
-   ],
+   "bridges": [],
    "monoliths": [],
    "flat_areas": [
     {
      "x_m": 3.3,
      "y_m": 15.07,
-     "radius_m": 22.54,
-     "height_m": -2.2,
+     "radius_m": 31.47,
+     "height_m": -3.0,
      "sunken": false
     },
     {
-     "x_m": -53.32,
-     "y_m": 11.85,
-     "radius_m": 25.96,
-     "height_m": -2.96,
+     "x_m": -57.51,
+     "y_m": 11.41,
+     "radius_m": 24.93,
+     "height_m": -2.89,
+     "sunken": false
+    },
+    {
+     "x_m": 1.64,
+     "y_m": -36.38,
+     "radius_m": 18.01,
+     "height_m": -2.32,
      "sunken": false
     }
    ]
@@ -455,12 +433,12 @@
    "secondary_biome": "sand",
    "bridges": [
     {
-     "x_m": 57.26,
-     "y_m": 0.38,
-     "yaw_deg": -99.3,
-     "length_m": 38.0,
-     "width_m": 6.37,
-     "deck_m": 12.77,
+     "x_m": -73.54,
+     "y_m": -4.44,
+     "yaw_deg": -73.2,
+     "length_m": 50.0,
+     "width_m": 9.7,
+     "deck_m": 7.5,
      "kind": "arch",
      "thickness_m": 2.5
     }
@@ -470,15 +448,15 @@
     {
      "x_m": -10.45,
      "y_m": 9.96,
-     "radius_m": 29.58,
-     "height_m": -0.52,
+     "radius_m": 30.82,
+     "height_m": -2.43,
      "sunken": false
     },
     {
-     "x_m": 57.36,
-     "y_m": 9.18,
-     "radius_m": 22.09,
-     "height_m": 2.85,
+     "x_m": 54.01,
+     "y_m": 9.53,
+     "radius_m": 27.98,
+     "height_m": -1.76,
      "sunken": false
     }
    ]
@@ -601,13 +579,13 @@
    "secondary_biome": "sand",
    "bridges": [
     {
-     "x_m": 32.38,
-     "y_m": -4.41,
-     "yaw_deg": -77.7,
-     "length_m": 36.0,
-     "width_m": 6.14,
-     "deck_m": 12.3,
-     "kind": "arch",
+     "x_m": -84.56,
+     "y_m": -2.53,
+     "yaw_deg": 118.3,
+     "length_m": 51.31,
+     "width_m": 14.86,
+     "deck_m": 6.59,
+     "kind": "bridge",
      "thickness_m": 2.5
     }
    ],
@@ -617,21 +595,21 @@
      "x_m": 10.27,
      "y_m": -5.16,
      "radius_m": 25.49,
-     "height_m": 5.21,
+     "height_m": -3.21,
      "sunken": false
     },
     {
      "x_m": 54.78,
      "y_m": -3.67,
      "radius_m": 25.47,
-     "height_m": 1.28,
+     "height_m": -2.45,
      "sunken": false
     },
     {
      "x_m": -46.58,
      "y_m": -4.17,
      "radius_m": 19.34,
-     "height_m": -1.32,
+     "height_m": 0.73,
      "sunken": false
     }
    ]
@@ -759,14 +737,14 @@
      "x_m": 3.44,
      "y_m": -0.58,
      "radius_m": 30.55,
-     "height_m": -0.41,
+     "height_m": 3.8,
      "sunken": false
     },
     {
      "x_m": 72.71,
      "y_m": -0.95,
      "radius_m": 19.5,
-     "height_m": -1.24,
+     "height_m": 4.34,
      "sunken": false
     }
    ]

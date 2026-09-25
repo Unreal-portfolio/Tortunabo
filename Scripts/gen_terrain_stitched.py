@@ -39,6 +39,9 @@ from terrain_gen.design import compose_module
 BAND = 20                   # muestras de la costura a cada lado del borde (40 m)
 WARP_M = 25.0               # desplazamiento maximo de la deformacion final
 MODULE_ATTEMPTS = 16
+# Ajustes del disenador para el mapa cosido: 1-2 laguitos de orilla por modulo y caminitos
+# como vaguadas de talud ancho (no zanjas) que se hunden a tramos.
+MODULE_TWEAKS = {"pond_count": (1, 2), "trail_bank": (9.0, 14.0), "trail_depth": (0.35, 0.8)}
 SIDE_STEP = {"N": (0, 1), "E": (1, 0), "S": (0, -1), "W": (-1, 0)}   # (dcol, dfila)
 
 
@@ -58,7 +61,7 @@ def design_cell(rng, exits: tuple[str, ...]):
     for _ in range(MODULE_ATTEMPTS):
         seed = int(rng.integers(1, 2 ** 31 - 1))
         heights, _stats, bridges, flat_areas, _monoliths, _mask, _coast = compose_module(
-            seed, exits, "sand", "sand", None, None)
+            seed, exits, "sand", "sand", None, None, MODULE_TWEAKS)
         meters = (heights.astype(np.float64) - HEIGHT_ZERO) / UNITS_PER_M
         if any(b.kind == "tunnel" for b in bridges):
             continue
@@ -165,8 +168,10 @@ def main() -> None:
     terrain = blur(warp(terrain, offset_x, offset_y))
 
     start, goal = index_of(centers[0], half), index_of(centers[-1], half)
-    if not reachable(terrain, start, goal):
-        raise AssertionError("el final no se alcanza a pie desde el inicio")
+    # A pie y en seco: el agua no cuenta como paso (aun no se nada).
+    dry = np.where(terrain > WATER_M + 0.2, terrain, 1e6)
+    if not reachable(dry, start, goal):
+        raise AssertionError("el final no se alcanza a pie (en seco) desde el inicio")
 
     # Arcos y plazas siguen al terreno deformado; un arco que ya no apoya bien se quita.
     bridges_by_cell, dropped = {}, 0
@@ -192,7 +197,8 @@ def main() -> None:
     out = write_preset(args.name, args.seed, grid, terrain, mask, cells, flat_areas, bridges_by_cell,
                        secondary="sand", shade=(~on_path).astype(np.float64))
     kept = sum(len(v) for v in bridges_by_cell.values())
-    print(f"{args.name}: camino de {len(cells)} celdas {cells}; {kept} puentes ({dropped} quitados); "
+    ponds = ndimage.label((terrain < WATER_M) & on_path)[1]
+    print(f"{args.name}: {ponds} laguitos en el camino; camino de {len(cells)} celdas {cells}; {kept} puentes ({dropped} quitados); "
           f"{len(flat_areas)} plazas; cota [{terrain.min():.1f}, {terrain.max():.1f}] m; {grid * grid} modulos en {out}")
 
 
