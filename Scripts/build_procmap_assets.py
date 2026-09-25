@@ -10,8 +10,11 @@ Crea en /Game/ProcMap:
   - DA_ProcMapSettings (UTN_ProcMapSettings) con materiales, biomas y los 9 perfiles
     (Coop/Carrera/2vs2 x Fácil/Normal/Difícil) listos para ajustar.
   - BP_ProcMapGameMode (hijo de ATN_ProcMapGameMode) con los BP del juego.
-Crea /Game/Maps/Run/LVL_ProcMap (luz, cielo, niebla, generador y GameMode) y coloca
-en /Game/Maps/Lobby/LVL_HQ dos selectores (modo y dificultad) junto a la zona de listos.
+Coloca en /Game/Maps/Lobby/LVL_HQ dos selectores (modo y dificultad) junto a la zona de
+listos y crea /Game/Maps/Run/LVL_ProcMap (luz, cielo, niebla, generador y GameMode), que
+queda abierto al terminar: basta con darle a Play.
+
+Guarda antes lo que tengas abierto: el script cambia de nivel dos veces.
 
 Idempotente: lo que ya existe se reutiliza sin tocarlo (para no pisar ajustes hechos a
 mano). Para regenerar un asset, bórralo y vuelve a ejecutar el script.
@@ -320,9 +323,11 @@ def main():
     biomes = build_biomes()
     settings = build_settings(materials, biomes)
     game_mode_bp = build_game_mode(settings)
-    build_map(game_mode_bp, settings)
     place_lobby_selectors()
-    unreal.log("[ProcMap] Assets, LVL_ProcMap y selectores del lobby listos.")
+    # El último nivel que se abre es LVL_ProcMap: queda listo para darle a Play.
+    build_map(game_mode_bp, settings)
+    unreal.log("[ProcMap] Listo: LVL_ProcMap abierto (Play = Coop Normal 6x6). "
+               "Modo/dificultad sin lobby: BP_ProcMapGameMode > Mode/Difficulty Without Lobby.")
 
 
 main()
