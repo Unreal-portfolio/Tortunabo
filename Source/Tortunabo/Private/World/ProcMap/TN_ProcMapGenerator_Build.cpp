@@ -492,7 +492,8 @@ void ATN_ProcMapGenerator::BuildStructures()
 		{
 			case EFeature::Islet:
 			{
-				Rock.AddPrism(F.Polygon, F.Location.Z, -520.0, FLinearColor(0.55f, 0.5f, 0.38f));
+				// Hasta el lecho de la laguna (≈ -10 m): vistas desde el agua no quedan flotando.
+				Rock.AddPrism(F.Polygon, F.Location.Z, -1300.0, FLinearColor(0.55f, 0.5f, 0.38f));
 				break;
 			}
 			case EFeature::Gap:
