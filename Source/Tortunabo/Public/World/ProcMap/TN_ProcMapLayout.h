@@ -75,15 +75,15 @@ namespace TNProcMap
 		/** Fracción de módulos únicos que recorre el camino principal. */
 		double Coverage = 0.78;
 		int32 NumCrossings = 2;
-		int32 NumBranches = 7;
+		int32 NumBranches = 12;
 		/** Bifurcaciones en carriles paralelos con puzles (2vs2). */
 		int32 NumLanes = 0;
 		int32 BranchMaxModules = 3;
 
 		double PathWidthMin = 400.0;
 		double PathWidthMax = 3500.0;
-		double PortalWidthMin = 1000.0;
-		double PortalWidthMax = 2200.0;
+		double PortalWidthMin = 800.0;
+		double PortalWidthMax = 3000.0;
 		/** Tramos estrechos: probabilidad por tramo de ~100 m. */
 		double NarrowChance = 0.22;
 		/** Longitud del camino dentro de un módulo / distancia recta entre portales. */

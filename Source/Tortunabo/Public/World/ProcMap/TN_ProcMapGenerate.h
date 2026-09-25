@@ -25,7 +25,7 @@ namespace TNProcMap
 		P.CellSize = FMath::Clamp(P.CellSize, 200.0, 1600.0);
 		P.Coverage = FMath::Clamp(P.Coverage, 0.1, 1.0);
 		P.NumCrossings = FMath::Clamp(P.NumCrossings, 0, 8);
-		P.NumBranches = FMath::Clamp(P.NumBranches, 0, 16);
+		P.NumBranches = FMath::Clamp(P.NumBranches, 0, 32);
 		P.NumLanes = FMath::Clamp(P.NumLanes, 0, 8);
 		P.BranchMaxModules = FMath::Clamp(P.BranchMaxModules, 1, 3);
 		P.PathWidthMin = FMath::Clamp(P.PathWidthMin, 300.0, 3000.0);

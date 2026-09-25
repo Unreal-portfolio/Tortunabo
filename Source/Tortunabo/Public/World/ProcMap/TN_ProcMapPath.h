@@ -341,10 +341,13 @@ namespace TNProcMap
 		enum class EWidthKind : uint8 { Narrow, Tight, Normal, Wide, Open };
 		constexpr int32 NumWidthKinds = 5;
 
-		/** Reparto de tramos por bioma: cañones en desierto y roca, arenales abiertos en la playa. */
+		/**
+		 * Reparto de tramos por bioma: cañones en desierto y roca, arenales abiertos en la
+		 * playa. Pocos tramos intermedios: o estrecho o amplio, que se note el contraste.
+		 */
 		inline void WidthKindWeights(ETNProcBiome Biome, double NarrowChance, double (&Out)[NumWidthKinds])
 		{
-			Out[0] = NarrowChance; Out[1] = 0.2; Out[2] = 0.3; Out[3] = 0.2; Out[4] = 0.1;
+			Out[0] = NarrowChance * 1.3; Out[1] = 0.22; Out[2] = 0.12; Out[3] = 0.24; Out[4] = 0.14;
 			switch (Biome)
 			{
 				case ETNProcBiome::Desert:   Out[0] *= 1.6; Out[1] *= 1.3; Out[4] *= 0.8; break;
@@ -626,7 +629,7 @@ namespace TNProcMap
 				for (int32 i = Step.FirstSample; i <= Step.LastSample && i < L.Main.Num(); ++i)
 				{
 					const double D = FVector2D::Distance(L.Main[i].P, Portal.Point);
-					if (D < 4000.0) { W[i] = LerpD(Portal.Width, W[i], SmoothStep(1500.0, 4000.0, D)); }
+					if (D < 2500.0) { W[i] = LerpD(Portal.Width, W[i], SmoothStep(700.0, 2500.0, D)); }
 				}
 			}
 		}

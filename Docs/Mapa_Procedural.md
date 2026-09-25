@@ -83,8 +83,8 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   transitable sin objetivo) o *Mixed*.
 - **Camino principal** largo y natural, con anchura por tramos de 40–150 m: desfiladeros
   de 3,5–5 m, pasos cerrados de 6–10 m, tramos normales, anchos de 20–35 m y explanadas
-  de 40–60 m (más cañones en desierto y roca, más arenales abiertos en la playa). La
-  anchura se recorta para que entre dos partes del camino quede siempre un muro de 18 m.
+  de 40–60 m, con pocos tramos intermedios (más cañones en desierto y roca, más arenales
+  abiertos en la playa). La anchura se recorta para que entre dos partes del camino quede siempre un muro de 18 m.
   El terreno ondula sin tendencia general; los cambios grandes de altura solo
   ocurren al cruzar de módulo, mediante **géiser** (sube) o **cascada-tobogán** (baja).
   Los huecos del camino principal miden 1,3–3,9 m (salto corriendo o con dive).
@@ -166,9 +166,9 @@ los restaura).
 
 | Modo | Rejilla F/N/D | Cobertura | Cruces F/N/D | Ramas F/N/D | Carriles | Tormenta cm/s F/N/D (gracia s) |
 |---|---|---|---|---|---|---|
-| Coop | 3 / 6 / 8 | 0,78 | 1 / 2 / 4 | 4 / 7 / 10 | 0 | 300 / 360 / 410 (90 / 60 / 45) |
-| Carrera | 2 / 3 / 4 | 0,90 | 0 / 1 / 1 | 3 / 5 / 6 | 0 | — |
-| 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 2 / 2 / 3 | 1 / 2 / 3 | — |
+| Coop | 3 / 6 / 8 | 0,78 | 1 / 2 / 4 | 6 / 12 / 16 | 0 | 300 / 360 / 410 (90 / 60 / 45) |
+| Carrera | 2 / 3 / 4 | 0,90 | 0 / 1 / 1 | 4 / 7 / 9 | 0 | — |
+| 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 2 / 3 / 4 | 1 / 2 / 3 | — |
 
 Comunes por dificultad (F/N/D): densidad de peligros 0,7 / 1 / 1,4; huecos por km
 2 / 3 / 4,5; una pila de huevos cada 1 / 2 / 3 cruces de módulo.
