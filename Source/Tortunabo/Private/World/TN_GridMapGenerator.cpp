@@ -597,14 +597,16 @@ void ATN_GridMapGenerator::UpdateWaterPlane()
 	}
 
 	const ATN_GridTerrainTile* TileDefaults = TerrainTileClass ? TerrainTileClass->GetDefaultObject<ATN_GridTerrainTile>() : nullptr;
-	const bool bHasWater = IsModuleMode() || TileDefaults != nullptr;
+	// Mapa preparado o librería: el agua va a la cota de los módulos, no a la del terreno por celdas.
+	const bool bModuleWater = IsModuleMode() || PresetCells.Num() > 0;
+	const bool bHasWater = bModuleWater || TileDefaults != nullptr;
 	WaterPlane->SetVisibility(bHasWater);
 	if (!bHasWater)
 	{
 		return;
 	}
 
-	const float WaterLevel = IsModuleMode() ? ModuleWaterLevel : TileDefaults->GetSettings().WaterLevel;
+	const float WaterLevel = bModuleWater ? ModuleWaterLevel : TileDefaults->GetSettings().WaterLevel;
 	const float GridExtent = GridSize * CellSize;
 	const float GridCenter = (GridSize - 1) * CellSize * 0.5f;
 	WaterPlane->SetRelativeLocation(FVector(GridCenter, GridCenter, WaterLevel));
