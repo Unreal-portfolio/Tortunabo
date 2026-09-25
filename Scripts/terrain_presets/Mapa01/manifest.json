@@ -84,10 +84,10 @@
    "monoliths": [],
    "flat_areas": [
     {
-     "x_m": -5.9,
-     "y_m": 49.62,
-     "radius_m": 15.04,
-     "height_m": 34.78,
+     "x_m": 4.58,
+     "y_m": 70.52,
+     "radius_m": 35.84,
+     "height_m": 3.52,
      "sunken": false
     }
    ]
@@ -192,10 +192,10 @@
    "monoliths": [],
    "flat_areas": [
     {
-     "x_m": 18.04,
-     "y_m": -25.21,
-     "radius_m": 20.57,
-     "height_m": -2.37,
+     "x_m": 9.43,
+     "y_m": -4.74,
+     "radius_m": 35.39,
+     "height_m": 4.41,
      "sunken": false
     }
    ]
@@ -240,10 +240,10 @@
    "monoliths": [],
    "flat_areas": [
     {
-     "x_m": -33.3,
-     "y_m": 97.58,
-     "radius_m": 16.14,
-     "height_m": 7.21,
+     "x_m": -30.72,
+     "y_m": 96.19,
+     "radius_m": 32.07,
+     "height_m": 0.81,
      "sunken": false
     }
    ]
@@ -568,10 +568,10 @@
    "monoliths": [],
    "flat_areas": [
     {
-     "x_m": -58.1,
-     "y_m": -12.12,
-     "radius_m": 21.02,
-     "height_m": 13.69,
+     "x_m": -73.62,
+     "y_m": 9.54,
+     "radius_m": 35.68,
+     "height_m": 1.13,
      "sunken": false
     }
    ]
