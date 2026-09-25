@@ -6,7 +6,7 @@ Se ejecuta DENTRO del editor de Unreal, con el C++ ya compilado:
 Crea en /Game/ProcMap:
   - Materiales greybox: M_ProcTerrain (color de vértice), M_ProcFlat (+ MI de roca,
     madera, lava y tobogán), M_ProcWater (translúcido, + MI del mar) y M_ProcFoliage
-    (color de vértice, dos caras, para la vegetación procedural instanciada).
+    (color de vértice, para la vegetación procedural instanciada).
   - DA_Biome_<Bioma> (UTN_ProcBiomeDataAsset) x8 rellenos con el greybox del código.
   - DA_ProcMapSettings (UTN_ProcMapSettings) con materiales, biomas y los 9 perfiles
     (Coop/Carrera/2vs2 x Fácil/Normal/Difícil) listos para ajustar.
@@ -123,9 +123,9 @@ def build_foliage_material():
         return existing
     material = asset_tools.create_asset("M_ProcFoliage", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
     # Vegetación procedural (TN_ProcMapGenerator_Flora.cpp): mallas instanciadas con el color en
-    # el vértice; dos caras para frondas y hojas de hierba.
+    # el vértice. De una cara: frondas y hojas de hierba ya traen las dos caras en la malla (con un
+    # material de dos caras se pelearían en profundidad).
     material.set_editor_property("used_with_instanced_static_meshes", True)
-    material.set_editor_property("two_sided", True)
     vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -400, 0)
     mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
     roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 250)

@@ -23,6 +23,13 @@ using namespace TNFloraMesh;
 
 namespace
 {
+	/** Inversa de la codificación sRGB de un canal. */
+	float TNFloraSRGBToLinear(float C)
+	{
+		const float V = FMath::Clamp(C, 0.f, 1.f);
+		return V <= 0.04045f ? V / 12.92f : FMath::Pow((V + 0.055f) / 1.055f, 2.4f);
+	}
+
 	/** Malla estática en ejecución a partir de unos buffers de caras planas (sin colisión). */
 	UStaticMesh* TNFloraMakeStaticMesh(UObject* Outer, const FTNProcMeshBuffers& B, UMaterialInterface* Material)
 	{
@@ -57,7 +64,10 @@ namespace
 			Normals[VI] = FVector3f(N);
 			Tangents[VI] = FVector3f(T);
 			Signs[VI] = 1.f;
-			Colors[VI] = FVector4f(B.Colors[i].R, B.Colors[i].G, B.Colors[i].B, 1.f);
+			// La malla guarda el color en sRGB (ToFColor(true)) y el nodo VertexColor lo lee tal cual:
+			// se decodifica antes para que el material reciba el color lineal de la paleta (como el
+			// de las mallas procedurales) y no uno aclarado.
+			Colors[VI] = FVector4f(TNFloraSRGBToLinear(B.Colors[i].R), TNFloraSRGBToLinear(B.Colors[i].G), TNFloraSRGBToLinear(B.Colors[i].B), 1.f);
 			UVs.Set(VI, 0, FVector2f(B.UVs[i]));
 			Instances[i] = VI;
 		}

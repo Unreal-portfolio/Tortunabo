@@ -44,6 +44,7 @@ namespace TNProcMap
 		AshBush,       ///< Arbusto de ceniza (volcán).
 		Hedge,         ///< Seto recortado (zona humana).
 		Umbrella,      ///< Sombrilla de playa con mástil (zona humana).
+		Creeper,       ///< Enredadera o musgo: manta de hojas pegada a la pared (sigue su normal).
 		Rock,          ///< Peñasco suelto.
 		Stones,        ///< Corro de piedras pequeñas.
 		Count
@@ -86,8 +87,9 @@ namespace TNProcMap
 		double ScaleMax = 1.2;
 		/** Sesgo del tamaño: > 1, muchos pequeños y pocos grandes. */
 		double ScaleSkew = 1.0;
-		/** Pendiente máxima del terreno (grados). */
+		/** Pendiente del terreno (grados): máxima y mínima (las enredaderas, solo en pared). */
 		double SlopeMax = 35.0;
+		double SlopeMin = 0.0;
 		/** Distancia al borde del camino (cm): mínima y máxima. */
 		double EdgeMin = 300.0;
 		double EdgeMax = 1e9;
@@ -96,7 +98,7 @@ namespace TNProcMap
 		EFloraPatch PatchKind = EFloraPatch::None;
 		/** Radio de la base a escala 1 (cm): cuánto se hunde en pendiente para no flotar. */
 		double Footprint = 50.0;
-		/** 0 = crece vertical, 1 = perpendicular al terreno. */
+		/** 0 = crece vertical, 1 = perpendicular al terreno (solo con 1 se pega a paredes de más de 40°). */
 		double Lean = 0.0;
 	};
 
@@ -133,6 +135,12 @@ namespace TNProcMap
 			Out.Add(S);
 		};
 		constexpr double Far = 1e9;
+		// Enredaderas y musgo: solo en paredes (45° o más), pegados a ellas.
+		auto AddCreeper = [&Add, &Out](double Density)
+		{
+			Add(EFloraShape::Creeper, 1, FloraZone::Land, Density, 0.6, 1.5, 1.0, 88.0, 60.0, 6000.0, 0.22, EFloraPatch::Under, 40.0, 1.0);
+			Out.Last().SlopeMin = 45.0;
+		};
 		switch (Biome)
 		{
 			case ETNProcBiome::Jungle:
@@ -142,13 +150,14 @@ namespace TNProcMap
 				Add(EFloraShape::Rock, 0, L, 0.2, 0.3, 1.8, 2.5, 85.0, 250.0, Far, 0.55, EP::Rocks, 100.0, 0.6);
 				Add(EFloraShape::Fern, 1, L, 6.0, 0.45, 1.4, 1.3, 72.0, 60.0, 7000.0, 0.20, EP::Under, 50.0, 0.6);
 				Add(EFloraShape::Bush, 1, L, 4.5, 0.45, 1.6, 1.4, 75.0, 100.0, 8000.0, 0.25, EP::Under, 60.0, 0.5);
-				Add(EFloraShape::Grass, 1, L, 11.0, 0.6, 1.5, 1.0, 55.0, 0.0, 4000.0, 0.28, EP::Meadow, 20.0, 0.7);
-				Add(EFloraShape::Flowers, 1, L, 2.0, 0.6, 1.3, 1.0, 40.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
+				Add(EFloraShape::Grass, 1, L, 11.0, 0.6, 1.5, 1.0, 72.0, 0.0, 4000.0, 0.28, EP::Meadow, 20.0, 0.7);
+				Add(EFloraShape::Flowers, 1, L, 2.0, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
+				AddCreeper(7.0);
 				break;
 			case ETNProcBiome::Beach:
 				Add(EFloraShape::Palm, 0, L, 1.2, 0.55, 1.4, 1.2, 32.0, 300.0, Far, 0.30, EP::Forest, 30.0, 0.12);
 				Add(EFloraShape::Rock, 0, L | Sh, 0.45, 0.3, 2.0, 2.5, 88.0, 200.0, Far, 0.50, EP::Rocks, 100.0, 0.6);
-				Add(EFloraShape::Grass, 1, L, 10.0, 0.6, 1.5, 1.0, 55.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
+				Add(EFloraShape::Grass, 1, L, 10.0, 0.6, 1.5, 1.0, 72.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Bush, 1, L, 2.0, 0.4, 1.3, 1.5, 70.0, 100.0, 7000.0, 0.40, EP::Under, 60.0, 0.5);
 				Add(EFloraShape::Stones, 1, L | Sh, 2.5, 0.5, 1.4, 1.0, 60.0, 30.0, 4000.0, 0.45, EP::Rocks, 40.0, 0.8);
 				break;
@@ -159,7 +168,7 @@ namespace TNProcMap
 				Add(EFloraShape::Rock, 0, L, 0.8, 0.3, 2.4, 2.5, 88.0, 200.0, Far, 0.40, EP::Rocks, 100.0, 0.6);
 				Add(EFloraShape::Barrel, 1, L, 1.6, 0.5, 1.5, 1.3, 50.0, 80.0, 6000.0, 0.30, EP::Under, 40.0, 0.3);
 				Add(EFloraShape::DryBush, 1, L, 3.2, 0.45, 1.5, 1.3, 70.0, 60.0, 7000.0, 0.20, EP::Under, 50.0, 0.4);
-				Add(EFloraShape::Grass, 1, L, 3.0, 0.5, 1.2, 1.0, 50.0, 0.0, 4000.0, 0.40, EP::Meadow, 20.0, 0.7);
+				Add(EFloraShape::Grass, 1, L, 3.0, 0.5, 1.2, 1.0, 65.0, 0.0, 4000.0, 0.40, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Stones, 1, L, 2.5, 0.5, 1.4, 1.0, 65.0, 20.0, 4000.0, 0.40, EP::Rocks, 40.0, 0.8);
 				break;
 			case ETNProcBiome::Volcanic:
@@ -169,6 +178,7 @@ namespace TNProcMap
 				Add(EFloraShape::AshBush, 1, L, 3.2, 0.45, 1.4, 1.3, 72.0, 60.0, 7000.0, 0.30, EP::Under, 50.0, 0.5);
 				Add(EFloraShape::Fern, 1, L, 2.4, 0.45, 1.2, 1.3, 70.0, 60.0, 6000.0, 0.40, EP::Under, 50.0, 0.6);
 				Add(EFloraShape::Stones, 1, L, 3.0, 0.5, 1.5, 1.0, 70.0, 20.0, 4000.0, 0.30, EP::Rocks, 40.0, 0.8);
+				AddCreeper(2.0);
 				break;
 			case ETNProcBiome::Water:
 				Add(EFloraShape::Willow, 0, L, 0.6, 0.7, 1.35, 1.2, 30.0, 400.0, Far, 0.30, EP::Forest, 40.0, 0.05);
@@ -176,17 +186,19 @@ namespace TNProcMap
 				Add(EFloraShape::Rock, 0, L | Sh, 0.2, 0.3, 1.6, 2.5, 85.0, 200.0, Far, 0.55, EP::Rocks, 100.0, 0.6);
 				Add(EFloraShape::Reeds, 1, Sh | W, 10.0, 0.6, 1.4, 1.0, 40.0, 50.0, 6000.0, 0.15, EP::Meadow, 40.0, 0.2);
 				Add(EFloraShape::Bush, 1, L, 3.0, 0.45, 1.4, 1.4, 70.0, 100.0, 7000.0, 0.30, EP::Under, 60.0, 0.5);
-				Add(EFloraShape::Grass, 1, L | Sh, 8.0, 0.6, 1.5, 1.0, 55.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
-				Add(EFloraShape::Flowers, 1, L, 1.8, 0.6, 1.3, 1.0, 40.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
+				Add(EFloraShape::Grass, 1, L | Sh, 8.0, 0.6, 1.5, 1.0, 72.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
+				Add(EFloraShape::Flowers, 1, L, 1.8, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
+				AddCreeper(4.0);
 				break;
 			case ETNProcBiome::Rocky:
 				Add(EFloraShape::Pine, 0, L, 1.8, 0.5, 1.5, 1.6, 45.0, 350.0, Far, 0.30, EP::Forest, 30.0, 0.05);
 				Add(EFloraShape::Fir, 0, L, 0.9, 0.6, 1.4, 1.3, 42.0, 350.0, Far, 0.40, EP::Forest, 30.0, 0.05);
 				Add(EFloraShape::Rock, 0, L, 1.3, 0.3, 2.6, 2.5, 88.0, 200.0, Far, 0.25, EP::Rocks, 100.0, 0.6);
 				Add(EFloraShape::Bush, 1, L, 3.2, 0.4, 1.3, 1.4, 75.0, 80.0, 7000.0, 0.30, EP::Under, 60.0, 0.5);
-				Add(EFloraShape::Grass, 1, L, 8.0, 0.5, 1.3, 1.0, 58.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
-				Add(EFloraShape::Flowers, 1, L, 1.5, 0.5, 1.2, 1.0, 45.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
+				Add(EFloraShape::Grass, 1, L, 8.0, 0.5, 1.3, 1.0, 72.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
+				Add(EFloraShape::Flowers, 1, L, 1.5, 0.5, 1.2, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
 				Add(EFloraShape::Stones, 1, L, 3.0, 0.5, 1.5, 1.0, 75.0, 20.0, 4000.0, 0.25, EP::Rocks, 40.0, 0.8);
+				AddCreeper(3.0);
 				break;
 			case ETNProcBiome::Mangrove:
 				Add(EFloraShape::YoungSequoia, 0, L | Sh | W | D, 0.45, 0.55, 1.6, 1.4, 38.0, 700.0, Far, 0.25, EP::Forest, 60.0, 0.03);
@@ -195,8 +207,9 @@ namespace TNProcMap
 				Add(EFloraShape::Reeds, 1, Sh | W, 9.0, 0.6, 1.4, 1.0, 40.0, 50.0, 6000.0, 0.15, EP::Meadow, 40.0, 0.2);
 				Add(EFloraShape::Fern, 1, L, 5.0, 0.45, 1.3, 1.3, 72.0, 60.0, 7000.0, 0.20, EP::Under, 50.0, 0.6);
 				Add(EFloraShape::Bush, 1, L, 3.5, 0.45, 1.5, 1.4, 75.0, 100.0, 7000.0, 0.25, EP::Under, 60.0, 0.5);
-				Add(EFloraShape::Grass, 1, L | Sh, 7.0, 0.6, 1.4, 1.0, 55.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
-				Add(EFloraShape::Flowers, 1, L, 1.4, 0.6, 1.3, 1.0, 40.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
+				Add(EFloraShape::Grass, 1, L | Sh, 7.0, 0.6, 1.4, 1.0, 72.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
+				Add(EFloraShape::Flowers, 1, L, 1.4, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
+				AddCreeper(6.0);
 				break;
 			case ETNProcBiome::Human:
 			default:
@@ -205,8 +218,9 @@ namespace TNProcMap
 				Add(EFloraShape::Umbrella, 1, L, 0.25, 0.85, 1.15, 1.0, 12.0, 150.0, 3000.0, 0.45, EP::Meadow, 20.0, 0.0);
 				Add(EFloraShape::Hedge, 1, L, 0.9, 0.7, 1.4, 1.0, 20.0, 150.0, 5000.0, 0.45, EP::Under, 80.0, 0.0);
 				Add(EFloraShape::Bush, 1, L, 2.0, 0.5, 1.2, 1.2, 60.0, 100.0, 6000.0, 0.35, EP::Under, 60.0, 0.5);
-				Add(EFloraShape::Grass, 1, L, 7.0, 0.6, 1.3, 1.0, 50.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
-				Add(EFloraShape::Flowers, 1, L, 2.5, 0.6, 1.3, 1.0, 35.0, 0.0, 4000.0, 0.40, EP::Meadow, 25.0, 0.7);
+				Add(EFloraShape::Grass, 1, L, 7.0, 0.6, 1.3, 1.0, 65.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
+				Add(EFloraShape::Flowers, 1, L, 2.5, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.40, EP::Meadow, 25.0, 0.7);
+				AddCreeper(3.0);
 				break;
 		}
 	}
@@ -226,6 +240,10 @@ namespace TNProcMap
 		constexpr double PassCell[2] = { 450.0, 180.0 };
 		/** La pasada pequeña solo cerca de los caminos: más lejos no se ve. */
 		constexpr double SmallPassEdge = 8000.0;
+		/** Taludes junto al camino (desde WallSlope grados, a menos de WallEdge): lo que más se ve desde él, doble densidad. */
+		constexpr double WallSlope = 35.0;
+		constexpr double WallEdge = 4000.0;
+		constexpr double WallBoost = 2.0;
 
 		/** Valor de la mancha de un tipo en P, en [0, 1] (media ~0,5). */
 		inline double PatchValue(uint32 Seed, EFloraPatch Kind, const FVector2D& P)
@@ -294,17 +312,28 @@ namespace TNProcMap
 				const FVector N = Q.Normal(P);
 				const double Slope = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(N.Z, -1.0, 1.0)));
 
-				// Especie: cada una con su probabilidad (densidad x mancha); si no toca ninguna, nada.
-				const double U = R.Unit();
-				double Sum = 0.0;
-				int32 Chosen = INDEX_NONE;
-				for (int32 s = 0; s < Table.Num(); ++s)
+				// Especie: cada una con su probabilidad (densidad x mancha); si no toca ninguna, nada. Si entre
+				// todas pasan de 1 (celda llena, como en los taludes), se reparten en proporción.
+				const double Boost = Pass == 1 && Slope >= WallSlope && Edge <= WallEdge ? WallBoost : 1.0;
+				constexpr int32 MaxSpecies = 16;
+				double Prob[MaxSpecies];
+				double Total = 0.0;
+				for (int32 s = 0; s < Table.Num() && s < MaxSpecies; ++s)
 				{
 					const FFloraSpecies& Sp = Table[s];
-					if (Sp.Pass != Pass || (Sp.Zones & Zone) == 0 || Slope > Sp.SlopeMax || Edge < Sp.EdgeMin || Edge > Sp.EdgeMax) { continue; }
+					Prob[s] = 0.0;
+					if (Sp.Pass != Pass || (Sp.Zones & Zone) == 0 || Slope > Sp.SlopeMax || Slope < Sp.SlopeMin || Edge < Sp.EdgeMin || Edge > Sp.EdgeMax) { continue; }
 					const double Cover = Sp.Patch <= 0.0 ? 1.0 : SmoothStep(Sp.Patch - 0.08, Sp.Patch + 0.08, PatchValue(Seed, Sp.PatchKind, P));
-					Sum += Sp.Density * DensityScale * Cover * CellArea;
-					if (U < Sum) { Chosen = s; break; }
+					Prob[s] = Sp.Density * DensityScale * Boost * Cover * CellArea;
+					Total += Prob[s];
+				}
+				const double U = R.Unit() * FMath::Max(1.0, Total);
+				double Sum = 0.0;
+				int32 Chosen = INDEX_NONE;
+				for (int32 s = 0; s < Table.Num() && s < MaxSpecies; ++s)
+				{
+					Sum += Prob[s];
+					if (Prob[s] > 0.0 && U < Sum) { Chosen = s; break; }
 				}
 				if (Chosen == INDEX_NONE || Q.Blocked(P)) { continue; }
 				const FFloraSpecies& Sp = Table[Chosen];
@@ -315,10 +344,11 @@ namespace TNProcMap
 				I.Variant = R.RangeInt(0, FloraVariants - 1);
 				I.Yaw = R.Range(0.0, 360.0);
 				I.Scale = LerpD(Sp.ScaleMin, Sp.ScaleMax, FMath::Pow(R.Unit(), Sp.ScaleSkew));
-				// Inclinada con la ladera (cuesta abajo) según su Lean, nunca más de 40°.
+				// Inclinada con la ladera (cuesta abajo) según su Lean, nunca más de 40° salvo lo que se pega a
+				// la pared (Lean 1).
 				const FVector2D Down(N.X, N.Y);
 				I.LeanDir = Down.SizeSquared() > 1e-8 ? Down.GetSafeNormal() : FVector2D(1.0, 0.0);
-				I.LeanDeg = FMath::Min(40.0, Slope * Sp.Lean);
+				I.LeanDeg = FMath::Min(Sp.Lean >= 1.0 ? 88.0 : 40.0, Slope * Sp.Lean);
 				// Base en lo más bajo de su huella (no flota por el lado de abajo); las que siguen la ladera,
 				// menos hundidas.
 				const double Foot = Sp.Footprint * I.Scale;

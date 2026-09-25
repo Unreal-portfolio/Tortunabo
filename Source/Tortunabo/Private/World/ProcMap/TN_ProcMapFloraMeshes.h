@@ -25,6 +25,7 @@ namespace TNFloraMesh
 		FLinearColor Dry;       ///< Ramitas, hojas secas, madera muerta.
 		FLinearColor Rock;
 		FLinearColor Accent;    ///< Flores, brasas, bayas.
+		FLinearColor Moss;      ///< Enredaderas, musgo o liquen de las paredes.
 	};
 
 	inline FTNFloraPalette TNFloraPaletteFor(ETNProcBiome Biome, const FLinearColor& Ground, const FLinearColor& RockColor)
@@ -69,6 +70,9 @@ namespace TNFloraMesh
 				P.Accent = FLinearColor(0.9f, 0.25f, 0.2f);
 				break;
 		}
+		// Enredadera en los biomas verdes; liquen gris verdoso en la roca y musgo oscuro en el volcán.
+		P.Moss = Biome == ETNProcBiome::Rocky ? FLinearColor(0.3f, 0.36f, 0.2f)
+			: Biome == ETNProcBiome::Volcanic ? FLinearColor(0.12f, 0.18f, 0.09f) : TNProcLerpColor(P.Leaf, P.LeafAlt, 0.4f);
 		// La hierba tira un poco al color del suelo del bioma: la pradera casa con el terreno.
 		P.Grass = TNProcLerpColor(P.Grass, Ground, 0.25f);
 		return P;
@@ -641,6 +645,19 @@ namespace TNFloraMesh
 				}
 				break;
 			}
+			case EFloraShape::Creeper:
+			{
+				// Manta de hojas aplastada (la instancia la pega a la pared con su normal).
+				const FLinearColor Moss = TNFloraVary(Pal.Moss, Variant);
+				const int32 NB = 6 + Variant;
+				for (int32 b = 0; b < NB; ++b)
+				{
+					const FVector2D D = DirAt(b, NB);
+					const double R = b == 0 ? 0.0 : Rand(10 + b, 25.0, 70.0);
+					TNFloraBlob(M, FVector(D.X * R, D.Y * R, 3.0), Rand(20 + b, 30.0, 55.0), Rand(30 + b, 7.0, 12.0), Seed + b, (b % 2) ? Moss : Moss * 1.15f, 6);
+				}
+				break;
+			}
 			case EFloraShape::Rock:
 			{
 				const double Ht = Variant == 1 ? 55.0 : (Variant == 2 ? 130.0 : 90.0);
@@ -664,6 +681,12 @@ namespace TNFloraMesh
 			default:
 				break;
 		}
+		// Hojas finas (hierba, flores, juncos, helechos): normales casi hacia arriba, así se iluminan
+		// como el suelo y no salen negras vistas de canto.
+		if (Shape == EFloraShape::Grass || Shape == EFloraShape::Flowers || Shape == EFloraShape::Reeds || Shape == EFloraShape::Fern)
+		{
+			for (FVector& N : M.Normals) { N = (N * 0.3 + FVector::UpVector * 0.7).GetSafeNormal(); }
+		}
 	}
 
 	/** Cómo se ve cada forma: distancia de culling (cm, 0 = nunca), sombra y si su altura varía aparte. */
@@ -682,6 +705,7 @@ namespace TNFloraMesh
 			case EFloraShape::Flowers:  return { 5000.f, false, true };
 			case EFloraShape::Stones:   return { 6000.f, false, false };
 			case EFloraShape::Reeds:    return { 7000.f, false, true };
+			case EFloraShape::Creeper:  return { 7000.f, false, false };
 			case EFloraShape::Fern:
 			case EFloraShape::DryBush:  return { 8000.f, false, true };
 			case EFloraShape::Bush:
