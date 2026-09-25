@@ -68,7 +68,7 @@ FTNProcMapProfile TN_MakeDefaultProcProfile(ETNProcGameMode Mode, ETNProcDifficu
 			P.Coverage = 0.9f;
 			P.Sinuosity = 1.6f;
 			P.NumCrossings = Pick(0, 1, 1);
-			P.NumBranches = Pick(2, 3, 4);
+			P.NumBranches = Pick(3, 5, 6);
 			P.NumLanes = 0;
 			P.StormSpeed = 0.f;
 			break;
@@ -79,7 +79,7 @@ FTNProcMapProfile TN_MakeDefaultProcProfile(ETNProcGameMode Mode, ETNProcDifficu
 			P.Coverage = 0.9f;
 			P.Sinuosity = 1.5f;
 			P.NumCrossings = Pick(0, 0, 1);
-			P.NumBranches = Pick(1, 1, 2);
+			P.NumBranches = Pick(2, 2, 3);
 			P.NumLanes = Pick(1, 2, 3);
 			P.StormSpeed = 0.f;
 			break;
@@ -91,7 +91,7 @@ FTNProcMapProfile TN_MakeDefaultProcProfile(ETNProcGameMode Mode, ETNProcDifficu
 			P.Coverage = 0.78f;
 			P.Sinuosity = 1.8f;
 			P.NumCrossings = Pick(1, 2, 4);
-			P.NumBranches = Pick(2, 3, 5);
+			P.NumBranches = Pick(4, 7, 10);
 			P.NumLanes = 0;
 			P.StormSpeed = Pick(300.f, 360.f, 410.f);
 			P.StormGraceSeconds = Pick(90.f, 60.f, 45.f);

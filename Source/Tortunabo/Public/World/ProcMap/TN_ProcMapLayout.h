@@ -75,7 +75,7 @@ namespace TNProcMap
 		/** Fracción de módulos únicos que recorre el camino principal. */
 		double Coverage = 0.78;
 		int32 NumCrossings = 2;
-		int32 NumBranches = 3;
+		int32 NumBranches = 7;
 		/** Bifurcaciones en carriles paralelos con puzles (2vs2). */
 		int32 NumLanes = 0;
 		int32 BranchMaxModules = 3;
@@ -217,7 +217,11 @@ namespace TNProcMap
 		/** Alternativa tranquila: más larga, con recompensas. */
 		Scenic,
 		/** Carril 2vs2: paralelo al principal, con puzle de lanzamiento. */
-		Lane
+		Lane,
+		/** Ruta alta: sube poco a poco por encima del cauce y baja en tobogán. */
+		High,
+		/** Rodeo corto alrededor de un peñasco. */
+		Bypass
 	};
 
 	struct FBranch

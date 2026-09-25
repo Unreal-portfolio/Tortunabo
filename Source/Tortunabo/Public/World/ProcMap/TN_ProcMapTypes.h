@@ -83,7 +83,7 @@ struct TORTUNABO_API FTNProcMapProfile
 
 	/** Bifurcaciones que vuelven a unirse (exploración / alternativas). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camino", meta = (ClampMin = "0", ClampMax = "16"))
-	int32 NumBranches = 3;
+	int32 NumBranches = 7;
 
 	/** Carriles paralelos con puzle de lanzamiento y sabotaje (2vs2). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camino", meta = (ClampMin = "0", ClampMax = "8"))

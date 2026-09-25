@@ -305,10 +305,11 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 			}
 			case EFeature::SlideZone:
 			{
+				const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? M : Layout.Branches[F.BranchIndex].Samples;
 				TArray<FVector> Points;
-				for (int32 i = FMath::Clamp(F.PathIndex, 0, M.Num() - 1); i <= FMath::Clamp(F.Aux, 0, M.Num() - 1); ++i)
+				for (int32 i = FMath::Clamp(F.PathIndex, 0, S.Num() - 1); i <= FMath::Clamp(F.Aux, 0, S.Num() - 1); ++i)
 				{
-					Points.Add(MapToWorld2D(M[i].P, M[i].Z));
+					Points.Add(MapToWorld2D(S[i].P, S[i].Z));
 				}
 				if (ATN_ProcSlideZone* Slide = Cast<ATN_ProcSlideZone>(SpawnMapActor(ATN_ProcSlideZone::StaticClass(), GetActorTransform(), false)))
 				{

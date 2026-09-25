@@ -561,12 +561,13 @@ void ATN_ProcMapGenerator::BuildStructures()
 			case EFeature::SlideZone:
 			{
 				// Lámina de agua sobre la bajada: el tobogán en sí es terreno empinado.
-				const int32 From = FMath::Clamp(F.PathIndex, 0, M.Num() - 1);
-				const int32 To = FMath::Clamp(F.Aux, 0, M.Num() - 1);
+				const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? M : Layout.Branches[F.BranchIndex].Samples;
+				const int32 From = FMath::Clamp(F.PathIndex, 0, S.Num() - 1);
+				const int32 To = FMath::Clamp(F.Aux, 0, S.Num() - 1);
 				for (int32 i = From; i < To; ++i)
 				{
-					const FPathSample& A = M[i];
-					const FPathSample& B = M[i + 1];
+					const FPathSample& A = S[i];
+					const FPathSample& B = S[i + 1];
 					const FVector2D NA = LeftNormal(A.Dir) * (A.Width * 0.45);
 					const FVector2D NB = LeftNormal(B.Dir) * (B.Width * 0.45);
 					SlideWater.AddQuad(FVector(A.P - NA, A.Z + 12.0), FVector(A.P + NA, A.Z + 12.0), FVector(B.P + NB, B.Z + 12.0), FVector(B.P - NB, B.Z + 12.0),

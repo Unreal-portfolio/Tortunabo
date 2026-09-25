@@ -163,22 +163,27 @@ namespace TNProcMap
 			L.Features.Add(F);
 		}
 
-		// Toboganes: tramos contiguos con Slide.
-		for (int32 i = 0; i < M.Num(); ++i)
+		// Toboganes: tramos contiguos con Slide (principal y rutas altas de las ramas).
+		auto AddSlides = [&L](const TArray<FPathSample>& S, int32 BranchIndex)
 		{
-			if ((M[i].Flags & PathFlags::Slide) == 0) { continue; }
-			int32 j = i;
-			while (j + 1 < M.Num() && (M[j + 1].Flags & PathFlags::Slide) != 0) { ++j; }
-			const int32 Top = FMath::Max(0, i - 1);
-			FFeature F = MakeAtSample(EFeature::SlideZone, M[Top], Top, INDEX_NONE);
-			F.Aux = j;
-			F.Target = FVector(M[j].P, M[j].Z);
-			F.Height = M[Top].Z - M[j].Z;
-			F.Length = M[j].S - M[Top].S;
-			for (int32 k = Top; k <= j; ++k) { F.Width = FMath::Max(F.Width, M[k].Width); }
-			L.Features.Add(F);
-			i = j;
-		}
+			for (int32 i = 0; i < S.Num(); ++i)
+			{
+				if ((S[i].Flags & PathFlags::Slide) == 0) { continue; }
+				int32 j = i;
+				while (j + 1 < S.Num() && (S[j + 1].Flags & PathFlags::Slide) != 0) { ++j; }
+				const int32 Top = FMath::Max(0, i - 1);
+				FFeature F = MakeAtSample(EFeature::SlideZone, S[Top], Top, BranchIndex);
+				F.Aux = j;
+				F.Target = FVector(S[j].P, S[j].Z);
+				F.Height = S[Top].Z - S[j].Z;
+				F.Length = S[j].S - S[Top].S;
+				for (int32 k = Top; k <= j; ++k) { F.Width = FMath::Max(F.Width, S[k].Width); }
+				L.Features.Add(F);
+				i = j;
+			}
+		};
+		AddSlides(M, INDEX_NONE);
+		for (int32 b = 0; b < L.Branches.Num(); ++b) { AddSlides(L.Branches[b].Samples, b); }
 
 		// Cruces colosales.
 		for (int32 c = 0; c < L.Crossings.Num(); ++c)

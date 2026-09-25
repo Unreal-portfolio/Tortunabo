@@ -911,9 +911,55 @@ namespace TNProcMap
 			for (const FCrossing& C : L.Crossings) { if (C.Module == Module) { return true; } }
 			return false;
 		}
+
+		/** Forma de cada tipo de rama (cm). */
+		struct FBranchShape
+		{
+			/** Longitud del tramo del principal que rodea. */
+			double LenMin = 15000.0, LenMax = 45000.0;
+			/** Separación lateral máxima respecto al principal. */
+			double AmpMin = 4500.0, AmpMax = 11000.0;
+			double WMin = 750.0, WMax = 1500.0;
+			/** Ondulación de alturas (0 en la ruta alta, que lleva su propio perfil). */
+			double Wave = 280.0;
+		};
+
+		inline FBranchShape BranchShapeOf(EBranchKind Kind)
+		{
+			FBranchShape S;
+			switch (Kind)
+			{
+				case EBranchKind::Lane:
+					S.LenMin = 12000.0; S.LenMax = 20000.0; S.AmpMin = 3800.0; S.AmpMax = 5200.0; S.WMin = 650.0; S.WMax = 850.0; break;
+				case EBranchKind::Risky:
+					S.LenMin = 9000.0; S.LenMax = 26000.0; S.AmpMin = 3500.0; S.AmpMax = 8000.0; S.WMin = 340.0; S.WMax = 520.0; break;
+				case EBranchKind::High:
+					S.LenMin = 18000.0; S.LenMax = 40000.0; S.AmpMin = 5000.0; S.AmpMax = 10000.0; S.WMin = 500.0; S.WMax = 900.0; S.Wave = 0.0; break;
+				case EBranchKind::Bypass:
+					S.LenMin = 5000.0; S.LenMax = 12000.0; S.AmpMin = 2600.0; S.AmpMax = 4200.0; S.WMin = 450.0; S.WMax = 900.0; S.Wave = 120.0; break;
+				case EBranchKind::Scenic:
+				default:
+					break;
+			}
+			return S;
+		}
+
+		inline EBranchKind PickBranchKind(FRng& Rng)
+		{
+			const double U = Rng.Unit();
+			if (U < 0.3) { return EBranchKind::Scenic; }
+			if (U < 0.55) { return EBranchKind::Risky; }
+			if (U < 0.75) { return EBranchKind::High; }
+			return EBranchKind::Bypass;
+		}
 	}
 
-	/** Bifurcaciones que se separan y vuelven a unirse más adelante (1..BranchMaxModules módulos). */
+	/**
+	 * Bifurcaciones que se separan y vuelven a unirse más adelante (1..BranchMaxModules
+	 * módulos), de varios tipos: alternativa tranquila y holgada, cornisa estrecha con
+	 * más huecos, ruta alta (sube poco a poco y baja en tobogán) y rodeo corto; más los
+	 * carriles del 2vs2.
+	 */
 	inline void BuildBranches(FLayout& L, FRng Rng)
 	{
 		using namespace PathDetail;
@@ -925,6 +971,7 @@ namespace TNProcMap
 		Grid.Build(L.Main, L.WorldSize);
 		const double Total = L.MainLength();
 		const uint32 BSeed = P.Seed ^ 0xB4A2Cu;
+		const double TanSlide = FMath::Tan(FMath::DegreesToRadians(P.SlideAngleDeg));
 
 		TArray<FVector2D> Towers;
 		for (const FCrossing& C : L.Crossings)
@@ -937,10 +984,14 @@ namespace TNProcMap
 		for (int32 b = 0; b < Wanted; ++b)
 		{
 			const bool bLane = b < P.NumLanes;
+			EBranchKind Kind = bLane ? EBranchKind::Lane : PickBranchKind(Rng);
 			bool bPlaced = false;
-			for (int32 Attempt = 0; Attempt < 60 && !bPlaced; ++Attempt)
+			for (int32 Attempt = 0; Attempt < 80 && !bPlaced; ++Attempt)
 			{
-				const double SegLen = bLane ? Rng.Range(12000.0, 20000.0) : Rng.Range(15000.0, 50000.0);
+				// Si un tipo no cabe en ningún sitio, a mitad de intentos se prueba otro.
+				if (!bLane && Attempt == 40) { Kind = PickBranchKind(Rng); }
+				const FBranchShape Shape = BranchShapeOf(Kind);
+				const double SegLen = Rng.Range(Shape.LenMin, Shape.LenMax);
 				const double S0 = Rng.Range(9000.0, FMath::Max(9001.0, Total - SegLen - 9000.0));
 				int32 I0 = INDEX_NONE, I1 = INDEX_NONE;
 				MainPointAt(L.Main, S0, nullptr, &I0);
@@ -966,8 +1017,10 @@ namespace TNProcMap
 				if (!bEligible) { continue; }
 
 				const int32 Side = Rng.Chance(0.5) ? 1 : -1;
-				const double Amp = bLane ? Rng.Range(3800.0, 5200.0) : Rng.Range(4500.0, 11000.0);
-				const double BranchW = bLane ? Rng.Range(650.0, 850.0) : Rng.Range(450.0, 1100.0);
+				const double Amp = Rng.Range(Shape.AmpMin, Shape.AmpMax);
+				const double BranchW = Rng.Range(Shape.WMin, Shape.WMax);
+				// Panza simétrica o cargada hacia la horquilla o hacia la unión.
+				const double Skew = bLane ? 1.0 : Rng.Range(0.6, 1.6);
 
 				TArray<FVector2D> Ctrl;
 				const int32 NumCtrl = 36;
@@ -976,7 +1029,7 @@ namespace TNProcMap
 					const double T = static_cast<double>(k) / (NumCtrl - 1);
 					FVector2D Dir;
 					const FVector2D Base = MainPointAt(L.Main, L.Main[I0].S + T * (L.Main[I1].S - L.Main[I0].S), &Dir);
-					const double Sin = FMath::Sin(Pi * T);
+					const double Sin = FMath::Sin(Pi * FMath::Pow(T, Skew));
 					const double Off = Amp * FMath::Pow(FMath::Max(0.0, Sin), 0.6) * (1.0 + 0.25 * Noise1(BSeed + static_cast<uint32>(b * 31 + Attempt), T * 4.0));
 					Ctrl.Add(Base + LeftNormal(Dir) * (Off * Side));
 				}
@@ -984,8 +1037,24 @@ namespace TNProcMap
 				Ctrl.Last() = L.Main[I1].P;
 				TArray<FVector2D> Pts = ResamplePolyline(ChaikinSmooth(Ctrl, 2), P.SampleSpacing);
 
-				// Validación: separada del principal, dentro del mapa, lejos de estructuras y otras ramas.
+				// Validación: sin pliegues (la curva desplazada se dobla en las curvas cerradas del
+				// principal), separada del principal, dentro del mapa, lejos de estructuras y otras ramas.
 				const double BranchLen = PolylineLength(Pts);
+				const double EndZone = FMath::Min(5500.0, 0.3 * BranchLen);
+				for (int32 k = 2; k < Pts.Num() && bEligible; ++k)
+				{
+					const FVector2D D0 = (Pts[k - 1] - Pts[k - 2]).GetSafeNormal();
+					const FVector2D D1 = (Pts[k] - Pts[k - 1]).GetSafeNormal();
+					if (FVector2D::DotProduct(D0, D1) < 0.64) { bEligible = false; }
+				}
+				for (int32 i = 0; i < Pts.Num() && bEligible; i += 2)
+				{
+					for (int32 j = i + 2; j < Pts.Num(); j += 2)
+					{
+						if ((j - i) * P.SampleSpacing < 6000.0) { continue; }
+						if (FVector2D::DistSquared(Pts[i], Pts[j]) < 3000.0 * 3000.0) { bEligible = false; break; }
+					}
+				}
 				double Acc = 0.0;
 				for (int32 k = 0; k < Pts.Num() && bEligible; ++k)
 				{
@@ -1006,7 +1075,7 @@ namespace TNProcMap
 						// Permitido cerca del principal solo en su propio tramo de horquilla/unión.
 						const bool bOwnSegment = Near >= I0 - 4 && Near <= I1 + 4;
 						const double Need = L.Main[Near].Width * 0.5 + BranchW * 0.5 + 1600.0;
-						if (DMain < Need && !(bOwnSegment && (Acc < 5500.0 || BranchLen - Acc < 5500.0))) { bEligible = false; break; }
+						if (DMain < Need && !(bOwnSegment && (Acc < EndZone || BranchLen - Acc < EndZone))) { bEligible = false; break; }
 					}
 					for (const FVector2D& T : Towers) { if (FVector2D::Distance(T, Pt) < P.TowerRadius + 3500.0) { bEligible = false; break; } }
 					if (FVector2D::Distance(L.StartPoint, Pt) < P.StartClearingRadius + 3000.0) { bEligible = false; break; }
@@ -1025,7 +1094,7 @@ namespace TNProcMap
 				Br.ForkSample = I0;
 				Br.RejoinSample = I1;
 				Br.Side = Side;
-				Br.Kind = bLane ? EBranchKind::Lane : (Rng.Chance(0.5) ? EBranchKind::Risky : EBranchKind::Scenic);
+				Br.Kind = Kind;
 				for (int32 k = 0; k < Pts.Num(); ++k)
 				{
 					FPathSample Sm;
@@ -1040,27 +1109,63 @@ namespace TNProcMap
 				}
 				FinalizeSamples(Br.Samples);
 
-				// Alturas: se une en ambos extremos a la cota del principal, ondulando en medio.
+				// Alturas: se une en ambos extremos a la cota del principal. La ruta alta sube con
+				// pendiente suave desde que sale del cauce principal, sigue por lo alto y baja en
+				// tobogán hasta antes de volver a tocarlo (dentro del cauce manda el suelo del
+				// principal: subir o bajar ahí dejaría escalones); las demás ondulan.
 				const double Z0 = L.Main[I0].Z;
 				const double Z1 = L.Main[I1].Z;
-				const double BLen = Br.Samples.Last().S;
+				const double BLen = FMath::Max(1.0, Br.Samples.Last().S);
+				const bool bHigh = Kind == EBranchKind::High;
+				const double Peak = bHigh ? Rng.Range(1000.0, 1800.0) : 0.0;
+				const double Climb = P.MaxPathSlope * 0.7;
+				double SClear0 = BLen, SClear1 = 0.0;
+				if (bHigh)
+				{
+					for (const FPathSample& Sm : Br.Samples)
+					{
+						double DMain = 0.0;
+						const int32 Near = Grid.Nearest(Sm.P, 20000.0, DMain);
+						const double Sep = Near == INDEX_NONE ? 1e9 : DMain - L.Main[Near].Width * 0.5;
+						if (Sep > Sm.Width * 0.5 + 600.0) { SClear0 = FMath::Min(SClear0, Sm.S); SClear1 = FMath::Max(SClear1, Sm.S); }
+					}
+				}
 				TArray<double> Z;
 				for (const FPathSample& Sm : Br.Samples)
 				{
-					const double T = BLen > 0.0 ? Sm.S / BLen : 0.0;
-					Z.Add(LerpD(Z0, Z1, T) + 280.0 * Fbm1(BSeed + 13u, Sm.S / 12000.0, 2) * FMath::Sin(Pi * T));
+					const double T = Sm.S / BLen;
+					const double Base = LerpD(Z0, Z1, T);
+					if (bHigh)
+					{
+						const double Up = Sm.S - SClear0;
+						const double Down = SClear1 - Sm.S;
+						Z.Add(Base + (Up > 0.0 && Down > 0.0 ? FMath::Min3(Peak, Climb * Up, TanSlide * Down) : 0.0));
+					}
+					else { Z.Add(Base + Shape.Wave * Fbm1(BSeed + 13u, Sm.S / 12000.0, 2) * FMath::Sin(Pi * T)); }
 				}
-				Z = SmoothScalars(Z, 6);
+				if (!bHigh) { Z = SmoothScalars(Z, 6); }
 				Z[0] = Z0;
 				Z.Last() = Z1;
 				bool bSlopeOk = true;
+				double MaxRise = 0.0;
 				for (int32 k = 1; k < Z.Num(); ++k)
 				{
 					const double Ds = FMath::Max(1.0, Br.Samples[k].S - Br.Samples[k - 1].S);
-					if (FMath::Abs(Z[k] - Z[k - 1]) / Ds > P.MaxPathSlope * 1.6) { bSlopeOk = false; break; }
+					const double Slope = (Z[k] - Z[k - 1]) / Ds;
+					// La ruta alta baja en tobogán: solo su subida tiene que ser una rampa andable.
+					if (bHigh ? Slope > P.MaxPathSlope * 1.2 : FMath::Abs(Slope) > P.MaxPathSlope * 1.6) { bSlopeOk = false; break; }
+					MaxRise = FMath::Max(MaxRise, Z[k] - LerpD(Z0, Z1, Br.Samples[k].S / BLen));
 				}
-				if (!bSlopeOk) { continue; }
-				for (int32 k = 0; k < Z.Num(); ++k) { Br.Samples[k].Z = Z[k]; }
+				// Si no llega a subir de verdad no es ruta alta (el tramo es demasiado corto).
+				if (!bSlopeOk || (bHigh && MaxRise < 700.0)) { continue; }
+				for (int32 k = 0; k < Z.Num(); ++k)
+				{
+					Br.Samples[k].Z = Z[k];
+					if (bHigh && k > 0 && (Z[k - 1] - Z[k]) / FMath::Max(1.0, Br.Samples[k].S - Br.Samples[k - 1].S) > P.MaxPathSlope * 1.5)
+					{
+						Br.Samples[k].Flags |= PathFlags::Slide;
+					}
+				}
 
 				for (const FPathSample& Sm : Br.Samples) { L.Modules[Sm.Module].bHasBranch = true; }
 				if (bLane)

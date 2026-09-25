@@ -92,8 +92,12 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   encima o por debajo de un módulo ya recorrido. Se llega a ellos por géiser/tobogán
   y caerse de un puente colosal es mortal. Los puentes dentro de un mismo módulo
   son normales.
-- **Ramas** que se separan y vuelven a unirse en 1–3 módulos (arriesgadas o
-  panorámicas); en 2vs2, **carriles** paralelos con puzles de lanzamiento y sabotaje.
+- **Ramas** que se separan y vuelven a unirse en 1–3 módulos, de cuatro tipos:
+  *tranquila* (larga y holgada), *arriesgada* (cornisa de 3,5–5 m con el doble de
+  huecos), *ruta alta* (sube en rampa suave por una loma junto al cauce y baja en
+  tobogán al principal) y *rodeo* corto alrededor de un peñasco; en 2vs2, **carriles**
+  paralelos con puzles de lanzamiento y sabotaje. Los huecos de salto no se ponen en
+  explanadas y, junto al agua, su zanja es menos honda para no bajar del nivel del mar.
 - **Biomas por regiones** de varios módulos contiguos, al azar y con transición
   natural: selva, playa, desierto, volcánico, agua (isletas), acantilados rocosos,
   manglar y zona humana. El último módulo es siempre playa con mar abierto.
@@ -162,9 +166,9 @@ los restaura).
 
 | Modo | Rejilla F/N/D | Cobertura | Cruces F/N/D | Ramas F/N/D | Carriles | Tormenta cm/s F/N/D (gracia s) |
 |---|---|---|---|---|---|---|
-| Coop | 3 / 6 / 8 | 0,78 | 1 / 2 / 4 | 2 / 3 / 5 | 0 | 300 / 360 / 410 (90 / 60 / 45) |
-| Carrera | 2 / 3 / 4 | 0,90 | 0 / 1 / 1 | 2 / 3 / 4 | 0 | — |
-| 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 1 / 1 / 2 | 1 / 2 / 3 | — |
+| Coop | 3 / 6 / 8 | 0,78 | 1 / 2 / 4 | 4 / 7 / 10 | 0 | 300 / 360 / 410 (90 / 60 / 45) |
+| Carrera | 2 / 3 / 4 | 0,90 | 0 / 1 / 1 | 3 / 5 / 6 | 0 | — |
+| 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 2 / 2 / 3 | 1 / 2 / 3 | — |
 
 Comunes por dificultad (F/N/D): densidad de peligros 0,7 / 1 / 1,4; huecos por km
 2 / 3 / 4,5; una pila de huevos cada 1 / 2 / 3 cruces de módulo.
