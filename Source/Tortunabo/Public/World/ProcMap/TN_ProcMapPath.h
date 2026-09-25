@@ -685,7 +685,10 @@ namespace TNProcMap
 		{
 			const FPathSample& Sm = L.Main[i];
 			const bool bWet = IsWetBiome(Sm.Biome);
-			Z[i] = L.Modules[Sm.Module].Level + (bWet ? 0.0 : 260.0 * Fbm1(ZSeed, Sm.S / 14000.0, 3));
+			// Lomas y hondonadas de ±6,5 m a escala de ~80 m, con detalle de ±1,5 m (en el agua, a ras);
+			// la pendiente se limita después.
+			Z[i] = L.Modules[Sm.Module].Level
+				+ (bWet ? 0.0 : 650.0 * Fbm1(ZSeed, Sm.S / 8000.0, 3) + 150.0 * Fbm1(ZSeed + 3u, Sm.S / 2500.0, 2));
 		}
 
 		// Segmentos continuos separados por cortes (cruces colosales y desniveles grandes).
@@ -717,6 +720,11 @@ namespace TNProcMap
 				TArray<double> Part;
 				for (int32 i = SegStart; i <= SegEnd; ++i) { Part.Add(Z[i]); }
 				Part = SmoothScalars(Part, 10);
+				for (int32 i = SegStart; i <= SegEnd; ++i) { Z[i] = Part[i - SegStart]; }
+				SlopeLimit(Z, L.Main, SegStart, SegEnd, P.MaxPathSlope);
+				// Subidas redondeadas: sin esquinas donde actúa el límite de pendiente (y se limita de nuevo).
+				for (int32 i = SegStart; i <= SegEnd; ++i) { Part[i - SegStart] = Z[i]; }
+				Part = SmoothScalars(Part, 4);
 				for (int32 i = SegStart; i <= SegEnd; ++i) { Z[i] = Part[i - SegStart]; }
 				SlopeLimit(Z, L.Main, SegStart, SegEnd, P.MaxPathSlope);
 				SegStart = SegEnd + 1;
