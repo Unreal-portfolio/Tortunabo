@@ -1053,17 +1053,19 @@ namespace TNProcMap
 					FVector2D Pos = Sm.P;
 					switch (R.Placement)
 					{
+						// Fuera del cauce todo son taludes y paredes: lo "cercano" y lo "lejano" va dentro del cauce,
+						// hacia el borde; lo del agua, en la poza junto al camino.
 						case EHazardPlacement::OnPath:     Pos += N * (Rng.Range(-0.35, 0.35) * Sm.Width); break;
 						case EHazardPlacement::PathEdge:   Pos += N * Side * FMath::Max(0.0, Sm.Width * 0.5 - 150.0); break;
-						case EHazardPlacement::NearPath:   Pos += N * Side * (Sm.Width * 0.5 + Rng.Range(400.0, 1800.0)); break;
-						case EHazardPlacement::InWater:    Pos += N * Side * (Sm.Width * 0.5 + Rng.Range(700.0, 2600.0)); break;
+						case EHazardPlacement::NearPath:   Pos += N * Side * (Sm.Width * Rng.Range(0.2, 0.42)); break;
+						case EHazardPlacement::InWater:    Pos += N * Side * (Sm.Width * 0.5 + Rng.Range(200.0, 600.0)); break;
 						case EHazardPlacement::AbovePath:  break;
-						case EHazardPlacement::OffPathFar: Pos += N * Side * (Sm.Width * 0.5 + Rng.Range(2500.0, 6000.0)); break;
+						case EHazardPlacement::OffPathFar: Pos += N * Side * (Sm.Width * Rng.Range(0.3, 0.45)); break;
 					}
 
 					bool bOk = true;
 					for (const FVector2D& Pl : Placed) { if (FVector2D::DistSquared(Pl, Pos) < R.Clearance * R.Clearance) { bOk = false; break; } }
-					for (const FVector2D& Kp : Keep) { if (bOk && FVector2D::DistSquared(Kp, Pos) < 1600.0 * 1600.0) { bOk = false; } }
+					for (const FVector& Kp : Keep) { if (bOk && FVector2D::DistSquared(FVector2D(Kp.X, Kp.Y), Pos) < Kp.Z * Kp.Z) { bOk = false; } }
 					if (!bOk) { continue; }
 
 					FHazardSpawn H;
