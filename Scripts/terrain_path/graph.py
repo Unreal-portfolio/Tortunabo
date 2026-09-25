@@ -125,7 +125,8 @@ def trace_main(rng: np.random.Generator, style: PathStyle) -> PathLine:
             y = MAP_MIN_M + band if side * (-1.0) ** k < 0 else MAP_MAX_M - band
             ways.append(np.array([x + float(rng.uniform(-15.0, 15.0)), y]))
         end = np.array([MAP_MAX_M - 35.0, float(rng.uniform(MAP_MIN_M + 120.0, MAP_MAX_M - 120.0))])
-        raw = steer_walk(rng, start, 0.0, ways + [end], [25.0] * n_way + [3.0],
+        # Llega al mar de frente (hacia el norte): un punto previo 30 m al sur del final.
+        raw = steer_walk(rng, start, 0.0, ways + [end - np.array([30.0, 0.0]), end], [25.0] * n_way + [6.0, 3.0],
                          style.main_length_m[1] + 50.0, 55.0, (55.0, 85.0))
         if raw is None:
             continue

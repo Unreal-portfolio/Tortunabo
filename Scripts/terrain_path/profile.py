@@ -85,7 +85,9 @@ def clamp_grade(z: np.ndarray, arc: np.ndarray, grade: np.ndarray, anchors: set[
 
 
 def _ramps(z: np.ndarray, arc: np.ndarray, grade: np.ndarray, anchors: set[int]) -> np.ndarray:
-    """Rampas lineales con las rodillas suavizadas (sin pasar de la pendiente ni mover anclajes)."""
+    """Rampas lineales con las rodillas suavizadas (sin pasar de la pendiente ni mover anclajes).
+    Ningun camino baja de 0,3 m sobre el agua (si no, quedaria sumergido)."""
+    z = np.maximum(z, np.where(np.isin(np.arange(len(z)), list(anchors)), z, WATER_M + 0.3))
     z = clamp_grade(z, arc, grade, anchors)
     smooth = ndimage.gaussian_filter1d(z, 2.0, mode="nearest")
     for i in anchors:
@@ -115,7 +117,7 @@ def main_profile(rng: np.random.Generator, line: PathLine, style: PathStyle) -> 
     z = _ramps(target, line.arc, _grades(rng, line.arc, style), set())
     w = _widths(rng, line.arc, biome, style)
     w = np.maximum(w, 7.0 * (1.0 - _smooth01(8.0, 16.0, line.arc)))          # salida: ensanche
-    w = w + 38.0 * _smooth01(end - 55.0, end, line.arc)                       # final: abanico a la playa
+    w = w + 12.0 * _smooth01(end - 55.0, end, line.arc)                       # final: abanico a la playa
     return LineProfile(z, w, biome, np.zeros(len(z), dtype=bool))
 
 
@@ -160,8 +162,10 @@ def _hill_tunnels(rng: np.random.Generator, graph: PathGraph, profile: LineProfi
                   style: PathStyle) -> list[tuple[int, float, float]]:
     main = graph.main
     joins = [s for loop in graph.loops() if loop.parent == 0 for s in (loop.s_out, loop.s_back)]
+    # Tambien en las dunas (no solo en el acantilado): pocos tramos del acantilado quedan libres
+    # de uniones.
     joins += [c.s_upper if c.upper == 0 else c.s_lower for c in crossings if 0 in (c.upper, c.lower)]
-    cliffs = main.arc[profile.biome == 0]
+    cliffs = main.arc[(profile.biome == 0) | (profile.biome == 2)]
     out: list[tuple[int, float, float]] = []
     for _ in range(200):
         if len(out) >= style.hill_tunnels or len(cliffs) < 2:
@@ -169,7 +173,8 @@ def _hill_tunnels(rng: np.random.Generator, graph: PathGraph, profile: LineProfi
         length = float(rng.uniform(25.0, 45.0))
         s0 = float(rng.uniform(max(60.0, cliffs[0]), max(60.0, cliffs[-1] - length)))
         s1 = s0 + length
-        if s1 > cliffs[-1] or any(s0 - 25.0 < j < s1 + 25.0 for j in joins):
+        k0, k1 = int(np.searchsorted(main.arc, s0)), int(np.searchsorted(main.arc, s1))
+        if s1 > cliffs[-1] or any(s0 - 18.0 < j < s1 + 18.0 for j in joins) or 1 in profile.biome[k0:k1 + 1]                 or 3 in profile.biome[k0:k1 + 1]:
             continue
         if any(not (s1 + 30.0 < a or s0 - 30.0 > b) for _, a, b in out):
             continue
@@ -203,9 +208,23 @@ def _profiles(rng: np.random.Generator, graph: PathGraph, style: PathStyle) -> P
         if c is not None:
             crossings.append(c)
     for c in crossings:
-        upper = graph.lines[c.upper]
-        half = float(np.interp(c.s_upper, upper.arc, profiles[c.upper].half_width)) + EXCLUDE_EXTRA_M
-        profiles[c.lower] = _mark(profiles[c.lower], graph.lines[c.lower], c.s_lower - half, c.s_lower + half)
+        upper, lower = graph.lines[c.upper], graph.lines[c.lower]
+        w_up = float(np.interp(c.s_upper, upper.arc, profiles[c.upper].half_width))
+        half = w_up + EXCLUDE_EXTRA_M
+        # El tunel sigue mientras el camino de abajo no se ha apartado del de arriba lo bastante
+        # para que quepan sus dos paredes (si no, asomaria al lado del de arriba).
+        d, _ = cKDTree(upper.points).query(lower.points)
+        need = w_up + profiles[c.lower].half_width + 8.0
+        close = d < need
+        k0 = int(np.searchsorted(lower.arc, c.s_lower))
+        lo, hi = k0, k0
+        while lo > 0 and close[lo - 1]:
+            lo -= 1
+        while hi < len(close) - 1 and close[hi + 1]:
+            hi += 1
+        s0 = min(c.s_lower - half, float(lower.arc[lo]) - 3.0)
+        s1 = max(c.s_lower + half, float(lower.arc[hi]) + 3.0)
+        profiles[c.lower] = _mark(profiles[c.lower], lower, s0, s1)
     hills = _hill_tunnels(rng, graph, profiles[0], crossings, style)
     for line_id, s0, s1 in hills:
         profiles[line_id] = _mark(profiles[line_id], graph.lines[line_id], s0, s1)

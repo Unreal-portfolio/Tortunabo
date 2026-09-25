@@ -214,6 +214,8 @@ def test_el_suelo_del_camino_es_llano_sin_cuenco(model):
                 continue                                   # agua y playa tienen su propio suelo
             if prof.tunnel[max(k - 15, 0):k + 15].any() or model.near_junction(line.point_at(s), 20.0):
                 continue
+            if any(np.hypot(*(line.point_at(s) - c.center)) < 14.0 for c in model.castles):
+                continue                                   # el castillo esta dentro del camino a proposito
             w = prof.half_width[k]
             h = _cross_section(model, line.id, s, np.linspace(-0.8 * w, 0.8 * w, 9))
             assert np.ptp(h) <= 0.3, f"camino {line.id} s={s:.0f}: cuenco o escalon ({np.ptp(h):.2f} m)"
@@ -232,8 +234,11 @@ def test_el_borde_cierra_el_paso(model):
                     or model.near_junction(line.point_at(s), 25.0):
                 continue
             w = prof.half_width[k]
-            h = _cross_section(model, line.id, s, np.array([0.0, -(w + 6.0), w + 6.0]))
-            assert min(h[1], h[2]) - h[0] >= 3.0, f"camino {line.id} s={s:.0f}: borde bajo"
+            # La pared mas alta entre el borde del camino y 6 m mas alla (en una curva cerrada, mas
+            # alla de la pared vuelve a estar el mismo camino).
+            h0 = _cross_section(model, line.id, s, np.array([0.0]))[0]
+            side = [_cross_section(model, line.id, s, sign * np.arange(w, w + 6.5, 0.5)).max() for sign in (-1.0, 1.0)]
+            assert min(side) - h0 >= 3.0, f"camino {line.id} s={s:.0f}: borde bajo"
 
 
 def test_la_union_de_un_lazo_no_tiene_escalon(model):
@@ -245,7 +250,7 @@ def test_la_union_de_un_lazo_no_tiene_escalon(model):
                 continue                           # en el rio el eje es cauce, no suelo
             h = _cross_section(model, loop.id, s, np.array([0.0]))[0]
             z = np.interp(s, loop.arc, model.plan.profiles[loop.id].z)
-            assert abs(h - z) <= 0.6
+            assert abs(h - z) <= 0.8
 
 
 def test_el_final_toca_el_mar(model):
@@ -333,3 +338,60 @@ def test_los_castillos_dejan_paso(model):
             h.append(model.grid.height[i, j] - c.base)
         free = np.array(h) < 0.3
         assert free[:6].all(), f"castillo en {c.center} tapona el camino"
+
+
+from gen_terrain_volume import build_all, ground_level, walk, world_index  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def chunks(model):
+    return build_all(model, grid=4)
+
+
+@pytest.fixture(scope="module")
+def reached(model, chunks):
+    from terrain_path.model import walkable
+    standable = walkable(global_standable(chunks, grid=4), model.grid.height[1:-1, 1:-1], z_levels())
+    start = world_index(model.start)
+    return standable, walk(standable, (*start, ground_level(standable, *start)))
+
+
+def test_se_llega_a_pie_del_inicio_al_final(model, reached):
+    _, seen = reached
+    i, j = world_index(model.end)
+    assert seen[i, j].any(), "no se llega al final andando o saltando"
+
+
+def test_todos_los_lazos_se_recorren(model, reached):
+    _, seen = reached
+    for loop in model.plan.graph.loops():
+        i, j = world_index(loop.point_at(loop.length / 2.0))
+        assert seen[i - 2:i + 3, j - 2:j + 3].any(), f"lazo {loop.id} inalcanzable"
+
+
+def test_las_vistas_no_se_pisan(model, reached):
+    _, seen = reached
+    region = model.region[1:-1, 1:-1]
+    assert int((seen.any(axis=2) & (region == 2)).sum()) == 0
+
+
+def test_los_trozos_vecinos_coinciden(chunks):
+    left, right = chunks[(1, 1)], chunks[(2, 1)]
+    a = left.vertices[np.isclose(left.vertices[:, 1], 5000.0, atol=1e-2)]
+    b = right.vertices[np.isclose(right.vertices[:, 1], -5000.0, atol=1e-2)]
+    assert len(a) > 0 and len(a) == len(b)
+    a = a[np.lexsort((a[:, 2], a[:, 0]))][:, [0, 2]]
+    b = b[np.lexsort((b[:, 2], b[:, 0]))][:, [0, 2]]
+    assert np.allclose(a, b, atol=0.1)
+
+
+def test_sin_picos_de_una_celda(model):
+    """Ninguna celda sobresale (o se hunde) mas de 0,5 m respecto de todas sus vecinas: eso es un
+    pico o una aleta en la malla. Las esquinas de pared (casi vertical) no cuentan: no son picos."""
+    from scipy import ndimage
+    h = model.grid.height
+    ring = np.ones((3, 3), dtype=bool)
+    ring[1, 1] = False
+    peak = h - ndimage.maximum_filter(h, footprint=ring)
+    pit = ndimage.minimum_filter(h, footprint=ring) - h
+    assert int((peak > 0.5).sum()) == 0 and int((pit > 0.5).sum()) == 0

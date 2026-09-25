@@ -1,0 +1,305 @@
+{
+ "name": "C01_camino",
+ "seed": 60001,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 4,
+ "water_uu": -400.0,
+ "start_uu": [
+  -2000.0,
+  20824.456399849387,
+  645.7890268767603
+ ],
+ "end_uu": [
+  31500.0,
+  14695.73270408361,
+  -340.8024300058224
+ ],
+ "cells": [
+  {
+   "name": "M_C01_camino_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 17020,
+   "triangles": 33556,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 15656,
+   "triangles": 30812,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 15880,
+   "triangles": 31266,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 15303,
+   "triangles": 30120,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 20945,
+   "triangles": 41268,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 26380,
+   "triangles": 52062,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 20978,
+   "triangles": 41320,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 18268,
+   "triangles": 35984,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 25633,
+   "triangles": 50656,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 26914,
+   "triangles": 53134,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 22676,
+   "triangles": 44726,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 16092,
+   "triangles": 31678,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 17878,
+   "triangles": 35222,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 17367,
+   "triangles": 34148,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 19772,
+   "triangles": 38986,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 14585,
+   "triangles": 28682,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "C01_camino",
+  "description": "Camino primero: un camino, lazos que vuelven, puentes naturales y tuneles, rio con islas y final abierto al mar.",
+  "main_length_m": [
+   700.0,
+   900.0
+  ],
+  "path_separation_m": 34.0,
+  "loops": 7,
+  "nested_loops": 2,
+  "crossings": 2,
+  "loop_span_m": [
+   40.0,
+   160.0
+  ],
+  "loop_reach_m": [
+   38.0,
+   65.0
+  ],
+  "backtrack_chance": 0.3,
+  "hill_tunnels": 2,
+  "width_m": [
+   2.5,
+   4.0,
+   8.0
+  ],
+  "river_half_width_m": [
+   5.0,
+   9.0
+  ],
+  "max_grade": 0.2,
+  "steep_grade": 0.3,
+  "steep_chance": 0.15,
+  "cross_clearance_m": 8.5,
+  "biome_shares": [
+   0.35,
+   0.2,
+   0.3,
+   0.15
+  ],
+  "rim_cliffs_m": [
+   4.0,
+   9.0
+  ],
+  "rim_water_m": [
+   3.0,
+   5.0
+  ],
+  "rim_dunes_m": [
+   3.0,
+   6.0
+  ],
+  "rim_beach_m": [
+   2.5,
+   4.0
+  ],
+  "wall_angle_deg": [
+   78.0,
+   60.0,
+   64.0,
+   62.0
+  ],
+  "block_band_m": 8.0,
+  "island_per_100m": 5.0,
+  "vista_dune_wave_m": [
+   15.0,
+   20.0
+  ],
+  "vista_dune_amp_m": [
+   0.8,
+   2.6
+  ],
+  "vista_pond_m": 2.6,
+  "castles": 3
+ },
+ "description": "Camino primero: un camino, lazos que vuelven, puentes naturales y tuneles, rio con islas y final abierto al mar.",
+ "recorrible": true
+}

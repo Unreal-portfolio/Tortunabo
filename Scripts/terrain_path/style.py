@@ -22,7 +22,7 @@ class PathStyle:
     hill_tunnels: int = 2                    # tramos del principal que atraviesan un cerro
     # Anchura (semiancho, m) y cota
     width_m: tuple[float, float, float] = (2.5, 4.0, 8.0)       # minimo, moda, maximo
-    river_half_width_m: tuple[float, float] = (4.0, 8.0)
+    river_half_width_m: tuple[float, float] = (5.0, 9.0)
     max_grade: float = 0.2
     steep_grade: float = 0.3
     steep_chance: float = 0.15
@@ -33,7 +33,7 @@ class PathStyle:
     rim_water_m: tuple[float, float] = (3.0, 5.0)
     rim_dunes_m: tuple[float, float] = (3.0, 6.0)
     rim_beach_m: tuple[float, float] = (2.5, 4.0)
-    wall_angle_deg: tuple[float, float, float, float] = (78.0, 55.0, 62.0, 45.0)
+    wall_angle_deg: tuple[float, float, float, float] = (78.0, 60.0, 64.0, 62.0)
     block_band_m: float = 8.0
     # Rio
     island_per_100m: float = 5.0

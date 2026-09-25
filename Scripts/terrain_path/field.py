@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from scipy import ndimage
 
 from terrain_vol.density import smooth, soft_max
 
@@ -25,21 +26,29 @@ def rim_arrays(style) -> tuple[np.ndarray, np.ndarray]:
     return rims, np.radians(np.array(style.wall_angle_deg))
 
 
-def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style):
+def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None):
     """(relieve, cresta H, distancia e de la cresta). e = distancia al eje - semiancho (< 0 dentro).
     bw: pesos de bioma (..., 4). n_rim en 0..1, n_top y n_floor en -1..1."""
     rims, angles = rim_arrays(style)
     lo, hi = bw @ rims[:, 0], bw @ rims[:, 1]
     rim = lo + (hi - lo) * n_rim
     tan = np.tan(bw @ angles)
-    H = np.maximum(z_soft + rim + 0.8 * n_top, zf + 0.6 * rim)
+    # Cresta continua (solo depende de la cota suavizada): la bajada a las vistas no marca las
+    # bisectrices entre caminos. Junto al camino, nunca por debajo del borde minimo del bioma
+    # sobre su propio suelo (si no, un camino vecino mas bajo dejaba una pared que se sube).
+    H = z_soft + rim + 1.6 * n_top           # cima irregular, no una meseta
+    if guard is not None:
+        # guard: suelo del camino mas alto de los cercanos (continuo); la cresta, y con ella la
+        # banda que cierra el paso, nunca queda por debajo de su borde minimo.
+        H = np.maximum(H, guard + lo)
+    Hc = np.maximum(H, zf + np.maximum(lo, 0.6 * rim))
     rc = np.minimum(1.5, 0.2 * w)
     t = e + rc
     fillet = rc - np.sqrt(np.maximum(rc * rc - np.clip(t, 0.0, rc) ** 2, 0.0))
     rise = np.where(t <= 0.0, 0.0, np.where(t <= rc, fillet, rc + (t - rc) * tan))
     floor = zf + 0.1 * n_floor
-    height = soft_min(floor + rise, H, 1.0)
-    crest_e = np.maximum(H - zf - rc, 0.0) / np.maximum(tan, 1e-3)
+    height = soft_min(floor + rise, Hc, 0.6)
+    crest_e = np.maximum(Hc - zf - rc, 0.0) / np.maximum(tan, 1e-3)
     return height, H, crest_e
 
 
@@ -62,7 +71,7 @@ def vista(model, X, Y):
         + dune_field(model, X, Y, model.dune_angle_2, w2) * mix
     a_lo, a_hi = st.vista_dune_amp_m
     amp = a_lo + (a_hi - a_lo) * smooth(0.25, 0.85, model.n_dune_amp.unit(X, Y))
-    v = WATER_M - 0.4 + st.vista_pond_m * model.n_pond(X, Y) + amp * dunes + 2.0 * model.n_big.unit(X, Y)
+    v = WATER_M - 1.3 + st.vista_pond_m * model.n_pond(X, Y) + amp * dunes + 2.0 * model.n_big.unit(X, Y)
     warp = 10.0 * model.n_edge(X, Y)
     near = np.maximum.reduce([1.0 - smooth(4.0, 30.0, d) for d in
                               (X - MAP_MIN_M + warp, Y - MAP_MIN_M + warp, MAP_MAX_M - Y + warp)])
@@ -78,3 +87,15 @@ def shore(model, X, Y, height, protect):
     beach = WATER_M - 1.8 + 5.0 * smooth(4.0, 45.0, u)
     band = (1.0 - smooth(25.0, 55.0, u)) * (1.0 - protect)
     return height * (1.0 - band) + np.minimum(height, beach) * band, band
+
+
+def clip_spikes(height, limit: float = 0.4):
+    """Recorta picos y pozos de una sola celda (restos de las cunas y cruces): ninguna celda
+    queda mas de 'limit' por encima de su vecina mas alta ni por debajo de la mas baja."""
+    if height.ndim != 2 or min(height.shape) < 3:
+        return height
+    ring = np.ones((3, 3), dtype=bool)
+    ring[1, 1] = False
+    top = ndimage.maximum_filter(height, footprint=ring, mode="nearest")
+    low = ndimage.minimum_filter(height, footprint=ring, mode="nearest")
+    return np.clip(height, low - limit, top + limit)

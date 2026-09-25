@@ -11,9 +11,11 @@ import numpy as np
 
 from terrain_vol.density import smooth
 
-CASTLE_RADIUS_M = 3.0
+CASTLE_RADIUS_M = 2.6
+TOWER_RADIUS_M = 1.2
+WALL_CLEARANCE_M = 2.5         # hueco entre el castillo y la pared del camino (que no sirva de escalera)
 MIN_WIDTH_M = 4.5              # semiancho minimo donde se planta (el camino se ensancha alrededor)
-PLAZA_HALF_WIDTH_M = 7.5       # semiancho del ensanche del castillo
+PLAZA_HALF_WIDTH_M = 8.0       # semiancho del ensanche del castillo
 PLAZA_LENGTH_M = 15.0          # medio largo del ensanche (con transicion)
 
 
@@ -50,7 +52,7 @@ def plan_castles(rng: np.random.Generator, model) -> list[Castle]:
         near = (S["line"] == S["line"][idx]) & (np.abs(S["s"] - S["s"][idx]) < PLAZA_LENGTH_M)
         taper = 1.0 - smooth(PLAZA_LENGTH_M * 0.5, PLAZA_LENGTH_M, np.abs(S["s"][near] - S["s"][idx]))
         S["w"][near] = np.maximum(S["w"][near], S["w"][near] + (PLAZA_HALF_WIDTH_M - S["w"][near]) * taper)
-        center = p + n * side * (PLAZA_HALF_WIDTH_M - CASTLE_RADIUS_M - 0.8)
+        center = p + n * side * (PLAZA_HALF_WIDTH_M - CASTLE_RADIUS_M - TOWER_RADIUS_M - WALL_CLEARANCE_M)
         out.append(Castle(center, -n * side, float(S["z"][idx])))
     return out
 
@@ -72,6 +74,6 @@ def castle_stamp(X, Y, height, castle: Castle):
         a = yaw + math.pi / 4.0 + k * math.pi / 2.0
         tx = castle.center[0] + CASTLE_RADIUS_M * math.cos(a)
         ty = castle.center[1] + CASTLE_RADIUS_M * math.sin(a)
-        tower = 1.0 - smooth(0.9, 1.4, np.hypot(X - tx, Y - ty))
+        tower = 1.0 - smooth(0.7 * TOWER_RADIUS_M, TOWER_RADIUS_M, np.hypot(X - tx, Y - ty))
         out = np.where(tower > 0.0, np.maximum(out, castle.base + 2.6 * tower), out)
     return out

@@ -1,6 +1,7 @@
-"""Rio como tramo del camino: cauce hondo con una orilla-repisa que va cambiando de lado; en
-cada cambio, una cadena de islas alargadas cruza en diagonal (se salta de una a otra). Islas
-sueltas alargadas a los lados, nunca en ristra por el centro."""
+"""Rio como tramo del camino: un cauce hondo que serpentea entre dos orillas de arena andables
+(de anchura cambiante, a veces casi desaparece una), con islas alargadas en el sentido del agua,
+a un lado y a otro del cauce y nunca en ristra por el centro. Se va andando por las orillas y
+se puede saltar por las islas."""
 
 from __future__ import annotations
 
@@ -14,6 +15,8 @@ from .curves import knot_noise
 from .layout import WATER_M
 
 BANK_TOP_M = WATER_M + 0.7
+BANK_M = (1.0, 2.8)              # anchura de cada orilla (m), cambia a lo largo del rio
+MIN_CHANNEL_M = 1.5              # cauce mas estrecho que esto: no hay cauce (todo orilla)
 
 
 @dataclass
@@ -27,8 +30,7 @@ class Island:
 
 @dataclass
 class River:
-    sides: dict[int, tuple[np.ndarray, np.ndarray]]
-    shelf: dict[int, tuple[np.ndarray, np.ndarray]]
+    banks: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]]      # linea -> (arco, orilla izq., orilla der.)
     islands: list[Island]
 
 
@@ -45,64 +47,65 @@ def _segments(mask: np.ndarray, arc: np.ndarray) -> list[tuple[float, float]]:
     return out
 
 
+def channel(w, left, right):
+    """(borde izquierdo, borde derecho) del cauce en coordenada lateral q (izquierda negativa)."""
+    rc = np.minimum(1.5, 0.2 * w)
+    return -(w - rc) + left, (w - rc) - right
+
+
 def plan_river(rng: np.random.Generator, model) -> River | None:
-    sides, shelf, islands = {}, {}, []
-    for line in model.plan.graph.lines:
+    banks, islands = {}, []
+    # Solo el camino principal lleva rio: un lazo que pasa por el agua es un paso seco a la cota de
+    # la orilla (con rio, sus orillas no siempre enlazaban con las del principal).
+    for line in model.plan.graph.lines[:1]:
         prof = model.plan.profiles[line.id]
-        for s0, s1 in _segments(prof.biome == 1, line.arc):
-            if s1 - s0 < 20.0:
-                continue
-            knots = [s0]
-            while knots[-1] < s1:
-                knots.append(knots[-1] + float(rng.uniform(30.0, 60.0)))
-            side = [float(rng.choice([-1.0, 1.0]))]
-            for _ in knots[1:]:
-                side.append(side[-1] if rng.random() < 0.25 else -side[-1])
-            sides[line.id] = (np.array(knots), np.array(side))
-            arc = line.arc[(line.arc >= s0) & (line.arc <= s1)]
-            shelf[line.id] = (arc, knot_noise(rng, arc, (15.0, 40.0), 1.6, 3.2))
-            for k in range(1, len(knots)):
-                if side[k] == side[k - 1] or knots[k] >= s1:
-                    continue
-                w = float(np.interp(knots[k], line.arc, prof.half_width))
-                b = float(np.interp(knots[k], *shelf[line.id]))
-                q0, q1 = side[k - 1] * (w - b), side[k] * (w - b)
-                n = max(1, int(np.ceil(abs(q1 - q0) / 3.2)) - 1)
-                for m in range(1, n + 1):
-                    t = m / (n + 1)
-                    hw = float(rng.uniform(0.9, 1.2))
-                    islands.append(Island(line.id, knots[k] + (t - 0.5) * 2.5 * n, q0 + (q1 - q0) * t,
-                                          float(rng.uniform(1.9, 2.4)) * hw, hw))
+        segments = [seg for seg in _segments(prof.biome == 1, line.arc) if seg[1] - seg[0] >= 20.0]
+        if not segments:
+            continue
+        left = knot_noise(rng, line.arc, (15.0, 40.0), *BANK_M)
+        right = knot_noise(rng, line.arc, (15.0, 40.0), *BANK_M)
+        banks[line.id] = (line.arc, left, right)
+        for s0, s1 in segments:
             count = int(model.style.island_per_100m * (s1 - s0) / 100.0)
-            for _ in range(count):
+            for _ in range(count * 3):
+                if count <= 0:
+                    break
                 s = float(rng.uniform(s0 + 5.0, s1 - 5.0))
                 w = float(np.interp(s, line.arc, prof.half_width))
-                hw = float(rng.uniform(0.8, 2.0))
-                q = float(rng.choice([-1.0, 1.0])) * float(rng.uniform(0.3, 0.7)) * w
-                islands.append(Island(line.id, s, q, float(rng.uniform(1.8, 3.0)) * hw, hw))
-    if not sides:
+                lo, hi = channel(w, float(np.interp(s, line.arc, left)), float(np.interp(s, line.arc, right)))
+                if hi - lo < 5.0:
+                    continue
+                hw = float(rng.uniform(0.6, min(1.6, 0.2 * (hi - lo))))
+                # Hacia una orilla del cauce, nunca en el centro.
+                third = float(rng.choice([-1.0, 1.0]))
+                q = 0.5 * (lo + hi) + third * float(rng.uniform(0.28, 0.42)) * (hi - lo)
+                islands.append(Island(line.id, s, q, float(rng.uniform(1.9, 3.2)) * hw, hw))
+                count -= 1
+    if not banks:
         return None
-    return River(sides, shelf, islands)
+    return River(banks, islands)
 
 
 def river_floor(model, X, Y, i, zf, w):
-    """(suelo del rio, peso 0..1 del rio) en cada punto, segun la muestra mas cercana i."""
+    """(suelo del rio, peso 0..1 del rio) en cada punto, segun la muestra mas cercana i. El peso
+    se apaga donde la cota del camino queda por encima de la orilla (entrada y salida del tramo)."""
     S, river = model.S, model.river
     line, s, p, n = S["line"][i], S["s"][i], S["p"][i], S["n"][i]
     q = (X - p[..., 0]) * n[..., 0] + (Y - p[..., 1]) * n[..., 1]
     bed = WATER_M - 1.2 - 0.5 * model.n_floor.unit(X, Y)
-    floor = bed.copy()
+    floor = np.full(X.shape, BANK_TOP_M) + 0.1 * model.n_floor(X, Y)
     weight = np.zeros(X.shape)
-    for line_id, (knots, side) in river.sides.items():
-        on = line == line_id
+    for line_id, (arc, left, right) in river.banks.items():
+        on = (line == line_id) & (S["biome"][i] == 1)
         if not on.any():
             continue
-        k = np.clip(np.searchsorted(knots, s, side="right") - 1, 0, len(side) - 1)
-        b = np.interp(s, *river.shelf[line_id])
-        bank = smooth(-0.6, 0.6, side[k] * q - (w - b) + 0.4 * model.n_top(X, Y))
-        floor = np.where(on, bed * (1.0 - bank) + BANK_TOP_M * bank, floor)
-        arc = river.shelf[line_id][0]
-        weight = np.where(on & (s >= arc[0]) & (s <= arc[-1]), 1.0, weight)
+        lo, hi = channel(w, np.interp(s, arc, left), np.interp(s, arc, right))
+        wobble = 0.4 * model.n_top(X, Y)
+        inside = smooth(-0.6, 0.6, q - lo + wobble) * smooth(-0.6, 0.6, hi - q + wobble)
+        inside = inside * smooth(MIN_CHANNEL_M - 0.5, MIN_CHANNEL_M + 0.5, hi - lo)
+        floor = np.where(on, floor * (1.0 - inside) + bed * inside, floor)
+        weight = np.where(on, 1.0, weight)
+    weight = weight * (1.0 - smooth(0.3, 1.2, zf - BANK_TOP_M))
     for isl in river.islands:
         on = line == isl.line
         r = np.sqrt(((s - isl.s) / isl.half_len) ** 2 + ((q - isl.q) / isl.half_wid) ** 2)
