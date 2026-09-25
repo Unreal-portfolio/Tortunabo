@@ -247,6 +247,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Module")
 	bool SetCoastWeights(const TArray<int32>& InWeights);
 
+	/** Túnel en capas (ver TN_TerrainTunnelDecisions.h): techo y bóveda por vértice, con la
+	 *  codificación de Heights; 0 = sin techo. Vacíos = módulo sin túnel. */
+	UPROPERTY()
+	TArray<uint16> RoofHeights;
+
+	UPROPERTY()
+	TArray<uint16> CeilingHeights;
+
+	/** Sustituye las capas del túnel: Resolution² valores cada una en [0, 65535] (0 en las
+	 *  dos a la vez = sin techo), o las dos vacías para quitarlo. Llamar tras SetHeightfield. */
+	UFUNCTION(BlueprintCallable, Category = "Module")
+	bool SetTunnelLayers(const TArray<int32>& InRoof, const TArray<int32>& InCeiling);
+
+	bool HasTunnelLayers() const
+	{
+		const int32 Count = Resolution * Resolution;
+		return Resolution >= 2 && RoofHeights.Num() == Count && CeilingHeights.Num() == Count;
+	}
+
 	bool HasBiomeMask() const { return BiomeMask.Num() == Resolution * Resolution && Resolution >= 2; }
 
 	bool IsMixed() const { return SecondaryBiome != Biome && HasBiomeMask(); }

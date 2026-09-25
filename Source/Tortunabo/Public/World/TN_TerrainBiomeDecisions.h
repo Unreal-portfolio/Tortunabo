@@ -35,12 +35,13 @@ namespace TNTerrainBiome
 				Colors.Wet = FLinearColor(0.12f, 0.10f, 0.07f);
 				break;
 			case ETNTerrainBiome::Algae:
-				Colors.Floor = FLinearColor(0.16f, 0.25f, 0.08f);
-				Colors.Cliff = FLinearColor(0.05f, 0.07f, 0.04f);
-				Colors.CliffAlt = Colors.Cliff;
-				Colors.High = FLinearColor(0.05f, 0.09f, 0.035f);
-				Colors.HighAlt = Colors.High;
-				Colors.Wet = FLinearColor(0.04f, 0.06f, 0.03f);
+				// "Verde feo": oliva de ciénaga y musgo apagado, con vetas amarillentas.
+				Colors.Floor = FLinearColor(0.20f, 0.22f, 0.06f);
+				Colors.Cliff = FLinearColor(0.07f, 0.07f, 0.03f);
+				Colors.CliffAlt = FLinearColor(0.11f, 0.10f, 0.04f);
+				Colors.High = FLinearColor(0.12f, 0.14f, 0.045f);
+				Colors.HighAlt = FLinearColor(0.19f, 0.20f, 0.05f);
+				Colors.Wet = FLinearColor(0.05f, 0.06f, 0.025f);
 				break;
 			default:
 				break;   // Arena: la paleta por defecto de FModuleColors.
@@ -160,7 +161,7 @@ namespace TNTerrainBiome
 				}
 				Instance.Transform = FTransform(FRotator(0.0, YawRoll * 360.0, 0.0),
 					FVector(Local.X, Local.Y, Ground + PivotZ), Scale);
-				Instance.Color = FMath::Lerp(FLinearColor(0.05f, 0.20f, 0.04f), FLinearColor(0.22f, 0.36f, 0.06f),
+				Instance.Color = FMath::Lerp(FLinearColor(0.10f, 0.14f, 0.03f), FLinearColor(0.27f, 0.29f, 0.07f),
 					static_cast<float>(TintRoll));
 			}
 		}

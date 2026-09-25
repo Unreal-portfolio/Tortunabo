@@ -7,7 +7,6 @@
 #include "Math/RandomStream.h"
 #include "World/TN_TerrainBiomeDecisions.h"
 #include "World/TN_TerrainCoastDecisions.h"
-#include "World/TN_TerrainTunnelDecisions.h"
 #include "World/TN_TerrainModuleDecisions.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -358,117 +357,6 @@ bool FTNTerrainBiomeCoastTest::RunTest(const FString& Parameters)
 	// Determinista y dependiente de la semilla (la costa sale del WallSeed replicado).
 	TestTrue(TEXT("alcance determinista"), TNTerrainCoast::CoastReach(0, 1234.0, TNTerrainCoast::FCoastShape(3), {})
 		== TNTerrainCoast::CoastReach(0, 1234.0, TNTerrainCoast::FCoastShape(3), {}));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainBiomeTunnelMeshTest,
-	"Tortunabo.TerrainBiome.TunnelMesh",
-	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
-
-bool FTNTerrainBiomeTunnelMeshTest::RunTest(const FString& Parameters)
-{
-	FTNTerrainModuleBridge Tunnel;
-	Tunnel.Center = FVector2D(500.0, -300.0);
-	Tunnel.Yaw = 0.f;
-	Tunnel.Length = 4000.f;
-	Tunnel.Width = 2400.f;
-	Tunnel.Thickness = 400.f;
-	Tunnel.DeckHeight = 1200.f;
-	Tunnel.Kind = ETNTerrainArchKind::Tunnel;
-	const double Floor = 100.0;
-
-	const TNTerrainModule::FModuleColors Colors;
-	const TNTerrainTunnel::FTunnelShape Shape;
-	const TNGridTerrain::FTileMesh Mesh = TNTerrainTunnel::BuildTunnelMesh(Tunnel, Floor, 5, Colors, Shape);
-	const int32 N = Shape.ProfilePoints;
-	const int32 S = Shape.Stations;
-	TestEqual(TEXT("vértices: dos perfiles por estación"), Mesh.Vertices.Num(), (S + 1) * 2 * N);
-	TestEqual(TEXT("triángulos: exterior, bóveda y dos bocas"), Mesh.Triangles.Num(), 3 * (S * (N - 1) * 4 + 2 * (N - 1) * 2));
-	bool bIndicesValid = true;
-	for (const int32 Index : Mesh.Triangles) { bIndicesValid &= Mesh.Vertices.IsValidIndex(Index); }
-	TestTrue(TEXT("índices válidos"), bIndicesValid);
-	bool bFinite = true;
-	for (const FVector& V : Mesh.Vertices) { bFinite &= !V.ContainsNaN(); }
-	for (const FVector& Normal : Mesh.Normals) { bFinite &= !Normal.ContainsNaN(); }
-	TestTrue(TEXT("sin NaN (PI es float: sin(PI) < 0)"), bFinite);
-
-	double MinZ = UE_BIG_NUMBER;
-	double MaxZ = -UE_BIG_NUMBER;
-	double ClearanceAtAxis = UE_BIG_NUMBER;
-	for (int32 V = 0; V < Mesh.Vertices.Num(); ++V)
-	{
-		const FVector& P = Mesh.Vertices[V];
-		MinZ = FMath::Min(MinZ, P.Z);
-		MaxZ = FMath::Max(MaxZ, P.Z);
-		const bool bInner = (V % (2 * N)) >= N;
-		// Bóveda sobre el eje (Yaw 0: de pared a pared es X): la altura libre en el centro.
-		if (bInner && FMath::Abs(P.X - Tunnel.Center.X) < 300.0) { ClearanceAtAxis = FMath::Min(ClearanceAtAxis, P.Z - Floor); }
-	}
-	TestTrue(TEXT("techo a la cota del tablero"), FMath::IsNearlyEqual(MaxZ, Tunnel.DeckHeight, 1.0));
-	TestTrue(TEXT("base enterrada bajo el suelo"), FMath::IsNearlyEqual(MinZ, Floor - Shape.BaseBuried, 1.0));
-	TestTrue(TEXT("paso libre bajo la bóveda"), ClearanceAtAxis >= 0.85 * (Tunnel.DeckHeight - Tunnel.Thickness - Floor));
-
-	FTNTerrainModuleBridge Low = Tunnel;
-	Low.DeckHeight = 300.f;
-	TestEqual(TEXT("sin altura para el hueco: sin malla"), TNTerrainTunnel::BuildTunnelMesh(Low, Floor, 5, Colors, Shape).Vertices.Num(), 0);
-	return true;
-}
-
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTerrainBiomeCaveMeshTest,
-	"Tortunabo.TerrainBiome.CaveMesh",
-	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
-
-bool FTNTerrainBiomeCaveMeshTest::RunTest(const FString& Parameters)
-{
-	// Pasillo de 16 m (suelo a 1 m) entre dos mesetas a 12 m; la cueva lo cruza en X.
-	FTNTerrainModuleBridge Tunnel;
-	Tunnel.Center = FVector2D(500.0, -300.0);
-	Tunnel.Yaw = 0.f;
-	Tunnel.Length = 4000.f;
-	Tunnel.Width = 2400.f;
-	Tunnel.Thickness = 400.f;
-	Tunnel.DeckHeight = 1200.f;
-	Tunnel.Kind = ETNTerrainArchKind::Tunnel;
-	const double Floor = 100.0;
-	auto GroundAt = [&](const FVector2D& P) { return FMath::Abs(P.X - Tunnel.Center.X) < 800.0 ? Floor : 1200.0; };
-
-	const TNTerrainModule::FModuleColors Colors;
-	const TNTerrainTunnel::FTunnelShape Shape;
-	const TNTerrainTunnel::FCaveShape Cave;
-	const TNGridTerrain::FTileMesh Mesh = TNTerrainTunnel::BuildCaveMesh(Tunnel, Floor, 5, Colors, GroundAt, Shape, Cave);
-	const int32 N = Shape.ProfilePoints;
-	TestEqual(TEXT("vértices: manta e interior por estación"), Mesh.Vertices.Num(), (Shape.Stations + 1) * 2 * N);
-	bool bIndicesValid = Mesh.Triangles.Num() > 0 && Mesh.Triangles.Num() % 3 == 0;
-	for (const int32 Index : Mesh.Triangles) { bIndicesValid &= Mesh.Vertices.IsValidIndex(Index); }
-	TestTrue(TEXT("índices válidos"), bIndicesValid);
-	bool bFinite = true;
-	for (const FVector& V : Mesh.Vertices) { bFinite &= !V.ContainsNaN(); }
-	TestTrue(TEXT("sin NaN"), bFinite);
-
-	bool bCovered = true;
-	bool bSkirtBuried = true;
-	const int32 Ring = 2 * N;
-	for (int32 St = 0; St <= Shape.Stations; ++St)
-	{
-		for (int32 K = 0; K < N; ++K)
-		{
-			const FVector& V = Mesh.Vertices[St * Ring + K];
-			const double Ground = GroundAt(FVector2D(V.X, V.Y));
-			if (K == 0 || K == N - 1) { bSkirtBuried &= V.Z < Ground; }
-			else { bCovered &= V.Z >= Ground + Cave.Cover - 1.0; }
-		}
-	}
-	TestTrue(TEXT("la manta queda por encima del terreno (colina, no losa)"), bCovered);
-	TestTrue(TEXT("el faldón se entierra"), bSkirtBuried);
-
-	double RoofOverAxis = -UE_BIG_NUMBER;
-	for (int32 St = 0; St <= Shape.Stations; ++St)
-	{
-		RoofOverAxis = FMath::Max(RoofOverAxis, static_cast<double>(Mesh.Vertices[St * Ring + N / 2].Z));
-	}
-	TestTrue(TEXT("sobre el pasillo la colina supera la clave de la bóveda"),
-		RoofOverAxis >= Tunnel.DeckHeight - Tunnel.Thickness + Cave.MinRoof - 1.0);
 	return true;
 }
 

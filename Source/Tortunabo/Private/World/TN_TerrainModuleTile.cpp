@@ -203,22 +203,8 @@ void ATN_TerrainModuleTile::BuildRocks(const TNTerrainModule::FModuleColors& Col
 	{
 		const FTNTerrainModuleBridge Bridge = bMirrored ? TNTerrainModule::MirrorBridge(ModuleAsset->Bridges[Index]) : ModuleAsset->Bridges[Index];
 		const int32 RockSeed = ModuleAsset->Seed * 31 + Index;
-		if (Bridge.Kind == ETNTerrainArchKind::Tunnel)
-		{
-			// Cueva: bóveda que llega al suelo del pasillo y, por fuera, una colina que copia
-			// el terreno de alrededor. Con el material del terreno, no el de roca: es relieve.
-			const double Floor = TNTerrainModule::SampleHeight(Field, FVector2D(Bridge.Center));
-			const TNGridTerrain::FTileMesh Cave = TNTerrainTunnel::BuildCaveMesh(Bridge, Floor, RockSeed, Colors,
-				[&Field](const FVector2D& P) { return TNTerrainModule::SampleHeight(Field, P); });
-			if (Cave.Vertices.Num() > 0)
-			{
-				TerrainMesh->CreateMeshSection_LinearColor(Section, Cave.Vertices, Cave.Triangles, Cave.Normals,
-					TArray<FVector2D>(), Cave.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
-				if (TerrainMaterial) { TerrainMesh->SetMaterial(Section, TerrainMaterial); }
-				++Section;
-			}
-		}
-		else
+		// Los túneles ya no son piezas: van en capas dentro de la malla del suelo (BuildModule).
+		if (Bridge.Kind != ETNTerrainArchKind::Tunnel)
 		{
 			AddSection(TNTerrainModule::BuildArchMesh(Bridge, RockSeed, Colors));
 		}
@@ -354,9 +340,20 @@ void ATN_TerrainModuleTile::BuildModule()
 	PlacedHeights = TNTerrainCoast::ApplyCoast(*ModuleAsset, ModuleSize, bMirrored, OuterSides, WallSeed);
 	TNTerrainModule::FModuleField Field = TNTerrainModule::MakeField(*ModuleAsset, ModuleSize, bMirrored);
 	Field.Heights = PlacedHeights;
-	const TNGridTerrain::FTileMesh Mesh = SeamNeighbors.Num() > 0
+	TNGridTerrain::FTileMesh Mesh = SeamNeighbors.Num() > 0
 		? BuildSeamedMesh(Field, Colors, BlendColors)
 		: TNTerrainModule::BuildModuleMesh(Field, Colors, ModuleAsset->IsMixed() ? &BlendColors : nullptr, ModuleAsset->BiomeMask);
+	if (ModuleAsset->HasTunnelLayers())
+	{
+		// Túnel en la misma malla que el suelo. La malla fundida con vecinos no sigue la
+		// rejilla del asset: ahí el túnel no se puede coser y se avisa.
+		const TNTerrainTunnel::FTunnelLayers TunnelLayers{ ModuleAsset->RoofHeights, ModuleAsset->CeilingHeights, ModuleAsset->Heights };
+		if (!TNTerrainTunnel::AppendTunnelLayers(Mesh, Field, TunnelLayers, Colors))
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[TerrainModule] '%s': el túnel de '%s' no se cose con esta malla (vecinos fundidos)."),
+				*GetName(), *ModuleAsset->GetName());
+		}
+	}
 
 	// Sin UV: el material del terreno es triplanar y deriva las coordenadas de la posición.
 	TerrainMesh->ClearAllMeshSections();

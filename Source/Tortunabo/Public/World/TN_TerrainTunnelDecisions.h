@@ -1,285 +1,172 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Math/RandomStream.h"
-#include "World/TN_TerrainModuleAsset.h"
 #include "World/TN_TerrainModuleDecisions.h"
 
 /**
- * Túnel de roca como función PURA: una bóveda que se atraviesa por dentro, en vez de la
- * losa del arco (que solo se pasa por debajo). Sección en forma de C: por fuera, un
- * bloque de techo plano a DeckHeight (caminable desde la rampa) con los costados hundidos
- * en las paredes del pasillo; por dentro, un arco de medio punto rebajado que llega al
- * suelo por los dos lados. La sección se extruye a lo largo del pasillo (Width) con
- * irregularidad determinista y bocas de roca en los dos extremos.
+ * Túnel de verdad, como función PURA: el heightfield del módulo es el SUELO y, en la huella
+ * del túnel, dos capas más en la misma rejilla lo cubren — el TECHO (cima de la colina) y la
+ * BÓVEDA (lo que se ve desde dentro). Todo va en la misma malla que el suelo:
+ *
+ *   - Donde una capa coincide con el suelo (anillo lateral de la huella), su vértice ES el
+ *     vértice del suelo: techo, bóveda y suelo quedan cosidos sin juntas.
+ *   - En los quads con las cuatro esquinas cubiertas se añaden la cara del techo (hacia
+ *     arriba) y la de la bóveda (hacia abajo).
+ *   - En el borde de la huella donde techo y bóveda no coinciden (las dos bocas) se añade
+ *     la pared que los une: la ladera en la que se abre la cueva.
+ *
+ * El resultado es una superficie cerrada y orientable (cada arista del casquete la comparten
+ * exactamente dos triángulos, en sentidos opuestos), sin secciones ni piezas aparte.
  */
 namespace TNTerrainTunnel
 {
-	struct FTunnelShape
+	/** Capas del túnel de un módulo, con la codificación de Heights (0 = sin techo). */
+	struct FTunnelLayers
 	{
-		/** Estaciones a lo largo del pasillo y puntos por perfil (exterior e interior). */
-		int32 Stations = 12;
-		int32 ProfilePoints = 20;
-		/** Distancia del borde del hueco a la pared del pasillo (el hueco es algo más estrecho). */
-		double InnerMargin = 1100.0;
-		double MinInnerHalfWidth = 400.0;
-		/** Cuánto se entierra la base bajo el suelo. */
-		double BaseBuried = 150.0;
-		/** Irregularidad de costados, bóveda y bocas (fracción). */
-		double Roughness = 0.07;
-	};
+		TArrayView<const uint16> Roof;
+		TArrayView<const uint16> Ceiling;
+		/** Suelo del asset tal como se generó (sin costa): la costura se decide comparando
+		 *  valores codificados, así que es exacta aunque luego la costa mueva el suelo. */
+		TArrayView<const uint16> SourceFloor;
 
-	/** Perfil exterior (N puntos): base derecha, sube, techo plano, baja a base izquierda. */
-	inline TArray<FVector2D> OuterProfile(double HalfOuter, double Top, double Base, int32 N)
-	{
-		// Recorrido por longitud de arco del rectángulo abierto por abajo.
-		const double Side = Top - Base;
-		const double Total = 2.0 * Side + 2.0 * HalfOuter;
-		TArray<FVector2D> Points;
-		for (int32 K = 0; K < N; ++K)
+		bool IsValid(int32 Resolution) const
 		{
-			const double S = Total * K / (N - 1);
-			if (S <= Side) { Points.Add(FVector2D(HalfOuter, Base + S)); }
-			else if (S <= Side + 2.0 * HalfOuter) { Points.Add(FVector2D(HalfOuter - (S - Side), Top)); }
-			else { Points.Add(FVector2D(-HalfOuter, Top - (S - Side - 2.0 * HalfOuter))); }
+			const int32 Count = Resolution * Resolution;
+			return Resolution >= 2 && Roof.Num() == Count && Ceiling.Num() == Count && SourceFloor.Num() == Count;
 		}
-		return Points;
-	}
-
-	/** Perfil interior (N puntos): del pie derecho del hueco al izquierdo por la bóveda. */
-	inline TArray<FVector2D> InnerProfile(double HalfInner, double Apex, double Base, int32 N)
-	{
-		TArray<FVector2D> Points;
-		for (int32 K = 0; K < N; ++K)
-		{
-			const double Theta = PI * K / (N - 1);
-			// PI es float: sin(PI) sale negativo por redondeo y Pow daría NaN.
-			const double Rise = FMath::Pow(FMath::Max(FMath::Sin(Theta), 0.0), 0.7);
-			Points.Add(FVector2D(HalfInner * FMath::Cos(Theta), Base + (Apex - Base) * Rise));
-		}
-		return Points;
-	}
-
-	/**
-	 * Malla del túnel en espacio local del módulo. Bridge: Center, Yaw (eje de pared a
-	 * pared), Length (de pared a pared, con los costados enterrados), Width (longitud a lo
-	 * largo del pasillo), Thickness (grosor del techo) y DeckHeight (cota del techo).
-	 * FloorHeight: cota del suelo del pasillo bajo el centro.
-	 */
-	inline TNGridTerrain::FTileMesh BuildTunnelMesh(const FTNTerrainModuleBridge& Bridge, double FloorHeight, int32 Seed,
-		const TNTerrainModule::FModuleColors& Colors, const FTunnelShape& Shape = FTunnelShape())
-	{
-		TNGridTerrain::FTileMesh Mesh;
-		const int32 S = FMath::Max(Shape.Stations, 2);
-		const int32 N = FMath::Max(Shape.ProfilePoints, 6);
-		const double HalfOuter = Bridge.Length * 0.5;
-		const double HalfInner = FMath::Max(HalfOuter - Shape.InnerMargin, Shape.MinInnerHalfWidth);
-		const double Base = FloorHeight - Shape.BaseBuried;
-		const double Apex = Bridge.DeckHeight - Bridge.Thickness;
-		if (Bridge.Length <= 0.f || Bridge.Width <= 0.f || Apex <= FloorHeight || HalfInner >= HalfOuter) { return Mesh; }
-
-		const double YawRad = FMath::DegreesToRadians(static_cast<double>(Bridge.Yaw));
-		const FVector2D Across(FMath::Cos(YawRad), FMath::Sin(YawRad));   // de pared a pared
-		const FVector2D Along(-Across.Y, Across.X);                        // a lo largo del pasillo
-		const TArray<FVector2D> Outer = OuterProfile(HalfOuter, Bridge.DeckHeight, Base, N);
-		const TArray<FVector2D> Inner = InnerProfile(HalfInner, Apex, Base, N);
-
-		FRandomStream Stream(Seed);
-		const double PhaseA = Stream.FRandRange(0.0, 2.0 * PI);
-		const double PhaseB = Stream.FRandRange(0.0, 2.0 * PI);
-		auto Bump = [&](double U, double K)
-		{
-			return 1.0 + Shape.Roughness * (0.6 * FMath::Sin(U * 0.0019 + K * 0.9 + PhaseA) + 0.4 * FMath::Sin(U * 0.0047 - K * 1.7 + PhaseB));
-		};
-
-		// Vértices: por estación, N del perfil exterior y luego N del interior.
-		TArray<FVector> AxisPoints;
-		for (int32 St = 0; St <= S; ++St)
-		{
-			const double U = -Bridge.Width * 0.5 + Bridge.Width * St / S;
-			const FVector2D Mid = FVector2D(Bridge.Center) + Along * U;
-			AxisPoints.Add(FVector(Mid.X, Mid.Y, (Base + Apex) * 0.5));
-			// Las bocas se abren un poco hacia fuera, como la entrada de una cueva.
-			const double Portal = 1.0 + 0.12 * FMath::Pow(FMath::Abs(U) / (Bridge.Width * 0.5), 4.0);
-			for (int32 K = 0; K < N; ++K)
-			{
-				const bool bTop = FMath::IsNearlyEqual(Outer[K].Y, Bridge.DeckHeight);
-				const double Y = Outer[K].X * (bTop ? 1.0 : Bump(U, K));
-				const FVector2D P = Mid + Across * Y;
-				Mesh.Vertices.Add(FVector(P.X, P.Y, Outer[K].Y));   // techo liso: se camina por encima
-			}
-			for (int32 K = 0; K < N; ++K)
-			{
-				const double Scale = Portal * (2.0 - Bump(U, K + 31));
-				const FVector2D P = Mid + Across * (Inner[K].X * Scale);
-				Mesh.Vertices.Add(FVector(P.X, P.Y, Inner[K].Y));
-			}
-		}
-
-		auto AddTriangle = [&](int32 A, int32 B, int32 C, const FVector& Outward)
-		{
-			const FVector Cross = FVector::CrossProduct(Mesh.Vertices[B] - Mesh.Vertices[A], Mesh.Vertices[C] - Mesh.Vertices[A]);
-			if (FVector::DotProduct(Cross, Outward) > 0.0) { Swap(B, C); }
-			Mesh.Triangles.Append({ A, B, C });
-		};
-		const int32 Ring = 2 * N;
-		for (int32 St = 0; St < S; ++St)
-		{
-			for (int32 K = 0; K + 1 < N; ++K)
-			{
-				// Cara exterior: mira lejos del eje del hueco.
-				const int32 A = St * Ring + K, B = A + 1, C = A + Ring, D = C + 1;
-				const FVector MidO = (Mesh.Vertices[A] + Mesh.Vertices[D]) * 0.5;
-				const FVector OutO = MidO - (AxisPoints[St] + AxisPoints[St + 1]) * 0.5;
-				AddTriangle(A, B, C, OutO);
-				AddTriangle(B, D, C, OutO);
-				// Cara interior (la bóveda): mira hacia el hueco.
-				const int32 E = St * Ring + N + K, F = E + 1, G = E + Ring, H = G + 1;
-				const FVector MidI = (Mesh.Vertices[E] + Mesh.Vertices[H]) * 0.5;
-				const FVector InI = (AxisPoints[St] + AxisPoints[St + 1]) * 0.5 - MidI;
-				AddTriangle(E, F, G, InI);
-				AddTriangle(F, H, G, InI);
-			}
-		}
-		// Bocas: franja entre el perfil exterior y el interior en cada extremo.
-		const FVector AlongDir(Along.X, Along.Y, 0.0);
-		for (int32 End = 0; End < 2; ++End)
-		{
-			const int32 St = End == 0 ? 0 : S;
-			const FVector Facing = End == 0 ? -AlongDir : AlongDir;
-			for (int32 K = 0; K + 1 < N; ++K)
-			{
-				const int32 A = St * Ring + K, B = A + 1, C = St * Ring + N + K, D = C + 1;
-				AddTriangle(A, B, C, Facing);
-				AddTriangle(B, D, C, Facing);
-			}
-		}
-
-		TNTerrainModule::FinishRockMesh(Mesh, Colors);
-		return Mesh;
-	}
-
-	/** Cómo se cubre la bóveda de una cueva (BuildCaveMesh). */
-	struct FCaveShape
-	{
-		/** Tierra sobre el terreno que rodea la cueva: la colina asoma un poco por encima. */
-		double Cover = 150.0;
-		/** Grosor mínimo de tierra sobre la clave de la bóveda. */
-		double MinRoof = 250.0;
-		/** Joroba extra en el centro, sobre el pasillo (fracción de la media anchura). */
-		double Dome = 0.18;
-		/** Faldón: hasta dónde se extiende la colina más allá de las paredes, y cuánto se entierra. */
-		double Skirt = 1200.0;
-		double SkirtBuried = 120.0;
 	};
 
 	/**
-	 * Cueva que atraviesa una colina: misma bóveda interior que BuildTunnelMesh, pero por
-	 * fuera, en vez de un bloque de techo plano, una manta que copia el terreno que la
-	 * rodea (GroundAt, espacio local del módulo), sube en joroba sobre el pasillo y se
-	 * entierra en un faldón a ambos lados. Con los colores del terreno se lee como parte
-	 * del relieve y no como una pieza puesta encima. Las bocas quedan como la entrada de
-	 * una cueva en la ladera.
+	 * Añade techo, bóveda y bocas a Mesh, que debe ser la malla del suelo de Field tal como
+	 * la hace TNTerrainModule::BuildModuleMesh (un vértice por muestra, índice I * R + J).
+	 * Devuelve false, sin tocar Mesh, si las capas o la malla no casan con el campo.
 	 */
-	inline TNGridTerrain::FTileMesh BuildCaveMesh(const FTNTerrainModuleBridge& Bridge, double FloorHeight, int32 Seed,
-		const TNTerrainModule::FModuleColors& Colors, TFunctionRef<double(const FVector2D&)> GroundAt,
-		const FTunnelShape& Shape = FTunnelShape(), const FCaveShape& Cave = FCaveShape())
+	inline bool AppendTunnelLayers(TNGridTerrain::FTileMesh& Mesh, const TNTerrainModule::FModuleField& Field,
+		const FTunnelLayers& Layers, const TNTerrainModule::FModuleColors& Colors)
 	{
-		TNGridTerrain::FTileMesh Mesh;
-		const int32 S = FMath::Max(Shape.Stations, 2);
-		const int32 N = FMath::Max(Shape.ProfilePoints, 6);
-		const double HalfOuter = Bridge.Length * 0.5;
-		const double HalfInner = FMath::Max(HalfOuter - Shape.InnerMargin, Shape.MinInnerHalfWidth);
-		const double Base = FloorHeight - Shape.BaseBuried;
-		const double Apex = Bridge.DeckHeight - Bridge.Thickness;
-		if (Bridge.Length <= 0.f || Bridge.Width <= 0.f || Apex <= FloorHeight || HalfInner >= HalfOuter) { return Mesh; }
-
-		const double YawRad = FMath::DegreesToRadians(static_cast<double>(Bridge.Yaw));
-		const FVector2D Across(FMath::Cos(YawRad), FMath::Sin(YawRad));
-		const FVector2D Along(-Across.Y, Across.X);
-		const TArray<FVector2D> Inner = InnerProfile(HalfInner, Apex, Base, N);
-		const double Reach = HalfOuter + Cave.Skirt;
-
-		FRandomStream Stream(Seed);
-		const double PhaseA = Stream.FRandRange(0.0, 2.0 * PI);
-		const double PhaseB = Stream.FRandRange(0.0, 2.0 * PI);
-		auto Bump = [&](double U, double K)
+		const int32 R = Field.Resolution;
+		if (!Field.IsValid() || !Layers.IsValid(R) || Mesh.Vertices.Num() != R * R)
 		{
-			return 1.0 + Shape.Roughness * (0.6 * FMath::Sin(U * 0.0019 + K * 0.9 + PhaseA) + 0.4 * FMath::Sin(U * 0.0047 - K * 1.7 + PhaseB));
+			return false;
+		}
+
+		const double Step = Field.Step();
+		const double Half = Field.Size * 0.5;
+		auto Covered = [&](int32 I, int32 J)
+		{
+			return I >= 0 && I < R && J >= 0 && J < R && Layers.Roof[Field.SourceIndex(I, J)] != 0;
+		};
+		// Altura de una capa en (I, J): la capa sobre el suelo YA COLOCADO (con costa), fuera
+		// de la huella el propio suelo. Así las normales del borde no ven un escalón.
+		auto LayerHeight = [&](TArrayView<const uint16> Layer, int32 I, int32 J)
+		{
+			I = FMath::Clamp(I, 0, R - 1);
+			J = FMath::Clamp(J, 0, R - 1);
+			const int32 K = Field.SourceIndex(I, J);
+			if (Layer[K] == 0) { return Field.HeightAt(I, J); }
+			return Field.HeightAt(I, J) + (static_cast<double>(Layer[K]) - Layers.SourceFloor[K]) * Field.HeightScale;
+		};
+		auto AddVertex = [&](TArrayView<const uint16> Layer, int32 I, int32 J, bool bFacingDown)
+		{
+			const double SlopeX = (LayerHeight(Layer, I + 1, J) - LayerHeight(Layer, I - 1, J)) / (2.0 * Step);
+			const double SlopeY = (LayerHeight(Layer, I, J + 1) - LayerHeight(Layer, I, J - 1)) / (2.0 * Step);
+			FVector Normal = FVector(-SlopeX, -SlopeY, 1.0).GetSafeNormal();
+			if (bFacingDown) { Normal = -Normal; }
+			const double Height = LayerHeight(Layer, I, J);
+			const FVector2D Local(I * Step - Half, J * Step - Half);
+			Mesh.Vertices.Add(FVector(Local.X, Local.Y, Height));
+			Mesh.Normals.Add(Normal);
+			// La bóveda mira hacia abajo: se colorea como pared (roca), no como suelo.
+			const FVector ColorNormal = bFacingDown ? FVector(Normal.X, Normal.Y, 0.0).GetSafeNormal() : Normal;
+			Mesh.Colors.Add(TNTerrainModule::SampleModuleColor(Colors, Height, ColorNormal,
+				TNTerrainModule::ColorVariation(Local)));
+			return Mesh.Vertices.Num() - 1;
 		};
 
-		TArray<FVector> AxisPoints;
-		for (int32 St = 0; St <= S; ++St)
+		// Vértices de techo y bóveda; los que coinciden con otra capa reutilizan su índice.
+		TArray<int32> RoofIndex;
+		TArray<int32> CeilingIndex;
+		RoofIndex.Init(INDEX_NONE, R * R);
+		CeilingIndex.Init(INDEX_NONE, R * R);
+		for (int32 I = 0; I < R; ++I)
 		{
-			const double U = -Bridge.Width * 0.5 + Bridge.Width * St / S;
-			const FVector2D Mid = FVector2D(Bridge.Center) + Along * U;
-			AxisPoints.Add(FVector(Mid.X, Mid.Y, (Base + Apex) * 0.5));
-			const double Portal = 1.0 + 0.12 * FMath::Pow(FMath::Abs(U) / (Bridge.Width * 0.5), 4.0);
-			// Manta exterior: de +Reach a -Reach a través del pasillo.
-			for (int32 K = 0; K < N; ++K)
+			for (int32 J = 0; J < R; ++J)
 			{
-				const double T = 1.0 - 2.0 * K / (N - 1.0);        // 1 .. -1
-				const double X = Reach * T;
-				const FVector2D P = Mid + Across * X;
-				const double Ground = GroundAt(P);
-				double Z;
-				if (K == 0 || K == N - 1)
-				{
-					Z = Ground - Cave.SkirtBuried;                  // el faldón se entierra
-				}
-				else
-				{
-					const double Inside = FMath::Clamp(1.0 - FMath::Abs(X) / HalfOuter, 0.0, 1.0);
-					const double Dome = Cave.Dome * HalfOuter * FMath::Sin(Inside * 0.5 * PI) * Bump(U, K) * 0.6;
-					const double Roof = (Apex + Cave.MinRoof) * Inside + Ground * (1.0 - Inside);
-					Z = FMath::Max(Ground + Cave.Cover, Roof + Dome);
-				}
-				Mesh.Vertices.Add(FVector(P.X, P.Y, Z));
-			}
-			for (int32 K = 0; K < N; ++K)
-			{
-				const double Scale = Portal * (2.0 - Bump(U, K + 31));
-				const FVector2D P = Mid + Across * (Inner[K].X * Scale);
-				Mesh.Vertices.Add(FVector(P.X, P.Y, Inner[K].Y));
+				if (!Covered(I, J)) { continue; }
+				const int32 K = Field.SourceIndex(I, J);
+				const int32 FloorVertex = I * R + J;
+				const uint16 Floor = Layers.SourceFloor[K];
+				const uint16 Roof = FMath::Max(Layers.Roof[K], Floor);
+				const uint16 Ceiling = FMath::Clamp(Layers.Ceiling[K], Floor, Roof);
+				RoofIndex[FloorVertex] = Roof == Floor ? FloorVertex : AddVertex(Layers.Roof, I, J, false);
+				CeilingIndex[FloorVertex] = Ceiling == Floor ? FloorVertex
+					: (Ceiling == Roof ? RoofIndex[FloorVertex] : AddVertex(Layers.Ceiling, I, J, true));
 			}
 		}
 
-		auto AddTriangle = [&](int32 A, int32 B, int32 C, const FVector& Outward)
+		const int32 FloorVertexCount = R * R;
+		auto IsFloor = [&](int32 Index) { return Index < FloorVertexCount; };
+		auto AddTriangle = [&](int32 A, int32 B, int32 C)
+		{
+			if (A == B || B == C || A == C) { return; }
+			// Un triángulo de solo vértices del suelo repetiría una cara del suelo.
+			if (IsFloor(A) && IsFloor(B) && IsFloor(C)) { return; }
+			Mesh.Triangles.Append({ A, B, C });
+		};
+		// Sentido: la cara visible de Unreal es la opuesta a (B-A)x(C-A) (ver BuildGridTriangles).
+		auto AddFacing = [&](int32 A, int32 B, int32 C, const FVector& Outward)
 		{
 			const FVector Cross = FVector::CrossProduct(Mesh.Vertices[B] - Mesh.Vertices[A], Mesh.Vertices[C] - Mesh.Vertices[A]);
 			if (FVector::DotProduct(Cross, Outward) > 0.0) { Swap(B, C); }
-			Mesh.Triangles.Append({ A, B, C });
+			AddTriangle(A, B, C);
 		};
-		const int32 Ring = 2 * N;
-		for (int32 St = 0; St < S; ++St)
+		auto QuadCovered = [&](int32 I, int32 J)
 		{
-			for (int32 K = 0; K + 1 < N; ++K)
-			{
-				const int32 A = St * Ring + K, B = A + 1, C = A + Ring, D = C + 1;
-				AddTriangle(A, B, C, FVector::UpVector);
-				AddTriangle(B, D, C, FVector::UpVector);
-				const int32 E = St * Ring + N + K, F = E + 1, G = E + Ring, H = G + 1;
-				const FVector MidI = (Mesh.Vertices[E] + Mesh.Vertices[H]) * 0.5;
-				const FVector InI = (AxisPoints[St] + AxisPoints[St + 1]) * 0.5 - MidI;
-				AddTriangle(E, F, G, InI);
-				AddTriangle(F, H, G, InI);
-			}
-		}
-		// Bocas: la ladera entre la manta y la bóveda en cada extremo.
-		const FVector AlongDir(Along.X, Along.Y, 0.0);
-		for (int32 End = 0; End < 2; ++End)
+			return I >= 0 && J >= 0 && I < R - 1 && J < R - 1
+				&& Covered(I, J) && Covered(I + 1, J) && Covered(I + 1, J + 1) && Covered(I, J + 1);
+		};
+
+		for (int32 I = 0; I < R - 1; ++I)
 		{
-			const int32 St = End == 0 ? 0 : S;
-			const FVector Facing = End == 0 ? -AlongDir : AlongDir;
-			for (int32 K = 0; K + 1 < N; ++K)
+			for (int32 J = 0; J < R - 1; ++J)
 			{
-				const int32 A = St * Ring + K, B = A + 1, C = St * Ring + N + K, D = C + 1;
-				AddTriangle(A, B, C, Facing);
-				AddTriangle(B, D, C, Facing);
+				if (!QuadCovered(I, J)) { continue; }
+				const int32 V0 = I * R + J, V1 = (I + 1) * R + J, V2 = (I + 1) * R + J + 1, V3 = I * R + J + 1;
+				// Techo con el mismo orden que el suelo (cara hacia +Z); bóveda al revés.
+				AddTriangle(RoofIndex[V0], RoofIndex[V3], RoofIndex[V1]);
+				AddTriangle(RoofIndex[V1], RoofIndex[V3], RoofIndex[V2]);
+				AddTriangle(CeilingIndex[V0], CeilingIndex[V1], CeilingIndex[V3]);
+				AddTriangle(CeilingIndex[V1], CeilingIndex[V2], CeilingIndex[V3]);
 			}
 		}
 
-		TNTerrainModule::FinishRockMesh(Mesh, Colors);
-		return Mesh;
+		// Bocas: cada arista de la rejilla con un quad cubierto a un solo lado cierra el
+		// casquete con la pared techo-bóveda (degenerada donde las dos capas coinciden).
+		auto AddPortal = [&](int32 A, int32 B, bool bFirstSide, bool bSecondSide, const FVector& FirstToSecond)
+		{
+			if (bFirstSide == bSecondSide) { return; }
+			const FVector Outward = bFirstSide ? FirstToSecond : -FirstToSecond;
+			const int32 RA = RoofIndex[A], RB = RoofIndex[B], CA = CeilingIndex[A], CB = CeilingIndex[B];
+			AddFacing(RA, RB, CB, Outward);
+			AddFacing(RA, CB, CA, Outward);
+		};
+		for (int32 I = 0; I < R; ++I)
+		{
+			for (int32 J = 0; J < R; ++J)
+			{
+				if (!Covered(I, J)) { continue; }
+				// Arista (I, J)-(I, J+1): quads (I-1, J) y (I, J).
+				if (Covered(I, J + 1))
+				{
+					AddPortal(I * R + J, I * R + J + 1, QuadCovered(I - 1, J), QuadCovered(I, J), FVector::ForwardVector);
+				}
+				// Arista (I, J)-(I+1, J): quads (I, J-1) y (I, J).
+				if (Covered(I + 1, J))
+				{
+					AddPortal(I * R + J, (I + 1) * R + J, QuadCovered(I, J - 1), QuadCovered(I, J), FVector::RightVector);
+				}
+			}
+		}
+		return true;
 	}
 }

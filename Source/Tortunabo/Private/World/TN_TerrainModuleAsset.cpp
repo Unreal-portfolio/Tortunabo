@@ -92,3 +92,43 @@ bool UTN_TerrainModuleAsset::SetCoastWeights(const TArray<int32>& InWeights)
 	MarkPackageDirty();
 	return true;
 }
+
+bool UTN_TerrainModuleAsset::SetTunnelLayers(const TArray<int32>& InRoof, const TArray<int32>& InCeiling)
+{
+	if (InRoof.Num() == 0 && InCeiling.Num() == 0)
+	{
+		RoofHeights.Reset();
+		CeilingHeights.Reset();
+		MarkPackageDirty();
+		return true;
+	}
+	const int32 Count = Resolution * Resolution;
+	if (Resolution < 2 || InRoof.Num() != Count || InCeiling.Num() != Count)
+	{
+		UE_LOG(LogTortunabo, Error, TEXT("[TerrainModule] '%s': SetTunnelLayers con %d/%d valores para resolución %d."),
+			*GetName(), InRoof.Num(), InCeiling.Num(), Resolution);
+		return false;
+	}
+
+	TArray<uint16> Roof;
+	TArray<uint16> Ceiling;
+	Roof.Reserve(Count);
+	Ceiling.Reserve(Count);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const int32 R = InRoof[Index];
+		const int32 C = InCeiling[Index];
+		if (R < 0 || R > MAX_uint16 || C < 0 || C > MAX_uint16 || (R == 0) != (C == 0))
+		{
+			UE_LOG(LogTortunabo, Error, TEXT("[TerrainModule] '%s': capa de túnel inválida en %d (techo %d, bóveda %d)."),
+				*GetName(), Index, R, C);
+			return false;
+		}
+		Roof.Add(static_cast<uint16>(R));
+		Ceiling.Add(static_cast<uint16>(C));
+	}
+	RoofHeights = MoveTemp(Roof);
+	CeilingHeights = MoveTemp(Ceiling);
+	MarkPackageDirty();
+	return true;
+}

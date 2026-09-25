@@ -177,7 +177,7 @@ def make_flat_area(data):
     return area
 
 
-def build_module_asset(folder, module, manifest, heights, mask, coast):
+def build_module_asset(folder, module, manifest, heights, mask, coast, roof=(), ceiling=()):
     name = f"DA_{module['name']}"
     path = f"{folder}/{name}"
     asset = load_or_none(path)
@@ -202,6 +202,9 @@ def build_module_asset(folder, module, manifest, heights, mask, coast):
         raise RuntimeError(f"{name}: SetBiomeMask rechazo la mascara")
     if not asset.set_coast_weights(coast):
         raise RuntimeError(f"{name}: SetCoastWeights rechazo los pesos de costa")
+    # Tunel en capas (techo y boveda); listas vacias = sin tunel.
+    if not asset.set_tunnel_layers(list(roof), list(ceiling)):
+        raise RuntimeError(f"{name}: SetTunnelLayers rechazo las capas del tunel")
     asset_lib.save_loaded_asset(asset)
     return asset
 
@@ -245,7 +248,7 @@ def configure_generator(module_blueprints, module_size):
     asset_lib.save_loaded_asset(blueprint)
 
 
-def configure_preset(preset, blueprints_by_name):
+def configure_preset(preset, blueprints_by_name, module_size):
     """Mapa preparado: PresetCells del generador con el modulo de cada celda. ModuleClasses
     (la libreria del metodo aleatorio) no se toca: vaciar PresetCells vuelve a ese modo."""
     blueprint = load_or_none(GENERATOR_BP_PATH)
@@ -263,6 +266,7 @@ def configure_preset(preset, blueprints_by_name):
         cells.append(cell)
     defaults = unreal.get_default_object(blueprint.generated_class())
     defaults.set_editor_property("preset_cells", cells)
+    defaults.set_editor_property("cell_size", module_size)
     unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
     asset_lib.save_loaded_asset(blueprint)
 
@@ -308,13 +312,19 @@ def main():
                 coast_width, coast_height, coast = read_png16(f"{library_dir}/{module['coast_file']}")
                 if coast_width != resolution or coast_height != resolution:
                     raise ValueError(f"{module['name']}: costa {coast_width}x{coast_height}, se esperaba {resolution}")
+            roof, ceiling = [], []
+            if "roof_file" in module:
+                _, _, roof = read_png16(f"{library_dir}/{module['roof_file']}")
+                _, _, ceiling = read_png16(f"{library_dir}/{module['ceiling_file']}")
+                if len(roof) != resolution * resolution or len(ceiling) != len(roof):
+                    raise ValueError(f"{module['name']}: capas del tunel de tamano distinto al heightfield")
             folder = f"{MODULES_ROOT}/{module.get('folder', module['topology'])}"
-            asset = build_module_asset(folder, module, manifest, heights, mask, coast)
+            asset = build_module_asset(folder, module, manifest, heights, mask, coast, roof, ceiling)
             blueprints.append(build_module_blueprint(folder, module, asset, material, junk_material, module_size))
 
     if "preset" in manifest:
         by_name = {module["name"]: bp for module, bp in zip(manifest["modules"], blueprints)}
-        configure_preset(manifest["preset"], by_name)
+        configure_preset(manifest["preset"], by_name, module_size)
     else:
         configure_generator(blueprints, module_size)
     unreal.log(f"[TerrainModules] {len(blueprints)} modulos importados en {MODULES_ROOT}")
