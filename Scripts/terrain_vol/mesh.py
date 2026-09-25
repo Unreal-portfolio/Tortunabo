@@ -32,6 +32,8 @@ PALETTES = {
 # bioma DUNAS (arena lisa, sin follaje): usa la misma paleta "sand" que acantilados y canon; la
 # zona encharcada ("marsh") es arena humeda.
 ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "marsh": "damp", "algae": "sand", "beach": "beach"}
+TRAIL_COLOR = (0.40, 0.28, 0.14)        # arena pisada del camino principal
+PLAZA_COLOR = (0.78, 0.64, 0.40)        # salida y meta: arena clara
 PLANT_ALGAE = False          # 2026-09-25: sin modelos de alga ni en ninguna otra zona; solo arena
 
 FOLIAGE_SPACING_M = 2.0
@@ -114,6 +116,12 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
         c = c + (wall + (wall_alt - wall) * vein[:, None] - c) * (0.6 * cliff)[:, None]
         c = c + (wet_c - c) * wet[:, None]
         out += w[zone][:, None] * c
+    # Camino principal (arena pisada, mas oscura) y salida/meta (arena clara): se leen desde lejos.
+    flat_up = smooth(0.7, 0.9, normals[:, 2])
+    trail = model.trail_mask(x, y) * flat_up * (1.0 - wet)
+    out = out + (np.array(TRAIL_COLOR) - out) * (0.7 * trail)[:, None]
+    plaza = model.plaza_mask(x, y) * flat_up
+    out = out + (np.array(PLAZA_COLOR) - out) * (0.8 * plaza)[:, None]
     tint = 1.0 + 0.07 * np.sin(x / 9.5) * np.cos(y / 7.4)
     out = np.clip(out * tint[:, None], 0.0, 1.0)
     rgba = np.concatenate([out, np.ones((len(x), 1))], axis=1)

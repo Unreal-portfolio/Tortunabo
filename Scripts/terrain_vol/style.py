@@ -79,6 +79,20 @@ class MapStyle:
     # ── Borde del mapa: rugosidad de la cresta exterior (siempre activa, nunca 0 puro) ──
     border_roughness_m: float = 10.0
 
+    # ── Prototipo 2026-09-25 (tarde). Todo desactivado por defecto: Mapa01 y las 30 variantes
+    # salen igual que antes. ──
+    dune_wave_m: tuple[float, float] = (34.0, 46.0)      # longitud de onda de las dos familias de dunas
+    dune_rise: float = 0.7                               # fraccion de barlovento (el resto, cara de avalancha)
+    dune_amp_range_m: tuple[float, float] = (2.5, 13.0)  # amplitud de las dunas de playa (de zona llana a alta)
+    ground_flatten: float = 0.0                          # 0..1: aplana el relieve de fondo fuera de los laberintos
+    trails: bool = False                                 # camino principal marcado, trenzado en varios ramales
+    trail_strands: tuple[int, int] = (2, 4)              # caminos en cada tramo trenzado (se separan y se juntan)
+    trail_half_width_m: float = 2.4
+    river_rapids: bool = False                           # islitas alternando de orilla, como un rapido
+    land_bridges: tuple[int, int] = (0, 0)               # (acantilados, canon): pasarelas sobre un canon transversal
+    landmarks: bool = False                              # salida y meta reconocibles (nido de salida, castillo final)
+    human_marks: int = 0                                 # castillos de arena, fosas y zanjas junto a los caminos
+
     def zones(self) -> tuple[tuple[str, float, float], ...]:
         """(nombre, fraccion normalizada, alcance) para route.build_route/ZoneField. Una
         fraccion pedida a 0 queda como una banda minima (FLOOR_SHARE) tras renormalizar."""

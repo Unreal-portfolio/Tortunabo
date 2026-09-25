@@ -128,3 +128,21 @@ VARIANTS: tuple[VariantSpec, ...] = (
 
 assert len({v.name for v in VARIANTS}) == len(VARIANTS) == 30, "nombres de variante duplicados o cuenta distinta de 30"
 assert len({v.seed for v in VARIANTS}) == 30, "semillas de variante duplicadas"
+
+# Prototipos (2026-09-25, tarde): un mapa en el que se prueba la siguiente vuelta del sistema
+# antes de sacar variaciones. Van primero en el desplegable de LVL_MapVariants.
+PROTOTYPES: tuple[VariantSpec, ...] = (
+    VariantSpec("P01_prototipo", 50001, MapStyle(
+        name="P01_prototipo",
+        description="Prototipo: camino principal marcado y trenzado, pasarelas sobre los canones, "
+                    "rios como rapidos, dunas bajas y tupidas, salida y meta reconocibles.",
+        cliffs_share=0.24, canyon_share=0.16, water_share=0.24, dunes_share=0.22, beach_share=0.14,
+        cliffs_level_count=3, canyon_maze_level_count=3, cliffs_loop_share=0.3, canyon_maze_loop_share=0.3,
+        river_count=2, island_density=0.55, river_rapids=True, pond_depth_m=2.6,
+        dune_wave_m=(15.0, 20.0), dune_rise=0.62, dune_amp_range_m=(0.8, 2.6), dune_amplitude_m=1.0,
+        ground_flatten=0.6, trails=True, trail_strands=(2, 3), land_bridges=(2, 2), landmarks=True,
+        human_marks=6),
+        "Prototipo: camino principal marcado y trenzado, pasarelas sobre los canones, rios como rapidos, "
+        "dunas bajas y tupidas, salida y meta reconocibles."),
+)
+ALL_SPECS: tuple[VariantSpec, ...] = PROTOTYPES + VARIANTS

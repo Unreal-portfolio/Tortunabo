@@ -23,7 +23,7 @@ from pathlib import Path
 from gen_terrain_volume import build_all, global_standable, ground_level, walk, world_index, zone_map
 from terrain_vol.density import MapModel
 from terrain_vol.export import global_top, write_map
-from terrain_vol.variants import VARIANTS, VariantSpec
+from terrain_vol.variants import ALL_SPECS, VARIANTS, VariantSpec
 
 OUTPUT_ROOT = Path(__file__).resolve().parent / "terrain_volumes" / "Variants"
 THUMB = 220
@@ -48,7 +48,8 @@ def _build_one(spec: VariantSpec) -> dict:
     return {
         "name": spec.name, "seed": spec.seed, "description": spec.description, "ok": ok,
         "triangles": sum(len(c.triangles) for c in chunks.values()),
-        "tunnels": len(model.maze_tunnels), "arches": len(model.arches), "rivers": spec.style.river_count,
+        "tunnels": len(model.maze_tunnels), "arches": len(model.arches) + len(model.bridges),
+        "rivers": spec.style.river_count,
         "size_mb": size_mb, "time_s": time.time() - t0,
     }
 
@@ -77,7 +78,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=5)
     args = parser.parse_args()
 
-    by_name = {v.name: v for v in VARIANTS}
+    by_name = {v.name: v for v in ALL_SPECS}
     unknown = [n for n in args.names if n not in by_name]
     if unknown:
         raise SystemExit(f"nombres no encontrados en el catalogo: {unknown}")
@@ -108,10 +109,11 @@ def main() -> None:
     for r in results:
         previous[r["name"]] = {"name": r["name"], "seed": r["seed"], "description": r["description"],
                                "recorrible": r.get("ok", False), "size_mb": round(r.get("size_mb", 0.0), 2)}
-    order = {v.name: i for i, v in enumerate(VARIANTS)}
+    order = {v.name: i for i, v in enumerate(ALL_SPECS)}
     index = sorted(previous.values(), key=lambda e: order.get(e["name"], 999))
     index_path.write_text(json.dumps(index, indent=1, ensure_ascii=False), encoding="utf-8")
-    if all((OUTPUT_ROOT / v.name / "preview.png").exists() for v in VARIANTS):
+    if any(r["name"] in {v.name for v in VARIANTS} for r in results) and \
+            all((OUTPUT_ROOT / v.name / "preview.png").exists() for v in VARIANTS):
         _contact_sheet([v.name for v in VARIANTS])
 
     total_mb = sum(r.get("size_mb", 0.0) for r in results)

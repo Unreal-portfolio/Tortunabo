@@ -1,5 +1,12 @@
 [
  {
+  "name": "P01_prototipo",
+  "seed": 50001,
+  "description": "Prototipo: camino principal marcado y trenzado, pasarelas sobre los canones, rios como rapidos, dunas bajas y tupidas, salida y meta reconocibles.",
+  "recorrible": true,
+  "size_mb": 12.01
+ },
+ {
   "name": "01_base",
   "seed": 40001,
   "description": "Reparto parecido a Mapa01: referencia para comparar el resto.",
