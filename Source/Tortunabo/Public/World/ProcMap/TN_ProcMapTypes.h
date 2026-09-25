@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "GameFramework/Actor.h"
+#include "Templates/SubclassOf.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "World/ProcMap/TN_ProcMapLayout.h"
 #include "TN_ProcMapTypes.generated.h"

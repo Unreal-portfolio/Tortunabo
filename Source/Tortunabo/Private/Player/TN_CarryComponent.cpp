@@ -82,7 +82,7 @@ void UTN_CarryComponent::RequestThrow()
 {
 	if (!IsCarrying()) { return; }
 	const ATortugaCharacter* Self = GetTurtle();
-	const FRotator Aim = Self && Self->GetController() ? Self->GetController()->GetControlRotation() : FRotator::ZeroRotator;
+	const FRotator Aim = Self ? Self->GetControlRotation() : FRotator::ZeroRotator;
 	ServerThrow(Aim);
 }
 

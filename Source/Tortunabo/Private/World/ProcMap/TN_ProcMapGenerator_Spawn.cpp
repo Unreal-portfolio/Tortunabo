@@ -4,6 +4,7 @@
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapFeatures.h"
+#include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcTraversalActors.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "World/ProcMap/TN_ProcPuzzleActors.h"
@@ -121,19 +122,19 @@ void ATN_ProcMapGenerator::BuildScatter()
 	{
 		if (BMin[b].X > BMax[b].X) { continue; }
 		const ETNProcBiome Biome = BiomeFromIndex(b);
-		TArray<FTNProcScatterLayer> Layers;
+		TArray<FTNProcScatterLayer> ScatterLayers;
 		if (const UTN_ProcBiomeDataAsset* Asset = Settings ? Settings->FindBiome(Biome) : nullptr)
 		{
-			Layers = Asset->Scatter;
+			ScatterLayers = Asset->Scatter;
 		}
 		else
 		{
-			TN_DefaultBiomeScatter(Biome, Layers);
+			TN_DefaultBiomeScatter(Biome, ScatterLayers);
 		}
 
-		for (int32 LayerIdx = 0; LayerIdx < Layers.Num(); ++LayerIdx)
+		for (int32 LayerIdx = 0; LayerIdx < ScatterLayers.Num(); ++LayerIdx)
 		{
-			const FTNProcScatterLayer& Layer = Layers[LayerIdx];
+			const FTNProcScatterLayer& Layer = ScatterLayers[LayerIdx];
 			if (!Layer.Mesh || Layer.DensityPer100m2 <= 0.f) { continue; }
 
 			const bool bWalls = Layer.Zone == ETNProcScatterZone::Walls;

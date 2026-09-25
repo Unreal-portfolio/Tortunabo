@@ -29,16 +29,38 @@ ATN_ProcWaterVolume::ATN_ProcWaterVolume(const FObjectInitializer& ObjectInitial
 	: Super(ObjectInitializer)
 {
 	bWaterVolume = true;
-	bPhysicsOnContact = true;
+	// Dentro del agua cuando el centro de la cápsula está en una caja (ver
+	// IsOverlapInVolume): la tortuga flota con medio cuerpo fuera del agua.
+	bPhysicsOnContact = false;
 	FluidFriction = 0.35f;
 	Priority = 10;
 	bReplicates = false;
 
 	// El brush queda vacío: el agua la definen las cajas añadidas en runtime.
-	if (UBrushComponent* Brush = GetBrushComponent())
+	if (UBrushComponent* BrushComp = GetBrushComponent())
 	{
-		Brush->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		BrushComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
+}
+
+bool ATN_ProcWaterVolume::IsOverlapInVolume(const USceneComponent& TestComponent) const
+{
+	// El APhysicsVolume de base mide contra el brush, que aquí está vacío.
+	const FVector Point = TestComponent.GetComponentLocation();
+	for (const UBoxComponent* WaterBox : Boxes)
+	{
+		if (!WaterBox)
+		{
+			continue;
+		}
+		const FVector Local = WaterBox->GetComponentTransform().InverseTransformPositionNoScale(Point);
+		const FVector Extent = WaterBox->GetUnscaledBoxExtent();
+		if (FMath::Abs(Local.X) <= Extent.X && FMath::Abs(Local.Y) <= Extent.Y && FMath::Abs(Local.Z) <= Extent.Z)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void ATN_ProcWaterVolume::AddWaterBox(const FVector& Center, const FVector& Extent)

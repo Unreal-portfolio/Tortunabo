@@ -1,4 +1,5 @@
 #include "World/ProcMap/TN_ProcMapTypes.h"
+#include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "Engine/StaticMesh.h"
 

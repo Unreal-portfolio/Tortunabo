@@ -391,7 +391,8 @@ void ATN_ProcMapGenerator::BuildWater()
 				for (int32 xx = 0; xx < W; ++xx) { Covered[(cy + yy) * CW + cx + xx] = 1; }
 			}
 			const double Bottom = static_cast<double>(MinH) - 150.0;
-			const double Top = TNProcMap::SeaLevel + 30.0;
+			// El volumen se mide por el centro de la cápsula: techo a nivel del mar.
+			const double Top = TNProcMap::SeaLevel;
 			const FVector2D Min2 = LatticeOrigin + FVector2D(cx * CellSize, cy * CellSize);
 			const FVector2D Size2(W * CellSize, H * CellSize);
 			const FVector CenterMap(Min2.X + Size2.X * 0.5, Min2.Y + Size2.Y * 0.5, (Bottom + Top) * 0.5);

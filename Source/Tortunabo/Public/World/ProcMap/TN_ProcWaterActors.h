@@ -30,6 +30,9 @@ public:
 	/** Añade una caja de agua (centro y semiextensión en mundo). */
 	void AddWaterBox(const FVector& Center, const FVector& Extent);
 
+	/** En el agua si el centro del componente cae dentro de alguna caja. */
+	virtual bool IsOverlapInVolume(const USceneComponent& TestComponent) const override;
+
 	int32 NumBoxes() const { return Boxes.Num(); }
 
 private:

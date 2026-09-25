@@ -48,7 +48,7 @@ public:
 	void RequestDrop();
 
 	/** El llevado intenta moverse (forcejeo). Solo envía cambios de estado. */
-	void SetStruggleInput(bool bStruggling);
+	void SetStruggleInput(bool bInStruggling);
 
 	// ── Estado ──────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ private:
 	void ServerDrop();
 
 	UFUNCTION(Server, Unreliable)
-	void ServerSetStruggling(bool bStruggling);
+	void ServerSetStruggling(bool bInStruggling);
 
 	/** En el dueño del lanzado: mismo impulso que en el servidor. */
 	UFUNCTION(Client, Reliable)

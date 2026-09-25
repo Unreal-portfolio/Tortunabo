@@ -75,7 +75,8 @@ void ATN_ProcModeSelector::OnInteracted_Implementation(APawn* Interactor)
 
 	if (Kind == ETNProcSelectorKind::Mode)
 	{
-		const int32 Players = TN_CountConnectedCoopPlayers(GetWorld() ? GetWorld()->GetGameState() : nullptr);
+		const AGameStateBase* LobbyState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+		const int32 Players = LobbyState ? TN_CountConnectedCoopPlayers(LobbyState) : 1;
 		const int32 Count = static_cast<int32>(ETNProcGameMode::Count);
 		int32 Next = static_cast<int32>(GI->SelectedProcMode);
 		for (int32 Step = 0; Step < Count; ++Step)
