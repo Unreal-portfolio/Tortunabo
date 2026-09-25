@@ -6,6 +6,7 @@
 #include "World/ProcMap/TN_ProcMapRoute.h"
 #include "World/ProcMap/TN_ProcMapPath.h"
 #include "World/ProcMap/TN_ProcMapFeatures.h"
+#include "World/ProcMap/TN_ProcMapTerrain.h"
 
 /**
  * Punto de entrada de la generación PURA del mapa. Misma semilla y parámetros →
@@ -58,6 +59,37 @@ namespace TNProcMap
 	}
 
 	/**
+	 * Los volcanes arrancan de la cota del relieve que los rodea, no del nivel base: entre montañas
+	 * quedarían hundidos y ocultos. Sube a la vez el cono y el lago de lava de su cráter (misma XY).
+	 */
+	inline void SettleVolcanoes(FLayout& L)
+	{
+		bool bAny = false;
+		for (const FFeature& F : L.Features) { bAny |= F.Type == EFeature::Volcano; }
+		if (!bAny) { return; }
+		// Rejilla gruesa con el mismo encuadre que el terreno del juego (250 m de margen, 300 m de mar).
+		const double Cell = 1000.0;
+		FTerrainBuilder TB;
+		TB.BuildCoarse(L, FVector2D(-25000.0, -25000.0), Cell,
+			FMath::CeilToInt((L.WorldSize + 50000.0) / Cell) + 1, FMath::CeilToInt((L.WorldSize + 55000.0) / Cell) + 1);
+		for (FFeature& V : L.Features)
+		{
+			if (V.Type != EFeature::Volcano) { continue; }
+			const FVector2D C(V.Location.X, V.Location.Y);
+			TArray<double> Ring;
+			for (int32 s = 0; s < 32; ++s) { Ring.Add(TB.LandAt(C + DirFromAngle(TwoPi * s / 32.0) * (V.Radius * 0.75))); }
+			Ring.Sort();
+			// Percentil 75 del anillo: la cota del relieve alto que lo rodea.
+			const double Lift = FMath::Max(0.0, Ring[24] - V.Location.Z);
+			for (FFeature& Lp : L.Features)
+			{
+				if (Lp.Type == EFeature::LavaPool && FVector2D::Distance(FVector2D(Lp.Location.X, Lp.Location.Y), C) < 1.0) { Lp.Location.Z += Lift; }
+			}
+			V.Location.Z += Lift;
+		}
+	}
+
+	/**
 	 * Genera el layout completo. Devuelve false (y FailReason) si no encontró ruta
 	 * de módulos; nunca devuelve un layout a medias marcado como válido.
 	 */
@@ -90,6 +122,7 @@ namespace TNProcMap
 		if (Out.Params.bRiver) { BuildRiver(Out, Root.Fork(14)); }
 		BuildLandmarks(Out, Root.Fork(16));
 		BuildDecor(Out, Root.Fork(15));
+		SettleVolcanoes(Out);
 		BuildObstacles(Out, Root.Fork(17));
 		Out.bValid = true;
 		return true;

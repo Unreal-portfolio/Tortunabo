@@ -156,25 +156,34 @@ namespace TNProcMap
 
 		void Build(const FLayout& InLayout, const FVector2D& InOrigin, double InSpacing, int32 InNX, int32 InNY)
 		{
-			L = &InLayout;
-			Origin = InOrigin;
-			Spacing = InSpacing;
-			NX = InNX;
-			NY = InNY;
-			Seed = InLayout.Params.Seed ^ 0x7E44Au;
-			for (int32 b = 0; b < NumBiomes; ++b) { Biomes[b] = GetBiomeTerrain(BiomeFromIndex(b)); }
-			BuildSamples();
+			Init(InLayout, InOrigin, InSpacing, InNX, InNY);
 			StampPathField();
 			BuildCorridorDistance();
 			BuildDivides();
 			BuildInfluences();
-			Volcanoes.Reset();
-			for (int32 f = 0; f < L->Features.Num(); ++f)
-			{
-				const FFeature& F = L->Features[f];
-				if (F.Type == EFeature::StartArea) { StartZ = F.Location.Z; }
-				if (F.Type == EFeature::Volcano) { Volcanoes.Add(f); }
-			}
+		}
+
+		/**
+		 * Solo lo que necesita LandAt (biomas y distancia gruesa a los cauces), sin mallado: para consultar
+		 * el relieve mientras se traza el mapa.
+		 */
+		void BuildCoarse(const FLayout& InLayout, const FVector2D& InOrigin, double InSpacing, int32 InNX, int32 InNY)
+		{
+			Init(InLayout, InOrigin, InSpacing, InNX, InNY);
+			BuildCorridorDistance();
+		}
+
+		/** Cota del paisaje exterior en P, sin volcanes, agua, bordes ni cauces. */
+		double LandAt(const FVector2D& P) const
+		{
+			FBiomeTerrain Bt;
+			double Wet = 0.0;
+			double W[NumBiomes];
+			BlendBiomes(P, Bt, Wet, W);
+			const double NLarge = Fbm2(Seed + 3u, P.X / 12000.0, P.Y / 12000.0, 3);
+			const double NMed = Fbm2(Seed + 4u, P.X / 4000.0, P.Y / 4000.0, 2);
+			const double NRidge = Ridged2(Seed + 5u, P.X / 5000.0, P.Y / 5000.0, 3);
+			return RawLand(P, Bt, NLarge, LerpD(NMed, NRidge * 2.0 - 1.0, Bt.Ridge), L->SampleCoarse(L->LevelField, P));
 		}
 
 		/** Distancia aproximada (cm) de un punto al borde del cauce más cercano (campo grueso). */
@@ -280,6 +289,25 @@ namespace TNProcMap
 		int32 BinW = 0;
 		int32 BinH = 0;
 		TArray<TArray<FInf>> Bins;
+
+		void Init(const FLayout& InLayout, const FVector2D& InOrigin, double InSpacing, int32 InNX, int32 InNY)
+		{
+			L = &InLayout;
+			Origin = InOrigin;
+			Spacing = InSpacing;
+			NX = InNX;
+			NY = InNY;
+			Seed = InLayout.Params.Seed ^ 0x7E44Au;
+			for (int32 b = 0; b < NumBiomes; ++b) { Biomes[b] = GetBiomeTerrain(BiomeFromIndex(b)); }
+			Volcanoes.Reset();
+			for (int32 f = 0; f < L->Features.Num(); ++f)
+			{
+				const FFeature& F = L->Features[f];
+				if (F.Type == EFeature::StartArea) { StartZ = F.Location.Z; }
+				if (F.Type == EFeature::Volcano) { Volcanoes.Add(f); }
+			}
+			BuildSamples();
+		}
 
 		void BuildSamples()
 		{
@@ -596,13 +624,15 @@ namespace TNProcMap
 		}
 
 		/**
-		 * Cono volcánico con cráter (sobre el nivel base); 0 fuera de su radio.
+		 * Cono volcánico con cráter (sobre su cota de arranque, OutBase); 0 fuera de su radio.
 		 * OutInfluence (0..1) dice cuánto sustituye el cono al relieve normal.
 		 */
-		double VolcanoHeight(const FVector2D& P, double& OutInfluence) const
+		double VolcanoHeight(const FVector2D& P, double& OutInfluence, double& OutBase) const
 		{
 			double Best = 0.0;
+			double BestTop = -1e300;
 			OutInfluence = 0.0;
+			OutBase = 0.0;
 			for (const int32 f : Volcanoes)
 			{
 				const FFeature& F = L->Features[f];
@@ -624,7 +654,13 @@ namespace TNProcMap
 					const double Bowl = LerpD(Rim - F.Length, Rim, V * V);
 					H = V < 1.0 ? Bowl : LerpD(Rim, H, SmoothStep(1.0, 1.35, V));
 				}
-				Best = FMath::Max(Best, H);
+				// Donde se solapan dos conos, manda el más alto.
+				if (F.Location.Z + H > BestTop)
+				{
+					BestTop = F.Location.Z + H;
+					Best = H;
+					OutBase = F.Location.Z;
+				}
 			}
 			return Best;
 		}
@@ -737,6 +773,32 @@ namespace TNProcMap
 			OutWet = WetSum / Total;
 		}
 
+		/** Paisaje exterior antes de volcanes, agua, bordes y cauces. */
+		double RawLand(const FVector2D& P, const FBiomeTerrain& Bt, double NLarge, double Detail, double Level) const
+		{
+			const double Elev = L->SampleCoarse(L->ElevatedField, P);
+			// País de cañones: el paisaje queda por encima del borde de los taludes (sube desde ellos en vez de
+			// dejar mesetas planas) y las montañas arrancan a pocos metros de los cauces.
+			const double MountMask = SmoothStep(700.0, 4500.0, CorridorDistance(P));
+			const double Uplift = Bt.BankMax * (0.7 + 0.5 * (0.5 + 0.5 * NLarge));
+			// Los módulos por los que no pasa el camino son macizos montañosos (cima en su centro, crestas).
+			const double Shape = MountainShape(P);
+			const double Massif = FMath::Pow(Elev, 1.4) * (4500.0 + 9000.0 * Shape + 3000.0 * NLarge);
+			// Paredes de cañón: el paisaje sube con fuerza en los primeros ~35 m desde el cauce (unas
+			// zonas son valles abiertos y otras gargantas, según un ruido lento).
+			const double Walls = Bt.WallAmp * SmoothStep(300.0, 3500.0, CorridorDistance(P)) * (0.35 + 0.9 * (0.5 + 0.5 * NLarge));
+			// Alrededor de los volcanes el relieve se allana (llanura volcánica): el cono destaca en vez de
+			// quedar tapado por las montañas.
+			double Calm = 1.0;
+			for (const int32 f : Volcanoes)
+			{
+				const FFeature& F = L->Features[f];
+				const double D = FVector2D::Distance(P, FVector2D(F.Location.X, F.Location.Y));
+				Calm = FMath::Min(Calm, 1.0 - 0.85 * SmoothStep(F.Radius + 20000.0, F.Radius + 3000.0, D));
+			}
+			return Level + Uplift + Bt.UndAmp * NLarge + Bt.Rough * Detail + Walls + (Massif + Bt.MountainAmp * Shape * MountMask) * Calm;
+		}
+
 		double Evaluate(const FVector2D& P, float InPathDist, int32 InSeg, float InT, float InGuard, float InOtherEff, float InDeckTop, uint8& OutMask) const
 		{
 			OutMask = 0;
@@ -751,25 +813,15 @@ namespace TNProcMap
 			const double Detail = LerpD(NMed, NRidge * 2.0 - 1.0, Bt.Ridge);
 
 			const double Level = L->SampleCoarse(L->LevelField, P);
-			const double Elev = L->SampleCoarse(L->ElevatedField, P);
 
 			// ── Paisaje exterior (lo que no es cauce) ───────────────────────
-			// País de cañones: el paisaje queda por encima del borde de los taludes (sube desde ellos en vez de
-			// dejar mesetas planas) y las montañas arrancan a pocos metros de los cauces.
-			const double MountMask = SmoothStep(700.0, 4500.0, CorridorDistance(P));
-			const double Uplift = Bt.BankMax * (0.7 + 0.5 * (0.5 + 0.5 * NLarge));
+			double Land = RawLand(P, Bt, NLarge, Detail, Level);
+			// Dentro del cono manda el volcán, que arranca de la cota del relieve que lo rodea (así asoma
+			// entre las montañas y el lago de lava cuadra con el cráter).
 			double VolcanoInf = 0.0;
-			const double Volcano = VolcanoHeight(P, VolcanoInf);
-			// Los módulos por los que no pasa el camino son macizos montañosos (cima en su centro, crestas).
-			const double Shape = MountainShape(P);
-			const double Massif = FMath::Pow(Elev, 1.4) * (4500.0 + 9000.0 * Shape + 3000.0 * NLarge);
-			// Paredes de cañón: el paisaje sube con fuerza en los primeros ~35 m desde el cauce (unas
-			// zonas son valles abiertos y otras gargantas, según un ruido lento).
-			const double Walls = Bt.WallAmp * SmoothStep(300.0, 3500.0, CorridorDistance(P)) * (0.35 + 0.9 * (0.5 + 0.5 * NLarge));
-			double Land = Level + Uplift + Bt.UndAmp * NLarge + Bt.Rough * Detail + Massif + Walls
-				+ Bt.MountainAmp * Shape * MountMask;
-			// Dentro del cono manda el volcán (así el lago de lava cuadra con el cráter).
-			Land = LerpD(Land + Volcano, Level + Volcano, VolcanoInf);
+			double VolcanoBase = 0.0;
+			const double Volcano = VolcanoHeight(P, VolcanoInf, VolcanoBase);
+			Land = LerpD(Land + Volcano, VolcanoBase + Volcano, VolcanoInf);
 			// Junto al agua la tierra queda siempre por encima: orillas escarpadas, sin playas por las que salir.
 			Land = FMath::Max(Land, LerpD(Land, SeaLevel + ShoreCliffHeight + 250.0 * NMed, SmoothStep(0.0, 0.25, Wet)));
 			// El agua de lagunas y manglares no es un lago abierto: son pozas alrededor de cada tramo
