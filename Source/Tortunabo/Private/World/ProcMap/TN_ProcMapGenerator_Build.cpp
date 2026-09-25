@@ -222,26 +222,39 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	TArray<FLinearColor> Colors;
 	const TArray<FProcMeshTangent> NoTangents;
 
-	// Índices comunes a todos los tiles. A=(x,y), B=(x+1,y), C=(x,y+1): la cara
-	// frontal de UE es (C-A)x(B-A), así que (A,C,B) y (B,C,D) miran hacia +Z.
 	Tris.Reserve(TileQuads * TileQuads * 6);
-	for (int32 y = 0; y < TileQuads; ++y)
-	{
-		for (int32 x = 0; x < TileQuads; ++x)
-		{
-			const int32 A = y * Side + x;
-			const int32 B = A + 1;
-			const int32 C = A + Side;
-			const int32 D = C + 1;
-			Tris.Add(A); Tris.Add(C); Tris.Add(B);
-			Tris.Add(B); Tris.Add(C); Tris.Add(D);
-		}
-	}
 
 	for (int32 Ty = 0; Ty < TilesY; ++Ty)
 	{
 		for (int32 Tx = 0; Tx < TilesX; ++Tx)
 		{
+			// A=(x,y), B=(x+1,y), C=(x,y+1), D=(x+1,y+1). La cara frontal de UE es
+			// (C-A)x(B-A): (A,C,B)+(B,C,D) o (A,C,D)+(A,D,B) miran hacia +Z. La
+			// diagonal sigue la curva de nivel (TNProcMap::SplitAlongAD).
+			Tris.Reset();
+			for (int32 y = 0; y < TileQuads; ++y)
+			{
+				for (int32 x = 0; x < TileQuads; ++x)
+				{
+					const int32 GX = Tx * TileQuads + x;
+					const int32 GY = Ty * TileQuads + y;
+					const int32 A = y * Side + x;
+					const int32 B = A + 1;
+					const int32 C = A + Side;
+					const int32 D = C + 1;
+					if (TNProcMap::SplitAlongAD(HeightAt(GX, GY), HeightAt(GX + 1, GY), HeightAt(GX, GY + 1), HeightAt(GX + 1, GY + 1)))
+					{
+						Tris.Add(A); Tris.Add(C); Tris.Add(D);
+						Tris.Add(A); Tris.Add(D); Tris.Add(B);
+					}
+					else
+					{
+						Tris.Add(A); Tris.Add(C); Tris.Add(B);
+						Tris.Add(B); Tris.Add(C); Tris.Add(D);
+					}
+				}
+			}
+
 			Verts.Reset(); Normals.Reset(); UVs.Reset(); Colors.Reset();
 			for (int32 y = 0; y <= TileQuads; ++y)
 			{

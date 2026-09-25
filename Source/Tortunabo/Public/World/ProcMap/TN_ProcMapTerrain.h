@@ -57,6 +57,24 @@ namespace TNProcMap
 	/** Nivel del agua de todo el mapa (mar, lagunas, río). */
 	constexpr double SeaLevel = 0.0;
 
+	/** Pendiente (tan) de las laderas que bajan desde el borde de un cauce elevado. */
+	constexpr double FlankSlope = 1.15;
+	/** Altura mínima de las orillas de laguna y de los acantilados de costa sobre el mar. */
+	constexpr double ShoreCliffHeight = 650.0;
+	/** Anchura de la meseta a la cota del borde del talud antes de que baje la ladera. */
+	constexpr double RimPlateau = 2500.0;
+
+	/**
+	 * Diagonal de cada quad del mallado (A=(x,y) B=(x+1,y) C=(x,y+1) D=(x+1,y+1)):
+	 * true = partir por A-D, false = por B-C. Se parte por la diagonal de menor
+	 * desnivel, que sigue la curva de nivel: sin ella un talud en diagonal a la
+	 * rejilla sale en dientes de sierra con peldaños casi planos por los que trepar.
+	 */
+	inline bool SplitAlongAD(double HA, double HB, double HC, double HD)
+	{
+		return FMath::Abs(HA - HD) < FMath::Abs(HB - HC);
+	}
+
 	class FTerrainBuilder
 	{
 	public:
