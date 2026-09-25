@@ -6,6 +6,7 @@
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapGenerate.h"
+#include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
@@ -339,7 +340,13 @@ double ATN_ProcMapGenerator::TerrainHeightMap(const FVector2D& MapPoint) const
 	const double H10 = Heights[Y0 * LatticeNX + X0 + 1];
 	const double H01 = Heights[(Y0 + 1) * LatticeNX + X0];
 	const double H11 = Heights[(Y0 + 1) * LatticeNX + X0 + 1];
-	return FMath::Lerp(FMath::Lerp(H00, H10, Tx), FMath::Lerp(H01, H11, Tx), Ty);
+	// Los mismos triángulos que la malla y su colisión (diagonal de menor desnivel), no bilineal:
+	// en laderas empinadas la bilineal se separa decenas de cm de la superficie real.
+	if (TNProcMap::SplitAlongAD(H00, H10, H01, H11))
+	{
+		return Tx >= Ty ? H00 + Tx * (H10 - H00) + Ty * (H11 - H10) : H00 + Ty * (H01 - H00) + Tx * (H11 - H01);
+	}
+	return Tx + Ty <= 1.0 ? H00 + Tx * (H10 - H00) + Ty * (H01 - H00) : H11 + (1.0 - Tx) * (H01 - H11) + (1.0 - Ty) * (H10 - H11);
 }
 
 FVector ATN_ProcMapGenerator::TerrainNormalMap(const FVector2D& MapPoint) const

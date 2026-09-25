@@ -724,14 +724,40 @@ void ATN_ProcMapGenerator::BuildStructures()
 				const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? M : Layout.Branches[F.BranchIndex].Samples;
 				const int32 From = FMath::Clamp(F.PathIndex, 0, S.Num() - 1);
 				const int32 To = FMath::Clamp(F.Aux, 0, S.Num() - 1);
-				for (int32 i = From; i < To; ++i)
+				// Rejilla fina apoyada en el terreno real (1 m a lo largo, 6 columnas a lo ancho) a 25 cm,
+				// para que la lámina no se corte con él; espuma más blanca en los bordes y al pie.
+				constexpr int32 Cols = 6;
+				TArray<FVector> Prev;
+				for (int32 i = From; i <= To; ++i)
 				{
-					const FPathSample& A = S[i];
-					const FPathSample& B = S[i + 1];
-					const FVector2D NA = LeftNormal(A.Dir) * (A.Width * 0.45);
-					const FVector2D NB = LeftNormal(B.Dir) * (B.Width * 0.45);
-					SlideWater.AddQuad(FVector(A.P - NA, A.Z + 12.0), FVector(A.P + NA, A.Z + 12.0), FVector(B.P + NB, B.Z + 12.0), FVector(B.P - NB, B.Z + 12.0),
-						FVector::UpVector, FLinearColor(0.6f, 0.85f, 1.f));
+					const int32 Sub = i < To ? FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(S[i].P, S[i + 1].P) / 100.0)) : 1;
+					for (int32 k = 0; k < Sub; ++k)
+					{
+						if (i == To && k > 0) { break; }
+						const double U = static_cast<double>(k) / Sub;
+						const FPathSample& A = S[i];
+						const FPathSample& B = S[FMath::Min(i + 1, To)];
+						const FVector2D C = FMath::Lerp(A.P, B.P, U);
+						const FVector2D N = LeftNormal(FMath::Lerp(A.Dir, B.Dir, U).GetSafeNormal());
+						const double Hw = FMath::Lerp(A.Width, B.Width, U) * 0.42;
+						TArray<FVector> Row;
+						for (int32 c = 0; c <= Cols; ++c)
+						{
+							const FVector2D Q = C + N * (Hw * (2.0 * c / Cols - 1.0));
+							Row.Add(FVector(Q, TerrainHeightMap(Q) + 25.0));
+						}
+						if (Prev.Num() == Row.Num())
+						{
+							const float Foot = static_cast<float>(i - From) / FMath::Max(1, To - From);
+							for (int32 c = 0; c < Cols; ++c)
+							{
+								const float Edge = (c == 0 || c == Cols - 1) ? 0.25f : 0.f;
+								const FLinearColor Col = TNProcLerpColor(FLinearColor(0.55f, 0.82f, 1.f), FLinearColor(0.95f, 0.98f, 1.f), Edge + 0.5f * Foot * Foot);
+								SlideWater.AddQuad(Prev[c], Prev[c + 1], Row[c + 1], Row[c], FVector::UpVector, Col);
+							}
+						}
+						Prev = Row;
+					}
 				}
 				break;
 			}
