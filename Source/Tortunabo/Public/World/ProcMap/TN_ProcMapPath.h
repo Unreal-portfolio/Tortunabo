@@ -286,6 +286,103 @@ namespace TNProcMap
 				Z[i] = FMath::Min(Z[i], Z[i + 1] + K * Ds);
 			}
 		}
+
+		/** Rejilla de cubos de muestras para consultas de distancia al camino principal. */
+		struct FSampleGrid
+		{
+			double Cell = 4000.0;
+			int32 W = 0, H = 0;
+			double Origin = -20000.0;
+			TArray<TArray<int32>> Buckets;
+			const TArray<FPathSample>* Samples = nullptr;
+
+			void Build(const TArray<FPathSample>& In, double WorldSize)
+			{
+				Samples = &In;
+				W = H = FMath::CeilToInt((WorldSize - 2.0 * Origin) / Cell) + 1;
+				Buckets.Reset();
+				Buckets.SetNum(W * H);
+				for (int32 i = 0; i < In.Num(); ++i)
+				{
+					const int32 X = FMath::Clamp(FMath::FloorToInt((In[i].P.X - Origin) / Cell), 0, W - 1);
+					const int32 Y = FMath::Clamp(FMath::FloorToInt((In[i].P.Y - Origin) / Cell), 0, H - 1);
+					Buckets[Y * W + X].Add(i);
+				}
+			}
+
+			/**
+			 * Muestra más cercana dentro de Radius (INDEX_NONE si ninguna). Con MinAlong > 0
+			 * ignora las que están a menos de MinAlong de AlongS medido por el camino.
+			 */
+			int32 Nearest(const FVector2D& P, double Radius, double& OutDist, double AlongS = 0.0, double MinAlong = 0.0) const
+			{
+				OutDist = 1e300;
+				int32 Best = INDEX_NONE;
+				const int32 R = FMath::CeilToInt(Radius / Cell);
+				const int32 CX = FMath::FloorToInt((P.X - Origin) / Cell);
+				const int32 CY = FMath::FloorToInt((P.Y - Origin) / Cell);
+				for (int32 Y = FMath::Max(0, CY - R); Y <= FMath::Min(H - 1, CY + R); ++Y)
+				{
+					for (int32 X = FMath::Max(0, CX - R); X <= FMath::Min(W - 1, CX + R); ++X)
+					{
+						for (const int32 Idx : Buckets[Y * W + X])
+						{
+							if (MinAlong > 0.0 && FMath::Abs((*Samples)[Idx].S - AlongS) < MinAlong) { continue; }
+							const double D = FVector2D::Distance(P, (*Samples)[Idx].P);
+							if (D < OutDist) { OutDist = D; Best = Idx; }
+						}
+					}
+				}
+				return OutDist <= Radius ? Best : INDEX_NONE;
+			}
+		};
+
+		/** Tramos por anchura, de desfiladero a explanada. */
+		enum class EWidthKind : uint8 { Narrow, Tight, Normal, Wide, Open };
+		constexpr int32 NumWidthKinds = 5;
+
+		/** Reparto de tramos por bioma: cañones en desierto y roca, arenales abiertos en la playa. */
+		inline void WidthKindWeights(ETNProcBiome Biome, double NarrowChance, double (&Out)[NumWidthKinds])
+		{
+			Out[0] = NarrowChance; Out[1] = 0.2; Out[2] = 0.3; Out[3] = 0.2; Out[4] = 0.1;
+			switch (Biome)
+			{
+				case ETNProcBiome::Desert:   Out[0] *= 1.6; Out[1] *= 1.3; Out[4] *= 0.8; break;
+				case ETNProcBiome::Rocky:    Out[0] *= 1.8; Out[1] *= 1.4; Out[3] *= 0.7; break;
+				case ETNProcBiome::Beach:    Out[0] *= 0.4; Out[3] *= 1.5; Out[4] *= 2.2; break;
+				case ETNProcBiome::Jungle:   Out[1] *= 1.5; Out[4] *= 0.8; break;
+				case ETNProcBiome::Volcanic: Out[0] *= 1.2; Out[4] *= 1.4; break;
+				case ETNProcBiome::Human:    Out[2] *= 1.4; Out[3] *= 1.3; break;
+				default: break;
+			}
+		}
+
+		/** Anchura (U en [0,1]) y longitud de cada tipo de tramo. */
+		inline double WidthOfKind(const FGenParams& P, EWidthKind Kind, double U)
+		{
+			const double Mn = P.PathWidthMin;
+			const double Mx = FMath::Max(P.PathWidthMax, Mn * 4.0);
+			switch (Kind)
+			{
+				case EWidthKind::Narrow: return LerpD(Mn * 0.9, Mn * 1.3, U);
+				case EWidthKind::Tight:  return LerpD(Mn * 1.6, Mn * 2.6, U);
+				case EWidthKind::Normal: return LerpD(Mn * 2.8, FMath::Max(Mn * 3.2, Mx * 0.5), U);
+				case EWidthKind::Wide:   return LerpD(Mx * 0.6, Mx, U);
+				default:                 return LerpD(Mx * 1.15, Mx * 1.7, U);
+			}
+		}
+
+		inline double LengthOfKind(EWidthKind Kind, double U)
+		{
+			switch (Kind)
+			{
+				case EWidthKind::Narrow: return LerpD(2500.0, 6500.0, U);
+				case EWidthKind::Tight:  return LerpD(3000.0, 9000.0, U);
+				case EWidthKind::Normal: return LerpD(5000.0, 15000.0, U);
+				case EWidthKind::Wide:   return LerpD(4000.0, 11000.0, U);
+				default:                 return LerpD(3500.0, 8000.0, U);
+			}
+		}
 	}
 
 	/** Punto de salida (sur) y de llegada (costa norte). */
@@ -431,28 +528,92 @@ namespace TNProcMap
 		return L.Main.Num() > 4;
 	}
 
-	/** Anchura variable: holgada en claros, estrecha en pasos; respeta la holgura del módulo. */
+	/**
+	 * Anchura muy variable por tramos: desfiladeros (3,5-5 m), pasos cerrados, tramos
+	 * normales, anchos y explanadas (40-60 m), con transiciones de 8-25 m y bordes que
+	 * respiran. Respeta la holgura del módulo y la de otras partes del camino: entre
+	 * dos cauces queda siempre un muro (no se funden ni se ataja por ellos).
+	 */
 	inline void ComputeWidths(FLayout& L, FRng Rng)
 	{
+		using namespace PathDetail;
 		const FGenParams& P = L.Params;
+		const int32 NumS = L.Main.Num();
+		if (NumS == 0) { return; }
 		const uint32 WSeed = P.Seed ^ 0xA11CEu;
+
+		// Secuencia de tramos a lo largo del camino; nunca dos seguidos del mismo tipo.
+		struct FSection { double S0 = 0.0; double W = 0.0; double Len = 0.0; };
+		TArray<FSection> Sections;
+		{
+			const double Total = L.Main.Last().S;
+			double Cursor = 0.0;
+			int32 Prev = INDEX_NONE;
+			while (Cursor <= Total)
+			{
+				int32 Near = 0;
+				MainPointAt(L.Main, Cursor, nullptr, &Near);
+				double Wt[NumWidthKinds];
+				WidthKindWeights(L.Main[Near].Biome, P.NarrowChance, Wt);
+				if (Prev != INDEX_NONE) { Wt[Prev] = 0.0; }
+				double Sum = 0.0;
+				for (const double V : Wt) { Sum += V; }
+				double Pick = Rng.Unit() * Sum;
+				int32 Kind = NumWidthKinds - 1;
+				for (int32 k = 0; k < NumWidthKinds; ++k)
+				{
+					if (Pick < Wt[k]) { Kind = k; break; }
+					Pick -= Wt[k];
+				}
+				FSection Sec;
+				Sec.S0 = Cursor;
+				Sec.W = WidthOfKind(P, static_cast<EWidthKind>(Kind), Rng.Unit());
+				Sec.Len = LengthOfKind(static_cast<EWidthKind>(Kind), Rng.Unit());
+				Sections.Add(Sec);
+				Cursor += Sec.Len;
+				Prev = Kind;
+			}
+		}
+		auto TransLen = [&Sections](int32 A, int32 B) { return FMath::Clamp(0.35 * FMath::Min(Sections[A].Len, Sections[B].Len), 800.0, 2500.0); };
+
 		TArray<double> W;
-		W.SetNum(L.Main.Num());
-		for (int32 i = 0; i < L.Main.Num(); ++i)
+		W.SetNum(NumS);
+		int32 Sec = 0;
+		for (int32 i = 0; i < NumS; ++i)
 		{
 			const FPathSample& Sm = L.Main[i];
-			const double Base = 0.5 + 0.5 * Fbm1(WSeed, Sm.S / 15000.0, 3);
-			double Wi = LerpD(P.PathWidthMin * 1.6, P.PathWidthMax, FMath::Pow(Base, 1.5));
-			const double Narrow = Noise1(WSeed + 99u, Sm.S / 9000.0);
-			const double NarrowStart = 1.0 - 2.0 * P.NarrowChance;
-			if (Narrow > NarrowStart)
+			while (Sec + 1 < Sections.Num() && Sections[Sec + 1].S0 <= Sm.S) { ++Sec; }
+			double Wi = Sections[Sec].W;
+			if (Sec > 0)
 			{
-				const double T = SmoothStep(NarrowStart, NarrowStart + 0.18, Narrow);
-				Wi = LerpD(Wi, P.PathWidthMin, T);
+				const double T = TransLen(Sec - 1, Sec);
+				Wi = LerpD(Sections[Sec - 1].W, Wi, SmoothStep(-0.5 * T, 0.5 * T, Sm.S - Sections[Sec].S0));
 			}
+			if (Sec + 1 < Sections.Num())
+			{
+				const double T = TransLen(Sec, Sec + 1);
+				Wi = LerpD(Wi, Sections[Sec + 1].W, SmoothStep(-0.5 * T, 0.5 * T, Sm.S - Sections[Sec + 1].S0));
+			}
+			// Bordes que respiran: ±14 % a escala de ~20 m.
+			W[i] = Wi * (1.0 + 0.14 * Fbm1(WSeed + 5u, Sm.S / 1800.0, 2));
+		}
+		W = SmoothScalars(W, 2);
+
+		// Holgura con el borde del módulo y con otras partes del camino (muro de al menos 18 m).
+		FSampleGrid Grid;
+		Grid.Build(L.Main, L.WorldSize);
+		for (int32 i = 0; i < NumS; ++i)
+		{
+			const FPathSample& Sm = L.Main[i];
+			double Wi = W[i];
 			const double Bd = L.BorderDistAt(Sm.P);
 			Wi = FMath::Min(Wi, FMath::Max(P.PathWidthMin, 2.0 * (Bd - 1800.0)));
-			W[i] = FMath::Max(P.PathWidthMin, Wi);
+			double DSelf = 0.0;
+			if (Grid.Nearest(Sm.P, 12000.0, DSelf, Sm.S, FMath::Max(9000.0, 2.0 * Wi)) != INDEX_NONE)
+			{
+				Wi = FMath::Min(Wi, FMath::Max(P.PathWidthMin, DSelf - 1800.0));
+			}
+			W[i] = FMath::Max(330.0, Wi);
 		}
 		// Cerca de portales: anchura del portal.
 		for (const FRouteStep& Step : L.Route)
@@ -469,7 +630,7 @@ namespace TNProcMap
 				}
 			}
 		}
-		TArray<double> Smoothed = SmoothScalars(W, 4);
+		TArray<double> Smoothed = SmoothScalars(W, 2);
 		for (int32 i = 0; i < L.Main.Num(); ++i)
 		{
 			L.Main[i].Width = Smoothed[i];
@@ -745,52 +906,6 @@ namespace TNProcMap
 
 	namespace PathDetail
 	{
-		/** Rejilla de cubos de muestras para consultas de distancia al camino principal. */
-		struct FSampleGrid
-		{
-			double Cell = 4000.0;
-			int32 W = 0, H = 0;
-			double Origin = -20000.0;
-			TArray<TArray<int32>> Buckets;
-			const TArray<FPathSample>* Samples = nullptr;
-
-			void Build(const TArray<FPathSample>& In, double WorldSize)
-			{
-				Samples = &In;
-				W = H = FMath::CeilToInt((WorldSize - 2.0 * Origin) / Cell) + 1;
-				Buckets.Reset();
-				Buckets.SetNum(W * H);
-				for (int32 i = 0; i < In.Num(); ++i)
-				{
-					const int32 X = FMath::Clamp(FMath::FloorToInt((In[i].P.X - Origin) / Cell), 0, W - 1);
-					const int32 Y = FMath::Clamp(FMath::FloorToInt((In[i].P.Y - Origin) / Cell), 0, H - 1);
-					Buckets[Y * W + X].Add(i);
-				}
-			}
-
-			/** Muestra más cercana dentro de Radius (INDEX_NONE si ninguna). */
-			int32 Nearest(const FVector2D& P, double Radius, double& OutDist) const
-			{
-				OutDist = 1e300;
-				int32 Best = INDEX_NONE;
-				const int32 R = FMath::CeilToInt(Radius / Cell);
-				const int32 CX = FMath::FloorToInt((P.X - Origin) / Cell);
-				const int32 CY = FMath::FloorToInt((P.Y - Origin) / Cell);
-				for (int32 Y = FMath::Max(0, CY - R); Y <= FMath::Min(H - 1, CY + R); ++Y)
-				{
-					for (int32 X = FMath::Max(0, CX - R); X <= FMath::Min(W - 1, CX + R); ++X)
-					{
-						for (const int32 Idx : Buckets[Y * W + X])
-						{
-							const double D = FVector2D::Distance(P, (*Samples)[Idx].P);
-							if (D < OutDist) { OutDist = D; Best = Idx; }
-						}
-					}
-				}
-				return OutDist <= Radius ? Best : INDEX_NONE;
-			}
-		};
-
 		inline bool IsCrossingModule(const FLayout& L, int32 Module)
 		{
 			for (const FCrossing& C : L.Crossings) { if (C.Module == Module) { return true; } }

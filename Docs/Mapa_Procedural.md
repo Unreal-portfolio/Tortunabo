@@ -49,7 +49,7 @@ Dos capas, como el resto del proyecto (`TNGridLogic`, `TNChunkLogic`):
 | `TN_ProcMapLayout.h` | Tipos del resultado (`FLayout`): módulos, ruta, portales, cruces, camino muestreado, ramas, features. |
 | `TN_ProcMapModules.h` | Módulos irregulares **siempre conexos**: semillas con jitter + Dijkstra multi-fuente sobre coste con ruido, limpieza de conectividad y transformadas de distancia. |
 | `TN_ProcMapRoute.h` | Ruta por los módulos: DFS aleatorio con Warnsdorff y poda por alcanzabilidad; reserva los pasos de los cruces colosales (A→B→C sobre un módulo ya visitado). |
-| `TN_ProcMapPath.h` | Portales en las fronteras (PCA), "caminante" con meandros senoidales dentro de cada módulo, suavizado Chaikin, anchos variables 4–35 m, perfil de alturas con límite de pendiente y cortes en géiser/tobogán, ramas y carriles. |
+| `TN_ProcMapPath.h` | Portales en las fronteras (PCA), "caminante" con meandros senoidales dentro de cada módulo, suavizado Chaikin, anchos por tramos 3,5–60 m, perfil de alturas con límite de pendiente y cortes en géiser/tobogán, ramas y carriles. |
 | `TN_ProcMapFeatures.h` | Biomas por regiones (tipo Minecraft), huecos saltables, isletas y pasarelas, pilas de huevos, puzles 2vs2, río opcional, decoración y reparto de peligros. |
 | `TN_ProcMapTerrain.h` | Altura por vértice: parámetros mezclados por bioma con *domain warp*, pasillo del camino con arcén, torres/mesas/túneles de los cruces, muros del borde, costa y mar abierto al norte. |
 | `TN_ProcMapGenerate.h` | `GenerateLayout(params)`: orquesta todo, valida y reintenta. |
@@ -81,7 +81,10 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   Los que quedan fuera se rellenan según `EmptyModuleMode`: *Elevated* (mesetas
   inaccesibles), *BranchesAndScenery* (ramas y paisaje), *Explorable* (terreno
   transitable sin objetivo) o *Mixed*.
-- **Camino principal** largo y natural, con ancho variable 4–35 m y estrechamientos.
+- **Camino principal** largo y natural, con anchura por tramos de 40–150 m: desfiladeros
+  de 3,5–5 m, pasos cerrados de 6–10 m, tramos normales, anchos de 20–35 m y explanadas
+  de 40–60 m (más cañones en desierto y roca, más arenales abiertos en la playa). La
+  anchura se recorta para que entre dos partes del camino quede siempre un muro de 18 m.
   El terreno ondula sin tendencia general; los cambios grandes de altura solo
   ocurren al cruzar de módulo, mediante **géiser** (sube) o **cascada-tobogán** (baja).
   Los huecos del camino principal miden 1,3–3,9 m (salto corriendo o con dive).
