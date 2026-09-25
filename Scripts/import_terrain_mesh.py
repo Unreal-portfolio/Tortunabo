@@ -79,6 +79,15 @@ def spawn(actor_class, label, location, rotation=unreal.Rotator(0.0, 0.0, 0.0)):
     return actor
 
 
+def configure_sun(sun):
+    """Sombras suaves sobre el terreno de marching cubes: sesgo para que las caras casi de
+    canto no se sombreen a si mismas a dientes, y penumbra algo mas ancha."""
+    light = sun.get_component_by_class(unreal.DirectionalLightComponent)
+    light.set_editor_property("shadow_bias", 0.9)
+    light.set_editor_property("shadow_slope_bias", 0.9)
+    light.set_editor_property("light_source_angle", 1.5)
+
+
 def existing_labels():
     return {a.get_actor_label(): a for a in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()}
 
@@ -109,6 +118,8 @@ def build_level(manifest, assets, level_path):
             tile.set_editor_property("foliage_material", foliage_material)
         tile.set_editor_property("mesh_asset", assets[cell["name"]])
 
+    if "Sun" in have:
+        configure_sun(have["Sun"])
     if "Water" in have:
         level_subsystem.save_current_level()
         return
@@ -126,7 +137,8 @@ def build_level(manifest, assets, level_path):
         component.set_material(0, water_material)
     water.set_actor_scale3d(unreal.Vector(extent / PLANE_SIZE_UU, extent / PLANE_SIZE_UU, 1.0))
 
-    spawn(unreal.DirectionalLight, "Sun", unreal.Vector(0.0, 0.0, 5000.0), unreal.Rotator(0.0, -50.0, 35.0))
+    sun = spawn(unreal.DirectionalLight, "Sun", unreal.Vector(0.0, 0.0, 5000.0), unreal.Rotator(0.0, -50.0, 35.0))
+    configure_sun(sun)
     spawn(unreal.SkyAtmosphere, "SkyAtmosphere", unreal.Vector(0.0, 0.0, 0.0))
     sky = spawn(unreal.SkyLight, "SkyLight", unreal.Vector(0.0, 0.0, 5000.0))
     sky_component = sky.get_component_by_class(unreal.SkyLightComponent)

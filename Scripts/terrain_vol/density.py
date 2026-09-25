@@ -31,7 +31,7 @@ CLIFF_LEVEL_M = 4.5                     # separacion entre niveles del laberinto
 CLIFF_LEVELS = 3
 MARSH_PATH_TOP_M = WATER_M + 1.3        # crestas por las que se cruza la zona encharcada
 END_PLAZA_M = WATER_M + 1.8             # plaza de llegada, seca, sobre la playa
-MARSH_JUMP_EVERY_M = 26.0               # cada cuanto la cresta tiene un hueco que se salta
+MARSH_JUMP_EVERY_M = 48.0               # cada cuanto un canal estrecho corta la barra y se salta
 TUNNEL_HALF_WIDTH_M = 5.0
 TUNNEL_HEIGHT_M = 5.5
 TUNNEL_LENGTH_M = (26.0, 36.0)
@@ -212,11 +212,17 @@ class MapModel:
             out = np.maximum(out, smooth(a - 12.0, a + 2.0, s) * (1.0 - smooth(b - 2.0, b + 12.0, s)))
         return 4.0 * out * (1.0 - smooth(18.0, 35.0, d))
 
-    def _rock_walls(self, X, Y, d, hw, f, top):
+    def _rock_walls(self, X, Y, d, hw, f, top, face_width: float = 1.1, rim: float = 0.0):
         """Pasillo en roca con aspecto erosionado: contrafuertes, grietas que se meten en la
-        pared y un talud de derrubios al pie. Devuelve (relieve, banda de pared, eje)."""
+        pared y un talud de derrubios al pie. face_width: anchura horizontal de la cara (1 m ~
+        pared vertical; 3-4 m, 60-75 grados). rim: fraccion de la altura que se redondea en el
+        borde de arriba (0 = arista viva). Devuelve (relieve, banda de pared, eje)."""
         face = d - hw                                   # > 0: detras de la cara de la pared
-        corridor = 1.0 - smooth(0.0, 1.1, face)
+        if rim > 0.0:
+            # Borde superior gastado: la cima baja en curva hacia el canon.
+            top = top - rim * np.maximum(top - f, 0.0) * (1.0 - smooth(0.0, 7.0 + face_width, face))
+        # La cara se abre hacia arriba: el pie es estrecho y el borde queda retranqueado.
+        corridor = 1.0 - smooth(0.0, face_width, face)
         # Grietas: lineas de ruido (pasos por cero) que cortan la pared casi hasta el suelo,
         # solo cerca de la cara y solo en parte de las paredes.
         crack = (1.0 - smooth(0.04, 0.13, np.abs(self.n_crack(X, Y)))) * smooth(0.45, 0.6, self.n_crack_mask.unit(X, Y))
@@ -263,20 +269,28 @@ class MapModel:
         tunnel = self._tunnel_mask(s_route, d_route)
         d_can = np.where(tunnel > 0.5, np.maximum(d_can, 30.0), d_can)
         f = 0.8 + 0.8 * mid
-        top = strata(f + 11.0 + 4.0 * self.n_mid.unit(X, Y) + self._ridge(s_route, d_route), 3.5)
-        heights["canyon"], bands["canyon"], axes["canyon"] = self._rock_walls(X, Y, d_can, 4.0 + width, f, top)
+        # Cimas onduladas (no una meseta de regla): repisas solo a medias, relieve grande.
+        raw_top = f + 9.0 + 5.0 * self.n_mid.unit(X, Y) + 2.5 * big + 1.2 * small + self._ridge(s_route, d_route)
+        top = 0.5 * raw_top + 0.5 * strata(raw_top, 2.5)
+        face_w = 2.6 + 1.6 * self.n_talus.unit(X, Y)
+        heights["canyon"], bands["canyon"], axes["canyon"] = self._rock_walls(
+            X, Y, d_can, 4.0 + width, f, top, face_width=face_w, rim=0.35)
         floors["canyon"] = f
 
         # Zona encharcada: dunas cuyas vaguadas quedan bajo el agua (laguitos); se cruza por
         # una cresta seca que sigue la ruta, con algun hueco que se salta.
         # Laguitos en las hondonadas de un relieve de manchas (no en franjas) y dunas encima.
         base = WATER_M - 0.6 + 3.0 * self.n_pond(X, Y) + self._dunes(X, Y, 2.4, 22.0)
-        crest_w = 1.3 + 1.0 * self.n_width.unit(X, Y)
-        crest = 1.0 - smooth(crest_w, crest_w + 1.6, d_route + 1.2 * self.n_crest(X, Y))
-        gap = 1.0 - smooth(0.5, 0.9, np.abs(np.mod(s_route, MARSH_JUMP_EVERY_M) - MARSH_JUMP_EVERY_M / 2))
-        crest = crest * (1.0 - gap * smooth(0.85, 0.95, w["marsh"]))
-        path_top = MARSH_PATH_TOP_M + 0.3 * small + 0.35 * self.n_crest(Y, X)
-        heights["marsh"] = base * (1.0 - crest) + np.maximum(base, path_top) * crest
+        # Barra de arena natural (no un dique): ancha, de orillas suaves e irregulares, que
+        # sube y baja con las dunas; los charcos la bordean. De vez en cuando un canal
+        # estrecho y torcido la corta y se salta.
+        bar_w = 4.0 + 4.0 * self.n_width.unit(X, Y)
+        crest = 1.0 - smooth(bar_w, bar_w + 9.0, d_route + 3.0 * self.n_crest(X, Y))
+        channel_s = np.mod(s_route + 6.0 * self.n_crest(Y, X), MARSH_JUMP_EVERY_M) - MARSH_JUMP_EVERY_M / 2
+        gap = (1.0 - smooth(0.5, 1.0, np.abs(channel_s))) * smooth(0.85, 0.95, w["marsh"])
+        path_top = MARSH_PATH_TOP_M + 0.5 * self._dunes(X, Y, 1.2, 16.0) + 0.3 * small
+        land = base * (1.0 - crest) + np.maximum(base, path_top) * crest
+        heights["marsh"] = land * (1.0 - gap) + np.minimum(land, WATER_M - 0.6) * gap
         floors["marsh"] = np.full_like(X, MARSH_PATH_TOP_M)
         bands["marsh"] = np.zeros_like(X)
         axes["marsh"] = 1.0 - smooth(0.5, 1.5, d_route)

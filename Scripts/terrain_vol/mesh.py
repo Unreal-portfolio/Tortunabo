@@ -80,6 +80,17 @@ def taubin(vertices: np.ndarray, faces: np.ndarray, pinned: np.ndarray, iteratio
     return v
 
 
+def mesh_normals(vertices: np.ndarray, faces: np.ndarray, count: int) -> np.ndarray:
+    """Normal de vertice = suma de las normales de sus caras (ponderadas por area), con la
+    cara visible de Unreal (opuesta a (B-A)x(C-A))."""
+    a, b, c = vertices[faces[:, 0]], vertices[faces[:, 1]], vertices[faces[:, 2]]
+    face = -np.cross(b - a, c - a)
+    out = np.zeros((count, 3))
+    for k in range(3):
+        np.add.at(out, faces[:, k], face)
+    return out / np.maximum(np.linalg.norm(out, axis=1, keepdims=True), 1e-9)
+
+
 def hash_uniform(ix: np.ndarray, iy: np.ndarray, salt: int) -> np.ndarray:
     """Numero en [0, 1) determinista por celda de la rejilla global (independiente del trozo)."""
     h = (ix.astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15)) ^ (iy.astype(np.uint64) * np.uint64(0xC2B2AE3D27D4EB4F)) \
@@ -187,6 +198,7 @@ def build_chunk(model: MapModel, col: int, row: int) -> ChunkMesh:
     pinned = (verts[:, 0] < 1e-6) | (verts[:, 0] > edge * STEP_XY_M - 1e-6) \
         | (verts[:, 1] < 1e-6) | (verts[:, 1] > edge * STEP_XY_M - 1e-6)
     smoothed = taubin(verts, faces, pinned, SMOOTH_ITERATIONS)
+    # (las normales de la malla se calculan tras orientar las caras: ver mesh_normals)
     x0, _, y0, _ = cell_bounds(col, row)
     world = smoothed + np.array([x0, y0, Z_MIN_M])
 
@@ -202,6 +214,10 @@ def build_chunk(model: MapModel, col: int, row: int) -> ChunkMesh:
     flip = np.einsum("ij,ij->i", cross, face_n) > 0.0
     faces = faces.copy()
     faces[flip] = faces[flip][:, [0, 2, 1]]
+
+    # Normales de la propia malla (suma de caras): la luz sigue a los triangulos y las
+    # sombras no salen a dientes. En el borde del trozo, las del campo: iguales en el vecino.
+    normals = np.where(pinned[:, None], normals, mesh_normals(world, faces, len(world)))
 
     cx, cy = cell_center(col, row)
     local = (world - np.array([cx, cy, 0.0])) * UU_PER_M
