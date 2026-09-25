@@ -6,7 +6,7 @@ Se ejecuta FUERA del editor:
         python Scripts/gen_terrain_biomes.py [--seed N] [--name Mapa01] [--grid 6]
         [--min-path 12] [--max-path 18]
 
-Escribe lo mismo que gen_terrain_preset.py (Scripts/terrain_presets/<name>/), mas las capas
+Escribe un preset (terrain_gen/preset.py, en Scripts/terrain_presets/<name>/), mas las capas
 del tunel (<celda>_roof.png y <celda>_ceiling.png) en las celdas que lo tienen, y se importa
 igual, con Scripts/import_terrain_modules.py.
 
@@ -30,10 +30,10 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage
 
-from gen_terrain_preset import generate_path, index_of, reachable, write_preset
 from terrain_gen.biomes import (MOUTH_JITTER_M, ModuleDesign, design_ambient, design_path_cell,
                                 mouth_point)
-from gen_terrain_preset import fbm as grid_fbm
+from terrain_gen.preset import fbm as grid_fbm
+from terrain_gen.preset import generate_path, index_of, reachable, write_preset
 from terrain_gen.core import HEIGHT_ZERO, RES, SIZE_M, STEP_M, UNITS_PER_M, WATER_M, smoothstep
 
 BIOME_ORDER = ("sand", "water", "algae")
