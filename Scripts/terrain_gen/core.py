@@ -10,9 +10,9 @@ import numpy as np
 
 
 # ── Geometria y codificacion (deben casar con UTN_TerrainModuleAsset) ─────────────
-SIZE_M = 200.0
+SIZE_M = 100.0                 # 2026-09-25: modulos de 100 m (antes 200 y 400)
 HALF_M = SIZE_M / 2.0
-RES = 101                      # 2 m entre vertices
+RES = 101                      # 1 m entre vertices
 # Escala horizontal respecto al diseno original de 400 m. Longitudes de rasgos grandes
 # (serpenteo, plazas, rutas) se multiplican por K; el detalle fino (arena, rocas, taludes)
 # y todas las alturas no escalan.
@@ -49,7 +49,7 @@ FORK_LOW_ISLAND_PROB = 0.35    # isla baja (loma escalable) en vez de roca alta
 # Arco natural sobre el pasillo, solo para pasar por debajo.
 ARCH_PROB = 0.4
 ARCH_CLEARANCE_M = 6.0         # altura libre minima bajo el arco
-WALKABLE_STEP_M = 1.6          # desnivel maximo entre muestras vecinas (2 m) para caminar: ~39 grados
+WALKABLE_STEP_M = 0.8 * SIZE_M / (RES - 1)   # desnivel maximo entre muestras vecinas para caminar: ~39 grados
 
 # ── F3: tuneles, monolitos, zonas hundidas y acantilados ───────────────────────────
 # Tunel: arco largo sobre un tramo recto del pasillo; se atraviesa por dentro.

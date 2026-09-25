@@ -513,13 +513,15 @@ def reachable(terrain, start, goal) -> bool:
 
 
 def write_preset(name: str, seed: int, grid: int, terrain, mask, cells, flat_areas, bridges_by_cell=None,
-                 secondary: str = "algae", shade=None, overlay=()) -> Path:
+                 secondary: str = "algae", shade=None, overlay=(), cell_biomes=None, cell_layers=None) -> Path:
     """Corta el terreno en una celda por modulo y escribe PNG, manifest y vistas cenitales.
 
     terrain y mask cubren el mapa entero (grid * (RES - 1) + 1 muestras por lado). flat_areas
     en metros de mundo (x, y, radio). bridges_by_cell: {(col, fila): [dict del manifest con
     coordenadas locales]}. shade (0-1) oscurece la vista de depuracion (zona fuera de juego);
-    overlay: [(mascara booleana o None, color RGB)] pintados encima."""
+    overlay: [(mascara booleana o None, color RGB)] pintados encima. cell_biomes: {(col, fila):
+    (bioma, secundario)} (por defecto arena con secondary). cell_layers: {(col, fila): (techo,
+    boveda)} arrays uint16 de RES x RES ya codificados (0 = sin techo) del tunel en capas."""
     half = SIZE_M / 2.0
     out = OUTPUT_ROOT / name
     if out.exists():
@@ -538,14 +540,22 @@ def write_preset(name: str, seed: int, grid: int, terrain, mask, cells, flat_are
             Image.fromarray(mask[window]).save(out / "Cells" / f"{cell_name}_mask.png")
             Image.fromarray(zeros).save(out / "Cells" / f"{cell_name}_coast.png")
             cx, cy = row * SIZE_M, col * SIZE_M
+            biome, second = (cell_biomes or {}).get((col, row), ("sand", secondary))
+            layers = {}
+            if cell_layers and (col, row) in cell_layers:
+                roof, ceiling = cell_layers[(col, row)]
+                Image.fromarray(roof).save(out / "Cells" / f"{cell_name}_roof.png")
+                Image.fromarray(ceiling).save(out / "Cells" / f"{cell_name}_ceiling.png")
+                layers = {"roof_file": f"Cells/{cell_name}_roof.png", "ceiling_file": f"Cells/{cell_name}_ceiling.png"}
             local_flats = [{"x_m": round(px - cx, 2), "y_m": round(py - cy, 2), "radius_m": round(r, 2),
                             "height_m": round(float(terrain[index_of((px, py), half)]), 2), "sunken": False}
                            for px, py, r in flat_areas if abs(px - cx) < half and abs(py - cy) < half]
             manifest["modules"].append({
                 "name": cell_name, "topology": "Cross", "folder": "Cells", "edges": ["crest"] * 4, "seed": seed,
                 "file": f"Cells/{cell_name}.png", "mask_file": f"Cells/{cell_name}_mask.png",
-                "coast_file": f"Cells/{cell_name}_coast.png", "biome": "sand", "secondary_biome": secondary,
+                "coast_file": f"Cells/{cell_name}_coast.png", "biome": biome, "secondary_biome": second,
                 "bridges": (bridges_by_cell or {}).get((col, row), []), "monoliths": [], "flat_areas": local_flats,
+                **layers,
             })
             # Lados que dan fuera del mapa (N 1, E 2, S 4, O 8): caja invisible.
             outer = (1 if row == grid - 1 else 0) | (2 if col == grid - 1 else 0) | (4 if row == 0 else 0) | (8 if col == 0 else 0)
