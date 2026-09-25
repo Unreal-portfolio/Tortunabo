@@ -45,8 +45,12 @@ namespace TNProcMap
 		/** Altura del talud del cauce (cm): mínimo y máximo, variando con ruido. */
 		double BankMin = 500.0;
 		double BankMax = 900.0;
-		/** Pendiente media del talud (grados); la tortuga anda hasta ~45°. */
-		double BankAngle = 66.0;
+		/**
+		 * Pendiente media del talud (grados); la tortuga anda hasta ~45°. Con el perfil redondeado la
+		 * parte central llega a 1,5 veces esa pendiente: 56-62° de media son paredes de 65-70°, que dejan
+		 * ver el paisaje sin dejar de ser infranqueables.
+		 */
+		double BankAngle = 58.0;
 		/** Relieve (montañas) lejos de los caminos (cm). */
 		double MountainAmp = 3000.0;
 		/** Paredes de cañón: cuánto sube el paisaje en los primeros ~35 m desde el cauce (cm). */
@@ -60,28 +64,28 @@ namespace TNProcMap
 		{
 			case ETNProcBiome::Jungle:
 				T.UndAmp = 350; T.RiseMax = 900;  T.RiseDist = 2200; T.Shoulder = 250; T.Rough = 160; T.Ridge = 0.0; T.CoastWidth = 2500;
-				T.BankMin = 550; T.BankMax = 1100; T.BankAngle = 66; T.MountainAmp = 8400; T.WallAmp = 800; break;
+				T.BankMin = 550; T.BankMax = 1100; T.BankAngle = 58; T.MountainAmp = 8400; T.WallAmp = 800; break;
 			case ETNProcBiome::Beach:
 				T.UndAmp = 110; T.RiseMax = 300;  T.RiseDist = 3500; T.Shoulder = 300; T.Rough = 190; T.Ridge = 0.8; T.CoastWidth = 6500;
-				T.BankMin = 480; T.BankMax = 850;  T.BankAngle = 62; T.MountainAmp = 3000; T.WallAmp = 400; break;
+				T.BankMin = 480; T.BankMax = 850;  T.BankAngle = 56; T.MountainAmp = 3000; T.WallAmp = 400; break;
 			case ETNProcBiome::Desert:
 				T.UndAmp = 300; T.RiseMax = 800;  T.RiseDist = 2200; T.Shoulder = 200; T.Rough = 380; T.Ridge = 1.0; T.CoastWidth = 3500;
-				T.BankMin = 650; T.BankMax = 1400; T.BankAngle = 72; T.MountainAmp = 7200; T.WallAmp = 1000; break;
+				T.BankMin = 650; T.BankMax = 1400; T.BankAngle = 60; T.MountainAmp = 7200; T.WallAmp = 1000; break;
 			case ETNProcBiome::Volcanic:
 				T.UndAmp = 450; T.RiseMax = 1200; T.RiseDist = 2000; T.Shoulder = 200; T.Rough = 300; T.Ridge = 0.6; T.CoastWidth = 1200;
-				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 70; T.MountainAmp = 9600; T.WallAmp = 1000; break;
+				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 60; T.MountainAmp = 9600; T.WallAmp = 1000; break;
 			case ETNProcBiome::Water:
 				T.UndAmp = 60;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -1000; T.bWet = true;
-				T.BankMin = 550; T.BankMax = 950;  T.BankAngle = 66; T.MountainAmp = 6600; T.WallAmp = 600; break;
+				T.BankMin = 550; T.BankMax = 950;  T.BankAngle = 58; T.MountainAmp = 6600; T.WallAmp = 600; break;
 			case ETNProcBiome::Rocky:
 				T.UndAmp = 400; T.RiseMax = 1500; T.RiseDist = 1500; T.Shoulder = 150; T.Rough = 360; T.Ridge = 1.0; T.CoastWidth = 800;
-				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 75; T.MountainAmp = 14400; T.WallAmp = 1400; break;
+				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 62; T.MountainAmp = 14400; T.WallAmp = 1400; break;
 			case ETNProcBiome::Mangrove:
 				T.UndAmp = 30;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 25;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -350; T.bWet = true;
-				T.BankMin = 500; T.BankMax = 850;  T.BankAngle = 64; T.MountainAmp = 3000; T.WallAmp = 500; break;
+				T.BankMin = 500; T.BankMax = 850;  T.BankAngle = 56; T.MountainAmp = 3000; T.WallAmp = 500; break;
 			case ETNProcBiome::Human:
 				T.UndAmp = 150; T.RiseMax = 400;  T.RiseDist = 2500; T.Shoulder = 250; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 3000;
-				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 70; T.MountainAmp = 3000; T.WallAmp = 400; break;
+				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 58; T.MountainAmp = 3000; T.WallAmp = 400; break;
 			default: break;
 		}
 		return T;
@@ -236,6 +240,8 @@ namespace TNProcMap
 		TArray<float> DeckTop;
 		static constexpr double GuardBandMin = 300.0;
 		static constexpr double GuardBandMax = 3500.0;
+		/** Pendiente (tan) de la guarda: sube en rampa de 62° (infranqueable) en vez de en escalón. */
+		static constexpr double GuardSlope = 1.88;
 
 		// ── Distancia gruesa a los cauces (para el relieve lejano) ──────────
 		double CorrCell = 1000.0;
@@ -376,7 +382,9 @@ namespace TNProcMap
 						}
 						if (GuardH > 0.0 && Eff >= GuardBandMin && Eff <= GuardBandMax && DeckTop[Idx] < -1e8f)
 						{
-							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH);
+							// Rampa desde el borde de la franja: pared de 62°, no un escalón a plomo.
+							const double Ramp = Saturate((Eff - GuardBandMin) * GuardSlope / GuardH);
+							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH * Ramp);
 							GuardZ[Idx] = FMath::Max(GuardZ[Idx], G);
 						}
 					}
