@@ -8,7 +8,7 @@
  "start_uu": [
   -765.6240588322877,
   8996.312739978657,
-  13.047730116110401
+  -14.866349919032196
  ],
  "end_uu": [
   50763.26083337446,
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 32622,
-   "triangles": 64622,
+   "vertices": 33080,
+   "triangles": 65486,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 32366,
-   "triangles": 64012,
+   "vertices": 33356,
+   "triangles": 65966,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 18180,
-   "triangles": 35768,
+   "vertices": 17752,
+   "triangles": 34908,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14025,
-   "triangles": 27584,
+   "vertices": 14351,
+   "triangles": 28220,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     40000.0,
     0.0
    ],
-   "vertices": 15166,
-   "triangles": 29840,
+   "vertices": 15815,
+   "triangles": 31114,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     50000.0,
     0.0
    ],
-   "vertices": 13808,
-   "triangles": 27132,
+   "vertices": 14138,
+   "triangles": 27780,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 31956,
-   "triangles": 63182,
+   "vertices": 33150,
+   "triangles": 65544,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 36422,
-   "triangles": 71978,
+   "vertices": 36466,
+   "triangles": 72038,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 22252,
-   "triangles": 43840,
+   "vertices": 23379,
+   "triangles": 46060,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 13953,
-   "triangles": 27434,
+   "vertices": 13776,
+   "triangles": 27080,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     40000.0,
     10000.0
    ],
-   "vertices": 16158,
-   "triangles": 31810,
+   "vertices": 16383,
+   "triangles": 32256,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     50000.0,
     10000.0
    ],
-   "vertices": 13476,
-   "triangles": 26480,
+   "vertices": 14350,
+   "triangles": 28206,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 20759,
-   "triangles": 40880,
+   "vertices": 19492,
+   "triangles": 38350,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 25888,
-   "triangles": 50972,
+   "vertices": 25912,
+   "triangles": 51038,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 15507,
-   "triangles": 30476,
+   "vertices": 16052,
+   "triangles": 31564,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 15043,
-   "triangles": 29572,
+   "vertices": 15234,
+   "triangles": 29946,
    "instances": 0
   },
   {
@@ -233,8 +233,8 @@
     40000.0,
     20000.0
    ],
-   "vertices": 16060,
-   "triangles": 31616,
+   "vertices": 18912,
+   "triangles": 37300,
    "instances": 0
   },
   {
@@ -246,8 +246,8 @@
     50000.0,
     20000.0
    ],
-   "vertices": 12973,
-   "triangles": 25470,
+   "vertices": 13300,
+   "triangles": 26116,
    "instances": 0
   },
   {
@@ -259,8 +259,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 31140,
-   "triangles": 61514,
+   "vertices": 31181,
+   "triangles": 61634,
    "instances": 0
   },
   {
@@ -272,9 +272,9 @@
     10000.0,
     30000.0
    ],
-   "vertices": 35154,
-   "triangles": 69470,
-   "instances": 3
+   "vertices": 34322,
+   "triangles": 67830,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r2c3",
@@ -285,9 +285,9 @@
     20000.0,
     30000.0
    ],
-   "vertices": 16321,
-   "triangles": 32134,
-   "instances": 351
+   "vertices": 16148,
+   "triangles": 31784,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r3c3",
@@ -298,9 +298,9 @@
     30000.0,
     30000.0
    ],
-   "vertices": 16593,
-   "triangles": 32690,
-   "instances": 526
+   "vertices": 16591,
+   "triangles": 32684,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r4c3",
@@ -311,9 +311,9 @@
     40000.0,
     30000.0
    ],
-   "vertices": 10412,
-   "triangles": 20406,
-   "instances": 1
+   "vertices": 11994,
+   "triangles": 23534,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r5c3",
@@ -324,8 +324,8 @@
     50000.0,
     30000.0
    ],
-   "vertices": 11769,
-   "triangles": 23108,
+   "vertices": 12092,
+   "triangles": 23746,
    "instances": 0
   },
   {
@@ -337,8 +337,8 @@
     0.0,
     40000.0
    ],
-   "vertices": 22341,
-   "triangles": 44038,
+   "vertices": 21407,
+   "triangles": 42188,
    "instances": 0
   },
   {
@@ -350,9 +350,9 @@
     10000.0,
     40000.0
    ],
-   "vertices": 18640,
-   "triangles": 36768,
-   "instances": 378
+   "vertices": 18586,
+   "triangles": 36666,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r2c4",
@@ -363,9 +363,9 @@
     20000.0,
     40000.0
    ],
-   "vertices": 11475,
-   "triangles": 22498,
-   "instances": 1145
+   "vertices": 11718,
+   "triangles": 22984,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r3c4",
@@ -376,9 +376,9 @@
     30000.0,
     40000.0
    ],
-   "vertices": 11290,
-   "triangles": 22156,
-   "instances": 1040
+   "vertices": 11225,
+   "triangles": 22026,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r4c4",
@@ -389,9 +389,9 @@
     40000.0,
     40000.0
    ],
-   "vertices": 12611,
-   "triangles": 24776,
-   "instances": 494
+   "vertices": 12539,
+   "triangles": 24628,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r5c4",
@@ -402,9 +402,9 @@
     50000.0,
     40000.0
    ],
-   "vertices": 12557,
-   "triangles": 24668,
-   "instances": 12
+   "vertices": 12576,
+   "triangles": 24708,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r0c5",
@@ -415,8 +415,8 @@
     0.0,
     50000.0
    ],
-   "vertices": 22735,
-   "triangles": 44894,
+   "vertices": 22488,
+   "triangles": 44426,
    "instances": 0
   },
   {
@@ -428,9 +428,9 @@
     10000.0,
     50000.0
    ],
-   "vertices": 18626,
-   "triangles": 36704,
-   "instances": 311
+   "vertices": 18404,
+   "triangles": 36278,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r2c5",
@@ -441,9 +441,9 @@
     20000.0,
     50000.0
    ],
-   "vertices": 15912,
-   "triangles": 31308,
-   "instances": 1438
+   "vertices": 15853,
+   "triangles": 31200,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r3c5",
@@ -454,9 +454,9 @@
     30000.0,
     50000.0
    ],
-   "vertices": 16078,
-   "triangles": 31650,
-   "instances": 1393
+   "vertices": 15788,
+   "triangles": 31078,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r4c5",
@@ -467,9 +467,9 @@
     40000.0,
     50000.0
    ],
-   "vertices": 16568,
-   "triangles": 32632,
-   "instances": 461
+   "vertices": 17618,
+   "triangles": 34718,
+   "instances": 0
   },
   {
    "name": "M_Mapa01_r5c5",
@@ -480,9 +480,9 @@
     50000.0,
     50000.0
    ],
-   "vertices": 13958,
-   "triangles": 27426,
-   "instances": 2
+   "vertices": 14084,
+   "triangles": 27676,
+   "instances": 0
   }
  ]
 }

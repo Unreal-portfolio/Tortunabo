@@ -94,8 +94,6 @@ class MapModel:
         self.net_trees = {z: cKDTree(pts) for z, (pts, _) in self.net_samples.items()}
         self.clearings = {z: self._pick_clearings(rng, n) for z, n in self.nets.items() if z != "algae"}
         self.tunnels = self._plan_tunnels(rng)
-        # Cada tunel sube (o baja) por dentro: desnivel en su centro, 0 en las bocas.
-        self.tunnel_climb = [float(rng.choice([-1.0, 1.0]) * rng.uniform(1.5, 3.0)) for _ in self.tunnels]
 
         self.n_small = Fbm2D(rng, 22.0, 2)
         self.n_mid = Fbm2D(rng, 60.0, 3)
@@ -109,11 +107,17 @@ class MapModel:
         self.n_dune_amp = Fbm2D(rng, 90.0, 2)
         self.n_edge = Fbm2D(rng, 45.0, 3)
         self.n_wall3d = ValueNoise3D(rng, 6.5)
-        self.n_tunnel = Fbm2D(rng, 9.0, 2)
         self.dune_angle = float(rng.uniform(0.0, math.pi))
         self.dune_angle_2 = self.dune_angle + float(rng.uniform(0.6, 1.1))
         self.n_dune_mix = Fbm2D(rng, 120.0, 2)
         self.n_pond = Fbm2D(rng, 34.0, 3)
+        # Todo lo anadido despues de la version que Rodrigo dio por buena (2026-09-25) sale de
+        # un generador aparte: la misma semilla sigue dando el mismo mapa.
+        extra = np.random.default_rng(seed + 7)
+        self.tunnel_climb = [float(extra.choice([-1.0, 1.0]) * extra.uniform(1.5, 3.0)) for _ in self.tunnels]
+        self.n_tunnel = Fbm2D(extra, 9.0, 2)
+        self.n_crest = Fbm2D(extra, 11.0, 2)
+        self.n_beach_hills = Fbm2D(extra, 48.0, 3)
 
         # Campos 2D del mapa entero, con una muestra de margen alrededor.
         count = int(round((MAP_MAX_M - MAP_MIN_M) / STEP_XY_M)) + 1
@@ -267,10 +271,11 @@ class MapModel:
         # una cresta seca que sigue la ruta, con algun hueco que se salta.
         # Laguitos en las hondonadas de un relieve de manchas (no en franjas) y dunas encima.
         base = WATER_M - 0.6 + 3.0 * self.n_pond(X, Y) + self._dunes(X, Y, 2.4, 22.0)
-        crest = 1.0 - smooth(1.4, 2.8, d_route)
+        crest_w = 1.3 + 1.0 * self.n_width.unit(X, Y)
+        crest = 1.0 - smooth(crest_w, crest_w + 1.6, d_route + 1.2 * self.n_crest(X, Y))
         gap = 1.0 - smooth(0.5, 0.9, np.abs(np.mod(s_route, MARSH_JUMP_EVERY_M) - MARSH_JUMP_EVERY_M / 2))
         crest = crest * (1.0 - gap * smooth(0.85, 0.95, w["marsh"]))
-        path_top = MARSH_PATH_TOP_M + 0.3 * small
+        path_top = MARSH_PATH_TOP_M + 0.3 * small + 0.35 * self.n_crest(Y, X)
         heights["marsh"] = base * (1.0 - crest) + np.maximum(base, path_top) * crest
         floors["marsh"] = np.full_like(X, MARSH_PATH_TOP_M)
         bands["marsh"] = np.zeros_like(X)
@@ -287,7 +292,8 @@ class MapModel:
 
         # Playa final: arena que baja hasta el mar por el borde norte del mapa.
         u = MAP_MAX_M - X + 18.0 * self.n_edge(X, Y)
-        beach = WATER_M - 2.5 + 5.0 * smooth(4.0, 70.0, u) + self._dunes(X, Y, 1.6, 20.0) * smooth(45.0, 90.0, u)
+        hills = 5.5 * np.clip(self.n_beach_hills(X, Y) + 0.2, 0.0, None) + 0.8 * self._dunes(X, Y, 1.6, 20.0)
+        beach = WATER_M - 2.5 + 5.0 * smooth(4.0, 70.0, u) + hills * smooth(40.0, 95.0, u)
         heights["beach"], floors["beach"] = beach, beach
         bands["beach"] = np.zeros_like(X)
         axes["beach"] = np.zeros_like(X)

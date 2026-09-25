@@ -171,3 +171,11 @@ def test_sin_picos_de_una_celda_en_la_roca(model):
 
 def test_los_tuneles_suben_o_bajan_por_dentro(model):
     assert all(1.0 <= abs(c) <= 3.5 for c in model.tunnel_climb)
+
+
+def test_la_semilla_aprobada_da_el_mismo_mapa(model):
+    """Mapa01 (semilla 20260925) lo dio por bueno Rodrigo el 2026-09-25: lo nuevo no puede
+    consumir numeros de la secuencia original (usa un generador aparte)."""
+    assert round(model.route.length) == 1521
+    assert [(round(a), round(b)) for a, b in model.tunnels] == [(434, 463), (522, 551), (577, 607)]
+    assert round(model.dune_angle, 4) == 0.3311

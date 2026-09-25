@@ -26,13 +26,17 @@ PALETTES = {
               (0.12, 0.10, 0.07)),
     "algae": ((0.20, 0.22, 0.06), (0.12, 0.14, 0.045), (0.19, 0.20, 0.05), (0.07, 0.07, 0.03), (0.11, 0.10, 0.04),
               (0.05, 0.06, 0.025)),
+    # Arena del bosque de algas: amarilla con un tono verdoso (sin plantas), siempre arena.
+    "algae_sand": ((0.56, 0.50, 0.22), (0.48, 0.44, 0.19), (0.54, 0.49, 0.20), (0.38, 0.33, 0.15), (0.47, 0.42, 0.19),
+                   (0.10, 0.09, 0.04)),
     # Arena humeda (zona encharcada): mas oscura y fria, siempre arena.
     "damp": ((0.47, 0.37, 0.21), (0.42, 0.32, 0.18), (0.46, 0.35, 0.19), (0.36, 0.27, 0.15), (0.44, 0.34, 0.20),
              (0.10, 0.08, 0.05)),
 }
 # Siempre playa y arena (2026-09-25): el bosque de algas crece sobre arena; la zona encharcada
 # es arena humeda.
-ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "marsh": "damp", "algae": "beach", "beach": "beach"}
+ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "marsh": "damp", "algae": "algae_sand", "beach": "beach"}
+PLANT_ALGAE = False          # 2026-09-25: sin modelos de alga; la zona se lee por el color de la arena
 
 FOLIAGE_SPACING_M = 2.0
 SMOOTH_ITERATIONS = 6                   # Taubin (encoge poco): quita el escalonado del marching cubes
@@ -134,7 +138,10 @@ def standable_cells(D: np.ndarray, clearance_m: float = 2.0) -> np.ndarray:
 
 
 def foliage_instances(model: MapModel, col: int, row: int, fields: Fields, top: np.ndarray) -> np.ndarray:
-    """Algas sobre una rejilla global de FOLIAGE_SPACING_M con desplazamiento por celda."""
+    """Algas sobre una rejilla global de FOLIAGE_SPACING_M con desplazamiento por celda (ninguna
+    si PLANT_ALGAE es False)."""
+    if not PLANT_ALGAE:
+        return np.zeros((0, 11), dtype=np.float32)
     x0, x1, y0, y1 = cell_bounds(col, row)
     ix = np.arange(int(np.floor(x0 / FOLIAGE_SPACING_M)), int(np.ceil(x1 / FOLIAGE_SPACING_M)))
     iy = np.arange(int(np.floor(y0 / FOLIAGE_SPACING_M)), int(np.ceil(y1 / FOLIAGE_SPACING_M)))

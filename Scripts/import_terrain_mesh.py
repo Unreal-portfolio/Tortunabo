@@ -8,11 +8,18 @@ Se ejecuta DENTRO del editor de Unreal (headless):
 Lee Scripts/terrain_volumes/<nombre>/manifest.json (lo escribe gen_terrain_volume.py) y:
     - crea un DA_<trozo> (UTN_TerrainMeshAsset) por trozo en /Game/Terrain/Volumes/<nombre>,
       cargado desde su binario;
-    - crea o rehace el nivel /Game/Maps/Run/LVL_<nombre>: un ATN_TerrainMeshTile por trozo en su
-      sitio, lamina de agua, sol, cielo, PlayerStart en el inicio y el GameMode de la demo.
+    - crea el nivel /Game/Maps/Run/LVL_<nombre>: un ATN_TerrainMeshTile por trozo en su sitio,
+      lamina de agua, sol, cielo, PlayerStart en el inicio y el GameMode de la demo.
+
+El mapa es FIJO y se disena encima (obstaculos, puzles, retoques): los trozos se guardan para
+editarlos. Por eso, si el mapa ya existe:
+    - sin TN_REGENERATE=1 no se toca nada y el script falla avisando;
+    - con TN_REGENERATE=1 solo se recargan los trozos (DA_* en sitio: mismas referencias) y se
+      crean los actores que falten. Nada de lo colocado a mano en el nivel se borra.
 
 Variables de entorno (opcionales):
     TN_VOLUME_DIR   carpeta con manifest.json (por defecto Scripts/terrain_volumes/Mapa01)
+    TN_REGENERATE   1 = sobrescribir la malla de un mapa ya importado
 """
 
 import json
@@ -46,15 +53,13 @@ def load_or_none(path):
 
 
 def build_assets(volume_dir, manifest, root):
-    if asset_lib.does_directory_exist(root):
-        if not asset_lib.delete_directory(root):
-            raise RuntimeError(f"No se pudo borrar {root}: cierra el nivel que usa sus trozos")
+    """Crea o recarga EN SITIO cada DA_<trozo>: los actores del nivel siguen apuntando a el."""
     assets = {}
     factory = unreal.DataAssetFactory()
     factory.set_editor_property("data_asset_class", unreal.TN_TerrainMeshAsset)
     for cell in manifest["cells"]:
         name = f"DA_{cell['name']}"
-        asset = asset_tools.create_asset(name, root, unreal.TN_TerrainMeshAsset, factory)
+        asset = load_or_none(f"{root}/{name}") or asset_tools.create_asset(name, root, unreal.TN_TerrainMeshAsset, factory)
         path = os.path.join(volume_dir, cell["file"]).replace("\\", "/")
         if not asset.load_from_file(path):
             raise RuntimeError(f"{name}: LoadFromFile rechazo {path}")
@@ -69,26 +74,35 @@ def spawn(actor_class, label, location, rotation=unreal.Rotator(0.0, 0.0, 0.0)):
     return actor
 
 
+def existing_labels():
+    return {a.get_actor_label(): a for a in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()}
+
+
 def build_level(manifest, assets, level_path):
     level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
-    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     if asset_lib.does_asset_exist(level_path):
-        level_subsystem.load_level(level_path)
-        for actor in actor_subsystem.get_all_level_actors():
-            actor_subsystem.destroy_actor(actor)
+        level_subsystem.load_level(level_path)       # se conserva todo lo que haya
     else:
         level_subsystem.new_level(level_path)
+    have = existing_labels()
 
     terrain_material = load_or_none(TERRAIN_MATERIAL_PATH)
     foliage_material = load_or_none(FOLIAGE_MATERIAL_PATH)
     tile_class = unreal.load_class(None, TILE_CLASS_PATH)
     for cell in manifest["cells"]:
-        x, y = cell["center_uu"]
-        tile = spawn(tile_class, f"Terrain_{cell['name']}", unreal.Vector(x, y, 0.0))
-        tile.set_editor_property("terrain_material", terrain_material)
-        tile.set_editor_property("foliage_material", foliage_material)
+        label = f"Terrain_{cell['name']}"
+        tile = have.get(label)
+        if tile is None:
+            x, y = cell["center_uu"]
+            tile = spawn(tile_class, label, unreal.Vector(x, y, 0.0))
+            tile.set_folder_path("Terrain")
+            tile.set_editor_property("terrain_material", terrain_material)
+            tile.set_editor_property("foliage_material", foliage_material)
         tile.set_editor_property("mesh_asset", assets[cell["name"]])
-        tile.set_folder_path("Terrain")
+
+    if "Water" in have:
+        level_subsystem.save_current_level()
+        return
 
     # Lamina de agua: el plano del motor mide PLANE_SIZE_UU; cubre el mapa entero.
     extent = manifest["grid"] * manifest["cell_uu"]
@@ -131,8 +145,12 @@ def main():
     with open(f"{volume_dir}/manifest.json", encoding="utf-8") as handle:
         manifest = json.load(handle)
     name = manifest["name"]
+    level_path = f"/Game/Maps/Run/LVL_{name}"
+    if asset_lib.does_asset_exist(level_path) and os.environ.get("TN_REGENERATE") != "1":
+        raise RuntimeError(f"{level_path} ya existe y es un mapa fijo (se disena encima). "
+                           "Para recargar su malla, TN_REGENERATE=1 (conserva lo colocado a mano).")
     assets = build_assets(volume_dir, manifest, f"/Game/Terrain/Volumes/{name}")
-    build_level(manifest, assets, f"/Game/Maps/Run/LVL_{name}")
+    build_level(manifest, assets, level_path)
     unreal.log(f"[TerrainMesh] {len(assets)} trozos importados; nivel /Game/Maps/Run/LVL_{name} guardado")
 
 
