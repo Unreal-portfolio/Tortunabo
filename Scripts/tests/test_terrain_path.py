@@ -136,3 +136,50 @@ def test_los_cruces_son_francos_y_lejos_de_los_extremos(graph):
         loop = up if up.parent is not None and up.parent == lo.id else lo
         s = c.s_upper if loop is up else c.s_lower
         assert s >= 75.0 and loop.length - s >= 75.0
+
+
+from terrain_path.layout import WATER_M  # noqa: E402
+from terrain_path.profile import build_plan  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def plan():
+    return build_plan(np.random.default_rng(60001), C01_STYLE)
+
+
+def test_pendientes_suaves(plan):
+    for line in plan.graph.lines:
+        z = plan.profiles[line.id].z
+        grade = np.abs(np.diff(z)) / np.maximum(np.diff(line.arc), 1e-9)
+        assert grade.max() <= C01_STYLE.steep_grade + 0.02, f"camino {line.id}: pendiente {grade.max():.2f}"
+
+
+def test_los_lazos_empalman_a_la_cota_de_su_padre(plan):
+    for loop in plan.graph.loops():
+        parent, pp = plan.graph.lines[loop.parent], plan.profiles[loop.parent]
+        z = plan.profiles[loop.id].z
+        assert abs(z[0] - np.interp(loop.s_out, parent.arc, pp.z)) < 0.05
+        assert abs(z[-1] - np.interp(loop.s_back, parent.arc, pp.z)) < 0.05
+
+
+def test_los_cruces_dejan_hueco_de_tunel(plan):
+    for c in plan.crossings:
+        up, lo = plan.graph.lines[c.upper], plan.graph.lines[c.lower]
+        z_up = np.interp(c.s_upper, up.arc, plan.profiles[up.id].z)
+        z_lo = np.interp(c.s_lower, lo.arc, plan.profiles[lo.id].z)
+        assert z_up - z_lo >= C01_STYLE.cross_clearance_m - 0.1
+        assert z_lo >= WATER_M + 0.8
+        tunnel = plan.profiles[lo.id].tunnel
+        assert tunnel[int(np.searchsorted(lo.arc, c.s_lower))]
+
+
+def test_biomas_en_orden_y_final_en_la_playa(plan):
+    b = plan.profiles[0].biome
+    assert list(np.unique(b)) == [0, 1, 2, 3] and np.all(np.diff(b) >= 0)
+    assert plan.profiles[0].z[-1] <= WATER_M + 0.6
+
+
+def test_hay_tuneles_de_cerro_en_el_acantilado(plan):
+    assert len(plan.hill_tunnels) >= 1
+    for line_id, s0, s1 in plan.hill_tunnels:
+        assert line_id == 0 and 25.0 <= s1 - s0 <= 45.0
