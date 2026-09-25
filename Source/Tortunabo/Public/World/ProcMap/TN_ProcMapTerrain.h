@@ -212,7 +212,7 @@ namespace TNProcMap
 		{
 			const FVector2D P = Origin + FVector2D(ix * Spacing, iy * Spacing);
 			const int32 Idx = iy * NX + ix;
-			return Evaluate(P, PathDist[Idx], PathSeg[Idx], PathT[Idx], GuardZ[Idx], DeckTop[Idx], OutMask);
+			return Evaluate(P, PathDist[Idx], PathSeg[Idx], PathT[Idx], GuardZ[Idx], OtherEff[Idx], DeckTop[Idx], OutMask);
 		}
 
 	private:
@@ -224,6 +224,8 @@ namespace TNProcMap
 		// ── Campo del camino ────────────────────────────────────────────────
 		TArray<FPathSample> Samples;
 		TArray<int32> NextOf;
+		/** Cauce (polilínea) de cada muestra: 0 el principal, luego las ramas. */
+		TArray<int32> SamplePoly;
 		TArray<uint8> Carves;
 		/** Cuánto va el camino por agua en cada muestra (0 tierra, 1 laguna): sin taludes y con orilla suave. */
 		TArray<float> SampleWet;
@@ -242,6 +244,12 @@ namespace TNProcMap
 		static constexpr double GuardBandMax = 3500.0;
 		/** Pendiente (tan) de la guarda: sube en rampa de 62° (infranqueable) en vez de en escalón. */
 		static constexpr double GuardSlope = 1.88;
+		/**
+		 * Distancia al borde del otro cauce más cercano (otro camino, o el mismo tras una curva cerrada);
+		 * 1e9 si no hay ninguno a menos de OtherReach. Entre dos cauces próximos la pared es más empinada.
+		 */
+		TArray<float> OtherEff;
+		static constexpr double OtherReach = 1600.0;
 
 		// ── Distancia gruesa a los cauces (para el relieve lejano) ──────────
 		double CorrCell = 1000.0;
@@ -277,11 +285,13 @@ namespace TNProcMap
 		{
 			Samples.Reset();
 			NextOf.Reset();
+			SamplePoly.Reset();
 			Carves.Reset();
 			SampleWet.Reset();
 			SampleFloor.Reset();
 			SampleProgress.Reset();
 			// Progreso: S del principal; en las ramas, interpolado entre su horquilla y su unión.
+			int32 Poly = 0;
 			auto AddPolyline = [&](const TArray<FPathSample>& In, double S0, double S1)
 			{
 				const int32 Base = Samples.Num();
@@ -291,6 +301,7 @@ namespace TNProcMap
 					SampleProgress.Add(static_cast<float>(S0 < 0.0 ? In[i].S : LerpD(S0, S1, In[i].S / Len)));
 					Samples.Add(In[i]);
 					NextOf.Add(i + 1 < In.Num() ? Base + i + 1 : INDEX_NONE);
+					SamplePoly.Add(Poly);
 					// Todo lo que pisa suelo es cauce, también la cima de las torres (aterrizaje del géiser).
 					// Isletas y pasarelas van sobre un canal de agua: su cauce es agua bajo su cota.
 					const bool bOverWater = (In[i].Flags & (PathFlags::Islet | PathFlags::Boardwalk)) != 0;
@@ -304,6 +315,7 @@ namespace TNProcMap
 					// Solo es camino "de agua" el que va a ras de agua; una torre en un manglar lleva sus taludes.
 					SampleWet.Add(static_cast<float>(SmoothStep(0.49, 0.51, Wet) * SmoothStep(400.0, 150.0, In[i].Z)));
 				}
+				++Poly;
 			};
 			AddPolyline(L->Main, -1.0, -1.0);
 			for (const FBranch& B : L->Branches) { AddPolyline(B.Samples, L->Main[B.ForkSample].S, L->Main[B.RejoinSample].S); }
@@ -387,6 +399,60 @@ namespace TNProcMap
 							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH * Ramp);
 							GuardZ[Idx] = FMath::Max(GuardZ[Idx], G);
 						}
+					}
+				}
+			}
+			StampOtherPaths();
+		}
+
+		/**
+		 * OtherEff: por vértice, distancia al borde del cauce más cercano que no sea el suyo. Cuenta el punto
+		 * de cada cauce más cercano al vértice (mínimo local a lo largo del cauce); del propio cauce, solo si
+		 * el camino se aleja y vuelve (curva cerrada), no los tramos contiguos.
+		 */
+		void StampOtherPaths()
+		{
+			OtherEff.Init(1e9f, NX * NY);
+			for (int32 i = 0; i < Samples.Num(); ++i)
+			{
+				const int32 j = NextOf[i];
+				if (j == INDEX_NONE || !Carves[i] || !Carves[j]) { continue; }
+				const FVector2D A = Samples[i].P;
+				const FVector2D B = Samples[j].P;
+				const int32 h = i > 0 && NextOf[i - 1] == i ? i - 1 : INDEX_NONE;
+				const int32 k = NextOf[j];
+				const double Reach = FMath::Max(Samples[i].Width, Samples[j].Width) * 0.5 + OtherReach;
+				const int32 X0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.X, B.X) - Reach - Origin.X) / Spacing));
+				const int32 X1 = FMath::Min(NX - 1, FMath::CeilToInt((FMath::Max(A.X, B.X) + Reach - Origin.X) / Spacing));
+				const int32 Y0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.Y, B.Y) - Reach - Origin.Y) / Spacing));
+				const int32 Y1 = FMath::Min(NY - 1, FMath::CeilToInt((FMath::Max(A.Y, B.Y) + Reach - Origin.Y) / Spacing));
+				for (int32 y = Y0; y <= Y1; ++y)
+				{
+					for (int32 x = X0; x <= X1; ++x)
+					{
+						const int32 Idx = y * NX + x;
+						const int32 o = PathSeg[Idx];
+						if (o == INDEX_NONE || o == i) { continue; }
+						const FVector2D P = Origin + FVector2D(x * Spacing, y * Spacing);
+						double T = 0.0;
+						const double D = DistPointSegment(P, A, B, T);
+						const double Eff = D - LerpD(Samples[i].Width, Samples[j].Width, T) * 0.5;
+						if (D > Reach || Eff >= OtherEff[Idx]) { continue; }
+						// Un extremo solo cuenta si ningún tramo contiguo queda más cerca.
+						if (T <= 0.0 && h != INDEX_NONE && Carves[h] && FVector2D::DotProduct(P - A, A - Samples[h].P) < 0.0) { continue; }
+						if (T >= 1.0 && k != INDEX_NONE && Carves[k] && FVector2D::DotProduct(P - B, Samples[k].P - B) > 0.0) { continue; }
+						if (SamplePoly[o] == SamplePoly[i])
+						{
+							// Mismo cauce: el recorrido entre los dos puntos ha de ser bastante más largo que su
+							// distancia (el camino se alejó y ha vuelto); si no, es el mismo tramo.
+							const int32 oj = NextOf[o];
+							const double To = PathT[Idx];
+							const FVector2D Qo = Samples[o].P + (Samples[oj].P - Samples[o].P) * To;
+							const FVector2D Qs = A + (B - A) * T;
+							const double Arc = FMath::Abs(LerpD(Samples[i].S, Samples[j].S, T) - LerpD(Samples[o].S, Samples[oj].S, To));
+							if (Arc < 1.5 * FVector2D::Distance(Qo, Qs) + 500.0) { continue; }
+						}
+						OtherEff[Idx] = static_cast<float>(Eff);
 					}
 				}
 			}
@@ -671,7 +737,7 @@ namespace TNProcMap
 			OutWet = WetSum / Total;
 		}
 
-		double Evaluate(const FVector2D& P, float InPathDist, int32 InSeg, float InT, float InGuard, float InDeckTop, uint8& OutMask) const
+		double Evaluate(const FVector2D& P, float InPathDist, int32 InSeg, float InT, float InGuard, float InOtherEff, float InDeckTop, uint8& OutMask) const
 		{
 			OutMask = 0;
 			FBiomeTerrain Bt;
@@ -789,6 +855,13 @@ namespace TNProcMap
 				const double Toe = (bLane || bTunnel || (Flags & (PathFlags::Slide | PathFlags::TowerTop)) != 0) ? 150.0 : Bt.Shoulder;
 				const double Run = bTunnel ? 60.0 : BankH / FMath::Tan(FMath::DegreesToRadians(Bt.BankAngle));
 				const double Rim = PathZ + BankH;
+				// La guarda de los cauces cercanos sube en rampa de 62° desde el borde de este: si no, los
+				// tramos vecinos (o el nivel alto de un tobogán) la levantan a plomo al pie del talud.
+				// Entre dos cauces próximos (horquillas, curvas cerradas) sube más empinada, hasta el talud
+				// mínimo en la cresta que los separa: así la cresta no nace a ras de suelo como una rampa.
+				const double Crest = 0.5 * (Beyond + static_cast<double>(InOtherEff));
+				const double GuardRise = FMath::Max(GuardSlope, Bt.BankMin / FMath::Max(1.0, Crest - GuardBandMin));
+				const double Guard = FMath::Min(static_cast<double>(InGuard), PathZ + FMath::Max(0.0, Beyond - GuardBandMin) * GuardRise);
 
 				if (Beyond <= 0.0)
 				{
@@ -805,7 +878,7 @@ namespace TNProcMap
 				{
 					const double T = (Beyond - Toe) / FMath::Max(1.0, Run);
 					const double Base = PathZ + FMath::Min(25.0, BankH);
-					H = FMath::Max(LerpD(Base, Rim, T * T * (3.0 - 2.0 * T)), static_cast<double>(InGuard));
+					H = FMath::Max(LerpD(Base, Rim, T * T * (3.0 - 2.0 * T)), Guard);
 				}
 				else
 				{
@@ -825,7 +898,7 @@ namespace TNProcMap
 						const double Plateau = RimPlateau * (1.0 - PathWet);
 						H = FMath::Max(Outer, Rim + 120.0 * NMed * (1.0 - PathWet) - FMath::Max(0.0, X - Plateau) * Flank);
 					}
-					H = FMath::Max(H, static_cast<double>(InGuard));
+					H = FMath::Max(H, Guard);
 				}
 			}
 
