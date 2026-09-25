@@ -1,0 +1,184 @@
+# Mapa procedural por módulos (World/ProcMap)
+
+Sistema nuevo de generación de mapas: una rejilla de **módulos irregulares de 400 m**
+por la que serpentea un camino largo y natural, con biomas por regiones, cruces
+colosales (puentes y cuevas que pasan por encima o por debajo de un tramo ya
+recorrido), ramas que se vuelven a unir, agua con fauna peligrosa y tres modos de
+juego (Coop, Carrera y 2vs2). **Convive** con el sistema de chunks
+(`ATN_ChunkManager` + `LVL_Run`), que queda intacto como modo *Clásico*.
+
+---
+
+## 1. Cómo probarlo
+
+1. Compila el proyecto (se añadieron los módulos `ProceduralMeshComponent` y `PCG`
+   y ambos plugins en `Tortunabo.uproject`).
+2. En el editor, consola Python:
+   ```python
+   exec(open(r"<repo>/Scripts/build_procmap_assets.py", encoding="utf-8").read())
+   ```
+   Crea `/Game/ProcMap` (materiales, `DA_ProcMapSettings`, 8 `DA_Biome_*`,
+   `BP_ProcMapGameMode`), el nivel `/Game/Maps/Run/LVL_ProcMap` y coloca en
+   `LVL_HQ` dos selectores (modo y dificultad) junto a la zona de listos.
+   Es idempotente: no pisa assets que ya existan.
+3. Desde el lobby: interactúa con los selectores (Clásico → Coop → Carrera → 2vs2;
+   Fácil → Normal → Difícil). *Clásico* viaja a `LVL_Run` como siempre; el resto a
+   `LVL_ProcMap`. El modo por defecto es Clásico para no cambiar nada hasta que se elija.
+4. Sin lobby: abre `LVL_ProcMap` en PIE. Opciones de URL para iterar:
+   `open LVL_ProcMap?ProcMode=Race?ProcDifficulty=Hard?ProcSeed=42`
+   (`ProcMode` = `Coop` | `Race` | `2v2`). También `FixedSeed` en el GameMode.
+5. Previsualizar sin jugar: selecciona `ProcMapGenerator` en el nivel y pulsa
+   **GenerateInEditor** (semilla, modo y dificultad en *ProcMap|Editor*). Con
+   `bDebugDraw` dibuja camino, ramas y módulos.
+
+Cada generación deja en el Output Log una línea `[ProcMap] Mapa listo · semilla …`
+con módulos en ruta, cruces, ramas, **longitud del camino y minutos estimados**
+a 5,5 m/s, y los tiempos de cada fase.
+
+---
+
+## 2. Arquitectura
+
+Dos capas, como el resto del proyecto (`TNGridLogic`, `TNChunkLogic`):
+
+**Lógica pura** (`namespace TNProcMap`, solo cabeceras, sin UObjects, determinista):
+
+| Cabecera | Qué hace |
+|---|---|
+| `TN_ProcMapMath.h` | RNG SplitMix64 con `Fork` por fase, ruido de gradiente, fBm, ridged, utilidades 2D. |
+| `TN_ProcMapLayout.h` | Tipos del resultado (`FLayout`): módulos, ruta, portales, cruces, camino muestreado, ramas, features. |
+| `TN_ProcMapModules.h` | Módulos irregulares **siempre conexos**: semillas con jitter + Dijkstra multi-fuente sobre coste con ruido, limpieza de conectividad y transformadas de distancia. |
+| `TN_ProcMapRoute.h` | Ruta por los módulos: DFS aleatorio con Warnsdorff y poda por alcanzabilidad; reserva los pasos de los cruces colosales (A→B→C sobre un módulo ya visitado). |
+| `TN_ProcMapPath.h` | Portales en las fronteras (PCA), "caminante" con meandros senoidales dentro de cada módulo, suavizado Chaikin, anchos variables 4–35 m, perfil de alturas con límite de pendiente y cortes en géiser/tobogán, ramas y carriles. |
+| `TN_ProcMapFeatures.h` | Biomas por regiones (tipo Minecraft), huecos saltables, isletas y pasarelas, pilas de huevos, puzles 2vs2, río opcional, decoración y reparto de peligros. |
+| `TN_ProcMapTerrain.h` | Altura por vértice: parámetros mezclados por bioma con *domain warp*, pasillo del camino con arcén, torres/mesas/túneles de los cruces, muros del borde, costa y mar abierto al norte. |
+| `TN_ProcMapGenerate.h` | `GenerateLayout(params)`: orquesta todo, valida y reintenta. |
+
+Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
+`ModulesConnected`, `Determinism`, `Terrain`) en `Private/Tests/TN_ProcMapDecisionsTest.cpp`.
+
+**Capa UE** (`World/ProcMap`, `Game`, `Lobby`, `Player`):
+
+| Clase | Papel |
+|---|---|
+| `ATN_ProcMapGenerator` | Traduce el layout a mundo: terreno en tiles de `UProceduralMeshComponent` con colisión y color de vértice, agua (plano + `ATN_ProcWaterVolume` nadable), estructuras colosales, vegetación HISM por bioma, grafo PCG opcional por bioma y todos los actores de gameplay. |
+| `UTN_ProcMapSettings` / `UTN_ProcBiomeDataAsset` | Slots de datos: perfiles por modo × dificultad, materiales, clases, y por bioma colores, capas de vegetación, peligros y criatura acuática. Sin assets, todo sale en greybox. |
+| `ATN_ProcGeyser`, `ATN_ProcSlideZone`, `ATN_ProcKillVolume`, `ATN_ProcFinishVolume` | Conexiones especiales (géiser que sube, cascada-tobogán que baja, un solo sentido y automáticas), caídas mortales y meta. |
+| `ATN_ProcWaterVolume`, `ATN_ProcWaterCurrent`, `ATN_ProcWhirlpool`, `ATN_ProcWaterPredator`, `ATN_ProcWaterBouncer` | Agua nadable y sus peligros: corrientes, remolinos, depredador (tiburón/morena) y criaturas con comportamiento de medusa distintas por bioma. |
+| `ATN_ProcEggNest` | Pilas de huevos de reaparición en los cruces entre módulos (densidad según dificultad). |
+| `ATN_ProcThrowWall`, `ATN_ProcSabotageGate`, `ATN_ProcSwitch` | Puzles del 2vs2: muro que hay que superar lanzando al compañero (o bajando la rampa con el interruptor) y compuertas de sabotaje para la otra pareja. |
+| `ATN_PathStorm` | Tormenta del Coop que avanza **por el camino** (progreso en cm), no en línea recta. |
+| `ATN_ProcMapGameMode` / `ATN_ProcMapGameState` | Rondas, modos, reaparición en huevos, tormenta, espera a que todos tengan el mapa. |
+| `ATN_ProcModeSelector` | Interactuable del lobby para elegir modo y dificultad. |
+| `UTN_CarryComponent` | Coger y lanzar tortugas (issue #6, fase 2). |
+
+---
+
+## 3. Qué se genera
+
+- **Rejilla** de `GridSize × GridSize` módulos de 400 m, de forma irregular y siempre
+  conexos. El camino recorre `Coverage` de ellos (por defecto ~78 %: 28 de 36 en 6×6).
+  Los que quedan fuera se rellenan según `EmptyModuleMode`: *Elevated* (mesetas
+  inaccesibles), *BranchesAndScenery* (ramas y paisaje), *Explorable* (terreno
+  transitable sin objetivo) o *Mixed*.
+- **Camino principal** largo y natural, con ancho variable 4–35 m y estrechamientos.
+  El terreno ondula sin tendencia general; los cambios grandes de altura solo
+  ocurren al cruzar de módulo, mediante **géiser** (sube) o **cascada-tobogán** (baja).
+  Los huecos del camino principal miden 1,3–3,9 m (salto corriendo o con dive).
+- **Cruces colosales** tipo Mario Kart: puentes y cuevas gigantes que pasan por
+  encima o por debajo de un módulo ya recorrido. Se llega a ellos por géiser/tobogán
+  y caerse de un puente colosal es mortal. Los puentes dentro de un mismo módulo
+  son normales.
+- **Ramas** que se separan y vuelven a unirse en 1–3 módulos (arriesgadas o
+  panorámicas); en 2vs2, **carriles** paralelos con puzles de lanzamiento y sabotaje.
+- **Biomas por regiones** de varios módulos contiguos, al azar y con transición
+  natural: selva, playa, desierto, volcánico, agua (isletas), acantilados rocosos,
+  manglar y zona humana. El último módulo es siempre playa con mar abierto.
+- **Borde** del mapa con muros altos irregulares que llevan el contenido del bioma.
+- **Río** opcional (`bRiver`).
+
+---
+
+## 4. Modos de juego
+
+| | Coop | Carrera | 2vs2 |
+|---|---|---|---|
+| Jugadores | 1–4 | 1–4 | exactamente 4 (si no, se juega Carrera) |
+| Ronda | todos llegan a la meta; tormenta por el camino | el primero en la meta gana la ronda | gana la pareja cuyos **dos** miembros llegan antes |
+| Partida | `CoopRounds` (por defecto 1 = la partida) | primero en `WinsToWinMatch` (3) | victorias por jugador, primero en 3; parejas rotan AB\|CD → AC\|BD → AD\|BC |
+| Mapa | largo (3×3 / 6×6 / 8×8) | corto (2×2 / 3×3 / 4×4) | corto con carriles |
+
+- **Reaparición**: morir no elimina mientras haya una pila de huevos alcanzada
+  (Coop: la más lejana del equipo; Carrera/2vs2: la del propio jugador) que quede
+  por delante de la tormenta. Sin pila válida, muerte normal con rescate de compañero.
+- **Rondas**: cada ronda genera un mapa nuevo (`bRegenerateEachRound`) y no arranca
+  hasta que todos los clientes avisan de que lo tienen construido (o vence
+  `MapReadyTimeoutSeconds`). Entre rondas el flujo pasa a *Countdown* con la cuenta
+  atrás en `CountdownValue`; el resultado queda en `ATN_ProcMapGameState::RoundResultText`
+  (con el delegate `OnRoundInfoChanged`) para el HUD, que aún no tiene widget propio.
+- Carrera y 2vs2 tienen límite por ronda (`CompetitiveRoundTimeLimitSeconds`, 15 min):
+  al agotarse gana el más adelantado por el camino.
+- La tabla final de Carrera/2vs2 reutiliza el widget de resultados: puesto por
+  rondas ganadas, con las victorias en la columna de puntos.
+
+---
+
+## 5. Personaje
+
+- **Nado** básico: `SwimSpeed` 625 cm/s (entre andar y esprintar), flotabilidad 1,08.
+- **Coger y lanzar** (`UTN_CarryComponent`): solo se coge a una tortuga metida en
+  su caparazón o aturdida (a cualquiera, también rivales), con *Interactuar* cuando
+  no hay otro interactuable delante. *Interactuar* lanza hacia donde mira la cámara;
+  *Soltar objeto* la deja delante. Si la llevada intenta moverse 2 s seguidos se
+  libera; mientras forcejea al portador le tiembla la cámara y su lanzamiento pierde
+  fuerza. En el aire la lanzada no puede salir del caparazón: al tocar suelo rebota
+  en vertical, se estira durante el rebote y aterriza de pie.
+- **Caídas**: más de 5 m de caída libre → se mete sola en el caparazón; más de 35 m →
+  se rompe (muere). Géiseres, toboganes y el agua no cuentan.
+
+---
+
+## 6. Red
+
+Solo se replica `FTNProcMapNetConfig` (semilla, modo, dificultad y número de
+generación). Cada máquina genera el mismo mapa en local; los actores que afectan
+al movimiento (géiser, tobogán, agua, corrientes, remolinos, zonas de muerte) se
+crean en todas las máquinas para que la predicción del cliente cuadre, y los que
+tienen estado (enemigos, huevos, puzles, meta, PlayerStarts) solo en el servidor
+y se replican. Mientras un cliente no tiene su mapa, su pawn queda congelado; al
+terminar avisa con `AMP_GamePlayerController::ServerReportProcMapReady`.
+
+---
+
+## 7. Parámetros por defecto (`TN_MakeDefaultProcProfile`)
+
+Editables en `DA_ProcMapSettings → Profiles` (el script los rellena; *FillDefaultProfiles*
+los restaura).
+
+| Modo | Rejilla F/N/D | Cobertura | Cruces F/N/D | Ramas F/N/D | Carriles | Tormenta cm/s F/N/D (gracia s) |
+|---|---|---|---|---|---|---|
+| Coop | 3 / 6 / 8 | 0,78 | 1 / 2 / 4 | 2 / 3 / 5 | 0 | 300 / 360 / 410 (90 / 60 / 45) |
+| Carrera | 2 / 3 / 4 | 0,90 | 0 / 1 / 1 | 2 / 3 / 4 | 0 | — |
+| 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 1 / 1 / 2 | 1 / 2 / 3 | — |
+
+Comunes por dificultad (F/N/D): densidad de peligros 0,7 / 1 / 1,4; huecos por km
+2 / 3 / 4,5; una pila de huevos cada 1 / 2 / 3 cruces de módulo.
+
+> **Duración**: con 400 m por módulo, el Coop 6×6 por defecto sale en torno a
+> 35–40 min a 5,5 m/s, por encima de los 10–20 min objetivo. Se dejó así a
+> propósito para probar; para acercarse al objetivo basta con bajar `GridSize` a 5,
+> `Coverage` o `Sinuosity` en el perfil. El log de cada mapa da los minutos estimados.
+
+---
+
+## 8. Límites conocidos
+
+- **Nanite** no aplica a mallas generadas en runtime (`UProceduralMeshComponent`);
+  sí a las mallas de vegetación que se asignen en los biomas.
+- El **PCG** es un gancho: si un bioma tiene `PCGGraph`, se ejecuta sobre el mapa
+  generado. No hay grafos incluidos.
+- Todo es **greybox** (formas básicas teñidas y materiales planos) hasta que se
+  asignen mallas y materiales en los DataAssets.
+- La lógica pura está verificada fuera del motor; la capa UE no se ha podido
+  compilar en el entorno donde se escribió, así que la primera compilación puede
+  pedir algún ajuste menor.
