@@ -285,3 +285,35 @@ def test_el_rio_tiene_agua_honda_y_orilla_seca(model):
     w = float(np.interp(s, main.arc, prof.half_width))
     h = _cross_section(model, 0, s, np.linspace(-0.9 * w, 0.9 * w, 19))
     assert h.min() < WATER_M - 0.5 and h.max() > WATER_M + 0.3
+
+
+from terrain_vol.mesh import standable_cells, z_levels  # noqa: E402
+
+
+def _column(model, p):
+    """Cotas pisables de la columna en p, con la densidad 3D del modelo."""
+    i, j = int(round(p[0] - model.axis[0])), int(round(p[1] - model.axis[0]))
+    f = model.grid.window(i - 1, i + 2, j - 1, j + 2)
+    X, Y = np.meshgrid(model.axis[i - 1:i + 2], model.axis[j - 1:j + 2], indexing="ij")
+    D = model.density(X, Y, z_levels(), f)
+    return z_levels()[np.nonzero(standable_cells(D)[1, 1])[0]]
+
+
+def test_los_cruces_tienen_techo(model):
+    assert model.plan.crossings
+    for c in model.plan.crossings:
+        levels = _column(model, c.point)
+        lo = np.interp(c.s_lower, model.plan.graph.lines[c.lower].arc, model.plan.profiles[c.lower].z)
+        hi = np.interp(c.s_upper, model.plan.graph.lines[c.upper].arc, model.plan.profiles[c.upper].z)
+        assert np.any(np.abs(levels - lo) < 0.8), f"sin suelo de tunel en {c.point}: {levels}"
+        assert np.any(np.abs(levels - hi) < 0.8), f"sin tablero en {c.point}: {levels}"
+
+
+def test_los_tuneles_de_cerro_tienen_techo_y_suelo(model):
+    main = model.plan.graph.main
+    assert model.plan.hill_tunnels
+    for _, s0, s1 in model.plan.hill_tunnels:
+        s = 0.5 * (s0 + s1)
+        levels = _column(model, main.point_at(s))
+        z = np.interp(s, main.arc, model.plan.profiles[0].z)
+        assert np.any(np.abs(levels - z) < 0.8) and levels.max() > z + 5.5

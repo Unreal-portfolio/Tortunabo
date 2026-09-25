@@ -69,6 +69,29 @@ class PathModel:
         self.S = {k: np.concatenate(v) for k, v in cols.items()}
         self.open_idx = np.nonzero(self.S["open"])[0]
         self.open_tree = cKDTree(self.S["p"][self.open_idx])
+        # Tramos cubiertos (camino de abajo de un cruce, tuneles de cerro), con 2,5 m de boca.
+        self.tunnels = []
+        for line in self.plan.graph.lines:
+            prof = self.plan.profiles[line.id]
+            if not prof.tunnel.any():
+                continue
+            pts, s = resample(line.points, SAMPLE_STEP_M)
+            k = np.clip(np.searchsorted(line.arc, s), 0, len(line.arc) - 1)
+            covered = prof.tunnel[k]
+            for run in np.split(np.arange(len(s)), np.nonzero(np.diff(covered.astype(int)))[0] + 1):
+                if not covered[run[0]]:
+                    continue
+                sel = np.arange(max(run[0] - 5, 0), min(run[-1] + 5, len(s) - 1) + 1)
+                t = (s[sel] - s[run[0]]) / max(s[run[-1]] - s[run[0]], 1e-9)
+                self.tunnels.append({"pts": pts[sel], "floor": np.interp(s[sel], line.arc, prof.z),
+                                     "half": np.clip(np.interp(s[sel], line.arc, prof.half_width), 3.0, 4.5),
+                                     "t": t, "covered": covered[sel].astype(float)})
+        if self.tunnels:
+            self.tunnel_tree = cKDTree(np.vstack([tu["pts"] for tu in self.tunnels]))
+            self.tunnel_cat = {k: np.concatenate([tu[k] for tu in self.tunnels])
+                               for k in ("floor", "half", "t", "covered")}
+        else:
+            self.tunnel_tree = None
 
     def samples(self) -> dict[str, np.ndarray]:
         return self.S
@@ -159,12 +182,39 @@ class PathModel:
         mix = weight * bw[..., 1] * inside
         return height * (1.0 - mix) + floor * mix
 
-    def _stamps(self, X, Y, height, e, i, zf, w):
-        """Tuneles de cerro (tarea 8) y castillos (tarea 9)."""
-        return height
+    def _tunnel_query(self, X, Y):
+        d, k = self.tunnel_tree.query(np.stack([np.ravel(X), np.ravel(Y)], axis=1))
+        c = self.tunnel_cat
+        return (d.reshape(X.shape), c["t"][k].reshape(X.shape), c["floor"][k].reshape(X.shape),
+                c["half"][k].reshape(X.shape), c["covered"][k].reshape(X.shape))
 
     def _tunnel_zone(self, X, Y):
-        return np.zeros(X.shape)
+        if self.tunnel_tree is None:
+            return np.zeros(X.shape)
+        u, _, _, half, _ = self._tunnel_query(X, Y)
+        return 1.0 - smooth(half + 1.5, half + 5.0, u)
+
+    def _stamps(self, X, Y, height, e, i, zf, w):
+        """Cerro sobre cada tramo cubierto: roca >= 8 m sobre el suelo del tunel (el camino de
+        arriba de un cruce ya queda 8,5 m por encima); solo en el tramo cubierto, no en las bocas."""
+        if self.tunnel_tree is not None:
+            u, t, floor, half, covered = self._tunnel_query(X, Y)
+            # Nunca sobre un camino abierto (el tablero de un cruce, la union de un lazo).
+            hill = (1.0 - smooth(half + 2.0, half + 10.0, u)) * covered                 * smooth(-0.1, 0.05, t) * smooth(-1.1, -0.95, -t) * smooth(0.0, 2.0, e)
+            height = np.maximum(height, (floor + 8.0 + 1.5 * self.n_top.unit(X, Y)) * hill + height * (1.0 - hill))
+        return height
+
+    def _carve(self, X, Y, Z3):
+        """> 0 dentro del hueco (misma seccion que terrain_vol.density.MapModel._tunnel_carve)."""
+        u, t, floor, half, _ = self._tunnel_query(X, Y)
+        half = half * (1.0 + 0.22 * self.n_tunnel(X, Y))
+        height = 5.0 * (1.0 + 0.18 * self.n_tunnel(Y, X))
+        v = Z3 - floor[..., None]
+        center, radius_v = 0.42 * height[..., None], 0.62 * height[..., None]
+        ellipse = 1.0 - np.sqrt((u[..., None] / half[..., None]) ** 2 + ((v - center) / radius_v) ** 2)
+        inside = np.minimum(ellipse * half[..., None], v + 0.3)
+        active = (t > -0.2) & (t < 1.2)
+        return np.where(active[..., None], inside, -1.0), v
 
     # -- acceso por trozo y 3D ----------------------------------------------------------------
     def chunk_fields(self, col: int, row: int, pad: int = 0):
@@ -181,4 +231,9 @@ class PathModel:
         if np.any(band > 0.0):
             above = smooth(0.8, 2.5, Z3 - f.floor[..., None])
             D = D + 0.45 * band * above * self.n_wall3d(X3, Y3, Z3)
+        if self.tunnel_tree is not None and np.any(f.tunnel > 0.0):
+            carve, v = self._carve(X, Y, Z3)
+            # Paredes y techo rugosos; el suelo del tunel, llano.
+            carve = carve + 0.5 * self.n_wall3d(X3 * 1.7, Y3 * 1.7, Z3 * 1.7) * (carve > -0.5) * smooth(0.3, 1.2, v)
+            D = np.minimum(D, -carve)
         return D
