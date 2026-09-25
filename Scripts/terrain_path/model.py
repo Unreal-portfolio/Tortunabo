@@ -74,8 +74,9 @@ class PathModel:
         return self.S
 
     def _plan_extras(self) -> None:
-        """Rio y castillos (tareas 7 y 9)."""
-        self.river = None
+        """Rio y castillos."""
+        from .river import plan_river
+        self.river = plan_river(self.extra_rng, self)
         self.castles = []
 
     def near_junction(self, p, radius: float) -> bool:
@@ -149,8 +150,14 @@ class PathModel:
         return Fields(weights, d, zeros, height, zf, np.clip(wall_band, 0, 1), zeros, tunnel, np.clip(path, 0, 1))
 
     def _inside_corridor(self, X, Y, height, e, i, zf, w, bw):
-        """Suelo del camino segun el tramo: el rio (tarea 7) lo sustituye en el agua."""
-        return height
+        """Suelo del camino segun el tramo: en el agua lo sustituye el rio."""
+        if self.river is None:
+            return height
+        from .river import river_floor
+        floor, weight = river_floor(self, X, Y, i, zf, w)
+        inside = 1.0 - smooth(-0.5, 0.0, e)
+        mix = weight * bw[..., 1] * inside
+        return height * (1.0 - mix) + floor * mix
 
     def _stamps(self, X, Y, height, e, i, zf, w):
         """Tuneles de cerro (tarea 8) y castillos (tarea 9)."""

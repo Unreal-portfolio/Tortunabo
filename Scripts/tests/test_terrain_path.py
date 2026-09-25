@@ -240,6 +240,9 @@ def test_la_union_de_un_lazo_no_tiene_escalon(model):
     """Donde un lazo se une a su padre, el suelo pasa de uno a otro sin salto."""
     for loop in model.plan.graph.loops():
         for s in (1.0, loop.length - 1.0):
+            k = int(np.searchsorted(loop.arc, s))
+            if model.plan.profiles[loop.id].biome[k] == 1:
+                continue                           # en el rio el eje es cauce, no suelo
             h = _cross_section(model, loop.id, s, np.array([0.0]))[0]
             z = np.interp(s, loop.arc, model.plan.profiles[loop.id].z)
             assert abs(h - z) <= 0.6
@@ -250,3 +253,35 @@ def test_el_final_toca_el_mar(model):
     i, j = int(round(end[0] - model.axis[0])), int(round(end[1] - model.axis[0]))
     patch = model.grid.height[i - 3:i + 25, j - 10:j + 11]
     assert (patch < WATER_M).any()
+
+
+def test_las_islas_son_alargadas_y_siguen_el_rio(model):
+    islands = model.river.islands
+    assert len(islands) >= 6
+    for isl in islands:
+        assert isl.half_len / isl.half_wid >= 1.8
+
+
+def test_no_hay_ristra_de_islas_en_el_centro(model):
+    by_line = {}
+    for isl in model.river.islands:
+        by_line.setdefault(isl.line, []).append(isl)
+    for line_id, isls in by_line.items():
+        line = model.plan.graph.lines[line_id]
+        prof = model.plan.profiles[line_id]
+        run = best = 0
+        for isl in sorted(isls, key=lambda a: a.s):
+            w = np.interp(isl.s, line.arc, prof.half_width)
+            run = run + 1 if abs(isl.q) < 0.25 * w else 0
+            best = max(best, run)
+        assert best <= 3
+
+
+def test_el_rio_tiene_agua_honda_y_orilla_seca(model):
+    main = model.plan.graph.main
+    prof = model.plan.profiles[0]
+    s_water = main.arc[prof.biome == 1]
+    s = float(np.median(s_water))
+    w = float(np.interp(s, main.arc, prof.half_width))
+    h = _cross_section(model, 0, s, np.linspace(-0.9 * w, 0.9 * w, 19))
+    assert h.min() < WATER_M - 0.5 and h.max() > WATER_M + 0.3
