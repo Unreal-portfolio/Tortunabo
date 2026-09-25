@@ -1,0 +1,212 @@
+[
+ {
+  "name": "01_base",
+  "seed": 40001,
+  "description": "Reparto parecido a Mapa01: referencia para comparar el resto.",
+  "recorrible": true,
+  "size_mb": 12.22
+ },
+ {
+  "name": "02_laberinto_denso",
+  "seed": 40002,
+  "description": "Acantilados y canon muy tupidos: pasillos cada 11 m y muchos lazos.",
+  "recorrible": true,
+  "size_mb": 13.07
+ },
+ {
+  "name": "03_laberinto_abierto",
+  "seed": 40003,
+  "description": "Laberinto muy abierto: pasillos cada 24 m, casi sin lazos, facil de leer.",
+  "recorrible": true,
+  "size_mb": 12.43
+ },
+ {
+  "name": "04_arbol_puro",
+  "seed": 41004,
+  "description": "Sin lazos: el laberinto es un arbol puro, un unico camino bueno por rama.",
+  "recorrible": true,
+  "size_mb": 12.97
+ },
+ {
+  "name": "05_muchos_lazos",
+  "seed": 40005,
+  "description": "Laberinto con muchisimos lazos: varias rutas alternativas validas.",
+  "recorrible": true,
+  "size_mb": 13.43
+ },
+ {
+  "name": "06_sin_tuneles",
+  "seed": 40006,
+  "description": "Todo el recorrido al aire libre: sin tuneles excavados en el laberinto.",
+  "recorrible": true,
+  "size_mb": 11.85
+ },
+ {
+  "name": "07_muchos_tuneles",
+  "seed": 40007,
+  "description": "Laberinto muy horadado: muchos tuneles pasantes y varias cuevas.",
+  "recorrible": true,
+  "size_mb": 13.09
+ },
+ {
+  "name": "08_muchos_puentes",
+  "seed": 40008,
+  "description": "Muchos puentes de roca (tunel abajo, tablero andable arriba).",
+  "recorrible": true,
+  "size_mb": 13.58
+ },
+ {
+  "name": "09_sin_puentes",
+  "seed": 40009,
+  "description": "Sin puentes de roca: los laberintos se cruzan solo por los pasillos.",
+  "recorrible": true,
+  "size_mb": 13.07
+ },
+ {
+  "name": "10_mucha_agua",
+  "seed": 40010,
+  "description": "Zona de agua muy extendida: charcas profundas y crestas mas estrechas.",
+  "recorrible": true,
+  "size_mb": 11.92
+ },
+ {
+  "name": "11_poca_agua",
+  "seed": 40011,
+  "description": "Zona de agua reducida a un paso corto: casi todo tierra firme.",
+  "recorrible": true,
+  "size_mb": 13.11
+ },
+ {
+  "name": "12_rio_cero",
+  "seed": 40012,
+  "description": "Agua de charcas y crestas, sin rio hasta el mar.",
+  "recorrible": true,
+  "size_mb": 13.71
+ },
+ {
+  "name": "13_un_rio",
+  "seed": 40013,
+  "description": "Un rio serpenteante llega desde la zona de agua hasta el mar.",
+  "recorrible": true,
+  "size_mb": 13.48
+ },
+ {
+  "name": "14_dos_rios",
+  "seed": 40014,
+  "description": "Dos rios independientes llegan al mar, con islitas para saltar entre ellos.",
+  "recorrible": true,
+  "size_mb": 12.47
+ },
+ {
+  "name": "15_tres_rios",
+  "seed": 40015,
+  "description": "Tres rios llegan al mar: la zona de agua queda muy fragmentada en islitas.",
+  "recorrible": true,
+  "size_mb": 13.08
+ },
+ {
+  "name": "16_mar_grande",
+  "seed": 40016,
+  "description": "Franja de mar y playa muy ancha antes de llegar a tierra firme.",
+  "recorrible": true,
+  "size_mb": 12.8
+ },
+ {
+  "name": "17_mar_pequeno",
+  "seed": 40017,
+  "description": "Playa corta: se llega al mar enseguida tras salir del agua.",
+  "recorrible": true,
+  "size_mb": 12.62
+ },
+ {
+  "name": "18_dunas_altas",
+  "seed": 40018,
+  "description": "Zona de dunas con relieve marcado: crestas de arena bien altas.",
+  "recorrible": true,
+  "size_mb": 14.53
+ },
+ {
+  "name": "19_dunas_planas",
+  "seed": 40019,
+  "description": "Zona de dunas casi llana: apenas ondula.",
+  "recorrible": true,
+  "size_mb": 12.38
+ },
+ {
+  "name": "20_acantilados_altos",
+  "seed": 40020,
+  "description": "Acantilados y canon muy altos: paredes imponentes.",
+  "recorrible": true,
+  "size_mb": 12.98
+ },
+ {
+  "name": "21_acantilados_bajos",
+  "seed": 40021,
+  "description": "Acantilados y canon bajos: paredes suaves, mas colinas que muros.",
+  "recorrible": true,
+  "size_mb": 11.53
+ },
+ {
+  "name": "22_pasillos_anchos",
+  "seed": 40022,
+  "description": "Pasillos del laberinto muy anchos: se cruzan sin apreturas.",
+  "recorrible": true,
+  "size_mb": 12.11
+ },
+ {
+  "name": "23_pasillos_estrechos",
+  "seed": 40023,
+  "description": "Pasillos del laberinto estrechos: obliga a ir con cuidado.",
+  "recorrible": true,
+  "size_mb": 13.62
+ },
+ {
+  "name": "24_solo_laberintos",
+  "seed": 40024,
+  "description": "Casi todo acantilados y canon: agua, dunas y playa reducidas al minimo.",
+  "recorrible": true,
+  "size_mb": 14.05
+ },
+ {
+  "name": "25_solo_agua_y_dunas",
+  "seed": 41025,
+  "description": "Casi sin laberinto: predominan el agua y las dunas de playa.",
+  "recorrible": true,
+  "size_mb": 11.42
+ },
+ {
+  "name": "26_mezcla_equilibrada",
+  "seed": 40026,
+  "description": "Los cinco tramos a partes iguales: ninguno domina el recorrido.",
+  "recorrible": true,
+  "size_mb": 12.93
+ },
+ {
+  "name": "27_canon_protagonista",
+  "seed": 40027,
+  "description": "El canon ocupa la mayor parte del laberinto; los acantilados son un tramo corto.",
+  "recorrible": true,
+  "size_mb": 12.19
+ },
+ {
+  "name": "28_acantilados_protagonista",
+  "seed": 40028,
+  "description": "Los acantilados ocupan la mayor parte del laberinto; el canon es un tramo corto.",
+  "recorrible": true,
+  "size_mb": 13.2
+ },
+ {
+  "name": "29_todo_extremo",
+  "seed": 40029,
+  "description": "Laberinto denso, muchos tuneles y puentes, mucha agua con 2 rios, dunas altas: la muestra mas cargada.",
+  "recorrible": true,
+  "size_mb": 14.28
+ },
+ {
+  "name": "30_minimalista",
+  "seed": 40030,
+  "description": "Laberinto abierto, sin tuneles ni puentes, poca agua, dunas planas: la muestra mas ligera.",
+  "recorrible": true,
+  "size_mb": 11.46
+ }
+]

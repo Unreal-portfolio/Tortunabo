@@ -1,0 +1,547 @@
+{
+ "name": "22_pasillos_anchos",
+ "seed": 40022,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  1434.377924279049,
+  -1207.1385738230301,
+  -10.35774987602629
+ ],
+ "end_uu": [
+  48047.811620988134,
+  38423.66987044195,
+  -82.36327538772237
+ ],
+ "cells": [
+  {
+   "name": "M_22_pasillos_anchos_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 36036,
+   "triangles": 71216,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 41334,
+   "triangles": 81676,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 37210,
+   "triangles": 73434,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 21476,
+   "triangles": 42234,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 17513,
+   "triangles": 34440,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 17475,
+   "triangles": 34366,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 36183,
+   "triangles": 71518,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 41857,
+   "triangles": 82712,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 34107,
+   "triangles": 67276,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 23900,
+   "triangles": 47106,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 15150,
+   "triangles": 29770,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 17360,
+   "triangles": 34162,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 23398,
+   "triangles": 46132,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 21781,
+   "triangles": 42912,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 15461,
+   "triangles": 30356,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 19214,
+   "triangles": 37850,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 21346,
+   "triangles": 42076,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 17710,
+   "triangles": 34848,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 21725,
+   "triangles": 42804,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 17302,
+   "triangles": 34072,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 15232,
+   "triangles": 29940,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 21175,
+   "triangles": 41770,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 27655,
+   "triangles": 54674,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 15018,
+   "triangles": 29496,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 20229,
+   "triangles": 39834,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 18487,
+   "triangles": 36390,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 28516,
+   "triangles": 56342,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 16662,
+   "triangles": 32758,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 16344,
+   "triangles": 32128,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 14116,
+   "triangles": 27734,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 25185,
+   "triangles": 49670,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 21680,
+   "triangles": 42688,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 23052,
+   "triangles": 45410,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 23035,
+   "triangles": 45436,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 26755,
+   "triangles": 52830,
+   "instances": 0
+  },
+  {
+   "name": "M_22_pasillos_anchos_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 15301,
+   "triangles": 30082,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "22_pasillos_anchos",
+  "description": "Pasillos del laberinto muy anchos: se cruzan sin apreturas.",
+  "cliffs_share": 0.25,
+  "cliffs_reach_m": 75.0,
+  "canyon_share": 0.16,
+  "canyon_reach_m": 40.0,
+  "water_share": 0.2,
+  "water_reach_m": 85.0,
+  "dunes_share": 0.24,
+  "dunes_reach_m": 80.0,
+  "beach_share": 0.15,
+  "beach_reach_m": 95.0,
+  "cliffs_spacing_m": 17.0,
+  "cliffs_loop_share": 0.15,
+  "cliffs_level_step_m": 4.5,
+  "cliffs_level_count": 3,
+  "canyon_maze_spacing_m": 16.0,
+  "canyon_maze_loop_share": 0.2,
+  "canyon_maze_level_count": 3,
+  "canyon_maze_reach_m": 70.0,
+  "corridor_width_m": 4.6,
+  "cliff_height_m": [
+   8.0,
+   17.0
+  ],
+  "canyon_height_m": [
+   7.0,
+   19.0
+  ],
+  "tunnels_cliffs": [
+   3,
+   1
+  ],
+  "tunnels_canyon": [
+   6,
+   1
+  ],
+  "arches_cliffs": 2,
+  "arches_canyon": 3,
+  "pond_depth_m": 3.0,
+  "river_count": 0,
+  "river_width_m": 7.0,
+  "river_depth_m": 2.5,
+  "island_density": 0.5,
+  "dune_amplitude_m": 1.2,
+  "sea_margin_m": 70.0,
+  "route_meander_cliffs_m": [
+   16.0,
+   60.0
+  ],
+  "route_meander_dunes_m": [
+   14.0,
+   55.0
+  ],
+  "border_roughness_m": 10.0
+ },
+ "description": "Pasillos del laberinto muy anchos: se cruzan sin apreturas.",
+ "recorrible": true
+}

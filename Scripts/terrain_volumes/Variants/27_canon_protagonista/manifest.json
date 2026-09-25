@@ -1,0 +1,547 @@
+{
+ "name": "27_canon_protagonista",
+ "seed": 40027,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  1438.9790117318917,
+  41963.14278685543,
+  -25.938091797228147
+ ],
+ "end_uu": [
+  48988.52489145222,
+  51477.37853171602,
+  -125.43698336644641
+ ],
+ "cells": [
+  {
+   "name": "M_27_canon_protagonista_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 20998,
+   "triangles": 41356,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 19692,
+   "triangles": 38764,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 23308,
+   "triangles": 45954,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 25086,
+   "triangles": 49450,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 25471,
+   "triangles": 50216,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 16917,
+   "triangles": 33272,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 18197,
+   "triangles": 35828,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 16646,
+   "triangles": 32760,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 20630,
+   "triangles": 40630,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 22877,
+   "triangles": 45120,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 23951,
+   "triangles": 47220,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 19711,
+   "triangles": 38806,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 16985,
+   "triangles": 33400,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 15660,
+   "triangles": 30744,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 23957,
+   "triangles": 47218,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 14080,
+   "triangles": 27668,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 14855,
+   "triangles": 29218,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 14626,
+   "triangles": 28744,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 18521,
+   "triangles": 36398,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 28114,
+   "triangles": 55242,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 38311,
+   "triangles": 75534,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 21264,
+   "triangles": 41906,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 20555,
+   "triangles": 40516,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 14866,
+   "triangles": 29232,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 42963,
+   "triangles": 85046,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 46510,
+   "triangles": 91892,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 40034,
+   "triangles": 79120,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 21028,
+   "triangles": 41422,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 20574,
+   "triangles": 40478,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 17205,
+   "triangles": 33848,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 27586,
+   "triangles": 54364,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 24820,
+   "triangles": 48826,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 25297,
+   "triangles": 49944,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 21740,
+   "triangles": 42800,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 23775,
+   "triangles": 46858,
+   "instances": 0
+  },
+  {
+   "name": "M_27_canon_protagonista_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 16664,
+   "triangles": 32758,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "27_canon_protagonista",
+  "description": "El canon ocupa la mayor parte del laberinto; los acantilados son un tramo corto.",
+  "cliffs_share": 0.12,
+  "cliffs_reach_m": 75.0,
+  "canyon_share": 0.32,
+  "canyon_reach_m": 40.0,
+  "water_share": 0.2,
+  "water_reach_m": 85.0,
+  "dunes_share": 0.24,
+  "dunes_reach_m": 80.0,
+  "beach_share": 0.15,
+  "beach_reach_m": 95.0,
+  "cliffs_spacing_m": 17.0,
+  "cliffs_loop_share": 0.15,
+  "cliffs_level_step_m": 4.5,
+  "cliffs_level_count": 3,
+  "canyon_maze_spacing_m": 13.0,
+  "canyon_maze_loop_share": 0.3,
+  "canyon_maze_level_count": 3,
+  "canyon_maze_reach_m": 70.0,
+  "corridor_width_m": 3.2,
+  "cliff_height_m": [
+   8.0,
+   17.0
+  ],
+  "canyon_height_m": [
+   7.0,
+   19.0
+  ],
+  "tunnels_cliffs": [
+   3,
+   1
+  ],
+  "tunnels_canyon": [
+   6,
+   1
+  ],
+  "arches_cliffs": 2,
+  "arches_canyon": 3,
+  "pond_depth_m": 3.0,
+  "river_count": 0,
+  "river_width_m": 7.0,
+  "river_depth_m": 2.5,
+  "island_density": 0.5,
+  "dune_amplitude_m": 1.2,
+  "sea_margin_m": 70.0,
+  "route_meander_cliffs_m": [
+   16.0,
+   60.0
+  ],
+  "route_meander_dunes_m": [
+   14.0,
+   55.0
+  ],
+  "border_roughness_m": 10.0
+ },
+ "description": "El canon ocupa la mayor parte del laberinto; los acantilados son un tramo corto.",
+ "recorrible": true
+}

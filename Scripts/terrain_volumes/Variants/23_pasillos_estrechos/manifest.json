@@ -1,0 +1,547 @@
+{
+ "name": "23_pasillos_estrechos",
+ "seed": 40023,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  1893.3919159984057,
+  28309.147090344344,
+  0.5332302710234771
+ ],
+ "end_uu": [
+  48517.20822141586,
+  758.5972818029599,
+  -113.86552340768752
+ ],
+ "cells": [
+  {
+   "name": "M_23_pasillos_estrechos_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 23973,
+   "triangles": 47302,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 21775,
+   "triangles": 42846,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 24742,
+   "triangles": 48846,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 23352,
+   "triangles": 46008,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 26031,
+   "triangles": 51370,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 14334,
+   "triangles": 28140,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 16408,
+   "triangles": 32256,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 19806,
+   "triangles": 38996,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 24337,
+   "triangles": 48062,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 15281,
+   "triangles": 30016,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 27439,
+   "triangles": 54160,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 19089,
+   "triangles": 37562,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 27285,
+   "triangles": 53748,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 25893,
+   "triangles": 50988,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 21514,
+   "triangles": 42454,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 16022,
+   "triangles": 31514,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 22805,
+   "triangles": 45000,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 16606,
+   "triangles": 32676,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 40983,
+   "triangles": 80960,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 43660,
+   "triangles": 86164,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 27774,
+   "triangles": 54762,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 18242,
+   "triangles": 35906,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 25916,
+   "triangles": 51224,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 18053,
+   "triangles": 35550,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 29037,
+   "triangles": 57190,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 48244,
+   "triangles": 95402,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 45798,
+   "triangles": 90576,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 27617,
+   "triangles": 54434,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 18006,
+   "triangles": 35388,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 17776,
+   "triangles": 34954,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 19742,
+   "triangles": 38834,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 23475,
+   "triangles": 46178,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 46108,
+   "triangles": 91344,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 34126,
+   "triangles": 67428,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 23816,
+   "triangles": 46938,
+   "instances": 0
+  },
+  {
+   "name": "M_23_pasillos_estrechos_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 17382,
+   "triangles": 34188,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "23_pasillos_estrechos",
+  "description": "Pasillos del laberinto estrechos: obliga a ir con cuidado.",
+  "cliffs_share": 0.25,
+  "cliffs_reach_m": 75.0,
+  "canyon_share": 0.16,
+  "canyon_reach_m": 40.0,
+  "water_share": 0.2,
+  "water_reach_m": 85.0,
+  "dunes_share": 0.24,
+  "dunes_reach_m": 80.0,
+  "beach_share": 0.15,
+  "beach_reach_m": 95.0,
+  "cliffs_spacing_m": 17.0,
+  "cliffs_loop_share": 0.15,
+  "cliffs_level_step_m": 4.5,
+  "cliffs_level_count": 3,
+  "canyon_maze_spacing_m": 16.0,
+  "canyon_maze_loop_share": 0.2,
+  "canyon_maze_level_count": 3,
+  "canyon_maze_reach_m": 70.0,
+  "corridor_width_m": 2.3,
+  "cliff_height_m": [
+   8.0,
+   17.0
+  ],
+  "canyon_height_m": [
+   7.0,
+   19.0
+  ],
+  "tunnels_cliffs": [
+   3,
+   1
+  ],
+  "tunnels_canyon": [
+   6,
+   1
+  ],
+  "arches_cliffs": 2,
+  "arches_canyon": 3,
+  "pond_depth_m": 3.0,
+  "river_count": 0,
+  "river_width_m": 7.0,
+  "river_depth_m": 2.5,
+  "island_density": 0.5,
+  "dune_amplitude_m": 1.2,
+  "sea_margin_m": 70.0,
+  "route_meander_cliffs_m": [
+   16.0,
+   60.0
+  ],
+  "route_meander_dunes_m": [
+   14.0,
+   55.0
+  ],
+  "border_roughness_m": 10.0
+ },
+ "description": "Pasillos del laberinto estrechos: obliga a ir con cuidado.",
+ "recorrible": true
+}

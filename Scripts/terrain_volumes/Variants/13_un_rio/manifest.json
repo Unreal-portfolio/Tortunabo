@@ -1,0 +1,547 @@
+{
+ "name": "13_un_rio",
+ "seed": 40013,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  1943.2339798100516,
+  20008.473131811967,
+  2.3190988290659575
+ ],
+ "end_uu": [
+  47931.499335499546,
+  41699.82840218684,
+  474.73101379199994
+ ],
+ "cells": [
+  {
+   "name": "M_13_un_rio_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 20854,
+   "triangles": 41064,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 18785,
+   "triangles": 36938,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 16723,
+   "triangles": 32878,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 25917,
+   "triangles": 51108,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 24926,
+   "triangles": 49094,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 17051,
+   "triangles": 33518,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 43942,
+   "triangles": 86984,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 44404,
+   "triangles": 87728,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 26231,
+   "triangles": 51658,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 25609,
+   "triangles": 50530,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 29334,
+   "triangles": 57996,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 16407,
+   "triangles": 32244,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 44214,
+   "triangles": 87554,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 38659,
+   "triangles": 76342,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 30270,
+   "triangles": 59684,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 20174,
+   "triangles": 39706,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 16558,
+   "triangles": 32552,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 15700,
+   "triangles": 30886,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 26321,
+   "triangles": 51826,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 37652,
+   "triangles": 74474,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 26849,
+   "triangles": 52966,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 27406,
+   "triangles": 54140,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 18110,
+   "triangles": 35552,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 15203,
+   "triangles": 29902,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 19805,
+   "triangles": 38946,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 24355,
+   "triangles": 48010,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 15538,
+   "triangles": 30518,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 17830,
+   "triangles": 35062,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 29287,
+   "triangles": 57816,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 18606,
+   "triangles": 36624,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 28072,
+   "triangles": 55358,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 31222,
+   "triangles": 61622,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 24859,
+   "triangles": 49012,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 24539,
+   "triangles": 48342,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 29258,
+   "triangles": 57724,
+   "instances": 0
+  },
+  {
+   "name": "M_13_un_rio_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 18156,
+   "triangles": 35694,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "13_un_rio",
+  "description": "Un rio serpenteante llega desde la zona de agua hasta el mar.",
+  "cliffs_share": 0.25,
+  "cliffs_reach_m": 75.0,
+  "canyon_share": 0.16,
+  "canyon_reach_m": 40.0,
+  "water_share": 0.24,
+  "water_reach_m": 85.0,
+  "dunes_share": 0.24,
+  "dunes_reach_m": 80.0,
+  "beach_share": 0.15,
+  "beach_reach_m": 95.0,
+  "cliffs_spacing_m": 17.0,
+  "cliffs_loop_share": 0.15,
+  "cliffs_level_step_m": 4.5,
+  "cliffs_level_count": 3,
+  "canyon_maze_spacing_m": 16.0,
+  "canyon_maze_loop_share": 0.2,
+  "canyon_maze_level_count": 3,
+  "canyon_maze_reach_m": 70.0,
+  "corridor_width_m": 3.2,
+  "cliff_height_m": [
+   8.0,
+   17.0
+  ],
+  "canyon_height_m": [
+   7.0,
+   19.0
+  ],
+  "tunnels_cliffs": [
+   3,
+   1
+  ],
+  "tunnels_canyon": [
+   6,
+   1
+  ],
+  "arches_cliffs": 2,
+  "arches_canyon": 3,
+  "pond_depth_m": 3.0,
+  "river_count": 1,
+  "river_width_m": 7.0,
+  "river_depth_m": 2.5,
+  "island_density": 0.4,
+  "dune_amplitude_m": 1.2,
+  "sea_margin_m": 70.0,
+  "route_meander_cliffs_m": [
+   16.0,
+   60.0
+  ],
+  "route_meander_dunes_m": [
+   14.0,
+   55.0
+  ],
+  "border_roughness_m": 10.0
+ },
+ "description": "Un rio serpenteante llega desde la zona de agua hasta el mar.",
+ "recorrible": true
+}

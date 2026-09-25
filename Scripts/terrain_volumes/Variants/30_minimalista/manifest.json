@@ -1,0 +1,547 @@
+{
+ "name": "30_minimalista",
+ "seed": 40030,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  232.33278821983953,
+  18734.851692674034,
+  6.982292916641164
+ ],
+ "end_uu": [
+  50891.03788833099,
+  20577.493507906747,
+  -220.00000000000003
+ ],
+ "cells": [
+  {
+   "name": "M_30_minimalista_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 20026,
+   "triangles": 39456,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 15038,
+   "triangles": 29536,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 15548,
+   "triangles": 30544,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 20655,
+   "triangles": 40692,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 25211,
+   "triangles": 49754,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 16186,
+   "triangles": 31826,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 21049,
+   "triangles": 41422,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 19527,
+   "triangles": 38462,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 15845,
+   "triangles": 31160,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 27895,
+   "triangles": 55110,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 28240,
+   "triangles": 55752,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 16267,
+   "triangles": 31970,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 30762,
+   "triangles": 60816,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 29605,
+   "triangles": 58430,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 21757,
+   "triangles": 42812,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 30463,
+   "triangles": 60226,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 25728,
+   "triangles": 50746,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 15397,
+   "triangles": 30290,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 24628,
+   "triangles": 48556,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 30571,
+   "triangles": 60320,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 32760,
+   "triangles": 64634,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 26756,
+   "triangles": 52752,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 17046,
+   "triangles": 33490,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 14727,
+   "triangles": 28970,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 17699,
+   "triangles": 34822,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 21472,
+   "triangles": 42304,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 21642,
+   "triangles": 42634,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 19476,
+   "triangles": 38284,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 17328,
+   "triangles": 34054,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 16013,
+   "triangles": 31522,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 18354,
+   "triangles": 36092,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 20184,
+   "triangles": 39738,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 22477,
+   "triangles": 44314,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 22786,
+   "triangles": 44860,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 22189,
+   "triangles": 43682,
+   "instances": 0
+  },
+  {
+   "name": "M_30_minimalista_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 16546,
+   "triangles": 32512,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "30_minimalista",
+  "description": "Laberinto abierto, sin tuneles ni puentes, poca agua, dunas planas: la muestra mas ligera.",
+  "cliffs_share": 0.25,
+  "cliffs_reach_m": 75.0,
+  "canyon_share": 0.16,
+  "canyon_reach_m": 40.0,
+  "water_share": 0.12,
+  "water_reach_m": 85.0,
+  "dunes_share": 0.24,
+  "dunes_reach_m": 80.0,
+  "beach_share": 0.15,
+  "beach_reach_m": 95.0,
+  "cliffs_spacing_m": 22.0,
+  "cliffs_loop_share": 0.05,
+  "cliffs_level_step_m": 4.5,
+  "cliffs_level_count": 3,
+  "canyon_maze_spacing_m": 22.0,
+  "canyon_maze_loop_share": 0.05,
+  "canyon_maze_level_count": 3,
+  "canyon_maze_reach_m": 70.0,
+  "corridor_width_m": 4.0,
+  "cliff_height_m": [
+   5.0,
+   9.0
+  ],
+  "canyon_height_m": [
+   7.0,
+   19.0
+  ],
+  "tunnels_cliffs": [
+   0,
+   0
+  ],
+  "tunnels_canyon": [
+   0,
+   0
+  ],
+  "arches_cliffs": 1,
+  "arches_canyon": 1,
+  "pond_depth_m": 3.0,
+  "river_count": 0,
+  "river_width_m": 7.0,
+  "river_depth_m": 2.5,
+  "island_density": 0.5,
+  "dune_amplitude_m": 0.6,
+  "sea_margin_m": 70.0,
+  "route_meander_cliffs_m": [
+   16.0,
+   60.0
+  ],
+  "route_meander_dunes_m": [
+   14.0,
+   55.0
+  ],
+  "border_roughness_m": 10.0
+ },
+ "description": "Laberinto abierto, sin tuneles ni puentes, poca agua, dunas planas: la muestra mas ligera.",
+ "recorrible": true
+}

@@ -1,0 +1,547 @@
+{
+ "name": "28_acantilados_protagonista",
+ "seed": 40028,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  1786.9845755813408,
+  48291.91466202983,
+  8.072065691062313
+ ],
+ "end_uu": [
+  48631.21542141575,
+  20686.149637547485,
+  -114.59946157319152
+ ],
+ "cells": [
+  {
+   "name": "M_28_acantilados_protagonista_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 25799,
+   "triangles": 50898,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 20335,
+   "triangles": 40052,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 23229,
+   "triangles": 45794,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 27849,
+   "triangles": 55004,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 28722,
+   "triangles": 56724,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 19688,
+   "triangles": 38756,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 31972,
+   "triangles": 63132,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 15507,
+   "triangles": 30460,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 15270,
+   "triangles": 30034,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 25524,
+   "triangles": 50376,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 23687,
+   "triangles": 46646,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 17820,
+   "triangles": 35060,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 43117,
+   "triangles": 85212,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 23750,
+   "triangles": 46732,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 15986,
+   "triangles": 31432,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 25814,
+   "triangles": 50986,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 18573,
+   "triangles": 36588,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 12925,
+   "triangles": 25386,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 41461,
+   "triangles": 81948,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 25732,
+   "triangles": 50594,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 19793,
+   "triangles": 38956,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 21367,
+   "triangles": 42088,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 28887,
+   "triangles": 57066,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 14972,
+   "triangles": 29400,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 44453,
+   "triangles": 87756,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 41096,
+   "triangles": 80944,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 26035,
+   "triangles": 51288,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 21660,
+   "triangles": 42652,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 22817,
+   "triangles": 44942,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 15209,
+   "triangles": 29862,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 35736,
+   "triangles": 70598,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 38308,
+   "triangles": 75646,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 21496,
+   "triangles": 42296,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 21845,
+   "triangles": 43052,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 22398,
+   "triangles": 44160,
+   "instances": 0
+  },
+  {
+   "name": "M_28_acantilados_protagonista_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 16120,
+   "triangles": 31696,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "28_acantilados_protagonista",
+  "description": "Los acantilados ocupan la mayor parte del laberinto; el canon es un tramo corto.",
+  "cliffs_share": 0.34,
+  "cliffs_reach_m": 75.0,
+  "canyon_share": 0.1,
+  "canyon_reach_m": 40.0,
+  "water_share": 0.2,
+  "water_reach_m": 85.0,
+  "dunes_share": 0.24,
+  "dunes_reach_m": 80.0,
+  "beach_share": 0.15,
+  "beach_reach_m": 95.0,
+  "cliffs_spacing_m": 13.0,
+  "cliffs_loop_share": 0.3,
+  "cliffs_level_step_m": 4.5,
+  "cliffs_level_count": 3,
+  "canyon_maze_spacing_m": 16.0,
+  "canyon_maze_loop_share": 0.2,
+  "canyon_maze_level_count": 3,
+  "canyon_maze_reach_m": 70.0,
+  "corridor_width_m": 3.2,
+  "cliff_height_m": [
+   8.0,
+   17.0
+  ],
+  "canyon_height_m": [
+   7.0,
+   19.0
+  ],
+  "tunnels_cliffs": [
+   3,
+   1
+  ],
+  "tunnels_canyon": [
+   6,
+   1
+  ],
+  "arches_cliffs": 2,
+  "arches_canyon": 3,
+  "pond_depth_m": 3.0,
+  "river_count": 0,
+  "river_width_m": 7.0,
+  "river_depth_m": 2.5,
+  "island_density": 0.5,
+  "dune_amplitude_m": 1.2,
+  "sea_margin_m": 70.0,
+  "route_meander_cliffs_m": [
+   16.0,
+   60.0
+  ],
+  "route_meander_dunes_m": [
+   14.0,
+   55.0
+  ],
+  "border_roughness_m": 10.0
+ },
+ "description": "Los acantilados ocupan la mayor parte del laberinto; el canon es un tramo corto.",
+ "recorrible": true
+}

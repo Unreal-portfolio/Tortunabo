@@ -1,0 +1,547 @@
+{
+ "name": "25_solo_agua_y_dunas",
+ "seed": 41025,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  -26.290006698941326,
+  -117.31300372553868,
+  3.238738359587501
+ ],
+ "end_uu": [
+  50647.87663410442,
+  41071.248292324715,
+  -220.00000000000003
+ ],
+ "cells": [
+  {
+   "name": "M_25_solo_agua_y_dunas_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 40675,
+   "triangles": 80418,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 27868,
+   "triangles": 54928,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 22259,
+   "triangles": 43862,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 20548,
+   "triangles": 40462,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 24229,
+   "triangles": 47790,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 18223,
+   "triangles": 35860,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 39373,
+   "triangles": 77778,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 21257,
+   "triangles": 41780,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 15496,
+   "triangles": 30482,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 17224,
+   "triangles": 33932,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 15991,
+   "triangles": 31468,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 16934,
+   "triangles": 33366,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 24501,
+   "triangles": 48310,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 15113,
+   "triangles": 29698,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 17554,
+   "triangles": 34566,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 22580,
+   "triangles": 44546,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 19260,
+   "triangles": 37944,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 14196,
+   "triangles": 27878,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 22708,
+   "triangles": 44710,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 18182,
+   "triangles": 35802,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 18219,
+   "triangles": 35868,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 19549,
+   "triangles": 38484,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 15320,
+   "triangles": 30072,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 13827,
+   "triangles": 27160,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 20966,
+   "triangles": 41284,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 22814,
+   "triangles": 45030,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 19863,
+   "triangles": 39126,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 21974,
+   "triangles": 43296,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 28238,
+   "triangles": 55776,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 15902,
+   "triangles": 31314,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 24947,
+   "triangles": 49222,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 26317,
+   "triangles": 51954,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 32065,
+   "triangles": 63394,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 23212,
+   "triangles": 45730,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 30561,
+   "triangles": 60350,
+   "instances": 0
+  },
+  {
+   "name": "M_25_solo_agua_y_dunas_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 16251,
+   "triangles": 31962,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "25_solo_agua_y_dunas",
+  "description": "Casi sin laberinto: predominan el agua y las dunas de playa.",
+  "cliffs_share": 0.08,
+  "cliffs_reach_m": 75.0,
+  "canyon_share": 0.06,
+  "canyon_reach_m": 40.0,
+  "water_share": 0.34,
+  "water_reach_m": 85.0,
+  "dunes_share": 0.36,
+  "dunes_reach_m": 80.0,
+  "beach_share": 0.16,
+  "beach_reach_m": 95.0,
+  "cliffs_spacing_m": 17.0,
+  "cliffs_loop_share": 0.15,
+  "cliffs_level_step_m": 4.5,
+  "cliffs_level_count": 3,
+  "canyon_maze_spacing_m": 16.0,
+  "canyon_maze_loop_share": 0.2,
+  "canyon_maze_level_count": 3,
+  "canyon_maze_reach_m": 70.0,
+  "corridor_width_m": 3.2,
+  "cliff_height_m": [
+   8.0,
+   17.0
+  ],
+  "canyon_height_m": [
+   7.0,
+   19.0
+  ],
+  "tunnels_cliffs": [
+   3,
+   1
+  ],
+  "tunnels_canyon": [
+   6,
+   1
+  ],
+  "arches_cliffs": 2,
+  "arches_canyon": 3,
+  "pond_depth_m": 3.0,
+  "river_count": 1,
+  "river_width_m": 7.0,
+  "river_depth_m": 2.5,
+  "island_density": 0.5,
+  "dune_amplitude_m": 1.2,
+  "sea_margin_m": 70.0,
+  "route_meander_cliffs_m": [
+   16.0,
+   60.0
+  ],
+  "route_meander_dunes_m": [
+   14.0,
+   55.0
+  ],
+  "border_roughness_m": 10.0
+ },
+ "description": "Casi sin laberinto: predominan el agua y las dunas de playa.",
+ "recorrible": true
+}
