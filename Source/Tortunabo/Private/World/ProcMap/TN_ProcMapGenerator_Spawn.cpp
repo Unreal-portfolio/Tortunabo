@@ -81,7 +81,8 @@ void ATN_ProcMapGenerator::BuildScatter()
 		{
 			case EFeature::EggNest:        Keep.Add(C, 800.0); break;
 			case EFeature::Geyser:         Keep.Add(C, 700.0); break;
-			case EFeature::Tower:          Keep.Add(C, F.Radius + 500.0); break;
+			case EFeature::Tower:          Keep.Add(C, F.Radius + 900.0); break;
+			case EFeature::Gate:           Keep.Add(C, FMath::Max(F.Width, F.Length) * 0.5 + 1200.0); break;
 			case EFeature::StartArea:      Keep.Add(C, F.Radius + 600.0); break;
 			case EFeature::Gap:            Keep.Add(C, FMath::Max(F.Height, F.Width) * 0.5 + 400.0); break;
 			case EFeature::ThrowWall:      Keep.Add(C, 1800.0); break;
@@ -91,11 +92,20 @@ void ATN_ProcMapGenerator::BuildScatter()
 			default: break;
 		}
 	}
-	for (const FPathSample& S : Layout.Main)
+	// Las murallas son mucho más gruesas que su adarve: en talud, hasta 10-12 m del eje.
+	TArray<FIntPoint> WallSpans;
+	for (const FCrossing& C : Layout.Crossings)
 	{
+		if (C.Type == ETNProcCrossingType::Wall) { WallSpans.Add(FIntPoint(Layout.Route[C.HighStep].FirstSample, Layout.Route[C.HighStep].LastSample)); }
+	}
+	for (int32 i = 0; i < Layout.Main.Num(); ++i)
+	{
+		const FPathSample& S = Layout.Main[i];
 		if ((S.Flags & (PathFlags::Elevated | PathFlags::Colossal | PathFlags::Islet | PathFlags::Boardwalk)) != 0)
 		{
-			Keep.Add(S.P, S.Width * 0.5 + 350.0);
+			bool bWall = false;
+			for (const FIntPoint& W : WallSpans) { if (i >= W.X && i <= W.Y) { bWall = true; break; } }
+			Keep.Add(S.P, S.Width * 0.5 + (bWall ? 1400.0 : 350.0));
 		}
 	}
 

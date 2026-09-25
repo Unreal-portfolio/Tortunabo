@@ -297,29 +297,49 @@ namespace TNProcMap
 					From = bFree ? i : INDEX_NONE;
 				}
 			}
-			FFeature S = MakeAtSample(C.Type == ETNProcCrossingType::Bridge ? EFeature::Deck : EFeature::Mesa, M[High.FirstSample], High.FirstSample, INDEX_NONE);
+			FFeature S = MakeAtSample(EFeature::Deck, M[High.FirstSample], High.FirstSample, INDEX_NONE);
 			S.Aux = c;
 			S.Aux2 = High.LastSample;
 			S.Height = C.TopZ;
 			S.Location = FVector(C.CrossPoint, C.TopZ);
 			L.Features.Add(S);
 
-			if (C.Type == ETNProcCrossingType::Cave)
+			// Puerta de la muralla donde la cruza el tramo bajo: atraviesa el muro en perpendicular, con
+			// luz para el camino (más si este cruza en diagonal) y arco de medio punto con la clave 5 m
+			// bajo el adarve: una puerta altísima cuyo arco hace de puente.
+			if (C.Type == ETNProcCrossingType::Wall)
 			{
 				const FRouteStep& Low = L.Route[C.LowStep];
-				for (int32 i = Low.FirstSample; i <= Low.LastSample; ++i)
+				int32 Lo = Low.FirstSample, Hi = High.FirstSample;
+				double Best = 1e300;
+				for (int32 j = Low.FirstSample; j <= Low.LastSample; ++j)
 				{
-					if ((M[i].Flags & PathFlags::Tunnel) == 0) { continue; }
-					int32 j = i;
-					while (j + 1 <= Low.LastSample && (M[j + 1].Flags & PathFlags::Tunnel) != 0) { ++j; }
-					FFeature R = MakeAtSample(EFeature::TunnelRoof, M[(i + j) / 2], i, INDEX_NONE);
-					R.Aux = c;
-					R.Aux2 = j;
-					R.Height = C.TopZ;
-					R.Length = M[j].S - M[i].S;
-					L.Features.Add(R);
-					i = j;
+					const double D = FVector2D::DistSquared(M[j].P, C.CrossPoint);
+					if (D < Best) { Best = D; Lo = j; }
 				}
+				Best = 1e300;
+				for (int32 i = High.FirstSample; i <= High.LastSample; ++i)
+				{
+					const double D = FVector2D::DistSquared(M[i].P, C.CrossPoint);
+					if (D < Best) { Best = D; Hi = i; }
+				}
+				const FVector2D Along = M[Hi].Dir;
+				const double Sin = FMath::Max(0.35, FMath::Abs(FVector2D::CrossProduct(Along, M[Lo].Dir)));
+				const double Cot = FMath::Sqrt(FMath::Max(0.0, 1.0 - Sin * Sin)) / Sin;
+				const double Floor = M[Lo].Z;
+				const double Thick = 2.0 * WallDims::HalfAt(M[Hi].Width * 0.5, C.TopZ - Floor);
+				FFeature G = MakeAtSample(EFeature::Gate, M[Lo], Lo, INDEX_NONE);
+				G.Location = FVector(C.CrossPoint, Floor);
+				G.Dir = Along;
+				// Luz monumental (al menos el 40 % de la altura) y siempre la que pide el camino.
+				const double Need = M[Lo].Width * 0.5 / Sin + 0.5 * Thick * Cot + 200.0;
+				G.Radius = FMath::Min(FMath::Max(Need, 0.2 * (C.TopZ - Floor)), C.TopZ - WallDims::Crown - Floor - 600.0);
+				G.Width = 2.0 * G.Radius;
+				G.Length = Thick;
+				G.Height = C.TopZ;
+				G.Aux = c;
+				G.Aux2 = Hi;
+				L.Features.Add(G);
 			}
 		}
 	}

@@ -64,6 +64,6 @@ enum class ETNProcCrossingType : uint8
 {
 	/** Arco/puente de roca colosal: el tramo alto pasa por encima, abierto por debajo. */
 	Bridge  UMETA(DisplayName = "Puente colosal"),
-	/** Mesa de roca colosal: el tramo bajo la atraviesa por una cueva. */
-	Cave    UMETA(DisplayName = "Cueva colosal")
+	/** Muralla colosal: el tramo alto va por su adarve y el bajo la cruza por una puerta altísima. */
+	Wall    UMETA(DisplayName = "Muralla con puerta")
 };

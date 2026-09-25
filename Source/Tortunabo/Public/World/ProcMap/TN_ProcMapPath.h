@@ -744,7 +744,8 @@ namespace TNProcMap
 			for (int32 i = High.FirstSample; i <= High.LastSample; ++i)
 			{
 				Z[i] = C.TopZ;
-				L.Main[i].Flags |= (C.Type == ETNProcCrossingType::Bridge) ? PathFlags::Elevated : PathFlags::Colossal;
+				// Tablero del puente o adarve de la muralla: malla, no terreno.
+				L.Main[i].Flags |= PathFlags::Elevated;
 				L.Main[i].Width = FMath::Clamp(L.Main[i].Width, 550.0, 900.0);
 			}
 			// Punto de cruce entre las dos pasadas.
@@ -914,23 +915,29 @@ namespace TNProcMap
 			if (Sm.Biome != ETNProcBiome::Water) { Sm.Width = FMath::Clamp(Sm.Width, 550.0, 800.0); }
 		}
 
-		// Tramo bajo de los cruces tipo cueva: marcado de túnel bajo la huella de la mesa.
+		// Tramo bajo de las murallas: pasa por su puerta. Sus muestras dentro del grueso del muro (y 3 m
+		// de explanada a cada lado) van bajo una estructura: sin huecos, obstáculos ni peligros, y no
+		// más anchas que la puerta.
 		for (const FCrossing& C : L.Crossings)
 		{
-			if (C.Type != ETNProcCrossingType::Cave) { continue; }
+			if (C.Type != ETNProcCrossingType::Wall) { continue; }
 			const FRouteStep& High = L.Route[C.HighStep];
 			const FRouteStep& Low = L.Route[C.LowStep];
-			const double Rise = C.TopZ - L.Modules[C.Module].Level;
-			const double Footprint = 900.0 + Rise / 2.5 + 400.0;
 			for (int32 j = Low.FirstSample; j <= Low.LastSample; ++j)
 			{
 				double MinD = 1e300;
+				int32 Near = High.FirstSample;
 				for (int32 i = High.FirstSample; i < High.LastSample; ++i)
 				{
 					double T = 0.0;
-					MinD = FMath::Min(MinD, DistPointSegment(L.Main[j].P, L.Main[i].P, L.Main[i + 1].P, T));
+					const double D = DistPointSegment(L.Main[j].P, L.Main[i].P, L.Main[i + 1].P, T);
+					if (D < MinD) { MinD = D; Near = i; }
 				}
-				if (MinD < Footprint) { L.Main[j].Flags |= PathFlags::Tunnel; L.Main[j].Width = FMath::Min(L.Main[j].Width, 900.0); }
+				if (MinD < WallDims::HalfAt(L.Main[Near].Width * 0.5, C.TopZ - L.Main[j].Z) + 300.0)
+				{
+					L.Main[j].Flags |= PathFlags::Tunnel;
+					L.Main[j].Width = FMath::Min(L.Main[j].Width, 900.0);
+				}
 			}
 		}
 	}

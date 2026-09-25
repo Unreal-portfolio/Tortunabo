@@ -281,6 +281,12 @@ namespace TNProcMap
 		Log,
 		/** Árbol gigante tipo secuoya con raíces zancudas (manglar): Location (XY), Radius = tronco, Height. */
 		GiantTree,
+		/**
+		 * Puerta de una muralla: Location = centro en el eje del muro a la cota del suelo, Dir = eje del
+		 * muro, Width = luz a lo largo del muro, Length = grueso en la base, Radius = radio del arco,
+		 * Height = cota del adarve, Aux = cruce, PathIndex = muestra del tramo bajo, Aux2 = del alto.
+		 */
+		Gate,
 		Count
 	};
 
@@ -322,6 +328,25 @@ namespace TNProcMap
 		ETNProcBiome Biome = ETNProcBiome::Jungle;
 		TArray<FVector2D> Polygon;
 	};
+
+	/**
+	 * Muralla de un cruce: el adarve (el tramo alto, del ancho del camino) entre dos parapetos que no
+	 * se saltan, con almenas, y caras en talud hasta el suelo.
+	 */
+	namespace WallDims
+	{
+		/** Grosor y alto (sobre el adarve) de los parapetos; alto de las almenas sobre ellos. */
+		constexpr double Parapet = 110.0;
+		constexpr double ParapetH = 150.0;
+		constexpr double MerlonH = 110.0;
+		/** Talud de las caras (horizontal por vertical: unos 83°). */
+		constexpr double Batter = 0.12;
+		/** Fábrica sobre la clave del arco de la puerta, hasta el adarve. */
+		constexpr double Crown = 500.0;
+
+		/** Semigrueso de la muralla a Depth cm bajo el adarve, con WalkHalf el semiancho del adarve. */
+		inline double HalfAt(double WalkHalf, double Depth) { return WalkHalf + Parapet + Batter * FMath::Max(0.0, Depth); }
+	}
 
 	/** Resultado completo. bValid=false si la generación no encontró un mapa. */
 	struct FLayout

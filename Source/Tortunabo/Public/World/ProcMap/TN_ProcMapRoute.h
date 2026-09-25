@@ -296,7 +296,7 @@ namespace TNProcMap
 					const bool bSecondHigh = Rng.Chance(0.5);
 					C.HighStep = bSecondHigh ? C.SecondPassStep : C.FirstPassStep;
 					C.LowStep = bSecondHigh ? C.FirstPassStep : C.SecondPassStep;
-					C.Type = Rng.Chance(0.5) ? ETNProcCrossingType::Bridge : ETNProcCrossingType::Cave;
+					C.Type = Rng.Chance(0.5) ? ETNProcCrossingType::Bridge : ETNProcCrossingType::Wall;
 					L.Route[k].CrossingIndex = L.Crossings.Num();
 					L.Route[C.FirstPassStep].CrossingIndex = L.Crossings.Num();
 					L.Route[C.HighStep].bHigh = true;

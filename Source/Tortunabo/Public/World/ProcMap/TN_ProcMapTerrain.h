@@ -96,6 +96,33 @@ namespace TNProcMap
 		return FMath::Max(F.Location.Z - 1200.0, SeaLevel + 150.0);
 	}
 
+	/**
+	 * Si P (en el borde de la plataforma de una torre) queda en una abertura del pretil: sobre el
+	 * arranque de la pasada alta (puente o adarve) o, en la torre de salida, del tobogán. En las
+	 * torres de muralla la abertura es justo la del adarve, que sigue entre sus parapetos.
+	 */
+	inline bool TowerOpeningAt(const FLayout& L, const FFeature& F, const FVector2D& P)
+	{
+		if (F.Aux == INDEX_NONE || !L.Crossings.IsValidIndex(F.Aux)) { return true; }
+		const FCrossing& C = L.Crossings[F.Aux];
+		const FRouteStep& High = L.Route[C.HighStep];
+		const TArray<FPathSample>& M = L.Main;
+		const double Margin = C.Type == ETNProcCrossingType::Wall ? 0.0 : 150.0;
+		auto Near = [&](int32 From, int32 To)
+		{
+			for (int32 i = FMath::Max(0, From); i < FMath::Min(To, M.Num() - 1); ++i)
+			{
+				double T = 0.0;
+				const double D = DistPointSegment(P, M[i].P, M[i + 1].P, T);
+				if (D <= LerpD(M[i].Width, M[i + 1].Width, T) * 0.5 + Margin) { return true; }
+			}
+			return false;
+		};
+		if (F.PathIndex == High.FirstSample) { return Near(High.FirstSample, High.FirstSample + 10); }
+		if (Near(High.LastSample - 10, High.LastSample)) { return true; }
+		return C.HighStep + 1 < L.Route.Num() && Near(L.Route[C.HighStep + 1].FirstSample, L.Route[C.HighStep + 1].FirstSample + 10);
+	}
+
 	/** Pendiente (tan) de las laderas que bajan desde el borde de un cauce elevado. */
 	constexpr double FlankSlope = 1.15;
 	/** Altura mínima de las orillas de laguna y de los acantilados de costa sobre el mar. */
@@ -227,7 +254,7 @@ namespace TNProcMap
 		TArray<int32> Volcanoes;
 
 		// ── Influencias localizadas (cubos) ─────────────────────────────────
-		enum class EInf : uint8 { Tower, Mesa, Tunnel, DeckClear, Gap, Lava, Island, River };
+		enum class EInf : uint8 { Tower, Tunnel, DeckClear, Gate, Gap, Lava, Island, River };
 		struct FInf
 		{
 			EInf Type = EInf::Tower;
@@ -289,7 +316,6 @@ namespace TNProcMap
 			DeckTop.Init(-1e9f, N);
 			for (const FCrossing& C : L->Crossings)
 			{
-				if (C.Type != ETNProcCrossingType::Bridge) { continue; }
 				const FRouteStep& High = L->Route[C.HighStep];
 				for (int32 i = High.FirstSample; i < High.LastSample; ++i)
 				{
@@ -321,14 +347,6 @@ namespace TNProcMap
 				const FBiomeTerrain& BtB = Biomes[BiomeIndex(Samples[j].Biome)];
 				const bool bWetSeg = FMath::Max(SampleWet[i], SampleWet[j]) > 0.5f;
 				const double GuardH = bWetSeg ? 0.0 : FMath::Min(BtA.BankMin, BtB.BankMin);
-				bool bTunnelPriority = false;
-				if (((Samples[i].Flags | Samples[j].Flags) & PathFlags::Tunnel) != 0)
-				{
-					for (const FCrossing& C : L->Crossings)
-					{
-						if (C.Type == ETNProcCrossingType::Cave && FVector2D::Distance((A + B) * 0.5, C.CrossPoint) < 2500.0) { bTunnelPriority = true; }
-					}
-				}
 				// Alcance: talud y subida, o la ladera completa si el cauce va por encima del paisaje.
 				const double Raised = FMath::Max(Samples[i].Z, Samples[j].Z) - L->SampleCoarse(L->LevelField, A);
 				const double FlankReach = FMath::Clamp((Raised + 1800.0) / FlankSlope + 2000.0 + RimPlateau, 9000.0, 19000.0);
@@ -348,8 +366,7 @@ namespace TNProcMap
 						// Distancia "efectiva": al borde del camino, para que el más ancho gane.
 						const double Hw = LerpD(Samples[i].Width, Samples[j].Width, T) * 0.5;
 						const double Eff = D - Hw;
-						// Junto al punto de cruce el túnel manda en su huella: la pasada alta va por el techo.
-						const double Score = Eff - (bTunnelPriority && Eff < 800.0 ? 6000.0 : 0.0);
+						const double Score = Eff;
 						if (D <= Reach && Score < PathScore[Idx])
 						{
 							PathScore[Idx] = static_cast<float>(Score);
@@ -571,31 +588,16 @@ namespace TNProcMap
 			const TArray<FPathSample>& M = L->Main;
 			for (int32 c = 0; c < L->Crossings.Num(); ++c)
 			{
-				const FCrossing& C = L->Crossings[c];
-				const FRouteStep& High = L->Route[C.HighStep];
-				const FRouteStep& Low = L->Route[C.LowStep];
-				const double Rise = C.TopZ - L->Modules[C.Module].Level;
+				const FRouteStep& High = L->Route[L->Crossings[c].HighStep];
 				for (int32 i = High.FirstSample; i < High.LastSample; ++i)
 				{
-					if (C.Type == ETNProcCrossingType::Cave)
-					{
-						AddSegmentInf(EInf::Mesa, c, i, M[i].P, M[i + 1].P, 1650.0 + Rise / 2.2 + 400.0);
-					}
-					else
-					{
-						AddSegmentInf(EInf::DeckClear, c, i, M[i].P, M[i + 1].P, 3500.0);
-					}
+					AddSegmentInf(EInf::DeckClear, c, i, M[i].P, M[i + 1].P, 3500.0);
 				}
-				if (C.Type == ETNProcCrossingType::Cave)
-				{
-					for (int32 j = Low.FirstSample; j < Low.LastSample; ++j)
-					{
-						if ((M[j].Flags & PathFlags::Tunnel) != 0 || (M[j + 1].Flags & PathFlags::Tunnel) != 0)
-						{
-							AddSegmentInf(EInf::Tunnel, c, j, M[j].P, M[j + 1].P, 1200.0);
-						}
-					}
-				}
+			}
+			// Tramos bajo una estructura (puertas de muralla, cuevas): suelo a la cota del camino.
+			for (int32 j = 0; j + 1 < M.Num(); ++j)
+			{
+				if (((M[j].Flags | M[j + 1].Flags) & PathFlags::Tunnel) != 0) { AddSegmentInf(EInf::Tunnel, INDEX_NONE, j, M[j].P, M[j + 1].P, 1200.0); }
 			}
 
 			for (int32 f = 0; f < L->Features.Num(); ++f)
@@ -609,6 +611,7 @@ namespace TNProcMap
 				{
 					case EFeature::Tower:      Inf.Type = EInf::Tower; Reach = F.Radius + 3200.0; break;
 					case EFeature::DeckPillar: Inf.Type = EInf::Tower; Reach = F.Radius + 700.0; break;
+					case EFeature::Gate:       Inf.Type = EInf::Gate;  Reach = FMath::Max(F.Width, F.Length) * 0.5 + 900.0; break;
 					case EFeature::Gap:      Inf.Type = EInf::Gap;    Reach = FMath::Max(F.Height, F.Width) * 0.5 + 3000.0; break;
 					case EFeature::LavaPool: Inf.Type = EInf::Lava;   Reach = F.Radius + 1000.0; break;
 					case EFeature::Island:   Inf.Type = EInf::Island; Reach = F.Radius + 200.0; break;
@@ -742,19 +745,6 @@ namespace TNProcMap
 					Outer = FMath::Min(Outer, LerpD(F.Height - 1700.0, Outer, SmoothStep(F.Radius + 2200.0, F.Radius + 3000.0, D)));
 				}
 			}
-			// Mesas de los cruces cueva: son paisaje, los cauces las cortan (aproximación, géiser y túnel).
-			bool bMesaTop = false;
-			for (const FInf& Inf : Bin)
-			{
-				if (Inf.Type != EInf::Mesa) { continue; }
-				const FCrossing& C = L->Crossings[Inf.A];
-				double T = 0.0;
-				const double D = DistPointSegment(P, L->Main[Inf.B].P, L->Main[Inf.B + 1].P, T);
-				const double Top = 1200.0 + 450.0 * Noise2(Seed + 41u, P.X / 3500.0, P.Y / 3500.0);
-				const double Slope = 2.2 + 0.7 * (0.5 + 0.5 * Noise2(Seed + 42u, P.X / 2500.0, P.Y / 2500.0));
-				const double MesaH = C.TopZ + 120.0 * Ridged2(Seed + 43u, P.X / 1800.0, P.Y / 1800.0, 2) - FMath::Max(0.0, D - Top) * Slope;
-				if (MesaH > Outer) { Outer = MesaH; bMesaTop = D <= 1200.0; }
-			}
 
 			// ── Cauce del camino ────────────────────────────────────────────
 			double H = Outer;
@@ -786,8 +776,10 @@ namespace TNProcMap
 				if (bLane) { BankH = FMath::Max(BankH, 1100.0); }
 				// El cauce se abre solo mar adentro: la meta es una playa encajada que da al agua.
 				BankH *= 1.0 - SmoothStep(L->CoastY(P.X) - 300.0, L->CoastY(P.X) + 1500.0, P.Y);
-				const double Toe = (bLane || (Flags & (PathFlags::Slide | PathFlags::TowerTop)) != 0) ? 150.0 : Bt.Shoulder;
-				const double Run = BankH / FMath::Tan(FMath::DegreesToRadians(Bt.BankAngle));
+				// Bajo una estructura la zanja es de paredes a plomo desde el borde del suelo (la tapa ella).
+				const bool bTunnel = (Flags & PathFlags::Tunnel) != 0;
+				const double Toe = (bLane || bTunnel || (Flags & (PathFlags::Slide | PathFlags::TowerTop)) != 0) ? 150.0 : Bt.Shoulder;
+				const double Run = bTunnel ? 60.0 : BankH / FMath::Tan(FMath::DegreesToRadians(Bt.BankAngle));
 				const double Rim = PathZ + BankH;
 
 				if (Beyond <= 0.0)
@@ -815,8 +807,8 @@ namespace TNProcMap
 					const double X = Beyond - Toe - Run;
 					if (Outer >= Rim)
 					{
-						// Bajo la mesa (túnel) la pared sube a plomo hasta la cima: es la boca de la cueva.
-						const double RiseDist = (Flags & PathFlags::Tunnel) != 0 ? 150.0 : Bt.RiseDist;
+						// Bajo una estructura la pared sube a plomo hasta arriba.
+						const double RiseDist = bTunnel ? 150.0 : Bt.RiseDist;
 						H = Rim + (Outer - Rim) * SmoothStep(0.0, FMath::Max(RiseDist, 1.0), X);
 					}
 					else
@@ -828,8 +820,6 @@ namespace TNProcMap
 					H = FMath::Max(H, static_cast<double>(InGuard));
 				}
 			}
-
-			if (bMesaTop && H >= Outer - 1.0) { OutMask = 180; }
 
 			// Bajo el tablero de un puente colosal: vacío (y zona de muerte) al menos 1,5 m por debajo,
 			// sin taludes ni mesetas que lo tapen. Las torres y los pilares van encima (influencias).
@@ -881,30 +871,7 @@ namespace TNProcMap
 			return LerpD(Cliff, SeaBed, SmoothStep(Coast - 400.0, Coast + 200.0, P.Y));
 		}
 
-		/**
-		 * Si P (en el borde de la plataforma de una torre) queda en una abertura del pretil: sobre el
-		 * arranque de la pasada alta (puente o mesa) o, en la torre de salida, del tobogán.
-		 */
-		bool TowerOpening(const FFeature& F, const FVector2D& P) const
-		{
-			if (F.Aux == INDEX_NONE || !L->Crossings.IsValidIndex(F.Aux)) { return true; }
-			const FCrossing& C = L->Crossings[F.Aux];
-			const FRouteStep& High = L->Route[C.HighStep];
-			const TArray<FPathSample>& M = L->Main;
-			auto Near = [&](int32 From, int32 To)
-			{
-				for (int32 i = FMath::Max(0, From); i < FMath::Min(To, M.Num() - 1); ++i)
-				{
-					double T = 0.0;
-					const double D = DistPointSegment(P, M[i].P, M[i + 1].P, T);
-					if (D <= LerpD(M[i].Width, M[i + 1].Width, T) * 0.5 + 150.0) { return true; }
-				}
-				return false;
-			};
-			if (F.PathIndex == High.FirstSample) { return Near(High.FirstSample, High.FirstSample + 10); }
-			if (Near(High.LastSample - 10, High.LastSample)) { return true; }
-			return C.HighStep + 1 < L->Route.Num() && Near(L->Route[C.HighStep + 1].FirstSample, L->Route[C.HighStep + 1].FirstSample + 10);
-		}
+		bool TowerOpening(const FFeature& F, const FVector2D& P) const { return TowerOpeningAt(*L, F, P); }
 
 		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask) const
 		{
@@ -918,7 +885,9 @@ namespace TNProcMap
 				const double D = FVector2D::Distance(P, FVector2D(F.Location.X, F.Location.Y));
 				// Pilar: plataforma plana a la cota de la cima en todo su radio (sin taludes ni mesetas
 				// dentro): ahí se encuentran el aterrizaje del géiser, el puente y el tobogán. Los pilares
-				// bajo el tablero solo suben hasta su cima.
+				// bajo el tablero solo suben hasta su cima. Las torres de muralla van forradas de fábrica
+				// (malla, con almenas): aquí su núcleo, de paredes a plomo, y el pretil que las cierra.
+				const bool bWallTower = F.Type == EFeature::Tower && L->Crossings.IsValidIndex(F.Aux) && L->Crossings[F.Aux].Type == ETNProcCrossingType::Wall;
 				if (D <= F.Radius)
 				{
 					// Pretil de roca de 1,8 m en el borde (no se salta), abierto hacia el puente y el tobogán.
@@ -926,7 +895,7 @@ namespace TNProcMap
 					H = F.Type == EFeature::Tower ? F.Height + (bParapet ? 180.0 : 0.0) : FMath::Max(H, F.Height);
 					OutMask = FMath::Max<uint8>(OutMask, 150);
 				}
-				else if (D < F.Radius + 600.0) { H = FMath::Max(H, LerpD(F.Height, H, (D - F.Radius) / 600.0)); }
+				else if (D < F.Radius + 600.0 && !bWallTower) { H = FMath::Max(H, LerpD(F.Height, H, (D - F.Radius) / 600.0)); }
 			}
 
 			// Túnel: el tramo bajo atraviesa la mesa a su propia cota.
@@ -939,6 +908,21 @@ namespace TNProcMap
 				const double D = DistPointSegment(P, A.P, B.P, T);
 				const double Hw = LerpD(A.Width, B.Width, T) * 0.5 + 150.0;
 				if (D < Hw) { H = LerpD(A.Z, B.Z, T); OutMask = 255; }
+			}
+
+			// Puertas de muralla: suelo llano a la cota del camino en todo el paso y una explanada de 6 m
+			// ante cada boca que se funde con el terreno.
+			for (const FInf& Inf : Bin)
+			{
+				if (Inf.Type != EInf::Gate) { continue; }
+				const FFeature& F = L->Features[Inf.A];
+				const FVector2D Rel = P - FVector2D(F.Location.X, F.Location.Y);
+				if (FMath::Abs(FVector2D::DotProduct(Rel, F.Dir)) > F.Width * 0.5 + 100.0) { continue; }
+				const double Out = FMath::Max(0.0, FMath::Abs(FVector2D::DotProduct(Rel, LeftNormal(F.Dir))) - F.Length * 0.5);
+				if (Out >= 600.0) { continue; }
+				const double T = SmoothStep(0.0, 600.0, Out);
+				H = LerpD(F.Location.Z, H, T);
+				OutMask = FMath::Max<uint8>(OutMask, static_cast<uint8>(FMath::RoundToInt(255.0 * (1.0 - T))));
 			}
 
 			// Zanjas de los huecos de salto.

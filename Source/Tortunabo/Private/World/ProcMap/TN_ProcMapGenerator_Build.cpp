@@ -354,6 +354,339 @@ namespace
 			}
 		}
 	}
+
+	/** Eje de una muralla: su adarve (el tramo alto del cruce), recorrible por distancia en planta. */
+	struct FTNWallAxis
+	{
+		TArray<FVector2D> P;
+		TArray<double> S;
+		TArray<double> Hw;
+
+		void Build(const TArray<TNProcMap::FPathSample>& M, int32 From, int32 To)
+		{
+			for (int32 i = From; i <= To; ++i)
+			{
+				S.Add(P.Num() == 0 ? 0.0 : S.Last() + FVector2D::Distance(P.Last(), M[i].P));
+				P.Add(M[i].P);
+				Hw.Add(M[i].Width * 0.5);
+			}
+		}
+
+		double Length() const { return S.Num() > 0 ? S.Last() : 0.0; }
+
+		/** Distancia a lo largo del eje del punto del eje más cercano a Q. */
+		double Project(const FVector2D& Q) const
+		{
+			double Best = 1e300, BestS = 0.0;
+			for (int32 i = 0; i + 1 < P.Num(); ++i)
+			{
+				double T = 0.0;
+				const double D = TNProcMap::DistPointSegment(Q, P[i], P[i + 1], T);
+				if (D < Best) { Best = D; BestS = FMath::Lerp(S[i], S[i + 1], T); }
+			}
+			return BestS;
+		}
+
+		/** Punto, tangente y normal izquierda (suavizadas) y semiancho del adarve a la distancia Sq. */
+		void At(double Sq, FVector2D& OutP, FVector2D& OutT, FVector2D& OutN, double& OutHw) const
+		{
+			int32 Lo = 0, Hi = S.Num() - 1;
+			while (Hi - Lo > 1)
+			{
+				const int32 Mid = (Lo + Hi) / 2;
+				if (S[Mid] <= Sq) { Lo = Mid; } else { Hi = Mid; }
+			}
+			const double T = FMath::Clamp((Sq - S[Lo]) / FMath::Max(1.0, S[Hi] - S[Lo]), 0.0, 1.0);
+			OutP = P[Lo] + (P[Hi] - P[Lo]) * T;
+			OutT = (P[FMath::Min(Hi + 1, P.Num() - 1)] - P[FMath::Max(Lo - 1, 0)]).GetSafeNormal();
+			OutN = FVector2D(-OutT.Y, OutT.X);
+			OutHw = FMath::Lerp(Hw[Lo], Hw[Hi], T);
+		}
+	};
+
+	/**
+	 * Muralla de un cruce entre S0 y S1 de su eje: caras en talud desde 3 m bajo el suelo hasta el
+	 * pretil, en hiladas de sillares de tonos alternos; el adarve (S0W-S1W) entre dos parapetos con
+	 * almenas; y, si la cruza el tramo bajo, su puerta: jambas a plomo, arco de medio punto con las
+	 * dovelas marcadas y bóveda de cañón bajo el adarve. GroundAt(FVector2D) da la cota del terreno.
+	 */
+	template <typename FGround>
+	void TNProcAddWall(FTNProcMeshBuffers& Out, const FTNWallAxis& Axis, double S0, double S1, double S0W, double S1W, double TopZ,
+		const TNProcMap::FFeature* Gate, const FGround& GroundAt, const FLinearColor& Stone, uint32 Seed)
+	{
+		using namespace TNProcMap;
+		constexpr double Course = 180.0;
+		const double ParTop = TopZ + WallDims::ParapetH;
+
+		struct FCol
+		{
+			double S = 0.0;
+			FVector2D P = FVector2D::ZeroVector, T = FVector2D::ZeroVector, N = FVector2D::ZeroVector;
+			double Hw = 0.0;
+			/** Pie de cada cara (0 izquierda, 1 derecha): enterrado 3 m, o el intradós bajo el arco. */
+			double Bottom[2] = { 0.0, 0.0 };
+		};
+		double Sg = 0.0, R = 0.0, Zs = 0.0, Floor = 0.0;
+		bool bGate = Gate != nullptr;
+		if (bGate)
+		{
+			Sg = Axis.Project(FVector2D(Gate->Location.X, Gate->Location.Y));
+			R = Gate->Radius;
+			Zs = TopZ - WallDims::Crown - R;
+			Floor = Gate->Location.Z;
+			bGate = Sg - R > S0 + 100.0 && Sg + R < S1 - 100.0 && Zs > Floor + 300.0;
+		}
+		auto Intrados = [&](double Sq) { const double U = Sq - Sg; return Zs + FMath::Sqrt(FMath::Max(0.0, R * R - U * U)); };
+		auto MakeCol = [&](double Sq, bool bArch)
+		{
+			FCol C;
+			C.S = Sq;
+			Axis.At(Sq, C.P, C.T, C.N, C.Hw);
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const double Sig = Side == 0 ? 1.0 : -1.0;
+				if (bArch) { C.Bottom[Side] = Intrados(Sq); continue; }
+				// Pie de la cara donde el talud corta el suelo (dos pasadas), enterrado 3 m.
+				double G = GroundAt(C.P + C.N * (Sig * (C.Hw + WallDims::Parapet + 300.0)));
+				G = GroundAt(C.P + C.N * (Sig * WallDims::HalfAt(C.Hw, TopZ - G)));
+				C.Bottom[Side] = FMath::Min(G, TopZ - 200.0) - 300.0;
+			}
+			return C;
+		};
+		auto FacePt = [&](const FCol& C, double Sig, double Z)
+		{
+			const double Lat = Z >= TopZ ? C.Hw + WallDims::Parapet : WallDims::HalfAt(C.Hw, TopZ - Z);
+			const FVector2D Q = C.P + C.N * (Sig * Lat);
+			return FVector(Q.X, Q.Y, Z);
+		};
+		auto Range = [&](double A, double B, double Step, bool bArch)
+		{
+			TArray<FCol> Cols;
+			const int32 Num = FMath::Max(1, FMath::CeilToInt((B - A) / Step));
+			for (int32 k = 0; k <= Num; ++k) { Cols.Add(MakeCol(A + (B - A) * k / Num, bArch)); }
+			return Cols;
+		};
+		TArray<TArray<FCol>> Parts;
+		TArray<bool> IsArch;
+		if (bGate)
+		{
+			Parts.Add(Range(S0, Sg - R, 250.0, false)); IsArch.Add(false);
+			Parts.Add(Range(Sg - R, Sg + R, 50.0, true)); IsArch.Add(true);
+			Parts.Add(Range(Sg + R, S1, 250.0, false)); IsArch.Add(false);
+		}
+		else
+		{
+			Parts.Add(Range(S0, S1, 250.0, false)); IsArch.Add(false);
+		}
+
+		// Caras en hiladas; bajo el arco, la primera hilada es la de las dovelas (más clara).
+		for (int32 PartIdx = 0; PartIdx < Parts.Num(); ++PartIdx)
+		{
+			const TArray<FCol>& Cols = Parts[PartIdx];
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const double Sig = Side == 0 ? 1.0 : -1.0;
+				for (int32 k = 0; k + 1 < Cols.Num(); ++k)
+				{
+					const FCol& A = Cols[k];
+					const FCol& B = Cols[k + 1];
+					const double Low = FMath::Max(A.Bottom[Side], B.Bottom[Side]);
+					TArray<double> Lines;
+					for (int32 n = FMath::FloorToInt((TopZ - Low) / Course); n >= 0; --n)
+					{
+						const double Zl = TopZ - n * Course;
+						if (Zl > Low + 20.0) { Lines.Add(Zl); }
+					}
+					Lines.Add(ParTop);
+					const FVector2D Nm = (A.N + B.N).GetSafeNormal() * Sig;
+					const FVector Hint(Nm.X, Nm.Y, WallDims::Batter);
+					double ZA = A.Bottom[Side], ZB = B.Bottom[Side];
+					for (int32 r = 0; r < Lines.Num(); ++r)
+					{
+						const double Zt = Lines[r];
+						const int32 CourseIdx = FMath::RoundToInt((TopZ - Zt) / Course);
+						FLinearColor Col = Stone * TNProcTone(CourseIdx * 977 + (PartIdx * 1000 + k) / 2 * 131 + Side * 7, Seed);
+						if (IsArch[PartIdx] && r == 0) { Col = Stone * ((k % 2) == 0 ? 1.18f : 1.08f); }
+						Out.AddQuad(FacePt(A, Sig, ZA), FacePt(B, Sig, ZB), FacePt(B, Sig, Zt), FacePt(A, Sig, Zt), Hint, Col);
+						ZA = ZB = Zt;
+					}
+				}
+			}
+		}
+
+		// Puerta: jambas a plomo desde el suelo del paso (enterradas) hasta el arranque del arco, y
+		// bóveda de cañón por el intradós.
+		if (bGate)
+		{
+			for (int32 J = 0; J < 2; ++J)
+			{
+				const FCol& C = J == 0 ? Parts[0].Last() : Parts[2][0];
+				const FVector Hint(C.T.X * (J == 0 ? 1.0 : -1.0), C.T.Y * (J == 0 ? 1.0 : -1.0), 0.0);
+				double Z0 = Floor - 300.0;
+				while (Z0 < Zs - 1.0)
+				{
+					const double Z1 = FMath::Min(Zs, (FMath::FloorToDouble((Z0 - TopZ) / Course) + 1.0) * Course + TopZ);
+					const double Zt = Z1 <= Z0 + 1.0 ? Zs : Z1;
+					Out.AddQuad(FacePt(C, 1.0, Z0), FacePt(C, -1.0, Z0), FacePt(C, -1.0, Zt), FacePt(C, 1.0, Zt), Hint,
+						Stone * TNProcTone(FMath::RoundToInt(Z0 / Course) * 31 + J, Seed ^ 0x5A5Au) * 0.95f);
+					Z0 = Zt;
+				}
+			}
+			const TArray<FCol>& Arch = Parts[1];
+			for (int32 k = 0; k + 1 < Arch.Num(); ++k)
+			{
+				const FCol& A = Arch[k];
+				const FCol& B = Arch[k + 1];
+				const double Sm = 0.5 * (A.S + B.S);
+				const FVector2D Tm = (A.T + B.T).GetSafeNormal();
+				const FVector Hint(Tm.X * (Sg - Sm), Tm.Y * (Sg - Sm), Zs - Intrados(Sm));
+				Out.AddQuad(FacePt(A, 1.0, A.Bottom[0]), FacePt(A, -1.0, A.Bottom[1]), FacePt(B, -1.0, B.Bottom[1]), FacePt(B, 1.0, B.Bottom[0]), Hint,
+					Stone * ((k % 2) == 0 ? 0.92f : 0.86f));
+			}
+		}
+
+		// Remates de los extremos (quedan dentro de las torres).
+		for (int32 E = 0; E < 2; ++E)
+		{
+			const FCol& C = E == 0 ? Parts[0][0] : Parts.Last().Last();
+			const FVector Hint(C.T.X * (E == 0 ? -1.0 : 1.0), C.T.Y * (E == 0 ? -1.0 : 1.0), 0.0);
+			const double Zb = FMath::Min(C.Bottom[0], C.Bottom[1]);
+			Out.AddQuad(FacePt(C, 1.0, Zb), FacePt(C, -1.0, Zb), FacePt(C, -1.0, ParTop), FacePt(C, 1.0, ParTop), Hint, Stone * 0.9f);
+		}
+
+		// Adarve enlosado, caras interiores y cima de los parapetos, y almenas cada 2,6 m.
+		const TArray<FCol> Top = Range(S0W, S1W, 250.0, false);
+		for (int32 k = 0; k + 1 < Top.Num(); ++k)
+		{
+			const FCol& A = Top[k];
+			const FCol& B = Top[k + 1];
+			auto W = [&](const FCol& C, double Sig, double Lat, double Z) { const FVector2D Q = C.P + C.N * (Sig * Lat); return FVector(Q.X, Q.Y, Z); };
+			Out.AddQuad(W(A, 1.0, A.Hw, TopZ), W(A, -1.0, A.Hw, TopZ), W(B, -1.0, B.Hw, TopZ), W(B, 1.0, B.Hw, TopZ), FVector::UpVector,
+				Stone * 1.1f * TNProcTone(k, Seed ^ 0xADA7u));
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const double Sig = Side == 0 ? 1.0 : -1.0;
+				const FVector2D Nm = (A.N + B.N).GetSafeNormal() * -Sig;
+				Out.AddQuad(W(A, Sig, A.Hw, TopZ), W(B, Sig, B.Hw, TopZ), W(B, Sig, B.Hw, ParTop), W(A, Sig, A.Hw, ParTop), FVector(Nm.X, Nm.Y, 0.0), Stone * 0.97f);
+				Out.AddQuad(W(A, Sig, A.Hw, ParTop), W(B, Sig, B.Hw, ParTop), W(B, Sig, B.Hw + WallDims::Parapet, ParTop), W(A, Sig, A.Hw + WallDims::Parapet, ParTop),
+					FVector::UpVector, Stone * 1.05f);
+			}
+		}
+		for (double Sm = S0W + 130.0; Sm < S1W - 100.0; Sm += 260.0)
+		{
+			const FCol C = MakeCol(Sm, true);
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const double Sig = Side == 0 ? 1.0 : -1.0;
+				const FVector2D Q = C.P + C.N * (Sig * (C.Hw + WallDims::Parapet * 0.5));
+				Out.AddBox(FVector(Q.X, Q.Y, ParTop + WallDims::MerlonH * 0.5), FVector(C.T.X, C.T.Y, 0.0),
+					FVector(65.0, WallDims::Parapet * 0.5, WallDims::MerlonH * 0.5), Stone * TNProcTone(FMath::RoundToInt(Sm) + Side, Seed ^ 0x3E7u));
+			}
+		}
+	}
+
+	/**
+	 * Torre de muralla: forro de sillería en talud (32 lados) sobre el pilar del terreno, pretil de
+	 * 1,9 m con almenas que cubre el de roca y se abre al adarve y al tobogán (donde el forro queda a
+	 * ras del pilar), y un estandarte en lo alto.
+	 */
+	template <typename FGround>
+	void TNProcAddWallTower(FTNProcMeshBuffers& Out, FTNProcMeshBuffers& Cloth, const TNProcMap::FLayout& Layout, const TNProcMap::FFeature& F,
+		const FGround& GroundAt, const FLinearColor& Stone, const FLinearColor& Banner, uint32 Seed)
+	{
+		using namespace TNProcMap;
+		constexpr int32 Sides = 32;
+		constexpr double Course = 180.0;
+		const FVector2D C(F.Location.X, F.Location.Y);
+		const double TopZ = F.Height;
+		const double R = F.Radius;
+		const double Ri = R - 320.0;
+		const double Ro = R + 220.0;
+		const double ParTop = TopZ + 190.0;
+		auto Dir = [](double A) { return FVector2D(FMath::Cos(A), FMath::Sin(A)); };
+		TArray<bool> Open;
+		for (int32 k = 0; k < Sides; ++k)
+		{
+			const double A = TwoPi * (k + 0.5) / Sides;
+			Open.Add(TowerOpeningAt(Layout, F, C + Dir(A) * (R - 150.0)));
+		}
+		double Ground = TopZ;
+		for (int32 k = 0; k < Sides; ++k) { Ground = FMath::Min(Ground, GroundAt(C + Dir(TwoPi * k / Sides) * (Ro + 400.0))); }
+		const double Zb = Ground - 300.0;
+		auto OuterAt = [&](double A, double Z, bool bFlush)
+		{
+			const double Rad = bFlush ? R : Ro + WallDims::Batter * FMath::Max(0.0, TopZ - Z);
+			const FVector2D Q = C + Dir(A) * Rad;
+			return FVector(Q.X, Q.Y, Z);
+		};
+		auto RingAt = [&](double A, double Rad, double Z) { const FVector2D Q = C + Dir(A) * Rad; return FVector(Q.X, Q.Y, Z); };
+		for (int32 k = 0; k < Sides; ++k)
+		{
+			const double A0 = TwoPi * k / Sides;
+			const double A1 = TwoPi * (k + 1) / Sides;
+			const double Am = 0.5 * (A0 + A1);
+			const FVector Hint(FMath::Cos(Am), FMath::Sin(Am), WallDims::Batter);
+			const bool bOpen = Open[k];
+			const double Zt = bOpen ? TopZ : ParTop;
+			double Z0 = Zb;
+			while (Z0 < Zt - 1.0)
+			{
+				const double Z1 = FMath::Min(Zt, (FMath::FloorToDouble((Z0 - TopZ) / Course) + 1.0) * Course + TopZ);
+				const double Z2 = Z1 <= Z0 + 1.0 ? Zt : Z1;
+				Out.AddQuad(OuterAt(A0, Z0, bOpen), OuterAt(A1, Z0, bOpen), OuterAt(A1, Z2, bOpen), OuterAt(A0, Z2, bOpen), Hint,
+					Stone * TNProcTone(FMath::RoundToInt((TopZ - Z2) / Course) * 97 + k / 2, Seed));
+				Z0 = Z2;
+			}
+			if (bOpen) { continue; }
+			// Pretil: cara interior, cima y almena en medio del lado; y cierre junto a las aberturas.
+			Out.AddQuad(RingAt(A1, Ri, TopZ), RingAt(A0, Ri, TopZ), RingAt(A0, Ri, ParTop), RingAt(A1, Ri, ParTop), FVector(-Hint.X, -Hint.Y, 0.0), Stone * 0.95f);
+			Out.AddQuad(RingAt(A0, Ri, ParTop), RingAt(A1, Ri, ParTop), OuterAt(A1, ParTop, false), OuterAt(A0, ParTop, false), FVector::UpVector, Stone * 1.05f);
+			const FVector2D Tg(-FMath::Sin(Am), FMath::Cos(Am));
+			if ((k % 2) == 0)
+			{
+				// Almenas en el borde exterior, una sí y otra no.
+				const FVector2D Mc = C + Dir(Am) * (Ro - 60.0);
+				Out.AddBox(FVector(Mc.X, Mc.Y, ParTop + WallDims::MerlonH * 0.5), FVector(Tg.X, Tg.Y, 0.0),
+					FVector(0.5 * Ro * (A1 - A0), 60.0, WallDims::MerlonH * 0.5), Stone * TNProcTone(k, Seed ^ 0x77u));
+			}
+			for (int32 E = 0; E < 2; ++E)
+			{
+				const int32 Nb = (k + (E == 0 ? Sides - 1 : 1)) % Sides;
+				if (!Open[Nb]) { continue; }
+				const double Ae = E == 0 ? A0 : A1;
+				const FVector2D Te = Tg * (E == 0 ? -1.0 : 1.0);
+				// Junto a una abertura: cierre del pretil y, debajo, del forro hasta el pilar.
+				Out.AddQuad(RingAt(Ae, Ri, TopZ), OuterAt(Ae, TopZ, false), OuterAt(Ae, ParTop, false), RingAt(Ae, Ri, ParTop), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
+				Out.AddQuad(RingAt(Ae, R, Zb), OuterAt(Ae, Zb, false), OuterAt(Ae, TopZ, false), RingAt(Ae, R, TopZ), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
+			}
+		}
+		// Estandarte en el lado cerrado más alejado de las aberturas.
+		int32 Best = INDEX_NONE;
+		int32 BestRun = -1;
+		for (int32 k = 0; k < Sides; ++k)
+		{
+			if (Open[k]) { continue; }
+			int32 Run = 0;
+			while (Run < Sides && !Open[(k + Run) % Sides] && !Open[(k - Run + Sides) % Sides]) { ++Run; }
+			if (Run > BestRun) { BestRun = Run; Best = k; }
+		}
+		if (Best != INDEX_NONE)
+		{
+			const double Am = TwoPi * (Best + 0.5) / Sides;
+			const FVector2D Q = C + Dir(Am) * (0.5 * (Ri + Ro));
+			const FVector Base(Q.X, Q.Y, ParTop);
+			const FVector TopP = Base + FVector(0.0, 0.0, 750.0);
+			Cloth.AddBeam(Base, TopP, 7.0, FLinearColor(0.35f, 0.24f, 0.14f));
+			const FVector2D Fd(-FMath::Sin(Am), FMath::Cos(Am));
+			const FVector Fx(Fd.X * 260.0, Fd.Y * 260.0, 0.0);
+			const FVector Fl0 = TopP - FVector(0.0, 0.0, 20.0);
+			const FVector Fl1 = TopP - FVector(0.0, 0.0, 170.0);
+			const FVector Wave(0.0, 0.0, -30.0);
+			const FVector Nf(Fd.Y, -Fd.X, 0.0);
+			Cloth.AddQuad(Fl0, Fl0 + Fx + Wave, Fl1 + Fx + Wave, Fl1, Nf, Banner);
+			Cloth.AddQuad(Fl0, Fl1, Fl1 + Fx + Wave, Fl0 + Fx + Wave, -Nf, Banner * 0.8f);
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -725,32 +1058,37 @@ void ATN_ProcMapGenerator::BuildStructures()
 		}
 	}
 
-	// ── Techos de cueva sobre el tramo bajo ─────────────────────────────────
-	for (const FFeature& F : Layout.Features)
+	// ── Murallas: muro almenado bajo el adarve, puerta altísima y torres de sillería ──
+	// De arenisca en los biomas de arena y de la piedra del bioma en el resto.
 	{
-		if (F.Type != EFeature::TunnelRoof) { continue; }
-		const int32 From = FMath::Max(0, F.PathIndex - 1);
-		const int32 To = FMath::Min(M.Num() - 1, F.Aux2 + 1);
-		TArray<TArray<FVector>> Rings;
-		for (int32 i = From; i <= To; ++i)
+		static const FLinearColor Banners[3] = { FLinearColor(0.62f, 0.08f, 0.07f), FLinearColor(0.1f, 0.18f, 0.55f), FLinearColor(0.75f, 0.55f, 0.08f) };
+		auto Ground = [this](const FVector2D& Q) { return TerrainHeightMap(Q); };
+		for (int32 c = 0; c < Layout.Crossings.Num(); ++c)
 		{
-			const FPathSample& S = M[i];
-			const FVector2D N = LeftNormal(S.Dir);
-			const double Hw = S.Width * 0.5 + 450.0;
-			const double Z0 = S.Z + 750.0;
-			const double ZTop = F.Height + 40.0;
-			const FVector2D Profile[6] = {
-				FVector2D(-Hw, Z0), FVector2D(-Hw * 0.55, Z0 + 180.0), FVector2D(Hw * 0.55, Z0 + 180.0),
-				FVector2D(Hw, Z0), FVector2D(Hw, ZTop), FVector2D(-Hw, ZTop) };
-			TArray<FVector> Ring;
-			for (const FVector2D& Pr : Profile)
+			const FCrossing& C = Layout.Crossings[c];
+			if (C.Type != ETNProcCrossingType::Wall) { continue; }
+			const FRouteStep& High = Layout.Route[C.HighStep];
+			FTNWallAxis Axis;
+			Axis.Build(M, High.FirstSample, High.LastSample);
+			const FFeature* Gate = nullptr;
+			for (const FFeature& F : Layout.Features) { if (F.Type == EFeature::Gate && F.Aux == c) { Gate = &F; } }
+			const ETNProcBiome Biome = Layout.Modules[C.Module].Biome;
+			FLinearColor G, Pc, RockC, Bd;
+			ResolveBiomeColors(Biome, G, Pc, RockC, Bd);
+			const bool bSand = Biome == ETNProcBiome::Desert || Biome == ETNProcBiome::Beach;
+			const FLinearColor Stone = bSand ? TNProcLerpColor(RockC, G, 0.6f) * 1.12f : TNProcLerpColor(RockC, G, 0.15f) * 1.3f;
+			const double TowerR = Layout.Params.TowerRadius;
+			const double Len = Axis.Length();
+			const uint32 Seed = Layout.Params.Seed ^ (0x3A11u + static_cast<uint32>(c) * 7919u);
+			TNProcAddWall(Rock, Axis, TowerR - 400.0, Len - TowerR + 400.0, TowerR, Len - TowerR, C.TopZ, Gate, Ground, Stone, Seed);
+			for (const FFeature& F : Layout.Features)
 			{
-				const FVector2D XY = S.P + N * Pr.X;
-				Ring.Add(FVector(XY.X, XY.Y, Pr.Y));
+				if (F.Type == EFeature::Tower && F.Aux == c)
+				{
+					TNProcAddWallTower(Rock, Foliage, Layout, F, Ground, Stone, Banners[c % 3], Seed ^ static_cast<uint32>(F.PathIndex * 2654435761u));
+				}
 			}
-			Rings.Add(Ring);
 		}
-		Rock.AddSweep(Rings, true, RockColor * 0.85f);
 	}
 
 	for (const FFeature& F : Layout.Features)
