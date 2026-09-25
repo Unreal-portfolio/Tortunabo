@@ -835,6 +835,134 @@ namespace TNProcMap
 		}
 	}
 
+	/**
+	 * Vida y obstáculos del camino (principal y ramas, salvo carriles): peñascos en grupos de
+	 * 1-3 que siempre dejan un carril libre de al menos 3,5 m, agujas y mogotes de roca en las
+	 * explanadas y troncos caídos que se saltan (<= 1,1 m) en selva, manglar y volcán. Nunca
+	 * junto a huecos, géiseres, toboganes, torres, portales, horquillas ni sobre el agua.
+	 * Además, secuoyas gigantes con raíces zancudas en los módulos de manglar.
+	 */
+	inline void BuildObstacles(FLayout& L, FRng Rng)
+	{
+		using namespace FeatureDetail;
+		const uint32 Avoid = PathFlags::Special | PathFlags::Lane;
+		auto OnPolyline = [&](const TArray<FPathSample>& S, int32 BranchIndex)
+		{
+			if (S.Num() < 20) { return; }
+			double NextS = Rng.Range(2000.0, 5000.0);
+			for (int32 i = 8; i < S.Num() - 8; ++i)
+			{
+				const FPathSample& Sm = S[i];
+				if (Sm.S < NextS) { continue; }
+				NextS = Sm.S + Rng.Range(2200.0, 5500.0);
+				if (IsWetBiome(Sm.Biome) || AnyFlag(S, i - 6, i + 6, Avoid)) { continue; }
+				// Cerca de una horquilla o unión de rama tampoco (dos cauces se cruzan ahí).
+				bool bFork = false;
+				for (const FBranch& B : L.Branches)
+				{
+					if (BranchIndex == INDEX_NONE && (FMath::Abs(B.ForkSample - i) < 10 || FMath::Abs(B.RejoinSample - i) < 10)) { bFork = true; break; }
+				}
+				if (bFork || (BranchIndex != INDEX_NONE && (i < 14 || i > S.Num() - 14))) { continue; }
+
+				const double W = Sm.Width;
+				const FVector2D N = LeftNormal(Sm.Dir);
+				const bool bForest = Sm.Biome == ETNProcBiome::Jungle || Sm.Biome == ETNProcBiome::Mangrove || Sm.Biome == ETNProcBiome::Volcanic;
+				const double U = Rng.Unit();
+				if (W >= 2000.0 && U < 0.35)
+				{
+					// Aguja (alta y fina) o mogote (bajo y ancho) en mitad de la explanada, con carriles a ambos lados.
+					const bool bSpire = Rng.Chance(0.6);
+					const double R = bSpire ? Rng.Range(150.0, 320.0) : Rng.Range(380.0, 700.0);
+					const double Room = W * 0.5 - R - 500.0;
+					if (Room < 0.0) { continue; }
+					FFeature F = MakeAtSample(EFeature::RockSpire, Sm, i, BranchIndex);
+					F.Location = FVector(Sm.P + N * Rng.Range(-Room, Room) * 0.6, Sm.Z);
+					F.Radius = R;
+					F.Height = bSpire ? Rng.Range(500.0, 1400.0) : Rng.Range(220.0, 600.0);
+					F.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
+					L.Features.Add(F);
+					continue;
+				}
+				if (bForest && W >= 500.0 && W <= 2600.0 && U < 0.6)
+				{
+					// Tronco caído atravesado: se salta (radio 35-55 cm); deja hueco en un extremo o no.
+					FFeature F = MakeAtSample(EFeature::Log, Sm, i, BranchIndex);
+					const double Ang = FMath::DegreesToRadians(Rng.Range(60.0, 90.0)) * (Rng.Chance(0.5) ? 1.0 : -1.0);
+					F.Dir = (Sm.Dir * FMath::Cos(Ang) + N * FMath::Sin(Ang)).GetSafeNormal();
+					F.Length = W * Rng.Range(0.55, 0.9) / FMath::Max(0.3, FMath::Abs(FMath::Sin(Ang)));
+					F.Radius = Rng.Range(35.0, 55.0);
+					F.Location = FVector(Sm.P + N * Rng.Range(-0.15, 0.15) * W, Sm.Z);
+					F.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
+					L.Features.Add(F);
+					continue;
+				}
+				// Grupo de 1-3 peñascos a un lado, dejando libre el otro (>= 3,5 m y >= 40 % del ancho).
+				const double Lane = FMath::Max(350.0, 0.4 * W);
+				const double Side = Rng.Chance(0.5) ? 1.0 : -1.0;
+				const int32 Count = Rng.RangeInt(1, 3);
+				for (int32 k = 0; k < Count; ++k)
+				{
+					const double R = Rng.Range(70.0, 220.0);
+					const double MinOff = R + Lane - W * 0.5;
+					const double MaxOff = W * 0.5 - R * 0.4;
+					if (MaxOff <= FMath::Max(0.0, MinOff)) { break; }
+					FFeature F = MakeAtSample(EFeature::Boulder, Sm, i, BranchIndex);
+					const double Along = Rng.Range(-250.0, 250.0) * k;
+					F.Location = FVector(Sm.P + Sm.Dir * Along + N * (Side * Rng.Range(FMath::Max(0.0, MinOff), MaxOff)), Sm.Z);
+					F.Radius = R;
+					F.Height = R * Rng.Range(0.8, 1.7);
+					F.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
+					L.Features.Add(F);
+				}
+			}
+		};
+		OnPolyline(L.Main, INDEX_NONE);
+		for (int32 b = 0; b < L.Branches.Num(); ++b)
+		{
+			if (L.Branches[b].Kind != EBranchKind::Lane) { OnPolyline(L.Branches[b].Samples, b); }
+		}
+
+		// Secuoyas del manglar: fuera de los cauces (en tierra o en las pozas), con raíces zancudas.
+		TArray<FPathSample> All = L.Main;
+		for (const FBranch& B : L.Branches) { All.Append(B.Samples); }
+		PathDetail::FSampleGrid Grid;
+		Grid.Build(All, L.WorldSize);
+		for (const FModule& M : L.Modules)
+		{
+			if (M.Biome != ETNProcBiome::Mangrove) { continue; }
+			const int32 Count = Rng.RangeInt(8, 14);
+			for (int32 n = 0; n < Count; ++n)
+			{
+				for (int32 Try = 0; Try < 20; ++Try)
+				{
+					const int32 X = Rng.RangeInt(0, L.RasterW - 1);
+					const int32 Y = Rng.RangeInt(0, L.RasterH - 1);
+					if (L.ModuleOfCell[L.CellIndex(X, Y)] != M.Id) { continue; }
+					const FVector2D C = L.CellCenter(X, Y) + FVector2D(Rng.Range(-150.0, 150.0), Rng.Range(-150.0, 150.0));
+					const double R = Rng.Range(150.0, 260.0);
+					double D = 0.0;
+					const int32 Near = Grid.Nearest(C, 20000.0, D);
+					if (Near != INDEX_NONE && D < All[Near].Width * 0.5 + R * 3.0 + 900.0) { continue; }
+					bool bClose = false;
+					for (const FFeature& F : L.Features)
+					{
+						if (F.Type == EFeature::GiantTree && FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C) < 2500.0) { bClose = true; break; }
+					}
+					if (bClose) { continue; }
+					FFeature T;
+					T.Type = EFeature::GiantTree;
+					T.Biome = ETNProcBiome::Mangrove;
+					T.Location = FVector(C, 0.0);
+					T.Radius = R;
+					T.Height = Rng.Range(3000.0, 5500.0);
+					T.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
+					L.Features.Add(T);
+					break;
+				}
+			}
+		}
+	}
+
 	// ─────────────────────────────────────────────────────────────────────────
 	// Planificación de peligros (enemigos, spawners) — determinista y pura
 	// ─────────────────────────────────────────────────────────────────────────
@@ -878,13 +1006,22 @@ namespace TNProcMap
 		TArray<FHazardSpawn> Out;
 		FRng Rng = FRng(static_cast<uint64>(L.Params.Seed) * 0x9E37ull + Salt);
 
-		TArray<FVector2D> Keep;
+		// Zonas reservadas (x, y, radio): estructuras del recorrido y obstáculos del camino.
+		TArray<FVector> Keep;
 		for (const FFeature& F : L.Features)
 		{
 			if (F.Type == EFeature::Geyser || F.Type == EFeature::EggNest || F.Type == EFeature::Gap || F.Type == EFeature::ThrowWall
 				|| F.Type == EFeature::SabotageGate || F.Type == EFeature::SabotageSwitch || F.Type == EFeature::StartArea || F.Type == EFeature::Finish)
 			{
-				Keep.Add(FVector2D(F.Location.X, F.Location.Y));
+				Keep.Add(FVector(F.Location.X, F.Location.Y, 1600.0));
+			}
+			else if (F.Type == EFeature::Boulder || F.Type == EFeature::RockSpire)
+			{
+				Keep.Add(FVector(F.Location.X, F.Location.Y, F.Radius + 250.0));
+			}
+			else if (F.Type == EFeature::Log)
+			{
+				Keep.Add(FVector(F.Location.X, F.Location.Y, F.Length * 0.5 + 200.0));
 			}
 		}
 

@@ -259,6 +259,14 @@ namespace TNProcMap
 		Volcano,
 		/** Pilar de roca bajo el tablero de un puente colosal: Radius, Height = cota de su cima, Aux = cruce, PathIndex = muestra. */
 		DeckPillar,
+		/** Peñasco en el camino: Location = centro (Z = suelo), Radius, Height, Aux = semilla de forma. */
+		Boulder,
+		/** Aguja o mogote de roca en una explanada: Location, Radius, Height, Aux = semilla. */
+		RockSpire,
+		/** Tronco caído que se salta: Location = centro, Dir = eje, Length, Radius. */
+		Log,
+		/** Árbol gigante tipo secuoya con raíces zancudas (manglar): Location (XY), Radius = tronco, Height. */
+		GiantTree,
 		Count
 	};
 

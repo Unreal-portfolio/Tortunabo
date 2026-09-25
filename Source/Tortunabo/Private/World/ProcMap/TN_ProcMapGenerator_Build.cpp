@@ -228,6 +228,98 @@ namespace
 		}
 	}
 
+	/** Ruido de valor estable en [-1, 1] por índices (forma de rocas y troncos). */
+	double TNProcHashNoise(int32 A, int32 B, uint32 Seed)
+	{
+		uint32 H = static_cast<uint32>(A) * 73856093u ^ static_cast<uint32>(B) * 19349663u ^ Seed * 83492791u;
+		H ^= H >> 13; H *= 0x5bd1e995u; H ^= H >> 15;
+		return static_cast<double>(H & 0xFFFF) / 32767.5 - 1.0;
+	}
+
+	/**
+	 * Cuerpo de revolución irregular: anillos de Seg vértices a las alturas Z (sobre Base) con
+	 * radios R, cada vértice con ruido radial; se cierra por arriba. Para rocas, agujas y troncos
+	 * de árbol (eje vertical).
+	 */
+	void TNProcAddLathe(FTNProcMeshBuffers& Mesh, const FVector& Base, const TArray<double>& Z, const TArray<double>& R, double Jitter,
+		uint32 Seed, const FLinearColor& Color, int32 Seg = 10)
+	{
+		TArray<TArray<FVector>> Rings;
+		for (int32 r = 0; r < Z.Num(); ++r)
+		{
+			TArray<FVector> Ring;
+			for (int32 k = 0; k < Seg; ++k)
+			{
+				const double A = TNProcMap::TwoPi * (k + 0.37 * TNProcHashNoise(r, k, Seed + 5u)) / Seg;
+				const double Rad = FMath::Max(1.0, R[r] * (1.0 + Jitter * TNProcHashNoise(r, k, Seed)));
+				Ring.Add(Base + FVector(FMath::Cos(A) * Rad, FMath::Sin(A) * Rad, Z[r] + Jitter * 0.3 * R[r] * TNProcHashNoise(k, r, Seed + 9u)));
+			}
+			Rings.Add(Ring);
+		}
+		Mesh.AddSweep(Rings, true, Color);
+		const TArray<FVector>& Top = Rings.Last();
+		FVector C = FVector::ZeroVector;
+		for (const FVector& V : Top) { C += V; }
+		C /= static_cast<double>(Top.Num());
+		C.Z += R.Last() * 0.3;
+		for (int32 k = 0; k < Top.Num(); ++k) { Mesh.AddTri(C, Top[k], Top[(k + 1) % Top.Num()], FVector::UpVector, Color); }
+	}
+
+	/** Peñasco: elipsoide irregular hundido 25 cm en el suelo. */
+	void TNProcAddBoulder(FTNProcMeshBuffers& Mesh, const FVector& Base, double Radius, double Height, uint32 Seed, const FLinearColor& Color)
+	{
+		TArray<double> Z, R;
+		for (int32 r = 0; r <= 5; ++r)
+		{
+			const double T = r / 6.0;
+			Z.Add(-25.0 + Height * (0.5 - 0.5 * FMath::Cos(T * PI)) * 1.1);
+			R.Add(Radius * FMath::Sin(FMath::Lerp(0.35, 0.92, T) * PI));
+		}
+		TNProcAddLathe(Mesh, Base, Z, R, 0.22, Seed, Color * (0.85f + 0.3f * static_cast<float>(0.5 + 0.5 * TNProcHashNoise(1, 2, Seed))), 9);
+	}
+
+	/** Tronco caído (cilindro irregular) entre A y B, con tapas y muñones de ramas. */
+	void TNProcAddLog(FTNProcMeshBuffers& Mesh, const FVector& A, const FVector& B, double Radius, uint32 Seed, const FLinearColor& Bark, const FLinearColor& Cut)
+	{
+		const FVector Axis = (B - A).GetSafeNormal();
+		if (Axis.IsNearlyZero()) { return; }
+		FVector U = FVector::CrossProduct(Axis, FVector::UpVector);
+		if (U.SizeSquared() < 1e-6) { U = FVector(1.0, 0.0, 0.0); }
+		U.Normalize();
+		const FVector V = FVector::CrossProduct(Axis, U);
+		constexpr int32 Seg = 9;
+		constexpr int32 Stations = 6;
+		TArray<TArray<FVector>> Rings;
+		for (int32 St = 0; St <= Stations; ++St)
+		{
+			const FVector C = FMath::Lerp(A, B, static_cast<double>(St) / Stations);
+			TArray<FVector> Ring;
+			for (int32 k = 0; k < Seg; ++k)
+			{
+				const double Ang = TNProcMap::TwoPi * k / Seg;
+				const double Rad = Radius * (1.0 + 0.1 * TNProcHashNoise(St, k, Seed));
+				Ring.Add(C + (U * FMath::Cos(Ang) + V * FMath::Sin(Ang)) * Rad);
+			}
+			Rings.Add(Ring);
+		}
+		Mesh.AddSweep(Rings, true, Bark);
+		for (int32 End = 0; End < 2; ++End)
+		{
+			const TArray<FVector>& Ring = End == 0 ? Rings[0] : Rings.Last();
+			const FVector C = End == 0 ? A : B;
+			const FVector Out = End == 0 ? -Axis : Axis;
+			for (int32 k = 0; k < Seg; ++k) { Mesh.AddTri(C, Ring[k], Ring[(k + 1) % Seg], Out, Cut); }
+		}
+		for (int32 b = 0; b < 2; ++b)
+		{
+			const double T = 0.3 + 0.4 * (0.5 + 0.5 * TNProcHashNoise(b, 7, Seed));
+			const double Ang = PI * TNProcHashNoise(b, 3, Seed);
+			const FVector Dir = (U * FMath::Cos(Ang) + V * FMath::Sin(Ang) + Axis * 0.3).GetSafeNormal();
+			const FVector P0 = FMath::Lerp(A, B, T);
+			Mesh.AddBeam(P0, P0 + Dir * (Radius * 2.2), Radius * 0.28, Bark * 0.9f);
+		}
+	}
+
 	/** Postes a ambos bordes cada PostEvery y cuerda de barandilla con comba entre ellos. */
 	void TNProcAddRopeRails(FTNProcMeshBuffers& Wood, const FTNPlankLine& Line, double S0, double S1, double PostEvery, double PostDown,
 		double RailH, const FLinearColor& PostColor, const FLinearColor& RopeColor)
@@ -558,7 +650,7 @@ void ATN_ProcMapGenerator::BuildWater()
 void ATN_ProcMapGenerator::BuildStructures()
 {
 	using namespace TNProcMap;
-	FTNProcMeshBuffers Rock, Wood, Lava, SlideWater;
+	FTNProcMeshBuffers Rock, Wood, Lava, SlideWater, Foliage;
 	const FLinearColor RockColor(0.32f, 0.29f, 0.26f);
 	const FLinearColor WoodColor(0.45f, 0.3f, 0.16f);
 	const TArray<FPathSample>& M = Layout.Main;
@@ -722,6 +814,94 @@ void ATN_ProcMapGenerator::BuildStructures()
 				Lava.AddPrism(Disc, F.Location.Z, F.Location.Z - 10.0, FLinearColor(1.f, 0.35f, 0.05f), false);
 				break;
 			}
+			case EFeature::Boulder:
+			{
+				const FVector2D C(F.Location.X, F.Location.Y);
+				FLinearColor G, Pc, RockC, Bd;
+				ResolveBiomeColors(F.Biome, G, Pc, RockC, Bd);
+				TNProcAddBoulder(Rock, FVector(C, TerrainHeightMap(C)), F.Radius, F.Height, static_cast<uint32>(F.Aux), TNProcLerpColor(RockC, G, 0.25f));
+				break;
+			}
+			case EFeature::RockSpire:
+			{
+				const FVector2D C(F.Location.X, F.Location.Y);
+				// Aguja (esbelta, con sombrero de roca) o mogote (bajo y ancho, de techo plano).
+				FLinearColor G, Pc, RockC, Bd;
+				ResolveBiomeColors(F.Biome, G, Pc, RockC, Bd);
+				const uint32 Seed = static_cast<uint32>(F.Aux);
+				const FVector Base(C, TerrainHeightMap(C) - 40.0);
+				const bool bSpire = F.Height > F.Radius * 2.0;
+				TArray<double> Z, R;
+				const int32 Rings = bSpire ? 8 : 5;
+				for (int32 r = 0; r <= Rings; ++r)
+				{
+					const double T = static_cast<double>(r) / Rings;
+					Z.Add(F.Height * T);
+					R.Add(F.Radius * (bSpire ? FMath::Lerp(1.25, 0.55, T) : FMath::Lerp(1.15, 0.8, T * T)));
+				}
+				TNProcAddLathe(Rock, Base, Z, R, bSpire ? 0.18 : 0.12, Seed, RockC * (0.9f + 0.2f * static_cast<float>(0.5 + 0.5 * TNProcHashNoise(4, 4, Seed))), 11);
+				if (bSpire)
+				{
+					TNProcAddBoulder(Rock, Base + FVector(0.0, 0.0, F.Height - 30.0), F.Radius * 1.25, F.Radius * 0.9, Seed + 77u, RockC * 0.85f);
+				}
+				break;
+			}
+			case EFeature::Log:
+			{
+				const FVector2D C(F.Location.X, F.Location.Y);
+				const FVector2D Half = F.Dir * (F.Length * 0.5);
+				const FVector A(C - Half, TerrainHeightMap(C - Half) + F.Radius * 0.85);
+				const FVector B(C + Half, TerrainHeightMap(C + Half) + F.Radius * 0.85);
+				const bool bCharred = F.Biome == ETNProcBiome::Volcanic;
+				const FLinearColor Bark = bCharred ? FLinearColor(0.07f, 0.06f, 0.05f) : FLinearColor(0.3f, 0.2f, 0.11f);
+				const FLinearColor Cut = bCharred ? FLinearColor(0.35f, 0.12f, 0.05f) : FLinearColor(0.62f, 0.48f, 0.3f);
+				TNProcAddLog(Wood, A, B, F.Radius, static_cast<uint32>(F.Aux), Bark, Cut);
+				break;
+			}
+			case EFeature::GiantTree:
+			{
+				const FVector2D C(F.Location.X, F.Location.Y);
+				// Secuoya: tronco rojizo con base ensanchada, raíces zancudas en arco y copa cónica por capas.
+				const uint32 Seed = static_cast<uint32>(F.Aux);
+				const double Ground = TerrainHeightMap(C);
+				const FVector Base(C, Ground - 60.0);
+				const FLinearColor Bark(0.36f, 0.17f, 0.09f);
+				TArray<double> Z, R;
+				for (int32 r = 0; r <= 9; ++r)
+				{
+					const double T = r / 9.0;
+					Z.Add(F.Height * 0.9 * T);
+					R.Add(F.Radius * (T < 0.08 ? FMath::Lerp(1.9, 1.0, T / 0.08) : FMath::Lerp(1.0, 0.35, (T - 0.08) / 0.92)));
+				}
+				TNProcAddLathe(Wood, Base, Z, R, 0.05, Seed, Bark, 12);
+				const int32 NumRoots = 8 + static_cast<int32>(4.0 * (0.5 + 0.5 * TNProcHashNoise(0, 0, Seed)));
+				for (int32 k = 0; k < NumRoots; ++k)
+				{
+					const double Ang = TwoPi * (k + 0.4 * TNProcHashNoise(k, 1, Seed)) / NumRoots;
+					const FVector2D Dir(FMath::Cos(Ang), FMath::Sin(Ang));
+					const double Reach = F.Radius * (2.6 + 1.2 * (0.5 + 0.5 * TNProcHashNoise(k, 2, Seed)));
+					const double Top = 250.0 + 250.0 * (0.5 + 0.5 * TNProcHashNoise(k, 3, Seed));
+					FVector Prev = FVector(C + Dir * (F.Radius * 0.8), Ground + Top);
+					for (int32 t = 1; t <= 4; ++t)
+					{
+						const double U = t / 4.0;
+						const FVector2D Q = C + Dir * FMath::Lerp(F.Radius * 0.8, Reach, U);
+						const FVector Pt(Q, FMath::Lerp(Ground + Top, TerrainHeightMap(Q) - 40.0, U * U) + 120.0 * FMath::Sin(U * PI));
+						Wood.AddBeam(Prev, Pt, F.Radius * FMath::Lerp(0.22, 0.12, U), Bark * 0.9f);
+						Prev = Pt;
+					}
+				}
+				const int32 Clumps = 6;
+				for (int32 k = 0; k < Clumps; ++k)
+				{
+					const double T = FMath::Lerp(0.45, 0.97, static_cast<double>(k) / (Clumps - 1));
+					const double CR = F.Radius * FMath::Lerp(4.2, 1.4, T) * (0.85 + 0.3 * (0.5 + 0.5 * TNProcHashNoise(k, 5, Seed)));
+					const FVector Off(TNProcHashNoise(k, 6, Seed) * F.Radius * 0.8, TNProcHashNoise(k, 7, Seed) * F.Radius * 0.8, 0.0);
+					TNProcAddBoulder(Foliage, Base + Off + FVector(0.0, 0.0, F.Height * T), CR, CR * 0.9, Seed + 100u + k,
+						FLinearColor(0.05f, 0.2f + 0.08f * static_cast<float>(k % 2), 0.06f));
+				}
+				break;
+			}
 			case EFeature::SlideZone:
 			{
 				// Lámina de agua sobre la bajada: el tobogán en sí es terreno empinado.
@@ -770,6 +950,32 @@ void ATN_ProcMapGenerator::BuildStructures()
 		}
 	}
 
+	// ── Algas y nenúfares: manchas verdes flotando en las pozas junto al camino ─
+	{
+		FRng AlgaeRng(static_cast<uint64>(Layout.Params.Seed) * 0xA16Eull + 3ull);
+		for (int32 i = 0; i < M.Num(); i += 3)
+		{
+			const FPathSample& Sm = M[i];
+			if (Sm.Biome != ETNProcBiome::Mangrove && Sm.Biome != ETNProcBiome::Water) { continue; }
+			for (int32 n = 0; n < 2; ++n)
+			{
+				const double Side = AlgaeRng.Chance(0.5) ? 1.0 : -1.0;
+				const FVector2D Q = Sm.P + LeftNormal(Sm.Dir) * (Side * (Sm.Width * 0.5 + AlgaeRng.Range(150.0, 1800.0))) + Sm.Dir * AlgaeRng.Range(-300.0, 300.0);
+				if (TerrainHeightMap(Q) > -40.0) { continue; }
+				const double Rad = AlgaeRng.Range(60.0, 260.0);
+				TArray<FVector2D> Poly;
+				for (int32 k = 0; k < 9; ++k)
+				{
+					const double A = TwoPi * k / 9.0;
+					Poly.Add(Q + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (Rad * AlgaeRng.Range(0.6, 1.1)));
+				}
+				const bool bLily = Sm.Biome == ETNProcBiome::Water && AlgaeRng.Chance(0.4);
+				const FLinearColor Col = bLily ? FLinearColor(0.12f, 0.42f, 0.1f) : FLinearColor(0.16f, 0.3f, 0.06f) * static_cast<float>(AlgaeRng.Range(0.8, 1.2));
+				Foliage.AddPrism(Poly, TNProcMap::SeaLevel + 4.0, TNProcMap::SeaLevel - 2.0, Col, false);
+			}
+		}
+	}
+
 	// ── Componentes ─────────────────────────────────────────────────────────
 	const TArray<FProcMeshTangent> NoTangents;
 	UMaterialInterface* BasicMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
@@ -807,6 +1013,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 		UMaterialInterface* SlideMat = Settings && Settings->SlideWaterMaterial ? Settings->SlideWaterMaterial.Get()
 			: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
 		DecorMesh->SetMaterial(1, SlideMat);
+	}
+	if (!Foliage.IsEmpty())
+	{
+		DecorMesh->CreateMeshSection_LinearColor(2, Foliage.Verts, Foliage.Tris, Foliage.Normals, Foliage.UVs, Foliage.Colors, NoTangents, false);
+		DecorMesh->SetMaterial(2, VertexMat ? VertexMat : BasicMat);
 	}
 
 	// ── Límites invisibles del mapa (la costa norte queda abierta hasta el mar) ─
