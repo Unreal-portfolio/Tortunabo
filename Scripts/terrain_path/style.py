@@ -17,7 +17,7 @@ class PathStyle:
     nested_loops: int = 2                    # cuantos de ellos cuelgan de otro lazo
     crossings: int = 2                       # lazos que cruzan a su padre (puente o tunel)
     loop_span_m: tuple[float, float] = (40.0, 160.0)
-    loop_reach_m: tuple[float, float] = (26.0, 60.0)
+    loop_reach_m: tuple[float, float] = (38.0, 65.0)
     backtrack_chance: float = 0.3            # el lazo sale hacia atras antes de avanzar
     hill_tunnels: int = 2                    # tramos del principal que atraviesan un cerro
     # Anchura (semiancho, m) y cota
@@ -32,8 +32,8 @@ class PathStyle:
     rim_cliffs_m: tuple[float, float] = (4.0, 9.0)
     rim_water_m: tuple[float, float] = (3.0, 5.0)
     rim_dunes_m: tuple[float, float] = (3.0, 6.0)
-    rim_beach_m: tuple[float, float] = (0.0, 1.5)
-    wall_angle_deg: tuple[float, float, float, float] = (78.0, 55.0, 62.0, 30.0)
+    rim_beach_m: tuple[float, float] = (2.5, 4.0)
+    wall_angle_deg: tuple[float, float, float, float] = (78.0, 55.0, 62.0, 45.0)
     block_band_m: float = 8.0
     # Rio
     island_per_100m: float = 5.0

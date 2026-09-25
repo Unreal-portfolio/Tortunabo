@@ -138,7 +138,7 @@ def loop_profile(rng: np.random.Generator, line: PathLine, graph: PathGraph, pro
     else:
         s_x, z_x = pin
         before, after = s_x - PIN_FLAT_M, line.length - s_x - PIN_FLAT_M
-        if abs(z_x - z_a) > style.max_grade * before or abs(z_x - z_b) > style.max_grade * after:
+        if abs(z_x - z_a) > style.steep_grade * before or abs(z_x - z_b) > style.steep_grade * after:
             raise Infeasible(f"el cruce del lazo {line.id} no cabe en pendiente")
         z = np.interp(line.arc, [0.0, s_x - PIN_FLAT_M, s_x + PIN_FLAT_M, line.length], [z_a, z_x, z_x, z_b]) \
             + 0.5 * detail
@@ -146,7 +146,9 @@ def loop_profile(rng: np.random.Generator, line: PathLine, graph: PathGraph, pro
         z[flat] = z_x
         anchors = {0, len(z) - 1} | set(np.nonzero(flat)[0].tolist())
     z[0], z[-1] = z_a, z_b
-    z = _ramps(z, line.arc, np.full(len(z), style.max_grade), anchors)
+    # Las rampas de un cruce pueden ser las empinadas (hay que salvar cross_clearance_m).
+    grade = style.max_grade if pin is None else style.steep_grade
+    z = _ramps(z, line.arc, np.full(len(z), grade), anchors)
     return LineProfile(z, _widths(rng, line.arc, biome, style), biome, np.zeros(len(z), dtype=bool))
 
 
@@ -185,7 +187,15 @@ def _profiles(rng: np.random.Generator, graph: PathGraph, style: PathStyle) -> P
         if c is not None:
             parent = graph.lines[c.lower]
             z_p = float(np.interp(c.s_lower, parent.arc, profiles[parent.id].z))
-            under = z_p - style.cross_clearance_m >= WATER_M + 0.8 and rng.random() < 0.5
+            z_a = float(np.interp(loop.s_out, parent.arc, profiles[parent.id].z))
+            z_b = float(np.interp(loop.s_back, parent.arc, profiles[parent.id].z))
+            ends = max(abs(z_p - z_a), abs(z_p - z_b))
+            can_under = z_p - style.cross_clearance_m >= WATER_M + 0.8
+            # Arriba o abajo: el que menos rampa pida; al azar si los dos caben igual de bien.
+            up_need = max(abs(z_p + style.cross_clearance_m - z_a), abs(z_p + style.cross_clearance_m - z_b))
+            down_need = max(abs(z_p - style.cross_clearance_m - z_a), abs(z_p - style.cross_clearance_m - z_b))
+            under = can_under and (down_need < up_need - 1.0 or (abs(down_need - up_need) <= 1.0 and rng.random() < 0.5))
+            del ends
             pin = (c.s_upper, z_p - style.cross_clearance_m if under else z_p + style.cross_clearance_m)
             if under:
                 c = Crossing(parent.id, loop.id, c.point, c.s_lower, c.s_upper)

@@ -183,3 +183,70 @@ def test_hay_tuneles_de_cerro_en_el_acantilado(plan):
     assert len(plan.hill_tunnels) >= 1
     for line_id, s0, s1 in plan.hill_tunnels:
         assert line_id == 0 and 25.0 <= s1 - s0 <= 45.0
+
+
+from terrain_path.model import PathModel  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def model():
+    return PathModel(60001, C01_STYLE)
+
+
+def _cross_section(model, line_id, s, offsets):
+    from scipy import ndimage
+    line = model.plan.graph.lines[line_id]
+    p, n = line.point_at(s), line.normal_at(s)
+    pts = p[None, :] + offsets[:, None] * n[None, :]
+    i = pts[:, 0] - model.axis[0]
+    j = pts[:, 1] - model.axis[0]
+    return ndimage.map_coordinates(model.grid.height, [i, j], order=1)
+
+
+def test_el_suelo_del_camino_es_llano_sin_cuenco(model):
+    plan = model.plan
+    checked = 0
+    for line in plan.graph.lines:
+        prof = plan.profiles[line.id]
+        for s in np.arange(30.0, line.length - 60.0, 9.0):
+            k = int(np.searchsorted(line.arc, s))
+            if prof.biome[k] != 0 and prof.biome[k] != 2:
+                continue                                   # agua y playa tienen su propio suelo
+            if prof.tunnel[max(k - 15, 0):k + 15].any() or model.near_junction(line.point_at(s), 20.0):
+                continue
+            w = prof.half_width[k]
+            h = _cross_section(model, line.id, s, np.linspace(-0.8 * w, 0.8 * w, 9))
+            assert np.ptp(h) <= 0.3, f"camino {line.id} s={s:.0f}: cuenco o escalon ({np.ptp(h):.2f} m)"
+            checked += 1
+    assert checked >= 20
+
+
+def test_el_borde_cierra_el_paso(model):
+    """A 1,5 x semiancho del eje, fuera del camino, la pared ya esta 3 m o mas por encima del suelo."""
+    plan = model.plan
+    for line in plan.graph.lines:
+        prof = plan.profiles[line.id]
+        for s in np.arange(30.0, line.length - 60.0, 23.0):
+            k = int(np.searchsorted(line.arc, s))
+            if prof.biome[k] == 3 or prof.tunnel[max(k - 15, 0):k + 15].any() \
+                    or model.near_junction(line.point_at(s), 25.0):
+                continue
+            w = prof.half_width[k]
+            h = _cross_section(model, line.id, s, np.array([0.0, -(w + 6.0), w + 6.0]))
+            assert min(h[1], h[2]) - h[0] >= 3.0, f"camino {line.id} s={s:.0f}: borde bajo"
+
+
+def test_la_union_de_un_lazo_no_tiene_escalon(model):
+    """Donde un lazo se une a su padre, el suelo pasa de uno a otro sin salto."""
+    for loop in model.plan.graph.loops():
+        for s in (1.0, loop.length - 1.0):
+            h = _cross_section(model, loop.id, s, np.array([0.0]))[0]
+            z = np.interp(s, loop.arc, model.plan.profiles[loop.id].z)
+            assert abs(h - z) <= 0.6
+
+
+def test_el_final_toca_el_mar(model):
+    end = model.plan.graph.main.points[-1]
+    i, j = int(round(end[0] - model.axis[0])), int(round(end[1] - model.axis[0]))
+    patch = model.grid.height[i - 3:i + 25, j - 10:j + 11]
+    assert (patch < WATER_M).any()

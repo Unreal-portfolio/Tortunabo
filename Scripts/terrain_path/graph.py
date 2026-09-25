@@ -195,7 +195,7 @@ def make_loop(rng: np.random.Generator, graph: PathGraph, parent_id: int, style:
     s_out = float(rng.uniform(margin_lo, parent.length - margin_hi - span))
     s_back = s_out + span
     side = float(rng.choice([-1.0, 1.0]))
-    reach = float(rng.uniform(*style.loop_reach_m)) * (0.6 if nested else 1.0)
+    reach = float(rng.uniform(*style.loop_reach_m))
     ways: list[np.ndarray] = []
     radii: list[float] = []
     if not cross and rng.random() < style.backtrack_chance:
@@ -208,9 +208,9 @@ def make_loop(rng: np.random.Generator, graph: PathGraph, parent_id: int, style:
         s_m2 = s_out + span * float(rng.uniform(0.7, 0.8))
         x_pt, n_x = parent.point_at(s_x), parent.normal_at(s_x)
         ways += [parent.point_at(s_m1) + parent.normal_at(s_m1) * side * reach,
-                 x_pt + n_x * side * 14.0, x_pt - n_x * side * 14.0,
+                 x_pt + n_x * side * 18.0, x_pt - n_x * side * 18.0,
                  parent.point_at(s_m2) - parent.normal_at(s_m2) * side * reach]
-        radii += [12.0, 3.0, 3.0, 12.0]
+        radii += [12.0, 6.0, 6.0, 12.0]
         side_back = -side
     else:
         s_m = s_out + span * 0.5
@@ -218,8 +218,10 @@ def make_loop(rng: np.random.Generator, graph: PathGraph, parent_id: int, style:
         radii.append(12.0)
         side_back = side
     b_pt = parent.point_at(s_back)
-    ways += [b_pt + parent.normal_at(s_back) * side_back * 12.0 - parent.tangent_at(s_back) * 4.0, b_pt]
-    radii += [4.0, 2.5]
+    # Aproximacion a la vuelta: desde fuera y algo por detras (el radio de giro minimo es de
+    # ~11,5 m: un punto previo pegado a la union obliga a dar vueltas sin llegar nunca).
+    ways += [b_pt + parent.normal_at(s_back) * side_back * 20.0 - parent.tangent_at(s_back) * 14.0, b_pt]
+    radii += [6.0, 4.0]
     t_a, n_a = parent.tangent_at(s_out), parent.normal_at(s_out)
     lean = t_a * math.cos(math.radians(45.0)) + n_a * side * math.sin(math.radians(45.0))
     raw = steer_walk(rng, parent.point_at(s_out), math.atan2(lean[1], lean[0]), ways, radii,
