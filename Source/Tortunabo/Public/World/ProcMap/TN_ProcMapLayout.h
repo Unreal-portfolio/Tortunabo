@@ -287,8 +287,51 @@ namespace TNProcMap
 		 * Height = cota del adarve, Aux = cruce, PathIndex = muestra del tramo bajo, Aux2 = del alto.
 		 */
 		Gate,
+		/**
+		 * Formación temática (Aux = EFormation, Aux2 = semilla). Arcos sobre el camino: Location = centro
+		 * a la cota del suelo, Dir = el camino, Width = luz entre pies, Height = altura libre, Length =
+		 * fondo. En explanadas: Location sobre el suelo del camino, Radius = huella, Height = alto. Hitos
+		 * lejanos: Location (XY), Radius = base, Height = alto (se asientan en el terreno al construirlos).
+		 */
+		Formation,
 		Count
 	};
+
+	/** Tipo de formación temática (Aux de EFeature::Formation). */
+	enum class EFormation : int32
+	{
+		// Arcos que cruzan el camino (se pasa por debajo).
+		StoneArch,      ///< Arco natural de roca (arenisca, granito, musgo, obsidiana según el bioma).
+		WhaleRibs,      ///< Costillar de ballena (playa).
+		RootArch,       ///< Raíces gigantes en arco (manglar).
+		TempleGate,     ///< Pórtico de templo en ruinas (selva).
+		// En explanadas del camino, con carriles libres a los lados.
+		Shipwreck,      ///< Barco varado de costado con el mástil roto (playa).
+		StoneHead,      ///< Cabeza colosal de piedra (selva).
+		BasaltColumns,  ///< Columnas hexagonales de basalto (volcán).
+		Fumarole,       ///< Cono de fumarola con azufre (volcán).
+		Hoodoo,         ///< Chimenea de hadas: roca en capas con sombrero (desierto, roca).
+		BalancedRock,   ///< Peñasco en equilibrio sobre un pedestal (desierto, roca).
+		Wagon,          ///< Carreta de lona abandonada (desierto).
+		Cannon,         ///< Cañón antiguo con balas apiladas (guerra: acantilados).
+		Sandbags,       ///< Parapeto de sacos terreros (guerra: zona humana).
+		Bunker,         ///< Búnker de hormigón con tronera (guerra: zona humana).
+		WatchTower,     ///< Torre de vigía de madera (guerra: zona humana).
+		TankWreck,      ///< Carro de combate abandonado (guerra: zona humana).
+		// Hitos lejanos del paisaje (sin colisión).
+		Pyramid,        ///< Pirámide escalonada con escalinata (selva).
+		Lighthouse,     ///< Faro a rayas junto a la costa (playa).
+		Mesa,           ///< Mesa de techo plano con estratos (desierto).
+		SeaStack,       ///< Farallón en el mar (playa, roca).
+		CastleRuin,     ///< Castillo en ruinas con torre (roca).
+		Windmill,       ///< Molino de viento (zona humana).
+		StiltHut,       ///< Palafito de pescador (manglar, lagunas).
+		Count
+	};
+
+	/** Clase de colocación de una formación. */
+	inline bool IsArchFormation(EFormation K) { return K == EFormation::StoneArch || K == EFormation::WhaleRibs || K == EFormation::RootArch || K == EFormation::TempleGate; }
+	inline bool IsLandmarkFormation(EFormation K) { return K >= EFormation::Pyramid; }
 
 	/** Caja de muerte orientada (en planta según Dir): caer dentro es morir y reaparecer en los huevos. */
 	struct FKillBox

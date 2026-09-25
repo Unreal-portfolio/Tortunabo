@@ -17,6 +17,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Async/ParallelFor.h"
 #include "TN_ProcMapMeshKit.h"
+#include "TN_ProcMapFormationMeshes.h"
 
 using namespace TNProcMesh;
 
@@ -750,7 +751,8 @@ void ATN_ProcMapGenerator::BuildWater()
 void ATN_ProcMapGenerator::BuildStructures()
 {
 	using namespace TNProcMap;
-	FTNProcMeshBuffers Rock, Wood, Lava, SlideWater, Foliage;
+	// Painted: formaciones del camino (con colisión); PaintedFar: hitos lejanos (sin ella). Color de vértice.
+	FTNProcMeshBuffers Rock, Wood, Lava, SlideWater, Foliage, Painted, PaintedFar;
 	const FLinearColor RockColor(0.32f, 0.29f, 0.26f);
 	const FLinearColor WoodColor(0.45f, 0.3f, 0.16f);
 	const TArray<FPathSample>& M = Layout.Main;
@@ -963,6 +965,31 @@ void ATN_ProcMapGenerator::BuildStructures()
 				TNProcAddLog(Wood, A, B, F.Radius, static_cast<uint32>(F.Aux), Bark, Cut);
 				break;
 			}
+			case EFeature::Formation:
+			{
+				// Formación temática: se construye en su marco local (origen en el suelo del camino o, en los
+				// hitos lejanos, en el terreno) y se apoya en el terreno real.
+				const EFormation Kind = static_cast<EFormation>(F.Aux);
+				FLinearColor G, Pc, RockC, Bd;
+				ResolveBiomeColors(F.Biome, G, Pc, RockC, Bd);
+				const FVector2D C(F.Location.X, F.Location.Y);
+				const bool bFar = IsLandmarkFormation(Kind);
+				const double OriginZ = bFar ? TerrainHeightMap(C) : F.Location.Z;
+				const FVector2D Dx = F.Dir.GetSafeNormal().IsNearlyZero() ? FVector2D(1.0, 0.0) : F.Dir.GetSafeNormal();
+				const FVector2D Dy(-Dx.Y, Dx.X);
+				auto Ground = [&](double X, double Y) { return TerrainHeightMap(C + Dx * X + Dy * Y) - OriginZ; };
+				TNFormMesh::FTNFormParams Params;
+				Params.Width = F.Width;
+				Params.Height = F.Height;
+				Params.Length = F.Length;
+				Params.Radius = F.Radius;
+				Params.Seed = static_cast<uint32>(F.Aux2);
+				Params.WaterZ = TNProcMap::SeaLevel - OriginZ;
+				FTNProcMeshBuffers Local;
+				TNFormMesh::TNFormBuild(Local, Kind, Params, TNFormMesh::TNFormColorsFor(F.Biome, RockC), Ground);
+				TNFormMesh::TNFormAppend(bFar ? PaintedFar : Painted, Local, FVector(C, OriginZ), Dx);
+				break;
+			}
 			case EFeature::GiantTree:
 			{
 				const FVector2D C(F.Location.X, F.Location.Y);
@@ -1100,6 +1127,19 @@ void ATN_ProcMapGenerator::BuildStructures()
 	{
 		StructureMesh->CreateMeshSection_LinearColor(1, Wood.Verts, Wood.Tris, Wood.Normals, Wood.UVs, Wood.Colors, NoTangents, true);
 		StructureMesh->SetMaterial(1, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+	}
+	// Formaciones temáticas con su color de vértice: las del camino con colisión, los hitos lejanos sin ella.
+	UMaterialInterface* PaintMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr,
+		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+	if (!Painted.IsEmpty())
+	{
+		StructureMesh->CreateMeshSection_LinearColor(2, Painted.Verts, Painted.Tris, Painted.Normals, Painted.UVs, Painted.Colors, NoTangents, true);
+		StructureMesh->SetMaterial(2, PaintMat);
+	}
+	if (!PaintedFar.IsEmpty())
+	{
+		StructureMesh->CreateMeshSection_LinearColor(3, PaintedFar.Verts, PaintedFar.Tris, PaintedFar.Normals, PaintedFar.UVs, PaintedFar.Colors, NoTangents, false);
+		StructureMesh->SetMaterial(3, PaintMat);
 	}
 
 	DecorMesh = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);

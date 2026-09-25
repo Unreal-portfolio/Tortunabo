@@ -6,6 +6,7 @@
 #include "World/ProcMap/TN_ProcMapRoute.h"
 #include "World/ProcMap/TN_ProcMapPath.h"
 #include "World/ProcMap/TN_ProcMapFeatures.h"
+#include "World/ProcMap/TN_ProcMapFormations.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 
 /**
@@ -124,6 +125,7 @@ namespace TNProcMap
 		BuildDecor(Out, Root.Fork(15));
 		SettleVolcanoes(Out);
 		BuildObstacles(Out, Root.Fork(17));
+		BuildFormations(Out, Root.Fork(18));
 		Out.bValid = true;
 		return true;
 	}

@@ -68,6 +68,21 @@ struct FTNProcKeepOut
 				case EFeature::RiverBridge:    Add(C, F.Length * 0.5 + 300.0); break;
 				case EFeature::LavaPool:       Add(C, F.Radius + 300.0); break;
 				case EFeature::GiantTree:      Add(C, F.Radius * 3.0); break;
+				case EFeature::Formation:
+				{
+					// Los arcos solo ocupan sus pies (a ambos lados del camino); el resto, su huella.
+					if (IsArchFormation(static_cast<EFormation>(F.Aux)))
+					{
+						const FVector2D N(-F.Dir.Y, F.Dir.X);
+						Add(C + N * (F.Width * 0.5), 450.0);
+						Add(C - N * (F.Width * 0.5), 450.0);
+					}
+					else
+					{
+						Add(C, F.Radius + 300.0);
+					}
+					break;
+				}
 				default: break;
 			}
 		}
