@@ -29,7 +29,12 @@ public class Tortunabo : ModuleRules
 			"ProceduralMeshComponent"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		// Mapa volumetrico: los trozos se convierten en StaticMesh editables (MeshDescription).
+		PrivateDependencyModuleNames.AddRange(new string[] { "MeshDescription", "StaticMeshDescription" });
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("AssetRegistry");
+		}
 
 		DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
 	}

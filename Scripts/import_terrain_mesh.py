@@ -8,7 +8,9 @@ Se ejecuta DENTRO del editor de Unreal (headless):
 Lee Scripts/terrain_volumes/<nombre>/manifest.json (lo escribe gen_terrain_volume.py) y:
     - crea un DA_<trozo> (UTN_TerrainMeshAsset) por trozo en /Game/Terrain/Volumes/<nombre>,
       cargado desde su binario;
-    - crea el nivel /Game/Maps/Run/LVL_<nombre>: un ATN_TerrainMeshTile por trozo en su sitio,
+    - crea con ellos un StaticMesh editable por trozo, SM_<trozo> en .../Meshes (Modeling Mode:
+      esculpir, deformar, cortar; colision de la propia malla);
+    - crea el nivel /Game/Maps/Run/LVL_<nombre>: un StaticMeshActor por trozo en su sitio,
       lamina de agua, sol, cielo, PlayerStart en el inicio y el GameMode de la demo.
 
 El mapa es FIJO y se disena encima (obstaculos, puzles, retoques): los trozos se guardan para
@@ -59,7 +61,8 @@ def load_or_none(path):
 
 def build_assets(volume_dir, manifest, root):
     """Crea o recarga EN SITIO cada DA_<trozo>: los actores del nivel siguen apuntando a el."""
-    assets = {}
+    assets, meshes = {}, {}
+    material = load_or_none(TERRAIN_MATERIAL_PATH)
     factory = unreal.DataAssetFactory()
     factory.set_editor_property("data_asset_class", unreal.TN_TerrainMeshAsset)
     for cell in manifest["cells"]:
@@ -70,7 +73,12 @@ def build_assets(volume_dir, manifest, root):
             raise RuntimeError(f"{name}: LoadFromFile rechazo {path}")
         asset_lib.save_loaded_asset(asset)
         assets[cell["name"]] = asset
-    return assets
+        mesh = asset.build_static_mesh(f"{root}/Meshes", f"SM_{cell['name']}", material)
+        if not mesh:
+            raise RuntimeError(f"{name}: BuildStaticMesh fallo")
+        asset_lib.save_loaded_asset(mesh)
+        meshes[cell["name"]] = mesh
+    return assets, meshes
 
 
 def spawn(actor_class, label, location, rotation=unreal.Rotator(0.0, 0.0, 0.0)):
@@ -92,7 +100,7 @@ def existing_labels():
     return {a.get_actor_label(): a for a in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()}
 
 
-def build_level(manifest, assets, level_path):
+def build_level(manifest, meshes, level_path):
     level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
     current = world.get_path_name().split('.')[0] if world else ''
@@ -104,19 +112,19 @@ def build_level(manifest, assets, level_path):
         level_subsystem.new_level(level_path)
     have = existing_labels()
 
-    terrain_material = load_or_none(TERRAIN_MATERIAL_PATH)
-    foliage_material = load_or_none(FOLIAGE_MATERIAL_PATH)
-    tile_class = unreal.load_class(None, TILE_CLASS_PATH)
+    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     for cell in manifest["cells"]:
         label = f"Terrain_{cell['name']}"
         tile = have.get(label)
+        if tile is not None and not isinstance(tile, unreal.StaticMeshActor):
+            # Tile procedural de una importacion anterior: se sustituye por el StaticMesh.
+            actor_subsystem.destroy_actor(tile)
+            tile = None
         if tile is None:
             x, y = cell["center_uu"]
-            tile = spawn(tile_class, label, unreal.Vector(x, y, 0.0))
+            tile = spawn(unreal.StaticMeshActor, label, unreal.Vector(x, y, 0.0))
             tile.set_folder_path("Terrain")
-            tile.set_editor_property("terrain_material", terrain_material)
-            tile.set_editor_property("foliage_material", foliage_material)
-        tile.set_editor_property("mesh_asset", assets[cell["name"]])
+        tile.static_mesh_component.set_static_mesh(meshes[cell["name"]])
 
     if "Sun" in have:
         configure_sun(have["Sun"])
@@ -170,8 +178,8 @@ def main():
     if asset_lib.does_asset_exist(level_path) and os.environ.get("TN_REGENERATE") != "1":
         raise RuntimeError(f"{level_path} ya existe y es un mapa fijo (se disena encima). "
                            "Para recargar su malla, TN_REGENERATE=1 (conserva lo colocado a mano).")
-    assets = build_assets(volume_dir, manifest, f"/Game/Terrain/Volumes/{name}")
-    build_level(manifest, assets, level_path)
+    assets, meshes = build_assets(volume_dir, manifest, f"/Game/Terrain/Volumes/{name}")
+    build_level(manifest, meshes, level_path)
     unreal.log(f"[TerrainMesh] {len(assets)} trozos importados; nivel /Game/Maps/Run/LVL_{name} guardado")
 
 

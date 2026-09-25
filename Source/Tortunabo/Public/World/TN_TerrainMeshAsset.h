@@ -4,6 +4,9 @@
 #include "Engine/DataAsset.h"
 #include "TN_TerrainMeshAsset.generated.h"
 
+class UMaterialInterface;
+class UStaticMesh;
+
 /** Alga del bosque: forma (TNTerrainBiome::EFoliageShape), transformada local y color. */
 USTRUCT(BlueprintType)
 struct FTNTerrainMeshFoliage
@@ -52,6 +55,16 @@ public:
 	/** Carga un trozo TNTM1 (Scripts/terrain_vol/export.py). Solo lo usa el importador. */
 	UFUNCTION(BlueprintCallable, Category = "Terrain")
 	bool LoadFromFile(const FString& Path);
+
+#if WITH_EDITOR
+	/**
+	 * Crea (o rehace en sitio) un StaticMesh con esta malla en PackagePath/AssetName: color de
+	 * vertice, normales, colision compleja como simple y un unico hueco de material. Es el
+	 * asset que editan modeladores y disenadores (Modeling Mode). Solo en el editor.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Terrain")
+	UStaticMesh* BuildStaticMesh(const FString& PackagePath, const FString& AssetName, UMaterialInterface* Material);
+#endif
 
 	bool IsValidMesh() const
 	{
