@@ -24,6 +24,13 @@ namespace TNProcMap
 
 	inline double Saturate(double X) { return FMath::Clamp(X, 0.0, 1.0); }
 
+	/** Mínimo suave (unión exponencial): nunca mayor que Min(A, B) y sin esquina; K es el ancho de la transición. */
+	inline double SoftMinD(double A, double B, double K)
+	{
+		const double M = FMath::Min(A, B);
+		return M - K * FMath::Loge(FMath::Exp((M - A) / K) + FMath::Exp((M - B) / K));
+	}
+
 	/** Hermite 0..1 entre Edge0 y Edge1 (sin depender de la firma de FMath::SmoothStep). */
 	inline double SmoothStep(double Edge0, double Edge1, double X)
 	{

@@ -389,17 +389,19 @@ namespace TNProcMap
 		{
 			switch (Kind)
 			{
-				case EWidthKind::Narrow: return LerpD(2500.0, 6500.0, U);
-				case EWidthKind::Tight:  return LerpD(3000.0, 9000.0, U);
+				case EWidthKind::Narrow: return LerpD(3000.0, 8000.0, U);
+				case EWidthKind::Tight:  return LerpD(3500.0, 10000.0, U);
 				case EWidthKind::Normal: return LerpD(5000.0, 15000.0, U);
-				case EWidthKind::Wide:   return LerpD(4000.0, 11000.0, U);
-				default:                 return LerpD(3500.0, 8000.0, U);
+				case EWidthKind::Wide:   return LerpD(4500.0, 13000.0, U);
+				default:                 return LerpD(4500.0, 11000.0, U);
 			}
 		}
 
 		/**
 		 * Anchura objetivo por tramos a lo largo de una polilínea, antes de los recortes por
-		 * holgura: secuencia de tipos sin repetir, transiciones suaves y bordes que respiran.
+		 * holgura: secuencia de tipos sin repetir, transiciones largas (15-50 m) y ninguna
+		 * anchura constante (deriva lenta dentro del tramo y bordes que respiran), para que
+		 * el cauce se abra y se cierre como uno natural en vez de a escalones.
 		 */
 		inline TArray<double> SectionWidths(const TArray<FPathSample>& S, const FGenParams& P, FRng& Rng, uint32 WSeed)
 		{
@@ -439,7 +441,7 @@ namespace TNProcMap
 					Prev = Kind;
 				}
 			}
-			auto TransLen = [&Sections](int32 A, int32 B) { return FMath::Clamp(0.35 * FMath::Min(Sections[A].Len, Sections[B].Len), 800.0, 2500.0); };
+			auto TransLen = [&Sections](int32 A, int32 B) { return FMath::Clamp(0.5 * FMath::Min(Sections[A].Len, Sections[B].Len), 1500.0, 5000.0); };
 
 			int32 Sec = 0;
 			for (int32 i = 0; i < NumS; ++i)
@@ -457,10 +459,10 @@ namespace TNProcMap
 					const double T = TransLen(Sec, Sec + 1);
 					Wi = LerpD(Wi, Sections[Sec + 1].W, SmoothStep(-0.5 * T, 0.5 * T, Sm.S - Sections[Sec + 1].S0));
 				}
-				// Bordes que respiran: ±14 % a escala de ~20 m.
-				W[i] = Wi * (1.0 + 0.14 * Fbm1(WSeed + 5u, Sm.S / 1800.0, 2));
+				// Deriva lenta (±22 % a ~50 m) y bordes que respiran (±14 % a ~20 m).
+				W[i] = Wi * (1.0 + 0.22 * Fbm1(WSeed + 9u, Sm.S / 5000.0, 2)) * (1.0 + 0.14 * Fbm1(WSeed + 5u, Sm.S / 1800.0, 2));
 			}
-			return SmoothScalars(W, 2);
+			return SmoothScalars(W, 4);
 		}
 	}
 
@@ -622,20 +624,23 @@ namespace TNProcMap
 		TArray<double> W = SectionWidths(L.Main, P, Rng, P.Seed ^ 0xA11CEu);
 
 		// Holgura con el borde del módulo y con otras partes del camino (muro de al menos 18 m).
+		// El tope se aplica con un mínimo suave y ondulado para que no deje mesetas de anchura
+		// constante con esquinas (se verían como escalones en el cauce).
 		FSampleGrid Grid;
 		Grid.Build(L.Main, L.WorldSize);
+		const uint32 CapSeed = P.Seed ^ 0xCA9u;
 		for (int32 i = 0; i < NumS; ++i)
 		{
 			const FPathSample& Sm = L.Main[i];
-			double Wi = W[i];
 			const double Bd = L.BorderDistAt(Sm.P);
-			Wi = FMath::Min(Wi, FMath::Max(P.PathWidthMin, 2.0 * (Bd - 1800.0)));
+			double Cap = FMath::Max(P.PathWidthMin, 2.0 * (Bd - 1800.0));
 			double DSelf = 0.0;
-			if (Grid.Nearest(Sm.P, 12000.0, DSelf, Sm.S, FMath::Max(9000.0, 2.0 * Wi)) != INDEX_NONE)
+			if (Grid.Nearest(Sm.P, 12000.0, DSelf, Sm.S, FMath::Max(9000.0, 2.0 * W[i])) != INDEX_NONE)
 			{
-				Wi = FMath::Min(Wi, FMath::Max(P.PathWidthMin, DSelf - 1800.0));
+				Cap = FMath::Min(Cap, FMath::Max(P.PathWidthMin, DSelf - 1800.0));
 			}
-			W[i] = FMath::Max(330.0, Wi);
+			Cap *= 0.86 + 0.14 * (0.5 + 0.5 * Noise1(CapSeed, Sm.S / 2200.0));
+			W[i] = FMath::Max(330.0, SoftMinD(W[i], Cap, 250.0));
 		}
 		// Cerca de portales: anchura del portal.
 		for (const FRouteStep& Step : L.Route)
@@ -652,7 +657,7 @@ namespace TNProcMap
 				}
 			}
 		}
-		TArray<double> Smoothed = SmoothScalars(W, 2);
+		TArray<double> Smoothed = SmoothScalars(W, 3);
 		for (int32 i = 0; i < L.Main.Num(); ++i)
 		{
 			L.Main[i].Width = Smoothed[i];
