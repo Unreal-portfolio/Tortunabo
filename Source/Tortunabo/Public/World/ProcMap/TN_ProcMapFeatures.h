@@ -860,7 +860,8 @@ namespace TNProcMap
 	 * 1-3 que siempre dejan un carril libre de al menos 3,5 m, agujas y mogotes de roca en las
 	 * explanadas y troncos caídos que se saltan (<= 1,1 m) en selva, manglar y volcán. Nunca
 	 * junto a huecos, géiseres, toboganes, torres, portales, horquillas ni sobre el agua.
-	 * Además, secuoyas gigantes con raíces zancudas en los módulos de manglar.
+	 * Además, secuoyas con raíces zancudas en los módulos de manglar, de tamaños muy variados
+	 * (muchas medianas y pocas gigantes).
 	 */
 	inline void BuildObstacles(FLayout& L, FRng Rng)
 	{
@@ -950,7 +951,7 @@ namespace TNProcMap
 		for (const FModule& M : L.Modules)
 		{
 			if (M.Biome != ETNProcBiome::Mangrove) { continue; }
-			const int32 Count = Rng.RangeInt(8, 14);
+			const int32 Count = Rng.RangeInt(16, 26);
 			for (int32 n = 0; n < Count; ++n)
 			{
 				for (int32 Try = 0; Try < 20; ++Try)
@@ -959,14 +960,14 @@ namespace TNProcMap
 					const int32 Y = Rng.RangeInt(0, L.RasterH - 1);
 					if (L.ModuleOfCell[L.CellIndex(X, Y)] != M.Id) { continue; }
 					const FVector2D C = L.CellCenter(X, Y) + FVector2D(Rng.Range(-150.0, 150.0), Rng.Range(-150.0, 150.0));
-					const double R = Rng.Range(150.0, 260.0);
+					const double R = LerpD(90.0, 320.0, FMath::Pow(Rng.Unit(), 1.6));
 					double D = 0.0;
 					const int32 Near = Grid.Nearest(C, 20000.0, D);
 					if (Near != INDEX_NONE && D < All[Near].Width * 0.5 + R * 3.0 + 900.0) { continue; }
 					bool bClose = false;
 					for (const FFeature& F : L.Features)
 					{
-						if (F.Type == EFeature::GiantTree && FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C) < 2500.0) { bClose = true; break; }
+						if (F.Type == EFeature::GiantTree && FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C) < (F.Radius + R) * 5.0 + 600.0) { bClose = true; break; }
 					}
 					if (bClose) { continue; }
 					FFeature T;
@@ -974,7 +975,7 @@ namespace TNProcMap
 					T.Biome = ETNProcBiome::Mangrove;
 					T.Location = FVector(C, 0.0);
 					T.Radius = R;
-					T.Height = Rng.Range(3000.0, 5500.0);
+					T.Height = R * Rng.Range(17.0, 22.0);
 					T.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
 					L.Features.Add(T);
 					break;
