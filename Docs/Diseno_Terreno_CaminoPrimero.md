@@ -1,0 +1,221 @@
+# Terreno «camino primero» — diseño
+
+Fecha: 2026-09-25. Estado: pendiente de aprobación de Rodrigo.
+Sustituye como base de trabajo al prototipo P01. Mapa01 y las 30 variantes anteriores se conservan tal cual, sin push hasta validar la primera versión de este diseño.
+
+## 1. Objetivo
+
+Generar mapas de Tortunabo donde el terreno se construye a partir del camino y no al revés. Cada mapa tiene:
+
+- un único camino de inicio a fin;
+- lazos que se separan y vuelven;
+- bordes cerrados de forma natural;
+- vistas vivas fuera del camino.
+
+Es el terreno base: los diseñadores ajustan y añaden encima.
+
+Primera entrega: un mapa. Rodrigo lo valida y después se generan 30 variantes, unas con parámetros distintos y otras solo con otra semilla.
+
+## 2. Requisitos (de Rodrigo)
+
+1. **Un solo camino principal** de inicio a fin.
+2. **Lazos** que salen del camino principal y vuelven a él, en torno a 7 por mapa. Son grandes y están bien delimitados.
+   - Pueden entrelazarse: uno empieza antes de que vuelva el anterior.
+   - Puede haber lazos dentro de lazos.
+   - Un lazo puede cruzar el camino principal por arriba (puente natural) o por abajo (túnel).
+3. **Bordes bloqueados de forma natural.** El terreno sale del camino y nunca se pinta un camino sobre un terreno ya hecho.
+   - Los ríos existen solo como tramo del camino.
+4. **Túneles como parte del camino.**
+5. **Sección del camino:**
+   - suelo llano;
+   - paredes en «cuadrado curvado»: esquina inferior redondeada y pared casi vertical, pero no del todo vertical;
+   - **prohibido el cuenco**.
+   - Se admiten variaciones de cota y tramos algo empinados, siempre con rampas lineales suaves.
+6. **Anchura variable:** media, con estrechamientos y ensanches.
+7. **Río natural y arcade:**
+   - orillas irregulares;
+   - islas alargadas en el sentido del flujo, de tamaños distintos y en posiciones distintas, nunca una ristra en el centro.
+8. **Inicio claro. El final se ensancha** hasta cubrir la playa y llega al mar: no acaba lejos del agua ni en una forma artificial.
+9. **Acantilados y bordes:**
+   - poca altura y cima algo irregular;
+   - no son paredes verticales;
+   - la malla es suave, sin picos de polígonos.
+10. **Agua cartoon** que interactúa con la arena, con oleaje estilizado y sin buscar realismo.
+11. **Mapa de 400 × 400 m:** 4 × 4 trozos de 100 m.
+12. **Vida fuera del camino:** dunas, lagos y dunas inundadas que se ven desde el camino y desde lo alto, pero no se pisan. Los lagos y las dunas inundadas son de lo que mejor sale ahora mismo.
+13. **Castillos de arena:** se prueba a generarlos en el propio terreno, junto al camino o dentro de él, como en el boceto de referencia. Si no quedan bien a 1 m de resolución, pasan a ser assets de los diseñadores.
+14. **Sin patrones artificiales:** ni rectas forzadas, ni giros de 90°, ni caos de laberinto.
+15. **Secuencia de biomas** a lo largo del camino: acantilado → agua → dunas → playa. El bioma decide el tipo de borde del camino.
+
+## 3. Arquitectura
+
+Paquete nuevo `Scripts/terrain_path/`. El paquete `terrain_vol/` no se toca, para que Mapa01 y las 30 variantes sigan reproducibles.
+
+| Módulo | Qué hace |
+|---|---|
+| `layout.py` | Rejilla parametrizable: `grid` × 100 m, 4 × 4 en este diseño. |
+| `graph.py` | Camino principal, lazos (anidados incluidos) y cruces. |
+| `profile.py` | Cota a lo largo de cada camino: llanos, rampas y separación vertical en los cruces. |
+| `field.py` | Relieve 2D a partir del grafo (sección del camino, borde por bioma, fondo de vistas) y campos de túnel y puente para el 3D. |
+| `river.py` | Tramo de río: cauce, orillas e islas alargadas. |
+| `castles.py` | Castillos de arena como estampas del relieve. |
+| `generate.py` | Generador de un mapa y de catálogos (CLI). |
+
+**Reutilización:**
+- `terrain_vol/mesh.py`: marching cubes, Taubin, normales y color.
+- `terrain_vol/export.py`: formato TNTM2 y manifest.
+- `terrain_vol/noise.py`.
+- El excavado 3D de túneles de `density.py`, extraído a una función común sin cambiar su resultado.
+- Donde hoy dependen de las constantes 6 × 6, `mesh` y `export` reciben el layout como parámetro. El stash «wip tamanos variables» sirve de referencia.
+
+**Unreal:**
+- `ATN_MapVariantLoader` ya coloca los trozos según el manifest; se comprueba con 4 × 4.
+- Los mapas nuevos van en `Scripts/terrain_volumes/PathMaps/<nombre>/`, con su propio `index.json`.
+- El cargador suma esa lista a la de variantes.
+
+## 4. Diseño por partes
+
+### 4.1 Grafo del camino (`graph.py`)
+
+**Camino principal:**
+- Avance con rumbo que cambia de forma suave: la curvatura está acotada y sigue un ruido de baja frecuencia.
+- Giro máximo acumulado de unos 50° en 10 m.
+- Sin rectas de más de unos 25 m.
+- Se mantiene a 25 m o más del borde del mapa.
+- La separación mínima entre dos tramos lejanos es el ancho de dos caminos más el borde. Así nunca se tocan si no es a propósito.
+
+**Longitud objetivo:** 700-900 m en 400 m de lado. El camino serpentea con naturalidad, sin llegar al caos.
+
+**Lazos (unos 7):**
+- Cada lazo tiene un punto de salida y otro de vuelta sobre el camino padre, a 40-160 m de arco.
+- El trazado es una curva orgánica con sus propios meandros. Se admite que el lazo retroceda un tramo, como en el boceto bueno.
+- El camino padre puede ser el principal o otro lazo (lazos en lazos).
+- Los intervalos de lazos distintos pueden solaparse.
+
+**Cruces:**
+- Si un lazo cruza el principal o a otro lazo, el cruce se marca como paso a distinto nivel.
+- Por defecto el lazo va por arriba (puente natural) o por abajo (túnel), según qué cota sea más fácil de alcanzar con rampas suaves.
+- Solo se admite un cruce si el ángulo es de 40° o más y hay sitio para las rampas. Si no, se reintenta el lazo.
+
+**Validación:**
+- Todos los lazos vuelven a su padre.
+- No hay cruces no deseados.
+- Hay un único camino que llega al final: los lazos solo vuelven a su padre y no conectan con la salida por otro sitio.
+
+### 4.2 Cota del camino (`profile.py`)
+
+- Tramos llanos de 15-60 m unidos por rampas lineales de pendiente ≤ 20 %.
+- Algún tramo empinado de hasta el 30 %, corto.
+- Cruce a distinto nivel: el camino de arriba queda a 7,5 m o más sobre el de abajo, que es un túnel de 5 m más techo.
+- Rampas de subida y bajada simétricas en torno al cruce.
+- Al unirse a su padre, la cota del lazo coincide con la del padre en los puntos de salida y de vuelta.
+- Tramo de agua: suelo a la cota de las orillas e islas, justo por encima del agua (sección 4.4).
+
+### 4.3 Relieve a partir del camino (`field.py`)
+
+**Distancia al camino.** Se usa la distancia a la red de caminos con su semiancho variable:
+- media de 4 m;
+- estrechamientos de 2,5 m;
+- ensanches de hasta 8 m, a tramos de 20-60 m, siguiendo un ruido suave.
+
+**Sección «cuadrado curvado»:**
+- El suelo es llano a la cota del camino, con una rugosidad mínima de ±0,2 m.
+- Cerca del borde, una esquina inferior redondeada de 1,5 m de radio.
+- Encima, una pared de 70-80° de inclinación. En la roca puede llevar un escalón intermedio.
+- Arriba, un remate con la cima algo irregular. Nunca un cuenco: el suelo no se curva hacia las paredes.
+
+**Borde según el bioma del tramo:**
+
+| Bioma | Borde |
+|---|---|
+| Acantilado | Roca arenosa de 4-9 m sobre el suelo, cima irregular y algún voladizo suave (densidad 3D). |
+| Agua | Orillas bajas con cañaverales de arena, que cierran con dunas inundadas y agua honda (sección 4.4). |
+| Dunas | Duna de 3-6 m con cara algo empinada, sin llegar a vertical. |
+| Playa | Dunas bajas que se abren hasta el mar (sección 4.6). |
+
+- **Banda de bloqueo:** desde el borde del camino y hasta unos 15 m, la masa del borde impide salir: pared más alta que el salto.
+- **Fondo de vistas:** más allá de la banda de bloqueo.
+  - Dunas tupidas, lagos y dunas inundadas, que son el estilo que ya funciona en `terrain_vol`.
+  - Siempre por debajo de la cresta de bloqueo o separado por agua honda, así que desde el camino no se puede entrar.
+- **Mezcla entre lo cercano y lo lejano:** con un máximo suave (`soft_max`), sin aristas.
+- **Túneles y puentes:** el camino de abajo se excava en 3D bajo el de arriba (arco natural), con el mismo excavado que se usa hoy. Algunos tramos del camino principal atraviesan un cerro como túnel aunque no haya cruce: se eligen donde el borde es alto.
+
+### 4.4 Río como tramo del camino (`river.py`)
+
+- **Cauce** que sigue el camino en el tramo de agua, con un ancho de 8-16 m que varía.
+- **Orillas** irregulares, siguiendo ruido a lo largo del flujo.
+- **Islas alargadas** en el sentido del flujo:
+  - 3-12 m de largo y 1,5-4 m de ancho;
+  - repartidas a ambos lados y a distancias irregulares, sin ristra central;
+  - sin punta en los extremos.
+- **Paso** andando y saltando: islas, bajíos y orillas. La separación máxima entre dos apoyos seguidos es la del salto, y el test lo comprueba.
+- El agua de fuera del paso es honda, y la de los bajíos cubre poco.
+
+### 4.5 Castillos de arena (`castles.py`)
+
+- **Estampas en el relieve:** patio, muralla con puerta y 3-5 torres cilíndricas de 2-4 m, sin almenas porque a 1 m de resolución no se ven. Opcionalmente, un foso.
+- **Dónde:** en ensanches del camino o junto a él, con la puerta mirando al camino. Entre 2 y 4 por mapa.
+- **Se validan en la primera versión.** Si a esta resolución no quedan bien, se quitan y pasan a ser assets de los diseñadores (requisito 13).
+
+### 4.6 Inicio y final
+
+- **Inicio:** el camino arranca en un ensanche llano y reconocible, con un color de arena más claro. No tiene ramas cerca.
+- **Final:** en los últimos 40-60 m el camino se ensancha poco a poco hasta cubrir toda la playa y se funde con la orilla. El mar está a la vista y se llega andando al agua.
+
+### 4.7 Agua cartoon (Unreal)
+
+Material nuevo `M_TortunaboWaterToon`. El actual queda de respaldo.
+
+- **Color por profundidad** en 3 bandas duras: turquesa claro, turquesa y azul hondo, usando la distancia al fondo.
+- **Espuma de orilla:**
+  - banda blanca de borde neto (umbral, no degradado);
+  - avanza y se retira sobre la arena con un periodo de unos 4 s, como una ola que moja;
+  - deja una franja de arena mojada que se seca, pintada por el material del agua sobre el terreno (decal o máscara por distancia).
+- **Ondas:**
+  - pocas ondas de vértice, suaves;
+  - líneas de brillo estilizadas que se desplazan sin reflejos realistas;
+  - especular recortado.
+
+Implementación: la espuma depende de la distancia a la superficie más cercana (campos de distancia, ya activos). El resto es material; no se toca C++ si no hace falta.
+
+## 5. Parámetros (para las 30 variantes)
+
+Todos los parámetros van en `PathStyle`, una dataclass congelada:
+
+- número de lazos y de niveles de anidado;
+- número de cruces;
+- número de túneles «de cerro»;
+- ancho medio del camino y rango de ancho;
+- altura de los bordes por bioma;
+- longitud del camino;
+- fracciones de bioma;
+- ancho del río y densidad de islas;
+- dunas del fondo (tupidez y altura);
+- tamaño de los lagos de vista;
+- número de castillos.
+
+## 6. Tests
+
+- Se llega andando (y saltando) del inicio al final.
+- Cada lazo sale de su padre y vuelve a él, y es recorrible.
+- Solo hay un final.
+- Los lazos no abren atajos no previstos: se recorre el grafo real sobre la rejilla pisable.
+- Cada cruce tiene paso por arriba y por abajo, pisable y alcanzable.
+- **Borde bloqueado:** desde el camino no se llega a ninguna celda del fondo de vistas.
+- **Sección sin cuenco:** en el suelo, dentro del 80 % central del ancho, la variación de cota es ≤ 0,3 m.
+- **Río:**
+  - las islas son alargadas en el sentido del flujo (relación ≥ 1,8 y ángulo con el flujo ≤ 30°);
+  - no hay más de 3 islas seguidas en el eje del río.
+- El final se abre y toca el agua.
+- Sin picos: los tests actuales de puntas en la malla.
+- Costura entre trozos y formato TNTM2 de ida y vuelta.
+- UE: el cargador coloca 16 trozos a partir de un manifest 4 × 4.
+
+## 7. Fuera de alcance
+
+Huellas y marcas humanas (irían como decals), follaje, puzles de `ATN_ChunkManager` y tamaños de mapa distintos de 400 m. En Unreal se muestran los mapas nuevos en `LVL_MapVariants` y no se crea ningún nivel nuevo.
+
+## 8. Entrega
+
+1. Un mapa `C01` con la semilla fija, capturas en el editor y vista cenital de control.
+2. Tras la validación de Rodrigo: 30 variantes, push de la rama y limpieza de memoria con revisión de Astra.
