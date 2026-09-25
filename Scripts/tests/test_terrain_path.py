@@ -317,3 +317,19 @@ def test_los_tuneles_de_cerro_tienen_techo_y_suelo(model):
         levels = _column(model, main.point_at(s))
         z = np.interp(s, main.arc, model.plan.profiles[0].z)
         assert np.any(np.abs(levels - z) < 0.8) and levels.max() > z + 5.5
+
+
+def test_hay_castillos_en_ensanches(model):
+    assert 2 <= len(model.castles) <= C01_STYLE.castles + 1
+
+
+def test_los_castillos_dejan_paso(model):
+    """Del castillo hacia el centro del camino quedan 3 m o mas de suelo libre."""
+    for c in model.castles:
+        h = []
+        for dist in np.arange(4.5, 12.0, 0.5):
+            p = c.center + c.facing * dist
+            i, j = int(round(p[0] - model.axis[0])), int(round(p[1] - model.axis[0]))
+            h.append(model.grid.height[i, j] - c.base)
+        free = np.array(h) < 0.3
+        assert free[:6].all(), f"castillo en {c.center} tapona el camino"

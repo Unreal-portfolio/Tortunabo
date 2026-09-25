@@ -100,7 +100,8 @@ class PathModel:
         """Rio y castillos."""
         from .river import plan_river
         self.river = plan_river(self.extra_rng, self)
-        self.castles = []
+        from .castles import plan_castles
+        self.castles = plan_castles(self.extra_rng, self)
 
     def near_junction(self, p, radius: float) -> bool:
         g = self.plan.graph
@@ -202,6 +203,9 @@ class PathModel:
             # Nunca sobre un camino abierto (el tablero de un cruce, la union de un lazo).
             hill = (1.0 - smooth(half + 2.0, half + 10.0, u)) * covered                 * smooth(-0.1, 0.05, t) * smooth(-1.1, -0.95, -t) * smooth(0.0, 2.0, e)
             height = np.maximum(height, (floor + 8.0 + 1.5 * self.n_top.unit(X, Y)) * hill + height * (1.0 - hill))
+        from .castles import castle_stamp
+        for castle in self.castles:
+            height = castle_stamp(X, Y, height, castle)
         return height
 
     def _carve(self, X, Y, Z3):
