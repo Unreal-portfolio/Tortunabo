@@ -714,7 +714,9 @@ namespace TNFloraMesh
 			case EFloraShape::Hedge:
 			case EFloraShape::Umbrella: return { 15000.f, true, false };
 			case EFloraShape::Rock:     return { 30000.f, true, false };
-			default:                    return { 0.f, true, true };   // árboles: se ven desde lejos
+			case EFloraShape::Ceiba:
+			case EFloraShape::YoungSequoia: return { 150000.f, true, true };   // siluetas del horizonte
+			default:                    return { 90000.f, true, true };   // árboles: se ven desde lejos
 		}
 	}
 }
