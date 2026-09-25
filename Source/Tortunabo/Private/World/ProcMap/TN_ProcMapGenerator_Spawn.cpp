@@ -10,6 +10,7 @@
 #include "World/ProcMap/TN_ProcPuzzleActors.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "TN_ProcMapKeepOut.h"
 #include "Core/TN_Log.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -18,49 +19,6 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "PCGComponent.h"
 #include "PCGGraph.h"
-
-namespace
-{
-	/** Zonas de exclusión (círculos) con cubos para consultas rápidas. */
-	struct FTNProcKeepOut
-	{
-		double Cell = 5000.0;
-		FVector2D Origin = FVector2D(-30000.0, -30000.0);
-		int32 W = 0;
-		int32 H = 0;
-		TArray<FVector2D> Centers;
-		TArray<double> Radii;
-		TArray<TArray<int32>> Buckets;
-
-		void Init(double WorldSize)
-		{
-			W = H = FMath::CeilToInt((WorldSize + 60000.0) / Cell) + 1;
-			Buckets.SetNum(W * H);
-		}
-
-		void Add(const FVector2D& C, double R)
-		{
-			const int32 Idx = Centers.Add(C);
-			Radii.Add(R);
-			const int32 X0 = FMath::Clamp(FMath::FloorToInt((C.X - R - Origin.X) / Cell), 0, W - 1);
-			const int32 X1 = FMath::Clamp(FMath::FloorToInt((C.X + R - Origin.X) / Cell), 0, W - 1);
-			const int32 Y0 = FMath::Clamp(FMath::FloorToInt((C.Y - R - Origin.Y) / Cell), 0, H - 1);
-			const int32 Y1 = FMath::Clamp(FMath::FloorToInt((C.Y + R - Origin.Y) / Cell), 0, H - 1);
-			for (int32 y = Y0; y <= Y1; ++y) { for (int32 x = X0; x <= X1; ++x) { Buckets[y * W + x].Add(Idx); } }
-		}
-
-		bool Blocked(const FVector2D& P) const
-		{
-			const int32 X = FMath::Clamp(FMath::FloorToInt((P.X - Origin.X) / Cell), 0, W - 1);
-			const int32 Y = FMath::Clamp(FMath::FloorToInt((P.Y - Origin.Y) / Cell), 0, H - 1);
-			for (const int32 Idx : Buckets[Y * W + X])
-			{
-				if (FVector2D::DistSquared(P, Centers[Idx]) < Radii[Idx] * Radii[Idx]) { return true; }
-			}
-			return false;
-		}
-	};
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vegetación y props
