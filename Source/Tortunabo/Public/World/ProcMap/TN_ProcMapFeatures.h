@@ -757,7 +757,10 @@ namespace TNProcMap
 		}
 	}
 
-	/** Pozas de lava (volcánico) e islas decorativas (agua), lejos de los caminos. */
+	/**
+	 * Volcanes pequeños (volcánico: 60-140 m de base, 18-77 m de alto, con lago de lava en el
+	 * cráter) e islas decorativas (agua), lejos de los caminos.
+	 */
 	inline void BuildDecor(FLayout& L, FRng Rng)
 	{
 		using namespace PathDetail;
@@ -780,16 +783,17 @@ namespace TNProcMap
 					const int32 Y = Rng.RangeInt(0, L.RasterH - 1);
 					if (L.ModuleOfCell[L.CellIndex(X, Y)] != M.Id || L.BorderDist[L.CellIndex(X, Y)] < 3000.0f) { continue; }
 					const FVector2D C = L.CellCenter(X, Y);
-					const double Radius = bVolcanic ? Rng.Range(1200.0, 2600.0) : Rng.Range(700.0, 2200.0);
+					const double Radius = bVolcanic ? Rng.Range(6000.0, 14000.0) : Rng.Range(700.0, 2200.0);
 					double D = 0.0;
 					const int32 Near = Grid.Nearest(C, 20000.0, D);
-					const double Clear = Radius + (Near != INDEX_NONE ? All[Near].Width * 0.5 : 0.0) + 3500.0;
+					// Un cono solo necesita libre su parte alta: los cauces cortan sus faldas.
+					const double Clear = (bVolcanic ? Radius * 0.45 : Radius) + (Near != INDEX_NONE ? All[Near].Width * 0.5 : 0.0) + 3500.0;
 					if (Near != INDEX_NONE && D < Clear) { continue; }
 					bool bOverlap = false;
 					for (const FFeature& F : L.Features)
 					{
 						if ((F.Type == EFeature::LavaPool || F.Type == EFeature::Island || F.Type == EFeature::Volcano)
-							&& FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C) < F.Radius + Radius + 1500.0)
+							&& FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C) < (F.Radius + Radius) * (bVolcanic ? 0.7 : 1.0) + 1500.0)
 						{
 							bOverlap = true;
 							break;
@@ -797,10 +801,33 @@ namespace TNProcMap
 					}
 					if (bOverlap) { continue; }
 					FFeature F;
-					F.Type = bVolcanic ? EFeature::LavaPool : EFeature::Island;
+					if (bVolcanic)
+					{
+						// Cono con cráter y lago de lava a media altura del cráter (mismo perfil que el terreno).
+						FFeature V;
+						V.Type = EFeature::Volcano;
+						V.Biome = ETNProcBiome::Volcanic;
+						V.Radius = Radius;
+						V.Height = Radius * Rng.Range(0.3, 0.55);
+						const double CraterR = Radius * Rng.Range(0.12, 0.18);
+						V.Width = CraterR * 2.0;
+						V.Length = Rng.Range(700.0, 1400.0);
+						const double Base = L.SampleCoarse(L.LevelField, C);
+						V.Location = FVector(C, Base);
+						L.Features.Add(V);
+						const double Rim = V.Height * FMath::Pow(1.0 - CraterR / V.Radius, 1.35);
+						FFeature Lava;
+						Lava.Type = EFeature::LavaPool;
+						Lava.Biome = ETNProcBiome::Volcanic;
+						Lava.Radius = CraterR * 0.72;
+						Lava.Location = FVector(C, Base + Rim - V.Length * 0.45);
+						L.Features.Add(Lava);
+						break;
+					}
+					F.Type = EFeature::Island;
 					F.Radius = Radius;
 					F.Biome = M.Biome;
-					F.Location = FVector(C, bVolcanic ? L.SampleCoarse(L.LevelField, C) + 150.0 : Rng.Range(150.0, 520.0));
+					F.Location = FVector(C, Rng.Range(150.0, 520.0));
 					L.Features.Add(F);
 					break;
 				}
