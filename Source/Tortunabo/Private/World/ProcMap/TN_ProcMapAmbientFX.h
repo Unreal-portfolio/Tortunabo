@@ -290,6 +290,38 @@ namespace TNAmbientFX
 		if (UInstancedStaticMeshComponent* ISM = F.ISM.Get()) { ISM->bEvaluateWorldPositionOffset = true; ISM->WorldPositionOffsetDisableDistance = 20000; }
 	}
 
+	/** Nace una partícula en un hueco libre (false si no queda ninguno). */
+	inline bool SpawnOne(FEmitter& E)
+	{
+		const FEmitterDesc& D = E.Desc;
+		int32 Free = 0;
+		while (Free < E.Particles.Num() && E.Particles[Free].bAlive) { ++Free; }
+		if (Free >= E.Particles.Num()) { return false; }
+		FParticle& P = E.Particles[Free];
+		const float A = Rand01(E.Rng) * TNProcMap::TwoPi;
+		const float Rr = D.SpawnRadius * FMath::Sqrt(Rand01(E.Rng));
+		P.P = E.Origin + FVector(FMath::Cos(A) * Rr, FMath::Sin(A) * Rr, 0.f);
+		const FVector Dir = D.Direction.GetSafeNormal();
+		const FVector U = FVector::CrossProduct(Dir, FMath::Abs(Dir.Z) < 0.9f ? FVector::UpVector : FVector::ForwardVector).GetSafeNormal();
+		const FVector W = FVector::CrossProduct(Dir, U);
+		const float B = Rand01(E.Rng) * TNProcMap::TwoPi;
+		const float Open = D.Spread * FMath::Sqrt(Rand01(E.Rng));
+		const FVector V = (Dir + (U * FMath::Cos(B) + W * FMath::Sin(B)) * Open).GetSafeNormal();
+		P.V = V * D.Speed * (1.f + D.SpeedJitter * (Rand01(E.Rng) * 2.f - 1.f));
+		P.Age = 0.f;
+		P.Life = FMath::Lerp(D.LifeMin, D.LifeMax, Rand01(E.Rng));
+		P.Spin = Rand01(E.Rng) * 360.f;
+		P.bAlive = true;
+		return true;
+	}
+
+	/** Estallido: Count partículas de golpe (lanzamiento del géiser, confeti de la meta). */
+	inline void Burst(FEmitter& E, int32 Count)
+	{
+		E.bAwake = true;
+		for (int32 k = 0; k < Count && SpawnOne(E); ++k) {}
+	}
+
 	inline void TickEmitter(FEmitter& E, float Dt, const FVector& View)
 	{
 		UInstancedStaticMeshComponent* ISM = E.ISM.Get();
@@ -310,27 +342,10 @@ namespace TNAmbientFX
 		E.bAwake = true;
 		// Nacimientos.
 		E.Accum += D.Rate * E.RateScale * Dt;
-		int32 Free = 0;
 		while (E.Accum >= 1.f)
 		{
 			E.Accum -= 1.f;
-			while (Free < E.Particles.Num() && E.Particles[Free].bAlive) { ++Free; }
-			if (Free >= E.Particles.Num()) { E.Accum = 0.f; break; }
-			FParticle& P = E.Particles[Free];
-			const float A = Rand01(E.Rng) * TNProcMap::TwoPi;
-			const float Rr = D.SpawnRadius * FMath::Sqrt(Rand01(E.Rng));
-			P.P = E.Origin + FVector(FMath::Cos(A) * Rr, FMath::Sin(A) * Rr, 0.f);
-			const FVector Dir = D.Direction.GetSafeNormal();
-			const FVector U = FVector::CrossProduct(Dir, FMath::Abs(Dir.Z) < 0.9f ? FVector::UpVector : FVector::ForwardVector).GetSafeNormal();
-			const FVector W = FVector::CrossProduct(Dir, U);
-			const float B = Rand01(E.Rng) * TNProcMap::TwoPi;
-			const float Open = D.Spread * FMath::Sqrt(Rand01(E.Rng));
-			const FVector V = (Dir + (U * FMath::Cos(B) + W * FMath::Sin(B)) * Open).GetSafeNormal();
-			P.V = V * D.Speed * (1.f + D.SpeedJitter * (Rand01(E.Rng) * 2.f - 1.f));
-			P.Age = 0.f;
-			P.Life = FMath::Lerp(D.LifeMin, D.LifeMax, Rand01(E.Rng));
-			P.Spin = Rand01(E.Rng) * 360.f;
-			P.bAlive = true;
+			if (!SpawnOne(E)) { E.Accum = 0.f; break; }
 		}
 		// Movimiento y transformadas.
 		const float DragK = FMath::Max(0.f, 1.f - D.Drag * Dt);

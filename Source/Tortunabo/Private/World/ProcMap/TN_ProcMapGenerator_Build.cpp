@@ -1665,6 +1665,32 @@ void ATN_ProcMapGenerator::BuildStructures()
 		const double LavaZ = bPool ? F.Location.Z : F.Location.Z - 450.0;
 		TNAmbientFX::AddEmitter(this, Embers, MapToWorld(FVector(F.Location.X, F.Location.Y, LavaZ + 20.0)));
 	}
+	// Confeti de la meta (cuatro colores): estalla cuando alguien cruza la línea (ATN_ProcMapGenerator::Tick).
+	for (const FFeature& F : Layout.Features)
+	{
+		if (F.Type != EFeature::Finish) { continue; }
+		const FLinearColor Colors[4] = { FLinearColor(0.9f, 0.1f, 0.1f), FLinearColor(1.f, 0.8f, 0.05f), FLinearColor(0.1f, 0.4f, 0.95f), FLinearColor(0.1f, 0.75f, 0.25f) };
+		for (const FLinearColor& Col : Colors)
+		{
+			TNAmbientFX::FEmitterDesc Confetti;
+			Confetti.Shape = TNAmbientFX::EShape::Flake;
+			Confetti.Color = Col;
+			Confetti.MaxParticles = 70;
+			Confetti.Rate = 0.f;
+			Confetti.SpawnRadius = static_cast<float>(F.Radius * 0.8);
+			Confetti.Speed = 900.f;
+			Confetti.SpeedJitter = 0.4f;
+			Confetti.Spread = 0.9f;
+			Confetti.Gravity = -320.f;
+			Confetti.Drag = 1.6f;
+			Confetti.LifeMin = 3.f;
+			Confetti.LifeMax = 5.f;
+			Confetti.SizeStart = 12.f;
+			Confetti.SizeEnd = 12.f;
+			Confetti.WakeDistance = 30000.f;
+			TNAmbientFX::AddEmitter(this, Confetti, MapToWorld(FVector(F.Location.X, F.Location.Y, 950.0)));
+		}
+	}
 	{
 		// Gaviotas sobre la playa de la meta y la costa; guacamayos en la selva; pájaros oscuros sobre los
 		// bosques y la roca; buitres lentos en el desierto.

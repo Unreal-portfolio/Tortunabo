@@ -15,6 +15,7 @@
 #include "ProceduralMeshComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "PCGComponent.h"
@@ -67,8 +68,31 @@ void ATN_ProcMapGenerator::BeginPlay()
 void ATN_ProcMapGenerator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	// Brasas y bandadas (locales; nada en un servidor dedicado).
+	// Brasas, bandadas y confeti (locales; nada en un servidor dedicado). El confeti estalla la primera
+	// vez que cada personaje entra en el volumen de meta (desde la línea, ya en el agua).
 	TNAmbientFX::TickOwner(this, DeltaTime);
+	if (GetNetMode() != NM_DedicatedServer && bMapReady)
+	{
+		for (const TNProcMap::FFeature& F : Layout.Features)
+		{
+			if (F.Type != TNProcMap::EFeature::Finish) { continue; }
+			static TSet<TWeakObjectPtr<AActor>> Celebrated;
+			for (TActorIterator<ACharacter> It(GetWorld()); It; ++It)
+			{
+				const FVector P = WorldToMap(It->GetActorLocation());
+				const bool bIn = P.Y >= F.Location.Y && P.Y <= F.Location.Y + F.Length && FMath::Abs(P.X - F.Location.X) <= F.Height * 0.5 + 1500.0;
+				if (!bIn || Celebrated.Contains(*It)) { continue; }
+				Celebrated.Add(*It);
+				TNAmbientFX::FOwnerFX* FX = TNAmbientFX::Registry().Find(this);
+				if (!FX) { continue; }
+				for (TNAmbientFX::FEmitter& E : FX->Emitters)
+				{
+					if (E.Desc.Shape == TNAmbientFX::EShape::Flake) { TNAmbientFX::Burst(E, 60); }
+				}
+			}
+			break;
+		}
+	}
 
 	if (HasAuthority())
 	{

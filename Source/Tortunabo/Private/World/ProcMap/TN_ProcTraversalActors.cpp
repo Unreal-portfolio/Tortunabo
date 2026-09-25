@@ -249,6 +249,10 @@ void ATN_ProcGeyser::Launch(ACharacter* Character)
 	}
 	Character->LaunchCharacter(Velocity, true, true);
 
+	// Estallido del chorro al lanzar: gotas y una bocanada de vapor.
+	if (TNAmbientFX::FEmitter* E = TNAmbientFX::GetEmitter(this, 0)) { TNAmbientFX::Burst(*E, 50); }
+	if (TNAmbientFX::FEmitter* E = TNAmbientFX::GetEmitter(this, 1)) { TNAmbientFX::Burst(*E, 5); }
+
 	if (LaunchSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, LaunchSound, GetActorLocation());
