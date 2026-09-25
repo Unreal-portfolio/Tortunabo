@@ -526,6 +526,29 @@ def raise_rim(rng, terrain, XX, YY, inside, grid: int, half: float):
     return terrain * (1.0 - border) + np.maximum(terrain, high) * border
 
 
+def path_mask(rng, terrain, XX, YY, d_main, trails, half: float):
+    """Mascara de bioma (16 bits) que marca el camino y los caminitos.
+
+    Byte alto: peso de la paleta secundaria (algas), que tine el camino de arena pisada,
+    mas oscura. Byte bajo (bosque de algas): 0, las matas del bosque se leen como postes.
+    Nada de eso en el agua."""
+    d_trail = polyline_field(trails, terrain.shape, half)[0] if trails else np.full_like(terrain, np.inf)
+    road = 3.5 + 1.0 * fbm(rng, XX, YY, 50.0, 2)
+    tint = np.maximum(0.75 * (1.0 - smoothstep(road - 1.0, road + 1.5, d_main)),
+                      0.55 * (1.0 - smoothstep(0.8, 2.5, d_trail)))
+    tint = tint * (0.85 + 0.15 * unit_fbm(rng, XX, YY, 12.0))
+    dry = smoothstep(WATER_M + 0.2, WATER_M + 0.8, terrain)
+    high = np.rint(np.clip(tint * dry, 0.0, 1.0) * 255.0).astype(np.uint16)
+    return high << 8
+
+
+def tread(terrain, d_main, trails, half: float):
+    """Huella del paso: el camino se hunde 0,3 m y los caminitos 0,2 m, con hombro suave."""
+    d_trail = polyline_field(trails, terrain.shape, half)[0] if trails else np.full_like(terrain, np.inf)
+    sink = np.maximum(0.3 * (1.0 - smoothstep(3.0, 5.5, d_main)), 0.2 * (1.0 - smoothstep(1.2, 3.0, d_trail)))
+    return terrain - sink * smoothstep(WATER_M + 0.2, WATER_M + 0.8, terrain)
+
+
 def reachable(terrain, start, goal) -> bool:
     """Del inicio al final a pie (desnivel entre muestras vecinas <= WALKABLE_STEP_M)."""
     seen = np.zeros(terrain.shape, dtype=bool)
@@ -574,7 +597,7 @@ def main() -> None:
     terrain = carve_ponds(rng, terrain, corridor, sites)
     trails = route_trails(rng, terrain, XX, YY, d_main, inside, path_points, spans, half)
     terrain = carve_trails(terrain, trails, half)
-    terrain = blur(raise_rim(rng, terrain, XX, YY, inside, grid, half))
+    terrain = tread(blur(raise_rim(rng, terrain, XX, YY, inside, grid, half)), d_main, trails, half)
 
     if not reachable(terrain, index_of(centers[0], half), index_of(centers[-1], half)):
         raise AssertionError("el final no se alcanza a pie desde el inicio")
@@ -589,6 +612,7 @@ def main() -> None:
         shutil.rmtree(out)
     (out / "Cells").mkdir(parents=True)
     quantized = np.clip(np.rint(terrain * UNITS_PER_M) + HEIGHT_ZERO, 0, 65535).astype(np.uint16)
+    mask = path_mask(rng, terrain, XX, YY, d_main, trails, half)
     zeros = np.zeros((RES, RES), dtype=np.uint16)
     manifest = {"size_uu": SIZE_M * UU_PER_M, "resolution": RES, "height_scale_uu": HEIGHT_SCALE_UU,
                 "height_zero": HEIGHT_ZERO, "modules": [], "preset": {"name": args.name, "seed": args.seed, "cells": []}}
@@ -598,7 +622,8 @@ def main() -> None:
             name = f"M_{args.name}_r{row}c{col}"
             block = quantized[row * (RES - 1):row * (RES - 1) + RES, col * (RES - 1):col * (RES - 1) + RES]
             Image.fromarray(block).save(out / "Cells" / f"{name}.png")
-            Image.fromarray(zeros).save(out / "Cells" / f"{name}_mask.png")
+            Image.fromarray(mask[row * (RES - 1):row * (RES - 1) + RES, col * (RES - 1):col * (RES - 1) + RES]).save(
+                out / "Cells" / f"{name}_mask.png")
             Image.fromarray(zeros).save(out / "Cells" / f"{name}_coast.png")
             cx, cy = row * SIZE_M, col * SIZE_M
             local_flats = [{"x_m": round(px - cx, 2), "y_m": round(py - cy, 2), "radius_m": round(r, 2),
@@ -607,7 +632,7 @@ def main() -> None:
             manifest["modules"].append({
                 "name": name, "topology": "Cross", "folder": "Cells", "edges": ["crest"] * 4, "seed": args.seed,
                 "file": f"Cells/{name}.png", "mask_file": f"Cells/{name}_mask.png", "coast_file": f"Cells/{name}_coast.png",
-                "biome": "sand", "secondary_biome": "sand", "bridges": [], "monoliths": [], "flat_areas": local_flats,
+                "biome": "sand", "secondary_biome": "algae", "bridges": [], "monoliths": [], "flat_areas": local_flats,
             })
             # Lados que dan fuera del mapa (N 1, E 2, S 4, O 8): caja invisible.
             outer = (1 if row == grid - 1 else 0) | (2 if col == grid - 1 else 0) | (4 if row == 0 else 0) | (8 if col == 0 else 0)
