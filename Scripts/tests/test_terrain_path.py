@@ -87,3 +87,52 @@ def test_el_principal_no_se_acerca_a_si_mismo_ni_al_borde(main_line):
         assert abs(arc[i] - arc[j]) <= 70.0
     inner = pts[:-5]
     assert inner.min() >= MAP_MIN_M + EDGE_MARGIN_M - 1.0 and inner.max() <= MAP_MAX_M - EDGE_MARGIN_M + 1.0
+
+
+from terrain_path.graph import build_graph  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def graph():
+    return build_graph(np.random.default_rng(60001), C01_STYLE)
+
+
+def test_hay_lazos_anidados_y_cruces(graph):
+    loops = graph.loops()
+    assert len(loops) >= C01_STYLE.loops - 1
+    assert any(l.parent not in (None, 0) for l in loops), "ningun lazo cuelga de otro lazo"
+    assert len(graph.crossings) >= 1
+
+
+def test_cada_lazo_sale_y_vuelve_a_su_padre(graph):
+    for loop in graph.loops():
+        parent = graph.lines[loop.parent]
+        assert np.hypot(*(loop.points[0] - parent.point_at(loop.s_out))) < 1.5
+        assert np.hypot(*(loop.points[-1] - parent.point_at(loop.s_back))) < 1e-6
+        assert loop.s_out < loop.s_back
+
+
+def test_los_lazos_no_se_tocan_salvo_en_sus_uniones_y_cruces(graph):
+    from scipy.spatial import cKDTree
+    crossing_pts = [c.point for c in graph.crossings]
+    for a in graph.lines:
+        for b in graph.lines:
+            if a.id >= b.id:
+                continue
+            d, _ = cKDTree(b.points).query(a.points)
+            close = a.points[d < 6.0]
+            for p in close:
+                near_join = any(np.hypot(*(p - q)) < 20.0 for line in (a, b) if line.parent is not None
+                                for q in (line.points[0], line.points[-1]))
+                near_cross = any(np.hypot(*(p - c)) < 20.0 for c in crossing_pts)
+                assert near_join or near_cross, f"caminos {a.id} y {b.id} se tocan en {p}"
+
+
+def test_los_cruces_son_francos_y_lejos_de_los_extremos(graph):
+    for c in graph.crossings:
+        up, lo = graph.lines[c.upper], graph.lines[c.lower]
+        cos = abs(float(np.dot(up.tangent_at(c.s_upper), lo.tangent_at(c.s_lower))))
+        assert cos <= np.cos(np.radians(40.0))
+        loop = up if up.parent is not None and up.parent == lo.id else lo
+        s = c.s_upper if loop is up else c.s_lower
+        assert s >= 75.0 and loop.length - s >= 75.0

@@ -136,3 +136,129 @@ def trace_main(rng: np.random.Generator, style: PathStyle) -> PathLine:
             continue
         return PathLine(0, None, pts, arc)
     raise RuntimeError("no se encontro un camino principal valido en 400 intentos")
+
+
+JOIN_ARC_M = 16.0                 # tramo junto a una union en el que el lazo aun esta pegado al padre
+
+
+def _required_gap(arc_i: np.ndarray, length: float, sep: float, anchors: list[float]) -> np.ndarray:
+    """Separacion exigida a cada punto del lazo: 'sep' lejos de uniones y cruces; cerca, crece
+    con la distancia en arco (el lazo se va apartando del padre en V, no de golpe)."""
+    gap = np.minimum(arc_i, length - arc_i)
+    for a in anchors:
+        gap = np.minimum(gap, np.abs(arc_i - a))
+    return np.minimum(sep, 0.45 * gap)
+
+
+def _clear_of_others(line: PathLine, graph: PathGraph, style: PathStyle, cross_s: float | None) -> bool:
+    anchors = [cross_s] if cross_s is not None else []
+    need = _required_gap(line.arc, line.length, style.path_separation_m, anchors)
+    for other in graph.lines:
+        d, _ = cKDTree(other.points).query(line.points)
+        if np.any(d < need):
+            return False
+    return True
+
+
+def _find_crossing(line: PathLine, parent: PathLine) -> Crossing | None:
+    d, k = cKDTree(parent.points).query(line.points)
+    inner = (line.arc > JOIN_ARC_M) & (line.arc < line.length - JOIN_ARC_M)
+    hits = np.nonzero((d < 1.5) & inner)[0]
+    if not len(hits) or np.ptp(line.arc[hits]) > 6.0:          # ninguno, o mas de un cruce
+        return None
+    i = int(hits[np.argmin(d[hits])])
+    j = int(k[i])
+    tl = line.tangent_at(line.arc[i])
+    tp = parent.tangent_at(parent.arc[j])
+    if abs(float(np.dot(tl, tp))) > math.cos(math.radians(40.0)):
+        return None
+    if line.arc[i] < 75.0 or line.length - line.arc[i] < 75.0:
+        return None
+    return Crossing(line.id, parent.id, line.points[i].copy(), float(line.arc[i]), float(parent.arc[j]))
+
+
+def make_loop(rng: np.random.Generator, graph: PathGraph, parent_id: int, style: PathStyle, cross: bool,
+              line_id: int) -> tuple[PathLine, Crossing | None] | None:
+    """Un lazo de 'parent_id': sale en s_out hacia un lado, da la vuelta (a veces retrocede antes)
+    y vuelve en s_back. Si 'cross', pasa al otro lado del padre a mitad de camino (cruce)."""
+    parent = graph.lines[parent_id]
+    nested = parent.parent is not None
+    lo, hi = style.loop_span_m if not nested else (30.0, min(70.0, parent.length - 30.0))
+    if cross:
+        lo = max(lo, 90.0)
+    if hi <= lo:
+        return None
+    margin_lo, margin_hi = (40.0, 70.0) if parent_id == 0 else (12.0, 12.0)
+    span = float(rng.uniform(lo, hi))
+    if parent.length - margin_lo - margin_hi - span <= 0.0:
+        return None
+    s_out = float(rng.uniform(margin_lo, parent.length - margin_hi - span))
+    s_back = s_out + span
+    side = float(rng.choice([-1.0, 1.0]))
+    reach = float(rng.uniform(*style.loop_reach_m)) * (0.6 if nested else 1.0)
+    ways: list[np.ndarray] = []
+    radii: list[float] = []
+    if not cross and rng.random() < style.backtrack_chance:
+        s_b = max(0.0, s_out - float(rng.uniform(10.0, 35.0)))
+        ways.append(parent.point_at(s_b) + parent.normal_at(s_b) * side * reach)
+        radii.append(12.0)
+    if cross:
+        s_m1 = s_out + span * float(rng.uniform(0.2, 0.3))
+        s_x = s_out + span * 0.5
+        s_m2 = s_out + span * float(rng.uniform(0.7, 0.8))
+        x_pt, n_x = parent.point_at(s_x), parent.normal_at(s_x)
+        ways += [parent.point_at(s_m1) + parent.normal_at(s_m1) * side * reach,
+                 x_pt + n_x * side * 14.0, x_pt - n_x * side * 14.0,
+                 parent.point_at(s_m2) - parent.normal_at(s_m2) * side * reach]
+        radii += [12.0, 3.0, 3.0, 12.0]
+        side_back = -side
+    else:
+        s_m = s_out + span * 0.5
+        ways.append(parent.point_at(s_m) + parent.normal_at(s_m) * side * reach)
+        radii.append(12.0)
+        side_back = side
+    b_pt = parent.point_at(s_back)
+    ways += [b_pt + parent.normal_at(s_back) * side_back * 12.0 - parent.tangent_at(s_back) * 4.0, b_pt]
+    radii += [4.0, 2.5]
+    t_a, n_a = parent.tangent_at(s_out), parent.normal_at(s_out)
+    lean = t_a * math.cos(math.radians(45.0)) + n_a * side * math.sin(math.radians(45.0))
+    raw = steer_walk(rng, parent.point_at(s_out), math.atan2(lean[1], lean[0]), ways, radii,
+                     span * 4.0 + 200.0, 40.0, (35.0, 60.0))
+    if raw is None:
+        return None
+    pts, arc = resample(raw, STEP_M)
+    line = PathLine(line_id, parent_id, pts, arc, s_out, s_back)
+    if longest_straight(pts) > 25.0 or not self_separated(pts, arc, style.path_separation_m):
+        return None
+    crossing = _find_crossing(line, parent) if cross else None
+    if cross and crossing is None:
+        return None
+    if not _clear_of_others(line, graph, style, crossing.s_upper if crossing else None):
+        return None
+    return line, crossing
+
+
+def build_graph(rng: np.random.Generator, style: PathStyle) -> PathGraph:
+    """Principal y style.loops lazos: los ultimos style.nested_loops cuelgan de un lazo largo
+    (>= 110 m); los primeros style.crossings del principal lo cruzan. Un lazo que no encaja en
+    120 intentos se omite (y un cruce que no encaja en 80 se intenta como lazo normal)."""
+    graph = PathGraph([trace_main(rng, style)])
+    for k in range(style.loops):
+        nested = k >= style.loops - style.nested_loops
+        cross = (not nested) and k < style.crossings
+        for attempt in range(120):
+            if nested:
+                parents = [line.id for line in graph.lines[1:] if line.length >= 110.0]
+                if not parents:
+                    break
+                parent_id = int(rng.choice(parents))
+            else:
+                parent_id = 0
+            result = make_loop(rng, graph, parent_id, style, cross and attempt < 80, len(graph.lines))
+            if result is not None:
+                line, crossing = result
+                graph.lines.append(line)
+                if crossing is not None:
+                    graph.crossings.append(crossing)
+                break
+    return graph
