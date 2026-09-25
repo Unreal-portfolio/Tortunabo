@@ -32,9 +32,8 @@ void ATN_ProcMapGenerator::BuildScatter()
 	// Exclusiones: estructuras, huevos, géiseres, huecos, puzles y tramos no tallados del camino.
 	FTNProcKeepOut Keep;
 	Keep.AddLayout(Layout);
-	// La vegetación y las rocas sueltas las pone BuildFlora (mallas propias): de las capas de formas
-	// básicas del motor (greybox) quedan solo los props del borde del camino y los de la zona humana,
-	// salvo los que flotan sin apoyo (ZOffset alto: sombrillas sin mástil), que BuildFlora sustituye.
+	// La vegetación, las rocas y los objetos sueltos los pone BuildFlora (mallas propias): con ella no
+	// queda ninguna capa de formas básicas del motor (greybox).
 	const bool bFlora = !Settings || Settings->bProceduralFlora;
 
 	// Caja envolvente de cada bioma (en el raster de módulos) para no recorrer todo el mapa por capa.
@@ -75,8 +74,7 @@ void ATN_ProcMapGenerator::BuildScatter()
 		{
 			const FTNProcScatterLayer& Layer = ScatterLayers[LayerIdx];
 			if (!Layer.Mesh || Layer.DensityPer100m2 <= 0.f) { continue; }
-			if (bFlora && Layer.Mesh->GetPathName().StartsWith(TEXT("/Engine/BasicShapes/"))
-				&& ((Layer.Zone != ETNProcScatterZone::PathEdge && Biome != ETNProcBiome::Human) || Layer.ZOffset > 50.f))
+			if (bFlora && Layer.Mesh->GetPathName().StartsWith(TEXT("/Engine/BasicShapes/")))
 			{
 				continue;
 			}

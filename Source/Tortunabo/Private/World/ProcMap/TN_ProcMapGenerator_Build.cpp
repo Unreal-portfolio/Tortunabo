@@ -20,6 +20,8 @@
 #include "TN_ProcMapFormationMeshes.h"
 #include "TN_ProcMapCaveMeshes.h"
 #include "TN_ProcMapFinishMeshes.h"
+#include "TN_ProcMapPropMeshes.h"
+#include "TN_ProcMapRockMeshes.h"
 #include "Components/PointLightComponent.h"
 
 using namespace TNProcMesh;
@@ -91,6 +93,187 @@ namespace
 		}
 	}
 
+	/** Estilo de los puentes colosales. */
+	enum class ETNBridgeStyle : uint8 { Rope, Stone, Trestle, Iron };
+
+	/** Estilo según el bioma del cruce (y la semilla, para que no sean todos iguales). */
+	ETNBridgeStyle TNBridgeStyleFor(ETNProcBiome Biome, uint32 Seed)
+	{
+		const bool bOdd = ((Seed * 2654435761u) >> 13) & 1u;
+		switch (Biome)
+		{
+			case ETNProcBiome::Rocky:    return bOdd ? ETNBridgeStyle::Stone : ETNBridgeStyle::Rope;
+			case ETNProcBiome::Desert:   return bOdd ? ETNBridgeStyle::Trestle : ETNBridgeStyle::Stone;
+			case ETNProcBiome::Human:    return bOdd ? ETNBridgeStyle::Stone : ETNBridgeStyle::Iron;
+			case ETNProcBiome::Volcanic: return ETNBridgeStyle::Iron;
+			case ETNProcBiome::Beach:    return bOdd ? ETNBridgeStyle::Trestle : ETNBridgeStyle::Rope;
+			default:                     return ETNBridgeStyle::Rope;
+		}
+	}
+
+	/** Tablero de losas de piedra con pretiles de 1 m y albardilla (viaducto). */
+	void TNProcAddStoneDeck(FTNProcMeshBuffers& M, const FTNPlankLine& Line, double S0, double S1, const FLinearColor& Stone, uint32 Seed)
+	{
+		constexpr double Step = 160.0;
+		int32 k = 0;
+		for (double S = S0; S < S1; S += Step, ++k)
+		{
+			const double Se = FMath::Min(S + Step, S1);
+			FVector A, B, DA, DB;
+			double HA = 0.0, HB = 0.0;
+			Line.At(S, A, DA, HA);
+			Line.At(Se, B, DB, HB);
+			const FVector D = (B - A).GetSafeNormal2D().IsNearlyZero() ? DA : (B - A).GetSafeNormal2D();
+			const FVector N(-D.Y, D.X, 0.0);
+			const FVector C = (A + B) * 0.5;
+			const double Len = FVector::Dist2D(A, B) * 0.5 + 1.0;
+			const double Hw = 0.5 * (HA + HB);
+			M.AddBox(C - FVector(0.0, 0.0, 16.0), D, FVector(Len, Hw + 32.0, 16.0), Stone * TNProcTone(k, Seed));
+			for (const double Side : { -1.0, 1.0 })
+			{
+				const FVector P = C + N * (Side * (Hw + 16.0));
+				M.AddBox(P + FVector(0.0, 0.0, 48.0), D, FVector(Len, 16.0, 48.0), Stone * 0.9f * TNProcTone(k + 50, Seed));
+				M.AddBox(P + FVector(0.0, 0.0, 100.0), D, FVector(Len + 1.0, 21.0, 5.0), Stone * 1.1f);
+			}
+		}
+	}
+
+	/**
+	 * Arco rebajado de sillería bajo el tablero entre dos apoyos: intradós curvo, rosca más oscura y
+	 * tímpanos hasta el tablero por las dos caras. La flecha no baja del suelo.
+	 */
+	template <typename FGround>
+	void TNProcAddDeckArch(FTNProcMeshBuffers& M, const FTNPlankLine& Line, double Sa, double Sb, double TopZ, const FLinearColor& Stone, FGround&& Ground)
+	{
+		if (Sb - Sa < 400.0) { return; }
+		const int32 N = FMath::Clamp(FMath::RoundToInt32((Sb - Sa) / 250.0), 6, 48);
+		// Holgura en el tramo central (junto a los apoyos el suelo sube a la torre o a la pila).
+		double MinClear = 1e9;
+		for (int32 i = 0; i <= N; ++i)
+		{
+			const double U = static_cast<double>(i) / N;
+			if (U < 0.2 || U > 0.8) { continue; }
+			FVector P, D;
+			double Hw = 0.0;
+			Line.At(FMath::Lerp(Sa, Sb, U), P, D, Hw);
+			MinClear = FMath::Min(MinClear, TopZ - Ground(FVector2D(P.X, P.Y)));
+		}
+		const double Rise = FMath::Clamp(FMath::Min((Sb - Sa) * 0.45, MinClear * 0.8), 150.0, 3200.0);
+		const double Deck = TopZ - 32.0;
+		const double Ring = FMath::Min(120.0, Rise * 0.4);
+		for (int32 i = 0; i < N; ++i)
+		{
+			const double U0 = static_cast<double>(i) / N, U1 = static_cast<double>(i + 1) / N;
+			FVector P0, P1, D0, D1;
+			double H0 = 0.0, H1 = 0.0;
+			Line.At(FMath::Lerp(Sa, Sb, U0), P0, D0, H0);
+			Line.At(FMath::Lerp(Sa, Sb, U1), P1, D1, H1);
+			// Intradós: arranca en los apoyos a Rise bajo el tablero y sube hasta él en la clave.
+			const double Z0 = Deck - 30.0 - Rise * FMath::Square(2.0 * U0 - 1.0);
+			const double Z1 = Deck - 30.0 - Rise * FMath::Square(2.0 * U1 - 1.0);
+			const FVector N0(-D0.Y, D0.X, 0.0), N1(-D1.Y, D1.X, 0.0);
+			const double W0 = H0 + 30.0, W1 = H1 + 30.0;
+			const FVector A0 = FVector(P0.X, P0.Y, Z0) - N0 * W0, B0 = FVector(P0.X, P0.Y, Z0) + N0 * W0;
+			const FVector A1 = FVector(P1.X, P1.Y, Z1) - N1 * W1, B1 = FVector(P1.X, P1.Y, Z1) + N1 * W1;
+			M.AddQuad(A0, B0, B1, A1, FVector(0.0, 0.0, -1.0), Stone * 0.8f);
+			for (const double Side : { -1.0, 1.0 })
+			{
+				const FVector E0 = FVector(P0.X, P0.Y, 0.0) + N0 * (Side * W0);
+				const FVector E1 = FVector(P1.X, P1.Y, 0.0) + N1 * (Side * W1);
+				const FVector Out = N0 * Side;
+				const double R0 = FMath::Min(Z0 + Ring, Deck), R1 = FMath::Min(Z1 + Ring, Deck);
+				M.AddQuad(E0 + FVector(0.0, 0.0, Z0), E1 + FVector(0.0, 0.0, Z1), E1 + FVector(0.0, 0.0, R1), E0 + FVector(0.0, 0.0, R0), Out, Stone * 0.78f);
+				if (R0 < Deck || R1 < Deck)
+				{
+					M.AddQuad(E0 + FVector(0.0, 0.0, R0), E1 + FVector(0.0, 0.0, R1), E1 + FVector(0.0, 0.0, Deck), E0 + FVector(0.0, 0.0, Deck), Out, Stone * 0.95f);
+				}
+			}
+		}
+	}
+
+	/** Caballete de madera bajo el tablero: dos pies en talud, dos rectos, riostras y cruces hasta el suelo. */
+	void TNProcAddTrestleBent(FTNProcMeshBuffers& M, const FVector& Deck, const FVector& Dir, double Hw, double GroundZ, const FLinearColor& Timber)
+	{
+		const FVector N(-Dir.Y, Dir.X, 0.0);
+		const double Top = Deck.Z - 26.0;
+		const double H = Top - GroundZ;
+		if (H < 200.0) { return; }
+		auto Leg = [&](double Off0, double Off1)
+		{
+			const FVector T = FVector(Deck.X, Deck.Y, Top) + N * Off0;
+			const FVector B = FVector(Deck.X, Deck.Y, GroundZ - 40.0) + N * Off1;
+			M.AddBeam(T, B, 11.0, Timber);
+		};
+		for (const double Side : { -1.0, 1.0 })
+		{
+			Leg(Side * Hw * 0.95, Side * (Hw * 0.95 + H * 0.14));
+			Leg(Side * Hw * 0.35, Side * Hw * 0.35);
+		}
+		M.AddBeam(FVector(Deck.X, Deck.Y, Top) - N * (Hw + 20.0), FVector(Deck.X, Deck.Y, Top) + N * (Hw + 20.0), 13.0, Timber * 0.8f);
+		double PrevZ = Top;
+		for (double Zc = Top - 320.0; Zc > GroundZ + 60.0; Zc -= 320.0)
+		{
+			const double T = (Top - Zc) / FMath::Max(1.0, H);
+			const double Half = Hw * 0.95 + H * 0.14 * T;
+			const double PrevT = (Top - PrevZ) / FMath::Max(1.0, H);
+			const double PrevHalf = Hw * 0.95 + H * 0.14 * PrevT;
+			const FVector C(Deck.X, Deck.Y, Zc), Cp(Deck.X, Deck.Y, PrevZ);
+			M.AddBeam(C - N * Half, C + N * Half, 7.0, Timber * 0.9f);
+			M.AddBeam(Cp - N * PrevHalf, C + N * Half, 5.0, Timber * 0.85f);
+			M.AddBeam(Cp + N * PrevHalf, C - N * Half, 5.0, Timber * 0.85f);
+			PrevZ = Zc;
+		}
+	}
+
+	/** Barandilla rígida: postes cada PostEvery y dos pasamanos (madera o hierro). */
+	void TNProcAddRigidRails(FTNProcMeshBuffers& M, const FTNPlankLine& Line, double S0, double S1, double PostEvery, double RailH, double Half, const FLinearColor& Color)
+	{
+		const int32 NumPosts = FMath::Max(1, FMath::RoundToInt32((S1 - S0) / PostEvery));
+		for (const double Side : { -1.0, 1.0 })
+		{
+			FVector PrevTop = FVector::ZeroVector, PrevMid = FVector::ZeroVector;
+			for (int32 k = 0; k <= NumPosts; ++k)
+			{
+				const double S = S0 + (S1 - S0) * k / NumPosts;
+				FVector C, Dir;
+				double Hw = 0.0;
+				Line.At(S, C, Dir, Hw);
+				const FVector Base = C + FVector(-Dir.Y, Dir.X, 0.0) * (Side * (Hw - 10.0));
+				M.AddBox(Base + FVector(0.0, 0.0, RailH * 0.5), Dir, FVector(Half, Half, RailH * 0.5 + 6.0), Color);
+				const FVector Top = Base + FVector(0.0, 0.0, RailH), Mid = Base + FVector(0.0, 0.0, RailH * 0.5);
+				if (k > 0)
+				{
+					M.AddBeam(PrevTop, Top, Half * 0.7, Color);
+					M.AddBeam(PrevMid, Mid, Half * 0.5, Color);
+				}
+				PrevTop = Top;
+				PrevMid = Mid;
+			}
+		}
+	}
+
+	/** Cadena de eslabones alternos entre A y B (cables del puente de hierro). */
+	void TNProcAddChain(FTNProcMeshBuffers& M, const FVector& A, const FVector& B, const FLinearColor& Color)
+	{
+		const FVector D = B - A;
+		const double Len = D.Size();
+		if (Len < 1.0) { return; }
+		const FVector X = D / Len;
+		const FVector Y0 = FVector::CrossProduct(FVector::UpVector, X).GetSafeNormal();
+		const FVector Y = Y0.IsNearlyZero() ? FVector(0.0, 1.0, 0.0) : Y0;
+		const FVector Z = FVector::CrossProduct(X, Y);
+		const int32 Links = FMath::Max(1, FMath::RoundToInt32(Len / 34.0));
+		for (int32 k = 0; k < Links; ++k)
+		{
+			const FVector C = A + D * ((k + 0.5) / Links);
+			const FVector Wd = (k % 2) ? Y : Z;
+			for (const double Sg : { -1.0, 1.0 })
+			{
+				M.AddBeam(C - X * 17.0 + Wd * (Sg * 7.0), C + X * 17.0 + Wd * (Sg * 7.0), 2.2, Color);
+			}
+		}
+	}
+
 	/** Postes a ambos bordes cada PostEvery y cuerda de barandilla con comba entre ellos. */
 	void TNProcAddRopeRails(FTNProcMeshBuffers& Wood, const FTNPlankLine& Line, double S0, double S1, double PostEvery, double PostDown,
 		double RailH, const FLinearColor& PostColor, const FLinearColor& RopeColor)
@@ -760,11 +943,14 @@ void ATN_ProcMapGenerator::BuildStructures()
 	const FLinearColor WoodColor(0.45f, 0.3f, 0.16f);
 	const TArray<FPathSample>& M = Layout.Main;
 
-	// ── Puentes colosales: puente colgante de tablones entre las torres ─────
-	// Tablones con junta sobre dos largueros, postes y barandilla de cuerda, y en cada
-	// apoyo (borde de torre o pilar de roca) mástiles de los que cuelgan los cables
-	// principales, con comba hasta casi el tablero en mitad del vano, y sus péndolas.
+	// ── Puentes colosales: estilo según el bioma del cruce ─────
+	// Colgante: tablones sobre dos largueros, barandilla de cuerda y, en cada apoyo (borde de torre o
+	// pilar de roca), mástiles de los que cuelgan los cables principales con sus péndolas. Viaducto:
+	// losas y pretiles de piedra sobre arcos rebajados entre los apoyos. Caballete: tablones y barandilla
+	// de madera sobre caballetes de vigas hasta el suelo. Hierro: planchas, barandilla y pórticos de
+	// hierro con cadenas en lugar de cables.
 	const FLinearColor RopeColor(0.52f, 0.42f, 0.27f);
+	const FLinearColor IronColor(0.16f, 0.16f, 0.18f);
 	for (int32 c = 0; c < Layout.Crossings.Num(); ++c)
 	{
 		const FCrossing& C = Layout.Crossings[c];
@@ -780,8 +966,29 @@ void ATN_ProcMapGenerator::BuildStructures()
 		const double S1 = Line.Length() - TowerR + 150.0;
 		if (S1 <= S0) { continue; }
 		const uint32 Seed = Layout.Params.Seed ^ (0xB21D6u + static_cast<uint32>(c));
-		TNProcAddPlanks(Wood, Line, S0, S1, WoodColor, Seed);
-		TNProcAddRopeRails(Wood, Line, S0, S1, 300.0, 0.0, 105.0, WoodColor * 0.65f, RopeColor);
+		const ETNProcBiome CrossBiome = Layout.Modules[C.Module].Biome;
+		const ETNBridgeStyle Style = TNBridgeStyleFor(CrossBiome, Seed);
+		FLinearColor Gc, Pcc, RockCc, Bdc;
+		ResolveBiomeColors(CrossBiome, Gc, Pcc, RockCc, Bdc);
+		const bool bSandy = CrossBiome == ETNProcBiome::Desert || CrossBiome == ETNProcBiome::Beach;
+		const FLinearColor StoneC = bSandy ? TNProcLerpColor(RockCc, Gc, 0.6f) * 1.12f : TNProcLerpColor(RockCc, Gc, 0.15f) * 1.3f;
+		switch (Style)
+		{
+			case ETNBridgeStyle::Stone:   TNProcAddStoneDeck(Painted, Line, S0, S1, StoneC, Seed); break;
+			case ETNBridgeStyle::Trestle:
+				TNProcAddPlanks(Wood, Line, S0, S1, WoodColor * 1.1f, Seed);
+				TNProcAddRigidRails(Wood, Line, S0, S1, 250.0, 100.0, 6.0, WoodColor * 0.7f);
+				break;
+			case ETNBridgeStyle::Iron:
+				TNProcAddPlanks(Painted, Line, S0, S1, IronColor * 1.6f, Seed);
+				TNProcAddRigidRails(Painted, Line, S0, S1, 200.0, 105.0, 4.0, IronColor);
+				break;
+			case ETNBridgeStyle::Rope:
+			default:
+				TNProcAddPlanks(Wood, Line, S0, S1, WoodColor, Seed);
+				TNProcAddRopeRails(Wood, Line, S0, S1, 300.0, 0.0, 105.0, WoodColor * 0.65f, RopeColor);
+				break;
+		}
 
 		// Apoyos: bordes de las torres y pilares de roca de este cruce.
 		TArray<double> Supports = { S0 };
@@ -794,6 +1001,50 @@ void ATN_ProcMapGenerator::BuildStructures()
 		}
 		Supports.Add(S1);
 		Supports.Sort();
+		if (Style == ETNBridgeStyle::Stone || Style == ETNBridgeStyle::Trestle)
+		{
+			// Arcos entre apoyos (desde el borde de cada pilar) o caballetes cada ~9 m, bajo el tablero.
+			const double PillarR = 450.0;
+			auto GroundAt = [this](const FVector2D& Q) { return TerrainHeightMap(Q); };
+			for (int32 k = 1; k < Supports.Num(); ++k)
+			{
+				const double A = Supports[k - 1] + (k - 1 > 0 ? PillarR : 0.0);
+				const double B = Supports[k] - (k < Supports.Num() - 1 ? PillarR : 0.0);
+				if (Style == ETNBridgeStyle::Stone)
+				{
+					// Acueducto: arcos de hasta ~36 m separados por pilas de sillería que bajan hasta el suelo.
+					const int32 NArch = FMath::Max(1, FMath::CeilToInt32((B - A) / 3600.0));
+					constexpr double PierHalf = 180.0;
+					for (int32 a = 0; a < NArch; ++a)
+					{
+						const double A0 = FMath::Lerp(A, B, static_cast<double>(a) / NArch) + (a > 0 ? PierHalf : 0.0);
+						const double A1 = FMath::Lerp(A, B, static_cast<double>(a + 1) / NArch) - (a < NArch - 1 ? PierHalf : 0.0);
+						TNProcAddDeckArch(PaintedFar, Line, A0, A1, C.TopZ, StoneC, GroundAt);
+						if (a == 0) { continue; }
+						FVector Pp, Dp;
+						double Hwp = 0.0;
+						Line.At(FMath::Lerp(A, B, static_cast<double>(a) / NArch), Pp, Dp, Hwp);
+						const double G0 = TerrainHeightMap(FVector2D(Pp.X, Pp.Y)) - 80.0;
+						const double Top = C.TopZ - 32.0;
+						if (Top - G0 < 200.0) { continue; }
+						PaintedFar.AddBox(FVector(Pp.X, Pp.Y, 0.5 * (G0 + Top)), Dp, FVector(PierHalf, Hwp + 45.0, 0.5 * (Top - G0)), StoneC * 0.9f);
+						PaintedFar.AddBox(FVector(Pp.X, Pp.Y, G0 + 150.0), Dp, FVector(PierHalf + 40.0, Hwp + 85.0, 150.0), StoneC * 0.82f);
+					}
+					continue;
+				}
+				const int32 Bents = FMath::Max(1, FMath::FloorToInt32((B - A) / 900.0));
+				for (int32 b = 1; b <= Bents; ++b)
+				{
+					const double S = FMath::Lerp(A, B, static_cast<double>(b) / (Bents + 1));
+					FVector P, Dir;
+					double Hw = 0.0;
+					Line.At(S, P, Dir, Hw);
+					TNProcAddTrestleBent(PaintedFar, P, Dir, Hw, TerrainHeightMap(FVector2D(P.X, P.Y)), WoodColor * 0.85f);
+				}
+			}
+			continue;
+		}
+		const bool bIron = Style == ETNBridgeStyle::Iron;
 		constexpr double MastH = 750.0;
 		constexpr double Low = 130.0;
 		for (int32 k = 0; k < Supports.Num(); ++k)
@@ -804,7 +1055,13 @@ void ATN_ProcMapGenerator::BuildStructures()
 			for (const double Side : { -1.0, 1.0 })
 			{
 				const FVector Base = P0 + FVector(-Dir0.Y, Dir0.X, 0.0) * (Side * (Hw0 + 25.0));
-				Wood.AddBox(Base + FVector(0.0, 0.0, MastH * 0.5 - 60.0), Dir0, FVector(16.0, 16.0, MastH * 0.5 + 60.0), WoodColor * 0.55f);
+				(bIron ? Painted : Wood).AddBox(Base + FVector(0.0, 0.0, MastH * 0.5 - 60.0), Dir0, FVector(16.0, 16.0, MastH * 0.5 + 60.0), bIron ? IronColor : WoodColor * 0.55f);
+			}
+			if (bIron)
+			{
+				// Pórtico: dintel de hierro entre los dos mástiles.
+				const FVector Nn(-Dir0.Y, Dir0.X, 0.0);
+				Painted.AddBeam(P0 - Nn * (Hw0 + 25.0) + FVector(0.0, 0.0, MastH - 40.0), P0 + Nn * (Hw0 + 25.0) + FVector(0.0, 0.0, MastH - 40.0), 14.0, IronColor);
 			}
 			if (k == 0) { continue; }
 			// Vano entre el apoyo anterior y este: cable parabólico y péndolas cada 3 m.
@@ -822,8 +1079,16 @@ void ATN_ProcMapGenerator::BuildStructures()
 					Line.At(FMath::Lerp(A, B, U), P, Dir, Hw);
 					const FVector Edge = P + FVector(-Dir.Y, Dir.X, 0.0) * (Side * (Hw + 25.0));
 					const FVector Cable = Edge + FVector(0.0, 0.0, Low + (MastH - Low) * FMath::Square(2.0 * U - 1.0));
-					if (t > 0) { Wood.AddBeam(Prev, Cable, 4.5, RopeColor * 0.8f); }
-					if (t > 0 && t < NumSeg) { Wood.AddBeam(Cable, Edge + FVector(0.0, 0.0, 10.0), 2.0, RopeColor); }
+					if (bIron)
+					{
+						if (t > 0) { TNProcAddChain(PaintedFar, Prev, Cable, IronColor * 1.3f); }
+						if (t > 0 && t < NumSeg) { PaintedFar.AddBeam(Cable, Edge + FVector(0.0, 0.0, 10.0), 1.8, IronColor); }
+					}
+					else
+					{
+						if (t > 0) { Wood.AddBeam(Prev, Cable, 4.5, RopeColor * 0.8f); }
+						if (t > 0 && t < NumSeg) { Wood.AddBeam(Cable, Edge + FVector(0.0, 0.0, 10.0), 2.0, RopeColor); }
+					}
 					Prev = Cable;
 				}
 			}
@@ -935,36 +1200,53 @@ void ATN_ProcMapGenerator::BuildStructures()
 				Lava.AddPrism(Disc, F.Location.Z, F.Location.Z - 10.0, FLinearColor(1.f, 0.35f, 0.05f), false);
 				break;
 			}
+			case EFeature::PathProp:
+			{
+				// Obstáculo de objetos del bioma (con colisión): en su marco local, sobre el suelo real.
+				const FVector2D C(F.Location.X, F.Location.Y);
+				const FVector2D Dx = F.Dir.GetSafeNormal().IsNearlyZero() ? FVector2D(1.0, 0.0) : F.Dir.GetSafeNormal();
+				const FVector2D Dy(-Dx.Y, Dx.X);
+				const double OriginZ = TerrainHeightMap(C);
+				TNPropMesh::FTNPathPropParams Params;
+				Params.Radius = F.Radius;
+				Params.Height = F.Height;
+				Params.Length = F.Length;
+				Params.Seed = static_cast<uint32>(F.Aux2);
+				Params.Crystal = TNPropMesh::TNPropCrystalColor(F.Biome);
+				Params.bCharred = F.Biome == ETNProcBiome::Volcanic;
+				auto Ground = [&](double X, double Y) { return TerrainHeightMap(C + Dx * X + Dy * Y) - OriginZ; };
+				FTNProcMeshBuffers Local;
+				TNPropMesh::TNPathPropBuild(Local, static_cast<EPathProp>(F.Aux), Params, Ground);
+				TNFormMesh::TNFormAppend(Painted, Local, FVector(C, OriginZ), Dx);
+				break;
+			}
 			case EFeature::Boulder:
 			{
+				// Peñasco con el estilo de su bioma (redondo, losa, partido, apilado, estratos, basalto, musgo,
+				// cristales o coral), con color de vértice.
 				const FVector2D C(F.Location.X, F.Location.Y);
 				FLinearColor G, Pc, RockC, Bd;
 				ResolveBiomeColors(F.Biome, G, Pc, RockC, Bd);
-				TNProcAddBoulder(Rock, FVector(C, TerrainHeightMap(C)), F.Radius, F.Height, static_cast<uint32>(F.Aux), TNProcLerpColor(RockC, G, 0.25f));
+				const uint32 Seed = static_cast<uint32>(F.Aux);
+				FTNProcMeshBuffers Local;
+				TNRockMesh::TNRockBuildBoulder(Local, TNRockMesh::TNBoulderStyleFor(F.Biome, Seed), F.Radius, F.Height, Seed, TNRockMesh::TNRockColorsFor(F.Biome, RockC, G));
+				TNPropMesh::TNPropAppend(Painted, Local, FVector(C, TerrainHeightMap(C)), TNRockMesh::TNRockRand(Seed, 9, 0.0, 360.0));
 				break;
 			}
 			case EFeature::RockSpire:
 			{
+				// Aguja (esbelta) o mogote (bajo y ancho) con el estilo de su bioma: aguja con sombrero, inclinada,
+				// gemela, chimenea de hadas, pilar kárstico con vegetación u órgano de basalto; mogote, tor, mesa
+				// de estratos o domo de lava.
 				const FVector2D C(F.Location.X, F.Location.Y);
-				// Aguja (esbelta, con sombrero de roca) o mogote (bajo y ancho, de techo plano).
 				FLinearColor G, Pc, RockC, Bd;
 				ResolveBiomeColors(F.Biome, G, Pc, RockC, Bd);
 				const uint32 Seed = static_cast<uint32>(F.Aux);
-				const FVector Base(C, TerrainHeightMap(C) - 40.0);
 				const bool bSpire = F.Height > F.Radius * 2.0;
-				TArray<double> Z, R;
-				const int32 Rings = bSpire ? 8 : 5;
-				for (int32 r = 0; r <= Rings; ++r)
-				{
-					const double T = static_cast<double>(r) / Rings;
-					Z.Add(F.Height * T);
-					R.Add(F.Radius * (bSpire ? FMath::Lerp(1.25, 0.55, T) : FMath::Lerp(1.15, 0.8, T * T)));
-				}
-				TNProcAddLathe(Rock, Base, Z, R, bSpire ? 0.18 : 0.12, Seed, RockC * (0.9f + 0.2f * static_cast<float>(0.5 + 0.5 * TNProcHashNoise(4, 4, Seed))), 11);
-				if (bSpire)
-				{
-					TNProcAddBoulder(Rock, Base + FVector(0.0, 0.0, F.Height - 30.0), F.Radius * 1.25, F.Radius * 0.9, Seed + 77u, RockC * 0.85f);
-				}
+				FTNProcMeshBuffers Local;
+				TNRockMesh::TNRockBuildSpire(Local, TNRockMesh::TNSpireStyleFor(F.Biome, bSpire, Seed), F.Radius, F.Height, Seed,
+					TNRockMesh::TNRockColorsFor(F.Biome, RockC, G));
+				TNPropMesh::TNPropAppend(Painted, Local, FVector(C, TerrainHeightMap(C)), TNRockMesh::TNRockRand(Seed, 9, 0.0, 360.0));
 				break;
 			}
 			case EFeature::Log:

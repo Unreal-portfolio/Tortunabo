@@ -54,6 +54,7 @@ namespace TNProcMap
 		Casuarina,     ///< Casuarina de ramillas colgantes (costa).
 		JoshuaTree,    ///< Árbol de Josué (desierto).
 		Birch,         ///< Abedul de tronco blanco.
+		Prop,          ///< Objeto suelto junto al camino (FFloraSpecies::Prop dice cuál).
 		Rock,          ///< Peñasco suelto.
 		Stones,        ///< Corro de piedras pequeñas.
 		Count
@@ -66,9 +67,30 @@ namespace TNProcMap
 	{
 		static const char* Names[] = { "BroadTree", "Ceiba", "Palm", "MangroveTree", "YoungSequoia", "Cypress", "Pine", "Fir", "Willow", "Acacia",
 			"DeadTree", "CharredTree", "Ornamental", "Fern", "Bush", "Grass", "Flowers", "Reeds", "Saguaro", "Barrel", "DryBush", "AshBush", "Hedge",
-			"Umbrella", "Creeper", "BananaPlant", "Bamboo", "TreeFern", "SeaGrape", "Pandanus", "FanPalm", "Casuarina", "JoshuaTree", "Birch", "Rock", "Stones" };
+			"Umbrella", "Creeper", "BananaPlant", "Bamboo", "TreeFern", "SeaGrape", "Pandanus", "FanPalm", "Casuarina", "JoshuaTree", "Birch", "Prop", "Rock", "Stones" };
 		static_assert(sizeof(Names) / sizeof(Names[0]) == static_cast<int32>(EFloraShape::Count), "FloraShapeName desfasado");
 		return Names[static_cast<int32>(Shape)];
+	}
+
+	/** Objetos sueltos junto al camino (se reparten como la vegetación, en grupos). */
+	enum class EPropKind : uint8
+	{
+		Crate, WoodBarrel, Barricade, TrafficCone, HayBale, Bench, LampPost, Mailbox, Sacks, FlowerPot,
+		Shell, Starfish, SandBucket, BeachTowel, Surfboard, Parasol, Driftwood, Coconuts, Lifebuoy,
+		Mushrooms, ClayPot, TikiTorch, SkullPost, CattleSkull, Bones, Amphora, WagonWheel, Signpost, Tumbleweed,
+		Crystals, Stump, Cairn, Lantern, CrabTrap,
+		Count
+	};
+
+	/** Nombre de un objeto suelto (depuración y herramientas). */
+	inline const char* PropKindName(EPropKind Kind)
+	{
+		static const char* Names[] = { "Crate", "WoodBarrel", "Barricade", "TrafficCone", "HayBale", "Bench", "LampPost", "Mailbox", "Sacks", "FlowerPot",
+			"Shell", "Starfish", "SandBucket", "BeachTowel", "Surfboard", "Parasol", "Driftwood", "Coconuts", "Lifebuoy",
+			"Mushrooms", "ClayPot", "TikiTorch", "SkullPost", "CattleSkull", "Bones", "Amphora", "WagonWheel", "Signpost", "Tumbleweed",
+			"Crystals", "Stump", "Cairn", "Lantern", "CrabTrap" };
+		static_assert(sizeof(Names) / sizeof(Names[0]) == static_cast<int32>(EPropKind::Count), "PropKindName desfasado");
+		return Names[static_cast<int32>(Kind)];
 	}
 
 	/** Variantes de malla por especie (forma y tono distintos). */
@@ -91,6 +113,7 @@ namespace TNProcMap
 		Under,     ///< Sotobosque (~45 m).
 		Meadow,    ///< Praderas (~30 m).
 		Rocks,     ///< Pedregales (~60 m).
+		Camp,      ///< Rincones con objetos junto al camino (~25 m).
 		Count
 	};
 
@@ -119,6 +142,8 @@ namespace TNProcMap
 		double Footprint = 50.0;
 		/** 0 = crece vertical, 1 = perpendicular al terreno (solo con 1 se pega a paredes de más de 40°). */
 		double Lean = 0.0;
+		/** Con Shape == Prop, qué objeto es. */
+		EPropKind Prop = EPropKind::Crate;
 	};
 
 	/** Una planta o roca colocada (espacio del mapa). */
@@ -160,6 +185,15 @@ namespace TNProcMap
 			Add(EFloraShape::Creeper, 1, FloraZone::Land, Density, 0.6, 1.5, 1.0, 88.0, 60.0, 6000.0, 0.22, EFloraPatch::Under, 40.0, 1.0);
 			Out.Last().SlopeMin = 45.0;
 		};
+		// Objetos sueltos: en rincones junto al camino (mancha Camp), sobre suelo casi llano. Edge1 es lo
+		// más lejos del borde del camino a lo que aparecen.
+		auto AddProp = [&Add, &Out](EPropKind Kind, double Density, double Edge0, double Edge1, double Patch, uint8 Zones = FloraZone::Land,
+			double Slope = 22.0, double Foot = 35.0)
+		{
+			Add(EFloraShape::Prop, 1, Zones, Density, 0.85, 1.2, 1.0, Slope, Edge0, Edge1, Patch, EFloraPatch::Camp, Foot, 0.0);
+			Out.Last().Prop = Kind;
+		};
+		using PK = EPropKind;
 		switch (Biome)
 		{
 			case ETNProcBiome::Jungle:
@@ -176,6 +210,11 @@ namespace TNProcMap
 				Add(EFloraShape::Grass, 1, L, 11.0, 0.6, 1.5, 1.0, 72.0, 0.0, 4000.0, 0.28, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Flowers, 1, L, 2.0, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
 				AddCreeper(7.0);
+				AddProp(PK::Mushrooms, 1.0, 60.0, 3000.0, 0.42, L, 30.0, 25.0);
+				AddProp(PK::ClayPot, 0.35, 60.0, 1500.0, 0.55);
+				AddProp(PK::TikiTorch, 0.6, 60.0, 900.0, 0.5, L, 22.0, 10.0);
+				AddProp(PK::SkullPost, 0.3, 80.0, 1100.0, 0.55, L, 22.0, 10.0);
+				AddProp(PK::Stump, 0.4, 100.0, 3000.0, 0.45, L, 28.0, 40.0);
 				break;
 			case ETNProcBiome::Beach:
 				// Playa menos poblada: palmeras y casuarinas, y junto al camino uva de playa, pándanos y palmitos.
@@ -188,6 +227,15 @@ namespace TNProcMap
 				Add(EFloraShape::Grass, 1, L, 10.0, 0.6, 1.5, 1.0, 72.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Bush, 1, L, 1.2, 0.4, 1.3, 1.5, 70.0, 100.0, 7000.0, 0.40, EP::Under, 60.0, 0.5);
 				Add(EFloraShape::Stones, 1, L | Sh, 2.5, 0.5, 1.4, 1.0, 60.0, 30.0, 4000.0, 0.45, EP::Rocks, 40.0, 0.8);
+				AddProp(PK::Shell, 1.4, 20.0, 2500.0, 0.38, L | Sh, 25.0, 12.0);
+				AddProp(PK::Starfish, 0.9, 20.0, 2500.0, 0.42, L | Sh, 25.0, 12.0);
+				AddProp(PK::Coconuts, 0.5, 40.0, 2500.0, 0.5, L, 22.0, 20.0);
+				AddProp(PK::Driftwood, 0.4, 60.0, 3000.0, 0.5, L | Sh, 20.0, 40.0);
+				AddProp(PK::SandBucket, 0.6, 60.0, 1500.0, 0.5, L, 15.0, 20.0);
+				AddProp(PK::BeachTowel, 0.7, 80.0, 1500.0, 0.5, L, 10.0, 50.0);
+				AddProp(PK::Parasol, 0.5, 100.0, 1600.0, 0.5, L, 14.0, 20.0);
+				AddProp(PK::Surfboard, 0.5, 60.0, 1300.0, 0.5, L, 18.0, 15.0);
+				AddProp(PK::Lifebuoy, 0.4, 60.0, 1100.0, 0.5, L, 20.0, 10.0);
 				break;
 			case ETNProcBiome::Desert:
 				Add(EFloraShape::Saguaro, 0, L, 0.4, 0.6, 1.4, 1.2, 30.0, 300.0, Far, 0.30, EP::Forest, 35.0, 0.0);
@@ -199,6 +247,13 @@ namespace TNProcMap
 				Add(EFloraShape::DryBush, 1, L, 3.2, 0.45, 1.5, 1.3, 70.0, 60.0, 7000.0, 0.20, EP::Under, 50.0, 0.4);
 				Add(EFloraShape::Grass, 1, L, 3.0, 0.5, 1.2, 1.0, 65.0, 0.0, 4000.0, 0.40, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Stones, 1, L, 2.5, 0.5, 1.4, 1.0, 65.0, 20.0, 4000.0, 0.40, EP::Rocks, 40.0, 0.8);
+				AddProp(PK::Tumbleweed, 0.5, 40.0, 3000.0, 0.45, L, 25.0, 25.0);
+				AddProp(PK::CattleSkull, 0.25, 60.0, 2000.0, 0.55, L, 22.0, 25.0);
+				AddProp(PK::Bones, 0.3, 60.0, 2000.0, 0.55, L, 20.0, 35.0);
+				AddProp(PK::Amphora, 0.3, 60.0, 1500.0, 0.55);
+				AddProp(PK::WagonWheel, 0.35, 60.0, 1500.0, 0.55, L, 18.0, 30.0);
+				AddProp(PK::Signpost, 0.3, 60.0, 900.0, 0.55, L, 22.0, 10.0);
+				AddProp(PK::Crystals, 0.15, 100.0, 3000.0, 0.62, L, 35.0, 25.0);
 				break;
 			case ETNProcBiome::Volcanic:
 				Add(EFloraShape::CharredTree, 0, L, 0.8, 0.55, 1.4, 1.3, 42.0, 350.0, Far, 0.30, EP::Forest, 30.0, 0.10);
@@ -209,6 +264,10 @@ namespace TNProcMap
 				Add(EFloraShape::Fern, 1, L, 2.4, 0.45, 1.2, 1.3, 70.0, 60.0, 6000.0, 0.40, EP::Under, 50.0, 0.6);
 				Add(EFloraShape::Stones, 1, L, 3.0, 0.5, 1.5, 1.0, 70.0, 20.0, 4000.0, 0.30, EP::Rocks, 40.0, 0.8);
 				AddCreeper(2.0);
+				AddProp(PK::Crystals, 0.7, 60.0, 3500.0, 0.45, L, 40.0, 25.0);
+				AddProp(PK::Stump, 0.8, 80.0, 3500.0, 0.4, L, 30.0, 40.0);
+				AddProp(PK::Bones, 0.25, 60.0, 2000.0, 0.55, L, 20.0, 35.0);
+				AddProp(PK::Cairn, 0.15, 80.0, 1500.0, 0.6, L, 22.0, 30.0);
 				break;
 			case ETNProcBiome::Water:
 				Add(EFloraShape::Willow, 0, L, 0.6, 0.7, 1.35, 1.2, 30.0, 400.0, Far, 0.30, EP::Forest, 40.0, 0.05);
@@ -221,6 +280,11 @@ namespace TNProcMap
 				Add(EFloraShape::Grass, 1, L | Sh, 8.0, 0.6, 1.5, 1.0, 72.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Flowers, 1, L, 1.8, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
 				AddCreeper(4.0);
+				AddProp(PK::CrabTrap, 0.8, 40.0, 1800.0, 0.5, L | Sh, 18.0, 35.0);
+				AddProp(PK::Driftwood, 0.4, 40.0, 2500.0, 0.5, L | Sh, 20.0, 40.0);
+				AddProp(PK::Lantern, 0.4, 60.0, 900.0, 0.5, L, 22.0, 10.0);
+				AddProp(PK::Stump, 0.3, 100.0, 3000.0, 0.5, L, 28.0, 40.0);
+				AddProp(PK::Signpost, 0.25, 60.0, 900.0, 0.55, L, 22.0, 10.0);
 				break;
 			case ETNProcBiome::Rocky:
 				Add(EFloraShape::Pine, 0, L, 1.8, 0.5, 1.5, 1.6, 45.0, 350.0, Far, 0.30, EP::Forest, 30.0, 0.05);
@@ -232,6 +296,13 @@ namespace TNProcMap
 				Add(EFloraShape::Flowers, 1, L, 1.5, 0.5, 1.2, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
 				Add(EFloraShape::Stones, 1, L, 3.0, 0.5, 1.5, 1.0, 75.0, 20.0, 4000.0, 0.25, EP::Rocks, 40.0, 0.8);
 				AddCreeper(3.0);
+				AddProp(PK::Cairn, 0.5, 60.0, 2500.0, 0.48, L, 25.0, 30.0);
+				AddProp(PK::Crystals, 0.3, 100.0, 3000.0, 0.55, L, 35.0, 25.0);
+				AddProp(PK::Stump, 0.3, 100.0, 3000.0, 0.5, L, 28.0, 40.0);
+				AddProp(PK::Crate, 0.5, 60.0, 1200.0, 0.5, L, 18.0, 45.0);
+				AddProp(PK::WoodBarrel, 0.4, 60.0, 1200.0, 0.52, L, 18.0, 40.0);
+				AddProp(PK::Lantern, 0.4, 60.0, 900.0, 0.5, L, 22.0, 10.0);
+				AddProp(PK::Signpost, 0.3, 60.0, 900.0, 0.52, L, 22.0, 10.0);
 				break;
 			case ETNProcBiome::Mangrove:
 				Add(EFloraShape::MangroveTree, 0, L | Sh | W | D, 3.0, 0.55, 1.5, 1.3, 40.0, 350.0, Far, 0.15, EP::Forest, 60.0, 0.05);
@@ -246,6 +317,11 @@ namespace TNProcMap
 				Add(EFloraShape::Grass, 1, L | Sh, 7.0, 0.6, 1.4, 1.0, 72.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Flowers, 1, L, 1.4, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.50, EP::Meadow, 25.0, 0.7);
 				AddCreeper(6.0);
+				AddProp(PK::CrabTrap, 0.8, 40.0, 1800.0, 0.48, L | Sh, 18.0, 35.0);
+				AddProp(PK::Driftwood, 0.3, 40.0, 2500.0, 0.5, L | Sh, 20.0, 40.0);
+				AddProp(PK::Lantern, 0.4, 60.0, 900.0, 0.5, L, 22.0, 10.0);
+				AddProp(PK::Stump, 0.2, 100.0, 3000.0, 0.55, L, 28.0, 40.0);
+				AddProp(PK::WoodBarrel, 0.3, 60.0, 1200.0, 0.55, L, 18.0, 40.0);
 				break;
 			case ETNProcBiome::Human:
 			default:
@@ -260,6 +336,17 @@ namespace TNProcMap
 				Add(EFloraShape::Grass, 1, L, 7.0, 0.6, 1.3, 1.0, 65.0, 0.0, 4000.0, 0.25, EP::Meadow, 20.0, 0.7);
 				Add(EFloraShape::Flowers, 1, L, 2.5, 0.6, 1.3, 1.0, 60.0, 0.0, 4000.0, 0.40, EP::Meadow, 25.0, 0.7);
 				AddCreeper(3.0);
+				// Pueblo: los objetos van por todas partes junto al camino, no solo en rincones.
+				AddProp(PK::Crate, 0.8, 60.0, 1500.0, 0.35, L, 15.0, 45.0);
+				AddProp(PK::WoodBarrel, 0.6, 60.0, 1500.0, 0.35, L, 15.0, 40.0);
+				AddProp(PK::Sacks, 0.5, 60.0, 1500.0, 0.4, L, 18.0, 35.0);
+				AddProp(PK::Barricade, 0.5, 60.0, 1100.0, 0.42, L, 12.0, 90.0);
+				AddProp(PK::TrafficCone, 0.7, 40.0, 900.0, 0.42, L, 15.0, 20.0);
+				AddProp(PK::HayBale, 0.35, 80.0, 2000.0, 0.45, L, 15.0, 60.0);
+				AddProp(PK::Bench, 0.3, 80.0, 900.0, 0.4, L, 12.0, 70.0);
+				AddProp(PK::LampPost, 0.6, 60.0, 900.0, 0.3, L, 18.0, 15.0);
+				AddProp(PK::Mailbox, 0.35, 60.0, 900.0, 0.4, L, 18.0, 15.0);
+				AddProp(PK::FlowerPot, 0.4, 60.0, 1200.0, 0.4, L, 15.0, 30.0);
 				break;
 		}
 	}
@@ -287,7 +374,7 @@ namespace TNProcMap
 		/** Valor de la mancha de un tipo en P, en [0, 1] (media ~0,5). */
 		inline double PatchValue(uint32 Seed, EFloraPatch Kind, const FVector2D& P)
 		{
-			static const double Scales[static_cast<int32>(EFloraPatch::Count)] = { 1.0, 9000.0, 4500.0, 3000.0, 6000.0 };
+			static const double Scales[static_cast<int32>(EFloraPatch::Count)] = { 1.0, 9000.0, 4500.0, 3000.0, 6000.0, 2500.0 };
 			const int32 K = static_cast<int32>(Kind);
 			if (K <= 0) { return 1.0; }
 			return 0.5 + 0.5 * Fbm2(Seed + 0xF10Au + static_cast<uint32>(K) * 101u, P.X / Scales[K], P.Y / Scales[K], 3) * 1.6;
@@ -354,7 +441,7 @@ namespace TNProcMap
 				// Especie: cada una con su probabilidad (densidad x mancha); si no toca ninguna, nada. Si entre
 				// todas pasan de 1 (celda llena, como en los taludes), se reparten en proporción.
 				const double Boost = Pass == 1 && Slope >= WallSlope && Edge <= WallEdge ? WallBoost : 1.0;
-				constexpr int32 MaxSpecies = 16;
+				constexpr int32 MaxSpecies = 24;
 				double Prob[MaxSpecies];
 				double Total = 0.0;
 				for (int32 s = 0; s < Table.Num() && s < MaxSpecies; ++s)
@@ -397,7 +484,9 @@ namespace TNProcMap
 					const FVector2D D = k == 0 ? FVector2D(1.0, 0.0) : k == 1 ? FVector2D(-1.0, 0.0) : k == 2 ? FVector2D(0.0, 1.0) : FVector2D(0.0, -1.0);
 					Low = FMath::Min(Low, Q.Height(P + D * Foot));
 				}
-				const double Z = H - FMath::Min(H - Low, 1.2 * Foot) * (1.0 - Sp.Lean) - 6.0 - 4.0 * I.Scale;
+				// Los objetos sueltos apenas se hunden (toallas, conchas y estrellas quedarían enterradas).
+				const double Bury = Sp.Shape == EFloraShape::Prop ? 1.0 : 6.0 + 4.0 * I.Scale;
+				const double Z = H - FMath::Min(H - Low, 1.2 * Foot) * (1.0 - Sp.Lean) - Bury;
 				I.Location = FVector(P.X, P.Y, Z);
 				Out.Add(I);
 			}

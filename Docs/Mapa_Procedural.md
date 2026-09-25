@@ -54,7 +54,7 @@ Dos capas, como el resto del proyecto (`TNGridLogic`, `TNChunkLogic`):
 | `TN_ProcMapTerrain.h` | Altura por vértice: parámetros mezclados por bioma con *domain warp*, pasillo del camino con arcén y taludes de 55-75°, torres y puertas de los cruces, loma sobre las cuevas, volcanes asentados en el relieve, muros del borde, costa y mar abierto al norte. |
 | `TN_ProcMapCaves.h` | Cuevas: tramos del principal que atraviesan una loma por un túnel con pasos estrechos, cámara ancha y, en el volcán, río de lava que se salta. |
 | `TN_ProcMapFormations.h` | Formaciones temáticas por bioma: arcos que cruzan el camino, piezas en las explanadas (con carriles libres) e hitos lejanos (naturaleza, entorno y guerra). |
-| `TN_ProcMapFlora.h` | Vegetación y rocas sueltas: especies por bioma y reparto determinista en manchas, también en los taludes. |
+| `TN_ProcMapFlora.h` | Vegetación, rocas y objetos sueltos: especies por bioma y reparto determinista en manchas, también en los taludes. |
 | `TN_ProcMapGenerate.h` | `GenerateLayout(params)`: orquesta todo, valida y reintenta. |
 
 Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
@@ -64,7 +64,7 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 
 | Clase | Papel |
 |---|---|
-| `ATN_ProcMapGenerator` | Traduce el layout a mundo: terreno en tiles de `UProceduralMeshComponent` con colisión y color de vértice, agua (plano + `ATN_ProcWaterVolume` nadable), estructuras colosales, formaciones y techos de cueva (con luces), vegetación procedural (mallas estáticas construidas en ejecución e instanciadas con HISM), capas de props por bioma, grafo PCG opcional por bioma y todos los actores de gameplay. Las mallas low-poly salen de cabeceras privadas sin dependencias del motor (`TN_ProcMapMeshKit.h`, `TN_ProcMapFloraMeshes.h`, `TN_ProcMapFormationMeshes.h`, `TN_ProcMapCaveMeshes.h`), previsualizables fuera de él. |
+| `ATN_ProcMapGenerator` | Traduce el layout a mundo: terreno en tiles de `UProceduralMeshComponent` con colisión y color de vértice, agua (plano + `ATN_ProcWaterVolume` nadable), estructuras colosales, formaciones y techos de cueva (con luces), vegetación procedural (mallas estáticas construidas en ejecución e instanciadas con HISM), capas de props por bioma, grafo PCG opcional por bioma y todos los actores de gameplay. Las mallas low-poly salen de cabeceras privadas sin dependencias del motor (`TN_ProcMapMeshKit.h`, `TN_ProcMapFloraMeshes.h`, `TN_ProcMapFormationMeshes.h`, `TN_ProcMapCaveMeshes.h`, `TN_ProcMapFinishMeshes.h`, `TN_ProcMapPropMeshes.h`, `TN_ProcMapRockMeshes.h`), previsualizables fuera de él. |
 | `UTN_ProcMapSettings` / `UTN_ProcBiomeDataAsset` | Slots de datos: perfiles por modo × dificultad, materiales, clases, y por bioma colores, capas de vegetación, peligros y criatura acuática. Sin assets, todo sale en greybox. |
 | `ATN_ProcGeyser`, `ATN_ProcSlideZone`, `ATN_ProcKillVolume`, `ATN_ProcFinishVolume` | Conexiones especiales (géiser que sube, cascada-tobogán que baja, un solo sentido y automáticas), caídas mortales y meta. |
 | `ATN_ProcWaterVolume`, `ATN_ProcWaterCurrent`, `ATN_ProcWhirlpool`, `ATN_ProcWaterPredator`, `ATN_ProcWaterBouncer` | Agua nadable y sus peligros: corrientes, remolinos, depredador (tiburón/morena) y criaturas con comportamiento de medusa distintas por bioma. |
@@ -134,6 +134,29 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   sotobosque, pradera y pedregal, con tamaños muy variados; en los taludes junto al camino,
   densidad doble y enredaderas pegadas a la pared. En el manglar crecen también dentro de las
   pozas, junto a 16-26 secuoyas gigantes por módulo de tamaños muy distintos.
+- **Objetos sueltos junto al camino** (34 tipos × 3 variantes, repartidos como la vegetación en
+  rincones de ~25 m): cajas, barriles, vallas de obra, conos, pacas, bancos, farolas, buzones,
+  sacos y macetas en la zona humana; conchas, estrellas de mar, cocos, troncos a la deriva, cubos
+  y palas, toallas, sombrillas con hamaca, tablas de surf y salvavidas en la playa; setas,
+  vasijas, antorchas tiki, postes con calavera y tocones en la selva; calaveras de vaca, huesos,
+  ánforas, ruedas de carro, postes indicadores, plantas rodadoras y amatistas en el desierto;
+  obsidiana, tocones calcinados, huesos e hitos en el volcán; hitos, cuarzo, cajas, barriles,
+  faroles y postes en la roca; nasas, troncos, faroles y tocones en agua y manglar. Los macizos
+  (cajas, barriles, pacas, bancos, farolas, buzones, vallas...) llevan colisión de caja. Sustituyen a
+  las capas de formas básicas (greybox) cuando la vegetación procedural está activa.
+- **Obstáculos de objetos dentro del camino** (18 tipos, con colisión y siempre con carril libre):
+  pilas de cajas, barriles, vallas con conos, pacas de paja, castillos de arena, barcas volcadas,
+  rincones de playa, tótems, columnas en ruinas, setas gigantes, calaveras gigantes, vasijas,
+  cristales gigantes, hitos grandes, vagonetas, nasas, puestos de mercado y filas de conos, según
+  el bioma; conviven con peñascos, agujas, mogotes y troncos.
+- **Rocas del camino con estilo por bioma**: peñascos redondos, losas inclinadas, partidos,
+  apilados, de estratos, columnas de basalto, con musgo, con cristales o de coral; agujas con
+  sombrero, inclinadas, gemelas, chimeneas de hadas, pilares kársticos con vegetación y órganos de
+  basalto; mogotes, tors de bloques, mesas de estratos y domos de lava.
+- **Puentes colosales de cuatro estilos** según el bioma del cruce: colgante de cuerda (selva,
+  manglar, agua, playa), viaducto de piedra con arcos rebajados entre los apoyos (roca, desierto,
+  zona humana), caballete de madera con vigas hasta el suelo (desierto, playa) y hierro con
+  pórticos y cadenas (volcán, zona humana).
 - **Formaciones temáticas**: arcos que cruzan el camino (arco de roca, costillar de ballena,
   raíces gigantes, pórtico de templo), piezas en explanadas (barco varado, cabeza colosal,
   basalto, fumarola, chimeneas de hadas, rocas en equilibrio, carreta, cañón y, de guerra,

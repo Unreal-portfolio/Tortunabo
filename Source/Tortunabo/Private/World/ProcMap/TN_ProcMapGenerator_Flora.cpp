@@ -10,6 +10,7 @@
 #include "Core/TN_Log.h"
 #include "TN_ProcMapMeshKit.h"
 #include "TN_ProcMapFloraMeshes.h"
+#include "TN_ProcMapPropMeshes.h"
 #include "TN_ProcMapKeepOut.h"
 #include "Async/ParallelFor.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -30,8 +31,8 @@ namespace
 		return V <= 0.04045f ? V / 12.92f : FMath::Pow((V + 0.055f) / 1.055f, 2.4f);
 	}
 
-	/** Malla estática en ejecución a partir de unos buffers de caras planas (sin colisión). */
-	UStaticMesh* TNFloraMakeStaticMesh(UObject* Outer, const FTNProcMeshBuffers& B, UMaterialInterface* Material)
+	/** Malla estática en ejecución a partir de unos buffers de caras planas (con una caja de colisión si se pide). */
+	UStaticMesh* TNFloraMakeStaticMesh(UObject* Outer, const FTNProcMeshBuffers& B, UMaterialInterface* Material, bool bBoxCollision = false)
 	{
 		if (B.IsEmpty()) { return nullptr; }
 		static const FName SlotName(TEXT("Flora"));
@@ -81,7 +82,7 @@ namespace
 		Mesh->GetStaticMaterials().Add(FStaticMaterial(Material, SlotName));
 		UStaticMesh::FBuildMeshDescriptionsParams Params;
 		Params.bMarkPackageDirty = false;
-		Params.bBuildSimpleCollision = false;
+		Params.bBuildSimpleCollision = bBoxCollision;
 		Params.bCommitMeshDescription = false;
 		Params.bFastBuild = true;
 		TArray<const FMeshDescription*> Descs;
@@ -141,12 +142,26 @@ void ATN_ProcMapGenerator::BuildFlora()
 	}
 	const double T1 = FPlatformTime::Seconds();
 
+	// Aspecto de cada especie (los objetos sueltos, el de su prop; nunca se estiran).
+	auto LookOf = [](const FFloraSpecies& Sp)
+	{
+		FTNFloraLook Look = TNFloraLookOf(Sp.Shape);
+		if (Sp.Shape == EFloraShape::Prop)
+		{
+			const TNPropMesh::FTNPropLook Prop = TNPropMesh::TNPropLookOf(Sp.Prop);
+			Look.Cull = Prop.Cull;
+			Look.bShadow = Prop.bShadow;
+			Look.bStretch = false;
+		}
+		return Look;
+	};
+
 	// Transformadas por malla (bioma, especie, variante), en espacio del mapa = local del generador.
 	TMap<int32, TArray<FTransform>> ByMesh;
 	for (const FFloraInstance& I : Placed)
 	{
 		const FFloraSpecies& Sp = Tables[I.Biome][I.Species];
-		const FTNFloraLook Look = TNFloraLookOf(Sp.Shape);
+		const FTNFloraLook Look = LookOf(Sp);
 		// Altura propia de cada ejemplar (+-12 %): no todos iguales aunque compartan escala.
 		const double Stretch = Look.bStretch ? 0.88 + 0.24 * (0.5 + 0.5 * TNProcHashNoise(FMath::RoundToInt32(I.Location.X), FMath::RoundToInt32(I.Location.Y), 0x5EEDu)) : 1.0;
 		const FQuat Yaw(FVector::UpVector, FMath::DegreesToRadians(I.Yaw));
@@ -170,18 +185,36 @@ void ATN_ProcMapGenerator::BuildFlora()
 		FLinearColor Ground, PathC, RockC, Bed;
 		ResolveBiomeColors(BiomeFromIndex(BiomeIdx), Ground, PathC, RockC, Bed);
 		FTNProcMeshBuffers Buffers;
-		const uint32 MeshSeed = HashCell(static_cast<uint32>(Layout.Params.Seed) ^ 0xF10Au, BiomeIdx * 64 + static_cast<int32>(Sp.Shape), Variant);
-		TNFloraBuild(Buffers, Sp.Shape, TNFloraPaletteFor(BiomeFromIndex(BiomeIdx), Ground, RockC), Variant, MeshSeed);
-		UStaticMesh* Mesh = TNFloraMakeStaticMesh(this, Buffers, Material);
+		const uint32 MeshSeed = HashCell(static_cast<uint32>(Layout.Params.Seed) ^ 0xF10Au, (BiomeIdx * 64 + static_cast<int32>(Sp.Shape)) * 64 + static_cast<int32>(Sp.Prop), Variant);
+		const bool bProp = Sp.Shape == EFloraShape::Prop;
+		const bool bSolid = bProp && TNPropMesh::TNPropSolid(Sp.Prop);
+		if (bProp)
+		{
+			const ETNProcBiome Biome = BiomeFromIndex(BiomeIdx);
+			TNPropMesh::TNPropBuild(Buffers, Sp.Prop, Variant, MeshSeed, TNPropMesh::TNPropCrystalColor(Biome), Biome == ETNProcBiome::Volcanic);
+			// La paleta de los objetos es la de las mallas procedurales (obstáculos, formaciones), que se ve como
+			// sRGB: se decodifica una vez más para que un cono o una caja se vean igual en los dos sitios.
+			for (FLinearColor& Col : Buffers.Colors)
+			{
+				Col = FLinearColor(TNFloraSRGBToLinear(Col.R), TNFloraSRGBToLinear(Col.G), TNFloraSRGBToLinear(Col.B), Col.A);
+			}
+		}
+		else
+		{
+			TNFloraBuild(Buffers, Sp.Shape, TNFloraPaletteFor(BiomeFromIndex(BiomeIdx), Ground, RockC), Variant, MeshSeed);
+		}
+		UStaticMesh* Mesh = TNFloraMakeStaticMesh(this, Buffers, Material, bSolid);
 		if (!Mesh) { continue; }
 		FloraMeshes.Add(Mesh);
 
-		const FTNFloraLook Look = TNFloraLookOf(Sp.Shape);
+		const FTNFloraLook Look = LookOf(Sp);
 		UHierarchicalInstancedStaticMeshComponent* HISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(this, NAME_None, RF_Transient);
 		HISM->SetupAttachment(RootComponent);
 		HISM->SetStaticMesh(Mesh);
-		// Nada de esto está al alcance: crece fuera del suelo del camino.
-		HISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		// La vegetación crece fuera del suelo del camino y se atraviesa; los objetos macizos (cajas,
+		// barriles, pacas, bancos, farolas...) bloquean con una caja de su tamaño.
+		HISM->SetCollisionEnabled(bSolid ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+		if (bSolid) { HISM->SetCollisionProfileName(TEXT("BlockAll")); }
 		HISM->SetCanEverAffectNavigation(false);
 		HISM->SetCastShadow(Look.bShadow);
 		if (Look.Cull > 0.f)

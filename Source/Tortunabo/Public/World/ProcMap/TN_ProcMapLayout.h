@@ -304,6 +304,20 @@ namespace TNProcMap
 		 * última muestra, Radius = grueso del techo, Height = factor de altura libre, Aux2 = semilla.
 		 */
 		Cave,
+		/**
+		 * Obstáculo de objetos en el camino (Aux = EPathProp, Aux2 = semilla): Location = centro (Z =
+		 * suelo), Dir = orientación, Radius = semiancho de la huella, Height = alto, Length = largo de los
+		 * alargados (barca, vagoneta, valla, fila de conos).
+		 */
+		PathProp,
+		Count
+	};
+
+	/** Obstáculos de objetos del camino, por bioma (Aux de EFeature::PathProp). */
+	enum class EPathProp : int32
+	{
+		CrateStack, BarrelGroup, Barricade, HayBales, Sandcastle, Rowboat, BeachSet, Totem, RuinColumn,
+		GiantMushrooms, SkullRock, PotteryJars, CrystalSpikes, Cairn, MineCart, CrabTraps, MarketStall, ConeLine,
 		Count
 	};
 

@@ -91,6 +91,7 @@ namespace TNProcMap
 					case EFeature::Boulder:
 					case EFeature::RockSpire:
 					case EFeature::Log:
+					case EFeature::PathProp:
 					case EFeature::ThrowWall:
 					case EFeature::SabotageGate:
 					case EFeature::SabotageSwitch:

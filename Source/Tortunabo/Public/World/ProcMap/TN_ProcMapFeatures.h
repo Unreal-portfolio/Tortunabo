@@ -865,10 +865,61 @@ namespace TNProcMap
 		}
 	}
 
+	namespace FeatureDetail
+	{
+		/** Obstáculos de objetos de cada bioma (ninguno en los de agua). */
+		inline void PathPropsFor(ETNProcBiome Biome, TArray<EPathProp>& Out)
+		{
+			using PP = EPathProp;
+			Out.Reset();
+			switch (Biome)
+			{
+				case ETNProcBiome::Jungle:   Out = { PP::Totem, PP::RuinColumn, PP::GiantMushrooms, PP::PotteryJars, PP::CrateStack }; break;
+				case ETNProcBiome::Beach:    Out = { PP::Sandcastle, PP::Rowboat, PP::BeachSet, PP::CrateStack, PP::BarrelGroup, PP::CrabTraps }; break;
+				case ETNProcBiome::Desert:   Out = { PP::SkullRock, PP::PotteryJars, PP::BarrelGroup, PP::CrateStack, PP::CrystalSpikes, PP::Cairn }; break;
+				case ETNProcBiome::Volcanic: Out = { PP::CrystalSpikes, PP::SkullRock, PP::Cairn }; break;
+				case ETNProcBiome::Rocky:    Out = { PP::Cairn, PP::MineCart, PP::CrateStack, PP::BarrelGroup, PP::CrystalSpikes }; break;
+				case ETNProcBiome::Human:    Out = { PP::CrateStack, PP::BarrelGroup, PP::Barricade, PP::HayBales, PP::MarketStall, PP::ConeLine }; break;
+				default: break;
+			}
+		}
+
+		/** Semiancho de la huella (a lo ancho del camino), alto y largo de un obstáculo de objetos. */
+		inline void PathPropSize(EPathProp Kind, FRng& Rng, double& R, double& H, double& Len)
+		{
+			Len = 0.0;
+			switch (Kind)
+			{
+				case EPathProp::CrateStack:     R = Rng.Range(110.0, 170.0); H = Rng.Range(100.0, 230.0); break;
+				case EPathProp::BarrelGroup:    R = Rng.Range(100.0, 150.0); H = 105.0; break;
+				case EPathProp::Barricade:      Len = Rng.Range(260.0, 400.0); R = Len * 0.5; H = 125.0; break;
+				case EPathProp::HayBales:       R = Rng.Range(120.0, 180.0); H = Rng.Range(90.0, 140.0); break;
+				case EPathProp::Sandcastle:     R = Rng.Range(110.0, 170.0); H = Rng.Range(100.0, 160.0); break;
+				case EPathProp::Rowboat:        Len = Rng.Range(380.0, 460.0); R = 85.0; H = 80.0; break;
+				case EPathProp::BeachSet:       R = Rng.Range(160.0, 200.0); H = 260.0; break;
+				case EPathProp::Totem:          R = Rng.Range(60.0, 80.0); H = Rng.Range(280.0, 420.0); break;
+				case EPathProp::RuinColumn:     R = Rng.Range(140.0, 220.0); H = Rng.Range(160.0, 380.0); break;
+				case EPathProp::GiantMushrooms: R = Rng.Range(140.0, 220.0); H = Rng.Range(160.0, 300.0); break;
+				case EPathProp::SkullRock:      R = Rng.Range(130.0, 200.0); H = Rng.Range(120.0, 180.0); break;
+				case EPathProp::PotteryJars:    R = Rng.Range(90.0, 130.0); H = Rng.Range(80.0, 120.0); break;
+				case EPathProp::CrystalSpikes:  R = Rng.Range(110.0, 170.0); H = Rng.Range(160.0, 300.0); break;
+				case EPathProp::Cairn:          R = Rng.Range(70.0, 110.0); H = Rng.Range(160.0, 260.0); break;
+				case EPathProp::MineCart:       Len = 280.0; R = 90.0; H = 150.0; break;
+				case EPathProp::CrabTraps:      R = Rng.Range(100.0, 140.0); H = Rng.Range(90.0, 130.0); break;
+				case EPathProp::MarketStall:    R = Rng.Range(180.0, 220.0); H = 270.0; break;
+				case EPathProp::ConeLine:       Len = Rng.Range(300.0, 450.0); R = Len * 0.5; H = 70.0; break;
+				default:                        R = 120.0; H = 120.0; break;
+			}
+		}
+	}
+
 	/**
 	 * Vida y obstáculos del camino (principal y ramas, salvo carriles): peñascos en grupos de
 	 * 1-3 que siempre dejan un carril libre de al menos 3,5 m, agujas y mogotes de roca en las
-	 * explanadas y troncos caídos que se saltan (<= 1,1 m) en selva, manglar y volcán. Nunca
+	 * explanadas, troncos caídos que se saltan (<= 1,1 m) en selva, manglar y volcán, y obstáculos
+	 * de objetos de cada bioma (pilas de cajas, barriles, vallas, pacas, castillos de arena, barcas,
+	 * tótems, columnas en ruinas, setas gigantes, calaveras, vasijas, cristales, hitos, vagonetas,
+	 * nasas, puestos de mercado y filas de conos), también con carril libre. Nunca
 	 * junto a huecos, géiseres, toboganes, torres, portales, horquillas ni sobre el agua.
 	 * Además, secuoyas con raíces zancudas en los módulos de manglar, de tamaños muy variados
 	 * (muchas medianas y pocas gigantes).
@@ -914,7 +965,7 @@ namespace TNProcMap
 					L.Features.Add(F);
 					continue;
 				}
-				if (bForest && W >= 500.0 && W <= 2600.0 && U < 0.6)
+				if (bForest && W >= 500.0 && W <= 2600.0 && U < 0.4)
 				{
 					// Tronco caído atravesado: se salta (radio 35-55 cm); deja hueco en un extremo o no.
 					FFeature F = MakeAtSample(EFeature::Log, Sm, i, BranchIndex);
@@ -926,6 +977,37 @@ namespace TNProcMap
 					F.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
 					L.Features.Add(F);
 					continue;
+				}
+				// Obstáculo de objetos del bioma (pila de cajas, castillo de arena, tótem...) a un lado, siempre
+				// con carril libre; las vallas y filas de conos, atravesadas desde un borde.
+				if (U < 0.78)
+				{
+					TArray<EPathProp> Kinds;
+					PathPropsFor(Sm.Biome, Kinds);
+					if (Kinds.Num() > 0)
+					{
+						const EPathProp Kind = Kinds[Rng.RangeInt(0, Kinds.Num() - 1)];
+						double R = 0.0, H = 0.0, Len = 0.0;
+						PathPropSize(Kind, Rng, R, H, Len);
+						const bool bAcross = Kind == EPathProp::Barricade || Kind == EPathProp::ConeLine;
+						const double PropLane = FMath::Max(350.0, 0.4 * W);
+						const double PropSide = Rng.Chance(0.5) ? 1.0 : -1.0;
+						const double MinOff = R + PropLane - W * 0.5;
+						const double MaxOff = W * 0.5 - (bAcross ? R : R * 0.5);
+						if ((Kind != EPathProp::MarketStall || W >= 1400.0) && MaxOff > FMath::Max(0.0, MinOff))
+						{
+							FFeature F = MakeAtSample(EFeature::PathProp, Sm, i, BranchIndex);
+							F.Location = FVector(Sm.P + N * (PropSide * Rng.Range(FMath::Max(0.0, MinOff), MaxOff)), Sm.Z);
+							F.Dir = bAcross ? N * PropSide : Sm.Dir;
+							F.Radius = R;
+							F.Height = H;
+							F.Length = Len;
+							F.Aux = static_cast<int32>(Kind);
+							F.Aux2 = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
+							L.Features.Add(F);
+							continue;
+						}
+					}
 				}
 				// Grupo de 1-3 peñascos a un lado, dejando libre el otro (>= 3,5 m y >= 40 % del ancho).
 				const double Lane = FMath::Max(350.0, 0.4 * W);
@@ -1049,6 +1131,10 @@ namespace TNProcMap
 			else if (F.Type == EFeature::Boulder || F.Type == EFeature::RockSpire)
 			{
 				Keep.Add(FVector(F.Location.X, F.Location.Y, F.Radius + 250.0));
+			}
+			else if (F.Type == EFeature::PathProp)
+			{
+				Keep.Add(FVector(F.Location.X, F.Location.Y, FMath::Max(F.Radius, F.Length * 0.5) + 250.0));
 			}
 			else if (F.Type == EFeature::Log)
 			{
