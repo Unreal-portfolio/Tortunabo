@@ -30,7 +30,8 @@ public class Tortunabo : ModuleRules
 		});
 
 		// Mapa volumetrico: los trozos se convierten en StaticMesh editables (MeshDescription).
-		PrivateDependencyModuleNames.AddRange(new string[] { "MeshDescription", "StaticMeshDescription" });
+		// Json: ATN_MapVariantLoader lee manifest.json e index.json de Scripts/terrain_volumes/Variants/.
+		PrivateDependencyModuleNames.AddRange(new string[] { "MeshDescription", "StaticMeshDescription", "Json" });
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("AssetRegistry");

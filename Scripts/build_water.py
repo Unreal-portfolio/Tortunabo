@@ -256,4 +256,5 @@ def main():
     unreal.log(f"[Water] {MATERIAL_NAME} y {SURFACE_MESH} listos en {LEVEL_PATH}")
 
 
-main()
+if __name__ == "__main__":
+    main()

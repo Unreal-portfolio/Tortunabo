@@ -109,10 +109,27 @@ UStaticMesh* UTN_TerrainMeshAsset::BuildStaticMesh(const FString& PackagePath, c
 	Source.BuildSettings.bRecomputeTangents = true;
 	Source.BuildSettings.bGenerateLightmapUVs = false;
 	Source.BuildSettings.bRemoveDegenerates = true;
+	// Un unico LOD, sin reduccion (no hay generador de LODs automatico que pueda desajustarse
+	// con la malla de sombras): la malla completa del trozo es la que se ve y la que sombrea.
+	Source.ReductionSettings.PercentTriangles = 1.f;
 	Mesh->GetStaticMaterials().Reset();
 	Mesh->GetStaticMaterials().Add(FStaticMaterial(Material, SlotName, SlotName));
 	Mesh->CreateMeshDescription(0, MoveTemp(Description));
 	Mesh->CommitMeshDescription(0);
+
+	// Causa probable de los parches de sombra en tablero y las facetas grandes en las dunas
+	// (2026-09-25): sin Nanite, Lumen ilumina y sombrea estos StaticMesh (decenas de miles de
+	// triangulos por trozo) con su Distance Field por objeto, cuyo volumen se genera a una
+	// resolucion baja para una malla de este tamano; eso produce el aspecto voxelizado/a
+	// cuadros en sombras y AO, y acentua las facetas del marching cubes en las dunas. Nanite
+	// sustituye esa representacion por su propia jerarquia de detalle (Lumen usa Nanite Mesh
+	// Cards), que sigue el triangulo real de la malla: se activa aqui, con reduccion cero del
+	// propio Nanite (KeepPercentTriangles = 1) para no perder detalle, y un mesh de reserva
+	// para plataformas o vistas sin soporte Nanite (sombras de RT, algunos HLOD).
+	Mesh->NaniteSettings.bEnabled = true;
+	Mesh->NaniteSettings.KeepPercentTriangles = 1.f;
+	Mesh->NaniteSettings.FallbackPercentTriangles = 0.1f;
+
 	Mesh->Build(/*bInSilent=*/true);
 
 	// Colision de la propia malla (tuneles y voladizos incluidos), no una caja.
