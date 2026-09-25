@@ -325,7 +325,7 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 				if (ATN_ProcKillVolume* Kill = Cast<ATN_ProcKillVolume>(SpawnMapActor(ATN_ProcKillVolume::StaticClass(),
 					FTransform(FRotator(0.0, Yaw, 0.0), Loc), false)))
 				{
-					Kill->SetExtent(FVector(F.Height * 0.5, F.Width * 0.5 + 2500.0, 250.0));
+					Kill->SetExtent(FVector(F.Height * 0.5, F.Width * 0.5 + TNProcMap::GapTrenchSide, 250.0));
 				}
 				break;
 			}

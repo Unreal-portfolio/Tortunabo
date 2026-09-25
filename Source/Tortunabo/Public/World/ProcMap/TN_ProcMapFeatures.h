@@ -227,6 +227,31 @@ namespace TNProcMap
 		}
 	}
 
+	/** true si la zanja de un hueco (rectángulo con sus orillas) alcanza muestras de otra parte de algún camino. */
+	inline bool TrenchHitsOtherPath(const FLayout& L, const TArray<FPathSample>& Own, const FPathSample& Sm, const FFeature& F)
+	{
+		const FVector2D C(F.Location.X, F.Location.Y);
+		const FVector2D N = LeftNormal(F.Dir);
+		auto Hits = [&](const TArray<FPathSample>& Arr)
+		{
+			for (const FPathSample& Q : Arr)
+			{
+				if (&Arr == &Own && FMath::Abs(Q.S - Sm.S) <= F.Height * 0.5 + 2000.0) { continue; }
+				const FVector2D Rel = Q.P - C;
+				const double Hq = Q.Width * 0.5 + 300.0;
+				if (FMath::Abs(FVector2D::DotProduct(Rel, F.Dir)) <= F.Height * 0.5 + Hq
+					&& FMath::Abs(FVector2D::DotProduct(Rel, N)) <= F.Width * 0.5 + GapTrenchSide + Hq)
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+		if (Hits(L.Main)) { return true; }
+		for (const FBranch& B : L.Branches) { if (Hits(B.Samples)) { return true; } }
+		return false;
+	}
+
 	/** Huecos de salto sobre un array de muestras (principal o rama). */
 	inline void PlaceGapsOn(FLayout& L, TArray<FPathSample>& Samples, int32 BranchIndex, FRng& Rng)
 	{
@@ -262,6 +287,8 @@ namespace TNProcMap
 			F.Width = Sm.Width + 500.0;
 			// Zanja del terreno más larga que el hueco: los labios (mallas) la estrechan al valor exacto.
 			F.Height = FMath::Max(F.Length + 500.0, 800.0);
+			// La zanja no puede pisar otra parte de ningún camino (curvas que vuelven, ramas, horquillas).
+			if (TrenchHitsOtherPath(L, Samples, Sm, F)) { continue; }
 			L.Features.Add(F);
 			for (int32 j = 0; j < Samples.Num(); ++j)
 			{

@@ -780,7 +780,7 @@ namespace TNProcMap
 				const FVector2D Rel = P - FVector2D(F.Location.X, F.Location.Y);
 				const double Along = FVector2D::DotProduct(Rel, F.Dir);
 				const double Across = FVector2D::DotProduct(Rel, LeftNormal(F.Dir));
-				if (FMath::Abs(Along) <= F.Height * 0.5 && FMath::Abs(Across) <= F.Width * 0.5 + 2500.0)
+				if (FMath::Abs(Along) <= F.Height * 0.5 && FMath::Abs(Across) <= F.Width * 0.5 + GapTrenchSide)
 				{
 					H = FMath::Min(H, GapFloorZ(F));
 					OutMask = 0;

@@ -258,6 +258,9 @@ namespace TNProcMap
 		Count
 	};
 
+	/** Cuánto se extiende la zanja de un hueco de salto a cada lado del camino (cm). */
+	constexpr double GapTrenchSide = 1500.0;
+
 	struct FFeature
 	{
 		EFeature Type = EFeature::Count;
