@@ -79,8 +79,9 @@ namespace TNProcMap
 		}
 		ComputeWidths(Out, Root.Fork(7));
 		ComputeZProfile(Out, Root.Fork(8));
-		BuildBiomeFields(Out);
 		BuildBranches(Out, Root.Fork(9));
+		// Después de las ramas: un módulo vacío con desvío deja de ser macizo.
+		BuildBiomeFields(Out);
 		BuildStructuralFeatures(Out);
 		BuildGaps(Out, Root.Fork(10));
 		BuildWetFeatures(Out, Root.Fork(11));

@@ -95,7 +95,10 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Ramas** que se separan y vuelven a unirse en 1–3 módulos, de cuatro tipos:
   *tranquila* (larga y holgada), *arriesgada* (cornisa de 3,5–5 m con el doble de
   huecos), *ruta alta* (sube en rampa suave por una loma junto al cauce y baja en
-  tobogán al principal) y *rodeo* corto alrededor de un peñasco; en 2vs2, **carriles**
+  tobogán al principal) y *rodeo* corto alrededor de un peñasco. Además, hasta un tercio
+  de NumBranches en *desvíos* largos por los módulos que el camino no visita: salen del
+  principal, pasan por el centro del módulo vacío (que deja de ser macizo; por una meseta
+  es un desfiladero) y vuelven al principal en otro módulo o en el mismo; en 2vs2, **carriles**
   paralelos con puzles de lanzamiento y sabotaje. Los huecos de salto no se ponen en
   explanadas y, junto al agua, su zanja es menos honda para no bajar del nivel del mar.
 - **Biomas por regiones** de varios módulos contiguos, al azar y con transición

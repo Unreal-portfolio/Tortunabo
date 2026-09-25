@@ -221,7 +221,9 @@ namespace TNProcMap
 		/** Ruta alta: sube poco a poco por encima del cauce y baja en tobogán. */
 		High,
 		/** Rodeo corto alrededor de un peñasco. */
-		Bypass
+		Bypass,
+		/** Desvío largo por un módulo que el camino principal no visita. */
+		Detour
 	};
 
 	struct FBranch

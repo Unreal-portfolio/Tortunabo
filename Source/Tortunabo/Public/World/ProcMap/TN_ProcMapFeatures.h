@@ -95,7 +95,7 @@ namespace TNProcMap
 				L.BiomeWeights[Idx * NumBiomes + BiomeIndex(M.Biome)] = 1.0f;
 				L.LevelField[Idx] = static_cast<float>(M.Level);
 				// Todo módulo sin camino principal es un macizo: fuera del camino nada es transitable.
-				L.ElevatedField[Idx] = M.VisitCount == 0 ? 1.0f : 0.0f;
+				L.ElevatedField[Idx] = M.VisitCount > 0 ? 0.0f : (M.bHasBranch && M.EmptyKind != ETNProcEmptyModuleMode::Elevated ? 0.6f : 1.0f);
 			}
 		}
 		BoxBlur(L.BiomeWeights, L.BiomeW, L.BiomeH, NumBiomes, 4);

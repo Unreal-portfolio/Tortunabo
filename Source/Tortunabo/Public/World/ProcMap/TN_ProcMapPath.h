@@ -386,6 +386,72 @@ namespace TNProcMap
 				default:                 return LerpD(3500.0, 8000.0, U);
 			}
 		}
+
+		/**
+		 * Anchura objetivo por tramos a lo largo de una polilínea, antes de los recortes por
+		 * holgura: secuencia de tipos sin repetir, transiciones suaves y bordes que respiran.
+		 */
+		inline TArray<double> SectionWidths(const TArray<FPathSample>& S, const FGenParams& P, FRng& Rng, uint32 WSeed)
+		{
+			TArray<double> W;
+			const int32 NumS = S.Num();
+			W.SetNum(NumS);
+			if (NumS == 0) { return W; }
+
+			struct FSection { double S0 = 0.0; double W = 0.0; double Len = 0.0; };
+			TArray<FSection> Sections;
+			{
+				const double Total = S.Last().S;
+				double Cursor = 0.0;
+				int32 Prev = INDEX_NONE;
+				while (Cursor <= Total)
+				{
+					int32 Near = 0;
+					MainPointAt(S, Cursor, nullptr, &Near);
+					double Wt[NumWidthKinds];
+					WidthKindWeights(S[Near].Biome, P.NarrowChance, Wt);
+					if (Prev != INDEX_NONE) { Wt[Prev] = 0.0; }
+					double Sum = 0.0;
+					for (const double V : Wt) { Sum += V; }
+					double Pick = Rng.Unit() * Sum;
+					int32 Kind = NumWidthKinds - 1;
+					for (int32 k = 0; k < NumWidthKinds; ++k)
+					{
+						if (Pick < Wt[k]) { Kind = k; break; }
+						Pick -= Wt[k];
+					}
+					FSection Sec;
+					Sec.S0 = Cursor;
+					Sec.W = WidthOfKind(P, static_cast<EWidthKind>(Kind), Rng.Unit());
+					Sec.Len = LengthOfKind(static_cast<EWidthKind>(Kind), Rng.Unit());
+					Sections.Add(Sec);
+					Cursor += Sec.Len;
+					Prev = Kind;
+				}
+			}
+			auto TransLen = [&Sections](int32 A, int32 B) { return FMath::Clamp(0.35 * FMath::Min(Sections[A].Len, Sections[B].Len), 800.0, 2500.0); };
+
+			int32 Sec = 0;
+			for (int32 i = 0; i < NumS; ++i)
+			{
+				const FPathSample& Sm = S[i];
+				while (Sec + 1 < Sections.Num() && Sections[Sec + 1].S0 <= Sm.S) { ++Sec; }
+				double Wi = Sections[Sec].W;
+				if (Sec > 0)
+				{
+					const double T = TransLen(Sec - 1, Sec);
+					Wi = LerpD(Sections[Sec - 1].W, Wi, SmoothStep(-0.5 * T, 0.5 * T, Sm.S - Sections[Sec].S0));
+				}
+				if (Sec + 1 < Sections.Num())
+				{
+					const double T = TransLen(Sec, Sec + 1);
+					Wi = LerpD(Wi, Sections[Sec + 1].W, SmoothStep(-0.5 * T, 0.5 * T, Sm.S - Sections[Sec + 1].S0));
+				}
+				// Bordes que respiran: ±14 % a escala de ~20 m.
+				W[i] = Wi * (1.0 + 0.14 * Fbm1(WSeed + 5u, Sm.S / 1800.0, 2));
+			}
+			return SmoothScalars(W, 2);
+		}
 	}
 
 	/** Punto de salida (sur) y de llegada (costa norte). */
@@ -543,64 +609,7 @@ namespace TNProcMap
 		const FGenParams& P = L.Params;
 		const int32 NumS = L.Main.Num();
 		if (NumS == 0) { return; }
-		const uint32 WSeed = P.Seed ^ 0xA11CEu;
-
-		// Secuencia de tramos a lo largo del camino; nunca dos seguidos del mismo tipo.
-		struct FSection { double S0 = 0.0; double W = 0.0; double Len = 0.0; };
-		TArray<FSection> Sections;
-		{
-			const double Total = L.Main.Last().S;
-			double Cursor = 0.0;
-			int32 Prev = INDEX_NONE;
-			while (Cursor <= Total)
-			{
-				int32 Near = 0;
-				MainPointAt(L.Main, Cursor, nullptr, &Near);
-				double Wt[NumWidthKinds];
-				WidthKindWeights(L.Main[Near].Biome, P.NarrowChance, Wt);
-				if (Prev != INDEX_NONE) { Wt[Prev] = 0.0; }
-				double Sum = 0.0;
-				for (const double V : Wt) { Sum += V; }
-				double Pick = Rng.Unit() * Sum;
-				int32 Kind = NumWidthKinds - 1;
-				for (int32 k = 0; k < NumWidthKinds; ++k)
-				{
-					if (Pick < Wt[k]) { Kind = k; break; }
-					Pick -= Wt[k];
-				}
-				FSection Sec;
-				Sec.S0 = Cursor;
-				Sec.W = WidthOfKind(P, static_cast<EWidthKind>(Kind), Rng.Unit());
-				Sec.Len = LengthOfKind(static_cast<EWidthKind>(Kind), Rng.Unit());
-				Sections.Add(Sec);
-				Cursor += Sec.Len;
-				Prev = Kind;
-			}
-		}
-		auto TransLen = [&Sections](int32 A, int32 B) { return FMath::Clamp(0.35 * FMath::Min(Sections[A].Len, Sections[B].Len), 800.0, 2500.0); };
-
-		TArray<double> W;
-		W.SetNum(NumS);
-		int32 Sec = 0;
-		for (int32 i = 0; i < NumS; ++i)
-		{
-			const FPathSample& Sm = L.Main[i];
-			while (Sec + 1 < Sections.Num() && Sections[Sec + 1].S0 <= Sm.S) { ++Sec; }
-			double Wi = Sections[Sec].W;
-			if (Sec > 0)
-			{
-				const double T = TransLen(Sec - 1, Sec);
-				Wi = LerpD(Sections[Sec - 1].W, Wi, SmoothStep(-0.5 * T, 0.5 * T, Sm.S - Sections[Sec].S0));
-			}
-			if (Sec + 1 < Sections.Num())
-			{
-				const double T = TransLen(Sec, Sec + 1);
-				Wi = LerpD(Wi, Sections[Sec + 1].W, SmoothStep(-0.5 * T, 0.5 * T, Sm.S - Sections[Sec + 1].S0));
-			}
-			// Bordes que respiran: ±14 % a escala de ~20 m.
-			W[i] = Wi * (1.0 + 0.14 * Fbm1(WSeed + 5u, Sm.S / 1800.0, 2));
-		}
-		W = SmoothScalars(W, 2);
+		TArray<double> W = SectionWidths(L.Main, P, Rng, P.Seed ^ 0xA11CEu);
 
 		// Holgura con el borde del módulo y con otras partes del camino (muro de al menos 18 m).
 		FSampleGrid Grid;
@@ -947,21 +956,354 @@ namespace TNProcMap
 			return S;
 		}
 
-		inline EBranchKind PickBranchKind(FRng& Rng)
+		/** Tipo de rama dentro de un módulo; bLong excluye el rodeo corto. */
+		inline EBranchKind PickBranchKind(FRng& Rng, bool bLong = false)
 		{
-			const double U = Rng.Unit();
-			if (U < 0.3) { return EBranchKind::Scenic; }
-			if (U < 0.55) { return EBranchKind::Risky; }
-			if (U < 0.75) { return EBranchKind::High; }
+			const double U = Rng.Unit() * (bLong ? 0.85 : 1.0);
+			if (U < 0.35) { return EBranchKind::Scenic; }
+			if (U < 0.6) { return EBranchKind::Risky; }
+			if (U < 0.85) { return EBranchKind::High; }
 			return EBranchKind::Bypass;
+		}
+
+		/**
+		 * Validación común de la polilínea de una rama (remuestreada a SampleSpacing): sin
+		 * pliegues ni tramos que se rocen, dentro del mapa, fuera de módulos de cruce, de
+		 * agua y de mesetas, separada del principal salvo junto a su horquilla y su unión,
+		 * lejos de torres, de la salida y de las demás ramas.
+		 */
+		inline bool ValidateBranchPolyline(const FLayout& L, const TArray<FVector2D>& Pts, int32 I0, int32 I1, double BranchW,
+			const FSampleGrid& Grid, const TArray<FVector2D>& Towers, double EndZoneMax = 5500.0, int32 HostModule = INDEX_NONE)
+		{
+			const FGenParams& P = L.Params;
+			const double BranchLen = PolylineLength(Pts);
+			const double EndZone = FMath::Min(EndZoneMax, 0.3 * BranchLen);
+			for (int32 k = 2; k < Pts.Num(); ++k)
+			{
+				const FVector2D D0 = (Pts[k - 1] - Pts[k - 2]).GetSafeNormal();
+				const FVector2D D1 = (Pts[k] - Pts[k - 1]).GetSafeNormal();
+				if (FVector2D::DotProduct(D0, D1) < 0.64) { return false; }
+			}
+			for (int32 i = 0; i < Pts.Num(); i += 2)
+			{
+				for (int32 j = i + 2; j < Pts.Num(); j += 2)
+				{
+					if ((j - i) * P.SampleSpacing < 6000.0) { continue; }
+					if (FVector2D::DistSquared(Pts[i], Pts[j]) < 3000.0 * 3000.0) { return false; }
+				}
+			}
+			double Acc = 0.0;
+			for (int32 k = 0; k < Pts.Num(); ++k)
+			{
+				if (k > 0) { Acc += FVector2D::Distance(Pts[k - 1], Pts[k]); }
+				if (Acc < 2500.0 || BranchLen - Acc < 2500.0) { continue; }
+				const FVector2D& Pt = Pts[k];
+				if (Pt.X < P.MapEdgeClearance * 0.7 || Pt.X > L.WorldSize - P.MapEdgeClearance * 0.7 || Pt.Y < P.MapEdgeClearance * 0.7 || Pt.Y > L.CoastY(Pt.X) - 6000.0)
+				{
+					return false;
+				}
+				const int32 Mod = L.ModuleAt(Pt);
+				if (Mod == INDEX_NONE || IsCrossingModule(L, Mod) || IsWetBiome(L.Modules[Mod].Biome)) { return false; }
+				if (Mod != HostModule && L.Modules[Mod].VisitCount == 0 && L.Modules[Mod].EmptyKind == ETNProcEmptyModuleMode::Elevated) { return false; }
+				double DMain = 0.0;
+				const int32 Near = Grid.Nearest(Pt, 20000.0, DMain);
+				if (Near != INDEX_NONE)
+				{
+					// Cerca del principal solo junto a su propia horquilla o unión (no junto a otra
+					// parte del principal que pase por allí: se fundirían los cauces).
+					const bool bNearFork = Acc < EndZone && FMath::Abs(Near - I0) <= 20;
+					const bool bNearJoin = BranchLen - Acc < EndZone && FMath::Abs(Near - I1) <= 20;
+					const double Need = L.Main[Near].Width * 0.5 + BranchW * 0.5 + 1600.0;
+					if (DMain < Need && !bNearFork && !bNearJoin) { return false; }
+				}
+				for (const FVector2D& T : Towers) { if (FVector2D::Distance(T, Pt) < P.TowerRadius + 3500.0) { return false; } }
+				if (FVector2D::Distance(L.StartPoint, Pt) < P.StartClearingRadius + 3000.0) { return false; }
+				for (const FBranch& Other : L.Branches)
+				{
+					for (const FPathSample& Os : Other.Samples)
+					{
+						if (FVector2D::DistSquared(Os.P, Pt) < 5500.0 * 5500.0) { return false; }
+					}
+				}
+			}
+			return true;
+		}
+
+		/** Horquilla y unión separadas de las de las demás ramas (el tramo del principal entre ellas puede compartirse). */
+		inline bool ForksClear(const FLayout& L, int32 I0, int32 I1)
+		{
+			for (const FBranch& Other : L.Branches)
+			{
+				for (const int32 A : { I0, I1 })
+				{
+					if (FMath::Abs(A - Other.ForkSample) < 16 || FMath::Abs(A - Other.RejoinSample) < 16) { return false; }
+				}
+			}
+			return true;
+		}
+
+		/** Muestras de rama a partir de la polilínea (módulo, bioma y paso de la horquilla). */
+		inline TArray<FPathSample> MakeBranchSamples(const FLayout& L, const TArray<FVector2D>& Pts, int32 I0)
+		{
+			TArray<FPathSample> Out;
+			for (const FVector2D& Pt : Pts)
+			{
+				FPathSample Sm;
+				Sm.P = Pt;
+				Sm.Module = L.ModuleAt(Pt);
+				if (Sm.Module == INDEX_NONE) { Sm.Module = L.Main[I0].Module; }
+				Sm.Biome = L.Modules[Sm.Module].Biome;
+				Sm.Step = L.Main[I0].Step;
+				Out.Add(Sm);
+			}
+			FinalizeSamples(Out);
+			return Out;
+		}
+
+		inline bool SlopesOk(const TArray<FPathSample>& S, const TArray<double>& Z, double MaxSlope)
+		{
+			for (int32 k = 1; k < Z.Num(); ++k)
+			{
+				const double Ds = FMath::Max(1.0, S[k].S - S[k - 1].S);
+				if (FMath::Abs(Z[k] - Z[k - 1]) / Ds > MaxSlope) { return false; }
+			}
+			return true;
 		}
 	}
 
 	/**
-	 * Bifurcaciones que se separan y vuelven a unirse más adelante (1..BranchMaxModules
-	 * módulos), de varios tipos: alternativa tranquila y holgada, cornisa estrecha con
-	 * más huecos, ruta alta (sube poco a poco y baja en tobogán) y rodeo corto; más los
-	 * carriles del 2vs2.
+	 * Desvíos por los módulos que el camino principal no visita (salvo las mesetas): salen
+	 * del principal donde pasa junto a la frontera con el módulo vacío, lo recorren con
+	 * meandros y vuelven al principal en el mismo módulo o hasta tres módulos más adelante.
+	 * Son las alternativas grandes del mapa; el módulo deja de ser un macizo (ver
+	 * BuildBiomeFields). Devuelve cuántos colocó.
+	 */
+	inline int32 BuildDetours(FLayout& L, FRng& Rng, const PathDetail::FSampleGrid& Grid, const TArray<FVector2D>& Towers, int32 MaxDetours)
+	{
+		using namespace PathDetail;
+		const FGenParams& P = L.Params;
+		int32 Placed = 0;
+		if (MaxDetours <= 0) { return 0; }
+
+		TArray<int32> Empty;
+		for (int32 m = 0; m < L.Modules.Num(); ++m)
+		{
+			const FModule& E = L.Modules[m];
+			if (E.VisitCount == 0 && E.CellCount > 0 && !IsWetBiome(E.Biome)) { Empty.Add(m); }
+		}
+		// Al azar, pero primero los módulos de paisaje; por las mesetas el desvío es un desfiladero.
+		for (int32 i = Empty.Num() - 1; i > 0; --i) { Empty.Swap(i, Rng.RangeInt(0, i)); }
+		Empty.StableSort([&L](int32 A, int32 B)
+		{
+			return (L.Modules[A].EmptyKind != ETNProcEmptyModuleMode::Elevated) > (L.Modules[B].EmptyKind != ETNProcEmptyModuleMode::Elevated);
+		});
+
+		// Puerta: punto de la frontera Módulo|E y muestra del principal (de un paso de ruta) unidos por
+		// un enlace recto que no roza otras partes del camino; la más corta que cumpla.
+		struct FDoor { int32 Sample = INDEX_NONE; FVector2D Point = FVector2D::ZeroVector; FVector2D Dir = FVector2D::ZeroVector; double Dist = 1e300; };
+		auto FindDoor = [&L, &Grid](int32 StepIdx, int32 E, int32 MinSample, const FVector2D* AwayFrom) -> FDoor
+		{
+			FDoor Best;
+			const FRouteStep& R = L.Route[StepIdx];
+			TArray<FVector2D> Pts, Dirs;
+			CollectBorderPoints(L, R.Module, E, Pts, Dirs);
+			if (Pts.Num() < 10) { return Best; }
+			struct FCand { int32 B; int32 I; double D; };
+			TArray<FCand> Cands;
+			for (int32 b = 0; b < Pts.Num(); b += 2)
+			{
+				// Lejos de las esquinas de la frontera (cruces triples): vecinos de frontera a ambos lados.
+				int32 Around = 0;
+				for (const FVector2D& Q : Pts) { if (FVector2D::DistSquared(Q, Pts[b]) < 3000.0 * 3000.0) { ++Around; } }
+				if (Around < 10) { continue; }
+				if (AwayFrom && FVector2D::Distance(*AwayFrom, Pts[b]) < 15000.0) { continue; }
+				for (int32 i = FMath::Max(R.FirstSample + 12, MinSample); i <= R.LastSample - 12; i += 2)
+				{
+					const FPathSample& Sm = L.Main[i];
+					if ((Sm.Flags & (PathFlags::Special | PathFlags::Lane)) != 0) { continue; }
+					const double D = FVector2D::Distance(Sm.P, Pts[b]);
+					if (D < 30000.0) { Cands.Add({ b, i, D }); }
+				}
+			}
+			Cands.Sort([](const FCand& A, const FCand& B) { return A.D < B.D; });
+			for (int32 c = 0; c < FMath::Min(Cands.Num(), 400); ++c)
+			{
+				const FCand& K = Cands[c];
+				const FVector2D From = L.Main[K.I].P;
+				const FVector2D To = Pts[K.B];
+				bool bClear = true;
+				const int32 Steps = FMath::Max(1, FMath::CeilToInt(K.D / 400.0));
+				for (int32 k = 0; k <= Steps && bClear; ++k)
+				{
+					const FVector2D X = From + (To - From) * (static_cast<double>(k) / Steps);
+					if (k < Steps && L.ModuleAt(X) != R.Module && FVector2D::Distance(X, To) > 800.0) { bClear = false; break; }
+					double DMain = 0.0;
+					const int32 Near = Grid.Nearest(X, 12000.0, DMain);
+					if (Near != INDEX_NONE && FMath::Abs(Near - K.I) > 20 && DMain < L.Main[Near].Width * 0.5 + 2100.0) { bClear = false; }
+				}
+				if (!bClear) { continue; }
+				Best.Sample = K.I; Best.Point = To; Best.Dir = Dirs[K.B]; Best.Dist = K.D;
+				return Best;
+			}
+			return Best;
+		};
+
+		for (const int32 E : Empty)
+		{
+			if (Placed >= MaxDetours) { break; }
+			const FModule& ME = L.Modules[E];
+			TArray<int32> Steps;
+			for (int32 k = 0; k < L.Route.Num(); ++k)
+			{
+				const FRouteStep& R = L.Route[k];
+				if (R.CrossingIndex != INDEX_NONE || IsCrossingModule(L, R.Module) || !ME.Neighbors.Contains(R.Module)) { continue; }
+				Steps.Add(k);
+			}
+			// Pares de pasos de ruta que lindan con E: primero los que salen a otro módulo más adelante
+			// (alternativa de verdad al principal), y como último recurso ida y vuelta al mismo paso.
+			TArray<FIntPoint> Pairs;
+			for (const int32 Gap : { 1, 2, 3, 0 })
+			{
+				for (int32 a = 0; a < Steps.Num(); ++a)
+				{
+					for (int32 c = a; c < Steps.Num(); ++c)
+					{
+						if (Steps[c] - Steps[a] == Gap && (Gap == 0 || L.Route[Steps[c]].Module != L.Route[Steps[a]].Module)) { Pairs.Add(FIntPoint(Steps[a], Steps[c])); }
+					}
+				}
+			}
+			bool bDone = false;
+			for (const FIntPoint& Pair : Pairs)
+			{
+				if (bDone) { break; }
+				{
+					const int32 SA = Pair.X;
+					const int32 SB = Pair.Y;
+					const FDoor In = FindDoor(SA, E, 0, nullptr);
+					if (In.Sample == INDEX_NONE) { continue; }
+					const FDoor Out = FindDoor(SB, E, In.Sample + 40, &In.Point);
+					if (Out.Sample == INDEX_NONE) { continue; }
+					const int32 I0 = In.Sample;
+					const int32 I1 = Out.Sample;
+					if (!ForksClear(L, I0, I1)) { continue; }
+
+					// Recorrido por E con meandros, como el principal dentro de un módulo, pasando por su
+					// centro: que se adentre en el módulo en vez de rozar la frontera.
+					const FVector2D Center = ME.Centroid;
+					const FVector2D Through = ((Out.Point - In.Point).GetSafeNormal() + (Center - In.Point).GetSafeNormal() * 0.5).GetSafeNormal();
+					auto WalkLeg = [&](const FVector2D& From, const FVector2D& FromDir, const FVector2D& To, const FVector2D& ToDir, uint32 Salt, TArray<FVector2D>& OutPts)
+					{
+						FWalkInput W;
+						W.Module = E;
+						W.Entry = From;
+						W.EntryDir = FromDir;
+						W.Exit = To;
+						W.ExitDir = ToDir;
+						W.Margin = 3200.0;
+						W.NoiseSeed = P.Seed ^ Hash32(static_cast<uint32>(E) * 2246822519u + static_cast<uint32>(SA) * 31u + Salt);
+						const double Straight = FVector2D::Distance(From, To);
+						W.TargetLength = FMath::Max(Straight * Rng.Range(1.2, 1.6), Straight + LeadIn + LeadOut + 2000.0);
+						W.MeanderAmp = Rng.Range(0.9, 1.3);
+						W.Wavelength = Rng.Range(0.6, 1.0) * P.ModuleSize;
+						return Walk(L, W, OutPts);
+					};
+					TArray<FVector2D> Raw, Raw2;
+					if (!WalkLeg(In.Point, In.Dir, Center, Through, 1u, Raw) || !WalkLeg(Center, Through, Out.Point, -Out.Dir, 2u, Raw2)) { continue; }
+					// Unión sin los puntos de llegada/salida del centro: el caminante llega a ellos de lado.
+					if (Raw.Num() < 5 || Raw2.Num() < 5) { continue; }
+					Raw.SetNum(Raw.Num() - 2);
+					Raw2.RemoveAt(0, 2);
+					Raw.Append(Raw2);
+
+					// Enlaces curvos (Hermite) del principal a las puertas de E, entrando y saliendo de E en
+					// la dirección del recorrido para que no queden codos.
+					auto Hermite = [](const FVector2D& A, const FVector2D& TA, const FVector2D& B, const FVector2D& TB, TArray<FVector2D>& Out)
+					{
+						const double Len = FVector2D::Distance(A, B);
+						const int32 N = FMath::Max(2, FMath::CeilToInt(Len / 300.0));
+						for (int32 k = 0; k < N; ++k)
+						{
+							const double T = static_cast<double>(k) / N;
+							const double T2 = T * T;
+							const double T3 = T2 * T;
+							Out.Add(A * (2.0 * T3 - 3.0 * T2 + 1.0) + TA * (Len * (T3 - 2.0 * T2 + T)) + B * (-2.0 * T3 + 3.0 * T2) + TB * (Len * (T3 - T2)));
+						}
+					};
+					TArray<FVector2D> Ctrl;
+					Hermite(L.Main[I0].P, (In.Point - L.Main[I0].P).GetSafeNormal(), In.Point, In.Dir, Ctrl);
+					Ctrl.Append(Raw);
+					Hermite(Out.Point, -Out.Dir, L.Main[I1].P, (L.Main[I1].P - Out.Point).GetSafeNormal(), Ctrl);
+					Ctrl.Add(L.Main[I1].P);
+					TArray<FVector2D> Pts = ResamplePolyline(ChaikinSmooth(Ctrl, 3), P.SampleSpacing);
+					Pts[0] = L.Main[I0].P;
+					Pts.Last() = L.Main[I1].P;
+					if (!ValidateBranchPolyline(L, Pts, I0, I1, 900.0, Grid, Towers, 9000.0, E)) { continue; }
+
+					FBranch Br;
+					Br.ForkSample = I0;
+					Br.RejoinSample = I1;
+					Br.Kind = EBranchKind::Detour;
+					Br.Side = FVector2D::CrossProduct(L.Main[I0].Dir, In.Point - L.Main[I0].P) >= 0.0 ? 1 : -1;
+					Br.Samples = MakeBranchSamples(L, Pts, I0);
+
+					// Anchura por tramos como el principal, recortada por el borde del módulo (salvo al
+					// cruzar a E y al volver) y por la holgura con el principal (muro de 18 m).
+					TArray<double> Wd = SectionWidths(Br.Samples, P, Rng, P.Seed ^ 0xDE70u ^ static_cast<uint32>(E));
+					const double BLen = FMath::Max(1.0, Br.Samples.Last().S);
+					for (int32 k = 0; k < Br.Samples.Num(); ++k)
+					{
+						FPathSample& Sm = Br.Samples[k];
+						double Wk = Wd[k];
+						const bool bDoor = FVector2D::Distance(Sm.P, In.Point) < 2500.0 || FVector2D::Distance(Sm.P, Out.Point) < 2500.0;
+						if (!bDoor) { Wk = FMath::Min(Wk, FMath::Max(P.PathWidthMin, 2.0 * (L.BorderDistAt(Sm.P) - 1800.0))); }
+						double DMain = 0.0;
+						const int32 Near = Grid.Nearest(Sm.P, 20000.0, DMain);
+						const bool bEnds = Sm.S < 5500.0 || BLen - Sm.S < 5500.0;
+						if (Near != INDEX_NONE && !bEnds) { Wk = FMath::Min(Wk, 2.0 * (DMain - L.Main[Near].Width * 0.5 - 1800.0)); }
+						Sm.Width = FMath::Max(330.0, Wk);
+					}
+
+					// Alturas: del principal al principal, acercándose a la cota de E por el medio.
+					const double Z0 = L.Main[I0].Z;
+					const double Z1 = L.Main[I1].Z;
+					const double Mid = 0.5 * (Z0 + Z1);
+					const double Target = FMath::Clamp(ME.Level + 250.0, FMath::Min(Z0, Z1) - 1500.0, FMath::Max(Z0, Z1) + 1500.0);
+					bool bZOk = false;
+					for (const double Amp : { 1.0, 0.5, 0.0 })
+					{
+						TArray<double> Z;
+						for (const FPathSample& Sm : Br.Samples)
+						{
+							const double T = Sm.S / BLen;
+							const double Bump = SmoothStep(0.0, 0.3, T) * SmoothStep(1.0, 0.7, T);
+							Z.Add(LerpD(Z0, Z1, T) + Amp * (Target - Mid) * Bump + 220.0 * Fbm1(P.Seed + 91u + static_cast<uint32>(E), Sm.S / 12000.0, 2) * FMath::Sin(Pi * T));
+						}
+						Z = SmoothScalars(Z, 6);
+						Z[0] = Z0;
+						Z.Last() = Z1;
+						if (!SlopesOk(Br.Samples, Z, P.MaxPathSlope * 1.4)) { continue; }
+						for (int32 k = 0; k < Z.Num(); ++k) { Br.Samples[k].Z = Z[k]; }
+						bZOk = true;
+						break;
+					}
+					if (!bZOk) { continue; }
+
+					for (const FPathSample& Sm : Br.Samples) { L.Modules[Sm.Module].bHasBranch = true; }
+					L.Branches.Add(Br);
+					++Placed;
+					bDone = true;
+				}
+			}
+		}
+		return Placed;
+	}
+
+	/**
+	 * Bifurcaciones: primero los carriles del 2vs2, luego los desvíos por módulos vacíos
+	 * (hasta un tercio de NumBranches, además de las ramas) y luego NumBranches ramas dentro
+	 * de los módulos, que se separan y vuelven a unirse (1..BranchMaxModules módulos), de
+	 * varios tipos: alternativa tranquila y holgada, cornisa estrecha con más huecos, ruta
+	 * alta (sube poco a poco y baja en tobogán) y rodeo corto.
 	 */
 	inline void BuildBranches(FLayout& L, FRng Rng)
 	{
@@ -983,16 +1325,14 @@ namespace TNProcMap
 			Towers.Add(L.Main[L.Route[C.HighStep].LastSample].P);
 		}
 
-		const int32 Wanted = FMath::Max(0, P.NumLanes) + FMath::Max(0, P.NumBranches);
-		for (int32 b = 0; b < Wanted; ++b)
+		auto PlaceInModule = [&](int32 b, bool bLane)
 		{
-			const bool bLane = b < P.NumLanes;
 			EBranchKind Kind = bLane ? EBranchKind::Lane : PickBranchKind(Rng);
-			bool bPlaced = false;
-			for (int32 Attempt = 0; Attempt < 80 && !bPlaced; ++Attempt)
+			for (int32 Attempt = 0; Attempt < 80; ++Attempt)
 			{
-				// Si un tipo no cabe en ningún sitio, a mitad de intentos se prueba otro.
-				if (!bLane && Attempt == 40) { Kind = PickBranchKind(Rng); }
+				// Si un tipo no cabe, se prueba otro largo; el rodeo corto queda como último recurso.
+				if (!bLane && Attempt == 40) { Kind = PickBranchKind(Rng, true); }
+				if (!bLane && Attempt == 65) { Kind = EBranchKind::Bypass; }
 				const FBranchShape Shape = BranchShapeOf(Kind);
 				const double SegLen = Rng.Range(Shape.LenMin, Shape.LenMax);
 				const double S0 = Rng.Range(9000.0, FMath::Max(9001.0, Total - SegLen - 9000.0));
@@ -1012,12 +1352,7 @@ namespace TNProcMap
 					if ((Sm.Flags & PathFlags::Lane) != 0) { bEligible = false; }
 					if (!Modules.Contains(Sm.Module)) { Modules.Add(Sm.Module); }
 				}
-				if (!bEligible || Modules.Num() > P.BranchMaxModules) { continue; }
-				for (const FBranch& Other : L.Branches)
-				{
-					if (I0 <= Other.RejoinSample + 12 && I1 >= Other.ForkSample - 12) { bEligible = false; }
-				}
-				if (!bEligible) { continue; }
+				if (!bEligible || Modules.Num() > P.BranchMaxModules || !ForksClear(L, I0, I1)) { continue; }
 
 				const int32 Side = Rng.Chance(0.5) ? 1 : -1;
 				const double Amp = Rng.Range(Shape.AmpMin, Shape.AmpMax);
@@ -1038,79 +1373,20 @@ namespace TNProcMap
 				}
 				Ctrl[0] = L.Main[I0].P;
 				Ctrl.Last() = L.Main[I1].P;
-				TArray<FVector2D> Pts = ResamplePolyline(ChaikinSmooth(Ctrl, 2), P.SampleSpacing);
-
-				// Validación: sin pliegues (la curva desplazada se dobla en las curvas cerradas del
-				// principal), separada del principal, dentro del mapa, lejos de estructuras y otras ramas.
-				const double BranchLen = PolylineLength(Pts);
-				const double EndZone = FMath::Min(5500.0, 0.3 * BranchLen);
-				for (int32 k = 2; k < Pts.Num() && bEligible; ++k)
-				{
-					const FVector2D D0 = (Pts[k - 1] - Pts[k - 2]).GetSafeNormal();
-					const FVector2D D1 = (Pts[k] - Pts[k - 1]).GetSafeNormal();
-					if (FVector2D::DotProduct(D0, D1) < 0.64) { bEligible = false; }
-				}
-				for (int32 i = 0; i < Pts.Num() && bEligible; i += 2)
-				{
-					for (int32 j = i + 2; j < Pts.Num(); j += 2)
-					{
-						if ((j - i) * P.SampleSpacing < 6000.0) { continue; }
-						if (FVector2D::DistSquared(Pts[i], Pts[j]) < 3000.0 * 3000.0) { bEligible = false; break; }
-					}
-				}
-				double Acc = 0.0;
-				for (int32 k = 0; k < Pts.Num() && bEligible; ++k)
-				{
-					if (k > 0) { Acc += FVector2D::Distance(Pts[k - 1], Pts[k]); }
-					if (Acc < 2500.0 || BranchLen - Acc < 2500.0) { continue; }
-					const FVector2D& Pt = Pts[k];
-					if (Pt.X < P.MapEdgeClearance * 0.7 || Pt.X > L.WorldSize - P.MapEdgeClearance * 0.7 || Pt.Y < P.MapEdgeClearance * 0.7 || Pt.Y > L.CoastY(Pt.X) - 6000.0)
-					{
-						bEligible = false; break;
-					}
-					const int32 Mod = L.ModuleAt(Pt);
-					if (Mod == INDEX_NONE || IsCrossingModule(L, Mod) || IsWetBiome(L.Modules[Mod].Biome)) { bEligible = false; break; }
-					if (L.Modules[Mod].VisitCount == 0 && L.Modules[Mod].EmptyKind == ETNProcEmptyModuleMode::Elevated) { bEligible = false; break; }
-					double DMain = 0.0;
-					const int32 Near = Grid.Nearest(Pt, 20000.0, DMain);
-					if (Near != INDEX_NONE)
-					{
-						// Permitido cerca del principal solo en su propio tramo de horquilla/unión.
-						const bool bOwnSegment = Near >= I0 - 4 && Near <= I1 + 4;
-						const double Need = L.Main[Near].Width * 0.5 + BranchW * 0.5 + 1600.0;
-						if (DMain < Need && !(bOwnSegment && (Acc < EndZone || BranchLen - Acc < EndZone))) { bEligible = false; break; }
-					}
-					for (const FVector2D& T : Towers) { if (FVector2D::Distance(T, Pt) < P.TowerRadius + 3500.0) { bEligible = false; break; } }
-					if (FVector2D::Distance(L.StartPoint, Pt) < P.StartClearingRadius + 3000.0) { bEligible = false; break; }
-					for (const FBranch& Other : L.Branches)
-					{
-						for (const FPathSample& Os : Other.Samples)
-						{
-							if (FVector2D::DistSquared(Os.P, Pt) < 5500.0 * 5500.0) { bEligible = false; break; }
-						}
-						if (!bEligible) { break; }
-					}
-				}
-				if (!bEligible) { continue; }
+				const TArray<FVector2D> Pts = ResamplePolyline(ChaikinSmooth(Ctrl, 2), P.SampleSpacing);
+				if (!ValidateBranchPolyline(L, Pts, I0, I1, BranchW, Grid, Towers)) { continue; }
 
 				FBranch Br;
 				Br.ForkSample = I0;
 				Br.RejoinSample = I1;
 				Br.Side = Side;
 				Br.Kind = Kind;
-				for (int32 k = 0; k < Pts.Num(); ++k)
+				Br.Samples = MakeBranchSamples(L, Pts, I0);
+				for (int32 k = 0; k < Br.Samples.Num(); ++k)
 				{
-					FPathSample Sm;
-					Sm.P = Pts[k];
-					Sm.Module = L.ModuleAt(Pts[k]);
-					if (Sm.Module == INDEX_NONE) { Sm.Module = L.Main[I0].Module; }
-					Sm.Biome = L.Modules[Sm.Module].Biome;
-					Sm.Step = L.Main[I0].Step;
-					Sm.Width = BranchW * (bLane ? 1.0 : (0.85 + 0.3 * (0.5 + 0.5 * Noise1(BSeed + 7u, static_cast<double>(k) / 20.0))));
-					if (bLane) { Sm.Flags |= PathFlags::Lane; }
-					Br.Samples.Add(Sm);
+					Br.Samples[k].Width = BranchW * (bLane ? 1.0 : (0.85 + 0.3 * (0.5 + 0.5 * Noise1(BSeed + 7u, static_cast<double>(k) / 20.0))));
+					if (bLane) { Br.Samples[k].Flags |= PathFlags::Lane; }
 				}
-				FinalizeSamples(Br.Samples);
 
 				// Alturas: se une en ambos extremos a la cota del principal. La ruta alta sube con
 				// pendiente suave desde que sale del cauce principal, sigue por lo alto y baja en
@@ -1176,8 +1452,12 @@ namespace TNProcMap
 					for (int32 i = I0; i <= I1; ++i) { L.Main[i].Flags |= PathFlags::Lane; L.Main[i].Width = FMath::Min(L.Main[i].Width, 900.0); }
 				}
 				L.Branches.Add(Br);
-				bPlaced = true;
+				return;
 			}
-		}
+		};
+
+		for (int32 b = 0; b < FMath::Max(0, P.NumLanes); ++b) { PlaceInModule(b, true); }
+		BuildDetours(L, Rng, Grid, Towers, FMath::Max(0, P.NumBranches) / 3);
+		for (int32 b = 0; b < FMath::Max(0, P.NumBranches); ++b) { PlaceInModule(P.NumLanes + b, false); }
 	}
 }
