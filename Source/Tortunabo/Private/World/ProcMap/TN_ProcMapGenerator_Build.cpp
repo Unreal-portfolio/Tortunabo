@@ -684,26 +684,15 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::Boardwalk:
 			{
+				// Pasarela de tablones sobre postes hundidos en el agua, con cuerda a los lados.
 				const int32 From = FMath::Clamp(F.PathIndex, 0, M.Num() - 1);
 				const int32 To = FMath::Clamp(F.Aux2, 0, M.Num() - 1);
-				for (int32 i = From; i < To; ++i)
-				{
-					const FPathSample& A = M[i];
-					const FPathSample& B = M[i + 1];
-					const FVector2D Mid = (A.P + B.P) * 0.5;
-					const FVector2D Dir = (B.P - A.P).GetSafeNormal();
-					const double Len = FVector2D::Distance(A.P, B.P);
-					Wood.AddBox(FVector(Mid.X, Mid.Y, (A.Z + B.Z) * 0.5 - 12.0), FVector(Dir.X, Dir.Y, 0.0),
-						FVector(Len * 0.5 + 8.0, A.Width * 0.5, 12.0), WoodColor);
-					if ((i - From) % 3 == 0)
-					{
-						for (int32 Sd = -1; Sd <= 1; Sd += 2)
-						{
-							const FVector2D Post = A.P + LeftNormal(Dir) * (Sd * (A.Width * 0.5 - 15.0));
-							Wood.AddBox(FVector(Post.X, Post.Y, A.Z - 120.0), FVector(Dir.X, Dir.Y, 0.0), FVector(12.0, 12.0, 110.0), WoodColor * 0.7f);
-						}
-					}
-				}
+				if (To <= From) { break; }
+				FTNPlankLine Line;
+				for (int32 i = From; i <= To; ++i) { Line.Add(FVector(M[i].P, M[i].Z), M[i].Width * 0.5); }
+				const uint32 Seed = Layout.Params.Seed ^ (0xB0A2Du + static_cast<uint32>(From));
+				TNProcAddPlanks(Wood, Line, 0.0, Line.Length(), WoodColor * 0.9f, Seed);
+				TNProcAddRopeRails(Wood, Line, 0.0, Line.Length(), 260.0, 320.0, 85.0, WoodColor * 0.6f, RopeColor);
 				break;
 			}
 			case EFeature::RiverBridge:

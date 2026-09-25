@@ -661,7 +661,6 @@ namespace TNProcMap
 		for (int32 i = 0; i < L.Main.Num(); ++i)
 		{
 			L.Main[i].Width = Smoothed[i];
-			if (L.Main[i].Biome == ETNProcBiome::Mangrove) { L.Main[i].Width = Rng.Range(320.0, 420.0); }
 			if ((L.Main[i].Flags & PathFlags::Start) != 0) { L.Main[i].Width = FMath::Max(L.Main[i].Width, P.StartClearingRadius * 1.2); }
 			if ((L.Main[i].Flags & PathFlags::Shore) != 0) { L.Main[i].Width = FMath::Max(L.Main[i].Width, 3000.0); }
 		}
@@ -903,6 +902,8 @@ namespace TNProcMap
 			}
 			if (bNearSolid || (Sm.Flags & (PathFlags::Elevated | PathFlags::Colossal)) != 0) { continue; }
 			Sm.Flags |= (Sm.Biome == ETNProcBiome::Water) ? PathFlags::Islet : PathFlags::Boardwalk;
+			// Pasarela de tablones de 5,5-8 m (el agua de alrededor la da la poza).
+			if (Sm.Biome != ETNProcBiome::Water) { Sm.Width = FMath::Clamp(Sm.Width, 550.0, 800.0); }
 		}
 
 		// Tramo bajo de los cruces tipo cueva: marcado de túnel bajo la huella de la mesa.
