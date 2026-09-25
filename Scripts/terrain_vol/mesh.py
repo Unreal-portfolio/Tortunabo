@@ -31,7 +31,7 @@ ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "dunes": "sand", "lake": "be
                 "sand_end": "sand"}
 
 FOLIAGE_SPACING_M = 2.8
-FOLIAGE_SHAPES = {"bush": 0, "frond": 1, "stalk": 2}      # orden de ISM del tile (EFoliageShape)
+FOLIAGE_SHAPES = {"stalk": 0, "frond": 1, "bush": 2}      # orden de TNTerrainBiome::EFoliageShape
 FOLIAGE_COLORS = ((0.10, 0.14, 0.03), (0.27, 0.29, 0.07))
 
 
@@ -138,7 +138,8 @@ def foliage_instances(model: MapModel, col: int, row: int, fields: Fields, top: 
     bush = shape_roll < 0.25
     frond = (shape_roll >= 0.25) & (shape_roll < 0.55)
     width = 150.0 + 170.0 * size_roll
-    shape = np.where(bush, 0, np.where(frond, 1, 2)).astype(np.float64)
+    shape = np.where(bush, FOLIAGE_SHAPES["bush"], np.where(frond, FOLIAGE_SHAPES["frond"], FOLIAGE_SHAPES["stalk"]))
+    shape = shape.astype(np.float64)
     sx = np.where(bush, width, np.where(frond, 90.0, 45.0)) / 100.0
     sy = np.where(bush, width * 0.8, np.where(frond, 60.0, 45.0)) / 100.0
     sz = np.where(bush, width * 0.55, tall) / 100.0
