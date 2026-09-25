@@ -28,7 +28,10 @@ public class Tortunabo : ModuleRules
 			"NiagaraCore",
 			// Mapa procedural por módulos (World/ProcMap): terreno en runtime y grafos PCG por bioma.
 			"ProceduralMeshComponent",
-			"PCG"
+			"PCG",
+			// Vegetación procedural: mallas estáticas construidas en ejecución.
+			"MeshDescription",
+			"StaticMeshDescription"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

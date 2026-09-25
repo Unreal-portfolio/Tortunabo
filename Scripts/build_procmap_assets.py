@@ -5,7 +5,8 @@ Se ejecuta DENTRO del editor de Unreal, con el C++ ya compilado:
 
 Crea en /Game/ProcMap:
   - Materiales greybox: M_ProcTerrain (color de vértice), M_ProcFlat (+ MI de roca,
-    madera, lava y tobogán) y M_ProcWater (translúcido, + MI del mar).
+    madera, lava y tobogán), M_ProcWater (translúcido, + MI del mar) y M_ProcFoliage
+    (color de vértice, dos caras, para la vegetación procedural instanciada).
   - DA_Biome_<Bioma> (UTN_ProcBiomeDataAsset) x8 rellenos con el greybox del código.
   - DA_ProcMapSettings (UTN_ProcMapSettings) con materiales, biomas y los 9 perfiles
     (Coop/Carrera/2vs2 x Fácil/Normal/Difícil) listos para ajustar.
@@ -115,6 +116,25 @@ def build_flat_material():
     return save(material)
 
 
+def build_foliage_material():
+    path = f"{MATERIALS}/M_ProcFoliage"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcFoliage", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    # Vegetación procedural (TN_ProcMapGenerator_Flora.cpp): mallas instanciadas con el color en
+    # el vértice; dos caras para frondas y hojas de hierba.
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+    material.set_editor_property("two_sided", True)
+    vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -400, 0)
+    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 250)
+    roughness.set_editor_property("r", 0.85)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.recompile_material(material)
+    return save(material)
+
+
 def build_water_material():
     path = f"{MATERIALS}/M_ProcWater"
     existing = load_or_none(path)
@@ -168,6 +188,7 @@ def build_materials():
     water = build_water_material()
     result = {
         "terrain": build_terrain_material(),
+        "foliage": build_foliage_material(),
         "water": build_instance("MI_ProcSea", water, {"Color": (0.05, 0.30, 0.45)}, {"Opacity": 0.72}),
     }
     for name, (rgb, rough, emissive) in FLAT_INSTANCES.items():
@@ -203,6 +224,10 @@ def build_settings(materials, biomes):
     path = f"{ROOT}/DA_ProcMapSettings"
     existing = load_or_none(path)
     if existing:
+        # Ajustes añadidos después de crear el asset: solo si faltan.
+        if not existing.get_editor_property("foliage_material"):
+            existing.set_editor_property("foliage_material", materials["foliage"])
+            save(existing)
         return existing
     settings = create_data_asset("DA_ProcMapSettings", ROOT, unreal.TN_ProcMapSettings)
     settings.set_editor_property("biomes", biomes)
@@ -212,6 +237,7 @@ def build_settings(materials, biomes):
     settings.set_editor_property("rock_material", materials["MI_ProcRock"])
     settings.set_editor_property("wood_material", materials["MI_ProcWood"])
     settings.set_editor_property("slide_water_material", materials["MI_ProcSlideWater"])
+    settings.set_editor_property("foliage_material", materials["foliage"])
     settings.fill_default_profiles()
     return save(settings)
 

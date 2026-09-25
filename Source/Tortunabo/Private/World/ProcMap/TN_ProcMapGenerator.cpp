@@ -157,6 +157,7 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 	if (!bSkipScatter)
 	{
 		BuildScatter();
+		BuildFlora();
 	}
 	const double T3 = FPlatformTime::Seconds();
 
@@ -233,6 +234,7 @@ void ATN_ProcMapGenerator::Clear()
 		if (Comp) { Comp->DestroyComponent(); }
 	}
 	ScatterComponents.Reset();
+	FloraMeshes.Reset();
 
 	for (UPCGComponent* Comp : PCGComponents)
 	{

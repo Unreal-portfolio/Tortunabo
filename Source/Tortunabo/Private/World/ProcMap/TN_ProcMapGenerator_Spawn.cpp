@@ -31,41 +31,11 @@ void ATN_ProcMapGenerator::BuildScatter()
 
 	// Exclusiones: estructuras, huevos, géiseres, huecos, puzles y tramos no tallados del camino.
 	FTNProcKeepOut Keep;
-	Keep.Init(World);
-	for (const FFeature& F : Layout.Features)
-	{
-		const FVector2D C(F.Location.X, F.Location.Y);
-		switch (F.Type)
-		{
-			case EFeature::EggNest:        Keep.Add(C, 800.0); break;
-			case EFeature::Geyser:         Keep.Add(C, 700.0); break;
-			case EFeature::Tower:          Keep.Add(C, F.Radius + 900.0); break;
-			case EFeature::Gate:           Keep.Add(C, FMath::Max(F.Width, F.Length) * 0.5 + 1200.0); break;
-			case EFeature::StartArea:      Keep.Add(C, F.Radius + 600.0); break;
-			case EFeature::Gap:            Keep.Add(C, FMath::Max(F.Height, F.Width) * 0.5 + 400.0); break;
-			case EFeature::ThrowWall:      Keep.Add(C, 1800.0); break;
-			case EFeature::SabotageGate:   Keep.Add(C, 1200.0); break;
-			case EFeature::SabotageSwitch: Keep.Add(C, 400.0); break;
-			case EFeature::RiverBridge:    Keep.Add(C, F.Length * 0.5 + 300.0); break;
-			default: break;
-		}
-	}
-	// Las murallas son mucho más gruesas que su adarve: en talud, hasta 10-12 m del eje.
-	TArray<FIntPoint> WallSpans;
-	for (const FCrossing& C : Layout.Crossings)
-	{
-		if (C.Type == ETNProcCrossingType::Wall) { WallSpans.Add(FIntPoint(Layout.Route[C.HighStep].FirstSample, Layout.Route[C.HighStep].LastSample)); }
-	}
-	for (int32 i = 0; i < Layout.Main.Num(); ++i)
-	{
-		const FPathSample& S = Layout.Main[i];
-		if ((S.Flags & (PathFlags::Elevated | PathFlags::Colossal | PathFlags::Islet | PathFlags::Boardwalk)) != 0)
-		{
-			bool bWall = false;
-			for (const FIntPoint& W : WallSpans) { if (i >= W.X && i <= W.Y) { bWall = true; break; } }
-			Keep.Add(S.P, S.Width * 0.5 + (bWall ? 1400.0 : 350.0));
-		}
-	}
+	Keep.AddLayout(Layout);
+	// La vegetación y las rocas sueltas las pone BuildFlora (mallas propias): de las capas de formas
+	// básicas del motor (greybox) quedan solo los props del borde del camino y los de la zona humana,
+	// salvo los que flotan sin apoyo (ZOffset alto: sombrillas sin mástil), que BuildFlora sustituye.
+	const bool bFlora = !Settings || Settings->bProceduralFlora;
 
 	// Caja envolvente de cada bioma (en el raster de módulos) para no recorrer todo el mapa por capa.
 	FVector2D BMin[NumBiomes], BMax[NumBiomes];
@@ -105,6 +75,11 @@ void ATN_ProcMapGenerator::BuildScatter()
 		{
 			const FTNProcScatterLayer& Layer = ScatterLayers[LayerIdx];
 			if (!Layer.Mesh || Layer.DensityPer100m2 <= 0.f) { continue; }
+			if (bFlora && Layer.Mesh->GetPathName().StartsWith(TEXT("/Engine/BasicShapes/"))
+				&& ((Layer.Zone != ETNProcScatterZone::PathEdge && Biome != ETNProcBiome::Human) || Layer.ZOffset > 50.f))
+			{
+				continue;
+			}
 
 			const bool bWalls = Layer.Zone == ETNProcScatterZone::Walls;
 			const double Blend = 6000.0;

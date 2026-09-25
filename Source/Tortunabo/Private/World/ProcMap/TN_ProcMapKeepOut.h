@@ -6,7 +6,7 @@
 /**
  * Zonas de exclusión de la vegetación y los props (círculos con cubos para consultas rápidas):
  * estructuras, huevos, géiseres, huecos, puzles y tramos no tallados del camino. La usan el
- * scatter de capas (TN_ProcMapGenerator_Spawn.cpp).
+ * scatter de capas (TN_ProcMapGenerator_Spawn.cpp) y la vegetación procedural (…_Flora.cpp).
  */
 struct FTNProcKeepOut
 {
@@ -66,6 +66,8 @@ struct FTNProcKeepOut
 				case EFeature::SabotageGate:   Add(C, 1200.0); break;
 				case EFeature::SabotageSwitch: Add(C, 400.0); break;
 				case EFeature::RiverBridge:    Add(C, F.Length * 0.5 + 300.0); break;
+				case EFeature::LavaPool:       Add(C, F.Radius + 300.0); break;
+				case EFeature::GiantTree:      Add(C, F.Radius * 3.0); break;
 				default: break;
 			}
 		}

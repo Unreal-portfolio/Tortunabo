@@ -181,6 +181,8 @@ private:
 	void BuildWater();
 	void BuildStructures();
 	void BuildScatter();
+	/** Vegetación y rocas sueltas procedurales por bioma (TN_ProcMapFlora.h). */
+	void BuildFlora();
 	void SpawnTraversalActors();
 	void SpawnServerActors();
 	void SpawnHazards();
@@ -244,6 +246,10 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> ScatterComponents;
+
+	/** Mallas de la vegetación procedural (una por bioma, especie y variante), construidas en ejecución. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMesh>> FloraMeshes;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPCGComponent>> PCGComponents;

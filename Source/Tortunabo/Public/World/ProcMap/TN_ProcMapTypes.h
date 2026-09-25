@@ -363,6 +363,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Materiales")
 	TObjectPtr<UMaterialInterface> SlideWaterMaterial;
 
+	/** Vegetación y rocas sueltas procedurales: color de vértice, y ha de admitir mallas instanciadas. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Materiales")
+	TObjectPtr<UMaterialInterface> FoliageMaterial;
+
+	// ── Vegetación ──────────────────────────────────────────────────────────
+
+	/**
+	 * Vegetación y rocas sueltas procedurales por bioma (árboles, arbustos, helechos, hierba, juncos,
+	 * cactus, peñascos...). Con ella, de las capas de formas básicas de los biomas solo quedan los
+	 * props del borde del camino y los de la zona humana.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Vegetación")
+	bool bProceduralFlora = true;
+
+	/** Multiplicador de la densidad de la vegetación procedural. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Vegetación", meta = (ClampMin = "0.0", ClampMax = "3.0"))
+	float FloraDensity = 1.f;
+
 	// ── Clases de los elementos del mapa (por defecto las C++) ─────────────
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Clases")
