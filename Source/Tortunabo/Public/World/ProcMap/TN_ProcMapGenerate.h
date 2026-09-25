@@ -87,6 +87,7 @@ namespace TNProcMap
 		BuildEggNests(Out, Root.Fork(12));
 		BuildLanePuzzles(Out, Root.Fork(13));
 		if (Out.Params.bRiver) { BuildRiver(Out, Root.Fork(14)); }
+		BuildLandmarks(Out, Root.Fork(16));
 		BuildDecor(Out, Root.Fork(15));
 		Out.bValid = true;
 		return true;

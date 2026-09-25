@@ -249,6 +249,8 @@ namespace TNProcMap
 		RiverBridge,   ///< Puente sobre el río: Location = centro, Dir, Length = luz.
 		LavaPool,
 		Island,        ///< Isla decorativa en lagunas.
+		/** Cono volcánico: Location = centro (Z = base), Radius = base, Height = altura, Width = Ø del cráter, Length = hondura del cráter. */
+		Volcano,
 		Count
 	};
 

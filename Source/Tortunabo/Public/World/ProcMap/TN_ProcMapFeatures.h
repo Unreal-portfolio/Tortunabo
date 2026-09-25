@@ -94,17 +94,17 @@ namespace TNProcMap
 				const int32 Idx = y * L.BiomeW + x;
 				L.BiomeWeights[Idx * NumBiomes + BiomeIndex(M.Biome)] = 1.0f;
 				L.LevelField[Idx] = static_cast<float>(M.Level);
-				const bool bElevated = M.VisitCount == 0
-					&& (M.EmptyKind == ETNProcEmptyModuleMode::Elevated || M.EmptyKind == ETNProcEmptyModuleMode::BranchesAndScenery);
-				L.ElevatedField[Idx] = bElevated ? 1.0f : 0.0f;
+				// Todo módulo sin camino principal es un macizo: fuera del camino nada es transitable.
+				L.ElevatedField[Idx] = M.VisitCount == 0 ? 1.0f : 0.0f;
 			}
 		}
 		BoxBlur(L.BiomeWeights, L.BiomeW, L.BiomeH, NumBiomes, 4);
 		BoxBlur(L.BiomeWeights, L.BiomeW, L.BiomeH, NumBiomes, 3);
 		BoxBlur(L.LevelField, L.BiomeW, L.BiomeH, 1, 8);
 		BoxBlur(L.LevelField, L.BiomeW, L.BiomeH, 1, 5);
-		BoxBlur(L.ElevatedField, L.BiomeW, L.BiomeH, 1, 6);
-		BoxBlur(L.ElevatedField, L.BiomeW, L.BiomeH, 1, 4);
+		// Desenfoque amplio: el macizo culmina en el centro del módulo y baja en ladera hacia sus bordes.
+		BoxBlur(L.ElevatedField, L.BiomeW, L.BiomeH, 1, 9);
+		BoxBlur(L.ElevatedField, L.BiomeW, L.BiomeH, 1, 7);
 	}
 
 	/** Salida, meta, géiseres, toboganes, torres, tablero/mesa y techo de cueva. */
@@ -561,6 +561,70 @@ namespace TNProcMap
 		}
 	}
 
+	/**
+	 * Un volcán enorme por región volcánica, en el punto más alejado de los caminos:
+	 * cono con cráter y lago de lava. Sus laderas pueden cubrir caminos cercanos, que
+	 * lo atraviesan encajonados en su cauce.
+	 */
+	inline void BuildLandmarks(FLayout& L, FRng Rng)
+	{
+		using namespace PathDetail;
+		TArray<FPathSample> All = L.Main;
+		for (const FBranch& B : L.Branches) { All.Append(B.Samples); }
+		FSampleGrid Grid;
+		Grid.Build(All, L.WorldSize);
+
+		TArray<int32> Regions;
+		for (const FModule& M : L.Modules)
+		{
+			if (M.Biome == ETNProcBiome::Volcanic && !Regions.Contains(M.Region)) { Regions.Add(M.Region); }
+		}
+		for (const int32 Region : Regions)
+		{
+			double BestScore = -1e300;
+			FVector2D Best = FVector2D::ZeroVector;
+			double BestClear = 0.0;
+			for (int32 y = 0; y < L.RasterH; y += 3)
+			{
+				for (int32 x = 0; x < L.RasterW; x += 3)
+				{
+					const int32 Mod = L.ModuleOfCell[L.CellIndex(x, y)];
+					if (Mod < 0 || L.Modules[Mod].Region != Region) { continue; }
+					const FVector2D C = L.CellCenter(x, y);
+					const double Edge = FMath::Min(FMath::Min(C.X, L.WorldSize - C.X), FMath::Min(C.Y, L.CoastY(C.X) - C.Y));
+					if (Edge < 12000.0) { continue; }
+					double D = 0.0;
+					const int32 Near = Grid.Nearest(C, 40000.0, D);
+					const double Clear = Near == INDEX_NONE ? 40000.0 : D - All[Near].Width * 0.5;
+					const double Score = FMath::Min(Clear, 30000.0) + 0.15 * FMath::Min(Edge, 30000.0) + Rng.Range(0.0, 800.0);
+					if (Score > BestScore) { BestScore = Score; Best = C; BestClear = Clear; }
+				}
+			}
+			if (BestClear < 6000.0) { continue; }
+
+			FFeature V;
+			V.Type = EFeature::Volcano;
+			V.Biome = ETNProcBiome::Volcanic;
+			V.Radius = FMath::Clamp(BestClear * 2.0 + 6000.0, 24000.0, 42000.0);
+			V.Height = V.Radius * Rng.Range(0.38, 0.48);
+			const double CraterR = V.Radius * Rng.Range(0.11, 0.14);
+			V.Width = CraterR * 2.0;
+			V.Length = Rng.Range(1800.0, 2800.0);
+			const double Base = L.SampleCoarse(L.LevelField, Best);
+			V.Location = FVector(Best, Base);
+			L.Features.Add(V);
+
+			// Lago de lava a media altura del cráter (mismo perfil que TN_ProcMapTerrain).
+			const double Rim = V.Height * FMath::Pow(1.0 - CraterR / V.Radius, 1.35);
+			FFeature Lava;
+			Lava.Type = EFeature::LavaPool;
+			Lava.Biome = ETNProcBiome::Volcanic;
+			Lava.Radius = CraterR * 0.72;
+			Lava.Location = FVector(Best, Base + Rim - V.Length * 0.45);
+			L.Features.Add(Lava);
+		}
+	}
+
 	/** Pozas de lava (volcánico) e islas decorativas (agua), lejos de los caminos. */
 	inline void BuildDecor(FLayout& L, FRng Rng)
 	{
@@ -592,7 +656,7 @@ namespace TNProcMap
 					bool bOverlap = false;
 					for (const FFeature& F : L.Features)
 					{
-						if ((F.Type == EFeature::LavaPool || F.Type == EFeature::Island)
+						if ((F.Type == EFeature::LavaPool || F.Type == EFeature::Island || F.Type == EFeature::Volcano)
 							&& FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C) < F.Radius + Radius + 1500.0)
 						{
 							bOverlap = true;

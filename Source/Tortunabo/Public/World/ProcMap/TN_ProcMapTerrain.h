@@ -8,13 +8,19 @@
  * vértices (la que luego se convierte en tiles de terreno con colisión).
  *
  * Composición (en este orden) para cada punto:
- *   1. Base: nivel suavizado de módulos + ondulación por bioma (pesos de bioma
- *      con deformación de dominio para transiciones naturales).
- *   2. Fuera del camino el terreno sube (valle) o baja al lecho (biomas de agua).
- *   3. Cauce del camino: plano a la cota de la muestra más cercana, con arcén.
+ *   1. Paisaje exterior: nivel suavizado de módulos + ondulación por bioma (pesos
+ *      con deformación de dominio), montañas lejos de los caminos, volcanes,
+ *      mesetas de los módulos elevados, lagunas con orillas escarpadas, muros del
+ *      borde y acantilados de costa (salvo la playa de la meta).
+ *   2. Cauce de cada camino: suelo a la cota de la muestra más cercana y un talud
+ *      infranqueable (más empinado que la pendiente andable de la tortuga) hasta
+ *      el borde; más allá el terreno sube hacia el paisaje o cae en ladera.
+ *   3. Claro de salida (con borde escarpado).
  *   4. Estructuras colosales: holgura bajo puentes, torres, mesas y túnel.
  *   5. Zanjas de los huecos, pozas de lava, islas y río.
- *   6. Muros del borde (sur/este/oeste), costa al norte y claro de salida.
+ *
+ * Regla de diseño: fuera de los cauces nada es alcanzable a pie (no se puede salir
+ * del camino ni atajar entre dos tramos); solo el agua de las lagunas es nadable.
  *
  * ComputeRows es thread-safe (filas disjuntas): el actor lo reparte con ParallelFor.
  */
@@ -24,9 +30,11 @@ namespace TNProcMap
 	struct FBiomeTerrain
 	{
 		double UndAmp = 300.0;
+		/** Subida suave del terreno más allá del borde del talud. */
 		double RiseMax = 1500.0;
 		double RiseDist = 3500.0;
-		double Shoulder = 900.0;
+		/** Pie del talud: franja casi plana entre el camino y el talud. */
+		double Shoulder = 250.0;
 		double Rough = 150.0;
 		/** 0 = ruido suave, 1 = crestas (dunas, roca). */
 		double Ridge = 0.0;
@@ -34,6 +42,13 @@ namespace TNProcMap
 		/** Cota del lecho en biomas húmedos. */
 		double BedZ = 0.0;
 		bool bWet = false;
+		/** Altura del talud del cauce (cm): mínimo y máximo, variando con ruido. */
+		double BankMin = 500.0;
+		double BankMax = 900.0;
+		/** Pendiente media del talud (grados); la tortuga anda hasta ~45°. */
+		double BankAngle = 66.0;
+		/** Relieve (montañas) lejos de los caminos (cm). */
+		double MountainAmp = 3000.0;
 	};
 
 	inline FBiomeTerrain GetBiomeTerrain(ETNProcBiome B)
@@ -41,14 +56,30 @@ namespace TNProcMap
 		FBiomeTerrain T;
 		switch (B)
 		{
-			case ETNProcBiome::Jungle:   T.UndAmp = 350; T.RiseMax = 1900; T.RiseDist = 3500; T.Shoulder = 900;  T.Rough = 160; T.Ridge = 0.0; T.CoastWidth = 2500; break;
-			case ETNProcBiome::Beach:    T.UndAmp = 110; T.RiseMax = 380;  T.RiseDist = 5000; T.Shoulder = 1600; T.Rough = 190; T.Ridge = 0.8; T.CoastWidth = 6500; break;
-			case ETNProcBiome::Desert:   T.UndAmp = 300; T.RiseMax = 1500; T.RiseDist = 4200; T.Shoulder = 1200; T.Rough = 380; T.Ridge = 1.0; T.CoastWidth = 3500; break;
-			case ETNProcBiome::Volcanic: T.UndAmp = 450; T.RiseMax = 2900; T.RiseDist = 2600; T.Shoulder = 600;  T.Rough = 300; T.Ridge = 0.6; T.CoastWidth = 1200; break;
-			case ETNProcBiome::Water:    T.UndAmp = 60;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 500;  T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -380; T.bWet = true; break;
-			case ETNProcBiome::Rocky:    T.UndAmp = 400; T.RiseMax = 3300; T.RiseDist = 1900; T.Shoulder = 400;  T.Rough = 360; T.Ridge = 1.0; T.CoastWidth = 800;  break;
-			case ETNProcBiome::Mangrove: T.UndAmp = 30;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 400;  T.Rough = 25;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -60; T.bWet = true; break;
-			case ETNProcBiome::Human:    T.UndAmp = 150; T.RiseMax = 700;  T.RiseDist = 3000; T.Shoulder = 800;  T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 3000; break;
+			case ETNProcBiome::Jungle:
+				T.UndAmp = 350; T.RiseMax = 900;  T.RiseDist = 3500; T.Shoulder = 250; T.Rough = 160; T.Ridge = 0.0; T.CoastWidth = 2500;
+				T.BankMin = 550; T.BankMax = 1100; T.BankAngle = 66; T.MountainAmp = 8500; break;
+			case ETNProcBiome::Beach:
+				T.UndAmp = 110; T.RiseMax = 300;  T.RiseDist = 5000; T.Shoulder = 300; T.Rough = 190; T.Ridge = 0.8; T.CoastWidth = 6500;
+				T.BankMin = 480; T.BankMax = 850;  T.BankAngle = 62; T.MountainAmp = 2500; break;
+			case ETNProcBiome::Desert:
+				T.UndAmp = 300; T.RiseMax = 800;  T.RiseDist = 4200; T.Shoulder = 200; T.Rough = 380; T.Ridge = 1.0; T.CoastWidth = 3500;
+				T.BankMin = 650; T.BankMax = 1400; T.BankAngle = 72; T.MountainAmp = 6500; break;
+			case ETNProcBiome::Volcanic:
+				T.UndAmp = 450; T.RiseMax = 1200; T.RiseDist = 2600; T.Shoulder = 200; T.Rough = 300; T.Ridge = 0.6; T.CoastWidth = 1200;
+				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 70; T.MountainAmp = 9500; break;
+			case ETNProcBiome::Water:
+				T.UndAmp = 60;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -1000; T.bWet = true;
+				T.BankMin = 0;   T.BankMax = 0;    T.BankAngle = 60; T.MountainAmp = 0; break;
+			case ETNProcBiome::Rocky:
+				T.UndAmp = 400; T.RiseMax = 1500; T.RiseDist = 1900; T.Shoulder = 150; T.Rough = 360; T.Ridge = 1.0; T.CoastWidth = 800;
+				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 75; T.MountainAmp = 15000; break;
+			case ETNProcBiome::Mangrove:
+				T.UndAmp = 30;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 25;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -350; T.bWet = true;
+				T.BankMin = 0;   T.BankMax = 0;    T.BankAngle = 60; T.MountainAmp = 0; break;
+			case ETNProcBiome::Human:
+				T.UndAmp = 150; T.RiseMax = 400;  T.RiseDist = 3000; T.Shoulder = 250; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 3000;
+				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 70; T.MountainAmp = 2500; break;
 			default: break;
 		}
 		return T;
@@ -95,11 +126,30 @@ namespace TNProcMap
 			for (int32 b = 0; b < NumBiomes; ++b) { Biomes[b] = GetBiomeTerrain(BiomeFromIndex(b)); }
 			BuildSamples();
 			StampPathField();
+			BuildCorridorDistance();
 			BuildInfluences();
-			for (const FFeature& F : L->Features)
+			Volcanoes.Reset();
+			for (int32 f = 0; f < L->Features.Num(); ++f)
 			{
+				const FFeature& F = L->Features[f];
 				if (F.Type == EFeature::StartArea) { StartZ = F.Location.Z; }
+				if (F.Type == EFeature::Volcano) { Volcanoes.Add(f); }
 			}
+		}
+
+		/** Distancia aproximada (cm) de un punto al borde del cauce más cercano (campo grueso). */
+		double CorridorDistance(const FVector2D& P) const
+		{
+			if (CorrW < 2 || CorrH < 2) { return 1e9; }
+			const double Fx = FMath::Clamp((P.X - CorrOrigin.X) / CorrCell, 0.0, static_cast<double>(CorrW - 1) - 1e-6);
+			const double Fy = FMath::Clamp((P.Y - CorrOrigin.Y) / CorrCell, 0.0, static_cast<double>(CorrH - 1) - 1e-6);
+			const int32 X0 = FMath::FloorToInt(Fx);
+			const int32 Y0 = FMath::FloorToInt(Fy);
+			const double Tx = Fx - X0;
+			const double Ty = Fy - Y0;
+			const double A = LerpD(CorrDist[Y0 * CorrW + X0], CorrDist[Y0 * CorrW + X0 + 1], Tx);
+			const double B = LerpD(CorrDist[(Y0 + 1) * CorrW + X0], CorrDist[(Y0 + 1) * CorrW + X0 + 1], Tx);
+			return LerpD(A, B, Ty);
 		}
 
 		/** Rellena Height (cm) y PathMask (0..255) para las filas [RowBegin, RowEnd). */
@@ -131,7 +181,7 @@ namespace TNProcMap
 		{
 			const FVector2D P = Origin + FVector2D(ix * Spacing, iy * Spacing);
 			const int32 Idx = iy * NX + ix;
-			return Evaluate(P, PathDist[Idx], PathSeg[Idx], PathT[Idx], OutMask);
+			return Evaluate(P, PathDist[Idx], PathSeg[Idx], PathT[Idx], GuardZ[Idx], OutMask);
 		}
 
 	private:
@@ -144,9 +194,27 @@ namespace TNProcMap
 		TArray<FPathSample> Samples;
 		TArray<int32> NextOf;
 		TArray<uint8> Carves;
+		/** Cuánto va el camino por agua en cada muestra (0 tierra, 1 laguna): sin taludes y con orilla suave. */
+		TArray<float> SampleWet;
+		/** Cota del suelo del cauce: la del camino, o el fondo del canal bajo isletas y pasarelas. */
+		TArray<float> SampleFloor;
 		TArray<float> PathDist;
 		TArray<int32> PathSeg;
 		TArray<float> PathT;
+		/** Puntuación del segmento ganador (distancia al borde, con la prioridad del túnel). */
+		TArray<float> PathScore;
+		/** Altura mínima fuera de los suelos: la del suelo + talud mínimo de cualquier cauce cercano. */
+		TArray<float> GuardZ;
+		static constexpr double GuardBandMin = 300.0;
+		static constexpr double GuardBandMax = 3500.0;
+
+		// ── Distancia gruesa a los cauces (para el relieve lejano) ──────────
+		double CorrCell = 1000.0;
+		FVector2D CorrOrigin = FVector2D::ZeroVector;
+		int32 CorrW = 0;
+		int32 CorrH = 0;
+		TArray<float> CorrDist;
+		TArray<int32> Volcanoes;
 
 		// ── Influencias localizadas (cubos) ─────────────────────────────────
 		enum class EInf : uint8 { Tower, Mesa, Tunnel, DeckClear, Gap, Lava, Island, River };
@@ -167,6 +235,8 @@ namespace TNProcMap
 			Samples.Reset();
 			NextOf.Reset();
 			Carves.Reset();
+			SampleWet.Reset();
+			SampleFloor.Reset();
 			auto AddPolyline = [&](const TArray<FPathSample>& In)
 			{
 				const int32 Base = Samples.Num();
@@ -174,9 +244,18 @@ namespace TNProcMap
 				{
 					Samples.Add(In[i]);
 					NextOf.Add(i + 1 < In.Num() ? Base + i + 1 : INDEX_NONE);
-					const uint32 F = In[i].Flags;
-					const bool bCarve = (F & (PathFlags::NotTerrain | PathFlags::Colossal | PathFlags::UnderTower)) == 0;
+					// Todo lo que pisa suelo es cauce, también la cima de las torres (aterrizaje del géiser).
+					// Isletas y pasarelas van sobre un canal de agua: su cauce es agua bajo su cota.
+					const bool bOverWater = (In[i].Flags & (PathFlags::Islet | PathFlags::Boardwalk)) != 0;
+					const bool bCarve = bOverWater || (In[i].Flags & PathFlags::NotTerrain) == 0;
 					Carves.Add(bCarve ? 1 : 0);
+					SampleFloor.Add(static_cast<float>(bOverWater ? FMath::Min(In[i].Z, SeaLevel) - 250.0 : In[i].Z));
+					FBiomeTerrain Bt;
+					double Wet = 0.0;
+					double W[NumBiomes];
+					BlendBiomes(In[i].P, Bt, Wet, W);
+					// Solo es camino "de agua" el que va a ras de agua; una torre en un manglar lleva sus taludes.
+					SampleWet.Add(static_cast<float>(SmoothStep(0.49, 0.51, Wet) * SmoothStep(400.0, 150.0, In[i].Z)));
 				}
 			};
 			AddPolyline(L->Main);
@@ -189,13 +268,31 @@ namespace TNProcMap
 			PathDist.Init(1e9f, N);
 			PathSeg.Init(INDEX_NONE, N);
 			PathT.Init(0.0f, N);
+			PathScore.Init(1e18f, N);
+			GuardZ.Init(-1e9f, N);
 			for (int32 i = 0; i < Samples.Num(); ++i)
 			{
 				const int32 j = NextOf[i];
 				if (j == INDEX_NONE || !Carves[i] || !Carves[j]) { continue; }
 				const FVector2D A = Samples[i].P;
 				const FVector2D B = Samples[j].P;
-				const double Reach = FMath::Max(Samples[i].Width, Samples[j].Width) * 0.5 + 5600.0;
+				// Guarda: pared mínima alrededor de este suelo aunque el vértice "pertenezca" a otro cauce.
+				const FBiomeTerrain& BtA = Biomes[BiomeIndex(Samples[i].Biome)];
+				const FBiomeTerrain& BtB = Biomes[BiomeIndex(Samples[j].Biome)];
+				const bool bWetSeg = FMath::Max(SampleWet[i], SampleWet[j]) > 0.5f;
+				const double GuardH = (bWetSeg || BtA.bWet || BtB.bWet) ? 0.0 : FMath::Min(BtA.BankMin, BtB.BankMin);
+				bool bTunnelPriority = false;
+				if (((Samples[i].Flags | Samples[j].Flags) & PathFlags::Tunnel) != 0)
+				{
+					for (const FCrossing& C : L->Crossings)
+					{
+						if (C.Type == ETNProcCrossingType::Cave && FVector2D::Distance((A + B) * 0.5, C.CrossPoint) < 2500.0) { bTunnelPriority = true; }
+					}
+				}
+				// Alcance: talud y subida, o la ladera completa si el cauce va por encima del paisaje.
+				const double Raised = FMath::Max(Samples[i].Z, Samples[j].Z) - L->SampleCoarse(L->LevelField, A);
+				const double FlankReach = FMath::Clamp((Raised + 1800.0) / FlankSlope + 2000.0 + RimPlateau, 9000.0, 19000.0);
+				const double Reach = FMath::Max(Samples[i].Width, Samples[j].Width) * 0.5 + FlankReach;
 				const int32 X0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.X, B.X) - Reach - Origin.X) / Spacing));
 				const int32 X1 = FMath::Min(NX - 1, FMath::CeilToInt((FMath::Max(A.X, B.X) + Reach - Origin.X) / Spacing));
 				const int32 Y0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.Y, B.Y) - Reach - Origin.Y) / Spacing));
@@ -211,12 +308,19 @@ namespace TNProcMap
 						// Distancia "efectiva": al borde del camino, para que el más ancho gane.
 						const double Hw = LerpD(Samples[i].Width, Samples[j].Width, T) * 0.5;
 						const double Eff = D - Hw;
-						const double Cur = PathSeg[Idx] == INDEX_NONE ? 1e18 : PathDist[Idx] - EffHalfWidth(Idx);
-						if (D <= Reach && Eff < Cur)
+						// Junto al punto de cruce el túnel manda en su huella: la pasada alta va por el techo.
+						const double Score = Eff - (bTunnelPriority && Eff < 800.0 ? 6000.0 : 0.0);
+						if (D <= Reach && Score < PathScore[Idx])
 						{
+							PathScore[Idx] = static_cast<float>(Score);
 							PathDist[Idx] = static_cast<float>(D);
 							PathSeg[Idx] = i;
 							PathT[Idx] = static_cast<float>(T);
+						}
+						if (GuardH > 0.0 && Eff >= GuardBandMin && Eff <= GuardBandMax)
+						{
+							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH);
+							GuardZ[Idx] = FMath::Max(GuardZ[Idx], G);
 						}
 					}
 				}
@@ -229,6 +333,107 @@ namespace TNProcMap
 			if (i == INDEX_NONE) { return 0.0; }
 			const int32 j = NextOf[i];
 			return LerpD(Samples[i].Width, Samples[j == INDEX_NONE ? i : j].Width, PathT[Idx]) * 0.5;
+		}
+
+		/** Transformada de distancia gruesa (chamfer) desde los bordes de todos los caminos. */
+		void BuildCorridorDistance()
+		{
+			CorrOrigin = Origin;
+			CorrW = FMath::Max(2, FMath::CeilToInt(NX * Spacing / CorrCell) + 1);
+			CorrH = FMath::Max(2, FMath::CeilToInt(NY * Spacing / CorrCell) + 1);
+			CorrDist.Init(1e9f, CorrW * CorrH);
+			for (const FPathSample& S : Samples)
+			{
+				const double Hw = S.Width * 0.5;
+				const int32 R = FMath::CeilToInt((Hw + 2.0 * CorrCell) / CorrCell);
+				const int32 CX = FMath::RoundToInt((S.P.X - CorrOrigin.X) / CorrCell);
+				const int32 CY = FMath::RoundToInt((S.P.Y - CorrOrigin.Y) / CorrCell);
+				for (int32 y = FMath::Max(0, CY - R); y <= FMath::Min(CorrH - 1, CY + R); ++y)
+				{
+					for (int32 x = FMath::Max(0, CX - R); x <= FMath::Min(CorrW - 1, CX + R); ++x)
+					{
+						const FVector2D C = CorrOrigin + FVector2D(x * CorrCell, y * CorrCell);
+						const float D = static_cast<float>(FMath::Max(0.0, FVector2D::Distance(C, S.P) - Hw));
+						float& V = CorrDist[y * CorrW + x];
+						V = FMath::Min(V, D);
+					}
+				}
+			}
+			const float Ortho = static_cast<float>(CorrCell);
+			const float Diag = static_cast<float>(CorrCell * 1.41421356);
+			for (int32 y = 0; y < CorrH; ++y)
+			{
+				for (int32 x = 0; x < CorrW; ++x)
+				{
+					float& V = CorrDist[y * CorrW + x];
+					if (x > 0) { V = FMath::Min(V, CorrDist[y * CorrW + x - 1] + Ortho); }
+					if (y > 0)
+					{
+						V = FMath::Min(V, CorrDist[(y - 1) * CorrW + x] + Ortho);
+						if (x > 0) { V = FMath::Min(V, CorrDist[(y - 1) * CorrW + x - 1] + Diag); }
+						if (x < CorrW - 1) { V = FMath::Min(V, CorrDist[(y - 1) * CorrW + x + 1] + Diag); }
+					}
+				}
+			}
+			for (int32 y = CorrH - 1; y >= 0; --y)
+			{
+				for (int32 x = CorrW - 1; x >= 0; --x)
+				{
+					float& V = CorrDist[y * CorrW + x];
+					if (x < CorrW - 1) { V = FMath::Min(V, CorrDist[y * CorrW + x + 1] + Ortho); }
+					if (y < CorrH - 1)
+					{
+						V = FMath::Min(V, CorrDist[(y + 1) * CorrW + x] + Ortho);
+						if (x < CorrW - 1) { V = FMath::Min(V, CorrDist[(y + 1) * CorrW + x + 1] + Diag); }
+						if (x > 0) { V = FMath::Min(V, CorrDist[(y + 1) * CorrW + x - 1] + Diag); }
+					}
+				}
+			}
+		}
+
+		/** Forma del relieve lejano en [0, 1]: crestas deformadas sobre una base ondulada. */
+		double MountainShape(const FVector2D& P) const
+		{
+			const FVector2D Warp(Fbm2(Seed + 21u, P.X / 22000.0, P.Y / 22000.0, 2), Fbm2(Seed + 22u, P.X / 22000.0, P.Y / 22000.0, 2));
+			const FVector2D Q = P + Warp * 9000.0;
+			// Crestas y picos: ruido crestado con una base ancha que decide dónde hay macizos.
+			const double Ridges = Ridged2(Seed + 23u, Q.X / 24000.0, Q.Y / 24000.0, 4);
+			const double Base = SmoothStep(0.25, 0.85, 0.5 + 0.5 * Fbm2(Seed + 24u, Q.X / 45000.0, Q.Y / 45000.0, 3));
+			return Saturate(FMath::Pow(Ridges, 1.3) * (0.25 + 0.95 * Base));
+		}
+
+		/**
+		 * Cono volcánico con cráter (sobre el nivel base); 0 fuera de su radio.
+		 * OutInfluence (0..1) dice cuánto sustituye el cono al relieve normal.
+		 */
+		double VolcanoHeight(const FVector2D& P, double& OutInfluence) const
+		{
+			double Best = 0.0;
+			OutInfluence = 0.0;
+			for (const int32 f : Volcanoes)
+			{
+				const FFeature& F = L->Features[f];
+				const FVector2D C(F.Location.X, F.Location.Y);
+				const double D = FVector2D::Distance(P, C);
+				if (D >= F.Radius) { continue; }
+				OutInfluence = FMath::Max(OutInfluence, SmoothStep(F.Radius, F.Radius * 0.55, D));
+				// Ladera cóncava con barrancos radiales.
+				const double U = D / F.Radius;
+				const double Ang = AngleOf(P - C);
+				const double Gully = 0.12 * Noise1(Seed + 31u + static_cast<uint32>(f), Ang * 3.0) * U;
+				double H = F.Height * FMath::Pow(FMath::Max(0.0, 1.0 - U), 1.35) * (1.0 + Gully);
+				const double Crater = F.Width * 0.5;
+				if (D < Crater * 1.35)
+				{
+					// Borde del cráter y hundimiento hasta su fondo.
+					const double V = D / Crater;
+					const double Rim = F.Height * FMath::Pow(1.0 - Crater / F.Radius, 1.35);
+					const double Bowl = LerpD(Rim - F.Length, Rim, V * V);
+					H = V < 1.0 ? Bowl : LerpD(Rim, H, SmoothStep(1.0, 1.35, V));
+				}
+				Best = FMath::Max(Best, H);
+			}
+			return Best;
 		}
 
 		void AddInf(const FInf& Inf, const FVector2D& Min, const FVector2D& Max)
@@ -272,7 +477,7 @@ namespace TNProcMap
 				{
 					if (C.Type == ETNProcCrossingType::Cave)
 					{
-						AddSegmentInf(EInf::Mesa, c, i, M[i].P, M[i + 1].P, 1200.0 + Rise / 2.5 + 400.0);
+						AddSegmentInf(EInf::Mesa, c, i, M[i].P, M[i + 1].P, 1650.0 + Rise / 2.2 + 400.0);
 					}
 					else
 					{
@@ -345,7 +550,7 @@ namespace TNProcMap
 			OutWet = WetSum / Total;
 		}
 
-		double Evaluate(const FVector2D& P, float InPathDist, int32 InSeg, float InT, uint8& OutMask) const
+		double Evaluate(const FVector2D& P, float InPathDist, int32 InSeg, float InT, float InGuard, uint8& OutMask) const
 		{
 			OutMask = 0;
 			FBiomeTerrain Bt;
@@ -360,126 +565,183 @@ namespace TNProcMap
 
 			const double Level = L->SampleCoarse(L->LevelField, P);
 			const double Elev = L->SampleCoarse(L->ElevatedField, P);
-			const double LandBase = Level + Bt.UndAmp * NLarge + Bt.Rough * Detail + Elev * (2600.0 + 1200.0 * NLarge);
 
-			// ── Camino ──────────────────────────────────────────────────────
-			double H = 0.0;
-			const bool bOnField = InSeg != INDEX_NONE;
-			double PathZ = 0.0, Hw = 0.0, Shoulder = Bt.Shoulder;
-			bool bLane = false;
-			if (bOnField)
-			{
-				const FPathSample& A = Samples[InSeg];
-				const int32 J = NextOf[InSeg];
-				const FPathSample& B = Samples[J == INDEX_NONE ? InSeg : J];
-				PathZ = LerpD(A.Z, B.Z, InT);
-				Hw = LerpD(A.Width, B.Width, InT) * 0.5;
-				bLane = ((A.Flags | B.Flags) & PathFlags::Lane) != 0;
-				if (bLane) { Shoulder = 350.0; }
-				if (((A.Flags | B.Flags) & (PathFlags::Slide | PathFlags::TowerTop)) != 0) { Shoulder = FMath::Min(Shoulder, 500.0); }
-			}
-			const double Beyond = bOnField ? FMath::Max(0.0, static_cast<double>(InPathDist) - Hw) : 1e9;
-			double RiseMax = Bt.RiseMax;
-			if (bLane) { RiseMax = FMath::Max(RiseMax, 1100.0); }
-			const double LandOff = LandBase + RiseMax * SmoothStep(0.0, FMath::Max(bLane ? 900.0 : Bt.RiseDist, 1.0), Beyond);
-			const double WetOff = Bt.BedZ + 70.0 * NMed;
-			const double Off = LerpD(LandOff, WetOff, SmoothStep(0.35, 0.65, Wet));
+			// ── Paisaje exterior (lo que no es cauce) ───────────────────────
+			// País de cañones: el paisaje queda por encima del borde de los taludes (sube desde ellos en vez de
+			// dejar mesetas planas) y las montañas arrancan a pocos metros de los cauces.
+			const double MountMask = SmoothStep(1200.0, 6000.0, CorridorDistance(P));
+			const double Uplift = Bt.BankMax * (0.7 + 0.5 * (0.5 + 0.5 * NLarge));
+			double VolcanoInf = 0.0;
+			const double Volcano = VolcanoHeight(P, VolcanoInf);
+			// Los módulos por los que no pasa el camino son macizos montañosos (cima en su centro, crestas).
+			const double Shape = MountainShape(P);
+			const double Massif = FMath::Pow(Elev, 1.4) * (4500.0 + 9000.0 * Shape + 3000.0 * NLarge);
+			double Land = Level + Uplift + Bt.UndAmp * NLarge + Bt.Rough * Detail + Massif
+				+ Bt.MountainAmp * Shape * MountMask;
+			// Dentro del cono manda el volcán (así el lago de lava cuadra con el cráter).
+			Land = LerpD(Land + Volcano, Level + Volcano, VolcanoInf);
+			// Junto al agua la tierra queda siempre por encima: orillas escarpadas, sin playas por las que salir.
+			Land = FMath::Max(Land, LerpD(Land, SeaLevel + ShoreCliffHeight + 250.0 * NMed, SmoothStep(0.0, 0.25, Wet)));
+			// Contorno estrecho: el domain warp estira localmente la transición y una banda ancha dejaría orillas andables.
+			const double WetT = SmoothStep(0.49, 0.51, Wet);
+			double Outer = LerpD(Land, Bt.BedZ + 90.0 * NMed, WetT);
+			Outer = ApplyBorderWalls(P, Outer, Level, NLarge, NRidge);
+			Outer = ApplyCoast(P, Outer, WetT, NMed);
 
-			if (bOnField && Beyond <= 0.0)
-			{
-				H = PathZ + 10.0 * NMed;
-				OutMask = 255;
-			}
-			else if (bOnField && Beyond < Shoulder)
-			{
-				const double T = SmoothStep(0.0, 1.0, Beyond / Shoulder);
-				H = LerpD(PathZ, Off, T);
-				OutMask = static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(255.0 * (1.0 - SmoothStep(0.0, 0.6, Beyond / Shoulder))), 0, 255));
-			}
-			else
-			{
-				H = Off;
-			}
-
-			// ── Influencias localizadas ─────────────────────────────────────
 			const int32 BX = FMath::Clamp(FMath::FloorToInt((P.X - BinOrigin.X) / BinCell), 0, BinW - 1);
 			const int32 BY = FMath::Clamp(FMath::FloorToInt((P.Y - BinOrigin.Y) / BinCell), 0, BinH - 1);
 			const TArray<FInf>& Bin = Bins[BY * BinW + BX];
-			if (Bin.Num() > 0)
-			{
-				H = ApplyInfluences(P, H, Bin, OutMask);
-			}
-
-			// ── Muros del borde (sur, este, oeste) ──────────────────────────
-			{
-				const double ES = P.Y;
-				const double EW = P.X;
-				const double EE = L->WorldSize - P.X;
-				double E = ES;
-				double Along = P.X;
-				if (EW < E) { E = EW; Along = P.Y + 100000.0; }
-				if (EE < E) { E = EE; Along = P.Y + 200000.0; }
-				// El muro no llega al mar: se desvanece al acercarse a la costa.
-				const double CoastFade = 1.0 - SmoothStep(L->CoastY(P.X) - 9000.0, L->CoastY(P.X) + 1000.0, P.Y);
-				const double Inset = L->WallInset(Along);
-				const double T = SmoothStep(Inset + 3500.0, Inset, E) * CoastFade;
-				if (T > 0.0)
-				{
-					const double WallTop = FMath::Max(Level, 800.0) + L->Params.WallHeight * (0.75 + 0.35 * NLarge) + 600.0 * NRidge;
-					H = FMath::Max(H, LerpD(H, WallTop, T));
-					if (T > 0.5) { OutMask = 0; }
-				}
-			}
-
-			// ── Costa norte y mar abierto ───────────────────────────────────
-			{
-				const double Coast = L->CoastY(P.X);
-				const double T = SmoothStep(Coast - Bt.CoastWidth, Coast + 1500.0, P.Y);
-				if (T > 0.0)
-				{
-					const double SeaBed = FMath::Max(-2600.0, -450.0 - (P.Y - Coast) * 0.035);
-					H = LerpD(H, FMath::Min(H, SeaBed), T);
-				}
-			}
-
-			// ── Claro de salida ─────────────────────────────────────────────
-			{
-				const double R = L->Params.StartClearingRadius;
-				const double Ds = FVector2D::Distance(P, L->StartPoint);
-				if (Ds < R + 2500.0)
-				{
-					const double T = SmoothStep(R + 2500.0, R, Ds);
-					H = LerpD(H, StartZ, T);
-					if (Ds < R) { OutMask = FMath::Max<uint8>(OutMask, 200); }
-				}
-			}
-			return H;
-		}
-
-		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask) const
-		{
-			const TArray<FPathSample>& M = L->Main;
-
-			// Holgura bajo puentes colosales (antes que las torres, que la sobrescriben).
+			// Holgura bajo los puentes colosales: es paisaje, así los cauces cercanos conservan sus
+			// taludes. Las torres quedan intactas (su cima es el cauce de aterrizaje).
 			for (const FInf& Inf : Bin)
 			{
 				if (Inf.Type != EInf::DeckClear) { continue; }
 				const FCrossing& C = L->Crossings[Inf.A];
+				const FRouteStep& High = L->Route[C.HighStep];
+				const double Keep = L->Params.TowerRadius + 1500.0;
+				if (FVector2D::Distance(P, L->Main[High.FirstSample].P) < Keep || FVector2D::Distance(P, L->Main[High.LastSample].P) < Keep) { continue; }
 				double T = 0.0;
-				const double D = DistPointSegment(P, M[Inf.B].P, M[Inf.B + 1].P, T);
-				if (D < 3500.0) { H = FMath::Min(H, C.TopZ - 1700.0); }
+				const double D = DistPointSegment(P, L->Main[Inf.B].P, L->Main[Inf.B + 1].P, T);
+				if (D < 3500.0) { Outer = FMath::Min(Outer, C.TopZ - 1700.0); }
 			}
-
-			// Mesas: cima plana a TopZ y laderas empinadas (pendiente 2.5).
+			// Mesas de los cruces cueva: son paisaje, los cauces las cortan (aproximación, géiser y túnel).
+			bool bMesaTop = false;
 			for (const FInf& Inf : Bin)
 			{
 				if (Inf.Type != EInf::Mesa) { continue; }
 				const FCrossing& C = L->Crossings[Inf.A];
 				double T = 0.0;
-				const double D = DistPointSegment(P, M[Inf.B].P, M[Inf.B + 1].P, T);
-				const double MesaH = C.TopZ - FMath::Max(0.0, D - 1200.0) * 2.5;
-				if (MesaH > H) { H = MesaH; if (D <= 1200.0) { OutMask = 180; } else { OutMask = 0; } }
+				const double D = DistPointSegment(P, L->Main[Inf.B].P, L->Main[Inf.B + 1].P, T);
+				const double Top = 1200.0 + 450.0 * Noise2(Seed + 41u, P.X / 3500.0, P.Y / 3500.0);
+				const double Slope = 2.2 + 0.7 * (0.5 + 0.5 * Noise2(Seed + 42u, P.X / 2500.0, P.Y / 2500.0));
+				const double MesaH = C.TopZ + 120.0 * Ridged2(Seed + 43u, P.X / 1800.0, P.Y / 1800.0, 2) - FMath::Max(0.0, D - Top) * Slope;
+				if (MesaH > Outer) { Outer = MesaH; bMesaTop = D <= 1200.0; }
 			}
+
+			// ── Cauce del camino ────────────────────────────────────────────
+			double H = Outer;
+			if (InSeg != INDEX_NONE)
+			{
+				const FPathSample& A = Samples[InSeg];
+				const int32 J = NextOf[InSeg];
+				const FPathSample& B = Samples[J == INDEX_NONE ? InSeg : J];
+				double PathZ = LerpD(SampleFloor[InSeg], SampleFloor[J == INDEX_NONE ? InSeg : J], InT);
+				const double Hw = LerpD(A.Width, B.Width, InT) * 0.5;
+				const uint32 Flags = A.Flags | B.Flags;
+				const bool bLane = (Flags & PathFlags::Lane) != 0;
+				double Beyond = FMath::Max(0.0, static_cast<double>(InPathDist) - Hw);
+				// El claro de salida es parte del cauce: su borde también es talud.
+				const double StartBeyond = FVector2D::Distance(P, L->StartPoint) - L->Params.StartClearingRadius;
+				if (StartBeyond < Beyond)
+				{
+					Beyond = FMath::Max(0.0, StartBeyond);
+					PathZ = StartZ;
+				}
+
+				// Talud infranqueable: más empinado que lo andable y más alto que un salto.
+				const double BankN = 0.5 + 0.5 * Noise2(Seed + 9u, P.X / 6000.0, P.Y / 6000.0);
+				// Solo el camino que va por el agua (bancos, isletas) va sin talud; un cauce de tierra junto
+				// a una laguna conserva su talud por ese lado (si no, se atajaría nadando).
+				// Y solo por el lado que da al agua: hacia tierra el banco de arena también lleva talud.
+				const double PathWet = LerpD(SampleWet[InSeg], SampleWet[J == INDEX_NONE ? InSeg : J], InT) * WetT;
+				double BankH = LerpD(Bt.BankMin, Bt.BankMax, BankN) * (1.0 - PathWet);
+				if (bLane) { BankH = FMath::Max(BankH, 1100.0); }
+				// El cauce se abre solo mar adentro: la meta es una playa encajada que da al agua.
+				BankH *= 1.0 - SmoothStep(L->CoastY(P.X) - 300.0, L->CoastY(P.X) + 1500.0, P.Y);
+				const double Toe = (bLane || (Flags & (PathFlags::Slide | PathFlags::TowerTop)) != 0) ? 150.0 : Bt.Shoulder;
+				const double Run = BankH / FMath::Tan(FMath::DegreesToRadians(Bt.BankAngle));
+				const double Rim = PathZ + BankH;
+
+				if (Beyond <= 0.0)
+				{
+					H = PathZ + 10.0 * NMed;
+					OutMask = 255;
+				}
+				else if (Beyond < Toe)
+				{
+					const double T = Beyond / Toe;
+					H = PathZ + FMath::Min(25.0, BankH) * SmoothStep(0.0, 1.0, T);
+					OutMask = static_cast<uint8>(FMath::RoundToInt(255.0 * (1.0 - SmoothStep(0.0, 1.0, T))));
+				}
+				else if (Beyond < Toe + Run)
+				{
+					const double T = (Beyond - Toe) / FMath::Max(1.0, Run);
+					const double Base = PathZ + FMath::Min(25.0, BankH);
+					H = FMath::Max(LerpD(Base, Rim, T * T * (3.0 - 2.0 * T)), static_cast<double>(InGuard));
+				}
+				else
+				{
+					// Más allá del talud: sube hacia el paisaje, o si el cauce va por encima,
+					// meseta a la cota del borde y luego ladera. La meseta hace que cualquier
+					// muesca del talud (claro, zanjas) dé a terreno alto, nunca a una salida.
+					const double X = Beyond - Toe - Run;
+					if (Outer >= Rim)
+					{
+						// Bajo la mesa (túnel) la pared sube a plomo hasta la cima: es la boca de la cueva.
+						const double RiseDist = (Flags & PathFlags::Tunnel) != 0 ? 150.0 : Bt.RiseDist;
+						H = Rim + (Outer - Rim) * SmoothStep(0.0, FMath::Max(RiseDist, 1.0), X);
+					}
+					else
+					{
+						const double Flank = LerpD(FlankSlope, 0.45, PathWet);
+						const double Plateau = RimPlateau * (1.0 - PathWet);
+						H = FMath::Max(Outer, Rim + 120.0 * NMed * (1.0 - PathWet) - FMath::Max(0.0, X - Plateau) * Flank);
+					}
+					H = FMath::Max(H, static_cast<double>(InGuard));
+				}
+			}
+
+			if (bMesaTop && H >= Outer - 1.0) { OutMask = 180; }
+
+			// ── Influencias localizadas ─────────────────────────────────────
+			if (Bin.Num() > 0)
+			{
+				H = ApplyInfluences(P, H, Bin, OutMask);
+			}
+			return H;
+		}
+
+		/** Muros naturales del borde (sur, este, oeste); no llegan al mar. */
+		double ApplyBorderWalls(const FVector2D& P, double H, double Level, double NLarge, double NRidge) const
+		{
+			const double ES = P.Y;
+			const double EW = P.X;
+			const double EE = L->WorldSize - P.X;
+			double E = ES;
+			double Along = P.X;
+			if (EW < E) { E = EW; Along = P.Y + 100000.0; }
+			if (EE < E) { E = EE; Along = P.Y + 200000.0; }
+			// Solo se retira mar adentro: si se desvaneciera antes dejaría rampas suaves desde el agua.
+			const double CoastFade = 1.0 - SmoothStep(L->CoastY(P.X), L->CoastY(P.X) + 1500.0, P.Y);
+			const double Inset = L->WallInset(Along);
+			const double T = SmoothStep(Inset + 1200.0, Inset, E) * CoastFade;
+			if (T > 0.0)
+			{
+				const double WallTop = FMath::Max(Level, 800.0) + L->Params.WallHeight * (0.75 + 0.35 * NLarge) + 600.0 * NRidge;
+				H = FMath::Max(H, LerpD(H, WallTop, T));
+			}
+			return H;
+		}
+
+		/**
+		 * Costa norte: acantilado sobre el mar en toda la línea de costa. La meta es una
+		 * cala: el cauce del último tramo (la playa) es la única bajada al agua, así el
+		 * mar no da acceso al resto del mapa.
+		 */
+		double ApplyCoast(const FVector2D& P, double H, double WetT, double NMed) const
+		{
+			const double Coast = L->CoastY(P.X);
+			if (P.Y < Coast - 3500.0) { return H; }
+			const double SeaBed = FMath::Max(-2600.0, -450.0 - FMath::Max(0.0, P.Y - Coast) * 0.035);
+			// Solo se levanta tierra: una laguna junto a la costa no puede convertirse en rampa de salida.
+			const double NearEdge = WetT < 0.5 ? SmoothStep(Coast - 3000.0, Coast - 700.0, P.Y) : 0.0;
+			const double Cliff = FMath::Max(H, LerpD(H, SeaLevel + ShoreCliffHeight + 300.0 * NMed, NearEdge));
+			return LerpD(Cliff, SeaBed, SmoothStep(Coast - 400.0, Coast + 200.0, P.Y));
+		}
+
+		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask) const
+		{
+			const TArray<FPathSample>& M = L->Main;
 
 			// Torres (pilares de roca) en los extremos de las pasadas altas.
 			for (const FInf& Inf : Bin)
@@ -487,7 +749,8 @@ namespace TNProcMap
 				if (Inf.Type != EInf::Tower) { continue; }
 				const FFeature& F = L->Features[Inf.A];
 				const double D = FVector2D::Distance(P, FVector2D(F.Location.X, F.Location.Y));
-				if (D <= F.Radius) { H = FMath::Max(H, F.Height); OutMask = 150; }
+				// Pilar: sube el terreno hasta la cima; el cauce del tramo alto la talla con sus taludes.
+				if (D <= F.Radius) { H = FMath::Max(H, F.Height); OutMask = FMath::Max<uint8>(OutMask, 150); }
 				else if (D < F.Radius + 600.0) { H = FMath::Max(H, LerpD(F.Height, H, (D - F.Radius) / 600.0)); }
 			}
 
