@@ -1,0 +1,488 @@
+{
+ "name": "Mapa01",
+ "seed": 20260925,
+ "format": "TNTM1",
+ "cell_uu": 10000.0,
+ "grid": 6,
+ "water_uu": -400.0,
+ "start_uu": [
+  -1883.8448490092808,
+  48257.52097836195,
+  5.8080807974436155
+ ],
+ "end_uu": [
+  50145.27836310103,
+  8772.714708142108,
+  54.297987083806376
+ ],
+ "cells": [
+  {
+   "name": "M_Mapa01_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 20151,
+   "triangles": 39772,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 19031,
+   "triangles": 37520,
+   "instances": 52
+  },
+  {
+   "name": "M_Mapa01_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 17226,
+   "triangles": 33938,
+   "instances": 309
+  },
+  {
+   "name": "M_Mapa01_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 16449,
+   "triangles": 32396,
+   "instances": 419
+  },
+  {
+   "name": "M_Mapa01_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 17898,
+   "triangles": 35256,
+   "instances": 194
+  },
+  {
+   "name": "M_Mapa01_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 17347,
+   "triangles": 34188,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 20078,
+   "triangles": 39588,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 15383,
+   "triangles": 30254,
+   "instances": 133
+  },
+  {
+   "name": "M_Mapa01_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 11026,
+   "triangles": 21622,
+   "instances": 485
+  },
+  {
+   "name": "M_Mapa01_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 10964,
+   "triangles": 21496,
+   "instances": 463
+  },
+  {
+   "name": "M_Mapa01_r4c1",
+   "col": 1,
+   "row": 4,
+   "file": "Chunks/r4c1.bin",
+   "center_uu": [
+    40000.0,
+    10000.0
+   ],
+   "vertices": 12515,
+   "triangles": 24568,
+   "instances": 146
+  },
+  {
+   "name": "M_Mapa01_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 17084,
+   "triangles": 33658,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 25047,
+   "triangles": 49472,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 26475,
+   "triangles": 52220,
+   "instances": 18
+  },
+  {
+   "name": "M_Mapa01_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 20264,
+   "triangles": 39960,
+   "instances": 270
+  },
+  {
+   "name": "M_Mapa01_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 18426,
+   "triangles": 36330,
+   "instances": 153
+  },
+  {
+   "name": "M_Mapa01_r4c2",
+   "col": 2,
+   "row": 4,
+   "file": "Chunks/r4c2.bin",
+   "center_uu": [
+    40000.0,
+    20000.0
+   ],
+   "vertices": 16220,
+   "triangles": 31922,
+   "instances": 1
+  },
+  {
+   "name": "M_Mapa01_r5c2",
+   "col": 2,
+   "row": 5,
+   "file": "Chunks/r5c2.bin",
+   "center_uu": [
+    50000.0,
+    20000.0
+   ],
+   "vertices": 15857,
+   "triangles": 31202,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 25749,
+   "triangles": 50844,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 34278,
+   "triangles": 67898,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 15203,
+   "triangles": 29906,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 13948,
+   "triangles": 27430,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r4c3",
+   "col": 3,
+   "row": 4,
+   "file": "Chunks/r4c3.bin",
+   "center_uu": [
+    40000.0,
+    30000.0
+   ],
+   "vertices": 13634,
+   "triangles": 26800,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r5c3",
+   "col": 3,
+   "row": 5,
+   "file": "Chunks/r5c3.bin",
+   "center_uu": [
+    50000.0,
+    30000.0
+   ],
+   "vertices": 13308,
+   "triangles": 26162,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r0c4",
+   "col": 4,
+   "row": 0,
+   "file": "Chunks/r0c4.bin",
+   "center_uu": [
+    0.0,
+    40000.0
+   ],
+   "vertices": 36611,
+   "triangles": 72410,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 17856,
+   "triangles": 35092,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 13313,
+   "triangles": 26160,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 13843,
+   "triangles": 27212,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r4c4",
+   "col": 4,
+   "row": 4,
+   "file": "Chunks/r4c4.bin",
+   "center_uu": [
+    40000.0,
+    40000.0
+   ],
+   "vertices": 13519,
+   "triangles": 26572,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r5c4",
+   "col": 4,
+   "row": 5,
+   "file": "Chunks/r5c4.bin",
+   "center_uu": [
+    50000.0,
+    40000.0
+   ],
+   "vertices": 14052,
+   "triangles": 27650,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r0c5",
+   "col": 5,
+   "row": 0,
+   "file": "Chunks/r0c5.bin",
+   "center_uu": [
+    0.0,
+    50000.0
+   ],
+   "vertices": 32924,
+   "triangles": 65266,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 14673,
+   "triangles": 28876,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 13470,
+   "triangles": 26476,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 14329,
+   "triangles": 28172,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 14345,
+   "triangles": 28216,
+   "instances": 0
+  },
+  {
+   "name": "M_Mapa01_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 13963,
+   "triangles": 27484,
+   "instances": 0
+  }
+ ]
+}
