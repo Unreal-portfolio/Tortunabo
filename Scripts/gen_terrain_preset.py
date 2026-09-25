@@ -512,6 +512,66 @@ def reachable(terrain, start, goal) -> bool:
     return bool(seen[goal])
 
 
+def write_preset(name: str, seed: int, grid: int, terrain, mask, cells, flat_areas, bridges_by_cell=None,
+                 secondary: str = "algae", shade=None, overlay=()) -> Path:
+    """Corta el terreno en una celda por modulo y escribe PNG, manifest y vistas cenitales.
+
+    terrain y mask cubren el mapa entero (grid * (RES - 1) + 1 muestras por lado). flat_areas
+    en metros de mundo (x, y, radio). bridges_by_cell: {(col, fila): [dict del manifest con
+    coordenadas locales]}. shade (0-1) oscurece la vista de depuracion (zona fuera de juego);
+    overlay: [(mascara booleana o None, color RGB)] pintados encima."""
+    half = SIZE_M / 2.0
+    out = OUTPUT_ROOT / name
+    if out.exists():
+        shutil.rmtree(out)
+    (out / "Cells").mkdir(parents=True)
+    quantized = np.clip(np.rint(terrain * UNITS_PER_M) + HEIGHT_ZERO, 0, 65535).astype(np.uint16)
+    zeros = np.zeros((RES, RES), dtype=np.uint16)
+    manifest = {"size_uu": SIZE_M * UU_PER_M, "resolution": RES, "height_scale_uu": HEIGHT_SCALE_UU,
+                "height_zero": HEIGHT_ZERO, "modules": [], "preset": {"name": name, "seed": seed, "cells": []}}
+    path_set = set(cells)
+    for row in range(grid):
+        for col in range(grid):
+            cell_name = f"M_{name}_r{row}c{col}"
+            window = (slice(row * (RES - 1), row * (RES - 1) + RES), slice(col * (RES - 1), col * (RES - 1) + RES))
+            Image.fromarray(quantized[window]).save(out / "Cells" / f"{cell_name}.png")
+            Image.fromarray(mask[window]).save(out / "Cells" / f"{cell_name}_mask.png")
+            Image.fromarray(zeros).save(out / "Cells" / f"{cell_name}_coast.png")
+            cx, cy = row * SIZE_M, col * SIZE_M
+            local_flats = [{"x_m": round(px - cx, 2), "y_m": round(py - cy, 2), "radius_m": round(r, 2),
+                            "height_m": round(float(terrain[index_of((px, py), half)]), 2), "sunken": False}
+                           for px, py, r in flat_areas if abs(px - cx) < half and abs(py - cy) < half]
+            manifest["modules"].append({
+                "name": cell_name, "topology": "Cross", "folder": "Cells", "edges": ["crest"] * 4, "seed": seed,
+                "file": f"Cells/{cell_name}.png", "mask_file": f"Cells/{cell_name}_mask.png",
+                "coast_file": f"Cells/{cell_name}_coast.png", "biome": "sand", "secondary_biome": secondary,
+                "bridges": (bridges_by_cell or {}).get((col, row), []), "monoliths": [], "flat_areas": local_flats,
+            })
+            # Lados que dan fuera del mapa (N 1, E 2, S 4, O 8): caja invisible.
+            outer = (1 if row == grid - 1 else 0) | (2 if col == grid - 1 else 0) | (4 if row == 0 else 0) | (8 if col == 0 else 0)
+            manifest["preset"]["cells"].append({"name": cell_name, "col": col, "row": row, "outer_sides": outer,
+                                                "on_path": (col, row) in path_set,
+                                                "is_start": (col, row) == cells[0], "is_end": (col, row) == cells[-1]})
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+
+    # Vista cenital sombreada (Norte arriba) y la de depuracion con curvas de nivel cada 2 m.
+    gx, gy = np.gradient(terrain, STEP_M)
+    light = np.clip((gx * 0.5 - gy * 0.35 + 1.0) / np.sqrt(gx * gx + gy * gy + 1.0) * 0.8, 0.0, 1.0)
+    rgb = np.array([0.85, 0.70, 0.45]) * (0.35 + 0.65 * light)[..., None]
+    water = smoothstep(WATER_M + 0.3, WATER_M - 0.3, terrain)[..., None]
+    rgb = rgb * (1 - 0.75 * water) + np.array([0.15, 0.4, 0.7]) * 0.75 * water
+    Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)[::-1]).save(out / "preview.png")
+    debug = rgb if shade is None else rgb * (1.0 - 0.35 * shade)[..., None]
+    contour = (np.floor(terrain / 2.0) != np.floor(np.roll(terrain, 1, 0) / 2.0)) \
+        | (np.floor(terrain / 2.0) != np.floor(np.roll(terrain, 1, 1) / 2.0))
+    debug = np.where(contour[..., None], debug * 0.85, debug)
+    for where, color in overlay:
+        if where is not None:
+            debug = np.where(where[..., None], np.array(color), debug)
+    Image.fromarray((np.clip(debug, 0, 1) * 255).astype(np.uint8)[::-1]).save(out / "preview_debug.png")
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Genera un mapa preparado (terreno continuo cortado en modulos).")
     parser.add_argument("--seed", type=int, default=20260924)
@@ -550,60 +610,11 @@ def main() -> None:
     if path_depth > WADE_DEPTH_M + 0.3:
         raise AssertionError(f"el camino queda {path_depth:.1f} m bajo el agua")
 
-    # Corte por celdas.
-    out = OUTPUT_ROOT / args.name
-    if out.exists():
-        shutil.rmtree(out)
-    (out / "Cells").mkdir(parents=True)
-    quantized = np.clip(np.rint(terrain * UNITS_PER_M) + HEIGHT_ZERO, 0, 65535).astype(np.uint16)
     mask = path_mask(rng, terrain, XX, YY, d_main, trails, half)
-    zeros = np.zeros((RES, RES), dtype=np.uint16)
-    manifest = {"size_uu": SIZE_M * UU_PER_M, "resolution": RES, "height_scale_uu": HEIGHT_SCALE_UU,
-                "height_zero": HEIGHT_ZERO, "modules": [], "preset": {"name": args.name, "seed": args.seed, "cells": []}}
-    path_set = set(cells)
-    for row in range(grid):
-        for col in range(grid):
-            name = f"M_{args.name}_r{row}c{col}"
-            block = quantized[row * (RES - 1):row * (RES - 1) + RES, col * (RES - 1):col * (RES - 1) + RES]
-            Image.fromarray(block).save(out / "Cells" / f"{name}.png")
-            Image.fromarray(mask[row * (RES - 1):row * (RES - 1) + RES, col * (RES - 1):col * (RES - 1) + RES]).save(
-                out / "Cells" / f"{name}_mask.png")
-            Image.fromarray(zeros).save(out / "Cells" / f"{name}_coast.png")
-            cx, cy = row * SIZE_M, col * SIZE_M
-            local_flats = [{"x_m": round(px - cx, 2), "y_m": round(py - cy, 2), "radius_m": round(r, 2),
-                            "height_m": round(float(terrain[index_of((px, py), half)]), 2), "sunken": False}
-                           for px, py, r in flat_areas if abs(px - cx) < half and abs(py - cy) < half]
-            manifest["modules"].append({
-                "name": name, "topology": "Cross", "folder": "Cells", "edges": ["crest"] * 4, "seed": args.seed,
-                "file": f"Cells/{name}.png", "mask_file": f"Cells/{name}_mask.png", "coast_file": f"Cells/{name}_coast.png",
-                "biome": "sand", "secondary_biome": "algae", "bridges": [], "monoliths": [], "flat_areas": local_flats,
-            })
-            # Lados que dan fuera del mapa (N 1, E 2, S 4, O 8): caja invisible.
-            outer = (1 if row == grid - 1 else 0) | (2 if col == grid - 1 else 0) | (4 if row == 0 else 0) | (8 if col == 0 else 0)
-            manifest["preset"]["cells"].append({"name": name, "col": col, "row": row, "outer_sides": outer,
-                                                "on_path": (col, row) in path_set,
-                                                "is_start": (col, row) == cells[0], "is_end": (col, row) == cells[-1]})
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-
-    # Vista cenital sombreada (Norte arriba).
-    gx, gy = np.gradient(terrain, STEP_M)
-    shade = np.clip((gx * 0.5 - gy * 0.35 + 1.0) / np.sqrt(gx * gx + gy * gy + 1.0) * 0.8, 0.0, 1.0)
-    sand = np.array([0.85, 0.70, 0.45])
-    rgb = sand * (0.35 + 0.65 * shade)[..., None]
-    water = smoothstep(WATER_M + 0.3, WATER_M - 0.3, terrain)[..., None]
-    rgb = rgb * (1 - 0.75 * water) + np.array([0.15, 0.4, 0.7]) * 0.75 * water
-    Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)[::-1]).save(out / "preview.png")
-    # La misma vista con el camino (rojo), los caminitos (naranja), la zona fuera de juego
-    # (oscurecida) y curvas de nivel cada 2 m.
-    d_trail = polyline_field(trails, terrain.shape, half)[0] if trails else np.full_like(terrain, np.inf)
-    debug = rgb * (1.0 - 0.35 * smoothstep(0.0, 40.0, inside))[..., None]
-    contour = (np.floor(terrain / 2.0) != np.floor(np.roll(terrain, 1, 0) / 2.0)) \
-        | (np.floor(terrain / 2.0) != np.floor(np.roll(terrain, 1, 1) / 2.0))
-    debug = np.where(contour[..., None], debug * 0.85, debug)
-    debug = np.where((d_trail < 2.0)[..., None], np.array([0.95, 0.55, 0.1]), debug)
-    debug = np.where((d_main < 3.0)[..., None], np.array([0.85, 0.15, 0.1]), debug)
-    Image.fromarray((np.clip(debug, 0, 1) * 255).astype(np.uint8)[::-1]).save(out / "preview_debug.png")
-
+    overlay = [(polyline_field(trails, terrain.shape, half)[0] < 2.0 if trails else None, (0.95, 0.55, 0.1)),
+               (d_main < 3.0, (0.85, 0.15, 0.1))]
+    out = write_preset(args.name, args.seed, grid, terrain, mask, cells, flat_areas,
+                       shade=smoothstep(0.0, 40.0, inside), overlay=overlay)
     print(f"{args.name}: camino de {len(cells)} celdas {cells}; {len(trails)} caminitos; {len(lakes)} lagos; "
           f"{len(flat_areas)} plazas; cota [{terrain.min():.1f}, {terrain.max():.1f}] m; {grid * grid} modulos en {out}")
 
