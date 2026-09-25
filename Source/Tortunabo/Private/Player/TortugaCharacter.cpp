@@ -12,6 +12,7 @@
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_ShellComponent.h"
+#include "Player/TN_CarryComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "World/TN_InteractableBase.h"
@@ -120,6 +121,7 @@ ATortugaCharacter::ATortugaCharacter()
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
 	ShellComponent = CreateDefaultSubobject<UTN_ShellComponent>(TEXT("ShellComponent"));
+	CarryComponent = CreateDefaultSubobject<UTN_CarryComponent>(TEXT("CarryComponent"));
 
 	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).
 	// Al estar en el árbol del mesh, recibe el network smoothing del CMC → sin lag.
@@ -190,6 +192,12 @@ void ATortugaCharacter::BeginPlay()
 		CMC->bEnablePhysicsInteraction = true;
 		CMC->PushForceFactor           = 1.0f;  // 2.0 tunneleaba · 0.5 no movía · 1.0 middle ground
 		CMC->TouchForceFactor          = 1.0f;
+
+		// Nado básico: más rápido que andar y más lento que esprintar. El agua la
+		// ponen los volúmenes (APhysicsVolume con bWaterVolume) del mapa.
+		CMC->GetNavAgentPropertiesRef().bCanSwim = true;
+		CMC->MaxSwimSpeed = SwimSpeed;
+		CMC->Buoyancy     = SwimBuoyancy;
 	}
 	if (CameraBoom)
 	{
@@ -494,6 +502,8 @@ void ATortugaCharacter::Tick(float DeltaTime)
 	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes/dive/jump)
 	TickCameraInterp(DeltaTime);   // cinematic camera zoom/FOV interpolation
 	TickHeadLook(DeltaTime);       // head tracks camera direction, replicated a todos los clientes
+	TickFallRules(DeltaTime);      // caída larga → caparazón (servidor)
+	TickShellVisual(DeltaTime);    // encoger/estirar extremidades al entrar/salir del caparazón
 }
 
 void ATortugaCharacter::TickLegAnimation(float DeltaTime)
@@ -645,6 +655,9 @@ void ATortugaCharacter::TickCameraInterp(float DeltaTime)
 			DesiredLiftZ = (MinFloor - DistToFloor);
 		}
 		CameraFloorLiftCurrent = FMath::FInterpTo(CameraFloorLiftCurrent, DesiredLiftZ, DeltaTime, 10.f);
+
+		// Temblor mientras la tortuga que llevamos forcejea (lo alimenta UTN_CarryComponent).
+		FollowCamera->SetRelativeRotation(FRotator(CameraAimPitchOffset, 0.f, 0.f) + CarryShake);
 
 		FVector RelLoc = CameraBoomRelativeOffset;
 		RelLoc.Z += CameraFloorLiftCurrent;
@@ -1039,6 +1052,7 @@ void ATortugaCharacter::OnJumped_Implementation()
 void ATortugaCharacter::Jump()
 {
 	if (bIsKnockedDown || bIsDead || IsInShell()) { return; }
+	if (CarryComponent && CarryComponent->IsBeingCarried()) { return; }
 
 	// Segundo press de salto en el aire → dive (igual que Fall Guys)
 	if (GetCharacterMovement()->IsFalling())
@@ -1081,6 +1095,13 @@ void ATortugaCharacter::ServerPerformAirDash_Implementation()
 
 void ATortugaCharacter::Move(const FInputActionValue& Value)
 {
+	// Llevada por otra tortuga: moverse es forcejear (2 s seguidos → se libera).
+	if (CarryComponent && CarryComponent->IsBeingCarried())
+	{
+		CarryComponent->SetStruggleInput(Value.Get<FVector2D>().Size() > 0.3f);
+		return;
+	}
+
 	// Movement is locked during the dive and recovery slide
 	if (bIsDiving) { return; }
 	// Movement is locked during knockdown — momentum from LaunchCharacter takes over
@@ -1110,6 +1131,10 @@ void ATortugaCharacter::Move(const FInputActionValue& Value)
 
 void ATortugaCharacter::OnMoveReleased()
 {
+	if (CarryComponent)
+	{
+		CarryComponent->SetStruggleInput(false);
+	}
 	LastMovementInput = FVector2D::ZeroVector;
 	RefreshSprintRequest();
 }
@@ -1133,6 +1158,13 @@ void ATortugaCharacter::TryInteract()
 {
 	if (bIsKnockedDown || IsInShell()) { return; }
 
+	// Llevando a alguien: interactuar = lanzarlo hacia donde mira la cámara.
+	if (CarryComponent && CarryComponent->IsCarrying())
+	{
+		CarryComponent->RequestThrow();
+		return;
+	}
+
 	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
 
 	if (bDebug)
@@ -1147,9 +1179,14 @@ void ATortugaCharacter::TryInteract()
 		UpdateFocusedInteractable();
 	}
 
-	// Si tras el scan sigue sin haber interactuable → usar ítem equipado (lanzar bola, etc.)
+	// Si tras el scan sigue sin haber interactuable → coger a una tortuga en caparazón
+	// o aturdida si hay una delante; si no, usar ítem equipado (lanzar bola, etc.)
 	if (!FocusedInteractable.IsValid())
 	{
+		if (CarryComponent && CarryComponent->TryGrabNearest())
+		{
+			return;
+		}
 
 		if (bDebug)
 		{
@@ -1185,6 +1222,8 @@ bool ATortugaCharacter::IsInShell() const
 void ATortugaCharacter::ToggleShell()
 {
 	if (bIsKnockedDown || bIsDead) { return; }
+	// Llevando o llevada: el caparazón lo gobierna el sistema de carga.
+	if (CarryComponent && (CarryComponent->IsCarrying() || CarryComponent->IsBeingCarried())) { return; }
 
 	if (ShellComponent)
 	{
@@ -1224,6 +1263,12 @@ void ATortugaCharacter::StopSprint()
 
 void ATortugaCharacter::DropEquippedItem()
 {
+	// Llevando a alguien: soltar = dejarlo delante sin lanzarlo.
+	if (CarryComponent && CarryComponent->IsCarrying())
+	{
+		CarryComponent->RequestDrop();
+		return;
+	}
 	ServerDropEquippedItem();
 }
 
@@ -1269,6 +1314,113 @@ void ATortugaCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 	bCanAirDash = true;
+
+	// Caída larga fuera de géiser/tobogán: la tortuga se rompe.
+	const float Drop = bTrackingFall ? FallApexZ - GetActorLocation().Z : 0.f;
+	const bool bImmune = bFallImmune;
+	bTrackingFall = false;
+	bFallImmune = false;
+	bAutoShelledThisFall = false;
+	if (HasAuthority() && !bImmune && !bIsDead && Drop > FatalFallHeight)
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Fall] %s cayó %.0f cm → muere"), *GetName(), Drop);
+		RequestKill(this);
+		return;
+	}
+
+	// Lanzada por otra tortuga: rebote vertical y se estira en el aire.
+	if (CarryComponent)
+	{
+		CarryComponent->NotifyLanded();
+	}
+}
+
+void ATortugaCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+
+	const UCharacterMovementComponent* CMC = GetCharacterMovement();
+	if (!CMC)
+	{
+		return;
+	}
+	switch (CMC->MovementMode)
+	{
+	case MOVE_Falling:
+		bTrackingFall = true;
+		bAutoShelledThisFall = false;
+		FallApexZ = GetActorLocation().Z;
+		break;
+	case MOVE_Swimming:
+		// El agua amortigua cualquier caída y termina los vuelos de lanzamiento.
+		bTrackingFall = false;
+		bFallImmune = false;
+		if (CarryComponent)
+		{
+			CarryComponent->NotifyEnteredWater();
+		}
+		break;
+	case MOVE_None:
+		bTrackingFall = false;
+		break;
+	default:
+		break;
+	}
+}
+
+void ATortugaCharacter::TickFallRules(float /*DeltaTime*/)
+{
+	if (!bTrackingFall)
+	{
+		return;
+	}
+	const float Z = GetActorLocation().Z;
+	FallApexZ = FMath::Max(FallApexZ, Z);
+
+	if (!HasAuthority() || bFallImmune || bAutoShelledThisFall || bIsDead || bIsKnockedDown || !ShellComponent)
+	{
+		return;
+	}
+	if (CarryComponent && (CarryComponent->IsCarrying() || CarryComponent->IsBeingCarried()))
+	{
+		return;
+	}
+	if (FallApexZ - Z > AutoShellFallHeight)
+	{
+		bAutoShelledThisFall = true;
+		if (!IsInShell())
+		{
+			ShellComponent->ForceEnterShell();
+		}
+	}
+}
+
+void ATortugaCharacter::TickShellVisual(float DeltaTime)
+{
+	// Cosmético y local: cada máquina encoge cabeza, patas, brazos y cola a partir
+	// del estado replicado del caparazón. Al salir se estiran más despacio, que es
+	// lo que se ve durante el rebote tras un lanzamiento.
+	const bool bIn = IsInShell() && !bIsDead;
+	const float Target = bIn ? 1.f : 0.f;
+	const float Seconds = bIn ? ShellRetractSeconds : ShellExtendSeconds;
+	ShellVisualAlpha = FMath::FInterpConstantTo(ShellVisualAlpha, Target, DeltaTime, 1.f / FMath::Max(0.01f, Seconds));
+
+	if (ShellVisualAlpha <= KINDA_SMALL_NUMBER && !bShellVisualApplied)
+	{
+		return;
+	}
+	bShellVisualApplied = ShellVisualAlpha > KINDA_SMALL_NUMBER;
+
+	const float Ease = ShellVisualAlpha * ShellVisualAlpha * (3.f - 2.f * ShellVisualAlpha);
+	const float LimbScale = FMath::Lerp(1.f, 0.05f, Ease);
+	const FVector Limb(bShellVisualApplied ? LimbScale : 1.f);
+	SetAnimBoneScale(Pata1Bone, Limb);
+	SetAnimBoneScale(Pata2Bone, Limb);
+	SetAnimBoneScale(Brazo1Bone, Limb);
+	SetAnimBoneScale(Brazo2Bone, Limb);
+	SetAnimBoneScale(ColaBone, Limb);
+	const float HeadBase = bBigHead ? BigHeadScale : 1.f;
+	SetAnimBoneScale(CabezaBone, FVector(HeadBase * (bShellVisualApplied ? LimbScale : 1.f)));
 }
 
 // ── Replication ────────────────────────────────────────────────────────────────

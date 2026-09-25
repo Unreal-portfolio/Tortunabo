@@ -56,7 +56,7 @@ void UTN_ShellComponent::ServerToggleShell_Implementation()
 
 	if (bIsInShell)
 	{
-		if (!TNShellLogic::CanExitShell(Now - ShellEnteredServerTime, MinTimeInShellSeconds))
+		if (bExitLocked || !TNShellLogic::CanExitShell(Now - ShellEnteredServerTime, MinTimeInShellSeconds))
 		{
 			return;
 		}
@@ -86,7 +86,12 @@ void UTN_ShellComponent::ServerToggleShell_Implementation()
 
 void UTN_ShellComponent::ForceExitShell()
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !bIsInShell)
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+	bExitLocked = false;
+	if (!bIsInShell)
 	{
 		return;
 	}
@@ -94,6 +99,19 @@ void UTN_ShellComponent::ForceExitShell()
 	// Sin comprobar permanencia mínima: esto lo llaman muerte y derribo, donde
 	// dejar el caparazón puesto significaría dejar también el speed cap pegado.
 	SetShellState(false);
+}
+
+void UTN_ShellComponent::ForceEnterShell()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || bIsInShell)
+	{
+		return;
+	}
+	if (GetWorld())
+	{
+		ShellEnteredServerTime = GetWorld()->GetTimeSeconds();
+	}
+	SetShellState(true);
 }
 
 void UTN_ShellComponent::SetShellState(bool bInShell)
