@@ -8,12 +8,12 @@
  "start_uu": [
   -2000.0,
   20824.456399849387,
-  645.7890268767603
+  646.0222939800623
  ],
  "end_uu": [
   31500.0,
   14695.73270408361,
-  -340.8024300058224
+  -339.8624943505581
  ],
  "cells": [
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 15880,
-   "triangles": 31266,
+   "vertices": 15895,
+   "triangles": 31292,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 15303,
-   "triangles": 30120,
+   "vertices": 15323,
+   "triangles": 30156,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 20945,
-   "triangles": 41268,
+   "vertices": 22250,
+   "triangles": 43784,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 26380,
-   "triangles": 52062,
+   "vertices": 29037,
+   "triangles": 57304,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 20978,
-   "triangles": 41320,
+   "vertices": 22684,
+   "triangles": 44664,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 18268,
-   "triangles": 35984,
+   "vertices": 20051,
+   "triangles": 39510,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 25633,
-   "triangles": 50656,
+   "vertices": 28593,
+   "triangles": 56502,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 26914,
-   "triangles": 53134,
+   "vertices": 28932,
+   "triangles": 57110,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 22676,
-   "triangles": 44726,
+   "vertices": 25995,
+   "triangles": 51306,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 16092,
-   "triangles": 31678,
+   "vertices": 17279,
+   "triangles": 34024,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 17878,
-   "triangles": 35222,
+   "vertices": 18247,
+   "triangles": 35950,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 17367,
-   "triangles": 34148,
+   "vertices": 17813,
+   "triangles": 35026,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 19772,
-   "triangles": 38986,
+   "vertices": 20098,
+   "triangles": 39630,
    "instances": 0
   },
   {
@@ -247,9 +247,9 @@
   "backtrack_chance": 0.3,
   "hill_tunnels": 2,
   "width_m": [
-   2.5,
-   4.0,
-   8.0
+   3.0,
+   5.0,
+   9.0
   ],
   "river_half_width_m": [
    5.0,
@@ -298,7 +298,10 @@
    2.6
   ],
   "vista_pond_m": 2.6,
-  "castles": 3
+  "castles": 0,
+  "arches": 3,
+  "extra_hill_tunnels": 1,
+  "crest_relief_m": 3.0
  },
  "description": "Camino primero: un camino, lazos que vuelven, puentes naturales y tuneles, rio con islas y final abierto al mar.",
  "recorrible": true

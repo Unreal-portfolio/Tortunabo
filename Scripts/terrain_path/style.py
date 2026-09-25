@@ -21,7 +21,7 @@ class PathStyle:
     backtrack_chance: float = 0.3            # el lazo sale hacia atras antes de avanzar
     hill_tunnels: int = 2                    # tramos del principal que atraviesan un cerro
     # Anchura (semiancho, m) y cota
-    width_m: tuple[float, float, float] = (2.5, 4.0, 8.0)       # minimo, moda, maximo
+    width_m: tuple[float, float, float] = (3.0, 5.0, 9.0)       # minimo, moda, maximo
     river_half_width_m: tuple[float, float] = (5.0, 9.0)
     max_grade: float = 0.2
     steep_grade: float = 0.3
@@ -41,8 +41,12 @@ class PathStyle:
     vista_dune_wave_m: tuple[float, float] = (15.0, 20.0)
     vista_dune_amp_m: tuple[float, float] = (0.8, 2.6)
     vista_pond_m: float = 2.6
-    # Castillos de arena
-    castles: int = 3
+    # Castillos de arena (2026-09-26: fuera; los ponen los disenadores)
+    castles: int = 0
+    # Anadidos 2026-09-26 (generador de azar aparte: el grafo del mapa no cambia)
+    arches: int = 3                          # puentes naturales: arco de roca sobre el camino
+    extra_hill_tunnels: int = 1              # tuneles de cerro ademas de los del plan
+    crest_relief_m: float = 3.0              # lomas sobre las cimas (no mesetas)
 
 
 C01_STYLE = PathStyle()

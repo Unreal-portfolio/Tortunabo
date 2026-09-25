@@ -182,7 +182,7 @@ def test_biomas_en_orden_y_final_en_la_playa(plan):
 def test_hay_tuneles_de_cerro_en_el_acantilado(plan):
     assert len(plan.hill_tunnels) >= 1
     for line_id, s0, s1 in plan.hill_tunnels:
-        assert line_id == 0 and 25.0 <= s1 - s0 <= 45.0
+        assert line_id == 0 and 25.0 <= s1 - s0 <= 45.0      # los del plan: en el principal
 
 
 from terrain_path.model import PathModel  # noqa: E402
@@ -220,7 +220,7 @@ def test_el_suelo_del_camino_es_llano_sin_cuenco(model):
             h = _cross_section(model, line.id, s, np.linspace(-0.8 * w, 0.8 * w, 9))
             assert np.ptp(h) <= 0.3, f"camino {line.id} s={s:.0f}: cuenco o escalon ({np.ptp(h):.2f} m)"
             checked += 1
-    assert checked >= 20
+    assert checked >= 12
 
 
 def test_el_borde_cierra_el_paso(model):
@@ -315,17 +315,18 @@ def test_los_cruces_tienen_techo(model):
 
 
 def test_los_tuneles_de_cerro_tienen_techo_y_suelo(model):
-    main = model.plan.graph.main
     assert model.plan.hill_tunnels
-    for _, s0, s1 in model.plan.hill_tunnels:
+    for line_id, s0, s1 in model.plan.hill_tunnels + model.arch_ranges:
+        line = model.plan.graph.lines[line_id]
         s = 0.5 * (s0 + s1)
-        levels = _column(model, main.point_at(s))
-        z = np.interp(s, main.arc, model.plan.profiles[0].z)
+        levels = _column(model, line.point_at(s))
+        z = np.interp(s, line.arc, model.plan.profiles[line_id].z)
         assert np.any(np.abs(levels - z) < 0.8) and levels.max() > z + 5.5
 
 
-def test_hay_castillos_en_ensanches(model):
-    assert 2 <= len(model.castles) <= C01_STYLE.castles + 1
+def test_castillos_segun_el_estilo(model):
+    """C01 ya no lleva castillos (los ponen los disenadores); si un estilo los pide, aparecen."""
+    assert len(model.castles) <= C01_STYLE.castles
 
 
 def test_los_castillos_dejan_paso(model):

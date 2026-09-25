@@ -40,6 +40,10 @@ class PathModel:
         self.n_tunnel = Fbm2D(rng, 9.0, 2)
         self.dune_angle = float(rng.uniform(0.0, np.pi))
         self.dune_angle_2 = self.dune_angle + float(rng.uniform(0.6, 1.1))
+        # Anadidos sin tocar el mapa: su azar sale de otro generador (misma semilla, mismo grafo).
+        extra = np.random.default_rng(seed + 17)
+        self.n_crest = Fbm2D(extra, 40.0, 3)
+        self.arch_ranges = self._plan_arches(extra)
         self._build_samples()
         self.extra_rng = rng                       # rio y castillos siguen la misma secuencia
         self._plan_extras()
@@ -103,15 +107,62 @@ class PathModel:
                     continue
                 sel = np.arange(max(run[0] - 5, 0), min(run[-1] + 5, len(s) - 1) + 1)
                 t = (s[sel] - s[run[0]]) / max(s[run[-1]] - s[run[0]], 1e-9)
+                s_mid = 0.5 * (s[run[0]] + s[run[-1]])
+                arch = any(line_id == line.id and a <= s_mid <= b for line_id, a, b in self.arch_ranges)
                 self.tunnels.append({"pts": pts[sel], "floor": np.interp(s[sel], line.arc, prof.z),
                                      "half": np.clip(np.interp(s[sel], line.arc, prof.half_width), 3.0, 4.5),
-                                     "t": t, "covered": covered[sel].astype(float)})
+                                     "t": t, "covered": covered[sel].astype(float),
+                                     "reach": np.full(len(sel), 4.0 if arch else 10.0)})
         if self.tunnels:
             self.tunnel_tree = cKDTree(np.vstack([tu["pts"] for tu in self.tunnels]))
             self.tunnel_cat = {k: np.concatenate([tu[k] for tu in self.tunnels])
-                               for k in ("floor", "half", "t", "covered")}
+                               for k in ("floor", "half", "t", "covered", "reach")}
         else:
             self.tunnel_tree = None
+
+    def _plan_arches(self, rng: np.random.Generator) -> list[tuple[int, float, float]]:
+        """Puentes naturales (arco de roca de 8-12 m sobre el camino, que pasa por debajo) y
+        tuneles de cerro extra. Se marcan como tramos cubiertos del perfil, lejos de uniones,
+        cruces, tuneles, el rio, la playa y la salida. Devuelve (linea, s0, s1) de los arcos."""
+        from .profile import _mark
+        plan, style = self.plan, self.style
+        joins = [c.point for c in plan.crossings]
+        joins += [line.points[k] for line in plan.graph.loops() for k in (0, -1)]
+        taken: list[tuple[int, float, float]] = []
+        arches: list[tuple[int, float, float]] = []
+        for kind, count, (lo, hi) in (("arch", style.arches, (10.0, 14.0)),
+                                      ("hill", style.extra_hill_tunnels, (20.0, 32.0))):
+            placed = 0
+            for _ in range(400):
+                if placed >= count:
+                    break
+                # Mitad en el camino principal (el que siempre se recorre); el resto, en los lazos.
+                on_main = rng.random() < 0.5
+                line = plan.graph.lines[0] if on_main else plan.graph.lines[int(rng.integers(1, len(plan.graph.lines)))]
+                prof = plan.profiles[line.id]
+                length = float(rng.uniform(lo, hi))
+                if line.length < length + 60.0:
+                    continue
+                s0 = float(rng.uniform(30.0, line.length - length - 30.0))
+                s1 = s0 + length
+                k0, k1 = int(np.searchsorted(line.arc, s0 - 20.0)), int(np.searchsorted(line.arc, s1 + 20.0))
+                if prof.tunnel[k0:k1 + 1].any() or np.isin(prof.biome[k0:k1 + 1], (1, 3)).any():
+                    continue
+                if kind == "arch" and prof.half_width[k0:k1 + 1].max() > 7.5:
+                    continue                         # en un ensanche grande no hay arco que cierre
+                mid = line.point_at(0.5 * (s0 + s1))
+                if any(np.hypot(*(mid - q)) < 18.0 + 0.5 * length for q in joins):
+                    continue
+                if any(lid == line.id and not (s1 + 30.0 < a or s0 - 30.0 > b) for lid, a, b in taken):
+                    continue
+                plan.profiles[line.id] = _mark(prof, line, s0, s1)
+                taken.append((line.id, s0, s1))
+                if kind == "arch":
+                    arches.append((line.id, s0, s1))
+                else:
+                    plan.hill_tunnels.append((line.id, s0, s1))
+                placed += 1
+        return arches
 
     def samples(self) -> dict[str, np.ndarray]:
         return self.S
@@ -179,6 +230,10 @@ class PathModel:
         i2 = np.where(has2, ik[rows, second], i.ravel()).reshape(shape)
         gap = np.where(has2, cover2[rows, second] - cover[rows, best], np.inf).reshape(shape)
         z_soft, bw = self._soft_levels(X, Y)
+        # Cimas con lomas y ondas de duna (no mesetas): solo suben la cresta.
+        relief = self.style.crest_relief_m * smooth(0.25, 0.9, self.n_crest.unit(X, Y)) \
+            + 0.8 * field.dune_field(self, X, Y, self.dune_angle, 17.0)
+        z_soft = z_soft + relief
         e = d - w
         e = self._blunt_wedges(X, Y, e, i)
         n_rim, n_top, n_floor = self.n_rim.unit(X, Y), self.n_top(X, Y), self.n_floor(X, Y)
@@ -274,21 +329,26 @@ class PathModel:
         d, k = self.tunnel_tree.query(np.stack([np.ravel(X), np.ravel(Y)], axis=1))
         c = self.tunnel_cat
         return (d.reshape(X.shape), c["t"][k].reshape(X.shape), c["floor"][k].reshape(X.shape),
-                c["half"][k].reshape(X.shape), c["covered"][k].reshape(X.shape))
+                c["half"][k].reshape(X.shape), c["covered"][k].reshape(X.shape), c["reach"][k].reshape(X.shape))
 
     def _tunnel_zone(self, X, Y):
         if self.tunnel_tree is None:
             return np.zeros(X.shape)
-        u, _, _, half, _ = self._tunnel_query(X, Y)
+        u, _, _, half, _, _ = self._tunnel_query(X, Y)
         return 1.0 - smooth(half + 1.5, half + 5.0, u)
 
     def _stamps(self, X, Y, height, e, i, zf, w):
         """Cerro sobre cada tramo cubierto: roca >= 8 m sobre el suelo del tunel (el camino de
         arriba de un cruce ya queda 8,5 m por encima); solo en el tramo cubierto, no en las bocas."""
         if self.tunnel_tree is not None:
-            u, t, floor, half, covered = self._tunnel_query(X, Y)
-            # Nunca sobre un camino abierto (el tablero de un cruce, la union de un lazo).
-            hill = (1.0 - smooth(half + 2.0, half + 10.0, u)) * covered                 * smooth(-0.1, 0.05, t) * smooth(-1.1, -0.95, -t) * smooth(0.0, 2.0, e)
+            u, t, floor, half, covered, reach = self._tunnel_query(X, Y)
+            # Nunca sobre un camino abierto (el tablero de un cruce, la union de un lazo). Los
+            # puentes naturales (reach corto) son un arco estrecho, no un cerro.
+            # Un puente es corto: su centro sigue a menos de un semiancho del camino abierto, asi
+            # que se levanta aunque "este en el camino" (el paso queda en el hueco 3D de debajo).
+            over_path = np.maximum(smooth(0.0, 2.0, e), (reach < 5.0).astype(float))
+            hill = (1.0 - smooth(half + 2.0, half + reach, u)) * covered \
+                * smooth(-0.1, 0.05, t) * smooth(-1.1, -0.95, -t) * over_path
             height = np.maximum(height, (floor + 8.0 + 1.5 * self.n_top.unit(X, Y)) * hill + height * (1.0 - hill))
         from .castles import castle_stamp
         for castle in self.castles:
@@ -297,7 +357,7 @@ class PathModel:
 
     def _carve(self, X, Y, Z3):
         """> 0 dentro del hueco (misma seccion que terrain_vol.density.MapModel._tunnel_carve)."""
-        u, t, floor, half, _ = self._tunnel_query(X, Y)
+        u, t, floor, half, _, _ = self._tunnel_query(X, Y)
         half = half * (1.0 + 0.22 * self.n_tunnel(X, Y))
         height = 5.0 * (1.0 + 0.18 * self.n_tunnel(Y, X))
         v = Z3 - floor[..., None]
