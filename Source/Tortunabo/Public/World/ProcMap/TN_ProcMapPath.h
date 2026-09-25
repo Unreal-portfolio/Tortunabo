@@ -337,6 +337,16 @@ namespace TNProcMap
 			}
 		};
 
+		/**
+		 * Anchura del suelo a cota de cima en una muestra a distancia D del centro de una torre:
+		 * amplio en el centro (el géiser aterriza ahí, lejos del talud) y sin salirse del pilar,
+		 * para no enterrar el pie de la subida (géiser) ni el arranque del tobogán.
+		 */
+		inline double TowerTopWidth(const FGenParams& P, double D)
+		{
+			return FMath::Clamp(2.0 * (P.TowerRadius + 150.0 - D), 300.0, P.TowerRadius * 1.6);
+		}
+
 		/** Tramos por anchura, de desfiladero a explanada. */
 		enum class EWidthKind : uint8 { Narrow, Tight, Normal, Wide, Open };
 		constexpr int32 NumWidthKinds = 5;
@@ -772,8 +782,7 @@ namespace TNProcMap
 					{
 						L.Main[i].Flags |= PathFlags::UnderTower;
 						Z[i] = C.TopZ;
-						// Suelo amplio en la cima: el géiser aterriza en su centro, lejos del talud.
-						L.Main[i].Width = FMath::Max(L.Main[i].Width, P.TowerRadius * 1.6);
+						L.Main[i].Width = TowerTopWidth(P, D);
 					}
 					else if (D >= P.TowerRadius + 700.0 && GeyserIdx == INDEX_NONE)
 					{
@@ -795,7 +804,7 @@ namespace TNProcMap
 					{
 						L.Main[i].Flags |= PathFlags::TowerTop;
 						Z[i] = C.TopZ;
-						L.Main[i].Width = FMath::Max(L.Main[i].Width, P.TowerRadius * 1.6);
+						L.Main[i].Width = TowerTopWidth(P, D);
 						continue;
 					}
 					if (SlideStartS < 0.0) { SlideStartS = L.Main[i - 1].S; }
