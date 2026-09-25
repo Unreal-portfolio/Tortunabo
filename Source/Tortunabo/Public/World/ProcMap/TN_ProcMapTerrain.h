@@ -49,6 +49,8 @@ namespace TNProcMap
 		double BankAngle = 66.0;
 		/** Relieve (montañas) lejos de los caminos (cm). */
 		double MountainAmp = 3000.0;
+		/** Paredes de cañón: cuánto sube el paisaje en los primeros ~35 m desde el cauce (cm). */
+		double WallAmp = 1500.0;
 	};
 
 	inline FBiomeTerrain GetBiomeTerrain(ETNProcBiome B)
@@ -57,29 +59,29 @@ namespace TNProcMap
 		switch (B)
 		{
 			case ETNProcBiome::Jungle:
-				T.UndAmp = 350; T.RiseMax = 900;  T.RiseDist = 3500; T.Shoulder = 250; T.Rough = 160; T.Ridge = 0.0; T.CoastWidth = 2500;
-				T.BankMin = 550; T.BankMax = 1100; T.BankAngle = 66; T.MountainAmp = 8500; break;
+				T.UndAmp = 350; T.RiseMax = 900;  T.RiseDist = 2200; T.Shoulder = 250; T.Rough = 160; T.Ridge = 0.0; T.CoastWidth = 2500;
+				T.BankMin = 550; T.BankMax = 1100; T.BankAngle = 66; T.MountainAmp = 14000; T.WallAmp = 2500; break;
 			case ETNProcBiome::Beach:
-				T.UndAmp = 110; T.RiseMax = 300;  T.RiseDist = 5000; T.Shoulder = 300; T.Rough = 190; T.Ridge = 0.8; T.CoastWidth = 6500;
-				T.BankMin = 480; T.BankMax = 850;  T.BankAngle = 62; T.MountainAmp = 2500; break;
+				T.UndAmp = 110; T.RiseMax = 300;  T.RiseDist = 3500; T.Shoulder = 300; T.Rough = 190; T.Ridge = 0.8; T.CoastWidth = 6500;
+				T.BankMin = 480; T.BankMax = 850;  T.BankAngle = 62; T.MountainAmp = 5000; T.WallAmp = 1200; break;
 			case ETNProcBiome::Desert:
-				T.UndAmp = 300; T.RiseMax = 800;  T.RiseDist = 4200; T.Shoulder = 200; T.Rough = 380; T.Ridge = 1.0; T.CoastWidth = 3500;
-				T.BankMin = 650; T.BankMax = 1400; T.BankAngle = 72; T.MountainAmp = 6500; break;
+				T.UndAmp = 300; T.RiseMax = 800;  T.RiseDist = 2200; T.Shoulder = 200; T.Rough = 380; T.Ridge = 1.0; T.CoastWidth = 3500;
+				T.BankMin = 650; T.BankMax = 1400; T.BankAngle = 72; T.MountainAmp = 12000; T.WallAmp = 3200; break;
 			case ETNProcBiome::Volcanic:
-				T.UndAmp = 450; T.RiseMax = 1200; T.RiseDist = 2600; T.Shoulder = 200; T.Rough = 300; T.Ridge = 0.6; T.CoastWidth = 1200;
-				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 70; T.MountainAmp = 9500; break;
+				T.UndAmp = 450; T.RiseMax = 1200; T.RiseDist = 2000; T.Shoulder = 200; T.Rough = 300; T.Ridge = 0.6; T.CoastWidth = 1200;
+				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 70; T.MountainAmp = 16000; T.WallAmp = 3000; break;
 			case ETNProcBiome::Water:
 				T.UndAmp = 60;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -1000; T.bWet = true;
-				T.BankMin = 550; T.BankMax = 950;  T.BankAngle = 66; T.MountainAmp = 7000; break;
+				T.BankMin = 550; T.BankMax = 950;  T.BankAngle = 66; T.MountainAmp = 11000; T.WallAmp = 1800; break;
 			case ETNProcBiome::Rocky:
-				T.UndAmp = 400; T.RiseMax = 1500; T.RiseDist = 1900; T.Shoulder = 150; T.Rough = 360; T.Ridge = 1.0; T.CoastWidth = 800;
-				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 75; T.MountainAmp = 15000; break;
+				T.UndAmp = 400; T.RiseMax = 1500; T.RiseDist = 1500; T.Shoulder = 150; T.Rough = 360; T.Ridge = 1.0; T.CoastWidth = 800;
+				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 75; T.MountainAmp = 24000; T.WallAmp = 4000; break;
 			case ETNProcBiome::Mangrove:
 				T.UndAmp = 30;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 25;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -350; T.bWet = true;
-				T.BankMin = 500; T.BankMax = 850;  T.BankAngle = 64; T.MountainAmp = 3500; break;
+				T.BankMin = 500; T.BankMax = 850;  T.BankAngle = 64; T.MountainAmp = 5000; T.WallAmp = 1500; break;
 			case ETNProcBiome::Human:
-				T.UndAmp = 150; T.RiseMax = 400;  T.RiseDist = 3000; T.Shoulder = 250; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 3000;
-				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 70; T.MountainAmp = 2500; break;
+				T.UndAmp = 150; T.RiseMax = 400;  T.RiseDist = 2500; T.Shoulder = 250; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 3000;
+				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 70; T.MountainAmp = 5000; T.WallAmp = 1200; break;
 			default: break;
 		}
 		return T;
@@ -600,6 +602,7 @@ namespace TNProcMap
 			L->BiomeWeightsAt(P + Warp * 2600.0, W);
 			Out = FBiomeTerrain();
 			Out.UndAmp = Out.RiseMax = Out.RiseDist = Out.Shoulder = Out.Rough = Out.Ridge = Out.CoastWidth = Out.BedZ = 0.0;
+			Out.BankMin = Out.BankMax = Out.BankAngle = Out.MountainAmp = Out.WallAmp = 0.0;
 			double WetSum = 0.0, Total = 0.0, BedAcc = 0.0;
 			for (int32 b = 0; b < NumBiomes; ++b)
 			{
@@ -614,11 +617,17 @@ namespace TNProcMap
 				Out.Rough += Wb * T.Rough;
 				Out.Ridge += Wb * T.Ridge;
 				Out.CoastWidth += Wb * T.CoastWidth;
+				Out.BankMin += Wb * T.BankMin;
+				Out.BankMax += Wb * T.BankMax;
+				Out.BankAngle += Wb * T.BankAngle;
+				Out.MountainAmp += Wb * T.MountainAmp;
+				Out.WallAmp += Wb * T.WallAmp;
 				if (T.bWet) { WetSum += Wb; BedAcc += Wb * T.BedZ; }
 			}
 			if (Total <= 0.0) { Out = Biomes[0]; OutWet = 0.0; return; }
 			Out.UndAmp /= Total; Out.RiseMax /= Total; Out.RiseDist /= Total; Out.Shoulder /= Total;
 			Out.Rough /= Total; Out.Ridge /= Total; Out.CoastWidth /= Total;
+			Out.BankMin /= Total; Out.BankMax /= Total; Out.BankAngle /= Total; Out.MountainAmp /= Total; Out.WallAmp /= Total;
 			Out.BedZ = WetSum > 0.0 ? BedAcc / WetSum : -300.0;
 			OutWet = WetSum / Total;
 		}
@@ -642,14 +651,17 @@ namespace TNProcMap
 			// ── Paisaje exterior (lo que no es cauce) ───────────────────────
 			// País de cañones: el paisaje queda por encima del borde de los taludes (sube desde ellos en vez de
 			// dejar mesetas planas) y las montañas arrancan a pocos metros de los cauces.
-			const double MountMask = SmoothStep(1200.0, 6000.0, CorridorDistance(P));
+			const double MountMask = SmoothStep(700.0, 4500.0, CorridorDistance(P));
 			const double Uplift = Bt.BankMax * (0.7 + 0.5 * (0.5 + 0.5 * NLarge));
 			double VolcanoInf = 0.0;
 			const double Volcano = VolcanoHeight(P, VolcanoInf);
 			// Los módulos por los que no pasa el camino son macizos montañosos (cima en su centro, crestas).
 			const double Shape = MountainShape(P);
 			const double Massif = FMath::Pow(Elev, 1.4) * (4500.0 + 9000.0 * Shape + 3000.0 * NLarge);
-			double Land = Level + Uplift + Bt.UndAmp * NLarge + Bt.Rough * Detail + Massif
+			// Paredes de cañón: el paisaje sube con fuerza en los primeros ~35 m desde el cauce (unas
+			// zonas son valles abiertos y otras gargantas, según un ruido lento).
+			const double Walls = Bt.WallAmp * SmoothStep(300.0, 3500.0, CorridorDistance(P)) * (0.35 + 0.9 * (0.5 + 0.5 * NLarge));
+			double Land = Level + Uplift + Bt.UndAmp * NLarge + Bt.Rough * Detail + Massif + Walls
 				+ Bt.MountainAmp * Shape * MountMask;
 			// Dentro del cono manda el volcán (así el lago de lava cuadra con el cráter).
 			Land = LerpD(Land + Volcano, Level + Volcano, VolcanoInf);
