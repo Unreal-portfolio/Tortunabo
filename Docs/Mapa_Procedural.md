@@ -104,6 +104,10 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Biomas por regiones** de varios módulos contiguos, al azar y con transición
   natural: selva, playa, desierto, volcánico, agua (isletas), acantilados rocosos,
   manglar y zona humana. El último módulo es siempre playa con mar abierto.
+- **Agua en pozas**: en lagunas y manglar el agua no es un lago abierto sino pozas de
+  25-60 m alrededor de cada tramo, con acantilado al borde; entre tramos alejados del
+  recorrido (más de 90 m) y junto a la costa queda tierra alta con montañas, así que no se
+  puede atajar nadando de un tramo a otro ni hasta la meta.
 - **Borde** del mapa con muros altos irregulares que llevan el contenido del bioma.
 - **Río** opcional (`bRiver`).
 

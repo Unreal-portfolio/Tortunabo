@@ -70,13 +70,13 @@ namespace TNProcMap
 				T.BankMin = 750; T.BankMax = 1500; T.BankAngle = 70; T.MountainAmp = 9500; break;
 			case ETNProcBiome::Water:
 				T.UndAmp = 60;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -1000; T.bWet = true;
-				T.BankMin = 0;   T.BankMax = 0;    T.BankAngle = 60; T.MountainAmp = 0; break;
+				T.BankMin = 550; T.BankMax = 950;  T.BankAngle = 66; T.MountainAmp = 7000; break;
 			case ETNProcBiome::Rocky:
 				T.UndAmp = 400; T.RiseMax = 1500; T.RiseDist = 1900; T.Shoulder = 150; T.Rough = 360; T.Ridge = 1.0; T.CoastWidth = 800;
 				T.BankMin = 900; T.BankMax = 1800; T.BankAngle = 75; T.MountainAmp = 15000; break;
 			case ETNProcBiome::Mangrove:
 				T.UndAmp = 30;  T.RiseMax = 0;    T.RiseDist = 3000; T.Shoulder = 200; T.Rough = 25;  T.Ridge = 0.0; T.CoastWidth = 4000; T.BedZ = -350; T.bWet = true;
-				T.BankMin = 0;   T.BankMax = 0;    T.BankAngle = 60; T.MountainAmp = 0; break;
+				T.BankMin = 500; T.BankMax = 850;  T.BankAngle = 64; T.MountainAmp = 3500; break;
 			case ETNProcBiome::Human:
 				T.UndAmp = 150; T.RiseMax = 400;  T.RiseDist = 3000; T.Shoulder = 250; T.Rough = 60;  T.Ridge = 0.0; T.CoastWidth = 3000;
 				T.BankMin = 480; T.BankMax = 750;  T.BankAngle = 70; T.MountainAmp = 2500; break;
@@ -133,6 +133,7 @@ namespace TNProcMap
 			BuildSamples();
 			StampPathField();
 			BuildCorridorDistance();
+			BuildDivides();
 			BuildInfluences();
 			Volcanoes.Reset();
 			for (int32 f = 0; f < L->Features.Num(); ++f)
@@ -144,19 +145,10 @@ namespace TNProcMap
 		}
 
 		/** Distancia aproximada (cm) de un punto al borde del cauce más cercano (campo grueso). */
-		double CorridorDistance(const FVector2D& P) const
-		{
-			if (CorrW < 2 || CorrH < 2) { return 1e9; }
-			const double Fx = FMath::Clamp((P.X - CorrOrigin.X) / CorrCell, 0.0, static_cast<double>(CorrW - 1) - 1e-6);
-			const double Fy = FMath::Clamp((P.Y - CorrOrigin.Y) / CorrCell, 0.0, static_cast<double>(CorrH - 1) - 1e-6);
-			const int32 X0 = FMath::FloorToInt(Fx);
-			const int32 Y0 = FMath::FloorToInt(Fy);
-			const double Tx = Fx - X0;
-			const double Ty = Fy - Y0;
-			const double A = LerpD(CorrDist[Y0 * CorrW + X0], CorrDist[Y0 * CorrW + X0 + 1], Tx);
-			const double B = LerpD(CorrDist[(Y0 + 1) * CorrW + X0], CorrDist[(Y0 + 1) * CorrW + X0 + 1], Tx);
-			return LerpD(A, B, Ty);
-		}
+		double CorridorDistance(const FVector2D& P) const { return SampleCoarseField(CorrDist, P); }
+
+		/** Distancia aproximada (cm) a la divisoria más cercana entre tramos alejados del camino. */
+		double DivideDistance(const FVector2D& P) const { return SampleCoarseField(DivideDist, P); }
 
 		/** Rellena Height (cm) y PathMask (0..255) para las filas [RowBegin, RowEnd). */
 		void ComputeRows(int32 RowBegin, int32 RowEnd, TArray<float>& OutHeight, TArray<uint8>& OutPathMask) const
@@ -220,6 +212,14 @@ namespace TNProcMap
 		int32 CorrW = 0;
 		int32 CorrH = 0;
 		TArray<float> CorrDist;
+		/** Progreso del cauce más cercano en cada celda gruesa (-1 si ninguno). */
+		TArray<float> CorrLabel;
+		/** Distancia (cm) a la divisoria más cercana entre tramos alejados del camino. */
+		TArray<float> DivideDist;
+		/** Progreso de cada muestra (S del principal). */
+		TArray<float> SampleProgress;
+		/** Diferencia de progreso a partir de la cual dos tramos van separados por una divisoria. */
+		static constexpr double DivideGap = 9000.0;
 		TArray<int32> Volcanoes;
 
 		// ── Influencias localizadas (cubos) ─────────────────────────────────
@@ -243,11 +243,15 @@ namespace TNProcMap
 			Carves.Reset();
 			SampleWet.Reset();
 			SampleFloor.Reset();
-			auto AddPolyline = [&](const TArray<FPathSample>& In)
+			SampleProgress.Reset();
+			// Progreso: S del principal; en las ramas, interpolado entre su horquilla y su unión.
+			auto AddPolyline = [&](const TArray<FPathSample>& In, double S0, double S1)
 			{
 				const int32 Base = Samples.Num();
+				const double Len = In.Num() > 0 ? FMath::Max(1.0, In.Last().S) : 1.0;
 				for (int32 i = 0; i < In.Num(); ++i)
 				{
+					SampleProgress.Add(static_cast<float>(S0 < 0.0 ? In[i].S : LerpD(S0, S1, In[i].S / Len)));
 					Samples.Add(In[i]);
 					NextOf.Add(i + 1 < In.Num() ? Base + i + 1 : INDEX_NONE);
 					// Todo lo que pisa suelo es cauce, también la cima de las torres (aterrizaje del géiser).
@@ -264,8 +268,8 @@ namespace TNProcMap
 					SampleWet.Add(static_cast<float>(SmoothStep(0.49, 0.51, Wet) * SmoothStep(400.0, 150.0, In[i].Z)));
 				}
 			};
-			AddPolyline(L->Main);
-			for (const FBranch& B : L->Branches) { AddPolyline(B.Samples); }
+			AddPolyline(L->Main, -1.0, -1.0);
+			for (const FBranch& B : L->Branches) { AddPolyline(B.Samples, L->Main[B.ForkSample].S, L->Main[B.RejoinSample].S); }
 		}
 
 		void StampPathField()
@@ -286,7 +290,7 @@ namespace TNProcMap
 				const FBiomeTerrain& BtA = Biomes[BiomeIndex(Samples[i].Biome)];
 				const FBiomeTerrain& BtB = Biomes[BiomeIndex(Samples[j].Biome)];
 				const bool bWetSeg = FMath::Max(SampleWet[i], SampleWet[j]) > 0.5f;
-				const double GuardH = (bWetSeg || BtA.bWet || BtB.bWet) ? 0.0 : FMath::Min(BtA.BankMin, BtB.BankMin);
+				const double GuardH = bWetSeg ? 0.0 : FMath::Min(BtA.BankMin, BtB.BankMin);
 				bool bTunnelPriority = false;
 				if (((Samples[i].Flags | Samples[j].Flags) & PathFlags::Tunnel) != 0)
 				{
@@ -341,15 +345,62 @@ namespace TNProcMap
 			return LerpD(Samples[i].Width, Samples[j == INDEX_NONE ? i : j].Width, PathT[Idx]) * 0.5;
 		}
 
-		/** Transformada de distancia gruesa (chamfer) desde los bordes de todos los caminos. */
+		/** Transformada de distancia (chamfer 3x3) in situ; si Label no es null, propaga la etiqueta del origen. */
+		void Chamfer(TArray<float>& D, TArray<float>* Label) const
+		{
+			const float Ortho = static_cast<float>(CorrCell);
+			const float Diag = static_cast<float>(CorrCell * 1.41421356);
+			auto Relax = [&](int32 Idx, int32 From, float Cost)
+			{
+				if (D[From] + Cost < D[Idx])
+				{
+					D[Idx] = D[From] + Cost;
+					if (Label) { (*Label)[Idx] = (*Label)[From]; }
+				}
+			};
+			for (int32 y = 0; y < CorrH; ++y)
+			{
+				for (int32 x = 0; x < CorrW; ++x)
+				{
+					const int32 Idx = y * CorrW + x;
+					if (x > 0) { Relax(Idx, Idx - 1, Ortho); }
+					if (y > 0)
+					{
+						Relax(Idx, Idx - CorrW, Ortho);
+						if (x > 0) { Relax(Idx, Idx - CorrW - 1, Diag); }
+						if (x < CorrW - 1) { Relax(Idx, Idx - CorrW + 1, Diag); }
+					}
+				}
+			}
+			for (int32 y = CorrH - 1; y >= 0; --y)
+			{
+				for (int32 x = CorrW - 1; x >= 0; --x)
+				{
+					const int32 Idx = y * CorrW + x;
+					if (x < CorrW - 1) { Relax(Idx, Idx + 1, Ortho); }
+					if (y < CorrH - 1)
+					{
+						Relax(Idx, Idx + CorrW, Ortho);
+						if (x < CorrW - 1) { Relax(Idx, Idx + CorrW + 1, Diag); }
+						if (x > 0) { Relax(Idx, Idx + CorrW - 1, Diag); }
+					}
+				}
+			}
+		}
+
+		/** Transformada de distancia gruesa desde los bordes de todos los caminos, con el progreso del más cercano. */
 		void BuildCorridorDistance()
 		{
 			CorrOrigin = Origin;
 			CorrW = FMath::Max(2, FMath::CeilToInt(NX * Spacing / CorrCell) + 1);
 			CorrH = FMath::Max(2, FMath::CeilToInt(NY * Spacing / CorrCell) + 1);
 			CorrDist.Init(1e9f, CorrW * CorrH);
-			for (const FPathSample& S : Samples)
+			CorrLabel.Init(-1.0f, CorrW * CorrH);
+			for (int32 i = 0; i < Samples.Num(); ++i)
 			{
+				const FPathSample& S = Samples[i];
+				// El tablero de un puente colosal no es suelo: bajo él no hay cauce (ni poza).
+				if ((S.Flags & PathFlags::Elevated) != 0) { continue; }
 				const double Hw = S.Width * 0.5;
 				const int32 R = FMath::CeilToInt((Hw + 2.0 * CorrCell) / CorrCell);
 				const int32 CX = FMath::RoundToInt((S.P.X - CorrOrigin.X) / CorrCell);
@@ -360,41 +411,56 @@ namespace TNProcMap
 					{
 						const FVector2D C = CorrOrigin + FVector2D(x * CorrCell, y * CorrCell);
 						const float D = static_cast<float>(FMath::Max(0.0, FVector2D::Distance(C, S.P) - Hw));
-						float& V = CorrDist[y * CorrW + x];
-						V = FMath::Min(V, D);
+						const int32 Idx = y * CorrW + x;
+						if (D < CorrDist[Idx]) { CorrDist[Idx] = D; CorrLabel[Idx] = SampleProgress[i]; }
 					}
 				}
 			}
-			const float Ortho = static_cast<float>(CorrCell);
-			const float Diag = static_cast<float>(CorrCell * 1.41421356);
+			Chamfer(CorrDist, &CorrLabel);
+		}
+
+		/**
+		 * Divisorias: celdas donde se tocan las zonas de influencia de dos tramos del camino
+		 * alejados por el recorrido (más de DivideGap). Ahí el agua se corta: las pozas de dos
+		 * tramos alejados nunca se tocan.
+		 */
+		void BuildDivides()
+		{
+			DivideDist.Init(1e9f, CorrW * CorrH);
+			static const int32 DX[4] = { 1, -1, 0, 0 };
+			static const int32 DY[4] = { 0, 0, 1, -1 };
 			for (int32 y = 0; y < CorrH; ++y)
 			{
 				for (int32 x = 0; x < CorrW; ++x)
 				{
-					float& V = CorrDist[y * CorrW + x];
-					if (x > 0) { V = FMath::Min(V, CorrDist[y * CorrW + x - 1] + Ortho); }
-					if (y > 0)
+					const int32 Idx = y * CorrW + x;
+					if (CorrLabel[Idx] < 0.0f || CorrDist[Idx] < 250.0f) { continue; }
+					for (int32 k = 0; k < 4; ++k)
 					{
-						V = FMath::Min(V, CorrDist[(y - 1) * CorrW + x] + Ortho);
-						if (x > 0) { V = FMath::Min(V, CorrDist[(y - 1) * CorrW + x - 1] + Diag); }
-						if (x < CorrW - 1) { V = FMath::Min(V, CorrDist[(y - 1) * CorrW + x + 1] + Diag); }
+						const int32 X2 = x + DX[k];
+						const int32 Y2 = y + DY[k];
+						if (X2 < 0 || Y2 < 0 || X2 >= CorrW || Y2 >= CorrH) { continue; }
+						const int32 N = Y2 * CorrW + X2;
+						if (CorrLabel[N] < 0.0f || CorrDist[N] < 250.0f) { continue; }
+						if (FMath::Abs(CorrLabel[Idx] - CorrLabel[N]) > DivideGap) { DivideDist[Idx] = 0.0f; break; }
 					}
 				}
 			}
-			for (int32 y = CorrH - 1; y >= 0; --y)
-			{
-				for (int32 x = CorrW - 1; x >= 0; --x)
-				{
-					float& V = CorrDist[y * CorrW + x];
-					if (x < CorrW - 1) { V = FMath::Min(V, CorrDist[y * CorrW + x + 1] + Ortho); }
-					if (y < CorrH - 1)
-					{
-						V = FMath::Min(V, CorrDist[(y + 1) * CorrW + x] + Ortho);
-						if (x < CorrW - 1) { V = FMath::Min(V, CorrDist[(y + 1) * CorrW + x + 1] + Diag); }
-						if (x > 0) { V = FMath::Min(V, CorrDist[(y + 1) * CorrW + x - 1] + Diag); }
-					}
-				}
-			}
+			Chamfer(DivideDist, nullptr);
+		}
+
+		double SampleCoarseField(const TArray<float>& F, const FVector2D& P) const
+		{
+			if (CorrW < 2 || CorrH < 2) { return 1e9; }
+			const double Fx = FMath::Clamp((P.X - CorrOrigin.X) / CorrCell, 0.0, static_cast<double>(CorrW - 1) - 1e-6);
+			const double Fy = FMath::Clamp((P.Y - CorrOrigin.Y) / CorrCell, 0.0, static_cast<double>(CorrH - 1) - 1e-6);
+			const int32 X0 = FMath::FloorToInt(Fx);
+			const int32 Y0 = FMath::FloorToInt(Fy);
+			const double Tx = Fx - X0;
+			const double Ty = Fy - Y0;
+			const double A = LerpD(F[Y0 * CorrW + X0], F[Y0 * CorrW + X0 + 1], Tx);
+			const double B = LerpD(F[(Y0 + 1) * CorrW + X0], F[(Y0 + 1) * CorrW + X0 + 1], Tx);
+			return LerpD(A, B, Ty);
 		}
 
 		/** Forma del relieve lejano en [0, 1]: crestas deformadas sobre una base ondulada. */
@@ -588,8 +654,16 @@ namespace TNProcMap
 			Land = LerpD(Land + Volcano, Level + Volcano, VolcanoInf);
 			// Junto al agua la tierra queda siempre por encima: orillas escarpadas, sin playas por las que salir.
 			Land = FMath::Max(Land, LerpD(Land, SeaLevel + ShoreCliffHeight + 250.0 * NMed, SmoothStep(0.0, 0.25, Wet)));
+			// El agua de lagunas y manglares no es un lago abierto: son pozas alrededor de cada tramo
+			// del camino (25-60 m desde su borde, de orilla irregular), separadas por tierra alta en las
+			// divisorias entre tramos alejados. No se puede ir nadando de un tramo a otro.
+			const double PoolR = (2500.0 + 2500.0 * (0.5 + 0.5 * NLarge)) * (1.0 + 0.2 * NMed);
+			// Ni junto a la costa: una poza que llegara al mar sería un atajo nadando hasta la meta
+			// (corte brusco: una transición larga dejaría una rampa andable para salir del agua).
+			const double CoastCut = 1.0 - SmoothStep(L->CoastY(P.X) - 2600.0, L->CoastY(P.X) - 2000.0, P.Y);
+			const double Pool = SmoothStep(PoolR, PoolR * 0.8, CorridorDistance(P)) * SmoothStep(1200.0, 1800.0, DivideDistance(P)) * CoastCut;
 			// Contorno estrecho: el domain warp estira localmente la transición y una banda ancha dejaría orillas andables.
-			const double WetT = SmoothStep(0.49, 0.51, Wet);
+			const double WetT = SmoothStep(0.49, 0.51, Wet) * Pool;
 			double Outer = LerpD(Land, Bt.BedZ + 90.0 * NMed, WetT);
 			Outer = ApplyBorderWalls(P, Outer, Level, NLarge, NRidge);
 			Outer = ApplyCoast(P, Outer, WetT, NMed);
