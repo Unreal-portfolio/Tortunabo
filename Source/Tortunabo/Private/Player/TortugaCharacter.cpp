@@ -1054,6 +1054,20 @@ void ATortugaCharacter::Jump()
 	if (bIsKnockedDown || bIsDead || IsInShell()) { return; }
 	if (CarryComponent && CarryComponent->IsBeingCarried()) { return; }
 
+	// Nadando: salto desde el agua para salir a orillas e isletas.
+	if (GetCharacterMovement()->IsSwimming())
+	{
+		if (CanSwimHop())
+		{
+			PerformSwimHop();
+			if (!HasAuthority())
+			{
+				ServerSwimHop();
+			}
+		}
+		return;
+	}
+
 	// Segundo press de salto en el aire → dive (igual que Fall Guys)
 	if (GetCharacterMovement()->IsFalling())
 	{
@@ -1079,6 +1093,28 @@ void ATortugaCharacter::PerformAirDashLocally()
 	const FVector DashVelocity = GetActorForwardVector() * AirDashHorizontalForce
 	                           + FVector::UpVector * AirDashVerticalBoost;
 	LaunchCharacter(DashVelocity, true, true);
+}
+
+bool ATortugaCharacter::CanSwimHop() const
+{
+	const UCharacterMovementComponent* CMC = GetCharacterMovement();
+	return CMC && CMC->IsSwimming() && !bIsKnockedDown && !bIsDead && !IsInShell()
+		&& GetWorld() && GetWorld()->GetTimeSeconds() - LastSwimHopTime >= 0.6f;
+}
+
+void ATortugaCharacter::PerformSwimHop()
+{
+	LastSwimHopTime = GetWorld()->GetTimeSeconds();
+	const FVector Forward = FVector(GetActorForwardVector().X, GetActorForwardVector().Y, 0.f).GetSafeNormal();
+	LaunchCharacter(Forward * SwimHopForward + FVector::UpVector * SwimHopVelocity, true, true);
+}
+
+void ATortugaCharacter::ServerSwimHop_Implementation()
+{
+	if (CanSwimHop())
+	{
+		PerformSwimHop();
+	}
 }
 
 void ATortugaCharacter::ServerPerformAirDash_Implementation()

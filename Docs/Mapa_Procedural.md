@@ -125,7 +125,9 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 
 ## 5. Personaje
 
-- **Nado** básico: `SwimSpeed` 625 cm/s (entre andar y esprintar), flotabilidad 1,08.
+- **Nado** básico: `SwimSpeed` 625 cm/s (entre andar y esprintar), flotabilidad 1,08;
+  se flota con medio cuerpo fuera. *Saltar* nadando da un impulso para subir a orillas
+  e isletas (el movimiento del motor no salta en el agua).
 - **Coger y lanzar** (`UTN_CarryComponent`): solo se coge a una tortuga metida en
   su caparazón o aturdida (a cualquiera, también rivales), con *Interactuar* cuando
   no hay otro interactuable delante. *Interactuar* lanza hacia donde mira la cámara;

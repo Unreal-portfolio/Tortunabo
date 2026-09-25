@@ -263,6 +263,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
 	float SwimBuoyancy = 1.08f;
 
+	/** Impulso vertical del salto desde el agua (el CMC no salta nadando): subir a orillas e isletas. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimHopVelocity = 640.f;
+
+	/** Impulso hacia delante del salto desde el agua. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimHopForward = 250.f;
+
 	// ── Caídas ───────────────────────────────────────────────────────────────
 
 	/** Caída libre a partir de la cual la tortuga se mete sola en el caparazón (cm). */
@@ -662,6 +670,14 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerPerformAirDash();
+
+	// ── Salto desde el agua (mismo patrón que el air dash: local + servidor) ──
+	float LastSwimHopTime = -10.f;
+	bool CanSwimHop() const;
+	void PerformSwimHop();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSwimHop();
 
 	void Move(const FInputActionValue& Value);
 	void OnMoveReleased();
