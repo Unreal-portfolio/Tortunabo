@@ -318,8 +318,9 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 			}
 			case EFeature::Gap:
 			{
-				// Fondo de la zanja: caer en un hueco es morir y reaparecer en los huevos.
-				const FVector Loc = MapToWorld2D(C, F.Location.Z - 1050.0);
+				// Fondo de la zanja: caer en un hueco es morir y reaparecer en los huevos. La zona
+				// cubre el fondo sin asomar por encima de los labios (zanjas poco hondas junto al agua).
+				const FVector Loc = MapToWorld2D(C, FMath::Min(TNProcMap::GapFloorZ(F) + 150.0, F.Location.Z - 400.0));
 				if (ATN_ProcKillVolume* Kill = Cast<ATN_ProcKillVolume>(SpawnMapActor(ATN_ProcKillVolume::StaticClass(),
 					FTransform(FRotator(0.0, Yaw, 0.0), Loc), false)))
 				{

@@ -241,6 +241,9 @@ namespace TNProcMap
 		{
 			const FPathSample& Sm = Samples[i];
 			if (Sm.S - LastS < 7000.0 || IsWetBiome(Sm.Biome)) { continue; }
+			// En explanadas no: la zanja cruzaría toda la plaza. Ni a ras de agua: la zanja
+			// (con el fondo sobre el agua) tiene que tener al menos 3 m de hondo.
+			if (Sm.Width > 2600.0 || Sm.Z < 450.0) { continue; }
 			if (AnyFlag(Samples, i - 6, i + 6, PathFlags::Special | PathFlags::Lane)) { continue; }
 			bool bFlat = true;
 			for (int32 j = i - 5; j <= i + 5; ++j) { if (FMath::Abs(Samples[j].Z - Sm.Z) > 110.0) { bFlat = false; break; } }

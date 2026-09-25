@@ -88,6 +88,12 @@ namespace TNProcMap
 	/** Nivel del agua de todo el mapa (mar, lagunas, río). */
 	constexpr double SeaLevel = 0.0;
 
+	/** Fondo de la zanja de un hueco de salto: 12 m bajo el camino, siempre por encima del agua. */
+	inline double GapFloorZ(const FFeature& F)
+	{
+		return FMath::Max(F.Location.Z - 1200.0, SeaLevel + 150.0);
+	}
+
 	/** Pendiente (tan) de las laderas que bajan desde el borde de un cauce elevado. */
 	constexpr double FlankSlope = 1.15;
 	/** Altura mínima de las orillas de laguna y de los acantilados de costa sobre el mar. */
@@ -776,7 +782,7 @@ namespace TNProcMap
 				const double Across = FVector2D::DotProduct(Rel, LeftNormal(F.Dir));
 				if (FMath::Abs(Along) <= F.Height * 0.5 && FMath::Abs(Across) <= F.Width * 0.5 + 2500.0)
 				{
-					H = FMath::Min(H, F.Location.Z - 1200.0);
+					H = FMath::Min(H, GapFloorZ(F));
 					OutMask = 0;
 				}
 			}
