@@ -99,3 +99,6 @@ Scripts/terrain_volumes/*/Chunks/
 
 # Entorno de uv de las herramientas Python
 .venv/
+
+# Rejilla del agua: se regenera con Scripts/gen_water_textures.py
+Scripts/textures/WaterSurface.bin
