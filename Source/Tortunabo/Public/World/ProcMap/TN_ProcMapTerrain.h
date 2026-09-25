@@ -696,13 +696,17 @@ namespace TNProcMap
 			// Junto al agua la tierra queda siempre por encima: orillas escarpadas, sin playas por las que salir.
 			Land = FMath::Max(Land, LerpD(Land, SeaLevel + ShoreCliffHeight + 250.0 * NMed, SmoothStep(0.0, 0.25, Wet)));
 			// El agua de lagunas y manglares no es un lago abierto: son pozas alrededor de cada tramo
-			// del camino (25-60 m desde su borde, de orilla irregular), separadas por tierra alta en las
+			// del camino, separadas por tierra alta en las
 			// divisorias entre tramos alejados. No se puede ir nadando de un tramo a otro.
-			const double PoolR = (2500.0 + 2500.0 * (0.5 + 0.5 * NLarge)) * (1.0 + 0.2 * NMed);
+			// Anchura muy variable: una escala de ~250 m decide si hay canal estrecho (8 m) o laguna
+			// amplia (hasta 150 m), con orilla irregular. La orilla es siempre un corte de 6 m (acantilado):
+			// una transición proporcional al tamaño dejaría orillas andables en las lagunas grandes.
+			const double Lagoon = FMath::Pow(0.5 + 0.5 * Fbm2(Seed + 51u, P.X / 25000.0, P.Y / 25000.0, 2), 1.6);
+			const double PoolR = LerpD(800.0, 15000.0, Lagoon) * (1.0 + 0.25 * NMed);
 			// Ni junto a la costa: una poza que llegara al mar sería un atajo nadando hasta la meta
 			// (corte brusco: una transición larga dejaría una rampa andable para salir del agua).
 			const double CoastCut = 1.0 - SmoothStep(L->CoastY(P.X) - 2600.0, L->CoastY(P.X) - 2000.0, P.Y);
-			const double Pool = SmoothStep(PoolR, PoolR * 0.8, CorridorDistance(P)) * SmoothStep(1200.0, 1800.0, DivideDistance(P)) * CoastCut;
+			const double Pool = SmoothStep(PoolR, PoolR - 600.0, CorridorDistance(P)) * SmoothStep(1200.0, 1800.0, DivideDistance(P)) * CoastCut;
 			// Contorno estrecho: el domain warp estira localmente la transición y una banda ancha dejaría orillas andables.
 			const double WetT = SmoothStep(0.49, 0.51, Wet) * Pool;
 			double Outer = LerpD(Land, Bt.BedZ + 90.0 * NMed, WetT);
