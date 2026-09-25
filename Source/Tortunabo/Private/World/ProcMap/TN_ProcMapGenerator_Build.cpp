@@ -31,7 +31,9 @@ namespace
 
 		/**
 		 * Añade un triángulo cuya cara visible mira hacia Hint. En UE la cara frontal
-		 * es la de normal (B-A)x(C-A); si no coincide con Hint se invierte el orden.
+		 * de (A,B,C) es la de normal (C-A)x(B-A) (la que calculan MeshUtilities y
+		 * CalculateTangentsForMesh): se orienta N = (B-A)x(C-A) hacia Hint y se emite
+		 * A, C, B.
 		 */
 		void AddTri(const FVector& A, const FVector& B, const FVector& C, const FVector& Hint, const FLinearColor& Color)
 		{
@@ -55,8 +57,8 @@ namespace
 				Colors.Add(Color);
 			}
 			Tris.Add(Base);
-			Tris.Add(Base + 1);
 			Tris.Add(Base + 2);
+			Tris.Add(Base + 1);
 		}
 
 		/** Quad A-B-C-D en orden de contorno. */
@@ -219,7 +221,8 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	TArray<FLinearColor> Colors;
 	const TArray<FProcMeshTangent> NoTangents;
 
-	// Índices comunes a todos los tiles (A,B,C) y (B,D,C): caras hacia +Z.
+	// Índices comunes a todos los tiles. A=(x,y), B=(x+1,y), C=(x,y+1): la cara
+	// frontal de UE es (C-A)x(B-A), así que (A,C,B) y (B,C,D) miran hacia +Z.
 	Tris.Reserve(TileQuads * TileQuads * 6);
 	for (int32 y = 0; y < TileQuads; ++y)
 	{
@@ -229,8 +232,8 @@ void ATN_ProcMapGenerator::BuildTerrain()
 			const int32 B = A + 1;
 			const int32 C = A + Side;
 			const int32 D = C + 1;
-			Tris.Add(A); Tris.Add(B); Tris.Add(C);
-			Tris.Add(B); Tris.Add(D); Tris.Add(C);
+			Tris.Add(A); Tris.Add(C); Tris.Add(B);
+			Tris.Add(B); Tris.Add(C); Tris.Add(D);
 		}
 	}
 
