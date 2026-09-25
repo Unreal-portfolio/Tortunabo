@@ -50,12 +50,13 @@ namespace TNProcMap
 		constexpr uint32 Shore      = 1u << 14;  ///< Bajada final al mar.
 		constexpr uint32 RiverCross = 1u << 15;  ///< Cruza el río (va en puente).
 		constexpr uint32 CliffUp    = 1u << 16;  ///< Primera muestra tras un escalón de subida.
+		constexpr uint32 Junction   = 1u << 17;  ///< Junto a la unión de una rama o senda: sin huecos, obstáculos ni peligros.
 
 		/** Muestras que no forman suelo de terreno a la altura del camino. */
 		constexpr uint32 NotTerrain = Elevated | Islet | Boardwalk;
 		/** Muestras donde no se colocan huecos, ramas ni peligros. */
 		constexpr uint32 Special = Elevated | Colossal | Tunnel | TowerTop | Slide | GeyserBase | Islet | Boardwalk
-			| Gap | Start | End | UnderTower | Portal | Shore | RiverCross | CliffUp;
+			| Gap | Start | End | UnderTower | Portal | Shore | RiverCross | CliffUp | Junction;
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -222,10 +223,17 @@ namespace TNProcMap
 		High,
 		/** Rodeo corto alrededor de un peñasco. */
 		Bypass,
-		/** Desvío largo por un módulo que el camino principal no visita. */
-		Detour
+		/** Senda larga que une dos zonas del principal por el terreno libre entre ellas. */
+		Trail,
+		/** Enlace que teje la red: sale o llega a una senda (u otra rama) en vez de al principal. */
+		Link
 	};
 
+	/**
+	 * Rama, senda o enlace. ForkSample/RejoinSample son muestras del principal: donde sale y
+	 * donde vuelve, o, si un extremo está en otra rama (FromBranch/ToBranch), la muestra del
+	 * principal de igual progreso (para las etiquetas de progreso del terreno y la carrera).
+	 */
 	struct FBranch
 	{
 		TArray<FPathSample> Samples;
@@ -233,6 +241,12 @@ namespace TNProcMap
 		int32 RejoinSample = INDEX_NONE;
 		EBranchKind Kind = EBranchKind::Scenic;
 		int32 Side = 1;
+		/** Rama de la que sale (INDEX_NONE = el principal) y su muestra. */
+		int32 FromBranch = INDEX_NONE;
+		int32 FromSample = INDEX_NONE;
+		/** Rama a la que llega (INDEX_NONE = el principal) y su muestra. */
+		int32 ToBranch = INDEX_NONE;
+		int32 ToSample = INDEX_NONE;
 	};
 
 	enum class EFeature : uint8

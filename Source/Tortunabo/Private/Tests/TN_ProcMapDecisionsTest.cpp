@@ -125,13 +125,15 @@ bool FTNProcMapLayoutInvariantsTest::RunTest(const FString& Parameters)
 			TestTrue(Ctx + TEXT(": al menos una pila de huevos"), L.CountFeatures(EFeature::EggNest) >= 1);
 			TestEqual(Ctx + TEXT(": dos torres por cruce colosal"), L.CountFeatures(EFeature::Tower), L.Crossings.Num() * 2);
 
-			// Ramas: se separan y vuelven a unirse más adelante del principal.
+			// Ramas y sendas: salen de un camino (el principal u otra rama) y llegan a otro más adelante.
 			bool bBranches = true;
 			for (const FBranch& B : L.Branches)
 			{
 				bBranches &= B.RejoinSample > B.ForkSample;
-				bBranches &= FVector2D::Distance(B.Samples[0].P, L.Main[B.ForkSample].P) < 1.0;
-				bBranches &= FVector2D::Distance(B.Samples.Last().P, L.Main[B.RejoinSample].P) < 1.0;
+				const FVector2D From = B.FromBranch == INDEX_NONE ? L.Main[B.ForkSample].P : L.Branches[B.FromBranch].Samples[B.FromSample].P;
+				const FVector2D To = B.ToBranch == INDEX_NONE ? L.Main[B.RejoinSample].P : L.Branches[B.ToBranch].Samples[B.ToSample].P;
+				bBranches &= FVector2D::Distance(B.Samples[0].P, From) < 1.0;
+				bBranches &= FVector2D::Distance(B.Samples.Last().P, To) < 1.0;
 			}
 			TestTrue(Ctx + TEXT(": ramas que se reincorporan"), bBranches);
 		}
