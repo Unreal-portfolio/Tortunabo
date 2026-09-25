@@ -1,0 +1,578 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ATN_ProcMapGenerator — vegetación, actores del mapa, peligros y PCG.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "World/ProcMap/TN_ProcMapFeatures.h"
+#include "World/ProcMap/TN_ProcTraversalActors.h"
+#include "World/ProcMap/TN_ProcWaterActors.h"
+#include "World/ProcMap/TN_ProcPuzzleActors.h"
+#include "World/ProcMap/TN_ProcEggNest.h"
+#include "Core/TN_Log.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerStart.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "PCGComponent.h"
+#include "PCGGraph.h"
+
+namespace
+{
+	/** Zonas de exclusión (círculos) con cubos para consultas rápidas. */
+	struct FTNProcKeepOut
+	{
+		double Cell = 5000.0;
+		FVector2D Origin = FVector2D(-30000.0, -30000.0);
+		int32 W = 0;
+		int32 H = 0;
+		TArray<FVector2D> Centers;
+		TArray<double> Radii;
+		TArray<TArray<int32>> Buckets;
+
+		void Init(double WorldSize)
+		{
+			W = H = FMath::CeilToInt((WorldSize + 60000.0) / Cell) + 1;
+			Buckets.SetNum(W * H);
+		}
+
+		void Add(const FVector2D& C, double R)
+		{
+			const int32 Idx = Centers.Add(C);
+			Radii.Add(R);
+			const int32 X0 = FMath::Clamp(FMath::FloorToInt((C.X - R - Origin.X) / Cell), 0, W - 1);
+			const int32 X1 = FMath::Clamp(FMath::FloorToInt((C.X + R - Origin.X) / Cell), 0, W - 1);
+			const int32 Y0 = FMath::Clamp(FMath::FloorToInt((C.Y - R - Origin.Y) / Cell), 0, H - 1);
+			const int32 Y1 = FMath::Clamp(FMath::FloorToInt((C.Y + R - Origin.Y) / Cell), 0, H - 1);
+			for (int32 y = Y0; y <= Y1; ++y) { for (int32 x = X0; x <= X1; ++x) { Buckets[y * W + x].Add(Idx); } }
+		}
+
+		bool Blocked(const FVector2D& P) const
+		{
+			const int32 X = FMath::Clamp(FMath::FloorToInt((P.X - Origin.X) / Cell), 0, W - 1);
+			const int32 Y = FMath::Clamp(FMath::FloorToInt((P.Y - Origin.Y) / Cell), 0, H - 1);
+			for (const int32 Idx : Buckets[Y * W + X])
+			{
+				if (FVector2D::DistSquared(P, Centers[Idx]) < Radii[Idx] * Radii[Idx]) { return true; }
+			}
+			return false;
+		}
+	};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vegetación y props
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_ProcMapGenerator::BuildScatter()
+{
+	using namespace TNProcMap;
+	const double World = Layout.WorldSize;
+
+	// Exclusiones: estructuras, huevos, géiseres, huecos, puzles y tramos no tallados del camino.
+	FTNProcKeepOut Keep;
+	Keep.Init(World);
+	for (const FFeature& F : Layout.Features)
+	{
+		const FVector2D C(F.Location.X, F.Location.Y);
+		switch (F.Type)
+		{
+			case EFeature::EggNest:        Keep.Add(C, 800.0); break;
+			case EFeature::Geyser:         Keep.Add(C, 700.0); break;
+			case EFeature::Tower:          Keep.Add(C, F.Radius + 500.0); break;
+			case EFeature::StartArea:      Keep.Add(C, F.Radius + 600.0); break;
+			case EFeature::Gap:            Keep.Add(C, FMath::Max(F.Height, F.Width) * 0.5 + 400.0); break;
+			case EFeature::ThrowWall:      Keep.Add(C, 1800.0); break;
+			case EFeature::SabotageGate:   Keep.Add(C, 1200.0); break;
+			case EFeature::SabotageSwitch: Keep.Add(C, 400.0); break;
+			case EFeature::RiverBridge:    Keep.Add(C, F.Length * 0.5 + 300.0); break;
+			default: break;
+		}
+	}
+	for (const FPathSample& S : Layout.Main)
+	{
+		if ((S.Flags & (PathFlags::Elevated | PathFlags::Colossal | PathFlags::Islet | PathFlags::Boardwalk)) != 0)
+		{
+			Keep.Add(S.P, S.Width * 0.5 + 350.0);
+		}
+	}
+
+	// Caja envolvente de cada bioma (en el raster de módulos) para no recorrer todo el mapa por capa.
+	FVector2D BMin[NumBiomes], BMax[NumBiomes];
+	for (int32 b = 0; b < NumBiomes; ++b) { BMin[b] = FVector2D(1e18, 1e18); BMax[b] = FVector2D(-1e18, -1e18); }
+	for (int32 y = 0; y < Layout.RasterH; ++y)
+	{
+		for (int32 x = 0; x < Layout.RasterW; ++x)
+		{
+			const int32 Mod = Layout.ModuleOfCell[Layout.CellIndex(x, y)];
+			if (Mod < 0) { continue; }
+			const int32 b = BiomeIndex(Layout.Modules[Mod].Biome);
+			const FVector2D C = Layout.CellCenter(x, y);
+			BMin[b] = FVector2D(FMath::Min(BMin[b].X, C.X), FMath::Min(BMin[b].Y, C.Y));
+			BMax[b] = FVector2D(FMath::Max(BMax[b].X, C.X), FMath::Max(BMax[b].Y, C.Y));
+		}
+	}
+
+	const FVector2D LatMin = LatticeOrigin;
+	const FVector2D LatMax = LatticeOrigin + FVector2D((LatticeNX - 1) * LatticeSpacing, (LatticeNY - 1) * LatticeSpacing);
+	int32 TotalInstances = 0;
+
+	for (int32 b = 0; b < NumBiomes; ++b)
+	{
+		if (BMin[b].X > BMax[b].X) { continue; }
+		const ETNProcBiome Biome = BiomeFromIndex(b);
+		TArray<FTNProcScatterLayer> Layers;
+		if (const UTN_ProcBiomeDataAsset* Asset = Settings ? Settings->FindBiome(Biome) : nullptr)
+		{
+			Layers = Asset->Scatter;
+		}
+		else
+		{
+			TN_DefaultBiomeScatter(Biome, Layers);
+		}
+
+		for (int32 LayerIdx = 0; LayerIdx < Layers.Num(); ++LayerIdx)
+		{
+			const FTNProcScatterLayer& Layer = Layers[LayerIdx];
+			if (!Layer.Mesh || Layer.DensityPer100m2 <= 0.f) { continue; }
+
+			const bool bWalls = Layer.Zone == ETNProcScatterZone::Walls;
+			const double Blend = 6000.0;
+			FVector2D Min = bWalls ? LatMin : FVector2D(FMath::Max(0.0, BMin[b].X - Blend), FMath::Max(0.0, BMin[b].Y - Blend));
+			FVector2D Max = bWalls ? LatMax : FVector2D(FMath::Min(World, BMax[b].X + Blend), FMath::Min(World, BMax[b].Y + Blend));
+			if (bWalls)
+			{
+				// En los muros solo el bioma dominante de esa zona del borde.
+				Min = FVector2D(FMath::Max(LatMin.X, BMin[b].X - 40000.0), FMath::Max(LatMin.Y, BMin[b].Y - 40000.0));
+				Max = FVector2D(FMath::Min(LatMax.X, BMax[b].X + 40000.0), FMath::Min(LatMax.Y, BMax[b].Y + 40000.0));
+			}
+
+			const double Spacing = FMath::Sqrt(1.0e6 / static_cast<double>(Layer.DensityPer100m2));
+			const int32 CX = FMath::Max(1, FMath::CeilToInt((Max.X - Min.X) / Spacing));
+			const int32 CY = FMath::Max(1, FMath::CeilToInt((Max.Y - Min.Y) / Spacing));
+			FRng Rng(static_cast<uint64>(Layout.Params.Seed) * 1000003ull + static_cast<uint64>(b) * 7919ull + static_cast<uint64>(LayerIdx) * 104729ull);
+			const double MaxSlopeCos = FMath::Cos(FMath::DegreesToRadians(static_cast<double>(Layer.MaxSlopeDeg)));
+
+			TArray<FTransform> Transforms;
+			for (int32 cy = 0; cy < CY; ++cy)
+			{
+				for (int32 cx = 0; cx < CX; ++cx)
+				{
+					const FVector2D P = Min + FVector2D((cx + Rng.Unit()) * Spacing, (cy + Rng.Unit()) * Spacing);
+					const double Pick = Rng.Unit();
+					const double Yaw = Rng.Range(0.0, 360.0);
+					const double ScaleT = Rng.Unit();
+
+					// Mezcla natural en las transiciones: el bioma se sortea con sus pesos.
+					double W[NumBiomes];
+					Layout.BiomeWeightsAt(P, W);
+					double Acc = 0.0;
+					int32 Chosen = NumBiomes - 1;
+					for (int32 k = 0; k < NumBiomes; ++k)
+					{
+						Acc += W[k];
+						if (Pick < Acc) { Chosen = k; break; }
+					}
+					if (Chosen != b) { continue; }
+
+					const double H = TerrainHeightMap(P);
+					const FVector N = TerrainNormalMap(P);
+					const double Edge = PathDistanceMap(P);
+					const bool bInside = P.X >= 0.0 && P.Y >= 0.0 && P.X <= World && P.Y <= Layout.CoastY(P.X);
+					const double EdgeDist = FMath::Min(FMath::Min(P.X, World - P.X), P.Y);
+					const bool bWallZone = !bInside || EdgeDist < Layout.WallInset(P.X) + 1000.0;
+
+					bool bOk = false;
+					switch (Layer.Zone)
+					{
+						case ETNProcScatterZone::OffPath:
+							bOk = bInside && Edge >= Layer.MinPathDistance && H > 40.0 && N.Z >= MaxSlopeCos;
+							break;
+						case ETNProcScatterZone::PathEdge:
+							bOk = bInside && Edge >= Layer.MinPathDistance && Edge <= Layer.MinPathDistance + 500.0 && H > 15.0 && N.Z >= MaxSlopeCos;
+							break;
+						case ETNProcScatterZone::Walls:
+							bOk = bWallZone && H > 300.0 && N.Z >= MaxSlopeCos;
+							break;
+						case ETNProcScatterZone::Shallows:
+							bOk = bInside && H < 10.0 && H > -160.0 && Edge >= Layer.MinPathDistance;
+							break;
+					}
+					if (!bOk || Keep.Blocked(P)) { continue; }
+
+					const double S = FMath::Lerp(static_cast<double>(Layer.ScaleRange.X), static_cast<double>(Layer.ScaleRange.Y), ScaleT);
+					FQuat Rot = FQuat(FRotator(0.0, Yaw, 0.0));
+					if (Layer.bAlignToNormal)
+					{
+						Rot = FQuat::FindBetweenNormals(FVector::UpVector, N) * Rot;
+					}
+					const FVector Loc = FVector(P.X, P.Y, H + Layer.ZOffset);
+					Transforms.Add(FTransform(Rot, Loc, Layer.ScaleAxes * S));
+				}
+			}
+			if (Transforms.Num() == 0) { continue; }
+
+			UHierarchicalInstancedStaticMeshComponent* HISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
+			HISM->SetupAttachment(RootComponent);
+			HISM->SetStaticMesh(Layer.Mesh);
+			HISM->SetCollisionProfileName(Layer.bCollision ? TEXT("BlockAll") : TEXT("NoCollision"));
+			HISM->SetCanEverAffectNavigation(Layer.bCollision);
+			if (Layer.CullDistance > 0.f)
+			{
+				HISM->SetCullDistances(FMath::RoundToInt(Layer.CullDistance * 0.8f), FMath::RoundToInt(Layer.CullDistance));
+			}
+			HISM->RegisterComponent();
+			if (Layer.Material)
+			{
+				HISM->SetMaterial(0, Layer.Material);
+			}
+			if (Layer.bApplyTint)
+			{
+				if (UMaterialInstanceDynamic* MID = HISM->CreateAndSetMaterialInstanceDynamic(0))
+				{
+					MID->SetVectorParameterValue(TEXT("Color"), Layer.Tint);
+					MID->SetVectorParameterValue(TEXT("BaseColor"), Layer.Tint);
+				}
+			}
+			// Transformadas en espacio del mapa = espacio local del generador.
+			HISM->AddInstances(Transforms, false, false);
+			ScatterComponents.Add(HISM);
+			TotalInstances += Transforms.Num();
+		}
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Vegetación y props: %d instancias en %d capas."), TotalInstances, ScatterComponents.Num());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Actores de recorrido (todas las máquinas)
+// ─────────────────────────────────────────────────────────────────────────────
+
+AActor* ATN_ProcMapGenerator::SpawnMapActor(UClass* Class, const FTransform& Transform, bool bTrackAsServer)
+{
+	UWorld* World = GetWorld();
+	if (!World || !Class)
+	{
+		return nullptr;
+	}
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Params.Owner = this;
+	AActor* Actor = World->SpawnActor<AActor>(Class, Transform, Params);
+	if (Actor)
+	{
+		SpawnedActors.Add(Actor);
+	}
+	return Actor;
+}
+
+void ATN_ProcMapGenerator::SpawnTraversalActors()
+{
+	using namespace TNProcMap;
+	const TArray<FPathSample>& M = Layout.Main;
+	const double Yaw0 = GetActorRotation().Yaw;
+
+	// Puntos de salida alrededor del claro inicial, mirando al camino.
+	StartTransforms.Reset();
+	if (M.Num() > 0)
+	{
+		const FVector2D Ahead = M[FMath::Min(25, M.Num() - 1)].P;
+		const FVector2D Face = (Ahead - Layout.StartPoint).GetSafeNormal();
+		const double FaceYaw = FMath::RadiansToDegrees(AngleOf(Face)) + Yaw0;
+		for (int32 i = 0; i < 8; ++i)
+		{
+			const double A = TwoPi * i / 8.0;
+			const FVector2D P = Layout.StartPoint + DirFromAngle(A) * (450.0 + (i % 2) * 350.0);
+			const FVector Loc = MapToWorld2D(P, TerrainHeightMap(P) + 110.0);
+			StartTransforms.Add(FTransform(FRotator(0.0, FaceYaw, 0.0), Loc));
+		}
+	}
+
+	UClass* GeyserClass = (Settings && Settings->GeyserClass) ? Settings->GeyserClass.Get() : ATN_ProcGeyser::StaticClass();
+
+	for (const FFeature& F : Layout.Features)
+	{
+		const FVector2D C(F.Location.X, F.Location.Y);
+		const double Yaw = FMath::RadiansToDegrees(AngleOf(F.Dir)) + Yaw0;
+		switch (F.Type)
+		{
+			case EFeature::Geyser:
+			{
+				const FVector Loc = MapToWorld2D(C, TerrainHeightMap(C));
+				if (ATN_ProcGeyser* Geyser = Cast<ATN_ProcGeyser>(SpawnMapActor(GeyserClass, FTransform(Loc), false)))
+				{
+					Geyser->SetTarget(MapToWorld(F.Target));
+				}
+				break;
+			}
+			case EFeature::SlideZone:
+			{
+				TArray<FVector> Points;
+				for (int32 i = FMath::Clamp(F.PathIndex, 0, M.Num() - 1); i <= FMath::Clamp(F.Aux, 0, M.Num() - 1); ++i)
+				{
+					Points.Add(MapToWorld2D(M[i].P, M[i].Z));
+				}
+				if (ATN_ProcSlideZone* Slide = Cast<ATN_ProcSlideZone>(SpawnMapActor(ATN_ProcSlideZone::StaticClass(), GetActorTransform(), false)))
+				{
+					Slide->InitFromPoints(Points, static_cast<float>(F.Width));
+				}
+				break;
+			}
+			case EFeature::Gap:
+			{
+				// Fondo de la zanja: caer en un hueco es morir y reaparecer en los huevos.
+				const FVector Loc = MapToWorld2D(C, F.Location.Z - 1050.0);
+				if (ATN_ProcKillVolume* Kill = Cast<ATN_ProcKillVolume>(SpawnMapActor(ATN_ProcKillVolume::StaticClass(),
+					FTransform(FRotator(0.0, Yaw, 0.0), Loc), false)))
+				{
+					Kill->SetExtent(FVector(F.Height * 0.5, F.Width * 0.5 + 2500.0, 250.0));
+				}
+				break;
+			}
+			case EFeature::LavaPool:
+			{
+				const FVector Loc = MapToWorld2D(C, F.Location.Z - 120.0);
+				if (ATN_ProcKillVolume* Kill = Cast<ATN_ProcKillVolume>(SpawnMapActor(ATN_ProcKillVolume::StaticClass(), FTransform(Loc), false)))
+				{
+					Kill->SetExtent(FVector(F.Radius * 0.9, F.Radius * 0.9, 150.0));
+				}
+				break;
+			}
+			default:
+				break;
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Actores del servidor (replicados o solo-servidor)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_ProcMapGenerator::SpawnServerActors()
+{
+	using namespace TNProcMap;
+	const double Yaw0 = GetActorRotation().Yaw;
+
+	for (int32 i = 0; i < StartTransforms.Num(); ++i)
+	{
+		if (APlayerStart* Start = Cast<APlayerStart>(SpawnMapActor(APlayerStart::StaticClass(), StartTransforms[i], true)))
+		{
+			Start->PlayerStartTag = TEXT("TNProcStart");
+		}
+	}
+
+	UClass* NestClass = (Settings && Settings->EggNestClass) ? Settings->EggNestClass.Get() : ATN_ProcEggNest::StaticClass();
+	UClass* WallClass = (Settings && Settings->ThrowWallClass) ? Settings->ThrowWallClass.Get() : ATN_ProcThrowWall::StaticClass();
+	UClass* GateClass = (Settings && Settings->SabotageGateClass) ? Settings->SabotageGateClass.Get() : ATN_ProcSabotageGate::StaticClass();
+	UClass* SwitchClass = (Settings && Settings->SwitchClass) ? Settings->SwitchClass.Get() : ATN_ProcSwitch::StaticClass();
+
+	TMap<int32, ATN_ProcSabotageGate*> GateByFeature;
+	for (int32 f = 0; f < Layout.Features.Num(); ++f)
+	{
+		const FFeature& F = Layout.Features[f];
+		const FVector2D C(F.Location.X, F.Location.Y);
+		const FRotator Rot(0.0, FMath::RadiansToDegrees(AngleOf(F.Dir)) + Yaw0, 0.0);
+		switch (F.Type)
+		{
+			case EFeature::EggNest:
+			{
+				const FVector Loc = MapToWorld2D(C, TerrainHeightMap(C));
+				if (ATN_ProcEggNest* Nest = Cast<ATN_ProcEggNest>(SpawnMapActor(NestClass, FTransform(Rot, Loc), true)))
+				{
+					const double Progress = Layout.Main.IsValidIndex(F.PathIndex) ? Layout.Main[F.PathIndex].S : 0.0;
+					Nest->InitNest(F.Aux, static_cast<float>(Progress));
+					EggNests.Add(Nest);
+				}
+				break;
+			}
+			case EFeature::Finish:
+			{
+				const FVector Loc = MapToWorld2D(C + FVector2D(0.0, 1500.0), -150.0);
+				if (ATN_ProcFinishVolume* Finish = Cast<ATN_ProcFinishVolume>(SpawnMapActor(ATN_ProcFinishVolume::StaticClass(), FTransform(Loc), true)))
+				{
+					Finish->SetExtent(FVector(F.Width * 0.5, F.Length * 0.5, 800.0));
+				}
+				break;
+			}
+			case EFeature::ThrowWall:
+			{
+				const FVector Loc = MapToWorld2D(C, TerrainHeightMap(C) - 20.0);
+				if (ATN_ProcThrowWall* Wall = Cast<ATN_ProcThrowWall>(SpawnMapActor(WallClass, FTransform(Rot, Loc), true)))
+				{
+					Wall->Setup(static_cast<float>(F.Width), static_cast<float>(F.Height), 1200.f);
+					if (ATN_ProcSwitch* Switch = Cast<ATN_ProcSwitch>(SpawnMapActor(SwitchClass, FTransform(Rot, Wall->GetSwitchLocation() + FVector(0.0, 0.0, 10.0)), true)))
+					{
+						Switch->SetTarget(Wall, 8.f);
+					}
+				}
+				break;
+			}
+			case EFeature::SabotageGate:
+			{
+				const FVector Loc = MapToWorld2D(C, TerrainHeightMap(C));
+				if (ATN_ProcSabotageGate* Gate = Cast<ATN_ProcSabotageGate>(SpawnMapActor(GateClass, FTransform(Rot, Loc), true)))
+				{
+					Gate->Setup(static_cast<float>(F.Width), static_cast<float>(F.Height));
+					GateByFeature.Add(f, Gate);
+				}
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	// Interruptores de sabotaje: cada uno levanta la compuerta del otro carril.
+	for (const FFeature& F : Layout.Features)
+	{
+		if (F.Type != EFeature::SabotageSwitch) { continue; }
+		const FVector2D C(F.Location.X, F.Location.Y);
+		ATN_ProcSabotageGate* const* Gate = GateByFeature.Find(F.Aux);
+		if (!Gate || !*Gate) { continue; }
+		const FVector Loc = MapToWorld2D(C, TerrainHeightMap(C) + 10.0);
+		if (ATN_ProcSwitch* Switch = Cast<ATN_ProcSwitch>(SpawnMapActor(SwitchClass, FTransform(Loc), true)))
+		{
+			Switch->SetTarget(*Gate, 6.f);
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Peligros y enemigos por bioma
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_ProcMapGenerator::SpawnHazards()
+{
+	using namespace TNProcMap;
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const bool bServer = World->GetNetMode() != NM_Client;
+	const double Yaw0 = GetActorRotation().Yaw;
+
+	struct FRuleSource
+	{
+		FTNProcHazardEntry Entry;
+		ETNProcBiome Biome = ETNProcBiome::Jungle;
+		UStaticMesh* BouncerMesh = nullptr;
+		FLinearColor BouncerColor = FLinearColor(0.9f, 0.5f, 0.9f);
+	};
+	TArray<FRuleSource> Sources;
+	TArray<FHazardRule> Rules;
+
+	for (int32 b = 0; b < NumBiomes; ++b)
+	{
+		const ETNProcBiome Biome = BiomeFromIndex(b);
+		TArray<FTNProcHazardEntry> Entries;
+		UStaticMesh* BouncerMesh = nullptr;
+		FLinearColor BouncerColor(0.9f, 0.5f, 0.9f);
+		if (const UTN_ProcBiomeDataAsset* Asset = Settings ? Settings->FindBiome(Biome) : nullptr)
+		{
+			Entries = Asset->Hazards;
+			BouncerMesh = Asset->WaterBouncerMesh;
+			BouncerColor = Asset->WaterBouncerColor;
+		}
+		else
+		{
+			TN_DefaultBiomeHazards(Biome, Entries);
+		}
+		for (const FTNProcHazardEntry& E : Entries)
+		{
+			if (!E.ActorClass) { continue; }
+			FRuleSource Src;
+			Src.Entry = E;
+			Src.Biome = Biome;
+			Src.BouncerMesh = BouncerMesh;
+			Src.BouncerColor = BouncerColor;
+			FHazardRule R;
+			R.Id = Sources.Add(Src);
+			R.PerKm = E.PerKm;
+			R.Placement = static_cast<EHazardPlacement>(static_cast<uint8>(E.Placement));
+			R.BiomeMask = 1u << b;
+			// Umbrales alineados con los perfiles por defecto (fácil 0.2, normal 0.5, difícil 0.9).
+			static const double DifficultyGate[3] = { 0.0, 0.35, 0.75 };
+			R.MinDifficulty01 = DifficultyGate[FMath::Clamp(static_cast<int32>(E.MinDifficulty), 0, 2)];
+			R.Clearance = E.Clearance;
+			R.bMainOnly = E.bMainPathOnly;
+			Rules.Add(R);
+		}
+	}
+
+	const TArray<FHazardSpawn> Spawns = PlanHazards(Layout, Rules, ActiveProfile.HazardDensity, 0x4A2Aull);
+	int32 Count = 0;
+	for (const FHazardSpawn& H : Spawns)
+	{
+		const FRuleSource& Src = Sources[H.RuleId];
+		UClass* Class = Src.Entry.ActorClass;
+
+		// Solo la fauna de movimiento (corrientes, remolinos) vive en todas las máquinas;
+		// el resto (enemigos, spawners, pickups) lo crea el servidor y replica si procede.
+		const bool bLocalEverywhere = Class->IsChildOf(ATN_ProcWaterCurrent::StaticClass()) || Class->IsChildOf(ATN_ProcWhirlpool::StaticClass());
+		if (!bLocalEverywhere && !bServer) { continue; }
+
+		const double Ground = TerrainHeightMap(H.P);
+		double Z = Ground + Src.Entry.ZOffset;
+		const bool bWaterFauna = Src.Entry.Placement == ETNProcHazardPlacement::InWater;
+		if (bWaterFauna)
+		{
+			// Necesita agua de verdad bajo ella.
+			const double Need = Class->IsChildOf(ATN_ProcWhirlpool::StaticClass()) ? -220.0
+				: (Class->IsChildOf(ATN_ProcWaterPredator::StaticClass()) ? -170.0 : -70.0);
+			if (Ground > Need) { continue; }
+			Z = SeaLevel + (Class->IsChildOf(ATN_ProcWaterPredator::StaticClass()) ? -45.0 : 5.0) + Src.Entry.ZOffset;
+		}
+		else if (Src.Entry.Placement == ETNProcHazardPlacement::AbovePath)
+		{
+			Z = Ground + 800.0 + Src.Entry.ZOffset;
+		}
+		else if (Ground < 0.0)
+		{
+			continue;
+		}
+
+		const FVector Loc = MapToWorld2D(H.P, Z);
+		AActor* Actor = SpawnMapActor(Class, FTransform(FRotator(0.0, H.Yaw + Yaw0, 0.0), Loc), true);
+		if (!Actor) { continue; }
+		++Count;
+
+		if (ATN_ProcWaterBouncer* Bouncer = Cast<ATN_ProcWaterBouncer>(Actor))
+		{
+			Bouncer->SetVariant(Src.BouncerMesh, Src.BouncerColor);
+		}
+		else if (ATN_ProcWaterCurrent* Current = Cast<ATN_ProcWaterCurrent>(Actor))
+		{
+			// Arrastra lejos del camino: volver cuesta.
+			const TArray<FPathSample>& Samples = H.BranchIndex == INDEX_NONE ? Layout.Main : Layout.Branches[H.BranchIndex].Samples;
+			const FVector2D PathP = Samples.IsValidIndex(H.PathIndex) ? Samples[H.PathIndex].P : H.P;
+			const FVector2D Away = (H.P - PathP).GetSafeNormal();
+			Current->Setup(FVector(900.0, 500.0, 300.0), GetActorTransform().TransformVectorNoScale(FVector(Away.X, Away.Y, 0.0)), 900.f);
+		}
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Peligros y enemigos: %d de %d planificados (%s)."), Count, Spawns.Num(), bServer ? TEXT("servidor") : TEXT("cliente"));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PCG opcional por bioma
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_ProcMapGenerator::RunBiomePCG()
+{
+	if (!Settings)
+	{
+		return;
+	}
+	for (const UTN_ProcBiomeDataAsset* Asset : Settings->Biomes)
+	{
+		if (!Asset || !Asset->PCGGraph)
+		{
+			continue;
+		}
+		UPCGComponent* PCG = NewObject<UPCGComponent>(this);
+		PCG->RegisterComponent();
+		PCG->SetGraph(Asset->PCGGraph);
+		PCG->GenerateLocal(true);
+		PCGComponents.Add(PCG);
+		UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] PCG del bioma %s lanzado."), *UEnum::GetValueAsString(Asset->Biome));
+	}
+}

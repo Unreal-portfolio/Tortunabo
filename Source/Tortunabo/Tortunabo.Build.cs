@@ -25,7 +25,10 @@ public class Tortunabo : ModuleRules
 			"AudioMixer",
 			"SignalProcessing",
 			"Niagara",
-			"NiagaraCore"
+			"NiagaraCore",
+			// Mapa procedural por módulos (World/ProcMap): terreno en runtime y grafos PCG por bioma.
+			"ProceduralMeshComponent",
+			"PCG"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

@@ -150,6 +150,18 @@ public:
 	UFUNCTION()
 	void OnRep_RaceScore();
 
+	/**
+	 * Rondas ganadas en la partida del mapa procedural (Carrera y 2vs2: gana quien
+	 * llega a 3). Lo resetea ATN_ProcMapGameMode al empezar la partida; no se toca
+	 * en ResetForNewRace porque este se llama en cada ronda.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
+	int32 RoundWins = 0;
+
+	/** Pareja de la ronda actual en 2vs2 (0 o 1). -1 fuera de 2vs2. */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
+	int32 TeamIndex = -1;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:

@@ -119,6 +119,14 @@ public:
 	void ForceRestoreInput();
 
 	/**
+	 * @brief El cliente avisa de que ya construyó el mapa procedural de esa generación.
+	 * @note Lo llama ATN_ProcMapGenerator en el cliente; el servidor lo reenvía a
+	 *       ATN_ProcMapGameMode para arrancar la ronda cuando todos lo tienen.
+	 */
+	UFUNCTION(Server, Reliable)
+	void ServerReportProcMapReady(int32 Generation);
+
+	/**
 	 * @brief Recibe audio de voz filtrado por proximidad desde el servidor.
 	 * @param CompressedData Buffer comprimido del emisor.
 	 * @param SenderSampleRate SampleRate original del emisor.

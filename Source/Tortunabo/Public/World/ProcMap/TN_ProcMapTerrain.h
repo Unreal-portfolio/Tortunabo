@@ -99,6 +99,16 @@ namespace TNProcMap
 			}
 		}
 
+		/** Distancia (cm) de cada vértice al BORDE del camino más cercano; 1e9 si está lejos de todos. */
+		void ExportPathEdgeDistance(TArray<float>& Out) const
+		{
+			Out.SetNum(PathDist.Num());
+			for (int32 Idx = 0; Idx < PathDist.Num(); ++Idx)
+			{
+				Out[Idx] = PathSeg[Idx] == INDEX_NONE ? 1e9f : static_cast<float>(FMath::Max(0.0, PathDist[Idx] - EffHalfWidth(Idx)));
+			}
+		}
+
 		double HeightAtVertex(int32 ix, int32 iy, uint8& OutMask) const
 		{
 			const FVector2D P = Origin + FVector2D(ix * Spacing, iy * Spacing);

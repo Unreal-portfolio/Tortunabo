@@ -14,6 +14,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_MatchFlowTypes.h"
 #include "Player/TortugaCharacter.h"
+#include "Game/TN_ProcMapGameMode.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/GameStateBase.h"
 #include "Engine/Engine.h"
@@ -238,6 +239,14 @@ void AMP_GamePlayerController::ForceRestoreInput()
 {
 	ResetIgnoreInputFlags();
 	ApplyGameplayInputMode();
+}
+
+void AMP_GamePlayerController::ServerReportProcMapReady_Implementation(int32 Generation)
+{
+	if (ATN_ProcMapGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ATN_ProcMapGameMode>() : nullptr)
+	{
+		GM->NotifyClientMapReady(this, Generation);
+	}
 }
 
 void AMP_GamePlayerController::ClientReceiveVoice_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor)

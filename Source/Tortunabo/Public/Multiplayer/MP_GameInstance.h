@@ -5,6 +5,7 @@
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
 #include "Engine/EngineBaseTypes.h"
+#include "World/ProcMap/TN_ProcMapEnums.h"
 #include "MP_GameInstance.generated.h"
 
 class UNetDriver;
@@ -204,6 +205,18 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Multiplayer")
 	int32 PendingTravelPlayerCount = 0;
+
+	/**
+	 * Modo elegido en el lobby (ATN_ProcModeSelector). Classic = LVL_Run de siempre
+	 * (ChunkManager); el resto viaja a LVL_ProcMap. Vive en la GameInstance del host
+	 * para sobrevivir al travel; los clientes lo ven por el selector replicado.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
+	ETNProcGameMode SelectedProcMode = ETNProcGameMode::Classic;
+
+	/** Dificultad elegida en el lobby para el mapa procedural. */
+	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
+	ETNProcDifficulty SelectedProcDifficulty = ETNProcDifficulty::Normal;
 
 protected:
 	/** @brief Callback online: sesión Steam creada — dispara ServerTravel al mapa lobby. */
