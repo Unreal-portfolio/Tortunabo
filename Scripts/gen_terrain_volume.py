@@ -1,8 +1,8 @@
 """Genera el MAPA VOLUMETRICO fijo: terreno 3D (densidad + marching cubes) de 600 x 600 m,
 cortado en 36 trozos de 100 m, con el recorrido por zonas:
 
-    acantilados laberinticos -> canon con tuneles -> dunas laberinticas -> lago con calzada,
-    islitas e islas -> bosque de algas -> arena final.
+    acantilados de roca arenosa (laberinto por niveles) -> canon con tuneles -> zona encharcada
+    (dunas con laguitos, por las crestas) -> bosque de algas -> playa final abierta al mar.
 
 Se ejecuta FUERA del editor, una vez (el mapa no se regenera en juego):
     uv run --with numpy --with scipy --with pillow --with scikit-image \
@@ -28,6 +28,7 @@ from terrain_vol.mesh import ChunkMesh, build_chunk
 
 OUTPUT_ROOT = Path(__file__).resolve().parent / "terrain_volumes"
 CLIMB_STEPS = 2                  # desnivel caminable entre columnas vecinas (1 m por 1 m de avance)
+JUMP_CELLS = 3                   # salto en linea recta: hasta 3 m de hueco, sin subir mas de 0,5 m
 
 
 def build_all(model: MapModel) -> dict[tuple[int, int], ChunkMesh]:
@@ -54,7 +55,8 @@ def ground_level(standable: np.ndarray, i: int, j: int) -> int:
 
 
 def walk(standable: np.ndarray, start: tuple[int, int, int], dry_only: bool = True) -> np.ndarray:
-    """Celdas alcanzables a pie desde start (BFS por celdas de pie, desnivel <= CLIMB_STEPS)."""
+    """Celdas alcanzables desde start andando (desnivel <= CLIMB_STEPS entre vecinas) o saltando
+    en linea recta hasta JUMP_CELLS celdas (sin subir mas de una muestra)."""
     dry_k = int(np.ceil((WATER_M + 0.2 - Z_MIN_M) / STEP_Z_M)) if dry_only else 0
     seen = np.zeros_like(standable)
     if not standable[start]:
@@ -73,6 +75,15 @@ def walk(standable: np.ndarray, start: tuple[int, int, int], dry_only: bool = Tr
                 if dry_k <= c < nk and standable[a, b, c] and not seen[a, b, c]:
                     seen[a, b, c] = True
                     queue.append((a, b, c))
+            for reach in range(2, JUMP_CELLS + 1):
+                a, b = i + di * reach, j + dj * reach
+                if not (0 <= a < ni and 0 <= b < nj):
+                    break
+                for dk in range(-4, 2):
+                    c = k + dk
+                    if dry_k <= c < nk and standable[a, b, c] and not seen[a, b, c]:
+                        seen[a, b, c] = True
+                        queue.append((a, b, c))
     return seen
 
 

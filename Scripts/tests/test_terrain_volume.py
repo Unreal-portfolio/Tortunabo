@@ -95,13 +95,37 @@ def test_la_orilla_del_lago_no_es_recta(chunks):
     assert max(rows + cols) / total < 0.2
 
 
-def test_la_calzada_del_lago_es_seca(model, chunks):
+def test_la_zona_encharcada_tiene_laguitos_y_cresta_seca(model, chunks):
     from terrain_vol.export import global_top
     top = global_top(chunks)
-    s0, s1 = model.route.zone_range("lake")
-    for s in np.linspace(s0 + 20.0, s1 - 20.0, 30):
-        i, j = world_index(model.route.point_at(s))
-        assert top[i, j] > WATER_M + 0.2, f"calzada bajo el agua en s={s:.0f}"
+    s0, s1 = model.route.zone_range("marsh")
+    samples = np.linspace(s0 + 20.0, s1 - 20.0, 60)
+    dry = [top[world_index(model.route.point_at(s))] > WATER_M + 0.2 for s in samples]
+    # La cresta es seca salvo los huecos que se saltan.
+    assert np.mean(dry) > 0.85
+    # Hay agua a los lados de la cresta (laguitos), no un solo lago ni un secarral.
+    around = []
+    for s in samples[::6]:
+        p = model.route.point_at(s)
+        i, j = world_index(p)
+        around.append(float(np.mean(top[i - 25:i + 25, j - 25:j + 25] < WATER_M)))
+    assert 0.08 < float(np.mean(around)) < 0.7
+
+
+def test_el_laberinto_tiene_senuelos_y_niveles(model):
+    cliffs = model.nets["cliffs"]
+    assert len(cliffs.decoys) >= 3, "sin senuelos: seguir recto siempre seria el camino bueno"
+    levels = np.unique(np.round(cliffs.levels[cliffs.chain], 1))
+    assert len(levels) >= 2, "la ruta del laberinto no cambia de nivel"
+
+
+def test_el_final_es_playa_abierta_al_mar(model, chunks):
+    from terrain_vol.export import global_top
+    top = global_top(chunks)
+    north = top[-6:, 40:-40]
+    assert float(np.mean(north < WATER_M)) > 0.9, "el borde norte no es mar"
+    end = world_index(model.route.points[-1])
+    assert top[end] > WATER_M + 0.5
 
 
 def test_los_bordes_de_trozos_vecinos_coinciden(chunks):

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy import ndimage
+from scipy import ndimage, sparse
 from skimage.measure import marching_cubes
 
 from .density import Fields, MapModel, smooth
@@ -27,10 +27,10 @@ PALETTES = {
     "algae": ((0.20, 0.22, 0.06), (0.12, 0.14, 0.045), (0.19, 0.20, 0.05), (0.07, 0.07, 0.03), (0.11, 0.10, 0.04),
               (0.05, 0.06, 0.025)),
 }
-ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "dunes": "sand", "lake": "beach", "algae": "algae",
-                "sand_end": "sand"}
+ZONE_PALETTE = {"cliffs": "sand", "canyon": "sand", "marsh": "beach", "algae": "algae", "beach": "beach"}
 
-FOLIAGE_SPACING_M = 2.8
+FOLIAGE_SPACING_M = 2.0
+SMOOTH_ITERATIONS = 6                   # Taubin (encoge poco): quita el escalonado del marching cubes
 FOLIAGE_SHAPES = {"stalk": 0, "frond": 1, "bush": 2}      # orden de TNTerrainBiome::EFoliageShape
 FOLIAGE_COLORS = ((0.10, 0.14, 0.03), (0.27, 0.29, 0.07))
 
@@ -49,13 +49,26 @@ class ChunkMesh:
     fields: Fields
 
 
-def chunk_grid(col: int, row: int, pad: int = 0):
-    x0, x1, y0, y1 = cell_bounds(col, row)
-    xs = x0 + STEP_XY_M * np.arange(-pad, CELL_SAMPLES + pad)
-    ys = y0 + STEP_XY_M * np.arange(-pad, CELL_SAMPLES + pad)
-    X, Y = np.meshgrid(xs, ys, indexing="ij")
-    Z = Z_MIN_M + STEP_Z_M * np.arange(Z_SAMPLES)
-    return X, Y, Z
+def z_levels() -> np.ndarray:
+    return Z_MIN_M + STEP_Z_M * np.arange(Z_SAMPLES)
+
+
+def taubin(vertices: np.ndarray, faces: np.ndarray, pinned: np.ndarray, iterations: int) -> np.ndarray:
+    """Suavizado de Taubin (lambda/mu) con los vertices pinned fijos: los del borde del trozo
+    no se mueven, asi que la costura con el vecino sigue exacta."""
+    n = len(vertices)
+    rows = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2], faces[:, 1], faces[:, 2], faces[:, 0]])
+    cols = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0], faces[:, 0], faces[:, 1], faces[:, 2]])
+    adjacency = sparse.coo_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, n)).tocsr()
+    adjacency.data[:] = 1.0
+    degree = np.asarray(adjacency.sum(axis=1)).ravel()
+    free = (~pinned & (degree > 0))[:, None]
+    v = vertices.copy()
+    for _ in range(iterations):
+        for factor in (0.5, -0.53):
+            mean = adjacency @ v / np.maximum(degree, 1.0)[:, None]
+            v = np.where(free, v + factor * (mean - v), v)
+    return v
 
 
 def hash_uniform(ix: np.ndarray, iy: np.ndarray, salt: int) -> np.ndarray:
@@ -74,7 +87,7 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
     x, y, z = world[:, 0], world[:, 1], world[:, 2]
     w = model.zones.weights(x, y)
     vein = 0.5 + 0.5 * np.sin(x / 53.0 + 1.7) * np.cos(y / 41.0 - 0.6)
-    cliff = smooth(0.20, 0.55, 1.0 - normals[:, 2])
+    cliff = smooth(0.25, 0.6, 1.0 - normals[:, 2])
     cliff = np.maximum(cliff, (normals[:, 2] < -0.2).astype(np.float64))     # techos de tunel y voladizos
     high = smooth(4.0, 9.0, z)
     wet = smooth(WATER_M + 0.6, WATER_M, z)
@@ -85,7 +98,7 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
         c = c + (wall + (wall_alt - wall) * vein[:, None] - c) * (0.6 * cliff)[:, None]
         c = c + (wet_c - c) * wet[:, None]
         out += w[zone][:, None] * c
-    tint = 1.0 + 0.09 * np.sin(x / 9.5) * np.cos(y / 7.4) + 0.2 * cliff * np.sin(z * 2.5)
+    tint = 1.0 + 0.07 * np.sin(x / 9.5) * np.cos(y / 7.4)
     out = np.clip(out * tint[:, None], 0.0, 1.0)
     rgba = np.concatenate([out, np.ones((len(x), 1))], axis=1)
     return np.rint(rgba * 255.0).astype(np.uint8)
@@ -151,16 +164,19 @@ def foliage_instances(model: MapModel, col: int, row: int, fields: Fields, top: 
 
 def build_chunk(model: MapModel, col: int, row: int) -> ChunkMesh:
     # Una muestra de margen para las normales (gradiente centrado tambien en el borde).
-    X, Y, Z = chunk_grid(col, row, pad=1)
-    fields_pad = model.fields(X, Y)
+    fields_pad, X, Y = model.chunk_fields(col, row, pad=1)
+    Z = z_levels()
     D_pad = model.density(X, Y, Z, fields_pad)
     D = D_pad[1:-1, 1:-1, :]
-    fields = Fields(**{k: (v[1:-1, 1:-1] if isinstance(v, np.ndarray) else {z: a[1:-1, 1:-1] for z, a in v.items()})
-                       for k, v in fields_pad.__dict__.items()})
+    fields = fields_pad.window(1, CELL_SAMPLES + 1, 1, CELL_SAMPLES + 1)
 
     verts, faces, _, _ = marching_cubes(D, level=0.0, spacing=(STEP_XY_M, STEP_XY_M, STEP_Z_M))
+    edge = CELL_SAMPLES - 1
+    pinned = (verts[:, 0] < 1e-6) | (verts[:, 0] > edge * STEP_XY_M - 1e-6) \
+        | (verts[:, 1] < 1e-6) | (verts[:, 1] > edge * STEP_XY_M - 1e-6)
+    smoothed = taubin(verts, faces, pinned, SMOOTH_ITERATIONS)
     x0, _, y0, _ = cell_bounds(col, row)
-    world = verts + np.array([x0, y0, Z_MIN_M])
+    world = smoothed + np.array([x0, y0, Z_MIN_M])
 
     grad = np.gradient(D_pad, STEP_XY_M, STEP_XY_M, STEP_Z_M)
     coords = np.stack([verts[:, 0] / STEP_XY_M + 1, verts[:, 1] / STEP_XY_M + 1, verts[:, 2] / STEP_Z_M], axis=0)

@@ -94,8 +94,8 @@ def write_preview(out: Path, chunks, zone_map, route_points) -> None:
     top = global_top(chunks)
     gx, gy = np.gradient(top)
     light = np.clip((gx * 0.5 - gy * 0.35 + 1.0) / np.sqrt(gx * gx + gy * gy + 1.0) * 0.8, 0.0, 1.0)
-    tint = {"cliffs": (0.80, 0.62, 0.40), "canyon": (0.85, 0.66, 0.42), "dunes": (0.90, 0.75, 0.50),
-            "lake": (0.88, 0.80, 0.60), "algae": (0.42, 0.50, 0.20), "sand_end": (0.92, 0.80, 0.55)}
+    tint = {"cliffs": (0.80, 0.62, 0.40), "canyon": (0.85, 0.66, 0.42), "marsh": (0.88, 0.80, 0.60),
+            "algae": (0.42, 0.50, 0.20), "beach": (0.95, 0.86, 0.62)}
     base = np.zeros(top.shape + (3,))
     for zone, w in zone_map.items():
         base += w[..., None] * np.array(tint[zone])

@@ -18,14 +18,16 @@ from terrain_gen.preset import generate_path
 from .layout import CELL_M, GRID, MAP_MAX_M, MAP_MIN_M, cell_center
 from .noise import Fbm2D
 
-# (zona, fraccion de la ruta, alcance lateral en m: hasta donde llega la zona antes del muro)
+# (zona, fraccion de la ruta, alcance lateral en m: hasta donde llega la zona antes del muro).
+# Recorrido (2026-09-25): salida al pie de los acantilados de piedra arenosa (laberinto por
+# niveles) -> canon con tuneles -> zona encharcada (dunas con laguitos, por las crestas) ->
+# bosque de algas -> playa final abierta al mar.
 ZONES: tuple[tuple[str, float, float], ...] = (
-    ("cliffs", 0.15, 70.0),
-    ("canyon", 0.17, 40.0),
-    ("dunes", 0.18, 60.0),
-    ("lake", 0.17, 90.0),
-    ("algae", 0.20, 75.0),
-    ("sand_end", 0.13, 45.0),
+    ("cliffs", 0.25, 75.0),
+    ("canyon", 0.16, 40.0),
+    ("marsh", 0.20, 85.0),
+    ("algae", 0.24, 80.0),
+    ("beach", 0.15, 95.0),
 )
 ZONE_NAMES = tuple(z[0] for z in ZONES)
 ROUTE_STEP_M = 1.0
@@ -38,6 +40,9 @@ ZONE_SKEW = 0.8                 # la frontera se tuerce con la distancia lateral
 ZONE_SOFT_M = 22.0              # vecino mas cercano suave: sin fronteras rectas entre dos tramos
 ZONE_QUERY_WARP_M = 25.0        # deformacion del punto de consulta de las zonas
 ZONE_SAMPLE_M = 4.0             # separacion de los puntos de la ruta que votan la zona
+# Serpenteo extra en las zonas de laberinto: la ruta gira a menudo, asi que seguir recto no
+# lleva a la salida (los senuelos de network.py siguen recto donde la ruta gira).
+MEANDER = {"cliffs": (16.0, 60.0), "algae": (14.0, 55.0)}   # zona: (amplitud m, longitud de onda m)
 
 
 @dataclass
@@ -91,6 +96,34 @@ def resample(points: np.ndarray, step: float) -> tuple[np.ndarray, np.ndarray]:
     return np.stack([x, y], axis=1), s
 
 
+def meander(rng: np.random.Generator, points: np.ndarray, arc: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Desplaza la ruta a los lados con un seno (fase y onda sorteadas) en las zonas de MEANDER,
+    apagado suavemente en sus extremos."""
+    length = arc[-1]
+    offset = np.zeros_like(arc)
+    start = 0.0
+    for name, share, _ in ZONES:
+        end = start + share * length
+        if name in MEANDER:
+            amp, wave = MEANDER[name]
+            # Curvas irregulares: desplazamientos sorteados cada media onda, unidos en suave
+            # (no un seno, que se lee como una culebra dibujada).
+            knots = np.arange(start - wave, end + wave, wave * 0.5)
+            values = rng.uniform(-1.0, 1.0, len(knots)) * rng.uniform(0.4, 1.0, len(knots))
+            t = np.clip((arc - knots[0]) / (wave * 0.5), 0.0, len(knots) - 1.001)
+            k = np.floor(t).astype(int)
+            u = t - k
+            u = u * u * (3.0 - 2.0 * u)
+            curve = values[k] * (1.0 - u) + values[np.minimum(k + 1, len(knots) - 1)] * u
+            fade = np.clip((arc - start) / 25.0, 0.0, 1.0) * np.clip((end - arc) / 25.0, 0.0, 1.0)
+            offset += amp * fade * curve
+        start = end
+    tangent = np.gradient(points, axis=0)
+    tangent /= np.maximum(np.linalg.norm(tangent, axis=1, keepdims=True), 1e-9)
+    normal = np.stack([-tangent[:, 1], tangent[:, 0]], axis=1)
+    return resample(points + normal * offset[:, None], ROUTE_STEP_M)
+
+
 def self_gap(points: np.ndarray, arc: np.ndarray, min_arc_apart: float = 150.0) -> float:
     """Distancia minima entre dos puntos de la ruta separados mas de min_arc_apart en arco."""
     tree = cKDTree(points)
@@ -113,6 +146,7 @@ def build_route(rng: np.random.Generator, min_cells: int = 12, max_cells: int = 
         control[-1] += rng.uniform(-0.2 * CELL_M, 0.2 * CELL_M, 2)
         control = np.clip(control, lo, hi)
         points, arc = resample(catmull_rom(control), ROUTE_STEP_M)
+        points, arc = meander(rng, points, arc)
         if points[:, 0].min() < lo - 1 or points[:, 0].max() > hi + 1 or points[:, 1].min() < lo - 1 \
                 or points[:, 1].max() > hi + 1:
             continue

@@ -30,6 +30,8 @@ class Network:
     edges: list[tuple[int, int]]
     curves: list[np.ndarray]                        # polilinea de cada arista
     attach: dict[int, int] = field(default_factory=dict)   # nodo -> nodo de la cadena del que cuelga
+    levels: np.ndarray | None = None                # cota del suelo de cada nodo (m)
+    decoys: list[int] = field(default_factory=list)  # nodos que siguen recto donde la ruta gira
 
     def degree(self) -> np.ndarray:
         deg = np.zeros(len(self.nodes), dtype=int)
@@ -59,15 +61,23 @@ class Network:
                     stack.append(m)
         return b in seen
 
-    def sample(self, step: float = 0.5) -> np.ndarray:
-        """Puntos a lo largo de todas las aristas (para medir distancias con un KD-tree)."""
-        out = []
-        for curve in self.curves:
+    def sample(self, step: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
+        """Puntos a lo largo de todas las aristas (para medir distancias con un KD-tree) y la
+        cota del suelo en cada uno: interpolada entre las de los dos nodos de su arista."""
+        out, floors = [], []
+        levels = self.levels if self.levels is not None else np.zeros(len(self.nodes))
+        for (a, b), curve in zip(self.edges, self.curves):
             seg = np.linalg.norm(np.diff(curve, axis=0), axis=1)
             arc = np.concatenate(([0.0], np.cumsum(seg)))
             s = np.arange(0.0, arc[-1] + step, step)
             out.append(np.stack([np.interp(s, arc, curve[:, 0]), np.interp(s, arc, curve[:, 1])], axis=1))
-        return np.vstack(out) if out else np.zeros((0, 2))
+            t = s / max(arc[-1], 1e-9)
+            # Rampa suave: la subida se concentra en el centro de la arista.
+            t = t * t * (3.0 - 2.0 * t)
+            floors.append(levels[a] + (levels[b] - levels[a]) * t)
+        if not out:
+            return np.zeros((0, 2)), np.zeros(0)
+        return np.vstack(out), np.concatenate(floors)
 
 
 def poisson_disk(rng: np.random.Generator, bounds, radius: float, accept, seeds: np.ndarray, tries: int = 24) -> np.ndarray:
@@ -115,9 +125,15 @@ def bent_curve(rng: np.random.Generator, a: np.ndarray, b: np.ndarray, bend: flo
 
 def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing: float,
                   loop_share: float, loops_anywhere: bool = False, reach_share: float = 0.85,
-                  bend: float = 0.22) -> Network:
+                  bend: float = 0.22, level_step: float = 0.0, level_count: int = 1,
+                  decoys: bool = False) -> Network:
     """Red de la zona. loops_anywhere=False: los lazos no saltan de una rama a otra, asi que la
-    cadena es el unico paso de la entrada a la salida de la zona."""
+    cadena es el unico paso de la entrada a la salida de la zona.
+
+    level_count > 1: el suelo de cada nodo va a uno de level_count niveles separados level_step
+    metros (la cadena sube y baja; las ramas cambian de nivel respecto a su padre). Entrada y
+    salida de la zona a nivel 0 para casar con las vecinas.
+    decoys: donde la cadena gira mas de 15 grados, una rama sigue recto (el camino recto no es el bueno)."""
     route = zones.route
     reach = next(r for name, _, r in ZONES if name == zone) * reach_share
     s0, s1 = route.zone_range(zone)
@@ -137,9 +153,40 @@ def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing
         return w > 0.55 and d[0] < min(reach, 0.9 * zones.reach(zones.weights(x, y, s, d), x, y)[0])
 
     extra = poisson_disk(rng, bounds, spacing, accept, chain_pts)
-    nodes = np.vstack([chain_pts, extra]) if len(extra) else chain_pts
     chain = list(range(len(chain_pts)))
     chain_set = set(chain)
+
+    # Senuelos: prolongacion recta de la cadena alli donde gira mas de 20 grados.
+    decoy_pts, decoy_parent = [], []
+    route_tree = cKDTree(route.points)
+    if decoys:
+        # Giro medido sobre dos tramos a cada lado: la ruta tuerce en curvas suaves.
+        for k in range(2, len(chain_pts) - 2):
+            d_in = chain_pts[k] - chain_pts[k - 2]
+            d_out = chain_pts[k + 2] - chain_pts[k]
+            cos = float(np.dot(d_in, d_out) / max(np.linalg.norm(d_in) * np.linalg.norm(d_out), 1e-9))
+            if cos > math.cos(math.radians(15.0)):
+                continue
+            ahead = d_in / max(np.linalg.norm(d_in), 1e-9)
+            for scale in (1.0, 1.2, 1.4):
+                p = chain_pts[k] + ahead * spacing * scale
+                # Lejos de la propia ruta (el pasillo no se funde con ella) y de otros senuelos.
+                if route_tree.query(p)[0] < 0.55 * spacing:
+                    continue
+                if decoy_pts and np.min(np.linalg.norm(np.array(decoy_pts) - p, axis=1)) < 0.75 * spacing:
+                    continue
+                if not accept(p):
+                    continue
+                decoy_pts.append(p)
+                decoy_parent.append(k)
+                break
+    if decoy_pts and len(extra):
+        dp = np.array(decoy_pts)
+        far = np.min(np.linalg.norm(extra[:, None, :] - dp[None, :, :], axis=2), axis=1) >= 0.75 * spacing
+        extra = extra[far]
+    fixed = np.vstack([chain_pts] + ([np.array(decoy_pts)] if decoy_pts else []))
+    nodes = np.vstack([fixed, extra]) if len(extra) else fixed
+    decoy_ids = list(range(len(chain_pts), len(chain_pts) + len(decoy_pts)))
 
     candidates = set()
     if len(nodes) >= 3:
@@ -151,7 +198,18 @@ def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing
                     candidates.add((a, b))
     edges = [(chain[k], chain[k + 1]) for k in range(len(chain) - 1)]
     attach = {c: c for c in chain}
-    # Arbol aleatorio (Prim con eleccion al azar) que crece desde la cadena.
+    levels = np.zeros(len(nodes))
+    if level_count > 1:
+        level = 0
+        for k in range(1, len(chain) - 2):
+            if rng.random() < 0.4:
+                level = int(np.clip(level + rng.choice([-1, 1]), 0, level_count - 1))
+            levels[chain[k]] = level * level_step
+    for decoy, parent in zip(decoy_ids, decoy_parent):
+        edges.append((chain[parent], decoy))
+        attach[decoy] = chain[parent]
+        levels[decoy] = levels[chain[parent]]
+    # Arbol aleatorio (Prim con eleccion al azar) que crece desde la cadena y los senuelos.
     while True:
         frontier = [(a, b) for a, b in candidates if (a in attach) != (b in attach)]
         if not frontier:
@@ -160,10 +218,16 @@ def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing
         new, old = (b, a) if a in attach else (a, b)
         attach[new] = attach[old]
         edges.append((old, new))
+        if level_count > 1:
+            step = int(rng.choice([-1, 0, 0, 1]))
+            levels[new] = float(np.clip(levels[old] + step * level_step, 0.0, (level_count - 1) * level_step))
+        else:
+            levels[new] = levels[old]
     in_tree = {tuple(sorted(e)) for e in edges}
     spare = [(a, b) for a, b in candidates if (a, b) not in in_tree and a in attach and b in attach
              and not (a in chain_set and b in chain_set)
-             and (loops_anywhere or attach[a] == attach[b])]
+             and (loops_anywhere or attach[a] == attach[b])
+             and abs(levels[a] - levels[b]) <= level_step + 1e-6]
     rng.shuffle(spare)
     edges += spare[:int(round(loop_share * len(attach)))]
 
@@ -171,9 +235,11 @@ def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing
     keep = sorted(attach)
     remap = {old: new for new, old in enumerate(keep)}
     nodes = nodes[keep]
+    levels = levels[keep]
     edges = [(remap[a], remap[b]) for a, b in edges]
     chain = [remap[c] for c in chain]
     attach = {remap[k]: remap[v] for k, v in attach.items()}
+    decoy_ids = [remap[d] for d in decoy_ids if d in remap]
 
     curves = []
     chain_pairs = {(chain[k], chain[k + 1]) for k in range(len(chain) - 1)}
@@ -187,4 +253,4 @@ def build_network(rng: np.random.Generator, zones: ZoneField, zone: str, spacing
         else:
             curve = bent_curve(rng, nodes[a], nodes[b], bend)
         curves.append(curve)
-    return Network(zone, nodes, chain, edges, curves, attach)
+    return Network(zone, nodes, chain, edges, curves, attach, levels, decoy_ids)
