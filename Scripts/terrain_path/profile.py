@@ -207,14 +207,26 @@ def _profiles(rng: np.random.Generator, graph: PathGraph, style: PathStyle) -> P
         profiles[loop.id] = loop_profile(rng, loop, graph, profiles, style, pin)
         if c is not None:
             crossings.append(c)
+    if len(crossings) < style.crossings[0]:
+        raise Infeasible(f"{len(crossings)} cruces, el estilo pide al menos {style.crossings[0]}")
+    # Tipo de cada cruce con un generador aparte (no mueve el resto del plan).
+    kinds = np.random.default_rng(int(rng.integers(1 << 31)))
+    def _kind(c: Crossing) -> str:
+        lower = graph.lines[c.lower]
+        k = min(int(np.searchsorted(lower.arc, c.s_lower)), len(lower.arc) - 1)
+        draw = kinds.random()
+        # Sobre el rio, siempre puente: un cerro con tunel taparia el cauce.
+        return "bridge" if profiles[c.lower].biome[k] == 1 or draw < style.bridge_share else "tunnel"
+    crossings = [replace(c, kind=_kind(c)) for c in crossings]
     for c in crossings:
         upper, lower = graph.lines[c.upper], graph.lines[c.lower]
         w_up = float(np.interp(c.s_upper, upper.arc, profiles[c.upper].half_width))
-        # Puente fino: el camino de abajo solo queda cubierto bajo el tablero del de arriba.
         half = w_up + 1.5
-        profiles[c.lower] = _mark(profiles[c.lower], lower, c.s_lower - half, c.s_lower + half)
-        continue
-        # El tunel sigue mientras el camino de abajo no se ha apartado del de arriba lo bastante
+        if c.kind == "bridge":
+            # Puente fino: el camino de abajo solo queda cubierto bajo el tablero del de arriba.
+            profiles[c.lower] = _mark(profiles[c.lower], lower, c.s_lower - half, c.s_lower + half)
+            continue
+        # Tunel: sigue mientras el camino de abajo no se ha apartado del de arriba lo bastante
         # para que quepan sus dos paredes (si no, asomaria al lado del de arriba).
         d, _ = cKDTree(upper.points).query(lower.points)
         need = w_up + profiles[c.lower].half_width + 8.0

@@ -56,7 +56,8 @@ def test_ruido_por_nudos_en_rango():
 
 
 def test_estilo_c01():
-    assert C01_STYLE.loops == 7 and C01_STYLE.nested_loops >= 1 and C01_STYLE.crossings >= 1
+    assert C01_STYLE.loops == 7 and C01_STYLE.nested_loops >= 1 and C01_STYLE.crossings == (1, 4)
+    assert C01_STYLE.width_m[1] == 6.5 and C01_STYLE.canyon == "deadly"
 
 
 from terrain_path.graph import EDGE_MARGIN_M, trace_main  # noqa: E402
@@ -168,9 +169,14 @@ def test_los_cruces_dejan_hueco_de_tunel(plan):
         z_up = np.interp(c.s_upper, up.arc, plan.profiles[up.id].z)
         z_lo = np.interp(c.s_lower, lo.arc, plan.profiles[lo.id].z)
         assert z_up - z_lo >= C01_STYLE.cross_clearance_m - 0.1
-        assert z_lo >= WATER_M + 0.8
+        assert z_lo >= WATER_M + 0.6          # sobre el rio, el de abajo va a la cota de la orilla
         tunnel = plan.profiles[lo.id].tunnel
         assert tunnel[int(np.searchsorted(lo.arc, c.s_lower))]
+
+
+def test_cruces_de_uno_a_cuatro_con_tipo(plan):
+    assert 1 <= len(plan.crossings) <= 4
+    assert all(c.kind in ("bridge", "tunnel") for c in plan.crossings)
 
 
 def test_biomas_en_orden_y_final_en_la_playa(plan):

@@ -45,6 +45,7 @@ class PathModel:
         extra = np.random.default_rng(seed + 17)
         self.n_crest = Fbm2D(extra, 40.0, 3)
         self.n_wall2d = Fbm2D(extra, 11.0, 3)
+        self.n_band = Fbm2D(extra, 80.0, 2)
         self.arch_ranges = self._plan_arches(extra)
         self._build_samples()
         self.extra_rng = rng                       # rio y castillos siguen la misma secuencia
@@ -138,7 +139,7 @@ class PathModel:
     def _bridge_clearance(self, line_id: int, s: float) -> float | None:
         """Hueco bajo el puente si (line_id, s) es el camino de abajo de un cruce, si no None."""
         for c in self.plan.crossings:
-            if c.lower == line_id and abs(c.s_lower - s) < 25.0:
+            if c.kind == "bridge" and c.lower == line_id and abs(c.s_lower - s) < 25.0:
                 up = self.plan.graph.lines[c.upper]
                 lo = self.plan.graph.lines[c.lower]
                 return float(np.interp(c.s_upper, up.arc, self.plan.profiles[c.upper].z)
@@ -280,7 +281,8 @@ class PathModel:
         height = height * (1.0 - mix) + height2 * mix
         height = self._inside_corridor(X, Y, height, e, i, zf, w, bw)
         v = field.vista(self, X, Y)
-        band = self.style.block_band_m
+        lo_b, hi_b = self.style.block_band_m
+        band = lo_b + (hi_b - lo_b) * self.n_band.unit(X, Y)
         # Bajada a las vistas proporcional al desnivel (~27 grados): una pared alta que caia de
         # golpe por detras quedaba como una aleta fina vista desde fuera.
         run = np.maximum(14.0, 2.0 * (H - v))
@@ -319,7 +321,7 @@ class PathModel:
         24 muestras mas cercanas saltaban, porque todas eran del mismo camino)."""
         pts = np.stack([np.ravel(X), np.ravel(Y)], axis=1)
         dists, zs, biomes = [], [], []
-        reach = self.style.block_band_m
+        reach = self.style.block_band_m[1]
         guard = np.full(len(pts), -1e3)
         for tree, idx in self.line_trees.values():
             d, k = tree.query(pts)

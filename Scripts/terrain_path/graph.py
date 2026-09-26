@@ -51,6 +51,7 @@ class Crossing:
     point: np.ndarray
     s_upper: float
     s_lower: float
+    kind: str = "bridge"          # "bridge" (puente fino) o "tunnel" (cerro con tunel)
 
 
 @dataclass
@@ -243,12 +244,13 @@ def make_loop(rng: np.random.Generator, graph: PathGraph, parent_id: int, style:
 
 def build_graph(rng: np.random.Generator, style: PathStyle) -> PathGraph:
     """Principal y style.loops lazos: los ultimos style.nested_loops cuelgan de un lazo largo
-    (>= 110 m); los primeros style.crossings del principal lo cruzan. Un lazo que no encaja en
+    (>= 110 m); los primeros n del principal lo cruzan, con n al azar en el rango style.crossings. Un lazo que no encaja en
     120 intentos se omite (y un cruce que no encaja en 80 se intenta como lazo normal)."""
     graph = PathGraph([trace_main(rng, style)])
+    n_cross = int(rng.integers(style.crossings[0], style.crossings[1] + 1))
     for k in range(style.loops):
         nested = k >= style.loops - style.nested_loops
-        cross = (not nested) and k < style.crossings
+        cross = (not nested) and k < n_cross
         for attempt in range(120):
             if nested:
                 parents = [line.id for line in graph.lines[1:] if line.length >= 110.0]
