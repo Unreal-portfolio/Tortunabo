@@ -29,7 +29,7 @@ def rim_arrays(style) -> tuple[np.ndarray, np.ndarray]:
 FOOT_M = 3.5                # pie de la pared casi vertical: lo justo para cerrar el paso
 
 
-RIM_FALL_DEG = (25.0, 60.0)  # caida de lo alto de la pared al relieve de fuera (varia): model.rim_envelope
+RIM_FALL_DEG = (20.0, 65.0)  # caida de lo alto de la pared al relieve de fuera (varia): model.rim_envelope
 
 
 def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None, n_wall=None, H_in=None):

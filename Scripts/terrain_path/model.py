@@ -355,11 +355,12 @@ class PathModel:
         region = np.where(e < 0.0, 0, np.where(e < crest_e + rim_top + 4.0, 1, 2))
         region = np.where(coast > 0.5, 3, region)
         region = np.where(self.decks.near(X, Y), 0, region)          # tableros: camino
+        tunnel = self._tunnel_zone(X, Y)
+        region = np.where(tunnel > 0.5, 0, region)                  # suelo de los tuneles: camino
         if shape == (len(getattr(self, "axis", [])),) * 2:
             self.region = region
         # Voladizos y huecos suaves en todas las paredes (antes solo en el acantilado).
         wall_band = (1.0 - smooth(0.0, 3.0, np.abs(e - 0.5 * crest_e))) * (0.5 + 0.5 * bw[..., 0])
-        tunnel = self._tunnel_zone(X, Y)
         path = 1.0 - smooth(-1.0, 0.5, e)
         weights = {key: bw[..., b] for b, key in enumerate(ZONE_KEYS)}
         weights["canyon"] = np.zeros(shape)

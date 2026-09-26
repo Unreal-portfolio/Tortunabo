@@ -25,7 +25,7 @@ from gen_terrain_volume import build_all, global_standable, ground_level, walk, 
 from terrain_path.layout import GRID
 from terrain_path.canyon import kill_boxes_uu
 from terrain_path.model import PathModel, walkable
-from terrain_path.style import C01_STYLE, PathStyle
+from terrain_path.style import C01_SEED, C01_STYLE, PathStyle
 from terrain_path.variants import PATH_VARIANTS
 from terrain_vol.export import global_top, write_map
 from terrain_vol.mesh import z_levels
@@ -93,7 +93,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("names", nargs="*", help="con --catalog: solo estos nombres")
     parser.add_argument("--catalog", action="store_true", help="genera el catalogo C02-C31")
-    parser.add_argument("--seed", type=int, default=60001, help="semilla de C01")
+    parser.add_argument("--seed", type=int, default=C01_SEED, help="semilla de C01")
     parser.add_argument("--workers", type=int, default=3)
     args = parser.parse_args()
     if not args.catalog:

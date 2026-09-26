@@ -35,7 +35,7 @@ class PathStyle:
     rim_dunes_m: tuple[float, float] = (3.0, 6.0)
     rim_beach_m: tuple[float, float] = (2.5, 4.0)
     wall_angle_deg: tuple[float, float, float, float] = (78.0, 60.0, 64.0, 62.0)
-    block_band_m: tuple[float, float] = (1.5, 6.0)    # ancho de lo alto de la pared antes de caer (varia)
+    block_band_m: tuple[float, float] = (1.0, 10.0)   # ancho de lo alto de la pared antes de caer (varia)
     # Rio
     island_per_100m: float = 5.0
     # Fondo de vistas
@@ -58,3 +58,4 @@ class PathStyle:
 
 
 C01_STYLE = PathStyle()
+C01_SEED = 60013          # v2: con cruce en puente, cruce en tunel y barranco (antes 60001)
