@@ -1,19 +1,19 @@
 {
  "name": "C01_camino",
- "seed": 60013,
+ "seed": 60026,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  11021.23617746817,
-  742.8101384000211
+  22096.091183948596,
+  697.7378062193111
  ],
  "end_uu": [
   31500.0,
-  22510.754736336665,
-  -343.1329734403317
+  20819.553128490425,
+  -337.67635924930744
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 17974,
-   "triangles": 35474,
+   "vertices": 16826,
+   "triangles": 33126,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 17487,
-   "triangles": 34444,
+   "vertices": 16733,
+   "triangles": 32926,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 20029,
-   "triangles": 39480,
+   "vertices": 15626,
+   "triangles": 30746,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 22319,
-   "triangles": 44000,
+   "vertices": 14662,
+   "triangles": 28832,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 23646,
-   "triangles": 46682,
+   "vertices": 21760,
+   "triangles": 42940,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 26775,
-   "triangles": 52820,
+   "vertices": 26064,
+   "triangles": 51406,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 25131,
-   "triangles": 49604,
+   "vertices": 23033,
+   "triangles": 45438,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 27984,
-   "triangles": 55268,
+   "vertices": 17488,
+   "triangles": 34394,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 23722,
-   "triangles": 46758,
+   "vertices": 26733,
+   "triangles": 52810,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 25594,
-   "triangles": 50484,
+   "vertices": 24510,
+   "triangles": 48318,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 22274,
-   "triangles": 43966,
+   "vertices": 20328,
+   "triangles": 40032,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 23095,
-   "triangles": 45590,
+   "vertices": 19181,
+   "triangles": 37802,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 16899,
-   "triangles": 33308,
+   "vertices": 17317,
+   "triangles": 34068,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 17333,
-   "triangles": 34158,
+   "vertices": 16216,
+   "triangles": 31934,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 16547,
-   "triangles": 32566,
+   "vertices": 16682,
+   "triangles": 32848,
    "instances": 0
   },
   {
@@ -220,8 +220,1688 @@
     30000.0,
     30000.0
    ],
-   "vertices": 17424,
-   "triangles": 34286,
+   "vertices": 14962,
+   "triangles": 29438,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_0",
+   "file": "Outer/o0_0.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_1",
+   "file": "Outer/o0_1.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_2",
+   "file": "Outer/o0_2.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_3",
+   "file": "Outer/o0_3.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_4",
+   "file": "Outer/o0_4.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_5",
+   "file": "Outer/o0_5.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_6",
+   "file": "Outer/o0_6.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_7",
+   "file": "Outer/o0_7.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_8",
+   "file": "Outer/o0_8.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_9",
+   "file": "Outer/o0_9.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_10",
+   "file": "Outer/o0_10.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_0_11",
+   "file": "Outer/o0_11.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_0",
+   "file": "Outer/o1_0.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_1",
+   "file": "Outer/o1_1.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_2",
+   "file": "Outer/o1_2.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_3",
+   "file": "Outer/o1_3.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_4",
+   "file": "Outer/o1_4.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_5",
+   "file": "Outer/o1_5.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_6",
+   "file": "Outer/o1_6.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_7",
+   "file": "Outer/o1_7.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_8",
+   "file": "Outer/o1_8.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_9",
+   "file": "Outer/o1_9.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_10",
+   "file": "Outer/o1_10.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_1_11",
+   "file": "Outer/o1_11.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_0",
+   "file": "Outer/o2_0.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_1",
+   "file": "Outer/o2_1.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_2",
+   "file": "Outer/o2_2.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_3",
+   "file": "Outer/o2_3.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_4",
+   "file": "Outer/o2_4.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_5",
+   "file": "Outer/o2_5.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_6",
+   "file": "Outer/o2_6.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_7",
+   "file": "Outer/o2_7.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_8",
+   "file": "Outer/o2_8.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_9",
+   "file": "Outer/o2_9.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_10",
+   "file": "Outer/o2_10.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_2_11",
+   "file": "Outer/o2_11.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_0",
+   "file": "Outer/o3_0.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_1",
+   "file": "Outer/o3_1.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_2",
+   "file": "Outer/o3_2.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_3",
+   "file": "Outer/o3_3.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_4",
+   "file": "Outer/o3_4.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_5",
+   "file": "Outer/o3_5.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_6",
+   "file": "Outer/o3_6.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_7",
+   "file": "Outer/o3_7.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_8",
+   "file": "Outer/o3_8.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_9",
+   "file": "Outer/o3_9.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_10",
+   "file": "Outer/o3_10.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_3_11",
+   "file": "Outer/o3_11.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_0",
+   "file": "Outer/o4_0.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_1",
+   "file": "Outer/o4_1.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_2",
+   "file": "Outer/o4_2.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_3",
+   "file": "Outer/o4_3.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_4",
+   "file": "Outer/o4_4.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_5",
+   "file": "Outer/o4_5.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_6",
+   "file": "Outer/o4_6.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_7",
+   "file": "Outer/o4_7.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_8",
+   "file": "Outer/o4_8.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_9",
+   "file": "Outer/o4_9.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_10",
+   "file": "Outer/o4_10.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_4_11",
+   "file": "Outer/o4_11.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_0",
+   "file": "Outer/o5_0.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_1",
+   "file": "Outer/o5_1.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_2",
+   "file": "Outer/o5_2.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_3",
+   "file": "Outer/o5_3.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_4",
+   "file": "Outer/o5_4.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_7",
+   "file": "Outer/o5_7.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_8",
+   "file": "Outer/o5_8.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_9",
+   "file": "Outer/o5_9.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_10",
+   "file": "Outer/o5_10.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_5_11",
+   "file": "Outer/o5_11.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_0",
+   "file": "Outer/o6_0.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_1",
+   "file": "Outer/o6_1.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_2",
+   "file": "Outer/o6_2.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_3",
+   "file": "Outer/o6_3.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_4",
+   "file": "Outer/o6_4.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_7",
+   "file": "Outer/o6_7.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_8",
+   "file": "Outer/o6_8.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_9",
+   "file": "Outer/o6_9.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_10",
+   "file": "Outer/o6_10.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_6_11",
+   "file": "Outer/o6_11.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_0",
+   "file": "Outer/o7_0.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_1",
+   "file": "Outer/o7_1.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_2",
+   "file": "Outer/o7_2.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_3",
+   "file": "Outer/o7_3.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_4",
+   "file": "Outer/o7_4.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_5",
+   "file": "Outer/o7_5.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_6",
+   "file": "Outer/o7_6.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_7",
+   "file": "Outer/o7_7.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_8",
+   "file": "Outer/o7_8.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_9",
+   "file": "Outer/o7_9.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_10",
+   "file": "Outer/o7_10.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_7_11",
+   "file": "Outer/o7_11.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_0",
+   "file": "Outer/o8_0.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_1",
+   "file": "Outer/o8_1.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_2",
+   "file": "Outer/o8_2.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_3",
+   "file": "Outer/o8_3.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_4",
+   "file": "Outer/o8_4.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_5",
+   "file": "Outer/o8_5.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_6",
+   "file": "Outer/o8_6.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_7",
+   "file": "Outer/o8_7.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_8",
+   "file": "Outer/o8_8.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_9",
+   "file": "Outer/o8_9.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_10",
+   "file": "Outer/o8_10.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_8_11",
+   "file": "Outer/o8_11.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_0",
+   "file": "Outer/o9_0.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_1",
+   "file": "Outer/o9_1.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_2",
+   "file": "Outer/o9_2.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_3",
+   "file": "Outer/o9_3.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_4",
+   "file": "Outer/o9_4.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_5",
+   "file": "Outer/o9_5.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_6",
+   "file": "Outer/o9_6.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_7",
+   "file": "Outer/o9_7.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_8",
+   "file": "Outer/o9_8.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_9",
+   "file": "Outer/o9_9.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_10",
+   "file": "Outer/o9_10.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_9_11",
+   "file": "Outer/o9_11.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_0",
+   "file": "Outer/o10_0.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_1",
+   "file": "Outer/o10_1.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_2",
+   "file": "Outer/o10_2.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_3",
+   "file": "Outer/o10_3.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_4",
+   "file": "Outer/o10_4.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_5",
+   "file": "Outer/o10_5.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_6",
+   "file": "Outer/o10_6.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_7",
+   "file": "Outer/o10_7.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_8",
+   "file": "Outer/o10_8.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_9",
+   "file": "Outer/o10_9.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_10",
+   "file": "Outer/o10_10.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_10_11",
+   "file": "Outer/o10_11.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_0",
+   "file": "Outer/o11_0.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_1",
+   "file": "Outer/o11_1.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_2",
+   "file": "Outer/o11_2.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_3",
+   "file": "Outer/o11_3.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_4",
+   "file": "Outer/o11_4.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_5",
+   "file": "Outer/o11_5.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_6",
+   "file": "Outer/o11_6.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_7",
+   "file": "Outer/o11_7.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_8",
+   "file": "Outer/o11_8.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_9",
+   "file": "Outer/o11_9.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_10",
+   "file": "Outer/o11_10.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C01_camino_outer_11_11",
+   "file": "Outer/o11_11.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
    "instances": 0
   }
  ],
@@ -293,7 +1973,7 @@
   ],
   "block_band_m": [
    1.0,
-   10.0
+   6.0
   ],
   "island_per_100m": 5.0,
   "vista_dune_wave_m": [
@@ -330,237 +2010,159 @@
  "kill_boxes_uu": [
   {
    "center": [
-    7357.0059075298705,
-    -4712.532338401337,
+    1611.5104157227972,
+    17919.25124060199,
     -425.0
    ],
    "extent": [
-    992.2883109615794,
-    1697.6343082053518,
+    1349.9235178156437,
+    1111.2861378426264,
     225.0
    ],
-   "yaw": 114.7954114550358
+   "yaw": 100.09847804208937
   },
   {
    "center": [
-    6646.769107385358,
-    -3295.6274207644183,
+    1675.707331750048,
+    19471.300840261003,
     -425.0
    ],
    "extent": [
-    993.463551875909,
-    1590.3637705730307,
+    1399.692832045667,
+    1206.3847175897818,
     225.0
    ],
-   "yaw": 118.4473715117945
+   "yaw": 75.19971435519817
   },
   {
    "center": [
-    6197.695917796638,
-    -1802.4560298277934,
+    1989.201147253401,
+    21026.89538835223,
     -425.0
    ],
    "extent": [
-    998.6860853030962,
-    1636.528444035835,
+    1456.3512852738602,
+    1326.325424219085,
     225.0
    ],
-   "yaw": 95.10771607580568
+   "yaw": 82.02649293522865
   },
   {
    "center": [
-    5752.355721826593,
-    -310.8386633933318,
+    1873.946626460681,
+    22575.438621948586,
     -425.0
    ],
    "extent": [
-    990.323039574557,
-    1779.2211537182754,
+    1518.193519042912,
+    1445.2164790905504,
     225.0
    ],
-   "yaw": 118.26308528381182
+   "yaw": 106.4491873038859
   },
   {
    "center": [
-    5013.754122792595,
-    1086.8708243572366,
+    1368.4875408614334,
+    24083.16382073469,
     -425.0
    ],
    "extent": [
-    990.5791472019012,
-    1963.1559630089157,
+    1564.3600460232567,
+    1537.3926934495353,
     225.0
    ],
-   "yaw": 117.44431985637033
+   "yaw": 110.61766605840327
   },
   {
    "center": [
-    4529.5765516105985,
-    2578.1572558199086,
+    1210.7372536808314,
+    25611.903218941756,
     -425.0
    ],
    "extent": [
-    998.7168598002016,
-    2145.531313910411,
+    1585.015968860426,
+    1582.9558508762307,
     225.0
    ],
-   "yaw": 98.62713463738329
+   "yaw": 81.12496490474875
   },
   {
    "center": [
-    3975.0355758613323,
-    4032.4525417389964,
+    1509.0515004343963,
+    27170.8151088891,
     -425.0
    ],
    "extent": [
-    994.1690631269751,
-    2283.908533781072,
+    1587.4639450853686,
+    1585.7555442722173,
     225.0
    ],
-   "yaw": 123.18903412057884
+   "yaw": 77.21124641792201
   },
   {
    "center": [
-    3212.3026702811358,
-    5416.497505775088,
+    1456.3103326115884,
+    28706.42851267544,
     -425.0
    ],
    "extent": [
-    990.673265761164,
-    2346.087297817523,
+    1580.3865738505542,
+    1572.0701648442418,
     225.0
    ],
-   "yaw": 114.5091954584146
+   "yaw": 106.72735195111053
   },
   {
    "center": [
-    2778.2690531661656,
-    6927.377739554882,
+    1066.8473432057315,
+    30240.31405296152,
     -425.0
    ],
    "extent": [
-    998.5217774087916,
-    2347.7451353862853,
+    1543.24134251036,
+    1507.085544579598,
     225.0
    ],
-   "yaw": 97.63052593318295
+   "yaw": 101.75140384605001
   },
   {
    "center": [
-    2302.8469219201816,
-    8422.172622917069,
+    1055.340281562884,
+    31798.988192668425,
     -425.0
    ],
    "extent": [
-    994.4447558433192,
-    2317.598632010042,
+    1500.6099240021167,
+    1402.0303166628305,
     225.0
    ],
-   "yaw": 117.70810640590138
+   "yaw": 79.2365912394471
   },
   {
    "center": [
-    1629.5170185402565,
-    9857.090807386507,
+    1163.1532422690514,
+    33376.32234757063,
     -425.0
    ],
    "extent": [
-    992.1992444231029,
-    2205.071837721044,
+    1432.6858976889341,
+    1279.5829093159857,
     225.0
    ],
-   "yaw": 112.56088206668875
+   "yaw": 93.00127586317308
   },
   {
    "center": [
-    1172.5954985240114,
-    11368.398481417596,
+    855.2201563937649,
+    34922.28297484007,
     -425.0
    ],
    "extent": [
-    994.5993026572505,
-    2034.6918558575303,
+    1382.917294655469,
+    1166.176226389324,
     225.0
    ],
-   "yaw": 101.10034073729304
-  },
-  {
-   "center": [
-    510.68874255130885,
-    12761.540036210237,
-    -425.0
-   ],
-   "extent": [
-    997.0403463666411,
-    1846.1060413896785,
-    225.0
-   ],
-   "yaw": 129.68137015962967
-  },
-  {
-   "center": [
-    -413.4262464785106,
-    14057.749404394539,
-    -425.0
-   ],
-   "extent": [
-    999.1251594770922,
-    1683.198239395819,
-    225.0
-   ],
-   "yaw": 121.30250873642464
-  },
-  {
-   "center": [
-    -1388.8266109581966,
-    15299.315131826688,
-    -425.0
-   ],
-   "extent": [
-    991.2347855344931,
-    1583.8770315204542,
-    225.0
-   ],
-   "yaw": 135.0740057400186
-  },
-  {
-   "center": [
-    -2645.5566255907447,
-    16250.234437402878,
-    -425.0
-   ],
-   "extent": [
-    999.3285234264423,
-    1648.2676923513488,
-    225.0
-   ],
-   "yaw": 150.61961467475393
-  },
-  {
-   "center": [
-    -3829.591391562695,
-    17267.099027599306,
-    -425.0
-   ],
-   "extent": [
-    992.4218899229229,
-    1796.9958795311481,
-    225.0
-   ],
-   "yaw": 127.96796542146637
-  },
-  {
-   "center": [
-    -4770.044618374719,
-    18545.370092507375,
-    -425.0
-   ],
-   "extent": [
-    995.1704795142,
-    1982.8299945923252,
-    225.0
-   ],
-   "yaw": 124.72318729082612
+   "yaw": 109.45669670759229
   }
  ]
 }

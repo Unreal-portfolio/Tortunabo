@@ -93,8 +93,8 @@ class PathModel:
         # lleva vetas horizontales.
         self.cliff_band = (0.12, 0.3)
         self.wall_color_mix = style.wall_color_mix
-        self.wall_strata = 0.12
-        self.wall_noise = 0.45         # rugosidad 3D de las paredes (voladizos y huecos)
+        self.wall_strata = 0.0           # las vetas se leian como escalones
+        self.wall_noise = 0.3          # rugosidad 3D de las paredes (voladizos y huecos)
 
     # -- muestras de todos los caminos -------------------------------------------------------
     def _build_samples(self) -> None:
@@ -356,6 +356,12 @@ class PathModel:
         protect = 1.0 - t
         height, coast = field.shore(self, X, Y, height, protect)
         height = field.clip_spikes(height)
+        # Sin aletas: donde se juntan las paredes de dos caminos quedaba una cresta de 1 m de ancho
+        # que en la malla salia como pinchos. La apertura (erosion + dilatacion 3x3) la rebaja; el
+        # pie de la pared (FOOT_M + 0,8 sobre el suelo) y el interior del camino no se tocan.
+        opened = ndimage.grey_opening(height, size=(3, 3), mode="nearest")
+        foot = zf + np.minimum(height - zf, field.FOOT_M + 0.8)
+        height = np.where(e < 0.0, height, np.maximum(opened, foot))
         region = np.where(e < 0.0, 0, np.where(e < crest_e + rim_top + 4.0, 1, 2))
         region = np.where(coast > 0.5, 3, region)
         region = np.where(self.decks.near(X, Y), 0, region)          # tableros: camino
@@ -492,9 +498,11 @@ class PathModel:
             # Un puente es corto: su centro sigue a menos de un semiancho del camino abierto, asi
             # que se levanta aunque "este en el camino" (el paso queda en el hueco 3D de debajo).
             over_path = np.maximum(smooth(0.0, 2.0, e), ((reach > 0.0) & (reach < 5.0)).astype(float))
-            hill = (1.0 - smooth(half + 2.0, half + np.maximum(reach, 2.1), u)) * covered * (reach > 0.0) \
+            # Cupula, no meseta: la ladera baja a lo largo de reach + 12 m (antes caia en 8 m y el cerro
+            # se leia como un bloque de lados rectos) y la cima lleva lomas de hasta 2,5 m.
+            hill = (1.0 - smooth(half + 1.0, half + np.maximum(reach, 2.1) + 12.0, u)) * covered * (reach > 0.0) \
                 * smooth(-0.1, 0.05, t) * smooth(-1.1, -0.95, -t) * over_path
-            top = floor + deck + np.where(deck > 7.0, 1.5 * self.n_top.unit(X, Y), 0.3 * self.n_top(X, Y))
+            top = floor + deck + np.where(deck > 7.0, 2.5 * self.n_crest_mid.unit(X, Y), 0.3 * self.n_top(X, Y))
             height = np.maximum(height, top * hill + height * (1.0 - hill))
         from .castles import castle_stamp
         for castle in self.castles:

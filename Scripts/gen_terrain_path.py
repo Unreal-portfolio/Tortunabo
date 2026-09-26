@@ -25,6 +25,7 @@ from gen_terrain_volume import build_all, global_standable, ground_level, walk, 
 from terrain_path.layout import GRID
 from terrain_path.canyon import kill_boxes_uu
 from terrain_path.model import PathModel, walkable
+from terrain_path.outer import write_outer
 from terrain_path.style import C01_SEED, C01_STYLE, PathStyle
 from terrain_path.variants import PATH_VARIANTS
 from terrain_vol.export import global_top, write_map
@@ -68,6 +69,11 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
               zone_map(model, chunks, grid=GRID), model.route.points, style=style,
               extra_manifest={"description": description, "recorrible": result["ok"],
                               "kill_boxes_uu": kill_boxes_uu(model.canyon) if model.canyon else []}, grid=GRID)
+    # Corona de terreno barato alrededor (sin colision): el final del mapa no se ve desde dentro.
+    manifest_path = out / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["cells"] += write_outer(model, out, name)
+    manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     g = model.plan.graph
     return {"name": name, "seed": used, "description": description, "ok": result["ok"],
             "size_mb": round(sum(f.stat().st_size for f in out.rglob("*") if f.is_file()) / (1024 * 1024), 2),

@@ -90,10 +90,9 @@ def vista(model, X, Y):
     a_lo, a_hi = st.vista_dune_amp_m
     amp = a_lo + (a_hi - a_lo) * smooth(0.25, 0.85, model.n_dune_amp.unit(X, Y))
     v = WATER_M - 1.3 + st.vista_pond_m * model.n_pond(X, Y) + amp * dunes + 2.0 * model.n_big.unit(X, Y)
-    warp = 10.0 * model.n_edge(X, Y)
-    near = np.maximum.reduce([1.0 - smooth(4.0, 30.0, d) for d in
-                              (X - MAP_MIN_M + warp, Y - MAP_MIN_M + warp, MAP_MAX_M - Y + warp)])
-    return v * (1.0 - near) + np.maximum(v, 7.0 + 4.0 * model.n_rim.unit(X, Y)) * near
+    # Sin lomas en los bordes (v2): el paisaje sigue fuera en la corona de outer.py; con ellas el
+    # mapa se veia como una caja elevada sobre las dunas de alrededor.
+    return v
 
 
 def shore(model, X, Y, height, protect):

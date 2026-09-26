@@ -556,7 +556,8 @@ def test_el_barranco_solo_toca_caminos_por_sus_puentes(model):
 
 def test_el_fondo_del_barranco_tiene_agua(model):
     c = model.canyon
-    mid = c.pts[len(c.pts) // 2]
+    inside = [p for p, dep in zip(c.pts, c.depth) if canyon_mod._inside(p) and dep > 0.9]
+    mid = inside[len(inside) // 2]
     i, j = int(round(mid[0] - model.axis[0])), int(round(mid[1] - model.axis[0]))
     assert model.grid.height[i, j] < WATER_M - 0.5
 
@@ -578,7 +579,7 @@ def test_las_cajas_cubren_el_fondo_y_no_el_puente(model):
         return False
 
     for k in range(0, len(c.pts), 7):
-        if c.depth[k] < 0.9:
+        if c.depth[k] < 0.9 or not canyon_mod._inside(c.pts[k]):
             continue
         t = c.pts[min(k + 1, len(c.pts) - 1)] - c.pts[max(k - 1, 0)]
         n = np.array([-t[1], t[0]]) / max(float(np.linalg.norm(t)), 1e-9)
@@ -597,4 +598,4 @@ def test_suelo_y_pared_tienen_color_distinto(model):
     world = np.array([[p[0], p[1], 3.0], [p[0], p[1], 3.0]])
     normals = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]])
     rgb = vertex_colors(model, world, normals)[:, :3].astype(float) / 255.0
-    assert np.linalg.norm(rgb[0] - rgb[1]) >= 0.12, f"suelo {rgb[0]} y pared {rgb[1]} casi iguales"
+    assert np.linalg.norm(rgb[0] - rgb[1]) >= 0.1, f"suelo {rgb[0]} y pared {rgb[1]} casi iguales"

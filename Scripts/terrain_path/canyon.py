@@ -24,7 +24,7 @@ from .layout import MAP_MAX_M, MAP_MIN_M, WATER_M
 FLOOR_M = WATER_M - 1.5          # fondo del cauce (el agua del nivel queda 1,5 m por encima)
 BANK_M = WATER_M + 0.4           # orillas de arena junto a las paredes
 WALL_DEG = 62.0                  # paredes del barranco (media; el ruido las abre o las cierra)
-EDGE_KEEP_M = 45.0               # el barranco se cierra antes de llegar a esta distancia del borde
+OUTER_RUN_M = 400.0              # tramo del cauce que sigue por la corona al llegar al borde
 KILL_TOP_M = WATER_M + 2.0       # cara de arriba de las cajas de muerte
 END_TAPER_M = 18.0               # tramo final en el que el fondo sube hasta cerrarse (cuna)
 MIN_SIDE_M = 26.0                # cada lado del cruce mide al menos esto (si no, se descarta)
@@ -61,8 +61,12 @@ def _walk(rng: np.random.Generator, start: np.ndarray, heading: float, blocked, 
     for step in range(int(max_len)):
         h += math.radians(2.2) * math.sin(2 * math.pi * step / wave + phase) + rng.normal(0.0, math.radians(0.8))
         p = p + np.array([math.cos(h), math.sin(h)])
-        # Lejos del borde: desde dentro no se ve el final del mapa por el cauce.
-        if min(p[0] - MAP_MIN_M, MAP_MAX_M - p[0], p[1] - MAP_MIN_M, MAP_MAX_M - p[1]) < EDGE_KEEP_M:
+        if not (MAP_MIN_M - 2.0 <= p[0] <= MAP_MAX_M + 2.0 and MAP_MIN_M - 2.0 <= p[1] <= MAP_MAX_M + 2.0):
+            # Llega al borde: sigue recto por la corona de terreno barato (outer.py) hasta perderse.
+            d = p - pts[-1]
+            for _ in range(int(OUTER_RUN_M)):
+                p = p + d
+                pts.append(p.copy())
             break
         if blocked(p, step, h):
             break
@@ -134,7 +138,9 @@ def plan_canyon(model, rng: np.random.Generator) -> Canyon | None:
         wob = 1.0 + 0.2 * np.sin(arc / rng.uniform(25.0, 45.0) + rng.uniform(0, 6.3))
         half = half0 * wob
         depth = np.ones(len(arc))
-        for end in (0, -1):                          # los dos extremos se cierran en cuna
+        for end in (0, -1):                          # los extremos dentro del mapa se cierran en cuna
+            if _at_edge(pts[end]) or not _inside(pts[end]):
+                continue
             dist = arc - arc[0] if end == 0 else arc[-1] - arc
             depth = depth * smooth(0.0, END_TAPER_M, dist)
         # Cruce real con cada camino (el mas cercano del eje): si solo lo roza, se descarta.
@@ -175,6 +181,10 @@ def _can_cross(model, lid: int, s_l: float, half: float, heading: float) -> bool
     if any(np.hypot(*(p - q)) < reach for q in joins):
         return False
     return not any(l2 == lid and a - reach < s_l < b + reach for l2, a, b in model.deck_cuts + model.arch_ranges)
+
+
+def _inside(p: np.ndarray) -> bool:
+    return bool(MAP_MIN_M <= p[0] <= MAP_MAX_M and MAP_MIN_M <= p[1] <= MAP_MAX_M)
 
 
 def _at_edge(p: np.ndarray) -> bool:
@@ -237,7 +247,7 @@ def kill_boxes_uu(canyon: Canyon, uu: float = 100.0, piece_m: float = 16.0) -> l
     step = int(piece_m)
     for a in range(0, n - 1, step):
         b = min(a + step, n - 1)
-        if canyon.depth[a:b + 1].max() < 0.5:
+        if canyon.depth[a:b + 1].max() < 0.5 or not (_inside(canyon.pts[a]) or _inside(canyon.pts[b])):
             continue
         p0, p1 = canyon.pts[a], canyon.pts[b]
         mid = 0.5 * (p0 + p1)
@@ -246,6 +256,6 @@ def kill_boxes_uu(canyon: Canyon, uu: float = 100.0, piece_m: float = 16.0) -> l
         half = float(canyon.half[a:b + 1].max()) * 1.15
         z0, z1 = FLOOR_M - 1.0, KILL_TOP_M
         out.append({"center": [mid[0] * uu, mid[1] * uu, 0.5 * (z0 + z1) * uu],
-                    "extent": [(0.5 * length + 2.0) * uu, half * uu, 0.5 * (z1 - z0) * uu],
+                    "extent": [(0.5 * length + 0.5 * half) * uu, half * uu, 0.5 * (z1 - z0) * uu],
                     "yaw": math.degrees(math.atan2(d[1], d[0]))})
     return out

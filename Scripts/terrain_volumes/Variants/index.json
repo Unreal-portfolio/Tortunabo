@@ -1,10 +1,10 @@
 [
  {
   "name": "C01_camino",
-  "seed": 60013,
+  "seed": 60026,
   "description": "Camino primero: un camino, lazos que vuelven, puentes naturales y tuneles, rio con islas y final abierto al mar.",
   "recorrible": true,
-  "size_mb": 5.07
+  "size_mb": 5.99
  },
  {
   "name": "P01_prototipo",

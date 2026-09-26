@@ -326,17 +326,21 @@ void ATN_MapVariantLoader::LoadVariant()
 			CenterY = (*Center)[1]->AsNumber();
 		}
 
+		// "collision": false = terreno de fondo (la corona barata de alrededor del mapa): solo se ve.
+		bool bCollision = true;
+		Cell->TryGetBoolField(TEXT("collision"), bCollision);
+
 		UProceduralMeshComponent* Component = NewObject<UProceduralMeshComponent>(this,
 			*FString::Printf(TEXT("Chunk_%d"), ChunkIndex++));
 		// Cocinado sincrono: la colision de la variante esta lista nada mas cargarla.
 		Component->bUseAsyncCooking = false;
-		Component->SetCollisionProfileName(TEXT("BlockAll"));
+		Component->SetCollisionProfileName(bCollision ? TEXT("BlockAll") : TEXT("NoCollision"));
 		Component->SetMobility(EComponentMobility::Static);
 		Component->SetupAttachment(RootComponent);
 		Component->SetRelativeLocation(FVector(CenterX, CenterY, 0.0));
 		Component->RegisterComponent();
 		Component->CreateMeshSection_LinearColor(0, Mesh.Vertices, Mesh.Triangles, Mesh.Normals, TArray<FVector2D>(),
-			Mesh.Colors, TArray<FProcMeshTangent>(), /*bCreateCollision=*/true);
+			Mesh.Colors, TArray<FProcMeshTangent>(), bCollision);
 		if (TerrainMaterial) { Component->SetMaterial(0, TerrainMaterial); }
 		ChunkMeshes.Add(Component);
 	}
