@@ -18,6 +18,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
+#include "Audio/TN_MusicSynthComponent.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -349,12 +350,25 @@ void UTN_CosmeticMenuBase::NativeConstruct()
 		Stage->SetLiveCapture(true);
 		if (PreviewMID) { PreviewMID->SetTextureParameterValue(TEXT("Capture"), Stage->GetRenderTarget()); }
 	}
+	// Música del menú en 2D (en el PlayerController): la de la tienda o la del probador; la radio del puesto baja.
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		UTN_MusicSynthComponent* MenuMusic = PC->FindComponentByClass<UTN_MusicSynthComponent>();
+		if (!MenuMusic) { MenuMusic = UTN_MusicSynthComponent::AttachMusic2D(PC); }
+		if (MenuMusic) { MenuMusic->PlayTrack(IsA<UTN_BoothWidget>() ? ETNMusicTrack::Booth : ETNMusicTrack::Shop); }
+	}
+	ATN_ShopKeeper::SetRadiosDucked(GetWorld(), true);
 	SetKeyboardFocus();
 }
 
 void UTN_CosmeticMenuBase::NativeDestruct()
 {
 	if (ATN_CosmeticPreview* Stage = Preview.Get()) { Stage->SetLiveCapture(false); }
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (UTN_MusicSynthComponent* MenuMusic = PC->FindComponentByClass<UTN_MusicSynthComponent>()) { MenuMusic->StopMusic(); }
+	}
+	ATN_ShopKeeper::SetRadiosDucked(GetWorld(), false);
 	Super::NativeDestruct();
 }
 

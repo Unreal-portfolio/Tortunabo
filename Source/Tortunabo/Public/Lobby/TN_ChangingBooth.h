@@ -33,6 +33,9 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual bool CanInteract(APawn* Interactor) const override;
 
+	/** Delante de la puerta (el tapón): desde ahí se entra. */
+	virtual FVector GetInteractionPoint() const override;
+
 	/** Servidor: abre la puerta y saca a la tortuga de un saltito (si es la que está dentro). */
 	void ReleaseOccupant(APawn* Pawn);
 

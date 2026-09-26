@@ -11,6 +11,7 @@ class UCapsuleComponent;
 class UMaterialInterface;
 class USkeletalMeshComponent;
 class UTextRenderComponent;
+class UTN_MusicSynthComponent;
 
 /**
  * Tienda del lobby: Don Tortugo, el tendero (una tortuga grande con su propio conjunto), detrás de un mostrador con
@@ -29,6 +30,12 @@ public:
 	ATN_ShopKeeper();
 
 	virtual void BeginPlay() override;
+
+	/** Delante del mostrador: desde ahí se habla con el tendero. */
+	virtual FVector GetInteractionPoint() const override;
+
+	/** Baja (o devuelve) la radio de los puestos mientras hay un menú de la tienda o del probador abierto. */
+	static void SetRadiosDucked(UWorld* World, bool bDucked);
 	virtual void Tick(float DeltaSeconds) override;
 
 	FText GetKeeperName() const { return KeeperName; }
@@ -55,6 +62,14 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shop")
 	TObjectPtr<UTextRenderComponent> Sign;
+
+	/** Radio del puesto: la música de la tienda en 3D (se crea en BeginPlay; no en servidor dedicado). */
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_MusicSynthComponent> Radio;
+
+	/** Volumen de la radio del puesto (0-1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shop|Audio", meta = (ClampMin = "0.0", ClampMax = "1.5"))
+	float RadioVolume = 0.8f;
 
 	/** Lo que lleva puesto el tendero (filas de DT_Helmets y DT_Skins). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shop")

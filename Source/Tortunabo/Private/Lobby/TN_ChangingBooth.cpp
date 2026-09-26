@@ -167,6 +167,12 @@ bool ATN_ChangingBooth::CanInteract(APawn* Interactor) const
 	return Occupant == nullptr && Super::CanInteract(Interactor);
 }
 
+FVector ATN_ChangingBooth::GetInteractionPoint() const
+{
+	using namespace TNBoothDetail;
+	return GetActorTransform().TransformPosition(FVector(WallR + 60.0, 0.0, 0.0));
+}
+
 void ATN_ChangingBooth::BuildMeshes()
 {
 	using namespace TNBoothDetail;

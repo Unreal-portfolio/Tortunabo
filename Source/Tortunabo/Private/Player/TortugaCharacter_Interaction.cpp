@@ -61,7 +61,11 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		ATN_InteractableBase* Interactable = Cast<ATN_InteractableBase>(Result.GetActor());
 		if (!Interactable || !Interactable->CanInteract(this)) { continue; }
 
-		const float DistSq = FVector::DistSquared(GetActorLocation(), Interactable->GetActorLocation());
+		// Misma medida que la validación del servidor (ServerTryInteract): el aviso solo sale cuando pulsar funciona.
+		// El solapamiento encuentra cualquier colisión del actor (paredes del probador, mostrador), que puede estar
+		// mucho más cerca que su punto de interacción.
+		const float DistSq = FVector::DistSquared(GetActorLocation(), Interactable->GetInteractionPoint());
+		if (DistSq > FMath::Square(MaxInteractionDistance)) { continue; }
 		if (DistSq < BestDistSq)
 		{
 			BestDistSq = DistSq;
@@ -76,7 +80,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		{
 			UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] Focus → %s  (dist=%.0f)"),
 				BestCandidate ? *BestCandidate->GetName() : TEXT("(none)"),
-				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetActorLocation()) : 0.f);
+				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetInteractionPoint()) : 0.f);
 		}
 	}
 
@@ -89,7 +93,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 
 		if (BestCandidate)
 		{
-			DrawDebugLine(GetWorld(), GetActorLocation(), BestCandidate->GetActorLocation(),
+			DrawDebugLine(GetWorld(), GetActorLocation(), BestCandidate->GetInteractionPoint(),
 				FColor::Cyan, false, InteractionScanInterval * 1.5f, 0, 2.f);
 		}
 	}
@@ -158,7 +162,7 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 	}
 
 	const float TotalAllowed = MaxDistance + 100.f + PingDistanceAllowance;
-	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetActorLocation());
+	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetInteractionPoint());
 
 	if (ActualDist > TotalAllowed)
 	{

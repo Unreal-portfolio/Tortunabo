@@ -1,4 +1,5 @@
 #include "Lobby/TN_ShopKeeper.h"
+#include "Audio/TN_MusicSynthComponent.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
@@ -134,6 +135,29 @@ void ATN_ShopKeeper::BeginPlay()
 	UTN_CosmeticLook::ApplyLook(this, Keeper, KeeperHat, KeeperLook, KeeperDefaults);
 	BuildStall();
 	HideBlockoutKeeper();
+	if (GetNetMode() != NM_DedicatedServer)
+	{
+		Radio = UTN_MusicSynthComponent::AttachMusic3D(this, GetActorTransform().TransformPosition(FVector(0.0, 0.0, 180.0)),
+			ETNMusicTrack::Shop, RadioVolume);
+	}
+}
+
+FVector ATN_ShopKeeper::GetInteractionPoint() const
+{
+	using namespace TNShopKeeperDetail;
+	return GetActorTransform().TransformPosition(FVector(CounterX + CounterHalfDepth + 60.0, 0.0, 0.0));
+}
+
+void ATN_ShopKeeper::SetRadiosDucked(UWorld* World, bool bDucked)
+{
+	if (!World) { return; }
+	for (TActorIterator<ATN_ShopKeeper> It(World); It; ++It)
+	{
+		if (UTN_MusicSynthComponent* ShopRadio = It->Radio)
+		{
+			ShopRadio->SetMusicVolume(bDucked ? It->RadioVolume * 0.15f : It->RadioVolume);
+		}
+	}
 }
 
 void ATN_ShopKeeper::BuildStall()

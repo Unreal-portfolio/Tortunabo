@@ -36,6 +36,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	float GetInteractionDistance() const { return InteractionDistance; }
 
+	/**
+	 * Punto desde el que se mide la distancia de interacción (el escaneo del personaje y la validación del servidor
+	 * usan el mismo). Por defecto, el origen del actor; los actores grandes (puesto de la tienda, probador) lo ponen
+	 * delante de su mostrador o de su puerta.
+	 */
+	virtual FVector GetInteractionPoint() const { return GetActorLocation(); }
+
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	FText GetPromptText() const { return PromptText; }
 
