@@ -105,15 +105,19 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
     x, y, z = world[:, 0], world[:, 1], world[:, 2]
     w = model.zones.weights(x, y)
     vein = 0.5 + 0.5 * np.sin(x / 53.0 + 1.7) * np.cos(y / 41.0 - 0.6)
-    cliff = smooth(0.25, 0.6, 1.0 - normals[:, 2])
+    lo_c, hi_c = getattr(model, "cliff_band", (0.25, 0.6))
+    cliff = smooth(lo_c, hi_c, 1.0 - normals[:, 2])
     cliff = np.maximum(cliff, (normals[:, 2] < -0.2).astype(np.float64))     # techos de tunel y voladizos
     high = smooth(4.0, 9.0, z) * getattr(model, "high_tint", 1.0)
     wet = smooth(WATER_M + 0.6, WATER_M, z)
+    wall_mix = getattr(model, "wall_color_mix", 0.6)
+    # Vetas horizontales en la pared (estratos de arena compactada), solo si el modelo las pide.
+    strata = getattr(model, "wall_strata", 0.0) * cliff * (0.5 + 0.5 * np.sin(z * 2.0 * np.pi / 0.9 + 0.8 * np.sin(x / 13.0)))
     out = np.zeros((len(x), 3))
     for zone, palette_name in ZONE_PALETTE.items():
         floor, hi, hi_alt, wall, wall_alt, wet_c = (np.array(c) for c in PALETTES[palette_name])
         c = floor + (hi + (hi_alt - hi) * vein[:, None] - floor) * high[:, None]
-        c = c + (wall + (wall_alt - wall) * vein[:, None] - c) * (0.6 * cliff)[:, None]
+        c = c + (wall + (wall_alt - wall) * vein[:, None] - c) * (wall_mix * cliff)[:, None]
         c = c + (wet_c - c) * wet[:, None]
         out += w[zone][:, None] * c
     # Camino principal (arena pisada, mas oscura) y salida/meta (arena clara): se leen desde lejos.
@@ -123,6 +127,7 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
     out = out + (trail_color - out) * (getattr(model, "trail_strength", 0.7) * trail)[:, None]
     plaza = model.plaza_mask(x, y) * flat_up
     out = out + (np.array(PLAZA_COLOR) - out) * (0.8 * plaza)[:, None]
+    out = out * (1.0 - strata)[:, None]
     tint = 1.0 + 0.07 * np.sin(x / 9.5) * np.cos(y / 7.4)
     out = np.clip(out * tint[:, None], 0.0, 1.0)
     rgba = np.concatenate([out, np.ones((len(x), 1))], axis=1)

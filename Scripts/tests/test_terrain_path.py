@@ -588,3 +588,13 @@ def test_las_cajas_cubren_el_fondo_y_no_el_puente(model):
     main = model.plan.graph.main
     top = np.interp(c.s_main, main.arc, model.plan.profiles[0].z)
     assert top - canyon_mod.KILL_TOP_M >= 4.0
+
+
+def test_suelo_y_pared_tienen_color_distinto(model):
+    from terrain_vol.mesh import vertex_colors
+    line = model.plan.graph.main
+    p = line.point_at(0.3 * line.length) + 30.0 * line.normal_at(0.3 * line.length)
+    world = np.array([[p[0], p[1], 3.0], [p[0], p[1], 3.0]])
+    normals = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]])
+    rgb = vertex_colors(model, world, normals)[:, :3].astype(float) / 255.0
+    assert np.linalg.norm(rgb[0] - rgb[1]) >= 0.12, f"suelo {rgb[0]} y pared {rgb[1]} casi iguales"

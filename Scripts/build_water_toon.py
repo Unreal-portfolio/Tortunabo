@@ -95,7 +95,8 @@ def build_material(foam_texture):
 
 
 def main():
-    terrain = grid.build_terrain_material(grid.build_grain_texture(), name="M_GridTerrainWet", recreate=True)
+    terrain = grid.build_terrain_material(grid.build_grain_texture(), name="M_GridTerrainWet", recreate=True,
+                                          wall_tile_scale=0.4, wall_contrast_scale=1.8)
     foam_texture = water.import_texture("T_WaterFoam", unreal.TextureCompressionSettings.TC_GRAYSCALE)
     material = build_material(foam_texture)
     # El agua es translucida y Nanite solo admite materiales opacos o enmascarados: sin esto la

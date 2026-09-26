@@ -209,16 +209,18 @@ TRIPLANAR_HLSL = """\
 float3 N = abs(Normal);
 N = pow(max(N, 1e-4f), max(Sharpness, 1.0f));
 N /= max(N.x + N.y + N.z, 1e-4f);
-float Inv = 1.0f / max(TileSize, 1.0f);
+// Pared (normal casi horizontal): grano mas fino y marcado que el del suelo.
+float Steep = 1.0f - saturate((abs(Normal.z) - 0.75f) / 0.15f);
+float Inv = 1.0f / max(TileSize * lerp(1.0f, WallTileScale, Steep), 1.0f);
 float Gx = Texture2DSample(Tex, TexSampler, P.yz * Inv).r;
 float Gy = Texture2DSample(Tex, TexSampler, P.xz * Inv).r;
 float Gz = Texture2DSample(Tex, TexSampler, P.xy * Inv).r;
 float G = Gx * N.x + Gy * N.y + Gz * N.z;
-return 1.0f + (G - 0.5f) * Contrast;
+return 1.0f + (G - 0.5f) * Contrast * lerp(1.0f, WallContrastScale, Steep);
 """
 
 
-TRIPLANAR_INPUTS = ("P", "Normal", "Tex", "TileSize", "Sharpness", "Contrast")
+TRIPLANAR_INPUTS = ("P", "Normal", "Tex", "TileSize", "Sharpness", "Contrast", "WallTileScale", "WallContrastScale")
 
 # Arena mojada (uu): la ola llega de 10 a 40 uu sobre el agua y vuelve; la arena que moja se
 # oscurece y se seca en 25 uu de altura. Multiplicador del color.
@@ -245,7 +247,8 @@ def scalar_parameter(material, name, value, x, y):
     return parameter
 
 
-def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False):
+def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False, wall_tile_scale=1.0,
+                           wall_contrast_scale=1.0):
     """Color de vértice (estratos, arena, moteado) modulado por grano triplanar y oscurecido
     donde la ola moja la arena. recreate=True borra y crea el asset (en el commandlet,
     delete_all_material_expressions sobre un material cargado revienta con !IsRooted())."""
@@ -284,8 +287,12 @@ def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False):
     triplanar.set_editor_property("description", "TriplanarGrain")
     triplanar.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
     triplanar.set_editor_property("inputs", [custom_input(name) for name in TRIPLANAR_INPUTS])
+    # Pared distinta del suelo (1.0 = igual): escala del grano y del contraste en lo empinado.
+    wall_tile = scalar_parameter(material, "WallTileScale", wall_tile_scale, -1000, 640)
+    wall_contrast = scalar_parameter(material, "WallContrastScale", wall_contrast_scale, -1000, 740)
     for expression, pin in ((local_position, "P"), (normal, "Normal"), (texture_object, "Tex"),
-                            (tile_size, "TileSize"), (sharpness, "Sharpness"), (contrast, "Contrast")):
+                            (tile_size, "TileSize"), (sharpness, "Sharpness"), (contrast, "Contrast"),
+                            (wall_tile, "WallTileScale"), (wall_contrast, "WallContrastScale")):
         mel.connect_material_expressions(expression, "", triplanar, pin)
 
     # Arena mojada: la ola sube y baja por la orilla (periodo WetPeriod) y oscurece la arena hasta

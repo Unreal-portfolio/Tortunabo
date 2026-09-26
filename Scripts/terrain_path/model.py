@@ -89,6 +89,11 @@ class PathModel:
         self.high_tint = HIGH_TINT
         self.trail_strength = 0.85
         self.trail_color = (0.34, 0.24, 0.13)     # arena pisada, mas oscura que la de fuera
+        # Suelo y pared distintos (v2): la pared toma su color entero a partir de ~28-46 grados y
+        # lleva vetas horizontales.
+        self.cliff_band = (0.12, 0.3)
+        self.wall_color_mix = style.wall_color_mix
+        self.wall_strata = 0.12
 
     # -- muestras de todos los caminos -------------------------------------------------------
     def _build_samples(self) -> None:
