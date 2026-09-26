@@ -88,9 +88,22 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   de 3,5–5 m, pasos cerrados de 6–10 m, tramos normales, anchos de 20–35 m y explanadas
   de 40–60 m, con pocos tramos intermedios (más cañones en desierto y roca, más arenales
   abiertos en la playa). La anchura se recorta para que entre dos partes del camino quede siempre un muro de 18 m.
-  El terreno ondula sin tendencia general; los cambios grandes de altura solo
-  ocurren al cruzar de módulo, mediante **géiser** (sube) o **cascada-tobogán** (baja).
-  Los huecos del camino principal miden 1,3–3,9 m (salto corriendo o con dive).
+  El terreno ondula sin tendencia general, con lomas de 0,6–2,2 m cada 50–110 m por todo el
+  recorrido (12–22 m de subida por km; nada en el agua, al salir ni en la llegada); las ramas, junto a
+  sus uniones, toman la cota del principal. Los cambios grandes de altura solo ocurren al cruzar de
+  módulo, mediante **géiser** (sube) o **cascada-tobogán** (baja).
+  Los huecos del camino principal miden 1,3–3,9 m (salto corriendo o con dive), con labios de
+  madera, sillería o basalto según el bioma; algunos son más largos (hasta 1,8 veces) con **postes**
+  en rejilla que los parten en saltos cortos (troncos, pilotes, basalto o columnas) y otros llevan
+  **troncos de equilibrio** de labio a labio.
+- **Torres de escalada** junto al borde en tramos anchos: bloques del bioma (cajas con aspa,
+  tocones, sillares, losas o basalto) de 3–4 m con escalones de 1 m, banderín, recompensa de puntos
+  arriba (`BP_ScorePickup`) y una medusa al pie (`BP_JellyfishActor`) para subir de un bote.
+- **Color del camino**: un color de sendero propio de cada bioma, de tono y luminosidad
+  claramente distintos de sus paredes (tierra anaranjada, barro claro, ceniza rojiza, arena mojada,
+  arcilla roja, grava ocre, adoquín pizarra, tablas oscuras), con una línea oscura al pie del talud;
+  las paredes, en degradado por pendiente (suelo, roca y roca más oscura en los tajos) con estratos
+  suaves. La playa de la meta conserva su arena.
 - **Cruces colosales** tipo Mario Kart: puentes y murallas con puerta altísima que pasan por
   encima o por debajo de un módulo ya recorrido. Se llega a ellos por géiser/tobogán
   y caerse de un puente colosal es mortal. Los puentes dentro de un mismo módulo
@@ -156,8 +169,13 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Puentes colosales de cuatro estilos** según el bioma del cruce: colgante de cuerda (selva,
   manglar, agua, playa), viaducto de piedra con arcos rebajados entre los apoyos (roca, desierto,
   zona humana), caballete de madera con vigas hasta el suelo (desierto, playa) y hierro con
-  pórticos y cadenas (volcán, zona humana).
-- **Formaciones temáticas**: arcos que cruzan el camino (arco de roca, costillar de ballena,
+  pórticos y cadenas (volcán, zona humana). Las pilas y caballetes nunca caen sobre otro camino (el
+  arco se une al siguiente) y las cuevas no se ponen bajo un tablero colosal. Los de piedra y hierro
+  tienen a media altura una **plaza** redonda (sobre la pila central si la hay): pretil o barandilla
+  abierta a las entradas del tablero, fuente con la tortuga o farol alto, farolas, bancos mirando al
+  paisaje y una atalaya de 3 m con escalones, recompensa arriba y medusa al pie.
+- **Formaciones temáticas**: arcos que cruzan el camino (arco de roca, esqueleto de ballena con
+  columna en arco sobre las costillas, cola y cráneo con mandíbulas,
   raíces gigantes, pórtico de templo), piezas en explanadas (barco varado, cabeza colosal,
   basalto, fumarola, chimeneas de hadas, rocas en equilibrio, carreta, cañón y, de guerra,
   sacos terreros, búnker, torre de vigía y carro de combate) e hitos lejanos (pirámide, faro,
@@ -183,7 +201,8 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   turquesa y boca oscura, chorro de agua abultado que pulsa a borbotones, gotas que suben y caen,
   vapor y salpicadura en la boca.
 - **Cascadas-tobogán**: lámina de agua con UV de flujo (`M_ProcCascade`, ondas que corren ladera
-  abajo), alzada sobre el terreno para no cortarse con él, espuma en los bordes y al pie, y una pocita
+  abajo), en rejilla de 30 × ~60 cm con cada vértice 25 cm sobre el punto más alto del terreno de sus
+  cuadros vecinos (el terreno nunca asoma), espuma en los bordes y al pie, y una pocita
   con borde de espuma donde cae, con salpicaduras, espuma que se abre y bruma.
 - **Efectos ambientales** (`TN_ProcMapAmbientFX.h`, solo visuales y locales): partículas que son
   instancias de mallas low-poly (gotas, vapor, brasas), dormidas lejos de la cámara; brasas sobre los
