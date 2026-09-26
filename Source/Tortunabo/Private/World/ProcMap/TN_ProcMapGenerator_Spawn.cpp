@@ -256,7 +256,10 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 				}
 				if (ATN_ProcSlideZone* Slide = Cast<ATN_ProcSlideZone>(SpawnMapActor(ATN_ProcSlideZone::StaticClass(), GetActorTransform(), false)))
 				{
-					Slide->InitFromPoints(Points, static_cast<float>(F.Width));
+					FVector2D PoolC, Foot, Flow;
+					double PoolR = 0.0, PoolZ = 0.0;
+					SlidePool(F, PoolC, PoolR, PoolZ, Foot, Flow);
+					Slide->InitFromPoints(Points, static_cast<float>(F.Width), MapToWorld2D(PoolC, PoolZ), static_cast<float>(PoolR), MapToWorld2D(Foot, PoolZ));
 				}
 				break;
 			}

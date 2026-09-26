@@ -1306,16 +1306,18 @@ namespace TNProcMap
 				if (IsHollowTower(F))
 				{
 					// Torre hueca (la de entrada): suelo llano dentro, a la cota del camino, y el núcleo del muro a la
-					// cota de la cima (con el pretil). La puerta ocupa los dos lados del polígono junto a su dirección
-					// y su paso atraviesa todo el muro en talud, con el suelo llano hasta la boca. La sillería, el
-					// forjado y la puerta son malla.
+					// cota de la cima (con el pretil). La puerta es un túnel recto de 2·DoorHalf de ancho que atraviesa
+					// todo el muro en talud: aquí queda libre una franja algo más ancha (las paredes del túnel, que son
+					// malla, tapan el corte), con el suelo llano hasta pasada la portada. La sillería, el forjado y la
+					// puerta son malla.
 					const FVector2D Cc(F.Location.X, F.Location.Y);
 					const FVector2D Door = (FVector2D(F.Target.X, F.Target.Y) - Cc).GetSafeNormal();
 					const FVector2D Rel = P - Cc;
-					const double Cos = D > 1.0 ? FVector2D::DotProduct(Rel, Door) / D : 1.0;
-					const bool bDoor = Cos > FMath::Cos(TwoPi / TowerDims::Sides + 0.035);
-					const double Mouth = F.Radius + TowerDims::Skirt + WallDims::Batter * FMath::Max(0.0, F.Height - F.Target.Z) + 150.0;
-					if (D <= F.Radius || (bDoor && D < Mouth))
+					const double AlongD = FVector2D::DotProduct(Rel, Door);
+					const double AcrossD = FMath::Abs(FVector2D::DotProduct(Rel, FVector2D(-Door.Y, Door.X)));
+					const bool bDoor = AlongD > 0.0 && AcrossD < TowerDims::DoorHalf + 80.0;
+					const double Mouth = F.Radius + TowerDims::Skirt + WallDims::Batter * FMath::Max(0.0, F.Height - F.Target.Z) + 400.0;
+					if (D <= F.Radius || (bDoor && AlongD < Mouth))
 					{
 						const bool bCore = D > F.Radius - TowerDims::Wall + 90.0 && !bDoor;
 						H = bCore ? F.Height + (TowerOpening(F, P) ? 0.0 : 180.0) : F.Target.Z;

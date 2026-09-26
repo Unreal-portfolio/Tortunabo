@@ -100,6 +100,10 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Torres de escalada** junto al borde en tramos anchos: bloques del bioma (cajas con aspa,
   tocones, sillares, losas o basalto) de 3–4 m con escalones de 1 m, banderín, recompensa de puntos
   arriba (`BP_ScorePickup`) y una medusa al pie (`BP_JellyfishActor`) para subir de un bote.
+- **Conchas de puntos** (`ATN_ScorePickup`): una vieira dorada de ~1 m que gira como una moneda
+  de plataformas clásico, sube y baja y brilla (`M_ProcGlow`), con destellos alrededor. Si arte
+  pone una malla propia en `PickupMesh`, se ve esa y la concha no (la de ayuda del motor, el
+  signo de interrogación, cuenta como vacía).
 - **Terreno**: malla de 1,5 m con **detalle de 0,5 m** donde hace falta (pie y borde de los taludes,
   crestas, bocas de cueva: un 3-4 % de los cuadrados, más un 5-6 % de costuras; 1,4-1,5 veces los
   triángulos). Las paredes suben sin repisa: el talud llega al borde con la pendiente con la que arranca
@@ -115,10 +119,13 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   encima o por debajo de un módulo ya recorrido. Se llega a ellos por géiser/tobogán
   y caerse de un puente colosal es mortal. Los puentes dentro de un mismo módulo
   son normales. Sus dos torres son de sillería en talud con pretil y almenas: la de
-  entrada es **hueca**: el camino llega en embudo a su puerta en arco, a ras de suelo, y
-  dentro (sala iluminada por antorchas) el géiser del centro lanza en vertical por un hueco
-  del forjado hasta la cima, junto al arranque del puente o del adarve; la de salida
-  lleva el tobogán.
+  entrada es **hueca**: el camino llega en embudo a su puerta, a ras de suelo: un túnel
+  recto de 4,6 m de ancho que atraviesa todo el grueso del muro, con bóveda de medio punto,
+  suelo enlosado, portada plana al pie del talud con impostas, dovelas y clave en relieve,
+  rastrillo levantado y dos antorchas. Dentro (sala iluminada por antorchas) el géiser del
+  centro lanza en vertical por un hueco del forjado hasta la cima, junto al arranque del
+  puente o del adarve, y su columna de agua asoma por ese hueco; la de salida lleva el
+  tobogán.
 - **Ramas** que se separan y vuelven a unirse en 1–3 módulos, de cuatro tipos:
   *tranquila* (larga y holgada), *arriesgada* (cornisa de 3,5–5 m con el doble de
   huecos), *ruta alta* (sube en rampa suave por una loma junto al cauce y baja en
@@ -219,12 +226,20 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   color de vértice es el peso de balanceo (hierba entera, copas más que troncos, rocas y objetos
   quietos); cada especie deja de evaluarlo a su distancia.
 - **Géiseres low-poly**: montículo de sínter en terrazas (anaranjado, crema y blanco) con poza
-  turquesa y boca oscura, chorro de agua abultado que pulsa a borbotones, gotas que suben y caen,
-  vapor y salpicadura en la boca.
+  turquesa y boca oscura. La columna de agua (material de agua que corre hacia arriba, blanca y
+  opaca en lo alto) sube de golpe hasta 10,5 m, se sostiene temblando, baja y queda borboteando a
+  2,6 m, en ciclos de 4,2 s; al lanzar a alguien vuelve a arrancar. Corona de espuma que va con la
+  cima y anillo de espuma en la boca (bolas de caras planas), gotas que saltan de lo alto y caen
+  alrededor, gotas que suben pegadas a la columna, espuma arriba y abajo, salpicaduras y bruma,
+  todo al ritmo del chorro. En la torre hueca la columna llega a asomar por el hueco del forjado.
 - **Cascadas-tobogán**: lámina de agua con UV de flujo (`M_ProcCascade`, ondas que corren ladera
   abajo), en rejilla de 30 × ~60 cm con cada vértice 25 cm sobre el punto más alto del terreno de sus
-  cuadros vecinos (el terreno nunca asoma), espuma en los bordes y al pie, y una pocita
-  con borde de espuma donde cae, con salpicaduras, espuma que se abre y bruma.
+  cuadros vecinos (el terreno nunca asoma), espuma en los bordes, en el labio (el primer metro y
+  medio, con espuma y gotitas que se asoman) y al pie. Abajo, una poza con borde de espuma
+  (`ATN_ProcMapGenerator::SlidePool`, compartida por la malla y los efectos): sus UV salen del
+  punto donde cae el agua, así que las ondas del material corren desde el impacto hacia fuera, y
+  además salen anillos de onda que se abren desde ahí y se hunden al final; salpicaduras, espuma y
+  bruma, todo a la cota del agua.
 - **Efectos ambientales** (`TN_ProcMapAmbientFX.h`, solo visuales y locales): partículas que son
   instancias de mallas low-poly (gotas, vapor, brasas), dormidas lejos de la cámara; brasas sobre los
   lagos y ríos de lava; bandadas de gaviotas en la costa y la meta, guacamayos en la selva, pájaros

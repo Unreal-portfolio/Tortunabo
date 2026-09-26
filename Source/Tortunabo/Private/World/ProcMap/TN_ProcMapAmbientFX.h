@@ -21,7 +21,7 @@ namespace TNAmbientFX
 {
 	using namespace TNProcMesh;
 
-	enum class EShape : uint8 { Drop, Puff, Ember, Flake, Leaf, Streak };
+	enum class EShape : uint8 { Drop, Puff, Ember, Flake, Leaf, Streak, Ring };
 
 	/** Cómo nace y se mueve cada partícula de un emisor. */
 	struct FEmitterDesc
@@ -144,6 +144,20 @@ namespace TNAmbientFX
 				const FVector P[6] = { FVector(50, 0, 0), FVector(-50, 0, 0), FVector(0, 50, 0), FVector(0, -50, 0), FVector(0, 0, 50), FVector(0, 0, -50) };
 				const int32 F[8][3] = { { 0, 2, 4 }, { 2, 1, 4 }, { 1, 3, 4 }, { 3, 0, 4 }, { 2, 0, 5 }, { 1, 2, 5 }, { 3, 1, 5 }, { 0, 3, 5 } };
 				for (const auto& T : F) { M.AddTri(P[T[0]], P[T[1]], P[T[2]], (P[T[0]] + P[T[1]] + P[T[2]]) / 3.0, Color); }
+				break;
+			}
+			case EShape::Ring:
+			{
+				// Onda en el agua: anillo plano fino (diámetro 100) con las dos caras; se abre sin encoger al final.
+				constexpr int32 Seg = 28;
+				for (int32 k = 0; k < Seg; ++k)
+				{
+					const double A0 = 2.0 * PI * k / Seg, A1 = 2.0 * PI * (k + 1) / Seg;
+					const FVector I0(FMath::Cos(A0) * 45.0, FMath::Sin(A0) * 45.0, 0.0), I1(FMath::Cos(A1) * 45.0, FMath::Sin(A1) * 45.0, 0.0);
+					const FVector O0(FMath::Cos(A0) * 50.0, FMath::Sin(A0) * 50.0, 0.0), O1(FMath::Cos(A1) * 50.0, FMath::Sin(A1) * 50.0, 0.0);
+					M.AddQuad(I0, O0, O1, I1, FVector::UpVector, Color);
+					M.AddQuad(I0, O0, O1, I1, -FVector::UpVector, Color);
+				}
 				break;
 			}
 			case EShape::Flake:
@@ -394,7 +408,8 @@ namespace TNAmbientFX
 			P.P += P.V * Dt;
 			const float T = P.Age / P.Life;
 			const float Fade = FMath::Min(1.f, (P.Life - P.Age) / 0.35f) * FMath::Min(1.f, P.Age / 0.08f + 0.2f);
-			const float Size = FMath::Lerp(D.SizeStart, D.SizeEnd, T) * Fade / 100.f;
+			// Las ondas se abren sin encoger al final (se hunden bajo el agua, que las apaga).
+			const float Size = FMath::Lerp(D.SizeStart, D.SizeEnd, T) * (D.Shape == EShape::Ring ? 1.f : Fade) / 100.f;
 			FQuat Rot = FQuat(FVector::UpVector, FMath::DegreesToRadians(P.Spin + P.Age * 90.f));
 			if (D.Shape == EShape::Drop && !P.V.IsNearlyZero())
 			{

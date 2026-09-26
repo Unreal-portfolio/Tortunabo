@@ -199,6 +199,13 @@ private:
 	FVector MapToWorld2D(const FVector2D& MapPoint, double Z) const { return MapToWorld(FVector(MapPoint.X, MapPoint.Y, Z)); }
 	FVector WorldToMap(const FVector& WorldPoint) const;
 	double TerrainHeightMap(const FVector2D& MapPoint) const;
+
+	/**
+	 * Poza al pie de una cascada (FFeature SlideZone), en coordenadas del mapa: centro un poco adelantado respecto al
+	 * pie, radio según el ancho del camino allí y cota plana sobre el punto más alto de su disco (el suelo no asoma).
+	 * La usan la malla del agua (TN_ProcMapGenerator_Build) y los efectos del pie (ATN_ProcSlideZone).
+	 */
+	void SlidePool(const TNProcMap::FFeature& F, FVector2D& OutCenter, double& OutRadius, double& OutZ, FVector2D& OutFoot, FVector2D& OutFlow) const;
 	FVector TerrainNormalMap(const FVector2D& MapPoint) const;
 	double PathDistanceMap(const FVector2D& MapPoint) const;
 	UMaterialInterface* ResolveMaterial(UMaterialInterface* Preferred, const TCHAR* FallbackPath) const;

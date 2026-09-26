@@ -833,10 +833,15 @@ namespace
 
 	/**
 	 * Torre hueca (la de entrada de un cruce; TNProcMap::TowerDims): sillería en talud por fuera y a plomo por dentro,
-	 * sobre el núcleo del terreno; puerta en arco a ras de suelo hacia el camino que llega (jambas, dintel, dovelas);
-	 * forjado a la cota de la cima con un hueco en el centro por el que sube el géiser; pretil de 1,9 m con almenas,
-	 * abierto al puente o al adarve (ahí el muro se enlosa a la cota de la cima); saeteras, antorchas dentro (Glow) y
-	 * estandarte (Cloth). Out lleva colisión.
+	 * sobre el núcleo del terreno; forjado a la cota de la cima con un hueco en el centro por el que sube el géiser;
+	 * pretil de 1,9 m con almenas, abierto al puente o al adarve (ahí el muro se enlosa a la cota de la cima);
+	 * saeteras, antorchas dentro (Glow) y estandarte (Cloth). Out lleva colisión.
+	 *
+	 * Puerta hacia el camino que llega: un túnel recto de 2·DoorHalf de ancho que atraviesa todo el grueso del muro,
+	 * con paredes paralelas, bóveda de medio punto y suelo enlosado; por fuera, una portada plana al pie del talud
+	 * (cierra los cuatro lados que abre la puerta) con impostas, dovelas y clave en relieve, el rastrillo levantado y
+	 * dos antorchas; por dentro, un marco plano con el mismo arco. El terreno deja libre esa franja (TNProcMap
+	 * TerrainBuilder, rama de IsHollowTower).
 	 */
 	template <typename FGround>
 	void TNProcAddHollowTower(FTNProcMeshBuffers& Out, FTNProcMeshBuffers& Glow, FTNProcMeshBuffers& Cloth, const TNProcMap::FLayout& Layout,
@@ -853,12 +858,15 @@ namespace
 		const double Ro = R + TowerDims::Skirt;
 		const double ParTop = TopZ + 190.0;
 		const double Slab = 60.0;
-		const double DoorTop = FloorZ + TowerDims::DoorTop;
 		auto Dir = [](double A) { return FVector2D(FMath::Cos(A), FMath::Sin(A)); };
 		const FVector2D DoorDir = (FVector2D(F.Target.X, F.Target.Y) - C).GetSafeNormal();
-		// La puerta ocupa los dos lados que comparten el vértice más cercano a su dirección.
+		// La puerta abre los cuatro lados alrededor del vértice más cercano a su dirección (DoorDir ya apunta a él): por
+		// dentro, dos lados no llegan al ancho del túnel.
 		const int32 DoorK = ((FMath::RoundToInt(FMath::Atan2(DoorDir.Y, DoorDir.X) / TwoPi * Sides) % Sides) + Sides) % Sides;
-		auto IsDoor = [&](int32 k) { return k == DoorK || k == (DoorK + Sides - 1) % Sides; };
+		auto IsDoor = [&](int32 k) { const int32 d = ((k - DoorK) % Sides + Sides) % Sides; return d <= 1 || d >= Sides - 2; };
+		const double GateHalf = TowerDims::DoorHalf;
+		const double Spring = FloorZ + TowerDims::DoorTop - GateHalf - 70.0;
+		const double GateTop = Spring + GateHalf + Course;
 		TArray<bool> Open;
 		for (int32 k = 0; k < Sides; ++k) { Open.Add(TowerOpeningAt(Layout, F, C + Dir(TwoPi * (k + 0.5) / Sides) * (R - 150.0))); }
 		double Ground = FloorZ;
@@ -885,12 +893,12 @@ namespace
 			const FVector Hint(FMath::Cos(Am), FMath::Sin(Am), WallDims::Batter);
 			const bool bOpen = Open[k];
 			const bool bDoor = IsDoor(k);
-			// Cara exterior en hiladas (sobre la puerta, desde el dintel) y cara interior a plomo hasta el forjado.
-			Courses(bDoor ? DoorTop : Zb, bOpen ? TopZ : ParTop, [&](double Z0, double Z1, int32 Idx)
+			// Cara exterior en hiladas (sobre la puerta, desde lo alto de la portada) y cara interior a plomo hasta el forjado.
+			Courses(bDoor ? GateTop : Zb, bOpen ? TopZ : ParTop, [&](double Z0, double Z1, int32 Idx)
 			{
 				Out.AddQuad(OuterAt(A0, Z0), OuterAt(A1, Z0), OuterAt(A1, Z1), OuterAt(A0, Z1), Hint, Stone * TNProcTone(Idx * 97 + k / 2, Seed));
 			});
-			Courses(bDoor ? DoorTop : FloorZ - 60.0, TopZ - Slab, [&](double Z0, double Z1, int32 Idx)
+			Courses(bDoor ? GateTop : FloorZ - 60.0, TopZ - Slab, [&](double Z0, double Z1, int32 Idx)
 			{
 				Out.AddQuad(RingAt(A1, Ri, Z0), RingAt(A0, Ri, Z0), RingAt(A0, Ri, Z1), RingAt(A1, Ri, Z1), FVector(-Hint.X, -Hint.Y, 0.0),
 					Stone * 0.82f * TNProcTone(Idx * 53 + k / 2, Seed ^ 0x1D1Du));
@@ -934,34 +942,156 @@ namespace
 				}
 			}
 		}
-		// Puerta: jambas en los extremos (caras radiales en el grueso del muro), dintel por debajo y dovelas por fuera.
-		const double Aj[2] = { TwoPi * (DoorK - 1) / Sides, TwoPi * (DoorK + 1) / Sides };
-		for (int32 J = 0; J < 2; ++J)
+		// ── Puerta ──
+		// Marco local: X hacia fuera por DoorDir, Y a lo ancho (Across) y Z arriba; el túnel va de Xin (marco de dentro,
+		// junto a la cuerda de los lados abiertos por dentro) a Xout (portada, delante del pie del talud).
 		{
-			const FVector2D Tg(-FMath::Sin(Aj[J]), FMath::Cos(Aj[J]));
-			const FVector Hint(Tg.X * (J == 0 ? 1.0 : -1.0), Tg.Y * (J == 0 ? 1.0 : -1.0), 0.0);
-			Courses(FloorZ - 60.0, DoorTop, [&](double Z0, double Z1, int32 Idx)
-			{
-				Out.AddQuad(RingAt(Aj[J], Ri, Z0), OuterAt(Aj[J], Z0), OuterAt(Aj[J], Z1), RingAt(Aj[J], Ri, Z1), Hint, Stone * 0.88f * TNProcTone(Idx * 31 + J, Seed ^ 0x5A5Au));
-			});
-		}
-		for (const int32 k : { (DoorK + Sides - 1) % Sides, DoorK })
-		{
-			const double A0 = TwoPi * k / Sides;
-			const double A1 = TwoPi * (k + 1) / Sides;
-			Out.AddQuad(RingAt(A1, Ri, DoorTop), RingAt(A0, Ri, DoorTop), OuterAt(A0, DoorTop), OuterAt(A1, DoorTop), -FVector::UpVector, Stone * 0.75f);
-		}
-		{
-			// Dovelas: arco de medio punto sobre la puerta, en relieve en la cara exterior.
-			const double Half = 0.5 * FVector2D::Distance(C + Dir(Aj[0]) * Ro, C + Dir(Aj[1]) * Ro);
-			const FVector2D Mid = C + DoorDir * (Ro + WallDims::Batter * (TopZ - DoorTop) + 10.0);
 			const FVector2D Across(-DoorDir.Y, DoorDir.X);
-			for (int32 v = 0; v <= 8; ++v)
+			auto G = [&](double X, double Y, double Z) { const FVector2D Q = C + DoorDir * X + Across * Y; return FVector(Q.X, Q.Y, Z); };
+			const FVector Fw(DoorDir.X, DoorDir.Y, 0.0);
+			const FVector Side(Across.X, Across.Y, 0.0);
+			const double OpenA = TwoPi * 2.0 / Sides;
+			const double CosO = FMath::Cos(OpenA), SinO = FMath::Sin(OpenA);
+			auto OuterR = [&](double Z) { return Ro + WallDims::Batter * FMath::Max(0.0, TopZ - Z); };
+			const double Xin = Ri * CosO - 12.0;
+			const double Win = Ri * SinO + 15.0;
+			const double Xout = OuterR(FloorZ) + 30.0;
+			const double Wout = OuterR(Zb) * SinO + 25.0;
+			const FLinearColor Face = Stone * 1.06f;
+			constexpr int32 ArchSeg = 12;
+			auto ArchY = [&](int32 i) { return GateHalf * FMath::Cos(PI * i / ArchSeg); };
+			auto ArchZ = [&](int32 i) { return Spring + GateHalf * FMath::Sin(PI * i / ArchSeg); };
+
+			// Portadas (fuera, mirando a DoorDir; dentro, al centro): paños a los lados del túnel y, sobre el arco, tiras
+			// verticales hasta arriba.
+			for (int32 Pass = 0; Pass < 2; ++Pass)
 			{
-				const double A = PI * v / 8.0;
-				const FVector2D Q = Mid + Across * (FMath::Cos(A) * (Half + 30.0));
-				const double Zv = DoorTop - 230.0 + FMath::Sin(A) * (Half * 0.9 + 60.0);
-				Out.AddBox(FVector(Q.X, Q.Y, Zv), FVector(DoorDir.X, DoorDir.Y, 0.0), FVector(22.0, 40.0, 38.0), Stone * ((v % 2) == 0 ? 1.2f : 1.1f));
+				const bool bOut = Pass == 0;
+				const double X = bOut ? Xout : Xin;
+				const double W = bOut ? Wout : Win;
+				const double Z0 = bOut ? Zb : FloorZ - 60.0;
+				const FVector N = bOut ? Fw : -Fw;
+				for (const double Sg : { -1.0, 1.0 })
+				{
+					Courses(Z0, GateTop, [&](double Za, double Zc, int32 Idx)
+					{
+						Out.AddQuad(G(X, Sg * GateHalf, Za), G(X, Sg * W, Za), G(X, Sg * W, Zc), G(X, Sg * GateHalf, Zc), N,
+							Face * TNProcTone(Idx * 29 + (Sg > 0.0 ? 1 : 0) + Pass * 7, Seed ^ 0x6A7Eu));
+					});
+				}
+				for (int32 i = 0; i < ArchSeg; ++i)
+				{
+					Out.AddQuad(G(X, ArchY(i), ArchZ(i)), G(X, ArchY(i + 1), ArchZ(i + 1)), G(X, ArchY(i + 1), GateTop), G(X, ArchY(i), GateTop), N, Face * 0.96f);
+				}
+			}
+
+			// Remates de la portada contra el talud: arriba, hasta el pie de las hiladas de los lados abiertos; a los
+			// lados, hasta la arista de los vértices extremos.
+			{
+				const double Rg = OuterR(GateTop);
+				TArray<FVector2D> Poly;
+				for (int32 v = -2; v <= 2; ++v)
+				{
+					const double A = OpenA * 0.5 * v;
+					Poly.Add(FVector2D(Rg * FMath::Cos(A), Rg * FMath::Sin(A)));
+				}
+				for (int32 v = 0; v + 1 < Poly.Num(); ++v)
+				{
+					const double Ya = v == 0 ? -Wout : Poly[v].Y;
+					const double Yb = v + 2 == Poly.Num() ? Wout : Poly[v + 1].Y;
+					Out.AddQuad(G(Xout, Ya, GateTop), G(Xout, Yb, GateTop), G(Poly[v + 1].X, Poly[v + 1].Y, GateTop), G(Poly[v].X, Poly[v].Y, GateTop), FVector::UpVector, Stone);
+				}
+				for (const double Sg : { -1.0, 1.0 })
+				{
+					Courses(Zb, GateTop, [&](double Za, double Zc, int32 Idx)
+					{
+						const double Ra = OuterR(Za), Rc = OuterR(Zc);
+						Out.AddQuad(G(Xout, Sg * Wout, Za), G(Ra * CosO, Sg * Ra * SinO, Za), G(Rc * CosO, Sg * Rc * SinO, Zc), G(Xout, Sg * Wout, Zc), Side * Sg,
+							Stone * 0.9f * TNProcTone(Idx * 17 + (Sg > 0.0 ? 3 : 0), Seed ^ 0x3C3Cu));
+					});
+				}
+				// Por dentro, la ceja entre el marco y la cuerda de los lados abiertos.
+				for (int32 v = -2; v < 2; ++v)
+				{
+					const double A0 = OpenA * 0.5 * v, A1 = OpenA * 0.5 * (v + 1);
+					Out.AddQuad(G(Xin, Win * FMath::Clamp(v / 2.0, -1.0, 1.0), GateTop), G(Ri * FMath::Cos(A0), Ri * FMath::Sin(A0), GateTop),
+						G(Ri * FMath::Cos(A1), Ri * FMath::Sin(A1), GateTop), G(Xin, Win * FMath::Clamp((v + 1) / 2.0, -1.0, 1.0), GateTop), -FVector::UpVector, Stone * 0.8f);
+				}
+			}
+
+			// Túnel: paredes paralelas, bóveda de medio punto y suelo enlosado.
+			for (const double Sg : { -1.0, 1.0 })
+			{
+				Courses(FloorZ - 60.0, Spring, [&](double Za, double Zc, int32 Idx)
+				{
+					Out.AddQuad(G(Xin, Sg * GateHalf, Za), G(Xout, Sg * GateHalf, Za), G(Xout, Sg * GateHalf, Zc), G(Xin, Sg * GateHalf, Zc), -Side * Sg,
+						Stone * 0.8f * TNProcTone(Idx * 41 + (Sg > 0.0 ? 5 : 0), Seed ^ 0x7E57u));
+				});
+			}
+			for (int32 i = 0; i < ArchSeg; ++i)
+			{
+				const double Am = PI * (i + 0.5) / ArchSeg;
+				const FVector In(-Side * FMath::Cos(Am) - FVector::UpVector * FMath::Sin(Am));
+				Out.AddQuad(G(Xin, ArchY(i), ArchZ(i)), G(Xout, ArchY(i), ArchZ(i)), G(Xout, ArchY(i + 1), ArchZ(i + 1)), G(Xin, ArchY(i + 1), ArchZ(i + 1)), In,
+					Stone * ((i % 2) ? 0.74f : 0.78f));
+			}
+			for (double X0 = Xin - 60.0; X0 < Xout + 260.0; X0 += 200.0)
+			{
+				const double X1 = FMath::Min(X0 + 200.0, Xout + 260.0);
+				const int32 Tile = FMath::RoundToInt(X0 / 200.0);
+				Out.AddQuad(G(X0, -GateHalf, FloorZ + 3.0), G(X1, -GateHalf, FloorZ + 3.0), G(X1, GateHalf, FloorZ + 3.0), G(X0, GateHalf, FloorZ + 3.0), FVector::UpVector,
+					Stone * 0.95f * TNProcTone(Tile, Seed ^ 0x51A8u));
+			}
+
+			// Dovelas en relieve sobre la portada (la clave, más grande), impostas en el arranque del arco.
+			constexpr int32 Vous = 11;
+			for (int32 v = 0; v < Vous; ++v)
+			{
+				const bool bKey = v == Vous / 2;
+				const double A0 = PI * v / Vous + 0.012, A1 = PI * (v + 1) / Vous - 0.012;
+				const double R0 = GateHalf - 2.0, R1 = GateHalf + (bKey ? 105.0 : 78.0);
+				const double Depth = bKey ? 42.0 : 28.0;
+				auto P = [&](double A, double Rr, double Dx) { return G(Xout + Dx, Rr * FMath::Cos(A), Spring + Rr * FMath::Sin(A)); };
+				const FLinearColor Col = Stone * (bKey ? 1.25f : ((v % 2) ? 1.12f : 1.18f));
+				const FVector Ra(Side * FMath::Cos(0.5 * (A0 + A1)) + FVector::UpVector * FMath::Sin(0.5 * (A0 + A1)));
+				Out.AddQuad(P(A0, R0, Depth), P(A1, R0, Depth), P(A1, R1, Depth), P(A0, R1, Depth), Fw, Col);
+				Out.AddQuad(P(A0, R0, 0.0), P(A1, R0, 0.0), P(A1, R0, Depth), P(A0, R0, Depth), -Ra, Col * 0.8f);
+				Out.AddQuad(P(A0, R1, 0.0), P(A1, R1, 0.0), P(A1, R1, Depth), P(A0, R1, Depth), Ra, Col * 0.9f);
+				for (const double A : { A0, A1 })
+				{
+					const FVector Tn(-Side * FMath::Sin(A) + FVector::UpVector * FMath::Cos(A));
+					Out.AddQuad(P(A, R0, 0.0), P(A, R1, 0.0), P(A, R1, Depth), P(A, R0, Depth), A == A0 ? -Tn : Tn, Col * 0.85f);
+				}
+			}
+			for (const double Sg : { -1.0, 1.0 })
+			{
+				Out.AddBox(G(Xout + 16.0, Sg * (GateHalf + 45.0), Spring - 14.0), Fw, FVector(20.0, 55.0, 14.0), Stone * 1.2f);
+			}
+
+			// Rastrillo levantado: barrotes de hierro dentro del arco, con puntas abajo, y dos travesaños.
+			const FLinearColor Iron(0.1f, 0.1f, 0.11f);
+			const double Xp = Xout - 45.0;
+			const double Bottom = Spring + 0.3 * GateHalf;
+			for (double Y = -GateHalf + 28.0; Y <= GateHalf - 27.0; Y += 46.0)
+			{
+				const double TopY = Spring + FMath::Sqrt(FMath::Max(0.0, GateHalf * GateHalf - Y * Y)) - 4.0;
+				if (TopY <= Bottom + 20.0) { continue; }
+				Out.AddBeam(G(Xp, Y, Bottom), G(Xp, Y, TopY), 4.5, Iron);
+				Out.AddBeam(G(Xp, Y, Bottom - 22.0), G(Xp, Y, Bottom), 2.0, Iron);
+			}
+			for (const double Zr : { Bottom + 30.0, Bottom + 110.0 })
+			{
+				const double HalfW = FMath::Sqrt(FMath::Max(0.0, GateHalf * GateHalf - FMath::Square(Zr - Spring))) - 6.0;
+				if (HalfW > 20.0) { Out.AddBeam(G(Xp, -HalfW, Zr), G(Xp, HalfW, Zr), 3.5, Iron); }
+			}
+
+			// Dos antorchas en la portada, a los lados del arco.
+			for (const double Sg : { -1.0, 1.0 })
+			{
+				const FVector Base = G(Xout + 6.0, Sg * (GateHalf + 120.0), FloorZ + 300.0);
+				const FVector TipP = Base + Fw * 38.0 + FVector(0.0, 0.0, 42.0);
+				Out.AddBeam(Base, TipP, 5.0, FLinearColor(0.3f, 0.2f, 0.12f));
+				Glow.AddBox(TipP + FVector(0.0, 0.0, 18.0), Fw, FVector(10.0, 10.0, 18.0), FLinearColor(1.f, 0.55f, 0.15f));
 			}
 		}
 		// Antorchas dentro, a 3,2 m del suelo: palo y llama.
@@ -978,6 +1108,29 @@ namespace
 		TNProcAddTowerBanner(Cloth, Open, C, Ri, Ro, ParTop, Banner);
 	}
 
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Poza de las cascadas
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_ProcMapGenerator::SlidePool(const TNProcMap::FFeature& F, FVector2D& OutCenter, double& OutRadius, double& OutZ, FVector2D& OutFoot, FVector2D& OutFlow) const
+{
+	using namespace TNProcMap;
+	const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? Layout.Main : Layout.Branches[F.BranchIndex].Samples;
+	const FPathSample& Foot = S[FMath::Clamp(F.Aux, 0, S.Num() - 1)];
+	OutFoot = Foot.P;
+	OutFlow = Foot.Dir.GetSafeNormal().IsNearlyZero() ? FVector2D(1.0, 0.0) : Foot.Dir.GetSafeNormal();
+	OutCenter = Foot.P + OutFlow * (Foot.Width * 0.35);
+	OutRadius = FMath::Clamp(Foot.Width * 0.65, 250.0, 900.0);
+	// Plana sobre el punto más alto de su disco de dentro: el suelo nunca asoma en ella.
+	double Z = TerrainHeightMap(OutCenter);
+	for (int32 k = 0; k < 12; ++k)
+	{
+		const double A = TwoPi * k / 12.0;
+		for (const double Rr : { 0.36, 0.72 }) { Z = FMath::Max(Z, TerrainHeightMap(OutCenter + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (OutRadius * Rr))); }
+	}
+	OutZ = Z + 10.0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1983,8 +2136,6 @@ void ATN_ProcMapGenerator::BuildStructures()
 				TArray<FLinearColor> PrevCol;
 				double Travel = 0.0;
 				FVector2D LastC = S[From].P;
-				FVector2D FootC = S[To].P, FootDir = S[To].Dir;
-				double FootW = S[To].Width;
 				for (int32 i = From; i <= To; ++i)
 				{
 					const int32 Sub = i < To ? FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(S[i].P, S[i + 1].P) / RowStep)) : 1;
@@ -2011,7 +2162,10 @@ void ATN_ProcMapGenerator::BuildStructures()
 							Row.Add(FVector(Q, Lifted(Q, Dir, N, RowStep * 1.3, 2.0 * Hw / Cols * 1.15)));
 							RowUV.Add(FVector2D(static_cast<double>(c) / Cols, Travel / 300.0));
 							const float Edge = static_cast<float>(FMath::Pow(FMath::Abs(X), 3.0));
-							FLinearColor Col = TNProcLerpColor(FLinearColor(0.18f, 0.52f, 0.8f), FLinearColor(0.96f, 0.99f, 1.f), FMath::Min(1.f, 0.75f * Edge + 0.7f * Foot * Foot * Foot));
+							// Espuma en el labio (el primer metro y medio, por donde el agua se asoma) y al pie.
+							const float Lip = 1.f - static_cast<float>(FMath::SmoothStep(40.0, 170.0, Travel));
+							FLinearColor Col = TNProcLerpColor(FLinearColor(0.18f, 0.52f, 0.8f), FLinearColor(0.96f, 0.99f, 1.f),
+								FMath::Min(1.f, 0.75f * Edge + 0.7f * Foot * Foot * Foot + 0.9f * Lip));
 							Col.A = FMath::Lerp(0.9f, 0.45f, Edge);
 							RowCol.Add(Col);
 						}
@@ -2028,56 +2182,54 @@ void ATN_ProcMapGenerator::BuildStructures()
 						Prev = MoveTemp(Row);
 						PrevUV = MoveTemp(RowUV);
 						PrevCol = MoveTemp(RowCol);
-						FootC = C;
-						FootDir = Dir;
-						FootW = FMath::Lerp(A.Width, B.Width, U);
 					}
 				}
-				// Pocita al pie: disco de agua un poco adelantado con el borde de espuma, que se apoya en el
-				// suelo por fuera (sin quedar colgado) y queda plano en el centro.
+				// Poza al pie: disco de agua un poco adelantado con el borde de espuma, que se apoya en el suelo
+				// por fuera (sin quedar colgado) y queda plano en el centro. Sus UV salen del punto donde cae el
+				// agua (V = distancia a él): el material hace correr las ondas desde el impacto hacia fuera. Más
+				// anillos que antes para que esa distancia se interpole bien.
 				{
-					const FVector2D PC = FootC + FootDir * (FootW * 0.35);
-					const double R = FMath::Clamp(FootW * 0.65, 250.0, 900.0);
-					// Plana sobre el punto más alto de su disco de dentro: el suelo nunca asoma en ella.
-					double PoolZ = TerrainHeightMap(PC);
-					for (int32 k = 0; k < 12; ++k)
-					{
-						const double A = TNProcMap::TwoPi * k / 12.0;
-						for (const double Rr : { 0.36, 0.72 }) { PoolZ = FMath::Max(PoolZ, TerrainHeightMap(PC + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (R * Rr))); }
-					}
-					PoolZ += 10.0;
-					constexpr int32 Seg = 24;
-					const FVector Center(PC, PoolZ);
+					FVector2D PC, Impact, Flow;
+					double R = 0.0, PoolZ = 0.0;
+					SlidePool(F, PC, R, PoolZ, Impact, Flow);
+					const FVector2D Across(-Flow.Y, Flow.X);
+					auto PoolUV = [&](const FVector2D& Q) { return FVector2D(FVector2D::DotProduct(Q - Impact, Across) / 300.0, FVector2D::Distance(Q, Impact) / 300.0); };
+					constexpr int32 Seg = 28;
+					const double Radii[] = { 0.0, 0.18, 0.36, 0.54, 0.72, 1.0 };
+					constexpr int32 NumR = UE_ARRAY_COUNT(Radii);
+					const FLinearColor Water(0.16f, 0.5f, 0.76f, 0.88f), Foam(0.96f, 0.99f, 1.f, 0.8f);
 					for (int32 k = 0; k < Seg; ++k)
 					{
 						const double A0 = TNProcMap::TwoPi * k / Seg, A1 = TNProcMap::TwoPi * (k + 1) / Seg;
-						FVector Ring[2][2];
-						FVector2D RingUV[2][2];
-						for (int32 r = 0; r < 2; ++r)
+						for (int32 r = 0; r + 1 < NumR; ++r)
 						{
-							const double Rr = r == 0 ? R * 0.72 : R;
-							for (int32 e = 0; e < 2; ++e)
+							FVector P4[4];
+							FVector2D UV4[4];
+							FLinearColor C4[4];
+							const double Ri2[4] = { Radii[r], Radii[r], Radii[r + 1], Radii[r + 1] };
+							const double Ai[4] = { A0, A1, A1, A0 };
+							for (int32 q = 0; q < 4; ++q)
 							{
-								const double Aa = e == 0 ? A0 : A1;
-								const FVector2D Q = PC + FVector2D(FMath::Cos(Aa), FMath::Sin(Aa)) * Rr;
-								const double Zr = r == 0 ? PoolZ : FMath::Max(TerrainHeightMap(Q) + 6.0, PoolZ - 25.0);
-								Ring[r][e] = FVector(Q, Zr);
-								RingUV[r][e] = FVector2D((Q.X - PC.X) / 300.0, (Q.Y - PC.Y) / 300.0 + Travel / 300.0);
+								const FVector2D Q = PC + FVector2D(FMath::Cos(Ai[q]), FMath::Sin(Ai[q])) * (R * Ri2[q]);
+								const bool bRim = Ri2[q] > 0.99;
+								P4[q] = FVector(Q, bRim ? FMath::Max(TerrainHeightMap(Q) + 6.0, PoolZ - 25.0) : PoolZ);
+								UV4[q] = PoolUV(Q);
+								C4[q] = bRim ? Foam : Water;
 							}
+							if (r == 0)
+							{
+								// Centro: triángulo (los dos primeros puntos coinciden).
+								const int32 Base = SlideWater.Verts.Num();
+								SlideWater.AddTri(P4[0], P4[2], P4[3], FVector::UpVector, Water);
+								for (int32 v = Base; v < SlideWater.Verts.Num(); ++v)
+								{
+									const FVector& Vv = SlideWater.Verts[v];
+									SlideWater.UVs[v] = PoolUV(FVector2D(Vv.X, Vv.Y));
+								}
+								continue;
+							}
+							AddFlowQuad(P4, UV4, C4);
 						}
-						const FLinearColor Water(0.16f, 0.5f, 0.76f, 0.88f), Foam(0.96f, 0.99f, 1.f, 0.8f);
-						const FVector2D CenterUV(0.0, Travel / 300.0);
-						const int32 Base = SlideWater.Verts.Num();
-						SlideWater.AddTri(Center, Ring[0][0], Ring[0][1], FVector::UpVector, Water);
-						for (int32 v = Base; v < SlideWater.Verts.Num(); ++v)
-						{
-							const FVector& Vv = SlideWater.Verts[v];
-							SlideWater.UVs[v] = Vv.Equals(Center, 0.5) ? CenterUV : (Vv.Equals(Ring[0][0], 0.5) ? RingUV[0][0] : RingUV[0][1]);
-						}
-						const FVector Po[4] = { Ring[0][0], Ring[0][1], Ring[1][1], Ring[1][0] };
-						const FVector2D UVo[4] = { RingUV[0][0], RingUV[0][1], RingUV[1][1], RingUV[1][0] };
-						const FLinearColor Co[4] = { Water, Water, Foam, Foam };
-						AddFlowQuad(Po, UVo, Co);
 					}
 				}
 				break;

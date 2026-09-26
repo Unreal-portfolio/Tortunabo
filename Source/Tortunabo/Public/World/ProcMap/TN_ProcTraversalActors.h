@@ -34,9 +34,15 @@ public:
 
 	/**
 	 * Géiser dentro de una torre hueca: lanza en vertical hasta el centro del hueco del forjado (InHole, en mundo, a la
-	 * cota de su cara de arriba) y, ya por encima, empuja hacia Target para caer en él.
+	 * cota de su cara de arriba) y, ya por encima, empuja hacia Target para caer en él. La columna de agua crece hasta
+	 * asomar por el hueco.
 	 */
-	void SetShaft(const FVector& InHole) { Hole = InHole; bShaft = true; }
+	void SetShaft(const FVector& InHole)
+	{
+		Hole = InHole;
+		bShaft = true;
+		JetHigh = FMath::Max(JetHigh, static_cast<float>(InHole.Z - GetActorLocation().Z) + 350.f);
+	}
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geyser")
@@ -48,9 +54,28 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geyser")
 	TObjectPtr<UStaticMeshComponent> BaseMesh;
 
-	/** Columna de agua (greybox): se estira y encoge en bucle. */
+	/** Columna de agua: sube de golpe, se sostiene, baja y borbotea abajo, en bucle. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geyser")
 	TObjectPtr<UStaticMeshComponent> ColumnMesh;
+
+	/** Corona de espuma que va en lo alto de la columna. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geyser")
+	TObjectPtr<UStaticMeshComponent> FoamCapMesh;
+
+	/** Anillo de espuma alrededor de la boca. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geyser")
+	TObjectPtr<UStaticMeshComponent> FoamBaseMesh;
+
+	/** Altura de la columna en reposo y en el chorro (cm); en una torre hueca, la segunda llega a asomar por el hueco. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geyser", meta = (ClampMin = "50.0"))
+	float JetLow = 260.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geyser", meta = (ClampMin = "100.0"))
+	float JetHigh = 1050.f;
+
+	/** Segundos de un ciclo del chorro (subida, chorro sostenido, bajada y borboteo). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geyser", meta = (ClampMin = "1.0"))
+	float CycleSeconds = 4.2f;
 
 	/** VFX opcional (asignar un sistema Niagara en el BP hijo). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geyser")
@@ -98,7 +123,12 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	/** Crea los volúmenes a lo largo de la bajada (puntos en mundo, de arriba abajo). */
-	void InitFromPoints(const TArray<FVector>& Points, float Width);
+	/**
+	 * Cajas de la bajada por los puntos del camino (mundo) y efectos: en el labio, espuma y gotas por donde el agua se
+	 * asoma; en la poza (PoolCenter a la cota del agua, radio PoolRadius, Impact donde cae el agua), salpicaduras,
+	 * espuma, bruma y ondas que se abren desde el impacto.
+	 */
+	void InitFromPoints(const TArray<FVector>& Points, float Width, const FVector& PoolCenter, float PoolRadius, const FVector& Impact);
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slide")
