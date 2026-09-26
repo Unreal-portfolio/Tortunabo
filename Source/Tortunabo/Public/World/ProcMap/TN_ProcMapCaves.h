@@ -69,6 +69,28 @@ namespace TNProcMap
 		}
 
 		/**
+		 * Si el tramo [I, J] del principal (con su posible cámara de 13 m de medio ancho) pasa a menos de
+		 * 40 m en planta del tablero de algún cruce colosal.
+		 */
+		inline bool UnderDeck(const FLayout& L, int32 I, int32 J)
+		{
+			const TArray<FPathSample>& M = L.Main;
+			for (const FCrossing& C : L.Crossings)
+			{
+				const FRouteStep& High = L.Route[C.HighStep];
+				for (int32 h = High.FirstSample; h <= High.LastSample; h += 2)
+				{
+					for (int32 k = FMath::Max(0, I); k <= FMath::Min(M.Num() - 1, J); k += 2)
+					{
+						const double Reach = FMath::Max(M[k].Width * 0.5, 1300.0) + M[h].Width * 0.5 + 4000.0;
+						if (FVector2D::DistSquared(M[k].P, M[h].P) < Reach * Reach) { return true; }
+					}
+				}
+			}
+			return false;
+		}
+
+		/**
 		 * Coloca cuevas a lo largo del camino principal en los tramos [i, j] que valgan y que Accept(i, j)
 		 * acepte. Devuelve cuántas puso (si ninguna, no ha tocado el layout).
 		 */
@@ -106,6 +128,8 @@ namespace TNProcMap
 					if (M[k].Width > 3200.0 || M[k].Z < 450.0) { bOk = false; }
 				}
 				if (!bOk || InBiome < (j - i + 1) * 0.7 || Turn > FMath::DegreesToRadians(140.0) || FMath::Abs(M[j].Z - M[i].Z) > 0.1 * (M[j].S - M[i].S)) { continue; }
+				// Ni bajo un tablero colosal: sus pilas bajarían por el túnel y la montaña llegaría al tablero.
+				if (UnderDeck(L, i - GorgeSamples, j + GorgeSamples)) { continue; }
 				if (!Accept(i, j)) { continue; }
 
 				// El camino se estrecha por el desfiladero hasta la boca (11-15 m como mucho); dentro, pasos

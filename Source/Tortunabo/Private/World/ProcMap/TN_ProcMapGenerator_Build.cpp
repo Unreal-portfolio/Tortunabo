@@ -1010,8 +1010,26 @@ void ATN_ProcMapGenerator::BuildStructures()
 		if (Style == ETNBridgeStyle::Stone || Style == ETNBridgeStyle::Trestle)
 		{
 			// Arcos entre apoyos (desde el borde de cada pilar) o caballetes cada ~9 m, bajo el tablero.
+			// Una pila o un caballete que caería sobre otro camino (el de abajo del cruce, una rama, una
+			// cueva) no se pone: el arco se une al siguiente y salva el camino.
 			const double PillarR = 450.0;
 			auto GroundAt = [this](const FVector2D& Q) { return TerrainHeightMap(Q); };
+			auto OverPath = [&](const FVector2D& Q, double R)
+			{
+				auto Near = [&](const TArray<FPathSample>& Arr, int32 SkipFrom, int32 SkipTo)
+				{
+					for (int32 i = 0; i < Arr.Num(); ++i)
+					{
+						if (i >= SkipFrom && i <= SkipTo) { continue; }
+						const double Reach = R + Arr[i].Width * 0.5 + 300.0;
+						if (FVector2D::DistSquared(Arr[i].P, Q) < Reach * Reach) { return true; }
+					}
+					return false;
+				};
+				if (Near(M, High.FirstSample - 2, High.LastSample + 2)) { return true; }
+				for (const FBranch& Br : Layout.Branches) { if (Near(Br.Samples, INDEX_NONE, INDEX_NONE)) { return true; } }
+				return false;
+			};
 			for (int32 k = 1; k < Supports.Num(); ++k)
 			{
 				const double A = Supports[k - 1] + (k - 1 > 0 ? PillarR : 0.0);
@@ -1021,15 +1039,27 @@ void ATN_ProcMapGenerator::BuildStructures()
 					// Acueducto: arcos de hasta ~36 m separados por pilas de sillería que bajan hasta el suelo.
 					const int32 NArch = FMath::Max(1, FMath::CeilToInt32((B - A) / 3600.0));
 					constexpr double PierHalf = 180.0;
-					for (int32 a = 0; a < NArch; ++a)
+					TArray<double> Piers;
+					for (int32 a = 1; a < NArch; ++a)
 					{
-						const double A0 = FMath::Lerp(A, B, static_cast<double>(a) / NArch) + (a > 0 ? PierHalf : 0.0);
-						const double A1 = FMath::Lerp(A, B, static_cast<double>(a + 1) / NArch) - (a < NArch - 1 ? PierHalf : 0.0);
-						TNProcAddDeckArch(PaintedFar, Line, A0, A1, C.TopZ, StoneC, GroundAt);
-						if (a == 0) { continue; }
+						const double Sp = FMath::Lerp(A, B, static_cast<double>(a) / NArch);
 						FVector Pp, Dp;
 						double Hwp = 0.0;
-						Line.At(FMath::Lerp(A, B, static_cast<double>(a) / NArch), Pp, Dp, Hwp);
+						Line.At(Sp, Pp, Dp, Hwp);
+						if (!OverPath(FVector2D(Pp.X, Pp.Y), Hwp + 85.0)) { Piers.Add(Sp); }
+					}
+					double Prev = A;
+					for (int32 a = 0; a <= Piers.Num(); ++a)
+					{
+						const double Next = a < Piers.Num() ? Piers[a] : B;
+						TNProcAddDeckArch(PaintedFar, Line, Prev + (a > 0 ? PierHalf : 0.0), Next - (a < Piers.Num() ? PierHalf : 0.0), C.TopZ, StoneC, GroundAt);
+						Prev = Next;
+					}
+					for (const double Sp : Piers)
+					{
+						FVector Pp, Dp;
+						double Hwp = 0.0;
+						Line.At(Sp, Pp, Dp, Hwp);
 						const double G0 = TerrainHeightMap(FVector2D(Pp.X, Pp.Y)) - 80.0;
 						const double Top = C.TopZ - 32.0;
 						if (Top - G0 < 200.0) { continue; }
@@ -1045,7 +1075,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 					FVector P, Dir;
 					double Hw = 0.0;
 					Line.At(S, P, Dir, Hw);
-					TNProcAddTrestleBent(PaintedFar, P, Dir, Hw, TerrainHeightMap(FVector2D(P.X, P.Y)), WoodColor * 0.85f);
+					const double GroundZ = TerrainHeightMap(FVector2D(P.X, P.Y));
+					if (OverPath(FVector2D(P.X, P.Y), Hw + (C.TopZ - GroundZ) * 0.14 + 30.0)) { continue; }
+					TNProcAddTrestleBent(PaintedFar, P, Dir, Hw, GroundZ, WoodColor * 0.85f);
 				}
 			}
 			continue;
@@ -1358,19 +1390,30 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::SlideZone:
 			{
-				// Lámina de agua sobre la bajada (el tobogán en sí es terreno empinado): rejilla de 60 cm a lo
-				// largo y 10 columnas a lo ancho, alzada 40 cm sobre el punto más alto del terreno alrededor de
-				// cada vértice (así no se corta con él entre vértices), con UV de flujo para que las ondas del
-				// material corran ladera abajo, espuma blanca en los bordes y al pie y el borde más transparente.
+				// Lámina de agua sobre la bajada (el tobogán en sí es terreno empinado): rejilla de 30 cm a lo
+				// largo y ~60 cm a lo ancho. Cada vértice va 25 cm sobre el punto más alto del terreno en el
+				// rectángulo de sus cuatro cuadros vecinos: así cualquier punto de la lámina (mezcla de vértices
+				// que están todos por encima del terreno en ese punto) queda sobre la ladera. UV de flujo para
+				// que las ondas del material corran ladera abajo, espuma blanca en los bordes y al pie y el
+				// borde más transparente.
 				const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? M : Layout.Branches[F.BranchIndex].Samples;
 				const int32 From = FMath::Clamp(F.PathIndex, 0, S.Num() - 1);
 				const int32 To = FMath::Clamp(F.Aux, 0, S.Num() - 1);
-				constexpr int32 Cols = 10;
-				auto Lifted = [this](const FVector2D& Q, const FVector2D& Along, const FVector2D& Across)
+				constexpr double RowStep = 30.0;
+				double MaxW = 0.0;
+				for (int32 i = From; i <= To; ++i) { MaxW = FMath::Max(MaxW, S[i].Width); }
+				const int32 Cols = FMath::Clamp(FMath::CeilToInt32(MaxW * 0.78 / 60.0), 8, 40);
+				auto Lifted = [this](const FVector2D& Q, const FVector2D& Along, const FVector2D& Across, double HalfAlong, double HalfAcross)
 				{
-					double H = TerrainHeightMap(Q);
-					for (const FVector2D& D : { Along * 40.0, Along * -40.0, Across * 40.0, Across * -40.0 }) { H = FMath::Max(H, TerrainHeightMap(Q + D)); }
-					return H + 40.0;
+					double H = -1e18;
+					for (int32 a = -2; a <= 2; ++a)
+					{
+						for (int32 b = -2; b <= 2; ++b)
+						{
+							H = FMath::Max(H, TerrainHeightMap(Q + Along * (HalfAlong * a * 0.5) + Across * (HalfAcross * b * 0.5)));
+						}
+					}
+					return H + 25.0;
 				};
 				auto AddFlowQuad = [&SlideWater](const FVector (&P)[4], const FVector2D (&UV)[4], const FLinearColor (&Col)[4])
 				{
@@ -1398,7 +1441,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 				double FootW = S[To].Width;
 				for (int32 i = From; i <= To; ++i)
 				{
-					const int32 Sub = i < To ? FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(S[i].P, S[i + 1].P) / 60.0)) : 1;
+					const int32 Sub = i < To ? FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(S[i].P, S[i + 1].P) / RowStep)) : 1;
 					for (int32 k = 0; k < Sub; ++k)
 					{
 						if (i == To && k > 0) { break; }
@@ -1419,7 +1462,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 						{
 							const double X = 2.0 * c / Cols - 1.0;
 							const FVector2D Q = C + N * (Hw * X);
-							Row.Add(FVector(Q, Lifted(Q, Dir, N)));
+							Row.Add(FVector(Q, Lifted(Q, Dir, N, RowStep * 1.3, 2.0 * Hw / Cols * 1.15)));
 							RowUV.Add(FVector2D(static_cast<double>(c) / Cols, Travel / 300.0));
 							const float Edge = static_cast<float>(FMath::Pow(FMath::Abs(X), 3.0));
 							FLinearColor Col = TNProcLerpColor(FLinearColor(0.18f, 0.52f, 0.8f), FLinearColor(0.96f, 0.99f, 1.f), FMath::Min(1.f, 0.75f * Edge + 0.7f * Foot * Foot * Foot));
@@ -1449,7 +1492,14 @@ void ATN_ProcMapGenerator::BuildStructures()
 				{
 					const FVector2D PC = FootC + FootDir * (FootW * 0.35);
 					const double R = FMath::Clamp(FootW * 0.65, 250.0, 900.0);
-					const double PoolZ = TerrainHeightMap(PC) + 14.0;
+					// Plana sobre el punto más alto de su disco de dentro: el suelo nunca asoma en ella.
+					double PoolZ = TerrainHeightMap(PC);
+					for (int32 k = 0; k < 12; ++k)
+					{
+						const double A = TNProcMap::TwoPi * k / 12.0;
+						for (const double Rr : { 0.36, 0.72 }) { PoolZ = FMath::Max(PoolZ, TerrainHeightMap(PC + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (R * Rr))); }
+					}
+					PoolZ += 10.0;
 					constexpr int32 Seg = 24;
 					const FVector Center(PC, PoolZ);
 					for (int32 k = 0; k < Seg; ++k)
