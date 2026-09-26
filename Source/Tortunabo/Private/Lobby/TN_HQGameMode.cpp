@@ -16,6 +16,7 @@
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
 #include "Lobby/TN_ChangingBooth.h"
+#include "Lobby/TN_GeneralBriefing.h"
 #include "Lobby/TN_ShopKeeper.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -521,11 +522,17 @@ void ATN_HQGameMode::SpawnLobbyShops()
 	if (!World) { return; }
 	static const FName ShopTag(TEXT("TN_ShopAnchor"));
 	static const FName BoothTag(TEXT("TN_BoothAnchor"));
+	static const FName GeneralTag(TEXT("TN_GeneralAnchor"));
+	/** Donde está el general de la maqueta de LVL_Lobby (TotugaDemo_Rig2). */
+	const FVector BlockoutGeneralSpot(-892.0, 1479.0, 0.0);
 
 	bool bHasShop = false;
 	bool bHasBooth = false;
+	bool bHasGeneral = false;
 	TArray<AActor*> ShopAnchors;
 	TArray<AActor*> BoothAnchors;
+	TArray<AActor*> GeneralAnchors;
+	AActor* BlockoutGeneral = nullptr;
 	TArray<AActor*> BlockoutKeepers;
 	TArray<AActor*> BlockoutBottles;
 	TArray<AActor*> BlockoutDoors;
@@ -536,8 +543,10 @@ void ATN_HQGameMode::SpawnLobbyShops()
 		if (!Actor) { continue; }
 		bHasShop |= Actor->IsA<ATN_ShopKeeper>();
 		bHasBooth |= Actor->IsA<ATN_ChangingBooth>();
+		bHasGeneral |= Actor->IsA<ATN_GeneralBriefing>();
 		if (Actor->ActorHasTag(ShopTag)) { ShopAnchors.Add(Actor); }
 		if (Actor->ActorHasTag(BoothTag)) { BoothAnchors.Add(Actor); }
+		if (Actor->ActorHasTag(GeneralTag)) { GeneralAnchors.Add(Actor); }
 		const FString ClassName = Actor->GetClass()->GetName();
 		if (ClassName.Contains(TEXT("VestidorBotella"))) { BlockoutBottles.Add(Actor); }
 		else if (ClassName.Contains(TEXT("ShellDoor"))) { BlockoutDoors.Add(Actor); }
@@ -546,13 +555,19 @@ void ATN_HQGameMode::SpawnLobbyShops()
 		{
 			const USkinnedAsset* Asset = SkelActor->GetSkeletalMeshComponent() ? SkelActor->GetSkeletalMeshComponent()->GetSkinnedAsset() : nullptr;
 			if (Asset && Asset->GetName().Contains(TEXT("TotugaDemo")) && Actor->GetActorScale3D().Z >= 3.2f) { BlockoutKeepers.Add(Actor); }
+			// El general de la maqueta: la tortuga suelta más cerca de su sitio (sea cual sea su escala).
+			if (Asset && Asset->GetName().Contains(TEXT("TotugaDemo")) && FVector::Dist2D(Actor->GetActorLocation(), BlockoutGeneralSpot) < 500.0
+				&& (!BlockoutGeneral || FVector::Dist2D(Actor->GetActorLocation(), BlockoutGeneralSpot) < FVector::Dist2D(BlockoutGeneral->GetActorLocation(), BlockoutGeneralSpot)))
+			{
+				BlockoutGeneral = Actor;
+			}
 		}
 	}
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	// Suelo bajo el ancla: traza hacia abajo sin las piezas de la maqueta; si no hay, el fondo de su caja.
-	auto GroundOf = [World, &BlockoutKeepers, &BlockoutBottles, &BlockoutDoors](const AActor* Actor) -> FVector
+	auto GroundOf = [World, &BlockoutKeepers, &BlockoutBottles, &BlockoutDoors, BlockoutGeneral](const AActor* Actor) -> FVector
 	{
 		FVector Origin, Extent;
 		Actor->GetActorBounds(false, Origin, Extent);
@@ -561,6 +576,7 @@ void ATN_HQGameMode::SpawnLobbyShops()
 		Query.AddIgnoredActors(BlockoutKeepers);
 		Query.AddIgnoredActors(BlockoutBottles);
 		Query.AddIgnoredActors(BlockoutDoors);
+		if (BlockoutGeneral) { Query.AddIgnoredActor(BlockoutGeneral); }
 		FHitResult Hit;
 		if (World->LineTraceSingleByChannel(Hit, Top, Top - FVector(0.0, 0.0, Extent.Z * 2.0 + 2000.0), ECC_WorldStatic, Query))
 		{
@@ -616,5 +632,25 @@ void ATN_HQGameMode::SpawnLobbyShops()
 			World->SpawnActor<ATN_ChangingBooth>(ATN_ChangingBooth::StaticClass(), Where, FRotator(0.f, Yaw, 0.f), Params);
 		}
 		if (Spots.Num() > 0) { UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] %d probadores colocados."), Spots.Num()); }
+	}
+
+	if (!bHasGeneral)
+	{
+		// Con ancla, donde diga; si no, sobre el general de la maqueta (que se esconde) mirando al centro del lobby, con
+		// la mesa delante.
+		AActor* Anchor = GeneralAnchors.Num() > 0 ? GeneralAnchors[0] : BlockoutGeneral;
+		if (Anchor)
+		{
+			const bool bTagged = GeneralAnchors.Contains(Anchor);
+			const FVector Where = bTagged ? Anchor->GetActorLocation() : GroundOf(Anchor);
+			FVector Center = FVector::ZeroVector;
+			for (TActorIterator<APlayerStart> It(World); It; ++It)
+			{
+				if ((*It)->PlayerStartTag != TutorialStartTag) { Center = (*It)->GetActorLocation(); break; }
+			}
+			const float Yaw = bTagged ? Anchor->GetActorRotation().Yaw : FMath::RadiansToDegrees(FMath::Atan2(Center.Y - Where.Y, Center.X - Where.X));
+			World->SpawnActor<ATN_GeneralBriefing>(ATN_GeneralBriefing::StaticClass(), Where, FRotator(0.f, Yaw, 0.f), Params);
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] General colocado en %s (sobre %s)."), *Where.ToString(), *Anchor->GetName());
+		}
 	}
 }

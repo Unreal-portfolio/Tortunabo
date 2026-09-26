@@ -8,6 +8,7 @@
 #include "UI/HUD/TN_CoopFlowHUDWidget.h"
 #include "UI/HUD/TN_RunHUDWidget.h"
 #include "UI/Shop/TN_ShopWidgets.h"
+#include "UI/Briefing/TN_BriefingWidget.h"
 #include "Lobby/TN_ChangingBooth.h"
 #include "Lobby/TN_ShopKeeper.h"
 #include "Audio/TN_AmbientSoundscape.h"
@@ -914,6 +915,25 @@ void AMP_GamePlayerController::ClientOpenShop_Implementation(ATN_ShopKeeper* Sho
 	Widget->AddToViewport(MPGamePlayerController_ZOrderCosmetics);
 	ShopUIWidget = Widget;
 	// Solo la interfaz: el menú recibe todas las teclas (Escape lo cierra) y la tortuga no se mueve.
+	FInputModeUIOnly Mode;
+	Mode.SetWidgetToFocus(Widget->TakeWidget());
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(Mode);
+	SetShowMouseCursor(true);
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+}
+
+void AMP_GamePlayerController::ClientOpenBriefing_Implementation(ATN_GeneralBriefing* General)
+{
+	if (!IsLocalController()) { return; }
+	CloseShopUI();
+	UTN_BriefingWidget* Widget = CreateWidget<UTN_BriefingWidget>(this, UTN_BriefingWidget::StaticClass());
+	if (!Widget) { return; }
+	Widget->SetGeneral(General);
+	Widget->AddToViewport(MPGamePlayerController_ZOrderCosmetics);
+	ShopUIWidget = Widget;
+	// Como la tienda: solo la interfaz (Escape cierra) y la tortuga quieta mientras escucha.
 	FInputModeUIOnly Mode;
 	Mode.SetWidgetToFocus(Widget->TakeWidget());
 	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);

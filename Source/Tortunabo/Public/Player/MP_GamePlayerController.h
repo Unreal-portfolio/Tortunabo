@@ -18,6 +18,7 @@ class APlayerState;
 class AGameStateBase;
 class ATN_ShopKeeper;
 class ATN_ChangingBooth;
+class ATN_GeneralBriefing;
 class UTN_AmbientSoundscapeComponent;
 
 /**
@@ -93,6 +94,10 @@ public:
 	/** @brief Client RPC: abre la tienda del tendero (UTN_ShopWidget). */
 	UFUNCTION(Client, Reliable)
 	void ClientOpenShop(ATN_ShopKeeper* Shop);
+
+	/** @brief Client RPC: abre la sesión informativa del general del cuartel (UTN_BriefingWidget). */
+	UFUNCTION(Client, Reliable)
+	void ClientOpenBriefing(ATN_GeneralBriefing* General);
 
 	/** @brief Client RPC: el probador se ha cerrado contigo dentro: la cámara se aparta y sale el selector (UTN_BoothWidget). */
 	UFUNCTION(Client, Reliable)
