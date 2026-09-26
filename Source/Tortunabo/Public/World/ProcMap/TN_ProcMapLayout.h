@@ -320,6 +320,12 @@ namespace TNProcMap
 		BonusPickup,
 		/** Medusa saltarina colocada en un sitio concreto (atajo para subir): Location (Z = suelo). */
 		Bouncer,
+		/**
+		 * Torre de escalada junto al camino, del estilo del bioma: Location = centro de su base (Z = suelo),
+		 * Dir = sus escalones bajan hacia -Dir, Height = alto de la cima (300 o 400), Aux2 = semilla. La
+		 * recompensa (BonusPickup) va en lo alto y la medusa (Bouncer) al pie de su cara de +Dir.
+		 */
+		ClimbTower,
 		Count
 	};
 
@@ -390,6 +396,15 @@ namespace TNProcMap
 	/** Aux2 de un hueco de salto que es un río de lava (en las cámaras de las cuevas del volcán). */
 	constexpr int32 GapLava = 1;
 
+	/** Estilo de un hueco normal (Aux de EFeature::Gap): labios, postes que lo parten o tronco de equilibrio. */
+	enum class EGapStyle : int32 { Lips = 0, Posts = 1, Beam = 2 };
+
+	/**
+	 * Postes de un hueco con estilo Posts: filas a lo largo que parten el hueco en saltos cortos y, en
+	 * cada fila, postes cada ~4 m a lo ancho del camino (cimas de 90-130 cm, a ±30 cm de la cota).
+	 */
+	struct FGapPost { FVector2D P; double Radius = 50.0; double TopZ = 0.0; };
+
 	struct FFeature;
 	inline bool IsLavaGap(const FFeature& F);
 
@@ -416,6 +431,37 @@ namespace TNProcMap
 	};
 
 	inline bool IsLavaGap(const FFeature& F) { return F.Type == EFeature::Gap && F.Aux2 == GapLava; }
+
+	inline EGapStyle GapStyleOf(const FFeature& F)
+	{
+		return F.Type == EFeature::Gap && !IsLavaGap(F) && F.Aux >= 0 && F.Aux <= 2 ? static_cast<EGapStyle>(F.Aux) : EGapStyle::Lips;
+	}
+
+	/** Postes de un hueco de estilo Posts (vacío en los demás); MaxJump, el salto más largo entre ellos. */
+	inline void GapPostsOf(const FFeature& F, double MaxJump, TArray<FGapPost>& Out)
+	{
+		Out.Reset();
+		if (GapStyleOf(F) != EGapStyle::Posts) { return; }
+		const int32 Rows = FMath::Max(1, FMath::CeilToInt(F.Length / FMath::Max(150.0, MaxJump)) - 1);
+		const double PathW = FMath::Max(300.0, F.Width - 500.0);
+		const int32 Cols = FMath::Clamp(FMath::FloorToInt(PathW / 400.0), 1, 6);
+		const FVector2D C(F.Location.X, F.Location.Y);
+		const FVector2D N(-F.Dir.Y, F.Dir.X);
+		for (int32 r = 0; r < Rows; ++r)
+		{
+			const double Along = -F.Length * 0.5 + F.Length * (r + 1) / (Rows + 1);
+			for (int32 k = 0; k < Cols; ++k)
+			{
+				const uint32 H = HashCell(0x9057u ^ static_cast<uint32>(F.PathIndex), r, k);
+				const double Across = (Cols == 1 ? 0.0 : -PathW * 0.5 + PathW * (k + 0.5) / Cols) + (static_cast<double>(H & 0xFF) / 255.0 - 0.5) * 60.0;
+				FGapPost Post;
+				Post.P = C + F.Dir * Along + N * Across;
+				Post.Radius = 45.0 + 20.0 * ((H >> 8) & 0xFF) / 255.0;
+				Post.TopZ = F.Location.Z - 25.0 + 60.0 * ((H >> 16) & 0xFF) / 255.0;
+				Out.Add(Post);
+			}
+		}
+	}
 
 	/** Estilo de los puentes colosales. */
 	enum class EBridgeStyle : uint8 { Rope, Stone, Trestle, Iron };

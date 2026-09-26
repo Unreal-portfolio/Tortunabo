@@ -459,6 +459,11 @@ namespace TNProcMap
 			FFeature F = MakeAtSample(EFeature::Gap, Sm, i, BranchIndex);
 			F.Length = Rng.Range(P.GapMin, GapMaxD);
 			F.Width = Sm.Width + 500.0;
+			// Estilo: labios de siempre, postes que parten un hueco más largo en saltos cortos o tronco de
+			// equilibrio de labio a labio (el hueco se sigue pudiendo saltar).
+			const double StyleU = Rng.Unit();
+			F.Aux = static_cast<int32>(StyleU < 0.4 ? EGapStyle::Lips : (StyleU < 0.75 ? EGapStyle::Posts : EGapStyle::Beam));
+			if (F.Aux == static_cast<int32>(EGapStyle::Posts)) { F.Length = FMath::Max(F.Length, GapMaxD) * Rng.Range(1.35, 1.8); }
 			// Zanja del terreno más larga que el hueco: los labios (mallas) la estrechan al valor exacto.
 			F.Height = FMath::Max(F.Length + 500.0, 800.0);
 			// La zanja no puede pisar otra parte de ningún camino (curvas que vuelven, ramas, horquillas).
@@ -1023,6 +1028,26 @@ namespace TNProcMap
 					F.Location = FVector(Sm.P + N * Rng.Range(-0.15, 0.15) * W, Sm.Z);
 					F.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
 					L.Features.Add(F);
+					continue;
+				}
+				// Torre de escalada del bioma pegada a un borde (carril libre de sobra): escalones de 1 m, la
+				// recompensa arriba y la medusa al pie para subir de un bote.
+				if (W >= 1300.0 && U < 0.78 && Rng.Chance(0.14))
+				{
+					const double Side = Rng.Chance(0.5) ? 1.0 : -1.0;
+					FFeature T = MakeAtSample(EFeature::ClimbTower, Sm, i, BranchIndex);
+					T.Location = FVector(Sm.P + N * (Side * (W * 0.5 - PlazaDims::TowerHalf - 80.0)), Sm.Z);
+					T.Dir = Sm.Dir;
+					T.Radius = PlazaDims::TowerHalf;
+					T.Height = Rng.Chance(0.5) ? 300.0 : 400.0;
+					T.Aux2 = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
+					L.Features.Add(T);
+					FFeature Bonus = MakeAtSample(EFeature::BonusPickup, Sm, i, BranchIndex);
+					Bonus.Location = T.Location + FVector(0.0, 0.0, T.Height + 70.0);
+					L.Features.Add(Bonus);
+					FFeature Jelly = MakeAtSample(EFeature::Bouncer, Sm, i, BranchIndex);
+					Jelly.Location = T.Location + FVector(T.Dir * (PlazaDims::TowerHalf + 210.0), 0.0);
+					L.Features.Add(Jelly);
 					continue;
 				}
 				// Obstáculo de objetos del bioma (pila de cajas, castillo de arena, tótem...) a un lado, siempre

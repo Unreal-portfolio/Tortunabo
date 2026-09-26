@@ -1372,18 +1372,91 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::Gap:
 			{
-				// Labios que reducen la zanja al hueco exacto: de madera, o de roca en el río de lava de
-				// una cueva (con la lava 1,5 m por debajo, de pared a pared).
+				// Labios que reducen la zanja al hueco exacto: de madera (selva, playa, pueblos), de sillería
+				// (desierto, roca) o de basalto (volcán), o de roca en el río de lava de una cueva (con la lava
+				// 1,5 m por debajo, de pared a pared). Según el estilo, postes que parten el hueco en saltos
+				// cortos o troncos de equilibrio de labio a labio.
 				const bool bLava = IsLavaGap(F);
 				const FVector2D D = F.Dir;
 				const double Outer = F.Height * 0.5 + 150.0;
 				const double Inner = F.Length * 0.5;
 				const double HalfLen = (Outer - Inner) * 0.5;
+				const bool bStoneLips = !bLava && (F.Biome == ETNProcBiome::Desert || F.Biome == ETNProcBiome::Rocky || F.Biome == ETNProcBiome::Volcanic);
+				FLinearColor Gc, Pcc, RockCc, Bdc;
+				ResolveBiomeColors(F.Biome, Gc, Pcc, RockCc, Bdc);
+				const FLinearColor LipStone = F.Biome == ETNProcBiome::Volcanic ? FLinearColor(0.1f, 0.09f, 0.1f) : TNProcLerpColor(RockCc, Gc, 0.35f) * 1.15f;
 				for (int32 Side = -1; Side <= 1; Side += 2)
 				{
 					const FVector2D Center2 = FVector2D(F.Location.X, F.Location.Y) + D * (Side * (Inner + HalfLen));
+					if (bStoneLips)
+					{
+						// Sillares: bloques con junta a lo ancho y el borde del salto más claro.
+						const FVector2D Nn = LeftNormal(D);
+						const double Half = F.Width * 0.5;
+						const int32 Blocks = FMath::Max(1, FMath::RoundToInt32(Half * 2.0 / 180.0));
+						for (int32 k = 0; k < Blocks; ++k)
+						{
+							const double Y = -Half + Half * 2.0 * (k + 0.5) / Blocks;
+							const FVector2D Bc = Center2 + Nn * Y;
+							Painted.AddBox(FVector(Bc.X, Bc.Y, F.Location.Z - 60.0), FVector(D.X, D.Y, 0.0), FVector(HalfLen, Half / Blocks - 3.0, 60.0), LipStone * TNProcTone(k, static_cast<uint32>(F.PathIndex)));
+						}
+						const FVector2D EdgeC = FVector2D(F.Location.X, F.Location.Y) + D * (Side * (Inner + 12.0));
+						Painted.AddBox(FVector(EdgeC.X, EdgeC.Y, F.Location.Z - 2.0), FVector(D.X, D.Y, 0.0), FVector(12.0, Half, 4.0), LipStone * 1.25f);
+						continue;
+					}
 					(bLava ? Rock : Wood).AddBox(FVector(Center2.X, Center2.Y, F.Location.Z - (bLava ? 90.0 : 60.0)), FVector(D.X, D.Y, 0.0),
 						FVector(HalfLen, F.Width * 0.5 + (bLava ? GapTrenchSideOf(F) : 0.0), bLava ? 90.0 : 60.0), bLava ? RockColor : WoodColor);
+				}
+				// Postes: columnas desde el fondo de la zanja con la cima a ras (±30 cm), del estilo del bioma.
+				TArray<FGapPost> Posts;
+				GapPostsOf(F, LerpD(FMath::Min(Layout.Params.GapMax, 200.0), Layout.Params.GapMax, Saturate(Layout.Params.Difficulty01)) * 0.8, Posts);
+				const double Floor = GapFloorZ(F) - 60.0;
+				for (int32 k = 0; k < Posts.Num(); ++k)
+				{
+					const FGapPost& Po = Posts[k];
+					const FVector Base(Po.P, Floor);
+					const FVector TopP(Po.P, Po.TopZ);
+					const uint32 Ps = static_cast<uint32>(F.PathIndex) * 131u + static_cast<uint32>(k);
+					switch (F.Biome)
+					{
+						case ETNProcBiome::Jungle:
+						case ETNProcBiome::Mangrove:
+							// Tronco con corteza y un sombrero de musgo.
+							TNProcAddCylinder(Wood, Base, TopP, Po.Radius * 1.08, Po.Radius, 9, WoodColor * (0.8f + 0.2f * TNProcTone(k, Ps)));
+							TNProcAddCylinder(Painted, TopP - FVector(0.0, 0.0, 6.0), TopP + FVector(0.0, 0.0, 4.0), Po.Radius + 6.0, Po.Radius - 4.0, 9, FLinearColor(0.2f, 0.42f, 0.14f));
+							break;
+						case ETNProcBiome::Beach:
+						case ETNProcBiome::Human:
+							// Pilote de embarcadero con dos anillos de cuerda.
+							TNProcAddCylinder(Wood, Base, TopP, Po.Radius, Po.Radius * 0.95, 8, WoodColor * 0.85f);
+							for (const double Zr : { 40.0, 90.0 })
+							{
+								TNProcAddCylinder(Painted, TopP - FVector(0.0, 0.0, Zr + 6.0), TopP - FVector(0.0, 0.0, Zr - 6.0), Po.Radius + 5.0, Po.Radius + 5.0, 8, FLinearColor(0.72f, 0.62f, 0.42f));
+							}
+							break;
+						case ETNProcBiome::Volcanic:
+							TNRockMesh::TNRockHexColumn(Painted, Base, Po.Radius * 1.1, Po.TopZ - Floor, Ps, FLinearColor(0.12f, 0.11f, 0.12f));
+							break;
+						default:
+							// Columna de sillería con capitel.
+							TNProcAddCylinder(Painted, Base, TopP - FVector(0.0, 0.0, 22.0), Po.Radius * 0.85, Po.Radius * 0.85, 8, LipStone);
+							Painted.AddBox(TopP - FVector(0.0, 0.0, 11.0), FVector(D.X, D.Y, 0.0), FVector(Po.Radius, Po.Radius, 11.0), LipStone * 1.15f);
+							break;
+					}
+				}
+				// Troncos de equilibrio de labio a labio (uno o dos), con la cima 10 cm sobre el suelo.
+				if (GapStyleOf(F) == EGapStyle::Beam)
+				{
+					const FVector2D Nn = LeftNormal(D);
+					const int32 Logs = F.Width > 1400.0 ? 2 : 1;
+					for (int32 k = 0; k < Logs; ++k)
+					{
+						const double Y = Logs == 1 ? 0.0 : (k == 0 ? -1.0 : 1.0) * F.Width * 0.18;
+						const FVector2D A2 = FVector2D(F.Location.X, F.Location.Y) + Nn * Y - D * (Inner + 70.0);
+						const FVector2D B2 = FVector2D(F.Location.X, F.Location.Y) + Nn * Y + D * (Inner + 70.0);
+						constexpr double LogR = 32.0;
+						TNProcAddLog(Wood, FVector(A2, F.Location.Z + 10.0 - LogR), FVector(B2, F.Location.Z + 10.0 - LogR), LogR, static_cast<uint32>(F.PathIndex) + k, WoodColor * 0.9f, WoodColor * 1.3f);
+					}
 				}
 				if (bLava)
 				{
@@ -1394,6 +1467,80 @@ void ATN_ProcMapGenerator::BuildStructures()
 					TArray<FVector2D> Poly = { C - D * Hl - N * Hs, C + D * Hl - N * Hs, C + D * Hl + N * Hs, C - D * Hl + N * Hs };
 					Lava.AddPrism(Poly, F.Location.Z - 150.0, F.Location.Z - 160.0, FLinearColor(1.f, 0.35f, 0.05f), false);
 				}
+				break;
+			}
+			case EFeature::ClimbTower:
+			{
+				// Torre de escalada del estilo del bioma: bloques de 1 m (tres o cuatro) con escalones de 1 m
+				// por su cara de -Dir; cajas en la playa y los pueblos, sillares en el desierto, losas de roca
+				// en el rocoso, troncos en la selva y columnas de basalto en el volcán. Banderín en la cima.
+				const FVector D3(F.Dir.X, F.Dir.Y, 0.0);
+				const FVector N3(-F.Dir.Y, F.Dir.X, 0.0);
+				const FVector Base = F.Location;
+				const int32 Levels = FMath::Clamp(FMath::RoundToInt32(F.Height / 100.0), 3, 4);
+				const uint32 Ts = static_cast<uint32>(F.Aux2);
+				constexpr double Th = PlazaDims::TowerHalf;
+				FLinearColor Gc, Pcc, RockCc, Bdc;
+				ResolveBiomeColors(F.Biome, Gc, Pcc, RockCc, Bdc);
+				const FLinearColor Sand = TNProcLerpColor(RockCc, Gc, 0.5f) * 1.15f;
+				auto Block = [&](const FVector& C, const FVector& Half, int32 k)
+				{
+					switch (F.Biome)
+					{
+						case ETNProcBiome::Beach:
+						case ETNProcBiome::Human:
+						{
+							// Caja: cuerpo, cantoneras y aspa.
+							const FLinearColor Body = FLinearColor(0.62f, 0.44f, 0.24f) * TNProcTone(k, Ts);
+							Painted.AddBox(C, D3, Half, Body);
+							for (const double Sz : { -1.0, 1.0 })
+							{
+								Painted.AddBox(C + FVector(0.0, 0.0, Sz * (Half.Z - 6.0)), D3, FVector(Half.X + 2.0, Half.Y + 2.0, 6.0), Body * 0.7f);
+							}
+							break;
+						}
+						case ETNProcBiome::Jungle:
+						case ETNProcBiome::Mangrove:
+						{
+							// Tocón ancho con corteza y musgo encima.
+							TNProcAddCylinder(Painted, C - FVector(0.0, 0.0, Half.Z), C + FVector(0.0, 0.0, Half.Z - 6.0), Half.X * 1.05, Half.X, 10, FLinearColor(0.34f, 0.22f, 0.12f) * TNProcTone(k, Ts));
+							TNProcAddCylinder(Painted, C + FVector(0.0, 0.0, Half.Z - 8.0), C + FVector(0.0, 0.0, Half.Z + 2.0), Half.X + 4.0, Half.X - 6.0, 10, FLinearColor(0.22f, 0.44f, 0.15f));
+							break;
+						}
+						case ETNProcBiome::Volcanic:
+							TNRockMesh::TNRockHexColumn(Painted, C - FVector(0.0, 0.0, Half.Z), FMath::Min(Half.X, Half.Y), Half.Z * 2.0, Ts + k, FLinearColor(0.13f, 0.12f, 0.13f));
+							break;
+						case ETNProcBiome::Rocky:
+							TNRockMesh::TNRockSlab(Painted, C, Half.X, Half.Y, Half.Z, 3.0 * TNProcHashNoise(k, 1, Ts), FMath::RadiansToDegrees(FMath::Atan2(F.Dir.Y, F.Dir.X)) + 6.0 * TNProcHashNoise(k, 2, Ts), Ts + k, RockCc * 1.25f);
+							break;
+						default:
+							Painted.AddBox(C, D3, Half, Sand * TNProcTone(k, Ts));
+							Painted.AddBox(C + FVector(0.0, 0.0, Half.Z - 4.0), D3, FVector(Half.X + 5.0, Half.Y + 5.0, 4.0), Sand * 0.8f);
+							break;
+					}
+				};
+				for (int32 b = 0; b < Levels; ++b)
+				{
+					Block(Base + FVector(0.0, 0.0, 50.0 + 100.0 * b), FVector(Th - 3.0 * b, Th - 3.0 * b, 50.0), b);
+				}
+				for (int32 s = 0; s < Levels - 1; ++s)
+				{
+					const double H = 100.0 * (s + 1);
+					const FVector P = Base - D3 * (Th + PlazaDims::StepDepth * (Levels - 1 - s - 0.5));
+					// Cada escalón, un bloque de su altura (apilado de a metro).
+					for (int32 b = 0; b <= s; ++b)
+					{
+						Block(P + FVector(0.0, 0.0, 50.0 + 100.0 * b), FVector(PlazaDims::StepDepth * 0.5 - 2.0, Th - 8.0, 50.0), 10 + s * 4 + b);
+					}
+				}
+				const double Top = Base.Z + 100.0 * Levels;
+				Painted.AddBeam(FVector(Base.X, Base.Y, Top) + D3 * (Th - 20.0) + N3 * (Th - 20.0), FVector(Base.X, Base.Y, Top + 230.0) + D3 * (Th - 20.0) + N3 * (Th - 20.0), 3.0, FLinearColor(0.2f, 0.2f, 0.22f));
+				Painted.AddBox(FVector(Base.X, Base.Y, Top + 200.0) + D3 * (Th + 10.0) + N3 * (Th - 20.0), D3, FVector(30.0, 1.5, 18.0), FLinearColor(0.95f, 0.72f, 0.1f));
+				// Almohadilla de la medusa.
+				const FVector2D Jp = FVector2D(Base.X, Base.Y) + F.Dir * (Th + 210.0);
+				TArray<FVector2D> Pad;
+				for (int32 k = 0; k < 12; ++k) { Pad.Add(Jp + FVector2D(FMath::Cos(TwoPi * k / 12.0), FMath::Sin(TwoPi * k / 12.0)) * 110.0); }
+				Painted.AddPrism(Pad, Base.Z + 4.0, Base.Z + 1.0, FLinearColor(0.62f, 0.3f, 0.66f), false);
 				break;
 			}
 			case EFeature::Boardwalk:
