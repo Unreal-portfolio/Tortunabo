@@ -299,6 +299,27 @@ namespace TNTurtleAnim
 		Turn(P, B.Head, AxisY, 15.f * FMath::Sin(T * 7.f));
 	}
 
+	/**
+	 * A mitad del levantarse: el tronco hacia delante, los brazos abajo y un poco delante empujando el suelo con los
+	 * codos doblados, y las rodillas dobladas (cadera abajo).
+	 */
+	void PoseGetUpFlex(FCompactPose& P, const FBones& B)
+	{
+		Turn(P, B.Spine, AxisX, -28.f);
+		Turn(P, B.Head, AxisX, 14.f);
+		Turn(P, B.LArm, AxisY, 72.f);
+		Turn(P, B.RArm, AxisY, -72.f);
+		Turn(P, B.LArm, AxisZ, 28.f);
+		Turn(P, B.RArm, AxisZ, -28.f);
+		Turn(P, B.LFore, AxisZ, 35.f);
+		Turn(P, B.RFore, AxisZ, -35.f);
+		Turn(P, B.LUp, AxisX, 55.f);
+		Turn(P, B.RUp, AxisX, 45.f);
+		Turn(P, B.LLeg, AxisX, -85.f);
+		Turn(P, B.RLeg, AxisX, -75.f);
+		Lift(P, B, -6.f);
+	}
+
 	/** Tumbada: brazos y patas flojos y abiertos, la cabeza caída a un lado. */
 	void PoseDown(FCompactPose& P, const FBones& B)
 	{
@@ -477,6 +498,22 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 		Layer(F.EmoteW, [&](FCompactPose& P) { PoseEmote(P, B, F); });
 	}
 
+	// 3b. Levantarse del derribo: parte de la pose en la que quedó el ragdoll y llega a la de pie, pasando por un
+	// empujón de brazos contra el suelo y las rodillas dobladas.
+	Layer(F.GetUpFlex, [&](FCompactPose& P) { PoseGetUpFlex(P, B); });
+	if (F.GetUpW > 0.01f && GetUpPose.Num() > 0)
+	{
+		FPoseContext Ground(Output);
+		Ground.ResetToRefPose();
+		const FBoneContainer& Container = Ground.Pose.GetBoneContainer();
+		for (const FCompactPoseBoneIndex I : Ground.Pose.ForEachBoneIndex())
+		{
+			const int32 MeshIndex = Container.MakeMeshPoseIndex(I).GetInt();
+			if (GetUpPose.IsValidIndex(MeshIndex)) { Ground.Pose[I] = GetUpPose[MeshIndex]; }
+		}
+		BlendInto(Output.Pose, Ground.Pose, F.GetUpW);
+	}
+
 	// 4. Capas encima de lo que haya: inclinación al correr y en las curvas, cansancio, lanzamiento y caparazón.
 	Turn(Output.Pose, B.Spine, AxisX, F.LeanPitch);
 	Turn(Output.Pose, B.Spine, AxisY, F.LeanRoll);
@@ -629,9 +666,45 @@ void UTN_TurtleAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	F.LeanRoll = FMath::FInterpTo(F.LeanRoll, bSwim || bDive ? 0.f : RollTarget, Dt, 6.f);
 	F.LeanPitch = FMath::FInterpTo(F.LeanPitch, -7.f * F.RunW, Dt, 4.f);
 
+	// Levantarse: la pose del suelo pierde peso con una curva suave y el empujón de brazos sube y baja en medio.
+	if (GetUpDuration > 0.f)
+	{
+		GetUpElapsed += Dt;
+		const float X = FMath::Clamp(GetUpElapsed / GetUpDuration, 0.f, 1.f);
+		F.GetUpW = 1.f - X * X * (3.f - 2.f * X);
+		F.GetUpFlex = 0.8f * FMath::Sin(X * PI);
+		if (X >= 1.f)
+		{
+			GetUpDuration = 0.f;
+			F.GetUpW = 0.f;
+			F.GetUpFlex = 0.f;
+			GetUpPose.Reset();
+		}
+	}
+
 	FTNTurtleAnimProxy& Proxy = GetProxyOnGameThread<FTNTurtleAnimProxy>();
 	Proxy.Frame = F;
 	Proxy.IdleClip = IdleAnim;
 	Proxy.WalkClip = WalkAnim;
 	Proxy.CheerClip = CheerAnim;
+	// La pose del suelo solo viaja al proxy cuando cambia (al empezar y al acabar).
+	if (GetUpPose.Num() > 0 && !bGetUpPoseSent)
+	{
+		Proxy.GetUpPose = GetUpPose;
+		bGetUpPoseSent = true;
+	}
+	else if (GetUpPose.Num() == 0 && Proxy.GetUpPose.Num() > 0)
+	{
+		Proxy.GetUpPose.Reset();
+	}
+}
+
+void UTN_TurtleAnimInstance::BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds)
+{
+	GetUpPose = LocalPose;
+	GetUpElapsed = 0.f;
+	GetUpDuration = FMath::Max(0.1f, Seconds);
+	bGetUpPoseSent = false;
+	Frame.GetUpW = 1.f;
+	Frame.GetUpFlex = 0.f;
 }

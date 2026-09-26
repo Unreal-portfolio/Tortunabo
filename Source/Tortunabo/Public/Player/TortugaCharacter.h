@@ -14,6 +14,7 @@ class UInputAction;
 class UTN_InventoryComponent;
 class UTN_ShellComponent;
 class UTN_CarryComponent;
+class UTN_DizzyBirdsComponent;
 class UTN_StaminaComponent;
 class ATN_InteractableBase;
 class USceneComponent;
@@ -263,6 +264,10 @@ protected:
 	/** Coger y lanzar a otras tortugas (issue #6, fase 2). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Carry")
 	TObjectPtr<UTN_CarryComponent> CarryComponent;
+
+	/** Pajaritos y estrellitas del mareo sobre la cabeza mientras está noqueada (local y cosmético). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knockdown")
+	TObjectPtr<UTN_DizzyBirdsComponent> DizzyBirds;
 
 	// ── Nado ─────────────────────────────────────────────────────────────────
 
@@ -970,6 +975,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
 	float KnockdownGroundLockSpeed = 50.f;
 
+	/** Tiempo mínimo tumbada en el suelo (s): aunque el golpe pida menos, se queda quieta un momento. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
+	float MinKnockdownSeconds = 2.2f;
+
+	/** Duración de la animación de levantarse desde la pose del ragdoll (s); sin moverse mientras tanto. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.1"))
+	float GetUpSeconds = 0.75f;
+
 	/**
 	 * Si true y el SkelMesh (GetMesh) tiene PhysicsAsset asignado, el knockdown
 	 * activa ragdoll físico completo (`SetSimulatePhysics(true)`) en lugar del
@@ -1111,6 +1124,10 @@ protected:
 	FName SnapshotSkelMeshCollisionProfile = NAME_None;
 	/** true mientras el ragdoll físico está activo (evita doble-activación y no-ops al recover). */
 	bool bKnockdownRagdollActive = false;
+	/** Hasta cuándo (tiempo del mundo) dura la animación de levantarse: sin moverse ni saltar (local). */
+	float GetUpLockUntil = -1.f;
+	/** Pasa la pose del ragdoll (en locales, ya en el sitio nuevo de la cápsula) a la animación de levantarse. */
+	void BeginGetUpFromWorldPose(const TArray<FTransform>& WorldPose);
 
 	// ── Dive state ────────────────────────────────────────────────────────────
 

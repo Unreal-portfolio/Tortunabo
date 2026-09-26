@@ -44,6 +44,9 @@ struct FTNTurtleAnimFrame
 	int32 Emote = -1;
 	float EmoteTime = 0.f;
 	float EmoteW = 0.f;
+	/** Levantarse del derribo: peso de la pose del suelo (1 → 0) y del empujón de brazos y rodillas (sube y baja). */
+	float GetUpW = 0.f;
+	float GetUpFlex = 0.f;
 };
 
 /** Evaluación en C++ de la pose de la tortuga (clips de Mixamo y poses procedurales encima). */
@@ -58,6 +61,8 @@ struct FTNTurtleAnimProxy : public FAnimInstanceProxy
 	const UAnimSequence* IdleClip = nullptr;
 	const UAnimSequence* WalkClip = nullptr;
 	const UAnimSequence* CheerClip = nullptr;
+	/** Pose en la que quedó el ragdoll, en locales e indexada por hueso de la malla (vacía si no se está levantando). */
+	TArray<FTransform> GetUpPose;
 };
 
 /**
@@ -79,6 +84,13 @@ public:
 	virtual void NativeInitializeAnimation() override;
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
+	/**
+	 * Empieza la animación de levantarse desde la pose del ragdoll (LocalPose: transformaciones locales indexadas por
+	 * hueso de la malla, con la malla ya devuelta a la cápsula): la tortuga gira desde el suelo hasta ponerse de pie en
+	 * Seconds, con un empujón de brazos contra el suelo y las rodillas dobladas a mitad de camino.
+	 */
+	void BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds);
+
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 	virtual void DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy) override;
@@ -97,4 +109,10 @@ private:
 	float PrevYaw = 0.f;
 	bool bWasCarrying = false;
 	int32 LastEmote = -1;
+
+	/** Levantarse: pose del suelo, tiempo transcurrido y duración (0 = no se está levantando). */
+	TArray<FTransform> GetUpPose;
+	float GetUpElapsed = 0.f;
+	float GetUpDuration = 0.f;
+	bool bGetUpPoseSent = false;
 };

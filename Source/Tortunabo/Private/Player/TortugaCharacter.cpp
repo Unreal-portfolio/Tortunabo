@@ -13,6 +13,7 @@
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_CarryComponent.h"
+#include "Player/TN_DizzyBirdsComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "Player/TN_TurtleAnimInstance.h"
@@ -126,6 +127,8 @@ ATortugaCharacter::ATortugaCharacter()
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
 	ShellComponent = CreateDefaultSubobject<UTN_ShellComponent>(TEXT("ShellComponent"));
 	CarryComponent = CreateDefaultSubobject<UTN_CarryComponent>(TEXT("CarryComponent"));
+	DizzyBirds = CreateDefaultSubobject<UTN_DizzyBirdsComponent>(TEXT("DizzyBirds"));
+	DizzyBirds->SetupAttachment(RootComponent);
 
 	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).
 	// Al estar en el árbol del mesh, recibe el network smoothing del CMC → sin lag.
@@ -1081,6 +1084,8 @@ void ATortugaCharacter::OnJumped_Implementation()
 void ATortugaCharacter::Jump()
 {
 	if (bIsKnockedDown || bIsDead || IsInShell()) { return; }
+	// Levantándose del derribo: la animación termina antes de volver a saltar.
+	if (GetWorld() && GetWorld()->GetTimeSeconds() < GetUpLockUntil) { return; }
 	if (CarryComponent && CarryComponent->IsBeingCarried()) { return; }
 
 	// Nadando: salto desde el agua para salir a orillas e isletas.
@@ -1171,6 +1176,8 @@ void ATortugaCharacter::Move(const FInputActionValue& Value)
 	if (bIsDiving) { return; }
 	// Movement is locked during knockdown — momentum from LaunchCharacter takes over
 	if (bIsKnockedDown) { return; }
+	// Levantándose del derribo (unos 0,75 s): el cuerpo gira del suelo a de pie sin deslizarse.
+	if (GetWorld() && GetWorld()->GetTimeSeconds() < GetUpLockUntil) { return; }
 
 	// Cancel any active emote the moment the player moves —
 	// EXCEPT emotes 5 (Baile Irlandés) and 6 (Superman) which are walkable.

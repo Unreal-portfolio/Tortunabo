@@ -8,6 +8,9 @@
 
 #include "Player/TN_ShellComponent.h"
 #include "Player/TortugaCharacter.h"
+#include "Player/TN_DizzyBirdsComponent.h"
+#include "Player/TN_TurtleAnimInstance.h"
+#include "Engine/SkeletalMesh.h"
 #include "Core/TN_Log.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -32,6 +35,8 @@ void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 	{
 		return;
 	}
+	// Noqueada de verdad: un momento quieta en el suelo con los pajaritos, aunque el golpe pida menos.
+	Duration = FMath::Max(Duration, MinKnockdownSeconds);
 
 	// Un derribo saca del caparazon: si no, el speed cap seguiria puesto al
 	// recuperarse y el personaje se quedaria inmovil.
@@ -139,6 +144,12 @@ void ATortugaCharacter::RecoverFromKnockdown()
 
 void ATortugaCharacter::OnRep_IsKnockedDown()
 {
+	// Pajaritos del mareo en todas las máquinas (también para quien entra con el derribo ya empezado).
+	if (DizzyBirds)
+	{
+		DizzyBirds->SetDizzy(bIsKnockedDown);
+	}
+
 	// ReplicatedEmoteIndex usa COND_SkipOwner: el DUEÑO del pawn nunca recibe
 	// OnRep_ReplicatedEmoteIndex cuando el servidor pone KNOCKDOWN_EMOTE_ID.
 	// Por eso manejamos aquí TANTO el input COMO el visual del knockdown para
@@ -198,6 +209,12 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 
 void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 {
+	// Pajaritos y estrellitas dando vueltas sobre la cabeza, con su piar y sus cuerdas mareadas, mientras dura.
+	if (DizzyBirds)
+	{
+		DizzyBirds->SetDizzy(bKnocked);
+	}
+
 	// ── Ruta A: ragdoll físico (opción 2 del rediseño Q1-07) ───────────────────
 	// Si el BP configuró bUsePhysicsRagdoll=true y el SkelMesh tiene PhysicsAsset,
 	// activamos ragdoll completo. Sin PhysicsAsset no hay ragdoll posible → cae
@@ -272,16 +289,36 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 		{
 			if (!bKnockdownRagdollActive) { return; }
 
+			// Pose en la que quedó el cuerpo (en el mundo), antes de apagar la física: de ahí parte la animación de
+			// levantarse.
+			TArray<FTransform> GroundPose;
+			GroundPose.SetNum(SkelMesh->GetNumBones());
+			for (int32 BoneIdx = 0; BoneIdx < GroundPose.Num(); ++BoneIdx)
+			{
+				GroundPose[BoneIdx] = SkelMesh->GetBoneTransform(BoneIdx);
+			}
+
 			// Mover el capsule a donde cayó el ragdoll antes de desactivar física,
-			// para que no teleporte de vuelta a la pos pre-knockdown.
+			// para que no teleporte de vuelta a la pos pre-knockdown. Con los pies en el suelo de debajo del cuerpo
+			// (si lo encuentra), no a la altura de la cadera tumbada.
 			{
 				const FName  RootBone      = SkelMesh->GetBoneName(0);
 				const FVector RagdollLoc   = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
 				const float  HalfH         = GetCapsuleComponent()
 				                             ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight()
 				                             : 0.f;
-				SetActorLocation(RagdollLoc + FVector(0.f, 0.f, HalfH),
-				                 false, nullptr, ETeleportType::TeleportPhysics);
+				FVector StandLoc = RagdollLoc + FVector(0.f, 0.f, HalfH);
+				if (UWorld* World = GetWorld())
+				{
+					FHitResult FloorHit;
+					FCollisionQueryParams FloorParams(SCENE_QUERY_STAT(KnockdownGetUpFloor), false, this);
+					if (World->LineTraceSingleByChannel(FloorHit, RagdollLoc + FVector(0.f, 0.f, 60.f), RagdollLoc - FVector(0.f, 0.f, 250.f),
+						ECC_WorldStatic, FloorParams))
+					{
+						StandLoc = FloorHit.ImpactPoint + FVector(0.f, 0.f, HalfH + 2.f);
+					}
+				}
+				SetActorLocation(StandLoc, false, nullptr, ETeleportType::TeleportPhysics);
 			}
 
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
@@ -311,6 +348,13 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			}
 
 			bKnockdownRagdollActive = false;
+
+			// Levantarse: la malla ya está en la cápsula; la animación va de la pose del suelo a la de pie.
+			BeginGetUpFromWorldPose(GroundPose);
+			if (const UWorld* World = GetWorld())
+			{
+				GetUpLockUntil = World->GetTimeSeconds() + GetUpSeconds;
+			}
 		}
 		return;
 	}
@@ -424,6 +468,37 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 
 	UE_LOG(LogTortunabo, Verbose, TEXT("[Knockdown] ApplyKnockdownVisual(%s) on %s — comp=%s"),
 		bKnocked ? TEXT("true") : TEXT("false"), *GetNameSafe(this), *VisComp->GetName());
+}
+
+void ATortugaCharacter::BeginGetUpFromWorldPose(const TArray<FTransform>& WorldPose)
+{
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	const USkeletalMesh* MeshAsset = SkelMesh ? SkelMesh->GetSkeletalMeshAsset() : nullptr;
+	UTN_TurtleAnimInstance* TurtleAnim = SkelMesh ? Cast<UTN_TurtleAnimInstance>(SkelMesh->GetAnimInstance()) : nullptr;
+	if (!MeshAsset || !TurtleAnim || WorldPose.Num() == 0) { return; }
+
+	// Mundo → espacio de la malla (ya en su sitio nuevo sobre la cápsula) → locales respecto del padre.
+	const FReferenceSkeleton& RefSkel = MeshAsset->GetRefSkeleton();
+	const int32 NumBones = FMath::Min(WorldPose.Num(), RefSkel.GetNum());
+	const FTransform ToComponent = SkelMesh->GetComponentTransform();
+	TArray<FTransform> CompSpace;
+	CompSpace.SetNum(NumBones);
+	for (int32 BoneIdx = 0; BoneIdx < NumBones; ++BoneIdx)
+	{
+		CompSpace[BoneIdx] = WorldPose[BoneIdx].GetRelativeTransform(ToComponent);
+	}
+	TArray<FTransform> LocalPose;
+	LocalPose.SetNum(NumBones);
+	for (int32 BoneIdx = 0; BoneIdx < NumBones; ++BoneIdx)
+	{
+		const int32 ParentIdx = RefSkel.GetParentIndex(BoneIdx);
+		LocalPose[BoneIdx] = (ParentIdx == INDEX_NONE || ParentIdx >= NumBones)
+			? CompSpace[BoneIdx]
+			: CompSpace[BoneIdx].GetRelativeTransform(CompSpace[ParentIdx]);
+		LocalPose[BoneIdx].SetScale3D(FVector::OneVector);
+		LocalPose[BoneIdx].NormalizeRotation();
+	}
+	TurtleAnim->BeginGetUp(LocalPose, GetUpSeconds);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
