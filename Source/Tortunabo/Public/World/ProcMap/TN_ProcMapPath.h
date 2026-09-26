@@ -745,6 +745,30 @@ namespace TNProcMap
 			}
 		}
 
+		// Ondulación de todo el recorrido: lomas de 0,6-2,2 m cada 50-110 m (el suavizado de ~80 m de
+		// abajo deja casi llano lo que hay entre módulos). Se suma después de ese suavizado, con pendiente
+		// de la ola <= 0,14 (y el límite general luego); nada en el agua (con transición), al salir ni en
+		// la llegada a la playa.
+		TArray<double> Wave;
+		Wave.SetNumZeroed(NumS);
+		{
+			TArray<double> Dry;
+			Dry.SetNum(NumS);
+			for (int32 i = 0; i < NumS; ++i) { Dry[i] = IsWetBiome(L.Main[i].Biome) ? 0.0 : 1.0; }
+			Dry = SmoothScalars(Dry, 8);
+			const double Total = L.Main.Last().S;
+			double Phase = Rng.Range(0.0, TwoPi);
+			for (int32 i = 0; i < NumS; ++i)
+			{
+				const double S = L.Main[i].S;
+				const double Lambda = LerpD(5000.0, 11000.0, 0.5 + 0.5 * Noise1(ZSeed + 41u, S / 30000.0));
+				if (i > 0) { Phase += TwoPi * (S - L.Main[i - 1].S) / Lambda; }
+				const double Amp = FMath::Min(LerpD(60.0, 220.0, 0.5 + 0.5 * Noise1(ZSeed + 43u, S / 45000.0)), 0.14 * Lambda / TwoPi);
+				const double Fade = SmoothStep(3000.0, 9000.0, S) * SmoothStep(Total - 1000.0, Total - 16000.0, S);
+				Wave[i] = Amp * FMath::Sin(Phase) * Dry[i] * Fade;
+			}
+		}
+
 		// Suavizado + pendiente limitada por segmento (las pasadas altas se sobrescriben luego).
 		{
 			int32 SegStart = 0;
@@ -756,7 +780,8 @@ namespace TNProcMap
 				TArray<double> Part;
 				for (int32 i = SegStart; i <= SegEnd; ++i) { Part.Add(Z[i]); }
 				Part = SmoothScalars(Part, 10);
-				for (int32 i = SegStart; i <= SegEnd; ++i) { Z[i] = Part[i - SegStart]; }
+				// La ola no baja los tramos cercanos al nivel del mar (no crea agua nadable junto a la costa).
+				for (int32 i = SegStart; i <= SegEnd; ++i) { Z[i] = Part[i - SegStart] + Wave[i] * SmoothStep(250.0, 900.0, Part[i - SegStart]); }
 				SlopeLimit(Z, L.Main, SegStart, SegEnd, P.MaxPathSlope);
 				// Subidas redondeadas: sin esquinas donde actúa el límite de pendiente (y se limita de nuevo).
 				for (int32 i = SegStart; i <= SegEnd; ++i) { Part[i - SegStart] = Z[i]; }
@@ -1613,6 +1638,44 @@ namespace TNProcMap
 		}
 
 		/**
+		 * Junto a la horquilla (I0) y la unión (I1) con el principal, mientras la rama va dentro de su cauce
+		 * (hasta 7 m fuera de su borde), su cota es la del principal, y se suelta en los 15 m siguientes: si
+		 * no, donde el principal sube o baja (ondulación) quedaría un escalón entre los dos suelos.
+		 */
+		inline void HoldBranchToMain(const FLayout& L, const TArray<FPathSample>& S, int32 I0, int32 I1, TArray<double>& Z)
+		{
+			const TArray<FPathSample>& M = L.Main;
+			const int32 N = S.Num();
+			// Solo el suelo del principal cerca de la unión: ni cimas de torre, tableros o toboganes.
+			constexpr uint32 NotGround = PathFlags::Elevated | PathFlags::TowerTop | PathFlags::UnderTower | PathFlags::Slide;
+			auto MainZ = [&M](int32 Center, const FPathSample& Q, double& OutEdge)
+			{
+				OutEdge = 1e300;
+				double Zp = M[Center].Z;
+				for (int32 j = FMath::Max(0, Center - 20); j <= FMath::Min(M.Num() - 1, Center + 20); ++j)
+				{
+					if ((M[j].Flags & NotGround) != 0) { continue; }
+					const double D = FVector2D::Distance(M[j].P, Q.P) - M[j].Width * 0.5;
+					if (D < OutEdge) { OutEdge = D; Zp = M[j].Z; }
+				}
+				return Zp;
+			};
+			for (int32 End = 0; End < 2; ++End)
+			{
+				const int32 Center = End == 0 ? I0 : I1;
+				for (int32 n = 0; n < N; ++n)
+				{
+					const int32 k = End == 0 ? n : N - 1 - n;
+					double E = 0.0;
+					const double Zp = MainZ(Center, S[k], E);
+					const double W = SmoothStep(S[k].Width * 0.5 + 2200.0, S[k].Width * 0.5 + 700.0, E);
+					if (W <= 0.0 && n > 0) { break; }
+					Z[k] = LerpD(Z[k], Zp, W);
+				}
+			}
+		}
+
+		/**
 		 * Alturas de una senda: junto a cada unión, mientras va dentro del cauce del camino padre,
 		 * la cota de ese cauce (subir o bajar dentro dejaría escalones); por el medio sigue el
 		 * nivel de los módulos que cruza con lomas y un collado o una hondonada, con la pendiente
@@ -2044,6 +2107,7 @@ namespace TNProcMap
 				if (!bHigh) { Z = SmoothScalars(Z, 6); }
 				Z[0] = Z0;
 				Z.Last() = Z1;
+				PathDetail::HoldBranchToMain(L, Br.Samples, I0, I1, Z);
 				bool bSlopeOk = true;
 				double MaxRise = 0.0;
 				for (int32 k = 1; k < Z.Num(); ++k)
