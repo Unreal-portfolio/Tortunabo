@@ -223,6 +223,12 @@ def test_el_suelo_del_camino_es_llano_sin_cuenco(model):
     assert checked >= 12
 
 
+def _other_path_near(model, line_id, p, radius):
+    S = model.samples()
+    near = np.hypot(S["p"][:, 0] - p[0], S["p"][:, 1] - p[1]) - S["w"] < radius
+    return bool(np.any(near & (S["line"] != line_id)))
+
+
 def test_el_borde_cierra_el_paso(model):
     """A 1,5 x semiancho del eje, fuera del camino, la pared ya esta 3 m o mas por encima del suelo."""
     plan = model.plan
@@ -234,6 +240,8 @@ def test_el_borde_cierra_el_paso(model):
                     or model.near_junction(line.point_at(s), 25.0):
                 continue
             w = prof.half_width[k]
+            if _other_path_near(model, line.id, line.point_at(s), w + 8.0):
+                continue                           # al otro lado hay otro camino, no las vistas
             # La pared mas alta entre el borde del camino y 6 m mas alla (en una curva cerrada, mas
             # alla de la pared vuelve a estar el mismo camino).
             h0 = _cross_section(model, line.id, s, np.array([0.0]))[0]

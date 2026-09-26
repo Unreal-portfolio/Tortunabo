@@ -21,7 +21,7 @@ class PathStyle:
     backtrack_chance: float = 0.3            # el lazo sale hacia atras antes de avanzar
     hill_tunnels: int = 2                    # tramos del principal que atraviesan un cerro
     # Anchura (semiancho, m) y cota
-    width_m: tuple[float, float, float] = (3.0, 5.0, 9.0)       # minimo, moda, maximo
+    width_m: tuple[float, float, float] = (3.5, 5.5, 9.5)       # minimo, moda, maximo
     river_half_width_m: tuple[float, float] = (5.0, 9.0)
     max_grade: float = 0.2
     steep_grade: float = 0.3

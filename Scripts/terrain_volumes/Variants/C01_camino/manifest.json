@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 15895,
-   "triangles": 31292,
+   "vertices": 16171,
+   "triangles": 31826,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 15323,
-   "triangles": 30156,
+   "vertices": 15484,
+   "triangles": 30460,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 22250,
-   "triangles": 43784,
+   "vertices": 22175,
+   "triangles": 43684,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 29037,
-   "triangles": 57304,
+   "vertices": 27577,
+   "triangles": 54424,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 22684,
-   "triangles": 44664,
+   "vertices": 22296,
+   "triangles": 43916,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 20051,
-   "triangles": 39510,
+   "vertices": 19786,
+   "triangles": 38992,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 28593,
-   "triangles": 56502,
+   "vertices": 25749,
+   "triangles": 50874,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 28932,
-   "triangles": 57110,
+   "vertices": 26943,
+   "triangles": 53184,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 25995,
-   "triangles": 51306,
+   "vertices": 23909,
+   "triangles": 47166,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 17279,
-   "triangles": 34024,
+   "vertices": 17364,
+   "triangles": 34200,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 18247,
-   "triangles": 35950,
+   "vertices": 19197,
+   "triangles": 37868,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 17813,
-   "triangles": 35026,
+   "vertices": 18657,
+   "triangles": 36724,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 20098,
-   "triangles": 39630,
+   "vertices": 19835,
+   "triangles": 39116,
    "instances": 0
   },
   {
@@ -247,9 +247,9 @@
   "backtrack_chance": 0.3,
   "hill_tunnels": 2,
   "width_m": [
-   3.0,
-   5.0,
-   9.0
+   3.5,
+   5.5,
+   9.5
   ],
   "river_half_width_m": [
    5.0,

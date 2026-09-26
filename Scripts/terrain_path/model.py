@@ -18,6 +18,7 @@ from .profile import build_plan
 from .style import PathStyle
 
 SAMPLE_STEP_M = 0.5
+HIGH_TINT = 0.25         # oscurecimiento por altura de la paleta (terrain_vol): casi nada aqui
 WEDGE_M = 6.0            # cuna entre dos caminos mas fina que esto: se rellena de suelo (nariz roma)
 ZONE_KEYS = ("cliffs", "marsh", "algae", "beach")      # paletas de terrain_vol.mesh por bioma
 
@@ -43,6 +44,7 @@ class PathModel:
         # Anadidos sin tocar el mapa: su azar sale de otro generador (misma semilla, mismo grafo).
         extra = np.random.default_rng(seed + 17)
         self.n_crest = Fbm2D(extra, 40.0, 3)
+        self.n_wall2d = Fbm2D(extra, 11.0, 3)
         self.arch_ranges = self._plan_arches(extra)
         self._build_samples()
         self.extra_rng = rng                       # rio y castillos siguen la misma secuencia
@@ -55,6 +57,8 @@ class PathModel:
         self.route = SimpleNamespace(points=main.points)
         self.start, self.end = main.points[0], main.points[-1]
         self.zones = self
+        self.high_tint = HIGH_TINT
+        self.trail_strength = 0.85
 
     # -- muestras de todos los caminos -------------------------------------------------------
     def _build_samples(self) -> None:
@@ -109,16 +113,36 @@ class PathModel:
                 t = (s[sel] - s[run[0]]) / max(s[run[-1]] - s[run[0]], 1e-9)
                 s_mid = 0.5 * (s[run[0]] + s[run[-1]])
                 arch = any(line_id == line.id and a <= s_mid <= b for line_id, a, b in self.arch_ranges)
+                bridge = self._bridge_clearance(line.id, s_mid)
+                # (alcance lateral del cerro, alto del hueco, tablero sobre el suelo)
+                if bridge is not None:          # cruce: puente fino, el de abajo va al aire libre
+                    kind_reach, kind_height, kind_deck = -1.0, bridge - 1.5, 0.0
+                elif arch:                      # arco fino sobre el camino
+                    kind_reach, kind_height, kind_deck = 3.0, 4.8, 6.3
+                else:                           # tunel de cerro
+                    kind_reach, kind_height, kind_deck = 10.0, 5.0, 8.0
                 self.tunnels.append({"pts": pts[sel], "floor": np.interp(s[sel], line.arc, prof.z),
                                      "half": np.clip(np.interp(s[sel], line.arc, prof.half_width), 3.0, 4.5),
                                      "t": t, "covered": covered[sel].astype(float),
-                                     "reach": np.full(len(sel), 4.0 if arch else 10.0)})
+                                     "reach": np.full(len(sel), kind_reach),
+                                     "height": np.full(len(sel), kind_height),
+                                     "deck": np.full(len(sel), kind_deck)})
         if self.tunnels:
             self.tunnel_tree = cKDTree(np.vstack([tu["pts"] for tu in self.tunnels]))
             self.tunnel_cat = {k: np.concatenate([tu[k] for tu in self.tunnels])
-                               for k in ("floor", "half", "t", "covered", "reach")}
+                               for k in ("floor", "half", "t", "covered", "reach", "height", "deck")}
         else:
             self.tunnel_tree = None
+
+    def _bridge_clearance(self, line_id: int, s: float) -> float | None:
+        """Hueco bajo el puente si (line_id, s) es el camino de abajo de un cruce, si no None."""
+        for c in self.plan.crossings:
+            if c.lower == line_id and abs(c.s_lower - s) < 25.0:
+                up = self.plan.graph.lines[c.upper]
+                lo = self.plan.graph.lines[c.lower]
+                return float(np.interp(c.s_upper, up.arc, self.plan.profiles[c.upper].z)
+                             - np.interp(c.s_lower, lo.arc, self.plan.profiles[c.lower].z))
+        return None
 
     def _plan_arches(self, rng: np.random.Generator) -> list[tuple[int, float, float]]:
         """Puentes naturales (arco de roca de 8-12 m sobre el camino, que pasa por debajo) y
@@ -130,7 +154,7 @@ class PathModel:
         joins += [line.points[k] for line in plan.graph.loops() for k in (0, -1)]
         taken: list[tuple[int, float, float]] = []
         arches: list[tuple[int, float, float]] = []
-        for kind, count, (lo, hi) in (("arch", style.arches, (10.0, 14.0)),
+        for kind, count, (lo, hi) in (("arch", style.arches, (4.0, 6.0)),
                                       ("hill", style.extra_hill_tunnels, (20.0, 32.0))):
             placed = 0
             for _ in range(400):
@@ -202,7 +226,7 @@ class PathModel:
         d, i = self._nearest(x, y)
         e = d - self.S["w"][i]
         dry = self.S["biome"][i] != 1
-        return ((1.0 - smooth(-1.2, 0.2, e)) * dry).reshape(np.shape(x))
+        return ((1.0 - smooth(-0.4, 0.6, e)) * dry).reshape(np.shape(x))
 
     def plaza_mask(self, x, y) -> np.ndarray:
         a = self.plan.graph.main.points[0]
@@ -237,11 +261,12 @@ class PathModel:
         e = d - w
         e = self._blunt_wedges(X, Y, e, i)
         n_rim, n_top, n_floor = self.n_rim.unit(X, Y), self.n_top(X, Y), self.n_floor(X, Y)
+        n_wall = self.n_wall2d(X, Y)
         guard = self._guard
-        height, H, crest_e = field.section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, self.style, guard)
+        height, H, crest_e = field.section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, self.style, guard, n_wall)
         zf2, w2 = self.S["z"][i2], self.S["w"][i2]
         e2 = self._blunt_wedges(X, Y, d2 - w2, i2)
-        height2, _, _ = field.section(e2, zf2, z_soft, w2, bw, n_rim, n_top, n_floor, self.style, guard)
+        height2, _, _ = field.section(e2, zf2, z_soft, w2, bw, n_rim, n_top, n_floor, self.style, guard, n_wall)
         # Solo entre caminos a cota parecida: con cotas distintas, promediar la pared de uno con el
         # suelo del otro dejaba una rampa por la que se salia a las vistas.
         mix = 0.5 * (1.0 - smooth(0.0, 3.0, gap)) * (e > 0.0) * (e2 > 0.0) * (1.0 - smooth(0.5, 1.0, np.abs(zf - zf2)))
@@ -249,7 +274,10 @@ class PathModel:
         height = self._inside_corridor(X, Y, height, e, i, zf, w, bw)
         v = field.vista(self, X, Y)
         band = self.style.block_band_m
-        t = smooth(crest_e + band, crest_e + band + 14.0, e)
+        # Bajada a las vistas proporcional al desnivel (~27 grados): una pared alta que caia de
+        # golpe por detras quedaba como una aleta fina vista desde fuera.
+        run = np.maximum(14.0, 2.0 * (H - v))
+        t = smooth(crest_e + band, crest_e + band + run, e)
         outer = H + (v - H) * t
         # Transicion suave de la cresta a la bajada (un corte seco dejaba lineas de un paso donde
         # cambia el camino mas cercano).
@@ -259,11 +287,12 @@ class PathModel:
         protect = 1.0 - t
         height, coast = field.shore(self, X, Y, height, protect)
         height = field.clip_spikes(height)
-        region = np.where(e < 0.0, 0, np.where(e < crest_e + band + 14.0, 1, 2))
+        region = np.where(e < 0.0, 0, np.where(e < crest_e + band + run, 1, 2))
         region = np.where(coast > 0.5, 3, region)
         if shape == (len(getattr(self, "axis", [])),) * 2:
             self.region = region
-        wall_band = (1.0 - smooth(0.0, 3.0, np.abs(e - 0.5 * crest_e))) * bw[..., 0]
+        # Voladizos y huecos suaves en todas las paredes (antes solo en el acantilado).
+        wall_band = (1.0 - smooth(0.0, 3.0, np.abs(e - 0.5 * crest_e))) * (0.5 + 0.5 * bw[..., 0])
         tunnel = self._tunnel_zone(X, Y)
         path = 1.0 - smooth(-1.0, 0.5, e)
         weights = {key: bw[..., b] for b, key in enumerate(ZONE_KEYS)}
@@ -329,27 +358,29 @@ class PathModel:
         d, k = self.tunnel_tree.query(np.stack([np.ravel(X), np.ravel(Y)], axis=1))
         c = self.tunnel_cat
         return (d.reshape(X.shape), c["t"][k].reshape(X.shape), c["floor"][k].reshape(X.shape),
-                c["half"][k].reshape(X.shape), c["covered"][k].reshape(X.shape), c["reach"][k].reshape(X.shape))
+                c["half"][k].reshape(X.shape), c["covered"][k].reshape(X.shape), c["reach"][k].reshape(X.shape),
+                c["height"][k].reshape(X.shape), c["deck"][k].reshape(X.shape))
 
     def _tunnel_zone(self, X, Y):
         if self.tunnel_tree is None:
             return np.zeros(X.shape)
-        u, _, _, half, _, _ = self._tunnel_query(X, Y)
+        u, _, _, half, _, _, _, _ = self._tunnel_query(X, Y)
         return 1.0 - smooth(half + 1.5, half + 5.0, u)
 
     def _stamps(self, X, Y, height, e, i, zf, w):
         """Cerro sobre cada tramo cubierto: roca >= 8 m sobre el suelo del tunel (el camino de
         arriba de un cruce ya queda 8,5 m por encima); solo en el tramo cubierto, no en las bocas."""
         if self.tunnel_tree is not None:
-            u, t, floor, half, covered, reach = self._tunnel_query(X, Y)
+            u, t, floor, half, covered, reach, _, deck = self._tunnel_query(X, Y)
             # Nunca sobre un camino abierto (el tablero de un cruce, la union de un lazo). Los
             # puentes naturales (reach corto) son un arco estrecho, no un cerro.
             # Un puente es corto: su centro sigue a menos de un semiancho del camino abierto, asi
             # que se levanta aunque "este en el camino" (el paso queda en el hueco 3D de debajo).
-            over_path = np.maximum(smooth(0.0, 2.0, e), (reach < 5.0).astype(float))
-            hill = (1.0 - smooth(half + 2.0, half + reach, u)) * covered \
+            over_path = np.maximum(smooth(0.0, 2.0, e), ((reach > 0.0) & (reach < 5.0)).astype(float))
+            hill = (1.0 - smooth(half + 2.0, half + np.maximum(reach, 2.1), u)) * covered * (reach > 0.0) \
                 * smooth(-0.1, 0.05, t) * smooth(-1.1, -0.95, -t) * over_path
-            height = np.maximum(height, (floor + 8.0 + 1.5 * self.n_top.unit(X, Y)) * hill + height * (1.0 - hill))
+            top = floor + deck + np.where(deck > 7.0, 1.5 * self.n_top.unit(X, Y), 0.3 * self.n_top(X, Y))
+            height = np.maximum(height, top * hill + height * (1.0 - hill))
         from .castles import castle_stamp
         for castle in self.castles:
             height = castle_stamp(X, Y, height, castle)
@@ -357,9 +388,11 @@ class PathModel:
 
     def _carve(self, X, Y, Z3):
         """> 0 dentro del hueco (misma seccion que terrain_vol.density.MapModel._tunnel_carve)."""
-        u, t, floor, half, _, _ = self._tunnel_query(X, Y)
+        u, t, floor, half, _, _, gap, _ = self._tunnel_query(X, Y)
         half = half * (1.0 + 0.22 * self.n_tunnel(X, Y))
-        height = 5.0 * (1.0 + 0.18 * self.n_tunnel(Y, X))
+        # Hueco a la medida: tunel de 5 m, arco fino de 4,8 m y, bajo un puente, todo el hueco
+        # hasta 1,5 m por debajo del tablero (en un puente la variacion no puede comerse el tablero).
+        height = gap * (1.0 + np.where(gap > 5.5, 0.0, 0.12) * self.n_tunnel(Y, X))
         v = Z3 - floor[..., None]
         center, radius_v = 0.42 * height[..., None], 0.62 * height[..., None]
         ellipse = 1.0 - np.sqrt((u[..., None] / half[..., None]) ** 2 + ((v - center) / radius_v) ** 2)
@@ -380,8 +413,9 @@ class PathModel:
         D = f.height[..., None] - Z3
         band = f.wall_band[..., None]
         if np.any(band > 0.0):
-            above = smooth(0.8, 2.5, Z3 - f.floor[..., None])
-            D = D + 0.45 * band * above * self.n_wall3d(X3, Y3, Z3)
+            # Solo por encima del pie de la pared: el pie sigue liso y vertical (cierra el paso).
+            above = smooth(field.FOOT_M, field.FOOT_M + 1.5, Z3 - f.floor[..., None])
+            D = D + 0.9 * band * above * self.n_wall3d(X3, Y3, Z3)
         if self.tunnel_tree is not None and np.any(f.tunnel > 0.0):
             carve, v = self._carve(X, Y, Z3)
             # Paredes y techo rugosos; el suelo del tunel, llano.

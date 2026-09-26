@@ -210,7 +210,10 @@ def _profiles(rng: np.random.Generator, graph: PathGraph, style: PathStyle) -> P
     for c in crossings:
         upper, lower = graph.lines[c.upper], graph.lines[c.lower]
         w_up = float(np.interp(c.s_upper, upper.arc, profiles[c.upper].half_width))
-        half = w_up + EXCLUDE_EXTRA_M
+        # Puente fino: el camino de abajo solo queda cubierto bajo el tablero del de arriba.
+        half = w_up + 1.5
+        profiles[c.lower] = _mark(profiles[c.lower], lower, c.s_lower - half, c.s_lower + half)
+        continue
         # El tunel sigue mientras el camino de abajo no se ha apartado del de arriba lo bastante
         # para que quepan sus dos paredes (si no, asomaria al lado del de arriba).
         d, _ = cKDTree(upper.points).query(lower.points)

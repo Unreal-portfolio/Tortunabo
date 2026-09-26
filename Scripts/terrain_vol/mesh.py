@@ -107,7 +107,7 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
     vein = 0.5 + 0.5 * np.sin(x / 53.0 + 1.7) * np.cos(y / 41.0 - 0.6)
     cliff = smooth(0.25, 0.6, 1.0 - normals[:, 2])
     cliff = np.maximum(cliff, (normals[:, 2] < -0.2).astype(np.float64))     # techos de tunel y voladizos
-    high = smooth(4.0, 9.0, z)
+    high = smooth(4.0, 9.0, z) * getattr(model, "high_tint", 1.0)
     wet = smooth(WATER_M + 0.6, WATER_M, z)
     out = np.zeros((len(x), 3))
     for zone, palette_name in ZONE_PALETTE.items():
@@ -119,7 +119,7 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
     # Camino principal (arena pisada, mas oscura) y salida/meta (arena clara): se leen desde lejos.
     flat_up = smooth(0.7, 0.9, normals[:, 2])
     trail = model.trail_mask(x, y) * flat_up * (1.0 - wet)
-    out = out + (np.array(TRAIL_COLOR) - out) * (0.7 * trail)[:, None]
+    out = out + (np.array(TRAIL_COLOR) - out) * (getattr(model, "trail_strength", 0.7) * trail)[:, None]
     plaza = model.plaza_mask(x, y) * flat_up
     out = out + (np.array(PLAZA_COLOR) - out) * (0.8 * plaza)[:, None]
     tint = 1.0 + 0.07 * np.sin(x / 9.5) * np.cos(y / 7.4)
