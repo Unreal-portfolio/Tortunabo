@@ -319,11 +319,26 @@ void ATN_HQGameMode::BeginMatchTravel()
 	// ── Guardar cuántos jugadores hay en el lobby ANTES de viajar ──────
 	// GameInstance sobrevive al seamless travel; TN_RunGameMode
 	// lo leerá en BeginPlay para saber cuántos jugadores esperar.
+	FString TravelURL = MatchMapPath;
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
 	{
 		const int32 ConnectedCount = TN_CountConnectedCoopPlayers(GameState);
 		GI->PendingTravelPlayerCount = ConnectedCount;
 		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
+
+		// ── Modo elegido en el lobby: Clásico → LVL_Run; el resto → mapa procedural ──
+		if (GI->SelectedProcMode == ETNProcGameMode::TwoVsTwo && ConnectedCount != 4)
+		{
+			// El selector ya lo impide, pero alguien pudo salir durante la cuenta atrás.
+			UE_LOG(LogTortunabo, Warning, TEXT("[HQGameMode] 2vs2 exige 4 jugadores (hay %d) → Carrera."), ConnectedCount);
+			GI->SelectedProcMode = ETNProcGameMode::Race;
+		}
+		if (GI->SelectedProcMode != ETNProcGameMode::Classic)
+		{
+			TravelURL = ProcMapPath;
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo %s · dificultad %s"),
+			*UEnum::GetValueAsString(GI->SelectedProcMode), *UEnum::GetValueAsString(GI->SelectedProcDifficulty));
 	}
 
 	// ── Destroy all pawns BEFORE travel for WASAPI cleanup ──────────────
@@ -343,7 +358,6 @@ void ATN_HQGameMode::BeginMatchTravel()
 	// NO ?listen (seamless travel reuses the existing NetDriver).
 	// NO destroying NetDriver (that kills client connections).
 	// NO ClientNotifyServerTravel (clients travel with the server automatically).
-	const FString TravelURL = MatchMapPath;
 	UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Seamless ServerTravel to: %s"), *TravelURL);
 	World->ServerTravel(TravelURL);
 }

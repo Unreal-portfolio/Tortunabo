@@ -84,6 +84,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
 	FString MatchMapPath = TEXT("/Game/Maps/Run/LVL_Run");
 
+	/** Nivel del mapa procedural (Coop / Carrera / 2vs2 elegidos con ATN_ProcModeSelector). */
+	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
+	FString ProcMapPath = TEXT("/Game/Maps/Run/LVL_ProcMap");
+
 private:
 	/**
 	 * Puesto a true en BeginPlay cuando el GameInstance del servidor reporta primera partida.

@@ -63,7 +63,7 @@ public:
 	 * @note Server-only. Si era el último jugador activo, dispara el flujo de Resultados.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Run")
-	void MarkPlayerFinished(APlayerController* PlayerController);
+	virtual void MarkPlayerFinished(APlayerController* PlayerController);
 
 	/**
 	 * @brief Marca a un jugador como muerto, lo pasa a espectador y spawnea su RescuePickup.
@@ -71,7 +71,7 @@ public:
 	 * @note Server-only. Guarda el pawn en DeadPlayerPawns para que el rescate lo pueda teletransportar.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Run")
-	void MarkPlayerDead(APlayerController* PlayerController);
+	virtual void MarkPlayerDead(APlayerController* PlayerController);
 
 	/**
 	 * @brief Callback server-side cuando una CollectionZone alcanza su RequiredCount.
@@ -154,7 +154,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run|Scoring", meta = (ClampMin = "0.0"))
 	float TimeBonusPointsPerSecond = 5.f;
 
-private:
+	// Protegido (no privado) para que los modos derivados (ATN_ProcMapGameMode)
+	// reutilicen el flujo de muerte, rescate, resultados y vuelta al lobby.
 	FTimerHandle ResultsTimerHandle;
 	FTimerHandle ResultsCountdownTimerHandle;
 	FTimerHandle WaitingTimeoutTimerHandle;
@@ -200,13 +201,13 @@ private:
 	void TickResultsCountdown();
 
 	/** @brief Comprueba si la ronda terminó (todos los vivos cruzaron meta o murieron) y arranca Resultados. */
-	void UpdateRoundProgressAndMaybeFinish();
+	virtual void UpdateRoundProgressAndMaybeFinish();
 
 	/** @brief Mueve a un jugador a modo espectador (UnPossess + spectate next alive). */
 	void MovePlayerToSpectator(APlayerController* PlayerController) const;
 
 	/** @brief Cierra la ronda: persiste scores, dispara Seamless Travel de vuelta a LVL_HQ. */
-	void FinishRoundAndReturnToLobby();
+	virtual void FinishRoundAndReturnToLobby();
 
 	/** @brief Cambia el MatchFlowState en el GameState replicado + broadcast a listen-server. */
 	void SetFlowState(ETNMatchFlowState NewState) const;
@@ -221,7 +222,7 @@ private:
 	void TryStartMatch();
 
 	/** @brief Timeout de staging: arranca la carrera aunque no hayan llegado todos. */
-	void OnWaitingTimeout();
+	virtual void OnWaitingTimeout();
 
 	/** @brief Tick periódico (0.5s) que actualiza ServerMatchElapsedTime en el GameState. */
 	void TickRaceClock();

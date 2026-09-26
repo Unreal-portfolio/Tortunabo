@@ -25,6 +25,8 @@
 | Archivo | Propósito | Autores |
 |---|---|---|
 | `TN_RunGameMode.h` | GameMode de la fase Run: countdown, meta, DBNO, scoring (rank+pickups+timebonus), travel a HQ. | Mokius, Rodrigo Fernandez |
+| `TN_ProcMapGameMode.h` | GameMode de LVL_ProcMap: rondas Coop/Carrera/2vs2, reaparición en pilas de huevos, tormenta por el camino, espera al mapa de todos. | Claude |
+| `TN_ProcMapGameState.h` | GameState del mapa procedural: modo, ronda, objetivo y resultado de la ronda replicados. | Claude |
 
 ## Lobby/ — Lobby HQ
 
@@ -32,6 +34,7 @@
 |---|---|---|
 | `TN_HQGameMode.h` | GameMode del lobby HQ: ready-up, countdown, travel a Run, ruta inicial al tutorial. | Mokius, Rodrigo Fernandez |
 | `TN_LobbyReadyZone.h` | TriggerBox que marca a los jugadores como ready cuando su pawn entra en la zona. | Mokius, Rodrigo Fernandez |
+| `TN_ProcModeSelector.h` | Interactuable del lobby para elegir modo (Clásico/Coop/Carrera/2vs2) y dificultad. | Claude |
 
 ## Menu/ — Menú principal
 
@@ -53,6 +56,7 @@
 | Archivo | Propósito | Autores |
 |---|---|---|
 | `MP_GamePlayerController.h` | PlayerController principal: HUD, espectador, cosméticos, ruedas radiales, QuickChat, VOIP. | Mokius, Rodrigo Fernandez |
+| `TN_CarryComponent.h` | Coger y lanzar tortugas en caparazón o aturdidas: forcejeo de 2 s, temblor de cámara, rebote al caer. | Claude |
 | `TN_InventoryComponent.h` | Inventario de 2 slots (equipado+guardado) replicado, con visual attacheado al socket. | Mokius, Rodrigo Fernandez |
 | `TN_LegAnimComponent.h` | Componente de animación pendular genérico para personajes ensamblados con primitivas. | Mokius, Rodrigo Fernandez |
 | `TN_ProcAnimInstance.h` | AnimInstance mínimo que permite a C++ controlar transforms de huesos sin AnimBP. | Rodrigo Fernandez |
@@ -147,6 +151,28 @@
 | Archivo | Propósito | Autores |
 |---|---|---|
 | `TN_ChunkManager.h` | Manager del nivel procedural: ensambla chunks Easy/Medium/Hard y dispara FinalChunk. | Mokius, Rodrigo Fernandez |
+
+### ProcMap (mapa procedural por módulos) — ver [`Mapa_Procedural.md`](Mapa_Procedural.md)
+
+| Archivo | Propósito | Autores |
+|---|---|---|
+| `ProcMap/TN_ProcMapEnums.h` | Enums de bioma, modo, dificultad, módulos vacíos y tipo de cruce colosal. | Claude |
+| `ProcMap/TN_ProcMapMath.h` | RNG determinista (SplitMix64) y ruido para la lógica pura. | Claude |
+| `ProcMap/TN_ProcMapLayout.h` | Tipos del layout: módulos, ruta, portales, cruces, camino, ramas y features. | Claude |
+| `ProcMap/TN_ProcMapModules.h` | Módulos irregulares siempre conexos sobre la rejilla. | Claude |
+| `ProcMap/TN_ProcMapRoute.h` | Ruta por los módulos con pasos de cruce colosal. | Claude |
+| `ProcMap/TN_ProcMapPath.h` | Portales, camino con meandros, anchos, alturas, ramas y carriles. | Claude |
+| `ProcMap/TN_ProcMapFeatures.h` | Biomas por regiones, huecos, isletas, huevos, puzles 2vs2, río y reparto de peligros. | Claude |
+| `ProcMap/TN_ProcMapTerrain.h` | Altura del terreno por vértice (biomas, camino, estructuras, bordes, costa). | Claude |
+| `ProcMap/TN_ProcMapGenerate.h` | Orquestación y validación de la generación. | Claude |
+| `ProcMap/TN_ProcMapTypes.h` | Perfiles, DataAssets de ajustes y de bioma, greybox por defecto. | Claude |
+| `ProcMap/TN_ProcMapGenerator.h` | Actor que materializa el mapa (terreno, agua, estructuras, vegetación, actores). | Claude |
+| `ProcMap/TN_ProcMapActorUtils.h` | Utilidades de red y tinte para los actores del mapa. | Claude |
+| `ProcMap/TN_ProcTraversalActors.h` | Géiser, tobogán, zona de muerte y meta del mapa procedural. | Claude |
+| `ProcMap/TN_ProcWaterActors.h` | Volumen de agua nadable, corrientes, remolinos, depredador y criaturas rebotadoras. | Claude |
+| `ProcMap/TN_ProcEggNest.h` | Pila de huevos de reaparición. | Claude |
+| `ProcMap/TN_ProcPuzzleActors.h` | Muro de lanzamiento, compuerta de sabotaje e interruptor del 2vs2. | Claude |
+| `ProcMap/TN_PathStorm.h` | Tormenta que avanza por el camino (Coop). | Claude |
 
 ---
 

@@ -51,6 +51,23 @@ public:
 	 */
 	void ForceExitShell();
 
+	/**
+	 * @brief Mete al personaje en el caparazón sin las condiciones normales (suelo,
+	 *        manos libres). Solo autoridad.
+	 * @note Lo usan la caída desde altura (más de 5 m) y coger a una tortuga aturdida.
+	 */
+	void ForceEnterShell();
+
+	/**
+	 * @brief Bloquea o desbloquea la salida voluntaria del caparazón. Solo autoridad.
+	 * @note Mientras la llevan o vuela tras un lanzamiento no puede salir: se
+	 *       desbloquea al rebotar contra el suelo (UTN_CarryComponent).
+	 */
+	void SetExitLocked(bool bLocked) { bExitLocked = bLocked; }
+
+	UFUNCTION(BlueprintPure, Category = "Shell")
+	bool IsExitLocked() const { return bExitLocked; }
+
 protected:
 	/** Permanencia mínima (s) antes de poder salir. Evita el parpadeo al machacar la tecla. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shell", meta = (ClampMin = "0.0"))
@@ -77,6 +94,9 @@ private:
 	 * así que no se replica.
 	 */
 	float ShellEnteredServerTime = 0.f;
+
+	/** Salida voluntaria bloqueada (llevada / en vuelo tras un lanzamiento). Solo servidor. */
+	bool bExitLocked = false;
 
 	UFUNCTION()
 	void OnRep_IsInShell();

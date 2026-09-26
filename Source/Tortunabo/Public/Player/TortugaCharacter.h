@@ -13,6 +13,7 @@ class UInputMappingContext;
 class UInputAction;
 class UTN_InventoryComponent;
 class UTN_ShellComponent;
+class UTN_CarryComponent;
 class UTN_StaminaComponent;
 class ATN_InteractableBase;
 class USceneComponent;
@@ -247,6 +248,48 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shell")
 	TObjectPtr<UTN_ShellComponent> ShellComponent;
+
+	/** Coger y lanzar a otras tortugas (issue #6, fase 2). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Carry")
+	TObjectPtr<UTN_CarryComponent> CarryComponent;
+
+	// ── Nado ─────────────────────────────────────────────────────────────────
+
+	/** Velocidad nadando (cm/s): entre andar (450) y esprintar (800). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimSpeed = 625.f;
+
+	/** Flotabilidad: algo por encima de 1 para que la tortuga suba a la superficie. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimBuoyancy = 1.08f;
+
+	/** Impulso vertical del salto desde el agua (el CMC no salta nadando): subir a orillas e isletas. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimHopVelocity = 640.f;
+
+	/** Impulso hacia delante del salto desde el agua. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimHopForward = 250.f;
+
+	// ── Caídas ───────────────────────────────────────────────────────────────
+
+	/** Caída libre a partir de la cual la tortuga se mete sola en el caparazón (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fall", meta = (ClampMin = "0.0"))
+	float AutoShellFallHeight = 500.f;
+
+	/** Caída a partir de la cual la tortuga se rompe al aterrizar (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fall", meta = (ClampMin = "0.0"))
+	float FatalFallHeight = 3500.f;
+
+	// ── Caparazón (visual procedural) ────────────────────────────────────────
+
+	/** Segundos para encoger cabeza, patas y cola al meterse. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shell|Visual", meta = (ClampMin = "0.01"))
+	float ShellRetractSeconds = 0.12f;
+
+	/** Segundos para estirarse al salir (el "desplegarse" tras un rebote). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shell|Visual", meta = (ClampMin = "0.01"))
+	float ShellExtendSeconds = 0.35f;
 
 	/**
 	 * Mesh del casco equipado. Se adjunta al SceneComponent "Sombrero" en BeginPlay.
@@ -610,8 +653,31 @@ private:
 	virtual void Landed(const FHitResult& Hit) override;
 	void PerformAirDashLocally();
 
+	// ── Caídas, caparazón visual y temblor al llevar a alguien ───────────────
+	void TickFallRules(float DeltaTime);
+	void TickShellVisual(float DeltaTime);
+
+	/** Cota más alta desde que empezó la caída actual (ápice). */
+	float FallApexZ = 0.f;
+	bool bTrackingFall = false;
+	/** Géiser, tobogán: la próxima caída no cuenta hasta aterrizar. */
+	bool bFallImmune = false;
+	bool bAutoShelledThisFall = false;
+	/** 0 = fuera del caparazón, 1 = metida del todo. Local y cosmético. */
+	float ShellVisualAlpha = 0.f;
+	bool bShellVisualApplied = false;
+	FRotator CarryShake = FRotator::ZeroRotator;
+
 	UFUNCTION(Server, Reliable)
 	void ServerPerformAirDash();
+
+	// ── Salto desde el agua (mismo patrón que el air dash: local + servidor) ──
+	float LastSwimHopTime = -10.f;
+	bool CanSwimHop() const;
+	void PerformSwimHop();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSwimHop();
 
 	void Move(const FInputActionValue& Value);
 	void OnMoveReleased();
@@ -1153,6 +1219,20 @@ public:
 
 	/** Devuelve el componente de caparazón (acceso de solo lectura para sistemas externos). */
 	UTN_ShellComponent* GetShellComponent() const { return ShellComponent; }
+
+	/** Componente de coger y lanzar. */
+	UTN_CarryComponent* GetCarryComponent() const { return CarryComponent; }
+
+	/** La caída en curso (o la siguiente) no auto-encapsula ni mata hasta aterrizar o entrar al agua. */
+	void SetFallImmuneUntilLanded() { bFallImmune = true; }
+
+	UFUNCTION(BlueprintPure, Category = "Fall")
+	bool IsFallImmune() const { return bFallImmune; }
+
+	/** Temblor de cámara local (lo pone UTN_CarryComponent cuando la carga forcejea). */
+	void SetCarryShake(const FRotator& Shake) { CarryShake = Shake; }
+
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
 
 	/** @brief true mientras el personaje está metido en su caparazón. */
 	UFUNCTION(BlueprintPure, Category = "Shell")
