@@ -21,7 +21,7 @@ namespace TNAmbientFX
 {
 	using namespace TNProcMesh;
 
-	enum class EShape : uint8 { Drop, Puff, Ember, Flake };
+	enum class EShape : uint8 { Drop, Puff, Ember, Flake, Leaf, Streak };
 
 	/** Cómo nace y se mueve cada partícula de un emisor. */
 	struct FEmitterDesc
@@ -29,14 +29,18 @@ namespace TNAmbientFX
 		EShape Shape = EShape::Drop;
 		/** Translúcido y sin iluminación (vapor, bruma, espuma, brasas que brillan). */
 		bool bSoft = false;
+		/** Con bSoft: borde difuminado (nube redonda y blanda en vez de un polígono). */
+		bool bCloud = false;
 		FLinearColor Color = FLinearColor::White;
 		/** Opacidad del material suave (alfa del vértice). */
 		float Alpha = 0.5f;
 		int32 MaxParticles = 40;
 		/** Partículas por segundo (multiplicado por FEmitter::RateScale). */
 		float Rate = 20.f;
-		/** Nacen en un disco horizontal de este radio alrededor del origen. */
+		/** Nacen en un disco horizontal de este radio alrededor del origen... */
 		float SpawnRadius = 50.f;
+		/** ...y hasta esta altura sobre él (0 = en el disco). */
+		float SpawnHeight = 0.f;
 		FVector Direction = FVector::UpVector;
 		float Speed = 600.f;
 		float SpeedJitter = 0.3f;
@@ -148,6 +152,24 @@ namespace TNAmbientFX
 				M.AddQuad(FVector(-50, -30, 0), FVector(50, -30, 0), FVector(50, 30, 0), FVector(-50, 30, 0), -FVector::UpVector, Color * 0.8f);
 				break;
 			}
+			case EShape::Leaf:
+			{
+				// Hoja: rombo doblado por el nervio, con las dos caras.
+				const FVector Tip(50, 0, 0), Stem(-50, 0, 0), L(-5, 26, 6), R(-5, -26, 6);
+				for (const double S : { 1.0, -1.0 })
+				{
+					M.AddTri(Stem, L, Tip, FVector(0.0, 0.0, S), S > 0.0 ? Color : Color * 0.75f);
+					M.AddTri(Stem, Tip, R, FVector(0.0, 0.0, S), S > 0.0 ? Color * 0.9f : Color * 0.7f);
+				}
+				break;
+			}
+			case EShape::Streak:
+			{
+				// Estela fina (arena que vuela): cinta a lo largo de X, en cruz para verse de cualquier lado.
+				M.AddQuad(FVector(-50, -4, 0), FVector(50, -4, 0), FVector(50, 4, 0), FVector(-50, 4, 0), FVector::UpVector, Color);
+				M.AddQuad(FVector(-50, 0, -4), FVector(50, 0, -4), FVector(50, 0, 4), FVector(-50, 0, 4), FVector::RightVector, Color);
+				break;
+			}
 			case EShape::Drop:
 			default:
 			{
@@ -179,9 +201,14 @@ namespace TNAmbientFX
 	}
 
 	/** Material de los efectos: suave (translúcido) o el de la vegetación (opaco, color de vértice). */
-	inline UMaterialInterface* MaterialFor(bool bSoft)
+	inline UMaterialInterface* MaterialFor(bool bSoft, bool bCloud = false)
 	{
-		static TWeakObjectPtr<UMaterialInterface> Soft, Solid;
+		static TWeakObjectPtr<UMaterialInterface> Soft, Solid, Cloud;
+		if (bSoft && bCloud)
+		{
+			if (!Cloud.IsValid()) { Cloud = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFXCloud.M_ProcFXCloud")); }
+			if (Cloud.IsValid()) { return Cloud.Get(); }
+		}
 		if (bSoft)
 		{
 			if (!Soft.IsValid()) { Soft = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFXSoft.M_ProcFXSoft")); }
@@ -195,16 +222,16 @@ namespace TNAmbientFX
 	 * Malla de partícula en caché por forma, color y material. Las mallas de la caché quedan en la raíz
 	 * del recolector (se reutilizan entre partidas y el motor las libera al cerrarse).
 	 */
-	inline UStaticMesh* ShapeMesh(EShape Shape, const FLinearColor& Color, bool bSoft, float Alpha)
+	inline UStaticMesh* ShapeMesh(EShape Shape, const FLinearColor& Color, bool bSoft, float Alpha, bool bCloud = false)
 	{
-		static TMap<uint32, UStaticMesh*> Cache;
+		static TMap<uint64, UStaticMesh*> Cache;
 		const FColor Q = Color.ToFColor(false);
-		const uint32 Key = (static_cast<uint32>(Shape) << 28) ^ (bSoft ? 0x8000000u : 0u) ^ (static_cast<uint32>(Q.R) << 16) ^ (static_cast<uint32>(Q.G) << 8) ^ Q.B
-			^ (static_cast<uint32>(FMath::RoundToInt32(Alpha * 63.f)) << 22);
+		const uint64 Key = (static_cast<uint64>(Shape) << 40) ^ (bSoft ? (1ull << 36) : 0ull) ^ (bCloud ? (1ull << 37) : 0ull) ^ (static_cast<uint64>(Q.R) << 16)
+			^ (static_cast<uint64>(Q.G) << 8) ^ Q.B ^ (static_cast<uint64>(FMath::RoundToInt32(Alpha * 63.f)) << 24);
 		if (UStaticMesh** Found = Cache.Find(Key)) { return *Found; }
 		FTNProcMeshBuffers B;
 		BuildShape(B, Shape, Color);
-		UStaticMesh* Mesh = TNProcRuntimeMesh::MakeStaticMesh(GetTransientPackage(), B, MaterialFor(bSoft), false, 0.f, 1.f, bSoft ? Alpha : 0.f);
+		UStaticMesh* Mesh = TNProcRuntimeMesh::MakeStaticMesh(GetTransientPackage(), B, MaterialFor(bSoft, bCloud), false, 0.f, 1.f, bSoft ? Alpha : 0.f);
 		if (Mesh) { Mesh->AddToRoot(); }
 		Cache.Add(Key, Mesh);
 		return Mesh;
@@ -240,7 +267,7 @@ namespace TNAmbientFX
 		E.Rng ^= static_cast<uint32>(GetTypeHash(Origin)) | 1u;
 		E.Particles.SetNum(Desc.MaxParticles);
 		E.Xf.Init(FTransform(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector), Desc.MaxParticles);
-		E.ISM = MakeISM(Owner, ShapeMesh(Desc.Shape, Desc.Color, Desc.bSoft, Desc.Alpha), Desc.MaxParticles, false);
+		E.ISM = MakeISM(Owner, ShapeMesh(Desc.Shape, Desc.Color, Desc.bSoft, Desc.Alpha, Desc.bCloud), Desc.MaxParticles, false);
 		return FX.Emitters.Num() - 1;
 	}
 
@@ -300,7 +327,7 @@ namespace TNAmbientFX
 		FParticle& P = E.Particles[Free];
 		const float A = Rand01(E.Rng) * TNProcMap::TwoPi;
 		const float Rr = D.SpawnRadius * FMath::Sqrt(Rand01(E.Rng));
-		P.P = E.Origin + FVector(FMath::Cos(A) * Rr, FMath::Sin(A) * Rr, 0.f);
+		P.P = E.Origin + FVector(FMath::Cos(A) * Rr, FMath::Sin(A) * Rr, D.SpawnHeight * Rand01(E.Rng));
 		const FVector Dir = D.Direction.GetSafeNormal();
 		const FVector U = FVector::CrossProduct(Dir, FMath::Abs(Dir.Z) < 0.9f ? FVector::UpVector : FVector::ForwardVector).GetSafeNormal();
 		const FVector W = FVector::CrossProduct(Dir, U);
@@ -374,9 +401,14 @@ namespace TNAmbientFX
 				// Las gotas se estiran en la dirección en que vuelan.
 				Rot = FQuat::FindBetweenNormals(FVector::UpVector, P.V.GetSafeNormal());
 			}
-			else if (D.Shape == EShape::Flake)
+			else if (D.Shape == EShape::Flake || D.Shape == EShape::Leaf)
 			{
 				Rot = FQuat(FVector(1.f, 0.3f, 0.2f).GetSafeNormal(), FMath::DegreesToRadians(P.Spin + P.Age * 420.f));
+			}
+			else if (D.Shape == EShape::Streak && !P.V.IsNearlyZero())
+			{
+				// La estela, a lo largo de su vuelo.
+				Rot = FQuat::FindBetweenNormals(FVector::ForwardVector, P.V.GetSafeNormal());
 			}
 			E.Xf[i] = FTransform(Rot, P.P, FVector(Size, Size, D.Shape == EShape::Drop ? Size * 1.6f : Size));
 		}

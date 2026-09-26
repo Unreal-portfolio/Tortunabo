@@ -134,9 +134,12 @@ struct TORTUNABO_API FTNProcMapProfile
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peligros", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float Difficulty01 = 0.5f;
 
-	/** Tormenta que persigue al grupo por el camino (solo Coop). Velocidad en cm/s; 0 = sin tormenta. */
+	/**
+	 * Tormenta que persigue al grupo por el camino (solo Coop). Velocidad en cm/s; 0 = sin tormenta. En partida
+	 * nunca pasa de la velocidad de andar de la tortuga.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tormenta", meta = (ClampMin = "0.0"))
-	float StormSpeed = 380.f;
+	float StormSpeed = 180.f;
 
 	/** Segundos de gracia antes de que la tormenta empiece a avanzar. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tormenta", meta = (ClampMin = "0.0"))

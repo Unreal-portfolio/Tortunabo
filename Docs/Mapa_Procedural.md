@@ -71,7 +71,7 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 | `ATN_ProcWaterVolume`, `ATN_ProcWaterCurrent`, `ATN_ProcWhirlpool`, `ATN_ProcWaterPredator`, `ATN_ProcWaterBouncer` | Agua nadable y sus peligros: corrientes, remolinos, depredador (tiburón/morena) y criaturas con comportamiento de medusa distintas por bioma. |
 | `ATN_ProcEggNest` | Pilas de huevos de reaparición en los cruces entre módulos (densidad según dificultad). |
 | `ATN_ProcThrowWall`, `ATN_ProcSabotageGate`, `ATN_ProcSwitch` | Puzles del 2vs2: muro que hay que superar lanzando al compañero (o bajando la rampa con el interruptor) y compuertas de sabotaje para la otra pareja. |
-| `ATN_PathStorm` | Tormenta del Coop que avanza **por el camino** (progreso en cm), no en línea recta. |
+| `ATN_PathStorm` | Tormenta del Coop que avanza **por el camino** (progreso en cm), no en línea recta, y nunca más rápido que la tortuga andando. Frente con velo translúcido animado (`M_ProcStormVeil`), nubes que ruedan (`M_ProcFXCloud`) y lo que arrastra cada bioma (arena, hojas, brasas y ceniza, espuma, lluvia, polvo, humo y papeles), mezclado en degradado al cambiar de bioma; dentro, la niebla del nivel se cierra y la imagen se tiñe según el bioma del jugador (`TN_PathStormFX.h`). |
 | `ATN_ProcMapGameMode` / `ATN_ProcMapGameState` | Rondas, modos, reaparición en huevos, tormenta, espera a que todos tengan el mapa. |
 | `ATN_ProcModeSelector` | Interactuable del lobby para elegir modo y dificultad. |
 | `UTN_CarryComponent` | Coger y lanzar tortugas (issue #6, fase 2). |
@@ -289,7 +289,7 @@ los restaura).
 
 | Modo | Rejilla F/N/D | Cobertura | Cruces F/N/D | Ramas F/N/D | Carriles | Tormenta cm/s F/N/D (gracia s) |
 |---|---|---|---|---|---|---|
-| Coop | 3 / 6 / 8 | 0,78 | 1 / 2 / 4 | 6 / 12 / 16 | 0 | 300 / 360 / 410 (90 / 60 / 45) |
+| Coop | 3 / 6 / 8 | 0,78 | 1 / 2 / 4 | 6 / 12 / 16 | 0 | 160 / 180 / 200 (90 / 60 / 45), como mucho la velocidad de andar |
 | Carrera | 2 / 3 / 4 | 0,90 | 0 / 1 / 1 | 4 / 7 / 9 | 0 | — |
 | 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 2 / 3 / 4 | 1 / 2 / 3 | — |
 

@@ -171,6 +171,9 @@ private:
 	void FreezeWaitingPlayers();
 	void UnfreezeAllPlayers();
 	void StartStormIfNeeded();
+
+	/** Velocidad de andar (cm/s) de la tortuga más lenta en juego, o la del peón por defecto; 0 si no se sabe. */
+	float GetTurtleWalkSpeed() const;
 	void EndRound(const TArray<APlayerController*>& Winners, const FString& ResultText);
 	void OnRoundTimeLimit();
 	void StartNextRound();

@@ -357,6 +357,123 @@ def build_fx_soft_material():
     return save(material)
 
 
+def build_fx_cloud_material():
+    """Bocanadas de la tormenta (humo, polvo, espuma): como M_ProcFXSoft pero con el borde difuminado (opacidad por
+    1 - Fresnel), así una esfera de caras planas se ve como una nube redonda y blanda, no como un polígono."""
+    path = f"{MATERIALS}/M_ProcFXCloud"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcFXCloud", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -900, 0)
+    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    opacity = expr(unreal.MaterialExpressionScalarParameter, -900, 250)
+    opacity.set_editor_property("parameter_name", "Opacity")
+    opacity.set_editor_property("default_value", 0.6)
+    fresnel = expr(unreal.MaterialExpressionFresnel, -900, 400)
+    fresnel.set_editor_property("exponent", 1.6)
+    fresnel.set_editor_property("base_reflect_fraction", 0.0)
+    soft = expr(unreal.MaterialExpressionOneMinus, -700, 400)
+    mel.connect_material_expressions(fresnel, "", soft, "")
+    a = expr(unreal.MaterialExpressionMultiply, -600, 200)
+    mel.connect_material_expressions(vertex_color, "A", a, "A")
+    mel.connect_material_expressions(opacity, "", a, "B")
+    b = expr(unreal.MaterialExpressionMultiply, -450, 250)
+    mel.connect_material_expressions(a, "", b, "A")
+    mel.connect_material_expressions(soft, "", b, "B")
+    fade = expr(unreal.MaterialExpressionDepthFade, -300, 250)
+    fade.set_editor_property("fade_distance_default", 150.0)
+    mel.connect_material_expressions(b, "", fade, "Opacity")
+    mel.connect_material_property(fade, "", unreal.MaterialProperty.MP_OPACITY)
+    mel.recompile_material(material)
+    return save(material)
+
+
+def build_storm_veil_material():
+    """Velo del frente de la tormenta (ATN_PathStorm): translúcido sin iluminación, del color del vértice con brillo
+    y opacidad modulados por dos ruidos que se desplazan con el viento (turbulencia viva), opacidad del alfa del
+    vértice por Opacity y fundido donde toca el terreno."""
+    path = f"{MATERIALS}/M_ProcStormVeil"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcStormVeil", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    material.set_editor_property("two_sided", True)
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    world = expr(unreal.MaterialExpressionWorldPosition, -1500, 0)
+    time = expr(unreal.MaterialExpressionTime, -1500, 150)
+    wind = expr(unreal.MaterialExpressionConstant3Vector, -1500, 250)
+    wind.set_editor_property("constant", unreal.LinearColor(260.0, 60.0, -90.0, 0.0))
+    drift = expr(unreal.MaterialExpressionMultiply, -1300, 200)
+    mel.connect_material_expressions(time, "", drift, "A")
+    mel.connect_material_expressions(wind, "", drift, "B")
+    pos = expr(unreal.MaterialExpressionAdd, -1150, 100)
+    mel.connect_material_expressions(world, "", pos, "A")
+    mel.connect_material_expressions(drift, "", pos, "B")
+
+    def noise(scale, levels, y):
+        n = expr(unreal.MaterialExpressionNoise, -950, y)
+        n.set_editor_property("scale", scale)
+        n.set_editor_property("levels", levels)
+        n.set_editor_property("output_min", 0.0)
+        n.set_editor_property("output_max", 1.0)
+        n.set_editor_property("turbulence", True)
+        mel.connect_material_expressions(pos, "", n, "Position")
+        return n
+
+    bright = noise(0.0012, 3, 0)
+    holes = noise(0.0025, 2, 250)
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -950, 500)
+    shade = expr(unreal.MaterialExpressionLinearInterpolate, -700, 0)
+    lo = expr(unreal.MaterialExpressionConstant, -850, -80)
+    lo.set_editor_property("r", 0.55)
+    hi = expr(unreal.MaterialExpressionConstant, -850, -30)
+    hi.set_editor_property("r", 1.3)
+    mel.connect_material_expressions(lo, "", shade, "A")
+    mel.connect_material_expressions(hi, "", shade, "B")
+    mel.connect_material_expressions(bright, "", shade, "Alpha")
+    emissive = expr(unreal.MaterialExpressionMultiply, -500, 100)
+    mel.connect_material_expressions(vertex_color, "", emissive, "A")
+    mel.connect_material_expressions(shade, "", emissive, "B")
+    mel.connect_material_property(emissive, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+    gaps = expr(unreal.MaterialExpressionLinearInterpolate, -700, 300)
+    glo = expr(unreal.MaterialExpressionConstant, -850, 280)
+    glo.set_editor_property("r", 0.3)
+    ghi = expr(unreal.MaterialExpressionConstant, -850, 330)
+    ghi.set_editor_property("r", 1.0)
+    mel.connect_material_expressions(glo, "", gaps, "A")
+    mel.connect_material_expressions(ghi, "", gaps, "B")
+    mel.connect_material_expressions(holes, "", gaps, "Alpha")
+    opacity = expr(unreal.MaterialExpressionScalarParameter, -700, 600)
+    opacity.set_editor_property("parameter_name", "Opacity")
+    opacity.set_editor_property("default_value", 0.85)
+    a = expr(unreal.MaterialExpressionMultiply, -500, 400)
+    mel.connect_material_expressions(vertex_color, "A", a, "A")
+    mel.connect_material_expressions(gaps, "", a, "B")
+    b = expr(unreal.MaterialExpressionMultiply, -350, 450)
+    mel.connect_material_expressions(a, "", b, "A")
+    mel.connect_material_expressions(opacity, "", b, "B")
+    fade = expr(unreal.MaterialExpressionDepthFade, -200, 450)
+    fade.set_editor_property("fade_distance_default", 400.0)
+    mel.connect_material_expressions(b, "", fade, "Opacity")
+    mel.connect_material_property(fade, "", unreal.MaterialProperty.MP_OPACITY)
+    mel.recompile_material(material)
+    return save(material)
+
+
 def build_bird_material():
     """Pájaros de las bandadas (TN_ProcMapAmbientFX.h): color de vértice y aleteo en vertical con el alfa
     del vértice como peso (0 en el cuerpo, 1 en las puntas de las alas), desfasado por instancia."""
@@ -559,6 +676,8 @@ def build_materials():
         "terrain": build_terrain_material(),
         "foliage": build_foliage_material(),
         "fx_soft": build_fx_soft_material(),
+        "fx_cloud": build_fx_cloud_material(),
+        "storm_veil": build_storm_veil_material(),
         "cascade": build_cascade_material(),
         "glow": build_glow_material(),
         "bird": build_bird_material(),

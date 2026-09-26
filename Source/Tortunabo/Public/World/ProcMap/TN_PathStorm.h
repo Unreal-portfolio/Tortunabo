@@ -6,6 +6,8 @@
 
 class UStaticMeshComponent;
 class UPostProcessComponent;
+class UProceduralMeshComponent;
+class UExponentialHeightFogComponent;
 class ATN_ProcMapGenerator;
 class APlayerController;
 
@@ -17,7 +19,12 @@ class APlayerController;
  * puentes y cuevas) empieza la cuenta atrás de muerte.
  *
  * Replicada: el servidor avanza FrontProgress; los clientes lo extrapolan con la
- * velocidad para mover el muro visual y activar el post-proceso local.
+ * velocidad para mover el frente visual y activar el efecto local de dentro.
+ *
+ * Aspecto (TN_PathStormFX.h, solo en máquinas con pantalla): velo translúcido por capas en el
+ * frente y lo que arrastra según el bioma (arena, hojas, brasas y ceniza, espuma, lluvia, polvo,
+ * humo), mezclado con pesos suavizados para que al cambiar de bioma cambie en degradado. Dentro, la
+ * niebla del nivel se cierra y la imagen se tiñe según el bioma del jugador, con transición.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_PathStorm : public AActor
@@ -28,6 +35,7 @@ public:
 	ATN_PathStorm();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -50,9 +58,13 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Storm")
 	TObjectPtr<USceneComponent> Root;
 
-	/** Muro visual del frente (asignar material de tormenta en el BP). */
+	/** Muro de cubo de antes: ya no se ve (el frente es el velo y las partículas). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Storm")
 	TObjectPtr<UStaticMeshComponent> FrontWall;
+
+	/** Velo del frente: láminas translúcidas del color del bioma. */
+	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> Veil;
 
 	/** Post-proceso local de visión degradada (configurar en el BP). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Storm")
@@ -83,5 +95,41 @@ private:
 	TMap<TWeakObjectPtr<APlayerController>, float> InsideTime;
 
 	void ServerCheckPlayers(float Interval);
-	void UpdateVisual();
+	void UpdateVisual(float DeltaTime);
+
+	// ── Efectos (solo con pantalla) ─────────────────────────────────────────
+	static constexpr int32 MaxBiomes = 8;
+	void SetupFX();
+	void TickFX(float DeltaTime, bool bFrontVisible, bool bLocalInside, const FVector& FrontLoc, const FVector& Dir);
+	void ApplyInsideLook();
+	void RestoreFog();
+
+	bool bFXReady = false;
+	/** Pesos de bioma suavizados en el frente y donde está la cámara. */
+	float FrontW[MaxBiomes] = {};
+	float ViewW[MaxBiomes] = {};
+	/** 0..1: el frente a la vista y el jugador local dentro, con transición. */
+	float FrontBlend = 0.f;
+	float InsideBlend = 0.f;
+	float FXTime = 0.f;
+	float VeilRefresh = 0.f;
+	FLinearColor VeilShown = FLinearColor::Black;
+	float VeilShownAlpha = -1.f;
+	TArray<FVector> VeilVerts;
+	TArray<int32> VeilTris;
+	TArray<FVector> VeilNormals;
+	TArray<FVector2D> VeilUVs;
+	TArray<FLinearColor> VeilBase;
+	TArray<int32> FrontEmitters;
+	TArray<int32> ViewEmitters;
+
+	/** Niebla del nivel (se cierra dentro y vuelve a su estado al salir). */
+	TWeakObjectPtr<UExponentialHeightFogComponent> Fog;
+	bool bFogCached = false;
+	bool bFogApplied = false;
+	float FogDensity0 = 0.f;
+	float FogFalloff0 = 0.f;
+	float FogStart0 = 0.f;
+	float FogOpacity0 = 1.f;
+	FLinearColor FogColor0 = FLinearColor::White;
 };

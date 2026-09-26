@@ -93,7 +93,8 @@ FTNProcMapProfile TN_MakeDefaultProcProfile(ETNProcGameMode Mode, ETNProcDifficu
 			P.NumCrossings = Pick(1, 2, 4);
 			P.NumBranches = Pick(6, 12, 16);
 			P.NumLanes = 0;
-			P.StormSpeed = Pick(300.f, 360.f, 410.f);
+			// La tortuga anda a 200 cm/s: 80, 90 y 100 % de eso (y la partida la limita a su velocidad de andar).
+			P.StormSpeed = Pick(160.f, 180.f, 200.f);
 			P.StormGraceSeconds = Pick(90.f, 60.f, 45.f);
 			break;
 	}

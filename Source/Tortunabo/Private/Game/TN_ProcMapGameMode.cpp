@@ -8,6 +8,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_ShellComponent.h"
+#include "Player/TN_StaminaComponent.h"
 #include "World/TN_RescuePickup.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
@@ -476,8 +477,36 @@ void ATN_ProcMapGameMode::StartStormIfNeeded()
 	}
 	if (Storm)
 	{
-		Storm->StartStorm(Generator, Profile.StormSpeed, Profile.StormGraceSeconds);
+		// Nunca más rápida que una tortuga andando: si no, no hay forma de escapar de ella.
+		const float WalkSpeed = GetTurtleWalkSpeed();
+		const float Speed = WalkSpeed > 0.f ? FMath::Min(Profile.StormSpeed, WalkSpeed) : Profile.StormSpeed;
+		Storm->StartStorm(Generator, Speed, Profile.StormGraceSeconds);
 	}
+}
+
+float ATN_ProcMapGameMode::GetTurtleWalkSpeed() const
+{
+	// La más lenta de las tortugas en juego; si aún no hay ninguna, la del peón por defecto.
+	float Walk = TNumericLimits<float>::Max();
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr;
+		if (const UTN_StaminaComponent* Stamina = Pawn ? Pawn->FindComponentByClass<UTN_StaminaComponent>() : nullptr)
+		{
+			Walk = FMath::Min(Walk, Stamina->GetWalkSpeed());
+		}
+	}
+	if (Walk == TNumericLimits<float>::Max() && DefaultPawnClass)
+	{
+		if (const ATortugaCharacter* Cdo = Cast<ATortugaCharacter>(DefaultPawnClass->GetDefaultObject()))
+		{
+			if (const UTN_StaminaComponent* Stamina = Cdo->FindComponentByClass<UTN_StaminaComponent>())
+			{
+				Walk = Stamina->GetWalkSpeed();
+			}
+		}
+	}
+	return Walk == TNumericLimits<float>::Max() ? 0.f : Walk;
 }
 
 void ATN_ProcMapGameMode::AssignTwoVsTwoTeams()
