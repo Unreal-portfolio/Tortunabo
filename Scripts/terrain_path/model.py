@@ -94,6 +94,7 @@ class PathModel:
         self.cliff_band = (0.12, 0.3)
         self.wall_color_mix = style.wall_color_mix
         self.wall_strata = 0.12
+        self.wall_noise = 0.45         # rugosidad 3D de las paredes (voladizos y huecos)
 
     # -- muestras de todos los caminos -------------------------------------------------------
     def _build_samples(self) -> None:
@@ -333,6 +334,9 @@ class PathModel:
         # Remate de la pared de TODOS los caminos cercanos (maximo continuo, sin saltos en las
         # bisectrices): pie + algo de roca sobre su suelo y caida variable hacia el relieve de fuera.
         outer = np.maximum(natural, self._rim_envelope(X, Y, rim_top, n_top))
+        # Sin aristas ni pinchos: el maximo de dos laderas deja una cresta en cuchilla donde se
+        # cruzan; se redondea (el pie vertical sale de la seccion, no de aqui).
+        outer = ndimage.gaussian_filter(outer, 1.2, mode="nearest")
         height, H, crest_e = field.section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, self.style, guard, n_wall,
                                           H_in=outer)
         zf2, w2 = self.S["z"][i2], self.S["w"][i2]
@@ -361,6 +365,10 @@ class PathModel:
             self.region = region
         # Voladizos y huecos suaves en todas las paredes (antes solo en el acantilado).
         wall_band = (1.0 - smooth(0.0, 3.0, np.abs(e - 0.5 * crest_e))) * (0.5 + 0.5 * bw[..., 0])
+        # Sin huecos donde la pared es fina (dos caminos a menos de 16 m, uno junto al otro) ni junto
+        # a los puentes: ahi el ruido perforaba la pared y dejaba dientes.
+        thick = smooth(10.0, 16.0, np.where(np.isfinite(gap), e + e2, 99.0))
+        wall_band = wall_band * thick * (1.0 - self.decks.near(X, Y, 10.0))
         path = 1.0 - smooth(-1.0, 0.5, e)
         weights = {key: bw[..., b] for b, key in enumerate(ZONE_KEYS)}
         weights["canyon"] = np.zeros(shape)
@@ -381,7 +389,7 @@ class PathModel:
         """Maximo, entre todos los caminos, de su remate: su suelo + 4-6 m hasta rim_top m pasado el
         pie y, despues, caida de 25-60 grados. Continuo (maximo de funciones continuas)."""
         pts = np.stack([np.ravel(X), np.ravel(Y)], axis=1)
-        rim_h = (field.FOOT_M + 0.5 + 2.0 * self.n_rim.unit(X, Y)).ravel()
+        rim_h = (field.FOOT_M + 1.0 + 2.0 * self.n_rim.unit(X, Y)).ravel()
         lo_a, hi_a = field.RIM_FALL_DEG
         tan = np.tan(np.radians(lo_a + (hi_a - lo_a) * (0.5 + 0.5 * np.ravel(n_top))))
         reach = 1.5 + np.ravel(rim_top)
@@ -389,7 +397,9 @@ class PathModel:
         for tree, idx in self.line_trees.values():
             d, k = tree.query(pts)
             c = d - self.S["w"][idx[k]]
-            out = np.maximum(out, self.S["z"][idx[k]] + rim_h - np.maximum(c - reach, 0.0) * tan)
+            # Lo alto no es un rellano: baja ya un 30 % desde el borde y, pasado reach, cae entero.
+            drop = 0.3 * np.clip(c, 0.0, reach) + np.maximum(c - reach, 0.0) * tan
+            out = np.maximum(out, self.S["z"][idx[k]] + rim_h - drop)
         return out.reshape(X.shape)
 
     def _hills(self, X, Y):
@@ -521,7 +531,7 @@ class PathModel:
             # Solo por encima del pie de la pared: el pie sigue liso y vertical (cierra el paso).
             above = smooth(field.FOOT_M, field.FOOT_M + 1.5, Z3 - f.floor[..., None])
             below_top = smooth(1.0, 3.0, f.height[..., None] - Z3)
-            D = D + 0.7 * band * above * below_top * self.n_wall3d(X3, Y3, Z3)
+            D = D + self.wall_noise * band * above * below_top * self.n_wall3d(X3, Y3, Z3)
         if self.tunnel_tree is not None and np.any(f.tunnel > 0.0):
             carve, v = self._carve(X, Y, Z3)
             # Paredes y techo rugosos; el suelo del tunel, llano.

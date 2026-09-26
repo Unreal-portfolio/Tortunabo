@@ -23,7 +23,8 @@ from .layout import MAP_MAX_M, MAP_MIN_M, WATER_M
 
 FLOOR_M = WATER_M - 1.5          # fondo del cauce (el agua del nivel queda 1,5 m por encima)
 BANK_M = WATER_M + 0.4           # orillas de arena junto a las paredes
-WALL_DEG = 74.0                  # paredes del barranco
+WALL_DEG = 62.0                  # paredes del barranco (media; el ruido las abre o las cierra)
+EDGE_KEEP_M = 45.0               # el barranco se cierra antes de llegar a esta distancia del borde
 KILL_TOP_M = WATER_M + 2.0       # cara de arriba de las cajas de muerte
 END_TAPER_M = 18.0               # tramo final en el que el fondo sube hasta cerrarse (cuna)
 MIN_SIDE_M = 26.0                # cada lado del cruce mide al menos esto (si no, se descarta)
@@ -60,7 +61,8 @@ def _walk(rng: np.random.Generator, start: np.ndarray, heading: float, blocked, 
     for step in range(int(max_len)):
         h += math.radians(2.2) * math.sin(2 * math.pi * step / wave + phase) + rng.normal(0.0, math.radians(0.8))
         p = p + np.array([math.cos(h), math.sin(h)])
-        if not (MAP_MIN_M - 5.0 <= p[0] <= MAP_MAX_M + 5.0 and MAP_MIN_M - 5.0 <= p[1] <= MAP_MAX_M + 5.0):
+        # Lejos del borde: desde dentro no se ve el final del mapa por el cauce.
+        if min(p[0] - MAP_MIN_M, MAP_MAX_M - p[0], p[1] - MAP_MIN_M, MAP_MAX_M - p[1]) < EDGE_KEEP_M:
             break
         if blocked(p, step, h):
             break
@@ -80,7 +82,7 @@ def plan_canyon(model, rng: np.random.Generator) -> Canyon | None:
     lo_w, hi_w = style.canyon_width_m
     # Arco en el principal de cada union o cruce que esta sobre el (sus cotas no se pueden mover).
     d_j, k_j = cKDTree(main.points).query(np.array(joins))
-    join_arcs = [float(main.arc[k]) for d, k in zip(d_j, k_j) if d < 3.0]
+    join_arcs = [float(main.arc[k]) for d, k in zip(d_j, k_j) if d < 8.0]
     for _ in range(300):
         s = float(rng.uniform(0.04, 0.85) * main.length)
         half0 = 0.5 * float(rng.uniform(lo_w, hi_w))
@@ -104,14 +106,16 @@ def plan_canyon(model, rng: np.random.Generator) -> Canyon | None:
 
         crossed: dict[int, float] = {0: s}
 
-        def blocked(p, step, heading, half=half0):
+        def blocked(p, step, heading, half=half0, flat=flat):
             """True si el barranco tiene que pararse en p. Puede cruzar otro camino (con su propio
             puente) si va alto, de frente y lejos de uniones, tuneles y otros puentes."""
             d, j = tree_all.query(p)
             if d - S["w"][j] >= half + 8.0:
                 return False
             lid, s_l = int(S["line"][j]), float(S["s"][j])
-            if lid in crossed and abs(s_l - crossed[lid]) < 2.0 * half + 30.0:
+            # Solo junto al propio cruce (el tramo del puente); el mismo camino mas alla, no.
+            window = flat if lid == 0 else 1.2 * half + 10.0
+            if lid in crossed and abs(s_l - crossed[lid]) < window:
                 return False
             ok = _can_cross(model, lid, s_l, half, heading)
             if ok:
@@ -193,7 +197,7 @@ class CanyonField:
         path_mask (0..1) protege el camino: el principal pasa por encima en el puente."""
         q, half, depth = self.query(X, Y)
         half = half * (1.0 + 0.12 * self.noise(X, Y))
-        tan = math.tan(math.radians(WALL_DEG))
+        tan = np.tan(np.radians(WALL_DEG + 12.0 * self.noise(X * 0.7, Y * 0.7)))
         bank_w = 2.0 + 1.0 * self.noise(Y, X)
         bed = FLOOR_M + (BANK_M - FLOOR_M) * smooth(half - bank_w - 1.5, half - bank_w, q)
         profile = bed + np.maximum(q - half, 0.0) * tan

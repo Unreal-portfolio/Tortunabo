@@ -29,7 +29,7 @@ def rim_arrays(style) -> tuple[np.ndarray, np.ndarray]:
 FOOT_M = 3.5                # pie de la pared casi vertical: lo justo para cerrar el paso
 
 
-RIM_FALL_DEG = (20.0, 65.0)  # caida de lo alto de la pared al relieve de fuera (varia): model.rim_envelope
+RIM_FALL_DEG = (18.0, 40.0)  # caida de lo alto de la pared al relieve de fuera (varia): model.rim_envelope
 
 
 def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None, n_wall=None, H_in=None):
@@ -55,12 +55,12 @@ def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None, n_wa
     rc = np.minimum(1.5, 0.2 * w)
     t = e + rc
     fillet = rc - np.sqrt(np.maximum(rc * rc - np.clip(t, 0.0, rc) ** 2, 0.0))
-    # Pie: pared casi vertical hasta FOOT_M sobre el suelo (no se puede subir). Encima, la
-    # pendiente cambia a lo largo de la pared (de 45 a 80 grados) y tiene repisas: irregular.
+    # Pie: pared casi vertical hasta FOOT_M sobre el suelo (no se puede subir). Encima, ladera de
+    # 32 a 57 grados que cambia a lo largo de la pared (antes 45-80: demasiado vertical).
     n = np.zeros_like(e) if n_wall is None else n_wall
     foot = np.minimum(FOOT_M, np.maximum(Hc - zf - rc, 0.0))
     t_foot = rc + foot / np.maximum(tan, 1e-3)
-    tan_up = np.tan(np.radians(45.0 + 35.0 * (0.5 + 0.5 * n)))
+    tan_up = np.tan(np.radians(32.0 + 25.0 * (0.5 + 0.5 * n)))
     upper = rc + foot + np.maximum(t - t_foot, 0.0) * tan_up
     rise = np.where(t <= 0.0, 0.0, np.where(t <= rc, fillet,
                     np.where(t <= t_foot, rc + (t - rc) * tan, upper)))
