@@ -29,6 +29,8 @@ public:
 	ATN_ScorePickup();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
@@ -38,6 +40,18 @@ protected:
 	/** Radio de recogida (cm). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ScorePickup")
 	TObjectPtr<USphereComponent> CollectSphere;
+
+	/**
+	 * Concha de vieira que gira como una moneda de plataformas clásico, sube y baja y brilla (M_ProcGlow), con
+	 * destellos alrededor. Se usa mientras PickupMesh no tenga una malla propia (la de ayuda del motor cuenta como
+	 * vacía); si arte le pone una, se ve esa y la concha no.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ScorePickup")
+	TObjectPtr<UStaticMeshComponent> ShellMesh;
+
+	/** Vueltas por segundo del giro de la concha. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ScorePickup", meta = (ClampMin = "0.0"))
+	float SpinTurnsPerSecond = 0.45f;
 
 	/** Puntos que se suman al RaceScore del jugador que lo recoge. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ScorePickup", meta = (ClampMin = "1"))
@@ -61,6 +75,9 @@ protected:
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_bActive)
 	bool bActive = true;
+
+	/** Reloj del giro y del balanceo (cada concha desfasada). */
+	float SpinTime = 0.f;
 
 	UFUNCTION()
 	void OnRep_bActive();
