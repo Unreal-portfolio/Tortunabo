@@ -17,6 +17,8 @@
 #include "TimerManager.h"
 #include "Lobby/TN_ChangingBooth.h"
 #include "Lobby/TN_GeneralBriefing.h"
+#include "Lobby/TN_LobbyReadyZone.h"
+#include "Lobby/TN_SandCastleLobby.h"
 #include "Lobby/TN_ShopKeeper.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -566,6 +568,34 @@ void ATN_HQGameMode::SpawnLobbyShops()
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// El lobby como castillo de arena (P4): solo sobre la maqueta de LVL_Lobby (vallas, torres o paredes «Extrude»
+	// de la zona de salida) y si no se ha apagado con TN.Lobby.Castle 0. Se coloca en el origen, a ras del suelo.
+	{
+		bool bHasCastle = false;
+		bool bLooksLikeMaquette = false;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const AActor* Actor = *It;
+			if (!Actor) { continue; }
+			bHasCastle |= Actor->IsA<ATN_SandCastleLobby>();
+			const FString ClassName = Actor->GetClass()->GetName();
+			bLooksLikeMaquette |= Actor->IsA<ATN_LobbyReadyZone>() || ClassName.Contains(TEXT("BP_Fence")) || ClassName.Contains(TEXT("BP_Tower"));
+		}
+		if (!bHasCastle && bLooksLikeMaquette && ATN_SandCastleLobby::IsEnabled())
+		{
+			FCollisionQueryParams Query(SCENE_QUERY_STAT(TN_CastleGround), false);
+			FHitResult Hit;
+			double GroundZ = 0.0;
+			if (World->LineTraceSingleByChannel(Hit, FVector(0.0, 0.0, 2000.0), FVector(0.0, 0.0, -3000.0), ECC_WorldStatic, Query))
+			{
+				GroundZ = Hit.ImpactPoint.Z;
+			}
+			World->SpawnActor<ATN_SandCastleLobby>(ATN_SandCastleLobby::StaticClass(), FVector(0.0, 0.0, GroundZ), FRotator::ZeroRotator, Params);
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Castillo de arena colocado (suelo a %.0f)."), GroundZ);
+		}
+	}
+
 	// Suelo bajo el ancla: traza hacia abajo sin las piezas de la maqueta; si no hay, el fondo de su caja.
 	auto GroundOf = [World, &BlockoutKeepers, &BlockoutBottles, &BlockoutDoors, BlockoutGeneral](const AActor* Actor) -> FVector
 	{
