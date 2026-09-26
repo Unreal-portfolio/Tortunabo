@@ -330,6 +330,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terreno", meta = (ClampMin = "100.0", ClampMax = "800.0"))
 	float VertexSpacing = 150.f;
 
+	/**
+	 * Precisión del detalle fino del terreno (cm): los cuadrados en los que la malla de VertexSpacing se aparta de la
+	 * forma real (bordes de taludes, crestas, bocas de cueva) se parten hasta esta separación (se redondea a
+	 * VertexSpacing / N, N de 1 a 3). Igual o mayor que VertexSpacing = sin detalle.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terreno", meta = (ClampMin = "50.0", ClampMax = "800.0"))
+	float DetailSpacing = 50.f;
+
+	/**
+	 * Error (cm) de la malla gruesa a partir del cual se añade detalle cerca de los caminos (lejos, el triple). Con 20
+	 * la malla crece ~1,5 veces; con 10, ~2 veces.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terreno", meta = (ClampMin = "10.0", ClampMax = "500.0"))
+	float DetailError = 20.f;
+
 	/** Cuadrados por lado de cada tile de terreno. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Terreno", meta = (ClampMin = "8", ClampMax = "128"))
 	int32 TileQuads = 48;

@@ -185,7 +185,7 @@ namespace TNProcMap
 			const double NLarge = Fbm2(Seed + 3u, P.X / 12000.0, P.Y / 12000.0, 3);
 			const double NMed = Fbm2(Seed + 4u, P.X / 4000.0, P.Y / 4000.0, 2);
 			const double NRidge = Ridged2(Seed + 5u, P.X / 5000.0, P.Y / 5000.0, 3);
-			return RawLand(P, Bt, NLarge, LerpD(NMed, NRidge * 2.0 - 1.0, Bt.Ridge), L->SampleCoarse(L->LevelField, P));
+			return RawLand(P, Bt, NLarge, LerpD(NMed, NRidge * 2.0 - 1.0, Bt.Ridge), L->SampleCoarse(L->LevelField, P), CorridorDistance(P));
 		}
 
 		/** Distancia aproximada (cm) de un punto al borde del cauce más cercano (campo grueso). */
@@ -226,6 +226,95 @@ namespace TNProcMap
 			return Evaluate(P, PathDist[Idx], PathSeg[Idx], PathT[Idx], GuardZ[Idx], OtherEff[Idx], DeckTop[Idx], OutMask);
 		}
 
+		/**
+		 * Altura en un punto cualquiera P, dentro de las celdas de los vértices Src del mallado (índices iy * NX + ix):
+		 * el campo del camino se recalcula en P con los tramos de esos vértices (el ganador, el de su guarda, el del
+		 * cauce vecino y sus contiguos), con las mismas cuentas que el mallado. Para el detalle fino del terreno.
+		 */
+		double HeightAtPoint(const FVector2D& P, const int32* Src, int32 NumSrc, uint8& OutMask) const
+		{
+			constexpr int32 MaxCand = 192;
+			int32 Cand[MaxCand];
+			int32 NumCand = 0;
+			auto Add = [&](int32 i)
+			{
+				if (i == INDEX_NONE || NumCand >= MaxCand) { return; }
+				for (int32 c = 0; c < NumCand; ++c) { if (Cand[c] == i) { return; } }
+				Cand[NumCand++] = i;
+			};
+			// Un tramo y sus contiguos a lo largo de su cauce (Reach a cada lado).
+			auto AddChain = [&](int32 i, int32 Reach)
+			{
+				if (i == INDEX_NONE) { return; }
+				int32 k = i;
+				for (int32 s = 0; s < Reach && k > 0 && NextOf[k - 1] == k; ++s) { --k; }
+				for (int32 s = 0; s < 2 * Reach + 1 && k != INDEX_NONE; ++s) { Add(k); k = NextOf[k]; }
+			};
+			// Todos los tramos entre dos de un mismo cauce que estén cerca en él (horquillas: el ganador salta).
+			auto AddRange = [&](int32 a, int32 b)
+			{
+				if (a == INDEX_NONE || b == INDEX_NONE || SamplePoly[a] != SamplePoly[b] || FMath::Abs(a - b) > 40) { return; }
+				for (int32 k = FMath::Min(a, b) + 1; k < FMath::Max(a, b); ++k) { Add(k); }
+			};
+			bool bDeck = false;
+			for (int32 s = 0; s < NumSrc; ++s)
+			{
+				const int32 V = Src[s];
+				AddChain(PathSeg[V], 3);
+				AddChain(GuardSeg[V], 3);
+				AddChain(OtherSeg[V], 2);
+				bDeck |= DeckTop[V] > -1e8f;
+				for (int32 t = 0; t < s; ++t)
+				{
+					AddRange(PathSeg[Src[t]], PathSeg[V]);
+					AddRange(GuardSeg[Src[t]], GuardSeg[V]);
+				}
+			}
+			// En el orden del mallado (índice de tramo creciente): los empates se resuelven igual.
+			for (int32 a = 1; a < NumCand; ++a)
+			{
+				const int32 V = Cand[a];
+				int32 b = a - 1;
+				while (b >= 0 && Cand[b] > V) { Cand[b + 1] = Cand[b]; --b; }
+				Cand[b + 1] = V;
+			}
+			const float Deck = bDeck ? DeckTopAt(P) : -1e9f;
+			float Score = 1e18f;
+			float Dist = 1e9f;
+			float TAt = 0.0f;
+			int32 Seg = INDEX_NONE;
+			float Guard = -1e9f;
+			for (int32 c = 0; c < NumCand; ++c)
+			{
+				const int32 i = Cand[c];
+				if (!SegValid(i)) { continue; }
+				double T = 0.0;
+				double D = 0.0;
+				const bool bShore = IsShoreSeg(i);
+				if (!SegDistance(bShore, Samples[i].P, Samples[NextOf[i]].P, P, D, T)) { continue; }
+				const double Eff = D - SegHalfWidth(i, T);
+				if (D <= SegReach[i] && Eff < Score)
+				{
+					Score = static_cast<float>(Eff);
+					Dist = static_cast<float>(D);
+					Seg = i;
+					TAt = static_cast<float>(T);
+				}
+				if (Deck < -1e8f) { Guard = FMath::Max(Guard, SegGuardAt(i, bShore, P, T, Eff)); }
+			}
+			float Other = 1e9f;
+			if (Seg != INDEX_NONE)
+			{
+				for (int32 c = 0; c < NumCand; ++c)
+				{
+					const int32 i = Cand[c];
+					if (i == Seg || !SegValid(i)) { continue; }
+					Other = FMath::Min(Other, static_cast<float>(OtherEffAt(i, P, Seg, TAt)));
+				}
+			}
+			return Evaluate(P, Dist, Seg, TAt, Guard, Other, Deck, OutMask);
+		}
+
 	private:
 		const FLayout* L = nullptr;
 		uint32 Seed = 0;
@@ -257,6 +346,12 @@ namespace TNProcMap
 		TArray<float> GuardZ;
 		/** Cota del tablero de un puente colosal sobre cada vértice de su huella (-1e9 fuera). */
 		TArray<float> DeckTop;
+		/** Tramo que da GuardZ y tramo del cauce vecino de OtherEff en cada vértice (para HeightAtPoint). */
+		TArray<int32> GuardSeg;
+		TArray<int32> OtherSeg;
+		/** Por tramo (índice de su primera muestra): alcance de su cauce y altura de su guarda. */
+		TArray<float> SegReach;
+		TArray<float> SegGuardH;
 		static constexpr double GuardBandMin = 300.0;
 		static constexpr double GuardBandMax = 3500.0;
 		/** Pendiente (tan) de la guarda: sube en rampa de 62° (infranqueable) en vez de en escalón. */
@@ -392,25 +487,27 @@ namespace TNProcMap
 					}
 				}
 			}
-			for (int32 i = 0; i < Samples.Num(); ++i)
+			const int32 NumS = Samples.Num();
+			SegReach.Init(0.0f, NumS);
+			SegGuardH.Init(0.0f, NumS);
+			GuardSeg.Init(INDEX_NONE, N);
+			for (int32 i = 0; i < NumS; ++i)
 			{
+				if (!SegValid(i)) { continue; }
 				const int32 j = NextOf[i];
-				if (j == INDEX_NONE || !Carves[i] || !Carves[j]) { continue; }
 				const FVector2D A = Samples[i].P;
 				const FVector2D B = Samples[j].P;
 				// Guarda: pared mínima alrededor de este suelo aunque el vértice "pertenezca" a otro cauce.
 				const FBiomeTerrain& BtA = Biomes[BiomeIndex(Samples[i].Biome)];
 				const FBiomeTerrain& BtB = Biomes[BiomeIndex(Samples[j].Biome)];
 				const bool bWetSeg = FMath::Max(SampleWet[i], SampleWet[j]) > 0.5f;
-				const double GuardH = bWetSeg ? 0.0 : FMath::Min(BtA.BankMin, BtB.BankMin);
-				// Playa final (recta hacia +Y que se abre en campana): franja |x| <= Hw(y), cada vértice del
-				// tramo que contiene su y. Con cápsulas, las muestras anchas del fondo "ganarían" la playa
-				// entera y le pondrían su cota, ya bajo el agua.
-				const bool bShoreSeg = (Samples[i].Flags & Samples[j].Flags & PathFlags::Shore) != 0 && B.Y > A.Y;
+				SegGuardH[i] = static_cast<float>(bWetSeg ? 0.0 : FMath::Min(BtA.BankMin, BtB.BankMin));
+				const bool bShoreSeg = IsShoreSeg(i);
 				// Alcance: talud y subida, o la ladera completa si el cauce va por encima del paisaje.
 				const double Raised = FMath::Max(Samples[i].Z, Samples[j].Z) - L->SampleCoarse(L->LevelField, A);
 				const double FlankReach = FMath::Clamp((Raised + 1800.0) / FlankSlope + 2000.0 + RimPlateau, 9000.0, 19000.0);
-				const double Reach = FMath::Max(Samples[i].Width, Samples[j].Width) * 0.5 + FlankReach;
+				SegReach[i] = static_cast<float>(FMath::Max(Samples[i].Width, Samples[j].Width) * 0.5 + FlankReach);
+				const double Reach = SegReach[i];
 				const int32 X0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.X, B.X) - Reach - Origin.X) / Spacing));
 				const int32 X1 = FMath::Min(NX - 1, FMath::CeilToInt((FMath::Max(A.X, B.X) + Reach - Origin.X) / Spacing));
 				const int32 Y0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.Y, B.Y) - Reach - Origin.Y) / Spacing));
@@ -422,41 +519,91 @@ namespace TNProcMap
 						const FVector2D P = Origin + FVector2D(x * Spacing, y * Spacing);
 						double T = 0.0;
 						double D = 0.0;
-						if (bShoreSeg)
-						{
-							if (P.Y < A.Y || P.Y >= B.Y) { continue; }
-							T = (P.Y - A.Y) / (B.Y - A.Y);
-							D = FMath::Abs(P.X - LerpD(A.X, B.X, T));
-						}
-						else
-						{
-							D = DistPointSegment(P, A, B, T);
-						}
+						if (!SegDistance(bShoreSeg, A, B, P, D, T)) { continue; }
 						const int32 Idx = y * NX + x;
 						// Distancia "efectiva": al borde del camino, para que el más ancho gane.
-						const double Hw = LerpD(Samples[i].Width, Samples[j].Width, T) * 0.5;
-						const double Eff = D - Hw;
-						const double Score = Eff;
-						if (D <= Reach && Score < PathScore[Idx])
+						const double Eff = D - SegHalfWidth(i, T);
+						if (D <= Reach && Eff < PathScore[Idx])
 						{
-							PathScore[Idx] = static_cast<float>(Score);
+							PathScore[Idx] = static_cast<float>(Eff);
 							PathDist[Idx] = static_cast<float>(D);
 							PathSeg[Idx] = i;
 							PathT[Idx] = static_cast<float>(T);
 						}
-						if (GuardH > 0.0 && Eff >= GuardBandMin && Eff <= GuardBandMax && DeckTop[Idx] < -1e8f)
+						if (DeckTop[Idx] < -1e8f)
 						{
-							// Rampa desde el borde de la franja: pared de 62°, no un escalón a plomo. En la playa
-							// final desaparece al llegar al agua, como los taludes (allí los brazos son el acantilado).
-							const double Fade = bShoreSeg ? 1.0 - SmoothStep(ShoreWaterY - 800.0, ShoreWaterY + 200.0, P.Y) : 1.0;
-							const double Ramp = Saturate((Eff - GuardBandMin) * GuardSlope / GuardH);
-							const float G = static_cast<float>(LerpD(SampleFloor[i], SampleFloor[j], T) + GuardH * Ramp * Fade);
-							GuardZ[Idx] = FMath::Max(GuardZ[Idx], G);
+							const float G = SegGuardAt(i, bShoreSeg, P, T, Eff);
+							if (G > GuardZ[Idx]) { GuardZ[Idx] = G; GuardSeg[Idx] = i; }
 						}
 					}
 				}
 			}
 			StampOtherPaths();
+		}
+
+		/** Si el tramo i (de la muestra i a la siguiente de su cauce) talla el terreno. */
+		bool SegValid(int32 i) const
+		{
+			const int32 j = NextOf[i];
+			return j != INDEX_NONE && Carves[i] && Carves[j];
+		}
+
+		/** Tramo de la playa final: recta hacia +Y que se abre en campana. */
+		bool IsShoreSeg(int32 i) const
+		{
+			const int32 j = NextOf[i];
+			return (Samples[i].Flags & Samples[j].Flags & PathFlags::Shore) != 0 && Samples[j].P.Y > Samples[i].P.Y;
+		}
+
+		/**
+		 * Distancia de P al tramo A-B y su parámetro T. En la playa final (bShore), franja |x| <= Hw(y): distancia
+		 * en X desde el tramo que contiene su y (false fuera). Con cápsulas, las muestras anchas del fondo
+		 * "ganarían" la playa entera y le pondrían su cota, ya bajo el agua.
+		 */
+		static bool SegDistance(bool bShore, const FVector2D& A, const FVector2D& B, const FVector2D& P, double& OutD, double& OutT)
+		{
+			if (bShore)
+			{
+				if (P.Y < A.Y || P.Y >= B.Y) { return false; }
+				OutT = (P.Y - A.Y) / (B.Y - A.Y);
+				OutD = FMath::Abs(P.X - LerpD(A.X, B.X, OutT));
+				return true;
+			}
+			OutD = DistPointSegment(P, A, B, OutT);
+			return true;
+		}
+
+		double SegHalfWidth(int32 i, double T) const { return LerpD(Samples[i].Width, Samples[NextOf[i]].Width, T) * 0.5; }
+
+		/** Cota de la guarda del tramo i en P (con su T y su distancia al borde Eff); -1e9 fuera de su franja. */
+		float SegGuardAt(int32 i, bool bShore, const FVector2D& P, double T, double Eff) const
+		{
+			const double GuardH = SegGuardH[i];
+			if (GuardH <= 0.0 || Eff < GuardBandMin || Eff > GuardBandMax) { return -1e9f; }
+			// Rampa desde el borde de la franja: pared de 62°, no un escalón a plomo. En la playa final desaparece
+			// al llegar al agua, como los taludes (allí los brazos son el acantilado).
+			const double Fade = bShore ? 1.0 - SmoothStep(ShoreWaterY - 800.0, ShoreWaterY + 200.0, P.Y) : 1.0;
+			const double Ramp = Saturate((Eff - GuardBandMin) * GuardSlope / GuardH);
+			return static_cast<float>(LerpD(SampleFloor[i], SampleFloor[NextOf[i]], T) + GuardH * Ramp * Fade);
+		}
+
+		/** Cota del tablero de un puente colosal sobre P (-1e9 fuera de su huella), como en StampPathField. */
+		float DeckTopAt(const FVector2D& P) const
+		{
+			float Top = -1e9f;
+			for (const FCrossing& C : L->Crossings)
+			{
+				const FRouteStep& High = L->Route[C.HighStep];
+				for (int32 i = High.FirstSample; i < High.LastSample; ++i)
+				{
+					const FPathSample& A = L->Main[i];
+					const FPathSample& B = L->Main[i + 1];
+					const double R = FMath::Max(A.Width, B.Width) * 0.5 + 300.0;
+					double T = 0.0;
+					if (DistPointSegment(P, A.P, B.P, T) <= R) { Top = static_cast<float>(C.TopZ); break; }
+				}
+			}
+			return Top;
 		}
 
 		/**
@@ -467,14 +614,13 @@ namespace TNProcMap
 		void StampOtherPaths()
 		{
 			OtherEff.Init(1e9f, NX * NY);
+			OtherSeg.Init(INDEX_NONE, NX * NY);
 			for (int32 i = 0; i < Samples.Num(); ++i)
 			{
+				if (!SegValid(i)) { continue; }
 				const int32 j = NextOf[i];
-				if (j == INDEX_NONE || !Carves[i] || !Carves[j]) { continue; }
 				const FVector2D A = Samples[i].P;
 				const FVector2D B = Samples[j].P;
-				const int32 h = i > 0 && NextOf[i - 1] == i ? i - 1 : INDEX_NONE;
-				const int32 k = NextOf[j];
 				const double Reach = FMath::Max(Samples[i].Width, Samples[j].Width) * 0.5 + OtherReach;
 				const int32 X0 = FMath::Max(0, FMath::FloorToInt((FMath::Min(A.X, B.X) - Reach - Origin.X) / Spacing));
 				const int32 X1 = FMath::Min(NX - 1, FMath::CeilToInt((FMath::Max(A.X, B.X) + Reach - Origin.X) / Spacing));
@@ -487,29 +633,48 @@ namespace TNProcMap
 						const int32 Idx = y * NX + x;
 						const int32 o = PathSeg[Idx];
 						if (o == INDEX_NONE || o == i) { continue; }
-						const FVector2D P = Origin + FVector2D(x * Spacing, y * Spacing);
-						double T = 0.0;
-						const double D = DistPointSegment(P, A, B, T);
-						const double Eff = D - LerpD(Samples[i].Width, Samples[j].Width, T) * 0.5;
-						if (D > Reach || Eff >= OtherEff[Idx]) { continue; }
-						// Un extremo solo cuenta si ningún tramo contiguo queda más cerca.
-						if (T <= 0.0 && h != INDEX_NONE && Carves[h] && FVector2D::DotProduct(P - A, A - Samples[h].P) < 0.0) { continue; }
-						if (T >= 1.0 && k != INDEX_NONE && Carves[k] && FVector2D::DotProduct(P - B, Samples[k].P - B) > 0.0) { continue; }
-						if (SamplePoly[o] == SamplePoly[i])
+						const double Eff = OtherEffAt(i, Origin + FVector2D(x * Spacing, y * Spacing), o, PathT[Idx]);
+						if (Eff < OtherEff[Idx])
 						{
-							// Mismo cauce: el recorrido entre los dos puntos ha de ser bastante más largo que su
-							// distancia (el camino se alejó y ha vuelto); si no, es el mismo tramo.
-							const int32 oj = NextOf[o];
-							const double To = PathT[Idx];
-							const FVector2D Qo = Samples[o].P + (Samples[oj].P - Samples[o].P) * To;
-							const FVector2D Qs = A + (B - A) * T;
-							const double Arc = FMath::Abs(LerpD(Samples[i].S, Samples[j].S, T) - LerpD(Samples[o].S, Samples[oj].S, To));
-							if (Arc < 1.5 * FVector2D::Distance(Qo, Qs) + 500.0) { continue; }
+							OtherEff[Idx] = static_cast<float>(Eff);
+							OtherSeg[Idx] = i;
 						}
-						OtherEff[Idx] = static_cast<float>(Eff);
 					}
 				}
 			}
+		}
+
+		/**
+		 * Distancia de P al borde del tramo i como cauce vecino de P, que pertenece al tramo o (a su T0); 1e9 si no
+		 * cuenta. Cuenta el punto de cada cauce más cercano a P (mínimo local a lo largo del cauce); del propio
+		 * cauce, solo si el camino se aleja y vuelve (curva cerrada), no los tramos contiguos.
+		 */
+		double OtherEffAt(int32 i, const FVector2D& P, int32 o, double T0) const
+		{
+			const int32 j = NextOf[i];
+			const FVector2D A = Samples[i].P;
+			const FVector2D B = Samples[j].P;
+			const double Reach = FMath::Max(Samples[i].Width, Samples[j].Width) * 0.5 + OtherReach;
+			double T = 0.0;
+			const double D = DistPointSegment(P, A, B, T);
+			if (D > Reach) { return 1e9; }
+			const double Eff = D - LerpD(Samples[i].Width, Samples[j].Width, T) * 0.5;
+			// Un extremo solo cuenta si ningún tramo contiguo queda más cerca.
+			const int32 h = i > 0 && NextOf[i - 1] == i ? i - 1 : INDEX_NONE;
+			const int32 k = NextOf[j];
+			if (T <= 0.0 && h != INDEX_NONE && Carves[h] && FVector2D::DotProduct(P - A, A - Samples[h].P) < 0.0) { return 1e9; }
+			if (T >= 1.0 && k != INDEX_NONE && Carves[k] && FVector2D::DotProduct(P - B, Samples[k].P - B) > 0.0) { return 1e9; }
+			if (SamplePoly[o] == SamplePoly[i])
+			{
+				// Mismo cauce: el recorrido entre los dos puntos ha de ser bastante más largo que su
+				// distancia (el camino se alejó y ha vuelto); si no, es el mismo tramo.
+				const int32 oj = NextOf[o];
+				const FVector2D Qo = Samples[o].P + (Samples[oj].P - Samples[o].P) * T0;
+				const FVector2D Qs = A + (B - A) * T;
+				const double Arc = FMath::Abs(LerpD(Samples[i].S, Samples[j].S, T) - LerpD(Samples[o].S, Samples[oj].S, T0));
+				if (Arc < 1.5 * FVector2D::Distance(Qo, Qs) + 500.0) { return 1e9; }
+			}
+			return Eff;
 		}
 
 		double EffHalfWidth(int32 Idx) const
@@ -809,20 +974,22 @@ namespace TNProcMap
 			OutWet = WetSum / Total;
 		}
 
-		/** Paisaje exterior antes de volcanes, agua, bordes y cauces. */
-		double RawLand(const FVector2D& P, const FBiomeTerrain& Bt, double NLarge, double Detail, double Level) const
+		/** Paisaje exterior antes de volcanes, agua, bordes y cauces. Corr: distancia (cm) al borde del cauce más cercano. */
+		double RawLand(const FVector2D& P, const FBiomeTerrain& Bt, double NLarge, double Detail, double Level, double Corr) const
 		{
 			const double Elev = L->SampleCoarse(L->ElevatedField, P);
 			// País de cañones: el paisaje queda por encima del borde de los taludes (sube desde ellos en vez de
 			// dejar mesetas planas) y las montañas arrancan a pocos metros de los cauces.
-			const double MountMask = SmoothStep(700.0, 4500.0, CorridorDistance(P));
+			const double MountMask = SmoothStep(700.0, 4500.0, Corr);
 			const double Uplift = Bt.BankMax * (0.7 + 0.5 * (0.5 + 0.5 * NLarge));
 			// Los módulos por los que no pasa el camino son macizos montañosos (cima en su centro, crestas).
 			const double Shape = MountainShape(P);
 			const double Massif = FMath::Pow(Elev, 1.4) * (4500.0 + 9000.0 * Shape + 3000.0 * NLarge);
 			// Paredes de cañón: el paisaje sube con fuerza en los primeros ~35 m desde el cauce (unas
-			// zonas son valles abiertos y otras gargantas, según un ruido lento).
-			const double Walls = Bt.WallAmp * SmoothStep(300.0, 3500.0, CorridorDistance(P)) * (0.35 + 0.9 * (0.5 + 0.5 * NLarge));
+			// zonas son valles abiertos y otras gargantas, según un ruido lento). Sube desde el principio y se
+			// tumba arriba: si arrancara plana, tras el talud quedaría una repisa llana antes de la pared.
+			const double WallU = Saturate((Corr - 300.0) / 3200.0);
+			const double Walls = Bt.WallAmp * WallU * (2.0 - WallU) * (0.35 + 0.9 * (0.5 + 0.5 * NLarge));
 			// Alrededor de los volcanes el relieve se allana (llanura volcánica): el cono destaca en vez de
 			// quedar tapado por las montañas.
 			double Calm = 1.0;
@@ -850,8 +1017,17 @@ namespace TNProcMap
 
 			const double Level = L->SampleCoarse(L->LevelField, P);
 
+			// Distancia al borde del cauce más cercano: la exacta cerca de los caminos (la rejilla gruesa de 10 m
+			// dibujaría las paredes con tramos rectos y a 45°), la gruesa lejos, con un paso suave entre ambas.
+			double Corr = CorridorDistance(P);
+			if (InSeg != INDEX_NONE)
+			{
+				const double Exact = FMath::Max(0.0, static_cast<double>(InPathDist) - SegHalfWidth(InSeg, InT));
+				Corr = LerpD(Exact, Corr, SmoothStep(4500.0, 7000.0, Exact));
+			}
+
 			// ── Paisaje exterior (lo que no es cauce) ───────────────────────
-			double Land = RawLand(P, Bt, NLarge, Detail, Level);
+			double Land = RawLand(P, Bt, NLarge, Detail, Level, Corr);
 			// Dentro del cono manda el volcán, que arranca de la cota del relieve que lo rodea (así asoma
 			// entre las montañas y el lago de lava cuadra con el cráter).
 			double VolcanoInf = 0.0;
@@ -949,9 +1125,19 @@ namespace TNProcMap
 				BankH *= 1.0 - SeaSide;
 				// Bajo una estructura la zanja es de paredes a plomo desde el borde del suelo (la tapa ella).
 				const bool bTunnel = (Flags & PathFlags::Tunnel) != 0;
-				const double Toe = (bLane || bTunnel || (Flags & (PathFlags::Slide | PathFlags::TowerTop)) != 0) ? 150.0 : Bt.Shoulder;
-				const double Run = bTunnel ? 60.0 : BankH / FMath::Tan(FMath::DegreesToRadians(Bt.BankAngle));
+				// Variación natural a lo largo del camino (20-30 m): el pie, el ancho del talud y la subida cambian un
+				// poco, así las paredes no son una rampa uniforme paralela al camino.
+				const double VarToe = Noise2(Seed + 71u, P.X / 1700.0, P.Y / 1700.0);
+				const double VarRun = Noise2(Seed + 72u, P.X / 2500.0, P.Y / 2500.0);
+				const double VarRise = Noise2(Seed + 73u, P.X / 3000.0, P.Y / 3000.0);
+				const double Toe = (bLane || bTunnel || (Flags & (PathFlags::Slide | PathFlags::TowerTop)) != 0) ? 150.0 : Bt.Shoulder * (1.0 + 0.3 * VarToe);
+				const double Run = bTunnel ? 60.0 : BankH / FMath::Tan(FMath::DegreesToRadians(Bt.BankAngle)) * (1.0 + 0.25 * VarRun);
 				const double Rim = PathZ + BankH;
+				// Subida desde el borde del talud hasta el paisaje (bajo una estructura, y en la orilla de la playa
+				// final, a plomo). Arranca con pendiente (2 veces la media) y se tumba al llegar arriba; el talud
+				// llega al borde con esa misma pendiente: sin repisa entre los dos.
+				const double RiseDist = bTunnel ? 150.0 : LerpD(Bt.RiseDist * (1.0 + 0.35 * VarRise), 150.0, SeaSide);
+				const double RiseSlope = Outer > Rim ? 2.0 * (Outer - Rim) / FMath::Max(1.0, RiseDist) : 0.0;
 				// La guarda de los cauces cercanos sube en rampa de 62° desde el borde de este: si no, los
 				// tramos vecinos (o el nivel alto de un tobogán) la levantan a plomo al pie del talud.
 				// Entre dos cauces próximos (horquillas, curvas cerradas) sube más empinada, hasta el talud
@@ -973,9 +1159,12 @@ namespace TNProcMap
 				}
 				else if (Beyond < Toe + Run)
 				{
+					// Hermite: plano al pie y, arriba, la pendiente con la que sigue la subida (m, en unidades del
+					// talud; hasta 1: el centro sigue a 1,33-1,5 veces la pendiente media, infranqueable).
 					const double T = (Beyond - Toe) / FMath::Max(1.0, Run);
 					const double Base = PathZ + FMath::Min(25.0, BankH);
-					H = FMath::Max(LerpD(Base, Rim, T * T * (3.0 - 2.0 * T)), Guard);
+					const double M = FMath::Min(1.0, RiseSlope * Run / FMath::Max(1.0, Rim - Base));
+					H = FMath::Max(LerpD(Base, Rim, ((M - 2.0) * T + (3.0 - M)) * T * T), Guard);
 				}
 				else
 				{
@@ -985,15 +1174,20 @@ namespace TNProcMap
 					const double X = Beyond - Toe - Run;
 					if (Outer >= Rim)
 					{
-						// Bajo una estructura (y en la orilla de la playa final) la pared sube a plomo hasta arriba.
-						const double RiseDist = bTunnel ? 150.0 : LerpD(Bt.RiseDist, 150.0, SeaSide);
-						H = Rim + (Outer - Rim) * SmoothStep(0.0, FMath::Max(RiseDist, 1.0), X);
+						const double U = Saturate(X / FMath::Max(RiseDist, 1.0));
+						H = Rim + (Outer - Rim) * (1.0 - (1.0 - U) * (1.0 - U));
 					}
 					else
 					{
 						const double Flank = LerpD(LerpD(FlankSlope, 0.45, PathWet), 4.0, SeaSide);
 						const double Plateau = RimPlateau * (1.0 - PathWet) * (1.0 - SeaSide);
-						H = FMath::Max(Outer, Rim + 120.0 * NMed * (1.0 - PathWet) * (1.0 - SeaSide) - FMath::Max(0.0, X - Plateau) * Flank);
+						// La meseta ondula un poco y se funde con el paisaje donde este asoma por encima (máximo suave: solo
+						// sube, hasta 1,25 m en el cruce). Ni en el borde del talud ni donde el paisaje llega a su cota
+						// (el paso a la rama de subida) hay escalón: ahí la ondulación y el suavizado se apagan.
+						const double Below = SmoothStep(0.0, 300.0, Rim - Outer) * SmoothStep(0.0, 300.0, X);
+						const double Shelf = Rim + 120.0 * NMed * (1.0 - PathWet) * (1.0 - SeaSide) * Below - FMath::Max(0.0, X - Plateau) * Flank;
+						const double Soft = 250.0 * Below;
+						H = 0.5 * (Outer + Shelf + FMath::Sqrt(FMath::Square(Outer - Shelf) + Soft * Soft));
 					}
 					H = FMath::Max(H, Guard);
 				}

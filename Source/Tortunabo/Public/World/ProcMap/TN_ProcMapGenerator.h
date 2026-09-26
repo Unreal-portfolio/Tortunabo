@@ -5,6 +5,7 @@
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "World/ProcMap/TN_ProcMapLayout.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
+#include "World/ProcMap/TN_ProcMapTerrainDetail.h"
 #include "TN_ProcMapGenerator.generated.h"
 
 class UProceduralMeshComponent;
@@ -219,6 +220,13 @@ private:
 	double LatticeSpacing = 250.0;
 	int32 LatticeNX = 0;
 	int32 LatticeNY = 0;
+	/** Detalle fino (DetailSpacing) de los cuadrados del mallado que lo necesitan: lo dibujado y su colisión. */
+	TNProcMap::FTerrainDetail TerrainDetail;
+
+	/** Si hay colisión del mapa (terreno o estructuras) bajo un punto: la del terreno se cocina en segundo plano. */
+	bool MapCollisionUnder(const FVector& WorldLocation) const;
+	/** Desde cuándo (s) está el mapa listo esperando a que haya suelo bajo el pawn local (-1 = no espera). */
+	double ReadySince = -1.0;
 
 	// Índice de progreso: puntos del camino (principal y ramas) con su distancia.
 	struct FProgressPoint

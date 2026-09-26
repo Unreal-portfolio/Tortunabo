@@ -294,6 +294,7 @@ void ATN_ProcMapGenerator::Clear()
 	Heights.Reset();
 	PathMask.Reset();
 	PathDist.Reset();
+	TerrainDetail = TNProcMap::FTerrainDetail();
 	ProgressPoints.Reset();
 	ProgressBuckets.Reset();
 	Layout = TNProcMap::FLayout();
@@ -334,7 +335,15 @@ void ATN_ProcMapGenerator::FreezeLocalPawnUntilReady()
 	{
 		return;
 	}
-	const bool bWaiting = !bMapReady || BuiltGeneration != NetConfig.Generation;
+	bool bWaiting = !bMapReady || BuiltGeneration != NetConfig.Generation;
+	if (!bWaiting && bFrozeLocalPawn)
+	{
+		// La colisión del terreno se cocina en segundo plano: se suelta cuando ya hay suelo del mapa bajo el pawn
+		// (como mucho 10 s después de tener el mapa, por si está sobre algo sin colisión).
+		const double Now = World->GetTimeSeconds();
+		if (ReadySince < 0.0) { ReadySince = Now; }
+		if (Now - ReadySince < 10.0 && !MapCollisionUnder(Character->GetActorLocation())) { bWaiting = true; }
+	}
 	if (bWaiting && Move->MovementMode != MOVE_None)
 	{
 		Move->DisableMovement();
@@ -344,7 +353,18 @@ void ATN_ProcMapGenerator::FreezeLocalPawnUntilReady()
 	{
 		Move->SetMovementMode(MOVE_Falling);
 		bFrozeLocalPawn = false;
+		ReadySince = -1.0;
 	}
+}
+
+bool ATN_ProcMapGenerator::MapCollisionUnder(const FVector& WorldLocation) const
+{
+	UWorld* World = GetWorld();
+	if (!World) { return false; }
+	FHitResult Hit;
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(TNProcMapGround), false);
+	const bool bHit = World->LineTraceSingleByChannel(Hit, WorldLocation + FVector(0.0, 0.0, 200.0), WorldLocation - FVector(0.0, 0.0, 30000.0), ECC_WorldStatic, Params);
+	return bHit && Hit.GetActor() == this;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,19 +391,16 @@ double ATN_ProcMapGenerator::TerrainHeightMap(const FVector2D& MapPoint) const
 	const double Fy = FMath::Clamp((MapPoint.Y - LatticeOrigin.Y) / LatticeSpacing, 0.0, static_cast<double>(LatticeNY - 1) - 1e-6);
 	const int32 X0 = FMath::FloorToInt(Fx);
 	const int32 Y0 = FMath::FloorToInt(Fy);
+	// Los mismos triángulos que la malla y su colisión (con su detalle fino), no bilineal: en laderas
+	// empinadas la bilineal se separa decenas de cm de la superficie real.
+	if (TerrainDetail.IsActive())
+	{
+		return TerrainDetail.SurfaceAt(Fx, Fy, Heights);
+	}
 	const double Tx = Fx - X0;
 	const double Ty = Fy - Y0;
-	const double H00 = Heights[Y0 * LatticeNX + X0];
-	const double H10 = Heights[Y0 * LatticeNX + X0 + 1];
-	const double H01 = Heights[(Y0 + 1) * LatticeNX + X0];
-	const double H11 = Heights[(Y0 + 1) * LatticeNX + X0 + 1];
-	// Los mismos triángulos que la malla y su colisión (diagonal de menor desnivel), no bilineal:
-	// en laderas empinadas la bilineal se separa decenas de cm de la superficie real.
-	if (TNProcMap::SplitAlongAD(H00, H10, H01, H11))
-	{
-		return Tx >= Ty ? H00 + Tx * (H10 - H00) + Ty * (H11 - H10) : H00 + Ty * (H01 - H00) + Tx * (H11 - H01);
-	}
-	return Tx + Ty <= 1.0 ? H00 + Tx * (H10 - H00) + Ty * (H01 - H00) : H11 + (1.0 - Tx) * (H01 - H11) + (1.0 - Ty) * (H10 - H11);
+	return TNProcMap::TerrainQuadHeight(Heights[Y0 * LatticeNX + X0], Heights[Y0 * LatticeNX + X0 + 1],
+		Heights[(Y0 + 1) * LatticeNX + X0], Heights[(Y0 + 1) * LatticeNX + X0 + 1], Tx, Ty);
 }
 
 FVector ATN_ProcMapGenerator::TerrainNormalMap(const FVector2D& MapPoint) const

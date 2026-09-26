@@ -51,7 +51,8 @@ Dos capas, como el resto del proyecto (`TNGridLogic`, `TNChunkLogic`):
 | `TN_ProcMapRoute.h` | Ruta por los módulos: DFS aleatorio con Warnsdorff y poda por alcanzabilidad; reserva los pasos de los cruces colosales (A→B→C sobre un módulo ya visitado). |
 | `TN_ProcMapPath.h` | Portales en las fronteras (PCA), "caminante" con meandros senoidales dentro de cada módulo, suavizado Chaikin, anchos por tramos 3,5–60 m, perfil de alturas con límite de pendiente y cortes en géiser/tobogán, ramas y carriles. |
 | `TN_ProcMapFeatures.h` | Biomas por regiones (tipo Minecraft), huecos saltables, isletas y pasarelas, pilas de huevos, puzles 2vs2, río opcional, decoración y reparto de peligros. |
-| `TN_ProcMapTerrain.h` | Altura por vértice: parámetros mezclados por bioma con *domain warp*, pasillo del camino con arcén y taludes de 55-75°, torres y puertas de los cruces, loma sobre las cuevas, volcanes asentados en el relieve, muros del borde, costa y mar abierto al norte. |
+| `TN_ProcMapTerrain.h` | Altura por vértice: parámetros mezclados por bioma con *domain warp*, pasillo del camino con arcén y taludes de 55-75°, torres y puertas de los cruces, loma sobre las cuevas, volcanes asentados en el relieve, muros del borde, costa y mar abierto al norte. `HeightAtPoint` evalúa la altura en cualquier punto con el mismo campo del camino que el mallado. |
+| `TN_ProcMapTerrainDetail.h` | Detalle adaptativo: los cuadrados de 1,5 m en los que la malla se aparta más de 20 cm de la forma real cerca de los caminos (60 cm lejos) se parten a 0,5 m; sus vecinos cosen con un abanico. Mallas de las teselas estancas y altura dibujada en cualquier punto (`SurfaceAt`). |
 | `TN_ProcMapCaves.h` | Cuevas: tramos del principal de 120-260 m que atraviesan una montaña por un túnel con pasos estrechos, una o dos cámaras anchas y, en el volcán, río de lava que se salta; prefieren tramos que cruzan terreno alto y se estrechan por un desfiladero hasta la boca. |
 | `TN_ProcMapFormations.h` | Formaciones temáticas por bioma: arcos que cruzan el camino, piezas en las explanadas (con carriles libres) e hitos lejanos (naturaleza, entorno y guerra). |
 | `TN_ProcMapFlora.h` | Vegetación, rocas y objetos sueltos: especies por bioma y reparto determinista en manchas, también en los taludes. |
@@ -99,6 +100,12 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Torres de escalada** junto al borde en tramos anchos: bloques del bioma (cajas con aspa,
   tocones, sillares, losas o basalto) de 3–4 m con escalones de 1 m, banderín, recompensa de puntos
   arriba (`BP_ScorePickup`) y una medusa al pie (`BP_JellyfishActor`) para subir de un bote.
+- **Terreno**: malla de 1,5 m con **detalle de 0,5 m** donde hace falta (pie y borde de los taludes,
+  crestas, bocas de cueva: un 3-4 % de los cuadrados, más un 5-6 % de costuras; 1,4-1,5 veces los
+  triángulos). Las paredes suben sin repisa: el talud llega al borde con la pendiente con la que arranca
+  la subida, la pared del cañón sube desde el borde del cauce y, cerca de los caminos, la distancia al
+  cauce es la exacta (no la rejilla de 10 m). El pie, el ancho del talud y la subida varían a lo largo del
+  camino (ruido de 17-30 m). `DetailSpacing` y `DetailError` en los ajustes.
 - **Color del camino**: un color de sendero propio de cada bioma, de tono y luminosidad
   claramente distintos de sus paredes (tierra anaranjada, barro claro, ceniza rojiza, arena mojada,
   arcilla roja, grava ocre, adoquín pizarra, tablas oscuras), con una línea oscura al pie del talud;

@@ -884,6 +884,15 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	});
 	Builder.ExportPathEdgeDistance(PathDist);
 
+	// ── Detalle fino (DetailSpacing) donde la malla gruesa se aparta del terreno: bordes de taludes, crestas ──
+	TNProcMap::FTerrainDetailParams DetailParams;
+	const double DetailSpacing = Settings ? Settings->DetailSpacing : 50.0;
+	DetailParams.N = FMath::Clamp(FMath::RoundToInt(Spacing / FMath::Max(50.0, DetailSpacing)), 1, 3);
+	DetailParams.NearError = FMath::Max(10.0, Settings ? static_cast<double>(Settings->DetailError) : 20.0);
+	DetailParams.FarError = DetailParams.NearError * 3.0;
+	TNProcMap::BuildTerrainDetail(TerrainDetail, Builder, Heights, PathDist, QuadsX, QuadsY, DetailParams,
+		[](int32 Num, auto&& Body) { ParallelFor(Num, Body); });
+
 	// ── Colores por bioma (el camino, con contraste fuerte frente a sus paredes) ──
 	FLinearColor Ground[NumBiomes], PathC[NumBiomes], PathRaw[NumBiomes], Rock[NumBiomes], Bed[NumBiomes];
 	for (int32 b = 0; b < NumBiomes; ++b)
@@ -900,18 +909,12 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	}
 	const double FinishX = Layout.EndPoint.X;
 
-	auto HeightAt = [&](int32 X, int32 Y)
-	{
-		return static_cast<double>(Heights[FMath::Clamp(Y, 0, LatticeNY - 1) * LatticeNX + FMath::Clamp(X, 0, LatticeNX - 1)]);
-	};
-
 	UMaterialInterface* TerrainMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr,
 		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
 	const uint32 ColorSeed = Layout.Params.Seed ^ 0xC0105u;
 
 	const int32 TilesX = QuadsX / TileQuads;
 	const int32 TilesY = QuadsY / TileQuads;
-	const int32 Side = TileQuads + 1;
 	const TArray<FProcMeshTangent> NoTangents;
 
 	// Datos de cada tesela en paralelo (con 1,5 m de resolución son millones de vértices); la
@@ -931,46 +934,20 @@ void ATN_ProcMapGenerator::BuildTerrain()
 		const int32 Tx = TileIndex % TilesX;
 		const int32 Ty = TileIndex / TilesX;
 		FTileData& T = TileData[TileIndex];
-		// A=(x,y), B=(x+1,y), C=(x,y+1), D=(x+1,y+1). La cara frontal de UE es
-		// (C-A)x(B-A): (A,C,B)+(B,C,D) o (A,C,D)+(A,D,B) miran hacia +Z. La
-		// diagonal sigue la curva de nivel (TNProcMap::SplitAlongAD).
-		T.Tris.Reserve(TileQuads * TileQuads * 6);
-		for (int32 y = 0; y < TileQuads; ++y)
+		// Malla de la tesela con su detalle fino (abanicos en las costuras, sin grietas entre teselas).
+		TNProcMap::FTerrainTileMesh Mesh;
+		TerrainDetail.BuildTileMesh(Tx, Ty, TileQuads, Heights, PathMask, Mesh);
+		T.Verts = MoveTemp(Mesh.Verts);
+		T.Tris = MoveTemp(Mesh.Tris);
+		T.Normals = MoveTemp(Mesh.Normals);
+		const int32 NumV = T.Verts.Num();
+		T.UVs.Reserve(NumV); T.Colors.Reserve(NumV);
 		{
-			for (int32 x = 0; x < TileQuads; ++x)
+			for (int32 v = 0; v < NumV; ++v)
 			{
-				const int32 GX = Tx * TileQuads + x;
-				const int32 GY = Ty * TileQuads + y;
-				const int32 A = y * Side + x;
-				const int32 B = A + 1;
-				const int32 C = A + Side;
-				const int32 D = C + 1;
-				if (TNProcMap::SplitAlongAD(HeightAt(GX, GY), HeightAt(GX + 1, GY), HeightAt(GX, GY + 1), HeightAt(GX + 1, GY + 1)))
-				{
-					T.Tris.Add(A); T.Tris.Add(C); T.Tris.Add(D);
-					T.Tris.Add(A); T.Tris.Add(D); T.Tris.Add(B);
-				}
-				else
-				{
-					T.Tris.Add(A); T.Tris.Add(C); T.Tris.Add(B);
-					T.Tris.Add(B); T.Tris.Add(C); T.Tris.Add(D);
-				}
-			}
-		}
-		T.Verts.Reserve(Side * Side); T.Normals.Reserve(Side * Side); T.UVs.Reserve(Side * Side); T.Colors.Reserve(Side * Side);
-		for (int32 y = 0; y <= TileQuads; ++y)
-		{
-			for (int32 x = 0; x <= TileQuads; ++x)
-			{
-				const int32 GX = Tx * TileQuads + x;
-				const int32 GY = Ty * TileQuads + y;
-				const double H = HeightAt(GX, GY);
-				const FVector2D P = LatticeOrigin + FVector2D(GX * Spacing, GY * Spacing);
-				T.Verts.Add(FVector(P.X, P.Y, H));
-				const double Dx = (HeightAt(GX + 1, GY) - HeightAt(GX - 1, GY)) / (2.0 * Spacing);
-				const double Dy = (HeightAt(GX, GY + 1) - HeightAt(GX, GY - 1)) / (2.0 * Spacing);
-				const FVector N = FVector(-Dx, -Dy, 1.0).GetSafeNormal();
-				T.Normals.Add(N);
+				const double H = T.Verts[v].Z;
+				const FVector2D P(T.Verts[v].X, T.Verts[v].Y);
+				const FVector& N = T.Normals[v];
 				T.UVs.Add(P / 500.0);
 				double W[NumBiomes];
 				Layout.BiomeWeightsAt(P, W);
@@ -982,7 +959,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 				}
 				const double Beach = TNProcMap::SmoothStep(ShoreStartY - 1500.0, ShoreStartY, P.Y) * TNProcMap::SmoothStep(16000.0, 9000.0, FMath::Abs(P.X - FinishX));
 				Pc = TNProcLerpColor(Pc, Praw, static_cast<float>(Beach));
-				const float Mask = PathMask[GY * LatticeNX + GX] / 255.f;
+				const float Mask = Mesh.Masks[v] / 255.f;
 				// Paredes en degradado por pendiente: suelo en lo llano, roca en los taludes (28-57°) y
 				// roca cada vez más oscura en los tajos (57-81°), con estratos suaves por altura en lo
 				// empinado para que se lea su forma.
@@ -991,7 +968,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 				FLinearColor Col = TNProcLerpColor(G, R, Steep);
 				Col = Col * FMath::Lerp(1.f, 0.62f, Cliff);
 				const double Strata = FMath::Sin(H / 170.0 + 1.3 * TNProcMap::Noise2(ColorSeed + 7u, P.X / 3000.0, P.Y / 3000.0));
-				Col = Col * (1.f + 0.07f * Steep * (Strata > 0.0 ? 1.f : -1.f));
+				Col = Col * (1.f + 0.07f * Steep * static_cast<float>(FMath::Clamp(Strata * 3.0, -1.0, 1.0)));
 				// Suelo del camino, con una línea oscura en el pie del talud que marca su borde.
 				Col = TNProcLerpColor(Col, Pc, Mask);
 				Col = Col * (1.f - 2.0f * Mask * (1.f - Mask));
