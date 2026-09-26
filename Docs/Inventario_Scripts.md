@@ -1,4 +1,4 @@
-# Inventario de Scripts — Tortunabo
+# Inventario de Scripts — Tortunavy
 
 > Documento auxiliar para la defensa: lista exhaustiva de cabeceras C++ (`.h`)
 > por dominio, con descripción breve y autores. Los autores provienen del

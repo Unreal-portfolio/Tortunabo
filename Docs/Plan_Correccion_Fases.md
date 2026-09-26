@@ -1,4 +1,4 @@
-# Plan de corrección y optimización — Tortunabo
+# Plan de corrección y optimización — Tortunavy
 
 > Generado en la sesión de macro-audit (/maxdual · ULTRON + peer Codex).
 
@@ -43,7 +43,7 @@ reales (Fase 3, cambia replicación → requiere PIE), pooling (declinado), test
 
 ## De qué va el juego (contexto arquitectónico)
 
-Tortunabo es un **race co-op para hasta 4 jugadores** (tortugas antropomórficas) en
+Tortunavy es un **race co-op para hasta 4 jugadores** (tortugas antropomórficas) en
 **UE5.6**, **listen-server + Steam** (OnlineSubsystemSteam + SteamSockets). Tres mapas
 encadenados por Seamless Travel: `LVL_Menu` → `LVL_HQ` (lobby/ready-up) → `LVL_Run`
 (la carrera).

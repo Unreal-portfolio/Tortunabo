@@ -136,7 +136,8 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   75-110 m y los brazos son el propio acantilado, que sigue en pie pasada la línea. La **línea
   de meta** cruza toda la boca unos 3,5 m mar adentro (agua por la rodilla): allí empieza el
   volumen de meta. Encima, un **neumático gigante en arco** (al estilo del puente Dunlop) con
-  TORTUNABO en los flancos, pasarela a cuadros con el cartel de META, rótulo «¡AL AGUA!» y
+  TORTUNAVY en el flanco que se ve al llegar (y, de guiño, el nombre en clave TORTUNABO en el
+  que mira al mar), pasarela a cuadros con el cartel de META, rótulo «¡AL AGUA!» y
   banderas a cuadros; boyas marcan la línea de lado a lado y hay banderines y banderolas en la
   arena.
 - **Agua en pozas**: en lagunas y manglar el agua no es un lago abierto sino pozas de

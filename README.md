@@ -1,9 +1,10 @@
-# Tortunabo
+# Tortunavy
 
-**Tortunabo** es un juego cooperativo multijugador (1–4 jugadores) en tercera persona desarrollado en **Unreal Engine 5.6** con C++. Los jugadores controlan tortugas antropomórficas que avanzan juntas por niveles generados proceduralmente por chunks, enfrentándose a obstáculos, recogiendo y lanzando objetos, y compitiendo por llegar antes a la meta.
+**Tortunavy** es un juego cooperativo multijugador (1–4 jugadores) en tercera persona desarrollado en **Unreal Engine 5.6** con C++. Los jugadores controlan tortugas antropomórficas que avanzan juntas por niveles generados proceduralmente por chunks, enfrentándose a obstáculos, recogiendo y lanzando objetos, y compitiendo por llegar antes a la meta.
 
 - **Motor**: Unreal Engine 5.6
 - **Lenguaje**: C++ (módulo `Tortunabo`) + Blueprints
+- **Nombre en clave**: `Tortunabo` sigue siendo el nombre técnico (módulo, `.uproject`, rutas, categorías de tests y de log); el título del juego es **Tortunavy**
 - **Red**: Steam Sockets (`SteamDevAppId=480` en testing)
 - **Equipo**: Rodrigo Fernández y José Antonio (Mokius)
 - **Contexto académico**: entrega T-Day, U-tad

@@ -5,8 +5,9 @@
 
 /**
  * Meta de la playa final (TN_ProcMapGenerator_Build.cpp): un neumático gigante en arco sobre la línea,
- * al estilo del puente Dunlop de los circuitos, con el nombre del juego en los flancos, pasarela a
- * cuadros con el cartel de META y un rótulo colgante; banderas a cuadros en la cima, boyas que marcan
+ * al estilo del puente Dunlop de los circuitos, con el nombre del juego (TORTUNAVY) en el flanco que ven
+ * las tortugas al llegar y, de guiño, el nombre en clave del proyecto (TORTUNABO) en el que mira al mar,
+ * pasarela a cuadros con el cartel de META y un rótulo colgante; banderas a cuadros en la cima, boyas que marcan
  * la línea en toda la boca de la playa, banderines entre el arco y la arena y banderolas a lo largo de
  * la playa. Los rótulos son de bloques (tipografía de 5x7) con contorno oscuro, legibles por las dos
  * caras. Marco local: X hacia el mar (sentido del camino), Y a la izquierda, Z arriba; origen en el
@@ -78,6 +79,8 @@ namespace TNFinishMesh
 			{ 'R', 5, { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 } },
 			{ 'T', 5, { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } },
 			{ 'U', 5, { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E } },
+			{ 'V', 5, { 0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04 } },
+			{ 'Y', 5, { 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04 } },
 			{ '!', 1, { 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x01 } },
 			{ '^', 1, { 0x01, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01 } },
 			{ ' ', 3, { 0, 0, 0, 0, 0, 0, 0 } },
@@ -296,7 +299,8 @@ namespace TNFinishMesh
 			}
 		}
 
-		// ── Flancos: dos aros amarillos y el nombre del juego, legible por delante y por detrás ──
+		// ── Flancos: dos aros amarillos y un rótulo en cada uno. El de delante (-X, el que se ve al llegar) lleva el
+		// nombre del juego; el de detrás, que solo se ve desde el agua, el nombre en clave del proyecto. ──
 		for (const double FaceX : { -Tw, Tw })
 		{
 			const double Out = FaceX < 0.0 ? -1.0 : 1.0;
@@ -311,7 +315,7 @@ namespace TNFinishMesh
 					Deco.AddQuad(At(A, RingR - 7.0), At(B, RingR - 7.0), At(B, RingR + 7.0), At(A, RingR + 7.0), FVector(Out, 0.0, 0.0), Brand);
 				}
 			}
-			TNFinishArcText(Deco, "TORTUNABO", Ctr, FaceX, 0.5 * (Ri + Ro), 16.0, 7.0, 5.0, Brand, Ink);
+			TNFinishArcText(Deco, FaceX < 0.0 ? "TORTUNAVY" : "TORTUNABO", Ctr, FaceX, 0.5 * (Ri + Ro), 16.0, 7.0, 5.0, Brand, Ink);
 		}
 
 		// ── Pasarela a cuadros de lado a lado y cartel de META encima ──
