@@ -31,6 +31,29 @@ using namespace TNProcMesh;
 
 namespace
 {
+	/** Luminancia de un color lineal. */
+	float TNLuminance(const FLinearColor& C) { return 0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B; }
+
+	/**
+	 * Color del suelo del camino con contraste claro frente a sus paredes (media del suelo y la roca del
+	 * bioma), sea cual sea el color de los assets: en los biomas claros (arena, roca gris, pueblos) se
+	 * oscurece hasta 0,36 veces la luminancia de las paredes, como tierra pisada; en los oscuros (selva,
+	 * volcán, manglar) se aclara hasta ~2,2 veces. Conserva el tono del camino del bioma, algo menos
+	 * saturado para que no chille.
+	 */
+	FLinearColor TNContrastPath(const FLinearColor& Path, const FLinearColor& Ground, const FLinearColor& Rock)
+	{
+		const float Walls = 0.5f * (TNLuminance(Ground) + TNLuminance(Rock));
+		const float Own = FMath::Max(0.01f, TNLuminance(Path));
+		const float Target = Walls > 0.28f ? FMath::Min(Own, Walls * 0.36f) : FMath::Max(Own, Walls * 2.2f + 0.06f);
+		FLinearColor Out = Path * (Target / Own);
+		Out = TNProcLerpColor(Out, FLinearColor(Target, Target, Target), 0.25f);
+		const float Peak = FMath::Max3(Out.R, Out.G, Out.B);
+		if (Peak > 0.92f) { Out = Out * (0.92f / Peak); }
+		Out.A = 1.f;
+		return Out;
+	}
+
 	/** Polilínea de un tramo de camino con cota y media anchura, recorrible por distancia en planta. */
 	struct FTNPlankLine
 	{
@@ -705,12 +728,21 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	});
 	Builder.ExportPathEdgeDistance(PathDist);
 
-	// ── Colores por bioma ───────────────────────────────────────────────────
-	FLinearColor Ground[NumBiomes], PathC[NumBiomes], Rock[NumBiomes], Bed[NumBiomes];
+	// ── Colores por bioma (el camino, con contraste fuerte frente a sus paredes) ──
+	FLinearColor Ground[NumBiomes], PathC[NumBiomes], PathRaw[NumBiomes], Rock[NumBiomes], Bed[NumBiomes];
 	for (int32 b = 0; b < NumBiomes; ++b)
 	{
-		ResolveBiomeColors(BiomeFromIndex(b), Ground[b], PathC[b], Rock[b], Bed[b]);
+		ResolveBiomeColors(BiomeFromIndex(b), Ground[b], PathRaw[b], Rock[b], Bed[b]);
+		PathC[b] = TNContrastPath(PathRaw[b], Ground[b], Rock[b]);
 	}
+	// La playa de la meta conserva su arena: desde 15 m antes de su primera muestra de orilla, el camino
+	// vuelve al color del bioma.
+	double ShoreStartY = 1e18;
+	for (const FPathSample& S : Layout.Main)
+	{
+		if ((S.Flags & PathFlags::Shore) != 0) { ShoreStartY = S.P.Y; break; }
+	}
+	const double FinishX = Layout.EndPoint.X;
 
 	auto HeightAt = [&](int32 X, int32 Y)
 	{
@@ -786,16 +818,27 @@ void ATN_ProcMapGenerator::BuildTerrain()
 				T.UVs.Add(P / 500.0);
 				double W[NumBiomes];
 				Layout.BiomeWeightsAt(P, W);
-				FLinearColor G(0.f, 0.f, 0.f, 0.f), Pc(0.f, 0.f, 0.f, 0.f), R(0.f, 0.f, 0.f, 0.f), Bd(0.f, 0.f, 0.f, 0.f);
+				FLinearColor G(0.f, 0.f, 0.f, 0.f), Pc(0.f, 0.f, 0.f, 0.f), Praw(0.f, 0.f, 0.f, 0.f), R(0.f, 0.f, 0.f, 0.f), Bd(0.f, 0.f, 0.f, 0.f);
 				for (int32 b = 0; b < NumBiomes; ++b)
 				{
 					const float Wb = static_cast<float>(W[b]);
-					G += Ground[b] * Wb; Pc += PathC[b] * Wb; R += Rock[b] * Wb; Bd += Bed[b] * Wb;
+					G += Ground[b] * Wb; Pc += PathC[b] * Wb; Praw += PathRaw[b] * Wb; R += Rock[b] * Wb; Bd += Bed[b] * Wb;
 				}
+				const double Beach = TNProcMap::SmoothStep(ShoreStartY - 1500.0, ShoreStartY, P.Y) * TNProcMap::SmoothStep(16000.0, 9000.0, FMath::Abs(P.X - FinishX));
+				Pc = TNProcLerpColor(Pc, Praw, static_cast<float>(Beach));
 				const float Mask = PathMask[GY * LatticeNX + GX] / 255.f;
-				FLinearColor Col = G;
-				Col = TNProcLerpColor(Col, R, static_cast<float>(TNProcMap::SmoothStep(0.84, 0.6, N.Z)));
+				// Paredes en degradado por pendiente: suelo en lo llano, roca en los taludes (28-57°) y
+				// roca cada vez más oscura en los tajos (57-81°), con estratos suaves por altura en lo
+				// empinado para que se lea su forma.
+				const float Steep = static_cast<float>(TNProcMap::SmoothStep(0.88, 0.55, N.Z));
+				const float Cliff = static_cast<float>(TNProcMap::SmoothStep(0.55, 0.15, N.Z));
+				FLinearColor Col = TNProcLerpColor(G, R, Steep);
+				Col = Col * FMath::Lerp(1.f, 0.62f, Cliff);
+				const double Strata = FMath::Sin(H / 170.0 + 1.3 * TNProcMap::Noise2(ColorSeed + 7u, P.X / 3000.0, P.Y / 3000.0));
+				Col = Col * (1.f + 0.07f * Steep * (Strata > 0.0 ? 1.f : -1.f));
+				// Suelo del camino, con una línea oscura en el pie del talud que marca su borde.
 				Col = TNProcLerpColor(Col, Pc, Mask);
+				Col = Col * (1.f - 1.2f * Mask * (1.f - Mask));
 				Col = TNProcLerpColor(Col, Bd, static_cast<float>(TNProcMap::SmoothStep(30.0, -120.0, H)));
 				const float Var = 0.9f + 0.2f * static_cast<float>(0.5 + 0.5 * TNProcMap::Noise2(ColorSeed, P.X / 700.0, P.Y / 700.0));
 				Col = Col * Var;

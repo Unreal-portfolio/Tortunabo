@@ -228,39 +228,113 @@ namespace TNFormMesh
 			}
 			case EFormation::WhaleRibs:
 			{
-				// Costillar: pares de costillas en arco de lado a lado, espinazo arriba y el cráneo tumbado.
+				// Esqueleto de ballena varado sobre el camino: la columna va en arco a la altura de las
+				// costillas (más altas en el pecho que en los extremos), con una vértebra por costilla
+				// (cuerpo, apófisis espinosa y transversas); cada costilla nace de su vértebra, se abre hacia
+				// fuera y baja hasta el suelo a cada lado. Por detrás la cola baja curvándose hasta la arena
+				// junto a una pared, y por delante la columna baja al cráneo, tumbado junto a la otra con sus
+				// dos mandíbulas.
 				const double Half = P.Width * 0.5;
-				const int32 Ribs = FMath::Max(4, FMath::RoundToInt(P.Length / 140.0));
+				const int32 Ribs = FMath::Max(5, FMath::RoundToInt(P.Length / 140.0));
+				const double Step = P.Length / Ribs;
+				const double Side = (Seed & 1u) ? 1.0 : -1.0;
+				auto Taper = [&](double X)
+				{
+					const double T = FMath::Clamp(FMath::Abs(X) / (P.Length * 0.5 + Step * 0.5), 0.0, 1.0);
+					return 1.0 - 0.4 * T * T;
+				};
+				auto SpineZ = [&](double X) { return (P.Height + 90.0) * Taper(X) + 20.0; };
+				const double EndX = P.Length * 0.5 - Step * 0.5;
+				const double TailLen = 700.0 + 0.3 * P.Length;
+				const double SkullX = -EndX - 420.0;
+				const FVector SkullC(SkullX, -Side * Half * 0.8, Ground(SkullX, -Side * Half * 0.8) + 95.0);
+				// Eje de la columna: cola (en el suelo junto a una pared), arco sobre el camino y bajada al cráneo.
+				TArray<FVector> Axis;
+				TArray<double> AxisR;
+				for (int32 k = 0; k <= 10; ++k)
+				{
+					const double U = k / 10.0;
+					const double Sm = U * U * (3.0 - 2.0 * U);
+					const FVector2D Q(EndX + TailLen * U, Side * Half * 0.85 * Sm);
+					const double Z = FMath::Lerp(SpineZ(EndX), Ground(Q.X, Q.Y) + 22.0, FMath::Pow(Sm, 0.8));
+					Axis.Insert(FVector(Q.X, Q.Y, Z), 0);
+					AxisR.Insert(FMath::Lerp(22.0, 7.0, U), 0);
+				}
+				for (int32 k = 1; k <= 16; ++k)
+				{
+					const double X = FMath::Lerp(EndX, -EndX, k / 16.0);
+					Axis.Add(FVector(X, 0.0, SpineZ(X)));
+					AxisR.Add(22.0);
+				}
+				for (int32 k = 1; k <= 6; ++k)
+				{
+					const double U = k / 6.0;
+					const FVector From(-EndX, 0.0, SpineZ(-EndX));
+					const FVector To = SkullC + FVector(160.0, Side * Half * 0.2, 40.0);
+					FVector Pt = FMath::Lerp(From, To, U);
+					Pt.Z = FMath::Lerp(From.Z, To.Z, U * U);
+					Axis.Add(Pt);
+					AxisR.Add(FMath::Lerp(22.0, 26.0, U));
+				}
+				TNFormTube(M, Axis, AxisR, 7, C.Bone * 0.9f);
+				// Vértebra en P (dirección D de la columna) de escala S.
+				auto Vertebra = [&](const FVector& Pv, const FVector& Dv, double S)
+				{
+					const FVector D = Dv.GetSafeNormal();
+					FVector Y = FVector::CrossProduct(FVector::UpVector, D).GetSafeNormal();
+					if (Y.IsNearlyZero()) { Y = FVector(0.0, 1.0, 0.0); }
+					const FVector Up = FVector::CrossProduct(D, Y).GetSafeNormal();
+					TNFormCylinder(M, Pv - D * (20.0 * S), Pv + D * (20.0 * S), 38.0 * S, 38.0 * S, 8, C.Bone);
+					M.AddBeam(Pv + Up * (30.0 * S), Pv + Up * (78.0 * S) - D * (10.0 * S), 9.0 * S, C.Bone * 0.95f);
+					for (const double Sd : { -1.0, 1.0 })
+					{
+						M.AddBeam(Pv + Y * (Sd * 30.0 * S), Pv + Y * (Sd * 72.0 * S) - Up * (8.0 * S), 7.0 * S, C.Bone * 0.95f);
+					}
+				};
+				// Costillas, una por vértebra del arco.
 				for (int32 r = 0; r < Ribs; ++r)
 				{
-					const double X = (r - (Ribs - 1) * 0.5) * (P.Length / Ribs);
-					const double Taper = 1.0 - 0.45 * FMath::Abs(r - (Ribs - 1) * 0.5) / ((Ribs - 1) * 0.5 + 0.01);
-					const double Top = P.Height * Taper + 80.0;
-					for (int32 Side = -1; Side <= 1; Side += 2)
+					const double X = (r - (Ribs - 1) * 0.5) * Step;
+					const double T = Taper(X);
+					const double Top = SpineZ(X);
+					Vertebra(FVector(X, 0.0, Top), FVector(1.0, 0.0, 0.0), 0.75 + 0.35 * T);
+					for (const double Sd : { -1.0, 1.0 })
 					{
+						const double Ry = Half * 1.05;
+						const double Foot = Ground(X + 50.0, Sd * Ry * 0.93) - 35.0;
+						const double Rz = (Top - Foot) / 1.37;
+						const double Zc = Top - Rz;
 						TArray<FVector> Pts;
 						TArray<double> Rad;
-						const double GY = Side * Half * FMath::Lerp(0.75, 1.0, Taper);
-						const double G = Ground(X, GY) - 40.0;
-						for (int32 t = 0; t <= 6; ++t)
+						constexpr int32 N = 9;
+						for (int32 t = 0; t <= N; ++t)
 						{
-							const double U = t / 6.0;
-							const double Y = GY * (1.0 - U) * (1.0 - 0.25 * U) + Side * 30.0 * U;
-							const double Z = FMath::Lerp(G, Top, FMath::Sin(U * PI * 0.5));
-							Pts.Add(FVector(X + 25.0 * FMath::Sin(U * PI), Y, Z));
-							Rad.Add(FMath::Lerp(20.0, 12.0, U) * Taper + 4.0);
+							const double U = static_cast<double>(t) / N;
+							const double Phi = FMath::DegreesToRadians(FMath::Lerp(86.0, -22.0, U));
+							Pts.Add(FVector(X + 50.0 * (1.0 - FMath::Sin(Phi)), Sd * (Ry * FMath::Cos(Phi) + 22.0 * (1.0 - U)), Zc + Rz * FMath::Sin(Phi)));
+							Rad.Add(FMath::Lerp(23.0, 10.0, U) * (0.6 + 0.4 * T) + 4.0);
 						}
 						TNFormTube(M, Pts, Rad, 6, C.Bone);
 					}
 				}
-				for (int32 v = 0; v < Ribs + 2; ++v)
+				// Vértebras de la cola, más pequeñas hacia la punta.
+				for (int32 k = 1; k + 1 < 11; k += 1)
 				{
-					const double X = (v - (Ribs + 1) * 0.5) * (P.Length / Ribs);
-					TNFormBox(M, FVector(X, 0.0, P.Height + 90.0), FVector(45.0, 32.0, 26.0), 0.0, C.Bone * 0.95f);
+					const double S = FMath::Lerp(0.3, 0.8, k / 10.0);
+					Vertebra(Axis[k], Axis[k + 1] - Axis[k - 1], S);
 				}
-				const double SkullX = -P.Length * 0.5 - 260.0;
-				TNFloraBlob(M, FVector(SkullX, -Half * 0.7, Ground(SkullX, -Half * 0.7) + 70.0), 190.0, 90.0, Seed + 5u, C.Bone, 8);
-				TNFloraBlob(M, FVector(SkullX - 170.0, -Half * 0.7, Ground(SkullX - 170.0, -Half * 0.7) + 45.0), 120.0, 55.0, Seed + 6u, C.Bone * 0.95f, 7);
+				// Cráneo: bóveda aplanada y hocico, y las dos mandíbulas largas por delante.
+				TNFloraBlob(M, SkullC, 200.0, 95.0, Seed + 5u, C.Bone, 9);
+				TNFloraBlob(M, SkullC + FVector(-230.0, Side * 30.0, -35.0), 150.0, 60.0, Seed + 6u, C.Bone * 0.95f, 8);
+				for (const double Sd : { -1.0, 1.0 })
+				{
+					const double Y0 = SkullC.Y + Sd * 110.0;
+					TArray<FVector> Jaw = {
+						FVector(SkullX + 90.0, Y0, Ground(SkullX + 90.0, Y0) + 45.0),
+						FVector(SkullX - 250.0, Y0 - Sd * 25.0, Ground(SkullX - 250.0, Y0) + 32.0),
+						FVector(SkullX - 560.0, Y0 - Sd * 80.0, Ground(SkullX - 560.0, Y0 - Sd * 80.0) + 22.0) };
+					TNFormTube(M, Jaw, { 26.0, 20.0, 12.0 }, 6, C.Bone * 0.97f);
+				}
 				break;
 			}
 			case EFormation::RootArch:

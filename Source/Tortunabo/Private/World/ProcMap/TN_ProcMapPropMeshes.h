@@ -635,20 +635,25 @@ namespace TNPropMesh
 	{
 		using namespace PropColors;
 		const FLinearColor Col = Bone * (Variant == 1 ? 0.85f : 1.0f);
+		// Costillar tumbado de lado: la columna en el suelo con una vértebra por costilla, y cada
+		// costilla sale de ella en arco por encima y cae hacia el otro lado sin llegar a tocarlo.
 		const int32 Ribs = 3 + Variant;
+		const double X0 = -30.0, X1 = -30.0 + 18.0 * (Ribs - 1);
+		M.AddBeam(FVector(X0 - 14.0, -24.0, 4.0), FVector(X1 + 18.0, -24.0, 4.0), 3.2, Col * 0.92f);
 		for (int32 r = 0; r < Ribs; ++r)
 		{
-			const double X = -30.0 + 18.0 * r;
-			FVector Prev(X, -24.0, 1.0);
-			for (int32 k = 1; k <= 5; ++k)
+			const double X = X0 + 18.0 * r;
+			TNPropBall(M, FVector(X, -24.0, 5.0), 5.5, Col, 6, 3, 0.8);
+			FVector Prev(X, -24.0, 6.0);
+			const double Size = 1.0 - 0.12 * FMath::Abs(r - (Ribs - 1) * 0.5);
+			for (int32 k = 1; k <= 6; ++k)
 			{
-				const double A = PI * k / 5.0;
-				const FVector P(X, -24.0 * FMath::Cos(A), 30.0 * FMath::Sin(A) * (1.0 - 0.1 * r));
-				M.AddBeam(Prev, P, 2.2, Col);
+				const double A = PI * 0.92 * k / 6.0;
+				const FVector P(X + 3.0 * k / 6.0, -24.0 * FMath::Cos(A) * Size, 6.0 + 30.0 * FMath::Sin(A) * Size);
+				M.AddBeam(Prev, P, FMath::Lerp(2.4, 1.5, k / 6.0), Col);
 				Prev = P;
 			}
 		}
-		M.AddBeam(FVector(-38.0, 0.0, 3.0), FVector(-30.0 + 18.0 * Ribs, 0.0, 3.0), 3.0, Col);
 		for (int32 b = 0; b < 2; ++b)
 		{
 			const double A = TNPropRand(Seed, b, 0.0, 3.1);
