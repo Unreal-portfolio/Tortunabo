@@ -505,14 +505,15 @@ void ATN_SandCastleLobby::BuildCastle()
 		AddBlock(B, FVector2D(-2150.0 + s * 200.0, -2195.0), FVector2D(98.0, 105.0), 90.0 * (s + 1));
 	}
 
-	// ── Parkour 2: circuito de saltos y panzazo (sur): escalón, A, B (salto) y C (salto largo: panzazo) ──
+	// ── Parkour 2: circuito de saltos y panzazo (sur): escalón, A, B (salto de 1,8 m) y C (3,3 m: con panzazo) ──
+	// Distancias medidas de borde a borde y pensadas para la velocidad del lobby (andar a 2 m/s).
 	AddBlock(B, FVector2D(-1260.0, -1650.0), FVector2D(110.0, 110.0), 110.0);
 	AddBlock(B, FVector2D(-900.0, -1650.0), FVector2D(160.0, 160.0), 220.0);
-	AddBlock(B, FVector2D(-230.0, -1650.0), FVector2D(160.0, 160.0), 220.0);
-	AddBlock(B, FVector2D(790.0, -1650.0), FVector2D(160.0, 160.0), 220.0);
+	AddBlock(B, FVector2D(-400.0, -1650.0), FVector2D(160.0, 160.0), 220.0);
+	AddBlock(B, FVector2D(250.0, -1650.0), FVector2D(160.0, 160.0), 220.0);
 	// Rampa de concha: baja de la plataforma C hasta la arena (costillas de colores, con grosor).
 	{
-		const double X0 = 950.0, X1 = 1560.0, Z0 = 220.0, Z1 = FloorZ;
+		const double X0 = 410.0, X1 = 1020.0, Z0 = 220.0, Z1 = FloorZ;
 		const int32 Ribs = 9;
 		for (int32 r = 0; r < Ribs; ++r)
 		{
