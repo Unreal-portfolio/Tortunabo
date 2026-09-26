@@ -410,8 +410,16 @@ namespace TNProcMap
 	/** Aux2 de un hueco de salto que es un río de lava (en las cámaras de las cuevas del volcán). */
 	constexpr int32 GapLava = 1;
 
-	/** Estilo de un hueco normal (Aux de EFeature::Gap): labios, postes que lo parten o tronco de equilibrio. */
-	enum class EGapStyle : int32 { Lips = 0, Posts = 1, Beam = 2 };
+	/**
+	 * Estilo de un hueco normal (Aux de EFeature::Gap): labios, postes que lo parten, tronco de equilibrio o salto
+	 * largo que obliga al panzazo (2,7-3,7 m: más que un salto corriendo, 2 m, y menos que con panzazo, 4 m), con
+	 * chevrones y cartel de aviso.
+	 */
+	enum class EGapStyle : int32 { Lips = 0, Posts = 1, Beam = 2, Dive = 3 };
+
+	/** Largo de los huecos de panzazo (cm). */
+	constexpr double DiveGapMin = 270.0;
+	constexpr double DiveGapMax = 370.0;
 
 	/**
 	 * Postes de un hueco con estilo Posts: filas a lo largo que parten el hueco en saltos cortos y, en
@@ -448,7 +456,7 @@ namespace TNProcMap
 
 	inline EGapStyle GapStyleOf(const FFeature& F)
 	{
-		return F.Type == EFeature::Gap && !IsLavaGap(F) && F.Aux >= 0 && F.Aux <= 2 ? static_cast<EGapStyle>(F.Aux) : EGapStyle::Lips;
+		return F.Type == EFeature::Gap && !IsLavaGap(F) && F.Aux >= 0 && F.Aux <= 3 ? static_cast<EGapStyle>(F.Aux) : EGapStyle::Lips;
 	}
 
 	/** Postes de un hueco de estilo Posts (vacío en los demás); MaxJump, el salto más largo entre ellos. */

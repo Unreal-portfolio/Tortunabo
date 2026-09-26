@@ -1109,6 +1109,206 @@ namespace
 		TNProcAddTowerBanner(Cloth, Open, C, Ri, Ro, ParTop, Banner);
 	}
 
+	/** Amarillo y rojo de los avisos de parkour (chevrones, bandas y carteles). */
+	const FLinearColor TNProcWarnYellow(1.f, 0.78f, 0.1f);
+	const FLinearColor TNProcWarnRed(0.85f, 0.12f, 0.08f);
+
+	/**
+	 * Aviso de un hueco de panzazo (TNProcMap::EGapStyle::Dive), en el labio de llegada (-Dir): tres chevrones
+	 * amarillos y rojos que apuntan al hueco y, fuera del camino, un cartel con «!» mirando a quien llega. El hueco es
+	 * más largo que un salto corriendo: hay que coger carrerilla, saltar y hacer el panzazo en el aire.
+	 */
+	void TNProcAddDiveHint(FTNProcMeshBuffers& Paint, const TNProcMap::FFeature& F, double Inner)
+	{
+		const FVector2D D = F.Dir;
+		const FVector2D Nn(-D.Y, D.X);
+		const FVector2D Cg(F.Location.X, F.Location.Y);
+		const double LipZ = F.Location.Z;
+		const double Spread = FMath::Clamp(F.Width * 0.5 - 250.0, 80.0, 320.0);
+		for (int32 k = 0; k < 3; ++k)
+		{
+			// Punta hacia el hueco; los brazos se abren hacia atrás.
+			const double TipAlong = -(Inner + 60.0 + 95.0 * k);
+			const FVector2D TipP = Cg + D * TipAlong;
+			for (const double Sg : { -1.0, 1.0 })
+			{
+				const FVector2D ArmEnd = Cg + D * (TipAlong - 110.0) + Nn * (Sg * Spread);
+				const FVector2D Arm = ArmEnd - TipP;
+				Paint.AddBox(FVector((TipP + ArmEnd) * 0.5, LipZ + 1.0), FVector(Arm, 0.0), FVector(Arm.Size() * 0.5 + 10.0, 14.0, 1.5),
+					(k % 2) ? TNProcWarnRed : TNProcWarnYellow);
+			}
+		}
+		// Cartel: poste, tablero amarillo y «!» rojo en la cara que mira a quien llega.
+		const FVector2D SignP = Cg - D * (Inner + 300.0) + Nn * (F.Width * 0.5 - 130.0);
+		TNProcAddCylinder(Paint, FVector(SignP, LipZ), FVector(SignP, LipZ + 205.0), 7.0, 6.0, 6, FLinearColor(0.35f, 0.25f, 0.15f));
+		Paint.AddBox(FVector(SignP, LipZ + 165.0), FVector(Nn, 0.0), FVector(55.0, 5.0, 45.0), TNProcWarnYellow);
+		const FVector2D Face = SignP - D * 6.5;
+		Paint.AddBox(FVector(Face, LipZ + 176.0), FVector(Nn, 0.0), FVector(7.0, 1.5, 22.0), TNProcWarnRed);
+		Paint.AddBox(FVector(Face, LipZ + 138.0), FVector(Nn, 0.0), FVector(7.0, 1.5, 7.0), TNProcWarnRed);
+	}
+
+	/** Banda de aviso amarilla y roja atravesada en un tablero (cima a 2 cm sobre TopZ). */
+	void TNProcAddHazardBand(FTNProcMeshBuffers& Paint, const FVector& At, const FVector& Dir, double Hw, double TopZ)
+	{
+		const FVector Nn(-Dir.Y, Dir.X, 0.0);
+		constexpr int32 Segs = 8;
+		for (int32 k = 0; k < Segs; ++k)
+		{
+			const double Y = -Hw + Hw * 2.0 * (k + 0.5) / Segs;
+			Paint.AddBox(FVector(At.X, At.Y, TopZ + 0.5) + Nn * Y, Dir, FVector(15.0, Hw / Segs, 1.5), (k % 2) ? TNProcWarnRed : TNProcWarnYellow);
+		}
+	}
+
+	/**
+	 * Borde astillado de un tablero roto (centro At, cota TopZ): piezas de largo desigual que asoman hacia Toward,
+	 * de grueso Thick, y, sin colisión (Far), unos tablones colgando si bDangle.
+	 */
+	void TNProcAddBrokenEdge(FTNProcMeshBuffers& Solid, FTNProcMeshBuffers& Far, const FVector& At, const FVector& Toward, double Hw, double TopZ,
+		double Thick, bool bDangle, const FLinearColor& Color, uint32 Seed)
+	{
+		const FVector T = Toward.GetSafeNormal2D();
+		const FVector Nn(-T.Y, T.X, 0.0);
+		constexpr int32 Stubs = 7;
+		for (int32 k = 0; k < Stubs; ++k)
+		{
+			const double U = (TNProcTone(k, Seed) - 0.82f) / 0.36f;
+			const double StubLen = 12.0 + 58.0 * U;
+			const double Y = -Hw + Hw * 2.0 * (k + 0.5) / Stubs;
+			const FVector P = FVector(At.X, At.Y, TopZ - 3.0 - Thick * 0.5) + Nn * Y + T * (StubLen * 0.5 - 4.0);
+			Solid.AddBox(P, T, FVector(StubLen * 0.5, Hw / Stubs - 3.0, Thick * 0.5), Color * TNProcTone(k + 20, Seed));
+		}
+		if (!bDangle) { return; }
+		for (int32 k = 0; k < 3; ++k)
+		{
+			const double U = (TNProcTone(k + 40, Seed) - 0.82f) / 0.36f;
+			const double Y = Hw * (-0.7 + 0.7 * k) + 30.0 * (U - 0.5);
+			const FVector A = FVector(At.X, At.Y, TopZ - 10.0) + Nn * Y + T * 6.0;
+			const FVector B = A + T * (20.0 + 30.0 * U) - FVector(0.0, 0.0, 110.0 + 80.0 * U);
+			Far.AddBeam(A, B, 7.0, Color * 0.8f);
+		}
+	}
+
+	/**
+	 * Tramo hundido de un puente colosal entre SA y SB (ahí no hay tablero): se cruza con parkour y todo lo pisable
+	 * queda a menos de 50 cm bajo el tablero (las cajas de muerte empiezan 60 cm por debajo).
+	 * - Kind 0: vigas de 60 cm en zigzag de lado a lado, con plataformas en los codos.
+	 * - Kind 1: postes cuadrados de 1,1 m al tresbolillo, alternando la cima (-8 y -26 cm), a saltos de ~1,3 m.
+	 * - Kind 2: dos cornisas de 60 cm por los bordes, cada una con un hueco de 1,8 m (una a un tercio y otra a dos
+	 *   tercios) y un tablón atravesado en medio para cambiar de lado.
+	 * Bordes astillados (bStone: sillares; si no, tablones que cuelgan) y bandas de aviso antes de cada borde.
+	 */
+	void TNProcAddBrokenSpan(FTNProcMeshBuffers& Solid, FTNProcMeshBuffers& Far, FTNProcMeshBuffers& Paint, const FTNPlankLine& Line,
+		double SA, double SB, double TopZ, int32 Kind, bool bStone, const FLinearColor& Base, uint32 Seed)
+	{
+		const double SpanLen = SB - SA;
+		if (SpanLen < 400.0) { return; }
+		auto Frame = [&Line](double S, FVector2D& OutP, FVector& OutDir, double& OutHw)
+		{
+			FVector P;
+			Line.At(S, P, OutDir, OutHw);
+			OutP = FVector2D(P.X, P.Y);
+		};
+		// Bordes y avisos.
+		for (int32 e = 0; e < 2; ++e)
+		{
+			FVector2D P2;
+			FVector Dir;
+			double Hw = 0.0;
+			Frame(e == 0 ? SA : SB, P2, Dir, Hw);
+			const FVector Toward = e == 0 ? Dir : -Dir;
+			TNProcAddBrokenEdge(Solid, Far, FVector(P2, TopZ), Toward, Hw, TopZ, bStone ? 28.0 : 10.0, !bStone, Base, Seed + 11u * static_cast<uint32>(e));
+			FVector2D W2;
+			FVector WDir;
+			double WHw = 0.0;
+			Frame(e == 0 ? SA - 90.0 : SB + 90.0, W2, WDir, WHw);
+			TNProcAddHazardBand(Paint, FVector(W2, TopZ), WDir, WHw - 20.0, TopZ);
+		}
+
+		const FLinearColor Beams = bStone ? Base * 0.95f : Base * 1.05f;
+		switch (Kind)
+		{
+			case 0:
+			{
+				const int32 Legs = FMath::Clamp(FMath::RoundToInt32(SpanLen / 380.0), 3, 5);
+				const double Side0 = (Seed & 1u) ? 1.0 : -1.0;
+				TArray<FVector> Knots;
+				for (int32 k = 0; k <= Legs; ++k)
+				{
+					FVector2D P2;
+					FVector Dir;
+					double Hw = 0.0;
+					Frame(FMath::Lerp(SA - 40.0, SB + 40.0, static_cast<double>(k) / Legs), P2, Dir, Hw);
+					const double Lat = (k == 0 || k == Legs) ? 0.0 : Side0 * ((k % 2) ? 1.0 : -1.0) * FMath::Max(60.0, Hw - 90.0);
+					Knots.Add(FVector(P2, TopZ) + FVector(-Dir.Y, Dir.X, 0.0) * Lat);
+				}
+				for (int32 k = 1; k <= Legs; ++k)
+				{
+					const FVector A = Knots[k - 1];
+					const FVector B = Knots[k];
+					Solid.AddBox((A + B) * 0.5 - FVector(0.0, 0.0, 14.0), B - A, FVector(FVector::Dist2D(A, B) * 0.5 + 20.0, 30.0, 10.0), Beams * TNProcTone(k, Seed));
+				}
+				for (int32 k = 1; k < Legs; ++k)
+				{
+					const FVector K = Knots[k];
+					const FVector Along = (Knots[k + 1] - Knots[k - 1]).GetSafeNormal2D();
+					Solid.AddBox(K - FVector(0.0, 0.0, 16.0), Along, FVector(50.0, 50.0, 12.0), Beams * 1.1f);
+					Far.AddBox(K - FVector(0.0, 0.0, 328.0), Along, FVector(12.0, 12.0, 300.0), Beams * 0.7f);
+				}
+				break;
+			}
+			case 1:
+			{
+				const int32 Count = FMath::Max(2, FMath::RoundToInt32((SpanLen - 350.0) / 205.0) + 1);
+				const int32 Flip = static_cast<int32>(Seed & 1u);
+				for (int32 k = 0; k < Count; ++k)
+				{
+					FVector2D P2;
+					FVector Dir;
+					double Hw = 0.0;
+					Frame(FMath::Lerp(SA + 175.0, SB - 175.0, static_cast<double>(k) / (Count - 1)), P2, Dir, Hw);
+					const double Lat = ((k + Flip) % 2 ? 1.0 : -1.0) * FMath::Min(65.0, Hw * 0.4);
+					const FVector2D Pc = P2 + FVector2D(-Dir.Y, Dir.X) * Lat;
+					const double Top = TopZ - ((k % 2) ? 26.0 : 8.0);
+					const double Bottom = TopZ - 700.0;
+					Solid.AddBox(FVector(Pc, Top - 12.0), Dir, FVector(55.0, 55.0, 12.0), Beams * 1.1f * TNProcTone(k, Seed));
+					Solid.AddBox(FVector(Pc, 0.5 * (Top - 24.0 + Bottom)), Dir, FVector(44.0, 44.0, 0.5 * (Top - 24.0 - Bottom)), Beams * 0.8f);
+				}
+				break;
+			}
+			default:
+			{
+				const double Flip = (Seed & 1u) ? -1.0 : 1.0;
+				for (const double Side : { -1.0, 1.0 })
+				{
+					const double GapS = SA + SpanLen * (Side * Flip < 0.0 ? 1.0 / 3.0 : 2.0 / 3.0);
+					const double Runs[2][2] = { { SA - 30.0, GapS - 90.0 }, { GapS + 90.0, SB + 30.0 } };
+					int32 Piece = 0;
+					for (const auto& Run : Runs)
+					{
+						for (double S = Run[0]; S < Run[1] - 1.0; S += 150.0, ++Piece)
+						{
+							const double Se = FMath::Min(S + 150.0, Run[1]);
+							FVector2D P0, P1;
+							FVector D0, D1;
+							double H0 = 0.0, H1 = 0.0;
+							Frame(S, P0, D0, H0);
+							Frame(Se, P1, D1, H1);
+							const FVector2D Mid = (P0 + P1) * 0.5 + FVector2D(-D0.Y, D0.X) * (Side * (0.5 * (H0 + H1) - 45.0));
+							Solid.AddBox(FVector(Mid, TopZ - 16.0), D0, FVector(FVector2D::Distance(P0, P1) * 0.5 + 1.0, 30.0, 10.0), Beams * TNProcTone(Piece, Seed));
+							Far.AddBox(FVector(Mid, TopZ - 60.0), D0, FVector(FVector2D::Distance(P0, P1) * 0.5 + 1.0, 18.0, 34.0), Beams * 0.7f);
+						}
+					}
+				}
+				// Tablón atravesado para cambiar de cornisa.
+				FVector2D Pm;
+				FVector Dm;
+				double Hm = 0.0;
+				Frame(SA + SpanLen * 0.5, Pm, Dm, Hm);
+				Solid.AddBox(FVector(Pm, TopZ - 14.0), FVector(-Dm.Y, Dm.X, 0.0), FVector(Hm - 30.0, 25.0, 8.0), Beams * 1.2f);
+				break;
+			}
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1501,26 +1701,97 @@ void ATN_ProcMapGenerator::BuildStructures()
 			CutA = FMath::Clamp(Sc - Rc, S0, S1);
 			CutB = FMath::Clamp(Sc + Rc, S0, S1);
 		}
+		// Tramo hundido (puentes de más de 42 m): 11-15 m sin tablero que se cruzan con parkour (vigas en zigzag,
+		// postes o cornisas; ver TNProcAddBrokenSpan). Solo donde debajo no hay nada en 9 m (ni pilas ni torres),
+		// todo el tramo queda sobre cajas de muerte y no hay nada del recorrido cerca (plaza, huevos, recompensas).
+		double BreakA = S1, BreakB = S1;
+		bool bBroken = false;
+		const uint32 BreakHash = HashCell(Layout.Params.Seed ^ 0x7B0Bu, c, 3);
+		if (S1 - S0 > 4200.0)
+		{
+			auto OverKillBox = [&](const FVector2D& Q)
+			{
+				for (const FKillBox& K : Layout.KillBoxes)
+				{
+					if (FMath::Abs(K.Center.Z - (C.TopZ - 655.0)) > 1.0) { continue; }
+					const FVector2D Rel = Q - FVector2D(K.Center.X, K.Center.Y);
+					if (FMath::Abs(FVector2D::DotProduct(Rel, K.Dir)) <= K.Half.X - 50.0
+						&& FMath::Abs(FVector2D::DotProduct(Rel, FVector2D(-K.Dir.Y, K.Dir.X))) <= K.Half.Y - 300.0)
+					{
+						return true;
+					}
+				}
+				return false;
+			};
+			auto SpanClear = [&](double Ba, double Bb)
+			{
+				for (double S = Ba - 150.0; S <= Bb + 150.0; S += 100.0)
+				{
+					FVector P, Dir;
+					double Hw = 0.0;
+					Line.At(S, P, Dir, Hw);
+					const FVector2D Q(P.X, P.Y);
+					if (TerrainHeightMap(Q) > C.TopZ - 900.0 || !OverKillBox(Q)) { return false; }
+					for (const FFeature& Fo : Layout.Features)
+					{
+						if (Fo.Type == EFeature::Deck || Fo.Type == EFeature::Tower || Fo.Type == EFeature::DeckPillar) { continue; }
+						if (FMath::Abs(Fo.Location.Z - C.TopZ) > 600.0) { continue; }
+						const double Reach = Hw + (Fo.Type == EFeature::BridgePlaza ? Fo.Radius + 500.0 : 500.0);
+						if (FVector2D::DistSquared(Q, FVector2D(Fo.Location.X, Fo.Location.Y)) < Reach * Reach) { return false; }
+					}
+				}
+				return true;
+			};
+			const double BreakLen = 1100.0 + 400.0 * ((BreakHash >> 8) & 0xFF) / 255.0;
+			static const double Fractions[7] = { 0.5, 0.36, 0.64, 0.28, 0.72, 0.44, 0.56 };
+			for (const double Fr : Fractions)
+			{
+				const double Ba = S0 + (S1 - S0) * Fr - BreakLen * 0.5;
+				if (Ba < S0 + 600.0 || Ba + BreakLen > S1 - 600.0) { continue; }
+				if (SpanClear(Ba, Ba + BreakLen)) { BreakA = Ba; BreakB = Ba + BreakLen; bBroken = true; break; }
+			}
+		}
+		// Reparte un tramo [Pa, Pb] del tablero en los trozos que quedan fuera del hundido.
+		auto Pieces = [&](double Pa, double Pb, auto&& Emit)
+		{
+			if (!bBroken || BreakB <= Pa || BreakA >= Pb) { if (Pb > Pa) { Emit(Pa, Pb); } return; }
+			if (BreakA > Pa) { Emit(Pa, BreakA); }
+			if (BreakB < Pb) { Emit(BreakB, Pb); }
+		};
 		switch (Style)
 		{
 			case ETNBridgeStyle::Stone:
-				TNProcAddStoneDeck(Painted, Line, S0, CutA, StoneC, Seed);
-				if (CutB < S1) { TNProcAddStoneDeck(Painted, Line, CutB, S1, StoneC, Seed + 1u); }
+				Pieces(S0, CutA, [&](double Pa, double Pb) { TNProcAddStoneDeck(Painted, Line, Pa, Pb, StoneC, Seed); });
+				if (CutB < S1) { Pieces(CutB, S1, [&](double Pa, double Pb) { TNProcAddStoneDeck(Painted, Line, Pa, Pb, StoneC, Seed + 1u); }); }
 				break;
 			case ETNBridgeStyle::Trestle:
-				TNProcAddPlanks(Wood, Line, S0, S1, WoodColor * 1.1f, Seed);
-				TNProcAddRigidRails(Wood, Line, S0, S1, 250.0, 100.0, 6.0, WoodColor * 0.7f);
+				Pieces(S0, S1, [&](double Pa, double Pb)
+				{
+					TNProcAddPlanks(Wood, Line, Pa, Pb, WoodColor * 1.1f, Seed);
+					TNProcAddRigidRails(Wood, Line, Pa, Pb, 250.0, 100.0, 6.0, WoodColor * 0.7f);
+				});
 				break;
 			case ETNBridgeStyle::Iron:
-				TNProcAddPlanks(Painted, Line, S0, S1, IronColor * 1.6f, Seed);
-				TNProcAddRigidRails(Painted, Line, S0, CutA, 200.0, 105.0, 4.0, IronColor);
-				if (CutB < S1) { TNProcAddRigidRails(Painted, Line, CutB, S1, 200.0, 105.0, 4.0, IronColor); }
+				Pieces(S0, S1, [&](double Pa, double Pb) { TNProcAddPlanks(Painted, Line, Pa, Pb, IronColor * 1.6f, Seed); });
+				Pieces(S0, CutA, [&](double Pa, double Pb) { TNProcAddRigidRails(Painted, Line, Pa, Pb, 200.0, 105.0, 4.0, IronColor); });
+				if (CutB < S1) { Pieces(CutB, S1, [&](double Pa, double Pb) { TNProcAddRigidRails(Painted, Line, Pa, Pb, 200.0, 105.0, 4.0, IronColor); }); }
 				break;
 			case ETNBridgeStyle::Rope:
 			default:
-				TNProcAddPlanks(Wood, Line, S0, S1, WoodColor, Seed);
-				TNProcAddRopeRails(Wood, Line, S0, S1, 300.0, 0.0, 105.0, WoodColor * 0.65f, RopeColor);
+				Pieces(S0, S1, [&](double Pa, double Pb)
+				{
+					TNProcAddPlanks(Wood, Line, Pa, Pb, WoodColor, Seed);
+					TNProcAddRopeRails(Wood, Line, Pa, Pb, 300.0, 0.0, 105.0, WoodColor * 0.65f, RopeColor);
+				});
 				break;
+		}
+		if (bBroken)
+		{
+			const bool bWoodDeck = Style == ETNBridgeStyle::Trestle || Style == ETNBridgeStyle::Rope;
+			const FLinearColor DeckC = Style == ETNBridgeStyle::Stone ? StoneC : (Style == ETNBridgeStyle::Iron ? IronColor * 1.6f : WoodColor);
+			TNProcAddBrokenSpan(bWoodDeck ? Wood : Painted, PaintedFar, Painted, Line, BreakA, BreakB, C.TopZ, static_cast<int32>((BreakHash >> 16) % 3u),
+				Style == ETNBridgeStyle::Stone, DeckC, Seed ^ 0x5EEDu);
+			UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Cruce %d: tramo hundido de %.0f m (tipo %u)."), c, (BreakB - BreakA) / 100.0, (BreakHash >> 16) % 3u);
 		}
 
 		if (Plaza)
@@ -1716,7 +1987,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 				// Labios que reducen la zanja al hueco exacto: de madera (selva, playa, pueblos), de sillería
 				// (desierto, roca) o de basalto (volcán), o de roca en el río de lava de una cueva (con la lava
 				// 1,5 m por debajo, de pared a pared). Según el estilo, postes que parten el hueco en saltos
-				// cortos o troncos de equilibrio de labio a labio.
+				// cortos, troncos de equilibrio de labio a labio o salto largo de panzazo con aviso.
 				const bool bLava = IsLavaGap(F);
 				const FVector2D D = F.Dir;
 				const double Outer = F.Height * 0.5 + 150.0;
@@ -1798,6 +2069,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 						constexpr double LogR = 32.0;
 						TNProcAddLog(Wood, FVector(A2, F.Location.Z + 10.0 - LogR), FVector(B2, F.Location.Z + 10.0 - LogR), LogR, static_cast<uint32>(F.PathIndex) + k, WoodColor * 0.9f, WoodColor * 1.3f);
 					}
+				}
+				// Salto de panzazo: chevrones y cartel en el labio de llegada.
+				if (GapStyleOf(F) == EGapStyle::Dive)
+				{
+					TNProcAddDiveHint(Painted, F, Inner);
 				}
 				if (bLava)
 				{
@@ -1910,14 +2186,130 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::RiverBridge:
 			{
+				// Puente de madera sobre el río. Muchos están rotos: les falta el centro (7 m, no se salta) y hay que
+				// rodear por el agua: se baja al río por el hueco, se va por las piedras (o nadando) hasta la
+				// escalera de madera que sube pegada al puente por un lado y se vuelve al tablero por un rellano
+				// (la barandilla está abierta ahí). La escalera no puede quedar enterrada por la orilla.
 				const FVector2D D = F.Dir;
 				const FVector2D N = LeftNormal(D);
-				Wood.AddBox(F.Location - FVector(0.0, 0.0, 45.0), FVector(D.X, D.Y, 0.0), FVector(F.Length * 0.5, F.Width * 0.5, 45.0), WoodColor);
-				for (int32 Sd = -1; Sd <= 1; Sd += 2)
+				const FVector2D Cb(F.Location.X, F.Location.Y);
+				const double DeckZ = F.Location.Z;
+				const double HalfL = F.Length * 0.5;
+				const double HalfW = F.Width * 0.5;
+				constexpr double HoleHalf = 350.0;
+				constexpr double StepRise = 30.0;
+				constexpr double StepRun = 42.0;
+				constexpr double StairHalf = 80.0;
+				const double StairOff = HalfW + 10.0 + StairHalf;
+				const int32 NumSteps = FMath::FloorToInt32((DeckZ - 35.0) / StepRise) + 1;
+				const double StairRun = StepRun * (NumSteps - 1);
+				const uint32 RiverHash = HashCell(Layout.Params.Seed ^ 0xB40Eu, F.PathIndex, F.BranchIndex + 3);
+				int32 StairSide = 0;
+				double StairTop = 0.0;
+				if (F.Length > 1600.0 && (RiverHash & 3u) != 0u && DeckZ > 150.0 && TerrainHeightMap(Cb) < -100.0)
 				{
-					const FVector2D Rail = FVector2D(F.Location.X, F.Location.Y) + N * (Sd * (F.Width * 0.5 - 10.0));
-					Wood.AddBox(FVector(Rail.X, Rail.Y, F.Location.Z + 45.0), FVector(D.X, D.Y, 0.0), FVector(F.Length * 0.5, 10.0, 45.0), WoodColor * 0.8f);
+					for (int32 Try = 0; Try < 2 && StairSide == 0; ++Try)
+					{
+						const int32 Sd = (((RiverHash >> 2) & 1u) != 0u) == (Try == 0) ? 1 : -1;
+						// El primer peldaño junto al hueco (ahí llegan las piedras); el rellano, sobre el tramo de llegada.
+						for (double At = FMath::Max(HoleHalf + 110.0, StairRun - 220.0); At <= FMath::Min(HalfL - 110.0, StairRun + 250.0) && StairSide == 0; At += 40.0)
+						{
+							bool bOk = true;
+							for (int32 k = 0; k < NumSteps && bOk; ++k)
+							{
+								const double Top = DeckZ - StepRise * (NumSteps - 1 - k);
+								const double Along = At - StepRun * (NumSteps - 1 - k);
+								for (const double Lat : { StairOff - StairHalf, StairOff, StairOff + StairHalf })
+								{
+									if (TerrainHeightMap(Cb + D * Along + N * (Sd * Lat)) > Top - 10.0) { bOk = false; break; }
+								}
+							}
+							if (bOk) { StairSide = Sd; StairTop = At; }
+						}
+					}
 				}
+				const bool bBrokenBridge = StairSide != 0;
+				const double OpenA = StairTop - StepRun * 0.5 - 10.0;
+				const double OpenB = StairTop + 110.0;
+				// Tablero y barandillas de [Pa, Pb] (la barandilla del lado de la escalera, abierta en el rellano).
+				auto DeckPiece = [&](double Pa, double Pb)
+				{
+					Wood.AddBox(FVector(Cb + D * ((Pa + Pb) * 0.5), DeckZ - 45.0), FVector(D, 0.0), FVector((Pb - Pa) * 0.5, HalfW, 45.0), WoodColor);
+					for (int32 Sd = -1; Sd <= 1; Sd += 2)
+					{
+						auto RailRun = [&](double Ra, double Rb)
+						{
+							if (Rb - Ra < 5.0) { return; }
+							const FVector2D Rail = Cb + D * ((Ra + Rb) * 0.5) + N * (Sd * (HalfW - 10.0));
+							Wood.AddBox(FVector(Rail, DeckZ + 45.0), FVector(D, 0.0), FVector((Rb - Ra) * 0.5, 10.0, 45.0), WoodColor * 0.8f);
+						};
+						if (bBrokenBridge && Sd == StairSide) { RailRun(Pa, FMath::Clamp(OpenA, Pa, Pb)); RailRun(FMath::Clamp(OpenB, Pa, Pb), Pb); }
+						else { RailRun(Pa, Pb); }
+					}
+				};
+				if (!bBrokenBridge)
+				{
+					DeckPiece(-HalfL, HalfL);
+					break;
+				}
+				DeckPiece(-HalfL, -HoleHalf);
+				DeckPiece(HoleHalf, HalfL);
+				const uint32 Bs = RiverHash ^ 0x51ABu;
+				const FVector D3(D, 0.0);
+				TNProcAddBrokenEdge(Wood, PaintedFar, FVector(Cb - D * HoleHalf, DeckZ), D3, HalfW - 20.0, DeckZ, 10.0, true, WoodColor, Bs);
+				TNProcAddBrokenEdge(Wood, PaintedFar, FVector(Cb + D * HoleHalf, DeckZ), -D3, HalfW - 20.0, DeckZ, 10.0, true, WoodColor, Bs + 7u);
+				TNProcAddHazardBand(Painted, FVector(Cb - D * (HoleHalf + 90.0), DeckZ), D3, HalfW - 30.0, DeckZ);
+				TNProcAddHazardBand(Painted, FVector(Cb + D * (HoleHalf + 90.0), DeckZ), D3, HalfW - 30.0, DeckZ);
+
+				// Escalera: peldaños de 30 cm de alto y 42 de huella con puntales hasta el lecho, zancas por los
+				// dos lados y el rellano de arriba a ras del tablero, pegado a su borde.
+				const FVector2D Side2 = N * static_cast<double>(StairSide);
+				const FLinearColor StairC = WoodColor * 0.9f;
+				for (int32 k = 0; k < NumSteps; ++k)
+				{
+					const double Top = DeckZ - StepRise * (NumSteps - 1 - k);
+					const double Along = StairTop - StepRun * (NumSteps - 1 - k);
+					const FVector2D Sc = Cb + D * Along + Side2 * StairOff;
+					if (k == NumSteps - 1)
+					{
+						const double In = HalfW - 1.0;
+						const double Out = StairOff + StairHalf;
+						const FVector2D Lc = Cb + D * (StairTop + (110.0 - StepRun * 0.5) * 0.5) + Side2 * ((In + Out) * 0.5);
+						Wood.AddBox(FVector(Lc, Top - 8.0), FVector(D, 0.0), FVector((110.0 + StepRun * 0.5) * 0.5, (Out - In) * 0.5, 8.0), StairC * 1.1f);
+					}
+					else
+					{
+						Wood.AddBox(FVector(Sc, Top - 7.0), FVector(D, 0.0), FVector(StepRun * 0.5 + 1.0, StairHalf, 7.0), StairC * TNProcTone(k, Bs));
+					}
+					if (k % 3 == 0 || k == NumSteps - 1)
+					{
+						for (const double Lat : { -StairHalf + 10.0, StairHalf - 10.0 })
+						{
+							const FVector2D Pp = Sc + Side2 * Lat;
+							const double PostTop = Top - 14.0;
+							Wood.AddBox(FVector(Pp, 0.5 * (PostTop - 360.0)), FVector(D, 0.0), FVector(8.0, 8.0, 0.5 * (PostTop + 360.0)), StairC * 0.6f);
+						}
+					}
+				}
+				for (const double Lat : { -StairHalf + 6.0, StairHalf - 6.0 })
+				{
+					const FVector2D Lo = Cb + D * (StairTop - StairRun - StepRun * 0.5) + Side2 * (StairOff + Lat);
+					const FVector2D Hi = Cb + D * (StairTop + StepRun * 0.5) + Side2 * (StairOff + Lat);
+					PaintedFar.AddBeam(FVector(Lo, DeckZ - StepRise * (NumSteps - 1) - 24.0), FVector(Hi, DeckZ - 24.0), 6.0, StairC * 0.55f);
+				}
+
+				// Piedras del río: en fila desde debajo del hueco hasta el primer peldaño (que la búsqueda deja junto
+				// al hueco), cima a 35 cm sobre el agua y a saltitos de menos de medio metro.
+				const double StoneAlong = FMath::Clamp(StairTop - StairRun, -HoleHalf + 110.0, HoleHalf - 110.0);
+				const double LatEnd = StairOff - StairHalf - 80.0;
+				const int32 NumStones = FMath::Max(2, FMath::CeilToInt32(LatEnd / 170.0) + 1);
+				for (int32 k = 0; k < NumStones; ++k)
+				{
+					const FVector2D Q = Cb + D * StoneAlong + Side2 * (LatEnd * k / (NumStones - 1));
+					if (TerrainHeightMap(Q) > 0.0) { continue; }
+					TNProcAddCylinder(Rock, FVector(Q, -360.0), FVector(Q, 35.0), 72.0, 60.0, 9, RockColor * (0.95f + 0.1f * TNProcTone(k, Bs)));
+				}
+				UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Puente del río roto (muestra %d): escalera de %d peldaños."), F.PathIndex, NumSteps);
 				break;
 			}
 			case EFeature::LavaPool:

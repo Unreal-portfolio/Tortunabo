@@ -466,6 +466,8 @@ namespace TNProcMap
 		const FGenParams& P = L.Params;
 		const double GapMaxD = LerpD(FMath::Min(P.GapMax, 200.0), P.GapMax, Saturate(P.Difficulty01));
 		const double Chance = P.GapsPerKm * P.SampleSpacing / 100000.0;
+		// Huecos de panzazo: desde Normal y si caben en las métricas del mapa.
+		const bool bDiveGaps = P.Difficulty01 >= 0.35 && GapMaxD >= DiveGapMin + 10.0;
 		double LastS = -1e9;
 
 		TArray<int32> Forks;
@@ -497,6 +499,14 @@ namespace TNProcMap
 			const double StyleU = Rng.Unit();
 			F.Aux = static_cast<int32>(StyleU < 0.4 ? EGapStyle::Lips : (StyleU < 0.75 ? EGapStyle::Posts : EGapStyle::Beam));
 			if (F.Aux == static_cast<int32>(EGapStyle::Posts)) { F.Length = FMath::Max(F.Length, GapMaxD) * Rng.Range(1.35, 1.8); }
+			// Desde Normal, algunos labios pasan a salto largo que obliga al panzazo (con hash, sin tocar la secuencia
+			// del generador).
+			const uint32 DiveHash = HashCell(P.Seed ^ 0xD1FEu, i, BranchIndex + 7);
+			if (bDiveGaps && F.Aux == static_cast<int32>(EGapStyle::Lips) && (DiveHash & 0xFF) < 110u)
+			{
+				F.Aux = static_cast<int32>(EGapStyle::Dive);
+				F.Length = LerpD(DiveGapMin, FMath::Min(DiveGapMax, GapMaxD), ((DiveHash >> 8) & 0xFF) / 255.0);
+			}
 			// Zanja del terreno más larga que el hueco: los labios (mallas) la estrechan al valor exacto.
 			F.Height = FMath::Max(F.Length + 500.0, 800.0);
 			// La zanja no puede pisar otra parte de ningún camino (curvas que vuelven, ramas, horquillas).
@@ -507,6 +517,25 @@ namespace TNProcMap
 				if (FMath::Abs(Samples[j].S - Sm.S) <= F.Height * 0.5 + 100.0) { Samples[j].Flags |= PathFlags::Gap; }
 			}
 			LastS = Sm.S;
+		}
+
+		// En el camino principal siempre hay al menos un salto de panzazo (Normal y Difícil): el hueco de labios con
+		// la zanja más larga pasa a serlo (cabe dentro de su zanja, así que no pisa nada nuevo).
+		if (bDiveGaps && BranchIndex == INDEX_NONE)
+		{
+			FFeature* Best = nullptr;
+			bool bHasDive = false;
+			for (FFeature& F : L.Features)
+			{
+				if (F.Type != EFeature::Gap || F.BranchIndex != INDEX_NONE || IsLavaGap(F)) { continue; }
+				bHasDive |= GapStyleOf(F) == EGapStyle::Dive;
+				if (GapStyleOf(F) == EGapStyle::Lips && (!Best || F.Height > Best->Height)) { Best = &F; }
+			}
+			if (!bHasDive && Best && Best->Height - 500.0 >= DiveGapMin)
+			{
+				Best->Aux = static_cast<int32>(EGapStyle::Dive);
+				Best->Length = FMath::Clamp(Best->Height - 500.0, DiveGapMin, FMath::Min(DiveGapMax, GapMaxD));
+			}
 		}
 	}
 

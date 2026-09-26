@@ -94,13 +94,18 @@ bool FTNProcMapLayoutInvariantsTest::RunTest(const FString& Parameters)
 			}
 			TestEqual(Ctx + TEXT(": sin rampas más empinadas que MaxPathSlope"), SteepCount, 0);
 
-			// Huecos de salto dentro de las métricas de la tortuga (1,3–3,9 m).
+			// Huecos de salto dentro de las métricas de la tortuga (1,3–3,9 m). Los de postes son más largos (los
+			// postes los parten en saltos cortos) y los de panzazo van de DiveGapMin a DiveGapMax.
 			bool bGaps = true;
+			bool bDives = true;
 			for (const FFeature& F : L.Features)
 			{
-				if (F.Type == EFeature::Gap) { bGaps &= F.Length >= L.Params.GapMin - 1.0 && F.Length <= L.Params.GapMax + 1.0; }
+				if (F.Type != EFeature::Gap || GapStyleOf(F) == EGapStyle::Posts) { continue; }
+				bGaps &= F.Length >= L.Params.GapMin - 1.0 && F.Length <= L.Params.GapMax + 1.0;
+				if (GapStyleOf(F) == EGapStyle::Dive) { bDives &= F.Length >= DiveGapMin - 1.0 && F.Length <= DiveGapMax + 1.0 && F.Height >= F.Length + 400.0; }
 			}
 			TestTrue(Ctx + TEXT(": huecos dentro de [GapMin, GapMax]"), bGaps);
+			TestTrue(Ctx + TEXT(": huecos de panzazo dentro de [DiveGapMin, DiveGapMax] y de su zanja"), bDives);
 
 			// Isletas: el hueco entre isletas consecutivas es saltable.
 			bool bIslets = true;
