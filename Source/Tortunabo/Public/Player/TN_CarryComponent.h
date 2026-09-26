@@ -16,9 +16,10 @@ class USoundBase;
  *  - La llevada no controla su movimiento. Si intenta moverse de forma continuada
  *    SecondsToEscape segundos, se libera. Mientras forcejea, al portador le tiembla
  *    la cámara y su lanzamiento pierde mucha fuerza.
- *  - Lanzamiento en parábola hacia donde apunta la cámara. En el aire la lanzada
- *    no puede salir del caparazón: al tocar suelo rebota en vertical, sale del
- *    caparazón durante ese rebote (se estira en el aire) y aterriza de pie.
+ *  - Lanzamiento en parábola hacia donde apunta la cámara. La lanzada sale volando
+ *    como caparazón con física propia (ATN_ShellBody): da volteretas, rebota y rueda
+ *    y no puede salir hasta que la caja se para; entonces sale sola y se pone de pie.
+ *    Soltada, cae como caparazón y sale cuando quiera.
  *
  * Red: estado server-authoritative. CarriedTurtle (en el portador) y CarriedBy (en
  * el llevado) replican y cada máquina aplica localmente el enganche. El impulso
@@ -158,7 +159,7 @@ private:
 	bool CanBeGrabbed(const ATortugaCharacter* Target) const;
 	void ApplyCarrierLocalState(bool bCarrying);
 	void ApplyCarriedLocalState(ATortugaCharacter* Carrier);
-	void Release(ATortugaCharacter* Carried, const FVector& Location, const FVector& Velocity, bool bThrown);
+	void Release(ATortugaCharacter* Carried, const FVector& Location, const FVector& Velocity, bool bThrown, bool bExitOnRest);
 	void RestoreCollisionWith(ATortugaCharacter* Other);
 
 	/** Servidor, en el llevado: forcejeo actual y tiempo acumulado. */

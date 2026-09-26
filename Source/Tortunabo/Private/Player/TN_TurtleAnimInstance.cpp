@@ -1,6 +1,7 @@
 #include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
+#include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Animation/AnimNodeBase.h"
 #include "Animation/AnimSequence.h"
@@ -550,7 +551,12 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 			Output.Pose[Limb].SetScale3D(Tiny);
 		}
 		Turn(Output.Pose, B.Spine, AxisX, -6.f * F.ShellW);
-		Lift(Output.Pose, B, -19.f * F.ShellW);
+		// De pie, el caparazón baja hasta el suelo. Con cuerpo físico la malla ya va tumbada sobre la caja (ese eje apunta
+		// hacia delante), así que no se baja.
+		if (!F.bShellBody)
+		{
+			Lift(Output.Pose, B, -19.f * F.ShellW);
+		}
 	}
 	return true;
 }
@@ -623,7 +629,9 @@ void UTN_TurtleAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	Ease(F.DiveW, bDive, 14.f);
 	Ease(F.SwimW, bSwim, 6.f);
 	Ease(F.ShellW, Turtle && Turtle->IsInShell(), 10.f);
-	Ease(F.CarryW, bCarrying, 8.f);
+	const UTN_ShellComponent* ShellComp = Turtle ? Turtle->GetShellComponent() : nullptr;
+	F.bShellBody = ShellComp && ShellComp->HasLocalBody();
+Ease(F.CarryW, bCarrying, 8.f);
 	Ease(F.CarriedW, Carry && Carry->IsBeingCarried(), 8.f);
 	Ease(F.DownW, Turtle && Turtle->IsKnockedDown(), 6.f);
 	Ease(F.TiredW, Stamina && Stamina->IsExhausted(), 4.f);

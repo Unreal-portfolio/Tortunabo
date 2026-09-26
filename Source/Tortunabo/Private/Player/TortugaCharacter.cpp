@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
+#include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_DizzyBirdsComponent.h"
@@ -1320,6 +1321,30 @@ void ATortugaCharacter::OnShellStateChanged(bool bInShell)
 	}
 }
 
+void ATortugaCharacter::PlaceOnShellBody(const FTransform& BoxWorld)
+{
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const double HalfHeight = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 70.0;
+	// La cápsula (que ya solo solapa) de pie sobre la cara de abajo de la caja: con el caparazón tumbado en el suelo
+	// queda donde estaría la tortuga de pie, y la cámara sigue al caparazón.
+	const FVector CapsuleLoc = BoxWorld.GetLocation() + FVector(0.0, 0.0, HalfHeight - ATN_ShellBody::BoxHalfExtent().Z);
+	SetActorLocation(CapsuleLoc, false, nullptr, ETeleportType::TeleportPhysics);
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	{
+		SkelMesh->SetWorldTransform(ATN_ShellBody::MeshWorldTransform(BoxWorld, DiveMeshDefaultScale * GetActorScale3D()),
+			false, nullptr, ETeleportType::TeleportPhysics);
+	}
+}
+
+void ATortugaCharacter::ResetMeshTransform()
+{
+	if (USkeletalMeshComponent* SkelMesh = GetMesh())
+	{
+		SkelMesh->SetRelativeLocationAndRotation(DiveMeshDefaultLoc, DiveMeshDefaultRot, false, nullptr, ETeleportType::TeleportPhysics);
+		SkelMesh->SetRelativeScale3D(DiveMeshDefaultScale);
+	}
+}
+
 void ATortugaCharacter::StartSprint()
 {
 	if (bIsDiving || IsInShell()) { return; }
@@ -1462,7 +1487,8 @@ void ATortugaCharacter::TickFallRules(float /*DeltaTime*/)
 		bAutoShelledThisFall = true;
 		if (!IsInShell())
 		{
-			ShellComponent->ForceEnterShell();
+			// Se hace bola y cae con física: rebota, rueda y, al pararse, sale sola.
+			ShellComponent->ForceEnterShell(true, true);
 		}
 	}
 }

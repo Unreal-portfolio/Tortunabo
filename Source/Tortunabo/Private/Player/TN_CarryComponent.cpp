@@ -127,7 +127,9 @@ void UTN_CarryComponent::ServerGrab_Implementation(ATortugaCharacter* Target)
 	}
 	if (UTN_ShellComponent* Shell = Target->GetShellComponent())
 	{
-		Shell->ForceEnterShell();
+		// Sin cuerpo físico mientras la llevan: si estaba suelta como caja, se quita antes de engancharla.
+		Shell->ForceEnterShell(false);
+		Shell->StopBody();
 		Shell->SetExitLocked(true);
 	}
 
@@ -164,7 +166,7 @@ void UTN_CarryComponent::ServerThrow_Implementation(FRotator AimRotation)
 	const FVector Flat = FRotator(0.f, AimRotation.Yaw, 0.f).Vector();
 	const FVector Start = Self->GetActorLocation() + Flat * 70.f + FVector(0.f, 0.f, CarryHeight + 20.f);
 
-	Release(Carried, Start, Dir * Speed, true);
+	Release(Carried, Start, Dir * Speed, true, true);
 	if (ThrowSound)
 	{
 		Self->MulticastPlaySfx(ThrowSound);
@@ -180,7 +182,7 @@ void UTN_CarryComponent::ServerDrop_Implementation()
 		return;
 	}
 	const FVector Start = Self->GetActorLocation() + Self->GetActorForwardVector() * 130.f + FVector(0.f, 0.f, 30.f);
-	Release(Carried, Start, FVector::ZeroVector, false);
+	Release(Carried, Start, FVector::ZeroVector, false, false);
 }
 
 void UTN_CarryComponent::ServerSetStruggling_Implementation(bool bInStruggling)
@@ -210,10 +212,11 @@ void UTN_CarryComponent::ForceRelease(bool bEscapeHop)
 	const FVector Side = Self->GetActorRightVector() * (FMath::RandBool() ? 1.f : -1.f);
 	const FVector Start = Self->GetActorLocation() + Side * 90.f + FVector(0.f, 0.f, CarryHeight);
 	const FVector Hop = bEscapeHop ? Side * 350.f + FVector(0.f, 0.f, 450.f) : FVector::ZeroVector;
-	Release(Carried, Start, Hop, false);
+	// Escapada a base de forcejear: sale disparada como caparazón y sale en cuanto se para.
+	Release(Carried, Start, Hop, false, bEscapeHop);
 }
 
-void UTN_CarryComponent::Release(ATortugaCharacter* Carried, const FVector& Location, const FVector& Velocity, bool bThrown)
+void UTN_CarryComponent::Release(ATortugaCharacter* Carried, const FVector& Location, const FVector& Velocity, bool bThrown, bool bExitOnRest)
 {
 	UTN_CarryComponent* Other = Carried ? Carried->GetCarryComponent() : nullptr;
 	CarriedTurtle = nullptr;
@@ -230,17 +233,25 @@ void UTN_CarryComponent::Release(ATortugaCharacter* Carried, const FVector& Loca
 	Other->ApplyCarriedLocalState(nullptr);
 
 	Carried->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
-	Other->bAwaitingBounce = bThrown;
-	if (UTN_ShellComponent* Shell = Carried->GetShellComponent())
+	UTN_ShellComponent* Shell = Carried->GetShellComponent();
+	const bool bAsShell = Shell && Shell->IsInShell();
+	// El rebote viejo (NotifyLanded) solo queda para quien no va en el caparazón.
+	Other->bAwaitingBounce = bThrown && !bAsShell;
+	if (Shell)
 	{
-		// Lanzada: no sale del caparazón hasta el rebote. Soltada: puede salir ya.
+		// Lanzada: no sale del caparazón hasta que se para. Soltada: puede salir ya.
 		Shell->SetExitLocked(bThrown);
 	}
-	if (!Velocity.IsNearlyZero())
+	if (bAsShell)
+	{
+		// Sale como caparazón con física: vuela, da volteretas, rebota y rueda (la caja se replica sola).
+		Shell->StartBody(Velocity, true, bExitOnRest);
+	}
+	else if (!Velocity.IsNearlyZero())
 	{
 		Carried->LaunchCharacter(Velocity, true, true);
 	}
-	Other->ClientApplyThrow(Location, Velocity, bThrown);
+	Other->ClientApplyThrow(Location, Velocity, bThrown && !bAsShell);
 }
 
 void UTN_CarryComponent::ClientApplyThrow_Implementation(FVector StartLocation, FVector Velocity, bool bBounce)
@@ -252,6 +263,13 @@ void UTN_CarryComponent::ClientApplyThrow_Implementation(FVector StartLocation, 
 		return;
 	}
 	ApplyCarriedLocalState(nullptr);
+	// En el caparazón la lleva su caja física, que ya llega replicada: nada de impulso con el movimiento.
+	const UTN_ShellComponent* Shell = Self->GetShellComponent();
+	if (Shell && (Shell->IsInShell() || Shell->HasLocalBody()))
+	{
+		bAwaitingBounce = false;
+		return;
+	}
 	Self->SetActorLocation(StartLocation, false, nullptr, ETeleportType::TeleportPhysics);
 	bAwaitingBounce = bBounce;
 	if (!Velocity.IsNearlyZero())
@@ -301,9 +319,15 @@ void UTN_CarryComponent::ApplyCarriedLocalState(ATortugaCharacter* Carrier)
 		return;
 	}
 	UCharacterMovementComponent* Move = Self->GetCharacterMovement();
+	UTN_ShellComponent* Shell = Self->GetShellComponent();
 
 	if (Carrier)
 	{
+		// Si en esta máquina seguía enganchada a su caja física, se suelta ya (llega antes que su destrucción).
+		if (Shell)
+		{
+			Shell->DropLocalBody();
+		}
 		if (Move)
 		{
 			Move->StopMovementImmediately();
@@ -326,7 +350,8 @@ void UTN_CarryComponent::ApplyCarriedLocalState(ATortugaCharacter* Carrier)
 	bCarriedStateApplied = false;
 	Self->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	Self->SetActorRotation(FRotator(0.f, Self->GetActorRotation().Yaw, 0.f));
-	if (Move)
+	// Si ya va como caparazón con física, el movimiento sigue apagado hasta que salga.
+	if (Move && !(Shell && Shell->HasLocalBody()))
 	{
 		Move->SetMovementMode(MOVE_Falling);
 	}

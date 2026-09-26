@@ -14,6 +14,8 @@ public class Tortunabo : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			// Material físico del caparazón con física propia (UPhysicalMaterial, FPhysicsInterface::UpdateMaterial).
+			"PhysicsCore",
 			"EnhancedInput",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",

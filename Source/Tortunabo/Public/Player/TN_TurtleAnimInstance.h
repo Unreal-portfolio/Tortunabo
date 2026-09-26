@@ -37,7 +37,9 @@ struct FTNTurtleAnimFrame
 	float CarriedW = 0.f;
 	float DownW = 0.f;
 	float TiredW = 0.f;
-	/** Lanzamiento en curso (segundos desde que empezó; negativo = ninguno) y si era con las dos manos. */
+	/** El caparazón tiene cuerpo físico (la malla va tumbada sobre la caja): sin bajar el cuerpo al meterse. */
+	bool bShellBody = false;
+/** Lanzamiento en curso (segundos desde que empezó; negativo = ninguno) y si era con las dos manos. */
 	float ThrowT = -1.f;
 	bool bThrowBoth = false;
 	/** Emote (índice del catálogo 0-9 o -1), su tiempo y su peso (entra y sale suave). */

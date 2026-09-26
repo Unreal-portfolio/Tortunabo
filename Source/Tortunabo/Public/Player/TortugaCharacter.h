@@ -1294,6 +1294,15 @@ public:
 	void OnShellStateChanged(bool bInShell);
 
 	/**
+	 * Caparazón con física propia (UTN_ShellComponent / ATN_ShellBody): pone la cápsula de pie sobre la caja y la malla
+	 * tumbada sobre la tripa con la transformación de la caja. Todas las máquinas, cada fotograma tras la física.
+	 */
+	void PlaceOnShellBody(const FTransform& BoxWorld);
+
+	/** Devuelve la malla a su posición, giro y escala de serie dentro de la cápsula. */
+	void ResetMeshTransform();
+
+	/**
 	 * Punto centralizado para matar a este personaje.
 	 * Resuelve RunGameMode y PlayerController internamente.
 	 * Los actores del mundo llaman esto en vez de acceder a GameMode directamente.
