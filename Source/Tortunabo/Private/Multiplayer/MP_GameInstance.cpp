@@ -18,6 +18,7 @@
 #include "Multiplayer/TN_CosmeticSaveGame.h"
 #include "Multiplayer/TN_TutorialSaveGame.h"
 #include "UI/HUD/TN_LoadingScreenWidget.h"
+#include "UI/Loading/TN_LoadingScreenSubsystem.h"
 #include "Voice/ProximityVoiceComponent.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -153,6 +154,17 @@ void UMP_GameInstance::Shutdown()
 
 void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 {
+	// Con el huevo a la vista (UTN_LoadingScreenSubsystem), el mensaje va debajo del huevo y no se apila otra pantalla.
+	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
+	{
+		if (EggLoading->IsShowing())
+		{
+			EggLoading->SetStatus(Reason);
+			HideLoadingScreen();
+			return;
+		}
+	}
+
 	// Si la loading screen ya estaba "visible" pero el widget fue destruido
 	// (ej. map transition destruye el PC que era outer del widget), resetear estado.
 	if (bIsLoadingScreenVisible && (!LoadingScreenWidget || !LoadingScreenWidget->IsInViewport()))
@@ -754,7 +766,7 @@ void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 	// catches any travel path we might have missed (invites, network failures, etc.).
 	UProximityVoiceComponent::ShutdownAllCapture(GetWorld());
 
-	ShowLoadingScreen(FString::Printf(TEXT("Cargando mapa: %s"), *MapName));
+	ShowLoadingScreen(UTN_LoadingScreenSubsystem::FriendlyStatusForMap(MapName));
 }
 
 void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)

@@ -20,6 +20,8 @@ public class Tortunabo : ModuleRules
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
 			"UMG",
+			// Pantalla de carga del huevo durante los LoadMap bloqueantes fuera del editor.
+			"MoviePlayer",
 			"Slate",
 			"SlateCore",
 			"AudioCapture",
