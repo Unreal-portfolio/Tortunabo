@@ -52,7 +52,7 @@ Dos capas, como el resto del proyecto (`TNGridLogic`, `TNChunkLogic`):
 | `TN_ProcMapPath.h` | Portales en las fronteras (PCA), "caminante" con meandros senoidales dentro de cada módulo, suavizado Chaikin, anchos por tramos 3,5–60 m, perfil de alturas con límite de pendiente y cortes en géiser/tobogán, ramas y carriles. |
 | `TN_ProcMapFeatures.h` | Biomas por regiones (tipo Minecraft), huecos saltables, isletas y pasarelas, pilas de huevos, puzles 2vs2, río opcional, decoración y reparto de peligros. |
 | `TN_ProcMapTerrain.h` | Altura por vértice: parámetros mezclados por bioma con *domain warp*, pasillo del camino con arcén y taludes de 55-75°, torres y puertas de los cruces, loma sobre las cuevas, volcanes asentados en el relieve, muros del borde, costa y mar abierto al norte. |
-| `TN_ProcMapCaves.h` | Cuevas: tramos del principal que atraviesan una loma por un túnel con pasos estrechos, cámara ancha y, en el volcán, río de lava que se salta. |
+| `TN_ProcMapCaves.h` | Cuevas: tramos del principal de 120-260 m que atraviesan una montaña por un túnel con pasos estrechos, una o dos cámaras anchas y, en el volcán, río de lava que se salta; prefieren tramos que cruzan terreno alto y se estrechan por un desfiladero hasta la boca. |
 | `TN_ProcMapFormations.h` | Formaciones temáticas por bioma: arcos que cruzan el camino, piezas en las explanadas (con carriles libres) e hitos lejanos (naturaleza, entorno y guerra). |
 | `TN_ProcMapFlora.h` | Vegetación, rocas y objetos sueltos: especies por bioma y reparto determinista en manchas, también en los taludes. |
 | `TN_ProcMapGenerate.h` | `GenerateLayout(params)`: orquesta todo, valida y reintenta. |
@@ -64,7 +64,7 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 
 | Clase | Papel |
 |---|---|
-| `ATN_ProcMapGenerator` | Traduce el layout a mundo: terreno en tiles de `UProceduralMeshComponent` con colisión y color de vértice, agua (plano + `ATN_ProcWaterVolume` nadable), estructuras colosales, formaciones y techos de cueva (con luces), vegetación procedural (mallas estáticas construidas en ejecución e instanciadas con HISM), capas de props por bioma, grafo PCG opcional por bioma y todos los actores de gameplay. Las mallas low-poly salen de cabeceras privadas sin dependencias del motor (`TN_ProcMapMeshKit.h`, `TN_ProcMapFloraMeshes.h`, `TN_ProcMapFormationMeshes.h`, `TN_ProcMapCaveMeshes.h`, `TN_ProcMapFinishMeshes.h`, `TN_ProcMapPropMeshes.h`, `TN_ProcMapRockMeshes.h`), previsualizables fuera de él. |
+| `ATN_ProcMapGenerator` | Traduce el layout a mundo: terreno en tiles de `UProceduralMeshComponent` con colisión y color de vértice, agua (plano + `ATN_ProcWaterVolume` nadable), estructuras colosales, formaciones y techos de cueva (con luces), vegetación procedural (mallas estáticas construidas en ejecución e instanciadas con HISM), capas de props por bioma, grafo PCG opcional por bioma y todos los actores de gameplay. Las mallas low-poly salen de cabeceras privadas sin dependencias del motor (`TN_ProcMapMeshKit.h`, `TN_ProcMapFloraMeshes.h`, `TN_ProcMapFormationMeshes.h`, `TN_ProcMapCaveMeshes.h`, `TN_ProcMapCaveDecor.h`, `TN_ProcMapFinishMeshes.h`, `TN_ProcMapPropMeshes.h`, `TN_ProcMapRockMeshes.h`), previsualizables fuera de él. |
 | `UTN_ProcMapSettings` / `UTN_ProcBiomeDataAsset` | Slots de datos: perfiles por modo × dificultad, materiales, clases, y por bioma colores, capas de vegetación, peligros y criatura acuática. Sin assets, todo sale en greybox. |
 | `ATN_ProcGeyser`, `ATN_ProcSlideZone`, `ATN_ProcKillVolume`, `ATN_ProcFinishVolume` | Conexiones especiales (géiser que sube, cascada-tobogán que baja, un solo sentido y automáticas), caídas mortales y meta. |
 | `ATN_ProcWaterVolume`, `ATN_ProcWaterCurrent`, `ATN_ProcWhirlpool`, `ATN_ProcWaterPredator`, `ATN_ProcWaterBouncer` | Agua nadable y sus peligros: corrientes, remolinos, depredador (tiburón/morena) y criaturas con comportamiento de medusa distintas por bioma. |
@@ -162,9 +162,20 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   basalto, fumarola, chimeneas de hadas, rocas en equilibrio, carreta, cañón y, de guerra,
   sacos terreros, búnker, torre de vigía y carro de combate) e hitos lejanos (pirámide, faro,
   farallones, mesas, castillo en ruinas, molino, palafitos).
-- **Cuevas** (2-3 por mapa en volcán, roca, selva y desierto): túneles de 60-150 m bajo una
-  loma, con pasos de 4-7 m, una cámara de 16-26 m, estalactitas, cristales o brasas y luz
-  tenue; en las del volcán, un río de lava cruza la cámara (se salta; caer mata).
+- **Cuevas** (1-5 por mapa en volcán, roca, selva y desierto): túneles de 120-260 m, donde se
+  puede en tramos que cruzan terreno alto (el paisaje a 30 m de los dos bordes, 12 m por encima
+  del camino). Encima, una montaña de cima irregular que crece hacia el centro de las largas; a cada
+  boca se llega por un desfiladero de 25-40 m de paredes a plomo que pierde altura hasta 7 m y acaba
+  en frente empinado (a la montaña no se sube). El camino se estrecha a 11-15 m en la boca; dentro,
+  pasos de 4-7 m y una o dos cámaras de 16-26 m; en las del volcán, un río de lava cruza la primera
+  (se salta; caer mata). Interior según el estilo (`TN_ProcMapCaveDecor.h`): **caliza** (estalagmitas,
+  columnas, estalactitas grandes, poza, lucernario), **cristales** (racimos gigantes que brillan, con
+  colisión), **selva** (raíces por la bóveda, lianas, setas luminosas, musgo, cortina de lianas en las
+  bocas), **templo** (pilares, pilastras, antorchas con brasas, vasijas y huesos, portada tallada con la
+  cabeza de la tortuga) y **tubo de lava** (obsidiana, basalto, grietas incandescentes). En todas, la
+  estatua de la tortuga con ofrendas en la cámara más ancha, estelas y símbolos (tortuga, espiral,
+  sol, olas, ojo, panal) pintados o luminosos, y luces sin sombras del color del estilo. Nada invade
+  el carril central.
 - **Viento** en la vegetación (`M_ProcFoliage`, SimpleGrassWind del motor con rachas): el alfa del
   color de vértice es el peso de balanceo (hierba entera, copas más que troncos, rocas y objetos
   quietos); cada especie deja de evaluarlo a su distancia.
@@ -269,5 +280,5 @@ Comunes por dificultad (F/N/D): densidad de peligros 0,7 / 1 / 1,4; huecos por k
 - La **vegetación** no tiene colisión (crece fuera del suelo del camino) y usa culling por
   tamaño; con ~500 mil instancias conviene vigilar el rendimiento en equipos modestos
   (`FloraDensity` la reduce).
-- Los materiales `M_ProcFoliage`, `M_ProcWaterAnim`, `M_ProcCascade`, `M_ProcFXSoft` y `M_ProcBird` se
+- Los materiales `M_ProcFoliage`, `M_ProcWaterAnim`, `M_ProcCascade`, `M_ProcFXSoft`, `M_ProcGlow` y `M_ProcBird` se
   crean con `Scripts/build_procmap_assets.py` (idempotente; rehace `M_ProcFoliage` si no tiene viento).

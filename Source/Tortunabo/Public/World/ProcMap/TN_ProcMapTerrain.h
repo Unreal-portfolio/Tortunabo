@@ -745,10 +745,11 @@ namespace TNProcMap
 				double Reach = 0.0;
 				if (F.Type == EFeature::Cave)
 				{
-					// Loma sobre la cueva: cada tramo del túnel, con su alcance a los lados y en las bocas.
-					for (int32 j = FMath::Max(0, F.PathIndex - 1); j < FMath::Min(M.Num() - 1, F.Aux + 1); ++j)
+					// Montaña sobre la cueva: cada tramo del túnel y de los desfiladeros que llevan a sus bocas,
+					// con el alcance de sus laderas a los lados.
+					for (int32 j = FMath::Max(0, F.PathIndex - CaveDetail::GorgeSamples); j < FMath::Min(M.Num() - 1, F.Aux + CaveDetail::GorgeSamples); ++j)
 					{
-						AddSegmentInf(EInf::CaveMass, f, j, M[j].P, M[j + 1].P, M[j].Width * 0.5 + 4000.0);
+						AddSegmentInf(EInf::CaveMass, f, j, M[j].P, M[j + 1].P, M[j].Width * 0.5 + 10500.0);
 					}
 					continue;
 				}
@@ -909,6 +910,8 @@ namespace TNProcMap
 
 			// ── Cauce del camino ────────────────────────────────────────────
 			double H = Outer;
+			// Distancia al borde del camino más cercano, para la montaña de las cuevas.
+			double CaveBeyond = -1.0;
 			if (InSeg != INDEX_NONE)
 			{
 				const FPathSample& A = Samples[InSeg];
@@ -919,6 +922,7 @@ namespace TNProcMap
 				const uint32 Flags = A.Flags | B.Flags;
 				const bool bLane = (Flags & PathFlags::Lane) != 0;
 				double Beyond = FMath::Max(0.0, static_cast<double>(InPathDist) - Hw);
+				CaveBeyond = static_cast<double>(InPathDist) - Hw;
 				// El claro de salida es parte del cauce: su borde también es talud.
 				const double StartBeyond = FVector2D::Distance(P, L->StartPoint) - L->Params.StartClearingRadius;
 				if (StartBeyond < Beyond)
@@ -1002,7 +1006,7 @@ namespace TNProcMap
 			// ── Influencias localizadas ─────────────────────────────────────
 			if (Bin.Num() > 0)
 			{
-				H = ApplyInfluences(P, H, Bin, OutMask, InSeg);
+				H = ApplyInfluences(P, H, Bin, OutMask, InSeg, InT, CaveBeyond);
 			}
 			return H;
 		}
@@ -1055,33 +1059,43 @@ namespace TNProcMap
 
 		bool TowerOpening(const FFeature& F, const FVector2D& P) const { return TowerOpeningAt(*L, F, P); }
 
-		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask, int32 InSeg) const
+		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask, int32 InSeg, double InT, double InBeyond) const
 		{
 			const TArray<FPathSample>& M = L->Main;
 
-			// Loma sobre las cuevas: fuera del suelo del túnel el terreno sube hasta cubrir su techo (y baja
-			// en ladera más allá); en las bocas acaba en un frente de roca. Solo los vértices de ese tramo
-			// del camino (o de las muestras de justo antes y después): no tapa otros caminos cercanos.
+			// Montaña sobre las cuevas, en coordenadas del camino más cercano (S a lo largo, Beyond desde su
+			// borde): junto al túnel sube a plomo hasta cubrir su techo, con una cima irregular que crece hacia
+			// el centro de las cuevas largas, y baja en ladera a los lados. Antes y después de cada boca sigue
+			// en desfiladero: paredes a plomo junto al camino que pierden altura hasta 7 m y acaban en un
+			// frente empinado. Nunca toca el suelo ni su pie (Beyond < 1,8 m) y todo lo que asoma junto al
+			// camino es pared más alta que un salto: a la montaña no se sube. Solo los vértices de ese tramo
+			// del camino: no tapa otros caminos cercanos.
 			double Ridge = -1e18;
-			for (const FInf& Inf : Bin)
+			if (InSeg != INDEX_NONE && InSeg < M.Num() - 1 && InBeyond >= 180.0)
 			{
-				if (Inf.Type != EInf::CaveMass || InSeg == INDEX_NONE) { continue; }
-				const FFeature& F = L->Features[Inf.A];
-				if (InSeg < F.PathIndex - 3 || InSeg > F.Aux + 2) { continue; }
-				const FPathSample& A = M[Inf.B];
-				const FPathSample& B = M[Inf.B + 1];
-				double T = 0.0;
-				const double D = DistPointSegment(P, A.P, B.P, T);
-				const double Hw = LerpD(A.Width, B.Width, T) * 0.5;
-				const double Eff = D - Hw;
-				if (Eff < 180.0) { continue; }
-				const double Floor = LerpD(A.Z, B.Z, T);
-				double Z = Floor + CaveDetail::Clearance(Hw * 2.0, F.Height) + F.Radius + 150.0 - FMath::Max(0.0, Eff - 700.0) * 0.7;
-				// Fuera del túnel (antes de la primera muestra o después de la última): frente casi a plomo.
-				const double Out = FMath::Max(0.0, FVector2D::DotProduct(M[F.PathIndex].P - P, M[F.PathIndex].Dir))
-					+ FMath::Max(0.0, FVector2D::DotProduct(P - M[F.Aux].P, M[F.Aux].Dir));
-				Z -= Out * 3.0;
-				Ridge = FMath::Max(Ridge, Z);
+				int32 Done = INDEX_NONE;
+				for (const FInf& Inf : Bin)
+				{
+					if (Inf.Type != EInf::CaveMass || Inf.A == Done) { continue; }
+					Done = Inf.A;
+					const FFeature& F = L->Features[Inf.A];
+					if (InSeg < F.PathIndex - CaveDetail::GorgeSamples || InSeg >= F.Aux + CaveDetail::GorgeSamples) { continue; }
+					const double S = LerpD(M[InSeg].S, M[InSeg + 1].S, InT);
+					const double Out = FMath::Max(0.0, M[F.PathIndex].S - S) + FMath::Max(0.0, S - M[F.Aux].S);
+					const double Gorge = CaveDetail::GorgeLength(F);
+					if (Out > Gorge + 800.0) { continue; }
+					const double U = FMath::Min(1.0, Out / Gorge);
+					const int32 K = FMath::Clamp(InSeg, F.PathIndex, F.Aux);
+					const double Roof = CaveDetail::Clearance(M[K].Width, F.Height) + F.Radius + 150.0;
+					const double Crag = 350.0 + 700.0 * (0.5 + 0.5 * Fbm2(Seed + 71u, P.X / 2600.0, P.Y / 2600.0, 3));
+					const double Inside = FMath::Min(S - M[F.PathIndex].S, M[F.Aux].S - S);
+					double Z = LerpD(M[InSeg].Z, M[InSeg + 1].Z, InT) + LerpD(Roof, 700.0, U)
+						+ Crag * SmoothStep(300.0, 1500.0, InBeyond) * (1.0 - 0.6 * U)
+						+ CaveDetail::Bulk(F) * SmoothStep(0.0, 5000.0, Inside)
+						- FMath::Max(0.0, InBeyond - LerpD(900.0, 400.0, U)) * LerpD(0.55, 0.9, U)
+						- FMath::Max(0.0, Out - Gorge) * 3.0;
+					Ridge = FMath::Max(Ridge, Z);
+				}
 			}
 			if (Ridge > H) { H = Ridge; }
 

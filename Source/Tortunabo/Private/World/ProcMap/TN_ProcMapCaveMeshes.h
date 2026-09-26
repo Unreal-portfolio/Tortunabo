@@ -35,9 +35,12 @@ namespace TNCaveMesh
 
 	/**
 	 * Techo de la cueva sobre las estaciones St. ClearFactor escala la altura libre
-	 * (TNProcMap::CaveDetail::Clearance), Roof es el grueso de la roca por encima.
+	 * (TNProcMap::CaveDetail::Clearance), Roof es el grueso de la roca por encima. OutInner, si se
+	 * pide, recibe por estación los puntos de la cara de dentro (pie, pared, bóveda de izquierda a
+	 * derecha, pared y pie), con su ruido: la decoración se apoya en ellos.
 	 */
-	inline void TNCaveBuildRoof(FTNProcMeshBuffers& M, const TArray<FTNCaveStation>& St, double ClearFactor, double Roof, uint32 Seed, const FTNCaveLook& Look)
+	inline void TNCaveBuildRoof(FTNProcMeshBuffers& M, const TArray<FTNCaveStation>& St, double ClearFactor, double Roof, uint32 Seed, const FTNCaveLook& Look,
+		TArray<TArray<FVector>>* OutInner = nullptr)
 	{
 		if (St.Num() < 2) { return; }
 		constexpr int32 ArchPts = 9;
@@ -88,6 +91,11 @@ namespace TNCaveMesh
 			}
 			Rings.Add(R);
 			Axis.Add(At(0.0, Spring));
+			if (OutInner)
+			{
+				TArray<FVector>& In = OutInner->AddDefaulted_GetRef();
+				for (int32 k = 0; k < Side; ++k) { In.Add(R[k]); }
+			}
 		}
 
 		for (int32 s = 0; s + 1 < Rings.Num(); ++s)

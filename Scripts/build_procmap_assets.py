@@ -407,6 +407,35 @@ def build_bird_material():
     return save(material)
 
 
+def build_glow_material():
+    """Lo que brilla en las cuevas (TN_ProcMapCaveDecor.h: setas, cristales, llamas, ojos de la estatua,
+    cielo del lucernario): opaco, del color del vértice, con ese mismo color como emisivo multiplicado
+    por Glow (para que florezca)."""
+    path = f"{MATERIALS}/M_ProcGlow"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+    material = asset_tools.create_asset("M_ProcGlow", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -700, 0)
+    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    glow = expr(unreal.MaterialExpressionScalarParameter, -700, 250)
+    glow.set_editor_property("parameter_name", "Glow")
+    glow.set_editor_property("default_value", 2.0)
+    emissive = expr(unreal.MaterialExpressionMultiply, -450, 150)
+    mel.connect_material_expressions(vertex_color, "", emissive, "A")
+    mel.connect_material_expressions(glow, "", emissive, "B")
+    mel.connect_material_property(emissive, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    roughness = expr(unreal.MaterialExpressionConstant, -450, 350)
+    roughness.set_editor_property("r", 0.4)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.recompile_material(material)
+    return save(material)
+
+
 def build_cascade_material():
     """Agua de las cascadas-tobogán: ondas del normal de agua del motor que corren a lo largo de la UV
     V (ladera abajo; la malla la da en metros recorridos) en dos capas a distinta velocidad, del
@@ -531,6 +560,7 @@ def build_materials():
         "foliage": build_foliage_material(),
         "fx_soft": build_fx_soft_material(),
         "cascade": build_cascade_material(),
+        "glow": build_glow_material(),
         "bird": build_bird_material(),
         "water": build_instance("MI_ProcSea", water, {"Color": (0.05, 0.30, 0.45)}, {"Opacity": 0.72}),
     }

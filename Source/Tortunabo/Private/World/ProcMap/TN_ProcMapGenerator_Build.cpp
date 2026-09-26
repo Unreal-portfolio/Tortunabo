@@ -19,11 +19,13 @@
 #include "TN_ProcMapMeshKit.h"
 #include "TN_ProcMapFormationMeshes.h"
 #include "TN_ProcMapCaveMeshes.h"
+#include "TN_ProcMapCaveDecor.h"
 #include "TN_ProcMapFinishMeshes.h"
 #include "TN_ProcMapPropMeshes.h"
 #include "TN_ProcMapRockMeshes.h"
 #include "TN_ProcMapAmbientFX.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
 
 using namespace TNProcMesh;
 
@@ -273,8 +275,8 @@ namespace
 				M.AddBeam(C - X * 17.0 + Wd * (Sg * 7.0), C + X * 17.0 + Wd * (Sg * 7.0), 2.2, Color);
 			}
 		}
-	}
-
+	}
+
 	/** Postes a ambos bordes cada PostEvery y cuerda de barandilla con comba entre ellos. */
 	void TNProcAddRopeRails(FTNProcMeshBuffers& Wood, const FTNPlankLine& Line, double S0, double S1, double PostEvery, double PostDown,
 		double RailH, const FLinearColor& PostColor, const FLinearColor& RopeColor)
@@ -940,6 +942,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 	using namespace TNProcMap;
 	// Painted: formaciones del camino (con colisión); PaintedFar: hitos lejanos (sin ella). Color de vértice.
 	FTNProcMeshBuffers Rock, Wood, Lava, SlideWater, Foliage, Painted, PaintedFar;
+	// Decoración de las cuevas: lo que brilla (color de vértice emisivo) y los haces de luz (translúcido).
+	FTNProcMeshBuffers Glow, Beam;
+	TArray<FVector> CaveFlames, CaveMotes;
 	const FLinearColor RockColor(0.32f, 0.29f, 0.26f);
 	const FLinearColor WoodColor(0.45f, 0.3f, 0.16f);
 	const TArray<FPathSample>& M = Layout.Main;
@@ -1512,11 +1517,12 @@ void ATN_ProcMapGenerator::BuildStructures()
 		}
 	}
 
-	// ── Cuevas: techo de roca sobre el túnel y luces tenues dentro ──────────
+	// ── Cuevas: techo de roca sobre el túnel, interior decorado según su estilo y sus luces ──────────
 	for (const FFeature& F : Layout.Features)
 	{
 		if (F.Type != EFeature::Cave || F.PathIndex < 0 || F.Aux >= M.Num()) { continue; }
 		TArray<TNCaveMesh::FTNCaveStation> Stations;
+		TArray<uint8> NoFloor;
 		for (int32 i = F.PathIndex; i <= F.Aux; ++i)
 		{
 			TNCaveMesh::FTNCaveStation S;
@@ -1524,29 +1530,56 @@ void ATN_ProcMapGenerator::BuildStructures()
 			S.Dir = M[i].Dir;
 			S.HalfWidth = M[i].Width * 0.5;
 			Stations.Add(S);
+			// El río de lava de la cámara: sin suelo, no se decora.
+			NoFloor.Add((M[i].Flags & PathFlags::Gap) != 0 ? 1 : 0);
 		}
 		FLinearColor G, Pc, RockC, Bd;
 		ResolveBiomeColors(F.Biome, G, Pc, RockC, Bd);
+		const uint32 CaveSeed = static_cast<uint32>(F.Aux2);
+		const TNCaveDecor::ECaveStyle Style = TNCaveDecor::TNCaveStyleFor(F.Biome, CaveSeed);
 		const bool bVolcanic = F.Biome == ETNProcBiome::Volcanic;
 		TNCaveMesh::FTNCaveLook Look;
 		Look.Inner = RockC * 0.55f;
 		Look.Outer = RockC;
 		Look.Moss = bVolcanic ? RockC * 0.8f : TNProcLerpColor(RockC, G, 0.6f);
 		Look.Crystal = FLinearColor(0.45f, 0.8f, 0.95f);
-		Look.bCrystals = !bVolcanic;
-		TNCaveMesh::TNCaveBuildRoof(Painted, Stations, F.Height, F.Radius, static_cast<uint32>(F.Aux2), Look);
+		Look.bCrystals = Style == TNCaveDecor::ECaveStyle::Limestone || Style == TNCaveDecor::ECaveStyle::Crystal;
+		TArray<TArray<FVector>> Inner;
+		TNCaveMesh::TNCaveBuildRoof(Painted, Stations, F.Height, F.Radius, CaveSeed, Look, &Inner);
 
-		// Una luz cada ~20 m, cálida en el volcán (brasas) y azulada en el resto (cristales).
-		for (int32 i = F.PathIndex + 2; i < F.Aux - 1; i += 5)
+		TNCaveDecor::FTNCaveDecorOut Decor;
+		TNCaveDecor::TNCaveBuildDecor(Decor, Stations, Inner, NoFloor, F.Height, CaveSeed, Style, Look);
+		TNFormMesh::TNFormAppend(Painted, Decor.Solid, FVector::ZeroVector, FVector2D(1.0, 0.0));
+		TNFormMesh::TNFormAppend(PaintedFar, Decor.Detail, FVector::ZeroVector, FVector2D(1.0, 0.0));
+		TNFormMesh::TNFormAppend(Glow, Decor.Glow, FVector::ZeroVector, FVector2D(1.0, 0.0));
+		TNFormMesh::TNFormAppend(Lava, Decor.Ember, FVector::ZeroVector, FVector2D(1.0, 0.0));
+		TNFormMesh::TNFormAppend(Beam, Decor.Beam, FVector::ZeroVector, FVector2D(1.0, 0.0));
+		TNFormMesh::TNFormAppend(SlideWater, Decor.Water, FVector::ZeroVector, FVector2D(1.0, 0.0));
+		CaveFlames.Append(Decor.Flames);
+		CaveMotes.Append(Decor.Motes);
+
+		// Luces sin sombras: las del túnel, la estatua, cristales, setas, antorchas y el foco del lucernario.
+		for (const TNCaveDecor::FTNCaveLight& Def : Decor.Lights)
 		{
-			UPointLightComponent* Light = NewObject<UPointLightComponent>(this, NAME_None, RF_Transient);
+			UPointLightComponent* Light = nullptr;
+			if (Def.bSpot)
+			{
+				USpotLightComponent* Spot = NewObject<USpotLightComponent>(this, NAME_None, RF_Transient);
+				Spot->SetInnerConeAngle(14.f);
+				Spot->SetOuterConeAngle(30.f);
+				Spot->SetRelativeRotation(FRotator(-90.0, 0.0, 0.0));
+				Light = Spot;
+			}
+			else
+			{
+				Light = NewObject<UPointLightComponent>(this, NAME_None, RF_Transient);
+			}
 			Light->SetupAttachment(RootComponent);
-			const double Clear = CaveDetail::Clearance(M[i].Width, F.Height);
-			Light->SetRelativeLocation(FVector(M[i].P, M[i].Z + Clear * 0.7));
+			Light->SetRelativeLocation(Def.P);
 			Light->SetIntensityUnits(ELightUnits::Lumens);
-			Light->SetIntensity(bVolcanic ? 2500.f : 1500.f);
-			Light->SetAttenuationRadius(static_cast<float>(FMath::Max(1800.0, M[i].Width * 1.2)));
-			Light->SetLightColor(bVolcanic ? FLinearColor(1.f, 0.45f, 0.2f) : FLinearColor(0.6f, 0.75f, 1.f));
+			Light->SetIntensity(Def.Lumens);
+			Light->SetAttenuationRadius(Def.Radius);
+			Light->SetLightColor(Def.Color);
 			Light->SetCastShadows(false);
 			Light->RegisterComponent();
 			CaveLights.Add(Light);
@@ -1615,6 +1648,24 @@ void ATN_ProcMapGenerator::BuildStructures()
 		DecorMesh->CreateMeshSection_LinearColor(2, Foliage.Verts, Foliage.Tris, Foliage.Normals, Foliage.UVs, Foliage.Colors, NoTangents, false);
 		DecorMesh->SetMaterial(2, VertexMat ? VertexMat : BasicMat);
 	}
+	// Lo que brilla en las cuevas (setas, cristales, llamas, ojos de la estatua, cielo del lucernario):
+	// emisivo del color del vértice; sin el material, el de depuración (también sin iluminar).
+	if (!Glow.IsEmpty())
+	{
+		DecorMesh->CreateMeshSection_LinearColor(3, Glow.Verts, Glow.Tris, Glow.Normals, Glow.UVs, Glow.Colors, NoTangents, false);
+		UMaterialInterface* GlowMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcGlow.M_ProcGlow"));
+		DecorMesh->SetMaterial(3, GlowMat ? GlowMat : (VertexMat ? VertexMat : BasicMat));
+	}
+	// Haces de luz de los lucernarios: translúcido con la opacidad en el alfa del vértice.
+	if (!Beam.IsEmpty())
+	{
+		UMaterialInterface* BeamMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFXSoft.M_ProcFXSoft"));
+		if (BeamMat)
+		{
+			DecorMesh->CreateMeshSection_LinearColor(4, Beam.Verts, Beam.Tris, Beam.Normals, Beam.UVs, Beam.Colors, NoTangents, false);
+			DecorMesh->SetMaterial(4, BeamMat);
+		}
+	}
 
 	// ── Límites invisibles del mapa (la costa norte queda abierta hasta el mar) ─
 	const double World = Layout.WorldSize;
@@ -1664,6 +1715,51 @@ void ATN_ProcMapGenerator::BuildStructures()
 		Embers.SizeEnd = 3.f;
 		const double LavaZ = bPool ? F.Location.Z : F.Location.Z - 450.0;
 		TNAmbientFX::AddEmitter(this, Embers, MapToWorld(FVector(F.Location.X, F.Location.Y, LavaZ + 20.0)));
+	}
+	// Antorchas de las cuevas: brasas que suben de la llama; en los lucernarios, polvo que flota en el haz.
+	for (const FVector& Tip : CaveFlames)
+	{
+		TNAmbientFX::FEmitterDesc Sparks;
+		Sparks.Shape = TNAmbientFX::EShape::Ember;
+		Sparks.bSoft = true;
+		Sparks.Color = FLinearColor(1.f, 0.55f, 0.12f);
+		Sparks.Alpha = 0.95f;
+		Sparks.MaxParticles = 12;
+		Sparks.Rate = 5.f;
+		Sparks.SpawnRadius = 5.f;
+		Sparks.Speed = 60.f;
+		Sparks.Spread = 0.4f;
+		Sparks.Gravity = 0.f;
+		Sparks.Buoyancy = 40.f;
+		Sparks.Drag = 0.4f;
+		Sparks.LifeMin = 0.6f;
+		Sparks.LifeMax = 1.3f;
+		Sparks.SizeStart = 4.f;
+		Sparks.SizeEnd = 1.5f;
+		Sparks.WakeDistance = 6000.f;
+		TNAmbientFX::AddEmitter(this, Sparks, MapToWorld(Tip));
+	}
+	for (const FVector& Mote : CaveMotes)
+	{
+		TNAmbientFX::FEmitterDesc Dust;
+		Dust.Shape = TNAmbientFX::EShape::Ember;
+		Dust.bSoft = true;
+		Dust.Color = FLinearColor(1.f, 0.95f, 0.8f);
+		Dust.Alpha = 0.5f;
+		Dust.MaxParticles = 30;
+		Dust.Rate = 4.f;
+		Dust.SpawnRadius = 140.f;
+		Dust.Speed = 12.f;
+		Dust.Spread = 1.f;
+		Dust.Gravity = 0.f;
+		Dust.Buoyancy = 2.f;
+		Dust.Drag = 0.6f;
+		Dust.LifeMin = 5.f;
+		Dust.LifeMax = 9.f;
+		Dust.SizeStart = 2.5f;
+		Dust.SizeEnd = 2.f;
+		Dust.WakeDistance = 5000.f;
+		TNAmbientFX::AddEmitter(this, Dust, MapToWorld(Mote));
 	}
 	// Confeti de la meta (cuatro colores): estalla cuando alguien cruza la línea (ATN_ProcMapGenerator::Tick).
 	for (const FFeature& F : Layout.Features)

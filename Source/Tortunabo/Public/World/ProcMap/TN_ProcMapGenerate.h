@@ -117,8 +117,15 @@ namespace TNProcMap
 		// Después de las ramas: un módulo vacío con desvío deja de ser macizo.
 		BuildBiomeFields(Out);
 		BuildStructuralFeatures(Out);
-		// Antes de los huecos y obstáculos: las cuevas cambian anchos y marcan sus tramos como túnel.
-		BuildCaves(Out, Root.Fork(19));
+		// Antes de los huecos y obstáculos: las cuevas cambian anchos y marcan sus tramos como túnel. Buscan
+		// tramos que crucen terreno alto (el paisaje en rejilla gruesa, como el de los volcanes).
+		{
+			const double Cell = 1000.0;
+			FTerrainBuilder TB;
+			TB.BuildCoarse(Out, FVector2D(-25000.0, -25000.0), Cell,
+				FMath::CeilToInt((Out.WorldSize + 50000.0) / Cell) + 1, FMath::CeilToInt((Out.WorldSize + 55000.0) / Cell) + 1);
+			BuildCaves(Out, Root.Fork(19), [&TB](const FVector2D& P) { return TB.LandAt(P); });
+		}
 		BuildGaps(Out, Root.Fork(10));
 		BuildWetFeatures(Out, Root.Fork(11));
 		BuildEggNests(Out, Root.Fork(12));
