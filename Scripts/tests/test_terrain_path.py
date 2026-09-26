@@ -526,6 +526,21 @@ def test_sin_picos_de_una_celda(model):
     assert int((peak > 0.5).sum()) == 0 and int((pit > 0.5).sum()) == 0
 
 
+def test_sin_agujas_de_pared(model):
+    """Ninguna pared ni punta de cresta mas estrecha que NEEDLE_M sobresale mas de 1,5 m de la
+    apertura con ese disco (fuera de puentes y tuneles): eran los picos donde se juntan dos caminos."""
+    from scipy import ndimage
+    from terrain_path.model import NEEDLE_M
+    h = model.grid.height
+    n = int(np.ceil(NEEDLE_M / 2.0))
+    yy, xx = np.mgrid[-n:n + 1, -n:n + 1]
+    opened = ndimage.grey_opening(h, footprint=xx * xx + yy * yy <= (NEEDLE_M / 2.0) ** 2, mode="nearest")
+    X, Y = np.meshgrid(model.axis, model.axis, indexing="ij")
+    free = ~model.decks.near(X, Y, 10.0) & (model._tunnel_zone(X, Y) < 0.5)
+    needles = (h - opened > 1.6) & free
+    assert int(needles.sum()) <= 10, f"{int(needles.sum())} celdas de aguja"
+
+
 from terrain_path import canyon as canyon_mod  # noqa: E402
 
 

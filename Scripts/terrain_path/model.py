@@ -22,6 +22,10 @@ from .style import PathStyle
 SAMPLE_STEP_M = 0.5
 HIGH_TINT = 0.25         # oscurecimiento por altura de la paleta (terrain_vol): casi nada aqui
 WEDGE_M = 6.0            # cuna entre dos caminos mas fina que esto: se rellena de suelo (nariz roma)
+NOSE_RADIUS_M = 5.0      # radio de la nariz de la pared donde se separan dos caminos
+NOSE_REACH_M = 60.0      # distancia a una union o cruce hasta la que se redondean narices
+NEEDLE_M = 5.0           # pared o punta mas estrecha que esto: aguja, se quita
+THIN_WALL_M = 18.0       # pared entre dos caminos mas fina que esto: lomo redondeado, sin cuchilla
 ZONE_KEYS = ("cliffs", "marsh", "algae", "beach")      # paletas de terrain_vol.mesh por bioma
 
 
@@ -305,14 +309,14 @@ class PathModel:
         d, i = dk[rows, best].reshape(shape), ik[rows, best].reshape(shape)
         zf, w = self.S["z"][i], self.S["w"][i]
         # Segundo camino que cubre el punto (de otra linea): donde los dos estan casi igual de
-        # cerca se mezcla su relieve y no queda un surco en la bisectriz.
-        other = self.S["line"][ik] != self.S["line"][ik[rows, best]][:, None]
-        cover2 = np.where(other, cover, np.inf)
-        second = np.argmin(cover2, axis=1)
-        has2 = np.isfinite(cover2[rows, second])
-        d2 = np.where(has2, dk[rows, second], d.ravel()).reshape(shape)
-        i2 = np.where(has2, ik[rows, second], i.ravel()).reshape(shape)
-        gap = np.where(has2, cover2[rows, second] - cover[rows, best], np.inf).reshape(shape)
+        # cerca se mezcla su relieve y no queda un surco en la bisectriz. Se busca linea a linea:
+        # las 24 muestras mas cercanas (12 m de arco) casi nunca incluian la otra linea, y la pared
+        # fina entre dos caminos quedaba sin detectar (picos).
+        e_other, i2 = self._other_line(X, Y, i)
+        has2 = np.isfinite(e_other)
+        i2 = np.where(has2, i2, i)
+        d2 = np.where(has2, e_other + self.S["w"][i2], d)
+        gap = np.where(has2, e_other - (d - w), np.inf)
         z_soft, bw = self._soft_levels(X, Y)
         e = d - w
         e = self._blunt_wedges(X, Y, e, i)
@@ -362,6 +366,8 @@ class PathModel:
         opened = ndimage.grey_opening(height, size=(3, 3), mode="nearest")
         foot = zf + np.minimum(height - zf, field.FOOT_M + 0.8)
         height = np.where(e < 0.0, height, np.maximum(opened, foot))
+        height = self._thin_berms(X, Y, height, d - w, np.where(has2, e_other, np.inf), zf, zf2)
+        height = field.clip_spikes(self._remove_needles(X, Y, height, e))
         region = np.where(e < 0.0, 0, np.where(e < crest_e + rim_top + 4.0, 1, 2))
         region = np.where(coast > 0.5, 3, region)
         region = np.where(self.decks.near(X, Y), 0, region)          # tableros: camino
@@ -446,6 +452,57 @@ class PathModel:
         self._cover = cover.reshape(X.shape)
         return z_soft.reshape(X.shape), bw.reshape(X.shape + (4,))
 
+    def _other_line(self, X, Y, i):
+        """(distancia al borde, muestra) del camino mas cercano de OTRA linea que la de 'i'."""
+        pts = np.stack([np.ravel(X), np.ravel(Y)], axis=1)
+        own = self.S["line"][i].ravel()
+        e_other = np.full(len(pts), np.inf)
+        i_other = np.ravel(i).copy()
+        for line_id, (tree, idx) in self.line_trees.items():
+            d, k = tree.query(pts)
+            c = d - self.S["w"][idx[k]]
+            better = (own != line_id) & (c < e_other)
+            e_other = np.where(better, c, e_other)
+            i_other = np.where(better, idx[k], i_other)
+        return e_other.reshape(X.shape), i_other.reshape(X.shape)
+
+    def _thin_berms(self, X, Y, height, e, e2, zf, zf2):
+        """Pared fina entre dos caminos (menos de THIN_WALL_M de borde a borde): las dos laderas se
+        juntaban en una cuchilla que la malla convertia en picos. Por encima del pie, se rebaja a
+        un lomo redondeado (parabola de borde a borde); nunca por debajo del pie del camino mas
+        alto, asi que sigue cerrando el paso. No toca puentes ni tuneles."""
+        g = e + e2
+        both = (e > 0.0) & (e2 > 0.0) & np.isfinite(g)
+        g = np.where(both, g, THIN_WALL_M * 2.0)
+        u = np.clip((e - e2) / np.maximum(g, 1e-3), -1.0, 1.0)
+        berm = np.maximum(zf, zf2) + field.FOOT_M + 0.8 + 0.12 * g * (1.0 - u * u)
+        keep = self.decks.near(X, Y, 10.0)
+        if self.tunnel_tree is not None:
+            keep = np.maximum(keep, self._tunnel_zone(X, Y))
+        thin = (1.0 - smooth(THIN_WALL_M - 6.0, THIN_WALL_M, g)) * both * (1.0 - np.clip(keep, 0.0, 1.0))
+        return height * (1.0 - thin) + np.minimum(height, berm) * thin
+
+    def _remove_needles(self, X, Y, height, e):
+        """Agujas: restos de pared de menos de NEEDLE_M de ancho (sobre todo donde se juntan dos
+        caminos a cotas distintas) y puntas en lo alto de las crestas. Se bajan a la apertura con
+        un disco de NEEDLE_M: una pared ancha no cambia; una aguja desaparece aunque tape el pie
+        (su hueco no abre paso a las vistas: esta entre dos caminos). No toca puentes ni tuneles."""
+        if height.ndim != 2 or min(height.shape) < 8:
+            return height
+        r = NEEDLE_M / (2.0 * STEP_XY_M)
+        n = int(np.ceil(r))
+        yy, xx = np.mgrid[-n:n + 1, -n:n + 1]
+        disk = xx * xx + yy * yy <= r * r
+        opened = ndimage.grey_opening(height, footprint=disk, mode="nearest")
+        needle = (height - opened > 1.5) & (e > 0.0)
+        needle = ndimage.binary_dilation(needle, iterations=1) & (e > 0.0)
+        keep = self.decks.near(X, Y, 10.0).astype(float)
+        if self.tunnel_tree is not None:
+            keep = np.maximum(keep, self._tunnel_zone(X, Y))
+        low = ndimage.gaussian_filter(opened, 1.0, mode="nearest")
+        cut = needle & (keep < 0.5)
+        return np.where(cut, np.minimum(height, np.maximum(low, opened)), height)
+
     def _blunt_wedges(self, X, Y, e, i):
         """Donde dos caminos se separan (union de un lazo, cruce), la pared entre ambos nace como
         una cuna que sube despacio a lo largo de la bisectriz y hace de rampa hasta la cresta.
@@ -463,7 +520,34 @@ class PathModel:
             e_other = np.where(own != line_id, np.minimum(e_other, cand), e_other)
         e_other = e_other.reshape(X.shape)
         wedge = (e > 0.0) & (e_other > 0.0) & (e + e_other < WEDGE_M)
-        return np.where(wedge, -0.5, e)
+        e = np.where(wedge, -0.5, e)
+        return self._round_noses(X, Y, e, e_other)
+
+    def _round_noses(self, X, Y, e, e_other):
+        """Nariz redondeada donde nace la pared entre dos caminos a la misma cota: en planta, la
+        cuna acababa en punta (se leia como un pico). Apertura de la pared con un disco de
+        NOSE_RADIUS_M: lo que no cabe en el disco pasa a suelo y la pared que queda arranca a la
+        distancia de ese suelo nuevo. Solo cerca de uniones y cruces (lejos, la separacion del
+        grafo ya da paredes gruesas). Necesita la rejilla completa del mapa."""
+        if e.ndim != 2 or min(e.shape) < 8:
+            return e
+        wall = (e > 0.0) & (e_other > 0.0)
+        r = int(round(NOSE_RADIUS_M / STEP_XY_M))
+        yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+        disk = xx * xx + yy * yy <= r * r
+        kept = ndimage.binary_opening(wall, structure=disk)
+        g = self.plan.graph
+        joins = [line.points[k] for line in g.loops() for k in (0, -1)] + [c.point for c in self.plan.crossings]
+        if not joins:
+            return e
+        dj, _ = cKDTree(np.array(joins)).query(np.stack([np.ravel(X), np.ravel(Y)], axis=1))
+        near = (dj < NOSE_REACH_M).reshape(e.shape)
+        removed = wall & ~kept & near & (e + e_other < 2.0 * NOSE_RADIUS_M + 4.0)
+        if not removed.any():
+            return e
+        floor = (e <= 0.0) | removed
+        edt = ndimage.distance_transform_edt(~floor) * STEP_XY_M
+        return np.where(removed, -0.5, np.where(e > 0.0, np.minimum(e, edt), e))
 
     def _inside_corridor(self, X, Y, height, e, i, zf, w, bw):
         """Suelo del camino segun el tramo: en el agua lo sustituye el rio."""
