@@ -5,7 +5,8 @@ partir de ahora, qué está hecho (con dónde vive cada cosa), qué queda por ha
 usuario y los datos técnicos que hacen falta para no repetir investigaciones.
 
 Proyecto: **Tortunavy** (nombre en clave y de código: Tortunabo), Unreal Engine 5.6, C++ (módulo `Tortunabo`).
-Repositorio: `Unreal-portfolio/Tortunabo`, rama **`claude/elegant-fermi-6n1hxy`** (PR Unreal-portfolio/Tortunabo#8).
+Repositorio: `Unreal-portfolio/Tortunabo`, rama **`claude/elegant-fermi-6n1hxy`**. La PR Unreal-portfolio/Tortunabo#8
+está cerrada: la sesión cloud sube a la rama sin abrir PR nueva mientras el usuario no la pida.
 
 ---
 
@@ -46,9 +47,29 @@ Repositorio: `Unreal-portfolio/Tortunabo`, rama **`claude/elegant-fermi-6n1hxy`*
 
 ---
 
-## 1. Estado del repositorio al traspasar
+## 1. Estado del repositorio
 
-Commits de la sesión local encima de lo que ya estaba en la PR, del más reciente al más antiguo:
+### 1.1 Tanda de la sesión cloud (P1–P8), del más reciente al más antiguo
+
+Sin compilar todavía por el usuario: la lista de pruebas es la del apartado 6.
+
+| Commit | Qué hace |
+|---|---|
+| (este) | Documentación: `Docs/Lobby_Castillo.md` y `Docs/Pantalla_Carga.md` nuevos; `Animacion_Tortuga.md`, `Tienda_Probador.md`, `Mapa_Procedural.md` y este traspaso al día. |
+| `7453a0a` | Circuito de saltos del castillo a la medida del lobby (A-B 1,8 m, B-C 3,3 m con panzazo). |
+| `857fd45` | P7: saltos de panzazo con aviso, tramos hundidos en los puentes colosales y puentes del río rotos. |
+| `2421da9` | P4: el lobby es un castillo de arena con sala de espera de huevos y mini parkour. |
+| `62f2378` | P6: ojos de verdad (máscara en `M_TurtleBody`) y categoría de cosmético «Ojos» con nueve filas. |
+| `dd3d892` | P5: el General Galápago y su sesión informativa de cuatro pestañas. |
+| `e8ab22d` | P5: pantalla de carga del huevo con rotura y sonido sintetizado. |
+| `546cc29` | P1: caparazón con física propia (`ATN_ShellBody`). |
+| `462e987` | P2: noqueada con pajaritos, sonido de dibujos y levantarse animado desde el ragdoll. |
+| `7846387` | P3: aire en el cartel de sala, los bocadillos y el contador de conchas. |
+| `705692e` | Este traspaso y el simulador de poses. |
+
+Módulos nuevos en `Tortunabo.Build.cs`: `PhysicsCore` y `MoviePlayer` (vienen con el motor).
+
+### 1.2 Commits de la sesión local (ya probados por el usuario)
 
 | Commit | Qué hace |
 |---|---|
@@ -57,11 +78,12 @@ Commits de la sesión local encima de lo que ya estaba en la PR, del más recien
 | `f4e675c` | Tienda de Don Tortugo, probadores de botella, cosméticos reales, HUD de interacción, animación de la tortuga y lo del mapa procedural de esa tanda (poza, fauna, sonido ambiente, modo solo terreno, TNStorm). |
 | `4f5a9c5` y anteriores | Mapa procedural, HUD, marca, etc. (ya descritos en `Docs/Mapa_Procedural.md` y `Docs/Mapa_Procedural_Traspaso.md`). |
 
-Todo lo commiteado **compila** (UBT verde en local) y el usuario lo ha probado en su mayoría (apartado 6).
+Lo de la sesión local compila (UBT verde) y el usuario confirmó que la lista de pruebas de entonces va bien.
 
-**En el árbol local, sin commitear**: tres agentes en segundo plano estaban escribiendo archivos nuevos cuando se
-redactó esto (apartado 3). Si la sesión local llega a integrarlos y compilarlos, los subirá con su commit. Si no, el
-usuario los encontrará sin commitear en su máquina; la sesión cloud los tendrá que rehacer o pedirlos.
+Lo que los agentes locales dejaron a medias (apartado 3) nunca llegó a subirse: la sesión cloud lo rehizo con la misma
+especificación e integrado (P2 y P5). Si en la máquina del usuario quedan archivos sin commitear de esos agentes
+(`UI/Loading/`, `Lobby/TN_GeneralBriefing.*`, `UI/Briefing/`, `Player/TN_DizzyBirdsComponent.*`), **hay que
+descartarlos** antes del pull o chocarán con los de la rama.
 
 ---
 
@@ -102,8 +124,8 @@ usuario los encontrará sin commitear en su máquina; la sesión cloud los tendr
 - Capas finales: inclinación, cansancio, lanzamiento y caparazón (miembros al 8 % y metidos hacia `Spine1`; el cuerpo
   baja 19 u).
 - Emotes (id → nombre en `DA_EmoteWheelCatalog`): 0 WAZAAA, 1 HAPPIE, 2 PARACOPTER, 3 SAX-O, 5 RUN, 6 SUPERKIRK,
-  8 MISTIK y 9 PATRICK (el clip `Yelling`). Los 4 y 7 no están en la rueda. El usuario ha validado el 8 y el 9 tal
-  cual; los 0, 1, 2, 3, 5 y 6 están corregidos según su feedback y **pendientes de su confirmación**.
+  8 MISTIK y 9 PATRICK (el clip `Yelling`). Los 4 y 7 no están en la rueda. El usuario los ha validado todos (con la
+  carrera del sprint).
 
 ### 2.3 Personaje: panzazo, derribo y ragdoll
 - Panzazo (`TortugaCharacter_Dive.cpp`):
@@ -124,7 +146,8 @@ usuario los encontrará sin commitear en su máquina; la sesión cloud los tendr
   velocidad inicial) y `EnterRagdollState` / `ExitRagdollState` (muerte).
 
 ### 2.4 Cosméticos, tienda y probador — ver `Docs/Tienda_Probador.md`
-- Tipos: `Core/TN_CosmeticsTypes.h` (`FTN_HelmetData`, `FTN_SkinData`, `FTN_TurtleLook` con casco, caparazón y color).
+- Tipos: `Core/TN_CosmeticsTypes.h` (`FTN_HelmetData`, `FTN_SkinData`, `FTN_TurtleLook` con casco, caparazón, color y
+  ojos; `ETNEyeStyle` para los tipos de ojo).
 - `Core/TN_CosmeticLook.*` viste a una tortuga con un `FTN_TurtleLook`. Lo usan el personaje, el tendero y las vistas
   previas.
 - Contenido generado por `Scripts/build_cosmetics.py` (dentro del editor):
@@ -170,13 +193,18 @@ El jugador aparece en (0, 0). Mirando hacia +Y (hacia la zona de salida), la **i
   puerta de prueba `BP_ShellDoor_0` está en (-1412, 914).
 - **Huevos**: cuatro `StaticMeshActor` «Capsule*» en el centro, cerca de (0, -250).
 - `PlayerStart` en (0, 0, 92). Además hay un poste `SM_Palo` en (820, 1340).
+- Desde P4, `ATN_SandCastleLobby` esconde en ejecución las paredes «Extrude», las vallas y torres de la zona de salida y
+  los huevos del centro, y el general de código sustituye a la tortuga y la mesa de la maqueta (ver
+  `Docs/Lobby_Castillo.md`). El `.umap` no cambia.
 
 ---
 
-## 3. En curso al traspasar (agentes locales en segundo plano)
+## 3. Lo que estaba en curso al traspasar (agentes locales) — **rehecho e integrado**
 
-Escriben solo archivos nuevos y no compilan. Si la sesión local no los integra antes de cerrarse, quedan sin commitear
-en la máquina del usuario.
+Los tres encargos se rehicieron en la nube con esta especificación y ya están integrados: la pantalla de carga en
+`e8ab22d`, el general en `dd3d892` (colocado por `SpawnLobbyShops`) y los pajaritos en `462e987` (encendidos con el
+derribo en todas las máquinas). Ver `Docs/Pantalla_Carga.md`, `Docs/Lobby_Castillo.md` y `Docs/Animacion_Tortuga.md`.
+Se deja la especificación original como referencia.
 
 1. **Pantalla de carga del huevo**
    - Archivos: `UI/Loading/`, más «MoviePlayer» en el `Build.cs` si hace falta.
@@ -205,13 +233,19 @@ en la máquina del usuario.
 
 ## 4. Pendiente, por prioridad (con el detalle del usuario)
 
-### P1. Caparazón con física propia (pedido explícito)
+**Estado:** P1–P8 están hechos en la rama (commits del apartado 1.1) y a la espera de que el usuario los compile y los
+pruebe con la lista del apartado 6. Solo queda del usuario: probar la poza, la fauna y el sonido ambiente en PIE y
+crear `LVL_ProcMap_Terrain` (P7). Lo siguiente es arreglar lo que salga de sus pruebas. El detalle de cada punto se
+conserva como referencia del diseño.
+
+### P1. Caparazón con física propia (pedido explícito) — **hecho** (`546cc29`)
 Pedido del usuario, textual: «cuando se hace caparazón… las haría pequeñas y las metería internamente [hecho] y haz
 que caiga al suelo totalmente, que tenga física propia ese caparazón, ya que como no lo controlas, que cuando tú
 entres en caparazón entres en modo física… y recuerda que tus otros compañeros te deberían poder coger y lanzar en ese
 estado».
 
-Diseño decidido (sin escribir aún):
+Diseño (implementado así; `SetShellState` es la `ApplyShellState` de abajo y `StartBody` recibe además
+`bExitOnRest`, que decide si sale sola al pararse):
 - **Actor nuevo `ATN_ShellBody`** (`Player/TN_ShellBody.*`), replicado:
   - `bReplicates` y `SetReplicatingMovement(true)`, con `SetNetUpdateFrequency(30)`.
   - Raíz: un `UBoxComponent` que simula física. Extent (27,5; 23; 21) cm: largo cola-cabeza, ancho y alto
@@ -269,7 +303,7 @@ Diseño decidido (sin escribir aún):
   muerte por caída mientras esté en el caparazón (es lo esperado). La muerte y el derribo llaman a `ForceExitShell`,
   que ya pasa por `StopBody`.
 
-### P2. Derribo: ragdoll, quedarse quieta, levantarse con animación y pajaritos
+### P2. Derribo: ragdoll, quedarse quieta, levantarse con animación y pajaritos — **hecho** (`462e987`)
 Pedido del usuario: «trata de hacer una animación para que se note más natural el que te levantes, porque ahora queda
 muy tieso que te caigas y te levantes al instante… cuando te noqueen (que no es lo mismo que te maten o que te hagan
 meterte en un caparazón) te ocurre lo mismo: activa el ragdoll y te quedas tieso ahí un momentito, y los pajaritos
@@ -287,7 +321,7 @@ noqueado».
   - Así la tortuga gira desde el suelo hasta ponerse de pie en vez de aparecer de golpe.
 - **Pajaritos**: `UTN_DizzyBirdsComponent` (agente; apartado 3). Si no llega, rehacerlo con esa misma especificación.
 
-### P3. HUD: textos pegados arriba y contador de conchas
+### P3. HUD: textos pegados arriba y contador de conchas — **hecho** (`7846387`)
 Pedido del usuario: «en la señal de arriba (sala, zona), en los bocadillos cuando mando un mensaje u otra gente, o
 hablo por voz, y en el número de conchas, el texto está demasiado pegado arriba, sin margen, muy apretujado; hazlo un
 pelín más grande… el contador de conchas debe ser dinámico para estirarse cuantas más tenga y que no atraviesen los
@@ -300,7 +334,7 @@ números».
   tarjeta crezca con el número (sin SizeBox de ancho fijo) y con los márgenes de la textura bien puestos.
 - Subir un poco la letra y el margen superior en los cuatro.
 
-### P4. Lobby como castillo de arena (el grueso de lo que queda)
+### P4. Lobby como castillo de arena — **hecho** (`2421da9`, `7453a0a`; ver `Docs/Lobby_Castillo.md`)
 Pedido del usuario, textual: «todo lo que es la lobby tiene pensado ser un castillo de arena: todas las formas que tú
 ves son un castillo de arena alrededor, las puertas como si fuera un castillo de arena con una puerta enorme que se
 abre y entras a una sala de espera en la que te preparas para ir a la batalla, que es como meterte en los huevitos de
@@ -309,8 +343,9 @@ jugadores a la derecha; la tienda a la izquierda, donde está; a la derecha un g
 de madera… y en el resto del mapa un mini parkour por todo el castillo de arena, zonas y cosas para practicar los
 saltos, con elementos del paisaje, dentro de este espacio cerrado, para que se diviertan mientras llegan los compis».
 
-Propuesta: un actor procedural `ATN_SandCastleLobby`, que coloca `ATN_HQGameMode` como hace con la tienda, y que
-esconde las piezas de la maqueta que sustituye. Lleva:
+Hecho como se propuso: un actor procedural `ATN_SandCastleLobby`, que coloca `ATN_HQGameMode` como hace con la tienda,
+y que esconde las piezas de la maqueta que sustituye. Los huevos (ocho) están dentro de la sala de espera y sustituyen
+a la zona de listos. Lleva:
 - **Murallas** de arena con almenas alrededor de todo el recinto (sustituyen visualmente a «Extrude»), con marcas de
   cubo y conchas incrustadas.
 - **Torres** de cubo en las esquinas y a media muralla.
@@ -325,10 +360,10 @@ esconde las piezas de la maqueta que sustituye. Lleva:
   parkour hay que poder andar. Para la colisión basta con una malla con `bBoxCollision` o con UBoxComponent aparte,
   como hacen `CounterBlock` y `Walls` en el puesto y el probador.
 
-### P5. Pantalla de carga del huevo, general y pajaritos
-Lo de los agentes del apartado 3: integrar, compilar y probar. Si no ha llegado, rehacerlo con esa especificación.
+### P5. Pantalla de carga del huevo, general y pajaritos — **hecho** (`e8ab22d`, `dd3d892`, `462e987`)
+Lo de los agentes del apartado 3, rehecho e integrado. Falta que el usuario lo compile y lo pruebe.
 
-### P6. Ojos de verdad y tipos de ojo (cosmético)
+### P6. Ojos de verdad y tipos de ojo (cosmético) — **hecho** (`62f2378`; hay que volver a ejecutar `build_cosmetics.py`)
 Pedido del usuario: «los ojos se ven igual que la piel… ponle distintos tipos de ojos (van a tener animaciones), por
 darles un color u otro al interior del ojo o de una manera u otra».
 - Hoy `M_TurtleBody` pinta toda la ranura `lambert4`, ojos incluidos, con el color del cuerpo. Hay que añadir una
@@ -341,7 +376,7 @@ darles un color u otro al interior del ojo o de una manera u otra».
 - Tipos: iris de colores, pupilas de estrella o de corazón, ojos de «dibujo», brillo…
 
 ### P7. Pendiente del mapa procedural (de antes; ver `Docs/Mapa_Procedural_Traspaso.md`)
-- Obstáculos obligatorios de parkour:
+- Obstáculos obligatorios de parkour — **hechos** (`857fd45`; ver `Docs/Mapa_Procedural.md`):
   - Puentes rotos que obliguen a rodear.
   - Tramos hundidos en los puentes colosales, con pasos estrechos, saltos, vigas o repisas.
   - Huecos que obliguen al salto y al panzazo.
@@ -349,7 +384,7 @@ darles un color u otro al interior del ojo o de una manera u otra».
 - Crear el nivel `LVL_ProcMap_Terrain`: duplicar `LVL_ProcMap` y poner el GameMode `ATN_TerrainViewGameMode`. Lo hace
   el usuario en el editor.
 
-### P8. Documentación
+### P8. Documentación — **hecho** en esta tanda
 Al cerrar cada tema, actualizar `Docs/Tienda_Probador.md`, `Docs/Animacion_Tortuga.md` y `Docs/Mapa_Procedural.md`, y
 crear docs nuevos si hace falta (lobby castillo, carga, general).
 
@@ -382,29 +417,88 @@ crear docs nuevos si hace falta (lobby castillo, carga, general).
 
 ---
 
-## 6. Qué tiene que probar el usuario del build actual (commit `2b3026e`)
+## 6. Qué tiene que probar el usuario (tanda P1–P8)
 
-1. **Andar** sin sprint: los pies no patinan.
-2. **Sprint**: entra la carrera, con codos doblados y zancada larga con fase en el aire. En el primer intento no
-   entraba porque el sprint del lobby es lento; ya está corregido y **pendiente de confirmar**.
-3. **Panzazo**: tumbada sobre la tripa, algo aplastada, remando con los brazos y pataleando con los pies en el suelo.
-4. **Emotes**:
-   - WAZAAA: la mano por fuera de la cabeza.
-   - HAPPIE: palmadas encima de la cabeza.
-   - PARACOPTER: más rápido.
-   - SAX-O: las manos juntas en el centro.
-   - RUN: los brazos atrás.
-   - SUPERKIRK: todo el cuerpo a 45°.
-5. **Caparazón**: cabeza, brazos y patas se meten dentro y el cuerpo baja al suelo. La física es la P1.
-6. **Probador**:
-   - El tapón pegado a la botella.
-   - La etiqueta «PROBADOR» sobre la curva.
-   - El techo con 5 pies.
-   - El vidrio liso.
-   - Al entrar suena la música del probador.
-7. **Tienda**:
-   - La radio del puesto suena cerca y se atenúa al alejarse.
-   - Al abrir la tienda suena su música y la radio baja; al cerrar vuelve.
-8. **Aviso de interacción**: con el tendero y con el probador, el aviso aparece justo cuando pulsar funciona. Antes
-   salía antes de estar a tiro.
-9. **Plátano**: ragdoll con impulso (ya confirmado).
+La lista anterior (commit `2b3026e`) está probada y validada por el usuario. Esta es la de la tanda cloud. Si algo no
+compila, pegar el error tal cual: se arregla antes de seguir.
+
+### 6.0 Preparación
+1. Si en la máquina quedan archivos sin commitear de los agentes locales (apartado 1.2), descartarlos.
+2. Pull de `claude/elegant-fermi-6n1hxy`. Desde Visual Studio, regenerar los archivos del proyecto (clic derecho en el
+   `.uproject` → *Generate Visual Studio project files*) para que salgan los `.cpp` nuevos; con UBT no hace falta.
+3. Compilar. Hay dos módulos nuevos del motor en el `Build.cs` (`PhysicsCore` y `MoviePlayer`).
+4. En el editor, ejecutar `Scripts/build_cosmetics.py` (*Tools → Execute Python Script*) y guardar todo: rehace
+   `M_TurtleBody` con los ojos y añade la columna `EyeStyle` y las nueve filas `Eyes_*` a `DT_Skins`.
+
+### 6.1 HUD (P3)
+1. Cartel «Sala: n/n | Zona: n/n» y avisos (tormenta, derribo, rescate): el texto no toca el filo de arriba.
+2. Bocadillos de chat y de voz: la frase tiene aire arriba y no toca el borde azul.
+3. Contador de conchas: con 3-4 cifras la etiqueta se estira y los números quedan dentro de la arena.
+
+### 6.2 Derribo (P2)
+1. Pisar un plátano: ragdoll con impulso y la tortuga **quieta en el suelo** unos 2 s como mínimo.
+2. Mientras está noqueada: tres pajaritos y tres estrellitas dan vueltas sobre la cabeza (también en el ragdoll), con
+   trinos y cuerdas mareadas de dibujos animados, y los ojos en espiral (tras el paso 6.0.4).
+3. Al levantarse: gira desde el suelo hasta ponerse de pie en ~0,75 s, con empujón de brazos; no puede moverse ni
+   saltar mientras.
+4. En un segundo jugador (cliente) se ve lo mismo.
+
+### 6.3 Caparazón con física (P1)
+1. En llano, meterse en el caparazón: se vuelca hacia delante y queda tumbada sobre la tripa, dentro de una caja que
+   rueda y resbala. Salir: queda de pie en el suelo, mirando hacia donde apuntaba la cabeza.
+2. En una cuesta: resbala y rueda cuesta abajo. Otro jugador la empuja al chocar con ella.
+3. Coger a un compañero en caparazón: mientras se lleva no hay física. **Lanzarlo**: sale dando volteretas, no puede
+   salir hasta que se para y entonces sale solo.
+4. **Soltarlo** (dejar delante): cae como caparazón y sale cuando quiera.
+5. **Escaparse** forcejeando 2 s mientras te llevan: sale disparada y sale sola al pararse.
+6. **Caída de más de 5 m** (por ejemplo, desde lo alto de la muralla del castillo, 5,6 m): se hace bola con física,
+   rebota y sale sola al pararse.
+7. **Agua**: caer en caparazón a una poza o río del mapa procedural: sale y nada.
+8. En el cliente: la caja se ve fluida y en el mismo sitio que en el servidor; la cámara no se choca con ella.
+
+### 6.4 Castillo de arena (P4)
+1. Al cargar el lobby: murallas de arena con almenas, torres de cubo con bandera, conchas y estrellas por la arena. No
+   se ven las paredes de cuadrícula, ni las vallas y torres de la zona de salida, ni los huevos del centro.
+2. Tienda a la izquierda (+X); general y probadores a la derecha (-X); selectores de modo donde estaban.
+3. **Puerta grande**: se abre al acercarse (menos de 10 m) y se cierra unos 2,5 s después de alejarse.
+4. **Sala de espera**: ocho huevos. Meterse en uno: baja su tapa y cuentas como listo; con todos dentro empieza la
+   cuenta atrás. Salir del huevo: sube la tapa y dejas de estar listo.
+5. **Cuenta atrás**: se abre la puerta del mar al fondo (se ve el mar) y la grande queda abierta.
+6. **Parkour**: escalera de arena (esquina suroeste) hasta la muralla sur; circuito del sur: A→B con salto normal y
+   B→C solo con salto + panzazo, rampa de concha para bajar; pilares de cubo del este → pasarela de palos de polo →
+   torreón → muralla este. Por fuera de la muralla no se puede salir. Decir si B→C se llega sin panzazo o si no se
+   llega ni con él.
+7. `TN.Lobby.Castle 0` y volver a cargar el lobby: vuelve la maqueta de antes.
+
+### 6.5 Pantalla de carga (P5)
+1. Consola `TN.Loading.Test`: las dos mitades del huevo se cierran con rebote, cuatro tortugas andan por la arena,
+   estado con puntos y consejos; a los 3 s tiembla, se agrieta y revienta con crujidos, «¡PUM!» y trozos de cáscara, y
+   se funde.
+2. `TN.Loading.Test.Hold` (se queda cargando) y `TN.Loading.Test.Break` (lo rompe).
+3. Empezar partida desde el lobby (mapa procedural): el huevo sale cerrado, espera a que el terreno esté listo y se
+   rompe al aparecer la tortuga. En PIE el huevo se queda quieto durante la carga bloqueante (es normal; en el juego
+   empaquetado lo anima MoviePlayer). Volver al lobby: lo mismo.
+
+### 6.6 General del cuartel (P5)
+1. A la derecha, donde estaba el general de la maqueta: el General Galápago (grande, gorra de capitán) tras una mesa
+   de madera con la maqueta del castillo y el cartel «CUARTEL GENERAL». Te mira y saluda al acercarte.
+2. Interactuar: se abre la sesión informativa; habla letra a letra. Q/E, flechas o 1-4 cambian de pestaña; ↑/↓
+   desplazan; en «CONTROLES» salen tus teclas reales; Escape o Intro cierran y vuelve el control.
+
+### 6.7 Ojos (P6; después de 6.0.4)
+1. Con los ojos de serie ya no son del color de la piel: blanco, pupila y brillo.
+2. Tienda: pestaña «OJOS» con nueve (azul mar, esmeralda, miel, gato, estrella, corazón, dibujo, hipnóticos y
+   galaxia); miniaturas con primer plano de la cara. Comprar uno.
+3. Probador: fila «OJOS»; «¡Listo!» los pone. Los ve otro jugador y siguen puestos al reiniciar el juego.
+4. Parpadea cada pocos segundos (a veces dos veces seguidas); los de galaxia brillan.
+
+### 6.8 Mapa procedural (P7; Coop en Normal o Difícil)
+1. **Saltos de panzazo**: antes del hueco, tres chevrones amarillos y rojos en el suelo y un cartel con «!» a un lado.
+   Corriendo y saltando no se llega; con salto + panzazo sí. Decir si se llega sin panzazo (entonces se alargan).
+2. **Tramo hundido** en un puente colosal largo (en el *Output Log*, filtrar por `[ProcMap]`: «Cruce N: tramo hundido
+   de X m (tipo K)»; 0 = vigas en zigzag, 1 = postes, 2 = cornisas): bandas amarillas y rojas antes del borde, bordes
+   astillados y el paso de parkour. Caerse mata y reapareces en los huevos.
+3. **Puentes del río rotos**: el río está apagado por defecto; activar `bRiver` en `DA_ProcMapSettings → Profiles`
+   (el perfil que se juegue). En el log sale «Puente del río roto». Falta el centro: bajar al agua por el hueco, ir por
+   las piedras (o nadando) hasta la escalera de madera pegada al puente y volver al tablero por el rellano.
+4. Opcional: *Session Frontend → Automation → Tortunabo.ProcMap* (tests del layout, con los de huecos nuevos).

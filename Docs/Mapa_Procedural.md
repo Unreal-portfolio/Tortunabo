@@ -108,6 +108,11 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   madera, sillería o basalto según el bioma; algunos son más largos (hasta 1,8 veces) con **postes**
   en rejilla que los parten en saltos cortos (troncos, pilotes, basalto o columnas) y otros llevan
   **troncos de equilibrio** de labio a labio.
+  Desde Normal, parte de los huecos de labios son **saltos de panzazo** (`EGapStyle::Dive`, de
+  `DiveGapMin` = 2,7 m a `DiveGapMax` = 3,7 m, sin pasar de los huecos máximos de la dificultad): más de lo
+  que da un salto corriendo (2 m) y menos que con panzazo (4 m). En el camino principal siempre hay al menos
+  uno (si no sale ninguno, el hueco de labios con la zanja más larga pasa a serlo). En el labio de llegada
+  llevan tres chevrones amarillos y rojos que apuntan al hueco y, fuera del camino, un cartel con «!».
 - **Torres de escalada** junto al borde en tramos anchos: bloques del bioma (cajas con aspa,
   tocones, sillares, losas o basalto) de 3–4 m con escalones de 1 m, banderín, recompensa de puntos
   arriba (`BP_ScorePickup`) y una medusa al pie (`BP_JellyfishActor`) para subir de un bote.
@@ -163,7 +168,12 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   recorrido (más de 90 m) y junto a la costa queda tierra alta con montañas, así que no se
   puede atajar nadando de un tramo a otro ni hasta la meta.
 - **Borde** del mapa con muros altos irregulares que llevan el contenido del bioma.
-- **Río** opcional (`bRiver`).
+- **Río** opcional (`bRiver`). Sus puentes de madera están **rotos** 3 de cada 4 veces cuando miden más de 16 m y
+  debajo hay agua de verdad: les falta el centro (7 m, no se salta; bordes astillados y bandas de aviso) y hay que
+  rodear por el agua. Se baja por el hueco, se va por las **piedras** (cima a 35 cm sobre el agua, a saltitos de
+  menos de medio metro) o nadando hasta una **escalera de madera** pegada al puente por un lado (peldaños de 30 cm y
+  42 de huella, puntales hasta el lecho) y se vuelve al tablero por un rellano, con la barandilla abierta ahí. La
+  escalera se coloca donde la orilla no la entierre; si no cabe, el puente queda entero.
 - **Taludes** del camino en rampa de 55-75° (no a plomo): la guarda que impide salir sube en
   rampa desde el borde de cada cauce y solo se empina entre dos cauces próximos (horquillas,
   curvas cerradas), para que la cresta que los separa no sea una rampa andable.
@@ -204,6 +214,15 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   tienen a media altura una **plaza** redonda (sobre la pila central si la hay): pretil o barandilla
   abierta a las entradas del tablero, fuente con la tortuga o farol alto, farolas, bancos mirando al
   paisaje y una atalaya de 3 m con escalones, recompensa arriba y medusa al pie.
+  Los de más de 42 m entre torres tienen un **tramo hundido** de 11-15 m sin tablero (`TNProcAddBrokenSpan`), solo
+  donde debajo no hay nada en 9 m (ni pilas ni torres), todo el tramo cae sobre cajas de muerte y no hay nada del
+  recorrido a menos de 5 m (plaza, huevos, recompensas, medusas). Se cruza de una de tres maneras: **vigas** de 60 cm
+  en zigzag de lado a lado con plataformas en los codos, **postes** cuadrados de 1,1 m al tresbolillo (saltos de
+  ~1,3 m y cimas alternas a -8 y -26 cm) o dos **cornisas** de 60 cm por los bordes, cada una con un hueco de 1,8 m (a
+  un tercio y a dos tercios) y un tablón atravesado en medio para cambiar de lado. Todo lo pisable queda a menos de
+  50 cm bajo el tablero (las cajas de muerte empiezan a 60 cm). Bordes astillados (sillares en los de piedra;
+  tablones que cuelgan en los demás), barandillas cortadas y bandas de aviso antes de cada borde. El registro dice
+  «Cruce N: tramo hundido de X m (tipo K)».
 - **Formaciones temáticas**: arcos que cruzan el camino (arco de roca, esqueleto de ballena con
   columna en arco sobre las costillas, cola y cráneo con mandíbulas,
   raíces gigantes, pórtico de templo, tronco colosal caído con raíces y lianas en selva y manglar,

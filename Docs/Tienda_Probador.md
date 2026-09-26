@@ -8,7 +8,8 @@ Sistema real de cosméticos de Tortunavy: la tienda de Don Tortugo (catálogo y 
 
 1. **Tienda** (`ATN_ShopKeeper`). Al hablar con el tendero se abre `UTN_ShopWidget` en el cliente que interactúa:
    a la izquierda, tu tortuga posando y girando en una peana (arrastrar con el ratón la gira); a la derecha, el
-   tendero habla en su bocadillo, tres pestañas (cascos, caparazones, colores) y el catálogo con miniaturas y precio.
+   tendero habla en su bocadillo, cuatro pestañas (cascos, caparazones, colores y ojos) y el catálogo con miniaturas
+   y precio (las de ojos, con primer plano de la cara).
    Al elegir algo, la tortuga se lo prueba encima de lo que lleva y saluda. **Comprar** desbloquea el cosmético
    (hoy todo cuesta 0 conchas) y lo guarda en el `SaveGame` local; el servidor recibe la lista de desbloqueados
    (`ServerSyncUnlockedHelmets` / `ServerSyncUnlockedSkins`).
@@ -16,12 +17,14 @@ Sistema real de cosméticos de Tortunavy: la tienda de Don Tortugo (catálogo y 
    de techo) cuya puerta redonda es el tapón, una chapa de corona roja con estrella. Al entrar, el servidor mete a la
    tortuga dentro y cierra la chapa (`Occupant` replicado: todos la ven cerrarse y la botella se menea mientras se
    cambia). El cliente aleja la cámara
-   a la de la botella y abre `UTN_BoothWidget`: tres filas (casco, caparazón, color) que se cambian con las flechas;
-   solo salen los cosméticos desbloqueados. **¡Listo!** pide al servidor los cambios (`RequestEquipHelmet`,
-   `RequestEquipShell`, `RequestEquipSkin`); **Cancelar** sale sin cambios. En los dos casos la puerta se abre y la
+   a la de la botella y abre `UTN_BoothWidget`: cuatro filas (casco, caparazón, color y ojos) que se cambian con las
+   flechas; solo salen los cosméticos desbloqueados. **¡Listo!** pide al servidor los cambios (`RequestEquipHelmet`,
+   `RequestEquipShell`, `RequestEquipSkin`, `RequestEquipEyes`); **Cancelar** sale sin cambios. En los dos casos la puerta se abre y la
    tortuga sale de un saltito (el servidor y el cliente dueño la lanzan a la vez).
-3. **Replicación del aspecto.** El `PlayerState` replica `EquippedHelmetId`, `EquippedShellId` y `EquippedSkinId`; cada
-   `OnRep` llama al personaje, que guarda el conjunto (`FTN_TurtleLook`) y lo aplica entero con `UTN_CosmeticLook`.
+3. **Replicación del aspecto.** El `PlayerState` replica `EquippedHelmetId`, `EquippedShellId`, `EquippedSkinId` y
+   `EquippedEyesId`; cada `OnRep` llama al personaje, que guarda el conjunto (`FTN_TurtleLook`) y lo aplica entero con
+   `UTN_CosmeticLook`. Los ojos se guardan también en el `SaveGame` (`UMP_GameInstance::EquipEyes`) y el servidor los
+   valida contra `DT_Skins` y los desbloqueos (`ServerSetEquippedEyes`).
 
 Teclado y mando: flechas o WASD para elegir, Q/E (o gatillos) para las pestañas, Intro para comprar o aceptar y
 Escape para salir. El menú bloquea el control del juego mientras está abierto (`FInputModeUIOnly`).
@@ -59,7 +62,9 @@ arrastrar `TN_ShopKeeper` o `TN_ChangingBooth` al nivel.
 - `/Game/Cosmetics/Helmets/SM_Helmet_*`: los doce cascos, modelados en `Scripts/cosmetics_meshes.py` (Python puro)
   sobre la coronilla de la tortuga: sombrero de paja, tricornio, corona, gorra de capitán, gorro de marinero, gorro de
   fiesta, gorro de hélice, flor tropical, estrella de mar, cangrejo, sombrero medusa y aureola.
-- Las filas de `DT_Helmets` y `DT_Skins` (diez caparazones y doce colores), con precio 0 y la frase del tendero.
+- Las filas de `DT_Helmets` y `DT_Skins` (diez caparazones, doce colores y nueve ojos), con precio 0 y la frase del
+  tendero. Todas las filas de `DT_Skins` llevan la columna `EyeStyle` (hay que volver a ejecutar el script después de
+  compilar, para que la tabla tenga la columna nueva).
 
 ### La tortuga de demo
 
@@ -72,6 +77,17 @@ zonas por la posición local antes del skinning (unidades de la malla; mira a +Y
 - **Barriga:** delante del torso, entre `z` 21 y 36,6.
 - **Lengua** (en `M_TurtleHelmetSlot`): `|x|` < 2,3, `y` > 9,6 y `z` entre 39,8 y 43,4; el resto de la ranura es el
   casco de serie y sus correas.
+- **Ojos:** las dos esferas de la malla, centradas en (±4,47; 8,46; 46,06) con radio ≤ 4,12; solo se pinta el casquete
+  que asoma (dirección (±0,66; 0,62; 0,42)). La mirada va hacia (0,25; 0,93; 0,27) normalizado y el iris mide 0,56 del
+  radio. Parámetros: `EyeStyle`, `EyeColor`, `EyeColor2`, `EyeGlow`, `EyeBlink` (0 abiertos, 1 cerrados: el párpado
+  baja con su pestaña) y `EyeDizzy` (espiral de noqueada). `UTN_CosmeticLook` pone siempre `M_TurtleBody` en el cuerpo:
+  con el material original los ojos salían del color de la piel.
+
+### Tipos de ojo
+
+`ETNEyeStyle`: clásicos (los de serie), iris de color, pupila de estrella, de corazón, de dibujo, espiral, de gato y
+galaxia (con luz propia). Filas `Eyes_*` de `DT_Skins`: azul mar, esmeralda, miel, gato, estrella, corazón, dibujo,
+hipnóticos y galaxia. El personaje parpadea y se marea con `SetEyeState` (ver `Docs/Animacion_Tortuga.md`).
 
 El casco va en el socket `Sombrero` de la malla si existe; si no, en el hueso `Head`, colocado en la coronilla de la
 postura de referencia (0; 5,5; 51) para que siga la animación de la cabeza. Con la malla unificada de cinco ranuras
@@ -84,6 +100,9 @@ postura de referencia (0; 5,5; 51) para que siga la animación de la cabeza. Con
   `MeshOffset`, `MeshRotation` y `MeshScale` desde la coronilla.
 - **Caparazón o color:** añadir una fila a `SHELLS` o `BODIES` en `Scripts/build_cosmetics.py` (o directamente en
   `DT_Skins`) con `Category`, `Color`, `Color2`, `Pattern`, `PatternScale`, `Shine` y `Glow`.
+- **Ojos:** añadir una fila a `EYES` en `Scripts/build_cosmetics.py` con el tipo (`EyeStyle`), el color del iris o la
+  pupila, el segundo color y el brillo. Un tipo nuevo necesita su rama en el HLSL de ojos del script y su valor en
+  `ETNEyeStyle`.
 
 El precio (`Price`) ya se descuenta de las conchas acumuladas (`AccumulatedRaceScore`); la economía de conchas o
 estrellas queda para más adelante.
