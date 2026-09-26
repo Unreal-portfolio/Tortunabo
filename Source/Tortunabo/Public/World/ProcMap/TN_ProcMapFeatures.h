@@ -314,6 +314,53 @@ namespace TNProcMap
 			S.Location = FVector(C.CrossPoint, C.TopZ);
 			L.Features.Add(S);
 
+			// Plaza en los puentes de piedra y de hierro: sobre la pila más cercana al centro del vano (si
+			// está a menos de un cuarto de él) o en el centro, con una atalaya de bloques con recompensa
+			// arriba y una medusa al pie para subir de un bote. Cabe dentro de las cajas de muerte del vano
+			// (semiancho del tablero + 7,6 m como mucho).
+			if (C.Type == ETNProcCrossingType::Bridge)
+			{
+				const EBridgeStyle Style = BridgeStyleOf(L, c);
+				const double SA = M[High.FirstSample].S + P.TowerRadius + 2500.0;
+				const double SB = M[High.LastSample].S - P.TowerRadius - 2500.0;
+				if ((Style == EBridgeStyle::Stone || Style == EBridgeStyle::Iron) && SB - SA > 2400.0)
+				{
+					const double Mid = 0.5 * (SA + SB);
+					double Sc = Mid;
+					bool bPier = false;
+					for (const FFeature& Pl : L.Features)
+					{
+						if (Pl.Type != EFeature::DeckPillar || Pl.Aux != c) { continue; }
+						const double Sp = M[Pl.PathIndex].S;
+						if (FMath::Abs(Sp - Mid) < 0.25 * (SB - SA) && (!bPier || FMath::Abs(Sp - Mid) < FMath::Abs(Sc - Mid))) { Sc = Sp; bPier = true; }
+					}
+					int32 Idx = INDEX_NONE;
+					FVector2D Dir;
+					const FVector2D Pc = PathDetail::MainPointAt(M, Sc, &Dir, &Idx);
+					if (Idx != INDEX_NONE)
+					{
+						const uint32 H = HashCell(P.Seed ^ 0x9A2Au, c, 7);
+						FFeature Pz = MakeAtSample(EFeature::BridgePlaza, M[Idx], Idx, INDEX_NONE);
+						Pz.Location = FVector(Pc, C.TopZ);
+						Pz.Dir = Dir.GetSafeNormal();
+						const double Hw = M[Idx].Width * 0.5;
+						Pz.Radius = FMath::Clamp(Hw + 450.0 + 250.0 * ((H >> 8) & 0xFF) / 255.0, 750.0, Hw + 760.0);
+						Pz.Aux = c;
+						Pz.Aux2 = static_cast<int32>(H & 0xFFFFF);
+						Pz.Height = bPier ? 1.0 : 0.0;
+						Pz.Length = Sc;
+						L.Features.Add(Pz);
+						const FVector2D Tw = PlazaDims::TowerAt(Pz);
+						FFeature Bonus = MakeAtSample(EFeature::BonusPickup, M[Idx], Idx, INDEX_NONE);
+						Bonus.Location = FVector(Tw, C.TopZ + PlazaDims::TowerH + 70.0);
+						L.Features.Add(Bonus);
+						FFeature Jelly = MakeAtSample(EFeature::Bouncer, M[Idx], Idx, INDEX_NONE);
+						Jelly.Location = FVector(PlazaDims::BouncerAt(Pz), C.TopZ);
+						L.Features.Add(Jelly);
+					}
+				}
+			}
+
 			// Puerta de la muralla donde la cruza el tramo bajo: atraviesa el muro en perpendicular, con
 			// luz para el camino (más si este cruza en diagonal) y arco de medio punto con la clave 5 m
 			// bajo el adarve: una puerta altísima cuyo arco hace de puente.

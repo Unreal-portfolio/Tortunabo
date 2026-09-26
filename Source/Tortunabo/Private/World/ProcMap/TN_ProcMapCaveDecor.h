@@ -346,7 +346,7 @@ namespace TNCaveDecor
 	 * y una vasija de ofrenda.
 	 */
 	inline void TNTurtleStatue(FTNProcMeshBuffers& Solid, FTNProcMeshBuffers& Glow, uint32 Seed, const FLinearColor& Stone, const FLinearColor& Accent,
-		const FLinearColor& Eyes, int32 Crown, bool bMoss)
+		const FLinearColor& Eyes, int32 Crown, bool bMoss, bool bOfferings = true)
 	{
 		const FLinearColor Dark = Stone * 0.78f;
 		const FVector X(1.0, 0.0, 0.0);
@@ -417,6 +417,7 @@ namespace TNCaveDecor
 			TNPropMesh::TNPropBall(Solid, FVector(-60.0, 70.0, 124.0), 30.0, FLinearColor(0.2f, 0.38f, 0.13f), 6, 3, 0.3);
 		}
 		// Ofrendas: dos velas y una vasija.
+		if (!bOfferings) { return; }
 		for (const double Sy : { -1.0, 1.0 })
 		{
 			const FVector C(172.0, Sy * 48.0, 0.0);

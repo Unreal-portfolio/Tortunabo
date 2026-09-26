@@ -310,6 +310,16 @@ namespace TNProcMap
 		 * alargados (barca, vagoneta, valla, fila de conos).
 		 */
 		PathProp,
+		/**
+		 * Plaza redonda a media altura de un puente colosal de piedra o de hierro: Location = centro sobre
+		 * el tablero (Z = cota del tablero), Dir = eje del tablero, Radius = radio, Aux = cruce, Aux2 =
+		 * semilla (su bit 0 dice a qué lado va la atalaya), Height = 1 si hay pila debajo, Length = su S.
+		 */
+		BridgePlaza,
+		/** Recompensa de puntos colocada en un sitio concreto (cima de una atalaya o de un parkour): Location. */
+		BonusPickup,
+		/** Medusa saltarina colocada en un sitio concreto (atajo para subir): Location (Z = suelo). */
+		Bouncer,
 		Count
 	};
 
@@ -406,6 +416,52 @@ namespace TNProcMap
 	};
 
 	inline bool IsLavaGap(const FFeature& F) { return F.Type == EFeature::Gap && F.Aux2 == GapLava; }
+
+	/** Estilo de los puentes colosales. */
+	enum class EBridgeStyle : uint8 { Rope, Stone, Trestle, Iron };
+
+	/** Estilo según el bioma del cruce (y la semilla, para que no sean todos iguales). */
+	inline EBridgeStyle BridgeStyleFor(ETNProcBiome Biome, uint32 Seed)
+	{
+		const bool bOdd = ((Seed * 2654435761u) >> 13) & 1u;
+		switch (Biome)
+		{
+			case ETNProcBiome::Rocky:    return bOdd ? EBridgeStyle::Stone : EBridgeStyle::Rope;
+			case ETNProcBiome::Desert:   return bOdd ? EBridgeStyle::Trestle : EBridgeStyle::Stone;
+			case ETNProcBiome::Human:    return bOdd ? EBridgeStyle::Stone : EBridgeStyle::Iron;
+			case ETNProcBiome::Volcanic: return EBridgeStyle::Iron;
+			case ETNProcBiome::Beach:    return bOdd ? EBridgeStyle::Trestle : EBridgeStyle::Rope;
+			default:                     return EBridgeStyle::Rope;
+		}
+	}
+
+	/** Estilo del puente colosal del cruce C (bioma de su módulo y semilla del mapa). */
+	struct FLayout;
+	inline EBridgeStyle BridgeStyleOf(const FLayout& L, int32 C);
+
+	/**
+	 * Plaza de un puente: atalaya de bloques (3 m, escalones de 1 m) a un lado del eje y la medusa al pie
+	 * de su otra cara; aquí se decide dónde, para que la malla y lo que aparece encima cuadren.
+	 */
+	namespace PlazaDims
+	{
+		constexpr double TowerHalf = 90.0;
+		constexpr double TowerH = 300.0;
+		constexpr double StepDepth = 90.0;
+
+		/** Centro (XY) de la atalaya de la plaza F. */
+		inline FVector2D TowerAt(const FFeature& F)
+		{
+			const double Side = (F.Aux2 & 1) ? 1.0 : -1.0;
+			return FVector2D(F.Location.X, F.Location.Y) + FVector2D(-F.Dir.Y, F.Dir.X) * (Side * F.Radius * 0.52);
+		}
+
+		/** Pie de la medusa: al otro lado de la atalaya respecto a sus escalones (que bajan hacia -Dir). */
+		inline FVector2D BouncerAt(const FFeature& F)
+		{
+			return TowerAt(F) + F.Dir * (TowerHalf + 210.0);
+		}
+	}
 	inline double GapTrenchSideOf(const FFeature& F) { return IsLavaGap(F) ? 250.0 : GapTrenchSide; }
 
 	/**
@@ -613,6 +669,11 @@ namespace TNProcMap
 
 	/** Y de la orilla del agua en la playa de la meta (la llegada va recta hacia +Y desde EndPoint). */
 	inline double FinishWaterY(const FLayout& L) { return L.CoastY(L.EndPoint.X) - FinishDims::WaterInset; }
+
+	inline EBridgeStyle BridgeStyleOf(const FLayout& L, int32 C)
+	{
+		return BridgeStyleFor(L.Modules[L.Crossings[C].Module].Biome, L.Params.Seed ^ (0xB21D6u + static_cast<uint32>(C)));
+	}
 
 	/** Y de la línea de meta. */
 	inline double FinishLineY(const FLayout& L) { return FinishWaterY(L) + FinishDims::LineInWater; }

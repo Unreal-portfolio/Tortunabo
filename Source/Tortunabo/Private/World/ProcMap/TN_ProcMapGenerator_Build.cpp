@@ -119,23 +119,8 @@ namespace
 		}
 	}
 
-	/** Estilo de los puentes colosales. */
-	enum class ETNBridgeStyle : uint8 { Rope, Stone, Trestle, Iron };
-
-	/** Estilo según el bioma del cruce (y la semilla, para que no sean todos iguales). */
-	ETNBridgeStyle TNBridgeStyleFor(ETNProcBiome Biome, uint32 Seed)
-	{
-		const bool bOdd = ((Seed * 2654435761u) >> 13) & 1u;
-		switch (Biome)
-		{
-			case ETNProcBiome::Rocky:    return bOdd ? ETNBridgeStyle::Stone : ETNBridgeStyle::Rope;
-			case ETNProcBiome::Desert:   return bOdd ? ETNBridgeStyle::Trestle : ETNBridgeStyle::Stone;
-			case ETNProcBiome::Human:    return bOdd ? ETNBridgeStyle::Stone : ETNBridgeStyle::Iron;
-			case ETNProcBiome::Volcanic: return ETNBridgeStyle::Iron;
-			case ETNProcBiome::Beach:    return bOdd ? ETNBridgeStyle::Trestle : ETNBridgeStyle::Rope;
-			default:                     return ETNBridgeStyle::Rope;
-		}
-	}
+	/** Estilo de los puentes colosales (el del layout). */
+	using ETNBridgeStyle = TNProcMap::EBridgeStyle;
 
 	/** Tablero de losas de piedra con pretiles de 1 m y albardilla (viaducto). */
 	void TNProcAddStoneDeck(FTNProcMeshBuffers& M, const FTNPlankLine& Line, double S0, double S1, const FLinearColor& Stone, uint32 Seed)
@@ -215,6 +200,151 @@ namespace
 				}
 			}
 		}
+	}
+
+	/**
+	 * Plaza redonda de un puente colosal (TNProcMap::EFeature::BridgePlaza): suelo de losas (o chapa), pretil
+	 * de 1 m con albardilla (o barandilla de hierro) abierto donde entra y sale el tablero, ménsula bajo el
+	 * borde (o puntales de hierro) hasta la pila, en el centro una fuente con la tortuga (o un farol alto),
+	 * bancos mirando al paisaje, farolas, una atalaya de bloques de 3 m con dos escalones de 1 m por su cara
+	 * de -Dir (arriba aparece la recompensa) y la almohadilla de la medusa al pie de su otra cara.
+	 */
+	void TNProcAddBridgePlaza(FTNProcMeshBuffers& Solid, FTNProcMeshBuffers& Glow, FTNProcMeshBuffers& Water, const TNProcMap::FFeature& F, double DeckHw, bool bIron,
+		const FLinearColor& Stone, const FLinearColor& Iron)
+	{
+		using namespace TNProcMap;
+		const FVector C = F.Location;
+		const FVector D(F.Dir.X, F.Dir.Y, 0.0);
+		const FVector N(-F.Dir.Y, F.Dir.X, 0.0);
+		const double R = F.Radius;
+		const double Top = C.Z;
+		const FLinearColor Floor = bIron ? Iron * 1.6f : Stone * 1.06f;
+		const FLinearColor Edge = bIron ? Iron : Stone * 0.9f;
+		constexpr int32 Seg = 32;
+		auto Dir = [&](double A) { return D * FMath::Cos(A) + N * FMath::Sin(A); };
+
+		// Suelo: disco con un anillo más oscuro y el centro más claro (sobre el tablero, que sigue debajo).
+		for (int32 Ring = 0; Ring < 3; ++Ring)
+		{
+			const double Ro = Ring == 0 ? R : (Ring == 1 ? R * 0.7 : R * 0.35);
+			TArray<FVector2D> Poly;
+			for (int32 k = 0; k < Seg; ++k) { const FVector P = C + Dir(TwoPi * k / Seg) * Ro; Poly.Add(FVector2D(P.X, P.Y)); }
+			const FLinearColor Col = Ring == 1 ? Floor * 0.86f : (Ring == 2 ? Floor * 1.1f : Floor);
+			Solid.AddPrism(Poly, Top + 2.0 + Ring * 0.6, Ring == 0 ? Top - 40.0 : Top + 1.5, Col, Ring == 0);
+		}
+		// Pretil o barandilla por el borde, abierto en las dos entradas del tablero.
+		const double Open = FMath::Asin(FMath::Clamp((DeckHw + 60.0) / R, 0.0, 0.95));
+		for (int32 k = 0; k < Seg; ++k)
+		{
+			const double A0 = TwoPi * k / Seg, A1 = TwoPi * (k + 1) / Seg, Am = 0.5 * (A0 + A1);
+			const double Off = FMath::Min(FMath::Abs(FMath::Atan2(FMath::Sin(Am), FMath::Cos(Am))), FMath::Abs(FMath::Atan2(FMath::Sin(Am - PI), FMath::Cos(Am - PI))));
+			if (Off < Open) { continue; }
+			const FVector P0 = C + Dir(A0) * (R - 16.0), P1 = C + Dir(A1) * (R - 16.0);
+			const FVector Mid = (P0 + P1) * 0.5;
+			const FVector Along = (P1 - P0).GetSafeNormal2D();
+			const double Half = FVector::Dist2D(P0, P1) * 0.5 + 2.0;
+			if (bIron)
+			{
+				Solid.AddBeam(P0 + FVector(0.0, 0.0, 0.0), P0 + FVector(0.0, 0.0, 108.0), 4.0, Iron);
+				Solid.AddBeam(P0 + FVector(0.0, 0.0, 105.0), P1 + FVector(0.0, 0.0, 105.0), 3.5, Iron);
+				Solid.AddBeam(P0 + FVector(0.0, 0.0, 55.0), P1 + FVector(0.0, 0.0, 55.0), 2.5, Iron);
+			}
+			else
+			{
+				Solid.AddBox(FVector(Mid.X, Mid.Y, Top + 48.0), Along, FVector(Half, 16.0, 48.0), Edge * TNProcTone(k, F.Aux2));
+				Solid.AddBox(FVector(Mid.X, Mid.Y, Top + 100.0), Along, FVector(Half + 1.0, 21.0, 5.0), Stone * 1.1f);
+			}
+		}
+		// Debajo: ménsula de piedra que se estrecha hasta la pila, o puntales de hierro.
+		if (bIron)
+		{
+			for (int32 k = 0; k < 8; ++k)
+			{
+				const FVector Rim = C + Dir(TwoPi * (k + 0.5) / 8.0) * (R * 0.9) - FVector(0.0, 0.0, 20.0);
+				Solid.AddBeam(Rim, C + Dir(TwoPi * (k + 0.5) / 8.0) * 250.0 - FVector(0.0, 0.0, 420.0), 9.0, Iron * 1.2f);
+			}
+		}
+		else
+		{
+			TNProcAddLathe(Solid, C - FVector(0.0, 0.0, 420.0), { 0.0, 180.0, 300.0, 380.0 }, { FMath::Min(R * 0.5, 480.0), FMath::Min(R * 0.6, 560.0), R * 0.85, R + 6.0 }, 0.0, 0u, Stone * 0.82f, Seg, 0.0);
+		}
+		// Centro: fuente con la tortuga (piedra) o farol alto (hierro).
+		if (bIron)
+		{
+			TNProcAddCylinder(Solid, C, C + FVector(0.0, 0.0, 40.0), 60.0, 50.0, 8, Iron);
+			TNProcAddCylinder(Solid, C + FVector(0.0, 0.0, 40.0), C + FVector(0.0, 0.0, 560.0), 14.0, 9.0, 8, Iron * 1.3f);
+			for (const double S : { -1.0, 1.0 })
+			{
+				const FVector Arm = C + N * (S * 110.0) + FVector(0.0, 0.0, 520.0);
+				Solid.AddBeam(C + FVector(0.0, 0.0, 540.0), Arm, 4.0, Iron);
+				Glow.AddBox(Arm - FVector(0.0, 0.0, 30.0), D, FVector(16.0, 16.0, 22.0), FLinearColor(1.f, 0.78f, 0.38f));
+			}
+		}
+		else
+		{
+			constexpr double BasinR = 190.0;
+			TNProcAddCylinder(Solid, C, C + FVector(0.0, 0.0, 30.0), BasinR - 20.0, BasinR - 20.0, 16, Stone * 0.7f);
+			for (int32 k = 0; k < 16; ++k)
+			{
+				const FVector P0 = C + Dir(TwoPi * k / 16.0) * (BasinR - 10.0), P1 = C + Dir(TwoPi * (k + 1) / 16.0) * (BasinR - 10.0);
+				Solid.AddBox(FVector((P0.X + P1.X) * 0.5, (P0.Y + P1.Y) * 0.5, Top + 28.0), (P1 - P0).GetSafeNormal2D(), FVector(FVector::Dist2D(P0, P1) * 0.5 + 2.0, 14.0, 28.0), Stone * 1.1f);
+			}
+			TArray<FVector2D> Pool;
+			for (int32 k = 0; k < 16; ++k) { const FVector P = C + Dir(TwoPi * k / 16.0) * (BasinR - 22.0); Pool.Add(FVector2D(P.X, P.Y)); }
+			const int32 Base = Water.Verts.Num();
+			Water.AddPrism(Pool, Top + 46.0, Top + 46.0, FLinearColor(0.16f, 0.5f, 0.76f, 0.85f), false);
+			for (int32 v = Base; v < Water.Verts.Num(); ++v) { Water.Colors[v] = FLinearColor(0.16f, 0.5f, 0.76f, 0.85f); }
+			FTNProcMeshBuffers Statue, StatueGlow;
+			TNCaveDecor::TNTurtleStatue(Statue, StatueGlow, static_cast<uint32>(F.Aux2), Stone * 1.05f, Stone * 0.8f, FLinearColor(0.35f, 0.9f, 1.f), 0, false, false);
+			const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(F.Dir.Y, F.Dir.X));
+			TNPropMesh::TNPropAppend(Solid, Statue, C + FVector(0.0, 0.0, 26.0), Yaw, 0.5);
+			TNPropMesh::TNPropAppend(Glow, StatueGlow, C + FVector(0.0, 0.0, 26.0), Yaw, 0.5);
+		}
+		// Farolas en diagonal y dos bancos mirando al paisaje, en el lado contrario a la atalaya.
+		const double TowerSide = (F.Aux2 & 1) ? 1.0 : -1.0;
+		for (int32 k = 0; k < 4; ++k)
+		{
+			const double A = PI * 0.25 + HALF_PI * k;
+			const FVector P = C + Dir(A) * (R * 0.8);
+			FTNProcMeshBuffers Lamp;
+			TNPropMesh::TNPropLampPost(Lamp, 0);
+			TNPropMesh::TNPropAppend(Solid, Lamp, P, 0.0);
+			Glow.AddBox(P + FVector(0.0, 0.0, 348.0), FVector(1.0, 0.0, 0.0), FVector(14.0, 14.0, 19.0), FLinearColor(1.f, 0.78f, 0.38f));
+		}
+		for (const double A : { -TowerSide * HALF_PI * 0.72, -TowerSide * HALF_PI * 1.28 })
+		{
+			const FVector P = C + Dir(A) * (R * 0.66);
+			FTNProcMeshBuffers Bench;
+			TNPropMesh::TNPropBench(Bench, 0);
+			// El banco mira hacia fuera (su respaldo, +Y local, hacia el centro).
+			const FVector Out = Dir(A);
+			TNPropMesh::TNPropAppend(Solid, Bench, P, FMath::RadiansToDegrees(FMath::Atan2(Out.Y, Out.X)) + 90.0);
+		}
+		// Atalaya: tres bloques apilados de 1 m y dos escalones de 1 m por la cara de -Dir.
+		const FVector2D Tw2 = PlazaDims::TowerAt(F);
+		const FVector Tw(Tw2, Top);
+		constexpr double Th = PlazaDims::TowerHalf;
+		const FLinearColor Block = bIron ? FLinearColor(0.46f, 0.3f, 0.16f) : Stone * 0.95f;
+		const FLinearColor Trim = bIron ? Iron : Stone * 0.78f;
+		for (int32 b = 0; b < 3; ++b)
+		{
+			Solid.AddBox(Tw + FVector(0.0, 0.0, 50.0 + 100.0 * b), D, FVector(Th - 2.0 * b, Th - 2.0 * b, 50.0), Block * TNProcTone(b, F.Aux2));
+			Solid.AddBox(Tw + FVector(0.0, 0.0, 100.0 * b + 97.0), D, FVector(Th + 4.0 - 2.0 * b, Th + 4.0 - 2.0 * b, 4.0), Trim);
+		}
+		for (int32 s = 0; s < 2; ++s)
+		{
+			const double H = 100.0 * (s + 1);
+			const FVector P = Tw - D * (Th + PlazaDims::StepDepth * (1.5 - s));
+			Solid.AddBox(P + FVector(0.0, 0.0, H * 0.5), D, FVector(PlazaDims::StepDepth * 0.5, Th, H * 0.5), Block * 0.92f);
+		}
+		// Banderín en lo alto.
+		Solid.AddBeam(Tw + FVector(Th - 20.0, Th - 20.0, PlazaDims::TowerH), Tw + FVector(Th - 20.0, Th - 20.0, PlazaDims::TowerH + 220.0), 3.0, Iron);
+		Solid.AddBox(Tw + FVector(Th - 20.0, Th - 20.0, PlazaDims::TowerH + 190.0) + D * 30.0, D, FVector(30.0, 1.5, 18.0), FLinearColor(0.85f, 0.12f, 0.1f));
+		// Almohadilla de la medusa.
+		const FVector2D Jp = PlazaDims::BouncerAt(F);
+		TArray<FVector2D> Pad;
+		for (int32 k = 0; k < 12; ++k) { Pad.Add(Jp + FVector2D(FMath::Cos(TwoPi * k / 12.0), FMath::Sin(TwoPi * k / 12.0)) * 110.0); }
+		Solid.AddPrism(Pad, Top + 4.0, Top + 2.0, FLinearColor(0.62f, 0.3f, 0.66f), false);
 	}
 
 	/** Caballete de madera bajo el tablero: dos pies en talud, dos rectos, riostras y cruces hasta el suelo. */
@@ -1016,27 +1146,48 @@ void ATN_ProcMapGenerator::BuildStructures()
 		if (S1 <= S0) { continue; }
 		const uint32 Seed = Layout.Params.Seed ^ (0xB21D6u + static_cast<uint32>(c));
 		const ETNProcBiome CrossBiome = Layout.Modules[C.Module].Biome;
-		const ETNBridgeStyle Style = TNBridgeStyleFor(CrossBiome, Seed);
+		const ETNBridgeStyle Style = TNProcMap::BridgeStyleOf(Layout, c);
 		FLinearColor Gc, Pcc, RockCc, Bdc;
 		ResolveBiomeColors(CrossBiome, Gc, Pcc, RockCc, Bdc);
 		const bool bSandy = CrossBiome == ETNProcBiome::Desert || CrossBiome == ETNProcBiome::Beach;
 		const FLinearColor StoneC = bSandy ? TNProcLerpColor(RockCc, Gc, 0.6f) * 1.12f : TNProcLerpColor(RockCc, Gc, 0.15f) * 1.3f;
+		// Plaza del puente (piedra o hierro): el tablero y sus pretiles se cortan donde la entra el borde.
+		const FFeature* Plaza = nullptr;
+		for (const FFeature& Fp : Layout.Features) { if (Fp.Type == EFeature::BridgePlaza && Fp.Aux == c) { Plaza = &Fp; } }
+		double CutA = S1, CutB = S1;
+		if (Plaza)
+		{
+			const double Sc = Plaza->Length - M[High.FirstSample].S;
+			const double Hw = M[Plaza->PathIndex].Width * 0.5;
+			const double Rc = FMath::Sqrt(FMath::Max(0.0, FMath::Square(Plaza->Radius - 20.0) - FMath::Square(Hw + 48.0)));
+			CutA = FMath::Clamp(Sc - Rc, S0, S1);
+			CutB = FMath::Clamp(Sc + Rc, S0, S1);
+		}
 		switch (Style)
 		{
-			case ETNBridgeStyle::Stone:   TNProcAddStoneDeck(Painted, Line, S0, S1, StoneC, Seed); break;
+			case ETNBridgeStyle::Stone:
+				TNProcAddStoneDeck(Painted, Line, S0, CutA, StoneC, Seed);
+				if (CutB < S1) { TNProcAddStoneDeck(Painted, Line, CutB, S1, StoneC, Seed + 1u); }
+				break;
 			case ETNBridgeStyle::Trestle:
 				TNProcAddPlanks(Wood, Line, S0, S1, WoodColor * 1.1f, Seed);
 				TNProcAddRigidRails(Wood, Line, S0, S1, 250.0, 100.0, 6.0, WoodColor * 0.7f);
 				break;
 			case ETNBridgeStyle::Iron:
 				TNProcAddPlanks(Painted, Line, S0, S1, IronColor * 1.6f, Seed);
-				TNProcAddRigidRails(Painted, Line, S0, S1, 200.0, 105.0, 4.0, IronColor);
+				TNProcAddRigidRails(Painted, Line, S0, CutA, 200.0, 105.0, 4.0, IronColor);
+				if (CutB < S1) { TNProcAddRigidRails(Painted, Line, CutB, S1, 200.0, 105.0, 4.0, IronColor); }
 				break;
 			case ETNBridgeStyle::Rope:
 			default:
 				TNProcAddPlanks(Wood, Line, S0, S1, WoodColor, Seed);
 				TNProcAddRopeRails(Wood, Line, S0, S1, 300.0, 0.0, 105.0, WoodColor * 0.65f, RopeColor);
 				break;
+		}
+
+		if (Plaza)
+		{
+			TNProcAddBridgePlaza(Painted, Glow, SlideWater, *Plaza, M[Plaza->PathIndex].Width * 0.5, Style == ETNBridgeStyle::Iron, StoneC, IronColor);
 		}
 
 		// Apoyos: bordes de las torres y pilares de roca de este cruce.

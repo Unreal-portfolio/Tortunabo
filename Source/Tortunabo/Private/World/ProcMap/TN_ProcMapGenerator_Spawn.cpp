@@ -327,6 +327,22 @@ void ATN_ProcMapGenerator::SpawnServerActors()
 		const FRotator Rot(0.0, FMath::RadiansToDegrees(AngleOf(F.Dir)) + Yaw0, 0.0);
 		switch (F.Type)
 		{
+			case EFeature::BonusPickup:
+			{
+				// Recompensa en un sitio concreto: la cima de una atalaya o de un parkour.
+				if (UClass* Score = LoadClass<AActor>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C")))
+				{
+					SpawnMapActor(Score, FTransform(Rot, MapToWorld(F.Location)), true);
+				}
+				break;
+			}
+			case EFeature::Bouncer:
+			{
+				// Medusa saltarina del juego; sin su Blueprint, la criatura rebotadora de las lagunas.
+				UClass* Jelly = LoadClass<AActor>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_JellyfishActor.BP_JellyfishActor_C"));
+				SpawnMapActor(Jelly ? Jelly : ATN_ProcWaterBouncer::StaticClass(), FTransform(Rot, MapToWorld(F.Location)), true);
+				break;
+			}
 			case EFeature::EggNest:
 			{
 				const FVector Loc = MapToWorld2D(C, TerrainHeightMap(C));
