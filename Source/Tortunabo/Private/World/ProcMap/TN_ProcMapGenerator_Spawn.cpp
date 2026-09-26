@@ -241,6 +241,8 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 				if (ATN_ProcGeyser* Geyser = Cast<ATN_ProcGeyser>(SpawnMapActor(GeyserClass, FTransform(Loc), false)))
 				{
 					Geyser->SetTarget(MapToWorld(F.Target));
+					// Dentro de la torre de entrada: sube por el hueco del forjado (sobre el géiser, a la cota de la cima).
+					if (F.Aux2 == TNProcMap::TowerDims::HollowBit) { Geyser->SetShaft(MapToWorld(FVector(C, F.Target.Z))); }
 				}
 				break;
 			}

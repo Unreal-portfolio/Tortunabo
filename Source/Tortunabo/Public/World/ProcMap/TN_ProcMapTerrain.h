@@ -1300,10 +1300,29 @@ namespace TNProcMap
 				const FFeature& F = L->Features[Inf.A];
 				const double D = FVector2D::Distance(P, FVector2D(F.Location.X, F.Location.Y));
 				// Pilar: plataforma plana a la cota de la cima en todo su radio (sin taludes ni mesetas
-				// dentro): ahí se encuentran el aterrizaje del géiser, el puente y el tobogán. Los pilares
-				// bajo el tablero solo suben hasta su cima. Las torres de muralla van forradas de fábrica
-				// (malla, con almenas): aquí su núcleo, de paredes a plomo, y el pretil que las cierra.
-				const bool bWallTower = F.Type == EFeature::Tower && L->Crossings.IsValidIndex(F.Aux) && L->Crossings[F.Aux].Type == ETNProcCrossingType::Wall;
+				// dentro): ahí se encuentran el puente y el tobogán. Los pilares bajo el tablero solo suben
+				// hasta su cima. Las torres van forradas de fábrica (malla, con almenas): aquí su núcleo, de
+				// paredes a plomo, y el pretil que las cierra.
+				if (IsHollowTower(F))
+				{
+					// Torre hueca (la de entrada): suelo llano dentro, a la cota del camino, y el núcleo del muro a la
+					// cota de la cima (con el pretil). La puerta ocupa los dos lados del polígono junto a su dirección
+					// y su paso atraviesa todo el muro en talud, con el suelo llano hasta la boca. La sillería, el
+					// forjado y la puerta son malla.
+					const FVector2D Cc(F.Location.X, F.Location.Y);
+					const FVector2D Door = (FVector2D(F.Target.X, F.Target.Y) - Cc).GetSafeNormal();
+					const FVector2D Rel = P - Cc;
+					const double Cos = D > 1.0 ? FVector2D::DotProduct(Rel, Door) / D : 1.0;
+					const bool bDoor = Cos > FMath::Cos(TwoPi / TowerDims::Sides + 0.035);
+					const double Mouth = F.Radius + TowerDims::Skirt + WallDims::Batter * FMath::Max(0.0, F.Height - F.Target.Z) + 150.0;
+					if (D <= F.Radius || (bDoor && D < Mouth))
+					{
+						const bool bCore = D > F.Radius - TowerDims::Wall + 90.0 && !bDoor;
+						H = bCore ? F.Height + (TowerOpening(F, P) ? 0.0 : 180.0) : F.Target.Z;
+						if (!bCore) { OutMask = FMath::Max<uint8>(OutMask, 200); }
+					}
+					continue;
+				}
 				if (D <= F.Radius)
 				{
 					// Pretil de roca de 1,8 m en el borde (no se salta), abierto hacia el puente y el tobogán.
@@ -1311,7 +1330,8 @@ namespace TNProcMap
 					H = F.Type == EFeature::Tower ? F.Height + (bParapet ? 180.0 : 0.0) : FMath::Max(H, F.Height);
 					OutMask = FMath::Max<uint8>(OutMask, 150);
 				}
-				else if (D < F.Radius + 600.0 && !bWallTower) { H = FMath::Max(H, LerpD(F.Height, H, (D - F.Radius) / 600.0)); }
+				// Falda de roca solo en los pilares del puente: las torres van forradas de sillería (malla).
+				else if (D < F.Radius + 600.0 && F.Type == EFeature::DeckPillar) { H = FMath::Max(H, LerpD(F.Height, H, (D - F.Radius) / 600.0)); }
 			}
 
 			// Túnel: el tramo bajo atraviesa la mesa a su propia cota.

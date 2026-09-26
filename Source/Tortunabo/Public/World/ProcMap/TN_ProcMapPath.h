@@ -844,23 +844,37 @@ namespace TNProcMap
 				}
 			}
 
-			// Paso previo: la torre ocupa el final; el géiser queda al pie.
+			// Paso previo: entra a ras de suelo en la torre (hueca) por su puerta y acaba en el centro, donde el géiser
+			// lanza por el hueco del forjado hasta la cima. Dentro, suelo llano a la cota de la puerta; los últimos
+			// 15 m se estrechan en embudo hasta el ancho de la puerta. El portal (la última muestra) es la cima.
 			if (C.HighStep > 0)
 			{
 				const FRouteStep& Prev = L.Route[C.HighStep - 1];
+				double FloorZ = Z[FMath::Max(Prev.FirstSample, Prev.LastSample - 1)];
+				for (int32 i = Prev.LastSample - 1; i >= Prev.FirstSample; --i)
+				{
+					if (FVector2D::Distance(L.Main[i].P, InPortal) >= P.TowerRadius + 200.0) { FloorZ = Z[i]; break; }
+				}
+				const double DoorW = 2.0 * TowerDims::DoorHalf - 60.0;
 				int32 GeyserIdx = INDEX_NONE;
-				for (int32 i = Prev.LastSample; i >= Prev.FirstSample; --i)
+				for (int32 i = Prev.LastSample - 1; i >= Prev.FirstSample; --i)
 				{
 					const double D = FVector2D::Distance(L.Main[i].P, InPortal);
 					if (D < P.TowerRadius + 200.0)
 					{
 						L.Main[i].Flags |= PathFlags::UnderTower;
-						Z[i] = C.TopZ;
-						L.Main[i].Width = TowerTopWidth(P, D);
+						Z[i] = FloorZ;
+						L.Main[i].Width = FMath::Min(L.Main[i].Width, DoorW);
+						if (GeyserIdx == INDEX_NONE) { GeyserIdx = i; }
 					}
-					else if (D >= P.TowerRadius + 700.0 && GeyserIdx == INDEX_NONE)
+					else if (D < P.TowerRadius + 1500.0)
 					{
-						GeyserIdx = i;
+						// Embudo: 7 m en la boca del paso de la puerta (el muro en talud) y el ancho del camino a 15 m.
+						L.Main[i].Width = FMath::Min(L.Main[i].Width, LerpD(700.0, L.Main[i].Width, (D - P.TowerRadius - 200.0) / 1300.0));
+					}
+					else
+					{
+						break;
 					}
 				}
 				if (GeyserIdx != INDEX_NONE) { L.Main[GeyserIdx].Flags |= PathFlags::GeyserBase; }

@@ -150,6 +150,26 @@ namespace TNProcMap
 			if ((M[i].Flags & PathFlags::GeyserBase) == 0) { continue; }
 			FFeature F = MakeAtSample(EFeature::Geyser, M[i], i, INDEX_NONE);
 			F.Target = F.Location;
+			if ((M[i].Flags & PathFlags::UnderTower) != 0)
+			{
+				// Dentro de la torre de entrada: en su centro, al nivel del suelo. Lanza por el hueco del forjado y se
+				// aterriza en la cima junto al hueco, hacia el puente o el adarve.
+				for (int32 c = 0; c < L.Crossings.Num(); ++c)
+				{
+					const FRouteStep& High = L.Route[L.Crossings[c].HighStep];
+					if (High.FirstSample <= i || High.FirstSample > i + 3) { continue; }
+					const FVector2D Cp = M[High.FirstSample].P;
+					const FVector2D Deck = (M[FMath::Min(High.FirstSample + 3, High.LastSample)].P - Cp).GetSafeNormal();
+					F.Location = FVector(Cp, M[i].Z);
+					F.Target = FVector(Cp + Deck * TowerDims::Land, L.Crossings[c].TopZ);
+					F.Aux = c;
+					F.Aux2 = TowerDims::HollowBit;
+					break;
+				}
+				F.Height = F.Target.Z - F.Location.Z;
+				L.Features.Add(F);
+				continue;
+			}
 			for (int32 j = i + 1; j < M.Num(); ++j)
 			{
 				if ((M[j].Flags & PathFlags::UnderTower) != 0)
@@ -208,6 +228,19 @@ namespace TNProcMap
 				T.Radius = P.TowerRadius;
 				T.Height = C.TopZ;
 				T.Aux = c;
+				if (End == 0 && C.HighStep > 0 && Si > 0 && (M[Si - 1].Flags & PathFlags::UnderTower) != 0)
+				{
+					// Torre de entrada, hueca: la puerta mira al camino que llega (primera muestra fuera de la torre).
+					int32 j = Si - 1;
+					while (j > 0 && (M[j].Flags & PathFlags::UnderTower) != 0) { --j; }
+					// Dirección del camino que llega, ajustada al vértice del polígono de la torre más cercano.
+					const FVector2D ToPath = (M[j].P - M[Si].P).GetSafeNormal();
+					const double Step = TwoPi / TowerDims::Sides;
+					const double DoorA = FMath::RoundToInt(FMath::Atan2(ToPath.Y, ToPath.X) / Step) * Step;
+					const FVector2D DoorDir(FMath::Cos(DoorA), FMath::Sin(DoorA));
+					T.Aux2 = TowerDims::HollowBit;
+					T.Target = FVector(M[Si].P + DoorDir * P.TowerRadius, M[Si - 1].Z);
+				}
 				L.Features.Add(T);
 			}
 			// Puente colgante: pilares de roca cada 70-100 m en los vanos largos, lejos de cualquier

@@ -114,7 +114,11 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Cruces colosales** tipo Mario Kart: puentes y murallas con puerta altísima que pasan por
   encima o por debajo de un módulo ya recorrido. Se llega a ellos por géiser/tobogán
   y caerse de un puente colosal es mortal. Los puentes dentro de un mismo módulo
-  son normales.
+  son normales. Sus dos torres son de sillería en talud con pretil y almenas: la de
+  entrada es **hueca**: el camino llega en embudo a su puerta en arco, a ras de suelo, y
+  dentro (sala iluminada por antorchas) el géiser del centro lanza en vertical por un hueco
+  del forjado hasta la cima, junto al arranque del puente o del adarve; la de salida
+  lleva el tobogán.
 - **Ramas** que se separan y vuelven a unirse en 1–3 módulos, de cuatro tipos:
   *tranquila* (larga y holgada), *arriesgada* (cornisa de 3,5–5 m con el doble de
   huecos), *ruta alta* (sube en rampa suave por una loma junto al cauce y baja en

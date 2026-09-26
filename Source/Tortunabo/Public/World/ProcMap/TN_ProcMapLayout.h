@@ -524,6 +524,9 @@ namespace TNProcMap
 	}
 	inline double GapTrenchSideOf(const FFeature& F) { return IsLavaGap(F) ? 250.0 : GapTrenchSide; }
 
+	/** Torre de entrada de un cruce: hueca, con puerta y el géiser dentro (TowerDims; Aux2 = 1, el resto INDEX_NONE). */
+	inline bool IsHollowTower(const FFeature& F) { return F.Type == EFeature::Tower && F.Aux2 == 1; }
+
 	/**
 	 * Muralla de un cruce: el adarve (el tramo alto, del ancho del camino) entre dos parapetos que no
 	 * se saltan, con almenas, y caras en talud hasta el suelo.
@@ -541,6 +544,30 @@ namespace TNProcMap
 
 		/** Semigrueso de la muralla a Depth cm bajo el adarve, con WalkHalf el semiancho del adarve. */
 		inline double HalfAt(double WalkHalf, double Depth) { return WalkHalf + Parapet + Batter * FMath::Max(0.0, Depth); }
+	}
+
+	/**
+	 * Torres de los cruces colosales. La de entrada es hueca: puerta a ras de suelo hacia el camino que llega, suelo
+	 * llano dentro y el géiser en el centro, que lanza por un hueco del forjado de la cima; se aterriza junto al hueco,
+	 * hacia el puente o el adarve. Su FFeature lleva HollowBit en Aux2 y, en Target, el centro de la puerta en la
+	 * pared (XY) y la cota del suelo (Z).
+	 */
+	namespace TowerDims
+	{
+		/** Grosor del muro: la cara interior va a Radius - Wall. */
+		constexpr double Wall = 320.0;
+		/** Semiancho de la puerta (el camino entra por ella a menos de esto del eje) y alto de su dintel sobre el suelo. */
+		constexpr double DoorHalf = 230.0;
+		constexpr double DoorTop = 720.0;
+		/** Lados del polígono de la torre (malla); la puerta ocupa los dos que comparten un vértice. */
+		constexpr int32 Sides = 32;
+		/** Vuelo de la cara exterior sobre el radio en la cima; más abajo, en talud (WallDims::Batter). */
+		constexpr double Skirt = 220.0;
+		/** Radio del hueco del forjado por el que sale el géiser y distancia del aterrizaje al centro. */
+		constexpr double HoleR = 280.0;
+		constexpr double Land = 640.0;
+		/** Aux2 de la torre hueca y del géiser que tiene dentro. */
+		constexpr int32 HollowBit = 1;
 	}
 
 	/**

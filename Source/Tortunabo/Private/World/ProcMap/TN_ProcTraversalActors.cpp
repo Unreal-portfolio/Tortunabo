@@ -201,6 +201,27 @@ void ATN_ProcGeyser::Tick(float DeltaTime)
 		if (TNAmbientFX::FEmitter* E = TNAmbientFX::GetEmitter(this, k)) { E->RateScale = 0.35f + 0.65f * Pulse; }
 	}
 	TNAmbientFX::TickOwner(this, DeltaTime);
+
+	// Tiro de la torre: quien ya ha pasado el forjado va hacia el aterrizaje (cayendo en él).
+	if (bShaft && InShaft.Num() > 0 && GetWorld())
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		for (auto It = InShaft.CreateIterator(); It; ++It)
+		{
+			ACharacter* Character = It.Key().Get();
+			UCharacterMovementComponent* Move = Character ? Character->GetCharacterMovement() : nullptr;
+			if (!Move || Now - It.Value() > 6.0) { It.RemoveCurrent(); continue; }
+			const float Half = Character->GetCapsuleComponent() ? Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 90.f;
+			const FVector P = Character->GetActorLocation();
+			if (P.Z - Half < Hole.Z + 60.f) { continue; }
+			const float Gravity = FMath::Max(1.f, -Move->GetGravityZ());
+			const FVector Land = Target + FVector(0.f, 0.f, Half + 30.f);
+			const float Vz = Move->Velocity.Z;
+			const float T = (Vz + FMath::Sqrt(FMath::Max(0.f, Vz * Vz + 2.f * Gravity * (P.Z - Land.Z)))) / Gravity;
+			Character->LaunchCharacter(FVector(Land.X - P.X, Land.Y - P.Y, 0.f) / FMath::Max(0.25f, T), true, false);
+			It.RemoveCurrent();
+		}
+	}
 }
 
 void ATN_ProcGeyser::OnTriggerOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
@@ -241,7 +262,17 @@ void ATN_ProcGeyser::Launch(ACharacter* Character)
 	const float TUp = Vz / Gravity;
 	const float TDown = FMath::Sqrt(FMath::Max(0.f, 2.f * (Apex - Land.Z) / Gravity));
 	const FVector Flat(Land.X - Start.X, Land.Y - Start.Y, 0.f);
-	const FVector Velocity = Flat / FMath::Max(0.1f, TUp + TDown) + FVector(0.f, 0.f, Vz);
+	FVector Velocity = Flat / FMath::Max(0.1f, TUp + TDown) + FVector(0.f, 0.f, Vz);
+	if (bShaft)
+	{
+		// Por el tiro: en vertical, llegando al centro del hueco justo al pasar el forjado; arriba, Tick lo lleva al
+		// aterrizaje.
+		const float ZCross = Hole.Z + HalfHeight + 20.f;
+		const float Disc = Vz * Vz - 2.f * Gravity * (ZCross - Start.Z);
+		const float TCross = Disc > 0.f ? (Vz - FMath::Sqrt(Disc)) / Gravity : TUp;
+		Velocity = FVector(Hole.X - Start.X, Hole.Y - Start.Y, 0.f) / FMath::Max(0.2f, TCross) + FVector(0.f, 0.f, Vz);
+		InShaft.Add(Character, Now);
+	}
 
 	if (ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(Character))
 	{

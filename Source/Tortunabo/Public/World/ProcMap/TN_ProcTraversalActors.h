@@ -32,6 +32,12 @@ public:
 	/** Punto de aterrizaje en mundo (suelo). */
 	void SetTarget(const FVector& InTarget) { Target = InTarget; }
 
+	/**
+	 * Géiser dentro de una torre hueca: lanza en vertical hasta el centro del hueco del forjado (InHole, en mundo, a la
+	 * cota de su cara de arriba) y, ya por encima, empuja hacia Target para caer en él.
+	 */
+	void SetShaft(const FVector& InHole) { Hole = InHole; bShaft = true; }
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Geyser")
 	TObjectPtr<USceneComponent> Root;
@@ -69,6 +75,11 @@ private:
 
 	TMap<TWeakObjectPtr<ACharacter>, double> LastLaunchTime;
 	float PulseTime = 0.f;
+
+	bool bShaft = false;
+	FVector Hole = FVector::ZeroVector;
+	/** Lanzados por el tiro que aún no han pasado el forjado (y cuándo se lanzaron). */
+	TMap<TWeakObjectPtr<ACharacter>, double> InShaft;
 };
 
 /**
