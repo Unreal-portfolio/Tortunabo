@@ -6,6 +6,7 @@
 #include "Animation/AnimSequence.h"
 #include "BoneContainer.h"
 #include "BonePose.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 namespace TNTurtleAnim
@@ -15,9 +16,13 @@ namespace TNTurtleAnim
 	const FVector AxisY(0.0, 1.0, 0.0);
 	const FVector AxisZ(0.0, 0.0, 1.0);
 
-	/** Velocidades (cm/s) a las que los clips de andar y correr no patinan. */
-	constexpr float WalkNatural = 380.f;
-	constexpr float RunNatural = 720.f;
+	/**
+	 * Velocidad (unidades de la malla por segundo) a la que el clip de andar no patina: el pie apoyado barre 41 u/s en
+	 * el clip y la zancada se alarga un 25 % (Amplify). Se multiplica por la escala del componente (2,5 en el personaje).
+	 */
+	constexpr float WalkNaturalUnits = 51.f;
+	/** Largo de la pierna (cadera a punta del pie), en unidades de la malla: da la amplitud del paso de la carrera. */
+	constexpr float LegUnits = 24.f;
 	constexpr float TwoPiF = 6.2831853f;
 
 	struct FBones
@@ -34,8 +39,10 @@ namespace TNTurtleAnim
 		FCompactPoseBoneIndex RFore = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex LUp = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex LLeg = FCompactPoseBoneIndex(INDEX_NONE);
+		FCompactPoseBoneIndex LFoot = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex RUp = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex RLeg = FCompactPoseBoneIndex(INDEX_NONE);
+		FCompactPoseBoneIndex RFoot = FCompactPoseBoneIndex(INDEX_NONE);
 	};
 
 	FCompactPoseBoneIndex FindBone(const FBoneContainer& Bones, const TCHAR* Name)
@@ -59,9 +66,32 @@ namespace TNTurtleAnim
 		Out.RFore = FindBone(Bones, TEXT("RightForeArm"));
 		Out.LUp = FindBone(Bones, TEXT("LeftUpLeg"));
 		Out.LLeg = FindBone(Bones, TEXT("LeftLeg"));
+		Out.LFoot = FindBone(Bones, TEXT("LeftFoot"));
 		Out.RUp = FindBone(Bones, TEXT("RightUpLeg"));
 		Out.RLeg = FindBone(Bones, TEXT("RightLeg"));
+		Out.RFoot = FindBone(Bones, TEXT("RightFoot"));
 		return Out;
+	}
+
+	/** Transformación de un hueso en el espacio de la malla (composición de las locales desde la raíz). */
+	FTransform ComponentSpace(const FCompactPose& Pose, FCompactPoseBoneIndex Bone)
+	{
+		FTransform T = Pose[Bone];
+		for (FCompactPoseBoneIndex P = Pose.GetParentBoneIndex(Bone); P.IsValid(); P = Pose.GetParentBoneIndex(P))
+		{
+			T = T * Pose[P];
+		}
+		return T;
+	}
+
+	/** Lleva la articulación de un hueso (con sus hijos) hacia un punto del espacio de la malla. */
+	void MoveJointToward(FCompactPose& Pose, FCompactPoseBoneIndex Bone, const FVector& Target, float Alpha)
+	{
+		if (!Bone.IsValid() || Alpha <= 0.001f) { return; }
+		const FCompactPoseBoneIndex Parent = Pose.GetParentBoneIndex(Bone);
+		const FTransform ParentCS = Parent.IsValid() ? ComponentSpace(Pose, Parent) : FTransform::Identity;
+		const FVector Current = (Pose[Bone] * ParentCS).GetLocation();
+		Pose[Bone].SetTranslation(ParentCS.InverseTransformPosition(FMath::Lerp(Current, Target, static_cast<double>(Alpha))));
 	}
 
 	/** Giro del padre en el espacio de la malla (producto de los giros locales desde la raíz). */
@@ -125,6 +155,19 @@ namespace TNTurtleAnim
 		if (B.Hips.IsValid()) { Pose[B.Hips].AddToTranslation(FVector(0.0, 0.0, Units)); }
 	}
 
+	/** Exagera el giro local de un hueso respecto de la postura de referencia (K > 1 alarga la zancada de un clip). */
+	void Amplify(FCompactPose& Pose, FCompactPoseBoneIndex Bone, double K)
+	{
+		if (!Bone.IsValid()) { return; }
+		const FQuat Ref = Pose.GetBoneContainer().GetRefPoseTransform(Bone).GetRotation();
+		FQuat Delta = Pose[Bone].GetRotation() * Ref.Inverse();
+		if (Delta.W < 0.0) { Delta = FQuat(-Delta.X, -Delta.Y, -Delta.Z, -Delta.W); }
+		FVector Axis;
+		double Angle = 0.0;
+		Delta.ToAxisAndAngle(Axis, Angle);
+		Pose[Bone].SetRotation((FQuat(Axis, Angle * K) * Ref).GetNormalized());
+	}
+
 	// ── Poses (sobre la postura en T; brazo izquierdo a lo largo de +X, derecho de -X, piernas hacia -Z) ──
 	// Brazo izquierdo: abajo = +Y, arriba = -Y, adelante = +Z. Derecho: al revés en Y y en Z.
 	// Piernas: adelante = +X. Rodilla (pierna baja hacia atrás) = -X. Espalda hacia delante = -X. Cabeza arriba = +X.
@@ -152,14 +195,58 @@ namespace TNTurtleAnim
 		Turn(P, B.Spine, AxisX, 6.f);
 	}
 
-	/** Panzazo (el personaje ya tumba la malla -80°): brazos por encima de la cabeza (hacia delante en el mundo), piernas estiradas. */
+	/**
+	 * Carrera del sprint (RunTime cuenta ciclos): zancada larga con fase de vuelo, la rodilla recogida mientras la
+	 * pierna vuelve hacia delante, braceo contrario a las piernas con los codos doblados y el tronco hacia delante.
+	 */
+	void PoseRun(FCompactPose& P, const FBones& B, const FTNTurtleAnimFrame& F)
+	{
+		const float Ph = F.RunTime * TwoPiF;
+		const float S = FMath::Sin(Ph);
+		const float C = FMath::Cos(Ph);
+		const float K = F.SprintW;
+		Turn(P, B.Spine, AxisX, -(5.f + 5.f * K));
+		Turn(P, B.Spine1, AxisZ, 8.f * S);
+		Turn(P, B.Head, AxisX, 8.f + 4.f * K);
+		// Piernas: la izquierda va hacia delante con S > 0 y recoge la rodilla mientras avanza (C > 0).
+		const float Stride = F.RunStride;
+		Turn(P, B.LUp, AxisX, 6.f + Stride * S);
+		Turn(P, B.RUp, AxisX, 6.f - Stride * S);
+		Turn(P, B.LLeg, AxisX, -(14.f + 80.f * FMath::Pow(FMath::Max(0.f, C), 1.4f)));
+		Turn(P, B.RLeg, AxisX, -(14.f + 80.f * FMath::Pow(FMath::Max(0.f, -C), 1.4f)));
+		Turn(P, B.LFoot, AxisX, -25.f * FMath::Max(0.f, C));
+		Turn(P, B.RFoot, AxisX, -25.f * FMath::Max(0.f, -C));
+		// Brazos abajo, codos a unos 80° y braceo al revés que las piernas.
+		const float Arm = 38.f + 10.f * K;
+		Turn(P, B.LArm, AxisY, 74.f);
+		Turn(P, B.RArm, AxisY, -74.f);
+		Turn(P, B.LArm, AxisX, -Arm * S);
+		Turn(P, B.RArm, AxisX, Arm * S);
+		Turn(P, B.LFore, AxisX, 80.f);
+		Turn(P, B.RFore, AxisX, 80.f);
+		// Más alta en el vuelo (piernas abiertas) y más baja al pisar.
+		Lift(P, B, 1.6f * FMath::Abs(S) - 0.4f);
+	}
+
+	/**
+	 * Panzazo (el personaje ya tumba la malla -80° y la aplasta un poco): brazos por delante de la cabeza apoyados en
+	 * el suelo, que reman hacia los lados, y piernas estiradas hacia atrás que patalean con los pies en el suelo. En la
+	 * malla, +Y (la tripa) mira al suelo: los giros hacia +Y bajan brazos y piernas hasta apoyarlos.
+	 */
 	void PoseDive(FCompactPose& P, const FBones& B, const FTNTurtleAnimFrame& F)
 	{
-		Turn(P, B.LArm, AxisY, -86.f);
-		Turn(P, B.RArm, AxisY, 86.f);
-		const float Kick = 9.f * FMath::Sin(F.Clock * 14.f);
-		Turn(P, B.LUp, AxisX, Kick);
-		Turn(P, B.RUp, AxisX, -Kick);
+		const float Paddle = 0.5f + 0.5f * FMath::Sin(F.Clock * 11.f);
+		Turn(P, B.LArm, AxisY, -86.f + 32.f * Paddle);
+		Turn(P, B.RArm, AxisY, 86.f - 32.f * Paddle);
+		Turn(P, B.LArm, AxisX, -20.f);
+		Turn(P, B.RArm, AxisX, -20.f);
+		Turn(P, B.LFore, AxisY, -12.f * Paddle);
+		Turn(P, B.RFore, AxisY, 12.f * Paddle);
+		const float Kick = 14.f * FMath::Sin(F.Clock * 14.f);
+		Turn(P, B.LUp, AxisX, 14.f + Kick);
+		Turn(P, B.RUp, AxisX, 14.f - Kick);
+		Turn(P, B.LFoot, AxisX, -60.f);
+		Turn(P, B.RFoot, AxisX, -60.f);
 		Turn(P, B.Neck, AxisX, 24.f);
 		Turn(P, B.Head, AxisX, 18.f);
 	}
@@ -231,31 +318,37 @@ namespace TNTurtleAnim
 		const float T = F.EmoteTime;
 		switch (F.Emote)
 		{
-		case 0: // Saludar: brazo derecho arriba y la mano que va y viene.
+		case 0: // WAZAAA: brazo derecho en alto (por fuera de la cabeza) y la mano que saluda.
 			ArmsRelaxed(P, B);
-			Turn(P, B.RArm, AxisY, 68.f + 125.f);
-			Turn(P, B.RFore, AxisY, 25.f * FMath::Sin(T * 14.f));
+			Turn(P, B.RArm, AxisY, 68.f + 58.f);
+			Turn(P, B.RArm, AxisZ, -10.f);
+			Turn(P, B.RFore, AxisY, -6.f + 20.f * FMath::Sin(T * 14.f));
 			Turn(P, B.Head, AxisY, -8.f);
 			break;
-		case 1: // Aplauso: brazos en V en alto y palmadas rápidas.
-			Turn(P, B.LArm, AxisY, -55.f);
-			Turn(P, B.RArm, AxisY, 55.f);
-			Turn(P, B.LFore, AxisY, -(30.f + 25.f * (0.5f + 0.5f * FMath::Sin(T * 16.f))));
-			Turn(P, B.RFore, AxisY, 30.f + 25.f * (0.5f + 0.5f * FMath::Sin(T * 16.f)));
+		case 1: // HAPPIE: brazos arriba y palmadas encima de la cabeza (las manos se juntan en cada una).
+		{
+			const float Pulse = 0.5f + 0.5f * FMath::Sin(T * 16.f);
+			Turn(P, B.LArm, AxisY, -78.f);
+			Turn(P, B.LArm, AxisZ, -10.f);
+			Turn(P, B.RArm, AxisY, 78.f);
+			Turn(P, B.RArm, AxisZ, 10.f);
+			Turn(P, B.LFore, AxisY, -(26.f + 14.f * Pulse));
+			Turn(P, B.RFore, AxisY, 26.f + 14.f * Pulse);
 			Lift(P, B, 1.5f * FMath::Abs(FMath::Sin(T * 8.f)));
 			break;
-		case 2: // Helicóptero: brazos en cruz y el cuerpo de arriba girando sin parar.
-			Turn(P, B.Spine, AxisZ, FMath::Fmod(T * 720.f, 360.f));
+		}
+		case 2: // PARACOPTER: brazos en cruz y el cuerpo de arriba girando sin parar (tres vueltas por segundo).
+			Turn(P, B.Spine, AxisZ, FMath::Fmod(T * 1080.f, 360.f));
 			Lift(P, B, 2.f * FMath::Abs(FMath::Sin(T * 6.f)));
 			break;
-		case 3: // Palmada potente: brazos delante y una palmada fuerte cada 0,7 s.
+		case 3: // SAX-O: brazos delante y una palmada fuerte cada 0,7 s con las manos juntas en el centro.
 		{
 			const float Phase = FMath::Fmod(T, 0.7f) / 0.7f;
 			const float Clap = Phase < 0.25f ? Phase / 0.25f : FMath::Max(0.f, 1.f - (Phase - 0.25f) / 0.5f);
-			Turn(P, B.LArm, AxisY, 10.f);
-			Turn(P, B.LArm, AxisZ, 55.f + 35.f * Clap);
-			Turn(P, B.RArm, AxisY, -10.f);
-			Turn(P, B.RArm, AxisZ, -55.f - 35.f * Clap);
+			Turn(P, B.LArm, AxisY, 12.f);
+			Turn(P, B.LArm, AxisZ, 60.f + 42.f * Clap);
+			Turn(P, B.RArm, AxisY, -12.f);
+			Turn(P, B.RArm, AxisZ, -60.f - 42.f * Clap);
 			Turn(P, B.Spine, AxisX, -8.f * Clap);
 			break;
 		}
@@ -267,11 +360,15 @@ namespace TNTurtleAnim
 			Turn(P, B.LFore, AxisZ, 40.f);
 			Turn(P, B.RFore, AxisZ, -40.f);
 			break;
-		case 5: // Baile irlandés: brazos tiesos pegados al cuerpo y patadas alternas.
+		case 5: // RUN: carrera ninja, el tronco hacia delante, los brazos estirados hacia atrás y rodillas arriba.
 		{
 			const float S = FMath::Sin(T * TwoPiF * 2.5f);
-			Turn(P, B.LArm, AxisY, 85.f);
-			Turn(P, B.RArm, AxisY, -85.f);
+			Turn(P, B.Spine, AxisX, -20.f);
+			Turn(P, B.Head, AxisX, 16.f);
+			Turn(P, B.LArm, AxisZ, -78.f);
+			Turn(P, B.LArm, AxisX, 18.f);
+			Turn(P, B.RArm, AxisZ, 78.f);
+			Turn(P, B.RArm, AxisX, 18.f);
 			Turn(P, B.LUp, AxisX, 50.f * FMath::Max(0.f, S));
 			Turn(P, B.RUp, AxisX, 50.f * FMath::Max(0.f, -S));
 			Turn(P, B.LLeg, AxisX, -20.f * FMath::Max(0.f, S));
@@ -279,10 +376,23 @@ namespace TNTurtleAnim
 			Lift(P, B, 2.f * FMath::Abs(S));
 			break;
 		}
-		case 6: // Flotar (Superman): la pose del panzazo meciéndose.
-			PoseDive(P, B, F);
-			Lift(P, B, 3.f * FMath::Sin(T * 3.f));
+		case 6: // SUPERKIRK: vuela como Superman, todo el cuerpo inclinado 45°, brazos al frente en V y pies en punta.
+		{
+			Turn(P, B.LArm, AxisY, -65.f);
+			Turn(P, B.LArm, AxisZ, 10.f);
+			Turn(P, B.RArm, AxisY, 65.f);
+			Turn(P, B.RArm, AxisZ, -10.f);
+			const float Kick = 6.f * FMath::Sin(T * 5.f);
+			Turn(P, B.LUp, AxisX, Kick);
+			Turn(P, B.RUp, AxisX, -Kick);
+			Turn(P, B.LFoot, AxisX, -60.f);
+			Turn(P, B.RFoot, AxisX, -60.f);
+			Turn(P, B.Neck, AxisX, 14.f);
+			Turn(P, B.Head, AxisX, 10.f);
+			Turn(P, B.Hips, AxisX, -45.f);
+			Lift(P, B, 8.f + 2.f * FMath::Sin(T * 3.f));
 			break;
+		}
 		case 7: // Señalar: brazo derecho al frente.
 			ArmsRelaxed(P, B);
 			Turn(P, B.RArm, AxisY, -68.f + 10.f);
@@ -315,21 +425,27 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 	const FTNTurtleAnimFrame& F = Frame;
 	const FBones B = ResolveBones(Output.Pose.GetBoneContainer());
 
-	// 1. Locomoción: espera, andar y correr (como ABS_Walk, por velocidad).
+	// 1. Locomoción: espera y andar con los clips (como ABS_Walk, por velocidad) y la carrera del sprint encima.
 	SampleClip(IdleClip, F.IdleTime, Output);
 	if (F.WalkW > 0.01f)
 	{
 		FPoseContext Walk(Output);
 		SampleClip(WalkClip, F.WalkTime, Walk);
-		if (F.RunW > 0.01f)
-		{
-			FPoseContext Run(Output);
-			SampleClip(RunClip, F.RunTime, Run);
-			BlendInto(Walk.Pose, Run.Pose, F.RunW);
-		}
+		// Zancada más larga que la del clip (las patas de la tortuga son cortas): con su ritmo, los pies no patinan.
+		Amplify(Walk.Pose, B.LUp, 1.3);
+		Amplify(Walk.Pose, B.RUp, 1.3);
+		Amplify(Walk.Pose, B.LLeg, 1.15);
+		Amplify(Walk.Pose, B.RLeg, 1.15);
 		BlendInto(Output.Pose, Walk.Pose, F.WalkW);
 	}
 	KeepHipsInPlace(Output.Pose, B);
+	if (F.RunW > 0.01f)
+	{
+		FPoseContext Run(Output);
+		Run.ResetToRefPose();
+		PoseRun(Run.Pose, B, F);
+		BlendInto(Output.Pose, Run.Pose, F.RunW);
+	}
 
 	// 2. La fiesta es el clip de gritar (con rebote).
 	if (F.Emote == 9 && F.EmoteW > 0.01f && CheerClip)
@@ -386,14 +502,18 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 	}
 	if (F.ShellW > 0.01f)
 	{
-		// Se mete en el caparazón: cabeza, brazos y patas encogen hacia el cuerpo y el cuerpo baja al suelo.
-		const FVector Tiny(FMath::Lerp(1.f, 0.12f, F.ShellW));
+		// Se mete en el caparazón: cabeza, brazos y patas encogen y se meten dentro del cuerpo (hacia el centro del
+		// tronco) y el caparazón baja hasta apoyarse en el suelo.
+		const FVector Tiny(FMath::Lerp(1.f, 0.08f, F.ShellW));
+		const FVector Inside = B.Spine1.IsValid() ? ComponentSpace(Output.Pose, B.Spine1).GetLocation() : FVector(0.0, 1.0, 29.0);
 		for (const FCompactPoseBoneIndex Limb : { B.LArm, B.RArm, B.LUp, B.RUp, B.Neck })
 		{
-			if (Limb.IsValid()) { Output.Pose[Limb].SetScale3D(Tiny); }
+			if (!Limb.IsValid()) { continue; }
+			MoveJointToward(Output.Pose, Limb, Inside, 0.85f * F.ShellW);
+			Output.Pose[Limb].SetScale3D(Tiny);
 		}
-		Turn(Output.Pose, B.Spine, AxisX, -10.f * F.ShellW);
-		Lift(Output.Pose, B, -14.f * F.ShellW);
+		Turn(Output.Pose, B.Spine, AxisX, -6.f * F.ShellW);
+		Lift(Output.Pose, B, -19.f * F.ShellW);
 	}
 	return true;
 }
@@ -407,7 +527,6 @@ void UTN_TurtleAnimInstance::NativeInitializeAnimation()
 	Super::NativeInitializeAnimation();
 	IdleAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Old_Man_Idle.Old_Man_Idle"));
 	WalkAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Walking.Walking"));
-	RunAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Drunk_Run_Forward.Drunk_Run_Forward"));
 	CheerAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Yelling.Yelling"));
 	if (const APawn* Owner = TryGetPawnOwner()) { PrevYaw = Owner->GetActorRotation().Yaw; }
 }
@@ -437,11 +556,24 @@ void UTN_TurtleAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	const float Speed = static_cast<float>(Velocity.Size2D());
 	auto Ease = [Dt](float& Value, bool bOn, float Rate) { Value = FMath::FInterpTo(Value, bOn ? 1.f : 0.f, Dt, Rate); };
 
-	// Locomoción: pesos por velocidad y fases que avanzan al ritmo de los pasos.
+	// Locomoción: pesos por velocidad y fases que avanzan al ritmo de los pasos (andar hasta la velocidad normal,
+	// 4,5 m/s; la carrera entra con el sprint).
+	const USkeletalMeshComponent* SkelMesh = GetSkelMeshComponent();
+	const float Scale = SkelMesh ? FMath::Max(0.1f, static_cast<float>(SkelMesh->GetComponentScale().Z)) : 2.5f;
 	F.WalkW = FMath::FInterpTo(F.WalkW, FMath::Clamp(Speed / 150.f, 0.f, 1.f), Dt, 8.f);
-	F.RunW = FMath::FInterpTo(F.RunW, FMath::Clamp((Speed - 480.f) / 250.f, 0.f, 1.f), Dt, 6.f);
-	F.WalkTime += Dt * FMath::Clamp(Speed / WalkNatural, 0.6f, 1.6f);
-	F.RunTime += Dt * FMath::Clamp(Speed / RunNatural, 0.7f, 1.5f);
+	// La carrera entra con el sprint (o al pasar un 8 % de la velocidad de andar del nivel: en el lobby es 2 m/s).
+	const UTN_StaminaComponent* StaminaComp = Turtle ? Turtle->GetStaminaComponent() : nullptr;
+	const float WalkRef = StaminaComp ? FMath::Max(100.f, StaminaComp->GetWalkSpeed()) : 450.f;
+	const bool bSprinting = StaminaComp && StaminaComp->IsSprinting() && Speed > WalkRef * 0.6f;
+	const float RunTarget = FMath::Max(bSprinting ? 1.f : 0.f, FMath::Clamp((Speed - WalkRef * 1.08f) / (WalkRef * 0.3f), 0.f, 1.f));
+	F.RunW = FMath::FInterpTo(F.RunW, RunTarget, Dt, 7.f);
+	F.SprintW = FMath::FInterpTo(F.SprintW, FMath::Clamp((Speed - WalkRef * 1.3f) / (WalkRef * 0.6f), 0.f, 1.f), Dt, 4.f);
+	F.WalkTime += Dt * FMath::Clamp(Speed / (WalkNaturalUnits * Scale), 0.5f, 4.5f);
+	// Carrera: de 2 a 3,4 ciclos por segundo según la velocidad y la amplitud del paso que hace que el pie apoyado
+	// barra el suelo a la velocidad del cuerpo (pierna de LegUnits * Scale).
+	const float Cadence = FMath::Clamp(0.8f + Speed / 300.f, 2.f, 3.4f);
+	F.RunTime += Dt * Cadence;
+	F.RunStride = FMath::Clamp(FMath::RadiansToDegrees(Speed / (LegUnits * Scale * TwoPiF * Cadence)), 20.f, 48.f);
 
 	const bool bSwim = Move && Move->IsSwimming();
 	const bool bDive = Turtle && Turtle->IsDiving();
@@ -501,6 +633,5 @@ void UTN_TurtleAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	Proxy.Frame = F;
 	Proxy.IdleClip = IdleAnim;
 	Proxy.WalkClip = WalkAnim;
-	Proxy.RunClip = RunAnim;
 	Proxy.CheerClip = CheerAnim;
 }

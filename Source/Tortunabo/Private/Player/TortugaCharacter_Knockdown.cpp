@@ -213,6 +213,9 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			if (bKnockdownRagdollActive) { return; } // idempotente
 
 			SnapshotSkelMeshRelTransform = SkelMesh->GetRelativeTransform();
+			// Sin la subida del panzazo: al revivir, la malla vuelve a su sitio sobre la cápsula.
+			SnapshotSkelMeshRelTransform.SetLocation(DiveMeshDefaultLoc);
+			SnapshotSkelMeshRelTransform.SetScale3D(DiveMeshDefaultScale);
 			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 
 			if (HasAuthority())
@@ -554,6 +557,9 @@ void ATortugaCharacter::EnterRagdollState()
 	if (!SkelMesh->GetPhysicsAsset())
 	{
 		SnapshotSkelMeshRelTransform     = SkelMesh->GetRelativeTransform();
+		// Sin la subida del panzazo: al revivir, la malla vuelve a su sitio sobre la cápsula.
+		SnapshotSkelMeshRelTransform.SetLocation(DiveMeshDefaultLoc);
+		SnapshotSkelMeshRelTransform.SetScale3D(DiveMeshDefaultScale);
 		SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 
 		if (UAnimInstance* AnimInst = SkelMesh->GetAnimInstance())
@@ -603,6 +609,9 @@ void ATortugaCharacter::EnterRagdollState()
 
 	// 2. Snapshot del state actual para poder revivir limpiamente.
 	SnapshotSkelMeshRelTransform    = SkelMesh->GetRelativeTransform();
+	// Sin la subida del panzazo: al revivir, la malla vuelve a su sitio sobre la cápsula.
+	SnapshotSkelMeshRelTransform.SetLocation(DiveMeshDefaultLoc);
+	SnapshotSkelMeshRelTransform.SetScale3D(DiveMeshDefaultScale);
 	SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
 
 	// 3. Capsule no colisiona (evita interacción con bodies del SkM ragdoll).

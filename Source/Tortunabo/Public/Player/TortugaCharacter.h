@@ -240,6 +240,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="15.0"))
 	float DiveCapsuleHalfHeight = 35.f;
 
+	/**
+	 * Altura (cm) sobre el suelo del punto de giro de la malla (sus pies) con el panzazo completo. La malla se sube
+	 * para que la tripa quede apoyada: sin esto, al encoger la cápsula el cuerpo tumbado se hunde entero en el suelo.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0"))
+	float DiveBellyPivotHeight = 11.f;
+
+	/** Aplastado de la malla en el panzazo: tripa-espalda (se aplasta contra el suelo), ancho y largo (se estira). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive")
+	FVector DiveSquash = FVector(1.08, 0.8, 1.05);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	TObjectPtr<UTN_InventoryComponent> InventoryComponent;
 
@@ -1153,6 +1164,12 @@ protected:
 
 	/** Rotación relativa por defecto de GetMesh() (guardada en BeginPlay). */
 	FRotator DiveMeshDefaultRot = FRotator::ZeroRotator;
+
+	/** Posición relativa por defecto de GetMesh() (guardada en BeginPlay; el panzazo la sube). */
+	FVector DiveMeshDefaultLoc = FVector::ZeroVector;
+
+	/** Escala relativa por defecto de GetMesh() (guardada en BeginPlay; el panzazo la aplasta). */
+	FVector DiveMeshDefaultScale = FVector::OneVector;
 
 	// ── Jump Animation state (cosmetic, local-only) ───────────────────────────
 	bool  bJumpAnimActive = false;

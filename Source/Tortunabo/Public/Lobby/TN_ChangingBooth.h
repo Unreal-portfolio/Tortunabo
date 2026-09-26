@@ -9,8 +9,8 @@ class UBoxComponent;
 class UTextRenderComponent;
 
 /**
- * Probador del lobby: media botella de cristal de mar puesta boca abajo (el culo hace de techo) con el tapón, una
- * chapa de corona roja, como puerta redonda.
+ * Probador del lobby: media botella de cristal de mar puesta boca abajo (el culo petaloide de una botella de plástico
+ * hace de techo) con el tapón, una chapa de corona roja, como puerta redonda, y una etiqueta de refresco alrededor.
  *
  * Al entrar (interactuar), el servidor mete a la tortuga dentro y cierra la puerta (Occupant replicado: todos la ven
  * cerrarse y la botella se menea mientras se cambia); el cliente aleja la cámara a la de la botella y abre el
@@ -60,8 +60,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Booth")
 	TObjectPtr<UCameraComponent> ViewCamera;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Booth")
-	TObjectPtr<UTextRenderComponent> Label;
+	/** Letras de la etiqueta, una por carácter sobre la curva de la botella (se crean en BeginPlay). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTextRenderComponent>> LabelLetters;
 
 	/** Tortuga que se está cambiando (nullptr = libre y con la puerta abierta). */
 	UPROPERTY(ReplicatedUsing = OnRep_Occupant, BlueprintReadOnly, Category = "Booth")
@@ -80,5 +81,6 @@ private:
 	TWeakObjectPtr<APawn> PreviousOccupant;
 
 	void BuildMeshes();
+	void BuildLabel();
 	void HideBlockout();
 };

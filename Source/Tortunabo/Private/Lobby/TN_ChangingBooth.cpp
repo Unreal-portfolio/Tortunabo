@@ -22,18 +22,25 @@
 namespace TNBoothDetail
 {
 	/**
-	 * Media botella boca abajo: la mitad del culo, cortada y puesta sobre el corte. El culo (con su hundido) hace de
-	 * techo y la puerta es el tapón (una chapa de corona). La puerta mira a +X; su centro y su radio se miden sobre la
-	 * pared (arco y altura).
+	 * Media botella boca abajo: la mitad del culo, cortada y puesta sobre el corte. El culo hace de techo y la puerta
+	 * es el tapón (una chapa de corona). La puerta mira a +X; su centro y su radio se miden sobre la pared (arco y
+	 * altura).
 	 */
 	constexpr double WallR = 150.0;
 	constexpr double WallTop = 262.0;
 	constexpr double DoorR = 88.0;
 	constexpr double DoorZ = 114.0;
 	/** Cara de la chapa, por fuera de la pared (la falda rizada va de la cara a la pared). */
-	constexpr double CapFaceR = WallR + 16.0;
-	constexpr int32 Seg = 32;
+	constexpr double CapFaceR = WallR + 9.0;
+	constexpr int32 Seg = 40;
 	constexpr int32 CapFlutes = 21;
+	/** Etiqueta de refresco alrededor de la botella, por encima de la puerta. */
+	constexpr double LabelBottom = 216.0;
+	constexpr double LabelTop = 256.0;
+	/** Culo petaloide de las botellas de plástico de litro y medio: cinco pies redondos y valles estrechos entre ellos. */
+	constexpr int32 Feet = 5;
+	constexpr double FootHeight = 70.0;
+	constexpr double ValleyHeight = 30.0;
 	constexpr float DoorOpenYaw = -108.f;
 	constexpr float HopDelay = 0.4f;
 
@@ -53,6 +60,25 @@ namespace TNBoothDetail
 	FVector RadialOut(const FVector& P)
 	{
 		return FVector(P.X, P.Y, 0.0).GetSafeNormal();
+	}
+
+	/**
+	 * Altura del techo sobre WallTop. U: 1 en el borde y 0 en el centro; Theta: ángulo alrededor del eje (un pie
+	 * centrado sobre la puerta). Los pies suben casi en vertical desde el borde, se redondean arriba y bajan hacia el
+	 * centro, donde se juntan con los valles.
+	 */
+	double RoofHeight(double UIn, double Theta)
+	{
+		const double U = FMath::Clamp(UIn, 0.0, 1.0);
+		const double Valley = ValleyHeight * (1.0 - FMath::Pow(U, 2.2));
+		double Foot = 0.0;
+		if (U >= 0.55) { Foot = FMath::Pow(FMath::Sin((1.0 - U) / 0.45 * UE_DOUBLE_HALF_PI), 0.6); }
+		else { const double T = (0.55 - U) / 0.55; Foot = 1.0 - 0.58 * T * T; }
+		Foot *= FootHeight;
+		// W = 1 en el centro del pie y 0 en el fondo del valle (pies anchos, valles estrechos).
+		const double V = 0.5 * (1.0 - FMath::Cos(Feet * Theta));
+		const double W = 1.0 - V * V * V;
+		return Valley + W * FMath::Max(0.0, Foot - Valley);
 	}
 
 	/** Bisagra de la chapa (a la izquierda vista desde fuera, por fuera de la falda): el giro negativo la abre. */
@@ -120,16 +146,6 @@ ATN_ChangingBooth::ATN_ChangingBooth()
 	ViewCamera->SetRelativeLocation(CamPos);
 	ViewCamera->SetRelativeRotation((FVector(30.0, 0.0, 170.0) - CamPos).Rotation());
 	ViewCamera->SetFieldOfView(62.f);
-
-	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
-	Label->SetupAttachment(Bottle);
-	Label->SetRelativeLocation(FVector(WallR + 5.0, 0.0, DoorZ + DoorR + 30.0));
-	Label->SetHorizontalAlignment(EHTA_Center);
-	Label->SetVerticalAlignment(EVRTA_TextCenter);
-	Label->SetWorldSize(28.f);
-	Label->SetTextRenderColor(FColor(255, 251, 240));
-	Label->SetText(NSLOCTEXT("Tortunabo", "BoothLabel", "PROBADOR"));
-	Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void ATN_ChangingBooth::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -142,6 +158,7 @@ void ATN_ChangingBooth::BeginPlay()
 {
 	Super::BeginPlay();
 	BuildMeshes();
+	BuildLabel();
 	HideBlockout();
 }
 
@@ -161,37 +178,119 @@ void ATN_ChangingBooth::BuildMeshes()
 	const FLinearColor Sand = Pal(0xF2D49B);
 
 	TNProcMesh::FTNProcMeshBuffers B;
-	// ── Media botella: perfil (radio, z) de abajo arriba. El tramo recto se subdivide para recortar el hueco de la
-	// puerta; arriba, el canto redondeado del culo y su hundido (el techo).
+	// Quad con normal por vértice: el vidrio curvo (pared, techo y etiqueta) se ve liso, sin facetas. Se orienta como
+	// AddTri, con la cara frontal hacia la media de las normales.
+	auto SmoothQuad = [&B](const FVector (&P)[4], const FVector (&N)[4], const FLinearColor& Color)
+	{
+		const int32 Base = B.Verts.Num();
+		for (int32 j = 0; j < 4; ++j)
+		{
+			B.Verts.Add(P[j]);
+			B.Normals.Add(N[j]);
+			B.UVs.Add(FVector2D(P[j].X + P[j].Z, P[j].Y + P[j].Z) / 400.0);
+			B.Colors.Add(Color);
+		}
+		const FVector Hint = N[0] + N[1] + N[2] + N[3];
+		auto Tri = [&B, Base, &Hint](int32 A, int32 Bi, int32 C)
+		{
+			const FVector Face = FVector::CrossProduct(B.Verts[Base + Bi] - B.Verts[Base + A], B.Verts[Base + C] - B.Verts[Base + A]);
+			if (Face.SizeSquared() < 1e-6) { return; }
+			const bool bFlip = FVector::DotProduct(Face, Hint) < 0.0;
+			B.Tris.Add(Base + A);
+			B.Tris.Add(Base + (bFlip ? Bi : C));
+			B.Tris.Add(Base + (bFlip ? C : Bi));
+		};
+		Tri(0, 1, 2);
+		Tri(0, 2, 3);
+	};
+	// Vidrio: por fuera con su color y por dentro, más oscuro, con las normales al revés.
+	auto GlassQuad = [&SmoothQuad, GlassDark](const FVector (&P)[4], const FVector (&N)[4], const FLinearColor& Color)
+	{
+		SmoothQuad(P, N, Color);
+		const FVector In[4] = { -N[0], -N[1], -N[2], -N[3] };
+		SmoothQuad(P, In, GlassDark * 0.8f);
+	};
+
+	// ── Media botella: la pared recta, subdividida para recortar el hueco de la puerta.
 	TArray<FVector2D> Profile = { FVector2D(WallR, 12.0) };
 	for (int32 i = 1; i <= 14; ++i) { Profile.Add(FVector2D(WallR, 12.0 + (WallTop - 12.0) * i / 14.0)); }
-	Profile.Append({ FVector2D(148.0, 285.0), FVector2D(140.0, 302.0), FVector2D(126.0, 314.0), FVector2D(106.0, 321.0),
-		FVector2D(72.0, 323.0), FVector2D(42.0, 317.0), FVector2D(16.0, 309.0) });
 	auto RingPoint = [](const FVector2D& P, int32 K) { const double A = TNProcMap::TwoPi * K / Seg; return FVector(P.X * FMath::Cos(A), P.X * FMath::Sin(A), P.Y); };
 	for (int32 i = 0; i + 1 < Profile.Num(); ++i)
 	{
 		for (int32 k = 0; k < Seg; ++k)
 		{
-			const FVector A = RingPoint(Profile[i], k), Bv = RingPoint(Profile[i], k + 1);
-			const FVector C = RingPoint(Profile[i + 1], k + 1), D = RingPoint(Profile[i + 1], k);
-			const FVector Mid = (A + Bv + C + D) * 0.25;
+			const FVector Q[4] = { RingPoint(Profile[i], k), RingPoint(Profile[i], k + 1), RingPoint(Profile[i + 1], k + 1), RingPoint(Profile[i + 1], k) };
+			const FVector Mid = (Q[0] + Q[1] + Q[2] + Q[3]) * 0.25;
 			double Ang = TNProcMap::TwoPi * (k + 0.5) / Seg;
 			if (Ang > PI) { Ang -= TNProcMap::TwoPi; }
 			const double Arc = Ang * FVector(Mid.X, Mid.Y, 0.0).Size();
 			if (FMath::Square(Arc) + FMath::Square(Mid.Z - DoorZ) < FMath::Square(DoorR - 4.0)) { continue; }
-			const bool bRoof = Profile[i].Y >= WallTop - 1.0;
-			FLinearColor Col = bRoof ? TNProcMesh::TNProcLerpColor(Glass, GlassLight, 0.25f) : Glass;
-			if (!bRoof && (k % 8 == 2 || k % 8 == 3)) { Col = TNProcMesh::TNProcLerpColor(Col, GlassLight, 0.55f); }
-			// Hacia fuera en la pared; en el techo, hacia arriba (el hundido del culo también se ve desde arriba).
-			const FVector Out = bRoof ? FVector(Mid.X * 0.004, Mid.Y * 0.004, 1.0) : RadialOut(Mid);
-			B.AddQuad(A, Bv, C, D, Out, Col);
-			B.AddQuad(A, Bv, C, D, -Out, GlassDark * 0.8f);
+			FLinearColor Col = Glass;
+			if (k % 8 == 2 || k % 8 == 3) { Col = TNProcMesh::TNProcLerpColor(Col, GlassLight, 0.55f); }
+			const FVector N[4] = { RadialOut(Q[0]), RadialOut(Q[1]), RadialOut(Q[2]), RadialOut(Q[3]) };
+			GlassQuad(Q, N, Col);
 		}
 	}
-	// Tapa del hundido del techo, canto del corte a ras de suelo (vidrio grueso, más claro) y suelo de arena.
+	// ── Techo: el culo petaloide (cinco pies y sus valles) en una rejilla polar, con más anillos cerca del borde,
+	// donde el pie sube casi en vertical. Normales de la superficie por diferencias centradas; los pies, más claros
+	// cuanto más altos.
+	{
+		constexpr int32 RoofRings = 18;
+		constexpr int32 RoofSeg = Seg * 2;
+		auto RoofPoint = [](int32 Ring, int32 K)
+		{
+			const double U = FMath::Cos(UE_DOUBLE_HALF_PI * Ring / RoofRings);
+			const double Theta = TNProcMap::TwoPi * K / RoofSeg;
+			return FVector(WallR * U * FMath::Cos(Theta), WallR * U * FMath::Sin(Theta), WallTop + RoofHeight(U, Theta));
+		};
+		auto RoofNormal = [](const FVector& Pt)
+		{
+			auto H = [](double X, double Y) { return RoofHeight(FVector2D(X, Y).Size() / WallR, FMath::Atan2(Y, X)); };
+			constexpr double E = 0.5;
+			return FVector(-(H(Pt.X + E, Pt.Y) - H(Pt.X - E, Pt.Y)) / (2.0 * E), -(H(Pt.X, Pt.Y + E) - H(Pt.X, Pt.Y - E)) / (2.0 * E), 1.0).GetSafeNormal();
+		};
+		for (int32 i = 0; i < RoofRings; ++i)
+		{
+			for (int32 k = 0; k < RoofSeg; ++k)
+			{
+				const FVector Q[4] = { RoofPoint(i, k), RoofPoint(i, k + 1), RoofPoint(i + 1, k + 1), RoofPoint(i + 1, k) };
+				const FVector N[4] = { RoofNormal(Q[0]), RoofNormal(Q[1]), RoofNormal(Q[2]), RoofNormal(Q[3]) };
+				const double MidZ = (Q[0].Z + Q[1].Z + Q[2].Z + Q[3].Z) * 0.25;
+				const float Height = static_cast<float>(FMath::Clamp((MidZ - WallTop) / FootHeight, 0.0, 1.0));
+				GlassQuad(Q, N, TNProcMesh::TNProcLerpColor(Glass, GlassLight, 0.12f + 0.4f * Height));
+			}
+		}
+	}
+	// ── Etiqueta de refresco alrededor de la botella: cantos oscuros, franjas naranjas y el centro crema, donde van
+	// las letras (BuildLabel).
+	{
+		const FLinearColor LabelEdge = Pal(0xC4520A);
+		const FLinearColor LabelOrange = Pal(0xFF8A1E);
+		const FLinearColor LabelCream = Pal(0xFFF4DC);
+		const double Zs[6] = { LabelBottom, LabelBottom + 2.0, LabelBottom + 7.0, LabelTop - 7.0, LabelTop - 2.0, LabelTop };
+		const FLinearColor Bands[5] = { LabelEdge, LabelOrange, LabelCream, LabelOrange, LabelEdge };
+		constexpr double LabelR = WallR + 1.2;
+		for (int32 k = 0; k < Seg; ++k)
+		{
+			for (int32 b = 0; b < 5; ++b)
+			{
+				const FVector Q[4] = { RingPoint(FVector2D(LabelR, Zs[b]), k), RingPoint(FVector2D(LabelR, Zs[b]), k + 1),
+					RingPoint(FVector2D(LabelR, Zs[b + 1]), k + 1), RingPoint(FVector2D(LabelR, Zs[b + 1]), k) };
+				const FVector N[4] = { RadialOut(Q[0]), RadialOut(Q[1]), RadialOut(Q[2]), RadialOut(Q[3]) };
+				SmoothQuad(Q, N, Bands[b]);
+			}
+			// Grosor del papel arriba y abajo.
+			for (const double Z : { LabelBottom, LabelTop })
+			{
+				const FVector A = RingPoint(FVector2D(WallR, Z), k), Bv = RingPoint(FVector2D(WallR, Z), k + 1);
+				const FVector C = RingPoint(FVector2D(LabelR, Z), k + 1), D = RingPoint(FVector2D(LabelR, Z), k);
+				B.AddQuad(A, Bv, C, D, FVector(0.0, 0.0, Z > (LabelBottom + LabelTop) * 0.5 ? 1.0 : -1.0), LabelEdge);
+			}
+		}
+	}
+	// Canto del corte a ras de suelo (vidrio grueso, más claro) y suelo de arena.
 	for (int32 k = 0; k < Seg; ++k)
 	{
-		B.AddTri(FVector(0.0, 0.0, 305.0), RingPoint(Profile.Last(), k), RingPoint(Profile.Last(), k + 1), FVector::UpVector, TNProcMesh::TNProcLerpColor(Glass, GlassLight, 0.4f));
 		const FVector R0 = RingPoint(FVector2D(WallR + 5.0, 0.0), k), R1 = RingPoint(FVector2D(WallR + 5.0, 0.0), k + 1);
 		const FVector T0 = RingPoint(FVector2D(WallR + 5.0, 14.0), k), T1 = RingPoint(FVector2D(WallR + 5.0, 14.0), k + 1);
 		const FVector I0 = RingPoint(FVector2D(WallR - 1.0, 14.0), k), I1 = RingPoint(FVector2D(WallR - 1.0, 14.0), k + 1);
@@ -242,7 +341,7 @@ void ATN_ChangingBooth::BuildMeshes()
 			const FVector Out = RadialOut((A + C) * 0.5 + Hinge);
 			D.AddQuad(A, Bv, C, Dv, Out, r == 2 ? CapCream : CapRed);
 			// Forro de dentro (se ve con la puerta abierta).
-			const FVector Back = -Out * 14.0;
+			const FVector Back = -Out * 8.0;
 			D.AddQuad(A + Back, Bv + Back, C + Back, Dv + Back, -Out, Liner);
 		}
 	}
@@ -284,6 +383,43 @@ void ATN_ChangingBooth::BuildMeshes()
 		D.AddQuad(E0, E1, F1, F0, Radial, CapRed);
 	}
 	Door->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, D, VertexColorMat));
+}
+
+void ATN_ChangingBooth::BuildLabel()
+{
+	using namespace TNBoothDetail;
+	// Una letra por componente, girada hacia fuera en su punto de la curva: el texto queda impreso en la etiqueta en vez
+	// de flotar delante de la botella. Se lee de izquierda a derecha desde fuera (de +Y a -Y).
+	const FString Text = NSLOCTEXT("Tortunabo", "BoothLabel", "PROBADOR").ToString();
+	constexpr double Radius = WallR + 2.4;
+	constexpr double Tracking = 2.5;
+	const double MidZ = (LabelBottom + LabelTop) * 0.5;
+	TArray<double> Widths;
+	for (const TCHAR Ch : Text)
+	{
+		UTextRenderComponent* Letter = NewObject<UTextRenderComponent>(this);
+		Letter->SetupAttachment(Bottle);
+		Letter->SetHorizontalAlignment(EHTA_Center);
+		Letter->SetVerticalAlignment(EVRTA_TextCenter);
+		Letter->SetWorldSize(24.f);
+		Letter->SetTextRenderColor(FColor(16, 32, 66));
+		Letter->SetText(FText::FromString(FString(1, &Ch)));
+		Letter->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Letter->RegisterComponent();
+		LabelLetters.Add(Letter);
+		Widths.Add(FMath::Max(4.0, static_cast<double>(Letter->GetTextLocalSize().Y)));
+	}
+	double Total = Tracking * FMath::Max(0, Widths.Num() - 1);
+	for (const double W : Widths) { Total += W; }
+	double S = Total * 0.5;
+	for (int32 i = 0; i < LabelLetters.Num(); ++i)
+	{
+		const double Center = S - Widths[i] * 0.5;
+		S -= Widths[i] + Tracking;
+		const double A = Center / Radius;
+		LabelLetters[i]->SetRelativeLocationAndRotation(FVector(Radius * FMath::Cos(A), Radius * FMath::Sin(A), MidZ),
+			FRotator(0.0, FMath::RadiansToDegrees(A), 0.0));
+	}
 }
 
 void ATN_ChangingBooth::HideBlockout()

@@ -20,6 +20,9 @@
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "PhysicsEngine/PhysicsAsset.h"
+#include "PhysicsEngine/SkeletalBodySetup.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/AudioComponent.h"
@@ -230,6 +233,27 @@ void ATortugaCharacter::BeginPlay()
 	if (USkeletalMeshComponent* SkelMesh = GetMesh())
 	{
 		DiveMeshDefaultRot = SkelMesh->GetRelativeRotation();
+		DiveMeshDefaultLoc = SkelMesh->GetRelativeLocation();
+		DiveMeshDefaultScale = SkelMesh->GetRelativeScale3D();
+
+		// El BP guarda de la malla vieja un PhysicsAssetOverride cuyos huesos no existen en TotugaDemo_Rig: sin
+		// cuerpos físicos no hay ragdoll (plátano, muerte). Si el override no casa con la malla, se usa el suyo.
+		UPhysicsAsset* Override = SkelMesh->PhysicsAssetOverride;
+		UPhysicsAsset* Own = SkelMesh->GetSkeletalMeshAsset() ? SkelMesh->GetSkeletalMeshAsset()->GetPhysicsAsset() : nullptr;
+		if (Override && Own && Override != Own)
+		{
+			bool bMatches = false;
+			for (const TObjectPtr<USkeletalBodySetup>& Setup : Override->SkeletalBodySetups)
+			{
+				if (Setup && SkelMesh->GetBoneIndex(Setup->BoneName) != INDEX_NONE) { bMatches = true; break; }
+			}
+			if (!bMatches)
+			{
+				SkelMesh->SetPhysicsAsset(Own, true);
+				UE_LOG(LogTortunabo, Log, TEXT("[Ragdoll] %s: PhysicsAssetOverride '%s' no casa con la malla; se usa '%s'."),
+					*GetName(), *Override->GetName(), *Own->GetName());
+			}
+		}
 	}
 
 	ApplyCameraDefaultsFromProperties();

@@ -14,12 +14,16 @@ class UAnimSequence;
 struct FTNTurtleAnimFrame
 {
 	float Clock = 0.f;
-	/** Locomoción: fases de los ciclos y mezcla (andar sobre la espera, correr sobre andar). */
+	/** Locomoción: tiempo de los clips de espera y andar, ciclos de la carrera y mezcla (andar sobre la espera, correr encima). */
 	float IdleTime = 0.f;
 	float WalkTime = 0.f;
 	float RunTime = 0.f;
 	float WalkW = 0.f;
 	float RunW = 0.f;
+	/** Cuánto de sprint lleva la carrera (braceo e inclinación mayores). */
+	float SprintW = 0.f;
+	/** Amplitud (grados) del paso de la carrera: la justa para que el pie apoyado no patine a esa velocidad. */
+	float RunStride = 40.f;
 	/** Inclinación en las curvas y hacia delante al correr (grados). */
 	float LeanRoll = 0.f;
 	float LeanPitch = 0.f;
@@ -53,15 +57,14 @@ struct FTNTurtleAnimProxy : public FAnimInstanceProxy
 	FTNTurtleAnimFrame Frame;
 	const UAnimSequence* IdleClip = nullptr;
 	const UAnimSequence* WalkClip = nullptr;
-	const UAnimSequence* RunClip = nullptr;
 	const UAnimSequence* CheerClip = nullptr;
 };
 
 /**
- * Animación de la tortuga del jugador sobre el esqueleto Mixamo de TotugaDemo_Rig, sin AnimBP: espera, andar y correr
- * con los clips (mezclados por velocidad, como ABS_Walk) y, encima, poses hechas en código para el salto, el
- * panzazo, el nado, el caparazón (se esconden cabeza y patas), llevar y ser llevado, el lanzamiento, el tumbado, el
- * cansancio y los diez emotes del catálogo. Hereda de UTN_ProcAnimInstance: los ajustes por hueso que escriben los
+ * Animación de la tortuga del jugador sobre el esqueleto Mixamo de TotugaDemo_Rig, sin AnimBP: espera y andar con los
+ * clips (mezclados por velocidad, como ABS_Walk), la carrera del sprint hecha en código y, encima, poses para el
+ * salto, el panzazo, el nado, el caparazón (se esconden cabeza y patas), llevar y ser llevado, el lanzamiento, el
+ * tumbado, el cansancio y los emotes del catálogo. Hereda de UTN_ProcAnimInstance: los ajustes por hueso que escriben los
  * sistemas viejos se siguen aplicando al final.
  *
  * Las poses se escriben como giros en el espacio de la malla (mira a +Y, arriba +Z, su izquierda +X) sobre la
@@ -86,9 +89,6 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimSequence> WalkAnim;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UAnimSequence> RunAnim;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimSequence> CheerAnim;
