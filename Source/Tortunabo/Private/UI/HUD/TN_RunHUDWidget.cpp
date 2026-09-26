@@ -35,7 +35,9 @@
 #include "World/ProcMap/TN_PathStorm.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 
-namespace
+// Con nombre (no anónimo): un using-directive dentro de un namespace anónimo se ve en todo el resto del bloque
+// unity y los nombres de TNHUDStyle (Edge, Text, Sand...) chocaban con variables del mapa procedural (C4459).
+namespace TNRunHUDDetail
 {
 	using namespace TNHUDStyle;
 
@@ -280,12 +282,14 @@ namespace
 
 void UTN_RunHUDWidget::NativeOnInitialized()
 {
+	using namespace TNRunHUDDetail;
 	BuildTree();
 	Super::NativeOnInitialized();
 }
 
 void UTN_RunHUDWidget::BuildTree()
 {
+	using namespace TNRunHUDDetail;
 	if (!WidgetTree || Canvas) { return; }
 	UWidgetTree* Tree = WidgetTree;
 	Canvas = Make<UCanvasPanel>(Tree, TEXT("RunHUDCanvas"));
@@ -487,6 +491,7 @@ void UTN_RunHUDWidget::BuildTree()
 
 void UTN_RunHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	Time += InDeltaTime;
 	TickBadge(InDeltaTime);
@@ -499,6 +504,7 @@ void UTN_RunHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 
 void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	if (!PromptCard) { return; }
 	const APlayerController* PC = GetOwningPlayer();
 	ATortugaCharacter* Turtle = PC ? Cast<ATortugaCharacter>(PC->GetPawn()) : nullptr;
@@ -541,6 +547,7 @@ void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
 
 void UTN_RunHUDWidget::TickBadge(float DeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	// Energía del salvavidas (suavizada), zona bloqueada por el peso y latido al quedarse sin aliento.
 	float Energy = StaminaBar && StaminaBar->IsVisible() ? StaminaBar->GetPercent() : 1.f;
 	if (CVarHUDEnergy.GetValueOnGameThread() >= 0.f) { Energy = FMath::Clamp(CVarHUDEnergy.GetValueOnGameThread(), 0.f, 1.f); }
@@ -597,6 +604,7 @@ void UTN_RunHUDWidget::TickBadge(float DeltaTime)
 
 void UTN_RunHUDWidget::TickInventory(float DeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	if (ItemImages.Num() < 2 || SlotTags.Num() < 2) { return; }
 	// La clase base pinta el equipado y el guardado en sus imágenes (ocultas); aquí se reparten entre las dos
 	// burbujas. Si solo se han intercambiado (rotar objetos), los objetos se quedan donde estaban y es el aro de
@@ -636,6 +644,7 @@ void UTN_RunHUDWidget::TickInventory(float DeltaTime)
 
 void UTN_RunHUDWidget::TickTrack(float DeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	UWorld* World = GetWorld();
 	if (!World || !TrackRoot) { return; }
 	LookupTimer -= DeltaTime;
@@ -684,6 +693,7 @@ void UTN_RunHUDWidget::TickTrack(float DeltaTime)
 
 void UTN_RunHUDWidget::TickScore(float DeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	if (!ScoreText || !ScoreRoot) { return; }
 	const FString Now = ScoreText->GetText().ToString();
 	if (!LastScore.IsEmpty() && Now != LastScore) { ScorePop = 1.f; }
@@ -696,6 +706,7 @@ void UTN_RunHUDWidget::TickScore(float DeltaTime)
 
 void UTN_RunHUDWidget::TickAlerts(float DeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	const APlayerController* PC = GetOwningPlayer();
 	const ATN_CoopPlayerState* PS = PC ? PC->GetPlayerState<ATN_CoopPlayerState>() : nullptr;
 
@@ -741,12 +752,14 @@ void UTN_RunHUDWidget::TickAlerts(float DeltaTime)
 
 void UTN_RunFlowHUDWidget::NativeOnInitialized()
 {
+	using namespace TNRunHUDDetail;
 	BuildTree();
 	Super::NativeOnInitialized();
 }
 
 void UTN_RunFlowHUDWidget::BuildTree()
 {
+	using namespace TNRunHUDDetail;
 	if (!WidgetTree || Canvas) { return; }
 	UWidgetTree* Tree = WidgetTree;
 	Canvas = Make<UCanvasPanel>(Tree, TEXT("RunFlowCanvas"));
@@ -915,6 +928,7 @@ void UTN_RunFlowHUDWidget::BuildTree()
 
 void UTN_RunFlowHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	Time += InDeltaTime;
 	const UWorld* World = GetWorld();
@@ -955,6 +969,7 @@ void UTN_RunFlowHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 
 void UTN_RunFlowHUDWidget::TickCrew(float DeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	const APlayerController* PC = GetOwningPlayer();
 	TArray<const APlayerState*> Crew = CrewOf(GetWorld(), PC ? PC->PlayerState.Get() : nullptr);
 	const int32 Preview = FMath::Min(CVarHUDCrew.GetValueOnGameThread(), CrewRows.Num());
@@ -1004,6 +1019,7 @@ void UTN_RunFlowHUDWidget::TickCrew(float DeltaTime)
 
 void UTN_RunFlowHUDWidget::ShowBubble(int32 Row, const FText& MessageText)
 {
+	using namespace TNRunHUDDetail;
 	if (!Bubbles.IsValidIndex(Row) || !BubbleTexts.IsValidIndex(Row)) { return; }
 	BubbleTexts[Row]->SetText(MessageText);
 	Bubbles[Row]->SetVisibility(ESlateVisibility::HitTestInvisible);
@@ -1042,18 +1058,21 @@ void UTN_RunFlowHUDWidget::OnQuickChatEntryReceived_Implementation(int32 Sequenc
 
 void UTN_RunRadialWheelWidget::NativeOnInitialized()
 {
+	using namespace TNRunHUDDetail;
 	BuildTree();
 	Super::NativeOnInitialized();
 }
 
 void UTN_RunRadialWheelWidget::SetTitle(const FText& InTitle)
 {
+	using namespace TNRunHUDDetail;
 	PendingTitle = InTitle;
 	if (TitleText) { TitleText->SetText(InTitle); }
 }
 
 void UTN_RunRadialWheelWidget::BuildTree()
 {
+	using namespace TNRunHUDDetail;
 	if (!WidgetTree || Canvas) { return; }
 	UWidgetTree* Tree = WidgetTree;
 	Canvas = Make<UCanvasPanel>(Tree, TEXT("WheelCanvas"));
@@ -1093,6 +1112,7 @@ void UTN_RunRadialWheelWidget::BuildTree()
 
 void UTN_RunRadialWheelWidget::BP_OnEntriesSet_Implementation(const TArray<FTN_RadialWheelEntryView>& InEntries)
 {
+	using namespace TNRunHUDDetail;
 	BuildTree();
 	if (!SlotLayer) { return; }
 	SlotLayer->ClearChildren();
@@ -1140,6 +1160,7 @@ void UTN_RunRadialWheelWidget::BP_OnEntriesSet_Implementation(const TArray<FTN_R
 
 void UTN_RunRadialWheelWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
+	using namespace TNRunHUDDetail;
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	Time += InDeltaTime;
 	const int32 Sel = GetSelectedIndex();
