@@ -175,7 +175,7 @@ namespace
 		UImage* FaceImg = MakeImage(Tree, TNHUDFaces::TurtleFace(Face), FVector2D(FaceSize, FaceSize));
 		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(FaceImg)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(0.f, -12.f, 10.f, -12.f)); }
 		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(Content)) { S->SetVerticalAlignment(VAlign_Center); }
-		return MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, Row, FMargin(20.f, 14.f, 28.f, 36.f));
+		return MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, Row, FMargin(22.f, 26.f, 30.f, 40.f));
 	}
 
 	/** Bocadillo de voz de ancho Width con cuatro barras de volumen dentro (se animan con AnimateTalkBars). */
@@ -190,9 +190,9 @@ namespace
 			UImage* BarImg = Make<UImage>(Tree);
 			BarImg->SetBrush(Rounded((i % 2) ? TNHUDArt::Sea : TNHUDArt::Navy, 3.f));
 			BarImg->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
-			if (UHorizontalBoxSlot* S = Bars->AddChildToHorizontalBox(MakeSize(Tree, BarImg, Width * 0.075f, Height * 0.42f)))
+			if (UHorizontalBoxSlot* S = Bars->AddChildToHorizontalBox(MakeSize(Tree, BarImg, Width * 0.068f, Height * 0.34f)))
 			{
-				S->SetPadding(FMargin(Width * 0.03f, 0.f));
+				S->SetPadding(FMargin(Width * 0.028f, 0.f));
 				S->SetVerticalAlignment(VAlign_Center);
 			}
 			OutBars.Add(BarImg);
@@ -238,7 +238,9 @@ namespace
 		Limit->SetMaxDesiredWidth(MaxWidth);
 		Limit->SetMinDesiredWidth(34.f);
 		Limit->SetMinDesiredHeight(22.f);
-		UBorder* Bubble = MakeCard(Tree, TNHUDArt::ChatBubbleTexture(), ChatBubbleMargin, Limit, FMargin(22.f, 11.f, 14.f, 20.f));
+		// El cuerpo crema del bocadillo empieza ~9 px por debajo del borde de la textura y acaba ~17 px antes del de
+		// abajo (la cola): el relleno deja aire por encima y por debajo de la frase.
+		UBorder* Bubble = MakeCard(Tree, TNHUDArt::ChatBubbleTexture(), ChatBubbleMargin, Limit, FMargin(24.f, 17.f, 18.f, 24.f));
 		Bubble->SetRenderTransformPivot(FVector2D(0.f, 1.f));
 		Bubble->SetVisibility(ESlateVisibility::Collapsed);
 		return Bubble;
@@ -326,7 +328,7 @@ void UTN_RunHUDWidget::BuildTree()
 		FaceImage->SetRenderTransformPivot(FVector2D(0.5f, 0.85f));
 		AddAt(Ring, FaceImage, HAlign_Center, VAlign_Center);
 		// Hablando por la voz de proximidad: bocadillo con barras de volumen arriba a la derecha.
-		TalkBubble = MakeTalkBubble(Tree, 66.f, TalkBars);
+		TalkBubble = MakeTalkBubble(Tree, 76.f, TalkBars);
 		TalkBubble->SetRenderTransformPivot(FVector2D(0.1f, 0.95f));
 		TalkBubble->SetVisibility(ESlateVisibility::Collapsed);
 		AddAt(Ring, TalkBubble, HAlign_Right, VAlign_Top, FMargin(0.f, -18.f, -44.f, 0.f));
@@ -385,8 +387,14 @@ void UTN_RunHUDWidget::BuildTree()
 	// ── Puntos (arriba a la derecha): concha y número en una etiqueta de arena ──
 	{
 		ScoreRoot = Make<UOverlay>(Tree);
-		ScoreText = MakeText(Tree, TEXT("ScoreText"), FText::AsNumber(0), TEXT("Bold"), 30, NavyText, false);
-		AddAt(ScoreRoot, MakeCard(Tree, TNHUDArt::SandTagTexture(), TagMargin, ScoreText, FMargin(66.f, 16.f, 30.f, 16.f)), HAlign_Left, VAlign_Center,
+		ScoreText = MakeText(Tree, TEXT("ScoreText"), FText::AsNumber(0), TEXT("Bold"), 32, NavyText, false);
+		ScoreText->SetJustification(ETextJustify::Center);
+		// Sin ancho fijo: la etiqueta crece con el número. La arena ocupa del 18 % al 82 % del alto de la textura (se
+		// estira entera en vertical), así que el relleno de arriba y abajo mete los dígitos dentro con aire; el de la
+		// derecha supera el extremo redondeado (32 px) para que el último dígito no lo pise.
+		USizeBox* ScoreFit = MakeSize(Tree, ScoreText, 0.f, 0.f);
+		ScoreFit->SetMinDesiredWidth(40.f);
+		AddAt(ScoreRoot, MakeCard(Tree, TNHUDArt::SandTagTexture(), TagMargin, ScoreFit, FMargin(70.f, 24.f, 40.f, 24.f)), HAlign_Left, VAlign_Center,
 			FMargin(22.f, 0.f, 0.f, 0.f));
 		UImage* ShellImg = MakeImage(Tree, TNHUDArt::ShellIcon(), FVector2D(82.f, 82.f));
 		ShellImg->SetRenderTransformAngle(-12.f);
@@ -428,7 +436,7 @@ void UTN_RunHUDWidget::BuildTree()
 		if (UHorizontalBoxSlot* S = StormRow->AddChildToHorizontalBox(MakeImage(Tree, TNHUDArt::StormIcon(), FVector2D(58.f, 48.f)))) { S->SetVerticalAlignment(VAlign_Center); }
 		StormText = MakeText(Tree, nullptr, FText::GetEmpty(), TEXT("Bold"), 23, TNHUDArt::Hex(0xFF9A85));
 		if (UHorizontalBoxSlot* S = StormRow->AddChildToHorizontalBox(StormText)) { S->SetVerticalAlignment(VAlign_Center); S->SetPadding(FMargin(10.f, 0.f, 0.f, 0.f)); }
-		StormBanner = MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, StormRow, FMargin(24.f, 14.f, 30.f, 36.f));
+		StormBanner = MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, StormRow, FMargin(26.f, 26.f, 32.f, 40.f));
 		StormBanner->SetVisibility(ESlateVisibility::Collapsed);
 		StormBanner->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 		Place(Canvas, StormBanner, FVector2D(0.5f, 0.f), FVector2D(0.f, 118.f));
@@ -447,7 +455,7 @@ void UTN_RunHUDWidget::BuildTree()
 		ReviveBar->SetWidgetStyle(Bar(7.f));
 		ReviveBar->SetFillColorAndOpacity(TNHUDArt::SeaLight);
 		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(MakeSize(Tree, ReviveBar, 240.f, 14.f))) { S->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f)); }
-		ReviveBanner = MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, Col, FMargin(24.f, 14.f, 24.f, 36.f));
+		ReviveBanner = MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, Col, FMargin(26.f, 26.f, 26.f, 40.f));
 		ReviveBanner->SetVisibility(ESlateVisibility::Collapsed);
 		Place(Canvas, ReviveBanner, FVector2D(0.5f, 0.5f), FVector2D(0.f, 90.f));
 	}
@@ -749,16 +757,17 @@ void UTN_RunFlowHUDWidget::BuildTree()
 		UHorizontalBox* Row = Make<UHorizontalBox>(Tree);
 		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(MakeImage(Tree, TNHUDArt::AnchorIcon(), FVector2D(40.f, 40.f)))) { S->SetVerticalAlignment(VAlign_Center); }
 		RootContainer = Make<UVerticalBox>(Tree, TEXT("RootContainer"));
-		PrimaryText = MakeText(Tree, TEXT("PrimaryText"), FText::GetEmpty(), TEXT("Bold"), 21, TNHUDArt::SandC);
+		PrimaryText = MakeText(Tree, TEXT("PrimaryText"), FText::GetEmpty(), TEXT("Bold"), 23, TNHUDArt::SandC);
 		PrimaryText->SetAutoWrapText(true);
 		RootContainer->AddChildToVerticalBox(PrimaryText);
-		SecondaryText = MakeText(Tree, TEXT("SecondaryText"), FText::GetEmpty(), TEXT("Regular"), 15, TNHUDArt::Foam);
+		SecondaryText = MakeText(Tree, TEXT("SecondaryText"), FText::GetEmpty(), TEXT("Regular"), 16, TNHUDArt::Foam);
 		SecondaryText->SetAutoWrapText(true);
-		if (UVerticalBoxSlot* S = RootContainer->AddChildToVerticalBox(SecondaryText)) { S->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f)); }
+		if (UVerticalBoxSlot* S = RootContainer->AddChildToVerticalBox(SecondaryText)) { S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
 		USizeBox* Limit = MakeSize(Tree, RootContainer, 0.f, 0.f);
 		Limit->SetMaxDesiredWidth(470.f);
 		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(Limit)) { S->SetPadding(FMargin(10.f, 0.f, 0.f, 0.f)); S->SetVerticalAlignment(VAlign_Center); }
-		UBorder* Status = MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, Row, FMargin(20.f, 14.f, 26.f, 36.f));
+		// El filo de arriba del cartel mide ~26 px (CardMargin): el texto empieza por debajo, no pegado al borde.
+		UBorder* Status = MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, Row, FMargin(22.f, 28.f, 30.f, 42.f));
 		Status->SetHorizontalAlignment(HAlign_Left);
 		Status->SetRenderTransformAngle(-1.5f);
 		StatusCard = Status;
@@ -803,14 +812,14 @@ void UTN_RunFlowHUDWidget::BuildTree()
 			if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(NamePill)) { S->SetVerticalAlignment(VAlign_Bottom); S->SetPadding(FMargin(-10.f, 0.f, 0.f, 4.f)); }
 			AddAt(Row, Line, HAlign_Left, VAlign_Bottom);
 			// Voz: bocadillo pequeño con barras arriba a la derecha de la cara.
-			UOverlay* Talk = MakeTalkBubble(Tree, 46.f, CrewTalkBars);
+			UOverlay* Talk = MakeTalkBubble(Tree, 52.f, CrewTalkBars);
 			Talk->SetVisibility(ESlateVisibility::Collapsed);
 			CrewTalk.Add(Talk);
 			AddAt(Row, Talk, HAlign_Left, VAlign_Top, FMargin(56.f, -6.f, 0.f, 0.f));
 			// Frase del chat rápido: bocadillo a la derecha, pasado el de la voz para no pisarse, con la cola hacia la cara;
 			// crece hacia arriba (anclado por abajo, por encima del nombre) si la frase ocupa varias líneas.
 			UTextBlock* Say = nullptr;
-			UBorder* Bubble = MakeChatBubble(Tree, 15, 230.f, Say);
+			UBorder* Bubble = MakeChatBubble(Tree, 17, 240.f, Say);
 			Bubbles.Add(Bubble);
 			BubbleTexts.Add(Say);
 			AddAt(Row, Bubble, HAlign_Left, VAlign_Bottom, FMargin(108.f, 0.f, 0.f, 36.f));
@@ -826,7 +835,7 @@ void UTN_RunFlowHUDWidget::BuildTree()
 	// ── Tu frase: bocadillo junto a tu distintivo (abajo a la izquierda) ──
 	{
 		UTextBlock* Say = nullptr;
-		UBorder* Bubble = MakeChatBubble(Tree, 16, 250.f, Say);
+		UBorder* Bubble = MakeChatBubble(Tree, 18, 260.f, Say);
 		Bubbles.Add(Bubble);
 		BubbleTexts.Add(Say);
 		Place(Canvas, Bubble, FVector2D(0.f, 1.f), FVector2D(226.f, -150.f));

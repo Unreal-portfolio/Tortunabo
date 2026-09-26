@@ -520,7 +520,7 @@ namespace TNHUDArt
 	 * Bocadillo de chat (frase rápida): crema con filo azul marino y la cola en la esquina de abajo a la izquierda,
 	 * hacia la cara de quien habla. Se estira como caja; Slate mide los márgenes con el tamaño real de la textura, así
 	 * que se dibuja pequeña (112x64) para que las esquinas y la cola no pidan más sitio que la frase. Márgenes
-	 * (0.26, 0.3, 0.18, 0.45) y relleno (22, 11, 14, 20) en TN_RunHUDWidget.
+	 * (0.26, 0.3, 0.18, 0.45) y relleno (24, 17, 18, 24) en TN_RunHUDWidget.
 	 */
 	inline UTexture2D* ChatBubbleTexture()
 	{
