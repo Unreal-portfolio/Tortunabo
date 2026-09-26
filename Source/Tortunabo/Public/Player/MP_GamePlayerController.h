@@ -182,6 +182,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UUserWidget> PlayerHUDWidgetClass;
 
+	/**
+	 * Usar el HUD hecho en código (UTN_RunHUDWidget y UTN_RunFlowHUDWidget, estilo común) en vez de
+	 * PlayerHUDWidgetClass y CoopFlowWidgetClass.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	bool bUseCodeHUD = true;
+
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Radial")
 	TSubclassOf<UTN_RadialWheelWidgetBase> EmoteWheelWidgetClass;
 

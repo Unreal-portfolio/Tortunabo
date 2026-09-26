@@ -6,6 +6,7 @@
 #include "InputActionValue.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "UI/HUD/TN_CoopFlowHUDWidget.h"
+#include "UI/HUD/TN_RunHUDWidget.h"
 #include "UI/HUD/TN_RadialWheelWidgetBase.h"
 #include "UI/HUD/TN_EmoteWheelDataAsset.h"
 #include "UI/HUD/TN_QuickChatWheelDataAsset.h"
@@ -485,11 +486,11 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 	// Crear el widget solo si no existe.
 	if (!CoopFlowWidget)
 	{
-		UClass* WidgetClass = CoopFlowWidgetClass
-			? CoopFlowWidgetClass.Get()
-			: UTN_CoopFlowHUDWidget::StaticClass();
+		UClass* WidgetClass = bUseCodeHUD
+			? UTN_RunFlowHUDWidget::StaticClass()
+			: (CoopFlowWidgetClass ? CoopFlowWidgetClass.Get() : UTN_CoopFlowHUDWidget::StaticClass());
 
-		if (!CoopFlowWidgetClass)
+		if (!CoopFlowWidgetClass && !bUseCodeHUD)
 		{
 			UE_LOG(LogTortunabo, Warning, TEXT("[HUD] CoopFlowWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController. Usando clase C++ como fallback."), *GetNameSafe(this));
 		}
@@ -514,13 +515,14 @@ void AMP_GamePlayerController::CreatePlayerHUD()
 	// Crear el widget solo si no existe.
 	if (!PlayerHUDWidget)
 	{
-		if (!PlayerHUDWidgetClass)
+		UClass* HudClass = bUseCodeHUD ? UTN_RunHUDWidget::StaticClass() : PlayerHUDWidgetClass.Get();
+		if (!HudClass)
 		{
 			UE_LOG(LogTortunabo, Warning, TEXT("[HUD] PlayerHUDWidgetClass no asignado en %s. Asignalo en BP_GamePlayerController → Class Defaults."), *GetNameSafe(this));
 			return;
 		}
 
-		PlayerHUDWidget = CreateWidget<UUserWidget>(this, PlayerHUDWidgetClass);
+		PlayerHUDWidget = CreateWidget<UUserWidget>(this, HudClass);
 	}
 
 	// Re-añadir al viewport si fue eliminado durante seamless travel.
