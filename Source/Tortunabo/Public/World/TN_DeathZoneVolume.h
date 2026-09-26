@@ -43,6 +43,12 @@ public:
 	 */
 	void ForceCheckPlayer(APlayerController* PC);
 
+	/**
+	 * Tamano (semiextension de la caja, uu) y segundos dentro hasta morir, para zonas creadas por
+	 * codigo (p. ej. las cajas del fondo de un barranco que pone ATN_MapVariantLoader).
+	 */
+	void ConfigureZone(const FVector& HalfExtent, float SecondsToDie);
+
 protected:
 	/** Caja de colisión — editar su tamaño en el Viewport del Blueprint. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DeathZone")

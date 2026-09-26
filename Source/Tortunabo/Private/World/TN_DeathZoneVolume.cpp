@@ -321,3 +321,8 @@ void ATN_DeathZoneVolume::ForceCheckPlayer(APlayerController* PC)
 		*GetNameSafe(PC), *GetName(), SecondsInsideToDie);
 }
 
+void ATN_DeathZoneVolume::ConfigureZone(const FVector& HalfExtent, float SecondsToDie)
+{
+	TriggerBox->SetBoxExtent(HalfExtent);
+	SecondsInsideToDie = FMath::Max(SecondsToDie, 0.1f);
+}

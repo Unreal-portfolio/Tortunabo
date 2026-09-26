@@ -7,6 +7,7 @@
 class UMaterialInterface;
 class UProceduralMeshComponent;
 class FJsonObject;
+class ATN_DeathZoneVolume;
 
 /**
  * Herramienta de disenadores: carga en el nivel abierto una de las variantes de mapa que genera
@@ -28,6 +29,7 @@ public:
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/** Variante elegida: Scripts/terrain_volumes/Variants/<Variant>/manifest.json. */
 	UPROPERTY(EditAnywhere, Category = "MapVariant", meta = (GetOptions = "GetVariantNames"))
@@ -54,11 +56,18 @@ private:
 	void LoadVariant();
 	void ClearMeshes();
 	void MoveStartPlayerStart(const TSharedPtr<FJsonObject>& Manifest) const;
+	/** Manifest de la variante elegida, o nullptr si no se puede leer. */
+	TSharedPtr<FJsonObject> ReadManifest() const;
+	/** Pone un ATN_DeathZoneVolume por cada caja de "kill_boxes_uu" (fondo de los barrancos). */
+	void SpawnKillZones();
 	static FString VariantsDir();
 
 	/** Un UProceduralMeshComponent por trozo del manifest ("cells"). */
 	UPROPERTY(VisibleAnywhere, Category = "MapVariant")
 	TArray<TObjectPtr<UProceduralMeshComponent>> ChunkMeshes;
+
+	/** Zonas de muerte creadas en BeginPlay; se destruyen en EndPlay. */
+	TArray<TWeakObjectPtr<ATN_DeathZoneVolume>> SpawnedKillZones;
 
 	/** Variante con la que se construyeron ChunkMeshes, para no reconstruir en balde. */
 	UPROPERTY()

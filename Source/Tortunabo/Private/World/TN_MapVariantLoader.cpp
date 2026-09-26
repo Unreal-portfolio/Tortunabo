@@ -1,5 +1,6 @@
 #include "World/TN_MapVariantLoader.h"
 #include "Core/TN_Log.h"
+#include "World/TN_DeathZoneVolume.h"
 #include "World/TN_TerrainMeshDecisions.h"
 
 #include "Components/SceneComponent.h"
@@ -57,6 +58,93 @@ void ATN_MapVariantLoader::BeginPlay()
 	{
 		LoadVariant();
 	}
+	if (HasAuthority())
+	{
+		SpawnKillZones();
+	}
+}
+
+void ATN_MapVariantLoader::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	for (const TWeakObjectPtr<ATN_DeathZoneVolume>& Zone : SpawnedKillZones)
+	{
+		if (Zone.IsValid())
+		{
+			Zone->Destroy();
+		}
+	}
+	SpawnedKillZones.Reset();
+	Super::EndPlay(EndPlayReason);
+}
+
+TSharedPtr<FJsonObject> ATN_MapVariantLoader::ReadManifest() const
+{
+	if (Variant.IsNone())
+	{
+		return nullptr;
+	}
+	const FString ManifestPath = VariantsDir() / Variant.ToString() / TEXT("manifest.json");
+	FString ManifestText;
+	if (!FFileHelper::LoadFileToString(ManifestText, *ManifestPath))
+	{
+		UE_LOG(LogTortunabo, Error, TEXT("[MapVariantLoader] '%s': no se puede leer '%s'."), *GetName(), *ManifestPath);
+		return nullptr;
+	}
+	TSharedPtr<FJsonObject> Manifest;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestText);
+	if (!FJsonSerializer::Deserialize(Reader, Manifest) || !Manifest.IsValid())
+	{
+		UE_LOG(LogTortunabo, Error, TEXT("[MapVariantLoader] '%s': '%s' no es JSON valido."), *GetName(), *ManifestPath);
+		return nullptr;
+	}
+	return Manifest;
+}
+
+void ATN_MapVariantLoader::SpawnKillZones()
+{
+	const TSharedPtr<FJsonObject> Manifest = ReadManifest();
+	const TArray<TSharedPtr<FJsonValue>>* Boxes = nullptr;
+	if (!Manifest.IsValid() || !Manifest->TryGetArrayField(TEXT("kill_boxes_uu"), Boxes) || !Boxes)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	// Caer al fondo de un barranco es morir: medio segundo dentro basta (el agua no se nada).
+	constexpr float SecondsToDie = 0.5f;
+	for (const TSharedPtr<FJsonValue>& Value : *Boxes)
+	{
+		const TSharedPtr<FJsonObject>* Box = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Center = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Extent = nullptr;
+		double Yaw = 0.0;
+		if (!Value->TryGetObject(Box) || !Box || !(*Box)->TryGetArrayField(TEXT("center"), Center)
+			|| !(*Box)->TryGetArrayField(TEXT("extent"), Extent) || !Center || !Extent
+			|| Center->Num() < 3 || Extent->Num() < 3 || !(*Box)->TryGetNumberField(TEXT("yaw"), Yaw))
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[MapVariantLoader] '%s': caja de muerte mal formada en '%s'."),
+				*GetName(), *Variant.ToString());
+			continue;
+		}
+		const FVector Location((*Center)[0]->AsNumber(), (*Center)[1]->AsNumber(), (*Center)[2]->AsNumber());
+		const FVector HalfExtent((*Extent)[0]->AsNumber(), (*Extent)[1]->AsNumber(), (*Extent)[2]->AsNumber());
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ATN_DeathZoneVolume* Zone = World->SpawnActor<ATN_DeathZoneVolume>(
+			ATN_DeathZoneVolume::StaticClass(), GetActorTransform().TransformPosition(Location),
+			FRotator(0.0, Yaw, 0.0) + GetActorRotation(), Params);
+		if (!Zone)
+		{
+			continue;
+		}
+		Zone->ConfigureZone(HalfExtent, SecondsToDie);
+		SpawnedKillZones.Add(Zone);
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[MapVariantLoader] '%s': %d zonas de muerte del barranco."),
+		*GetName(), SpawnedKillZones.Num());
 }
 
 void ATN_MapVariantLoader::Recargar()
