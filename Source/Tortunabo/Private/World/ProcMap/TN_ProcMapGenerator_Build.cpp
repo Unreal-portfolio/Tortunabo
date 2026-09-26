@@ -54,6 +54,32 @@ namespace
 		return Out;
 	}
 
+	/**
+	 * Color de sendero de cada bioma, de tono y luminosidad claramente distintos de sus paredes: tierra
+	 * anaranjada clara en la selva, barro claro en el manglar, ceniza rojiza en el volcán, arena mojada en
+	 * la playa, arcilla roja en el desierto, grava ocre oscura en la roca, adoquín pizarra en los pueblos y
+	 * tablas oscuras en el agua. Se mezcla un poco con el camino del asset (ya con contraste) para que el
+	 * asset siga contando.
+	 */
+	FLinearColor TNTrailColor(ETNProcBiome Biome, const FLinearColor& AssetPath)
+	{
+		FLinearColor Trail;
+		switch (Biome)
+		{
+			case ETNProcBiome::Jungle:   Trail = FLinearColor(0.78f, 0.5f, 0.26f); break;
+			case ETNProcBiome::Mangrove: Trail = FLinearColor(0.6f, 0.48f, 0.3f); break;
+			case ETNProcBiome::Volcanic: Trail = FLinearColor(0.46f, 0.19f, 0.09f); break;
+			case ETNProcBiome::Beach:    Trail = FLinearColor(0.24f, 0.17f, 0.1f); break;
+			case ETNProcBiome::Desert:   Trail = FLinearColor(0.32f, 0.1f, 0.05f); break;
+			case ETNProcBiome::Rocky:    Trail = FLinearColor(0.21f, 0.13f, 0.06f); break;
+			case ETNProcBiome::Water:    Trail = FLinearColor(0.18f, 0.14f, 0.09f); break;
+			default:                     Trail = FLinearColor(0.1f, 0.11f, 0.15f); break;
+		}
+		FLinearColor Out = TNProcLerpColor(Trail, AssetPath, 0.2f);
+		Out.A = 1.f;
+		return Out;
+	}
+
 	/** Polilínea de un tramo de camino con cota y media anchura, recorrible por distancia en planta. */
 	struct FTNPlankLine
 	{
@@ -863,7 +889,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	for (int32 b = 0; b < NumBiomes; ++b)
 	{
 		ResolveBiomeColors(BiomeFromIndex(b), Ground[b], PathRaw[b], Rock[b], Bed[b]);
-		PathC[b] = TNContrastPath(PathRaw[b], Ground[b], Rock[b]);
+		PathC[b] = TNTrailColor(BiomeFromIndex(b), TNContrastPath(PathRaw[b], Ground[b], Rock[b]));
 	}
 	// La playa de la meta conserva su arena: desde 15 m antes de su primera muestra de orilla, el camino
 	// vuelve al color del bioma.
@@ -968,7 +994,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 				Col = Col * (1.f + 0.07f * Steep * (Strata > 0.0 ? 1.f : -1.f));
 				// Suelo del camino, con una línea oscura en el pie del talud que marca su borde.
 				Col = TNProcLerpColor(Col, Pc, Mask);
-				Col = Col * (1.f - 1.2f * Mask * (1.f - Mask));
+				Col = Col * (1.f - 2.0f * Mask * (1.f - Mask));
 				Col = TNProcLerpColor(Col, Bd, static_cast<float>(TNProcMap::SmoothStep(30.0, -120.0, H)));
 				const float Var = 0.9f + 0.2f * static_cast<float>(0.5 + 0.5 * TNProcMap::Noise2(ColorSeed, P.X / 700.0, P.Y / 700.0));
 				Col = Col * Var;
