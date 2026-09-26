@@ -27,6 +27,15 @@ namespace TNProcMap
 			return FMath::Max(420.0, 0.45 * Width) * Factor;
 		}
 
+		/** Bit de Aux2 de una cueva que va por dentro de un volcán (BuildCaveVolcanoes). */
+		constexpr int32 InVolcanoBit = 1 << 21;
+
+		/** Si la cueva F atraviesa un volcán. */
+		inline bool IsVolcanoCave(const FFeature& F) { return F.Type == EFeature::Cave && (F.Aux2 & InVolcanoBit) != 0; }
+
+		/** Lado (respecto a la normal izquierda del camino) del lago de magma de una cueva de volcán. */
+		inline double MagmaSide(const FFeature& F) { return (F.Aux2 & 8) ? 1.0 : -1.0; }
+
 		/** Valor fijo en [0, 1] de la cueva F para el rasgo Salt (desfiladero, cima...). */
 		inline double CaveHash01(const FFeature& F, int32 Salt)
 		{
@@ -186,6 +195,93 @@ namespace TNProcMap
 				i = j;
 			}
 			return Count;
+		}
+	}
+
+	/**
+	 * Volcanes sobre las cuevas del volcán: donde no pisa otros caminos ni torres, un cono de 70-150 m de
+	 * base (40-50 % de alto) con su cráter y lago de lava, centrado cerca de la cámara, de modo que el túnel
+	 * atraviesa su base y los desfiladeros de las bocas se abren en su ladera. Dentro, un lago de magma en
+	 * una cámara (lejos del río de lava), a un lado del camino (MagmaSide). Después de los hitos, antes de
+	 * asentar los volcanes (SettleVolcanoes los sube al relieve que los rodea).
+	 */
+	inline void BuildCaveVolcanoes(FLayout& L, FRng Rng)
+	{
+		using namespace FeatureDetail;
+		using namespace CaveDetail;
+		const TArray<FPathSample>& M = L.Main;
+		const int32 NumBefore = L.Features.Num();
+		for (int32 f = 0; f < NumBefore; ++f)
+		{
+			FFeature& Cv = L.Features[f];
+			if (Cv.Type != EFeature::Cave || Cv.Biome != ETNProcBiome::Volcanic) { continue; }
+			const int32 I = Cv.PathIndex, J = Cv.Aux;
+			const double Span = M[J].S - M[I].S;
+			const double R = FMath::Clamp(Span * 0.5 + 2500.0, 7000.0, 15000.0);
+			const FVector2D Nrm = LeftNormal(M[(I + J) / 2].Dir);
+			const FVector2D C = FVector2D(Cv.Location.X, Cv.Location.Y) + Nrm * Rng.Range(-1500.0, 1500.0);
+			// Nada más bajo el cono: ni otros tramos del principal, ni ramas, ni torres, ni otros volcanes.
+			bool bOk = true;
+			for (int32 k = 0; k < M.Num() && bOk; k += 2)
+			{
+				if (k >= I - 25 && k <= J + 25) { continue; }
+				if (FVector2D::Distance(M[k].P, C) < R + 2500.0 + M[k].Width * 0.5) { bOk = false; }
+			}
+			for (const FBranch& B : L.Branches)
+			{
+				for (int32 k = 0; k < B.Samples.Num() && bOk; k += 2)
+				{
+					if (FVector2D::Distance(B.Samples[k].P, C) < R + 2500.0 + B.Samples[k].Width * 0.5) { bOk = false; }
+				}
+			}
+			for (const FFeature& O : L.Features)
+			{
+				if (!bOk) { break; }
+				const double D = FVector2D::Distance(FVector2D(O.Location.X, O.Location.Y), C);
+				if ((O.Type == EFeature::Tower || O.Type == EFeature::DeckPillar) && D < R + 3500.0) { bOk = false; }
+				if (O.Type == EFeature::Volcano && D < R + O.Radius) { bOk = false; }
+			}
+			if (!bOk) { continue; }
+
+			FFeature V;
+			V.Type = EFeature::Volcano;
+			V.Biome = ETNProcBiome::Volcanic;
+			V.Radius = R;
+			V.Height = R * Rng.Range(0.4, 0.5);
+			const double CraterR = R * Rng.Range(0.11, 0.14);
+			V.Width = CraterR * 2.0;
+			V.Length = Rng.Range(1200.0, 2000.0);
+			const double Base = L.SampleCoarse(L.LevelField, C);
+			V.Location = FVector(C, Base);
+			L.Features.Add(V);
+			const double Rim = V.Height * FMath::Pow(1.0 - CraterR / V.Radius, 1.35);
+			FFeature Lava;
+			Lava.Type = EFeature::LavaPool;
+			Lava.Biome = ETNProcBiome::Volcanic;
+			Lava.Radius = CraterR * 0.72;
+			Lava.Location = FVector(C, Base + Rim - V.Length * 0.45);
+			L.Features.Add(Lava);
+
+			// Lago de magma en la cámara más ancha, a más de 4 muestras (16 m) del río de lava.
+			FFeature& Cave = L.Features[f];
+			Cave.Aux2 |= InVolcanoBit;
+			int32 Best = INDEX_NONE;
+			int32 Mid = I;
+			for (int32 k = I; k <= J; ++k) { if (FVector2D::DistSquared(M[k].P, FVector2D(Cave.Location.X, Cave.Location.Y)) < FVector2D::DistSquared(M[Mid].P, FVector2D(Cave.Location.X, Cave.Location.Y))) { Mid = k; } }
+			for (int32 k = I + 3; k <= J - 3; ++k)
+			{
+				if (FMath::Abs(k - Mid) < 4 || M[k].Width < 1300.0) { continue; }
+				if (Best == INDEX_NONE || M[k].Width > M[Best].Width) { Best = k; }
+			}
+			if (Best == INDEX_NONE) { continue; }
+			const double PoolR = FMath::Clamp(M[Best].Width * 0.16, 200.0, 320.0);
+			FFeature Pool;
+			Pool.Type = EFeature::LavaPool;
+			Pool.Biome = ETNProcBiome::Volcanic;
+			Pool.Radius = PoolR;
+			Pool.PathIndex = Best;
+			Pool.Location = FVector(M[Best].P + LeftNormal(M[Best].Dir) * (MagmaSide(Cave) * (M[Best].Width * 0.5 - PoolR - 150.0)), M[Best].Z);
+			L.Features.Add(Pool);
 		}
 	}
 

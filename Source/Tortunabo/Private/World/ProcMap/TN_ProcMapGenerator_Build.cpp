@@ -1975,8 +1975,24 @@ void ATN_ProcMapGenerator::BuildStructures()
 		TArray<TArray<FVector>> Inner;
 		TNCaveMesh::TNCaveBuildRoof(Painted, Stations, F.Height, F.Radius, CaveSeed, Look, &Inner);
 
+		// Cueva dentro de un volcán: su lago de magma (el LavaPool pequeño entre sus muestras).
+		TNCaveDecor::FTNCaveMagma Magma;
+		bool bMagma = false;
+		if (CaveDetail::IsVolcanoCave(F))
+		{
+			for (const FFeature& P : Layout.Features)
+			{
+				if (P.Type == EFeature::LavaPool && P.PathIndex >= F.PathIndex && P.PathIndex <= F.Aux && P.Radius < 400.0)
+				{
+					Magma.Center = P.Location;
+					Magma.Radius = P.Radius;
+					Magma.Side = CaveDetail::MagmaSide(F);
+					bMagma = true;
+				}
+			}
+		}
 		TNCaveDecor::FTNCaveDecorOut Decor;
-		TNCaveDecor::TNCaveBuildDecor(Decor, Stations, Inner, NoFloor, F.Height, CaveSeed, Style, Look);
+		TNCaveDecor::TNCaveBuildDecor(Decor, Stations, Inner, NoFloor, F.Height, CaveSeed, Style, Look, bMagma ? &Magma : nullptr);
 		TNFormMesh::TNFormAppend(Painted, Decor.Solid, FVector::ZeroVector, FVector2D(1.0, 0.0));
 		TNFormMesh::TNFormAppend(PaintedFar, Decor.Detail, FVector::ZeroVector, FVector2D(1.0, 0.0));
 		TNFormMesh::TNFormAppend(Glow, Decor.Glow, FVector::ZeroVector, FVector2D(1.0, 0.0));

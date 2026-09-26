@@ -133,6 +133,7 @@ namespace TNProcMap
 		if (Out.Params.bRiver) { BuildRiver(Out, Root.Fork(14)); }
 		BuildLandmarks(Out, Root.Fork(16));
 		BuildDecor(Out, Root.Fork(15));
+		BuildCaveVolcanoes(Out, Root.Fork(21));
 		SettleVolcanoes(Out);
 		BuildObstacles(Out, Root.Fork(17));
 		BuildFormations(Out, Root.Fork(18));

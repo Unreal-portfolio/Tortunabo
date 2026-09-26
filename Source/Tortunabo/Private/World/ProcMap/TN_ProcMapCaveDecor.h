@@ -50,6 +50,15 @@ namespace TNCaveDecor
 		bool bSpot = false;
 	};
 
+	/** Lago de magma de una cueva que atraviesa un volcán (TNProcMap::BuildCaveVolcanoes). */
+	struct FTNCaveMagma
+	{
+		FVector Center = FVector::ZeroVector;
+		double Radius = 250.0;
+		/** Lado del camino (respecto a su normal izquierda) en el que está. */
+		double Side = 1.0;
+	};
+
 	/** Lo que sale de una cueva, por material. */
 	struct FTNCaveDecorOut
 	{
@@ -597,7 +606,7 @@ namespace TNCaveDecor
 	 * NoFloor marca las estaciones sin suelo (el río de lava): ahí no va nada en el suelo.
 	 */
 	inline void TNCaveBuildDecor(FTNCaveDecorOut& Out, const TArray<FTNCaveStation>& St, const TArray<TArray<FVector>>& Inner, const TArray<uint8>& NoFloor,
-		double ClearFactor, uint32 Seed, ECaveStyle Style, const FTNCaveLook& Look)
+		double ClearFactor, uint32 Seed, ECaveStyle Style, const FTNCaveLook& Look, const FTNCaveMagma* Magma = nullptr)
 	{
 		using namespace CaveDecorDetail;
 		const int32 Num = St.Num();
@@ -644,9 +653,24 @@ namespace TNCaveDecor
 		auto Reserve = [&](int32 s0, int32 s1, double Sd) { for (int32 s = FMath::Max(0, s0); s <= FMath::Min(Num - 1, s1); ++s) { Busy[s * 2 + SideIdx(Sd)] = 1; } };
 		auto FloorOk = [&](int32 s0, int32 s1) { for (int32 s = FMath::Max(0, s0); s <= FMath::Min(Num - 1, s1); ++s) { if (NoFloor[s]) { return false; } } return true; };
 
-		// ── Estatua de la tortuga en la cámara más ancha, mirando a quien llega ──
+		// ── Cámara de magma (cueva dentro de un volcán): lo del lado del lago queda libre ──
+		int32 MagmaS = INDEX_NONE;
+		if (Magma)
+		{
+			double Best = 1e300;
+			for (int32 s = 0; s < Num; ++s)
+			{
+				const double D = FMath::Square(Fr[s].F.X - Magma->Center.X) + FMath::Square(Fr[s].F.Y - Magma->Center.Y);
+				if (D < Best) { Best = D; MagmaS = s; }
+			}
+			const int32 Span = FMath::CeilToInt((Magma->Radius + 500.0) / 400.0);
+			Reserve(MagmaS - Span, MagmaS + Span, Magma->Side);
+		}
+
+		// ── Estatua de la tortuga en la cámara más ancha, mirando a quien llega (lejos del magma) ──
 		int32 StatueS = INDEX_NONE;
 		double StatueSide = Rng.Sign();
+		if (Magma) { StatueSide = -Magma->Side; }
 		{
 			int32 Best = INDEX_NONE;
 			for (int32 c = 0; c < Chambers.Num(); ++c) { if (Best == INDEX_NONE || Fr[Chambers[c].C].Hw > Fr[Chambers[Best].C].Hw) { Best = c; } }
@@ -1036,6 +1060,63 @@ namespace TNCaveDecor
 					}
 				}
 			}
+		}
+
+		// ── Lago de magma: anillo de basalto, coladas por la pared de su lado, grieta en la clave, luz y brasas ──
+		if (Magma && MagmaS != INDEX_NONE)
+		{
+			const FFrame& F = Fr[MagmaS];
+			const int32 Rocks = 9;
+			for (int32 k = 0; k < Rocks; ++k)
+			{
+				const double A = TNProcMap::TwoPi * (k + Rng.Range(-0.2, 0.2)) / Rocks;
+				const FVector P = Magma->Center + FVector(FMath::Cos(A), FMath::Sin(A), 0.0) * (Magma->Radius + Rng.Range(50.0, 110.0)) - FVector(0.0, 0.0, 10.0);
+				TNProcAddBoulder(Out.Solid, P, Rng.Range(45.0, 85.0), Rng.Range(40.0, 95.0), Rng.Next(), FLinearColor(0.08f, 0.07f, 0.08f) * static_cast<float>(Rng.Range(0.8, 1.3)));
+			}
+			// Coladas: cintas de lava que bajan por la bóveda y la pared del lado del lago hasta el suelo.
+			const int32 Crown = Side / 2;
+			for (int32 c = -1; c <= 1; ++c)
+			{
+				const int32 S0 = FMath::Clamp(MagmaS + c * 2, 0, Num - 2);
+				const double Along = Rng.Range(0.2, 0.8);
+				const double Wd = Rng.Range(28.0, 55.0);
+				const int32 K0 = Magma->Side < 0.0 ? Crown - Rng.RangeInt(1, 2) : Crown + Rng.RangeInt(1, 2);
+				const int32 Step = Magma->Side < 0.0 ? -1 : 1;
+				FVector Prev = FVector::ZeroVector;
+				bool bHasPrev = false;
+				for (int32 k = K0; Magma->Side < 0.0 ? k >= 0 : k <= Side - 1; k += Step)
+				{
+					FVector P = FMath::Lerp(Inner[S0][k], Inner[S0 + 1][k], Along);
+					const FVector ToAxis = (Fr[S0].At(0.0, Fr[S0].Spring) - P).GetSafeNormal();
+					P += ToAxis * 6.0;
+					if (bHasPrev)
+					{
+						const FVector Across = Fr[S0].D * (Wd * 0.5);
+						Out.Ember.AddQuad(Prev - Across, Prev + Across, P + Across, P - Across, ToAxis, FLinearColor::White);
+					}
+					Prev = P;
+					bHasPrev = true;
+				}
+			}
+			// Grieta encendida en la clave, sobre el lago (la chimenea que sube al cráter).
+			const double Yc = Magma->Side * F.Hw * 0.35;
+			const FVector Vent = F.At(Yc, F.RoofZ(Yc) - 8.0);
+			for (int32 k = 0; k < 10; ++k)
+			{
+				const double A0 = TNProcMap::TwoPi * k / 10.0, A1 = TNProcMap::TwoPi * (k + 1) / 10.0;
+				const double R0 = 70.0 + 30.0 * TNProcHashNoise(k, 5, Seed), R1 = 70.0 + 30.0 * TNProcHashNoise(k + 1, 5, Seed);
+				Out.Ember.AddTri(Vent, Vent + FVector(FMath::Cos(A0) * R0, FMath::Sin(A0) * R0, 0.0), Vent + FVector(FMath::Cos(A1) * R1, FMath::Sin(A1) * R1, 0.0), -FVector::UpVector, FLinearColor::White);
+			}
+			for (const double Up : { 120.0, 380.0 })
+			{
+				FTNCaveLight L;
+				L.P = Magma->Center + FVector(0.0, 0.0, Up);
+				L.Color = FLinearColor(1.f, 0.38f, 0.1f);
+				L.Lumens = 4000.f;
+				L.Radius = 2200.f;
+				Out.Lights.Add(L);
+			}
+			Out.Flames.Add(Magma->Center + FVector(0.0, 0.0, 30.0));
 		}
 
 		// ── Grietas incandescentes junto a las paredes (tubo de lava) ──

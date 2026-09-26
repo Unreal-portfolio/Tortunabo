@@ -1173,8 +1173,10 @@ namespace TNProcMap
 					const double U = D / F.Radius;
 					H = FMath::Min(H, F.Location.Z - 120.0 - 180.0 * (1.0 - U * U));
 				}
-				else if (D < F.Radius + 900.0)
+				else if (D < F.Radius + 900.0 && !(InSeg != INDEX_NONE && InBeyond < 200.0))
 				{
+					// Borde del lago, salvo sobre el suelo de un camino (el del cráter no rellena la cueva de
+					// debajo; el lago de magma de la cueva queda como pozo, rodeado de basalto).
 					H = FMath::Max(H, LerpD(F.Location.Z + 80.0, H, (D - F.Radius) / 900.0));
 				}
 			}

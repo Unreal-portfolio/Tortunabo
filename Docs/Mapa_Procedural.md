@@ -193,7 +193,11 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   cabeza de la tortuga) y **tubo de lava** (obsidiana, basalto, grietas incandescentes). En todas, la
   estatua de la tortuga con ofrendas en la cámara más ancha, estelas y símbolos (tortuga, espiral,
   sol, olas, ojo, panal) pintados o luminosos, y luces sin sombras del color del estilo. Nada invade
-  el carril central.
+  el carril central. Las del volcán, donde no pisa otros caminos ni torres, van **dentro de un volcán**
+  de 70-150 m de base con su cráter y lago de lava (el túnel atraviesa su base y los desfiladeros se
+  abren en su ladera) y llevan una **cámara de magma**: lago de lava a un lado del camino (mata al
+  tocarlo) con anillo de basalto, coladas encendidas por la pared, grieta en la clave, brasas y luz
+  fuerte; la estatua, al otro lado.
 - **Viento** en la vegetación (`M_ProcFoliage`, SimpleGrassWind del motor con rachas): el alfa del
   color de vértice es el peso de balanceo (hierba entera, copas más que troncos, rocas y objetos
   quietos); cada especie deja de evaluarlo a su distancia.
