@@ -81,6 +81,24 @@ void ATN_PathStorm::StartStorm(ATN_ProcMapGenerator* InGenerator, float InSpeed,
 		bActive ? TEXT("activa") : TEXT("inactiva"), Speed, GraceSeconds);
 }
 
+void ATN_PathStorm::DebugPlaceFront(float Progress, bool bHarmless)
+{
+	if (!HasAuthority()) { return; }
+	if (!Generator)
+	{
+		for (TActorIterator<ATN_ProcMapGenerator> It(GetWorld()); It; ++It) { Generator = *It; break; }
+	}
+	if (DefaultSecondsInsideToDie < 0.f) { DefaultSecondsInsideToDie = SecondsInsideToDie; }
+	SecondsInsideToDie = bHarmless ? 1.0e7f : DefaultSecondsInsideToDie;
+	if (Speed <= 0.f) { Speed = 250.f; }
+	bActive = Generator != nullptr;
+	GraceRemaining = 0.f;
+	FrontProgress = Progress;
+	InsideTime.Reset();
+	ForceNetUpdate();
+	UE_LOG(LogTortunabo, Log, TEXT("[PathStorm] Prueba: frente en %.0f cm%s."), Progress, bHarmless ? TEXT(" (inofensiva)") : TEXT(""));
+}
+
 void ATN_PathStorm::StopStorm()
 {
 	if (!HasAuthority()) { return; }

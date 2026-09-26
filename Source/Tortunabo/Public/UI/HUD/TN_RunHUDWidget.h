@@ -76,6 +76,10 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> DownText;
 	UPROPERTY(Transient) TObjectPtr<UBorder> ReviveBanner;
 	UPROPERTY(Transient) TObjectPtr<UProgressBar> ReviveBar;
+	/** Aviso de interacción: tecla y texto del interactuable al alcance. */
+	UPROPERTY(Transient) TObjectPtr<UBorder> PromptCard;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> PromptKeyText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> PromptLabel;
 
 	TWeakObjectPtr<ATN_ProcMapGenerator> Generator;
 	TWeakObjectPtr<ATN_PathStorm> Storm;
@@ -94,6 +98,11 @@ private:
 	FString LastScore;
 	float ScorePop = 0.f;
 	float LookupTimer = 0.f;
+	float PromptPop = 0.f;
+	float PromptKeyTimer = 0.f;
+	TWeakObjectPtr<AActor> PromptTarget;
+
+	void TickPrompt(float DeltaTime);
 };
 
 /**

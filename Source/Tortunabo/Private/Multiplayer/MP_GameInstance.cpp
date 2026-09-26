@@ -275,6 +275,84 @@ FName UMP_GameInstance::GetEquippedSkinId() const
 	return CosmeticProfile ? CosmeticProfile->EquippedSkinId : NAME_None;
 }
 
+bool UMP_GameInstance::IsCosmeticUnlocked(ETNCosmeticCategory Category, FName Id) const
+{
+	if (Id == NAME_None) { return true; }
+	if (!CosmeticProfile) { return false; }
+	return Category == ETNCosmeticCategory::Helmet ? CosmeticProfile->UnlockedHelmetIds.Contains(Id) : CosmeticProfile->UnlockedSkinIds.Contains(Id);
+}
+
+int32 UMP_GameInstance::GetCosmeticPrice(ETNCosmeticCategory Category, FName Id) const
+{
+	if (Id == NAME_None) { return 0; }
+	if (Category == ETNCosmeticCategory::Helmet)
+	{
+		const FTN_HelmetData* HelmRow = FindHelmetRow(Id, TEXT("GetCosmeticPrice"));
+		return HelmRow ? FMath::Max(0, HelmRow->Price) : 0;
+	}
+	const FTN_SkinData* SkinRow = FindSkinRow(Id, TEXT("GetCosmeticPrice"));
+	return SkinRow ? FMath::Max(0, SkinRow->Price) : 0;
+}
+
+bool UMP_GameInstance::PurchaseCosmetic(ETNCosmeticCategory Category, FName Id)
+{
+	if (!CosmeticProfile || Id == NAME_None) { return false; }
+	if (IsCosmeticUnlocked(Category, Id)) { return true; }
+	const int32 Price = GetCosmeticPrice(Category, Id);
+	if (Price > CosmeticProfile->AccumulatedRaceScore) { return false; }
+	CosmeticProfile->AccumulatedRaceScore -= Price;
+	if (Category == ETNCosmeticCategory::Helmet) { CosmeticProfile->UnlockedHelmetIds.AddUnique(Id); }
+	else { CosmeticProfile->UnlockedSkinIds.AddUnique(Id); }
+	SaveCosmeticProfile();
+	UE_LOG(LogTortunabo, Log, TEXT("[Tienda] Desbloqueado '%s' por %d (quedan %d)."), *Id.ToString(), Price, CosmeticProfile->AccumulatedRaceScore);
+	return true;
+}
+
+TArray<FName> UMP_GameInstance::GetCosmeticCatalog(ETNCosmeticCategory Category) const
+{
+	TArray<FName> Out;
+	if (Category == ETNCosmeticCategory::Helmet)
+	{
+		if (const UDataTable* HelmDT = GetHelmetDataTable())
+		{
+			for (const FName Row : HelmDT->GetRowNames())
+			{
+				const FTN_HelmetData* HelmRow = HelmDT->FindRow<FTN_HelmetData>(Row, TEXT("GetCosmeticCatalog"));
+				if (HelmRow && HelmRow->DisplayMesh) { Out.Add(Row); }
+			}
+		}
+		return Out;
+	}
+	if (const UDataTable* SkinDT = GetSkinDataTable())
+	{
+		for (const FName Row : SkinDT->GetRowNames())
+		{
+			// Todas las filas de la categoría: en la malla de demo el aspecto sale de sus colores y su dibujo (M_TurtleBody).
+			const FTN_SkinData* SkinRow = SkinDT->FindRow<FTN_SkinData>(Row, TEXT("GetCosmeticCatalog"));
+			if (SkinRow && SkinRow->Category == Category) { Out.Add(Row); }
+		}
+	}
+	return Out;
+}
+
+TArray<FName> UMP_GameInstance::GetUnlockedSkinIds() const
+{
+	return CosmeticProfile ? CosmeticProfile->UnlockedSkinIds : TArray<FName>();
+}
+
+bool UMP_GameInstance::EquipShell(FName ShellId)
+{
+	if (!CosmeticProfile) { return false; }
+	CosmeticProfile->EquippedShellId = ShellId;
+	SaveCosmeticProfile();
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedShellId() const
+{
+	return CosmeticProfile ? CosmeticProfile->EquippedShellId : NAME_None;
+}
+
 const FTN_HelmetData* UMP_GameInstance::FindHelmetRow(FName HelmetId, const TCHAR* Ctx) const
 {
 	const UDataTable* HelmDT = GetHelmetDataTable();
@@ -901,20 +979,10 @@ void UMP_GameInstance::SaveCosmeticProfile() const
 
 FString UMP_GameInstance::BuildCosmeticSaveSlot() const
 {
-	FString Suffix = TEXT("Local");
-	if (const ULocalPlayer* LP = GetFirstGamePlayer())
-	{
-		if (!LP->GetNickname().IsEmpty())
-		{
-			Suffix = LP->GetNickname();
-		}
-		else
-		{
-			Suffix = FString::Printf(TEXT("LocalPlayer_%d"), LP->GetLocalPlayerIndex());
-		}
-	}
-
-	return FString::Printf(TEXT("%s_%s"), *CosmeticSaveSlotPrefix, *Suffix);
+	// Un solo perfil por máquina y siempre el mismo nombre. Antes se cargaba de "_Local" (en Init aún no hay jugador
+	// local) y se guardaba con el nick, que con el subsistema NULL lleva un GUID distinto cada sesión: lo desbloqueado
+	// se perdía al reiniciar.
+	return FString::Printf(TEXT("%s_Local"), *CosmeticSaveSlotPrefix);
 }
 
 // ── Race Score ────────────────────────────────────────────────────────────────

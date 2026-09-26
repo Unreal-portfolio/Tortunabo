@@ -1,0 +1,218 @@
+#include "Core/TN_CosmeticLook.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/SkinnedAsset.h"
+#include "Engine/StaticMesh.h"
+#include "Kismet/GameplayStatics.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "Multiplayer/MP_GameInstance.h"
+#include "ReferenceSkeleton.h"
+
+namespace TNCosmeticLookDetail
+{
+	const TCHAR* const BodyMaterialPath = TEXT("/Game/Cosmetics/Materials/M_TurtleBody.M_TurtleBody");
+	const TCHAR* const HelmetSlotMaterialPath = TEXT("/Game/Cosmetics/Materials/M_TurtleHelmetSlot.M_TurtleHelmetSlot");
+
+	/** Coronilla de TotugaDemo_Rig en su postura de referencia (espacio de la malla, antes del escalado del actor). */
+	const FVector HeadTop(0.0, 5.5, 51.0);
+
+	/** Verde del cuerpo de serie (difuso de M_TortugaDemo2) y crema de la barriga, en lineal. */
+	const FLinearColor SerieGreen(0.017144f, 0.090625f, 0.000829f, 1.f);
+	const FLinearColor SerieBelly(0.896f, 0.768f, 0.381f, 1.f);
+
+	struct FTurtleSlots
+	{
+		bool bUnified = false;
+		int32 HelmetSlot = INDEX_NONE;
+		int32 BodySlot = INDEX_NONE;
+	};
+
+	FTurtleSlots SlotsOf(const USkeletalMeshComponent* Body)
+	{
+		FTurtleSlots Slots;
+		const int32 Num = Body->GetNumMaterials();
+		if (Num >= 5)
+		{
+			Slots.bUnified = true;
+			return Slots;
+		}
+		Slots.HelmetSlot = Body->GetMaterialIndex(TEXT("lambert2"));
+		Slots.BodySlot = Body->GetMaterialIndex(TEXT("lambert4"));
+		if (Num == 2)
+		{
+			if (Slots.HelmetSlot == INDEX_NONE) { Slots.HelmetSlot = 0; }
+			if (Slots.BodySlot == INDEX_NONE) { Slots.BodySlot = 1; }
+		}
+		return Slots;
+	}
+
+	UMaterialInterface* LoadMaterial(const TCHAR* Path)
+	{
+		return LoadObject<UMaterialInterface>(nullptr, Path);
+	}
+
+	const UMP_GameInstance* GameInstanceOf(const UObject* Context)
+	{
+		return Context ? Cast<UMP_GameInstance>(UGameplayStatics::GetGameInstance(Context)) : nullptr;
+	}
+}
+
+void UTN_CosmeticLook::AttachHelmet(USkeletalMeshComponent* Body, UStaticMeshComponent* Helmet, const FTN_HelmetData* Row)
+{
+	using namespace TNCosmeticLookDetail;
+	if (!Body || !Helmet) { return; }
+	static const FName SombreroSocket(TEXT("Sombrero"));
+	static const FName HeadBone(TEXT("Head"));
+	const FVector Offset = Row ? Row->MeshOffset : FVector::ZeroVector;
+	const FRotator Turn = Row ? Row->MeshRotation : FRotator::ZeroRotator;
+	const FVector Scale = (Row && !Row->MeshScale.IsNearlyZero()) ? Row->MeshScale : FVector::OneVector;
+
+	if (Body->DoesSocketExist(SombreroSocket))
+	{
+		Helmet->AttachToComponent(Body, FAttachmentTransformRules::KeepRelativeTransform, SombreroSocket);
+		Helmet->SetRelativeTransform(FTransform(Turn, Offset, Scale));
+		return;
+	}
+
+	const FTransform HelmetCS(Turn, HeadTop + Offset, Scale);
+	const USkinnedAsset* Asset = Body->GetSkinnedAsset();
+	const int32 BoneIndex = Asset ? Asset->GetRefSkeleton().FindBoneIndex(HeadBone) : INDEX_NONE;
+	if (BoneIndex == INDEX_NONE)
+	{
+		Helmet->AttachToComponent(Body, FAttachmentTransformRules::KeepRelativeTransform);
+		Helmet->SetRelativeTransform(HelmetCS);
+		return;
+	}
+
+	// Hueso de la cabeza en espacio de componente (postura de referencia): el casco queda fijo respecto a él.
+	const FReferenceSkeleton& RefSkeleton = Asset->GetRefSkeleton();
+	const TArray<FTransform>& RefPose = RefSkeleton.GetRefBonePose();
+	FTransform BoneCS = FTransform::Identity;
+	for (int32 Index = BoneIndex; Index != INDEX_NONE; Index = RefSkeleton.GetParentIndex(Index))
+	{
+		BoneCS = BoneCS * RefPose[Index];
+	}
+	Helmet->AttachToComponent(Body, FAttachmentTransformRules::KeepRelativeTransform, HeadBone);
+	Helmet->SetRelativeTransform(HelmetCS.GetRelativeTransform(BoneCS));
+}
+
+void UTN_CosmeticLook::ApplyLook(const UObject* WorldContext, USkeletalMeshComponent* Body, UStaticMeshComponent* Helmet, const FTN_TurtleLook& Look,
+	TArray<TObjectPtr<UMaterialInterface>>& Defaults)
+{
+	using namespace TNCosmeticLookDetail;
+	if (!Body) { return; }
+	const UMP_GameInstance* GI = GameInstanceOf(WorldContext ? WorldContext : Body);
+
+	if (Defaults.Num() == 0)
+	{
+		for (int32 i = 0; i < Body->GetNumMaterials(); ++i) { Defaults.Add(Body->GetMaterial(i)); }
+	}
+	for (int32 i = 0; i < Defaults.Num(); ++i) { Body->SetMaterial(i, Defaults[i]); }
+
+	const FTN_HelmetData* HelmRow = (GI && Look.HelmetId != NAME_None) ? GI->FindHelmetRow(Look.HelmetId, TEXT("CosmeticLook")) : nullptr;
+	const FTN_SkinData* SkinRow = (GI && Look.SkinId != NAME_None) ? GI->FindSkinRow(Look.SkinId, TEXT("CosmeticLook")) : nullptr;
+	const FTN_SkinData* ShellRow = (GI && Look.ShellId != NAME_None) ? GI->FindSkinRow(Look.ShellId, TEXT("CosmeticLook")) : nullptr;
+
+	UStaticMesh* HelmMesh = HelmRow ? HelmRow->DisplayMesh.Get() : nullptr;
+	if (Helmet)
+	{
+		Helmet->SetStaticMesh(HelmMesh);
+		Helmet->SetHiddenInGame(HelmMesh == nullptr);
+		if (HelmMesh) { AttachHelmet(Body, Helmet, HelmRow); }
+	}
+
+	const FTurtleSlots Slots = SlotsOf(Body);
+	if (Slots.bUnified)
+	{
+		auto Assign = [Body](int32 Slot, UMaterialInterface* Mat) { if (Mat) { Body->SetMaterial(Slot, Mat); } };
+		if (SkinRow)
+		{
+			Assign(0, SkinRow->BellyMaterial);
+			Assign(1, SkinRow->EyeShineMaterial);
+			Assign(2, SkinRow->EyesMouthMaterial);
+			Assign(3, SkinRow->SkinMaterial);
+			Assign(4, SkinRow->ShellMaterial);
+		}
+		if (ShellRow) { Assign(4, ShellRow->ShellMaterial); }
+		Body->MarkRenderStateDirty();
+		return;
+	}
+
+	// Malla de demo: el casco de serie se recorta si hay otro y el cuerpo se pinta con M_TurtleBody.
+	if (HelmMesh && Slots.HelmetSlot != INDEX_NONE)
+	{
+		if (UMaterialInterface* SlotMat = LoadMaterial(HelmetSlotMaterialPath)) { Body->SetMaterial(Slots.HelmetSlot, SlotMat); }
+	}
+	if ((SkinRow || ShellRow) && Slots.BodySlot != INDEX_NONE)
+	{
+		UMaterialInterface* BodyMat = LoadMaterial(BodyMaterialPath);
+		if (UMaterialInstanceDynamic* MID = BodyMat ? Body->CreateDynamicMaterialInstance(Slots.BodySlot, BodyMat) : nullptr)
+		{
+			MID->SetVectorParameterValue(TEXT("BodyColor"), SkinRow ? SkinRow->Color : SerieGreen);
+			MID->SetVectorParameterValue(TEXT("BellyColor"), SkinRow ? SkinRow->Color2 : SerieBelly);
+			MID->SetScalarParameterValue(TEXT("BellyAmount"), SkinRow ? SkinRow->BellyAmount : 0.f);
+			MID->SetScalarParameterValue(TEXT("ShellMatchBody"), ShellRow ? 0.f : 1.f);
+			if (ShellRow)
+			{
+				MID->SetVectorParameterValue(TEXT("ShellColor"), ShellRow->Color);
+				MID->SetVectorParameterValue(TEXT("ShellColor2"), ShellRow->Color2);
+				MID->SetScalarParameterValue(TEXT("ShellPattern"), static_cast<float>(ShellRow->Pattern));
+				MID->SetScalarParameterValue(TEXT("PatternScale"), ShellRow->PatternScale);
+				MID->SetScalarParameterValue(TEXT("ShellShine"), ShellRow->Shine);
+				MID->SetScalarParameterValue(TEXT("ShellGlow"), ShellRow->Glow);
+			}
+			else
+			{
+				MID->SetScalarParameterValue(TEXT("ShellPattern"), 0.f);
+				MID->SetScalarParameterValue(TEXT("ShellShine"), 0.f);
+				MID->SetScalarParameterValue(TEXT("ShellGlow"), 0.f);
+			}
+		}
+	}
+	Body->MarkRenderStateDirty();
+}
+
+FText UTN_CosmeticLook::GetDisplayName(const UObject* WorldContext, ETNCosmeticCategory Category, FName Id)
+{
+	using namespace TNCosmeticLookDetail;
+	if (Id == NAME_None)
+	{
+		switch (Category)
+		{
+		case ETNCosmeticCategory::Helmet: return NSLOCTEXT("Tortunabo", "SerieHelmet", "Casco de serie");
+		case ETNCosmeticCategory::Shell:  return NSLOCTEXT("Tortunabo", "SerieShell", "Caparazón de serie");
+		default:                          return NSLOCTEXT("Tortunabo", "SerieBody", "Verde de serie");
+		}
+	}
+	const UMP_GameInstance* GI = GameInstanceOf(WorldContext);
+	if (Category == ETNCosmeticCategory::Helmet)
+	{
+		const FTN_HelmetData* Row = GI ? GI->FindHelmetRow(Id, TEXT("CosmeticName")) : nullptr;
+		return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::FromName(Id);
+	}
+	const FTN_SkinData* Row = GI ? GI->FindSkinRow(Id, TEXT("CosmeticName")) : nullptr;
+	return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::FromName(Id);
+}
+
+FText UTN_CosmeticLook::GetDescription(const UObject* WorldContext, ETNCosmeticCategory Category, FName Id)
+{
+	using namespace TNCosmeticLookDetail;
+	if (Id == NAME_None)
+	{
+		switch (Category)
+		{
+		case ETNCosmeticCategory::Helmet: return NSLOCTEXT("Tortunabo", "SerieHelmetDesc", "El casco rojo de siempre. Protege de los cocos.");
+		case ETNCosmeticCategory::Shell:  return NSLOCTEXT("Tortunabo", "SerieShellDesc", "Tu caparazón original, a juego con tu color.");
+		default:                          return NSLOCTEXT("Tortunabo", "SerieBodyDesc", "Verde tortuga, el clásico que nunca falla.");
+		}
+	}
+	const UMP_GameInstance* GI = GameInstanceOf(WorldContext);
+	if (Category == ETNCosmeticCategory::Helmet)
+	{
+		const FTN_HelmetData* Row = GI ? GI->FindHelmetRow(Id, TEXT("CosmeticDesc")) : nullptr;
+		return Row ? Row->Description : FText::GetEmpty();
+	}
+	const FTN_SkinData* Row = GI ? GI->FindSkinRow(Id, TEXT("CosmeticDesc")) : nullptr;
+	return Row ? Row->Description : FText::GetEmpty();
+}

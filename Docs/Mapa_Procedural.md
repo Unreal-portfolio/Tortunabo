@@ -31,6 +31,17 @@ juego (Coop, Carrera y 2vs2). **Convive** con el sistema de chunks
    **GenerateInEditor** (semilla, modo y dificultad en *ProcMap|Editor*). Con
    `bDebugDraw` dibuja camino, ramas y módulos.
 
+6. **Probar la tormenta** en cualquier sitio (PIE, consola): `TNStorm <Selva|Playa|Desierto|Volcan|Agua|Rocas|Manglar|Pueblo>`
+   lleva la tortuga al tramo más largo de ese bioma y pone el frente de la tormenta 9 m por detrás
+   (inofensiva); `TNStorm Geiser` y `TNStorm Cascada` van cada vez al siguiente géiser o cascada del
+   mapa; un segundo número cambia la distancia (negativo = ya dentro); `TNStorm Off` la para y la
+   devuelve a la normal.
+7. **Solo terreno** (para comparar generadores): `ATN_ProcMapGenerator::bTerrainOnly` genera el
+   terreno y lo integrado en el camino (cuevas, puentes, murallas, huecos, troncos, obstáculos,
+   géiseres y cascadas) sin vegetación, fauna, formaciones decorativas, hitos, recompensas, huevos,
+   peligros ni efectos. `ATN_TerrainViewGameMode` (nivel `LVL_ProcMap_Terrain`) lo usa con una tortuga
+   sin HUD; `TNRegen [semilla]` vuelve a generar.
+
 Cada generación deja en el Output Log una línea `[ProcMap] Mapa listo · semilla …`
 con módulos en ruta, cruces, ramas, **longitud del camino y minutos estimados**
 a 5,5 m/s, y los tiempos de cada fase.
@@ -235,17 +246,31 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 - **Cascadas-tobogán**: lámina de agua con UV de flujo (`M_ProcCascade`, ondas que corren ladera
   abajo), en rejilla de 30 × ~60 cm con cada vértice 25 cm sobre el punto más alto del terreno de sus
   cuadros vecinos (el terreno nunca asoma), espuma en los bordes, en el labio (el primer metro y
-  medio, con espuma y gotitas que se asoman) y al pie. Abajo, una poza con borde de espuma
-  (`ATN_ProcMapGenerator::SlidePool`, compartida por la malla y los efectos): sus UV salen del
-  punto donde cae el agua, así que las ondas del material corren desde el impacto hacia fuera, y
-  además salen anillos de onda que se abren desde ahí y se hunden al final; salpicaduras, espuma y
-  bruma, todo a la cota del agua.
+  medio, con espuma y gotitas que se asoman) y al pie. Abajo, una poza pegada a la cascada
+  (`TNProcMap::SlidePoolOf`, la misma cuenta para el terreno, la malla y los efectos): el agua
+  queda a ras del suelo donde llega la lámina (12 cm por debajo) y el fondo baja un metro justo donde
+  cae la tortuga y sube suave hasta la orilla (`PoolDims`, influencia `Pool` del terreno). Sus UV
+  salen del punto donde cae el agua, así que las ondas del material corren desde el impacto hacia
+  fuera, y además salen anillos de onda que se abren desde ahí y se hunden al final; salpicaduras,
+  espuma y bruma, todo a la cota del agua.
 - **Efectos ambientales** (`TN_ProcMapAmbientFX.h`, solo visuales y locales): partículas que son
   instancias de mallas low-poly (gotas, vapor, brasas), dormidas lejos de la cámara; brasas sobre los
   lagos y ríos de lava; bandadas de gaviotas en la costa y la meta, guacamayos en la selva, pájaros
   sobre bosques y roca y buitres en el desierto (`M_ProcBird`, aleteo por el alfa del vértice).
 - **Agua animada** (`M_ProcWaterAnim`): ondas en dos capas que se desplazan, color de somera a
   profunda, espuma en las orillas; más clara y rápida en los toboganes.
+- **Fauna** (`ATN_ProcFauna`, `TN_ProcMapFaunaMeshes.h`; solo visual y local): 31 especies low-poly
+  por bioma (monos, tucanes y ranas en la selva; cangrejos, gaviotas y tortuguitas en la playa;
+  suricatos, lagartijas y correcaminos en el desierto; salamandras y escarabajos de fuego en el
+  volcán; peces, pelícanos y flamencos en el agua; cabras y águilas en la roca; garzas y cangrejos
+  violinistas en el manglar; gatos, palomas y gallinas en la zona humana) cerca de los caminos. Al
+  acercarse la tortuga huyen más rápido que ella (trepan paredes, vuelan, se entierran o se meten en
+  el agua) y reaparecen por delante. Consola: `TN.Fauna.Enable`, `TN.Fauna.Stats`.
+- **Sonido ambiente sintetizado** (`TN_AmbientSynthComponent`, `UTN_AmbientSoundscapeComponent` en
+  el PlayerController; sin archivos de audio): capas por bioma (viento, oleaje, aves, cigarras,
+  grillos, ranas...) que cambian en degradado, tormenta, cuevas amortiguadas, y fuentes 3D en los
+  géiseres (siguen el chorro), las cascadas y la lava. Para sustituirlo por sonidos de verdad:
+  `TN_AmbienceDataAsset`. Consola: `TN.Ambience.Debug`, `TN.Ambience.Volume`.
 
 ---
 

@@ -1,0 +1,258 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "Core/TN_CosmeticsTypes.h"
+#include "TN_ShopWidgets.generated.h"
+
+class AMP_GamePlayerController;
+class ATN_ChangingBooth;
+class ATN_CosmeticPreview;
+class ATN_ShopKeeper;
+class UBorder;
+class UImage;
+class UMaterialInstanceDynamic;
+class UMP_GameInstance;
+class UScrollBox;
+class USizeBox;
+class UTextBlock;
+class UTexture2D;
+class UTextureRenderTarget2D;
+class UWrapBox;
+
+/** Botón de la tienda hecho en código: cartel con texto que crece un poco al pasar el ratón. */
+UCLASS()
+class TORTUNABO_API UTN_ShopButton : public UUserWidget
+{
+	GENERATED_BODY()
+
+public:
+	void Setup(const FText& Label, UTexture2D* Art, const FLinearColor& TextColor, int32 FontSize, const FVector2D& MinSize, TFunction<void()> InOnClick);
+	void SetLabel(const FText& Label);
+	void SetArt(UTexture2D* Art);
+	void SetDisabled(bool bInDisabled);
+
+protected:
+	virtual void NativeOnInitialized() override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual void NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual void NativeOnMouseLeave(const FPointerEvent& InMouseEvent) override;
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> Frame;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> Sizer;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> LabelText;
+
+	TFunction<void()> OnClick;
+	bool bPressed = false;
+	bool bDisabled = false;
+	void ApplyScale(float Scale);
+};
+
+/** Carta del catálogo: miniatura (captura del escaparate), nombre y etiqueta (precio, tuyo, puesto). */
+UCLASS()
+class TORTUNABO_API UTN_ShopCard : public UUserWidget
+{
+	GENERATED_BODY()
+
+public:
+	void Setup(UTextureRenderTarget2D* Thumb, const FText& Name, TFunction<void()> InOnClick);
+	void SetState(bool bInSelected, const FText& Tag, const FLinearColor& TagColor);
+
+protected:
+	virtual void NativeOnInitialized() override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual void NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual void NativeOnMouseLeave(const FPointerEvent& InMouseEvent) override;
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> Frame;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> ThumbImage;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> ThumbMID;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NameText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> TagText;
+
+	TFunction<void()> OnClick;
+	bool bSelected = false;
+	bool bHover = false;
+	void RefreshLook();
+};
+
+/**
+ * Base de la tienda y del probador: la vista previa grande (ATN_CosmeticPreview, se gira arrastrando), el foco del
+ * teclado y el cierre (Escape). Al cerrarse, el PlayerController devuelve el control al juego (CloseShopUI).
+ */
+UCLASS(Abstract)
+class TORTUNABO_API UTN_CosmeticMenuBase : public UUserWidget
+{
+	GENERATED_BODY()
+
+protected:
+	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+	/** Teclas propias de cada menú; true si la usa. */
+	virtual bool HandleKey(const FKey& Key) { return false; }
+
+	/** Cartel con la captura del escaparate (se gira arrastrando) y la pista de debajo. */
+	UWidget* MakePreviewPanel(float Size);
+
+	ATN_CosmeticPreview* GetPreview() const { return Preview.Get(); }
+	AMP_GamePlayerController* GetTNPC() const;
+	UMP_GameInstance* GetTNGI() const;
+
+	/** Lo que lleva puesto el jugador (PlayerState; si aún no hay, lo guardado en la GameInstance). */
+	FTN_TurtleLook GetWornLook() const;
+
+	/** Miniatura de un cosmético (del escaparate). */
+	UTextureRenderTarget2D* Thumbnail(ETNCosmeticCategory Category, FName Id) const;
+
+	/** Material de UI que pinta una captura del escaparate. */
+	UMaterialInstanceDynamic* MakeCaptureMID(UTextureRenderTarget2D* RT);
+
+	void CloseMenu();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> PreviewImage;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> PreviewMID;
+
+	TWeakObjectPtr<ATN_CosmeticPreview> Preview;
+
+private:
+	bool bDragging = false;
+	FVector2D LastMouse = FVector2D::ZeroVector;
+};
+
+/**
+ * La tienda de Don Tortugo, estilo Mario Kart: a la izquierda tu tortuga posando y girando con lo que miras puesto; a
+ * la derecha el tendero hablando en su bocadillo, las pestañas (cascos, caparazones, colores) y el catálogo con
+ * miniaturas y precio. Comprar desbloquea (hoy todo cuesta 0 conchas); para ponérselo, al probador.
+ */
+UCLASS()
+class TORTUNABO_API UTN_ShopWidget : public UTN_CosmeticMenuBase
+{
+	GENERATED_BODY()
+
+public:
+	void SetShop(ATN_ShopKeeper* InShop);
+
+protected:
+	virtual void NativeOnInitialized() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual bool HandleKey(const FKey& Key) override;
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> TitleText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> KeeperNameText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> DialogText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> WalletText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UScrollBox> GridScroll;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UWrapBox> Grid;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTN_ShopButton>> Tabs;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_ShopButton> BuyButton;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTN_ShopCard>> Cards;
+
+	TWeakObjectPtr<ATN_ShopKeeper> Shop;
+	ETNCosmeticCategory Tab = ETNCosmeticCategory::Helmet;
+	TArray<FName> Items;
+	int32 Selected = 0;
+	FString FullLine;
+	float Reveal = 0.f;
+
+	void BuildTree();
+	void ShowTab(ETNCosmeticCategory Category);
+	void Select(int32 Index, bool bSpeak);
+	void Buy();
+	void Say(const FText& Line);
+	void RefreshCards();
+	void RefreshBuyButton();
+	void RefreshWallet();
+	FText TagFor(FName Id, FLinearColor& OutColor) const;
+};
+
+/**
+ * El probador, estilo Mario Kart: la tortuga girando a la izquierda y, a la derecha, tres filas (casco, caparazón y
+ * color) que se cambian con las flechas. Solo salen los cosméticos desbloqueados. ¡Listo! se lo pone (se replica) y la
+ * tortuga sale de la botella; Cancelar sale sin cambios.
+ */
+UCLASS()
+class TORTUNABO_API UTN_BoothWidget : public UTN_CosmeticMenuBase
+{
+	GENERATED_BODY()
+
+public:
+	void SetBooth(ATN_ChangingBooth* InBooth);
+
+protected:
+	virtual void NativeOnInitialized() override;
+	virtual bool HandleKey(const FKey& Key) override;
+
+private:
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UBorder>> RowFrames;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UImage>> RowThumbs;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> RowThumbMIDs;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTextBlock>> RowNames;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTextBlock>> RowCounts;
+
+	TWeakObjectPtr<ATN_ChangingBooth> Booth;
+	TArray<TArray<FName>> Options;
+	TArray<int32> Choice;
+	int32 FocusedRow = 0;
+	FTN_TurtleLook Initial;
+
+	void BuildTree();
+	void LoadOptions();
+	void Cycle(int32 Row, int32 Dir);
+	void FocusRow(int32 Row);
+	void RefreshRows();
+	FTN_TurtleLook ChosenLook() const;
+	void Accept();
+};

@@ -131,4 +131,11 @@ private:
 
 	/** @brief Cambia el MatchFlowState replicado + dispara broadcast manual a listen-server. */
 	void SetFlowState(ETNMatchFlowState NewState) const;
+
+	/**
+	 * @brief Coloca la tienda (ATN_ShopKeeper) y los probadores (ATN_ChangingBooth) si el nivel no los trae puestos.
+	 *        Sitios: actores con la etiqueta TN_ShopAnchor / TN_BoothAnchor; si no hay, los de la maqueta del lobby
+	 *        (el tendero es la tortuga grande junto a la carpa; los probadores, las botellas BP_VestidorBotella).
+	 */
+	void SpawnLobbyShops();
 };

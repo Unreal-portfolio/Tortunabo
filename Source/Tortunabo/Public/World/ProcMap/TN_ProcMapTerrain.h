@@ -380,7 +380,7 @@ namespace TNProcMap
 		TArray<int32> Volcanoes;
 
 		// ── Influencias localizadas (cubos) ─────────────────────────────────
-		enum class EInf : uint8 { Tower, Tunnel, DeckClear, Gate, Gap, Lava, Island, River, CaveMass };
+		enum class EInf : uint8 { Tower, Tunnel, DeckClear, Gate, Gap, Lava, Island, River, CaveMass, Pool };
 		struct FInf
 		{
 			EInf Type = EInf::Tower;
@@ -918,6 +918,18 @@ namespace TNProcMap
 					}
 					continue;
 				}
+				if (F.Type == EFeature::SlideZone)
+				{
+					// Poza al pie de la cascada: su propio centro (no el labio, que es donde está la feature).
+					FVector2D PoolC, PoolLand, PoolFlow;
+					double PoolR = 0.0, PoolWaterZ = 0.0;
+					if (SlidePoolOf(*L, F, PoolC, PoolR, PoolWaterZ, PoolLand, PoolFlow))
+					{
+						Inf.Type = EInf::Pool;
+						AddInf(Inf, PoolC - FVector2D(PoolR, PoolR), PoolC + FVector2D(PoolR, PoolR));
+					}
+					continue;
+				}
 				switch (F.Type)
 				{
 					case EFeature::Tower:      Inf.Type = EInf::Tower; Reach = F.Radius + 3200.0; break;
@@ -1395,6 +1407,20 @@ namespace TNProcMap
 					// debajo; el lago de magma de la cueva queda como pozo, rodeado de basalto).
 					H = FMath::Max(H, LerpD(F.Location.Z + 80.0, H, (D - F.Radius) / 900.0));
 				}
+			}
+
+			// Pozas al pie de las cascadas: el terreno se hunde hasta PoolDims::Depth bajo el agua donde cae la tortuga y
+			// sube suave a la orilla. Se resta a lo que haya (sin escalones): la rampa del tobogán se mete en el agua y
+			// la lámina de la cascada acaba dentro de la poza.
+			for (const FInf& Inf : Bin)
+			{
+				if (Inf.Type != EInf::Pool) { continue; }
+				FVector2D PoolC, PoolLand, PoolFlow;
+				double PoolR = 0.0, PoolWaterZ = 0.0;
+				if (!SlidePoolOf(*L, L->Features[Inf.A], PoolC, PoolR, PoolWaterZ, PoolLand, PoolFlow)) { continue; }
+				const double PoolD = FVector2D::Distance(P, PoolC);
+				if (PoolD >= PoolR) { continue; }
+				H -= (PoolDims::Depth + PoolDims::Below) * (1.0 - SmoothStep(0.2, 1.0, PoolD / PoolR));
 			}
 
 			// Islas decorativas: cúpula suave sobre el lecho.

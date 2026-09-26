@@ -14,6 +14,7 @@
 #include "TN_ProcMapMeshKit.h"
 #include "TN_ProcMapRuntimeMesh.h"
 #include "TN_ProcMapAmbientFX.h"
+#include "Audio/TN_AmbientSynthComponent.h"
 
 namespace
 {
@@ -332,6 +333,8 @@ void ATN_ProcGeyser::BeginPlay()
 	Rise.SizeStart = 13.f;
 	Rise.SizeEnd = 9.f;
 	TNAmbientFX::AddEmitter(this, Rise, Base + FVector(0.f, 0.f, 60.f));
+
+	WaterSound = UTN_AmbientSynthComponent::AttachWaterSound(this, 1.f, true);
 }
 
 void ATN_ProcGeyser::Tick(float DeltaTime)
@@ -343,6 +346,7 @@ void ATN_ProcGeyser::Tick(float DeltaTime)
 	PulseTime += DeltaTime;
 	const float Phase = FMath::Frac(PulseTime / FMath::Max(1.f, CycleSeconds));
 	const float Surge = TNGeyserEnvelope(Phase);
+	if (WaterSound) { WaterSound->SetIntensity(Surge); }
 	const float Height = FMath::Lerp(JetLow, JetHigh, Surge) + 25.f * FMath::Sin(PulseTime * 9.f);
 	const float Width = (bShaft ? 1.25f : 1.f) * (0.9f + 0.25f * Surge + 0.05f * FMath::Sin(PulseTime * 13.f));
 	ColumnMesh->SetRelativeScale3D(FVector(Width, Width, Height / 100.f));
@@ -625,6 +629,11 @@ void ATN_ProcSlideZone::InitFromPoints(const TArray<FVector>& Points, float Widt
 		Ripples.SizeEnd = 2.f * FMath::Max(150.f, PoolRadius - 0.5f * static_cast<float>(FVector::Dist2D(PoolCenter, Impact)));
 		Ripples.WakeDistance = 14000.f;
 		TNAmbientFX::AddEmitter(this, Ripples, Impact + FVector(0.f, 0.f, 3.f));
+
+		// Rumor de la cascada, donde cae el agua (se oye unos 40 m).
+		const FVector FallAt = Impact + FVector(0.f, 0.f, 150.f);
+		if (UTN_AmbientSynthComponent* Fall = FindComponentByClass<UTN_AmbientSynthComponent>()) { Fall->SetWorldLocation(FallAt); }
+		else { UTN_AmbientSynthComponent::AttachWaterSoundAt(this, FallAt, FMath::Clamp(Width / 1500.f, 0.7f, 1.3f), false); }
 	}
 }
 

@@ -27,6 +27,10 @@
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
+#include "World/TN_InteractableBase.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/LocalPlayer.h"
+#include "InputAction.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "World/ProcMap/TN_PathStorm.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
@@ -447,6 +451,30 @@ void UTN_RunHUDWidget::BuildTree()
 		ReviveBanner->SetVisibility(ESlateVisibility::Collapsed);
 		Place(Canvas, ReviveBanner, FVector2D(0.5f, 0.5f), FVector2D(0.f, 90.f));
 	}
+
+	// ── Aviso de interacción: tecla en un botón azul marino y el texto del interactuable al alcance ──
+	{
+		UHorizontalBox* Row = Make<UHorizontalBox>(Tree);
+		PromptKeyText = MakeText(Tree, nullptr, FText::FromString(TEXT("E")), TEXT("Black"), 22, TNHUDArt::Cream, false);
+		PromptKeyText->SetJustification(ETextJustify::Center);
+		UBorder* KeyCap = Make<UBorder>(Tree);
+		KeyCap->SetBrush(Rounded(TNHUDArt::Navy, 10.f, TNHUDArt::Cream, 2.5f));
+		KeyCap->SetPadding(FMargin(12.f, 2.f, 12.f, 4.f));
+		KeyCap->SetHorizontalAlignment(HAlign_Center);
+		KeyCap->SetVerticalAlignment(VAlign_Center);
+		KeyCap->SetContent(PromptKeyText);
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(MakeSize(Tree, KeyCap, 0.f, 42.f)))
+		{
+			S->SetVerticalAlignment(VAlign_Center);
+			S->SetPadding(FMargin(0.f, 0.f, 12.f, 0.f));
+		}
+		PromptLabel = MakeText(Tree, nullptr, FText::GetEmpty(), TEXT("Bold"), 20, NavyText, false);
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(PromptLabel)) { S->SetVerticalAlignment(VAlign_Center); }
+		PromptCard = MakeCard(Tree, TNHUDArt::SandTagTexture(), TagMargin, Row, FMargin(18.f, 8.f, 26.f, 10.f));
+		PromptCard->SetRenderTransformPivot(FVector2D(0.5f, 1.f));
+		PromptCard->SetVisibility(ESlateVisibility::Collapsed);
+		Place(Canvas, PromptCard, FVector2D(0.5f, 1.f), FVector2D(0.f, -200.f));
+	}
 }
 
 void UTN_RunHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -458,6 +486,49 @@ void UTN_RunHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 	TickTrack(InDeltaTime);
 	TickScore(InDeltaTime);
 	TickAlerts(InDeltaTime);
+	TickPrompt(InDeltaTime);
+}
+
+void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
+{
+	if (!PromptCard) { return; }
+	const APlayerController* PC = GetOwningPlayer();
+	ATortugaCharacter* Turtle = PC ? Cast<ATortugaCharacter>(PC->GetPawn()) : nullptr;
+	ATN_InteractableBase* Target = Turtle ? Turtle->GetFocusedInteractable() : nullptr;
+	// Con un menú abierto (tienda, probador, ruedas) no hace falta: el cursor está a la vista.
+	const bool bShow = Target && Target->CanInteract(Turtle) && !PC->ShouldShowMouseCursor() && !Target->GetPromptText().IsEmpty();
+	if (!bShow)
+	{
+		PromptCard->SetVisibility(ESlateVisibility::Collapsed);
+		PromptTarget.Reset();
+		return;
+	}
+	if (PromptTarget.Get() != Target)
+	{
+		PromptTarget = Target;
+		PromptLabel->SetText(Target->GetPromptText());
+		PromptPop = 1.f;
+	}
+	// Tecla de verdad de la acción de interactuar (la primera de teclado), mirada de vez en cuando.
+	PromptKeyTimer -= DeltaTime;
+	if (PromptKeyTimer <= 0.f)
+	{
+		PromptKeyTimer = 2.f;
+		const ULocalPlayer* LP = PC->GetLocalPlayer();
+		const UEnhancedInputLocalPlayerSubsystem* Input = LP ? LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+		if (Input && Turtle->GetInteractAction())
+		{
+			for (const FKey& Key : Input->QueryKeysMappedToAction(Turtle->GetInteractAction()))
+			{
+				if (Key.IsValid() && !Key.IsGamepadKey()) { PromptKeyText->SetText(Key.GetDisplayName(false)); break; }
+			}
+		}
+	}
+	PromptCard->SetVisibility(ESlateVisibility::HitTestInvisible);
+	PromptPop = FMath::Max(0.f, PromptPop - DeltaTime * 4.f);
+	const float Bob = 1.f + 0.03f * FMath::Sin(Time * 4.f);
+	const float Pop = 1.f + 0.25f * PromptPop * PromptPop;
+	PromptCard->SetRenderScale(FVector2D(Bob * Pop, Bob * Pop));
 }
 
 void UTN_RunHUDWidget::TickBadge(float DeltaTime)

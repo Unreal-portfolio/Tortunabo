@@ -131,6 +131,9 @@ public:
 
 	UTN_ProcMapSettings* GetSettings() const { return Settings; }
 
+	/** Modo de solo terreno (bTerrainOnly): lo pone el GameMode del nivel de solo terreno antes de generar. */
+	void SetTerrainOnly(bool bInTerrainOnly) { bTerrainOnly = bInTerrainOnly; }
+
 	/** Ajustes a usar si el generador del nivel no tiene (lo llama el GameMode antes de generar). */
 	void SetSettingsIfMissing(UTN_ProcMapSettings* InSettings) { if (!Settings) { Settings = InSettings; } }
 
@@ -163,6 +166,14 @@ protected:
 	/** Salta la vegetación (iterar rápido sobre la forma del mapa). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Debug")
 	bool bSkipScatter = false;
+
+	/**
+	 * Solo el terreno (LVL_ProcMap_Terrain, para comparar generadores): el terreno y lo integrado en el camino
+	 * (cuevas, puentes, murallas, huecos, troncos, obstáculos, géiseres, cascadas); sin vegetación, fauna, formaciones
+	 * decorativas, hitos, recompensas, huevos, peligros ni efectos ambientales.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ProcMap")
+	bool bTerrainOnly = false;
 
 	/** Dibuja camino, ramas y módulos con líneas de debug. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Debug")

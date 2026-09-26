@@ -637,6 +637,9 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> DefaultSkelMeshMaterials;
 
+	/** Conjunto de cosméticos que lleva puesto (lo rellenan UpdateHelmetMesh, UpdateSkinVisual y ApplyShellSlot). */
+	FTN_TurtleLook CosmeticLook;
+
 	// ── Leg animation state (cosmetic, local-only, never replicated) ──────────
 	float LegPhaseAccumulator    = 0.f;   // cycles [0,1)
 	float LegAmplitudeMultiplier = 0.f;   // [0,1] fade envelope
@@ -1223,6 +1226,16 @@ public:
 	/** Componente de coger y lanzar. */
 	UTN_CarryComponent* GetCarryComponent() const { return CarryComponent; }
 
+	/** Interactuable al alcance que se usaría ahora (solo en el jugador local; lo enseña el aviso del HUD). */
+	ATN_InteractableBase* GetFocusedInteractable() const { return FocusedInteractable.Get(); }
+
+	/** Acción de interactuar (Enhanced Input), para mostrar su tecla. */
+	UInputAction* GetInteractAction() const { return LoadedInteractAction; }
+
+	/** Emote que se está animando (-1 = ninguno; KNOCKDOWN_EMOTE_ID = tumbada) y su tiempo, para UTN_TurtleAnimInstance. */
+	int32 GetActiveEmoteIndex() const { return ActiveEmoteIndex; }
+	float GetEmoteTime() const { return EmoteTime; }
+
 	/** La caída en curso (o la siguiente) no auto-encapsula ni mata hasta aterrizar o entrar al agua. */
 	void SetFallImmuneUntilLanded() { bFallImmune = true; }
 
@@ -1316,6 +1329,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	void UpdateSkinVisual(FName SkinId);
+
+	/** Relee el caparazón del PlayerState (EquippedShellId) y vuelve a vestir a la tortuga. */
+	void ApplyShellSlot();
+
+	/** Viste a la tortuga con CosmeticLook (UTN_CosmeticLook::ApplyLook). */
+	void RefreshCosmeticLook();
 
 	/**
 	 * @brief Re-aplica casco y skin leyendo el PlayerState actual (EquippedHelmetId/EquippedSkinId).

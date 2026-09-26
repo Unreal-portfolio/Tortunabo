@@ -6,6 +6,7 @@
 #include "OnlineSessionSettings.h"
 #include "Engine/EngineBaseTypes.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
+#include "Core/TN_CosmeticsTypes.h"
 #include "MP_GameInstance.generated.h"
 
 class UNetDriver;
@@ -154,6 +155,35 @@ public:
 	/** Devuelve el skin equipado actualmente (NAME_None = sin skin). */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	FName GetEquippedSkinId() const;
+
+	// ── Tienda y probador (casco, caparazón y color por separado) ────────────
+
+	/** NAME_None (el aspecto de serie) siempre está desbloqueado. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool IsCosmeticUnlocked(ETNCosmeticCategory Category, FName Id) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	int32 GetCosmeticPrice(ETNCosmeticCategory Category, FName Id) const;
+
+	/**
+	 * Compra de la tienda: si hay puntos para el precio (hoy todo cuesta 0), los descuenta de AccumulatedRaceScore, lo
+	 * desbloquea y guarda. Devuelve true si queda desbloqueado.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool PurchaseCosmetic(ETNCosmeticCategory Category, FName Id);
+
+	/** Catálogo de la tienda: filas de la categoría en el orden del DataTable (cascos sin malla y skins vacíos fuera). */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	TArray<FName> GetCosmeticCatalog(ETNCosmeticCategory Category) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	TArray<FName> GetUnlockedSkinIds() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool EquipShell(FName ShellId);
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	FName GetEquippedShellId() const;
 
 	/** Devuelve el DataTable de skins para lookup externo. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")

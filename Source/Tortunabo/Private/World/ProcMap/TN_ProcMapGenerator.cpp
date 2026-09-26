@@ -182,7 +182,7 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 	const double T2 = FPlatformTime::Seconds();
 	BuildWater();
 	BuildStructures();
-	if (!bSkipScatter)
+	if (!bSkipScatter && !bTerrainOnly)
 	{
 		BuildScatter();
 		BuildFlora();
@@ -197,8 +197,11 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 		{
 			SpawnServerActors();
 		}
-		SpawnHazards();
-		RunBiomePCG();
+		if (!bTerrainOnly)
+		{
+			SpawnHazards();
+			RunBiomePCG();
+		}
 	}
 	BuildProgressIndex();
 

@@ -27,6 +27,14 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
 	FName EquippedSkinId = NAME_None;
 
+	/** Colores y caparazones desbloqueados en la tienda (filas de DT_Skins). */
+	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
+	TArray<FName> UnlockedSkinIds;
+
+	/** Caparazón equipado (fila de DT_Skins de categoría Shell). NAME_None = el de serie. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
+	FName EquippedShellId = NAME_None;
+
 	/**
 	 * Puntos de carrera acumulados (#26).
 	 * Se suman al terminar cada carrera según posición de llegada.

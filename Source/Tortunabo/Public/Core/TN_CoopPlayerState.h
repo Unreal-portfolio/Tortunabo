@@ -119,6 +119,17 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastForceApplySkin(FName SkinId);
 
+	/**
+	 * Caparazón equipado (fila de DT_Skins de categoría Shell, de la tienda). Manda sobre la ranura del caparazón que
+	 * ponga el color (EquippedSkinId). NAME_None = el de serie o el del color.
+	 */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedShellId, Category = "Cosmetics")
+	FName EquippedShellId = NAME_None;
+
+	/** @brief OnRep de EquippedShellId: reaplica los materiales en el pawn local. */
+	UFUNCTION()
+	void OnRep_EquippedShellId();
+
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	float FinishTimeSeconds = -1.f;
 

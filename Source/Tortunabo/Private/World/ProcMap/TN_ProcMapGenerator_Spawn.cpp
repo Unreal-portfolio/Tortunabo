@@ -19,6 +19,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "PCGComponent.h"
 #include "PCGGraph.h"
+#include "Audio/TN_AmbientSynthComponent.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vegetación y props
@@ -250,7 +251,7 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 			{
 				const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? M : Layout.Branches[F.BranchIndex].Samples;
 				TArray<FVector> Points;
-				for (int32 i = FMath::Clamp(F.PathIndex, 0, S.Num() - 1); i <= FMath::Clamp(F.Aux, 0, S.Num() - 1); ++i)
+				for (int32 i = FMath::Clamp(F.PathIndex, 0, S.Num() - 1); i <= FMath::Clamp(F.Aux + 1, 0, S.Num() - 1); ++i)
 				{
 					Points.Add(MapToWorld2D(S[i].P, S[i].Z));
 				}
@@ -274,6 +275,7 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 					FTransform(FRotator(0.0, Yaw, 0.0), Loc), false)))
 				{
 					Kill->SetExtent(FVector(F.Height * 0.5, F.Width * 0.5 + TNProcMap::GapTrenchSideOf(F), bLava ? 110.0 : 250.0));
+					if (bLava) { UTN_AmbientSynthComponent::AttachPointSound(Kill, ETNAmbientSourceKind::LavaPool, 0.7f, 400.f, 2500.f); }
 				}
 				break;
 			}
@@ -283,6 +285,7 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 				if (ATN_ProcKillVolume* Kill = Cast<ATN_ProcKillVolume>(SpawnMapActor(ATN_ProcKillVolume::StaticClass(), FTransform(Loc), false)))
 				{
 					Kill->SetExtent(FVector(F.Radius * 0.9, F.Radius * 0.9, 150.0));
+					UTN_AmbientSynthComponent::AttachPointSound(Kill, ETNAmbientSourceKind::LavaPool, 1.f, static_cast<float>(F.Radius), 3000.f);
 				}
 				break;
 			}
@@ -334,6 +337,7 @@ void ATN_ProcMapGenerator::SpawnServerActors()
 		{
 			case EFeature::BonusPickup:
 			{
+				if (bTerrainOnly) { break; }
 				// Recompensa en un sitio concreto: la cima de una atalaya o de un parkour.
 				if (UClass* Score = LoadClass<AActor>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C")))
 				{
@@ -343,6 +347,7 @@ void ATN_ProcMapGenerator::SpawnServerActors()
 			}
 			case EFeature::Bouncer:
 			{
+				if (bTerrainOnly) { break; }
 				// Medusa saltarina del juego; sin su Blueprint, la criatura rebotadora de las lagunas.
 				UClass* Jelly = LoadClass<AActor>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_JellyfishActor.BP_JellyfishActor_C"));
 				SpawnMapActor(Jelly ? Jelly : ATN_ProcWaterBouncer::StaticClass(), FTransform(Rot, MapToWorld(F.Location)), true);
@@ -350,6 +355,7 @@ void ATN_ProcMapGenerator::SpawnServerActors()
 			}
 			case EFeature::EggNest:
 			{
+				if (bTerrainOnly) { break; }
 				const FVector Loc = MapToWorld2D(C, TerrainHeightMap(C));
 				if (ATN_ProcEggNest* Nest = Cast<ATN_ProcEggNest>(SpawnMapActor(NestClass, FTransform(Rot, Loc), true)))
 				{

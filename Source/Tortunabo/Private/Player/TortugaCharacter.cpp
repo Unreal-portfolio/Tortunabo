@@ -15,6 +15,7 @@
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
+#include "Player/TN_TurtleAnimInstance.h"
 #include "World/TN_InteractableBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
@@ -167,11 +168,12 @@ void ATortugaCharacter::BeginPlay()
 		UE_LOG(LogTortunabo, Log, TEXT("[TortugaCharacter] Interaction scan timer started (interval=%.2fs)"), InteractionScanInterval);
 	}
 
-	// Force UTN_ProcAnimInstance regardless of any AnimBP set in Blueprint.
-	// Must run before InitBone so the instance exists when the first Tick fires.
+	// Animación en C++ sobre el esqueleto de la malla (UTN_TurtleAnimInstance: clips de locomoción y poses de cada
+	// acción), sea cual sea el AnimBP del Blueprint. Hereda de UTN_ProcAnimInstance: los ajustes por hueso de los
+	// sistemas viejos siguen valiendo. Tiene que ir antes de InitBone para que la instancia exista en el primer Tick.
 	if (GetMesh())
 	{
-		GetMesh()->SetAnimInstanceClass(UTN_ProcAnimInstance::StaticClass());
+		GetMesh()->SetAnimInstanceClass(UTN_TurtleAnimInstance::StaticClass());
 
 		// HQ-WARN-01 defensive: si BP defaults o seamless travel dejan el SkM en
 		// modo simulate-physics, el primer SetActorLocation/AttachToComponent dispara
@@ -405,9 +407,12 @@ void ATortugaCharacter::ApplyCameraDefaultsFromProperties()
 
 void ATortugaCharacter::CacheDefaultSkelMeshMaterials()
 {
-	// Cachear materiales originales del SKM unificado (slots 0-4).
-	// Deben guardarse ANTES del timer para que UpdateSkinVisual(NAME_None) pueda restaurarlos.
-	DefaultSkelMeshMaterials.Reset();
+	// Cachear los materiales originales de la malla: UTN_CosmeticLook parte siempre de ellos. Si un OnRep de
+	// cosméticos llegó antes que BeginPlay ya están guardados (y los de ahora serían los de la tienda).
+	if (DefaultSkelMeshMaterials.Num() > 0)
+	{
+		return;
+	}
 	if (USkeletalMeshComponent* SKM = GetMesh())
 	{
 		const int32 NumMats = SKM->GetNumMaterials();

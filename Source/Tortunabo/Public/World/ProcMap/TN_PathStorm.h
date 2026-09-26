@@ -54,6 +54,12 @@ public:
 	/** Fuerza a re-evaluar a un jugador (tras revivir). */
 	void ForceCheckPlayer(APlayerController* PC);
 
+	/**
+	 * Servidor (pruebas, comando TNStorm): pone el frente en Progress (cm del camino) sin gracia y lo deja avanzar.
+	 * Con bHarmless no mata a nadie; con bHarmless = false vuelve el tiempo de muerte normal.
+	 */
+	void DebugPlaceFront(float Progress, bool bHarmless);
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Storm")
 	TObjectPtr<USceneComponent> Root;
@@ -92,6 +98,8 @@ private:
 
 	float GraceRemaining = 0.f;
 	float CheckAccumulator = 0.f;
+	/** SecondsInsideToDie de verdad mientras DebugPlaceFront la deja inofensiva (-1 = sin tocar). */
+	float DefaultSecondsInsideToDie = -1.f;
 	TMap<TWeakObjectPtr<APlayerController>, float> InsideTime;
 
 	void ServerCheckPlayers(float Interval);

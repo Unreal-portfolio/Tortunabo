@@ -765,6 +765,38 @@ namespace TNProcMap
 	/** Y de la línea de meta. */
 	inline double FinishLineY(const FLayout& L) { return FinishWaterY(L) + FinishDims::LineInWater; }
 
+	/** Poza al pie de las cascadas: hondo donde cae la tortuga y cuánto baja el agua respecto al suelo. */
+	namespace PoolDims
+	{
+		constexpr double Depth = 100.0;
+		constexpr double Below = 12.0;
+	}
+
+	/**
+	 * Poza al pie de una cascada (FFeature SlideZone): se apoya en la primera muestra que ya no es tobogán (donde
+	 * aterriza quien baja; la última del tobogán puede quedar metros por encima del fondo), con el centro algo
+	 * adelantado en el sentido del agua. El agua queda a ras de suelo (PoolDims::Below por debajo de la cota del
+	 * camino allí) y el terreno se hunde PoolDims::Depth más en el centro, subiendo suave hasta la orilla
+	 * (FTerrainBuilder). Devuelve también la muestra de aterrizaje y la dirección del agua.
+	 */
+	inline bool SlidePoolOf(const FLayout& L, const FFeature& F, FVector2D& OutCenter, double& OutRadius, double& OutWaterZ, FVector2D& OutLand,
+		FVector2D& OutFlow)
+	{
+		if (F.Type != EFeature::SlideZone) { return false; }
+		const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? L.Main
+			: (L.Branches.IsValidIndex(F.BranchIndex) ? L.Branches[F.BranchIndex].Samples : L.Main);
+		if (S.Num() == 0) { return false; }
+		const int32 Last = FMath::Clamp(F.Aux, 0, S.Num() - 1);
+		const int32 Land = FMath::Min(Last + 1, S.Num() - 1);
+		const FPathSample& A = S[Land];
+		OutFlow = A.Dir.IsNearlyZero() ? FVector2D(1.0, 0.0) : A.Dir.GetSafeNormal();
+		OutRadius = FMath::Clamp(A.Width * 0.55, 350.0, 750.0);
+		OutLand = A.P;
+		OutCenter = A.P + OutFlow * (OutRadius * 0.25);
+		OutWaterZ = A.Z - PoolDims::Below;
+		return true;
+	}
+
 	/** Ancho del camino principal a la altura Y de la playa final (interpolado entre muestras). */
 	inline double FinishBeachWidthAt(const FLayout& L, double Y)
 	{

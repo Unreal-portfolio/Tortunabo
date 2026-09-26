@@ -11,6 +11,7 @@ class UStaticMeshComponent;
 class UNiagaraComponent;
 class USoundBase;
 class ACharacter;
+class UTN_AmbientSynthComponent;
 
 /**
  * Géiser: lanza a quien lo pisa hasta un punto de aterrizaje (cima de torre
@@ -105,6 +106,10 @@ private:
 	FVector Hole = FVector::ZeroVector;
 	/** Lanzados por el tiro que aún no han pasado el forjado (y cuándo se lanzaron). */
 	TMap<TWeakObjectPtr<ACharacter>, double> InShaft;
+
+	/** Borboteo y chorro sintetizados (TN_AmbientSynthComponent), al ritmo del chorro. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_AmbientSynthComponent> WaterSound;
 };
 
 /**

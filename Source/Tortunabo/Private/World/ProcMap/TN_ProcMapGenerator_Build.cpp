@@ -24,6 +24,7 @@
 #include "TN_ProcMapPropMeshes.h"
 #include "TN_ProcMapRockMeshes.h"
 #include "TN_ProcMapAmbientFX.h"
+#include "World/ProcMap/TN_ProcFauna.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SpotLightComponent.h"
 
@@ -1116,21 +1117,14 @@ namespace
 
 void ATN_ProcMapGenerator::SlidePool(const TNProcMap::FFeature& F, FVector2D& OutCenter, double& OutRadius, double& OutZ, FVector2D& OutFoot, FVector2D& OutFlow) const
 {
-	using namespace TNProcMap;
-	const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? Layout.Main : Layout.Branches[F.BranchIndex].Samples;
-	const FPathSample& Foot = S[FMath::Clamp(F.Aux, 0, S.Num() - 1)];
-	OutFoot = Foot.P;
-	OutFlow = Foot.Dir.GetSafeNormal().IsNearlyZero() ? FVector2D(1.0, 0.0) : Foot.Dir.GetSafeNormal();
-	OutCenter = Foot.P + OutFlow * (Foot.Width * 0.35);
-	OutRadius = FMath::Clamp(Foot.Width * 0.65, 250.0, 900.0);
-	// Plana sobre el punto más alto de su disco de dentro: el suelo nunca asoma en ella.
-	double Z = TerrainHeightMap(OutCenter);
-	for (int32 k = 0; k < 12; ++k)
+	// El mismo cálculo que hunde el terreno (TNProcMap::SlidePoolOf): agua a ras de suelo donde se aterriza.
+	if (!TNProcMap::SlidePoolOf(Layout, F, OutCenter, OutRadius, OutZ, OutFoot, OutFlow))
 	{
-		const double A = TwoPi * k / 12.0;
-		for (const double Rr : { 0.36, 0.72 }) { Z = FMath::Max(Z, TerrainHeightMap(OutCenter + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (OutRadius * Rr))); }
+		OutCenter = OutFoot = FVector2D(F.Location.X, F.Location.Y);
+		OutFlow = FVector2D(1.0, 0.0);
+		OutRadius = 350.0;
+		OutZ = F.Location.Z;
 	}
-	OutZ = Z + 10.0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2000,6 +1994,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::Formation:
 			{
+				if (bTerrainOnly) { break; }
 				// Formación temática: se construye en su marco local (origen en el suelo del camino o, en los
 				// hitos lejanos, en el terreno) y se apoya en el terreno real.
 				const EFormation Kind = static_cast<EFormation>(F.Aux);
@@ -2045,6 +2040,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			case EFeature::GiantTree:
 			{
+				if (bTerrainOnly) { break; }
 				const FVector2D C(F.Location.X, F.Location.Y);
 				// Secuoya: tronco rojizo con base ensanchada, raíces zancudas en arco y copa cónica por capas.
 				const uint32 Seed = static_cast<uint32>(F.Aux);
@@ -2097,7 +2093,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				// borde más transparente.
 				const TArray<FPathSample>& S = F.BranchIndex == INDEX_NONE ? M : Layout.Branches[F.BranchIndex].Samples;
 				const int32 From = FMath::Clamp(F.PathIndex, 0, S.Num() - 1);
-				const int32 To = FMath::Clamp(F.Aux, 0, S.Num() - 1);
+				// Hasta la muestra de aterrizaje, ya dentro de la poza (la última del tobogán puede quedar metros por
+				// encima del fondo y la lámina se quedaba cortada en el aire).
+				const int32 To = FMath::Clamp(F.Aux + 1, 0, S.Num() - 1);
 				constexpr double RowStep = 30.0;
 				double MaxW = 0.0;
 				for (int32 i = From; i <= To; ++i) { MaxW = FMath::Max(MaxW, S[i].Width); }
@@ -2184,20 +2182,29 @@ void ATN_ProcMapGenerator::BuildStructures()
 						PrevCol = MoveTemp(RowCol);
 					}
 				}
-				// Poza al pie: disco de agua un poco adelantado con el borde de espuma, que se apoya en el suelo
-				// por fuera (sin quedar colgado) y queda plano en el centro. Sus UV salen del punto donde cae el
-				// agua (V = distancia a él): el material hace correr las ondas desde el impacto hacia fuera. Más
-				// anillos que antes para que esa distancia se interpole bien.
+				// Poza al pie: disco plano a la cota del agua, a ras de suelo, sobre el cuenco que hunde el terreno
+				// (TNProcMap::SlidePoolOf): la orilla es donde el terreno vuelve a salir del agua, y ahí va la espuma (los
+				// vértices con el suelo a menos de 20 cm del agua). Donde el terreno quede más bajo que el agua, el borde
+				// baja hasta él para no quedar colgado. Las UV salen del punto donde cae el agua (V = distancia a él): el
+				// material hace correr las ondas desde el impacto hacia fuera.
 				{
 					FVector2D PC, Impact, Flow;
-					double R = 0.0, PoolZ = 0.0;
-					SlidePool(F, PC, R, PoolZ, Impact, Flow);
+					double R = 0.0, WaterZ = 0.0;
+					SlidePool(F, PC, R, WaterZ, Impact, Flow);
 					const FVector2D Across(-Flow.Y, Flow.X);
 					auto PoolUV = [&](const FVector2D& Q) { return FVector2D(FVector2D::DotProduct(Q - Impact, Across) / 300.0, FVector2D::Distance(Q, Impact) / 300.0); };
-					constexpr int32 Seg = 28;
-					const double Radii[] = { 0.0, 0.18, 0.36, 0.54, 0.72, 1.0 };
+					constexpr int32 Seg = 32;
+					const double Radii[] = { 0.0, 0.16, 0.32, 0.48, 0.62, 0.74, 0.86, 1.0 };
 					constexpr int32 NumR = UE_ARRAY_COUNT(Radii);
-					const FLinearColor Water(0.16f, 0.5f, 0.76f, 0.88f), Foam(0.96f, 0.99f, 1.f, 0.8f);
+					const FLinearColor Water(0.16f, 0.5f, 0.76f, 0.88f), Foam(0.96f, 0.99f, 1.f, 0.85f);
+					auto PoolVertex = [&](const FVector2D& Q, double Rr, FVector& OutP, FLinearColor& OutC)
+					{
+						const double PoolGround = TerrainHeightMap(Q);
+						const double PoolZ = Rr > 0.8 && PoolGround < WaterZ - 4.0 ? FMath::Max(PoolGround + 4.0, WaterZ - 60.0) : WaterZ;
+						OutP = FVector(Q, PoolZ);
+						const float Shore = 1.f - static_cast<float>(FMath::SmoothStep(4.0, 20.0, FMath::Abs(PoolGround - WaterZ)));
+						OutC = TNProcLerpColor(Water, Foam, FMath::Max(Shore, static_cast<float>(FMath::SmoothStep(0.9, 1.0, Rr))));
+					};
 					for (int32 k = 0; k < Seg; ++k)
 					{
 						const double A0 = TNProcMap::TwoPi * k / Seg, A1 = TNProcMap::TwoPi * (k + 1) / Seg;
@@ -2211,16 +2218,14 @@ void ATN_ProcMapGenerator::BuildStructures()
 							for (int32 q = 0; q < 4; ++q)
 							{
 								const FVector2D Q = PC + FVector2D(FMath::Cos(Ai[q]), FMath::Sin(Ai[q])) * (R * Ri2[q]);
-								const bool bRim = Ri2[q] > 0.99;
-								P4[q] = FVector(Q, bRim ? FMath::Max(TerrainHeightMap(Q) + 6.0, PoolZ - 25.0) : PoolZ);
+								PoolVertex(Q, Ri2[q], P4[q], C4[q]);
 								UV4[q] = PoolUV(Q);
-								C4[q] = bRim ? Foam : Water;
 							}
 							if (r == 0)
 							{
 								// Centro: triángulo (los dos primeros puntos coinciden).
 								const int32 Base = SlideWater.Verts.Num();
-								SlideWater.AddTri(P4[0], P4[2], P4[3], FVector::UpVector, Water);
+								SlideWater.AddTri(P4[0], P4[2], P4[3], FVector::UpVector, C4[0]);
 								for (int32 v = Base; v < SlideWater.Verts.Num(); ++v)
 								{
 									const FVector& Vv = SlideWater.Verts[v];
@@ -2240,6 +2245,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 	}
 
 	// ── Algas y nenúfares: manchas verdes flotando en las pozas junto al camino ─
+	if (!bTerrainOnly)
 	{
 		FRng AlgaeRng(static_cast<uint64>(Layout.Params.Seed) * 0xA16Eull + 3ull);
 		for (int32 i = 0; i < M.Num(); i += 3)
@@ -2456,6 +2462,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 
 	// ── Efectos ambientales (solo visuales, locales): brasas sobre la lava y bandadas de pájaros ──
 	TNAmbientFX::RemoveOwner(this);
+	if (bTerrainOnly) { return; }
 	for (const FFeature& F : Layout.Features)
 	{
 		const bool bPool = F.Type == EFeature::LavaPool;
@@ -2606,6 +2613,15 @@ void ATN_ProcMapGenerator::BuildStructures()
 				default:
 					break;
 			}
+		}
+	}
+
+	// Fauna ambiental (solo visual y local). Clear() la destruye al regenerar; espera sola a que el mapa esté listo.
+	if (GetWorld() && GetWorld()->IsGameWorld() && GetNetMode() != NM_DedicatedServer)
+	{
+		if (ATN_ProcFauna* FaunaActor = Cast<ATN_ProcFauna>(SpawnMapActor(ATN_ProcFauna::StaticClass(), GetActorTransform(), false)))
+		{
+			FaunaActor->Init(this, Layout.Params.Seed);
 		}
 	}
 }
