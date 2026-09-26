@@ -457,7 +457,9 @@ void AMP_GamePlayerController::RefreshHUDAfterPossession()
 
 void AMP_GamePlayerController::CreateVoiceHUD()
 {
-	if (!IsLocalController() || !VoiceIndicatorWidgetClass)
+	// El HUD hecho en código (UTN_RunHUDWidget) ya dice cuándo habla la tortuga: la cara del distintivo rebota y
+	// sale un bocadillo. El indicador suelto solo hace falta con el HUD de Blueprint.
+	if (!IsLocalController() || !VoiceIndicatorWidgetClass || bUseCodeHUD)
 	{
 		return;
 	}
@@ -542,9 +544,14 @@ void AMP_GamePlayerController::CreateRadialWidgets()
 		return;
 	}
 
-	if (!EmoteWheelWidget && EmoteWheelWidgetClass)
+	// Con el HUD en código, las ruedas también lo son (estilo Tortunavy, centradas donde se mide el ratón).
+	if (!EmoteWheelWidget && (bUseCodeHUD || EmoteWheelWidgetClass))
 	{
-		EmoteWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, EmoteWheelWidgetClass);
+		EmoteWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, bUseCodeHUD ? UTN_RunRadialWheelWidget::StaticClass() : EmoteWheelWidgetClass.Get());
+		if (UTN_RunRadialWheelWidget* CodeWheel = Cast<UTN_RunRadialWheelWidget>(EmoteWheelWidget))
+		{
+			CodeWheel->SetTitle(NSLOCTEXT("TNHUD", "EmoteWheelTitle", "EMOTES"));
+		}
 	}
 	if (EmoteWheelWidget && !EmoteWheelWidget->IsInViewport())
 	{
@@ -552,9 +559,13 @@ void AMP_GamePlayerController::CreateRadialWidgets()
 		EmoteWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	if (!QuickChatWheelWidget && QuickChatWheelWidgetClass)
+	if (!QuickChatWheelWidget && (bUseCodeHUD || QuickChatWheelWidgetClass))
 	{
-		QuickChatWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, QuickChatWheelWidgetClass);
+		QuickChatWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, bUseCodeHUD ? UTN_RunRadialWheelWidget::StaticClass() : QuickChatWheelWidgetClass.Get());
+		if (UTN_RunRadialWheelWidget* CodeWheel = Cast<UTN_RunRadialWheelWidget>(QuickChatWheelWidget))
+		{
+			CodeWheel->SetTitle(NSLOCTEXT("TNHUD", "ChatWheelTitle", "FRASES"));
+		}
 	}
 	if (QuickChatWheelWidget && !QuickChatWheelWidget->IsInViewport())
 	{
@@ -739,6 +750,25 @@ FVector2D AMP_GamePlayerController::ResolveCurrentWheelVector() const
 	const float Now = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.f;
 	const bool bUseStick = CachedStickVector.SizeSquared() > 0.04f && (Now - LastStickInputRealTime) <= 0.2f;
 	return bUseStick ? CachedStickVector : ComputeMouseWheelVector();
+}
+
+void AMP_GamePlayerController::TNWheel(int32 Type, float X, float Y)
+{
+	if (Type < 0)
+	{
+		CloseRadialWheel(false);
+		return;
+	}
+	if (ActiveWheelType == ETN_RadialWheelType::None)
+	{
+		OpenRadialWheel(Type == 0 ? ETN_RadialWheelType::Emote : ETN_RadialWheelType::QuickChat);
+	}
+	// Sin el temporizador del ratón, que machacaría la dirección pedida.
+	GetWorldTimerManager().ClearTimer(RadialWheelUpdateTimerHandle);
+	if (UTN_RadialWheelWidgetBase* Widget = GetActiveWheelWidget())
+	{
+		Widget->UpdateInputVector(FVector2D(X, Y));
+	}
 }
 
 void AMP_GamePlayerController::UpdateRadialWheelInput()

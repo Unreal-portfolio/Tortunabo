@@ -66,6 +66,12 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Voice")
 	bool bIsSpeaking = false;
 
+	/**
+	 * @brief Si esta tortuga está hablando vista desde esta máquina: la propia, por bIsSpeaking; la de otro jugador,
+	 * si ha llegado audio suyo en las últimas 0,35 s (bIsSpeaking no llega a los demás). Lo usa el HUD en código.
+	 */
+	bool IsHeardSpeaking() const;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Attenuation")
@@ -101,6 +107,9 @@ public:
 	 * @note Llamado desde AMP_GamePlayerController::ClientReceiveVoice tras el filtro de distancia.
 	 */
 	void PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate);
+
+	/** Momento (tiempo real del mundo) en que llegó el último paquete de voz de esta tortuga a esta máquina. */
+	double LastRemoteVoiceTime = -1.0;
 
 	/**
 	 * Segundos de silencio continuo antes de marcar bIsSpeaking = false.

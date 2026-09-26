@@ -91,6 +91,13 @@ public:
 	void SendQuickChat(uint8 MessageID);
 
 	/**
+	 * @brief Consola (pruebas y vista previa): abre la rueda de emotes (Type 0) o de frases (1) y la apunta en la
+	 *        dirección (X, Y) (X a la derecha, Y hacia arriba); Type -1 la cierra sin elegir.
+	 */
+	UFUNCTION(Exec)
+	void TNWheel(int32 Type, float X, float Y);
+
+	/**
 	 * @brief Pide al servidor reproducir un emote por ID (Multicast tras validación).
 	 * @param EmoteID Id del emote según el DataAsset.
 	 */
