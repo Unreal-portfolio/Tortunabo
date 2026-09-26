@@ -59,6 +59,7 @@ class PathModel:
         self.zones = self
         self.high_tint = HIGH_TINT
         self.trail_strength = 0.85
+        self.trail_color = (0.34, 0.24, 0.13)     # arena pisada, mas oscura que la de fuera
 
     # -- muestras de todos los caminos -------------------------------------------------------
     def _build_samples(self) -> None:
@@ -223,14 +224,20 @@ class PathModel:
         return bw.reshape(np.shape(x) + (4,))
 
     def trail_mask(self, x, y) -> np.ndarray:
-        d, i = self._nearest(x, y)
-        e = d - self.S["w"][i]
-        dry = self.S["biome"][i] != 1
+        # Mismo criterio que el relieve (el camino que cubre el punto, no la muestra mas
+        # cercana): si no, la franja oscura no casaba con el suelo donde cambia el ancho.
+        dk, ik = self._nearest(x, y, k=24)
+        cover = dk - self.S["w"][ik]
+        best = np.argmin(cover, axis=1)
+        rows = np.arange(len(best))
+        e = cover[rows, best]
+        dry = self.S["biome"][ik[rows, best]] != 1
         return ((1.0 - smooth(-0.4, 0.6, e)) * dry).reshape(np.shape(x))
 
     def plaza_mask(self, x, y) -> np.ndarray:
-        a = self.plan.graph.main.points[0]
-        return 1.0 - smooth(6.0, 8.0, np.hypot(np.asarray(x) - a[0], np.asarray(y) - a[1]))
+        """Sin disco de color en la salida (quedaba como una mancha clara): la salida se lee por
+        el ensanche y el camino marcado."""
+        return np.zeros(np.shape(x))
 
     # -- campos 2D ----------------------------------------------------------------------------
     def _fields(self, X, Y) -> Fields:
@@ -283,6 +290,12 @@ class PathModel:
         # cambia el camino mas cercano).
         to_outer = smooth(crest_e + band - 1.5, crest_e + band + 1.5, e)
         height = height * (1.0 - to_outer) + outer * to_outer
+        # Cima: lomo redondeado (sube desde el borde de la pared y vuelve a bajar hacia las
+        # vistas) de 1,5 a 6 m segun la zona, no una banda llana.
+        span = band + 0.5 * run
+        k = np.clip((e - crest_e) / np.maximum(span, 1.0), 0.0, 1.0)
+        ridge = (1.5 + 4.5 * smooth(0.2, 0.9, self.n_crest.unit(X, Y))) * np.sin(np.pi * k) ** 2
+        height = height + ridge * (e > crest_e)
         height = self._stamps(X, Y, height, e, i, zf, w)
         protect = 1.0 - t
         height, coast = field.shore(self, X, Y, height, protect)
@@ -415,7 +428,8 @@ class PathModel:
         if np.any(band > 0.0):
             # Solo por encima del pie de la pared: el pie sigue liso y vertical (cierra el paso).
             above = smooth(field.FOOT_M, field.FOOT_M + 1.5, Z3 - f.floor[..., None])
-            D = D + 0.9 * band * above * self.n_wall3d(X3, Y3, Z3)
+            below_top = smooth(1.0, 3.0, f.height[..., None] - Z3)
+            D = D + 0.7 * band * above * below_top * self.n_wall3d(X3, Y3, Z3)
         if self.tunnel_tree is not None and np.any(f.tunnel > 0.0):
             carve, v = self._carve(X, Y, Z3)
             # Paredes y techo rugosos; el suelo del tunel, llano.

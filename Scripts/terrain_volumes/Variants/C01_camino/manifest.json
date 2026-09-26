@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 16171,
-   "triangles": 31826,
+   "vertices": 16176,
+   "triangles": 31834,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 15484,
-   "triangles": 30460,
+   "vertices": 15487,
+   "triangles": 30464,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 22175,
-   "triangles": 43684,
+   "vertices": 23554,
+   "triangles": 46422,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 27577,
-   "triangles": 54424,
+   "vertices": 29073,
+   "triangles": 57378,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 22296,
-   "triangles": 43916,
+   "vertices": 25342,
+   "triangles": 49940,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 19786,
-   "triangles": 38992,
+   "vertices": 22792,
+   "triangles": 44956,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 25749,
-   "triangles": 50874,
+   "vertices": 28078,
+   "triangles": 55512,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 26943,
-   "triangles": 53184,
+   "vertices": 28873,
+   "triangles": 57012,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 23909,
-   "triangles": 47166,
+   "vertices": 26808,
+   "triangles": 52912,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 17364,
-   "triangles": 34200,
+   "vertices": 19332,
+   "triangles": 38104,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 19197,
-   "triangles": 37868,
+   "vertices": 19975,
+   "triangles": 39396,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 18657,
-   "triangles": 36724,
+   "vertices": 19423,
+   "triangles": 38220,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 19835,
-   "triangles": 39116,
+   "vertices": 20609,
+   "triangles": 40652,
    "instances": 0
   },
   {

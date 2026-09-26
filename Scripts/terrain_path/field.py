@@ -54,8 +54,7 @@ def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None, n_wa
     foot = np.minimum(FOOT_M, np.maximum(Hc - zf - rc, 0.0))
     t_foot = rc + foot / np.maximum(tan, 1e-3)
     tan_up = np.tan(np.radians(45.0 + 35.0 * (0.5 + 0.5 * n)))
-    ledge = 0.9 * np.clip(np.sin(3.0 * n + 2.0 * (t - t_foot)), 0.0, None)
-    upper = rc + foot + np.maximum(t - t_foot, 0.0) * tan_up - ledge * smooth(0.0, 1.0, t - t_foot)
+    upper = rc + foot + np.maximum(t - t_foot, 0.0) * tan_up
     rise = np.where(t <= 0.0, 0.0, np.where(t <= rc, fillet,
                     np.where(t <= t_foot, rc + (t - rc) * tan, upper)))
     floor = zf + 0.1 * n_floor
