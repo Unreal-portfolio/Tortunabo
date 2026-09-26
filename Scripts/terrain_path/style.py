@@ -35,7 +35,7 @@ class PathStyle:
     rim_dunes_m: tuple[float, float] = (3.0, 6.0)
     rim_beach_m: tuple[float, float] = (2.5, 4.0)
     wall_angle_deg: tuple[float, float, float, float] = (78.0, 60.0, 64.0, 62.0)
-    block_band_m: tuple[float, float] = (3.0, 18.0)   # fondo de la cresta antes de bajar (varia)
+    block_band_m: tuple[float, float] = (1.5, 6.0)    # ancho de lo alto de la pared antes de caer (varia)
     # Rio
     island_per_100m: float = 5.0
     # Fondo de vistas
@@ -49,8 +49,8 @@ class PathStyle:
     extra_hill_tunnels: int = 1              # tuneles de cerro ademas de los del plan
     crest_relief_m: float = 3.0              # lomas sobre las cimas (no mesetas)
     # v2 (Docs/2026-09-26-Terreno-CaminoPrimero-v2-Design.md)
-    crest_extra_m: tuple[float, float] = (0.0, 7.0)   # altura extra de la cima, variable a lo largo
-    crest_roughness: float = 1.0             # amplitud del ruido fino de la cima
+    hill_amp_m: tuple[float, float] = (1.0, 14.0)     # lomas junto al camino: altura, variable a lo largo
+    crest_roughness: float = 1.0             # picos y rugosidad de las lomas
     canyon: str = "deadly"                   # "none" | "deadly" | "walkable"
     canyon_width_m: tuple[float, float] = (20.0, 35.0)
     canyon_depth_m: tuple[float, float] = (8.0, 14.0)

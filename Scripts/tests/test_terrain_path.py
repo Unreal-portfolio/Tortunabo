@@ -464,6 +464,50 @@ def test_los_trozos_vecinos_coinciden(chunks):
     assert np.allclose(a, b, atol=0.1)
 
 
+def _wall_profiles(model):
+    """A cada lado de cada camino, cada 10 m: (altura maxima de la pared sobre el suelo, distancia del borde del
+    camino a la que ya ha bajado 3 m de su maximo, anchura de la zona casi llana en lo alto). El
+    perfil se corta donde el punto pasa a estar mas cerca de otro camino (pared compartida). Lejos
+    de uniones, cruces, tuneles, agua y playa."""
+    tops, ends, flats = [], [], []
+    for line in model.plan.graph.lines:
+        prof = model.plan.profiles[line.id]
+        for s in np.arange(40.0, line.length - 60.0, 10.0):
+            k = int(np.searchsorted(line.arc, s))
+            p = line.point_at(s)
+            if prof.biome[k] in (1, 3) or prof.tunnel[max(k - 20, 0):k + 20].any() or model.near_junction(p, 30.0):
+                continue
+            w, n = prof.half_width[k], line.normal_at(s)
+            for side in (-1.0, 1.0):
+                off = side * (w + np.arange(0.0, 32.0, 0.5))
+                pts = p[None, :] + off[:, None] * n[None, :]
+                _, idx = model._nearest(pts[:, 0], pts[:, 1])
+                mine = model.S["line"][idx] == line.id
+                stop = int(np.argmin(mine)) if not mine.all() else len(off)
+                if stop < 12:
+                    continue
+                h = _cross_section(model, line.id, s, off[:stop])
+                top = int(np.argmax(h))
+                tops.append(h[top] - prof.z[k])
+                flats.append(0.5 * int((np.abs(h - h[top]) < 0.3).sum()))
+                below = np.nonzero(h[top:] < h[top] - 3.0)[0]
+                if len(below):
+                    ends.append(0.5 * (top + below[0]))
+    return np.array(tops), np.array(ends), np.array(flats)
+
+
+def test_la_cresta_no_es_meseta(model):
+    tops, _, flats = _wall_profiles(model)
+    assert len(tops) >= 30
+    assert np.std(tops) >= 1.5, f"cresta demasiado uniforme (desviacion {np.std(tops):.2f} m)"
+    assert np.median(flats) <= 5.0, f"cimas llanas: mediana de {np.median(flats):.1f} m casi a la misma cota"
+
+
+def test_la_pared_acaba_a_distancias_distintas(model):
+    _, ends, _ = _wall_profiles(model)
+    assert len(ends) >= 15 and np.std(ends) >= 7.0, f"la pared acaba casi siempre a la misma distancia ({np.std(ends):.2f} m)"
+
+
 def test_sin_picos_de_una_celda(model):
     """Ninguna celda sobresale (o se hunde) mas de 0,5 m respecto de todas sus vecinas: eso es un
     pico o una aleta en la malla. Las esquinas de pared (casi vertical) no cuentan: no son picos."""

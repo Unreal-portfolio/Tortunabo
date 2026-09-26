@@ -29,9 +29,16 @@ def rim_arrays(style) -> tuple[np.ndarray, np.ndarray]:
 FOOT_M = 3.5                # pie de la pared casi vertical: lo justo para cerrar el paso
 
 
-def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None, n_wall=None):
+RIM_FALL_DEG = (25.0, 60.0)  # caida de lo alto de la pared al relieve de fuera (varia): model.rim_envelope
+
+
+def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None, n_wall=None, H_in=None):
     """(relieve, cresta H, distancia e de la cresta). e = distancia al eje - semiancho (< 0 dentro).
-    bw: pesos de bioma (..., 4). n_rim en 0..1, n_top y n_floor en -1..1."""
+    bw: pesos de bioma (..., 4). n_rim en 0..1, n_top y n_floor en -1..1.
+
+    H_in (v2): relieve de fuera ya continuo entre caminos (lomas naturales y remate de la pared de
+    todos los caminos cercanos, ver PathModel._fields). Con el, la pared sube desde el suelo hasta
+    ese relieve y no se impone ninguna cresta propia del camino (que saltaba en las bisectrices)."""
     rims, angles = rim_arrays(style)
     lo, hi = bw @ rims[:, 0], bw @ rims[:, 1]
     rim = lo + (hi - lo) * n_rim
@@ -39,12 +46,12 @@ def section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, style, guard=None, n_wa
     # Cresta continua (solo depende de la cota suavizada): la bajada a las vistas no marca las
     # bisectrices entre caminos. Junto al camino, nunca por debajo del borde minimo del bioma
     # sobre su propio suelo (si no, un camino vecino mas bajo dejaba una pared que se sube).
-    H = z_soft + rim + 1.6 * n_top           # cima irregular, no una meseta
+    H = z_soft + rim + 1.6 * n_top if H_in is None else H_in
     if guard is not None:
         # guard: suelo del camino mas alto de los cercanos (continuo); la cresta, y con ella la
         # banda que cierra el paso, nunca queda por debajo de su borde minimo.
         H = np.maximum(H, guard + lo)
-    Hc = np.maximum(H, zf + np.maximum(lo, 0.6 * rim))
+    Hc = np.maximum(H, zf + np.maximum(lo, 0.6 * rim)) if H_in is None else H
     rc = np.minimum(1.5, 0.2 * w)
     t = e + rc
     fillet = rc - np.sqrt(np.maximum(rc * rc - np.clip(t, 0.0, rc) ** 2, 0.0))

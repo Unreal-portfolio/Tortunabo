@@ -7,6 +7,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
+from scipy import ndimage
 from scipy.spatial import cKDTree
 
 from terrain_vol.density import Fields, smooth
@@ -50,6 +51,11 @@ class PathModel:
         self.deck_cuts: list[tuple[int, float, float]] = []
         decks = self._plan_bridges()
         self.arch_ranges = self._plan_arches(extra)
+        # Cima natural (v2): despues de los arcos, para no mover su colocacion.
+        self.n_crest_big = Fbm2D(extra, 60.0, 2)
+        self.n_crest_mid = Fbm2D(extra, 18.0, 3)
+        self.n_crest_fine = Fbm2D(extra, 6.0, 2)
+        self.n_run = Fbm2D(extra, 50.0, 2)
         decks += [bridge.arch_deck(self.plan.graph.lines[lid], self.plan.profiles[lid], 0.5 * (a + b))
                   for lid, a, b in self.arch_ranges]
         self.decks = bridge.DeckSet(decks, self.n_wall3d)
@@ -59,6 +65,7 @@ class PathModel:
         count = int(round((MAP_MAX_M - MAP_MIN_M) / STEP_XY_M)) + 1
         self.axis = MAP_MIN_M + STEP_XY_M * np.arange(-GRID_PAD, count + GRID_PAD)
         X, Y = np.meshgrid(self.axis, self.axis, indexing="ij")
+        self._fade_grid = self._fade_field(X, Y)
         self.grid = self._fields(X, Y)
         main = self.plan.graph.main
         self.route = SimpleNamespace(points=main.points)
@@ -276,47 +283,44 @@ class PathModel:
         i2 = np.where(has2, ik[rows, second], i.ravel()).reshape(shape)
         gap = np.where(has2, cover2[rows, second] - cover[rows, best], np.inf).reshape(shape)
         z_soft, bw = self._soft_levels(X, Y)
-        # Cimas con lomas y ondas de duna (no mesetas): solo suben la cresta.
-        relief = self.style.crest_relief_m * smooth(0.25, 0.9, self.n_crest.unit(X, Y)) \
-            + 0.8 * field.dune_field(self, X, Y, self.dune_angle, 17.0)
-        z_soft = z_soft + relief
         e = d - w
         e = self._blunt_wedges(X, Y, e, i)
         n_rim, n_top, n_floor = self.n_rim.unit(X, Y), self.n_top(X, Y), self.n_floor(X, Y)
         n_wall = self.n_wall2d(X, Y)
         guard = self._guard
-        height, H, crest_e = field.section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, self.style, guard, n_wall)
+        # Relieve natural de fuera (v2): dunas y lagos de las vistas mas lomas cuya altura cambia a
+        # lo largo del camino y se apagan lejos de el. No depende de la distancia al camino, asi que
+        # la pared acaba donde acaba cada loma (no a una distancia fija) y la cima no es meseta.
+        v = field.vista(self, X, Y)
+        # Junto al camino, el terreno parte de su cota (el camino va entre lomas, no en una calzada
+        # elevada sobre las dunas) y se funde con las vistas a una distancia que cambia.
+        at = [(X - self.axis[0]) / STEP_XY_M, (Y - self.axis[0]) / STEP_XY_M]
+        fade = ndimage.map_coordinates(self._fade_grid, at, order=1, mode="nearest")
+        base = ndimage.map_coordinates(self._zsoft_grid, at, order=1, mode="nearest")
+        natural = v + (np.maximum(base - v, 0.0) + self._hills(X, Y)) * fade
+        lo_b, hi_b = self.style.block_band_m
+        rim_top = lo_b + (hi_b - lo_b) * self.n_band.unit(X, Y)
+        # Remate de la pared de TODOS los caminos cercanos (maximo continuo, sin saltos en las
+        # bisectrices): pie + algo de roca sobre su suelo y caida variable hacia el relieve de fuera.
+        outer = np.maximum(natural, self._rim_envelope(X, Y, rim_top, n_top))
+        height, H, crest_e = field.section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, self.style, guard, n_wall,
+                                          H_in=outer)
         zf2, w2 = self.S["z"][i2], self.S["w"][i2]
         e2 = self._blunt_wedges(X, Y, d2 - w2, i2)
-        height2, _, _ = field.section(e2, zf2, z_soft, w2, bw, n_rim, n_top, n_floor, self.style, guard, n_wall)
+        height2, _, _ = field.section(e2, zf2, z_soft, w2, bw, n_rim, n_top, n_floor, self.style, guard, n_wall,
+                                      H_in=outer)
         # Solo entre caminos a cota parecida: con cotas distintas, promediar la pared de uno con el
         # suelo del otro dejaba una rampa por la que se salia a las vistas.
         mix = 0.5 * (1.0 - smooth(0.0, 3.0, gap)) * (e > 0.0) * (e2 > 0.0) * (1.0 - smooth(0.5, 1.0, np.abs(zf - zf2)))
         height = height * (1.0 - mix) + height2 * mix
         height = self._inside_corridor(X, Y, height, e, i, zf, w, bw)
-        v = field.vista(self, X, Y)
-        lo_b, hi_b = self.style.block_band_m
-        band = lo_b + (hi_b - lo_b) * self.n_band.unit(X, Y)
-        # Bajada a las vistas proporcional al desnivel (~27 grados): una pared alta que caia de
-        # golpe por detras quedaba como una aleta fina vista desde fuera.
-        run = np.maximum(14.0, 2.0 * (H - v))
-        t = smooth(crest_e + band, crest_e + band + run, e)
-        outer = H + (v - H) * t
-        # Transicion suave de la cresta a la bajada (un corte seco dejaba lineas de un paso donde
-        # cambia el camino mas cercano).
-        to_outer = smooth(crest_e + band - 1.5, crest_e + band + 1.5, e)
-        height = height * (1.0 - to_outer) + outer * to_outer
-        # Cima: lomo redondeado (sube desde el borde de la pared y vuelve a bajar hacia las
-        # vistas) de 1,5 a 6 m segun la zona, no una banda llana.
-        span = band + 0.5 * run
-        k = np.clip((e - crest_e) / np.maximum(span, 1.0), 0.0, 1.0)
-        ridge = (1.5 + 4.5 * smooth(0.2, 0.9, self.n_crest.unit(X, Y))) * np.sin(np.pi * k) ** 2
-        height = height + ridge * (e > crest_e)
+        # Pasado lo alto de la pared, el relieve natural (nunca dentro del camino ni en el pie).
+        t = smooth(crest_e + rim_top + 2.0, crest_e + rim_top + 12.0, e)
         height = self._stamps(X, Y, height, e, i, zf, w)
         protect = 1.0 - t
         height, coast = field.shore(self, X, Y, height, protect)
         height = field.clip_spikes(height)
-        region = np.where(e < 0.0, 0, np.where(e < crest_e + band + run, 1, 2))
+        region = np.where(e < 0.0, 0, np.where(e < crest_e + rim_top + 4.0, 1, 2))
         region = np.where(coast > 0.5, 3, region)
         if shape == (len(getattr(self, "axis", [])),) * 2:
             self.region = region
@@ -329,6 +333,40 @@ class PathModel:
         zeros = np.zeros(shape)
         return Fields(weights, d, zeros, height, zf, np.clip(wall_band, 0, 1), zeros, tunnel, np.clip(path, 0, 1))
 
+    def _fade_field(self, X, Y):
+        """Peso 0..1 de las lomas junto al camino en la rejilla del mapa: se apagan a una distancia
+        del borde que cambia (8-43 m). Suavizado: la distancia al camino tiene aristas en las
+        bisectrices y, sin suavizar, marcaba lineas rectas en el relieve."""
+        z_soft, _ = self._soft_levels(X, Y)
+        reach = 8.0 + 35.0 * self.n_run.unit(X, Y)
+        # La cota del camino mas cercano tambien salta donde un mismo camino se curva sobre si mismo.
+        self._zsoft_grid = ndimage.gaussian_filter(z_soft, 6.0, mode="nearest")
+        return ndimage.gaussian_filter(1.0 - smooth(reach, reach + 25.0, self._cover), 5.0, mode="nearest")
+
+    def _rim_envelope(self, X, Y, rim_top, n_top):
+        """Maximo, entre todos los caminos, de su remate: su suelo + 4-6 m hasta rim_top m pasado el
+        pie y, despues, caida de 25-60 grados. Continuo (maximo de funciones continuas)."""
+        pts = np.stack([np.ravel(X), np.ravel(Y)], axis=1)
+        rim_h = (field.FOOT_M + 0.5 + 2.0 * self.n_rim.unit(X, Y)).ravel()
+        lo_a, hi_a = field.RIM_FALL_DEG
+        tan = np.tan(np.radians(lo_a + (hi_a - lo_a) * (0.5 + 0.5 * np.ravel(n_top))))
+        reach = 1.5 + np.ravel(rim_top)
+        out = np.full(len(pts), -1e3)
+        for tree, idx in self.line_trees.values():
+            d, k = tree.query(pts)
+            c = d - self.S["w"][idx[k]]
+            out = np.maximum(out, self.S["z"][idx[k]] + rim_h - np.maximum(c - reach, 0.0) * tan)
+        return out.reshape(X.shape)
+
+    def _hills(self, X, Y):
+        """Lomas junto al camino: altura de escala grande (a veces casi nada, a veces alta), picos
+        de escala media y rugosidad fina. Sin forma fija."""
+        lo, hi = self.style.hill_amp_m
+        rough = self.style.crest_roughness
+        amp = lo + (hi - lo) * smooth(0.3, 0.75, self.n_crest_big.unit(X, Y))
+        shape = 0.25 + 0.75 * smooth(0.2, 0.9, self.n_crest_mid.unit(X, Y))
+        return amp * shape + 0.9 * rough * self.n_crest_fine.unit(X, Y)
+
     def _soft_levels(self, X, Y):
         """(cota suavizada, pesos de bioma) mezclando el punto mas cercano de CADA camino con un
         peso que cae con la distancia: continuos tambien en las bisectrices entre caminos (con las
@@ -337,14 +375,17 @@ class PathModel:
         dists, zs, biomes = [], [], []
         reach = self.style.block_band_m[1]
         guard = np.full(len(pts), -1e3)
+        cover = np.full(len(pts), np.inf)          # distancia al borde del camino mas cercano (continua)
         for tree, idx in self.line_trees.values():
             d, k = tree.query(pts)
             dists.append(d)
             zs.append(self.S["z"][idx[k]])
             biomes.append(self.S["biome"][idx[k]])
-            # Suelo del camino mas alto de los cercanos: la cresta no baja de el (continuo).
-            near = 1.0 - smooth(reach + 10.0, reach + 20.0, d - self.S["w"][idx[k]])
+            # Suelo del camino mas alto de los cercanos: la cresta no baja de el (continuo). Solo muy
+            # cerca (v2): mas lejos creaba una banda de altura fija alrededor de cada camino.
+            near = 1.0 - smooth(reach, reach + 6.0, d - self.S["w"][idx[k]])
             guard = np.maximum(guard, self.S["z"][idx[k]] - 100.0 * (1.0 - near))
+            cover = np.minimum(cover, d - self.S["w"][idx[k]])
         d = np.stack(dists, axis=1)
         wz = np.exp(-0.5 * ((d - d.min(axis=1, keepdims=True)) / 10.0) ** 2)
         z_soft = (np.stack(zs, axis=1) * wz).sum(axis=1) / wz.sum(axis=1)
@@ -352,6 +393,7 @@ class PathModel:
         bw = (np.eye(4)[np.stack(biomes, axis=1)] * wb[..., None]).sum(axis=1)
         bw = bw / bw.sum(axis=1, keepdims=True)
         self._guard = guard.reshape(X.shape)
+        self._cover = cover.reshape(X.shape)
         return z_soft.reshape(X.shape), bw.reshape(X.shape + (4,))
 
     def _blunt_wedges(self, X, Y, e, i):
