@@ -141,7 +141,7 @@ namespace TNShopUI
 
 	const TArray<ETNCosmeticCategory>& Categories()
 	{
-		static const TArray<ETNCosmeticCategory> List = { ETNCosmeticCategory::Helmet, ETNCosmeticCategory::Shell, ETNCosmeticCategory::Body };
+		static const TArray<ETNCosmeticCategory> List = { ETNCosmeticCategory::Helmet, ETNCosmeticCategory::Shell, ETNCosmeticCategory::Body, ETNCosmeticCategory::Eyes };
 		return List;
 	}
 
@@ -151,6 +151,7 @@ namespace TNShopUI
 		{
 		case ETNCosmeticCategory::Helmet: return NSLOCTEXT("Tortunabo", "ShopTabHelmets", "CASCOS");
 		case ETNCosmeticCategory::Shell:  return NSLOCTEXT("Tortunabo", "ShopTabShells", "CAPARAZONES");
+		case ETNCosmeticCategory::Eyes:   return NSLOCTEXT("Tortunabo", "ShopTabEyes", "OJOS");
 		default:                          return NSLOCTEXT("Tortunabo", "ShopTabBodies", "COLORES");
 		}
 	}
@@ -161,6 +162,7 @@ namespace TNShopUI
 		{
 		case ETNCosmeticCategory::Helmet: return NSLOCTEXT("Tortunabo", "BoothRowHelmet", "CASCO");
 		case ETNCosmeticCategory::Shell:  return NSLOCTEXT("Tortunabo", "BoothRowShell", "CAPARAZÓN");
+		case ETNCosmeticCategory::Eyes:   return NSLOCTEXT("Tortunabo", "BoothRowEyes", "OJOS");
 		default:                          return NSLOCTEXT("Tortunabo", "BoothRowBody", "COLOR");
 		}
 	}
@@ -391,12 +393,14 @@ FTN_TurtleLook UTN_CosmeticMenuBase::GetWornLook() const
 		Worn.HelmetId = TNPS->EquippedHelmetId;
 		Worn.ShellId = TNPS->EquippedShellId;
 		Worn.SkinId = TNPS->EquippedSkinId;
+		Worn.EyesId = TNPS->EquippedEyesId;
 	}
 	else if (const UMP_GameInstance* GI = GetTNGI())
 	{
 		Worn.HelmetId = GI->GetEquippedHelmetId();
 		Worn.ShellId = GI->GetEquippedShellId();
 		Worn.SkinId = GI->GetEquippedSkinId();
+		Worn.EyesId = GI->GetEquippedEyesId();
 	}
 	return Worn;
 }
@@ -542,12 +546,12 @@ void UTN_ShopWidget::BuildTree()
 		for (const ETNCosmeticCategory Category : TNShopUI::Categories())
 		{
 			UTN_ShopButton* TabButton = CreateWidget<UTN_ShopButton>(this, UTN_ShopButton::StaticClass());
-			TabButton->Setup(TNShopUI::CategoryTitle(Category), TNShopArt::Pill(0x2A5A92, 0x173A66), TNShopUI::CreamColor, 20, FVector2D(230.f, 56.f),
+			TabButton->Setup(TNShopUI::CategoryTitle(Category), TNShopArt::Pill(0x2A5A92, 0x173A66), TNShopUI::CreamColor, 20, FVector2D(196.f, 56.f),
 				[this, Category]() { ShowTab(Category); });
 			TNShopUI::AddH(TabRow, TabButton, FMargin(0.f, 0.f, 12.f, 0.f));
 			Tabs.Add(TabButton);
 		}
-		TNShopUI::AddV(Right, TabRow, FMargin(40.f, 0.f, 0.f, 8.f), HAlign_Left);
+		TNShopUI::AddV(Right, TabRow, FMargin(12.f, 0.f, 0.f, 8.f), HAlign_Left);
 	}
 	{
 		Grid = TNShopUI::New<UWrapBox>(Tree);
@@ -762,8 +766,9 @@ bool UTN_ShopWidget::HandleKey(const FKey& Key)
 	if (IsKey(Key, { EKeys::Up, EKeys::W, EKeys::Gamepad_DPad_Up })) { Select(FMath::Max(0, Selected - Columns), true); return true; }
 	if (IsKey(Key, { EKeys::Down, EKeys::S, EKeys::Gamepad_DPad_Down })) { Select(FMath::Min(Items.Num() - 1, Selected + Columns), true); return true; }
 	const int32 TabIndex = TNShopUI::Categories().IndexOfByKey(Tab);
-	if (IsKey(Key, { EKeys::Q, EKeys::Gamepad_LeftShoulder })) { ShowTab(TNShopUI::Categories()[(TabIndex + 2) % 3]); return true; }
-	if (IsKey(Key, { EKeys::E, EKeys::Tab, EKeys::Gamepad_RightShoulder })) { ShowTab(TNShopUI::Categories()[(TabIndex + 1) % 3]); return true; }
+	const int32 NumTabs = TNShopUI::Categories().Num();
+	if (IsKey(Key, { EKeys::Q, EKeys::Gamepad_LeftShoulder })) { ShowTab(TNShopUI::Categories()[(TabIndex + NumTabs - 1) % NumTabs]); return true; }
+	if (IsKey(Key, { EKeys::E, EKeys::Tab, EKeys::Gamepad_RightShoulder })) { ShowTab(TNShopUI::Categories()[(TabIndex + 1) % NumTabs]); return true; }
 	if (IsKey(Key, { EKeys::Enter, EKeys::SpaceBar, EKeys::Gamepad_FaceButton_Bottom })) { Buy(); return true; }
 	return false;
 }
@@ -814,7 +819,7 @@ void UTN_BoothWidget::BuildTree()
 		TNShopUI::AddH(Line, Prev, FMargin(0.f, 0.f, 10.f, 0.f));
 
 		UImage* Thumb = TNShopUI::New<UImage>(Tree);
-		TNShopUI::AddH(Line, TNShopUI::Sized(Tree, Thumb, 112.f, 112.f), FMargin(0.f, 0.f, 10.f, 0.f));
+		TNShopUI::AddH(Line, TNShopUI::Sized(Tree, Thumb, 96.f, 96.f), FMargin(0.f, 0.f, 10.f, 0.f));
 		RowThumbs.Add(Thumb);
 		RowThumbMIDs.Add(MakeCaptureMID(nullptr));
 		if (RowThumbMIDs.Last()) { Thumb->SetBrushFromMaterial(RowThumbMIDs.Last()); }
@@ -833,9 +838,9 @@ void UTN_BoothWidget::BuildTree()
 		Next->Setup(FText::GetEmpty(), TNShopArt::Arrow(true), TNShopUI::CreamColor, 22, FVector2D(56.f, 56.f), [this, r]() { FocusRow(r); Cycle(r, 1); });
 		TNShopUI::AddH(Line, Next);
 
-		UBorder* RowFrame = TNShopUI::Framed(Tree, TNShopArt::SandPanel(false), TNShopUI::SandBoxMargin, Line, FMargin(18.f, 12.f, 18.f, 12.f));
+		UBorder* RowFrame = TNShopUI::Framed(Tree, TNShopArt::SandPanel(false), TNShopUI::SandBoxMargin, Line, FMargin(18.f, 9.f, 18.f, 9.f));
 		RowFrames.Add(RowFrame);
-		TNShopUI::AddV(Right, RowFrame, FMargin(0.f, 0.f, 0.f, 14.f), HAlign_Fill);
+		TNShopUI::AddV(Right, RowFrame, FMargin(0.f, 0.f, 0.f, 10.f), HAlign_Fill);
 	}
 	{
 		UHorizontalBox* Buttons = TNShopUI::New<UHorizontalBox>(Tree);
@@ -948,6 +953,7 @@ void UTN_BoothWidget::Accept()
 		}
 		if (Chosen.ShellId != Initial.ShellId) { PC->RequestEquipShell(Chosen.ShellId); }
 		if (Chosen.SkinId != Initial.SkinId) { PC->RequestEquipSkin(Chosen.SkinId); }
+		if (Chosen.EyesId != Initial.EyesId) { PC->RequestEquipEyes(Chosen.EyesId); }
 	}
 	CloseMenu();
 }

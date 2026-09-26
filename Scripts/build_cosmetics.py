@@ -11,6 +11,9 @@ Crea o rehace:
       caparazón = detrás del torso entre la cintura y el cuello; barriga = delante del torso. Parámetros: BodyColor,
       BellyColor, BellyAmount, ShellColor, ShellColor2, ShellPattern (0 liso, 1 escamas, 2 lunares, 3 olas,
       4 estrellas, 5 grietas de lava, 6 ajedrez, 7 sandía), PatternScale, ShellShine, ShellGlow, ShellMatchBody.
+      Ojos: máscara por posición (las dos esferas de los ojos, en (±4,47; 8,46; 46,06) con radio 3,98, solo el
+      casquete que asoma) con EyeStyle (0 clásicos, 1 iris, 2 estrella, 3 corazón, 4 de dibujo, 5 espiral, 6 gato,
+      7 galaxia), EyeColor, EyeColor2, EyeGlow y la animación EyeBlink (párpado) y EyeDizzy (espiral al noquear).
     - M_TurtleHelmetSlot: ranura "lambert2" (casco rojo de serie + lengua) con el casco recortado: se usa cuando la
       tortuga lleva un casco de la tienda. Solo queda la lengua.
   /Game/UI/Shop/M_UI_Preview: pinta en la UI la captura de la vista previa (SceneColorHDR: alfa invertido y sin
@@ -218,7 +221,105 @@ Metal = ShellM * ShellShine;
 Rough = lerp(0.62, lerp(0.5, 0.2, ShellShine), ShellM);
 float Twinkle = 0.8 + 0.2 * sin(TimeS * 2.3 + Q.x * 1.7 + Q.y);
 Emis = ShellM * ShellGlow * Pat * ShellColor2 * Twinkle;
-return lerp(BodyCol, ShellCol, ShellM);
+
+// ── Ojos: esferas de TotugaDemo_Rig en (±4,47; 8,46; 46,06) con radio 3,98 (simétricas en X) ──
+float3 EyeQ = float3(abs(P.x) - 4.469, P.y - 8.462, P.z - 46.062);
+float EyeDist = length(EyeQ);
+float3 EyeN = EyeQ / max(EyeDist, 0.001);
+// Solo el casquete que asoma (arriba, delante y afuera); la base queda bajo la piel.
+float EyeM = step(EyeDist, 4.12) * step(0.17, dot(EyeN, normalize(float3(0.66, 0.62, 0.42))));
+float3 EyeGaze = normalize(float3(0.25, 0.93, 0.27));
+float3 EyeUp = normalize(float3(0.0, 0.0, 1.0) - EyeGaze * EyeGaze.z);
+float3 EyeRight = cross(EyeUp, EyeGaze);
+// Plano del ojo: radio del iris = 1 (unos 34 grados). EyeUV lleva la x igual en los dos ojos (brillos del mismo lado);
+// EyeSym es simétrica (para las formas simétricas).
+float2 EyeSym = float2(dot(EyeN, EyeRight), dot(EyeN, EyeUp)) / 0.56;
+float2 EyeUV = float2(EyeSym.x * sign(P.x + 0.0001), EyeSym.y);
+float EyeR = length(EyeUV);
+float EyeFront = step(0.0, dot(EyeN, EyeGaze));
+int EyeMode = EyeDizzy > 0.5 ? 5 : (int)round(EyeStyle);
+float3 Sclera = float3(0.92, 0.92, 0.88);
+float3 EyeInk = float3(0.006, 0.01, 0.025);
+float3 EyeCol = Sclera;
+float3 EyeEmis = float3(0.0, 0.0, 0.0);
+float EyeShine = 1.0;
+if (EyeMode == 1 || EyeMode == 6 || EyeMode == 7)
+{
+    // Iris de color con aro oscuro y pupila: redonda, de rendija (gato) o pequeña con estrellitas (galaxia).
+    float IrisM = (1.0 - smoothstep(0.94, 1.0, EyeR)) * EyeFront;
+    float3 IrisCol = lerp(EyeColor * 1.15, EyeColor * 0.45, smoothstep(0.55, 0.98, EyeR));
+    if (EyeMode == 7)
+    {
+        float2 SCell = floor(EyeUV * 6.0);
+        float2 SRnd = frac(sin(float2(dot(SCell, float2(127.1, 311.7)), dot(SCell, float2(269.5, 183.3)))) * 43758.5453);
+        float SLoc = length(frac(EyeUV * 6.0) - 0.5 - (SRnd - 0.5) * 0.5);
+        float Spark = (1.0 - smoothstep(0.06, 0.16, SLoc)) * step(0.5, SRnd.y) * (0.6 + 0.4 * sin(TimeS * 3.0 + SRnd.x * 20.0));
+        IrisCol = lerp(EyeColor * lerp(1.0, 0.35, EyeR), EyeColor2, Spark);
+        EyeEmis = IrisM * (EyeColor * 0.3 + EyeColor2 * Spark) * EyeGlow;
+    }
+    EyeCol = lerp(Sclera, IrisCol, IrisM);
+    float PupilM = EyeMode == 6
+        ? 1.0 - smoothstep(0.9, 1.0, length(float2(EyeUV.x / 0.2, EyeUV.y / 0.9)))
+        : 1.0 - smoothstep(EyeMode == 7 ? 0.22 : 0.4, EyeMode == 7 ? 0.28 : 0.46, EyeR);
+    EyeCol = lerp(EyeCol, EyeInk, PupilM * EyeFront);
+}
+else if (EyeMode == 2)
+{
+    // Estrella de cinco puntas (una hacia arriba) del color, con contorno oscuro.
+    float SAng = atan2(EyeSym.x, EyeSym.y);
+    float SSeg = 6.2831853 / 5.0;
+    float SPh = abs(frac(SAng / SSeg + 0.5) - 0.5) * 2.0;
+    float SRad = lerp(0.98, 0.46, SPh);
+    float StarM = (1.0 - smoothstep(SRad - 0.05, SRad, EyeR)) * EyeFront;
+    float StarEdge = (1.0 - smoothstep(SRad + 0.02, SRad + 0.1, EyeR)) * EyeFront;
+    EyeCol = lerp(lerp(Sclera, EyeInk, StarEdge), EyeColor, StarM);
+}
+else if (EyeMode == 3)
+{
+    // Corazón (la curva clásica), del color y con contorno oscuro.
+    float2 Hp = EyeSym / 0.82 + float2(0.0, 0.18);
+    float Hq = Hp.x * Hp.x + Hp.y * Hp.y - 1.0;
+    float Hv = Hq * Hq * Hq - Hp.x * Hp.x * Hp.y * Hp.y * Hp.y;
+    float HeartM = (1.0 - smoothstep(-0.02, 0.02, Hv)) * EyeFront;
+    float HeartEdge = (1.0 - smoothstep(0.02, 0.14, Hv)) * EyeFront;
+    EyeCol = lerp(lerp(Sclera, EyeInk, HeartEdge), EyeColor, HeartM);
+}
+else if (EyeMode == 4)
+{
+    // De dibujo: pupila enorme (del color) con dos brillos grandes.
+    EyeCol = lerp(Sclera, EyeColor, (1.0 - smoothstep(0.82, 0.88, EyeR)) * EyeFront);
+}
+else if (EyeMode == 5)
+{
+    // Espiral que gira (noqueada: siempre oscura).
+    float3 SpCol = EyeDizzy > 0.5 ? EyeInk : EyeColor;
+    float SpAng = atan2(EyeSym.y, EyeSym.x) + TimeS * 5.0;
+    float Sp = frac(EyeR * 3.0 - SpAng / 6.2831853);
+    float SpLine = smoothstep(0.3, 0.42, Sp) * smoothstep(0.78, 0.66, Sp) * step(EyeR, 1.1) * EyeFront;
+    EyeCol = lerp(Sclera, SpCol, SpLine);
+    EyeShine = 0.0;
+}
+else
+{
+    // Clásicos: pupila negra redonda.
+    EyeCol = lerp(Sclera, EyeInk, (1.0 - smoothstep(0.5, 0.56, EyeR)) * EyeFront);
+}
+// Brillos: uno grande arriba y otro pequeño abajo, al mismo lado en los dos ojos.
+float BigShine = 1.0 - smoothstep(EyeMode == 4 ? 0.26 : 0.15, EyeMode == 4 ? 0.3 : 0.19, length(EyeUV - float2(-0.3, 0.34)));
+float SmallShine = 1.0 - smoothstep(EyeMode == 4 ? 0.12 : 0.07, EyeMode == 4 ? 0.15 : 0.1, length(EyeUV - float2(0.3, -0.28)));
+EyeCol = lerp(EyeCol, float3(1.0, 1.0, 1.0), max(BigShine, SmallShine * 0.9) * EyeShine * EyeFront);
+// Párpado: baja desde arriba (EyeBlink) con una raya oscura de pestaña.
+float LidH = lerp(1.05, -1.05, saturate(EyeBlink));
+float EyeHeight = dot(EyeN, EyeUp);
+float Lid = step(LidH, EyeHeight) * step(0.01, EyeBlink);
+float Lash = (1.0 - smoothstep(0.0, 0.08, abs(EyeHeight - LidH))) * step(0.02, EyeBlink);
+EyeCol = lerp(lerp(EyeCol, EyeInk, Lash), BodyCol * 0.92, Lid);
+
+float3 BaseCol = lerp(BodyCol, ShellCol, ShellM);
+Metal = Metal * (1.0 - EyeM);
+Rough = lerp(Rough, lerp(0.12, 0.6, Lid), EyeM);
+Emis = lerp(Emis, EyeEmis * (1.0 - Lid), EyeM);
+return lerp(BaseCol, EyeCol, EyeM);
 """
 
 
@@ -241,6 +342,13 @@ def build_turtle_body_material():
         ("ShellGlow", scalar(m, "ShellGlow", 0.0, -1100, 800)),
         ("ShellMatchBody", scalar(m, "ShellMatchBody", 1.0, -1100, 880)),
         ("TimeS", expr(m, unreal.MaterialExpressionTime, -1100, 960)),
+        # Ojos (ETNEyeStyle: 0 clásicos, 1 iris, 2 estrella, 3 corazón, 4 de dibujo, 5 espiral, 6 gato, 7 galaxia).
+        ("EyeStyle", scalar(m, "EyeStyle", 0.0, -1100, 1040)),
+        ("EyeColor", vector(m, "EyeColor", lin_color(0x13233B), -1100, 1120)),
+        ("EyeColor2", vector(m, "EyeColor2", lin_color(0xFFFFFF), -1100, 1240)),
+        ("EyeGlow", scalar(m, "EyeGlow", 0.0, -1100, 1360)),
+        ("EyeBlink", scalar(m, "EyeBlink", 0.0, -1100, 1440)),
+        ("EyeDizzy", scalar(m, "EyeDizzy", 0.0, -1100, 1520)),
     ]
     custom = custom_node(m, TURTLE_BODY_HLSL, inputs, unreal.CustomMaterialOutputType.CMOT_FLOAT3, -600, 200, "TurtleBody",
                          extra_outputs=[("Metal", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
@@ -422,6 +530,19 @@ BODIES = [
     ("Forest", "Verde bosque", 0x2E6B3A, 0xD8E8B0, 0.45, "Verde oscuro de la selva profunda."),
 ]
 
+# Ojos: (id, nombre, color del iris o la pupila, segundo color, tipo (ETNEyeStyle), luz propia, lo que dice el tendero)
+EYES = [
+    ("Ocean", "Iris azul mar", 0x2E86DE, 0xFFFFFF, "Iris", 0.0, "Azules como el mar abierto. Miran lejos, muy lejos."),
+    ("Emerald", "Iris esmeralda", 0x27B36A, 0xFFFFFF, "Iris", 0.0, "Verdes como la selva después de la lluvia."),
+    ("Honey", "Iris miel", 0xD9902B, 0xFFFFFF, "Iris", 0.0, "Color miel: cálidos y dulces."),
+    ("Cat", "Ojos de gato", 0xF4C430, 0xFFFFFF, "Cat", 0.0, "Pupila de rendija. Ven en la oscuridad... o eso dicen."),
+    ("Star", "Pupilas de estrella", 0xFFCB3D, 0xFFFFFF, "Star", 0.0, "Para las tortugas que brillan en la carrera."),
+    ("Heart", "Pupilas de corazón", 0xFF4F7B, 0xFFFFFF, "Heart", 0.0, "Enamorada del mar, de la playa y de ganar."),
+    ("Toon", "Ojos de dibujo", 0x13233B, 0xFFFFFF, "Toon", 0.0, "Pupilas enormes y brillos de dibujos animados."),
+    ("Spiral", "Hipnóticos", 0x9B5DE5, 0xFFFFFF, "Spiral", 0.0, "Giran y giran... ¿dónde estaba la meta?"),
+    ("Galaxy", "Galaxia", 0x3B2F8F, 0xFFF3B0, "Galaxy", 3.0, "Un universo entero en cada ojo. Brillan en la oscuridad."),
+]
+
 
 def fill_tables():
     """Rehace las filas de DT_Helmets y DT_Skins (todo a precio 0 hasta que llegue la economía)."""
@@ -452,14 +573,21 @@ def fill_tables():
         skins.append({
             "Name": row, "SkinId": row, "DisplayName": name, "Category": "Shell", "Price": 0, "Description": desc,
             "Color": lin_json(c1), "Color2": lin_json(c2), "BellyAmount": 0.0, "Pattern": pattern,
-            "PatternScale": scale, "Shine": shine, "Glow": glow, **empty_slots,
+            "PatternScale": scale, "Shine": shine, "Glow": glow, "EyeStyle": "Classic", **empty_slots,
         })
     for sid, name, c1, c2, belly, desc in BODIES:
         row = "Body_" + sid
         skins.append({
             "Name": row, "SkinId": row, "DisplayName": name, "Category": "Body", "Price": 0, "Description": desc,
             "Color": lin_json(c1), "Color2": lin_json(c2), "BellyAmount": belly, "Pattern": "Plain",
-            "PatternScale": 1.0, "Shine": 0.0, "Glow": 0.0, **empty_slots,
+            "PatternScale": 1.0, "Shine": 0.0, "Glow": 0.0, "EyeStyle": "Classic", **empty_slots,
+        })
+    for sid, name, c1, c2, style, glow, desc in EYES:
+        row = "Eyes_" + sid
+        skins.append({
+            "Name": row, "SkinId": row, "DisplayName": name, "Category": "Eyes", "Price": 0, "Description": desc,
+            "Color": lin_json(c1), "Color2": lin_json(c2), "BellyAmount": 0.0, "Pattern": "Plain",
+            "PatternScale": 1.0, "Shine": 0.0, "Glow": glow, "EyeStyle": style, **empty_slots,
         })
     for path, rows in ((DT_HELMETS, helmets), (DT_SKINS, skins)):
         dt = asset_lib.load_asset(path)
@@ -469,9 +597,10 @@ def fill_tables():
 
 
 def tables_ready():
-    """Las columnas nuevas (Color, Pattern...) existen si el módulo C++ ya está compilado con ellas."""
+    """Las columnas nuevas (Color, Pattern, EyeStyle...) existen si el módulo C++ ya está compilado con ellas."""
     try:
-        return hasattr(unreal.TN_SkinData(), "pattern")
+        row = unreal.TN_SkinData()
+        return hasattr(row, "pattern") and hasattr(row, "eye_style")
     except Exception:
         return False
 
@@ -485,7 +614,7 @@ def main():
     if tables_ready():
         fill_tables()
     else:
-        unreal.log_warning("[Cosméticos] Falta compilar el C++ con las columnas nuevas de FTN_SkinData: tablas sin tocar.")
+        unreal.log_warning("[Cosméticos] Falta compilar el C++ con las columnas nuevas de FTN_SkinData (EyeStyle): tablas sin tocar.")
     unreal.log("[Cosméticos] Listo.")
 
 

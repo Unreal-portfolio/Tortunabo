@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
+#include "Core/TN_CosmeticLook.h"
 #include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_CarryComponent.h"
@@ -537,6 +538,7 @@ void ATortugaCharacter::Tick(float DeltaTime)
 	TickHeadLook(DeltaTime);       // head tracks camera direction, replicated a todos los clientes
 	TickFallRules(DeltaTime);      // caída larga → caparazón (servidor)
 	TickShellVisual(DeltaTime);    // encoger/estirar extremidades al entrar/salir del caparazón
+	TickEyes(DeltaTime);           // parpadeo y ojos en espiral (cosmético)
 }
 
 void ATortugaCharacter::TickLegAnimation(float DeltaTime)
@@ -1318,6 +1320,37 @@ void ATortugaCharacter::OnShellStateChanged(bool bInShell)
 	if (ActiveEmoteIndex >= 0 || bEmoteBlendingOut)
 	{
 		CancelEmote();
+	}
+}
+
+void ATortugaCharacter::TickEyes(float DeltaTime)
+{
+	if (GetNetMode() == NM_DedicatedServer) { return; }
+
+	// Parpadeo de dibujo: el párpado baja y sube en 0,16 s cada 2,5-5,5 s y, a veces, dos seguidos.
+	EyeBlinkTimer -= DeltaTime;
+	if (EyeBlinkTimer <= 0.f)
+	{
+		bEyeBlinking = true;
+		EyeBlinkClock = 0.f;
+		EyeBlinkTimer = FMath::FRand() < 0.2f ? 0.32f : FMath::FRandRange(2.5f, 5.5f);
+	}
+	float Blink = 0.f;
+	if (bEyeBlinking)
+	{
+		EyeBlinkClock += DeltaTime;
+		const float K = EyeBlinkClock / 0.16f;
+		Blink = K < 0.5f ? K * 2.f : FMath::Max(0.f, 2.f - K * 2.f);
+		bEyeBlinking = K < 1.f;
+	}
+	// Noqueada o muerta: ojos en espiral (y sin parpadear).
+	const float Dizzy = (bIsKnockedDown || bIsDead) ? 1.f : 0.f;
+	if (Dizzy > 0.f) { Blink = 0.f; }
+	if (FMath::Abs(Blink - EyeBlinkApplied) > 0.02f || Dizzy != EyeDizzyApplied)
+	{
+		EyeBlinkApplied = Blink;
+		EyeDizzyApplied = Dizzy;
+		UTN_CosmeticLook::SetEyeState(GetMesh(), Blink, Dizzy);
 	}
 }
 

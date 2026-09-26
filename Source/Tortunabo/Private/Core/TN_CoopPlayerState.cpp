@@ -78,6 +78,14 @@ void ATN_CoopPlayerState::OnRep_EquippedShellId()
 	}
 }
 
+void ATN_CoopPlayerState::OnRep_EquippedEyesId()
+{
+	if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+	{
+		TurtleChar->UpdateSkinVisual(EquippedSkinId);
+	}
+}
+
 void ATN_CoopPlayerState::MulticastForceApplySkin_Implementation(FName SkinId)
 {
 	EquippedSkinId = SkinId;
@@ -144,6 +152,7 @@ void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(ATN_CoopPlayerState, EquippedHelmetId);
 	DOREPLIFETIME(ATN_CoopPlayerState, EquippedSkinId);
 	DOREPLIFETIME(ATN_CoopPlayerState, EquippedShellId);
+	DOREPLIFETIME(ATN_CoopPlayerState, EquippedEyesId);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishTimeSeconds);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishRank);
 	DOREPLIFETIME(ATN_CoopPlayerState, bIsEliminated);

@@ -35,6 +35,10 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
 	FName EquippedShellId = NAME_None;
 
+	/** Ojos equipados (fila de DT_Skins de categoría Eyes). NAME_None = los clásicos. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
+	FName EquippedEyesId = NAME_None;
+
 	/**
 	 * Puntos de carrera acumulados (#26).
 	 * Se suman al terminar cada carrera según posición de llegada.

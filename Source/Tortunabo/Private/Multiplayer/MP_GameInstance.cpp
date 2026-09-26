@@ -365,6 +365,19 @@ FName UMP_GameInstance::GetEquippedShellId() const
 	return CosmeticProfile ? CosmeticProfile->EquippedShellId : NAME_None;
 }
 
+bool UMP_GameInstance::EquipEyes(FName EyesId)
+{
+	if (!CosmeticProfile) { return false; }
+	CosmeticProfile->EquippedEyesId = EyesId;
+	SaveCosmeticProfile();
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedEyesId() const
+{
+	return CosmeticProfile ? CosmeticProfile->EquippedEyesId : NAME_None;
+}
+
 const FTN_HelmetData* UMP_GameInstance::FindHelmetRow(FName HelmetId, const TCHAR* Ctx) const
 {
 	const UDataTable* HelmDT = GetHelmetDataTable();

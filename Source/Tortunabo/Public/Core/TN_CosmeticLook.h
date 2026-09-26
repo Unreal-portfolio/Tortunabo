@@ -14,9 +14,10 @@ class UMaterialInterface;
  * usan esto mismo, así que se ven igual en todas partes.
  *
  * Malla de demo (TotugaDemo_Rig, 2 ranuras): "lambert2" = casco rojo de serie + lengua; "lambert4" = cuerpo, ojos y
- * caparazón. Con un casco de la tienda, la ranura del casco pasa a M_TurtleHelmetSlot (solo queda la lengua); con un
- * color o un caparazón, la del cuerpo pasa a una instancia de M_TurtleBody con los colores y el dibujo de las filas
- * (las zonas salen de la posición local: ver Scripts/build_cosmetics.py).
+ * caparazón. Con un casco de la tienda, la ranura del casco pasa a M_TurtleHelmetSlot (solo queda la lengua); la del
+ * cuerpo es siempre una instancia de M_TurtleBody con los colores, el dibujo del caparazón y los ojos de las filas
+ * (las zonas salen de la posición local: ver Scripts/build_cosmetics.py). Así los ojos nunca salen del color de la
+ * piel, aunque no se lleve nada de la tienda.
  * Malla unificada (5 ranuras: barriga, brillo de ojos, ojos y boca, piel, caparazón): los materiales por ranura.
  */
 UCLASS()
@@ -40,6 +41,12 @@ public:
 	 * casco colocado en la coronilla de la postura de referencia (así sigue la animación de la cabeza).
 	 */
 	static void AttachHelmet(USkeletalMeshComponent* Body, UStaticMeshComponent* Helmet, const FTN_HelmetData* Row);
+
+	/**
+	 * Animación de los ojos sobre la instancia de M_TurtleBody que puso ApplyLook: Blink (0 abiertos, 1 cerrados, el
+	 * párpado baja desde arriba) y Dizzy (1 = ojos en espiral, noqueada). Barato: solo escribe dos parámetros.
+	 */
+	static void SetEyeState(USkeletalMeshComponent* Body, float Blink, float Dizzy);
 
 	/** Nombre para la tienda y el probador (NAME_None = el de serie). */
 	UFUNCTION(BlueprintPure, Category = "Cosmetics", meta = (WorldContext = "WorldContext"))

@@ -130,6 +130,14 @@ public:
 	UFUNCTION()
 	void OnRep_EquippedShellId();
 
+	/** Ojos equipados (fila de DT_Skins de categoría Eyes). NAME_None = los clásicos. */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedEyesId, Category = "Cosmetics")
+	FName EquippedEyesId = NAME_None;
+
+	/** @brief OnRep de EquippedEyesId: reaplica los materiales en el pawn local. */
+	UFUNCTION()
+	void OnRep_EquippedEyesId();
+
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	float FinishTimeSeconds = -1.f;
 

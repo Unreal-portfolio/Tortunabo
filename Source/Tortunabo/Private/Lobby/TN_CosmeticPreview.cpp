@@ -248,7 +248,8 @@ void ATN_CosmeticPreview::SetLiveCapture(bool bEnabled)
 UTextureRenderTarget2D* ATN_CosmeticPreview::GetThumbnail(ETNCosmeticCategory Category, FName Id)
 {
 	using namespace TNPreviewDetail;
-	const TCHAR* Prefix = Category == ETNCosmeticCategory::Helmet ? TEXT("H") : (Category == ETNCosmeticCategory::Shell ? TEXT("S") : TEXT("B"));
+	const TCHAR* Prefix = Category == ETNCosmeticCategory::Helmet ? TEXT("H")
+		: Category == ETNCosmeticCategory::Shell ? TEXT("S") : Category == ETNCosmeticCategory::Eyes ? TEXT("E") : TEXT("B");
 	const FName Key(*FString::Printf(TEXT("%s_%s"), Prefix, *Id.ToString()));
 	if (TObjectPtr<UTextureRenderTarget2D>* Found = Thumbnails.Find(Key)) { return *Found; }
 	UTextureRenderTarget2D* RT = UKismetRenderingLibrary::CreateRenderTarget2D(this, ThumbSize, ThumbSize, RTF_RGBA16f, FLinearColor(0.f, 0.f, 0.f, 1.f));
@@ -292,6 +293,15 @@ void ATN_CosmeticPreview::CaptureThumbnail(const FThumbRequest& Request)
 			ThumbCapture->ClearShowOnlyComponents();
 			ThumbCapture->ShowOnlyComponent(Helmet);
 		}
+	}
+	else if (Request.Category == ETNCosmeticCategory::Eyes)
+	{
+		// Primer plano de la cara de frente: los dos ojos.
+		Focus = TurtleXf.TransformPosition(FVector(0.0, 9.0, 46.0));
+		ViewDir = FVector(0.96, 0.2, 0.2).GetSafeNormal();
+		Distance = 62.f;
+		ThumbCapture->ClearShowOnlyComponents();
+		ThumbCapture->ShowOnlyComponent(Turtle);
 	}
 	else if (Request.Category == ETNCosmeticCategory::Shell)
 	{

@@ -9,8 +9,9 @@ class UStaticMesh;
 class UTexture2D;
 
 /**
- * Categoría de cosmético de la tienda y del probador del lobby. Un casco es una fila de DT_Helmets; el caparazón y el
- * color del cuerpo son filas de DT_Skins, y se equipan por separado (EquippedShellId y EquippedSkinId).
+ * Categoría de cosmético de la tienda y del probador del lobby. Un casco es una fila de DT_Helmets; el caparazón, el
+ * color del cuerpo y los ojos son filas de DT_Skins, y se equipan por separado (EquippedShellId, EquippedSkinId y
+ * EquippedEyesId).
  */
 UENUM(BlueprintType)
 enum class ETNCosmeticCategory : uint8
@@ -18,6 +19,21 @@ enum class ETNCosmeticCategory : uint8
 	Helmet UMETA(DisplayName = "Casco"),
 	Shell  UMETA(DisplayName = "Caparazón"),
 	Body   UMETA(DisplayName = "Color"),
+	Eyes   UMETA(DisplayName = "Ojos"),
+};
+
+/** Tipo de ojo (parámetro EyeStyle de M_TurtleBody). */
+UENUM(BlueprintType)
+enum class ETNEyeStyle : uint8
+{
+	Classic UMETA(DisplayName = "Clásicos"),
+	Iris    UMETA(DisplayName = "Iris de color"),
+	Star    UMETA(DisplayName = "Pupila de estrella"),
+	Heart   UMETA(DisplayName = "Pupila de corazón"),
+	Toon    UMETA(DisplayName = "De dibujo"),
+	Spiral  UMETA(DisplayName = "Espiral"),
+	Cat     UMETA(DisplayName = "De gato"),
+	Galaxy  UMETA(DisplayName = "Galaxia"),
 };
 
 /** Dibujo del caparazón (parámetro ShellPattern de M_TurtleBody). */
@@ -190,16 +206,20 @@ struct FTN_SkinData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look", meta = (ClampMin = "0", ClampMax = "1"))
 	float Shine = 0.f;
 
-	/** Shell: luz propia del dibujo (lava, galaxia). */
+	/** Shell: luz propia del dibujo (lava, galaxia). Eyes: luz propia del iris (galaxia). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look", meta = (ClampMin = "0", ClampMax = "20"))
 	float Glow = 0.f;
+
+	/** Eyes: tipo de ojo (Color = iris o pupila de color; Color2 = segundo color: brillos de la galaxia). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look")
+	ETNEyeStyle EyeStyle = ETNEyeStyle::Classic;
 
 	bool IsValid() const { return SkinId != NAME_None; }
 };
 
 /**
  * Conjunto de cosméticos de una tortuga: lo que replica el PlayerState y lo que enseñan la tienda, el probador y el
- * tendero. NAME_None = el de serie (casco rojo, cuerpo verde, caparazón del color del cuerpo).
+ * tendero. NAME_None = el de serie (casco rojo, cuerpo verde, caparazón del color del cuerpo y ojos clásicos).
  */
 USTRUCT(BlueprintType)
 struct FTN_TurtleLook
@@ -215,18 +235,33 @@ struct FTN_TurtleLook
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	FName SkinId = NAME_None;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	FName EyesId = NAME_None;
+
 	FName Get(ETNCosmeticCategory Category) const
 	{
-		return Category == ETNCosmeticCategory::Helmet ? HelmetId : (Category == ETNCosmeticCategory::Shell ? ShellId : SkinId);
+		switch (Category)
+		{
+		case ETNCosmeticCategory::Helmet: return HelmetId;
+		case ETNCosmeticCategory::Shell:  return ShellId;
+		case ETNCosmeticCategory::Eyes:   return EyesId;
+		default:                          return SkinId;
+		}
 	}
 
 	void Set(ETNCosmeticCategory Category, FName Id)
 	{
-		(Category == ETNCosmeticCategory::Helmet ? HelmetId : (Category == ETNCosmeticCategory::Shell ? ShellId : SkinId)) = Id;
+		switch (Category)
+		{
+		case ETNCosmeticCategory::Helmet: HelmetId = Id; break;
+		case ETNCosmeticCategory::Shell:  ShellId = Id; break;
+		case ETNCosmeticCategory::Eyes:   EyesId = Id; break;
+		default:                          SkinId = Id; break;
+		}
 	}
 
 	bool Equals(const FTN_TurtleLook& Other) const
 	{
-		return HelmetId == Other.HelmetId && ShellId == Other.ShellId && SkinId == Other.SkinId;
+		return HelmetId == Other.HelmetId && ShellId == Other.ShellId && SkinId == Other.SkinId && EyesId == Other.EyesId;
 	}
 };

@@ -185,6 +185,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	FName GetEquippedShellId() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool EquipEyes(FName EyesId);
+
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	FName GetEquippedEyesId() const;
+
 	/** Devuelve el DataTable de skins para lookup externo. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	UDataTable* GetSkinDataTable() const { return SkinDataTable; }

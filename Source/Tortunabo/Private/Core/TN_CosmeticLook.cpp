@@ -113,6 +113,7 @@ void UTN_CosmeticLook::ApplyLook(const UObject* WorldContext, USkeletalMeshCompo
 	const FTN_HelmetData* HelmRow = (GI && Look.HelmetId != NAME_None) ? GI->FindHelmetRow(Look.HelmetId, TEXT("CosmeticLook")) : nullptr;
 	const FTN_SkinData* SkinRow = (GI && Look.SkinId != NAME_None) ? GI->FindSkinRow(Look.SkinId, TEXT("CosmeticLook")) : nullptr;
 	const FTN_SkinData* ShellRow = (GI && Look.ShellId != NAME_None) ? GI->FindSkinRow(Look.ShellId, TEXT("CosmeticLook")) : nullptr;
+	const FTN_SkinData* EyesRow = (GI && Look.EyesId != NAME_None) ? GI->FindSkinRow(Look.EyesId, TEXT("CosmeticLook")) : nullptr;
 
 	UStaticMesh* HelmMesh = HelmRow ? HelmRow->DisplayMesh.Get() : nullptr;
 	if (Helmet)
@@ -144,7 +145,9 @@ void UTN_CosmeticLook::ApplyLook(const UObject* WorldContext, USkeletalMeshCompo
 	{
 		if (UMaterialInterface* SlotMat = LoadMaterial(HelmetSlotMaterialPath)) { Body->SetMaterial(Slots.HelmetSlot, SlotMat); }
 	}
-	if ((SkinRow || ShellRow) && Slots.BodySlot != INDEX_NONE)
+	// Siempre M_TurtleBody en el cuerpo (si existe): con el material original de la malla los ojos salen del color de
+	// la piel.
+	if (Slots.BodySlot != INDEX_NONE)
 	{
 		UMaterialInterface* BodyMat = LoadMaterial(BodyMaterialPath);
 		if (UMaterialInstanceDynamic* MID = BodyMat ? Body->CreateDynamicMaterialInstance(Slots.BodySlot, BodyMat) : nullptr)
@@ -168,9 +171,29 @@ void UTN_CosmeticLook::ApplyLook(const UObject* WorldContext, USkeletalMeshCompo
 				MID->SetScalarParameterValue(TEXT("ShellShine"), 0.f);
 				MID->SetScalarParameterValue(TEXT("ShellGlow"), 0.f);
 			}
+			// Ojos: los de serie son clásicos (blanco con pupila negra y brillo).
+			MID->SetScalarParameterValue(TEXT("EyeStyle"), EyesRow ? static_cast<float>(EyesRow->EyeStyle) : 0.f);
+			MID->SetVectorParameterValue(TEXT("EyeColor"), EyesRow ? EyesRow->Color : FLinearColor(0.004f, 0.006f, 0.015f, 1.f));
+			MID->SetVectorParameterValue(TEXT("EyeColor2"), EyesRow ? EyesRow->Color2 : FLinearColor::White);
+			MID->SetScalarParameterValue(TEXT("EyeGlow"), EyesRow ? EyesRow->Glow : 0.f);
+			MID->SetScalarParameterValue(TEXT("EyeBlink"), 0.f);
+			MID->SetScalarParameterValue(TEXT("EyeDizzy"), 0.f);
 		}
 	}
 	Body->MarkRenderStateDirty();
+}
+
+void UTN_CosmeticLook::SetEyeState(USkeletalMeshComponent* Body, float Blink, float Dizzy)
+{
+	using namespace TNCosmeticLookDetail;
+	if (!Body) { return; }
+	const FTurtleSlots Slots = SlotsOf(Body);
+	if (Slots.bUnified || Slots.BodySlot == INDEX_NONE) { return; }
+	if (UMaterialInstanceDynamic* MID = Cast<UMaterialInstanceDynamic>(Body->GetMaterial(Slots.BodySlot)))
+	{
+		MID->SetScalarParameterValue(TEXT("EyeBlink"), FMath::Clamp(Blink, 0.f, 1.f));
+		MID->SetScalarParameterValue(TEXT("EyeDizzy"), FMath::Clamp(Dizzy, 0.f, 1.f));
+	}
 }
 
 FText UTN_CosmeticLook::GetDisplayName(const UObject* WorldContext, ETNCosmeticCategory Category, FName Id)
@@ -182,6 +205,7 @@ FText UTN_CosmeticLook::GetDisplayName(const UObject* WorldContext, ETNCosmeticC
 		{
 		case ETNCosmeticCategory::Helmet: return NSLOCTEXT("Tortunabo", "SerieHelmet", "Casco de serie");
 		case ETNCosmeticCategory::Shell:  return NSLOCTEXT("Tortunabo", "SerieShell", "Caparazón de serie");
+		case ETNCosmeticCategory::Eyes:   return NSLOCTEXT("Tortunabo", "SerieEyes", "Ojos de serie");
 		default:                          return NSLOCTEXT("Tortunabo", "SerieBody", "Verde de serie");
 		}
 	}
@@ -204,6 +228,7 @@ FText UTN_CosmeticLook::GetDescription(const UObject* WorldContext, ETNCosmeticC
 		{
 		case ETNCosmeticCategory::Helmet: return NSLOCTEXT("Tortunabo", "SerieHelmetDesc", "El casco rojo de siempre. Protege de los cocos.");
 		case ETNCosmeticCategory::Shell:  return NSLOCTEXT("Tortunabo", "SerieShellDesc", "Tu caparazón original, a juego con tu color.");
+		case ETNCosmeticCategory::Eyes:   return NSLOCTEXT("Tortunabo", "SerieEyesDesc", "Los de toda la vida: blancos, redondos y con su brillito.");
 		default:                          return NSLOCTEXT("Tortunabo", "SerieBodyDesc", "Verde tortuga, el clásico que nunca falla.");
 		}
 	}

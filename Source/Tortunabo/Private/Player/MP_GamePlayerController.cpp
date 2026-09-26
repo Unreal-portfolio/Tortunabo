@@ -896,6 +896,15 @@ bool AMP_GamePlayerController::RequestEquipShell(FName ShellId)
 	return true;
 }
 
+bool AMP_GamePlayerController::RequestEquipEyes(FName EyesId)
+{
+	UMP_GameInstance* GI = GetTNGameInstance();
+	if (GI && !GI->IsCosmeticUnlocked(ETNCosmeticCategory::Eyes, EyesId)) { return false; }
+	if (GI) { GI->EquipEyes(EyesId); }
+	ServerSetEquippedEyes(EyesId);
+	return true;
+}
+
 bool AMP_GamePlayerController::RequestPurchaseCosmetic(ETNCosmeticCategory Category, FName Id)
 {
 	UMP_GameInstance* GI = GetTNGameInstance();
@@ -1022,6 +1031,30 @@ void AMP_GamePlayerController::ServerSetEquippedShell_Implementation(FName Shell
 	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
 	{
 		TNPS->EquippedShellId = ShellId;
+		TNPS->ForceNetUpdate();
+		// El servidor (autoridad) no recibe OnRep: aplica aquí.
+		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+		{
+			TurtleChar->UpdateSkinVisual(TNPS->EquippedSkinId);
+		}
+	}
+}
+
+void AMP_GamePlayerController::ServerSetEquippedEyes_Implementation(FName EyesId)
+{
+	if (EyesId != NAME_None)
+	{
+		const UMP_GameInstance* GI = GetTNGameInstance();
+		const FTN_SkinData* Row = GI ? GI->FindSkinRow(EyesId, TEXT("ServerSetEquippedEyes")) : nullptr;
+		if (!Row || Row->Category != ETNCosmeticCategory::Eyes || !ServerUnlockedSkins.Contains(EyesId))
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSetEquippedEyes: '%s' no son unos ojos desbloqueados de %s"), *EyesId.ToString(), *GetNameSafe(this));
+			return;
+		}
+	}
+	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		TNPS->EquippedEyesId = EyesId;
 		TNPS->ForceNetUpdate();
 		// El servidor (autoridad) no recibe OnRep: aplica aquí.
 		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
@@ -1202,6 +1235,7 @@ void AMP_GamePlayerController::SyncCosmeticsToServer()
 		// Sincronizar color y caparazón (NAME_None = los de serie, siempre enviar)
 		ServerSetEquippedSkin(GI->GetEquippedSkinId());
 		ServerSetEquippedShell(GI->GetEquippedShellId());
+		ServerSetEquippedEyes(GI->GetEquippedEyesId());
 	}
 }
 

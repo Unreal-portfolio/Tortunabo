@@ -87,6 +87,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool RequestEquipShell(FName ShellId);
 
+	/** @brief Equipa unos ojos desbloqueados (NAME_None = los clásicos): los guarda y los replica. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool RequestEquipEyes(FName EyesId);
+
 	/** @brief Tienda: lo compra (hoy todo cuesta 0), lo guarda y manda los desbloqueos al servidor. */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	bool RequestPurchaseCosmetic(ETNCosmeticCategory Category, FName Id);
@@ -334,6 +338,10 @@ private:
 	/** @brief Server RPC: asigna el caparazón equipado en el PlayerState. */
 	UFUNCTION(Server, Reliable)
 	void ServerSetEquippedShell(FName ShellId);
+
+	/** @brief Server RPC: asigna los ojos equipados en el PlayerState. */
+	UFUNCTION(Server, Reliable)
+	void ServerSetEquippedEyes(FName EyesId);
 
 	/** @brief Client RPC: guarda SkinId en GameInstance del cliente dueño. */
 	UFUNCTION(Client, Reliable)

@@ -676,6 +676,15 @@ private:
 	void TickFallRules(float DeltaTime);
 	void TickShellVisual(float DeltaTime);
 
+	/** Ojos (cosmético, local): parpadeo de dibujo cada pocos segundos y ojos en espiral noqueada o muerta. */
+	void TickEyes(float DeltaTime);
+	float EyeBlinkTimer = 2.f;
+	float EyeBlinkClock = 0.f;
+	bool bEyeBlinking = false;
+	/** Últimos valores escritos en el material (-1 = hay que volver a escribirlos, p. ej. tras cambiar el aspecto). */
+	float EyeBlinkApplied = -1.f;
+	float EyeDizzyApplied = -1.f;
+
 	/** Cota más alta desde que empezó la caída actual (ápice). */
 	float FallApexZ = 0.f;
 	bool bTrackingFall = false;
