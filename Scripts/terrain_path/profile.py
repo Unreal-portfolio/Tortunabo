@@ -218,13 +218,14 @@ def _profiles(rng: np.random.Generator, graph: PathGraph, style: PathStyle) -> P
         # Sobre el rio, siempre puente: un cerro con tunel taparia el cauce.
         return "bridge" if profiles[c.lower].biome[k] == 1 or draw < style.bridge_share else "tunnel"
     crossings = [replace(c, kind=_kind(c)) for c in crossings]
+    if crossings and style.bridge_share > 0.0 and all(c.kind == "tunnel" for c in crossings):
+        crossings[0] = replace(crossings[0], kind="bridge")      # al menos un puente por mapa
     for c in crossings:
         upper, lower = graph.lines[c.upper], graph.lines[c.lower]
         w_up = float(np.interp(c.s_upper, upper.arc, profiles[c.upper].half_width))
         half = w_up + 1.5
         if c.kind == "bridge":
-            # Puente fino: el camino de abajo solo queda cubierto bajo el tablero del de arriba.
-            profiles[c.lower] = _mark(profiles[c.lower], lower, c.s_lower - half, c.s_lower + half)
+            # Puente fino: el camino de abajo va al aire libre; el tablero lo pone bridge.py.
             continue
         # Tunel: sigue mientras el camino de abajo no se ha apartado del de arriba lo bastante
         # para que quepan sus dos paredes (si no, asomaria al lado del de arriba).

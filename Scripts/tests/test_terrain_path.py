@@ -170,8 +170,8 @@ def test_los_cruces_dejan_hueco_de_tunel(plan):
         z_lo = np.interp(c.s_lower, lo.arc, plan.profiles[lo.id].z)
         assert z_up - z_lo >= C01_STYLE.cross_clearance_m - 0.1
         assert z_lo >= WATER_M + 0.6          # sobre el rio, el de abajo va a la cota de la orilla
-        tunnel = plan.profiles[lo.id].tunnel
-        assert tunnel[int(np.searchsorted(lo.arc, c.s_lower))]
+        tunnel = plan.profiles[lo.id].tunnel          # solo los cruces de tipo tunel van cubiertos
+        assert tunnel[int(np.searchsorted(lo.arc, c.s_lower))] == (c.kind == "tunnel")
 
 
 def test_cruces_de_uno_a_cuatro_con_tipo(plan):
@@ -318,9 +318,9 @@ def _column(model, p):
     return z_levels()[np.nonzero(standable_cells(D)[1, 1])[0]]
 
 
-def test_los_cruces_tienen_techo(model):
-    assert model.plan.crossings
-    for c in model.plan.crossings:
+def test_los_cruces_de_tunel_tienen_techo(model):
+    """Los puentes: test_hay_puentes_con_losa_gruesa_y_hueco_al_aire."""
+    for c in [c for c in model.plan.crossings if c.kind == "tunnel"]:
         levels = _column(model, c.point)
         lo = np.interp(c.s_lower, model.plan.graph.lines[c.lower].arc, model.plan.profiles[c.lower].z)
         hi = np.interp(c.s_upper, model.plan.graph.lines[c.upper].arc, model.plan.profiles[c.upper].z)
@@ -336,6 +336,47 @@ def test_los_tuneles_de_cerro_tienen_techo_y_suelo(model):
         levels = _column(model, line.point_at(s))
         z = np.interp(s, line.arc, model.plan.profiles[line_id].z)
         assert np.any(np.abs(levels - z) < 0.8) and levels.max() > z + 5.5
+
+
+def _solid_column(model, p):
+    """Cotas solidas (densidad > 0) de la columna en p."""
+    i, j = int(round(p[0] - model.axis[0])), int(round(p[1] - model.axis[0]))
+    f = model.grid.window(i, i + 1, j, j + 1)
+    X, Y = np.meshgrid(model.axis[i:i + 1], model.axis[j:j + 1], indexing="ij")
+    return z_levels()[model.density(X, Y, z_levels(), f)[0, 0] > 0.0]
+
+
+def test_hay_puentes_con_losa_gruesa_y_hueco_al_aire(model):
+    """Sobre el camino de abajo de cada puente: hueco libre de 5 m o mas, losa de 1,4 m o mas y
+    tablero pisable a la cota del de arriba. A un lado del tablero, sobre el camino de abajo,
+    cielo abierto (es un puente, no un tunel)."""
+    bridges = [c for c in model.plan.crossings if c.kind == "bridge"]
+    assert bridges
+    for c in bridges:
+        lo, up = model.plan.graph.lines[c.lower], model.plan.graph.lines[c.upper]
+        z_lo = np.interp(c.s_lower, lo.arc, model.plan.profiles[c.lower].z)
+        z_up = np.interp(c.s_upper, up.arc, model.plan.profiles[c.upper].z)
+        solid = _solid_column(model, c.point)
+        above = solid[solid > z_lo + 0.5]
+        assert above.size and above.min() >= z_lo + 5.0, f"hueco bajo el puente en {c.point}: {above[:3]}"
+        slab = above[above <= z_up + 0.5]
+        assert slab.max() - slab.min() + 0.5 >= 1.4, f"losa fina en {c.point}"   # + un paso de Z
+        assert np.any(np.abs(_column(model, c.point) - z_up) < 0.8), f"tablero no pisable en {c.point}"
+        side = c.point + 6.0 * lo.tangent_at(c.s_lower)
+        open_sky = _solid_column(model, side)
+        assert not np.any(open_sky > z_lo + 0.5), f"el camino de abajo no esta al aire junto al puente {c.point}"
+
+
+def test_los_arcos_cruzan_de_pared_a_pared(model):
+    assert model.arch_ranges
+    for line_id, s0, s1 in model.arch_ranges:
+        line = model.plan.graph.lines[line_id]
+        s = 0.5 * (s0 + s1)
+        z = np.interp(s, line.arc, model.plan.profiles[line_id].z)
+        for off in (-2.0, 0.0, 2.0):
+            solid = _solid_column(model, line.point_at(s) + off * line.normal_at(s))
+            above = solid[solid > z + 0.5]
+            assert above.size and above.min() >= z + 4.5 and above.max() - above.min() + 0.5 >= 1.4
 
 
 def test_castillos_segun_el_estilo(model):
@@ -388,6 +429,29 @@ def test_las_vistas_no_se_pisan(model, reached):
     _, seen = reached
     region = model.region[1:-1, 1:-1]
     assert int((seen.any(axis=2) & (region == 2)).sum()) == 0
+
+
+def _world_vertices(chunks):
+    from terrain_vol.layout import UU_PER_M, cell_center
+    out = []
+    for (col, row), ch in chunks.items():
+        cx, cy = cell_center(col, row)
+        out.append(ch.vertices / UU_PER_M + np.array([cx, cy, 0.0]))
+    return np.vstack(out)
+
+
+def test_el_tablero_sobrevive_a_la_malla(model, chunks):
+    """El suavizado de la malla no perfora los tableros: hay cara de arriba y de abajo sobre el
+    camino de abajo de cada puente (antes, con losas de 0,8 m, desaparecian)."""
+    v = _world_vertices(chunks)
+    for c in [c for c in model.plan.crossings if c.kind == "bridge"]:
+        up, lo = model.plan.graph.lines[c.upper], model.plan.graph.lines[c.lower]
+        z_up = np.interp(c.s_upper, up.arc, model.plan.profiles[c.upper].z)
+        z_lo = np.interp(c.s_lower, lo.arc, model.plan.profiles[c.lower].z)
+        near = np.hypot(v[:, 0] - c.point[0], v[:, 1] - c.point[1]) < 1.5
+        top = near & (np.abs(v[:, 2] - z_up) < 0.6)
+        bottom = near & (v[:, 2] > z_lo + 4.0) & (v[:, 2] < z_up - 1.0)
+        assert top.sum() >= 4 and bottom.sum() >= 4, f"tablero perforado en {c.point}: {top.sum()} / {bottom.sum()}"
 
 
 def test_los_trozos_vecinos_coinciden(chunks):

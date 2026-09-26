@@ -3,6 +3,7 @@ densidad 3D por trozo, con la interfaz que usan terrain_vol.mesh y terrain_vol.e
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,7 +12,7 @@ from scipy.spatial import cKDTree
 from terrain_vol.density import Fields, smooth
 from terrain_vol.noise import Fbm2D, ValueNoise3D
 
-from . import field
+from . import bridge, field
 from .curves import normals, resample
 from .layout import CELL_M, CELL_SAMPLES, GRID_PAD, MAP_MAX_M, MAP_MIN_M, STEP_XY_M, WATER_M
 from .profile import build_plan
@@ -46,7 +47,12 @@ class PathModel:
         self.n_crest = Fbm2D(extra, 40.0, 3)
         self.n_wall2d = Fbm2D(extra, 11.0, 3)
         self.n_band = Fbm2D(extra, 80.0, 2)
+        self.deck_cuts: list[tuple[int, float, float]] = []
+        decks = self._plan_bridges()
         self.arch_ranges = self._plan_arches(extra)
+        decks += [bridge.arch_deck(self.plan.graph.lines[lid], self.plan.profiles[lid], 0.5 * (a + b))
+                  for lid, a, b in self.arch_ranges]
+        self.decks = bridge.DeckSet(decks, self.n_wall3d)
         self._build_samples()
         self.extra_rng = rng                       # rio y castillos siguen la misma secuencia
         self._plan_extras()
@@ -76,7 +82,7 @@ class PathModel:
             cols["biome"].append(prof.biome[k])
             cols["line"].append(np.full(len(s), line.id))
             cols["s"].append(s)
-            cols["open"].append(~prof.tunnel[k])
+            cols["open"].append(~prof.tunnel[k] & ~self._in_cut(line.id, s))
         # El final entra en el mar: el abanico sigue 50 m en la direccion de llegada y baja bajo
         # el agua, asi que el camino llega a la orilla por si mismo (la costa de las vistas no
         # toca el camino y no se puede salir por la playa a las vistas).
@@ -113,16 +119,9 @@ class PathModel:
                     continue
                 sel = np.arange(max(run[0] - 5, 0), min(run[-1] + 5, len(s) - 1) + 1)
                 t = (s[sel] - s[run[0]]) / max(s[run[-1]] - s[run[0]], 1e-9)
-                s_mid = 0.5 * (s[run[0]] + s[run[-1]])
-                arch = any(line_id == line.id and a <= s_mid <= b for line_id, a, b in self.arch_ranges)
-                bridge = self._bridge_clearance(line.id, s_mid)
-                # (alcance lateral del cerro, alto del hueco, tablero sobre el suelo)
-                if bridge is not None:          # cruce: puente fino, el de abajo va al aire libre
-                    kind_reach, kind_height, kind_deck = -1.0, bridge - 1.5, 0.0
-                elif arch:                      # arco fino sobre el camino
-                    kind_reach, kind_height, kind_deck = 3.0, 4.8, 6.3
-                else:                           # tunel de cerro
-                    kind_reach, kind_height, kind_deck = 10.0, 5.0, 8.0
+                # Tunel de cerro (o cruce de tipo tunel): (alcance lateral del cerro, alto del hueco,
+                # techo sobre el suelo). Los puentes y arcos no son tramos cubiertos: bridge.py.
+                kind_reach, kind_height, kind_deck = 10.0, 5.0, 8.0
                 self.tunnels.append({"pts": pts[sel], "floor": np.interp(s[sel], line.arc, prof.z),
                                      "half": np.clip(np.interp(s[sel], line.arc, prof.half_width), 3.0, 4.5),
                                      "t": t, "covered": covered[sel].astype(float),
@@ -136,25 +135,39 @@ class PathModel:
         else:
             self.tunnel_tree = None
 
-    def _bridge_clearance(self, line_id: int, s: float) -> float | None:
-        """Hueco bajo el puente si (line_id, s) es el camino de abajo de un cruce, si no None."""
+    def _plan_bridges(self) -> list[bridge.Deck]:
+        """Tablero de cada cruce "bridge": el camino de arriba se estrecha al ancho del tablero y,
+        en la luz, deja de ser camino abierto (el corredor de abajo lo corta; lo cruza la losa)."""
+        decks = []
         for c in self.plan.crossings:
-            if c.kind == "bridge" and c.lower == line_id and abs(c.s_lower - s) < 25.0:
-                up = self.plan.graph.lines[c.upper]
-                lo = self.plan.graph.lines[c.lower]
-                return float(np.interp(c.s_upper, up.arc, self.plan.profiles[c.upper].z)
-                             - np.interp(c.s_lower, lo.arc, self.plan.profiles[c.lower].z))
-        return None
+            if c.kind != "bridge":
+                continue
+            deck, cut = bridge.crossing_deck(self, c)
+            line = self.plan.graph.lines[c.upper]
+            prof = self.plan.profiles[c.upper]
+            clear = cut[2] - c.s_upper
+            self.plan.profiles[c.upper] = replace(prof, half_width=bridge.narrow(prof.half_width, line.arc,
+                                                                                 c.s_upper, clear))
+            self.deck_cuts.append(cut)
+            decks.append(deck)
+        return decks
+
+    def _in_cut(self, line_id: int, s: np.ndarray) -> np.ndarray:
+        out = np.zeros(len(s), dtype=bool)
+        for lid, a, b in self.deck_cuts:
+            if lid == line_id:
+                out |= (s >= a) & (s <= b)
+        return out
 
     def _plan_arches(self, rng: np.random.Generator) -> list[tuple[int, float, float]]:
-        """Puentes naturales (arco de roca de 8-12 m sobre el camino, que pasa por debajo) y
-        tuneles de cerro extra. Se marcan como tramos cubiertos del perfil, lejos de uniones,
+        """Arcos naturales (losa de roca de pared a pared, bridge.arch_deck; el camino pasa por debajo
+        al aire libre) y tuneles de cerro extra (tramos cubiertos), lejos de uniones, puentes,
         cruces, tuneles, el rio, la playa y la salida. Devuelve (linea, s0, s1) de los arcos."""
         from .profile import _mark
         plan, style = self.plan, self.style
         joins = [c.point for c in plan.crossings]
         joins += [line.points[k] for line in plan.graph.loops() for k in (0, -1)]
-        taken: list[tuple[int, float, float]] = []
+        taken: list[tuple[int, float, float]] = list(self.deck_cuts)
         arches: list[tuple[int, float, float]] = []
         for kind, count, (lo, hi) in (("arch", style.arches, (4.0, 6.0)),
                                       ("hill", style.extra_hill_tunnels, (20.0, 32.0))):
@@ -181,7 +194,8 @@ class PathModel:
                     continue
                 if any(lid == line.id and not (s1 + 30.0 < a or s0 - 30.0 > b) for lid, a, b in taken):
                     continue
-                plan.profiles[line.id] = _mark(prof, line, s0, s1)
+                if kind == "hill":
+                    plan.profiles[line.id] = _mark(prof, line, s0, s1)
                 taken.append((line.id, s0, s1))
                 if kind == "arch":
                     arches.append((line.id, s0, s1))
@@ -437,7 +451,8 @@ class PathModel:
             # Paredes y techo rugosos; el suelo del tunel, llano.
             carve = carve + 0.5 * self.n_wall3d(X3 * 1.7, Y3 * 1.7, Z3 * 1.7) * (carve > -0.5) * smooth(0.3, 1.2, v)
             D = np.minimum(D, -carve)
-        return D
+        # Tableros despues de excavar: el hueco no se come la losa, y se funden con el terreno.
+        return bridge.fuse(D, self.decks.density(X, Y, Z3))
 
 
 WALKABLE_SLOPE = 1.0     # tan(45 grados), como el suelo andable de CharacterMovement (44,76 grados)
