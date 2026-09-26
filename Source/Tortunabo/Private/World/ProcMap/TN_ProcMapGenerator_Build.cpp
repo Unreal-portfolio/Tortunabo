@@ -1516,12 +1516,23 @@ void ATN_ProcMapGenerator::BuildStructures()
 						case ETNProcBiome::Beach:
 						case ETNProcBiome::Human:
 						{
-							// Caja: cuerpo, cantoneras y aspa.
+							// Caja: cuerpo, cantoneras y un aspa en cada cara.
 							const FLinearColor Body = FLinearColor(0.62f, 0.44f, 0.24f) * TNProcTone(k, Ts);
+							const FLinearColor Frame = Body * 0.62f;
 							Painted.AddBox(C, D3, Half, Body);
 							for (const double Sz : { -1.0, 1.0 })
 							{
-								Painted.AddBox(C + FVector(0.0, 0.0, Sz * (Half.Z - 6.0)), D3, FVector(Half.X + 2.0, Half.Y + 2.0, 6.0), Body * 0.7f);
+								Painted.AddBox(C + FVector(0.0, 0.0, Sz * (Half.Z - 6.0)), D3, FVector(Half.X + 2.0, Half.Y + 2.0, 6.0), Frame);
+							}
+							for (const double Sa : { -1.0, 1.0 })
+							{
+								for (const double Sb : { -1.0, 1.0 })
+								{
+									Painted.AddBeam(C + D3 * (Sa * Half.X) + N3 * (Sb * (Half.Y + 1.5)) - FVector(0.0, 0.0, Half.Z), C + D3 * (Sa * Half.X) + N3 * (Sb * (Half.Y + 1.5)) + FVector(0.0, 0.0, Half.Z), 4.0, Frame);
+								}
+								const FVector Face = C + N3 * (Sa * (Half.Y + 2.0));
+								Painted.AddBeam(Face + D3 * Half.X - FVector(0.0, 0.0, Half.Z - 10.0), Face - D3 * Half.X + FVector(0.0, 0.0, Half.Z - 10.0), 3.5, Frame);
+								Painted.AddBeam(Face - D3 * Half.X - FVector(0.0, 0.0, Half.Z - 10.0), Face + D3 * Half.X + FVector(0.0, 0.0, Half.Z - 10.0), 3.5, Frame);
 							}
 							break;
 						}
