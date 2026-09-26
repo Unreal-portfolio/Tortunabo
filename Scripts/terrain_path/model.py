@@ -13,7 +13,7 @@ from scipy.spatial import cKDTree
 from terrain_vol.density import Fields, smooth
 from terrain_vol.noise import Fbm2D, ValueNoise3D
 
-from . import bridge, field
+from . import bridge, canyon, field
 from .curves import normals, resample
 from .layout import CELL_M, CELL_SAMPLES, GRID_PAD, MAP_MAX_M, MAP_MIN_M, STEP_XY_M, WATER_M
 from .profile import build_plan
@@ -58,8 +58,23 @@ class PathModel:
         self.n_run = Fbm2D(extra, 50.0, 2)
         decks += [bridge.arch_deck(self.plan.graph.lines[lid], self.plan.profiles[lid], 0.5 * (a + b))
                   for lid, a, b in self.arch_ranges]
-        self.decks = bridge.DeckSet(decks, self.n_wall3d)
         self._build_samples()
+        # Barranco (v2): generador aparte; su puente sustituye el tramo del principal que lo cruza.
+        self.canyon = canyon.plan_canyon(self, np.random.default_rng(seed + 29))
+        self.canyon_field = None
+        if self.canyon is not None:
+            self.plan.profiles[0] = canyon.raise_main(self.plan.profiles[0], self.plan.graph.main.arc, self.canyon,
+                                                      self.style.max_grade)
+            for line_id, s_c in ((0, self.canyon.s_main),) + tuple(self.canyon.crossings):
+                deck, cut = canyon.canyon_deck(self, self.canyon, line_id, s_c)
+                prof = self.plan.profiles[line_id]
+                arc = self.plan.graph.lines[line_id].arc
+                self.plan.profiles[line_id] = replace(prof, half_width=bridge.narrow(prof.half_width, arc, s_c, cut[2] - s_c))
+                self.deck_cuts.append(cut)
+                decks.append(deck)
+            self._build_samples()
+            self.canyon_field = canyon.CanyonField(self.canyon, self.n_floor)
+        self.decks = bridge.DeckSet(decks, self.n_wall3d)
         self.extra_rng = rng                       # rio y castillos siguen la misma secuencia
         self._plan_extras()
         count = int(round((MAP_MAX_M - MAP_MIN_M) / STEP_XY_M)) + 1
@@ -211,6 +226,16 @@ class PathModel:
                 placed += 1
         return arches
 
+    def remove_deadly(self, standable: np.ndarray, z_levels: np.ndarray) -> np.ndarray:
+        """Quita de 'standable' (rejilla del mapa sin margen) el fondo del barranco mortal: caer ahi
+        es morir, asi que no cuenta como sitio por el que se pasa."""
+        if self.canyon_field is None or self.canyon.mode != "deadly":
+            return standable
+        X, Y = np.meshgrid(self.axis[1:-1], self.axis[1:-1], indexing="ij")
+        inside = self.canyon_field.inside(X, Y)
+        low = z_levels < canyon.KILL_TOP_M
+        return standable & ~(inside[..., None] & low[None, None, :])
+
     def samples(self) -> dict[str, np.ndarray]:
         return self.S
 
@@ -317,11 +342,14 @@ class PathModel:
         # Pasado lo alto de la pared, el relieve natural (nunca dentro del camino ni en el pie).
         t = smooth(crest_e + rim_top + 2.0, crest_e + rim_top + 12.0, e)
         height = self._stamps(X, Y, height, e, i, zf, w)
+        if self.canyon_field is not None:
+            height = self.canyon_field.carve(X, Y, height, np.zeros(shape))
         protect = 1.0 - t
         height, coast = field.shore(self, X, Y, height, protect)
         height = field.clip_spikes(height)
         region = np.where(e < 0.0, 0, np.where(e < crest_e + rim_top + 4.0, 1, 2))
         region = np.where(coast > 0.5, 3, region)
+        region = np.where(self.decks.near(X, Y), 0, region)          # tableros: camino
         if shape == (len(getattr(self, "axis", [])),) * 2:
             self.region = region
         # Voladizos y huecos suaves en todas las paredes (antes solo en el acantilado).

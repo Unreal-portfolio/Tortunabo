@@ -23,6 +23,7 @@ import numpy as np
 
 from gen_terrain_volume import build_all, global_standable, ground_level, walk, world_index, zone_map
 from terrain_path.layout import GRID
+from terrain_path.canyon import kill_boxes_uu
 from terrain_path.model import PathModel, walkable
 from terrain_path.style import C01_STYLE, PathStyle
 from terrain_path.variants import PATH_VARIANTS
@@ -37,6 +38,7 @@ MAX_TRIES = 3
 def check(model: PathModel, chunks) -> dict:
     """Recorrido real sobre la malla: final, lazos y vistas (celdas del fondo alcanzadas)."""
     standable = walkable(global_standable(chunks, grid=GRID), model.grid.height[1:-1, 1:-1], z_levels())
+    standable = model.remove_deadly(standable, z_levels())          # caer al barranco es morir
     s_ij, e_ij = world_index(model.start), world_index(model.end)
     start = (*s_ij, ground_level(standable, *s_ij))
     seen = walk(standable, start) if start[2] >= 0 else np.zeros_like(standable)
@@ -64,13 +66,14 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
     out = VARIANTS / name
     write_map(out, name, used, chunks, (*model.start, float(top[s_ij])), (*model.end, float(top[e_ij])),
               zone_map(model, chunks, grid=GRID), model.route.points, style=style,
-              extra_manifest={"description": description, "recorrible": result["ok"]}, grid=GRID)
+              extra_manifest={"description": description, "recorrible": result["ok"],
+                              "kill_boxes_uu": kill_boxes_uu(model.canyon) if model.canyon else []}, grid=GRID)
     g = model.plan.graph
     return {"name": name, "seed": used, "description": description, "ok": result["ok"],
             "size_mb": round(sum(f.stat().st_size for f in out.rglob("*") if f.is_file()) / (1024 * 1024), 2),
             "time_s": round(time.time() - t0, 1), "length": round(g.main.length), "loops": len(g.loops()),
             "crossings": len(model.plan.crossings), "tunnels": len(model.plan.hill_tunnels),
-            "arches": len(model.arch_ranges), "islands": len(model.river.islands) if model.river else 0,
+            "arches": len(model.arch_ranges), "canyon": model.canyon.mode if model.canyon else "no", "islands": len(model.river.islands) if model.river else 0,
             "vista": result["vista"], "loops_ok": result["loops_ok"]}
 
 
@@ -110,7 +113,7 @@ def main() -> None:
             results.append(r)
             print(f"{r['name']}: {'OK' if r['ok'] else 'NO VALIDO'} {r['time_s']}s semilla {r['seed']} "
                   f"principal {r['length']} m, {r['loops']} lazos ({r['loops_ok']} alcanzados), "
-                  f"{r['crossings']} cruces, {r['arches']} arcos, {r['tunnels']} tuneles, {r['islands']} islas, "
+                  f"{r['crossings']} cruces, barranco {r['canyon']}, {r['arches']} arcos, {r['tunnels']} tuneles, {r['islands']} islas, "
                   f"vistas pisadas {r['vista']}, {r['size_mb']} MB", flush=True)
     update_index(results)
     bad = [r["name"] for r in results if not r["ok"]]

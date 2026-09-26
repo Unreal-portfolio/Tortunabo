@@ -90,6 +90,14 @@ class DeckSet:
                         "along": np.concatenate([d.along for d in decks]),
                         "top": np.concatenate([d.top for d in decks])}
 
+    def near(self, X, Y, margin: float = 1.0) -> np.ndarray:
+        """Puntos sobre algun tablero (su planta mas margin): alli se anda, son camino."""
+        if not self.decks:
+            return np.zeros(X.shape, dtype=bool)
+        u, k = self.tree.query(np.stack([np.ravel(X), np.ravel(Y)], axis=1))
+        half = np.array([d.half for d in self.decks])[self.cat["owner"][k]]
+        return (u < half + margin).reshape(X.shape)
+
     def density(self, X, Y, Z3) -> np.ndarray | None:
         """> 0 dentro de alguna losa; None si ningun punto de la rejilla queda cerca."""
         if not self.decks:

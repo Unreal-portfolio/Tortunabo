@@ -218,7 +218,7 @@ def test_el_suelo_del_camino_es_llano_sin_cuenco(model):
             k = int(np.searchsorted(line.arc, s))
             if prof.biome[k] != 0 and prof.biome[k] != 2:
                 continue                                   # agua y playa tienen su propio suelo
-            if prof.tunnel[max(k - 15, 0):k + 15].any() or model.near_junction(line.point_at(s), 20.0):
+            if prof.tunnel[max(k - 15, 0):k + 15].any() or model.near_junction(line.point_at(s), 20.0)                     or _on_deck(model, line.id, s, 15.0):
                 continue
             if any(np.hypot(*(line.point_at(s) - c.center)) < 14.0 for c in model.castles):
                 continue                                   # el castillo esta dentro del camino a proposito
@@ -227,6 +227,11 @@ def test_el_suelo_del_camino_es_llano_sin_cuenco(model):
             assert np.ptp(h) <= 0.3, f"camino {line.id} s={s:.0f}: cuenco o escalon ({np.ptp(h):.2f} m)"
             checked += 1
     assert checked >= 12
+
+
+def _on_deck(model, line_id, s, margin):
+    """(line_id, s) esta en un puente (o a menos de margin m): alli el suelo es el tablero."""
+    return any(lid == line_id and a - margin <= s <= b + margin for lid, a, b in model.deck_cuts)
 
 
 def _other_path_near(model, line_id, p, radius):
@@ -243,7 +248,7 @@ def test_el_borde_cierra_el_paso(model):
         for s in np.arange(30.0, line.length - 60.0, 23.0):
             k = int(np.searchsorted(line.arc, s))
             if prof.biome[k] == 3 or prof.tunnel[max(k - 15, 0):k + 15].any() \
-                    or model.near_junction(line.point_at(s), 25.0):
+                    or model.near_junction(line.point_at(s), 25.0) or _on_deck(model, line.id, s, 15.0):
                 continue
             w = prof.half_width[k]
             if _other_path_near(model, line.id, line.point_at(s), w + 8.0):
@@ -408,6 +413,7 @@ def chunks(model):
 def reached(model, chunks):
     from terrain_path.model import walkable
     standable = walkable(global_standable(chunks, grid=4), model.grid.height[1:-1, 1:-1], z_levels())
+    standable = model.remove_deadly(standable, z_levels())
     start = world_index(model.start)
     return standable, walk(standable, (*start, ground_level(standable, *start)))
 
@@ -518,3 +524,67 @@ def test_sin_picos_de_una_celda(model):
     peak = h - ndimage.maximum_filter(h, footprint=ring)
     pit = ndimage.minimum_filter(h, footprint=ring) - h
     assert int((peak > 0.5).sum()) == 0 and int((pit > 0.5).sum()) == 0
+
+
+from terrain_path import canyon as canyon_mod  # noqa: E402
+
+
+def test_hay_barranco_mortal_con_puente_del_principal(model):
+    c = model.canyon
+    assert c is not None and c.mode == "deadly"
+    lo, hi = C01_STYLE.canyon_width_m
+    assert 0.5 * lo * 0.8 <= c.half.min() and c.half.max() <= 0.5 * hi * 1.2 + 1e-9
+    assert any(lid == 0 and a <= c.s_main <= b for lid, a, b in model.deck_cuts)
+    main = model.plan.graph.main
+    z = np.interp(c.s_main, main.arc, model.plan.profiles[0].z)
+    depth = z - canyon_mod.FLOOR_M
+    assert C01_STYLE.canyon_depth_m[0] - 0.1 <= depth <= C01_STYLE.canyon_depth_m[1] + 0.1
+
+
+def test_el_barranco_solo_toca_caminos_por_sus_puentes(model):
+    """Ningun camino abierto pasa por el cauce salvo en el tramo de su puente."""
+    c = model.canyon
+    field_ = model.canyon_field
+    S = model.S
+    idx = model.open_idx
+    q, half, depth = field_.query(S["p"][idx, 0][:, None], S["p"][idx, 1][:, None])
+    inside = ((q.ravel() < half.ravel() + 1.0) & (depth.ravel() > 0.2))
+    for j in idx[inside]:
+        assert _on_deck(model, int(S["line"][j]), float(S["s"][j]), 6.0), \
+            f"el camino {S['line'][j]} cae al barranco en s={S['s'][j]:.0f}"
+
+
+def test_el_fondo_del_barranco_tiene_agua(model):
+    c = model.canyon
+    mid = c.pts[len(c.pts) // 2]
+    i, j = int(round(mid[0] - model.axis[0])), int(round(mid[1] - model.axis[0]))
+    assert model.grid.height[i, j] < WATER_M - 0.5
+
+
+def test_las_cajas_cubren_el_fondo_y_no_el_puente(model):
+    c = model.canyon
+    boxes = canyon_mod.kill_boxes_uu(c)
+    assert boxes
+
+    def inside_any(p, z):
+        for b in boxes:
+            cx, cy, cz = (v / 100.0 for v in b["center"])
+            ex, ey, ez = (v / 100.0 for v in b["extent"])
+            yaw = np.radians(b["yaw"])
+            dx, dy = p[0] - cx, p[1] - cy
+            lx, ly = dx * np.cos(yaw) + dy * np.sin(yaw), -dx * np.sin(yaw) + dy * np.cos(yaw)
+            if abs(lx) <= ex and abs(ly) <= ey and abs(z - cz) <= ez:
+                return True
+        return False
+
+    for k in range(0, len(c.pts), 7):
+        if c.depth[k] < 0.9:
+            continue
+        t = c.pts[min(k + 1, len(c.pts) - 1)] - c.pts[max(k - 1, 0)]
+        n = np.array([-t[1], t[0]]) / max(float(np.linalg.norm(t)), 1e-9)
+        for off in (-0.8, 0.0, 0.8):
+            p = c.pts[k] + off * c.half[k] * n
+            assert inside_any(p, canyon_mod.FLOOR_M + 0.5), f"fondo sin caja en {p}"
+    main = model.plan.graph.main
+    top = np.interp(c.s_main, main.arc, model.plan.profiles[0].z)
+    assert top - canyon_mod.KILL_TOP_M >= 4.0
