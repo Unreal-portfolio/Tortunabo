@@ -345,6 +345,8 @@ namespace TNProcMap
 		WhaleRibs,      ///< Costillar de ballena (playa).
 		RootArch,       ///< Raíces gigantes en arco (manglar).
 		TempleGate,     ///< Pórtico de templo en ruinas (selva).
+		FallenTrunk,    ///< Tronco colosal caído de pared a pared, con raíces, musgo y lianas (selva, manglar).
+		RuinedAqueduct, ///< Tramo de acueducto en ruinas que cruza el cañón (desierto, roca, pueblos).
 		// En explanadas del camino, con carriles libres a los lados.
 		Shipwreck,      ///< Barco varado de costado con el mástil roto (playa).
 		StoneHead,      ///< Cabeza colosal de piedra (selva).
@@ -358,6 +360,14 @@ namespace TNProcMap
 		Bunker,         ///< Búnker de hormigón con tronera (guerra: zona humana).
 		WatchTower,     ///< Torre de vigía de madera (guerra: zona humana).
 		TankWreck,      ///< Carro de combate abandonado (guerra: zona humana).
+		GiantShell,     ///< Caracola gigante de pie sobre su boca (playa).
+		Anchor,         ///< Ancla oxidada clavada en la arena con su cadena (playa).
+		StoneCircle,    ///< Círculo de piedras en pie con dinteles y altar (roca, selva).
+		Obelisk,        ///< Obelisco con bandas de símbolos y punta dorada (desierto).
+		FossilSkull,    ///< Cráneo fósil gigante medio enterrado, con cuernos (desierto).
+		ObsidianSpires, ///< Agujas de obsidiana (volcán).
+		ColossalTurtle, ///< Tortuga colosal de piedra sobre su pedestal (selva, desierto).
+		WaterTower,     ///< Depósito de agua de madera sobre patas (zona humana).
 		// Hitos lejanos del paisaje (sin colisión).
 		Pyramid,        ///< Pirámide escalonada con escalinata (selva).
 		Lighthouse,     ///< Faro a rayas junto a la costa (playa).
@@ -370,7 +380,11 @@ namespace TNProcMap
 	};
 
 	/** Clase de colocación de una formación. */
-	inline bool IsArchFormation(EFormation K) { return K == EFormation::StoneArch || K == EFormation::WhaleRibs || K == EFormation::RootArch || K == EFormation::TempleGate; }
+	inline bool IsArchFormation(EFormation K)
+	{
+		return K == EFormation::StoneArch || K == EFormation::WhaleRibs || K == EFormation::RootArch || K == EFormation::TempleGate
+			|| K == EFormation::FallenTrunk || K == EFormation::RuinedAqueduct;
+	}
 	inline bool IsLandmarkFormation(EFormation K) { return K >= EFormation::Pyramid; }
 
 	/** Caja de muerte orientada (en planta según Dir): caer dentro es morir y reaparecer en los huevos. */

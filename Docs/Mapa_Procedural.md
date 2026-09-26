@@ -176,10 +176,15 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   paisaje y una atalaya de 3 m con escalones, recompensa arriba y medusa al pie.
 - **Formaciones temáticas**: arcos que cruzan el camino (arco de roca, esqueleto de ballena con
   columna en arco sobre las costillas, cola y cráneo con mandíbulas,
-  raíces gigantes, pórtico de templo), piezas en explanadas (barco varado, cabeza colosal,
-  basalto, fumarola, chimeneas de hadas, rocas en equilibrio, carreta, cañón y, de guerra,
-  sacos terreros, búnker, torre de vigía y carro de combate) e hitos lejanos (pirámide, faro,
-  farallones, mesas, castillo en ruinas, molino, palafitos).
+  raíces gigantes, pórtico de templo, tronco colosal caído con raíces y lianas en selva y manglar,
+  acueducto en ruinas en desierto, roca y zona humana, aquí la mitad de las veces), piezas en
+  explanadas (barco varado, cabeza colosal, basalto, fumarola, chimeneas de hadas, rocas en
+  equilibrio, carreta, cañón, caracola gigante y ancla en la playa, círculo de piedras que se cruza
+  entre sus piedras, obelisco y cráneo fósil en el desierto, agujas de obsidiana en el volcán, tortuga
+  colosal de piedra, depósito de agua y, de guerra, sacos terreros, búnker, torre de vigía y carro de
+  combate) e hitos lejanos (pirámide, faro, farallones, mesas, castillo en ruinas, molino,
+  palafitos). La pieza de explanada se sortea primero y espera hasta 40 m a un tramo donde quepa, así
+  las grandes salen en los anchos.
 - **Cuevas** (1-5 por mapa en volcán, roca, selva y desierto): túneles de 120-260 m, donde se
   puede en tramos que cruzan terreno alto (el paisaje a 30 m de los dos bordes, 12 m por encima
   del camino). Encima, una montaña de cima irregular que crece hacia el centro de las largas; a cada

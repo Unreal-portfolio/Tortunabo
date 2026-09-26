@@ -321,7 +321,7 @@ namespace
 			Water.AddPrism(Pool, Top + 46.0, Top + 46.0, FLinearColor(0.16f, 0.5f, 0.76f, 0.85f), false);
 			for (int32 v = Base; v < Water.Verts.Num(); ++v) { Water.Colors[v] = FLinearColor(0.16f, 0.5f, 0.76f, 0.85f); }
 			FTNProcMeshBuffers Statue, StatueGlow;
-			TNCaveDecor::TNTurtleStatue(Statue, StatueGlow, static_cast<uint32>(F.Aux2), Stone * 1.05f, Stone * 0.8f, FLinearColor(0.35f, 0.9f, 1.f), 0, false, false);
+			TNFormMesh::TNTurtleStatue(Statue, StatueGlow, static_cast<uint32>(F.Aux2), Stone * 1.05f, Stone * 0.8f, FLinearColor(0.35f, 0.9f, 1.f), 0, false, false);
 			const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(F.Dir.Y, F.Dir.X));
 			TNPropMesh::TNPropAppend(Solid, Statue, C + FVector(0.0, 0.0, 26.0), Yaw, 0.5);
 			TNPropMesh::TNPropAppend(Glow, StatueGlow, C + FVector(0.0, 0.0, 26.0), Yaw, 0.5);

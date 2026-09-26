@@ -25,15 +25,15 @@ namespace TNProcMap
 			using K = EFormation;
 			switch (Biome)
 			{
-				case ETNProcBiome::Jungle:   Arches = { K::StoneArch, K::TempleGate, K::TempleGate }; Plaza = { K::StoneHead, K::StoneHead, K::TankWreck }; Far = { K::Pyramid }; break;
-				case ETNProcBiome::Beach:    Arches = { K::WhaleRibs, K::WhaleRibs, K::StoneArch }; Plaza = { K::Shipwreck, K::Shipwreck, K::Bunker, K::Sandbags }; Far = { K::Lighthouse, K::SeaStack }; break;
-				case ETNProcBiome::Desert:   Arches = { K::StoneArch }; Plaza = { K::Hoodoo, K::BalancedRock, K::Wagon, K::Sandbags }; Far = { K::Mesa }; break;
-				case ETNProcBiome::Volcanic: Arches = { K::StoneArch }; Plaza = { K::BasaltColumns, K::Fumarole }; break;
+				case ETNProcBiome::Jungle:   Arches = { K::StoneArch, K::TempleGate, K::TempleGate, K::FallenTrunk }; Plaza = { K::StoneHead, K::StoneHead, K::TankWreck, K::StoneCircle, K::ColossalTurtle }; Far = { K::Pyramid }; break;
+				case ETNProcBiome::Beach:    Arches = { K::WhaleRibs, K::WhaleRibs, K::StoneArch }; Plaza = { K::Shipwreck, K::Shipwreck, K::Bunker, K::Sandbags, K::GiantShell, K::Anchor }; Far = { K::Lighthouse, K::SeaStack }; break;
+				case ETNProcBiome::Desert:   Arches = { K::StoneArch, K::StoneArch, K::RuinedAqueduct }; Plaza = { K::Hoodoo, K::BalancedRock, K::Wagon, K::Sandbags, K::Obelisk, K::FossilSkull, K::ColossalTurtle }; Far = { K::Mesa }; break;
+				case ETNProcBiome::Volcanic: Arches = { K::StoneArch }; Plaza = { K::BasaltColumns, K::Fumarole, K::ObsidianSpires, K::ObsidianSpires }; break;
 				case ETNProcBiome::Water:    Far = { K::StiltHut }; break;
-				case ETNProcBiome::Rocky:    Arches = { K::StoneArch }; Plaza = { K::Hoodoo, K::BalancedRock, K::Cannon, K::Bunker }; Far = { K::CastleRuin, K::SeaStack }; break;
-				case ETNProcBiome::Mangrove: Arches = { K::RootArch }; Far = { K::StiltHut }; break;
+				case ETNProcBiome::Rocky:    Arches = { K::StoneArch, K::StoneArch, K::RuinedAqueduct }; Plaza = { K::Hoodoo, K::BalancedRock, K::Cannon, K::Bunker, K::StoneCircle }; Far = { K::CastleRuin, K::SeaStack }; break;
+				case ETNProcBiome::Mangrove: Arches = { K::RootArch, K::FallenTrunk }; Far = { K::StiltHut }; break;
 				case ETNProcBiome::Human:
-				default:                     Plaza = { K::Sandbags, K::Bunker, K::WatchTower, K::TankWreck }; Far = { K::Windmill }; break;
+				default:                     Arches = { K::RuinedAqueduct }; Plaza = { K::Sandbags, K::Bunker, K::WatchTower, K::TankWreck, K::WaterTower }; Far = { K::Windmill }; break;
 			}
 		}
 
@@ -55,6 +55,14 @@ namespace TNProcMap
 				case K::Bunker:        OutRadius = Rng.Range(350.0, 450.0); OutHeight = 260.0; break;
 				case K::WatchTower:    OutRadius = 250.0; OutHeight = Rng.Range(750.0, 950.0); break;
 				case K::TankWreck:     OutRadius = Rng.Range(350.0, 420.0); OutHeight = 280.0; break;
+				case K::GiantShell:    OutRadius = Rng.Range(300.0, 420.0); OutHeight = OutRadius * Rng.Range(1.6, 2.0); break;
+				case K::Anchor:        OutRadius = Rng.Range(260.0, 340.0); OutHeight = Rng.Range(520.0, 700.0); break;
+				case K::StoneCircle:   OutRadius = Rng.Range(550.0, 800.0); OutHeight = Rng.Range(330.0, 430.0); break;
+				case K::Obelisk:       OutRadius = Rng.Range(150.0, 200.0); OutHeight = Rng.Range(900.0, 1400.0); break;
+				case K::FossilSkull:   OutRadius = Rng.Range(340.0, 460.0); OutHeight = Rng.Range(280.0, 370.0); break;
+				case K::ObsidianSpires: OutRadius = Rng.Range(300.0, 480.0); OutHeight = Rng.Range(550.0, 950.0); break;
+				case K::ColossalTurtle: OutRadius = Rng.Range(360.0, 480.0); OutHeight = OutRadius * 1.1; break;
+				case K::WaterTower:    OutRadius = 300.0; OutHeight = Rng.Range(900.0, 1100.0); break;
 				default:               OutRadius = 300.0; OutHeight = 300.0; break;
 			}
 		}
@@ -134,6 +142,8 @@ namespace TNProcMap
 			if (S.Num() < 30) { return; }
 			double NextArch = Rng.Range(6000.0, 20000.0);
 			double NextPlaza = Rng.Range(3000.0, 10000.0);
+			EFormation PlazaKind = EFormation::Count;
+			double PlazaR = 0.0, PlazaH = 0.0, PlazaUntil = 0.0;
 			for (int32 i = 10; i < S.Num() - 10; ++i)
 			{
 				const FPathSample& Sm = S[i];
@@ -145,6 +155,9 @@ namespace TNProcMap
 				}
 				if (bFork || (BranchIndex != INDEX_NONE && (i < 16 || i > S.Num() - 16))) { continue; }
 				KindsFor(Sm.Biome, Arches, Plaza, Far);
+
+				// En la zona humana el acueducto sale la mitad de las veces.
+				if (Sm.S >= NextArch && Sm.Biome == ETNProcBiome::Human && Rng.Chance(0.5)) { NextArch = Sm.S + Rng.Range(40000.0, 80000.0); }
 
 				// Arco: pies en los taludes a ambos lados, el camino pasa por debajo.
 				if (Sm.S >= NextArch && Arches.Num() > 0 && Sm.Width >= 350.0 && Sm.Width <= 1800.0 && StraightAndFlat(S, i))
@@ -165,13 +178,20 @@ namespace TNProcMap
 					}
 				}
 
-				// Explanada: una pieza a un lado o en medio, con carriles de 4,5 m o más.
+				// Explanada: una pieza a un lado o en medio, con carriles de 4,5 m o más. La pieza se sortea
+				// primero y espera (40 m como mucho) a un tramo donde quepa: las grandes salen en los anchos.
 				if (Sm.S >= NextPlaza && Plaza.Num() > 0 && Sm.Width >= 1400.0)
 				{
-					const EFormation Kind = Plaza[Rng.RangeInt(0, Plaza.Num() - 1)];
-					double R = 0.0, H = 0.0;
-					PlazaSize(Kind, Rng, R, H);
-					const double Room = Sm.Width * 0.5 - R - 450.0;
+					if (PlazaKind == EFormation::Count || Sm.S > PlazaUntil || !Plaza.Contains(PlazaKind))
+					{
+						PlazaKind = Plaza[Rng.RangeInt(0, Plaza.Num() - 1)];
+						PlazaSize(PlazaKind, Rng, PlazaR, PlazaH);
+						PlazaUntil = Sm.S + 40000.0;
+					}
+					const EFormation Kind = PlazaKind;
+					const double R = PlazaR, H = PlazaH;
+					// El círculo de piedras se cruza por los huecos entre piedras: solo el altar ocupa el camino.
+					const double Room = Sm.Width * 0.5 - (Kind == EFormation::StoneCircle ? 220.0 : R) - 450.0;
 					if (Room < 0.0) { continue; }
 					FFeature F = MakeAtSample(EFeature::Formation, Sm, i, BranchIndex);
 					F.Location = FVector(Sm.P + LeftNormal(Sm.Dir) * Rng.Range(-Room, Room), Sm.Z);
@@ -184,6 +204,7 @@ namespace TNProcMap
 					if (ClearOfFeatures(L, FVector2D(F.Location.X, F.Location.Y), R + 600.0))
 					{
 						L.Features.Add(F);
+						PlazaKind = EFormation::Count;
 						NextPlaza = Sm.S + Rng.Range(30000.0, 60000.0);
 					}
 				}

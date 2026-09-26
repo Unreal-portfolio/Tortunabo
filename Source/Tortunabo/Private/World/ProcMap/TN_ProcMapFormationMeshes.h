@@ -4,6 +4,7 @@
 #include "World/ProcMap/TN_ProcMapLayout.h"
 #include "TN_ProcMapMeshKit.h"
 #include "TN_ProcMapFloraMeshes.h"
+#include "TN_ProcMapPropMeshes.h"
 
 /**
  * Mallas de las formaciones temáticas (low-poly de caras planas con color de vértice). Cada receta
@@ -165,6 +166,97 @@ namespace TNFormMesh
 			if (k % 2 == 0) { M.AddBeam(C, C + FVector(FMath::Cos(A0) * R, 0.0, FMath::Sin(A0) * R), R * 0.045, Color * 0.9f); }
 		}
 		TNFormCylinder(M, C - FVector(0.0, R * 0.12, 0.0), C + FVector(0.0, R * 0.12, 0.0), R * 0.14, R * 0.14, 6, Color * 0.8f);
+	}
+
+	/**
+	 * Estatua de tortuga sobre pedestal escalonado (local: base en el origen, mirando a +X, ~2,5 m de
+	 * alto): caparazón en cúpula con escudos hexagonales, cabeza, aletas y cola; ojos que brillan.
+	 * Crown: 0 nada, 1 corona de oro, 2 guirnalda de hojas, 3 cristal en la frente. Delante, dos velas
+	 * y una vasija de ofrenda.
+	 */
+	inline void TNTurtleStatue(FTNProcMeshBuffers& Solid, FTNProcMeshBuffers& Glow, uint32 Seed, const FLinearColor& Stone, const FLinearColor& Accent,
+		const FLinearColor& Eyes, int32 Crown, bool bMoss, bool bOfferings = true)
+	{
+		const FLinearColor Dark = Stone * 0.78f;
+		const FVector X(1.0, 0.0, 0.0);
+		Solid.AddBox(FVector(0.0, 0.0, 18.0), X, FVector(125.0, 112.0, 18.0), Dark);
+		Solid.AddBox(FVector(0.0, 0.0, 70.0), X, FVector(104.0, 92.0, 34.0), Stone * 0.9f);
+		Solid.AddBox(FVector(0.0, 0.0, 112.0), X, FVector(116.0, 102.0, 8.0), Dark);
+		const double Z0 = 120.0;
+		// Plastrón y cúpula del caparazón.
+		TNProcAddCylinder(Solid, FVector(0.0, 0.0, Z0), FVector(0.0, 0.0, Z0 + 14.0), 98.0, 100.0, 14, Stone * 0.86f);
+		TNProcAddLathe(Solid, FVector(0.0, 0.0, Z0 + 14.0), { 0.0, 18.0, 42.0, 64.0, 80.0, 90.0 }, { 100.0, 96.0, 84.0, 62.0, 34.0, 8.0 }, 0.02, Seed, Stone, 14, 0.2);
+		// Escudos: uno en lo alto, seis alrededor y diez en el borde.
+		auto Plate = [&](double Theta, double Phi, double R)
+		{
+			const double St = FMath::Sin(Theta), Ct = FMath::Cos(Theta);
+			const FVector P(100.0 * St * FMath::Cos(Phi), 100.0 * St * FMath::Sin(Phi), Z0 + 14.0 + 88.0 * Ct);
+			const FVector Nrm = FVector(St * FMath::Cos(Phi) / 100.0, St * FMath::Sin(Phi) / 100.0, Ct / 88.0).GetSafeNormal();
+			TNProcAddCylinder(Solid, P - Nrm * 3.0, P + Nrm * 5.0, R, R * 0.86, 6, Accent);
+		};
+		Plate(0.0, 0.0, 24.0);
+		for (int32 k = 0; k < 6; ++k) { Plate(FMath::DegreesToRadians(46.0), TNProcMap::TwoPi * k / 6.0, 21.0); }
+		for (int32 k = 0; k < 10; ++k) { Plate(FMath::DegreesToRadians(76.0), TNProcMap::TwoPi * (k + 0.5) / 10.0, 13.0); }
+		// Cabeza, hocico y ojos.
+		TNProcAddCylinder(Solid, FVector(78.0, 0.0, Z0 + 38.0), FVector(118.0, 0.0, Z0 + 58.0), 21.0, 17.0, 8, Stone * 0.95f);
+		TNPropMesh::TNPropBall(Solid, FVector(136.0, 0.0, Z0 + 62.0), 30.0, Stone, 9, 5, 0.82);
+		TNPropMesh::TNPropBall(Solid, FVector(160.0, 0.0, Z0 + 56.0), 15.0, Stone * 0.95f, 7, 3, 0.8);
+		for (const double Sy : { -1.0, 1.0 })
+		{
+			TNPropMesh::TNPropBall(Glow, FVector(151.0, Sy * 17.0, Z0 + 71.0), 5.5, Eyes, 6, 3);
+			// Aletas delanteras y traseras, y cola.
+			TNFormTube(Solid, { FVector(45.0, Sy * 74.0, Z0 + 18.0), FVector(82.0, Sy * 120.0, Z0 + 10.0), FVector(108.0, Sy * 150.0, Z0 + 4.0) }, { 22.0, 15.0, 6.0 }, 6, Stone * 0.92f);
+			TNFormTube(Solid, { FVector(-55.0, Sy * 70.0, Z0 + 16.0), FVector(-84.0, Sy * 98.0, Z0 + 8.0), FVector(-100.0, Sy * 112.0, Z0 + 4.0) }, { 18.0, 12.0, 5.0 }, 6, Stone * 0.92f);
+		}
+		TNProcAddCylinder(Solid, FVector(-94.0, 0.0, Z0 + 18.0), FVector(-128.0, 0.0, Z0 + 10.0), 12.0, 2.0, 6, Stone * 0.92f);
+		if (Crown == 1)
+		{
+			TNPropMesh::TNPropTorus(Solid, FVector(136.0, 0.0, Z0 + 86.0), FVector::UpVector, 19.0, 4.5, 12, 4, Accent, Accent, 0);
+			for (int32 k = 0; k < 5; ++k)
+			{
+				const double A = TNProcMap::TwoPi * k / 5.0;
+				const FVector B(136.0 + FMath::Cos(A) * 19.0, FMath::Sin(A) * 19.0, Z0 + 88.0);
+				TNProcAddCylinder(Solid, B, B + FVector(0.0, 0.0, 16.0), 5.0, 0.5, 4, Accent);
+			}
+		}
+		else if (Crown == 2)
+		{
+			for (int32 k = 0; k < 9; ++k)
+			{
+				const double A = TNProcMap::TwoPi * k / 9.0;
+				TNPropMesh::TNPropBall(Solid, FVector(100.0 + FMath::Cos(A) * 8.0, FMath::Sin(A) * 25.0, Z0 + 48.0 + FMath::Cos(A) * 12.0), 9.0, FLinearColor(0.2f, 0.5f, 0.16f) * (0.85f + 0.3f * static_cast<float>(k % 3) / 2.f), 5, 3, 0.6);
+			}
+		}
+		else if (Crown == 3)
+		{
+			const FVector B(158.0, 0.0, Z0 + 82.0);
+			const FVector Ax = FVector(0.5, 0.0, 1.0).GetSafeNormal();
+			TNProcAddCylinder(Glow, B - Ax * 6.0, B + Ax * 16.0, 7.0, 6.5, 6, Eyes, false);
+			TNProcAddCylinder(Glow, B + Ax * 16.0, B + Ax * 27.0, 6.5, 0.5, 6, Eyes * 1.2f, false);
+		}
+		if (bMoss)
+		{
+			for (int32 k = 0; k < 7; ++k)
+			{
+				const double A = TNProcHashNoise(k, 3, Seed) * PI;
+				const double R = 60.0 + 30.0 * TNProcHashNoise(k, 4, Seed);
+				TNPropMesh::TNPropBall(Solid, FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, Z0 + 14.0 + 88.0 * FMath::Cos(FMath::Asin(FMath::Min(0.95, R / 100.0)))),
+					18.0 + 8.0 * TNProcHashNoise(k, 5, Seed), FLinearColor(0.22f, 0.4f, 0.14f), 6, 3, 0.35);
+			}
+			TNPropMesh::TNPropBall(Solid, FVector(-60.0, 70.0, 124.0), 30.0, FLinearColor(0.2f, 0.38f, 0.13f), 6, 3, 0.3);
+		}
+		// Ofrendas: dos velas y una vasija.
+		if (!bOfferings) { return; }
+		for (const double Sy : { -1.0, 1.0 })
+		{
+			const FVector C(172.0, Sy * 48.0, 0.0);
+			TNProcAddCylinder(Solid, C, C + FVector(0.0, 0.0, 18.0 + 6.0 * Sy), 5.0, 5.0, 6, FLinearColor(0.9f, 0.86f, 0.74f));
+			const FVector Wick = C + FVector(0.0, 0.0, 18.0 + 6.0 * Sy);
+			TNProcAddCylinder(Glow, Wick, Wick + FVector(0.0, 0.0, 12.0), 3.5, 0.3, 5, FLinearColor(1.f, 0.72f, 0.25f), false);
+		}
+		FTNProcMeshBuffers Pot;
+		TNPropMesh::TNPropClayPot(Pot, static_cast<int32>(Seed % 2u), Seed);
+		TNPropMesh::TNPropAppend(Solid, Pot, FVector(182.0, 0.0, 0.0), 20.0, 0.75);
 	}
 
 	/**
@@ -404,6 +496,106 @@ namespace TNFormMesh
 					const double Y = Half * 0.55;
 					TNFormBox(M, FVector(160.0, Y, Ground(160.0, Y) + 50.0), FVector(110.0, Half * 0.5, 55.0), 0.35, C.Strata * 0.95f);
 				}
+				break;
+			}
+			case EFormation::FallenTrunk:
+			{
+				// Tronco colosal caído de pared a pared por encima del camino: cepellón de raíces en un
+				// extremo, muñones de ramas, musgo encima y lianas que cuelgan de la panza (sin bajar de 3 m).
+				const double Half = P.Width * 0.5;
+				const double R = FMath::Clamp(P.Length * 0.45, 110.0, 190.0);
+				const double Skew = Rand(1, -0.35, 0.35);
+				const double Ya = -(Half + 350.0), Yb = Half + 350.0;
+				const FVector A(Ya * Skew, Ya, FMath::Max(Ground(Ya * Skew, Ya), P.Height + R * Rand(2, 0.9, 1.4)));
+				const FVector B(Yb * Skew, Yb, FMath::Max(Ground(Yb * Skew, Yb), P.Height + R * Rand(3, 0.9, 1.4)));
+				TNProcAddLog(M, A, B, R, Seed, C.Wood, C.Wood * 1.4f);
+				const FVector Axis = (B - A).GetSafeNormal();
+				const FVector Ux = FVector::CrossProduct(Axis, FVector::UpVector).GetSafeNormal();
+				const FVector Vx = FVector::CrossProduct(Ux, Axis);
+				for (int32 k = 0; k < 9; ++k)
+				{
+					const double Ang = TNProcMap::TwoPi * k / 9.0;
+					const FVector Out = Ux * FMath::Cos(Ang) + Vx * FMath::Sin(Ang);
+					const double Len = R * Rand(10 + k, 1.6, 2.6);
+					TNFormTube(M, { A + Out * (R * 0.6), A + Out * (R + Len * 0.5) + Axis * (Len * 0.3), A + Out * (R + Len) + Axis * (Len * 0.2) - FVector(0.0, 0.0, Len * 0.2) },
+						{ R * 0.28, R * 0.18, R * 0.06 }, 5, C.Wood * 0.9f);
+				}
+				TNFloraBlob(M, A - Axis * (R * 0.4), R * 1.3, R * 1.1, Seed + 3u, FLinearColor(0.3f, 0.22f, 0.14f), 8);
+				for (int32 k = 0; k < 7; ++k)
+				{
+					const FVector P0 = FMath::Lerp(A, B, Rand(20 + k, 0.2, 0.9));
+					TNFloraBlob(M, P0 + FVector(0.0, 0.0, R * 0.85), R * Rand(30 + k, 0.5, 0.9), R * 0.2, Seed + 40u + k, C.Moss, 6);
+				}
+				for (int32 k = 0; k < 9; ++k)
+				{
+					const FVector Top = FMath::Lerp(A, B, Rand(50 + k, 0.25, 0.85)) - FVector(0.0, 0.0, R * 0.9);
+					const double Len = FMath::Min(Rand(60 + k, 150.0, 380.0), Top.Z - 300.0);
+					if (Len < 60.0) { continue; }
+					TArray<FVector> Pts;
+					TArray<double> Rad;
+					for (int32 t = 0; t <= 5; ++t)
+					{
+						Pts.Add(Top + FVector(Rand(70 + k, -20.0, 20.0) * FMath::Sin(t * 0.9), 0.0, -Len * t / 5.0));
+						Rad.Add(FMath::Lerp(4.0, 2.0, t / 5.0));
+					}
+					TNFormTube(M, Pts, Rad, 4, C.Moss * 0.9f);
+				}
+				break;
+			}
+			case EFormation::RuinedAqueduct:
+			{
+				// Tramo de acueducto en ruinas de lado a lado del cañón: pilas hasta el suelo, arco rebajado de
+				// dovelas, relleno de fábrica sobre cada dovela hasta la cornisa y el canal arriba; a veces un
+				// pretil del canal se ha caído y sus sillares están junto al camino.
+				const double Half = P.Width * 0.5;
+				const double Depth = FMath::Clamp(P.Length * 0.5, 120.0, 200.0);
+				const double Top = P.Height + 60.0;
+				const double Rise = FMath::Min(Half * 0.45, P.Height * 0.4);
+				const double Span = Half + 40.0;
+				const double Rc = (Span * Span + Rise * Rise) / (2.0 * Rise);
+				const double Zc = Top - Rc;
+				const double DeckZ = Top + 130.0;
+				const bool bBroken = (Seed % 3u) == 1u;
+				for (int32 Side = -1; Side <= 1; Side += 2)
+				{
+					const double Y = Side * (Span + 90.0);
+					const double G = Ground(0.0, Y) - 80.0;
+					TNFormBox(M, FVector(0.0, Y, 0.5 * (G + DeckZ - 80.0)), FVector(Depth + 20.0, 110.0, 0.5 * (DeckZ - 80.0 - G)), 0.0, C.Strata);
+				}
+				constexpr int32 N = 15;
+				const double A0 = FMath::Asin(FMath::Clamp(Span / Rc, -1.0, 1.0));
+				for (int32 k = 0; k < N; ++k)
+				{
+					const double Aa = -A0 + 2.0 * A0 * k / N, Ab = -A0 + 2.0 * A0 * (k + 1) / N;
+					const FVector Pa(0.0, Rc * FMath::Sin(Aa), Zc + Rc * FMath::Cos(Aa));
+					const FVector Pb(0.0, Rc * FMath::Sin(Ab), Zc + Rc * FMath::Cos(Ab));
+					const FVector Mid = (Pa + Pb) * 0.5;
+					const FVector Out = FVector(0.0, Mid.Y, Mid.Z - Zc).GetSafeNormal();
+					const FVector Tan = (Pb - Pa).GetSafeNormal();
+					TNPropMesh::TNPropBox(M, Mid + Out * 45.0, FVector(1.0, 0.0, 0.0), Tan, Out, FVector(Depth, FVector::Dist(Pa, Pb) * 0.5 + 2.0, 45.0), (k % 2) ? C.Rock : C.Strata * 1.05f);
+					// Relleno de fábrica desde el trasdós de la dovela hasta la cornisa.
+					const double Ext = Mid.Z + Out.Z * 90.0;
+					if (DeckZ - 80.0 - Ext > 10.0)
+					{
+						TNFormBox(M, FVector(0.0, Mid.Y, 0.5 * (Ext + DeckZ - 80.0)), FVector(Depth - 6.0, FVector::Dist(Pa, Pb) * 0.5 + 3.0, 0.5 * (DeckZ - 80.0 - Ext)), 0.0, C.Rock * 0.95f);
+					}
+				}
+				TNFormBox(M, FVector(0.0, 0.0, DeckZ - 40.0), FVector(Depth + 15.0, Span + 230.0, 40.0), 0.0, C.Strata * 0.95f);
+				for (int32 Side = -1; Side <= 1; Side += 2)
+				{
+					if (bBroken && Side > 0) { continue; }
+					TNFormBox(M, FVector(Side * (Depth - 20.0), 0.0, DeckZ + 40.0), FVector(20.0, Span + 230.0, 40.0), 0.0, C.Strata);
+				}
+				if (bBroken)
+				{
+					for (int32 k = 0; k < 4; ++k)
+					{
+						const double Y = (k % 2 ? 1.0 : -1.0) * Half * Rand(80 + k, 0.7, 0.92);
+						const double X = Depth + Rand(90 + k, 100.0, 260.0);
+						TNFormBox(M, FVector(X, Y, Ground(X, Y) + 35.0), FVector(55.0, 90.0, 35.0), Rand(100 + k, -0.6, 0.6), C.Strata * 0.9f);
+					}
+				}
+				TNFloraBlob(M, FVector(0.0, Rand(120, -Span, Span) * 0.6, DeckZ + 10.0), 120.0, 20.0, Seed + 7u, C.Moss, 6);
 				break;
 			}
 			case EFormation::Shipwreck:
@@ -785,6 +977,253 @@ namespace TNFormMesh
 					Tank.Normals[i] = Rot(Tank.Normals[i]);
 				}
 				TNFormAppend(M, Tank, FVector::ZeroVector, FVector2D(1.0, 0.0));
+				break;
+			}
+			case EFormation::GiantShell:
+			{
+				// Caracola gigante de pie sobre su boca: cuerpo en espiral que se afila hacia la punta, costilla
+				// en hélice con púas y el labio rosado abierto hacia el camino (+X).
+				const double R = P.Radius, H = P.Height;
+				const FLinearColor Shell(0.93f, 0.84f, 0.7f), Band(0.86f, 0.55f, 0.35f), Lip(0.98f, 0.66f, 0.62f);
+				const double Zs[8] = { 0.0, 0.12, 0.3, 0.48, 0.64, 0.78, 0.9, 1.0 };
+				const double Rs[8] = { 0.85, 1.0, 0.95, 0.78, 0.56, 0.36, 0.18, 0.05 };
+				TNFloraLathe(M, FVector(0.0, 0.0, -30.0), { 0.0, H * 0.12, H * 0.3, H * 0.48, H * 0.64, H * 0.78, H * 0.9, H },
+					{ R * 0.85, R, R * 0.95, R * 0.78, R * 0.56, R * 0.36, R * 0.18, R * 0.05 }, 0.04, Seed, Shell, 12, false, 0.93);
+				// Radio del cuerpo a la altura Z (el perfil del torno), para que la costilla vaya por encima.
+				auto BodyR = [&](double Z)
+				{
+					const double T = FMath::Clamp((Z + 30.0) / H, 0.0, 1.0);
+					int32 i = 0;
+					while (i < 6 && Zs[i + 1] < T) { ++i; }
+					return R * FMath::Lerp(Rs[i], Rs[i + 1], (T - Zs[i]) / FMath::Max(1e-3, Zs[i + 1] - Zs[i]));
+				};
+				TArray<FVector> Hx;
+				TArray<double> Hr;
+				for (int32 t = 0; t <= 40; ++t)
+				{
+					const double U = t / 40.0;
+					const double Z = H * (0.1 + 0.85 * U);
+					const double Rr = BodyR(Z) * 1.04 + 8.0;
+					const double A = U * TNProcMap::TwoPi * 3.2;
+					Hx.Add(FVector(FMath::Cos(A) * Rr, FMath::Sin(A) * Rr, Z));
+					Hr.Add(FMath::Lerp(R * 0.09, R * 0.02, U));
+					if (t % 3 == 0 && U < 0.85)
+					{
+						const FVector Tip = FVector(FMath::Cos(A), FMath::Sin(A), 0.25) * (Rr + R * 0.25 * (1.0 - U)) + FVector(0.0, 0.0, Z);
+						TNFormCylinder(M, Hx.Last(), Tip, R * 0.07 * (1.0 - U) + 4.0, 1.0, 5, Band);
+					}
+				}
+				TNFormTube(M, Hx, Hr, 5, Band);
+				// Labio: ala de dos caras que se abre hacia el camino, más alta en el centro y con el borde enrollado.
+				const FLinearColor LipIn(0.9f, 0.45f, 0.45f);
+				TArray<FVector> Rim;
+				TArray<double> RimR;
+				for (int32 k = 0; k <= 10; ++k)
+				{
+					const double A = -1.1 + 2.2 * k / 10.0;
+					const double E = 1.0 - FMath::Square(A / 1.1) * 0.55;
+					Rim.Add(FVector(FMath::Cos(A) * R * 1.3, FMath::Sin(A) * R * 1.3, H * 0.36 * E));
+					RimR.Add(R * 0.045 * E + 3.0);
+				}
+				for (int32 k = 0; k < 10; ++k)
+				{
+					const double A0 = -1.1 + 2.2 * k / 10.0, A1 = -1.1 + 2.2 * (k + 1) / 10.0;
+					const FVector P0(FMath::Cos(A0) * R * 0.98, FMath::Sin(A0) * R * 0.98, -5.0), P1(FMath::Cos(A1) * R * 0.98, FMath::Sin(A1) * R * 0.98, -5.0);
+					const FVector Out(P0.X + P1.X, P0.Y + P1.Y, 0.0);
+					M.AddQuad(P0, P1, Rim[k + 1], Rim[k], Out, Lip);
+					M.AddQuad(P0, P1, Rim[k + 1], Rim[k], -Out, LipIn);
+				}
+				TNFormTube(M, Rim, RimR, 5, Lip);
+				break;
+			}
+			case EFormation::Anchor:
+			{
+				// Ancla oxidada clavada en la arena, algo inclinada: caña, cepo, arganeo, brazos con uñas medio
+				// enterrados y la cadena que baja en curva hasta el suelo y sigue por la arena.
+				const double H = P.Height;
+				const FLinearColor Rust(0.36f, 0.19f, 0.11f), RustDark(0.24f, 0.13f, 0.08f);
+				const FVector Base(0.0, 0.0, -40.0);
+				const FVector TopP(H * Rand(1, 0.12, 0.25), 0.0, H);
+				TNFormCylinder(M, Base, TopP, 34.0, 28.0, 8, Rust);
+				const FVector Stock = FMath::Lerp(Base, TopP, 0.86);
+				TNFormCylinder(M, Stock - FVector(0.0, H * 0.32, 0.0), Stock + FVector(0.0, H * 0.32, 0.0), 22.0, 22.0, 8, RustDark);
+				for (const double S : { -1.0, 1.0 }) { TNFloraBlob(M, Stock + FVector(0.0, S * H * 0.32, 0.0), 30.0, 30.0, Seed + 2u, RustDark, 6); }
+				TArray<FVector> Ring;
+				TArray<double> RingR;
+				for (int32 k = 0; k <= 12; ++k)
+				{
+					const double A = TNProcMap::TwoPi * k / 12.0;
+					Ring.Add(TopP + FVector(FMath::Cos(A) * 55.0, 0.0, 55.0 + FMath::Sin(A) * 55.0));
+					RingR.Add(9.0);
+				}
+				TNFormTube(M, Ring, RingR, 5, RustDark);
+				for (const double S : { -1.0, 1.0 })
+				{
+					TArray<FVector> Arm;
+					TArray<double> ArmR;
+					for (int32 t = 0; t <= 6; ++t)
+					{
+						const double A = PI * 0.5 * t / 6.0;
+						Arm.Add(Base + FVector(0.0, S * FMath::Sin(A) * H * 0.3, 60.0 + (1.0 - FMath::Cos(A)) * H * 0.25));
+						ArmR.Add(FMath::Lerp(30.0, 20.0, t / 6.0));
+					}
+					TNFormTube(M, Arm, ArmR, 6, Rust);
+					TNFormBox(M, Arm.Last() + FVector(0.0, S * 30.0, 30.0), FVector(20.0, 70.0, 60.0), 0.0, RustDark);
+				}
+				const FVector C0 = TopP + FVector(0.0, 0.0, 55.0);
+				FVector PrevL = C0;
+				for (int32 k = 1; k <= 26; ++k)
+				{
+					const double U = k / 26.0;
+					const FVector Lk(C0.X - U * H * 0.9, U * H * 0.25, FMath::Max(15.0, C0.Z * (1.0 - U) * (1.0 - U)));
+					M.AddBeam(PrevL, Lk, 7.0, (k % 2) ? Rust : RustDark);
+					PrevL = Lk;
+				}
+				break;
+			}
+			case EFormation::StoneCircle:
+			{
+				// Círculo de piedras en pie con huecos para pasar entre ellas, dinteles sobre algunos pares,
+				// alguna tumbada y un altar bajo en el centro.
+				const double R = P.Radius, H = P.Height;
+				const int32 N = FMath::Clamp(FMath::RoundToInt(TNProcMap::TwoPi * R / 330.0), 8, 16);
+				TArray<FVector> Tops;
+				TArray<uint8> Up;
+				for (int32 k = 0; k < N; ++k)
+				{
+					const double A = TNProcMap::TwoPi * (k + 0.5) / N;
+					const FVector Pk(FMath::Cos(A) * R, FMath::Sin(A) * R, 0.0);
+					const double Hk = H * Rand(10 + k, 0.8, 1.05);
+					const double G = Ground(Pk.X, Pk.Y) - 40.0;
+					if (Rand(20 + k, 0.0, 1.0) < 0.12)
+					{
+						TNFormBox(M, Pk + FVector(0.0, 0.0, G + 80.0), FVector(Hk * 0.5, 75.0, 40.0), A + Rand(30 + k, -0.4, 0.4), C.Strata * 0.9f);
+						Tops.Add(Pk);
+						Up.Add(0);
+						continue;
+					}
+					TNFormBox(M, Pk + FVector(0.0, 0.0, G + Hk * 0.5 + 20.0), FVector(45.0, 75.0, Hk * 0.5 + 20.0), A, (k % 2) ? C.Rock : C.Strata);
+					TNFloraBlob(M, Pk + FVector(0.0, 0.0, G + Hk + 40.0), 55.0, 12.0, Seed + 50u + k, C.Moss, 6);
+					Tops.Add(Pk + FVector(0.0, 0.0, G + Hk + 40.0));
+					Up.Add(1);
+				}
+				for (int32 k = 0; k + 1 < N; k += 2)
+				{
+					if (!Up[k] || !Up[k + 1] || Rand(40 + k, 0.0, 1.0) < 0.35) { continue; }
+					const FVector Mid = (Tops[k] + Tops[k + 1]) * 0.5 + FVector(0.0, 0.0, 30.0);
+					const FVector Along = (Tops[k + 1] - Tops[k]).GetSafeNormal2D();
+					M.AddBox(Mid, Along, FVector(FVector::Dist2D(Tops[k], Tops[k + 1]) * 0.5 + 60.0, 70.0, 30.0), C.Strata * 1.05f);
+				}
+				TNFormBox(M, FVector(0.0, 0.0, Ground(0.0, 0.0) + 35.0), FVector(130.0, 80.0, 35.0), Rand(60, 0.0, 3.0), C.Rock * 0.9f);
+				break;
+			}
+			case EFormation::Obelisk:
+			{
+				// Obelisco: basa escalonada, fuste de base cuadrada que se afila, bandas talladas y punta dorada.
+				const double R = P.Radius, H = P.Height;
+				const FLinearColor Stone = C.Strata, Gold(1.f, 0.78f, 0.22f);
+				TNFormBox(M, FVector(0.0, 0.0, 30.0), FVector(R * 1.9, R * 1.9, 40.0), 0.0, Stone * 0.85f);
+				TNFormBox(M, FVector(0.0, 0.0, 100.0), FVector(R * 1.5, R * 1.5, 30.0), 0.0, Stone * 0.92f);
+				const double Z0 = 130.0, Z1 = H * 0.9;
+				TNFormCylinder(M, FVector(0.0, 0.0, Z0), FVector(0.0, 0.0, Z1), R * 1.414, R * 0.95, 4, Stone);
+				TNFormCylinder(M, FVector(0.0, 0.0, Z1), FVector(0.0, 0.0, H), R * 0.95, 1.0, 4, Gold);
+				for (int32 b = 0; b < 5; ++b)
+				{
+					const double Z = FMath::Lerp(Z0 + 120.0, Z1 - 120.0, b / 4.0);
+					const double Rz = FMath::Lerp(R * 1.414, R * 0.95, (Z - Z0) / (Z1 - Z0));
+					TNFormCylinder(M, FVector(0.0, 0.0, Z - 7.0), FVector(0.0, 0.0, Z + 7.0), Rz + 4.0, Rz + 4.0, 4, Stone * 0.68f);
+				}
+				break;
+			}
+			case EFormation::FossilSkull:
+			{
+				// Cráneo fósil gigante medio enterrado mirando al camino (+X): bóveda, cuencas de los ojos, hocico
+				// largo con dientes y dos cuernos curvos.
+				const double R = P.Radius, H = P.Height;
+				TNFloraBlob(M, FVector(-R * 0.3, 0.0, H * 0.3), R * 0.75, H * 0.55, Seed, C.Bone, 9);
+				TNFormTube(M, { FVector(-R * 0.1, 0.0, H * 0.35), FVector(R * 0.5, 0.0, H * 0.28), FVector(R * 1.0, 0.0, H * 0.18) }, { R * 0.42, R * 0.32, R * 0.2 }, 8, C.Bone * 0.97f);
+				for (const double S : { -1.0, 1.0 })
+				{
+					TNFloraBlob(M, FVector(R * 0.05, S * R * 0.38, H * 0.55), R * 0.16, R * 0.13, Seed + 2u, C.Dark, 6);
+					TNFormTube(M, { FVector(-R * 0.35, S * R * 0.45, H * 0.7), FVector(-R * 0.2, S * R * 0.95, H * 0.95), FVector(R * 0.15, S * R * 1.15, H * 1.25) },
+						{ R * 0.14, R * 0.1, R * 0.03 }, 6, C.Bone * 1.03f);
+				}
+				for (int32 k = 0; k < 7; ++k)
+				{
+					const double X = R * (0.2 + 0.12 * k);
+					for (const double S : { -1.0, 1.0 })
+					{
+						const FVector Root(X, S * R * (0.28 - 0.02 * k), H * (0.22 - 0.02 * k));
+						TNFormCylinder(M, Root, Root - FVector(0.0, 0.0, R * 0.14), R * 0.035, 1.0, 5, C.Bone * 1.08f);
+					}
+				}
+				break;
+			}
+			case EFormation::ObsidianSpires:
+			{
+				// Agujas de obsidiana: esquirlas negras de arista violácea que salen en haz de una base de escoria.
+				const double R = P.Radius, H = P.Height;
+				const FLinearColor Obs(0.05f, 0.045f, 0.06f), Edge(0.2f, 0.17f, 0.24f);
+				TNFloraBlob(M, FVector(0.0, 0.0, 20.0), R * 1.1, R * 0.35, Seed, C.Rock * 0.8f, 8);
+				const int32 N = 7 + static_cast<int32>(Seed % 4u);
+				for (int32 k = 0; k < N; ++k)
+				{
+					const double A = TNProcMap::TwoPi * k / N + Rand(10 + k, -0.3, 0.3);
+					const double Lean = k == 0 ? 0.05 : Rand(20 + k, 0.12, 0.4);
+					const double Hk = H * (k == 0 ? 1.0 : Rand(30 + k, 0.35, 0.8));
+					const double Off = k == 0 ? 0.0 : R * 0.45;
+					const FVector B0(FMath::Cos(A) * Off, FMath::Sin(A) * Off, -20.0);
+					const FVector Dir = FVector(FMath::Cos(A) * Lean, FMath::Sin(A) * Lean, 1.0).GetSafeNormal();
+					TNFormCylinder(M, B0, B0 + Dir * Hk, Hk * Rand(40 + k, 0.1, 0.16), 2.0, 5, (k % 3 == 0) ? Edge : Obs);
+				}
+				break;
+			}
+			case EFormation::ColossalTurtle:
+			{
+				// Tortuga colosal de piedra (la de las cuevas a escala de explanada), mirando a lo largo del
+				// camino; con musgo o corona según la semilla.
+				FTNProcMeshBuffers Stat, Eyes;
+				TNTurtleStatue(Stat, Eyes, Seed, C.Strata, C.Rock * 0.85f, FLinearColor(0.15f, 0.4f, 0.8f), (Seed % 3u) == 0u ? 1 : 0, (Seed % 2u) == 0u, false);
+				const double Scale = P.Radius / 160.0;
+				TNPropMesh::TNPropAppend(M, Stat, FVector(0.0, 0.0, -30.0), 0.0, Scale);
+				TNPropMesh::TNPropAppend(M, Eyes, FVector(0.0, 0.0, -30.0), 0.0, Scale);
+				break;
+			}
+			case EFormation::WaterTower:
+			{
+				// Depósito de agua de madera sobre cuatro patas con riostras en aspa, escalera y tejado cónico.
+				const double R = P.Radius, H = P.Height;
+				const double TankZ = H * 0.62, TankH = H * 0.26, TankR = R * 0.75;
+				auto LegAt = [&](double A, double U)
+				{
+					return FMath::Lerp(FVector(FMath::Cos(A) * R * 0.85, FMath::Sin(A) * R * 0.85, 0.0), FVector(FMath::Cos(A) * TankR * 0.8, FMath::Sin(A) * TankR * 0.8, TankZ), U);
+				};
+				for (int32 k = 0; k < 4; ++k)
+				{
+					const double A = PI * 0.25 + HALF_PI * k;
+					const FVector Foot = LegAt(A, 0.0);
+					TNFormCylinder(M, FVector(Foot.X, Foot.Y, Ground(Foot.X, Foot.Y) - 30.0), LegAt(A, 1.0), 18.0, 14.0, 6, C.Wood * 0.8f);
+					const double A1 = A + HALF_PI;
+					for (const double U0 : { 0.15, 0.5 })
+					{
+						M.AddBeam(LegAt(A, U0), LegAt(A1, U0 + 0.3), 5.0, C.Wood * 0.7f);
+						M.AddBeam(LegAt(A1, U0), LegAt(A, U0 + 0.3), 5.0, C.Wood * 0.7f);
+					}
+				}
+				TNFormCylinder(M, FVector(0.0, 0.0, TankZ - 20.0), FVector(0.0, 0.0, TankZ), TankR + 30.0, TankR + 30.0, 14, C.Wood * 0.7f);
+				TNFloraLathe(M, FVector(0.0, 0.0, TankZ), { 0.0, TankH }, { TankR, TankR }, 0.0, Seed, C.Wood, 16, false, 0.96);
+				for (const double Fh : { 0.25, 0.75 })
+				{
+					TNFormCylinder(M, FVector(0.0, 0.0, TankZ + TankH * Fh - 6.0), FVector(0.0, 0.0, TankZ + TankH * Fh + 6.0), TankR + 4.0, TankR + 4.0, 16, C.Metal);
+				}
+				TNFormCylinder(M, FVector(0.0, 0.0, TankZ + TankH), FVector(0.0, 0.0, H), TankR + 25.0, 8.0, 16, C.Paint * 0.8f);
+				const FVector L0(R * 0.95, 0.0, 0.0), L1(TankR + 35.0, 0.0, TankZ);
+				for (const double S : { -1.0, 1.0 }) { M.AddBeam(L0 + FVector(0.0, S * 25.0, 0.0), L1 + FVector(0.0, S * 25.0, 0.0), 3.0, C.Wood * 0.6f); }
+				for (int32 r = 1; r < 18; ++r)
+				{
+					const FVector Q = FMath::Lerp(L0, L1, r / 18.0);
+					M.AddBeam(Q - FVector(0.0, 25.0, 0.0), Q + FVector(0.0, 25.0, 0.0), 2.5, C.Wood * 0.6f);
+				}
 				break;
 			}
 			case EFormation::Pyramid:
