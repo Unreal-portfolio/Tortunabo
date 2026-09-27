@@ -1,19 +1,19 @@
 {
  "name": "C05_muchos_lazos",
- "seed": 65005,
+ "seed": 70005,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  10736.527895888124,
-  322.80156774004246
+  21555.41801265592,
+  164.74057146052542
  ],
  "end_uu": [
   31500.0,
-  22869.014016449582,
-  -339.77103258977144
+  15124.249147430526,
+  -338.94369088365767
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 17202,
-   "triangles": 33876,
+   "vertices": 15155,
+   "triangles": 29806,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 17799,
-   "triangles": 35032,
+   "vertices": 17654,
+   "triangles": 34744,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 16769,
-   "triangles": 32982,
+   "vertices": 17474,
+   "triangles": 34382,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 16134,
-   "triangles": 31744,
+   "vertices": 14071,
+   "triangles": 27682,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 19910,
-   "triangles": 39242,
+   "vertices": 20671,
+   "triangles": 40770,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 22763,
-   "triangles": 44852,
+   "vertices": 22703,
+   "triangles": 44782,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 26939,
-   "triangles": 53240,
+   "vertices": 23504,
+   "triangles": 46356,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 24481,
-   "triangles": 48422,
+   "vertices": 20214,
+   "triangles": 39850,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 17531,
-   "triangles": 34514,
+   "vertices": 22510,
+   "triangles": 44376,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 23270,
-   "triangles": 45940,
+   "vertices": 23856,
+   "triangles": 47060,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 18176,
-   "triangles": 35794,
+   "vertices": 19605,
+   "triangles": 38634,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 16582,
-   "triangles": 32636,
+   "vertices": 15374,
+   "triangles": 30272,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 15268,
-   "triangles": 30032,
+   "vertices": 16179,
+   "triangles": 31832,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 14300,
-   "triangles": 28096,
+   "vertices": 15416,
+   "triangles": 30290,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 13309,
-   "triangles": 26132,
+   "vertices": 14222,
+   "triangles": 27954,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 17640,
-   "triangles": 34770,
+   "vertices": 13554,
+   "triangles": 26646,
    "instances": 0
   },
   {
@@ -1916,7 +1916,7 @@
   "loops": 9,
   "nested_loops": 3,
   "crossings": [
-   1,
+   2,
    4
   ],
   "bridge_share": 0.5,
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.276,
+   0.295,
+   0.308,
+   0.121
   ],
   "rim_cliffs_m": [
    4.0,
@@ -1986,7 +1986,7 @@
   ],
   "vista_pond_m": 2.6,
   "castles": 0,
-  "arches": 3,
+  "arches": 5,
   "extra_hill_tunnels": 1,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
@@ -1996,34 +1996,40 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 1,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Nueve lazos, tres de ellos dentro de otros: muchas alternativas.",
- "recorrible": true,
+ "recorrible": false,
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   1361.4,
-   6139.8,
-   463.7
-  ],
-  [
-   9653.5,
-   17554.4,
-   304.8
+   23078.5,
+   9361.8,
+   261.5
   ]
  ]
 }

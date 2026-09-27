@@ -1,19 +1,19 @@
 {
  "name": "C14_paredes_altas",
- "seed": 65014,
+ "seed": 61014,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  18509.62804739132,
-  414.67287495959295
+  16318.30532753604,
+  248.36543750155613
  ],
  "end_uu": [
   31500.0,
-  19077.989602456622,
-  -333.8620732141902
+  7414.673094565708,
+  -346.0779178202161
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 15970,
-   "triangles": 31430,
+   "vertices": 18887,
+   "triangles": 37178,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 17448,
-   "triangles": 34348,
+   "vertices": 15915,
+   "triangles": 31302,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 16359,
-   "triangles": 32202,
+   "vertices": 14656,
+   "triangles": 28788,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 13024,
-   "triangles": 25580,
+   "vertices": 15903,
+   "triangles": 31266,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 24212,
-   "triangles": 47774,
+   "vertices": 21077,
+   "triangles": 41476,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 23541,
-   "triangles": 46346,
+   "vertices": 23724,
+   "triangles": 46714,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 22254,
-   "triangles": 43902,
+   "vertices": 25762,
+   "triangles": 50826,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 21016,
-   "triangles": 41450,
+   "vertices": 21234,
+   "triangles": 41840,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 20813,
-   "triangles": 40974,
+   "vertices": 17873,
+   "triangles": 35170,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 24471,
-   "triangles": 48288,
+   "vertices": 22986,
+   "triangles": 45292,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 19006,
-   "triangles": 37462,
+   "vertices": 24420,
+   "triangles": 48108,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 17318,
-   "triangles": 34114,
+   "vertices": 18890,
+   "triangles": 37184,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 13703,
-   "triangles": 26914,
+   "vertices": 14535,
+   "triangles": 28560,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 14395,
-   "triangles": 28294,
+   "vertices": 16721,
+   "triangles": 32924,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 13892,
-   "triangles": 27312,
+   "vertices": 15769,
+   "triangles": 31014,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 13209,
-   "triangles": 25970,
+   "vertices": 12733,
+   "triangles": 25024,
    "instances": 0
   },
   {
@@ -1913,11 +1913,11 @@
    900.0
   ],
   "path_separation_m": 34.0,
-  "loops": 7,
-  "nested_loops": 2,
+  "loops": 8,
+  "nested_loops": 0,
   "crossings": [
    1,
-   4
+   3
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.329,
+   0.262,
+   0.291,
+   0.117
   ],
   "rim_cliffs_m": [
    7.0,
@@ -1986,7 +1986,7 @@
   ],
   "vista_pond_m": 2.6,
   "castles": 0,
-  "arches": 3,
+  "arches": 0,
   "extra_hill_tunnels": 1,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
@@ -1996,8 +1996,8 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
@@ -2009,6 +2009,17 @@
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Paredes altas (acantilado 7-13 m): canones profundos.",
@@ -2016,14 +2027,14 @@
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   1524.1,
-   12337.0,
-   701.5
+   15705.0,
+   13711.1,
+   125.7
   ],
   [
-   16201.6,
-   11486.2,
-   92.9
+   23371.6,
+   16249.8,
+   392.7
   ]
  ]
 }

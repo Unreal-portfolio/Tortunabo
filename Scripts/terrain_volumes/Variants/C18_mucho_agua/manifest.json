@@ -1,19 +1,19 @@
 {
  "name": "C18_mucho_agua",
- "seed": 63018,
+ "seed": 67018,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  18247.678262721285,
-  752.3988047699955
+  14286.546522240198,
+  255.31482992796697
  ],
  "end_uu": [
   31500.0,
-  11311.028635502984,
-  -338.7609700322806
+  10586.918569477504,
+  -345.3604338967891
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 15803,
-   "triangles": 31050,
+   "vertices": 18339,
+   "triangles": 36114,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 18296,
-   "triangles": 36014,
+   "vertices": 19490,
+   "triangles": 38390,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 16443,
-   "triangles": 32356,
+   "vertices": 16105,
+   "triangles": 31682,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14425,
-   "triangles": 28356,
+   "vertices": 13528,
+   "triangles": 26608,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 24501,
-   "triangles": 48348,
+   "vertices": 21172,
+   "triangles": 41762,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 20715,
-   "triangles": 40750,
+   "vertices": 26208,
+   "triangles": 51746,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 20252,
-   "triangles": 39906,
+   "vertices": 22445,
+   "triangles": 44242,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 18924,
-   "triangles": 37258,
+   "vertices": 19566,
+   "triangles": 38576,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 22063,
-   "triangles": 43554,
+   "vertices": 20407,
+   "triangles": 40270,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 19480,
-   "triangles": 38382,
+   "vertices": 18380,
+   "triangles": 36090,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 24765,
-   "triangles": 48950,
+   "vertices": 24938,
+   "triangles": 49262,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 21927,
-   "triangles": 43206,
+   "vertices": 17692,
+   "triangles": 34798,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 15483,
-   "triangles": 30452,
+   "vertices": 13480,
+   "triangles": 26484,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 15015,
-   "triangles": 29514,
+   "vertices": 16484,
+   "triangles": 32476,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 15811,
-   "triangles": 31134,
+   "vertices": 13578,
+   "triangles": 26680,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 14115,
-   "triangles": 27754,
+   "vertices": 15049,
+   "triangles": 29620,
    "instances": 0
   },
   {
@@ -1913,10 +1913,10 @@
    900.0
   ],
   "path_separation_m": 34.0,
-  "loops": 7,
-  "nested_loops": 2,
+  "loops": 6,
+  "nested_loops": 3,
   "crossings": [
-   1,
+   2,
    4
   ],
   "bridge_share": 0.5,
@@ -1996,19 +1996,30 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 1,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Tramo de rio largo y lagos grandes en las vistas.",
@@ -2016,14 +2027,9 @@
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   21677.5,
-   13202.8,
-   229.7
-  ],
-  [
-   26109.6,
-   21478.3,
-   236.5
+   10592.1,
+   6504.7,
+   474.9
   ]
  ]
 }

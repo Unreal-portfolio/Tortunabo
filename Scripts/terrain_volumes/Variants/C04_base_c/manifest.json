@@ -1,19 +1,19 @@
 {
  "name": "C04_base_c",
- "seed": 66004,
+ "seed": 62004,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  10629.395372527424,
-  646.1288112894692
+  19426.819788877292,
+  338.5556261472324
  ],
  "end_uu": [
   31500.0,
-  9185.515230421735,
-  -335.92363722759126
+  17103.67565788953,
+  -347.2102062064216
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 16776,
-   "triangles": 32996,
+   "vertices": 13379,
+   "triangles": 26288,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 15106,
-   "triangles": 29698,
+   "vertices": 15504,
+   "triangles": 30504,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 14561,
-   "triangles": 28646,
+   "vertices": 16037,
+   "triangles": 31540,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14035,
-   "triangles": 27598,
+   "vertices": 15584,
+   "triangles": 30668,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 20140,
-   "triangles": 39644,
+   "vertices": 19120,
+   "triangles": 37672,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 22042,
-   "triangles": 43468,
+   "vertices": 25525,
+   "triangles": 50400,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 22667,
-   "triangles": 44744,
+   "vertices": 24429,
+   "triangles": 48206,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 17841,
-   "triangles": 35134,
+   "vertices": 19208,
+   "triangles": 37814,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 21507,
-   "triangles": 42440,
+   "vertices": 21081,
+   "triangles": 41598,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 22424,
-   "triangles": 44248,
+   "vertices": 21850,
+   "triangles": 42982,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 23037,
-   "triangles": 45472,
+   "vertices": 23393,
+   "triangles": 46144,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 16728,
-   "triangles": 32944,
+   "vertices": 18278,
+   "triangles": 35988,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 16659,
-   "triangles": 32756,
+   "vertices": 18007,
+   "triangles": 35464,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 15167,
-   "triangles": 29808,
+   "vertices": 17341,
+   "triangles": 34126,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 13787,
-   "triangles": 27078,
+   "vertices": 17024,
+   "triangles": 33542,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 13135,
-   "triangles": 25830,
+   "vertices": 13853,
+   "triangles": 27238,
    "instances": 0
   },
   {
@@ -1907,17 +1907,17 @@
  ],
  "style": {
   "name": "C04_base_c",
-  "description": "Mismos parametros que C01, otra semilla.",
+  "description": "Todo sorteado con la semilla.",
   "main_length_m": [
    700.0,
    900.0
   ],
   "path_separation_m": 34.0,
-  "loops": 7,
-  "nested_loops": 2,
+  "loops": 9,
+  "nested_loops": 1,
   "crossings": [
    1,
-   4
+   3
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.372,
+   0.238,
+   0.242,
+   0.148
   ],
   "rim_cliffs_m": [
    4.0,
@@ -1986,7 +1986,7 @@
   ],
   "vista_pond_m": 2.6,
   "castles": 0,
-  "arches": 3,
+  "arches": 0,
   "extra_hill_tunnels": 1,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
@@ -1996,34 +1996,40 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 1,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
- "description": "Mismos parametros que C01, otra semilla.",
+ "description": "Todo sorteado con la semilla.",
  "recorrible": true,
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   1265.0,
-   18649.8,
-   269.1
-  ],
-  [
-   17480.7,
-   17064.0,
-   92.0
+   1102.1,
+   23534.7,
+   377.1
   ]
  ]
 }

@@ -8,12 +8,12 @@
  "start_uu": [
   -2000.0,
   12630.954308472428,
-  711.4087526680581
+  385.9971210071229
  ],
  "end_uu": [
   31500.0,
   15258.193790469617,
-  -339.5584368481888
+  -346.22847861452044
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 16799,
-   "triangles": 33038,
+   "vertices": 15831,
+   "triangles": 31148,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 14736,
-   "triangles": 28954,
+   "vertices": 17184,
+   "triangles": 33776,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 16970,
-   "triangles": 33392,
+   "vertices": 19977,
+   "triangles": 39372,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14349,
-   "triangles": 28200,
+   "vertices": 13169,
+   "triangles": 25872,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 25199,
-   "triangles": 49714,
+   "vertices": 23677,
+   "triangles": 46728,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 22990,
-   "triangles": 45354,
+   "vertices": 23418,
+   "triangles": 46188,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 25322,
-   "triangles": 49960,
+   "vertices": 24184,
+   "triangles": 47728,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 20412,
-   "triangles": 40260,
+   "vertices": 16594,
+   "triangles": 32692,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 22698,
-   "triangles": 44772,
+   "vertices": 20413,
+   "triangles": 40260,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 21508,
-   "triangles": 42358,
+   "vertices": 19424,
+   "triangles": 38242,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 24921,
-   "triangles": 49156,
+   "vertices": 22705,
+   "triangles": 44732,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 18058,
-   "triangles": 35538,
+   "vertices": 19515,
+   "triangles": 38490,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 16100,
-   "triangles": 31650,
+   "vertices": 14758,
+   "triangles": 28998,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 16958,
-   "triangles": 33344,
+   "vertices": 18004,
+   "triangles": 35468,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 14409,
-   "triangles": 28274,
+   "vertices": 17981,
+   "triangles": 35398,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 13625,
-   "triangles": 26788,
+   "vertices": 14714,
+   "triangles": 28930,
    "instances": 0
   },
   {
@@ -1913,11 +1913,11 @@
    900.0
   ],
   "path_separation_m": 34.0,
-  "loops": 7,
+  "loops": 9,
   "nested_loops": 2,
   "crossings": [
-   1,
-   4
+   0,
+   2
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1987,7 +1987,7 @@
   "vista_pond_m": 2.6,
   "castles": 0,
   "arches": 3,
-  "extra_hill_tunnels": 1,
+  "extra_hill_tunnels": 2,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
    1.0,
@@ -1996,34 +1996,93 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 1,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Mas de la mitad del camino entre acantilados.",
  "recorrible": true,
- "kill_boxes_uu": [],
+ "kill_boxes_uu": [
+  {
+   "center": [
+    21329.83808015924,
+    10278.027202651148,
+    -425.0
+   ],
+   "extent": [
+    1328.0748193733825,
+    1064.8419984600923,
+    225.0
+   ],
+   "yaw": 103.06649601913209
+  },
+  {
+   "center": [
+    20457.904551626158,
+    11345.841473090393,
+    -425.0
+   ],
+   "extent": [
+    1248.3153533136235,
+    993.7755967079477,
+    225.0
+   ],
+   "yaw": 157.06996721722552
+  },
+  {
+   "center": [
+    19276.644905844452,
+    12203.31206155726,
+    -425.0
+   ],
+   "extent": [
+    1219.1630041402493,
+    944.0409035964237,
+    225.0
+   ],
+   "yaw": 130.90245408395967
+  },
+  {
+   "center": [
+    18657.88171955148,
+    13299.081964890382,
+    -425.0
+   ],
+   "extent": [
+    1009.3181509787295,
+    925.3666453767266,
+    225.0
+   ],
+   "yaw": 103.70974180832813
+  }
+ ],
  "jellyfish_uu": [
   [
-   12662.2,
-   21590.2,
-   474.4
-  ],
-  [
-   19928.0,
-   12020.0,
-   -33.4
+   7072.1,
+   12498.1,
+   527.7
   ]
  ]
 }

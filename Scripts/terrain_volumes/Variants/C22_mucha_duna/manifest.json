@@ -1,19 +1,19 @@
 {
  "name": "C22_mucha_duna",
- "seed": 70022,
+ "seed": 63022,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  22407.97350361014,
-  663.5683955723345
+  23220.062751432477,
+  225.9746888520425
  ],
  "end_uu": [
   31500.0,
-  18871.617459655925,
-  -344.7917043893538
+  22738.79502248682,
+  -341.0162857639237
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 14048,
-   "triangles": 27604,
+   "vertices": 15122,
+   "triangles": 29732,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 15297,
-   "triangles": 30086,
+   "vertices": 15779,
+   "triangles": 31044,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 15117,
-   "triangles": 29726,
+   "vertices": 17005,
+   "triangles": 33496,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 13745,
-   "triangles": 27024,
+   "vertices": 13767,
+   "triangles": 27046,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 18260,
-   "triangles": 35900,
+   "vertices": 21272,
+   "triangles": 41964,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 20286,
-   "triangles": 39934,
+   "vertices": 21189,
+   "triangles": 41744,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 23320,
-   "triangles": 46026,
+   "vertices": 20149,
+   "triangles": 39682,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 19283,
-   "triangles": 38014,
+   "vertices": 19847,
+   "triangles": 39096,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 21221,
-   "triangles": 41812,
+   "vertices": 20981,
+   "triangles": 41350,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 21117,
-   "triangles": 41572,
+   "vertices": 22991,
+   "triangles": 45292,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 21355,
-   "triangles": 42098,
+   "vertices": 30162,
+   "triangles": 59658,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 17788,
-   "triangles": 35020,
+   "vertices": 19904,
+   "triangles": 39160,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 16508,
-   "triangles": 32482,
+   "vertices": 16106,
+   "triangles": 31680,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 18450,
-   "triangles": 36350,
+   "vertices": 19782,
+   "triangles": 38996,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 13880,
-   "triangles": 27276,
+   "vertices": 16828,
+   "triangles": 33090,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 13694,
-   "triangles": 26910,
+   "vertices": 16588,
+   "triangles": 32644,
    "instances": 0
   },
   {
@@ -1913,11 +1913,11 @@
    900.0
   ],
   "path_separation_m": 34.0,
-  "loops": 7,
+  "loops": 5,
   "nested_loops": 2,
   "crossings": [
    1,
-   4
+   3
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1986,8 +1986,8 @@
   ],
   "vista_pond_m": 2.6,
   "castles": 0,
-  "arches": 3,
-  "extra_hill_tunnels": 1,
+  "arches": 2,
+  "extra_hill_tunnels": 0,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
    1.0,
@@ -1996,34 +1996,93 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 1,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Mas de la mitad del camino entre dunas.",
- "recorrible": false,
- "kill_boxes_uu": [],
+ "recorrible": true,
+ "kill_boxes_uu": [
+  {
+   "center": [
+    20520.004740005716,
+    19814.8082840477,
+    -425.0
+   ],
+   "extent": [
+    1631.1956268896797,
+    1722.6488692854339,
+    225.0
+   ],
+   "yaw": -74.57842933927634
+  },
+  {
+   "center": [
+    21484.169380470503,
+    19054.7676617411,
+    -425.0
+   ],
+   "extent": [
+    1661.009759866718,
+    1802.7157913128613,
+    225.0
+   ],
+   "yaw": -1.349332029279982
+  },
+  {
+   "center": [
+    22868.19546189271,
+    19531.465192643293,
+    -425.0
+   ],
+   "extent": [
+    1700.5793059107227,
+    1807.7704450290923,
+    225.0
+   ],
+   "yaw": 38.37441401747983
+  },
+  {
+   "center": [
+    24198.43874482938,
+    19877.458975252113,
+    -425.0
+   ],
+   "extent": [
+    1612.9054693090184,
+    1783.544085274687,
+    225.0
+   ],
+   "yaw": -11.89118072182389
+  }
+ ],
  "jellyfish_uu": [
   [
-   1062.5,
-   18182.1,
-   781.7
-  ],
-  [
-   15860.2,
-   13146.6,
-   319.8
+   11783.4,
+   11361.1,
+   273.3
   ]
  ]
 }

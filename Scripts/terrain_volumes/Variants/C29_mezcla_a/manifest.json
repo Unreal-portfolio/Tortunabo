@@ -7,13 +7,13 @@
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  12192.77710027818,
-  697.4746045827462
+  6829.702748439298,
+  459.16909059442474
  ],
  "end_uu": [
   31500.0,
-  13830.39324289894,
-  -335.80123393410236
+  21033.700373165342,
+  -340.4552072610054
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 15276,
-   "triangles": 30062,
+   "vertices": 19295,
+   "triangles": 38022,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 15684,
-   "triangles": 30838,
+   "vertices": 14555,
+   "triangles": 28590,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 17113,
-   "triangles": 33678,
+   "vertices": 15708,
+   "triangles": 30904,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14600,
-   "triangles": 28728,
+   "vertices": 14252,
+   "triangles": 28028,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 20186,
-   "triangles": 39722,
+   "vertices": 22044,
+   "triangles": 43464,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 26260,
-   "triangles": 51810,
+   "vertices": 21927,
+   "triangles": 43214,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 21955,
-   "triangles": 43204,
+   "vertices": 25183,
+   "triangles": 49714,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 18036,
-   "triangles": 35502,
+   "vertices": 19455,
+   "triangles": 38332,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 20345,
-   "triangles": 40098,
+   "vertices": 18362,
+   "triangles": 36142,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 24591,
-   "triangles": 48516,
+   "vertices": 29505,
+   "triangles": 58234,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 26373,
-   "triangles": 52076,
+   "vertices": 24783,
+   "triangles": 48764,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 19810,
-   "triangles": 38990,
+   "vertices": 16869,
+   "triangles": 33178,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 15315,
-   "triangles": 30128,
+   "vertices": 17569,
+   "triangles": 34592,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 16104,
-   "triangles": 31698,
+   "vertices": 18426,
+   "triangles": 36286,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 23379,
-   "triangles": 46218,
+   "vertices": 14443,
+   "triangles": 28380,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 17730,
-   "triangles": 34938,
+   "vertices": 13749,
+   "triangles": 27030,
    "instances": 0
   },
   {
@@ -1987,7 +1987,7 @@
   "vista_pond_m": 2.6,
   "castles": 0,
   "arches": 4,
-  "extra_hill_tunnels": 1,
+  "extra_hill_tunnels": 0,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
    1.0,
@@ -1996,19 +1996,30 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 1,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Mezcla: mas lazos, cruces, puentes y agua.",
@@ -2016,14 +2027,9 @@
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   6791.3,
-   14472.5,
-   741.8
-  ],
-  [
-   22613.8,
-   16457.4,
-   224.3
+   22321.4,
+   13520.1,
+   504.3
   ]
  ]
 }

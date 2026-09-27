@@ -1,19 +1,19 @@
 {
  "name": "C06_pocos_lazos",
- "seed": 62006,
+ "seed": 69006,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  21503.051648596334,
-  736.3742376778383
+  16013.197256678117,
+  185.62482813050565
  ],
  "end_uu": [
   31500.0,
-  18821.069894923297,
-  -338.7213100647314
+  9690.913482624475,
+  -341.7176407645981
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 17745,
-   "triangles": 34938,
+   "vertices": 16975,
+   "triangles": 33420,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 16426,
-   "triangles": 32326,
+   "vertices": 15150,
+   "triangles": 29792,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 15607,
-   "triangles": 30700,
+   "vertices": 14302,
+   "triangles": 28114,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 15916,
-   "triangles": 31354,
+   "vertices": 13444,
+   "triangles": 26430,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 21052,
-   "triangles": 41486,
+   "vertices": 25040,
+   "triangles": 49440,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 23718,
-   "triangles": 46772,
+   "vertices": 22931,
+   "triangles": 45210,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 23488,
-   "triangles": 46360,
+   "vertices": 18162,
+   "triangles": 35744,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 15548,
-   "triangles": 30556,
+   "vertices": 17859,
+   "triangles": 35196,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 22879,
-   "triangles": 45104,
+   "vertices": 17875,
+   "triangles": 35214,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 21234,
-   "triangles": 41774,
+   "vertices": 19380,
+   "triangles": 38228,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 20770,
-   "triangles": 40900,
+   "vertices": 22660,
+   "triangles": 44720,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 18759,
-   "triangles": 36962,
+   "vertices": 27305,
+   "triangles": 53994,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 17532,
-   "triangles": 34498,
+   "vertices": 15377,
+   "triangles": 30246,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 17222,
-   "triangles": 33880,
+   "vertices": 13923,
+   "triangles": 27370,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 19141,
-   "triangles": 37726,
+   "vertices": 15439,
+   "triangles": 30366,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 15802,
-   "triangles": 31068,
+   "vertices": 15100,
+   "triangles": 29700,
    "instances": 0
   },
   {
@@ -1917,7 +1917,7 @@
   "nested_loops": 1,
   "crossings": [
    1,
-   4
+   3
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.224,
+   0.293,
+   0.375,
+   0.108
   ],
   "rim_cliffs_m": [
    4.0,
@@ -1986,8 +1986,8 @@
   ],
   "vista_pond_m": 2.6,
   "castles": 0,
-  "arches": 3,
-  "extra_hill_tunnels": 1,
+  "arches": 0,
+  "extra_hill_tunnels": 3,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
    1.0,
@@ -1996,19 +1996,30 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 3,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Solo cuatro lazos: recorrido mas directo.",
@@ -2016,14 +2027,14 @@
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   5429.0,
-   13152.9,
-   764.7
+   1650.9,
+   8848.0,
+   569.0
   ],
   [
-   24061.4,
-   14431.1,
-   63.4
+   27334.7,
+   21109.4,
+   200.9
   ]
  ]
 }

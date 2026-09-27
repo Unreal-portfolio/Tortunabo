@@ -1,19 +1,19 @@
 {
  "name": "C25_lazos_grandes",
- "seed": 62025,
+ "seed": 67025,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  6246.190205052143,
-  542.5338690475144
+  6081.431626610139,
+  108.38233182026241
  ],
  "end_uu": [
   31500.0,
-  8668.363188729436,
-  -341.1099458619723
+  7275.774729430651,
+  -346.7184984152543
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 16107,
-   "triangles": 31712,
+   "vertices": 18263,
+   "triangles": 35984,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 14712,
-   "triangles": 28910,
+   "vertices": 20733,
+   "triangles": 40852,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 17360,
-   "triangles": 34190,
+   "vertices": 15387,
+   "triangles": 30230,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 15157,
-   "triangles": 29814,
+   "vertices": 18133,
+   "triangles": 35718,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 22176,
-   "triangles": 43760,
+   "vertices": 22657,
+   "triangles": 44654,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 20477,
-   "triangles": 40328,
+   "vertices": 25983,
+   "triangles": 51196,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 22302,
-   "triangles": 43964,
+   "vertices": 24159,
+   "triangles": 47684,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 17709,
-   "triangles": 34904,
+   "vertices": 20389,
+   "triangles": 40180,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 22956,
-   "triangles": 45270,
+   "vertices": 19424,
+   "triangles": 38242,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 18799,
-   "triangles": 36954,
+   "vertices": 24218,
+   "triangles": 47714,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 21980,
-   "triangles": 43334,
+   "vertices": 21955,
+   "triangles": 43222,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 17549,
-   "triangles": 34582,
+   "vertices": 19277,
+   "triangles": 37988,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 15770,
-   "triangles": 31038,
+   "vertices": 14581,
+   "triangles": 28672,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 15866,
-   "triangles": 31228,
+   "vertices": 17218,
+   "triangles": 33878,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 19094,
-   "triangles": 37648,
+   "vertices": 16888,
+   "triangles": 33230,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 15783,
-   "triangles": 31060,
+   "vertices": 15070,
+   "triangles": 29624,
    "instances": 0
   },
   {
@@ -1914,10 +1914,10 @@
   ],
   "path_separation_m": 34.0,
   "loops": 7,
-  "nested_loops": 2,
+  "nested_loops": 0,
   "crossings": [
    1,
-   4
+   3
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.262,
+   0.277,
+   0.358,
+   0.102
   ],
   "rim_cliffs_m": [
    4.0,
@@ -1987,7 +1987,7 @@
   "vista_pond_m": 2.6,
   "castles": 0,
   "arches": 3,
-  "extra_hill_tunnels": 1,
+  "extra_hill_tunnels": 3,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
    1.0,
@@ -1996,19 +1996,30 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 3,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Lazos grandes que se alejan mucho del principal.",
@@ -2016,14 +2027,14 @@
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   -529.5,
-   10925.2,
-   750.3
+   14321.3,
+   19129.9,
+   117.6
   ],
   [
-   2198.7,
-   18193.9,
-   745.8
+   20410.0,
+   8986.5,
+   265.3
   ]
  ]
 }

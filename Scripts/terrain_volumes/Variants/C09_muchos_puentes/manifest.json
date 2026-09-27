@@ -1,19 +1,19 @@
 {
  "name": "C09_muchos_puentes",
- "seed": 65009,
+ "seed": 68009,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  8300.678470891955,
-  758.2082821218911
+  17037.47780279237,
+  169.2686627414778
  ],
  "end_uu": [
   31500.0,
-  19084.643906386184,
-  -339.55867390596126
+  14024.627518289062,
+  -339.3469064959385
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 18189,
-   "triangles": 35812,
+   "vertices": 14744,
+   "triangles": 29010,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 17776,
-   "triangles": 34984,
+   "vertices": 16850,
+   "triangles": 33140,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 16530,
-   "triangles": 32500,
+   "vertices": 16487,
+   "triangles": 32428,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14928,
-   "triangles": 29370,
+   "vertices": 13337,
+   "triangles": 26212,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 21130,
-   "triangles": 41602,
+   "vertices": 16895,
+   "triangles": 33232,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 22512,
-   "triangles": 44246,
+   "vertices": 24277,
+   "triangles": 47872,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 23229,
-   "triangles": 45760,
+   "vertices": 25513,
+   "triangles": 50304,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 19356,
-   "triangles": 38154,
+   "vertices": 19444,
+   "triangles": 38314,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 21037,
-   "triangles": 41478,
+   "vertices": 18533,
+   "triangles": 36506,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 25659,
-   "triangles": 50570,
+   "vertices": 21637,
+   "triangles": 42606,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 22713,
-   "triangles": 44748,
+   "vertices": 23914,
+   "triangles": 47116,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 18436,
-   "triangles": 36338,
+   "vertices": 18483,
+   "triangles": 36404,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 14054,
-   "triangles": 27594,
+   "vertices": 14828,
+   "triangles": 29138,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 16290,
-   "triangles": 32062,
+   "vertices": 14589,
+   "triangles": 28670,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 13786,
-   "triangles": 27084,
+   "vertices": 16518,
+   "triangles": 32518,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 13460,
-   "triangles": 26432,
+   "vertices": 15333,
+   "triangles": 30186,
    "instances": 0
   },
   {
@@ -1913,8 +1913,8 @@
    900.0
   ],
   "path_separation_m": 34.0,
-  "loops": 7,
-  "nested_loops": 2,
+  "loops": 5,
+  "nested_loops": 1,
   "crossings": [
    2,
    2
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.337,
+   0.241,
+   0.304,
+   0.118
   ],
   "rim_cliffs_m": [
    4.0,
@@ -1987,7 +1987,7 @@
   "vista_pond_m": 2.6,
   "castles": 0,
   "arches": 5,
-  "extra_hill_tunnels": 1,
+  "extra_hill_tunnels": 2,
   "crest_relief_m": 3.0,
   "hill_amp_m": [
    1.0,
@@ -1996,34 +1996,80 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 1,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Cinco arcos finos sobre el camino y dos cruces.",
  "recorrible": true,
- "kill_boxes_uu": [],
+ "kill_boxes_uu": [
+  {
+   "center": [
+    17284.440622763417,
+    15670.750393813838,
+    -425.0
+   ],
+   "extent": [
+    1285.382033583554,
+    1001.0499861680842,
+    225.0
+   ],
+   "yaw": 90.59157948047825
+  },
+  {
+   "center": [
+    16591.255244512897,
+    16797.82689747829,
+    -425.0
+   ],
+   "extent": [
+    1330.123940095958,
+    1128.6082897707042,
+    225.0
+   ],
+   "yaw": 153.4536613469851
+  },
+  {
+   "center": [
+    15391.748762542744,
+    17672.01864486454,
+    -425.0
+   ],
+   "extent": [
+    1365.874899963789,
+    1251.7731934995172,
+    225.0
+   ],
+   "yaw": 134.0415138979987
+  }
+ ],
  "jellyfish_uu": [
   [
-   6333.7,
-   18128.7,
-   277.1
-  ],
-  [
-   17324.0,
-   12060.2,
-   192.2
+   24309.6,
+   13532.1,
+   662.1
   ]
  ]
 }

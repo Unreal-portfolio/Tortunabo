@@ -1,19 +1,19 @@
 {
  "name": "C30_mezcla_b",
- "seed": 62030,
+ "seed": 65030,
  "format": "TNTM2",
  "cell_uu": 10000.0,
  "grid": 4,
  "water_uu": -400.0,
  "start_uu": [
   -2000.0,
-  17499.73582857304,
-  737.7716406733861
+  20567.495405369555,
+  347.78408920598895
  ],
  "end_uu": [
   31500.0,
-  18058.578609309563,
-  -340.58466340404897
+  20283.788270687834,
+  -337.4055019342765
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 23825,
-   "triangles": 47072,
+   "vertices": 13996,
+   "triangles": 27506,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 23206,
-   "triangles": 45810,
+   "vertices": 17633,
+   "triangles": 34704,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 18367,
-   "triangles": 36218,
+   "vertices": 15506,
+   "triangles": 30492,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 14978,
-   "triangles": 29464,
+   "vertices": 13701,
+   "triangles": 26936,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 22463,
-   "triangles": 44266,
+   "vertices": 19891,
+   "triangles": 39178,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 23898,
-   "triangles": 47032,
+   "vertices": 24367,
+   "triangles": 48024,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 25655,
-   "triangles": 50636,
+   "vertices": 22607,
+   "triangles": 44552,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 19929,
-   "triangles": 39286,
+   "vertices": 17428,
+   "triangles": 34312,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 18922,
-   "triangles": 37258,
+   "vertices": 20963,
+   "triangles": 41272,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 20750,
-   "triangles": 40874,
+   "vertices": 21830,
+   "triangles": 42966,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 17719,
-   "triangles": 34836,
+   "vertices": 23792,
+   "triangles": 46908,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 16815,
-   "triangles": 33064,
+   "vertices": 20220,
+   "triangles": 39852,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 16684,
-   "triangles": 32858,
+   "vertices": 14360,
+   "triangles": 28228,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 15609,
-   "triangles": 30736,
+   "vertices": 14266,
+   "triangles": 28020,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 13169,
-   "triangles": 25868,
+   "vertices": 17443,
+   "triangles": 34342,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 13228,
-   "triangles": 26002,
+   "vertices": 19088,
+   "triangles": 37596,
    "instances": 0
   },
   {
@@ -1913,11 +1913,11 @@
    900.0
   ],
   "path_separation_m": 34.0,
-  "loops": 7,
-  "nested_loops": 2,
+  "loops": 9,
+  "nested_loops": 0,
   "crossings": [
    1,
-   4
+   3
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.38,
+   0.229,
+   0.279,
+   0.112
   ],
   "rim_cliffs_m": [
    6.0,
@@ -1986,8 +1986,8 @@
   ],
   "vista_pond_m": 2.6,
   "castles": 0,
-  "arches": 3,
-  "extra_hill_tunnels": 1,
+  "arches": 4,
+  "extra_hill_tunnels": 2,
   "crest_relief_m": 5.0,
   "hill_amp_m": [
    1.0,
@@ -1996,19 +1996,30 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 3,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Mezcla: camino ancho, paredes altas y cimas movidas.",
@@ -2016,14 +2027,19 @@
  "kill_boxes_uu": [],
  "jellyfish_uu": [
   [
-   7228.2,
-   10384.6,
-   524.7
+   2178.9,
+   20468.7,
+   99.5
   ],
   [
-   16832.0,
-   11725.1,
-   320.1
+   6506.3,
+   13242.6,
+   -81.0
+  ],
+  [
+   20049.7,
+   17537.8,
+   537.8
   ]
  ]
 }

@@ -8,12 +8,12 @@
  "start_uu": [
   -2000.0,
   9931.410035330757,
-  573.846466531958
+  203.9873600305752
  ],
  "end_uu": [
   31500.0,
   14832.11094871633,
-  -344.5629546174459
+  -334.4489394896228
  ],
  "cells": [
   {
@@ -25,8 +25,8 @@
     0.0,
     0.0
    ],
-   "vertices": 15339,
-   "triangles": 30188,
+   "vertices": 13472,
+   "triangles": 26468,
    "instances": 0
   },
   {
@@ -38,8 +38,8 @@
     10000.0,
     0.0
    ],
-   "vertices": 15542,
-   "triangles": 30596,
+   "vertices": 15068,
+   "triangles": 29626,
    "instances": 0
   },
   {
@@ -51,8 +51,8 @@
     20000.0,
     0.0
    ],
-   "vertices": 16992,
-   "triangles": 33478,
+   "vertices": 16920,
+   "triangles": 33282,
    "instances": 0
   },
   {
@@ -64,8 +64,8 @@
     30000.0,
     0.0
    ],
-   "vertices": 13814,
-   "triangles": 27146,
+   "vertices": 15739,
+   "triangles": 30968,
    "instances": 0
   },
   {
@@ -77,8 +77,8 @@
     0.0,
     10000.0
    ],
-   "vertices": 20856,
-   "triangles": 41084,
+   "vertices": 21237,
+   "triangles": 41884,
    "instances": 0
   },
   {
@@ -90,8 +90,8 @@
     10000.0,
     10000.0
    ],
-   "vertices": 25853,
-   "triangles": 51068,
+   "vertices": 25387,
+   "triangles": 50142,
    "instances": 0
   },
   {
@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 21243,
-   "triangles": 41868,
+   "vertices": 25520,
+   "triangles": 50388,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 18395,
-   "triangles": 36252,
+   "vertices": 17518,
+   "triangles": 34474,
    "instances": 0
   },
   {
@@ -129,8 +129,8 @@
     0.0,
     20000.0
    ],
-   "vertices": 22421,
-   "triangles": 44230,
+   "vertices": 21434,
+   "triangles": 42264,
    "instances": 0
   },
   {
@@ -142,8 +142,8 @@
     10000.0,
     20000.0
    ],
-   "vertices": 22366,
-   "triangles": 44054,
+   "vertices": 22918,
+   "triangles": 45148,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 22297,
-   "triangles": 44036,
+   "vertices": 23634,
+   "triangles": 46672,
    "instances": 0
   },
   {
@@ -168,8 +168,8 @@
     30000.0,
     20000.0
    ],
-   "vertices": 16036,
-   "triangles": 31594,
+   "vertices": 16914,
+   "triangles": 33336,
    "instances": 0
   },
   {
@@ -181,8 +181,8 @@
     0.0,
     30000.0
    ],
-   "vertices": 16261,
-   "triangles": 32034,
+   "vertices": 14068,
+   "triangles": 27642,
    "instances": 0
   },
   {
@@ -194,8 +194,8 @@
     10000.0,
     30000.0
    ],
-   "vertices": 15243,
-   "triangles": 29966,
+   "vertices": 14788,
+   "triangles": 29066,
    "instances": 0
   },
   {
@@ -207,8 +207,8 @@
     20000.0,
     30000.0
    ],
-   "vertices": 16393,
-   "triangles": 32282,
+   "vertices": 15021,
+   "triangles": 29550,
    "instances": 0
   },
   {
@@ -220,8 +220,8 @@
     30000.0,
     30000.0
    ],
-   "vertices": 12824,
-   "triangles": 25186,
+   "vertices": 13715,
+   "triangles": 26958,
    "instances": 0
   },
   {
@@ -1914,10 +1914,10 @@
   ],
   "path_separation_m": 34.0,
   "loops": 7,
-  "nested_loops": 2,
+  "nested_loops": 3,
   "crossings": [
    1,
-   4
+   3
   ],
   "bridge_share": 0.5,
   "loop_span_m": [
@@ -1944,10 +1944,10 @@
   "steep_chance": 0.15,
   "cross_clearance_m": 8.5,
   "biome_shares": [
-   0.35,
-   0.2,
-   0.3,
-   0.15
+   0.302,
+   0.257,
+   0.334,
+   0.107
   ],
   "rim_cliffs_m": [
    4.0,
@@ -1986,8 +1986,8 @@
   ],
   "vista_pond_m": 2.6,
   "castles": 0,
-  "arches": 3,
-  "extra_hill_tunnels": 1,
+  "arches": 0,
+  "extra_hill_tunnels": 2,
   "crest_relief_m": 6.0,
   "hill_amp_m": [
    1.0,
@@ -1996,34 +1996,103 @@
   "crest_roughness": 1.0,
   "canyon": "deadly",
   "canyon_width_m": [
-   20.0,
-   35.0
+   16.0,
+   28.0
   ],
   "canyon_depth_m": [
    8.0,
    14.0
   ],
   "wall_color_mix": 1.0,
-  "jump_steps": 2,
+  "jump_steps": 3,
   "jump_step_m": 4.5,
   "jump_ledge_m": [
    12.0,
    22.0
+  ],
+  "biome_order": "random",
+  "canyon_count": [
+   0,
+   2
+  ],
+  "canyon_shape": "free",
+  "lagoon_chance": 0.5,
+  "streams": [
+   0,
+   2
   ]
  },
  "description": "Cimas con mucho relieve (lomas de hasta 6 m).",
  "recorrible": true,
- "kill_boxes_uu": [],
+ "kill_boxes_uu": [
+  {
+   "center": [
+    23357.450176011404,
+    11217.717895740003,
+    -425.0
+   ],
+   "extent": [
+    1307.4849601298342,
+    1076.625371583473,
+    225.0
+   ],
+   "yaw": 98.46562573147108
+  },
+  {
+   "center": [
+    23868.343383334206,
+    12455.539149682478,
+    -425.0
+   ],
+   "extent": [
+    1292.2280909441622,
+    1013.3513197312573,
+    225.0
+   ],
+   "yaw": 37.391189690693864
+  },
+  {
+   "center": [
+    24646.329708324636,
+    13706.554190698705,
+    -425.0
+   ],
+   "extent": [
+    1277.0801361598453,
+    975.9005497460986,
+    225.0
+   ],
+   "yaw": 78.75688236044056
+  },
+  {
+   "center": [
+    25258.040931456522,
+    14890.531229114924,
+    -425.0
+   ],
+   "extent": [
+    1108.1571485317272,
+    987.1322773276909,
+    225.0
+   ],
+   "yaw": 41.84337580969706
+  }
+ ],
  "jellyfish_uu": [
   [
-   5640.7,
-   18454.7,
-   492.4
+   1686.6,
+   17938.0,
+   76.4
   ],
   [
-   17114.7,
-   17706.2,
-   357.5
+   6388.7,
+   14453.8,
+   692.0
+  ],
+  [
+   19426.9,
+   20246.4,
+   116.7
   ]
  ]
 }
