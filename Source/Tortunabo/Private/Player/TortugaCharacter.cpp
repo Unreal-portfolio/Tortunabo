@@ -20,7 +20,9 @@
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "Player/TN_TurtleAnimInstance.h"
+#include "Player/TN_TurtleDustComponent.h"
 #include "Player/TN_TurtleFoleyComponent.h"
+#include "Player/TN_TurtleMovementComponent.h"
 #include "World/TN_InteractableBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
@@ -52,7 +54,8 @@ TAutoConsoleVariable<int32> CVarDebugInteraction(
 	TEXT("1 = Draw debug lines/spheres para el raycast de interacción y logs detallados. 0 = off."),
 	ECVF_Cheat);
 
-ATortugaCharacter::ATortugaCharacter()
+ATortugaCharacter::ATortugaCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UTN_TurtleMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;   // needed for leg animation
 	SpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
@@ -238,7 +241,10 @@ void ATortugaCharacter::BeginPlay()
 	ResolveKnockdownVisualComponent();
 
 	// ── Dive: guardar rotaciones por defecto y HalfHeight de la cápsula ─────────
+	// La de la clase manda: si el panzazo de otra tortuga llega antes que su BeginPlay (entrar a media partida), su
+	// cápsula ya viene encogida.
 	DiveCapsuleOrigHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	DiveCapsuleOrigHalfHeight = FMath::Max(DiveCapsuleOrigHalfHeight, GetStandingCapsuleHalfHeight());
 	if (USkeletalMeshComponent* SkelMesh = GetMesh())
 	{
 		DiveMeshDefaultRot = SkelMesh->GetRelativeRotation();
@@ -292,6 +298,9 @@ void ATortugaCharacter::BeginPlay()
 
 	// Pasos, aterrizajes y jadeo sintetizados (solo en máquinas con audio; lee el estado replicado, sin RPC).
 	UTN_TurtleFoleyComponent::FindOrAddTo(this);
+
+	// Polvo, arenilla, astillas o salpicaduras del arrastre del panzazo (cosmético y local; nada en servidor dedicado).
+	UTN_TurtleDustComponent::FindOrAddTo(this);
 }
 
 void ATortugaCharacter::ResolveAnimationBones()
@@ -1123,6 +1132,20 @@ void ATortugaCharacter::Jump()
 		return;
 	}
 
+	// Sobre la tripa tras el panzazo: casi parada, el salto es un brinco que la levanta (lo decide el movimiento, que lo
+	// predice igual que el servidor); deprisa no hace nada. Ya levantada, mientras llega el fin del panzazo, salta normal.
+	if (bIsDiving)
+	{
+		const UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement();
+		if (TurtleMove && TurtleMove->AcceptsInputDuringDive(DiveSerial) && CanJump())
+		{
+			bJumpAnimActive = true;
+			JumpAnimTime    = 0.f;
+			Super::Jump();
+		}
+		return;
+	}
+
 	// Grounded y no en dive → salto normal + trigger jump procedural animation
 	if (!bIsDiving)
 	{
@@ -1186,8 +1209,13 @@ void ATortugaCharacter::Move(const FInputActionValue& Value)
 		return;
 	}
 
-	// Movement is locked during the dive and recovery slide
-	if (bIsDiving) { return; }
+	// Durante el panzazo no se dirige: ni en el aire ni arrastrándose deprisa. Casi parada, moverse la levanta; reptando
+	// (sin sitio para ponerse de pie) o ya levantándose, se mueve (UTN_TurtleMovementComponent lo decide, predicho).
+	if (bIsDiving)
+	{
+		const UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement();
+		if (!TurtleMove || !TurtleMove->AcceptsInputDuringDive(DiveSerial)) { return; }
+	}
 	// Movement is locked during knockdown — momentum from LaunchCharacter takes over
 	if (bIsKnockedDown) { return; }
 	// Levantándose del derribo (unos 0,75 s): el cuerpo gira del suelo a de pie sin deslizarse.
@@ -1595,6 +1623,7 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ATortugaCharacter, bBigHead);
 	// Dive
 	DOREPLIFETIME(ATortugaCharacter, bIsDiving);
+	DOREPLIFETIME(ATortugaCharacter, DiveSerial);
 	DOREPLIFETIME(ATortugaCharacter, DiveTargetYaw);
 	DOREPLIFETIME(ATortugaCharacter, bDiveYawInterpActive);
 	// Umbrella protection (#29)

@@ -31,6 +31,12 @@ struct FTNTurtleAnimFrame
 	float AirW = 0.f;
 	float Falling = 0.f;
 	float DiveW = 0.f;
+	/** Panzazo sobre la tripa en el suelo (arrastre o reptar), su velocidad (0..1, a 7 m/s) y los golpes (caer, chocar). */
+	float SlideW = 0.f;
+	float SlideSpeed = 0.f;
+	float SlideImpact = 0.f;
+	/** Levantarse de la tripa: empujón de brazos y rodillas (sube y baja). */
+	float BellyGetUpW = 0.f;
 	float SwimW = 0.f;
 	float ShellW = 0.f;
 	float CarryW = 0.f;
@@ -74,9 +80,9 @@ struct FTNTurtleAnimProxy : public FAnimInstanceProxy
 /**
  * Animación de la tortuga del jugador sobre el esqueleto Mixamo de TotugaDemo_Rig, sin AnimBP: espera y andar con los
  * clips (mezclados por velocidad, como ABS_Walk), la carrera del sprint hecha en código y, encima, poses para el
- * salto, el panzazo, el nado, el caparazón (se esconden cabeza y patas), llevar y ser llevado, el lanzamiento, el
- * tumbado, el cansancio y los emotes del catálogo. Hereda de UTN_ProcAnimInstance: los ajustes por hueso que escriben los
- * sistemas viejos se siguen aplicando al final.
+ * salto, el panzazo (en el aire y arrastrándose sobre la tripa, con el empujón para levantarse), el nado, el caparazón
+ * (se esconden cabeza y patas), llevar y ser llevado, el lanzamiento, el tumbado, el cansancio y los emotes del catálogo.
+ * Hereda de UTN_ProcAnimInstance: los ajustes por hueso que escriben los sistemas viejos se siguen aplicando al final.
  *
  * Las poses se escriben como giros en el espacio de la malla (mira a +Y, arriba +Z, su izquierda +X) sobre la
  * postura de referencia (en T) y se mezclan con la de los clips.
@@ -115,6 +121,13 @@ private:
 	float PrevYaw = 0.f;
 	bool bWasCarrying = false;
 	int32 LastEmote = -1;
+
+	/** Panzazo en el fotograma anterior: sobre la tripa en el suelo, en el aire y velocidad (golpes y levantarse). */
+	bool bWasBellyGround = false;
+	bool bWasBellyAir = false;
+	FVector2D PrevBellyVelocity = FVector2D::ZeroVector;
+	/** Levantarse de la tripa: segundos desde que empezó (negativo = no se está levantando). */
+	float BellyGetUpElapsed = -1.f;
 
 	/** Levantarse: pose del suelo, tiempo transcurrido y duración (0 = no se está levantando). */
 	TArray<FTransform> GetUpPose;

@@ -277,6 +277,64 @@ namespace TNTurtleAnim
 		Turn(P, B.Head, AxisX, 18.f);
 	}
 
+	/**
+	 * Arrastre sobre la tripa (el personaje ya tumba la malla -80° y la aplasta): cabeza levantada mirando adelante,
+	 * brazos abiertos por delante que rozan el suelo y tiemblan con los baches (casi parada, reman), piernas con las
+	 * rodillas dobladas y los pies arriba pataleando, la espalda arqueada y el cuerpo que se balancea sobre la tripa. Más
+	 * deprisa, más vibra; los golpes (caer de tripa, chocar) sacuden brazos, pies y cabeza.
+	 *
+	 * Los giros van en el espacio de la malla de pie: el eje largo del cuerpo es Z (tumbada, apunta hacia delante) y la
+	 * tripa mira a +Y (tumbada, al suelo). Girar la cadera sobre Z la hace rodar sobre la tripa; sobre Y, culear.
+	 */
+	void PoseBellySlide(FCompactPose& P, const FBones& B, const FTNTurtleAnimFrame& F)
+	{
+		const float T = F.Clock;
+		const float V = F.SlideSpeed;
+		const float Imp = F.SlideImpact;
+		// Casi parada: rema con los brazos (para levantarse o reptar).
+		const float Row = 1.f - FMath::Clamp((V - 0.08f) / 0.25f, 0.f, 1.f);
+		const float Stroke = Row * (0.5f + 0.5f * FMath::Sin(T * 7.f));
+
+		// Balanceo: rueda sobre la tripa y culea un poco; más deprisa, más; con los golpes, un temblor rápido.
+		const float Rock = (2.5f + 5.5f * V) * FMath::Sin(T * (4.5f + 4.f * V)) + 6.f * Imp * FMath::Sin(T * 23.f);
+		const float Sway = (2.f + 4.f * V) * FMath::Sin(T * 2.3f + 0.7f);
+		Turn(P, B.Hips, AxisZ, Rock);
+		Turn(P, B.Hips, AxisY, Sway);
+		// Espalda arqueada hacia atrás (+X): pecho y piernas arriba, la tripa en el suelo.
+		Turn(P, B.Spine, AxisX, 7.f + 3.f * V);
+		Turn(P, B.Spine1, AxisX, 4.f);
+
+		// Cabeza arriba (mira adelante), mirando a los lados sin prisa; cabecea con los golpes.
+		Turn(P, B.Neck, AxisX, 28.f + 6.f * V);
+		Turn(P, B.Head, AxisX, 14.f + 9.f * Imp * FMath::Sin(T * 19.f));
+		Turn(P, B.Head, AxisZ, (6.f + 6.f * (1.f - V)) * FMath::Sin(T * 1.7f));
+
+		// Brazos abiertos por delante de la cabeza (arriba = -Y en el izquierdo) y apoyados (+Z, hacia la tripa); tiemblan
+		// con los baches y, casi parada, reman hacia atrás.
+		const float Jitter = (3.f + 9.f * V) * FMath::Sin(T * (13.f + 9.f * V)) + 22.f * Imp * FMath::Sin(T * 17.f);
+		const float Spread = -58.f + 30.f * Stroke + Jitter;
+		const float Press = 16.f - 10.f * Stroke;
+		Turn(P, B.LArm, AxisY, Spread);
+		Turn(P, B.RArm, AxisY, -Spread);
+		Turn(P, B.LArm, AxisZ, Press);
+		Turn(P, B.RArm, AxisZ, -Press);
+		Turn(P, B.LFore, AxisZ, 12.f);
+		Turn(P, B.RFore, AxisZ, -12.f);
+
+		// Piernas algo abiertas, las rodillas dobladas con los pies arriba y pataleando (más rápido cuanto más deprisa).
+		const float Kick = (5.f + 9.f * V) * FMath::Sin(T * (7.f + 6.f * V));
+		const float KneeRate = 6.f + 5.f * V;
+		const float Knee = 55.f + 18.f * Imp;
+		Turn(P, B.LUp, AxisY, -10.f);
+		Turn(P, B.RUp, AxisY, 10.f);
+		Turn(P, B.LUp, AxisX, 6.f + Kick);
+		Turn(P, B.RUp, AxisX, 6.f - Kick);
+		Turn(P, B.LLeg, AxisX, -(Knee + 16.f * FMath::Sin(T * KneeRate)));
+		Turn(P, B.RLeg, AxisX, -(Knee + 16.f * FMath::Sin(T * KneeRate + 2.1f)));
+		Turn(P, B.LFoot, AxisX, -30.f);
+		Turn(P, B.RFoot, AxisX, -30.f);
+	}
+
 	void PoseSwim(FCompactPose& P, const FBones& B, const FTNTurtleAnimFrame& F)
 	{
 		const float T = F.Clock * TwoPiF * 0.85f;
@@ -518,7 +576,16 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 	};
 	Layer(F.AirW, [&](FCompactPose& P) { PoseAir(P, B, F); });
 	Layer(F.SwimW, [&](FCompactPose& P) { PoseSwim(P, B, F); });
-	Layer(F.DiveW, [&](FCompactPose& P) { PoseDive(P, B, F); });
+	// Panzazo: en el aire, la pose de vuelo; sobre la tripa, la del arrastre (se reparten el peso por SlideW). Son dos
+	// mezclas seguidas: la segunda se queda con SlideMix y a la primera le toca lo suyo de lo que quede.
+	if (F.DiveW >= 0.01f)
+	{
+		const float SlideMix = F.DiveW * F.SlideW;
+		const float AirMix = F.DiveW - SlideMix;
+		const float FirstW = SlideMix < 0.999f ? AirMix / (1.f - SlideMix) : 0.f;
+		Layer(FirstW, [&](FCompactPose& P) { PoseDive(P, B, F); });
+		Layer(SlideMix, [&](FCompactPose& P) { PoseBellySlide(P, B, F); });
+	}
 	Layer(F.CarryW, [&](FCompactPose& P) { PoseCarry(P, B); });
 	Layer(F.CarriedW, [&](FCompactPose& P) { PoseCarried(P, B, F); });
 	Layer(F.DownW, [&](FCompactPose& P) { PoseDown(P, B); });
@@ -535,8 +602,10 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 	}
 
 	// 3b. Levantarse del derribo: parte de la pose en la que quedó el ragdoll y llega a la de pie, pasando por un
-	// empujón de brazos contra el suelo y las rodillas dobladas.
+	// empujón de brazos contra el suelo y las rodillas dobladas. Al levantarse de la tripa tras el panzazo, el mismo
+	// empujón mientras el personaje endereza la malla.
 	Layer(F.GetUpFlex, [&](FCompactPose& P) { PoseGetUpFlex(P, B); });
+	Layer(F.BellyGetUpW, [&](FCompactPose& P) { PoseGetUpFlex(P, B); });
 	if (F.GetUpW > 0.01f && GetUpPose.Num() > 0)
 	{
 		FPoseContext Ground(Output);
@@ -654,7 +723,9 @@ void UTN_TurtleAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	F.RunStride = FMath::Clamp(FMath::RadiansToDegrees(Speed / (LegUnits * Scale * TwoPiF * Cadence)), 20.f, 48.f);
 
 	const bool bSwim = Move && Move->IsSwimming();
-	const bool bDive = Turtle && Turtle->IsDiving();
+	// Panzazo hasta que se levanta (el dueño y el servidor lo saben al momento; el resto, al acabar el panzazo).
+	const bool bDive = Turtle && Turtle->IsBellyPoseActive();
+	const bool bBellyGround = Turtle && Turtle->IsBellyOnGround();
 	const bool bAir = Move && Move->IsFalling() && !bDive && !bSwim;
 	const UTN_CarryComponent* Carry = Turtle ? Turtle->GetCarryComponent() : nullptr;
 	const UTN_StaminaComponent* Stamina = Turtle ? Turtle->GetStaminaComponent() : nullptr;
@@ -662,6 +733,39 @@ void UTN_TurtleAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	Ease(F.AirW, bAir, 12.f);
 	F.Falling = FMath::FInterpTo(F.Falling, (bAir && Velocity.Z < -200.0) ? 1.f : 0.f, Dt, 6.f);
 	Ease(F.DiveW, bDive, 14.f);
+	Ease(F.SlideW, bBellyGround, 10.f);
+	F.SlideSpeed = FMath::FInterpTo(F.SlideSpeed, bBellyGround ? FMath::Clamp(Speed / 700.f, 0.f, 1.f) : 0.f, Dt, 10.f);
+	// Golpes sobre la tripa: al caer de tripa y al chocar arrastrándose (la velocidad cambia de golpe).
+	const FVector2D BellyVelocity(Velocity.X, Velocity.Y);
+	if (bBellyGround && bWasBellyAir)
+	{
+		F.SlideImpact = 1.f;
+	}
+	else if (bBellyGround && bWasBellyGround && (BellyVelocity - PrevBellyVelocity).Size() > 250.0)
+	{
+		F.SlideImpact = FMath::Max(F.SlideImpact, 0.8f);
+	}
+	F.SlideImpact = FMath::Max(0.f, F.SlideImpact - Dt * 3.5f);
+	// Levantarse de la tripa: al acabarse la pose en el suelo (no de un brinco), empujón de brazos y rodillas mientras
+	// el personaje endereza la malla.
+	if (bWasBellyGround && !bDive && Move && !Move->IsFalling() && !bSwim && !(Turtle && Turtle->IsKnockedDown()))
+	{
+		BellyGetUpElapsed = 0.f;
+	}
+	if (BellyGetUpElapsed >= 0.f)
+	{
+		BellyGetUpElapsed += Dt;
+		const float GetUpX = FMath::Clamp(BellyGetUpElapsed / 0.45f, 0.f, 1.f);
+		F.BellyGetUpW = 0.85f * FMath::Sin(GetUpX * PI);
+		if (GetUpX >= 1.f)
+		{
+			BellyGetUpElapsed = -1.f;
+			F.BellyGetUpW = 0.f;
+		}
+	}
+	bWasBellyGround = bBellyGround;
+	bWasBellyAir = bDive && Move && Move->IsFalling();
+	PrevBellyVelocity = BellyVelocity;
 	Ease(F.SwimW, bSwim, 6.f);
 	Ease(F.ShellW, Turtle && Turtle->IsInShell(), 10.f);
 	const UTN_ShellComponent* ShellComp = Turtle ? Turtle->GetShellComponent() : nullptr;

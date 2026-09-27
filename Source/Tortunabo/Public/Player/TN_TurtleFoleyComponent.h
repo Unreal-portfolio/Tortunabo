@@ -34,6 +34,9 @@ namespace TNTurtleFoley
  * agotarse, «hah-hah» rápido con algo de voz; al recuperarse se calma poco a poco y, si ha jadeado fuerte, suspira. En
  * la tormenta manda la tos (UTN_StormCoughComponent): mientras tose, el jadeo calla. La voz es la misma que la de la tos.
  *
+ * Panzazo: «plaf» de tripa al caer, arrastre continuo mientras se desliza sobre la tripa (con el timbre de la superficie
+ * y la fuerza de la velocidad) y «tonc» hueco del caparazón si choca contra algo arrastrándose.
+ *
  * Estado local por máquina, sin RPC: cada máquina con audio da este componente a cada tortuga (ATortugaCharacter::
  * BeginPlay) y lee cada fotograma su estado replicado (velocidad, en el suelo o en el aire, sprint, estamina, derribo,
  * caparazón...). Fuente 3D mono en la raíz de la tortuga; la del jugador local suena algo más alta. Nada en servidor
@@ -44,7 +47,8 @@ namespace TNTurtleFoley
  * atómicos; el sintetizador arranca al hacer falta y se para en silencio o lejos del oyente (sin gastar CPU).
  *
  * Consola: TN.Voice.Volume (volumen), TN.Voice.Surface (forzar superficie), TN.Voice.Debug (estado en pantalla),
- * TN.Voice.Steps <0|1|2> y TN.Voice.Pant <0|1|2> (forzar pasos o jadeo en la tortuga local). Ver Docs/Sonido_Tortuga.md.
+ * TN.Voice.Steps <0|1|2>, TN.Voice.Pant <0|1|2> y TN.Voice.Drag <0|1|2> (forzar pasos, jadeo o arrastre en la tortuga
+ * local). Ver Docs/Sonido_Tortuga.md.
  */
 UCLASS(ClassGroup = (Audio), meta = (BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_TurtleFoleyComponent : public USynthComponent
@@ -67,6 +71,9 @@ public:
 
 	/** Pruebas (TN.Voice.Steps): 0 = sin forzar, 1 = pasos andando en el sitio, 2 = corriendo en el sitio. */
 	void SetDebugSteps(int32 InLevel);
+
+	/** Pruebas (TN.Voice.Drag): 0 = sin forzar (manda el panzazo), 1 = arrastre lento en el sitio, 2 = rápido. */
+	void SetDebugDrag(int32 InLevel);
 
 	/** Jadeo enviado por última vez (0 = respira normal; 1 = agotada). */
 	float GetPantLevel() const { return PantSent; }
@@ -98,6 +105,18 @@ public:
 	/** Velocidad mínima (cm/s) para que suenen pasos. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurtleFoley", meta = (ClampMin = "0.0"))
 	float MinStepSpeed = 60.f;
+
+	/** Volumen del arrastre sobre la tripa (panzazo), del «plaf» al caer y del choque arrastrándose. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurtleFoley|Panzazo", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float DragLoudness = 1.f;
+
+	/** Velocidad mínima (cm/s) para que suene el arrastre. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurtleFoley|Panzazo", meta = (ClampMin = "0.0"))
+	float MinDragSpeed = 25.f;
+
+	/** Velocidad (cm/s) a la que el arrastre suena a tope. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurtleFoley|Panzazo", meta = (ClampMin = "100.0"))
+	float DragFullSpeed = 650.f;
 
 	/** Radio con volumen pleno (cm). Se aplica en el siguiente arranque. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurtleFoley|3D", meta = (ClampMin = "0.0"))
@@ -133,14 +152,17 @@ private:
 	/** Cansancio suavizado a partir de la estamina (o de la prueba). */
 	void UpdatePant(float DeltaTime, double Now, const TNTurtleFoley::FTurtleState& Frame);
 
+	/** Arrastre sobre la tripa (fuerza por la velocidad, superficie) y choques arrastrándose. */
+	void UpdateDrag(float DeltaTime, double Now, const TNTurtleFoley::FTurtleState& Frame);
+
 	/** Manda una pisada al hilo de audio (arranca el sintetizador si hace falta). */
 	void EmitStep(uint8 Kind, uint8 Foot, float Force, float Pace, double Now, const TNTurtleFoley::FTurtleState& Frame);
 
-	/** Pesos de superficie bajo un punto del pie (con caché corta: los dos pies de una zancada pisan casi lo mismo). */
+	/**
+	 * Pesos de superficie bajo un punto del pie (TNTurtleSurface::Probe, con caché corta: los dos pies de una zancada
+	 * pisan casi lo mismo).
+	 */
 	void ResolveSurface(const FVector& FootLocation, double Now, float OutWeights[NumSurfaces]);
-
-	/** Superficie por los nombres del componente pisado, su malla, su material y su actor (con caché por componente). */
-	uint8 ClassifyByNames(const UPrimitiveComponent* Comp);
 
 	/** Generador del mapa procedural (se busca cada 2 s mientras falte; null fuera del mapa). */
 	ATN_ProcMapGenerator* FindGenerator(double Now);
@@ -214,9 +236,20 @@ private:
 	float PantSent = 0.f;
 	bool bPantHushed = false;
 
+	// ── Arrastre del panzazo ────────────────────────────────────────────────
+	/** Fuerza (0 = callado) y viveza enviadas, y pesos de la superficie bajo la tripa. */
+	float DragSent = 0.f;
+	float DragPaceSent = 0.f;
+	float DragSurface[NumSurfaces] = { 0.f, 0.f, 1.f, 0.f, 0.f };
+	/** Velocidad del fotograma anterior sobre la tripa (un cambio brusco es un choque). */
+	FVector2D PrevBellyVelocity = FVector2D::ZeroVector;
+	bool bWasBellyGround = false;
+	double LastBumpTime = -10.0;
+
 	// ── Pruebas ─────────────────────────────────────────────────────────────
 	int32 DebugPant = 0;
 	int32 DebugSteps = 0;
+	int32 DebugDrag = 0;
 	float DebugStepTimer = 0.f;
 
 	/** Último momento con algo que decir (paso o jadeo): el sintetizador se para tras un rato sin nada. */

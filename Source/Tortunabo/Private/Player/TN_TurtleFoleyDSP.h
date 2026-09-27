@@ -17,6 +17,11 @@
  * formantes), con el ritmo y la fuerza que manda el juego (Pant, 0..1) y un suspiro al calmarse tras un jadeo fuerte.
  * La voz sale de la semilla de la tortuga con la misma cuenta que UTN_StormCoughComponent: jadeo y tos son la misma voz.
  *
+ * Panzazo: el «plaf» de la tripa al caer (golpe grave ancho y chasquido de carne blanda, más la capa de la superficie),
+ * el «tonc» hueco del caparazón al chocar arrastrándose y el arrastre continuo (FDragVoice): el roce de cada superficie
+ * (arena que sisea, tierra y hojas, roca a trompicones, tablón que zumba, estela en el agua) con la fuerza y la viveza
+ * que manda el juego (Drag y DragPace, que siguen a la velocidad del deslizamiento).
+ *
  * Hilos: FSharedParams lo escribe el hilo de juego (atómicos relajados y un anillo de pasos con un solo escritor) y lo
  * lee el de audio; Busy va al revés. Cada generador lleva su propio cursor del anillo y solo lee pasos si su arranque
  * es el vigente (RunId): el de un arranque anterior que aún suene no roba ni repite pasos. Todo lo demás vive solo en
@@ -55,6 +60,8 @@ namespace TNTurtleFoley
 		constexpr uint8 Step = 0;   ///< Paso normal (una pata).
 		constexpr uint8 Land = 1;   ///< Aterrizaje (las dos patas casi a la vez, más fuerte).
 		constexpr uint8 Scuff = 2;  ///< Impulso del salto: roce de despegue, más textura que golpe.
+		constexpr uint8 Belly = 3;  ///< Panzazo contra el suelo: «plaf» de tripa (golpe grave ancho y chasquido blando).
+		constexpr uint8 Bump = 4;   ///< Choque del caparazón contra un obstáculo arrastrándose: «tonc» hueco.
 	}
 
 	/** Una pisada que manda el hilo de juego. */
@@ -95,6 +102,11 @@ namespace TNTurtleFoley
 		/** Se fijan antes de arrancar: la voz (una por tortuga) y el azar de cada arranque. */
 		std::atomic<uint32> VoiceSeed{ 1u };
 		std::atomic<uint32> RunSeed{ 1u };
+		/** Arrastre sobre la tripa: fuerza 0..1 (0 = callado), viveza 0..1 (velocidad), ganancia y pesos de superficie. */
+		std::atomic<float> Drag{ 0.f };
+		std::atomic<float> DragPace{ 0.f };
+		std::atomic<float> DragGain{ 1.f };
+		std::atomic<float> DragSurf[Surface::Num]{};
 
 		static float Get(const std::atomic<float>& Value) { return Value.load(std::memory_order_relaxed); }
 		static void Set(std::atomic<float>& Value, float NewValue) { Value.store(NewValue, std::memory_order_relaxed); }
@@ -348,6 +360,8 @@ namespace TNTurtleFoley
 		constexpr float Splash = 0.4f;   ///< Agua: chapoteo.
 		constexpr float Slosh = 0.55f;   ///< Agua: masa de agua grave.
 		constexpr float Bubble = 0.095f;  ///< Agua: burbujas.
+		constexpr float Slap = 0.3f;     ///< Panzazo: chasquido de la tripa blanda contra el suelo.
+		constexpr float Shell = 0.009f;  ///< Choque arrastrándose: modos huecos del caparazón.
 		constexpr float Air = 5.f;       ///< Jadeo: aire por los formantes.
 		constexpr float Voice = 0.7f;    ///< Jadeo: voz por los formantes.
 		constexpr float Breath = 0.1f;   ///< Jadeo: nivel general.
@@ -395,8 +409,13 @@ namespace TNTurtleFoley
 		float PadF0 = 150.f;
 		float PadF1 = 95.f;
 		float PadPhase = 0.f;
-		/** Envolventes al final del bloque anterior: golpe, «pat», arena, tierra, hojas, arenilla, chapoteo y masa de agua. */
-		float Env[8] = {};
+		/** Panzazo: cuánto chasquido de tripa lleva (0 en las pisadas). */
+		float Slap = 0.f;
+		FOnePole SlapHP;
+		/** Choque arrastrándose: cuánto suena el caparazón hueco (los modos del tablón, afinados al caparazón). */
+		float Shell = 0.f;
+		/** Envolventes al final del bloque anterior: golpe, «pat», arena, tierra, hojas, arenilla, chapoteo, masa de agua y chasquido de tripa. */
+		float Env[9] = {};
 		/** Chasquido de cada contacto (decae muestra a muestra). */
 		float HitEnv = 0.f;
 		float HitK = 0.99f;
@@ -514,12 +533,82 @@ namespace TNTurtleFoley
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
+	// Arrastre sobre la tripa
+	// ─────────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Niveles de cada capa del arrastre con su peso a 1 y la fuerza a 1 (deslizamiento rápido). Estimados sobre el ancho
+	 * de banda de cada filtro (unos -28 dBFS eficaces con Master 1, por debajo de los pasos corriendo, que son golpes);
+	 * sin pasar aún por el arnés: se afinan de oído con DragLoudness y TN.Voice.Drag.
+	 */
+	namespace DragTrim
+	{
+		constexpr float Body = 0.5f;      ///< Roce grave del cuerpo contra el suelo (todas las superficies).
+		constexpr float Sand = 0.25f;     ///< Arena: «shhh» granulado.
+		constexpr float SandHiss = 0.25f; ///< Arena: siseo de fondo.
+		constexpr float Soil = 0.3f;      ///< Tierra: roce sordo.
+		constexpr float Leaf = 0.22f;     ///< Tierra: crujidos de hojas sueltas.
+		constexpr float Rock = 0.45f;     ///< Roca: raspado a trompicones (se pega y se suelta).
+		constexpr float Grit = 0.2f;      ///< Roca: arenilla.
+		constexpr float Wood = 0.25f;     ///< Madera: roce.
+		constexpr float WoodHum = 0.35f;  ///< Madera: zumbido del tablón.
+		constexpr float Water = 0.25f;    ///< Agua: siseo de la estela.
+		constexpr float WaterLow = 0.3f;  ///< Agua: masa de agua que empuja la tripa.
+		constexpr float Bubble = 0.06f;   ///< Agua: burbujas sueltas.
+	}
+
+	/**
+	 * Arrastre continuo: ruido por la textura de cada superficie, mezclada por sus pesos, con la fuerza y la viveza que
+	 * manda el juego. Más rápido: más fuerte, más agudo y con los granos más seguidos. Una fluctuación lenta (los baches)
+	 * hace que no suene a ruido plano.
+	 */
+	struct FDragVoice
+	{
+		/** Fuerza, viveza y pesos ya suavizados. */
+		float Level = 0.f;
+		float Pace = 0.f;
+		float W[Surface::Num] = { 0.f, 0.f, 1.f, 0.f, 0.f };
+		/** Baches: nivel que va y viene (-1..1) hacia un objetivo que cambia cada pocas centésimas. */
+		float Wobble = 0.f;
+		float WobbleTarget = 0.f;
+		float WobbleTimer = 0.f;
+		FOnePole BodyA;
+		FOnePole BodyB;
+		FBandPass SandBP;
+		FOnePole SandLP;
+		float SandGrain = 0.f;
+		float SandGrainK = 0.99f;
+		FBandPass SoilBP;
+		FBandPass LeafBP;
+		float LeafGrain = 0.f;
+		float LeafGrainK = 0.99f;
+		FBandPass RockBP;
+		FBandPass GritBP;
+		float Stick = 0.f;
+		float StickK = 0.99f;
+		float GritGrain = 0.f;
+		float GritGrainK = 0.99f;
+		FBandPass WoodBP;
+		FResonator WoodModes[2];
+		FBandPass WaterBP;
+		FOnePole WaterLP;
+		/** Una burbuja de la estela: seno que sube de tono mientras se apaga. */
+		float BubblePhase = 0.f;
+		float BubbleEnv = 0.f;
+		float BubbleK = 0.999f;
+		float BubbleF0 = 700.f;
+		float BubbleRise = 20.f;
+		float BubbleAge = 0.f;
+		FRandom Rng;
+	};
+
+	// ─────────────────────────────────────────────────────────────────────────
 	// Motor
 	// ─────────────────────────────────────────────────────────────────────────
 
 	/**
 	 * Motor de una tortuga: dispara las pisadas que llegan por el anillo, decide las respiraciones con el jadeo que manda
-	 * el juego y deja una salida mono limitada.
+	 * el juego, arrastra la tripa con la fuerza que le llega y deja una salida mono limitada.
 	 */
 	class FEngine
 	{
@@ -550,6 +639,7 @@ namespace TNTurtleFoley
 			LimRelease = 1.f - FMath::Exp(-1.f / (0.15f * Rate));
 			DcCut.SetHz(25.f, InvRate);
 			DcCut.Reset();
+			InitDrag(InRunSeed);
 		}
 
 		/** Rellena NumFrames tramas intercaladas de OutChannels canales (mono; si llegan más, el mismo valor en todos). */
@@ -599,7 +689,7 @@ namespace TNTurtleFoley
 
 		bool IsBusy() const
 		{
-			if (bBreathing || Breath[0].bActive || Breath[1].bActive) { return true; }
+			if (bBreathing || Breath[0].bActive || Breath[1].bActive || Drag.Level > 1e-4f) { return true; }
 			for (const FStepVoice& Slot : Steps)
 			{
 				if (Slot.bActive) { return true; }
@@ -660,6 +750,17 @@ namespace TNTurtleFoley
 			}
 			for (int32 s = 0; s < Surface::Num; ++s) { V.W[s] = V.W[s] < 0.03f * Sum ? 0.f : V.W[s] / Sum; }
 
+			// Panzazo: toda la tripa a la vez, más grave y ancho, con chasquido de carne blanda. Choque arrastrándose: el
+			// caparazón hueco contra el obstáculo, sin la textura del suelo.
+			const bool bBelly = InEvent.Kind == StepKind::Belly;
+			const bool bBump = InEvent.Kind == StepKind::Bump;
+			V.Slap = bBelly ? 1.f : 0.f;
+			V.Shell = bBump ? 1.f : 0.f;
+			if (bBump)
+			{
+				for (int32 s = 0; s < Surface::Num; ++s) { V.W[s] = 0.f; }
+			}
+
 			const float Force = FMath::Clamp(InEvent.Force, 0.05f, 1.5f);
 			const float Pace = FMath::Clamp(InEvent.Pace, 0.f, 1.f);
 			const float Heavy = FMath::Clamp(InEvent.Heavy, 1.f, 2.f);
@@ -667,16 +768,22 @@ namespace TNTurtleFoley
 			V.Bright = FMath::Clamp((0.3f + 0.45f * Pace + 0.3f * (Force - 0.6f)) * R.Range(0.85f, 1.15f), 0.f, 1.f);
 
 			// Contactos: almohadilla y dedos (más juntos corriendo); al aterrizar, una pata y la otra; al saltar, un roce.
-			const bool bLand = InEvent.Kind == StepKind::Land;
+			const bool bLand = InEvent.Kind == StepKind::Land || bBelly;
 			const bool bScuff = InEvent.Kind == StepKind::Scuff;
+			const float LandDecay = bBelly ? 1.8f : (bLand ? 1.3f : 1.f);
 			V.HitAt[0] = 0.f;
 			V.HitAmp[0] = 1.f;
 			V.HitAtk[0] = bScuff ? 0.012f : FMath::Lerp(0.004f, 0.0025f, V.Bright);
-			V.HitDec[0] = (bScuff ? 0.05f : FMath::Lerp(0.028f, 0.018f, Pace)) * (bLand ? 1.3f : 1.f);
-			if (bScuff)
+			V.HitDec[0] = (bScuff ? 0.05f : FMath::Lerp(0.028f, 0.018f, Pace)) * LandDecay;
+			if (bScuff || bBump)
 			{
 				V.HitAt[1] = 0.f;
 				V.HitAmp[1] = 0.f;
+			}
+			else if (bBelly)
+			{
+				V.HitAt[1] = R.Range(0.004f, 0.012f);
+				V.HitAmp[1] = R.Range(0.8f, 1.f);
 			}
 			else if (bLand)
 			{
@@ -689,20 +796,24 @@ namespace TNTurtleFoley
 				V.HitAmp[1] = R.Range(0.4f, 0.7f);
 			}
 			V.HitAtk[1] = 0.005f;
-			V.HitDec[1] = FMath::Lerp(0.04f, 0.025f, Pace) * (bLand ? 1.3f : 1.f);
+			V.HitDec[1] = FMath::Lerp(0.04f, 0.025f, Pace) * LandDecay;
 			V.bHitDone[0] = false;
 			V.bHitDone[1] = V.HitAmp[1] <= 0.f;
 			V.HitEnv = 0.f;
 			V.HitK = DecayPerSample(FMath::Lerp(0.0018f, 0.0011f, V.Bright), InvRate);
 			for (float& E : V.Env) { E = 0.f; }
 
-			// Golpe sordo de la pata: cada tortuga el suyo, la derecha un pelín más aguda y más grave si carga peso.
+			// Golpe sordo de la pata: cada tortuga el suyo, la derecha un pelín más aguda y más grave si carga peso. La
+			// tripa entera, bastante más grave.
 			const float FootTilt = InEvent.Foot == 0 ? 0.97f : 1.03f;
-			V.PadF0 = Traits.FootHz * FootTilt * R.Range(0.92f, 1.08f) / FMath::Sqrt(Heavy) * (bLand ? 0.85f : 1.f);
+			const float PadScale = bBelly ? 0.62f : (bBump ? 0.75f : (bLand ? 0.85f : 1.f));
+			V.PadF0 = Traits.FootHz * FootTilt * R.Range(0.92f, 1.08f) / FMath::Sqrt(Heavy) * PadScale;
 			V.PadF1 = V.PadF0 * R.Range(0.58f, 0.68f);
 			V.PadPhase = 0.f;
 			V.PatLP.SetHz(FMath::Lerp(480.f, 900.f, V.Bright), InvRate);
 			V.PatLP.Reset();
+			V.SlapHP.SetHz(R.Range(800.f, 1200.f), InvRate);
+			V.SlapHP.Reset();
 
 			// Arena: granos densos y agudos que se hunden, más con la carrera.
 			V.SandBP.Set(R.Range(2400.f, 3400.f) * FMath::Lerp(0.85f, 1.2f, V.Bright), 0.9f, InvRate);
@@ -737,8 +848,9 @@ namespace TNTurtleFoley
 			V.GritGrainK = DecayPerSample(0.0006f, InvRate);
 			V.GritRate = FMath::Lerp(120.f, 320.f, V.Bright) * InvRate;
 
-			// Madera: tablón libre (modos 1 : 2,76 : 5,40) golpeado con algo blando.
-			const float Plank = R.Range(170.f, 250.f) / FMath::Sqrt(Heavy);
+			// Madera: tablón libre (modos 1 : 2,76 : 5,40) golpeado con algo blando. En un choque arrastrándose, los mismos
+			// modos afinados al caparazón (más agudo y corto que un tablón).
+			const float Plank = bBump ? R.Range(270.f, 340.f) : R.Range(170.f, 250.f) / FMath::Sqrt(Heavy);
 			V.WoodLP.SetHz(FMath::Lerp(1200.f, 2200.f, V.Bright), InvRate);
 			V.WoodLP.Reset();
 			V.Modes[0].Set(Plank, R.Range(0.06f, 0.09f), InvRate);
@@ -769,8 +881,8 @@ namespace TNTurtleFoley
 				Bub.Rise = R.Range(0.5f, 1.2f) / Life;
 			}
 
-			V.Dur = FMath::Max(V.HitAt[0], V.HitAt[1]) + (bLand ? 0.32f : 0.24f) + (V.W[Surface::Water] > 0.f ? 0.25f : 0.f)
-				+ (V.W[Surface::Wood] > 0.f ? 0.12f : 0.f);
+			V.Dur = FMath::Max(V.HitAt[0], V.HitAt[1]) + (bBelly ? 0.42f : (bLand ? 0.32f : 0.24f)) + (V.W[Surface::Water] > 0.f ? 0.25f : 0.f)
+				+ ((V.W[Surface::Wood] > 0.f || bBump) ? 0.12f : 0.f);
 		}
 
 		void RenderStep(FStepVoice& V, int32 N)
@@ -779,7 +891,7 @@ namespace TNTurtleFoley
 			const float TEnd = V.Time + BlockDt;
 
 			// Envolventes al final del bloque (se interpolan dentro): cada capa con sus tiempos.
-			float EnvEnd[8];
+			float EnvEnd[9];
 			EnvEnd[0] = ContactEnvelope(V, TEnd, 1.3f, 1.f);                   // Golpe sordo.
 			EnvEnd[1] = ContactEnvelope(V, TEnd, 0.55f, 1.f);                  // «Pat».
 			EnvEnd[2] = ContactEnvelope(V, TEnd, FMath::Lerp(3.2f, 2.2f, V.Bright), 2.2f); // Arena (se hunde).
@@ -792,6 +904,7 @@ namespace TNTurtleFoley
 				EnvEnd[6] = S * FMath::Exp(-TEnd / Tail);                           // Chapoteo.
 				EnvEnd[7] = SmoothStep01(TEnd / 0.012f) * FMath::Exp(-TEnd / (1.6f * Tail)); // Masa de agua.
 			}
+			EnvEnd[8] = V.Slap > 0.f ? ContactEnvelope(V, TEnd, 0.8f, 0.4f) : 0.f;    // Chasquido de tripa.
 
 			// Chasquido en cada contacto (con precisión de bloque: 0,7 ms).
 			for (int32 k = 0; k < 2; ++k)
@@ -818,18 +931,20 @@ namespace TNTurtleFoley
 			}
 
 			const float InvN = 1.f / static_cast<float>(N);
-			float E[8];
-			float DE[8];
-			for (int32 k = 0; k < 8; ++k)
+			float E[9];
+			float DE[9];
+			for (int32 k = 0; k < 9; ++k)
 			{
 				E[k] = V.Env[k];
 				DE[k] = (EnvEnd[k] - V.Env[k]) * InvN;
 			}
 			FRandom& R = V.Rng;
 			const float Amp = V.Gain;
+			const float WoodMix = WWood + V.Shell;
+			const float WoodTrim = V.Shell > 0.f ? Trim::Shell : Trim::Wood;
 			for (int32 i = 0; i < N; ++i)
 			{
-				for (int32 k = 0; k < 8; ++k) { E[k] += DE[k]; }
+				for (int32 k = 0; k < 9; ++k) { E[k] += DE[k]; }
 				const float Noise = R.Bipolar();
 				V.HitEnv *= V.HitK;
 
@@ -838,6 +953,11 @@ namespace TNTurtleFoley
 				V.PadPhase -= FMath::FloorToFloat(V.PadPhase);
 				float Y = Trim::Thump * E[0] * FastSin01(V.PadPhase);
 				Y += Trim::Pat * E[1] * V.PatLP.Low(Noise);
+				if (V.Slap > 0.f)
+				{
+					// La tripa blanda contra el suelo: un chasquido de ruido brillante que dura lo que el golpe.
+					Y += V.Slap * Trim::Slap * E[8] * V.SlapHP.High(Noise);
+				}
 
 				if (WSand > 0.f)
 				{
@@ -862,13 +982,13 @@ namespace TNTurtleFoley
 					Y += WRock * (Trim::Click * Click + Trim::Tock * V.TockBP.Process(Noise * V.HitEnv)
 						+ Trim::Grit * V.GritBP.Process(Noise * V.GritGrain));
 				}
-				if (WWood > 0.f)
+				if (WoodMix > 0.f)
 				{
-					// El golpe blando excita los modos del tablón.
+					// El golpe blando excita los modos del tablón (o del caparazón, en un choque).
 					const float Exc = V.WoodLP.Low(V.HitEnv * (0.75f + 0.25f * Noise));
 					const float Modes = V.ModeGain[0] * V.Modes[0].Process(Exc) + V.ModeGain[1] * V.Modes[1].Process(Exc)
 						+ V.ModeGain[2] * V.Modes[2].Process(Exc);
-					Y += WWood * Trim::Wood * Modes;
+					Y += WoodMix * WoodTrim * Modes;
 				}
 				if (WWater > 0.f)
 				{
@@ -893,8 +1013,9 @@ namespace TNTurtleFoley
 				}
 				Mix[i] += Y * Amp;
 			}
-			for (int32 k = 0; k < 8; ++k) { V.Env[k] = EnvEnd[k]; }
+			for (int32 k = 0; k < 9; ++k) { V.Env[k] = EnvEnd[k]; }
 			V.Time = TEnd;
+			V.SlapHP.Flush();
 			V.SandBP.Flush();
 			V.LeafBP.Flush();
 			V.TockBP.Flush();
@@ -1108,6 +1229,186 @@ namespace TNTurtleFoley
 			if (V.Time >= Ev.Dur) { V.bActive = false; }
 		}
 
+		// ── Arrastre ─────────────────────────────────────────────────────────
+
+		void InitDrag(uint32 InRunSeed)
+		{
+			FDragVoice& D = Drag;
+			D.Rng.SetSeed(MixSeed(InRunSeed, 13u));
+			D.Level = 0.f;
+			D.Pace = 0.f;
+			for (int32 s = 0; s < Surface::Num; ++s) { D.W[s] = s == Surface::Rock ? 1.f : 0.f; }
+			D.Wobble = 0.f;
+			D.WobbleTarget = 0.f;
+			D.WobbleTimer = 0.f;
+			D.BodyA.SetHz(160.f, InvRate);
+			D.BodyB.SetHz(160.f, InvRate);
+			D.SandLP.SetHz(1400.f, InvRate);
+			D.LeafBP.Set(3800.f, 1.4f, InvRate);
+			D.GritBP.Set(5200.f, 1.2f, InvRate);
+			D.WaterLP.SetHz(380.f, InvRate);
+			D.WoodModes[0].Set(190.f, 0.08f, InvRate);
+			D.WoodModes[1].Set(520.f, 0.05f, InvRate);
+			D.SandGrainK = DecayPerSample(0.0009f, InvRate);
+			D.LeafGrainK = DecayPerSample(0.0022f, InvRate);
+			D.StickK = DecayPerSample(0.018f, InvRate);
+			D.GritGrainK = DecayPerSample(0.0006f, InvRate);
+			D.SandGrain = D.LeafGrain = D.Stick = D.GritGrain = 0.f;
+			D.BubbleEnv = 0.f;
+			D.BodyA.Reset();
+			D.BodyB.Reset();
+			D.SandBP.Reset();
+			D.SandLP.Reset();
+			D.SoilBP.Reset();
+			D.LeafBP.Reset();
+			D.RockBP.Reset();
+			D.GritBP.Reset();
+			D.WoodBP.Reset();
+			D.WaterBP.Reset();
+			D.WaterLP.Reset();
+			for (FResonator& Mode : D.WoodModes) { Mode.Reset(); }
+		}
+
+		/** Arrastre de un bloque sumado a Mix. Devuelve si ha sonado algo. Un generador viejo solo lo apaga. */
+		bool RenderDrag(int32 N, const FSharedParams& P, bool bCurrent)
+		{
+			FDragVoice& D = Drag;
+			const float Dt = static_cast<float>(N) * InvRate;
+			const float Target = bCurrent ? FMath::Clamp(FSharedParams::Get(P.Drag), 0.f, 1.5f) : 0.f;
+			const float StartLevel = D.Level;
+			// Entra en unas centésimas y se apaga algo más despacio (el cuerpo aún roza al pararse).
+			D.Level += (Target - D.Level) * TimeCoef(Target > D.Level ? 0.03f : 0.1f, Dt);
+			if (D.Level < 1e-4f && StartLevel < 1e-4f)
+			{
+				D.Level = 0.f;
+				return false;
+			}
+			const float PaceGoal = bCurrent ? FMath::Clamp(FSharedParams::Get(P.DragPace), 0.f, 1.f) : D.Pace;
+			D.Pace += (PaceGoal - D.Pace) * TimeCoef(0.08f, Dt);
+
+			// Pesos de superficie hacia los que manda el juego (normalizados; sin datos, roca).
+			float Goal[Surface::Num];
+			float Sum = 0.f;
+			for (int32 s = 0; s < Surface::Num; ++s)
+			{
+				Goal[s] = bCurrent ? FMath::Max(0.f, FSharedParams::Get(P.DragSurf[s])) : D.W[s];
+				Sum += Goal[s];
+			}
+			if (Sum <= 1e-4f)
+			{
+				for (int32 s = 0; s < Surface::Num; ++s) { Goal[s] = s == Surface::Rock ? 1.f : 0.f; }
+				Sum = 1.f;
+			}
+			const float WeightK = TimeCoef(0.06f, Dt);
+			for (int32 s = 0; s < Surface::Num; ++s) { D.W[s] += (Goal[s] / Sum - D.W[s]) * WeightK; }
+
+			// Baches: el nivel sube y baja un poco hacia un objetivo nuevo cada 40-110 ms.
+			D.WobbleTimer -= Dt;
+			if (D.WobbleTimer <= 0.f)
+			{
+				D.WobbleTimer = D.Rng.Range(0.04f, 0.11f);
+				D.WobbleTarget = D.Rng.Bipolar();
+			}
+			D.Wobble += (D.WobbleTarget - D.Wobble) * TimeCoef(0.03f, Dt);
+
+			// Más deprisa: filtros más agudos y granos más seguidos.
+			const float Pace = D.Pace;
+			D.SandBP.Set(FMath::Lerp(1900.f, 3600.f, Pace), 0.8f, InvRate);
+			D.SoilBP.Set(FMath::Lerp(480.f, 1000.f, Pace), 0.9f, InvRate);
+			D.RockBP.Set(FMath::Lerp(1400.f, 2600.f, Pace), 1.6f, InvRate);
+			D.WoodBP.Set(FMath::Lerp(650.f, 1400.f, Pace), 1.2f, InvRate);
+			D.WaterBP.Set(FMath::Lerp(900.f, 2400.f, Pace), 1.f, InvRate);
+			const float SandRate = FMath::Lerp(700.f, 2600.f, Pace) * InvRate;
+			const float LeafRate = FMath::Lerp(10.f, 45.f, Pace) * InvRate;
+			const float StickRate = FMath::Lerp(9.f, 40.f, Pace) * InvRate;
+			const float GritRate = FMath::Lerp(150.f, 650.f, Pace) * InvRate;
+			const float BubbleRate = FMath::Lerp(3.f, 12.f, Pace) * InvRate;
+			const float WSand = D.W[Surface::Sand];
+			const float WSoil = D.W[Surface::Soil];
+			const float WRock = D.W[Surface::Rock];
+			const float WWood = D.W[Surface::Wood];
+			const float WWater = D.W[Surface::Water];
+
+			const float Gain = FMath::Max(0.f, FSharedParams::Get(P.DragGain)) * (1.f + 0.22f * D.Wobble);
+			const float InvN = 1.f / static_cast<float>(N);
+			float L = StartLevel * Gain;
+			const float DL = (D.Level * Gain - L) * InvN;
+			FRandom& R = D.Rng;
+			for (int32 i = 0; i < N; ++i)
+			{
+				L += DL;
+				const float Noise = R.Bipolar();
+				// El cuerpo que roza: un fondo grave en todas las superficies.
+				float Y = DragTrim::Body * D.BodyB.Low(D.BodyA.Low(Noise));
+				if (WSand > 0.02f)
+				{
+					if (R.Unit() < SandRate) { D.SandGrain = FMath::Max(D.SandGrain, R.Range(0.4f, 1.f)); }
+					D.SandGrain *= D.SandGrainK;
+					Y += WSand * (DragTrim::Sand * D.SandBP.Process(Noise * (0.35f + 0.65f * D.SandGrain))
+						+ DragTrim::SandHiss * D.SandLP.Low(Noise));
+				}
+				if (WSoil > 0.02f)
+				{
+					if (R.Unit() < LeafRate) { D.LeafGrain = FMath::Max(D.LeafGrain, R.Range(0.5f, 1.f)); }
+					D.LeafGrain *= D.LeafGrainK;
+					Y += WSoil * (DragTrim::Soil * D.SoilBP.Process(Noise) + DragTrim::Leaf * D.LeafBP.Process(Noise * D.LeafGrain));
+				}
+				if (WRock > 0.02f)
+				{
+					// Se pega y se suelta: el raspado va a trompicones, con arenilla encima.
+					if (R.Unit() < StickRate) { D.Stick = FMath::Max(D.Stick, R.Range(0.5f, 1.f)); }
+					D.Stick *= D.StickK;
+					if (R.Unit() < GritRate) { D.GritGrain = FMath::Max(D.GritGrain, R.Range(0.3f, 1.f)); }
+					D.GritGrain *= D.GritGrainK;
+					Y += WRock * (DragTrim::Rock * D.RockBP.Process(Noise * (0.25f + 0.75f * D.Stick))
+						+ DragTrim::Grit * D.GritBP.Process(Noise * D.GritGrain));
+				}
+				if (WWood > 0.02f)
+				{
+					const float Scrape = D.WoodBP.Process(Noise);
+					const float Hum = D.WoodModes[0].Process(Noise * 0.05f) + 0.6f * D.WoodModes[1].Process(Noise * 0.05f);
+					Y += WWood * (DragTrim::Wood * Scrape + DragTrim::WoodHum * Hum);
+				}
+				if (WWater > 0.02f)
+				{
+					float Water = DragTrim::Water * D.WaterBP.Process(Noise) + DragTrim::WaterLow * D.WaterLP.Low(Noise);
+					if (D.BubbleEnv < 0.02f && R.Unit() < BubbleRate)
+					{
+						D.BubbleEnv = R.Range(0.5f, 1.f);
+						D.BubbleF0 = R.Range(500.f, 1300.f);
+						const float Life = R.Range(0.012f, 0.03f);
+						D.BubbleK = DecayPerSample(Life, InvRate);
+						D.BubbleRise = R.Range(0.5f, 1.2f) / Life;
+						D.BubbleAge = 0.f;
+						D.BubblePhase = 0.f;
+					}
+					if (D.BubbleEnv > 1e-4f)
+					{
+						D.BubbleAge += InvRate;
+						D.BubblePhase += FMath::Min(D.BubbleF0 * (1.f + D.BubbleRise * D.BubbleAge) * InvRate, 0.45f);
+						D.BubblePhase -= FMath::FloorToFloat(D.BubblePhase);
+						Water += DragTrim::Bubble * D.BubbleEnv * FastSin01(D.BubblePhase);
+						D.BubbleEnv *= D.BubbleK;
+					}
+					Y += WWater * Water;
+				}
+				Mix[i] += Y * L;
+			}
+			D.BodyA.Flush();
+			D.BodyB.Flush();
+			D.SandBP.Flush();
+			D.SandLP.Flush();
+			D.SoilBP.Flush();
+			D.LeafBP.Flush();
+			D.RockBP.Flush();
+			D.GritBP.Flush();
+			D.WoodBP.Flush();
+			D.WaterBP.Flush();
+			D.WaterLP.Flush();
+			for (FResonator& Mode : D.WoodModes) { Mode.Flush(); }
+			return true;
+		}
+
 		// ── Bloque ───────────────────────────────────────────────────────────
 
 		void RenderBlock(int32 N, FSharedParams& P, bool bCurrent)
@@ -1147,6 +1448,10 @@ namespace TNTurtleFoley
 					bAny = true;
 				}
 			}
+			if (RenderDrag(N, P, bCurrent))
+			{
+				bAny = true;
+			}
 
 			// Salida: volumen, sin continua y limitador suave.
 			const float GainEnd = Master;
@@ -1184,6 +1489,7 @@ namespace TNTurtleFoley
 		FTraits Traits;
 		FStepVoice Steps[MaxSteps];
 		FBreathVoice Breath[2];
+		FDragVoice Drag;
 		/** Segundos desde que arrancó el generador. */
 		float Clock = 0.f;
 		/** Jadeo suavizado (0..1), el más fuerte de esta tanda, cuándo toca la siguiente respiración y cuál. */

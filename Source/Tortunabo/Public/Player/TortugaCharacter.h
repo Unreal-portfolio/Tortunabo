@@ -17,6 +17,7 @@ class UTN_CarryComponent;
 class UTN_DizzyBirdsComponent;
 class UTN_TurtleFaceComponent;
 class UTN_StaminaComponent;
+class UTN_TurtleMovementComponent;
 class ATN_InteractableBase;
 class USceneComponent;
 class UAudioComponent;
@@ -47,7 +48,8 @@ class TORTUNABO_API ATortugaCharacter : public ACharacter
 	GENERATED_BODY()
 
 public:
-	ATortugaCharacter();
+	/** Con UTN_TurtleMovementComponent como movimiento (el arrastre del panzazo va dentro de la simulación, predicho). */
+	ATortugaCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	/** Índice de emote reservado para el knockdown visual.
 	 *  Cuando el servidor aplica knockdown, establece ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID.
@@ -185,6 +187,20 @@ protected:
 	/** How fast (1/s) the body tilts into/out of the dive pose (lerp speed). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
 	float DiveTiltSpeed = 12.f;
+
+	/**
+	 * Al levantarse del suelo tras el arrastre, el cuerpo vuelve a ponerse de pie algo más despacio (1/s) para que se vea
+	 * el empujón de brazos (UTN_TurtleAnimInstance).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
+	float DiveGetUpTiltSpeed = 7.f;
+
+	/**
+	 * Tope de seguridad de todo el panzazo (s): si algo lo deja colgado (sin sitio para levantarse mucho rato, por
+	 * ejemplo), el servidor lo acaba igualmente.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="2.0"))
+	float DiveMaxSeconds = 12.f;
 
 	/** Velocidad de rotación del actor Yaw hacia DiveDir al iniciar el dash (deg/seg).
 	 *  720 → completa 180° en 250 ms. Subir = más responsivo (más cerca de snap).
@@ -1167,6 +1183,14 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_IsDiving, BlueprintReadOnly, Category = "Dive")
 	bool bIsDiving = false;
 
+	/**
+	 * Número del panzazo en curso (1-255; al dar la vuelta se salta el 0). Lo sube el servidor al empezar cada uno: el
+	 * movimiento (UTN_TurtleMovementComponent) sabe así de qué panzazo se ha levantado ya y no vuelve a arrastrarse
+	 * mientras llega el fin del panzazo.
+	 */
+	UPROPERTY(Replicated)
+	uint8 DiveSerial = 0;
+
 	// ── Sombrilla (#29) ───────────────────────────────────────────────────────
 
 	/**
@@ -1275,6 +1299,24 @@ public:
 	/** Returns true while the character is diving or in the locked recovery slide. */
 	UFUNCTION(BlueprintPure, Category = "Dive")
 	bool IsDiving() const { return bIsDiving; }
+
+	/** Número del panzazo en curso (0 = aún ninguno). */
+	uint8 GetDiveSerial() const { return DiveSerial; }
+
+	/** Movimiento de la tortuga (con el arrastre del panzazo); null si el Blueprint pusiera otra clase. */
+	UTN_TurtleMovementComponent* GetTurtleMovement() const;
+
+	/** Semialtura sin escalar de la cápsula de pie (la de la clase: sin el encogido del panzazo). */
+	float GetStandingCapsuleHalfHeight() const;
+
+	/**
+	 * Pose de panzazo (en el aire o sobre la tripa). Se apaga en cuanto se levanta: el dueño y el servidor lo saben al
+	 * momento por el movimiento; las demás máquinas, cuando llega el fin del panzazo.
+	 */
+	bool IsBellyPoseActive() const;
+
+	/** Sobre la tripa en el suelo: arrastrándose tras el panzazo o reptando sin sitio para levantarse. */
+	bool IsBellyOnGround() const;
 
 	/** Returns true once the character has died and before any revive restores it. */
 	UFUNCTION(BlueprintPure, Category = "Death")

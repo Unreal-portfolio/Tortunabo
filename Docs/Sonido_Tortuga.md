@@ -1,4 +1,4 @@
-# Sonido de la tortuga: pasos, jadeo y tos
+# Sonido de la tortuga: pasos, jadeo, panzazo y tos
 
 Todo sintetizado en tiempo real, sin archivos de audio, como el resto del juego (ambiente, música, parque del lobby, tos
 de la tormenta). Cartoon pero creíble: patas blandas (almohadilla y dedos), nada de botas.
@@ -8,6 +8,9 @@ de la tormenta). Cartoon pero creíble: patas blandas (almohadilla y dedos), nad
 | Pasos andando, más rápidos y fuertes corriendo | `UTN_TurtleFoleyComponent` | Cada pisada de la animación, con el timbre de la superficie |
 | Impulso al saltar y golpe al aterrizar | `UTN_TurtleFoleyComponent` | Al despegar (subiendo a más de 1,5 m/s) y al caer (más de 0,12 s en el aire o a más de 2,5 m/s) |
 | Jadeo | `UTN_TurtleFoleyComponent` | Estamina por debajo del 45 %; a tope al agotarse; se calma al recuperarse |
+| «Plaf» del panzazo | `UTN_TurtleFoleyComponent` | Al caer de tripa, más fuerte cuanto más rápido caía y corría |
+| Arrastre sobre la tripa | `UTN_TurtleFoleyComponent` | Mientras se desliza tras el panzazo, con la fuerza de la velocidad y el timbre de la superficie |
+| «Tonc» del caparazón | `UTN_TurtleFoleyComponent` | Al chocar contra algo arrastrándose (la velocidad cambia de golpe) |
 | Tos | `UTN_StormCoughComponent` (ya existía) | Dentro de la tormenta del Coop; en la tormenta el jadeo calla |
 
 ## Arquitectura
@@ -18,6 +21,8 @@ de la tormenta). Cartoon pero creíble: patas blandas (almohadilla y dedos), nad
   calibrado en un arnés fuera del motor. Corre en el hilo de render de audio: sin UObjects, asignaciones ni bloqueos.
 - Estado local por máquina, sin RPC: cada fotograma lee lo replicado de la tortuga (velocidad, en el suelo o en el aire,
   nadando, sprint, estamina, agotada, derribada, muerta, caparazón, panzazo, llevar o ser llevada) y los huesos de su malla.
+- La superficie la resuelve `Player/TN_TurtleSurface` (`TNTurtleSurface::Probe` / `Resolve`), compartida con el
+  rozamiento del arrastre del panzazo (`UTN_TurtleMovementComponent`) y su polvo (`UTN_TurtleDustComponent`).
 - Fuente 3D mono en la raíz de la tortuga: volumen pleno hasta 3 m, caída natural hasta 27 m y agudos que se apagan con
   la distancia. La tortuga local suena ×1,3.
 - Hilos: el juego deja las pisadas en un anillo de un escritor (`FSharedParams::PushStep`) y los objetivos (volúmenes,
@@ -81,6 +86,37 @@ tierra (golpe muy apagado a ~300 Hz y crujidos sueltos de hojas), roca (chasquid
 arenilla), madera (tablón libre golpeado con algo blando: modos 1 : 2,76 : 5,4 sobre ~200 Hz) y agua (chapoteo que
 baja de 3 kHz a 1 kHz, masa de agua grave y hasta tres burbujas que suben de tono).
 
+## Panzazo
+
+El movimiento del arrastre está en `Docs/Animacion_Tortuga.md` («Panzazo: arrastre sobre la tripa»). El sonido solo lee
+`ATortugaCharacter::IsBellyPoseActive` / `IsBellyOnGround` y la velocidad replicada, así que suena igual en todas las
+máquinas. Durante el panzazo no hay pasos; en cuanto se levanta, vuelven.
+
+- **«Plaf»** (`StepKind::Belly`), al caer de tripa: fuerza de 0,5 a 1,4 (0,55 más la caída por encima de 1,5 m/s entre 9
+  más la velocidad entre 25 m/s). Toda la tripa a la vez: los dos contactos casi juntos (4-12 ms), las caídas 1,8 veces
+  más largas, el golpe sordo mucho más grave (×0,62) y un chasquido de carne blanda (ruido por un paso alto de
+  0,8-1,2 kHz que dura lo que el golpe). Encima, la capa de la superficie: en el agua, un chapuzón con burbujas.
+- **Arrastre** (`FDragVoice`, continuo): fuerza = (velocidad sobre la tripa − 25 cm/s) hasta 650 cm/s (`MinDragSpeed`,
+  `DragFullSpeed`) con curva suave, y viveza = velocidad / 845 cm/s. Entra en 30 ms y se apaga en 100 ms (el cuerpo aún
+  roza al pararse). Más deprisa, filtros más agudos y granos más seguidos. Fondo grave del cuerpo que roza (dos pasos
+  bajos a 160 Hz) en todas las superficies, más la de cada una por su peso:
+
+  | Superficie | Suena a |
+  |---|---|
+  | Arena | «Shhh» granulado (paso banda de 1,9 a 3,6 kHz con granos de 1 ms, de 700 a 2600 por segundo) y siseo de fondo |
+  | Tierra | Roce sordo (0,5-1 kHz) y crujidos de hojas sueltas (10-45 por segundo, 3,8 kHz) |
+  | Roca | Raspado a trompicones, que se pega y se suelta (1,4-2,6 kHz, 9-40 tirones por segundo) y arenilla aguda |
+  | Madera | Roce (0,65-1,4 kHz) y zumbido del tablón (modos a 190 y 520 Hz excitados por el ruido) |
+  | Agua | Siseo de la estela (0,9-2,4 kHz), masa de agua que empuja (380 Hz) y burbujas sueltas que suben de tono |
+
+  Unos baches (el nivel sube y baja un 22 % cada 40-110 ms) para que no suene a ruido plano. La superficie se mira con
+  la misma traza y caché que los pasos (0,15 s o 30 cm).
+- **«Tonc»** (`StepKind::Bump`), al chocar arrastrándose (la velocidad horizontal cambia más de 2,6 m/s de un fotograma
+  a otro yendo a más de 1,8 m/s; como mucho uno cada 0,25 s): el golpe sordo del cuerpo (×0,75) y los modos del tablón
+  afinados al caparazón (270-340 Hz), sin la textura del suelo.
+
+Los «plaf» y «tonc» suenan aunque el Blueprint tenga `FootstepSound` (no son pasos).
+
 ## Jadeo
 
 - Objetivo 0..1: nada por encima de `PantBelowStamina` (45 % de la estamina máxima con el peso que lleva), sube con curva
@@ -114,7 +150,8 @@ servidor a los 12 s.
 
 `UPROPERTY` del componente (se pueden tocar en caliente en el panel de detalles durante PIE): `Loudness`,
 `StepLoudness`, `BreathLoudness`, `LocalPlayerBoost` (1,3), `PantBelowStamina` (0,45), `PantCalmSeconds` (2,5),
-`MinStepSpeed` (60 cm/s), `InnerRadius` (300 cm) y `FalloffDistance` (2400 cm).
+`MinStepSpeed` (60 cm/s), `DragLoudness` (1: arrastre, «plaf» y «tonc»), `MinDragSpeed` (25 cm/s), `DragFullSpeed`
+(650 cm/s), `InnerRadius` (300 cm) y `FalloffDistance` (2400 cm).
 
 | Consola | Qué hace |
 |---|---|
@@ -122,6 +159,7 @@ servidor a los 12 s.
 | `TN.Voice.Surface <-1..4>` | Fuerza la superficie: -1 la de verdad, 0 arena, 1 tierra, 2 roca, 3 madera, 4 agua |
 | `TN.Voice.Steps <0\|1\|2>` | Pasos de prueba en el sitio en la tortuga local: 0 apagados, 1 andando, 2 corriendo |
 | `TN.Voice.Pant <0\|1\|2>` | Jadeo de prueba en la tortuga local: 0 manda la estamina, 1 suave, 2 agotada |
+| `TN.Voice.Drag <0\|1\|2>` | Arrastre de prueba en el sitio en la tortuga local: 0 manda el panzazo, 1 lento, 2 rápido (con `TN.Voice.Surface` para comparar superficies) |
 | `TN.Voice.Debug 1` | Una línea por tortuga que se oye: velocidad, pasos por huesos o por reloj, superficie, estamina, jadeo y tos |
 | `TN.Storm.Cough <0\|1\|2>` | (ya existía) Tos de prueba en la tortuga local sin tormenta |
 
@@ -141,6 +179,10 @@ sintetizados callan para no doblarse; el salto, el aterrizaje sintetizados y el 
 El limitador de salida (-2 dBFS) solo actúa con el refuerzo de la tortuga local en las caídas más fuertes. Todo por
 debajo de la tos (golpes de tos fuerte de -7 a -1,5 dBFS).
 
+El panzazo aún no ha pasado por el arnés: el arrastre está estimado a unos -28 dBFS eficaces a fondo (por el ancho de
+banda de cada filtro, `DragTrim`), el «plaf» parte del aterrizaje fuerte (golpe más largo y grave más el chasquido,
+`Trim::Slap` 0,3) y el «tonc» del tablón (`Trim::Shell` 0,009). Se afinan de oído con `DragLoudness` y `TN.Voice.Drag`.
+
 ## Probar en PIE
 
 1. `TN.Voice.Debug 1` y andar: la línea local dice `pasos: huesos` (si dice `reloj`, la malla no da pasos: ver arriba) y
@@ -154,3 +196,6 @@ debajo de la tos (golpes de tos fuerte de -7 a -1,5 dBFS).
 5. Coop con tormenta: dejar que el frente alcance a la tortuga (o `TNStorm desierto`): tose y, si venía jadeando, el
    jadeo calla; al salir, un último carraspeo y vuelve el jadeo si sigue cansada.
 6. Con dos jugadores: los pasos y el jadeo del otro se oyen en 3D y se apagan con la distancia; los propios, algo más altos.
+7. Panzazo en arena, tierra, roca, un puente de tablones y la orilla: «plaf» al caer y el arrastre de cada superficie,
+   que se apaga al pararse; contra una pared, «tonc». En el sitio: `TN.Voice.Drag 2` con `TN.Voice.Surface 0..4`
+   (`TN.Voice.Drag 0` para volver).

@@ -13,20 +13,132 @@ La evaluación (`FTNTurtleAnimProxy::Evaluate`, que puede correr fuera del hilo 
    sin patinar a 3,8 m/s y correr a 7,2 m/s) y la cadera queda en su sitio (sin avance propio de los clips).
 2. **Fiesta** (emote 9): el clip `Yelling` con rebote.
 3. **Poses de estado** sobre la postura en T, mezcladas con la de arriba por su peso (que entra y sale suave):
-   salto (brazos arriba que aletean, piernas recogidas; más arriba al caer), panzazo (brazos por delante, piernas
-   estiradas; el personaje ya tumba la malla), nado (brazada y patada), llevar a otra tortuga en alto, ser llevada
-   (patalea), tumbada (floja y con la cabeza caída) y los emotes 0-8 (saludar, aplauso, helicóptero, palmada potente,
-   aplaudir, baile irlandés, flotar, señalar y modo loco).
+   salto (brazos arriba que aletean, piernas recogidas; más arriba al caer), panzazo en el aire (brazos por delante,
+   piernas estiradas; el personaje ya tumba la malla) y arrastrándose sobre la tripa (ver «Panzazo: arrastre sobre la
+   tripa»), nado (brazada y patada), llevar a otra tortuga en alto, ser llevada (patalea), tumbada (floja y con la
+   cabeza caída) y los emotes 0-8 (saludar, aplauso, helicóptero, palmada potente, aplaudir, baile irlandés, flotar,
+   señalar y modo loco).
 4. **Capas encima:** inclinación hacia delante al correr y hacia dentro en las curvas, cansancio (se encorva y
    jadea), el golpe de brazos al lanzar y el caparazón: cabeza, brazos y patas encogen hacia el cuerpo y el cuerpo
    baja al suelo. Con caparazón físico (`bShellBody`, ver abajo) el cuerpo **no** baja: la malla ya va tumbada sobre la
    tripa y ese eje apunta hacia delante.
 5. **Levantarse del ragdoll** (`BeginGetUp`): al acabar un derribo, la pose del ragdoll se mezcla hacia la pose de pie
-   en 0,75 s (`GetUpW`, curva suave), con un empujón de brazos y rodillas dobladas a mitad de camino (`GetUpFlex`).
+   en 0,75 s (`GetUpW`, curva suave), con un empujón de brazos y rodillas dobladas a mitad de camino (`GetUpFlex`). El
+   mismo empujón (`BellyGetUpW`, 0,45 s) al levantarse de la tripa tras el panzazo.
 
 Las poses se escriben como giros alrededor de los ejes de la malla (mira a +Y, arriba +Z, su izquierda +X) en la
 articulación de cada hueso; los hijos le siguen. Brazo izquierdo: abajo +Y, arriba -Y, adelante +Z (el derecho, al
 revés en Y y en Z). Piernas: adelante +X, rodilla -X. Espalda hacia delante -X; cabeza arriba +X.
+
+## Panzazo: arrastre sobre la tripa
+
+Antes, al caer del panzazo la tortuga se paraba en seco (el frenado de andar la dejaba quieta en una décima) y se quedaba
+tiesa hasta levantarse. Ahora se arrastra un poco sobre la tripa, con sonido (`Docs/Sonido_Tortuga.md`) y polvo.
+
+### Decisión: arrastre dentro del movimiento, no física de verdad
+
+Se descartó activar la física del cuerpo (ragdoll o una caja como la del caparazón, `ATN_ShellBody`):
+
+- La física de cada máquina diverge (el ragdoll del derribo desactiva la réplica del movimiento y cada una simula lo
+  suyo), y una caja replicada desde el servidor llega con retraso al cliente dueño: tirones al caer y al levantarse en
+  cada panzazo, que es un gesto de todo el rato (huecos de panzazo del mapa).
+- Al volver de la física hay que poner la cápsula de pie donde quedó el cuerpo, y ahí es donde se atraviesan paredes.
+
+El arrastre es una fase del propio movimiento del personaje, `UTN_TurtleMovementComponent` (`Player/`), que sustituye al
+`UCharacterMovementComponent` de serie (`ATortugaCharacter` lo pide con `SetDefaultSubobjectClass`; el Blueprint conserva
+sus ajustes del movimiento: conviene abrir y guardar `BP_TortugaCharacter` una vez). Lo simulan igual el cliente dueño
+(predicho) y el servidor; la cápsula barre como siempre (no atraviesa nada) y el resto de máquinas solo ven el
+movimiento replicado.
+
+### Fases (`ETNBellyPhase`)
+
+1. **En el aire**: como antes (`Server_StartDive`: 350 cm/s en el BP más la velocidad del salto, bajando, sin control).
+   El servidor sube `DiveSerial` (número del panzazo, replicado) al empezar cada uno.
+2. **Arrastre** (`Slide`), al caer de tripa (`ProcessLanded`, antes del aterrizaje normal: el resto de ese movimiento ya
+   se arrastra):
+   - Inercia: la velocidad a lo largo del suelo tocado (en una bajada, parte de la caída se convierte en arrastre; en
+     una subida se pierde), un 90 % (`BellyLandingKeep`) y como mucho 850 cm/s (`BellyMaxEntrySpeed`).
+   - Frenado: rozamiento seco por superficie (`TNTurtleSurface`, la misma de los pasos: arena 800, tierra 480, roca 400,
+     madera 310 y agua poco profunda o fango 220 cm/s²), más un freno por velocidad (`BellyDrag` 1,5/s). Con la entrada
+     típica (720 cm/s) se para en 0,57 s y 1,8 m en arena, 0,79 s en tierra, 0,87 s en roca, 1 s en madera y 1,18 s
+     y 3,1 m en el agua. Desde 1,2 s el rozamiento crece (×3,5 al segundo) y a los 2,6 s se levanta igualmente.
+   - Pendientes: la gravedad a lo largo del suelo (×1,15, `BellySlopeGravity`): cuesta abajo acelera (hasta 1000 cm/s),
+     cuesta arriba frena antes y en las suaves el rozamiento puede más y se queda quieta.
+   - Rebote: contra paredes y obstáculos (y otras tortugas), si iba contra ellos a más de 120 cm/s, devuelve un 35 % de
+     esa velocidad hacia fuera y conserva un 75 % de la que llevaba a lo largo (`HandleImpact` apunta la pared y
+     `OnMovementUpdated` rebota al final del movimiento).
+   - El cuerpo gira despacio hacia donde se desliza (220°/s) salvo tras un rebote hacia atrás (se aleja mirando la pared).
+   - Sin control: el jugador no dirige. Si cae por un borde sigue sobre la tripa y al volver al suelo continúa.
+3. **Levantarse**: pasados 0,3 s y por debajo de 60 cm/s, o a propósito por debajo de 180 cm/s (`BellyExitSpeed`)
+   moviéndose (el movimiento solo llega entonces, `ATortugaCharacter::Move`) o saltando (un brinco: la cápsula se pone
+   de pie y salta). Quien lleva el avance pulsado todo el panzazo se levanta ahí: se pierde solo el final lento. La cápsula vuelve a su altura como `UnCrouch` con la base fija: si se metería en algo (un techo
+   bajo), no se levanta.
+   - **Reptar** (`Rest`): sin sitio para ponerse de pie, sigue sobre la tripa y se mueve a 150 cm/s hasta que quepa. Ni
+     salta ni atraviesa nada.
+   - **De pie** (`GetUp`): 0,35 s con la velocidad máxima subiendo del 35 % a la normal. En cuanto el movimiento la pone
+     de pie, el servidor acaba el panzazo (`TickDive` → `EndDive`); el dueño y el servidor quitan la pose al momento,
+     las demás máquinas al llegar el fin del panzazo.
+
+Seguridad: la fase, su tiempo y el número de panzazo del que viene viajan en cada movimiento guardado del cliente
+(`FTNSavedMove_Turtle`) y se repiten tras una corrección, cápsula encogida incluida; `DiveSerial` impide volver a
+arrastrarse con el mismo panzazo mientras llega su fin. Con `TN.Dive.Slide 0` todo vuelve a ser como antes. Tope de
+seguridad de todo el panzazo: 12 s (`DiveMaxSeconds`). Ni más rápido que correr (entra a 850 como mucho y frena en
+seguida: encadenando salto, panzazo, arrastre y levantarse se va a unos 3,9 m/s andando y 5,7 m/s esprintando, por
+debajo de los 4,5 y 8 m/s de ir corriendo) ni atravesar paredes (barrido de la cápsula y comprobación de sitio al
+levantarse).
+
+### Pose
+
+- `PoseBellySlide` (sobre la tripa en el suelo, `SlideW`): cabeza levantada mirando adelante y a los lados, brazos
+  abiertos por delante que rozan el suelo y tiemblan con los baches, piernas algo abiertas con las rodillas dobladas y
+  los pies arriba pataleando, la espalda arqueada y la cadera que rueda sobre la tripa y culea. Más deprisa
+  (`SlideSpeed`, 0..1 a 7 m/s), más vibra; casi parada, rema con los brazos. Los golpes (`SlideImpact`: caer de tripa,
+  chocar) sacuden brazos, pies y cabeza.
+- En el aire sigue `PoseDive`; las dos se reparten el peso del panzazo por `SlideW`.
+- Al levantarse del suelo, el empujón de brazos y rodillas (`PoseGetUpFlex`, `BellyGetUpW` 0,45 s) mientras
+  `TickDive` endereza la malla algo más despacio (`DiveGetUpTiltSpeed` 7/s en vez de 12). La subida de la malla sobre la
+  tripa se calcula con la cápsula que haya en cada momento: al ponerse de pie ya no pega un salto.
+- `ATortugaCharacter::IsBellyPoseActive` (pose de panzazo hasta levantarse) e `IsBellyOnGround` (sobre la tripa en el
+  suelo) es lo que leen la animación, el sonido y el polvo.
+
+### Polvo
+
+`UTN_TurtleDustComponent` (`Player/`, local y cosmético, nada en servidor dedicado): partículas de caras planas
+(`TNAmbientFX`, las de los géiseres y el rebuscar) del color y el material de debajo de la tripa: nube clara y granos en
+la arena, polvo marrón y terrones en la tierra, polvo gris y arenilla en la roca, serrín y astillas en la madera, rocío y
+salpicaduras en el agua. En el terreno del mapa, arena, tierra y roca se tiñen con el camino (o la roca) del bioma.
+Bocanada al caer de tripa (más grande cuanto más fuerte), rastro hacia atrás y arriba mientras se arrastra (más cuanto
+más deprisa, a tope a 6,5 m/s) y bocanada pequeña al chocar. Hasta 8 emisores por tortuga que se crean al hacer falta y
+solo se mueven con partículas vivas; nada a más de 50 m de la cámara. Ajustes: `DustAmount`, `MaxViewDistance` y
+`FullDustSpeed`.
+
+### Consola (afecta a la simulación: igual en el servidor y los clientes; en PIE es un solo proceso)
+
+| Consola | Qué hace |
+|---|---|
+| `TN.Dive.Slide 0\|1` | 0 = se para en seco al caer, como antes |
+| `TN.Dive.Friction <x>` | Multiplica el rozamiento en todas las superficies (0,5 = resbala el doble; 2 = se para antes) |
+| `TN.Dive.Slope <x>` | Multiplica cuánto tiran las pendientes (0 = como en llano) |
+| `TN.Dive.MaxTime <s>` | Tope de segundos arrastrándose (0 = el del componente, 2,6 s) |
+| `TN.Dive.Debug 1` | Por cada tortuga simulada en esta máquina: fase, tiempo, velocidad, superficie y rozamiento; flecha verde de la velocidad y naranja de la pendiente |
+
+Los ajustes finos son `UPROPERTY` del movimiento (`Belly Slide`: rozamientos, `BellyDrag`, entrada, topes, tiempos,
+salida, rebote y giro) y del personaje (`DiveGetUpTiltSpeed`, `DiveMaxSeconds`).
+
+### Probar en PIE
+
+1. Escuchando más un cliente. `TN.Dive.Debug 1` y `TN.Voice.Debug 1`.
+2. Panzazo en llano de arena (playa): cae de tripa con «plaf» y bocanada, se arrastra ~1,8 m con siseo y polvo claro,
+   brazos y pies moviéndose, y se levanta con el empujón de brazos. Repetir en tierra (selva), roca (acantilados),
+   tablones de un puente y agua poco profunda de la orilla: más o menos arrastre, otro sonido y otro polvo.
+3. Panzazo cuesta abajo: se arrastra más; cuesta arriba, menos. En una cuesta suave se queda quieta.
+4. Panzazo contra una pared: rebota un poco hacia atrás con un «tonc» y una bocanada.
+5. Saltar o moverse casi parada: sale antes (el salto, con brinco). Deprisa, ni lo uno ni lo otro.
+6. Panzazo que acabe bajo algo bajo (un tablón, una rampa): repta hasta salir y se levanta sin atravesar nada.
+7. En el cliente: lo mismo sin tirones al caer ni al levantarse (con `TN.Dive.Debug 1`, la fase del cliente y la del
+   servidor van a la par). Con latencia (`NetEmulation.PktLag 120`), el inicio del panzazo sigue teniendo el tirón de
+   siempre (lo lanza el servidor), pero el arrastre y el levantarse no.
+8. `TN.Dive.Friction 0.5` y `2`, `TN.Dive.Slide 0` para comparar con lo de antes.
 
 ## Caparazón con física propia
 
@@ -133,8 +245,8 @@ la cabeza: aparecen con un saltito, resbalan y se encogen. Una cansada (cada 1,7
 
 ## Estado que lee
 
-Del personaje: velocidad, `IsFalling`/`IsSwimming` del movimiento, `IsDiving`, `IsInShell` (y si el caparazón tiene
-caja física), `IsKnockedDown`, la pose guardada al levantarse, el emote activo y su tiempo (`GetActiveEmoteIndex`,
+Del personaje: velocidad, `IsFalling`/`IsSwimming` del movimiento, `IsBellyPoseActive` e `IsBellyOnGround` (el
+panzazo en el aire y sobre la tripa), `IsInShell` (y si el caparazón tiene caja física), `IsKnockedDown`, la pose guardada al levantarse, el emote activo y su tiempo (`GetActiveEmoteIndex`,
 `GetEmoteTime`); del `UTN_CarryComponent`, si lleva o la llevan (al soltar se hace el lanzamiento); del
 `UTN_StaminaComponent`, si está agotada. La cara (`UTN_TurtleFaceComponent`) lee además la estamina, el sprint, la
 velocidad, el giro, el chat rápido y la voz.

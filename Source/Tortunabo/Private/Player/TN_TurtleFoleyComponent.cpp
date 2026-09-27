@@ -4,6 +4,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Player/TN_TurtleSurface.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapLayout.h"
@@ -75,72 +76,12 @@ namespace TNTurtleFoley
 	constexpr float StopMargin = 1200.f;
 	/** Segundos sin pasos ni jadeo antes de parar el sintetizador. */
 	constexpr double IdleStopSeconds = 2.5;
-	/** Preajuste de superficie sin palabras conocidas en los nombres (suena a roca: el «pat» neutro). */
-	constexpr uint8 PresetUnknown = 255;
 
-	/**
-	 * Superficie de cada bioma del mapa procedural (en el orden de ETNProcBiome): arena, tierra, roca, madera y agua.
-	 * Selva: tierra y hojarasca; playa y desierto: arena; volcán: roca con ceniza y grava; agua con isletas: arena
-	 * húmeda; acantilados: roca; manglar: fango; zona humana: tierra pisada y empedrado.
-	 */
-	constexpr float BiomeSurface[8][Surface::Num] = {
-		{ 0.15f, 0.85f, 0.f, 0.f, 0.f },
-		{ 1.f, 0.f, 0.f, 0.f, 0.f },
-		{ 1.f, 0.f, 0.f, 0.f, 0.f },
-		{ 0.45f, 0.f, 0.55f, 0.f, 0.f },
-		{ 0.8f, 0.2f, 0.f, 0.f, 0.f },
-		{ 0.2f, 0.f, 0.8f, 0.f, 0.f },
-		{ 0.f, 0.7f, 0.f, 0.f, 0.3f },
-		{ 0.f, 0.5f, 0.5f, 0.f, 0.f } };
-	static_assert(static_cast<int32>(ETNProcBiome::Count) == 8, "BiomeSurface tiene una fila por bioma, en el orden de ETNProcBiome");
-	static_assert(TNProcMap::NumBiomes == 8, "BiomeSurface tiene una fila por bioma");
-
-	/** Roca de las pendientes (el terreno se pinta de roca en los taludes): algo de arena suelta encima. */
-	constexpr float SlopeRock[Surface::Num] = { 0.15f, 0.f, 0.85f, 0.f, 0.f };
-
-	/** Pesos de un preajuste (índice de Surface; el desconocido, roca). */
-	inline void PresetWeights(uint8 Preset, float* Out)
-	{
-		for (int32 s = 0; s < Surface::Num; ++s) { Out[s] = 0.f; }
-		Out[Preset < Surface::Num ? Preset : Surface::Rock] = 1.f;
-	}
-
-	template <int32 N>
-	bool ContainsAny(const FString& Text, const TCHAR* const (&Words)[N])
-	{
-		for (const TCHAR* Word : Words)
-		{
-			if (Text.Contains(Word, ESearchCase::CaseSensitive)) { return true; }
-		}
-		return false;
-	}
-
-	/**
-	 * Superficie por nombres (ya en minúsculas: componente, clase y nombre del actor, malla y material). Por orden: agua,
-	 * arena (el castillo de arena del lobby es arena aunque diga «castle»), madera, tierra y roca.
-	 */
-	uint8 PresetFromNames(const FString& Text)
-	{
-		static const TCHAR* const WaterWords[] = { TEXT("water"), TEXT("agua"), TEXT("puddle"), TEXT("charco") };
-		static const TCHAR* const SandWords[] = { TEXT("sand"), TEXT("arena"), TEXT("beach"), TEXT("playa"), TEXT("dune"), TEXT("duna"),
-			TEXT("landscape") };
-		static const TCHAR* const WoodWords[] = { TEXT("wood"), TEXT("madera"), TEXT("plank"), TEXT("tablon"), TEXT("tablón"),
-			TEXT("bridge"), TEXT("puente"), TEXT("log_"), TEXT("tronco"), TEXT("crate"), TEXT("barrel"), TEXT("barril"), TEXT("dock"),
-			TEXT("muelle"), TEXT("pier"), TEXT("boat"), TEXT("barco"), TEXT("raft"), TEXT("balsa"), TEXT("deck"), TEXT("pallet"),
-			TEXT("palet"), TEXT("fence"), TEXT("valla"), TEXT("table"), TEXT("mesa"), TEXT("shell"), TEXT("tortuga"), TEXT("turtle") };
-		static const TCHAR* const SoilWords[] = { TEXT("grass"), TEXT("hierba"), TEXT("cesped"), TEXT("césped"), TEXT("dirt"),
-			TEXT("tierra"), TEXT("mud"), TEXT("barro"), TEXT("fango"), TEXT("leaf"), TEXT("leaves"), TEXT("hoja"), TEXT("moss"),
-			TEXT("musgo"), TEXT("soil"), TEXT("jungle"), TEXT("selva"), TEXT("garden"), TEXT("jardin"), TEXT("jardín"), TEXT("turf") };
-		static const TCHAR* const RockWords[] = { TEXT("rock"), TEXT("roca"), TEXT("stone"), TEXT("piedra"), TEXT("cliff"),
-			TEXT("boulder"), TEXT("pebble"), TEXT("brick"), TEXT("ladrillo"), TEXT("concrete"), TEXT("castle"), TEXT("castillo"),
-			TEXT("tower"), TEXT("torre"), TEXT("wall"), TEXT("muro"), TEXT("tile"), TEXT("baldosa"), TEXT("marble") };
-		if (ContainsAny(Text, WaterWords)) { return static_cast<uint8>(Surface::Water); }
-		if (ContainsAny(Text, SandWords)) { return static_cast<uint8>(Surface::Sand); }
-		if (ContainsAny(Text, WoodWords)) { return static_cast<uint8>(Surface::Wood); }
-		if (ContainsAny(Text, SoilWords)) { return static_cast<uint8>(Surface::Soil); }
-		if (ContainsAny(Text, RockWords)) { return static_cast<uint8>(Surface::Rock); }
-		return PresetUnknown;
-	}
+	// La superficie (biomas, nombres, estructuras, agua poco profunda) la resuelve TNTurtleSurface, compartida con el
+	// arrastre del panzazo y su polvo: los índices tienen que coincidir con los del motor de sonido.
+	static_assert(TNTurtleSurface::Num == Surface::Num, "TNTurtleSurface y TNTurtleFoley::Surface tienen las mismas superficies");
+	static_assert(TNTurtleSurface::Sand == Surface::Sand && TNTurtleSurface::Soil == Surface::Soil && TNTurtleSurface::Rock == Surface::Rock
+		&& TNTurtleSurface::Wood == Surface::Wood && TNTurtleSurface::Water == Surface::Water, "Mismo orden de superficies");
 
 	/** Estado de la tortuga leído en cada fotograma (todo sale de estado replicado: vale igual en todas las máquinas). */
 	struct FTurtleState
@@ -151,8 +92,13 @@ namespace TNTurtleFoley
 		bool bNear = false;
 		float Speed = 0.f;
 		float VelZ = 0.f;
+		/** Velocidad horizontal (para los choques arrastrándose). */
+		FVector2D Vel2D = FVector2D::ZeroVector;
 		bool bGrounded = false;
 		bool bFalling = false;
+		/** Pose de panzazo (en el aire o sobre la tripa) y sobre la tripa en el suelo. */
+		bool bBellyPose = false;
+		bool bBellyGround = false;
 		/** Muerta, derribada, en el caparazón, en panzazo, llevada por otra o nadando: sin pasos. */
 		bool bBlockedSteps = true;
 		bool bSprinting = false;
@@ -270,6 +216,16 @@ void UTN_TurtleFoleyComponent::SetDebugSteps(int32 InLevel)
 	}
 }
 
+void UTN_TurtleFoleyComponent::SetDebugDrag(int32 InLevel)
+{
+	DebugDrag = FMath::Clamp(InLevel, 0, 2);
+	if (DebugDrag > 0 && bSlowTick)
+	{
+		bSlowTick = false;
+		SetComponentTickInterval(0.f);
+	}
+}
+
 void UTN_TurtleFoleyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -282,7 +238,7 @@ void UTN_TurtleFoleyComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	if (!Frame.bValid) { return; }
 
 	// Lejos del oyente basta un tick lento: el cansancio y las caídas se siguen llevando al día.
-	const bool bWantSlow = !Frame.bNear && DebugSteps == 0;
+	const bool bWantSlow = !Frame.bNear && DebugSteps == 0 && DebugDrag == 0;
 	if (bWantSlow != bSlowTick)
 	{
 		bSlowTick = bWantSlow;
@@ -292,6 +248,7 @@ void UTN_TurtleFoleyComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	UpdatePant(DeltaTime, Now, Frame);
 	UpdateJumpAndLanding(DeltaTime, Now, Frame);
 	UpdateSteps(DeltaTime, Now, Frame);
+	UpdateDrag(DeltaTime, Now, Frame);
 
 	// Objetivos para el hilo de audio.
 	TNTurtleFoley::FSharedParams& P = *SharedParams;
@@ -301,16 +258,23 @@ void UTN_TurtleFoleyComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	TNTurtleFoley::FSharedParams::Set(P.BreathGain, BreathLoudness);
 	TNTurtleFoley::FSharedParams::Set(P.Pant, PantSent);
 	P.PantHush.store(bPantHushed ? 1 : 0, std::memory_order_relaxed);
+	TNTurtleFoley::FSharedParams::Set(P.DragGain, DragLoudness);
+	TNTurtleFoley::FSharedParams::Set(P.Drag, DragSent);
+	TNTurtleFoley::FSharedParams::Set(P.DragPace, DragPaceSent);
+	for (int32 s = 0; s < NumSurfaces; ++s)
+	{
+		TNTurtleFoley::FSharedParams::Set(P.DragSurf[s], DragSurface[s]);
+	}
 
-	// Arranque y parada: los pasos lo arrancan al pisar (EmitStep); el jadeo, aquí. Se para lejos del oyente o tras un
-	// rato sin nada que decir, cuando el generador ya ha callado del todo.
-	if (Frame.bNear && Volume > 0.f && PantSent > 0.f && !IsActive())
+	// Arranque y parada: los pasos lo arrancan al pisar (EmitStep); el jadeo y el arrastre, aquí. Se para lejos del
+	// oyente o tras un rato sin nada que decir, cuando el generador ya ha callado del todo.
+	if (Frame.bNear && Volume > 0.f && (PantSent > 0.f || DragSent > 0.f) && !IsActive())
 	{
 		StartSynth();
 	}
 	else if (IsActive())
 	{
-		const bool bIdle = PantSent <= 0.f && DebugSteps == 0 && Now - LastActivityTime > TNTurtleFoley::IdleStopSeconds
+		const bool bIdle = PantSent <= 0.f && DragSent <= 0.f && DebugSteps == 0 && Now - LastActivityTime > TNTurtleFoley::IdleStopSeconds
 			&& P.Busy.load(std::memory_order_relaxed) == 0;
 		if (!Frame.bNear || Volume <= 0.f || bIdle)
 		{
@@ -336,6 +300,7 @@ void UTN_TurtleFoleyComponent::ReadFrame(TNTurtleFoley::FTurtleState& Out, doubl
 	const FVector Velocity = Turtle->GetVelocity();
 	Out.Speed = static_cast<float>(Velocity.Size2D());
 	Out.VelZ = static_cast<float>(Velocity.Z);
+	Out.Vel2D = FVector2D(Velocity.X, Velocity.Y);
 	const UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
 	Out.bGrounded = Move && Move->IsMovingOnGround();
 	Out.bFalling = Move && Move->IsFalling();
@@ -345,7 +310,10 @@ void UTN_TurtleFoleyComponent::ReadFrame(TNTurtleFoley::FTurtleState& Out, doubl
 	const bool bCarried = Carry && Carry->IsBeingCarried();
 	Out.Heavy = (Carry && Carry->IsCarrying()) ? 1.35f : 1.f;
 	const bool bDown = Turtle->IsDead() || Turtle->IsKnockedDown();
-	Out.bBlockedSteps = bDown || Turtle->IsInShell() || Turtle->IsDiving() || bCarried || bSwimming;
+	// Panzazo: hasta que se levanta (el dueño y el servidor lo saben al momento; los demás, al acabar el panzazo).
+	Out.bBellyPose = Turtle->IsBellyPoseActive();
+	Out.bBellyGround = Out.bBellyPose && Out.bGrounded;
+	Out.bBlockedSteps = bDown || Turtle->IsInShell() || Out.bBellyPose || bCarried || bSwimming;
 	Out.bBlockedPant = bDown;
 
 	if (const UTN_StaminaComponent* Stamina = Turtle->GetStaminaComponent())
@@ -422,6 +390,14 @@ void UTN_TurtleFoleyComponent::UpdateJumpAndLanding(float DeltaTime, double Now,
 	if (bWasGrounded && Frame.bFalling && Frame.VelZ > 150.f && bFree)
 	{
 		EmitStep(TNTurtleFoley::StepKind::Scuff, NextFoot, 0.45f, 0.3f, Now, Frame);
+		ResetFeet();
+	}
+	// Panzazo contra el suelo: «plaf» de tripa, más fuerte cuanto más rápido caía y corría (un escalón bajado
+	// arrastrándose no cuenta).
+	if (bWasFalling && Frame.bBellyGround && Frame.bNear && DebugSteps == 0 && (AirTime > 0.1f || FallPeakSpeed > 200.f))
+	{
+		const float Force = FMath::Clamp(0.55f + (FallPeakSpeed - 150.f) / 900.f + Frame.Speed / 2500.f, 0.5f, 1.4f);
+		EmitStep(TNTurtleFoley::StepKind::Belly, NextFoot, Force, 0.35f, Now, Frame);
 		ResetFeet();
 	}
 
@@ -566,12 +542,52 @@ void UTN_TurtleFoleyComponent::UpdateSteps(float DeltaTime, double Now, const TN
 	}
 }
 
+void UTN_TurtleFoleyComponent::UpdateDrag(float /*DeltaTime*/, double Now, const TNTurtleFoley::FTurtleState& Frame)
+{
+	// Fuerza del arrastre: sube con la velocidad sobre la tripa (a tope a DragFullSpeed) y calla al pararse.
+	float Level = 0.f;
+	float Pace = 0.f;
+	if (DebugDrag > 0)
+	{
+		Level = DebugDrag == 1 ? 0.35f : 1.f;
+		Pace = DebugDrag == 1 ? 0.2f : 0.85f;
+	}
+	else if (Frame.bNear && Frame.bBellyGround && Frame.Speed > MinDragSpeed)
+	{
+		const float Span = FMath::Max(50.f, DragFullSpeed - MinDragSpeed);
+		Level = FMath::Pow(TNTurtleFoley::SmoothStep01((Frame.Speed - MinDragSpeed) / Span), 0.8f);
+		Pace = FMath::Clamp(Frame.Speed / (DragFullSpeed * 1.3f), 0.f, 1.f);
+	}
+	DragSent = Level;
+	DragPaceSent = Pace;
+	if (Level > 0.f)
+	{
+		LastActivityTime = Now;
+		ResolveSurface(Frame.FootLocation, Now, DragSurface);
+	}
+
+	// Choque arrastrándose: la velocidad cambia de golpe (el rebote la da la vuelta contra la pared).
+	if (Frame.bNear && Frame.bBellyGround && bWasBellyGround && DebugSteps == 0)
+	{
+		const float Change = static_cast<float>((Frame.Vel2D - PrevBellyVelocity).Size());
+		if (Change > 260.f && PrevBellyVelocity.Size() > 180.0 && Now - LastBumpTime > 0.25)
+		{
+			LastBumpTime = Now;
+			EmitStep(TNTurtleFoley::StepKind::Bump, NextFoot, FMath::Clamp(Change / 700.f, 0.4f, 1.3f), 0.5f, Now, Frame);
+		}
+	}
+	PrevBellyVelocity = Frame.Vel2D;
+	bWasBellyGround = Frame.bBellyGround;
+}
+
 void UTN_TurtleFoleyComponent::EmitStep(uint8 Kind, uint8 Foot, float Force, float Pace, double Now, const TNTurtleFoley::FTurtleState& Frame)
 {
 	LastStepTime = Now;
 	LastActivityTime = Now;
 	NextFoot = static_cast<uint8>((Foot & 1u) ^ 1u);
-	if (!SharedParams.IsValid() || !Frame.bNear || Frame.bLegacySteps || TNTurtleFoley::GVoiceVolume <= 0.f) { return; }
+	// Con los pasos de siempre del Blueprint, los sintetizados callan; los del panzazo no son pasos y suenan igual.
+	const bool bPanzazo = Kind == TNTurtleFoley::StepKind::Belly || Kind == TNTurtleFoley::StepKind::Bump;
+	if (!SharedParams.IsValid() || !Frame.bNear || (Frame.bLegacySteps && !bPanzazo) || TNTurtleFoley::GVoiceVolume <= 0.f) { return; }
 	if (!IsActive())
 	{
 		StartSynth();
@@ -592,7 +608,7 @@ void UTN_TurtleFoleyComponent::ResolveSurface(const FVector& FootLocation, doubl
 	const int32 Forced = TNTurtleFoley::GVoiceSurface;
 	if (Forced >= 0 && Forced < NumSurfaces)
 	{
-		TNTurtleFoley::PresetWeights(static_cast<uint8>(Forced), OutWeights);
+		TNTurtleSurface::PresetWeights(static_cast<uint8>(Forced), OutWeights);
 		FMemory::Memcpy(LastSurface, OutWeights, sizeof(LastSurface));
 		return;
 	}
@@ -605,146 +621,26 @@ void UTN_TurtleFoleyComponent::ResolveSurface(const FVector& FootLocation, doubl
 	LastProbeTime = Now;
 	LastProbeLocation = FootLocation;
 
+	// Traza compleja desde el centro de la tortuga hasta algo por debajo del pie y la superficie de lo que toque
+	// (biomas del mapa, estructuras, nombres, agua poco profunda): TNTurtleSurface, la misma que usan el arrastre del
+	// panzazo y su polvo.
 	float W[NumSurfaces];
-	TNTurtleFoley::PresetWeights(TNTurtleFoley::PresetUnknown, W);
-
 	UWorld* CompWorld = GetWorld();
 	const AActor* OwnerActor = GetOwner();
-	FHitResult Hit;
-	bool bHit = false;
 	if (CompWorld && OwnerActor)
 	{
-		// Compleja y con el índice de la cara: en las mallas del mapa procedural, la sección dice si es madera o piedra.
-		FCollisionQueryParams Query(SCENE_QUERY_STAT(TNTurtleFoleySurface), true, OwnerActor);
-		Query.bReturnFaceIndex = true;
-		const FVector TraceStart = OwnerActor->GetActorLocation();
-		const FVector TraceEnd = FootLocation - FVector(0.0, 0.0, 60.0);
-		bHit = CompWorld->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, Query);
+		TNTurtleSurface::Probe(CompWorld, OwnerActor, OwnerActor->GetActorLocation(), FootLocation, FindGenerator(Now),
+			&NameSurfaceCache, W);
 	}
-	const UPrimitiveComponent* HitComp = bHit ? Hit.GetComponent() : nullptr;
-	const AActor* HitActor = bHit ? Hit.GetActor() : nullptr;
-
-	ATN_ProcMapGenerator* Gen = FindGenerator(Now);
-	const bool bMap = Gen && Gen->IsMapReady() && Gen->GetLayout().bValid;
-	if (bMap && (!bHit || HitActor == Gen))
+	else
 	{
-		const FVector Point = bHit ? FVector(Hit.ImpactPoint) : FootLocation;
-		const FTransform MapXf = Gen->GetActorTransform();
-		const double TerrainZ = static_cast<double>(Gen->GetTerrainHeightAt(Point));
-		if (HitComp && HitComp->IsA<UStaticMeshComponent>())
-		{
-			// Piedras y restos sueltos del decorado del mapa: por sus nombres (roca si no dicen nada).
-			TNTurtleFoley::PresetWeights(ClassifyByNames(HitComp), W);
-		}
-		else if (HitComp && FMath::Abs(Point.Z - TerrainZ) > 35.0)
-		{
-			// Estructura (puentes, torres, adarves): la sección 1 son los tablones; el resto, piedra o hierro pintado.
-			int32 Section = 0;
-			HitComp->GetMaterialFromCollisionFaceIndex(Hit.FaceIndex, Section);
-			TNTurtleFoley::PresetWeights(static_cast<uint8>(Section == 1 ? TNTurtleFoley::Surface::Wood : TNTurtleFoley::Surface::Rock), W);
-		}
-		else
-		{
-			// Terreno: la mezcla de biomas del sitio y, en las pendientes, roca (el terreno se pinta de roca en los taludes).
-			const FVector MapPoint = MapXf.InverseTransformPosition(Point);
-			double BiomeW[TNProcMap::NumBiomes];
-			Gen->GetLayout().BiomeWeightsAt(FVector2D(MapPoint.X, MapPoint.Y), BiomeW);
-			float Sum = 0.f;
-			for (int32 s = 0; s < NumSurfaces; ++s) { W[s] = 0.f; }
-			for (int32 b = 0; b < TNProcMap::NumBiomes; ++b)
-			{
-				const float BW = static_cast<float>(BiomeW[b]);
-				Sum += BW;
-				for (int32 s = 0; s < NumSurfaces; ++s) { W[s] += BW * TNTurtleFoley::BiomeSurface[b][s]; }
-			}
-			if (Sum <= 1e-3f)
-			{
-				TNTurtleFoley::PresetWeights(static_cast<uint8>(TNTurtleFoley::Surface::Sand), W);
-				Sum = 1.f;
-			}
-			if (bHit)
-			{
-				const float Steep = TNTurtleFoley::SmoothStep01((0.9f - static_cast<float>(Hit.ImpactNormal.Z)) / 0.2f) * 0.8f;
-				for (int32 s = 0; s < NumSurfaces; ++s) { W[s] = FMath::Lerp(W[s], TNTurtleFoley::SlopeRock[s] * Sum, Steep); }
-			}
-
-			// Agua poco profunda: pisando terreno que queda por debajo del nivel del agua del mapa (mar, lagunas y río
-			// comparten nivel). Solo en el terreno: un puente o una estructura no chapotean.
-			const double FootMapZ = MapXf.InverseTransformPosition(FootLocation).Z;
-			const double GroundMapZ = MapXf.InverseTransformPosition(FVector(Point.X, Point.Y, TerrainZ)).Z;
-			const float Depth = static_cast<float>((TNProcMap::SeaLevel - FootMapZ) * MapXf.GetScale3D().Z);
-			if (Depth > 2.f && GroundMapZ < TNProcMap::SeaLevel)
-			{
-				const float Wet = FMath::Clamp(0.35f + Depth / 20.f, 0.f, 1.f);
-				for (int32 s = 0; s < NumSurfaces; ++s)
-				{
-					const float WaterW = s == TNTurtleFoley::Surface::Water ? Sum : 0.f;
-					W[s] = FMath::Lerp(W[s], WaterW, Wet);
-				}
-			}
-		}
-	}
-	else if (bHit)
-	{
-		// Encima de otra tortuga: su caparazón suena hueco, como un tablón.
-		const uint8 Preset = Cast<ATortugaCharacter>(HitActor) ? static_cast<uint8>(TNTurtleFoley::Surface::Wood) : ClassifyByNames(HitComp);
-		TNTurtleFoley::PresetWeights(Preset, W);
-	}
-
-	// Normalizados (sin datos, roca).
-	float Total = 0.f;
-	for (int32 s = 0; s < NumSurfaces; ++s)
-	{
-		W[s] = FMath::Max(0.f, W[s]);
-		Total += W[s];
-	}
-	if (Total <= 1e-4f)
-	{
-		TNTurtleFoley::PresetWeights(TNTurtleFoley::PresetUnknown, W);
-		Total = 1.f;
+		TNTurtleSurface::PresetWeights(TNTurtleSurface::PresetUnknown, W);
 	}
 	for (int32 s = 0; s < NumSurfaces; ++s)
 	{
-		OutWeights[s] = W[s] / Total;
-		LastSurface[s] = OutWeights[s];
+		OutWeights[s] = W[s];
+		LastSurface[s] = W[s];
 	}
-}
-
-uint8 UTN_TurtleFoleyComponent::ClassifyByNames(const UPrimitiveComponent* Comp)
-{
-	if (!Comp) { return TNTurtleFoley::PresetUnknown; }
-	const TObjectKey<UPrimitiveComponent> Key(Comp);
-	if (const uint8* Found = NameSurfaceCache.Find(Key))
-	{
-		return *Found;
-	}
-	if (NameSurfaceCache.Num() > 256) { NameSurfaceCache.Reset(); }
-
-	FString Names = Comp->GetName();
-	if (const AActor* CompOwner = Comp->GetOwner())
-	{
-		Names += TEXT(" ");
-		Names += CompOwner->GetClass()->GetName();
-		Names += TEXT(" ");
-		Names += CompOwner->GetName();
-	}
-	if (const UStaticMeshComponent* MeshComp = Cast<UStaticMeshComponent>(Comp))
-	{
-		if (const UStaticMesh* MeshAsset = MeshComp->GetStaticMesh())
-		{
-			Names += TEXT(" ");
-			Names += MeshAsset->GetName();
-		}
-	}
-	if (const UMaterialInterface* Material = Comp->GetMaterial(0))
-	{
-		Names += TEXT(" ");
-		Names += Material->GetName();
-	}
-	Names.ToLowerInline();
-	const uint8 Preset = TNTurtleFoley::PresetFromNames(Names);
-	NameSurfaceCache.Add(Key, Preset);
-	return Preset;
 }
 
 ATN_ProcMapGenerator* UTN_TurtleFoleyComponent::FindGenerator(double Now)
@@ -752,14 +648,7 @@ ATN_ProcMapGenerator* UTN_TurtleFoleyComponent::FindGenerator(double Now)
 	if (!Generator.IsValid() && Now >= NextGeneratorLookup)
 	{
 		NextGeneratorLookup = Now + 2.0;
-		if (UWorld* CompWorld = GetWorld())
-		{
-			for (TActorIterator<ATN_ProcMapGenerator> It(CompWorld); It; ++It)
-			{
-				Generator = *It;
-				break;
-			}
-		}
+		Generator = TNTurtleSurface::FindGenerator(GetWorld());
 	}
 	return Generator.Get();
 }
@@ -833,10 +722,12 @@ void UTN_TurtleFoleyComponent::ShowDebug(const TNTurtleFoley::FTurtleState& Fram
 	{
 		CoughText = FString::Printf(TEXT(" · tos %.2f%s"), CoughComp->GetSeverity(), CoughComp->IsActive() ? TEXT(" sonando") : TEXT(""));
 	}
-	const FString Text = FString::Printf(TEXT("[Voz] %s%s · %.0f cm/s%s · pasos: %s · %s· estamina %.0f%% · jadeo %.2f%s%s%s"),
+	const FString DragText = DragSent > 0.f ? FString::Printf(TEXT(" · arrastre %.2f"), DragSent)
+		: (Frame.bBellyPose ? FString(TEXT(" · panzazo")) : FString());
+	const FString Text = FString::Printf(TEXT("[Voz] %s%s · %.0f cm/s%s · pasos: %s · %s· estamina %.0f%% · jadeo %.2f%s%s%s%s"),
 		*GetNameSafe(GetOwner()), Frame.bLocal ? TEXT(" (local)") : TEXT(""), Frame.Speed, Frame.bRunGait ? TEXT(" corriendo") : TEXT(""),
 		bLastStepFromBones ? TEXT("huesos") : TEXT("reloj"), *SurfaceText, Frame.Stamina * 100.f, PantSent,
-		Frame.bCoughing ? TEXT(" (callado: tose)") : TEXT(""), *CoughText, IsActive() ? TEXT(" · sintetizador en marcha") : TEXT(""));
+		Frame.bCoughing ? TEXT(" (callado: tose)") : TEXT(""), *CoughText, *DragText, IsActive() ? TEXT(" · sintetizador en marcha") : TEXT(""));
 	GEngine->AddOnScreenDebugMessage(static_cast<uint64>(GetUniqueID()) + 0x7A11F00Dull, 0.f, Frame.bLocal ? FColor::Cyan : FColor::Silver, Text);
 }
 
@@ -960,6 +851,27 @@ namespace TNTurtleFoley
 		UE_LOG(LogTortunabo, Log, TEXT("[TurtleFoley] Jadeo de prueba: %s."),
 			Mode == 0 ? TEXT("apagado (manda la estamina)") : (Mode == 1 ? TEXT("suave") : TEXT("agotada")));
 	}
+
+	/** TN.Voice.Drag <0|1|2>: arrastre de prueba en el sitio en la tortuga local. */
+	static void RunDragCommand(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		const int32 Mode = Args.Num() > 0 ? FMath::Clamp(FCString::Atoi(*Args[0]), 0, 2) : 2;
+		UTN_TurtleFoleyComponent* Foley = FindLocalFoley(InWorld);
+		if (!Foley)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[TurtleFoley] TN.Voice.Drag: no hay tortuga local o esta máquina no tiene audio."));
+			return;
+		}
+		Foley->SetDebugDrag(Mode);
+		UE_LOG(LogTortunabo, Log, TEXT("[TurtleFoley] Arrastre de prueba: %s."),
+			Mode == 0 ? TEXT("apagado (manda el panzazo)") : (Mode == 1 ? TEXT("lento") : TEXT("rápido")));
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs DragCommand(
+		TEXT("TN.Voice.Drag"),
+		TEXT("Arrastre del panzazo de prueba en el sitio en la tortuga local: 0 = apagado (manda el panzazo), 1 = lento, 2 = rápido. La superficie es la de debajo (o TN.Voice.Surface)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunDragCommand),
+		ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs StepsCommand(
 		TEXT("TN.Voice.Steps"),
