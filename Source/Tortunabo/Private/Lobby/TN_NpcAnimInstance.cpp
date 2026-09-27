@@ -3,6 +3,7 @@
 #include "Animation/AnimSequence.h"
 #include "BonePose.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
 
 namespace TNNpcAnim
 {
@@ -132,6 +133,16 @@ void UTN_NpcAnimInstance::ReturnToIdleOn(USkeletalMeshComponent* Mesh, UAnimatio
 {
 	if (!Mesh || !Idle || Cast<UTN_NpcAnimInstance>(Mesh->GetAnimInstance())) { return; }
 	Mesh->PlayAnimation(Idle, true);
+}
+
+void UTN_NpcAnimInstance::PreviewInEditor(USkeletalMeshComponent* Mesh, UAnimationAsset* Idle)
+{
+#if WITH_EDITOR
+	const UWorld* World = Mesh ? Mesh->GetWorld() : nullptr;
+	if (!World || World->WorldType != EWorldType::Editor || !Idle) { return; }
+	Mesh->SetUpdateAnimationInEditor(true);
+	SetupOn(Mesh, Idle);
+#endif
 }
 
 float UTN_NpcAnimInstance::GetGestureTimeLeft() const

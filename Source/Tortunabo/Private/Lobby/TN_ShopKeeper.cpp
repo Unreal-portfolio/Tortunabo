@@ -247,6 +247,8 @@ void ATN_ShopKeeper::BuildVisuals()
 	Keeper->SetRelativeScale3D(FVector(KeeperScale));
 	Sign->SetText(FText::FromString(ShopName.ToString().ToUpper()));
 	UTN_CosmeticLook::ApplyLook(this, Keeper, KeeperHat, KeeperLook, KeeperDefaults);
+	// En el editor, el tendero en su espera (no en T).
+	UTN_NpcAnimInstance::PreviewInEditor(Keeper, IdleAnim);
 	BuildStall();
 	// El puesto crece alrededor del tendero (que se queda detrás del mostrador): malla, choques, cartel y aviso.
 	const double S = StallScale;

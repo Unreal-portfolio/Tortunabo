@@ -64,6 +64,9 @@ public:
 	/** Vuelve a la espera: con esta animación no hace falta (el gesto sale solo); si no, PlayAnimation de Idle. */
 	static void ReturnToIdleOn(USkeletalMeshComponent* Mesh, UAnimationAsset* Idle);
 
+	/** En el mundo del editor (sin jugar), pone a Mesh en su espera animada en vez de en la postura en T. */
+	static void PreviewInEditor(USkeletalMeshComponent* Mesh, UAnimationAsset* Idle);
+
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 	virtual void DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy) override;

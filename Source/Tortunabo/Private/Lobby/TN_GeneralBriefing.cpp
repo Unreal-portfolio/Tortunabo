@@ -221,6 +221,8 @@ void ATN_GeneralBriefing::OnConstruction(const FTransform& Transform)
 	General->SetRelativeScale3D(FVector(GeneralScale));
 	FitSignText();
 	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
+	// En el editor, el general en su espera (no en T).
+	UTN_NpcAnimInstance::PreviewInEditor(General, IdleAnim);
 	BuildTable();
 }
 
@@ -232,6 +234,7 @@ void ATN_GeneralBriefing::PostRegisterAllComponents()
 	if (!IsTemplate() && GetWorld() && GetWorld()->WorldType == EWorldType::Editor && Table && !Table->GetStaticMesh())
 	{
 		UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
+		UTN_NpcAnimInstance::PreviewInEditor(General, IdleAnim);
 		BuildTable();
 	}
 #endif
