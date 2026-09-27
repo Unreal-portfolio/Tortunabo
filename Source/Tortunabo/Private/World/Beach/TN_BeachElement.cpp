@@ -8,6 +8,9 @@ ATN_BeachElement::ATN_BeachElement()
 {
 	bReplicates = true;
 	SetReplicateMovement(false);
+	// Relevante en toda la playa (1200 m): si no, a 150 m (lo de serie) los clientes destruyen el elemento y lo vuelven
+	// a crear, con su malla, cada vez que alguien se aleja y vuelve.
+	SetNetCullDistanceSquared(FMath::Square(160000.0f));
 	PrimaryActorTick.bCanEverTick = false;
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
 }

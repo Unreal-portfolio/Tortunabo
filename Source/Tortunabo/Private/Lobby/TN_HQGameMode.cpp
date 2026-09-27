@@ -8,6 +8,7 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "Engine/World.h"
 #include "UObject/Package.h"
+#include "Misc/PackageName.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/Character.h"
@@ -44,6 +45,9 @@ void ATN_HQGameMode::BeginPlay()
 	{
 		TNGI->LobbyReturnMapPath = UWorld::RemovePIEPrefix(GetWorld()->GetOutermost()->GetName());
 		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Lobby de vuelta: %s"), *TNGI->LobbyReturnMapPath);
+		// El modo lo elige el anfitrión en el menú principal (o «Cambiar de modo» al acabar la carrera) y vive en su
+		// GameInstance: el castillo no tiene selector.
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo de la próxima partida: %s"), *UEnum::GetValueAsString(TNGI->SelectedProcMode));
 	}
 	EnsureFallbackPlayerStart();
 	SpawnLobbyShops();
@@ -344,12 +348,14 @@ void ATN_HQGameMode::BeginMatchTravel()
 		GI->PendingTravelPlayerCount = ConnectedCount;
 		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
 
-		// ── Modo elegido en el lobby: Clásico → LVL_Run; el resto → mapa procedural ──
+		// ── Modo (menú principal o selector del lobby viejo): Carrera → playa; Clásico → LVL_Run; el resto → mapa procedural ──
+		bool bProcMapRace = false;
 		if (GI->SelectedProcMode == ETNProcGameMode::TwoVsTwo && ConnectedCount != 4)
 		{
-			// El selector ya lo impide, pero alguien pudo salir durante la cuenta atrás.
+			// El selector ya lo impide, pero alguien pudo salir durante la cuenta atrás. Sigue en el mapa procedural.
 			UE_LOG(LogTortunabo, Warning, TEXT("[HQGameMode] 2vs2 exige 4 jugadores (hay %d) → Carrera."), ConnectedCount);
 			GI->SelectedProcMode = ETNProcGameMode::Race;
+			bProcMapRace = true;
 		}
 		// ── Cómo se pusieron listos (sala de la puerta doble o huevos): así se sale en el mapa procedural ──
 		// Antes de destruir los peones; sin castillo (maqueta vieja), la puerta doble.
@@ -359,8 +365,19 @@ void ATN_HQGameMode::BeginMatchTravel()
 			GI->PendingStartStyle = It->GetStartStyle();
 			break;
 		}
-		if (GI->SelectedProcMode != ETNProcGameMode::Classic)
+		const bool bBeachRace = GI->SelectedProcMode == ETNProcGameMode::Race && !bProcMapRace;
+		if (bBeachRace && FPackageName::DoesPackageExist(BeachRaceMapPath))
 		{
+			// Carrera: todos contra todos en la playa (ATN_BeachRaceGameMode, Docs/Modo_Carrera.md).
+			TravelURL = BeachRaceMapPath;
+		}
+		else if (GI->SelectedProcMode != ETNProcGameMode::Classic)
+		{
+			if (bBeachRace)
+			{
+				UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode] No existe %s (se crea con Scripts/build_beach_race.py): la carrera se juega en el mapa procedural."),
+					*BeachRaceMapPath);
+			}
 			// También en la URL: la lee ATN_ProcMapGameMode y sustituye a la del viaje anterior.
 			TravelURL = ProcMapPath + (GI->PendingStartStyle == ETNMatchStartStyle::Eggs ? TEXT("?ProcStart=Eggs") : TEXT("?ProcStart=Gate"));
 		}

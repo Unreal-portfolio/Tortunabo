@@ -509,6 +509,14 @@ void UMP_GameInstance::HostSession()
 	Sessions->CreateSession(0, NAME_GameSession, Settings);
 }
 
+void UMP_GameInstance::HostSessionWithMode(ETNProcGameMode Mode)
+{
+	// Desde el menú solo hay dos modos; el lobby lo lee de aquí al viajar (ATN_HQGameMode::BeginMatchTravel).
+	SelectedProcMode = Mode == ETNProcGameMode::Race ? ETNProcGameMode::Race : ETNProcGameMode::Coop;
+	UE_LOG(LogTortunabo, Log, TEXT("[MP] Crear partida en modo %s."), *UEnum::GetValueAsString(SelectedProcMode));
+	HostSession();
+}
+
 void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
 {
 	IOnlineSessionPtr Sessions = GetSessionInterface();

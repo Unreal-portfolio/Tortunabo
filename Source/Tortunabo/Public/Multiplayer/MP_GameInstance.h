@@ -62,6 +62,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void HostSession();
 
+	/**
+	 * @brief Crear partida desde el menú principal con el modo elegido: Cooperativo (lobby del castillo y mapa
+	 *        procedural) o Carrera (todos contra todos en la playa). Lo guarda en SelectedProcMode y llama a HostSession.
+	 * @note  Solo Coop y Race: cualquier otro valor cuenta como Coop. Unirse no toca el modo (lo decide el anfitrión).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
+	void HostSessionWithMode(ETNProcGameMode Mode);
+
 	/** @brief Busca sesiones públicas y se une a la primera disponible. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void FindAndJoinSession();
@@ -244,10 +252,11 @@ public:
 	int32 PendingTravelPlayerCount = 0;
 
 	/**
-	 * Modo elegido en el lobby (ATN_ProcModeSelector). Classic = LVL_Run de siempre
-	 * (ChunkManager); el resto viaja a LVL_ProcMap. Vive en la GameInstance del host
-	 * para sobrevivir al travel; los clientes lo ven por el selector replicado. Por defecto,
-	 * el cooperativo del mapa procedural (el lobby del castillo no tiene selector).
+	 * Modo de la partida. Lo elige el anfitrión en el menú principal (HostSessionWithMode: Coop o Race); en el lobby
+	 * viejo (LVL_HQ), también ATN_ProcModeSelector. Vive en la GameInstance del host para sobrevivir a los viajes y
+	 * ATN_HQGameMode lo lee al salir del lobby: Race → LVL_BeachRace (carrera en la playa); Classic → LVL_Run de
+	 * siempre (ChunkManager); el resto → LVL_ProcMap. «Cambiar de modo» al acabar la carrera lo pasa a Coop. Por
+	 * defecto, el cooperativo del mapa procedural (el lobby del castillo no tiene selector).
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
 	ETNProcGameMode SelectedProcMode = ETNProcGameMode::Coop;

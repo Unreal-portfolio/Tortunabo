@@ -22,8 +22,10 @@ juego (Coop, Carrera y 2vs2). **Convive** con el sistema de chunks
    `LVL_HQ` dos selectores (modo y dificultad) junto a la zona de listos.
    Es idempotente: no pisa assets que ya existan.
 3. Desde el lobby: interactúa con los selectores (Clásico → Coop → Carrera → 2vs2;
-   Fácil → Normal → Difícil). *Clásico* viaja a `LVL_Run` como siempre; el resto a
-   `LVL_ProcMap`. El modo por defecto es Clásico para no cambiar nada hasta que se elija.
+   Fácil → Normal → Difícil). *Clásico* viaja a `LVL_Run` como siempre; *Carrera*, a la playa (`LVL_BeachRace`,
+   `Docs/Modo_Carrera.md`; si ese nivel no existe, a `LVL_ProcMap`); el resto a `LVL_ProcMap`. En el castillo
+   (`LVL_Lobby`) no hay selectores: el modo se elige en el menú principal. El modo por defecto es Clásico para no
+   cambiar nada hasta que se elija.
 4. Sin lobby: abre `LVL_ProcMap` en PIE. Opciones de URL para iterar:
    `open LVL_ProcMap?ProcMode=Race?ProcDifficulty=Hard?ProcSeed=42`
    (`ProcMode` = `Coop` | `Race` | `2v2`). También `FixedSeed` en el GameMode.

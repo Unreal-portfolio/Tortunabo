@@ -84,9 +84,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
 	FString MatchMapPath = TEXT("/Game/Maps/Run/LVL_Run");
 
-	/** Nivel del mapa procedural (Coop / Carrera / 2vs2 elegidos con ATN_ProcModeSelector). */
+	/** Nivel del mapa procedural (Coop y 2vs2; también la Carrera si aún no existe la playa). */
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
 	FString ProcMapPath = TEXT("/Game/Maps/Run/LVL_ProcMap");
+
+	/** Nivel de la carrera en la playa (modo Carrera elegido en el menú principal; ATN_BeachRaceGameMode). */
+	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
+	FString BeachRaceMapPath = TEXT("/Game/Maps/Run/LVL_BeachRace");
 
 private:
 	/**

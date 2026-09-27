@@ -532,8 +532,11 @@ namespace TNLoadingRounds
 		const ATN_CoopGameState* RoundState = GetRoundState(World);
 		if (!RoundState)
 		{
-			// Cliente con el GameState aún en camino en el mapa procedural: se espera a saber en qué punto está la ronda.
-			return (!World->GetGameState() && World->GetMapName().Contains(TEXT("ProcMap"))) ? EGate::Waiting : EGate::None;
+			// Cliente con el GameState aún en camino en un mapa de rondas (procedural o playa de la carrera): se espera a
+			// saber en qué punto está la ronda.
+			const FString RoundMap = World->GetMapName();
+			return (!World->GetGameState() && (RoundMap.Contains(TEXT("ProcMap")) || RoundMap.Contains(TEXT("BeachRace"))))
+				? EGate::Waiting : EGate::None;
 		}
 		if (IsRoundLive(RoundState))
 		{
@@ -606,7 +609,7 @@ FString UTN_LoadingScreenSubsystem::FriendlyStatusForMap(const FString& MapName)
 	{
 		return TEXT("Rumbo al cuartel");
 	}
-	if (MapName.Contains(TEXT("ProcMap")) || MapName.Contains(TEXT("LVL_Run")))
+	if (MapName.Contains(TEXT("ProcMap")) || MapName.Contains(TEXT("LVL_Run")) || MapName.Contains(TEXT("BeachRace")))
 	{
 		return TEXT("Incubando la partida");
 	}
