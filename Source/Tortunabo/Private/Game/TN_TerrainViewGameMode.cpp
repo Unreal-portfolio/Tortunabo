@@ -5,6 +5,8 @@
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 #include "EngineUtils.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
@@ -71,8 +73,13 @@ void ATN_TerrainViewGameMode::Regenerate(int32 Seed)
 	const int32 UseSeed = Seed != 0 ? Seed : FMath::RandRange(1, 999999);
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
-		if (APlayerController* PC = It->Get()) { Waiting.AddUnique(PC); }
+		APlayerController* PC = It->Get();
+		if (!PC) { continue; }
+		Waiting.AddUnique(PC);
+		// El terreno de antes desaparece: quieta hasta que PollReady la lleve a la salida del nuevo.
+		if (const ACharacter* Character = Cast<ACharacter>(PC->GetPawn())) { Character->GetCharacterMovement()->DisableMovement(); }
 	}
+	ReadySince = -1.0;
 	Gen->ServerGenerate(UseSeed, Mode, Difficulty);
 	UE_LOG(LogTortunabo, Log, TEXT("[Terreno] Generando el mapa de solo terreno con la semilla %d."), UseSeed);
 	GetWorldTimerManager().SetTimer(PollTimer, this, &ATN_TerrainViewGameMode::PollReady, 0.25f, true);
@@ -95,6 +102,12 @@ void ATN_TerrainViewGameMode::PollReady()
 {
 	const ATN_ProcMapGenerator* Gen = Generator.Get();
 	if (!Gen || !Gen->IsMapReady() || Gen->GetBuiltGeneration() != Gen->GetRequestedGeneration()) { return; }
+	// La colisión del terreno se cocina en segundo plano: nadie aparece hasta que hay suelo bajo la salida (como mucho
+	// 10 s con el mapa hecho). Si no, la tortuga cae a través del terreno y muere de la caída.
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (ReadySince < 0.0) { ReadySince = Now; }
+	if (Now - ReadySince < 10.0 && !Gen->MapCollisionUnder(Gen->GetStartTransform(0).GetLocation())) { return; }
+	ReadySince = -1.0;
 	GetWorldTimerManager().ClearTimer(PollTimer);
 	int32 Index = 0;
 	for (const TWeakObjectPtr<APlayerController>& Weak : Waiting)
@@ -106,6 +119,7 @@ void ATN_TerrainViewGameMode::PollReady()
 		{
 			Pawn->TeleportTo(Start.GetLocation(), Start.Rotator(), false, true);
 			PC->ClientSetRotation(Start.Rotator());
+			if (const ACharacter* Character = Cast<ACharacter>(Pawn)) { Character->GetCharacterMovement()->SetMovementMode(MOVE_Falling); }
 		}
 		else
 		{

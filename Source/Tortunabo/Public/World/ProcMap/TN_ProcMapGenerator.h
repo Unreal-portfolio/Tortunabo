@@ -113,6 +113,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ProcMap")
 	FTransform GetStartTransform(int32 PlayerIndex) const;
 
+	/** Si hay colisión del mapa (terreno o estructuras) bajo un punto: la del terreno se cocina en segundo plano. */
+	bool MapCollisionUnder(const FVector& WorldLocation) const;
+
 	/**
 	 * Estructura de salida (puerta doble o huevos, ATN_ProcStartStructure) que el servidor pone al fondo del claro de
 	 * salida en cada generación. La pide el GameMode de la partida antes de generar; si nadie la pide (solo terreno,
@@ -261,8 +264,6 @@ private:
 	/** Detalle fino (DetailSpacing) de los cuadrados del mallado que lo necesitan: lo dibujado y su colisión. */
 	TNProcMap::FTerrainDetail TerrainDetail;
 
-	/** Si hay colisión del mapa (terreno o estructuras) bajo un punto: la del terreno se cocina en segundo plano. */
-	bool MapCollisionUnder(const FVector& WorldLocation) const;
 	/** Desde cuándo (s) está el mapa listo esperando a que haya suelo bajo el pawn local (-1 = no espera). */
 	double ReadySince = -1.0;
 
