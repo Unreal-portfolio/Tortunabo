@@ -33,7 +33,7 @@ from terrain_vol.mesh import z_levels
 
 VARIANTS = Path(__file__).resolve().parent / "terrain_volumes" / "Variants"
 RESEED_STEP = 1000
-MAX_TRIES = 3
+MAX_TRIES = 10           # con 3, 18 de los 30 del catalogo salian no recorribles o sin camino
 
 
 def walk_with_links(standable: np.ndarray, start: tuple[int, int, int], links) -> np.ndarray:
@@ -75,13 +75,20 @@ def check(model: PathModel, chunks) -> dict:
 
 def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
     t0 = time.time()
+    model = None
     for attempt in range(MAX_TRIES):
         used = seed + attempt * RESEED_STEP
-        model = PathModel(used, style)
+        try:
+            model = PathModel(used, style)
+        except RuntimeError as exc:                 # sin camino principal valido con esta semilla
+            print(f"{name}: semilla {used} descartada ({exc})", flush=True)
+            continue
         chunks = build_all(model, grid=GRID)
         result = check(model, chunks)
         if result["ok"]:
             break
+    if model is None:
+        raise RuntimeError(f"ninguna de las {MAX_TRIES} semillas da un camino principal valido")
     top = global_top(chunks, grid=GRID)
     s_ij, e_ij = world_index(model.start), world_index(model.end)
     out = VARIANTS / name
