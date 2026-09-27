@@ -5,7 +5,24 @@
 #include "Player/TN_ProcAnimInstance.h"
 #include "TN_TurtleAnimInstance.generated.h"
 
+class AActor;
 class UAnimSequence;
+
+/**
+ * Poses de celebración del podio del modo carrera (ATN_RacePodiumStage), accesibles desde fuera del personaje
+ * (UTN_TurtleAnimInstance::SetCelebration). Bucles cortos, como un GIF.
+ */
+UENUM(BlueprintType)
+enum class ETNTurtleCelebration : uint8
+{
+	None          UMETA(DisplayName = "Ninguna"),
+	/** Levanta la concha como un trofeo con las dos manos, dando saltitos. */
+	Trophy        UMETA(DisplayName = "Trofeo"),
+	/** Hombros caídos, cabeza gacha, un suspiro y niega despacio con la cabeza. */
+	Disappointed  UMETA(DisplayName = "Decepcionada"),
+	/** Sentada en el suelo, enfadadísima: patalea, aporrea el suelo con los puños y sacude la cabeza. */
+	Tantrum       UMETA(DisplayName = "Pataleta")
+};
 
 /**
  * Estado de la tortuga que el hilo de juego pasa cada fotograma a la evaluación de la pose (que puede correr en otro
@@ -59,6 +76,17 @@ struct FTNTurtleAnimFrame
 	/** Levantarse del derribo: peso de la pose del suelo (1 → 0) y del empujón de brazos y rodillas (sube y baja). */
 	float GetUpW = 0.f;
 	float GetUpFlex = 0.f;
+	/** Celebración del podio (modo carrera): pose, segundos que lleva (bucle) y peso (entra y sale suave). */
+	ETNTurtleCelebration Celebration = ETNTurtleCelebration::None;
+	float CelebrationTime = 0.f;
+	float CelebrationW = 0.f;
+	/**
+	 * Zambullida de cabeza desde el acantilado de la meta (modo carrera): peso, segundos en el aire y giro del cuerpo
+	 * hacia delante (grados: 90 = tumbada en horizontal, 180 = cabeza abajo en vertical).
+	 */
+	float CliffDiveW = 0.f;
+	float CliffDiveTime = 0.f;
+	float CliffDivePitch = 0.f;
 };
 
 /** Evaluación en C++ de la pose de la tortuga (clips de Mixamo y poses procedurales encima). */
@@ -103,6 +131,23 @@ public:
 	 */
 	void BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds);
 
+	/**
+	 * Pose de celebración del podio (modo carrera) encima de todo lo demás: Trofeo, Decepcionada o Pataleta (ver
+	 * ETNTurtleCelebration); None la quita. Al cambiar de una a otra, la anterior sale antes de que entre la nueva. Sirve
+	 * para cualquier malla de tortuga con esta animación, con personaje o sin él (el podio, ATN_RacePodiumStage).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Tortuga|Animación")
+	void SetCelebration(ETNTurtleCelebration InCelebration);
+
+	UFUNCTION(BlueprintPure, Category = "Tortuga|Animación")
+	ETNTurtleCelebration GetCelebration() const { return WantedCelebration; }
+
+	/** Segundos que lleva la celebración en curso (para acompasar la cara y los efectos con su bucle). */
+	float GetCelebrationTime() const { return Frame.CelebrationTime; }
+
+	/** true mientras se zambulle de cabeza desde el acantilado de la meta (modo carrera). */
+	bool IsCliffDiving() const { return bCliffDive; }
+
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 	virtual void DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy) override;
@@ -134,4 +179,15 @@ private:
 	float GetUpElapsed = 0.f;
 	float GetUpDuration = 0.f;
 	bool bGetUpPoseSent = false;
+
+	/** Celebración pedida con SetCelebration (la del proxy cambia cuando la anterior ya ha salido). */
+	ETNTurtleCelebration WantedCelebration = ETNTurtleCelebration::None;
+
+	/** Zambullida del acantilado: activa, cayendo en el fotograma anterior y segundos desde que empezó la caída. */
+	bool bCliffDive = false;
+	bool bWasFallingForDive = false;
+	float FallElapsed = 0.f;
+	/** Generador de la playa que dice dónde está el borde del acantilado y cuándo volver a buscarlo. */
+	TWeakObjectPtr<AActor> CliffZoneSource;
+	double NextCliffZoneLookup = 0.0;
 };

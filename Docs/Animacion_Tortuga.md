@@ -20,7 +20,8 @@ La evaluación (`FTNTurtleAnimProxy::Evaluate`, que puede correr fuera del hilo 
    piernas estiradas; el personaje ya tumba la malla) y arrastrándose sobre la tripa (ver «Panzazo: arrastre sobre la
    tripa»), nado (brazada y patada), llevar a otra tortuga en alto, ser llevada (patalea), tumbada (floja y con la
    cabeza caída) y los emotes 0-8 (saludar, aplauso, helicóptero, palmada potente, aplaudir, baile irlandés, flotar,
-   señalar y modo loco).
+   señalar y modo loco). Encima de todas, las del modo carrera: la zambullida de cabeza desde el acantilado de la meta
+   y las celebraciones del podio (ver «Modo carrera: celebraciones del podio y zambullida»).
 4. **Capas encima:** inclinación hacia delante al correr y hacia dentro en las curvas, cansancio (se encorva y
    jadea), el golpe de brazos al lanzar y el caparazón: cabeza, brazos y patas encogen hacia el cuerpo y el cuerpo
    baja al suelo. Con caparazón físico (`bShellBody`, ver abajo) el cuerpo **no** baja: la malla ya va tumbada sobre la
@@ -246,12 +247,48 @@ la cabeza: aparecen con un saltito, resbalan y se encogen. Una cansada (cada 1,7
 - `tn.Face.Tongue 0|1|2|3`: lengua dentro, al viento (como al esprintar), colgando o asomando la punta (-1 = la real).
 - `tn.Face.Talk 1`: todas las tortugas mueven la boca como si hablaran.
 
+## Modo carrera: celebraciones del podio y zambullida
+
+### Celebraciones (`SetCelebration`)
+
+`UTN_TurtleAnimInstance::SetCelebration(ETNTurtleCelebration)` (también desde Blueprint; `GetCelebration`,
+`GetCelebrationTime`) pone una pose encima de todo lo demás, con peso que entra y sale suave (6/s). Si se pide otra,
+la que había sale del todo antes de que entre la nueva. Funciona con personaje o sin él: el podio de la pantalla del
+campeón (`ATN_RacePodiumStage`, `Docs/Modo_Carrera.md`) usa esta animación en mallas sueltas de `TotugaDemo_Rig`, sin
+peón (todo lo demás se queda en reposo). Cada una es un bucle exacto, como un GIF:
+
+| Pose | Bucle | Qué hace |
+|---|---|---|
+| `Trophy` (la primera) | 1,6 s | Los dos brazos arriba con los codos hacia dentro y las manos juntas sobre la cabeza (donde el podio pone la concha, entre `LeftHand` y `RightHand`); dos saltitos por vuelta en los que estira los brazos para subirla y dobla las rodillas al caer; el pecho fuera, la cabeza mirando la concha y un meneo de lado a lado. |
+| `Disappointed` (la segunda) | 3,2 s | Hombros caídos (clavículas `LeftShoulder`/`RightShoulder` abajo), brazos colgando flojos algo por delante, espalda encorvada y cabeza gacha. Coge aire (0-0,9 s: el pecho y la cabeza suben), lo suelta de golpe y se hunde más; luego niega despacio con la cabeza y arrastra un pie por la arena. |
+| `Tantrum` (la tercera) | 1,2 s | Sentada: la cadera baja hasta apoyar el culete (la altura de la cadera en la postura de referencia menos 5 unidades; 18 si no es razonable), echada un poco atrás y meciéndose; piernas estiradas al frente, algo abiertas, pataleando alternas (los talones golpean el suelo); puños que aporrean el suelo a los lados, uno y otro; la barbilla arriba gritando y la cabeza sacudiéndose. |
+
+La cara (boca, ojos, colorete) no es de la animación: en el podio la pone `ATN_RacePodiumStage` en `M_TurtleBody`,
+acompasada con `GetCelebrationTime`.
+
+### Zambullida del acantilado de la meta
+
+En la playa del modo carrera la meta es un acantilado (`TNBeach::CliffHeight` = 15,5 m): se salta de cabeza al agua.
+
+- **Cuándo**: si la tortuga despega o empieza a caer y, en los primeros 0,35 s de la caída (`CliffDiveStartWindow`),
+  está en `ATN_BeachRaceGenerator::IsCliffJumpZone` (los últimos 7,5 m de la repisa y el vacío sobre el agua). El
+  generador se busca una vez por animación y se guarda con un puntero débil; si no hay (cualquier otro mapa), se vuelve a
+  buscar cada 5 s y nunca hay zambullida. Se acaba al aterrizar o al nadar, y también si empieza el panzazo, se mete en
+  el caparazón, la derriban o la llevan. Cosmética y local en cada máquina, con el movimiento replicado (sin RPC).
+- **Pose** (`PoseCliffDive`, peso que entra a 9/s y sale a 14/s): cuerpo estirado, brazos por encima de la cabeza
+  cruzando un poco para juntar las manos (tiemblan con el aire), la cabeza entre los brazos con la barbilla algo
+  metida, piernas juntas y estiradas hacia atrás con las puntas de los pies (un leve aleteo). Al final, todo el cuerpo
+  gira hacia delante sobre la cadera (`CliffDivePitch`): sigue la trayectoria, 90° + el ángulo de caída (tumbada en lo
+  alto del salto, cabeza hacia el agua al caer deprisa), entre 40° y 165°, suavizado (4/s). Entra así en el agua.
+- `IsCliffDiving()` dice si está en ella (para el sonido o las salpicaduras, si alguien los quiere).
+
 ## Estado que lee
 
 Del personaje: velocidad, `IsFalling`/`IsSwimming` del movimiento, `IsBellyPoseActive` e `IsBellyOnGround` (el
 panzazo en el aire y sobre la tripa), `IsInShell` (y si el caparazón tiene caja física), `IsKnockedDown`, la pose guardada al levantarse, el emote activo y su tiempo (`GetActiveEmoteIndex`,
 `GetEmoteTime`); del `UTN_CarryComponent`, si lleva o la llevan (al soltar se hace el lanzamiento); del
-`UTN_StaminaComponent`, si está agotada. La cara (`UTN_TurtleFaceComponent`) lee además la estamina, el sprint, la
+`UTN_StaminaComponent`, si está agotada; en la playa del modo carrera, la zona de la zambullida
+(`ATN_BeachRaceGenerator::IsCliffJumpZone`). La celebración del podio la pide quien la use (`SetCelebration`). La cara (`UTN_TurtleFaceComponent`) lee además la estamina, el sprint, la
 velocidad, el giro, el chat rápido y la voz.
 
 ## Para añadir un clip

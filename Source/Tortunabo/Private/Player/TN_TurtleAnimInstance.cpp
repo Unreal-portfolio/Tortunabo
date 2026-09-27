@@ -8,7 +8,10 @@
 #include "BoneContainer.h"
 #include "BonePose.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
 
 namespace TNTurtleAnim
 {
@@ -34,6 +37,9 @@ namespace TNTurtleAnim
 		FCompactPoseBoneIndex Spine2 = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex Neck = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex Head = FCompactPoseBoneIndex(INDEX_NONE);
+		/** Clavículas (hombros): las bajan las celebraciones del podio. */
+		FCompactPoseBoneIndex LShoulder = FCompactPoseBoneIndex(INDEX_NONE);
+		FCompactPoseBoneIndex RShoulder = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex LArm = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex LFore = FCompactPoseBoneIndex(INDEX_NONE);
 		FCompactPoseBoneIndex RArm = FCompactPoseBoneIndex(INDEX_NONE);
@@ -61,6 +67,8 @@ namespace TNTurtleAnim
 		Out.Spine2 = FindBone(Bones, TEXT("Spine2"));
 		Out.Neck = FindBone(Bones, TEXT("Neck"));
 		Out.Head = FindBone(Bones, TEXT("Head"));
+		Out.LShoulder = FindBone(Bones, TEXT("LeftShoulder"));
+		Out.RShoulder = FindBone(Bones, TEXT("RightShoulder"));
 		Out.LArm = FindBone(Bones, TEXT("LeftArm"));
 		Out.LFore = FindBone(Bones, TEXT("LeftForeArm"));
 		Out.RArm = FindBone(Bones, TEXT("RightArm"));
@@ -519,6 +527,189 @@ namespace TNTurtleAnim
 			break;
 		}
 	}
+
+	// ── Modo carrera: celebraciones del podio y zambullida del acantilado de la meta ──
+
+	/** Segundos de cada bucle de celebración: la pose vuelve exactamente al principio al acabar, como un GIF. */
+	constexpr float TrophyLoop = 1.6f;
+	constexpr float DisappointedLoop = 3.2f;
+	constexpr float TantrumLoop = 1.2f;
+
+	/** Unidades de la malla que baja la cadera para sentarse si la postura de referencia no da una altura razonable. */
+	constexpr float SitDropFallback = 18.f;
+
+	/** Zambullida: segundos tras empezar a caer en los que aún puede empezar y giro del cuerpo (grados) mínimo y máximo. */
+	constexpr float CliffDiveStartWindow = 0.35f;
+	constexpr float CliffDiveMinPitch = 40.f;
+	constexpr float CliffDiveMaxPitch = 165.f;
+
+	/**
+	 * Trofeo: los dos brazos arriba con las manos juntas sobre la cabeza sujetando la concha (el podio la pone entre las
+	 * manos), dos saltitos por vuelta en los que estira los brazos para subirla, el pecho fuera, la cabeza mirándola y
+	 * un meneo de lado a lado.
+	 */
+	void PoseTrophy(FCompactPose& P, const FBones& B, float T)
+	{
+		const float Phase = FMath::Fmod(T, TrophyLoop) / TrophyLoop;
+		const float Hop = FMath::Abs(FMath::Sin(Phase * TwoPiF));
+		const float Land = 1.f - Hop;
+		// Brazos arriba (como las palmadas de HAPPIE) con los codos hacia dentro: las manos se juntan sobre la cabeza.
+		Turn(P, B.LArm, AxisY, -(72.f + 12.f * Hop));
+		Turn(P, B.RArm, AxisY, 72.f + 12.f * Hop);
+		Turn(P, B.LArm, AxisZ, -8.f);
+		Turn(P, B.RArm, AxisZ, 8.f);
+		Turn(P, B.LFore, AxisY, -(38.f - 8.f * Hop));
+		Turn(P, B.RFore, AxisY, 38.f - 8.f * Hop);
+		// Pecho fuera, la cabeza mirando la concha y un meneo de lado a lado (ida y vuelta en cada bucle).
+		Turn(P, B.Spine, AxisX, 5.f);
+		Turn(P, B.Spine1, AxisX, 3.f);
+		Turn(P, B.Spine, AxisZ, 8.f * FMath::Sin(Phase * TwoPiF));
+		Turn(P, B.Neck, AxisX, 8.f);
+		Turn(P, B.Head, AxisX, 14.f + 4.f * Hop);
+		// Rodillas que se doblan al caer de cada saltito.
+		Turn(P, B.LUp, AxisX, 16.f * Land);
+		Turn(P, B.RUp, AxisX, 16.f * Land);
+		Turn(P, B.LLeg, AxisX, -30.f * Land);
+		Turn(P, B.RLeg, AxisX, -30.f * Land);
+		Turn(P, B.LFoot, AxisX, 14.f * Land);
+		Turn(P, B.RFoot, AxisX, 14.f * Land);
+		Lift(P, B, 4.f * Hop - 0.7f * Land);
+	}
+
+	/**
+	 * Decepcionada: hombros caídos, brazos colgando flojos, espalda encorvada y cabeza gacha. En cada vuelta coge aire
+	 * (el pecho y la cabeza suben), lo suelta de golpe en un suspiro y se hunde más; luego niega despacio con la cabeza
+	 * y arrastra un pie por la arena.
+	 */
+	void PoseDisappointed(FCompactPose& P, const FBones& B, float T)
+	{
+		const float U = FMath::Fmod(T, DisappointedLoop);
+		const float Breath = U < 0.9f ? FMath::Sin(U / 0.9f * HALF_PI) : FMath::Max(0.f, 1.f - (U - 0.9f) / 0.6f);
+		const float Slump = 1.f - 0.7f * Breath;
+		ArmsRelaxed(P, B, 72.f);
+		Turn(P, B.LShoulder, AxisY, 14.f * Slump);
+		Turn(P, B.RShoulder, AxisY, -14.f * Slump);
+		Turn(P, B.LArm, AxisZ, 12.f * Slump);
+		Turn(P, B.RArm, AxisZ, -12.f * Slump);
+		Turn(P, B.LFore, AxisZ, 10.f);
+		Turn(P, B.RFore, AxisZ, -10.f);
+		Turn(P, B.Spine, AxisX, -12.f * Slump + 4.f * Breath);
+		Turn(P, B.Spine1, AxisX, -6.f * Slump);
+		Turn(P, B.Neck, AxisX, -14.f * Slump);
+		Turn(P, B.Head, AxisX, -16.f * Slump + 10.f * Breath);
+		// «No puede ser»: tras el suspiro, una vez a cada lado hasta el final del bucle.
+		const float Shake = U > 1.5f ? FMath::Sin((U - 1.5f) / (DisappointedLoop - 1.5f) * TwoPiF) : 0.f;
+		Turn(P, B.Head, AxisZ, 12.f * Shake);
+		const float Scuff = (U > 2.3f && U < 3.f) ? FMath::Sin((U - 2.3f) / 0.7f * PI) : 0.f;
+		Turn(P, B.LUp, AxisX, 3.f * Slump);
+		Turn(P, B.RUp, AxisX, 3.f * Slump + 12.f * Scuff);
+		Turn(P, B.LLeg, AxisX, -6.f * Slump);
+		Turn(P, B.RLeg, AxisX, -6.f * Slump - 10.f * Scuff);
+		Turn(P, B.RFoot, AxisX, -15.f * Scuff);
+		Lift(P, B, 0.4f * Breath - 0.3f * Slump);
+	}
+
+	/**
+	 * Pataleta: sentada en el suelo (la cadera baja hasta apoyar el culete), echada un poco hacia atrás y meciéndose,
+	 * con las piernas estiradas al frente pataleando alternas (los talones golpean el suelo), los puños aporreando el
+	 * suelo a los lados, la barbilla arriba gritando y sacudiendo la cabeza.
+	 */
+	void PoseTantrum(FCompactPose& P, const FBones& B, float T)
+	{
+		const float Rate = TwoPiF / TantrumLoop;
+		float Drop = SitDropFallback;
+		if (B.Hips.IsValid())
+		{
+			const float HipZ = static_cast<float>(P.GetBoneContainer().GetRefPoseTransform(B.Hips).GetTranslation().Z);
+			if (HipZ > 10.f && HipZ < 40.f) { Drop = HipZ - 5.f; }
+		}
+		Lift(P, B, -Drop + 0.8f * FMath::Abs(FMath::Sin(T * Rate * 3.f)));
+		Turn(P, B.Spine, AxisX, 10.f + 6.f * FMath::Sin(T * Rate));
+		const float KickL = FMath::Max(0.f, FMath::Sin(T * Rate * 3.f));
+		const float KickR = FMath::Max(0.f, -FMath::Sin(T * Rate * 3.f));
+		Turn(P, B.LUp, AxisY, -12.f);
+		Turn(P, B.RUp, AxisY, 12.f);
+		Turn(P, B.LUp, AxisX, 80.f + 22.f * KickL);
+		Turn(P, B.RUp, AxisX, 80.f + 22.f * KickR);
+		Turn(P, B.LLeg, AxisX, -(6.f + 26.f * KickL));
+		Turn(P, B.RLeg, AxisX, -(6.f + 26.f * KickR));
+		Turn(P, B.LFoot, AxisX, 12.f);
+		Turn(P, B.RFoot, AxisX, 12.f);
+		// Puños: el brazo baja estirándose contra el suelo y vuelve a subir con el codo doblado, uno y otro.
+		const float PoundL = FMath::Max(0.f, FMath::Sin(T * Rate * 2.f));
+		const float PoundR = FMath::Max(0.f, -FMath::Sin(T * Rate * 2.f));
+		Turn(P, B.LArm, AxisY, 30.f + 40.f * PoundL);
+		Turn(P, B.RArm, AxisY, -(30.f + 40.f * PoundR));
+		Turn(P, B.LArm, AxisZ, 18.f);
+		Turn(P, B.RArm, AxisZ, -18.f);
+		Turn(P, B.LFore, AxisZ, 55.f - 40.f * PoundL);
+		Turn(P, B.RFore, AxisZ, -(55.f - 40.f * PoundR));
+		Turn(P, B.Neck, AxisX, 6.f);
+		Turn(P, B.Head, AxisX, 10.f);
+		Turn(P, B.Head, AxisZ, 16.f * FMath::Sin(T * Rate * 2.f));
+		Turn(P, B.Head, AxisY, 6.f * FMath::Sin(T * Rate));
+	}
+
+	void PoseCelebration(FCompactPose& P, const FBones& B, const FTNTurtleAnimFrame& F)
+	{
+		switch (F.Celebration)
+		{
+		case ETNTurtleCelebration::Trophy:       PoseTrophy(P, B, F.CelebrationTime); break;
+		case ETNTurtleCelebration::Disappointed: PoseDisappointed(P, B, F.CelebrationTime); break;
+		case ETNTurtleCelebration::Tantrum:      PoseTantrum(P, B, F.CelebrationTime); break;
+		default: break;
+		}
+	}
+
+	/**
+	 * Zambullida de cabeza desde el acantilado de la meta: cuerpo estirado con los brazos por encima de la cabeza y las
+	 * manos juntas (por delante al girar), la cabeza entre los brazos y las piernas juntas y estiradas hacia atrás con
+	 * las puntas de los pies. Al final, todo el cuerpo gira hacia delante sobre la cadera (CliffDivePitch): -X lleva la
+	 * cabeza hacia +Y (delante) y hacia abajo.
+	 */
+	void PoseCliffDive(FCompactPose& P, const FBones& B, const FTNTurtleAnimFrame& F)
+	{
+		const float T = F.CliffDiveTime;
+		const float Flutter = 2.f * FMath::Sin(T * 23.f);
+		Turn(P, B.LArm, AxisY, -104.f + Flutter);
+		Turn(P, B.RArm, AxisY, 104.f - Flutter);
+		Turn(P, B.LArm, AxisZ, 6.f);
+		Turn(P, B.RArm, AxisZ, -6.f);
+		Turn(P, B.Neck, AxisX, -6.f);
+		Turn(P, B.Head, AxisX, -8.f);
+		Turn(P, B.LUp, AxisY, 4.f);
+		Turn(P, B.RUp, AxisY, -4.f);
+		Turn(P, B.LUp, AxisX, -6.f + 3.f * FMath::Sin(T * 17.f));
+		Turn(P, B.RUp, AxisX, -6.f - 3.f * FMath::Sin(T * 17.f));
+		Turn(P, B.LFoot, AxisX, -55.f);
+		Turn(P, B.RFoot, AxisX, -55.f);
+		Turn(P, B.Hips, AxisX, -F.CliffDivePitch);
+	}
+
+	/**
+	 * Si WorldLocation está en la zona del borde del acantilado de la meta: lo dice el generador de la playa
+	 * (ATN_BeachRaceGenerator::IsCliffJumpZone, modo carrera), que se busca una vez y se guarda con un puntero débil.
+	 * Fuera de la playa no hay generador (se vuelve a buscar cada 5 s) y nunca hay zambullida.
+	 */
+	bool IsCliffJumpZone(UWorld* World, TWeakObjectPtr<AActor>& Cache, double& NextLookup, const FVector& WorldLocation)
+	{
+		if (!World) { return false; }
+		ATN_BeachRaceGenerator* Generator = Cast<ATN_BeachRaceGenerator>(Cache.Get());
+		if (!Generator)
+		{
+			const double Now = World->GetTimeSeconds();
+			if (Now < NextLookup) { return false; }
+			NextLookup = Now + 5.0;
+			for (TActorIterator<ATN_BeachRaceGenerator> It(World); It; ++It)
+			{
+				Generator = *It;
+				break;
+			}
+			Cache = Generator;
+			if (!Generator) { return false; }
+		}
+		return Generator->IsCliffJumpZone(WorldLocation);
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -602,6 +793,9 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 	{
 		Layer(F.EmoteW, [&](FCompactPose& P) { PoseEmote(P, B, F); });
 	}
+	// Modo carrera: zambullida de cabeza desde el acantilado de la meta y celebraciones del podio.
+	Layer(F.CliffDiveW, [&](FCompactPose& P) { PoseCliffDive(P, B, F); });
+	Layer(F.CelebrationW, [&](FCompactPose& P) { PoseCelebration(P, B, F); });
 
 	// 3b. Levantarse del derribo: parte de la pose en la que quedó el ragdoll y llega a la de pie, pasando por un
 	// empujón de brazos contra el suelo y las rodillas dobladas. Al levantarse de la tripa tras el panzazo, el mismo
@@ -823,6 +1017,43 @@ Ease(F.CarryW, bCarrying, 8.f);
 		if (F.EmoteW < 0.01f) { F.Emote = -1; LastEmote = -1; }
 	}
 
+	// Celebración del podio (modo carrera): si se pide otra, la que había sale antes de que entre la nueva.
+	if (F.Celebration != WantedCelebration && F.CelebrationW < 0.02f)
+	{
+		F.Celebration = WantedCelebration;
+		F.CelebrationTime = 0.f;
+	}
+	Ease(F.CelebrationW, F.Celebration != ETNTurtleCelebration::None && F.Celebration == WantedCelebration, 6.f);
+	F.CelebrationTime += Dt;
+
+	// Zambullida de cabeza desde el acantilado de la meta (modo carrera): al despegar o empezar a caer en la zona del
+	// borde (la dice el generador de la playa), hasta aterrizar o tocar el agua. Cosmética y local en cada máquina, a
+	// partir del movimiento replicado (sin RPC).
+	const bool bFallingNow = Move && Move->IsFalling() && !bSwim;
+	FallElapsed = (bFallingNow && bWasFallingForDive) ? FallElapsed + Dt : 0.f;
+	const bool bCanCliffDive = bFallingNow && !bDive && Turtle && !Turtle->IsInShell() && !Turtle->IsKnockedDown()
+		&& !(Carry && Carry->IsBeingCarried());
+	if (!bCanCliffDive)
+	{
+		bCliffDive = false;
+	}
+	else if (!bCliffDive && FallElapsed <= CliffDiveStartWindow
+		&& IsCliffJumpZone(GetWorld(), CliffZoneSource, NextCliffZoneLookup, Turtle->GetActorLocation()))
+	{
+		bCliffDive = true;
+		F.CliffDiveTime = 0.f;
+		F.CliffDivePitch = CliffDiveMinPitch;
+	}
+	bWasFallingForDive = bFallingNow;
+	Ease(F.CliffDiveW, bCliffDive, bCliffDive ? 9.f : 14.f);
+	if (bCliffDive)
+	{
+		// El cuerpo sigue la trayectoria: tumbado en lo alto del salto y casi vertical, cabeza abajo, al caer deprisa.
+		F.CliffDiveTime += Dt;
+		const float Along = 90.f + FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(-Velocity.Z), FMath::Max(150.f, Speed)));
+		F.CliffDivePitch = FMath::FInterpTo(F.CliffDivePitch, FMath::Clamp(Along, CliffDiveMinPitch, CliffDiveMaxPitch), Dt, 4.f);
+	}
+
 	// Inclinación: hacia dentro de las curvas y un poco hacia delante al correr.
 	const float Yaw = Turtle ? static_cast<float>(Turtle->GetActorRotation().Yaw) : PrevYaw;
 	const float YawRate = FMath::FindDeltaAngleDegrees(PrevYaw, Yaw) / Dt;
@@ -862,6 +1093,11 @@ Ease(F.CarryW, bCarrying, 8.f);
 	{
 		Proxy.GetUpPose.Reset();
 	}
+}
+
+void UTN_TurtleAnimInstance::SetCelebration(ETNTurtleCelebration InCelebration)
+{
+	WantedCelebration = InCelebration;
 }
 
 void UTN_TurtleAnimInstance::BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds)
