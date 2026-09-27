@@ -64,6 +64,21 @@ void TNBeach::StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launc
 	}
 }
 
+void TNBeach::KnockDownTurtle(ACharacter* Turtle, float Seconds, const FVector& Impulse)
+{
+	if (!Turtle || Seconds <= 0.f || !Turtle->HasAuthority() || Turtle->IsActorBeingDestroyed())
+	{
+		return;
+	}
+	ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
+	if (!TurtleCharacter || TurtleCharacter->IsDead())
+	{
+		return;
+	}
+	// El derribo de la piel de plátano: ragdoll, mareo y levantarse al acabar.
+	TurtleCharacter->ApplyKnockdown(Seconds, Impulse);
+}
+
 bool TNBeach::IsTurtleStunned(const ACharacter* Turtle)
 {
 	const UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOn(Turtle);

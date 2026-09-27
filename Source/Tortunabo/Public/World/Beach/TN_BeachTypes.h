@@ -70,6 +70,12 @@ enum class ETNBeachElement : uint8
 	SpadeRamp          UMETA(DisplayName = "Pala: trampolín o puente"),
 	SandDungeon        UMETA(DisplayName = "Castillo de arena con salas"),
 	ShellGate          UMETA(DisplayName = "Puerta de conchas"),
+	/** Almeja o concha gigante que se cierra y atrapa unos segundos; al abrirse, suelta a la tortuga con un saltito. */
+	ClamTrap           UMETA(DisplayName = "Concha que atrapa"),
+	/** Plataforma que se mueve (de lado a lado o arriba y abajo) sobre un hoyo, un charco o entre dos alturas. */
+	MovingPlatform     UMETA(DisplayName = "Plataforma móvil"),
+	/** Catapulta de playa (cuchara, palo de polo y tapón) que lanza hacia el mar a quien se sube. */
+	Catapult           UMETA(DisplayName = "Catapulta"),
 	// ── Enemigos y amenazas ──
 	GiantCrab          UMETA(DisplayName = "Cangrejo gigante con pinza"),
 	SeaUrchin          UMETA(DisplayName = "Erizo de mar"),
@@ -143,6 +149,9 @@ namespace TNBeach
 		case ETNBeachElement::SpadeRamp:      return TEXT("TN_BeachSpadeRamp");
 		case ETNBeachElement::SandDungeon:    return TEXT("TN_BeachSandDungeon");
 		case ETNBeachElement::ShellGate:      return TEXT("TN_BeachShellGate");
+		case ETNBeachElement::ClamTrap:       return TEXT("TN_BeachClamTrap");
+		case ETNBeachElement::MovingPlatform: return TEXT("TN_BeachMovingPlatform");
+		case ETNBeachElement::Catapult:       return TEXT("TN_BeachCatapult");
 		case ETNBeachElement::GiantCrab:      return TEXT("TN_BeachGiantCrab");
 		case ETNBeachElement::SeaUrchin:      return TEXT("TN_BeachSeaUrchin");
 		case ETNBeachElement::Lizard:         return TEXT("TN_BeachLizard");
@@ -210,6 +219,9 @@ namespace TNBeach
 		case ETNBeachElement::SpadeRamp:         return 700.0;
 		case ETNBeachElement::SandDungeon:       return 4000.0;
 		case ETNBeachElement::ShellGate:         return 600.0;
+		case ETNBeachElement::ClamTrap:          return 900.0;
+		case ETNBeachElement::MovingPlatform:    return 1200.0;
+		case ETNBeachElement::Catapult:          return 900.0;
 		case ETNBeachElement::GiantCrab:         return 2500.0;
 		case ETNBeachElement::SeaUrchin:         return 1200.0;
 		case ETNBeachElement::Lizard:            return 1500.0;

@@ -19,6 +19,13 @@ namespace TNBeach
 	 */
 	TORTUNABO_API void StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launch = FVector::ZeroVector);
 
+	/**
+	 * Servidor: derribo con ragdoll y mareo, como el de la piel de plátano (ATortugaCharacter::ApplyKnockdown), con el
+	 * empujón Impulse, durante Seconds. Para golpes secos (erizo, cagada de gaviota, rueda de quad…): no todo es la bola.
+	 * No hace nada en clientes, con tortugas muertas ni con Seconds <= 0.
+	 */
+	TORTUNABO_API void KnockDownTurtle(ACharacter* Turtle, float Seconds, const FVector& Impulse = FVector::ZeroVector);
+
 	/** true si la tortuga está aturdida por StunTurtle (en cualquier máquina, con estado replicado). */
 	TORTUNABO_API bool IsTurtleStunned(const ACharacter* Turtle);
 
