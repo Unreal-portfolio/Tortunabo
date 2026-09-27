@@ -242,8 +242,14 @@ float3 N = normalize(Normal);
 float3 W = pow(max(abs(N), 1e-4f), 4.0f);
 W /= max(W.x + W.y + W.z, 1e-4f);
 float4 F = Texture2DSample(FloorTex, FloorTexSampler, P.xy / max(FloorTile, 1.0f));
-float2 sand = (F.rg * 2.0f - 1.0f) * SandStrength;
-float2 path = (F.ba * 2.0f - 1.0f) * PathStrength;
+float2 s = F.rg * 2.0f - 1.0f;
+// Rizos algo mas marcados (cartoon suave): la pendiente se curva hacia su signo, el borde de cada
+// rizo se lee mas limpio sin cambiar su dibujo.
+s = sign(s) * pow(abs(s), 0.7f);
+float2 sand = s * SandStrength;
+// El camino lleva los mismos rizos (mas suaves) con un poco de arena pisada encima: su color
+// oscuro va en el color de vertice.
+float2 path = s * PathStrength + (F.ba * 2.0f - 1.0f) * 0.25f;
 float2 fl = lerp(path, sand, saturate(SandMask));
 float2 wx = (Texture2DSample(WallTex, WallTexSampler, P.yz / max(WallTile, 1.0f)).rg * 2.0f - 1.0f) * WallStrength;
 float2 wy = (Texture2DSample(WallTex, WallTexSampler, P.xz / max(WallTile, 1.0f)).rg * 2.0f - 1.0f) * WallStrength;
