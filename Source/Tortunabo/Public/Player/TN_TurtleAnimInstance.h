@@ -46,6 +46,10 @@ struct FTNTurtleAnimFrame
 	int32 Emote = -1;
 	float EmoteTime = 0.f;
 	float EmoteW = 0.f;
+	/** Emote anterior mientras se funde con el nuevo (cambio de un emote a otro sin cortes; -1 = ninguno). */
+	int32 PrevEmote = -1;
+	float PrevEmoteTime = 0.f;
+	float PrevEmoteW = 0.f;
 	/** Levantarse del derribo: peso de la pose del suelo (1 → 0) y del empujón de brazos y rodillas (sube y baja). */
 	float GetUpW = 0.f;
 	float GetUpFlex = 0.f;

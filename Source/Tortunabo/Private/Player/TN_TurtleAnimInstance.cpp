@@ -128,6 +128,14 @@ namespace TNTurtleAnim
 		}
 	}
 
+	/** Segundos con los que se funde el final de un clip en bucle con su principio (sin salto al volver a empezar). */
+	constexpr float LoopFadeSeconds = 0.3f;
+
+	/**
+	 * Pose del clip en bucle en el tiempo Time. El bucle dura lo que el clip menos LoopFadeSeconds: al empezar cada
+	 * vuelta, el final del clip se funde con su principio, así que la pose no salta aunque el primer y el último
+	 * fotograma no coincidan.
+	 */
 	void SampleClip(const UAnimSequence* Clip, float Time, FPoseContext& Out)
 	{
 		if (!Clip)
@@ -136,8 +144,25 @@ namespace TNTurtleAnim
 			return;
 		}
 		const float Length = FMath::Max(0.01f, Clip->GetPlayLength());
+		const float Fade = FMath::Min(LoopFadeSeconds, Length * 0.25f);
+		const float Loop = FMath::Max(0.01f, Length - Fade);
+		const float T = FMath::Fmod(FMath::Max(0.f, Time), Loop);
 		FAnimationPoseData Data(Out);
-		Clip->GetAnimationPose(Data, FAnimExtractContext(static_cast<double>(FMath::Fmod(Time, Length)), false));
+		Clip->GetAnimationPose(Data, FAnimExtractContext(static_cast<double>(T), false));
+		if (T < Fade && Fade > 0.001f)
+		{
+			FPoseContext Tail(Out);
+			FAnimationPoseData TailData(Tail);
+			Clip->GetAnimationPose(TailData, FAnimExtractContext(static_cast<double>(T + Loop), false));
+			// Peso suave del principio: 0 justo al volver a empezar (se ve el final) y 1 al acabar la fusión.
+			const float X = T / Fade;
+			const float StartW = X * X * (3.f - 2.f * X);
+			for (const FCompactPoseBoneIndex I : Out.Pose.ForEachBoneIndex())
+			{
+				const FTransform Start = Out.Pose[I];
+				Out.Pose[I].Blend(Tail.Pose[I], Start, StartW);
+			}
+		}
 	}
 
 	/** Deja la cadera de los clips en su sitio (sin avance propio: lo mueve el personaje). */
@@ -469,15 +494,18 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 		BlendInto(Output.Pose, Run.Pose, F.RunW);
 	}
 
-	// 2. La fiesta es el clip de gritar (con rebote).
-	if (F.Emote == 9 && F.EmoteW > 0.01f && CheerClip)
+	// 2. La fiesta es el clip de gritar (con rebote). Si se cambia a otro emote, el anterior se funde encima del nuevo.
+	auto CheerLayer = [&](float Weight, float Time)
 	{
+		if (Weight < 0.01f || !CheerClip) { return; }
 		FPoseContext Cheer(Output);
-		SampleClip(CheerClip, F.EmoteTime, Cheer);
+		SampleClip(CheerClip, Time, Cheer);
 		KeepHipsInPlace(Cheer.Pose, B);
-		Lift(Cheer.Pose, B, 2.f * FMath::Abs(FMath::Sin(F.EmoteTime * TwoPiF * 2.f)));
-		BlendInto(Output.Pose, Cheer.Pose, F.EmoteW);
-	}
+		Lift(Cheer.Pose, B, 2.f * FMath::Abs(FMath::Sin(Time * TwoPiF * 2.f)));
+		BlendInto(Output.Pose, Cheer.Pose, Weight);
+	};
+	if (F.PrevEmote == 9) { CheerLayer(F.PrevEmoteW, F.PrevEmoteTime); }
+	if (F.Emote == 9) { CheerLayer(F.EmoteW, F.EmoteTime); }
 
 	// 3. Poses de estado sobre la postura en T, mezcladas por su peso.
 	auto Layer = [&](float Weight, TFunctionRef<void(FCompactPose&)> Build)
@@ -494,6 +522,13 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 	Layer(F.CarryW, [&](FCompactPose& P) { PoseCarry(P, B); });
 	Layer(F.CarriedW, [&](FCompactPose& P) { PoseCarried(P, B, F); });
 	Layer(F.DownW, [&](FCompactPose& P) { PoseDown(P, B); });
+	if (F.PrevEmote >= 0 && F.PrevEmote != 9)
+	{
+		FTNTurtleAnimFrame PrevFrame = F;
+		PrevFrame.Emote = F.PrevEmote;
+		PrevFrame.EmoteTime = F.PrevEmoteTime;
+		Layer(F.PrevEmoteW, [&](FCompactPose& P) { PoseEmote(P, B, PrevFrame); });
+	}
 	if (F.Emote >= 0 && F.Emote != 9)
 	{
 		Layer(F.EmoteW, [&](FCompactPose& P) { PoseEmote(P, B, F); });
@@ -651,9 +686,25 @@ Ease(F.CarryW, bCarrying, 8.f);
 
 	// Emote: entra suave y, al acabar, sale suave con el último.
 	const int32 Emote = Turtle ? Turtle->GetActiveEmoteIndex() : -1;
+	// Al cambiar de emote, el anterior no desaparece de golpe: pasa a la capa de fundido y se apaga mientras entra el nuevo.
+	if (F.PrevEmote >= 0)
+	{
+		F.PrevEmoteTime += Dt;
+		Ease(F.PrevEmoteW, false, 7.f);
+		if (F.PrevEmoteW < 0.01f) { F.PrevEmote = -1; }
+	}
 	if (Emote >= 0 && Emote <= 9)
 	{
-		if (Emote != LastEmote) { F.EmoteW = 0.f; }
+		if (Emote != LastEmote)
+		{
+			if (LastEmote >= 0 && F.EmoteW > 0.05f)
+			{
+				F.PrevEmote = LastEmote;
+				F.PrevEmoteTime = F.EmoteTime;
+				F.PrevEmoteW = F.EmoteW;
+			}
+			F.EmoteW = 0.f;
+		}
 		F.Emote = Emote;
 		F.EmoteTime = Turtle->GetEmoteTime();
 		LastEmote = Emote;
