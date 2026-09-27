@@ -81,6 +81,7 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 | `ATN_ProcGeyser`, `ATN_ProcSlideZone`, `ATN_ProcKillVolume`, `ATN_ProcFinishVolume` | Conexiones especiales (géiser que sube, cascada-tobogán que baja, un solo sentido y automáticas), caídas mortales y meta. |
 | `ATN_ProcWaterVolume`, `ATN_ProcWaterCurrent`, `ATN_ProcWhirlpool`, `ATN_ProcWaterPredator`, `ATN_ProcWaterBouncer` | Agua nadable y sus peligros: corrientes, remolinos, depredador (tiburón/morena) y criaturas con comportamiento de medusa distintas por bioma. |
 | `ATN_ProcEggNest` | Pilas de huevos de reaparición en los cruces entre módulos (densidad según dificultad). |
+| `ATN_ProcStartStructure` | Salida de la ronda: la puerta doble o la pila de huevos del lobby (mismo kit, `TN_CastleKit.h`), con los jugadores dentro hasta que se abre (ver «Salida» en el apartado 4). |
 | `ATN_ProcThrowWall`, `ATN_ProcSabotageGate`, `ATN_ProcSwitch` | Puzles del 2vs2: muro que hay que superar lanzando al compañero (o bajando la rampa con el interruptor) y compuertas de sabotaje para la otra pareja. |
 | `ATN_PathStorm` | Tormenta del Coop que avanza **por el camino** (progreso en cm), no en línea recta, y nunca más rápido que la tortuga andando. Frente con velo translúcido animado (`M_ProcStormVeil`), nubes que ruedan (`M_ProcFXCloud`) y lo que arrastra cada bioma (arena, hojas, brasas y ceniza, espuma, lluvia, polvo, humo y papeles), mezclado en degradado al cambiar de bioma; dentro, la niebla del nivel se cierra y la imagen se tiñe según el bioma del jugador (`TN_PathStormFX.h`). |
 | `ATN_ProcMapGameMode` / `ATN_ProcMapGameState` | Rondas, modos, reaparición en huevos, tormenta, espera a que todos tengan el mapa. |
@@ -335,6 +336,62 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   al agotarse gana el más adelantado por el camino.
 - La tabla final de Carrera/2vs2 reutiliza el widget de resultados: puesto por
   rondas ganadas, con las victorias en la columna de puntos.
+
+### Salida: puerta doble o huevos
+
+Cada ronda empieza dentro de la misma pieza en la que los jugadores se pusieron listos en el lobby
+(`ATN_ProcStartStructure`). Se construye con `TNCastleKit` (`Private/Lobby/TN_CastleKit.h`), el kit de
+`ATN_SandCastleLobby`, así que la geometría es idéntica.
+
+- **Puerta doble** (`ETNMatchStartStyle::Gate`): la sala entre dos puertas, al fondo del claro de salida, con la
+  puerta 1 contra el talud (parece que se sale de la pared) y la puerta 2 mirando al camino. Muros, pilares, torres y
+  zócalo bajan 4,5 m bajo el suelo por si el terreno no es plano. Hay cuatro sitios dentro. Al abrirse, las hojas de
+  la puerta 2 giran 100° hacia fuera en 1,25 s y su bloqueo invisible desaparece en cuanto empiezan a girar; la
+  puerta 1 no se abre nunca. Lleva el rótulo «TORTUNAVY» en la cara de fuera de la puerta 2 y una luz cálida en la sala.
+- **Huevos** (`ETNMatchStartStyle::Eggs`): el montículo de dos alturas con la pila de cuatro huevos y el escalón hacia
+  el camino. Cada jugador aparece dentro de un huevo con la tapa puesta; una pared invisible lo sujeta hasta que se
+  rompe. Los huevos se rompen uno tras otro, cada 0,12 s: la tapa salta dando vueltas, se posa y se esfuma, y la
+  tortuga sale despedida (`LaunchCharacter`, 3,8 m/s en horizontal, hacia fuera de la pila y hacia el camino, y
+  6,2 m/s hacia arriba). El salto lo dan a la vez el servidor (a todas) y el cliente dueño al recibir `bOpen`, como en
+  el probador.
+
+**Colocación** (`ATN_ProcMapGenerator::SpawnStartStructure`, servidor, en cada generación). «Hacia el camino» es la
+dirección del punto de salida a la primera muestra del camino que queda fuera del claro. La estructura se coloca
+detrás, con su +Y local mirando al camino:
+
+- Puerta doble: el umbral de la puerta 1 a `StartClearingRadius − 1,5 m` del centro del claro.
+- Montículo: su centro a `min(StartClearingRadius − 6,5 m, 13 m)`.
+- Cota: la más alta del terreno bajo el suelo de la sala (el terreno no asoma por él) o la más baja bajo el
+  montículo (no queda flotando).
+
+Se crea diferida, con el estilo puesto antes de su `BeginPlay`. Va en `SpawnedActors`, así que se destruye al
+regenerar, como las pilas de huevos. No se crea en modo solo terreno ni si ningún GameMode la pide
+(`SetStartStructureStyle`).
+
+**Aparición.** Con estructura, `GetStartTransform(0..3)` y los PlayerStart 0–3 (etiqueta `TNProcStart`) quedan
+dentro de ella, a 1,1 m del suelo como los del anillo; del quinto jugador en adelante se usa el anillo del claro.
+
+- `ChoosePlayerStart` da a cada jugador el sitio de su slot (índice en `PlayerArray`) o, si está ocupado, el
+  siguiente libre de la estructura (durante el viaje sin cortes los slots aún se reordenan).
+- Al empezar la ronda, `PlacePlayersAtStart` lo deja de pie en su sitio con la altura de su cápsula
+  (`GetSpawnTransform`). Hasta entonces sigue congelado, como siempre.
+- En el cliente, el suelo de la estructura cuenta como suelo del mapa para soltar el peón (`MapCollisionUnder`).
+- Sin estructura, todo funciona como antes.
+
+**Apertura.** `BeginRoundPlay` programa `ATN_ProcStartStructure::Open` a `StartStructureOpenDelaySeconds`
+(1,2 s), a la vez que el «¡ADELANTE!» de la pantalla de carga. Solo se replican el estilo y `bOpen`. Quien recibe
+la estructura ya abierta la ve abierta del todo y no salta. Una ronda nueva sin regenerar el mapa la cierra
+(`Close`).
+
+**Del lobby al mapa.** `ATN_HQGameMode::BeginMatchTravel` guarda `ATN_SandCastleLobby::GetStartStyle()` en
+`UMP_GameInstance::PendingStartStyle` y añade `?ProcStart=Gate|Eggs` a la URL del viaje. `GetStartStyle()` elige
+según dónde haya más jugadores listos, en la sala o en los huevos; si empatan, la puerta.
+`ATN_ProcMapGameMode::ResolveStartStyle` mira en cada generación la GameInstance y después la URL (sin nada, la
+puerta doble). El resultado queda en el log: `[ProcMap] Salida: puerta doble` o `huevos`.
+
+**Para probar.** La variable de consola `TN.Proc.StartStyle` manda sobre todo lo anterior y vale desde la siguiente
+generación: −1 = lo del lobby (por defecto), 0 = puerta doble, 1 = huevos. Sin lobby también sirve
+`open LVL_ProcMap?ProcStart=Eggs`.
 
 ---
 

@@ -342,12 +342,22 @@ void ATN_HQGameMode::BeginMatchTravel()
 			UE_LOG(LogTortunabo, Warning, TEXT("[HQGameMode] 2vs2 exige 4 jugadores (hay %d) → Carrera."), ConnectedCount);
 			GI->SelectedProcMode = ETNProcGameMode::Race;
 		}
+		// ── Cómo se pusieron listos (sala de la puerta doble o huevos): así se sale en el mapa procedural ──
+		// Antes de destruir los peones; sin castillo (maqueta vieja), la puerta doble.
+		GI->PendingStartStyle = ETNMatchStartStyle::Gate;
+		for (TActorIterator<ATN_SandCastleLobby> It(World); It; ++It)
+		{
+			GI->PendingStartStyle = It->GetStartStyle();
+			break;
+		}
 		if (GI->SelectedProcMode != ETNProcGameMode::Classic)
 		{
-			TravelURL = ProcMapPath;
+			// También en la URL: la lee ATN_ProcMapGameMode y sustituye a la del viaje anterior.
+			TravelURL = ProcMapPath + (GI->PendingStartStyle == ETNMatchStartStyle::Eggs ? TEXT("?ProcStart=Eggs") : TEXT("?ProcStart=Gate"));
 		}
-		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo %s · dificultad %s"),
-			*UEnum::GetValueAsString(GI->SelectedProcMode), *UEnum::GetValueAsString(GI->SelectedProcDifficulty));
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo %s · dificultad %s · salida %s"),
+			*UEnum::GetValueAsString(GI->SelectedProcMode), *UEnum::GetValueAsString(GI->SelectedProcDifficulty),
+			GI->PendingStartStyle == ETNMatchStartStyle::Eggs ? TEXT("huevos") : TEXT("puerta doble"));
 	}
 
 	// ── Destroy all pawns BEFORE travel for WASAPI cleanup ──────────────

@@ -10,6 +10,7 @@
 #include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
+#include "World/ProcMap/TN_ProcStartStructure.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
 #include "ProceduralMeshComponent.h"
@@ -18,6 +19,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerStart.h"
 #include "PCGComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Net/UnrealNetwork.h"
@@ -293,6 +295,9 @@ void ATN_ProcMapGenerator::Clear()
 	SpawnedActors.Reset();
 	EggNests.Reset();
 	StartTransforms.Reset();
+	// La estructura de salida y los PlayerStart iban en SpawnedActors: ya están destruidos.
+	StartStructure.Reset();
+	StartPlayerStarts.Reset();
 
 	Heights.Reset();
 	PathMask.Reset();
@@ -367,7 +372,8 @@ bool ATN_ProcMapGenerator::MapCollisionUnder(const FVector& WorldLocation) const
 	FHitResult Hit;
 	const FCollisionQueryParams Params(SCENE_QUERY_STAT(TNProcMapGround), false);
 	const bool bHit = World->LineTraceSingleByChannel(Hit, WorldLocation + FVector(0.0, 0.0, 200.0), WorldLocation - FVector(0.0, 0.0, 30000.0), ECC_WorldStatic, Params);
-	return bHit && Hit.GetActor() == this;
+	// El suelo de la estructura de salida (sala o montículo, replicada) también sostiene: su colisión es síncrona.
+	return bHit && (Hit.GetActor() == this || Cast<ATN_ProcStartStructure>(Hit.GetActor()) != nullptr);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -433,11 +439,30 @@ float ATN_ProcMapGenerator::GetTerrainHeightAt(const FVector& WorldLocation) con
 
 FTransform ATN_ProcMapGenerator::GetStartTransform(int32 PlayerIndex) const
 {
+	// Con estructura de salida (servidor), los primeros sitios están dentro de ella; el resto, en el anillo.
+	if (const ATN_ProcStartStructure* Structure = StartStructure.Get())
+	{
+		FTransform InStructure;
+		if (Structure->GetSpawnTransform(PlayerIndex, ATN_ProcStartStructure::DefaultSpawnHalfHeight, InStructure))
+		{
+			return InStructure;
+		}
+	}
 	if (StartTransforms.Num() == 0)
 	{
 		return GetActorTransform();
 	}
 	return StartTransforms[FMath::Abs(PlayerIndex) % StartTransforms.Num()];
+}
+
+ATN_ProcStartStructure* ATN_ProcMapGenerator::GetStartStructure() const
+{
+	return StartStructure.Get();
+}
+
+APlayerStart* ATN_ProcMapGenerator::GetStartPlayerStart(int32 Index) const
+{
+	return StartPlayerStarts.IsValidIndex(Index) ? StartPlayerStarts[Index].Get() : nullptr;
 }
 
 float ATN_ProcMapGenerator::GetMainPathLength() const

@@ -9,6 +9,7 @@
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "World/ProcMap/TN_ProcPuzzleActors.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
+#include "World/ProcMap/TN_ProcStartStructure.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
 #include "TN_ProcMapKeepOut.h"
 #include "Core/TN_Log.h"
@@ -309,16 +310,83 @@ void ATN_ProcMapGenerator::SpawnTraversalActors()
 // Actores del servidor (replicados o solo-servidor)
 // ─────────────────────────────────────────────────────────────────────────────
 
+void ATN_ProcMapGenerator::SpawnStartStructure()
+{
+	using namespace TNProcMap;
+	StartStructure.Reset();
+	UWorld* World = GetWorld();
+	if (!bSpawnStartStructure || bTerrainOnly || !World || Layout.Main.Num() == 0)
+	{
+		return;
+	}
+
+	// Hacia dónde sale el camino del claro (mapa): del punto de salida a la primera muestra que queda fuera del claro
+	// (aguanta que el camino haga curva dentro). Detrás (-Dir) solo hay talud.
+	const double ClearingRadius = Layout.Params.StartClearingRadius;
+	FVector2D Dir = Layout.Main[0].Dir;
+	for (const FPathSample& Sample : Layout.Main)
+	{
+		if (FVector2D::Distance(Sample.P, Layout.StartPoint) >= ClearingRadius)
+		{
+			Dir = Sample.P - Layout.StartPoint;
+			break;
+		}
+	}
+	Dir = Dir.GetSafeNormal();
+	if (Dir.IsNearlyZero())
+	{
+		Dir = FVector2D(0.0, 1.0);
+	}
+	// Ejes de la estructura en el mapa: +Y local = Dir (hacia el camino); +X local = Dir girada -90°.
+	const FVector2D Side(Dir.Y, -Dir.X);
+	const FVector2D Origin = Layout.StartPoint - Dir * ATN_ProcStartStructure::GetBackDistance(StartStructureStyle, ClearingRadius);
+
+	// Cota: la del terreno bajo la huella (el suelo del claro es casi plano, ±10 cm).
+	TArray<FVector2D> Footprint;
+	bool bUseHighest = true;
+	ATN_ProcStartStructure::GetFootprintSamples(StartStructureStyle, Footprint, bUseHighest);
+	double BaseZ = TerrainHeightMap(Origin);
+	for (const FVector2D& LocalPoint : Footprint)
+	{
+		const double Height = TerrainHeightMap(Origin + Side * LocalPoint.X + Dir * LocalPoint.Y);
+		BaseZ = bUseHighest ? FMath::Max(BaseZ, Height) : FMath::Min(BaseZ, Height);
+	}
+
+	// Guiñada: la que lleva +X a Side (la de Dir menos 90°), más la del generador.
+	const double Yaw = FMath::RadiansToDegrees(AngleOf(Dir)) - 90.0 + GetActorRotation().Yaw;
+	const FTransform Where(FRotator(0.0, Yaw, 0.0), MapToWorld(FVector(Origin.X, Origin.Y, BaseZ)));
+	// Diferida: el estilo tiene que estar puesto antes de su BeginPlay, que es donde construye las mallas.
+	ATN_ProcStartStructure* Structure = World->SpawnActorDeferred<ATN_ProcStartStructure>(ATN_ProcStartStructure::StaticClass(), Where, this,
+		nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!Structure)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[ProcMap] No se pudo crear la estructura de salida: se sale del anillo del claro."));
+		return;
+	}
+	Structure->SetStyle(StartStructureStyle);
+	Structure->FinishSpawning(Where);
+	SpawnedActors.Add(Structure);
+	StartStructure = Structure;
+	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Estructura de salida (%s) al fondo del claro, a %.1f m de su centro."),
+		StartStructureStyle == ETNMatchStartStyle::Eggs ? TEXT("huevos") : TEXT("puerta doble"),
+		ATN_ProcStartStructure::GetBackDistance(StartStructureStyle, ClearingRadius) / 100.0);
+}
+
 void ATN_ProcMapGenerator::SpawnServerActors()
 {
 	using namespace TNProcMap;
 	const double Yaw0 = GetActorRotation().Yaw;
 
+	// La estructura de salida va antes que los PlayerStart: los primeros quedan dentro de ella (GetStartTransform).
+	SpawnStartStructure();
+	StartPlayerStarts.Reset();
+	StartPlayerStarts.SetNum(StartTransforms.Num());
 	for (int32 i = 0; i < StartTransforms.Num(); ++i)
 	{
-		if (APlayerStart* Start = Cast<APlayerStart>(SpawnMapActor(APlayerStart::StaticClass(), StartTransforms[i], true)))
+		if (APlayerStart* Start = Cast<APlayerStart>(SpawnMapActor(APlayerStart::StaticClass(), GetStartTransform(i), true)))
 		{
 			Start->PlayerStartTag = TEXT("TNProcStart");
+			StartPlayerStarts[i] = Start;
 		}
 	}
 

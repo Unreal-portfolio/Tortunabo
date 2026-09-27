@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_MatchStartTypes.h"
 #include "GameFramework/Actor.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "World/ProcMap/TN_ProcMapLayout.h"
@@ -18,6 +19,7 @@ class UMaterialInterface;
 class UPCGComponent;
 class APlayerStart;
 class ATN_ProcEggNest;
+class ATN_ProcStartStructure;
 class ATN_ProcWaterVolume;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnProcMapGenerated, int32, Generation);
@@ -104,9 +106,25 @@ public:
 	const TNProcMap::FLayout& GetLayout() const { return Layout; }
 	const FTNProcMapProfile& GetActiveProfile() const { return ActiveProfile; }
 
-	/** Transform de salida para el jugador N (alrededor del claro inicial). */
+	/**
+	 * Transform de salida para el jugador N (alrededor del claro inicial). En el servidor, con estructura de salida, los
+	 * primeros van dentro de ella (sala o huevos) a 110 cm del suelo, como los del anillo.
+	 */
 	UFUNCTION(BlueprintPure, Category = "ProcMap")
 	FTransform GetStartTransform(int32 PlayerIndex) const;
+
+	/**
+	 * Estructura de salida (puerta doble o huevos, ATN_ProcStartStructure) que el servidor pone al fondo del claro de
+	 * salida en cada generación. La pide el GameMode de la partida antes de generar; si nadie la pide (solo terreno,
+	 * nivel abierto a mano), no hay.
+	 */
+	void SetStartStructureStyle(ETNMatchStartStyle InStyle) { bSpawnStartStructure = true; StartStructureStyle = InStyle; }
+
+	/** Estructura de salida del mapa actual (solo servidor; nullptr si no hay). */
+	ATN_ProcStartStructure* GetStartStructure() const;
+
+	/** PlayerStart del sitio de salida Index (los primeros, dentro de la estructura de salida si la hay). Solo servidor. */
+	APlayerStart* GetStartPlayerStart(int32 Index) const;
 
 	/** Progreso (cm a lo largo del camino principal) de una posición del mundo. */
 	UFUNCTION(BlueprintPure, Category = "ProcMap")
@@ -198,6 +216,8 @@ private:
 	void BuildFlora();
 	void SpawnTraversalActors();
 	void SpawnServerActors();
+	/** Servidor: la estructura de salida al fondo del claro (antes que los PlayerStart, que van dentro de ella). */
+	void SpawnStartStructure();
 	void SpawnHazards();
 	void RunBiomePCG();
 	void BuildProgressIndex();
@@ -311,4 +331,12 @@ private:
 
 	TArray<TWeakObjectPtr<ATN_ProcEggNest>> EggNests;
 	TArray<FTransform> StartTransforms;
+
+	/** Estructura de salida pedida por el GameMode y su estilo. */
+	bool bSpawnStartStructure = false;
+	ETNMatchStartStyle StartStructureStyle = ETNMatchStartStyle::Gate;
+	TWeakObjectPtr<ATN_ProcStartStructure> StartStructure;
+
+	/** PlayerStart de cada sitio de salida (mismo índice que StartTransforms; solo servidor). */
+	TArray<TWeakObjectPtr<APlayerStart>> StartPlayerStarts;
 };

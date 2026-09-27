@@ -7,6 +7,7 @@
 #include "Engine/EngineBaseTypes.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "Core/TN_CosmeticsTypes.h"
+#include "Core/TN_MatchStartTypes.h"
 #include "MP_GameInstance.generated.h"
 
 class UNetDriver;
@@ -253,6 +254,13 @@ public:
 	/** Dificultad elegida en el lobby para el mapa procedural. */
 	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
 	ETNProcDifficulty SelectedProcDifficulty = ETNProcDifficulty::Normal;
+
+	/**
+	 * Cómo se pusieron listos en el lobby (sala de la puerta doble o huevos): así empieza la partida en el mapa
+	 * procedural. Lo guarda ATN_HQGameMode antes de viajar y lo lee ATN_ProcMapGameMode.
+	 */
+	UPROPERTY(Transient)
+	ETNMatchStartStyle PendingStartStyle = ETNMatchStartStyle::Gate;
 
 protected:
 	/** @brief Callback online: sesión Steam creada — dispara ServerTravel al mapa lobby. */

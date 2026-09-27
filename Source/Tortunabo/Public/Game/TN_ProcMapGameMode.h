@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_MatchStartTypes.h"
 #include "Game/TN_RunGameMode.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "TN_ProcMapGameMode.generated.h"
@@ -29,8 +30,11 @@ class ATortugaCharacter;
  *  - 2vs2: exige 4 jugadores. Parejas que rotan cada ronda (AB|CD, AC|BD, AD|BC);
  *    gana la ronda la pareja cuyos DOS miembros llegan antes. Las victorias cuentan
  *    por jugador; gana quien llega a WinsToWinMatch.
+ *  - Salida: al fondo del claro, la estructura con la que se pusieron listos en el lobby (puerta doble o huevos,
+ *    ATN_ProcStartStructure). Se aparece dentro y se abre StartStructureOpenDelaySeconds después de empezar la ronda.
  *
- * Pruebas sin lobby: opciones de URL ?ProcMode=Coop|Race|2v2 ?ProcDifficulty=Easy|Normal|Hard ?ProcSeed=N.
+ * Pruebas sin lobby: opciones de URL ?ProcMode=Coop|Race|2v2 ?ProcDifficulty=Easy|Normal|Hard ?ProcSeed=N
+ * ?ProcStart=Gate|Eggs. Consola: TN.Proc.StartStyle (-1 = lo del lobby, 0 = puerta doble, 1 = huevos).
  */
 UCLASS()
 class TORTUNABO_API ATN_ProcMapGameMode : public ATN_RunGameMode
@@ -117,6 +121,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "ProcMap|Rounds", meta = (ClampMin = "1.0"))
 	float MapReadyTimeoutSeconds = 30.f;
 
+	/**
+	 * Segundos desde que empieza la ronda hasta que se abre la estructura de salida (gira la puerta 2 o se rompen los
+	 * huevos): coincide con el «¡ADELANTE!» de la pantalla de carga.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "ProcMap|Rounds", meta = (ClampMin = "0.0"))
+	float StartStructureOpenDelaySeconds = 1.2f;
+
 	/** Segundos fuera de juego antes de reaparecer en la pila de huevos. */
 	UPROPERTY(EditDefaultsOnly, Category = "ProcMap|Respawn", meta = (ClampMin = "0.0"))
 	float RespawnDelaySeconds = 2.5f;
@@ -134,6 +145,8 @@ private:
 
 	ETNProcGameMode Mode = ETNProcGameMode::Coop;
 	ETNProcDifficulty Difficulty = ETNProcDifficulty::Normal;
+	/** Cómo se sale en cada ronda: lo del lobby, la opción de URL ProcStart o TN.Proc.StartStyle. */
+	ETNMatchStartStyle StartStyle = ETNMatchStartStyle::Gate;
 	int32 UrlSeed = 0;
 	int32 CurrentRound = 0;
 	bool bPlayersArrived = false;
@@ -159,9 +172,19 @@ private:
 	FTimerHandle MapReadyPollHandle;
 	FTimerHandle BetweenRoundsHandle;
 	FTimerHandle RoundTimeLimitHandle;
+	FTimerHandle StartStructureOpenHandle;
 
 	ATN_ProcMapGameState* GetProcGameState() const;
 	void ResolveModeAndDifficulty();
+	/** Estilo de la salida de la ronda (GameInstance ← lobby, URL ?ProcStart=, consola TN.Proc.StartStyle). */
+	void ResolveStartStyle();
+	/** Abre la estructura de salida de la ronda en curso (puerta 2 o huevos). */
+	void OpenStartStructure();
+	/**
+	 * Dónde empieza la ronda el jugador: su sitio en la estructura de salida (a la altura de la cápsula de su peón) o,
+	 * sin estructura o si sobra, el anillo del claro.
+	 */
+	FTransform GetRoundStartTransform(const AController* Controller, const APawn* Pawn) const;
 	void EnsureGenerator();
 	void GenerateRoundMap();
 	void PollMapReady();
