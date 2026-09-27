@@ -62,6 +62,14 @@ enum class ETNBeachElement : uint8
 	Cuttlebone         UMETA(DisplayName = "Hueso de sepia"),
 	RubberDuck         UMETA(DisplayName = "Patito de goma"),
 	GullFeather        UMETA(DisplayName = "Pluma de gaviota"),
+	// ── Decorado militar (la tropa de Tortunavy): también ATN_BeachDecor ──
+	Sandbags           UMETA(DisplayName = "Parapeto de sacos terreros"),
+	AmmoCrate          UMETA(DisplayName = "Caja de munición"),
+	TankTrap           UMETA(DisplayName = "Erizo antitanque"),
+	MilitaryHelmet     UMETA(DisplayName = "Casco militar"),
+	CamoNet            UMETA(DisplayName = "Red de camuflaje"),
+	Jerrycan           UMETA(DisplayName = "Bidón"),
+	ToySoldiers        UMETA(DisplayName = "Soldaditos de juguete"),
 	// ── Trampas e interacciones ──
 	BarbedWire         UMETA(DisplayName = "Alambre de espino"),
 	Seaweed            UMETA(DisplayName = "Algas que enredan"),
@@ -76,6 +84,8 @@ enum class ETNBeachElement : uint8
 	MovingPlatform     UMETA(DisplayName = "Plataforma móvil"),
 	/** Catapulta de playa (cuchara, palo de polo y tapón) que lanza hacia el mar a quien se sube. */
 	Catapult           UMETA(DisplayName = "Catapulta"),
+	/** Mina de juguete enterrada (se ve un poco): al pisarla explota y lanza a la tortuga en bola unos metros atrás. */
+	Mine               UMETA(DisplayName = "Mina"),
 	// ── Enemigos y amenazas ──
 	GiantCrab          UMETA(DisplayName = "Cangrejo gigante con pinza"),
 	SeaUrchin          UMETA(DisplayName = "Erizo de mar"),
@@ -152,6 +162,7 @@ namespace TNBeach
 		case ETNBeachElement::ClamTrap:       return TEXT("TN_BeachClamTrap");
 		case ETNBeachElement::MovingPlatform: return TEXT("TN_BeachMovingPlatform");
 		case ETNBeachElement::Catapult:       return TEXT("TN_BeachCatapult");
+		case ETNBeachElement::Mine:           return TEXT("TN_BeachMine");
 		case ETNBeachElement::GiantCrab:      return TEXT("TN_BeachGiantCrab");
 		case ETNBeachElement::SeaUrchin:      return TEXT("TN_BeachSeaUrchin");
 		case ETNBeachElement::Lizard:         return TEXT("TN_BeachLizard");
@@ -222,6 +233,14 @@ namespace TNBeach
 		case ETNBeachElement::ClamTrap:          return 900.0;
 		case ETNBeachElement::MovingPlatform:    return 1200.0;
 		case ETNBeachElement::Catapult:          return 900.0;
+		case ETNBeachElement::Mine:              return 350.0;
+		case ETNBeachElement::Sandbags:          return 1100.0;
+		case ETNBeachElement::AmmoCrate:         return 700.0;
+		case ETNBeachElement::TankTrap:          return 800.0;
+		case ETNBeachElement::MilitaryHelmet:    return 450.0;
+		case ETNBeachElement::CamoNet:           return 1500.0;
+		case ETNBeachElement::Jerrycan:          return 500.0;
+		case ETNBeachElement::ToySoldiers:       return 600.0;
 		case ETNBeachElement::GiantCrab:         return 2500.0;
 		case ETNBeachElement::SeaUrchin:         return 1200.0;
 		case ETNBeachElement::Lizard:            return 1500.0;
