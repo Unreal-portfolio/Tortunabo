@@ -163,60 +163,60 @@ namespace TNAmbientDSP
 		case Preset::Jungle:
 			// Selva: aves tropicales variadas (silbidos, trinos, guacamayos, oropéndolas), cigarras, ranas y algo de
 			// grillos; el dosel frena el viento.
-			Lv[Layer::Wind] = 0.22f; Lv[Layer::Stream] = 0.04f; Lv[Layer::Birds] = 0.9f; Lv[Layer::Cicadas] = 0.55f;
-			Lv[Layer::Crickets] = 0.18f; Lv[Layer::Frogs] = 0.35f;
+			Lv[Layer::Wind] = 0.22f; Lv[Layer::Stream] = 0.04f; Lv[Layer::Birds] = 0.75f; Lv[Layer::Cicadas] = 0.3f;
+			Lv[Layer::Crickets] = 0.1f; Lv[Layer::Frogs] = 0.2f;
 			Bw[Bird::Whistle] = 1.f; Bw[Bird::Trill] = 0.8f; Bw[Bird::Macaw] = 0.65f; Bw[Bird::Oropendola] = 0.55f; Bw[Bird::Dove] = 0.12f;
-			Out.BirdRate = 1.3f; Out.BirdDistance = 0.3f; Out.WindGust = 0.3f; Out.WindBright = 0.2f;
+			Out.BirdRate = 0.55f; Out.BirdDistance = 0.3f; Out.WindGust = 0.3f; Out.WindBright = 0.2f;
 			break;
 		case Preset::Beach:
 			// Playa: gaviotas y andarríos, brisa marina; el oleaje depende del agua que haya cerca.
-			Lv[Layer::Wind] = 0.45f; Lv[Layer::Surf] = 0.85f; Lv[Layer::Birds] = 0.6f; Lv[Layer::Crickets] = 0.04f;
+			Lv[Layer::Wind] = 0.45f; Lv[Layer::Surf] = 0.85f; Lv[Layer::Birds] = 0.5f; Lv[Layer::Crickets] = 0.02f;
 			Bw[Bird::Gull] = 1.f; Bw[Bird::Piper] = 0.35f; Bw[Bird::Whistle] = 0.05f;
-			Out.BirdRate = 0.45f; Out.BirdDistance = 0.35f; Out.WindGust = 0.55f; Out.WindBright = 0.5f; Out.SurfSize = 1.f;
+			Out.BirdRate = 0.22f; Out.BirdDistance = 0.35f; Out.WindGust = 0.55f; Out.WindBright = 0.5f; Out.SurfSize = 1.f;
 			break;
 		case Preset::Desert:
 			// Desierto: viento con silbido que barre, cigarras de calor y pocas aves, lejanas.
-			Lv[Layer::Wind] = 0.85f; Lv[Layer::Birds] = 0.3f; Lv[Layer::Cicadas] = 0.45f; Lv[Layer::Crickets] = 0.06f;
+			Lv[Layer::Wind] = 0.85f; Lv[Layer::Birds] = 0.3f; Lv[Layer::Cicadas] = 0.25f; Lv[Layer::Crickets] = 0.06f;
 			Bw[Bird::Whistle] = 0.4f; Bw[Bird::Eagle] = 0.3f; Bw[Bird::Crow] = 0.2f;
-			Out.BirdRate = 0.12f; Out.BirdDistance = 0.75f; Out.WindGust = 0.7f; Out.WindWhistle = 0.8f; Out.WindBright = 0.6f;
+			Out.BirdRate = 0.07f; Out.BirdDistance = 0.75f; Out.WindGust = 0.7f; Out.WindWhistle = 0.8f; Out.WindBright = 0.6f;
 			break;
 		case Preset::Volcanic:
 			// Volcán: rumor grave de lava con crepitar y burbujas, viento caliente, casi sin aves.
 			Lv[Layer::Wind] = 0.45f; Lv[Layer::Birds] = 0.12f; Lv[Layer::Lava] = 0.8f;
 			Bw[Bird::Crow] = 0.3f; Bw[Bird::Eagle] = 0.1f;
-			Out.BirdRate = 0.06f; Out.BirdDistance = 0.8f; Out.WindGust = 0.5f; Out.WindWhistle = 0.2f; Out.WindBright = 0.4f;
+			Out.BirdRate = 0.04f; Out.BirdDistance = 0.8f; Out.WindGust = 0.5f; Out.WindWhistle = 0.2f; Out.WindBright = 0.4f;
 			break;
 		case Preset::Water:
 			// Agua con isletas: chapoteo de laguna, gaviotas, garzas y andarríos, alguna rana.
 			Lv[Layer::Wind] = 0.45f; Lv[Layer::Surf] = 0.8f; Lv[Layer::Stream] = 0.05f; Lv[Layer::Birds] = 0.6f;
-			Lv[Layer::Crickets] = 0.04f; Lv[Layer::Frogs] = 0.2f;
+			Lv[Layer::Crickets] = 0.03f; Lv[Layer::Frogs] = 0.12f;
 			Bw[Bird::Gull] = 0.5f; Bw[Bird::Heron] = 0.3f; Bw[Bird::Piper] = 0.5f; Bw[Bird::Whistle] = 0.1f;
-			Out.BirdRate = 0.4f; Out.BirdDistance = 0.45f; Out.WindGust = 0.5f; Out.WindBright = 0.5f; Out.SurfSize = 0.35f;
+			Out.BirdRate = 0.2f; Out.BirdDistance = 0.45f; Out.WindGust = 0.5f; Out.WindBright = 0.5f; Out.SurfSize = 0.35f;
 			break;
 		case Preset::Rocky:
 			// Acantilados: viento fuerte con algo de silbido, grajas y un águila lejana.
 			Lv[Layer::Wind] = 0.7f; Lv[Layer::Birds] = 0.35f; Lv[Layer::Crickets] = 0.06f;
 			Bw[Bird::Crow] = 1.f; Bw[Bird::Eagle] = 0.35f; Bw[Bird::Whistle] = 0.1f;
-			Out.BirdRate = 0.3f; Out.BirdDistance = 0.5f; Out.WindGust = 0.8f; Out.WindWhistle = 0.3f; Out.WindBright = 0.7f;
+			Out.BirdRate = 0.15f; Out.BirdDistance = 0.5f; Out.WindGust = 0.8f; Out.WindWhistle = 0.3f; Out.WindBright = 0.7f;
 			break;
 		case Preset::Mangrove:
 			// Manglar: agua quieta que borbotea, garzas y pájaros de agua, ranas y grillos, algo de cigarra.
 			Lv[Layer::Wind] = 0.2f; Lv[Layer::Surf] = 0.25f; Lv[Layer::Stream] = 0.25f; Lv[Layer::Birds] = 0.6f;
-			Lv[Layer::Cicadas] = 0.15f; Lv[Layer::Crickets] = 0.5f; Lv[Layer::Frogs] = 0.7f;
+			Lv[Layer::Cicadas] = 0.08f; Lv[Layer::Crickets] = 0.28f; Lv[Layer::Frogs] = 0.4f;
 			Bw[Bird::Heron] = 0.7f; Bw[Bird::Piper] = 0.8f; Bw[Bird::Whistle] = 0.3f; Bw[Bird::Oropendola] = 0.2f;
-			Out.BirdRate = 0.7f; Out.BirdDistance = 0.35f; Out.WindGust = 0.25f; Out.WindBright = 0.25f; Out.SurfSize = 0.1f;
+			Out.BirdRate = 0.3f; Out.BirdDistance = 0.35f; Out.WindGust = 0.25f; Out.WindBright = 0.25f; Out.SurfSize = 0.1f;
 			break;
 		case Preset::Human:
 			// Zona humana: palomas, gorriones y gallinas lejanas; campanillas de viento y alguna campana lejana.
-			Lv[Layer::Wind] = 0.45f; Lv[Layer::Birds] = 0.85f; Lv[Layer::Crickets] = 0.15f; Lv[Layer::Bells] = 0.8f;
+			Lv[Layer::Wind] = 0.45f; Lv[Layer::Birds] = 0.65f; Lv[Layer::Crickets] = 0.08f; Lv[Layer::Bells] = 0.45f;
 			Bw[Bird::Dove] = 1.f; Bw[Bird::Sparrow] = 1.f; Bw[Bird::Hen] = 0.5f; Bw[Bird::Crow] = 0.1f;
-			Out.BirdRate = 0.8f; Out.BirdDistance = 0.35f; Out.WindGust = 0.4f; Out.WindBright = 0.4f;
+			Out.BirdRate = 0.35f; Out.BirdDistance = 0.35f; Out.WindGust = 0.4f; Out.WindBright = 0.4f;
 			break;
 		default:
 			// Genérico (sin mapa procedural): brisa suave, pocos pájaros y algún grillo.
-			Lv[Layer::Wind] = 0.5f; Lv[Layer::Birds] = 0.55f; Lv[Layer::Crickets] = 0.08f;
+			Lv[Layer::Wind] = 0.5f; Lv[Layer::Birds] = 0.55f; Lv[Layer::Crickets] = 0.05f;
 			Bw[Bird::Whistle] = 0.3f; Bw[Bird::Sparrow] = 0.4f; Bw[Bird::Dove] = 0.3f; Bw[Bird::Crow] = 0.1f;
-			Out.BirdRate = 0.3f; Out.BirdDistance = 0.55f; Out.WindGust = 0.4f; Out.WindBright = 0.4f;
+			Out.BirdRate = 0.15f; Out.BirdDistance = 0.55f; Out.WindGust = 0.4f; Out.WindBright = 0.4f;
 			break;
 		}
 		return Out;
@@ -1465,7 +1465,7 @@ namespace TNAmbientDSP
 				const int32 Pick = Rng.Weighted(Weights, NumSpecies);
 				Species = Pick >= 0 ? FirstSpecies + Pick : -1;
 				Pan = Rng.Range(-0.85f, 0.85f);
-				if (Species >= 0 && Rng.Chance(0.3f))
+				if (Species >= 0 && Rng.Chance(0.2f))
 				{
 					AnswerSpecies = Species;
 					AnswerPan = FMath::Clamp(-Pan * Rng.Range(0.5f, 1.f) + Rng.Range(-0.2f, 0.2f), -0.9f, 0.9f);
@@ -1477,6 +1477,8 @@ namespace TNAmbientDSP
 			}
 			Timer = AnswerSpecies >= 0 ? Rng.Range(0.35f, 1.1f)
 				: FMath::Clamp(Rng.Exponential(1.f / FMath::Max(0.01f, CallsPerSecond)), 0.12f, 40.f);
+			// De vez en cuando, un rato de silencio: los cantos llegan a rachas y no como un goteo constante.
+			if (AnswerSpecies < 0 && Rng.Chance(0.2f)) { Timer += Rng.Range(5.f, 14.f); }
 		}
 
 		void Trigger(int32 Species, float Pan, float Distance)
@@ -2183,6 +2185,50 @@ namespace TNAmbientDSP
 		return InKind == Kind::LavaPool ? 0.63f : 0.21f;
 	}
 
+	/**
+	 * Coro intermitente: una capa de insectos o ranas canta a ratos (de OnMin a OnMax segundos) con silencios entre medias
+	 * (de OffMin a OffMax) y fundidos de FadeSeconds. Step devuelve el peso (0..1, suavizado) y avanza el reloj.
+	 */
+	struct FChorusGate
+	{
+		float Env = 0.f;
+		float Timer = 0.f;
+		bool bOn = false;
+		float OnMin = 6.f;
+		float OnMax = 16.f;
+		float OffMin = 8.f;
+		float OffMax = 22.f;
+		float FadeSeconds = 2.5f;
+		FRandom Rng;
+
+		void Init(uint32 InSeed, float InOnMin, float InOnMax, float InOffMin, float InOffMax)
+		{
+			Rng.SetSeed(InSeed);
+			OnMin = InOnMin;
+			OnMax = InOnMax;
+			OffMin = InOffMin;
+			OffMax = InOffMax;
+			// Empieza a mitad de un rato de canto o de silencio, al azar.
+			bOn = Rng.Chance(0.5f);
+			Timer = bOn ? Rng.Range(0.f, OnMax) : Rng.Range(0.f, OffMax);
+			Env = bOn ? 1.f : 0.f;
+		}
+
+		float Step(float Dt)
+		{
+			Timer -= Dt;
+			if (Timer <= 0.f)
+			{
+				bOn = !bOn;
+				Timer = bOn ? Rng.Range(OnMin, OnMax) : Rng.Range(OffMin, OffMax);
+			}
+			const float Target = bOn ? 1.f : 0.f;
+			const float MaxStep = Dt / FMath::Max(0.05f, FadeSeconds);
+			Env += FMath::Clamp(Target - Env, -MaxStep, MaxStep);
+			return Env * Env * (3.f - 2.f * Env);
+		}
+	};
+
 	/** Motor completo de una instancia: paisaje 2D por capas o una fuente 3D, suavizado de parámetros y salida limitada. */
 	class FEngine
 	{
@@ -2201,6 +2247,9 @@ namespace TNAmbientDSP
 			Crickets.Init(Rate, MixSeed(InSeed, 7u));
 			Lava.Init(Rate, MixSeed(InSeed, 8u));
 			Bells.Init(Rate, MixSeed(InSeed, 9u));
+			CicadaGate.Init(MixSeed(InSeed, 12u), 8.f, 20.f, 10.f, 25.f);
+			CricketGate.Init(MixSeed(InSeed, 13u), 6.f, 16.f, 8.f, 20.f);
+			FrogGate.Init(MixSeed(InSeed, 14u), 5.f, 12.f, 10.f, 25.f);
 			Waterfall.Init(Rate, MixSeed(InSeed, 10u));
 			Geyser.Init(Rate, MixSeed(InSeed, 11u));
 			Limiter.Init(Rate);
@@ -2311,7 +2360,7 @@ namespace TNAmbientDSP
 					{
 						static const float FrogWeights[Frog::Count] = { 0.5f, 0.3f, 0.2f };
 						// Con la capa débil, menos llamadas (no solo más bajas).
-						Frogs.Schedule(Dt, 1.6f * FMath::Min(1.f, 0.3f + To), FrogWeights, Frog::Croak, Frog::Count, 0.4f);
+						Frogs.Schedule(Dt, 0.8f * FMath::Min(1.f, 0.3f + To), FrogWeights, Frog::Croak, Frog::Count, 0.4f);
 						Frogs.Render(TmpL, TmpR, N);
 						break;
 					}
@@ -2322,7 +2371,10 @@ namespace TNAmbientDSP
 						Bells.Render(TmpL, TmpR, N);
 						break;
 					}
-					const float Norm = LayerNorm(LayerIdx);
+					// Cigarras, grillos y ranas cantan a ratos (FChorusGate): el fondo no se queda en un zumbido constante.
+					const float Chorus = LayerIdx == Layer::Cicadas ? CicadaGate.Step(Dt)
+						: (LayerIdx == Layer::Crickets ? CricketGate.Step(Dt) : (LayerIdx == Layer::Frogs ? FrogGate.Step(Dt) : 1.f));
+					const float Norm = LayerNorm(LayerIdx) * Chorus;
 					float G = From * Norm;
 					const float DG = (To - From) * Norm * InvN;
 					for (int32 i = 0; i < N; ++i)
@@ -2415,6 +2467,9 @@ namespace TNAmbientDSP
 		FCallLayer Frogs;
 		FCicadas Cicadas;
 		FCrickets Crickets;
+		FChorusGate CicadaGate;
+		FChorusGate CricketGate;
+		FChorusGate FrogGate;
 		FLava Lava;
 		FBells Bells;
 		FWaterfall Waterfall;

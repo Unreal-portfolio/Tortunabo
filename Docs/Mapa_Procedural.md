@@ -405,6 +405,11 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   grillos, ranas...) que cambian en degradado, tormenta, cuevas amortiguadas, y fuentes 3D en los
   géiseres (siguen el chorro), las cascadas y la lava. Para sustituirlo por sonidos de verdad:
   `TN_AmbienceDataAsset`. Consola: `TN.Ambience.Debug`, `TN.Ambience.Volume`.
+  - Fauna esporádica, para que el fondo no canse: las aves llaman con la mitad de frecuencia que al principio (selva
+    0,55 llamadas/s, antes 1,3), responden el 20 % de las veces (antes 30 %) y, tras un 20 % de las llamadas, callan
+    5-14 s más. Cigarras, grillos y ranas bajan un 40 % y cantan a ratos (`FChorusGate`): cigarras 8-20 s con silencios
+    de 10-25 s, grillos 6-16 s / 8-20 s, ranas 5-12 s / 10-25 s (y la mitad de croares), con fundidos de 2,5 s. Las
+    campanas de la zona humana, de 0,8 a 0,45.
 - **Música de fin de partida** (`UTN_MatchMusicSubsystem`, sintetizada en `TN_MusicSynthDSP.h`). Suena en 2D para el
   jugador local.
   - Tres pistas: victoria (si bemol mayor, 120 BPM), derrota (re menor, 72 BPM) y una cortinilla de eliminado.
