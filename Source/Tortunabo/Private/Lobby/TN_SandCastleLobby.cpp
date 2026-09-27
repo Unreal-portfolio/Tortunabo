@@ -2,6 +2,7 @@
 #include "Core/TN_Log.h"
 #include "Lobby/TN_HQGameMode.h"
 #include "Lobby/TN_LobbyReadyZone.h"
+#include "Lobby/TN_TreasureChest.h"
 #include "Components/BoxComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -78,6 +79,14 @@ namespace TNCastleDetail
 	constexpr double EastLandingEndDeg = 285.0;
 	/** Pila de huevos: centro del montículo de dos alturas en la plaza. */
 	const FVector2D EggsCenter(0.0, 700.0);
+	/**
+	 * Cofre del tesoro (ATN_TreasureChest) en la azotea de la torre del homenaje: lo más al centro posible sin tocar el
+	 * torreón (que ocupa el sur de la azotea), sobre una tarima redonda y mirando a la plaza (+Y). Entre la tarima y el
+	 * torreón queda paso de un rellano al otro, y entre la tarima y las almenas del norte, una franja de medio metro.
+	 */
+	const FVector2D TreasureSpot(0.0, CutY + 200.0);
+	constexpr double TreasureDaisR = 125.0;
+	constexpr double TreasureDaisH = 24.0;
 
 	/** Ángulo (radianes, sentido de las agujas del reloj desde +Y) de una hora del reloj. */
 	double ClockAngle(double Hour)
@@ -386,7 +395,48 @@ void ATN_SandCastleLobby::BeginPlay()
 		return;
 	}
 	HideMaquette();
+	SpawnTreasureChest();
 	UE_LOG(LogTortunabo, Log, TEXT("[Castillo] Lobby de castillo de arena en %s."), *GetActorLocation().ToString());
+}
+
+void ATN_SandCastleLobby::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Si se quita el castillo, el cofre se va con él; al cambiar de nivel o cerrar se va solo, con el mundo.
+	if (EndPlayReason == EEndPlayReason::Destroyed && HasAuthority())
+	{
+		if (ATN_TreasureChest* Chest = TreasureChest.Get())
+		{
+			Chest->Destroy();
+		}
+	}
+	TreasureChest.Reset();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_SandCastleLobby::SpawnTreasureChest()
+{
+	using namespace TNCastleDetail;
+	UWorld* World = GetWorld();
+	if (!World || !HasAuthority() || TreasureChest.IsValid())
+	{
+		return;
+	}
+	// En la tarima de la azotea, mirando a la plaza (el +X del cofre, al +Y del castillo).
+	const FTransform Xf = GetActorTransform();
+	const FVector Where = Xf.TransformPosition(FVector(TreasureSpot.X, TreasureSpot.Y, KeepRoofZ + TreasureDaisH));
+	const FRotator Facing = Xf.TransformRotation(FRotator(0.f, 90.f, 0.f).Quaternion()).Rotator();
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	TreasureChest = World->SpawnActor<ATN_TreasureChest>(ATN_TreasureChest::StaticClass(), Where, Facing, SpawnParams);
+	if (const ATN_TreasureChest* Chest = TreasureChest.Get())
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Castillo] Cofre del tesoro en la azotea de la torre del homenaje: %s."), *Chest->GetActorLocation().ToString());
+	}
+	else
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Castillo] No se ha podido crear el cofre del tesoro."));
+	}
 }
 
 void ATN_SandCastleLobby::BuildAll(bool bForce)
@@ -395,6 +445,13 @@ void ATN_SandCastleLobby::BuildAll(bool bForce)
 	BuildCastle();
 	BuildGateAndEggs();
 	bBuilt = true;
+}
+
+void ATN_SandCastleLobby::SetDrawSea(bool bDraw)
+{
+	bDrawSea = bDraw;
+	// Si ya estaba construido con otro mar, se rehace; si no, lo tiene en cuenta al construirse.
+	if (bBuilt && bSeaBuilt != bDrawSea) { BuildAll(true); }
 }
 
 void ATN_SandCastleLobby::HideMaquette()
@@ -453,6 +510,7 @@ void ATN_SandCastleLobby::BuildCastle()
 	FBuffers Decor;
 	FBuffers Barrier;
 	const FVector Up(0.0, 0.0, 1.0);
+	bSeaBuilt = bDrawSea;
 
 	// ── Suelo de arena redondo (con manchas de arena mojada y de arena clara) y playa por fuera ──
 	{
@@ -472,7 +530,8 @@ void ATN_SandCastleLobby::BuildCastle()
 				B.AddQuad(P0, P1, P2, P3, Up, C);
 			}
 		}
-		// Playa de fuera (tapa el suelo de la maqueta) hasta el horizonte y el mar alrededor.
+		// Playa de fuera (tapa el suelo de la maqueta) hasta el horizonte y el mar alrededor. Sin mar ni orilla si el valle
+		// del lobby ocupa su sitio (bDrawSea).
 		for (int32 k = 0; k < Spokes; ++k)
 		{
 			const double A0 = TNProcMap::TwoPi * k / Spokes, A1 = TNProcMap::TwoPi * (k + 1) / Spokes;
@@ -480,11 +539,17 @@ void ATN_SandCastleLobby::BuildCastle()
 			Decor.AddQuad(FVector(RIn * FMath::Cos(A0), RIn * FMath::Sin(A0), 4.0), FVector(RIn * FMath::Cos(A1), RIn * FMath::Sin(A1), 4.0),
 				FVector(ROut * FMath::Cos(A1), ROut * FMath::Sin(A1), 4.0), FVector(ROut * FMath::Cos(A0), ROut * FMath::Sin(A0), 4.0), Up,
 				(k % 5 == 0) ? Col(0xEBD39C) : Col(0xF2DCA8));
-			Decor.AddQuad(FVector(ROut * FMath::Cos(A0), ROut * FMath::Sin(A0), 4.0), FVector(ROut * FMath::Cos(A1), ROut * FMath::Sin(A1), 4.0),
-				FVector(4400.0 * FMath::Cos(A1), 4400.0 * FMath::Sin(A1), -30.0), FVector(4400.0 * FMath::Cos(A0), 4400.0 * FMath::Sin(A0), -30.0), Up, Col(0xE2F6F2));
+			if (bDrawSea)
+			{
+				Decor.AddQuad(FVector(ROut * FMath::Cos(A0), ROut * FMath::Sin(A0), 4.0), FVector(ROut * FMath::Cos(A1), ROut * FMath::Sin(A1), 4.0),
+					FVector(4400.0 * FMath::Cos(A1), 4400.0 * FMath::Sin(A1), -30.0), FVector(4400.0 * FMath::Cos(A0), 4400.0 * FMath::Sin(A0), -30.0), Up, Col(0xE2F6F2));
+			}
 		}
-		Decor.AddQuad(FVector(-30000.0, -30000.0, -34.0), FVector(30000.0, -30000.0, -34.0), FVector(30000.0, 30000.0, -34.0), FVector(-30000.0, 30000.0, -34.0),
-			Up, Col(0x1E9CC6));
+		if (bDrawSea)
+		{
+			Decor.AddQuad(FVector(-30000.0, -30000.0, -34.0), FVector(30000.0, -30000.0, -34.0), FVector(30000.0, 30000.0, -34.0), FVector(-30000.0, 30000.0, -34.0),
+				Up, Col(0x1E9CC6));
+		}
 	}
 
 	// ── Muralla redonda: cara de dentro y de fuera, adarve arriba, almenas por fuera y el hueco de la puerta doble ──
@@ -659,6 +724,22 @@ void ATN_SandCastleLobby::BuildCastle()
 		}
 		// Torrecilla sobre la azotea (al sur), con tejado de cono y bandera: la silueta alta del castillo.
 		AddTower(B, Decor, FVector2D(0.0, CutY - 170.0), 150.0, 430.0, Col(0xFF6A52), 0, KeepRoofZ);
+		// Tarima del cofre del tesoro, delante del torreón: arena con un reborde oscuro y conchas alrededor. El cofre lo
+		// pone el servidor encima (SpawnTreasureChest); la tarima lo sube un poco para que asome por las almenas.
+		{
+			const double DaisTopZ = KeepRoofZ + TreasureDaisH;
+			TNProcMesh::TNProcAddCylinder(B, FVector(TreasureSpot.X, TreasureSpot.Y, KeepRoofZ - 2.0), FVector(TreasureSpot.X, TreasureSpot.Y, DaisTopZ),
+				TreasureDaisR, TreasureDaisR - 6.0, 28, SandC());
+			TNProcMesh::TNProcAddCylinder(B, FVector(TreasureSpot.X, TreasureSpot.Y, DaisTopZ - 9.0), FVector(TreasureSpot.X, TreasureSpot.Y, DaisTopZ - 2.0),
+				TreasureDaisR - 1.0, TreasureDaisR - 3.0, 28, SandDark(), false);
+			const FLinearColor DaisShells[3] = { Col(0xFFB4A2), Col(0xFFE0C2), Col(0xE6D0FF) };
+			for (int32 s = 0; s < 6; ++s)
+			{
+				const double A = TNProcMap::TwoPi * (s + 0.5) / 6.0;
+				const FVector Out(FMath::Cos(A), FMath::Sin(A), 0.0);
+				AddScallop(Decor, FVector(TreasureSpot.X, TreasureSpot.Y, KeepRoofZ + 6.0) + Out * (TreasureDaisR - 2.5), Out, Up, 9.0, DaisShells[s % 3]);
+			}
+		}
 		// Escalera de caracol por fuera, de peldaños macizos: del suelo (este, 290°) a la azotea (oeste, 70°) pasando por
 		// encima del arco de la puerta (0°). Los de la entrada, más largos hacia la plaza.
 		const double StepDeg = (StairEndDeg - StairStartDeg) / StairSteps;

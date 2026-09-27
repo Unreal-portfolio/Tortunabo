@@ -1,7 +1,8 @@
 """Coloca el lobby del castillo redondo en LVL_Lobby (se ejecuta dentro del editor, con LVL_Lobby abierto y fuera de
 PIE): aparta la maqueta original (50 m más abajo, en la carpeta Referencia_Blockout_Original, recuperable) y pone el
-castillo, la tienda, el cuartel, los probadores, las medusas, el patio de pruebas y las salidas. Los actores propios que
-ya hubiera se quitan y se vuelven a poner. No guarda el nivel: revisarlo y guardarlo a mano.
+castillo, el valle de biomas que lo rodea, la tienda, el cuartel, los probadores, las medusas, el patio de pruebas y las
+salidas. Los actores propios que ya hubiera se quitan y se vuelven a poner (no se duplican). No guarda el nivel: revisarlo
+y guardarlo a mano.
 Ver Docs/Lobby_Castillo.md."""
 import math
 import unreal
@@ -27,7 +28,8 @@ def clock_spot(hour, dist):
 
 acts = eas.get_all_level_actors()
 # 1) Lo que ya hubiera de una colocación anterior se quita (se vuelve a poner con los sitios de ahora).
-ours = ('TN_SandCastleLobby', 'TN_ShopKeeper', 'TN_GeneralBriefing', 'TN_ChangingBooth', 'TN_JellyfishTrampoline', 'TN_WobblyBridge', 'TN_PlaygroundPiece')
+ours = ('TN_SandCastleLobby', 'TN_LobbyValley', 'TN_ShopKeeper', 'TN_GeneralBriefing', 'TN_ChangingBooth', 'TN_JellyfishTrampoline', 'TN_WobblyBridge',
+        'TN_PlaygroundPiece')
 removed = 0
 for a in acts:
     if a.get_class().get_name() in ours:
@@ -69,8 +71,16 @@ def spawn(cls, loc, rot, label, folder='Lobby_Castillo'):
     return a
 
 
-# 3) Castillo en el centro del anillo.
-spawn(unreal.TN_SandCastleLobby, unreal.Vector(0.0, 0.0, 0.0), unreal.Rotator(0.0, 0.0, 0.0), 'Castillo_Arena')
+# 3) Castillo en el centro del anillo y, alrededor, el valle de biomas (un bioma por hora del reloj, montañas que cierran el
+#    horizonte, fauna y pájaros). El valle ocupa el sitio del mar del castillo: se apaga (draw_sea) para que no asome.
+castle = spawn(unreal.TN_SandCastleLobby, unreal.Vector(0.0, 0.0, 0.0), unreal.Rotator(0.0, 0.0, 0.0), 'Castillo_Arena')
+valley_cls = getattr(unreal, 'TN_LobbyValley', None)
+if valley_cls:
+    castle.set_editor_property('draw_sea', False)
+    spawn(valley_cls, unreal.Vector(0.0, 0.0, 0.0), unreal.Rotator(0.0, 0.0, 0.0), 'Valle_Biomas', 'Lobby_Valle')
+    out.append('valle de biomas alrededor del castillo (mar del castillo apagado)')
+else:
+    out.append('sin TN_LobbyValley (¿falta compilar?): el castillo sigue con su mar')
 # 4) Tienda y cuartel pegados a la muralla, mirando al centro: la tienda entre la torre de la izquierda de la puerta
 #    doble y la siguiente (de las 10:30 a las 11:15) y el cuartel entre la de la derecha y la siguiente (de la 0:45 a la
 #    1:25). La distancia deja la estantería de la tienda y los vientos de atrás del cuartel junto a la muralla (radio 2400).

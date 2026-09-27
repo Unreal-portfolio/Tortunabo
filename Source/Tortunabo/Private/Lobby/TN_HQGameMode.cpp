@@ -6,6 +6,8 @@
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Engine/World.h"
+#include "UObject/Package.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/Character.h"
@@ -18,6 +20,7 @@
 #include "Lobby/TN_ChangingBooth.h"
 #include "Lobby/TN_GeneralBriefing.h"
 #include "Lobby/TN_LobbyReadyZone.h"
+#include "Lobby/TN_LobbyValley.h"
 #include "Lobby/TN_SandCastleLobby.h"
 #include "Lobby/TN_ShopKeeper.h"
 #include "Animation/SkeletalMeshActor.h"
@@ -36,6 +39,12 @@ ATN_HQGameMode::ATN_HQGameMode()
 void ATN_HQGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	// Este es el lobby al que se volverá al acabar la partida (LVL_Lobby, o LVL_HQ si se juega en el antiguo).
+	if (UMP_GameInstance* TNGI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		TNGI->LobbyReturnMapPath = UWorld::RemovePIEPrefix(GetWorld()->GetOutermost()->GetName());
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Lobby de vuelta: %s"), *TNGI->LobbyReturnMapPath);
+	}
 	EnsureFallbackPlayerStart();
 	SpawnLobbyShops();
 
@@ -603,6 +612,26 @@ void ATN_HQGameMode::SpawnLobbyShops()
 			}
 			World->SpawnActor<ATN_SandCastleLobby>(ATN_SandCastleLobby::StaticClass(), FVector(0.0, 0.0, GroundZ), FRotator::ZeroRotator, Params);
 			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Castillo de arena colocado (suelo a %.0f)."), GroundZ);
+		}
+	}
+
+	// El valle de biomas alrededor del castillo (ATN_LobbyValley) lo pone Scripts/place_lobby_castle.py; si el nivel trae
+	// castillo pero no valle, se pone aquí, sobre el castillo. Se replica (sin propiedades): cada cliente lo construye igual.
+	if (ATN_LobbyValley::IsEnabled())
+	{
+		const AActor* CastleActor = nullptr;
+		bool bHasValley = false;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const AActor* Actor = *It;
+			if (!Actor) { continue; }
+			if (!CastleActor && Actor->IsA<ATN_SandCastleLobby>()) { CastleActor = Actor; }
+			bHasValley |= Actor->IsA<ATN_LobbyValley>();
+		}
+		if (CastleActor && !bHasValley)
+		{
+			World->SpawnActor<ATN_LobbyValley>(ATN_LobbyValley::StaticClass(), CastleActor->GetActorTransform(), Params);
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Valle de biomas colocado alrededor del castillo."));
 		}
 	}
 

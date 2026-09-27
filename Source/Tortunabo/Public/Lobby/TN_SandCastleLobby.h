@@ -6,6 +6,7 @@
 #include "TN_SandCastleLobby.generated.h"
 
 class APlayerController;
+class ATN_TreasureChest;
 class UBoxComponent;
 class UPointLightComponent;
 class UProceduralMeshComponent;
@@ -15,7 +16,7 @@ class UTextRenderComponent;
 /**
  * El lobby como castillo de arena redondo (LVL_Lobby). Va colocado en el nivel y se construye en el editor
  * (OnConstruction) y en ejecución, así que se ve y se ajusta sin darle al Play. Solo se replican el estado de la puerta
- * y de los huevos.
+ * y de los huevos (el cofre del tesoro es un actor replicado aparte).
  *
  * Plano (cm, centro del círculo en el origen del actor; +Y es la puerta, las 12 del reloj; las 3 quedan a -X):
  * - Muralla redonda de radio interior Radius con almenas, marcas de cubo y conchas, y torres de cubo de alturas
@@ -27,7 +28,8 @@ class UTextRenderComponent;
  *   plaza del lobby (arriba) del patio de pruebas (abajo). En su centro, la torre del homenaje (las 6) con un paso por
  *   dentro, una escalera de caracol por fuera y un balcón con almenas que mira a la plaza; del rellano de la escalera
  *   baja otra al adarve de la izquierda, que acaba en un tobogán a la plaza. El de la derecha (se llega botando en las
- *   medusas) tiene un mirador y un tobogán al patio de pruebas.
+ *   medusas) tiene un mirador y un tobogán al patio de pruebas. En la azotea, delante del torreón y sobre una tarima,
+ *   el cofre del tesoro (ATN_TreasureChest): lo crea el servidor en BeginPlay y no se guarda en el nivel.
  * - Plaza: pila de cuatro huevos en un montículo de dos alturas (EggsCenter); meterse en uno marca al jugador como
  *   listo (ATN_HQGameMode::SetPlayerReadyState) y con todos listos empieza la cuenta atrás.
  * - Los puestos (tienda de las 10 a las 11, cuartel de la 12 a la 1, probadores de las 2 a las 3:30 y medusas de las
@@ -47,6 +49,7 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void PostRegisterAllComponents() override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -76,6 +79,12 @@ public:
 	 * doble o más en los huevos; empate, la puerta).
 	 */
 	ETNMatchStartStyle GetStartStyle() const { return StartStyle; }
+
+	/**
+	 * Pinta o no el mar de fuera y la orilla que baja a él (la playa de fuera sigue). El valle del lobby (ATN_LobbyValley)
+	 * lo apaga: ocupa ese sitio. Si cambia, rehace el castillo.
+	 */
+	void SetDrawSea(bool bDraw);
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Castle")
@@ -143,6 +152,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Castle")
 	FText GateName = NSLOCTEXT("Tortunabo", "CastleGateName", "TORTUNAVY");
 
+	/** Mar de fuera y orilla que baja a él (el valle del lobby lo apaga con SetDrawSea). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Castle")
+	bool bDrawSea = true;
+
 private:
 	/** Puerta 1 abierta (servidor: alguien se acerca por la plaza o quiere salir de la sala). */
 	UPROPERTY(Replicated)
@@ -160,6 +173,9 @@ private:
 	/** Esconde las piezas de la maqueta que el castillo sustituye y apaga la zona de listos vieja (cada máquina). */
 	void HideMaquette();
 
+	/** Servidor: crea el cofre del tesoro en la azotea de la torre del homenaje (actor replicado, no guardado). */
+	void SpawnTreasureChest();
+
 	/** Servidor: quién está en qué huevo o en la sala (listos), cómo se empezará y si la puerta 1 tiene que abrirse. */
 	void ServerUpdate(float DeltaSeconds);
 
@@ -170,8 +186,13 @@ private:
 	float GateHoldTimer = 0.f;
 	bool bGateBlocking = true;
 	bool bBuilt = false;
+	/** Si la última construcción pintó el mar (la propiedad puede cambiar sin reconstruir, p. ej. desde Python). */
+	bool bSeaBuilt = true;
 	ETNMatchStartStyle StartStyle = ETNMatchStartStyle::Gate;
 
 	/** Servidor: el último estado de listo enviado por jugador. */
 	TMap<TWeakObjectPtr<APlayerController>, bool> ReadySent;
+
+	/** Servidor: el cofre del tesoro creado en BeginPlay (se va con el castillo si este se destruye). */
+	TWeakObjectPtr<ATN_TreasureChest> TreasureChest;
 };

@@ -1,13 +1,15 @@
 # Lobby: el castillo de arena redondo
 
-El lobby de Tortunavy (`LVL_Lobby`) es un castillo de arena redondo en una isla de playa.
+El lobby de Tortunavy (`LVL_Lobby`) es un castillo de arena redondo al fondo de un valle, con un bioma en cada hora
+del reloj alrededor (ver «Valle»).
 - Al norte está la puerta doble: dos puertas con una sala en medio, que es uno de los dos sitios para ponerse listo.
 - En la plaza están la pila de huevos, que es el otro sitio para ponerse listo, y los puestos alrededor: tienda, cuartel
   y probadores.
 - Un muro interior con adarve cierra el patio de pruebas, con un mini parkour. En su centro está la torre del homenaje,
-  con balcón y escalera de caracol.
+  con balcón y escalera de caracol. En su azotea hay un cofre del tesoro que se rebusca (siempre da un objeto).
 
-Todo se construye en código y se ve directamente en el editor. Solo se replica el estado de la puerta y de los huevos.
+Todo se construye en código y se ve directamente en el editor. Del castillo solo se replica el estado de la puerta y de
+los huevos; el cofre del tesoro es un actor replicado aparte que el castillo crea al empezar la partida.
 
 Coordenadas en cm, locales al castillo (colocado en el origen). Se usa un reloj visto desde arriba: **las 12 son +Y**
 (la puerta), las 3 son -X, las 6 son -Y y las 9 son +X. `ATN_SandCastleLobby::LayoutSpot(Hora, Distancia, Yaw)` da el
@@ -41,7 +43,8 @@ antorchas) están en `Lobby/TN_CastleKit.h` (`TNCastleKit`).
 ### Muralla, torres y suelo
 
 - **Suelo y playa**: suelo redondo de arena (radio 2620, cota 2) con rayos de colores. Por fuera, un anillo de playa
-  hasta 39 m y el mar a -34.
+  hasta 39 m y, con `bDrawSea` (por defecto), el mar a -34. En `LVL_Lobby` el mar está apagado: su sitio lo ocupa el
+  valle (ver «Valle»).
 - **Muralla**: radio interior `Radius` = 2400, 190 de grosor y unos 6 m de alto, con una ondulación suave.
   - Lleva almenas, marcas de cubo (rebordes horizontales) y conchas incrustadas.
   - Encima del borde de fuera tiene barreras invisibles: nadie se cae del castillo.
@@ -98,6 +101,13 @@ umbral de la puerta 1, en y = `GateY` = 2470, y la sala sale hacia fuera de la m
     primeros salen 1,05 / 0,7 / 0,35 m más hacia la plaza y no tienen barandilla (se pisan desde fuera).
   - **Rellanos** a la altura de la azotea, con barandilla: el del oeste (de 70° a 100°, donde acaba el caracol) baja
     al adarve izquierdo y el del este (de 255° a 285°, cruzando la azotea) baja al adarve derecho.
+  - **Tarima del cofre**: en la azotea, delante del torreón, centrada en (0, -600) (`TreasureSpot`). Mide 1,25 m de
+    radio (`TreasureDaisR`) y 24 cm de alto (`TreasureDaisH`); es de arena, con un reborde oscuro y seis conchas
+    alrededor, y forma parte de `CastleMesh` (tiene colisión y se sube andando).
+    - Entre la tarima y el torreón quedan unos 90 cm de paso de un rellano al otro; también se puede cruzar por
+      encima de la tarima.
+    - Entre la tarima y las almenas del norte queda una franja de unos 60 cm.
+    - Encima va el cofre del tesoro (ver más abajo).
 
 ### Pila de huevos (plaza, centro en (0, 700))
 
@@ -114,6 +124,107 @@ Montículo de dos alturas (`TNCastleKit::BuildEggMound`).
 
 Hasta sesenta conchas y estrellas de mar sueltas por la plaza y el patio, y otras ocho alrededor del montículo.
 
+## Valle (`ATN_LobbyValley`, `Lobby/TN_LobbyValley*`)
+
+El castillo está abajo del todo de un valle cerrado por montañas. Alrededor hay un bioma por hora del reloj, y desde la
+azotea de la torre del homenaje se ven todos de un vistazo. Detrás de la sierra, una cordillera lejana tapa todo el
+horizonte: no se ve el borde del nivel.
+
+- **Código**:
+  - `Lobby/TN_LobbyValley.cpp`: terreno, agua, lava, cascada, formaciones, casitas, vegetación y efectos.
+  - `Lobby/TN_LobbyValley_Fauna.cpp`: animales, pájaros del castillo y bandadas.
+  - `Lobby/TN_LobbyValleyTerrain.h`: lógica pura (sectores, alturas, colores, vegetación por estilo y la rejilla).
+- **Construcción**: como el castillo (`OnConstruction`, `PostRegisterAllComponents` y `BeginPlay`).
+  - Es igual en el editor y en cada máquina, con la semilla `Seed`. No se replica ninguna malla.
+  - El actor se replica sin propiedades: así llega a los clientes si lo coloca el servidor.
+  - Solo se rehace si cambian `Seed`, `FloraDensity` o `MaxAnimals`. Moverlo no lo rehace: todo cuelga de su raíz.
+  - En un servidor dedicado no se construye nada.
+- **No se guarda en el nivel**: `TerrainMesh` y `WaterMesh` llevan `RF_Transient` y punteros `Transient`. Las HISM/ISM y
+  las mallas estáticas llevan `RF_Transient | RF_DuplicateTransient`: la copia del PIE se construye sola.
+- **Consola**: `TN.Lobby.Valley 0` lo esconde en ejecución y vuelve a pintar el mar del castillo (hay que volver a cargar
+  el lobby).
+
+### Forma
+
+Coordenadas locales del valle (centrado en el castillo), en cm.
+
+- **Suelo**: empieza a 38,7 m, 2 cm por debajo del borde de la playa del castillo y con su misma arena. Sube despacio
+  (unos 56 cm a 90 m). El agua de la laguna y del manglar está a -25.
+- **Sectores**: el relieve propio de cada bioma va de 52 a 150 m del centro. Entre dos sectores hay una transición de
+  6° (0,2 horas) a cada lado, y las fronteras ondulan.
+- **Sierra**: sube desde 120 m hasta la cresta, a 205 ± 14 m, y baja por detrás.
+  - Picos crestados de 0,5 a 1,25 veces el alto de su sector: de 39 m en la playa a 90 m en las cumbres nevadas.
+- **Cordillera lejana**: a 350 m, picos de 65 a 125 m, azulados por la distancia y con nieve en las cumbres. Asoma por
+  encima de la sierra y cierra el horizonte. El terreno acaba a 420 m, detrás de ella.
+- **Malla**: rejilla polar de 240 radios por 72 anillos, cada vez más separados (1,3 m junto al castillo, 15 m al
+  fondo).
+  - Son 34 080 triángulos de caras planas con color de vértice, sin colisión (nadie sale del castillo).
+  - Material `M_ProcTerrain`. Sin él, el de color de vértice del castillo.
+- **Volcanes y montículos**: van por encima de los sectores, así que no se cortan en las fronteras.
+  - Volcán grande: en la sierra, a las 4.
+  - Volcán pequeño: en el valle, entre el cañón y el volcán.
+  - Montículos: cinco isletas, el cabo del faro y las colinas del pueblo y las granjas.
+
+### Un bioma por hora
+
+| Hora | Sector | Bioma | Qué hay (y sus animales) |
+|---|---|---|---|
+| 12 | Laguna | Agua con isletas | laguna turquesa con cinco isletas y palafito; al fondo, cascada de unos 30 m con bruma (flamencos, pelícano y peces que saltan) |
+| 1 | Playa | Playa | arena, palmeras, cabo con faro, caracola gigante y barco varado (tortuguitas, cangrejos y una gaviota) |
+| 2 | Dunas | Desierto | dunas, saguaros, la tortuga colosal de piedra, un obelisco y un cráneo fósil (suricatos que vigilan y un correcaminos) |
+| 3 | Cañón | Desierto | mesas en terrazas con estratos rojos, chimeneas de hadas, roca en equilibrio y una mesa grande al fondo (lagartijas y buitre) |
+| 4 | Volcán | Volcánico | cono de unos 57 m con lava en el cráter, tres ríos de lava que brillan, humo y brasas; obsidiana, basalto, fumarola y domo de lava (escarabajos y salamandras de fuego) |
+| 5 | Acantilados | Rocas | terrazas grises, agujas y castillo en ruinas (cabras montesas y un águila en la aguja más alta) |
+| 6 | Cumbres nevadas | Rocas | la sierra más alta, nevada desde 43 m, detrás de la torre del homenaje; abetos, peñascos y una cabaña (marmotas y una cabra) |
+| 7 | Bosque | Rocas | colinas de pinos, abetos y abedules, círculo de piedras en un claro y una cabaña (conejos) |
+| 8 | Pueblo | Zona humana | tres colinas con diez casitas de colores (dos echan humo), molino y depósito de agua (gallinas y un gato) |
+| 9 | Granjas | Zona humana | parcelas de colores con setos, pacas, granero rojo y molino (palomas y una gallina) |
+| 10 | Selva | Selva | árboles de copa, ceibas, bambú y plataneras, pirámide escalonada, cabeza de piedra y pilares kársticos (monos, tucán y capibaras) |
+| 11 | Manglar | Manglar | llanura de fango a ras de agua con mangles, cipreses y juncos, y un palafito (garzas, cangrejos violinistas y ranas) |
+
+La puerta doble da a la laguna. Por la puerta 1 no se ve fuera, pero desde la plaza asoman por encima de la muralla la
+cascada, la sierra y la cordillera. Desde la azotea se ve la laguna entera.
+
+### Vida
+
+- **Vegetación**: las especies de cada bioma del mapa procedural, con sus mallas y su material con viento.
+  - Hay una HISM por bioma, especie y variante (unas 80). En el log sale el total de instancias.
+  - En la sierra solo hay árboles y peñascos, menos y más grandes. Más allá de 245 m no hay nada: lo lejano es más
+    simple.
+  - Nada se corta por distancia (todo el valle está a la vista). El viento solo se evalúa a menos de 120 m.
+- **Animales**: 53 de 25 especies (tope `MaxAnimals` = 56), entre 69 y 126 m del centro. Nunca entran en el castillo
+  ni en el valle cercano.
+  - Son cuerpos rígidos de la fauna del mapa procedural: una ISM por especie, más otra para lo que brilla. Van
+    aumentados de 1,3 a 2,3 veces para que se vean desde el castillo.
+  - Pasean cerca de su sitio, van a saltitos (conejos, monos, cabras, ranas, tucán), picotean, pastan, vigilan de pie
+    (suricatos, marmotas) o flotan (pelícano). Los peces saltan del agua con salpicadura.
+  - Son locales y cosméticos, sin huida: nadie llega hasta ellos.
+- **Pájaros del castillo** (`CastleBirds` = 6): gaviotas y palomas que van de almena en almena.
+  - Las almenas se buscan con trazas de visibilidad sobre la muralla y la azotea de la torre (las barreras invisibles
+    no cuentan).
+  - A veces dan un rodeo por encima de la plaza. Si se acerca una tortuga, salen volando.
+  - En el castillo solo hay pájaros: nada de fauna de suelo.
+- **Bandadas en círculo** (`TNAmbientFX`, 48 pájaros en 10 bandadas):
+  - sobre el castillo, gaviotas altas y golondrinas rápidas;
+  - en la laguna y la playa, gaviotas; en el desierto, buitres; en las cumbres, águilas;
+  - en el bosque, pájaros oscuros; en el pueblo, palomas; en la selva, guacamayos; en el manglar, garzas.
+- **Efectos**: humo y brasas en el volcán grande, humo fino en el pequeño, bruma al pie de la cascada y humo en dos
+  chimeneas.
+- **Sonido**: sin cambios. El paisaje sonoro del lobby sigue igual.
+
+### Con el castillo y colocación
+
+- El castillo pinta el mar y la orilla solo con `bDrawSea`. El valle lo apaga (`SetDrawSea(false)`) en el castillo
+  más cercano (a menos de 80 m). La playa de fuera del castillo sigue: el valle empieza debajo de su borde.
+- `Scripts/place_lobby_castle.py` lo pone en el origen (`Valle_Biomas`, carpeta `Lobby_Valle`) y deja el mar del
+  castillo apagado. Si el nivel trae castillo pero no valle, lo pone `ATN_HQGameMode::SpawnLobbyShops`.
+- **Coste**:
+  - unas 130 piezas de dibujo (terreno y formaciones, agua, unas 80 HISM de vegetación, unas 27 ISM de animales y
+    las de los pájaros);
+  - sin colisión ni navegación;
+  - un Tick ligero: 53 animales, 6 pájaros, 10 bandadas y 7 emisores;
+  - construcción de unos cientos de milisegundos al cargar el nivel (se ve en el log, `[Valle]`).
+
 ## Colocación en `LVL_Lobby`
 
 Todo está en la carpeta `Lobby_Castillo` del nivel. `Scripts/place_lobby_castle.py` lo vuelve a colocar, dentro del
@@ -121,7 +232,8 @@ editor y sin guardar el nivel.
 
 | Actor | Sitio | Notas |
 |---|---|---|
-| `Castillo_Arena` (`ATN_SandCastleLobby`) | origen | |
+| `Castillo_Arena` (`ATN_SandCastleLobby`) | origen | `draw_sea` apagado (el valle ocupa el sitio del mar) |
+| `Valle_Biomas` (`ATN_LobbyValley`) | origen | carpeta `Lobby_Valle`; ver «Valle» |
 | `Tienda_LaConchaDorada` (`ATN_ShopKeeper`) | las 10:53, a 2225 | pegada a la muralla, entre la torre izquierda de la puerta y la siguiente |
 | `Cuartel_General` (`ATN_GeneralBriefing`) | la 1:07, a 2160 | pegado a la muralla, entre la torre derecha de la puerta y la siguiente |
 | `Probador_1` … `Probador_4` (`ATN_ChangingBooth`) | 2:04, 2:32, 3:00 y 3:26 | a 2150 y 2040 alternos, puerta al centro |
@@ -131,17 +243,52 @@ editor y sin guardar el nivel.
 | `Prueba_01` … `Prueba_08` (`ATN_PlaygroundPiece`) | patio de pruebas | escalones de polo, galleta, postes de cubo, pala giratoria, túnel (se pasa de pie), tobogán de concha |
 | `Puente_Bamboleante` (`ATN_WobblyBridge`) | (350, -1950), yaw 180 | 7 m de vano, tablero a 2,3 m |
 | `Salida_1` … `Salida_4` (`PlayerStart`) | x = ±150, ±450; y = 1700 - 0,25·\|x\| | z 97, mirando a los huevos |
+| Cofre del tesoro (`ATN_TreasureChest`) | (0, -600, 924), yaw 90 (mirando a la plaza) | **no está en el nivel**: lo crea el castillo en el servidor, en `BeginPlay` |
 
 La maqueta original (paredes «Extrude»/SandWall, vallas, torres, botellas, carpas, huevos «Capsule»…) está 50 m más
 abajo, en la carpeta `Referencia_Blockout_Original`. Se recupera subiéndola 50 m. En ejecución, `HideMaquette` sigue
 escondiendo esas piezas si quedaran a la vista.
 
 `ATN_HQGameMode::SpawnLobbyShops` solo coloca lo que falte (castillo, tienda, probadores y general) en niveles que no
-los traen puestos.
+los traen puestos. Si hay castillo y no valle, pone también el valle sobre el castillo (nunca dos).
 
 El lobby del castillo no tiene selector de modo: la partida es el cooperativo del mapa procedural (`LVL_ProcMap`),
 que es el valor por defecto de `UMP_GameInstance::SelectedProcMode`. El clásico (`LVL_Run`) solo sale si un
 `ATN_ProcModeSelector` lo elige.
+
+## El cofre del tesoro (`ATN_TreasureChest`, `Lobby/TN_TreasureChest.*`)
+
+Cofre en lo alto de la torre del homenaje, en el centro de la azotea todo lo que deja el torreón. Se rebusca como
+los decorados del mapa procedural: mantener E, el aro del HUD, «¡puf!» y el objeto que sale de un saltito. Pero
+cuesta más (**5 s**), **siempre da un objeto al azar** de `DT_Items` y **se puede repetir** tras 2,5 s de respiro.
+Las reglas y la red están en `Docs/Botin_Decorados.md`.
+
+- **Quién lo crea**: `ATN_SandCastleLobby::SpawnTreasureChest`, en el servidor, desde `BeginPlay` y solo si el
+  castillo está activo (`TN.Lobby.Castle 1`).
+  - Es un actor replicado aparte (su dueño es el castillo) y no se guarda en el nivel: no hay que tocar `LVL_Lobby`.
+  - Va sobre la tarima, en (0, -600, 924) locales del castillo, con su +X hacia el +Y del castillo (la plaza).
+  - Si se destruye el castillo, el cofre se va con él.
+- **Malla** (low-poly, colores de vértice como el resto del lobby; `TNProcRuntimeMesh::MakeStaticMesh`, con
+  `RF_Transient | RF_DuplicateTransient`):
+  - La caja mide 1,56 × 1,00 m y 64 cm de alto. Tiene tablones en tres hileras, zócalo oscuro, borde dorado,
+    cantoneras doradas con remaches, flejes de hierro con remaches, una cerradura dorada con el ojo de la llave y dos
+    asas de hierro.
+  - Dentro lleva una cama de monedas con tres montones, monedas sueltas, cuatro gemas y una copa.
+  - La tapa es de medio cañón, con tablones por fuera y madera oscura por dentro. Tiene los testeros con filo dorado,
+    flejes y remaches, un labio dorado, el pasador sobre la cerradura, bisagras y una vieira dorada de emblema.
+  - Con la tapa cerrada mide 1,17 m de alto. Con la tarima, desde la plaza se ve entre las almenas; la tapa abierta,
+    la luz y los destellos asoman por encima.
+  - Las mallas se hacen en `OnConstruction` y, si la copia del PIE llega sin ellas, en `BeginPlay`. No se hacen en
+    servidor dedicado.
+- **Colisión**: una caja (`ChestBlock`, `BlockAll` sin cámara) del tamaño del cofre cerrado. Las mallas no tienen
+  colisión.
+- **Tapa y brillo**: la tapa gira sobre su bisagra según el estado replicado, igual en todas las máquinas.
+  - Mientras se rebusca, se entreabre a tirones: sube de 18° a 55° con el progreso, temblando y crujiendo.
+  - Al salir el objeto, salta a unos 110° y aguanta 1,2 s.
+  - Luego se cierra con un «¡clonc!». Si se suelta E antes, se cierra igual.
+  - La luz dorada de dentro (`GlowLight`, sin sombras) sube con la tapa, y de las monedas suben destellos.
+- **El objeto** sale de dentro del cofre y cae delante de él, en la tarima (entre 30 y 58 cm por delante del frente,
+  hasta 45 cm a cada lado): nunca se cae de la azotea. Quedan como mucho seis objetos sin recoger.
 
 ## La tienda (`ATN_ShopKeeper`)
 

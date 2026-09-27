@@ -83,6 +83,8 @@ namespace TNSearchSynthDSP
 	constexpr uint8 KindRummage = 0;
 	constexpr uint8 KindPuff = 1;
 	constexpr uint8 KindPof = 2;
+	constexpr uint8 KindLidCreak = 3;
+	constexpr uint8 KindLidThump = 4;
 
 	struct FSfxEvent
 	{
@@ -166,9 +168,12 @@ namespace TNSearchSynthDSP
 		/** Pasos bajos de un polo: siseo (agudo) y retumbo (grave). */
 		float HissLp = 0.f;
 		float RumbleLp = 0.f;
-		/** Resonador de la chinita. */
+		/** Resonador de la chinita (y el grave de la madera de la tapa). */
 		float Res1 = 0.f;
 		float Res2 = 0.f;
+		/** Segundo resonador (el agudo de la madera de la tapa). */
+		float ResB1 = 0.f;
+		float ResB2 = 0.f;
 		float ClickAt = -1.f;
 		float ClickHz = 2600.f;
 		/** Centro del paso banda de los granos de arena. */
@@ -275,6 +280,15 @@ namespace TNSearchSynthDSP
 			case KindPuff:
 				Voice.Duration = 0.85f;
 				break;
+			case KindLidCreak:
+				// Cada crujido, de un largo distinto.
+				Voice.Duration = 0.4f + 0.2f * Voice.Jitter;
+				break;
+			case KindLidThump:
+				// El golpe arranca con un impulso en la primera muestra.
+				Voice.Duration = 0.42f;
+				Voice.ClickAt = 0.f;
+				break;
 			default:
 				Voice.Duration = 0.62f;
 				break;
@@ -366,6 +380,83 @@ namespace TNSearchSynthDSP
 				}
 				break;
 			}
+			case KindLidCreak:
+			{
+				// Crujido de madera: roce a tirones (impulsos irregulares cuya frecuencia sube y vuelve a bajar) por dos
+				// resonancias de tabla, una grave y otra aguda (resonadores de dos polos normalizados como el de la chinita).
+				const float X = FMath::Clamp(T / FMath::Max(0.05f, Voice.Duration), 0.f, 1.f);
+				const float Env = FMath::Min(1.f, T / 0.02f) * std::pow(1.f - X, 0.7f);
+				const float RubHz = Voice.Pitch * (45.f + 150.f * std::pow(FMath::Max(0.f, std::sin(SfxPi * X)), 1.5f)) * (0.85f + 0.3f * Voice.Jitter);
+				const float Wa = SfxTwoPi * FMath::Min(540.f * Voice.Pitch, Rate * 0.4f) * Dt;
+				const float Ra = std::exp(-Dt / 0.009f);
+				const float Ca = 2.f * Ra * std::cos(Wa);
+				const float Na = std::sin(Wa);
+				const float Wb = SfxTwoPi * FMath::Min(1380.f * Voice.Pitch, Rate * 0.4f) * Dt;
+				const float Rb = std::exp(-Dt / 0.005f);
+				const float Cb = 2.f * Rb * std::cos(Wb);
+				const float Nb = std::sin(Wb);
+				for (int32 i = 0; i < Count; ++i)
+				{
+					float Excite = 0.f;
+					Voice.PhaseA += RubHz * Dt;
+					if (Voice.PhaseA >= 1.f)
+					{
+						// Un tirón, de fuerza al azar; el siguiente llega algo tarde (el roce no es regular).
+						Excite = 0.55f + 0.45f * SfxUnit(Voice.NoiseState);
+						Voice.PhaseA = -0.35f * SfxUnit(Voice.NoiseState);
+					}
+					const float In = Excite + 0.004f * SfxNoise(Voice.NoiseState);
+					const float Ya = In + Ca * Voice.Res1 - Ra * Ra * Voice.Res2;
+					Voice.Res2 = Voice.Res1;
+					Voice.Res1 = Ya;
+					const float Yb = In + Cb * Voice.ResB1 - Rb * Rb * Voice.ResB2;
+					Voice.ResB2 = Voice.ResB1;
+					Voice.ResB1 = Yb;
+					MixBuf[i] += (0.6f * Ya * Na + 0.4f * Yb * Nb) * Env * Voice.Gain;
+				}
+				break;
+			}
+			case KindLidThump:
+			{
+				// ¡Clonc!: golpe grave cuya altura cae, la caja de madera que resuena (dos modos excitados por un impulso
+				// y una pizca de ruido) y el tintineo corto de los herrajes.
+				const float BodyHz = 128.f * Voice.Pitch * (1.f + 0.7f * std::exp(-T / 0.012f));
+				const float BodyEnv = std::exp(-T / 0.075f);
+				const float GritEnv = T < 0.006f ? 1.f : 0.f;
+				const float Wa = SfxTwoPi * FMath::Min(360.f * Voice.Pitch, Rate * 0.4f) * Dt;
+				const float Ra = std::exp(-Dt / 0.04f);
+				const float Ca = 2.f * Ra * std::cos(Wa);
+				const float Na = std::sin(Wa);
+				const float Wb = SfxTwoPi * FMath::Min(880.f * Voice.Pitch, Rate * 0.4f) * Dt;
+				const float Rb = std::exp(-Dt / 0.02f);
+				const float Cb = 2.f * Rb * std::cos(Wb);
+				const float Nb = std::sin(Wb);
+				const float TinkEnv = std::exp(-T / 0.06f);
+				const float TinkHz = 2650.f * Voice.Pitch;
+				for (int32 i = 0; i < Count; ++i)
+				{
+					float Excite = 0.06f * GritEnv * SfxNoise(Voice.NoiseState);
+					if (Voice.ClickAt >= 0.f)
+					{
+						Excite += 1.f;
+						Voice.ClickAt = -1.f;
+					}
+					Voice.PhaseA += BodyHz * Dt;
+					Voice.PhaseA -= std::floor(Voice.PhaseA);
+					const float Body = std::sin(SfxTwoPi * Voice.PhaseA) * BodyEnv;
+					const float Ya = Excite + Ca * Voice.Res1 - Ra * Ra * Voice.Res2;
+					Voice.Res2 = Voice.Res1;
+					Voice.Res1 = Ya;
+					const float Yb = Excite + Cb * Voice.ResB1 - Rb * Rb * Voice.ResB2;
+					Voice.ResB2 = Voice.ResB1;
+					Voice.ResB1 = Yb;
+					Voice.PhaseC += TinkHz * Dt;
+					Voice.PhaseC -= std::floor(Voice.PhaseC);
+					const float Tink = std::sin(SfxTwoPi * Voice.PhaseC) * TinkEnv;
+					MixBuf[i] += (0.6f * Body + 0.75f * Ya * Na + 0.45f * Yb * Nb + 0.1f * Tink) * Voice.Gain;
+				}
+				break;
+			}
 			default:
 			{
 				// ¡Pof!: golpe sordo, polvo que se posa (ruido por un paso bajo que va bajando) y un «buuu» bajito
@@ -442,6 +533,8 @@ namespace TNSearchSynthDSP
 static_assert(static_cast<uint8>(ETNSearchSound::Rummage) == TNSearchSynthDSP::KindRummage, "ETNSearchSound y el motor DSP deben coincidir");
 static_assert(static_cast<uint8>(ETNSearchSound::Puff) == TNSearchSynthDSP::KindPuff, "ETNSearchSound y el motor DSP deben coincidir");
 static_assert(static_cast<uint8>(ETNSearchSound::Pof) == TNSearchSynthDSP::KindPof, "ETNSearchSound y el motor DSP deben coincidir");
+static_assert(static_cast<uint8>(ETNSearchSound::LidCreak) == TNSearchSynthDSP::KindLidCreak, "ETNSearchSound y el motor DSP deben coincidir");
+static_assert(static_cast<uint8>(ETNSearchSound::LidThump) == TNSearchSynthDSP::KindLidThump, "ETNSearchSound y el motor DSP deben coincidir");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UTN_SearchSynthComponent
@@ -678,15 +771,29 @@ void ATN_ProcSearchSpot::ApplySpotShape()
 	// La esfera envuelve la cápsula de la huella: si la tortuga está a su alcance del borde, la esfera también.
 	ScanSphere->SetSphereRadius(SpotShape.HalfLength + SpotShape.Radius + 30.f);
 	ScanSphere->SetRelativeLocation(FVector(0.f, 0.f, FMath::Min(SpotShape.Height * 0.5f, 150.f)));
-	// Ya buscado: fuera del escaneo (tampoco tiene aviso).
-	ScanSphere->SetCollisionEnabled(IsSearched() ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryOnly);
+	// Ya buscado: fuera del escaneo (tampoco tiene aviso). Los repetibles siguen en él: el respiro lo decide CanInteract.
+	ScanSphere->SetCollisionEnabled(!bRepeatable && IsSearched() ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryOnly);
+}
+
+bool ATN_ProcSearchSpot::IsSpent() const
+{
+	if (!IsSearched())
+	{
+		return false;
+	}
+	if (!bRepeatable)
+	{
+		return true;
+	}
+	// Repetible: agotado solo durante el respiro tras el último resultado (y nunca mientras alguien rebusca).
+	return !SearchState.Searcher && ServerNow() - static_cast<double>(SearchState.OutcomeTime) < static_cast<double>(RepeatCooldown);
 }
 
 // ── Interacción ──────────────────────────────────────────────────────────────
 
 bool ATN_ProcSearchSpot::CanInteract(APawn* Interactor) const
 {
-	if (!Super::CanInteract(Interactor) || IsSearched())
+	if (!Super::CanInteract(Interactor) || IsSpent())
 	{
 		return false;
 	}
@@ -718,7 +825,7 @@ float ATN_ProcSearchSpot::GetHoldDuration() const
 
 float ATN_ProcSearchSpot::GetHoldProgress(const APawn* Interactor) const
 {
-	if (!Interactor || IsSearched() || SearchState.Searcher.Get() != Interactor)
+	if (!Interactor || IsSpent() || SearchState.Searcher.Get() != Interactor)
 	{
 		return -1.f;
 	}
@@ -753,7 +860,7 @@ void ATN_ProcSearchSpot::BeginHoldInteract(APawn* Interactor)
 
 void ATN_ProcSearchSpot::EndHoldInteract(APawn* Interactor)
 {
-	if (HasAuthority() && Interactor && SearchState.Searcher.Get() == Interactor && !IsSearched())
+	if (HasAuthority() && Interactor && SearchState.Searcher.Get() == Interactor && !IsSpent())
 	{
 		CancelSearch(TEXT("ha soltado la tecla"));
 	}
@@ -783,8 +890,7 @@ void ATN_ProcSearchSpot::ServerTickSearch()
 void ATN_ProcSearchSpot::FinishSearch()
 {
 	APawn* Pawn = SearchState.Searcher.Get();
-	const FVector PawnLocation = Pawn ? Pawn->GetActorLocation() : GetActorLocation() + GetActorRightVector() * 500.f;
-	const FVector From = RimPointToward(PawnLocation, 40.f);
+	const FVector From = GetLootOrigin(Pawn);
 
 	FTN_InventoryItem Item;
 	AActor* Loot = nullptr;
@@ -803,6 +909,7 @@ void ATN_ProcSearchSpot::FinishSearch()
 	SearchState.LootFrom = From;
 	SearchState.LootTo = Landing;
 	SearchState.LootPickup = Loot;
+	SearchState.SearchCount = static_cast<uint8>(SearchState.SearchCount + 1);
 	CommitState(OldState);
 
 	const FString Result = Loot ? FString::Printf(TEXT("¡puf! %s"), *Item.ItemId.ToString()) : FString(TEXT("¡pof! nada"));
@@ -889,6 +996,18 @@ float ATN_ProcSearchSpot::GetLuck() const
 	return Forced >= 0.f ? FMath::Clamp(Forced, 0.f, 1.f) : LootChance;
 }
 
+FVector ATN_ProcSearchSpot::GetLootOrigin(const APawn* Pawn) const
+{
+	// A ras del borde de la huella, hacia el que buscaba (sin él, hacia un lado cualquiera).
+	const FVector PawnLocation = Pawn ? Pawn->GetActorLocation() : GetActorLocation() + GetActorRightVector() * 500.f;
+	return RimPointToward(PawnLocation, 40.f);
+}
+
+FVector ATN_ProcSearchSpot::GetRummageOrigin(const APawn* Searcher) const
+{
+	return Searcher ? RimPointToward(Searcher->GetActorLocation(), 20.f) : GetActorLocation() + FVector(0.f, 0.f, 20.f);
+}
+
 bool ATN_ProcSearchSpot::PickLoot(FTN_InventoryItem& OutItem) const
 {
 	const UDataTable* Table = LootTable.LoadSynchronous();
@@ -949,6 +1068,20 @@ AActor* ATN_ProcSearchSpot::SpawnLoot(const FTN_InventoryItem& Item, const FVect
 	if (!World || !Item.PickupActorClass)
 	{
 		return nullptr;
+	}
+	// Con límite (los repetibles): lo recogido ya no cuenta (el pickup se destruye al cogerlo); si aún hay demasiados
+	// objetos sin recoger, se va el más viejo.
+	if (MaxLootLying > 0)
+	{
+		SpawnedLoot.RemoveAll([](const TWeakObjectPtr<AActor>& Lying) { return !Lying.IsValid(); });
+		while (SpawnedLoot.Num() >= MaxLootLying)
+		{
+			if (AActor* Oldest = SpawnedLoot[0].Get())
+			{
+				Oldest->Destroy();
+			}
+			SpawnedLoot.RemoveAt(0);
+		}
 	}
 	// Igual que las zonas de objetos y soltar lo equipado: el pickup de la fila, inicializado con ella.
 	FActorSpawnParameters SpawnParams;
@@ -1019,7 +1152,8 @@ void ATN_ProcSearchSpot::HandleStateChanged(const FTNSearchSpotState& OldState)
 
 	const bool bScreen = GetNetMode() != NM_DedicatedServer;
 	const double Since = ServerNow() - static_cast<double>(SearchState.OutcomeTime);
-	const bool bNewOutcome = OldState.Outcome == ETNSearchOutcome::None && SearchState.Outcome != ETNSearchOutcome::None;
+	// Resultado nuevo: cambia la cuenta de búsquedas (en los de una vez, al pasar de «sin buscar» a buscado).
+	const bool bNewOutcome = SearchState.Outcome != ETNSearchOutcome::None && SearchState.SearchCount != OldState.SearchCount;
 	if (bScreen && bNewOutcome && Since < TNSearchSpotDetail::FreshOutcomeSeconds)
 	{
 		EnsureFX();
@@ -1050,6 +1184,8 @@ void ATN_ProcSearchSpot::HandleStateChanged(const FTNSearchSpotState& OldState)
 			StartHop(Pickup, FMath::Max(0.0, Since));
 		}
 	}
+
+	OnSearchStateChanged(OldState);
 }
 
 // ── Utilidades ───────────────────────────────────────────────────────────────
@@ -1111,8 +1247,8 @@ void ATN_ProcSearchSpot::Tick(float DeltaSeconds)
 		}
 	}
 	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-	const bool bBusy = SearchState.Searcher != nullptr || bHopActive || (bNearView && !IsSearched())
-		|| Now - LastFxTime < TNSearchSpotDetail::FxTail;
+	const bool bBusy = SearchState.Searcher != nullptr || bHopActive || (bNearView && !IsSpent())
+		|| Now - LastFxTime < TNSearchSpotDetail::FxTail || WantsFrameTick();
 	const float WantedInterval = bBusy ? 0.f : TNSearchSpotDetail::IdleTickInterval;
 	if (!FMath::IsNearlyEqual(GetActorTickInterval(), WantedInterval))
 	{
@@ -1133,7 +1269,7 @@ void ATN_ProcSearchSpot::TickLocalFX(float DeltaSeconds)
 		&& FMath::Abs(View.Z - GetActorLocation().Z) < 3000.0;
 
 	// Por buscar: alguna chispita dorada al pie, de vez en cuando («aquí se puede rebuscar»).
-	if (bNearView && !IsSearched() && !SearchState.Searcher)
+	if (bNearView && !IsSpent() && !SearchState.Searcher)
 	{
 		HintClock -= DeltaSeconds;
 		if (HintClock <= 0.f)
@@ -1147,13 +1283,13 @@ void ATN_ProcSearchSpot::TickLocalFX(float DeltaSeconds)
 	// Rebuscando: puñados de tierra y piedrecitas que saltan hacia el que busca, cada uno con su sonido.
 	if (const APawn* Searcher = SearchState.Searcher.Get())
 	{
-		if (!IsSearched())
+		if (!IsSpent())
 		{
 			RummageClock -= DeltaSeconds;
 			if (RummageClock <= 0.f)
 			{
 				RummageClock = FMath::FRandRange(0.12f, 0.2f);
-				const FVector Rim = RimPointToward(Searcher->GetActorLocation(), 20.f);
+				const FVector Rim = GetRummageOrigin(Searcher);
 				const FVector Out = (Searcher->GetActorLocation() - Rim).GetSafeNormal2D();
 				EnsureFX();
 				BurstFX(FxBits, Rim, 2, (Out * 0.7f + FVector::UpVector).GetSafeNormal());
@@ -1161,7 +1297,7 @@ void ATN_ProcSearchSpot::TickLocalFX(float DeltaSeconds)
 				{
 					BurstFX(FxDust, Rim, 1, FVector::UpVector, 0.6f);
 				}
-				PlaySearchSound(ETNSearchSound::Rummage, FMath::FRandRange(0.85f, 1.2f), FMath::FRandRange(0.65f, 1.f), Rim);
+				PlaySearchSound(ETNSearchSound::Rummage, FMath::FRandRange(0.85f, 1.2f) * RummagePitch, FMath::FRandRange(0.65f, 1.f), Rim);
 			}
 		}
 	}
@@ -1172,7 +1308,7 @@ void ATN_ProcSearchSpot::TickLocalFX(float DeltaSeconds)
 		return;
 	}
 	const bool bFxQuiet = !bHopActive && !SearchState.Searcher && World->GetTimeSeconds() - LastFxTime >= TNSearchSpotDetail::FxTail;
-	if (bFxQuiet && (!bNearView || IsSearched()))
+	if (bFxQuiet && (!bNearView || IsSpent()))
 	{
 		// Lejos de la cámara (o ya buscado) y sin nada vivo: fuera los emisores, para que no se acumulen instancias por
 		// todo el mapa. Si vuelven a hacer falta se crean otra vez (las mallas de partícula van en caché).
@@ -1306,6 +1442,16 @@ void ATN_ProcSearchSpot::BurstFX(int32 Emitter, const FVector& Where, int32 Coun
 	{
 		LastFxTime = World->GetTimeSeconds();
 	}
+}
+
+void ATN_ProcSearchSpot::EmitSparkles(const FVector& Where, int32 Count, const FVector& Direction, float SpeedScale)
+{
+	if (GetNetMode() == NM_DedicatedServer || Count <= 0)
+	{
+		return;
+	}
+	EnsureFX();
+	BurstFX(FxSparkle, Where, Count, Direction, SpeedScale);
 }
 
 void ATN_ProcSearchSpot::PlaySearchSound(ETNSearchSound Sound, float Pitch, float Volume, const FVector& Where)
