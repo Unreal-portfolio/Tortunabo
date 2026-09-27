@@ -634,3 +634,15 @@ def test_suelo_y_pared_tienen_color_distinto(model):
     normals = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]])
     rgb = vertex_colors(model, world, normals)[:, :3].astype(float) / 255.0
     assert np.linalg.norm(rgb[0] - rgb[1]) >= 0.1, f"suelo {rgb[0]} y pared {rgb[1]} casi iguales"
+
+
+def test_ninguna_cara_queda_girada_junto_al_puente_del_rio(model):
+    """Trozo del cruce en puente de C01 (tablero en 160, 139 m): antes se orientaba cada triangulo
+    por separado y junto al estribo quedaban caras giradas respecto a sus vecinas (se veian rotas)."""
+    from terrain_vol.mesh import build_chunk
+    chunk = build_chunk(model, 1, 2)
+    v, t = chunk.vertices.astype(np.float64), chunk.triangles.astype(np.int64)
+    visible = -np.cross(v[t[:, 1]] - v[t[:, 0]], v[t[:, 2]] - v[t[:, 0]])
+    area = np.linalg.norm(visible, axis=1)
+    agree = np.einsum("ij,ij->i", visible / np.maximum(area, 1e-12)[:, None], chunk.normals[t].mean(axis=1))
+    assert int(((agree < -0.2) & (area > 1e-4)).sum()) == 0

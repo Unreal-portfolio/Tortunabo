@@ -221,13 +221,16 @@ def build_chunk(model: MapModel, col: int, row: int) -> ChunkMesh:
     g = np.stack([ndimage.map_coordinates(c, coords, order=1, mode="nearest") for c in grad], axis=1)
     normals = -g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-9)
 
-    # Cara visible de Unreal: la opuesta a (B-A)x(C-A). Se orienta cada triangulo con la normal.
+    # Cara visible de Unreal: la opuesta a (B-A)x(C-A). El marching cubes ya da un sentido coherente
+    # en toda la malla: se decide UNA vez (voto de todas las caras contra la normal del campo). Antes
+    # se orientaba cada triangulo por separado y, donde el gradiente del campo y la cara no coincidian
+    # (laminas finas junto a los estribos), quedaban caras giradas respecto a sus vecinas.
     a, b, c = world[faces[:, 0]], world[faces[:, 1]], world[faces[:, 2]]
     cross = np.cross(b - a, c - a)
     face_n = normals[faces].mean(axis=1)
-    flip = np.einsum("ij,ij->i", cross, face_n) > 0.0
     faces = faces.copy()
-    faces[flip] = faces[flip][:, [0, 2, 1]]
+    if np.einsum("ij,ij->i", cross, face_n).sum() > 0.0:
+        faces = faces[:, [0, 2, 1]]
 
     # Normales de la propia malla (suma de caras): la luz sigue a los triangulos y las
     # sombras no salen a dientes. En el borde del trozo, las del campo: iguales en el vecino.
