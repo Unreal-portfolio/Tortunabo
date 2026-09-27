@@ -2693,6 +2693,57 @@ void ATN_ProcMapGenerator::BuildStructures()
 		TArray<TArray<FVector>> Inner;
 		TNCaveMesh::TNCaveBuildRoof(Painted, Stations, F.Height, F.Radius, CaveSeed, Look, &Inner);
 
+		// Tapa de montaña: el terreno no puede tener techo, así que por encima del túnel quedaba una ranura a lo largo
+		// del camino (la montaña «troquelada»). Se cubre con una superficie que une las laderas de los dos lados a su
+		// altura, con algo de relieve y los colores del bioma, solo donde la montaña queda por encima del techo de roca;
+		// sus bordes se meten un poco en el terreno para que no se vea la costura.
+		{
+			constexpr int32 CapPts = 9;
+			constexpr double Reach = 700.0;
+			TArray<TArray<FVector>> CapRings;
+			TArray<uint8> CapOk;
+			for (int32 i = 0; i < Stations.Num(); ++i)
+			{
+				const TNCaveMesh::FTNCaveStation& St = Stations[i];
+				const FVector2D P2(St.Floor.X, St.Floor.Y);
+				const FVector2D Nrm(-St.Dir.Y, St.Dir.X);
+				const double CapEdge = St.HalfWidth + Reach;
+				const double HL = TerrainHeightMap(P2 + Nrm * CapEdge);
+				const double HR = TerrainHeightMap(P2 - Nrm * CapEdge);
+				const double RoofTop = St.Floor.Z + CaveDetail::Clearance(St.HalfWidth * 2.0, F.Height) + F.Radius;
+				const bool bInside = FMath::Min(HL, HR) > RoofTop + 120.0;
+				CapOk.Add(bInside ? 1 : 0);
+				TArray<FVector>& CapRing = CapRings.AddDefaulted_GetRef();
+				for (int32 k = 0; k < CapPts; ++k)
+				{
+					const double T = static_cast<double>(k) / (CapPts - 1);
+					const double Across = FMath::Lerp(CapEdge, -CapEdge, T);
+					// Sube hacia el centro (loma) y se hunde 40 cm en el terreno por los bordes.
+					const double Bump = 180.0 * FMath::Sin(PI * T) * (0.7 + 0.3 * TNProcHashNoise(i, k, CaveSeed));
+					const double Z = FMath::Max(FMath::Lerp(HL, HR, T) + Bump - (k == 0 || k == CapPts - 1 ? 40.0 : 0.0), RoofTop + 60.0);
+					CapRing.Add(FVector(P2 + Nrm * Across, Z));
+				}
+			}
+			FLinearColor CapGrass, CapPath, CapRock, CapBed;
+			ResolveBiomeColors(F.Biome, CapGrass, CapPath, CapRock, CapBed);
+			for (int32 i = 0; i + 1 < CapRings.Num(); ++i)
+			{
+				if (!CapOk[i] || !CapOk[i + 1]) { continue; }
+				for (int32 k = 0; k + 1 < CapPts; ++k)
+				{
+					const FVector& A0 = CapRings[i][k];
+					const FVector& A1 = CapRings[i][k + 1];
+					const FVector& B1 = CapRings[i + 1][k + 1];
+					const FVector& B0 = CapRings[i + 1][k];
+					// Verde (o el suelo del bioma) en lo llano; roca en lo empinado.
+					const FVector FaceN = FVector::CrossProduct(B0 - A0, A1 - A0).GetSafeNormal();
+					const float Flat = static_cast<float>(FMath::Clamp((FMath::Abs(FaceN.Z) - 0.55) / 0.35, 0.0, 1.0));
+					const FLinearColor CapC = TNProcLerpColor(CapRock, CapGrass, Flat) * (0.92f + 0.12f * static_cast<float>(0.5 + 0.5 * TNProcHashNoise(i, k, CaveSeed + 7u)));
+					Painted.AddQuad(A0, A1, B1, B0, FVector::UpVector, CapC);
+				}
+			}
+		}
+
 		// Cueva dentro de un volcán: su lago de magma (el LavaPool pequeño entre sus muestras).
 		TNCaveDecor::FTNCaveMagma Magma;
 		bool bMagma = false;

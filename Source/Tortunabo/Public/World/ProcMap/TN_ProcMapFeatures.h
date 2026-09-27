@@ -479,7 +479,8 @@ namespace TNProcMap
 		for (int32 i = 8; i < Samples.Num() - 8; ++i)
 		{
 			const FPathSample& Sm = Samples[i];
-			if (Sm.S - LastS < 7000.0 || IsWetBiome(Sm.Biome)) { continue; }
+			// Al menos 40 m entre huecos (antes 70): con la densidad nueva, saltos a menudo pero no seguidos.
+			if (Sm.S - LastS < 4000.0 || IsWetBiome(Sm.Biome)) { continue; }
 			// En explanadas no: la zanja cruzaría toda la plaza. Ni a ras de agua: la zanja
 			// (con el fondo sobre el agua) tiene que tener al menos 3 m de hondo.
 			if (Sm.Width > 2600.0 || Sm.Z < 450.0) { continue; }

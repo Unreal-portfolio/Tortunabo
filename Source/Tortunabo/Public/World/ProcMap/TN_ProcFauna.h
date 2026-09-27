@@ -66,11 +66,11 @@ public:
 
 	/** Tope de animales en todo el mapa. */
 	UPROPERTY(EditAnywhere, Category = "Fauna", meta = (ClampMin = "0"))
-	int32 MaxAnimals = 300;
+	int32 MaxAnimals = 900;
 
 	/** Multiplicador de los animales por módulo de cada bioma. */
 	UPROPERTY(EditAnywhere, Category = "Fauna", meta = (ClampMin = "0.0"))
-	float Density = 1.f;
+	float Density = 2.6f;
 
 private:
 	/** Sitio válido para una especie junto al camino (mundo) con su progreso por el camino principal. */

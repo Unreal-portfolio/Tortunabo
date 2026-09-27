@@ -236,7 +236,10 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   las grandes salen en los anchos.
 - **Cuevas** (1-5 por mapa en volcán, roca, selva y desierto): túneles de 120-260 m, donde se
   puede en tramos que cruzan terreno alto (el paisaje a 30 m de los dos bordes, 12 m por encima
-  del camino). Encima, una montaña de cima irregular que crece hacia el centro de las largas; a cada
+  del camino). Encima, una montaña de cima irregular que crece hacia el centro de las largas. El terreno no
+  puede tener techo, así que sobre el túnel una **tapa de montaña** une las laderas de los dos lados a su altura
+  (a 7 m del borde del paso), con una loma y los colores del bioma, donde la montaña queda por encima del techo de
+  roca. Así la montaña sigue por encima de la cueva en vez de quedar cortada a lo largo del camino. A cada
   boca se llega por un desfiladero de 25-40 m de paredes a plomo que pierde altura hasta 7 m y acaba
   en frente empinado (a la montaña no se sube). El camino se estrecha a 11-15 m en la boca; dentro,
   pasos de 4-7 m y una o dos cámaras de 16-26 m; en las del volcán, un río de lava cruza la primera
@@ -282,14 +285,32 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   por bioma (monos, tucanes y ranas en la selva; cangrejos, gaviotas y tortuguitas en la playa;
   suricatos, lagartijas y correcaminos en el desierto; salamandras y escarabajos de fuego en el
   volcán; peces, pelícanos y flamencos en el agua; cabras y águilas en la roca; garzas y cangrejos
-  violinistas en el manglar; gatos, palomas y gallinas en la zona humana) cerca de los caminos. Al
-  acercarse la tortuga huyen más rápido que ella (trepan paredes, vuelan, se entierran o se meten en
-  el agua) y reaparecen por delante. Consola: `TN.Fauna.Enable`, `TN.Fauna.Stats`.
+  violinistas en el manglar; gatos, palomas y gallinas en la zona humana), hasta 900 a la vez
+  (`Density` 2,6).
+  - Van pegadas a los caminos: bastantes en el propio camino y, de las demás, dos de cada tres a menos de 9 m de
+    su borde. El resto queda hasta 25 m (60 m las de agua).
+  - Dejan acercarse a la mitad de su distancia de alarma de la tabla y huyen al 75 % de su velocidad, así que se
+    las ve escapar: trepan paredes, vuelan, se entierran o se meten en el agua.
+  - Reaparecen por delante. Consola: `TN.Fauna.Enable`, `TN.Fauna.Stats`.
+- **Tos en la tormenta** (`UTN_StormCoughComponent`, sintetizada, sin archivos de audio). Cada tortuga que está
+  dentro de la tormenta tose, y cada una tiene su voz.
+  - Al entrar, carraspeos sueltos.
+  - Con el tiempo dentro, ataques de tos cada vez más seguidos, con jadeos. Al salir, un último carraspeo. Al
+    morir, calla.
+  - `ATN_PathStorm::TickCough` le pasa cada 0,1 s si está dentro y cuánto le falta para morir.
+  - Prueba sin tormenta: `TN.Storm.Cough <0|1|2>` (apagado, carraspeo o tos fuerte).
 - **Sonido ambiente sintetizado** (`TN_AmbientSynthComponent`, `UTN_AmbientSoundscapeComponent` en
   el PlayerController; sin archivos de audio): capas por bioma (viento, oleaje, aves, cigarras,
   grillos, ranas...) que cambian en degradado, tormenta, cuevas amortiguadas, y fuentes 3D en los
   géiseres (siguen el chorro), las cascadas y la lava. Para sustituirlo por sonidos de verdad:
   `TN_AmbienceDataAsset`. Consola: `TN.Ambience.Debug`, `TN.Ambience.Volume`.
+- **Música de fin de partida** (`UTN_MatchMusicSubsystem`, sintetizada en `TN_MusicSynthDSP.h`). Suena en 2D para el
+  jugador local.
+  - Tres pistas: victoria (si bemol mayor, 120 BPM), derrota (re menor, 72 BPM) y una cortinilla de eliminado.
+  - Las decide `TNMatchMusic::FDirector` (`TN_MatchMusicDirector.h`) a partir de estados que ya se replican: flujo de
+    la partida, resultados, llegada, eliminación y rondas ganadas. No hay RPC.
+  - Se funde a silencio al final de la cuenta atrás de resultados y se para al cambiar de mapa.
+  - Consola: `TN.Music.Play Victoria|Derrota|Eliminado|Tienda|Probador|Silencio` y `TN.Music.MatchVolume`.
 
 ---
 
@@ -357,8 +378,10 @@ los restaura).
 | Carrera | 2 / 3 / 4 | 0,90 | 0 / 1 / 1 | 4 / 7 / 9 | 0 | — |
 | 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 2 / 3 / 4 | 1 / 2 / 3 | — |
 
-Comunes por dificultad (F/N/D): densidad de peligros 0,7 / 1 / 1,4; huecos por km
-2 / 3 / 4,5; una pila de huevos cada 1 / 2 / 3 cruces de módulo.
+Comunes por dificultad (F/N/D): densidad de peligros 1,6 / 2,4 / 3,2; huecos por km
+6 / 9 / 12 (a 40 m como mínimo entre sí); una pila de huevos cada 1 / 2 / 3 cruces de módulo. El camino va
+muy poblado de saltos, trampas y obstáculos de juego. `DA_ProcMapSettings` guarda sus perfiles: al cambiar estos
+valores en código hay que actualizarlos en el asset (`FillDefaultProfiles` o por Python) y guardarlo.
 
 > **Duración**: con 400 m por módulo, el Coop 6×6 por defecto sale en torno a
 > 35–40 min a 5,5 m/s, por encima de los 10–20 min objetivo. Se dejó así a
