@@ -286,6 +286,7 @@ void UTN_StaminaComponent::ApplyMovementSpeed() const
 			{
 				BaseSpeed *= PostBoostSpeedMultiplier;
 			}
+			BaseSpeed *= EnvironmentSpeedMultiplier;
 			Movement->MaxWalkSpeed = FMath::Min(BaseSpeed, ActiveSpeedCap);
 		}
 	}
@@ -300,6 +301,12 @@ void UTN_StaminaComponent::SetSpeedCap(float Cap)
 void UTN_StaminaComponent::ClearSpeedCap()
 {
 	ActiveSpeedCap = TNumericLimits<float>::Max();
+	ApplyMovementSpeed();
+}
+
+void UTN_StaminaComponent::SetEnvironmentSpeedMultiplier(float Multiplier)
+{
+	EnvironmentSpeedMultiplier = Multiplier;
 	ApplyMovementSpeed();
 }
 

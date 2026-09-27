@@ -13,6 +13,7 @@
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Player/TN_WadingComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "World/TN_InteractableBase.h"
 #include "GameFramework/PlayerState.h"
@@ -119,6 +120,7 @@ ATortugaCharacter::ATortugaCharacter()
 
 	InventoryComponent = CreateDefaultSubobject<UTN_InventoryComponent>(TEXT("InventoryComponent"));
 	StaminaComponent = CreateDefaultSubobject<UTN_StaminaComponent>(TEXT("StaminaComponent"));
+	WadingComponent = CreateDefaultSubobject<UTN_WadingComponent>(TEXT("WadingComponent"));
 	ShellComponent = CreateDefaultSubobject<UTN_ShellComponent>(TEXT("ShellComponent"));
 
 	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).

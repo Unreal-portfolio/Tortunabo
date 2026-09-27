@@ -67,6 +67,15 @@ public:
 	/** @brief Quita el speed cap dejando que MaxWalkSpeed vuelva a Walk/SprintSpeed. */
 	void ClearSpeedCap();
 
+	/**
+	 * @brief Multiplicador ambiental independiente del speed cap (ej. vadeo de agua).
+	 *        ApplyMovementSpeed lo aplica ANTES del Min con ActiveSpeedCap, así que
+	 *        no pisa el cap de TN_SlowZoneVolume ni el estado de sprint.
+	 * @param Multiplier 1.0 = sin efecto. Llamar en todas las máquinas (sin HasAuthority)
+	 *        — cada una aplica localmente, igual que SetSpeedCap.
+	 */
+	void SetEnvironmentSpeedMultiplier(float Multiplier);
+
 	/** @brief Vincula el componente de inventario para calcular el peso total cargado. */
 	void SetInventoryComponent(UTN_InventoryComponent* InvComp);
 
@@ -200,6 +209,9 @@ private:
 	 * MAX_FLT = sin límite activo. ApplyMovementSpeed hace Min(baseSpeed, cap).
 	 */
 	float ActiveSpeedCap = TNumericLimits<float>::Max();
+
+	/** Multiplicador ambiental (vadeo, etc.). 1.0 = sin efecto. Ver SetEnvironmentSpeedMultiplier. */
+	float EnvironmentSpeedMultiplier = 1.0f;
 
 	/** @brief OnRep: aplica MovementSpeed/visual al cambiar el estado de sprint. */
 	UFUNCTION()

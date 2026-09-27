@@ -14,6 +14,7 @@ class UInputAction;
 class UTN_InventoryComponent;
 class UTN_ShellComponent;
 class UTN_StaminaComponent;
+class UTN_WadingComponent;
 class ATN_InteractableBase;
 class USceneComponent;
 class UAudioComponent;
@@ -244,6 +245,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stamina")
 	TObjectPtr<UTN_StaminaComponent> StaminaComponent;
+
+	/** Vadeo simple (no nado) en agua poco profunda. Ver TN_WadingComponent. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wading")
+	TObjectPtr<UTN_WadingComponent> WadingComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shell")
 	TObjectPtr<UTN_ShellComponent> ShellComponent;
