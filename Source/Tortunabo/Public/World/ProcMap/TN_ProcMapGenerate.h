@@ -117,6 +117,8 @@ namespace TNProcMap
 		// Después de las ramas: un módulo vacío con desvío deja de ser macizo.
 		BuildBiomeFields(Out);
 		BuildStructuralFeatures(Out);
+		// Adarve roto de las murallas: después de la puerta (la pone BuildStructuralFeatures), que no se toca.
+		BuildWallBreaches(Out, Root.Fork(22));
 		// Antes de los huecos y obstáculos: las cuevas cambian anchos y marcan sus tramos como túnel. Buscan
 		// tramos que crucen terreno alto (el paisaje en rejilla gruesa, como el de los volcanes).
 		{
@@ -135,8 +137,10 @@ namespace TNProcMap
 		BuildDecor(Out, Root.Fork(15));
 		BuildCaveVolcanoes(Out, Root.Fork(21));
 		SettleVolcanoes(Out);
-		BuildObstacles(Out, Root.Fork(17));
+		// Formaciones antes que obstáculos: con el camino tan poblado de saltos, los arcos y las piezas de explanada ya no
+		// encontrarían sitio; ahora son los obstáculos (y las secuoyas del manglar) los que se apartan de ellas.
 		BuildFormations(Out, Root.Fork(18));
+		BuildObstacles(Out, Root.Fork(17));
 		Out.bValid = true;
 		return true;
 	}

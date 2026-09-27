@@ -434,6 +434,159 @@ namespace TNProcMap
 		}
 	}
 
+	namespace FeatureDetail
+	{
+		/**
+		 * Cajas de muerte de un mordisco del adarve: desde 60 cm bajo el adarve hasta 3 m bajo su fondo, a lo ancho de todo el
+		 * muro y 9 m más allá de cada cara (quien salta hacia fuera por él), y a lo largo del tramo, sus parapetos rotos y 6 m
+		 * más (sin pasar de MinS..MaxS), en piezas de 4 m como mucho que siguen el eje.
+		 */
+		inline void AddWallBreachKillBoxes(FLayout& L, const FWallAxis& Axis, const FFeature& F, double TopZ, double MinS, double MaxS)
+		{
+			const double Reach = WallBreachDims::ParapetBreakMax + WallBreachDims::KillAlong;
+			const double A = FMath::Max(MinS, F.Target.X - Reach);
+			const double B = FMath::Min(MaxS, F.Target.Y + Reach);
+			if (B <= A) { return; }
+			const double KillZ = TopZ - WallBreachDims::KillTop;
+			const double Bottom = TopZ - F.Height - 300.0;
+			const int32 Pieces = FMath::Max(1, FMath::CeilToInt32((B - A) / 400.0));
+			for (int32 k = 0; k < Pieces; ++k)
+			{
+				FVector2D P0, T0, N0, P1, T1, N1;
+				double Hw0 = 0.0, Hw1 = 0.0;
+				Axis.At(LerpD(A, B, static_cast<double>(k) / Pieces), P0, T0, N0, Hw0);
+				Axis.At(LerpD(A, B, static_cast<double>(k + 1) / Pieces), P1, T1, N1, Hw1);
+				FKillBox K;
+				K.Dir = (P1 - P0).GetSafeNormal();
+				if (K.Dir.IsNearlyZero()) { K.Dir = T0; }
+				K.Center = FVector((P0 + P1) * 0.5, 0.5 * (KillZ + Bottom));
+				// Solapadas 60 cm por cada lado: en las curvas no queda cuña sin cubrir sobre el muro.
+				K.Half = FVector(FVector2D::Distance(P0, P1) * 0.5 + 60.0, WallDims::HalfAt(FMath::Max(Hw0, Hw1), TopZ - Bottom) + WallBreachDims::KillSide,
+					0.5 * (KillZ - Bottom));
+				L.KillBoxes.Add(K);
+			}
+		}
+
+		/** Si el eje gira menos de 20° entre A, el medio y B (los mordiscos van en tramos casi rectos). */
+		inline bool WallStraight(const FWallAxis& Axis, double A, double B)
+		{
+			FVector2D P, T0, T1, T2, N;
+			double Hw = 0.0;
+			Axis.At(A, P, T0, N, Hw);
+			Axis.At(0.5 * (A + B), P, T1, N, Hw);
+			Axis.At(B, P, T2, N, Hw);
+			const double MinCos = FMath::Cos(FMath::DegreesToRadians(20.0));
+			return FVector2D::DotProduct(T0, T1) > MinCos && FVector2D::DotProduct(T1, T2) > MinCos;
+		}
+	}
+
+	/**
+	 * Adarve roto de las murallas colosales (EFeature::WallBreach, WallBreachDims): grupos de mordiscos en lo alto del muro,
+	 * que desde lejos se ven como bocados en la silueta almenada. Cada grupo es una a tres brechas de lado a lado seguidas
+	 * (con 1,5-2,7 m de adarve entero entre ellas), una cornisa pegada a un parapeto o una cornisa y una brecha. Entre dos
+	 * grupos, 15-47 m de adarve entero; como mucho 3, 5 o 7 grupos por muralla (fácil, normal, difícil). Nunca a menos de
+	 * 9 m del borde de una torre ni de 6 m del arco de la puerta, y en tramos que giran menos de 20°. Caer en un mordisco
+	 * mata (cajas de muerte, AddWallBreachKillBoxes) y las muestras del adarve que lo tocan llevan PathFlags::Gap: allí no
+	 * hay suelo continuo. El cuerpo de la muralla sigue entero.
+	 */
+	inline void BuildWallBreaches(FLayout& L, FRng Rng)
+	{
+		using namespace FeatureDetail;
+		const FGenParams& P = L.Params;
+		const double Diff = Saturate(P.Difficulty01);
+		const int32 MaxGroups = Diff < 0.35 ? 3 : (Diff < 0.75 ? 5 : 7);
+		const double SpaceMin = LerpD(3200.0, 1300.0, Diff);
+		const double SpaceMax = LerpD(5200.0, 2600.0, Diff);
+		for (int32 c = 0; c < L.Crossings.Num(); ++c)
+		{
+			const FCrossing& C = L.Crossings[c];
+			if (C.Type != ETNProcCrossingType::Wall) { continue; }
+			const FRouteStep& High = L.Route[C.HighStep];
+			FWallAxis Axis;
+			Axis.Build(L.Main, High.FirstSample, High.LastSample);
+			const double Len = Axis.Length();
+			const double From = P.TowerRadius + WallBreachDims::TowerClear;
+			const double To = Len - P.TowerRadius - WallBreachDims::TowerClear;
+			if (To - From < 1200.0) { continue; }
+			double GateA = 1e300, GateB = -1e300;
+			for (const FFeature& G : L.Features)
+			{
+				if (G.Type != EFeature::Gate || G.Aux != c) { continue; }
+				const double Sg = Axis.Project(FVector2D(G.Location.X, G.Location.Y));
+				GateA = Sg - G.Radius - WallBreachDims::GateClear;
+				GateB = Sg + G.Radius + WallBreachDims::GateClear;
+			}
+
+			double Cursor = From + Rng.Range(0.0, 1200.0);
+			int32 Groups = 0;
+			for (int32 Guard = 0; Guard < 200 && Groups < MaxGroups; ++Guard)
+			{
+				// Composición del grupo: tipo, largo de cada tramo roto y adarve entero entre ellos.
+				struct FPiece { EWallBreach Kind = EWallBreach::Gap; double Len = 0.0; double Before = 0.0; };
+				TArray<FPiece, TInlineAllocator<4>> Pieces;
+				const double U = Rng.Unit();
+				auto AddGap = [&](double Before) { Pieces.Add(FPiece{ EWallBreach::Gap, Rng.Range(WallBreachDims::GapMin(Diff), WallBreachDims::GapMax(Diff)), Before }); };
+				auto AddLedge = [&]()
+				{
+					const EWallBreach Kind = Rng.Chance(0.5) ? EWallBreach::LedgeLeft : EWallBreach::LedgeRight;
+					Pieces.Add(FPiece{ Kind, Rng.Range(WallBreachDims::LedgeLenMin(Diff), WallBreachDims::LedgeLenMax(Diff)), 0.0 });
+				};
+				if (U < (Diff < 0.35 ? 0.55 : 0.45))
+				{
+					const int32 Count = Rng.RangeInt(1, Diff < 0.35 ? 2 : 3);
+					for (int32 n = 0; n < Count; ++n) { AddGap(n == 0 ? 0.0 : WallBreachDims::Island(Diff) + Rng.Range(-25.0, 25.0)); }
+				}
+				else if (U < (Diff < 0.35 ? 1.0 : 0.8))
+				{
+					AddLedge();
+				}
+				else
+				{
+					AddLedge();
+					AddGap(WallBreachDims::Island(Diff) + 60.0 + Rng.Range(0.0, 60.0));
+				}
+				double Total = 0.0;
+				for (const FPiece& Pc : Pieces) { Total += Pc.Before + Pc.Len; }
+				if (Cursor + Total > To) { break; }
+				if (Cursor + Total > GateA && Cursor < GateB) { Cursor = GateB; continue; }
+				if (!WallStraight(Axis, Cursor - 300.0, Cursor + Total + 300.0)) { Cursor += 400.0; continue; }
+
+				double S = Cursor;
+				for (const FPiece& Pc : Pieces)
+				{
+					S += Pc.Before;
+					const double Sa = S;
+					const double Sb = S + Pc.Len;
+					S = Sb;
+					FVector2D Pm, Tm, Nm;
+					double Hw = 0.0;
+					Axis.At(0.5 * (Sa + Sb), Pm, Tm, Nm, Hw);
+					const int32 Idx = High.FirstSample + Axis.NearestIndex(0.5 * (Sa + Sb));
+					FFeature F = MakeAtSample(EFeature::WallBreach, L.Main[Idx], Idx, INDEX_NONE);
+					F.Location = FVector(Pm, C.TopZ);
+					F.Dir = Tm;
+					F.Width = 2.0 * Hw;
+					F.Length = Sb - Sa;
+					F.Height = Rng.Range(WallBreachDims::DepthMin, WallBreachDims::DepthMax);
+					F.Radius = Pc.Kind == EWallBreach::Gap ? 0.0 : WallBreachDims::LedgeWidth(Diff);
+					F.Aux = c;
+					F.Aux2 = static_cast<int32>(Pc.Kind);
+					F.Target = FVector(Sa, Sb, 0.0);
+					L.Features.Add(F);
+					AddWallBreachKillBoxes(L, Axis, F, C.TopZ, P.TowerRadius + 400.0, Len - P.TowerRadius - 400.0);
+					// Sin suelo continuo en el adarve: las muestras que tocan el mordisco (y su parapeto roto) llevan Gap.
+					for (int32 i = High.FirstSample; i <= High.LastSample; ++i)
+					{
+						const double Si = L.Main[i].S - L.Main[High.FirstSample].S;
+						if (Si >= Sa - WallBreachDims::ParapetBreakMax - 100.0 && Si <= Sb + WallBreachDims::ParapetBreakMax + 100.0) { L.Main[i].Flags |= PathFlags::Gap; }
+					}
+				}
+				++Groups;
+				Cursor = S + Rng.Range(SpaceMin, SpaceMax);
+			}
+		}
+	}
+
 	/** true si la zanja de un hueco (rectángulo con sus orillas) alcanza muestras de otra parte de algún camino. */
 	inline bool TrenchHitsOtherPath(const FLayout& L, const TArray<FPathSample>& Own, const FPathSample& Sm, const FFeature& F)
 	{
@@ -465,7 +618,12 @@ namespace TNProcMap
 		using namespace FeatureDetail;
 		const FGenParams& P = L.Params;
 		const double GapMaxD = LerpD(FMath::Min(P.GapMax, 200.0), P.GapMax, Saturate(P.Difficulty01));
-		const double Chance = P.GapsPerKm * P.SampleSpacing / 100000.0;
+		// Al menos 30 m entre huecos (antes 40): saltos muy a menudo, con sitio para aterrizar y coger carrerilla.
+		// GapsPerKm es la densidad que sale en los tramos donde caben: la probabilidad por muestra compensa los 30 m muertos
+		// tras cada hueco (antes, con 9 por km salían unos 6,6). Como mucho 26,7 por km.
+		constexpr double MinSpacing = 3000.0;
+		const double Rate = FMath::Min(P.GapsPerKm, 80000.0 / MinSpacing) / 100000.0;
+		const double Chance = FMath::Min(0.9, Rate / (1.0 - Rate * MinSpacing) * P.SampleSpacing);
 		// Huecos de panzazo: desde Normal y si caben en las métricas del mapa.
 		const bool bDiveGaps = P.Difficulty01 >= 0.35 && GapMaxD >= DiveGapMin + 10.0;
 		double LastS = -1e9;
@@ -479,8 +637,7 @@ namespace TNProcMap
 		for (int32 i = 8; i < Samples.Num() - 8; ++i)
 		{
 			const FPathSample& Sm = Samples[i];
-			// Al menos 40 m entre huecos (antes 70): con la densidad nueva, saltos a menudo pero no seguidos.
-			if (Sm.S - LastS < 4000.0 || IsWetBiome(Sm.Biome)) { continue; }
+			if (Sm.S - LastS < MinSpacing || IsWetBiome(Sm.Biome)) { continue; }
 			// En explanadas no: la zanja cruzaría toda la plaza. Ni a ras de agua: la zanja
 			// (con el fondo sobre el agua) tiene que tener al menos 3 m de hondo.
 			if (Sm.Width > 2600.0 || Sm.Z < 450.0) { continue; }
@@ -626,12 +783,12 @@ namespace TNProcMap
 			}
 			else
 			{
-				// Pasarela: tablones a trozos; los huecos crecen con la dificultad.
+				// Pasarela: tablones a trozos de 12-32 m (antes 15-40 m); los huecos, más a menudo y más largos con la dificultad.
 				double Cursor = S0;
 				int32 Guard = 0;
 				while (Cursor < S1 - 200.0 && Guard++ < 200)
 				{
-					const double PieceLen = FMath::Min(S1 - Cursor, Rng.Range(1500.0, 4000.0));
+					const double PieceLen = FMath::Min(S1 - Cursor, Rng.Range(1200.0, 3200.0));
 					int32 A = INDEX_NONE, B = INDEX_NONE;
 					MainPointAt(M, Cursor, nullptr, &A);
 					MainPointAt(M, Cursor + PieceLen, nullptr, &B);
@@ -647,7 +804,7 @@ namespace TNProcMap
 					F.Target = FVector(M[F.Aux2].P, M[F.Aux2].Z);
 					L.Features.Add(F);
 					Cursor += PieceLen;
-					if (Rng.Chance(0.35 + 0.4 * Diff)) { Cursor += Rng.Range(P.GapMin, LerpD(220.0, P.GapMax, Diff)); }
+					if (Rng.Chance(0.5 + 0.35 * Diff)) { Cursor += Rng.Range(P.GapMin, LerpD(220.0, P.GapMax, Diff)); }
 				}
 			}
 			i = j;
@@ -1035,37 +1192,59 @@ namespace TNProcMap
 	 * de objetos de cada bioma (pilas de cajas, barriles, vallas, pacas, castillos de arena, barcas,
 	 * tótems, columnas en ruinas, setas gigantes, calaveras, vasijas, cristales, hitos, vagonetas,
 	 * nasas, puestos de mercado y filas de conos), también con carril libre. Nunca
-	 * junto a huecos, géiseres, toboganes, torres, portales, horquillas ni sobre el agua.
+	 * junto a géiseres, toboganes, torres, puertas, cuevas, portales, horquillas ni sobre el agua;
+	 * de un hueco basta con 12 m (aterrizar y coger carrerilla), y lejos de las formaciones del
+	 * camino (arcos y piezas de explanada, que se ponen antes). Uno cada 15-36 m (antes 22-55 m) y,
+	 * donde no cabe, se prueba en la muestra siguiente: el camino va muy poblado de saltos.
 	 * Además, secuoyas con raíces zancudas en los módulos de manglar, de tamaños muy variados
 	 * (muchas medianas y pocas gigantes).
 	 */
 	inline void BuildObstacles(FLayout& L, FRng Rng)
 	{
 		using namespace FeatureDetail;
-		const uint32 Avoid = PathFlags::Special | PathFlags::Lane;
+		const uint32 Avoid = (PathFlags::Special | PathFlags::Lane) & ~PathFlags::Gap;
+		// Formaciones del camino (ya puestas): centro y radio libre alrededor (arcos: su fondo o sus pies; piezas: su huella).
+		TArray<FVector> Forms;
+		for (const FFeature& F : L.Features)
+		{
+			if (F.Type != EFeature::Formation) { continue; }
+			const EFormation Kind = static_cast<EFormation>(F.Aux);
+			if (IsLandmarkFormation(Kind)) { continue; }
+			Forms.Add(FVector(F.Location.X, F.Location.Y, IsArchFormation(Kind) ? FMath::Max(F.Length * 0.5, F.Radius) + 400.0 : F.Radius + 700.0));
+		}
+		auto NearForm = [&Forms](const FVector2D& At)
+		{
+			for (const FVector& Fm : Forms)
+			{
+				if (FVector2D::DistSquared(At, FVector2D(Fm.X, Fm.Y)) < FMath::Square(Fm.Z + 300.0)) { return true; }
+			}
+			return false;
+		};
 		auto OnPolyline = [&](const TArray<FPathSample>& S, int32 BranchIndex)
 		{
 			if (S.Num() < 20) { return; }
-			double NextS = Rng.Range(2000.0, 5000.0);
+			double NextS = Rng.Range(1500.0, 3500.0);
 			for (int32 i = 8; i < S.Num() - 8; ++i)
 			{
 				const FPathSample& Sm = S[i];
 				if (Sm.S < NextS) { continue; }
-				NextS = Sm.S + Rng.Range(2200.0, 5500.0);
-				if (IsWetBiome(Sm.Biome) || AnyFlag(S, i - 6, i + 6, Avoid)) { continue; }
+				if (IsWetBiome(Sm.Biome) || AnyFlag(S, i - 6, i + 6, Avoid) || AnyFlag(S, i - 3, i + 3, PathFlags::Gap)) { continue; }
 				// Cerca de una horquilla o unión de rama tampoco (dos cauces se cruzan ahí).
 				bool bFork = false;
 				for (const FBranch& B : L.Branches)
 				{
 					if (BranchIndex == INDEX_NONE && (FMath::Abs(B.ForkSample - i) < 10 || FMath::Abs(B.RejoinSample - i) < 10)) { bFork = true; break; }
 				}
-				if (bFork || (BranchIndex != INDEX_NONE && (i < 14 || i > S.Num() - 14))) { continue; }
+				if (bFork || (BranchIndex != INDEX_NONE && (i < 14 || i > S.Num() - 14)) || NearForm(Sm.P)) { continue; }
+				NextS = Sm.S + Rng.Range(1500.0, 3600.0);
 
 				const double W = Sm.Width;
 				const FVector2D N = LeftNormal(Sm.Dir);
 				const bool bForest = Sm.Biome == ETNProcBiome::Jungle || Sm.Biome == ETNProcBiome::Mangrove || Sm.Biome == ETNProcBiome::Volcanic;
+				// En la playa, troncos a la deriva atravesados.
+				const bool bDrift = Sm.Biome == ETNProcBiome::Beach;
 				const double U = Rng.Unit();
-				if (W >= 2000.0 && U < 0.35)
+				if (W >= 2000.0 && U < 0.3)
 				{
 					// Aguja (alta y fina) o mogote (bajo y ancho) en mitad de la explanada, con carriles a ambos lados.
 					const bool bSpire = Rng.Chance(0.6);
@@ -1078,9 +1257,11 @@ namespace TNProcMap
 					F.Height = bSpire ? Rng.Range(500.0, 1400.0) : Rng.Range(220.0, 600.0);
 					F.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
 					L.Features.Add(F);
+					// El siguiente, pasada la roca.
+					NextS = FMath::Max(NextS, Sm.S + R + 1200.0);
 					continue;
 				}
-				if (bForest && W >= 500.0 && W <= 2600.0 && U < 0.4)
+				if ((bForest || bDrift) && W >= 500.0 && W <= 2600.0 && U < (bForest ? 0.5 : 0.28))
 				{
 					// Tronco caído atravesado: se salta (radio 35-55 cm); deja hueco en un extremo o no.
 					FFeature F = MakeAtSample(EFeature::Log, Sm, i, BranchIndex);
@@ -1091,11 +1272,13 @@ namespace TNProcMap
 					F.Location = FVector(Sm.P + N * Rng.Range(-0.15, 0.15) * W, Sm.Z);
 					F.Aux = static_cast<int32>(Rng.RangeInt(0, 1 << 20));
 					L.Features.Add(F);
+					// El siguiente, pasado el tronco (en diagonal ocupa más a lo largo del camino).
+					NextS = FMath::Max(NextS, Sm.S + 0.5 * F.Length * FMath::Abs(FMath::Cos(Ang)) + 1200.0);
 					continue;
 				}
 				// Torre de escalada del bioma pegada a un borde (carril libre de sobra): escalones de 1 m, la
 				// recompensa arriba y la medusa al pie para subir de un bote.
-				if (W >= 1300.0 && U < 0.78 && Rng.Chance(0.14))
+				if (W >= 1300.0 && U < 0.78 && Rng.Chance(0.24))
 				{
 					const double Side = Rng.Chance(0.5) ? 1.0 : -1.0;
 					FFeature T = MakeAtSample(EFeature::ClimbTower, Sm, i, BranchIndex);
@@ -1194,7 +1377,10 @@ namespace TNProcMap
 					bool bClose = false;
 					for (const FFeature& F : L.Features)
 					{
-						if (F.Type == EFeature::GiantTree && FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C) < (F.Radius + R) * 5.0 + 600.0) { bClose = true; break; }
+						const double Dist = FVector2D::Distance(FVector2D(F.Location.X, F.Location.Y), C);
+						if (F.Type == EFeature::GiantTree && Dist < (F.Radius + R) * 5.0 + 600.0) { bClose = true; break; }
+						// Las formaciones ya están puestas: ni encima de un palafito ni junto a los pies de un arco.
+						if (F.Type == EFeature::Formation && Dist < F.Radius + R * 3.0 + 1000.0) { bClose = true; break; }
 					}
 					if (bClose) { continue; }
 					FFeature T;

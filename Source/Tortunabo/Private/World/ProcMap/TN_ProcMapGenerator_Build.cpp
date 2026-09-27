@@ -492,68 +492,46 @@ namespace
 		}
 	}
 
-	/** Eje de una muralla: su adarve (el tramo alto del cruce), recorrible por distancia en planta. */
-	struct FTNWallAxis
-	{
-		TArray<FVector2D> P;
-		TArray<double> S;
-		TArray<double> Hw;
-
-		void Build(const TArray<TNProcMap::FPathSample>& M, int32 From, int32 To)
-		{
-			for (int32 i = From; i <= To; ++i)
-			{
-				S.Add(P.Num() == 0 ? 0.0 : S.Last() + FVector2D::Distance(P.Last(), M[i].P));
-				P.Add(M[i].P);
-				Hw.Add(M[i].Width * 0.5);
-			}
-		}
-
-		double Length() const { return S.Num() > 0 ? S.Last() : 0.0; }
-
-		/** Distancia a lo largo del eje del punto del eje más cercano a Q. */
-		double Project(const FVector2D& Q) const
-		{
-			double Best = 1e300, BestS = 0.0;
-			for (int32 i = 0; i + 1 < P.Num(); ++i)
-			{
-				double T = 0.0;
-				const double D = TNProcMap::DistPointSegment(Q, P[i], P[i + 1], T);
-				if (D < Best) { Best = D; BestS = FMath::Lerp(S[i], S[i + 1], T); }
-			}
-			return BestS;
-		}
-
-		/** Punto, tangente y normal izquierda (suavizadas) y semiancho del adarve a la distancia Sq. */
-		void At(double Sq, FVector2D& OutP, FVector2D& OutT, FVector2D& OutN, double& OutHw) const
-		{
-			int32 Lo = 0, Hi = S.Num() - 1;
-			while (Hi - Lo > 1)
-			{
-				const int32 Mid = (Lo + Hi) / 2;
-				if (S[Mid] <= Sq) { Lo = Mid; } else { Hi = Mid; }
-			}
-			const double T = FMath::Clamp((Sq - S[Lo]) / FMath::Max(1.0, S[Hi] - S[Lo]), 0.0, 1.0);
-			OutP = P[Lo] + (P[Hi] - P[Lo]) * T;
-			OutT = (P[FMath::Min(Hi + 1, P.Num() - 1)] - P[FMath::Max(Lo - 1, 0)]).GetSafeNormal();
-			OutN = FVector2D(-OutT.Y, OutT.X);
-			OutHw = FMath::Lerp(Hw[Lo], Hw[Hi], T);
-		}
-	};
+	/** Eje de una muralla: su adarve (el tramo alto del cruce), recorrible por distancia en planta (el de la lógica pura). */
+	using FTNWallAxis = TNProcMap::FWallAxis;
 
 	/**
 	 * Muralla de un cruce entre S0 y S1 de su eje: caras en talud desde 3 m bajo el suelo hasta el
 	 * pretil, en hiladas de sillares de tonos alternos; el adarve (S0W-S1W) entre dos parapetos con
 	 * almenas; y, si la cruza el tramo bajo, su puerta: jambas a plomo, arco de medio punto con las
 	 * dovelas marcadas y bóveda de cañón bajo el adarve. GroundAt(FVector2D) da la cota del terreno.
+	 *
+	 * Breaches (los TNProcMap::EFeature::WallBreach del cruce): mordiscos solo en lo alto (TNProcMap::WallBreachDims). Cada
+	 * banda (parapeto izquierdo, adarve o, en una cornisa, la franja que queda y la hundida, y parapeto derecho) va a la
+	 * cota de lo que queda en ella, con su pared donde dos bandas vecinas no coinciden y la cara del corte donde la cota
+	 * cambia a lo largo del eje; las caras exteriores suben hasta lo que queda. Todo va con colisión: los huecos de la malla
+	 * lo son también de la colisión. Sin mordiscos sale la muralla de siempre.
 	 */
 	template <typename FGround>
 	void TNProcAddWall(FTNProcMeshBuffers& Out, const FTNWallAxis& Axis, double S0, double S1, double S0W, double S1W, double TopZ,
-		const TNProcMap::FFeature* Gate, const FGround& GroundAt, const FLinearColor& Stone, uint32 Seed)
+		const TNProcMap::FFeature* Gate, const TArray<const TNProcMap::FFeature*>& Breaches, const FGround& GroundAt, const FLinearColor& Stone,
+		uint32 Seed)
 	{
 		using namespace TNProcMap;
 		constexpr double Course = 180.0;
 		const double ParTop = TopZ + WallDims::ParapetH;
+		// Lo que queda de cada parapeto (Side 0 izquierdo, 1 derecho) y del adarve: lo más bajo de todos los mordiscos.
+		auto ParapetTop = [&](int32 Side, double Sq)
+		{
+			double Z = ParTop;
+			for (const FFeature* B : Breaches) { Z = FMath::Min(Z, WallBreachDims::ParapetTopAt(*B, Side, Sq, TopZ)); }
+			return Z;
+		};
+		auto WalkTop = [&](double Sq, double X, double Hw)
+		{
+			double Z = TopZ;
+			for (const FFeature* B : Breaches) { Z = FMath::Min(Z, WallBreachDims::WalkTopAt(*B, Sq, X, Hw, TopZ)); }
+			return Z;
+		};
+		// Distancias por el eje en las que cambia alguna cota: ahí va siempre una columna.
+		TArray<double> Cuts;
+		for (const FFeature* B : Breaches) { WallBreachDims::Breakpoints(*B, Cuts); }
+		Cuts.Sort();
 
 		struct FCol
 		{
@@ -598,9 +576,28 @@ namespace
 		};
 		auto Range = [&](double A, double B, double Step, bool bArch)
 		{
-			TArray<FCol> Cols;
+			// Columnas cada Step y, fuera del arco, también en cada corte de un mordisco (la regular que caiga a menos de 3 cm de
+			// un corte se omite: así el corte queda exacto en las caras y en el adarve).
+			TArray<double> Ss;
 			const int32 Num = FMath::Max(1, FMath::CeilToInt((B - A) / Step));
-			for (int32 k = 0; k <= Num; ++k) { Cols.Add(MakeCol(A + (B - A) * k / Num, bArch)); }
+			for (int32 k = 0; k <= Num; ++k)
+			{
+				const double Sq = A + (B - A) * k / Num;
+				bool bNearCut = false;
+				if (!bArch && k > 0 && k < Num) { for (const double Cs : Cuts) { bNearCut |= FMath::Abs(Cs - Sq) < 3.0; } }
+				if (!bNearCut) { Ss.Add(Sq); }
+			}
+			if (!bArch && Cuts.Num() > 0)
+			{
+				for (const double Cs : Cuts) { if (Cs > A + 3.0 && Cs < B - 3.0) { Ss.Add(Cs); } }
+				Ss.Sort();
+			}
+			TArray<FCol> Cols;
+			for (int32 k = 0; k < Ss.Num(); ++k)
+			{
+				if (k > 0 && Ss[k] - Ss[k - 1] < 0.5) { continue; }
+				Cols.Add(MakeCol(Ss[k], bArch));
+			}
 			return Cols;
 		};
 		TArray<TArray<FCol>> Parts;
@@ -628,13 +625,15 @@ namespace
 					const FCol& A = Cols[k];
 					const FCol& B = Cols[k + 1];
 					const double Low = FMath::Max(A.Bottom[Side], B.Bottom[Side]);
+					// Hasta el parapeto o, en un mordisco, hasta lo que queda de él o del muro.
+					const double Cap = IsArch[PartIdx] ? ParTop : ParapetTop(Side, 0.5 * (A.S + B.S));
 					TArray<double> Lines;
 					for (int32 n = FMath::FloorToInt((TopZ - Low) / Course); n >= 0; --n)
 					{
 						const double Zl = TopZ - n * Course;
-						if (Zl > Low + 20.0) { Lines.Add(Zl); }
+						if (Zl > Low + 20.0 && Zl < Cap - 10.0) { Lines.Add(Zl); }
 					}
-					Lines.Add(ParTop);
+					Lines.Add(Cap);
 					const FVector2D Nm = (A.N + B.N).GetSafeNormal() * Sig;
 					const FVector Hint(Nm.X, Nm.Y, WallDims::Batter);
 					double ZA = A.Bottom[Side], ZB = B.Bottom[Side];
@@ -691,22 +690,124 @@ namespace
 			Out.AddQuad(FacePt(C, 1.0, Zb), FacePt(C, -1.0, Zb), FacePt(C, -1.0, ParTop), FacePt(C, 1.0, ParTop), Hint, Stone * 0.9f);
 		}
 
-		// Adarve enlosado, caras interiores y cima de los parapetos, y almenas cada 2,6 m.
+		// Adarve enlosado, caras interiores y cima de los parapetos, y almenas cada 2,6 m. Por bandas: parapeto izquierdo,
+		// adarve (o, en una cornisa, la franja que queda y la hundida) y parapeto derecho, cada una a la cota de lo que queda.
 		const TArray<FCol> Top = Range(S0W, S1W, 250.0, false);
+		auto WallPt = [](const FCol& Col, double Lateral, double Height) { const FVector2D Q = Col.P + Col.N * Lateral; return FVector(Q.X, Q.Y, Height); };
+		// Borde exterior de una banda de parapeto a la cota Height: el parapeto encima del adarve y la cara en talud debajo.
+		auto OuterLat = [&](const FCol& Col, double Height) { return Height >= TopZ ? Col.Hw + WallDims::Parapet : WallDims::HalfAt(Col.Hw, TopZ - Height); };
+		// Piedra rota: más oscura que la labrada, para que los mordiscos se lean de lejos.
+		auto BrokenTone = [&](int32 Index, float Shade) { return Stone * Shade * TNProcTone(Index, Seed ^ 0xB4EAu); };
+		// Bordes de las franjas del adarve, X = Sig · (Hw - Off) en cada columna: los dos del adarve y el de una cornisa.
+		struct FLatEdge { double Sig = 1.0; double Off = 0.0; };
+		auto EdgeX = [](const FLatEdge& Edge, const FCol& Col) { return Edge.Sig * (Col.Hw - Edge.Off); };
+		auto GatherEdges = [&](double SqPrev, double SqNext, TArray<FLatEdge, TInlineAllocator<4>>& Edges)
+		{
+			Edges.Reset();
+			Edges.Add(FLatEdge{ -1.0, 0.0 });
+			for (const FFeature* Br : Breaches)
+			{
+				const EWallBreach Kind = WallBreachDims::KindOf(*Br);
+				const bool bIn = (SqPrev >= Br->Target.X && SqPrev <= Br->Target.Y) || (SqNext >= Br->Target.X && SqNext <= Br->Target.Y);
+				if (Kind != EWallBreach::Gap && bIn) { Edges.Add(FLatEdge{ Kind == EWallBreach::LedgeLeft ? 1.0 : -1.0, Br->Radius }); }
+			}
+			Edges.Add(FLatEdge{ 1.0, 0.0 });
+			// De derecha a izquierda (con un semiancho cualquiera mayor que la cornisa).
+			Edges.Sort([](const FLatEdge& E0, const FLatEdge& E1) { return E0.Sig * (1000.0 - E0.Off) < E1.Sig * (1000.0 - E1.Off); });
+		};
 		for (int32 k = 0; k + 1 < Top.Num(); ++k)
 		{
 			const FCol& A = Top[k];
 			const FCol& B = Top[k + 1];
-			auto W = [&](const FCol& C, double Sig, double Lat, double Z) { const FVector2D Q = C.P + C.N * (Sig * Lat); return FVector(Q.X, Q.Y, Z); };
-			Out.AddQuad(W(A, 1.0, A.Hw, TopZ), W(A, -1.0, A.Hw, TopZ), W(B, -1.0, B.Hw, TopZ), W(B, 1.0, B.Hw, TopZ), FVector::UpVector,
-				Stone * 1.1f * TNProcTone(k, Seed ^ 0xADA7u));
+			const double Sm = 0.5 * (A.S + B.S);
+			const double HwM = 0.5 * (A.Hw + B.Hw);
+			const FVector2D Nm = (A.N + B.N).GetSafeNormal();
+			TArray<FLatEdge, TInlineAllocator<4>> Edges;
+			GatherEdges(Sm, Sm, Edges);
+			// Franjas del adarve (una sola sin mordisco) y, en una cornisa, la pared entre la que queda y la hundida.
+			TArray<double, TInlineAllocator<4>> WalkZ;
+			for (int32 j = 0; j + 1 < Edges.Num(); ++j)
+			{
+				const double Xm = 0.5 * (Edges[j].Sig * (HwM - Edges[j].Off) + Edges[j + 1].Sig * (HwM - Edges[j + 1].Off));
+				const double Zj = WalkTop(Sm, Xm, HwM);
+				WalkZ.Add(Zj);
+				Out.AddQuad(WallPt(A, EdgeX(Edges[j + 1], A), Zj), WallPt(A, EdgeX(Edges[j], A), Zj), WallPt(B, EdgeX(Edges[j], B), Zj),
+					WallPt(B, EdgeX(Edges[j + 1], B), Zj), FVector::UpVector,
+					Zj >= TopZ - 0.5 ? Stone * 1.1f * TNProcTone(k, Seed ^ 0xADA7u) : BrokenTone(k * 4 + j, 0.72f));
+			}
+			for (int32 j = 1; j + 1 < Edges.Num(); ++j)
+			{
+				const double Lo = FMath::Min(WalkZ[j - 1], WalkZ[j]);
+				const double Hi = FMath::Max(WalkZ[j - 1], WalkZ[j]);
+				if (Hi - Lo < 0.5) { continue; }
+				const FVector2D Face = Nm * (WalkZ[j - 1] < WalkZ[j] ? -1.0 : 1.0);
+				Out.AddQuad(WallPt(A, EdgeX(Edges[j], A), Lo), WallPt(B, EdgeX(Edges[j], B), Lo), WallPt(B, EdgeX(Edges[j], B), Hi), WallPt(A, EdgeX(Edges[j], A), Hi),
+					FVector(Face.X, Face.Y, 0.0), BrokenTone(k * 4 + j + 2, 0.8f));
+			}
 			for (int32 Side = 0; Side < 2; ++Side)
 			{
 				const double Sig = Side == 0 ? 1.0 : -1.0;
-				const FVector2D Nm = (A.N + B.N).GetSafeNormal() * -Sig;
-				Out.AddQuad(W(A, Sig, A.Hw, TopZ), W(B, Sig, B.Hw, TopZ), W(B, Sig, B.Hw, ParTop), W(A, Sig, A.Hw, ParTop), FVector(Nm.X, Nm.Y, 0.0), Stone * 0.97f);
-				Out.AddQuad(W(A, Sig, A.Hw, ParTop), W(B, Sig, B.Hw, ParTop), W(B, Sig, B.Hw + WallDims::Parapet, ParTop), W(A, Sig, A.Hw + WallDims::Parapet, ParTop),
-					FVector::UpVector, Stone * 1.05f);
+				const double Zp = ParapetTop(Side, Sm);
+				// Franja del adarve pegada a este parapeto: la última (izquierda) o la primera (derecha).
+				const double Zw = WalkZ[Side == 0 ? WalkZ.Num() - 1 : 0];
+				const FVector2D Inward = Nm * -Sig;
+				if (FMath::Abs(Zp - Zw) >= 0.5)
+				{
+					// Cara interior del parapeto (o de su resto) sobre el adarve; hacia fuera si el adarve quedase más alto.
+					const double Lo = FMath::Min(Zp, Zw);
+					const double Hi = FMath::Max(Zp, Zw);
+					const FVector2D Face = Zp > Zw ? Inward : -Inward;
+					Out.AddQuad(WallPt(A, Sig * A.Hw, Lo), WallPt(B, Sig * B.Hw, Lo), WallPt(B, Sig * B.Hw, Hi), WallPt(A, Sig * A.Hw, Hi), FVector(Face.X, Face.Y, 0.0),
+						Zp >= ParTop - 0.5 && Zw >= TopZ - 0.5 ? Stone * 0.97f : BrokenTone(k * 4 + Side, 0.85f));
+				}
+				// Cima del parapeto, de su resto, su asiento a ras del adarve o el fondo del mordisco, hasta la cara exterior.
+				Out.AddQuad(WallPt(A, Sig * A.Hw, Zp), WallPt(B, Sig * B.Hw, Zp), WallPt(B, Sig * OuterLat(B, Zp), Zp), WallPt(A, Sig * OuterLat(A, Zp), Zp),
+					FVector::UpVector, Zp >= ParTop - 0.5 ? Stone * 1.05f : BrokenTone(k * 4 + Side, Zp >= TopZ - 0.5 ? 0.9f : 0.72f));
+			}
+		}
+		// Caras del corte donde la cota cambia a lo largo del eje (bordes del mordisco, sus escalones y los extremos del
+		// parapeto roto), mirando hacia donde queda más bajo.
+		for (int32 k = 1; k + 1 < Top.Num() && Breaches.Num() > 0; ++k)
+		{
+			const FCol& C = Top[k];
+			const double SqPrev = 0.5 * (Top[k - 1].S + C.S);
+			const double SqNext = 0.5 * (C.S + Top[k + 1].S);
+			const FVector Fwd(C.T.X, C.T.Y, 0.0);
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const double Sig = Side == 0 ? 1.0 : -1.0;
+				const double Zp = ParapetTop(Side, SqPrev);
+				const double Zn = ParapetTop(Side, SqNext);
+				if (FMath::Abs(Zp - Zn) < 0.5) { continue; }
+				const double Lo = FMath::Min(Zp, Zn);
+				const double Hi = FMath::Max(Zp, Zn);
+				const FVector Face = Zp > Zn ? Fwd : -Fwd;
+				if (Lo < TopZ - 0.5)
+				{
+					// Bajo el adarve la banda llega hasta la cara en talud.
+					const double Zu = FMath::Min(Hi, TopZ);
+					Out.AddQuad(WallPt(C, Sig * C.Hw, Lo), WallPt(C, Sig * OuterLat(C, Lo), Lo), WallPt(C, Sig * OuterLat(C, Zu), Zu), WallPt(C, Sig * C.Hw, Zu), Face,
+						BrokenTone(k * 4 + Side, 0.8f));
+				}
+				if (Hi > TopZ + 0.5)
+				{
+					const double Zd = FMath::Max(Lo, TopZ);
+					const double Xo = Sig * (C.Hw + WallDims::Parapet);
+					Out.AddQuad(WallPt(C, Sig * C.Hw, Zd), WallPt(C, Xo, Zd), WallPt(C, Xo, Hi), WallPt(C, Sig * C.Hw, Hi), Face, BrokenTone(k * 4 + Side, 0.88f));
+				}
+			}
+			TArray<FLatEdge, TInlineAllocator<4>> Edges;
+			GatherEdges(SqPrev, SqNext, Edges);
+			for (int32 j = 0; j + 1 < Edges.Num(); ++j)
+			{
+				const double X0 = EdgeX(Edges[j], C);
+				const double X1 = EdgeX(Edges[j + 1], C);
+				const double Zp = WalkTop(SqPrev, 0.5 * (X0 + X1), C.Hw);
+				const double Zn = WalkTop(SqNext, 0.5 * (X0 + X1), C.Hw);
+				if (FMath::Abs(Zp - Zn) < 0.5) { continue; }
+				const double Lo = FMath::Min(Zp, Zn);
+				const double Hi = FMath::Max(Zp, Zn);
+				Out.AddQuad(WallPt(C, X0, Lo), WallPt(C, X1, Lo), WallPt(C, X1, Hi), WallPt(C, X0, Hi), Zp > Zn ? Fwd : -Fwd, BrokenTone(k * 4 + j + 2, 0.8f));
 			}
 		}
 		for (double Sm = S0W + 130.0; Sm < S1W - 100.0; Sm += 260.0)
@@ -714,10 +815,71 @@ namespace
 			const FCol C = MakeCol(Sm, true);
 			for (int32 Side = 0; Side < 2; ++Side)
 			{
+				// Ni sobre un parapeto roto ni sobre su resto.
+				if (FMath::Min3(ParapetTop(Side, Sm - 66.0), ParapetTop(Side, Sm), ParapetTop(Side, Sm + 66.0)) < ParTop - 0.5) { continue; }
 				const double Sig = Side == 0 ? 1.0 : -1.0;
 				const FVector2D Q = C.P + C.N * (Sig * (C.Hw + WallDims::Parapet * 0.5));
 				Out.AddBox(FVector(Q.X, Q.Y, ParTop + WallDims::MerlonH * 0.5), FVector(C.T.X, C.T.Y, 0.0),
 					FVector(65.0, WallDims::Parapet * 0.5, WallDims::MerlonH * 0.5), Stone * TNProcTone(FMath::RoundToInt(Sm) + Side, Seed ^ 0x3E7u));
+			}
+		}
+
+		// Escombros de cada mordisco: sillares caídos en su fondo y en el escalón de cada borde (dentro de la zona de muerte)
+		// y, antes de cada grupo de mordiscos, a veces un trozo de almena caído sobre el adarve junto a un parapeto (54 cm:
+		// se salta o se rodea; en una cornisa, del lado del parapeto roto para no estorbar la subida a ella).
+		for (const FFeature* Br : Breaches)
+		{
+			const double BrA = Br->Target.X;
+			const double BrB = Br->Target.Y;
+			const EWallBreach Kind = WallBreachDims::KindOf(*Br);
+			const uint32 H = WallBreachDims::HashOf(*Br, 40);
+			double LenA = 0.0, DepthA = 0.0, LenB = 0.0, DepthB = 0.0;
+			WallBreachDims::EndStep(*Br, 0, LenA, DepthA);
+			WallBreachDims::EndStep(*Br, 1, LenB, DepthB);
+			const double DeepA = BrA + LenA;
+			const double DeepB = BrB - LenB;
+			const int32 Pieces = DeepB - DeepA > 60.0 ? 2 + static_cast<int32>(H & 1u) : 0;
+			for (int32 n = 0; n < Pieces; ++n)
+			{
+				const uint32 Hn = HashCell(H, n, 1);
+				const FCol Col = MakeCol(FMath::Lerp(DeepA + 25.0, DeepB - 25.0, static_cast<double>(Hn & 0xFF) / 255.0), true);
+				const double U = static_cast<double>((Hn >> 8) & 0xFF) / 255.0;
+				double X = (U * 2.0 - 1.0) * (Col.Hw - 40.0);
+				if (Kind == EWallBreach::LedgeLeft) { X = FMath::Min(X, Col.Hw - Br->Radius - 45.0); }
+				if (Kind == EWallBreach::LedgeRight) { X = FMath::Max(X, -Col.Hw + Br->Radius + 45.0); }
+				const FVector Half(22.0 + 20.0 * static_cast<double>((Hn >> 16) & 0xFF) / 255.0, 18.0 + 16.0 * static_cast<double>((Hn >> 24) & 0xFF) / 255.0,
+					14.0 + 12.0 * U);
+				const double Yaw = static_cast<double>((Hn >> 4) & 0xFF) / 255.0 * Pi;
+				Out.AddBox(WallPt(Col, X, TopZ - Br->Height + Half.Z), FVector(FMath::Cos(Yaw), FMath::Sin(Yaw), 0.0), Half, BrokenTone(n + 50, 0.85f));
+			}
+			for (int32 End = 0; End < 2; ++End)
+			{
+				const double StepLen = End == 0 ? LenA : LenB;
+				const double StepZ = TopZ - (End == 0 ? DepthA : DepthB);
+				if (StepLen < 40.0) { continue; }
+				const FCol Col = MakeCol(End == 0 ? BrA + StepLen * 0.5 : BrB - StepLen * 0.5, true);
+				for (int32 Side = 0; Side < 2; ++Side)
+				{
+					if (!WallBreachDims::CutsSide(*Br, Side)) { continue; }
+					const double Sig = Side == 0 ? 1.0 : -1.0;
+					const FVector Half(FMath::Min(StepLen * 0.4, 34.0), 26.0, 17.0);
+					Out.AddBox(WallPt(Col, Sig * (OuterLat(Col, StepZ) - 30.0), StepZ + Half.Z), FVector(Col.T.X, Col.T.Y, 0.0), Half, BrokenTone(End * 2 + Side + 60, 0.95f));
+				}
+			}
+			bool bGroupStart = true;
+			for (const FFeature* Other : Breaches)
+			{
+				if (Other != Br && Other->Target.Y <= BrA && BrA - Other->Target.Y < 900.0) { bGroupStart = false; }
+			}
+			const double Sf = BrA - WallBreachDims::ParapetBreakMax - 170.0 - 200.0 * static_cast<double>((H >> 16) & 0xFF) / 255.0;
+			if (bGroupStart && (H >> 8) % 5u < 3u && Sf > S0W + 300.0)
+			{
+				const int32 Side = Kind == EWallBreach::Gap ? static_cast<int32>((H >> 12) & 1u) : (Kind == EWallBreach::LedgeLeft ? 1 : 0);
+				const double Sig = Side == 0 ? 1.0 : -1.0;
+				const FCol Col = MakeCol(Sf, true);
+				const double Tilt = FMath::DegreesToRadians(-15.0 + 30.0 * static_cast<double>((H >> 24) & 0xFF) / 255.0);
+				const FVector2D Ax = Col.T * FMath::Cos(Tilt) + Col.N * FMath::Sin(Tilt);
+				Out.AddBox(WallPt(Col, Sig * (Col.Hw - 65.0), TopZ + 27.0), FVector(Ax.X, Ax.Y, 0.0), FVector(60.0, 40.0, 27.0), BrokenTone(70 + Side, 1.0f));
 			}
 		}
 	}
@@ -1496,6 +1658,9 @@ void ATN_ProcMapGenerator::BuildTerrain()
 		Tile->SetupAttachment(RootComponent);
 		Tile->bUseAsyncCooking = true;
 		Tile->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+		// Dato de primitiva 0 = 1: M_ProcTerrain aplica el relieve por normales y la textura del camino solo en las
+		// teselas, no en las formaciones pintadas que comparten el material (su alfa de vértice no es la máscara).
+		Tile->SetCustomPrimitiveDataFloat(0, 1.f);
 		Tile->RegisterComponent();
 		Tile->CreateMeshSection_LinearColor(0, T.Verts, T.Tris, T.Normals, T.UVs, T.Colors, NoTangents, true);
 		if (TerrainMat) { Tile->SetMaterial(0, TerrainMat); }
@@ -1658,9 +1823,6 @@ void ATN_ProcMapGenerator::BuildStructures()
 	// ── Puentes colosales: estilo según el bioma del cruce ─────
 	// Colgante: tablones sobre dos largueros, barandilla de cuerda y, en cada apoyo (borde de torre o
 	// pilar de roca), mástiles de los que cuelgan los cables principales con sus péndolas. Viaducto:
-		// Dato de primitiva 0 = 1: M_ProcTerrain aplica el relieve por normales y la textura del camino solo en las
-		// teselas, no en las formaciones pintadas que comparten el material (su alfa de vértice no es la máscara).
-		Tile->SetCustomPrimitiveDataFloat(0, 1.f);
 	// losas y pretiles de piedra sobre arcos rebajados entre los apoyos. Caballete: tablones y barandilla
 	// de madera sobre caballetes de vigas hasta el suelo. Hierro: planchas, barandilla y pórticos de
 	// hierro con cadenas en lugar de cables.
@@ -1711,11 +1873,13 @@ void ATN_ProcMapGenerator::BuildStructures()
 			CutA = FMath::Clamp(Sc - Rc, S0, S1);
 			CutB = FMath::Clamp(Sc + Rc, S0, S1);
 		}
-		// Tramo hundido (puentes de más de 42 m): 11-15 m sin tablero que se cruzan con parkour (vigas en zigzag,
-		// postes o cornisas; ver TNProcAddBrokenSpan). Solo donde debajo no hay nada en 9 m (ni pilas ni torres),
-		// todo el tramo queda sobre cajas de muerte y no hay nada del recorrido cerca (plaza, huevos, recompensas).
-		double BreakA = S1, BreakB = S1;
-		bool bBroken = false;
+		// Tramos hundidos (puentes de más de 42 m): de uno a tres, uno por cada 22 m de tablero útil, repartidos a lo largo
+		// del puente y de tipos distintos: el primero de 11-15 m y los demás de 9-13 m sin tablero, que se cruzan con parkour
+		// (vigas en zigzag, postes o cornisas; ver TNProcAddBrokenSpan). Entre dos, al menos 7 m de tablero entero para
+		// aterrizar y coger carrerilla. Solo donde debajo no hay nada en 9 m (ni pilas ni torres), todo el tramo queda sobre
+		// cajas de muerte y no hay nada del recorrido cerca (plaza, huevos, recompensas).
+		struct FTNDeckBreak { double A = 0.0; double B = 0.0; int32 Kind = 0; };
+		TArray<FTNDeckBreak> Breaks;
 		const uint32 BreakHash = HashCell(Layout.Params.Seed ^ 0x7B0Bu, c, 3);
 		if (S1 - S0 > 4200.0)
 		{
@@ -1752,21 +1916,43 @@ void ATN_ProcMapGenerator::BuildStructures()
 				}
 				return true;
 			};
-			const double BreakLen = 1100.0 + 400.0 * ((BreakHash >> 8) & 0xFF) / 255.0;
-			static const double Fractions[7] = { 0.5, 0.36, 0.64, 0.28, 0.72, 0.44, 0.56 };
-			for (const double Fr : Fractions)
+			constexpr double BreakSep = 700.0;
+			const double Lo = S0 + 600.0;
+			const double Hi = S1 - 600.0;
+			const int32 Want = FMath::Clamp(FMath::FloorToInt32((Hi - Lo) / 2200.0), 1, 3);
+			const double Slot = (Hi - Lo) / Want;
+			for (int32 k = 0; k < Want; ++k)
 			{
-				const double Ba = S0 + (S1 - S0) * Fr - BreakLen * 0.5;
-				if (Ba < S0 + 600.0 || Ba + BreakLen > S1 - 600.0) { continue; }
-				if (SpanClear(Ba, Ba + BreakLen)) { BreakA = Ba; BreakB = Ba + BreakLen; bBroken = true; break; }
+				const uint32 Hk = HashCell(BreakHash, k, 5);
+				const double BreakLen = (k == 0 ? 1100.0 : 900.0) + 400.0 * static_cast<double>((k == 0 ? BreakHash >> 8 : Hk) & 0xFF) / 255.0;
+				// Centrado en su parte del tablero y, si ahí no cabe, desplazado a saltos de 3 m hasta media parte.
+				const double Center = Lo + Slot * (k + 0.5);
+				for (int32 Try = 0; Try <= FMath::FloorToInt32(Slot / 600.0) * 2; ++Try)
+				{
+					const double Ba = Center + ((Try % 2) ? -1.0 : 1.0) * 300.0 * ((Try + 1) / 2) - BreakLen * 0.5;
+					if (Ba < Lo || Ba + BreakLen > Hi) { continue; }
+					bool bFar = true;
+					for (const FTNDeckBreak& Other : Breaks) { bFar &= Ba > Other.B + BreakSep || Ba + BreakLen < Other.A - BreakSep; }
+					if (bFar && SpanClear(Ba, Ba + BreakLen))
+					{
+						Breaks.Add(FTNDeckBreak{ Ba, Ba + BreakLen, static_cast<int32>(((BreakHash >> 16) + static_cast<uint32>(k)) % 3u) });
+						break;
+					}
+				}
 			}
+			Breaks.Sort([](const FTNDeckBreak& X0, const FTNDeckBreak& X1) { return X0.A < X1.A; });
 		}
-		// Reparte un tramo [Pa, Pb] del tablero en los trozos que quedan fuera del hundido.
+		// Reparte un tramo [Pa, Pb] del tablero en los trozos que quedan fuera de los hundidos.
 		auto Pieces = [&](double Pa, double Pb, auto&& Emit)
 		{
-			if (!bBroken || BreakB <= Pa || BreakA >= Pb) { if (Pb > Pa) { Emit(Pa, Pb); } return; }
-			if (BreakA > Pa) { Emit(Pa, BreakA); }
-			if (BreakB < Pb) { Emit(BreakB, Pb); }
+			double Cur = Pa;
+			for (const FTNDeckBreak& Br : Breaks)
+			{
+				if (Br.B <= Cur || Br.A >= Pb) { continue; }
+				if (Br.A > Cur) { Emit(Cur, Br.A); }
+				Cur = FMath::Max(Cur, Br.B);
+			}
+			if (Pb > Cur) { Emit(Cur, Pb); }
 		};
 		switch (Style)
 		{
@@ -1795,13 +1981,14 @@ void ATN_ProcMapGenerator::BuildStructures()
 				});
 				break;
 		}
-		if (bBroken)
+		for (int32 k = 0; k < Breaks.Num(); ++k)
 		{
+			const FTNDeckBreak& Br = Breaks[k];
 			const bool bWoodDeck = Style == ETNBridgeStyle::Trestle || Style == ETNBridgeStyle::Rope;
 			const FLinearColor DeckC = Style == ETNBridgeStyle::Stone ? StoneC : (Style == ETNBridgeStyle::Iron ? IronColor * 1.6f : WoodColor);
-			TNProcAddBrokenSpan(bWoodDeck ? Wood : Painted, PaintedFar, Painted, Line, BreakA, BreakB, C.TopZ, static_cast<int32>((BreakHash >> 16) % 3u),
-				Style == ETNBridgeStyle::Stone, DeckC, Seed ^ 0x5EEDu);
-			UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Cruce %d: tramo hundido de %.0f m (tipo %u)."), c, (BreakB - BreakA) / 100.0, (BreakHash >> 16) % 3u);
+			TNProcAddBrokenSpan(bWoodDeck ? Wood : Painted, PaintedFar, Painted, Line, Br.A, Br.B, C.TopZ, Br.Kind,
+				Style == ETNBridgeStyle::Stone, DeckC, Seed ^ (0x5EEDu + static_cast<uint32>(k) * 977u));
+			UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Cruce %d: tramo hundido de %.0f m (tipo %d, %d de %d)."), c, (Br.B - Br.A) / 100.0, Br.Kind, k + 1, Breaks.Num());
 		}
 
 		if (Plaza)
@@ -1968,8 +2155,74 @@ void ATN_ProcMapGenerator::BuildStructures()
 			const double TowerR = Layout.Params.TowerRadius;
 			const double Len = Axis.Length();
 			const uint32 Seed = Layout.Params.Seed ^ (0x3A11u + static_cast<uint32>(c) * 7919u);
+			// Adarve roto: los mordiscos de esta muralla (TNProcMap::BuildWallBreaches).
+			TArray<const FFeature*> Breaches;
+			int32 NumLedges = 0;
+			for (const FFeature& F : Layout.Features)
+			{
+				if (F.Type != EFeature::WallBreach || F.Aux != c) { continue; }
+				Breaches.Add(&F);
+				NumLedges += WallBreachDims::KindOf(F) != EWallBreach::Gap ? 1 : 0;
+			}
 			// El cuerpo de la muralla entra 2 m en la torre de entrada (hueca: sin tocar su sala) y 4 m en la de salida.
-			TNProcAddWall(Rock, Axis, TowerR - 200.0, Len - TowerR + 400.0, TowerR, Len - TowerR, C.TopZ, Gate, Ground, Stone, Seed);
+			TNProcAddWall(Rock, Axis, TowerR - 200.0, Len - TowerR + 400.0, TowerR, Len - TowerR, C.TopZ, Gate, Breaches, Ground, Stone, Seed);
+			if (Breaches.Num() > 0)
+			{
+				UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Cruce %d: adarve roto con %d mordiscos (%d brechas y %d cornisas)."), c, Breaches.Num(),
+					Breaches.Num() - NumLedges, NumLedges);
+			}
+			// Barrera invisible sobre cada parapeto entero, de su cima a 9 m más arriba: nadie se sube a él (ni lanzado por un
+			// compañero) para rodear una cornisa o saltar fuera de la muralla. Se corta donde el parapeto está roto: no tapa los
+			// mordiscos ni deja andar por el aire, y quien sale por un mordisco cae en sus cajas de muerte. Solo frena a las
+			// tortugas (la cámara la atraviesa).
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const double Sig = Side == 0 ? 1.0 : -1.0;
+				TArray<FVector2D> BrokenRuns;
+				for (const FFeature* Br : Breaches)
+				{
+					if (!WallBreachDims::CutsSide(*Br, Side)) { continue; }
+					BrokenRuns.Add(FVector2D(Br->Target.X - WallBreachDims::ParapetBreak(*Br, Side, 0), Br->Target.Y + WallBreachDims::ParapetBreak(*Br, Side, 1)));
+				}
+				BrokenRuns.Sort([](const FVector2D& R0, const FVector2D& R1) { return R0.X < R1.X; });
+				auto EmitRun = [&](double RunFrom, double RunTo)
+				{
+					constexpr double BarrierW = WallDims::Parapet + 60.0;
+					constexpr double BarrierH = 900.0;
+					const int32 Pieces = FMath::Max(1, FMath::CeilToInt32((RunTo - RunFrom) / 600.0));
+					for (int32 k = 0; k < Pieces; ++k)
+					{
+						FVector2D P0, T0, N0, P1, T1, N1;
+						double Hw0 = 0.0, Hw1 = 0.0;
+						Axis.At(FMath::Lerp(RunFrom, RunTo, static_cast<double>(k) / Pieces), P0, T0, N0, Hw0);
+						Axis.At(FMath::Lerp(RunFrom, RunTo, static_cast<double>(k + 1) / Pieces), P1, T1, N1, Hw1);
+						// Desde la cara interior del parapeto hasta 60 cm más allá de la exterior.
+						const FVector2D In0 = P0 + N0 * (Sig * Hw0);
+						const FVector2D In1 = P1 + N1 * (Sig * Hw1);
+						const FVector2D Along = (In1 - In0).GetSafeNormal();
+						if (Along.IsNearlyZero()) { continue; }
+						const FVector2D Outward = (N0 + N1).GetSafeNormal() * Sig;
+						const FVector2D Mid = (In0 + In1) * 0.5 + Outward * (BarrierW * 0.5);
+						UBoxComponent* Barrier = NewObject<UBoxComponent>(this, NAME_None, RF_Transient);
+						Barrier->SetupAttachment(RootComponent);
+						Barrier->SetBoxExtent(FVector(FVector2D::Distance(In0, In1) * 0.5 + 10.0, BarrierW * 0.5, BarrierH * 0.5));
+						Barrier->SetCollisionProfileName(TEXT("InvisibleWall"));
+						Barrier->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+						Barrier->SetHiddenInGame(true);
+						Barrier->RegisterComponent();
+						Barrier->SetRelativeLocationAndRotation(FVector(Mid, C.TopZ + WallDims::ParapetH - 2.0 + BarrierH * 0.5),
+							FRotator(0.0, FMath::RadiansToDegrees(FMath::Atan2(Along.Y, Along.X)), 0.0));
+						BoundaryWalls.Add(Barrier);
+					}
+				};
+				double RunA = TowerR;
+				for (const FVector2D& Run : BrokenRuns)
+				{
+					if (Run.X > RunA + 1.0) { EmitRun(RunA, Run.X); }
+					RunA = FMath::Max(RunA, Run.Y);
+				}
+				if (Len - TowerR > RunA + 1.0) { EmitRun(RunA, Len - TowerR); }
+			}
 			for (const FFeature& F : Layout.Features)
 			{
 				if (F.Type == EFeature::Tower && F.Aux == c)

@@ -75,7 +75,7 @@ Dos capas, como el resto del proyecto (`TNGridLogic`, `TNChunkLogic`):
 | `TN_ProcMapGenerate.h` | `GenerateLayout(params)`: orquesta todo, valida y reintenta. |
 
 Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
-`ModulesConnected`, `Determinism`, `Terrain`) en `Private/Tests/TN_ProcMapDecisionsTest.cpp`.
+`ModulesConnected`, `Determinism`, `Terrain`, `WallBreaches`) en `Private/Tests/TN_ProcMapDecisionsTest.cpp`.
 
 **Capa UE** (`World/ProcMap`, `Game`, `Lobby`, `Player`):
 
@@ -113,7 +113,12 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   Los huecos del camino principal miden 1,3–3,9 m (salto corriendo o con dive), con labios de
   madera, sillería o basalto según el bioma; algunos son más largos (hasta 1,8 veces) con **postes**
   en rejilla que los parten en saltos cortos (troncos, pilotes, basalto o columnas) y otros llevan
-  **troncos de equilibrio** de labio a labio.
+  **troncos de equilibrio** de labio a labio. Van a **30 m como mínimo** entre sí (antes 40) y `GapsPerKm`
+  es la densidad que sale de verdad en los tramos donde caben (llanos, de menos de 26 m, fuera de estructuras,
+  horquillas y agua): la probabilidad por muestra compensa los 30 m muertos tras cada hueco,
+  `λ = R / (1 − R · 30 m)` con `R = min(GapsPerKm, 26,7)` por km (antes, con 9 por km salían unos 6,6).
+  Las ramas arriesgadas llevan el doble. En el manglar, las pasarelas van en trozos de 12-32 m (antes 15-40 m)
+  y entre trozo y trozo hay hueco el 57 / 67 / 81 % de las veces (F/N/D; antes 43 / 55 / 71 %).
   Desde Normal, parte de los huecos de labios son **saltos de panzazo** (`EGapStyle::Dive`, de
   `DiveGapMin` = 2,7 m a `DiveGapMax` = 3,7 m, sin pasar de los huecos máximos de la dificultad): más de lo
   que da un salto corriendo (2 m) y menos que con panzazo (4 m). En el camino principal siempre hay al menos
@@ -121,7 +126,8 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   llevan tres chevrones amarillos y rojos que apuntan al hueco y, fuera del camino, un cartel con «!».
 - **Torres de escalada** junto al borde en tramos anchos: bloques del bioma (cajas con aspa,
   tocones, sillares, losas o basalto) de 3–4 m con escalones de 1 m, banderín, recompensa de puntos
-  arriba (`BP_ScorePickup`) y una medusa al pie (`BP_JellyfishActor`) para subir de un bote.
+  arriba (`BP_ScorePickup`) y una medusa al pie (`BP_JellyfishActor`) para subir de un bote. Salen en el
+  24 % de los turnos de obstáculo de los tramos de 13 m o más (antes 14 %).
 - **Conchas de puntos** (`ATN_ScorePickup`): una vieira dorada de ~1 m que gira como una moneda
   de plataformas clásico, sube y baja y brilla (`M_ProcGlow`), con destellos alrededor. Si arte
   pone una malla propia en `PickupMesh`, se ve esa y la concha no (la de ayuda del motor, el
@@ -244,6 +250,14 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   rincones de playa, tótems, columnas en ruinas, setas gigantes, calaveras gigantes, vasijas,
   cristales gigantes, hitos grandes, vagonetas, nasas, puestos de mercado y filas de conos, según
   el bioma; conviven con peñascos, agujas, mogotes y troncos.
+- **Densidad de obstáculos** (`BuildObstacles`): un turno cada 15-36 m (antes 22-55 m) y, si en una muestra no cabe
+  (estructura, horquilla, formación), se prueba en la siguiente en vez de perder el turno. Se apartan 24 m de géiseres,
+  toboganes, torres, puertas, cuevas, portales y uniones, y 12 m de los huecos (aterrizar y coger carrerilla); tras una
+  aguja o un tronco, el siguiente espera a que acabe (su radio o su vuelo a lo largo del camino y 12 m). Troncos caídos
+  que se saltan en el 50 % de los turnos en selva, manglar y volcán (antes 40 %) y, en la playa, troncos a la deriva
+  (28 %); agujas y mogotes en el 30 % de las explanadas (antes 35 %). Las **formaciones se colocan antes** que los
+  obstáculos (`GenerateLayout`): los obstáculos no se ponen a menos de 3 m de la huella de una pieza de explanada ni del
+  fondo o los pies de un arco, y las secuoyas del manglar se apartan de todas las formaciones.
 - **Rocas del camino con estilo por bioma**: peñascos redondos, losas inclinadas, partidos,
   apilados, de estratos, columnas de basalto, con musgo, con cristales o de coral; agujas con
   sombrero, inclinadas, gemelas, chimeneas de hadas, pilares kársticos con vegetación y órganos de
@@ -256,15 +270,60 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   tienen a media altura una **plaza** redonda (sobre la pila central si la hay): pretil o barandilla
   abierta a las entradas del tablero, fuente con la tortuga o farol alto, farolas, bancos mirando al
   paisaje y una atalaya de 3 m con escalones, recompensa arriba y medusa al pie.
-  Los de más de 42 m entre torres tienen un **tramo hundido** de 11-15 m sin tablero (`TNProcAddBrokenSpan`), solo
+  Los de más de 42 m entre torres tienen **de uno a tres tramos hundidos** sin tablero (`TNProcAddBrokenSpan`): uno por
+  cada 22 m de tablero útil (el que queda a más de 6 m de cada borde de torre), cada uno centrado en su parte del
+  tablero y, si ahí no cabe, desplazado a saltos de 3 m hasta media parte. El primero mide 11-15 m y los demás
+  9-13 m; entre dos quedan al menos 7 m de tablero entero para aterrizar y coger carrerilla, y el tipo va rotando
+  (un puente de tres los lleva de los tres tipos). Solo
   donde debajo no hay nada en 9 m (ni pilas ni torres), todo el tramo cae sobre cajas de muerte y no hay nada del
-  recorrido a menos de 5 m (plaza, huevos, recompensas, medusas). Se cruza de una de tres maneras: **vigas** de 60 cm
+  recorrido a menos de 5 m (plaza, huevos, recompensas, medusas). Cada uno se cruza de una de tres maneras: **vigas** de 60 cm
   en zigzag de lado a lado con plataformas en los codos, **postes** cuadrados de 1,1 m al tresbolillo (saltos de
   ~1,3 m y cimas alternas a -8 y -26 cm) o dos **cornisas** de 60 cm por los bordes, cada una con un hueco de 1,8 m (a
   un tercio y a dos tercios) y un tablón atravesado en medio para cambiar de lado. Todo lo pisable queda a menos de
   50 cm bajo el tablero (las cajas de muerte empiezan a 60 cm). Bordes astillados (sillares en los de piedra;
-  tablones que cuelgan en los demás), barandillas cortadas y bandas de aviso antes de cada borde. El registro dice
-  «Cruce N: tramo hundido de X m (tipo K)».
+  tablones que cuelgan en los demás), barandillas cortadas y bandas de aviso antes de cada borde. El registro dice,
+  por cada tramo, «Cruce N: tramo hundido de X m (tipo K, i de n)».
+- **Adarve roto de las murallas colosales** (`TNProcMap::BuildWallBreaches`, `EFeature::WallBreach`,
+  `WallBreachDims`): la muralla tiene **mordiscos solo en lo alto**. Donde muerden faltan el parapeto (y sus almenas)
+  y el adarve, y el muro queda hundido 2,8-4,8 m (siempre por encima de la clave de la puerta, `WallDims::Crown` = 5 m);
+  el cuerpo de la muralla sigue entero y desde lejos se ven los bocados en la silueta almenada. Tipos:
+  - **Brecha** de lado a lado que se salta: 1,19-1,66 m en Fácil, 1,33-1,9 m en Normal y 1,5-2,22 m en Difícil
+    (`GapMin/GapMax` = `LerpD(110, 155)` / `LerpD(150, 230)` por dificultad). A veces dos o tres seguidas (Fácil, hasta
+    dos) con adarve entero entre ellas (`Island` = `LerpD(260, 170)`: 2,4 m en Fácil, 2,15 m en Normal y 1,8 m en
+    Difícil, ±25 cm).
+  - **Cornisa**: el adarve se hunde salvo una franja pegada a un parapeto, que sigue entero; 85 / 78 / 68 cm de ancho
+    (`LedgeWidth` = `LerpD(90, 66)`; nunca menos de 65 cm) y 4,9-7,8 m (Fácil), 5,5-9 m (Normal) o 6,3-10,6 m (Difícil)
+    de largo.
+  - **Cornisa y brecha**: una cornisa y, tras 2,4-3,6 m de adarve entero, una brecha (desde Normal).
+  - Por muralla, como mucho 3 / 5 / 7 grupos, con 28-47 m (Fácil), 22-39 m (Normal) o 15-29 m (Difícil) de adarve entero
+    entre grupos; los tipos salen al 55/45/0 % en Fácil y al 45/35/20 % desde Normal. Nunca a menos de 9 m del borde de
+    una torre (`TowerClear`; el enlosado y los lados abiertos del pretil, `TowerOpenSides`, quedan intactos) ni de 6 m
+    del arco de la puerta (`GateClear`), y solo en tramos cuyo eje gira menos de 20°.
+  - **Medidas con el salto real** (`TNProcMap::TurtleJump`, valores de `BP_TortugaCharacter`): `JumpZVelocity`
+    485 cm/s y gravedad 980 cm/s² (sube 1,2 m y está 0,99 s en el aire), andar 200 cm/s y esprintar 400 cm/s
+    (`UTN_StaminaComponent`; 200 de estamina a 15/s son más de 13 s de esprint): 1,98 m de salto en llano andando y
+    3,96 m esprintando, más ~1 m si se hace el panzazo en lo alto. La brecha más larga (2,3 m a dificultad 1) es el
+    58 % de un salto esprintando; hasta Normal (1,9 m) se salta sin esprintar. La cápsula mide 34 cm de radio: en una
+    cornisa de 65 cm cabe entera arrimada al parapeto.
+  - **Forma**: el fondo del mordisco lleva un escalón más somero junto a cada borde (12-22 % del largo, a
+    30-60 % de la hondura y nunca a menos de 1,1 m bajo el adarve) y el parapeto se rompe 30-110 cm más que el
+    adarve, con un resto de 8-22 cm de alto junto a la rotura (desde él no se alcanza la cima del parapeto, a más de
+    1,2 m). Sillares caídos en el fondo y en los escalones y, antes de cada grupo, a veces (60 %) un trozo de almena
+    caído sobre el adarve junto a un parapeto (1,2 × 0,8 × 0,54 m; en una cornisa, del lado del parapeto roto). La
+    piedra rota es más oscura que la labrada. Malla por bandas (`TNProcAddWall`): parapeto izquierdo, adarve (o la
+    franja que queda y la hundida) y parapeto derecho, cada una a la cota de lo que queda, con sus paredes y las caras
+    del corte; las caras exteriores suben hasta lo que queda. La colisión es la de la malla: los huecos son de verdad.
+  - **Caer mata**: cajas de muerte desde 60 cm bajo el adarve (como en los puentes) hasta 3 m bajo el fondo, a lo ancho
+    de todo el muro y 9 m más allá de cada cara (quien salta hacia fuera por el mordisco) y a lo largo del tramo, su
+    parapeto roto y 6 m más, en piezas de 4 m que siguen el eje y se solapan 60 cm. Lo pisable (la cornisa, el adarve
+    entero, los restos del parapeto) queda por encima de ellas.
+  - **Barreras invisibles**: sobre cada parapeto entero, de su cima a 9 m más arriba y hasta 60 cm por fuera de su
+    cara (piezas de 6 m, perfil `InvisibleWall` sin bloquear la cámara, en `BoundaryWalls`): nadie se sube al parapeto
+    (ni lanzado por un compañero) para rodear una cornisa o salir de la muralla. Se cortan donde el parapeto está roto:
+    no tapan los mordiscos ni dejan andar por el aire.
+  - Las muestras del adarve que tocan un mordisco llevan `PathFlags::Gap` (sin suelo continuo; ya eran `Elevated`, así
+    que no llevan huevos, peligros, obstáculos ni fauna). La reaparición es en las pilas de huevos, nunca en el adarve.
+    El registro dice «Cruce N: adarve roto con X mordiscos (B brechas y C cornisas)».
 - **Formaciones temáticas**: arcos que cruzan el camino (arco de roca, esqueleto de ballena con
   columna en arco sobre las costillas, cola y cráneo con mandíbulas,
   raíces gigantes, pórtico de templo, tronco colosal caído con raíces y lianas en selva y manglar,
@@ -450,6 +509,10 @@ generación: −1 = lo del lobby (por defecto), 0 = puerta doble, 1 = huevos. Si
   en vertical, se estira durante el rebote y aterriza de pie.
 - **Caídas**: más de 5 m de caída libre → se mete sola en el caparazón; más de 35 m →
   se rompe (muere). Géiseres, toboganes y el agua no cuentan.
+- **Salto** (`BP_TortugaCharacter`, lo recoge `TNProcMap::TurtleJump` para medir los retos del mapa): `JumpZVelocity`
+  485 cm/s con la gravedad del motor (980 cm/s²): sube 1,2 m y está 0,99 s en el aire; andando (200 cm/s) salta
+  1,98 m en llano y esprintando (400 cm/s), 3,96 m. El segundo salto en el aire es el panzazo (350 cm/s más la
+  velocidad del salto, bajando a 100 cm/s). Cápsula de 34 cm de radio y 70 de semialto.
 
 ---
 
@@ -477,7 +540,8 @@ los restaura).
 | 2vs2 | 2 / 3 / 4 | 0,90 | 0 / 0 / 1 | 2 / 3 / 4 | 1 / 2 / 3 | — |
 
 Comunes por dificultad (F/N/D): densidad de peligros 1,6 / 2,4 / 3,2; huecos por km
-6 / 9 / 12 (a 40 m como mínimo entre sí); una pila de huevos cada 1 / 2 / 3 cruces de módulo. El camino va
+9 / 13 / 17 (antes 6 / 9 / 12; densidad real en los tramos donde caben, a 30 m como mínimo entre sí); una pila de
+huevos cada 1 / 2 / 3 cruces de módulo. El camino va
 muy poblado de saltos, trampas y obstáculos de juego. `DA_ProcMapSettings` guarda sus perfiles: al cambiar estos
 valores en código hay que actualizarlos en el asset (`FillDefaultProfiles` o por Python) y guardarlo.
 

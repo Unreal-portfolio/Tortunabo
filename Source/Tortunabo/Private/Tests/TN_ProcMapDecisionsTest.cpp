@@ -107,6 +107,18 @@ bool FTNProcMapLayoutInvariantsTest::RunTest(const FString& Parameters)
 			TestTrue(Ctx + TEXT(": huecos dentro de [GapMin, GapMax]"), bGaps);
 			TestTrue(Ctx + TEXT(": huecos de panzazo dentro de [DiveGapMin, DiveGapMax] y de su zanja"), bDives);
 
+			// Huecos del camino principal (no los ríos de lava de las cuevas) a 30 m como mínimo: sitio para aterrizar y coger
+			// carrerilla aunque vayan muy seguidos.
+			TArray<double> GapS;
+			for (const FFeature& F : L.Features)
+			{
+				if (F.Type == EFeature::Gap && F.BranchIndex == INDEX_NONE && !IsLavaGap(F) && L.Main.IsValidIndex(F.PathIndex)) { GapS.Add(L.Main[F.PathIndex].S); }
+			}
+			GapS.Sort();
+			bool bSpaced = true;
+			for (int32 k = 1; k < GapS.Num(); ++k) { bSpaced &= GapS[k] - GapS[k - 1] >= 2999.0; }
+			TestTrue(Ctx + TEXT(": huecos del principal a 30 m como mínimo"), bSpaced);
+
 			// Isletas: el hueco entre isletas consecutivas es saltable.
 			bool bIslets = true;
 			const FFeature* Prev = nullptr;
@@ -292,6 +304,136 @@ bool FTNProcMapTerrainTest::RunTest(const FString& Parameters)
 	bool bSea = true;
 	for (int32 x = NX / 4; x < 3 * NX / 4; ++x) { bSea &= H[SeaRow * NX + x] < 0.0f; }
 	TestTrue(TEXT("mar abierto al norte"), bSea);
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Adarve roto de las murallas: saltos a la medida de la tortuga y caer siempre mata
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNProcMapWallBreachesTest,
+	"Tortunabo.ProcMap.WallBreaches",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNProcMapWallBreachesTest::RunTest(const FString& Parameters)
+{
+	using namespace TNProcMap;
+
+	// Medidas con margen sobre el salto real (TurtleJump: 1,98 m andando, 3,96 m esprintando, 1,2 m de alto).
+	TestTrue(TEXT("brecha más larga: como mucho el 60 % de un salto esprintando"), WallBreachDims::GapMax(1.0) <= 0.6 * TurtleJump::Reach(TurtleJump::SprintSpeed));
+	TestTrue(TEXT("hasta Normal, brechas más cortas que un salto andando"), WallBreachDims::GapMax(0.5) < TurtleJump::Reach(TurtleJump::WalkSpeed));
+	TestTrue(TEXT("cornisas de 65 cm o más"), WallBreachDims::LedgeWidth(1.0) >= WallBreachDims::LedgeMin);
+	TestTrue(TEXT("el mordisco no llega a la clave de la puerta"), WallBreachDims::DepthMax < WallDims::Crown);
+	TestTrue(TEXT("el escalón del borde ya está en la zona de muerte"), WallBreachDims::StepMin > WallBreachDims::KillTop + 20.0);
+	TestTrue(TEXT("desde un resto de parapeto no se alcanza la cima del parapeto"), WallDims::ParapetH - 22.0 > TurtleJump::Apex());
+
+	int32 Walls = 0, Breaches = 0, Ledges = 0;
+	for (uint32 Seed = 1; Seed <= 20; ++Seed)
+	{
+		FLayout L;
+		if (!GenerateLayout(MakeParams(Seed, 6), L) || !L.bValid) { continue; }
+		const double Diff = Saturate(L.Params.Difficulty01);
+		for (int32 c = 0; c < L.Crossings.Num(); ++c)
+		{
+			const FCrossing& C = L.Crossings[c];
+			if (C.Type != ETNProcCrossingType::Wall) { continue; }
+			++Walls;
+			const FRouteStep& High = L.Route[C.HighStep];
+			FWallAxis Axis;
+			Axis.Build(L.Main, High.FirstSample, High.LastSample);
+			const double Len = Axis.Length();
+			double GateA = 1e300, GateB = -1e300;
+			TArray<const FFeature*> Mine;
+			for (const FFeature& F : L.Features)
+			{
+				if (F.Type == EFeature::WallBreach && F.Aux == c) { Mine.Add(&F); }
+				if (F.Type == EFeature::Gate && F.Aux == c)
+				{
+					const double Sg = Axis.Project(FVector2D(F.Location.X, F.Location.Y));
+					GateA = Sg - F.Radius - WallBreachDims::GateClear;
+					GateB = Sg + F.Radius + WallBreachDims::GateClear;
+				}
+			}
+			Mine.Sort([](const FFeature& A, const FFeature& B) { return A.Target.X < B.Target.X; });
+			const FString Ctx = FString::Printf(TEXT("semilla %u cruce %d"), Seed, c);
+			bool bClear = true, bSizes = true, bApart = true, bCovered = true, bSafe = true, bFlags = true;
+			for (int32 b = 0; b < Mine.Num(); ++b)
+			{
+				const FFeature& F = *Mine[b];
+				const double Sa = F.Target.X;
+				const double Sb = F.Target.Y;
+				++Breaches;
+				const EWallBreach Kind = WallBreachDims::KindOf(F);
+				Ledges += Kind != EWallBreach::Gap ? 1 : 0;
+				const bool bTowersOk = Sa >= L.Params.TowerRadius + WallBreachDims::TowerClear - 1.0 && Sb <= Len - L.Params.TowerRadius - WallBreachDims::TowerClear + 1.0;
+				// El generador arranca el grupo justo en el borde de la zona libre de la puerta (Cursor = GateB): vale el borde.
+				const bool bGateOk = Sb <= GateA + 1.0 || Sa >= GateB - 1.0;
+				if (!bTowersOk || !bGateOk)
+				{
+					AddInfo(FString::Printf(TEXT("%s mordisco %d: S %.0f-%.0f, largo %.0f, torres %.0f-%.0f, puerta %.0f-%.0f."), *Ctx, b, Sa, Sb, Len,
+						L.Params.TowerRadius + WallBreachDims::TowerClear, Len - L.Params.TowerRadius - WallBreachDims::TowerClear, GateA, GateB));
+				}
+				bClear &= bTowersOk && bGateOk;
+				bSizes &= F.Height >= WallBreachDims::DepthMin - 1.0 && F.Height <= WallBreachDims::DepthMax + 1.0;
+				if (Kind == EWallBreach::Gap)
+				{
+					bSizes &= F.Length >= WallBreachDims::GapMin(Diff) - 1.0 && F.Length <= WallBreachDims::GapMax(Diff) + 1.0;
+				}
+				else
+				{
+					bSizes &= F.Radius >= WallBreachDims::LedgeMin && F.Radius < F.Width * 0.5 - 100.0;
+				}
+				if (b > 0) { bApart &= Sa - Mine[b - 1]->Target.Y >= WallBreachDims::Island(1.0) - 26.0; }
+
+				// Lo hundido, 80 cm bajo el adarve, queda dentro de alguna caja de muerte; lo que se pisa (la cornisa y el
+				// adarve entero junto al mordisco), fuera de todas.
+				auto InKill = [&L](const FVector& Q)
+				{
+					for (const FKillBox& K : L.KillBoxes) { if (K.Contains(Q)) { return true; } }
+					return false;
+				};
+				for (double Sq = Sa + 5.0; Sq <= Sb - 5.0; Sq += 20.0)
+				{
+					FVector2D Pq, Tq, Nq;
+					double Hw = 0.0;
+					Axis.At(Sq, Pq, Tq, Nq, Hw);
+					const double Lo = Kind == EWallBreach::LedgeRight ? -Hw + F.Radius + 5.0 : -Hw + 5.0;
+					const double Hi = Kind == EWallBreach::LedgeLeft ? Hw - F.Radius - 5.0 : Hw - 5.0;
+					for (const double X : { Lo, 0.5 * (Lo + Hi), Hi })
+					{
+						bCovered &= InKill(FVector(Pq + Nq * X, C.TopZ - 80.0));
+					}
+					if (Kind != EWallBreach::Gap)
+					{
+						const double Ledge = Kind == EWallBreach::LedgeLeft ? Hw - F.Radius * 0.5 : -Hw + F.Radius * 0.5;
+						bSafe &= !InKill(FVector(Pq + Nq * Ledge, C.TopZ + 5.0));
+					}
+				}
+				for (const double Sq : { Sa - 30.0, Sb + 30.0 })
+				{
+					FVector2D Pq, Tq, Nq;
+					double Hw = 0.0;
+					Axis.At(Sq, Pq, Tq, Nq, Hw);
+					bSafe &= !InKill(FVector(Pq, C.TopZ + 5.0));
+				}
+				// Las muestras del adarve sobre el mordisco llevan Gap (sin suelo continuo).
+				for (int32 i = High.FirstSample; i <= High.LastSample; ++i)
+				{
+					const double Si = L.Main[i].S - L.Main[High.FirstSample].S;
+					if (Si >= Sa && Si <= Sb) { bFlags &= (L.Main[i].Flags & PathFlags::Gap) != 0; }
+				}
+			}
+			TestTrue(Ctx + TEXT(": mordiscos lejos de las torres y de la puerta"), bClear);
+			TestTrue(Ctx + TEXT(": brechas, cornisas y honduras a la medida"), bSizes);
+			TestTrue(Ctx + TEXT(": entre dos mordiscos queda adarve para aterrizar"), bApart);
+			TestTrue(Ctx + TEXT(": caer en un mordisco mata"), bCovered);
+			TestTrue(Ctx + TEXT(": la cornisa y el adarve entero no están en una caja de muerte"), bSafe);
+			TestTrue(Ctx + TEXT(": muestras del adarve roto con Gap"), bFlags);
+		}
+	}
+	if (Walls == 0) { AddWarning(TEXT("Ninguna semilla dio murallas: no se comprobó el adarve roto.")); }
+	TestTrue(TEXT("las murallas llevan mordiscos"), Walls == 0 || Breaches > 0);
+	AddInfo(FString::Printf(TEXT("%d murallas, %d mordiscos (%d cornisas)."), Walls, Breaches, Ledges));
 	return true;
 }
 
