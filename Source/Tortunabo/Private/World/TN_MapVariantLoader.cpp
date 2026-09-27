@@ -228,7 +228,10 @@ void ATN_MapVariantLoader::MoveStartPlayerStart(const TSharedPtr<FJsonObject>& M
 			*GetName(), *Variant.ToString());
 		return;
 	}
-	const FVector Start((*StartUu)[0]->AsNumber(), (*StartUu)[1]->AsNumber(), (*StartUu)[2]->AsNumber());
+	// start_uu es la cota del suelo: el PlayerStart se sube media capsula y un margen, si no la
+	// capsula del pawn nace metida en el terreno y el spawn falla (la tortuga no aparecia).
+	constexpr double CapsuleLift = 120.0;
+	const FVector Start((*StartUu)[0]->AsNumber(), (*StartUu)[1]->AsNumber(), (*StartUu)[2]->AsNumber() + CapsuleLift);
 
 	UWorld* World = GetWorld();
 	if (!World) { return; }
