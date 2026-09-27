@@ -20,6 +20,7 @@
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "Player/TN_TurtleAnimInstance.h"
+#include "Player/TN_TurtleFoleyComponent.h"
 #include "World/TN_InteractableBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
@@ -288,6 +289,9 @@ void ATortugaCharacter::BeginPlay()
 	CacheDefaultSkelMeshMaterials();
 
 	StartCosmeticRetryTimer();
+
+	// Pasos, aterrizajes y jadeo sintetizados (solo en máquinas con audio; lee el estado replicado, sin RPC).
+	UTN_TurtleFoleyComponent::FindOrAddTo(this);
 }
 
 void ATortugaCharacter::ResolveAnimationBones()
