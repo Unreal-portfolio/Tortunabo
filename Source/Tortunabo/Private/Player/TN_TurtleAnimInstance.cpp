@@ -132,11 +132,12 @@ namespace TNTurtleAnim
 	constexpr float LoopFadeSeconds = 0.3f;
 
 	/**
-	 * Pose del clip en bucle en el tiempo Time. El bucle dura lo que el clip menos LoopFadeSeconds: al empezar cada
-	 * vuelta, el final del clip se funde con su principio, así que la pose no salta aunque el primer y el último
-	 * fotograma no coincidan.
+	 * Pose del clip en bucle en el tiempo Time. Con bLoopFade, el bucle dura lo que el clip menos LoopFadeSeconds: al
+	 * empezar cada vuelta, el final del clip se funde con su principio, así que la pose no salta aunque el primer y el
+	 * último fotograma no coincidan. Sin él (ciclos que ya cierran, como el de andar), bucle simple de todo el clip: el
+	 * fundido mezclaría dos momentos distintos de la zancada y acortaría un paso.
 	 */
-	void SampleClip(const UAnimSequence* Clip, float Time, FPoseContext& Out)
+	void SampleClip(const UAnimSequence* Clip, float Time, FPoseContext& Out, bool bLoopFade = true)
 	{
 		if (!Clip)
 		{
@@ -144,7 +145,7 @@ namespace TNTurtleAnim
 			return;
 		}
 		const float Length = FMath::Max(0.01f, Clip->GetPlayLength());
-		const float Fade = FMath::Min(LoopFadeSeconds, Length * 0.25f);
+		const float Fade = bLoopFade ? FMath::Min(LoopFadeSeconds, Length * 0.25f) : 0.f;
 		const float Loop = FMath::Max(0.01f, Length - Fade);
 		const float T = FMath::Fmod(FMath::Max(0.f, Time), Loop);
 		FAnimationPoseData Data(Out);
@@ -535,7 +536,8 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 	if (F.WalkW > 0.01f)
 	{
 		FPoseContext Walk(Output);
-		SampleClip(WalkClip, F.WalkTime, Walk);
+		// El ciclo de andar ya cierra (primer y último fotograma iguales): bucle simple, sin fundido.
+		SampleClip(WalkClip, F.WalkTime, Walk, false);
 		// Zancada más larga que la del clip (las patas de la tortuga son cortas): con su ritmo, los pies no patinan.
 		Amplify(Walk.Pose, B.LUp, 1.3);
 		Amplify(Walk.Pose, B.RUp, 1.3);

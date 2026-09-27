@@ -11,6 +11,9 @@ La evaluación (`FTNTurtleAnimProxy::Evaluate`, que puede correr fuera del hilo 
 1. **Locomoción con los clips.** `Old_Man_Idle`, `Walking` y `Drunk_Run_Forward`, mezclados por velocidad como
    `ABS_Walk`: andar entra hasta 1,5 m/s y correr entre 4,8 y 7,3 m/s. Las fases avanzan al ritmo de los pasos (andar
    sin patinar a 3,8 m/s y correr a 7,2 m/s) y la cadera queda en su sitio (sin avance propio de los clips).
+   Los clips en bucle funden sus últimos 0,3 s con el principio (`SampleClip`, `LoopFadeSeconds`) salvo `Walking`, cuyo
+   ciclo ya cierra (primer y último fotograma iguales): con el fundido se mezclaban dos momentos distintos de la
+   zancada y uno de los dos pasos salía más corto.
 2. **Fiesta** (emote 9): el clip `Yelling` con rebote.
 3. **Poses de estado** sobre la postura en T, mezcladas con la de arriba por su peso (que entra y sale suave):
    salto (brazos arriba que aletean, piernas recogidas; más arriba al caer), panzazo en el aire (brazos por delante,
