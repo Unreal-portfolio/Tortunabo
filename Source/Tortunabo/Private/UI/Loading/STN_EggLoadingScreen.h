@@ -41,6 +41,59 @@ namespace TNEggLoadingArt
 }
 
 /**
+ * Rótulo «¡ADELANTE!» de la salida de cada ronda del mapa procedural: la palabra enorme (casi todo el ancho de la
+ * pantalla) en degradado cálido (amarillo pálido arriba, dorado y naranja abajo), con relieve naranja, contorno grueso de
+ * tinta y sombra suave, y debajo una frase de ánimo al azar. Entra con un rebote rápido, respira un poco mientras está a
+ * la vista y se desvanece creciendo. Lo pintan el huevo (en lugar del «¡PUM!» cuando se rompe al empezar la ronda) y
+ * STN_GoBanner (rondas siguientes, sin huevo).
+ *
+ * Las letras se rasterizan a su tamaño final (escala de maquetación fija para cada tamaño de pantalla) y el rebote va
+ * en la transformación de render: el atlas de fuentes no se llena con un tamaño nuevo en cada fotograma. Warm las
+ * rasteriza de antemano sin que se vean, para que el tirón de generar letras tan grandes no caiga en el momento del
+ * rótulo.
+ */
+class FTNGoBannerPainter
+{
+public:
+	/** Entrada con rebote de la palabra, desvanecido final y tiempo a la vista sin huevo (rondas siguientes). */
+	static constexpr float PopSeconds = 0.32f;
+	static constexpr float FadeSeconds = 0.4f;
+	static constexpr float OverlayHoldSeconds = 2.6f;
+
+	/** Fuentes, la palabra y una primera frase. */
+	void Init();
+	/** Frase de ánimo nueva, al azar (nunca la misma dos veces seguidas). */
+	void PickLine();
+
+	/**
+	 * Pinta el rótulo a pantalla completa sobre BannerGeo. SinceShow: segundos desde que sale (< 0: nada); HoldSeconds:
+	 * desde que sale hasta que empieza a desvanecerse. Devuelve la primera capa libre por encima.
+	 */
+	int32 Paint(const FGeometry& BannerGeo, FSlateWindowElementList& OutDrawElements, int32 LayerId, float SinceShow, float HoldSeconds,
+		float Alpha) const;
+	/** Pinta las letras casi transparentes (1/255) a su tamaño final: quedan rasterizadas antes de salir. */
+	void Warm(const FGeometry& BannerGeo, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
+
+private:
+	/** Colocación en la pantalla: escalas de maquetación (fijas por tamaño de pantalla) y cajas medidas a escala 1. */
+	struct FPlacement
+	{
+		FVector2f WordBox = FVector2f::ZeroVector;
+		FVector2f WordPos = FVector2f::ZeroVector;
+		float WordScale = 1.f;
+		FVector2f LineBox = FVector2f::ZeroVector;
+		FVector2f LinePos = FVector2f::ZeroVector;
+		float LineScale = 1.f;
+	};
+	bool ComputePlacement(const FGeometry& BannerGeo, FPlacement& OutPlace) const;
+
+	FString WordText;
+	FString LineText;
+	FSlateFontInfo WordFont;
+	FSlateFontInfo LineFont;
+};
+
+/**
  * Tiempos del huevo (segundos de FPlatformTime). Las dos mitades se mueven con un grado de cierre K (0 = fuera de la
  * pantalla, 1 = cerradas); Close y Open lo animan desde donde esté, así que un cierre puede darse la vuelta a medias.
  */
@@ -64,6 +117,12 @@ struct FTNEggTimeline
 	/** Rotura: tiembla y se agrieta, «¡pum!» en PopAt y las mitades salen de la pantalla antes de BreakEnd. */
 	static constexpr float PopAt = 1.05f;
 	static constexpr float BreakEnd = 1.9f;
+	/**
+	 * Rotura con «¡ADELANTE!» (salida de la ronda del mapa procedural): el rótulo sale en PopAt, sigue a la vista
+	 * GoLingerSeconds después de que se vayan las mitades y se desvanece; la rotura acaba en GoBreakEnd.
+	 */
+	static constexpr float GoLingerSeconds = 2.2f;
+	static constexpr float GoBreakEnd = BreakEnd + GoLingerSeconds + FTNGoBannerPainter::FadeSeconds;
 
 	float MoveDuration() const
 	{
@@ -90,7 +149,9 @@ struct FTNEggTimeline
  * «¡clac!» y tapan la pantalla entera. Encima de la cáscara van el nombre del juego (mitad de arriba), el estado con
  * puntos animados, un consejo y cuatro tortugas andando (mitad de abajo). Al romperse tiembla cada vez más, las grietas
  * salen de la unión, se abre una rendija de luz y, con el «¡PUM!», las mitades salen despedidas hacia arriba y hacia
- * abajo entre trozos de cáscara. También se puede abrir sin romperse (se retiran por donde vinieron).
+ * abajo entre trozos de cáscara. También se puede abrir sin romperse (se retiran por donde vinieron). Al empezar la
+ * ronda del mapa procedural se rompe con «¡ADELANTE!» (FTNGoBannerPainter) en lugar del «¡PUM!»: el rótulo se queda a
+ * la vista un rato después de que se vayan las mitades y la rotura no acaba hasta que se desvanece.
  *
  * Todo se pinta en OnPaint a partir de FPlatformTime (también en el hilo de carga de MoviePlayer): las mitades son
  * mallas propias (MakeCustomVerts) con la superficie ajustada «cubriendo», así que se ve igual en 16:9, 16:10, 21:9 y
@@ -130,12 +191,20 @@ public:
 	void SnapClosed();
 	/** Se abre sin romperse: las mitades se retiran por donde vinieron. */
 	void Open();
-	/** Tiembla, se agrieta y revienta. */
-	void StartBreak();
+	/** Tiembla, se agrieta y revienta; con bInGoFinale, con «¡ADELANTE!» y una frase de ánimo en vez del «¡PUM!». */
+	void StartBreak(bool bInGoFinale = false);
 
 	bool IsBreaking() const { return Timeline.BreakTime >= 0.0; }
 	float GetBreakElapsed() const { return Timeline.BreakElapsed(FPlatformTime::Seconds()); }
-	bool IsBreakFinished() const { return IsBreaking() && GetBreakElapsed() >= FTNEggTimeline::BreakEnd; }
+	/** La rotura en curso (o la próxima) acaba con «¡ADELANTE!». */
+	bool HasGoFinale() const { return bGoFinale; }
+	/** Las mitades ya han salido de la pantalla (con «¡ADELANTE!», solo queda el rótulo). */
+	bool IsShellGone() const { return IsBreaking() && GetBreakElapsed() >= FTNEggTimeline::BreakEnd; }
+	/** Rotura acabada del todo: con «¡ADELANTE!», cuando el rótulo se ha desvanecido. */
+	bool IsBreakFinished() const
+	{
+		return IsBreaking() && GetBreakElapsed() >= (bGoFinale ? FTNEggTimeline::GoBreakEnd : FTNEggTimeline::BreakEnd);
+	}
 	bool IsOpening() const { return !IsBreaking() && !Timeline.bClosing; }
 	bool IsOpenFinished() const { return IsOpening() && Timeline.IsOpenedAt(FPlatformTime::Seconds()); }
 	/** Las mitades se tocan. */
@@ -230,7 +299,10 @@ private:
 	uint32 Seed = 1u;
 	FText Status;
 	bool bAnimateDots = true;
+	/** La rotura acaba con «¡ADELANTE!» (salida de la ronda) en vez del «¡PUM!». */
+	bool bGoFinale = false;
 	TArray<float> CrackStartTimes;
+	FTNGoBannerPainter GoBanner;
 
 	FSlateBrush SurfaceBrush;
 	FSlateBrush WhiteBrush;
@@ -247,4 +319,44 @@ private:
 	FSlateFontInfo PumFont;
 
 	mutable FEggLayout Layout;
+};
+
+/**
+ * «¡ADELANTE!» solo, sin huevo (rondas siguientes del mapa procedural, TN.Loading.Test.GoOnly): el rótulo encima del
+ * juego, sin bloquear los clics. Sale pasados Delay segundos (mientras tanto rasteriza las letras sin que se vean), se
+ * queda FTNGoBannerPainter::OverlayHoldSeconds y se desvanece; el subsistema lo quita del viewport con IsFinished.
+ */
+class STN_GoBanner : public SLeafWidget
+{
+public:
+	SLATE_BEGIN_ARGS(STN_GoBanner)
+		: _Delay(0.f)
+	{
+		_Visibility = EVisibility::HitTestInvisible;
+	}
+		/** Segundos hasta que sale el rótulo. */
+		SLATE_ARGUMENT(float, Delay)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs);
+
+	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+		FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
+	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override { return FVector2D(64.0, 64.0); }
+
+	/** Momento (FPlatformTime) en que sale el rótulo. */
+	double GetShowTime() const { return ShowTime; }
+	/** Ya se ha desvanecido del todo. */
+	bool IsFinished() const
+	{
+		return FPlatformTime::Seconds() >= ShowTime + FTNGoBannerPainter::OverlayHoldSeconds + FTNGoBannerPainter::FadeSeconds;
+	}
+
+protected:
+	/** Se anima en cada fotograma. */
+	virtual bool ComputeVolatility() const override { return true; }
+
+private:
+	FTNGoBannerPainter Painter;
+	double ShowTime = 0.0;
 };

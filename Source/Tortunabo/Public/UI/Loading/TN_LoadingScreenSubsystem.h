@@ -7,6 +7,7 @@
 #include "TN_LoadingScreenSubsystem.generated.h"
 
 class STN_EggLoadingScreen;
+class STN_GoBanner;
 class SWidget;
 class UGameViewportClient;
 struct FWorldContext;
@@ -86,9 +87,16 @@ private:
  * (misma semilla y mismo origen de tiempos) en su hilo; en PIE se pinta un fotograma con el huevo cerrado antes de que
  * el LoadMap congele el viewport. En el viaje sin cortes el hilo de juego sigue vivo y el huevo se anima todo el rato.
  *
+ * Mapa procedural (GameState ATN_ProcMapGameState, o uno cooperativo con el GameMode ATN_ProcMapGameMode): con el mapa
+ * listo en esta máquina el huevo sigue cerrado («Preparando la salida», «Esperando a las demás tortugas») hasta que
+ * empieza la ronda (MatchFlowState == InProgress o bRoundInProgress; como mucho 40 s) y entonces se rompe con
+ * «¡ADELANTE!» y una frase de ánimo en lugar del «¡PUM!». En las rondas siguientes (el mapa se regenera sin viajar y no
+ * hay huevo) sale el mismo rótulo solo, encima del juego (STN_GoBanner), cada vez que la ronda vuelve a InProgress.
+ *
  * Pruebas por consola: TN.Loading.Test (se cierra y se rompe a los 3 s), TN.Loading.Test.Close (se cierra y espera;
- * TN.Loading.Test.Hold hace lo mismo), TN.Loading.Test.Break (rompe el que esté a la vista) y TN.Loading.Test.Open (lo
- * abre sin romperlo).
+ * TN.Loading.Test.Hold hace lo mismo), TN.Loading.Test.Break (rompe el que esté a la vista), TN.Loading.Test.Open (lo
+ * abre sin romperlo), TN.Loading.Test.Go (se cierra y se rompe con «¡ADELANTE!») y TN.Loading.Test.GoOnly (el rótulo
+ * solo, sin huevo).
  */
 UCLASS()
 class TORTUNABO_API UTN_LoadingScreenSubsystem : public UGameInstanceSubsystem, public FTickableGameObject
@@ -131,8 +139,11 @@ public:
 	/** Cambia el texto de estado (sin puntos suspensivos: se animan solos). */
 	void SetStatus(const FString& InStatus);
 
-	/** Rompe el huevo ya, esté o no listo el mapa. */
-	void BreakNow();
+	/**
+	 * Rompe el huevo ya, esté o no listo el mapa; con bWithGo, con «¡ADELANTE!» y una frase de ánimo en vez del «¡PUM!»
+	 * (salida de la ronda del mapa procedural).
+	 */
+	void BreakNow(bool bWithGo = false);
 
 	/** Abre el huevo sin romperlo (las mitades se retiran por donde vinieron). */
 	void OpenNow();
@@ -140,10 +151,16 @@ public:
 	/** Mantiene el huevo cerrado hasta BreakNow u OpenNow (pruebas). */
 	void SetHold(bool bInHold) { bHold = bInHold; }
 
-	/** Rompe solo pasados unos segundos, sin mirar el mapa (pruebas). */
-	void BreakAfter(float Seconds);
+	/** Rompe solo pasados unos segundos, sin mirar el mapa ni la ronda (pruebas); con bWithGo, con «¡ADELANTE!». */
+	void BreakAfter(float Seconds, bool bWithGo = false);
 
-	/** true mientras el huevo está en pantalla (cerrándose, cerrado, abriéndose o rompiéndose). */
+	/**
+	 * Enseña «¡ADELANTE!» solo, sin huevo, encima del juego y sin bloquear los clics: sale pasados DelaySeconds, se queda
+	 * unos 3 s y se quita solo. Es lo que sale al empezar las rondas siguientes del mapa procedural.
+	 */
+	void ShowGoBanner(float DelaySeconds = 0.f);
+
+	/** true mientras el huevo está en pantalla (cerrándose, cerrado, abriéndose o rompiéndose, «¡ADELANTE!» incluido). */
 	bool IsShowing() const { return Screen.IsValid(); }
 
 	/** Texto de estado amable para un mapa («Rumbo al cuartel», «Incubando la partida»...). */
@@ -169,9 +186,29 @@ private:
 	void TickBreakSounds();
 	UTN_EggSynthComponent* EnsureSynth();
 
+	/** Mapa procedural: con el mapa ya listo, el huevo espera a la ronda (o la rompe con «¡ADELANTE!»). */
+	void TickRoundGate(UWorld* World, double Now);
+	/** Texto de la espera a la ronda («Preparando la salida», «Esperando a las demás tortugas»). */
+	void ShowRoundWaitStatus(const UWorld* World);
+	/** Mira si la ronda del mapa procedural acaba de empezar (rondas siguientes: «¡ADELANTE!» sin huevo). */
+	void UpdateRoundWatch(UWorld* World);
+	void HandleRoundStarted();
+	/** Sonido de entrada y retirada de «¡ADELANTE!» sin huevo. */
+	void TickGoBanner(double Now);
+	void RemoveGoBanner();
+
 	TSharedPtr<STN_EggLoadingScreen> Screen;
 	TSharedPtr<SWidget> ScreenInViewport;
 	TWeakObjectPtr<UGameViewportClient> ViewportUsed;
+
+	/** «¡ADELANTE!» sin huevo (rondas siguientes), el viewport donde está y si ya sonó su entrada. */
+	TSharedPtr<STN_GoBanner> GoBanner;
+	TWeakObjectPtr<UGameViewportClient> GoBannerViewport;
+	bool bGoBannerCuePlayed = false;
+
+	/** Mundo cuya ronda se vigila y si su ronda estaba en juego en el fotograma anterior. */
+	TWeakObjectPtr<UWorld> RoundWatchWorld;
+	bool bRoundWasLive = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_EggSynthComponent> Synth;
@@ -185,7 +222,7 @@ private:
 	double HoldStartTime = 0.0;
 	/** La cuenta atrás del lobby lleva cancelada desde este momento (< 0: no lo está). */
 	double LobbyCancelSince = -1.0;
-	/** Último texto puesto por los cierres automáticos (para no rehacerlo en cada fotograma). */
+	/** Último texto puesto por los cierres automáticos o la espera a la ronda (para no rehacerlo en cada fotograma). */
 	FString LastAutoStatus;
 
 	/** Acciones que esperan a que el huevo esté cerrado del todo (RunWhenClosed) y desde cuándo. */
@@ -200,8 +237,11 @@ private:
 	bool bHold = false;
 	/** Momento (FPlatformTime) en que el mapa terminó de cargar; < 0 mientras sigue viajando. */
 	double LoadDoneTime = -1.0;
-	/** Rotura programada (pruebas); < 0 = ninguna. */
+	/** Momento en que el mapa quedó listo en esta máquina (o se agotó su espera); desde aquí cuenta la de la ronda. */
+	double WorldReadyTime = -1.0;
+	/** Rotura programada (pruebas); < 0 = ninguna. Con bBreakAtWithGo, con «¡ADELANTE!». */
 	double BreakAtTime = -1.0;
+	bool bBreakAtWithGo = false;
 	/** Sonidos de la rotura ya disparados (bit por grieta y por golpe). */
 	uint32 FiredBreakCues = 0;
 	/** Movimiento del huevo cuyo «¡clac!» ya sonó. */

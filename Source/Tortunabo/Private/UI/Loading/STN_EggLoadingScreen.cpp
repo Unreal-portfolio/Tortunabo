@@ -4,6 +4,7 @@
 #include "Engine/Texture2D.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Layout/Clipping.h"
 #include "Math/RandomStream.h"
 #include "Rendering/DrawElements.h"
 #include "Rendering/SlateRenderer.h"
@@ -594,6 +595,251 @@ namespace TNEggLoadingArt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// «¡ADELANTE!»
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNEggLoadingDetail
+{
+	// Medidas del rótulo en fracciones de la pantalla o del alto de línea de la palabra. Las de dentro de la línea son de
+	// Roboto (la fuente por defecto de Slate): las mayúsculas van del 19 % al 79 % del alto de línea.
+	/** La palabra ocupa este ancho de la pantalla, con un alto de línea máximo para las pantallas muy anchas. */
+	constexpr float GoWordWidth = 0.86f;
+	constexpr float GoWordMaxHeight = 0.36f;
+	/** La frase: su tamaño a 1080 de alto, encogida si no cabe en este ancho. */
+	constexpr float GoLineWidth = 0.9f;
+	/** Centro vertical del conjunto (de lo alto de las mayúsculas de la palabra a la línea base de la frase). */
+	constexpr float GoCenterY = 0.47f;
+	constexpr float GoCapTop = 0.19f;
+	constexpr float GoBaseline = 0.79f;
+	/** La frase empieza a este alto de línea de la palabra: por debajo del palo del «¡». */
+	constexpr float GoLineTop = 0.96f;
+	/** Copias del relieve naranja, de la cara hasta el fondo. */
+	constexpr int32 GoExtrudeSteps = 5;
+	/** En el huevo, el rótulo sigue a la vista hasta GoLingerSeconds después de que se vayan las mitades. */
+	constexpr float GoEggHoldSeconds = FTNEggTimeline::BreakEnd + FTNEggTimeline::GoLingerSeconds - FTNEggTimeline::PopAt;
+
+	/** Entrada con rebote: de 0 a 1 en Duration pasándose por arriba (Overshoot 1,7 ≈ 10 % de más; 2,6 ≈ 20 %). */
+	float EaseOutBack(float T, float Duration, float Overshoot)
+	{
+		if (T <= 0.f)
+		{
+			return 0.f;
+		}
+		if (T >= Duration)
+		{
+			return 1.f;
+		}
+		const float P = T / Duration - 1.f;
+		return 1.f + (Overshoot + 1.f) * P * P * P + Overshoot * P * P;
+	}
+
+	/** Frase de ánimo al azar (como mucho 70 caracteres), nunca la misma dos veces seguidas. Hilo de juego. */
+	const TCHAR* PickGoLine()
+	{
+		static const TCHAR* const GoLines[] = {
+			TEXT("¡Corre hacia el mar, que la tormenta no te pille!"),
+			TEXT("¡Aletas a tope: el mar te está esperando!"),
+			TEXT("¡Sal del nido como un rayo y no mires atrás!"),
+			TEXT("¡Rueda, salta y nada: la playa es toda tuya!"),
+			TEXT("¡Más rápida que la marea, más valiente que la tormenta!"),
+			TEXT("¡Que la tormenta solo vea tu caparazón alejarse!"),
+			TEXT("¡A la carrera, tortuga, que la ola no espera!"),
+			TEXT("¡La última en llegar al agua invita a algas!"),
+		};
+		static int32 LastPicked = -1;
+		const int32 NumLines = UE_ARRAY_COUNT(GoLines);
+		int32 Picked = FMath::RandHelper(NumLines);
+		if (Picked == LastPicked && NumLines > 1)
+		{
+			Picked = (Picked + 1 + FMath::RandHelper(NumLines - 1)) % NumLines;
+		}
+		LastPicked = Picked;
+		return GoLines[Picked];
+	}
+}
+
+void FTNGoBannerPainter::Init()
+{
+	WordText = TEXT("¡ADELANTE!");
+	// A 1080 de alto la palabra sale casi a este tamaño; la escala de maquetación la ajusta al ancho de la pantalla. Todas
+	// las capas usan este contorno y solo cambian su color, que no cuenta para la caché de letras: se rasterizan una vez.
+	WordFont = FCoreStyle::GetDefaultFontStyle("Bold", 220);
+	WordFont.OutlineSettings.OutlineSize = 12;
+	WordFont.OutlineSettings.OutlineColor = TNHUDArt::Ink;
+	LineFont = FCoreStyle::GetDefaultFontStyle("Bold", 50);
+	LineFont.OutlineSettings.OutlineSize = 4;
+	LineFont.OutlineSettings.OutlineColor = TNHUDArt::Ink;
+	PickLine();
+}
+
+void FTNGoBannerPainter::PickLine()
+{
+	LineText = TNEggLoadingDetail::PickGoLine();
+}
+
+bool FTNGoBannerPainter::ComputePlacement(const FGeometry& BannerGeo, FPlacement& OutPlace) const
+{
+	namespace EggDetail = TNEggLoadingDetail;
+	const FVector2f LocalSize = BannerGeo.GetLocalSize();
+	const float Sw = LocalSize.X;
+	const float Sh = LocalSize.Y;
+	if (Sw < 16.f || Sh < 16.f || !FSlateApplication::IsInitialized() || !FSlateApplication::Get().GetRenderer())
+	{
+		return false;
+	}
+	const TSharedRef<FSlateFontMeasure> Measurer = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+	// Cajas a escala 1 con el contorno a los dos lados (Slate desplaza el relleno el grosor del contorno a la derecha).
+	OutPlace.WordBox = Measurer->Measure(WordText, WordFont, 1.f) + FVector2f(2.f * static_cast<float>(WordFont.OutlineSettings.OutlineSize), 0.f);
+	OutPlace.LineBox = Measurer->Measure(LineText, LineFont, 1.f) + FVector2f(2.f * static_cast<float>(LineFont.OutlineSettings.OutlineSize), 0.f);
+	if (OutPlace.WordBox.X < 1.f || OutPlace.WordBox.Y < 1.f || OutPlace.LineBox.Y < 1.f)
+	{
+		return false;
+	}
+	// Escalas de maquetación: solo dependen del tamaño de la pantalla, así que las letras se rasterizan una sola vez.
+	OutPlace.WordScale = FMath::Min(EggDetail::GoWordWidth * Sw / OutPlace.WordBox.X, EggDetail::GoWordMaxHeight * Sh / OutPlace.WordBox.Y);
+	OutPlace.LineScale = Sh / 1080.f;
+	if (OutPlace.LineBox.X * OutPlace.LineScale > EggDetail::GoLineWidth * Sw)
+	{
+		OutPlace.LineScale = EggDetail::GoLineWidth * Sw / OutPlace.LineBox.X;
+	}
+	const float WordH = OutPlace.WordBox.Y * OutPlace.WordScale;
+	const float LineH = OutPlace.LineBox.Y * OutPlace.LineScale;
+	const float BlockH = (EggDetail::GoLineTop - EggDetail::GoCapTop) * WordH + EggDetail::GoBaseline * LineH;
+	const float WordTop = EggDetail::GoCenterY * Sh - 0.5f * BlockH - EggDetail::GoCapTop * WordH;
+	OutPlace.WordPos = FVector2f(0.5f * (Sw - OutPlace.WordBox.X * OutPlace.WordScale), WordTop);
+	OutPlace.LinePos = FVector2f(0.5f * (Sw - OutPlace.LineBox.X * OutPlace.LineScale), WordTop + EggDetail::GoLineTop * WordH);
+	return true;
+}
+
+int32 FTNGoBannerPainter::Paint(const FGeometry& BannerGeo, FSlateWindowElementList& OutDrawElements, int32 LayerId, float SinceShow,
+	float HoldSeconds, float Alpha) const
+{
+	namespace EggDetail = TNEggLoadingDetail;
+	FPlacement Place;
+	if (SinceShow < 0.f || !ComputePlacement(BannerGeo, Place))
+	{
+		return LayerId;
+	}
+	const float FadeT = FMath::Clamp((SinceShow - HoldSeconds) / FadeSeconds, 0.f, 1.f);
+	const float Opacity = (1.f - FadeT) * Alpha;
+	if (Opacity <= 0.f)
+	{
+		return LayerId;
+	}
+	const float Sh = BannerGeo.GetLocalSize().Y;
+	auto Tint = [Opacity](uint32 Rgb, float Strength = 1.f) { return TNHUDArt::Hex(Rgb, Strength * Opacity); };
+	int32 Layer = LayerId;
+
+	// La palabra: rebote de entrada (≈ 20 % de más), respira un poco y crece al desvanecerse. El rebote va en la
+	// transformación de render alrededor del centro de su caja: el tamaño de las letras en el atlas no cambia.
+	const float Breath = SinceShow > PopSeconds ? 1.f + 0.012f * FMath::Sin((SinceShow - PopSeconds) * 7.f) : 1.f;
+	const float WordRender = EggDetail::EaseOutBack(SinceShow, PopSeconds, 2.6f) * Breath * (1.f + 0.1f * FadeT);
+	if (WordRender > 0.02f)
+	{
+		// Desplazamientos en altos de línea de la palabra ya en pantalla (con el rebote): todo crece junto.
+		const float WordH = Place.WordBox.Y * Place.WordScale * WordRender;
+		auto WordGeometry = [&BannerGeo, &Place, WordH, WordRender](const FVector2f& OffsetInLines)
+		{
+			return BannerGeo.MakeChild(Place.WordBox, FSlateLayoutTransform(Place.WordScale, Place.WordPos + OffsetInLines * WordH),
+				FSlateRenderTransform(WordRender), FVector2f(0.5f, 0.5f));
+		};
+		// Tres colores del mismo contorno (misma entrada en la caché de letras): tinta, sombra y transparente (solo el
+		// relleno). El contorno no sigue al tinte del texto: se desvanece a mano.
+		FSlateFontInfo InkFont = WordFont;
+		InkFont.OutlineSettings.OutlineColor = FLinearColor(TNHUDArt::Ink.R, TNHUDArt::Ink.G, TNHUDArt::Ink.B, Opacity);
+		FSlateFontInfo SoftShadowFont = WordFont;
+		SoftShadowFont.OutlineSettings.OutlineColor = Tint(0x0A1C38, 0.3f);
+		FSlateFontInfo FillFont = WordFont;
+		FillFont.OutlineSettings.OutlineColor = FLinearColor::Transparent;
+
+		// 1. Sombra suave, abajo a la derecha.
+		FSlateDrawElement::MakeText(OutDrawElements, Layer, WordGeometry(FVector2f(0.02f, 0.1f)).ToPaintGeometry(), WordText, SoftShadowFont,
+			ESlateDrawEffect::None, Tint(0x0A1C38, 0.3f));
+		Layer += 2;
+		// 2. Relieve naranja: copias escalonadas hacia abajo. Todos los contornos van en una capa y todos los rellenos en la
+		//    de encima, así el contorno grueso de tinta rodea el conjunto (la cara con su relieve).
+		for (int32 Step = 0; Step < EggDetail::GoExtrudeSteps; ++Step)
+		{
+			const float Depth = static_cast<float>(Step) / static_cast<float>(EggDetail::GoExtrudeSteps - 1);
+			FSlateDrawElement::MakeText(OutDrawElements, Layer, WordGeometry(FVector2f(0.012f, 0.062f) * Depth).ToPaintGeometry(), WordText, InkFont,
+				ESlateDrawEffect::None, Tint(0xF26A1B));
+		}
+		Layer += 2;
+		// 3. Línea de sombra justo debajo de la cara (la separa del relieve) y la cara, naranja dorado.
+		FSlateDrawElement::MakeText(OutDrawElements, Layer, WordGeometry(FVector2f(0.003f, 0.016f)).ToPaintGeometry(), WordText, FillFont,
+			ESlateDrawEffect::None, Tint(0xB2480E));
+		Layer += 2;
+		const FGeometry FaceGeo = WordGeometry(FVector2f::ZeroVector);
+		const FPaintGeometry FacePaint = FaceGeo.ToPaintGeometry();
+		FSlateDrawElement::MakeText(OutDrawElements, Layer, FacePaint, WordText, FillFont, ESlateDrawEffect::None, Tint(0xFFA41B));
+		Layer += 2;
+		// 4. Degradado: franjas cada vez más claras hacia arriba, recortadas desde lo alto de la caja hasta su fin (de 0 en
+		//    lo alto de las mayúsculas a 1 en la línea base). El recorte va en la geometría de la cara, rebote incluido.
+		static constexpr float BandEnd[] = { 0.72f, 0.48f, 0.24f };
+		static constexpr uint32 BandRgb[] = { 0xFFC02A, 0xFFD84A, 0xFFF1A0 };
+		const int32 NumBands = UE_ARRAY_COUNT(BandEnd);
+		for (int32 Band = 0; Band < NumBands; ++Band)
+		{
+			const float BandBottom = (EggDetail::GoCapTop + BandEnd[Band] * (EggDetail::GoBaseline - EggDetail::GoCapTop)) * Place.WordBox.Y;
+			const FGeometry BandGeo = FaceGeo.MakeChild(FVector2f(1.2f * Place.WordBox.X, BandBottom + Place.WordBox.Y),
+				FSlateLayoutTransform(FVector2f(-0.1f * Place.WordBox.X, -Place.WordBox.Y)));
+			OutDrawElements.PushClip(FSlateClippingZone(BandGeo));
+			FSlateDrawElement::MakeText(OutDrawElements, Layer, FacePaint, WordText, FillFont, ESlateDrawEffect::None, Tint(BandRgb[Band]));
+			OutDrawElements.PopClip();
+			Layer += 2;
+		}
+	}
+
+	// La frase: sale un poco después, desde más pequeña y un poco más abajo, en crema con contorno de tinta y sombra.
+	const float LineT = SinceShow - 0.12f;
+	if (LineT > 0.f)
+	{
+		const float LineIn = EggDetail::EaseOutBack(LineT, 0.28f, 1.7f);
+		const float LineRender = FMath::Lerp(0.6f, 1.f, LineIn) * (1.f + 0.06f * FadeT);
+		const float LineOpacity = Opacity * FMath::Clamp(LineT / 0.1f, 0.f, 1.f);
+		const float LineH = Place.LineBox.Y * Place.LineScale * LineRender;
+		const FVector2f Rise(0.f, (1.f - FMath::Clamp(LineIn, 0.f, 1.f)) * 0.03f * Sh);
+		auto LinePaint = [&BannerGeo, &Place, &Rise, LineRender](const FVector2f& LineShift)
+		{
+			return BannerGeo.ToPaintGeometry(Place.LineBox, FSlateLayoutTransform(Place.LineScale, Place.LinePos + Rise + LineShift),
+				FSlateRenderTransform(LineRender), FVector2f(0.5f, 0.5f));
+		};
+		FSlateFontInfo LineShadowFont = LineFont;
+		LineShadowFont.OutlineSettings.OutlineColor = TNHUDArt::Hex(0x0A1C38, 0.45f * LineOpacity);
+		FSlateFontInfo LineInkFont = LineFont;
+		LineInkFont.OutlineSettings.OutlineColor = FLinearColor(TNHUDArt::Ink.R, TNHUDArt::Ink.G, TNHUDArt::Ink.B, LineOpacity);
+		FSlateDrawElement::MakeText(OutDrawElements, Layer, LinePaint(FVector2f(0.f, 0.07f * LineH)), LineText, LineShadowFont,
+			ESlateDrawEffect::None, TNHUDArt::Hex(0x0A1C38, 0.45f * LineOpacity));
+		Layer += 2;
+		FSlateDrawElement::MakeText(OutDrawElements, Layer, LinePaint(FVector2f::ZeroVector), LineText, LineInkFont, ESlateDrawEffect::None,
+			FLinearColor(TNHUDArt::Cream.R, TNHUDArt::Cream.G, TNHUDArt::Cream.B, LineOpacity));
+		Layer += 2;
+	}
+	return Layer;
+}
+
+void FTNGoBannerPainter::Warm(const FGeometry& BannerGeo, FSlateWindowElementList& OutDrawElements, int32 LayerId) const
+{
+	FPlacement Place;
+	if (!ComputePlacement(BannerGeo, Place))
+	{
+		return;
+	}
+	// Con la misma escala de maquetación que al pintarlo (la clave de la caché de letras) y alfa 1/255: MakeText descarta
+	// lo que tiene alfa 0 y así no se ve nada.
+	constexpr float Faint = 1.f / 255.f;
+	FSlateFontInfo FaintWordFont = WordFont;
+	FaintWordFont.OutlineSettings.OutlineColor.A = Faint;
+	FSlateFontInfo FaintLineFont = LineFont;
+	FaintLineFont.OutlineSettings.OutlineColor.A = Faint;
+	const FLinearColor FaintTint(1.f, 1.f, 1.f, Faint);
+	FSlateDrawElement::MakeText(OutDrawElements, LayerId, BannerGeo.ToPaintGeometry(Place.WordBox, FSlateLayoutTransform(Place.WordScale, Place.WordPos)),
+		WordText, FaintWordFont, ESlateDrawEffect::None, FaintTint);
+	FSlateDrawElement::MakeText(OutDrawElements, LayerId, BannerGeo.ToPaintGeometry(Place.LineBox, FSlateLayoutTransform(Place.LineScale, Place.LinePos)),
+		LineText, FaintLineFont, ESlateDrawEffect::None, FaintTint);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Pantalla
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -648,6 +894,7 @@ void STN_EggLoadingScreen::Construct(const FArguments& InArgs)
 	PumFont = FCoreStyle::GetDefaultFontStyle("Bold", 72);
 	PumFont.OutlineSettings.OutlineSize = 5;
 	PumFont.OutlineSettings.OutlineColor = TNHUDArt::Ink;
+	GoBanner.Init();
 
 	// Mantiene Slate despierto mientras está a la vista (también en el hilo de carga de MoviePlayer).
 	RegisterActiveTimer(0.f, FWidgetActiveTimerDelegate::CreateLambda([](double, float) { return EActiveTimerReturnType::Continue; }));
@@ -701,12 +948,17 @@ void STN_EggLoadingScreen::Open()
 	++Timeline.MoveSerial;
 }
 
-void STN_EggLoadingScreen::StartBreak()
+void STN_EggLoadingScreen::StartBreak(bool bInGoFinale)
 {
 	if (!IsBreaking())
 	{
 		Timeline.bClosing = true;
 		Timeline.BreakTime = FPlatformTime::Seconds();
+		bGoFinale = bInGoFinale;
+		if (bGoFinale)
+		{
+			GoBanner.PickLine();
+		}
 	}
 }
 
@@ -971,8 +1223,9 @@ FString STN_EggLoadingScreen::GetTipString(double Now) const
 		TEXT("Lleva a un compañero en su caparazón y lánzalo hacia la meta."),
 		TEXT("La tormenta avanza por el camino: no te quedes atrás."),
 		TEXT("En el agua se nada; las corrientes también empujan."),
-		TEXT("¿Aburrido en el cuartel? Prueba el parkour del castillo de arena."),
-		TEXT("En el cuartel, métete en un huevo cuando estés listo: con todos dentro, empieza la partida."),
+		TEXT("¿Aburrido en el castillo? Prueba el patio de pruebas y los toboganes del muro."),
+		TEXT("Para estar listo, métete en un huevo o en la sala de la puerta doble: con todos dentro, empieza la partida."),
+		TEXT("Como os pongáis listos, así saldréis al mapa: por la puerta doble o rompiendo los huevos."),
 	};
 	const int32 NumTips = UE_ARRAY_COUNT(Tips);
 	const int32 First = static_cast<int32>(FMath::Frac(Timeline.Origin * 0.37) * NumTips);
@@ -1000,6 +1253,18 @@ int32 STN_EggLoadingScreen::OnPaint(const FPaintArgs& Args, const FGeometry& All
 	const float Idle = static_cast<float>(FMath::Max(0.0, Now - Timeline.Origin));
 	const float BreakT = Timeline.BreakElapsed(Now);
 	const float PopT = BreakT - FTNEggTimeline::PopAt;
+
+	// Con «¡ADELANTE!», en cuanto las mitades han salido de la pantalla solo queda el rótulo.
+	if (bGoFinale && BreakT >= FTNEggTimeline::BreakEnd)
+	{
+		return GoBanner.Paint(AllottedGeometry, OutDrawElements, LayerId, PopT, EggDetail::GoEggHoldSeconds, Alpha);
+	}
+	// Mientras tiembla, sus letras (enormes) se rasterizan casi transparentes y debajo de la cáscara: el tirón de generarlas
+	// no cae en el momento del rótulo.
+	if (bGoFinale && BreakT >= 0.f && BreakT < FTNEggTimeline::PopAt)
+	{
+		GoBanner.Warm(AllottedGeometry, OutDrawElements, LayerId);
+	}
 
 	FPoses Poses;
 	ComputePoses(Now, Sw, Sh, Poses);
@@ -1181,7 +1446,8 @@ int32 STN_EggLoadingScreen::OnPaint(const FPaintArgs& Args, const FGeometry& All
 	}
 	++Layer;
 
-	// 7. «¡Pum!»: fogonazo, trozos de cáscara y la estrella con el rótulo.
+	// 7. «¡Pum!»: fogonazo, trozos de cáscara y la estrella con el rótulo; al empezar la ronda del mapa procedural,
+	//    «¡ADELANTE!» con su frase en lugar de la estrella.
 	if (PopT >= 0.f)
 	{
 		if (PopT < 0.3f)
@@ -1204,22 +1470,58 @@ int32 STN_EggLoadingScreen::OnPaint(const FPaintArgs& Args, const FGeometry& All
 			}
 		}
 		++Layer;
-		const float PopScale = PopT < 0.12f ? PopT / 0.12f * 1.15f : 1.15f - FMath::Min(0.15f, (PopT - 0.12f) * 0.8f);
-		const float BurstAlpha = PopT < 0.4f ? 1.f : 1.f - FMath::Clamp((PopT - 0.4f) / 0.3f, 0.f, 1.f);
-		if (BurstAlpha > 0.f)
+		if (bGoFinale)
 		{
-			const float BurstSize = 0.34f * Sh * PopScale;
-			FSlateDrawElement::MakeBox(OutDrawElements, Layer, AllottedGeometry.ToPaintGeometry(FVector2f(BurstSize, BurstSize),
-				FSlateLayoutTransform(FVector2f(0.5f * Sw - 0.5f * BurstSize, 0.5f * Sh - 0.5f * BurstSize))), &BurstBrush, ESlateDrawEffect::None,
-				FLinearColor(1.f, 1.f, 1.f, BurstAlpha * Alpha));
-			const FString PumLine(TEXT("¡PUM!"));
-			const FVector2f PumSize = Measurer->Measure(PumLine, PumFont, 1.f);
-			const float PumScale = FMath::Max(0.05f, PopScale * TextScale);
-			const FVector2f PumPos(0.5f * Sw - 0.5f * PumSize.X * PumScale, 0.5f * Sh - 0.5f * PumSize.Y * PumScale);
-			FSlateDrawElement::MakeText(OutDrawElements, Layer + 1, AllottedGeometry.ToPaintGeometry(PumSize, FSlateLayoutTransform(PumScale, PumPos)), PumLine,
-				PumFont, ESlateDrawEffect::None, FLinearColor(TNHUDArt::Navy.R, TNHUDArt::Navy.G, TNHUDArt::Navy.B, BurstAlpha * Alpha));
+			Layer = GoBanner.Paint(AllottedGeometry, OutDrawElements, Layer, PopT, EggDetail::GoEggHoldSeconds, Alpha);
 		}
-		Layer += 2;
+		else
+		{
+			const float PopScale = PopT < 0.12f ? PopT / 0.12f * 1.15f : 1.15f - FMath::Min(0.15f, (PopT - 0.12f) * 0.8f);
+			const float BurstAlpha = PopT < 0.4f ? 1.f : 1.f - FMath::Clamp((PopT - 0.4f) / 0.3f, 0.f, 1.f);
+			if (BurstAlpha > 0.f)
+			{
+				const float BurstSize = 0.34f * Sh * PopScale;
+				FSlateDrawElement::MakeBox(OutDrawElements, Layer, AllottedGeometry.ToPaintGeometry(FVector2f(BurstSize, BurstSize),
+					FSlateLayoutTransform(FVector2f(0.5f * Sw - 0.5f * BurstSize, 0.5f * Sh - 0.5f * BurstSize))), &BurstBrush, ESlateDrawEffect::None,
+					FLinearColor(1.f, 1.f, 1.f, BurstAlpha * Alpha));
+				const FString PumLine(TEXT("¡PUM!"));
+				const FVector2f PumSize = Measurer->Measure(PumLine, PumFont, 1.f);
+				const float PumScale = FMath::Max(0.05f, PopScale * TextScale);
+				const FVector2f PumPos(0.5f * Sw - 0.5f * PumSize.X * PumScale, 0.5f * Sh - 0.5f * PumSize.Y * PumScale);
+				// El contorno no sigue al tinte del texto: se desvanece con él a mano.
+				FSlateFontInfo PumFadeFont = PumFont;
+				PumFadeFont.OutlineSettings.OutlineColor.A *= BurstAlpha * Alpha;
+				FSlateDrawElement::MakeText(OutDrawElements, Layer + 1, AllottedGeometry.ToPaintGeometry(PumSize, FSlateLayoutTransform(PumScale, PumPos)), PumLine,
+					PumFadeFont, ESlateDrawEffect::None, FLinearColor(TNHUDArt::Navy.R, TNHUDArt::Navy.G, TNHUDArt::Navy.B, BurstAlpha * Alpha));
+			}
+			Layer += 2;
+		}
 	}
 	return Layer;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// «¡ADELANTE!» sin huevo
+// ─────────────────────────────────────────────────────────────────────────────
+
+void STN_GoBanner::Construct(const FArguments& InArgs)
+{
+	Painter.Init();
+	ShowTime = FPlatformTime::Seconds() + static_cast<double>(FMath::Max(0.f, InArgs._Delay));
+	// Mantiene Slate despierto mientras está a la vista.
+	RegisterActiveTimer(0.f, FWidgetActiveTimerDelegate::CreateLambda([](double, float) { return EActiveTimerReturnType::Continue; }));
+}
+
+int32 STN_GoBanner::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+{
+	const float SinceShow = static_cast<float>(FPlatformTime::Seconds() - ShowTime);
+	if (SinceShow < 0.f)
+	{
+		// Mientras espera a salir, sus letras se rasterizan sin que se vean: el tirón no cae en la entrada.
+		Painter.Warm(AllottedGeometry, OutDrawElements, LayerId);
+		return LayerId + 2;
+	}
+	return Painter.Paint(AllottedGeometry, OutDrawElements, LayerId, SinceShow, FTNGoBannerPainter::OverlayHoldSeconds,
+		InWidgetStyle.GetColorAndOpacityTint().A);
 }
