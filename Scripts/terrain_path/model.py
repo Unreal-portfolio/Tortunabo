@@ -288,8 +288,9 @@ class PathModel:
         best = np.argmin(cover, axis=1)
         rows = np.arange(len(best))
         e = cover[rows, best]
-        dry = self.S["biome"][ik[rows, best]] != 1
-        return ((1.0 - smooth(-0.4, 0.6, e)) * dry).reshape(np.shape(x))
+        # En todos los tramos (antes no en los de agua: el camino cambiaba de color de golpe). Bajo
+        # el agua lo apaga la arena mojada de vertex_colors.
+        return (1.0 - smooth(-0.6, 0.8, e)).reshape(np.shape(x))
 
     def plaza_mask(self, x, y) -> np.ndarray:
         """Sin disco de color en la salida (quedaba como una mancha clara): la salida se lee por

@@ -93,7 +93,8 @@ UStaticMesh* UTN_TerrainMeshAsset::BuildStaticMesh(const FString& PackagePath, c
 		// Mismos bytes que la malla procedural (que no convierte a sRGB): el build del StaticMesh
 		// pasa el color a sRGB, asi que se le da el color cuyo sRGB son esos bytes.
 		const FLinearColor Linear = FLinearColor::FromSRGBColor(FColor(C.R, C.G, C.B, 255));
-		ColorAttr[Instance] = FVector4f(Linear.R, Linear.G, Linear.B, 1.f);
+		// Alfa: mascara de camino (0 = camino) que lee el material del terreno; lineal, sin sRGB.
+		ColorAttr[Instance] = FVector4f(Linear.R, Linear.G, Linear.B, C.A / 255.f);
 		// UV plana (1 unidad = 10 m): la usa el lightmap; el material es triplanar.
 		UVAttr.Set(Instance, 0, FVector2f(Vertices[Index].X / 1000.f, Vertices[Index].Y / 1000.f));
 		Instances.Add(Instance);

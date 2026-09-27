@@ -24,6 +24,9 @@ CUBE_PATH = "/Engine/BasicShapes/Cube"
 TEXTURE_ROOT = "/Game/Textures/Terrain"
 GRAIN_TEXTURE = "T_TerrainGrain"
 GRAIN_SOURCE = "Scripts/textures/T_TerrainGrain.png"  # lo genera Scripts/gen_terrain_textures.py
+# Normales de detalle (Scripts/gen_terrain_textures.py): suelo RG arena / BA camino, pared RG.
+DETAIL_NORMALS = {"T_TerrainFloorN": "Scripts/textures/T_TerrainFloorN.png",
+                  "T_TerrainWallN": "Scripts/textures/T_TerrainWallN.png"}
 CHARACTER_BP = "/Game/Blueprints/Characters/BP_TortugaCharacter"
 GENERATOR_CLASS = "/Script/Tortunabo.TN_GridMapGenerator"
 TERRAIN_TILE_CLASS = "/Script/Tortunabo.TN_GridTerrainTile"
@@ -200,6 +203,95 @@ def build_grain_texture():
     return texture
 
 
+def build_detail_normal_textures(reimport=False):
+    """Importa las normales de detalle (XY empaquetadas, sin sRGB). Devuelve (suelo, pared)."""
+    out = []
+    for name, relative in DETAIL_NORMALS.items():
+        path = f"{TEXTURE_ROOT}/{name}"
+        existing = None if reimport else load_or_none(path)
+        if existing:
+            out.append(existing)
+            continue
+        source = os.path.join(unreal.Paths.project_dir(), relative)
+        if not os.path.isfile(source):
+            raise RuntimeError(f"Falta {relative}; genéralo con Scripts/gen_terrain_textures.py.")
+        task = unreal.AssetImportTask()
+        task.set_editor_property("filename", source)
+        task.set_editor_property("destination_path", TEXTURE_ROOT)
+        task.set_editor_property("destination_name", name)
+        task.set_editor_property("automated", True)
+        task.set_editor_property("replace_existing", True)
+        asset_tools.import_asset_tasks([task])
+        texture = load_or_none(path)
+        if not texture:
+            raise RuntimeError(f"La importación de {name} no ha producido asset en {TEXTURE_ROOT}.")
+        # Son vectores, no color: lineales y con compresion de alta calidad (4 canales utiles).
+        texture.set_editor_property("srgb", False)
+        texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_BC7)
+        asset_lib.save_loaded_asset(texture)
+        out.append(texture)
+    return tuple(out)
+
+
+# Normal de detalle en espacio de mundo (el material no usa tangentes: los trozos en ProcMesh no
+# las traen). Suelo: arena con rizos o arena pisada segun SandMask (alfa del color de vertice,
+# 0 = camino); paredes: estratos y roca en las dos proyecciones laterales. Los tamanos de tile
+# dividen 10 000 uu (un trozo) para que no haya costura entre trozos.
+DETAIL_NORMAL_HLSL = """\
+float3 N = normalize(Normal);
+float3 W = pow(max(abs(N), 1e-4f), 4.0f);
+W /= max(W.x + W.y + W.z, 1e-4f);
+float4 F = Texture2DSample(FloorTex, FloorTexSampler, P.xy / max(FloorTile, 1.0f));
+float2 sand = (F.rg * 2.0f - 1.0f) * SandStrength;
+float2 path = (F.ba * 2.0f - 1.0f) * PathStrength;
+float2 fl = lerp(path, sand, saturate(SandMask));
+float2 wx = (Texture2DSample(WallTex, WallTexSampler, P.yz / max(WallTile, 1.0f)).rg * 2.0f - 1.0f) * WallStrength;
+float2 wy = (Texture2DSample(WallTex, WallTexSampler, P.xz / max(WallTile, 1.0f)).rg * 2.0f - 1.0f) * WallStrength;
+float3 d = W.z * float3(fl.x, fl.y, 0.0f) + W.x * float3(0.0f, wx.x, wx.y) + W.y * float3(wy.x, 0.0f, wy.y);
+return normalize(N + d);
+"""
+
+DETAIL_NORMAL_INPUTS = ("P", "Normal", "FloorTex", "WallTex", "SandMask", "FloorTile", "WallTile",
+                        "SandStrength", "PathStrength", "WallStrength")
+
+# Variacion de color a gran escala (manchas de 50 m): rompe la uniformidad del color de vertice.
+MACRO_HLSL = """\
+return 1.0f + (Texture2DSample(Tex, TexSampler, P.xy / 5000.0f).r - 0.5f) * Contrast;
+"""
+
+
+def add_detail_normal(material, local_position, normal, vertex_color, detail_normals):
+    """Conecta la normal de detalle al material (normal en espacio de mundo)."""
+    mel = unreal.MaterialEditingLibrary
+    floor_tex, wall_tex = detail_normals
+    floor_obj = mel.create_material_expression(material, unreal.MaterialExpressionTextureObjectParameter, -1000, 900)
+    floor_obj.set_editor_property("parameter_name", "FloorDetailNormal")
+    floor_obj.set_editor_property("texture", floor_tex)
+    floor_obj.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    wall_obj = mel.create_material_expression(material, unreal.MaterialExpressionTextureObjectParameter, -1000, 1020)
+    wall_obj.set_editor_property("parameter_name", "WallDetailNormal")
+    wall_obj.set_editor_property("texture", wall_tex)
+    wall_obj.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    pins = {
+        "P": local_position, "Normal": normal, "FloorTex": floor_obj, "WallTex": wall_obj,
+        "FloorTile": scalar_parameter(material, "DetailFloorTile", 250.0, -1000, 1140),
+        "WallTile": scalar_parameter(material, "DetailWallTile", 500.0, -1000, 1240),
+        "SandStrength": scalar_parameter(material, "DetailSandStrength", 0.8, -1000, 1340),
+        "PathStrength": scalar_parameter(material, "DetailPathStrength", 0.6, -1000, 1440),
+        "WallStrength": scalar_parameter(material, "DetailWallStrength", 0.9, -1000, 1540),
+    }
+    custom = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -600, 900)
+    custom.set_editor_property("code", DETAIL_NORMAL_HLSL)
+    custom.set_editor_property("description", "DetailNormalWS")
+    custom.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    custom.set_editor_property("inputs", [custom_input(name) for name in DETAIL_NORMAL_INPUTS])
+    for pin, expression in pins.items():
+        mel.connect_material_expressions(expression, "", custom, pin)
+    mel.connect_material_expressions(vertex_color, "A", custom, "SandMask")
+    material.set_editor_property("tangent_space_normal", False)
+    mel.connect_material_property(custom, "", unreal.MaterialProperty.MP_NORMAL)
+
+
 # Proyección triplanar: tres muestreos en los planos locales XY, XZ e YZ, mezclados por la
 # normal elevada a Sharpness y normalizada. Mantiene el tamaño de texel constante en
 # cualquier pendiente, cosa que una UV planar no hace (el talud de una pared de 800 uu
@@ -248,7 +340,7 @@ def scalar_parameter(material, name, value, x, y):
 
 
 def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False, wall_tile_scale=1.0,
-                           wall_contrast_scale=1.0):
+                           wall_contrast_scale=1.0, detail_normals=None):
     """Color de vértice (estratos, arena, moteado) modulado por grano triplanar y oscurecido
     donde la ola moja la arena. recreate=True borra y crea el asset (en el commandlet,
     delete_all_material_expressions sobre un material cargado revienta con !IsRooted())."""
@@ -320,7 +412,23 @@ def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False, 
     base_color = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -250, -160)
     mel.connect_material_expressions(grained, "", base_color, "A")
     mel.connect_material_expressions(wet, "", base_color, "B")
-    mel.connect_material_property(base_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    if detail_normals is None:
+        mel.connect_material_property(base_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    else:
+        macro = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -400, -520)
+        macro.set_editor_property("code", MACRO_HLSL)
+        macro.set_editor_property("description", "ManchasGrandes")
+        macro.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+        macro.set_editor_property("inputs", [custom_input(name) for name in ("P", "Tex", "Contrast")])
+        mel.connect_material_expressions(local_position, "", macro, "P")
+        mel.connect_material_expressions(texture_object, "", macro, "Tex")
+        mel.connect_material_expressions(scalar_parameter(material, "MacroContrast", 0.22, -900, -600), "", macro,
+                                         "Contrast")
+        varied = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -120, -220)
+        mel.connect_material_expressions(base_color, "", varied, "A")
+        mel.connect_material_expressions(macro, "", varied, "B")
+        mel.connect_material_property(varied, "", unreal.MaterialProperty.MP_BASE_COLOR)
+        add_detail_normal(material, local_position, normal, vertex_color, detail_normals)
 
     roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -300, 300)
     roughness.set_editor_property("r", 0.95)

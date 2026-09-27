@@ -122,7 +122,8 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
         out += w[zone][:, None] * c
     # Camino principal (arena pisada, mas oscura) y salida/meta (arena clara): se leen desde lejos.
     flat_up = smooth(0.7, 0.9, normals[:, 2])
-    trail = model.trail_mask(x, y) * flat_up * (1.0 - wet)
+    trail_full = model.trail_mask(x, y) * (1.0 - wet)
+    trail = trail_full * flat_up
     trail_color = np.array(getattr(model, "trail_color", TRAIL_COLOR))
     out = out + (trail_color - out) * (getattr(model, "trail_strength", 0.7) * trail)[:, None]
     plaza = model.plaza_mask(x, y) * flat_up
@@ -130,7 +131,8 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
     out = out * (1.0 - strata)[:, None]
     tint = 1.0 + 0.07 * np.sin(x / 9.5) * np.cos(y / 7.4)
     out = np.clip(out * tint[:, None], 0.0, 1.0)
-    rgba = np.concatenate([out, np.ones((len(x), 1))], axis=1)
+    # Alfa: 1 = arena y pared, 0 = camino (el material cambia la normal de detalle a arena pisada).
+    rgba = np.concatenate([out, (1.0 - trail_full)[:, None]], axis=1)
     return np.rint(rgba * 255.0).astype(np.uint8)
 
 
