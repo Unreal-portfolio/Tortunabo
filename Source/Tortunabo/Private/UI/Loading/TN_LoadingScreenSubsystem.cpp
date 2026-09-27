@@ -1166,6 +1166,10 @@ void UTN_LoadingScreenSubsystem::UpdateAutoClose(UWorld* World, double Now)
 
 	if (IsLobbyWorld(World))
 	{
+		if (HoldReason != TNEggLoading::EHold::Lobby)
+		{
+			bLobbyTravelImminent = false;
+		}
 		// Todos listos (en los huevos o en la sala de la puerta doble): cuenta atrás (y luego la pausa antes de viajar). El huevo se cierra en todas las
 		// pantallas y no se abre hasta que el mapa de la partida esté cargado y con su terreno.
 		const bool bCountdown = CoopState->CountdownValue > 0
@@ -1174,6 +1178,7 @@ void UTN_LoadingScreenSubsystem::UpdateAutoClose(UWorld* World, double Now)
 		if (bCountdown)
 		{
 			LobbyCancelSince = -1.0;
+			bLobbyTravelImminent |= CoopState->MatchFlowState == ETNMatchFlowState::Cinematic;
 			const bool bCounting = CoopState->CountdownValue > 0;
 			const FString CountdownStatus = bCounting
 				? FString::Printf(TEXT("¡Todos listos! Salimos en %d"), CoopState->CountdownValue)
@@ -1189,9 +1194,10 @@ void UTN_LoadingScreenSubsystem::UpdateAutoClose(UWorld* World, double Now)
 				LastAutoStatus = CountdownStatus;
 			}
 		}
-		else if (HoldReason == TNEggLoading::EHold::Lobby)
+		else if (HoldReason == TNEggLoading::EHold::Lobby && !bLobbyTravelImminent)
 		{
-			// Cuenta atrás cancelada (alguien ha salido de su huevo): se abre otra vez.
+			// Cuenta atrás cancelada (alguien ha salido de su huevo): se abre otra vez. Si ya se iba a viajar, no: sigue
+			// cerrado hasta el mapa siguiente.
 			if (LobbyCancelSince < 0.0)
 			{
 				LobbyCancelSince = Now;

@@ -222,6 +222,12 @@ private:
 	double HoldStartTime = 0.0;
 	/** La cuenta atrás del lobby lleva cancelada desde este momento (< 0: no lo está). */
 	double LobbyCancelSince = -1.0;
+	/**
+	 * El lobby ya pasó a la pausa de antes del viaje (Cinematic): el huevo no se abre aunque la cuenta atrás parezca
+	 * cancelada (el servidor destruye las tortugas justo antes de viajar); si el viaje no llega, lo abre el tope de la
+	 * espera.
+	 */
+	bool bLobbyTravelImminent = false;
 	/** Último texto puesto por los cierres automáticos o la espera a la ronda (para no rehacerlo en cada fotograma). */
 	FString LastAutoStatus;
 
