@@ -40,7 +40,9 @@ juego (Coop, Carrera y 2vs2). **Convive** con el sistema de chunks
    terreno y lo integrado en el camino (cuevas, puentes, murallas, huecos, troncos, obstáculos,
    géiseres y cascadas) sin vegetación, fauna, formaciones decorativas, hitos, recompensas, huevos,
    peligros ni efectos. `ATN_TerrainViewGameMode` (nivel `LVL_ProcMap_Terrain`) lo usa con una tortuga
-   sin HUD; `TNRegen [semilla]` vuelve a generar.
+   sin HUD; `TNRegen [semilla]` vuelve a generar. El nivel es una copia de `LVL_ProcMap` con ese GameMode
+   en World Settings y `bTerrainOnly` marcado en el generador (también para *Generate In Editor*). Como
+   `LVL_ProcMap` y `Content/ProcMap/`, no está en el repositorio.
 
 Cada generación deja en el Output Log una línea `[ProcMap] Mapa listo · semilla …`
 con módulos en ruta, cruces, ramas, **longitud del camino y minutos estimados**
