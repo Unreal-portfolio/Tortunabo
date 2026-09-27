@@ -71,25 +71,36 @@ def spawn(cls, loc, rot, label, folder='Lobby_Castillo'):
 
 # 3) Castillo en el centro del anillo.
 spawn(unreal.TN_SandCastleLobby, unreal.Vector(0.0, 0.0, 0.0), unreal.Rotator(0.0, 0.0, 0.0), 'Castillo_Arena')
-# 4) Tienda de las 10 a las 11 (mira al centro) y cuartel de la 1 a las 2.
-loc, rot = clock_spot(10.5, 1850.0)
+# 4) Tienda y cuartel pegados a la muralla, mirando al centro: la tienda entre la torre de la izquierda de la puerta
+#    doble y la siguiente (de las 10:30 a las 11:15) y el cuartel entre la de la derecha y la siguiente (de la 0:45 a la
+#    1:25). La distancia deja la estantería de la tienda y los vientos de atrás del cuartel junto a la muralla (radio 2400).
+loc, rot = clock_spot(10.88, 2225.0)
 spawn(unreal.TN_ShopKeeper, loc, rot, 'Tienda_LaConchaDorada')
-loc, rot = clock_spot(1.5, 1800.0)
+loc, rot = clock_spot(1.11, 2160.0)
 spawn(unreal.TN_GeneralBriefing, loc, rot, 'Cuartel_General')
 # 5) Probadores de las 2 a las 3:30, mirando al centro, en tresbolillo junto a la muralla.
 for i, (hour, dist) in enumerate(((2.07, 2150.0), (2.53, 2040.0), (3.0, 2150.0), (3.43, 2040.0))):
     loc, rot = clock_spot(hour, dist)
     spawn(unreal.TN_ChangingBooth, loc, rot, 'Probador_%d' % (i + 1))
-# 6) Medusas trampolín de las 8:20 a las 10: tres de tamaños y colores distintos (tamaño por propiedad, escala 1).
+# 6) Medusas trampolín (tamaño por propiedad, escala 1): la pequeña junto al adarve derecho del muro interior (se sube
+#    botando), dos más en la plaza de las 8:20 a las 10 y una en la esquina del fondo del patio de pruebas, al pie de la
+#    muralla (se sube al adarve de la muralla).
 jelly_cls = getattr(unreal, 'TN_JellyfishTrampoline', None)
 if jelly_cls:
-    colors = [unreal.TNJellyfishColor.SKY, unreal.TNJellyfishColor.PINK, unreal.TNJellyfishColor.LILAC]
-    for i, (hour, dist, size) in enumerate(((8.73, 1700.0, 0.8), (9.17, 1900.0, 1.1), (9.6, 1650.0, 1.45))):
-        loc, rot = clock_spot(hour, dist)
-        j = spawn(jelly_cls, loc, rot, 'Medusa_%d' % (i + 1))
+    C = unreal.TNJellyfishColor
+    jellies = [
+        ((900.0, -470.0), 0.8, C.SKY),
+        (clock_spot(9.17, 1900.0)[0], 1.1, C.PINK),
+        (clock_spot(9.6, 1650.0)[0], 1.45, C.LILAC),
+        ((880.0, -1900.0), 1.0, C.SKY),
+    ]
+    for i, (where, size, color) in enumerate(jellies):
+        x, y = (where.x, where.y) if isinstance(where, unreal.Vector) else where
+        yaw = math.degrees(math.atan2(-y, -x))
+        j = spawn(jelly_cls, unreal.Vector(x, y, 2.0), unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw), 'Medusa_%d' % (i + 1))
         j.set_editor_property('size', size)
-        j.set_editor_property('color_preset', colors[i])
-    out.append('medusas: 3')
+        j.set_editor_property('color_preset', color)
+    out.append('medusas: %d' % len(jellies))
 
 # 6b) Patio de pruebas detrás del muro (sur): circuito desde la salida del paso de la torre (0, -1200).
 T = unreal.TNPlaygroundPieceType
@@ -98,10 +109,10 @@ course = [
     (T.COOKIE_PLATFORM, (820.0, -1380.0), 0.0, {'platform_height': 150.0, 'cookie_radius': 110.0}),
     (T.BUCKET_POST, (1120.0, -1560.0), 0.0, {'post_height': 190.0}),
     (T.BUCKET_POST, (1300.0, -1800.0), 0.0, {'post_height': 230.0}),
-    (T.SPADE_SPINNER, (-520.0, -1650.0), 0.0, {'arm_length': 260.0}),
-    (T.CASTLE_TUNNEL, (-1050.0, -1500.0), 90.0, {'tunnel_length': 500.0}),
-    (T.SHELL_SLIDE, (-1500.0, -1250.0), 0.0, {'slide_height': 250.0}),
-    (T.BUCKET_POST, (-1300.0, -1950.0), 0.0, {'post_height': 140.0}),
+    (T.SPADE_SPINNER, (-420.0, -1620.0), 0.0, {'arm_length': 260.0}),
+    (T.CASTLE_TUNNEL, (-980.0, -1700.0), 90.0, {'tunnel_length': 420.0}),
+    (T.SHELL_SLIDE, (-1500.0, -1300.0), 0.0, {'slide_height': 250.0}),
+    (T.BUCKET_POST, (-1250.0, -1900.0), 0.0, {'post_height': 140.0}),
 ]
 for i, (kind, (x, y), yaw, props) in enumerate(course):
     p = spawn(unreal.TN_PlaygroundPiece, unreal.Vector(x, y, 2.0), unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw), 'Prueba_%02d' % (i + 1))

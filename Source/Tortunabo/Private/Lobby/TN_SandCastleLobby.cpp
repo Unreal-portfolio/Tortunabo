@@ -1,13 +1,13 @@
 #include "Lobby/TN_SandCastleLobby.h"
-#include "Core/TN_CoopGameState.h"
 #include "Core/TN_Log.h"
-#include "Core/TN_MatchFlowTypes.h"
 #include "Lobby/TN_HQGameMode.h"
 #include "Lobby/TN_LobbyReadyZone.h"
 #include "Components/BoxComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/Scene.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
@@ -18,29 +18,14 @@
 #include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
-#include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
+#include "TN_CastleKit.h"
 
 namespace TNCastleDetail
 {
+	using namespace TNCastleKit;
+
 	TAutoConsoleVariable<int32> CVarLobbyCastle(TEXT("TN.Lobby.Castle"), 1,
 		TEXT("1 = el lobby es el castillo de arena (ATN_SandCastleLobby); 0 = escondido (vuelve a cargar el lobby)."));
-
-	using FBuffers = TNProcMesh::FTNProcMeshBuffers;
-
-	/** Color sRGB 0xRRGGBB para M_CosmeticVertexColor en malla procedural (lineal; alfa 0 = mate, sin metal). */
-	FLinearColor Col(uint32 Hex)
-	{
-		return FLinearColor(TNProcRuntimeMesh::SRGBToLinear(((Hex >> 16) & 255) / 255.f), TNProcRuntimeMesh::SRGBToLinear(((Hex >> 8) & 255) / 255.f),
-			TNProcRuntimeMesh::SRGBToLinear((Hex & 255) / 255.f), 0.f);
-	}
-
-	/** Para mallas estáticas en ejecución: MakeStaticMesh decodifica una vez más (ver ATN_ShopKeeper). */
-	FLinearColor Pal(uint32 Hex)
-	{
-		FLinearColor C = Col(Hex);
-		C.A = 1.f;
-		return C;
-	}
 
 	// ── Medidas (cm, locales del castillo: centro del círculo en el origen, +Y es la puerta) ──
 	constexpr double R = ATN_SandCastleLobby::Radius;
@@ -49,28 +34,49 @@ namespace TNCastleDetail
 	constexpr double RM = R + WallT * 0.5;
 	constexpr double WallH = 600.0;
 	constexpr double FloorZ = 2.0;
-	constexpr double GateHalfW = 430.0;
-	constexpr double GateH = 540.0;
-	/** Plano de la puerta (y) entre la cara de dentro y la de fuera. */
+	/** Puerta doble: origen (umbral de la puerta 1) en la muralla, a las 12; la sala sale hacia fuera (+Y). */
 	constexpr double GateY = R + 70.0;
+	/** Suelo de la puerta doble, por encima de la playa de fuera (adorno a 4). */
+	constexpr double GateFloorZ = 6.0;
 	constexpr double CutY = ATN_SandCastleLobby::CutY;
-	constexpr double CutHalfT = 85.0;
+	/** Muro interior: medio grosor (adarve de 1,7 m entre almenas) y alto. */
+	constexpr double CutHalfT = 130.0;
 	constexpr double CutH = 600.0;
+	constexpr double WalkHalf = CutHalfT - 44.0;
 	/** Torre del homenaje en el centro del muro interior. */
 	constexpr double KeepR = 400.0;
 	constexpr double KeepRoofZ = 900.0;
 	constexpr double DoorHalfW = 130.0;
 	constexpr double DoorH = 340.0;
-	/** Escalera de caracol: por fuera de la torre, del suelo (lado oeste) a la azotea (lado este) pasando sobre la puerta. */
+	/**
+	 * Escalera de caracol: por fuera de la torre, del suelo (lado este, a 290°) a la azotea (lado oeste, a 70°) pasando
+	 * sobre la puerta; rellano hasta 100° y, desde él, escalera recta que baja por encima del muro al adarve izquierdo.
+	 */
 	constexpr double StairIn = KeepR;
 	constexpr double StairOut = KeepR + 210.0;
 	constexpr int32 StairSteps = 36;
-	/** Pila de huevos: montículo de dos alturas en la plaza. */
+	constexpr double StairStartDeg = 290.0;
+	constexpr double StairEndDeg = 430.0;
+	constexpr double LandingEndDeg = 100.0;
+	constexpr double DownStepsX0 = -(KeepR + 190.0);
+	constexpr int32 DownSteps = 11;
+	constexpr double DownStepL = 40.0;
+	/** Toboganes de los adarves: X y cara del muro por la que bajan (+1 a la plaza, -1 al patio de pruebas). */
+	constexpr double SlideLeftX = -1400.0;
+	constexpr double SlideRightX = 1500.0;
+	constexpr double SlideRun = 560.0;
+	constexpr double SlideHalfW = 95.0;
+	/**
+	 * Escalera de la plaza al adarve derecho (para el tobogán del patio): pegada a la cara norte del muro, sube hacia el
+	 * oeste desde X = RightStairsX0 (abajo, junto a la muralla) en peldaños macizos de 25 cm.
+	 */
+	constexpr double RightStairsX0 = 2160.0;
+	constexpr int32 RightStairs = 24;
+	constexpr double RightStairL = 40.0;
+	constexpr double RightStairW = 150.0;
+	constexpr double RightStairsTopX = RightStairsX0 - RightStairs * RightStairL;
+	/** Pila de huevos: centro del montículo de dos alturas en la plaza. */
 	const FVector2D EggsCenter(0.0, 700.0);
-	constexpr double Tier1R = 430.0;
-	constexpr double Tier1H = 60.0;
-	constexpr double Tier2R = 175.0;
-	constexpr double Tier2H = 200.0;
 
 	/** Ángulo (radianes, sentido de las agujas del reloj desde +Y) de una hora del reloj. */
 	double ClockAngle(double Hour)
@@ -88,19 +94,8 @@ namespace TNCastleDetail
 	/** Huevos: posición local (x, y) y cota de su base. El de arriba es el último. */
 	FVector EggSpot(int32 Index)
 	{
-		if (Index >= ATN_SandCastleLobby::NumEggs - 1)
-		{
-			return FVector(EggsCenter.X, EggsCenter.Y, FloorZ + Tier2H);
-		}
-		const double A = TNProcMap::TwoPi * Index / 3.0 + 0.35;
-		return FVector(EggsCenter.X + FMath::Cos(A) * 265.0, EggsCenter.Y + FMath::Sin(A) * 265.0, FloorZ + Tier1H);
+		return EggMoundSpot(Index, FVector(EggsCenter.X, EggsCenter.Y, 0.0), FloorZ);
 	}
-	const uint32 EggAccents[ATN_SandCastleLobby::NumEggs] = { 0x2EC4B6, 0xFF6A52, 0xFFCB3D, 0x9B5DE5 };
-
-	/** Perfil del huevo (altura, radio); la costura entre la base y la tapa está en EggSeam. */
-	constexpr double EggSeam = 110.0;
-	const double EggZ[] = { 0.0, 25.0, 60.0, 110.0, 150.0, 190.0, 222.0, 238.0 };
-	const double EggR[] = { 55.0, 84.0, 97.0, 96.0, 88.0, 68.0, 40.0, 12.0 };
 
 	/** Torres de la muralla: hora del reloj, radio y alto (irregulares a propósito) y color de la bandera. */
 	struct FTowerDef
@@ -110,8 +105,8 @@ namespace TNCastleDetail
 		double Height;
 		uint32 Flag;
 	};
+	/** Las dos de la puerta las pone la puerta doble. */
 	const FTowerDef Towers[] = {
-		{ 11.43, 290.0, 1350.0, 0xFF6A52 }, { 0.57, 290.0, 1350.0, 0x2EC4B6 },
 		{ 1.62, 230.0, 980.0, 0xFFCB3D }, { 2.85, 200.0, 760.0, 0x9B5DE5 },
 		{ 3.66, 300.0, 1180.0, 0x4CC9F0 }, { 4.62, 210.0, 820.0, 0xFF8FB1 },
 		{ 6.0, 265.0, 1060.0, 0x3DDC62 }, { 7.32, 200.0, 760.0, 0xFFB077 },
@@ -119,224 +114,106 @@ namespace TNCastleDetail
 		{ 10.35, 250.0, 960.0, 0xFFCB3D },
 	};
 
-	/** Superficie de revolución de eje vertical en Center (anillos a las alturas Zs con radios Rs), hacia fuera o hacia dentro. */
-	void AddRevolution(FBuffers& B, const FVector& Center, const TArray<double>& Zs, const TArray<double>& Rs, int32 Seg, const FLinearColor& Color,
-		bool bOutward, const FLinearColor& Accent = FLinearColor::Transparent, int32 AccentEvery = 0)
-	{
-		for (int32 r = 0; r + 1 < Zs.Num(); ++r)
-		{
-			for (int32 k = 0; k < Seg; ++k)
-			{
-				const double A0 = TNProcMap::TwoPi * k / Seg;
-				const double A1 = TNProcMap::TwoPi * (k + 1) / Seg;
-				const FVector P0 = Center + FVector(FMath::Cos(A0) * Rs[r], FMath::Sin(A0) * Rs[r], Zs[r]);
-				const FVector P1 = Center + FVector(FMath::Cos(A1) * Rs[r], FMath::Sin(A1) * Rs[r], Zs[r]);
-				const FVector P2 = Center + FVector(FMath::Cos(A1) * Rs[r + 1], FMath::Sin(A1) * Rs[r + 1], Zs[r + 1]);
-				const FVector P3 = Center + FVector(FMath::Cos(A0) * Rs[r + 1], FMath::Sin(A0) * Rs[r + 1], Zs[r + 1]);
-				const FVector Mid = (P0 + P2) * 0.5;
-				const FVector Radial(Mid.X - Center.X, Mid.Y - Center.Y, 0.0);
-				const bool bAccent = AccentEvery > 0 && (k + r) % AccentEvery == 0 && r >= 1;
-				B.AddQuad(P0, P1, P2, P3, bOutward ? Radial : -Radial, bAccent ? Accent : Color);
-			}
-		}
-	}
-
 	/** Alto de la muralla en el ángulo A (radianes): ondulado suave entre torres, para que no sea una tapia recta. */
 	double WallHeightAt(double A)
 	{
 		return WallH + 45.0 * FMath::Sin(A * 3.0 + 0.7) + 25.0 * FMath::Sin(A * 7.0 + 2.1);
 	}
 
-	/** Cierto si el ángulo A (radianes) cae en el hueco de la puerta grande. */
+	/** Cierto si el ángulo A (radianes) cae en el hueco de la puerta doble (hasta el eje de sus torres grandes). */
 	bool InGate(double A)
 	{
 		double X = FMath::Fmod(A, TNProcMap::TwoPi);
 		if (X > PI) { X -= TNProcMap::TwoPi; }
 		if (X < -PI) { X += TNProcMap::TwoPi; }
-		return FMath::Abs(R * FMath::Sin(X)) < GateHalfW + 20.0 && FMath::Cos(X) > 0.0;
+		return FMath::Abs(R * FMath::Sin(X)) < Gatehouse::BigTowerX && FMath::Cos(X) > 0.0;
 	}
 
-	/** Torre de cubo de arena (tronco de cono con marcas), almenas, tejadillo de cono y bandera, desde la cota BaseZ. */
-	void AddTower(FBuffers& B, FBuffers& Decor, const FVector2D& C, double TowerR, double H, const FLinearColor& FlagColor, int32 Variant, double BaseZ = 0.0)
+	/** Punto de la torre del homenaje a Rad del eje, en el ángulo A (radianes, desde +Y en el sentido del reloj) y cota Z. */
+	FVector KeepPoint(double Rad, double A, double Z)
 	{
-		const FLinearColor SandC = Col(0xF0D49A);
-		const FLinearColor SandDark = Col(0xD9B474);
-		const FVector Base(C.X, C.Y, BaseZ);
+		return FVector(-Rad * FMath::Sin(A), CutY + Rad * FMath::Cos(A), Z);
+	}
+
+	/**
+	 * Sector macizo alrededor de la torre del homenaje (peldaño o rellano): entre los radios R0 y R1, los ángulos A0 y A1
+	 * (grados) y las cotas Z0 y Z1, con sus seis caras (por debajo no se ve a través).
+	 */
+	void AddKeepSector(FBuffers& B, double R0, double R1, double A0Deg, double A1Deg, double Z0, double Z1, const FLinearColor& Top, const FLinearColor& Side)
+	{
+		const double A0 = FMath::DegreesToRadians(A0Deg), A1 = FMath::DegreesToRadians(A1Deg);
+		const double Am = (A0 + A1) * 0.5;
 		const FVector Up(0.0, 0.0, 1.0);
-		TNProcMesh::TNProcAddCylinder(B, Base, Base + Up * H, TowerR, TowerR * 0.86, 20, SandC);
-		for (const double K : { 0.25, 0.52, 0.78 })
-		{
-			const double Rr = FMath::Lerp(TowerR, TowerR * 0.86, K) + 7.0;
-			TNProcMesh::TNProcAddCylinder(B, Base + Up * (H * K - 9.0), Base + Up * (H * K + 9.0), Rr, Rr, 20, SandDark);
-		}
-		const double Rt = TowerR * 0.86;
-		// Coronación: un anillo que vuela un poco y almenas encima.
-		TNProcMesh::TNProcAddCylinder(B, Base + Up * (H - 4.0), Base + Up * (H + 30.0), Rt + 28.0, Rt + 28.0, 20, SandDark);
-		const int32 Merlons = Variant % 2 ? 8 : 10;
-		for (int32 k = 0; k < Merlons; ++k)
-		{
-			const double Ang = TNProcMap::TwoPi * k / Merlons;
-			const FVector Dir(FMath::Cos(Ang), FMath::Sin(Ang), 0.0);
-			B.AddBox(Base + Dir * (Rt + 4.0) + Up * (H + 75.0), Dir, FVector(24.0, (Rt + 28.0) * 0.27, 45.0), SandC);
-		}
-		// Unas torres acaban en cono de arena alisado (como el molde de cubo puntiagudo) y otras en azotea con mástil.
-		if (Variant % 3 == 0)
-		{
-			TNProcMesh::TNProcAddCylinder(B, Base + Up * (H + 30.0), Base + Up * (H + 30.0 + Rt * 1.3), Rt * 0.8, 6.0, 20, Col(0xE8C889));
-		}
-		const double PoleBase = Variant % 3 == 0 ? H + 30.0 + Rt * 1.3 - 10.0 : H + 30.0;
-		const FVector PoleTop = Base + Up * (PoleBase + 260.0);
-		TNProcMesh::TNProcAddCylinder(Decor, Base + Up * PoleBase, PoleTop, 6.0, 4.0, 6, Col(0x7A4E2B));
-		const FVector F1 = PoleTop - Up * 12.0 + FVector(120.0 * FMath::Cos(Variant * 1.7), 120.0 * FMath::Sin(Variant * 1.7), -24.0);
-		const FVector F2 = PoleTop - Up * 84.0;
-		Decor.AddTri(PoleTop - Up * 4.0, F1, F2, FVector(-FMath::Sin(Variant * 1.7), FMath::Cos(Variant * 1.7), 0.0), FlagColor);
-		Decor.AddTri(PoleTop - Up * 4.0, F1, F2, FVector(FMath::Sin(Variant * 1.7), -FMath::Cos(Variant * 1.7), 0.0), FlagColor * 0.85f);
+		const FVector Out(-FMath::Sin(Am), FMath::Cos(Am), 0.0);
+		const FVector Fwd0(-FMath::Cos(A0), -FMath::Sin(A0), 0.0), Fwd1(-FMath::Cos(A1), -FMath::Sin(A1), 0.0);
+		const FVector I0t = KeepPoint(R0, A0, Z1), O0t = KeepPoint(R1, A0, Z1), O1t = KeepPoint(R1, A1, Z1), I1t = KeepPoint(R0, A1, Z1);
+		const FVector I0b = KeepPoint(R0, A0, Z0), O0b = KeepPoint(R1, A0, Z0), O1b = KeepPoint(R1, A1, Z0), I1b = KeepPoint(R0, A1, Z0);
+		B.AddQuad(I0t, O0t, O1t, I1t, Up, Top);
+		B.AddQuad(I0b, I1b, O1b, O0b, -Up, Side);
+		B.AddQuad(O0b, O1b, O1t, O0t, Out, Side);
+		B.AddQuad(I0b, I0t, I1t, I1b, -Out, Side);
+		B.AddQuad(I0b, O0b, O0t, I0t, -Fwd0, Side);
+		B.AddQuad(I1b, I1t, O1t, O1b, Fwd1, Side);
 	}
 
-	/** Concha de vieira (abanico de costillas) con la cara hacia Normal, incrustada en una pared o en el suelo. */
-	void AddScallop(FBuffers& Decor, const FVector& C, const FVector& Normal, const FVector& UpDir, double Size, const FLinearColor& Color)
+	/**
+	 * Tobogán de plástico desde el adarve del muro interior (X, cara Face: +1 plaza, -1 patio): canal con perfil que
+	 * empieza a ~60° (se resbala) y acaba plano en la arena, barandillas, panza por debajo y dos pilares de arena.
+	 */
+	void AddWallSlide(FBuffers& B, FBuffers& Decor, double X, double Face, const FLinearColor& Tone)
 	{
-		const FVector Side = FVector::CrossProduct(Normal, UpDir).GetSafeNormal();
-		for (int32 f = 0; f < 5; ++f)
-		{
-			const double Fa = FMath::DegreesToRadians(-60.0 + f * 30.0);
-			const double Fb = FMath::DegreesToRadians(-60.0 + (f + 1) * 30.0);
-			const FVector Ea = C + (Side * FMath::Sin(Fa) + UpDir * FMath::Cos(Fa)) * Size;
-			const FVector Eb = C + (Side * FMath::Sin(Fb) + UpDir * FMath::Cos(Fb)) * Size;
-			Decor.AddTri(C - UpDir * Size * 0.4 + Normal * 2.0, Ea + Normal * 2.0, Eb + Normal * 2.0, Normal, (f % 2) ? Color : Color * 0.85f);
-		}
-	}
-
-	/** Estrella de mar plana (adorno del suelo). */
-	void AddStarfish(FBuffers& Decor, const FVector& C, double Size, double Spin, const FLinearColor& Color)
-	{
+		constexpr int32 N = 16;
 		const FVector Up(0.0, 0.0, 1.0);
-		for (int32 k = 0; k < 5; ++k)
+		const double Y0 = CutY + Face * CutHalfT;
+		const FLinearColor Rail = Col(0xFFF6E8);
+		auto Z = [](double T) { return FloorZ + 1.0 + (CutH - FloorZ - 1.0) * FMath::Pow(1.0 - T, 1.7); };
+		for (int32 i = 0; i < N; ++i)
 		{
-			const double A0 = Spin + TNProcMap::TwoPi * k / 5.0;
-			const double Am = A0 + TNProcMap::TwoPi / 10.0;
-			const double A1 = A0 + TNProcMap::TwoPi / 5.0;
-			const FVector Tip = C + FVector(FMath::Cos(A0) * Size, FMath::Sin(A0) * Size, 1.5);
-			const FVector Inner0 = C + FVector(FMath::Cos(Am) * Size * 0.38, FMath::Sin(Am) * Size * 0.38, 2.5);
-			const FVector Inner1 = C + FVector(FMath::Cos(A1 - TNProcMap::TwoPi / 10.0) * Size * 0.38, FMath::Sin(A1 - TNProcMap::TwoPi / 10.0) * Size * 0.38, 2.5);
-			Decor.AddTri(C + Up * 4.0, Inner1, Tip, Up, Color);
-			Decor.AddTri(C + Up * 4.0, Tip, Inner0, Up, Color * 0.9f);
+			const double T0 = static_cast<double>(i) / N, T1 = static_cast<double>(i + 1) / N;
+			const double Ya = Y0 + Face * SlideRun * T0, Yb = Y0 + Face * SlideRun * T1;
+			const double Za = Z(T0), Zb = Z(T1);
+			const FLinearColor Surf = (i % 2) ? Tone : Tone * 0.92f;
+			B.AddQuad(FVector(X - SlideHalfW, Ya, Za), FVector(X + SlideHalfW, Ya, Za), FVector(X + SlideHalfW, Yb, Zb), FVector(X - SlideHalfW, Yb, Zb), Up, Surf);
+			B.AddQuad(FVector(X - SlideHalfW - 18.0, Ya, Za - 26.0), FVector(X + SlideHalfW + 18.0, Ya, Za - 26.0), FVector(X + SlideHalfW + 18.0, Yb, Zb - 26.0),
+				FVector(X - SlideHalfW - 18.0, Yb, Zb - 26.0), -Up, Tone * 0.7f);
+			for (const double Sx : { -1.0, 1.0 })
+			{
+				// Bordes del canal: cara de dentro, cara de fuera (de la panza arriba) y tapa, con la barandilla encima.
+				const double XIn = X + Sx * SlideHalfW, XOut = X + Sx * (SlideHalfW + 18.0);
+				B.AddQuad(FVector(XIn, Ya, Za), FVector(XIn, Yb, Zb), FVector(XIn, Yb, Zb + 48.0), FVector(XIn, Ya, Za + 48.0), FVector(-Sx, 0.0, 0.0), Tone * 0.8f);
+				B.AddQuad(FVector(XOut, Ya, Za - 26.0), FVector(XOut, Yb, Zb - 26.0), FVector(XOut, Yb, Zb + 48.0), FVector(XOut, Ya, Za + 48.0), FVector(Sx, 0.0, 0.0), Tone * 0.85f);
+				B.AddQuad(FVector(XIn, Ya, Za + 48.0), FVector(XIn, Yb, Zb + 48.0), FVector(XOut, Yb, Zb + 48.0), FVector(XOut, Ya, Za + 48.0), Up, Tone * 0.9f);
+				B.AddBeam(FVector(X + Sx * (SlideHalfW + 9.0), Ya, Za + 52.0), FVector(X + Sx * (SlideHalfW + 9.0), Yb, Zb + 52.0), 9.0, Rail);
+			}
 		}
+		// Pilares de arena bajo el canal.
+		for (const double T : { 0.28, 0.58 })
+		{
+			const FVector Foot(X, Y0 + Face * SlideRun * T, 0.0);
+			TNProcMesh::TNProcAddCylinder(B, Foot, Foot + Up * (Z(T) - 24.0), 46.0, 34.0, 12, SandDark());
+		}
+		// Conchas en los pilares y una estrella al pie.
+		AddStarfish(Decor, FVector(X + 40.0, Y0 + Face * (SlideRun + 90.0), FloorZ), 30.0, X * 0.01, Col(0xFF8A70));
 	}
 
-	/** Hoja de puerta de madera: tablones verticales de 0 a Width en +X, con herrajes y un tirador de concha. */
-	void BuildLeaf(FBuffers& B, double Width, double Height)
+	/** Guirnalda de banderines entre dos puntos (cuerda que cuelga un poco y triángulos de colores alternos). */
+	void AddBunting(FBuffers& Decor, const FVector& A, const FVector& B, int32 Seed)
 	{
-		const FLinearColor WoodA = Pal(0xB07A4A);
-		const FLinearColor WoodB = Pal(0x9A6538);
-		const FLinearColor Iron = Pal(0x3B3F4A);
-		const FLinearColor Gold = Pal(0xFFCB3D);
-		const int32 Planks = FMath::Max(3, static_cast<int32>(Width / 70.0));
-		const double PlankW = Width / Planks;
-		for (int32 p = 0; p < Planks; ++p)
+		static const uint32 Colors[5] = { 0xFF6A52, 0xFFF6E8, 0x2EC4B6, 0xFFCB3D, 0x9B5DE5 };
+		const int32 N = FMath::Max(3, FMath::RoundToInt32(FVector::Dist(A, B) / 45.0));
+		const FVector Side = FVector::CrossProduct(B - A, FVector(0.0, 0.0, 1.0)).GetSafeNormal();
+		FVector Prev = A;
+		for (int32 i = 1; i <= N; ++i)
 		{
-			const double X = (p + 0.5) * PlankW;
-			const double Top = Height - 22.0 * FMath::Sin(PI * (p + 0.5) / Planks);
-			B.AddBox(FVector(X, 0.0, Top * 0.5), FVector(1.0, 0.0, 0.0), FVector(PlankW * 0.5 - 2.0, 15.0, Top * 0.5), (p % 2) ? WoodA : WoodB);
+			const double T = static_cast<double>(i) / N;
+			const FVector P = FMath::Lerp(A, B, T) - FVector(0.0, 0.0, 40.0 * 4.0 * T * (1.0 - T));
+			Decor.AddBeam(Prev, P, 1.2, Col(0xC9A56A));
+			const FVector Mid = (Prev + P) * 0.5;
+			const FLinearColor C = Col(Colors[(i + Seed) % 5]);
+			Decor.AddTri(Prev, P, Mid - FVector(0.0, 0.0, 34.0), Side, C);
+			Decor.AddTri(Prev, P, Mid - FVector(0.0, 0.0, 34.0), -Side, C * 0.85f);
+			Prev = P;
 		}
-		for (const double Z : { Height * 0.18, Height * 0.5, Height * 0.8 })
-		{
-			B.AddBox(FVector(Width * 0.5, 0.0, Z), FVector(1.0, 0.0, 0.0), FVector(Width * 0.5 - 6.0, 18.0, 9.0), Iron);
-		}
-		TNProcMesh::TNProcAddCylinder(B, FVector(Width - 55.0, -18.0, Height * 0.42), FVector(Width - 55.0, -30.0, Height * 0.42), 22.0, 18.0, 10, Gold);
-		TNProcMesh::TNProcAddCylinder(B, FVector(Width - 55.0, 18.0, Height * 0.42), FVector(Width - 55.0, 30.0, Height * 0.42), 22.0, 18.0, 10, Gold);
-	}
-
-	/** Base (media cáscara con borde en zigzag) de un huevo en Center, con su nido de paja. */
-	void BuildEggCup(FBuffers& Decor, const FVector& Center, const FLinearColor& Shell, const FLinearColor& Accent)
-	{
-		TArray<double> Zs, Rs, Ri;
-		const int32 NumZ = UE_ARRAY_COUNT(EggZ);
-		for (int32 i = 0; i < NumZ; ++i)
-		{
-			if (EggZ[i] > EggSeam + 0.1) { break; }
-			Zs.Add(EggZ[i]);
-			Rs.Add(EggR[i]);
-			Ri.Add(EggR[i] - 5.0);
-		}
-		constexpr int32 Seg = 16;
-		AddRevolution(Decor, Center, Zs, Rs, Seg, Shell, true, Accent, 3);
-		AddRevolution(Decor, Center, Zs, Ri, Seg, Shell * 0.88f, false);
-		const double Rim = Rs.Last() * 0.955;
-		for (int32 k = 0; k < Seg; ++k)
-		{
-			const double A0 = TNProcMap::TwoPi * k / Seg;
-			const double A1 = TNProcMap::TwoPi * (k + 1) / Seg;
-			const double Am = (A0 + A1) * 0.5;
-			const FVector P0 = Center + FVector(FMath::Cos(A0) * Rim, FMath::Sin(A0) * Rim, EggSeam);
-			const FVector P1 = Center + FVector(FMath::Cos(A1) * Rim, FMath::Sin(A1) * Rim, EggSeam);
-			const FVector Tip = Center + FVector(FMath::Cos(Am) * Rim, FMath::Sin(Am) * Rim, EggSeam + 18.0);
-			const FVector Radial(FMath::Cos(Am), FMath::Sin(Am), 0.0);
-			Decor.AddTri(P0, P1, Tip, Radial, Shell);
-			Decor.AddTri(P0, P1, Tip, -Radial, Shell * 0.88f);
-		}
-		for (int32 n = 0; n < 14; ++n)
-		{
-			const double A = TNProcMap::TwoPi * n / 14.0;
-			const FVector P0 = Center + FVector(FMath::Cos(A) * 118.0, FMath::Sin(A) * 118.0, 6.0);
-			const FVector P1 = Center + FVector(FMath::Cos(A + 0.7) * 110.0, FMath::Sin(A + 0.7) * 110.0, 14.0 + 6.0 * (n % 2));
-			Decor.AddBeam(P0, P1, 4.0, (n % 2) ? Col(0xD9B45A) : Col(0xC49A45));
-		}
-	}
-
-	/** Tapa del huevo con su origen en el centro de la costura (dientes hacia abajo entre los de la base). */
-	void BuildEggLid(FBuffers& B, const FLinearColor& Shell, const FLinearColor& Accent)
-	{
-		TArray<double> Zs, Rs, Ri;
-		const int32 NumZ = UE_ARRAY_COUNT(EggZ);
-		for (int32 i = 0; i < NumZ; ++i)
-		{
-			if (EggZ[i] < EggSeam - 0.1) { continue; }
-			Zs.Add(EggZ[i] - EggSeam);
-			Rs.Add(EggR[i]);
-			Ri.Add(FMath::Max(2.0, EggR[i] - 5.0));
-		}
-		constexpr int32 Seg = 16;
-		AddRevolution(B, FVector::ZeroVector, Zs, Rs, Seg, Shell, true, Accent, 4);
-		AddRevolution(B, FVector::ZeroVector, Zs, Ri, Seg, Shell * 0.88f, false);
-		const FVector Top(0.0, 0.0, Zs.Last());
-		const double Half = TNProcMap::TwoPi / Seg * 0.5;
-		const double Rim = Rs[0] * 1.025;
-		for (int32 k = 0; k < Seg; ++k)
-		{
-			const double A0 = TNProcMap::TwoPi * k / Seg;
-			const double A1 = TNProcMap::TwoPi * (k + 1) / Seg;
-			B.AddTri(Top + FVector(0.0, 0.0, 3.0), FVector(FMath::Cos(A0) * Rs.Last(), FMath::Sin(A0) * Rs.Last(), Zs.Last()),
-				FVector(FMath::Cos(A1) * Rs.Last(), FMath::Sin(A1) * Rs.Last(), Zs.Last()), FVector(0.0, 0.0, 1.0), Shell);
-			const FVector Prev(FMath::Cos(A0 - Half) * Rim, FMath::Sin(A0 - Half) * Rim, 2.0);
-			const FVector Next(FMath::Cos(A0 + Half) * Rim, FMath::Sin(A0 + Half) * Rim, 2.0);
-			const FVector Tip(FMath::Cos(A0) * Rim, FMath::Sin(A0) * Rim, -18.0);
-			const FVector Radial(FMath::Cos(A0), FMath::Sin(A0), 0.0);
-			B.AddTri(Prev, Next, Tip, Radial, Shell);
-			B.AddTri(Prev, Next, Tip, -Radial, Shell * 0.88f);
-		}
-	}
-
-	UMaterialInterface* VertexColorMaterial()
-	{
-		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-		return Mat ? Mat : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
-	}
-
-	float SmoothStep01(float X)
-	{
-		const float T = FMath::Clamp(X, 0.f, 1.f);
-		return T * T * (3.f - 2.f * T);
-	}
-
-	void UploadSection(UProceduralMeshComponent* Comp, const FBuffers& B, bool bCollision, UMaterialInterface* Mat)
-	{
-		if (!Comp) { return; }
-		Comp->ClearAllMeshSections();
-		if (B.IsEmpty()) { return; }
-		const TArray<FProcMeshTangent> NoTangents;
-		Comp->CreateMeshSection_LinearColor(0, B.Verts, B.Tris, B.Normals, B.UVs, B.Colors, NoTangents, bCollision);
-		if (Mat) { Comp->SetMaterial(0, Mat); }
 	}
 }
 
@@ -365,6 +242,7 @@ void ATN_SandCastleLobby::GetSpawnSpots(TArray<FTransform>& OutLocalSpots)
 
 ATN_SandCastleLobby::ATN_SandCastleLobby()
 {
+	using namespace TNCastleDetail;
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 	bAlwaysRelevant = true;
@@ -399,35 +277,68 @@ ATN_SandCastleLobby::ATN_SandCastleLobby()
 	BarrierMesh->SetVisibility(false);
 	BarrierMesh->SetHiddenInGame(true);
 
-	GateLeafLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GateLeafLeft"), true);
-	GateLeafLeft->SetupAttachment(CastleRoot);
-	GateLeafLeft->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	GateLeafRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GateLeafRight"), true);
-	GateLeafRight->SetupAttachment(CastleRoot);
-	GateLeafRight->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	auto MakeLeaf = [this](const TCHAR* Name)
+	{
+		UStaticMeshComponent* Leaf = CreateDefaultSubobject<UStaticMeshComponent>(Name);
+		Leaf->SetupAttachment(CastleRoot);
+		Leaf->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		return Leaf;
+	};
+	GateLeafLeft = MakeLeaf(TEXT("GateLeafLeft"));
+	GateLeafRight = MakeLeaf(TEXT("GateLeafRight"));
+	Gate2LeafLeft = MakeLeaf(TEXT("Gate2LeafLeft"));
+	Gate2LeafRight = MakeLeaf(TEXT("Gate2LeafRight"));
 
-	GateBlock = CreateDefaultSubobject<UBoxComponent>(TEXT("GateBlock"));
-	GateBlock->SetupAttachment(CastleRoot);
-	GateBlock->InitBoxExtent(FVector(TNCastleDetail::GateHalfW, 40.0, TNCastleDetail::GateH * 0.5));
-	GateBlock->SetRelativeLocation(FVector(0.0, TNCastleDetail::GateY, TNCastleDetail::GateH * 0.5));
-	GateBlock->SetCollisionProfileName(UCollisionProfile::BlockAllDynamic_ProfileName);
-	GateBlock->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	GateBlock->SetHiddenInGame(true);
+	auto MakeBlock = [this](const TCHAR* Name, double Y)
+	{
+		UBoxComponent* Block = CreateDefaultSubobject<UBoxComponent>(Name);
+		Block->SetupAttachment(CastleRoot);
+		Block->InitBoxExtent(FVector(Gatehouse::HalfW, 40.0, Gatehouse::GateH * 0.5));
+		Block->SetRelativeLocation(FVector(0.0, Y, GateFloorZ + Gatehouse::GateH * 0.5));
+		Block->SetCollisionProfileName(UCollisionProfile::BlockAllDynamic_ProfileName);
+		Block->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+		Block->SetHiddenInGame(true);
+		return Block;
+	};
+	GateBlock = MakeBlock(TEXT("GateBlock"), GateY);
+	Gate2Block = MakeBlock(TEXT("Gate2Block"), GateY + Gatehouse::Depth);
 
 	for (int32 i = 0; i < NumEggs; ++i)
 	{
-		UStaticMeshComponent* Lid = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("EggLid%d"), i), true);
+		UStaticMeshComponent* Lid = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("EggLid%d"), i));
 		Lid->SetupAttachment(CastleRoot);
 		Lid->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		EggLids.Add(Lid);
 	}
 
-	GateSignText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("GateSignText"));
-	GateSignText->SetupAttachment(CastleRoot);
-	GateSignText->SetHorizontalAlignment(EHTA_Center);
-	GateSignText->SetVerticalAlignment(EVRTA_TextCenter);
-	GateSignText->SetTextRenderColor(FColor(255, 214, 90));
-	GateSignText->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	auto MakeSignText = [this](const TCHAR* Name)
+	{
+		UTextRenderComponent* SignText = CreateDefaultSubobject<UTextRenderComponent>(Name);
+		SignText->SetupAttachment(CastleRoot);
+		SignText->SetHorizontalAlignment(EHTA_Center);
+		SignText->SetVerticalAlignment(EVRTA_TextCenter);
+		SignText->SetTextRenderColor(FColor(255, 214, 90));
+		SignText->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		return SignText;
+	};
+	GateSignText = MakeSignText(TEXT("GateSignText"));
+	Gate2SignText = MakeSignText(TEXT("Gate2SignText"));
+
+	// Luces cálidas de antorcha, sin sombras: la sala de la puerta doble y el paso de la torre del homenaje.
+	auto MakeLight = [this](const TCHAR* Name, const FVector& Where, float Lumens, float AttenRadius)
+	{
+		UPointLightComponent* Light = CreateDefaultSubobject<UPointLightComponent>(Name);
+		Light->SetupAttachment(CastleRoot);
+		Light->SetRelativeLocation(Where);
+		Light->SetIntensityUnits(ELightUnits::Lumens);
+		Light->SetIntensity(Lumens);
+		Light->SetAttenuationRadius(AttenRadius);
+		Light->SetLightColor(FLinearColor(1.f, 0.7f, 0.42f));
+		Light->SetCastShadows(false);
+		return Light;
+	};
+	RoomLight = MakeLight(TEXT("RoomLight"), FVector(0.0, GateY + Gatehouse::Depth * 0.5, GateFloorZ + 420.0), 2600.f, 900.f);
+	TunnelLight = MakeLight(TEXT("TunnelLight"), FVector(0.0, CutY, DoorH - 70.0), 1800.f, 560.f);
 }
 
 void ATN_SandCastleLobby::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -484,7 +395,7 @@ void ATN_SandCastleLobby::HideMaquette()
 		if (!Actor || Actor == this) { continue; }
 		if (ATN_LobbyReadyZone* Zone = Cast<ATN_LobbyReadyZone>(Actor))
 		{
-			// Se está listo metiéndose en un huevo de la pila.
+			// Se está listo metiéndose en un huevo de la pila o en la sala de la puerta doble.
 			Zone->SetActorEnableCollision(false);
 			continue;
 		}
@@ -528,9 +439,6 @@ void ATN_SandCastleLobby::BuildCastle()
 	FBuffers B;
 	FBuffers Decor;
 	FBuffers Barrier;
-	const FLinearColor SandC = Col(0xF0D49A);
-	const FLinearColor SandDark = Col(0xD9B474);
-	const FLinearColor SandLight = Col(0xF6E0AE);
 	const FVector Up(0.0, 0.0, 1.0);
 
 	// ── Suelo de arena redondo (con manchas de arena mojada y de arena clara) y playa por fuera ──
@@ -551,7 +459,7 @@ void ATN_SandCastleLobby::BuildCastle()
 				B.AddQuad(P0, P1, P2, P3, Up, C);
 			}
 		}
-		// Playa de fuera (tapa el suelo de la maqueta) hasta el horizonte y el mar al norte, detrás de la puerta.
+		// Playa de fuera (tapa el suelo de la maqueta) hasta el horizonte y el mar alrededor.
 		for (int32 k = 0; k < Spokes; ++k)
 		{
 			const double A0 = TNProcMap::TwoPi * k / Spokes, A1 = TNProcMap::TwoPi * (k + 1) / Spokes;
@@ -564,17 +472,9 @@ void ATN_SandCastleLobby::BuildCastle()
 		}
 		Decor.AddQuad(FVector(-30000.0, -30000.0, -34.0), FVector(30000.0, -30000.0, -34.0), FVector(30000.0, 30000.0, -34.0), FVector(-30000.0, 30000.0, -34.0),
 			Up, Col(0x1E9CC6));
-		// Explanada de fuera de la puerta (se puede pisar; más allá, barrera).
-		const double ApronY0 = RO - 20.0, ApronY1 = RO + 520.0;
-		B.AddQuad(FVector(-760.0, ApronY0, FloorZ), FVector(760.0, ApronY0, FloorZ), FVector(760.0, ApronY1, FloorZ), FVector(-760.0, ApronY1, FloorZ), Up, Col(0xF2DCA8));
-		for (const double X : { -760.0, 760.0 })
-		{
-			Barrier.AddBox(FVector(X, (ApronY0 + ApronY1) * 0.5, 400.0), FVector(1.0, 0.0, 0.0), FVector(20.0, (ApronY1 - ApronY0) * 0.5, 400.0), SandC);
-		}
-		Barrier.AddBox(FVector(0.0, ApronY1, 400.0), FVector(1.0, 0.0, 0.0), FVector(780.0, 20.0, 400.0), SandC);
 	}
 
-	// ── Muralla redonda: cara de dentro y de fuera, adarve arriba, almenas por fuera y el hueco de la puerta ──
+	// ── Muralla redonda: cara de dentro y de fuera, adarve arriba, almenas por fuera y el hueco de la puerta doble ──
 	{
 		constexpr int32 Seg = 180;
 		for (int32 k = 0; k < Seg; ++k)
@@ -586,84 +486,68 @@ void ATN_SandCastleLobby::BuildCastle()
 			auto P = [](double Rad, double A, double Z) { return FVector(-Rad * FMath::Sin(A), Rad * FMath::Cos(A), Z); };
 			const FVector In(FMath::Sin((A0 + A1) * 0.5), -FMath::Cos((A0 + A1) * 0.5), 0.0);
 			const float Tone = TNProcMesh::TNProcTone(k, 17u) * 0.1f + 0.95f;
-			B.AddQuad(P(R, A0, 0.0), P(R, A1, 0.0), P(R, A1, H1), P(R, A0, H0), In, SandC * Tone);
-			B.AddQuad(P(RO, A0, 0.0), P(RO, A1, 0.0), P(RO, A1, H1), P(RO, A0, H0), -In, SandDark * Tone);
-			B.AddQuad(P(R, A0, H0), P(R, A1, H1), P(RO, A1, H1), P(RO, A0, H0), Up, SandLight * Tone);
+			B.AddQuad(P(R, A0, 0.0), P(R, A1, 0.0), P(R, A1, H1), P(R, A0, H0), In, SandC() * Tone);
+			B.AddQuad(P(RO, A0, 0.0), P(RO, A1, 0.0), P(RO, A1, H1), P(RO, A0, H0), -In, SandDark() * Tone);
+			B.AddQuad(P(R, A0, H0), P(R, A1, H1), P(RO, A1, H1), P(RO, A0, H0), Up, SandLight() * Tone);
 			// Marcas del molde de cubo: tres franjas que sobresalen un poco por dentro.
 			for (const double Z : { 150.0, 320.0, 470.0 })
 			{
-				B.AddQuad(P(R - 7.0, A0, Z - 8.0), P(R - 7.0, A1, Z - 8.0), P(R - 7.0, A1, Z + 8.0), P(R - 7.0, A0, Z + 8.0), In, SandDark);
-				B.AddQuad(P(R, A0, Z + 8.0), P(R, A1, Z + 8.0), P(R - 7.0, A1, Z + 8.0), P(R - 7.0, A0, Z + 8.0), Up, SandDark);
+				B.AddQuad(P(R - 7.0, A0, Z - 8.0), P(R - 7.0, A1, Z - 8.0), P(R - 7.0, A1, Z + 8.0), P(R - 7.0, A0, Z + 8.0), In, SandDark());
+				B.AddQuad(P(R, A0, Z + 8.0), P(R, A1, Z + 8.0), P(R - 7.0, A1, Z + 8.0), P(R - 7.0, A0, Z + 8.0), Up, SandDark());
 			}
 			// Almenas en el borde de fuera, una sí y otra no.
 			if (k % 2 == 0)
 			{
 				const FVector M0 = P(RO - 30.0, A0, H0), M1 = P(RO - 30.0, A1, H1);
 				const FVector Dir = (M1 - M0).GetSafeNormal2D();
-				B.AddBox((M0 + M1) * 0.5 + Up * 45.0, Dir, FVector(FVector::Dist2D(M0, M1) * 0.5, 30.0, 45.0), SandC);
+				B.AddBox((M0 + M1) * 0.5 + Up * 45.0, Dir, FVector(FVector::Dist2D(M0, M1) * 0.5, 30.0, 45.0), SandC());
 			}
 			// Barrera invisible sobre el borde de fuera.
-			Barrier.AddQuad(P(RO + 10.0, A0, H0), P(RO + 10.0, A1, H1), P(RO + 10.0, A1, H1 + 900.0), P(RO + 10.0, A0, H0 + 900.0), In, SandC);
-		}
-		// Arco sobre la puerta: dintel entre las dos torres, con su cartel de madera.
-		const double LintelY = RM - 20.0;
-		B.AddBox(FVector(0.0, LintelY, (GateH + WallH) * 0.5 + 40.0), FVector(1.0, 0.0, 0.0),
-			FVector(GateHalfW + 110.0, WallT * 0.5 + 10.0, (WallH - GateH) * 0.5 + 40.0), SandC);
-		for (int32 m = -4; m <= 4; ++m)
-		{
-			B.AddBox(FVector(m * 105.0, LintelY + WallT * 0.5 - 20.0, WallH + 125.0), FVector(1.0, 0.0, 0.0), FVector(34.0, 26.0, 45.0), SandC);
-		}
-		// Arco de medio punto dibujado en la cara de dentro (dovelas de arena oscura).
-		for (int32 s = 0; s < 12; ++s)
-		{
-			const double T0 = PI * s / 12.0, T1 = PI * (s + 1) / 12.0;
-			const FVector C0(-GateHalfW * FMath::Cos(T0), R - 12.0, GateH - 40.0 + 80.0 * FMath::Sin(T0));
-			const FVector C1(-GateHalfW * FMath::Cos(T1), R - 12.0, GateH - 40.0 + 80.0 * FMath::Sin(T1));
-			Decor.AddBox((C0 + C1) * 0.5, (C1 - C0).GetSafeNormal2D().IsNearlyZero() ? FVector(1.0, 0.0, 0.0) : (C1 - C0).GetSafeNormal2D(),
-				FVector(FVector::Dist(C0, C1) * 0.5, 8.0, 18.0), (s % 2) ? SandDark : Col(0xCFA766));
-		}
-		// Cartel de madera con marco dorado y cuerdas, colgado del dintel por dentro.
-		const FVector SignC(0.0, R - 34.0, GateH + 150.0);
-		Decor.AddBox(SignC, FVector(1.0, 0.0, 0.0), FVector(300.0, 8.0, 56.0), Col(0x8C5A33));
-		Decor.AddBox(SignC + FVector(0.0, 3.0, 0.0), FVector(1.0, 0.0, 0.0), FVector(312.0, 8.0, 68.0), Col(0xFFCB3D));
-		for (int32 p = 0; p < 5; ++p)
-		{
-			Decor.AddBox(SignC + FVector(-240.0 + p * 120.0, -7.0, 0.0), FVector(1.0, 0.0, 0.0), FVector(58.0, 2.0, 52.0), (p % 2) ? Col(0x9A6538) : Col(0xA8713F));
-		}
-		for (const double X : { -250.0, 250.0 })
-		{
-			Decor.AddBeam(SignC + FVector(X, 0.0, 68.0), FVector(X * 0.8, R - 20.0, WallH - 10.0), 3.0, Col(0xC9A56A));
+			Barrier.AddQuad(P(RO + 10.0, A0, H0), P(RO + 10.0, A1, H1), P(RO + 10.0, A1, H1 + 900.0), P(RO + 10.0, A0, H0 + 900.0), In, SandC());
 		}
 	}
+
+	// ── Puerta doble a las 12: la misma estructura con la que se sale en el mapa procedural ──
+	BuildGatehouse(B, Decor, Barrier, FVector(0.0, GateY, 0.0), GateFloorZ, 0);
 
 	// ── Torres irregulares repartidas por la muralla ──
 	for (int32 t = 0; t < static_cast<int32>(UE_ARRAY_COUNT(Towers)); ++t)
 	{
 		const FTowerDef& Def = Towers[t];
-		AddTower(B, Decor, ClockPoint(Def.Clock, RM), Def.Radius, Def.Height, Col(Def.Flag), t);
+		AddTower(B, Decor, ClockPoint(Def.Clock, RM), Def.Radius, Def.Height, Col(Def.Flag), t + 2);
 		// Barrera por fuera de la azotea de cada torre.
 		const FVector2D C = ClockPoint(Def.Clock, RM);
-		TNProcMesh::TNProcAddCylinder(Barrier, FVector(C.X, C.Y, Def.Height), FVector(C.X, C.Y, Def.Height + 900.0), Def.Radius + 40.0, Def.Radius + 40.0, 12, SandC, false);
+		TNProcMesh::TNProcAddCylinder(Barrier, FVector(C.X, C.Y, Def.Height), FVector(C.X, C.Y, Def.Height + 900.0), Def.Radius + 40.0, Def.Radius + 40.0, 12, SandC(), false);
 	}
 
-	// ── Muro interior (de las 3:40 a las 8:20) con la torre del homenaje en medio ──
+	// ── Muro interior (de las 3:40 a las 8:20) con adarve, la torre del homenaje en medio y un tobogán a cada lado ──
 	{
 		const double Half = FMath::Sqrt(R * R - CutY * CutY) + 60.0;
+		const double DownStepsX1 = DownStepsX0 - DownSteps * DownStepL;
+		auto InSlideMouth = [](double X, double Face)
+		{
+			return (Face > 0.0 && FMath::Abs(X - SlideLeftX) < SlideHalfW + 40.0) || (Face < 0.0 && FMath::Abs(X - SlideRightX) < SlideHalfW + 40.0);
+		};
 		for (const double Sign : { -1.0, 1.0 })
 		{
 			const double X0 = Sign * (KeepR - 20.0), X1 = Sign * Half;
 			const FVector Mid((X0 + X1) * 0.5, CutY, CutH * 0.5);
-			B.AddBox(Mid, FVector(1.0, 0.0, 0.0), FVector(FMath::Abs(X1 - X0) * 0.5, CutHalfT, CutH * 0.5), SandC);
+			B.AddBox(Mid, FVector(1.0, 0.0, 0.0), FVector(FMath::Abs(X1 - X0) * 0.5, CutHalfT, CutH * 0.5), SandC());
 			for (const double Z : { 150.0, 320.0, 470.0 })
 			{
-				B.AddBox(FVector(Mid.X, CutY, Z), FVector(1.0, 0.0, 0.0), FVector(FMath::Abs(X1 - X0) * 0.5, CutHalfT + 7.0, 8.0), SandDark);
+				B.AddBox(FVector(Mid.X, CutY, Z), FVector(1.0, 0.0, 0.0), FVector(FMath::Abs(X1 - X0) * 0.5, CutHalfT + 7.0, 8.0), SandDark());
 			}
-			// Almenas a los dos lados del adarve del muro.
-			for (double X = FMath::Min(X0, X1) + 70.0; X < FMath::Max(X0, X1) - 50.0; X += 180.0)
+			// Almenas a los dos lados del adarve, juntas (no se cuela una tortuga entre dos); sin almenas donde baja la
+			// escalera del rellano ni en la boca de cada tobogán.
+			for (double X = FMath::Min(X0, X1) + 60.0; X < FMath::Max(X0, X1) - 50.0; X += 150.0)
 			{
+				if (Sign < 0.0 && X > DownStepsX1 - 60.0) { continue; }
 				for (const double Face : { -1.0, 1.0 })
 				{
-					B.AddBox(FVector(X, CutY + Face * (CutHalfT - 22.0), CutH + 45.0), FVector(1.0, 0.0, 0.0), FVector(45.0, 22.0, 45.0), SandC);
+					if (InSlideMouth(X, Face)) { continue; }
+					// Boca de la escalera de la plaza al adarve derecho.
+					if (Face > 0.0 && X > RightStairsTopX - 60.0 && X < RightStairsTopX + 110.0) { continue; }
+					B.AddBox(FVector(X, CutY + Face * (CutHalfT - 22.0), CutH + 45.0), FVector(1.0, 0.0, 0.0), FVector(45.0, 22.0, 45.0), SandC());
 				}
 			}
 			// Conchas incrustadas en la cara que da a la plaza.
@@ -671,16 +555,69 @@ void ATN_SandCastleLobby::BuildCastle()
 			for (int32 s = 0; s < 6; ++s)
 			{
 				const double X = FMath::Lerp(X0, X1, 0.12 + 0.15 * s);
+				if (FMath::Abs(X - SlideLeftX) < SlideHalfW + 60.0) { continue; }
 				AddScallop(Decor, FVector(X, CutY + CutHalfT, 230.0 + 120.0 * ((s + (Sign > 0.0 ? 1 : 0)) % 3)), FVector(0.0, 1.0, 0.0), Up, 30.0,
 					ShellColors[s % 4]);
 			}
+			// Guirnaldas de banderines por encima del adarve, de mástil en mástil sobre las almenas de la cara sur.
+			const double GX0 = Sign < 0.0 ? DownStepsX1 - 80.0 : X0 + 160.0;
+			const double GX1 = X1 - Sign * 260.0;
+			const int32 Poles = FMath::Max(2, FMath::RoundToInt32(FMath::Abs(GX1 - GX0) / 420.0) + 1);
+			FVector PrevTop = FVector::ZeroVector;
+			for (int32 p = 0; p < Poles; ++p)
+			{
+				const double X = FMath::Lerp(GX0, GX1, static_cast<double>(p) / (Poles - 1));
+				const FVector Foot(X, CutY - (CutHalfT - 22.0), CutH + 90.0);
+				const FVector Top = Foot + Up * 170.0;
+				TNProcMesh::TNProcAddCylinder(Decor, Foot, Top, 4.0, 3.0, 6, Col(0x7A4E2B));
+				if (p > 0) { AddBunting(Decor, PrevTop, Top, p + (Sign > 0.0 ? 2 : 0)); }
+				PrevTop = Top;
+			}
+		}
+		// Tobogán de la izquierda a la plaza y de la derecha al patio de pruebas.
+		AddWallSlide(B, Decor, SlideLeftX, 1.0, Col(0xFF6A52));
+		AddWallSlide(B, Decor, SlideRightX, -1.0, Col(0x2EC4B6));
+		// Escalera de la plaza al adarve derecho: peldaños macizos hasta el suelo (no se ve a través), pegados al muro,
+		// con barandilla invisible por fuera y bolardos de arena.
+		{
+			const double YWall = CutY + CutHalfT;
+			for (int32 s = 0; s < RightStairs; ++s)
+			{
+				const double XA = RightStairsX0 - RightStairL * (s + 1), XB = RightStairsX0 - RightStairL * s;
+				const double Top = FloorZ + (CutH - FloorZ) * (s + 1) / RightStairs;
+				AddAxisBox(B, FVector(XA - 1.0, YWall - 6.0, 0.0), FVector(XB, YWall + RightStairW, Top), (s % 2) ? SandLight() : Col(0xEFD29A));
+				if (s % 3 == 1)
+				{
+					TNProcMesh::TNProcAddCylinder(B, FVector((XA + XB) * 0.5, YWall + RightStairW - 14.0, Top), FVector((XA + XB) * 0.5, YWall + RightStairW - 14.0, Top + 55.0),
+						14.0, 11.0, 8, SandDark());
+				}
+			}
+			AddAxisBox(Barrier, FVector(RightStairsTopX, YWall + RightStairW + 4.0, 0.0), FVector(RightStairsX0, YWall + RightStairW + 12.0, CutH + 220.0), SandC());
+			// Vieira en la cara del primer peldaño, para que se vea dónde se sube.
+			AddScallop(Decor, FVector(RightStairsX0 + 1.0, YWall + RightStairW * 0.5, 14.0), FVector(1.0, 0.0, 0.0), Up, 18.0, Col(0xFFB4A2));
+		}
+		// Mirador del adarve derecho, junto a la muralla: catalejo en su trípode, cubo con pala y un banderón.
+		{
+			const FVector Look(Half - 520.0, CutY, CutH);
+			for (int32 l = 0; l < 3; ++l)
+			{
+				const double A = TNProcMap::TwoPi * l / 3.0;
+				Decor.AddBeam(Look + FVector(FMath::Cos(A) * 34.0, FMath::Sin(A) * 34.0, 0.0), Look + Up * 110.0, 3.0, Col(0x7A4E2B));
+			}
+			TNProcMesh::TNProcAddCylinder(Decor, Look + Up * 112.0 + FVector(-40.0, 30.0, -8.0), Look + Up * 112.0 + FVector(55.0, -40.0, 18.0), 7.0, 11.0, 10, Col(0xB88A3E));
+			TNProcMesh::TNProcAddCylinder(Decor, Look + FVector(120.0, 40.0, 0.0), Look + FVector(120.0, 40.0, 46.0), 22.0, 28.0, 12, Col(0xFF6A52));
+			Decor.AddBeam(Look + FVector(120.0, 40.0, 40.0), Look + FVector(150.0, 10.0, 120.0), 3.0, Col(0xFFCB3D));
+			const FVector FlagFoot(Half - 300.0, CutY + CutHalfT - 30.0, CutH + 90.0);
+			TNProcMesh::TNProcAddCylinder(Decor, FlagFoot, FlagFoot + Up * 420.0, 7.0, 5.0, 6, Col(0x7A4E2B));
+			Decor.AddTri(FlagFoot + Up * 416.0, FlagFoot + Up * 330.0, FlagFoot + Up * 390.0 + FVector(-190.0, 0.0, -10.0), FVector(0.0, 1.0, 0.0), Col(0x2EC4B6));
+			Decor.AddTri(FlagFoot + Up * 416.0, FlagFoot + Up * 330.0, FlagFoot + Up * 390.0 + FVector(-190.0, 0.0, -10.0), FVector(0.0, -1.0, 0.0), Col(0x2EC4B6) * 0.85f);
 		}
 	}
+
+	// ── Torre del homenaje: cilindro con un paso de norte a sur, franjas, azotea-balcón y torreón ──
 	{
-		// Torre del homenaje: cilindro con un paso de norte a sur (sin tapar la puerta), franjas y azotea-balcón.
 		const FVector KeepC(0.0, CutY, 0.0);
 		constexpr int32 KSeg = 40;
-		auto KP = [&KeepC](double Rad, double A, double Z) { return KeepC + FVector(-Rad * FMath::Sin(A), Rad * FMath::Cos(A), Z); };
 		for (int32 k = 0; k < KSeg; ++k)
 		{
 			const double A0 = TNProcMap::TwoPi * k / KSeg, A1 = TNProcMap::TwoPi * (k + 1) / KSeg;
@@ -688,34 +625,34 @@ void ATN_SandCastleLobby::BuildCastle()
 			const bool bDoorSide = FMath::Abs(KeepR * FMath::Sin(Am)) < DoorHalfW + 5.0;
 			const double Z0 = bDoorSide ? DoorH : 0.0;
 			const FVector Out(-FMath::Sin(Am), FMath::Cos(Am), 0.0);
-			B.AddQuad(KP(KeepR, A0, Z0), KP(KeepR, A1, Z0), KP(KeepR, A1, KeepRoofZ), KP(KeepR, A0, KeepRoofZ), Out, SandC);
+			B.AddQuad(KeepPoint(KeepR, A0, Z0), KeepPoint(KeepR, A1, Z0), KeepPoint(KeepR, A1, KeepRoofZ), KeepPoint(KeepR, A0, KeepRoofZ), Out, SandC());
 			for (const double Z : { 200.0, 470.0, 740.0 })
 			{
 				if (Z < Z0 + 20.0) { continue; }
-				B.AddQuad(KP(KeepR + 8.0, A0, Z - 9.0), KP(KeepR + 8.0, A1, Z - 9.0), KP(KeepR + 8.0, A1, Z + 9.0), KP(KeepR + 8.0, A0, Z + 9.0), Out, SandDark);
+				B.AddQuad(KeepPoint(KeepR + 8.0, A0, Z - 9.0), KeepPoint(KeepR + 8.0, A1, Z - 9.0), KeepPoint(KeepR + 8.0, A1, Z + 9.0), KeepPoint(KeepR + 8.0, A0, Z + 9.0), Out, SandDark());
 			}
-			// Azotea (el balcón): anillo de arena clara y almenas en el borde, con hueco donde llega la escalera (lado este).
-			B.AddTri(KeepC + Up * KeepRoofZ, KP(KeepR + 30.0, A0, KeepRoofZ), KP(KeepR + 30.0, A1, KeepRoofZ), Up, SandLight);
-			B.AddQuad(KP(KeepR, A0, KeepRoofZ - 30.0), KP(KeepR, A1, KeepRoofZ - 30.0), KP(KeepR + 30.0, A1, KeepRoofZ), KP(KeepR + 30.0, A0, KeepRoofZ), Out, SandDark);
+			// Azotea (el balcón): anillo de arena clara y almenas en el borde, con hueco donde llega la escalera (lado oeste).
+			B.AddTri(KeepC + Up * KeepRoofZ, KeepPoint(KeepR + 30.0, A0, KeepRoofZ), KeepPoint(KeepR + 30.0, A1, KeepRoofZ), Up, SandLight());
+			B.AddQuad(KeepPoint(KeepR, A0, KeepRoofZ - 30.0), KeepPoint(KeepR, A1, KeepRoofZ - 30.0), KeepPoint(KeepR + 30.0, A1, KeepRoofZ), KeepPoint(KeepR + 30.0, A0, KeepRoofZ), Out, SandDark());
 			const double Deg = FMath::RadiansToDegrees(Am);
-			const bool bStairLanding = Deg > 48.0 && Deg < 92.0;
+			const bool bStairLanding = Deg > 48.0 && Deg < LandingEndDeg + 4.0;
 			if (k % 2 == 0 && !bStairLanding)
 			{
-				B.AddBox(KP(KeepR + 8.0, Am, KeepRoofZ + 50.0), Out, FVector(20.0, 36.0, 50.0), SandC);
+				B.AddBox(KeepPoint(KeepR + 8.0, Am, KeepRoofZ + 50.0), Out, FVector(20.0, 36.0, 50.0), SandC());
 			}
 			if (!bStairLanding)
 			{
-				Barrier.AddQuad(KP(KeepR + 32.0, A0, KeepRoofZ), KP(KeepR + 32.0, A1, KeepRoofZ), KP(KeepR + 32.0, A1, KeepRoofZ + 260.0),
-					KP(KeepR + 32.0, A0, KeepRoofZ + 260.0), -Out, SandC);
+				Barrier.AddQuad(KeepPoint(KeepR + 32.0, A0, KeepRoofZ), KeepPoint(KeepR + 32.0, A1, KeepRoofZ), KeepPoint(KeepR + 32.0, A1, KeepRoofZ + 260.0),
+					KeepPoint(KeepR + 32.0, A0, KeepRoofZ + 260.0), -Out, SandC());
 			}
 		}
-		// Paso por dentro: paredes, techo y umbral (de la cara norte a la sur).
+		// Paso por dentro: paredes, techo, antorchas y arcos en las dos bocas.
 		for (const double X : { -DoorHalfW, DoorHalfW })
 		{
-			B.AddBox(FVector(X + (X > 0.0 ? 8.0 : -8.0), CutY, DoorH * 0.5), FVector(1.0, 0.0, 0.0), FVector(8.0, KeepR, DoorH * 0.5), SandDark);
+			B.AddBox(FVector(X + (X > 0.0 ? 8.0 : -8.0), CutY, DoorH * 0.5), FVector(1.0, 0.0, 0.0), FVector(8.0, KeepR, DoorH * 0.5), SandDark());
+			AddWallTorch(Decor, FVector(X, CutY, 220.0), FVector(X > 0.0 ? -1.0 : 1.0, 0.0, 0.0));
 		}
-		B.AddBox(FVector(0.0, CutY, DoorH + 10.0), FVector(1.0, 0.0, 0.0), FVector(DoorHalfW + 16.0, KeepR, 10.0), SandDark);
-		// Arcos de las dos bocas del paso y cartel de madera de «PRUEBAS» encima de la de la plaza.
+		B.AddBox(FVector(0.0, CutY, DoorH + 10.0), FVector(1.0, 0.0, 0.0), FVector(DoorHalfW + 16.0, KeepR, 10.0), SandDark());
 		for (const double Face : { 1.0, -1.0 })
 		{
 			for (int32 s = 0; s < 10; ++s)
@@ -725,58 +662,70 @@ void ATN_SandCastleLobby::BuildCastle()
 				const FVector C1(-(DoorHalfW + 16.0) * FMath::Cos(T1), CutY + Face * (KeepR + 4.0), DoorH - 30.0 + 70.0 * FMath::Sin(T1));
 				const FVector D = (C1 - C0).GetSafeNormal();
 				const FVector AxisX = FVector(D.X, D.Y, 0.0).IsNearlyZero() ? FVector(1.0, 0.0, 0.0) : FVector(D.X, D.Y, 0.0).GetSafeNormal();
-				Decor.AddBox((C0 + C1) * 0.5, AxisX, FVector(FVector::Dist(C0, C1) * 0.5, 10.0, 16.0), (s % 2) ? SandDark : Col(0xCFA766));
+				Decor.AddBox((C0 + C1) * 0.5, AxisX, FVector(FVector::Dist(C0, C1) * 0.5, 10.0, 16.0), (s % 2) ? SandDark() : Col(0xCFA766));
 			}
 		}
 		// Torrecilla sobre la azotea (al sur), con tejado de cono y bandera: la silueta alta del castillo.
 		AddTower(B, Decor, FVector2D(0.0, CutY - 170.0), 150.0, 430.0, Col(0xFF6A52), 0, KeepRoofZ);
-		// Escalera de caracol por fuera: del suelo (oeste, a las 8 de la torre) a la azotea (este), pasando sobre la puerta.
+		// Escalera de caracol por fuera, de peldaños macizos: del suelo (este, 290°) a la azotea (oeste, 70°) pasando por
+		// encima del arco de la puerta (0°).
+		const double StepDeg = (StairEndDeg - StairStartDeg) / StairSteps;
 		for (int32 s = 0; s < StairSteps; ++s)
 		{
-			const double T0 = static_cast<double>(s) / StairSteps, T1 = static_cast<double>(s + 1) / StairSteps;
-			// Ángulos de la torre en sentido del reloj desde +Y: de 290° (oeste-noroeste, ya fuera del muro) pasando por 0°
-			// (norte, por encima del arco de la puerta) a 70° (este), donde se llega a la azotea.
-			const double A0 = FMath::DegreesToRadians(290.0 + 140.0 * T0), A1 = FMath::DegreesToRadians(290.0 + 140.0 * T1);
-			const double Z = KeepRoofZ * T1;
-			const FVector Outer0 = KP(StairOut, A0, Z), Outer1 = KP(StairOut, A1, Z);
-			const FVector Inner0 = KP(StairIn, A0, Z), Inner1 = KP(StairIn, A1, Z);
-			const FLinearColor StepC = (s % 2) ? SandLight : Col(0xEFD29A);
-			B.AddQuad(Inner0, Outer0, Outer1, Inner1, Up, StepC);
-			const FVector Down(0.0, 0.0, -28.0);
-			const FVector Out(-FMath::Sin((A0 + A1) * 0.5), FMath::Cos((A0 + A1) * 0.5), 0.0);
-			B.AddQuad(Outer0 + Down, Outer1 + Down, Outer1, Outer0, Out, SandDark);
-			B.AddQuad(Inner0 + Down, Inner1 + Down, Outer1 + Down, Outer0 + Down, -Up, SandDark);
-			B.AddQuad(Inner0 + Down, Outer0 + Down, Outer0, Inner0, (Outer0 - Outer1).GetSafeNormal(), SandDark);
+			const double A0 = StairStartDeg + StepDeg * s - 0.4, A1 = StairStartDeg + StepDeg * (s + 1);
+			const double Z = KeepRoofZ * (s + 1) / StairSteps;
+			AddKeepSector(B, StairIn - 4.0, StairOut, A0, A1, Z - 45.0, Z, (s % 2) ? SandLight() : Col(0xEFD29A), SandDark());
+			const double Am = FMath::DegreesToRadians((A0 + A1) * 0.5);
+			const FVector Out(-FMath::Sin(Am), FMath::Cos(Am), 0.0);
 			// Barandilla invisible por fuera (no se cae uno al subir) y bolardos de arena de adorno.
-			Barrier.AddQuad(KP(StairOut + 12.0, A0, Z), KP(StairOut + 12.0, A1, Z), KP(StairOut + 12.0, A1, Z + 180.0), KP(StairOut + 12.0, A0, Z + 180.0), -Out, SandC);
+			Barrier.AddQuad(KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A0), Z), KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A1), Z),
+				KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A1), Z + 180.0), KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A0), Z + 180.0), -Out, SandC());
 			if (s % 3 == 0)
 			{
-				TNProcMesh::TNProcAddCylinder(B, KP(StairOut - 15.0, A0, Z), KP(StairOut - 15.0, A0, Z + 55.0), 14.0, 11.0, 8, SandDark);
+				TNProcMesh::TNProcAddCylinder(B, KeepPoint(StairOut - 15.0, FMath::DegreesToRadians(A0 + 1.0), Z), KeepPoint(StairOut - 15.0, FMath::DegreesToRadians(A0 + 1.0), Z + 55.0),
+					14.0, 11.0, 8, SandDark());
 			}
+		}
+		// Rellano de arriba (de 70° a 100°, a la altura de la azotea), con su barandilla y bolardos; por el oeste sigue la
+		// escalera que baja al adarve izquierdo del muro.
+		const double LandStart = StairEndDeg - 360.0;
+		for (double A = LandStart; A < LandingEndDeg - 0.1; A += 5.0)
+		{
+			const double A1 = FMath::Min(A + 5.0, LandingEndDeg);
+			AddKeepSector(B, StairIn - 4.0, StairOut, A - 0.3, A1, KeepRoofZ - 45.0, KeepRoofZ, SandLight(), SandDark());
+			const double Am = FMath::DegreesToRadians((A + A1) * 0.5);
+			const FVector Out(-FMath::Sin(Am), FMath::Cos(Am), 0.0);
+			const bool bToSteps = (A + A1) * 0.5 > 81.0 && (A + A1) * 0.5 < 99.0;
+			if (!bToSteps)
+			{
+				Barrier.AddQuad(KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A), KeepRoofZ), KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A1), KeepRoofZ),
+					KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A1), KeepRoofZ + 180.0), KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A), KeepRoofZ + 180.0), -Out, SandC());
+				TNProcMesh::TNProcAddCylinder(B, KeepPoint(StairOut - 15.0, Am, KeepRoofZ), KeepPoint(StairOut - 15.0, Am, KeepRoofZ + 55.0), 14.0, 11.0, 8, SandDark());
+			}
+		}
+		{
+			// Cierre sur del rellano (barandilla invisible radial en 100°).
+			const double AEnd = FMath::DegreesToRadians(LandingEndDeg);
+			const FVector Fwd(-FMath::Cos(AEnd), -FMath::Sin(AEnd), 0.0);
+			Barrier.AddQuad(KeepPoint(StairIn, AEnd, KeepRoofZ), KeepPoint(StairOut + 12.0, AEnd, KeepRoofZ), KeepPoint(StairOut + 12.0, AEnd, KeepRoofZ + 180.0),
+				KeepPoint(StairIn, AEnd, KeepRoofZ + 180.0), -Fwd, SandC());
+		}
+		// Escalera recta del rellano al adarve izquierdo, por encima del muro: once peldaños macizos de 25 cm.
+		for (int32 s = 0; s < DownSteps; ++s)
+		{
+			const double XA = DownStepsX0 - DownStepL * (s + 1), XB = DownStepsX0 - DownStepL * s;
+			const double Top = KeepRoofZ - 25.0 * (s + 1);
+			AddAxisBox(B, FVector(XA, CutY - CutHalfT, CutH - 1.0), FVector(XB + 2.0, CutY + CutHalfT, Top), (s % 2) ? SandLight() : Col(0xEFD29A));
+		}
+		const double StepsX1 = DownStepsX0 - DownStepL * DownSteps;
+		for (const double Face : { -1.0, 1.0 })
+		{
+			AddAxisBox(Barrier, FVector(StepsX1, CutY + Face * (CutHalfT + 4.0) - 4.0, CutH), FVector(DownStepsX0 + 30.0, CutY + Face * (CutHalfT + 4.0) + 4.0, KeepRoofZ + 200.0), SandC());
 		}
 	}
 
-	// ── Montículo de la pila de huevos (dos alturas) con un escalón de concha para subir al de arriba ──
-	{
-		const FVector C(EggsCenter.X, EggsCenter.Y, 0.0);
-		TNProcMesh::TNProcAddCylinder(B, C, C + Up * (FloorZ + Tier1H), Tier1R, Tier1R - 20.0, 32, SandC);
-		TNProcMesh::TNProcAddCylinder(B, C + Up * (FloorZ + Tier1H - 12.0), C + Up * (FloorZ + Tier1H), Tier1R - 16.0, Tier1R - 20.0, 32, SandDark);
-		TNProcMesh::TNProcAddCylinder(B, C + Up * (FloorZ + Tier1H), C + Up * (FloorZ + Tier2H), Tier2R + 25.0, Tier2R, 24, SandC);
-		// Escalón: tocón de arena con reborde y una vieira grande encima, abierta hacia la puerta.
-		const FVector StepP = C + FVector(0.0, Tier2R + 110.0, 0.0);
-		const FVector StepOut(0.0, 1.0, 0.0);
-		TNProcMesh::TNProcAddCylinder(B, StepP + Up * (FloorZ + Tier1H), StepP + Up * (FloorZ + 132.0), 78.0, 70.0, 16, SandC);
-		TNProcMesh::TNProcAddCylinder(B, StepP + Up * (FloorZ + 118.0), StepP + Up * (FloorZ + 132.0), 74.0, 72.0, 16, SandDark);
-		AddScallop(Decor, StepP + Up * (FloorZ + 132.5) - StepOut * 20.0, Up, StepOut, 66.0, Col(0xFFB4A2));
-		// Estrellas y conchas alrededor del montículo.
-		for (int32 i = 0; i < 8; ++i)
-		{
-			const double A = TNProcMap::TwoPi * i / 8.0 + 0.2;
-			const FVector P = C + FVector(FMath::Cos(A) * (Tier1R + 60.0), FMath::Sin(A) * (Tier1R + 60.0), FloorZ);
-			if (i % 2 == 0) { AddStarfish(Decor, P, 26.0, A, (i % 4) ? Col(0xFF8A70) : Col(0xFFB077)); }
-			else { AddScallop(Decor, P + Up * 3.0, Up, FVector(FMath::Cos(A), FMath::Sin(A), 0.0), 24.0, Col(0xFFE0C2)); }
-		}
-	}
+	// ── Montículo de la pila de huevos (dos alturas) con el escalón de la concha hacia la puerta ──
+	BuildEggMound(B, Decor, FVector(EggsCenter.X, EggsCenter.Y, 0.0), FloorZ, FVector(0.0, 1.0, 0.0));
 
 	// ── Adornos sueltos por la plaza y el patio: conchas y estrellas ──
 	for (int32 i = 0; i < 60; ++i)
@@ -784,8 +733,11 @@ void ATN_SandCastleLobby::BuildCastle()
 		const double A = TNProcMap::TwoPi * FMath::Frac(i * 0.618034 + 0.11);
 		const double Dist = (R - 200.0) * FMath::Sqrt(FMath::Frac(i * 0.754877 + 0.29));
 		const FVector P(-Dist * FMath::Sin(A), Dist * FMath::Cos(A), FloorZ);
-		if (FVector2D::Distance(FVector2D(P.X, P.Y), EggsCenter) < Tier1R + 120.0) { continue; }
-		if (FMath::Abs(P.Y - CutY) < 220.0) { continue; }
+		if (FVector2D::Distance(FVector2D(P.X, P.Y), EggsCenter) < EggMound::Tier1R + 120.0) { continue; }
+		if (FMath::Abs(P.Y - CutY) < 260.0) { continue; }
+		if (P.X > RightStairsTopX - 60.0 && P.X < RightStairsX0 + 60.0 && P.Y > CutY && P.Y < CutY + CutHalfT + RightStairW + 60.0) { continue; }
+		if ((FMath::Abs(P.X - SlideLeftX) < 150.0 && P.Y > CutY && P.Y < CutY + CutHalfT + SlideRun + 60.0)
+			|| (FMath::Abs(P.X - SlideRightX) < 150.0 && P.Y < CutY && P.Y > CutY - CutHalfT - SlideRun - 60.0)) { continue; }
 		if (i % 3 == 0) { AddStarfish(Decor, P, 22.0 + 10.0 * FMath::Frac(i * 0.31), i * 0.7, (i % 2) ? Col(0xFF8A70) : Col(0xFFB077)); }
 		else { AddScallop(Decor, P + Up * 2.0, Up, FVector(FMath::Cos(i * 1.3), FMath::Sin(i * 1.3), 0.0), 18.0 + 8.0 * FMath::Frac(i * 0.43), (i % 2) ? Col(0xFFE0C2) : Col(0xFFB4A2)); }
 	}
@@ -795,15 +747,19 @@ void ATN_SandCastleLobby::BuildCastle()
 	UploadSection(DecorMesh, Decor, false, Mat);
 	UploadSection(BarrierMesh, Barrier, true, nullptr);
 
-	// Rótulo del cartel de la puerta: siempre dentro de la tabla (se encoge si el nombre es largo).
-	if (GateSignText)
+	// Rótulos de los carteles de las dos puertas (la 1 por la cara de la plaza y la 2 por fuera): siempre dentro de la
+	// tabla (se encogen si el nombre es largo).
+	auto PlaceSignText = [this](UTextRenderComponent* SignText, double SignGateY, double Face)
 	{
-		GateSignText->SetRelativeLocationAndRotation(FVector(0.0, R - 45.0, GateH + 150.0), FRotator(0.f, -90.f, 0.f));
-		GateSignText->SetWorldSize(90.f);
-		GateSignText->SetText(GateName);
-		const double Width = GateSignText->GetTextLocalSize().Y;
-		if (Width > 540.0) { GateSignText->SetWorldSize(static_cast<float>(90.0 * 540.0 / Width)); }
-	}
+		if (!SignText) { return; }
+		SignText->SetRelativeLocationAndRotation(FVector(0.0, GateY, 0.0) + GatehouseSignText(SignGateY, Face, GateFloorZ), FRotator(0.f, Face > 0.0 ? 90.f : -90.f, 0.f));
+		SignText->SetWorldSize(88.f);
+		SignText->SetText(GateName);
+		const double Width = SignText->GetTextLocalSize().Y;
+		if (Width > 540.0) { SignText->SetWorldSize(static_cast<float>(88.0 * 540.0 / Width)); }
+	};
+	PlaceSignText(GateSignText, 0.0, -1.0);
+	PlaceSignText(Gate2SignText, Gatehouse::Depth, 1.0);
 }
 
 void ATN_SandCastleLobby::BuildGateAndEggs()
@@ -811,20 +767,15 @@ void ATN_SandCastleLobby::BuildGateAndEggs()
 	using namespace TNCastleDetail;
 	UMaterialInterface* Mat = VertexColorMaterial();
 
-	// Puerta grande: la hoja izquierda (bisagra en -X) cerrada apunta a +X; la derecha, a -X.
+	// Puerta doble: las hojas izquierdas (bisagra en -X) cerradas apuntan a +X; las derechas, a -X.
 	FBuffers Leaf;
-	BuildLeaf(Leaf, GateHalfW, GateH);
+	BuildLeaf(Leaf, Gatehouse::HalfW, Gatehouse::GateH);
 	UStaticMesh* LeafMesh = TNProcRuntimeMesh::MakeStaticMesh(this, Leaf, Mat);
-	if (GateLeafLeft)
-	{
-		GateLeafLeft->SetStaticMesh(LeafMesh);
-		GateLeafLeft->SetRelativeLocationAndRotation(FVector(-GateHalfW, GateY, FloorZ), FRotator::ZeroRotator);
-	}
-	if (GateLeafRight)
-	{
-		GateLeafRight->SetStaticMesh(LeafMesh);
-		GateLeafRight->SetRelativeLocationAndRotation(FVector(GateHalfW, GateY, FloorZ), FRotator(0.f, 180.f, 0.f));
-	}
+	const double Gate2Y = GateY + Gatehouse::Depth;
+	if (GateLeafLeft) { GateLeafLeft->SetStaticMesh(LeafMesh); GateLeafLeft->SetRelativeLocationAndRotation(FVector(-Gatehouse::HalfW, GateY, GateFloorZ), FRotator::ZeroRotator); }
+	if (GateLeafRight) { GateLeafRight->SetStaticMesh(LeafMesh); GateLeafRight->SetRelativeLocationAndRotation(FVector(Gatehouse::HalfW, GateY, GateFloorZ), FRotator(0.f, 180.f, 0.f)); }
+	if (Gate2LeafLeft) { Gate2LeafLeft->SetStaticMesh(LeafMesh); Gate2LeafLeft->SetRelativeLocationAndRotation(FVector(-Gatehouse::HalfW, Gate2Y, GateFloorZ), FRotator::ZeroRotator); }
+	if (Gate2LeafRight) { Gate2LeafRight->SetStaticMesh(LeafMesh); Gate2LeafRight->SetRelativeLocationAndRotation(FVector(Gatehouse::HalfW, Gate2Y, GateFloorZ), FRotator(0.f, 180.f, 0.f)); }
 	bGateBlocking = true;
 	if (GateBlock) { GateBlock->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); }
 
@@ -833,11 +784,11 @@ void ATN_SandCastleLobby::BuildGateAndEggs()
 	for (int32 i = 0; i < NumEggs; ++i)
 	{
 		const FVector Spot = EggSpot(i);
-		BuildEggCup(Cups, Spot, Col(0xFFF3DC), Col(EggAccents[i]));
+		BuildEggCup(Cups, Spot, Col(0xFFF3DC), Col(EggAccent(i)));
 		if (EggLids.IsValidIndex(i) && EggLids[i])
 		{
 			FBuffers Lid;
-			BuildEggLid(Lid, Pal(0xFFF3DC), Pal(EggAccents[i]));
+			BuildEggLid(Lid, Pal(0xFFF3DC), Pal(EggAccent(i)));
 			EggLids[i]->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, Lid, Mat));
 			EggLids[i]->SetRelativeLocation(Spot + FVector(0.0, 0.0, EggSeam + 160.0));
 		}
@@ -860,14 +811,20 @@ void ATN_SandCastleLobby::ServerUpdate(float DeltaSeconds)
 	const FTransform Xf = GetActorTransform();
 
 	int32 Mask = 0;
-	bool bAnyoneNearGate = false;
+	int32 NumPlayers = 0;
+	int32 NumInRoom = 0;
+	int32 NumInEggs = 0;
+	bool bNearFromPlaza = false;
+	bool bWantsOut = false;
 	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* PC = It->Get();
 		const APawn* PawnInLobby = PC ? PC->GetPawn() : nullptr;
 		bool bInEgg = false;
+		bool bInRoom = false;
 		if (PawnInLobby)
 		{
+			++NumPlayers;
 			const FVector Local = Xf.InverseTransformPosition(PawnInLobby->GetActorLocation());
 			for (int32 i = 0; i < NumEggs; ++i)
 			{
@@ -880,23 +837,37 @@ void ATN_SandCastleLobby::ServerUpdate(float DeltaSeconds)
 					break;
 				}
 			}
-			bAnyoneNearGate |= FVector2D::Distance(FVector2D(Local.X, Local.Y), FVector2D(0.0, GateY)) < 900.0;
+			// Sala de la puerta doble (locales de la puerta doble: origen en el umbral de la puerta 1).
+			const FVector GateLocal = Local - FVector(0.0, GateY, GateFloorZ);
+			bInRoom = !bInEgg && Gatehouse::IsInRoom(GateLocal);
+			NumInEggs += bInEgg ? 1 : 0;
+			NumInRoom += bInRoom ? 1 : 0;
+			bNearFromPlaza |= GateLocal.Y < 0.0 && FVector2D(GateLocal.X, GateLocal.Y).Size() < 750.0;
+			// De pie junto a la puerta 1 por dentro: quiere salir.
+			bWantsOut |= bInRoom && GateLocal.Y < Gatehouse::RoomY0 + 60.0;
 		}
 		if (PC)
 		{
+			const bool bReady = bInEgg || bInRoom;
 			const bool* Sent = ReadySent.Find(PC);
-			if (!Sent || *Sent != bInEgg)
+			if (!Sent || *Sent != bReady)
 			{
-				ReadySent.Add(PC, bInEgg);
-				if (HQ) { HQ->SetPlayerReadyState(PC, bInEgg); }
+				ReadySent.Add(PC, bReady);
+				if (HQ) { HQ->SetPlayerReadyState(PC, bReady); }
 			}
 		}
 	}
 	EggMask = Mask;
+	if (NumInRoom + NumInEggs > 0)
+	{
+		StartStyle = NumInRoom >= NumInEggs ? ETNMatchStartStyle::Gate : ETNMatchStartStyle::Eggs;
+	}
 
-	const ATN_CoopGameState* GS = World->GetGameState<ATN_CoopGameState>();
-	const bool bCountdown = GS && (GS->MatchFlowState == ETNMatchFlowState::Countdown || GS->MatchFlowState == ETNMatchFlowState::Cinematic);
-	GateHoldTimer = (bAnyoneNearGate || bCountdown) ? 2.5f : GateHoldTimer - DeltaSeconds;
+	// Puerta 1: se abre si alguien se acerca por la plaza o quiere salir, y mientras haya gente dentro sin estar todos.
+	// Con todos dentro se cierra (se ve la segunda puerta cerrada delante) y queda así hasta el viaje.
+	const bool bAllInRoom = NumPlayers > 0 && NumInRoom == NumPlayers;
+	const bool bWantOpen = bNearFromPlaza || bWantsOut || (NumInRoom > 0 && !bAllInRoom);
+	GateHoldTimer = bWantOpen ? 1.5f : GateHoldTimer - DeltaSeconds;
 	bGateOpen = GateHoldTimer > 0.f;
 }
 
@@ -916,11 +887,11 @@ void ATN_SandCastleLobby::Tick(float DeltaSeconds)
 		}
 	}
 
-	// Puerta grande: se abre hacia fuera en ~1,2 s; bloquea solo cerrada del todo.
+	// Puerta 1: se abre hacia la plaza (-Y) en ~1,2 s; bloquea solo cerrada del todo. La 2 sigue cerrada.
 	GateOpenness = FMath::FInterpConstantTo(GateOpenness, bGateOpen ? 1.f : 0.f, DeltaSeconds, 0.8f);
 	const float GateAngle = 100.f * SmoothStep01(GateOpenness);
-	if (GateLeafLeft) { GateLeafLeft->SetRelativeRotation(FRotator(0.f, GateAngle, 0.f)); }
-	if (GateLeafRight) { GateLeafRight->SetRelativeRotation(FRotator(0.f, 180.f - GateAngle, 0.f)); }
+	if (GateLeafLeft) { GateLeafLeft->SetRelativeRotation(FRotator(0.f, -GateAngle, 0.f)); }
+	if (GateLeafRight) { GateLeafRight->SetRelativeRotation(FRotator(0.f, 180.f + GateAngle, 0.f)); }
 	const bool bShouldBlock = !bGateOpen && GateOpenness < 0.05f;
 	if (GateBlock && bShouldBlock != bGateBlocking)
 	{

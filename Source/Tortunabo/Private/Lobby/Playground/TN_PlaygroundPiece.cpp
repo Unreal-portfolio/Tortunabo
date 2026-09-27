@@ -25,16 +25,19 @@ namespace TNPlaygroundPieceDetail
 	using FBuffers = TNPlaygroundKit::FBuffers;
 	using FHulls = TArray<TArray<FVector>>;
 
-	/** Túnel: medio ancho de dentro, grosor de las paredes, techo de colisión, bóveda (lados y clave), bocas y cima. */
-	constexpr double TunnelInnerHW = 65.0;
-	constexpr double TunnelWallT = 36.0;
-	constexpr double TunnelRoofBottom = 95.0;
-	constexpr double TunnelVaultSide = 55.0;
-	constexpr double TunnelVaultTop = 101.0;
-	constexpr double TunnelMouthSide = 80.0;
-	constexpr double TunnelMouthTop = 138.0;
-	constexpr double TunnelFunnel = 38.0;
-	constexpr double TunnelTopZ = 172.0;
+	/**
+	 * Túnel: medio ancho de dentro, grosor de las paredes, techo de colisión, bóveda (lados y clave), bocas y cima. Se
+	 * pasa de pie (la tortuga mide 140 con 34 de radio): techo a 178 y 184 de ancho.
+	 */
+	constexpr double TunnelInnerHW = 92.0;
+	constexpr double TunnelWallT = 40.0;
+	constexpr double TunnelRoofBottom = 178.0;
+	constexpr double TunnelVaultSide = 140.0;
+	constexpr double TunnelVaultTop = 190.0;
+	constexpr double TunnelMouthSide = 165.0;
+	constexpr double TunnelMouthTop = 225.0;
+	constexpr double TunnelFunnel = 45.0;
+	constexpr double TunnelTopZ = 262.0;
 	/** Barra giratoria: cubo del centro. */
 	constexpr double HubRadius = 40.0;
 	constexpr double HubTopRadius = 32.0;
@@ -531,13 +534,13 @@ namespace TNPlaygroundPieceDetail
 		{
 			const double Y = SideY * OuterHW;
 			B.AddQuad(FVector(-HalfL, Y, 0.0), FVector(HalfL, Y, 0.0), FVector(HalfL, Y, TunnelTopZ), FVector(-HalfL, Y, TunnelTopZ), FVector(0.0, SideY, 0.0), Wall);
-			for (const double BandZ : { 48.0, 112.0 })
+			for (const double BandZ : { TunnelTopZ * 0.28, TunnelTopZ * 0.65 })
 			{
 				TNPlaygroundKit::AddAxisBox(B, FVector(0.0, SideY * (OuterHW + 1.5), BandZ), FVector(HalfL + 2.0, 3.0, 5.0), Mark);
 			}
-			TNPlaygroundKit::AddStarfish(B, FVector(-HalfL * 0.45, SideY * (OuterHW + 0.5), 82.0), FVector(0.0, SideY, 0.0), FVector::UpVector, 17.0, 2.5,
+			TNPlaygroundKit::AddStarfish(B, FVector(-HalfL * 0.45, SideY * (OuterHW + 0.5), TunnelTopZ * 0.48), FVector(0.0, SideY, 0.0), FVector::UpVector, 22.0, 3.0,
 				TNPlaygroundKit::Rgb(0xFF8A70));
-			TNPlaygroundKit::AddShellFan(B, FVector(HalfL * 0.4, SideY * (OuterHW + 0.5), 70.0), FVector(0.0, SideY, 0.0), FVector::UpVector, 16.0,
+			TNPlaygroundKit::AddShellFan(B, FVector(HalfL * 0.4, SideY * (OuterHW + 0.5), TunnelTopZ * 0.41), FVector(0.0, SideY, 0.0), FVector::UpVector, 21.0,
 				TNPlaygroundKit::Rgb(0xFFE0C2, 0.2f));
 		}
 		B.AddQuad(FVector(-HalfL, -OuterHW, TunnelTopZ), FVector(HalfL, -OuterHW, TunnelTopZ), FVector(HalfL, OuterHW, TunnelTopZ), FVector(-HalfL, OuterHW, TunnelTopZ),
@@ -647,8 +650,8 @@ namespace TNPlaygroundPieceDetail
 		}
 		Hulls.Add(Roof);
 
-		OutZoneCenter = FVector(0.0, 0.0, 45.0);
-		OutZoneHalf = FVector(HalfL + 25.0, TunnelInnerHW - 8.0, 45.0);
+		OutZoneCenter = FVector(0.0, 0.0, 90.0);
+		OutZoneHalf = FVector(HalfL + 25.0, TunnelInnerHW - 8.0, 90.0);
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────

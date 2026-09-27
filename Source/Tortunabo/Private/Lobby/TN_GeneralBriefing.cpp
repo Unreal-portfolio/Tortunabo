@@ -1,16 +1,19 @@
 #include "Lobby/TN_GeneralBriefing.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
+#include "Lobby/TN_NpcAnimInstance.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Animation/AnimationAsset.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/Scene.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
@@ -37,10 +40,13 @@ namespace TNGeneralDetail
 	/** Maqueta: el lobby (±2500 cm) a escala 1:45 sobre la mesa; la salida del castillo mira al general. */
 	constexpr double ModelScale = 0.022;
 	constexpr double ModelBase = TableTop + 0.8;
-	/** Cartel clavado en el frontón de la tienda militar, sobre la entrada (el poste de delante pasa por detrás). */
+	/**
+	 * Cartel clavado en el frontón de la tienda militar, sobre la entrada (el poste de delante pasa por detrás): bajo y
+	 * estrecho para quedar entero dentro del triángulo del frontón (sin asomar por encima del tejado).
+	 */
 	constexpr double SignX = 290.0;
-	constexpr double SignZ = 330.0;
-	constexpr double SignHalfW = 130.0;
+	constexpr double SignZ = 295.0;
+	constexpr double SignHalfW = 122.0;
 	constexpr double SignHalfH = 24.0;
 
 	/** Punto del lobby (cm, x a la izquierda de la salida e y hacia la salida) sobre la maqueta, a altura Z sobre su base. */
@@ -165,6 +171,17 @@ ATN_GeneralBriefing::ATN_GeneralBriefing()
 	Sign->SetTextRenderColor(FColor(255, 214, 90));
 	Sign->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	// Luz cálida del farol de dentro de la tienda: se ve bien al general y la mesa. Con sombras y alcance corto, la lona la
+	// tapa y no se sale por las paredes ni alumbra la muralla de detrás (solo asoma por la entrada).
+	TentLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("TentLight"));
+	TentLight->SetupAttachment(SceneRoot);
+	TentLight->SetRelativeLocation(FVector(TableX - 40.0, 0.0, 285.0));
+	TentLight->SetIntensityUnits(ELightUnits::Lumens);
+	TentLight->SetIntensity(2000.f);
+	TentLight->SetAttenuationRadius(430.f);
+	TentLight->SetLightColor(FLinearColor(1.f, 0.78f, 0.5f));
+	TentLight->SetCastShadows(true);
+
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> Idle(TEXT("/Game/Animations/Character/TortugaDemo/Anim/Old_Man_Idle.Old_Man_Idle"));
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> Salute(TEXT("/Game/Animations/Character/TortugaDemo/Anim/Salute.Salute"));
 	IdleAnim = Idle.Succeeded() ? Idle.Object : nullptr;
@@ -175,28 +192,34 @@ void ATN_GeneralBriefing::BeginPlay()
 {
 	Super::BeginPlay();
 	General->SetRelativeScale3D(FVector(GeneralScale));
-	Sign->SetText(FText::FromString(HeadquartersName.ToString().ToUpper()));
-	{
-		// El rótulo cabe siempre dentro del cartel: se encoge si el nombre es largo (con un margen a cada lado).
-		using namespace TNGeneralDetail;
-		const double MaxWidth = 2.0 * SignHalfW - 34.0;
-		const double Width = Sign->GetTextLocalSize().Y;
-		if (Width > MaxWidth)
-		{
-			Sign->SetWorldSize(static_cast<float>(Sign->WorldSize * MaxWidth / Width));
-		}
-	}
-	if (IdleAnim) { General->PlayAnimation(IdleAnim, true); }
+	FitSignText();
+	// Espera en bucle con el saludo militar fundido encima (sin cortes al empezar y acabar el gesto).
+	UTN_NpcAnimInstance::SetupOn(General, IdleAnim);
 	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
 	BuildTable();
 	HideBlockout();
+}
+
+void ATN_GeneralBriefing::FitSignText()
+{
+	using namespace TNGeneralDetail;
+	// El rótulo cabe siempre dentro del cartel (también en el editor): parte del tamaño de siempre y se encoge si el
+	// nombre es largo, con un margen a cada lado.
+	Sign->SetText(FText::FromString(HeadquartersName.ToString().ToUpper()));
+	Sign->SetWorldSize(36.f);
+	const double MaxWidth = 2.0 * SignHalfW - 34.0;
+	const double Width = Sign->GetTextLocalSize().Y;
+	if (Width > MaxWidth)
+	{
+		Sign->SetWorldSize(static_cast<float>(36.0 * MaxWidth / Width));
+	}
 }
 
 void ATN_GeneralBriefing::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 	General->SetRelativeScale3D(FVector(GeneralScale));
-	Sign->SetText(FText::FromString(HeadquartersName.ToString().ToUpper()));
+	FitSignText();
 	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
 	BuildTable();
 }
@@ -374,11 +397,11 @@ void ATN_GeneralBriefing::BuildTable()
 			// Cajas de madera al fondo.
 			B.AddBox(FVector(XB + 55.0, Side * (HalfW - 60.0), 32.0), FVector(1.0, 0.0, 0.0), FVector(34.0, 34.0, 32.0), WoodDark);
 			B.AddBox(FVector(XB + 55.0, Side * (HalfW - 60.0), 66.0), FVector(1.0, 0.0, 0.0), FVector(35.0, 35.0, 3.0), Wood);
-			// Vientos: de las esquinas del alero a estacas en el suelo.
+			// Vientos: de las esquinas del alero a estacas en el suelo (los de atrás, cortos: la tienda va pegada a la muralla).
 			for (const double X : { XB, XF })
 			{
 				const FVector Eave(X, Side * HalfW, EaveZ);
-				const FVector Stake(X + (X > 0.0 ? 60.0 : -60.0), Side * (HalfW + 130.0), 0.0);
+				const FVector Stake(X + (X > 0.0 ? 60.0 : -25.0), Side * (HalfW + 60.0), 0.0);
 				B.AddBeam(Eave, Stake + FVector(0.0, 0.0, 12.0), 1.2, Rope);
 				B.AddBox(Stake + FVector(0.0, 0.0, 8.0), FVector(1.0, 0.0, 0.0), FVector(3.0, 3.0, 9.0), WoodDark);
 			}
@@ -429,7 +452,16 @@ void ATN_GeneralBriefing::BuildTable()
 		for (const double Side : { -1.0, 1.0 })
 		{
 			B.AddBeam(FVector(XF, 0.0, RidgeZ), FVector(XF + 150.0, Side * 190.0, 12.0), 1.2, Rope);
-			B.AddBeam(FVector(XB, 0.0, RidgeZ), FVector(XB - 150.0, Side * 190.0, 12.0), 1.2, Rope);
+			B.AddBeam(FVector(XB, 0.0, RidgeZ), FVector(XB - 25.0, Side * 190.0, 12.0), 1.2, Rope);
+		}
+		// Farol colgado del caballete sobre la mesa (la luz es TentLight).
+		{
+			const FVector LampTop(TableX - 30.0, 0.0, RidgeZ - 6.0);
+			const FLinearColor Iron = Pal(0x3B3F4A);
+			B.AddBeam(LampTop, LampTop - FVector(0.0, 0.0, 92.0), 1.2, Rope);
+			TNProcMesh::TNProcAddCylinder(B, LampTop - FVector(0.0, 0.0, 100.0), LampTop - FVector(0.0, 0.0, 90.0), 13.0, 3.0, 8, Iron);
+			TNProcMesh::TNProcAddCylinder(B, LampTop - FVector(0.0, 0.0, 130.0), LampTop - FVector(0.0, 0.0, 100.0), 11.0, 11.0, 8, Pal(0xFFE27A));
+			TNProcMesh::TNProcAddCylinder(B, LampTop - FVector(0.0, 0.0, 136.0), LampTop - FVector(0.0, 0.0, 130.0), 13.0, 13.0, 8, Iron);
 		}
 	}
 
@@ -519,7 +551,7 @@ void ATN_GeneralBriefing::Tick(float DeltaSeconds)
 			TargetYaw = FMath::Clamp(FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X)), -55.f, 55.f);
 			if (Dist < 650.f && SaluteCooldown <= 0.f && SaluteAnim)
 			{
-				General->PlayAnimation(SaluteAnim, false);
+				UTN_NpcAnimInstance::PlayGestureOn(General, SaluteAnim);
 				SaluteTimeLeft = SaluteAnim->GetPlayLength();
 				SaluteCooldown = 14.f;
 			}
@@ -531,6 +563,6 @@ void ATN_GeneralBriefing::Tick(float DeltaSeconds)
 	if (SaluteTimeLeft > 0.f)
 	{
 		SaluteTimeLeft -= DeltaSeconds;
-		if (SaluteTimeLeft <= 0.f && IdleAnim) { General->PlayAnimation(IdleAnim, true); }
+		if (SaluteTimeLeft <= 0.f) { UTN_NpcAnimInstance::ReturnToIdleOn(General, IdleAnim); }
 	}
 }

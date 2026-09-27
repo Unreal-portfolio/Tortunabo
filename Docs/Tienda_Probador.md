@@ -49,10 +49,13 @@ más cercano.
 | `ATN_ChangingBooth` | `Lobby/TN_ChangingBooth` | Media botella boca abajo con la chapa de puerta; mete y saca a la tortuga. |
 | `UTN_ShopWidget`, `UTN_BoothWidget` | `UI/Shop/TN_ShopWidgets` | Pantallas de la tienda y del probador, hechas en código con el estilo del HUD. |
 
-En `LVL_Lobby` la tienda (con `StallScale` 1,5: puesto, mostrador y cartel a escala) y los cuatro probadores ya
-están colocados en el castillo (ver `Docs/Lobby_Castillo.md`). Los dos se construyen también en el editor
-(`OnConstruction`), así que se ven sin darle al Play. La distancia para interactuar se mide desde
-`GetInteractionPoint()`: delante del mostrador en la tienda y delante de la chapa en el probador.
+En `LVL_Lobby` la tienda y los cuatro probadores ya están colocados en el castillo (ver `Docs/Lobby_Castillo.md`).
+- **Tienda**: pegada a la muralla, con un mostrador de 5,2 m y a escala 1 (`StallScale`: por encima, el mostrador tapa
+  al tendero). Detrás tiene una estantería con lo que se vende (botes de pintura, caparazones, tarros de ojos y cascos)
+  y a los lados, perchero, barril, cajas, cofre y farol.
+- **Editor**: tienda y probadores se construyen también en `OnConstruction`, así que se ven sin darle al Play.
+- **Interacción**: la distancia se mide desde `GetInteractionPoint()`: delante del mostrador en la tienda y delante de
+  la chapa en el probador.
 
 ### Música
 

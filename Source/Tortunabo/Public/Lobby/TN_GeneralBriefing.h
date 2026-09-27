@@ -9,6 +9,7 @@ class UAnimationAsset;
 class UBoxComponent;
 class UCapsuleComponent;
 class UMaterialInterface;
+class UPointLightComponent;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class UTextRenderComponent;
@@ -63,6 +64,13 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "General")
 	TObjectPtr<UTextRenderComponent> Sign;
+
+	/** Pone el nombre del cuartel en el cartel y lo encoge para que quepa en el tablero. */
+	void FitSignText();
+
+	/** Luz del farol colgado dentro de la tienda militar. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "General")
+	TObjectPtr<UPointLightComponent> TentLight;
 
 	/** Lo que lleva puesto el general (filas de DT_Helmets y DT_Skins). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "General")

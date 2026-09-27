@@ -1,11 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_MatchStartTypes.h"
 #include "GameFramework/Actor.h"
 #include "TN_SandCastleLobby.generated.h"
 
 class APlayerController;
 class UBoxComponent;
+class UPointLightComponent;
 class UProceduralMeshComponent;
 class UStaticMeshComponent;
 class UTextRenderComponent;
@@ -17,14 +19,18 @@ class UTextRenderComponent;
  *
  * Plano (cm, centro del círculo en el origen del actor; +Y es la puerta, las 12 del reloj; las 3 quedan a -X):
  * - Muralla redonda de radio interior Radius con almenas, marcas de cubo y conchas, y torres de cubo de alturas
- *   distintas repartidas sin simetría. La puerta grande (las 12) está entre dos torres altas unidas por un arco con el
- *   cartel del juego; se abre cuando alguien se acerca y durante la cuenta atrás.
- * - Muro interior recto de las 3:40 a las 8:20, algo por debajo del centro (CutY). Separa la plaza del lobby (arriba)
- *   del patio de pruebas (abajo). En su centro, la torre del homenaje (las 6) con un paso por dentro, una escalera de
- *   caracol por fuera y un balcón con almenas que mira a la plaza.
+ *   distintas repartidas sin simetría.
+ * - Puerta doble (las 12): dos puertas con una sala en medio que sale hacia fuera de la muralla (TNCastleKit::Gatehouse,
+ *   la misma estructura con la que se sale en el mapa procedural). La puerta 1 se abre cuando alguien se acerca y se
+ *   cierra cuando todos están dentro; la 2 sigue cerrada. Estar en la sala cuenta como listo, igual que un huevo.
+ * - Muro interior recto de las 3:40 a las 8:20, algo por debajo del centro (CutY), con adarve por arriba. Separa la
+ *   plaza del lobby (arriba) del patio de pruebas (abajo). En su centro, la torre del homenaje (las 6) con un paso por
+ *   dentro, una escalera de caracol por fuera y un balcón con almenas que mira a la plaza; del rellano de la escalera
+ *   baja otra al adarve de la izquierda, que acaba en un tobogán a la plaza. El de la derecha (se llega botando en las
+ *   medusas) tiene un mirador y un tobogán al patio de pruebas.
  * - Plaza: pila de cuatro huevos en un montículo de dos alturas (EggsCenter); meterse en uno marca al jugador como
- *   listo (ATN_HQGameMode::SetPlayerReadyState) y con todos dentro empieza la cuenta atrás.
- * - Los puestos (tienda de las 10 a las 11, cuartel de la 1 a las 2, probadores de las 2 a las 3:30 y medusas de las
+ *   listo (ATN_HQGameMode::SetPlayerReadyState) y con todos listos empieza la cuenta atrás.
+ * - Los puestos (tienda de las 10 a las 11, cuartel de la 12 a la 1, probadores de las 2 a las 3:30 y medusas de las
  *   8:20 a las 10) y las piezas del patio de pruebas son actores propios colocados en el nivel; LayoutSpot() da sus
  *   sitios.
  *
@@ -65,47 +71,76 @@ public:
 	/** Sitios de salida de los jugadores en la plaza (locales), entre la puerta y la pila de huevos, mirando a la pila. */
 	static void GetSpawnSpots(TArray<FTransform>& OutLocalSpots);
 
+	/**
+	 * Servidor: cómo empezará la partida según dónde están los que se han puesto listos (más en la sala de la puerta
+	 * doble o más en los huevos; empate, la puerta).
+	 */
+	ETNMatchStartStyle GetStartStyle() const { return StartStyle; }
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Castle")
 	TObjectPtr<USceneComponent> CastleRoot;
 
-	/** Suelo, murallas, torres, torre del homenaje, escalera, balcón y montículo de los huevos (con colisión). */
+	/** Suelo, murallas, torres, puerta doble, torre del homenaje, escaleras, toboganes y montículo (con colisión). */
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> CastleMesh;
 
-	/** Adornos sin colisión: conchas, estrellas, banderas, bases de los huevos, el mar y la playa de fuera. */
+	/** Adornos sin colisión: conchas, estrellas, banderas, antorchas, bases de los huevos, el mar y la playa de fuera. */
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> DecorMesh;
 
-	/** Barreras invisibles (borde de fuera de la muralla y del balcón): nadie se cae fuera del castillo. */
+	/** Barreras invisibles (murallas, balcón, adarves y sala de la puerta doble): nadie se cae fuera del castillo. */
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> BarrierMesh;
 
-	/** Hojas de la puerta grande (bisagra en el origen de cada una). */
+	/** Hojas de la puerta 1 de la puerta doble (bisagra en el origen de cada una). */
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UStaticMeshComponent> GateLeafLeft;
 
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UStaticMeshComponent> GateLeafRight;
 
-	/** Bloqueo de la puerta grande (solo cerrada). */
+	/** Hojas de la puerta 2 (siempre cerrada en el lobby). */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UStaticMeshComponent> Gate2LeafLeft;
+
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UStaticMeshComponent> Gate2LeafRight;
+
+	/** Bloqueo de la puerta 1 (solo cerrada). */
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UBoxComponent> GateBlock;
+
+	/** Bloqueo de la puerta 2. */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UBoxComponent> Gate2Block;
 
 	/** Tapas de los huevos. */
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TArray<TObjectPtr<UStaticMeshComponent>> EggLids;
 
-	/** Rótulo del cartel de madera sobre el arco de la puerta. */
+	/** Rótulo del cartel de madera sobre la puerta 1, por la cara de la plaza. */
 	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UTextRenderComponent> GateSignText;
+
+	/** Rótulo del cartel de la puerta 2, por fuera (el mismo nombre). */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UTextRenderComponent> Gate2SignText;
+
+	/** Luz de las antorchas de la sala de la puerta doble. */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UPointLightComponent> RoomLight;
+
+	/** Luz del paso por dentro de la torre del homenaje. */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UPointLightComponent> TunnelLight;
 
 	/** Nombre del cartel de la puerta. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Castle")
 	FText GateName = NSLOCTEXT("Tortunabo", "CastleGateName", "TORTUNAVY");
 
 private:
-	/** Puerta grande abierta (servidor: alguien cerca o cuenta atrás). */
+	/** Puerta 1 abierta (servidor: alguien se acerca por la plaza o quiere salir de la sala). */
 	UPROPERTY(Replicated)
 	bool bGateOpen = false;
 
@@ -121,7 +156,7 @@ private:
 	/** Esconde las piezas de la maqueta que el castillo sustituye y apaga la zona de listos vieja (cada máquina). */
 	void HideMaquette();
 
-	/** Servidor: quién está en qué huevo (listos) y si la puerta grande tiene que abrirse. */
+	/** Servidor: quién está en qué huevo o en la sala (listos), cómo se empezará y si la puerta 1 tiene que abrirse. */
 	void ServerUpdate(float DeltaSeconds);
 
 	float GateOpenness = 0.f;
@@ -131,6 +166,7 @@ private:
 	float GateHoldTimer = 0.f;
 	bool bGateBlocking = true;
 	bool bBuilt = false;
+	ETNMatchStartStyle StartStyle = ETNMatchStartStyle::Gate;
 
 	/** Servidor: el último estado de listo enviado por jugador. */
 	TMap<TWeakObjectPtr<APlayerController>, bool> ReadySent;

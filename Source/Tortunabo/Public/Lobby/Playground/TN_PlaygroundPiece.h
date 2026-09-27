@@ -50,10 +50,10 @@ enum class ETNPlaygroundTint : uint8
  *   con SlideBoost); detrás, plataforma de arena de 90 de fondo y, con bSlideSteps, escalera hacia -X.
  * - Plataforma de galleta: galleta de chocolate con pepitas de CookieRadius sobre una columna de galletas rellenas; la cara
  *   de arriba a PlatformHeight. Centrada.
- * - Túnel de castillo: muro de arena a lo largo de X, de TunnelLength de largo, 202 de ancho y 172 de alto, con almenas.
- *   Por dentro, 130 de ancho y techo de colisión a 95 (una tortuga de pie, de 140, no cabe; en panzazo, de ~80, sí), con
- *   bocas en embudo (el techo sube a 138 en la fachada). Dentro, las tortugas mantienen TunnelAssistSpeed a lo largo del
- *   túnel (no se paran a medio panzazo). Centrado.
+ * - Túnel de castillo: muro de arena a lo largo de X, de TunnelLength de largo, 264 de ancho y 262 de alto, con almenas.
+ *   Por dentro, 184 de ancho y techo de colisión a 178 (se pasa de pie: la tortuga mide 140), con bocas en embudo (el
+ *   techo sube a 225 en la fachada). Dentro, las tortugas mantienen TunnelAssistSpeed a lo largo del túnel (salen
+ *   disparadas, andando o en panzazo). Centrado.
  * - Barra giratoria de pala: cubo en el centro (radio 40, 50 de alto) y NumArms palas de ArmLength a ras del suelo (la hoja
  *   llega a ArmHeight + 12) que giran a SpinSpeed grados por segundo con el reloj del servidor. Hay que saltarlas: quien
  *   no, sale despedido (KnockSpeed de lado y KnockUp hacia arriba). Centrada.
