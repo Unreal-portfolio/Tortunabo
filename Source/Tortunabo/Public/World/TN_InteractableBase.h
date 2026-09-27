@@ -43,6 +43,29 @@ public:
 	 */
 	virtual FVector GetInteractionPoint() const { return GetActorLocation(); }
 
+	/**
+	 * Punto de interacción visto desde Interactor (el escaneo del personaje y la validación del servidor usan este).
+	 * Por defecto, GetInteractionPoint(); los decorados grandes que se rebuscan (ATN_ProcSearchSpot) dan el punto de
+	 * su borde más cercano a Interactor, para que se pueda rebuscar desde cualquier lado.
+	 */
+	virtual FVector GetInteractionPointFor(const APawn* Interactor) const { return GetInteractionPoint(); }
+
+	// ── Interacción de mantener la tecla (p. ej. rebuscar un decorado) ──────
+	// El cliente avisa al empezar y al soltar (ATortugaCharacter::ServerBeginHoldInteract / ServerEndHoldInteract);
+	// el tiempo lo cuenta el servidor, que es quien decide cuándo se completa.
+
+	/** Segundos que hay que mantener la tecla; 0 = interacción de pulsar (Interact). */
+	virtual float GetHoldDuration() const { return 0.f; }
+
+	/** Servidor: Interactor empieza a mantener la tecla (ya está validado que está cerca y que puede). */
+	virtual void BeginHoldInteract(APawn* Interactor) {}
+
+	/** Servidor: Interactor suelta la tecla antes de acabar (cancela lo que llevara). */
+	virtual void EndHoldInteract(APawn* Interactor) {}
+
+	/** Progreso [0..1] de lo que mantiene Interactor según el estado replicado; negativo si no mantiene nada aquí. */
+	virtual float GetHoldProgress(const APawn* Interactor) const { return -1.f; }
+
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	FText GetPromptText() const { return PromptText; }
 

@@ -27,6 +27,7 @@
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
+#include "UI/HUD/TN_HoldRingWidget.h"
 #include "World/TN_InteractableBase.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
@@ -475,7 +476,15 @@ void UTN_RunHUDWidget::BuildTree()
 		KeyCap->SetHorizontalAlignment(HAlign_Center);
 		KeyCap->SetVerticalAlignment(VAlign_Center);
 		KeyCap->SetContent(PromptKeyText);
-		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(MakeSize(Tree, KeyCap, 0.f, 42.f)))
+		// La tecla, con el aro de mantener alrededor: solo se ve en las interacciones de mantener (rebuscar un
+		// decorado) y se llena en dorado mientras la tecla siga pulsada. Plegado no cuenta en el tamaño del aviso.
+		UOverlay* KeyStack = Make<UOverlay>(Tree);
+		AddAt(KeyStack, MakeSize(Tree, KeyCap, 0.f, 42.f), HAlign_Center, VAlign_Center);
+		HoldRing = Make<UTN_HoldRingWidget>(Tree);
+		HoldRing->SetRingSize(66.f, 6.f);
+		HoldRing->SetVisibility(ESlateVisibility::Collapsed);
+		AddAt(KeyStack, HoldRing, HAlign_Center, VAlign_Center);
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(KeyStack))
 		{
 			S->SetVerticalAlignment(VAlign_Center);
 			S->SetPadding(FMargin(0.f, 0.f, 12.f, 0.f));
@@ -515,6 +524,7 @@ void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
 	{
 		PromptCard->SetVisibility(ESlateVisibility::Collapsed);
 		PromptTarget.Reset();
+		bPromptHolding = false;
 		return;
 	}
 	if (PromptTarget.Get() != Target)
@@ -539,6 +549,19 @@ void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
 		}
 	}
 	PromptCard->SetVisibility(ESlateVisibility::HitTestInvisible);
+	// Interacciones de mantener (rebuscar): el aro se llena con el progreso que cuenta el servidor (estado replicado);
+	// recién pulsada la tecla, mientras llega su respuesta, sale vacío. Al empezar, el aviso da un saltito.
+	if (HoldRing)
+	{
+		const bool bHoldKind = Target->GetHoldDuration() > 0.f;
+		float HoldProgress = bHoldKind ? Target->GetHoldProgress(Turtle) : -1.f;
+		if (bHoldKind && HoldProgress < 0.f && Turtle->GetHoldInteractable() == Target) { HoldProgress = 0.f; }
+		HoldRing->SetVisibility(bHoldKind ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		HoldRing->SetProgress(FMath::Max(0.f, HoldProgress));
+		const bool bHolding = HoldProgress >= 0.f;
+		if (bHolding && !bPromptHolding) { PromptPop = FMath::Max(PromptPop, 0.5f); }
+		bPromptHolding = bHolding;
+	}
 	PromptPop = FMath::Max(0.f, PromptPop - DeltaTime * 4.f);
 	const float Bob = 1.f + 0.03f * FMath::Sin(Time * 4.f);
 	const float Pop = 1.f + 0.25f * PromptPop * PromptPop;

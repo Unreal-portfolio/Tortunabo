@@ -15,6 +15,7 @@ class UMaterialInstanceDynamic;
 class UOverlay;
 class UProgressBar;
 class UTextBlock;
+class UTN_HoldRingWidget;
 
 /**
  * @brief HUD de la tortuga en partida, estilo Tortunavy (boceto para el equipo de arte), hecho en código.
@@ -80,6 +81,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UBorder> PromptCard;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PromptKeyText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PromptLabel;
+	/** Aro de progreso alrededor de la tecla en las interacciones de mantener (rebuscar un decorado). */
+	UPROPERTY(Transient) TObjectPtr<UTN_HoldRingWidget> HoldRing;
 
 	TWeakObjectPtr<ATN_ProcMapGenerator> Generator;
 	TWeakObjectPtr<ATN_PathStorm> Storm;
@@ -101,6 +104,8 @@ private:
 	float PromptPop = 0.f;
 	float PromptKeyTimer = 0.f;
 	TWeakObjectPtr<AActor> PromptTarget;
+	/** Si el aviso mostraba una interacción de mantener en curso (para el rebote al empezar). */
+	bool bPromptHolding = false;
 
 	void TickPrompt(float DeltaTime);
 };

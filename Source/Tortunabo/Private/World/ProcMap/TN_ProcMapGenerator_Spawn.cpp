@@ -11,6 +11,7 @@
 #include "World/ProcMap/TN_ProcEggNest.h"
 #include "World/ProcMap/TN_ProcStartStructure.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "World/ProcMap/TN_ProcSearchSpot.h"
 #include "TN_ProcMapKeepOut.h"
 #include "Core/TN_Log.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -485,6 +486,9 @@ void ATN_ProcMapGenerator::SpawnServerActors()
 			Switch->SetTarget(*Gate, 6.f);
 		}
 	}
+
+	// Estatuas, rocas grandes, barcas, cajas... que se pueden rebuscar (al final del fichero).
+	SpawnSearchSpots();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -626,4 +630,196 @@ void ATN_ProcMapGenerator::RunBiomePCG()
 		PCGComponents.Add(PCG);
 		UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] PCG del bioma %s lanzado."), *UEnum::GetValueAsString(Asset->Biome));
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Decorados que se pueden rebuscar (ATN_ProcSearchSpot)
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNSearchSpotPlan
+{
+	/** Distancia mínima (cm) entre dos decorados buscables: uno por tramo, no una hilera. */
+	constexpr double MinSpacing = 7000.0;
+
+	/** Huella de rebusca de un decorado (cápsula en planta a lo largo de su Dir), probabilidad de serlo y preferencia. */
+	struct FSearchable
+	{
+		double Radius = 0.0;
+		double HalfLength = 0.0;
+		double Height = 0.0;
+		double Chance = 0.0;
+		/** Orden al repartir (0 primero): formaciones, objetos del camino, agujas y peñascos grandes. */
+		int32 Priority = 0;
+	};
+
+	/**
+	 * Si tiene sentido rebuscar en este decorado del camino y con qué huella (aproximada a su malla,
+	 * TN_ProcMapFormationMeshes.h y TN_ProcMapPropMeshes.h). Fuera: arcos, hitos lejanos, vegetación (troncos,
+	 * árboles, setas), la fumarola (quema), vallas y filas de conos, y los peñascos pequeños.
+	 */
+	inline bool SearchableOf(const TNProcMap::FFeature& F, FSearchable& Out)
+	{
+		using TNProcMap::EFeature;
+		using TNProcMap::EFormation;
+		using TNProcMap::EPathProp;
+		const double R = F.Radius;
+		Out = FSearchable();
+		Out.Height = F.Height;
+		Out.Radius = R;
+		switch (F.Type)
+		{
+			case EFeature::Formation:
+			{
+				const EFormation Kind = static_cast<EFormation>(F.Aux);
+				if (TNProcMap::IsArchFormation(Kind) || TNProcMap::IsLandmarkFormation(Kind) || Kind == EFormation::Fumarole)
+				{
+					return false;
+				}
+				Out.Priority = 0;
+				Out.Chance = 1.0;
+				switch (Kind)
+				{
+					case EFormation::Shipwreck:      Out.HalfLength = R * 0.7; Out.Radius = R * 0.42; break;
+					case EFormation::BalancedRock:   Out.Radius = R * 0.9; break;
+					case EFormation::Wagon:          Out.HalfLength = 130.0; Out.Radius = 115.0; break;
+					case EFormation::Cannon:         Out.HalfLength = 80.0; Out.Radius = 110.0; break;
+					case EFormation::Bunker:         Out.HalfLength = R * 0.15; Out.Radius = R * 0.85; break;
+					case EFormation::WatchTower:     Out.Radius = 150.0; break;
+					case EFormation::TankWreck:      Out.HalfLength = 110.0; Out.Radius = 195.0; break;
+					case EFormation::Anchor:         Out.Radius = R * 0.6; break;
+					// El altar bajo del centro del círculo de piedras.
+					case EFormation::StoneCircle:    Out.Radius = 200.0; Out.Height = 120.0; break;
+					case EFormation::FossilSkull:    Out.HalfLength = R * 0.45; Out.Radius = R * 0.6; break;
+					case EFormation::ObsidianSpires: Out.Radius = R * 0.8; Out.Chance = 0.7; break;
+					case EFormation::ColossalTurtle: Out.HalfLength = R * 0.2; Out.Radius = R * 0.95; break;
+					case EFormation::WaterTower:     Out.Radius = R * 0.85; break;
+					// Cabeza de piedra, basalto, chimenea de hadas, sacos terreros, caracola y obelisco: redondos.
+					default: break;
+				}
+				return true;
+			}
+			case EFeature::PathProp:
+			{
+				Out.Priority = 1;
+				switch (static_cast<EPathProp>(F.Aux))
+				{
+					case EPathProp::CrateStack:    Out.Chance = 0.65; break;
+					case EPathProp::BarrelGroup:   Out.Chance = 0.65; break;
+					case EPathProp::HayBales:      Out.Chance = 0.6; break;
+					case EPathProp::Sandcastle:    Out.Chance = 0.7; break;
+					case EPathProp::Rowboat:       Out.Radius = 90.0; Out.HalfLength = FMath::Max(0.0, F.Length * 0.5 - 85.0); Out.Chance = 0.7; break;
+					case EPathProp::BeachSet:      Out.Radius = R * 0.75; Out.Chance = 0.6; break;
+					case EPathProp::Totem:         Out.Chance = 0.6; break;
+					case EPathProp::RuinColumn:    Out.Radius = R * 0.85; Out.Chance = 0.6; break;
+					case EPathProp::SkullRock:     Out.Chance = 0.65; break;
+					case EPathProp::PotteryJars:   Out.Chance = 0.8; break;
+					case EPathProp::CrystalSpikes: Out.Radius = R * 0.8; Out.Chance = 0.45; break;
+					case EPathProp::Cairn:         Out.Chance = 0.6; break;
+					case EPathProp::MineCart:      Out.Radius = 95.0; Out.HalfLength = FMath::Max(0.0, F.Length * 0.5 - 90.0); Out.Chance = 0.75; break;
+					case EPathProp::CrabTraps:     Out.Chance = 0.7; break;
+					case EPathProp::MarketStall:   Out.Radius = R * 0.8; Out.Chance = 0.7; break;
+					// Vallas, filas de conos y setas gigantes.
+					default: return false;
+				}
+				return true;
+			}
+			case EFeature::RockSpire:
+				Out.Priority = 2;
+				Out.Radius = R * 0.9;
+				Out.Chance = 0.45;
+				return true;
+			case EFeature::Boulder:
+				// Solo las piedras grandes.
+				if (R < 140.0)
+				{
+					return false;
+				}
+				Out.Priority = 3;
+				Out.Radius = R * 0.95;
+				Out.Chance = 0.3;
+				return true;
+			default:
+				return false;
+		}
+	}
+}
+
+void ATN_ProcMapGenerator::SpawnSearchSpots()
+{
+	UWorld* SpotWorld = GetWorld();
+	if (bTerrainOnly || !SpotWorld || SpotWorld->GetNetMode() == NM_Client)
+	{
+		return;
+	}
+	const double Yaw0 = GetActorRotation().Yaw;
+
+	// Candidatos por orden de preferencia: las formaciones (grandes y raras) se quedan su sitio antes que los objetos
+	// del camino, las agujas y los peñascos.
+	struct FSpotCandidate
+	{
+		int32 Feature = INDEX_NONE;
+		TNSearchSpotPlan::FSearchable Spec;
+	};
+	TArray<FSpotCandidate> Candidates;
+	for (int32 f = 0; f < Layout.Features.Num(); ++f)
+	{
+		FSpotCandidate Candidate;
+		if (TNSearchSpotPlan::SearchableOf(Layout.Features[f], Candidate.Spec))
+		{
+			Candidate.Feature = f;
+			Candidates.Add(Candidate);
+		}
+	}
+	Candidates.StableSort([](const FSpotCandidate& A, const FSpotCandidate& B) { return A.Spec.Priority < B.Spec.Priority; });
+
+	TNProcMap::FRng SpotRng(static_cast<uint64>(Layout.Params.Seed) * 2654435761ull + 0x5EA7C4ull);
+	TArray<FVector2D> Taken;
+	int32 NumSpots = 0;
+	for (const FSpotCandidate& Candidate : Candidates)
+	{
+		const TNProcMap::FFeature& F = Layout.Features[Candidate.Feature];
+		if (!SpotRng.Chance(Candidate.Spec.Chance))
+		{
+			continue;
+		}
+		const FVector2D C(F.Location.X, F.Location.Y);
+		bool bCrowded = false;
+		for (const FVector2D& Other : Taken)
+		{
+			if (FVector2D::DistSquared(C, Other) < FMath::Square(TNSearchSpotPlan::MinSpacing))
+			{
+				bCrowded = true;
+				break;
+			}
+		}
+		if (bCrowded)
+		{
+			continue;
+		}
+
+		// En el suelo del centro del decorado (las formaciones de explanada, a la cota del camino, como su malla), con
+		// su +X a lo largo de su Dir (el eje de la huella).
+		const double BaseZ = F.Type == TNProcMap::EFeature::Formation ? F.Location.Z : TerrainHeightMap(C);
+		const FVector2D Axis = F.Dir.GetSafeNormal().IsNearlyZero() ? FVector2D(1.0, 0.0) : F.Dir.GetSafeNormal();
+		const double Yaw = FMath::RadiansToDegrees(TNProcMap::AngleOf(Axis)) + Yaw0;
+		ATN_ProcSearchSpot* Spot = Cast<ATN_ProcSearchSpot>(SpawnMapActor(ATN_ProcSearchSpot::StaticClass(),
+			FTransform(FRotator(0.0, Yaw, 0.0), MapToWorld(FVector(C, BaseZ))), true));
+		if (!Spot)
+		{
+			continue;
+		}
+
+		// Polvo del color del camino del bioma, algo más claro (arena, tierra, polvo de roca); en el volcán, ceniza.
+		FLinearColor GroundC, PathC, RockC, BedC;
+		ResolveBiomeColors(F.Biome, GroundC, PathC, RockC, BedC);
+		const FLinearColor DustC = F.Biome == ETNProcBiome::Volcanic
+			? FMath::Lerp(PathC, FLinearColor(0.42f, 0.4f, 0.39f), 0.65f)
+			: FMath::Lerp(PathC, FLinearColor(0.9f, 0.86f, 0.78f), 0.35f);
+		Spot->SetupSpot(static_cast<float>(Candidate.Spec.Radius), static_cast<float>(Candidate.Spec.HalfLength),
+			static_cast<float>(Candidate.Spec.Height), DustC);
+		Taken.Add(C);
+		++NumSpots;
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Decorados para rebuscar: %d de %d candidatos (a %.0f m como mínimo entre sí)."),
+		NumSpots, Candidates.Num(), TNSearchSpotPlan::MinSpacing / 100.0);
 }

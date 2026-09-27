@@ -221,6 +221,8 @@ private:
 	void SpawnServerActors();
 	/** Servidor: la estructura de salida al fondo del claro (antes que los PlayerStart, que van dentro de ella). */
 	void SpawnStartStructure();
+	/** Servidor: decorados del camino que se pueden rebuscar (ATN_ProcSearchSpot); no en el modo de solo terreno. */
+	void SpawnSearchSpots();
 	void SpawnHazards();
 	void RunBiomePCG();
 	void BuildProgressIndex();

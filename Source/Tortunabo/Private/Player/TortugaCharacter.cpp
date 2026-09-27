@@ -133,9 +133,9 @@ ATortugaCharacter::ATortugaCharacter()
 	CarryComponent = CreateDefaultSubobject<UTN_CarryComponent>(TEXT("CarryComponent"));
 	DizzyBirds = CreateDefaultSubobject<UTN_DizzyBirdsComponent>(TEXT("DizzyBirds"));
 	DizzyBirds->SetupAttachment(RootComponent);
-
 	// Lengua, caras de cansancio, sudor y boca (se engancha sola a la cabeza de la malla en su primer fotograma).
 	TurtleFace = CreateDefaultSubobject<UTN_TurtleFaceComponent>(TEXT("TurtleFace"));
+
 	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).
 	// Al estar en el árbol del mesh, recibe el network smoothing del CMC → sin lag.
 	// Sin mesh asignado → invisible hasta que se equipe un casco real.
@@ -1023,6 +1023,10 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		if (LoadedInteractAction)
 		{
 			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Started, this, &ATortugaCharacter::TryInteract);
+			// Soltar la tecla corta las interacciones de mantener (rebuscar). IA_Interact usa el disparador implícito
+			// (pulsada mientras se mantiene): con uno de tipo Pressed, Completed llegaría al instante y no se podría mantener.
+			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Completed, this, &ATortugaCharacter::ReleaseInteract);
+			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Canceled, this, &ATortugaCharacter::ReleaseInteract);
 			UE_LOG(LogTortunabo, Log, TEXT("[Input] ✓ IA_Interact bound to TryInteract"));
 		}
 		else
@@ -1283,6 +1287,15 @@ void ATortugaCharacter::TryInteract()
 		UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] Sending ServerTryInteract → %s (CanInteract client-side: %s)"),
 			*FocusedInteractable->GetName(),
 			FocusedInteractable->CanInteract(this) ? TEXT("YES") : TEXT("NO"));
+	}
+
+	// Interacción de mantener (rebuscar un decorado): el servidor cuenta el tiempo mientras siga pulsada la tecla;
+	// ReleaseInteract avisa al soltarla.
+	if (FocusedInteractable->GetHoldDuration() > 0.f)
+	{
+		HoldInteractable = FocusedInteractable;
+		ServerBeginHoldInteract(FocusedInteractable.Get());
+		return;
 	}
 
 	ServerTryInteract(FocusedInteractable.Get());

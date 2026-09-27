@@ -43,6 +43,9 @@ juego (Coop, Carrera y 2vs2). **Convive** con el sistema de chunks
    sin HUD; `TNRegen [semilla]` vuelve a generar. El nivel es una copia de `LVL_ProcMap` con ese GameMode
    en World Settings y `bTerrainOnly` marcado en el generador (también para *Generate In Editor*). Como
    `LVL_ProcMap` y `Content/ProcMap/`, no está en el repositorio.
+8. **Rebuscar en los decorados** (mantener E junto a estatuas, rocas grandes, barcas, cajas...: a veces sale un
+   objeto): `tn.Search.Show 1` marca los buscables y `tn.Search.Luck 1` fuerza la suerte. Todo en
+   [Botin_Decorados.md](Botin_Decorados.md).
 
 Cada generación deja en el Output Log una línea `[ProcMap] Mapa listo · semilla …`
 con módulos en ruta, cruces, ramas, **longitud del camino y minutos estimados**

@@ -64,7 +64,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		// Misma medida que la validación del servidor (ServerTryInteract): el aviso solo sale cuando pulsar funciona.
 		// El solapamiento encuentra cualquier colisión del actor (paredes del probador, mostrador), que puede estar
 		// mucho más cerca que su punto de interacción.
-		const float DistSq = FVector::DistSquared(GetActorLocation(), Interactable->GetInteractionPoint());
+		const float DistSq = FVector::DistSquared(GetActorLocation(), Interactable->GetInteractionPointFor(this));
 		if (DistSq > FMath::Square(MaxInteractionDistance)) { continue; }
 		if (DistSq < BestDistSq)
 		{
@@ -80,7 +80,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		{
 			UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] Focus → %s  (dist=%.0f)"),
 				BestCandidate ? *BestCandidate->GetName() : TEXT("(none)"),
-				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetInteractionPoint()) : 0.f);
+				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetInteractionPointFor(this)) : 0.f);
 		}
 	}
 
@@ -93,7 +93,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 
 		if (BestCandidate)
 		{
-			DrawDebugLine(GetWorld(), GetActorLocation(), BestCandidate->GetInteractionPoint(),
+			DrawDebugLine(GetWorld(), GetActorLocation(), BestCandidate->GetInteractionPointFor(this),
 				FColor::Cyan, false, InteractionScanInterval * 1.5f, 0, 2.f);
 		}
 	}
@@ -162,7 +162,7 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 	}
 
 	const float TotalAllowed = MaxDistance + 100.f + PingDistanceAllowance;
-	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetInteractionPoint());
+	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetInteractionPointFor(this));
 
 	if (ActualDist > TotalAllowed)
 	{
@@ -173,6 +173,55 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 	if (bDebug) { UE_LOG(LogTortunabo, Log, TEXT("[Interact:SERVER] ✓ Calling Interact on '%s' — dist=%.1f"), *Interactable->GetName(), ActualDist); }
 
 	Interactable->Interact(this);
+}
+
+// ── Interacción de mantener la tecla (rebuscar un decorado, ATN_ProcSearchSpot) ──────────────────────────────────
+// El cliente solo avisa de que empieza y de que suelta; el tiempo lo cuenta el interactuable en el servidor, que
+// también vigila que la tortuga siga cerca y en condiciones mientras dura.
+
+void ATortugaCharacter::ReleaseInteract()
+{
+	if (ATN_InteractableBase* Held = HoldInteractable.Get())
+	{
+		ServerEndHoldInteract(Held);
+	}
+	HoldInteractable.Reset();
+}
+
+void ATortugaCharacter::ServerBeginHoldInteract_Implementation(ATN_InteractableBase* Interactable)
+{
+	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
+	if (!Interactable || bIsKnockedDown || bIsDead || IsInShell() || Interactable->GetHoldDuration() <= 0.f)
+	{
+		return;
+	}
+	if (!Interactable->CanInteract(this))
+	{
+		if (bDebug) { UE_LOG(LogTortunabo, Warning, TEXT("[Interact:SERVER] Mantener: CanInteract=FALSE para '%s' (ya buscado u ocupado)."), *Interactable->GetName()); }
+		return;
+	}
+
+	// Misma medida y holgura que ServerTryInteract.
+	const float MaxDistance = FMath::Max(MaxInteractionDistance, Interactable->GetInteractionDistance());
+	const APlayerState* HoldPS = GetPlayerState();
+	const float PingDistanceAllowance = HoldPS ? FMath::Clamp(HoldPS->ExactPing * 0.25f, 0.f, MaxLagCompensationDistance) : 0.f;
+	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetInteractionPointFor(this));
+	if (ActualDist > MaxDistance + 100.f + PingDistanceAllowance)
+	{
+		if (bDebug) { UE_LOG(LogTortunabo, Warning, TEXT("[Interact:SERVER] Mantener: demasiado lejos de '%s' (%.0f cm)."), *Interactable->GetName(), ActualDist); }
+		return;
+	}
+
+	if (bDebug) { UE_LOG(LogTortunabo, Log, TEXT("[Interact:SERVER] ✓ Empieza a mantener '%s' — dist=%.1f"), *Interactable->GetName(), ActualDist); }
+	Interactable->BeginHoldInteract(this);
+}
+
+void ATortugaCharacter::ServerEndHoldInteract_Implementation(ATN_InteractableBase* Interactable)
+{
+	if (Interactable)
+	{
+		Interactable->EndHoldInteract(this);
+	}
 }
 
 void ATortugaCharacter::ServerUseEquippedItem_Implementation()

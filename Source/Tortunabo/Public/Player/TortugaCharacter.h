@@ -571,6 +571,8 @@ private:
 	TObjectPtr<UInputAction> LoadedShellAction;
 
 	TWeakObjectPtr<ATN_InteractableBase> FocusedInteractable;
+	/** Interactuable de mantener (rebuscar) cuya tecla sigue pulsada en esta máquina; solo el jugador local. */
+	TWeakObjectPtr<ATN_InteractableBase> HoldInteractable;
 	FTimerHandle InteractionScanTimerHandle;
 	bool bInputAssetsLoaded = false;
 	FVector2D LastMovementInput = FVector2D::ZeroVector;
@@ -719,6 +721,8 @@ private:
 	void OnMoveReleased();
 	void Look(const FInputActionValue& Value);
 	void TryInteract();
+	/** Al soltar la tecla de interactuar: corta la interacción de mantener (rebuscar) si había una. */
+	void ReleaseInteract();
 	void RotateInventory();
 	void StartSprint();
 	void StopSprint();
@@ -804,6 +808,14 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerTryInteract(ATN_InteractableBase* Interactable);
+
+	/** Interacción de mantener (rebuscar un decorado): empieza. El servidor valida la distancia y cuenta el tiempo. */
+	UFUNCTION(Server, Reliable)
+	void ServerBeginHoldInteract(ATN_InteractableBase* Interactable);
+
+	/** Interacción de mantener: la tecla se ha soltado (si no se había completado, se cancela). */
+	UFUNCTION(Server, Reliable)
+	void ServerEndHoldInteract(ATN_InteractableBase* Interactable);
 
 	UFUNCTION(Server, Reliable)
 	void ServerUseEquippedItem();
@@ -1279,6 +1291,9 @@ public:
 
 	/** Interactuable al alcance que se usaría ahora (solo en el jugador local; lo enseña el aviso del HUD). */
 	ATN_InteractableBase* GetFocusedInteractable() const { return FocusedInteractable.Get(); }
+
+	/** Interactuable de mantener cuya tecla sigue pulsada aquí (solo el jugador local; el aro del HUD); o nullptr. */
+	ATN_InteractableBase* GetHoldInteractable() const { return HoldInteractable.Get(); }
 
 	/** Acción de interactuar (Enhanced Input), para mostrar su tecla. */
 	UInputAction* GetInteractAction() const { return LoadedInteractAction; }
