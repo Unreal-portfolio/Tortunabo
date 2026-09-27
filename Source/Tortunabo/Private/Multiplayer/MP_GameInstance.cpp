@@ -154,13 +154,18 @@ void UMP_GameInstance::Shutdown()
 
 void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 {
-	// Con el huevo a la vista (UTN_LoadingScreenSubsystem), el mensaje va debajo del huevo y no se apila otra pantalla.
+	// El huevo de la pantalla de carga (UTN_LoadingScreenSubsystem) se cierra en el acto con este mensaje y se queda
+	// cerrado hasta que el viaje acabe; la pantalla de texto solo sale si no hay huevo que enseñar.
 	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
 	{
-		if (EggLoading->IsShowing())
+		if (EggLoading->CloseForTravel(Reason))
 		{
-			EggLoading->SetStatus(Reason);
-			HideLoadingScreen();
+			if (LoadingScreenWidget)
+			{
+				LoadingScreenWidget->RemoveFromParent();
+				LoadingScreenWidget = nullptr;
+			}
+			bIsLoadingScreenVisible = false;
 			return;
 		}
 	}
@@ -202,6 +207,12 @@ void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 
 void UMP_GameInstance::HideLoadingScreen()
 {
+	// Si el huevo se cerró para un viaje que no ha llegado a empezar (sesión fallida, sin partidas...), se abre otra vez.
+	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
+	{
+		EggLoading->CancelPendingClose();
+	}
+
 	if (LoadingScreenWidget)
 	{
 		LoadingScreenWidget->RemoveFromParent();
@@ -515,10 +526,24 @@ void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucce
 
 	UpdateStatus(FString::Printf(TEXT("Lobby '%s' created! Travelling to game map..."), *SessionName.ToString()));
 
-	UWorld* World = GetWorld();
-	if (World)
+	// El viaje sale cuando el huevo de la pantalla de carga ha terminado de cerrarse (con el subsistema NULL la sesión se
+	// crea en el acto y el LoadMap congelaría el cierre a medias).
+	const FString TravelURL = GameMapPath + TEXT("?listen");
+	TWeakObjectPtr<UMP_GameInstance> WeakThis(this);
+	TFunction<void()> Travel = [WeakThis, TravelURL]()
 	{
-		World->ServerTravel(GameMapPath + TEXT("?listen"));
+		if (UWorld* TravelWorld = WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr)
+		{
+			TravelWorld->ServerTravel(TravelURL);
+		}
+	};
+	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
+	{
+		EggLoading->RunWhenClosed(MoveTemp(Travel));
+	}
+	else
+	{
+		Travel();
 	}
 }
 
@@ -610,10 +635,22 @@ void UMP_GameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCo
 	if (Sessions.IsValid() && Sessions->GetResolvedConnectString(SessionName, ConnectInfo) && !ConnectInfo.IsEmpty())
 	{
 		ShowLoadingScreen(TEXT("Conectando a la partida..."));
-		APlayerController* PC = GetFirstLocalPlayerController();
-		if (PC)
+		// Igual que al crear la sesión: se conecta cuando el huevo ya está cerrado del todo.
+		TWeakObjectPtr<UMP_GameInstance> WeakThis(this);
+		TFunction<void()> Travel = [WeakThis, ConnectInfo]()
 		{
-			PC->ClientTravel(ConnectInfo, TRAVEL_Absolute);
+			if (APlayerController* PC = WeakThis.IsValid() ? WeakThis->GetFirstLocalPlayerController() : nullptr)
+			{
+				PC->ClientTravel(ConnectInfo, TRAVEL_Absolute);
+			}
+		};
+		if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
+		{
+			EggLoading->RunWhenClosed(MoveTemp(Travel));
+		}
+		else
+		{
+			Travel();
 		}
 	}
 	else
@@ -743,7 +780,7 @@ void UMP_GameInstance::OnDestroySessionComplete(FName SessionName, bool bWasSucc
 
 void UMP_GameInstance::HandleReturnToMenu()
 {
-	ShowLoadingScreen(TEXT("Volviendo al menu..."));
+	ShowLoadingScreen(TEXT("Volviendo al menú..."));
 
 	// Stop all audio capture before travel to prevent WASAPI crash.
 	UProximityVoiceComponent::ShutdownAllCapture(GetWorld());
