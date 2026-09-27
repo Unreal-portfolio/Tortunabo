@@ -1,0 +1,156 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Consola de pruebas de los enemigos y la tormenta de la playa. Desde la ventana de un cliente del PIE van al mundo del
+// servidor del mismo proceso; en un cliente remoto de verdad no hacen nada (hay que escribirlos en el anfitrión).
+//   TN.Beach.Quad.Now                    todos los pasos de quads empiezan su aviso ya.
+//   TN.Beach.Gull.Attack [1|2]           cada zona de gaviotas ataca ya a la tortuga más cercana (1 cagada, 2 picado).
+//   TN.Beach.Storm.Start [Metros] [Speed] arranca la tormenta (la crea si no hay, detrás de ti mirando hacia donde miras)
+//                                        con el frente Metros por detrás de ti (30 por defecto) a Speed cm/s (330).
+//   TN.Beach.Storm.Stop                  la para (se queda a la vista).
+//   TN.Beach.Enemy.Debug 1               (CVar) radios y estados en el servidor.
+// Para crear enemigos sueltos: TN.Beach.Spawn GiantCrab (SeaUrchin, Lizard, QuadLane, GullZone), del generador.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#include "World/Beach/TN_BeachGullZone.h"
+#include "World/Beach/TN_BeachQuadLane.h"
+#include "World/Beach/TN_BeachStorm.h"
+#include "Core/TN_Log.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
+
+namespace TNBeachEnemyConsole
+{
+	/** El mundo con autoridad del mismo proceso (el propio si no es un cliente; en el PIE, el del servidor del mismo mapa). */
+	UWorld* AuthorityWorld(UWorld* InWorld)
+	{
+		if (!InWorld)
+		{
+			return nullptr;
+		}
+		if (InWorld->GetNetMode() != NM_Client)
+		{
+			return InWorld;
+		}
+		if (GEngine)
+		{
+			const FString MapName = UWorld::RemovePIEPrefix(InWorld->GetMapName());
+			for (const FWorldContext& Context : GEngine->GetWorldContexts())
+			{
+				UWorld* Candidate = Context.World();
+				if (Candidate && Candidate != InWorld && Candidate->IsGameWorld() && Candidate->GetNetMode() != NM_Client
+					&& UWorld::RemovePIEPrefix(Candidate->GetMapName()) == MapName)
+				{
+					return Candidate;
+				}
+			}
+		}
+		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] Los comandos de los enemigos van en la ventana del anfitrión."));
+		return nullptr;
+	}
+
+	/** Tortuga del primer jugador local (de la ventana donde se escribe). */
+	APawn* LocalPawn(const UWorld* World)
+	{
+		const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		return PC ? PC->GetPawn() : nullptr;
+	}
+
+	void QuadNow(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		if (!World)
+		{
+			return;
+		}
+		int32 Count = 0;
+		for (TActorIterator<ATN_BeachQuadLane> It(World); It; ++It)
+		{
+			It->DebugPassNow();
+			++Count;
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Quad.Now: %d pasos de quads."), Count);
+	}
+
+	void GullAttack(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		if (!World)
+		{
+			return;
+		}
+		const int32 Kind = Args.Num() > 0 ? FCString::Atoi(*Args[0]) : 0;
+		int32 Count = 0;
+		for (TActorIterator<ATN_BeachGullZone> It(World); It; ++It)
+		{
+			It->DebugAttackNow(Kind);
+			++Count;
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Gull.Attack: %d zonas de gaviotas."), Count);
+	}
+
+	void StormStart(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		if (!World)
+		{
+			return;
+		}
+		const APawn* Pawn = LocalPawn(InWorld);
+		const float Behind = (Args.Num() > 0 ? FCString::Atof(*Args[0]) : 30.f) * 100.f;
+		const float Speed = Args.Num() > 1 ? FCString::Atof(*Args[1]) : 330.f;
+		ATN_BeachStorm* Storm = ATN_BeachStorm::FindStorm(World);
+		if (!Storm)
+		{
+			const FVector Here = Pawn ? Pawn->GetActorLocation() - FVector(0.0, 0.0, 90.0) : FVector::ZeroVector;
+			const FRotator Facing(0.f, Pawn ? Pawn->GetActorRotation().Yaw : 0.f, 0.f);
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			Storm = World->SpawnActor<ATN_BeachStorm>(ATN_BeachStorm::StaticClass(), Here, Facing, Params);
+			if (Storm)
+			{
+				Storm->StartStormAt(-Behind, Speed, 0.f);
+			}
+			return;
+		}
+		// Ya hay una: el frente sale Metros por detrás de la tortuga a lo largo del eje de la tormenta.
+		float Offset = -Behind;
+		if (Pawn)
+		{
+			const FVector Local = Storm->GetActorTransform().InverseTransformPositionNoScale(Pawn->GetActorLocation());
+			Offset = static_cast<float>(Local.X) - Behind;
+		}
+		Storm->StartStormAt(Offset, Speed, 0.f);
+	}
+
+	void StormStop(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		if (!World)
+		{
+			return;
+		}
+		if (ATN_BeachStorm* Storm = ATN_BeachStorm::FindStorm(World))
+		{
+			Storm->StopStorm();
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachQuadNow(TEXT("TN.Beach.Quad.Now"),
+		TEXT("Todos los pasos de quads empiezan su aviso ya (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&QuadNow), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachGullAttack(TEXT("TN.Beach.Gull.Attack"),
+		TEXT("Cada zona de gaviotas ataca ya a la tortuga más cercana: 1 cagada, 2 picado, nada = al azar (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&GullAttack), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormStart(TEXT("TN.Beach.Storm.Start"),
+		TEXT("Arranca la tormenta de bañistas: TN.Beach.Storm.Start [metros por detrás=30] [cm/s=330] (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormStart), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormStop(TEXT("TN.Beach.Storm.Stop"),
+		TEXT("Para la tormenta de bañistas (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormStop), ECVF_Cheat);
+}
