@@ -32,6 +32,8 @@ public:
 	ATN_GeneralBriefing();
 
 	virtual void BeginPlay() override;
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostRegisterAllComponents() override;
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Delante de la mesa: desde ahí se habla con el general. */

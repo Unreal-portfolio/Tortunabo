@@ -69,6 +69,8 @@ ATN_ShopKeeper::ATN_ShopKeeper()
 		Mesh->SetStaticMesh(Cylinder.Object);
 		Mesh->SetRelativeLocation(FVector(CounterX + 70.0, 0.0, 60.0));
 		Mesh->SetRelativeScale3D(FVector(2.4f, 2.4f, 1.2f));
+		// Tampoco se ve en el editor: el nivel se enseña tal cual se juega.
+		Mesh->SetVisibility(false);
 		Mesh->SetHiddenInGame(true);
 	}
 	if (PromptWidgetComponent)
@@ -126,14 +128,43 @@ ATN_ShopKeeper::ATN_ShopKeeper()
 	WaveAnim = Wave.Succeeded() ? Wave.Object : nullptr;
 }
 
+void ATN_ShopKeeper::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	BuildVisuals();
+}
+
+void ATN_ShopKeeper::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+#if WITH_EDITOR
+	// Al abrir el nivel en el editor, la malla del puesto (transitoria) llega vacía: se rehace para verlo sin jugar.
+	if (!IsTemplate() && GetWorld() && GetWorld()->WorldType == EWorldType::Editor && Stall && !Stall->GetStaticMesh()) { BuildVisuals(); }
+#endif
+}
+
+void ATN_ShopKeeper::BuildVisuals()
+{
+	using namespace TNShopKeeperDetail;
+	Keeper->SetRelativeScale3D(FVector(KeeperScale));
+	Sign->SetText(FText::FromString(ShopName.ToString().ToUpper()));
+	UTN_CosmeticLook::ApplyLook(this, Keeper, KeeperHat, KeeperLook, KeeperDefaults);
+	BuildStall();
+	// El puesto crece alrededor del tendero (que se queda detrás del mostrador): malla, choques, cartel y aviso.
+	const double S = StallScale;
+	Stall->SetRelativeScale3D(FVector(S));
+	CounterBlock->SetBoxExtent(FVector(CounterHalfDepth + 4.0, CounterHalfWidth + 6.0, CounterHeight * 0.5) * S);
+	CounterBlock->SetRelativeLocation(FVector(CounterX, 0.0, CounterHeight * 0.5) * S);
+	Sign->SetRelativeLocation(FVector(SignX + 6.5, 0.0, SignZ) * S);
+	Sign->SetWorldSize(static_cast<float>(40.0 * S));
+	if (Mesh) { Mesh->SetRelativeLocation(FVector((CounterX + 70.0) * S, 0.0, 60.0)); }
+}
+
 void ATN_ShopKeeper::BeginPlay()
 {
 	Super::BeginPlay();
-	Keeper->SetRelativeScale3D(FVector(KeeperScale));
-	Sign->SetText(FText::FromString(ShopName.ToString().ToUpper()));
+	BuildVisuals();
 	if (IdleAnim) { Keeper->PlayAnimation(IdleAnim, true); }
-	UTN_CosmeticLook::ApplyLook(this, Keeper, KeeperHat, KeeperLook, KeeperDefaults);
-	BuildStall();
 	HideBlockoutKeeper();
 	if (GetNetMode() != NM_DedicatedServer)
 	{
@@ -145,7 +176,7 @@ void ATN_ShopKeeper::BeginPlay()
 FVector ATN_ShopKeeper::GetInteractionPoint() const
 {
 	using namespace TNShopKeeperDetail;
-	return GetActorTransform().TransformPosition(FVector(CounterX + CounterHalfDepth + 60.0, 0.0, 0.0));
+	return GetActorTransform().TransformPosition(FVector((CounterX + CounterHalfDepth) * StallScale + 60.0, 0.0, 0.0));
 }
 
 void ATN_ShopKeeper::SetRadiosDucked(UWorld* World, bool bDucked)

@@ -30,6 +30,8 @@ public:
 	ATN_ShopKeeper();
 
 	virtual void BeginPlay() override;
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostRegisterAllComponents() override;
 
 	/** Delante del mostrador: desde ahí se habla con el tendero. */
 	virtual FVector GetInteractionPoint() const override;
@@ -85,6 +87,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shop")
 	float KeeperScale = 3.4f;
 
+	/** Tamaño del puesto (mostrador, toldo, cartel y guirnalda) sin agrandar al tendero. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shop", meta = (ClampMin = "0.5", ClampMax = "3.0"))
+	float StallScale = 1.5f;
+
 private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> KeeperDefaults;
@@ -101,4 +107,7 @@ private:
 
 	void BuildStall();
 	void HideBlockoutKeeper();
+
+	/** Tendero vestido, puesto y cartel a su escala: en el editor (OnConstruction) y en ejecución. */
+	void BuildVisuals();
 };

@@ -13,8 +13,13 @@ Sistema real de cosméticos de Tortunavy: la tienda de Don Tortugo (catálogo y 
    Al elegir algo, la tortuga se lo prueba encima de lo que lleva y saluda. **Comprar** desbloquea el cosmético
    (hoy todo cuesta 0 conchas) y lo guarda en el `SaveGame` local; el servidor recibe la lista de desbloqueados
    (`ServerSyncUnlockedHelmets` / `ServerSyncUnlockedSkins`).
-2. **Probador** (`ATN_ChangingBooth`): media botella de cristal de mar puesta boca abajo (el culo con su hundido hace
-   de techo) cuya puerta redonda es el tapón, una chapa de corona roja con estrella. Al entrar, el servidor mete a la
+2. **Probador** (`ATN_ChangingBooth`): botella de cristal de mar de unos 3 m, puesta boca abajo.
+   - El techo es el culo de una botella de refresco de litro y medio, con sus cinco lóbulos.
+   - Tiene una etiqueta de papel naranja y crema que la rodea, con «PROBADOR» impreso siguiendo la curva.
+   - Por dentro tiene suelo de tablas con una alfombrilla.
+   - La puerta redonda es el tapón, una chapa de corona roja con estrella.
+
+   Al entrar, el servidor mete a la
    tortuga dentro y cierra la chapa (`Occupant` replicado: todos la ven cerrarse y la botella se menea mientras se
    cambia). El cliente aleja la cámara
    a la de la botella y abre `UTN_BoothWidget`: cuatro filas (casco, caparazón, color y ojos) que se cambian con las
@@ -43,6 +48,20 @@ más cercano.
 | `ATN_ShopKeeper` | `Lobby/TN_ShopKeeper` | Tendero con su conjunto; puesto con mostrador, toldo de rayas con volante, cartel de pie y guirnalda de banderines. Se gira hacia el jugador local y le saluda. |
 | `ATN_ChangingBooth` | `Lobby/TN_ChangingBooth` | Media botella boca abajo con la chapa de puerta; mete y saca a la tortuga. |
 | `UTN_ShopWidget`, `UTN_BoothWidget` | `UI/Shop/TN_ShopWidgets` | Pantallas de la tienda y del probador, hechas en código con el estilo del HUD. |
+
+En `LVL_Lobby` la tienda (con `StallScale` 1,5: puesto, mostrador y cartel a escala) y los cuatro probadores ya
+están colocados en el castillo (ver `Docs/Lobby_Castillo.md`). Los dos se construyen también en el editor
+(`OnConstruction`), así que se ven sin darle al Play. La distancia para interactuar se mide desde
+`GetInteractionPoint()`: delante del mostrador en la tienda y delante de la chapa en el probador.
+
+### Música
+
+- **Tienda.** La radio del puesto (`Radio`, un `UTN_MusicSynthComponent`) toca la pista `Shop` en 3D desde el puesto,
+  a 1,8 m de altura (`RadioVolume` 0,8).
+- **Menús.** Al abrir la tienda o el probador, el menú toca en 2D la pista `Shop` o la `Booth`. Mientras está abierto,
+  las radios de las tiendas bajan al 15 % (`ATN_ShopKeeper::SetRadiosDucked`). Al cerrar, todo vuelve a su volumen.
+
+### Colocación automática
 
 `ATN_HQGameMode::SpawnLobbyShops` coloca la tienda y los probadores si el nivel no los trae puestos. Busca primero
 actores con la etiqueta `TN_ShopAnchor` o `TN_BoothAnchor`; si no hay, usa la maqueta de `LVL_Lobby`: el tendero es la

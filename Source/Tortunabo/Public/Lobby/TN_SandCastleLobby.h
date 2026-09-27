@@ -11,26 +11,26 @@ class UStaticMeshComponent;
 class UTextRenderComponent;
 
 /**
- * El lobby como castillo de arena (LVL_Lobby / LVL_HQ). Lo coloca ATN_HQGameMode en el origen del lobby (a ras del
- * suelo) y esconde las piezas de la maqueta que sustituye: las paredes «Extrude», las vallas y torres de la zona de
- * salida, sus puertas y los huevos del centro. Todo se construye en código en cada máquina (malla procedural con
- * colisión) y solo se replican el estado de la puerta y de los huevos.
+ * El lobby como castillo de arena redondo (LVL_Lobby). Va colocado en el nivel y se construye en el editor
+ * (OnConstruction) y en ejecución, así que se ve y se ajusta sin darle al Play. Solo se replican el estado de la puerta
+ * y de los huevos.
  *
- * Coordenadas del lobby (cm; el jugador aparece en el origen mirando a +Y; su izquierda es +X):
- * - Patio: suelo de arena y murallas con almenas (x ±2400, y de -2400 a 2150) con torres de cubo en las esquinas,
- *   marcas de cubo y conchas incrustadas. Barreras invisibles por fuera de los adarves.
- * - Puerta enorme (y = 2150, 10 m de ancho) entre el patio y la sala de espera: se abre al acercarse alguien y
- *   durante la cuenta atrás.
- * - Sala de espera (x ±1600, y de 2150 a 3150): ocho huevos. Cada jugador se mete en uno (la tapa baja y lo tapa) y
- *   queda listo (ATN_HQGameMode::SetPlayerReadyState); sustituye a la zona de listos de la maqueta, que se apaga.
- *   Al fondo, la puerta del mar, que se abre al empezar la cuenta atrás.
- * - Mini parkour: escalera de arena hasta el adarve sur, circuito de saltos y panzazo con una rampa de concha, pilares
- *   de cubo, pasarela de palos de polo y torreón hasta el adarve este.
- * La tienda (+X), el general y los probadores (-X), los selectores de modo y la salida siguen donde estaban.
+ * Plano (cm, centro del círculo en el origen del actor; +Y es la puerta, las 12 del reloj; las 3 quedan a -X):
+ * - Muralla redonda de radio interior Radius con almenas, marcas de cubo y conchas, y torres de cubo de alturas
+ *   distintas repartidas sin simetría. La puerta grande (las 12) está entre dos torres altas unidas por un arco con el
+ *   cartel del juego; se abre cuando alguien se acerca y durante la cuenta atrás.
+ * - Muro interior recto de las 3:40 a las 8:20, algo por debajo del centro (CutY). Separa la plaza del lobby (arriba)
+ *   del patio de pruebas (abajo). En su centro, la torre del homenaje (las 6) con un paso por dentro, una escalera de
+ *   caracol por fuera y un balcón con almenas que mira a la plaza.
+ * - Plaza: pila de cuatro huevos en un montículo de dos alturas (EggsCenter); meterse en uno marca al jugador como
+ *   listo (ATN_HQGameMode::SetPlayerReadyState) y con todos dentro empieza la cuenta atrás.
+ * - Los puestos (tienda de las 10 a las 11, cuartel de la 1 a las 2, probadores de las 2 a las 3:30 y medusas de las
+ *   8:20 a las 10) y las piezas del patio de pruebas son actores propios colocados en el nivel; LayoutSpot() da sus
+ *   sitios.
  *
- * Consola: TN.Lobby.Castle 0 lo desactiva (hay que volver a cargar el lobby).
+ * Consola: TN.Lobby.Castle 0 esconde el castillo en ejecución (hay que volver a cargar el lobby).
  */
-UCLASS(NotBlueprintable)
+UCLASS()
 class TORTUNABO_API ATN_SandCastleLobby : public AActor
 {
 	GENERATED_BODY()
@@ -38,6 +38,8 @@ class TORTUNABO_API ATN_SandCastleLobby : public AActor
 public:
 	ATN_SandCastleLobby();
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostRegisterAllComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -45,41 +47,62 @@ public:
 	/** false con TN.Lobby.Castle 0. */
 	static bool IsEnabled();
 
-	/** Número de huevos de la sala de espera. */
-	static constexpr int32 NumEggs = 8;
+	/** Número de huevos de la pila (uno por jugador). */
+	static constexpr int32 NumEggs = 4;
+
+	/** Radio interior de la muralla (cm). */
+	static constexpr double Radius = 2400.0;
+
+	/** Cota (Y local) del muro interior que separa la plaza del patio de pruebas. */
+	static constexpr double CutY = -800.0;
+
+	/**
+	 * Punto de la plaza a la hora ClockHour del reloj (12 = la puerta, +Y; 3 = -X) y a Dist cm del centro, en
+	 * coordenadas locales del castillo; Yaw mira al centro del círculo.
+	 */
+	static FVector LayoutSpot(double ClockHour, double Dist, float& OutYawToCenter);
+
+	/** Sitios de salida de los jugadores en la plaza (locales), entre la puerta y la pila de huevos, mirando a la pila. */
+	static void GetSpawnSpots(TArray<FTransform>& OutLocalSpots);
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Castle")
 	TObjectPtr<USceneComponent> CastleRoot;
 
-	/** Suelo, murallas, torres y parkour (con colisión). */
-	UPROPERTY(Transient)
+	/** Suelo, murallas, torres, torre del homenaje, escalera, balcón y montículo de los huevos (con colisión). */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> CastleMesh;
 
-	/** Adornos sin colisión: conchas, estrellas, banderas, nidos y bases de los huevos, el mar. */
-	UPROPERTY(Transient)
+	/** Adornos sin colisión: conchas, estrellas, banderas, bases de los huevos, el mar y la playa de fuera. */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> DecorMesh;
 
-	/** Hojas de la puerta grande y de la del mar (bisagra en el origen de cada componente). */
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UStaticMeshComponent>> GateLeaves;
+	/** Barreras invisibles (borde de fuera de la muralla y del balcón): nadie se cae fuera del castillo. */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UProceduralMeshComponent> BarrierMesh;
 
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UStaticMeshComponent>> SeaLeaves;
+	/** Hojas de la puerta grande (bisagra en el origen de cada una). */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UStaticMeshComponent> GateLeafLeft;
 
-	/** Tapas de los huevos. */
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UStaticMeshComponent>> EggLids;
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UStaticMeshComponent> GateLeafRight;
 
-	/** Bloqueo de la puerta grande (solo cerrada) y de la del mar (siempre: fuera no hay suelo). */
-	UPROPERTY(Transient)
+	/** Bloqueo de la puerta grande (solo cerrada). */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
 	TObjectPtr<UBoxComponent> GateBlock;
 
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UBoxComponent>> Barriers;
+	/** Tapas de los huevos. */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TArray<TObjectPtr<UStaticMeshComponent>> EggLids;
 
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UTextRenderComponent>> Signs;
+	/** Rótulo del cartel de madera sobre el arco de la puerta. */
+	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	TObjectPtr<UTextRenderComponent> GateSignText;
+
+	/** Nombre del cartel de la puerta. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Castle")
+	FText GateName = NSLOCTEXT("Tortunabo", "CastleGateName", "TORTUNAVY");
 
 private:
 	/** Puerta grande abierta (servidor: alguien cerca o cuenta atrás). */
@@ -90,10 +113,10 @@ private:
 	UPROPERTY(Replicated)
 	int32 EggMask = 0;
 
+	/** Construye todas las mallas (editor y ejecución); no hace nada si ya están hechas y no se fuerza. */
+	void BuildAll(bool bForce);
 	void BuildCastle();
-	void BuildGatesAndEggs();
-	void AddBarrier(const FVector& Center, const FVector& Extent, float Yaw);
-	void AddSign(const FString& Text, const FVector& Location, float Yaw, float WorldSize, const FColor& Color);
+	void BuildGateAndEggs();
 
 	/** Esconde las piezas de la maqueta que el castillo sustituye y apaga la zona de listos vieja (cada máquina). */
 	void HideMaquette();
@@ -102,12 +125,12 @@ private:
 	void ServerUpdate(float DeltaSeconds);
 
 	float GateOpenness = 0.f;
-	float SeaOpenness = 0.f;
 	float EggClose[NumEggs] = {};
 	float Clock = 0.f;
 	float ServerTimer = 0.f;
 	float GateHoldTimer = 0.f;
 	bool bGateBlocking = true;
+	bool bBuilt = false;
 
 	/** Servidor: el último estado de listo enviado por jugador. */
 	TMap<TWeakObjectPtr<APlayerController>, bool> ReadySent;

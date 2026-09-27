@@ -37,9 +37,9 @@ namespace TNGeneralDetail
 	/** Maqueta: el lobby (±2500 cm) a escala 1:45 sobre la mesa; la salida del castillo mira al general. */
 	constexpr double ModelScale = 0.022;
 	constexpr double ModelBase = TableTop + 0.8;
-	/** Cartel detrás del general. */
-	constexpr double SignX = -48.0;
-	constexpr double SignZ = 300.0;
+	/** Cartel clavado en el frontón de la tienda militar, sobre la entrada (el poste de delante pasa por detrás). */
+	constexpr double SignX = 290.0;
+	constexpr double SignZ = 330.0;
 	constexpr double SignHalfW = 130.0;
 	constexpr double SignHalfH = 24.0;
 
@@ -114,6 +114,8 @@ ATN_GeneralBriefing::ATN_GeneralBriefing()
 		Mesh->SetStaticMesh(Cylinder.Object);
 		Mesh->SetRelativeLocation(FVector(TableX + TableHalfDepth + 60.0, 0.0, 60.0));
 		Mesh->SetRelativeScale3D(FVector(2.4f, 2.4f, 1.2f));
+		// Tampoco se ve en el editor: el nivel se enseña tal cual se juega.
+		Mesh->SetVisibility(false);
 		Mesh->SetHiddenInGame(true);
 	}
 	if (PromptWidgetComponent)
@@ -174,10 +176,42 @@ void ATN_GeneralBriefing::BeginPlay()
 	Super::BeginPlay();
 	General->SetRelativeScale3D(FVector(GeneralScale));
 	Sign->SetText(FText::FromString(HeadquartersName.ToString().ToUpper()));
+	{
+		// El rótulo cabe siempre dentro del cartel: se encoge si el nombre es largo (con un margen a cada lado).
+		using namespace TNGeneralDetail;
+		const double MaxWidth = 2.0 * SignHalfW - 34.0;
+		const double Width = Sign->GetTextLocalSize().Y;
+		if (Width > MaxWidth)
+		{
+			Sign->SetWorldSize(static_cast<float>(Sign->WorldSize * MaxWidth / Width));
+		}
+	}
 	if (IdleAnim) { General->PlayAnimation(IdleAnim, true); }
 	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
 	BuildTable();
 	HideBlockout();
+}
+
+void ATN_GeneralBriefing::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	General->SetRelativeScale3D(FVector(GeneralScale));
+	Sign->SetText(FText::FromString(HeadquartersName.ToString().ToUpper()));
+	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
+	BuildTable();
+}
+
+void ATN_GeneralBriefing::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+#if WITH_EDITOR
+	// Al abrir el nivel en el editor, la tienda y la mesa (malla transitoria) llegan vacías: se rehacen.
+	if (!IsTemplate() && GetWorld() && GetWorld()->WorldType == EWorldType::Editor && Table && !Table->GetStaticMesh())
+	{
+		UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
+		BuildTable();
+	}
+#endif
 }
 
 FVector ATN_GeneralBriefing::GetInteractionPoint() const
@@ -303,16 +337,108 @@ void ATN_GeneralBriefing::BuildTable()
 		B.AddBeam(Mug + FVector(0.0, 8.4, 5.0), Mug + FVector(0.0, 5.6, 2.5), 0.9, Cream);
 	}
 
-	// Cartel detrás del general (tablero azul marino con marco dorado sobre dos postes) y mástil con bandera.
+	// ── Tienda militar de lona verde oliva: techo a dos aguas, paredes, frontón con el cartel, faldón enrollado sobre
+	// la entrada, lonas de las esquinas atadas hacia fuera, postes, vientos, sacos terreros y cajas. Abierta por delante
+	// (hacia la mesa), con el general dentro.
+	{
+		constexpr double XB = -175.0, XF = 280.0, HalfW = 320.0, EaveZ = 185.0, RidgeZ = 440.0;
+		const FLinearColor Olive = Pal(0x6E7B3C);
+		const FLinearColor OliveIn = Pal(0x55602D);
+		const FLinearColor PatchDark = Pal(0x56622E);
+		const FLinearColor PatchLight = Pal(0x8A8F4E);
+		const FLinearColor Khaki = Pal(0xC8B98A);
+		const FLinearColor Rope = Pal(0xD8C8A0);
+		auto Canvas = [&B, &Olive, &OliveIn](const FVector& P0, const FVector& P1, const FVector& P2, const FVector& P3, const FVector& Out)
+		{
+			B.AddQuad(P0, P1, P2, P3, Out, Olive);
+			B.AddQuad(P0, P1, P2, P3, -Out, OliveIn);
+		};
+		// Techo, paredes y pared de atrás (con su hastial).
+		for (const double Side : { -1.0, 1.0 })
+		{
+			const FVector RoofOut(0.0, Side * (RidgeZ - EaveZ), HalfW);
+			Canvas(FVector(XB, 0.0, RidgeZ), FVector(XF, 0.0, RidgeZ), FVector(XF, Side * HalfW, EaveZ), FVector(XB, Side * HalfW, EaveZ), RoofOut);
+			Canvas(FVector(XB, Side * HalfW, 0.0), FVector(XF, Side * HalfW, 0.0), FVector(XF, Side * HalfW, EaveZ), FVector(XB, Side * HalfW, EaveZ), FVector(0.0, Side, 0.0));
+			// Lona de la esquina de delante, recogida y atada hacia fuera.
+			B.AddTri(FVector(XF, Side * HalfW, 0.0), FVector(XF, Side * HalfW, EaveZ), FVector(XF + 55.0, Side * (HalfW + 45.0), EaveZ * 0.35), FVector(1.0, Side, 0.0), Olive);
+			B.AddTri(FVector(XF, Side * HalfW, 0.0), FVector(XF, Side * HalfW, EaveZ), FVector(XF + 55.0, Side * (HalfW + 45.0), EaveZ * 0.35), FVector(-1.0, -Side, 0.0), OliveIn);
+			// Sacos terreros a los lados de la entrada.
+			for (int32 Row = 0; Row < 3; ++Row)
+			{
+				for (int32 Bag = 0; Bag < 3 - Row; ++Bag)
+				{
+					const FVector BagC(XF + 70.0, Side * (HalfW - 20.0 - Bag * 58.0 - Row * 29.0), 12.0 + Row * 22.0);
+					B.AddBox(BagC, FVector(1.0, 0.0, 0.0), FVector(26.0, 27.0, 11.0), (Bag + Row) % 2 ? Khaki : Khaki * 0.9f);
+				}
+			}
+			// Cajas de madera al fondo.
+			B.AddBox(FVector(XB + 55.0, Side * (HalfW - 60.0), 32.0), FVector(1.0, 0.0, 0.0), FVector(34.0, 34.0, 32.0), WoodDark);
+			B.AddBox(FVector(XB + 55.0, Side * (HalfW - 60.0), 66.0), FVector(1.0, 0.0, 0.0), FVector(35.0, 35.0, 3.0), Wood);
+			// Vientos: de las esquinas del alero a estacas en el suelo.
+			for (const double X : { XB, XF })
+			{
+				const FVector Eave(X, Side * HalfW, EaveZ);
+				const FVector Stake(X + (X > 0.0 ? 60.0 : -60.0), Side * (HalfW + 130.0), 0.0);
+				B.AddBeam(Eave, Stake + FVector(0.0, 0.0, 12.0), 1.2, Rope);
+				B.AddBox(Stake + FVector(0.0, 0.0, 8.0), FVector(1.0, 0.0, 0.0), FVector(3.0, 3.0, 9.0), WoodDark);
+			}
+		}
+		Canvas(FVector(XB, -HalfW, 0.0), FVector(XB, HalfW, 0.0), FVector(XB, HalfW, EaveZ), FVector(XB, -HalfW, EaveZ), FVector(-1.0, 0.0, 0.0));
+		B.AddTri(FVector(XB, -HalfW, EaveZ), FVector(XB, HalfW, EaveZ), FVector(XB, 0.0, RidgeZ), FVector(-1.0, 0.0, 0.0), Olive);
+		B.AddTri(FVector(XB, -HalfW, EaveZ), FVector(XB, HalfW, EaveZ), FVector(XB, 0.0, RidgeZ), FVector(1.0, 0.0, 0.0), OliveIn);
+		// Frontón de delante (por encima de la entrada) y el faldón enrollado.
+		constexpr double GableZ = 250.0;
+		const double GableHalf = HalfW * (RidgeZ - GableZ) / (RidgeZ - EaveZ);
+		B.AddTri(FVector(XF, -GableHalf, GableZ), FVector(XF, GableHalf, GableZ), FVector(XF, 0.0, RidgeZ), FVector(1.0, 0.0, 0.0), Olive);
+		B.AddTri(FVector(XF, -GableHalf, GableZ), FVector(XF, GableHalf, GableZ), FVector(XF, 0.0, RidgeZ), FVector(-1.0, 0.0, 0.0), OliveIn);
+		TNProcMesh::TNProcAddCylinder(B, FVector(XF + 6.0, -GableHalf, GableZ - 6.0), FVector(XF + 6.0, GableHalf, GableZ - 6.0), 14.0, 14.0, 10, PatchDark);
+		for (const double Y : { -GableHalf * 0.6, GableHalf * 0.6 })
+		{
+			B.AddBeam(FVector(XF + 4.0, Y, GableZ + 10.0), FVector(XF + 22.0, Y, GableZ - 22.0), 1.4, Rope);
+		}
+		// Manchas de camuflaje en el techo y las paredes (por fuera, un pelo separadas de la lona).
+		for (int32 m = 0; m < 26; ++m)
+		{
+			const double U = FMath::Frac(m * 0.618034 + 0.13), V = FMath::Frac(m * 0.754877 + 0.41);
+			const double Side = (m % 2) ? 1.0 : -1.0;
+			const double X = FMath::Lerp(XB + 30.0, XF - 30.0, U);
+			const double Sz = 26.0 + 16.0 * FMath::Frac(m * 0.31);
+			const FLinearColor PatchC = (m % 3) ? PatchDark : PatchLight;
+			if (m % 4 == 0)
+			{
+				// En la pared: rombo vertical.
+				const double Z = FMath::Lerp(30.0, EaveZ - 30.0, V);
+				const FVector C(X, Side * (HalfW + 1.0), Z);
+				B.AddQuad(C + FVector(-Sz, 0.0, 0.0), C + FVector(0.0, 0.0, -Sz * 0.6), C + FVector(Sz, 0.0, 0.0), C + FVector(0.0, 0.0, Sz * 0.6), FVector(0.0, Side, 0.0), PatchC);
+			}
+			else
+			{
+				// En el techo: rombo sobre el faldón inclinado.
+				const double T = FMath::Lerp(0.12, 0.88, V);
+				const double Y = Side * HalfW * T;
+				const double Z = FMath::Lerp(RidgeZ, EaveZ, T) + 1.2;
+				const FVector C(X, Y, Z);
+				const FVector Down = FVector(0.0, Side * HalfW, EaveZ - RidgeZ).GetSafeNormal();
+				const FVector RoofOut(0.0, Side * (RidgeZ - EaveZ), HalfW);
+				B.AddQuad(C + FVector(-Sz, 0.0, 0.0), C + Down * Sz * 0.6, C + FVector(Sz, 0.0, 0.0), C - Down * Sz * 0.6, RoofOut, PatchC);
+			}
+		}
+		// Postes de delante y de atrás; el de delante sigue hasta la bandera.
+		TNProcMesh::TNProcAddCylinder(B, FVector(XB, 0.0, 0.0), FVector(XB, 0.0, RidgeZ + 15.0), 5.0, 4.5, 8, Wood);
+		TNProcMesh::TNProcAddCylinder(B, FVector(XF, 0.0, 0.0), FVector(XF, 0.0, RidgeZ + 230.0), 5.0, 4.0, 8, Wood);
+		for (const double Side : { -1.0, 1.0 })
+		{
+			B.AddBeam(FVector(XF, 0.0, RidgeZ), FVector(XF + 150.0, Side * 190.0, 12.0), 1.2, Rope);
+			B.AddBeam(FVector(XB, 0.0, RidgeZ), FVector(XB - 150.0, Side * 190.0, 12.0), 1.2, Rope);
+		}
+	}
+
+	// Cartel clavado en el frontón (tablero azul marino con marco dorado) y bandera en lo alto del poste de delante.
 	B.AddBox(FVector(SignX, 0.0, SignZ), AxisX, FVector(4.0, SignHalfW, SignHalfH), Navy);
 	B.AddBox(FVector(SignX - 1.5, 0.0, SignZ), AxisX, FVector(4.0, SignHalfW + 7.0, SignHalfH + 7.0), Gold);
-	for (const double LegY : { -SignHalfW * 0.7, SignHalfW * 0.7 })
 	{
-		B.AddBeam(FVector(SignX - 2.0, LegY, 0.0), FVector(SignX - 2.0, LegY, SignZ - SignHalfH), 4.5, WoodDark);
-	}
-	{
-		const FVector PoleFoot(-70.0, -170.0, 0.0);
-		const FVector PoleTop = PoleFoot + FVector(0.0, 0.0, 400.0);
+		const FVector PoleFoot(280.0, 0.0, 440.0);
+		const FVector PoleTop = PoleFoot + FVector(0.0, 0.0, 230.0);
 		TNProcMesh::TNProcAddCylinder(B, PoleFoot, PoleTop, 4.0, 3.0, 8, Cream);
 		TNProcMesh::TNProcAddCylinder(B, PoleTop, PoleTop + FVector(0.0, 0.0, 8.0), 6.0, 6.0, 8, Gold);
 		const FVector F0 = PoleTop - FVector(0.0, 0.0, 12.0);
