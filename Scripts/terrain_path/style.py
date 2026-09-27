@@ -55,6 +55,10 @@ class PathStyle:
     canyon_width_m: tuple[float, float] = (20.0, 35.0)
     canyon_depth_m: tuple[float, float] = (8.0, 14.0)
     wall_color_mix: float = 1.0              # mezcla del color de pared segun la inclinacion
+    # Escalones de medusa (terrain_path/steps.py): subida que solo se salva rebotando en una medusa
+    jump_steps: int = 2
+    jump_step_m: float = 4.5
+    jump_ledge_m: tuple[float, float] = (12.0, 22.0)
 
 
 C01_STYLE = PathStyle()

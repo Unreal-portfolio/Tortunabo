@@ -13,7 +13,7 @@ from scipy.spatial import cKDTree
 from terrain_vol.density import Fields, smooth
 from terrain_vol.noise import Fbm2D, ValueNoise3D
 
-from . import bridge, canyon, field
+from . import bridge, canyon, field, steps
 from .curves import normals, resample
 from .layout import CELL_M, CELL_SAMPLES, GRID_PAD, MAP_MAX_M, MAP_MIN_M, STEP_XY_M, WATER_M
 from .profile import build_plan
@@ -24,6 +24,7 @@ HIGH_TINT = 0.25         # oscurecimiento por altura de la paleta (terrain_vol):
 WEDGE_M = 6.0            # cuna entre dos caminos mas fina que esto: se rellena de suelo (nariz roma)
 NOSE_RADIUS_M = 5.0      # radio de la nariz de la pared donde se separan dos caminos
 NOSE_REACH_M = 60.0      # distancia a una union o cruce hasta la que se redondean narices
+STEP_WALL_REACH_M = 12.0 # paredes altas hasta esta distancia de un escalon de medusa
 NEEDLE_M = 5.0           # pared o punta mas estrecha que esto: aguja, se quita
 THIN_WALL_M = 18.0       # pared entre dos caminos mas fina que esto: lomo redondeado, sin cuchilla
 ZONE_KEYS = ("cliffs", "marsh", "algae", "beach")      # paletas de terrain_vol.mesh por bioma
@@ -78,6 +79,12 @@ class PathModel:
                 decks.append(deck)
             self._build_samples()
             self.canyon_field = canyon.CanyonField(self.canyon, self.n_floor)
+        # Escalones de medusa: despues del barranco (lo evitan); azar propio. La subida no entra en
+        # la cota del perfil (de ella salen las lomas y las vistas de alrededor): va aparte, en
+        # S["lift"], y solo la usan el suelo del camino y el remate de sus paredes.
+        self.jump_steps = steps.plan_steps(self, np.random.default_rng(seed + 41))
+        if self.jump_steps:
+            self._build_samples()
         self.decks = bridge.DeckSet(decks, self.n_wall3d)
         self.extra_rng = rng                       # rio y castillos siguen la misma secuencia
         self._plan_extras()
@@ -102,7 +109,7 @@ class PathModel:
 
     # -- muestras de todos los caminos -------------------------------------------------------
     def _build_samples(self) -> None:
-        cols = {k: [] for k in ("p", "n", "z", "w", "biome", "line", "s", "open")}
+        cols = {k: [] for k in ("p", "n", "z", "w", "biome", "line", "s", "open", "lift")}
         for line in self.plan.graph.lines:
             prof = self.plan.profiles[line.id]
             pts, s = resample(line.points, SAMPLE_STEP_M)
@@ -115,6 +122,7 @@ class PathModel:
             cols["line"].append(np.full(len(s), line.id))
             cols["s"].append(s)
             cols["open"].append(~prof.tunnel[k] & ~self._in_cut(line.id, s))
+            cols["lift"].append(steps.lift(s, getattr(self, "jump_steps", [])) if line.id == 0 else np.zeros(len(s)))
         # El final entra en el mar: el abanico sigue 50 m en la direccion de llegada y baja bajo
         # el agua, asi que el camino llega a la orilla por si mismo (la costa de las vistas no
         # toca el camino y no se puede salir por la playa a las vistas).
@@ -127,7 +135,8 @@ class PathModel:
         cols_ext = {"p": pts, "n": np.tile([-t[1], t[0]], (len(ext), 1)),
                     "z": np.interp(ext, [0.0, 40.0], [prof.z[-1], WATER_M - 1.5]),
                     "w": fan, "biome": np.full(len(ext), 3),
-                    "line": np.zeros(len(ext), dtype=int), "s": main.length + ext, "open": np.ones(len(ext), bool)}
+                    "line": np.zeros(len(ext), dtype=int), "s": main.length + ext, "open": np.ones(len(ext), bool),
+                    "lift": np.zeros(len(ext))}
         for key, value in cols_ext.items():
             cols[key].append(value)
         self.S = {k: np.concatenate(v) for k, v in cols.items()}
@@ -246,6 +255,11 @@ class PathModel:
         low = z_levels < canyon.KILL_TOP_M
         return standable & ~(inside[..., None] & low[None, None, :])
 
+    def jump_links(self) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]:
+        """(desde, hasta) de cada paso que no es andar: la medusa sube al rellano y del rellano se
+        baja saltando."""
+        return [link for st in self.jump_steps for link in ((st.jelly, st.top), (st.drop_top, st.drop_bottom))]
+
     def samples(self) -> dict[str, np.ndarray]:
         return self.S
 
@@ -308,7 +322,7 @@ class PathModel:
         rows = np.arange(len(order))
         best = order[:, 0]
         d, i = dk[rows, best].reshape(shape), ik[rows, best].reshape(shape)
-        zf, w = self.S["z"][i], self.S["w"][i]
+        zf, w = self.S["z"][i] + self.S["lift"][i], self.S["w"][i]
         # Segundo camino que cubre el punto (de otra linea): donde los dos estan casi igual de
         # cerca se mezcla su relieve y no queda un surco en la bisectriz. Se busca linea a linea:
         # las 24 muestras mas cercanas (12 m de arco) casi nunca incluian la otra linea, y la pared
@@ -344,7 +358,7 @@ class PathModel:
         outer = ndimage.gaussian_filter(outer, 1.2, mode="nearest")
         height, H, crest_e = field.section(e, zf, z_soft, w, bw, n_rim, n_top, n_floor, self.style, guard, n_wall,
                                           H_in=outer)
-        zf2, w2 = self.S["z"][i2], self.S["w"][i2]
+        zf2, w2 = self.S["z"][i2] + self.S["lift"][i2], self.S["w"][i2]
         e2 = self._blunt_wedges(X, Y, d2 - w2, i2)
         height2, _, _ = field.section(e2, zf2, z_soft, w2, bw, n_rim, n_top, n_floor, self.style, guard, n_wall,
                                       H_in=outer)
@@ -368,6 +382,7 @@ class PathModel:
         foot = zf + np.minimum(height - zf, field.FOOT_M + 0.8)
         height = np.where(e < 0.0, height, np.maximum(opened, foot))
         height = self._thin_berms(X, Y, height, d - w, np.where(has2, e_other, np.inf), zf, zf2)
+        height = self._step_walls(X, Y, height, d - w)
         height = field.clip_spikes(self._remove_needles(X, Y, height, e))
         region = np.where(e < 0.0, 0, np.where(e < crest_e + rim_top + 4.0, 1, 2))
         region = np.where(coast > 0.5, 3, region)
@@ -412,7 +427,10 @@ class PathModel:
             c = d - self.S["w"][idx[k]]
             # Lo alto no es un rellano: baja ya un 30 % desde el borde y, pasado reach, cae entero.
             drop = 0.3 * np.clip(c, 0.0, reach) + np.maximum(c - reach, 0.0) * tan
-            out = np.maximum(out, self.S["z"][idx[k]] + rim_h - drop)
+            # La subida de un escalon de medusa solo remata la pared de al lado: con ella entera, el
+            # cono de caida alcanzaba las lomas a 60 m.
+            lift = self.S["lift"][idx[k]] * (1.0 - smooth(2.0, 10.0, c))
+            out = np.maximum(out, self.S["z"][idx[k]] + lift + rim_h - drop)
         return out.reshape(X.shape)
 
     def _hills(self, X, Y):
@@ -482,6 +500,32 @@ class PathModel:
             keep = np.maximum(keep, self._tunnel_zone(X, Y))
         thin = (1.0 - smooth(THIN_WALL_M - 6.0, THIN_WALL_M, g)) * both * (1.0 - np.clip(keep, 0.0, 1.0))
         return height * (1.0 - thin) + np.minimum(height, berm) * thin
+
+    def _step_walls(self, X, Y, height, e):
+        """Hombros junto a las caras de los escalones de medusa: el pie de la pared del tramo bajo
+        quedaba por debajo del rellano y desde el se saltaba a lo alto de la pared (y a las
+        vistas). Junto a cada cara, la pared sube hasta el rellano + el pie y baja suave hacia
+        fuera (sin techo plano); se apaga a STEP_WALL_REACH_M a lo largo del camino."""
+        if not self.jump_steps:
+            return height
+        main, prof = self.plan.graph.main, self.plan.profiles[0]
+        pts = np.stack([np.ravel(X), np.ravel(Y)], axis=1)
+        lift = np.zeros(len(pts))
+        e_flat = np.ravel(e)
+        for st in self.jump_steps:
+            top = float(np.interp(0.5 * (st.s0 + st.s1), main.arc, prof.z)) + st.height
+            for face in (st.s0, st.s1):
+                s = np.arange(face - STEP_WALL_REACH_M, face + STEP_WALL_REACH_M, 0.5)
+                axis = np.stack([np.interp(s, main.arc, main.points[:, 0]),
+                                 np.interp(s, main.arc, main.points[:, 1])], axis=1)
+                dist, k = cKDTree(axis).query(pts)
+                along = np.abs(s[k] - face)
+                # Distancia al borde de ESTE camino (e es la del camino mas cercano, que puede ser otro).
+                e_own = dist - np.interp(s[k], main.arc, prof.half_width)
+                weight = (1.0 - smooth(0.5 * STEP_WALL_REACH_M, STEP_WALL_REACH_M, along))                     * (1.0 - smooth(3.0, 11.0, e_own)) * (e_flat > 0.0) * (e_own > -1.0)
+                need = top + field.FOOT_M + 0.8
+                lift = np.maximum(lift, weight * np.maximum(need - np.ravel(height), 0.0))
+        return height + lift.reshape(X.shape)
 
     def _remove_needles(self, X, Y, height, e):
         """Agujas: restos de pared de menos de NEEDLE_M de ancho (sobre todo donde se juntan dos

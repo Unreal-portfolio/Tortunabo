@@ -414,8 +414,22 @@ def reached(model, chunks):
     from terrain_path.model import walkable
     standable = walkable(global_standable(chunks, grid=4), model.grid.height[1:-1, 1:-1], z_levels())
     standable = model.remove_deadly(standable, z_levels())
+    from gen_terrain_path import walk_with_links
     start = world_index(model.start)
-    return standable, walk(standable, (*start, ground_level(standable, *start)))
+    return standable, walk_with_links(standable, (*start, ground_level(standable, *start)), model.jump_links())
+
+
+def test_hay_escalones_de_medusa_que_no_se_suben_de_un_salto(model, reached):
+    """Cada escalon sube jump_step_m de golpe (la medusa es la unica subida) y queda en el
+    recorrido: se llega a su pie andando."""
+    assert len(model.jump_steps) == C01_STYLE.jump_steps
+    _, seen = reached
+    for st in model.jump_steps:
+        h = model.grid.height
+        (bi, bj), (ai, aj) = world_index(st.jelly[:2]), world_index(st.top[:2])
+        assert h[ai + 1, aj + 1] - h[bi + 1, bj + 1] >= C01_STYLE.jump_step_m - 0.8, f"escalon en s={st.s0:.0f} bajo"
+        i, j = world_index(st.jelly[:2])
+        assert seen[i - 1:i + 2, j - 1:j + 2].any(), f"no se llega al pie del escalon en s={st.s0:.0f}"
 
 
 def test_se_llega_a_pie_del_inicio_al_final(model, reached):
@@ -537,6 +551,12 @@ def test_sin_agujas_de_pared(model):
     opened = ndimage.grey_opening(h, footprint=xx * xx + yy * yy <= (NEEDLE_M / 2.0) ** 2, mode="nearest")
     X, Y = np.meshgrid(model.axis, model.axis, indexing="ij")
     free = ~model.decks.near(X, Y, 10.0) & (model._tunnel_zone(X, Y) < 0.5)
+    # Las caras de los escalones de medusa son cortes verticales a proposito.
+    main = model.plan.graph.main
+    for st in model.jump_steps:
+        for face in (st.s0, st.s1):
+            fx, fy = main.point_at(face)
+            free &= np.hypot(X - fx, Y - fy) > 12.0
     needles = (h - opened > 1.6) & free
     assert int(needles.sum()) <= 10, f"{int(needles.sum())} celdas de aguja"
 

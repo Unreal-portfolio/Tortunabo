@@ -103,8 +103,8 @@
     20000.0,
     10000.0
    ],
-   "vertices": 22914,
-   "triangles": 45200,
+   "vertices": 23068,
+   "triangles": 45492,
    "instances": 0
   },
   {
@@ -116,8 +116,8 @@
     30000.0,
     10000.0
    ],
-   "vertices": 17550,
-   "triangles": 34514,
+   "vertices": 18912,
+   "triangles": 37222,
    "instances": 0
   },
   {
@@ -155,8 +155,8 @@
     20000.0,
     20000.0
    ],
-   "vertices": 19865,
-   "triangles": 39106,
+   "vertices": 21581,
+   "triangles": 42538,
    "instances": 0
   },
   {
@@ -2003,7 +2003,13 @@
    8.0,
    14.0
   ],
-  "wall_color_mix": 1.0
+  "wall_color_mix": 1.0,
+  "jump_steps": 2,
+  "jump_step_m": 4.5,
+  "jump_ledge_m": [
+   12.0,
+   22.0
+  ]
  },
  "description": "Camino primero: un camino, lazos que vuelven, puentes naturales y tuneles, rio con islas y final abierto al mar.",
  "recorrible": true,
@@ -2164,5 +2170,17 @@
    ],
    "yaw": 109.45669670759229
   }
+ ],
+ "jellyfish_uu": [
+  [
+   18376.7,
+   20654.3,
+   157.3
+  ],
+  [
+   25416.7,
+   11288.2,
+   234.6
+  ]
  ]
 }

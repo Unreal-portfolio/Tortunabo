@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from gen_terrain_volume import build_all, global_standable, ground_level, walk, world_index, zone_map
-from terrain_path.layout import GRID
+from terrain_path.layout import GRID, UU_PER_M
 from terrain_path.canyon import kill_boxes_uu
 from terrain_path.model import PathModel, walkable
 from terrain_path.outer import write_outer
@@ -36,13 +36,33 @@ RESEED_STEP = 1000
 MAX_TRIES = 3
 
 
+def walk_with_links(standable: np.ndarray, start: tuple[int, int, int], links) -> np.ndarray:
+    """walk() mas los saltos de medusa: si se llega al pie de un escalon, se sigue desde arriba."""
+    seen = walk(standable, start) if start[2] >= 0 else np.zeros_like(standable)
+    pending = list(links)
+    while pending:
+        progress = False
+        for link in list(pending):
+            (li, lj), (hi, hj) = world_index(link[0]), world_index(link[1])
+            if not seen[li - 1:li + 2, lj - 1:lj + 2].any():
+                continue
+            pending.remove(link)
+            k = ground_level(standable, hi, hj)
+            if k >= 0 and not seen[hi, hj, k]:
+                seen |= walk(standable, (hi, hj, k))
+            progress = True
+        if not progress:
+            break
+    return seen
+
+
 def check(model: PathModel, chunks) -> dict:
     """Recorrido real sobre la malla: final, lazos y vistas (celdas del fondo alcanzadas)."""
     standable = walkable(global_standable(chunks, grid=GRID), model.grid.height[1:-1, 1:-1], z_levels())
     standable = model.remove_deadly(standable, z_levels())          # caer al barranco es morir
     s_ij, e_ij = world_index(model.start), world_index(model.end)
     start = (*s_ij, ground_level(standable, *s_ij))
-    seen = walk(standable, start) if start[2] >= 0 else np.zeros_like(standable)
+    seen = walk_with_links(standable, start, model.jump_links())
     flat = seen.any(axis=2)
     loops_ok = 0
     for loop in model.plan.graph.loops():
@@ -68,7 +88,10 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
     write_map(out, name, used, chunks, (*model.start, float(top[s_ij])), (*model.end, float(top[e_ij])),
               zone_map(model, chunks, grid=GRID), model.route.points, style=style,
               extra_manifest={"description": description, "recorrible": result["ok"],
-                              "kill_boxes_uu": kill_boxes_uu(model.canyon) if model.canyon else []}, grid=GRID)
+                              "kill_boxes_uu": kill_boxes_uu(model.canyon) if model.canyon else [],
+                              "jellyfish_uu": [[round(float(c) * UU_PER_M, 1) for c in st.jelly]
+                                               for st in model.jump_steps]},
+              grid=GRID)
     # Corona de terreno barato alrededor (sin colision): el final del mapa no se ve desde dentro.
     manifest_path = out / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -80,7 +103,7 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
             "time_s": round(time.time() - t0, 1), "length": round(g.main.length), "loops": len(g.loops()),
             "crossings": len(model.plan.crossings), "tunnels": len(model.plan.hill_tunnels),
             "arches": len(model.arch_ranges), "canyon": model.canyon.mode if model.canyon else "no", "islands": len(model.river.islands) if model.river else 0,
-            "vista": result["vista"], "loops_ok": result["loops_ok"]}
+            "vista": result["vista"], "loops_ok": result["loops_ok"], "steps": len(model.jump_steps)}
 
 
 def update_index(results: list[dict]) -> None:
@@ -120,7 +143,7 @@ def main() -> None:
             print(f"{r['name']}: {'OK' if r['ok'] else 'NO VALIDO'} {r['time_s']}s semilla {r['seed']} "
                   f"principal {r['length']} m, {r['loops']} lazos ({r['loops_ok']} alcanzados), "
                   f"{r['crossings']} cruces, barranco {r['canyon']}, {r['arches']} arcos, {r['tunnels']} tuneles, {r['islands']} islas, "
-                  f"vistas pisadas {r['vista']}, {r['size_mb']} MB", flush=True)
+                  f"{r['steps']} escalones de medusa, vistas pisadas {r['vista']}, {r['size_mb']} MB", flush=True)
     update_index(results)
     bad = [r["name"] for r in results if not r["ok"]]
     print(f"{len(results)} mapas, {sum(r['size_mb'] for r in results):.1f} MB; no validos: {bad or 'ninguno'}")
