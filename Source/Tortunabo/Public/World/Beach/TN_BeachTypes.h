@@ -86,6 +86,8 @@ enum class ETNBeachElement : uint8
 	Catapult           UMETA(DisplayName = "Catapulta"),
 	/** Mina de juguete enterrada (se ve un poco): al pisarla explota y lanza a la tortuga en bola unos metros atrás. */
 	Mine               UMETA(DisplayName = "Mina"),
+	/** Trampolín que rebota hacia arriba y adelante (medusa gorda, colchoneta hinchable o flotador): para atajos y alturas. */
+	Trampoline         UMETA(DisplayName = "Trampolín"),
 	// ── Enemigos y amenazas ──
 	GiantCrab          UMETA(DisplayName = "Cangrejo gigante con pinza"),
 	SeaUrchin          UMETA(DisplayName = "Erizo de mar"),
@@ -163,6 +165,7 @@ namespace TNBeach
 		case ETNBeachElement::MovingPlatform: return TEXT("TN_BeachMovingPlatform");
 		case ETNBeachElement::Catapult:       return TEXT("TN_BeachCatapult");
 		case ETNBeachElement::Mine:           return TEXT("TN_BeachMine");
+		case ETNBeachElement::Trampoline:     return TEXT("TN_BeachTrampoline");
 		case ETNBeachElement::GiantCrab:      return TEXT("TN_BeachGiantCrab");
 		case ETNBeachElement::SeaUrchin:      return TEXT("TN_BeachSeaUrchin");
 		case ETNBeachElement::Lizard:         return TEXT("TN_BeachLizard");
@@ -234,6 +237,7 @@ namespace TNBeach
 		case ETNBeachElement::MovingPlatform:    return 1200.0;
 		case ETNBeachElement::Catapult:          return 900.0;
 		case ETNBeachElement::Mine:              return 350.0;
+		case ETNBeachElement::Trampoline:        return 700.0;
 		case ETNBeachElement::Sandbags:          return 1100.0;
 		case ETNBeachElement::AmmoCrate:         return 700.0;
 		case ETNBeachElement::TankTrap:          return 800.0;
