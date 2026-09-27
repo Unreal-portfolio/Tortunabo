@@ -27,10 +27,14 @@ cooperativo. El cooperativo (lobby del castillo y mapa procedural) sigue igual.
 - **Terreno fijo** (siempre el mismo): un único tramo recto de playa de `TNBeach::CourseLength` = 1200 m por
   `TNBeach::CourseWidth` = 280 m jugables, calculado para ~5 min: andando a 4,5 m/s y esprintando a 8 m/s (13 s por
   barra de energía), con un 40 % de esprint y los obstáculos, sale una media de ~4 m/s. Toda de arena, con un leve
-  desnivel hacia el mar (siempre se ve la meta), dunas suaves y la orilla en acantilado: se salta y se gana al tocar el
-  agua, donde flotan las banderas de meta.
+  desnivel hacia el mar (siempre se ve la meta) y dunas suaves.
+- **Meta**: un acantilado de rocas al final de la playa, de unos 55 cm reales (`TNBeach::CliffHeight` = 15,5 m en el
+  juego, 5-6 veces la tortuga): se salta desde el borde y se cae al agua, donde flotan las banderas de meta; se gana al
+  tocar el agua. El último salto, desde la zona del borde, se hace de cabeza (zambullida).
 - **Bordes**: a los lados y detrás, selva de palmeras y árboles enormes (a escala: una palmera de 10 m mide 280 m).
-  Salida por una pasarela de madera vieja que baja a la playa.
+- **Pasarelas**: la pasarela de madera vieja y el caminito de palos con cuerda son elementos del reparto procedural
+  (`Boardwalk`, `WoodenPostPath`), repartidos por la playa y a veces como guía visual hacia el mar; no marcan la
+  salida ni la meta.
 - **Reparto procedural** (cada ronda, con semilla): decorado, trampas y enemigos de `ETNBeachElement`
   (`Public/World/Beach/TN_BeachTypes.h`), cada uno con su huella, sin solaparse y dejando siempre paso.
 - **Decorado gigante** (`ATN_BeachDecor`): cocos, medusas varadas, anillas de latas cortadas, un sujetador rojo,

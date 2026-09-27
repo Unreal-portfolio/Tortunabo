@@ -40,6 +40,10 @@ enum class ETNBeachElement : uint8
 	SandCastleSmall    UMETA(DisplayName = "Castillo de arena pequeño"),
 	SandCastleHuge     UMETA(DisplayName = "Castillo de arena enorme"),
 	Driftwood          UMETA(DisplayName = "Madera a la deriva"),
+	/** Tramo de pasarela de madera vieja sobre la arena, que se puede recorrer (Extent = largo). */
+	Boardwalk          UMETA(DisplayName = "Pasarela de madera vieja"),
+	/** Caminito marcado con palos de madera y cuerda que guía hacia el mar (Extent = largo). */
+	WoodenPostPath     UMETA(DisplayName = "Caminito de palos de madera"),
 	// ── Trampas e interacciones ──
 	BarbedWire         UMETA(DisplayName = "Alambre de espino"),
 	Seaweed            UMETA(DisplayName = "Algas que enredan"),
@@ -95,6 +99,12 @@ namespace TNBeach
 	/** Recorrido de la carrera (cm): de la línea de salida al borde del acantilado, y ancho de la playa jugable. */
 	constexpr double CourseLength = 120000.0;
 	constexpr double CourseWidth = 28000.0;
+
+	/**
+	 * Meta: acantilado de rocas al final de la playa, de unos 55 cm reales (5-6 veces la tortuga): se salta desde su
+	 * borde y se cae al agua, que es la meta. Altura (cm) del borde sobre el agua.
+	 */
+	constexpr double CliffHeight = 1550.0;
 
 	inline ETNBeachCategory CategoryOf(ETNBeachElement E)
 	{
@@ -156,6 +166,8 @@ namespace TNBeach
 		case ETNBeachElement::SandCastleSmall:   return 800.0;
 		case ETNBeachElement::SandCastleHuge:    return 2600.0;
 		case ETNBeachElement::Driftwood:         return 900.0;
+		case ETNBeachElement::Boardwalk:         return 700.0;
+		case ETNBeachElement::WoodenPostPath:    return 300.0;
 		case ETNBeachElement::BarbedWire:        return 250.0;
 		case ETNBeachElement::Seaweed:           return 700.0;
 		case ETNBeachElement::WobblyPlatform:    return 900.0;
