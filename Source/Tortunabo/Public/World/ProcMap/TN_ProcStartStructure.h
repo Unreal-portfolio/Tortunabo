@@ -82,19 +82,22 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "StartStructure")
 	TObjectPtr<USceneComponent> StructureRoot;
 
-	/** Suelo, fachadas, paredes y torres de la puerta doble, o el montículo de los huevos (con colisión). */
-	UPROPERTY(VisibleAnywhere, Category = "StartStructure")
+	/**
+	 * Suelo, fachadas, paredes y torres de la puerta doble, o el montículo de los huevos (con colisión). Las tres mallas
+	 * son RF_Transient y sus punteros, Transient (como en ATN_SandCastleLobby: guardados llegarían a nulo al cargar).
+	 */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "StartStructure")
 	TObjectPtr<UProceduralMeshComponent> SolidMesh;
 
 	/** Adornos sin colisión: arcos, carteles, conchas, estrellas, antorchas, banderas y las bases de los huevos. */
-	UPROPERTY(VisibleAnywhere, Category = "StartStructure")
+	UPROPERTY(VisibleAnywhere, Transient, Category = "StartStructure")
 	TObjectPtr<UProceduralMeshComponent> DecorMesh;
 
 	/**
 	 * Barreras invisibles: sobre las paredes y fachadas de la sala (nadie sale saltando) o, en los huevos, las paredes
 	 * que sujetan a cada tortuga dentro del suyo hasta que se rompe.
 	 */
-	UPROPERTY(VisibleAnywhere, Category = "StartStructure")
+	UPROPERTY(VisibleAnywhere, Transient, Category = "StartStructure")
 	TObjectPtr<UProceduralMeshComponent> BarrierMesh;
 
 	/** Hojas de la puerta 1 (siempre cerrada; bisagra en el origen de cada una). */

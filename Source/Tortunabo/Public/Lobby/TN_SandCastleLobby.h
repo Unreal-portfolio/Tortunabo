@@ -81,16 +81,20 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Castle")
 	TObjectPtr<USceneComponent> CastleRoot;
 
-	/** Suelo, murallas, torres, puerta doble, torre del homenaje, escaleras, toboganes y montículo (con colisión). */
-	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	/**
+	 * Suelo, murallas, torres, puerta doble, torre del homenaje, escaleras, toboganes y montículo (con colisión).
+	 * Las tres mallas generadas son RF_Transient (no se guardan con el nivel) y sus punteros, Transient: si se guardaran,
+	 * al cargar LVL_Lobby llegarían a nulo (apuntan a algo que no se guarda) y el castillo no se construiría.
+	 */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> CastleMesh;
 
 	/** Adornos sin colisión: conchas, estrellas, banderas, antorchas, bases de los huevos, el mar y la playa de fuera. */
-	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> DecorMesh;
 
 	/** Barreras invisibles (murallas, balcón, adarves y sala de la puerta doble): nadie se cae fuera del castillo. */
-	UPROPERTY(VisibleAnywhere, Category = "Castle")
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Castle")
 	TObjectPtr<UProceduralMeshComponent> BarrierMesh;
 
 	/** Hojas de la puerta 1 de la puerta doble (bisagra en el origen de cada una). */
