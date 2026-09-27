@@ -398,6 +398,10 @@ def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False, 
     # mundo (la local se mide desde el centro de los limites de cada trozo y cambia de uno a otro:
     # salian franjas por trozo).
     local_z = mel.create_material_expression(material, unreal.MaterialExpressionComponentMask, -900, -380)
+    # Solo Z: R y G vienen activados por defecto y el nodo recibia la X del mundo (la arena se
+    # oscurecia al sur de X = WaterZ en una franja recta que cruzaba todo el mapa).
+    local_z.set_editor_property("r", False)
+    local_z.set_editor_property("g", False)
     local_z.set_editor_property("b", True)
     mel.connect_material_expressions(world_position, "", local_z, "")
     time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -900, -300)
