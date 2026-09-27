@@ -1154,7 +1154,9 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		}
 
 		// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─
-		const FString TravelURL = LobbyMapPath;
+		// Se vuelve al lobby del que se salió (lo apunta ATN_HQGameMode en la GameInstance); si no se sabe, LobbyMapPath.
+		const UMP_GameInstance* TNGI = Cast<UMP_GameInstance>(World->GetGameInstance());
+		const FString TravelURL = TNGI && !TNGI->LobbyReturnMapPath.IsEmpty() ? TNGI->LobbyReturnMapPath : LobbyMapPath;
 		UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] Seamless ServerTravel to: %s"), *TravelURL);
 		World->ServerTravel(TravelURL);
 	}

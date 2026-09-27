@@ -263,6 +263,13 @@ public:
 	UPROPERTY(Transient)
 	ETNMatchStartStyle PendingStartStyle = ETNMatchStartStyle::Gate;
 
+	/**
+	 * Lobby del que salió la partida (ruta del paquete, sin el prefijo de PIE): lo apunta ATN_HQGameMode al empezar y
+	 * ATN_RunGameMode (y el mapa procedural) vuelve ahí al acabar la ronda, sea cual sea su LobbyMapPath.
+	 */
+	UPROPERTY(Transient)
+	FString LobbyReturnMapPath;
+
 protected:
 	/** @brief Callback online: sesión Steam creada — dispara ServerTravel al mapa lobby. */
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
@@ -281,8 +288,9 @@ protected:
 
 	TSharedPtr<FOnlineSessionSearch> SessionSearch;
 
+	/** Lobby al que va el anfitrión al crear la partida: el castillo de arena (LVL_HQ es el lobby antiguo). */
 	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer")
-	FString GameMapPath = TEXT("/Game/Maps/Lobby/LVL_HQ");
+	FString GameMapPath = TEXT("/Game/Maps/Lobby/LVL_Lobby");
 
 	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer")
 	FString MenuMapPath = TEXT("/Game/Maps/Lobby/LVL_Menu");

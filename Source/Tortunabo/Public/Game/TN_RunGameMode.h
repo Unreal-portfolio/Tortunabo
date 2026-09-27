@@ -118,8 +118,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	float ResultsDurationSeconds = 8.0f;
 
+	/**
+	 * Lobby al que se vuelve al acabar la ronda si la GameInstance no sabe de cuál se salió
+	 * (UMP_GameInstance::LobbyReturnMapPath, que manda): el castillo de arena.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
-	FString LobbyMapPath = TEXT("/Game/Maps/Lobby/LVL_HQ");
+	FString LobbyMapPath = TEXT("/Game/Maps/Lobby/LVL_Lobby");
 
 	/** Segundos máximos esperando a que todos los jugadores reconecten tras el travel. */
 	UPROPERTY(EditDefaultsOnly, Category = "Run|Staging")
