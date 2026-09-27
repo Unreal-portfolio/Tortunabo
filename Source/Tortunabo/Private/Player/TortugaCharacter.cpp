@@ -16,6 +16,7 @@
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_DizzyBirdsComponent.h"
+#include "Player/TN_TurtleFaceComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "Player/TN_TurtleAnimInstance.h"
@@ -132,6 +133,8 @@ ATortugaCharacter::ATortugaCharacter()
 	DizzyBirds = CreateDefaultSubobject<UTN_DizzyBirdsComponent>(TEXT("DizzyBirds"));
 	DizzyBirds->SetupAttachment(RootComponent);
 
+	// Lengua, caras de cansancio, sudor y boca (se engancha sola a la cabeza de la malla en su primer fotograma).
+	TurtleFace = CreateDefaultSubobject<UTN_TurtleFaceComponent>(TEXT("TurtleFace"));
 	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).
 	// Al estar en el árbol del mesh, recibe el network smoothing del CMC → sin lag.
 	// Sin mesh asignado → invisible hasta que se equipe un casco real.

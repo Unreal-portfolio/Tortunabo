@@ -8,16 +8,18 @@
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class UMaterialInterface;
+class UMaterialInstanceDynamic;
 
 /**
  * Viste a una tortuga con un FTN_TurtleLook. El personaje, el tendero y las vistas previas de la tienda y el probador
  * usan esto mismo, así que se ven igual en todas partes.
  *
  * Malla de demo (TotugaDemo_Rig, 2 ranuras): "lambert2" = casco rojo de serie + lengua; "lambert4" = cuerpo, ojos y
- * caparazón. Con un casco de la tienda, la ranura del casco pasa a M_TurtleHelmetSlot (solo queda la lengua); la del
- * cuerpo es siempre una instancia de M_TurtleBody con los colores, el dibujo del caparazón y los ojos de las filas
- * (las zonas salen de la posición local: ver Scripts/build_cosmetics.py). Así los ojos nunca salen del color de la
- * piel, aunque no se lleve nada de la tienda.
+ * caparazón. La ranura del casco es siempre una instancia de M_TurtleHelmetSlot: pinta el casco de serie (o lo recorta
+ * si se lleva uno de la tienda) y esconde la lengua rígida de la malla, que no tiene hueso (la del jugador la dibuja
+ * UTN_TurtleFaceComponent). La del cuerpo es siempre una instancia de M_TurtleBody con los colores, el dibujo del
+ * caparazón, los ojos de las filas y la boca pintada (las zonas salen de la posición local: ver
+ * Scripts/build_cosmetics.py). Así los ojos nunca salen del color de la piel, aunque no se lleve nada de la tienda.
  * Malla unificada (5 ranuras: barriga, brillo de ojos, ojos y boca, piel, caparazón): los materiales por ranura.
  */
 UCLASS()
@@ -47,6 +49,15 @@ public:
 	 * párpado baja desde arriba) y Dizzy (1 = ojos en espiral, noqueada). Barato: solo escribe dos parámetros.
 	 */
 	static void SetEyeState(USkeletalMeshComponent* Body, float Blink, float Dizzy);
+
+	/**
+	 * Instancia de M_TurtleBody que puso ApplyLook en el cuerpo (null con la malla unificada o si aún no se ha vestido).
+	 * UTN_TurtleFaceComponent escribe ahí la cara: EyeTired, EyeSqueeze, MouthOpen, MouthSmile y FaceBlush.
+	 */
+	static UMaterialInstanceDynamic* GetBodyMaterial(USkeletalMeshComponent* Body);
+
+	/** La malla es la de demo (dos ranuras: casco y lengua; cuerpo, ojos y caparazón), con la boca que conoce la cara. */
+	static bool IsDemoTurtle(const USkeletalMeshComponent* Body);
 
 	/** Nombre para la tienda y el probador (NAME_None = el de serie). */
 	UFUNCTION(BlueprintPure, Category = "Cosmetics", meta = (WorldContext = "WorldContext"))

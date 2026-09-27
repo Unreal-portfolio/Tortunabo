@@ -79,7 +79,10 @@ arrastrar `TN_ShopKeeper` o `TN_ChangingBooth` al nivel.
 
 - `/Game/Cosmetics/Materials/M_CosmeticVertexColor`: cascos y mallas del puesto (color de vértice; el alfa es el brillo metálico).
 - `/Game/Cosmetics/Materials/M_TurtleBody`: cuerpo y caparazón de la tortuga de demo (ver abajo).
-- `/Game/Cosmetics/Materials/M_TurtleHelmetSlot`: recorta el casco rojo de serie y deja la lengua.
+- `/Game/Cosmetics/Materials/M_TurtleHelmetSlot`: la ranura del casco de serie; recorta el casco (con uno de la tienda)
+  y esconde la lengua rígida de la malla.
+- `/Game/Cosmetics/Materials/M_TurtleFaceParts`: la lengua y las gotas de sudor procedurales de
+  `UTN_TurtleFaceComponent` (color de vértice; su alfa es lo mojado: más brillo; un poco de luz propia).
 - `/Game/UI/Shop/M_UI_Preview`: pinta en la UI las capturas del escaparate.
 - `/Game/Cosmetics/Helmets/SM_Helmet_*`: los doce cascos, modelados en `Scripts/cosmetics_meshes.py` (Python puro)
   sobre la coronilla de la tortuga: sombrero de paja, tricornio, corona, gorra de capitán, gorro de marinero, gorro de
@@ -98,12 +101,25 @@ zonas por la posición local antes del skinning (unidades de la malla; mira a +Y
   y con `|x|` < 7,2. Coincide con la pieza del caparazón de la malla.
 - **Barriga:** delante del torso, entre `z` 21 y 36,6.
 - **Lengua** (en `M_TurtleHelmetSlot`): `|x|` < 2,3, `y` > 9,6 y `z` entre 39,8 y 43,4; el resto de la ranura es el
-  casco de serie y sus correas.
+  casco de serie y sus correas. Es rígida (no tiene hueso) y sale recta hacia delante; `UTN_CosmeticLook` pone siempre
+  una instancia de este material en la ranura con `HideTongue` = 1 (y `HideHelmet` = 1 si se lleva un casco de la
+  tienda), así que el casco de serie se pinta con `HelmetColor` (el difuso de `M_TortugaDemo`) y la lengua del jugador
+  es la procedural de `UTN_TurtleFaceComponent` (ver `Docs/Animacion_Tortuga.md`).
+- **Boca:** la malla tiene un hueco bajo la nariz (`|x|` < 1,7; `z` 41,3-43,9; el fondo en `y` ~ 10 y el borde en
+  `y` ~ 13,7) por donde salía la lengua. `M_TurtleBody` pinta alrededor, en el plano de la cara (x, z), una boca de
+  dibujo: `MouthOpen` (0 casi cerrada, 1 abierta del todo; de serie 0,3) y `MouthSmile` (1 sonrisa con el borde de
+  arriba recto, justo bajo la nariz; 0 óvalo) dan la forma; dentro va granate `#6B1B26` con la lengua rosa al fondo,
+  alrededor un filo oscuro (la piel al 25 %) y lo del hueco que queda fuera de la forma, piel en sombra.
+- **Mofletes:** `FaceBlush` pinta colorete rosa `#FF8FA3` bajo los ojos, centrado en x = ±5 y z = 41,1 (delante de la cara).
 - **Ojos:** las dos esferas de la malla, centradas en (±4,47; 8,46; 46,06) con radio ≤ 4,12; solo se pinta el casquete
   que asoma (dirección (±0,66; 0,62; 0,42)). La mirada va hacia (0,25; 0,93; 0,27) normalizado y el iris mide 0,56 del
   radio. Parámetros: `EyeStyle`, `EyeColor`, `EyeColor2`, `EyeGlow`, `EyeBlink` (0 abiertos, 1 cerrados: el párpado
   baja con su pestaña) y `EyeDizzy` (espiral de noqueada). `UTN_CosmeticLook` pone siempre `M_TurtleBody` en el cuerpo:
   con el material original los ojos salían del color de la piel.
+- **Cansancio de los ojos** (como las caras del HUD): `EyeTired` 0,5 = cansada (el párpado tapa el tercio de arriba) y
+  1 = jadeando (algo más de la mitad); el párpado cae un poco más por fuera y la mirada baja (pupilas, iris y formas
+  se desplazan hacia abajo), así que sirve igual para todos los tipos de ojo. `EyeSqueeze` = 1 cierra los ojos
+  apretados «>_<»: párpado cerrado con un galón de tinta que apunta a la nariz. Los anima `UTN_TurtleFaceComponent`.
 
 ### Tipos de ojo
 

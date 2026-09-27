@@ -15,6 +15,7 @@ class UTN_InventoryComponent;
 class UTN_ShellComponent;
 class UTN_CarryComponent;
 class UTN_DizzyBirdsComponent;
+class UTN_TurtleFaceComponent;
 class UTN_StaminaComponent;
 class ATN_InteractableBase;
 class USceneComponent;
@@ -268,6 +269,13 @@ protected:
 	/** Pajaritos y estrellitas del mareo sobre la cabeza mientras está noqueada (local y cosmético). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knockdown")
 	TObjectPtr<UTN_DizzyBirdsComponent> DizzyBirds;
+
+	/**
+	 * Cara (local y cosmética, con estado replicado): lengua con física (al viento al esprintar, colgando al jadear),
+	 * caras de cansancio, sudor y boca que habla con el chat rápido o la voz.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Face")
+	TObjectPtr<UTN_TurtleFaceComponent> TurtleFace;
 
 	// ── Nado ─────────────────────────────────────────────────────────────────
 
