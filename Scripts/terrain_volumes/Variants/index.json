@@ -7,220 +7,213 @@
   "size_mb": 6.07
  },
  {
-  "name": "P01_prototipo",
-  "seed": 50001,
-  "description": "Prototipo: camino principal marcado y trenzado, pasarelas sobre los canones, rios como rapidos, dunas bajas y tupidas, salida y meta reconocibles.",
+  "name": "C02_base_a",
+  "seed": 64002,
+  "description": "Mismos parametros que C01, otra semilla.",
   "recorrible": true,
-  "size_mb": 12.01
+  "size_mb": 6.22
  },
  {
-  "name": "01_base",
-  "seed": 40001,
-  "description": "Reparto parecido a Mapa01: referencia para comparar el resto.",
+  "name": "C03_base_b",
+  "seed": 63003,
+  "description": "Mismos parametros que C01, otra semilla.",
   "recorrible": true,
-  "size_mb": 12.22
+  "size_mb": 5.85
  },
  {
-  "name": "02_laberinto_denso",
-  "seed": 40002,
-  "description": "Acantilados y canon muy tupidos: pasillos cada 11 m y muchos lazos.",
+  "name": "C04_base_c",
+  "seed": 66004,
+  "description": "Mismos parametros que C01, otra semilla.",
   "recorrible": true,
-  "size_mb": 13.07
+  "size_mb": 5.69
  },
  {
-  "name": "03_laberinto_abierto",
-  "seed": 40003,
-  "description": "Laberinto muy abierto: pasillos cada 24 m, casi sin lazos, facil de leer.",
+  "name": "C05_muchos_lazos",
+  "seed": 65005,
+  "description": "Nueve lazos, tres de ellos dentro de otros: muchas alternativas.",
   "recorrible": true,
-  "size_mb": 12.43
+  "size_mb": 5.92
  },
  {
-  "name": "04_arbol_puro",
-  "seed": 41004,
-  "description": "Sin lazos: el laberinto es un arbol puro, un unico camino bueno por rama.",
+  "name": "C06_pocos_lazos",
+  "seed": 62006,
+  "description": "Solo cuatro lazos: recorrido mas directo.",
   "recorrible": true,
-  "size_mb": 12.97
+  "size_mb": 5.99
  },
  {
-  "name": "05_muchos_lazos",
-  "seed": 40005,
-  "description": "Laberinto con muchisimos lazos: varias rutas alternativas validas.",
+  "name": "C07_sin_anidados",
+  "seed": 62007,
+  "description": "Siete lazos, todos del camino principal.",
   "recorrible": true,
-  "size_mb": 13.43
+  "size_mb": 6.09
  },
  {
-  "name": "06_sin_tuneles",
-  "seed": 40006,
-  "description": "Todo el recorrido al aire libre: sin tuneles excavados en el laberinto.",
-  "recorrible": true,
-  "size_mb": 11.85
+  "name": "C08_cruces",
+  "seed": 70008,
+  "description": "Tres cruces con puente fino: los lazos pasan por encima o por debajo.",
+  "recorrible": false,
+  "size_mb": 6.12
  },
  {
-  "name": "07_muchos_tuneles",
-  "seed": 40007,
-  "description": "Laberinto muy horadado: muchos tuneles pasantes y varias cuevas.",
+  "name": "C09_muchos_puentes",
+  "seed": 65009,
+  "description": "Cinco arcos finos sobre el camino y dos cruces.",
   "recorrible": true,
-  "size_mb": 13.09
+  "size_mb": 5.97
  },
  {
-  "name": "08_muchos_puentes",
-  "seed": 40008,
-  "description": "Muchos puentes de roca (tunel abajo, tablero andable arriba).",
+  "name": "C10_sin_puentes",
+  "seed": 65010,
+  "description": "Sin arcos ni cruces: todo al aire libre.",
   "recorrible": true,
-  "size_mb": 13.58
+  "size_mb": 6.08
  },
  {
-  "name": "09_sin_puentes",
-  "seed": 40009,
-  "description": "Sin puentes de roca: los laberintos se cruzan solo por los pasillos.",
+  "name": "C11_tuneles",
+  "seed": 61011,
+  "description": "Tres tuneles de cerro extra.",
   "recorrible": true,
-  "size_mb": 13.07
+  "size_mb": 5.81
  },
  {
-  "name": "10_mucha_agua",
-  "seed": 40010,
-  "description": "Zona de agua muy extendida: charcas profundas y crestas mas estrechas.",
-  "recorrible": true,
-  "size_mb": 11.92
+  "name": "C12_camino_ancho",
+  "seed": 70012,
+  "description": "Camino ancho (semiancho 5-12 m): mas espacio para colocar cosas.",
+  "recorrible": false,
+  "size_mb": 5.83
  },
  {
-  "name": "11_poca_agua",
-  "seed": 40011,
-  "description": "Zona de agua reducida a un paso corto: casi todo tierra firme.",
+  "name": "C13_camino_estrecho",
+  "seed": 63013,
+  "description": "Camino estrecho (semiancho 2,5-6 m): mas encajonado.",
   "recorrible": true,
-  "size_mb": 13.11
+  "size_mb": 6.05
  },
  {
-  "name": "12_rio_cero",
-  "seed": 40012,
-  "description": "Agua de charcas y crestas, sin rio hasta el mar.",
+  "name": "C14_paredes_altas",
+  "seed": 65014,
+  "description": "Paredes altas (acantilado 7-13 m): canones profundos.",
   "recorrible": true,
-  "size_mb": 13.71
+  "size_mb": 5.84
  },
  {
-  "name": "13_un_rio",
-  "seed": 40013,
-  "description": "Un rio serpenteante llega desde la zona de agua hasta el mar.",
+  "name": "C15_paredes_bajas",
+  "seed": 61015,
+  "description": "Paredes bajas: se ve mas paisaje desde el camino.",
   "recorrible": true,
-  "size_mb": 13.48
+  "size_mb": 5.99
  },
  {
-  "name": "14_dos_rios",
-  "seed": 40014,
-  "description": "Dos rios independientes llegan al mar, con islitas para saltar entre ellos.",
+  "name": "C16_cimas_movidas",
+  "seed": 68016,
+  "description": "Cimas con mucho relieve (lomas de hasta 6 m).",
   "recorrible": true,
-  "size_mb": 12.47
+  "size_mb": 5.82
  },
  {
-  "name": "15_tres_rios",
-  "seed": 40015,
-  "description": "Tres rios llegan al mar: la zona de agua queda muy fragmentada en islitas.",
+  "name": "C17_cimas_suaves",
+  "seed": 62017,
+  "description": "Cimas suaves, casi sin lomas.",
   "recorrible": true,
-  "size_mb": 13.08
+  "size_mb": 5.99
  },
  {
-  "name": "16_mar_grande",
-  "seed": 40016,
-  "description": "Franja de mar y playa muy ancha antes de llegar a tierra firme.",
+  "name": "C18_mucho_agua",
+  "seed": 63018,
+  "description": "Tramo de rio largo y lagos grandes en las vistas.",
   "recorrible": true,
-  "size_mb": 12.8
+  "size_mb": 5.94
  },
  {
-  "name": "17_mar_pequeno",
-  "seed": 40017,
-  "description": "Playa corta: se llega al mar enseguida tras salir del agua.",
-  "recorrible": true,
-  "size_mb": 12.62
+  "name": "C19_poca_agua",
+  "seed": 70019,
+  "description": "Rio corto y pocos lagos: mas arena.",
+  "recorrible": false,
+  "size_mb": 5.57
  },
  {
-  "name": "18_dunas_altas",
-  "seed": 40018,
-  "description": "Zona de dunas con relieve marcado: crestas de arena bien altas.",
+  "name": "C20_rio_ancho",
+  "seed": 62020,
+  "description": "Rio ancho con muchas islas.",
   "recorrible": true,
-  "size_mb": 14.53
+  "size_mb": 5.78
  },
  {
-  "name": "19_dunas_planas",
-  "seed": 40019,
-  "description": "Zona de dunas casi llana: apenas ondula.",
+  "name": "C21_mucho_acantilado",
+  "seed": 65021,
+  "description": "Mas de la mitad del camino entre acantilados.",
   "recorrible": true,
-  "size_mb": 12.38
+  "size_mb": 6.03
  },
  {
-  "name": "20_acantilados_altos",
-  "seed": 40020,
-  "description": "Acantilados y canon muy altos: paredes imponentes.",
-  "recorrible": true,
-  "size_mb": 12.98
+  "name": "C22_mucha_duna",
+  "seed": 70022,
+  "description": "Mas de la mitad del camino entre dunas.",
+  "recorrible": false,
+  "size_mb": 5.63
  },
  {
-  "name": "21_acantilados_bajos",
-  "seed": 40021,
-  "description": "Acantilados y canon bajos: paredes suaves, mas colinas que muros.",
-  "recorrible": true,
-  "size_mb": 11.53
+  "name": "C23_largo",
+  "seed": 70023,
+  "description": "Camino principal largo (850-950 m): mas serpenteo.",
+  "recorrible": false,
+  "size_mb": 6.09
  },
  {
-  "name": "22_pasillos_anchos",
-  "seed": 40022,
-  "description": "Pasillos del laberinto muy anchos: se cruzan sin apreturas.",
-  "recorrible": true,
-  "size_mb": 12.11
+  "name": "C24_corto",
+  "seed": 70024,
+  "description": "Camino principal corto (620-720 m).",
+  "recorrible": false,
+  "size_mb": 5.95
  },
  {
-  "name": "23_pasillos_estrechos",
-  "seed": 40023,
-  "description": "Pasillos del laberinto estrechos: obliga a ir con cuidado.",
+  "name": "C25_lazos_grandes",
+  "seed": 62025,
+  "description": "Lazos grandes que se alejan mucho del principal.",
   "recorrible": true,
-  "size_mb": 13.62
+  "size_mb": 5.85
  },
  {
-  "name": "24_solo_laberintos",
-  "seed": 40024,
-  "description": "Casi todo acantilados y canon: agua, dunas y playa reducidas al minimo.",
+  "name": "C26_lazos_pequenos",
+  "seed": 63026,
+  "description": "Lazos pequenos y cercanos al principal.",
   "recorrible": true,
-  "size_mb": 14.05
+  "size_mb": 5.8
  },
  {
-  "name": "25_solo_agua_y_dunas",
-  "seed": 41025,
-  "description": "Casi sin laberinto: predominan el agua y las dunas de playa.",
+  "name": "C27_empinado",
+  "seed": 69027,
+  "description": "Mas cuestas: cambios de altura frecuentes y rampas del 30 %.",
   "recorrible": true,
-  "size_mb": 11.42
+  "size_mb": 5.85
  },
  {
-  "name": "26_mezcla_equilibrada",
-  "seed": 40026,
-  "description": "Los cinco tramos a partes iguales: ninguno domina el recorrido.",
+  "name": "C28_dunas_altas",
+  "seed": 62028,
+  "description": "Vistas con dunas altas y tupidas.",
   "recorrible": true,
-  "size_mb": 12.93
+  "size_mb": 6.42
  },
  {
-  "name": "27_canon_protagonista",
-  "seed": 40027,
-  "description": "El canon ocupa la mayor parte del laberinto; los acantilados son un tramo corto.",
-  "recorrible": true,
-  "size_mb": 12.19
+  "name": "C29_mezcla_a",
+  "seed": 70029,
+  "description": "Mezcla: mas lazos, cruces, puentes y agua.",
+  "recorrible": false,
+  "size_mb": 6.22
  },
  {
-  "name": "28_acantilados_protagonista",
-  "seed": 40028,
-  "description": "Los acantilados ocupan la mayor parte del laberinto; el canon es un tramo corto.",
+  "name": "C30_mezcla_b",
+  "seed": 62030,
+  "description": "Mezcla: camino ancho, paredes altas y cimas movidas.",
   "recorrible": true,
-  "size_mb": 13.2
+  "size_mb": 6.03
  },
  {
-  "name": "29_todo_extremo",
-  "seed": 40029,
-  "description": "Laberinto denso, muchos tuneles y puentes, mucha agua con 2 rios, dunas altas: la muestra mas cargada.",
+  "name": "C31_mezcla_c",
+  "seed": 62031,
+  "description": "Mezcla: pocos lazos grandes, rio ancho y tuneles.",
   "recorrible": true,
-  "size_mb": 14.28
- },
- {
-  "name": "30_minimalista",
-  "seed": 40030,
-  "description": "Laberinto abierto, sin tuneles ni puentes, poca agua, dunas planas: la muestra mas ligera.",
-  "recorrible": true,
-  "size_mb": 11.46
+  "size_mb": 6.07
  }
 ]

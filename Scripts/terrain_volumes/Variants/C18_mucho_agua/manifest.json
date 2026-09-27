@@ -1,0 +1,2029 @@
+{
+ "name": "C18_mucho_agua",
+ "seed": 63018,
+ "format": "TNTM2",
+ "cell_uu": 10000.0,
+ "grid": 4,
+ "water_uu": -400.0,
+ "start_uu": [
+  -2000.0,
+  18247.678262721285,
+  752.3988047699955
+ ],
+ "end_uu": [
+  31500.0,
+  11311.028635502984,
+  -338.7609700322806
+ ],
+ "cells": [
+  {
+   "name": "M_C18_mucho_agua_r0c0",
+   "col": 0,
+   "row": 0,
+   "file": "Chunks/r0c0.bin",
+   "center_uu": [
+    0.0,
+    0.0
+   ],
+   "vertices": 15803,
+   "triangles": 31050,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r1c0",
+   "col": 0,
+   "row": 1,
+   "file": "Chunks/r1c0.bin",
+   "center_uu": [
+    10000.0,
+    0.0
+   ],
+   "vertices": 18296,
+   "triangles": 36014,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r2c0",
+   "col": 0,
+   "row": 2,
+   "file": "Chunks/r2c0.bin",
+   "center_uu": [
+    20000.0,
+    0.0
+   ],
+   "vertices": 16443,
+   "triangles": 32356,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 14425,
+   "triangles": 28356,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r0c1",
+   "col": 1,
+   "row": 0,
+   "file": "Chunks/r0c1.bin",
+   "center_uu": [
+    0.0,
+    10000.0
+   ],
+   "vertices": 24501,
+   "triangles": 48348,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r1c1",
+   "col": 1,
+   "row": 1,
+   "file": "Chunks/r1c1.bin",
+   "center_uu": [
+    10000.0,
+    10000.0
+   ],
+   "vertices": 20715,
+   "triangles": 40750,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r2c1",
+   "col": 1,
+   "row": 2,
+   "file": "Chunks/r2c1.bin",
+   "center_uu": [
+    20000.0,
+    10000.0
+   ],
+   "vertices": 20252,
+   "triangles": 39906,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r3c1",
+   "col": 1,
+   "row": 3,
+   "file": "Chunks/r3c1.bin",
+   "center_uu": [
+    30000.0,
+    10000.0
+   ],
+   "vertices": 18924,
+   "triangles": 37258,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r0c2",
+   "col": 2,
+   "row": 0,
+   "file": "Chunks/r0c2.bin",
+   "center_uu": [
+    0.0,
+    20000.0
+   ],
+   "vertices": 22063,
+   "triangles": 43554,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r1c2",
+   "col": 2,
+   "row": 1,
+   "file": "Chunks/r1c2.bin",
+   "center_uu": [
+    10000.0,
+    20000.0
+   ],
+   "vertices": 19480,
+   "triangles": 38382,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r2c2",
+   "col": 2,
+   "row": 2,
+   "file": "Chunks/r2c2.bin",
+   "center_uu": [
+    20000.0,
+    20000.0
+   ],
+   "vertices": 24765,
+   "triangles": 48950,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r3c2",
+   "col": 2,
+   "row": 3,
+   "file": "Chunks/r3c2.bin",
+   "center_uu": [
+    30000.0,
+    20000.0
+   ],
+   "vertices": 21927,
+   "triangles": 43206,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r0c3",
+   "col": 3,
+   "row": 0,
+   "file": "Chunks/r0c3.bin",
+   "center_uu": [
+    0.0,
+    30000.0
+   ],
+   "vertices": 15483,
+   "triangles": 30452,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 15015,
+   "triangles": 29514,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r2c3",
+   "col": 3,
+   "row": 2,
+   "file": "Chunks/r2c3.bin",
+   "center_uu": [
+    20000.0,
+    30000.0
+   ],
+   "vertices": 15811,
+   "triangles": 31134,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_r3c3",
+   "col": 3,
+   "row": 3,
+   "file": "Chunks/r3c3.bin",
+   "center_uu": [
+    30000.0,
+    30000.0
+   ],
+   "vertices": 14115,
+   "triangles": 27754,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_0",
+   "file": "Outer/o0_0.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_1",
+   "file": "Outer/o0_1.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_2",
+   "file": "Outer/o0_2.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_3",
+   "file": "Outer/o0_3.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_4",
+   "file": "Outer/o0_4.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_5",
+   "file": "Outer/o0_5.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_6",
+   "file": "Outer/o0_6.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_7",
+   "file": "Outer/o0_7.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_8",
+   "file": "Outer/o0_8.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_9",
+   "file": "Outer/o0_9.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_10",
+   "file": "Outer/o0_10.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_0_11",
+   "file": "Outer/o0_11.bin",
+   "collision": false,
+   "center_uu": [
+    -95000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_0",
+   "file": "Outer/o1_0.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_1",
+   "file": "Outer/o1_1.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_2",
+   "file": "Outer/o1_2.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_3",
+   "file": "Outer/o1_3.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_4",
+   "file": "Outer/o1_4.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_5",
+   "file": "Outer/o1_5.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_6",
+   "file": "Outer/o1_6.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_7",
+   "file": "Outer/o1_7.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_8",
+   "file": "Outer/o1_8.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_9",
+   "file": "Outer/o1_9.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_10",
+   "file": "Outer/o1_10.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_1_11",
+   "file": "Outer/o1_11.bin",
+   "collision": false,
+   "center_uu": [
+    -75000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_0",
+   "file": "Outer/o2_0.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_1",
+   "file": "Outer/o2_1.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_2",
+   "file": "Outer/o2_2.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_3",
+   "file": "Outer/o2_3.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_4",
+   "file": "Outer/o2_4.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_5",
+   "file": "Outer/o2_5.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_6",
+   "file": "Outer/o2_6.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_7",
+   "file": "Outer/o2_7.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_8",
+   "file": "Outer/o2_8.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_9",
+   "file": "Outer/o2_9.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_10",
+   "file": "Outer/o2_10.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_2_11",
+   "file": "Outer/o2_11.bin",
+   "collision": false,
+   "center_uu": [
+    -55000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_0",
+   "file": "Outer/o3_0.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_1",
+   "file": "Outer/o3_1.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_2",
+   "file": "Outer/o3_2.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_3",
+   "file": "Outer/o3_3.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_4",
+   "file": "Outer/o3_4.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_5",
+   "file": "Outer/o3_5.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_6",
+   "file": "Outer/o3_6.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_7",
+   "file": "Outer/o3_7.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_8",
+   "file": "Outer/o3_8.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_9",
+   "file": "Outer/o3_9.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_10",
+   "file": "Outer/o3_10.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_3_11",
+   "file": "Outer/o3_11.bin",
+   "collision": false,
+   "center_uu": [
+    -35000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_0",
+   "file": "Outer/o4_0.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_1",
+   "file": "Outer/o4_1.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_2",
+   "file": "Outer/o4_2.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_3",
+   "file": "Outer/o4_3.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_4",
+   "file": "Outer/o4_4.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_5",
+   "file": "Outer/o4_5.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_6",
+   "file": "Outer/o4_6.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_7",
+   "file": "Outer/o4_7.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_8",
+   "file": "Outer/o4_8.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_9",
+   "file": "Outer/o4_9.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_10",
+   "file": "Outer/o4_10.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_4_11",
+   "file": "Outer/o4_11.bin",
+   "collision": false,
+   "center_uu": [
+    -15000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_0",
+   "file": "Outer/o5_0.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_1",
+   "file": "Outer/o5_1.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_2",
+   "file": "Outer/o5_2.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_3",
+   "file": "Outer/o5_3.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_4",
+   "file": "Outer/o5_4.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_7",
+   "file": "Outer/o5_7.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_8",
+   "file": "Outer/o5_8.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_9",
+   "file": "Outer/o5_9.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_10",
+   "file": "Outer/o5_10.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_5_11",
+   "file": "Outer/o5_11.bin",
+   "collision": false,
+   "center_uu": [
+    5000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_0",
+   "file": "Outer/o6_0.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_1",
+   "file": "Outer/o6_1.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_2",
+   "file": "Outer/o6_2.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_3",
+   "file": "Outer/o6_3.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_4",
+   "file": "Outer/o6_4.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_7",
+   "file": "Outer/o6_7.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_8",
+   "file": "Outer/o6_8.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_9",
+   "file": "Outer/o6_9.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_10",
+   "file": "Outer/o6_10.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_6_11",
+   "file": "Outer/o6_11.bin",
+   "collision": false,
+   "center_uu": [
+    25000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_0",
+   "file": "Outer/o7_0.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_1",
+   "file": "Outer/o7_1.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_2",
+   "file": "Outer/o7_2.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_3",
+   "file": "Outer/o7_3.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_4",
+   "file": "Outer/o7_4.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_5",
+   "file": "Outer/o7_5.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_6",
+   "file": "Outer/o7_6.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_7",
+   "file": "Outer/o7_7.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_8",
+   "file": "Outer/o7_8.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_9",
+   "file": "Outer/o7_9.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_10",
+   "file": "Outer/o7_10.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_7_11",
+   "file": "Outer/o7_11.bin",
+   "collision": false,
+   "center_uu": [
+    45000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_0",
+   "file": "Outer/o8_0.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_1",
+   "file": "Outer/o8_1.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_2",
+   "file": "Outer/o8_2.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_3",
+   "file": "Outer/o8_3.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_4",
+   "file": "Outer/o8_4.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_5",
+   "file": "Outer/o8_5.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_6",
+   "file": "Outer/o8_6.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_7",
+   "file": "Outer/o8_7.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_8",
+   "file": "Outer/o8_8.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_9",
+   "file": "Outer/o8_9.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_10",
+   "file": "Outer/o8_10.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_8_11",
+   "file": "Outer/o8_11.bin",
+   "collision": false,
+   "center_uu": [
+    65000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_0",
+   "file": "Outer/o9_0.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_1",
+   "file": "Outer/o9_1.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_2",
+   "file": "Outer/o9_2.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_3",
+   "file": "Outer/o9_3.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_4",
+   "file": "Outer/o9_4.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_5",
+   "file": "Outer/o9_5.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_6",
+   "file": "Outer/o9_6.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_7",
+   "file": "Outer/o9_7.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_8",
+   "file": "Outer/o9_8.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_9",
+   "file": "Outer/o9_9.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_10",
+   "file": "Outer/o9_10.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_9_11",
+   "file": "Outer/o9_11.bin",
+   "collision": false,
+   "center_uu": [
+    85000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_0",
+   "file": "Outer/o10_0.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_1",
+   "file": "Outer/o10_1.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_2",
+   "file": "Outer/o10_2.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_3",
+   "file": "Outer/o10_3.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_4",
+   "file": "Outer/o10_4.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_5",
+   "file": "Outer/o10_5.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_6",
+   "file": "Outer/o10_6.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_7",
+   "file": "Outer/o10_7.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_8",
+   "file": "Outer/o10_8.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_9",
+   "file": "Outer/o10_9.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_10",
+   "file": "Outer/o10_10.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_10_11",
+   "file": "Outer/o10_11.bin",
+   "collision": false,
+   "center_uu": [
+    105000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_0",
+   "file": "Outer/o11_0.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -95000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_1",
+   "file": "Outer/o11_1.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -75000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_2",
+   "file": "Outer/o11_2.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -55000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_3",
+   "file": "Outer/o11_3.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -35000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_4",
+   "file": "Outer/o11_4.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    -15000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_5",
+   "file": "Outer/o11_5.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    5000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_6",
+   "file": "Outer/o11_6.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    25000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_7",
+   "file": "Outer/o11_7.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    45000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_8",
+   "file": "Outer/o11_8.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    65000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_9",
+   "file": "Outer/o11_9.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    85000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_10",
+   "file": "Outer/o11_10.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    105000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  },
+  {
+   "name": "M_C18_mucho_agua_outer_11_11",
+   "file": "Outer/o11_11.bin",
+   "collision": false,
+   "center_uu": [
+    125000.0,
+    125000.0
+   ],
+   "vertices": 1681,
+   "triangles": 3200,
+   "instances": 0
+  }
+ ],
+ "style": {
+  "name": "C18_mucho_agua",
+  "description": "Tramo de rio largo y lagos grandes en las vistas.",
+  "main_length_m": [
+   700.0,
+   900.0
+  ],
+  "path_separation_m": 34.0,
+  "loops": 7,
+  "nested_loops": 2,
+  "crossings": [
+   1,
+   4
+  ],
+  "bridge_share": 0.5,
+  "loop_span_m": [
+   40.0,
+   160.0
+  ],
+  "loop_reach_m": [
+   38.0,
+   65.0
+  ],
+  "backtrack_chance": 0.3,
+  "hill_tunnels": 2,
+  "width_m": [
+   4.0,
+   6.5,
+   10.5
+  ],
+  "river_half_width_m": [
+   5.0,
+   9.0
+  ],
+  "max_grade": 0.2,
+  "steep_grade": 0.3,
+  "steep_chance": 0.15,
+  "cross_clearance_m": 8.5,
+  "biome_shares": [
+   0.28,
+   0.32,
+   0.25,
+   0.15
+  ],
+  "rim_cliffs_m": [
+   4.0,
+   9.0
+  ],
+  "rim_water_m": [
+   3.0,
+   5.0
+  ],
+  "rim_dunes_m": [
+   3.0,
+   6.0
+  ],
+  "rim_beach_m": [
+   2.5,
+   4.0
+  ],
+  "wall_angle_deg": [
+   78.0,
+   60.0,
+   64.0,
+   62.0
+  ],
+  "block_band_m": [
+   1.0,
+   6.0
+  ],
+  "island_per_100m": 5.0,
+  "vista_dune_wave_m": [
+   15.0,
+   20.0
+  ],
+  "vista_dune_amp_m": [
+   0.8,
+   2.6
+  ],
+  "vista_pond_m": 3.4,
+  "castles": 0,
+  "arches": 3,
+  "extra_hill_tunnels": 1,
+  "crest_relief_m": 3.0,
+  "hill_amp_m": [
+   1.0,
+   14.0
+  ],
+  "crest_roughness": 1.0,
+  "canyon": "deadly",
+  "canyon_width_m": [
+   20.0,
+   35.0
+  ],
+  "canyon_depth_m": [
+   8.0,
+   14.0
+  ],
+  "wall_color_mix": 1.0,
+  "jump_steps": 2,
+  "jump_step_m": 4.5,
+  "jump_ledge_m": [
+   12.0,
+   22.0
+  ]
+ },
+ "description": "Tramo de rio largo y lagos grandes en las vistas.",
+ "recorrible": true,
+ "kill_boxes_uu": [],
+ "jellyfish_uu": [
+  [
+   21677.5,
+   13202.8,
+   229.7
+  ],
+  [
+   26109.6,
+   21478.3,
+   236.5
+  ]
+ ]
+}
