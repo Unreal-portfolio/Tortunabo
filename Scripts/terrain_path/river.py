@@ -17,6 +17,8 @@ from .layout import WATER_M
 BANK_TOP_M = WATER_M + 0.7
 BANK_M = (1.0, 2.8)              # anchura de cada orilla (m), cambia a lo largo del rio
 MIN_CHANNEL_M = 1.5              # cauce mas estrecho que esto: no hay cauce (todo orilla)
+STREAM_BED_M = WATER_M - 0.35
+LAGOON_EXTRA = 1.5               # islas de mas por metro de laguna (sobre island_per_100m)    # fondo de un arroyo: se cruza andando con el agua por los tobillos
 
 
 @dataclass
@@ -32,6 +34,7 @@ class Island:
 class River:
     banks: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]]      # linea -> (arco, orilla izq., orilla der.)
     islands: list[Island]
+    shallow: frozenset = frozenset()     # lineas cuyo cauce es un arroyo vadeable
 
 
 def _segments(mask: np.ndarray, arc: np.ndarray) -> list[tuple[float, float]]:
@@ -55,9 +58,12 @@ def channel(w, left, right):
 
 def plan_river(rng: np.random.Generator, model) -> River | None:
     banks, islands = {}, []
-    # Solo el camino principal lleva rio: un lazo que pasa por el agua es un paso seco a la cota de
-    # la orilla (con rio, sus orillas no siempre enlazaban con las del principal).
-    for line in model.plan.graph.lines[:1]:
+    # El principal lleva rio. Un lazo que pasa por el agua es un paso seco a la cota de la orilla
+    # (con rio, sus orillas no siempre enlazaban con las del principal), salvo los arroyos: su
+    # cauce es poco hondo y se anda por dentro, asi que no hace falta enlazar orillas.
+    lines = [line for line in model.plan.graph.lines if line.id == 0 or model.plan.profiles[line.id].stream]
+    shallow = frozenset(line.id for line in lines if line.id != 0)
+    for line in lines:
         prof = model.plan.profiles[line.id]
         segments = [seg for seg in _segments(prof.biome == 1, line.arc) if seg[1] - seg[0] >= 20.0]
         if not segments:
@@ -65,8 +71,13 @@ def plan_river(rng: np.random.Generator, model) -> River | None:
         left = knot_noise(rng, line.arc, (15.0, 40.0), *BANK_M)
         right = knot_noise(rng, line.arc, (15.0, 40.0), *BANK_M)
         banks[line.id] = (line.arc, left, right)
+        if line.id in shallow:
+            continue                                  # el arroyo no lleva islas
+        lagoon = prof.lagoon if prof.lagoon is not None else np.zeros(len(line.arc))
         for s0, s1 in segments:
-            count = int(model.style.island_per_100m * (s1 - s0) / 100.0)
+            wide = (line.arc >= s0) & (line.arc <= s1) & (lagoon > 0.5)
+            wide_m = float(np.count_nonzero(wide)) * float(np.median(np.diff(line.arc)))
+            count = int(model.style.island_per_100m * ((s1 - s0) + LAGOON_EXTRA * wide_m) / 100.0)
             for _ in range(count * 3):
                 if count <= 0:
                     break
@@ -75,15 +86,20 @@ def plan_river(rng: np.random.Generator, model) -> River | None:
                 lo, hi = channel(w, float(np.interp(s, line.arc, left)), float(np.interp(s, line.arc, right)))
                 if hi - lo < 5.0:
                     continue
-                hw = float(rng.uniform(0.6, min(1.6, 0.2 * (hi - lo))))
-                # Hacia una orilla del cauce, nunca en el centro.
-                third = float(rng.choice([-1.0, 1.0]))
-                q = 0.5 * (lo + hi) + third * float(rng.uniform(0.28, 0.42)) * (hi - lo)
+                if float(np.interp(s, line.arc, lagoon)) > 0.5:
+                    # Laguna: islitas repartidas por todo el agua, algo mayores.
+                    hw = float(rng.uniform(0.8, 2.2))
+                    q = float(rng.uniform(lo + hw + 1.5, hi - hw - 1.5))
+                else:
+                    hw = float(rng.uniform(0.6, min(1.6, 0.2 * (hi - lo))))
+                    # Hacia una orilla del cauce, nunca en el centro.
+                    third = float(rng.choice([-1.0, 1.0]))
+                    q = 0.5 * (lo + hi) + third * float(rng.uniform(0.28, 0.42)) * (hi - lo)
                 islands.append(Island(line.id, s, q, float(rng.uniform(1.9, 3.2)) * hw, hw))
                 count -= 1
     if not banks:
         return None
-    return River(banks, islands)
+    return River(banks, islands, shallow)
 
 
 def river_floor(model, X, Y, i, zf, w):
@@ -103,7 +119,8 @@ def river_floor(model, X, Y, i, zf, w):
         wobble = 0.4 * model.n_top(X, Y)
         inside = smooth(-0.6, 0.6, q - lo + wobble) * smooth(-0.6, 0.6, hi - q + wobble)
         inside = inside * smooth(MIN_CHANNEL_M - 0.5, MIN_CHANNEL_M + 0.5, hi - lo)
-        floor = np.where(on, floor * (1.0 - inside) + bed * inside, floor)
+        line_bed = STREAM_BED_M - 0.1 * model.n_floor.unit(X, Y) if line_id in river.shallow else bed
+        floor = np.where(on, floor * (1.0 - inside) + line_bed * inside, floor)
         weight = np.where(on, 1.0, weight)
     weight = weight * (1.0 - smooth(0.3, 1.2, zf - BANK_TOP_M))
     for isl in river.islands:

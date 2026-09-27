@@ -42,8 +42,8 @@ def _blocked(model) -> list[tuple[float, float]]:
     out += [(a, b) for lid, a, b in plan.hill_tunnels if lid == 0]
     out += [(a, b) for lid, a, b in model.deck_cuts if lid == 0]
     out += [(a, b) for lid, a, b in model.arch_ranges if lid == 0]
-    if model.canyon is not None:
-        out.append((model.canyon.s_main - CANYON_CLEAR_M, model.canyon.s_main + CANYON_CLEAR_M))
+    for c in model.canyons:
+        out.append((c.s_main - CANYON_CLEAR_M, c.s_main + CANYON_CLEAR_M))
     tunnel = plan.profiles[0].tunnel
     if tunnel.any():
         arc = main.arc

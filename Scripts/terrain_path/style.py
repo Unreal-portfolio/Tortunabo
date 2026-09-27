@@ -59,6 +59,12 @@ class PathStyle:
     jump_steps: int = 2
     jump_step_m: float = 4.5
     jump_ledge_m: tuple[float, float] = (12.0, 22.0)
+    # Variedad (2026-09-27). Los valores por defecto dejan C01 como estaba.
+    biome_order: str = "fixed"               # "fixed" (acantilado, agua, dunas, playa) | "random" (playa al final)
+    canyon_count: tuple[int, int] = (1, 1)   # barrancos por mapa (rango)
+    canyon_shape: str = "straight"           # "straight" (perpendicular, poco serpenteo) | "free" (angulo y curva al azar)
+    lagoon_chance: float = 0.0               # probabilidad de que un tramo de agua sea laguna ancha con islitas
+    streams: tuple[int, int] = (0, 0)        # lazos que son un arroyo vadeable (bifurcacion por el agua)
 
 
 C01_STYLE = PathStyle()

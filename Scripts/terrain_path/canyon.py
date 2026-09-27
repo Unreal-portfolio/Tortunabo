@@ -55,11 +55,12 @@ def raise_main(prof, arc: np.ndarray, canyon: Canyon, grade: float):
     return replace(prof, z=np.maximum(z, prof.z))
 
 
-def _walk(rng: np.random.Generator, start: np.ndarray, heading: float, blocked, max_len: float) -> np.ndarray:
+def _walk(rng: np.random.Generator, start: np.ndarray, heading: float, blocked, max_len: float,
+          bend_deg: float = 2.2) -> np.ndarray:
     pts, h, p = [start.copy()], heading, start.copy()
     phase, wave = rng.uniform(0.0, 2 * math.pi), rng.uniform(40.0, 70.0)
     for step in range(int(max_len)):
-        h += math.radians(2.2) * math.sin(2 * math.pi * step / wave + phase) + rng.normal(0.0, math.radians(0.8))
+        h += math.radians(bend_deg) * math.sin(2 * math.pi * step / wave + phase) + rng.normal(0.0, math.radians(0.8))
         p = p + np.array([math.cos(h), math.sin(h)])
         # Lejos del borde: el barranco se cierra dentro del mapa (el cauce hasta el horizonte
         # dejaba ver la costura con la corona).
@@ -71,7 +72,42 @@ def _walk(rng: np.random.Generator, start: np.ndarray, heading: float, blocked, 
     return np.array(pts)
 
 
-def plan_canyon(model, rng: np.random.Generator) -> Canyon | None:
+def plan_canyons(model, rng: np.random.Generator) -> list[Canyon]:
+    """Los barrancos del mapa (canyon_count). Cada uno se planea con el principal ya subido y los
+    puentes de los anteriores, y no se acerca a ellos."""
+    lo, hi = model.style.canyon_count
+    count = lo if lo == hi else int(rng.integers(lo, hi + 1))
+    out: list[Canyon] = []
+    for _ in range(count):
+        c = plan_canyon(model, rng, tuple(out))
+        if c is None:
+            break
+        out.append(c)
+        model.add_canyon(c)
+    return out
+
+
+def _feasible_arcs(model, flat: float, join_margin: float) -> np.ndarray:
+    """Mascara del arco del principal donde cabe el eje de un barranco con ese tramo llano: lejos
+    de tuneles, agua, playa, uniones, puentes y arcos, y entre el 4 y el 85 % del recorrido."""
+    main, prof = model.plan.graph.main, model.plan.profiles[0]
+    arc = main.arc
+    ok = (arc > 0.04 * main.length) & (arc < 0.85 * main.length)
+    bad = prof.tunnel | np.isin(prof.biome, (1, 3))
+    if bad.any():
+        d, _ = cKDTree(arc[bad][:, None]).query(arc[:, None])
+        ok &= d > flat + 10.0
+    joins = [c.point for c in model.plan.crossings] + [ln.points[k] for ln in model.plan.graph.loops() for k in (0, -1)]
+    if joins:
+        dj, _ = cKDTree(np.array(joins)).query(main.points)
+        ok &= dj > flat + join_margin
+    for lid, a, b in model.deck_cuts + model.arch_ranges:
+        if lid == 0:
+            ok &= ~((arc > a - flat - 15.0) & (arc < b + flat + 15.0))
+    return ok
+
+
+def plan_canyon(model, rng: np.random.Generator, others: tuple = ()) -> Canyon | None:
     style = model.style
     if style.canyon == "none":
         return None
@@ -84,15 +120,22 @@ def plan_canyon(model, rng: np.random.Generator) -> Canyon | None:
     # Arco en el principal de cada union o cruce que esta sobre el (sus cotas no se pueden mover).
     d_j, k_j = cKDTree(main.points).query(np.array(joins))
     join_arcs = [float(main.arc[k]) for d, k in zip(d_j, k_j) if d < 8.0]
+    # Forma libre: el cruce se sortea solo entre los tramos donde cabe (al azar sobre todo el
+    # principal casi nunca caia en uno) y puede acercarse mas a las uniones.
+    free = style.canyon_shape == "free"
+    join_margin = 4.0 if free else 10.0
+    feasible = main.arc[_feasible_arcs(model, 0.6 * lo_w + 8.0, join_margin)] if free else None
+    if feasible is not None and len(feasible) == 0:
+        return None
     for _ in range(300):
-        s = float(rng.uniform(0.04, 0.85) * main.length)
+        s = float(rng.choice(feasible)) if free else float(rng.uniform(0.04, 0.85) * main.length)
         half0 = 0.5 * float(rng.uniform(lo_w, hi_w))
         flat = 1.2 * half0 + 8.0                     # tramo llano del principal a cada lado del eje
         near = (main.arc > s - flat - 10.0) & (main.arc < s + flat + 10.0)
         if prof.tunnel[near].any() or np.isin(prof.biome[near], (1, 3)).any():
             continue
         p0 = main.point_at(s)
-        if any(np.hypot(*(p0 - q)) < flat + 10.0 for q in joins):
+        if any(np.hypot(*(p0 - q)) < flat + join_margin for q in joins):
             continue
         if any(lid == 0 and a - flat - 15.0 < s < b + flat + 15.0 for lid, a, b in model.deck_cuts + model.arch_ranges):
             continue
@@ -105,11 +148,16 @@ def plan_canyon(model, rng: np.random.Generator) -> Canyon | None:
         if z_top < FLOOR_M + style.canyon_depth_m[0]:
             continue
 
+        if any(float(np.min(np.hypot(*(o.pts - p0).T))) < half0 + float(o.half.max()) + 30.0 for o in others):
+            continue
+
         crossed: dict[int, float] = {0: s}
 
         def blocked(p, step, heading, half=half0, flat=flat):
             """True si el barranco tiene que pararse en p. Puede cruzar otro camino (con su propio
             puente) si va alto, de frente y lejos de uniones, tuneles y otros puentes."""
+            if any(float(np.min(np.hypot(*(o.pts - p).T))) < half + float(o.half.max()) + 15.0 for o in others):
+                return True
             d, j = tree_all.query(p)
             if d - S["w"][j] >= half + 8.0:
                 return False
@@ -124,7 +172,12 @@ def plan_canyon(model, rng: np.random.Generator) -> Canyon | None:
             return not ok
 
         n = main.normal_at(s)
-        sides = [_walk(rng, p0, math.atan2(sign * n[1], sign * n[0]), blocked, 260.0) for sign in (1.0, -1.0)]
+        # Forma libre: el eje cruza en diagonal (hasta 40 grados) y serpentea mas.
+        tilt, bend = 0.0, 2.2
+        if style.canyon_shape == "free":
+            tilt, bend = math.radians(float(rng.uniform(-40.0, 40.0))), float(rng.uniform(2.0, 6.0))
+        sides = [_walk(rng, p0, math.atan2(sign * n[1], sign * n[0]) + tilt, blocked, 260.0, bend)
+                 for sign in (1.0, -1.0)]
         lengths = [len(a) - 1 for a in sides]
         if min(lengths) < MIN_SIDE_M:
             continue
@@ -180,6 +233,24 @@ def _can_cross(model, lid: int, s_l: float, half: float, heading: float) -> bool
 
 def _inside(p: np.ndarray) -> bool:
     return bool(MAP_MIN_M <= p[0] <= MAP_MAX_M and MAP_MIN_M <= p[1] <= MAP_MAX_M)
+
+
+class CanyonSet:
+    """Varios barrancos con la interfaz de CanyonField (tallar y 'dentro')."""
+
+    def __init__(self, fields: list[CanyonField]):
+        self.fields = fields
+
+    def carve(self, X, Y, height: np.ndarray, path_mask: np.ndarray) -> np.ndarray:
+        for f in self.fields:
+            height = f.carve(X, Y, height, path_mask)
+        return height
+
+    def inside(self, X, Y) -> np.ndarray:
+        out = np.zeros(np.shape(X), dtype=bool)
+        for f in self.fields:
+            out |= f.inside(X, Y)
+        return out
 
 
 class CanyonField:

@@ -1,10 +1,14 @@
 """Catalogo de 30 mapas "camino primero" (C02-C31) para elegir con los disenadores: el mismo
-sistema que C01 con otra semilla y, en la mayoria, algun parametro distinto (lazos, cruces,
-puentes, anchura, altura de las paredes, relieve, agua...). No son mapas para usar tal cual."""
+sistema que C01 con otra semilla. Cada mapa sortea con su semilla el orden de las zonas (playa
+siempre al final), cuantos lazos, cruces, arcos, tuneles, barrancos (0-2, forma libre), lagunas y
+arroyos lleva, y el reparto de biomas; lo que fija su variante (lazos, cruces, puentes, anchura,
+paredes, agua...) manda sobre el sorteo. No son mapas para usar tal cual."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+
+import numpy as np
 
 from .style import C01_STYLE, PathStyle
 
@@ -19,16 +23,32 @@ class PathVariant:
     description: str
 
 
+def _drawn(seed: int) -> dict:
+    """Parametros sorteados de un mapa del catalogo (generador propio: no mueve el del mapa)."""
+    r = np.random.default_rng(seed + 7)
+    loops = int(r.integers(4, 10))
+    low_cross = int(r.integers(0, 3))
+    shares = np.array([r.uniform(0.2, 0.45), r.uniform(0.12, 0.3), r.uniform(0.15, 0.4)])
+    beach = float(r.uniform(0.1, 0.17))
+    shares = shares / shares.sum() * (1.0 - beach)
+    return dict(biome_order="random", canyon_shape="free", canyon_count=(0, 2), canyon_width_m=(16.0, 28.0), lagoon_chance=0.5,
+                streams=(0, 2), loops=loops, nested_loops=int(r.integers(0, min(3, loops - 2) + 1)),
+                crossings=(low_cross, low_cross + 2), arches=int(r.integers(0, 6)),
+                extra_hill_tunnels=int(r.integers(0, 4)), jump_steps=int(r.integers(1, 4)),
+                biome_shares=(*(round(float(v), 3) for v in shares), round(beach, 3)))
+
+
 def _v(n: int, slug: str, description: str, **changes) -> PathVariant:
     name = f"C{n:02d}_{slug}"
-    style = replace(C01_STYLE, name=name, description=description, **changes)
-    return PathVariant(name, BASE_SEED + n, style, description)
+    seed = BASE_SEED + n
+    style = replace(C01_STYLE, name=name, description=description, **{**_drawn(seed), **changes})
+    return PathVariant(name, seed, style, description)
 
 
 PATH_VARIANTS: tuple[PathVariant, ...] = (
-    _v(2, "base_a", "Mismos parametros que C01, otra semilla."),
-    _v(3, "base_b", "Mismos parametros que C01, otra semilla."),
-    _v(4, "base_c", "Mismos parametros que C01, otra semilla."),
+    _v(2, "base_a", "Todo sorteado con la semilla."),
+    _v(3, "base_b", "Todo sorteado con la semilla."),
+    _v(4, "base_c", "Todo sorteado con la semilla."),
     _v(5, "muchos_lazos", "Nueve lazos, tres de ellos dentro de otros: muchas alternativas.",
        loops=9, nested_loops=3),
     _v(6, "pocos_lazos", "Solo cuatro lazos: recorrido mas directo.", loops=4, nested_loops=1),

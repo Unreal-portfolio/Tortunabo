@@ -68,20 +68,12 @@ class PathModel:
                   for lid, a, b in self.arch_ranges]
         self._build_samples()
         # Barranco (v2): generador aparte; su puente sustituye el tramo del principal que lo cruza.
-        self.canyon = canyon.plan_canyon(self, np.random.default_rng(seed + 29))
+        self._decks = decks
+        self.canyons = canyon.plan_canyons(self, np.random.default_rng(seed + 29))
+        self.canyon = self.canyons[0] if self.canyons else None
         self.canyon_field = None
-        if self.canyon is not None:
-            self.plan.profiles[0] = canyon.raise_main(self.plan.profiles[0], self.plan.graph.main.arc, self.canyon,
-                                                      self.style.max_grade)
-            for line_id, s_c in ((0, self.canyon.s_main),) + tuple(self.canyon.crossings):
-                deck, cut = canyon.canyon_deck(self, self.canyon, line_id, s_c)
-                prof = self.plan.profiles[line_id]
-                arc = self.plan.graph.lines[line_id].arc
-                self.plan.profiles[line_id] = replace(prof, half_width=bridge.narrow(prof.half_width, arc, s_c, cut[2] - s_c))
-                self.deck_cuts.append(cut)
-                decks.append(deck)
-            self._build_samples()
-            self.canyon_field = canyon.CanyonField(self.canyon, self.n_floor)
+        if self.canyons:
+            self.canyon_field = canyon.CanyonSet([canyon.CanyonField(c, self.n_floor) for c in self.canyons])
         # Escalones de medusa: despues del barranco (lo evitan); azar propio. La subida no entra en
         # la cota del perfil (de ella salen las lomas y las vistas de alrededor): va aparte, en
         # S["lift"], y solo la usan el suelo del camino y el remate de sus paredes.
@@ -258,6 +250,19 @@ class PathModel:
         inside = self.canyon_field.inside(X, Y)
         low = z_levels < canyon.KILL_TOP_M
         return standable & ~(inside[..., None] & low[None, None, :])
+
+    def add_canyon(self, c) -> None:
+        """Sube el principal sobre el barranco c y pone el puente de cada camino que lo cruza."""
+        self.plan.profiles[0] = canyon.raise_main(self.plan.profiles[0], self.plan.graph.main.arc, c,
+                                                  self.style.max_grade)
+        for line_id, s_c in ((0, c.s_main),) + tuple(c.crossings):
+            deck, cut = canyon.canyon_deck(self, c, line_id, s_c)
+            prof = self.plan.profiles[line_id]
+            arc = self.plan.graph.lines[line_id].arc
+            self.plan.profiles[line_id] = replace(prof, half_width=bridge.narrow(prof.half_width, arc, s_c, cut[2] - s_c))
+            self.deck_cuts.append(cut)
+            self._decks.append(deck)
+        self._build_samples()
 
     def jump_links(self) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]:
         """(desde, hasta) de cada paso que no es andar: la medusa sube al rellano y del rellano se

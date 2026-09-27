@@ -578,12 +578,12 @@ def test_hay_barranco_mortal_con_puente_del_principal(model):
 
 def test_el_barranco_solo_toca_caminos_por_sus_puentes(model):
     """Ningun camino abierto pasa por el cauce salvo en el tramo de su puente."""
-    c = model.canyon
-    field_ = model.canyon_field
     S = model.S
     idx = model.open_idx
-    q, half, depth = field_.query(S["p"][idx, 0][:, None], S["p"][idx, 1][:, None])
-    inside = ((q.ravel() < half.ravel() + 1.0) & (depth.ravel() > 0.2))
+    inside = np.zeros(len(idx), dtype=bool)
+    for field_ in model.canyon_field.fields:
+        q, half, depth = field_.query(S["p"][idx, 0][:, None], S["p"][idx, 1][:, None])
+        inside |= (q.ravel() < half.ravel() + 1.0) & (depth.ravel() > 0.2)
     for j in idx[inside]:
         assert _on_deck(model, int(S["line"][j]), float(S["s"][j]), 6.0), \
             f"el camino {S['line'][j]} cae al barranco en s={S['s'][j]:.0f}"
@@ -646,3 +646,63 @@ def test_ninguna_cara_queda_girada_junto_al_puente_del_rio(model):
     area = np.linalg.norm(visible, axis=1)
     agree = np.einsum("ij,ij->i", visible / np.maximum(area, 1e-12)[:, None], chunk.normals[t].mean(axis=1))
     assert int(((agree < -0.2) & (area > 1e-4)).sum()) == 0
+
+
+# -- Variedad del catalogo (2026-09-27) ---------------------------------------------------------
+from scipy.spatial import cKDTree  # noqa: E402
+
+from terrain_path.profile import _random_biomes  # noqa: E402
+from terrain_path.variants import PATH_VARIANTS  # noqa: E402
+
+
+def test_el_orden_de_zonas_al_azar_cambia_con_la_semilla_y_acaba_en_playa():
+    arc = np.linspace(0.0, 800.0, 1601)
+    seqs = set()
+    for seed in range(20):
+        b = _random_biomes(np.random.default_rng(seed), arc, C01_STYLE.biome_shares)
+        assert b[0] != 1 and b[-1] == 3 and 1 in b
+        runs = [int(b[0])] + [int(x) for k, x in enumerate(b[1:], 1) if x != b[k - 1]]
+        assert runs[-1] == 3 and 3 not in runs[:-1]
+        seqs.add(tuple(runs))
+    assert len(seqs) >= 8, f"solo {len(seqs)} ordenes distintos en 20 semillas"
+
+
+@pytest.fixture(scope="module")
+def varied():
+    """C07: dos barrancos, laguna y ningun arroyo; C04: dos arroyos."""
+    by_name = {v.name[:3]: v for v in PATH_VARIANTS}
+    return {k: PathModel(by_name[k].seed, by_name[k].style) for k in ("C07", "C04")}
+
+
+def test_dos_barrancos_quedan_separados_y_con_cajas_de_muerte(varied):
+    m = varied["C07"]
+    assert len(m.canyons) == 2
+    a, b = m.canyons
+    gap = cKDTree(a.pts).query(b.pts)[0].min()
+    assert gap > a.half.max() + b.half.max() + 10.0
+    assert all(canyon_mod.kill_boxes_uu(c) for c in m.canyons)
+    assert abs(a.s_main - b.s_main) > 60.0
+
+
+def test_la_laguna_es_ancha_y_tiene_islitas_por_el_medio(varied):
+    m = varied["C07"]
+    prof = m.plan.profiles[0]
+    wide = prof.lagoon > 0.9
+    assert wide.any() and prof.half_width[wide].min() >= 12.0
+    main = m.plan.graph.main
+    lagoon_isl = [isl for isl in m.river.islands if isl.line == 0 and np.interp(isl.s, main.arc, prof.lagoon) > 0.9]
+    assert len(lagoon_isl) >= 3
+
+
+def test_el_arroyo_es_un_lazo_de_agua_vadeable(varied):
+    m = varied["C04"]
+    streams = [lid for lid, p in m.plan.profiles.items() if p.stream]
+    assert streams and set(streams) == set(m.river.shallow)
+    for lid in streams:
+        prof, line = m.plan.profiles[lid], m.plan.graph.lines[lid]
+        wet = prof.biome == 1
+        assert wet.sum() * np.median(np.diff(line.arc)) >= 40.0
+        mid = line.points[np.flatnonzero(wet)[wet.sum() // 2]]
+        i, j = int(round(mid[0] - m.axis[0])), int(round(mid[1] - m.axis[0]))
+        h = m.grid.height[i - 1:i + 2, j - 1:j + 2]
+        assert WATER_M - 0.8 < h.min() < WATER_M, "el cauce del arroyo no es poco hondo"

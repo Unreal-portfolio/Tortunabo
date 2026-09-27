@@ -95,7 +95,7 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
     write_map(out, name, used, chunks, (*model.start, float(top[s_ij])), (*model.end, float(top[e_ij])),
               zone_map(model, chunks, grid=GRID), model.route.points, style=style,
               extra_manifest={"description": description, "recorrible": result["ok"],
-                              "kill_boxes_uu": kill_boxes_uu(model.canyon) if model.canyon else [],
+                              "kill_boxes_uu": [b for c in model.canyons for b in kill_boxes_uu(c)],
                               "jellyfish_uu": [[round(float(c) * UU_PER_M, 1) for c in st.jelly]
                                                for st in model.jump_steps]},
               grid=GRID)
@@ -109,7 +109,9 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
             "size_mb": round(sum(f.stat().st_size for f in out.rglob("*") if f.is_file()) / (1024 * 1024), 2),
             "time_s": round(time.time() - t0, 1), "length": round(g.main.length), "loops": len(g.loops()),
             "crossings": len(model.plan.crossings), "tunnels": len(model.plan.hill_tunnels),
-            "arches": len(model.arch_ranges), "canyon": model.canyon.mode if model.canyon else "no", "islands": len(model.river.islands) if model.river else 0,
+            "arches": len(model.arch_ranges), "canyon": len(model.canyons), "islands": len(model.river.islands) if model.river else 0,
+            "streams": sum(p.stream for p in model.plan.profiles.values()),
+            "lagoons": int(model.plan.profiles[0].lagoon is not None and model.plan.profiles[0].lagoon.max() > 0.5),
             "vista": result["vista"], "loops_ok": result["loops_ok"], "steps": len(model.jump_steps)}
 
 
@@ -149,7 +151,8 @@ def main() -> None:
             results.append(r)
             print(f"{r['name']}: {'OK' if r['ok'] else 'NO VALIDO'} {r['time_s']}s semilla {r['seed']} "
                   f"principal {r['length']} m, {r['loops']} lazos ({r['loops_ok']} alcanzados), "
-                  f"{r['crossings']} cruces, barranco {r['canyon']}, {r['arches']} arcos, {r['tunnels']} tuneles, {r['islands']} islas, "
+                  f"{r['crossings']} cruces, {r['canyon']} barrancos, {r['arches']} arcos, {r['tunnels']} tuneles, {r['islands']} islas, "
+                  f"{r['lagoons']} lagunas, {r['streams']} arroyos, "
                   f"{r['steps']} escalones de medusa, vistas pisadas {r['vista']}, {r['size_mb']} MB", flush=True)
     update_index(results)
     bad = [r["name"] for r in results if not r["ok"]]

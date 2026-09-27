@@ -21,6 +21,9 @@ from .style import PathStyle
 BIOMES = ("cliffs", "water", "dunes", "beach")
 BIOME_LEVEL_M = {0: (1.0, 8.0), 1: (WATER_M + 0.7, WATER_M + 0.7), 2: (0.0, 4.0), 3: (0.5, 1.5)}
 EXCLUDE_EXTRA_M = 12.0
+LAGOON_HALF_M = (13.0, 19.0)     # semiancho de una laguna
+STREAM_HALF_M = (3.5, 5.5)       # semiancho de un arroyo
+STREAM_MIN_M = 40.0              # tramo de arroyo minimo (si no cabe con las rampas, el lazo es normal)
 PIN_FLAT_M = 8.0                 # tramo llano del camino a cada lado del punto de cruce
 
 
@@ -34,6 +37,8 @@ class LineProfile:
     half_width: np.ndarray
     biome: np.ndarray
     tunnel: np.ndarray
+    lagoon: np.ndarray | None = None     # 0..1: tramo de agua ensanchado en laguna (solo el principal)
+    stream: bool = False                 # lazo que es un arroyo vadeable
 
 
 @dataclass
@@ -100,6 +105,37 @@ def _main_biomes(arc: np.ndarray, shares) -> np.ndarray:
     return np.searchsorted(edges, arc / arc[-1], side="right").astype(int)
 
 
+def _random_biomes(rng: np.random.Generator, arc: np.ndarray, shares) -> np.ndarray:
+    """Secuencia al azar de 3-6 tramos de acantilado, agua y dunas (nunca dos iguales seguidos, no
+    empieza en el agua) y la playa al final. Cada bioma reparte su parte entre sus tramos."""
+    kinds = [b for b in (0, 1, 2) if shares[b] > 0.0]
+    n = int(rng.integers(3, 7))
+    seq = [int(rng.choice([b for b in kinds if b != 1] or kinds))]
+    while len(seq) < n:
+        seq.append(int(rng.choice([b for b in kinds if b != seq[-1]] or kinds)))
+    if 1 in kinds and 1 not in seq:
+        seq[int(rng.integers(1, n))] = 1
+    weights = np.array([shares[b] / seq.count(b) * float(rng.uniform(0.6, 1.4)) for b in seq])
+    beach = float(shares[3]) * float(rng.uniform(0.8, 1.2))
+    edges = np.cumsum(weights / weights.sum() * (1.0 - beach))[:-1]
+    t = arc / arc[-1]
+    biome = np.array(seq)[np.searchsorted(edges, t, side="right")]
+    biome[t >= 1.0 - beach] = 3
+    return biome.astype(int)
+
+
+def _lagoons(rng: np.random.Generator, arc: np.ndarray, biome: np.ndarray, chance: float) -> np.ndarray:
+    """0..1 a lo largo del principal: tramos de agua que se ensanchan en laguna (rampa de 15 m)."""
+    out = np.zeros(len(arc))
+    edges = np.flatnonzero(np.diff(np.concatenate([[0], (biome == 1).astype(int), [0]])))
+    for k0, k1 in zip(edges[::2], edges[1::2]):
+        s0, s1 = float(arc[k0]), float(arc[k1 - 1])
+        if s1 - s0 < 50.0 or rng.random() >= chance:
+            continue
+        out = np.maximum(out, _smooth01(s0, s0 + 15.0, arc) * (1.0 - _smooth01(s1 - 15.0, s1, arc)))
+    return out
+
+
 def _widths(rng: np.random.Generator, arc: np.ndarray, biome: np.ndarray, style: PathStyle) -> np.ndarray:
     lo, mode, hi = style.width_m
     w = knot_noise(rng, arc, (20.0, 60.0), lo, hi, mode=mode)
@@ -109,7 +145,10 @@ def _widths(rng: np.random.Generator, arc: np.ndarray, biome: np.ndarray, style:
 
 
 def main_profile(rng: np.random.Generator, line: PathLine, style: PathStyle) -> LineProfile:
-    biome = _main_biomes(line.arc, style.biome_shares)
+    if style.biome_order == "random":
+        biome = _random_biomes(rng, line.arc, style.biome_shares)
+    else:
+        biome = _main_biomes(line.arc, style.biome_shares)
     target = _knot_levels(rng, line.arc, biome)
     end = line.length
     beach = _smooth01(end - 60.0, end, line.arc)
@@ -118,7 +157,37 @@ def main_profile(rng: np.random.Generator, line: PathLine, style: PathStyle) -> 
     w = _widths(rng, line.arc, biome, style)
     w = np.maximum(w, 7.0 * (1.0 - _smooth01(8.0, 16.0, line.arc)))          # salida: ensanche
     w = w + 12.0 * _smooth01(end - 55.0, end, line.arc)                       # final: abanico a la playa
-    return LineProfile(z, w, biome, np.zeros(len(z), dtype=bool))
+    lagoon = None
+    if style.lagoon_chance > 0.0:
+        lagoon = _lagoons(rng, line.arc, biome, style.lagoon_chance)
+        wide = knot_noise(rng, line.arc, (25.0, 50.0), *LAGOON_HALF_M)
+        w = w * (1.0 - lagoon) + wide * lagoon
+    return LineProfile(z, w, biome, np.zeros(len(z), dtype=bool), lagoon)
+
+
+def stream_profile(rng: np.random.Generator, line: PathLine, graph: PathGraph, profiles: dict[int, LineProfile],
+                   style: PathStyle) -> LineProfile | None:
+    """Lazo que es un arroyo: baja en rampa desde sus dos uniones a la cota de la orilla y el
+    tramo del medio es agua vadeable (river.py). None si no cabe un tramo de STREAM_MIN_M."""
+    parent, pp = graph.lines[line.parent], profiles[line.parent]
+    z_a = float(np.interp(line.s_out, parent.arc, pp.z))
+    z_b = float(np.interp(line.s_back, parent.arc, pp.z))
+    bank = BIOME_LEVEL_M[1][0]
+    r_a = abs(z_a - bank) / style.max_grade + 12.0
+    r_b = abs(z_b - bank) / style.max_grade + 12.0
+    if line.length - r_a - r_b < STREAM_MIN_M:
+        return None
+    z = np.interp(line.arc, [0.0, r_a, line.length - r_b, line.length], [z_a, bank, bank, z_b])
+    z = _ramps(z, line.arc, np.full(len(z), style.max_grade), {0, len(z) - 1})
+    _, k = cKDTree(graph.main.points).query(line.points)
+    biome = profiles[0].biome[k].copy()
+    wet = (line.arc > r_a - 4.0) & (line.arc < line.length - r_b + 4.0)
+    biome[wet] = 1
+    w = _widths(rng, line.arc, biome, style)
+    narrow = knot_noise(rng, line.arc, (20.0, 50.0), *STREAM_HALF_M)
+    water = ndimage.gaussian_filter1d(wet.astype(float), 5.0, mode="nearest")
+    w = w * (1.0 - water) + narrow * water
+    return LineProfile(z, w, biome, np.zeros(len(z), dtype=bool), None, True)
 
 
 def loop_profile(rng: np.random.Generator, line: PathLine, graph: PathGraph, profiles: dict[int, LineProfile],
@@ -186,9 +255,19 @@ def _profiles(rng: np.random.Generator, graph: PathGraph, style: PathStyle) -> P
     profiles: dict[int, LineProfile] = {0: main_profile(rng, graph.main, style)}
     crossings: list[Crossing] = []
     by_loop = {c.upper: c for c in graph.crossings}
+    streams: set[int] = set()
+    if style.streams[1] > 0:
+        free = [loop.id for loop in graph.loops() if loop.id not in by_loop]
+        n = min(int(rng.integers(style.streams[0], style.streams[1] + 1)), len(free))
+        streams = {int(x) for x in rng.permutation(free)[:n]}
     for loop in graph.loops():
         c = by_loop.get(loop.id)
         pin = None
+        if loop.id in streams:
+            prof = stream_profile(rng, loop, graph, profiles, style)
+            if prof is not None:
+                profiles[loop.id] = prof
+                continue
         if c is not None:
             parent = graph.lines[c.lower]
             z_p = float(np.interp(c.s_lower, parent.arc, profiles[parent.id].z))
