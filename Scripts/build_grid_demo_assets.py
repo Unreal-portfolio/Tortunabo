@@ -283,7 +283,7 @@ def add_detail_normal(material, local_position, normal, vertex_color, detail_nor
         "FloorTile": scalar_parameter(material, "DetailFloorTile", 250.0, -1000, 1140),
         "WallTile": scalar_parameter(material, "DetailWallTile", 500.0, -1000, 1240),
         "SandStrength": scalar_parameter(material, "DetailSandStrength", 0.8, -1000, 1340),
-        "PathStrength": scalar_parameter(material, "DetailPathStrength", 0.6, -1000, 1440),
+        "PathStrength": scalar_parameter(material, "DetailPathStrength", 0.85, -1000, 1440),
         "WallStrength": scalar_parameter(material, "DetailWallStrength", 0.9, -1000, 1540),
     }
     custom = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -600, 900)
