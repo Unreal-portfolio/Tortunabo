@@ -1418,7 +1418,9 @@ void ATortugaCharacter::RefreshSprintRequest()
 	// Solo se desactiva cuando el jugador solta el stick/WASD por completo.
 	static constexpr float MovementInputDeadzone = 0.25f;
 	const bool bHasMovementInput = LastMovementInput.SizeSquared() > (MovementInputDeadzone * MovementInputDeadzone);
-	StaminaComponent->SetSprintRequested(bSprintHeld && bHasMovementInput);
+	// En el caparazón no se esprinta aunque la tecla siga pulsada: el input de movimiento llega igual y, sin esto, la
+	// petición de sprint volvía a activarse y gastaba estamina con la tortuga metida dentro.
+	StaminaComponent->SetSprintRequested(bSprintHeld && bHasMovementInput && !IsInShell() && !bIsKnockedDown && !bIsDead);
 }
 
 void ATortugaCharacter::GrantInfiniteStamina(float DurationSeconds)

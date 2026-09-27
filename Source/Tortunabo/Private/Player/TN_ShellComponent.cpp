@@ -101,7 +101,7 @@ void UTN_ShellComponent::ServerToggleShell_Implementation()
 	const UTN_InventoryComponent* Inventory = Turtle->GetInventoryComponent();
 
 	TNShellLogic::FShellEnterContext Context;
-	Context.bOnGround = Movement && Movement->IsMovingOnGround();
+	Context.bIsSwimming = Movement && Movement->IsSwimming();
 	Context.bIsDead = Turtle->IsDead();
 	Context.bIsKnockedDown = Turtle->IsKnockedDown();
 	Context.bIsDiving = Turtle->IsDiving();

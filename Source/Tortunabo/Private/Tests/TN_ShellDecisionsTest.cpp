@@ -11,11 +11,11 @@
 
 namespace TNShellTestHelpers
 {
-	/** Contexto de un personaje sano, de pie y con las manos libres: puede entrar. */
+	/** Contexto de un personaje sano, fuera del agua y con las manos libres: puede entrar. */
 	static TNShellLogic::FShellEnterContext MakeValidContext()
 	{
 		TNShellLogic::FShellEnterContext Context;
-		Context.bOnGround = true;
+		Context.bIsSwimming = false;
 		Context.bIsDead = false;
 		Context.bIsKnockedDown = false;
 		Context.bIsDiving = false;
@@ -37,13 +37,13 @@ bool FTNShellEnterTest::RunTest(const FString& Parameters)
 	using namespace TNShellLogic;
 	using namespace TNShellTestHelpers;
 
-	TestTrue(TEXT("De pie, sano y con las manos libres → entra"),
+	TestTrue(TEXT("Sano, fuera del agua y con las manos libres (de pie o en pleno salto) → entra"),
 		CanEnterShell(MakeValidContext()));
 
 	{
 		FShellEnterContext Context = MakeValidContext();
-		Context.bOnGround = false;
-		TestFalse(TEXT("En el aire no se entra"), CanEnterShell(Context));
+		Context.bIsSwimming = true;
+		TestFalse(TEXT("Nadando no se entra"), CanEnterShell(Context));
 	}
 
 	{
@@ -73,7 +73,7 @@ bool FTNShellEnterTest::RunTest(const FString& Parameters)
 	{
 		// Varias condiciones a la vez: el resultado sigue siendo negativo.
 		FShellEnterContext Context = MakeValidContext();
-		Context.bOnGround = false;
+		Context.bIsSwimming = true;
 		Context.bIsDead = true;
 		Context.bHasEquippedItem = true;
 		TestFalse(TEXT("Varios impedimentos a la vez → no entra"), CanEnterShell(Context));
