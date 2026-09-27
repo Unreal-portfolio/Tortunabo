@@ -44,6 +44,24 @@ enum class ETNBeachElement : uint8
 	Boardwalk          UMETA(DisplayName = "Pasarela de madera vieja"),
 	/** Caminito marcado con palos de madera y cuerda que guía hacia el mar (Extent = largo). */
 	WoodenPostPath     UMETA(DisplayName = "Caminito de palos de madera"),
+	// Basura y cosas de la playa (también ATN_BeachDecor, a escala TNBeach::Scale).
+	SodaCan            UMETA(DisplayName = "Lata"),
+	BottleCaps         UMETA(DisplayName = "Chapas de botella"),
+	FlipFlop           UMETA(DisplayName = "Chanclas"),
+	JuiceBox           UMETA(DisplayName = "Brick de zumo"),
+	Buoy               UMETA(DisplayName = "Boya"),
+	BeachTowel         UMETA(DisplayName = "Toalla"),
+	SunscreenBottle    UMETA(DisplayName = "Bote de crema solar"),
+	PopsicleSticks     UMETA(DisplayName = "Palitos de helado"),
+	SnackShells        UMETA(DisplayName = "Cáscaras de pipas y pistachos"),
+	RopePiece          UMETA(DisplayName = "Trozo de cuerda"),
+	Sunglasses         UMETA(DisplayName = "Gafas de sol"),
+	ToyBucket          UMETA(DisplayName = "Cubito de juguete"),
+	BeachBall          UMETA(DisplayName = "Pelota hinchable"),
+	Frisbee            UMETA(DisplayName = "Disco volador"),
+	Cuttlebone         UMETA(DisplayName = "Hueso de sepia"),
+	RubberDuck         UMETA(DisplayName = "Patito de goma"),
+	GullFeather        UMETA(DisplayName = "Pluma de gaviota"),
 	// ── Trampas e interacciones ──
 	BarbedWire         UMETA(DisplayName = "Alambre de espino"),
 	Seaweed            UMETA(DisplayName = "Algas que enredan"),
@@ -168,6 +186,23 @@ namespace TNBeach
 		case ETNBeachElement::Driftwood:         return 900.0;
 		case ETNBeachElement::Boardwalk:         return 700.0;
 		case ETNBeachElement::WoodenPostPath:    return 300.0;
+		case ETNBeachElement::SodaCan:           return 220.0;
+		case ETNBeachElement::BottleCaps:        return 150.0;
+		case ETNBeachElement::FlipFlop:          return 550.0;
+		case ETNBeachElement::JuiceBox:          return 250.0;
+		case ETNBeachElement::Buoy:              return 550.0;
+		case ETNBeachElement::BeachTowel:        return 1800.0;
+		case ETNBeachElement::SunscreenBottle:   return 300.0;
+		case ETNBeachElement::PopsicleSticks:    return 250.0;
+		case ETNBeachElement::SnackShells:       return 300.0;
+		case ETNBeachElement::RopePiece:         return 600.0;
+		case ETNBeachElement::Sunglasses:        return 300.0;
+		case ETNBeachElement::ToyBucket:         return 450.0;
+		case ETNBeachElement::BeachBall:         return 550.0;
+		case ETNBeachElement::Frisbee:           return 400.0;
+		case ETNBeachElement::Cuttlebone:        return 250.0;
+		case ETNBeachElement::RubberDuck:        return 200.0;
+		case ETNBeachElement::GullFeather:       return 350.0;
 		case ETNBeachElement::BarbedWire:        return 250.0;
 		case ETNBeachElement::Seaweed:           return 700.0;
 		case ETNBeachElement::WobblyPlatform:    return 900.0;
