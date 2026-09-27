@@ -246,10 +246,11 @@ public:
 	/**
 	 * Modo elegido en el lobby (ATN_ProcModeSelector). Classic = LVL_Run de siempre
 	 * (ChunkManager); el resto viaja a LVL_ProcMap. Vive en la GameInstance del host
-	 * para sobrevivir al travel; los clientes lo ven por el selector replicado.
+	 * para sobrevivir al travel; los clientes lo ven por el selector replicado. Por defecto,
+	 * el cooperativo del mapa procedural (el lobby del castillo no tiene selector).
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
-	ETNProcGameMode SelectedProcMode = ETNProcGameMode::Classic;
+	ETNProcGameMode SelectedProcMode = ETNProcGameMode::Coop;
 
 	/** Dificultad elegida en el lobby para el mapa procedural. */
 	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
