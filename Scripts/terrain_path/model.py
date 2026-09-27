@@ -28,6 +28,9 @@ STEP_WALL_REACH_M = 12.0 # paredes altas hasta esta distancia de un escalon de m
 NEEDLE_M = 5.0           # pared o punta mas estrecha que esto: aguja, se quita
 THIN_WALL_M = 18.0       # pared entre dos caminos mas fina que esto: lomo redondeado, sin cuchilla
 ZONE_KEYS = ("cliffs", "marsh", "algae", "beach")      # paletas de terrain_vol.mesh por bioma
+COLOR_BLEND_M = 30.0     # difuminado del cambio de paleta entre biomas (sigma)
+COLOR_WARP_M = 25.0      # torcido con ruido de las fronteras de color
+COLOR_OUTER_FADE_M = 60.0  # fuera del mapa, tramo en el que el color pasa a la arena comun
 
 
 class PathModel:
@@ -93,6 +96,7 @@ class PathModel:
         X, Y = np.meshgrid(self.axis, self.axis, indexing="ij")
         self._fade_grid = self._fade_field(X, Y)
         self.grid = self._fields(X, Y)
+        self._color_grid(X, Y, np.random.default_rng(seed + 53))
         main = self.plan.graph.main
         self.route = SimpleNamespace(points=main.points)
         self.start, self.end = main.points[0], main.points[-1]
@@ -287,6 +291,34 @@ class PathModel:
         out["canyon"] = np.zeros(np.shape(x))
         return out
 
+    def _color_grid(self, X, Y, rng: np.random.Generator) -> None:
+        """Pesos de bioma para el COLOR: los de _biome_weights salen de la muestra de camino mas
+        cercana y, lejos del camino, parten el mapa en bloques de bordes rectos (bisectrices entre
+        tramos de biomas distintos). Aqui se difuminan COLOR_BLEND_M y se tuercen con ruido: el
+        cambio de paleta es gradual y sin lineas rectas. El relieve sigue usando los de siempre."""
+        bw = self._biome_weights(X, Y)
+        sigma = COLOR_BLEND_M / STEP_XY_M
+        self._color_bw = np.stack([ndimage.gaussian_filter(bw[..., b], sigma, mode="nearest")
+                                   for b in range(bw.shape[-1])], axis=-1)
+        self.n_color_x = Fbm2D(rng, 90.0, 2)
+        self.n_color_y = Fbm2D(rng, 90.0, 2)
+
+    def color_weights(self, x, y) -> dict[str, np.ndarray]:
+        x, y = np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)
+        wx = x + COLOR_WARP_M * (2.0 * self.n_color_x.unit(x, y) - 1.0)
+        wy = y + COLOR_WARP_M * (2.0 * self.n_color_y.unit(x, y) - 1.0)
+        coords = [(wx - self.axis[0]) / STEP_XY_M, (wy - self.axis[0]) / STEP_XY_M]
+        out = {key: ndimage.map_coordinates(self._color_bw[..., b], coords, order=1, mode="nearest")
+               for b, key in enumerate(ZONE_KEYS)}
+        # Fuera del mapa (la corona) el ultimo valor del borde se estiraba en bandas rectas: alli
+        # el color pasa poco a poco a la arena comun ("cliffs" = paleta sand).
+        outside = np.hypot(x - np.clip(x, MAP_MIN_M, MAP_MAX_M), y - np.clip(y, MAP_MIN_M, MAP_MAX_M))
+        t = smooth(0.0, COLOR_OUTER_FADE_M, outside)
+        for key in ZONE_KEYS:
+            out[key] = out[key] * (1.0 - t) + (t if key == "cliffs" else 0.0)
+        out["canyon"] = np.zeros(np.shape(x))
+        return out
+
     def _biome_weights(self, x, y):
         d, i = self._nearest(x, y, k=24)
         wgt = np.exp(-0.5 * ((d - d[:, :1]) / 15.0) ** 2)
@@ -305,6 +337,18 @@ class PathModel:
         # En todos los tramos (antes no en los de agua: el camino cambiaba de color de golpe). Bajo
         # el agua lo apaga la arena mojada de vertex_colors.
         return (1.0 - smooth(-0.6, 0.8, e)).reshape(np.shape(x))
+
+    def trail_mask_3d(self, x, y, z) -> np.ndarray:
+        """trail_mask mas todo el suelo que queda a la cota del camino junto a el (cunas rellenas,
+        ensanches de las uniones, pie de la U): la franja oscura cubria solo el semiancho nominal y
+        dejaba parches claros con borde dentado en el suelo del camino."""
+        base = self.trail_mask(x, y)
+        dk, ik = self._nearest(x, y, k=24)
+        e = np.min(dk - self.S["w"][ik], axis=1).reshape(np.shape(x))
+        at = [(np.asarray(x) - self.axis[0]) / STEP_XY_M, (np.asarray(y) - self.axis[0]) / STEP_XY_M]
+        floor = ndimage.map_coordinates(self.grid.floor, at, order=1, mode="nearest")
+        on_floor = (1.0 - smooth(0.35, 0.9, np.abs(np.asarray(z) - floor))) * (1.0 - smooth(4.0, 7.0, e))
+        return np.maximum(base, on_floor)
 
     def plaza_mask(self, x, y) -> np.ndarray:
         """Sin disco de color en la salida (quedaba como una mancha clara): la salida se lee por

@@ -103,7 +103,8 @@ def hash_uniform(ix: np.ndarray, iy: np.ndarray, salt: int) -> np.ndarray:
 
 def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np.ndarray:
     x, y, z = world[:, 0], world[:, 1], world[:, 2]
-    w = model.zones.weights(x, y)
+    # Pesos propios del color si el modelo los da (difuminados, sin fronteras rectas).
+    w = model.color_weights(x, y) if hasattr(model, "color_weights") else model.zones.weights(x, y)
     vein = 0.5 + 0.5 * np.sin(x / 53.0 + 1.7) * np.cos(y / 41.0 - 0.6)
     lo_c, hi_c = getattr(model, "cliff_band", (0.25, 0.6))
     cliff = smooth(lo_c, hi_c, 1.0 - normals[:, 2])
@@ -122,7 +123,8 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
         out += w[zone][:, None] * c
     # Camino principal (arena pisada, mas oscura) y salida/meta (arena clara): se leen desde lejos.
     flat_up = smooth(0.7, 0.9, normals[:, 2])
-    trail_full = model.trail_mask(x, y) * (1.0 - wet)
+    trail = model.trail_mask_3d(x, y, z) if hasattr(model, "trail_mask_3d") else model.trail_mask(x, y)
+    trail_full = trail * (1.0 - wet)
     trail = trail_full * flat_up
     trail_color = np.array(getattr(model, "trail_color", TRAIL_COLOR))
     out = out + (trail_color - out) * (getattr(model, "trail_strength", 0.7) * trail)[:, None]

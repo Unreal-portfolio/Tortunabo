@@ -24,7 +24,9 @@ OUTER_M = 1000.0          # alcance de la corona desde cada borde del mapa
 CELL_OUT_M = 200.0        # trozo de la corona
 STEP_OUT_M = 5.0          # paso de la rejilla (barata: 41 x 41 vertices por trozo)
 BLEND_M = 80.0            # tramo en el que la cota del borde pasa a las dunas de fuera
-SEAM_DROP_M = 0.0         # la fila del borde, a la misma cota que la malla de dentro (con 0,4 m se veia la rendija)
+TUCK_M = 3.0              # la fila del borde de la corona se mete esto bajo el mapa
+TUCK_DROP_M = 0.35        # ... y queda esto por debajo de su suelo
+SEAM_DROP_M = 0.0        # la fila del borde, a la misma cota que la malla de dentro (con 0,4 m se veia la rendija)
 
 
 def outer_height(model, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
@@ -45,13 +47,33 @@ def outer_height(model, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
     return h
 
 
+def _tuck_under_map(X: np.ndarray, Y: np.ndarray):
+    """La fila de la corona que cae sobre el borde del mapa se mete TUCK_M hacia dentro y baja
+    TUCK_DROP_M: el borde de la malla del mapa (marching cubes, 1 m) y el de la corona (5 m) no
+    comparten vertices y entre los dos quedaban rendijas negras. Asi, bajo la rendija hay arena."""
+    tol = 1e-6
+    along_x = (Y >= MAP_MIN_M - tol) & (Y <= MAP_MAX_M + tol)
+    along_y = (X >= MAP_MIN_M - tol) & (X <= MAP_MAX_M + tol)
+    on = np.zeros(X.shape, dtype=bool)
+    X, Y = X.copy(), Y.copy()
+    for edge, sign in ((MAP_MIN_M, 1.0), (MAP_MAX_M, -1.0)):
+        hit = (np.abs(X - edge) < tol) & along_x
+        X[hit] += sign * TUCK_M
+        on |= hit
+        hit = (np.abs(Y - edge) < tol) & along_y
+        Y[hit] += sign * TUCK_M
+        on |= hit
+    return X, Y, TUCK_DROP_M * on
+
+
 def _cell_mesh(model, x0: float, y0: float):
     n = int(round(CELL_OUT_M / STEP_OUT_M)) + 1
     # Una muestra de margen: gradiente centrado tambien en el borde (normales iguales en el vecino).
     xs = x0 + STEP_OUT_M * np.arange(-1, n + 1)
     ys = y0 + STEP_OUT_M * np.arange(-1, n + 1)
     Xp, Yp = np.meshgrid(xs, ys, indexing="ij")
-    Hp = outer_height(model, Xp, Yp)
+    Xp, Yp, sink = _tuck_under_map(Xp, Yp)
+    Hp = outer_height(model, Xp, Yp) - sink
     gx, gy = (g[1:-1, 1:-1] for g in np.gradient(Hp, STEP_OUT_M))
     X, Y, H = Xp[1:-1, 1:-1], Yp[1:-1, 1:-1], Hp[1:-1, 1:-1]
     normals = np.stack([-gx, -gy, np.ones_like(H)], axis=-1)

@@ -23,7 +23,7 @@ from .curves import resample
 
 DECK_HALF_M = 1.75           # semiancho del tablero (3,5 m de ancho)
 DECK_THICK_M = 1.7           # grosor de la losa en el centro de la luz
-APPROACH_M = 6.0             # tramo del camino de arriba que se estrecha antes de la luz
+APPROACH_M = 9.0             # tramo del camino de arriba que se estrecha antes de la luz (con 6 m la pared hacia cuchillas)
 ABUTMENT_M = 5.0             # losa que se mete en la pared a cada lado (estribo)
 ARCH_TOP_M = 7.0             # cara de arriba de un arco natural sobre el suelo del camino
 FUSE_K = 1.5                 # anchura del maximo suave con el terreno
