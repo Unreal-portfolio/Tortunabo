@@ -25,6 +25,18 @@ class ATN_ProcWaterVolume;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnProcMapGenerated, int32, Generation);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnProcMapGeneratedNative, int32 /*Generation*/);
 
+/** Una concha especial (50 o 100) del mapa, en el mundo: para ir a por ella con «TNShells Especial». */
+struct FTNShellSpot
+{
+	/** Centro de la concha, dónde ponerse (en el suelo, unos metros antes) y hacia dónde mirar. */
+	FVector Shell = FVector::ZeroVector;
+	FVector Stand = FVector::ZeroVector;
+	FVector Facing = FVector::ForwardVector;
+	int32 Value = 0;
+	/** Qué sitio es (TNProcMap::ShellSpotName). */
+	FString Where;
+};
+
 /** Lo único que se replica del mapa: con esto cada máquina genera el mismo. */
 USTRUCT(BlueprintType)
 struct TORTUNABO_API FTNProcMapNetConfig
@@ -147,6 +159,12 @@ public:
 	/** Pilas de huevos (solo en servidor; los clientes las ven como actores replicados). */
 	const TArray<TWeakObjectPtr<ATN_ProcEggNest>>& GetEggNests() const { return EggNests; }
 
+	/** Conchas especiales (50 y 100) del mapa actual, en orden por el camino (solo servidor). */
+	const TArray<FTNShellSpot>& GetSpecialShellSpots() const { return SpecialShellSpots; }
+
+	/** Resumen de las conchas del mapa actual (cuántas de cada tamaño y dónde van las especiales; solo servidor). */
+	const FString& GetShellSummary() const { return ShellSummary; }
+
 	/** Altura del terreno generado en un punto del mundo (sin trazas: vale antes de cocinar colisión). */
 	float GetTerrainHeightAt(const FVector& WorldLocation) const;
 
@@ -224,6 +242,12 @@ private:
 	/** Servidor: decorados del camino que se pueden rebuscar (ATN_ProcSearchSpot); no en el modo de solo terreno. */
 	void SpawnSearchSpots();
 	void SpawnHazards();
+	/**
+	 * Servidor: conchas de puntos del plan puro (TNProcMap::PlanShells: rachas de 1, arcos de salto, cornisas y
+	 * especiales de 50 y 100) y las especiales de los tramos hundidos de los puentes (BrokenSpanPrizes). Después de
+	 * SpawnHazards: no pisan lo que este ha puesto (HazardSpots). No en el modo de solo terreno.
+	 */
+	void SpawnShells();
 	void RunBiomePCG();
 	void BuildProgressIndex();
 	void DrawDebug() const;
@@ -342,4 +366,26 @@ private:
 
 	/** PlayerStart de cada sitio de salida (mismo índice que StartTransforms; solo servidor). */
 	TArray<TWeakObjectPtr<APlayerStart>> StartPlayerStarts;
+
+	/**
+	 * Punto pisable del medio de cada tramo hundido de un puente colosal (espacio del mapa, a la cota de lo que se pisa:
+	 * el codo de las vigas, la cima del poste o el tablón), dónde ponerse antes de él y su cruce y largo. Lo rellena
+	 * BuildStructures (en todas las máquinas) y lo usa SpawnShells.
+	 */
+	struct FBrokenSpanPrize
+	{
+		FVector Point = FVector::ZeroVector;
+		FVector Stand = FVector::ZeroVector;
+		FVector2D Facing = FVector2D(1.0, 0.0);
+		int32 Crossing = INDEX_NONE;
+		double Length = 0.0;
+	};
+	TArray<FBrokenSpanPrize> BrokenSpanPrizes;
+
+	/** Lo que SpawnHazards ha puesto en el servidor (x, y y radio en el mapa): las conchas del plan no lo pisan. */
+	TArray<FVector> HazardSpots;
+
+	/** Conchas especiales del mapa actual y resumen para el registro y TNShells (solo servidor). */
+	TArray<FTNShellSpot> SpecialShellSpots;
+	FString ShellSummary;
 };

@@ -202,6 +202,8 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 		if (!bTerrainOnly)
 		{
 			SpawnHazards();
+			// Después de los peligros: las conchas del plan no pisan lo que estos han puesto (HazardSpots).
+			SpawnShells();
 			RunBiomePCG();
 		}
 	}
@@ -295,6 +297,10 @@ void ATN_ProcMapGenerator::Clear()
 	SpawnedActors.Reset();
 	EggNests.Reset();
 	StartTransforms.Reset();
+	BrokenSpanPrizes.Reset();
+	HazardSpots.Reset();
+	SpecialShellSpots.Reset();
+	ShellSummary.Reset();
 	// La estructura de salida y los PlayerStart iban en SpawnedActors: ya están destruidos.
 	StartStructure.Reset();
 	StartPlayerStarts.Reset();

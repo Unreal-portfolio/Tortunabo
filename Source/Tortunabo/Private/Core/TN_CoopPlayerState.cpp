@@ -2,6 +2,8 @@
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopGameState.h"
 #include "Player/TortugaCharacter.h"
+#include "World/TN_ScoreShellBurst.h"
+#include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
@@ -187,6 +189,23 @@ void ATN_CoopPlayerState::AddRaceScore(int32 Delta)
 	// así que difundimos manualmente para refrescar su propio HUD. En clientes remotos
 	// el cambio llega vía replicación → OnRep_RaceScore (no se llama este método allí).
 	OnRaceScoreChanged.Broadcast(RaceScore);
+}
+
+void ATN_CoopPlayerState::MulticastScoreShellCollected_Implementation(FVector_NetQuantize10 WorldLocation, uint8 Tier, int32 Value)
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	// Destello, chispas y «¡plin!» en el sitio (solo si la cámara local está a menos de 150 m).
+	ATN_ScoreShellBurst::SpawnAt(World, WorldLocation, Tier);
+	// El dueño de este PlayerState es su PlayerController, que solo existe en el servidor y en la máquina del jugador.
+	const APlayerController* PC = GetPlayerController();
+	if (PC && PC->IsLocalController())
+	{
+		OnScoreShellCollected.Broadcast(Value, Tier, WorldLocation);
+	}
 }
 
 void ATN_CoopPlayerState::ResetForNewRace()

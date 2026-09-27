@@ -12,6 +12,9 @@
 #include "World/ProcMap/TN_ProcStartStructure.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
 #include "World/ProcMap/TN_ProcSearchSpot.h"
+#include "World/ProcMap/TN_ProcMapShells.h"
+#include "World/TN_ScorePickup.h"
+#include "World/TN_ScoreShells.h"
 #include "TN_ProcMapKeepOut.h"
 #include "Core/TN_Log.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -590,6 +593,11 @@ void ATN_ProcMapGenerator::SpawnHazards()
 		AActor* Actor = SpawnMapActor(Class, FTransform(FRotator(0.0, H.Yaw + Yaw0, 0.0), Loc), true);
 		if (!Actor) { continue; }
 		++Count;
+		// Lo del camino (conchas normales, medusas, zonas de objetos...) lo apartan las conchas del plan (SpawnShells).
+		if (bServer && !bWaterFauna && Src.Entry.Placement != ETNProcHazardPlacement::AbovePath)
+		{
+			HazardSpots.Add(FVector(H.P.X, H.P.Y, 300.0));
+		}
 
 		if (ATN_ProcWaterBouncer* Bouncer = Cast<ATN_ProcWaterBouncer>(Actor))
 		{
@@ -605,6 +613,127 @@ void ATN_ProcMapGenerator::SpawnHazards()
 		}
 	}
 	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Peligros y enemigos: %d de %d planificados (%s)."), Count, Spawns.Num(), bServer ? TEXT("servidor") : TEXT("cliente"));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conchas de puntos: rachas de 1, arcos de salto, cornisas y especiales de 50 y 100
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_ProcMapGenerator::SpawnShells()
+{
+	SpecialShellSpots.Reset();
+	ShellSummary.Reset();
+	UWorld* ShellWorld = GetWorld();
+	if (bTerrainOnly || !ShellWorld || ShellWorld->GetNetMode() == NM_Client || !Layout.bValid)
+	{
+		return;
+	}
+	// El Blueprint de siempre (la vieira de código, con su valor puesto antes de aparecer); sin él, la clase nativa.
+	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
+	if (!ShellClass)
+	{
+		ShellClass = ATN_ScorePickup::StaticClass();
+	}
+
+	// Plan puro (determinista): no pisa lo que ya han puesto los peligros (conchas normales, medusas, zonas...).
+	TArray<TNProcMap::FShellSpawn> Plan;
+	TNProcMap::PlanShells(Layout, HazardSpots, Plan);
+
+	// Tramos hundidos de los puentes colosales (dependen de su malla, BuildStructures): en el más largo de cada puente, una
+	// reina de 100 en lo pisable del medio (en los dos primeros puentes; en los demás, una grande de 50).
+	{
+		TMap<int32, const FBrokenSpanPrize*> LongestByCrossing;
+		for (const FBrokenSpanPrize& Prize : BrokenSpanPrizes)
+		{
+			const FBrokenSpanPrize*& Longest = LongestByCrossing.FindOrAdd(Prize.Crossing, nullptr);
+			if (!Longest || Prize.Length > Longest->Length)
+			{
+				Longest = &Prize;
+			}
+		}
+		LongestByCrossing.KeySort(TLess<int32>());
+		int32 BridgeGrands = 0;
+		for (const TPair<int32, const FBrokenSpanPrize*>& Pair : LongestByCrossing)
+		{
+			TNProcMap::FShellSpawn Spawn;
+			Spawn.Location = Pair.Value->Point + FVector(0.0, 0.0, TNScoreShells::Hover);
+			Spawn.bOnGround = false;
+			Spawn.Spot = TNProcMap::EShellSpot::BrokenSpan;
+			Spawn.Tier = BridgeGrands < 2 ? TNScoreShells::ETier::Grand : TNScoreShells::ETier::Big;
+			BridgeGrands += Spawn.Tier == TNScoreShells::ETier::Grand ? 1 : 0;
+			Spawn.Approach = Pair.Value->Stand;
+			Spawn.Facing = Pair.Value->Facing;
+			Plan.Add(Spawn);
+		}
+	}
+
+	const double Yaw0 = GetActorRotation().Yaw;
+	int32 TierCounts[TNScoreShells::NumTiers] = {};
+	int32 SpotCounts[static_cast<int32>(TNProcMap::EShellSpot::Count)] = {};
+	FString SpecialList;
+	for (const TNProcMap::FShellSpawn& Spawn : Plan)
+	{
+		const FVector2D At(Spawn.Location.X, Spawn.Location.Y);
+		// Las del suelo, asentadas en el terreno de verdad; las del aire (arcos, murallas, puentes), donde dice el plan.
+		const double ShellZ = Spawn.bOnGround ? TerrainHeightMap(At) + TNScoreShells::Hover : Spawn.Location.Z;
+		const FVector2D Face = Spawn.Facing.IsNearlyZero() ? FVector2D(1.0, 0.0) : Spawn.Facing.GetSafeNormal();
+		const FTransform Where(FRotator(0.0, FMath::RadiansToDegrees(TNProcMap::AngleOf(Face)) + Yaw0, 0.0), MapToWorld(FVector(At, ShellZ)));
+		ATN_ScorePickup* Shell = ShellWorld->SpawnActorDeferred<ATN_ScorePickup>(ShellClass, Where, this, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!Shell)
+		{
+			continue;
+		}
+		// El valor, antes de que aparezca: nace ya con su tamaño y su aspecto en todas las máquinas.
+		const int32 Value = TNScoreShells::ValueOf(Spawn.Tier);
+		Shell->SetScoreValue(Value);
+		Shell->FinishSpawning(Where);
+		SpawnedActors.Add(Shell);
+		++TierCounts[static_cast<int32>(Spawn.Tier)];
+		++SpotCounts[static_cast<int32>(Spawn.Spot)];
+		if (!TNProcMap::IsSpecialShellSpot(Spawn.Spot))
+		{
+			continue;
+		}
+		// Especiales: dónde ponerse para ir a por ella (TNShells Especial).
+		const double StandZ = Spawn.bOnGround ? TerrainHeightMap(FVector2D(Spawn.Approach.X, Spawn.Approach.Y)) : Spawn.Approach.Z;
+		FTNShellSpot Spot;
+		Spot.Shell = Where.GetLocation();
+		Spot.Stand = MapToWorld(FVector(Spawn.Approach.X, Spawn.Approach.Y, StandZ + 110.0));
+		Spot.Facing = GetActorTransform().TransformVectorNoScale(FVector(Face.X, Face.Y, 0.0));
+		Spot.Value = Value;
+		Spot.Where = TNProcMap::ShellSpotName(Spawn.Spot);
+		SpecialShellSpots.Add(Spot);
+		SpecialList += FString::Printf(TEXT("%s%d en %s"), SpecialList.IsEmpty() ? TEXT("") : TEXT(", "), Value, TNProcMap::ShellSpotName(Spawn.Spot));
+	}
+
+	// En orden por el camino principal (la muestra más cercana), para recorrerlas con TNShells.
+	auto ProgressOf = [this](const FVector& WorldPoint)
+	{
+		const FVector MapPoint = WorldToMap(WorldPoint);
+		const FVector2D Flat(MapPoint.X, MapPoint.Y);
+		double Best = 1e300;
+		double BestS = 0.0;
+		for (const TNProcMap::FPathSample& Sample : Layout.Main)
+		{
+			const double D = FVector2D::DistSquared(Sample.P, Flat);
+			if (D < Best)
+			{
+				Best = D;
+				BestS = Sample.S;
+			}
+		}
+		return BestS;
+	};
+	SpecialShellSpots.StableSort([&ProgressOf](const FTNShellSpot& A, const FTNShellSpot& B) { return ProgressOf(A.Shell) < ProgressOf(B.Shell); });
+
+	using TNProcMap::EShellSpot;
+	ShellSummary = FString::Printf(
+		TEXT("%d pequeñas de 1 (rachas %d, desvíos %d, arcos de salto %d, cornisas %d), %d grandes de 50 y %d reinas de 100%s%s. Las normales de 25 salen con los peligros y las atalayas."),
+		TierCounts[0], SpotCounts[static_cast<int32>(EShellSpot::Trail)], SpotCounts[static_cast<int32>(EShellSpot::Detour)],
+		SpotCounts[static_cast<int32>(EShellSpot::JumpArc)], SpotCounts[static_cast<int32>(EShellSpot::WallLedge)],
+		TierCounts[2], TierCounts[3], SpecialList.IsEmpty() ? TEXT("") : TEXT(": "), *SpecialList);
+	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Conchas: %s"), *ShellSummary);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

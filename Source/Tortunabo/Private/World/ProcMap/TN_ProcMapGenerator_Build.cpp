@@ -1365,9 +1365,11 @@ namespace
 	 * - Kind 2: dos cornisas de 60 cm por los bordes, cada una con un hueco de 1,8 m (una a un tercio y otra a dos
 	 *   tercios) y un tablón atravesado en medio para cambiar de lado.
 	 * Bordes astillados (bStone: sillares; si no, tablones que cuelgan) y bandas de aviso antes de cada borde.
+	 * OutPrize (si no es nulo): lo pisable del medio del tramo, a su cota (el codo del medio de las vigas, la cima del
+	 * poste del medio o el tablón atravesado), donde va una concha especial (ATN_ProcMapGenerator::SpawnShells).
 	 */
 	void TNProcAddBrokenSpan(FTNProcMeshBuffers& Solid, FTNProcMeshBuffers& Far, FTNProcMeshBuffers& Paint, const FTNPlankLine& Line,
-		double SA, double SB, double TopZ, int32 Kind, bool bStone, const FLinearColor& Base, uint32 Seed)
+		double SA, double SB, double TopZ, int32 Kind, bool bStone, const FLinearColor& Base, uint32 Seed, FVector* OutPrize = nullptr)
 	{
 		const double SpanLen = SB - SA;
 		if (SpanLen < 400.0) { return; }
@@ -1416,6 +1418,8 @@ namespace
 					const FVector B = Knots[k];
 					Solid.AddBox((A + B) * 0.5 - FVector(0.0, 0.0, 14.0), B - A, FVector(FVector::Dist2D(A, B) * 0.5 + 20.0, 30.0, 10.0), Beams * TNProcTone(k, Seed));
 				}
+				// La plataforma del codo del medio (su cara de arriba, 4 cm bajo el tablero).
+				if (OutPrize) { *OutPrize = Knots[Legs / 2] - FVector(0.0, 0.0, 4.0); }
 				for (int32 k = 1; k < Legs; ++k)
 				{
 					const FVector K = Knots[k];
@@ -1439,6 +1443,8 @@ namespace
 					const FVector2D Pc = P2 + FVector2D(-Dir.Y, Dir.X) * Lat;
 					const double Top = TopZ - ((k % 2) ? 26.0 : 8.0);
 					const double Bottom = TopZ - 700.0;
+					// La cima del poste del medio.
+					if (OutPrize && k == Count / 2) { *OutPrize = FVector(Pc, Top); }
 					Solid.AddBox(FVector(Pc, Top - 12.0), Dir, FVector(55.0, 55.0, 12.0), Beams * 1.1f * TNProcTone(k, Seed));
 					Solid.AddBox(FVector(Pc, 0.5 * (Top - 24.0 + Bottom)), Dir, FVector(44.0, 44.0, 0.5 * (Top - 24.0 - Bottom)), Beams * 0.8f);
 				}
@@ -1474,6 +1480,8 @@ namespace
 				double Hm = 0.0;
 				Frame(SA + SpanLen * 0.5, Pm, Dm, Hm);
 				Solid.AddBox(FVector(Pm, TopZ - 14.0), FVector(-Dm.Y, Dm.X, 0.0), FVector(Hm - 30.0, 25.0, 8.0), Beams * 1.2f);
+				// El tablón atravesado del medio (su cara de arriba).
+				if (OutPrize) { *OutPrize = FVector(Pm, TopZ - 6.0); }
 				break;
 			}
 		}
@@ -1986,8 +1994,23 @@ void ATN_ProcMapGenerator::BuildStructures()
 			const FTNDeckBreak& Br = Breaks[k];
 			const bool bWoodDeck = Style == ETNBridgeStyle::Trestle || Style == ETNBridgeStyle::Rope;
 			const FLinearColor DeckC = Style == ETNBridgeStyle::Stone ? StoneC : (Style == ETNBridgeStyle::Iron ? IronColor * 1.6f : WoodColor);
+			FVector Prize = FVector::ZeroVector;
 			TNProcAddBrokenSpan(bWoodDeck ? Wood : Painted, PaintedFar, Painted, Line, Br.A, Br.B, C.TopZ, Br.Kind,
-				Style == ETNBridgeStyle::Stone, DeckC, Seed ^ (0x5EEDu + static_cast<uint32>(k) * 977u));
+				Style == ETNBridgeStyle::Stone, DeckC, Seed ^ (0x5EEDu + static_cast<uint32>(k) * 977u), &Prize);
+			if (!Prize.IsZero())
+			{
+				// Concha especial en el medio del tramo (la pone SpawnShells en el servidor); se va a por ella desde 4 m antes.
+				FVector StandP, StandDir;
+				double StandHw = 0.0;
+				Line.At(FMath::Max(0.0, Br.A - 400.0), StandP, StandDir, StandHw);
+				FBrokenSpanPrize SpanPrize;
+				SpanPrize.Point = Prize;
+				SpanPrize.Stand = FVector(StandP.X, StandP.Y, C.TopZ);
+				SpanPrize.Facing = FVector2D(StandDir.X, StandDir.Y);
+				SpanPrize.Crossing = c;
+				SpanPrize.Length = Br.B - Br.A;
+				BrokenSpanPrizes.Add(SpanPrize);
+			}
 			UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Cruce %d: tramo hundido de %.0f m (tipo %d, %d de %d)."), c, (Br.B - Br.A) / 100.0, Br.Kind, k + 1, Breaks.Num());
 		}
 

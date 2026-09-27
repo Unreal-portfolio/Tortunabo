@@ -2,6 +2,8 @@
 #include "TN_HUDStyle.h"
 #include "TN_HUDArt.h"
 #include "TN_HUDFaces.h"
+#include "Audio/TN_ScoreShellSynthComponent.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/CanvasPanel.h"
@@ -24,11 +26,13 @@
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Rendering/DrawElements.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "UI/HUD/TN_HoldRingWidget.h"
 #include "World/TN_InteractableBase.h"
+#include "World/TN_ScoreShells.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "InputAction.h"
@@ -312,8 +316,10 @@ void UTN_RunHUDWidget::BuildTree()
 		SlotEquippedImage->SetColorAndOpacity(FLinearColor::Transparent);
 		SlotStoredImage = Make<UImage>(Tree, TEXT("SlotStoredImage"));
 		SlotStoredImage->SetColorAndOpacity(FLinearColor::Transparent);
+		// La puntuación real la escribe la clase base aquí; el contador que se ve (CountText) va sumando lo que llega.
+		ScoreText = MakeText(Tree, TEXT("ScoreText"), FText::AsNumber(0), TEXT("Regular"), 10, Text);
 		for (UWidget* W : { static_cast<UWidget*>(StaminaBar), static_cast<UWidget*>(WeightPenaltyBar), static_cast<UWidget*>(StaminaText),
-			static_cast<UWidget*>(SlotEquippedImage), static_cast<UWidget*>(SlotStoredImage) })
+			static_cast<UWidget*>(SlotEquippedImage), static_cast<UWidget*>(SlotStoredImage), static_cast<UWidget*>(ScoreText) })
 		{
 			Feed->AddChildToVerticalBox(W);
 		}
@@ -392,20 +398,37 @@ void UTN_RunHUDWidget::BuildTree()
 	// ── Puntos (arriba a la derecha): concha y número en una etiqueta de arena ──
 	{
 		ScoreRoot = Make<UOverlay>(Tree);
-		ScoreText = MakeText(Tree, TEXT("ScoreText"), FText::AsNumber(0), TEXT("Bold"), 32, NavyText, false);
-		ScoreText->SetJustification(ETextJustify::Center);
+		CountText = MakeText(Tree, TEXT("ShellCountText"), FText::AsNumber(0), TEXT("Bold"), 32, NavyText, false);
+		CountText->SetJustification(ETextJustify::Center);
+		CountText->SetRenderTransformPivot(FVector2D(0.5f, 0.55f));
 		// Sin ancho fijo: la etiqueta crece con el número. La arena ocupa del 18 % al 82 % del alto de la textura (se
 		// estira entera en vertical), así que el relleno de arriba y abajo mete los dígitos dentro con aire; el de la
 		// derecha supera el extremo redondeado (32 px) para que el último dígito no lo pise.
-		USizeBox* ScoreFit = MakeSize(Tree, ScoreText, 0.f, 0.f);
+		USizeBox* ScoreFit = MakeSize(Tree, CountText, 0.f, 0.f);
 		ScoreFit->SetMinDesiredWidth(40.f);
 		AddAt(ScoreRoot, MakeCard(Tree, TNHUDArt::SandTagTexture(), TagMargin, ScoreFit, FMargin(70.f, 24.f, 40.f, 24.f)), HAlign_Left, VAlign_Center,
 			FMargin(22.f, 0.f, 0.f, 0.f));
-		UImage* ShellImg = MakeImage(Tree, TNHUDArt::ShellIcon(), FVector2D(82.f, 82.f));
-		ShellImg->SetRenderTransformAngle(-12.f);
-		AddAt(ScoreRoot, ShellImg, HAlign_Left, VAlign_Center);
+		// La concha del contador: a ella vuelan los iconos de las conchas recogidas.
+		CounterShell = MakeImage(Tree, TNHUDArt::ShellIcon(), FVector2D(82.f, 82.f));
+		CounterShell->SetRenderTransformAngle(-12.f);
+		CounterShell->SetRenderTransformPivot(FVector2D(0.5f, 0.6f));
+		AddAt(ScoreRoot, CounterShell, HAlign_Left, VAlign_Center);
 		ScoreRoot->SetRenderTransformPivot(FVector2D(0.3f, 0.5f));
 		Place(Canvas, ScoreRoot, FVector2D(1.f, 0.f), FVector2D(-28.f, 16.f));
+
+		// «+N» bajo el contador mientras llegan conchas.
+		GainText = MakeText(Tree, nullptr, FText::GetEmpty(), TEXT("Black"), 24, TNHUDArt::Gold);
+		GainText->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+		GainText->SetVisibility(ESlateVisibility::Collapsed);
+		Place(Canvas, GainText, FVector2D(1.f, 0.f), FVector2D(-64.f, 104.f));
+
+		// Iconos de cada tamaño para los que vuelan (se pintan en NativePaint).
+		for (int32 TierIndex = 0; TierIndex < TNScoreShells::NumTiers; ++TierIndex)
+		{
+			ShellBrushes[TierIndex].SetResourceObject(TNHUDArt::ShellIconTier(TierIndex));
+			ShellBrushes[TierIndex].ImageSize = FVector2D(64.f, 64.f);
+			ShellBrushes[TierIndex].DrawAs = ESlateBrushDrawType::Image;
+		}
 	}
 
 	// ── Pista de la playa al mar (arriba en el centro) ──
@@ -506,9 +529,24 @@ void UTN_RunHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 	TickBadge(InDeltaTime);
 	TickInventory(InDeltaTime);
 	TickTrack(InDeltaTime);
+	BindShellEvents();
+	TickShellFlights(InDeltaTime, MyGeometry);
 	TickScore(InDeltaTime);
 	TickAlerts(InDeltaTime);
 	TickPrompt(InDeltaTime);
+	// Los iconos se pintan a mano (NativePaint): con algo en pantalla, se repinta cada fotograma (y uno más al acabar).
+	const bool bShellsOnScreen = Flights.Num() > 0 || CounterGlow > 0.f;
+	if (bShellsOnScreen || bShellPaintDirty)
+	{
+		Invalidate(EInvalidateWidgetReason::Paint);
+	}
+	bShellPaintDirty = bShellsOnScreen;
+}
+
+void UTN_RunHUDWidget::NativeDestruct()
+{
+	UnbindShellEvents();
+	Super::NativeDestruct();
 }
 
 void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
@@ -717,14 +755,301 @@ void UTN_RunHUDWidget::TickTrack(float DeltaTime)
 void UTN_RunHUDWidget::TickScore(float DeltaTime)
 {
 	using namespace TNRunHUDDetail;
-	if (!ScoreText || !ScoreRoot) { return; }
-	const FString Now = ScoreText->GetText().ToString();
-	if (!LastScore.IsEmpty() && Now != LastScore) { ScorePop = 1.f; }
-	LastScore = Now;
-	ScorePop = FMath::Max(0.f, ScorePop - DeltaTime * 2.5f);
-	const float Scale = 1.f + 0.3f * FMath::Sin(ScorePop * PI);
-	ScoreRoot->SetRenderScale(FVector2D(Scale, Scale));
-	ScoreRoot->SetRenderTransformAngle(-8.f * FMath::Sin(ScorePop * PI * 2.f));
+	if (!ScoreRoot) { return; }
+	const int32 Number = FMath::Max(0, ShownScore);
+	if (CountText && Number != LastShownNumber)
+	{
+		CountText->SetText(FText::AsNumber(Number));
+		LastShownNumber = Number;
+	}
+	// Rebote con cada icono que llega: el número salta y la concha del contador se aplasta y se endereza.
+	CounterPop = FMath::Max(0.f, CounterPop - DeltaTime * 5.f);
+	const float Bump = FMath::Sin(CounterPop * PI);
+	ScoreRoot->SetRenderScale(FVector2D(1.f + 0.08f * Bump));
+	if (CountText) { CountText->SetRenderScale(FVector2D(1.f + 0.28f * Bump)); }
+	if (CounterShell)
+	{
+		CounterShell->SetRenderScale(FVector2D(1.f + 0.22f * Bump, 1.f - 0.12f * Bump));
+		CounterShell->SetRenderTransformAngle(-12.f + 16.f * CounterPop * FMath::Sin(CounterPop * PI * 2.f));
+	}
+	CounterGlow = FMath::Max(0.f, CounterGlow - DeltaTime * 1.6f);
+
+	// «+N»: salta al aparecer, se queda mientras vuelan iconos, sube un poco y se apaga cuando ya no llega nada.
+	if (GainText)
+	{
+		GainAge += DeltaTime;
+		if (InFlightValue > 0) { GainAge = FMath::Min(GainAge, 0.2f); }
+		const float Fade = 1.f - FMath::Clamp((GainAge - 0.6f) / 0.5f, 0.f, 1.f);
+		const bool bShowGain = GainShown > 0 && Fade > 0.f;
+		GainText->SetVisibility(bShowGain ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		if (bShowGain)
+		{
+			const float GainPop = FMath::Max(0.f, 1.f - GainAge / 0.2f);
+			GainText->SetRenderOpacity(Fade);
+			GainText->SetRenderScale(FVector2D(1.f + 0.35f * GainPop));
+			GainText->SetRenderTranslation(FVector2D(0.f, -10.f * FMath::Clamp(GainAge / 1.1f, 0.f, 1.f)));
+		}
+		else
+		{
+			GainShown = 0;
+		}
+	}
+}
+
+// ── Conchas que vuelan al contador ─────────────────────────────────────────────
+
+void UTN_RunHUDWidget::BindShellEvents()
+{
+	const APlayerController* PC = GetOwningPlayer();
+	ATN_CoopPlayerState* PS = PC ? PC->GetPlayerState<ATN_CoopPlayerState>() : nullptr;
+	if (PS == ShellEventsPS.Get()) { return; }
+	UnbindShellEvents();
+	ShellEventsPS = PS;
+	if (PS) { ShellEventsHandle = PS->OnScoreShellCollected.AddUObject(this, &UTN_RunHUDWidget::HandleScoreShellCollected); }
+	// PlayerState nuevo (al entrar o tras un viaje): la cuenta empieza en su puntuación, sin animar lo que ya tenía.
+	Flights.Reset();
+	InFlightValue = 0;
+	ShownScore = PS ? PS->RaceScore : -1;
+	UnexplainedFor = 0.f;
+	ExcessFor = 0.f;
+}
+
+void UTN_RunHUDWidget::UnbindShellEvents()
+{
+	if (ATN_CoopPlayerState* Old = ShellEventsPS.Get()) { Old->OnScoreShellCollected.Remove(ShellEventsHandle); }
+	ShellEventsHandle.Reset();
+	ShellEventsPS.Reset();
+}
+
+FVector2D UTN_RunHUDWidget::TurtleScreenPoint() const
+{
+	APlayerController* PC = GetOwningPlayer();
+	const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	FVector2D OnScreen = FVector2D::ZeroVector;
+	if (Pawn && UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, Pawn->GetActorLocation() + FVector(0.f, 0.f, 40.f), OnScreen, true))
+	{
+		return OnScreen;
+	}
+	return HUDSize.X > 0.f ? FVector2D(HUDSize.X * 0.5f, HUDSize.Y * 0.62f) : FVector2D(640.f, 450.f);
+}
+
+void UTN_RunHUDWidget::HandleScoreShellCollected(int32 Value, uint8 Tier, const FVector& WorldLocation)
+{
+	// Los iconos nacen donde estaba la concha en pantalla (o en la tortuga si quedaba detrás de la cámara).
+	FVector2D From = TurtleScreenPoint();
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		FVector2D OnScreen = FVector2D::ZeroVector;
+		if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, WorldLocation, OnScreen, true)) { From = OnScreen; }
+	}
+	if (HUDSize.X > 0.f && HUDSize.Y > 0.f)
+	{
+		From.X = FMath::Clamp(From.X, 40.f, HUDSize.X - 40.f);
+		From.Y = FMath::Clamp(From.Y, 60.f, HUDSize.Y - 40.f);
+	}
+	EnqueueShellBurst(Value, Tier, From);
+}
+
+void UTN_RunHUDWidget::EnqueueShellBurst(int32 Value, uint8 Tier, const FVector2D& From)
+{
+	TArray<int32> Parts;
+	TNScoreShells::SplitIntoIcons(Value, TNScoreShells::MaxIcons, Parts);
+	if (Parts.Num() == 0) { return; }
+	static constexpr float IconSizes[TNScoreShells::NumTiers] = { 28.f, 36.f, 42.f, 48.f };
+	const int32 IconCount = Parts.Num();
+	const uint8 SafeTier = static_cast<uint8>(FMath::Min<int32>(Tier, TNScoreShells::NumTiers - 1));
+	// Cola: esta recogida sale cuando haya salido la anterior; dentro de ella, un icono cada 35-80 ms.
+	const float FirstLaunch = FMath::Max(Time + 0.16f, NextLaunchAt);
+	const float Stagger = FMath::Clamp(0.55f / IconCount, 0.035f, 0.08f);
+	const float Scatter = IconCount == 1 ? 0.f : 24.f + 7.f * FMath::Sqrt(static_cast<float>(IconCount));
+	const FVector2D Goal = CounterTarget.IsNearlyZero() ? FVector2D(HUDSize.X - 180.f, 57.f) : CounterTarget;
+	for (int32 k = 0; k < IconCount; ++k)
+	{
+		FTNShellFlight Icon;
+		Icon.From = From;
+		// Salen de un saltito a un óvalo algo más alto que el sitio de la concha.
+		const float Around = 2.f * PI * (static_cast<float>(k) + FMath::FRandRange(0.f, 0.6f)) / IconCount;
+		const float Reach = Scatter * FMath::FRandRange(0.7f, 1.1f);
+		Icon.Rest = From + FVector2D(FMath::Cos(Around) * Reach, FMath::Sin(Around) * Reach * 0.75f - 22.f);
+		Icon.Born = Time;
+		Icon.Launch = FirstLaunch + k * Stagger;
+		const float Distance = static_cast<float>(FVector2D::Distance(Icon.Rest, Goal));
+		Icon.Flight = FMath::Clamp(0.42f + Distance / 2600.f, 0.45f, 0.85f) * FMath::FRandRange(0.95f, 1.05f);
+		// Punto de control por encima de los dos extremos y algo hacia el contador: suben y se curvan hacia él.
+		Icon.Bend = FVector2D(FMath::Lerp(Icon.Rest.X, Goal.X, 0.25f) + FMath::FRandRange(-90.f, 90.f),
+			FMath::Min(Icon.Rest.Y, Goal.Y) - FMath::FRandRange(70.f, 170.f));
+		Icon.Angle = FMath::FRandRange(-20.f, 20.f);
+		Icon.SpinRate = FMath::FRandRange(-420.f, 420.f);
+		Icon.Size = IconSizes[SafeTier];
+		Icon.Part = Parts[k];
+		Icon.Tier = SafeTier;
+		Icon.bLast = k == IconCount - 1;
+		Flights.Add(Icon);
+		InFlightValue += Parts[k];
+	}
+	NextLaunchAt = FirstLaunch + IconCount * Stagger + 0.05f;
+	// «+N»: se acumula mientras sigan llegando recogidas.
+	GainShown = (GainShown > 0 && GainAge < 1.1f) ? GainShown + Value : Value;
+	GainAge = 0.f;
+	if (GainText) { GainText->SetText(FText::Format(NSLOCTEXT("TNHUD", "ShellGain", "+{0}"), FText::AsNumber(GainShown))); }
+}
+
+void UTN_RunHUDWidget::TickShellFlights(float DeltaTime, const FGeometry& MyGeometry)
+{
+	const FVector2f LocalSize = FVector2f(MyGeometry.GetLocalSize());
+	HUDSize = FVector2D(LocalSize.X, LocalSize.Y);
+	// Destino: el centro de la concha del contador, en cuanto se ha colocado una vez.
+	if (CounterShell)
+	{
+		const FGeometry& ShellGeo = CounterShell->GetCachedGeometry();
+		if (FVector2f(ShellGeo.GetLocalSize()).X > 1.f)
+		{
+			const FVector2f ShellCenter = FVector2f(ShellGeo.GetAbsolutePositionAtCoordinates(FVector2f(0.5f, 0.5f)));
+			const FVector2f InHUD = FVector2f(MyGeometry.AbsoluteToLocal(ShellCenter));
+			CounterTarget = FVector2D(InHUD.X, InHUD.Y);
+		}
+	}
+	if (CounterTarget.IsNearlyZero() && HUDSize.X > 0.f) { CounterTarget = FVector2D(HUDSize.X - 180.f, 57.f); }
+
+	for (int32 i = 0; i < Flights.Num();)
+	{
+		FTNShellFlight& Icon = Flights[i];
+		Icon.Angle += Icon.SpinRate * DeltaTime;
+		if (Time < Icon.Launch)
+		{
+			// Saltito desde el sitio de la concha a su hueco (180 ms) y espera temblando su turno.
+			const float Since = Time - Icon.Born;
+			const float Out = FMath::Clamp(Since / 0.18f, 0.f, 1.f);
+			const float Ease = 1.f - FMath::Square(1.f - Out);
+			Icon.Pos = FMath::Lerp(Icon.From, Icon.Rest, Ease) + FVector2D(0.f, -3.f * FMath::Sin(Since * 11.f + Icon.SpinRate * 0.01f));
+			Icon.Scale = 0.35f + 0.65f * Ease + 0.18f * FMath::Sin(Out * PI);
+			Icon.Alpha = FMath::Min(1.f, Since / 0.06f);
+			Icon.bFlying = false;
+			++i;
+			continue;
+		}
+		// Vuelo: Bézier cuadrática hasta la concha del contador, acelerando al final (el contador se lo traga).
+		const float U = FMath::Clamp((Time - Icon.Launch) / FMath::Max(0.05f, Icon.Flight), 0.f, 1.f);
+		const FVector2D Goal = CounterTarget;
+		auto Along = [&Icon, &Goal](float E)
+		{
+			const float Inv = 1.f - E;
+			return Icon.Rest * (Inv * Inv) + Icon.Bend * (2.f * Inv * E) + Goal * (E * E);
+		};
+		const float Eased = U * U * (0.55f + 0.45f * U);
+		Icon.Pos = Along(Eased);
+		Icon.TrailA = Along(FMath::Max(0.f, Eased - 0.05f));
+		Icon.TrailB = Along(FMath::Max(0.f, Eased - 0.1f));
+		Icon.Scale = FMath::Lerp(1.f, 0.6f, Eased);
+		Icon.Alpha = 1.f;
+		Icon.bFlying = true;
+		if (U < 1.f)
+		{
+			++i;
+			continue;
+		}
+
+		// Ha llegado: suma su parte, rebota el contador y suena su «pom», cada vez un poco más agudo.
+		const int32 Part = Icon.Part;
+		const uint8 IconTier = Icon.Tier;
+		const bool bLastOfBurst = Icon.bLast;
+		Flights.RemoveAt(i);
+		ShownScore = FMath::Max(0, ShownScore) + Part;
+		InFlightValue = FMath::Max(0, InFlightValue - Part);
+		CounterPop = FMath::Max(CounterPop, bLastOfBurst ? 1.f : 0.6f);
+		if (bLastOfBurst && IconTier >= static_cast<uint8>(TNScoreShells::ETier::Big))
+		{
+			CounterGlow = 1.f;
+			CounterGlowTier = IconTier;
+		}
+		if (Time - LastPomAt > TNScoreShells::PomChainSeconds) { PomStep = 0; }
+		// Si llegan dos casi a la vez, suena uno (el escalón de la escala sí avanza).
+		if (Time - LastPomAt > 0.03f || bLastOfBurst)
+		{
+			if (!PomSynth.IsValid()) { PomSynth = UTN_ScoreShellSynthComponent::Attach2D(GetOwningPlayer()); }
+			if (UTN_ScoreShellSynthComponent* Synth = PomSynth.Get())
+			{
+				Synth->TriggerSound(ETNScoreShellSound::Pom, IconTier, static_cast<float>(TNScoreShells::PomSemitones(PomStep)), bLastOfBurst ? 1.f : 0.75f);
+			}
+			LastPomAt = Time;
+		}
+		++PomStep;
+	}
+
+	// La cuenta cuadra siempre con la puntuación real: lo que sube sin aviso de concha (la llegada, un aviso perdido)
+	// sale volando de la tortuga tras un respiro; lo que sobra (ronda nueva, puntuación que no llega) se ajusta solo.
+	const ATN_CoopPlayerState* PS = ShellEventsPS.Get();
+	if (!PS) { return; }
+	const int32 Real = PS->RaceScore;
+	if (ShownScore < 0) { ShownScore = Real; }
+	const int32 Explained = ShownScore + InFlightValue;
+	if (Real > Explained)
+	{
+		UnexplainedFor += DeltaTime;
+		if (UnexplainedFor >= 0.45f)
+		{
+			EnqueueShellBurst(Real - Explained, static_cast<uint8>(TNScoreShells::ETier::Normal), TurtleScreenPoint());
+			UnexplainedFor = 0.f;
+		}
+	}
+	else
+	{
+		UnexplainedFor = 0.f;
+	}
+	if (Real < Explained)
+	{
+		ExcessFor += DeltaTime;
+		if (ExcessFor >= (InFlightValue > 0 ? 2.f : 0.6f))
+		{
+			Flights.Reset();
+			InFlightValue = 0;
+			ShownScore = Real;
+			ExcessFor = 0.f;
+		}
+	}
+	else
+	{
+		ExcessFor = 0.f;
+	}
+}
+
+int32 UTN_RunHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+{
+	const int32 Layer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+	if (Flights.Num() == 0 && CounterGlow <= 0.f) { return Layer; }
+	const FLinearColor Tint = InWidgetStyle.GetColorAndOpacityTint();
+	// Al acabar una grande o una reina, su icono crece desde la concha del contador y se apaga.
+	if (CounterGlow > 0.f && !CounterTarget.IsNearlyZero())
+	{
+		const float GlowSize = 70.f * (1.f + 1.3f * (1.f - CounterGlow));
+		FSlateDrawElement::MakeBox(OutDrawElements, Layer + 1, AllottedGeometry.ToPaintGeometry(FVector2f(GlowSize, GlowSize),
+			FSlateLayoutTransform(FVector2f(static_cast<float>(CounterTarget.X) - 0.5f * GlowSize, static_cast<float>(CounterTarget.Y) - 0.5f * GlowSize))),
+			&ShellBrushes[FMath::Min<int32>(CounterGlowTier, TNScoreShells::NumTiers - 1)], ESlateDrawEffect::None,
+			FLinearColor(1.f, 1.f, 1.f, 0.6f * CounterGlow) * Tint);
+	}
+	for (const FTNShellFlight& Icon : Flights)
+	{
+		const FSlateBrush* Brush = &ShellBrushes[FMath::Min<int32>(Icon.Tier, TNScoreShells::NumTiers - 1)];
+		if (Icon.bFlying)
+		{
+			// Estela: dos copias más pequeñas y transparentes por detrás, como un orbe que se mete.
+			const FVector2D Trails[2] = { Icon.TrailA, Icon.TrailB };
+			for (int32 t = 0; t < 2; ++t)
+			{
+				const float TrailSize = Icon.Size * Icon.Scale * (0.8f - 0.18f * t);
+				FSlateDrawElement::MakeBox(OutDrawElements, Layer + 1, AllottedGeometry.ToPaintGeometry(FVector2f(TrailSize, TrailSize),
+					FSlateLayoutTransform(FVector2f(static_cast<float>(Trails[t].X) - 0.5f * TrailSize, static_cast<float>(Trails[t].Y) - 0.5f * TrailSize))), Brush, ESlateDrawEffect::None,
+					FLinearColor(1.f, 1.f, 1.f, (0.35f - 0.15f * t) * Icon.Alpha) * Tint);
+			}
+		}
+		const float IconSize = Icon.Size * Icon.Scale;
+		if (IconSize <= 0.5f) { continue; }
+		FSlateDrawElement::MakeRotatedBox(OutDrawElements, Layer + 2, AllottedGeometry.ToPaintGeometry(FVector2f(IconSize, IconSize),
+			FSlateLayoutTransform(FVector2f(static_cast<float>(Icon.Pos.X) - 0.5f * IconSize, static_cast<float>(Icon.Pos.Y) - 0.5f * IconSize))), Brush, ESlateDrawEffect::None,
+			FMath::DegreesToRadians(Icon.Angle), TOptional<FVector2f>(), FSlateDrawElement::RelativeToElement, FLinearColor(1.f, 1.f, 1.f, Icon.Alpha) * Tint);
+	}
+	return Layer + 2;
 }
 
 void UTN_RunHUDWidget::TickAlerts(float DeltaTime)

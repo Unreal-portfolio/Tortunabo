@@ -46,6 +46,13 @@ juego (Coop, Carrera y 2vs2). **Convive** con el sistema de chunks
 8. **Rebuscar en los decorados** (mantener E junto a estatuas, rocas grandes, barcas, cajas...: a veces sale un
    objeto): `tn.Search.Show 1` marca los buscables y `tn.Search.Luck 1` fuerza la suerte. Todo en
    [Botin_Decorados.md](Botin_Decorados.md).
+9. **Conchas de puntos** (consola, también como cliente: el trabajo lo hace el servidor):
+   - `TNShells 1 8`, `TNShells 25 3`, `TNShells 50`, `TNShells 100`: sueltan N conchas (hasta 20) de ese valor en fila
+     delante de la tortuga, a 2,6 m y luego cada 1,7 m, para cogerlas de una carrera (duran 5 min si nadie las coge).
+   - `TNShells Especial`: lleva cada vez a la siguiente concha especial (50 o 100) del mapa, en orden por el camino,
+     4 m antes de ella y mirándola.
+   - `TNShells Lista`: cuántas hay de cada tamaño y dónde van las especiales (lo mismo que la línea `[ProcMap] Conchas:`
+     del registro).
 
 Cada generación deja en el Output Log una línea `[ProcMap] Mapa listo · semilla …`
 con módulos en ruta, cruces, ramas, **longitud del camino y minutos estimados**
@@ -72,10 +79,13 @@ Dos capas, como el resto del proyecto (`TNGridLogic`, `TNChunkLogic`):
 | `TN_ProcMapCaves.h` | Cuevas: tramos del principal de 120-260 m que atraviesan una montaña por un túnel con pasos estrechos, una o dos cámaras anchas y, en el volcán, río de lava que se salta; prefieren tramos que cruzan terreno alto y se estrechan por un desfiladero hasta la boca. |
 | `TN_ProcMapFormations.h` | Formaciones temáticas por bioma: arcos que cruzan el camino, piezas en las explanadas (con carriles libres) e hitos lejanos (naturaleza, entorno y guerra). |
 | `TN_ProcMapFlora.h` | Vegetación, rocas y objetos sueltos: especies por bioma y reparto determinista en manchas, también en los taludes. |
+| `TN_ProcMapShells.h` | Conchas de puntos de 1, 50 y 100: rachas por el camino y los desvíos, arcos sobre los saltos, filas por las cornisas y especiales en retos o escondidas (`PlanShells`). Los tamaños y el reparto de una recogida en iconos del HUD, en `World/TN_ScoreShells.h`. |
 | `TN_ProcMapGenerate.h` | `GenerateLayout(params)`: orquesta todo, valida y reintenta. |
 
 Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
-`ModulesConnected`, `Determinism`, `Terrain`, `WallBreaches`) en `Private/Tests/TN_ProcMapDecisionsTest.cpp`.
+`ModulesConnected`, `Determinism`, `Terrain`, `WallBreaches`) en `Private/Tests/TN_ProcMapDecisionsTest.cpp`, y
+`Tortunabo.ProcMap.Shells` y `Tortunabo.ScoreShells.Split` (reparto de las conchas y su animación) en
+`Private/Tests/TN_ScoreShellsTest.cpp`.
 
 **Capa UE** (`World/ProcMap`, `Game`, `Lobby`, `Player`):
 
@@ -92,6 +102,7 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
 | `ATN_ProcMapGameMode` / `ATN_ProcMapGameState` | Rondas, modos, reaparición en huevos, tormenta, espera a que todos tengan el mapa. |
 | `ATN_ProcModeSelector` | Interactuable del lobby para elegir modo y dificultad. |
 | `UTN_CarryComponent` | Coger y lanzar tortugas (issue #6, fase 2). |
+| `ATN_ScorePickup`, `ATN_ScoreShellBurst`, `UTN_ScoreShellSynthComponent` | Conchas de puntos de 1, 25, 50 y 100 (ver «Conchas de puntos» en el apartado 3): la concha, su estallido local y el «¡plin!» y el «pom» sintetizados. La animación del contador, en `UTN_RunHUDWidget`. |
 
 ---
 
@@ -128,10 +139,104 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   tocones, sillares, losas o basalto) de 3–4 m con escalones de 1 m, banderín, recompensa de puntos
   arriba (`BP_ScorePickup`) y una medusa al pie (`BP_JellyfishActor`) para subir de un bote. Salen en el
   24 % de los turnos de obstáculo de los tramos de 13 m o más (antes 14 %).
-- **Conchas de puntos** (`ATN_ScorePickup`): una vieira dorada de ~1 m que gira como una moneda
-  de plataformas clásico, sube y baja y brilla (`M_ProcGlow`), con destellos alrededor. Si arte
-  pone una malla propia en `PickupMesh`, se ve esa y la concha no (la de ayuda del motor, el
-  signo de interrogación, cuenta como vacía).
+- **Conchas de puntos** (`ATN_ScorePickup`, `BP_ScorePickup`): una vieira que gira como una moneda de plataformas
+  clásico, sube y baja y brilla (`M_ProcGlow`). Si arte pone una malla propia en `PickupMesh`, se ve esa y la concha
+  no (la de ayuda del motor, el signo de interrogación, cuenta como vacía). Hay **cuatro tamaños** según `ScoreValue`
+  (`TNScoreShells`, `World/TN_ScoreShells.h`; hasta 5 puntos, pequeña; hasta 37, normal; hasta 75, grande; más, reina):
+
+  | | Pequeña | Normal | Grande | Reina |
+  |---|---|---|---|---|
+  | Puntos | 1 | 25 (la de siempre) | 50 | 100 |
+  | Aspecto | oro claro, escala 0,8 (~55 cm), más brillante, sin destellos | dorada, escala 1,5 (~1 m), destellos dorados | nácar turquesa, escala 2 (~1,4 m) | rosa y violeta con borde dorado, escala 2,5 (~1,7 m) |
+  | Adornos | — | 14 destellos | 20 destellos, halo blando que late, luz de 1200 lm (5 m) y columna de luz de 9 m | 22 + 12 destellos, halo, luz de 2200 lm (7,5 m) y columna de 13 m |
+  | Radio de recogida | 48 cm | 60 cm | 72 cm | 80 cm |
+  | Giro | 0,6 vueltas/s | 0,45 | 0,35 | 0,3 |
+  | Se dibuja hasta | 70 m | siempre | siempre | siempre |
+
+  El centro (y la esfera de recogida) va a 60 cm del suelo (`TNScoreShells::Hover`) y la vieira gira 30-85 cm más
+  arriba. Lejos de la cámara local (70 m las pequeñas, 90 m las normales, 250 m las especiales) ni giran ni mueven sus
+  destellos: el tick pasa a dos veces por segundo. En los clientes la esfera no tiene colisión (decide el servidor).
+- **Reparto** (`TNProcMap::PlanShells`, `TN_ProcMapShells.h`, puro y determinista; en el servidor lo pone
+  `ATN_ProcMapGenerator::SpawnShells` después de los peligros, sin pisar nada de lo que estos han puesto):
+  - **Normales de 25**: como antes, con los peligros de cada bioma (`BP_ScorePickup`, 4 por km con la densidad de
+    peligros del perfil y 30 m entre sí) y en lo alto de las atalayas de las plazas y de las torres de escalada.
+  - **Conchitas de 1** (tope de 600 por mapa):
+    - *Rachas del camino principal*: 5-7 a 1,8 m una de otra, serpenteando suave dentro del cauce (a 1,3 m del borde),
+      una cada 220-340 m. Si con eso pasarían del tope, se espacian más para llegar a todo el camino (en un Coop
+      Difícil de ~21 km, una cada ~500 m).
+    - *Rachas de ramas y desvíos*: igual, pero una cada 120-190 m (tope de 200): premian explorar.
+    - *Arcos de salto*: sobre los huecos de labios y de panzazo (que miden hasta un salto esprintando y 1 m), 5 conchitas
+      (6 en los de panzazo) de labio a labio, 70 cm más allá de cada uno, subiendo 90 cm en el medio (el 75 % de lo
+      que sube el salto, 1,2 m): el centro de la tortuga pasa por ellas al saltar. Como mucho un arco cada 380 m de cada
+      camino, o más separados si no caben en su tope (120) a lo largo de todo el mapa.
+    - *Cornisas del adarve roto*: 2-6 por el medio de cada cornisa (a lo largo del eje de verdad de la muralla, a 60 cm
+      sobre el adarve; tope de 40): marcan el paso estrecho. La cornisa no es zona de muerte.
+    - Nunca en muestras especiales del camino (huecos, estructuras, puentes, torres, cuevas, géiseres, toboganes,
+      portales, uniones, orilla, agua, carriles) ni a menos de 1,5 m de peñascos, agujas, objetos, troncos (su medio
+      largo), 2,5 m de torres de escalada, recompensas y medusas, 9 m de huevos y géiseres, 8 m de puzles 2vs2, del
+      claro de salida, de las torres colosales, de las formaciones del camino, de la lava y de las pozas de las cascadas,
+      ni a menos de 3 m de lo que han puesto los peligros (conchas normales incluidas). Entre dos conchitas, 1,1 m
+      en planta (salvo las de un mismo arco, que van a alturas distintas).
+  - **Especiales de 50 y 100** (una por muralla o por rama, a 60 m como mínimo entre sí y nada a menos de 3,5 m):
+    los sitios candidatos se ordenan por lo difíciles o escondidos que son y se reparten **una reina** (dos si el camino
+    principal pasa de 15 km), solo en sitios de puntuación 2 o más, y **una grande cada ~3 km** de camino principal
+    (1-5).
+
+    | Sitio | Puntuación | Dónde exactamente |
+    |---|---|---|
+    | Brecha del adarve (de lado a lado, hasta el 75 % de un salto esprintando) | 3 + largo/10 m | en el aire sobre el centro de la brecha, a 1,5 m sobre el adarve: se coge saltándola |
+    | Rama arriesgada | 2,2 | 4 m pasada la zanja de su último hueco (o a media rama) |
+    | Ruta alta | 1,6 | en el centro, 9 m antes de lo alto del tobogán |
+    | Salto de panzazo más largo del camino principal | 1,4 (0,9 si es de labios de 2,5 m o más) | en el suelo, 3 m pasada su zanja |
+    | Desvío por un módulo vacío | 1,3-1,8 (más cuanto más lejos del principal) | en su punto más apartado del camino principal |
+    | Rama tranquila | 1 | a media rama |
+
+    Las del suelo van en el centro del camino, en una muestra normal; si ahí hay algo, se prueba a saltos de 2 m hasta
+    10 m hacia delante y hacia atrás.
+  - **Tramos hundidos de los puentes colosales** (los añade la capa UE, porque salen de la malla del puente,
+    `TNProcAddBrokenSpan`): en el más largo de cada puente, una **reina de 100** en lo pisable del medio, 60 cm por
+    encima: el codo del medio de las vigas en zigzag, la cima del poste del medio o el tablón atravesado entre las dos
+    cornisas (en los dos primeros puentes del mapa; en los demás, una grande de 50).
+  - Con los perfiles por defecto sale del orden de (estimación; los números reales, en el registro y en la prueba):
+    Fácil (3×3, ~3 km) unas 150-250 conchitas, 1 grande y hasta 1-2 reinas; Normal (6×6, ~12 km) el tope o casi
+    (500-600), 4 grandes y 1-3 reinas; Difícil (8×8, ~21 km) el tope, 5 grandes y 2-4 reinas. Cada mapa lo dice en el
+    registro:
+    `[ProcMap] Conchas: N pequeñas de 1 (rachas a, desvíos b, arcos de salto c, cornisas d), G grandes de 50 y R reinas
+    de 100: 100 en brecha de muralla, 50 en ruta alta...`. La prueba `Tortunabo.ProcMap.Shells` da los números reales
+    de varias semillas.
+  - Las pequeñas suman a las conchas acumuladas de la tienda como el resto (`AccumulatedRaceScore`): unas 150-600 más
+    por partida, según el mapa.
+- **Recogida** (servidor): suma `ScoreValue` a `RaceScore` (`AddRaceScore`), llama a
+  `ATN_CoopPlayerState::MulticastScoreShellCollected` (fiable, por el PlayerState, que ni se destruye ni duerme: el
+  multicast de la propia concha se perdería al destruirla) y destruye la concha. En cada máquina con pantalla, a
+  menos de 150 m de su cámara, sale un **estallido** local (`ATN_ScoreShellBurst`, sin replicar): destello (bola blanda
+  que se abre en 0,25 s y un fogonazo de luz sin sombras de 350-8000 lm que se apaga en 0,35 s), anillo que se abre en
+  horizontal, 7/14/24/36 chispas que saltan y caen y, en grandes y reinas, estrellitas que suben despacio. Todo crece
+  con el tamaño (×0,55 / 1 / 1,35 / 1,75).
+- **«¡Plin!»** (`UTN_ScoreShellSynthComponent`, sintetizado, 3D en el estallido; pleno a 4,8-10,8 m y se oye hasta
+  19-56 m según el tamaño): campanitas de cristal (parciales 1, 2, 3 y 5,4) con una pizca de desafinado al azar.
+  Pequeña: un mi6 corto con su octava. Normal: si5 y mi6, la moneda de siempre. Grande: arpegio do6-mi6-sol6-do7, el acorde de do mayor que queda
+  (coro y trémolo) y chispitas agudas durante 0,9 s. Reina: arpegio sol5-do6-mi6-sol6-do7-mi7 y un acorde de do mayor
+  con séptima y novena que se abre (1,5 s) con chispitas durante 1,4 s.
+- **Contador del HUD** (`UTN_RunHUDWidget`, solo el jugador que la coge, con el aviso `OnScoreShellCollected` del
+  PlayerState):
+  - Los iconos salen de donde estaba la concha en pantalla (o de la tortuga si quedaba detrás de la cámara): del
+    tamaño de la concha (pegatinas `TNHUDArt::ShellIconTier`: dorada, melocotón como la del contador, turquesa con
+    estrella y rosa con estrella dorada), tantos como `TNScoreShells::IconCountFor` (1 punto, 1; 25, 10; 50, 14; 100,
+    15; nunca más de 15) y repartiéndose el valor (`SplitIntoIcons`: suman exacto y el resto va a los últimos).
+  - Dan un saltito de 180 ms a un óvalo por encima del sitio, esperan su turno temblando y salen uno cada 35-80 ms
+    (0,55 s la tanda entera) en una curva de Bézier que primero sube y luego se curva hacia la concha del contador,
+    acelerando al final (0,45-0,85 s según la distancia), girando, encogiéndose al 60 % y con una estela de dos copias.
+  - Cada uno, al llegar, suma su parte al número, que salta (+28 %), y la concha del contador se aplasta y se endereza;
+    suena un «pom» 2D (seno de do5 que cae un poco en 12 ms, su octava y un clic de madera) que sube por la escala
+    pentatónica (do, re, mi, sol, la, do...) hasta dos octavas y vuelve a empezar tras 0,9 s sin llegar ninguno. Al
+    acabar una grande o una reina, su icono crece desde la del contador y se apaga. Un «+N» dorado bajo el contador
+    suma las recogidas seguidas y se apaga 0,6-1,1 s después de la última.
+  - **Cola**: una recogida no empieza a volar hasta que ha salido el último icono de la anterior, así que no se pisan.
+  - **Cuadra siempre** con `RaceScore` (la clase base sigue escribiendo la puntuación real en un `ScoreText` oculto):
+    lo que sube sin aviso de concha (los puntos de llegada, un aviso perdido) sale volando de la tortuga tras 0,45 s;
+    si la cuenta queda por encima (ronda nueva, puntuación que no llega), se ajusta sola en 0,6 s (2 s si aún vuelan
+    iconos).
 - **Terreno**: malla de 1,5 m con **detalle de 0,5 m** donde hace falta (pie y borde de los taludes,
   crestas, bocas de cueva: un 3-4 % de los cuadrados, más un 5-6 % de costuras; 1,4-1,5 veces los
   triángulos). Las paredes suben sin repisa: el talud llega al borde con la pendiente con la que arranca
@@ -530,6 +635,11 @@ crean en todas las máquinas para que la predicción del cliente cuadre, y los q
 tienen estado (enemigos, huevos, puzles, meta, PlayerStarts) solo en el servidor
 y se replican. Mientras un cliente no tiene su mapa, su pawn queda congelado; al
 terminar avisa con `AMP_GamePlayerController::ServerReportProcMapReady`.
+
+Las conchas de puntos las pone el servidor y se replican (siempre relevantes, a 1 Hz porque no se mueven; el valor,
+`ScoreValue`, llega con el actor y decide su aspecto). Al cogerlas no se usa el multicast de la concha, que se perdería
+al destruirla, sino el del PlayerState del jugador (`MulticastScoreShellCollected`, fiable): estallido y «¡plin!» en
+todas las máquinas y la animación del contador solo en la suya.
 
 ---
 

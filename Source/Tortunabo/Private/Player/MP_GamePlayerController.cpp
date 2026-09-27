@@ -14,6 +14,8 @@
 #include "Audio/TN_AmbientSoundscape.h"
 #include "World/ProcMap/TN_PathStorm.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "World/TN_ScorePickup.h"
+#include "World/TN_ScoreShells.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -1433,6 +1435,93 @@ void AMP_GamePlayerController::ServerStormTest_Implementation(const FString& Whe
 	const float Progress = Gen->GetPathProgress(Spot);
 	Storm->DebugPlaceFront(Progress - Ahead, true);
 	ClientMessage(FString::Printf(TEXT("TNStorm: %s (progreso %.0f), frente a %.0f cm."), *Where, Progress, Ahead));
+}
+
+// ── Pruebas de las conchas de puntos (TNShells) ─────────────────────────────────
+
+void AMP_GamePlayerController::TNShells(const FString& What, int32 Count)
+{
+	ServerShellsTest(What, Count);
+}
+
+void AMP_GamePlayerController::ServerShellsTest_Implementation(const FString& What, int32 Count)
+{
+#if UE_BUILD_SHIPPING
+	// Suelta puntos que van a la tienda: solo en las builds de desarrollo.
+	ClientMessage(TEXT("TNShells: solo en las builds de desarrollo."));
+#else
+	UWorld* World = GetWorld();
+	APawn* MyPawn = GetPawn();
+	if (!World || !MyPawn)
+	{
+		ClientMessage(TEXT("TNShells: hace falta una tortuga viva."));
+		return;
+	}
+	ATN_ProcMapGenerator* Gen = nullptr;
+	for (TActorIterator<ATN_ProcMapGenerator> It(World); It; ++It) { Gen = *It; break; }
+	const FString Key = What.ToLower();
+
+	if (Key.StartsWith(TEXT("list")))
+	{
+		ClientMessage(Gen && !Gen->GetShellSummary().IsEmpty() ? FString(TEXT("TNShells: ")) + Gen->GetShellSummary()
+			: FString(TEXT("TNShells: no hay conchas del mapa procedural en este nivel.")));
+		return;
+	}
+
+	if (Key.StartsWith(TEXT("esp")) || Key.StartsWith(TEXT("spe")))
+	{
+		const TArray<FTNShellSpot>* Spots = Gen ? &Gen->GetSpecialShellSpots() : nullptr;
+		if (!Spots || Spots->Num() == 0)
+		{
+			ClientMessage(TEXT("TNShells: este mapa no tiene conchas especiales (o no es el mapa procedural)."));
+			return;
+		}
+		// Cada vez la siguiente, en orden por el camino.
+		static int32 NextSpecial = 0;
+		const int32 Index = NextSpecial++ % Spots->Num();
+		const FTNShellSpot& Spot = (*Spots)[Index];
+		const FVector Facing = Spot.Facing.GetSafeNormal2D().IsNearlyZero() ? FVector::ForwardVector : Spot.Facing.GetSafeNormal2D();
+		if (ACharacter* MovingChar = Cast<ACharacter>(MyPawn)) { MovingChar->GetCharacterMovement()->StopMovementImmediately(); }
+		MyPawn->TeleportTo(Spot.Stand, Facing.Rotation(), false, true);
+		ClientSetRotation(Facing.Rotation());
+		ClientMessage(FString::Printf(TEXT("TNShells: especial %d de %d, de %d en %s (a %.0f m)."), Index + 1, Spots->Num(), Spot.Value, *Spot.Where,
+			FVector::Dist(Spot.Stand, Spot.Shell) / 100.0));
+		return;
+	}
+
+	const int32 Value = FCString::Atoi(*What);
+	if (Value <= 0)
+	{
+		ClientMessage(TEXT("TNShells: 1|25|50|100 [cantidad] suelta conchas delante; Especial lleva a la siguiente especial; Lista las cuenta."));
+		return;
+	}
+	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
+	if (!ShellClass)
+	{
+		ShellClass = ATN_ScorePickup::StaticClass();
+	}
+	// En fila delante de la tortuga, a la altura de siempre sobre sus pies, para cogerlas de una carrera.
+	const int32 Number = FMath::Clamp(Count, 1, 20);
+	const FVector Forward = MyPawn->GetActorForwardVector().GetSafeNormal2D();
+	const ACharacter* Char = Cast<ACharacter>(MyPawn);
+	const float HalfHeight = Char ? Char->GetSimpleCollisionHalfHeight() : 70.f;
+	const FVector Feet = MyPawn->GetActorLocation() - FVector(0.f, 0.f, HalfHeight);
+	for (int32 i = 0; i < Number; ++i)
+	{
+		const FTransform Where(Forward.Rotation(), Feet + Forward * (260.f + 170.f * i) + FVector(0.f, 0.f, TNScoreShells::Hover));
+		ATN_ScorePickup* Shell = World->SpawnActorDeferred<ATN_ScorePickup>(ShellClass, Where, nullptr, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!Shell)
+		{
+			continue;
+		}
+		Shell->SetScoreValue(Value);
+		Shell->FinishSpawning(Where);
+		// Que no se queden para siempre si nadie las coge.
+		Shell->SetLifeSpan(300.f);
+	}
+	ClientMessage(FString::Printf(TEXT("TNShells: %d conchas de %d delante de ti."), Number, Value));
+#endif
 }
 
 // ── Pruebas del lobby (TNShop, TNBooth) ────────────────────────────────────────

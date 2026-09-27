@@ -237,28 +237,107 @@ namespace TNHUDArt
 		return T;
 	}
 
-	/** Concha de vieira (puntos): abanico melocotón con costillas, orejetas y brillo. */
+	/** Colores de una concha de vieira del HUD: degradado de arriba abajo, costillas, filo, brillo y si lleva estrella. */
+	struct FShellIconPalette
+	{
+		FLinearColor Top;
+		FLinearColor Bottom;
+		FLinearColor Ribs;
+		FLinearColor Rim;
+		FLinearColor Gloss;
+		/** Estrella de cuatro puntas arriba a la derecha (grandes y reinas). */
+		bool bStar = false;
+		FLinearColor Star = FLinearColor::White;
+	};
+
+	/** Concha de vieira: abanico con costillas, orejetas y brillo, con la paleta dada. */
+	inline UTexture2D* PaintShellIcon(const TCHAR* TextureName, const FShellIconPalette& Pal)
+	{
+		FPainter P(128, 128);
+		auto Body = [](float x, float y) { return FMath::Max(Circle(x, y, 64.f, 60.f, 44.f), y - 92.f); };
+		auto Ears = [](float x, float y) { return Box(x, y, 64.f, 96.f, 20.f, 9.f, 4.f); };
+		auto All = [&](float x, float y) { return FMath::Min(Body(x, y), Ears(x, y)); };
+		const TArray<FVector2f> StarShape = StarPoints(100.f, 24.f, 18.f, 0.32f, 4);
+		auto StarSdf = [&](float x, float y) { return Polygon(x, y, StarShape); };
+		auto Outline = [&](float x, float y) { return Pal.bStar ? FMath::Min(All(x, y), StarSdf(x, y)) : All(x, y); };
+		P.Sticker(Outline, 6.f);
+		P.Layer(All, [&Pal](float x, float y) { return Mix(Pal.Top, Pal.Bottom, (y - 18.f) / 80.f); });
+		// Costillas desde la charnela.
+		for (int32 k = -4; k <= 4; ++k)
+		{
+			const float A = k * 0.3f;
+			const float Ex = 64.f + FMath::Sin(A) * 50.f, Ey = 96.f - FMath::Cos(A) * 50.f;
+			P.Fill([&](float x, float y) { return FMath::Max(Segment(x, y, 64.f, 96.f, Ex, Ey, 1.8f), Body(x, y)); }, Pal.Ribs);
+		}
+		P.Fill([&](float x, float y) { return Rim(All, x, y, 2.f, 1.4f); }, Pal.Rim);
+		P.Fill([](float x, float y) { return Ellipse(x, y, 48.f, 38.f, 9.f, 6.f); }, Pal.Gloss);
+		if (Pal.bStar) { P.Fill(StarSdf, Pal.Star); }
+		return P.ToTexture(TextureName);
+	}
+
+	/** Concha de vieira (puntos, el contador): abanico melocotón con costillas, orejetas y brillo. */
 	inline UTexture2D* ShellIcon()
 	{
 		return Cached(TEXT("Shell"), []
 		{
-			FPainter P(128, 128);
-			auto Body = [](float x, float y) { return FMath::Max(Circle(x, y, 64.f, 60.f, 44.f), y - 92.f); };
-			auto Ears = [](float x, float y) { return Box(x, y, 64.f, 96.f, 20.f, 9.f, 4.f); };
-			auto All = [&](float x, float y) { return FMath::Min(Body(x, y), Ears(x, y)); };
-			P.Sticker(All, 6.f);
-			P.Layer(All, [](float x, float y) { return Mix(Hex(0xFFD4BA), Hex(0xFF7A5E), (y - 18.f) / 80.f); });
-			// Costillas desde la charnela.
-			for (int32 k = -4; k <= 4; ++k)
-			{
-				const float A = k * 0.3f;
-				const float Ex = 64.f + FMath::Sin(A) * 50.f, Ey = 96.f - FMath::Cos(A) * 50.f;
-				P.Fill([&](float x, float y) { return FMath::Max(Segment(x, y, 64.f, 96.f, Ex, Ey, 1.8f), Body(x, y)); }, Hex(0xC8412E, 0.55f));
-			}
-			P.Fill([&](float x, float y) { return Rim(All, x, y, 2.f, 1.4f); }, Hex(0xB8341F, 0.6f));
-			P.Fill([](float x, float y) { return Ellipse(x, y, 48.f, 38.f, 9.f, 6.f); }, Hex(0xFFFFFF, 0.7f));
-			return P.ToTexture(TEXT("TN_HUD_Shell"));
+			FShellIconPalette Pal;
+			Pal.Top = Hex(0xFFD4BA);
+			Pal.Bottom = Hex(0xFF7A5E);
+			Pal.Ribs = Hex(0xC8412E, 0.55f);
+			Pal.Rim = Hex(0xB8341F, 0.6f);
+			Pal.Gloss = Hex(0xFFFFFF, 0.7f);
+			return PaintShellIcon(TEXT("TN_HUD_Shell"), Pal);
 		});
+	}
+
+	/**
+	 * Concha de cada tamaño (TNScoreShells::ETier) para los iconos que vuelan al contador: pequeña dorada, normal (la
+	 * del contador), grande nacarada turquesa con estrella y reina rosa y violeta con estrella dorada.
+	 */
+	inline UTexture2D* ShellIconTier(int32 Tier)
+	{
+		switch (Tier)
+		{
+			case 0:
+				return Cached(TEXT("ShellSmall"), []
+				{
+					FShellIconPalette Pal;
+					Pal.Top = Hex(0xFFF1B8);
+					Pal.Bottom = Hex(0xF2B635);
+					Pal.Ribs = Hex(0xB9801A, 0.55f);
+					Pal.Rim = Hex(0xA66A10, 0.6f);
+					Pal.Gloss = Hex(0xFFFFFF, 0.8f);
+					return PaintShellIcon(TEXT("TN_HUD_ShellSmall"), Pal);
+				});
+			case 2:
+				return Cached(TEXT("ShellBig"), []
+				{
+					FShellIconPalette Pal;
+					Pal.Top = Hex(0xE6FFFB);
+					Pal.Bottom = Hex(0x3CC8C8);
+					Pal.Ribs = Hex(0x1A7F8A, 0.55f);
+					Pal.Rim = Hex(0x146B75, 0.6f);
+					Pal.Gloss = Hex(0xFFFFFF, 0.85f);
+					Pal.bStar = true;
+					Pal.Star = Hex(0xFFFFFF);
+					return PaintShellIcon(TEXT("TN_HUD_ShellBig"), Pal);
+				});
+			case 3:
+				return Cached(TEXT("ShellGrand"), []
+				{
+					FShellIconPalette Pal;
+					Pal.Top = Hex(0xFFD6F5);
+					Pal.Bottom = Hex(0xC04CE0);
+					Pal.Ribs = Hex(0x7A1F9A, 0.55f);
+					Pal.Rim = Hex(0xE8A92E, 0.9f);
+					Pal.Gloss = Hex(0xFFFFFF, 0.85f);
+					Pal.bStar = true;
+					Pal.Star = Gold;
+					return PaintShellIcon(TEXT("TN_HUD_ShellGrand"), Pal);
+				});
+			default:
+				return ShellIcon();
+		}
 	}
 
 	/** Burbuja (hueco de inventario): translúcida, filo claro y brillos. */

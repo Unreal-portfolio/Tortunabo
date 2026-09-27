@@ -1,10 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/NetSerialization.h"
 #include "GameFramework/PlayerState.h"
 #include "TN_CoopPlayerState.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRaceScoreChanged, int32, NewScore);
+/** Una concha de este jugador acaba de sumar: Value puntos, Tier (TNScoreShells::ETier) y dónde estaba (mundo). */
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnScoreShellCollected, int32 /*Value*/, uint8 /*Tier*/, const FVector& /*WorldLocation*/);
 
 class ATortugaCharacter;
 
@@ -40,6 +43,21 @@ public:
 	 *       este método en todos los sitios server que suman score (pickups, zonas, finish).
 	 */
 	void AddRaceScore(int32 Delta);
+
+	/**
+	 * Solo en la máquina de este jugador: una concha suya acaba de sumar (lo escucha el HUD para que los iconos vuelen
+	 * al contador). Lo difunde MulticastScoreShellCollected.
+	 */
+	FOnScoreShellCollected OnScoreShellCollected;
+
+	/**
+	 * Servidor (ATN_ScorePickup, tras AddRaceScore): este jugador ha cogido una concha de Value puntos y tamaño Tier
+	 * (TNScoreShells::ETier) en WorldLocation. Cada máquina con pantalla hace allí el estallido (ATN_ScoreShellBurst:
+	 * destello, chispas y «¡plin!»); la del propio jugador, además, difunde OnScoreShellCollected. Va por el
+	 * PlayerState (que no se destruye ni duerme) y fiable: la concha se destruye justo después.
+	 */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastScoreShellCollected(FVector_NetQuantize10 WorldLocation, uint8 Tier, int32 Value);
 
 	/**
 	 * @brief Resetea el estado a valores de ARRANQUE de carrera (vivo, sin finish/DBNO/

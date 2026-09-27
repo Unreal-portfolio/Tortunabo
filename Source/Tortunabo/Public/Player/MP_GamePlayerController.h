@@ -148,6 +148,15 @@ public:
 	UFUNCTION(Exec)
 	void TNStorm(const FString& Where, float Ahead = 900.f);
 
+	/**
+	 * @brief Consola (pruebas de las conchas de puntos): «TNShells 1|25|50|100 [N]» suelta N conchas (hasta 20) de ese
+	 *        valor en fila delante de tu tortuga, para cogerlas corriendo y ver el estallido y el contador; «TNShells
+	 *        Especial» te lleva cada vez a la siguiente concha especial (50 o 100) del mapa procedural; «TNShells Lista»
+	 *        dice cuántas hay de cada tamaño y dónde van las especiales.
+	 */
+	UFUNCTION(Exec)
+	void TNShells(const FString& What, int32 Count = 1);
+
 	/** @brief Consola (pruebas del lobby): abre la tienda del tendero más cercano sin ir hasta él. */
 	UFUNCTION(Exec)
 	void TNShop();
@@ -439,6 +448,10 @@ private:
 	/** Servidor: el trabajo de TNStorm (mueve la tortuga y el frente de la tormenta). */
 	UFUNCTION(Server, Reliable)
 	void ServerStormTest(const FString& Where, float Ahead);
+
+	/** Servidor: el trabajo de TNShells (suelta conchas o lleva a una especial). */
+	UFUNCTION(Server, Reliable)
+	void ServerShellsTest(const FString& What, int32 Count);
 
 	/** Servidor: el trabajo de TNBooth. */
 	UFUNCTION(Server, Reliable)
