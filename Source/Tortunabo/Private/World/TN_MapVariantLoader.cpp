@@ -159,7 +159,11 @@ FString ATN_MapVariantLoader::VariantsDir()
 
 void ATN_MapVariantLoader::ClearMeshes()
 {
-	for (UProceduralMeshComponent* Mesh : ChunkMeshes)
+	// Todos los ProceduralMesh del actor, no solo los de ChunkMeshes: los niveles guardados antes de
+	// que fueran transitorios traen los trozos viejos serializados y sin referencia en el array.
+	TArray<UProceduralMeshComponent*> Meshes;
+	GetComponents(Meshes);
+	for (UProceduralMeshComponent* Mesh : Meshes)
 	{
 		if (Mesh) { Mesh->DestroyComponent(); }
 	}
@@ -334,7 +338,8 @@ void ATN_MapVariantLoader::LoadVariant()
 		Cell->TryGetBoolField(TEXT("collision"), bCollision);
 
 		UProceduralMeshComponent* Component = NewObject<UProceduralMeshComponent>(this,
-			*FString::Printf(TEXT("Chunk_%d"), ChunkIndex++));
+			MakeUniqueObjectName(this, UProceduralMeshComponent::StaticClass(),
+				*FString::Printf(TEXT("Chunk_%d"), ChunkIndex++)), RF_Transient);
 		// Cocinado sincrono: la colision de la variante esta lista nada mas cargarla.
 		Component->bUseAsyncCooking = false;
 		Component->SetCollisionProfileName(bCollision ? TEXT("BlockAll") : TEXT("NoCollision"));

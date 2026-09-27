@@ -62,14 +62,16 @@ private:
 	void SpawnKillZones();
 	static FString VariantsDir();
 
-	/** Un UProceduralMeshComponent por trozo del manifest ("cells"). */
-	UPROPERTY(VisibleAnywhere, Category = "MapVariant")
+	/** Un UProceduralMeshComponent por trozo del manifest ("cells"). Transitorios: no se guardan en
+	 *  el nivel (pesaba 350 MB y, al abrirlo, se veia la malla de la ultima vez que se guardo, no la
+	 *  del disco); se reconstruyen desde Scripts/terrain_volumes al cargar el nivel y en BeginPlay. */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "MapVariant")
 	TArray<TObjectPtr<UProceduralMeshComponent>> ChunkMeshes;
 
 	/** Zonas de muerte creadas en BeginPlay; se destruyen en EndPlay. */
 	TArray<TWeakObjectPtr<ATN_DeathZoneVolume>> SpawnedKillZones;
 
 	/** Variante con la que se construyeron ChunkMeshes, para no reconstruir en balde. */
-	UPROPERTY()
+	UPROPERTY(Transient)
 	FName BuiltVariant;
 };
