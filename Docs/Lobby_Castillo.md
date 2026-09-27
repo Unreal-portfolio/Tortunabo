@@ -45,7 +45,7 @@ antorchas) están en `Lobby/TN_CastleKit.h` (`TNCastleKit`).
 - **Muralla**: radio interior `Radius` = 2400, 190 de grosor y unos 6 m de alto, con una ondulación suave.
   - Lleva almenas, marcas de cubo (rebordes horizontales) y conchas incrustadas.
   - Encima del borde de fuera tiene barreras invisibles: nadie se cae del castillo.
-  - El adarve de la muralla se puede pisar: se llega botando en la medusa del fondo del patio de pruebas.
+  - El adarve de la muralla se puede pisar, aunque ya no hay medusa que suba a él (todas están en la plaza).
 - **Torres**: nueve torres de cubo en la muralla, sin simetría, de 7,6 a 12,5 m de alto y de 200 a 300 de radio.
   Unas acaban en cono y otras en azotea con mástil. Cada una lleva su bandera y una barrera cilíndrica.
 
@@ -82,19 +82,22 @@ umbral de la puerta 1, en y = `GateY` = 2470, y la sala sale hacia fuera de la m
   - Lleva rebordes y conchas, y guirnaldas de banderines entre mástiles.
   - **Adarve izquierdo** (-X): se baja a él desde el rellano de la escalera de caracol por una escalera recta de once
     peldaños. Tiene un tobogán rojo que baja a la plaza (x = -1400).
-  - **Adarve derecho** (+X): se sube por una escalera de 24 peldaños macizos pegada a la cara de la plaza (arranca
-    junto a la muralla, en x = 2160, y llega arriba en x = 1200) o botando en la medusa pequeña. Tiene un tobogán
+  - **Adarve derecho** (+X): igual que el izquierdo, se baja a él desde la azotea por otra escalera recta de once
+    peldaños (sale del rellano del este). También se sube botando en la medusa pequeña de su pie. Tiene un tobogán
     turquesa que baja al patio de pruebas (x = 1500) y un mirador junto a la muralla, con catalejo, cubo con pala y
     banderón.
   - **Toboganes**: canal de 1,9 m que empieza a ~60° (se resbala) y acaba plano en la arena, con bordes, barandillas,
-    panza por debajo y dos pilares.
+    panza por debajo y dos pilares con la cabeza inclinada como la panza (pegados a ella, sin atravesarla).
 - **Torre del homenaje** (las 6, en (0, -800)): cilindro de radio 400, con azotea a 9 m.
   - La azotea tiene almenas y hace de balcón que mira a la plaza. Encima hay un torreón con cono y bandera.
-  - Se atraviesa por un túnel de 2,6 × 3,4 m, con arcos en las dos bocas, dos antorchas y luz (`TunnelLight`).
-  - **Escalera de caracol** por fuera: 36 peldaños macizos (de 290° a 430°, 2,1 m de ancho), cerrados por las seis
-    caras, con barandilla invisible y bolardos de arena.
-  - **Rellano** de 70° a 100° a la altura de la azotea, con barandilla. Por el oeste sigue la escalera que baja al
-    adarve izquierdo.
+  - Se atraviesa por un túnel de 2,6 × 3 m, con arcos en las dos bocas, dos antorchas y luz (`TunnelLight`).
+  - **Escalera de caracol** por fuera: 36 peldaños macizos de 30 cm de grueso (de 290° a 430°, 2,1 m de ancho),
+    cerrados por las seis caras, con barandilla invisible y bolardos de arena. Pasa por encima de la boca norte del
+    túnel y de su arco sin tocarlos (por eso el túnel mide 3 m de alto y los peldaños no son más gruesos).
+  - Arranca a 290°, pegada al muro interior: entre el primer peldaño y el muro no cabe la tortuga, así que los tres
+    primeros salen 1,05 / 0,7 / 0,35 m más hacia la plaza y no tienen barandilla (se pisan desde fuera).
+  - **Rellanos** a la altura de la azotea, con barandilla: el del oeste (de 70° a 100°, donde acaba el caracol) baja
+    al adarve izquierdo y el del este (de 255° a 285°, cruzando la azotea) baja al adarve derecho.
 
 ### Pila de huevos (plaza, centro en (0, 700))
 
@@ -124,7 +127,7 @@ editor y sin guardar el nivel.
 | `Probador_1` … `Probador_4` (`ATN_ChangingBooth`) | 2:04, 2:32, 3:00 y 3:26 | a 2150 y 2040 alternos, puerta al centro |
 | `Medusa_1` (`ATN_JellyfishTrampoline`) | (900, -470) | 0,8, celeste: sube al adarve derecho |
 | `Medusa_2`, `Medusa_3` | 9:10 a 1900 y 9:36 a 1650 | 1,1 rosa y 1,45 lila |
-| `Medusa_4` | (880, -1900), en el patio | 1,0, celeste: sube al adarve de la muralla |
+| `Medusa_4` … `Medusa_7` | (2050, -420), (1280, -180), (1700, -250) y (1150, 280) | 0,7 celeste, 0,9 lila, 1,0 rosa y 0,75 celeste |
 | `Prueba_01` … `Prueba_08` (`ATN_PlaygroundPiece`) | patio de pruebas | escalones de polo, galleta, postes de cubo, pala giratoria, túnel (se pasa de pie), tobogán de concha |
 | `Puente_Bamboleante` (`ATN_WobblyBridge`) | (350, -1950), yaw 180 | 7 m de vano, tablero a 2,3 m |
 | `Salida_1` … `Salida_4` (`PlayerStart`) | x = ±150, ±450; y = 1700 - 0,25·\|x\| | z 97, mirando a los huevos |
@@ -135,6 +138,10 @@ escondiendo esas piezas si quedaran a la vista.
 
 `ATN_HQGameMode::SpawnLobbyShops` solo coloca lo que falte (castillo, tienda, probadores y general) en niveles que no
 los traen puestos.
+
+El lobby del castillo no tiene selector de modo: la partida es el cooperativo del mapa procedural (`LVL_ProcMap`),
+que es el valor por defecto de `UMP_GameInstance::SelectedProcMode`. El clásico (`LVL_Run`) solo sale si un
+`ATN_ProcModeSelector` lo elige.
 
 ## La tienda (`ATN_ShopKeeper`)
 

@@ -47,15 +47,22 @@ namespace TNCastleDetail
 	constexpr double KeepR = 400.0;
 	constexpr double KeepRoofZ = 900.0;
 	constexpr double DoorHalfW = 130.0;
-	constexpr double DoorH = 340.0;
+	constexpr double DoorH = 300.0;
 	/**
-	 * Escalera de caracol: por fuera de la torre, del suelo (lado este, a 290°) a la azotea (lado oeste, a 70°) pasando
-	 * sobre la puerta; rellano hasta 100° y, desde él, escalera recta que baja por encima del muro al adarve izquierdo.
+	 * Escalera de caracol: por fuera de la torre, del suelo (lado este, a 290°, pegada al muro) a la azotea (lado oeste, a
+	 * 70°) pasando por encima de la puerta y de su arco sin tocarlos; rellano hasta 100° y, desde él, escalera recta que
+	 * baja por encima del muro al adarve izquierdo. Por el otro lado de la azotea, otro rellano y otra escalera igual al
+	 * derecho. Los StairEntrySteps primeros peldaños salen más hacia la plaza y no tienen barandilla: se pisan desde fuera
+	 * (entre el primero y el muro no cabe la tortuga).
 	 */
 	constexpr double StairIn = KeepR;
 	constexpr double StairOut = KeepR + 210.0;
 	constexpr int32 StairSteps = 36;
 	constexpr double StairStartDeg = 290.0;
+	constexpr int32 StairEntrySteps = 3;
+	constexpr double StairEntryFlare = 35.0;
+	/** Grueso de los peldaños (más que su alto, 25 cm: por debajo no se ve a través). */
+	constexpr double StairStepT = 30.0;
 	constexpr double StairEndDeg = 430.0;
 	constexpr double LandingEndDeg = 100.0;
 	constexpr double DownStepsX0 = -(KeepR + 190.0);
@@ -66,15 +73,9 @@ namespace TNCastleDetail
 	constexpr double SlideRightX = 1500.0;
 	constexpr double SlideRun = 560.0;
 	constexpr double SlideHalfW = 95.0;
-	/**
-	 * Escalera de la plaza al adarve derecho (para el tobogán del patio): pegada a la cara norte del muro, sube hacia el
-	 * oeste desde X = RightStairsX0 (abajo, junto a la muralla) en peldaños macizos de 25 cm.
-	 */
-	constexpr double RightStairsX0 = 2160.0;
-	constexpr int32 RightStairs = 24;
-	constexpr double RightStairL = 40.0;
-	constexpr double RightStairW = 150.0;
-	constexpr double RightStairsTopX = RightStairsX0 - RightStairs * RightStairL;
+	/** Rellano del este de la azotea (grados de la torre), del que baja la escalera recta al adarve derecho. */
+	constexpr double EastLandingStartDeg = 255.0;
+	constexpr double EastLandingEndDeg = 285.0;
 	/** Pila de huevos: centro del montículo de dos alturas en la plaza. */
 	const FVector2D EggsCenter(0.0, 700.0);
 
@@ -186,11 +187,23 @@ namespace TNCastleDetail
 				B.AddBeam(FVector(X + Sx * (SlideHalfW + 9.0), Ya, Za + 52.0), FVector(X + Sx * (SlideHalfW + 9.0), Yb, Zb + 52.0), 9.0, Rail);
 			}
 		}
-		// Pilares de arena bajo el canal.
+		// Pilares de arena bajo el canal, con la cabeza inclinada como la panza (pegados a ella en toda su huella, sin
+		// atravesarla ni dejar hueco).
+		constexpr double PillarR = 36.0;
+		constexpr int32 PillarSeg = 12;
 		for (const double T : { 0.28, 0.58 })
 		{
 			const FVector Foot(X, Y0 + Face * SlideRun * T, 0.0);
-			TNProcMesh::TNProcAddCylinder(B, Foot, Foot + Up * (Z(T) - 24.0), 46.0, 34.0, 12, SandDark());
+			auto HeadZ = [&](const FVector& P) { return Z(FMath::Clamp((P.Y - Y0) / (Face * SlideRun), 0.0, 1.0)) - 27.0; };
+			for (int32 k = 0; k < PillarSeg; ++k)
+			{
+				const double A0 = TNProcMap::TwoPi * k / PillarSeg, A1 = TNProcMap::TwoPi * (k + 1) / PillarSeg;
+				const FVector P0 = Foot + FVector(FMath::Cos(A0), FMath::Sin(A0), 0.0) * PillarR;
+				const FVector P1 = Foot + FVector(FMath::Cos(A1), FMath::Sin(A1), 0.0) * PillarR;
+				const FVector Out(FMath::Cos((A0 + A1) * 0.5), FMath::Sin((A0 + A1) * 0.5), 0.0);
+				B.AddQuad(P0, P1, P1 + Up * HeadZ(P1), P0 + Up * HeadZ(P0), Out, SandDark());
+				B.AddTri(Foot + Up * HeadZ(Foot), P0 + Up * HeadZ(P0), P1 + Up * HeadZ(P1), Up, SandDark());
+			}
 		}
 		// Conchas en los pilares y una estrella al pie.
 		AddStarfish(Decor, FVector(X + 40.0, Y0 + Face * (SlideRun + 90.0), FloorZ), 30.0, X * 0.01, Col(0xFF8A70));
@@ -541,12 +554,10 @@ void ATN_SandCastleLobby::BuildCastle()
 			// escalera del rellano ni en la boca de cada tobogán.
 			for (double X = FMath::Min(X0, X1) + 60.0; X < FMath::Max(X0, X1) - 50.0; X += 150.0)
 			{
-				if (Sign < 0.0 && X > DownStepsX1 - 60.0) { continue; }
+				if (FMath::Abs(X) < FMath::Abs(DownStepsX1) + 60.0) { continue; }
 				for (const double Face : { -1.0, 1.0 })
 				{
 					if (InSlideMouth(X, Face)) { continue; }
-					// Boca de la escalera de la plaza al adarve derecho.
-					if (Face > 0.0 && X > RightStairsTopX - 60.0 && X < RightStairsTopX + 110.0) { continue; }
 					B.AddBox(FVector(X, CutY + Face * (CutHalfT - 22.0), CutH + 45.0), FVector(1.0, 0.0, 0.0), FVector(45.0, 22.0, 45.0), SandC());
 				}
 			}
@@ -560,7 +571,7 @@ void ATN_SandCastleLobby::BuildCastle()
 					ShellColors[s % 4]);
 			}
 			// Guirnaldas de banderines por encima del adarve, de mástil en mástil sobre las almenas de la cara sur.
-			const double GX0 = Sign < 0.0 ? DownStepsX1 - 80.0 : X0 + 160.0;
+			const double GX0 = Sign * (FMath::Abs(DownStepsX1) + 80.0);
 			const double GX1 = X1 - Sign * 260.0;
 			const int32 Poles = FMath::Max(2, FMath::RoundToInt32(FMath::Abs(GX1 - GX0) / 420.0) + 1);
 			FVector PrevTop = FVector::ZeroVector;
@@ -577,25 +588,6 @@ void ATN_SandCastleLobby::BuildCastle()
 		// Tobogán de la izquierda a la plaza y de la derecha al patio de pruebas.
 		AddWallSlide(B, Decor, SlideLeftX, 1.0, Col(0xFF6A52));
 		AddWallSlide(B, Decor, SlideRightX, -1.0, Col(0x2EC4B6));
-		// Escalera de la plaza al adarve derecho: peldaños macizos hasta el suelo (no se ve a través), pegados al muro,
-		// con barandilla invisible por fuera y bolardos de arena.
-		{
-			const double YWall = CutY + CutHalfT;
-			for (int32 s = 0; s < RightStairs; ++s)
-			{
-				const double XA = RightStairsX0 - RightStairL * (s + 1), XB = RightStairsX0 - RightStairL * s;
-				const double Top = FloorZ + (CutH - FloorZ) * (s + 1) / RightStairs;
-				AddAxisBox(B, FVector(XA - 1.0, YWall - 6.0, 0.0), FVector(XB, YWall + RightStairW, Top), (s % 2) ? SandLight() : Col(0xEFD29A));
-				if (s % 3 == 1)
-				{
-					TNProcMesh::TNProcAddCylinder(B, FVector((XA + XB) * 0.5, YWall + RightStairW - 14.0, Top), FVector((XA + XB) * 0.5, YWall + RightStairW - 14.0, Top + 55.0),
-						14.0, 11.0, 8, SandDark());
-				}
-			}
-			AddAxisBox(Barrier, FVector(RightStairsTopX, YWall + RightStairW + 4.0, 0.0), FVector(RightStairsX0, YWall + RightStairW + 12.0, CutH + 220.0), SandC());
-			// Vieira en la cara del primer peldaño, para que se vea dónde se sube.
-			AddScallop(Decor, FVector(RightStairsX0 + 1.0, YWall + RightStairW * 0.5, 14.0), FVector(1.0, 0.0, 0.0), Up, 18.0, Col(0xFFB4A2));
-		}
 		// Mirador del adarve derecho, junto a la muralla: catalejo en su trípode, cubo con pala y un banderón.
 		{
 			const FVector Look(Half - 520.0, CutY, CutH);
@@ -635,7 +627,7 @@ void ATN_SandCastleLobby::BuildCastle()
 			B.AddTri(KeepC + Up * KeepRoofZ, KeepPoint(KeepR + 30.0, A0, KeepRoofZ), KeepPoint(KeepR + 30.0, A1, KeepRoofZ), Up, SandLight());
 			B.AddQuad(KeepPoint(KeepR, A0, KeepRoofZ - 30.0), KeepPoint(KeepR, A1, KeepRoofZ - 30.0), KeepPoint(KeepR + 30.0, A1, KeepRoofZ), KeepPoint(KeepR + 30.0, A0, KeepRoofZ), Out, SandDark());
 			const double Deg = FMath::RadiansToDegrees(Am);
-			const bool bStairLanding = Deg > 48.0 && Deg < LandingEndDeg + 4.0;
+			const bool bStairLanding = (Deg > 48.0 && Deg < LandingEndDeg + 4.0) || (Deg > EastLandingStartDeg - 4.0 && Deg < EastLandingEndDeg + 4.0);
 			if (k % 2 == 0 && !bStairLanding)
 			{
 				B.AddBox(KeepPoint(KeepR + 8.0, Am, KeepRoofZ + 50.0), Out, FVector(20.0, 36.0, 50.0), SandC());
@@ -658,8 +650,8 @@ void ATN_SandCastleLobby::BuildCastle()
 			for (int32 s = 0; s < 10; ++s)
 			{
 				const double T0 = PI * s / 10.0, T1 = PI * (s + 1) / 10.0;
-				const FVector C0(-(DoorHalfW + 16.0) * FMath::Cos(T0), CutY + Face * (KeepR + 4.0), DoorH - 30.0 + 70.0 * FMath::Sin(T0));
-				const FVector C1(-(DoorHalfW + 16.0) * FMath::Cos(T1), CutY + Face * (KeepR + 4.0), DoorH - 30.0 + 70.0 * FMath::Sin(T1));
+				const FVector C0(-(DoorHalfW + 16.0) * FMath::Cos(T0), CutY + Face * (KeepR + 4.0), DoorH - 40.0 + 60.0 * FMath::Sin(T0));
+				const FVector C1(-(DoorHalfW + 16.0) * FMath::Cos(T1), CutY + Face * (KeepR + 4.0), DoorH - 40.0 + 60.0 * FMath::Sin(T1));
 				const FVector D = (C1 - C0).GetSafeNormal();
 				const FVector AxisX = FVector(D.X, D.Y, 0.0).IsNearlyZero() ? FVector(1.0, 0.0, 0.0) : FVector(D.X, D.Y, 0.0).GetSafeNormal();
 				Decor.AddBox((C0 + C1) * 0.5, AxisX, FVector(FVector::Dist(C0, C1) * 0.5, 10.0, 16.0), (s % 2) ? SandDark() : Col(0xCFA766));
@@ -668,13 +660,18 @@ void ATN_SandCastleLobby::BuildCastle()
 		// Torrecilla sobre la azotea (al sur), con tejado de cono y bandera: la silueta alta del castillo.
 		AddTower(B, Decor, FVector2D(0.0, CutY - 170.0), 150.0, 430.0, Col(0xFF6A52), 0, KeepRoofZ);
 		// Escalera de caracol por fuera, de peldaños macizos: del suelo (este, 290°) a la azotea (oeste, 70°) pasando por
-		// encima del arco de la puerta (0°).
+		// encima del arco de la puerta (0°). Los de la entrada, más largos hacia la plaza.
 		const double StepDeg = (StairEndDeg - StairStartDeg) / StairSteps;
 		for (int32 s = 0; s < StairSteps; ++s)
 		{
 			const double A0 = StairStartDeg + StepDeg * s - 0.4, A1 = StairStartDeg + StepDeg * (s + 1);
 			const double Z = KeepRoofZ * (s + 1) / StairSteps;
-			AddKeepSector(B, StairIn - 4.0, StairOut, A0, A1, Z - 45.0, Z, (s % 2) ? SandLight() : Col(0xEFD29A), SandDark());
+			const double Outer = StairOut + StairEntryFlare * FMath::Max(0, StairEntrySteps - s);
+			AddKeepSector(B, StairIn - 4.0, Outer, A0, A1, Z - StairStepT, Z, (s % 2) ? SandLight() : Col(0xEFD29A), SandDark());
+			if (s < StairEntrySteps)
+			{
+				continue;
+			}
 			const double Am = FMath::DegreesToRadians((A0 + A1) * 0.5);
 			const FVector Out(-FMath::Sin(Am), FMath::Cos(Am), 0.0);
 			// Barandilla invisible por fuera (no se cae uno al subir) y bolardos de arena de adorno.
@@ -710,17 +707,46 @@ void ATN_SandCastleLobby::BuildCastle()
 			Barrier.AddQuad(KeepPoint(StairIn, AEnd, KeepRoofZ), KeepPoint(StairOut + 12.0, AEnd, KeepRoofZ), KeepPoint(StairOut + 12.0, AEnd, KeepRoofZ + 180.0),
 				KeepPoint(StairIn, AEnd, KeepRoofZ + 180.0), -Fwd, SandC());
 		}
-		// Escalera recta del rellano al adarve izquierdo, por encima del muro: once peldaños macizos de 25 cm.
-		for (int32 s = 0; s < DownSteps; ++s)
+		// Rellano del este (de 255° a 285°, a la altura de la azotea): se llega cruzando la azotea y baja al adarve derecho.
+		for (double A = EastLandingStartDeg; A < EastLandingEndDeg - 0.1; A += 5.0)
 		{
-			const double XA = DownStepsX0 - DownStepL * (s + 1), XB = DownStepsX0 - DownStepL * s;
-			const double Top = KeepRoofZ - 25.0 * (s + 1);
-			AddAxisBox(B, FVector(XA, CutY - CutHalfT, CutH - 1.0), FVector(XB + 2.0, CutY + CutHalfT, Top), (s % 2) ? SandLight() : Col(0xEFD29A));
+			const double A1 = FMath::Min(A + 5.0, EastLandingEndDeg);
+			AddKeepSector(B, StairIn - 4.0, StairOut, A - 0.3, A1, KeepRoofZ - 45.0, KeepRoofZ, SandLight(), SandDark());
+			const double Am = FMath::DegreesToRadians((A + A1) * 0.5);
+			const FVector Out(-FMath::Sin(Am), FMath::Cos(Am), 0.0);
+			const bool bToSteps = (A + A1) * 0.5 > 261.0 && (A + A1) * 0.5 < 279.0;
+			if (!bToSteps)
+			{
+				Barrier.AddQuad(KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A), KeepRoofZ), KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A1), KeepRoofZ),
+					KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A1), KeepRoofZ + 180.0), KeepPoint(StairOut + 12.0, FMath::DegreesToRadians(A), KeepRoofZ + 180.0), -Out, SandC());
+				TNProcMesh::TNProcAddCylinder(B, KeepPoint(StairOut - 15.0, Am, KeepRoofZ), KeepPoint(StairOut - 15.0, Am, KeepRoofZ + 55.0), 14.0, 11.0, 8, SandDark());
+			}
 		}
-		const double StepsX1 = DownStepsX0 - DownStepL * DownSteps;
-		for (const double Face : { -1.0, 1.0 })
+		for (const double EdgeDeg : { EastLandingStartDeg, EastLandingEndDeg })
 		{
-			AddAxisBox(Barrier, FVector(StepsX1, CutY + Face * (CutHalfT + 4.0) - 4.0, CutH), FVector(DownStepsX0 + 30.0, CutY + Face * (CutHalfT + 4.0) + 4.0, KeepRoofZ + 200.0), SandC());
+			// Cierres radiales del rellano del este (no está unido a la escalera de caracol).
+			const double AEdge = FMath::DegreesToRadians(EdgeDeg);
+			const FVector Fwd(-FMath::Cos(AEdge), -FMath::Sin(AEdge), 0.0);
+			Barrier.AddQuad(KeepPoint(StairIn + 30.0, AEdge, KeepRoofZ), KeepPoint(StairOut + 12.0, AEdge, KeepRoofZ), KeepPoint(StairOut + 12.0, AEdge, KeepRoofZ + 180.0),
+				KeepPoint(StairIn + 30.0, AEdge, KeepRoofZ + 180.0), EdgeDeg < 270.0 ? Fwd : -Fwd, SandC());
+		}
+		// Escaleras rectas de los dos rellanos a los adarves, por encima del muro: once peldaños macizos de 25 cm cada una
+		// (al oeste, la del tobogán de la plaza; al este, la del tobogán del patio de pruebas).
+		for (const double Side : { -1.0, 1.0 })
+		{
+			for (int32 s = 0; s < DownSteps; ++s)
+			{
+				const double Near = FMath::Abs(DownStepsX0) + DownStepL * s - 2.0, Far = FMath::Abs(DownStepsX0) + DownStepL * (s + 1);
+				const double Top = KeepRoofZ - 25.0 * (s + 1);
+				AddAxisBox(B, FVector(FMath::Min(Side * Near, Side * Far), CutY - CutHalfT, CutH - 1.0), FVector(FMath::Max(Side * Near, Side * Far), CutY + CutHalfT, Top),
+					(s % 2) ? SandLight() : Col(0xEFD29A));
+			}
+			const double NearEnd = FMath::Abs(DownStepsX0) - 30.0, FarEnd = FMath::Abs(DownStepsX0) + DownStepL * DownSteps;
+			for (const double Face : { -1.0, 1.0 })
+			{
+				AddAxisBox(Barrier, FVector(FMath::Min(Side * NearEnd, Side * FarEnd), CutY + Face * (CutHalfT + 4.0) - 4.0, CutH),
+					FVector(FMath::Max(Side * NearEnd, Side * FarEnd), CutY + Face * (CutHalfT + 4.0) + 4.0, KeepRoofZ + 200.0), SandC());
+			}
 		}
 	}
 
@@ -735,7 +761,6 @@ void ATN_SandCastleLobby::BuildCastle()
 		const FVector P(-Dist * FMath::Sin(A), Dist * FMath::Cos(A), FloorZ);
 		if (FVector2D::Distance(FVector2D(P.X, P.Y), EggsCenter) < EggMound::Tier1R + 120.0) { continue; }
 		if (FMath::Abs(P.Y - CutY) < 260.0) { continue; }
-		if (P.X > RightStairsTopX - 60.0 && P.X < RightStairsX0 + 60.0 && P.Y > CutY && P.Y < CutY + CutHalfT + RightStairW + 60.0) { continue; }
 		if ((FMath::Abs(P.X - SlideLeftX) < 150.0 && P.Y > CutY && P.Y < CutY + CutHalfT + SlideRun + 60.0)
 			|| (FMath::Abs(P.X - SlideRightX) < 150.0 && P.Y < CutY && P.Y > CutY - CutHalfT - SlideRun - 60.0)) { continue; }
 		if (i % 3 == 0) { AddStarfish(Decor, P, 22.0 + 10.0 * FMath::Frac(i * 0.31), i * 0.7, (i % 2) ? Col(0xFF8A70) : Col(0xFFB077)); }
@@ -846,7 +871,9 @@ void ATN_SandCastleLobby::ServerUpdate(float DeltaSeconds)
 			// De pie junto a la puerta 1 por dentro: quiere salir.
 			bWantsOut |= bInRoom && GateLocal.Y < Gatehouse::RoomY0 + 60.0;
 		}
-		if (PC)
+		// Sin tortuga (se destruyen justo antes de viajar) no se toca su estado: si no, la cuenta atrás se cancelaría en el
+		// último momento y el huevo de carga se abriría antes del viaje.
+		if (PC && PawnInLobby)
 		{
 			const bool bReady = bInEgg || bInRoom;
 			const bool* Sent = ReadySent.Find(PC);

@@ -82,9 +82,10 @@ spawn(unreal.TN_GeneralBriefing, loc, rot, 'Cuartel_General')
 for i, (hour, dist) in enumerate(((2.07, 2150.0), (2.53, 2040.0), (3.0, 2150.0), (3.43, 2040.0))):
     loc, rot = clock_spot(hour, dist)
     spawn(unreal.TN_ChangingBooth, loc, rot, 'Probador_%d' % (i + 1))
-# 6) Medusas trampolín (tamaño por propiedad, escala 1): la pequeña junto al adarve derecho del muro interior (se sube
-#    botando), dos más en la plaza de las 8:20 a las 10 y una en la esquina del fondo del patio de pruebas, al pie de la
-#    muralla (se sube al adarve de la muralla).
+# 6) Medusas trampolín (tamaño por propiedad, escala 1), todas juntas en el lado este de la plaza (de las 8:20 a las
+#    10): la pequeña junto al adarve derecho del muro interior sirve para subir a él botando; las demás, solo para botar.
+#    Entre dos medusas queda al menos la suma de sus tentáculos (190 cm por unidad de Size) y ninguna toca otra pieza
+#    (comprobado con las cajas de los actores).
 jelly_cls = getattr(unreal, 'TN_JellyfishTrampoline', None)
 if jelly_cls:
     C = unreal.TNJellyfishColor
@@ -92,7 +93,10 @@ if jelly_cls:
         ((900.0, -470.0), 0.8, C.SKY),
         (clock_spot(9.17, 1900.0)[0], 1.1, C.PINK),
         (clock_spot(9.6, 1650.0)[0], 1.45, C.LILAC),
-        ((880.0, -1900.0), 1.0, C.SKY),
+        ((2050.0, -420.0), 0.7, C.SKY),
+        ((1280.0, -180.0), 0.9, C.LILAC),
+        ((1700.0, -250.0), 1.0, C.PINK),
+        ((1150.0, 280.0), 0.75, C.SKY),
     ]
     for i, (where, size, color) in enumerate(jellies):
         x, y = (where.x, where.y) if isinstance(where, unreal.Vector) else where
