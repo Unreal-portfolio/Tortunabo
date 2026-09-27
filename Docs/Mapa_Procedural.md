@@ -142,7 +142,13 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   rastrillo levantado y dos antorchas. Dentro (sala iluminada por antorchas) el géiser del
   centro lanza en vertical por un hueco del forjado hasta la cima, junto al arranque del
   puente o del adarve, y su columna de agua asoma por ese hueco; la de salida lleva el
-  tobogán.
+  tobogán. Las dos cimas van **enlosadas** (malla, `TowerDims::PaveLift` = 4 cm por encima
+  de la cota de la torre), así que el núcleo de terreno y el tablero o el adarve que entran
+  en ellas quedan debajo y no parpadean. Malla y terreno abren los mismos lados del pretil
+  (`TowerOpenSides`); el núcleo quita su pretil de roca también en los 70 cm de lado cerrado
+  junto a uno abierto (`TowerCoreOpenAt`), para que la rampa entre las dos cotas quede dentro
+  del pretil de sillería. En la de salida, por los lados abiertos la sillería baja a plomo a
+  60 cm del núcleo (`TowerDims::FlushOut`) y el terreno de alrededor no sube de la cima.
 - **Ramas** que se separan y vuelven a unirse en 1–3 módulos, de cuatro tipos:
   *tranquila* (larga y holgada), *arriesgada* (cornisa de 3,5–5 m con el doble de
   huecos), *ruta alta* (sube en rampa suave por una loma junto al cauce y baja en

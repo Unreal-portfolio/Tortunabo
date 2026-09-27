@@ -755,36 +755,37 @@ namespace
 	}
 
 	/**
-	 * Torre de muralla: forro de sillería en talud (32 lados) sobre el pilar del terreno, pretil de
-	 * 1,9 m con almenas que cubre el de roca y se abre al adarve y al tobogán (donde el forro queda a
-	 * ras del pilar), y un estandarte en lo alto.
+	 * Torre de muralla: forro de sillería en talud (TowerDims::Sides lados) sobre el pilar del terreno,
+	 * cima enlosada TowerDims::PaveLift por encima del pilar, pretil de 1,9 m con almenas que cubre el
+	 * de roca y se abre al adarve y al tobogán (ahí el forro baja a plomo a TowerDims::FlushOut del
+	 * pilar y el enlosado llega hasta él), y un estandarte en lo alto. Los lados abiertos son los de
+	 * TowerOpenSides, los mismos que deja el terreno.
 	 */
 	template <typename FGround>
 	void TNProcAddWallTower(FTNProcMeshBuffers& Out, FTNProcMeshBuffers& Cloth, const TNProcMap::FLayout& Layout, const TNProcMap::FFeature& F,
 		const FGround& GroundAt, const FLinearColor& Stone, const FLinearColor& Banner, uint32 Seed)
 	{
 		using namespace TNProcMap;
-		constexpr int32 Sides = 32;
+		constexpr int32 Sides = TowerDims::Sides;
 		constexpr double Course = 180.0;
 		const FVector2D C(F.Location.X, F.Location.Y);
 		const double TopZ = F.Height;
+		const double PaveZ = TopZ + TowerDims::PaveLift;
 		const double R = F.Radius;
+		const double Rf = R + TowerDims::FlushOut;
 		const double Ri = R - 320.0;
 		const double Ro = R + 220.0;
 		const double ParTop = TopZ + 190.0;
 		auto Dir = [](double A) { return FVector2D(FMath::Cos(A), FMath::Sin(A)); };
+		const uint32 OpenMask = TowerOpenSides(Layout, F);
 		TArray<bool> Open;
-		for (int32 k = 0; k < Sides; ++k)
-		{
-			const double A = TwoPi * (k + 0.5) / Sides;
-			Open.Add(TowerOpeningAt(Layout, F, C + Dir(A) * (R - 150.0)));
-		}
+		for (int32 k = 0; k < Sides; ++k) { Open.Add(((OpenMask >> k) & 1u) != 0u); }
 		double Ground = TopZ;
 		for (int32 k = 0; k < Sides; ++k) { Ground = FMath::Min(Ground, GroundAt(C + Dir(TwoPi * k / Sides) * (Ro + 400.0))); }
 		const double Zb = Ground - 300.0;
 		auto OuterAt = [&](double A, double Z, bool bFlush)
 		{
-			const double Rad = bFlush ? R : Ro + WallDims::Batter * FMath::Max(0.0, TopZ - Z);
+			const double Rad = bFlush ? Rf : Ro + WallDims::Batter * FMath::Max(0.0, TopZ - Z);
 			const FVector2D Q = C + Dir(A) * Rad;
 			return FVector(Q.X, Q.Y, Z);
 		};
@@ -796,7 +797,10 @@ namespace
 			const double Am = 0.5 * (A0 + A1);
 			const FVector Hint(FMath::Cos(Am), FMath::Sin(Am), WallDims::Batter);
 			const bool bOpen = Open[k];
-			const double Zt = bOpen ? TopZ : ParTop;
+			const double Zt = bOpen ? PaveZ : ParTop;
+			// Enlosado de la cima: hasta el pretil en los lados cerrados y hasta el forro a plomo en los abiertos.
+			Out.AddTri(FVector(C.X, C.Y, PaveZ), RingAt(A0, bOpen ? Rf : Ri, PaveZ), RingAt(A1, bOpen ? Rf : Ri, PaveZ), FVector::UpVector,
+				Stone * 1.06f * TNProcTone(k, Seed ^ 0x51ABu));
 			double Z0 = Zb;
 			while (Z0 < Zt - 1.0)
 			{
@@ -824,9 +828,9 @@ namespace
 				if (!Open[Nb]) { continue; }
 				const double Ae = E == 0 ? A0 : A1;
 				const FVector2D Te = Tg * (E == 0 ? -1.0 : 1.0);
-				// Junto a una abertura: cierre del pretil y, debajo, del forro hasta el pilar.
-				Out.AddQuad(RingAt(Ae, Ri, TopZ), OuterAt(Ae, TopZ, false), OuterAt(Ae, ParTop, false), RingAt(Ae, Ri, ParTop), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
-				Out.AddQuad(RingAt(Ae, R, Zb), OuterAt(Ae, Zb, false), OuterAt(Ae, TopZ, false), RingAt(Ae, R, TopZ), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
+				// Junto a una abertura: cierre del pretil y, debajo, del forro hasta el de a plomo.
+				Out.AddQuad(RingAt(Ae, Ri, PaveZ), OuterAt(Ae, PaveZ, false), OuterAt(Ae, ParTop, false), RingAt(Ae, Ri, ParTop), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
+				Out.AddQuad(RingAt(Ae, Rf, Zb), OuterAt(Ae, Zb, false), OuterAt(Ae, PaveZ, false), RingAt(Ae, Rf, PaveZ), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
 			}
 		}
 		TNProcAddTowerBanner(Cloth, Open, C, Ri, Ro, ParTop, Banner);
@@ -853,6 +857,7 @@ namespace
 		constexpr double Course = 180.0;
 		const FVector2D C(F.Location.X, F.Location.Y);
 		const double TopZ = F.Height;
+		const double PaveZ = TopZ + TowerDims::PaveLift;
 		const double FloorZ = F.Target.Z;
 		const double R = F.Radius;
 		const double Ri = R - TowerDims::Wall;
@@ -868,8 +873,9 @@ namespace
 		const double GateHalf = TowerDims::DoorHalf;
 		const double Spring = FloorZ + TowerDims::DoorTop - GateHalf - 70.0;
 		const double GateTop = Spring + GateHalf + Course;
+		const uint32 OpenMask = TowerOpenSides(Layout, F);
 		TArray<bool> Open;
-		for (int32 k = 0; k < Sides; ++k) { Open.Add(TowerOpeningAt(Layout, F, C + Dir(TwoPi * (k + 0.5) / Sides) * (R - 150.0))); }
+		for (int32 k = 0; k < Sides; ++k) { Open.Add(((OpenMask >> k) & 1u) != 0u); }
 		double Ground = FloorZ;
 		for (int32 k = 0; k < Sides; ++k) { Ground = FMath::Min(Ground, GroundAt(C + Dir(TwoPi * k / Sides) * (Ro + 400.0))); }
 		const double Zb = Ground - 300.0;
@@ -895,7 +901,7 @@ namespace
 			const bool bOpen = Open[k];
 			const bool bDoor = IsDoor(k);
 			// Cara exterior en hiladas (sobre la puerta, desde lo alto de la portada) y cara interior a plomo hasta el forjado.
-			Courses(bDoor ? GateTop : Zb, bOpen ? TopZ : ParTop, [&](double Z0, double Z1, int32 Idx)
+			Courses(bDoor ? GateTop : Zb, bOpen ? PaveZ : ParTop, [&](double Z0, double Z1, int32 Idx)
 			{
 				Out.AddQuad(OuterAt(A0, Z0), OuterAt(A1, Z0), OuterAt(A1, Z1), OuterAt(A0, Z1), Hint, Stone * TNProcTone(Idx * 97 + k / 2, Seed));
 			});
@@ -904,15 +910,16 @@ namespace
 				Out.AddQuad(RingAt(A1, Ri, Z0), RingAt(A0, Ri, Z0), RingAt(A0, Ri, Z1), RingAt(A1, Ri, Z1), FVector(-Hint.X, -Hint.Y, 0.0),
 					Stone * 0.82f * TNProcTone(Idx * 53 + k / 2, Seed ^ 0x1D1Du));
 			});
-			// Forjado: losa a la cota de la cima, su cara de abajo y el canto del hueco.
+			// Forjado: losa enlosada a la cota de la cima (más PaveLift), su cara de abajo y el canto del hueco.
 			const double H0 = TowerDims::HoleR;
-			Out.AddQuad(RingAt(A0, H0, TopZ), RingAt(A1, H0, TopZ), RingAt(A1, Ri, TopZ), RingAt(A0, Ri, TopZ), FVector::UpVector, Stone * 1.08f * TNProcTone(k, Seed ^ 0x51ABu));
+			Out.AddQuad(RingAt(A0, H0, PaveZ), RingAt(A1, H0, PaveZ), RingAt(A1, Ri, PaveZ), RingAt(A0, Ri, PaveZ), FVector::UpVector, Stone * 1.08f * TNProcTone(k, Seed ^ 0x51ABu));
 			Out.AddQuad(RingAt(A1, H0, TopZ - Slab), RingAt(A0, H0, TopZ - Slab), RingAt(A0, Ri, TopZ - Slab), RingAt(A1, Ri, TopZ - Slab), -FVector::UpVector, Stone * 0.7f);
-			Out.AddQuad(RingAt(A1, H0, TopZ - Slab), RingAt(A1, H0, TopZ), RingAt(A0, H0, TopZ), RingAt(A0, H0, TopZ - Slab), FVector(-Hint.X, -Hint.Y, 0.0), Stone * 0.9f);
+			Out.AddQuad(RingAt(A1, H0, TopZ - Slab), RingAt(A1, H0, PaveZ), RingAt(A0, H0, PaveZ), RingAt(A0, H0, TopZ - Slab), FVector(-Hint.X, -Hint.Y, 0.0), Stone * 0.9f);
 			if (bOpen)
 			{
-				// Hacia el puente o el adarve: el muro enlosado a la cota de la cima.
-				Out.AddQuad(RingAt(A0, Ri, TopZ), RingAt(A1, Ri, TopZ), OuterAt(A1, TopZ), OuterAt(A0, TopZ), FVector::UpVector, Stone * 1.05f);
+				// Hacia el puente o el adarve: el muro enlosado a la misma cota, por encima del núcleo del terreno y
+				// del tablero o el adarve que entran en la torre.
+				Out.AddQuad(RingAt(A0, Ri, PaveZ), RingAt(A1, Ri, PaveZ), OuterAt(A1, PaveZ), OuterAt(A0, PaveZ), FVector::UpVector, Stone * 1.05f);
 				continue;
 			}
 			// Pretil: cara interior, cima y almena en medio del lado (una sí y otra no).
@@ -931,7 +938,7 @@ namespace
 				if (!Open[Nb]) { continue; }
 				const double Ae = E == 0 ? A0 : A1;
 				const FVector2D Te = Tg * (E == 0 ? -1.0 : 1.0);
-				Out.AddQuad(RingAt(Ae, Ri, TopZ), OuterAt(Ae, TopZ), OuterAt(Ae, ParTop), RingAt(Ae, Ri, ParTop), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
+				Out.AddQuad(RingAt(Ae, Ri, PaveZ), OuterAt(Ae, PaveZ), OuterAt(Ae, ParTop), RingAt(Ae, Ri, ParTop), FVector(Te.X, Te.Y, 0.0), Stone * 0.9f);
 			}
 			// Saeteras: rendijas oscuras en la cara exterior, a varias alturas, una de cada cuatro caras.
 			if ((k % 4) == 1 && !bDoor)

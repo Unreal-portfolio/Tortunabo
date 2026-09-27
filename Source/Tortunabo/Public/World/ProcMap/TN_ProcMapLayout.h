@@ -576,6 +576,21 @@ namespace TNProcMap
 		constexpr double Land = 640.0;
 		/** Aux2 de la torre hueca y del géiser que tiene dentro. */
 		constexpr int32 HollowBit = 1;
+		/**
+		 * Cuánto sube el enlosado de la cima (malla) sobre la cota de la torre: el núcleo del terreno y el tablero o el
+		 * adarve que entran en ella quedan justo debajo, sin pelearse con él.
+		 */
+		constexpr double PaveLift = 4.0;
+		/**
+		 * Franja (cm, medida en arco) de un lado cerrado junto a uno abierto en la que el núcleo del terreno ya no lleva
+		 * pretil: la rampa entre las dos cotas (hasta 0,5 m de malla del terreno) queda dentro del pretil de sillería.
+		 */
+		constexpr double EdgeMargin = 70.0;
+		/**
+		 * Torre de muralla: por los lados abiertos la sillería baja a plomo a Radius + FlushOut (el tobogán sale de ahí)
+		 * y el enlosado llega hasta ella: tapa el borde del núcleo del terreno (hasta 0,5 m de rampa).
+		 */
+		constexpr double FlushOut = 60.0;
 	}
 
 	/**

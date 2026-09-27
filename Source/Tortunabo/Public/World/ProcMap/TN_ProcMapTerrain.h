@@ -129,6 +129,43 @@ namespace TNProcMap
 		return C.HighStep + 1 < L.Route.Num() && Near(L.Route[C.HighStep + 1].FirstSample, L.Route[C.HighStep + 1].FirstSample + 10);
 	}
 
+	/**
+	 * Lados abiertos del pretil de una torre (bit k = lado k de los TowerDims::Sides del polígono, de TwoPi·k/Sides a
+	 * TwoPi·(k + 1)/Sides): TowerOpeningAt en el punto medio de cada lado a Radius - 150. La malla (sillería, pretil y
+	 * enlosado) y el núcleo del terreno usan esta misma máscara: así ni el pretil de roca asoma por un lado abierto ni
+	 * queda un hueco en uno cerrado.
+	 */
+	inline uint32 TowerOpenSides(const FLayout& L, const FFeature& F)
+	{
+		static_assert(TowerDims::Sides <= 32, "La máscara de lados es de 32 bits");
+		uint32 Mask = 0u;
+		const FVector2D C(F.Location.X, F.Location.Y);
+		for (int32 k = 0; k < TowerDims::Sides; ++k)
+		{
+			const double A = TwoPi * (k + 0.5) / TowerDims::Sides;
+			if (TowerOpeningAt(L, F, C + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (F.Radius - 150.0))) { Mask |= 1u << k; }
+		}
+		return Mask;
+	}
+
+	/**
+	 * Si el núcleo del terreno va sin pretil en Rel (desde el centro de la torre, a D de él): en un lado abierto de Mask
+	 * y también en la franja TowerDims::EdgeMargin de un lado cerrado que linda con uno abierto.
+	 */
+	inline bool TowerCoreOpenAt(uint32 Mask, const FVector2D& Rel, double D)
+	{
+		constexpr int32 N = TowerDims::Sides;
+		const double Step = TwoPi / N;
+		double A = FMath::Atan2(Rel.Y, Rel.X);
+		if (A < 0.0) { A += TwoPi; }
+		const int32 K = FMath::Clamp(FMath::FloorToInt32(A / Step), 0, N - 1);
+		auto Open = [Mask](int32 k) { return ((Mask >> (((k % N) + N) % N)) & 1u) != 0u; };
+		if (Open(K)) { return true; }
+		const double Arc = FMath::Max(D, 1.0);
+		return (Open(K - 1) && (A - K * Step) * Arc < TowerDims::EdgeMargin)
+			|| (Open(K + 1) && ((K + 1) * Step - A) * Arc < TowerDims::EdgeMargin);
+	}
+
 	/** Pendiente (tan) de las laderas que bajan desde el borde de un cauce elevado. */
 	constexpr double FlankSlope = 1.15;
 	/** Altura mínima de las orillas de laguna y de los acantilados de costa sobre el mar. */
@@ -326,6 +363,8 @@ namespace TNProcMap
 		double FinishX = 0.0;
 		double FinishLineAt = 0.0;
 		double CoveHalf = 0.0;
+		/** Por feature: lados abiertos de su pretil si es una torre (TowerOpenSides; 0 en el resto). */
+		TArray<uint32> TowerSideMask;
 
 		// ── Campo del camino ────────────────────────────────────────────────
 		TArray<FPathSample> Samples;
@@ -403,9 +442,11 @@ namespace TNProcMap
 			Seed = InLayout.Params.Seed ^ 0x7E44Au;
 			for (int32 b = 0; b < NumBiomes; ++b) { Biomes[b] = GetBiomeTerrain(BiomeFromIndex(b)); }
 			Volcanoes.Reset();
+			TowerSideMask.Init(0u, L->Features.Num());
 			for (int32 f = 0; f < L->Features.Num(); ++f)
 			{
 				const FFeature& F = L->Features[f];
+				if (F.Type == EFeature::Tower) { TowerSideMask[f] = TowerOpenSides(*L, F); }
 				if (F.Type == EFeature::StartArea) { StartZ = F.Location.Z; }
 				if (F.Type == EFeature::Volcano) { Volcanoes.Add(f); }
 				if (F.Type == EFeature::Finish) { FinishX = F.Location.X; FinishLineAt = F.Location.Y; CoveHalf = 0.5 * F.Width; }
@@ -1263,8 +1304,6 @@ namespace TNProcMap
 			return LerpD(Cliff, SeaBed, SmoothStep(Coast - 400.0, Coast + 200.0, P.Y));
 		}
 
-		bool TowerOpening(const FFeature& F, const FVector2D& P) const { return TowerOpeningAt(*L, F, P); }
-
 		double ApplyInfluences(const FVector2D& P, double H, const TArray<FInf>& Bin, uint8& OutMask, int32 InSeg, double InT, double InBeyond) const
 		{
 			const TArray<FPathSample>& M = L->Main;
@@ -1313,8 +1352,9 @@ namespace TNProcMap
 				const double D = FVector2D::Distance(P, FVector2D(F.Location.X, F.Location.Y));
 				// Pilar: plataforma plana a la cota de la cima en todo su radio (sin taludes ni mesetas
 				// dentro): ahí se encuentran el puente y el tobogán. Los pilares bajo el tablero solo suben
-				// hasta su cima. Las torres van forradas de fábrica (malla, con almenas): aquí su núcleo, de
-				// paredes a plomo, y el pretil que las cierra.
+				// hasta su cima. Las torres van forradas de fábrica (malla, con almenas y enlosado
+				// TowerDims::PaveLift por encima de la cima): aquí su núcleo, de paredes a plomo, y el pretil
+				// que las cierra, con los mismos lados abiertos que la malla (TowerCoreOpenAt).
 				if (IsHollowTower(F))
 				{
 					// Torre hueca (la de entrada): suelo llano dentro, a la cota del camino, y el núcleo del muro a la
@@ -1332,7 +1372,7 @@ namespace TNProcMap
 					if (D <= F.Radius || (bDoor && AlongD < Mouth))
 					{
 						const bool bCore = D > F.Radius - TowerDims::Wall + 90.0 && !bDoor;
-						H = bCore ? F.Height + (TowerOpening(F, P) ? 0.0 : 180.0) : F.Target.Z;
+						H = bCore ? F.Height + (TowerCoreOpenAt(TowerSideMask[Inf.A], Rel, D) ? 0.0 : 180.0) : F.Target.Z;
 						if (!bCore) { OutMask = FMath::Max<uint8>(OutMask, 200); }
 					}
 					continue;
@@ -1340,12 +1380,16 @@ namespace TNProcMap
 				if (D <= F.Radius)
 				{
 					// Pretil de roca de 1,8 m en el borde (no se salta), abierto hacia el puente y el tobogán.
-					const bool bParapet = F.Type == EFeature::Tower && D > F.Radius - 300.0 && !TowerOpening(F, P);
+					const bool bParapet = F.Type == EFeature::Tower && D > F.Radius - 300.0
+						&& !TowerCoreOpenAt(TowerSideMask[Inf.A], P - FVector2D(F.Location.X, F.Location.Y), D);
 					H = F.Type == EFeature::Tower ? F.Height + (bParapet ? 180.0 : 0.0) : FMath::Max(H, F.Height);
 					OutMask = FMath::Max<uint8>(OutMask, 150);
 				}
 				// Falda de roca solo en los pilares del puente: las torres van forradas de sillería (malla).
 				else if (D < F.Radius + 600.0 && F.Type == EFeature::DeckPillar) { H = FMath::Max(H, LerpD(F.Height, H, (D - F.Radius) / 600.0)); }
+				// Torre de muralla: hasta algo más allá de su forro a plomo, el terreno (el arranque del tobogán, con su
+				// ruido de ±10 cm) no sube por encima de la cima: el enlosado llega hasta el forro y lo tapa.
+				else if (F.Type == EFeature::Tower && D < F.Radius + TowerDims::FlushOut + 60.0) { H = FMath::Min(H, F.Height - 2.0); }
 			}
 
 			// Túnel: el tramo bajo atraviesa la mesa a su propia cota.
