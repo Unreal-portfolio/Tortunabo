@@ -36,7 +36,8 @@ enum class ETNJellyfishColor : uint8
  * (ATN_ShellBody) también rebotan: los lanza el servidor.
  *
  * Detección: colisión convexa con la forma de la cúpula (OnComponentHit) y un sensor fino, el mismo casco 15 cm más
- * grande (solapamiento): basta con que la tortuga toque la parte de arriba (el 85 % central de la cúpula) sin ir subiendo.
+ * grande (solapamiento): basta con que la tortuga toque la campana por cualquier sitio por encima del labio (cima,
+ * costados o borde, también de lado desde el suelo) sin ir subiendo.
  *
  * Medidas con Size = 1 (cm; origen en la arena, en el centro): borde de la campana a 42 de alto y radio 110; cima a 124;
  * tentáculos hasta ~190 del centro. Todo escala con Size (0,8 / 1,1 / 1,45 dan cimas a 99, 136 y 180 cm).
@@ -150,7 +151,7 @@ private:
 	void UpdateTentacles();
 	void AnimateVisuals(float DeltaSeconds);
 
-	/** true si los pies del personaje están sobre la parte de arriba de la cúpula. */
+	/** true si la cápsula del personaje llega a la campana (cima, costados o borde) por encima del labio. */
 	bool IsOnBell(const ACharacter* Character) const;
 
 	/** Rebota al personaje si toca y lo simula esta máquina; true si ha rebotado. */

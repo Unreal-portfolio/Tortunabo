@@ -30,8 +30,10 @@ namespace TNJellyfishDetail
 	constexpr double BellH = 82.0;
 	/** Grosor (cm) del sensor de aterrizaje por fuera de la colisión de la cúpula. */
 	constexpr double SensorMargin = 15.0;
-	/** Parte central de la cúpula (radio relativo) en la que un aterrizaje cuenta como «encima» (pendiente de ~50°). */
-	constexpr double TopReach = 0.85;
+	/** Radio relativo del costado más ancho de la campana (ProfileR): hasta ahí rebota, no solo en la parte de arriba. */
+	constexpr double SideReach = 1.03;
+	/** Cota relativa (fracción de BellH sobre el borde) del labio, lo más bajo de la campana: por debajo no hay rebote. */
+	constexpr double LipZRel = -0.075;
 	constexpr int32 BellSeg = 44;
 	constexpr int32 NumTentacles = 8;
 	constexpr int32 NumArms = 4;
@@ -815,19 +817,18 @@ bool ATN_JellyfishTrampoline::IsOnBell(const ACharacter* Character) const
 	{
 		return false;
 	}
-	// En el espacio del actor, contra el perfil de verdad de la cúpula.
+	// En el espacio del actor: rebota toda la campana (cima, costados y borde), así que basta con que la cápsula llegue
+	// a ella (o al sensor, SensorMargin por fuera) de lado o desde arriba y no esté por debajo del labio, donde solo hay
+	// tentáculos sin colisión.
 	const double Scale = FMath::Clamp(static_cast<double>(Size), 0.5, 2.5);
-	const FVector Feet = GetActorTransform().InverseTransformPosition(
-		Capsule->GetComponentLocation() - FVector(0.0, 0.0, Capsule->GetScaledCapsuleHalfHeight()));
-	const double Rho = FVector2D(Feet.X, Feet.Y).Size() / (TNJellyfishDetail::BellR * Scale);
-	if (Rho > TNJellyfishDetail::TopReach)
-	{
-		return false;
-	}
-	// En pendiente, los pies (el punto más bajo de la cápsula, en su eje) quedan algo por encima de la superficie que
-	// tienen debajo: hasta ~22 cm a 50°.
-	const double SurfaceZ = TNJellyfishDetail::DomeHeightAt(Rho, Scale);
-	return Feet.Z > SurfaceZ - 30.0 && Feet.Z < SurfaceZ + 32.0;
+	const FVector Center = GetActorTransform().InverseTransformPosition(Capsule->GetComponentLocation());
+	const double HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const double Reach = TNJellyfishDetail::BellR * TNJellyfishDetail::SideReach * Scale + Capsule->GetScaledCapsuleRadius()
+		+ TNJellyfishDetail::SensorMargin + 5.0;
+	const double LipZ = (TNJellyfishDetail::RimZ + TNJellyfishDetail::LipZRel * TNJellyfishDetail::BellH) * Scale;
+	const double TopZ = (TNJellyfishDetail::RimZ + TNJellyfishDetail::BellH) * Scale;
+	return FVector2D(Center.X, Center.Y).Size() <= Reach && Center.Z + HalfHeight > LipZ
+		&& Center.Z - HalfHeight < TopZ + TNJellyfishDetail::SensorMargin + 32.0;
 }
 
 bool ATN_JellyfishTrampoline::TryBounce(ACharacter* Character)
@@ -909,15 +910,17 @@ void ATN_JellyfishTrampoline::BounceShells(double Now)
 			continue;
 		}
 		const FVector BoxPos = ActorXf.InverseTransformPosition(ShellBox->GetComponentLocation());
+		// También de lado: hasta el costado más ancho más media caja.
 		const double Rho = FVector2D(BoxPos.X, BoxPos.Y).Size() / (TNJellyfishDetail::BellR * Scale);
-		if (Rho > TNJellyfishDetail::TopReach)
+		if (Rho > TNJellyfishDetail::SideReach + 35.0 / (TNJellyfishDetail::BellR * Scale))
 		{
 			continue;
 		}
-		// El centro de la caja (21 cm de semialto) apoyada en la cúpula.
+		// El centro de la caja (21 cm de semialto) apoyada en la campana, por encima del labio.
 		const double SurfaceZ = TNJellyfishDetail::DomeHeightAt(Rho, Scale);
+		const double LipZ = (TNJellyfishDetail::RimZ + TNJellyfishDetail::LipZRel * TNJellyfishDetail::BellH) * Scale;
 		const FVector Vel = ShellBox->GetPhysicsLinearVelocity();
-		if (BoxPos.Z < SurfaceZ - 5.0 || BoxPos.Z > SurfaceZ + 60.0 || Vel.Z > 120.0)
+		if (BoxPos.Z < LipZ - 5.0 || BoxPos.Z > SurfaceZ + 60.0 || Vel.Z > 120.0)
 		{
 			continue;
 		}
