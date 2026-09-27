@@ -1658,6 +1658,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 	// ── Puentes colosales: estilo según el bioma del cruce ─────
 	// Colgante: tablones sobre dos largueros, barandilla de cuerda y, en cada apoyo (borde de torre o
 	// pilar de roca), mástiles de los que cuelgan los cables principales con sus péndolas. Viaducto:
+		// Dato de primitiva 0 = 1: M_ProcTerrain aplica el relieve por normales y la textura del camino solo en las
+		// teselas, no en las formaciones pintadas que comparten el material (su alfa de vértice no es la máscara).
+		Tile->SetCustomPrimitiveDataFloat(0, 1.f);
 	// losas y pretiles de piedra sobre arcos rebajados entre los apoyos. Caballete: tablones y barandilla
 	// de madera sobre caballetes de vigas hasta el suelo. Hierro: planchas, barandilla y pórticos de
 	// hierro con cadenas en lugar de cables.

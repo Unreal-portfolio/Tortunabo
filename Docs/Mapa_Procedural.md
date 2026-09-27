@@ -134,6 +134,36 @@ Tests de automatización: `Tortunabo.ProcMap.*` (`LayoutInvariants`,
   arcilla roja, grava ocre, adoquín pizarra, tablas oscuras), con una línea oscura al pie del talud;
   las paredes, en degradado por pendiente (suelo, roca y roca más oscura en los tajos) con estratos
   suaves. La playa de la meta conserva su arena.
+- **Detalle procedural del suelo** (`M_ProcTerrain`, nodo Custom `TERRAIN_DETAIL_HLSL` de
+  `Scripts/build_procmap_assets.py`, sin texturas). Todo va en coordenadas de mundo (XY, en metros), así que no
+  depende de las UV ni de las tangentes de las teselas; la normal sale en espacio de mundo (*Tangent Space Normal*
+  desactivado).
+  - *Relieve en todo el terreno*: tres octavas giradas de ruido de valor con derivadas analíticas (3,2 m, 1,1 m y
+    0,33 m) forman un campo de alturas ficticio cuyo gradiente de superficie inclina la normal del vértice. Es más
+    fuerte en el camino (×1,4) y en lo llano, y se queda en un 30 % en las paredes empinadas; los hoyos se oscurecen y
+    las lomas se aclaran un 4 %. No cambia la geometría ni la colisión.
+  - *Textura del camino* (donde el alfa del vértice, la máscara del camino, pasa de 0,45): manchas secas y
+    polvorientas en las lomas y húmedas en los hoyos, terrones de 12 cm, grano de motas redondas de 1-2,5 cm, guijarros
+    de 11-22 cm y piedrecitas de 4-9 cm, y marcas del viento (ondas de 28 cm, solo en las zonas secas). Las piedras toman
+    el tono del camino, con la coronilla más clara, sombra de contacto y sombra arrojada lejos del sol
+    (`SkyAtmosphereLightDirection`), para que se lean como piedras y no como hoyos. Todo modula el color de bioma que
+    trae el vértice, sin sustituirlo.
+  - *Sin parpadeo de lejos*: cada detalle se apaga cuando el píxel mide en el suelo más de 0,3-0,5 veces su tamaño
+    (derivadas de pantalla); el fino, además, entre 0,45 y 1 vez `DetailDistance`. En los sombreadores de trazado de
+    rayos no hay derivadas y el detalle va entero.
+  - *Solo en las teselas*: las formaciones pintadas (`Painted`, `PaintedFar`) comparten el material, pero su alfa no
+    es la máscara del camino. Las teselas ponen el dato de primitiva 0 a 1 (`SetCustomPrimitiveDataFloat` en
+    `BuildTerrain`) y el material solo aplica el detalle con ese dato (parámetro `TerrainDetail`); lo demás se ve como
+    antes.
+  - Parámetros del material: `PathDetail` (1, fuerza de la textura del camino), `Relief` (1, fuerza del relieve) y
+    `DetailDistance` (3500 cm). Coste: unas 160 instrucciones fuera del camino y unas 500 en el camino cercano; el
+    detalle del camino va en una rama dinámica y solo se evalúa donde hay camino.
+  - Para rehacerlo sin cambiar de nivel, en la consola Python del editor:
+    ```python
+    PROCMAP_SKIP_MAIN = True
+    exec(open(r"<repo>/Scripts/build_procmap_assets.py", encoding="utf-8").read())
+    build_terrain_material(rebuild=True)
+    ```
 - **Cruces colosales** tipo Mario Kart: puentes y murallas con puerta altísima que pasan por
   encima o por debajo de un módulo ya recorrido. Se llega a ellos por géiser/tobogán
   y caerse de un puente colosal es mortal. Los puentes dentro de un mismo módulo
@@ -467,5 +497,7 @@ valores en código hay que actualizarlos en el asset (`FillDefaultProfiles` o po
 - La **vegetación** no tiene colisión (crece fuera del suelo del camino) y usa culling por
   tamaño; con ~500 mil instancias conviene vigilar el rendimiento en equipos modestos
   (`FloraDensity` la reduce).
-- Los materiales `M_ProcFoliage`, `M_ProcWaterAnim`, `M_ProcCascade`, `M_ProcFXSoft`, `M_ProcGlow` y `M_ProcBird` se
-  crean con `Scripts/build_procmap_assets.py` (idempotente; rehace `M_ProcFoliage` si no tiene viento).
+- Los materiales `M_ProcTerrain`, `M_ProcFoliage`, `M_ProcWaterAnim`, `M_ProcCascade`, `M_ProcFXSoft`, `M_ProcGlow` y
+  `M_ProcBird` se crean con `Scripts/build_procmap_assets.py` (idempotente; rehace `M_ProcFoliage` si no tiene viento
+  y `M_ProcTerrain` si no tiene normal). Con `PROCMAP_SKIP_MAIN = True` antes del `exec` el script solo define las
+  funciones y no cambia de nivel, para rehacer un material suelto (`build_terrain_material(rebuild=True)`).
