@@ -31,6 +31,13 @@ struct FTNBeachSafeSpot
 	float Time = 0.f;
 };
 
+/** Un rescate de la red de seguridad: dónde estaba la tortuga (un sitio malo un rato) y cuándo (hora del mundo). */
+struct FTNBeachRescueMark
+{
+	FVector Where = FVector::ZeroVector;
+	float Time = 0.f;
+};
+
 /** Red de seguridad bajo la arena (ATN_BeachRaceGameMode::GuardUnderSand): lo que se lleva visto de cada tortuga. */
 struct FTNBeachUnderSandWatch
 {
@@ -38,8 +45,15 @@ struct FTNBeachUnderSandWatch
 	int32 Strikes = 0;
 	/** Desde cuándo (hora del mundo) cae sin suelo con colisión debajo; < 0 si no. */
 	float FallNoFloorSince = -1.f;
-	/** Último rescate (hora del mundo): otro en seguida va al último sitio seguro, no al mismo punto. */
-	float LastRescue = -100.f;
+	/**
+	 * Rescates de los últimos SafetyNetBadSpotSeconds: cuántos van (para no entrar en bucle: cada uno la saca más lejos) y
+	 * los sitios malos, de los que se olvidan los sitios seguros cercanos y a los que no se vuelve.
+	 */
+	TArray<FTNBeachRescueMark> Rescues;
+	/** Próximo aviso (hora del mundo) de «bajo la arena del generador, pero encima de la malla del terreno». */
+	float NextMismatchLog = 0.f;
+	/** Ya se ha avisado de un bucle de rescates en esta ronda. */
+	bool bLoopReported = false;
 };
 
 /** Una llegada al agua de meta en la ronda en curso. */
@@ -298,9 +312,31 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.1"))
 	float NoFloorFallSeconds = 0.6f;
 
-	/** La bola corta (aturdida) con la que vuelve encima la red de seguridad. 0 = sin bola. */
+	/**
+	 * La bola corta (aturdida) con la que vuelve encima la red de seguridad. 0 = sin bola (de serie: una bola nueva donde algo
+	 * la acaba de hundir se volvía a hundir y la red entraba en bucle; de pie, la corrección del movimiento lleva al dueño).
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.0"))
-	float SafetyNetStunSeconds = 0.8f;
+	float SafetyNetStunSeconds = 0.f;
+
+	/** Tras un rescate, segundos en que nada la relanza (TNBeach::ClaimTurtle: enemigos, trampas, aturdimientos, derribos). */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.0"))
+	float SafetyNetGraceSeconds = 1.5f;
+
+	/** Tras un rescate, segundos sin patada de la tormenta (y, si su sitio quedaba dentro, va por delante del frente). */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.0"))
+	float SafetyNetStormGraceSeconds = 3.f;
+
+	/** Rescates que cuentan como repetidos (s): el segundo va a su último sitio seguro y el tercero, a arena abierta lejos. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "1.0"))
+	float SafetyNetRepeatSeconds = 12.f;
+
+	/** Un sitio donde se ha rescatado es malo durante tanto (s) y en tanto alrededor (cm): ni se vuelve ni se apunta. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.0"))
+	float SafetyNetBadSpotSeconds = 20.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.0"))
+	float SafetyNetBadSpotRadius = 800.f;
 
 	/** Nombre de la clase de la tormenta de bañistas (en /Script/Tortunabo); si no existe, no hay tormenta. */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Storm")
@@ -457,7 +493,10 @@ private:
 	void FreezePlayers();
 	void UnfreezePlayers();
 	void ReleaseCarry(ATortugaCharacter* Turtle) const;
-	/** Saca a la tortuga del caparazón, del derribo y de lo que lleve y la pone en Transform. */
+	/**
+	 * Saca a la tortuga del enemigo que la sujete, del caparazón, del aturdimiento, del derribo y de lo que lleve y la pone
+	 * en Transform (TNBeach::RelocateTurtle).
+	 */
 	void TeleportTurtle(ATortugaCharacter* Turtle, const FTransform& Transform) const;
 	/** Vuelve a un sitio seguro cercano (o a la salida) y queda aturdida. */
 	void RescueTurtle(APlayerController* PlayerController, const TCHAR* Reason);
@@ -472,16 +511,31 @@ private:
 	void GuardCliffJump(APawn* Pawn) const;
 	/**
 	 * Red de seguridad (Docs/Modo_Carrera.md, «Seguridad: nunca bajo el mapa»), en cada mirada de WatchRacers: si lo que
-	 * mueve a la tortuga está más de UnderSandMargin por debajo de la arena del generador (fuera de pozas, del agua y del
-	 * borde del acantilado), o cae sin colisión de suelo debajo, la devuelve encima (RescueFromUnderSand).
+	 * mueve a la tortuga está más de UnderSandMargin por debajo de la arena del generador y también de la malla del terreno
+	 * de verdad (ATN_BeachRaceGenerator::TraceTerrainAt; en una depresión de la malla que el generador no conoce no está
+	 * bajo el mapa), fuera de pozas, del agua y del borde del acantilado, o cae sin colisión de suelo debajo, la devuelve
+	 * encima (RescueFromUnderSand). No mira a la que lleva la patada de la tormenta (la tormenta la vigila y la pone en su
+	 * sitio si se hunde).
 	 */
 	void GuardUnderSand(APlayerController* PlayerController, ATortugaCharacter* Turtle, float Now);
 	/**
-	 * La saca de lo que la tenga (enemigo, otra tortuga, caparazón, derribo), la pone encima de la arena en ese mismo punto
-	 * (bSameSpot, si ahí cabe de pie) o en su último sitio seguro, con una bola corta, y lo apunta en el registro con la
-	 * causa, su estado, su velocidad y qué la movía.
+	 * La saca de lo que la tenga (enemigo, otra tortuga, caparazón, derribo) y la pone de pie (sin bola, salvo
+	 * SafetyNetStunSeconds) en un sitio que no entre en bucle: el primer rescate, encima de la arena en ese mismo punto
+	 * (bSameSpot, si ahí cabe de pie); el segundo en SafetyNetRepeatSeconds (o en el mismo hoyo), su último sitio seguro lejos
+	 * de los sitios malos; del tercero en adelante, arena abierta lejos de todos ellos (hasta 30 m) o la salida. Si el sitio
+	 * queda dentro de la tormenta, uno por delante del frente. Reservada SafetyNetGraceSeconds y sin patadas
+	 * SafetyNetStormGraceSeconds. Lo apunta en el registro con la causa, su estado, su velocidad, qué la movía y el nivel.
 	 */
 	void RescueFromUnderSand(APlayerController* PlayerController, ATortugaCharacter* Turtle, const FVector& Probe, const FString& Cause, bool bSameSpot);
+	/**
+	 * Adónde va una tortuga rescatada (nivel 0: encima de la arena en Probe; 1: su último sitio seguro lejos de BadSpots; 2:
+	 * arena abierta lejos de BadSpots hasta 30 m; la salida si nada vale) y, si queda dentro de la tormenta, por delante del
+	 * frente. OutWhere, para el registro.
+	 */
+	FTransform ResolveRescueTarget(APlayerController* PlayerController, ATortugaCharacter* Turtle, const FVector& Probe, int32 Level,
+		const TArray<FVector>& BadSpots, FString& OutWhere);
+	/** Olvida los sitios seguros de la tortuga a menos de Radius de cualquiera de BadSpots. */
+	void ForgetSafeSpotsNear(APlayerController* PlayerController, const TArray<FVector>& BadSpots, float Radius);
 	/** Encima de la arena en el punto de Where, con la cápsula de pie cabiendo (sin meterse en rocas ni murallas). */
 	bool FindSandSpot(const ATortugaCharacter* Turtle, const FVector& Where, FTransform& OutTransform) const;
 	/** Hay colisión de suelo (lo que para a una tortuga) cerca de la arena del generador en la vertical de Where. */

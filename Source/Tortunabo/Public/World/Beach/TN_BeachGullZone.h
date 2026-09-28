@@ -114,6 +114,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void ServerTick(float DeltaSeconds) override;
 	virtual void VisualTick(float DeltaSeconds) override;
+	virtual void OnHoldAborted(ATortugaCharacter* Turtle) override;
 	virtual float GetVisualRange() const override { return 40000.f; }
 
 	/** Todas las máquinas: la cagada ha caído en Where y ha derribado a Hit (con la mancha en su caparazón). */

@@ -575,3 +575,31 @@ float ATN_BeachRaceGenerator::GetGroundHeightAt(const FVector& WorldLocation) co
 	const double Z = TNBeachLayout::SeatedZ(Layout, Local.X, Local.Y, TNBeachLayout::SurfaceZ(Local.X, Local.Y));
 	return static_cast<float>(GetActorTransform().TransformPosition(FVector(Local.X, Local.Y, Z)).Z);
 }
+
+bool ATN_BeachRaceGenerator::TraceTerrainAt(const FVector& WorldLocation, float& OutZ) const
+{
+	// Solo las teselas con colisión cuya caja cubre el punto (unas pocas de cientos): la traza no ve nada más.
+	const FVector Start(WorldLocation.X, WorldLocation.Y, WorldLocation.Z + 20000.0);
+	const FVector End(WorldLocation.X, WorldLocation.Y, WorldLocation.Z - 20000.0);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TNBeachTerrainTrace), true);
+	bool bFound = false;
+	for (const TObjectPtr<UProceduralMeshComponent>& Tile : TerrainTiles)
+	{
+		if (!Tile || !Tile->IsRegistered() || Tile->GetCollisionEnabled() == ECollisionEnabled::NoCollision)
+		{
+			continue;
+		}
+		const FBox Bounds = Tile->Bounds.GetBox();
+		if (WorldLocation.X < Bounds.Min.X || WorldLocation.X > Bounds.Max.X || WorldLocation.Y < Bounds.Min.Y || WorldLocation.Y > Bounds.Max.Y)
+		{
+			continue;
+		}
+		FHitResult Hit;
+		if (Tile->LineTraceComponent(Hit, Start, End, Params) && (!bFound || Hit.ImpactPoint.Z > OutZ))
+		{
+			OutZ = static_cast<float>(Hit.ImpactPoint.Z);
+			bFound = true;
+		}
+	}
+	return bFound;
+}

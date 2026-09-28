@@ -1,6 +1,9 @@
 #include "World/Beach/TN_BeachStun.h"
 #include "World/Beach/TN_BeachStunComponent.h"
+#include "World/Beach/TN_BeachEnemy.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachSandWorm.h"
+#include "World/Beach/TN_BeachStorm.h"
 #include "Game/TN_BeachRaceGameState.h"
 #include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
@@ -9,11 +12,15 @@
 #include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/PhysicsVolume.h"
 #include "Net/UnrealNetwork.h"
 
 namespace TNBeachStunDetail
@@ -40,6 +47,70 @@ namespace TNBeachStunDetail
 
 	/** Últimos segundos en los que el temblor se apaga poco a poco. */
 	constexpr float TrembleFadeSeconds = 0.6f;
+
+	/** Hora del mundo en el servidor (las reservas y la gracia se miden con ella). */
+	double WorldNow(const UObject* Context)
+	{
+		const UWorld* World = Context ? Context->GetWorld() : nullptr;
+		return World ? World->GetTimeSeconds() : 0.0;
+	}
+
+	/** Sitio de arena abierta: anillos cada tanto (cm) alrededor del punto pedido y la holgura de la cápsula. */
+	constexpr float SpotRingStep = 250.f;
+	constexpr float SpotCapsulePad = 15.f;
+	/** La primera superficie desde arriba tiene que ser el terreno (a menos de esto, cm) y el suelo, así de llano (normal Z). */
+	constexpr float SpotTerrainTolerance = 40.f;
+	constexpr float SpotMinNormalZ = 0.75f;
+	/** Lejos del filo del acantilado (cm) y del muro de detrás de la salida. */
+	constexpr double SpotCliffMargin = 2500.0;
+	constexpr double SpotBackWallMargin = 600.0;
+
+	/** Cerca del frente de la tormenta (a menos de esto por delante, cm, o detrás), nada lanza a la tortuga hacia atrás. */
+	constexpr float StormNoBackReach = 2500.f;
+
+	/**
+	 * Lo que lanza a una tortuga que está cerca del frente de la tormenta (el pulpo hacia la salida, la gaviota al soltarla,
+	 * el lagarto de lado...) pierde lo que la echaría hacia la tormenta: si no, cae detrás, la patean hacia delante y el
+	 * enemigo la vuelve a lanzar hacia atrás, en cadena. Lo de lado y hacia arriba se queda.
+	 */
+	FVector StormSafeLaunch(const ACharacter& Turtle, const FVector& Launch)
+	{
+		if (Launch.IsNearlyZero())
+		{
+			return Launch;
+		}
+		const ATN_BeachStorm* Storm = ATN_BeachStorm::FindStorm(&Turtle);
+		if (!Storm || !Storm->IsStormActive() || !Storm->IsBehindFront(Turtle.GetActorLocation(), -StormNoBackReach))
+		{
+			return Launch;
+		}
+		FVector Forward = Storm->GetActorForwardVector();
+		Forward.Z = 0.0;
+		if (!Forward.Normalize())
+		{
+			return Launch;
+		}
+		const double Back = FVector::DotProduct(Launch, Forward);
+		return Back < 0.0 ? Launch - Forward * Back : Launch;
+	}
+
+	/** true si Where está dentro de un volumen de agua (pozas, balsas: APhysicsVolume con bWaterVolume). */
+	bool IsWaterAt(UWorld& World, const FVector& Where)
+	{
+		TArray<FOverlapResult> Overlaps;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(TNBeachSpotWater), false);
+		World.OverlapMultiByObjectType(Overlaps, Where, FQuat::Identity, FCollisionObjectQueryParams(FCollisionObjectQueryParams::InitType::AllObjects),
+			FCollisionShape::MakeSphere(40.f), Params);
+		for (const FOverlapResult& Overlap : Overlaps)
+		{
+			const APhysicsVolume* Volume = Cast<APhysicsVolume>(Overlap.GetActor());
+			if (Volume && Volume->bWaterVolume)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,9 +131,16 @@ void TNBeach::StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launc
 			return;
 		}
 	}
+	// La patada de la tormenta o la red de seguridad la están recolocando: nada la relanza hasta que acaben (ellas se
+	// reservan la tortuga después de su propia llamada).
+	if (IsTurtleRelocating(Turtle))
+	{
+		UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] %s: no se aturde, la recoloca %s."), *GetNameSafe(Turtle), GetMoverName(GetTurtleClaim(Turtle)));
+		return;
+	}
 	if (UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOrAddOn(Turtle))
 	{
-		Stun->StartStun(Seconds, Launch);
+		Stun->StartStun(Seconds, TNBeachStunDetail::StormSafeLaunch(*Turtle, Launch));
 	}
 }
 
@@ -73,7 +151,7 @@ void TNBeach::KnockDownTurtle(ACharacter* Turtle, float Seconds, const FVector& 
 		return;
 	}
 	ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
-	if (!TurtleCharacter || TurtleCharacter->IsDead())
+	if (!TurtleCharacter || TurtleCharacter->IsDead() || IsTurtleRelocating(Turtle))
 	{
 		return;
 	}
@@ -94,6 +172,271 @@ bool TNBeach::IsNoDeathWorld(const UObject* WorldContext)
 		: nullptr;
 	// El GameState de la carrera en la playa solo lo pone ATN_BeachRaceGameMode y viaja a todas las máquinas.
 	return World && Cast<ATN_BeachRaceGameState>(World->GetGameState()) != nullptr;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quién mueve a la tortuga (árbitro, servidor)
+// ─────────────────────────────────────────────────────────────────────────────
+
+TNBeach::ETNBeachMover TNBeach::GetTurtleMover(const ACharacter* Turtle)
+{
+	const ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
+	if (!TurtleCharacter)
+	{
+		return ETNBeachMover::None;
+	}
+	if (ATN_BeachSandWorm::IsBeingEaten(TurtleCharacter))
+	{
+		return ETNBeachMover::Eaten;
+	}
+	const ETNBeachMover Claim = GetTurtleClaim(TurtleCharacter);
+	if (Claim != ETNBeachMover::None)
+	{
+		return Claim;
+	}
+	if (ATN_BeachEnemy::IsTurtleHeld(TurtleCharacter))
+	{
+		return ETNBeachMover::Held;
+	}
+	if (TNBeachStunDetail::IsCarried(TurtleCharacter))
+	{
+		return ETNBeachMover::Carried;
+	}
+	if (TurtleCharacter->IsKnockedDown())
+	{
+		return ETNBeachMover::Knockdown;
+	}
+	if (TurtleCharacter->IsInShell())
+	{
+		return ETNBeachMover::Ball;
+	}
+	if (TurtleCharacter->IsFallImmune())
+	{
+		return ETNBeachMover::Launch;
+	}
+	return ETNBeachMover::None;
+}
+
+const TCHAR* TNBeach::GetMoverName(ETNBeachMover Mover)
+{
+	switch (Mover)
+	{
+	case ETNBeachMover::Launch: return TEXT("un lanzamiento");
+	case ETNBeachMover::Ball: return TEXT("su bola del caparazón");
+	case ETNBeachMover::Knockdown: return TEXT("el derribo (ragdoll)");
+	case ETNBeachMover::Carried: return TEXT("otra tortuga (en brazos)");
+	case ETNBeachMover::Held: return TEXT("un enemigo (sujeta)");
+	case ETNBeachMover::StormKick: return TEXT("la patada de la tormenta");
+	case ETNBeachMover::SafetyNet: return TEXT("la red de seguridad");
+	case ETNBeachMover::Eaten: return TEXT("un gusano de arena");
+	default: return TEXT("su propio movimiento");
+	}
+}
+
+void TNBeach::ClaimTurtle(ACharacter* Turtle, ETNBeachMover Mover, float Seconds)
+{
+	if (!Turtle || !Turtle->HasAuthority() || Mover == ETNBeachMover::None || Seconds <= 0.f)
+	{
+		return;
+	}
+	if (UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOrAddOn(Turtle))
+	{
+		Stun->ClaimMover = static_cast<uint8>(Mover);
+		Stun->ClaimUntil = TNBeachStunDetail::WorldNow(Turtle) + Seconds;
+	}
+}
+
+void TNBeach::ReleaseTurtle(ACharacter* Turtle, ETNBeachMover Mover)
+{
+	UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOn(Turtle);
+	if (Stun && Stun->ClaimMover == static_cast<uint8>(Mover))
+	{
+		Stun->ClaimMover = static_cast<uint8>(ETNBeachMover::None);
+		Stun->ClaimUntil = 0.0;
+	}
+}
+
+TNBeach::ETNBeachMover TNBeach::GetTurtleClaim(const ACharacter* Turtle)
+{
+	const UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOn(Turtle);
+	if (!Stun || Stun->ClaimMover == static_cast<uint8>(ETNBeachMover::None) || TNBeachStunDetail::WorldNow(Turtle) >= Stun->ClaimUntil)
+	{
+		return ETNBeachMover::None;
+	}
+	return static_cast<ETNBeachMover>(Stun->ClaimMover);
+}
+
+bool TNBeach::IsTurtleRelocating(const ACharacter* Turtle)
+{
+	const ETNBeachMover Claim = GetTurtleClaim(Turtle);
+	return Claim == ETNBeachMover::StormKick || Claim == ETNBeachMover::SafetyNet;
+}
+
+void TNBeach::GrantStormGrace(ACharacter* Turtle, float Seconds)
+{
+	if (!Turtle || !Turtle->HasAuthority() || Seconds <= 0.f)
+	{
+		return;
+	}
+	if (UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOrAddOn(Turtle))
+	{
+		Stun->StormGraceUntil = FMath::Max(Stun->StormGraceUntil, TNBeachStunDetail::WorldNow(Turtle) + Seconds);
+	}
+}
+
+bool TNBeach::HasStormGrace(const ACharacter* Turtle)
+{
+	const UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOn(Turtle);
+	return Stun && TNBeachStunDetail::WorldNow(Turtle) < Stun->StormGraceUntil;
+}
+
+void TNBeach::RelocateTurtle(ACharacter* Turtle, const FTransform& Where)
+{
+	ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
+	if (!TurtleCharacter || !TurtleCharacter->HasAuthority())
+	{
+		return;
+	}
+	// El enemigo que la tenga en la boca o el pico la suelta y deja el ataque (si no, la volvería a colocar en su boca).
+	ATN_BeachEnemy::ServerReleaseHeldTurtle(TurtleCharacter, TEXT("recolocada"));
+	// Lo que lleve y quien la lleve en brazos.
+	if (UTN_CarryComponent* Carry = TurtleCharacter->GetCarryComponent())
+	{
+		if (Carry->IsCarrying())
+		{
+			Carry->ForceRelease(false);
+		}
+		if (ATortugaCharacter* Carrier = Carry->GetCarrier())
+		{
+			if (UTN_CarryComponent* CarrierCarry = Carrier->GetCarryComponent())
+			{
+				CarrierCarry->ForceRelease(false);
+			}
+		}
+	}
+	// Del derribo se levanta (vuelven la colisión de la cápsula, el movimiento, su suavizado y su réplica).
+	if (TurtleCharacter->IsKnockedDown())
+	{
+		TurtleCharacter->RecoverFromKnockdown();
+	}
+	// Aturdida y en bola: fuera del todo, en el acto (sin caja que siga cayendo donde estaba).
+	if (UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOn(TurtleCharacter))
+	{
+		if (Stun->IsStunned())
+		{
+			Stun->EndStun(true);
+		}
+	}
+	if (UTN_ShellComponent* Shell = TurtleCharacter->GetShellComponent())
+	{
+		Shell->SetExitLocked(false);
+		Shell->ForceExitShell();
+	}
+	UCharacterMovementComponent* Move = TurtleCharacter->GetCharacterMovement();
+	if (Move)
+	{
+		Move->StopMovementImmediately();
+		Move->PendingLaunchVelocity = FVector::ZeroVector;
+	}
+	TurtleCharacter->SetActorLocationAndRotation(Where.GetLocation(), Where.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+	if (Move)
+	{
+		if (!Move->IsComponentTickEnabled())
+		{
+			Move->SetComponentTickEnabled(true);
+		}
+		Move->SetMovementMode(MOVE_Falling);
+	}
+	TurtleCharacter->ForceNetUpdate();
+}
+
+bool TNBeach::FindOpenSandSpot(const ACharacter* Turtle, const FVector& Desired, float SearchRadius, FTransform& OutTransform,
+	const TArray<FVector>* Avoid, float AvoidRadius)
+{
+	using namespace TNBeachStunDetail;
+	UWorld* World = Turtle ? Turtle->GetWorld() : nullptr;
+	const ATN_BeachRaceGenerator* Gen = ATN_BeachRaceGenerator::Find(Turtle);
+	if (!World || !Gen)
+	{
+		return false;
+	}
+	// De pie: la cápsula de la clase (en el panzazo, la de la tortuga es más baja).
+	const ACharacter* Defaults = Turtle->GetClass()->GetDefaultObject<ACharacter>();
+	const UCapsuleComponent* DefaultCapsule = Defaults ? Defaults->GetCapsuleComponent() : nullptr;
+	const UCapsuleComponent* Capsule = Turtle->GetCapsuleComponent();
+	const float HalfHeight = DefaultCapsule ? DefaultCapsule->GetScaledCapsuleHalfHeight() : (Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 88.f);
+	const float Radius = DefaultCapsule ? DefaultCapsule->GetScaledCapsuleRadius() : (Capsule ? Capsule->GetScaledCapsuleRadius() : 34.f);
+
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(TNBeachOpenSand), false, Turtle);
+	if (const ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle))
+	{
+		if (const UTN_ShellComponent* Shell = TurtleCharacter->GetShellComponent())
+		{
+			Query.AddIgnoredActor(Shell->GetBody());
+		}
+	}
+	const FTransform GenXf = Gen->GetActorTransform();
+	const double AvoidSq = FMath::Square(static_cast<double>(AvoidRadius));
+	const int32 Rings = SearchRadius > 0.f ? FMath::Max(1, FMath::CeilToInt32(SearchRadius / SpotRingStep)) : 0;
+	for (int32 Ring = 0; Ring <= Rings; ++Ring)
+	{
+		const int32 Count = Ring == 0 ? 1 : FMath::Min(8 + 4 * (Ring - 1), 24);
+		for (int32 k = 0; k < Count; ++k)
+		{
+			const double Angle = (Ring % 2 == 0 ? 0.0 : 0.5) * UE_DOUBLE_TWO_PI / Count + UE_DOUBLE_TWO_PI * k / Count;
+			const FVector Point = Desired + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0) * (Ring * SpotRingStep);
+			if (Avoid && AvoidSq > 0.0 && Avoid->ContainsByPredicate([&Point, AvoidSq](const FVector& Bad) { return FVector::DistSquared2D(Point, Bad) < AvoidSq; }))
+			{
+				continue;
+			}
+			// Dentro de la playa jugable, lejos del filo, del muro de detrás de la salida, del agua y de las trincheras.
+			const FVector Local = GenXf.InverseTransformPosition(Point);
+			if (FMath::Abs(Local.Y) > TNBeachLayout::HalfWidth - 300.0 || Local.X < TNBeachLayout::BackWallX + SpotBackWallMargin
+				|| Local.X > TNBeachLayout::EdgeX(Local.Y) - SpotCliffMargin
+				|| TNBeachLayout::PoolAt(FVector2D(Local.X, Local.Y), 1.3) != INDEX_NONE || TNBeachLayout::TrenchCarve(Local.X, Local.Y) > 0.0)
+			{
+				continue;
+			}
+			// Lo primero que para a una tortuga desde arriba tiene que ser el terreno mismo, llano (nada encima).
+			const float Ground = Gen->GetGroundHeightAt(Point);
+			FHitResult Hit;
+			if (!World->LineTraceSingleByChannel(Hit, FVector(Point.X, Point.Y, Ground + 400.0), FVector(Point.X, Point.Y, Ground - 250.0), ECC_Pawn, Query)
+				|| Hit.bStartPenetrating || Hit.ImpactNormal.Z < SpotMinNormalZ)
+			{
+				continue;
+			}
+			float TerrainZ = 0.f;
+			if (Gen->TraceTerrainAt(Hit.ImpactPoint, TerrainZ) && FMath::Abs(TerrainZ - Hit.ImpactPoint.Z) > SpotTerrainTolerance)
+			{
+				continue;
+			}
+			// La tortuga de pie cabe (ni una roca, ni una muralla, ni otra tortuga) y no está en el agua.
+			const FVector Stand = Hit.ImpactPoint + FVector(0.0, 0.0, HalfHeight + 5.0);
+			if (World->OverlapBlockingTestByChannel(Stand, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius + SpotCapsulePad, HalfHeight), Query)
+				|| IsWaterAt(*World, Stand))
+			{
+				continue;
+			}
+			OutTransform = FTransform(FRotator(0.f, Turtle->GetActorRotation().Yaw, 0.f), Stand);
+			return true;
+		}
+	}
+	return false;
+}
+
+float TNBeach::DepthUnderTerrain(const UObject* WorldContext, const FVector& Probe)
+{
+	const ATN_BeachRaceGenerator* Gen = ATN_BeachRaceGenerator::Find(WorldContext);
+	if (!Gen)
+	{
+		return 0.f;
+	}
+	float TerrainZ = 0.f;
+	if (!Gen->TraceTerrainAt(Probe, TerrainZ))
+	{
+		TerrainZ = Gen->GetGroundHeightAt(Probe);
+	}
+	return TerrainZ - static_cast<float>(Probe.Z);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

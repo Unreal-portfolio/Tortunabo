@@ -1030,6 +1030,18 @@ void ATN_BeachGullZone::ServerDive(float Tau, float DeltaSeconds)
 	}
 }
 
+void ATN_BeachGullZone::OnHoldAborted(ATortugaCharacter* Turtle)
+{
+	// Se la quitan del pico (red de seguridad, gusano): soltada ya, sin la bola de la caída ni el empujón hacia la salida.
+	if (!HasAuthority() || !Turtle || Attack.Victim != Turtle || Attack.Result != 1 || bReleased)
+	{
+		return;
+	}
+	bReleased = true;
+	Attack.ReleaseTime = static_cast<float>(ServerNow(this));
+	ForceNetUpdate();
+}
+
 void ATN_BeachGullZone::ReleaseCarried()
 {
 	using namespace TNBeachGull;

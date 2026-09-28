@@ -9,6 +9,8 @@
 #include "World/ProcMap/TN_StormCough.h"
 #include "TN_BeachEnemyKit.h"
 #include "TN_BeachEnemyMeshes.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/PostProcessComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -16,11 +18,14 @@
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/App.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/TN_CarryComponent.h"
+#include "Player/TN_ShellBody.h"
+#include "Player/TN_ShellComponent.h"
 #include "Player/TortugaCharacter.h"
 
 namespace TNBeachStormTuning
@@ -49,9 +54,73 @@ namespace TNBeachStormTuning
 	constexpr float KickSwing = 0.25f;
 	constexpr float KickHold = 0.2f;
 	constexpr float KickFadeOut = 0.45f;
-	/** Gravedad con la que se calcula el vuelo de la bola de la patada (cm/s²) y lo que frena la caja en el aire. */
+	/** Gravedad con la que se calcula el vuelo de la bola de la patada (cm/s²) si el mundo no dice otra. */
 	constexpr float KickGravity = 980.f;
-	constexpr float KickDampingComp = 0.13f;
+	/** Vuelos que se prueban para que el arco salve lo que haya delante (s): el calculado, uno alto y uno muy alto. */
+	constexpr float KickHighFlight = 2.6f;
+	constexpr float KickHigherFlight = 3.2f;
+	/** Puntos del arco que se comprueban y el radio de la bola que se barre (cm). Se deja sin mirar el último 12 %. */
+	constexpr int32 KickArcSamples = 8;
+	constexpr float KickArcRadius = 24.f;
+	constexpr float KickArcSkipEnd = 0.12f;
+	/** Sitios a lo ancho que se prueban por delante (cm a cada lado) antes de buscar alrededor, y hasta dónde (cm). */
+	constexpr float KickLateralStep = 400.f;
+	constexpr float KickSearchRadius = 1500.f;
+	/** Reserva de la patada: el vuelo más este margen (s). Parada (cm/s) y cuánto (s) para darla por atascada. */
+	constexpr float KickClaimPad = 2.5f;
+	constexpr float KickStuckSpeed = 120.f;
+	constexpr float KickStuckSeconds = 0.35f;
+	/** Hundida más de esto (cm) bajo el terreno de verdad: a su sitio. Cada cuánto se mira (s). */
+	constexpr float KickSunkDepth = 90.f;
+	constexpr float KickDepthInterval = 0.1f;
+	/** Sin sitio por delante: segundos hasta volver a buscar. */
+	constexpr float KickRetrySeconds = 1.f;
+	/** Detrás del frente con algo que acaba solo (derribo, bola de aturdida, lanzamiento) más de esto (s): se patea igual. */
+	constexpr float KickForceAfter = 8.f;
+
+	/** Lo que mueve de verdad a la tortuga (la caja de su bola, si la sigue en esta máquina) y su velocidad. */
+	FVector TurtleBody(const ATortugaCharacter& Turtle, FVector& OutVelocity)
+	{
+		if (const UTN_ShellComponent* Shell = Turtle.GetShellComponent())
+		{
+			const ATN_ShellBody* Body = Shell->GetBody();
+			UBoxComponent* Box = Body ? Body->GetBox() : nullptr;
+			if (Shell->HasLocalBody() && Box)
+			{
+				OutVelocity = Box->GetPhysicsLinearVelocity();
+				return Box->GetComponentLocation();
+			}
+		}
+		OutVelocity = Turtle.GetVelocity();
+		return Turtle.GetActorLocation();
+	}
+
+	/**
+	 * Velocidad inicial para ir de From a To en Flight segundos con gravedad G y la amortiguación lineal de la caja (C, 1/s;
+	 * frena un poco en el aire): x(t) = v/C·(1 - e^-Ct) y z(t) = (vz + G/C)/C·(1 - e^-Ct) - G·t/C.
+	 */
+	FVector BallisticLaunch(const FVector& From, const FVector& To, float Flight, float G, float C)
+	{
+		const FVector D = To - From;
+		const double T = FMath::Max(0.1, static_cast<double>(Flight));
+		if (C < 0.01f)
+		{
+			return FVector(D.X / T, D.Y / T, D.Z / T + 0.5 * G * T);
+		}
+		const double K = (1.0 - FMath::Exp(-C * T)) / C;
+		return FVector(D.X / K, D.Y / K, (D.Z + G * T / C) / K - G / C);
+	}
+
+	/** Punto del arco a los T segundos (misma cuenta que BallisticLaunch). */
+	FVector BallisticPoint(const FVector& From, const FVector& Launch, float T, float G, float C)
+	{
+		if (C < 0.01f)
+		{
+			return From + Launch * T - FVector(0.0, 0.0, 0.5 * G * T * T);
+		}
+		const double E = (1.0 - FMath::Exp(-C * T)) / C;
+		return From + FVector(Launch.X * E, Launch.Y * E, (Launch.Z + G / C) * E - G * T / C);
+	}
 
 	inline FLinearColor SandVeil()
 	{
@@ -118,6 +187,8 @@ void ATN_BeachStorm::BeginPlay()
 
 void ATN_BeachStorm::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Quitada con patadas en vuelo (ronda nueva): nadie se queda reservado.
+	ReleaseAllFlights();
 	RestoreFog();
 	Super::EndPlay(EndPlayReason);
 }
@@ -195,7 +266,8 @@ void ATN_BeachStorm::StartStormAt(float InStartOffset, float Speed, float GraceS
 	bShown = true;
 	bCatchingUp = false;
 	BehindFor.Reset();
-	KickedUntil.Reset();
+	ReleaseAllFlights();
+	RetryAfter.Reset();
 	CheckTimer = 0.f;
 	SpeedTimer = 0.f;
 	ForceNetUpdate();
@@ -212,7 +284,9 @@ void ATN_BeachStorm::StopStorm()
 	FrozenFront = GetFrontDistance();
 	bActive = false;
 	BehindFor.Reset();
-	KickedUntil.Reset();
+	// Las que vuelan siguen su física hasta caer (sin reserva): la ronda se acaba y nadie más las mueve.
+	ReleaseAllFlights();
+	RetryAfter.Reset();
 	ForceNetUpdate();
 	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Tormenta de bañistas parada en %.0f cm."), FrozenFront);
 }
@@ -240,7 +314,7 @@ void ATN_BeachStorm::DebugSetFront(float InFront)
 	bActive = true;
 	bShown = true;
 	BehindFor.Reset();
-	KickedUntil.Reset();
+	RetryAfter.Reset();
 	ForceNetUpdate();
 	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Tormenta: frente puesto a %.0f cm del actor, a %.0f cm/s."), InFront, Speed);
 }
@@ -311,6 +385,16 @@ bool ATN_BeachStorm::IsLocationInside(const FVector& WorldLocation) const
 	}
 	const FVector Local = GetActorTransform().InverseTransformPositionNoScale(WorldLocation);
 	return Local.X < GetFrontDistance() - InsideMargin && FMath::Abs(Local.Y) < HalfWidth;
+}
+
+bool ATN_BeachStorm::IsBehindFront(const FVector& WorldLocation, float Margin) const
+{
+	if (!bActive)
+	{
+		return false;
+	}
+	const FVector Local = GetActorTransform().InverseTransformPositionNoScale(WorldLocation);
+	return Local.X < GetFrontDistance() - Margin && FMath::Abs(Local.Y) < HalfWidth;
 }
 
 void ATN_BeachStorm::ChangeSpeed(float NewTarget)
@@ -406,6 +490,10 @@ FString ATN_BeachStorm::DescribeState() const
 void ATN_BeachStorm::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (HasAuthority() && Flights.Num() > 0)
+	{
+		ServerTickFlights(DeltaSeconds);
+	}
 	if (HasAuthority() && bActive)
 	{
 		CheckTimer += DeltaSeconds;
@@ -451,38 +539,43 @@ void ATN_BeachStorm::ServerCheck()
 			continue;
 		}
 		Behind += TNBeachStormTuning::CheckInterval;
-		// Ni con la ronda parada, ni a la que va en el pico de una gaviota o en la boca de un lagarto (la patada llega al
-		// soltarla), ni a la que se come un gusano, ni a la que lleva otra en brazos (patean a la que la lleva).
-		if (!bLive || Behind < KickDelay || ATN_BeachEnemy::IsTurtleHeld(Turtle) || ATN_BeachSandWorm::IsBeingEaten(Turtle))
+		// Ni con la ronda parada, ni en plena patada (la lleva la tormenta hasta su sitio), ni en la gracia de después.
+		if (!bLive || Behind < KickDelay || Flights.Contains(Turtle) || TNBeach::HasStormGrace(Turtle))
 		{
 			continue;
 		}
-		const UTN_CarryComponent* Carry = Turtle->GetCarryComponent();
-		if (Carry && Carry->IsBeingCarried())
+		// Solo a la que se mueve sola o va en su bola porque quiere. Lo demás manda y la patada llega al soltarla: el pico de
+		// una gaviota o la boca de un lagarto, un gusano, los brazos de otra (patean a la que la lleva), el derribo, la bola de
+		// aturdida, un lanzamiento por el aire y la red de seguridad. Si algo de lo que acaba solo (derribo, bola, lanzamiento)
+		// se alarga demasiado detrás del frente, se patea igual.
+		const TNBeach::ETNBeachMover Mover = TNBeach::GetTurtleMover(Turtle);
+		const bool bOwnBall = Mover == TNBeach::ETNBeachMover::Ball && !TNBeach::IsTurtleStunned(Turtle);
+		// Sin movimiento y sin nada de lo anterior: la tiene otra cosa (dentro de una concha que atrapa, por ejemplo), que la
+		// suelta sola.
+		const UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
+		const bool bHeldElsewhere = Mover == TNBeach::ETNBeachMover::None && Move && Move->MovementMode == MOVE_None;
+		const bool bEndsAlone = Mover == TNBeach::ETNBeachMover::Ball || Mover == TNBeach::ETNBeachMover::Knockdown || Mover == TNBeach::ETNBeachMover::Launch
+			|| bHeldElsewhere;
+		if ((Mover != TNBeach::ETNBeachMover::None || bHeldElsewhere) && !bOwnBall && !(bEndsAlone && Behind >= TNBeachStormTuning::KickForceAfter))
 		{
 			continue;
 		}
-		if (const double* Until = KickedUntil.Find(Turtle))
+		if (const double* Retry = RetryAfter.Find(Turtle))
 		{
-			if (WorldNow < *Until)
+			if (WorldNow < *Retry)
 			{
 				continue;
 			}
 		}
-		// Vuelo más largo cuanto más lejos tiene que llegar: KickAhead por delante del frente, que mientras sigue andando.
-		const float Flight = FMath::Clamp(1.f + (Front + KickAhead - static_cast<float>(Local.X)) / 2800.f, KickMinFlight, KickMaxFlight);
-		const float Land = Front + KickAhead + Speed * (Flight + 0.5f);
-		// La caja del caparazón frena un poco en el aire (amortiguación): se lanza algo más fuerte para que llegue.
-		const float Forward = (Land - static_cast<float>(Local.X)) / Flight * (1.f + TNBeachStormTuning::KickDampingComp * Flight);
-		const float Up = 0.5f * TNBeachStormTuning::KickGravity * Flight * (1.f + 0.1f * Flight);
-		const FVector Launch = Xf.TransformVectorNoScale(FVector(Forward, Rng.FRandRange(-120.f, 120.f), 0.0)) + FVector(0.0, 0.0, Up);
-		// Patada: dentro del caparazón y lanzada en bola, mareada lo que dura el vuelo y un poco más.
-		TNBeach::StunTurtle(Turtle, Flight + KickStunExtra, Launch);
-		KickedUntil.Add(Turtle, WorldNow + Flight + 0.6f);
-		Behind = 0.f;
-		MulticastKick(Turtle, Launch);
-		UE_LOG(LogTortunabo, Log, TEXT("[Playa] La tormenta patea a %s: %.0f m detrás del frente, vuela %.1f s hasta %.0f m por delante."),
-			*GetNameSafe(Turtle), (Front - Local.X) / 100.f, Flight, (Land - Front) / 100.f);
+		if (KickTurtle(Turtle, Front, Speed))
+		{
+			Behind = 0.f;
+			RetryAfter.Remove(Turtle);
+		}
+		else
+		{
+			RetryAfter.Add(Turtle, WorldNow + TNBeachStormTuning::KickRetrySeconds);
+		}
 	}
 	for (auto It = BehindFor.CreateIterator(); It; ++It)
 	{
@@ -491,7 +584,7 @@ void ATN_BeachStorm::ServerCheck()
 			It.RemoveCurrent();
 		}
 	}
-	for (auto It = KickedUntil.CreateIterator(); It; ++It)
+	for (auto It = RetryAfter.CreateIterator(); It; ++It)
 	{
 		if (!It.Key().IsValid())
 		{
@@ -500,13 +593,379 @@ void ATN_BeachStorm::ServerCheck()
 	}
 }
 
-void ATN_BeachStorm::MulticastKick_Implementation(ATortugaCharacter* Victim, FVector_NetQuantize10 Launch)
+FVector ATN_BeachStorm::PointAhead(const FVector& From, float Ahead)
+{
+	const FTransform Xf = GetActorTransform();
+	FVector Local = Xf.InverseTransformPositionNoScale(From);
+	Local.X = GetFrontDistance() + Ahead;
+	FVector Point = Xf.TransformPositionNoScale(Local);
+	// Dentro de la playa jugable (a 6 m de la selva) y lejos del filo del acantilado.
+	if (const ATN_BeachRaceGenerator* Gen = FindGenerator())
+	{
+		const FTransform GenXf = Gen->GetActorTransform();
+		FVector GenLocal = GenXf.InverseTransformPosition(Point);
+		GenLocal.Y = FMath::Clamp(GenLocal.Y, -(TNBeachLayout::HalfWidth - 600.0), TNBeachLayout::HalfWidth - 600.0);
+		GenLocal.X = FMath::Min(GenLocal.X, TNBeachLayout::EdgeX(GenLocal.Y) - 3000.0);
+		Point = GenXf.TransformPosition(GenLocal);
+		Point.Z = Gen->GetGroundHeightAt(Point);
+	}
+	return Point;
+}
+
+bool ATN_BeachStorm::IsKickArcClear(const ATortugaCharacter* Turtle, const FVector& From, const FVector& Launch, float Flight, float Damping) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Turtle)
+	{
+		return false;
+	}
+	const float Gravity = World->GetGravityZ() < -1.f ? -World->GetGravityZ() : TNBeachStormTuning::KickGravity;
+	// Lo que para a una bola, sin las tortugas ni sus bolas (se apartan o la bola las empuja).
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(BeachStormKickArc), false, Turtle);
+	TArray<ATortugaCharacter*> Turtles;
+	ATN_BeachEnemy::GatherTurtles(this, Turtles);
+	Turtles.AddUnique(const_cast<ATortugaCharacter*>(Turtle));
+	for (const ATortugaCharacter* Other : Turtles)
+	{
+		Query.AddIgnoredActor(Other);
+		if (const UTN_ShellComponent* Shell = Other->GetShellComponent())
+		{
+			Query.AddIgnoredActor(Shell->GetBody());
+		}
+	}
+	const FCollisionShape Ball = FCollisionShape::MakeSphere(TNBeachStormTuning::KickArcRadius);
+	// Desde algo por encima (la caja de una bola quieta toca la arena) y sin el último tramo, que baja a la arena ya mirada.
+	FVector Prev = From + FVector(0.0, 0.0, 30.0);
+	const float Last = Flight * (1.f - TNBeachStormTuning::KickArcSkipEnd);
+	for (int32 i = 1; i <= TNBeachStormTuning::KickArcSamples; ++i)
+	{
+		const float T = Last * static_cast<float>(i) / static_cast<float>(TNBeachStormTuning::KickArcSamples);
+		const FVector Point = TNBeachStormTuning::BallisticPoint(From, Launch, T, Gravity, Damping);
+		FHitResult Hit;
+		if (World->SweepSingleByChannel(Hit, Prev, Point, FQuat::Identity, ECC_PhysicsBody, Ball, Query))
+		{
+			return false;
+		}
+		Prev = Point;
+	}
+	return true;
+}
+
+bool ATN_BeachStorm::KickTurtle(ATortugaCharacter* Turtle, float Front, float Speed)
+{
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Turtle))
+	{
+		return false;
+	}
+	const FTransform Xf = GetActorTransform();
+	FVector BodyVelocity = FVector::ZeroVector;
+	const FVector From = TNBeachStormTuning::TurtleBody(*Turtle, BodyVelocity);
+	const float LocalX = static_cast<float>(Xf.InverseTransformPositionNoScale(From).X);
+
+	// Vuelo más largo cuanto más lejos tiene que llegar: KickAhead por delante del frente, que mientras sigue andando.
+	const float Flight0 = FMath::Clamp(1.f + (Front + KickAhead - LocalX) / 2800.f, KickMinFlight, KickMaxFlight);
+	const FVector Base = PointAhead(From, KickAhead + Speed * (Flight0 + 0.5f));
+	// Al final del recorrido el sitio de delante (a 30 m del filo) puede quedar ya detrás del frente: no se patea.
+	if (Xf.InverseTransformPositionNoScale(Base).X < Front + KickSlack)
+	{
+		UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Tormenta: sin sitio por delante del frente para %s (fin del recorrido)."), *GetNameSafe(Turtle));
+		return false;
+	}
+
+	// La bola: gravedad del mundo, amortiguación de la caja y la cápsula de pie sobre su cara de abajo.
+	const float Gravity = World->GetGravityZ() < -1.f ? -World->GetGravityZ() : TNBeachStormTuning::KickGravity;
+	const ATN_ShellBody* BodyDefaults = GetDefault<ATN_ShellBody>();
+	const float Damping = BodyDefaults && BodyDefaults->GetBox() ? BodyDefaults->GetBox()->BodyInstance.LinearDamping : 0.25f;
+	const ACharacter* TurtleDefaults = Turtle->GetClass()->GetDefaultObject<ACharacter>();
+	const float StandHalfHeight = TurtleDefaults && TurtleDefaults->GetCapsuleComponent() ? TurtleDefaults->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 88.f;
+	const FVector BoxBelowStand(0.0, 0.0, StandHalfHeight - ATN_ShellBody::BoxHalfExtent().Z - 10.0);
+	const bool bSwimming = Turtle->GetCharacterMovement() && Turtle->GetCharacterMovement()->IsSwimming();
+
+	// Por delante a su altura de la playa y, si ahí no se puede, a los lados; el primer sitio que valga es el del salto si
+	// ningún arco llega. Cada sitio con tres vuelos: el calculado y dos más altos (para salvar lo que haya delante).
+	const FVector Right = Xf.GetUnitAxis(EAxis::Y);
+	const float Offsets[] = { 0.f, TNBeachStormTuning::KickLateralStep, -TNBeachStormTuning::KickLateralStep,
+		2.f * TNBeachStormTuning::KickLateralStep, -2.f * TNBeachStormTuning::KickLateralStep };
+	constexpr int32 NumFlightTimes = 3;
+	const float FlightTimes[NumFlightTimes] = { Flight0, FMath::Max(Flight0, TNBeachStormTuning::KickHighFlight), FMath::Max(Flight0, TNBeachStormTuning::KickHigherFlight) };
+	FTransform JumpSpot;
+	bool bHaveSpot = false;
+	bool bNoBall = false;
+	for (const float Offset : Offsets)
+	{
+		if (bNoBall)
+		{
+			break;
+		}
+		FTransform Spot;
+		if (!TNBeach::FindOpenSandSpot(Turtle, Base + Right * Offset, 0.f, Spot))
+		{
+			continue;
+		}
+		if (!bHaveSpot)
+		{
+			JumpSpot = Spot;
+			bHaveSpot = true;
+		}
+		// Nadando (la bola saldría en el agua) o demasiado lejos para un vuelo razonable: salto.
+		if (bSwimming || FVector::Dist2D(From, Spot.GetLocation()) > KickMaxFlightDistance)
+		{
+			break;
+		}
+		const FVector BoxTo = Spot.GetLocation() - BoxBelowStand;
+		for (int32 f = 0; f < NumFlightTimes; ++f)
+		{
+			if (f > 0 && FMath::IsNearlyEqual(FlightTimes[f], FlightTimes[f - 1]))
+			{
+				continue;
+			}
+			const float Flight = FlightTimes[f];
+			const FVector Launch = TNBeachStormTuning::BallisticLaunch(From, BoxTo, Flight, Gravity, Damping);
+			if (!IsKickArcClear(Turtle, From, Launch, Flight, Damping))
+			{
+				continue;
+			}
+			// Patada: dentro del caparazón y lanzada en bola, mareada lo que dura el vuelo y un poco más. Después se la reserva
+			// la tormenta (StunTurtle no aturde a una tortuga reservada) hasta que aterrice.
+			TNBeach::StunTurtle(Turtle, Flight + KickStunExtra, Launch);
+			const UTN_ShellComponent* Shell = Turtle->GetShellComponent();
+			if (!Shell || !Shell->GetBody())
+			{
+				// Sin bola (la lleva otra, por ejemplo): al sitio de un salto.
+				bNoBall = true;
+				break;
+			}
+			TNBeach::ClaimTurtle(Turtle, TNBeach::ETNBeachMover::StormKick, Flight + TNBeachStormTuning::KickClaimPad);
+			FKickFlight& Kick = Flights.Add(Turtle);
+			Kick.Target = Spot.GetLocation();
+			Kick.StartTime = World->GetTimeSeconds();
+			Kick.Flight = Flight;
+			MulticastKick(Turtle, From);
+			UE_LOG(LogTortunabo, Log, TEXT("[Playa] La tormenta patea a %s: %.0f m detrás del frente, vuela %.1f s hasta su sitio, %.0f m por delante (%.0f m a lo ancho)."),
+				*GetNameSafe(Turtle), (Front - LocalX) / 100.f, Flight, (Xf.InverseTransformPositionNoScale(Spot.GetLocation()).X - Front) / 100.f, Offset / 100.f);
+			return true;
+		}
+	}
+	if (!bHaveSpot && !TNBeach::FindOpenSandSpot(Turtle, Base, TNBeachStormTuning::KickSearchRadius, JumpSpot))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] Tormenta: sin sitio de arena abierta por delante del frente para %s (se vuelve a mirar en %.0f s)."),
+			*GetNameSafe(Turtle), TNBeachStormTuning::KickRetrySeconds);
+		return false;
+	}
+	// Ningún arco libre (o muy lejos, o nadando): salto de teletransporte con polvo, directo al sitio.
+	MulticastKick(Turtle, From);
+	PlaceKicked(Turtle, JumpSpot, TEXT("salto de teletransporte (sin arco libre)"));
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] La tormenta patea a %s: %.0f m detrás del frente, salto a su sitio %.0f m por delante."),
+		*GetNameSafe(Turtle), (Front - LocalX) / 100.f, (Xf.InverseTransformPositionNoScale(JumpSpot.GetLocation()).X - Front) / 100.f);
+	return true;
+}
+
+void ATN_BeachStorm::ServerTickFlights(float DeltaSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const double Now = World->GetTimeSeconds();
+	const FTransform Xf = GetActorTransform();
+	const float Front = GetFrontDistance();
+	struct FPlace
+	{
+		TWeakObjectPtr<ATortugaCharacter> Turtle;
+		FVector Target = FVector::ZeroVector;
+		const TCHAR* Why = nullptr;
+	};
+	TArray<FPlace> ToPlace;
+	TArray<TWeakObjectPtr<ATortugaCharacter>> ToFinish;
+	TArray<TWeakObjectPtr<ATortugaCharacter>> ToDrop;
+	for (auto It = Flights.CreateIterator(); It; ++It)
+	{
+		ATortugaCharacter* Turtle = It.Key().Get();
+		FKickFlight& Kick = It.Value();
+		if (!IsValid(Turtle) || Turtle->IsDead())
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		// Un gusano (fin de la cuenta), un enemigo u otra tortuga se la han llevado en pleno vuelo: la patada acaba aquí. (Se
+		// mira directamente: GetTurtleMover diría StormKick, la reserva de la propia tormenta.)
+		const UTN_CarryComponent* Carry = Turtle->GetCarryComponent();
+		if (ATN_BeachSandWorm::IsBeingEaten(Turtle) || ATN_BeachEnemy::IsTurtleHeld(Turtle) || (Carry && Carry->IsBeingCarried()))
+		{
+			ToDrop.Add(Turtle);
+			It.RemoveCurrent();
+			continue;
+		}
+		// Otro ha soltado su reserva (el rescate del vacío, la ronda nueva): ya no es suya, no se la vuelve a mover.
+		if (TNBeach::GetTurtleClaim(Turtle) != TNBeach::ETNBeachMover::StormKick)
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		FVector Velocity = FVector::ZeroVector;
+		const FVector Body = TNBeachStormTuning::TurtleBody(*Turtle, Velocity);
+		const bool bInShell = Turtle->IsInShell();
+		const float Elapsed = static_cast<float>(Now - Kick.StartTime);
+		const float Dist2D = static_cast<float>(FVector::Dist2D(Body, Kick.Target));
+		Kick.StuckTime = Velocity.SizeSquared() < FMath::Square(TNBeachStormTuning::KickStuckSpeed) ? Kick.StuckTime + DeltaSeconds : 0.f;
+		const TCHAR* Why = nullptr;
+		// Hundida bajo el terreno de verdad (la caja atravesó la malla fina): a su sitio en seguida.
+		Kick.DepthTimer -= DeltaSeconds;
+		if (Kick.DepthTimer <= 0.f)
+		{
+			Kick.DepthTimer = TNBeachStormTuning::KickDepthInterval;
+			const UCapsuleComponent* Capsule = Turtle->GetCapsuleComponent();
+			const double Below = bInShell ? ATN_ShellBody::BoxHalfExtent().Z : (Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 88.0);
+			if (TNBeach::DepthUnderTerrain(this, Body - FVector(0.0, 0.0, Below)) > TNBeachStormTuning::KickSunkDepth)
+			{
+				Why = TEXT("hundida bajo la arena");
+			}
+		}
+		if (!Why && !bInShell && Dist2D > KickLandTolerance)
+		{
+			Why = TEXT("fuera de la bola antes de llegar (agua)");
+		}
+		if (!Why && Elapsed > 0.35f && Kick.StuckTime >= TNBeachStormTuning::KickStuckSeconds && Dist2D > KickLandTolerance)
+		{
+			Why = TEXT("atascada por el camino");
+		}
+		if (!Why && Elapsed >= Kick.Flight + 0.4f)
+		{
+			if (Dist2D > KickLandTolerance)
+			{
+				Why = TEXT("aterrizó lejos de su sitio");
+			}
+			else if (Xf.InverseTransformPositionNoScale(Body).X < Front + KickSlack)
+			{
+				Why = TEXT("aterrizó detrás del frente");
+			}
+			else
+			{
+				ToFinish.Add(Turtle);
+				It.RemoveCurrent();
+				continue;
+			}
+		}
+		if (Why)
+		{
+			FPlace& NewPlace = ToPlace.AddDefaulted_GetRef();
+			NewPlace.Turtle = Turtle;
+			NewPlace.Target = Kick.Target;
+			NewPlace.Why = Why;
+			It.RemoveCurrent();
+		}
+	}
+	for (const TWeakObjectPtr<ATortugaCharacter>& Weak : ToDrop)
+	{
+		TNBeach::ReleaseTurtle(Weak.Get(), TNBeach::ETNBeachMover::StormKick);
+	}
+	for (const TWeakObjectPtr<ATortugaCharacter>& Weak : ToFinish)
+	{
+		FinishKick(Weak.Get());
+	}
+	for (const FPlace& Place : ToPlace)
+	{
+		ATortugaCharacter* Turtle = Place.Turtle.Get();
+		if (!Turtle)
+		{
+			continue;
+		}
+		// El sitio se miró al patear: si ahora no vale (otra tortuga encima), uno cerca o por delante del frente.
+		FTransform Spot(FRotator(0.f, Turtle->GetActorRotation().Yaw, 0.f), Place.Target);
+		if (!TNBeach::FindOpenSandSpot(Turtle, Place.Target, 600.f, Spot) && !FindSpotAhead(Turtle, 1.f, Spot))
+		{
+			Spot = FTransform(FRotator(0.f, Turtle->GetActorRotation().Yaw, 0.f), Place.Target);
+		}
+		PlaceKicked(Turtle, Spot, Place.Why);
+	}
+}
+
+void ATN_BeachStorm::PlaceKicked(ATortugaCharacter* Turtle, const FTransform& Target, const TCHAR* Why)
+{
+	if (!IsValid(Turtle))
+	{
+		return;
+	}
+	// Teletransporte limpio (fuera de la bola, del aturdimiento y de lo que la tuviera), gracia y polvo donde aparece.
+	TNBeach::ReleaseTurtle(Turtle, TNBeach::ETNBeachMover::StormKick);
+	TNBeach::RelocateTurtle(Turtle, Target);
+	TNBeach::GrantStormGrace(Turtle, KickGraceSeconds);
+	MulticastKickLand(Target.GetLocation());
+	const FVector At = Target.GetLocation();
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Tormenta: %s a su sitio en (%.1f, %.1f, %.1f) m (%s); %.0f s sin patadas."), *GetNameSafe(Turtle),
+		At.X / 100.0, At.Y / 100.0, At.Z / 100.0, Why ? Why : TEXT("patada"), KickGraceSeconds);
+}
+
+void ATN_BeachStorm::FinishKick(ATortugaCharacter* Turtle)
+{
+	if (!Turtle)
+	{
+		return;
+	}
+	TNBeach::ReleaseTurtle(Turtle, TNBeach::ETNBeachMover::StormKick);
+	TNBeach::GrantStormGrace(Turtle, KickGraceSeconds);
+}
+
+void ATN_BeachStorm::ReleaseAllFlights()
+{
+	for (const TPair<TWeakObjectPtr<ATortugaCharacter>, FKickFlight>& Pair : Flights)
+	{
+		if (ATortugaCharacter* Turtle = Pair.Key.Get())
+		{
+			TNBeach::ReleaseTurtle(Turtle, TNBeach::ETNBeachMover::StormKick);
+		}
+	}
+	Flights.Reset();
+}
+
+bool ATN_BeachStorm::FindSpotAhead(const ATortugaCharacter* Turtle, float Lead, FTransform& OutSpot)
+{
+	if (!Turtle || !bActive)
+	{
+		return false;
+	}
+	const FVector Base = PointAhead(Turtle->GetActorLocation(), KickAhead + GetFrontSpeed() * FMath::Max(0.f, Lead));
+	if (GetActorTransform().InverseTransformPositionNoScale(Base).X < GetFrontDistance() + KickSlack)
+	{
+		return false;
+	}
+	return TNBeach::FindOpenSandSpot(Turtle, Base, TNBeachStormTuning::KickSearchRadius, OutSpot);
+}
+
+bool ATN_BeachStorm::IsKicking(const ATortugaCharacter* Turtle) const
+{
+	return Turtle && Flights.Contains(TWeakObjectPtr<ATortugaCharacter>(const_cast<ATortugaCharacter*>(Turtle)));
+}
+
+void ATN_BeachStorm::MulticastKickLand_Implementation(FVector_NetQuantize10 At)
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	if (!bFXReady)
+	{
+		SetupFX();
+	}
+	TNBeachKit::BurstAt(FrontDust, FVector(At) + FVector(0.0, 0.0, 60.0), FVector::UpVector, 10);
+	UTN_BeachCameraShake::Kick(this, At, 0.45f, 300.f, 2500.f);
+	if (Voice)
+	{
+		Voice->SetWorldLocation(At);
+		Voice->Play(ETNBeachSfx::Stomp, 0.9f, 1.4f);
+	}
+}
+
+void ATN_BeachStorm::MulticastKick_Implementation(ATortugaCharacter* Victim, FVector_NetQuantize10 KickAt)
 {
 	if (!Victim || GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
-	const FVector At = Victim->GetActorLocation();
+	// Donde estaba al patearla (en un salto, cuando llega esto ya puede estar en su sitio).
+	const FVector At = KickAt;
 	if (!bFXReady)
 	{
 		SetupFX();

@@ -5,6 +5,7 @@
 #include "World/Beach/TN_BeachEnemySynth.h"
 #include "World/Beach/TN_BeachLoot.h"
 #include "World/Beach/TN_BeachSandWorm.h"
+#include "World/Beach/TN_BeachStun.h"
 #include "TN_BeachEnemyKit.h"
 #include "TN_BeachEnemyMeshes.h"
 #include "Components/StaticMeshComponent.h"
@@ -751,7 +752,9 @@ void ATN_BeachLizard::ServerTick(float DeltaSeconds)
 	{
 		// La zarandea en el sitio y la lanza mareada.
 		ATortugaCharacter* Victim = HeldVictim;
-		const bool bGone = !IsValid(Victim) || Victim->IsDead() || ATN_BeachSandWorm::IsBeingEaten(Victim);
+		// También si otro la mueve ya (en bola, derribada, aturdida o recolocada): la suelta en vez de pelearse por ella.
+		const bool bGone = !IsValid(Victim) || Victim->IsDead() || ATN_BeachSandWorm::IsBeingEaten(Victim) || Victim->IsInShell()
+			|| Victim->IsKnockedDown() || TNBeach::IsTurtleStunned(Victim) || TNBeach::IsTurtleRelocating(Victim);
 		if (bGone || !IsRaceLive(this))
 		{
 			ReleaseVictim(false);
@@ -930,6 +933,19 @@ void ATN_BeachLizard::EndPlay(const EEndPlayReason::Type EndPlayReason)
 // ─────────────────────────────────────────────────────────────────────────────
 // Mareo por lo que se le lanza y la tortuga en la boca
 // ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_BeachLizard::OnHoldAborted(ATortugaCharacter* Turtle)
+{
+	// Se la quitan de la boca (red de seguridad, gusano): la olvida y vuelve a su sitio, sin lanzarla al acabar el zarandeo.
+	if (!HasAuthority() || !Turtle || HeldVictim != Turtle)
+	{
+		return;
+	}
+	HeldVictim = nullptr;
+	LungeTarget.Reset();
+	ServerSetState(TNBeachLizardTuning::ToByte(TNBeachLizardTuning::EState::Walk), Home);
+	ForceNetUpdate();
+}
 
 void ATN_BeachLizard::ApplyHitStun(float Seconds, AActor* InstigatorActor)
 {

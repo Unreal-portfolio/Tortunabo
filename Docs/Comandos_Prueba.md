@@ -76,7 +76,7 @@ necesita espera a que esté lista.
 | `TN.Beach.Gull.Attack 2` | Picado con agarre: sombra negra que nace diminuta y crece mientras baja siguiéndote (2,3 s). Andando te pilla: te sube pataleando y te suelta en bola (siempre caes al suelo). Si echas a correr al verla (o te metes en bola), baja igual, pica la arena y vuelve a subir. Sin número, al azar. |
 | `TN.Beach.Quad.Now` | Todos los pasos de quads avisan y pasan ya. |
 | `TN.Beach.Storm.Start [metros detrás=30] [cm/s=180]` | Arranca la tormenta de bañistas. |
-| `TN.Beach.Storm.Here` | Pone el frente de la tormenta 4 m por delante de tu tortuga: te quedas dentro y un bañista te da la patada (en bola, 20 m por delante del frente). Sin tormenta, crea una. |
+| `TN.Beach.Storm.Here [jugador] [metros=4]` | Pone el frente de la tormenta 4 m (o `metros`) por delante de tu tortuga o de la del jugador N (índice en `PlayerArray`: así se prueba la del cliente desde el anfitrión): se queda dentro y un bañista le da la patada. Acaba sí o sí en arena abierta ~20 m por delante del frente: en bola si el arco está libre, de un salto con polvo si no (o si está a más de 45 m). Con `metros` = 30 o 60 se prueban la patada larga y el salto. Sin tormenta, crea una. Ver `Docs/Modo_Carrera.md`, «La patada que no puede entrar en bucle». |
 | `TN.Beach.Storm.Stop` | La para. |
 | `TN.Beach.Storm.Info` | Distancia y velocidad de la tormenta respecto a la última tortuga. |
 | `TN.Beach.Lizard <huidizo\|generoso\|mordedor>` | Un lagarto de ese carácter 22 m delante de ti, mirándote. El generoso (motas doradas) deja premio al huir; el mordedor (cresta roja) se lanza a morderte. `TN.Beach.Place clear` lo quita. |
@@ -96,7 +96,7 @@ necesita espera a que esté lista.
 | `TN.Race.Stun [segundos=3] [jugador=0]` | Aturde en bola a esa tortuga. |
 | `TN.Race.Kill [jugador=0]` | Pasa por la ruta de «muerte» (en la carrera, aturde). |
 | `TN.Race.Void [jugador=0]` | La tira al vacío: vuelve a su último sitio seguro aturdida. |
-| `TN.Race.Bury [metros=3] [jugador=0]` | La mete bajo la arena donde está: la red de seguridad la devuelve encima en ~0,2 s, en una bola corta, con dos avisos `[Carrera] Red de seguridad` en el registro (ver `Docs/Modo_Carrera.md`, «Seguridad: nunca bajo el mapa»). |
+| `TN.Race.Bury [metros=3] [jugador=0]` | La mete bajo la arena donde está: la red de seguridad la devuelve encima en ~0,2 s, de pie (sin bola), con dos avisos `[Carrera] Red de seguridad` en el registro. Repetido tres veces seguidas en el mismo sitio: la segunda va a su último sitio seguro y la tercera a arena abierta lejos, con un aviso de bucle (ver `Docs/Modo_Carrera.md`, «Seguridad: nunca bajo el mapa»). |
 | `TN.Race.SafetyNet 0\|1` | Apaga o enciende esa red de seguridad (en el anfitrión; para comparar). |
 | `TN.Race.Splash [tamaño=1]` | Chapuzón de meta delante de ti (solo en tu pantalla). |
 | `TN.Beach.Egg` | Cierra otra vez los huevos (de la salida o del sprint) con cada tortuga dentro y a los 1,5 s repite la salida: se rompen, 1 s en el huevo (de pie, sacudiéndose la cáscara y mirando al mar) y salen lanzadas. Sin cambiar de ronda. |

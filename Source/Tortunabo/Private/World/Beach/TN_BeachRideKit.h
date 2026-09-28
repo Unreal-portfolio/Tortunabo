@@ -94,7 +94,8 @@ namespace TNBeachRideKit
 	 */
 	inline bool LaunchAsBall(ATortugaCharacter* Turtle, const FVector& Velocity)
 	{
-		if (!Turtle || !Turtle->HasAuthority() || Turtle->IsDead() || Turtle->IsKnockedDown())
+		// Ni a la que recoloca la tormenta o la red de seguridad (lo suyo manda: nada la relanza en cadena).
+		if (!Turtle || !Turtle->HasAuthority() || Turtle->IsDead() || Turtle->IsKnockedDown() || TNBeach::IsTurtleRelocating(Turtle))
 		{
 			return false;
 		}
@@ -122,7 +123,13 @@ namespace TNBeachRideKit
 		// Lanzada: no se sale en el aire; ForceExitShell (al pararse la bola o caer al agua) la desbloquea.
 		Shell->SetExitLocked(true);
 		Shell->StartBody(Velocity, true, true);
-		return Shell->GetBody() != nullptr;
+		if (!Shell->GetBody())
+		{
+			// Sin caja (no se ha podido crear): no se queda metida en el caparazón, bloqueada y sin moverse.
+			Shell->ForceExitShell();
+			return false;
+		}
+		return true;
 	}
 
 	/**

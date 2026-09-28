@@ -15,6 +15,7 @@
 #include "World/Beach/TN_BeachEnemy.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachSandWorm.h"
+#include "World/Beach/TN_BeachStorm.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "World/Beach/TN_BeachStunComponent.h"
 #include "World/Beach/TN_BeachTypes.h"
@@ -67,8 +68,12 @@ namespace TNBeachRaceGameModeDetail
 	/** Margen de más (cm) en las trincheras (el canal cavado y sus caballones). */
 	constexpr double TrenchExtraMargin = 100.0;
 
-	/** Rescatada otra vez antes de esto (s): el punto no vale y va a su último sitio seguro. */
-	constexpr float RepeatRescueSeconds = 3.f;
+	/** Rescates de la red de seguridad en SafetyNetRepeatSeconds a partir de los que se avisa de un bucle (en el registro). */
+	constexpr int32 RescueLoopWarnCount = 4;
+
+	/** Hasta dónde (cm) se busca arena abierta alrededor de su último sitio seguro (nivel 1) y lejos de los hoyos (nivel 2). */
+	constexpr float RescueNearSearch = 400.f;
+	constexpr float RescueFarSearch = 3000.f;
 
 	/**
 	 * Lo que mueve de verdad a la tortuga y su punto más bajo: la caja de la bola del caparazón (enganchada en esta
@@ -1460,7 +1465,9 @@ void ATN_BeachRaceGameMode::CheckSprintForfeit()
 		// Siguen dos o más: el sprint sigue.
 		return;
 	}
-	if (!bRoundActive && Arrivals.Num() > 0 && Cast<ATN_CoopPlayerState>(Arrivals[0].State.Get()))
+	// Solo en el sprint: en su título aún quedan las llegadas de la ronda anterior (PrepareRound las borra al empezarlo) y una
+	// finalista que se iba entonces dejaba a la otra corriendo sola el sprint entero.
+	if (bSprint && !bRoundActive && Arrivals.Num() > 0 && Cast<ATN_CoopPlayerState>(Arrivals[0].State.Get()))
 	{
 		// Ya hay ganadora del sprint (su podio sale tras el chapuzón).
 		return;
@@ -2106,28 +2113,9 @@ void ATN_BeachRaceGameMode::TeleportTurtle(ATortugaCharacter* Turtle, const FTra
 	{
 		return;
 	}
-	ReleaseCarry(Turtle);
-	if (Turtle->IsKnockedDown())
-	{
-		Turtle->RecoverFromKnockdown();
-	}
-	// Con caja física la tortuga sigue a la caja: primero fuera del caparazón (si estaba aturdida, StunTurtle la vuelve
-	// a meter después en el sitio nuevo).
-	if (UTN_ShellComponent* Shell = Turtle->GetShellComponent())
-	{
-		Shell->SetExitLocked(false);
-		Shell->ForceExitShell();
-	}
-	UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
-	if (Move)
-	{
-		Move->StopMovementImmediately();
-	}
-	Turtle->SetActorLocationAndRotation(Transform.GetLocation(), Transform.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
-	if (Move)
-	{
-		Move->SetMovementMode(MOVE_Falling);
-	}
+	// Con caja física la tortuga sigue a la caja: fuera del caparazón y del aturdimiento (si hace falta, StunTurtle la vuelve
+	// a meter después en el sitio nuevo), del derribo, de lo que lleve, de quien la lleve y del enemigo que la sujete.
+	TNBeach::RelocateTurtle(Turtle, Transform);
 }
 
 void ATN_BeachRaceGameMode::RescueTurtle(APlayerController* PlayerController, const TCHAR* Reason)
@@ -2147,8 +2135,20 @@ void ATN_BeachRaceGameMode::RescueTurtle(APlayerController* PlayerController, co
 	{
 		return;
 	}
-	const float HalfHeight = Turtle->GetCapsuleComponent() ? Turtle->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : GetDefaultHalfHeight();
-	const FTransform Safe = PutOnFloor(FindSafeTransform(PlayerController), HalfHeight);
+	// Su último sitio seguro (en arena abierta, lejos de donde la red de seguridad la ha tenido que sacar hace poco y, si
+	// queda dentro de la tormenta, por delante del frente).
+	TArray<FVector> BadSpots;
+	if (const FTNBeachUnderSandWatch* Watch = UnderSandWatch.Find(PlayerController))
+	{
+		for (const FTNBeachRescueMark& Mark : Watch->Rescues)
+		{
+			BadSpots.Add(Mark.Where);
+		}
+	}
+	FString Where;
+	const FTransform Safe = ResolveRescueTarget(PlayerController, Turtle, Turtle->GetActorLocation(), 1, BadSpots, Where);
+	TNBeach::ReleaseTurtle(Turtle, TNBeach::ETNBeachMover::SafetyNet);
+	TNBeach::ReleaseTurtle(Turtle, TNBeach::ETNBeachMover::StormKick);
 	TeleportTurtle(Turtle, Safe);
 	PlayerController->ClientSetRotation(Safe.Rotator(), true);
 	if (ATN_CoopPlayerState* PS = PlayerController->GetPlayerState<ATN_CoopPlayerState>())
@@ -2156,7 +2156,8 @@ void ATN_BeachRaceGameMode::RescueTurtle(APlayerController* PlayerController, co
 		PS->DeathZoneTimeRemaining = -1.f;
 	}
 	TNBeach::StunTurtle(Turtle, RescueStunSeconds);
-	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] %s (%s): vuelve a un sitio seguro, aturdida."), *GetNameSafe(PlayerController), Reason);
+	TNBeach::GrantStormGrace(Turtle, RescueStunSeconds + SafetyNetStormGraceSeconds);
+	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] %s (%s): vuelve a %s, aturdida."), *GetNameSafe(PlayerController), Reason, *Where);
 }
 
 FTransform ATN_BeachRaceGameMode::FindSafeTransform(APlayerController* PlayerController)
@@ -2201,8 +2202,22 @@ void ATN_BeachRaceGameMode::SampleSafeSpot(APlayerController* PlayerController, 
 	{
 		return;
 	}
+	// Ni junto a un sitio donde la red de seguridad la ha tenido que sacar hace poco (el borde de un hoyo que la vuelve a
+	// tragar).
+	const FVector Here = Character->GetActorLocation();
+	if (const FTNBeachUnderSandWatch* Watch = UnderSandWatch.Find(PlayerController))
+	{
+		const double BadSq = FMath::Square(static_cast<double>(SafetyNetBadSpotRadius));
+		for (const FTNBeachRescueMark& Mark : Watch->Rescues)
+		{
+			if (Now - Mark.Time <= SafetyNetBadSpotSeconds && FVector::DistSquared2D(Here, Mark.Where) < BadSq)
+			{
+				return;
+			}
+		}
+	}
 	FTNBeachSafeSpot Spot;
-	Spot.Location = Character->GetActorLocation();
+	Spot.Location = Here;
 	Spot.Rotation = FRotator(0.f, Character->GetActorRotation().Yaw, 0.f);
 	Spot.Time = Now;
 	TArray<FTNBeachSafeSpot>& Trail = SafeSpots.FindOrAdd(PlayerController);
@@ -2292,6 +2307,13 @@ void ATN_BeachRaceGameMode::GuardUnderSand(APlayerController* PlayerController, 
 		return;
 	}
 	FTNBeachUnderSandWatch& Watch = UnderSandWatch.FindOrAdd(PlayerController);
+	// La patada de la tormenta en vuelo es de la tormenta: la vigila ella y, si se hunde o no llega, la pone en su sitio.
+	if (TNBeach::GetTurtleClaim(Turtle) == TNBeach::ETNBeachMover::StormKick)
+	{
+		Watch.Strikes = 0;
+		Watch.FallNoFloorSince = -1.f;
+		return;
+	}
 	FVector BodyVelocity = FVector::ZeroVector;
 	const FVector Probe = TNBeachRaceGameModeDetail::BodyProbe(*Turtle, BodyVelocity);
 
@@ -2315,10 +2337,20 @@ void ATN_BeachRaceGameMode::GuardUnderSand(APlayerController* PlayerController, 
 	{
 		Margin += TNBeachRaceGameModeDetail::TrenchExtraMargin;
 	}
-	const double Depth = Ground - Probe.Z;
+	double Depth = Ground - Probe.Z;
 	bool bRescue = false;
 	bool bSameSpot = true;
 	FString Cause;
+	if (Depth > Margin)
+	{
+		// La arena del generador no lo sabe todo (una depresión de la malla, lo que un elemento cava...): se confirma con la
+		// malla del terreno de verdad en esa vertical. Encima de ella no está bajo el mapa (la bola rueda y sale sola).
+		float TerrainZ = 0.f;
+		if (Generator->TraceTerrainAt(Probe, TerrainZ))
+		{
+			Depth = static_cast<double>(TerrainZ) - Probe.Z;
+		}
+	}
 	if (Depth > Margin)
 	{
 		// Confirmado en dos miradas seguidas (0,1 s), o ya si está muy hondo: un fotograma de la física no cuenta.
@@ -2331,6 +2363,12 @@ void ATN_BeachRaceGameMode::GuardUnderSand(APlayerController* PlayerController, 
 	}
 	else
 	{
+		if (Ground - Probe.Z > Margin && Now >= Watch.NextMismatchLog)
+		{
+			Watch.NextMismatchLog = Now + 10.f;
+			UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Red de seguridad: %s %.1f m bajo la arena del generador en (%.1f, %.1f, %.1f) m, pero encima de la malla del terreno: no se rescata."),
+				*GetNameSafe(Turtle), (Ground - Probe.Z) / 100.0, Probe.X / 100.0, Probe.Y / 100.0, Probe.Z / 100.0);
+		}
 		Watch.Strikes = 0;
 	}
 
@@ -2361,12 +2399,6 @@ void ATN_BeachRaceGameMode::GuardUnderSand(APlayerController* PlayerController, 
 	}
 	Watch.Strikes = 0;
 	Watch.FallNoFloorSince = -1.f;
-	// Otra vez en seguida: ese punto no vale (algo lo vuelve a hundir), al último sitio seguro.
-	if (Now - Watch.LastRescue < TNBeachRaceGameModeDetail::RepeatRescueSeconds)
-	{
-		bSameSpot = false;
-	}
-	Watch.LastRescue = Now;
 	FString Driver;
 	TNBeachRaceGameModeDetail::BodyProbe(*Turtle, BodyVelocity, &Driver);
 	UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] Red de seguridad: %s %s en (%.1f, %.1f, %.1f) m (arena a %.1f m) · %s · velocidad %.0f cm/s (Z %.0f) · la movía %s."),
@@ -2382,18 +2414,49 @@ void ATN_BeachRaceGameMode::RescueFromUnderSand(APlayerController* PlayerControl
 	{
 		return;
 	}
-	// Encima de la arena en ese mismo punto (sin perder lo avanzado) si ahí cabe de pie; si no, su último sitio seguro (o la
-	// salida si aún no tiene ninguno).
-	FTransform Target;
-	const bool bHere = bSameSpot && FindSandSpot(Turtle, Probe, Target);
-	if (!bHere)
+	const float Now = GetWorld()->GetTimeSeconds();
+	FTNBeachUnderSandWatch& Watch = UnderSandWatch.FindOrAdd(PlayerController);
+	// Rescates recientes: cuántos van en SafetyNetRepeatSeconds y si vuelve a ser el mismo hoyo. Cada sitio de rescate es
+	// un sitio malo SafetyNetBadSpotSeconds (ni se vuelve a él ni se apunta como seguro).
+	Watch.Rescues.RemoveAll([Now, this](const FTNBeachRescueMark& Mark) { return Now - Mark.Time > FMath::Max(SafetyNetBadSpotSeconds, SafetyNetRepeatSeconds); });
+	const double BadSq = FMath::Square(static_cast<double>(SafetyNetBadSpotRadius));
+	int32 Recent = 0;
+	bool bSameHole = false;
+	for (const FTNBeachRescueMark& Mark : Watch.Rescues)
 	{
-		Target = PutOnFloor(FindSafeTransform(PlayerController), GetDefaultHalfHeight());
+		if (Now - Mark.Time <= SafetyNetRepeatSeconds)
+		{
+			++Recent;
+			bSameHole |= FVector::DistSquared2D(Mark.Where, Probe) < BadSq;
+		}
 	}
-	// Suelta de lo que la tenga: un enemigo (boca, pico), otra tortuga, el caparazón y el derribo (TeleportTurtle).
-	ATN_BeachEnemy::ServerReleaseHeldTurtle(Turtle, TEXT("red de seguridad de la carrera"));
+	FTNBeachRescueMark& NewMark = Watch.Rescues.AddDefaulted_GetRef();
+	NewMark.Where = Probe;
+	NewMark.Time = Now;
+	TArray<FVector> BadSpots;
+	for (const FTNBeachRescueMark& Mark : Watch.Rescues)
+	{
+		BadSpots.Add(Mark.Where);
+	}
+	ForgetSafeSpotsNear(PlayerController, BadSpots, SafetyNetBadSpotRadius);
+
+	// Nivel: 0, encima de la arena en ese mismo punto (sin perder lo avanzado); 1 (la segunda vez en poco, el mismo hoyo o
+	// cayendo sin suelo), su último sitio seguro lejos de los hoyos; 2 (de la tercera en adelante), arena abierta lejos de
+	// todos ellos. Así nunca vuelve al borde del hoyo que la acaba de tragar.
+	const int32 Level = Recent >= 2 ? 2 : ((Recent == 1 || bSameHole || !bSameSpot) ? 1 : 0);
+	FString Where;
+	const FTransform Target = ResolveRescueTarget(PlayerController, Turtle, Probe, Level, BadSpots, Where);
+	if (Recent + 1 >= TNBeachRaceGameModeDetail::RescueLoopWarnCount && !Watch.bLoopReported)
+	{
+		Watch.bLoopReported = true;
+		UE_LOG(LogTortunabo, Error, TEXT("[Carrera] Red de seguridad: %s rescatada %d veces en %.0f s cerca de (%.1f, %.1f) m: algo la sigue hundiendo ahí (ver las líneas de «la movía» de arriba)."),
+			*GetNameSafe(Turtle), Recent + 1, SafetyNetRepeatSeconds, Probe.X / 100.0, Probe.Y / 100.0);
+	}
+
+	// Suelta de lo que la tenga: un enemigo (boca, pico), otra tortuga, el caparazón, el aturdimiento y el derribo.
+	TNBeach::ReleaseTurtle(Turtle, TNBeach::ETNBeachMover::SafetyNet);
 	TeleportTurtle(Turtle, Target);
-	if (!bHere)
+	if (Level > 0)
 	{
 		// En otro sitio: la cámara, detrás de ella (en el mismo punto se deja como estaba).
 		PlayerController->ClientSetRotation(Target.Rotator(), true);
@@ -2402,17 +2465,79 @@ void ATN_BeachRaceGameMode::RescueFromUnderSand(APlayerController* PlayerControl
 	{
 		PS->DeathZoneTimeRemaining = -1.f;
 	}
-	// La bola corta: la caja nace donde está ahora (encima de la arena) y la tortuga del dueño la sigue por red. Si no, la
-	// corrección del movimiento le lleva la posición nueva.
+	// De pie (la corrección del movimiento lleva al dueño la posición nueva); con SafetyNetStunSeconds, una bola corta que
+	// nace encima de la arena. Después, un momento reservada (nada la relanza) y sin patadas de la tormenta.
 	if (SafetyNetStunSeconds > 0.f)
 	{
 		TNBeach::StunTurtle(Turtle, SafetyNetStunSeconds);
 	}
+	TNBeach::ClaimTurtle(Turtle, TNBeach::ETNBeachMover::SafetyNet, SafetyNetGraceSeconds);
+	TNBeach::GrantStormGrace(Turtle, SafetyNetStormGraceSeconds);
 	Turtle->ForceNetUpdate();
 	const FVector At = Target.GetLocation();
-	UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] Red de seguridad: %s vuelve %s (%.1f, %.1f, %.1f) m tras %s%s."), *GetNameSafe(Turtle),
-		bHere ? TEXT("encima de la arena en") : TEXT("a su último sitio seguro en"), At.X / 100.0, At.Y / 100.0, At.Z / 100.0, *Cause,
+	UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] Red de seguridad: %s vuelve %s (%.1f, %.1f, %.1f) m tras %s (rescate %d en %.0f s, nivel %d)%s."), *GetNameSafe(Turtle),
+		*Where, At.X / 100.0, At.Y / 100.0, At.Z / 100.0, *Cause, Recent + 1, SafetyNetRepeatSeconds, Level,
 		SafetyNetStunSeconds > 0.f ? *FString::Printf(TEXT(", en bola %.1f s"), SafetyNetStunSeconds) : TEXT(""));
+}
+
+FTransform ATN_BeachRaceGameMode::ResolveRescueTarget(APlayerController* PlayerController, ATortugaCharacter* Turtle, const FVector& Probe, int32 Level,
+	const TArray<FVector>& BadSpots, FString& OutWhere)
+{
+	FTransform Target;
+	bool bFound = false;
+	if (Level <= 0 && Turtle && FindSandSpot(Turtle, Probe, Target))
+	{
+		OutWhere = TEXT("encima de la arena en");
+		bFound = true;
+	}
+	// Su último sitio seguro (FindSafeTransform olvida lo de después: solo se pide si hace falta), en arena abierta de verdad
+	// (no en lo que se mueve o se rompe) y lejos de los hoyos.
+	FVector LastSafe = Probe;
+	if (!bFound)
+	{
+		LastSafe = PutOnFloor(FindSafeTransform(PlayerController), GetDefaultHalfHeight()).GetLocation();
+	}
+	if (!bFound && Level <= 1 && Turtle)
+	{
+		bFound = TNBeach::FindOpenSandSpot(Turtle, LastSafe, TNBeachRaceGameModeDetail::RescueNearSearch, Target, &BadSpots, SafetyNetBadSpotRadius);
+		OutWhere = TEXT("a su último sitio seguro en");
+	}
+	// Arena abierta lejos de todos los hoyos, alrededor de su último sitio seguro y, si no, de donde estaba.
+	if (!bFound && Turtle)
+	{
+		const float Avoid = SafetyNetBadSpotRadius * 1.5f;
+		bFound = TNBeach::FindOpenSandSpot(Turtle, LastSafe, TNBeachRaceGameModeDetail::RescueFarSearch, Target, &BadSpots, Avoid)
+			|| TNBeach::FindOpenSandSpot(Turtle, Probe, TNBeachRaceGameModeDetail::RescueFarSearch, Target, &BadSpots, Avoid);
+		OutWhere = TEXT("a arena abierta lejos del hoyo en");
+	}
+	if (!bFound)
+	{
+		Target = PutOnFloor(GetStartTransformFor(GetStartSlot(PlayerController)), GetDefaultHalfHeight());
+		OutWhere = TEXT("a la salida (sin sitio seguro cerca) en");
+	}
+	// Dentro de la tormenta (o a menos de 5 m de su frente) la patearía en seguida: por delante del frente.
+	ATN_BeachStorm* BeachStorm = Cast<ATN_BeachStorm>(Storm);
+	FTransform Ahead;
+	if (Turtle && BeachStorm && BeachStorm->IsBehindFront(Target.GetLocation(), -500.f) && BeachStorm->FindSpotAhead(Turtle, 0.5f, Ahead))
+	{
+		Target = Ahead;
+		OutWhere += TEXT(" (por delante de la tormenta)");
+	}
+	return Target;
+}
+
+void ATN_BeachRaceGameMode::ForgetSafeSpotsNear(APlayerController* PlayerController, const TArray<FVector>& BadSpots, float Radius)
+{
+	TArray<FTNBeachSafeSpot>* Trail = SafeSpots.Find(PlayerController);
+	if (!Trail || BadSpots.Num() == 0)
+	{
+		return;
+	}
+	const double RadiusSq = FMath::Square(static_cast<double>(Radius));
+	Trail->RemoveAll([&BadSpots, RadiusSq](const FTNBeachSafeSpot& Spot)
+	{
+		return BadSpots.ContainsByPredicate([&Spot, RadiusSq](const FVector& Bad) { return FVector::DistSquared2D(Spot.Location, Bad) < RadiusSq; });
+	});
 }
 
 bool ATN_BeachRaceGameMode::FindSandSpot(const ATortugaCharacter* Turtle, const FVector& Where, FTransform& OutTransform) const

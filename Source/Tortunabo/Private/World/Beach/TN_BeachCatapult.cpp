@@ -868,7 +868,9 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 	using namespace TNBeachCatapultDetail;
 	const double Fired = static_cast<double>(FiredAt);
 	const double T = FiredAt >= 0.f ? Now - Fired : 1e6;
-	const bool bShot = FiredAt >= 0.f && T >= 0.0;
+	// FiredAt va en float: en el servidor, en el mismo fotograma del disparo, T puede salir un pelo negativo y la colisión
+	// del brazo y del cazo volvía a encenderse con las bolas recién nacidas dentro (lanzamientos torcidos o flojos).
+	const bool bShot = FiredAt >= 0.f && (T >= -0.05 || HasAuthority());
 	const bool bBroken = bSingleUse && bShot;
 	const bool bLoaded = IsLoaded(Now);
 	const bool bArmed = !bBroken && ArmedAt >= 0.f && Now >= static_cast<double>(ArmedAt);

@@ -47,6 +47,7 @@ protected:
 	virtual void ServerTick(float DeltaSeconds) override;
 	virtual void VisualTick(float DeltaSeconds) override;
 	virtual void OnMoverStateChanged(uint8 OldState) override;
+	virtual void OnHoldAborted(ATortugaCharacter* Turtle) override;
 	virtual float GetActiveRange() const override;
 	virtual float GetVisualRange() const override { return 24000.f; }
 
@@ -80,6 +81,14 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_BeachCritterSynthComponent> Sound;
 
+	/**
+	 * Voz de las burbujas que suelta al acechar bajo el agua. Aparte de Sound porque es sonido de ambiente (baja con el
+	 * volumen de Ambiente, no con el de Efectos) y porque solo la crean los pulpos que entran en el presupuesto de
+	 * burbujas (los más cercanos al oyente: ver TNBeachKit::AmbientVoiceClaim).
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_BeachCritterSynthComponent> BubbleVoice;
+
 	/** Tamaño propio (SizeScale acotado). */
 	float SizeK = 1.f;
 
@@ -109,6 +118,8 @@ private:
 	float ShownDepth = 110.f;
 	float GrabBlend = 0.f;
 	float BubbleTimer = 0.f;
+	/** Segundos hasta la próxima burbuja que suena (las que se ven son más seguidas). */
+	float BubbleSoundTimer = 0.f;
 	TArray<FTransform> ArmXf;
 	TNAmbientFX::FEmitter Bubbles;
 	TNAmbientFX::FEmitter Ink;

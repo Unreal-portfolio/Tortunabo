@@ -610,6 +610,8 @@ void ATN_BeachSandWorm::ServerCalmVictim()
 	}
 	if (ATortugaCharacter* Tortuga = Cast<ATortugaCharacter>(Eaten))
 	{
+		// El enemigo que la tuviera en la boca o el pico la suelta y deja el ataque (si no, la seguiría colocando en su boca).
+		ATN_BeachEnemy::ServerReleaseHeldTurtle(Tortuga, TEXT("se la come un gusano de arena"));
 		if (UTN_CarryComponent* Carry = Tortuga->GetCarryComponent())
 		{
 			if (Carry->IsCarrying())

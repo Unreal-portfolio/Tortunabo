@@ -16,6 +16,9 @@ class AActor;
  * lanza con la velocidad pedida, la suelta de lo que lleve y, al acabar, desbloquea la salida y la deja salir en cuanto
  * la bola se para. Todas las máquinas, a partir de bStunned: la bola tiembla (solo lo visual: la malla se agita sobre la
  * caja física, después de que la caja la coloque) y los pajaritos del mareo (UTN_DizzyBirdsComponent) dan vueltas.
+ *
+ * En el servidor guarda además la reserva de quién la mueve (patada de la tormenta, red de seguridad) y la gracia de la
+ * tormenta (TN_BeachStun.h); no se replican.
  */
 UCLASS(ClassGroup = (Custom))
 class TORTUNABO_API UTN_BeachStunComponent : public UActorComponent
@@ -47,6 +50,13 @@ public:
 	/** Segundos que le quedan (servidor exacto; clientes, con el reloj de servidor del GameState). */
 	UFUNCTION(BlueprintPure, Category = "Beach|Stun")
 	float GetSecondsLeft() const;
+
+	// Solo servidor (sin replicar): el árbitro de quién mueve a la tortuga (TNBeach::ClaimTurtle, GrantStormGrace).
+	/** Reserva vigente: quién (TNBeach::ETNBeachMover como número) y hasta cuándo (hora del mundo del servidor). */
+	uint8 ClaimMover = 0;
+	double ClaimUntil = 0.0;
+	/** Hasta cuándo (hora del mundo del servidor) no la patea la tormenta. */
+	double StormGraceUntil = 0.0;
 
 protected:
 	/** Amplitud (cm) del temblor de la bola. */

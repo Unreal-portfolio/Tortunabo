@@ -13,6 +13,7 @@
 #include "Player/TN_ShellDecisions.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
+#include "World/Beach/TN_BeachStun.h"
 
 namespace TNShellComponentDetail
 {
@@ -435,6 +436,14 @@ void UTN_ShellComponent::PlaceStandingFromBox(const FTransform& BoxWorld, bool b
 			&& Hit.ImpactNormal.Z > 0.5)
 		{
 			Stand = Hit.ImpactPoint + FVector(0.0, 0.0, HalfHeight + 2.0);
+		}
+		// Carrera en la playa: si la caja atravesó la malla fina del terreno, la traza de arriba puede haber dado con algo de
+		// debajo (lo enterrado de una pieza del decorado). De pie encima de la superficie de verdad del terreno, nunca debajo.
+		// Sin el terreno de la playa (cooperativo), DepthUnderTerrain no dice nada.
+		const float Sunk = TNBeach::DepthUnderTerrain(Turtle, Stand - FVector(0.0, 0.0, HalfHeight));
+		if (Sunk > 30.f)
+		{
+			Stand.Z += Sunk + 2.0;
 		}
 	}
 	Turtle->SetActorLocationAndRotation(Stand, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);

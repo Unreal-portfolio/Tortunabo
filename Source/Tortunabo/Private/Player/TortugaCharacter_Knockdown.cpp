@@ -112,6 +112,10 @@ void ATortugaCharacter::RecoverFromKnockdown()
 		return;
 	}
 
+	// Levantada antes de tiempo (la bola de un aturdimiento, un teletransporte, un rescate...): el temporizador del derribo ya
+	// no vale. Si no, saltaba más tarde y la ponía a andar en plena bola (y volvía a sonar el «¡arriba!»).
+	GetWorldTimerManager().ClearTimer(KnockdownTimerHandle);
+
 	bIsKnockedDown = false;
 
 	// Restaurar movimiento

@@ -70,6 +70,7 @@ protected:
 	virtual void ServerTick(float DeltaSeconds) override;
 	virtual void VisualTick(float DeltaSeconds) override;
 	virtual void OnMoverStateChanged(uint8 OldState) override;
+	virtual void OnHoldAborted(ATortugaCharacter* Turtle) override;
 	virtual float GetBodyRadius() const override;
 	virtual float GetActiveRange() const override { return 4500.f * SizeK; }
 

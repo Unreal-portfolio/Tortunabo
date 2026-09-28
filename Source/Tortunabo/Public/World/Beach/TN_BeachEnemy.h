@@ -243,6 +243,13 @@ protected:
 	/** Todas las máquinas: ha cambiado el estado replicado (en el servidor, al cambiarlo). */
 	virtual void OnMoverStateChanged(uint8 OldState) {}
 
+	/**
+	 * Servidor: otro sistema le quita la tortuga que sujeta (ServerReleaseHeldTurtle: red de seguridad, rescate, gusano),
+	 * justo antes de EndHoldTurtle. La subclase olvida a su víctima y deja el ataque (sin lanzarla ni aturdirla): si no, al
+	 * acabar la sujeción la lanzaría desde donde la han dejado o la volvería a coger.
+	 */
+	virtual void OnHoldAborted(ATortugaCharacter* Turtle) {}
+
 	/** Radio (cm) de relevancia visual: más lejos de la cámara local no se anima. */
 	virtual float GetVisualRange() const { return 30000.f; }
 

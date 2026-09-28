@@ -58,6 +58,17 @@ namespace TNBeachOctopus
 	/** Gravedad con la que se calcula el lanzamiento (la de la bola del caparazón) y lo que se pierde por el rozamiento. */
 	constexpr float ThrowGravity = 980.f;
 	constexpr float ThrowDragBoost = 1.08f;
+	/**
+	 * Burbujas que suenan al acechar (las que se ven no cambian): solo a menos de BubbleAudibleDistance del oyente, solo
+	 * las de los BubbleMaxAudible pulpos más cercanos, sin dos disparos a menos de BubbleMinGap s entre sí y cada pulpo
+	 * una cada BubbleSoundMin..BubbleSoundMin + BubbleSoundSpread s. Antes sonaba cada burbuja visible (cada 1-2,5 s), en
+	 * los 35 m alrededor de la cámara y en todos los pulpos: con dos o tres pozas a tiro era un borboteo que no paraba.
+	 */
+	constexpr float BubbleAudibleDistance = 2400.f;
+	constexpr int32 BubbleMaxAudible = 2;
+	constexpr float BubbleMinGap = 1.6f;
+	constexpr float BubbleSoundMin = 3.5f;
+	constexpr float BubbleSoundSpread = 3.5f;
 }
 
 ATN_BeachPoolOctopus::ATN_BeachPoolOctopus()
@@ -319,6 +330,18 @@ void ATN_BeachPoolOctopus::SwimToward(const FVector& Goal, float Speed, float De
 	ServerMoveTo(Next, TNBeachCritterKit::TurnToward(SimYaw, static_cast<float>(Dir.Rotation().Yaw), 360.f * DeltaSeconds));
 }
 
+void ATN_BeachPoolOctopus::OnHoldAborted(ATortugaCharacter* Turtle)
+{
+	// Se la quitan de los brazos (red de seguridad, gusano): la olvida y se hunde a su sitio, sin lanzarla al acabar el agarre.
+	if (!HasAuthority() || !Turtle || Grabbed != Turtle)
+	{
+		return;
+	}
+	Grabbed = nullptr;
+	ServerSetState(TNBeachOctopus::ToByte(TNBeachOctopus::EState::Retreat), PoolHome);
+	ForceNetUpdate();
+}
+
 void ATN_BeachPoolOctopus::ServerTick(float DeltaSeconds)
 {
 	using TNBeachOctopus::EState;
@@ -422,7 +445,10 @@ void ATN_BeachPoolOctopus::ServerTick(float DeltaSeconds)
 	case EState::Grab:
 	{
 		ATortugaCharacter* Victim = Grabbed;
-		if (bStunned || !IsValid(Victim) || Victim->IsDead())
+		// Otro la mueve (en bola, derribada, aturdida o recolocada): la suelta sin lanzarla, en vez de pelearse por ella.
+		const bool bTaken = IsValid(Victim) && (Victim->IsInShell() || Victim->IsKnockedDown() || TNBeach::IsTurtleStunned(Victim)
+			|| TNBeach::IsTurtleRelocating(Victim));
+		if (bStunned || bTaken || !IsValid(Victim) || Victim->IsDead())
 		{
 			// Mareado por un golpe (o sin nadie): la suelta y cae al agua.
 			EndHoldTurtle();
@@ -650,6 +676,8 @@ void ATN_BeachPoolOctopus::BuildOctopus()
 	SplashDesc.SpawnRadius = 60.f;
 	TNBeachKit::InitEmitter(Splash, this, SplashDesc, static_cast<uint32>(Spec.Seed) + 47u);
 	Sound = UTN_BeachCritterSynthComponent::AttachTo(this, BodyRoot, 900.f, 6500.f);
+	// Cada pulpo empieza a burbujear a su hora, no todos a la vez al aparecer.
+	BubbleSoundTimer = 1.5f + 4.f * TNBeachCritterKit::Hash3(static_cast<uint32>(Spec.Seed), 11u, 0u);
 }
 
 void ATN_BeachPoolOctopus::PoseArms(uint8 State, float Age, const FVector& BodyAt, float Yaw, float DeltaSeconds)
@@ -821,13 +849,37 @@ void ATN_BeachPoolOctopus::VisualTick(float DeltaSeconds)
 	if (State == EState::Lurk)
 	{
 		BubbleTimer -= DeltaSeconds;
+		BubbleSoundTimer -= DeltaSeconds;
+		// A tiro del oído: se anuncia al presupuesto de burbujas en cada fotograma para que los más cercanos manden.
+		const bool bBubbleAudible = ViewDistance < TNBeachOctopus::BubbleAudibleDistance;
+		if (bBubbleAudible)
+		{
+			TNBeachKit::AmbientVoiceTouch(GetWorld(), this, ViewDistance);
+		}
 		if (BubbleTimer <= 0.f)
 		{
 			BubbleTimer = 1.f + 1.5f * TNBeachCritterKit::Hash3(static_cast<uint32>(Spec.Seed), static_cast<uint32>(VisualClock * 10.f), 7u);
 			TNBeachKit::BurstAt(Bubbles, Bubbles.Origin, FVector::UpVector, 3);
-			if (Sound && ViewDistance < 3500.f)
+			// Solo suena una de cada tres o cuatro burbujas y solo si este pulpo es de los más cercanos (si no, la próxima).
+			if (bBubbleAudible && BubbleSoundTimer <= 0.f
+				&& TNBeachKit::AmbientVoiceClaim(GetWorld(), this, TNBeachOctopus::BubbleMaxAudible, TNBeachOctopus::BubbleMinGap))
 			{
-				Sound->Play(ETNBeachCritterSfx::Bubble, 0.8f + 0.5f * TNBeachCritterKit::Hash3(static_cast<uint32>(Spec.Seed), 3u, static_cast<uint32>(VisualClock * 10.f)), 0.5f);
+				if (!BubbleVoice)
+				{
+					// Alcance corto (las burbujas ya se filtran por distancia) y en la clase de Ambiente.
+					BubbleVoice = UTN_BeachCritterSynthComponent::AttachTo(this, BodyRoot, 500.f, 2200.f);
+					if (BubbleVoice)
+					{
+						BubbleVoice->bAmbientBed = true;
+						BubbleVoice->Loudness = 0.8f;
+					}
+				}
+				if (BubbleVoice)
+				{
+					BubbleVoice->Play(ETNBeachCritterSfx::Bubble, 0.8f + 0.4f * TNBeachCritterKit::Hash3(static_cast<uint32>(Spec.Seed), 3u, static_cast<uint32>(VisualClock * 10.f)), 0.35f);
+				}
+				BubbleSoundTimer = TNBeachOctopus::BubbleSoundMin
+					+ TNBeachOctopus::BubbleSoundSpread * TNBeachCritterKit::Hash3(static_cast<uint32>(Spec.Seed), 5u, static_cast<uint32>(VisualClock * 10.f));
 			}
 		}
 	}

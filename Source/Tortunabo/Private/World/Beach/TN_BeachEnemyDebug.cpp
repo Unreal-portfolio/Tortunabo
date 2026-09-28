@@ -7,7 +7,8 @@
 //                                        con el frente Metros por detrás de ti (30 por defecto) a Speed cm/s (180).
 //   TN.Beach.Storm.Stop                  la para (se queda a la vista).
 //   TN.Beach.Storm.Info                  frente, velocidad, a qué velocidad va y distancia a la última tortuga.
-//   TN.Beach.Storm.Here                  pone el frente 4 m por delante de tu tortuga (te deja dentro: patada).
+//   TN.Beach.Storm.Here [jugador] [m]    pone el frente 4 m (o m) por delante de tu tortuga o de la del jugador N (índice en
+//                                        PlayerArray): la deja dentro y le llega la patada.
 //   TN.Beach.Lizard <huidizo|generoso|mordedor>  un lagarto de ese carácter 22 m delante de ti.
 //   TN.Beach.StunNearest [s]             marea al enemigo más cercano a tu tortuga (3 s por defecto; los quads no).
 //   TN.Beach.Enemy.Stats                 enemigos del mundo, cuántos van despacio por estar lejos y cuántos se apartan.
@@ -24,8 +25,10 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/GameStateBase.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
 
 namespace TNBeachEnemyConsole
@@ -156,8 +159,19 @@ namespace TNBeachEnemyConsole
 	{
 		UWorld* World = AuthorityWorld(InWorld);
 		const APawn* Pawn = LocalPawn(InWorld);
+		// Con un número, la tortuga de ese jugador (índice en PlayerArray del anfitrión): así se prueba también la del cliente.
+		if (World && Args.Num() > 0)
+		{
+			const AGameStateBase* GameState = World->GetGameState();
+			const int32 Index = FCString::Atoi(*Args[0]);
+			const APlayerState* PlayerState = GameState && GameState->PlayerArray.IsValidIndex(Index) ? GameState->PlayerArray[Index].Get() : nullptr;
+			Pawn = PlayerState ? PlayerState->GetPawn() : nullptr;
+		}
+		// Cuánto por detrás del frente la deja (m; 4 por defecto; más, para probar patadas largas o el salto).
+		const float Inside = (Args.Num() > 1 ? FCString::Atof(*Args[1]) : 4.f) * 100.f;
 		if (!World || !Pawn)
 		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Playa] TN.Beach.Storm.Here: no hay esa tortuga."));
 			return;
 		}
 		ATN_BeachStorm* Storm = ATN_BeachStorm::FindStorm(World);
@@ -173,9 +187,9 @@ namespace TNBeachEnemyConsole
 		{
 			return;
 		}
-		// El frente 4 m por delante de la tortuga: se queda dentro y le llega la patada.
+		// El frente Inside por delante de la tortuga: se queda dentro y le llega la patada.
 		const FVector Local = Storm->GetActorTransform().InverseTransformPositionNoScale(Pawn->GetActorLocation());
-		Storm->DebugSetFront(static_cast<float>(Local.X) + 400.f);
+		Storm->DebugSetFront(static_cast<float>(Local.X) + Inside);
 	}
 
 	void LizardHere(const TArray<FString>& Args, UWorld* InWorld)
@@ -298,7 +312,7 @@ namespace TNBeachEnemyConsole
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormInfo), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormHere(TEXT("TN.Beach.Storm.Here"),
-		TEXT("Pone el frente de la tormenta 4 m por delante de tu tortuga, para ver la patada (en el anfitrión)."),
+		TEXT("Pone el frente de la tormenta por delante de una tortuga para ver la patada: TN.Beach.Storm.Here [jugador = la tuya] [metros = 4] (en el anfitrión)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormHere), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachLizard(TEXT("TN.Beach.Lizard"),

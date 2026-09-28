@@ -375,6 +375,8 @@ bool ATN_BeachEnemy::ServerReleaseHeldTurtle(ATortugaCharacter* Turtle, const TC
 	const UWorld* World = Holder->GetWorld();
 	Holder->HoldBlocked = Turtle;
 	Holder->HoldBlockedUntil = (World ? World->GetTimeSeconds() : 0.0) + TNBeachEnemyShared::HoldBlockSeconds;
+	// Que deje el ataque (sin lanzarla desde donde la ponen ni volver a cogerla) antes de soltarla.
+	Holder->OnHoldAborted(Turtle);
 	Holder->EndHoldTurtle();
 	UE_LOG(LogTortunabo, Warning, TEXT("[Playa] %s suelta a %s (%s)."), *Holder->GetName(), *Turtle->GetName(), Reason ? Reason : TEXT("sin motivo"));
 	return true;
@@ -382,7 +384,9 @@ bool ATN_BeachEnemy::ServerReleaseHeldTurtle(ATortugaCharacter* Turtle, const TC
 
 bool ATN_BeachEnemy::CanBeHit(const ATortugaCharacter* Turtle)
 {
-	return IsValid(Turtle) && !Turtle->IsDead() && !Turtle->IsKnockedDown() && !TNBeach::IsTurtleStunned(Turtle) && !IsTurtleHeld(Turtle);
+	// Tampoco mientras la patada de la tormenta o la red de seguridad la recolocan (TNBeach::IsTurtleRelocating).
+	return IsValid(Turtle) && !Turtle->IsDead() && !Turtle->IsKnockedDown() && !TNBeach::IsTurtleStunned(Turtle) && !IsTurtleHeld(Turtle)
+		&& !TNBeach::IsTurtleRelocating(Turtle);
 }
 
 bool ATN_BeachEnemy::ServerKnockDown(ATortugaCharacter* Turtle, float Seconds, const FVector& Push, const FVector& Spin)

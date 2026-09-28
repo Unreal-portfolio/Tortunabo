@@ -1,7 +1,9 @@
 #include "World/Beach/TN_BeachMine.h"
 #include "World/Beach/TN_BeachCameraShake.h"
+#include "World/Beach/TN_BeachEnemy.h"
 #include "World/Beach/TN_BeachMineSynth.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
+#include "World/Beach/TN_BeachSandWorm.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "Core/TN_Log.h"
 #include "Components/CapsuleComponent.h"
@@ -428,8 +430,10 @@ void ATN_BeachMine::Tick(float DeltaSeconds)
 				Explode(ServerTime);
 			}
 		}
-		else if (IsArmedAt(ServerTime))
+		else if (IsArmedAt(ServerTime) && ATN_BeachEnemy::IsRaceLive(this))
 		{
+			// Con la carrera parada («¡TIEMPO!», recuento, podio) no se pisa: una tortuga quieta encima la hacía estallar cada
+			// vez que se rearmaba y la bola la soltaba de la congelación.
 			CheckStep(ServerTime);
 		}
 	}
@@ -489,7 +493,8 @@ void ATN_BeachMine::Explode(double Now)
 	for (TActorIterator<ATortugaCharacter> It(World); It; ++It)
 	{
 		ATortugaCharacter* Turtle = *It;
-		if (!IsValid(Turtle) || Turtle->IsDead())
+		// Ni a la que sujeta un enemigo (la bola y su boca se pelearían por ella) ni a la que se come un gusano.
+		if (!IsValid(Turtle) || Turtle->IsDead() || ATN_BeachEnemy::IsTurtleHeld(Turtle) || ATN_BeachSandWorm::IsBeingEaten(Turtle))
 		{
 			continue;
 		}

@@ -295,6 +295,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Beach")
 	float GetGroundHeightAt(const FVector& WorldLocation) const;
 
+	/**
+	 * La superficie de verdad de la malla del terreno en la vertical de WorldLocation: una traza de arriba abajo solo contra
+	 * las teselas con colisión (sin decorado, elementos ni tortugas). OutZ, la primera desde arriba; false si ahí no hay
+	 * tesela con colisión. Para confirmar lo que dice GetGroundHeightAt (la red de seguridad y la patada de la tormenta).
+	 */
+	bool TraceTerrainAt(const FVector& WorldLocation, float& OutZ) const;
+
 	/** Hacia dónde está el mar (el eje X del generador). */
 	UFUNCTION(BlueprintPure, Category = "Beach")
 	FVector GetSeaDirection() const { return GetActorForwardVector(); }
