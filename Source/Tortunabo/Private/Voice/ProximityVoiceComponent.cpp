@@ -1,4 +1,5 @@
 #include "Voice/ProximityVoiceComponent.h"
+#include "TN_VoiceDeviceCapture.h"
 #include "Core/TN_Log.h"
 #include "UI/Voice/VoiceIndicatorWidget.h"
 #include "Player/MP_GamePlayerController.h"
@@ -44,7 +45,8 @@ void UProximityVoiceComponent::BeginPlay()
 	bIsShuttingDown = false;
 	bRuntimeResourcesCleanedUp = false;
 
-	if (IsLocallyOwned())
+	// Con un micrófono elegido en el menú de pausa (y aún conectado), ese; si no, el predeterminado de siempre.
+	if (IsLocallyOwned() && !OpenPreferredCaptureDevice())
 	{
 		AudioCaptureSynth = MakeUnique<Audio::FAudioCaptureSynth>();
 		if (AudioCaptureSynth->OpenDefaultStream())
@@ -63,6 +65,78 @@ void UProximityVoiceComponent::BeginPlay()
 		}
 
 	}
+}
+
+namespace TNVoiceDevices
+{
+	/** Micrófono elegido (id de Windows; vacío = el predeterminado). Uno por proceso: es un ajuste de la máquina. */
+	FString& Preferred()
+	{
+		static FString DeviceId;
+		return DeviceId;
+	}
+
+	/**
+	 * Captura solo para enumerar micrófonos: nunca abre nada. Se crea una vez y no se destruye (por lo mismo que las
+	 * capturas de voz: nada de WASAPI en el cierre del proceso).
+	 */
+	Audio::FAudioCapture& Enumerator()
+	{
+		static Audio::FAudioCapture* Capture = new Audio::FAudioCapture();
+		return *Capture;
+	}
+}
+
+void UProximityVoiceComponent::SetPreferredCaptureDevice(const FString& DeviceId)
+{
+	TNVoiceDevices::Preferred() = DeviceId;
+}
+
+FString UProximityVoiceComponent::GetPreferredCaptureDevice()
+{
+	return TNVoiceDevices::Preferred();
+}
+
+void UProximityVoiceComponent::GetCaptureDevices(TArray<TPair<FString, FString>>& OutDevices)
+{
+	OutDevices.Reset();
+	TArray<Audio::FCaptureDeviceInfo> Devices;
+	TNVoiceDevices::Enumerator().GetCaptureDevicesAvailable(Devices);
+	for (const Audio::FCaptureDeviceInfo& Device : Devices)
+	{
+		OutDevices.Emplace(Device.DeviceId, Device.DeviceName);
+	}
+}
+
+bool UProximityVoiceComponent::OpenPreferredCaptureDevice()
+{
+	const FString Wanted = GetPreferredCaptureDevice();
+	if (Wanted.IsEmpty())
+	{
+		return false;
+	}
+	TArray<Audio::FCaptureDeviceInfo> Devices;
+	TNVoiceDevices::Enumerator().GetCaptureDevicesAvailable(Devices);
+	const int32 DeviceIndex = Devices.IndexOfByPredicate([&Wanted](const Audio::FCaptureDeviceInfo& Device) { return Device.DeviceId == Wanted; });
+	if (DeviceIndex == INDEX_NONE)
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Voice] El micrófono elegido ya no está conectado: se usa el predeterminado."));
+		return false;
+	}
+	// Se crea y no se destruye nunca (ni si falla): ver CleanupRuntimeResources.
+	FTNVoiceDeviceCapture* Capture = new FTNVoiceDeviceCapture();
+	if (!Capture->Open(DeviceIndex))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Voice] No se pudo abrir el micrófono «%s»: se usa el predeterminado."), *Devices[DeviceIndex].DeviceName);
+		return false;
+	}
+	DeviceCapture = Capture;
+	OpenCaptureDevice = Wanted;
+	VoiceSampleRate = Capture->GetSampleRate() > 0 ? Capture->GetSampleRate() : Devices[DeviceIndex].PreferredSampleRate;
+	// La captura propia ya entrega mono.
+	CaptureNumChannels = 1;
+	UE_LOG(LogTortunabo, Log, TEXT("[Voice] Micrófono: %s."), *Devices[DeviceIndex].DeviceName);
+	return true;
 }
 
 void UProximityVoiceComponent::PrepareForLevelTransition()
@@ -163,6 +237,8 @@ void UProximityVoiceComponent::CleanupRuntimeResources(bool bForceLeakAudio)
 	{
 		(void)AudioCaptureSynth.Release();
 	}
+	// La del micrófono elegido, igual: se suelta sin tocarla.
+	DeviceCapture = nullptr;
 
 	{
 		FScopeLock Lock(&CaptureBufferLock);
@@ -301,13 +377,14 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || !IsLocallyOwned() || !AudioCaptureSynth)
+	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || !IsLocallyOwned() || (!AudioCaptureSynth && !DeviceCapture))
 	{
 		return;
 	}
 
 	TArray<float> NewAudioData;
-	if (AudioCaptureSynth->GetAudioData(NewAudioData) && NewAudioData.Num() > 0)
+	const bool bGotAudio = DeviceCapture ? DeviceCapture->GetAudioData(NewAudioData) : AudioCaptureSynth->GetAudioData(NewAudioData);
+	if (bGotAudio && NewAudioData.Num() > 0)
 	{
 		TArray<float> MonoData;
 		if (CaptureNumChannels > 1)

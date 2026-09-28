@@ -76,6 +76,10 @@ struct FTNGameSettings
 	UPROPERTY()
 	float MicGain = 1.f;
 
+	/** Micrófono elegido (id del dispositivo de Windows); vacío = el predeterminado. Se abre al empezar la voz. */
+	UPROPERTY()
+	FString CaptureDeviceId;
+
 	// ── Controles ────────────────────────────────────────────────────────────
 
 	/** Sensibilidad de la cámara con el ratón (1 = la de siempre). */
@@ -91,6 +95,20 @@ struct FTNGameSettings
 
 	UPROPERTY()
 	bool bInvertGamepadY = false;
+
+	/**
+	 * Teclas y botones reasignados, por fila de controles y aparato: «IA_Jump#0» (teclado y ratón) o «IA_Move:Y+#1»
+	 * (mando) → tecla nueva. Lo que no está aquí va con la tecla de serie de IMC_Player.
+	 */
+	UPROPERTY()
+	TMap<FString, FName> KeyOverrides;
+
+	/** Tecla y botón del menú de pausa (en el editor, además, el Tabulador). */
+	UPROPERTY()
+	FName PauseKey = TEXT("Escape");
+
+	UPROPERTY()
+	FName PausePadKey = TEXT("Gamepad_Special_Right");
 
 	// ── Juego y accesibilidad ────────────────────────────────────────────────
 
@@ -110,6 +128,18 @@ struct FTNGameSettings
 	UPROPERTY()
 	float ColorFilterStrength = 1.f;
 
+	/** Tamaño de la interfaz del juego (multiplica la escala de la pantalla; 1 = la de siempre). */
+	UPROPERTY()
+	float UIScale = 1.f;
+
+	/** Aviso de texto con quién está hablando por voz (para jugar sin sonido o con dificultades de oído). */
+	UPROPERTY()
+	bool bShowTalkers = false;
+
+	/** Silenciar el juego cuando la ventana no está activa. */
+	UPROPERTY()
+	bool bMuteInBackground = false;
+
 	// ── Pantalla (lo que no guarda UGameUserSettings) ────────────────────────
 
 	/** Brillo (0..1; 0,5 = el de siempre): cambia la gamma de salida del motor. */
@@ -128,9 +158,9 @@ class TORTUNABO_API UTN_SettingsSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
-	/** Versión del formato, por si algún día hay que convertir ajustes viejos. */
+	/** Versión del formato, por si algún día hay que convertir ajustes viejos (2: teclas, micrófono, interfaz). */
 	UPROPERTY()
-	int32 Version = 1;
+	int32 Version = 2;
 
 	UPROPERTY()
 	FTNGameSettings Settings;

@@ -12,23 +12,34 @@
 #include "AudioDeviceManager.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Camera/CameraModifier.h"
+#include "Camera/CameraTypes.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/AudioComponent.h"
 #include "Components/InputComponent.h"
 #include "Components/SynthComponent.h"
+#include "EnhancedActionKeyMapping.h"
+#include "EnhancedInputSubsystems.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/UserInterfaceSettings.h"
 #include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameFramework/InputDeviceSubsystem.h"
+#include "GameFramework/InputSettings.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
+#include "InputAction.h"
 #include "InputCoreTypes.h"
+#include "InputMappingContext.h"
+#include "InputModifiers.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
 #include "Rendering/RenderingCommon.h"
+#include "Scalability.h"
 #include "Sound/AudioSettings.h"
 #include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
@@ -48,9 +59,11 @@ namespace TNGameSettingsDetail
 
 	/**
 	 * Capas: el menú de pausa por encima del HUD (4-10), las ruedas (30-31), la tienda y el general (40) y las pantallas
-	 * de la carrera (20-21); por debajo de la pantalla de carga (20000). El contador de FPS, encima de todo eso.
+	 * de la carrera (20-21); por debajo de la pantalla de carga (20000). Quién habla, debajo del menú; el contador de FPS,
+	 * encima de todo eso.
 	 */
 	constexpr int32 PauseMenuZOrder = 60;
+	constexpr int32 TalkersZOrder = 55;
 	constexpr int32 FpsZOrder = 70;
 
 	/** Prioridad de la entrada del menú en la pila del PlayerController (por delante de la tortuga y del propio PC). */
@@ -58,6 +71,39 @@ namespace TNGameSettingsDetail
 
 	/** Volumen máximo de cada compañero (se puede subir a quien habla bajito). */
 	constexpr float MaxPlayerVoice = 2.f;
+
+	/** Tamaño de la interfaz: de un 75 % a un 130 % del de serie. */
+	constexpr float MinUIScale = 0.75f;
+	constexpr float MaxUIScale = 1.3f;
+
+	/** Controles del jugador (los que pone ATortugaCharacter; es el único contexto de controles del juego). */
+	const TCHAR* const PlayerMappingPath = TEXT("/Game/Blueprints/Gameplay/Controls/IMC_Player.IMC_Player");
+
+	/** Filas de controles del propio juego (no están en IMC_Player). */
+	const TCHAR* const TalkId = TEXT("Talk");
+	const TCHAR* const PauseId = TEXT("Pause");
+
+	/**
+	 * Lo que había en el proceso antes del primer subsistema: en PIE con varios jugadores hay un subsistema por jugador y
+	 * todos tocan lo mismo (gamma, escala de la interfaz, calidad...), así que se apunta con el primero y se devuelve con el
+	 * último.
+	 */
+	struct FProcessBaseline
+	{
+		int32 Users = 0;
+		float DisplayGamma = 2.2f;
+		float ApplicationScale = 1.f;
+		bool bEditor = false;
+		Scalability::FQualityLevels QualityLevels;
+		float MaxFPS = 0.f;
+		int32 VSync = 0;
+	};
+
+	FProcessBaseline& Baseline()
+	{
+		static FProcessBaseline Value;
+		return Value;
+	}
 
 	void ClampSettings(FTNGameSettings& S)
 	{
@@ -75,14 +121,183 @@ namespace TNGameSettingsDetail
 		S.ColorFilter = static_cast<uint8>(FMath::Clamp<int32>(S.ColorFilter, 0, 3));
 		S.ColorFilterStrength = FMath::Clamp(S.ColorFilterStrength, 0.f, 1.f);
 		S.Brightness = FMath::Clamp(S.Brightness, 0.f, 1.f);
-		if (!FKey(S.PushToTalkKey).IsValid()) { S.PushToTalkKey = TEXT("V"); }
-		if (!FKey(S.PushToTalkPadKey).IsValid()) { S.PushToTalkPadKey = TEXT("Gamepad_DPad_Down"); }
+		S.UIScale = FMath::Clamp(S.UIScale, MinUIScale, MaxUIScale);
+		// Sin tecla (None) vale: una fila se puede quedar sin tecla al dársela a otra. Una que ya no existe, a la de serie.
+		const FTNGameSettings Defaults;
+		auto FixKey = [](FName& KeyName, const FName Fallback)
+		{
+			if (!KeyName.IsNone() && !FKey(KeyName).IsValid()) { KeyName = Fallback; }
+		};
+		FixKey(S.PushToTalkKey, Defaults.PushToTalkKey);
+		FixKey(S.PushToTalkPadKey, Defaults.PushToTalkPadKey);
+		FixKey(S.PauseKey, Defaults.PauseKey);
+		FixKey(S.PausePadKey, Defaults.PausePadKey);
+		for (auto It = S.KeyOverrides.CreateIterator(); It; ++It)
+		{
+			if (!It.Value().IsNone() && !FKey(It.Value()).IsValid()) { It.RemoveCurrent(); }
+		}
 	}
 
 	/** Un modificador de cámara que tiembla (el de serie del motor, UCameraModifier_CameraShake, o uno propio «...Shake...»). */
 	bool IsShakeModifier(const UCameraModifier* Modifier)
 	{
 		return Modifier && Modifier->GetClass()->GetName().Contains(TEXT("Shake"));
+	}
+
+	// ── Controles ────────────────────────────────────────────────────────────
+
+	/** 0 teclado y ratón, 1 mando. */
+	int32 DeviceOf(const FKey& Key)
+	{
+		return Key.IsGamepadKey() ? 1 : 0;
+	}
+
+	/** El mismo gatillo como eje (así los lleva IMC_Player): pulsarlo da el botón y el eje a la vez. */
+	FKey PhysicalKey(const FKey& Key)
+	{
+		if (Key == EKeys::Gamepad_LeftTrigger) { return EKeys::Gamepad_LeftTriggerAxis; }
+		if (Key == EKeys::Gamepad_RightTrigger) { return EKeys::Gamepad_RightTriggerAxis; }
+		return Key;
+	}
+
+	/** El mismo gatillo como botón (hablar y el menú se leen pulsados, y un eje no se «pulsa»). */
+	FKey ButtonKey(const FKey& Key)
+	{
+		if (Key == EKeys::Gamepad_LeftTriggerAxis) { return EKeys::Gamepad_LeftTrigger; }
+		if (Key == EKeys::Gamepad_RightTriggerAxis) { return EKeys::Gamepad_RightTrigger; }
+		return Key;
+	}
+
+	bool SamePhysicalKey(const FKey& A, const FKey& B)
+	{
+		return A.IsValid() == B.IsValid() && (!A.IsValid() || PhysicalKey(A) == PhysicalKey(B));
+	}
+
+	bool IsGameRow(const FTNKeyBinding& Row)
+	{
+		return Row.Id == TalkId || Row.Id == PauseId;
+	}
+
+	/** Tecla que forma fila (teclas, botones y gatillos); los ejes (stick, ratón, rueda) no se cambian. */
+	bool IsRowKey(const FKey& Key)
+	{
+		if (!Key.IsValid() || Key.IsAxis2D() || Key.IsAxis3D() || Key.IsTouch() || Key.IsGesture())
+		{
+			return false;
+		}
+		if (Key.IsAxis1D())
+		{
+			return Key == EKeys::Gamepad_LeftTriggerAxis || Key == EKeys::Gamepad_RightTriggerAxis;
+		}
+		return true;
+	}
+
+	/** Clave de KeyOverrides de una fila y un aparato: «IA_Jump#0», «IA_Move:Y+#0». */
+	FString OverrideName(const FString& Id, int32 Device)
+	{
+		return FString::Printf(TEXT("%s#%d"), *Id, Device);
+	}
+
+	/**
+	 * Hacia dónde empuja una asignación de una acción de ejes: el valor de una tecla (1, 0, 0) pasado por sus
+	 * modificadores (intercambiar ejes y negar), como hace Enhanced Input. «Y+», «X-»...; «+» o «-» en las de un eje;
+	 * vacío en las de botón.
+	 */
+	FString MappingDirection(const FEnhancedActionKeyMapping& Mapping)
+	{
+		const UInputAction* Action = Mapping.Action;
+		if (!Action || Action->ValueType == EInputActionValueType::Boolean)
+		{
+			return FString();
+		}
+		FVector Value(1.f, 0.f, 0.f);
+		for (const TObjectPtr<UInputModifier>& Modifier : Mapping.Modifiers)
+		{
+			if (const UInputModifierSwizzleAxis* Swizzle = Cast<UInputModifierSwizzleAxis>(Modifier))
+			{
+				switch (Swizzle->Order)
+				{
+				case EInputAxisSwizzle::YXZ: Swap(Value.X, Value.Y); break;
+				case EInputAxisSwizzle::ZYX: Swap(Value.X, Value.Z); break;
+				case EInputAxisSwizzle::XZY: Swap(Value.Y, Value.Z); break;
+				case EInputAxisSwizzle::YZX: Value = FVector(Value.Y, Value.Z, Value.X); break;
+				case EInputAxisSwizzle::ZXY: Value = FVector(Value.Z, Value.X, Value.Y); break;
+				default: break;
+				}
+			}
+			else if (const UInputModifierNegate* Negate = Cast<UInputModifierNegate>(Modifier))
+			{
+				Value = FVector(Negate->bX ? -Value.X : Value.X, Negate->bY ? -Value.Y : Value.Y, Negate->bZ ? -Value.Z : Value.Z);
+			}
+		}
+		if (Action->ValueType == EInputActionValueType::Axis1D)
+		{
+			return Value.X < 0.f ? TEXT("-") : TEXT("+");
+		}
+		const FVector Size = Value.GetAbs();
+		if (Size.Y > Size.X && Size.Y >= Size.Z)
+		{
+			return Value.Y < 0.f ? TEXT("Y-") : TEXT("Y+");
+		}
+		if (Size.Z > Size.X)
+		{
+			return Value.Z < 0.f ? TEXT("Z-") : TEXT("Z+");
+		}
+		return Value.X < 0.f ? TEXT("X-") : TEXT("X+");
+	}
+
+	/** La asignación es la de esa fila en ese aparato (misma acción, misma dirección, tecla de ese aparato). */
+	bool MappingBelongsTo(const FEnhancedActionKeyMapping& Mapping, const FTNKeyBinding& Row, int32 Device)
+	{
+		return Mapping.Action && Mapping.Action == Row.Action.Get() && IsRowKey(Mapping.Key) && DeviceOf(Mapping.Key) == Device
+			&& MappingDirection(Mapping) == Row.Direction;
+	}
+
+	/** Orden de las acciones en la lista de controles (lo demás, detrás). */
+	int32 ActionOrder(const FString& ActionName)
+	{
+		static const TArray<FString> Order = { TEXT("IA_Move"), TEXT("IA_Look"), TEXT("IA_Jump"), TEXT("IA_Sprint"), TEXT("IA_Interact"),
+			TEXT("IA_Shell"), TEXT("IA_DropItem"), TEXT("IA_RotateInventory"), TEXT("IA_OpenEmoteWheel"), TEXT("IA_OpenChatWheel"),
+			TEXT("IA_RadialNavigate") };
+		const int32 Found = Order.IndexOfByKey(ActionName);
+		return Found == INDEX_NONE ? 1000 : Found;
+	}
+
+	int32 DirectionOrder(const FString& Direction)
+	{
+		static const TArray<FString> Order = { TEXT(""), TEXT("Y+"), TEXT("Y-"), TEXT("X-"), TEXT("X+"), TEXT("+"), TEXT("-"), TEXT("Z+"), TEXT("Z-") };
+		const int32 Found = Order.IndexOfByKey(Direction);
+		return Found == INDEX_NONE ? 9 : Found;
+	}
+
+	/** Nombre de una fila: el de la acción o, en una dirección, qué hace («Avanzar», «Cambiar de objeto (siguiente)»). */
+	FText BindingLabel(const FString& ActionName, const FString& Direction)
+	{
+		const FText Base = UTN_GameSettingsSubsystem::ActionLabel(ActionName);
+		if (Direction.IsEmpty())
+		{
+			return Base;
+		}
+		if (ActionName == TEXT("IA_Move"))
+		{
+			if (Direction == TEXT("Y+")) { return NSLOCTEXT("TNSettings", "MoveForward", "Avanzar"); }
+			if (Direction == TEXT("Y-")) { return NSLOCTEXT("TNSettings", "MoveBack", "Retroceder"); }
+			if (Direction == TEXT("X-")) { return NSLOCTEXT("TNSettings", "MoveLeft", "Ir a la izquierda"); }
+			if (Direction == TEXT("X+")) { return NSLOCTEXT("TNSettings", "MoveRight", "Ir a la derecha"); }
+		}
+		static const TMap<FString, FText> Parts = {
+			{ TEXT("+"), NSLOCTEXT("TNSettings", "DirNext", "siguiente") }, { TEXT("-"), NSLOCTEXT("TNSettings", "DirPrevious", "anterior") },
+			{ TEXT("Y+"), NSLOCTEXT("TNSettings", "DirForward", "adelante") }, { TEXT("Y-"), NSLOCTEXT("TNSettings", "DirBack", "atrás") },
+			{ TEXT("X+"), NSLOCTEXT("TNSettings", "DirRight", "derecha") }, { TEXT("X-"), NSLOCTEXT("TNSettings", "DirLeft", "izquierda") },
+			{ TEXT("Z+"), NSLOCTEXT("TNSettings", "DirUp", "arriba") }, { TEXT("Z-"), NSLOCTEXT("TNSettings", "DirDown", "abajo") },
+		};
+		const FText* Part = Parts.Find(Direction);
+		return FText::Format(NSLOCTEXT("TNSettings", "DirectionFmt", "{0} ({1})"), Base, Part ? *Part : FText::FromString(Direction));
+	}
+
+	FText DeviceWord(int32 Device)
+	{
+		return Device == 1 ? NSLOCTEXT("TNSettings", "WordPad", "el mando") : NSLOCTEXT("TNSettings", "WordKeyboard", "el teclado y el ratón");
 	}
 }
 
@@ -105,23 +320,33 @@ bool UTN_GameSettingsSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 void UTN_GameSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	BaseDisplayGamma = GEngine ? GEngine->DisplayGamma : 2.2f;
-#if WITH_EDITOR
-	// En el editor, la calidad, los FPS y la sincronización son los del editor: se guardan para devolverlos al acabar.
-	if (GIsEditor)
+	TNGameSettingsDetail::FProcessBaseline& Base = TNGameSettingsDetail::Baseline();
+	if (Base.Users++ == 0)
 	{
-		bRestoreEditorState = true;
-		EditorQualityLevels = Scalability::GetQualityLevels();
-		if (const IConsoleVariable* MaxFps = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))) { EditorMaxFPS = MaxFps->GetFloat(); }
-		if (const IConsoleVariable* VSync = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"))) { EditorVSync = VSync->GetInt(); }
-	}
+		Base.DisplayGamma = GEngine ? GEngine->DisplayGamma : 2.2f;
+		Base.ApplicationScale = GetDefault<UUserInterfaceSettings>()->ApplicationScale;
+#if WITH_EDITOR
+		// En el editor, la calidad, los FPS y la sincronización son los del editor: se guardan para devolverlos al acabar.
+		Base.bEditor = GIsEditor;
+		if (GIsEditor)
+		{
+			Base.QualityLevels = Scalability::GetQualityLevels();
+			if (const IConsoleVariable* MaxFps = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))) { Base.MaxFPS = MaxFps->GetFloat(); }
+			if (const IConsoleVariable* VSync = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"))) { Base.VSync = VSync->GetInt(); }
+		}
 #endif
+	}
+	BaseDisplayGamma = Base.DisplayGamma;
 	LoadSettings();
 	CreateSoundClasses();
+	OriginalMapping = LoadObject<UInputMappingContext>(nullptr, TNGameSettingsDetail::PlayerMappingPath);
+	BuildDefaultBindings();
+	RebuildRemappedMapping();
 	ApplyGlobalSettings();
-	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Cargados: general %.0f%%, música %.0f%%, efectos %.0f%%, ambiente %.0f%%, voz %.0f%%, %s."),
+	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Cargados: general %.0f%%, música %.0f%%, efectos %.0f%%, ambiente %.0f%%, voz %.0f%%, %s, %d teclas cambiadas, interfaz %.0f%%."),
 		Settings.MasterVolume * 100.f, Settings.MusicVolume * 100.f, Settings.EffectsVolume * 100.f, Settings.AmbientVolume * 100.f,
-		Settings.VoiceVolume * 100.f, Settings.bPushToTalk ? TEXT("pulsar para hablar") : TEXT("voz abierta"));
+		Settings.VoiceVolume * 100.f, Settings.bPushToTalk ? TEXT("pulsar para hablar") : TEXT("voz abierta"), Settings.KeyOverrides.Num(),
+		Settings.UIScale * 100.f);
 }
 
 void UTN_GameSettingsSubsystem::Deinitialize()
@@ -138,9 +363,18 @@ void UTN_GameSettingsSubsystem::Deinitialize()
 		FpsWidget->RemoveFromParent();
 		FpsWidget = nullptr;
 	}
+	if (TalkersWidget)
+	{
+		TalkersWidget->RemoveFromParent();
+		TalkersWidget = nullptr;
+	}
 	if (APlayerController* Owner = PauseInputOwner.Get())
 	{
 		if (PauseInput) { Owner->PopInputComponent(PauseInput); }
+		if (APlayerCameraManager* Camera = Owner->PlayerCameraManager)
+		{
+			if (UCameraModifier* Fov = Camera->FindCameraModifierByClass(UTN_SettingsFovModifier::StaticClass())) { Camera->RemoveCameraModifier(Fov); }
+		}
 	}
 	PauseInput = nullptr;
 	PauseInputOwner.Reset();
@@ -150,22 +384,29 @@ void UTN_GameSettingsSubsystem::Deinitialize()
 	}
 	DisabledShakes.Reset();
 
-	// Lo que es de todo el proceso vuelve a como estaba (en el juego da igual, se cierra con él; en el editor, no).
-	if (GEngine) { GEngine->DisplayGamma = BaseDisplayGamma; }
-	if (AppliedColorFilter != 0)
+	// Lo que es de todo el proceso vuelve a como estaba al quitarse el último subsistema (en el juego da igual, se cierra
+	// con él; en el editor, no).
+	TNGameSettingsDetail::FProcessBaseline& Base = TNGameSettingsDetail::Baseline();
+	Base.Users = FMath::Max(Base.Users - 1, 0);
+	if (Base.Users == 0)
 	{
-		UWidgetBlueprintLibrary::SetColorVisionDeficiencyType(EColorVisionDeficiency::NormalVision, 0.f, false, false);
-		AppliedColorFilter = 0;
-	}
+		if (GEngine) { GEngine->DisplayGamma = Base.DisplayGamma; }
+		GetMutableDefault<UUserInterfaceSettings>()->ApplicationScale = Base.ApplicationScale;
+		if (AppliedColorFilter != 0)
+		{
+			UWidgetBlueprintLibrary::SetColorVisionDeficiencyType(EColorVisionDeficiency::NormalVision, 0.f, false, false);
+		}
 #if WITH_EDITOR
-	if (bRestoreEditorState)
-	{
-		Scalability::SetQualityLevels(EditorQualityLevels);
-		if (IConsoleVariable* MaxFPS = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))) { MaxFPS->Set(EditorMaxFPS, ECVF_SetByGameSetting); }
-		if (IConsoleVariable* VSync = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"))) { VSync->Set(EditorVSync, ECVF_SetByGameSetting); }
-		if (FAudioDevice* MainDevice = GEngine ? GEngine->GetMainAudioDeviceRaw() : nullptr) { MainDevice->SetTransientPrimaryVolume(1.f); }
-	}
+		if (Base.bEditor)
+		{
+			Scalability::SetQualityLevels(Base.QualityLevels);
+			if (IConsoleVariable* MaxFPS = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))) { MaxFPS->Set(Base.MaxFPS, ECVF_SetByGameSetting); }
+			if (IConsoleVariable* VSync = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"))) { VSync->Set(Base.VSync, ECVF_SetByGameSetting); }
+			if (FAudioDevice* MainDevice = GEngine ? GEngine->GetMainAudioDeviceRaw() : nullptr) { MainDevice->SetTransientPrimaryVolume(1.f); }
+		}
 #endif
+	}
+	AppliedColorFilter = 0;
 	Super::Deinitialize();
 }
 
@@ -201,6 +442,8 @@ void UTN_GameSettingsSubsystem::Tick(float DeltaTime)
 	}
 	ApplyAudioVolumes(World, false);
 	UpdateSounds(World);
+	// Teclas del jugador: la tortuga vuelve a poner IMC_Player al poseerse (ClearAllMappings) y aquí se cambia por la copia.
+	UpdateInputMapping();
 
 	APlayerController* PC = GameInstance->GetFirstLocalPlayerController(World);
 	// El paisaje sonoro del jugador (en su PlayerController): si no trae clase propia, la de Ambiente; así también sus
@@ -213,6 +456,7 @@ void UTN_GameSettingsSubsystem::Tick(float DeltaTime)
 	UpdateLocalVoice(PC);
 	UpdateCamera(PC);
 	UpdateFpsCounter(PC);
+	UpdateTalkers(PC);
 
 	// Guardado diferido: con el menú abierto se espera a que se cierre.
 	if ((bSettingsDirty || bGraphicsDirty) && !IsPauseMenuOpen() && FApp::GetCurrentTime() - DirtySince > TNGameSettingsDetail::AutoSaveDelay)
@@ -282,19 +526,20 @@ void UTN_GameSettingsSubsystem::ResetGroup(ETNSettingsGroup Group)
 		Settings.MusicVolume = Defaults.MusicVolume;
 		Settings.EffectsVolume = Defaults.EffectsVolume;
 		Settings.AmbientVolume = Defaults.AmbientVolume;
+		Settings.bMuteInBackground = Defaults.bMuteInBackground;
 		break;
 	case ETNSettingsGroup::Voice:
 		Settings.VoiceVolume = Defaults.VoiceVolume;
 		Settings.PlayerVoiceVolumes.Reset();
 		Settings.MutedPlayers.Reset();
 		Settings.bPushToTalk = Defaults.bPushToTalk;
-		Settings.PushToTalkKey = Defaults.PushToTalkKey;
-		Settings.PushToTalkPadKey = Defaults.PushToTalkPadKey;
 		Settings.bMicMuted = Defaults.bMicMuted;
 		Settings.MicSensitivity = Defaults.MicSensitivity;
 		Settings.MicGain = Defaults.MicGain;
+		Settings.CaptureDeviceId = Defaults.CaptureDeviceId;
 		break;
 	case ETNSettingsGroup::Controls:
+		// Las teclas tienen su propio «Restablecer» (página de controles).
 		Settings.MouseSensitivity = Defaults.MouseSensitivity;
 		Settings.GamepadSensitivity = Defaults.GamepadSensitivity;
 		Settings.bInvertMouseY = Defaults.bInvertMouseY;
@@ -305,6 +550,8 @@ void UTN_GameSettingsSubsystem::ResetGroup(ETNSettingsGroup Group)
 		Settings.FieldOfViewOffset = Defaults.FieldOfViewOffset;
 		Settings.ColorFilter = Defaults.ColorFilter;
 		Settings.ColorFilterStrength = Defaults.ColorFilterStrength;
+		Settings.UIScale = Defaults.UIScale;
+		Settings.bShowTalkers = Defaults.bShowTalkers;
 		break;
 	default:
 		// Gráficos: el brillo y el contador; la calidad se elige con «Calidad recomendada» (UGameUserSettings).
@@ -313,6 +560,15 @@ void UTN_GameSettingsSubsystem::ResetGroup(ETNSettingsGroup Group)
 		break;
 	}
 	MarkDirty(false);
+	ApplyGlobalSettings();
+}
+
+void UTN_GameSettingsSubsystem::ResetAll()
+{
+	Settings = FTNGameSettings();
+	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Todos los ajustes propios, a los de serie."));
+	// Teclas (y copia de IMC_Player), guardado y el resto aplicado.
+	OnKeyBindingsChanged();
 	ApplyGlobalSettings();
 }
 
@@ -364,10 +620,20 @@ void UTN_GameSettingsSubsystem::FinishVideoModeChange(bool bKeep)
 	}
 }
 
-float UTN_GameSettingsSubsystem::SensitivityToThreshold(float Sensitivity)
+float UTN_GameSettingsSubsystem::SensitivityToThreshold(float Sensitivity, float BaseThreshold)
 {
-	const float Db = FMath::Lerp(-20.f, -60.f, FMath::Clamp(Sensitivity, 0.f, 1.f));
-	return FMath::Pow(10.f, Db / 20.f);
+	// 0,5 → el umbral de serie; 0 → +20 dB (hay que hablar más alto); 1 → -20 dB (se oye hasta lo bajito).
+	const float Db = FMath::Lerp(20.f, -20.f, FMath::Clamp(Sensitivity, 0.f, 1.f));
+	return FMath::Max(BaseThreshold, 1e-5f) * FMath::Pow(10.f, Db / 20.f);
+}
+
+float UTN_GameSettingsSubsystem::GetSpeakingThreshold() const
+{
+	// El umbral de serie es el del componente de voz (su plantilla, por si la tortuga trae otro).
+	const UProximityVoiceComponent* Voice = GetLocalVoice();
+	const UProximityVoiceComponent* Template = Voice ? Cast<UProximityVoiceComponent>(Voice->GetArchetype()) : nullptr;
+	const UProximityVoiceComponent* Base = Template ? Template : GetDefault<UProximityVoiceComponent>();
+	return SensitivityToThreshold(Settings.MicSensitivity, Base->SpeakingThreshold);
 }
 
 float UTN_GameSettingsSubsystem::BrightnessToGamma(float Brightness) const
@@ -448,8 +714,8 @@ void UTN_GameSettingsSubsystem::ApplyGlobalSettings()
 	// Brillo: gamma de salida del motor (la que usa el tonemapper).
 	if (GEngine) { GEngine->DisplayGamma = BrightnessToGamma(Settings.Brightness); }
 
-	// Filtro para daltónicos (Slate lo aplica a toda la ventana, juego incluido). Sin filtro no se toca nada (en el editor
-	// se respeta la vista previa de daltonismo que tenga puesta).
+	// Filtro para daltónicos (Slate lo aplica a la imagen final de la ventana: el juego y el HUD, marcadores incluidos). Sin
+	// filtro no se toca nada (en el editor se respeta la vista previa de daltonismo que tenga puesta).
 	const bool bFilterTypeChanged = AppliedColorFilter != Settings.ColorFilter;
 	const bool bFilterStrengthChanged = Settings.ColorFilter != 0 && !FMath::IsNearlyEqual(AppliedColorFilterStrength, Settings.ColorFilterStrength);
 	if (bFilterTypeChanged || bFilterStrengthChanged)
@@ -460,6 +726,18 @@ void UTN_GameSettingsSubsystem::ApplyGlobalSettings()
 		UWidgetBlueprintLibrary::SetColorVisionDeficiencyType(Type, Type == EColorVisionDeficiency::NormalVision ? 0.f : Settings.ColorFilterStrength,
 			Type != EColorVisionDeficiency::NormalVision, false);
 	}
+
+	// Tamaño de la interfaz: la escala extra de UUserInterfaceSettings, que solo multiplica la escala DPI del viewport del
+	// juego (la interfaz del editor tiene la suya). Se lee cada fotograma: cambia al momento.
+	const float WantedScale = TNGameSettingsDetail::Baseline().ApplicationScale * Settings.UIScale;
+	if (!FMath::IsNearlyEqual(AppliedUIScale, WantedScale))
+	{
+		GetMutableDefault<UUserInterfaceSettings>()->ApplicationScale = WantedScale;
+		AppliedUIScale = WantedScale;
+	}
+
+	// Micrófono elegido: lo abre la voz al empezar (reaparecer, cambiar de mapa).
+	UProximityVoiceComponent::SetPreferredCaptureDevice(Settings.CaptureDeviceId);
 }
 
 void UTN_GameSettingsSubsystem::ApplyAudioVolumes(UWorld* World, bool bForce)
@@ -482,10 +760,13 @@ void UTN_GameSettingsSubsystem::ApplyAudioVolumes(UWorld* World, bool bForce)
 		if (EffectsMix) { UGameplayStatics::PushSoundMixModifier(World, EffectsMix); }
 		AudioWorld = World;
 	}
-	if (Device && (bNewWorld || bForce || !FMath::IsNearlyEqual(AppliedMasterVolume, Settings.MasterVolume)))
+	// Con «Silenciar sin el foco de la ventana», a 0 mientras la ventana del juego no está activa.
+	const bool bMutedByFocus = Settings.bMuteInBackground && FSlateApplication::IsInitialized() && !FSlateApplication::Get().IsActive();
+	const float Master = bMutedByFocus ? 0.f : Settings.MasterVolume;
+	if (Device && (bNewWorld || bForce || !FMath::IsNearlyEqual(AppliedMasterVolume, Master)))
 	{
-		Device->SetTransientPrimaryVolume(Settings.MasterVolume);
-		AppliedMasterVolume = Settings.MasterVolume;
+		Device->SetTransientPrimaryVolume(Master);
+		AppliedMasterVolume = Master;
 	}
 	if (EffectsMix && (bNewWorld || bForce || !FMath::IsNearlyEqual(AppliedEffectsVolume, Settings.EffectsVolume)))
 	{
@@ -526,7 +807,8 @@ USoundClass* UTN_GameSettingsSubsystem::ClassFor(const UAudioComponent* Componen
 void UTN_GameSettingsSubsystem::UpdateSounds(UWorld* World)
 {
 	// Cada fotograma: los sonidos hechos en código (no los assets, que no se tocan) van a su clase, y la voz de cada
-	// compañero, a su volumen. El dispositivo lee la clase del sonido en cada actualización, así que vale aunque ya suene.
+	// compañero, a su volumen. El dispositivo lee la clase del sonido en cada actualización, así que vale aunque ya suene
+	// y para los sintetizadores que se crean más tarde (tienda, probador, fin de partida).
 	ForEachObjectOfClass(UAudioComponent::StaticClass(), [this, World](UObject* Object)
 	{
 		UAudioComponent* Component = static_cast<UAudioComponent*>(Object);
@@ -547,6 +829,12 @@ void UTN_GameSettingsSubsystem::UpdateSounds(UWorld* World)
 		if (Sound->SoundClassObject != Wanted)
 		{
 			Sound->SoundClassObject = Wanted;
+		}
+		// Un sintetizador con clase propia la pone de sustituta en su componente (USynthComponent::Start) y esa manda: se
+		// cambia también (las nuestras no traen ninguna).
+		if (Component->SoundClassOverride && Component->SoundClassOverride != Wanted && Wanted != VoiceClass)
+		{
+			Component->SoundClassOverride = Wanted;
 		}
 		if (Wanted == VoiceClass)
 		{
@@ -642,6 +930,19 @@ bool UTN_GameSettingsSubsystem::IsMicCapturing() const
 	return Voice && Voice->IsCapturing();
 }
 
+void UTN_GameSettingsSubsystem::SetCaptureDevice(const FString& DeviceId)
+{
+	EditSettings([&DeviceId](FTNGameSettings& S) { S.CaptureDeviceId = DeviceId; });
+	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Micrófono elegido: %s (se abre al reaparecer o al cambiar de mapa)."),
+		DeviceId.IsEmpty() ? TEXT("el predeterminado de Windows") : *DeviceId);
+}
+
+bool UTN_GameSettingsSubsystem::IsCaptureDeviceChangePending() const
+{
+	const UProximityVoiceComponent* Voice = GetLocalVoice();
+	return Voice && Voice->IsCapturing() && Voice->GetOpenCaptureDevice() != Settings.CaptureDeviceId;
+}
+
 void UTN_GameSettingsSubsystem::UpdateLocalVoice(APlayerController* PC)
 {
 	// ¿Sale la voz? Silenciado, no; con pulsar para hablar, solo con la tecla (o el botón del mando) pulsada.
@@ -660,12 +961,15 @@ void UTN_GameSettingsSubsystem::UpdateLocalVoice(APlayerController* PC)
 		return;
 	}
 	Voice->SetTransmitEnabled(bTransmitAllowed);
-	Voice->SpeakingThreshold = SensitivityToThreshold(Settings.MicSensitivity);
-	Voice->VoiceGain = GetDefault<UProximityVoiceComponent>()->VoiceGain * Settings.MicGain;
+	// Umbral y ganancia: los de serie del componente (su plantilla) con la sensibilidad y la ganancia del jugador.
+	const UProximityVoiceComponent* Template = Cast<UProximityVoiceComponent>(Voice->GetArchetype());
+	const UProximityVoiceComponent* Base = Template ? Template : GetDefault<UProximityVoiceComponent>();
+	Voice->SpeakingThreshold = SensitivityToThreshold(Settings.MicSensitivity, Base->SpeakingThreshold);
+	Voice->VoiceGain = Base->VoiceGain * Settings.MicGain;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cámara y contador de FPS
+// Cámara, contador de FPS y quién habla
 // ─────────────────────────────────────────────────────────────────────────────
 
 void UTN_GameSettingsSubsystem::UpdateCamera(APlayerController* PC)
@@ -677,7 +981,7 @@ void UTN_GameSettingsSubsystem::UpdateCamera(APlayerController* PC)
 
 	// Sensibilidad e inversión: escalas de giro del PlayerController (UInputSettings::bEnableLegacyInputScales está
 	// activo en DefaultInput.ini), con los valores del último aparato usado. Valen para la tortuga y para cualquier
-	// cámara que gire con AddControllerYawInput/AddControllerPitchInput (el espectador incluido).
+	// cámara que gire con AddControllerYawInput/AddControllerPitchInput (la cámara libre del fantasma lee los getters).
 	const bool bPad = IsUsingGamepad(PC);
 	const APlayerController* Defaults = PC->GetClass()->GetDefaultObject<APlayerController>();
 	const float Sensitivity = GetLookSensitivity(bPad);
@@ -692,12 +996,21 @@ void UTN_GameSettingsSubsystem::UpdateCamera(APlayerController* PC)
 			FMath::Clamp(TurtleDefaults->GetCameraFOVSprint() + Settings.FieldOfViewOffset, 40.f, 120.f));
 	}
 
-	// Temblor de cámara: los modificadores que tiemblan, apagados (o encendidos otra vez los que se apagaron aquí).
 	APlayerCameraManager* Camera = PC->PlayerCameraManager;
 	if (!Camera)
 	{
 		return;
 	}
+	// Mirando a otra tortuga (espectador): el desplazamiento lo suma un modificador propio, el último de la lista.
+	if (!Camera->FindCameraModifierByClass(UTN_SettingsFovModifier::StaticClass()))
+	{
+		if (UTN_SettingsFovModifier* Fov = Cast<UTN_SettingsFovModifier>(Camera->AddNewCameraModifier(UTN_SettingsFovModifier::StaticClass())))
+		{
+			Fov->SetSettings(this);
+		}
+	}
+
+	// Temblor de cámara: los modificadores que tiemblan, apagados (o encendidos otra vez los que se apagaron aquí).
 	if (!Settings.bCameraShake)
 	{
 		Camera->ForEachCameraModifier([this](UCameraModifier* Modifier)
@@ -738,6 +1051,542 @@ void UTN_GameSettingsSubsystem::UpdateFpsCounter(APlayerController* PC)
 	}
 }
 
+void UTN_GameSettingsSubsystem::UpdateTalkers(APlayerController* PC)
+{
+	// Solo en la partida (lobby incluido), no en el menú principal.
+	if (!Settings.bShowTalkers || !Cast<AMP_GamePlayerController>(PC))
+	{
+		if (TalkersWidget && TalkersWidget->IsInViewport()) { TalkersWidget->RemoveFromParent(); }
+		return;
+	}
+	if (!TalkersWidget)
+	{
+		TalkersWidget = CreateWidget<UTN_TalkersWidget>(GetGameInstance(), UTN_TalkersWidget::StaticClass());
+	}
+	if (TalkersWidget && !TalkersWidget->IsInViewport())
+	{
+		TalkersWidget->AddToViewport(TNGameSettingsDetail::TalkersZOrder);
+	}
+}
+
+UTN_SettingsFovModifier::UTN_SettingsFovModifier()
+{
+	// El último: después de la cámara del fantasma (0) y de los temblores.
+	Priority = 250;
+}
+
+bool UTN_SettingsFovModifier::ModifyCamera(float DeltaTime, FMinimalViewInfo& InOutPOV)
+{
+	const UTN_GameSettingsSubsystem* Owner = SettingsOwner.Get();
+	const APlayerController* PC = CameraOwner ? CameraOwner->GetOwningPlayerController() : nullptr;
+	const ATortugaCharacter* Watched = Cast<ATortugaCharacter>(CameraOwner ? CameraOwner->GetViewTarget() : nullptr);
+	if (IsDisabled() || !Owner || !PC || !Watched || Watched->IsLocallyControlled())
+	{
+		return false;
+	}
+	// Solo la tortuga de otro jugador: la propia (también su cuerpo tras caer) ya lleva el desplazamiento en su cámara.
+	const APlayerState* WatchedState = Watched->GetPlayerState();
+	const float Offset = Owner->GetFieldOfViewOffset();
+	if (WatchedState && WatchedState != PC->PlayerState && !FMath::IsNearlyZero(Offset))
+	{
+		InOutPOV.FOV = FMath::Clamp(InOutPOV.FOV + Offset, 40.f, 130.f);
+	}
+	return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teclas y botones
+// ─────────────────────────────────────────────────────────────────────────────
+
+FText UTN_GameSettingsSubsystem::KeyDisplayName(const FKey& Key)
+{
+	if (!Key.IsValid())
+	{
+		return NSLOCTEXT("TNSettings", "NoKey", "—");
+	}
+	static const TMap<FName, FString> Names = {
+		{ TEXT("SpaceBar"), TEXT("Espacio") }, { TEXT("LeftShift"), TEXT("Mayús izq.") }, { TEXT("RightShift"), TEXT("Mayús der.") },
+		{ TEXT("LeftControl"), TEXT("Ctrl izq.") }, { TEXT("RightControl"), TEXT("Ctrl der.") }, { TEXT("LeftAlt"), TEXT("Alt") },
+		{ TEXT("RightAlt"), TEXT("Alt Gr") }, { TEXT("BackSpace"), TEXT("Retroceso") }, { TEXT("Escape"), TEXT("Esc") }, { TEXT("Tab"), TEXT("Tab") },
+		{ TEXT("Enter"), TEXT("Intro") }, { TEXT("CapsLock"), TEXT("Bloq Mayús") }, { TEXT("PageUp"), TEXT("Re Pág") }, { TEXT("PageDown"), TEXT("Av Pág") },
+		{ TEXT("Delete"), TEXT("Supr") }, { TEXT("Insert"), TEXT("Insert") }, { TEXT("Home"), TEXT("Inicio") }, { TEXT("End"), TEXT("Fin") },
+		{ TEXT("Up"), TEXT("Flecha arriba") }, { TEXT("Down"), TEXT("Flecha abajo") }, { TEXT("Left"), TEXT("Flecha izquierda") },
+		{ TEXT("Right"), TEXT("Flecha derecha") },
+		{ TEXT("Mouse2D"), TEXT("Ratón") }, { TEXT("MouseX"), TEXT("Ratón") }, { TEXT("MouseY"), TEXT("Ratón") },
+		{ TEXT("LeftMouseButton"), TEXT("Clic izquierdo") }, { TEXT("RightMouseButton"), TEXT("Clic derecho") },
+		{ TEXT("MiddleMouseButton"), TEXT("Clic de la rueda") }, { TEXT("ThumbMouseButton"), TEXT("Botón lateral 1") },
+		{ TEXT("ThumbMouseButton2"), TEXT("Botón lateral 2") }, { TEXT("MouseScrollUp"), TEXT("Rueda") }, { TEXT("MouseScrollDown"), TEXT("Rueda") },
+		{ TEXT("MouseWheelAxis"), TEXT("Rueda") },
+		{ TEXT("Gamepad_Left2D"), TEXT("Stick izquierdo") }, { TEXT("Gamepad_Right2D"), TEXT("Stick derecho") },
+		{ TEXT("Gamepad_LeftX"), TEXT("Stick izquierdo") }, { TEXT("Gamepad_LeftY"), TEXT("Stick izquierdo") },
+		{ TEXT("Gamepad_RightX"), TEXT("Stick derecho") }, { TEXT("Gamepad_RightY"), TEXT("Stick derecho") },
+		{ TEXT("Gamepad_FaceButton_Bottom"), TEXT("A / Cruz") }, { TEXT("Gamepad_FaceButton_Right"), TEXT("B / Círculo") },
+		{ TEXT("Gamepad_FaceButton_Left"), TEXT("X / Cuadrado") }, { TEXT("Gamepad_FaceButton_Top"), TEXT("Y / Triángulo") },
+		{ TEXT("Gamepad_LeftShoulder"), TEXT("LB / L1") }, { TEXT("Gamepad_RightShoulder"), TEXT("RB / R1") },
+		{ TEXT("Gamepad_LeftTrigger"), TEXT("LT / L2") }, { TEXT("Gamepad_RightTrigger"), TEXT("RT / R2") },
+		{ TEXT("Gamepad_LeftTriggerAxis"), TEXT("LT / L2") }, { TEXT("Gamepad_RightTriggerAxis"), TEXT("RT / R2") },
+		{ TEXT("Gamepad_DPad_Up"), TEXT("Cruceta arriba") }, { TEXT("Gamepad_DPad_Down"), TEXT("Cruceta abajo") },
+		{ TEXT("Gamepad_DPad_Left"), TEXT("Cruceta izquierda") }, { TEXT("Gamepad_DPad_Right"), TEXT("Cruceta derecha") },
+		{ TEXT("Gamepad_LeftThumbstick"), TEXT("Clic stick izquierdo") }, { TEXT("Gamepad_RightThumbstick"), TEXT("Clic stick derecho") },
+		{ TEXT("Gamepad_Special_Right"), TEXT("Start / Menú") }, { TEXT("Gamepad_Special_Left"), TEXT("Select / Vista") },
+	};
+	if (const FString* Found = Names.Find(Key.GetFName()))
+	{
+		return FText::FromString(*Found);
+	}
+	return Key.GetDisplayName();
+}
+
+FText UTN_GameSettingsSubsystem::ActionLabel(const FString& ActionName)
+{
+	static const TMap<FString, FText> Names = {
+		{ TEXT("IA_Move"), NSLOCTEXT("TNSettings", "ActMove", "Moverse") },
+		{ TEXT("IA_Look"), NSLOCTEXT("TNSettings", "ActLook", "Mover la cámara") },
+		{ TEXT("IA_Jump"), NSLOCTEXT("TNSettings", "ActJump", "Saltar") },
+		{ TEXT("IA_Sprint"), NSLOCTEXT("TNSettings", "ActSprint", "Correr") },
+		{ TEXT("IA_Interact"), NSLOCTEXT("TNSettings", "ActInteract", "Usar, coger y lanzar") },
+		{ TEXT("IA_Shell"), NSLOCTEXT("TNSettings", "ActShell", "Meterse en el caparazón") },
+		{ TEXT("IA_DropItem"), NSLOCTEXT("TNSettings", "ActDrop", "Soltar el objeto") },
+		{ TEXT("IA_RotateInventory"), NSLOCTEXT("TNSettings", "ActRotate", "Cambiar de objeto") },
+		{ TEXT("IA_OpenEmoteWheel"), NSLOCTEXT("TNSettings", "ActEmotes", "Rueda de bailes") },
+		{ TEXT("IA_OpenChatWheel"), NSLOCTEXT("TNSettings", "ActChat", "Frases rápidas") },
+		{ TEXT("IA_RadialNavigate"), NSLOCTEXT("TNSettings", "ActWheelPick", "Elegir en la rueda") },
+	};
+	if (const FText* Found = Names.Find(ActionName))
+	{
+		return *Found;
+	}
+	FString Clean = ActionName;
+	Clean.RemoveFromStart(TEXT("IA_"));
+	return FText::FromString(Clean);
+}
+
+bool UTN_GameSettingsSubsystem::IsIgnoredWhileCapturing(const FKey& Key)
+{
+	if (!Key.IsValid() || Key.IsAxis2D() || Key.IsAxis3D() || Key.IsTouch() || Key.IsGesture())
+	{
+		return true;
+	}
+	// Ejes sueltos (ratón, sticks), menos los gatillos.
+	if (Key.IsAxis1D() && TNGameSettingsDetail::PhysicalKey(Key) != EKeys::Gamepad_LeftTriggerAxis
+		&& TNGameSettingsDetail::PhysicalKey(Key) != EKeys::Gamepad_RightTriggerAxis)
+	{
+		return true;
+	}
+	// Mover un stick también llega como «tecla» (Gamepad_LeftStick_Up...): se ignora para que un roce no la cambie.
+	const FString Name = Key.GetFName().ToString();
+	return Name.StartsWith(TEXT("Gamepad_LeftStick_")) || Name.StartsWith(TEXT("Gamepad_RightStick_")) || Name.StartsWith(TEXT("Virtual_"))
+		|| Key == EKeys::MouseScrollUp || Key == EKeys::MouseScrollDown || Key == EKeys::AnyKey;
+}
+
+bool UTN_GameSettingsSubsystem::IsBindableKey(const FKey& InKey)
+{
+	const FKey Key = TNGameSettingsDetail::PhysicalKey(InKey);
+	if (!TNGameSettingsDetail::IsRowKey(Key) || IsIgnoredWhileCapturing(Key))
+	{
+		return false;
+	}
+	// Escape abre el menú (y en el editor corta la partida), Select/Vista cancela la captura, el Tabulador abre el menú en
+	// el editor y la consola es de la consola.
+	if (Key == EKeys::Escape || Key == EKeys::Gamepad_Special_Left || (GIsEditor && Key == EKeys::Tab))
+	{
+		return false;
+	}
+	return !GetDefault<UInputSettings>()->ConsoleKeys.Contains(Key);
+}
+
+void UTN_GameSettingsSubsystem::BuildDefaultBindings()
+{
+	using namespace TNGameSettingsDetail;
+	DefaultBindings.Reset();
+	FixedControls.Reset();
+	if (OriginalMapping)
+	{
+		// Filas: una por acción de botón y una por dirección de las de ejes, con la primera tecla de cada aparato.
+		for (const FEnhancedActionKeyMapping& Mapping : OriginalMapping->GetMappings())
+		{
+			const UInputAction* Action = Mapping.Action;
+			if (!Action || !IsRowKey(Mapping.Key))
+			{
+				continue;
+			}
+			const FString Direction = MappingDirection(Mapping);
+			const FString ActionName = Action->GetName();
+			const FString Id = Direction.IsEmpty() ? ActionName : ActionName + TEXT(":") + Direction;
+			FTNKeyBinding* Row = DefaultBindings.FindByPredicate([&Id](const FTNKeyBinding& Existing) { return Existing.Id == Id; });
+			if (!Row)
+			{
+				Row = &DefaultBindings.AddDefaulted_GetRef();
+				Row->Id = Id;
+				Row->Label = BindingLabel(ActionName, Direction);
+				Row->Action = Action;
+				Row->Direction = Direction;
+				Row->Order = ActionOrder(ActionName) * 10 + DirectionOrder(Direction);
+			}
+			const int32 Device = DeviceOf(Mapping.Key);
+			if (!Row->Defaults[Device].IsValid()) { Row->Defaults[Device] = Mapping.Key; }
+		}
+		// Lo que va con ejes (stick, ratón): en las filas de esa acción se enseña en el aparato sin tecla (moverse con el
+		// stick); las acciones que solo van con ejes (mirar, elegir en la rueda) se listan aparte, sin cambiarse.
+		for (const FEnhancedActionKeyMapping& Mapping : OriginalMapping->GetMappings())
+		{
+			const UInputAction* Action = Mapping.Action;
+			if (!Action || !Mapping.Key.IsValid() || IsRowKey(Mapping.Key))
+			{
+				continue;
+			}
+			const int32 Device = DeviceOf(Mapping.Key);
+			bool bHasRows = false;
+			for (FTNKeyBinding& Row : DefaultBindings)
+			{
+				if (Row.Action.Get() != Action)
+				{
+					continue;
+				}
+				bHasRows = true;
+				if (!Row.Defaults[Device].IsValid() && !Row.FixedKeys[Device].IsValid()) { Row.FixedKeys[Device] = Mapping.Key; }
+			}
+			if (!bHasRows)
+			{
+				const FString ActionName = Action->GetName();
+				FTNKeyBinding* Fixed = FixedControls.FindByPredicate([Action](const FTNKeyBinding& Existing) { return Existing.Action.Get() == Action; });
+				if (!Fixed)
+				{
+					Fixed = &FixedControls.AddDefaulted_GetRef();
+					Fixed->Id = ActionName;
+					Fixed->Label = ActionLabel(ActionName);
+					Fixed->Action = Action;
+					Fixed->Order = ActionOrder(ActionName) * 10;
+					Fixed->bEditable[0] = Fixed->bEditable[1] = false;
+				}
+				if (!Fixed->FixedKeys[Device].IsValid()) { Fixed->FixedKeys[Device] = Mapping.Key; }
+			}
+		}
+		// Un aparato sin tecla: a una acción de botón se le puede poner; a una dirección, no (el mando se mueve con el stick).
+		for (FTNKeyBinding& Row : DefaultBindings)
+		{
+			for (int32 Device = 0; Device < 2; ++Device)
+			{
+				Row.bEditable[Device] = Row.Defaults[Device].IsValid() || (Row.Direction.IsEmpty() && !Row.FixedKeys[Device].IsValid());
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Ajustes] No se pudo cargar IMC_Player: no se pueden cambiar las teclas."));
+	}
+
+	// Las del propio juego: hablar (con pulsar para hablar) y el menú de pausa.
+	const FTNGameSettings Defaults;
+	FTNKeyBinding& Talk = DefaultBindings.AddDefaulted_GetRef();
+	Talk.Id = TalkId;
+	Talk.Label = NSLOCTEXT("TNSettings", "TalkRow", "Hablar (pulsar para hablar)");
+	Talk.Defaults[0] = FKey(Defaults.PushToTalkKey);
+	Talk.Defaults[1] = FKey(Defaults.PushToTalkPadKey);
+	Talk.Order = 20000;
+	FTNKeyBinding& Pause = DefaultBindings.AddDefaulted_GetRef();
+	Pause.Id = PauseId;
+	Pause.Label = NSLOCTEXT("TNSettings", "PauseRow", "Abrir y cerrar este menú");
+	Pause.Defaults[0] = FKey(Defaults.PauseKey);
+	Pause.Defaults[1] = FKey(Defaults.PausePadKey);
+	Pause.Order = 20010;
+
+	DefaultBindings.StableSort([](const FTNKeyBinding& A, const FTNKeyBinding& B) { return A.Order < B.Order; });
+	FixedControls.StableSort([](const FTNKeyBinding& A, const FTNKeyBinding& B) { return A.Order < B.Order; });
+	for (FTNKeyBinding& Row : DefaultBindings)
+	{
+		Row.Keys[0] = Row.Defaults[0];
+		Row.Keys[1] = Row.Defaults[1];
+	}
+}
+
+const FTNKeyBinding* UTN_GameSettingsSubsystem::FindDefaultBinding(const FString& Id) const
+{
+	return DefaultBindings.FindByPredicate([&Id](const FTNKeyBinding& Row) { return Row.Id == Id; });
+}
+
+FKey UTN_GameSettingsSubsystem::GetBindingKey(const FTNKeyBinding& Row, int32 Device) const
+{
+	using namespace TNGameSettingsDetail;
+	const int32 Slot = FMath::Clamp(Device, 0, 1);
+	if (Row.Id == TalkId) { return FKey(Slot == 0 ? Settings.PushToTalkKey : Settings.PushToTalkPadKey); }
+	if (Row.Id == PauseId) { return FKey(Slot == 0 ? Settings.PauseKey : Settings.PausePadKey); }
+	if (const FName* Override = Settings.KeyOverrides.Find(OverrideName(Row.Id, Slot)))
+	{
+		return FKey(*Override);
+	}
+	return Row.Defaults[Slot];
+}
+
+void UTN_GameSettingsSubsystem::SetBindingKey(const FTNKeyBinding& Row, int32 Device, const FKey& Key)
+{
+	using namespace TNGameSettingsDetail;
+	const int32 Slot = FMath::Clamp(Device, 0, 1);
+	const FName NewName = Key.IsValid() ? Key.GetFName() : NAME_None;
+	if (Row.Id == TalkId)
+	{
+		(Slot == 0 ? Settings.PushToTalkKey : Settings.PushToTalkPadKey) = NewName;
+		return;
+	}
+	if (Row.Id == PauseId)
+	{
+		(Slot == 0 ? Settings.PauseKey : Settings.PausePadKey) = NewName;
+		return;
+	}
+	const FString OverrideKey = OverrideName(Row.Id, Slot);
+	if (SamePhysicalKey(Key, Row.Defaults[Slot]))
+	{
+		Settings.KeyOverrides.Remove(OverrideKey);
+	}
+	else
+	{
+		Settings.KeyOverrides.Add(OverrideKey, NewName);
+	}
+}
+
+ETNRebindResult UTN_GameSettingsSubsystem::AssignKey(const FTNKeyBinding& Row, int32 Device, const FKey& InKey, bool bValidate, FText& OutMessage)
+{
+	using namespace TNGameSettingsDetail;
+	const int32 Slot = FMath::Clamp(Device, 0, 1);
+	// Las filas de IMC_Player llevan los gatillos como eje (como IMC_Player); hablar y el menú, como botón.
+	auto ForRow = [](const FTNKeyBinding& Target, const FKey& Key)
+	{
+		return !Key.IsValid() ? FKey() : (IsGameRow(Target) ? ButtonKey(Key) : PhysicalKey(Key));
+	};
+	const FKey NewKey = ForRow(Row, InKey);
+	if (bValidate)
+	{
+		if (!Row.bEditable[Slot])
+		{
+			OutMessage = FText::Format(NSLOCTEXT("TNSettings", "NotEditable", "«{0}» no se cambia con {1}: va con {2}."), Row.Label, DeviceWord(Slot),
+				KeyDisplayName(Row.FixedKeys[Slot]));
+			return ETNRebindResult::Refused;
+		}
+		if (!IsBindableKey(NewKey))
+		{
+			OutMessage = FText::Format(NSLOCTEXT("TNSettings", "Reserved", "{0} está reservada (menú, consola o editor). Prueba con otra."), KeyDisplayName(InKey));
+			return ETNRebindResult::Refused;
+		}
+	}
+	const FKey OldKey = GetBindingKey(Row, Slot);
+	if (SamePhysicalKey(OldKey, NewKey))
+	{
+		OutMessage = FText::Format(NSLOCTEXT("TNSettings", "Unchanged", "«{0}» ya iba con {1}."), Row.Label, KeyDisplayName(NewKey));
+		return ETNRebindResult::Unchanged;
+	}
+
+	// Si otra fila del mismo aparato la tenía, se queda con la que tenía esta (si le vale) o sin tecla.
+	OutMessage = FText::GetEmpty();
+	if (NewKey.IsValid())
+	{
+		for (const FTNKeyBinding& Other : DefaultBindings)
+		{
+			if (Other.Id == Row.Id || !SamePhysicalKey(GetBindingKey(Other, Slot), NewKey))
+			{
+				continue;
+			}
+			const FKey GiveBack = OldKey.IsValid() && IsBindableKey(OldKey) && Other.bEditable[Slot] ? ForRow(Other, OldKey) : FKey();
+			SetBindingKey(Other, Slot, GiveBack);
+			OutMessage = GiveBack.IsValid()
+				? FText::Format(NSLOCTEXT("TNSettings", "Swapped", "{0} estaba en «{1}»: ahora «{1}» va con {2}."), KeyDisplayName(NewKey), Other.Label,
+					KeyDisplayName(GiveBack))
+				: FText::Format(NSLOCTEXT("TNSettings", "Emptied", "{0} estaba en «{1}», que se queda sin tecla en {2}."), KeyDisplayName(NewKey), Other.Label,
+					DeviceWord(Slot));
+		}
+	}
+	SetBindingKey(Row, Slot, NewKey);
+	if (OutMessage.IsEmpty())
+	{
+		OutMessage = FText::Format(NSLOCTEXT("TNSettings", "Assigned", "«{0}»: {1}."), Row.Label, KeyDisplayName(NewKey));
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Controles: %s (%s) → %s."), *Row.Id, Slot == 0 ? TEXT("teclado") : TEXT("mando"),
+		NewKey.IsValid() ? *NewKey.ToString() : TEXT("sin tecla"));
+	return ETNRebindResult::Changed;
+}
+
+TArray<FTNKeyBinding> UTN_GameSettingsSubsystem::GetKeyBindings() const
+{
+	TArray<FTNKeyBinding> Out = DefaultBindings;
+	for (FTNKeyBinding& Row : Out)
+	{
+		Row.Keys[0] = GetBindingKey(Row, 0);
+		Row.Keys[1] = GetBindingKey(Row, 1);
+	}
+	return Out;
+}
+
+ETNRebindResult UTN_GameSettingsSubsystem::RebindKey(const FString& Id, const FKey& Key, FText& OutMessage)
+{
+	const FTNKeyBinding* Row = FindDefaultBinding(Id);
+	if (!Row || !Key.IsValid())
+	{
+		return ETNRebindResult::Refused;
+	}
+	const ETNRebindResult Result = AssignKey(*Row, TNGameSettingsDetail::DeviceOf(Key), Key, true, OutMessage);
+	if (Result == ETNRebindResult::Changed)
+	{
+		OnKeyBindingsChanged();
+	}
+	return Result;
+}
+
+void UTN_GameSettingsSubsystem::ResetKeyBinding(const FString& Id, FText& OutMessage)
+{
+	OutMessage = FText::GetEmpty();
+	const FTNKeyBinding* Row = FindDefaultBinding(Id);
+	if (!Row)
+	{
+		return;
+	}
+	bool bChanged = false;
+	TArray<FString> Messages;
+	for (int32 Device = 0; Device < 2; ++Device)
+	{
+		FText Message;
+		// Sin validar: la de serie vale siempre (el menú va con Escape, que no se puede elegir).
+		if (AssignKey(*Row, Device, Row->Defaults[Device], false, Message) == ETNRebindResult::Changed)
+		{
+			bChanged = true;
+			Messages.Add(Message.ToString());
+		}
+	}
+	OutMessage = bChanged ? FText::FromString(FString::Join(Messages, TEXT(" ")))
+		: FText::Format(NSLOCTEXT("TNSettings", "AlreadyDefault", "«{0}» ya iba con las de serie."), Row->Label);
+	if (bChanged)
+	{
+		OnKeyBindingsChanged();
+	}
+}
+
+void UTN_GameSettingsSubsystem::ResetAllKeyBindings()
+{
+	const FTNGameSettings Defaults;
+	Settings.KeyOverrides.Reset();
+	Settings.PushToTalkKey = Defaults.PushToTalkKey;
+	Settings.PushToTalkPadKey = Defaults.PushToTalkPadKey;
+	Settings.PauseKey = Defaults.PauseKey;
+	Settings.PausePadKey = Defaults.PausePadKey;
+	OnKeyBindingsChanged();
+}
+
+bool UTN_GameSettingsSubsystem::HasCustomKeys() const
+{
+	const FTNGameSettings Defaults;
+	return Settings.KeyOverrides.Num() > 0 || Settings.PushToTalkKey != Defaults.PushToTalkKey || Settings.PushToTalkPadKey != Defaults.PushToTalkPadKey
+		|| Settings.PauseKey != Defaults.PauseKey || Settings.PausePadKey != Defaults.PausePadKey;
+}
+
+void UTN_GameSettingsSubsystem::OnKeyBindingsChanged()
+{
+	TNGameSettingsDetail::ClampSettings(Settings);
+	MarkDirty(false);
+	RebuildRemappedMapping();
+	// En el acto (sin esperar al siguiente fotograma); la entrada del menú se rehace sola con sus teclas nuevas.
+	UpdateInputMapping();
+}
+
+void UTN_GameSettingsSubsystem::RebuildRemappedMapping()
+{
+	using namespace TNGameSettingsDetail;
+	UInputMappingContext* Previous = RemappedMapping;
+	RemappedMapping = nullptr;
+	if (OriginalMapping && Settings.KeyOverrides.Num() > 0)
+	{
+		// Copia transitoria de IMC_Player (con sus modificadores y disparadores) con las teclas del jugador.
+		UInputMappingContext* Copy = DuplicateObject<UInputMappingContext>(OriginalMapping, this,
+			MakeUniqueObjectName(this, UInputMappingContext::StaticClass(), TEXT("IMC_Player_Jugador")));
+		Copy->SetFlags(RF_Transient);
+		for (const FTNKeyBinding& Row : DefaultBindings)
+		{
+			const UInputAction* Action = Row.Action.Get();
+			if (!Action)
+			{
+				continue;
+			}
+			for (int32 Device = 0; Device < 2; ++Device)
+			{
+				const FName* Override = Settings.KeyOverrides.Find(OverrideName(Row.Id, Device));
+				if (!Override)
+				{
+					continue;
+				}
+				const FKey NewKey(*Override);
+				TArray<int32> Indices;
+				const TArray<FEnhancedActionKeyMapping>& Mappings = Copy->GetMappings();
+				for (int32 Index = 0; Index < Mappings.Num(); ++Index)
+				{
+					if (MappingBelongsTo(Mappings[Index], Row, Device)) { Indices.Add(Index); }
+				}
+				if (Indices.Num() == 0)
+				{
+					// La acción no tenía tecla en ese aparato: se le añade (solo las de botón, ver bEditable).
+					if (NewKey.IsValid()) { Copy->MapKey(Action, NewKey); }
+					continue;
+				}
+				// La primera, con la tecla nueva (conserva sus modificadores: la dirección sigue siendo la misma); las demás
+				// de esa fila y ese aparato, fuera (la fila va con una sola).
+				TArray<FKey> ToRemove;
+				for (int32 Pos = 0; Pos < Indices.Num(); ++Pos)
+				{
+					if (Pos == 0 && NewKey.IsValid()) { Copy->GetMapping(Indices[Pos]).Key = NewKey; }
+					else { ToRemove.Add(Mappings[Indices[Pos]].Key); }
+				}
+				for (const FKey& Gone : ToRemove) { Copy->UnmapKey(Action, Gone); }
+			}
+		}
+		RemappedMapping = Copy;
+	}
+	if (Previous && Previous != RemappedMapping)
+	{
+		RetiredMappings.AddUnique(Previous);
+	}
+}
+
+void UTN_GameSettingsSubsystem::UpdateInputMapping()
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	const ULocalPlayer* Player = GameInstance ? GameInstance->GetFirstGamePlayer() : nullptr;
+	UEnhancedInputLocalPlayerSubsystem* Input = Player ? Player->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+	if (!Input || !OriginalMapping)
+	{
+		return;
+	}
+	// Donde esté puesto IMC_Player (la tortuga lo pone al poseerse, en el lobby y en la partida) o una copia vieja, la
+	// copia de ahora con la misma prioridad. Sin esperar a soltar las teclas: lo que se tenga pulsado sigue valiendo.
+	const UInputMappingContext* Wanted = RemappedMapping ? RemappedMapping.Get() : OriginalMapping.Get();
+	FModifyContextOptions Options;
+	Options.bIgnoreAllPressedKeysUntilRelease = false;
+	auto Replace = [Input, Wanted, &Options](const UInputMappingContext* Stale)
+	{
+		int32 Priority = 0;
+		if (!Stale || Stale == Wanted || !Input->HasMappingContext(Stale, Priority))
+		{
+			return;
+		}
+		Input->RemoveMappingContext(Stale, Options);
+		if (!Input->HasMappingContext(Wanted))
+		{
+			Input->AddMappingContext(Wanted, Priority, Options);
+		}
+	};
+	Replace(OriginalMapping);
+	for (const TObjectPtr<UInputMappingContext>& Old : RetiredMappings)
+	{
+		Replace(Old);
+	}
+	RetiredMappings.RemoveAll([Input](const TObjectPtr<UInputMappingContext>& Old) { return !Old || !Input->HasMappingContext(Old); });
+}
+
+const UInputMappingContext* UTN_GameSettingsSubsystem::ResolveMappingContext(const UObject* WorldContext, const UInputMappingContext* Mapping)
+{
+	const UTN_GameSettingsSubsystem* Subsystem = Get(WorldContext);
+	if (Subsystem && Mapping && Mapping == Subsystem->OriginalMapping && Subsystem->RemappedMapping)
+	{
+		return Subsystem->RemappedMapping;
+	}
+	return Mapping;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Menú de pausa
 // ─────────────────────────────────────────────────────────────────────────────
@@ -750,7 +1599,8 @@ void UTN_GameSettingsSubsystem::EnsurePauseInput(APlayerController* PC)
 	{
 		return;
 	}
-	if (PauseInput && PauseInputOwner.Get() == GamePC)
+	const bool bKeysChanged = BoundPauseKey != Settings.PauseKey || BoundPausePadKey != Settings.PausePadKey;
+	if (PauseInput && PauseInputOwner.Get() == GamePC && !bKeysChanged)
 	{
 		// Por si algo vació la pila del PlayerController.
 		if (!GamePC->IsInputComponentInStack(PauseInput)) { GamePC->PushInputComponent(PauseInput); }
@@ -762,18 +1612,27 @@ void UTN_GameSettingsSubsystem::EnsurePauseInput(APlayerController* PC)
 	}
 	// Un UInputComponent propio en lo alto de la pila del PlayerController: sirve jugando y de espectador, sin tocar el
 	// PlayerController. Los viajes sin cortes conservan el PlayerController y su pila; tras uno con corte hay otro y se
-	// vuelve a meter.
+	// vuelve a meter (y también si el jugador cambia la tecla).
 	PauseInput = NewObject<UInputComponent>(GamePC, UInputComponent::StaticClass(), NAME_None, RF_Transient);
 	PauseInput->Priority = TNGameSettingsDetail::PauseInputPriority;
-	PauseInput->BindKey(EKeys::Escape, IE_Pressed, this, &UTN_GameSettingsSubsystem::HandlePauseKey);
-	PauseInput->BindKey(EKeys::Gamepad_Special_Right, IE_Pressed, this, &UTN_GameSettingsSubsystem::HandlePauseKey);
-	// En el editor, Escape corta la partida (atajo del editor): ahí se abre con el Tabulador.
-	if (GIsEditor)
+	// Escape siempre; la tecla y el botón elegidos (Start de serie); en el editor, donde Escape corta la partida
+	// (atajo del editor), también el Tabulador. Sin repetir: una tecla atada dos veces abriría y cerraría a la vez.
+	TArray<FKey> Keys;
+	Keys.Add(EKeys::Escape);
+	for (const FName KeyName : { Settings.PauseKey, Settings.PausePadKey })
 	{
-		PauseInput->BindKey(EKeys::Tab, IE_Pressed, this, &UTN_GameSettingsSubsystem::HandlePauseKey);
+		const FKey Key(KeyName);
+		if (Key.IsValid()) { Keys.AddUnique(Key); }
+	}
+	if (GIsEditor) { Keys.AddUnique(EKeys::Tab); }
+	for (const FKey& Key : Keys)
+	{
+		PauseInput->BindKey(Key, IE_Pressed, this, &UTN_GameSettingsSubsystem::HandlePauseKey);
 	}
 	GamePC->PushInputComponent(PauseInput);
 	PauseInputOwner = GamePC;
+	BoundPauseKey = Settings.PauseKey;
+	BoundPausePadKey = Settings.PausePadKey;
 }
 
 void UTN_GameSettingsSubsystem::HandlePauseKey(FKey Key)

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "InputCoreTypes.h"
 #include "TN_PauseMenuWidget.generated.h"
 
 class APlayerState;
@@ -33,6 +34,11 @@ enum class ETNPauseRowKind : uint8
 	Info,
 	/** Medidor en vivo (nivel del micrófono con la marca del umbral). */
 	Meter,
+	/**
+	 * Tecla de una acción (teclado y ratón, mando): Intro, Espacio, A o clic la cambian («Pulsa una tecla...»); Supr, Y
+	 * del mando o clic derecho la devuelven a la de serie.
+	 */
+	KeyBind,
 };
 
 /** Aspecto de una fila. */
@@ -98,6 +104,17 @@ public:
 	void SetupInfo(const FText& InLabel, const FText& InValue, const FText& InValue2);
 	/** Sampler: nivel (0..1), marca (0..1, negativa sin marca) y texto de la derecha; se llama cada fotograma. */
 	void SetupMeter(const FText& InLabel, TFunction<void(float& OutLevel, float& OutMark, FText& OutText)> InSampler);
+	/** Fila de tecla: InOnChange empieza a capturar la tecla nueva; InOnReset la devuelve a la de serie. */
+	void SetupKeyBind(const FText& InLabel, const FString& InBindingId, TFunction<void()> InOnChange, TFunction<void()> InOnReset);
+
+	/** Teclas que enseña una fila de tecla (una columna sin cambio posible se ve apagada). */
+	void SetKeyTexts(const FText& InKeyboard, const FText& InPad, bool bKeyboardEditable, bool bPadEditable);
+
+	/** Esperando la tecla nueva: la fila lo dice y late. */
+	void SetCapturing(bool bInCapturing);
+
+	/** Fila de controles a la que corresponde (para volver a enfocarla al rehacer la lista). */
+	const FString& GetBindingId() const { return BindingId; }
 
 	/** Texto de ayuda que enseña el menú cuando la fila tiene el foco. */
 	void SetDescription(const FText& InText) { Description = InText; }
@@ -210,6 +227,21 @@ private:
 	TFunction<void(float&, float&, FText&)> Sampler;
 	float MeterShown = 0.f;
 
+	// Tecla
+	FString BindingId;
+	TFunction<void()> OnReset;
+	bool bCapturing = false;
+	bool bKeyEditable[2] = { true, true };
+	/** Lo que enseña cada columna fuera de la captura. */
+	FText KeyTexts[2];
+	float CaptureClock = 0.f;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> KeyCap;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> PadCap;
+
 	/** Monta el árbol de la fila para su tipo y aspecto (lo llaman los Setup). */
 	void Build();
 	UWidget* BuildListContent();
@@ -241,19 +273,44 @@ private:
 };
 
 /**
+ * Quién habla (ajuste «Quién habla», accesibilidad): los jugadores que se oyen hablar por voz ahora mismo, con su nombre,
+ * a la derecha de la pantalla. Para jugar sin sonido o con dificultades de oído. Sin tapar clics.
+ */
+UCLASS()
+class TORTUNABO_API UTN_TalkersWidget : public UUserWidget
+{
+	GENERATED_BODY()
+
+protected:
+	virtual void NativeOnInitialized() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UVerticalBox> List;
+
+	/** Quién salía la última vez (para rehacer la lista solo si cambia) y cuánto falta para volver a mirar. */
+	TArray<FString> Shown;
+	float Timer = 0.f;
+};
+
+/**
  * @brief Menú de pausa de Tortunavy (todos los modos). No pausa el juego: la partida es en red y sigue.
  *
  * Arriba, el mapa o modo, la sesión y los jugadores conectados con su icono de voz (hablando, silenciado). Portada:
  * Continuar, Ajustes, Controles, Volver al lobby (el anfitrión lleva a todos; un invitado sale él solo al menú
  * principal), Salir de la partida o Menú principal y Salir al escritorio; lo que corta la partida pide confirmación. Ajustes en cinco pestañas
  * (Gráficos, Sonido, Voz, Controles, Juego) que se aplican al momento (UTN_GameSettingsSubsystem y UGameUserSettings);
- * Controles: la lista de teclas del juego, leída de IMC_Player.
+ * Controles: las teclas y los botones del juego (de IMC_Player, más hablar y el menú), que se cambian aquí mismo
+ * («Pulsa una tecla...»), y los que no se cambian (cámara, espectador, menús).
  *
  * Mientras está abierto: modo de entrada interfaz y juego, cursor a la vista, la tortuga quieta (sin mover ni girar la
  * cámara) y las teclas se quedan en el menú (salvo la consola y la de pulsar para hablar). Escape o B vuelven atrás (en la
- * portada, cierran); Tabulador o Start cierran del todo; Q y E o LB y RB cambian de pestaña.
+ * portada, cierran); Tabulador, Start o la tecla elegida para el menú cierran del todo; Q y E o LB y RB cambian de
+ * pestaña. Todo va dentro de un lienzo de 1920 × 1080 que se encoge si no cabe (tamaño de la interfaz grande).
  *
- * Lo abre y lo cierra UTN_GameSettingsSubsystem (Escape; Tabulador en el editor; Start del mando).
+ * Lo abre y lo cierra UTN_GameSettingsSubsystem (Escape; la tecla y el botón elegidos, Start de serie; Tabulador en el
+ * editor).
  */
 UCLASS()
 class TORTUNABO_API UTN_PauseMenuWidget : public UUserWidget
@@ -269,13 +326,16 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnMouseWheel(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnAnalogValueChanged(const FGeometry& InGeometry, const FAnalogInputEvent& InAnalogEvent) override;
 
 private:
 	// ── Árbol ────────────────────────────────────────────────────────────────
 
+	/** Lienzo de 1920 × 1080 dentro de una caja que lo encoge si no cabe (interfaz grande o pantalla pequeña). */
 	UPROPERTY(Transient)
 	TObjectPtr<UCanvasPanel> Canvas;
 
@@ -308,6 +368,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> HintText;
+
+	/** Aviso de un momento (qué tecla se ha cambiado, a quién se le ha quitado...), encima de la ayuda. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NoticeText;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTN_PauseRow>> TabRows;
@@ -363,6 +427,14 @@ private:
 	/** Jugadores con fila propia en la pestaña de voz (para rehacerla si alguien entra o sale). */
 	TArray<TWeakObjectPtr<APlayerState>> VoiceTabPlayers;
 
+	/** Aviso en pantalla: segundos que le quedan. */
+	float NoticeTime = 0.f;
+
+	/** Captura de tecla: fila y fila de controles que esperan la tecla nueva y cuánto llevan esperando. */
+	TWeakObjectPtr<UTN_PauseRow> CaptureRow;
+	FString CaptureId;
+	float CaptureElapsed = 0.f;
+
 	/** Filas de gráficos que se refrescan entre sí (calidad general y por partes, escala de resolución, ventana). */
 	TWeakObjectPtr<UTN_PauseRow> OverallRow;
 	TWeakObjectPtr<UTN_PauseRow> ResolutionRow;
@@ -403,6 +475,8 @@ private:
 		float MaxValue = 1.f);
 	UTN_PauseRow* AddToggleRow(const FText& Label, const FText& Description, bool bValue, TFunction<void(bool)> OnChanged);
 	UTN_PauseRow* AddQualityRow(const FText& Label, const FText& Description, int32 Value, TFunction<void(int32)> OnChanged);
+	/** Fila de tecla de la fila de controles Id (de UTN_GameSettingsSubsystem::GetKeyBindings). */
+	UTN_PauseRow* AddKeyBindRow(UScrollBox* List, const FString& Id, const FText& Description);
 
 	// ── Acciones ─────────────────────────────────────────────────────────────
 
@@ -416,6 +490,17 @@ private:
 	void CloseConfirm(bool bAccepted);
 	bool IsConfirmOpen() const;
 	void OnVideoModeChanged();
+
+	// ── Teclas ───────────────────────────────────────────────────────────────
+
+	void StartKeyCapture(UTN_PauseRow* Row, const FString& Id);
+	void FinishKeyCapture(const FKey& Key);
+	void CancelKeyCapture(bool bSilent);
+	bool IsCapturingKey() const { return !CaptureId.IsEmpty(); }
+	void ResetKeyRow(const FString& Id);
+	/** Rehace la lista donde están las filas de tecla (controles o voz) y vuelve a enfocar la de Id. */
+	void RefreshKeyRows(const FString& FocusId);
+	void ShowNotice(const FText& Text, float Seconds = 5.f);
 
 	// ── Entrada y foco ───────────────────────────────────────────────────────
 

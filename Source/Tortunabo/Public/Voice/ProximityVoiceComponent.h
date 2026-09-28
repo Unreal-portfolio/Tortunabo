@@ -8,6 +8,7 @@
 #include "ProximityVoiceComponent.generated.h"
 
 class UUserWidget;
+class FTNVoiceDeviceCapture;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpeakingChanged, bool, bIsSpeaking);
 
@@ -79,7 +80,21 @@ public:
 	float GetMicLevel() const { return MicLevel; }
 
 	/** @brief true si esta tortuga (la local) tiene el micrófono abierto y capturando. */
-	bool IsCapturing() const { return AudioCaptureSynth.IsValid() && !bIsShuttingDown; }
+	bool IsCapturing() const { return (AudioCaptureSynth.IsValid() || DeviceCapture != nullptr) && !bIsShuttingDown; }
+
+	/**
+	 * @brief Micrófono elegido por el jugador (id del dispositivo de Windows; vacío = el predeterminado). Lo pone
+	 *        UTN_GameSettingsSubsystem y se usa al abrir la captura (BeginPlay): cambiarlo con la voz ya abierta surte
+	 *        efecto al reaparecer o al cambiar de mapa, porque la captura WASAPI abierta no se puede cerrar sin riesgo.
+	 */
+	static void SetPreferredCaptureDevice(const FString& DeviceId);
+	static FString GetPreferredCaptureDevice();
+
+	/** @brief Micrófonos activos de Windows: id y nombre (en el orden de los índices de captura). */
+	static void GetCaptureDevices(TArray<TPair<FString, FString>>& OutDevices);
+
+	/** @brief Micrófono con el que se abrió la captura de esta tortuga (vacío = el predeterminado). */
+	const FString& GetOpenCaptureDevice() const { return OpenCaptureDevice; }
 
 	/**
 	 * @brief Deja salir o no la voz propia (UTN_GameSettingsSubsystem: silenciarse y pulsar para hablar). Cerrada se sigue
@@ -196,6 +211,18 @@ private:
 	/** Nivel RMS del último bloque capturado (GetMicLevel) y si la voz propia puede salir (SetTransmitEnabled). */
 	float MicLevel = 0.f;
 	bool bTransmitEnabled = true;
+
+	/**
+	 * Captura de un micrófono concreto (el elegido en el menú de pausa) en vez de AudioCaptureSynth. Como esa, nunca se
+	 * para ni se destruye: al limpiar se suelta (puntero sin dueño a propósito).
+	 */
+	FTNVoiceDeviceCapture* DeviceCapture = nullptr;
+
+	/** Micrófono elegido con el que se abrió DeviceCapture (vacío con el predeterminado). */
+	FString OpenCaptureDevice;
+
+	/** @brief Abre el micrófono elegido (SetPreferredCaptureDevice) si hay uno y sigue conectado. */
+	bool OpenPreferredCaptureDevice();
 
 	/** Rate limiting server-side para paquetes de voz (evita flooding). */
 	float LastVoicePacketServerTime = -1.f;

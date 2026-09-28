@@ -25,6 +25,7 @@
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
+#include "Components/ScaleBox.h"
 #include "Components/ScrollBox.h"
 #include "Components/ScrollBoxSlot.h"
 #include "Components/SizeBox.h"
@@ -69,6 +70,16 @@ namespace TNPauseUI
 	constexpr float DialogHeight = 64.f;
 	constexpr float BarWidth = 300.f;
 	constexpr float MeterWidth = 250.f;
+	constexpr float KeyCapWidth = 330.f;
+	constexpr float PadCapWidth = 290.f;
+	constexpr float KeyCapHeight = 38.f;
+
+	/** Lienzo de diseño: todo el menú cabe aquí y se encoge entero si la pantalla (en unidades de interfaz) es menor. */
+	constexpr float DesignWidth = 1920.f;
+	constexpr float DesignHeight = 1080.f;
+
+	/** Segundos que espera «Pulsa una tecla...» antes de rendirse. */
+	constexpr float KeyCaptureTimeout = 8.f;
 
 	/** Márgenes de caja de las texturas de TNHUDArt y TNShopArt. */
 	const FMargin CardMargin(0.16f, 0.2f, 0.16f, 0.34f);
@@ -79,9 +90,6 @@ namespace TNPauseUI
 	/** Colores de las filas de ajustes (azul marino translúcido; la enfocada, más clara y con filo turquesa). */
 	const FLinearColor RowFill(0.012f, 0.045f, 0.08f, 0.55f);
 	const FLinearColor RowEdge(1.f, 1.f, 1.f, 0.08f);
-
-	/** Ruta de los controles del jugador (la misma que carga ATortugaCharacter). */
-	const TCHAR* const PlayerMappingPath = TEXT("/Game/Blueprints/Gameplay/Controls/IMC_Player.IMC_Player");
 
 	template <typename T>
 	T* Make(UWidgetTree* Tree)
@@ -149,6 +157,19 @@ namespace TNPauseUI
 		return Out;
 	}
 
+	/**
+	 * Mete Content en una caja de 1920 × 1080 que se encoge entera (sin deformarse) si no cabe: con la interfaz grande o
+	 * una ventana pequeña el menú sigue viéndose completo; con la interfaz pequeña, se queda pequeño y centrado.
+	 */
+	UScaleBox* Fit(UWidgetTree* Tree, UWidget* Content)
+	{
+		UScaleBox* Box = Make<UScaleBox>(Tree);
+		Box->SetStretch(EStretch::ScaleToFit);
+		Box->SetStretchDirection(EStretchDirection::DownOnly);
+		Box->SetContent(Sized(Tree, Content, DesignWidth, DesignHeight));
+		return Box;
+	}
+
 	/** Coloca en un lienzo con ancla y alineación en el mismo punto y a su tamaño. */
 	UCanvasPanelSlot* Pin(UCanvasPanel* Canvas, UWidget* W, const FVector2D& Anchor, const FVector2D& Offset)
 	{
@@ -213,69 +234,16 @@ namespace TNPauseUI
 		return FMath::Clamp((Db + 60.f) / 60.f, 0.f, 1.f);
 	}
 
-	/** Nombre de una tecla como lo lee un jugador en España (las que no están aquí, con el nombre del motor). */
+	/** Nombre de una tecla como lo lee un jugador en España. */
 	FText KeyName(const FKey& Key)
 	{
-		static const TMap<FName, FString> Names = {
-			{ TEXT("SpaceBar"), TEXT("Espacio") }, { TEXT("LeftShift"), TEXT("Mayús izq.") }, { TEXT("RightShift"), TEXT("Mayús der.") },
-			{ TEXT("LeftControl"), TEXT("Ctrl izq.") }, { TEXT("RightControl"), TEXT("Ctrl der.") }, { TEXT("LeftAlt"), TEXT("Alt") },
-			{ TEXT("BackSpace"), TEXT("Retroceso") }, { TEXT("Escape"), TEXT("Esc") }, { TEXT("Tab"), TEXT("Tab") }, { TEXT("Enter"), TEXT("Intro") },
-			{ TEXT("CapsLock"), TEXT("Bloq Mayús") }, { TEXT("PageUp"), TEXT("Re Pág") }, { TEXT("PageDown"), TEXT("Av Pág") },
-			{ TEXT("Up"), TEXT("Flecha arriba") }, { TEXT("Down"), TEXT("Flecha abajo") }, { TEXT("Left"), TEXT("Flecha izquierda") },
-			{ TEXT("Right"), TEXT("Flecha derecha") },
-			{ TEXT("Mouse2D"), TEXT("Ratón") }, { TEXT("MouseX"), TEXT("Ratón") }, { TEXT("MouseY"), TEXT("Ratón") },
-			{ TEXT("LeftMouseButton"), TEXT("Clic izquierdo") }, { TEXT("RightMouseButton"), TEXT("Clic derecho") },
-			{ TEXT("MiddleMouseButton"), TEXT("Clic de la rueda") }, { TEXT("ThumbMouseButton"), TEXT("Botón lateral 1") },
-			{ TEXT("ThumbMouseButton2"), TEXT("Botón lateral 2") }, { TEXT("MouseScrollUp"), TEXT("Rueda") }, { TEXT("MouseScrollDown"), TEXT("Rueda") },
-			{ TEXT("MouseWheelAxis"), TEXT("Rueda") },
-			{ TEXT("Gamepad_Left2D"), TEXT("Stick izquierdo") }, { TEXT("Gamepad_Right2D"), TEXT("Stick derecho") },
-			{ TEXT("Gamepad_LeftX"), TEXT("Stick izquierdo") }, { TEXT("Gamepad_LeftY"), TEXT("Stick izquierdo") },
-			{ TEXT("Gamepad_RightX"), TEXT("Stick derecho") }, { TEXT("Gamepad_RightY"), TEXT("Stick derecho") },
-			{ TEXT("Gamepad_FaceButton_Bottom"), TEXT("A / Cruz") }, { TEXT("Gamepad_FaceButton_Right"), TEXT("B / Círculo") },
-			{ TEXT("Gamepad_FaceButton_Left"), TEXT("X / Cuadrado") }, { TEXT("Gamepad_FaceButton_Top"), TEXT("Y / Triángulo") },
-			{ TEXT("Gamepad_LeftShoulder"), TEXT("LB / L1") }, { TEXT("Gamepad_RightShoulder"), TEXT("RB / R1") },
-			{ TEXT("Gamepad_LeftTrigger"), TEXT("LT / L2") }, { TEXT("Gamepad_RightTrigger"), TEXT("RT / R2") },
-			{ TEXT("Gamepad_LeftTriggerAxis"), TEXT("LT / L2") }, { TEXT("Gamepad_RightTriggerAxis"), TEXT("RT / R2") },
-			{ TEXT("Gamepad_DPad_Up"), TEXT("Cruceta arriba") }, { TEXT("Gamepad_DPad_Down"), TEXT("Cruceta abajo") },
-			{ TEXT("Gamepad_DPad_Left"), TEXT("Cruceta izquierda") }, { TEXT("Gamepad_DPad_Right"), TEXT("Cruceta derecha") },
-			{ TEXT("Gamepad_LeftThumbstick"), TEXT("Clic stick izquierdo") }, { TEXT("Gamepad_RightThumbstick"), TEXT("Clic stick derecho") },
-			{ TEXT("Gamepad_Special_Right"), TEXT("Start / Menú") }, { TEXT("Gamepad_Special_Left"), TEXT("Select / Vista") },
-		};
-		if (const FString* Found = Names.Find(Key.GetFName())) { return FText::FromString(*Found); }
-		return Key.GetDisplayName();
+		return UTN_GameSettingsSubsystem::KeyDisplayName(Key);
 	}
 
-	/** Nombre de cada acción de IMC_Player para la lista de controles (por el nombre del asset). */
-	FText ActionName(const FString& AssetName)
+	/** Lo que enseña una fila de tecla en un aparato: la tecla o, si ahí no se cambia, lo fijo (el stick). */
+	FText BindingText(const FTNKeyBinding& Binding, int32 Device)
 	{
-		static const TMap<FString, FText> Names = {
-			{ TEXT("IA_Move"), NSLOCTEXT("TNPause", "ActMove", "Moverse") },
-			{ TEXT("IA_Look"), NSLOCTEXT("TNPause", "ActLook", "Mover la cámara") },
-			{ TEXT("IA_Jump"), NSLOCTEXT("TNPause", "ActJump", "Saltar") },
-			{ TEXT("IA_Sprint"), NSLOCTEXT("TNPause", "ActSprint", "Correr") },
-			{ TEXT("IA_Interact"), NSLOCTEXT("TNPause", "ActInteract", "Usar, coger y lanzar") },
-			{ TEXT("IA_Shell"), NSLOCTEXT("TNPause", "ActShell", "Meterse en el caparazón") },
-			{ TEXT("IA_DropItem"), NSLOCTEXT("TNPause", "ActDrop", "Soltar el objeto") },
-			{ TEXT("IA_RotateInventory"), NSLOCTEXT("TNPause", "ActRotate", "Cambiar de objeto") },
-			{ TEXT("IA_OpenEmoteWheel"), NSLOCTEXT("TNPause", "ActEmotes", "Rueda de bailes") },
-			{ TEXT("IA_OpenChatWheel"), NSLOCTEXT("TNPause", "ActChat", "Frases rápidas") },
-			{ TEXT("IA_RadialNavigate"), NSLOCTEXT("TNPause", "ActWheelPick", "Elegir en la rueda") },
-			{ TEXT("IA_Quit"), NSLOCTEXT("TNPause", "ActQuit", "Volver al menú principal (sin preguntar)") },
-		};
-		if (const FText* Found = Names.Find(AssetName)) { return *Found; }
-		FString Clean = AssetName;
-		Clean.RemoveFromStart(TEXT("IA_"));
-		return FText::FromString(Clean);
-	}
-
-	/** Orden de la lista de controles (lo demás, detrás). */
-	int32 ActionOrder(const FString& AssetName)
-	{
-		static const TArray<FString> Order = { TEXT("IA_Move"), TEXT("IA_Look"), TEXT("IA_Jump"), TEXT("IA_Sprint"), TEXT("IA_Interact"),
-			TEXT("IA_Shell"), TEXT("IA_DropItem"), TEXT("IA_RotateInventory"), TEXT("IA_OpenEmoteWheel"), TEXT("IA_OpenChatWheel"),
-			TEXT("IA_RadialNavigate"), TEXT("IA_Quit") };
-		const int32 Found = Order.IndexOfByKey(AssetName);
-		return Found == INDEX_NONE ? 1000 : Found;
+		return KeyName(Binding.bEditable[Device] ? Binding.Keys[Device] : Binding.FixedKeys[Device]);
 	}
 
 	/** Calidad gráfica por partes: nombre, ayuda y sus funciones de UGameUserSettings. */
@@ -325,20 +293,6 @@ namespace TNPauseUI
 		if (Level < 0) { return NSLOCTEXT("TNPause", "QCustom", "Personalizada"); }
 		if (Level > 3) { return NSLOCTEXT("TNPause", "QCine", "Cine"); }
 		return FText::GetEmpty();
-	}
-
-	/** Teclas y botones que se pueden elegir para pulsar para hablar. */
-	const TArray<FName>& TalkKeys()
-	{
-		static const TArray<FName> Keys = { TEXT("V"), TEXT("T"), TEXT("B"), TEXT("CapsLock"), TEXT("ThumbMouseButton"), TEXT("ThumbMouseButton2") };
-		return Keys;
-	}
-
-	const TArray<FName>& TalkPadKeys()
-	{
-		static const TArray<FName> Keys = { TEXT("Gamepad_DPad_Down"), TEXT("Gamepad_DPad_Up"), TEXT("Gamepad_RightThumbstick"),
-			TEXT("Gamepad_FaceButton_Right") };
-		return Keys;
 	}
 
 	/**
@@ -441,6 +395,49 @@ void UTN_PauseRow::SetupMeter(const FText& InLabel, TFunction<void(float&, float
 	RefreshLook();
 }
 
+void UTN_PauseRow::SetupKeyBind(const FText& InLabel, const FString& InBindingId, TFunction<void()> InOnChange, TFunction<void()> InOnReset)
+{
+	Kind = ETNPauseRowKind::KeyBind;
+	Style = ETNPauseRowStyle::List;
+	BindingId = InBindingId;
+	OnPressed = MoveTemp(InOnChange);
+	OnReset = MoveTemp(InOnReset);
+	Build();
+	SetLabel(InLabel);
+	RefreshLook();
+}
+
+void UTN_PauseRow::SetKeyTexts(const FText& InKeyboard, const FText& InPad, bool bKeyboardEditable, bool bPadEditable)
+{
+	KeyTexts[0] = InKeyboard;
+	KeyTexts[1] = InPad;
+	bKeyEditable[0] = bKeyboardEditable;
+	bKeyEditable[1] = bPadEditable;
+	SetCapturing(bCapturing);
+}
+
+void UTN_PauseRow::SetCapturing(bool bInCapturing)
+{
+	bCapturing = bInCapturing;
+	CaptureClock = 0.f;
+	if (ValueText)
+	{
+		ValueText->SetText(bCapturing && bKeyEditable[0] ? NSLOCTEXT("TNPause", "PressKey", "Pulsa una tecla...") : KeyTexts[0]);
+	}
+	if (Value2Text)
+	{
+		Value2Text->SetText(bCapturing && bKeyEditable[1]
+			? (bKeyEditable[0] ? NSLOCTEXT("TNPause", "OrButton", "...o un botón") : NSLOCTEXT("TNPause", "PressButton", "Pulsa un botón..."))
+			: KeyTexts[1]);
+	}
+	if (!bCapturing)
+	{
+		if (KeyCap) { KeyCap->SetRenderOpacity(1.f); }
+		if (PadCap) { PadCap->SetRenderOpacity(1.f); }
+	}
+	RefreshLook();
+}
+
 void UTN_PauseRow::Build()
 {
 	if (!WidgetTree || Frame)
@@ -528,6 +525,27 @@ UWidget* UTN_PauseRow::BuildListContent()
 		RightArrow = TNPauseUI::Picture(Tree, TNShopArt::Arrow(true), FVector2D(30.f, 30.f));
 		TNPauseUI::AddH(Picker, RightArrow);
 		TNPauseUI::AddH(Line, TNPauseUI::Sized(Tree, Picker, 450.f, 0.f));
+		break;
+	}
+	case ETNPauseRowKind::KeyBind:
+	{
+		// Dos «teclas» (teclado y ratón, mando) alineadas con las columnas de la cabecera de la página de controles.
+		ValueText = TNPauseUI::Label(Tree, FText::GetEmpty(), TEXT("Bold"), 18, TNHUDArt::Cream);
+		ValueText->SetJustification(ETextJustify::Center);
+		KeyCap = TNPauseUI::Make<UBorder>(Tree);
+		KeyCap->SetPadding(FMargin(10.f, 0.f));
+		KeyCap->SetHorizontalAlignment(HAlign_Center);
+		KeyCap->SetVerticalAlignment(VAlign_Center);
+		KeyCap->SetContent(ValueText);
+		TNPauseUI::AddH(Line, TNPauseUI::Sized(Tree, KeyCap, TNPauseUI::KeyCapWidth, TNPauseUI::KeyCapHeight), FMargin(0.f, 0.f, 12.f, 0.f));
+		Value2Text = TNPauseUI::Label(Tree, FText::GetEmpty(), TEXT("Bold"), 18, TNHUDArt::Cream);
+		Value2Text->SetJustification(ETextJustify::Center);
+		PadCap = TNPauseUI::Make<UBorder>(Tree);
+		PadCap->SetPadding(FMargin(10.f, 0.f));
+		PadCap->SetHorizontalAlignment(HAlign_Center);
+		PadCap->SetVerticalAlignment(VAlign_Center);
+		PadCap->SetContent(Value2Text);
+		TNPauseUI::AddH(Line, TNPauseUI::Sized(Tree, PadCap, TNPauseUI::PadCapWidth, TNPauseUI::KeyCapHeight));
 		break;
 	}
 	case ETNPauseRowKind::Info:
@@ -643,6 +661,21 @@ void UTN_PauseRow::RefreshLook()
 		if (LabelText) { LabelText->SetColorAndOpacity(FSlateColor(bEnabled ? (bLit ? TNHUDArt::Cream : TNHUDStyle::Text) : TNHUDStyle::TextDim)); }
 		if (LeftArrow) { LeftArrow->SetRenderOpacity(bLit ? 1.f : 0.5f); }
 		if (RightArrow) { RightArrow->SetRenderOpacity(bLit ? 1.f : 0.5f); }
+		// Teclas: azul con filo claro las que se cambian, doradas mientras esperan, apagadas las fijas (el stick).
+		for (int32 Device = 0; Device < 2; ++Device)
+		{
+			UBorder* Cap = Device == 0 ? KeyCap.Get() : PadCap.Get();
+			UTextBlock* CapText = Device == 0 ? ValueText.Get() : Value2Text.Get();
+			if (!Cap || !CapText)
+			{
+				continue;
+			}
+			const bool bEditableCap = bKeyEditable[Device];
+			const bool bWaiting = bCapturing && bEditableCap;
+			Cap->SetBrush(TNHUDStyle::Rounded(bWaiting ? TNHUDArt::Hex(0x5A3F0C, 0.95f) : (bEditableCap ? TNHUDArt::Hex(0x0B2A4A, 0.92f) : FLinearColor(0.f, 0.f, 0.f, 0.14f)),
+				8.f, bWaiting ? TNHUDArt::Gold : (bEditableCap ? FLinearColor(1.f, 1.f, 1.f, bLit ? 0.35f : 0.16f) : FLinearColor::Transparent), bWaiting ? 2.f : 1.f));
+			CapText->SetColorAndOpacity(FSlateColor(bWaiting ? TNHUDArt::Gold : (bEditableCap ? TNHUDArt::Cream : TNHUDStyle::TextDim)));
+		}
 		break;
 	case ETNPauseRowStyle::Tab:
 		Frame->SetBrush(TNPauseUI::BoxBrush(bActive ? TNShopArt::Pill(0xFFE27A, 0xF2A93B) : TNShopArt::Pill(0x62D2EA, 0x1E7FB0), TNPauseUI::PillMargin,
@@ -673,6 +706,15 @@ void UTN_PauseRow::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 			Scale = Next;
 			SetRenderScale(FVector2D(Scale, Scale));
 		}
+	}
+
+	// Tecla esperando: las columnas que se pueden cambiar laten.
+	if (bCapturing)
+	{
+		CaptureClock += InDeltaTime;
+		const float Pulse = 0.55f + 0.45f * FMath::Abs(FMath::Cos(CaptureClock * 4.f));
+		if (KeyCap && bKeyEditable[0]) { KeyCap->SetRenderOpacity(Pulse); }
+		if (PadCap && bKeyEditable[1]) { PadCap->SetRenderOpacity(Pulse); }
 	}
 
 	// Medidor: sube rápido y baja despacio, como un vúmetro.
@@ -747,6 +789,12 @@ void UTN_PauseRow::Activate()
 	{
 		StepBy(1);
 	}
+	else if (Kind == ETNPauseRowKind::KeyBind)
+	{
+		// Empieza a esperar la tecla nueva (la captura la lleva el menú).
+		PlaySound(ETNPauseSound::Press);
+		if (OnPressed) { OnPressed(); }
+	}
 }
 
 void UTN_PauseRow::SetValueFromScreen(const FVector2D& ScreenPosition)
@@ -790,6 +838,17 @@ FReply UTN_PauseRow::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEven
 		StepBy(1);
 		return FReply::Handled();
 	}
+	// Fila de tecla: Supr o Y del mando la devuelven a la de serie.
+	if (Kind == ETNPauseRowKind::KeyBind && IsKey(Key, { EKeys::Delete, EKeys::Gamepad_FaceButton_Top }))
+	{
+		if (!InKeyEvent.IsRepeat() && bEnabled && OnReset)
+		{
+			PlaySound(ETNPauseSound::Press);
+			// Lo último: rehace la lista entera.
+			OnReset();
+		}
+		return FReply::Handled();
+	}
 	if (IsKey(Key, { EKeys::Enter, EKeys::SpaceBar, EKeys::Gamepad_FaceButton_Bottom, EKeys::Virtual_Accept }))
 	{
 		if (!InKeyEvent.IsRepeat()) { Activate(); }
@@ -816,6 +875,17 @@ FNavigationReply UTN_PauseRow::NativeOnNavigation(const FGeometry& MyGeometry, c
 
 FReply UTN_PauseRow::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	// Fila de tecla: clic derecho, a la de serie.
+	if (Kind == ETNPauseRowKind::KeyBind && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+	{
+		SetKeyboardFocus();
+		if (bEnabled && OnReset)
+		{
+			PlaySound(ETNPauseSound::Press);
+			OnReset();
+		}
+		return FReply::Handled();
+	}
 	if (InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
 	{
 		return FReply::Handled();
@@ -829,6 +899,8 @@ FReply UTN_PauseRow::NativeOnMouseButtonDown(const FGeometry& InGeometry, const 
 	switch (Kind)
 	{
 	case ETNPauseRowKind::Button:
+	case ETNPauseRowKind::KeyBind:
+		// Se pulsa al soltar (así el clic que empieza a esperar una tecla no cuenta como la tecla).
 		bPressed = true;
 		return FReply::Handled();
 	case ETNPauseRowKind::Slider:
@@ -954,6 +1026,84 @@ void UTN_FpsCounterWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Quién habla
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_TalkersWidget::NativeOnInitialized()
+{
+	Super::NativeOnInitialized();
+	if (!WidgetTree || List)
+	{
+		return;
+	}
+	UCanvasPanel* Root = TNPauseUI::Make<UCanvasPanel>(WidgetTree);
+	WidgetTree->RootWidget = Root;
+	List = TNPauseUI::Make<UVerticalBox>(WidgetTree);
+	// A la derecha, un poco por debajo del centro (arriba a la derecha está el marcador).
+	TNPauseUI::Pin(Root, List, FVector2D(1.f, 0.5f), FVector2D(-20.f, 60.f));
+	// Solo se ve: no quita clics a nada.
+	SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+void UTN_TalkersWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	Timer -= InDeltaTime;
+	if (Timer > 0.f || !List)
+	{
+		return;
+	}
+	Timer = 0.1f;
+	const UWorld* World = GetWorld();
+	const UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+	const APlayerController* PC = GameInstance ? GameInstance->GetFirstLocalPlayerController(World) : nullptr;
+	const APlayerState* Mine = PC ? PC->PlayerState.Get() : nullptr;
+	const AGameStateBase* State = World ? World->GetGameState() : nullptr;
+	const UTN_GameSettingsSubsystem* Settings = UTN_GameSettingsSubsystem::Get(this);
+
+	// Quién se oye ahora: los demás, si no están silenciados; uno mismo, si su voz sale.
+	TArray<FString> Now;
+	if (State)
+	{
+		for (APlayerState* PS : State->PlayerArray)
+		{
+			const APawn* Pawn = PS ? PS->GetPawn() : nullptr;
+			const UProximityVoiceComponent* Voice = Pawn ? Pawn->FindComponentByClass<UProximityVoiceComponent>() : nullptr;
+			if (!Voice || !Voice->IsHeardSpeaking())
+			{
+				continue;
+			}
+			const bool bMe = PS == Mine;
+			if (bMe ? (Settings && !Settings->IsTransmitAllowed()) : (Settings && Settings->IsPlayerMuted(UTN_GameSettingsSubsystem::PlayerKey(PS))))
+			{
+				continue;
+			}
+			Now.Add(bMe ? FString() : PS->GetPlayerName());
+		}
+	}
+	if (Now == Shown)
+	{
+		return;
+	}
+	Shown = Now;
+	List->ClearChildren();
+	UWidgetTree* Tree = WidgetTree;
+	for (const FString& Name : Shown)
+	{
+		const bool bMe = Name.IsEmpty();
+		UHorizontalBox* Line = TNPauseUI::Make<UHorizontalBox>(Tree);
+		TNPauseUI::AddH(Line, TNPauseUI::Picture(Tree, bMe ? TNPauseArt::MicIcon(false) : TNPauseArt::SpeakerIcon(false), FVector2D(26.f, 26.f)),
+			FMargin(0.f, 0.f, 8.f, 0.f));
+		TNPauseUI::AddH(Line, TNPauseUI::Label(Tree, bMe ? NSLOCTEXT("TNPause", "TalkerMe", "Tú hablas") : FText::Format(NSLOCTEXT("TNPause", "TalkerOther", "{0} habla"),
+			FText::FromString(Name)), TEXT("Bold"), 18, bMe ? TNHUDArt::Gold : TNHUDArt::Cream));
+		UBorder* Chip = TNPauseUI::Make<UBorder>(Tree);
+		TNHUDStyle::StylePanel(Chip, TNHUDStyle::PanelSoft, 12.f, FMargin(10.f, 4.f, 14.f, 5.f));
+		Chip->SetContent(Line);
+		TNPauseUI::AddV(List, Chip, FMargin(0.f, 0.f, 0.f, 6.f), HAlign_Right);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Menú: montaje
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -972,13 +1122,17 @@ void UTN_PauseMenuWidget::BuildTree()
 		return;
 	}
 	UWidgetTree* Tree = WidgetTree;
-	Canvas = TNPauseUI::Make<UCanvasPanel>(Tree);
-	Tree->RootWidget = Canvas;
+	UCanvasPanel* Root = TNPauseUI::Make<UCanvasPanel>(Tree);
+	Tree->RootWidget = Root;
 
-	// Velo azul marino sobre el juego (que sigue moviéndose detrás).
+	// Velo azul marino sobre el juego (que sigue moviéndose detrás), a pantalla completa.
 	UImage* Veil = TNPauseUI::Make<UImage>(Tree);
 	Veil->SetColorAndOpacity(TNHUDArt::Hex(0x0A1C38, 0.72f));
-	TNPauseUI::Fill(Canvas, Veil);
+	TNPauseUI::Fill(Root, Veil);
+
+	// El menú, en un lienzo de 1920 × 1080 que se encoge si no cabe (tamaño de la interfaz grande, ventana pequeña).
+	Canvas = TNPauseUI::Make<UCanvasPanel>(Tree);
+	TNPauseUI::Fill(Root, TNPauseUI::Fit(Tree, Canvas));
 
 	TNPauseUI::Pin(Canvas, BuildHeader(), FVector2D(0.5f, 0.f), FVector2D(0.f, 18.f));
 
@@ -999,9 +1153,15 @@ void UTN_PauseMenuWidget::BuildTree()
 	TNPauseUI::Pin(Canvas, TNPauseUI::Sized(Tree, HelpText, 1180.f, 0.f), FVector2D(0.5f, 1.f), FVector2D(0.f, -52.f));
 	HintText = TNPauseUI::Label(Tree, FText::GetEmpty(), TEXT("Bold"), 16, TNHUDStyle::TextDim);
 	TNPauseUI::Pin(Canvas, HintText, FVector2D(0.5f, 1.f), FVector2D(0.f, -20.f));
+	// Avisos de un momento (teclas cambiadas...), dorados, encima de la ayuda.
+	NoticeText = TNPauseUI::Label(Tree, FText::GetEmpty(), TEXT("Bold"), 19, TNHUDArt::Gold);
+	NoticeText->SetJustification(ETextJustify::Center);
+	NoticeText->SetAutoWrapText(true);
+	NoticeText->SetVisibility(ESlateVisibility::Collapsed);
+	TNPauseUI::Pin(Canvas, TNPauseUI::Sized(Tree, NoticeText, 1180.f, 0.f), FVector2D(0.5f, 1.f), FVector2D(0.f, -86.f));
 
 	ConfirmLayer = BuildConfirmLayer();
-	TNPauseUI::Fill(Canvas, ConfirmLayer);
+	TNPauseUI::Fill(Root, ConfirmLayer);
 	ConfirmLayer->SetVisibility(ESlateVisibility::Collapsed);
 
 	RefreshHeader();
@@ -1203,7 +1363,10 @@ UWidget* UTN_PauseMenuWidget::BuildConfirmLayer()
 	TNPauseUI::AddV(Column, Buttons, FMargin(0.f), HAlign_Center);
 
 	UWidget* Box = TNPauseUI::Sized(Tree, TNPauseUI::Card(Tree, Column, FMargin(46.f, 30.f, 46.f, 52.f)), 700.f, 0.f);
-	TNPauseUI::AddO(Layer, Box, HAlign_Center, VAlign_Center);
+	// El velo, a pantalla completa; el cuadro, en la misma caja que encoge el menú.
+	UOverlay* Stage = TNPauseUI::Make<UOverlay>(Tree);
+	TNPauseUI::AddO(Stage, Box, HAlign_Center, VAlign_Center);
+	TNPauseUI::AddO(Layer, TNPauseUI::Fit(Tree, Stage), HAlign_Fill, VAlign_Fill);
 	return Layer;
 }
 
@@ -1291,6 +1454,30 @@ UTN_PauseRow* UTN_PauseMenuWidget::AddQualityRow(const FText& Label, const FText
 		Row->SetChoiceIndex(Value >= 0 && Value <= 3 ? Value : INDEX_NONE, TNPauseUI::QualityOverride(Value));
 		Row->SetDescription(Description);
 	}
+	return Row;
+}
+
+UTN_PauseRow* UTN_PauseMenuWidget::AddKeyBindRow(UScrollBox* List, const FString& Id, const FText& Description)
+{
+	const UTN_GameSettingsSubsystem* Settings = GetSettings();
+	if (!Settings || !List)
+	{
+		return nullptr;
+	}
+	const TArray<FTNKeyBinding> Bindings = Settings->GetKeyBindings();
+	const FTNKeyBinding* Binding = Bindings.FindByPredicate([&Id](const FTNKeyBinding& Candidate) { return Candidate.Id == Id; });
+	UTN_PauseRow* Row = Binding ? AddListRow(List) : nullptr;
+	if (!Row)
+	{
+		return nullptr;
+	}
+	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
+	TWeakObjectPtr<UTN_PauseRow> WeakRow(Row);
+	Row->SetupKeyBind(Binding->Label, Id,
+		[WeakThis, WeakRow, Id]() { if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->StartKeyCapture(WeakRow.Get(), Id); } },
+		[WeakThis, Id]() { if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ResetKeyRow(Id); } });
+	Row->SetKeyTexts(TNPauseUI::BindingText(*Binding, 0), TNPauseUI::BindingText(*Binding, 1), Binding->bEditable[0], Binding->bEditable[1]);
+	Row->SetDescription(Description);
 	return Row;
 }
 
@@ -1473,6 +1660,7 @@ void UTN_PauseMenuWidget::UpdateVoiceIcons()
 
 void UTN_PauseMenuWidget::ShowPage(ETNPausePage NewPage)
 {
+	CancelKeyCapture(true);
 	const ETNPausePage Previous = Page;
 	Page = NewPage;
 	if (Pages) { Pages->SetActiveWidgetIndex(static_cast<int32>(NewPage)); }
@@ -1514,6 +1702,7 @@ void UTN_PauseMenuWidget::FillTab()
 	{
 		return;
 	}
+	CancelKeyCapture(true);
 	SettingsList->ClearChildren();
 	OverallRow = nullptr;
 	ResolutionRow = nullptr;
@@ -1770,6 +1959,12 @@ void UTN_PauseMenuWidget::FillSoundTab()
 		Data.EffectsVolume, Edit([](FTNGameSettings& D, float V) { D.EffectsVolume = V; }));
 	AddVolumeRow(NSLOCTEXT("TNPause", "Ambient", "Ambiente"), NSLOCTEXT("TNPause", "AmbientDesc", "Olas, viento, selva, cascadas y el resto del paisaje sonoro."),
 		Data.AmbientVolume, Edit([](FTNGameSettings& D, float V) { D.AmbientVolume = V; }));
+	AddToggleRow(NSLOCTEXT("TNPause", "MuteBackground", "Silenciar sin el foco de la ventana"),
+		NSLOCTEXT("TNPause", "MuteBackgroundDesc", "Si cambias a otro programa, el juego se calla (voces incluidas) hasta que vuelvas."),
+		Data.bMuteInBackground, [WeakSettings](bool bOn)
+		{
+			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bMuteInBackground = bOn; }); }
+		});
 	AddListNote(SettingsList, NSLOCTEXT("TNPause", "VoiceElsewhere", "La voz de los compañeros y el micrófono están en la pestaña VOZ."));
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
@@ -1778,7 +1973,7 @@ void UTN_PauseMenuWidget::FillSoundTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Sound); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Sound); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetSoundDesc", "Todos los volúmenes al 100 %."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetSoundDesc", "Todos los volúmenes al 100 % y el juego suena también sin el foco."));
 	}
 }
 
@@ -1847,30 +2042,38 @@ void UTN_PauseMenuWidget::FillVoiceTab()
 		});
 		Row->SetDescription(NSLOCTEXT("TNPause", "MicModeDesc", "Voz abierta: se te oye al hablar más alto que el umbral. Pulsar para hablar: solo con la tecla pulsada."));
 	}
+	AddKeyBindRow(SettingsList, TEXT("Talk"), NSLOCTEXT("TNPause", "TalkKeyDesc",
+		"Con el modo pulsar para hablar: mantén esta tecla o este botón. Intro o clic: cambiar; Supr, Y o clic derecho: la de serie."));
 	{
-		TArray<FText> Names;
-		for (const FName& Key : TNPauseUI::TalkKeys()) { Names.Add(TNPauseUI::KeyName(FKey(Key))); }
-		if (UTN_PauseRow* Row = AddListRow(SettingsList))
+		// Micrófonos activos de Windows (se enumeran al abrir la pestaña).
+		TArray<TPair<FString, FString>> Devices;
+		UProximityVoiceComponent::GetCaptureDevices(Devices);
+		TArray<FText> Names = { NSLOCTEXT("TNPause", "DefaultMic", "Predeterminado de Windows") };
+		TArray<FString> Ids = { FString() };
+		for (const TPair<FString, FString>& Device : Devices)
 		{
-			Row->SetupChoice(NSLOCTEXT("TNPause", "TalkKey", "Tecla para hablar"), Names, TNPauseUI::TalkKeys().IndexOfByKey(Data.PushToTalkKey),
-				[WeakSettings](int32 Choice)
-				{
-					const FName Key = TNPauseUI::TalkKeys()[FMath::Clamp(Choice, 0, TNPauseUI::TalkKeys().Num() - 1)];
-					if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Key](FTNGameSettings& D) { D.PushToTalkKey = Key; }); }
-				});
-			Row->SetDescription(NSLOCTEXT("TNPause", "TalkKeyDesc", "Con el modo pulsar para hablar. Ninguna de estas hace nada más en el juego."));
+			Names.Add(FText::FromString(Device.Value));
+			Ids.Add(Device.Key);
 		}
-		TArray<FText> PadNames;
-		for (const FName& Key : TNPauseUI::TalkPadKeys()) { PadNames.Add(TNPauseUI::KeyName(FKey(Key))); }
+		const int32 Current = Ids.IndexOfByKey(Data.CaptureDeviceId);
 		if (UTN_PauseRow* Row = AddListRow(SettingsList))
 		{
-			Row->SetupChoice(NSLOCTEXT("TNPause", "TalkPad", "Botón del mando para hablar"), PadNames,
-				TNPauseUI::TalkPadKeys().IndexOfByKey(Data.PushToTalkPadKey), [WeakSettings](int32 Choice)
+			Row->SetupChoice(NSLOCTEXT("TNPause", "MicDevice", "Micrófono"), Names, Current == INDEX_NONE ? 0 : Current, [WeakThis, WeakSettings, Ids](int32 Choice)
+			{
+				UTN_GameSettingsSubsystem* S = WeakSettings.Get();
+				if (!S || !Ids.IsValidIndex(Choice)) { return; }
+				S->SetCaptureDevice(Ids[Choice]);
+				if (UTN_PauseMenuWidget* Menu = WeakThis.Get())
 				{
-					const FName Key = TNPauseUI::TalkPadKeys()[FMath::Clamp(Choice, 0, TNPauseUI::TalkPadKeys().Num() - 1)];
-					if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Key](FTNGameSettings& D) { D.PushToTalkPadKey = Key; }); }
-				});
-			Row->SetDescription(NSLOCTEXT("TNPause", "TalkPadDesc", "Con el modo pulsar para hablar y jugando con mando."));
+					Menu->ShowNotice(S->IsCaptureDeviceChangePending()
+						? NSLOCTEXT("TNPause", "MicLater", "Micrófono elegido: se abre al reaparecer o al cambiar de mapa.")
+						: NSLOCTEXT("TNPause", "MicNow", "Ese es el micrófono que ya se está usando."));
+				}
+			});
+			// Uno elegido que ya no está conectado: se usa el predeterminado hasta que vuelva.
+			if (Current == INDEX_NONE) { Row->SetChoiceIndex(0, NSLOCTEXT("TNPause", "MicGone", "No conectado: el predeterminado")); }
+			Row->SetDescription(NSLOCTEXT("TNPause", "MicDeviceDesc",
+				"El que se usa para hablar. Se cambia al reaparecer o al cambiar de mapa: el micrófono abierto no se puede cambiar sin riesgo de colgar el juego."));
 		}
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
@@ -1901,17 +2104,17 @@ void UTN_PauseMenuWidget::FillVoiceTab()
 			}
 			const FTNGameSettings& D = S->GetSettings();
 			OutLevel = TNPauseUI::MeterFromRms(S->GetMicLevel());
-			OutMark = TNPauseUI::MeterFromRms(UTN_GameSettingsSubsystem::SensitivityToThreshold(D.MicSensitivity));
+			OutMark = TNPauseUI::MeterFromRms(S->GetSpeakingThreshold());
 			if (D.bMicMuted) { OutText = NSLOCTEXT("TNPause", "MicMuted", "Silenciado"); }
 			else if (!S->IsTransmitAllowed())
 			{
 				OutText = FText::Format(NSLOCTEXT("TNPause", "HoldToTalk", "Mantén {0}"), TNPauseUI::KeyName(FKey(D.PushToTalkKey)));
 			}
+			else if (S->IsCaptureDeviceChangePending()) { OutText = NSLOCTEXT("TNPause", "MicPending", "Micro nuevo al reaparecer"); }
 			else { OutText = OutLevel >= OutMark ? NSLOCTEXT("TNPause", "Heard", "¡Se te oye!") : NSLOCTEXT("TNPause", "Quiet", "En silencio"); }
 		});
 		Row->SetDescription(NSLOCTEXT("TNPause", "MicMeterDesc", "Habla y mira la barra: cuando pasa de la raya dorada, se te oye."));
 	}
-	AddListNote(SettingsList, NSLOCTEXT("TNPause", "MicNote", "Se usa el micrófono predeterminado de Windows. Cámbialo en Windows antes de abrir el juego."));
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
 		Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "ResetVoice", "Restablecer la voz"), [WeakThis, WeakSettings]()
@@ -1919,7 +2122,7 @@ void UTN_PauseMenuWidget::FillVoiceTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Voice); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Voice); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetVoiceDesc", "Voz abierta, micrófono como siempre y nadie silenciado."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetVoiceDesc", "Voz abierta, micrófono predeterminado con su sensibilidad y ganancia de siempre y nadie silenciado."));
 	}
 }
 
@@ -1966,11 +2169,11 @@ void UTN_PauseMenuWidget::FillControlsTab()
 	AddListNote(SettingsList, NSLOCTEXT("TNPause", "DeviceNote", "La cámara usa la sensibilidad del último aparato que hayas tocado: ratón o mando."));
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
-		Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "SeeControls", "Ver todos los controles"), [WeakThis]()
+		Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "SeeControls", "Cambiar teclas y botones"), [WeakThis]()
 		{
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowPage(ETNPausePage::Controls); }
-		}, nullptr, NSLOCTEXT("TNPause", "SeeAction", "Ver"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "SeeControlsDesc", "La lista de teclas y botones del juego."));
+		}, nullptr, NSLOCTEXT("TNPause", "SeeAction", "Abrir"));
+		Row->SetDescription(NSLOCTEXT("TNPause", "SeeControlsDesc", "Todas las teclas y los botones del mando del juego: se cambian ahí mismo."));
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
@@ -1979,7 +2182,7 @@ void UTN_PauseMenuWidget::FillControlsTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Controls); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Controls); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetControlsDesc", "Sensibilidad al 100 % y sin invertir."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetControlsDesc", "Sensibilidad al 100 % y sin invertir (las teclas se restablecen en su página)."));
 	}
 }
 
@@ -2022,6 +2225,15 @@ void UTN_PauseMenuWidget::FillGameTab()
 		}
 	}
 
+	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadInterface", "INTERFAZ"));
+	if (UTN_PauseRow* Row = AddListRow(SettingsList))
+	{
+		Row->SetupSlider(NSLOCTEXT("TNPause", "UIScale", "Tamaño de la interfaz"), 0.75f, 1.3f, 0.05f, Data.UIScale,
+			[](float V) { return TNPauseUI::Percent(V); },
+			[WeakSettings](float V) { if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([V](FTNGameSettings& D) { D.UIScale = V; }); } });
+		Row->SetDescription(NSLOCTEXT("TNPause", "UIScaleDesc", "Agranda o achica el HUD y los menús del juego (el editor no cambia). Este menú se encoge si no cabe."));
+	}
+
 	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadAccess", "ACCESIBILIDAD"));
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
@@ -2031,7 +2243,7 @@ void UTN_PauseMenuWidget::FillGameTab()
 		{
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.ColorFilter = static_cast<uint8>(Choice); }); }
 		});
-		Row->SetDescription(NSLOCTEXT("TNPause", "ColorFilterDesc", "Corrige los colores de toda la imagen para distinguirlos mejor."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ColorFilterDesc", "Corrige los colores de toda la imagen para distinguirlos mejor: el mapa, el HUD y sus marcadores."));
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
@@ -2040,6 +2252,12 @@ void UTN_PauseMenuWidget::FillGameTab()
 			[WeakSettings](float V) { if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([V](FTNGameSettings& D) { D.ColorFilterStrength = V; }); } });
 		Row->SetDescription(NSLOCTEXT("TNPause", "FilterStrengthDesc", "Cuánto corrige el filtro para daltónicos."));
 	}
+	AddToggleRow(NSLOCTEXT("TNPause", "Talkers", "Quién habla (texto)"),
+		NSLOCTEXT("TNPause", "TalkersDesc", "A la derecha de la pantalla, el nombre de quien está hablando por voz. Para jugar sin sonido o si oyes mal."),
+		Data.bShowTalkers, [WeakSettings](bool bOn)
+		{
+			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bShowTalkers = bOn; }); }
+		});
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
 		Row->SetupInfo(NSLOCTEXT("TNPause", "Language", "Idioma"), NSLOCTEXT("TNPause", "Spanish", "Español"), FText::GetEmpty());
@@ -2052,7 +2270,30 @@ void UTN_PauseMenuWidget::FillGameTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Game); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Game); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara encendido, campo de visión de siempre y sin filtro de color."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara encendido, campo de visión e interfaz de siempre, sin filtro de color y sin «Quién habla»."));
+	}
+	if (UTN_PauseRow* Row = AddListRow(SettingsList))
+	{
+		Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "ResetAll", "Restablecer todos los ajustes"), [WeakThis, WeakSettings]()
+		{
+			UTN_PauseMenuWidget* Menu = WeakThis.Get();
+			if (!Menu)
+			{
+				return;
+			}
+			Menu->AskConfirm(NSLOCTEXT("TNPause", "ResetAllTitle", "¿Restablecer todos los ajustes?"),
+				NSLOCTEXT("TNPause", "ResetAllText", "Sonido, voz, micrófono, controles (teclas incluidas), juego, brillo y FPS vuelven a los de serie. La calidad gráfica y la pantalla no se tocan."),
+				NSLOCTEXT("TNPause", "ResetAllYes", "Restablecer"), [WeakThis, WeakSettings]()
+				{
+					if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetAll(); }
+					if (UTN_PauseMenuWidget* Target = WeakThis.Get())
+					{
+						Target->ShowTab(ETNPauseTab::Game);
+						Target->ShowNotice(NSLOCTEXT("TNPause", "ResetAllDone", "Todo como recién instalado (menos los gráficos)."));
+					}
+				});
+		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetAllDesc", "Todo lo del menú a los valores de serie, menos la calidad gráfica y la pantalla. Pide confirmación."));
 	}
 }
 
@@ -2062,7 +2303,13 @@ void UTN_PauseMenuWidget::FillControlsList()
 	{
 		return;
 	}
+	CancelKeyCapture(true);
 	ControlsList->ClearChildren();
+	UTN_GameSettingsSubsystem* Settings = GetSettings();
+	if (!Settings)
+	{
+		return;
+	}
 	auto AddInfo = [this](const FText& Label, const FText& Keyboard, const FText& Pad, const FText& Description)
 	{
 		if (UTN_PauseRow* Row = AddListRow(ControlsList))
@@ -2071,71 +2318,72 @@ void UTN_PauseMenuWidget::FillControlsList()
 			Row->SetDescription(Description);
 		}
 	};
-	auto Join = [](const TArray<FText>& Parts)
-	{
-		if (Parts.Num() == 0) { return NSLOCTEXT("TNPause", "NoKey", "—"); }
-		FString Out;
-		for (int32 i = 0; i < Parts.Num(); ++i) { Out += (i > 0 ? TEXT(" · ") : TEXT("")) + Parts[i].ToString(); }
-		return FText::FromString(Out);
-	};
+	const FText ChangeHelp = NSLOCTEXT("TNPause", "KeyRowDesc", "Intro, A o clic: cambiar (pulsa luego la tecla o el botón). Supr, Y o clic derecho: la de serie.");
 
-	// Lo que hay en IMC_Player (así la lista es siempre la de verdad).
-	struct FActionKeys
-	{
-		FString Name;
-		TArray<FText> Keyboard;
-		TArray<FText> Pad;
-	};
-	TArray<FActionKeys> Actions;
-	if (const UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, TNPauseUI::PlayerMappingPath))
-	{
-		for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappings())
-		{
-			if (!Mapping.Action || !Mapping.Key.IsValid())
-			{
-				continue;
-			}
-			const FString Name = Mapping.Action->GetName();
-			FActionKeys* Entry = Actions.FindByPredicate([&Name](const FActionKeys& A) { return A.Name == Name; });
-			if (!Entry)
-			{
-				Entry = &Actions.AddDefaulted_GetRef();
-				Entry->Name = Name;
-			}
-			const FText KeyText = TNPauseUI::KeyName(Mapping.Key);
-			TArray<FText>& Target = Mapping.Key.IsGamepadKey() ? Entry->Pad : Entry->Keyboard;
-			if (!Target.ContainsByPredicate([&KeyText](const FText& T) { return T.EqualTo(KeyText); })) { Target.Add(KeyText); }
-		}
-	}
-	Actions.Sort([](const FActionKeys& A, const FActionKeys& B) { return TNPauseUI::ActionOrder(A.Name) < TNPauseUI::ActionOrder(B.Name); });
-
+	// Lo que hay en IMC_Player (así la lista es siempre la de verdad), con las teclas del jugador.
 	AddListHeader(ControlsList, NSLOCTEXT("TNPause", "HeadPlay", "JUGANDO"));
-	for (const FActionKeys& Action : Actions)
+	int32 Actions = 0;
+	for (const FTNKeyBinding& Binding : Settings->GetKeyBindings())
 	{
-		AddInfo(TNPauseUI::ActionName(Action.Name), Join(Action.Keyboard), Join(Action.Pad), FText::GetEmpty());
+		if (Binding.Id == TEXT("Talk") || Binding.Id == TEXT("Pause"))
+		{
+			continue;
+		}
+		const FText Description = Binding.bEditable[1] ? ChangeHelp
+			: FText::Format(NSLOCTEXT("TNPause", "KeyRowPadFixed", "{0} Con el mando va con {1}."), ChangeHelp, TNPauseUI::KeyName(Binding.FixedKeys[1]));
+		AddKeyBindRow(ControlsList, Binding.Id, Description);
+		++Actions;
 	}
-	if (Actions.Num() == 0)
+	if (Actions == 0)
 	{
 		AddListNote(ControlsList, NSLOCTEXT("TNPause", "NoMapping", "No se ha podido leer la lista de controles (IMC_Player)."));
 	}
 
-	AddListHeader(ControlsList, NSLOCTEXT("TNPause", "HeadOther", "MÁS"));
-	const UTN_GameSettingsSubsystem* Settings = GetSettings();
-	AddInfo(NSLOCTEXT("TNPause", "PauseKey", "Menú de pausa"),
-		GIsEditor ? NSLOCTEXT("TNPause", "PauseKeyEditor", "Esc · Tab (en el editor)") : NSLOCTEXT("TNPause", "PauseKeyGame", "Esc"),
-		TNPauseUI::KeyName(EKeys::Gamepad_Special_Right), NSLOCTEXT("TNPause", "PauseKeyDesc", "En el editor, Esc corta la partida: ahí el menú se abre con Tab."));
-	if (Settings && Settings->GetSettings().bPushToTalk)
+	AddListHeader(ControlsList, NSLOCTEXT("TNPause", "HeadVoiceMenu", "VOZ Y MENÚ"));
+	AddKeyBindRow(ControlsList, TEXT("Talk"), FText::Format(NSLOCTEXT("TNPause", "TalkKeyRowDesc", "Solo con el modo pulsar para hablar (Ajustes > Voz). {0}"), ChangeHelp));
+	AddKeyBindRow(ControlsList, TEXT("Pause"), FText::Format(NSLOCTEXT("TNPause", "PauseKeyRowDesc", "Esc lo abre y lo cierra siempre (en el editor, Tab). {0}"), ChangeHelp));
+	if (UTN_PauseRow* Row = AddListRow(ControlsList))
 	{
-		AddInfo(NSLOCTEXT("TNPause", "TalkRow", "Hablar (mantener)"), TNPauseUI::KeyName(FKey(Settings->GetSettings().PushToTalkKey)),
-			TNPauseUI::KeyName(FKey(Settings->GetSettings().PushToTalkPadKey)), NSLOCTEXT("TNPause", "TalkRowDesc", "Se cambian en Ajustes > Voz."));
+		TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
+		Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "ResetKeys", "Restablecer todos los controles"), [WeakThis]()
+		{
+			UTN_PauseMenuWidget* Menu = WeakThis.Get();
+			if (!Menu)
+			{
+				return;
+			}
+			Menu->AskConfirm(NSLOCTEXT("TNPause", "ResetKeysTitle", "¿Restablecer los controles?"),
+				NSLOCTEXT("TNPause", "ResetKeysText", "Todas las teclas y los botones vuelven a los de serie (hablar y el menú incluidos)."),
+				NSLOCTEXT("TNPause", "ResetKeysYes", "Restablecer"), [WeakThis]()
+				{
+					UTN_PauseMenuWidget* Target = WeakThis.Get();
+					UTN_GameSettingsSubsystem* S = Target ? Target->GetSettings() : nullptr;
+					if (!S)
+					{
+						return;
+					}
+					S->ResetAllKeyBindings();
+					Target->ShowNotice(NSLOCTEXT("TNPause", "ResetKeysDone", "Controles de serie."));
+					Target->RefreshKeyRows(FString());
+				});
+		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
+		Row->SetDescription(Settings->HasCustomKeys() ? NSLOCTEXT("TNPause", "ResetKeysDesc", "Todas las teclas y los botones a los de serie. Pide confirmación.")
+			: NSLOCTEXT("TNPause", "ResetKeysDescNone", "Ahora mismo ya van todos con los de serie."));
 	}
-	else
+
+	// Lo que no se cambia: las acciones de ejes (cámara, rueda), el espectador y los menús.
+	AddListHeader(ControlsList, NSLOCTEXT("TNPause", "HeadFixed", "SIEMPRE IGUAL"));
+	for (const FTNKeyBinding& Fixed : Settings->GetFixedControls())
 	{
-		AddInfo(NSLOCTEXT("TNPause", "TalkOpen", "Hablar"), NSLOCTEXT("TNPause", "TalkOpenValue", "Voz abierta: habla y ya"), FText::GetEmpty(),
-			NSLOCTEXT("TNPause", "TalkOpenDesc", "Puedes pasar a pulsar para hablar en Ajustes > Voz."));
+		AddInfo(Fixed.Label, TNPauseUI::KeyName(Fixed.FixedKeys[0]), TNPauseUI::KeyName(Fixed.FixedKeys[1]),
+			NSLOCTEXT("TNPause", "FixedDesc", "Va con el ratón y los sticks: su sensibilidad está en Ajustes > Controles."));
 	}
-	AddInfo(NSLOCTEXT("TNPause", "SpectateRow", "Cambiar de cámara (eliminado)"), NSLOCTEXT("TNPause", "SpectateKeys", "Rueda · Re Pág · Av Pág"), FText::GetEmpty(),
-		NSLOCTEXT("TNPause", "SpectateDesc", "Cuando miras a los demás tras caer o llegar a la meta."));
+	AddInfo(NSLOCTEXT("TNPause", "SpectateRow", "Espectador: cambiar de tortuga"), NSLOCTEXT("TNPause", "SpectateKeys", "← → · Re Pág · Av Pág · rueda"),
+		NSLOCTEXT("TNPause", "SpectatePad", "LB · RB · cruceta ← →"), NSLOCTEXT("TNPause", "SpectateDesc", "Cuando miras a los demás tras caer o llegar a la meta (la rueda, con la cámara fija)."));
+	AddInfo(NSLOCTEXT("TNPause", "SpectateCamRow", "Espectador: cámara libre o fija"), NSLOCTEXT("TNPause", "SpectateCamKeys", "C"),
+		TNPauseUI::KeyName(EKeys::Gamepad_RightThumbstick), NSLOCTEXT("TNPause", "SpectateCamDesc", "La libre gira con el ratón o el stick derecho, con tu sensibilidad."));
+	AddInfo(NSLOCTEXT("TNPause", "SpectateZoomRow", "Espectador: acercar y alejar"), NSLOCTEXT("TNPause", "SpectateZoomKeys", "Rueda"),
+		NSLOCTEXT("TNPause", "SpectateZoomPad", "Gatillos"), NSLOCTEXT("TNPause", "SpectateZoomDesc", "Con la cámara libre."));
 	AddInfo(NSLOCTEXT("TNPause", "MenuNav", "Moverse por los menús"), NSLOCTEXT("TNPause", "MenuNavKeys", "Flechas · WASD · Intro · Esc"),
 		NSLOCTEXT("TNPause", "MenuNavPad", "Stick · cruceta · A · B"), FText::GetEmpty());
 }
@@ -2328,6 +2576,121 @@ void UTN_PauseMenuWidget::OnVideoModeChanged()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Menú: teclas
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_PauseMenuWidget::StartKeyCapture(UTN_PauseRow* Row, const FString& Id)
+{
+	if (!Row || Id.IsEmpty())
+	{
+		return;
+	}
+	CancelKeyCapture(true);
+	CaptureRow = Row;
+	CaptureId = Id;
+	CaptureElapsed = 0.f;
+	Row->SetCapturing(true);
+	FText Label = FText::FromString(Id);
+	if (const UTN_GameSettingsSubsystem* Settings = GetSettings())
+	{
+		for (const FTNKeyBinding& Binding : Settings->GetKeyBindings())
+		{
+			if (Binding.Id == Id) { Label = Binding.Label; }
+		}
+	}
+	ShowNotice(FText::Format(NSLOCTEXT("TNPause", "CaptureNotice", "Pulsa la tecla o el botón del mando para «{0}». Esc o Select/Vista: dejarlo como está."), Label),
+		TNPauseUI::KeyCaptureTimeout + 0.5f);
+}
+
+void UTN_PauseMenuWidget::FinishKeyCapture(const FKey& Key)
+{
+	UTN_GameSettingsSubsystem* Settings = GetSettings();
+	if (!Settings || !IsCapturingKey())
+	{
+		return;
+	}
+	FText Message;
+	const ETNRebindResult Result = Settings->RebindKey(CaptureId, Key, Message);
+	if (Result == ETNRebindResult::Refused)
+	{
+		// No vale (reservada, o ese aparato no se cambia): se dice y se sigue esperando otra.
+		ShowNotice(Message, TNPauseUI::KeyCaptureTimeout);
+		CaptureElapsed = 0.f;
+		PlayUISound(ETNPauseSound::Hover, 0.f);
+		return;
+	}
+	const FString Id = CaptureId;
+	CancelKeyCapture(true);
+	ShowNotice(Message, 6.f);
+	PlayUISound(ETNPauseSound::Press, 0.f);
+	RefreshKeyRows(Id);
+}
+
+void UTN_PauseMenuWidget::CancelKeyCapture(bool bSilent)
+{
+	if (!IsCapturingKey())
+	{
+		return;
+	}
+	if (UTN_PauseRow* Row = CaptureRow.Get()) { Row->SetCapturing(false); }
+	CaptureRow.Reset();
+	CaptureId.Reset();
+	CaptureElapsed = 0.f;
+	if (!bSilent) { ShowNotice(NSLOCTEXT("TNPause", "CaptureCancelled", "Sin cambios."), 2.5f); }
+}
+
+void UTN_PauseMenuWidget::ResetKeyRow(const FString& Id)
+{
+	UTN_GameSettingsSubsystem* Settings = GetSettings();
+	if (!Settings)
+	{
+		return;
+	}
+	CancelKeyCapture(true);
+	FText Message;
+	Settings->ResetKeyBinding(Id, Message);
+	ShowNotice(Message, 6.f);
+	RefreshKeyRows(Id);
+}
+
+void UTN_PauseMenuWidget::RefreshKeyRows(const FString& FocusId)
+{
+	// Se rehace la lista (una tecla cambiada puede haber movido otra) sin perder por dónde iba.
+	UScrollBox* List = Page == ETNPausePage::Controls ? ControlsList.Get() : (Page == ETNPausePage::Settings ? SettingsList.Get() : nullptr);
+	if (!List)
+	{
+		return;
+	}
+	const float Offset = List->GetScrollOffset();
+	if (Page == ETNPausePage::Controls) { FillControlsList(); }
+	else { FillTab(); }
+	List->SetScrollOffset(Offset);
+	const int32 Count = List->GetChildrenCount();
+	for (int32 i = 0; i < Count; ++i)
+	{
+		UTN_PauseRow* Row = Cast<UTN_PauseRow>(List->GetChildAt(i));
+		if (Row && !FocusId.IsEmpty() && Row->GetBindingId() == FocusId)
+		{
+			FocusRow(Row);
+			return;
+		}
+	}
+	FocusFirstOfPage();
+}
+
+void UTN_PauseMenuWidget::ShowNotice(const FText& Text, float Seconds)
+{
+	if (!NoticeText || Text.IsEmpty())
+	{
+		return;
+	}
+	NoticeText->SetText(Text);
+	NoticeText->SetRenderOpacity(1.f);
+	NoticeText->SetVisibility(ESlateVisibility::HitTestInvisible);
+	NoticeTime = Seconds;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Menú: entrada, foco y sonido
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2433,6 +2796,7 @@ void UTN_PauseMenuWidget::ReleaseInput()
 void UTN_PauseMenuWidget::NativeDestruct()
 {
 	// También al quitarse por un viaje (el mundo se limpia): la entrada vuelve a como estaba.
+	CancelKeyCapture(true);
 	ReleaseInput();
 	if (UTN_GameSettingsSubsystem* Settings = GetSettings()) { Settings->NotifyPauseMenuClosed(this); }
 	Super::NativeDestruct();
@@ -2490,7 +2854,7 @@ void UTN_PauseMenuWidget::RefreshHint()
 		HintText->SetText(NSLOCTEXT("TNPause", "HintSettings", "← →  Cambiar      Q E · LB RB  Pestañas      Esc · B  Volver      Tab · Start  Cerrar"));
 		break;
 	case ETNPausePage::Controls:
-		HintText->SetText(NSLOCTEXT("TNPause", "HintControls", "↑ ↓  Recorrer      Esc · B  Volver      Tab · Start  Cerrar"));
+		HintText->SetText(NSLOCTEXT("TNPause", "HintControls", "Intro · A  Cambiar      Supr · Y  De serie      Esc · B  Volver      Tab · Start  Cerrar"));
 		break;
 	default:
 		HintText->SetText(NSLOCTEXT("TNPause", "HintHome", "Intro · A  Elegir      Esc · B  Continuar      Tab · Start  Cerrar"));
@@ -2547,6 +2911,22 @@ void UTN_PauseMenuWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 		}
 	}
 	UpdateVoiceIcons();
+
+	// Aviso de un momento: se apaga solo (el último medio segundo, desvaneciéndose).
+	if (NoticeTime > 0.f && NoticeText)
+	{
+		NoticeTime -= InDeltaTime;
+		NoticeText->SetRenderOpacity(FMath::Clamp(NoticeTime / 0.5f, 0.f, 1.f));
+		if (NoticeTime <= 0.f) { NoticeText->SetVisibility(ESlateVisibility::Collapsed); }
+	}
+
+	// «Pulsa una tecla...»: si no llega ninguna, se deja como estaba.
+	if (IsCapturingKey())
+	{
+		CaptureElapsed += InDeltaTime;
+		if (!CaptureRow.IsValid()) { CancelKeyCapture(true); }
+		else if (CaptureElapsed > TNPauseUI::KeyCaptureTimeout) { CancelKeyCapture(false); }
+	}
 
 	// Cuenta atrás del cuadro de la resolución: al llegar a cero, se deshace sola.
 	if (ConfirmCountdown > 0.f && IsConfirmOpen())
@@ -2632,12 +3012,58 @@ FReply UTN_PauseMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const F
 	if (const UTN_GameSettingsSubsystem* Settings = GetSettings())
 	{
 		const FTNGameSettings& Data = Settings->GetSettings();
+		// La tecla o el botón elegidos para el menú lo cierran, como Tab y Start.
+		if ((!Data.PauseKey.IsNone() && Key.GetFName() == Data.PauseKey) || (!Data.PausePadKey.IsNone() && Key.GetFName() == Data.PausePadKey))
+		{
+			if (!InKeyEvent.IsRepeat())
+			{
+				if (IsConfirmOpen()) { CloseConfirm(false); }
+				else { CloseMenu(); }
+			}
+			return FReply::Handled();
+		}
 		if (Data.bPushToTalk && (Key.GetFName() == Data.PushToTalkKey || Key.GetFName() == Data.PushToTalkPadKey))
 		{
 			return FReply::Unhandled();
 		}
 	}
 	// Lo demás se queda en el menú: que la tortuga no salte, no se meta en el caparazón ni abra la tienda.
+	return FReply::Handled();
+}
+
+FReply UTN_PauseMenuWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	// Esperando una tecla: la primera que se pulse es la nueva (antes de que la use la fila o la navegación).
+	if (!IsCapturingKey())
+	{
+		return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
+	}
+	if (InKeyEvent.IsRepeat())
+	{
+		return FReply::Handled();
+	}
+	const FKey Key = InKeyEvent.GetKey();
+	if (Key == EKeys::Escape || Key == EKeys::Gamepad_Special_Left)
+	{
+		CancelKeyCapture(false);
+		return FReply::Handled();
+	}
+	// Un roce del stick o un eje no cuentan: se sigue esperando.
+	if (!UTN_GameSettingsSubsystem::IsIgnoredWhileCapturing(Key))
+	{
+		FinishKeyCapture(Key);
+	}
+	return FReply::Handled();
+}
+
+FReply UTN_PauseMenuWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	// Esperando una tecla: un botón del ratón también vale (el clic que empezó a esperar ya pasó: las filas se pulsan al soltar).
+	if (!IsCapturingKey())
+	{
+		return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
+	}
+	FinishKeyCapture(InMouseEvent.GetEffectingButton());
 	return FReply::Handled();
 }
 
@@ -2657,9 +3083,10 @@ FReply UTN_PauseMenuWidget::NativeOnMouseWheel(const FGeometry& InGeometry, cons
 
 FReply UTN_PauseMenuWidget::NativeOnAnalogValueChanged(const FGeometry& InGeometry, const FAnalogInputEvent& InAnalogEvent)
 {
-	// El stick izquierdo mueve el foco (navegación de Slate); los gatillos y el stick derecho no llegan al juego.
+	// El stick izquierdo mueve el foco (navegación de Slate); los gatillos y el stick derecho no llegan al juego. Esperando
+	// una tecla, nada se mueve.
 	const FKey Key = InAnalogEvent.GetKey();
-	if (Key == EKeys::Gamepad_LeftX || Key == EKeys::Gamepad_LeftY)
+	if (!IsCapturingKey() && (Key == EKeys::Gamepad_LeftX || Key == EKeys::Gamepad_LeftY))
 	{
 		return Super::NativeOnAnalogValueChanged(InGeometry, InAnalogEvent);
 	}
