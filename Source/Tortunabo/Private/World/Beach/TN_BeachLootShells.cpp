@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachLoot.h"
+#include "World/Beach/TN_BeachDecorField.h"
 #include "World/Beach/TN_BeachElement.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/TN_ScorePickup.h"
@@ -78,8 +79,8 @@ namespace TNBeachShellDetail
 	/** Separación (cm) entre dos conchitas y entre cualquier concha y una de más valor. */
 	constexpr double SmallSpacing = 100.0;
 	constexpr double SpecialSpacing = 300.0;
-	/** Nada a menos de esto de la línea de salida (cm). */
-	constexpr double StartClear = 5000.0;
+	/** Nada a menos de esto de la línea de salida (cm): lo mismo que el reparto (15 m libres). */
+	constexpr double StartClear = TNBeachLayout::ItemsStartX;
 	/** Gravedad de los arcos (cm/s²) y altura del centro de la tortuga sobre lo que pisa (por ahí pasan los arcos). */
 	constexpr double Gravity = 980.0;
 	constexpr double TurtleCenter = 70.0;
@@ -177,22 +178,16 @@ namespace TNBeachShellDetail
 			, GenXf(InGen.GetActorTransform())
 			, Rng(static_cast<int32>(HashCombine(GetTypeHash(Seed), 0x5E11u)))
 		{
-			// El actor de cada elemento del reparto (el generador los crea en el orden del reparto; los que aún no tienen
-			// clase no están).
-			const TArray<TObjectPtr<ATN_BeachElement>>& Elements = InGen.GetRoundElements();
+			// El actor de cada elemento replicado del reparto (los que aún no tienen clase no están) y, del decorado (local e
+			// instanciado, sin actor), si está montado en el campo de decorado.
 			Actors.Init(nullptr, Layout.Items.Num());
+			Present.Init(false, Layout.Items.Num());
+			Field = InGen.GetDecorField();
 			for (int32 i = 0; i < Layout.Items.Num(); ++i)
 			{
-				const FVector Expected = ToWorld(Layout.Items[i].Pos);
-				for (ATN_BeachElement* Element : Elements)
-				{
-					if (IsValid(Element) && Element->GetSpec().Element == Layout.Items[i].Element
-						&& FVector::DistSquared2D(Element->GetActorLocation(), Expected) < FMath::Square(60.0))
-					{
-						Actors[i] = Element;
-						break;
-					}
-				}
+				ATN_BeachElement* Element = InGen.GetElementForItem(i);
+				Actors[i] = IsValid(Element) ? Element : nullptr;
+				Present[i] = Actors[i] != nullptr || (Field && Field->HasItem(i));
 			}
 		}
 
@@ -202,6 +197,9 @@ namespace TNBeachShellDetail
 		FTransform GenXf;
 		FRandomStream Rng;
 		TArray<ATN_BeachElement*> Actors;
+		/** Si cada elemento del reparto está (su actor o, en el decorado, su pieza en el campo). */
+		TArray<bool> Present;
+		const ATN_BeachDecorField* Field = nullptr;
 		TArray<FPlanned> Shells;
 		int32 TierCount[TNScoreShells::NumTiers] = {};
 		int32 SpotCount[static_cast<int32>(ESpot::Count)] = {};
@@ -249,12 +247,27 @@ namespace TNBeachShellDetail
 			return World.LineTraceSingleByObjectType(OutHit, From, From - FVector(0.0, 0.0, Depth), FCollisionObjectQueryParams(ECC_WorldStatic), Query);
 		}
 
-		/** Lo alto de un elemento (castillos): suelo casi llano del propio elemento cerca de su centro, a más de 1,5 m. */
-		bool FindTop(const AActor& Actor, double Radius, FVector& OutAt) const
+		/**
+		 * Lo alto de un elemento (castillos): suelo casi llano del propio elemento cerca de su centro, a más de 1,5 m. Con su
+		 * actor o, en el decorado (local e instanciado), con la caja de su malla en el campo y las trazas contra el campo (las
+		 * huellas no se solapan: lo que se toca cerca de su centro es él).
+		 */
+		bool FindTop(int32 Index, double Radius, FVector& OutAt) const
 		{
-			const FBox Box = Actor.GetComponentsBoundingBox(true);
-			const FVector Base = Actor.GetActorLocation();
-			if (!Box.IsValid || Box.Max.Z < Base.Z + 150.0)
+			const AActor* Owner = Actors.IsValidIndex(Index) ? Actors[Index] : nullptr;
+			FBox Box(ForceInit);
+			FVector Base = FVector::ZeroVector;
+			if (Owner)
+			{
+				Box = Owner->GetComponentsBoundingBox(true);
+				Base = Owner->GetActorLocation();
+			}
+			else if (Field && Field->GetItemBounds(Index, Box))
+			{
+				Owner = Field;
+				Base = ToWorld(Layout.Items[Index].Pos, TNBeachLayout::PlacementZ(Layout.Items[Index]));
+			}
+			if (!Owner || !Box.IsValid || Box.Max.Z < Base.Z + 150.0)
 			{
 				return false;
 			}
@@ -263,7 +276,7 @@ namespace TNBeachShellDetail
 			{
 				const FVector From(Base.X + Offset.X * Radius, Base.Y + Offset.Y * Radius, Box.Max.Z + 100.0);
 				FHitResult Hit;
-				if (TraceDown(From, Box.Max.Z - Base.Z + 300.0, Hit) && Hit.GetActor() == &Actor && Hit.ImpactNormal.Z > 0.75
+				if (TraceDown(From, Box.Max.Z - Base.Z + 300.0, Hit) && Hit.GetActor() == Owner && Hit.ImpactNormal.Z > 0.75
 					&& Hit.ImpactPoint.Z > Base.Z + 150.0)
 				{
 					OutAt = Hit.ImpactPoint + FVector(0.0, 0.0, TNScoreShells::Hover);
@@ -299,13 +312,13 @@ namespace TNBeachShellDetail
 			return true;
 		}
 
-		/** Índices de los elementos de un tipo que existen en el mundo, en orden al azar (con la semilla). */
+		/** Índices de los elementos de un tipo que existen en el mundo (actor o decorado local), en orden al azar (con la semilla). */
 		TArray<int32> IndicesOf(ETNBeachElement Element)
 		{
 			TArray<int32> Out;
 			for (int32 i = 0; i < Layout.Items.Num(); ++i)
 			{
-				if (Layout.Items[i].Element == Element && Actors[i])
+				if (Layout.Items[i].Element == Element && Present[i])
 				{
 					Out.Add(i);
 				}
@@ -344,7 +357,7 @@ namespace TNBeachShellDetail
 			for (const int32 i : IndicesOf(ETNBeachElement::SandCastleHuge))
 			{
 				FVector Top;
-				if (FindTop(*Actors[i], Layout.Items[i].Radius, Top))
+				if (FindTop(i, Layout.Items[i].Radius, Top))
 				{
 					Add(Top, HasRoom(TNScoreShells::ETier::Grand) ? TNScoreShells::ETier::Grand : TNScoreShells::ETier::Big, ESpot::CastleTop);
 				}
@@ -354,7 +367,7 @@ namespace TNBeachShellDetail
 			for (const int32 i : IndicesOf(ETNBeachElement::SandCastleSmall))
 			{
 				FVector Top;
-				if (SmallCastles < 5 && FindTop(*Actors[i], Layout.Items[i].Radius, Top)
+				if (SmallCastles < 5 && FindTop(i, Layout.Items[i].Radius, Top)
 					&& Add(Top, SmallCastles < 2 ? TNScoreShells::ETier::Big : TNScoreShells::ETier::Normal, ESpot::CastleTop))
 				{
 					++SmallCastles;

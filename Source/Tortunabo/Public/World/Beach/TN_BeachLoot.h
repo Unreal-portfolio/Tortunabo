@@ -1,8 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameFramework/Info.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "World/Beach/TN_BeachTypes.h"
+#include "World/ProcMap/TN_ProcMapEnums.h"
 #include "World/ProcMap/TN_ProcSearchSpot.h"
 #include "TN_BeachLoot.generated.h"
 
@@ -13,10 +15,12 @@ class UDataTable;
 struct FTN_InventoryItem;
 
 /**
- * Botín en la playa del modo carrera (Docs/Modo_Carrera.md, «Botín en la playa»). En cada ronda, en el servidor y con
- * la semilla de la ronda:
- *  - casi todo el decorado se puede rebuscar (ATN_BeachSearchSpot: el rebuscable del mapa procedural con las reglas de
- *    la carrera);
+ * Botín en la playa del modo carrera (Docs/Modo_Carrera.md, «Botín en la playa» y «Rendimiento y red»). En cada ronda,
+ * en el servidor y con la semilla de la ronda:
+ *  - casi todo el decorado se puede rebuscar: un registro de puntos rebuscables (uno por pieza elegida del decorado
+ *    local) cuyo estado (libre o ya rebuscado) se replica en un bitset (ATN_BeachSearchRegistry); el actor interactivo
+ *    (ATN_BeachSearchSpot: el rebuscable del mapa procedural con las reglas de la carrera) se crea solo cuando alguna
+ *    tortuga se acerca y se quita cuando se alejan todas;
  *  - hay objetos y power-ups sueltos por todo el recorrido (sueltos y en filas de lado a lado de la playa);
  *  - hay conchas de puntos como en el cooperativo (ATN_ScorePickup): rachas de 1 por los caminos alternativos, arcos de 1
  *    sobre palas, trampolines y catapultas, normales de 25 junto a los peligros y especiales de 50 y 100 en lo difícil o
@@ -33,16 +37,54 @@ namespace TNBeachLoot
 	 */
 	TORTUNABO_API void SpawnRoundLoot(ATN_BeachRaceGenerator& Generator);
 
+	/**
+	 * Servidor: los rebuscables cuyo borde toca el círculo (WorldCenter, Radius cm) dejan de estar (se marcan como usados y
+	 * se quita su actor). Lo llama ATN_BeachRaceGenerator::ClearElementsAround al quitar el decorado del nido del sprint.
+	 */
+	TORTUNABO_API void ClearSearchAround(ATN_BeachRaceGenerator& Generator, const FVector& WorldCenter, float Radius);
+
+	/** Un punto rebuscable del registro (servidor): la huella de su pieza de decorado. */
+	struct FSearchPoint
+	{
+		/** Índice de la pieza en el reparto (GetRoundLayout().Items). */
+		int32 Item = INDEX_NONE;
+		/** Centro en el suelo y eje del lado largo (mundo); radio, semilargo y alto (cm). */
+		FVector Center = FVector::ZeroVector;
+		FVector Axis = FVector::ForwardVector;
+		float Radius = 100.f;
+		float HalfLength = 0.f;
+		float Height = 150.f;
+		double Progress = 0.0;
+	};
+
 	/** Catálogo de objetos (el de los rebuscables y las zonas de objetos). */
 	inline const TCHAR* CatalogPath() { return TEXT("/Game/Blueprints/Gameplay/Items/DT_Items.DT_Items"); }
 
 	/** Probabilidad de que salga algo al rebuscar en la playa (en el cooperativo, 55 %). */
 	constexpr float SearchLuck = 0.7f;
 
-	/** Rebuscables por ronda como mucho, en cuántos tramos iguales del recorrido se reparten y cuántos por tramo. */
-	constexpr int32 MaxSearchSpots = 90;
+	/**
+	 * Rebuscables por ronda como mucho, en cuántos tramos iguales del recorrido se reparten y cuántos por tramo (con la
+	 * dificultad normal; SearchSpotScale los multiplica). Son puntos del registro: el actor solo existe cerca de alguien.
+	 */
+	constexpr int32 MaxSearchSpots = 360;
 	constexpr int32 Sections = 6;
-	constexpr int32 MaxSearchSpotsPerSection = 20;
+	constexpr int32 MaxSearchSpotsPerSection = 75;
+
+	/**
+	 * El actor de un punto rebuscable aparece cuando una tortuga está a menos de ProxySpawnDistance (cm) de su borde y se
+	 * quita cuando todas están a más de ProxyReleaseDistance (si nadie lo rebusca y no queda lo que soltó sin coger). Las
+	 * chispitas se ven desde 35 m de la cámara y el anillo desde 18 m: aparece antes de hacer falta.
+	 */
+	constexpr double ProxySpawnDistance = 5000.0;
+	constexpr double ProxyReleaseDistance = 7000.0;
+	/** Cada cuánto (s) mira el servidor qué rebuscables hacen falta. */
+	constexpr float ProxyCheckSeconds = 0.2f;
+	/** Distancia (cm) a la que un cliente tiene el actor de un rebuscable (le basta con verlo al acercarse). */
+	constexpr float ProxyNetRelevance = 9000.f;
+
+	/** Rebuscables según la dificultad (las ayudas del perfil: fácil ×1,6; difícil ×1,4, que está lleno de todo). */
+	float SearchSpotScale(ETNProcDifficulty Difficulty);
 
 	/** Separación entre rebuscables (cm): de centro a centro como poco, y de borde a borde (un rebuscable por corrillo). */
 	constexpr double MinSearchSpacing = 900.0;
@@ -94,8 +136,76 @@ class TORTUNABO_API ATN_BeachSearchSpot : public ATN_ProcSearchSpot
 public:
 	ATN_BeachSearchSpot();
 
+	/** Alguien lo está rebuscando ahora. */
+	bool IsBeingSearched() const { return GetSearchState().Searcher != nullptr; }
+
+	/** Lo que salió de aquí sigue en el suelo sin coger (si se quitara el actor, se iría con él). */
+	bool HasLootLying() const { return IsValid(GetSearchState().LootPickup.Get()); }
+
 protected:
 	virtual float GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const override;
+};
+
+/** Estado replicado de los puntos rebuscables de la ronda: cuántos hay y cuáles ya se han rebuscado (un bit por punto). */
+USTRUCT()
+struct FTNBeachSearchNet
+{
+	GENERATED_BODY()
+
+	/** Ronda del generador (RoundNet.Round) de estos puntos; 0 = ninguno. */
+	UPROPERTY()
+	int32 Round = 0;
+
+	/** Tirada del botín de esa ronda (TN.Beach.Loot.Reroll la cambia). */
+	UPROPERTY()
+	int32 Salt = 0;
+
+	UPROPERTY()
+	int32 Count = 0;
+
+	/** Bit i = punto i ya rebuscado (o quitado). */
+	UPROPERTY()
+	TArray<uint32> UsedBits;
+};
+
+/**
+ * Registro replicado de los rebuscables de la playa (uno por mundo; lo crea el servidor). Solo lleva el estado de cada
+ * punto, compacto (FTNBeachSearchNet: un bit por punto), siempre relevante y dormido salvo al cambiar: cientos de
+ * rebuscables cuestan unos pocos bytes. Los puntos (su sitio y su huella) los tiene el servidor; el actor interactivo
+ * de cada uno (ATN_BeachSearchSpot) solo existe cerca de alguna tortuga.
+ */
+UCLASS(NotPlaceable)
+class TORTUNABO_API ATN_BeachSearchRegistry : public AInfo
+{
+	GENERATED_BODY()
+
+public:
+	ATN_BeachSearchRegistry();
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/** El registro de este mundo (null si aún no hay). */
+	static ATN_BeachSearchRegistry* Find(const UObject* WorldContext);
+
+	/** Servidor: puntos nuevos (Count), todos libres. */
+	void ServerReset(int32 Round, int32 Salt, int32 Count);
+
+	/** Servidor: el punto Index ya está rebuscado (o quitado). */
+	void ServerMarkUsed(int32 Index);
+
+	bool IsUsed(int32 Index) const;
+	int32 NumPoints() const { return SearchNet.Count; }
+	int32 NumUsed() const;
+	int32 GetRound() const { return SearchNet.Round; }
+
+private:
+	UPROPERTY(Replicated)
+	FTNBeachSearchNet SearchNet;
+
+	FTimerHandle SleepTimer;
+
+	/** Despierto para mandar un cambio y dormido otra vez al poco. */
+	void WakeForChange();
 };
 
 /**
@@ -104,7 +214,9 @@ protected:
  * objetos sueltos que quedan, también) y reparte el de la nueva (TNBeachLoot::SpawnRoundLoot lo adelanta):
  *  - Rebuscables: entre el decorado de la ronda, con la probabilidad de TNBeachLoot::SearchChance, uno por corrillo (9 m
  *    entre centros y 3 m entre bordes), hasta TNBeachLoot::MaxSearchSpots repartidos a lo largo. Cada uno con la huella
- *    real de su decorado (la caja de su malla, girada como ella: cápsula a lo largo del lado largo).
+ *    real de su decorado (la caja de su malla, girada como ella: cápsula a lo largo del lado largo), en un registro de
+ *    puntos (FSearchPoint) con su estado replicado en ATN_BeachSearchRegistry; el actor de cada punto se crea cerca de
+ *    una tortuga y se quita al alejarse todas (TickSearchProxies).
  *  - Objetos sueltos: uno por tramo igual del recorrido desde los 90 m y filas de lado a lado en cuatro sitios, en la
  *    arena libre (a 3 m de cualquier huella del reparto, pasos de quads incluidos).
  *  - Conchas de puntos (TN_BeachLootShells.cpp).
@@ -128,11 +240,23 @@ public:
 	/** Servidor: quita el botín de la ronda actual y lo reparte otra vez. */
 	void Reroll();
 
+	/** Servidor: los puntos rebuscables que toca el círculo dejan de estar (TNBeachLoot::ClearSearchAround). */
+	void ClearSearchAround(const FVector& WorldCenter, float Radius);
+
+	/** Puntos rebuscables de la ronda y actores que hay ahora (servidor). */
+	int32 NumSearchPoints() const { return SearchPoints.Num(); }
+	int32 NumSearchProxies() const;
+
 protected:
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
 
 private:
-	int32 SpawnSearchSpots(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates);
+	/** Elige los puntos rebuscables de la ronda (el registro); devuelve cuántos. */
+	int32 BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates);
+	/** Crea el actor de los puntos a los que se acerca alguna tortuga y quita el de los que ya nadie tiene cerca. */
+	void TickSearchProxies();
+	ATN_BeachSearchRegistry* EnsureRegistry();
+	void MarkSearchUsed(int32 Index);
 	int32 SpawnLooseItems(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, const UDataTable& Catalog);
 	/** Conchas de puntos de la ronda (TN_BeachLootShells.cpp); devuelve el resumen para el registro. */
 	FString SpawnRoundShells(ATN_BeachRaceGenerator& Gen, int32 Seed);
@@ -140,10 +264,16 @@ private:
 
 	TWeakObjectPtr<ATN_BeachRaceGenerator> CachedGenerator;
 
-	/** Lo repartido en esta ronda (servidor): rebuscables, objetos sueltos y conchas. */
-	TArray<TWeakObjectPtr<AActor>> SpawnedSpots;
+	/** Lo repartido en esta ronda (servidor): objetos sueltos y conchas. */
 	TArray<TWeakObjectPtr<AActor>> SpawnedItems;
 	TArray<TWeakObjectPtr<AActor>> SpawnedShells;
+
+	/** Registro de puntos rebuscables de la ronda (servidor), su actor si lo tiene ahora y si ya se han usado. */
+	TArray<TNBeachLoot::FSearchPoint> SearchPoints;
+	TArray<TWeakObjectPtr<ATN_BeachSearchSpot>> SearchProxies;
+	TArray<bool> SearchUsed;
+	TWeakObjectPtr<ATN_BeachSearchRegistry> Registry;
+	float ProxyClock = 0.f;
 
 	/** Centro (XYZ) y radio del borde (W) de cada rebuscable de la ronda, para no poner objetos sueltos pegados a ellos. */
 	TArray<FVector4> SpotDiscs;

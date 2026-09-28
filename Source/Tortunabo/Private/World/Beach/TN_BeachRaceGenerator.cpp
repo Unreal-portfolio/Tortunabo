@@ -3,13 +3,16 @@
 // asientos y elementos), consultas de la salida, la meta y la zambullida, y el aviso de
 // «tortuga en el agua». El terreno, el acantilado, el mar y los muros van en
 // TN_BeachRaceGenerator_Build.cpp; la salida, la meta, la selva y las huellas, en
-// TN_BeachRaceGenerator_Scenery.cpp. La lógica pura, en TN_BeachLayout.h.
+// TN_BeachRaceGenerator_Scenery.cpp; la ronda por partes, el decorado local y
+// TN.Beach.Perf, en TN_BeachRaceGenerator_Round.cpp. La lógica pura, en TN_BeachLayout.h.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachRaceGenerator.h"
+#include "World/Beach/TN_BeachDecorField.h"
 #include "World/Beach/TN_BeachElement.h"
 #include "World/Beach/TN_BeachLoot.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
+#include "Multiplayer/MP_GameInstance.h"
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -78,11 +81,12 @@ ATN_BeachRaceGenerator::ATN_BeachRaceGenerator()
 	};
 	// Sombra dinámica solo en lo que está en la playa (salida, acantilado, arco de meta, relieve fijo); las banderolas de
 	// la ladera, las boyas, el mar y las tarimas, sin sombra (sombras virtuales más baratas). Las copas del bosquecillo
-	// de la salida tampoco: con el sol casi cenital dejaban a oscuras la salida y los primeros cien metros de playa.
+	// de la salida tampoco, ni sus troncos con el cartel: con el sol casi cenital dejaban a oscuras los huevos de la salida y
+	// los primeros cien metros de playa.
 	CliffMesh = MakeMesh(TEXT("CliffMesh"), true, true);
 	SeabedMesh = MakeMesh(TEXT("SeabedMesh"), true, false);
 	SeaMesh = MakeMesh(TEXT("SeaMesh"), false, false);
-	GroveSolidMesh = MakeMesh(TEXT("GroveSolidMesh"), true, true);
+	GroveSolidMesh = MakeMesh(TEXT("GroveSolidMesh"), true, false);
 	GroveDecoMesh = MakeMesh(TEXT("GroveDecoMesh"), false, false);
 	FinishSolidMesh = MakeMesh(TEXT("FinishSolidMesh"), true, true);
 	FinishDecoMesh = MakeMesh(TEXT("FinishDecoMesh"), false, false);
@@ -98,6 +102,7 @@ void ATN_BeachRaceGenerator::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_BeachRaceGenerator, RoundNet);
+	DOREPLIFETIME(ATN_BeachRaceGenerator, DecorCuts);
 }
 
 ATN_BeachRaceGenerator* ATN_BeachRaceGenerator::Find(const UObject* WorldContext)
@@ -127,6 +132,14 @@ void ATN_BeachRaceGenerator::BeginPlay()
 	BuildAll();
 	UWorld* World = GetWorld();
 	if (!World || !World->IsGameWorld()) { return; }
+	// La dificultad que eligió el anfitrión con el general (sin lobby, la del nivel). La consola puede cambiarla luego.
+	if (HasAuthority())
+	{
+		if (const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+		{
+			if (GI->SelectedProcMode == ETNProcGameMode::Race) { Difficulty = GI->SelectedProcDifficulty; }
+		}
+	}
 	SpawnWaterVolume();
 	if (FootprintMesh) { FootprintMesh->SetHiddenInGame(!ShouldShowFootprints()); }
 	if (GetNetMode() != NM_DedicatedServer) { StartLiving(); }
@@ -137,13 +150,17 @@ void ATN_BeachRaceGenerator::BeginPlay()
 void ATN_BeachRaceGenerator::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	StopLiving();
+	CancelRoundBuild();
 	// Al cambiar de nivel o salir, el mundo se lleva todo; solo si se destruye el generador se quita lo suyo.
 	if (EndPlayReason == EEndPlayReason::Destroyed)
 	{
 		if (HasAuthority()) { DestroyRoundElements(); }
 		if (ATN_ProcWaterVolume* Water = WaterVolume.Get()) { Water->Destroy(); }
+		if (IsValid(DecorField)) { DecorField->Destroy(); }
 	}
+	DecorField = nullptr;
 	RoundElements.Reset();
+	ElementByItem.Reset();
 	WaterVolume.Reset();
 	Finishers.Reset();
 	WetTurtles.Reset();
@@ -154,6 +171,8 @@ void ATN_BeachRaceGenerator::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	const float Dt = FMath::Min(DeltaSeconds, 0.1f);
+	// La ronda a medias sigue montándose (unos milisegundos por fotograma).
+	if (PendingBuild.IsValid()) { TickRoundBuild(false); }
 	TickAutoGenerate(Dt);
 	TickTurtles(Dt);
 	if (bEggsAnimating) { bEggsAnimating = UpdateStartEggs(); }
@@ -187,50 +206,44 @@ void ATN_BeachRaceGenerator::GenerateRound(int32 InSeed)
 {
 	UWorld* World = GetWorld();
 	if (!World || !HasAuthority()) { return; }
-	const double T0 = FPlatformTime::Seconds();
 	BuildAll();
 	DestroyRoundElements();
-	TNBeachLayout::FRoundLayout NewLayout;
-	TNBeachLayout::GenerateRound(InSeed, NewLayout);
-	const double T1 = FPlatformTime::Seconds();
-	ApplyLayoutLocal(NewLayout);
-	const double T2 = FPlatformTime::Seconds();
 	RoundNet.Seed = InSeed;
 	RoundNet.Round += 1;
 	RoundNet.bCleared = false;
+	RoundNet.Difficulty = Difficulty;
 	// Huevos cerrados otra vez y en la salida: las tortugas de la ronda nueva aparecen dentro (el sprint final los lleva a
 	// su línea después, con SetStartEggsAtSprint).
 	RoundNet.bStartOpen = false;
 	RoundNet.StartOpenTime = 0.f;
 	RoundNet.bSprintEggs = false;
+	DecorCuts.Round = RoundNet.Round;
+	DecorCuts.Circles.Reset();
 	ApplyStartEggs(false);
-	AppliedRound = RoundNet.Round;
-	const FString Missing = SpawnRoundElements();
-	TNBeachLoot::SpawnRoundLoot(*this);
 	Finishers.Reset();
 	WetTurtles.Reset();
-	bRoundReady = true;
+	bRoundReady = false;
 	IdleTime = 0.f;
+	// Se replica ya: los clientes montan su parte (reparto, asientos y decorado) a la vez que el servidor.
 	ForceNetUpdate();
-	UE_LOG(LogTortunabo, Log, TEXT("[Playa] ronda %d: %s · %d elementos creados%s · reparto %.0f ms, asientos %.0f ms, total %.0f ms."), RoundNet.Round,
-		*Layout.Summary(), RoundElements.Num(), Missing.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (sin clase todavía: %s)"), *Missing),
-		(T1 - T0) * 1000.0, (T2 - T1) * 1000.0, (FPlatformTime::Seconds() - T0) * 1000.0);
-	if (!Layout.bPassageOk)
-	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] ronda %d: el paso libre de %.0f m no llega de la salida al borde."), RoundNet.Round, TNBeachLayout::MinPassage / 100.0);
-	}
-	OnRoundLayoutReady.Broadcast(this);
+	// El reparto en otro hilo; los asientos, el decorado, los actores y el botín, por partes en los fotogramas siguientes
+	// (TickRoundBuild). IsRoundReady espera a que esté todo.
+	StartRoundBuild(false);
 }
 
 void ATN_BeachRaceGenerator::ClearRound()
 {
 	if (!HasAuthority()) { return; }
+	CancelRoundBuild();
 	DestroyRoundElements();
 	ApplyLayoutLocal(TNBeachLayout::FRoundLayout());
+	if (IsValid(DecorField)) { DecorField->ClearDecor(); }
 	RoundNet.Round += 1;
 	RoundNet.bCleared = true;
 	RoundNet.bStartOpen = false;
 	RoundNet.bSprintEggs = false;
+	DecorCuts.Round = RoundNet.Round;
+	DecorCuts.Circles.Reset();
 	ApplyStartEggs(false);
 	AppliedRound = RoundNet.Round;
 	bRoundReady = false;
@@ -240,7 +253,8 @@ void ATN_BeachRaceGenerator::ClearRound()
 
 bool ATN_BeachRaceGenerator::IsRoundReady() const
 {
-	return bBuilt && RoundNet.Round > 0 && !RoundNet.bCleared && AppliedRound == RoundNet.Round && (!HasAuthority() || bRoundReady);
+	return bBuilt && RoundNet.Round > 0 && !RoundNet.bCleared && AppliedRound == RoundNet.Round && !PendingBuild.IsValid()
+		&& (!HasAuthority() || bRoundReady);
 }
 
 void ATN_BeachRaceGenerator::OnRep_RoundNet()
@@ -248,15 +262,21 @@ void ATN_BeachRaceGenerator::OnRep_RoundNet()
 	BuildAll();
 	if (RoundNet.Round != AppliedRound)
 	{
-		const double T0 = FPlatformTime::Seconds();
-		TNBeachLayout::FRoundLayout NewLayout;
-		if (RoundNet.Round > 0 && !RoundNet.bCleared) { TNBeachLayout::GenerateRound(RoundNet.Seed, NewLayout); }
-		ApplyLayoutLocal(NewLayout);
-		AppliedRound = RoundNet.Round;
 		WetTurtles.Reset();
-		UE_LOG(LogTortunabo, Log, TEXT("[Playa] ronda %d recibida: %d asientos en la arena · %.0f ms."), RoundNet.Round, Layout.Stamps.Num(),
-			(FPlatformTime::Seconds() - T0) * 1000.0);
-		if (RoundNet.Round > 0 && !RoundNet.bCleared) { OnRoundLayoutReady.Broadcast(this); }
+		if (RoundNet.Round > 0 && !RoundNet.bCleared)
+		{
+			// Ronda nueva: el mismo reparto que el servidor (semilla y dificultad), montado por partes (TickRoundBuild). Esto
+			// llega otra vez con cada cambio de la ronda (los huevos, el sprint): la que ya se está montando sigue.
+			if (!PendingBuild.IsValid() || PendingRound != RoundNet.Round) { StartRoundBuild(false); }
+		}
+		else
+		{
+			// Ronda quitada: playa vacía.
+			CancelRoundBuild();
+			ApplyLayoutLocal(TNBeachLayout::FRoundLayout());
+			if (IsValid(DecorField)) { DecorField->ClearDecor(); }
+			AppliedRound = RoundNet.Round;
+		}
 	}
 	// Huevos (en su línea, la salida o la del sprint): se rompen con el salto si llega a tiempo (el servidor lanzó hace
 	// poco); si no, ya rotos.
@@ -276,32 +296,10 @@ void ATN_BeachRaceGenerator::ApplyLayoutLocal(const TNBeachLayout::FRoundLayout&
 	if (bBuilt && TilesX > 0 && TilesY > 0)
 	{
 		// Solo las teselas que tocan un asiento nuevo o uno de la ronda anterior (para quitarlo), con dos filas de margen para
-		// que las normales de los bordes cuadren.
-		const int32 Quads = TNBeachRaceKit::TerrainTileQuads;
-		const double Margin = 700.0;
+		// que las normales de los bordes cuadren; todas si una ronda a medias dejó teselas sin subir.
 		TArray<int32> Touched;
-		for (int32 Ty = 0; Ty < TilesY; ++Ty)
-		{
-			for (int32 Tx = 0; Tx < TilesX; ++Tx)
-			{
-				const int32 I0 = Tx * Quads;
-				const int32 I1 = FMath::Min(I0 + Quads, GridXs.Num() - 1);
-				const int32 J0 = Ty * Quads;
-				const int32 J1 = FMath::Min(J0 + Quads, GridYs.Num() - 1);
-				bool bTouch = false;
-				const TArray<TNBeachLayout::FStamp>* Lists[2] = { &OldStamps, &Layout.Stamps };
-				for (int32 l = 0; l < 2 && !bTouch; ++l)
-				{
-					for (const TNBeachLayout::FStamp& Stamp : *Lists[l])
-					{
-						const double R = Stamp.Radius + Stamp.Blend + Margin;
-						bTouch |= FMath::Max(Stamp.A.X, Stamp.B.X) + R >= GridXs[I0] && FMath::Min(Stamp.A.X, Stamp.B.X) - R <= GridXs[I1]
-							&& FMath::Max(Stamp.A.Y, Stamp.B.Y) + R >= GridYs[J0] && FMath::Min(Stamp.A.Y, Stamp.B.Y) - R <= GridYs[J1];
-					}
-				}
-				if (bTouch) { Touched.Add(Ty * TilesX + Tx); }
-			}
-		}
+		FindTouchedTiles(GridXs, GridYs, TilesX, TilesY, OldStamps, Layout.Stamps, bTerrainDirtyAll, Touched);
+		bTerrainDirtyAll = false;
 		// Casi toda la playa se toca en cada ronda: las alturas, en paralelo; la subida y la colisión, en este hilo.
 		BuildTerrainTiles(Touched, Layout.Stamps);
 	}
@@ -310,49 +308,67 @@ void ATN_BeachRaceGenerator::ApplyLayoutLocal(const TNBeachLayout::FRoundLayout&
 
 FString ATN_BeachRaceGenerator::SpawnRoundElements()
 {
-	UWorld* World = GetWorld();
-	if (!World) { return FString(); }
-	const bool bEditorPreview = !World->IsGameWorld();
-	const FTransform Xf = GetActorTransform();
 	// Las clases que faltan (otro agente aún no las ha escrito) se cuentan una vez por clase, sin crear nada.
 	TMap<FString, int32> MissingByClass;
 	TArray<int8> HasClass;
 	HasClass.Init(-1, static_cast<int32>(ETNBeachElement::Count));
-	for (const TNBeachLayout::FItem& Item : Layout.Items)
+	for (int32 Index = 0; Index < Layout.Items.Num(); ++Index)
 	{
-		const int32 Kind = static_cast<int32>(Item.Element);
-		const TCHAR* ClassName = TNBeach::ClassNameOf(Item.Element);
-		if (HasClass[Kind] < 0)
-		{
-			const UClass* Class = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/Tortunabo.%s"), ClassName));
-			HasClass[Kind] = static_cast<int8>(Class && Class->IsChildOf(ATN_BeachElement::StaticClass()) ? 1 : 0);
-		}
-		if (HasClass[Kind] == 0)
-		{
-			++MissingByClass.FindOrAdd(ClassName);
-			continue;
-		}
-		// A la cota de su asiento (la arena natural de su centro, con las pozas y las trincheras).
-		const FVector Local(Item.Pos.X, Item.Pos.Y, TNBeachLayout::PlacementZ(Item));
-		const FTransform ElementXf = FTransform(FRotator(0.0, Item.Yaw, 0.0), Local) * Xf;
-		ATN_BeachElement* Element = ATN_BeachElement::SpawnElement(World, ElementXf, Item.Spec);
-		if (!Element) { continue; }
-		// La playa mide 1,2 km: todo se ve desde lejos (la distancia de corte por defecto es de 150 m).
-		Element->bAlwaysRelevant = true;
-		if (bEditorPreview)
-		{
-			// Ronda de prueba del editor: no se guarda con el nivel y se construye ya (en el editor no hay BeginPlay).
-			Element->SetFlags(RF_Transient);
-			if (UFunction* Build = Element->FindFunction(TEXT("OnRep_Spec"))) { Element->ProcessEvent(Build, nullptr); }
-		}
-		RoundElements.Add(Element);
+		SpawnRoundElement(Index, HasClass, MissingByClass);
 	}
+	return DescribeMissing(MissingByClass);
+}
+
+void ATN_BeachRaceGenerator::SpawnRoundElement(int32 Index, TArray<int8>& HasClass, TMap<FString, int32>& MissingByClass)
+{
+	UWorld* World = GetWorld();
+	if (!World || !Layout.Items.IsValidIndex(Index)) { return; }
+	const TNBeachLayout::FItem& Item = Layout.Items[Index];
+	// El decorado no es un actor: lo monta cada máquina en su ATN_BeachDecorField (instanciado y sin replicar).
+	if (TNBeach::CategoryOf(Item.Element) == ETNBeachCategory::Decor) { return; }
+	const int32 Kind = static_cast<int32>(Item.Element);
+	if (!HasClass.IsValidIndex(Kind)) { return; }
+	const TCHAR* ClassName = TNBeach::ClassNameOf(Item.Element);
+	if (HasClass[Kind] < 0)
+	{
+		const UClass* Class = FindObject<UClass>(nullptr, *FString::Printf(TEXT("/Script/Tortunabo.%s"), ClassName));
+		HasClass[Kind] = static_cast<int8>(Class && Class->IsChildOf(ATN_BeachElement::StaticClass()) ? 1 : 0);
+	}
+	if (HasClass[Kind] == 0)
+	{
+		++MissingByClass.FindOrAdd(ClassName);
+		return;
+	}
+	// A la cota de su asiento (la arena natural de su centro, con las pozas y las trincheras).
+	const FVector Local(Item.Pos.X, Item.Pos.Y, TNBeachLayout::PlacementZ(Item));
+	const FTransform ElementXf = FTransform(FRotator(0.0, Item.Yaw, 0.0), Local) * GetActorTransform();
+	// SpawnElement le pone su red (ATN_BeachElement::ApplyRoundNetProfile): relevante por distancia, dormido si está quieto.
+	ATN_BeachElement* Element = ATN_BeachElement::SpawnElement(World, ElementXf, Item.Spec);
+	if (!Element) { return; }
+	if (!World->IsGameWorld())
+	{
+		// Ronda de prueba del editor: no se guarda con el nivel y se construye ya (en el editor no hay BeginPlay).
+		Element->SetFlags(RF_Transient);
+		if (UFunction* Build = Element->FindFunction(TEXT("OnRep_Spec"))) { Element->ProcessEvent(Build, nullptr); }
+	}
+	RoundElements.Add(Element);
+	if (ElementByItem.Num() != Layout.Items.Num()) { ElementByItem.SetNum(Layout.Items.Num()); }
+	ElementByItem[Index] = Element;
+}
+
+FString ATN_BeachRaceGenerator::DescribeMissing(const TMap<FString, int32>& MissingByClass)
+{
 	FString Missing;
 	for (const TPair<FString, int32>& Entry : MissingByClass)
 	{
 		Missing += FString::Printf(TEXT("%s%s x%d"), Missing.IsEmpty() ? TEXT("") : TEXT(", "), *Entry.Key, Entry.Value);
 	}
 	return Missing;
+}
+
+ATN_BeachElement* ATN_BeachRaceGenerator::GetElementForItem(int32 ItemIndex) const
+{
+	return ElementByItem.IsValidIndex(ItemIndex) ? ElementByItem[ItemIndex].Get() : nullptr;
 }
 
 void ATN_BeachRaceGenerator::DestroyRoundElements()
@@ -362,6 +378,7 @@ void ATN_BeachRaceGenerator::DestroyRoundElements()
 		if (IsValid(Element)) { Element->Destroy(); }
 	}
 	RoundElements.Reset();
+	ElementByItem.Reset();
 }
 
 void ATN_BeachRaceGenerator::PreviewRound()
@@ -377,11 +394,19 @@ void ATN_BeachRaceGenerator::PreviewRound()
 	const int32 Seed = bEditorRandomSeed ? FMath::Rand() : EditorSeed;
 	DestroyRoundElements();
 	TNBeachLayout::FRoundLayout NewLayout;
-	TNBeachLayout::GenerateRound(Seed, NewLayout);
+	MakeRoundLayout(Seed, Difficulty, NewLayout);
 	ApplyLayoutLocal(NewLayout);
+	// El decorado, instanciado como en juego y de una vez (en el editor no hay fotogramas que repartir).
+	int32 DecorInstances = 0;
+	if (ATN_BeachDecorField* Field = EnsureDecorField())
+	{
+		Field->BeginBuild(Layout, 0);
+		while (!Field->StepBuild(1000.0)) {}
+		DecorInstances = Field->GetStats().BodyInstances;
+	}
 	const FString Missing = SpawnRoundElements();
-	UE_LOG(LogTortunabo, Log, TEXT("[Playa] ronda de prueba del editor: %s · %d elementos creados%s."), *Layout.Summary(), RoundElements.Num(),
-		Missing.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (sin clase todavía: %s)"), *Missing));
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] ronda de prueba del editor: %s · %d elementos creados y %d piezas de decorado instanciadas%s."), *Layout.Summary(),
+		RoundElements.Num(), DecorInstances, Missing.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (sin clase todavía: %s)"), *Missing));
 	OnRoundLayoutReady.Broadcast(this);
 }
 
@@ -389,6 +414,11 @@ void ATN_BeachRaceGenerator::ClearPreview()
 {
 	DestroyRoundElements();
 	ApplyLayoutLocal(TNBeachLayout::FRoundLayout());
+	if (IsValid(DecorField))
+	{
+		DecorField->Destroy();
+		DecorField = nullptr;
+	}
 }
 
 void ATN_BeachRaceGenerator::TickAutoGenerate(float DeltaSeconds)
@@ -498,13 +528,23 @@ int32 ATN_BeachRaceGenerator::ClearElementsAround(const FVector& WorldCenter, fl
 		double T = 0.0;
 		const double Dist = TNProcMap::DistPointSegment(Center, P - Axis * Half, P + Axis * Half, T);
 		if (Dist > static_cast<double>(Radius) + Element->GetFootprintRadius()) { continue; }
+		const int32 ItemIndex = ElementByItem.Find(Element);
+		if (ItemIndex != INDEX_NONE) { ElementByItem[ItemIndex] = nullptr; }
 		Element->Destroy();
 		RoundElements.RemoveAt(i);
 		++Removed;
 	}
-	UE_LOG(LogTortunabo, Log, TEXT("[Playa] ronda %d: %d elementos quitados en %.0f m alrededor de (%.0f, %.0f) m."), RoundNet.Round, Removed, Radius / 100.f,
-		Center.X / 100.0, Center.Y / 100.0);
-	return Removed;
+	// El decorado es local: el círculo se replica (DecorCuts) y cada máquina lo quita del suyo. También sus rebuscables.
+	DecorCuts.Round = RoundNet.Round;
+	DecorCuts.Circles.Add(FVector(Center.X, Center.Y, static_cast<double>(Radius)));
+	const int32 DecorBefore = IsValid(DecorField) ? DecorField->GetStats().CutItems : 0;
+	ApplyDecorCuts();
+	const int32 DecorRemoved = IsValid(DecorField) ? DecorField->GetStats().CutItems - DecorBefore : 0;
+	TNBeachLoot::ClearSearchAround(*this, WorldCenter, Radius);
+	ForceNetUpdate();
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] ronda %d: %d elementos y %d piezas de decorado quitados en %.0f m alrededor de (%.0f, %.0f) m."), RoundNet.Round,
+		Removed, DecorRemoved, Radius / 100.f, Center.X / 100.0, Center.Y / 100.0);
+	return Removed + DecorRemoved;
 }
 
 bool ATN_BeachRaceGenerator::IsFinishWater(const FVector& WorldLocation) const
@@ -531,6 +571,7 @@ float ATN_BeachRaceGenerator::GetCourseProgress(const FVector& WorldLocation) co
 float ATN_BeachRaceGenerator::GetGroundHeightAt(const FVector& WorldLocation) const
 {
 	const FVector Local = GetActorTransform().InverseTransformPosition(WorldLocation);
-	const double Z = TNBeachLayout::StampedZ(Layout.Stamps, Local.X, Local.Y, TNBeachLayout::SurfaceZ(Local.X, Local.Y));
+	// Con el índice de asientos por casillas del reparto (con ~5000 asientos, mirarlos todos en cada consulta era caro).
+	const double Z = TNBeachLayout::SeatedZ(Layout, Local.X, Local.Y, TNBeachLayout::SurfaceZ(Local.X, Local.Y));
 	return static_cast<float>(GetActorTransform().TransformPosition(FVector(Local.X, Local.Y, Z)).Z);
 }

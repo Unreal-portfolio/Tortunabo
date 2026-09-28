@@ -3,12 +3,18 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "World/Beach/TN_BeachLayout.h"
+#include "World/ProcMap/TN_ProcMapEnums.h"
 #include "TN_BeachRaceGenerator.generated.h"
 
 class ACharacter;
+class ATN_BeachDecorField;
 class ATN_BeachElement;
 class ATN_BeachRaceGenerator;
 class ATN_ProcWaterVolume;
+/** Teselas del terreno calculadas en otro hilo y pendientes de subir (TN_BeachRaceGenerator_Build.cpp). */
+struct FTNBeachTileBatch;
+/** Ronda que se está montando por partes en esta máquina (TN_BeachRaceGenerator_Round.cpp). */
+struct FTNBeachRoundBuild;
 class UBoxComponent;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
@@ -48,6 +54,50 @@ struct FTNBeachRoundNet
 	/** Los huevos están en la línea del sprint final (SetStartEggsAtSprint); cada ronda nueva los devuelve a la salida. */
 	UPROPERTY()
 	bool bSprintEggs = false;
+
+	/** Dificultad con la que se repartió la ronda: con la semilla, cada cliente rehace el mismo reparto y el mismo decorado. */
+	UPROPERTY()
+	ETNProcDifficulty Difficulty = ETNProcDifficulty::Normal;
+};
+
+/**
+ * Círculos donde se ha quitado lo de la ronda (ClearElementsAround: el nido del sprint). Los actores se destruyen en el
+ * servidor y la destrucción llega sola; el decorado es local, así que cada máquina quita el suyo con esta lista.
+ */
+USTRUCT()
+struct FTNBeachDecorCuts
+{
+	GENERATED_BODY()
+
+	/** Ronda (RoundNet.Round) a la que pertenecen. */
+	UPROPERTY()
+	int32 Round = 0;
+
+	/** Cada círculo: X e Y en el espacio del generador y Z = radio (cm). */
+	UPROPERTY()
+	TArray<FVector> Circles;
+};
+
+/** Tiempos de la última ronda en esta máquina (registro «[Playa] ronda N: reparto X ms, decorado Y ms...» y TN.Beach.Perf). */
+struct FTNBeachRoundTimings
+{
+	int32 Round = 0;
+	bool bServer = false;
+	/** Reparto (en otro hilo, con las teselas del terreno calculadas ahí mismo). */
+	double LayoutMs = 0.0;
+	/** Espera en el hilo de juego a que acabe el reparto (fotogramas sin nada que hacer, no tiempo gastado). */
+	double LayoutWaitMs = 0.0;
+	/** Subir las teselas con los asientos (colisión incluida), decorado local, actores (servidor) y botín (servidor). */
+	double TerrainMs = 0.0;
+	double DecorMs = 0.0;
+	double ElementsMs = 0.0;
+	double LootMs = 0.0;
+	/** De GenerateRound (o de llegar la semilla) a la ronda lista, y en cuántos fotogramas. */
+	double WallMs = 0.0;
+	int32 Frames = 0;
+	/** Actores replicados creados (servidor) e instancias de decorado. */
+	int32 Actors = 0;
+	int32 DecorInstances = 0;
 };
 
 /**
@@ -64,10 +114,12 @@ struct FTNBeachRoundNet
  *   selva: una fila de cuatro huevos en su nido de arena, entre las raíces de un árbol colosal y bajo hojas enormes, con
  *   el cartel «¡A LA META!»; al dar la salida (OpenStartEggs) las tapas saltan y las tortugas salen lanzadas hacia el
  *   mar. Muros invisibles a los lados, detrás y mar adentro.
- * - Ronda (GenerateRound, servidor): destruye los elementos de la anterior, reparte con la semilla
- *   (TNBeachLayout::GenerateRound), deja en la arena el asiento de cada elemento (el suelo liso bajo su huella; rehace
- *   solo las teselas tocadas) y crea cada elemento con ATN_BeachElement::SpawnElement. Se replica la semilla: cada
- *   cliente rehace los mismos asientos. El terreno no se cava: los hoyos (la plataforma) los traen los elementos.
+ * - Ronda (GenerateRound, servidor): destruye los elementos de la anterior, reparte con la semilla y la dificultad
+ *   (TNBeachLayout::GenerateRound, en otro hilo), deja en la arena el asiento de cada elemento (el suelo liso bajo su
+ *   huella; rehace solo las teselas tocadas, unas pocas por fotograma), monta el decorado local e instanciado
+ *   (ATN_BeachDecorField) y crea cada elemento que no es decorado con ATN_BeachElement::SpawnElement. Se replican la
+ *   semilla y la dificultad: cada cliente rehace los mismos asientos y el mismo decorado. El terreno no se cava: los
+ *   hoyos (la plataforma) los traen los elementos.
  * - Meta: en el servidor, la primera vez por ronda que los pies de una tortuga tocan el agua de meta avisa con
  *   OnTurtleReachedWater; en cada máquina, un chapuzón al entrar en ella.
  *
@@ -95,8 +147,11 @@ public:
 	// ── Ronda ──────────────────────────────────────────────────────────────
 
 	/**
-	 * Servidor: reparte una ronda nueva con esta semilla (destruye los elementos de la anterior, deja los asientos en la
-	 * arena y crea los elementos) y la replica. Vuelve a armar la meta (cada tortuga avisa otra vez al tocar el agua).
+	 * Servidor: reparte una ronda nueva con esta semilla y la dificultad Difficulty (destruye los elementos de la
+	 * anterior) y la replica ya; lo demás se monta por partes (Docs/Modo_Carrera.md, «Rendimiento y red»): el reparto en
+	 * otro hilo, los asientos en la arena y el decorado local en varios fotogramas, luego los actores replicados y el
+	 * botín. IsRoundReady es false hasta que está todo. Vuelve a armar la meta (cada tortuga avisa otra vez al tocar el
+	 * agua).
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Beach")
 	void GenerateRound(int32 InSeed);
@@ -105,7 +160,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Beach")
 	void ClearRound();
 
-	/** El terreno está hecho y la ronda replicada, con sus asientos, en esta máquina (en el servidor, con sus elementos). */
+	/**
+	 * La ronda está montada entera en esta máquina: el terreno con sus asientos y el decorado local (en el servidor,
+	 * además, sus elementos replicados y el botín). Mientras se monta por partes, false.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Beach")
 	bool IsRoundReady() const;
 
@@ -115,29 +173,64 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Beach")
 	int32 GetRoundSeed() const { return RoundNet.Seed; }
 
+	/** Dificultad con la que se repartió la ronda actual (replicada con ella). */
+	UFUNCTION(BlueprintPure, Category = "Beach")
+	ETNProcDifficulty GetRoundDifficulty() const { return RoundNet.Difficulty; }
+
+	/**
+	 * Dificultad de las rondas que se repartan desde ahora (servidor; la del general, SelectedProcDifficulty). Se replica
+	 * con cada ronda (RoundNet), no por sí sola.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Beach")
+	ETNProcDifficulty Difficulty = ETNProcDifficulty::Normal;
+
 	/** Reparto de la ronda actual en esta máquina (en los clientes, rehecho con la semilla). */
 	const TNBeachLayout::FRoundLayout& GetRoundLayout() const { return Layout; }
 
-	/** Elementos creados en esta ronda (solo servidor). */
+	/**
+	 * Elementos replicados creados en esta ronda (solo servidor): trampas, enemigos, fortalezas, cofres... El decorado no
+	 * está: es local e instanciado (GetDecorField).
+	 */
 	const TArray<TObjectPtr<ATN_BeachElement>>& GetRoundElements() const { return RoundElements; }
 
+	/** El actor creado para el elemento ItemIndex del reparto (solo servidor; null en el decorado y en lo que falte). */
+	ATN_BeachElement* GetElementForItem(int32 ItemIndex) const;
+
 	/**
-	 * En cada máquina, al quedar aplicado el reparto de una ronda: en el servidor, tras crear sus elementos; en cada
-	 * cliente, al recibir la semilla (sin elementos todavía: llegan solos). Para lo que se reparte después con el mismo
-	 * diseño (el botín): GetRoundLayout().Interest trae los arcos de salto (libres), las cimas, los atajos, los rincones,
-	 * las trincheras y los caminos alternativos, en el espacio local del generador.
+	 * Decorado de la ronda en esta máquina (ATN_BeachDecorField: mallas instanciadas por tipo y variante, con su colisión;
+	 * sin replicar, el mismo en todas). Para buscar decorado: GetRoundLayout().Items con TNBeach::CategoryOf == Decor (el
+	 * índice del reparto es el del campo: HasItem, GetSearchShape, GetItemBounds). Null hasta la primera ronda.
+	 */
+	ATN_BeachDecorField* GetDecorField() const { return DecorField; }
+
+	/** Tiempos de la última ronda montada en esta máquina (TN.Beach.Perf). */
+	const FTNBeachRoundTimings& GetLastRoundTimings() const { return LastTimings; }
+
+	/**
+	 * En cada máquina, al quedar montada entera una ronda (IsRoundReady): en el servidor, con sus elementos y su botín;
+	 * en cada cliente, con su decorado (los elementos replicados llegan solos, según la distancia). Para lo que se reparte
+	 * después con el mismo diseño (el botín): GetRoundLayout().Interest trae los arcos de salto (libres), las cimas, los
+	 * atajos, los rincones, las trincheras y los caminos alternativos, en el espacio local del generador.
 	 */
 	FOnBeachRoundLayoutReady OnRoundLayoutReady;
 
 	// ── Salida: los huevos ──────────────────────────────────────────────────
 
 	/**
-	 * Servidor: rompe los huevos de la salida (las tapas saltan dando vueltas) y lanza hacia el mar a las tortugas que
-	 * estén en la salida (servidor y cliente dueño a la vez, como la salida de huevos del cooperativo). Cada ronda nueva
-	 * (GenerateRound) los vuelve a cerrar. El GameMode lo llama al dar la salida, con las tortugas ya sueltas.
+	 * Servidor: rompe los huevos de la salida (las tapas saltan dando vueltas); las tortugas que estén en la salida se ven
+	 * 1 s en su huevo (se ponen de pie, se sacuden la cáscara y miran al mar: TNEggHatch) y salen lanzadas hacia el mar a
+	 * la vez (servidor y cliente dueño, con el reloj del servidor, como la salida de huevos del cooperativo). Cada ronda
+	 * nueva (GenerateRound) los vuelve a cerrar. El GameMode lo llama al dar la salida, con las tortugas ya sueltas.
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Beach")
 	void OpenStartEggs();
+
+	/**
+	 * Servidor (consola TN.Beach.Egg): cierra otra vez los huevos de la línea en la que estén, mete a cada tortuga en uno
+	 * (por orden de jugador), quieta y mirando al mar, y al poco los rompe con OpenStartEggs. Para probar la salida sin
+	 * empezar otra ronda.
+	 */
+	void ReplayStartEggs();
 
 	UFUNCTION(BlueprintPure, Category = "Beach")
 	bool AreStartEggsOpen() const { return RoundNet.bStartOpen; }
@@ -172,9 +265,9 @@ public:
 	FTransform GetSprintStartTransform(int32 Index) const;
 
 	/**
-	 * Servidor: quita (destruye) los elementos de la ronda actual cuya huella toque el círculo de Radius (cm) alrededor de
-	 * WorldCenter y devuelve cuántos. Para despejar la salida del sprint; el resto de la ronda (y los asientos en la arena)
-	 * se queda.
+	 * Servidor: quita los elementos de la ronda actual cuya huella toque el círculo de Radius (cm) alrededor de WorldCenter
+	 * y devuelve cuántos: destruye los replicados y quita el decorado local en todas las máquinas (DecorCuts, replicado),
+	 * con sus rebuscables. Para despejar la salida del sprint; el resto de la ronda (y los asientos en la arena) se queda.
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Beach")
 	int32 ClearElementsAround(const FVector& WorldCenter, float Radius);
@@ -346,6 +439,34 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ATN_BeachElement>> RoundElements;
 
+	/** El actor de cada elemento del reparto (mismo índice que Layout.Items; null en el decorado y en lo que falte). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<ATN_BeachElement>> ElementByItem;
+
+	// ── Rendimiento y red (TN_BeachRaceGenerator_Round.cpp) ──
+
+	/** Decorado local e instanciado de la ronda (sin replicar; lo crea cada máquina). */
+	UPROPERTY(Transient)
+	TObjectPtr<ATN_BeachDecorField> DecorField;
+
+	/** Decorado quitado en esta ronda (el nido del sprint): cada máquina lo quita del suyo. */
+	UPROPERTY(ReplicatedUsing = OnRep_DecorCuts)
+	FTNBeachDecorCuts DecorCuts;
+
+	UFUNCTION()
+	void OnRep_DecorCuts();
+
+	/** Ronda que se monta por partes (null si no hay ninguna a medias) y su número (RoundNet.Round). */
+	TSharedPtr<FTNBeachRoundBuild> PendingBuild;
+	int32 PendingRound = 0;
+	/** Teselas del terreno pendientes de subir con los asientos de la ronda nueva. */
+	TSharedPtr<FTNBeachTileBatch> PendingTiles;
+	/** Hay teselas con asientos a medio subir: la ronda siguiente las rehace todas. */
+	bool bTerrainDirtyAll = false;
+	/** Círculos de DecorCuts ya quitados del decorado de esta máquina. */
+	int32 AppliedDecorCuts = 0;
+	FTNBeachRoundTimings LastTimings;
+
 	TWeakObjectPtr<ATN_ProcWaterVolume> WaterVolume;
 
 	/** Reparto aplicado en esta máquina (sus asientos están en el terreno). */
@@ -382,6 +503,8 @@ private:
 	/** Línea de los huevos en esta máquina (la del sprint o la salida) y ronda aplicada con la que se hizo el nido del sprint. */
 	bool bEggsAtSprintLocal = false;
 	int32 SprintNestRound = -1;
+	/** TN.Beach.Egg: rotura pendiente de los huevos que ha vuelto a cerrar (servidor). */
+	FTimerHandle EggReplayHandle;
 
 	// ── Construcción (TN_BeachRaceGenerator_Build.cpp) ──
 	void BuildAll();
@@ -407,11 +530,17 @@ private:
 	// ── Salida con huevos (TN_BeachRaceGenerator_Start.cpp) ──
 	/** Tapas de los huevos (las bases y el nido van con la salida). */
 	void BuildStartEggs();
-	/** Pone los huevos según RoundNet.bStartOpen: cerrados, o rompiéndose (bLive: con salto de las tortugas) o ya rotos. */
+	/**
+	 * Pone los huevos según RoundNet.bStartOpen: cerrados, o rompiéndose (bLive, o un cliente al que le llegan antes del
+	 * lanzamiento: con la pausa en el huevo y el salto de las tortugas) o ya rotos.
+	 */
 	void ApplyStartEggs(bool bLive);
 	/** Pose de las tapas mientras vuelan; false cuando ya no queda ninguna. */
 	bool UpdateStartEggs();
-	/** Lanza hacia el mar a quien esté en la línea de los huevos (servidor: todas; cliente: las suyas). */
+	/**
+	 * La pausa de 1 s en el huevo (TNEggHatch) de cada tortuga que esté en la línea de los huevos, en esta máquina; la
+	 * sujetan y la lanzan hacia el mar al acabar quienes la mueven (servidor: todas; cliente: la suya).
+	 */
 	void LaunchTurtlesFromEggs();
 	/** Base del huevo Index (local) en la línea de esta máquina: la salida o la del sprint (con los asientos de la ronda). */
 	FVector StartEggCup(int32 Index) const;
@@ -431,11 +560,42 @@ private:
 	void StopLiving();
 	void Splash(const FVector& WorldLocation);
 
+	// ── Terreno por partes (TN_BeachRaceGenerator_Build.cpp) ──
+	/** Teselas que toca alguno de los dos juegos de asientos (con dos filas de margen), o todas si bAll. */
+	static void FindTouchedTiles(const TArray<double>& Xs, const TArray<double>& Ys, int32 NumTilesX, int32 NumTilesY,
+		const TArray<TNBeachLayout::FStamp>& OldStamps, const TArray<TNBeachLayout::FStamp>& NewStamps, bool bAll, TArray<int32>& OutIndices);
+	/** Calcula las teselas Indices con los asientos Stamps, listas para subir (lógica pura: vale en cualquier hilo). */
+	static TSharedPtr<FTNBeachTileBatch> ComputeTileBatch(const TArray<double>& Xs, const TArray<double>& Ys, int32 NumTilesX,
+		const TArray<int32>& Indices, const TArray<TNBeachLayout::FStamp>& Stamps);
+	/** Sube teselas de PendingTiles (con su colisión) hasta gastar BudgetSeconds (al menos una); true cuando no queda ninguna. */
+	bool UploadPendingTiles(double BudgetSeconds);
+
+	// ── Ronda por partes y decorado local (TN_BeachRaceGenerator_Round.cpp) ──
+	/** Reparto de una ronda (lógica pura: vale en cualquier hilo). */
+	static void MakeRoundLayout(int32 Seed, ETNProcDifficulty InDifficulty, TNBeachLayout::FRoundLayout& Out);
+	/** Empieza a montar en esta máquina la ronda de RoundNet: el reparto y las teselas en otro hilo (o aquí mismo si bNow). */
+	void StartRoundBuild(bool bNow);
+	/** Sigue con la ronda a medias hasta gastar el presupuesto del fotograma (o hasta acabarla si bNow). */
+	void TickRoundBuild(bool bNow);
+	/** Suelta lo que haya a medias (otra ronda, ClearRound o EndPlay). */
+	void CancelRoundBuild();
+	/** Ronda montada entera: botín (servidor), registro de tiempos y aviso. */
+	void FinishRoundBuild();
+	/** Crea el campo de decorado si falta (pegado al generador, en su espacio). */
+	ATN_BeachDecorField* EnsureDecorField();
+	/** Si el nido de los huevos se hizo con otro reparto (el nuevo aún no estaba), lo rehace con los asientos nuevos. */
+	void SyncStartEggsWithLayout();
+	/** Quita del decorado de esta máquina los círculos de DecorCuts que falten. */
+	void ApplyDecorCuts();
+
 	// ── Ronda (TN_BeachRaceGenerator.cpp) ──
 	/** Aplica un reparto en esta máquina: deja sus asientos en la arena (y quita los de la anterior) y dibuja sus huellas. */
 	void ApplyLayoutLocal(const TNBeachLayout::FRoundLayout& NewLayout);
-	/** Crea los elementos del reparto; devuelve las clases que faltan (vacío si están todas). */
+	/** Crea los elementos del reparto (menos el decorado, que es local); devuelve las clases que faltan (vacío si están todas). */
 	FString SpawnRoundElements();
+	/** Crea el elemento Index del reparto (salvo el decorado) y cuenta las clases que faltan. */
+	void SpawnRoundElement(int32 Index, TArray<int8>& HasClass, TMap<FString, int32>& MissingByClass);
+	static FString DescribeMissing(const TMap<FString, int32>& MissingByClass);
 	void DestroyRoundElements();
 	void TickTurtles(float DeltaSeconds);
 	void TickAutoGenerate(float DeltaSeconds);

@@ -947,6 +947,11 @@ void ATN_BeachRaceGenerator::BuildFootprints()
 			case TNBeachLayout::EItemRole::Launcher: Color = FLinearColor(0.7f, 1.f, 1.f, 0.f); break;
 			case TNBeachLayout::EItemRole::Nook: Color = FLinearColor(0.35f, 0.2f, 0.1f, 0.f); break;
 			case TNBeachLayout::EItemRole::Plug: Color = FLinearColor(0.75f, 0.75f, 0.75f, 0.f); break;
+			// Ronda 3: fortalezas en rosa oscuro, cofres en dorado y los enemigos de sitio fijo (pulpos, ermitaños, pulgas,
+			// tanques y guardias) en granate.
+			case TNBeachLayout::EItemRole::Fortress: Color = FLinearColor(0.7f, 0.05f, 0.45f, 0.f); break;
+			case TNBeachLayout::EItemRole::Chest: Color = FLinearColor(1.f, 0.85f, 0.f, 0.f); break;
+			case TNBeachLayout::EItemRole::Lair: Color = FLinearColor(0.5f, 0.f, 0.1f, 0.f); break;
 			default: break;
 		}
 		// Contorno de la cápsula: dos medias vueltas unidas por sus lados rectos.

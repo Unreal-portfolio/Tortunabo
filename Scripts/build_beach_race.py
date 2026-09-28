@@ -4,7 +4,7 @@ Se ejecuta DENTRO del editor de Unreal, con el C++ ya compilado (ATN_BeachRaceGe
     exec(open(r"<repo>/Scripts/build_beach_race.py", encoding="utf-8").read())
 
 Crea el nivel (o lo abre, si ya existe) y deja:
-  - Sol (luz direccional que mueve el cielo) casi cenital sobre el mar, cielo (SkyAtmosphere), luz del cielo en tiempo
+  - Sol (luz direccional que mueve el cielo) casi cenital a la espalda de la salida, cielo (SkyAtmosphere), luz del cielo en tiempo
     real y niebla suave de altura, como LVL_ProcMap.
   - El generador de la playa (ATN_BeachRaceGenerator, etiqueta «PlayaCarrera») en el origen: el terreno fijo se
     construye solo, también en el editor; cada ronda la reparte el GameMode.
@@ -88,11 +88,12 @@ def build_level():
         by_label[label] = actor
         return actor, True
 
-    # Sol casi cenital (72°) y por encima del mar (la luz va hacia la salida): la playa queda iluminada y cada cosa
-    # proyecta su sombra casi debajo (se ve dónde va a caer la gaviota y dónde se puede subir). Con el sol bajo, o a la
-    # espalda de la salida, la selva y el cerro de detrás de la salida lo dejaban todo a la sombra.
+    # Sol casi cenital (72°) a la espalda de la salida (la luz va hacia el mar): la playa queda iluminada de frente para
+    # quien corre hacia el mar y cada cosa proyecta su sombra casi debajo (se ve dónde va a caer la gaviota y dónde se
+    # puede subir). Con el sol sobre el mar, todo se veía a contraluz; la selva y el cerro de detrás de la salida no dan
+    # sombra (ver TileCastsShadow y ShadowZone), que lo dejaban todo a oscuras.
     sun, created = ensure_actor("Sol", unreal.DirectionalLight, unreal.Vector(0, 0, 30000))
-    sun.set_actor_rotation(unreal.Rotator(roll=0.0, pitch=-72.0, yaw=200.0), False)
+    sun.set_actor_rotation(unreal.Rotator(roll=0.0, pitch=-72.0, yaw=15.0), False)
     if created:
         light = sun.get_component_by_class(unreal.DirectionalLightComponent)
         light.set_editor_property("atmosphere_sun_light", True)

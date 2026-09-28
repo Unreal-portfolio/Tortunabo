@@ -2,15 +2,16 @@
 #include "Core/TN_Log.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
 #include "UObject/UObjectGlobals.h"
 
 ATN_BeachElement::ATN_BeachElement()
 {
 	bReplicates = true;
 	SetReplicateMovement(false);
-	// Relevante en toda la playa (1200 m): si no, a 150 m (lo de serie) los clientes destruyen el elemento y lo vuelven
-	// a crear, con su malla, cada vez que alguien se aleja y vuelve.
-	SetNetCullDistanceSquared(FMath::Square(160000.0f));
+	// Lo de serie para lo que no pase por SpawnElement; los de la ronda cambian a ApplyRoundNetProfile (relevancia por
+	// distancia y dormancy).
+	SetNetCullDistanceSquared(FMath::Square(MinNetRelevance));
 	PrimaryActorTick.bCanEverTick = false;
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
 }
@@ -38,6 +39,8 @@ ATN_BeachElement* ATN_BeachElement::SpawnElement(UWorld* World, const FTransform
 	ATN_BeachElement* Element = World->SpawnActor<ATN_BeachElement>(Class, Transform, Params);
 	if (!Element) { return nullptr; }
 	Element->Spec = InSpec;
+	// Después del constructor de la subclase y antes de la primera réplica: manda sobre lo que ponga cada clase.
+	Element->ApplyRoundNetProfile();
 	Element->FinishSpawning(Transform);
 	return Element;
 }
@@ -45,6 +48,66 @@ ATN_BeachElement* ATN_BeachElement::SpawnElement(UWorld* World, const FTransform
 float ATN_BeachElement::GetFootprintRadius() const
 {
 	return static_cast<float>(TNBeach::FootprintRadius(Spec.Element)) * FMath::Max(0.1f, Spec.SizeScale);
+}
+
+bool ATN_BeachElement::WantsNetDormancy() const
+{
+	return TNBeach::CategoryOf(Spec.Element) != ETNBeachCategory::Enemy;
+}
+
+bool ATN_BeachElement::WantsAlwaysRelevant() const
+{
+	return TNBeach::CategoryOf(Spec.Element) != ETNBeachCategory::Enemy && GetFootprintRadius() >= LandmarkFootprint;
+}
+
+float ATN_BeachElement::GetNetRelevanceDistance() const
+{
+	// Lo que ocupa, con el largo de los alargados (alambre, pasos de quads): lo grande se ve desde más lejos.
+	const float Reach = GetFootprintRadius() + 0.5f * FMath::Max(0.f, Spec.Extent);
+	return FMath::Clamp(MinNetRelevance + 3.f * Reach, MinNetRelevance, MaxNetRelevance);
+}
+
+void ATN_BeachElement::ApplyRoundNetProfile()
+{
+	// Antes: bAlwaysRelevant en todos (el generador) y 1600 m de corte: con ~1500 actores replicados por ronda, el
+	// servidor los miraba todos para cada cliente y cada cliente los tenía todos (y sus mallas) desde la salida. Ahora
+	// cada cliente tiene los que están a su alcance (260-450 m; la niebla empieza a los 300 m), salvo las estructuras
+	// enormes (WantsAlwaysRelevant). Nada del GameMode ni de las pantallas depende de ver elementos lejanos (el servidor
+	// los tiene todos; el recuento va por el PlayerState).
+	bAlwaysRelevant = WantsAlwaysRelevant();
+	const float Relevance = GetNetRelevanceDistance();
+	SetNetCullDistanceSquared(Relevance * Relevance);
+	if (!WantsNetDormancy()) { return; }
+	// Quietos: mandan su estado al aparecer (Spec y lo suyo) y se duermen; cada cambio de estado los despierta con
+	// ForceNetUpdate (que vacía la dormancy) y los multicast abren canal solos. Mientras duermen no cuestan nada.
+	NetDormancy = DORM_Initial;
+	bRoundNetDormancy = true;
+	SetNetUpdateFrequency(FMath::Min(GetNetUpdateFrequency(), DormantNetFrequency));
+	SetMinNetUpdateFrequency(FMath::Min(GetMinNetUpdateFrequency(), FMath::Min(1.f, GetNetUpdateFrequency())));
+}
+
+void ATN_BeachElement::ForceNetUpdate()
+{
+	UWorld* World = GetWorld();
+	if (!bRoundNetDormancy || !HasAuthority() || !World || IsActorBeingDestroyed())
+	{
+		Super::ForceNetUpdate();
+		return;
+	}
+	// Despierto de verdad (con DORM_DormantAll, vaciar la dormancy sola no siempre abre el canal) y enviado ya; unos
+	// segundos después del último cambio vuelve a dormir.
+	if (NetDormancy != DORM_Awake)
+	{
+		SetNetDormancy(DORM_Awake);
+	}
+	Super::ForceNetUpdate();
+	World->GetTimerManager().SetTimer(NetSleepTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		if (NetDormancy == DORM_Awake)
+		{
+			SetNetDormancy(DORM_DormantAll);
+		}
+	}), NetWakeSeconds, false);
 }
 
 void ATN_BeachElement::BeginPlay()

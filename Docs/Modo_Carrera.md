@@ -38,7 +38,8 @@ cooperativo. El cooperativo (lobby del castillo y mapa procedural) sigue igual.
   collado para pasar), corredores más bajos que se separan y se juntan, charcas y pozas de marea que se nadan y dos
   líneas de trincheras en zigzag.
 - **Salida**: una fila de cuatro huevos (como la salida del cooperativo); cada tortuga espera dentro del suyo y, al dar
-  la salida, las tapas saltan y sale lanzada hacia el mar, ya corriendo. Nada del reparto en los primeros 60 m.
+  la salida, las tapas saltan, se la ve **1 s en su huevo roto** (se pone de pie, se sacude la cáscara y mira al mar) y
+  sale lanzada hacia el mar, ya corriendo, a la vez que las demás. Nada del reparto en los primeros 15 m.
 - **Meta**: un acantilado de rocas al final de la playa, de unos 55 cm reales (`TNBeach::CliffHeight` = 15,5 m en el
   juego, 5-6 veces la tortuga): se salta desde el borde y se cae al agua, donde flotan las banderas de meta; se gana al
   tocar el agua. El último salto, desde la zona del borde, se hace de cabeza (zambullida).
@@ -131,7 +132,7 @@ los huevos de la salida y lanzamiento), `_Scenery.cpp` (salida, meta, selva y su
   (los del lobby y la salida del cooperativo: base y tapa de `TNCastleKit`, cada uno con su color) en X = -8 m,
   Y = -15, -5, 5 y 15 m, en un nido de arena (anillo de 1,3 a 2,8 m, con colisión); más filas cada 9 m por detrás si
   hay más de cuatro. Cada tortuga espera dentro del suyo (110 cm sobre el suelo, mirando al mar). Nada del reparto a
-  menos de 60 m de la línea (68 m de los huevos) y el relieve empieza a los 35 m.
+  menos de 15 m de la línea (23 m de los huevos; el salto de los huevos cae a ~7 m) y el relieve empieza a los 35 m.
 - **Línea del sprint** (`SprintLineX()`, siempre la misma): lo más cerca de la mitad del recorrido donde los 12 sitios
   (4 en fila y dos filas detrás, como en la salida) caen en arena seca y casi llana (menos de 12°, fuera de pozas y
   trincheras y a 6 m de las cornisas): X ≈ 615 m.
@@ -171,116 +172,175 @@ la playa la dan sus elementos, el relieve y las rocas:
 - **Valle del lobby** (`ATN_LobbyValley`): la vegetación de las montañas lejanas (a más de 155 m del centro) sin sombra;
   el resto, igual (misma semilla y mismas mallas).
 
-### Reparto por ronda (`TNBeachLayout::GenerateRound`, determinista con la semilla)
+### Reparto por ronda (`TNBeachLayout::GenerateRound`, determinista con la semilla y la dificultad)
+
+Ronda 3 (`Docs/Plan_Carrera_Ronda3.md`, tareas 10 y 12): unos **5000 elementos** por ronda (antes ~1000), con todo
+lleno de estructuras (castillos, fortalezas, decorado militar), enemigos, trampas y ayudas, cofres y muchísima basura y
+cachivaches, y con la **dificultad** que elige el general. `GenerateRound(Seed, Difficulty, Out)` corre en otro hilo
+(`ATN_BeachRaceGenerator::MakeRoundLayout`): sin estáticos que cambien (las tablas fijas —crestas, pozas, trincheras,
+reglas, la rejilla de la arena— se hacen una vez y no se tocan) ni UObjects.
 
 Por pasadas, de lo grande y lo que tiene que verse a lo que rellena:
 
-1. **Castillos con salas** (1-3; dos o más en 22 de cada 24 rondas): el principal entre el 42 y el 58 %, a ±39 m del
-   centro, con dos alas en embudo hacia su entrada (barren 18 cm hacia la salida por metro) de decorado grande y alambre
-   de espino hasta la selva (a 6 m de los muros): o se atraviesa o se rodea por un único hueco de 14 m con algas junto a
-   la selva de un lado. Otro sin alas entre el 12 y el 36 % (el 60 % de las rondas) y otro entre el 62 y el 90 %
+1. **Castillos con salas** (1-3; dos o más en todas las rondas medidas): el principal entre el 42 y el 58 %, a ±39 m
+   del centro, con dos alas en embudo hacia su entrada (barren 18 cm hacia la salida por metro) de decorado grande y
+   alambre de espino hasta la selva (a 6 m de los muros): o se atraviesa o se rodea por un único hueco de 14 m con algas
+   junto a la selva de un lado. Otro sin alas entre el 12 y el 36 % (el 60 % de las rondas) y otro entre el 62 y el 90 %
    (siempre si no hubo el primero; si no, el 60 %).
-2. **Pasos de quads**: 2 o 3 franjas que cruzan la playa entera (`Extent` = 28000, Yaw 90°), entre el 15 y el 92 % y a
-   170 m como poco entre ellas; nada se pone encima (solo oscurecen la arena: rodadas). Van antes que los castillos
-   enormes, que si no les quitan la franja.
-3. **Castillos de arena enormes** (5-8, a ±98 m del centro): uno por tramo con sus propios intentos (un tramo de dunas
-   no se come los de los demás) y los que falten, donde quepan; la mitad con un trampolín delante para subirse.
-4. **Zonas de gaviotas y pelícanos**: 4-6, una por tramo del 10 al 97 %, en lados alternos (a ±70 m o en el centro), a
-   150 m como poco entre centros y cada una con su tamaño de círculo, distinto de las demás. Van por encima.
-5. **La tropa de las trincheras**: sacos en las puntas de cada línea, una fila de erizos antitanque 18-26 m por delante
-   de la del mar, a veces (60 %) un campo de minas más allá y un puesto por detrás de la de la salida.
-6. **Filas que obligan a zigzaguear**: hasta 7 (al 10, 18, 37, 64, 72, 80 y 88,5 %; cada una, el 90 % de las veces) que
-   cierran la playa de selva a selva con un hueco de 14-22 m que cambia de sitio de una a otra: junto a la selva de un
-   lado, del otro o **embudo** al centro. Cada fila, de un tema: militar (sacos, erizos y cajas, con alambre), restos de
-   la marea (madera, troncos, rocas, tablones, redes y boyas) o trastos de playa (sillas, sombrillas, castillos, boyas,
-   pelotas y cubos); algo inclinadas y combadas, con alguna rendija estrecha para apurar, algas en el hueco y, el 60 %
-   de las veces, una catapulta o un trampolín delante (lejos del hueco) para saltarla. Van antes que las trampas
-   destacadas, y la pieza que no cabe (una duna, una poza, un paso de quads) se prueba más pequeña en su sitio
-   (`BuildWall`): las filas salen enteras.
-7. **Trampas destacadas**, repartidas a lo largo antes del relleno (grandes como son, luego no cabrían): catapultas 6-9
-   (primero: su arco libre es el más largo), trampolines 6-9, plataformas móviles 9-13, conchas que atrapan 7-10,
-   plataformas sobre hoyos 5-7, palas 4-6, cubos rotos 4-6 y puertas de conchas 3-5. Un tramo por pieza con 8 intentos
-   cada uno y, lo que no quepa en el suyo, luego por toda la playa (12 intentos por pieza del cupo).
-8. **Puestos militares**: 3-4 puestos (red de camuflaje con un parapeto de 2-3 sacos hacia el mar y 3-6 cajas de
-   munición, bidones, cascos y soldaditos alrededor), 1-2 filas de erizos de 60-110 m (con huecos de 2,5-5 m) y 2-3
-   campos de 5-9 minas en ~25 x 40 m, la mitad en un corredor.
-9. **Rincones escondidos** (3-5): herraduras de decorado grande (piezas de 6,5 m de huella como mucho) junto a la
-   selva, con el hueco (de 6-9 m de radio, vacío: para el botín) abierto hacia el centro de la playa o hacia el mar.
-10. **Lanzadores** delante de lo alto: 1-2 trampolines delante de cada castillo con salas, 1-2 al pie de la cara
-    empinada de las crestas con cornisa y, en el 60 % de las pozas que cortan un corredor, un trampolín o una catapulta
-    para saltarla en vez de nadar.
-11. **Pasarela guía** (el 60 % de las rondas): una hilera de pasarelas y caminitos de palos de 150-350 m hacia el mar
-    (tramos de 30-70 m, ±22°) que rodea lo que haya.
-12. **Relleno por bandas de 50 m** (desde 60 m hasta 30 m antes del filo): un cupo de enemigos por banda
-    (`floor(1,2 + 2,2 t + azar)`: 1-2 junto a la salida, 3-4 junto al mar; los cangrejos, a veces en grupos de 2-3) y
-    decorado y trampas hasta cubrir del 26 % (salida) al 46 % (mar) de la banda (`BandCoverage`; 110 piezas por banda
-    como mucho), con más trampas hacia el mar (decorado/trampas de 58/42 a 46/54). Algas a menudo en corrillos de hasta 5;
-    plataformas y castillos enormes del relleno, a veces con un trampolín delante.
-13. **Catapultas garantizadas** (`EnsureCatapults`, `MinCatapults` = 6): si con todo lo anterior hay menos, los
-    trampolines de delante de un obstáculo pasan a ser catapultas (en su sitio, algo más atrás).
-14. **Tapones**: ninguna línea recta libre hacia el mar de más de 70 m (`MaxStraightRun`). Cada 4 m a lo ancho se mira
-    una fila de casillas de 2 m (cuentan lo que ocupa cada elemento, los pasos de quads, las pozas, las trincheras y lo
-    alto de las crestas) y donde queda un tramo libre más largo se pone en él algo pequeño (7 m de huella como mucho:
-    basura, algas, una mina, un trampolín...), hasta 16 intentos a lo largo del tramo. Lo que cierra el paso se queda
-    solo si sigue habiendo paso en toda la playa (las líneas largas van junto a la selva, por los huecos de las filas, y
-    la ventana de ±60 m no basta); si no, se prueba con algo que no lo cierra (algas, una mina, una trampa pequeña).
+2. **Fortalezas colosales** (una; a veces dos con muchas ayudas, `0,5 (ayudas − 1)`): el terreno fijo solo les deja
+   sitio hacia los 200-265, 490-700 y 870-930 m (el del medio suele ser del castillo principal), así que van justo
+   después, con 400 intentos (baratos con la playa aún vacía). En 23 de cada 24 rondas hay una.
+3. **Pasos de quads**: 2 o 3 franjas que cruzan la playa entera (`Extent` = 28000, Yaw 90°), una más en Difícil y una
+   menos en Fácil, entre el 15 y el 92 % y a 170 m como poco entre ellas; nada se pone encima (solo oscurecen la arena:
+   rodadas), salvo las franjas de caída de las fortalezas, que sí cruzan.
+4. **Las demás fortalezas**: 2 grandes y 3 medianas en Normal (por las ayudas: 3-4 y 4-5 en Fácil), un tramo cada una
+   al azar. Todas (`TryAddFortress`): Yaw 0 ± 10° (su +X, al mar), `SizeScale` 0,94-1,06 (la mediana, hasta 1,03: sus
+   torres llegan a 21,3 m por tamaño), **rodeo** (25 m libres entre la muralla y la selva por cada lado,
+   `FortressDetour`), 12 m hasta lo que ya hubiera (`FortressPad`) y su **franja de caída** libre y reservada: 16 m de
+   ancho de 40 m a 100 m del centro hacia su +X (`FortressLandingZone`: el trampolín potenciado de la cima cae a 45-66 m
+   y la catapulta a 80-90 m y aún rebota). La franja se apunta como `JumpArc` desde el borde de la muralla (así el botín
+   no dibuja conchitas a través de la fortaleza); en su centro no hay `Summit`: la cima (conchas, cofre y lanzador) la
+   pone su clase. Alrededor, sus **guardias** (`PlaceGuards`: 2, 3 o 5 según el tamaño, por los enemigos), sobre todo
+   por delante: cangrejos, erizos, lagartos y algún tanque que patrulla a lo largo de la muralla.
+5. **Castillos de arena enormes** (9-14, a ±98 m del centro): uno por tramo con sus propios intentos y los que falten,
+   donde quepan; la mitad (más con ayudas) con un trampolín delante para subirse.
+6. **Zonas de gaviotas y pelícanos**: 4-6 por la raíz de los enemigos (3-5 en Fácil, 6-9 en Difícil), una por tramo del
+   10 al 97 %, en lados alternos, separadas `GullZoneSpacing` (150 m hasta cinco zonas, algo menos con más) y cada una
+   con su tamaño de círculo, distinto de las demás. Van por encima.
+7. **La tropa de las trincheras**: sacos en las puntas de cada línea, una fila de erizos 18-26 m por delante de la del
+   mar, a veces (60 %) un campo de minas más allá y un puesto por detrás de la de la salida.
+8. **Filas que obligan a zigzaguear**: hasta 7 (al 10, 18, 37, 64, 72, 80 y 88,5 %), como antes: de selva a selva con un
+   hueco de 14-22 m que cambia de sitio, de un tema (militar con alambre, restos de la marea o trastos de playa), algo
+   inclinadas y combadas, alguna rendija para apurar, algas en el hueco y, el 60 % de las veces (más con ayudas), una
+   catapulta o un trampolín delante. Las piezas de las filas, las alas y los rincones cierran el paso aunque sean
+   pequeñas: se tocan.
+9. **Calles del cangrejo ermitaño** (12 en Normal, por los enemigos): tramos rectos de 25-45 m (`Extent`) a ±25° de la
+   bajada de la arena, **cuesta abajo** de su extremo -X local (donde espera el ermitaño) al +X
+   (`LaneRollsDownhill`: siete puntos, cada uno 2 cm más bajo que el anterior, y 1,2 m o el 2,5 % del largo en total),
+   sin cruzar cornisas, con su 60 % central libre (su núcleo: la calle).
+10. **Pulgas de arena** (10 en Normal, por los enemigos) en **claros de arena abierta**: nada en el 75 % central de su
+    huella (~9 m de radio) ni pozas ni trincheras, y el claro se reserva.
+11. **Rincones escondidos** (6-9): herraduras de decorado grande junto a la selva con el hueco (6-9 m de radio) hacia el
+    centro de la playa o hacia el mar y, al fondo del hueco, un **cofre** mirando a la entrada (el centro queda libre
+    para el botín).
+12. **Puestos militares**: 6-8 puestos (red, parapeto de sacos, cajas, bidones, cascos y soldaditos), 2-3 filas de
+    erizos y 3-4 campos de minas (por las trampas; 5-9 minas cada uno, también por las trampas).
+13. **Tanques de juguete** (9 en Normal, por los enemigos): tramos de patrulla de 20-40 m (`Extent`) de través (Yaw
+    90 ± 20°), a 15-35 m de lo militar (redes, erizos y sacos) o de las trincheras (por delante y por detrás de cada
+    una), con su 60 % central libre.
+14. **Ayudas y trampas destacadas**, en sus huecos: catapultas 14-18, trampolines 14-18, plataformas móviles 18-24 y
+    palas 10-14 (por las ayudas); conchas que atrapan 18-24, plataformas sobre hoyos 12-16, cubos rotos 10-14 y puertas
+    de conchas 8-11 (por las trampas). Un tramo por pieza: casillas libres del tramo y, en cada una, el sitio que hay
+    (`FreeRoomAt`); si cabe su núcleo (más pequeña si hace falta), se prueba. Lo que no cabe en el suyo, por toda la
+    playa.
+15. **Lanzadores** delante de lo alto (castillos con salas, crestas con cornisa y pozas que cortan un corredor), como
+    antes, más con ayudas; **pasarelas guía**: una en la primera mitad (80 %) y otra más adelante (50 %).
+16. **Pulpos de poza** (1-2 por poza según su tamaño, por los enemigos): dentro del agua (a menos del 55 % del radio de
+    su orilla; `TerrainAllows` les exige el 70 %), separados entre sí. Su origen, en el fondo (`PlacementZ`); el agua de
+    su poza, `Pools()[PoolAt(Pos)].Water`.
+17. **Cofres** (18 en Normal, por las ayudas, además de los de los rincones), en sitios especiales barajados: tras una
+    concha que atrapa (dos sitios por concha, a 1,5-4 m de su espalda), tras el alambre de las filas y las alas, a la
+    espalda de los castillos enormes, las rocas grandes, los troncos y los restos de barco, junto a las trincheras (del
+    lado del mar, tras los sacos), en medio de un campo de minas y pasado el arco de salto de los lanzadores (el premio
+    de saltar). Su frente (X local) mira a por donde se llega.
+18. **Relleno por bandas de 50 m, a la medida de los huecos** (desde los 15 m hasta 30 m antes del filo). Una rejilla
+    de lo ocupado de 1 m (`FOccupancy`) da las casillas libres de la banda (`FFreeCells`, junto a la selva y en el
+    centro, para respetar la preferencia de lado de cada elemento); en cada intento se toma una, se mide el sitio que
+    hay (`FreeRoomAt`) y se elige algo de la fuente que quepa (`PickFitting`: su núcleo con su tamaño más pequeño),
+    encogido si hace falta. Por banda, en este orden: **ayudas** `(1,6 + 1,6 t)` por las ayudas, **trampas**
+    `(6 + 7 t)` por las trampas y **enemigos** `(4,5 + 5 t)` por los enemigos (con t de 0 en la salida a 1 en el mar;
+    los corrillos cuentan como uno), y luego **decorado** hasta la ocupación de `BandCoverage` (del 66 al 76 %: no se
+    llega; se acaban antes los huecos, ~50 %), el 80 % del **pequeño** (basura, conchas, cocos, cachivaches: huella de
+    menos de 6 m, `SizeScale` 0,6-1,0, a 45 cm de otra pieza pequeña y 1,5 m de lo demás) y el resto del grande.
+    La casilla en la que no cabe ni lo más pequeño sale de la lista.
+19. **Catapultas garantizadas** (`MinCatapults` = 12: son de un solo uso): si faltan, los trampolines de delante de un
+    obstáculo pasan a ser catapultas.
+20. **Tapones** de las líneas rectas libres de más de 70 m, como antes (con la playa llena casi no hacen falta: 0-4).
+
+**Dificultad** (`FDifficultyProfile`, `DifficultyProfileOf`; replicada con la ronda en `RoundNet.Difficulty`): los
+cupos de cada grupo (`ScaleGroupOf`) se multiplican con redondeo al azar (`Scaled`: la misma media sin escalones) y los
+topes por ronda (`Caps`) también. **Ayudas**: catapultas, trampolines, palas, plataformas móviles, fortalezas y cofres
+(los rebuscables los escala el botín). **Trampas**: alambre, algas, plataformas sobre hoyos, cubos, puertas de conchas,
+conchas que atrapan y minas. **Enemigos**: todos. El decorado no cambia. En Difícil los enemigos «de bulto» (cangrejos,
+erizos, lagartos, pulpos y pulgas) se apiñan: su sitio (`Core`) encoge como 1/√2,5 (`CoreFractionOf`; su huella, por
+donde patrullan, no cambia).
+
+| | Fácil | Normal | Difícil |
+|---|---|---|---|
+| Multiplicadores (ayudas / trampas / enemigos) | x1,6 / x0,7 / x0,6 | x1 | x1,4 / x1,8 / x2,5 |
+| Elementos | 4545-5139 (media 4906) | 4444-5131 (media 4839) | 3981-4568 (media 4271) |
+| Decorado (el pequeño) | ~4475 (~4390) | ~4324 (~4238) | ~3435 (~3371) |
+| Enemigos | 88-105 (97; x0,70) | 123-160 (139) | 326-411 (370; x2,66) |
+| Trampas que estorban | 157-193 (175; x0,67) | 220-280 (263) | 305-357 (341; x1,30) |
+| Ayudas (con fortalezas y cofres) | 150-174 (159; x1,42) | 103-122 (112) | 111-141 (125; x1,12) |
+| Cangrejos / erizos / lagartos | 24 / 25 / 15 | 31 / 34 / 25 | 96 / 105 / 68 |
+| Ermitaños / pulpos / pulgas / tanques | 4,6 / 10 / 6 / 6,7 | 6,5 / 16 / 10 / 9,9 | 12,9 / 39 / 25 / 12,7 |
+| Quads / gaviotas | 1-2 / 3-5 | 2-3 / 4-6 | 2-4 / 6-9 |
+| Fortalezas (medianas / grandes / colosales) | 3,9 / 2,4 / 1,1 | 2,8 / 1,6 / 0,96 | 3,4 / 1,7 / 1,04 |
+| Cofres | 22-35 (28) | 24-27 (26) | 26-34 (31) |
+| Catapultas / trampolines / plataformas móviles | 27 / 35 / 31 | 16 / 23 / 22 | 17 / 25 / 22 |
+| Conchas que atrapan / minas / algas | 16 / 54 / 20 | 25 / 83 / 30 | 35 / 121 / 22 |
+| Castillos con salas / enormes | 2 / 10 | 2 / 11 | 2 / 9 |
+| Filas / rincones / piezas militares | 6 / 7 / ~20 | 6 / 8 / ~26 | 6 / 7 / ~31 |
+| Ocupación (núcleos / banda) | media 50 %, primer tercio 47 % | media 49 %, primer tercio 48 % | media 48 %, primer tercio 46 % |
+| Línea recta libre más larga | 66-110 m | 60-102 m | 62-106 m |
+
+(24 semillas por perfil, las de `Layout.Rules`, con el puerto a Python del reparto; en juego, el resumen
+`[Playa] ronda N: ...`). La playa ya está llena en Normal: en Difícil los cupos llevan el multiplicador entero, pero las
+trampas y las ayudas no caben todas (x1,3 y x1,1); los enemigos sí (x2,7). En Fácil sobran huecos y salen x0,7, x0,7 y
+x1,4. La densidad se ajusta con `BandCoverage`, `FillEnemiesBase`/`Sea`, `FillAidsBase`/`Sea`,
+`FillHazardsBase`/`Sea`, `SmallDecorShare`, `SmallDecorPad`, `ChestsBase`, los cupos de `PlaceFeaturedTraps` y los pesos
+de `RuleOf`.
+
+**Tiempo del reparto** (en el juego va en otro hilo). Medido con el puerto a Python y contando operaciones: ~8000
+intentos de poner algo (antes ~11000 para 1000 elementos), ~0,9 millones de distancias en las cubetas, ~45000 lecturas
+de la rejilla de la arena, ~0,6 millones de casillas del paso (con una búsqueda en profundidad que tira hacia el mar;
+antes, en anchura, ~10 millones: era lo que más costaba) y ~4800 `SandZ` para los asientos. En C++, unos 60-70 ms por
+ronda (el reparto de 1000 elementos tardaba 110-125 ms). La primera ronda de cada proceso hace además las tablas fijas,
+entre ellas la rejilla de la arena de 2 m (`SandCache`, ~102000 `SandZ` con `ParallelFor`: unos ms). `Layout.Rules` da
+la media en su registro (y avisa si pasa de 150 ms).
 
 **Reglas de todas las pasadas**:
 
-- **Sitio**: nada a menos de 60 m de la salida ni de 30 m del filo. El decorado y las trampas llegan hasta 4 m de los
-  muros (también sobre el pie de los bancos: junto a la selva tampoco queda un pasillo libre); los enemigos, con su
-  zona de patrulla entera, a 5 m de la selva como poco (salvo los quads). 1,5 m entre huellas (las piezas de las filas,
-  las alas y los rincones se tocan). Cada elemento ocupa su **núcleo** (`Core`): la huella entera en el decorado y las
-  trampas, el 35-45 % en los enemigos, que patrullan entre el decorado.
-- **Terreno**: nada dentro de las pozas (ni en su orilla), sobre las trincheras (ni sus caballones) ni sobre las
-  cornisas; lo redondo grande (14 m de radio o más) tampoco en lo alto de una cresta. Los pasos de quads y lo que va
-  por encima, en cualquier sitio.
+- **Sitio**: nada a menos de 15 m de la salida ni de 30 m del filo. El decorado y las trampas llegan hasta 4 m de los
+  muros; los enemigos, con su zona de patrulla entera, a 5 m de la selva como poco (salvo los quads). 1,5 m entre
+  huellas (`ItemPad`; 45 cm entre dos piezas de decorado pequeño; las piezas de las filas, las alas y los rincones se
+  tocan). Cada elemento ocupa su **núcleo** (`Core`): la huella entera en el decorado y las trampas; en los enemigos, su
+  cuerpo y su sitio (cangrejo 25 %, erizo 40 %, lagarto 33 %, pulpo y pulgas 40 %, calles y tramos 60 %).
+- **Terreno**: nada dentro de las pozas (salvo los pulpos, que solo van dentro), sobre las trincheras ni sobre las
+  cornisas (ni las calles de los ermitaños); lo redondo grande (14 m de radio o más) tampoco en lo alto de una cresta.
+  Los asientos sin paredes miran la rejilla de la arena (`FastSandZ`).
 - **Arcos de salto**: cada catapulta y cada trampolín suelto se pone solo con su arco libre (30 m y 22 m por delante de
-  su borde, 10 m de ancho) y lo reserva: nada cae después en él. Los de delante de un obstáculo (castillo, cresta, poza o
-  fila) saltan encima o por encima de él a propósito. Todos miran al mar (±20° las catapultas y ±15° los trampolines;
-  ±8° los de delante de algo).
-- **Paso libre**: lo que cierra el paso (decorado —salvo pasarelas y caminitos—, alambre, castillos y las piezas de las
-  filas; no las trampas que se pisan o se atraviesan ni los enemigos) se infla 4 m en una rejilla de 2 m. Cada pieza que
-  cierra se comprueba al ponerla (una ventana de ±60 m, de lado a lado; los tapones, en toda la playa) y, en toda la
-  playa, tras cada fila, cada banda y cada pasada que cierra, se quita lo último puesto hasta que haya camino: siempre
-  queda un paso de 8 m, aunque sea sinuoso.
-
-**Cifras** (las 24 semillas de `Layout.Rules`, con el puerto a Python del reparto, que da lo mismo que el C++; en juego,
-el resumen `[Playa] ronda N: ...`):
-
-| | Por ronda |
-|---|---|
-| Elementos | 903-1191 (media ~1030: ~790 decorado, ~180 trampas, ~59 enemigos); antes de esta tanda, 200-260 |
-| Enemigos | 50-65: cangrejos 12-30, erizos 14-22, lagartos 8-14, pasos de quads 2-3, zonas de gaviotas 4-6 |
-| Castillos | con salas 1-3 (media 2), enormes 6-10 |
-| Trampas destacadas | catapultas 6-12, trampolines 14-26, plataformas móviles 9-16, conchas 8-16, plataformas sobre hoyos 6-10, algas 14-33, minas 18-45 |
-| Lo demás | piezas militares 10-31, filas 4-7, rincones 3-5, tapones 45-99 |
-| Ocupación (núcleos / banda) | media 31 % (29-33), primer tercio 27 % (22-31), último tercio 32 % (25-37); antes, del 5 al 19 % |
-| Líneas rectas | la más larga, 70-106 m según la ronda (ninguna de más de 112 m); paso libre en todas |
-
-Ejemplo, semilla 1000, ocupación de cada banda de 50 m (%): `34 26 29 29 18 10 21 29 37 29 36 66 28 39 11 31 48 36 31
-39 29 36 3`. Hacia el mar no llega al objetivo: se acaba el sitio (paso, arcos, pozas, crestas y trincheras). La
-densidad se ajusta en `BandCoverage`, los cupos de `PlaceFeaturedTraps` y `FillBands`, `MinCatapults` y los pesos de
-`RuleOf`.
+  su borde, 10 m de ancho) y lo reserva; las fortalezas, su franja de caída. Los pulpos y los pasos de quads no miran lo
+  reservado.
+- **Paso libre**: lo que cierra el paso (decorado de 6 m de huella o más —salvo pasarelas y caminitos—, las piezas de
+  los muros, alambre, castillos y fortalezas; no el decorado pequeño, ni las trampas que se pisan o se atraviesan, ni
+  los enemigos) se infla 4 m en una rejilla de 2 m. Cada pieza que cierra se comprueba al ponerla (una ventana de ±60 m;
+  los tapones, en toda la playa) y, en toda la playa, tras cada fila, cada banda y cada pasada que cierra, se quita lo
+  último puesto hasta que haya camino: siempre queda un paso de 8 m, aunque sea sinuoso, y entre el decorado pequeño se
+  pasa igual.
 
 **Asiento en la arena** (el «sello» de la ronda): los hoyos los traen los elementos (la plataforma, su cráter). Cada
 elemento del suelo (no los enemigos ni lo que va por encima) deja liso el suelo bajo su huella a la cota de la arena en
 su centro (con el relieve), con un borde de 2,5-16 m hasta la arena natural. En las dunas, `SeatIsGentle` (dentro de
 `TryAdd`) descarta el sitio si la arena de alrededor se aparta del nivel más del 40 % del borde: nada abre paredes. Los
 pasos de quads no allanan: solo oscurecen la arena (rodadas). Se rehacen solo las teselas tocadas (en paralelo), en el
-servidor y en cada cliente con la semilla replicada; `GetGroundHeightAt` lo da sin trazas.
+servidor y en cada cliente con la semilla replicada; `GetGroundHeightAt` lo da sin trazas (`SeatedZ`: con ~5000
+asientos, solo los de la casilla de 25 m del punto, `FStampIndex`).
 
 **Puntos interesantes** (`FRoundLayout::Interest`, para el botín; local, con la Z de la arena): `JumpArc` (arco de cada
-lanzador, de `Pos` a `To`: libre), `Summit` (lo alto de las crestas y de los castillos, con `Height`), `Shortcut`
+lanzador, de `Pos` a `To`: libre; también la franja de caída de cada fortaleza, desde el borde de su muralla), `Summit` (lo alto de las crestas y de los castillos, con `Height`), `Shortcut`
 (lanzadores delante de un obstáculo y pozas que cortan un corredor, de `Pos` a `To`), `Nook` (hueco de cada rincón),
 `Trench` (tramos de las trincheras) y `Detour` (fondo de cada corredor donde se separa). `Source`, el elemento que lo
 crea (`Count` si es del terreno).
 
 ### Interfaz (`ATN_BeachRaceGenerator`)
 
-- Servidor: `GenerateRound(int32 Seed)` (destruye la ronda anterior, reparte, asienta, cierra los huevos, crea cada
-  elemento con `SpawnElement`, con `bAlwaysRelevant`: la playa mide 1,2 km; reparte el botín con
-  `TNBeachLoot::SpawnRoundLoot(*this)` y replica la semilla), `ClearRound()`, `ResetFinishWater()`,
+- Servidor: `GenerateRound(int32 Seed)` (destruye la ronda anterior, cierra los huevos y replica ya la semilla y la
+  dificultad; el reparto, los asientos, el decorado local, los elementos replicados con `SpawnElement` y el botín
+  (`TNBeachLoot::SpawnRoundLoot(*this)`) se montan por partes en los fotogramas siguientes: ver «Rendimiento y red»;
+  `IsRoundReady` espera a que esté todo), la propiedad `Difficulty` (`ETNProcDifficulty`, la del general al empezar el
+  mapa; se replica con cada ronda en `RoundNet.Difficulty` y `GetRoundDifficulty()`), `ClearRound()`, `ResetFinishWater()`,
   `OnTurtleReachedWater(ACharacter*)` / `OnTurtleReachedWaterNative` (una vez por tortuga y ronda, con los pies en el
   agua de meta).
 - Servidor: `OpenStartEggs()` (BlueprintAuthorityOnly; lo llama `ATN_BeachRaceGameMode::BeginRace` al soltar a las
@@ -288,25 +348,41 @@ crea (`Count` si es del terreno).
 - Servidor: `SetStartEggsAtSprint(bool bAtSprint)` (BlueprintAuthorityOnly) y `AreStartEggsAtSprint()`: lleva el nido de
   huevos a la línea del sprint final o lo devuelve a la salida, con los huevos cerrados. `GenerateRound` y `ClearRound`
   los devuelven a la salida; el GameMode lo llama justo después de `GenerateRound` (`true` solo en el sprint).
-- Servidor: `int32 ClearElementsAround(const FVector& WorldCenter, float Radius)` (BlueprintAuthorityOnly): destruye los
+- Servidor: `int32 ClearElementsAround(const FVector& WorldCenter, float Radius)` (BlueprintAuthorityOnly): quita los
   elementos de la ronda cuya huella (un disco o, en los alargados, una cápsula a lo largo de su X) toca el círculo y
-  devuelve cuántos. Lo usa el GameMode para despejar el nido del sprint.
+  devuelve cuántos: destruye los replicados, quita el decorado local en todas las máquinas (el círculo se replica en
+  `DecorCuts`) y sus rebuscables. Lo usa el GameMode para despejar el nido del sprint.
 - Cualquier máquina: `IsRoundReady()`, `GetRoundNumber()`, `GetRoundSeed()`, `GetStartTransform(int32)`,
   `GetNumStartSpots()`, `AreStartEggsOpen()`, `GetSprintStartTransform(int32 Index)` (BlueprintPure: como
   `GetStartTransform`, pero en la línea del sprint: 4 en fila y filas detrás, 110 cm sobre la arena de la ronda,
   mirando al mar, en arena seca fuera de pozas y trincheras), `IsFinishWater(P)` (más allá del filo y a 30 cm del agua o
   menos: sirven los pies o el centro de la cápsula), `IsCliffJumpZone(P)`, `GetCliffEdgeDistance(P)` (negativa antes del
-  filo), `GetCourseProgress(P)` (0-1), `GetGroundHeightAt(P)`, `GetSeaDirection()`, `static Find(WorldContext)` y
-  `GetRoundLayout()` (con los puntos interesantes).
-- `OnRoundLayoutReady` (delegado C++, `FOnBeachRoundLayoutReady`): al tener el reparto de una ronda, en el servidor
-  (tras crear los elementos), en cada cliente (al llegar la semilla nueva) y con Preview Round en el editor.
+  filo), `GetCourseProgress(P)` (0-1), `GetGroundHeightAt(P)` (con el índice de asientos por casillas del reparto),
+  `GetSeaDirection()`, `static Find(WorldContext)`, `GetRoundLayout()` (con los puntos interesantes), `GetDecorField()`
+  (el decorado local, ver «Rendimiento y red»), `GetElementForItem(int32)` (servidor: el actor del elemento del reparto
+  con ese índice; null en el decorado) y `GetLastRoundTimings()`.
+- `OnRoundLayoutReady` (delegado C++, `FOnBeachRoundLayoutReady`): al quedar montada entera una ronda en esa máquina
+  (`IsRoundReady`): en el servidor, con sus elementos y su botín; en cada cliente, con su decorado local (los elementos
+  replicados le llegan solos, según la distancia); y con Preview Round en el editor.
 - **Salida con huevos**: `OpenStartEggs` replica que están rotos y desde cuándo (`RoundNet.bStartOpen` y
   `StartOpenTime`, en tiempo del servidor). Las tapas saltan dando vueltas hacia fuera de la fila y algo hacia atrás, de
-  las puntas al centro (0,08 s entre una y otra), y al posarse encogen en 0,3 s (cada máquina las anima). A la vez, cada
-  tortuga que esté en la salida (entre el muro de detrás y 15 m por delante) sale lanzada hacia el mar a 10 m/s y
-  6,5 m/s hacia arriba (~15 m por el aire, ya corriendo): el servidor a todas y cada cliente a la suya al recibirlo, como
-  en la salida de huevos del cooperativo. Quien llega más de 1,5 s tarde los ve ya rotos, sin salto. Cada ronda nueva
-  los vuelve a cerrar (y a llevar a la salida).
+  las puntas al centro (0,08 s entre una y otra), y al posarse encogen en 0,3 s (cada máquina las anima).
+  - **Pausa de 1 s en el huevo** (`TNEggHatch`, `World/TN_EggHatch.*`, común con el cooperativo): cada tortuga que esté
+    en la salida (entre el muro de detrás y 15 m por delante) se queda quieta en su huevo roto; se agacha un instante y
+    se pone de pie de un estirón (con rebote), se sacude la cáscara (giros rápidos del cuerpo y trocitos de cáscara del
+    color de su huevo que saltan y caen, con un crujido) y gira hacia el mar (en la máquina de su jugador, también la
+    cámara); justo antes del salto se encoge un poco. Es la malla de la tortuga, que se estira, se aplasta y gira sobre
+    su transformación de siempre (se le devuelve al acabar); en caparazón, tumbada o en ragdoll no hay pose.
+  - **Lanzamiento**: `TNEggHatch::PauseSeconds` (1 s) después de romperse, a la vez para todas (es una carrera), sale
+    lanzada hacia el mar a 10 m/s y 6,5 m/s hacia arriba (~15 m por el aire, ya corriendo). Todo con el reloj del
+    servidor: la pose sale de `StartOpenTime` en cada máquina, y la sujetan (`MOVE_None`) y la lanzan el servidor a todas
+    y cada cliente a la suya al recibirlo, como en la salida de huevos del cooperativo. Un cliente al que le llegan más de
+    2,5 s tarde (1 s de pausa y 1,5 de margen) los ve ya rotos, sin pausa ni salto. Cada ronda nueva los vuelve a cerrar
+    (y a llevar a la salida) y quita cualquier pausa a medias.
+  - **`TN.Beach.Egg`** (`ReplayStartEggs`, servidor): cierra otra vez los huevos de la línea en la que estén, mete a
+    cada tortuga en uno (por orden de jugador), quieta y mirando al mar, y a los 1,5 s los rompe con `OpenStartEggs`. Para
+    probar la salida sin empezar otra ronda (también en el sprint). Registro: `[Playa] TN.Beach.Egg: N tortugas otra vez
+    en los huevos ...`.
 - **Nido del sprint** (`TN_BeachRaceGenerator_Start.cpp`): con `SetStartEggsAtSprint(true)` se replica
   `RoundNet.bSprintEggs` y cada máquina hace en la línea del sprint (`TNBeachLayout::SprintSpot`, sobre la arena con los
   asientos de la ronda, como `GetSprintStartTransform`) las cuatro bases y el anillo de arena que se pisa, igual que el
@@ -317,9 +393,108 @@ crea (`Count` si es del terreno).
 - Si nadie reparte, el servidor reparte una ronda al azar a los 3 s (sin el GameMode de la carrera) o a los 20 s (con
   él). Consola: `TN.Beach.ShowFootprints 1` enseña las huellas del reparto en juego. Registro: `[Playa] terreno fijo:
   ...` y `[Playa] selva: ...` al construir, `[Playa] agua nadable: ...` (pozas y cajas), `[Playa] ronda N: ...` en cada
-  ronda (resumen con la ocupación por banda y los tiempos del reparto, los asientos y el total) y `[Playa] ronda N: se
-  rompen los huevos de la salida.` (o `del sprint final`) y `[Playa] ronda N: los huevos de la salida van a la línea
-  del sprint final (M m).`
+  ronda (en el servidor, el resumen del reparto con la ocupación por banda; en cada máquina, los tiempos: ver
+  «Rendimiento y red») y `[Playa] ronda N: se rompen los huevos de la salida.` (o `del sprint final`) y `[Playa] ronda N:
+  los huevos de la salida van a la línea del sprint final (M m).`
+
+### Rendimiento y red (unos 5000 elementos por ronda)
+
+Con la ronda 3 el reparto pasa de ~1000 a ~5000 elementos, el ≈80 % decorado. Con un actor replicado por pieza el
+servidor escucha y los clientes no aguantaban, así que la ronda se monta de otra forma
+(`TN_BeachRaceGenerator_Round.cpp`, `ATN_BeachDecorField`, `TN_BeachDecorKit.h`, `ATN_BeachElement` y `TN_BeachLoot`).
+
+**Decorado local e instanciado** (`ATN_BeachDecorField`, `Public/World/Beach/TN_BeachDecorField.h`):
+
+- El reparto es determinista con la semilla y la dificultad (`RoundNet.Seed` y `RoundNet.Difficulty`, replicadas), así
+  que el servidor y cada cliente montan el mismo decorado sin replicar nada: nada de la categoría `Decor` es un actor en
+  la ronda (`SpawnRoundElements` se lo salta). Lo que crea `TN.Beach.Place` sigue siendo un `ATN_BeachDecor`.
+- Un campo por máquina (actor local, `RF_Transient`, pegado al generador y en su espacio) con mallas instanciadas
+  jerárquicas (HISM) por elemento y variante (y por pieza de los tramos: pasarela y caminito). Las recetas, la
+  colocación (giro, inclinación, hundimiento, tamaño), la colisión y la animación son las de siempre, compartidas con
+  `ATN_BeachDecor` en `TNBeachDecorKit` (`Private/World/Beach/TN_BeachDecorKit.h`, definido en `TN_BeachDecor.cpp`):
+  una pieza sale igual por los dos caminos. Unos 200-300 componentes en vez de ~4000 actores.
+- **Colisión por instancia**: la de cada receta (cajas, esferas y cápsulas en el `BodySetup` de la malla compartida,
+  `BlockAll`; la cámara solo choca con lo grande y macizo): se sube, se cubre y se mete debajo igual que antes. Lo que no
+  tenía colisión sigue sin ella.
+- **Sombra**: lo grande (10 m de huella o más con su tamaño) y los tramos, siempre; lo demás que da sombra, con una
+  copia del lote que solo da sombra (sin pase principal ni de profundidad) hasta `ShadowNearDistance` = 90 m de la
+  cámara. Todo con `ShadowCacheInvalidationBehavior = Rigid`. Menos instancias que marcar en las sombras virtuales (el
+  aviso `[VSM] Non-Nanite Marking Job Queue overflow`). Lo pequeño deja de dibujarse a 60 veces su huella (120-600 m),
+  como antes; lo grande, nunca.
+- **Lo que se mueve** (medusa que respira, almeja, jirón de la vela, red, banderas y faldón de la red de camuflaje):
+  lejos, quieto en su lote (ISM aparte) en la pose del instante 0; cerca de una cámara local (60-200 m según el tamaño,
+  las `MaxAnimators` = 40 más cercanas) un componente de una reserva lo mueve con la misma pose que `ATN_BeachDecor`
+  (`TNBeachDecorKit::AnimPose`) y su instancia quieta se esconde. Ni en el servidor dedicado ni en el editor.
+- `CutCircle` quita piezas en esta máquina (rehace solo los lotes tocados): `ClearElementsAround` lo replica con
+  `DecorCuts` (ronda y círculos) y cada máquina lo aplica al tener montado el decorado.
+- Consultas: `HasItem(i)`, `GetSearchShape(i)` (la huella para rebuscar: la caja de su malla, girada como ese ejemplar;
+  la sombrilla, su pie) y `GetItemBounds(i)`, con `i` el índice del reparto (`GetRoundLayout().Items`). Para buscar
+  decorado (el lagarto que se esconde, las conchas de lo alto de los castillos), el reparto y el campo, no actores.
+
+**La ronda por partes** (`StartRoundBuild`/`TickRoundBuild`, en el servidor y en cada cliente):
+
+1. `GenerateRound` (servidor) replica la ronda ya; cada cliente empieza al recibirla. El reparto
+   (`TNBeachLayout::GenerateRound`, lógica pura) y las alturas de las teselas del terreno con sus asientos se calculan en
+   otro hilo (`UE::Tasks`), con todo copiado.
+2. En el hilo de juego, `TN.Beach.BuildBudgetMs` (6 ms) por fotograma: se suben las teselas (con la colisión cocinada
+   al momento), se monta el decorado local y, en el servidor, se crean los elementos replicados (unos pocos por
+   fotograma) y, al final, el botín (`TNBeachLoot::SpawnRoundLoot`, con todo en su sitio para las trazas de las
+   conchas). El nido del sprint se rehace con los asientos nuevos si se hizo antes de llegar el reparto.
+3. `IsRoundReady` es false hasta que está todo (el GameMode ya lo espera; su límite son 20 s). Registro en cada máquina:
+   `[Playa] ronda N: reparto X ms, decorado Y ms, actores Z · asientos ... ms, elementos ... ms, botín ... ms · ...
+   piezas de decorado instanciadas · F fotogramas, T ms de principio a fin (servidor|cliente).` El reparto va en otro
+   hilo: sus milisegundos no congelan. `TN.Beach.AsyncBuild 0` lo hace todo en el mismo fotograma (como antes, para
+   comparar).
+4. `GetGroundHeightAt` usa el índice de asientos por casillas del reparto (`TNBeachLayout::SeatedZ`): con ~5000
+   asientos, mirarlos todos en cada consulta (los enemigos, a cada paso) era caro.
+
+**Lo que se sigue replicando** (`ATN_BeachElement::ApplyRoundNetProfile`, que aplica `SpawnElement` antes de
+`FinishSpawning` y manda sobre lo que ponga el constructor de cada clase):
+
+- **Relevancia por distancia** en vez de toda la playa: `GetNetRelevanceDistance()` = 260 m + 3 veces lo que ocupa
+  (huella y medio largo), hasta 450 m (una mina, ~270 m; una catapulta, ~290 m; el castillo con salas y las fortalezas,
+  400-450 m; los pasos de quads, 450 m). La niebla empieza a los 300 m. Las estructuras enormes y quietas (20 m de huella
+  o más: castillos con salas y fortalezas, `WantsAlwaysRelevant`) siguen siendo relevantes en toda la playa: son pocas,
+  duermen y así cada cliente las monta en la espera de la ronda y no a mitad de carrera (sus mallas son las más caras)
+  ni aparecen de golpe a lo lejos. Antes, el generador ponía `bAlwaysRelevant` en
+  todo y la base cortaba a 1600 m: con ~1500 actores replicados, el servidor los miraba todos para cada cliente y cada
+  cliente los tenía todos (con sus mallas) desde la salida; ahora le llegan según avanza. Nada del GameMode (servidor:
+  los tiene todos) ni de las pantallas (el recuento va por el PlayerState) depende de ver elementos lejanos.
+- **Dormancy** en lo quieto (`WantsNetDormancy`: todo menos los enemigos): `DORM_Initial` al aparecer (manda `Spec` y su
+  estado una vez y se duerme) y como mucho 2 Hz (`DormantNetFrequency`). Cada trampa ya llama a `ForceNetUpdate()` tras
+  cambiar su estado replicado; `ATN_BeachElement::ForceNetUpdate` la despierta (`DORM_Awake`), lo manda ya y la vuelve a
+  dormir 3 s después del último cambio (el patrón de los rebuscables). Los multicast llegan igual (abren canal) y la
+  destrucción de un actor dormido también. **Regla para las clases nuevas: cada cambio de una propiedad replicada, seguido
+  de `ForceNetUpdate()`; lo que se mueve solo por la red, `WantsNetDormancy() = false`.**
+- Enemigos: sin dormancy (se mueven), con su frecuencia de siempre (10 Hz cerca, menos lejos) y la misma relevancia por
+  distancia. El cofre (`ATN_BeachChest`) no se replica: su `ATN_BeachChestSpot` va aparte (relevante a 400 m).
+
+**Rebuscables ligeros** (`TN_BeachLoot`):
+
+- **Registro de puntos** (servidor, `UTN_BeachLootSubsystem`): uno por pieza de decorado elegida (las reglas de siempre:
+  `SearchChance`, uno por corrillo), con la huella de su malla en el campo de decorado. Hasta 360 por ronda y 75 por
+  sexto del recorrido (×1,6 en fácil y ×1,4 en difícil, `SearchSpotScale`).
+- **Estado replicado compacto**: `ATN_BeachSearchRegistry` (uno por mundo, siempre relevante y dormido salvo al cambiar)
+  con `FTNBeachSearchNet`: ronda, tirada, número de puntos y un bit por punto (usado o libre). Cientos de rebuscables,
+  unos pocos bytes.
+- **Actor solo cerca**: cada 0,2 s el servidor crea el `ATN_BeachSearchSpot` de siempre (mantener E, aro, sonido, 70 % de
+  suerte, saltito del objeto, chispitas y anillo dorado: nada cambia) en los puntos libres a menos de 50 m del borde de
+  alguna tortuga y quita el de los que ya nadie tiene a menos de 70 m, salvo si alguien rebusca o si lo que soltó sigue
+  sin coger. Rebuscado, el punto queda usado y no vuelve a salir. El actor es relevante a 90 m.
+- Los objetos sueltos (55-65, dormidos, 150 m) y las conchas de puntos (hasta ~350, 1 Hz; las del cofre, aparte) siguen
+  siendo actores: su coste es pequeño al lado de lo de antes.
+
+**Consola**: `TN.Beach.Perf` (en la ventana donde se escribe y, en PIE, también el servidor): tiempos de la última
+ronda, decorado local (piezas, instancias fijas, con colisión y con sombra, partes que se mueven, copias de sombra,
+componentes y partes animándose), actores de la playa (por categoría, con dormancy, siempre relevantes y relevancia
+media), rebuscables (puntos, usados y actores ahora), objetos sueltos, conchas y la lista de red (replicados, activos y
+dormidos). `TN.Beach.BuildBudgetMs` y `TN.Beach.AsyncBuild`.
+
+**Cifras esperadas** (por medir con 2 jugadores: FPS en PIE, ancho de banda y avisos de VSM): ~4000 piezas de decorado en
+~200-300 componentes (antes, un actor replicado cada una); ~1000-1500 actores replicados, casi todos dormidos, y en cada
+cliente solo los que tiene a menos de 260-450 m; hasta 360 puntos rebuscables con unos 5-20 actores a la vez; la ronda
+montada en ~0,5-1,5 s repartidos (la primera, más: las recetas se montan una vez por partida) sin fotogramas de más de
+unos 6-15 ms salvo al montar una receta grande o al destruir la ronda anterior.
 
 ### Nivel y capturas
 
@@ -330,8 +505,9 @@ crea (`Count` si es del terreno).
 - Para ver el reparto sin jugar: en el generador, Details > Beach|Editor > **Preview Round** (con `Editor Seed` o al
   azar) y **Clear Preview**; no se guarda con el nivel. Las huellas: amarillo decorado, naranja trampas, rojo enemigos,
   morado quads, celeste gaviotas, marrón pasarela guía, rosa los castillos (con salas y sus alas, y los enormes), verde
-  azulado las filas, oliva lo militar, blanco azulado los lanzadores, marrón oscuro los rincones y gris los tapones, con
-  una flecha hacia su X local. Los puntos interesantes: arcos de salto en blanco y atajos en fucsia (tiras) y rincones,
+  azulado las filas, oliva lo militar, blanco azulado los lanzadores, marrón oscuro los rincones, gris los tapones, rosa
+  oscuro las fortalezas, dorado los cofres y granate los enemigos de sitio fijo (pulpos, ermitaños, pulgas, tanques y
+  guardias), con una flecha hacia su X local. La dificultad de Preview Round, la del generador (`Difficulty`). Los puntos interesantes: arcos de salto en blanco y atajos en fucsia (tiras) y rincones,
   cimas, trincheras y caminos alternativos en rombos (marrón, amarillo, oliva y azul).
 - Qué capturar, con `vista(nombre)` del script (`BEACH_SKIP_MAIN = True` antes del `exec`): `salida`, `planta` (con
   Preview Round: el reparto entero y sus huellas), `castillo`, `acantilado`, `meta`, `selva` y las nuevas `huevos` (la
@@ -340,15 +516,20 @@ crea (`Count` si es del terreno).
   salen del terreno fijo medido en Python: si alguna queda enterrada o alta, se retoca su Z. En juego: la salida (tapas
   y salto de las cuatro), un trampolín delante de un castillo, cruzar a nado una poza, pasar una trinchera y una
   cornisa, y el registro `[Playa] ronda N` (ocupación por banda y tiempos).
-- Pruebas: `Automation RunTests Tortunabo.Beach`: `Terrain` (salida en la zona del salto de los huevos, nada a menos de
-  60 m, línea del sprint a 30 m de la mitad con sus 12 sitios secos y llanos, meta, zambullida y asientos), `Relief`
-  (pendiente máxima < 42°, desviación > 90 cm y más del 10 % por encima de 10°; corredores más hondos, crestas con
-  cornisa, pozas sin rebosar, hondas, de orilla suave y nadables; trincheras cavadas junto al eje y con la arena natural
-  lejos de todos los canales), `Layout.Determinism` (más de 500 elementos, iguales dos veces, puntos interesantes
-  incluidos) y `Layout.Rules` (24 semillas: límites, sin solapes, asientos suaves, arcos libres, castillos, quads,
-  gaviotas separadas y distintas, cupos de enemigos, cangrejos, 4 catapultas o más, trampolines, plataformas, filas,
-  militar, ocupación, puntos interesantes, como mucho 8 filas con líneas rectas de más de 112 m y más huella hacia el
-  mar).
+- Pruebas: `Automation RunTests Tortunabo.Beach`: `Terrain` (salida en la zona del salto de los huevos, 15 m libres
+  por delante, línea del sprint a 30 m de la mitad con sus 12 sitios secos y llanos, meta, zambullida y asientos),
+  `Relief` (pendiente máxima < 42°, desviación > 90 cm y más del 10 % por encima de 10°; corredores más hondos, crestas
+  con cornisa, pozas sin rebosar, hondas, de orilla suave y nadables; trincheras cavadas junto al eje y con la arena
+  natural lejos de todos los canales), `Layout.Determinism` (con cada dificultad, más de 3500 elementos, iguales dos
+  veces, puntos interesantes incluidos; otra dificultad, otro reparto), `Layout.Rules` (24 semillas en Normal y 8 en
+  Fácil y en Difícil: límites, sin solapes, asientos suaves, arcos y franjas de caída libres, castillos, quads y
+  gaviotas según la dificultad, cupos de elementos y enemigos, cangrejos, 6 catapultas o más, trampolines, plataformas,
+  filas, militar, ocupación ≥ 42 % (primer tercio ≥ 38 %), puntos interesantes, como mucho 2 filas con líneas rectas de
+  más de 112 m, más huella hacia el mar, fortalezas con rodeo, al mar y en su huella —la colosal en el 80 % de las
+  rondas y los tres tamaños en el 75 %—, cofres en sitios especiales, pulpos en las pozas, ermitaños cuesta abajo,
+  pulgas en su claro, tanques junto a lo militar; y el tiempo medio del reparto en su registro) y `Layout.Difficulty`
+  (los multiplicadores y lo que sale de verdad en 8 semillas: enemigos x0,75 o menos en Fácil y x2 o más en Difícil,
+  trampas x0,8 / x1,2, ayudas x1,25 en Fácil y al menos las de Normal en Difícil, y cofres no menos que en Normal).
 
 ## Reparto del trabajo (agentes)
 
@@ -358,7 +539,7 @@ crea (`Count` si es del terreno).
 | Menú, flujo y reglas | `UI/Menu/MP_MainMenuWidget.*`, `Lobby/TN_HQGameMode.*` (viaje), `Game/TN_BeachRaceGameMode.*`, aturdir en vez de morir; cuenta atrás tras la primera, medias conchas, enganche del gusano de arena y sprint final (con el nido de huevos en su línea, `World/Beach/TN_BeachRaceGenerator_Start.cpp`, y su interfaz en `UI/Race/`); salto final y chapuzón (`World/Beach/TN_BeachFinishSplash.*`, `TN_BeachSplashSynthComponent.*`); misión con el general (`Lobby/TN_LobbyMission.*`, pestaña «Misión» de `UI/Briefing/TN_BriefingWidget.*`, pizarra de `Lobby/TN_GeneralBriefing.*`, `Lobby/TN_ProcModeSelector.*`) |
 | Terreno, nivel y reparto | `World/Beach/TN_BeachRaceGenerator.*`, `TN_BeachLayout.h`, `Scripts/build_beach_race.py` |
 | Decorado gigante | `World/Beach/TN_BeachDecor.*`, `TN_BeachPropMeshes.h` |
-| Trampas e interacciones | `World/Beach/TN_BeachBarbedWire.*`, `Seaweed`, `WobblyPlatform`, `BrokenBucket`, `SpadeRamp`, `SandDungeon`, `ShellGate`, `ClamTrap`, `MovingPlatform`, `Catapult`, `Trampoline`, `TN_BeachRideKit.h` |
+| Trampas e interacciones | `World/Beach/TN_BeachBarbedWire.*`, `Seaweed`, `WobblyPlatform`, `BrokenBucket`, `SpadeRamp`, `SandDungeon`, `ShellGate`, `ClamTrap`, `MovingPlatform`, `Catapult`, `Trampoline`, `TN_BeachRideKit.h`; fortalezas y lanzadores potenciados: `TN_BeachFortress.*`, `TN_BeachFortressKit.h`, `TN_BeachBoostKit.h` |
 | Enemigos y tormenta | `World/Beach/TN_BeachGiantCrab.*`, `SeaUrchin`, `Lizard`, `QuadLane`, `GullZone`, `TN_BeachStorm.*` |
 | Recuento, campeón y podio | `UI/Race/*`, poses de celebración en `Player/TN_TurtleAnimInstance.*`, escena del podio |
 | Botín en la playa y brillo de lo que se coge | `World/Beach/TN_BeachLoot.*`, `TN_BeachLootShells.cpp`, `World/TN_PickupGlowComponent.*`, `Private/World/TN_LootGlowKit.h`; ganchos en `World/ProcMap/TN_ProcSearchSpot.*` y `World/TN_PickupInteractableBase.*` |
@@ -603,8 +784,13 @@ se quede medio segundo largo dentro del agua para que se vea la salpicadura.
 
 | Archivo | Qué es |
 |---|---|
-| `Public/World/Beach/TN_BeachDecor.h`, `Private/World/Beach/TN_BeachDecor.cpp` | `ATN_BeachDecor`: todos los elementos de la categoría Decor; caché de mallas, colocación, colisión, tramos instanciados y animación |
+| `Public/World/Beach/TN_BeachDecor.h`, `Private/World/Beach/TN_BeachDecor.cpp` | `ATN_BeachDecor`: una pieza de la categoría Decor como actor (`TN.Beach.Place`); y `TNBeachDecorKit` (caché de mallas, colocación, colisión, tramos y animación) |
+| `Private/World/Beach/TN_BeachDecorKit.h` | La interfaz de `TNBeachDecorKit`, que comparten `ATN_BeachDecor` y el decorado de la ronda |
+| `Public/World/Beach/TN_BeachDecorField.h`, `Private/World/Beach/TN_BeachDecorField.cpp` | `ATN_BeachDecorField`: el decorado de cada ronda, local en cada máquina e instanciado (ver «Rendimiento y red») |
 | `Private/World/Beach/TN_BeachPropMeshes.h` | Recetas low-poly (`TNBeachProp`): primitivas, colisión simple, una receta por pieza y los kits de la pasarela y del caminito |
+
+Desde la ronda 3, el decorado de cada ronda no son actores: lo monta cada máquina en su `ATN_BeachDecorField` con las
+mismas recetas, colocación, colisión y movimiento que se cuentan aquí para `ATN_BeachDecor` (ver «Rendimiento y red»).
 
 **Cómo funciona.** En `ApplySpec` la variante sale de `Spec.Seed` (4 por pieza; 8 rocas, 3 grupos de rocas) y la malla de
 cada (elemento, variante) se construye **una vez por partida** (`static`, fuera del recolector, `RF_Transient |
@@ -732,12 +918,15 @@ Que nada se salga de su huella (`TN.Beach.ShowFootprints 1`) ni flote.
 | `TN_BeachSpadeRamp.*` | `ATN_BeachSpadeRamp`: pala gigante, balancín con trampolín o puente-trampolín entre dos alturas |
 | `TN_BeachShellGate.*` | `ATN_BeachShellGate`: puerta de dos hojas de conchas (en pared, entre rocas o desnuda) con interruptor |
 | `TN_BeachSandDungeon.*` | `ATN_BeachSandDungeon`: castillo de arena con salas que se atraviesa |
+| `TN_BeachFortress.*` | `ATN_BeachFortress`: fortaleza de arena que se sube (mediana, grande o colosal) con premio en la cima; consola `TN.Beach.PlaceBoosted` y `TN.Beach.Fortress.Top` |
+| `Private/World/Beach/TN_BeachFortressKit.h` | Planta (medidas, subidas, atajos, huecos del pretil y premios) y malla de las fortalezas |
+| `Private/World/Beach/TN_BeachBoostKit.h` | Lo potenciado: estrella, bandera y estandarte de Tortunavy, guirnaldas de banderines y fanfarria de los lanzadores de la cima |
 | `TN_BeachMine.*` | `ATN_BeachMine`: mina de juguete medio enterrada; al pisarla explota y lanza en bola hacia atrás |
 | `TN_BeachMineSynth.*` | `UTN_BeachMineSynthComponent`: sonidos sintetizados de la mina (clic, pitido, explosión, lluvia de arena y rearme) |
 | `TN_BeachClamTrap.*` | `ATN_BeachClamTrap`: almeja gigante que se cierra, atrapa unos segundos, tiembla echando humo y escupe mareada |
 | `TN_BeachMovingPlatform.*` | `ATN_BeachMovingPlatform`: balsa que va y viene sobre un charco de verdad, o ascensor a una torre con catapulta |
-| `TN_BeachCatapult.*` | `ATN_BeachCatapult`: cuchara sobre un tapón con cubito de contrapeso; lanza en bola hacia el mar |
-| `TN_BeachTrampoline.*` | `ATN_BeachTrampoline`: medusa gorda, colchoneta, donut o sombrero de paja que rebotan y se deforman |
+| `TN_BeachCatapult.*` | `ATN_BeachCatapult`: cuchara sobre un tapón con cubito de contrapeso; lanza en bola hacia el mar una sola vez y queda partida (potenciada: dorada y mucho más lejos) |
+| `TN_BeachTrampoline.*` | `ATN_BeachTrampoline`: medusa gorda, colchoneta, donut o sombrero de paja que rebotan y se deforman (potenciado: más alto y mucho más lejos) |
 | `Private/World/Beach/TN_BeachRideKit.h` | Lo común de esas cuatro: hacia dónde queda el mar, quién puede montar, lanzar en bola, mareo y vaivén con el reloj del servidor |
 | `TN_BeachTrapSynthComponent.*` | `UTN_BeachTrapSynthComponent`: sonidos sintetizados de las trampas (chispazo, «¡ay!», chof, crujido, chasquido, muelle, golpe sordo, conchas, roce de arena y clic) |
 | `TN_BeachTrapCommon.*` | Reloj del servidor suavizado, estallidos de partículas low-poly y texto emergente («¡AY!», «¡CRAC!») |
@@ -749,7 +938,8 @@ entra por -X y se sale por +X); los alargados (el alambre) tienen el largo por X
 cabe dentro de la huella del contrato con su `SizeScale` (lo que tiene medidas de tortuga, como puertas, pasillos y
 peldaños de 40 cm, no se escala: se ajusta la planta). Mallas en ejecución con color de vértice
 (`M_CosmeticVertexColor`, kit del parque del lobby), `RF_Transient | RF_DuplicateTransient`; colisión convexa por
-piezas. Todas son `bAlwaysRelevant` con pocas actualizaciones por segundo y `ForceNetUpdate` en cada cambio. Solo
+piezas. Todas son relevantes por distancia y duermen en red (`ATN_BeachElement::ApplyRoundNetProfile`, ver «Rendimiento y
+red») con `ForceNetUpdate` en cada cambio (las despierta). Solo
 cuentan las tortugas vivas, fuera del caparazón y sin aturdir (`TNBeach::IsTurtleStunned`): los enemigos no caen en
 trampas y una tortuga aturdida no se engancha ni se pincha. Variantes con la semilla del `Spec`.
 
@@ -863,6 +1053,83 @@ resto no lo usa.
   los enemigos de ahora no bajan de 0,75-0,8 de tamaño, se alejan 16-38 m de su sitio sin chocar con paredes y buscan
   el suelo desde arriba (se subirían al techo del pasillo).
 
+### Fortalezas de arena (`ATN_BeachFortress`)
+
+`FortressMedium`, `FortressLarge` y `FortressColossal` (huellas de 22, 34 y 50 m). Castillos inmensos que se suben
+enteros andando y saltando, con premio en la cima. Planta y malla en `TN_BeachFortressKit.h`; X local = sentido de la
+carrera (el reparto las gira con su +X hacia el mar, ±10°). `SizeScale` se recorta a 0,85-1,2: por debajo no caben los
+pasillos de tortuga (el reparto usa 0,94-1,06). Todo escala con él salvo lo que tiene medidas de tortuga (anchos de
+rampa y escalera, peldaños, cornisa, puertas y pretiles); el número de torrecillas sale de la altura que salvan.
+
+**Qué es**: una muralla cuadrada con cuatro torres, adarve, puertas y patio y, en medio, una «mota» de terrazas macizas
+de arena de molde, cada una más alta y más pequeña que la anterior; la última es la cima.
+
+- **Muralla**: adarve arriba con pretil de 55 cm por fuera (se salta; no se pasa andando) y almenas de adorno, sin pretil
+  por dentro. Puertas de 4,4 m de ancho a -X (de tierra) y a +X (del mar), con arco, concha de clave y dos estandartes de
+  Tortunavy: el patio se cruza de una a otra. Torres en las esquinas con el adarve pasando por arriba, anillo de pretil
+  por fuera y un cubo de juguete boca abajo de torreta (asa, nervios y pegatina de estrella) con la bandera de Tortunavy.
+- **Patio**: franjas de 4,6 m (5,8 m en la colosal) entre la muralla y la primera terraza, con guijarros, charquitos y
+  una estrella grande.
+- **Terrazas**: ventanas y una puerta de adorno, estandartes en la cara del mar, conchas y estrellas incrustadas, pretil
+  con almenas en sus bordes (con huecos donde llega cada subida), banderines en las esquinas de las de en medio y cuatro
+  banderas de Tortunavy en las esquinas de la cima.
+
+| Con `SizeScale` 1 | Mediana | Grande | Colosal |
+|---|---|---|---|
+| Muralla (lado, grosor, adarve) | 28 m, 3,8 m, a 5 m | 43 m, 4,4 m, a 6,5 m | 64 m, 5,2 m, a 8 m |
+| Torres (radio; cubo y bandera hasta) | 2,9 m; 10,5 m | 3,4 m; 12,9 m | 4 m; 15,4 m |
+| Terrazas (lado a altura) | — | 25 m a 11 m | 42 m a 12,5 m y 28 m a 19 m |
+| Cima (lado a altura) | 11,2 m a 8,5 m | 12,6 m a 16,5 m | 14,8 m a 25,5 m |
+| Con las banderas de la cima | ~14 m | ~22 m | ~32 m |
+| Radio real (esquina de las torres) | 21,3 m | 32 m | 47,1 m |
+| Puertas (ancho x alto) | 4,4 x 3,8 m | 4,4 x 4,8 m | 4,4 x 4,8 m |
+
+**Subidas** (sin espejo; según la semilla todo se refleja en Y y la espiral gira al otro lado):
+
+- **Por fuera**: rampa de 3,8 m de ancho y 20° pegada a la cara -Y de la muralla (sube hacia +X y acaba antes de la
+  torre: 13,7 / 17,9 / 22 m de largo) y escalera de 3 m de ancho por la cara +Y (13 / 17 / 20 peldaños de 45 cm y
+  38-40 cm de alto, sube hacia -X). Las dos llegan al adarve por un hueco del pretil.
+- **Por dentro**: escalera de 2,6 m del patio al adarve de +X, junto a la puerta del mar (13 / 16 / 20 peldaños), y la
+  **rampa del patio**, que llena la franja +Y y sube hacia +X del suelo a la primera terraza (28° / 20° / 14,5°; 16 /
+  30 / 48 m). A media subida pasa a la altura del adarve de +Y y se cambia de uno a otro de lado.
+- **De terraza en terraza**: rampas de 3,4 m pegadas a la cara de la de arriba, alternando -Y (subiendo hacia -X) y +Y
+  (hacia +X), de 24-25°: la espiral. En la grande, una (11,8 m) a la cima; en la colosal, dos (14,6 y 14 m). En la
+  terraza queda un paso de 2,8-3,6 m junto a cada rampa.
+- **Atajos arriesgados**:
+  - **Salto de torrecillas** (franja -Y del patio): torrecillas de cubo (radio 0,95 m; 1,55 m en la colosal) que se
+    saltan del adarve de -Y a la primera terraza, alternando junto a la muralla y junto a la terraza: 6 / 8 / 8, cada una
+    ~50 cm más alta, con ~1,1 m de hueco. Caerse es volver al patio; entre ellas se pasa en eslalon.
+  - **La pala y la cornisa**: una pala de juguete tendida (hoja sobre el adarve de -X y mango de 70 cm de ancho de 3,9-5,1
+    m sobre el patio, a la altura del adarve) lleva a una cornisa de 70 cm colgada de la cara -X de la primera terraza, que
+    sube a 30° (6 / 7,8 / 7,8 m) hasta su borde.
+  - **Colosal**: otra fila de 10 torrecillas (radio 1,6 m, ~59 cm cada salto) por la terraza +X de la primera a la segunda.
+
+**Premio en la cima** (lo crea el servidor al construirla, `bSpawnPrizes`, y lo destruye con ella: ronda nueva o
+`TN.Beach.Place clear`):
+
+- **Lanzador potenciado** (`TNBeach::FlagBoosted`) en el borde +X, mirando al +X de la fortaleza (si no queda a ±45° del
+  mar, se gira solo hacia él): catapulta el 55 % de las veces (tamaño 0,89 / 1,02 / 1,15: brazo de 9,8-11,5 m de lado a
+  lado de la cima) y trampolín el resto (0,58 / 0,65 / 0,76). Ver «Catapulta» y «Trampolín».
+- **Cofre** (`TreasureChest` → `ATN_BeachChest`, con `SpawnElement`) en el cuarto -X del lado contrario a las
+  torrecillas, con el frente hacia el mar: lo que suelta cae en la cima. Si aún no existe su clase, la cima va sin cofre
+  (se registra).
+- **Conchas de puntos** (`ATN_ScorePickup`, las del botín: suman a `RaceScore`), en las esquinas de la cima: 100 + 50
+  (mediana), 100 + 50 + 50 (grande) y 100 + 100 + 50 + 50 (colosal). Además, una de 50 al final de cada atajo en las
+  terrazas de en medio (grande: 2; colosal: 3). En total: 150, 300 y 450 puntos.
+
+**Dónde cae lo que sale de la cima** (lanzadores potenciados, desde el centro de la fortaleza hacia su +X; el reparto
+deja libre esa franja): catapulta, la bola cae a ~80-90 m (±6 m de lado) y aún rebota y rueda; trampolín, 45-55 m
+andando y 55-66 m esprintando.
+
+**Red**: como el resto de elementos, solo replica `Spec` (dormida: no cambia nada después). Cada máquina construye la
+misma malla con la semilla (con su espejo); los cascos convexos (~110-190 según el tamaño) también paran la cámara.
+Registro: `[Playa] Fortaleza ...: cima a N m con catapulta potenciado, cofre y K conchas (P puntos).` (y en `Verbose`,
+medidas, cascos y triángulos).
+
+**Probar**: `TN.Beach.Place FortressColossal 1 0 <semilla>` (y `FortressMedium`, `FortressLarge`), mirando hacia donde
+quieras que lance: sale a ~54 m delante (la colosal) con su premio. `TN.Beach.Fortress.Top [jugador]` sube a esa tortuga a
+la cima de la fortaleza más cercana, detrás del lanzador. Semillas seguidas para ver catapulta o trampolín y el espejo.
+
 ### Mina (`ATN_BeachMine`)
 
 - **Aspecto** (con `SizeScale` 1; las mallas son de ese tamaño y las comparten todas las minas del mismo aspecto, que
@@ -967,7 +1234,7 @@ resto no lo usa.
   los lados ±Y, conchas y bandera. Por su cara -X sube y baja una bandeja o un disco volador de **3,9 m** colgado con
   cuatro cuerdas de una grúa de palos de polo con una chapa por polea: **1,7 m/s** (`LiftSpeed`), **2 s** abajo y
   **1,6 s** arriba. Arriba espera una **catapulta** (la crea el servidor, de tamaño 0,95·semilado/900 ≈ 0,69, y la
-  destruye con la torre; `bCatapultOnTop`): desde 4,5 m lanza aún más lejos.
+  destruye con la torre; `bCatapultOnTop`): desde 4,5 m lanza aún más lejos. Como todas, de un solo uso.
 - **Base móvil**: la balsa y la bandeja son colisión convexa con nombre estable por red; quien va encima se mueve con ella
   sin resbalar (base de movimiento de UE: el cliente manda su posición relativa a la base, así que el desfase de reloj
   no corrige). Posición = `TNBeachRideKit::ShuttleAlpha(hora del servidor + fase por la semilla)`: arranca y frena
@@ -993,15 +1260,32 @@ resto no lo usa.
   juntas); las del mango, al 55 %. La bola vuela ~30 m (más cuesta abajo o desde la torre), rebota, rueda y sale sola al
   pararse (o al caer al agua); no se puede salir en el aire. Ahorra camino, pero se cae donde toque: entre enemigos, en
   algas o en una concha.
-- **Recarga**: **4,6 s** (`ReloadSeconds`): rebote hasta 0,6 s, quieta hasta 1,1 s, vuelve a golpes de carraca (14
-  pasos, «clic» cada 0,2 s), el palo se pone de pie y al final el cazo se asienta con un botecito. La colisión del brazo
-  se apaga 0,55 s al disparar (las bolas nacen dentro del cazo).
-- **Red**: `ArmedAt` y `FiredAt` (horas del servidor) replicados; cada máquina anima el brazo, el palo, el banderín y los
-  sonidos desde ellas.
-- **Probar**: `TN.Beach.Place Catapult [Tamaño] 0 [Semilla]` mirando al mar. Meterse en el cazo (aviso y disparo),
-  salir durante el aviso (se desarma), dos o tres en el cazo (salen abiertas), subir por el mango y saltar sobre el
-  cubito con otra en el cazo, meterse durante la recarga (nada). Con un cliente lanzado: la bola vuela igual en las dos
-  pantallas.
+- **Un solo uso** (`bSingleUse`, encendido; decisión de la ronda 3): la primera tortuga que la dispara la gasta y quien
+  llega tarde se fastidia. Tras el golpe y el rebote (**0,62 s**) el brazo se parte por el cuello del cazo con un «¡CRAC!»,
+  crujido y astillas: el cazo cae y se queda colgando de las astillas (~72° por debajo de la horizontal, con un vaivén
+  que se apaga), el mango tumbado con el cubito en la arena, el palo en el suelo, astillas asomando del corte y **sin
+  banderín** (ni verde ni rojo). No vuelve a armarse en toda la ronda; la colisión del cazo se apaga para siempre (la del
+  mango se queda) y a los 4 s deja de hacer Tick. El brazo va en dos mallas (mango y cazo, este colgado de una bisagra en
+  el cuello) y su colisión también. También la de la torre del ascensor y las de la cima de las fortalezas.
+- **Recarga** (solo con `bSingleUse` apagado): **4,6 s** (`ReloadSeconds`): rebote hasta 0,6 s, quieta hasta 1,1 s,
+  vuelve a golpes de carraca (14 pasos, «clic» cada 0,2 s), el palo se pone de pie y al final el cazo se asienta con un
+  botecito. La colisión del brazo se apaga 0,55 s al disparar (las bolas nacen dentro del cazo).
+- **Potenciada** (`Spec.Flags & TNBeach::FlagBoosted`, la de la cima de las fortalezas): cuchara (o palos y vasito)
+  dorada, cubito azul marino con reborde, asa y estrella doradas, tapón azul marino con estrías doradas, la bandera de
+  Tortunavy en un segundo palo y una guirnalda de banderines entre los dos por encima del eje. Lanza a **3800 cm/s** y
+  **40°** (±1,5°, ±3 % de fuerza) con **±4°** de desvío (`BoostedLaunchSpeed`, `BoostedLaunchPitch`,
+  `BoostedDeviationDeg`): ~77 m en llano frente a los ~35 m de la normal (2,2 veces, con el rozamiento de la bola), y
+  desde la cima de una fortaleza, 81-87 m. Al disparar: «¡ZAAAS!» dorado y grande, barrido más grave, muelle grave,
+  golpe más fuerte, más polvo, temblor de cámara hasta 42 m y la **fanfarria** de los títulos de la carrera
+  (sintetizada, a quien mire desde menos de 90 m, más fuerte cuanto más cerca). También de un solo uso.
+- **Red**: `ArmedAt` y `FiredAt` (horas del servidor) replicados, con `ForceNetUpdate` en cada cambio; cada máquina anima
+  el brazo, la rotura, el palo, el banderín y los sonidos desde ellas (quien llega tarde la ve ya rota, sin oírla). Lo
+  potenciado sale de `Spec`.
+- **Probar**: `TN.Beach.Place Catapult [Tamaño] 0 [Semilla]` mirando al mar y `TN.Beach.PlaceBoosted Catapult [Tamaño]
+  [Semilla]` la potenciada. Meterse en el cazo (aviso y disparo; se parte y el cazo queda colgando), salir durante el
+  aviso (se desarma), dos o tres en el cazo (salen abiertas), subir por el mango y saltar sobre el cubito con otra en el
+  cazo, meterse en una partida (nada). Con un cliente lanzado: la bola vuela igual en las dos pantallas; un cliente que
+  llega después la ve partida.
 
 ### Trampolín (`ATN_BeachTrampoline`)
 
@@ -1019,12 +1303,20 @@ resto no lo usa.
 - **Deformación** (cada máquina con pantalla): se aplasta entera y rebota estirándose (10-26 %) y se hunde donde cae
   la tortuga (22-64 cm, en un radio de ~2,7 m) con una abolladura que vibra y se recupera en ~1 s (la malla procedural
   se actualiza solo mientras dura y si se ve). La medusa además respira.
+- **Potenciado** (`Spec.Flags & TNBeach::FlagBoosted`, el de la cima de las fortalezas): hacia arriba **x1,25**
+  (`BoostedUpScale`: 1560 cm/s en la medusa, tope `BoostedMaxUp` 2400) y hacia el mar **900 cm/s** de empujón
+  (`BoostedForwardPush`, tope `BoostedMaxHorizontal` 1500): en llano, 39 m andando y 48 m esprintando (2,35 y 2 veces un
+  trampolín normal); desde la cima de una fortaleza, 45-66 m. Aro dorado en la arena, cuatro palos con pomos dorados
+  (uno con la bandera de Tortunavy) y guirnaldas de banderines de palo a palo por encima del borde. Cada rebote suma un
+  boing más grave, un barrido de aire, destellos dorados y la fanfarria (como mucho una cada 3 s en cada máquina).
 - **Red**: como la medusa del lobby: el rebote lo aplican el servidor y el cliente dueño dentro del mismo movimiento
   (golpe con la colisión o solape con el sensor, 15 cm más grande); el resto lo ve por un multicast no fiable. Las bolas
-  de caparazón rebotan también (las lanza el servidor, al 90 %).
-- **Probar**: `TN.Beach.Place Trampoline [Tamaño] 0 [Semilla]` (semillas seguidas para ver las cuatro). Caer encima,
-  andar contra un costado, encadenar dos trampolines (el segundo rebote más alto), saltar desde uno por encima de un
-  alambre; lanzar una bola con la catapulta encima de uno. Con un cliente: sin correcciones al rebotar.
+  de caparazón rebotan también (las lanza el servidor, al 90 %). Lo potenciado sale de `Spec` (replicado): el servidor y
+  el cliente dueño aplican el mismo impulso.
+- **Probar**: `TN.Beach.Place Trampoline [Tamaño] 0 [Semilla]` (semillas seguidas para ver las cuatro) y
+  `TN.Beach.PlaceBoosted Trampoline [Tamaño] [Semilla]` el potenciado. Caer encima, andar contra un costado, encadenar
+  dos trampolines (el segundo rebote más alto), saltar desde uno por encima de un alambre; lanzar una bola con la
+  catapulta encima de uno. Con un cliente: sin correcciones al rebotar (tampoco en el potenciado).
 
 ### Probar
 
@@ -1056,18 +1348,19 @@ resto no lo usa.
 
 | Archivo | Qué es |
 |---|---|
-| `TN_BeachEnemy.*` | `ATN_BeachEnemy` (abstracta, hija de `ATN_BeachElement`): base de los cinco enemigos (red, tortugas, suelo, voz, golpes, apartarse y nivel de detalle) |
+| `TN_BeachEnemy.*` | `ATN_BeachEnemy` (abstracta, hija de `ATN_BeachElement`): base de los enemigos (red, tortugas, suelo, voz, golpes, apartarse, rodear el reparto, nivel de detalle, mareo por lo que se les lanza con sus pajaritos, `UTN_BeachEnemyDizzyComponent`, y tortuga sujeta en la boca o el pico) |
 | `TN_BeachGiantCrab.*` | `ATN_BeachGiantCrab`: cangrejo gigante con una pinza enorme |
 | `TN_BeachSeaUrchin.*` | `ATN_BeachSeaUrchin`: erizo de mar que rueda hacia ti |
-| `TN_BeachLizard.*` | `ATN_BeachLizard`: lagarto que toma el sol, asusta y se esconde |
+| `TN_BeachLizard.*` | `ATN_BeachLizard`: lagarto que toma el sol; por semilla, huidizo, generoso (deja premio) o mordedor |
 | `TN_BeachQuadLane.*` | `ATN_BeachQuadLane`: paso de quads que cruza la playa |
 | `TN_BeachGullZone.*` | `ATN_BeachGullZone`: gaviotas y pelícanos que cagan, bajan en picado y se llevan tortugas en el pico |
 | `TN_BeachStorm.*` | `ATN_BeachStorm`: la tormenta de bañistas (no es un elemento; la crea el GameMode) |
 | `TN_BeachSandWorm.*`, `TN_BeachSandWormMeshes.h`, `TN_BeachSandWormSynth.*` | `ATN_BeachSandWorm`: el gusano de arena gigante que se come a las rezagadas al acabar la cuenta atrás (no es un elemento; lo crea el GameMode), sus mallas y sus sonidos |
 | `TN_BeachCameraShake.*` | `UTN_BeachCameraShake`: temblor de cámara (no había ninguno en el proyecto) |
 | `TN_BeachEnemySynth.*` | `UTN_BeachEnemySynthComponent`: sonidos sintetizados (golpes, graznidos, motor, viento) |
-| `TN_BeachEnemyKit.h`, `TN_BeachEnemyMeshes.h` | Mallas low-poly por piezas, caché de mallas, sombras, partículas propias, el pico de las aves y el enganche a la espalda de la tortuga |
+| `TN_BeachEnemyKit.h`, `TN_BeachEnemyMeshes.h` | Mallas low-poly por piezas, caché de mallas, sombras (también con borde nítido y opacidad por material), surcos en la arena, partículas propias, el pico de las aves, las motas y la cresta de los lagartos y el enganche a la espalda de la tortuga |
 | `TN_BeachEnemyDebug.cpp` | Consola de pruebas |
+| `TN_ThrowableItemActor.cpp`, `TN_InkProjectile.cpp` (fuera de `Beach/`) | Solo el gancho: lo lanzado que da a un enemigo de la playa lo marea (`ATN_BeachEnemy::FindProjectileHit`, `ApplyHitStun`) |
 
 ### Comunes
 
@@ -1076,7 +1369,8 @@ resto no lo usa.
   actor lleva sus emisores), el velo de la tormenta del camino (`TNStormFX::BuildVeil`), la tos
   (`UTN_StormCoughComponent`) y el texto emergente de las trampas (`FTNTrapPopText`). Las mallas se construyen en
   ejecución y se comparten por paleta (referencia débil: el recolector las suelta cuando no queda ninguno). Colisión:
-  solo el cuerpo del cangrejo (caja tipo Pawn).
+  solo el cuerpo del cangrejo (caja tipo Pawn); a los demás, lo que se les lanza les da por su cuerpo de golpes
+  (`GetHitCapsule`, ver «Mareo por lo que se les lanza»).
 - **Red** (servidor escucha): el servidor decide objetivos y golpes; los que andan replican `FTNBeachMoverRep` (suelo
   bajo el cuerpo cuantizado a 1 cm, giro en 16 bits, estado, hora del estado y un punto de interés) a 8-12 Hz y solo lo
   que cambia; los clientes interpolan con una pizca de extrapolación. El paso de quads, la zona de gaviotas y la
@@ -1086,7 +1380,8 @@ resto no lo usa.
 - **Carrera en marcha**: no atacan durante el recuento ni el podio (`RacePhase` = `RoundResults` o `Champion`); en
   `Waiting` sí (por si la fase no cambiara).
 - **A quién se le da** (`ATN_BeachEnemy::CanBeHit`): viva, sin aturdir, sin derribar y sin ir en el pico de una gaviota
-  (`IsTurtleHeld`). A quien ya está en el suelo no le da nadie (tampoco el empujón del lagarto ni la tormenta).
+  o en la boca de un lagarto (`IsTurtleHeld`). A quien ya está en el suelo no le da nadie (tampoco el empujón del
+  lagarto). La tormenta sí: a quien se queda detrás del frente la patea en cualquier estado (salvo sujeta o comida).
 - **Golpes variados**: no todo es la bola. El derribo (`ATN_BeachEnemy::KnockDownTurtle`, o `ServerKnockDown` desde la
   tormenta) llama a `TNBeach::KnockDownTurtle` (ragdoll y mareo de la piel de plátano; como poco 2,2 s tumbada y 0,75 s
   levantándose) con solo 0,6 m/s hacia abajo: lo que se le pasa lo aplica la cápsula al levantarse, porque queda
@@ -1097,12 +1392,14 @@ resto no lo usa.
 | Quién | Qué te pasa | Después |
 |---|---|---|
 | Cangrejo (mazazo) | despachurrada en bola aturdida 3,5 s (`StunTurtle`), empujoncito de 3,2 m/s hacia fuera | te ignora 6 s |
+| Cangrejo (embestida) | derribo con ragdoll y mareo 2,4 s, lanzada a 9,5 m/s en su sentido, 2,6 hacia fuera y 4,8 hacia arriba dando vueltas (320°/s); «¡EMBESTIDA!» | te ignora 6 s |
 | Erizo (pinchazo) | derribo con ragdoll y mareo 2,4 s, despedida a 6,2 m/s hacia fuera y 3,8 hacia arriba dando una vuelta hacia atrás (260°/s); «¡PINCHAZO!» | te ignora 4,5 s |
 | Gaviota (cagada) | derribo con ragdoll y mareo 2,4 s, tumbada de espaldas (2,4 m/s hacia fuera y 1,2 hacia arriba) con la mancha en el caparazón; «¡PLOF!» | la zona te deja 6 s |
 | Gaviota o pelícano (picado) | colgada del pico 3,3 s, pataleando; al soltarte, bola aturdida lo que tardas en caer (~2,3 s) + 2 s; «¡ÑAC!» | la zona te deja 12 s |
 | Quad (rueda) | derribo con ragdoll y mareo 3 s, lanzada a 9,5 m/s en su sentido, 3,8 de lado y 7,5 hacia arriba dando vueltas de campana (420°/s); «¡ATROPELLO!» | 1,2 s sin repetir |
-| Tormenta (revolcón) | derribo con ragdoll y mareo 2,2 s, empujada a 6,5 m/s hacia el mar, 3,5 hacia arriba y ±1,5 de lado dando una vuelta; «¡REVOLCÓN!» | como mucho uno cada 9 s |
-| Lagarto (susto) | empujón de 6,5 m/s, sin derribar ni aturdir | — |
+| Tormenta (patada) | un bañista la mete en su caparazón y la lanza en bola hasta 20 m por delante del frente (vuelo de 1,1-2,4 s) y mareada el vuelo + 0,8 s; «¡PATADA!» | otra en cuanto aterriza si sigue detrás |
+| Lagarto huidizo (susto) | empujón de 6,5 m/s, sin derribar ni aturdir | — |
+| Lagarto mordedor (mordisco) | en su boca 1,3 s, zarandeada, y lanzada de lado (6,5 m/s y 4,5 hacia arriba) en bola mareada 1,5 s; «¡ÑAM!» | te deja 10 s |
 
 - **Muchos a la vez** (el reparto es ~3 veces más denso, con cangrejos en grupos): los que andan se apartan entre sí
   (`GetBodyRadius`: cangrejo 4,2 m, erizo 1,15 veces su radio de rodar, lagarto 3,8 m, todo por el tamaño; cada uno se
@@ -1112,6 +1409,10 @@ resto no lo usa.
   paseos nunca eligen una meta dentro de un obstáculo y se rinden a los 7-12 s. El suelo de los que andan sale del
   generador (`ATN_BeachRaceGenerator::GetGroundHeightAt`, sin trazas y sin subirse encima del decorado); sin generador,
   traza.
+- **Rodear en vez de empujar** (ronda 3, ~5000 piezas): `ATN_BeachEnemy::SteerAroundObstacles` mira por delante (el
+  cuerpo + 2,5 m + lo que anda en 0,6 s, nunca más allá de la meta) y, si la sonda corta lo grande del reparto, se abre
+  hacia el lado de su borde que más se parece a donde quiere ir (el mismo lado 0,8 s, para no dudar delante de una
+  roca); cuanto más cerca, más de lado. Lo usa el cangrejo; lo tienen todos los enemigos que anden.
 - **Nivel de detalle** (cangrejos, erizos y lagartos, `bThrottleWhenFar`): cada 0,5 s miran la tortuga más cercana y la
   cámara. Con una tortuga a su alcance (cangrejo: correa + vista + 15 m, ~75 m; erizo: correa + 22 m + 15 m, ~53 m;
   lagarto: 45 m) o la cámara a menos de 150 m, se mueven en cada fotograma; si no, cada 66 ms a la vista (hasta 300 m) o
@@ -1123,10 +1424,54 @@ resto no lo usa.
 - **Rendimiento**: sin pantalla (servidor dedicado) no hay mallas ni efectos; lejos de la cámara (300 m; 400-600 m el
   quad y las gaviotas) no se anima. Nada asigna memoria por fotograma.
 
+### Mareo por lo que se les lanza (`ATN_BeachEnemy::ApplyHitStun`)
+
+Lo que pidió el usuario: si lanzas objetos (piedras, el pulpo de tinta y lo demás) a un enemigo vivo, le pasa como a las
+tortugas: se queda mareado un momento, con pajaritos y sin atacar.
+
+- **Contrato** (`TN_BeachEnemy.h`): `ApplyHitStun(Segundos, Instigador)` (servidor; si ya lo estaba, alarga hasta el mayor
+  de los dos finales; el mismo objeto no lo vuelve a marear en 0,6 s), `IsHitStunned()` y `GetHitStunLeft()` (cualquier
+  máquina: el final va replicado en `HitStunEndTime`, reloj del servidor), `AcceptsHitStun()` (false en el paso de quads),
+  `GetHitCapsule(A, B, Radio)` (el cuerpo que recibe lo lanzado; por defecto, una esfera del radio del cuerpo de los que
+  andan), `GetHitStunAnchor()` y `GetHitStunScale()` (dónde y de qué tamaño van los pajaritos). Cada subclase mira
+  `IsHitStunned` en su `ServerTick`; puede sobrescribir `ApplyHitStun` (llamando a la base) para soltar lo que lleve.
+- **Qué le da**: `ATN_BeachEnemy::FindProjectileHit(Desde, Hasta, Radio)` busca el primer enemigo cuyo cuerpo corta el
+  tramo recorrido (segmento contra cápsula). Tres ganchos:
+  - `ATN_ThrowableItemActor` (piedra, bola...): en cada fotograma, en todas las máquinas, el tramo de su vuelo contra los
+    cuerpos; rebota en él (hacia fuera, perdiendo fuerza: 45 % y un saltito) y, en el servidor y a 6 m/s o más (la misma
+    velocidad mínima que para derribar a una tortuga), `ApplyHitStun` 3 s (`TNBeachHitStun::ThrownSeconds`). Si choca de
+    verdad con el cangrejo (tiene colisión), lo mismo por `OnMeshHit`.
+  - `ATN_InkProjectile` (el pulpo de tinta): en el servidor, antes de moverse, su tramo contra los cuerpos: marea 3 s y
+    desaparece como al dar a cualquier cosa.
+  - Bolas de caparazón: una vez por fotograma y mundo, el servidor mira las `ATN_ShellBody` que simulan a 9 m/s o más
+    (una tortuga lanzada por otra, la de la patada de la tormenta...): marean 2,5 s al enemigo al que den.
+- **Se ve igual en todas las máquinas**: al marearse, «¡TOING!», golpe seco y chasquido agudo y un temblor pequeño
+  (multicast no fiable); mientras dura, los pajaritos y las estrellas de las tortugas (`UTN_BeachEnemyDizzyComponent`, hijo
+  de `UTN_DizzyBirdsComponent`, con su sonido) a la escala del enemigo y sobre su cabeza, cada fotograma donde diga
+  `GetHitStunAnchor`.
+- **Cada uno**:
+
+| Enemigo | Cuerpo que recibe | Mareado |
+|---|---|---|
+| Cangrejo | cápsula de costado a costado del caparazón (5 m) | se para en seco, ojos que dan vueltas, pinza caída; ni persigue ni ataca. También con la concha trampa (`ApplyStun` de la interfaz de siempre) y si se estampa embistiendo (1,6 s) |
+| Erizo | esfera del cuerpo | quieto, tambaleándose; ni rueda ni pincha (se le puede pasar al lado) |
+| Lagarto | del cuello a las caderas (escondido, nada) | tumbado de lado, cabeza caída y lengua fuera; si mordía, suelta a la tortuga (1 s de mareo). Luego huye (el mordedor, a su sitio) |
+| Gaviota o pelícano | solo el que baja en picado (también picando en el sitio), el que lleva una tortuga en el pico y el ya mareado, con el cuerpo a menos de 18 m de la arena: cápsula del cuerpo a la cabeza | suelta a la tortuga (cae en bola), cae a la arena dando tumbos, se queda sentado con las alas caídas y los pajaritos; la zona no ataca mientras; luego despega a su círculo (1,8 s) |
+| Quad | — | no se marea |
+
 ### Cangrejo gigante (`ATN_BeachGiantCrab`)
 
 - Caparazón de 5 m de ancho (una cría de 18 cm) sobre ocho patas, ojos en pedúnculos y una pinza de ~6 m a la derecha.
   Cuatro paletas (rojo con pinza amarilla, violinista azul, violeta, fantasma de arena). `SizeScale` 0,8-1,2.
+- **Cómo anda** (ronda 3): de lado, con las patas en dos grupos que se alternan (la 1 y la 3 de un lado con la 2 y la 4
+  del otro, un ciclo cada 1,9 m recorridos): la que está en el aire se levanta y la apoyada se estira o se encoge según el
+  cuerpo se aleja o se acerca a su pie, así no patina. El cuerpo se balancea de lado con cada paso, bota dos veces por
+  ciclo y se inclina hacia donde va (más al embestir; al derrapar, hacia atrás). En el servidor la marcha tiene inercia:
+  acelera a 7 m/s² y frena a 11 (por el tamaño), llega parado a los puntos de parada, el giro acelera y frena (170°/s como
+  mucho, sin pasarse) y se queda con el costado que lleva salvo que el otro esté 50° más a mano. Si algo lo frena, se
+  frena (no sigue empujando). Rodea lo grande del reparto mirando por delante (`SteerAroundObstacles`) y, si en 1 s se
+  ha movido menos de 60 cm queriendo andar, sale 0,9 s de lado (a un lado y al otro por turnos); dos atascos seguidos
+  en la patrulla, al siguiente punto.
 - **Patrulla sin parar** su propio recorrido, de lado a 3 m/s (por el tamaño), empezando en un punto al azar para que
   los de un grupo no vayan a la par: entre las dos rocas, grupos de rocas, troncos, maderas, tablones, castillos
   pequeños, sacos terreros o erizos antitanque más separados en ángulo que tenga a menos de 34 m (el 35 % de las veces,
@@ -1143,8 +1488,16 @@ resto no lo usa.
   cae aparece donde estará la tortuga (0,3 s de adelanto) y crece hasta 2,8 m de radio. Cae en 0,14 s: quien esté
   dentro (2,8 m + 0,4) queda despachurrada en bola aturdida 3,5 s con un empujoncito hacia fuera. Luego 1,1 s con la
   pinza clavada, 1,4 s sin poder repetir y a la golpeada la ignora 6 s. Arena, temblor fuerte a menos de 15 m.
-- Los objetos del jugador lo aturden (quieto con los ojos dando vueltas) o lo ciegan (vuelve a su recorrido)
-  (`ITN_EnemyTargetInterface`).
+- **Embestida** (a media distancia): persiguiendo, con la tortuga a 9-21 m (por el tamaño) y el camino libre de lo
+  grande del reparto (en tramos de 2,5 m, sin salirse de su correa), un 55 % por segundo. Se agacha 0,55 s clavando las
+  patas y temblando, con la pinza en guardia (chasquido grave y arena), y se pone de lado hacia ella. Sale disparado de
+  lado en línea recta hacia donde estará (0,35 s de adelanto) y 7 m más allá, acelerando a 32 m/s² hasta 11,5 m/s (más
+  que la tortuga esprintando), como mucho 1,5 s: a quien arrolla (su caja y un poco más, yendo a más de 4,5 m/s) la
+  derriba lanzada (tabla de arriba). Luego derrapa 0,8 s (frena a 20 m/s²) con las patas del lado hacia el que va clavadas:
+  arena que salta por delante y surcos en la arena (dos cada 0,07 s, 16 a la vez, 5 s, se desvanecen). Si se estampa
+  contra algo grande u otro enemigo, «¡CATAPLÁN!» y mareado 1,6 s. No vuelve a embestir en 5 s.
+- Lo que se le lanza o la concha trampa lo marea (ver «Mareo por lo que se les lanza»); la tinta lo ciega (vuelve a su
+  recorrido) (`ITN_EnemyTargetInterface`).
 
 ### Erizo de mar (`ATN_BeachSeaUrchin`)
 
@@ -1152,8 +1505,9 @@ resto no lo usa.
 - Nota las vibraciones alrededor a 22 m (por la raíz del tamaño) y rueda girando hacia la tortuga más cercana a
   2,1 m/s (lento: solo pilla a quien se despista), sin salirse de 16 m de su sitio (o 1,35 veces la huella). Sin nadie,
   pasea casi sin parar (respiros de 0,6-1,6 s) a 1,2 m/s por el 80 % de su huella, rodeando lo grande del reparto.
-- Tocarlo (a ~1,65 m del centro) pincha en cualquier estado: derribo con ragdoll y mareo (tabla de arriba); el erizo
-  retrocede 0,8 s y la ignora 4,5 s.
+- Tocarlo (a ~1,65 m del centro) pincha en cualquier estado salvo mareado: derribo con ragdoll y mareo (tabla de
+  arriba); el erizo retrocede 0,8 s y la ignora 4,5 s. Mareado por algo lanzado, se tambalea en el sitio sin rodar ni
+  pinchar.
 
 ### Lagarto (`ATN_BeachLizard`)
 
@@ -1168,6 +1522,25 @@ resto no lo usa.
   caja de munición o red de camuflaje más cercano (hasta 45 m, nunca hacia la tortuga) y se mete debajo (anda sobre la arena del generador: no se sube encima); si no hay, da
   un arreón y se entierra sacudiéndose (1,3 s). Escondido 7-12 s; no sale con una tortuga a menos de 18 m. Sale y
   vuelve andando a su sitio.
+- **Carácter** (ronda 3, `ETNBeachLizardTemper`, sale de la semilla: `ATN_BeachLizard::TemperOfSeed`, igual en todas las
+  máquinas sin replicar nada): 45 % huidizo, 30 % generoso y 25 % mordedor. Se distinguen a la vista:
+  - **Huidizo**: el de siempre (lo de arriba).
+  - **Generoso**: motas doradas a lo largo del lomo y un collar dorado; de vez en cuando destella (chispitas doradas).
+    Huye sin asustar a nadie y, la primera vez, deja un premio donde estaba («¡UN REGALO!», estallido dorado): el 60 %,
+    un objeto del catálogo con los pesos de la carrera (como el botín suelto); si no, una concha de puntos de 25 (de 50,
+    el 30 %). Si nadie lo coge, se va con el lagarto (la ronda siguiente reparte otro).
+  - **Mordedor**: cresta roja de púas (la de la iguana) y la punta de la cola roja. No huye: con una tortuga de pie a
+    menos de 15 m (por el tamaño) se lanza a por ella (13 m/s, bufido grave, polvo; 1,3 s como mucho); si la punta del
+    hocico llega a 2,6 m de ella, la muerde por el caparazón («¡ÑAM!»): la tortuga queda atravesada en su boca,
+    pataleando, y la zarandea 1,3 s de lado a lado (±38°, 3,2 veces por segundo, cabeza alta y la cola latigueando al
+    revés); luego la lanza de lado en bola mareada 1,5 s y vuelve a su sitio. A la mordida la deja 10 s; si falla, bufa,
+    vuelve a su sitio y a esa la deja 4 s. En bola, en brazos de otra o ya en el suelo no se la puede morder: la vigila.
+  - **Red del mordisco**: el servidor decide y replica a quién tiene en la boca (`HeldVictim`); cada máquina la sujeta
+    (`ATN_BeachEnemy::BeginHoldTurtle`: movimiento apagado, sin suavizado ni correcciones, pataleta) y la coloca en la
+    punta del hocico con las mismas cuentas (`MouthAt`, `ShakeHeadRotation` con el reloj del servidor), después de su
+    movimiento. Mientras muerde no se hunde ni culebrea (la boca va donde la cuentan todas las máquinas).
+- **Consola**: `TN.Beach.Lizard <huidizo|generoso|mordedor>` crea uno de ese carácter 22 m delante de tu tortuga,
+  mirándote (busca una semilla con ese carácter: `FindSeedForTemper`).
 
 ### Paso de quads (`ATN_BeachQuadLane`)
 
@@ -1189,23 +1562,33 @@ resto no lo usa.
   altura**: óvalo con el centro desplazado del de la zona (12-60 % del radio de la zona, 35 m o más, repartidos con el
   ángulo áureo y derivando ±7 m), radio del 45-90 % (18 m como poco), achatado 0,65-1 y girado al azar, a 9-13 m/s (el
   pelícano, 7-9); el 30 % gira al revés. Alturas en capas de 8 m barajadas (32, 40, 48, 56 y 64 m, ±2 m): nunca dos a
-  la misma. Sombras en la arena (más grandes y cercanas cuanto más bajan); graznan de vez en cuando abriendo el pico.
+  la misma. Graznan de vez en cuando abriendo el pico.
+- **Sombras** (ronda 3): la de verdad, bajo el cuerpo de cada pájaro (no bajo su raíz, que quedaba desplazada); cuanto
+  más bajo va, más pequeña, más nítida (tres mallas de borde más o menos difuminado) y más oscura (opacidad del material,
+  de 0,12 en lo alto a 0,5 a ras de arena). En el picado, la sombra del que baja se va a donde va a dar (la tortuga, luego
+  el punto fijado, o donde pica si falla) y se cierra sobre ella: de grande y tenue arriba a 3,5 m (lo que coge), oscura
+  y nítida al llegar. La de la cagada también se oscurece y se afila según cae.
 - Ataca cada 3-6 s a una tortuga al azar de las que están a menos de su huella + 8 m del centro (atacable y sin
   sombrilla); va el pájaro más cercano. La mitad de las veces caga una gaviota; si no, picado (el pelícano solo pica).
 - **Cagada**: 1,5 s volando hasta encima; la suelta desde 30 m y cae acelerando en 1,35 s: un pegote de 1,6 m con su
   estela de gotitas, un silbido y su sombra que se encoge de 5,2 m a 2,8 m. Quien esté dentro (2,8 m por el tamaño +
   0,45, y a menos de 3 m en altura: a cubierto la mancha cae encima) cae derribada (tabla de arriba) con la mancha en el
   caparazón (pegada al hueso de la espalda, va con el ragdoll; 6,4 s); gotas, «¡PLOF!» y la mancha en la arena 12 s.
-- **Picado**: 1 s colocándose a 48 m y 42 m de altura; se lanza acelerando con las alas recogidas y su sombra crece y se
-  acerca. Fija el blanco a los 1,9 s (0,25 s de adelanto). A 0,45 s de llegar abre el pico, abre las alas y adelanta las
-  patas para frenar con el morro levantado. A los 2,45 s coge a la tortuga que esté bajo el pico (3 m por el tamaño +
-  0,45) si está de pie: ni en pleno panzazo (`IsBellyPoseActive`), ni en bola, ni en brazos de otra, ni a cubierto.
+- **Picado**: 1 s colocándose casi encima (a 18 m de la tortuga y 46 m de altura, para que baje en picado de verdad);
+  se lanza acelerando con las alas recogidas y su sombra se cierra sobre la tortuga. Fija el blanco a los 1,9 s (0,25 s
+  de adelanto). A 0,45 s de llegar abre el pico, abre las alas y adelanta las patas para frenar con el morro levantado.
+  A los 2,45 s coge a la tortuga que esté bajo el pico (3 m por el tamaño + 0,45) si está de pie: ni en pleno panzazo
+  (`IsBellyPoseActive`), ni en bola, ni en brazos de otra, ni a cubierto.
+- **Si falla** (se aparta, panzazo, bola, a cubierto): el picado se ve entero igual. Baja en 0,14 s hasta clavar el
+  pico en la arena donde iba (o en la sombrilla que la cubría), con el morro y la cabeza hacia abajo; pica dos veces
+  hasta los 0,55 s («¡PIC!», arena y granos que saltan, golpe y chasquido, temblor pequeño) y remonta de largo hacia su
+  círculo (`FTNBeachGullAttack::Hold` guarda dónde pica).
 - **Agarre**: el pico se cierra (con chasquido, plumas, arena y «¡ÑAC!») en la espalda de su caparazón (el punto al 72 %
   del pico; en el pelícano, al 62 %, dentro de la bolsa). La tortuga queda colgando pataleando (pose de pataleta de
   `UTN_TurtleAnimInstance`, sin meterse en bola): 0,35 s de tirón, sube 26 m aleteando fuerte hasta los 2,2 s, vuela
   meciéndola y sacudiendo la cabeza y a los 3,3 s la suelta abriendo el pico, 15 m más hacia la salida: cae en bola
   aturdida (empujada 3,5 m/s hacia la salida). Si se mete en el caparazón mientras cuelga, se escurre y cae en bola. Si
-  falla, remonta graznando.
+  la suelta detrás del frente de la tormenta, la patada la saca. Si a la que la lleva le dan con algo, la suelta.
 - **Red del agarre**: cada máquina coloca a la tortuga con el mismo camino (`FTNBeachGullAttack::Hold` y el reloj del
   servidor), con su movimiento apagado (`MOVE_None`); con malla, por su hueso de la espalda (`Spine2`, 35 cm por delante
   del pico), y en un servidor dedicado, por la cápsula. El pájaro se coloca para que su pico quede justo ahí (su
@@ -1225,24 +1608,39 @@ resto no lo usa.
   devolvía el punto de partida y la cota subía 60 m en cada traza, así que velo, trastos y bañistas acababan a cientos
   de metros. Ahora la arena sale de `ATN_BeachRaceGenerator::GetGroundHeightAt` (sin trazas) para el frente, cada trasto
   y cada bañista; sin generador (otro mapa), traza por el canal de visibilidad, que los muros invisibles no bloquean.
-- **Marcha justa**: 15 s de gracia (`DefaultGrace`), de 0 a 3 m/s en 7,5 s (`StartAccel` 40 cm/s²) y 3 m/s
-  (`DefaultSpeed`: la tortuga anda a 4,5 y la media de la carrera es ~4 m/s, así que quien avanza con normalidad le
-  saca ~1 m/s). Solo acelera (a 25 cm/s², `SpeedChangeAccel`) al final: pasados 4 min de marcha (`LateStartSeconds`),
-  +0,5 m/s por minuto hasta 5,2 m/s (`SpeedRampPerMinute`, `MaxSpeed`); con la primera tortuga pasado el 80 % del
-  recorrido, al menos 4,2 m/s (`EndRushProgress`, `EndRushSpeed`); y si la última le saca más de 180 m, a 4,7 m/s hasta
-  quedarse a 120 m (`CatchUpGap`, `CatchUpSpeed`, `CatchUpRelease`), para que siempre se note. Cada cambio empieza un
-  tramo nuevo replicado desde donde está (desplazamiento, velocidad, aceleración con signo, velocidad a la que va, hora).
+- **Marcha justa** (más lenta desde la ronda 3, lo pidió el usuario): 15 s de gracia (`DefaultGrace`), de 0 a 1,8 m/s
+  en 6 s (`StartAccel` 30 cm/s²) y 1,8 m/s (`DefaultSpeed`: la tortuga anda a 4,5 y la media de la carrera es ~4 m/s,
+  así que quien avanza con normalidad le saca ventaja clara). Solo acelera (a 15 cm/s², `SpeedChangeAccel`) al final:
+  pasados 4 min de marcha (`LateStartSeconds`), +0,3 m/s por minuto hasta 3 m/s (`SpeedRampPerMinute`, `MaxSpeed`); con
+  la primera tortuga pasado el 80 % del recorrido, al menos 2,5 m/s (`EndRushProgress`, `EndRushSpeed`); y si la última le
+  saca más de 180 m, a 2,8 m/s hasta quedarse a 120 m (`CatchUpGap`, `CatchUpSpeed`, `CatchUpRelease`), para que siempre
+  se note. Cada cambio empieza un tramo nuevo replicado desde donde está (desplazamiento, velocidad, aceleración con
+  signo, velocidad a la que va, hora).
 - **Aviso**: con el frente a menos de 25 m por detrás (`WarnDistance`), temblor creciente, viento, arena alrededor de la
   cámara y «¡QUE VIENE LA TORMENTA!» (una vez por acercamiento); al entrar, «¡CORRE!».
-- **Revolcón**: dentro (6 m por detrás del frente, `InsideMargin`) durante 1,2 s (`FirstHitDelay`), derribo con
-  ragdoll y mareo de 2,2 s (`KnockSeconds`) empujada hacia el mar (`PushForward` 6,5 m/s, `PushUp` 3,5, `PushSide` 1,5)
-  dando una vuelta hacia delante; como mucho uno cada 9 s por tortuga (`HitInterval`). Dentro también: niebla y tinte
-  de arena, viñeta, tos y viento.
-- **Por fuera**: velo de arena de 55 m apoyado en la arena del frente (a la altura de la cámara a lo ancho); 24 trastos
-  que nacen en el polvo y salen volando hasta 35 m por delante del frente, a su velocidad + 3-9 m/s: los pequeños
-  (cubos, palas, chanclas, pelotas) a 1,5-8 m, rebotando y rodando por la arena; los grandes (sombrillas de 50 m,
-  sillas, toallas, flotadores) planeando a 6-26 m, sostenidos por el viento. Ocho bañistas con los pies en la arena
-  pisando dentro del polvo (pisotón, arena y temblor del más cercano).
+- **Patada** (ronda 3; sustituye al revolcón): nadie se puede quedar detrás del frente. A la tortuga que lleva 0,25 s
+  (`KickDelay`) más de 1 m (`KickSlack`) por detrás del frente, en cualquier estado (de pie, derribada, ya en bola o
+  recién soltada por una gaviota), un bañista le da una patada: `TNBeach::StunTurtle` la mete en su caparazón y la lanza
+  en bola hasta `KickAhead` (20 m) por delante del frente, contando lo que el frente avanza mientras vuela. El vuelo dura
+  1 s + 1 s por cada 28 m que tenga que recorrer (entre 1,1 y 2,4 s, `KickMinFlight`/`KickMaxFlight`): hacia arriba lo
+  justo para ese tiempo y hacia delante un 13 % más por segundo de vuelo (la caja del caparazón frena un poco en el aire).
+  Mareada lo que vuela + 0,8 s (`KickStunExtra`); si al aterrizar sigue detrás, otra. No se patea a la que va en el pico
+  de una gaviota o en la boca de un lagarto (al soltarla sí), a la que se come un gusano, a la que lleva otra en brazos
+  (patean a la que la lleva) ni con la ronda parada. Se ve la pierna del bañista barriendo por detrás de la tortuga
+  (0,25 s), arriba 0,2 s y fundiéndose (0,45 s), con pisotón, golpe, polvo, temblor y «¡PATADA!» (multicast no fiable; la
+  bola va por la física replicada del caparazón). Dentro (6 m por detrás del frente, `InsideMargin`): niebla y tinte de
+  arena, viñeta, tos y viento.
+- **Por fuera, en el borde de verdad**: velo de arena de 55 m apoyado en la arena del frente (a la altura de la cámara a
+  lo ancho). 24 trastos que nacen en el polvo del borde (1-7 m tras el frente) y se quedan por el borde: cada uno busca
+  su sitio respecto al frente (de 2 m por detrás a 5 m por delante) con un muelle y va a la velocidad del frente, barriéndolo
+  de lado (±6,5 m/s que se frenan poco a poco); los pequeños (cubos, palas, chanclas, pelotas) a 1,2-6 m, rebotando y
+  rodando por la arena; los grandes (sombrillas de 50 m, sillas, toallas, flotadores) planeando a 5-22 m. Viven 3,5-7 s.
+  Ocho bañistas con los pies justo dentro del borde del polvo (2,5-11,5 m tras el frente), pisando en el borde (pisotón,
+  arena y temblor del más cercano).
+- **Nada aparece ni desaparece de golpe**: el velo sube su «Opacity» (material `M_ProcStormVeil`) y crece desde la arena
+  con `FrontBlend` (la cámara a menos de 450 m del frente); cada trasto nace fundiéndose en 0,45 s y creciendo (del 45 %)
+  y se va en 0,6 s encogiendo; los bañistas entran y salen en 0,7 s. Para la opacidad, mientras se funde la pieza lleva
+  una copia translúcida de su malla (material `M_ProcFXSoft`, parámetro «Opacity»); entera, vuelve a la opaca con luz.
 
 ### Gusano de arena (`ATN_BeachSandWorm`)
 
@@ -1297,36 +1695,215 @@ dentro, oculta, hasta la ronda siguiente, que vuelve a crear a todas en la salid
 - **Consola**: `TN.Beach.Worm [jugador]` (en el anfitrión; `jugador` es el índice en `PlayerArray`, 0 por defecto): se
   come ya a esa tortuga, en cualquier fase. En plena carrera se queda comida hasta la ronda siguiente.
 
+### Enemigos de la ronda 3: ermitaño, pulpo, pulgas y tanque
+
+Lo que pidió el usuario (tarea 7 de `Docs/Plan_Carrera_Ronda3.md`): cuatro enemigos nuevos, todos hijos de
+`ATN_BeachEnemy` (red, tortugas, suelo, nivel de detalle y mareo por lo que se les lanza de la base). Nadie muere: mareo,
+ragdoll y bola (`StunTurtle`, `KnockDownTurtle`). El reparto los coloca (ver «Reparto por ronda»): el ermitaño en calles
+cuesta abajo, el pulpo en el agua de las pozas, las pulgas en claros de arena abierta y el tanque en tramos de través
+cerca de lo militar y de las trincheras.
+
+| Archivo | Qué es |
+|---|---|
+| `TN_BeachHermitCrab.*` | `ATN_BeachHermitCrab`: cangrejo ermitaño que rueda cuesta abajo metido en su caracola |
+| `TN_BeachPoolOctopus.*` | `ATN_BeachPoolOctopus`: pulpo que vive en una poza, agarra a quien nada y la lanza fuera |
+| `TN_BeachSandFleas.*` | `ATN_BeachSandFleas`: enjambre de pulgas de arena que pica y hace saltar sin control |
+| `TN_BeachToyTank.*` | `ATN_BeachToyTank`: tanque de juguete teledirigido que patrulla y dispara bolitas de espuma |
+| `TN_BeachCritterSynth.*` | `UTN_BeachCritterSynthComponent`: sus sonidos sintetizados (15 golpes y 3 continuos: concha que rueda, enjambre y motor eléctrico), el patrón de `UTN_BeachEnemySynthComponent` |
+| `TN_BeachCritterMeshes.h`, `TN_BeachCritterKit.h` | Sus mallas low-poly de caras planas con color de vértice (caracola, cangrejo por piezas, pulpo, tramo de brazo, silueta, charco, pulga, tanque por piezas, banderita y bolita) y las piezas con `RF_Transient \| RF_DuplicateTransient` |
+
+- **Comunes**: mallas construidas en ejecución y compartidas por paleta (`TNBeachKit::CachedMesh`), punteros
+  `UPROPERTY(Transient)`, nada en un servidor dedicado salvo la caja sólida del tanque. Lo numeroso va por instancias
+  (brazos del pulpo, pulgas, ruedas del tanque y bolitas). Los cuatro tienen `bThrottleWhenFar`: con una tortuga a su
+  alcance (ermitaño: su calle + 30 m; pulpo: 1,3 radios de su poza + 30 m; pulgas: correa + vista + 10 m; tanque: medio
+  tramo + 40 m) o la cámara cerca se mueven en cada fotograma; si no, más despacio (lo de la base). Ninguno anima lejos
+  de la cámara (ermitaño 360 m, tanque 300 m, pulpo 240 m y sus brazos 90 m, pulgas 120 m). Sus cuerpos para lo que se
+  les lanza (`GetHitCapsule`) y dónde van los pajaritos (`GetHitStunAnchor`) son los suyos (tabla de abajo).
+- **Red**: la del resto de enemigos (servidor escucha, `FTNBeachMoverRep` y reloj del servidor) con el perfil de red de
+  la ronda de `ATN_BeachElement`: como enemigos, no duermen y son relevantes por distancia (260-450 m); un cliente que
+  llega a mitad de un estado lo retoma con la hora del estado. El ermitaño no manda nada mientras rueda: la rodada es
+  determinista en cada máquina. El pulpo y las pulgas replican a quién tienen (`Grabbed`, `Infested`, siempre junto a un
+  cambio de estado o con `ForceNetUpdate`); el tanque manda cada disparo con su hora. Efectos por multicast no fiable.
+
+| Quién | Qué te pasa | Después |
+|---|---|---|
+| Ermitaño (bola) | derribo con ragdoll y mareo 2,5 s, lanzada a 3,2 m/s + 55 % de la velocidad de la bola hacia donde va (13 m/s como mucho), 2,4 m/s hacia su lado y 4,3 hacia arriba, dando vueltas (320°/s); «¡BOLO!» y, desde la segunda de la misma rodada, «¡STRIKE!» | te ignora 3 s; la bola sigue |
+| Pulpo (agarre) | agarrada 0,8 s (sube 2,3 m sobre el agua pataleando) y lanzada en bola fuera de la poza hacia la salida (9-34 m), mareada el vuelo + 1,2 s; «¡SLURP!» y «¡FUERA!» con tinta | te ignora 5 s tras lanzarte |
+| Pulgas (picada) | 2 s de saltitos sin control y picor; luego bola mareada 1 s; «¡PICA, PICA!» | te ignoran 6 s |
+| Tanque (bolita) | bola mareada 0,8 s, empujada a 5,2 m/s hacia donde iba la bolita y 2,6 hacia arriba; «¡PAF!» | otra en cuanto te recuperas |
+
+| Enemigo | Cuerpo que recibe lo lanzado | Mareado |
+|---|---|---|
+| Ermitaño | la esfera de la caracola | rodando, se para en seco; asoma con los ojos dando vueltas y meciéndose (0,6 s como poco) y, al pasársele, vuelve andando a lo alto. Esperando, no rueda; escondiéndose, vuelve a asomar |
+| Pulpo | cápsula vertical del cuerpo donde esté (también bajo el agua) | suelta a la agarrada (cae al agua); flota de lado a ras del agua meciéndose (0,8 s como poco) y luego se hunde y vuelve a su sitio |
+| Pulgas | la nube (0,9 de su radio), sobre la arena o sobre la picada; dispersas, nada | se dispersan (y sueltan a la picada, sin mareo final) y no se mueven hasta que se les pasa |
+| Tanque | cápsula del casco, de delante a atrás | se para, echa humo gris por el escape, el motor tose cada 0,9 s, la torreta cabecea y la antena da vueltas como una hélice (720°/s, inclinada 35°); al pasársele, «boing» y 0,7 s sin disparar |
+
+#### Cangrejo ermitaño bola (`ATN_BeachHermitCrab`)
+
+- Caracola de turbante de 2,24 m de diámetro (4 cm reales), con surco y bandas en espiral, nudos en el hombro y la boca
+  con su labio; el ermitaño asoma con cabeza, ojos negros en pedúnculos, antenas largas, pinza grande (la izquierda) y
+  pequeña y cuatro patas. Cuatro paletas. `SizeScale` 0,8-1,25.
+- **Calle**: el eje X local, centrada en el actor, con `Extent` de largo (el reparto: 25-45 m; 0 = 40 m). Lo alto, donde
+  espera, es el extremo de -X (el reparto la pone cuesta abajo hacia +X); solo si el de +X queda 60 cm o más por encima,
+  rueda al revés.
+- **Espera** asomado (la caracola cargada, inclinada 15°), mirando calle abajo: ojos que miran alrededor, antenas y la
+  pinza que saluda cada 3,5 s. Salta con una tortuga atacable dentro de la calle: entre 2,5 m por delante de él y 2 m
+  antes del final, a menos de 5,2 m del eje (por el tamaño) y 9 m en altura; lo mira cada 0,1 s. Tras volver arriba,
+  1,2 s sin poder rodar.
+- **Se mete** en la concha (0,55 s: «¡plop!», se inclina y tiembla) y **rueda**: arranca a 2,5 m/s y acelera 3,8 m/s² más
+  9 m/s² por la pendiente (entre 3 m/s y 15 m/s por la raíz del tamaño). Bota con el relieve (gravedad de 12,5 m/s²;
+  sigue el suelo y sale despedida en las crestas; rebota un 32 % si cae a 2,6 m/s o más) y da botes sueltos (1,7-3,3 m/s
+  cada 0,55-1,1 s yendo a más de 5 m/s). Culebrea ±1,2 m en ondas de 15 m (crece en los primeros 5 m). En los últimos
+  7 m frena (4,5 m/s² como poco) y se para al final. Arena, retumbar hueco con un golpe por vuelta y golpe en cada bote.
+- **Derriba** a quien toca la bola (1,12 m + 0,7 m del tramo que recorre en ese fotograma, y a menos de 2,2 m en altura),
+  sin pararse: a todas las que estén en fila (tabla de arriba).
+- **Al final** asoma (0,35 s), se sacude la arena (hasta 1,45 s, con granos que saltan), se da la vuelta (hasta 2,1 s),
+  vuelve andando a lo alto a 2,3 m/s (por la raíz del tamaño, patitas) y arriba se da la vuelta (0,9 s) y espera.
+- **Red**: los estados son función de su hora (reloj del servidor), su punto de partida (`Mover.Location`) y su meta
+  (`Mover.Aim`); el servidor solo manda los cambios de estado. La rodada es un camino calculado igual en cada máquina
+  (pasos de 1/60 s guardados a 30 muestras por segundo, 14 s como mucho) con el mismo perfil del suelo y la misma semilla
+  (la del actor y el número de estado); se ve donde está la del servidor. Los derribos, por el servidor.
+- **Perfil del suelo**: tres líneas (el eje y ±1,5 m) cada 1,5 m a lo largo de la calle, una vez por calle y máquina (la
+  primera vez que rueda o anda: ~90 consultas de `GetGroundHeightAt`); el camino y la vuelta andando van sobre él.
+
+#### Pulpo de poza (`ATN_BeachPoolOctopus`)
+
+- Pulpo de 1,5 m de cuerpo (5,5 cm reales) con ojos saltones de pupila de barra, manchas (o los anillos azules de uno de
+  ellos), sifón y ocho brazos de 3,7 m de seis tramos cada uno (48 instancias). Cuatro paletas. `SizeScale` 0,8-1,3.
+- **Poza**: la del generador que contiene su sitio (`TNBeachLayout::Pools`, radio normalizado menor de 1,35); se queda
+  donde lo pone el reparto (si está dentro del 70 % de la poza; si no, en su centro). Sin poza (otro mapa o puesto en la
+  arena), su propio charco translúcido de 7 m de radio (por el tamaño), con el agua 45 cm sobre la arena, y cualquier
+  tortuga que entre cuenta como nadando.
+- **Acecha** bajo el agua, tumbado, con los brazos abiertos enroscándose: el anillo de los brazos 25 cm sobre el fondo
+  (entre 0,4 y 1,5 m bajo el agua). Se ve su silueta oscura a ras del agua y burbujas cada 1-2,5 s. Pasea a 0,8 m/s por el
+  35 % de la poza alrededor de su sitio (otro destino cada 4-7 s).
+- **Nadadora**: atacable, dentro de la orilla y nadando (o con el centro a menos de 40 cm sobre el agua); la busca cada
+  0,15 s. Se fija en ella 0,5 s (se gira, burbujas y dos puntas de brazo que asoman como aletas) y va a por ella bajo el
+  agua, estirado, a 5,2 m/s (por la raíz del tamaño; arranca en 0,25 s), sin salirse del 85 % de la poza. Se rinde a los
+  7 s o si ella sale.
+- **Agarre** a 3 m (en planta, por el tamaño): saca la cabeza, tres brazos la envuelven y la sube en 0,35 s a 2,3 m sobre
+  el agua (a mitad de camino hacia él), meciéndola; la sujeción es la de la base (`BeginHoldTurtle`: pataleta, sin
+  movimiento propio ni correcciones del servidor, colocada igual en cada máquina con `PlaceHeldTurtle`).
+- **Lanzamiento** a los 0,8 s: hacia la salida (contra el mar del generador; sin generador, hacia atrás del actor), hasta
+  la orilla de ese lado más 6 m (entre 9 y 34 m), con un tiro parabólico a 42° desde donde está (gravedad de la bola del
+  caparazón, un 8 % más por su rozamiento): `StunTurtle` con esa velocidad, mareada el vuelo + 1,2 s. Tinta: una nube que se
+  extiende por el agua y un chorro hacia donde la lanza. A los 0,6 s se hunde y vuelve a su sitio a 3,2 m/s (3 s como
+  mucho).
+
+#### Enjambre de pulgas de arena (`ATN_BeachSandFleas`)
+
+- 48 pulgas (anfípodos de ~18 cm: 0,65 cm reales) en una sola malla instanciada, sin colisión; dos tonos. `SizeScale`
+  0,8-1,25. Cada una salta por su cuenta (0,28-0,48 s y 0,4-1,1 m de alto, con pausas de 0,05-0,35 s) dentro de la nube
+  (1,7 m de radio por el tamaño); al perseguir, la nube se estira hacia delante. Una mancha oscura en la arena (2,1 m) y
+  polvo para verla de lejos; chisporroteo continuo a menos de 40 m.
+- **Pasea** a 0,7 m/s (por el tamaño) por el 60 % de su huella; **ve** a 18 m (por la raíz del tamaño) una tortuga
+  atacable dentro de su correa (24 m o 1,8 huellas desde su sitio; la mira cada 0,2 s) y va hacia ella a 1,6 m/s (por la
+  raíz del tamaño): se le escapa andando.
+- **Picada**: con la tortuga a 1,7 m + 1 m (en planta) y a menos de 4 m en altura, se le suben encima (el 75 % sobre el
+  caparazón, con saltitos cortos y frenéticos). 2 s de saltitos sin control: siete impulsos (a los 0,1 s y cada 0,3 s) de
+  3,2-4,2 m/s hacia arriba y 1,4-2,6 m/s de lado al azar que sustituyen su velocidad. Picor: «¡PICA, PICA!» y, a los
+  0,9 s, «¡QUÉ PICOR!» (y un temblor en su pantalla). Al final, bola mareada 1 s. Se corta antes (sin mareo) si la
+  derriban, la aturden o la sujetan, o si marean al enjambre.
+- **Se dispersa** (hasta 6,5 m en 1,2 s, con saltos largos) y se vuelve a juntar hasta los 3,2 s.
+- **Red**: el centro del enjambre en `Mover` (8 Hz) y la picada en `Infested` y la hora del estado. Los saltitos son
+  deterministas (hora y semilla): el servidor los da a su copia y el dueño de la tortuga a la suya a la misma hora (sin
+  RPC por salto y sin correcciones); el que le llegue más de 0,25 s tarde no se da. Las pulgas son locales.
+- **Rendimiento**: una actualización de 48 instancias por fotograma solo con la cámara a menos de 120 m; su suelo es un
+  plano de tres consultas cada 0,4 s; en el servidor, una consulta cada 0,3 s mientras se mueve.
+
+#### Tanque de juguete teledirigido (`ATN_BeachToyTank`)
+
+- Tanque de plástico de 4,5 m de largo (16 cm reales), 2,5 m de ancho y 2 m de alto: orugas de goma con eslabones y cinco
+  ruedas por lado que giran, guardabarros, glacis, rejilla del motor, faros, escapes, escarapelas de Tortunavy en los
+  costados, estrellas doradas en la torreta, cañón de 2,7 m con la punta naranja de los juguetes y antena de látigo de
+  3,2 m con la banderita de Tortunavy (azul marino con la estrella dorada) que ondea. Cuatro paletas (oliva, arena, gris
+  de Tortunavy y camuflaje). `SizeScale` 0,8-1,2. Caja sólida tipo Pawn del tamaño del casco en todas las máquinas.
+- **Patrulla** su tramo (eje X local centrado en el actor, `Extent` de largo: el reparto, 20-40 m de través; 0 = 24 m; sin
+  0,6 medio casco en cada punta) a 2,6 m/s (por la raíz del tamaño, 3 m/s² de aceleración y frenando para llegar parado)
+  y en cada punta gira sobre sí mismo a 150°/s con las orugas a contramano. El casco se inclina con el suelo.
+- **Ve** a 25 m una tortuga atacable (a menos de 8 m en altura; mira cada 0,2 s patrullando o girando): se para
+  frenando, gira la torreta a 110°/s y, con ella a menos de 7°, parado y a los 0,7 s de verla, dispara; luego cada 1,6 s.
+  La deja a 29 m o cuando deja de ser atacable (la bolita que da la marea) y busca otra; sin nadie 1,2 s, vuelve a
+  patrullar.
+- **Bolita de espuma** (53 cm, naranja con franja amarilla): sale a 19 m/s con el tiro bajo (−12° a 45°) hacia donde
+  estará la tortuga (el 60 % del adelanto), cae con 7 m/s² y deja una estela de humo; «¡pomp!», humo en la boca, el cañón
+  recula 45 cm, el casco cabecea 5° y recula 20 cm y la antena se echa atrás. Bota (55 % en planta y 42 % hacia arriba)
+  hasta 3 veces o 2,4 s; tras el primer bote o tras dar a alguien ya no hace nada. Da a quien pase a menos de 0,27 m +
+  0,7 m de su recorrido (tabla de arriba) y rebota hacia atrás.
+- **Red**: el casco en `Mover` (10 Hz); la torreta de cada máquina gira hacia `Mover.Aim` (la tortuga a la que apunta). Cada
+  disparo va por multicast no fiable con su hora del servidor: la bolita del cliente sale adelantada lo que tardó el
+  mensaje y va a la par que la del servidor. Si se pierde el mensaje, solo falta la bolita en esa pantalla (el golpe lo
+  decide el servidor y llega por su multicast y por el aturdimiento). Suelo de la bolita sin trazas: entre el de la boca
+  del cañón y el de donde apuntaba.
+- **Sonido**: motor eléctrico que sube con la marcha y con el servo de la torreta, «¡pomp!», «¡paf!», tos y «boing».
+
+#### Probar (PIE de 2)
+
+- `TN.Beach.Place HermitCrab 1 2000` (queda 3 m delante, con la calle hacia donde miras): rodearlo y ponerse en su calle
+  delante de él: se mete (plop), rueda acelerando, bota, culebrea y derriba (ragdoll lanzado). Ponerse las dos en fila:
+  derriba a las dos («¡STRIKE!»). Apartarse de lado 3 m: pasa de largo. Mirar el final: frena, asoma, se sacude, se da la
+  vuelta y vuelve andando; arriba se da la vuelta y vuelve a esperar. `TN.Beach.StunNearest` con la bola rodando: se para
+  en seco y asoma mareado. Que la otra ventana vea la bola en el mismo sitio y los botes a la vez.
+- `TN.Beach.Place PoolOctopus` desde la orilla de una poza (o en la arena, con su charco): entrar nadando: burbujas,
+  puntas que asoman, va a por ti, te agarra y te sube pataleando, te lanza en bola fuera de la poza hacia la salida con
+  tinta. Salir nadando antes de que llegue (se rinde). Con la otra tortuga, lanzarle una piedra mientras te sube: te
+  suelta al agua. En las dos ventanas, la tortuga agarrada en el mismo sitio y sin tirones.
+- `TN.Beach.Place SandFleas`: acercarse andando (van hacia ti despacio: se les escapa andando); quedarse quieta: saltitos
+  sin control 2 s con «¡PICA, PICA!» y bola mareada 1 s; que la ventana de la picada no tenga correcciones (tirones) en
+  los saltitos. Lanzarles una piedra: se dispersan.
+- `TN.Beach.Place ToyTank`: acercarse a menos de 25 m: se para, gira la torreta y dispara bolitas con estela; esquivarlas
+  corriendo de lado; que te dé: bola mareada y empujada, «¡PAF!». Chocar con él (es sólido). `TN.Beach.StunNearest`: humo,
+  tos y antena que da vueltas. Que la otra ventana vea salir la bolita a la vez.
+- `TN.Beach.Enemy.Debug 1`: calle del ermitaño (y su camino al rodar), poza y alcance del pulpo con la dirección del
+  lanzamiento, radios de las pulgas y tramo, vista, torreta y bolitas del tanque.
+
 ### Probar
 
-- `TN.Beach.Spawn GiantCrab` (y `SeaUrchin`, `Lizard`, `QuadLane`, `GullZone`), del generador, en cualquier mapa.
+- `TN.Beach.Place GiantCrab` (y `SeaUrchin`, `Lizard`, `QuadLane`, `GullZone`), del generador, en cualquier mapa.
 - **Gusano** (PIE de 2): `TN.Beach.Worm 1` en el anfitrión con la otra tortuga en la arena → en las dos ventanas,
   remolino, salida con la tortuga pataleando en la boca, «¡ÑAM!», bulto, eructo y cráter que se cierra, a la vez; la
   comida no se mueve ni usa nada y su cámara mira desde un lado (la otra ventana deja de verla en el bocado). Después, la
   cuenta de verdad: llegar con una y dejar a la otra en la arena 10 s; que el recuento espere al gusano y que la ronda
   siguiente la traiga con control y cámara normales. Probar también con la rezagada en bola, derribada, en brazos de
   otra o saltando al acabar la cuenta, y con 3 o más (que no salgan todos a la vez).
-- **Cangrejo**: mirar que nunca se queda quieto más de un segundo (recorrido y chasquidos); acercarse por detrás andando
-  (oye a 10 m: se da la vuelta), corriendo (13 m) y en panzazo o agachada (6 m); de frente, a 22 m. Esprintar (se
-  escapa); quedarse quieta en la sombra de la pinza (bola aturdida); salir de la sombra durante el aviso (falla);
-  alejarse más de 38 m (vuelve a su recorrido). Con un grupo de 2-3: que no se monten unos encima de otros y que rodeen
-  las rocas en vez de atravesarlas.
+- **Cangrejo**: mirar que nunca se queda quieto más de un segundo (recorrido y chasquidos); que ande de lado con las
+  patas alternas, el cuerpo balanceándose, que arranque y frene sin tirones y gire poco a poco, sin patinar; que en una
+  zona llena de decorado rodee las rocas en vez de empujarlas y no se quede atascado. Acercarse por detrás andando (oye a
+  10 m: se da la vuelta), corriendo (13 m) y en panzazo o agachada (6 m); de frente, a 22 m. Esprintar (se escapa);
+  quedarse quieta en la sombra de la pinza (bola aturdida); salir de la sombra durante el aviso (falla); alejarse más de
+  38 m (vuelve a su recorrido). **Embestida**: quedarse a 10-20 m delante de él: se agacha, sale disparado de lado,
+  arrolla (ragdoll lanzado) y derrapa con surcos y arena; apartarse de lado a tiempo. Ponerse detrás de una roca grande
+  (no embiste con algo en medio). Con un grupo de 2-3: que no se monten unos encima de otros.
 - **Erizo**: quedarse quieta delante (rueda hasta pinchar: ragdoll lanzado y mareo), tocarlo andando por detrás.
-- **Lagarto**: que pasee entre ratos al sol; acercarse despacio (alerta a 30 m), luego a 17 m (susto o huida), hasta
-  que se meta bajo una roca (debajo, no encima) o se entierre; esperar lejos a que salga.
+- **Lagarto**: `TN.Beach.Lizard huidizo`: que pasee entre ratos al sol; acercarse despacio (alerta a 30 m), luego a 17 m
+  (susto o huida), hasta que se meta bajo una roca (debajo, no encima) o se entierre; esperar lejos a que salga.
+  `TN.Beach.Lizard generoso`: motas y collar dorados que destellan; al acercarse huye y deja un objeto o una concha; que
+  la otra ventana vea el mismo premio. `TN.Beach.Lizard mordedor`: cresta roja; acercarse de pie: se lanza, muerde,
+  zarandea con la tortuga en la boca y la lanza en bola mareada; en las dos ventanas, la tortuga en su boca a la vez.
+  Repetir en bola (no puede morder) y apartándose en el último momento (falla y se va).
 - **Quad**: `TN.Beach.Quad.Now`; notar el temblor y el humo del lado de salida; ponerse en una rodada (ragdoll lanzado
   dando vueltas), fuera del paso y en medio de las dos rodadas (sobrevive). Probar los dos sentidos.
-- **Gaviotas**: mirar que cada una va por su círculo y a su altura. `TN.Beach.Gull.Attack 1` (cagada: se ve caer con su
-  estela y su sombra; apartarse; quedarse: ragdoll con la mancha en el caparazón) y `TN.Beach.Gull.Attack 2` (picado:
-  panzazo en el último momento para esquivar; quedarse: abre el pico, te coge por el caparazón, cuelgas pataleando,
-  sube aleteando, vuela y te suelta en bola). Meterse en el caparazón colgando (se escurre).
-- **Tormenta**: en la carrera arranca sola; `TN.Beach.Storm.Info` dice dónde va y a qué velocidad. En otro mapa,
-  `TN.Beach.Storm.Start [metros por detrás] [cm/s]` y `TN.Beach.Storm.Stop`. Que el velo, los trastos y los bañistas
-  estén sobre la arena; andar sin prisa (no te alcanza); dejarse alcanzar (aviso, «¡CORRE!», un revolcón y ninguno más
-  en 9 s) y salir corriendo.
+- **Gaviotas**: mirar que cada una va por su círculo y a su altura, con su sombra bajo el cuerpo (más pequeña y oscura
+  cuanto más baja). `TN.Beach.Gull.Attack 1` (cagada: se ve caer con su estela y su sombra; apartarse; quedarse: ragdoll
+  con la mancha en el caparazón) y `TN.Beach.Gull.Attack 2` (picado: la sombra se va a tu tortuga y se cierra sobre
+  ella; panzazo o apartarse en el último momento: baja igual, pica la arena con «¡PIC!» y vuelve a subir; quedarse: abre
+  el pico, te coge por el caparazón, cuelgas pataleando, sube aleteando, vuela y te suelta en bola). Meterse en el
+  caparazón colgando (se escurre). Con una sombrilla encima: pica en la sombrilla.
+- **Mareo**: lanzar una piedra (o el pulpo de tinta) al cangrejo, al erizo, al lagarto y a la gaviota que baja en picado
+  (o a la que se lleva a la otra tortuga: la suelta): «¡TOING!», pajaritos y estrellas encima, sin atacar ~3 s; lanzar a
+  la otra tortuga en brazos contra un cangrejo. `TN.Beach.StunNearest [s]` para verlo sin puntería. Que las dos ventanas
+  vean los pajaritos a la vez y el rebote de la piedra en el erizo o el lagarto.
+- **Tormenta**: en la carrera arranca sola y va a 1,8 m/s; `TN.Beach.Storm.Info` dice dónde va y a qué velocidad. En
+  otro mapa, `TN.Beach.Storm.Start [metros por detrás] [cm/s]` y `TN.Beach.Storm.Stop`. Que el velo, los trastos y los
+  bañistas estén sobre la arena y en el borde del frente (ni por delante ni por detrás), y que nada aparezca ni
+  desaparezca de golpe (acercarse y alejarse del frente, mirar los trastos al nacer y al irse). `TN.Beach.Storm.Here`: la
+  pierna de un bañista te patea y sales en bola hasta ~20 m por delante del frente; probar de pie, en bola, derribada y
+  con una gaviota que te suelta detrás del frente (otra patada al caer).
 - En PIE con 2-3 jugadores: que los clientes vean lo mismo (posiciones suaves, golpes a la vez, el ragdoll lanzado igual
-  en todas las pantallas, la tortuga en el pico sin tirones) y que no haya correcciones raras al empujar el lagarto, al
-  atropellar o al colgar del pico (sobre todo en la pantalla de la que cuelga).
+  en todas las pantallas, la tortuga en el pico o en la boca del lagarto sin tirones, la bola de la patada igual) y que
+  no haya correcciones raras al empujar el lagarto, al atropellar, al colgar del pico o al morder (sobre todo en la
+  pantalla de la mordida o de la que cuelga).
 - Consola: `TN.Beach.Enemy.Debug 1` (radios de vista y de oído, correa, recorridos y golpe del cangrejo, cajas de las
   ruedas en el servidor) y `TN.Beach.Enemy.Stats`.
 
@@ -1341,6 +1918,7 @@ coge»). A petición del usuario, a rebosar: casi todo el decorado se rebusca y 
 |---|---|
 | `Public/World/Beach/TN_BeachLoot.h`, `Private/World/Beach/TN_BeachLoot.cpp` | `TNBeachLoot` (reglas, pesos y `SpawnRoundLoot`), `ATN_BeachSearchSpot` (el rebuscable con las reglas de la carrera) y `UTN_BeachLootSubsystem` (reparte y quita el botín de cada ronda) |
 | `Private/World/Beach/TN_BeachLootShells.cpp` | Las conchas de puntos de cada ronda (`UTN_BeachLootSubsystem::SpawnRoundShells`) |
+| `Public/World/Beach/TN_BeachChest.h`, `Private/World/Beach/TN_BeachChest.cpp` | Los cofres (`ATN_BeachChest`, el elemento `TreasureChest` del reparto, y `ATN_BeachChestSpot`, el cofre que se abre) y `TN.Beach.Chest` |
 
 ### Cuándo se reparte
 
@@ -1372,7 +1950,9 @@ coge»). A petición del usuario, a rebosar: casi todo el decorado se rebusca y 
 | 60 % | lata, brick, gafas de sol, patito, chupachups, concha de adorno, estrella de mar, anillas de latas, trozo de cuerda, hueso de sepia |
 | nunca | chapas, cáscaras, palitos de helado, pluma, pajita (diminutos o finos), medusa (pica), pasarela y caminito de palos (son camino) |
 
-- **Uno por corrillo**: 9 m como poco entre centros y 3 m entre bordes; hasta 90 por ronda y 20 por sexto del recorrido.
+- **Uno por corrillo**: 9 m como poco entre centros y 3 m entre bordes; hasta 360 por ronda y 75 por sexto del recorrido
+  (×1,6 en fácil y ×1,4 en difícil). Son puntos de un registro: el actor aparece solo cerca de alguna tortuga (ver
+  «Rendimiento y red»).
   Con ~150 piezas de decorado por ronda salen del orden de 50-80 (el registro da el número exacto).
 
 ### Objetos sueltos
@@ -1428,11 +2008,54 @@ alrededor de las demás:
   corredor), a la entrada de los caminos alternativos (7 hacia el mar), por encima de las pasarelas y por los caminitos
   de palos (hasta 14 por tramo y 110 en total), por el hueco con algas que rodea el castillo con salas (11) y
   serpenteando por los lados de la playa (6-9, la mitad de los tramos de 65 m).
-- Nada a menos de 50 m de la salida. Lo del suelo va en arena libre, fuera del agua de las pozas (a 1-1,2 m de lo que
-  ocupa cada elemento, salvo lo que va a propósito dentro de un peligro); lo que va encima o dentro de algo busca su suelo
-  con trazas contra los elementos.
+- Nada a menos de 15 m de la salida (lo mismo que el reparto, `TNBeachLayout::ItemsStartX`). Lo del suelo va en arena
+  libre, fuera del agua de las pozas (a 1-1,2 m de lo que ocupa cada elemento, salvo lo que va a propósito dentro de un
+  peligro); lo que va encima o dentro de algo busca su suelo con trazas contra los elementos.
 - La planta de las salas del castillo repite la de `TNBeachDungeonDetail::MakeLayout` (`TN_BeachSandDungeon.cpp`): si
   cambia allí, hay que cambiarla en `DungeonRooms` (`TN_BeachLootShells.cpp`).
+
+### Cofres (`ATN_BeachChest`)
+
+Como el cofre del lobby (`ATN_TreasureChest`), pero de la playa y para la carrera: se tarda en abrir, pero da de lo
+mejor para avanzar. Los ponen el reparto (sitios especiales: tras una concha que atrapa, rincones escondidos,
+trincheras) y las fortalezas (en su cima), con `ATN_BeachElement::SpawnElement` y el spec `TreasureChest` (huella de
+350 cm; categoría de trampa en `TNBeach::CategoryOf`).
+
+- **Dos actores**: `ATN_BeachChest` es el elemento del reparto y solo existe en el servidor (no se replica); al empezar
+  crea en su sitio y con su giro el cofre de verdad, `ATN_BeachChestSpot` (hereda de `ATN_BeachSearchSpot`), que es lo que
+  se ve, se abre y se replica. Al quitar el elemento (ronda nueva, `ClearElementsAround`, `TN.Beach.Place clear`) se va
+  el cofre con lo que soltó y nadie cogió. El frente del cofre mira a su +X. En Preview Round del editor también sale
+  (sin guardarse).
+- **Aspecto**: el cofre del lobby 2,2 veces más grande (3,4 m de ancho, 2,2 m de fondo y 2,6 m de alto con la tapa),
+  variante playera: madera blanqueada, flejes y asas de hierro oxidado, borde, cantoneras y cerradura dorados,
+  percebes, algas colgando del borde y cruzando la tapa, una estrella de mar pegada a un lado y arena amontonada al pie.
+  Dentro, monedas, gemas, una copa, perlas y una vieira. Las tres mallas (caja, tesoro y tapa) se hacen una vez y las
+  comparten todos los cofres. Mientras está por abrir, una **columna de luz dorada** (la de lo que se coge, de 30 m, se
+  ve a 450 m) y la luz de dentro que late por la rendija; y las chispitas y el anillo de dónde abrirlo de los
+  rebuscables, a la escala de la playa (desde 50 m y 22 m; anillo de 1,4 m).
+- **Abrirlo**: mantener E **5,5 s** (no hace caso de `tn.Search.Seconds`), con el aro del HUD. La tapa cruje y se
+  entreabre a tirones (de 12° a 48°, temblando) con la luz subiendo, y saltan monedas y chispas hacia la tortuga con el
+  sonido de rebuscar agudo. Soltar antes cancela (la tapa cae con un «¡clonc!»). Mientras una tortuga lo abre, las demás
+  no pueden (no les sale el aviso).
+- **Premio** (siempre; no hace caso de `tn.Search.Luck`): «¡puf!», la tapa salta hacia atrás con un chorro de chispas y:
+  - el objeto de siempre de los rebuscables, con su saltito hacia quien lo ha abierto (por delante del cofre);
+  - **un objeto más** y **seis conchas de puntos** (cuatro de 25, una de 50 y otra de 50 o, el 40 % de las veces, una
+    reina de 100: 200 o 250 puntos) que saltan de dentro del cofre en parábolas altas (0,8 s, una cada 0,08 s) y caen en
+    corona alrededor, a 1-3 m del borde, dejando libre el frente de quien lo abrió. Buscan el suelo cerca de la cota del
+    cofre (en lo alto de una fortaleza no caen al pie).
+  - Los objetos, con **los pesos de la carrera sesgados a lo mejor** (`ATN_BeachChestSpot::ChestWeight`): energía sin fin
+    3, barra llena 2,2, bola y tinta 1,6, concha trampa 0,6; la cabezota y el tótem, nunca; un uso nuevo, el de la
+    carrera. Todo lleva su brillo (el de lo que se coge).
+- **Después**: una vez por ronda. Queda **abierto y vacío** (sin el tesoro de dentro), con un **brillo dorado apagado**;
+  la columna de luz se estrecha y se va en 0,8 s.
+- **Red**: el estado de la búsqueda es el de `ATN_ProcSearchSpot` (replicado y dormido casi siempre: se despierta al
+  empezar y al acabar). Con el resultado se replican los premios y dónde cae cada uno (`Prizes`, `PrizeLandings`): cada
+  máquina anima los saltos con el reloj del servidor y los deja en el mismo sitio aunque un premio le llegue a medio
+  salto. Relevante a 400 m (lo de serie son 150 m). Quien llega tarde lo ve ya abierto, vacío y con los premios en el
+  suelo.
+- **Consola**: `TN.Beach.Chest` pone un cofre delante de tu tortuga con el frente hacia ella (en el anfitrión; `TN.Beach.Place
+  clear` lo quita; también `TN.Beach.Place TreasureChest`). Registro: `[Playa] cofre ... abierto por ...: <objeto> y, de
+  más, <objeto> y 6 conchas (N puntos).`
 
 ### Consola, registro y pruebas
 
@@ -1453,6 +2076,10 @@ alrededor de las demás:
      contador y al recuento.
   4. Siguiente ronda (`TN.Race.WinRound`): desaparece lo que nadie cogió y sale el botín nuevo. `TN.Beach.Loot.Reroll`
      lo vuelve a repartir sin cambiar de ronda.
+  5. Cofre (`TN.Beach.Chest`): la columna dorada y la luz que late; mantener E 5,5 s (soltar a los 3 s: se cierra con
+     «¡clonc!»); al abrirse, el objeto hacia ti, otro objeto y seis conchas en corona, y queda abierto, vacío y con la luz
+     apagada. Con dos: mientras una lo abre, a la otra no le sale el aviso; las dos ven los mismos saltos y los premios en
+     el mismo sitio, y las conchas suman a quien las coge.
 - Límites: lo que está en el inventario pasa a la ronda siguiente; si `RaceScore` se reinicia o no entre rondas lo decide
   el GameMode. Los arcos de trampolines y catapultas son una estimación mientras sus clases no den `LaunchUp` y
   `LaunchForward`; la concha de las plataformas móviles va sobre lo más alto del elemento al crearse.

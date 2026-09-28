@@ -346,6 +346,13 @@ void ATN_BeachRaceGameMode::PrepareRound(bool bCleanup)
 	// El terreno es fijo: el generador solo vuelve a repartir decorado, trampas y enemigos.
 	if (Generator)
 	{
+		// La dificultad del reparto, la que eligió el general (va replicada con la ronda: todas las máquinas reparten igual).
+		// Sin misión de carrera (el nivel abierto a mano), la del generador (su propiedad o TN.Race.Difficulty).
+		const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+		if (GI && GI->SelectedProcMode == ETNProcGameMode::Race)
+		{
+			Generator->Difficulty = GI->SelectedProcDifficulty;
+		}
 		Generator->GenerateRound(RoundSeed);
 		// El nido de huevos, en la salida de siempre o, en el sprint final, en la línea del sprint (vuelve solo a la salida
 		// con la ronda siguiente).
@@ -1659,7 +1666,8 @@ void ATN_BeachRaceGameMode::SyncGameState() const
 		return;
 	}
 	BeachState->ProcMode = ETNProcGameMode::Race;
-	BeachState->ProcDifficulty = ETNProcDifficulty::Normal;
+	// La dificultad de la ronda (la que eligió el general en el lobby) es la del reparto del generador.
+	BeachState->ProcDifficulty = Generator ? Generator->GetRoundDifficulty() : ETNProcDifficulty::Normal;
 	BeachState->CurrentRound = CurrentRound;
 	BeachState->RoundTarget = WinsToWinMatch;
 	BeachState->bRoundInProgress = bRoundActive;

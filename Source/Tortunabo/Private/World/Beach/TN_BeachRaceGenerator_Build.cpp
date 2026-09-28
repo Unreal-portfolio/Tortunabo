@@ -167,12 +167,13 @@ namespace TNBeachBuild
 
 	/**
 	 * Solo dan sombra las teselas de la playa y el pie de los bancos (las dunas se leen por su sombra); las de la selva
-	 * lejana, no: cada tesela cubre mucho mapa de sombras y son mallas sin Nanite.
+	 * lejana, no: cada tesela cubre mucho mapa de sombras y son mallas sin Nanite. Tampoco las que empiezan detrás de la
+	 * salida: con el sol a la espalda de la salida, el cerro de detrás dejaba a oscuras los huevos y los primeros metros.
 	 */
 	bool TileCastsShadow(double X0, double X1, double Y0, double Y1)
 	{
 		const double Reach = TNBeachLayout::HalfWidth + 6000.0;
-		return X1 >= TNBeachLayout::BackWallX - 4000.0 && Y1 >= -Reach && Y0 <= Reach;
+		return X0 >= TNBeachLayout::BackWallX - 4000.0 && X1 >= TNBeachLayout::BackWallX - 4000.0 && Y1 >= -Reach && Y0 <= Reach;
 	}
 
 	UProceduralMeshComponent* NewTile(AActor* Owner, USceneComponent* Parent, bool bShadow)
@@ -442,6 +443,116 @@ void ATN_BeachRaceGenerator::BuildTerrainTiles(const TArray<int32>& Indices, con
 		}
 		TNBeachBuild::UploadTile(Tile, Data[k], TNBeachBuild::TileNeedsCollision(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]), Mat);
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Asientos por partes (la ronda nueva): las teselas se calculan en otro hilo y se suben unas pocas por fotograma
+// (TN_BeachRaceGenerator_Round.cpp)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Teselas del terreno calculadas con los asientos de una ronda, a la espera de subirse. */
+struct FTNBeachTileBatch
+{
+	TArray<int32> Indices;
+	TArray<TNBeachBuild::FTileData> Data;
+	int32 Next = 0;
+};
+
+void ATN_BeachRaceGenerator::FindTouchedTiles(const TArray<double>& Xs, const TArray<double>& Ys, int32 NumTilesX, int32 NumTilesY,
+	const TArray<TNBeachLayout::FStamp>& OldStamps, const TArray<TNBeachLayout::FStamp>& NewStamps, bool bAll, TArray<int32>& OutIndices)
+{
+	OutIndices.Reset();
+	if (NumTilesX <= 0 || NumTilesY <= 0 || Xs.Num() < 2 || Ys.Num() < 2) { return; }
+	// Solo las teselas que tocan un asiento nuevo o uno de la ronda anterior (para quitarlo), con dos filas de margen para
+	// que las normales de los bordes cuadren.
+	const int32 Quads = TNBeachBuild::TileQuads;
+	const double Margin = 700.0;
+	const TArray<TNBeachLayout::FStamp>* Lists[2] = { &OldStamps, &NewStamps };
+	for (int32 Ty = 0; Ty < NumTilesY; ++Ty)
+	{
+		for (int32 Tx = 0; Tx < NumTilesX; ++Tx)
+		{
+			const int32 I0 = FMath::Min(Tx * Quads, Xs.Num() - 1);
+			const int32 I1 = FMath::Min(I0 + Quads, Xs.Num() - 1);
+			const int32 J0 = FMath::Min(Ty * Quads, Ys.Num() - 1);
+			const int32 J1 = FMath::Min(J0 + Quads, Ys.Num() - 1);
+			bool bTouch = bAll;
+			for (int32 l = 0; l < 2 && !bTouch; ++l)
+			{
+				for (const TNBeachLayout::FStamp& Stamp : *Lists[l])
+				{
+					const double R = Stamp.Radius + Stamp.Blend + Margin;
+					if (FMath::Max(Stamp.A.X, Stamp.B.X) + R >= Xs[I0] && FMath::Min(Stamp.A.X, Stamp.B.X) - R <= Xs[I1]
+						&& FMath::Max(Stamp.A.Y, Stamp.B.Y) + R >= Ys[J0] && FMath::Min(Stamp.A.Y, Stamp.B.Y) - R <= Ys[J1])
+					{
+						bTouch = true;
+						break;
+					}
+				}
+			}
+			if (bTouch) { OutIndices.Add(Ty * NumTilesX + Tx); }
+		}
+	}
+}
+
+TSharedPtr<FTNBeachTileBatch> ATN_BeachRaceGenerator::ComputeTileBatch(const TArray<double>& Xs, const TArray<double>& Ys, int32 NumTilesX,
+	const TArray<int32>& Indices, const TArray<TNBeachLayout::FStamp>& Stamps)
+{
+	TSharedPtr<FTNBeachTileBatch> Batch = MakeShared<FTNBeachTileBatch>();
+	if (NumTilesX <= 0 || Indices.Num() == 0) { return Batch; }
+	Batch->Indices = Indices;
+	Batch->Data.SetNum(Indices.Num());
+	const int32 Q = TNBeachBuild::TileQuads;
+	TArray<TNBeachBuild::FTileData>& Data = Batch->Data;
+	// Lógica pura (alturas con los asientos, normales y colores): en paralelo, desde el hilo que sea.
+	ParallelFor(Indices.Num(), [&Data, &Indices, &Xs, &Ys, &Stamps, NumTilesX, Q](int32 k)
+	{
+		const int32 Index = Indices[k];
+		const int32 I0 = (Index % NumTilesX) * Q;
+		const int32 J0 = (Index / NumTilesX) * Q;
+		TNBeachBuild::ComputeTile(Xs, Ys, I0, FMath::Min(I0 + Q, Xs.Num() - 1), J0, FMath::Min(J0 + Q, Ys.Num() - 1), Stamps, Data[k]);
+	});
+	return Batch;
+}
+
+bool ATN_BeachRaceGenerator::UploadPendingTiles(double BudgetSeconds)
+{
+	if (!PendingTiles.IsValid())
+	{
+		return true;
+	}
+	FTNBeachTileBatch& Batch = *PendingTiles;
+	if (TilesX <= 0)
+	{
+		Batch.Next = Batch.Indices.Num();
+		return true;
+	}
+	const double T0 = FPlatformTime::Seconds();
+	const int32 Q = TNBeachBuild::TileQuads;
+	UMaterialInterface* Mat = TNBeachRaceKit::TerrainMaterial();
+	bool bFirst = true;
+	// La subida (con la colisión cocinada al momento) va en el hilo de juego: unas pocas por fotograma.
+	while (Batch.Next < Batch.Indices.Num() && (bFirst || FPlatformTime::Seconds() - T0 < BudgetSeconds))
+	{
+		bFirst = false;
+		const int32 k = Batch.Next++;
+		const int32 Index = Batch.Indices[k];
+		if (!TerrainTiles.IsValidIndex(Index)) { continue; }
+		const int32 I0 = (Index % TilesX) * Q;
+		const int32 J0 = (Index / TilesX) * Q;
+		const int32 I1 = FMath::Min(I0 + Q, GridXs.Num() - 1);
+		const int32 J1 = FMath::Min(J0 + Q, GridYs.Num() - 1);
+		UProceduralMeshComponent* Tile = TerrainTiles[Index];
+		if (!IsValid(Tile))
+		{
+			Tile = TNBeachBuild::NewTile(this, BeachRoot, TNBeachBuild::TileCastsShadow(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]));
+			TerrainTiles[Index] = Tile;
+		}
+		TNBeachBuild::UploadTile(Tile, Batch.Data[k], TNBeachBuild::TileNeedsCollision(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]), Mat);
+		// Ya subida: sus datos sobran.
+		Batch.Data[k] = TNBeachBuild::FTileData();
+	}
+	return Batch.Next >= Batch.Indices.Num();
 }
 
 double ATN_BeachRaceGenerator::MeshGroundZ(double X, double Y) const

@@ -1,17 +1,20 @@
 #include "World/Beach/TN_BeachLoot.h"
-#include "World/Beach/TN_BeachElement.h"
+#include "World/Beach/TN_BeachDecorField.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "Core/TN_InventoryTypes.h"
 #include "Core/TN_Log.h"
-#include "Components/InstancedStaticMeshComponent.h"
-#include "Components/StaticMeshComponent.h"
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
-#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
+#include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
 #include "UObject/SoftObjectPtr.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,84 +70,14 @@ namespace TNBeachLootDetail
 			Loot->Reroll();
 		}));
 
-	/** Huella de un decorado para rebuscarlo: centro en el suelo, eje del lado largo, radio, semilargo y alto (cm). */
-	struct FSearchShape
+	/** Distancia (cm) en planta de P al borde de la huella de un punto rebuscable (negativa dentro). */
+	double RimDistance(const TNBeachLoot::FSearchPoint& Point, const FVector& P)
 	{
-		ATN_BeachElement* Element = nullptr;
-		FVector Center = FVector::ZeroVector;
-		FVector Axis = FVector::ForwardVector;
-		float Radius = 100.f;
-		float HalfLength = 0.f;
-		float Height = 150.f;
-		float Chance = 0.f;
-		double Progress = 0.0;
-	};
-
-	/**
-	 * La huella real de un decorado: la caja de su malla fija más grande (el cuerpo), con el giro, la inclinación y el
-	 * tamaño de ese ejemplar; cápsula en planta a lo largo de su lado largo. La sombrilla, por el montoncito de su pie.
-	 */
-	bool MeasureElement(ATN_BeachElement& Element, FSearchShape& Out)
-	{
-		const ETNBeachElement Kind = Element.GetSpec().Element;
-		const float Size = FMath::Clamp(Element.GetSpec().SizeScale, 0.5f, 1.6f);
-		const FVector Origin = Element.GetActorLocation();
-		Out.Element = &Element;
-		if (Kind == ETNBeachElement::PlantedUmbrella)
-		{
-			// La lona está a 35 m de alto: se rebusca en el montón de arena del pie (unos 3 m de radio con tamaño 1).
-			Out.Center = Origin;
-			Out.Axis = Element.GetActorForwardVector().GetSafeNormal2D();
-			Out.Radius = 380.f * Size;
-			Out.HalfLength = 0.f;
-			Out.Height = 300.f;
-			return true;
-		}
-
-		TInlineComponentArray<UStaticMeshComponent*> Comps(&Element);
-		const UStaticMeshComponent* Body = nullptr;
-		double BestRadius = 0.0;
-		for (const UStaticMeshComponent* Comp : Comps)
-		{
-			if (!Comp || Comp->IsA<UInstancedStaticMeshComponent>() || !Comp->GetStaticMesh() || !Comp->IsVisible())
-			{
-				continue;
-			}
-			if (Comp->Bounds.SphereRadius > BestRadius)
-			{
-				BestRadius = Comp->Bounds.SphereRadius;
-				Body = Comp;
-			}
-		}
-		if (!Body)
-		{
-			return false;
-		}
-		const FBox Box = Body->GetStaticMesh()->GetBoundingBox();
-		const FTransform BodyXf = Body->GetComponentTransform();
-		const FVector BodyScale = BodyXf.GetScale3D().GetAbs();
-		const FVector Extent = Box.GetExtent();
-		const double HalfX = Extent.X * BodyScale.X;
-		const double HalfY = Extent.Y * BodyScale.Y;
-		FVector AxisX = BodyXf.GetUnitAxis(EAxis::X).GetSafeNormal2D();
-		FVector AxisY = BodyXf.GetUnitAxis(EAxis::Y).GetSafeNormal2D();
-		if (AxisX.IsNearlyZero())
-		{
-			AxisX = FVector::ForwardVector;
-		}
-		if (AxisY.IsNearlyZero())
-		{
-			AxisY = FVector::RightVector;
-		}
-		const FVector BoxCenter = BodyXf.TransformPosition(Box.GetCenter());
-		Out.Center = FVector(BoxCenter.X, BoxCenter.Y, Origin.Z);
-		Out.Axis = HalfX >= HalfY ? AxisX : AxisY;
-		const double Short = FMath::Min(HalfX, HalfY);
-		const double Long = FMath::Max(HalfX, HalfY);
-		Out.Radius = static_cast<float>(FMath::Max(120.0, Short));
-		Out.HalfLength = static_cast<float>(FMath::Max(0.0, Long - Short));
-		Out.Height = static_cast<float>(FMath::Clamp(Extent.Z * 2.0 * BodyScale.Z, 80.0, 1500.0));
-		return true;
+		const FVector2D Center(Point.Center.X, Point.Center.Y);
+		const FVector2D Axis = FVector2D(Point.Axis.X, Point.Axis.Y).GetSafeNormal();
+		double T = 0.0;
+		const double Dist = TNProcMap::DistPointSegment(FVector2D(P.X, P.Y), Center - Axis * Point.HalfLength, Center + Axis * Point.HalfLength, T);
+		return Dist - Point.Radius;
 	}
 }
 
@@ -275,6 +208,29 @@ void TNBeachLoot::SpawnRoundLoot(ATN_BeachRaceGenerator& Generator)
 	}
 }
 
+void TNBeachLoot::ClearSearchAround(ATN_BeachRaceGenerator& Generator, const FVector& WorldCenter, float Radius)
+{
+	UWorld* World = Generator.GetWorld();
+	if (!World || !World->IsGameWorld() || World->GetNetMode() == NM_Client)
+	{
+		return;
+	}
+	if (UTN_BeachLootSubsystem* Loot = World->GetSubsystem<UTN_BeachLootSubsystem>())
+	{
+		Loot->ClearSearchAround(WorldCenter, Radius);
+	}
+}
+
+float TNBeachLoot::SearchSpotScale(ETNProcDifficulty Difficulty)
+{
+	switch (Difficulty)
+	{
+		case ETNProcDifficulty::Easy: return 1.6f;
+		case ETNProcDifficulty::Hard: return 1.4f;
+		default:                      return 1.f;
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ATN_BeachSearchSpot
 // ─────────────────────────────────────────────────────────────────────────────
@@ -289,6 +245,100 @@ ATN_BeachSearchSpot::ATN_BeachSearchSpot()
 	HintDistance = 3500.f;
 	MarkerDistance = 1800.f;
 	MarkerRadius = 105.f;
+	// Solo existe cerca de alguna tortuga (el registro lo crea y lo quita): a un cliente le basta con tenerlo cerca.
+	SetNetCullDistanceSquared(FMath::Square(TNBeachLoot::ProxyNetRelevance));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATN_BeachSearchRegistry
+// ─────────────────────────────────────────────────────────────────────────────
+
+ATN_BeachSearchRegistry::ATN_BeachSearchRegistry()
+{
+	PrimaryActorTick.bCanEverTick = false;
+	bReplicates = true;
+	SetReplicateMovement(false);
+	// Pocos bytes y hacen falta en toda la playa (TN.Beach.Perf en cada cliente): siempre relevante y dormido salvo al
+	// cambiar (una vez por ronda y una por rebuscable usado).
+	bAlwaysRelevant = true;
+	NetDormancy = DORM_DormantAll;
+	SetNetUpdateFrequency(2.f);
+	SetMinNetUpdateFrequency(1.f);
+	SetCanBeDamaged(false);
+}
+
+void ATN_BeachSearchRegistry::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATN_BeachSearchRegistry, SearchNet);
+}
+
+ATN_BeachSearchRegistry* ATN_BeachSearchRegistry::Find(const UObject* WorldContext)
+{
+	UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	if (!World)
+	{
+		return nullptr;
+	}
+	TActorIterator<ATN_BeachSearchRegistry> It(World);
+	return It ? *It : nullptr;
+}
+
+void ATN_BeachSearchRegistry::WakeForChange()
+{
+	// Despierto antes del cambio (el patrón de los rebuscables) y dormido otra vez unos segundos después del último.
+	if (NetDormancy != DORM_Awake)
+	{
+		SetNetDormancy(DORM_Awake);
+	}
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(SleepTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			SetNetDormancy(DORM_DormantAll);
+		}), 3.f, false);
+	}
+}
+
+void ATN_BeachSearchRegistry::ServerReset(int32 Round, int32 Salt, int32 Count)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	WakeForChange();
+	SearchNet.Round = Round;
+	SearchNet.Salt = Salt;
+	SearchNet.Count = FMath::Max(0, Count);
+	SearchNet.UsedBits.Init(0u, (SearchNet.Count + 31) / 32);
+	ForceNetUpdate();
+}
+
+void ATN_BeachSearchRegistry::ServerMarkUsed(int32 Index)
+{
+	if (!HasAuthority() || Index < 0 || Index >= SearchNet.Count || IsUsed(Index))
+	{
+		return;
+	}
+	WakeForChange();
+	SearchNet.UsedBits[Index / 32] |= 1u << (Index % 32);
+	ForceNetUpdate();
+}
+
+bool ATN_BeachSearchRegistry::IsUsed(int32 Index) const
+{
+	const int32 Word = Index / 32;
+	return Index >= 0 && SearchNet.UsedBits.IsValidIndex(Word) && (SearchNet.UsedBits[Word] & (1u << (Index % 32))) != 0u;
+}
+
+int32 ATN_BeachSearchRegistry::NumUsed() const
+{
+	int32 Count = 0;
+	for (const uint32 Word : SearchNet.UsedBits)
+	{
+		Count += FMath::CountBits(Word);
+	}
+	return Count;
 }
 
 float ATN_BeachSearchSpot::GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const
@@ -313,11 +363,14 @@ TStatId UTN_BeachLootSubsystem::GetStatId() const
 void UTN_BeachLootSubsystem::Deinitialize()
 {
 	// El mundo se va: se lleva todo lo repartido.
-	SpawnedSpots.Reset();
 	SpawnedItems.Reset();
 	SpawnedShells.Reset();
+	SearchPoints.Reset();
+	SearchProxies.Reset();
+	SearchUsed.Reset();
 	SpotDiscs.Reset();
 	CachedGenerator.Reset();
+	Registry.Reset();
 	Super::Deinitialize();
 }
 
@@ -345,6 +398,13 @@ void UTN_BeachLootSubsystem::Tick(float DeltaTime)
 			return;
 		}
 		CachedGenerator = Gen;
+	}
+	// Los rebuscables de la ronda: su actor, solo cerca de alguna tortuga.
+	ProxyClock -= DeltaTime;
+	if (ProxyClock <= 0.f)
+	{
+		ProxyClock = TNBeachLoot::ProxyCheckSeconds;
+		TickSearchProxies();
 	}
 	if (Gen->GetRoundNumber() == LootRound)
 	{
@@ -384,7 +444,17 @@ void UTN_BeachLootSubsystem::Reroll()
 void UTN_BeachLootSubsystem::ClearLoot()
 {
 	// Los rebuscables, al irse, se llevan lo que salió de ellos y nadie recogió (ATN_ProcSearchSpot::EndPlay).
-	for (TArray<TWeakObjectPtr<AActor>>* List : { &SpawnedSpots, &SpawnedItems, &SpawnedShells })
+	for (const TWeakObjectPtr<ATN_BeachSearchSpot>& Ptr : SearchProxies)
+	{
+		if (ATN_BeachSearchSpot* Spot = Ptr.Get())
+		{
+			Spot->Destroy();
+		}
+	}
+	SearchProxies.Reset();
+	SearchPoints.Reset();
+	SearchUsed.Reset();
+	for (TArray<TWeakObjectPtr<AActor>>* List : { &SpawnedItems, &SpawnedShells })
 	{
 		for (const TWeakObjectPtr<AActor>& Ptr : *List)
 		{
@@ -396,6 +466,10 @@ void UTN_BeachLootSubsystem::ClearLoot()
 		List->Reset();
 	}
 	SpotDiscs.Reset();
+	if (ATN_BeachSearchRegistry* Reg = Registry.Get())
+	{
+		Reg->ServerReset(0, 0, 0);
+	}
 }
 
 void UTN_BeachLootSubsystem::SpawnForRound(ATN_BeachRaceGenerator& Gen)
@@ -417,7 +491,7 @@ void UTN_BeachLootSubsystem::SpawnForRound(ATN_BeachRaceGenerator& Gen)
 	const int32 Seed = Gen.GetRoundSeed();
 	FRandomStream Rng(static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(0x10075EEDu + static_cast<uint32>(RerollSalt)))));
 	int32 Candidates = 0;
-	const int32 NumSpots = SpawnSearchSpots(Gen, Rng, Candidates);
+	const int32 NumSpots = BuildSearchRegistry(Gen, Rng, Candidates);
 	const UDataTable* Catalog = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TNBeachLoot::CatalogPath())).LoadSynchronous();
 	const int32 NumItems = Catalog ? SpawnLooseItems(Gen, Rng, *Catalog) : 0;
 	if (!Catalog)
@@ -425,69 +499,82 @@ void UTN_BeachLootSubsystem::SpawnForRound(ATN_BeachRaceGenerator& Gen)
 		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] Sin catálogo de objetos (%s): no hay objetos sueltos."), TNBeachLoot::CatalogPath());
 	}
 	const FString Shells = SpawnRoundShells(Gen, Seed + RerollSalt * 7919);
-	UE_LOG(LogTortunabo, Log, TEXT("[Playa] botín de la ronda %d: %d decorados para rebuscar (de %d candidatos) y %d objetos sueltos · %.0f ms."),
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] botín de la ronda %d: %d decorados para rebuscar (de %d candidatos; su actor aparece solo cerca de una tortuga) y %d objetos sueltos · %.0f ms."),
 		LootRound, NumSpots, Candidates, NumItems, (FPlatformTime::Seconds() - T0) * 1000.0);
 	UE_LOG(LogTortunabo, Log, TEXT("[Playa] conchas de la ronda %d: %s"), LootRound, *Shells);
 }
 
-int32 UTN_BeachLootSubsystem::SpawnSearchSpots(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates)
+int32 UTN_BeachLootSubsystem::BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates)
 {
-	using namespace TNBeachLootDetail;
-	UWorld* World = GetWorld();
 	OutCandidates = 0;
-	if (!World)
-	{
-		return 0;
-	}
+	SearchPoints.Reset();
+	SearchProxies.Reset();
+	SearchUsed.Reset();
+	const ATN_BeachDecorField* Field = Gen.GetDecorField();
+	const TArray<TNBeachLayout::FItem>& Items = Gen.GetRoundLayout().Items;
 	const FTransform GenXf = Gen.GetActorTransform();
-	TArray<FSearchShape> Candidates;
-	for (ATN_BeachElement* Element : Gen.GetRoundElements())
+	TArray<TNBeachLoot::FSearchPoint> Candidates;
+	TArray<float> Chances;
+	if (Field)
 	{
-		if (!IsValid(Element))
+		for (int32 i = 0; i < Items.Num(); ++i)
 		{
-			continue;
+			// El decorado de la ronda es local e instanciado: la huella sale de su malla en el campo (la misma en todas las
+			// máquinas), sin actor.
+			const float Chance = TNBeachLoot::SearchChance(Items[i].Element);
+			FTNBeachDecorShape Shape;
+			if (Chance <= 0.f || !Field->GetSearchShape(i, Shape))
+			{
+				continue;
+			}
+			TNBeachLoot::FSearchPoint& Point = Candidates.AddDefaulted_GetRef();
+			Point.Item = i;
+			Point.Center = Shape.Center;
+			Point.Axis = Shape.Axis;
+			Point.Radius = Shape.Radius;
+			Point.HalfLength = Shape.HalfLength;
+			Point.Height = Shape.Height;
+			Point.Progress = TNBeachLayout::ProgressOfX(GenXf.InverseTransformPosition(Shape.Center).X);
+			Chances.Add(Chance);
 		}
-		const float Chance = TNBeachLoot::SearchChance(Element->GetSpec().Element);
-		FSearchShape Shape;
-		if (Chance <= 0.f || !MeasureElement(*Element, Shape))
-		{
-			continue;
-		}
-		Shape.Chance = Chance;
-		Shape.Progress = TNBeachLayout::ProgressOfX(GenXf.InverseTransformPosition(Shape.Center).X);
-		Candidates.Add(Shape);
 	}
 	OutCandidates = Candidates.Num();
 
 	// En orden al azar (con la semilla): ningún decorado tiene preferencia por salir antes en el reparto.
 	for (int32 i = Candidates.Num() - 1; i > 0; --i)
 	{
-		Candidates.Swap(i, Rng.RandRange(0, i));
+		const int32 j = Rng.RandRange(0, i);
+		Candidates.Swap(i, j);
+		Chances.Swap(i, j);
 	}
+	// Más o menos según la dificultad (las ayudas del perfil).
+	const float Scale = TNBeachLoot::SearchSpotScale(Gen.GetRoundDifficulty());
+	const int32 MaxSpots = FMath::RoundToInt32(TNBeachLoot::MaxSearchSpots * Scale);
+	const int32 MaxPerSection = FMath::RoundToInt32(TNBeachLoot::MaxSearchSpotsPerSection * Scale);
 	int32 PerSection[TNBeachLoot::Sections] = {};
-	TArray<const FSearchShape*> Taken;
-	for (const FSearchShape& Shape : Candidates)
+	for (int32 c = 0; c < Candidates.Num(); ++c)
 	{
-		if (Taken.Num() >= TNBeachLoot::MaxSearchSpots)
+		const TNBeachLoot::FSearchPoint& Shape = Candidates[c];
+		if (SearchPoints.Num() >= MaxSpots)
 		{
 			break;
 		}
-		if (Rng.FRand() >= Shape.Chance)
+		if (Rng.FRand() >= Chances[c])
 		{
 			continue;
 		}
 		const int32 Section = FMath::Clamp(static_cast<int32>(Shape.Progress * TNBeachLoot::Sections), 0, TNBeachLoot::Sections - 1);
-		if (PerSection[Section] >= TNBeachLoot::MaxSearchSpotsPerSection)
+		if (PerSection[Section] >= MaxPerSection)
 		{
 			continue;
 		}
 		// Uno por corrillo: lejos de los demás rebuscables (de centro a centro y de borde a borde).
 		const double Reach = Shape.Radius + Shape.HalfLength;
 		bool bCrowded = false;
-		for (const FSearchShape* Other : Taken)
+		for (const TNBeachLoot::FSearchPoint& Other : SearchPoints)
 		{
-			const double Need = FMath::Max(TNBeachLoot::MinSearchSpacing, Reach + Other->Radius + Other->HalfLength + TNBeachLoot::MinSearchRimGap);
-			if (FVector::DistSquared2D(Shape.Center, Other->Center) < FMath::Square(Need))
+			const double Need = FMath::Max(TNBeachLoot::MinSearchSpacing, Reach + Other.Radius + Other.HalfLength + TNBeachLoot::MinSearchRimGap);
+			if (FVector::DistSquared2D(Shape.Center, Other.Center) < FMath::Square(Need))
 			{
 				bCrowded = true;
 				break;
@@ -497,23 +584,148 @@ int32 UTN_BeachLootSubsystem::SpawnSearchSpots(ATN_BeachRaceGenerator& Gen, FRan
 		{
 			continue;
 		}
+		SearchPoints.Add(Shape);
+		SpotDiscs.Add(FVector4(Shape.Center.X, Shape.Center.Y, Shape.Center.Z, Reach));
+		++PerSection[Section];
+	}
+	SearchProxies.SetNum(SearchPoints.Num());
+	SearchUsed.Init(false, SearchPoints.Num());
+	if (ATN_BeachSearchRegistry* Reg = EnsureRegistry())
+	{
+		Reg->ServerReset(LootRound, RerollSalt, SearchPoints.Num());
+	}
+	// Los que ya tengan una tortuga cerca (la salida está lejos del reparto, pero TN.Beach.Loot.Reroll se usa en medio).
+	TickSearchProxies();
+	return SearchPoints.Num();
+}
+
+ATN_BeachSearchRegistry* UTN_BeachLootSubsystem::EnsureRegistry()
+{
+	if (ATN_BeachSearchRegistry* Existing = Registry.Get())
+	{
+		return Existing;
+	}
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	ATN_BeachSearchRegistry* Found = ATN_BeachSearchRegistry::Find(World);
+	if (!Found)
+	{
 		FActorSpawnParameters Params;
-		Params.Owner = Shape.Element;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(Shape.Axis.Y, Shape.Axis.X));
-		ATN_BeachSearchSpot* Spot = World->SpawnActor<ATN_BeachSearchSpot>(ATN_BeachSearchSpot::StaticClass(),
-			FTransform(FRotator(0.0, Yaw, 0.0), Shape.Center), Params);
-		if (!Spot)
+		Found = World->SpawnActor<ATN_BeachSearchRegistry>(ATN_BeachSearchRegistry::StaticClass(), FTransform::Identity, Params);
+	}
+	Registry = Found;
+	return Found;
+}
+
+void UTN_BeachLootSubsystem::MarkSearchUsed(int32 Index)
+{
+	if (!SearchUsed.IsValidIndex(Index) || SearchUsed[Index])
+	{
+		return;
+	}
+	SearchUsed[Index] = true;
+	if (ATN_BeachSearchRegistry* Reg = Registry.Get())
+	{
+		Reg->ServerMarkUsed(Index);
+	}
+}
+
+int32 UTN_BeachLootSubsystem::NumSearchProxies() const
+{
+	int32 Count = 0;
+	for (const TWeakObjectPtr<ATN_BeachSearchSpot>& Ptr : SearchProxies)
+	{
+		Count += Ptr.IsValid() ? 1 : 0;
+	}
+	return Count;
+}
+
+void UTN_BeachLootSubsystem::TickSearchProxies()
+{
+	UWorld* World = GetWorld();
+	if (!World || SearchPoints.Num() == 0)
+	{
+		return;
+	}
+	// Dónde están las tortugas (las de todos los jugadores; las fantasmas y las que miran no rebuscan).
+	TArray<FVector, TInlineAllocator<8>> Turtles;
+	if (const AGameStateBase* GS = World->GetGameState())
+	{
+		for (const APlayerState* PS : GS->PlayerArray)
+		{
+			if (const APawn* Pawn = PS ? PS->GetPawn() : nullptr)
+			{
+				Turtles.Add(Pawn->GetActorLocation());
+			}
+		}
+	}
+	for (int32 i = 0; i < SearchPoints.Num(); ++i)
+	{
+		const TNBeachLoot::FSearchPoint& Point = SearchPoints[i];
+		double Nearest = TNumericLimits<double>::Max();
+		for (const FVector& Turtle : Turtles)
+		{
+			Nearest = FMath::Min(Nearest, TNBeachLootDetail::RimDistance(Point, Turtle));
+		}
+		ATN_BeachSearchSpot* Spot = SearchProxies[i].Get();
+		if (Spot)
+		{
+			// Rebuscado: ya no vuelve a salir (su actor se queda mientras quede en el suelo lo que soltó).
+			if (Spot->IsSearched())
+			{
+				MarkSearchUsed(i);
+			}
+			if (Nearest > TNBeachLoot::ProxyReleaseDistance && !Spot->IsBeingSearched() && !(Spot->IsSearched() && Spot->HasLootLying()))
+			{
+				Spot->Destroy();
+				SearchProxies[i] = nullptr;
+			}
+			continue;
+		}
+		if (SearchUsed[i] || Nearest > TNBeachLoot::ProxySpawnDistance)
 		{
 			continue;
 		}
-		Spot->SetupSpot(Shape.Radius, Shape.HalfLength, Shape.Height, TNBeachLoot::SandDust());
-		SpawnedSpots.Add(Spot);
-		SpotDiscs.Add(FVector4(Shape.Center.X, Shape.Center.Y, Shape.Center.Z, Reach));
-		Taken.Add(&Shape);
-		++PerSection[Section];
+		// Alguien se acerca: el rebuscable de siempre, con la huella de su decorado.
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(Point.Axis.Y, Point.Axis.X));
+		ATN_BeachSearchSpot* NewSpot = World->SpawnActor<ATN_BeachSearchSpot>(ATN_BeachSearchSpot::StaticClass(),
+			FTransform(FRotator(0.0, Yaw, 0.0), Point.Center), Params);
+		if (!NewSpot)
+		{
+			continue;
+		}
+		NewSpot->SetupSpot(Point.Radius, Point.HalfLength, Point.Height, TNBeachLoot::SandDust());
+		SearchProxies[i] = NewSpot;
 	}
-	return Taken.Num();
+}
+
+void UTN_BeachLootSubsystem::ClearSearchAround(const FVector& WorldCenter, float Radius)
+{
+	int32 Cleared = 0;
+	for (int32 i = 0; i < SearchPoints.Num(); ++i)
+	{
+		if (SearchUsed[i] || TNBeachLootDetail::RimDistance(SearchPoints[i], WorldCenter) > Radius)
+		{
+			continue;
+		}
+		if (ATN_BeachSearchSpot* Spot = SearchProxies[i].Get())
+		{
+			Spot->Destroy();
+			SearchProxies[i] = nullptr;
+		}
+		MarkSearchUsed(i);
+		++Cleared;
+	}
+	if (Cleared > 0)
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] %d rebuscables quitados con su decorado (%.0f m alrededor)."), Cleared, Radius / 100.f);
+	}
 }
 
 int32 UTN_BeachLootSubsystem::SpawnLooseItems(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, const UDataTable& Catalog)
