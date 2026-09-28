@@ -2,6 +2,7 @@
 #include "Components/Button.h"
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
+#include "Lobby/TN_LobbyMission.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Kismet/KismetSystemLibrary.h"
 
@@ -37,7 +38,17 @@ namespace TNMainMenuDetail
 	}
 
 	const TCHAR* const IdleStatus = TEXT("Listo. Crea una partida o únete a una.");
-	const TCHAR* const ChooseStatus = TEXT("¿A qué jugamos?\nCooperativo: todas juntas, del castillo de arena al mapa procedural.\nCarrera: todas contra todas en la playa; gana quien consigue tres conchas.");
+
+	/** «¿A qué jugamos?» y una línea de cada modo: las mismas que da el general en el lobby (TNLobbyMission). */
+	FString ChooseStatus()
+	{
+		FString Status = TEXT("¿A qué jugamos?");
+		for (const ETNProcGameMode Mode : TNLobbyMission::MenuModes)
+		{
+			Status += FString::Printf(TEXT("\n%s: %s"), *TNLobbyMission::ModeName(Mode).ToString(), *TNLobbyMission::ModeBlurb(Mode).ToString());
+		}
+		return Status;
+	}
 }
 
 void UMP_MainMenuWidget::NativeConstruct()
@@ -130,10 +141,11 @@ void UMP_MainMenuWidget::SetStatus(const FString& Message)
 void UMP_MainMenuWidget::ShowModeChoice(bool bChoose)
 {
 	bChoosingMode = bChoose;
-	TNMainMenuDetail::SetLabel(HostButton, bChoose ? TEXT("Cooperativo") : TEXT("Crear partida"));
-	TNMainMenuDetail::SetLabel(FindButton, bChoose ? TEXT("Carrera") : TEXT("Unirse"));
+	// Eligiendo modo, los botones son los dos modos de TNLobbyMission::MenuModes (Cooperativo y Carrera) y «Volver».
+	TNMainMenuDetail::SetLabel(HostButton, bChoose ? *TNLobbyMission::ModeName(ETNProcGameMode::Coop).ToString() : TEXT("Crear partida"));
+	TNMainMenuDetail::SetLabel(FindButton, bChoose ? *TNLobbyMission::ModeName(ETNProcGameMode::Race).ToString() : TEXT("Unirse"));
 	TNMainMenuDetail::SetLabel(QuitButton, bChoose ? TEXT("Volver") : TEXT("Salir"));
-	SetStatus(bChoose ? FString(TNMainMenuDetail::ChooseStatus) : BuildIdleStatus());
+	SetStatus(bChoose ? TNMainMenuDetail::ChooseStatus() : BuildIdleStatus());
 }
 
 void UMP_MainMenuWidget::HostWithMode(ETNProcGameMode Mode)

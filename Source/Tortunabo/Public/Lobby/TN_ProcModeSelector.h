@@ -21,7 +21,9 @@ enum class ETNProcSelectorKind : uint8
  * Cada interacción pasa a la siguiente opción: Clásico → Coop → Carrera → 2vs2
  * (solo con 4 jugadores en el lobby) o Fácil → Normal → Difícil. La elección vive
  * en la GameInstance del host (UMP_GameInstance::SelectedProcMode/Difficulty), que
- * ATN_HQGameMode lee al viajar: Clásico va a LVL_Run y el resto a LVL_ProcMap.
+ * ATN_HQGameMode lee al viajar: Carrera va a la playa, Clásico a LVL_Run y el resto a
+ * LVL_ProcMap. La lógica es la de TNLobbyMission (Lobby/TN_LobbyMission.h), la misma
+ * del General Galápago: lo que se elige aquí sale en su pizarra y al revés.
  * La etiqueta 3D se replica para que todos vean lo elegido.
  */
 UCLASS(Blueprintable)
@@ -34,6 +36,12 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 * Servidor: copia de la GameInstance del anfitrión lo que muestra este selector (modo o dificultad) y lo replica. Solo
+	 * si ha cambiado (suena y avisa al Blueprint). Lo llama TNLobbyMission::SyncLobby al cambiar la misión.
+	 */
+	void SyncFromGameInstance();
 
 protected:
 	virtual void OnInteracted_Implementation(APawn* Interactor) override;

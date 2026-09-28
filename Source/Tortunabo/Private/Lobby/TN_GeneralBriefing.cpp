@@ -1,7 +1,9 @@
 #include "Lobby/TN_GeneralBriefing.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
+#include "Lobby/TN_LobbyMission.h"
 #include "Lobby/TN_NpcAnimInstance.h"
+#include "Multiplayer/MP_GameInstance.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Animation/AnimationAsset.h"
 #include "Animation/SkeletalMeshActor.h"
@@ -20,6 +22,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInterface.h"
+#include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
 
@@ -48,6 +51,16 @@ namespace TNGeneralDetail
 	constexpr double SignZ = 295.0;
 	constexpr double SignHalfW = 122.0;
 	constexpr double SignHalfH = 24.0;
+	/**
+	 * Pizarra de la orden del día (la misión de la próxima partida) en un caballete junto a la mesa, dentro de la tienda
+	 * y mirando a los reclutas (+X): centro, medio ancho y medio alto de la pizarra y tamaño de la tiza.
+	 */
+	constexpr double BoardX = 238.0;
+	constexpr double BoardY = -215.0;
+	constexpr double BoardZ = 150.0;
+	constexpr double BoardHalfW = 68.0;
+	constexpr double BoardHalfH = 40.0;
+	constexpr float BoardChalkSize = 13.f;
 
 	/** Punto del lobby (cm, x a la izquierda de la salida e y hacia la salida) sobre la maqueta, a altura Z sobre su base. */
 	FVector ModelPoint(double LobbyX, double LobbyY, double Z)
@@ -171,6 +184,16 @@ ATN_GeneralBriefing::ATN_GeneralBriefing()
 	Sign->SetTextRenderColor(FColor(255, 214, 90));
 	Sign->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	// La orden del día escrita con tiza en la pizarra del caballete (la pizarra es parte de la malla de la mesa).
+	MissionBoard = CreateDefaultSubobject<UTextRenderComponent>(TEXT("MissionBoard"));
+	MissionBoard->SetupAttachment(SceneRoot);
+	MissionBoard->SetRelativeLocation(FVector(BoardX + 3.6, BoardY, BoardZ));
+	MissionBoard->SetHorizontalAlignment(EHTA_Center);
+	MissionBoard->SetVerticalAlignment(EVRTA_TextCenter);
+	MissionBoard->SetWorldSize(BoardChalkSize);
+	MissionBoard->SetTextRenderColor(FColor(242, 240, 226));
+	MissionBoard->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
 	// Luz cálida del farol de dentro de la tienda: se ve bien al general y la mesa. Con sombras y alcance corto, la lona la
 	// tapa y no se sale por las paredes ni alumbra la muralla de detrás (solo asoma por la entrada).
 	TentLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("TentLight"));
@@ -198,6 +221,65 @@ void ATN_GeneralBriefing::BeginPlay()
 	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
 	BuildTable();
 	HideBlockout();
+	// La misión del anfitrión (sobrevive a los viajes en su GameInstance); en los clientes llega replicada.
+	if (HasAuthority())
+	{
+		SyncMissionFromGameInstance();
+	}
+	RefreshMissionBoard();
+}
+
+void ATN_GeneralBriefing::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATN_GeneralBriefing, MissionMode);
+	DOREPLIFETIME(ATN_GeneralBriefing, MissionDifficulty);
+}
+
+void ATN_GeneralBriefing::SyncMissionFromGameInstance()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	if (!GI || (MissionMode == GI->SelectedProcMode && MissionDifficulty == GI->SelectedProcDifficulty))
+	{
+		return;
+	}
+	MissionMode = GI->SelectedProcMode;
+	MissionDifficulty = GI->SelectedProcDifficulty;
+	// En el servidor el RepNotify no salta solo; a los demás, cuanto antes.
+	OnRep_Mission();
+	ForceNetUpdate();
+}
+
+void ATN_GeneralBriefing::OnRep_Mission()
+{
+	RefreshMissionBoard();
+}
+
+void ATN_GeneralBriefing::RefreshMissionBoard()
+{
+	using namespace TNGeneralDetail;
+	if (!MissionBoard)
+	{
+		return;
+	}
+	MissionBoard->SetText(FText::Format(NSLOCTEXT("Tortunabo", "GeneralMissionBoard", "ORDEN DEL DÍA<br>MISIÓN: {0}<br>DIFICULTAD: {1}"),
+		TNLobbyMission::ModeName(MissionMode).ToUpper(), TNLobbyMission::DifficultyName(MissionDifficulty).ToUpper()));
+	// Siempre dentro de la pizarra, con un margen de tiza alrededor.
+	MissionBoard->SetWorldSize(BoardChalkSize);
+	const FVector TextSize = MissionBoard->GetTextLocalSize();
+	const double MaxWidth = 2.0 * BoardHalfW - 16.0;
+	const double MaxHeight = 2.0 * BoardHalfH - 12.0;
+	double Fit = 1.0;
+	if (TextSize.Y > MaxWidth) { Fit = FMath::Min(Fit, MaxWidth / TextSize.Y); }
+	if (TextSize.Z > MaxHeight) { Fit = FMath::Min(Fit, MaxHeight / TextSize.Z); }
+	if (Fit < 1.0)
+	{
+		MissionBoard->SetWorldSize(static_cast<float>(BoardChalkSize * Fit));
+	}
 }
 
 void ATN_GeneralBriefing::FitSignText()
@@ -220,6 +302,7 @@ void ATN_GeneralBriefing::OnConstruction(const FTransform& Transform)
 	Super::OnConstruction(Transform);
 	General->SetRelativeScale3D(FVector(GeneralScale));
 	FitSignText();
+	RefreshMissionBoard();
 	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
 	// En el editor, el general en su espera (no en T).
 	UTN_NpcAnimInstance::PreviewInEditor(General, IdleAnim);
@@ -361,6 +444,24 @@ void ATN_GeneralBriefing::BuildTable()
 		TNProcMesh::TNProcAddCylinder(B, Mug, Mug + FVector(0.0, 0.0, 10.0), 5.0, 5.4, 12, Cream);
 		B.AddBeam(Mug + FVector(0.0, 5.6, 7.5), Mug + FVector(0.0, 8.4, 5.0), 0.9, Cream);
 		B.AddBeam(Mug + FVector(0.0, 8.4, 5.0), Mug + FVector(0.0, 5.6, 2.5), 0.9, Cream);
+	}
+
+	// Pizarra de la orden del día en su caballete (la tiza es MissionBoard): marco de madera, pizarra verde oscuro, dos
+	// patas delante a los lados, una detrás y la repisa con dos tizas.
+	{
+		const FLinearColor Slate = Pal(0x2F4538);
+		B.AddBox(FVector(BoardX - 1.0, BoardY, BoardZ), AxisX, FVector(2.5, BoardHalfW + 5.0, BoardHalfH + 5.0), Wood);
+		B.AddBox(FVector(BoardX + 0.5, BoardY, BoardZ), AxisX, FVector(2.5, BoardHalfW, BoardHalfH), Slate);
+		for (const double Side : { -1.0, 1.0 })
+		{
+			const FVector Foot(BoardX + 6.0, BoardY + Side * (BoardHalfW + 12.0), 0.0);
+			const FVector Top(BoardX + 1.0, BoardY + Side * (BoardHalfW + 6.0), BoardZ + BoardHalfH + 10.0);
+			B.AddBeam(Foot, Top, 2.2, WoodDark);
+		}
+		B.AddBeam(FVector(BoardX - 38.0, BoardY, 0.0), FVector(BoardX - 3.0, BoardY, BoardZ + BoardHalfH), 2.2, WoodDark);
+		B.AddBox(FVector(BoardX + 5.0, BoardY, BoardZ - BoardHalfH - 5.0), AxisX, FVector(4.0, BoardHalfW + 2.0, 1.2), WoodDark);
+		B.AddBeam(FVector(BoardX + 5.0, BoardY - 30.0, BoardZ - BoardHalfH - 3.2), FVector(BoardX + 5.0, BoardY - 20.0, BoardZ - BoardHalfH - 3.2), 0.9, Cream);
+		B.AddBeam(FVector(BoardX + 5.0, BoardY + 12.0, BoardZ - BoardHalfH - 3.2), FVector(BoardX + 5.0, BoardY + 19.0, BoardZ - BoardHalfH - 3.2), 0.9, Gold);
 	}
 
 	// ── Tienda militar de lona verde oliva: techo a dos aguas, paredes, frontón con el cartel, faldón enrollado sobre

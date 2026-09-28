@@ -20,6 +20,7 @@
 #include "InputAction.h"
 #include "InputCoreTypes.h"
 #include "Lobby/TN_GeneralBriefing.h"
+#include "Lobby/TN_LobbyMission.h"
 #include "Lobby/TN_ShopKeeper.h"
 #include "Player/MP_GamePlayerController.h"
 #include "UI/Shop/TN_ShopWidgets.h"
@@ -32,6 +33,39 @@ namespace TNBriefingUI
 	const FMargin TagBoxMargin(0.2f, 0.f, 0.2f, 0.f);
 	const FMargin BubbleBoxMargin(0.26f, 0.3f, 0.18f, 0.45f);
 	const TCHAR* const ControlsFolder = TEXT("/Game/Blueprints/Gameplay/Controls/");
+
+	/** Pestañas, en su orden: «Misión» la primera (se abre en ella). */
+	constexpr int32 TabMission = 0;
+	constexpr int32 TabHowTo = 1;
+	constexpr int32 TabModes = 2;
+	constexpr int32 TabRules = 3;
+	constexpr int32 NumTabs = 5;
+
+	/** Opciones de «Misión» (TNLobbyMission): los modos del menú y las dificultades. */
+	constexpr int32 NumMenuModes = static_cast<int32>(UE_ARRAY_COUNT(TNLobbyMission::MenuModes));
+	constexpr int32 NumDifficulties = static_cast<int32>(UE_ARRAY_COUNT(TNLobbyMission::Difficulties));
+
+	/** Pastilla azul (pestaña u opción sin elegir) y coral (la elegida). */
+	UTexture2D* IdlePill() { return TNShopArt::Pill(0x2A5A92, 0x173A66); }
+	UTexture2D* ChosenPill() { return TNShopArt::Pill(0xFF8A70, 0xD9432F); }
+
+	/** Lo que dice el general al elegir cada modo y cada dificultad. */
+	FText ModeOrderLine(ETNProcGameMode Mode)
+	{
+		return Mode == ETNProcGameMode::Race
+			? NSLOCTEXT("Tortunabo", "BriefingOrderRace", "¡Carrera! Todas contra todas hasta el agua. Tres conchas y al podio.")
+			: NSLOCTEXT("Tortunabo", "BriefingOrderCoop", "¡Cooperativo! Aquí no se deja a nadie atrás: del castillo al mar, todas juntas.");
+	}
+
+	FText DifficultyOrderLine(ETNProcDifficulty Difficulty)
+	{
+		switch (Difficulty)
+		{
+		case ETNProcDifficulty::Easy: return NSLOCTEXT("Tortunabo", "BriefingOrderEasy", "Fácil: un paseo por la playa para calentar las aletas.");
+		case ETNProcDifficulty::Hard: return NSLOCTEXT("Tortunabo", "BriefingOrderHard", "¡Difícil! Solo para veteranas con el caparazón bien duro.");
+		default:                      return NSLOCTEXT("Tortunabo", "BriefingOrderNormal", "Normal: lo que manda el reglamento. Ni más ni menos.");
+		}
+	}
 
 	template <typename T>
 	T* New(UWidgetTree* Tree)
@@ -217,19 +251,20 @@ void UTN_BriefingWidget::BuildTree()
 	UVerticalBox* Right = New<UVerticalBox>(Tree);
 	{
 		UHorizontalBox* TabRow = New<UHorizontalBox>(Tree);
-		const FText TabNames[] = {
+		const FText TabNames[NumTabs] = {
+			NSLOCTEXT("Tortunabo", "BriefingTabMission", "MISIÓN"),
 			NSLOCTEXT("Tortunabo", "BriefingTabHowTo", "CÓMO SE JUEGA"),
 			NSLOCTEXT("Tortunabo", "BriefingTabModes", "MODOS DE JUEGO"),
 			NSLOCTEXT("Tortunabo", "BriefingTabRules", "REGLAS"),
 			NSLOCTEXT("Tortunabo", "BriefingTabControls", "CONTROLES"),
 		};
-		const int32 NumTabs = UE_ARRAY_COUNT(TabNames);
 		for (int32 i = 0; i < NumTabs; ++i)
 		{
 			UTN_ShopButton* TabButton = CreateWidget<UTN_ShopButton>(this, UTN_ShopButton::StaticClass());
-			TabButton->Setup(TabNames[i], TNShopArt::Pill(0x2A5A92, 0x173A66), TNHUDArt::Cream, 19, FVector2D(240.f, 56.f),
+			// Cinco pestañas en el ancho de la página (antes eran cuatro de 240).
+			TabButton->Setup(TabNames[i], IdlePill(), TNHUDArt::Cream, 18, FVector2D(186.f, 56.f),
 				[this, i]() { ShowTab(i); });
-			AddH(TabRow, TabButton, FMargin(0.f, 0.f, 10.f, 0.f));
+			AddH(TabRow, TabButton, FMargin(0.f, 0.f, 8.f, 0.f));
 			Tabs.Add(TabButton);
 		}
 		AddV(Right, TabRow, FMargin(10.f, 0.f, 0.f, 8.f), HAlign_Left);
@@ -245,8 +280,9 @@ void UTN_BriefingWidget::BuildTree()
 		OkButton->Setup(NSLOCTEXT("Tortunabo", "BriefingOk", "¡ENTENDIDO!"), TNShopArt::Pill(0xFFD95E, 0xF2A93B), TNHUDArt::Ink, 24, FVector2D(320.f, 66.f),
 			[this]() { Close(); });
 		AddH(Bottom, OkButton, FMargin(0.f, 0.f, 20.f, 0.f));
-		AddH(Bottom, Label(Tree, NSLOCTEXT("Tortunabo", "BriefingKeys", "Q/E o flechas: pestaña · ↑/↓: desplazar · Esc: salir"),
-			TEXT("Regular"), 15, TNHUDArt::SeaLight, true));
+		KeysHint = Label(Tree, NSLOCTEXT("Tortunabo", "BriefingKeys", "Q/E o flechas: pestaña · ↑/↓: desplazar · Esc: salir"),
+			TEXT("Regular"), 15, TNHUDArt::SeaLight, true);
+		AddH(Bottom, KeysHint);
 		AddV(Right, Bottom, FMargin(10.f, 14.f, 0.f, 0.f), HAlign_Left);
 	}
 	Pin(Canvas, Right, FVector2D(0.97f, 0.54f), FVector2D::ZeroVector);
@@ -337,23 +373,34 @@ void UTN_BriefingWidget::AddControlRow(const FText& ActionName, const TArray<FSt
 void UTN_BriefingWidget::ShowTab(int32 Index)
 {
 	using TNBriefingUI::Action;
-	Tab = (Index % 4 + 4) % 4;
+	using TNBriefingUI::NumTabs;
+	Tab = (Index % NumTabs + NumTabs) % NumTabs;
 	for (int32 i = 0; i < Tabs.Num(); ++i)
 	{
-		Tabs[i]->SetArt(i == Tab ? TNShopArt::Pill(0xFF8A70, 0xD9432F) : TNShopArt::Pill(0x2A5A92, 0x173A66));
+		Tabs[i]->SetArt(i == Tab ? TNBriefingUI::ChosenPill() : TNBriefingUI::IdlePill());
 	}
+	RefreshKeysHint();
 	if (!Page)
 	{
 		return;
 	}
 	Page->ClearChildren();
+	// Lo de «Misión» solo existe mientras se ve.
+	ModeButtons.Reset();
+	DifficultyButtons.Reset();
+	ModeHeading = nullptr;
+	DifficultyHeading = nullptr;
+	MissionOrders = nullptr;
 
 	const APlayerState* PS = GetOwningPlayer() ? GetOwningPlayer()->PlayerState : nullptr;
 	const FText Who = FText::FromString(PS ? PS->GetPlayerName() : FString(TEXT("recluta")));
 
 	switch (Tab)
 	{
-	case 0:
+	case TNBriefingUI::TabMission:
+		BuildMissionPage();
+		break;
+	case TNBriefingUI::TabHowTo:
 		Say(FText::Format(NSLOCTEXT("Tortunabo", "BriefingSayHowTo",
 			"¡Firmes, {0}! Soy el General Galápago. De este cuartel se sale hacia el mar... y se sale sabiendo."), Who));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingGoalH", "El objetivo"));
@@ -373,19 +420,19 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingDanger1",
 			"•  Plátanos y golpes te noquean: te quedas un momento en el suelo con los pajaritos dando vueltas y luego te levantas."));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingDanger2",
-			"•  Si caes más de 5 m te haces bola tú solo; si caes de muy alto, te rompes. Géiseres, toboganes y agua no cuentan."));
+			"•  Si caes más de 5 m te haces bola tú solo; si caes de muy alto, te rompes. Géiseres, toboganes y agua no cuentan, ni el salto del acantilado de la meta en la carrera: ese se hace de cabeza."));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingDanger3",
 			"•  La fauna del agua muerde. Las pilas de huevos del camino son vuestros puntos de reaparición: pasad por ellas."));
 		break;
-	case 1:
+	case TNBriefingUI::TabModes:
 		Say(NSLOCTEXT("Tortunabo", "BriefingSayModes",
-			"Cuatro formas de llegar a la playa. Elegid bien en los selectores de la salida, que luego no hay vuelta atrás."));
+			"Cuatro formas de llegar al mar. La de hoy la fija el anfitrión conmigo, en la pestaña «Misión»."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingCoopH", "Cooperativo (de 1 a 4 tortugas)"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingCoop",
 			"Todo el equipo tiene que llegar a la meta. Una tormenta avanza por el camino detrás de vosotros y nunca va más rápido que una tortuga andando: si os quedáis atrás, os alcanza. Es el mapa más largo."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingRaceH", "Carrera (de 1 a 4)"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingRace",
-			"Todos contra todos: el primero en llegar a la meta gana la ronda, y la partida es para quien gane tres. Mapas más cortos y 15 minutos por ronda."));
+			"Todas contra todas en la playa: la primera que salta del acantilado y toca el agua gana la ronda y una concha, y la partida es para quien consiga tres. Aquí no se muere nadie: lo que en el cooperativo mata, en la playa te deja un rato hecha una bola."));
 		AddHeading(NSLOCTEXT("Tortunabo", "Briefing2v2H", "2 vs 2 (exactamente 4)"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "Briefing2v2",
 			"Por parejas: gana la ronda la pareja cuyos dos miembros llegan antes. Hay muros que solo se superan lanzando al compañero (o bajando la rampa con el interruptor) y compuertas para sabotear a la otra pareja. Las parejas cambian cada ronda; si no sois cuatro, se juega Carrera."));
@@ -393,9 +440,9 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingClassic", "El recorrido de siempre, por tramos, para los veteranos del cuartel."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingPickH", "Cómo se elige"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingPick",
-			"Con los dos selectores junto a la salida: uno cambia el modo y el otro la dificultad (Fácil, Normal o Difícil). La dificultad cambia el tamaño del mapa, los cruces colosales, los huecos y lo rápida que va la tormenta."));
+			"El anfitrión, aquí conmigo, en la pestaña «Misión»: Cooperativo o Carrera, y la dificultad (Fácil, Normal o Difícil), que en el cooperativo cambia el tamaño del mapa, los cruces colosales, los huecos y lo rápida que va la tormenta. También al crear la partida en el menú y, si el cuartel tiene selectores de modo y dificultad, con ellos (2 vs 2 y Clásico solo salen ahí)."));
 		break;
-	case 2:
+	case TNBriefingUI::TabRules:
 		Say(NSLOCTEXT("Tortunabo", "BriefingSayRules", "Las normas del cuartel no se discuten. Bueno, se pueden discutir... pero se pierde."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingStartH", "La salida"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingStart",
@@ -406,7 +453,7 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingRespawn2", "•  Sin pila válida te quedas en el suelo y un compañero tiene que rescatarte."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingTimeH", "Tiempo"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingTime",
-			"•  En Carrera y 2 vs 2 cada ronda dura como mucho 15 minutos: si se acaba, gana el más adelantado en el camino."));
+			"•  En la Carrera de la playa cada ronda dura como mucho 9 minutos: si se acaba, gana la más cerca del mar. En 2 vs 2, 15 minutos, y gana el más adelantado en el camino."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingFairH", "Juego limpio"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingFair",
 			"•  Se puede coger y lanzar a cualquiera que esté metido en su caparazón, también a los rivales. Lo que no se puede es quedarse en la salida molestando: el general lo ve todo."));
@@ -436,6 +483,235 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 	if (Scroll) { Scroll->ScrollToStart(); }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Pestaña «Misión»: modo y dificultad de la próxima partida (TNLobbyMission)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_BriefingWidget::BuildMissionPage()
+{
+	using namespace TNBriefingUI;
+	UWidgetTree* Tree = WidgetTree;
+	const bool bHost = CanChooseMission();
+	const APlayerState* PS = GetOwningPlayer() ? GetOwningPlayer()->PlayerState : nullptr;
+	const FText Who = FText::FromString(PS ? PS->GetPlayerName() : FString(TEXT("recluta")));
+	Say(bHost
+		? FText::Format(NSLOCTEXT("Tortunabo", "BriefingSayMissionHost",
+			"¡Firmes, {0}! Tú mandas: ¿qué misión le damos hoy a la tropa? Elige el modo y la dificultad."), Who)
+		: FText::Format(NSLOCTEXT("Tortunabo", "BriefingSayMissionGuest",
+			"¡Firmes, {0}! Esta es la orden del día. La misión la decide el anfitrión: tú, a prepararte."), Who));
+
+	// Modo: una pastilla por modo y, debajo, una línea de cada uno (las mismas del menú principal).
+	ModeHeading = Label(Tree, FText::GetEmpty(), TEXT("Black"), 23, TNHUDArt::CoralDeep, false);
+	AddV(Page, ModeHeading, FMargin(0.f, 0.f, 0.f, 6.f));
+	UHorizontalBox* ModeRow = New<UHorizontalBox>(Tree);
+	for (const ETNProcGameMode Mode : TNLobbyMission::MenuModes)
+	{
+		UTN_ShopButton* Option = CreateWidget<UTN_ShopButton>(this, UTN_ShopButton::StaticClass());
+		Option->Setup(TNLobbyMission::ModeName(Mode).ToUpper(), IdlePill(), TNHUDArt::Cream, 21, FVector2D(260.f, 58.f),
+			[this, Mode]() { PickMode(Mode); });
+		AddH(ModeRow, Option, FMargin(0.f, 0.f, 12.f, 0.f));
+		ModeButtons.Add(Option);
+	}
+	AddV(Page, ModeRow, FMargin(0.f, 0.f, 0.f, 8.f), HAlign_Left);
+	for (const ETNProcGameMode Mode : TNLobbyMission::MenuModes)
+	{
+		AddParagraph(FText::Format(NSLOCTEXT("Tortunabo", "BriefingMissionModeLine", "•  {0}: {1}"),
+			TNLobbyMission::ModeName(Mode), TNLobbyMission::ModeBlurb(Mode)));
+	}
+
+	// Dificultad.
+	DifficultyHeading = Label(Tree, FText::GetEmpty(), TEXT("Black"), 23, TNHUDArt::CoralDeep, false);
+	AddV(Page, DifficultyHeading, FMargin(0.f, 12.f, 0.f, 6.f));
+	UHorizontalBox* DifficultyRow = New<UHorizontalBox>(Tree);
+	for (const ETNProcDifficulty Difficulty : TNLobbyMission::Difficulties)
+	{
+		UTN_ShopButton* Option = CreateWidget<UTN_ShopButton>(this, UTN_ShopButton::StaticClass());
+		Option->Setup(TNLobbyMission::DifficultyName(Difficulty).ToUpper(), IdlePill(), TNHUDArt::Cream, 21, FVector2D(200.f, 58.f),
+			[this, Difficulty]() { PickDifficulty(Difficulty); });
+		AddH(DifficultyRow, Option, FMargin(0.f, 0.f, 12.f, 0.f));
+		DifficultyButtons.Add(Option);
+	}
+	AddV(Page, DifficultyRow, FMargin(0.f, 0.f, 0.f, 8.f), HAlign_Left);
+	AddParagraph(FText::Format(NSLOCTEXT("Tortunabo", "BriefingMissionDiffLine",
+		"•  En el cooperativo. {0}: {1} {2}: {3} {4}: {5} La playa de la carrera es siempre la misma."),
+		TNLobbyMission::DifficultyName(ETNProcDifficulty::Easy), TNLobbyMission::DifficultyBlurb(ETNProcDifficulty::Easy),
+		TNLobbyMission::DifficultyName(ETNProcDifficulty::Normal), TNLobbyMission::DifficultyBlurb(ETNProcDifficulty::Normal),
+		TNLobbyMission::DifficultyName(ETNProcDifficulty::Hard), TNLobbyMission::DifficultyBlurb(ETNProcDifficulty::Hard)));
+
+	// La orden del día (lo que vale ahora) y quién manda.
+	MissionOrders = Label(Tree, FText::GetEmpty(), TEXT("Black"), 21, TNHUDArt::Ink, false);
+	AddV(Page, Framed(Tree, TNHUDArt::SandTagTexture(), TagBoxMargin, MissionOrders, FMargin(24.f, 6.f, 24.f, 10.f)),
+		FMargin(0.f, 12.f, 0.f, 6.f), HAlign_Left);
+	UTextBlock* Notice = Label(Tree, bHost
+		? NSLOCTEXT("Tortunabo", "BriefingMissionHostNote",
+			"Tú mandas: lo que elijas vale para toda la tropa en cuanto salgáis del lobby y todas lo ven al momento (también en mi pizarra). Teclado o mando: ↑/↓ elige la fila y ←/→ cambia; con el ratón, clic.")
+		: NSLOCTEXT("Tortunabo", "BriefingMissionGuestNote",
+			"El modo y la dificultad los elige el anfitrión. Si los cambia, lo verás aquí y en la pizarra de mi mesa al momento."),
+		TEXT("Bold"), 18, bHost ? TNHUDArt::Ink : TNHUDArt::CoralDeep, false);
+	Notice->SetAutoWrapText(true);
+	AddV(Page, Notice, FMargin(0.f, 2.f, 8.f, 0.f));
+
+	MissionRow = 0;
+	ShownMode = GetMissionMode();
+	ShownDifficulty = GetMissionDifficulty();
+	RefreshMission(false);
+}
+
+void UTN_BriefingWidget::RefreshMission(bool bAnnounce)
+{
+	using namespace TNBriefingUI;
+	const ETNProcGameMode Mode = GetMissionMode();
+	const ETNProcDifficulty Difficulty = GetMissionDifficulty();
+	const bool bChanged = Mode != ShownMode || Difficulty != ShownDifficulty;
+	ShownMode = Mode;
+	ShownDifficulty = Difficulty;
+	const bool bHost = CanChooseMission();
+
+	// La elegida en coral; los demás no pueden pulsar (se ven apagadas).
+	for (int32 i = 0; i < ModeButtons.Num() && i < NumMenuModes; ++i)
+	{
+		if (UTN_ShopButton* Option = ModeButtons[i])
+		{
+			Option->SetArt(TNLobbyMission::MenuModes[i] == Mode ? ChosenPill() : IdlePill());
+			Option->SetDisabled(!bHost);
+		}
+	}
+	for (int32 i = 0; i < DifficultyButtons.Num() && i < NumDifficulties; ++i)
+	{
+		if (UTN_ShopButton* Option = DifficultyButtons[i])
+		{
+			Option->SetArt(TNLobbyMission::Difficulties[i] == Difficulty ? ChosenPill() : IdlePill());
+			Option->SetDisabled(!bHost);
+		}
+	}
+
+	// La fila con el foco del teclado y el mando, marcada (solo el anfitrión tiene foco).
+	const auto StyleHeading = [this, bHost](UTextBlock* Heading, int32 Row, const FText& HeadingText)
+	{
+		if (!Heading)
+		{
+			return;
+		}
+		const bool bFocus = bHost && MissionRow == Row;
+		Heading->SetText(bFocus ? FText::Format(NSLOCTEXT("Tortunabo", "BriefingMissionFocus", "» {0}"), HeadingText) : HeadingText);
+		Heading->SetColorAndOpacity(FSlateColor(bFocus || !bHost ? TNHUDArt::CoralDeep : TNHUDArt::Ink));
+	};
+	StyleHeading(ModeHeading, 0, NSLOCTEXT("Tortunabo", "BriefingMissionModeH", "Modo de la misión"));
+	StyleHeading(DifficultyHeading, 1, NSLOCTEXT("Tortunabo", "BriefingMissionDiffH", "Dificultad"));
+
+	if (MissionOrders)
+	{
+		MissionOrders->SetText(FText::Format(NSLOCTEXT("Tortunabo", "BriefingMissionOrders", "Orden del día: {0} · {1}"),
+			TNLobbyMission::ModeName(Mode).ToUpper(), TNLobbyMission::DifficultyName(Difficulty).ToUpper()));
+	}
+	if (bAnnounce && bChanged)
+	{
+		Say(FText::Format(NSLOCTEXT("Tortunabo", "BriefingSayMissionChanged", "¡Atención, tropa! Nueva orden del día: {0}, dificultad {1}."),
+			TNLobbyMission::ModeName(Mode), TNLobbyMission::DifficultyName(Difficulty).ToLower()));
+	}
+}
+
+void UTN_BriefingWidget::PickMode(ETNProcGameMode Mode)
+{
+	SetMissionRow(0);
+	if (!CanChooseMission())
+	{
+		Say(NSLOCTEXT("Tortunabo", "BriefingSayHostOnly", "¡Alto ahí, recluta! La misión la decide el anfitrión."));
+		return;
+	}
+	if (Mode != GetMissionMode() && !TNLobbyMission::SetMode(this, Mode))
+	{
+		return;
+	}
+	Say(TNBriefingUI::ModeOrderLine(Mode));
+	RefreshMission(false);
+}
+
+void UTN_BriefingWidget::PickDifficulty(ETNProcDifficulty Difficulty)
+{
+	SetMissionRow(1);
+	if (!CanChooseMission())
+	{
+		Say(NSLOCTEXT("Tortunabo", "BriefingSayHostOnly", "¡Alto ahí, recluta! La misión la decide el anfitrión."));
+		return;
+	}
+	if (Difficulty != GetMissionDifficulty() && !TNLobbyMission::SetDifficulty(this, Difficulty))
+	{
+		return;
+	}
+	Say(TNBriefingUI::DifficultyOrderLine(Difficulty));
+	RefreshMission(false);
+}
+
+void UTN_BriefingWidget::StepMission(int32 Direction)
+{
+	using namespace TNBriefingUI;
+	const bool bModeRow = MissionRow == 0;
+	const int32 NumOptions = bModeRow ? NumMenuModes : NumDifficulties;
+	int32 Index = INDEX_NONE;
+	for (int32 i = 0; i < NumOptions; ++i)
+	{
+		const bool bCurrent = bModeRow ? TNLobbyMission::MenuModes[i] == GetMissionMode() : TNLobbyMission::Difficulties[i] == GetMissionDifficulty();
+		if (bCurrent) { Index = i; }
+	}
+	// Sin la actual entre las opciones (2 vs 2 o Clásico, de los selectores del lobby viejo): la primera o la última.
+	const int32 Next = Index == INDEX_NONE ? (Direction > 0 ? 0 : NumOptions - 1) : FMath::Clamp(Index + Direction, 0, NumOptions - 1);
+	if (Next == Index)
+	{
+		return;
+	}
+	if (bModeRow)
+	{
+		PickMode(TNLobbyMission::MenuModes[Next]);
+	}
+	else
+	{
+		PickDifficulty(TNLobbyMission::Difficulties[Next]);
+	}
+}
+
+void UTN_BriefingWidget::SetMissionRow(int32 Row)
+{
+	MissionRow = FMath::Clamp(Row, 0, 1);
+	RefreshMission(false);
+}
+
+bool UTN_BriefingWidget::CanChooseMission() const
+{
+	return TNLobbyMission::CanLocalPlayerChoose(this);
+}
+
+ETNProcGameMode UTN_BriefingWidget::GetMissionMode() const
+{
+	if (CanChooseMission())
+	{
+		return TNLobbyMission::GetHostMode(this);
+	}
+	const ATN_GeneralBriefing* Speaker = General.Get();
+	return Speaker ? Speaker->GetMissionMode() : ETNProcGameMode::Coop;
+}
+
+ETNProcDifficulty UTN_BriefingWidget::GetMissionDifficulty() const
+{
+	if (CanChooseMission())
+	{
+		return TNLobbyMission::GetHostDifficulty(this);
+	}
+	const ATN_GeneralBriefing* Speaker = General.Get();
+	return Speaker ? Speaker->GetMissionDifficulty() : ETNProcDifficulty::Normal;
+}
+
+void UTN_BriefingWidget::RefreshKeysHint()
+{
+	if (!KeysHint)
+	{
+		return;
+	}
+	KeysHint->SetText(Tab == TNBriefingUI::TabMission && CanChooseMission()
+		? NSLOCTEXT("Tortunabo", "BriefingKeysMission", "Q/E: pestaña · ↑/↓: fila · ←/→: cambiar · Esc: salir")
+		: NSLOCTEXT("Tortunabo", "BriefingKeys", "Q/E o flechas: pestaña · ↑/↓: desplazar · Esc: salir"));
+}
+
 void UTN_BriefingWidget::Say(const FText& Line)
 {
 	FullLine = Line.ToString();
@@ -452,6 +728,12 @@ void UTN_BriefingWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		Reveal = FMath::Min<float>(FullLine.Len(), Reveal + InDeltaTime * 70.f);
 		DialogText->SetText(FText::FromString(FullLine.Left(FMath::CeilToInt(Reveal))));
 	}
+	// «Misión»: si el anfitrión la cambia (a los demás les llega replicada en el general), se repinta y el general avisa.
+	if (Tab == TNBriefingUI::TabMission && ModeButtons.Num() > 0
+		&& (GetMissionMode() != ShownMode || GetMissionDifficulty() != ShownDifficulty))
+	{
+		RefreshMission(true);
+	}
 }
 
 void UTN_BriefingWidget::Close()
@@ -464,11 +746,20 @@ FReply UTN_BriefingWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 {
 	using TNBriefingUI::IsKey;
 	const FKey Key = InKeyEvent.GetKey();
+	// «Misión» del anfitrión: arriba/abajo eligen la fila (modo o dificultad) e izquierda/derecha cambian la opción. Las
+	// pestañas siguen con Q/E, Tab o LB/RB.
+	if (Tab == TNBriefingUI::TabMission && CanChooseMission())
+	{
+		if (IsKey(Key, { EKeys::Up, EKeys::W, EKeys::Gamepad_DPad_Up, EKeys::Gamepad_LeftStick_Up })) { SetMissionRow(0); return FReply::Handled(); }
+		if (IsKey(Key, { EKeys::Down, EKeys::S, EKeys::Gamepad_DPad_Down, EKeys::Gamepad_LeftStick_Down })) { SetMissionRow(1); return FReply::Handled(); }
+		if (IsKey(Key, { EKeys::Left, EKeys::A, EKeys::Gamepad_DPad_Left, EKeys::Gamepad_LeftStick_Left })) { StepMission(-1); return FReply::Handled(); }
+		if (IsKey(Key, { EKeys::Right, EKeys::D, EKeys::Gamepad_DPad_Right, EKeys::Gamepad_LeftStick_Right })) { StepMission(1); return FReply::Handled(); }
+	}
 	if (IsKey(Key, { EKeys::Q, EKeys::Left, EKeys::A, EKeys::Gamepad_LeftShoulder, EKeys::Gamepad_DPad_Left })) { ShowTab(Tab - 1); return FReply::Handled(); }
 	if (IsKey(Key, { EKeys::E, EKeys::Tab, EKeys::Right, EKeys::D, EKeys::Gamepad_RightShoulder, EKeys::Gamepad_DPad_Right })) { ShowTab(Tab + 1); return FReply::Handled(); }
-	if (IsKey(Key, { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four }))
+	if (IsKey(Key, { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five }))
 	{
-		ShowTab(Key == EKeys::One ? 0 : Key == EKeys::Two ? 1 : Key == EKeys::Three ? 2 : 3);
+		ShowTab(Key == EKeys::One ? 0 : Key == EKeys::Two ? 1 : Key == EKeys::Three ? 2 : Key == EKeys::Four ? 3 : 4);
 		return FReply::Handled();
 	}
 	if (Scroll && IsKey(Key, { EKeys::Up, EKeys::W, EKeys::Gamepad_DPad_Up }))
