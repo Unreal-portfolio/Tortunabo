@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "World/Beach/TN_BeachElement.h"
+#include "World/Beach/TN_BeachTrapCommon.h"
 #include "TN_BeachTrampoline.generated.h"
 
 class AActor;
@@ -28,9 +29,15 @@ class UTN_PlaygroundSynthComponent;
  * (tope MaxHorizontal). Sirve para subir a castillos, dunas y plataformas o saltar hoyos y alambre. La malla se deforma:
  * se aplasta entera (squash & stretch) y se hunde donde cae la tortuga (abolladura que vibra y se recupera).
  *
+ * Potenciado (Spec.Flags & TNBeach::FlagBoosted, el de la cima de las fortalezas): rebota BoostedUpScale veces más alto
+ * y empuja BoostedForwardPush hacia el mar (tope BoostedMaxHorizontal): unas 2-2,4 veces más lejos que uno normal en
+ * llano. Aro dorado en la arena, cuatro palos con guirnaldas de banderines y la bandera de Tortunavy, destellos dorados,
+ * un boing más grave con barrido y la fanfarria.
+ *
  * Red (como la medusa del lobby): el rebote lo aplican a la vez el servidor y el cliente dueño dentro del mismo
  * movimiento (golpe con la colisión o solape con el sensor), así que la predicción cuadra; el resto ve la deformación y
- * oye el boing por un multicast no fiable. Los caparazones con física rebotan también (los lanza el servidor).
+ * oye el boing por un multicast no fiable. Los caparazones con física rebotan también (los lanza el servidor). Lo
+ * potenciado sale de Spec (replicado): servidor y cliente dueño aplican el mismo impulso.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachTrampoline : public ATN_BeachElement
@@ -72,6 +79,25 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Trampolín", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float BoingVolume = 1.f;
+
+	/** Potenciado: por cuánto se multiplica la velocidad vertical del rebote. */
+	UPROPERTY(EditAnywhere, Category = "Trampolín|Potenciado", meta = (ClampMin = "1.0", ClampMax = "2.0"))
+	float BoostedUpScale = 1.25f;
+
+	/** Potenciado: empujón hacia el mar (cm/s) que se suma a la horizontal conservada. */
+	UPROPERTY(EditAnywhere, Category = "Trampolín|Potenciado", meta = (ClampMin = "0.0"))
+	float BoostedForwardPush = 900.f;
+
+	/** Potenciado: tope de la velocidad horizontal tras el rebote. */
+	UPROPERTY(EditAnywhere, Category = "Trampolín|Potenciado", meta = (ClampMin = "0.0"))
+	float BoostedMaxHorizontal = 1500.f;
+
+	/** Potenciado: tope de la velocidad vertical del rebote. */
+	UPROPERTY(EditAnywhere, Category = "Trampolín|Potenciado", meta = (ClampMin = "300.0"))
+	float BoostedMaxUp = 2400.f;
+
+	/** Potenciado (Spec.Flags & TNBeach::FlagBoosted). */
+	bool IsBoosted() const { return bBoosted; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -129,7 +155,16 @@ private:
 	void PlayBounceFX(const FVector& WorldAt, float Strength);
 	void AnimateBody(float DeltaSeconds);
 
+	/** Empujón hacia el mar, tope horizontal y tope vertical con los que rebota (los potenciados, más). */
+	float EffectivePush() const { return bBoosted ? BoostedForwardPush : ForwardPush; }
+	float EffectiveMaxHorizontal() const { return bBoosted ? BoostedMaxHorizontal : MaxHorizontal; }
+	float EffectiveMaxUp() const { return FMath::Max(bBoosted ? FMath::Max(BoostedMaxUp, MaxUp) : MaxUp, BaseUp); }
+
 	int32 Variant = 0;
+	bool bBoosted = false;
+	/** Última fanfarria en esta máquina (tiempo del mundo): no más de una cada pocos segundos. */
+	double LastFanfareAt = -100.0;
+	FTNTrapBurst Sparkle;
 	/** Medidas de la variante (cm, espacio del marco). */
 	double BodyR = 500.0;
 	double TopZ = 300.0;

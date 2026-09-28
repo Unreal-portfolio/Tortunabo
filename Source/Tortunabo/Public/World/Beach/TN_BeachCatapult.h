@@ -26,13 +26,22 @@ class UTN_PlaygroundSynthComponent;
  * dispara al momento. Al disparar, el palo sale volando, el cubito cae, la cuchara da la vuelta (golpe y rebote contra la
  * arena) y lanza como bolas de caparazón (UTN_ShellComponent: vuelan, rebotan y ruedan; salen solas al pararse) a las
  * que estén en el cazo (LaunchSpeed a LaunchPitch grados hacia el mar, ±DeviationDeg de desvío al azar) y, más flojo, a
- * las que estén en el mango. Luego recarga (ReloadSeconds): la cuchara vuelve despacio con un carraca, el palo se pone
- * de pie y el banderín pasa de rojo a verde.
+ * las que estén en el mango.
+ *
+ * Un solo uso (bSingleUse, lo normal): la primera tortuga que la dispara la gasta. Tras el rebote el brazo se parte por
+ * el cuello del cazo: el cazo queda colgando de unas astillas, el mango tumbado con el cubito en la arena, el palo en el
+ * suelo y el banderín arrancado; no se recarga en toda la ronda (quien llega tarde se fastidia). Sin bSingleUse recarga
+ * como antes (ReloadSeconds: vuelve despacio con una carraca y el banderín pasa de rojo a verde).
+ *
+ * Potenciada (Spec.Flags & TNBeach::FlagBoosted, la de la cima de las fortalezas): cuchara dorada, cubito azul marino
+ * con la estrella de Tortunavy, guirnalda de banderines y bandera; lanza a BoostedLaunchSpeed (unas 2,2 veces más lejos en
+ * llano), con menos desvío, un «¡ZAAAS!» dorado, más temblor y la fanfarria.
  *
  * Red: el servidor decide (ArmedAt y FiredAt, horas del servidor replicadas) y lanza las bolas (la caja física se
- * replica sola: sin predicción ni correcciones). Cada máquina anima la cuchara, el palo, el banderín, el polvo y los
- * sonidos desde esas horas con el reloj del servidor suavizado. La colisión del brazo se apaga durante el golpe para
- * que no toque las bolas que salen.
+ * replica sola: sin predicción ni correcciones). Cada máquina anima la cuchara, la rotura, el palo, el banderín, el polvo
+ * y los sonidos desde esas horas con el reloj del servidor suavizado (quien llega tarde la ve ya rota, sin oírla). La
+ * colisión del brazo se apaga durante el golpe para que no toque las bolas que salen; la del cazo, para siempre al
+ * gastarse.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachCatapult : public ATN_BeachElement
@@ -48,11 +57,21 @@ public:
 	/** Lista para disparar (en cualquier máquina). */
 	bool IsLoaded(double ServerTime) const;
 
+	/** Gastada: de un solo uso y ya disparada (en cualquier máquina). */
+	bool IsSpent() const { return bSingleUse && FiredAt >= 0.f; }
+
+	/** Potenciada (Spec.Flags & TNBeach::FlagBoosted). */
+	bool IsBoosted() const { return bBoosted; }
+
 	/** Aviso desde que alguien se sube al cazo hasta que dispara. */
 	UPROPERTY(EditAnywhere, Category = "Catapulta", meta = (ClampMin = "0.0"))
 	float WarnSeconds = 1.0f;
 
-	/** Recarga desde que dispara hasta que vuelve a estar lista. */
+	/** Un solo disparo por ronda: tras el primero el brazo queda partido. Apagado, recarga en ReloadSeconds. */
+	UPROPERTY(EditAnywhere, Category = "Catapulta")
+	bool bSingleUse = true;
+
+	/** Recarga desde que dispara hasta que vuelve a estar lista (solo sin bSingleUse). */
 	UPROPERTY(EditAnywhere, Category = "Catapulta", meta = (ClampMin = "1.0"))
 	float ReloadSeconds = 4.6f;
 
@@ -72,6 +91,18 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Catapulta", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HandleLaunchFraction = 0.55f;
 
+	/** Potenciada: velocidad de la bola (cm/s; ~77 m en llano frente a los ~35 de la normal, con el rozamiento de la bola). */
+	UPROPERTY(EditAnywhere, Category = "Catapulta|Potenciada", meta = (ClampMin = "0.0"))
+	float BoostedLaunchSpeed = 3800.f;
+
+	/** Potenciada: elevación (grados). */
+	UPROPERTY(EditAnywhere, Category = "Catapulta|Potenciada", meta = (ClampMin = "10.0", ClampMax = "80.0"))
+	float BoostedLaunchPitch = 40.f;
+
+	/** Potenciada: desvío máximo a cada lado (grados): apunta a la zona despejada de delante. */
+	UPROPERTY(EditAnywhere, Category = "Catapulta|Potenciada", meta = (ClampMin = "0.0", ClampMax = "45.0"))
+	float BoostedDeviationDeg = 4.f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void ApplySpec() override;
@@ -83,7 +114,7 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_Shot)
 	float ArmedAt = -1.f;
 
-	/** Hora del servidor del último disparo (< 0 = ninguno). */
+	/** Hora del servidor del último disparo (< 0 = ninguno; con bSingleUse, el único). */
 	UPROPERTY(ReplicatedUsing = OnRep_Shot)
 	float FiredAt = -1.f;
 
@@ -102,13 +133,29 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Catapulta")
 	TObjectPtr<USceneComponent> ArmPivot;
 
-	/** Cuchara con el cubito (espacio del eje: X hacia el cubito). */
+	/** Mango con el cubito, del cuello del cazo al extremo (espacio del eje: X hacia el cubito). */
 	UPROPERTY(VisibleAnywhere, Category = "Catapulta")
 	TObjectPtr<UStaticMeshComponent> ArmMesh;
 
-	/** Cazo, mango y cubito: base móvil con nombre estable por red. */
+	/** Mango y cubito: base móvil con nombre estable por red. */
 	UPROPERTY(VisibleAnywhere, Category = "Catapulta")
 	TObjectPtr<UProceduralMeshComponent> ArmCollision;
+
+	/** Bisagra del cuello del cazo (hija del eje, en CrackX): por aquí se parte el brazo y el cazo queda colgando. */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<USceneComponent> BowlHinge;
+
+	/** Cazo con el trozo de brazo hasta el cuello (espacio de la bisagra). */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<UStaticMeshComponent> BowlMesh;
+
+	/** Suelo y bordes del cazo: base móvil con nombre estable por red (se apaga para siempre al gastarse). */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<UProceduralMeshComponent> BowlCollision;
+
+	/** Astillas del corte (espacio del eje; solo con el brazo partido). */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<UStaticMeshComponent> SplinterMesh;
 
 	/** Palo de polo que sujeta el mango en alto (cae al disparar). */
 	UPROPERTY(VisibleAnywhere, Category = "Catapulta")
@@ -117,7 +164,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Catapulta")
 	TObjectPtr<UStaticMeshComponent> PropMesh;
 
-	/** Banderín verde (lista) y rojo (armada o recargando). */
+	/** Banderín verde (lista) y rojo (armada o recargando); ninguno con el brazo partido. */
 	UPROPERTY(VisibleAnywhere, Category = "Catapulta")
 	TObjectPtr<UStaticMeshComponent> FlagGreen;
 
@@ -145,11 +192,15 @@ private:
 	/** Cabeceo del brazo (grados; + = cubito arriba) a la hora Now. */
 	double ArmPitchAt(double Now) const;
 
+	/** Cabeceo del cazo sobre su bisagra (grados; 0 = entero, DangleDeg = colgando) a la hora Now. */
+	double BowlPitchAt(double Now) const;
+
 	/** Dónde está una tortuga sobre el brazo: 0 = fuera, 1 = cazo, 2 = mango, 3 = encima del cubito. */
 	int32 WhereOnArm(const ACharacter* Character) const;
 
 	FVector LaunchVelocity(float Fraction) const;
 	void TickVisuals(double Now, float DeltaSeconds);
+	void SetBowlCollision(bool bOn);
 
 	// Medidas (cm; espacio del eje del brazo, X hacia el cubito).
 	double LongArm = 750.0;
@@ -164,11 +215,16 @@ private:
 	double BucketRadius = 88.0;
 	double BucketHeight = 70.0;
 	double FrameYawDeg = 0.0;
+	/** Cuello del cazo (X del eje) por donde se parte, y cuánto gira el cazo al quedar colgando. */
+	double CrackX = -200.0;
+	double DangleDeg = 110.0;
 
+	bool bBoosted = false;
 	double LastVisualNow = -1.0;
 	double LastRatchetAt = -1.0;
 	float CreakTimer = 0.f;
 	bool bArmCollisionOn = true;
+	bool bBowlCollisionOn = true;
 	double EmptySince = -1.0;
 
 	TMap<TWeakObjectPtr<ACharacter>, FRider> Riders;
@@ -176,4 +232,5 @@ private:
 	FTNTrapBurst Dust;
 	FTNTrapBurst Chips;
 	FTNTrapPopText Pop;
+	FTNTrapPopText BreakPop;
 };

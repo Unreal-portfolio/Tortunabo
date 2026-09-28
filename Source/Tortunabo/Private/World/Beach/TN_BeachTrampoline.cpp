@@ -11,6 +11,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Math/RotationMatrix.h"
 #include "ProceduralMeshComponent.h"
+#include "TN_BeachBoostKit.h"
 #include "TN_BeachRideKit.h"
 #include "TN_BeachTrapKit.h"
 
@@ -422,6 +423,7 @@ void ATN_BeachTrampoline::ApplySpec()
 	const double Fit = TNBeachTrapKit::FitRadius(Spec.Element, Spec.SizeScale);
 	const uint32 Seed = TNBeachTrapKit::SeedOf(Spec.Seed, 109u);
 	Variant = static_cast<int32>(Seed % 4u);
+	bBoosted = (Spec.Flags & TNBeach::FlagBoosted) != 0;
 	BreathPhase = static_cast<float>(TNPlaygroundKit::KitTwoPi * TNBeachTrapKit::Hash01(2, 2, Seed));
 	Frame->SetRelativeRotation(FRotator(0.0, TNBeachRideKit::LaunchYawInActor(this), 0.0));
 
@@ -480,6 +482,38 @@ void ATN_BeachTrampoline::ApplySpec()
 	}
 	// Arena removida alrededor (no rebota).
 	TNPlaygroundKit::AddDisc(Decor, FVector(0.0, 0.0, 1.0), FVector::UpVector, FMath::Min(0.97 * Fit, BodyR + 40.0), 28, TNBeachTrapKit::SandMark());
+	if (bBoosted)
+	{
+		// Potenciado: rebota más alto y mucho más hacia el mar. Aro dorado en la arena, cuatro palos (uno con la bandera de
+		// Tortunavy) y guirnaldas de banderines de palo a palo por encima del borde.
+		UpScale *= BoostedUpScale;
+		const double RingIn = BodyR + 8.0;
+		TNPlaygroundKit::AddAnnulus(Decor, FVector(0.0, 0.0, 3.0), FVector::UpVector, RingIn, RingIn + 30.0, 40, TNBeachBoostKit::Gold());
+		const double PoleRing = RingIn + 50.0;
+		const double PoleH = TopZ + 150.0;
+		FVector PoleTops[4];
+		for (int32 p = 0; p < 4; ++p)
+		{
+			const double Ang = TNPlaygroundKit::KitTwoPi * (p + 0.5) / 4.0;
+			const FVector Foot(PoleRing * FMath::Cos(Ang), PoleRing * FMath::Sin(Ang), 0.0);
+			PoleTops[p] = Foot + FVector(0.0, 0.0, PoleH);
+			if (p == 0)
+			{
+				TNBeachBoostKit::AddNavyFlag(Decor, Foot, PoleH, Foot, 110.0, 72.0, Seed);
+			}
+			else
+			{
+				TNPlaygroundKit::AddRod(Decor, Foot - FVector(0.0, 0.0, 10.0), PoleTops[p], 6.0, 6, TNBeachBoostKit::PoleWood(), FVector::ForwardVector);
+				TNPlaygroundKit::AddBall(Decor, PoleTops[p] + FVector(0.0, 0.0, 7.0), 11.0, 8, TNBeachBoostKit::Gold());
+			}
+		}
+		for (int32 p = 0; p < 4; ++p)
+		{
+			const FVector From = PoleTops[p] - FVector(0.0, 0.0, 12.0);
+			const FVector To = PoleTops[(p + 1) % 4] - FVector(0.0, 0.0, 12.0);
+			TNBeachBoostKit::AddBunting(Decor, From, To, 0.1 * FVector::Dist(From, To), 30.0, Seed + static_cast<uint32>(p) * 5u);
+		}
+	}
 	TNBeachTrapKit::SetMesh(DecorMesh, this, Decor);
 
 	BodyCollision->SetCollisionConvexMeshes(Hulls);
@@ -502,7 +536,8 @@ void ATN_BeachTrampoline::ApplySpec()
 		BodyMesh->SetMaterial(0, TNPlaygroundKit::VertexColorMaterial());
 	}
 	bBodyDirty = false;
-	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Trampolín %s: variante %d, radio %.0f cm, alto %.0f cm."), *GetName(), Variant, BodyR, TopZ);
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Trampolín %s: variante %d, radio %.0f cm, alto %.0f cm%s."), *GetName(), Variant, BodyR, TopZ,
+		bBoosted ? TEXT(", potenciado") : TEXT(""));
 }
 
 void ATN_BeachTrampoline::BeginPlay()
@@ -512,7 +547,12 @@ void ATN_BeachTrampoline::BeginPlay()
 	BounceSensor->OnComponentBeginOverlap.AddUniqueDynamic(this, &ATN_BeachTrampoline::OnSensorOverlap);
 	if (GetNetMode() != NM_DedicatedServer)
 	{
-		Toy = UTN_PlaygroundSynthComponent::AttachTo(this, Frame->GetComponentLocation() + FVector(0.0, 0.0, 0.6 * TopZ), 600.f, 3000.f);
+		Toy = UTN_PlaygroundSynthComponent::AttachTo(this, Frame->GetComponentLocation() + FVector(0.0, 0.0, 0.6 * TopZ), 600.f, bBoosted ? 4500.f : 3000.f);
+		if (bBoosted)
+		{
+			Sparkle.Init(this, ETNTrapBurstShape::Spark, TNPlaygroundKit::Rgb(0xFFE27A, 0.8f), 40);
+			Sparkle.SetMotion(-300.f, 1.5f, 26.f, 4.f, 0.5f, 1.1f);
+		}
 	}
 }
 
@@ -576,17 +616,18 @@ bool ATN_BeachTrampoline::TryBounce(ACharacter* Character)
 	LastBounceTime.Add(Key, Now);
 
 	// Mismo impulso en el servidor y en el cliente dueño, en el mismo movimiento: la predicción cuadra. Caer de más alto
-	// rebota más (con tope); la horizontal se conserva en parte y se empuja hacia el mar.
+	// rebota más (con tope); la horizontal se conserva en parte y se empuja hacia el mar (el potenciado, mucho más).
 	const double Fall = FMath::Max(0.0, -static_cast<double>(Move->Velocity.Z));
 	const double Base = static_cast<double>(BaseUp) * UpScale;
-	const double Up = FMath::Clamp(Base + FallGain * FMath::Max(0.0, Fall - 300.0), Base, static_cast<double>(FMath::Max(MaxUp, BaseUp)));
+	const double TopUp = static_cast<double>(EffectiveMaxUp());
+	const double Up = FMath::Clamp(Base + FallGain * FMath::Max(0.0, Fall - 300.0), FMath::Min(Base, TopUp), TopUp);
 	const FVector Sea = Frame->GetForwardVector().GetSafeNormal2D();
-	FVector Horizontal = FVector(Move->Velocity.X, Move->Velocity.Y, 0.0) * KeepHorizontal + Sea * ForwardPush;
-	Horizontal = Horizontal.GetClampedToMaxSize(MaxHorizontal);
+	FVector Horizontal = FVector(Move->Velocity.X, Move->Velocity.Y, 0.0) * KeepHorizontal + Sea * EffectivePush();
+	Horizontal = Horizontal.GetClampedToMaxSize(EffectiveMaxHorizontal());
 	Character->LaunchCharacter(FVector(Horizontal.X, Horizontal.Y, Up), true, true);
 	// El vuelo pasa de 5 m: que no se meta sola en el caparazón al caer.
 	Turtle->SetFallImmuneUntilLanded();
-	SpreadBounceFX(Character, static_cast<float>(FMath::Clamp(Up / FMath::Max(1.0, static_cast<double>(MaxUp)), 0.35, 1.0)));
+	SpreadBounceFX(Character, static_cast<float>(FMath::Clamp(Up / FMath::Max(1.0, TopUp), 0.35, 1.0)));
 	return true;
 }
 
@@ -636,8 +677,8 @@ void ATN_BeachTrampoline::BounceShells(double Now)
 		LastShellBounce.Add(Key, Now);
 		// La física del caparazón se replica desde el servidor: basta con cambiar su velocidad aquí.
 		const double Base = 0.9 * static_cast<double>(BaseUp) * UpScale;
-		const double Up = FMath::Min(static_cast<double>(FMath::Max(MaxUp, BaseUp)), Base + FallGain * FMath::Max(0.0, -Vel.Z - 300.0));
-		const FVector Horizontal = (FVector(Vel.X, Vel.Y, 0.0) * KeepHorizontal + Sea * ForwardPush).GetClampedToMaxSize(MaxHorizontal);
+		const double Up = FMath::Min(static_cast<double>(EffectiveMaxUp()), Base + FallGain * FMath::Max(0.0, -Vel.Z - 300.0));
+		const FVector Horizontal = (FVector(Vel.X, Vel.Y, 0.0) * KeepHorizontal + Sea * EffectivePush()).GetClampedToMaxSize(EffectiveMaxHorizontal());
 		ShellBox->SetPhysicsLinearVelocity(FVector(Horizontal.X, Horizontal.Y, Up));
 		SpreadBounceFX(ShellActor->GetTurtle(), 0.8f);
 	}
@@ -686,11 +727,28 @@ void ATN_BeachTrampoline::PlayBounceFX(const FVector& WorldAt, float Strength)
 	DentAmp = 22.f + 42.f * S;
 	SquashAge = 0.f;
 	SquashAmp = 0.1f + 0.16f * S;
+	// Los grandes suenan más graves.
+	const float SizePitch = FMath::Clamp(1.f / FMath::Pow(FMath::Max(0.3f, Spec.SizeScale), 0.4f), 0.7f, 1.4f);
 	if (Toy)
 	{
-		// Los grandes suenan más graves.
-		const float SizePitch = FMath::Clamp(1.f / FMath::Pow(FMath::Max(0.3f, Spec.SizeScale), 0.4f), 0.7f, 1.4f);
 		Toy->TriggerSound(ETNPlaygroundSound::Boing, BoingPitch * SizePitch * FMath::FRandRange(0.94f, 1.06f), BoingVolume * FMath::Clamp(S, 0.4f, 1.f));
+	}
+	if (bBoosted)
+	{
+		// Potenciado: un boing grave encima con barrido de aire, destellos dorados y la fanfarria (una cada pocos segundos).
+		if (Toy)
+		{
+			Toy->TriggerSound(ETNPlaygroundSound::Boing, 0.6f * SizePitch, BoingVolume * 1.2f);
+			Toy->TriggerSound(ETNPlaygroundSound::Whoosh, 0.75f, 1.f);
+		}
+		Sparkle.Burst(WorldAt, 18, FVector::UpVector, 650.f, 1.1f, 80.f);
+		const UWorld* World = GetWorld();
+		const double WorldNow = World ? World->GetTimeSeconds() : 0.0;
+		if (WorldNow - LastFanfareAt > 3.0)
+		{
+			LastFanfareAt = WorldNow;
+			TNBeachBoostKit::PlayFanfareNear(this, WorldAt, 7000.f, 1.12f);
+		}
 	}
 }
 
@@ -746,6 +804,7 @@ void ATN_BeachTrampoline::Tick(float DeltaSeconds)
 		BounceShells(Now);
 	}
 	AnimateBody(DeltaSeconds);
+	Sparkle.Tick(DeltaSeconds);
 }
 
 void ATN_BeachTrampoline::AnimateBody(float DeltaSeconds)

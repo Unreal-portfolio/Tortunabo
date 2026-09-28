@@ -10,13 +10,15 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
+#include "TN_BeachBoostKit.h"
 #include "TN_BeachRideKit.h"
 #include "TN_BeachTrapKit.h"
 
 /**
  * Geometría de la catapulta. El brazo (la cuchara con el cubito) se construye en el espacio de su eje: origen sobre el
- * tapón, X hacia el cubito, la cara de arriba del mango en Z = +grosor/2. El cazo queda en el extremo -X. La piedra, el
- * tapón, el palo que sujeta y los banderines van en el espacio del marco (X hacia el mar, origen en la arena).
+ * tapón, X hacia el cubito, la cara de arriba del mango en Z = +grosor/2. El cazo queda en el extremo -X y va en su propia
+ * malla, colgada de la bisagra del cuello (CrackX): así, al partirse, cae colgando. La piedra, el tapón, el palo que
+ * sujeta y los banderines van en el espacio del marco (X hacia el mar, origen en la arena).
  */
 namespace TNBeachCatapultDetail
 {
@@ -31,6 +33,10 @@ namespace TNBeachCatapultDetail
 	constexpr double RatchetStep = 0.2;
 	/** Colisión del brazo apagada durante el golpe (las bolas salen sin tocarlo). */
 	constexpr double NoCollisionSeconds = 0.55;
+	/** Un solo uso: al acabar el rebote el brazo se parte por el cuello del cazo. */
+	constexpr double BreakSeconds = 0.62;
+	/** Un solo uso: desde el disparo hasta que ya no se mueve nada (se apaga el Tick). */
+	constexpr double SettledSeconds = 4.0;
 
 	struct FCatapultArm
 	{
@@ -44,6 +50,54 @@ namespace TNBeachCatapultDetail
 		double BucketH = 95.0;
 		int32 Style = 0;
 	};
+
+	/** Cuello del cazo (X del eje) por donde se parte el brazo: pasado el cuello ensanchado. */
+	double CrackXOf(const FCatapultArm& A)
+	{
+		return -A.Long + A.BowlL + 100.0;
+	}
+
+	/** Mueve en X lo construido (del espacio del eje al de la bisagra). */
+	void ShiftX(FBuffers& B, double Dx)
+	{
+		for (FVector& V : B.Verts)
+		{
+			V.X += Dx;
+		}
+	}
+
+	void ShiftX(FHulls& Hulls, double Dx)
+	{
+		for (TArray<FVector>& Hull : Hulls)
+		{
+			for (FVector& Pt : Hull)
+			{
+				Pt.X += Dx;
+			}
+		}
+	}
+
+	/** Contorno de un tramo de mango de largo Length y ancho Width, recto en -X (el corte) y redondeado en +X. */
+	TArray<FVector2D> HalfStadium(double Length, double Width, int32 ArcSteps = 5)
+	{
+		TArray<FVector2D> Outline;
+		const double Rad = 0.5 * Width;
+		const double Straight = FMath::Max(0.0, 0.5 * Length - Rad);
+		Outline.Add(FVector2D(-0.5 * Length, -Rad));
+		for (int32 i = 0; i <= ArcSteps; ++i)
+		{
+			const double Ang = -0.5 * TNPlaygroundKit::KitPi + TNPlaygroundKit::KitPi * i / ArcSteps;
+			Outline.Add(FVector2D(Straight + Rad * FMath::Cos(Ang), Rad * FMath::Sin(Ang)));
+		}
+		Outline.Add(FVector2D(-0.5 * Length, Rad));
+		return Outline;
+	}
+
+	/** Contorno rectangular de Length x Width, centrado. */
+	TArray<FVector2D> RectOutline(double Length, double Width)
+	{
+		return { FVector2D(-0.5 * Length, -0.5 * Width), FVector2D(0.5 * Length, -0.5 * Width), FVector2D(0.5 * Length, 0.5 * Width), FVector2D(-0.5 * Length, 0.5 * Width) };
+	}
 
 	/** Cazo: plato elíptico (borde a ras de la cara de arriba del mango) con su cara de abajo. */
 	void AddBowl(FBuffers& B, const FCatapultArm& A, const FLinearColor& Col)
@@ -86,17 +140,17 @@ namespace TNBeachCatapultDetail
 		}
 	}
 
-	/** Cubito de arena mojada atado en el extremo del mango, con su asa y una estrella. */
-	void AddBucket(FBuffers& B, const FCatapultArm& A, uint32 Seed)
+	/** Cubito de arena mojada atado en el extremo del mango, con su asa y una estrella (azul marino y dorada si bNavy). */
+	void AddBucket(FBuffers& B, const FCatapultArm& A, uint32 Seed, bool bNavy)
 	{
-		const FLinearColor Toy = TNPlaygroundKit::ToyColor(static_cast<int32>(Seed % 7u), 0.25f);
+		const FLinearColor Toy = bNavy ? TNBeachBoostKit::Navy() : TNPlaygroundKit::ToyColor(static_cast<int32>(Seed % 7u), 0.25f);
 		const double Bx = A.Short - 0.9 * A.BucketR;
 		const double Base = 0.5 * A.Thick;
 		const double TopZ = Base + A.BucketH;
 		TNPlaygroundKit::AddFrustum(B, FVector(Bx, 0.0, Base), FVector(Bx, 0.0, TopZ), 0.82 * A.BucketR, A.BucketR, 18, Toy, TNPlaygroundKit::Shade(Toy, 0.85), true, false);
 		// Reborde, arena mojada con marcas de dedos y el asa caída.
-		TNPlaygroundKit::AddFrustum(B, FVector(Bx, 0.0, TopZ - 10.0), FVector(Bx, 0.0, TopZ + 2.0), A.BucketR + 6.0, A.BucketR + 6.0, 18,
-			TNPlaygroundKit::Shade(Toy, 1.1), TNPlaygroundKit::Shade(Toy, 1.1), true, true);
+		const FLinearColor Rim = bNavy ? TNBeachBoostKit::Gold() : TNPlaygroundKit::Shade(Toy, 1.1);
+		TNPlaygroundKit::AddFrustum(B, FVector(Bx, 0.0, TopZ - 10.0), FVector(Bx, 0.0, TopZ + 2.0), A.BucketR + 6.0, A.BucketR + 6.0, 18, Rim, Rim, true, true);
 		TNPlaygroundKit::AddDisc(B, FVector(Bx, 0.0, TopZ - 6.0), FVector::UpVector, A.BucketR - 4.0, 18, TNBeachTrapKit::SandWet());
 		for (int32 i = 0; i < 3; ++i)
 		{
@@ -110,84 +164,123 @@ namespace TNBeachCatapultDetail
 			const double T = TNPlaygroundKit::KitPi * i / 8.0;
 			Handle.Add(FVector(Bx, (A.BucketR + 8.0) * FMath::Cos(T), TopZ - 12.0 + 34.0 * FMath::Sin(T)));
 		}
-		TNPlaygroundKit::AddTube(B, Handle, { 5.0 }, 6, { TNPlaygroundKit::Shade(Toy, 0.8) }, FVector::ForwardVector, false);
-		TNPlaygroundKit::AddStarfish(B, FVector(Bx - 0.91 * A.BucketR, 0.0, Base + 0.55 * A.BucketH), FVector(-1.0, 0.0, 0.1), FVector::UpVector, 26.0, 3.0,
-			TNPlaygroundKit::Rgb(0xFFF1A8, 0.3f));
+		TNPlaygroundKit::AddTube(B, Handle, { 5.0 }, 6, { bNavy ? TNBeachBoostKit::GoldDeep() : TNPlaygroundKit::Shade(Toy, 0.8) }, FVector::ForwardVector, false);
+		if (bNavy)
+		{
+			TNBeachBoostKit::AddStar(B, FVector(Bx - 0.91 * A.BucketR - 2.0, 0.0, Base + 0.55 * A.BucketH), FVector(-1.0, 0.0, 0.1), FVector::UpVector, 30.0,
+				TNBeachBoostKit::Gold());
+		}
+		else
+		{
+			TNPlaygroundKit::AddStarfish(B, FVector(Bx - 0.91 * A.BucketR, 0.0, Base + 0.55 * A.BucketH), FVector(-1.0, 0.0, 0.1), FVector::UpVector, 26.0, 3.0,
+				TNPlaygroundKit::Rgb(0xFFF1A8, 0.3f));
+		}
 	}
 
-	/** Cuchara: de plástico (0), de madera con vetas (1) o dos palos de polo atados con un vasito de yogur (2). */
-	void BuildArm(FBuffers& B, const FCatapultArm& A, uint32 Seed)
+	/**
+	 * Cuchara: de plástico (0), de madera con vetas (1) o dos palos de polo atados con un vasito de yogur (2); dorada si
+	 * bGold. Arm recibe el mango del corte al cubito; Bowl, el cazo con el cuello hasta el corte (las dos en el espacio del
+	 * eje: el cazo se pasa luego al de la bisagra).
+	 */
+	void BuildArm(FBuffers& Arm, FBuffers& Bowl, const FCatapultArm& A, uint32 Seed, double CrackX, bool bGold)
 	{
 		const double Top = 0.5 * A.Thick;
 		const double HandleX0 = -A.Long + 0.85 * A.BowlL;
 		const double HandleX1 = A.Short;
 		if (A.Style == 2)
 		{
-			const FLinearColor Wood = TNPlaygroundKit::Rgb(0xE2C08C, 0.05f);
+			const FLinearColor Wood = bGold ? TNPlaygroundKit::Rgb(0xFFD76A, 0.55f) : TNPlaygroundKit::Rgb(0xE2C08C, 0.05f);
 			for (const double Side : { -1.0, 1.0 })
 			{
-				TNPlaygroundKit::AddStick(B, FVector(0.5 * (HandleX0 + HandleX1), Side * 23.0, 0.0), FVector::ForwardVector, FVector::RightVector, HandleX1 - HandleX0 + 40.0,
-					46.0, A.Thick, TNPlaygroundKit::Shade(Wood, Side < 0.0 ? 1.0 : 0.94));
+				const FLinearColor Stick = TNPlaygroundKit::Shade(Wood, Side < 0.0 ? 1.0 : 0.94);
+				const double ArmLen = HandleX1 + 20.0 - CrackX;
+				const double BowlLen = CrackX - (HandleX0 - 20.0);
+				TNPlaygroundKit::AddStick(Arm, FVector(CrackX + 0.5 * ArmLen, Side * 23.0, 0.0), FVector::ForwardVector, FVector::RightVector, ArmLen, 46.0, A.Thick, Stick);
+				TNPlaygroundKit::AddStick(Bowl, FVector(CrackX - 0.5 * BowlLen, Side * 23.0, 0.0), FVector::ForwardVector, FVector::RightVector, BowlLen, 46.0, A.Thick, Stick);
 			}
 			// Gomas elásticas que atan los palos.
 			const FLinearColor Band = TNPlaygroundKit::Rgb(0xFF5FA2, 0.2f);
 			for (const double Bx : { HandleX0 + 60.0, -40.0, 0.5 * HandleX1 })
 			{
-				TNPlaygroundKit::AddAxisBox(B, FVector(Bx, 0.0, Top + 2.0), FVector(7.0, 50.0, 2.5), Band);
-				TNPlaygroundKit::AddAxisBox(B, FVector(Bx, 0.0, -Top - 2.0), FVector(7.0, 50.0, 2.5), Band);
+				FBuffers& Into = Bx < CrackX ? Bowl : Arm;
+				TNPlaygroundKit::AddAxisBox(Into, FVector(Bx, 0.0, Top + 2.0), FVector(7.0, 50.0, 2.5), Band);
+				TNPlaygroundKit::AddAxisBox(Into, FVector(Bx, 0.0, -Top - 2.0), FVector(7.0, 50.0, 2.5), Band);
 				for (const double Side : { -1.0, 1.0 })
 				{
-					TNPlaygroundKit::AddAxisBox(B, FVector(Bx, Side * 49.0, 0.0), FVector(7.0, 2.5, Top + 3.0), Band);
+					TNPlaygroundKit::AddAxisBox(Into, FVector(Bx, Side * 49.0, 0.0), FVector(7.0, 2.5, Top + 3.0), Band);
 				}
 			}
-			// Vasito de yogur por cazo (blanco con etiqueta de color).
-			AddBowl(B, A, TNPlaygroundKit::Rgb(0xF7F3EA, 0.3f));
-			const FLinearColor Label = TNPlaygroundKit::ToyColor(static_cast<int32>((Seed >> 4) % 7u), 0.2f);
+			// Vasito de yogur por cazo (blanco con etiqueta de color; dorado en la potenciada).
+			AddBowl(Bowl, A, bGold ? TNBeachBoostKit::Gold() : TNPlaygroundKit::Rgb(0xF7F3EA, 0.3f));
+			const FLinearColor Label = bGold ? TNBeachBoostKit::Navy() : TNPlaygroundKit::ToyColor(static_cast<int32>((Seed >> 4) % 7u), 0.2f);
 			const double Cx = -A.Long + 0.5 * A.BowlL;
-			TNPlaygroundKit::AddFrustum(B, FVector(Cx, 0.0, Top - A.BowlDepth - 12.0), FVector(Cx, 0.0, Top - 4.0), 0.72 * A.BowlHW, 0.98 * A.BowlHW, 20, Label,
+			TNPlaygroundKit::AddFrustum(Bowl, FVector(Cx, 0.0, Top - A.BowlDepth - 12.0), FVector(Cx, 0.0, Top - 4.0), 0.72 * A.BowlHW, 0.98 * A.BowlHW, 20, Label,
 				Label, false, false);
 		}
 		else
 		{
-			const FLinearColor Col = A.Style == 1 ? TNPlaygroundKit::Rgb(0xD9B07A, 0.05f) : TNPlaygroundKit::ToyColor(static_cast<int32>((Seed >> 2) % 7u), 0.35f);
-			const TArray<FVector2D> Outline = TNPlaygroundKit::StadiumOutline(HandleX1 - HandleX0 + 30.0, HandleWidth, 5);
-			TNPlaygroundKit::AddSlab(B, FVector(0.5 * (HandleX0 + HandleX1), 0.0, 0.0), FVector::ForwardVector, FVector::RightVector, FVector::UpVector, Outline, A.Thick,
-				Col);
+			const FLinearColor Col = bGold ? TNBeachBoostKit::Gold()
+				: (A.Style == 1 ? TNPlaygroundKit::Rgb(0xD9B07A, 0.05f) : TNPlaygroundKit::ToyColor(static_cast<int32>((Seed >> 2) % 7u), 0.35f));
+			// Mango del corte al extremo (redondeado) y el trozo del cuello al corte.
+			const double ArmLen = HandleX1 + 15.0 - CrackX;
+			TNPlaygroundKit::AddSlab(Arm, FVector(CrackX + 0.5 * ArmLen, 0.0, 0.0), FVector::ForwardVector, FVector::RightVector, FVector::UpVector, HalfStadium(ArmLen, HandleWidth),
+				A.Thick, Col);
+			const double StubLen = CrackX - (HandleX0 - 15.0);
+			TNPlaygroundKit::AddSlab(Bowl, FVector(CrackX - 0.5 * StubLen, 0.0, 0.0), FVector::ForwardVector, FVector::RightVector, FVector::UpVector, RectOutline(StubLen, HandleWidth),
+				A.Thick, Col);
 			// Cuello ensanchado hacia el cazo.
 			const TArray<FVector2D> Neck = { FVector2D(HandleX0 - 40.0, -0.8 * A.BowlHW), FVector2D(HandleX0 + 120.0, -0.5 * HandleWidth),
 				FVector2D(HandleX0 + 120.0, 0.5 * HandleWidth), FVector2D(HandleX0 - 40.0, 0.8 * A.BowlHW) };
-			TNPlaygroundKit::AddSlab(B, FVector(0.0, 0.0, 0.0), FVector::ForwardVector, FVector::RightVector, FVector::UpVector, Neck, A.Thick * 0.9, Col);
-			if (A.Style == 1)
+			TNPlaygroundKit::AddSlab(Bowl, FVector(0.0, 0.0, 0.0), FVector::ForwardVector, FVector::RightVector, FVector::UpVector, Neck, A.Thick * 0.9, Col);
+			if (A.Style == 1 && !bGold)
 			{
-				// Vetas de la madera.
+				// Vetas de la madera (en el mango).
 				for (int32 i = 0; i < 4; ++i)
 				{
 					const double Y = -30.0 + 20.0 * i;
-					TNPlaygroundKit::AddAxisBox(B, FVector(0.5 * (HandleX0 + HandleX1) + 40.0 * TNBeachTrapKit::Hash01(i, 1, Seed), Y, Top + 0.6),
-						FVector(0.3 * (HandleX1 - HandleX0), 2.0, 0.5), TNPlaygroundKit::Shade(Col, 0.8));
+					TNPlaygroundKit::AddAxisBox(Arm, FVector(0.5 * (CrackX + HandleX1) + 30.0 * TNBeachTrapKit::Hash01(i, 1, Seed), Y, Top + 0.6),
+						FVector(0.32 * (HandleX1 - CrackX), 2.0, 0.5), TNPlaygroundKit::Shade(Col, 0.8));
 				}
 			}
-			AddBowl(B, A, Col);
+			AddBowl(Bowl, A, Col);
 		}
-		AddBucket(B, A, Seed);
+		AddBucket(Arm, A, Seed, bGold);
 	}
 
-	/** Cascos del brazo (espacio del eje): suelo y bordes del cazo, mango y cubito. */
-	void BuildArmHulls(FHulls& Hulls, const FCatapultArm& A)
+	/** Cascos del brazo (espacio del eje): el cazo con su cuello hasta el corte en Bowl; el mango y el cubito en Arm. */
+	void BuildArmHulls(FHulls& Arm, FHulls& Bowl, const FCatapultArm& A, double CrackX)
 	{
 		const double Top = 0.5 * A.Thick;
 		const double Floor = Top - A.BowlDepth;
 		const double X0 = -A.Long;
 		const double X1 = -A.Long + A.BowlL;
-		Hulls.Add(TNPlaygroundKit::HullAxisBox(FVector(0.5 * (X0 + X1), 0.0, Floor - 7.0), FVector(0.5 * (X1 - X0) - 12.0, A.BowlHW - 12.0, 7.0)));
-		Hulls.Add(TNPlaygroundKit::HullAxisBox(FVector(X0 + 6.0, 0.0, 0.5 * (Floor - 14.0 + Top)), FVector(12.0, A.BowlHW, 0.5 * (Top - Floor + 14.0))));
+		Bowl.Add(TNPlaygroundKit::HullAxisBox(FVector(0.5 * (X0 + X1), 0.0, Floor - 7.0), FVector(0.5 * (X1 - X0) - 12.0, A.BowlHW - 12.0, 7.0)));
+		Bowl.Add(TNPlaygroundKit::HullAxisBox(FVector(X0 + 6.0, 0.0, 0.5 * (Floor - 14.0 + Top)), FVector(12.0, A.BowlHW, 0.5 * (Top - Floor + 14.0))));
 		for (const double Side : { -1.0, 1.0 })
 		{
-			Hulls.Add(TNPlaygroundKit::HullAxisBox(FVector(0.5 * (X0 + X1), Side * (A.BowlHW - 9.0), 0.5 * (Floor - 14.0 + Top)),
+			Bowl.Add(TNPlaygroundKit::HullAxisBox(FVector(0.5 * (X0 + X1), Side * (A.BowlHW - 9.0), 0.5 * (Floor - 14.0 + Top)),
 				FVector(0.5 * (X1 - X0), 9.0, 0.5 * (Top - Floor + 14.0))));
 		}
-		Hulls.Add(TNPlaygroundKit::HullAxisBox(FVector(0.5 * (X1 - 20.0 + A.Short), 0.0, 0.0), FVector(0.5 * (A.Short - X1 + 20.0), 0.5 * HandleWidth, Top)));
-		Hulls.Add(TNPlaygroundKit::HullCylinder(FVector(A.Short - 0.9 * A.BucketR, 0.0, Top), A.BucketH, 0.82 * A.BucketR, A.BucketR, 12));
+		Bowl.Add(TNPlaygroundKit::HullAxisBox(FVector(0.5 * (X1 - 20.0 + CrackX), 0.0, 0.0), FVector(0.5 * (CrackX - X1 + 20.0), 0.5 * HandleWidth, Top)));
+		Arm.Add(TNPlaygroundKit::HullAxisBox(FVector(0.5 * (CrackX + A.Short), 0.0, 0.0), FVector(0.5 * (A.Short - CrackX), 0.5 * HandleWidth, Top)));
+		Arm.Add(TNPlaygroundKit::HullCylinder(FVector(A.Short - 0.9 * A.BucketR, 0.0, Top), A.BucketH, 0.82 * A.BucketR, A.BucketR, 12));
+	}
+
+	/** Astillas que asoman del corte del mango hacia el cazo (espacio del eje), del color del material roto. */
+	void BuildSplinters(FBuffers& B, const FCatapultArm& A, double CrackX, uint32 Seed, const FLinearColor& Col)
+	{
+		const double Across = A.Style == 2 ? 92.0 : HandleWidth - 10.0;
+		for (int32 i = 0; i < 10; ++i)
+		{
+			const double Len = 22.0 + 42.0 * TNBeachTrapKit::Hash01(i, 1, Seed);
+			const double Y = (TNBeachTrapKit::Hash01(i, 2, Seed) - 0.5) * Across;
+			const double Z = (TNBeachTrapKit::Hash01(i, 3, Seed) - 0.5) * A.Thick * 0.8;
+			const double Yaw = 180.0 + (TNBeachTrapKit::Hash01(i, 4, Seed) - 0.5) * 50.0;
+			const double Tilt = (TNBeachTrapKit::Hash01(i, 5, Seed) - 0.5) * 40.0;
+			const FTransform Xf(FRotator(Tilt, Yaw, 0.0), FVector(CrackX + 4.0, Y, Z));
+			TNPlaygroundKit::AddXfBox(B, Xf, FVector(0.5 * Len, 0.0, 0.0), FVector(0.5 * Len, 2.0 + 2.5 * TNBeachTrapKit::Hash01(i, 6, Seed), 1.6),
+				(i % 3 == 0) ? TNPlaygroundKit::Shade(Col, 0.8) : Col);
+		}
 	}
 }
 
@@ -224,6 +317,22 @@ ATN_BeachCatapult::ATN_BeachCatapult()
 	ArmCollision->SetupAttachment(ArmPivot);
 	TNBeachTrapKit::ConfigureSolid(ArmCollision, false);
 
+	BowlHinge = CreateDefaultSubobject<USceneComponent>(TEXT("BowlHinge"));
+	BowlHinge->SetupAttachment(ArmPivot);
+
+	BowlMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BowlMesh"));
+	BowlMesh->SetupAttachment(BowlHinge);
+	TNBeachTrapKit::ConfigureVisual(BowlMesh);
+
+	BowlCollision = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("BowlCollision"));
+	BowlCollision->SetupAttachment(BowlHinge);
+	TNBeachTrapKit::ConfigureSolid(BowlCollision, false);
+
+	SplinterMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SplinterMesh"));
+	SplinterMesh->SetupAttachment(ArmPivot);
+	TNBeachTrapKit::ConfigureVisual(SplinterMesh);
+	SplinterMesh->SetVisibility(false);
+
 	PropPivot = CreateDefaultSubobject<USceneComponent>(TEXT("PropPivot"));
 	PropPivot->SetupAttachment(Frame);
 	PropMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropMesh"));
@@ -251,6 +360,7 @@ void ATN_BeachCatapult::ApplySpec()
 	using namespace TNBeachCatapultDetail;
 	const double Fit = TNBeachTrapKit::FitRadius(Spec.Element, Spec.SizeScale);
 	const uint32 Seed = TNBeachTrapKit::SeedOf(Spec.Seed, 83u);
+	bBoosted = (Spec.Flags & TNBeach::FlagBoosted) != 0;
 
 	// Brazo: el cazo y el cubito tienen medidas de tortuga (no bajan de lo que cabe una); el resto escala con la huella.
 	FCatapultArm A;
@@ -273,6 +383,7 @@ void ATN_BeachCatapult::ApplySpec()
 	BowlDepth = A.BowlDepth;
 	BucketRadius = A.BucketR;
 	BucketHeight = A.BucketH;
+	CrackX = CrackXOf(A);
 
 	// Fulcro: piedra y tapón de garrafa; el brazo se apoya encima.
 	const double StoneH = FMath::Clamp(0.16 * Fit, 110.0, 145.0);
@@ -291,18 +402,32 @@ void ATN_BeachCatapult::ApplySpec()
 	}
 	RestDeg = FMath::RadiansToDegrees(Theta);
 	FiredDeg = -FMath::RadiansToDegrees(FMath::Asin(FMath::Clamp((PivotZ - 0.5 * A.Thick - 4.0) / A.Short, 0.0, 0.95)));
+	// Partida: el mango se queda con el cubito en la arena (FiredDeg) y el cazo cuelga ~72° por debajo de la horizontal.
+	DangleDeg = 72.0 - FiredDeg;
 
 	// Hacia su X si ya mira al mar (el reparto le deja libre el arco de salto por ahí); si no, hacia el mar.
 	FrameYawDeg = TNBeachRideKit::LaunchYawInActor(this);
 	Frame->SetRelativeRotation(FRotator(0.0, FrameYawDeg, 0.0));
 	ArmPivot->SetRelativeLocationAndRotation(FVector(PivotX, 0.0, PivotZ), FRotator(RestDeg, 0.0, 0.0));
+	BowlHinge->SetRelativeLocationAndRotation(FVector(CrackX, 0.0, 0.0), FRotator::ZeroRotator);
 
 	TNBeachTrapKit::FBuffers Arm;
-	BuildArm(Arm, A, Seed);
+	TNBeachTrapKit::FBuffers Bowl;
+	BuildArm(Arm, Bowl, A, Seed, CrackX, bBoosted);
+	ShiftX(Bowl, -CrackX);
 	TNBeachTrapKit::SetMesh(ArmMesh, this, Arm);
+	TNBeachTrapKit::SetMesh(BowlMesh, this, Bowl);
 	TNBeachTrapKit::FHulls ArmHulls;
-	BuildArmHulls(ArmHulls, A);
+	TNBeachTrapKit::FHulls BowlHulls;
+	BuildArmHulls(ArmHulls, BowlHulls, A, CrackX);
+	ShiftX(BowlHulls, -CrackX);
 	ArmCollision->SetCollisionConvexMeshes(ArmHulls);
+	BowlCollision->SetCollisionConvexMeshes(BowlHulls);
+	TNBeachTrapKit::FBuffers Splinters;
+	const FLinearColor Raw = bBoosted ? TNPlaygroundKit::Rgb(0xFFE9A8, 0.3f)
+		: (A.Style == 0 ? TNPlaygroundKit::Rgb(0xF4F1EA, 0.2f) : TNPlaygroundKit::Rgb(0xF2D9A8, 0.05f));
+	BuildSplinters(Splinters, A, CrackX, Seed, Raw);
+	TNBeachTrapKit::SetMesh(SplinterMesh, this, Splinters);
 
 	// Piedra, tapón con estrías y una cuna para el brazo, arena removida.
 	TNBeachTrapKit::FBuffers Base;
@@ -315,14 +440,15 @@ void ATN_BeachCatapult::ApplySpec()
 	TNBeachTrapKit::AddLatheProfile(Base, FVector(PivotX, 0.0, 0.0), StoneProfile, StoneCols, 11, 0.07, Seed);
 	BaseHulls.Add(TNPlaygroundKit::HullCylinder(FVector(PivotX, 0.0, -25.0), StoneH + 25.0, StoneBaseR, StoneTopR, 12));
 	static const uint32 CapHex[4] = { 0xE63946, 0x1D7FD1, 0x2BB673, 0xF4F1EA };
-	const FLinearColor CapCol = TNPlaygroundKit::Rgb(CapHex[(Seed >> 5) % 4u], 0.35f);
+	const FLinearColor CapCol = bBoosted ? TNBeachBoostKit::Navy() : TNPlaygroundKit::Rgb(CapHex[(Seed >> 5) % 4u], 0.35f);
+	const FLinearColor RibCol = bBoosted ? TNBeachBoostKit::Gold() : TNPlaygroundKit::Shade(CapCol, 0.9);
 	TNPlaygroundKit::AddFrustum(Base, FVector(PivotX, 0.0, StoneH - 4.0), FVector(PivotX, 0.0, StoneH + CapH), CapR, CapR - 3.0, 24, CapCol,
 		TNPlaygroundKit::Shade(CapCol, 1.08), false, true);
 	for (int32 i = 0; i < 24; ++i)
 	{
 		const double Ang = 360.0 * i / 24.0;
 		TNPlaygroundKit::AddXfBox(Base, FTransform(FRotator(0.0, Ang, 0.0), FVector(PivotX, 0.0, StoneH)), FVector(CapR, 0.0, 0.5 * CapH), FVector(4.0, 5.0, 0.5 * CapH - 6.0),
-			TNPlaygroundKit::Shade(CapCol, 0.9));
+			RibCol);
 	}
 	for (const double Side : { -1.0, 1.0 })
 	{
@@ -338,6 +464,13 @@ void ATN_BeachCatapult::ApplySpec()
 	const FVector PoleBase(PivotX - 20.0, -(StoneTopR - 6.0), StoneH - 10.0);
 	const FVector PoleTop = PoleBase + FVector(0.0, 0.0, 190.0);
 	TNPlaygroundKit::AddRod(Base, PoleBase, PoleTop, 6.0, 6, TNPlaygroundKit::Rgb(0xE8D2A6), FVector::ForwardVector);
+	if (bBoosted)
+	{
+		// Potenciada: al otro lado, la bandera de Tortunavy, y una guirnalda de banderines de palo a palo por encima del eje.
+		const FVector NavyFoot(PivotX - 20.0, StoneTopR - 6.0, StoneH - 10.0);
+		TNBeachBoostKit::AddNavyFlag(Base, NavyFoot, 260.0, FVector(-1.0, 0.4, 0.0), 120.0, 80.0, Seed);
+		TNBeachBoostKit::AddBunting(Base, PoleTop, NavyFoot + FVector(0.0, 0.0, 240.0), 28.0, 26.0, Seed);
+	}
 	TNBeachTrapKit::SetMesh(BaseMesh, this, Base);
 	BaseCollision->SetCollisionConvexMeshes(BaseHulls);
 	TNBeachTrapKit::FBuffers Green;
@@ -357,19 +490,21 @@ void ATN_BeachCatapult::ApplySpec()
 		TNPlaygroundKit::Rgb(0xE9CC98, 0.05f));
 	TNBeachTrapKit::SetMesh(PropMesh, this, Prop);
 
-	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Catapulta %s: brazo de %.0f cm, fulcro a %.0f, %.0f° en reposo y %.0f° disparada, estilo %d."), *GetName(),
-		A.Long + A.Short, PivotZ, RestDeg, FiredDeg, A.Style);
+	// Si se rehace con el brazo ya partido, que el Tick vuelva a poner la pose.
+	SetActorTickEnabled(true);
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Catapulta %s: brazo de %.0f cm, fulcro a %.0f, %.0f° en reposo y %.0f° disparada, estilo %d%s%s."), *GetName(),
+		A.Long + A.Short, PivotZ, RestDeg, FiredDeg, A.Style, bBoosted ? TEXT(", potenciada") : TEXT(""), bSingleUse ? TEXT(", un solo uso") : TEXT(""));
 }
 
 void ATN_BeachCatapult::BeginPlay()
 {
 	Super::BeginPlay();
 	const FVector Mid = ArmPivot->GetComponentLocation();
-	Voice = UTN_BeachTrapSynthComponent::AttachTo(this, Mid, 800.f, 3500.f);
-	Toy = UTN_PlaygroundSynthComponent::AttachTo(this, Mid, 800.f, 3500.f);
+	Voice = UTN_BeachTrapSynthComponent::AttachTo(this, Mid, 800.f, bBoosted ? 5000.f : 3500.f);
+	Toy = UTN_PlaygroundSynthComponent::AttachTo(this, Mid, 800.f, bBoosted ? 5000.f : 3500.f);
 	Dust.Init(this, ETNTrapBurstShape::Blob, TNBeachTrapKit::SandTop(), 32);
 	Dust.SetMotion(-500.f, 2.f, 40.f, 12.f, 0.4f, 0.9f);
-	Chips.Init(this, ETNTrapBurstShape::Chip, TNPlaygroundKit::Rgb(0xE9CC98), 16);
+	Chips.Init(this, ETNTrapBurstShape::Chip, bBoosted ? TNPlaygroundKit::Rgb(0xFFE9A8) : TNPlaygroundKit::Rgb(0xE9CC98), 24);
 	Chips.SetMotion(-980.f, 0.6f, 20.f, 8.f, 0.5f, 1.0f);
 }
 
@@ -379,7 +514,11 @@ void ATN_BeachCatapult::BeginPlay()
 
 bool ATN_BeachCatapult::IsLoaded(double ServerTime) const
 {
-	return FiredAt < 0.f || ServerTime - static_cast<double>(FiredAt) >= ReloadSeconds;
+	if (FiredAt < 0.f)
+	{
+		return true;
+	}
+	return !bSingleUse && ServerTime - static_cast<double>(FiredAt) >= ReloadSeconds;
 }
 
 double ATN_BeachCatapult::ArmPitchAt(double Now) const
@@ -390,7 +529,7 @@ double ATN_BeachCatapult::ArmPitchAt(double Now) const
 		return RestDeg;
 	}
 	const double T = Now - static_cast<double>(FiredAt);
-	if (T < 0.0 || T >= ReloadSeconds)
+	if (T < 0.0)
 	{
 		return RestDeg;
 	}
@@ -404,6 +543,15 @@ double ATN_BeachCatapult::ArmPitchAt(double Now) const
 		// Rebote contra la arena: dos botes que se apagan.
 		const double B = T - SwingSeconds;
 		return FiredDeg + 9.0 * FMath::Exp(-B / 0.14) * FMath::Abs(FMath::Sin(TNPlaygroundKit::KitPi * B / 0.17));
+	}
+	if (bSingleUse)
+	{
+		// Partida: el mango se queda tumbado con el cubito en la arena.
+		return FiredDeg;
+	}
+	if (T >= ReloadSeconds)
+	{
+		return RestDeg;
 	}
 	if (T < HoldEnd)
 	{
@@ -422,12 +570,30 @@ double ATN_BeachCatapult::ArmPitchAt(double Now) const
 	return RestDeg - 2.5 * FMath::Exp(-S / 0.1) * FMath::Sin(TNPlaygroundKit::KitPi * S / 0.12);
 }
 
+double ATN_BeachCatapult::BowlPitchAt(double Now) const
+{
+	using namespace TNBeachCatapultDetail;
+	if (!bSingleUse || FiredAt < 0.f)
+	{
+		return 0.0;
+	}
+	const double U = Now - static_cast<double>(FiredAt) - BreakSeconds;
+	if (U <= 0.0)
+	{
+		return 0.0;
+	}
+	// Se parte y cae colgando de las astillas: se pasa un poco, rebota y se queda meciéndose cada vez menos.
+	return DangleDeg * (1.0 - FMath::Exp(-U / 0.14) * FMath::Cos(TNPlaygroundKit::KitTwoPi * U / 0.55));
+}
+
 int32 ATN_BeachCatapult::WhereOnArm(const ACharacter* Character) const
 {
-	if (!Character || Character->GetMovementBase() != ArmCollision.Get())
+	const UPrimitiveComponent* Floor = Character ? Character->GetMovementBase() : nullptr;
+	if (!Floor || (Floor != ArmCollision.Get() && Floor != BowlCollision.Get()))
 	{
 		return 0;
 	}
+	// En el espacio del eje (la bisagra del cazo no gira mientras la catapulta está entera).
 	const FVector Feet = TNBeachRideKit::FeetIn(ArmPivot->GetComponentTransform(), Character);
 	if (Feet.X < -LongArm + BowlLength + 10.0 && FMath::Abs(Feet.Y) < BowlHalfWidth + 25.0)
 	{
@@ -442,10 +608,11 @@ int32 ATN_BeachCatapult::WhereOnArm(const ACharacter* Character) const
 
 FVector ATN_BeachCatapult::LaunchVelocity(float Fraction) const
 {
-	// Hacia el mar (X del marco) con desvío y elevación al azar (servidor).
-	const float Yaw = FMath::FRandRange(-DeviationDeg, DeviationDeg);
-	const float Pitch = LaunchPitch + FMath::FRandRange(-3.f, 3.f);
-	const float Speed = LaunchSpeed * Fraction * FMath::FRandRange(0.95f, 1.05f);
+	// Hacia el mar (X del marco) con desvío y elevación al azar (servidor); la potenciada, más fuerte y más recta.
+	const float Spread = bBoosted ? BoostedDeviationDeg : DeviationDeg;
+	const float Yaw = FMath::FRandRange(-Spread, Spread);
+	const float Pitch = (bBoosted ? BoostedLaunchPitch : LaunchPitch) + FMath::FRandRange(bBoosted ? -1.5f : -3.f, bBoosted ? 1.5f : 3.f);
+	const float Speed = (bBoosted ? BoostedLaunchSpeed : LaunchSpeed) * Fraction * FMath::FRandRange(bBoosted ? 0.97f : 0.95f, bBoosted ? 1.03f : 1.05f);
 	const FVector Local = FRotator(Pitch, Yaw, 0.f).Vector();
 	return Frame->GetComponentTransform().TransformVectorNoScale(Local) * Speed;
 }
@@ -459,6 +626,17 @@ void ATN_BeachCatapult::ServerTick(double Now)
 	UWorld* World = GetWorld();
 	if (!World)
 	{
+		return;
+	}
+	if (IsSpent())
+	{
+		// Gastada: ya no se arma ni dispara en toda la ronda.
+		Riders.Reset();
+		if (ArmedAt >= 0.f)
+		{
+			ArmedAt = -1.f;
+			ForceNetUpdate();
+		}
 		return;
 	}
 	const FVector PivotAt = ArmPivot->GetComponentLocation();
@@ -552,6 +730,7 @@ void ATN_BeachCatapult::Fire(double Now)
 	// Sin colisión en el golpe: las bolas nacen dentro del cazo.
 	ArmCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	bArmCollisionOn = false;
+	SetBowlCollision(false);
 	int32 Launched = 0;
 	for (auto It = Riders.CreateIterator(); It; ++It)
 	{
@@ -571,7 +750,8 @@ void ATN_BeachCatapult::Fire(double Now)
 		}
 	}
 	ForceNetUpdate();
-	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Catapulta %s dispara: %d lanzadas."), *GetName(), Launched);
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Catapulta %s%s dispara: %d lanzadas%s."), *GetName(), bBoosted ? TEXT(" potenciada") : TEXT(""), Launched,
+		bSingleUse ? TEXT("; queda partida") : TEXT(""));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -584,6 +764,15 @@ void ATN_BeachCatapult::OnRep_Shot()
 	SetActorTickEnabled(true);
 }
 
+void ATN_BeachCatapult::SetBowlCollision(bool bOn)
+{
+	if (bOn != bBowlCollisionOn)
+	{
+		bBowlCollisionOn = bOn;
+		BowlCollision->SetCollisionEnabled(bOn ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+	}
+}
+
 void ATN_BeachCatapult::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -593,9 +782,15 @@ void ATN_BeachCatapult::Tick(float DeltaSeconds)
 		ServerTick(TNBeachTrapKit::ServerNow(GetWorld()));
 	}
 	TickVisuals(Now, DeltaSeconds);
-	Dust.Tick(DeltaSeconds);
-	Chips.Tick(DeltaSeconds);
-	Pop.Tick(DeltaSeconds, GetWorld());
+	const bool bDustLive = Dust.Tick(DeltaSeconds);
+	const bool bChipsLive = Chips.Tick(DeltaSeconds);
+	const bool bPopLive = Pop.Tick(DeltaSeconds, GetWorld());
+	const bool bBreakPopLive = BreakPop.Tick(DeltaSeconds, GetWorld());
+	// Gastada y quieta: nada que animar hasta la ronda siguiente (OnRep_Shot o ApplySpec lo vuelven a encender).
+	if (IsSpent() && Now - static_cast<double>(FiredAt) > TNBeachCatapultDetail::SettledSeconds && !bDustLive && !bChipsLive && !bPopLive && !bBreakPopLive)
+	{
+		SetActorTickEnabled(false);
+	}
 }
 
 void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
@@ -603,32 +798,42 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 	using namespace TNBeachCatapultDetail;
 	const double Fired = static_cast<double>(FiredAt);
 	const double T = FiredAt >= 0.f ? Now - Fired : 1e6;
-	const bool bArmed = ArmedAt >= 0.f && Now >= static_cast<double>(ArmedAt);
+	const bool bShot = FiredAt >= 0.f && T >= 0.0;
+	const bool bBroken = bSingleUse && bShot;
+	const bool bLoaded = IsLoaded(Now);
+	const bool bArmed = !bBroken && ArmedAt >= 0.f && Now >= static_cast<double>(ArmedAt);
 	const double Warn = bArmed ? FMath::Clamp((Now - static_cast<double>(ArmedAt)) / FMath::Max(0.05, static_cast<double>(WarnSeconds)), 0.0, 1.0) : 0.0;
 
-	// Brazo: con el aviso tiembla en su sitio.
+	// Brazo: con el aviso tiembla en su sitio; partido, el cazo cuelga de su bisagra.
 	double Pitch = ArmPitchAt(Now);
-	if (bArmed && (FiredAt < 0.f || T >= ReloadSeconds))
+	if (bArmed && bLoaded)
 	{
 		Pitch += (0.4 + 1.2 * Warn) * FMath::Sin(Now * 63.0);
 	}
 	ArmPivot->SetRelativeRotation(FRotator(Pitch, 0.0, 0.0));
+	BowlHinge->SetRelativeRotation(FRotator(BowlPitchAt(Now), 0.0, 0.0));
+	const bool bShowSplinters = bSingleUse && bShot && T >= BreakSeconds;
+	if (SplinterMesh->IsVisible() != bShowSplinters)
+	{
+		SplinterMesh->SetVisibility(bShowSplinters);
+	}
 
-	// Colisión del brazo apagada durante el golpe.
-	const bool bWantCollision = !(FiredAt >= 0.f && T >= 0.0 && T < NoCollisionSeconds);
+	// Colisión del brazo apagada durante el golpe; la del cazo, para siempre al partirse.
+	const bool bWantCollision = !(bShot && T < NoCollisionSeconds);
 	if (bWantCollision != bArmCollisionOn)
 	{
 		bArmCollisionOn = bWantCollision;
 		ArmCollision->SetCollisionEnabled(bWantCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
 	}
+	SetBowlCollision(bWantCollision && !bBroken);
 
-	// Palo que sujeta: tiembla con el aviso, sale volando al disparar y se pone de pie al final de la recarga.
+	// Palo que sujeta: tiembla con el aviso, sale volando al disparar y (si recarga) se pone de pie al final.
 	double PropPitch = 0.0;
 	double PropRoll = bArmed ? (2.0 + 4.0 * Warn) * FMath::Sin(Now * 47.0) : 0.0;
-	if (FiredAt >= 0.f && T >= 0.0 && T < ReloadSeconds)
+	if (bShot && (bSingleUse || T < ReloadSeconds))
 	{
 		const double Down = T < 0.35 ? TNPlaygroundKit::Smooth01(0.0, 0.35, T) : 1.0;
-		const double Up = TNPlaygroundKit::Smooth01(ReloadSeconds - 0.55, ReloadSeconds - 0.1, T);
+		const double Up = bSingleUse ? 0.0 : TNPlaygroundKit::Smooth01(ReloadSeconds - 0.55, ReloadSeconds - 0.1, T);
 		PropPitch = -84.0 * Down * (1.0 - Up) + (T > 0.35 && T < 0.6 ? 5.0 * FMath::Sin(TNPlaygroundKit::KitPi * (T - 0.35) / 0.25) : 0.0);
 		PropRoll = 0.0;
 	}
@@ -640,16 +845,22 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 		return;
 	}
 
-	// Banderín: verde lista; rojo parpadeando armada; rojo fijo recargando.
-	const bool bLoaded = IsLoaded(Now);
-	const bool bShowRed = !bLoaded || (bArmed && FMath::Frac(Now * 4.0) < 0.5);
-	FlagGreen->SetVisibility(!bShowRed);
-	FlagRed->SetVisibility(bShowRed);
+	// Banderín: verde lista; rojo parpadeando armada; rojo fijo recargando; ninguno con el brazo partido (arrancado).
+	const bool bShowRed = !bBroken && (!bLoaded || (bArmed && FMath::Frac(Now * 4.0) < 0.5));
+	const bool bShowGreen = !bBroken && !bShowRed;
+	if (FlagGreen->IsVisible() != bShowGreen)
+	{
+		FlagGreen->SetVisibility(bShowGreen);
+	}
+	if (FlagRed->IsVisible() != bShowRed)
+	{
+		FlagRed->SetVisibility(bShowRed);
+	}
 
 	const double Before = LastVisualNow;
 	auto Crossed = [Before, Now](double At) { return At >= 0.0 && Before < At && Now >= At && Now - At < 1.0; };
 	const FTransform ArmXf = ArmPivot->GetComponentTransform();
-	const FVector BowlAt = ArmXf.TransformPosition(FVector(-LongArm + 0.5 * BowlLength, 0.0, 40.0));
+	const FVector BowlAt = BowlHinge->GetComponentTransform().TransformPosition(FVector(-LongArm + 0.5 * BowlLength - CrackX, 0.0, 40.0));
 	const FVector BucketAt = ArmXf.TransformPosition(FVector(ShortArm - 0.9 * BucketRadius, 0.0, 0.0));
 
 	// Aviso: crujidos cada vez más seguidos y agudos.
@@ -672,7 +883,7 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 		CreakTimer = 0.f;
 	}
 
-	// Disparo: el palo se parte, el cubito cae y la cuchara da la vuelta.
+	// Disparo: el palo se parte, el cubito cae y la cuchara da la vuelta. La potenciada, con fanfarria y más golpe.
 	if (Crossed(Fired))
 	{
 		const FVector PropTop = PropPivot->GetComponentLocation() + FVector(0.0, 0.0, 120.0);
@@ -683,26 +894,68 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 		}
 		if (Toy)
 		{
-			Toy->TriggerSound(ETNPlaygroundSound::Whoosh, 0.8f, 1.f);
+			Toy->TriggerSound(ETNPlaygroundSound::Whoosh, bBoosted ? 0.62f : 0.8f, bBoosted ? 1.3f : 1.f);
 		}
-		Pop.Show(this, NSLOCTEXT("TNBeach", "CatapultFire", "¡ZAS!"), FColor(255, 170, 70), BowlAt + FVector(0.0, 0.0, 300.0), 150.f);
+		if (bBoosted)
+		{
+			Pop.Show(this, NSLOCTEXT("TNBeach", "CatapultFireBoosted", "¡ZAAAS!"), FColor(255, 215, 60), BowlAt + FVector(0.0, 0.0, 320.0), 230.f);
+			TNBeachBoostKit::PlayFanfareNear(this, BowlAt, 9000.f, 1.f);
+			if (Voice)
+			{
+				Voice->TriggerSoundAt(ETNBeachTrapSound::Twang, BowlAt, 0.5f, 1.3f);
+			}
+		}
+		else
+		{
+			Pop.Show(this, NSLOCTEXT("TNBeach", "CatapultFire", "¡ZAS!"), FColor(255, 170, 70), BowlAt + FVector(0.0, 0.0, 300.0), 150.f);
+		}
 	}
 	if (Crossed(Fired + SwingSeconds))
 	{
-		Dust.Burst(BucketAt, 16, FVector::UpVector, 380.f, 1.3f, static_cast<float>(BucketRadius));
+		Dust.Burst(BucketAt, bBoosted ? 26 : 16, FVector::UpVector, bBoosted ? 520.f : 380.f, 1.3f, static_cast<float>(BucketRadius));
 		if (Voice)
 		{
-			Voice->TriggerSoundAt(ETNBeachTrapSound::Thud, BucketAt, FMath::FRandRange(0.8f, 0.9f), 1.2f);
+			Voice->TriggerSoundAt(ETNBeachTrapSound::Thud, BucketAt, FMath::FRandRange(0.8f, 0.9f) * (bBoosted ? 0.8f : 1.f), bBoosted ? 1.5f : 1.2f);
 			Voice->TriggerSoundAt(ETNBeachTrapSound::Twang, BowlAt, FMath::FRandRange(0.7f, 0.8f), 0.9f);
 		}
 		if (Toy)
 		{
 			Toy->TriggerSound(ETNPlaygroundSound::Bonk, 0.7f, 1.f);
 		}
-		UTN_BeachCameraShake::Kick(this, BucketAt, 0.4f, 600.f, 2600.f);
+		if (bBoosted)
+		{
+			UTN_BeachCameraShake::Kick(this, BucketAt, 0.7f, 900.f, 4200.f);
+		}
+		else
+		{
+			UTN_BeachCameraShake::Kick(this, BucketAt, 0.4f, 600.f, 2600.f);
+		}
 	}
-	// Recarga: carraca a cada paso.
-	if (FiredAt >= 0.f && T > HoldEnd && T < ReloadSeconds - SettleSeconds)
+
+	// Un solo uso: el brazo se parte por el cuello del cazo, que cae colgando de las astillas.
+	if (bSingleUse && Crossed(Fired + BreakSeconds))
+	{
+		const FVector CrackAt = ArmXf.TransformPosition(FVector(CrackX, 0.0, 0.0));
+		Chips.Burst(CrackAt, 16, FVector::UpVector, 360.f, 1.4f, 40.f);
+		if (Voice)
+		{
+			Voice->TriggerSoundAt(ETNBeachTrapSound::Crack, CrackAt, FMath::FRandRange(0.7f, 0.8f), 1.3f);
+			Voice->TriggerSoundAt(ETNBeachTrapSound::Creak, CrackAt, 0.6f, 0.8f);
+		}
+		BreakPop.Show(this, NSLOCTEXT("TNBeach", "CatapultBreak", "¡CRAC!"), FColor(255, 120, 90), CrackAt + FVector(0.0, 0.0, 170.0), 130.f);
+	}
+	if (bSingleUse && Crossed(Fired + BreakSeconds + 0.3))
+	{
+		const FVector HangAt = BowlHinge->GetComponentLocation();
+		if (Voice)
+		{
+			Voice->TriggerSoundAt(ETNBeachTrapSound::Creak, HangAt, 0.45f, 0.7f);
+		}
+		Dust.Burst(HangAt - FVector(0.0, 0.0, FMath::Max(0.0, HangAt.Z - GetActorLocation().Z - 40.0)), 6, FVector::UpVector, 160.f, 1.2f, 50.f);
+	}
+
+	// Recarga (sin bSingleUse): carraca a cada paso y el cazo que se asienta.
+	if (!bSingleUse && FiredAt >= 0.f && T > HoldEnd && T < ReloadSeconds - SettleSeconds)
 	{
 		if (Now - LastRatchetAt >= RatchetStep || LastRatchetAt > Now)
 		{
@@ -713,7 +966,7 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 			}
 		}
 	}
-	if (Crossed(Fired + ReloadSeconds) && Voice)
+	if (!bSingleUse && Crossed(Fired + ReloadSeconds) && Voice)
 	{
 		Voice->TriggerSoundAt(ETNBeachTrapSound::Clack, BowlAt, 1.2f, 0.7f);
 		Dust.Burst(BowlAt - FVector(0.0, 0.0, 40.0), 6, FVector::UpVector, 200.f, 1.2f, 60.f);
