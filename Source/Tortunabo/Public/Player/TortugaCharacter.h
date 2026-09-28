@@ -1020,6 +1020,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
 	float KnockdownGroundLockSpeed = 50.f;
 
+	/** Velocidad máxima (cm/s) con la que arranca el ragdoll del derribo (los golpes muy fuertes se recortan). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "100.0"))
+	float KnockdownRagdollMaxEntrySpeed = 2200.f;
+
+	/** Margen (cm) sobre la superficie al devolver encima un ragdoll que la ha atravesado. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
+	float KnockdownRagdollTunnelMargin = 25.f;
+
 	/** Tiempo mínimo tumbada en el suelo (s): aunque el golpe pida menos, se queda quieta un momento. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
 	float MinKnockdownSeconds = 2.2f;
@@ -1169,6 +1177,18 @@ protected:
 	FName SnapshotSkelMeshCollisionProfile = NAME_None;
 	/** true mientras el ragdoll físico está activo (evita doble-activación y no-ops al recover). */
 	bool bKnockdownRagdollActive = false;
+	/** Cuerpo raíz del ragdoll en el fotograma anterior: si de uno a otro cruza el suelo, se devuelve encima. */
+	FVector RagdollProbeLast = FVector::ZeroVector;
+	bool bRagdollProbeValid = false;
+	/** Dónde estaba de pie la cápsula al caer: último recurso si al levantarse no hay suelo bajo el cuerpo. */
+	FVector PreKnockdownStandLocation = FVector::ZeroVector;
+	/**
+	 * Cada fotograma con el ragdoll del derribo (en todas las máquinas): que el cuerpo no atraviese el suelo aunque vaya
+	 * muy rápido y que la cápsula lo siga, para que la cámara (en el brazo de la cápsula) siga a la tortuga tumbada.
+	 */
+	void TickKnockdownRagdoll(float DeltaTime);
+	/** Centro de la cápsula de pie sobre el suelo que hay bajo From (o encima, si el cuerpo quedó por debajo); false si no hay. */
+	bool FindStandSpotNear(const FVector& From, FVector& OutStandLoc) const;
 	/** Hasta cuándo (tiempo del mundo) dura la animación de levantarse: sin moverse ni saltar (local). */
 	float GetUpLockUntil = -1.f;
 	/** Pasa la pose del ragdoll (en locales, ya en el sitio nuevo de la cápsula) a la animación de levantarse. */

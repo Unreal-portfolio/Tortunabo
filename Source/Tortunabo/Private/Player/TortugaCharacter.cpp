@@ -550,6 +550,7 @@ void ATortugaCharacter::Tick(float DeltaTime)
 		}
 	}
 
+	TickKnockdownRagdoll(DeltaTime); // ragdoll del derribo: sin atravesar el suelo y con la cámara siguiéndolo
 	TickDive(DeltaTime);           // dive physics recovery + procedural animation
 	TickJumpAnim(DeltaTime);       // jump procedural animation (suppressed during dive)
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
