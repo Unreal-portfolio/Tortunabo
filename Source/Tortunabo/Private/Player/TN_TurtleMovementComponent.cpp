@@ -164,6 +164,8 @@ namespace TNBellySlide
 
 UTN_TurtleMovementComponent::UTN_TurtleMovementComponent()
 {
+	// Movimientos del cliente sin bases que el servidor no encuentra por red (FTNTurtleNetworkMoveDataContainer).
+	SetNetworkMoveDataContainer(TurtleNetworkMoveData);
 }
 
 ATortugaCharacter* UTN_TurtleMovementComponent::GetTurtle() const
@@ -251,6 +253,13 @@ void UTN_TurtleMovementComponent::UpdateCharacterStateBeforeMovement(float Delta
 	if (SimulatesBelly())
 	{
 		TickBellyPhase(DeltaSeconds);
+		// Fuera del panzazo con la cápsula aún encogida (se acabó sin levantarse, o el fin llegó con el movimiento parado):
+		// de pie con los pies en su sitio, dentro del movimiento (el servidor y el dueño igual). Si ya está de pie, nada.
+		const ATortugaCharacter* Turtle = GetTurtle();
+		if (Turtle && !Turtle->IsDiving() && BellyPhase == ETNBellyPhase::None && !CharacterOwner->bIsCrouched)
+		{
+			RestoreStandingCapsule();
+		}
 	}
 }
 
@@ -277,19 +286,12 @@ void UTN_TurtleMovementComponent::TickBellyPhase(float DeltaSeconds)
 	{
 		if (!bDiving || Serial != SlideSerial)
 		{
-			// El servidor ha cortado el panzazo por otra cosa (derribo, muerte): vuelve la cápsula de pie tal cual, como
-			// hace el fin del panzazo en las demás máquinas.
+			// El servidor ha cortado el panzazo por otra cosa (derribo, muerte, tope de tiempo): la cápsula vuelve a estar de
+			// pie con los pies donde están (antes crecía en su sitio: la mitad de abajo quedaba dentro del terreno y, al
+			// desincrustarse, podía caer por debajo del mapa).
 			BellyPhase = ETNBellyPhase::None;
 			BellyTime = 0.f;
-			if (Turtle && CharacterOwner->GetCapsuleComponent())
-			{
-				UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
-				const float StandHalf = Turtle->GetStandingCapsuleHalfHeight();
-				if (Capsule->GetUnscaledCapsuleHalfHeight() < StandHalf - 0.5f)
-				{
-					Capsule->SetCapsuleSize(Capsule->GetUnscaledCapsuleRadius(), StandHalf, true);
-				}
-			}
+			RestoreStandingCapsule();
 			break;
 		}
 		BellyTime += DeltaSeconds;
@@ -826,6 +828,161 @@ FNetworkPredictionData_Client* UTN_TurtleMovementComponent::GetPredictionData_Cl
 		MutableThis->ClientPredictionData = new TNBellySlide::FTNNetworkPredictionData_Client_Turtle(*this);
 	}
 	return ClientPredictionData;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Red: bases de movimiento que no se encuentran por red
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNTurtleNetBase
+{
+	/**
+	 * Un movimiento del cliente que iba relativo a una base que el servidor no puede encontrar: posición y aceleración del
+	 * mundo y sin base (como sobre suelo quieto). El servidor, con la base nula, usa entonces la suya para las comparaciones.
+	 */
+	void SendAbsolute(FCharacterNetworkMoveData* Data, const FSavedMove_Character* Move)
+	{
+		if (!Data || !Move || !Data->MovementBase || UTN_TurtleMovementComponent::IsNetResolvableBase(Data->MovementBase))
+		{
+			return;
+		}
+		const ACharacter* Owner = Move->CharacterOwner;
+		const UCharacterMovementComponent* OwnerMove = Owner ? Owner->GetCharacterMovement() : nullptr;
+		Data->Location = FRepMovement::RebaseOntoZeroOrigin(Move->SavedLocation, OwnerMove);
+		Data->Acceleration = Move->Acceleration;
+		Data->MovementBase = nullptr;
+		Data->MovementBaseBoneName = NAME_None;
+	}
+}
+
+void FTNTurtleNetworkMoveDataContainer::ClientFillNetworkMoveData(const FSavedMove_Character* ClientNewMove, const FSavedMove_Character* ClientPendingMove,
+	const FSavedMove_Character* ClientOldMove)
+{
+	FCharacterNetworkMoveDataContainer::ClientFillNetworkMoveData(ClientNewMove, ClientPendingMove, ClientOldMove);
+	TNTurtleNetBase::SendAbsolute(GetNewMoveData(), ClientNewMove);
+	if (bHasPendingMove)
+	{
+		TNTurtleNetBase::SendAbsolute(GetPendingMoveData(), ClientPendingMove);
+	}
+	if (bHasOldMove)
+	{
+		TNTurtleNetBase::SendAbsolute(GetOldMoveData(), ClientOldMove);
+	}
+}
+
+bool UTN_TurtleMovementComponent::IsNetResolvableBase(const UPrimitiveComponent* Base)
+{
+	if (!Base)
+	{
+		return false;
+	}
+	// Lo que el motor sabe mandar (FNetGUIDCache::SupportsObject): nombre estable (subobjeto por defecto, cargado con el
+	// nivel o marcado como direccionable) o componente replicado. Además, su actor tiene que llegar a la otra máquina: si no
+	// se replica ni está en el nivel (el campo de decorado local, por ejemplo), tampoco se encuentra.
+	if (!Base->IsSupportedForNetworking() && !Base->IsFullNameStableForNetworking())
+	{
+		return false;
+	}
+	const AActor* BaseOwner = Base->GetOwner();
+	return !BaseOwner || BaseOwner->GetIsReplicated() || BaseOwner->IsFullNameStableForNetworking();
+}
+
+void UTN_TurtleMovementComponent::ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel,
+	const FVector& RelativeClientLocation, UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode)
+{
+	Super::ServerMoveHandleClientError(ClientTimeStamp, DeltaTime, Accel, RelativeClientLocation, ClientMovementBase, ClientBaseBoneName, ClientMovementMode);
+
+	FNetworkPredictionData_Server_Character* ServerData = GetPredictionData_Server_Character();
+	if (!ServerData)
+	{
+		return;
+	}
+	FClientAdjustment& Adjustment = ServerData->PendingAdjustment;
+	UPrimitiveComponent* AdjustBase = Adjustment.NewBase;
+	if (Adjustment.bAckGoodMove || Adjustment.TimeStamp != ClientTimeStamp || !AdjustBase || IsNetResolvableBase(AdjustBase))
+	{
+		return;
+	}
+	// Corrección relativa a una base que el cliente no encuentra: al mundo (la base la tiene este servidor) y sin base. El
+	// cliente la aplica entera y busca su suelo (ClientAdjustPosition_Implementation).
+	if (Adjustment.bBaseRelativePosition)
+	{
+		FVector WorldLocation = FVector::ZeroVector;
+		if (MovementBaseUtility::TransformLocationToWorld(AdjustBase, Adjustment.NewBaseBoneName, Adjustment.NewLoc, WorldLocation))
+		{
+			Adjustment.NewLoc = FRepMovement::RebaseOntoZeroOrigin(WorldLocation, this);
+		}
+		else
+		{
+			Adjustment.NewLoc = FRepMovement::RebaseOntoZeroOrigin(UpdatedComponent->GetComponentLocation(), this);
+		}
+	}
+	if (Adjustment.bBaseRelativeVelocity)
+	{
+		FVector WorldVelocity = Adjustment.NewVel;
+		if (MovementBaseUtility::TransformDirectionToWorld(AdjustBase, Adjustment.NewBaseBoneName, Adjustment.NewVel, WorldVelocity))
+		{
+			Adjustment.NewVel = WorldVelocity;
+		}
+	}
+	Adjustment.bBaseRelativePosition = false;
+	Adjustment.bBaseRelativeVelocity = false;
+	Adjustment.NewBase = nullptr;
+	Adjustment.NewBaseBoneName = NAME_None;
+}
+
+void UTN_TurtleMovementComponent::ClientAdjustPosition_Implementation(float TimeStamp, FVector NewLoc, FVector NewVel, UPrimitiveComponent* NewBase,
+	FName NewBaseBoneName, bool bHasBase, bool bBaseRelativePosition, uint8 ServerMovementMode, TOptional<FRotator> OptionalRotation)
+{
+	Super::ClientAdjustPosition_Implementation(TimeStamp, NewLoc, NewVel, NewBase, NewBaseBoneName, bHasBase, bBaseRelativePosition, ServerMovementMode,
+		OptionalRotation);
+
+	// El servidor anda sobre una base que quitó de la corrección (no se encuentra por red): el motor la ha dejado sin base
+	// ni suelo. Se busca el suelo aquí, en la posición ya corregida, antes de repetir los movimientos pendientes.
+	if (bHasBase || NewBase || !HasValidData() || !IsMovingOnGround() || CharacterOwner->GetMovementBase())
+	{
+		return;
+	}
+	FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
+	if (CurrentFloor.IsWalkableFloor())
+	{
+		SetBaseFromFloor(CurrentFloor);
+		SaveBaseLocation();
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cápsula de pie sin crecer en su sitio
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool UTN_TurtleMovementComponent::RestoreStandingCapsule()
+{
+	const ATortugaCharacter* Turtle = GetTurtle();
+	UCapsuleComponent* Capsule = CharacterOwner ? CharacterOwner->GetCapsuleComponent() : nullptr;
+	if (!Turtle || !Capsule || !UpdatedComponent)
+	{
+		return false;
+	}
+	const float StandHalf = Turtle->GetStandingCapsuleHalfHeight();
+	const float CurrentHalf = Capsule->GetUnscaledCapsuleHalfHeight();
+	if (CurrentHalf >= StandHalf - 0.5f)
+	{
+		return false;
+	}
+	// Lo normal: de pie con los pies en su sitio, sin meterse en nada.
+	if (TryStandUp())
+	{
+		return true;
+	}
+	// No cabe de pie (algo encima): igual, con los pies en su sitio y sin barrer. La cápsula no cruza el suelo, así que el
+	// movimiento la aparta de lo de arriba (o la deja atascada encima del suelo), pero nunca la desincrusta hacia abajo.
+	const double Rise = static_cast<double>(StandHalf - CurrentHalf) * static_cast<double>(Capsule->GetShapeScale());
+	UpdatedComponent->MoveComponent(FVector(0.0, 0.0, Rise), UpdatedComponent->GetComponentQuat(), false, nullptr,
+		EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
+	Capsule->SetCapsuleSize(Capsule->GetUnscaledCapsuleRadius(), StandHalf, true);
+	bForceNextFloorCheck = true;
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Panzazo] %s: de pie sin sitio encima (sube %.0f cm con los pies en su sitio)."), *GetNameSafe(CharacterOwner), Rise);
+	return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

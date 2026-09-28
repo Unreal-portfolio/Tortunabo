@@ -1638,6 +1638,28 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadPitch, COND_SkipOwner);
 }
 
+void ATortugaCharacter::PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker)
+{
+	Super::PreReplication(ChangedPropertyTracker);
+
+	// Base que los demás no encuentran por red (teselas y decorado local de la playa, mallas creadas en ejecución): «sin
+	// base», con la posición del mundo de siempre (ReplicatedMovement). Si se mandara, llegaría nula con
+	// bServerHasBaseComponent y el motor daría la base por «sin resolver»: sin simular ni suavizar a esta tortuga en los
+	// demás clientes. Además, cada cambio de base avisaba en el registro del servidor («SupportsObject ... NOT Supported»).
+	FBasedMovementInfo& RepBased = GetReplicatedBasedMovement_Mutable();
+	if (RepBased.MovementBase && !UTN_TurtleMovementComponent::IsNetResolvableBase(RepBased.MovementBase))
+	{
+		RepBased.MovementBase = nullptr;
+		RepBased.BoneName = NAME_None;
+		RepBased.bServerHasBaseComponent = false;
+		RepBased.bRelativeRotation = false;
+		RepBased.bServerHasVelocity = false;
+		// Fijos mientras siga así: sin base no se usan (la posición y el giro van en ReplicatedMovement) y no se reenvían.
+		RepBased.Location = FVector::ZeroVector;
+		RepBased.Rotation = FRotator::ZeroRotator;
+	}
+}
+
 // ── Big Head Consumable ───────────────────────────────────────────────────────
 
 void ATortugaCharacter::OnRep_bBigHead()

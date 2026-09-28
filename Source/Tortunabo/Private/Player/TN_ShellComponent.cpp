@@ -428,6 +428,14 @@ void UTN_ShellComponent::PlaceStandingFromBox(const FTransform& BoxWorld, bool b
 		{
 			Stand = Hit.ImpactPoint + FVector(0.0, 0.0, HalfHeight + 2.0);
 		}
+		// Sin suelo justo debajo: la caja puede haber quedado hundida en la malla fina del terreno (la traza empezaba ya por
+		// debajo de la superficie). Se busca el suelo desde algo más arriba (2,5 m: lo que se hunde, no un puente por encima);
+		// de pie encima, nunca debajo del mapa.
+		else if (World->LineTraceSingleByChannel(Hit, Center + FVector(0.0, 0.0, 250.0), Center - FVector(0.0, 0.0, 140.0), ECC_WorldStatic, Query)
+			&& Hit.ImpactNormal.Z > 0.5)
+		{
+			Stand = Hit.ImpactPoint + FVector(0.0, 0.0, HalfHeight + 2.0);
+		}
 	}
 	Turtle->SetActorLocationAndRotation(Stand, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
 }

@@ -265,8 +265,8 @@ void ATortugaCharacter::Multicast_OnDiveVisual_Implementation(bool bEnter)
 	}
 	else
 	{
-		// Restore capsule size
-		GetCapsuleComponent()->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+		// La cápsula de pie otra vez, con los pies en su sitio (nunca creciendo en su sitio: ver RestoreDiveCapsule).
+		RestoreDiveCapsule();
 
 		// Restore CMC smoothing
 		if (CMC)
@@ -276,6 +276,34 @@ void ATortugaCharacter::Multicast_OnDiveVisual_Implementation(bool bEnter)
 
 		// TickDive lerps DiveTiltAlpha back to 0 and restores rotations at that point.
 		// No immediate snap needed here — the lerp handles the smooth return.
+	}
+}
+
+void ATortugaCharacter::RestoreDiveCapsule()
+{
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	if (!Capsule || Capsule->GetUnscaledCapsuleHalfHeight() >= DiveCapsuleOrigHalfHeight - 0.5f)
+	{
+		return;
+	}
+	// Quien simula el movimiento (el servidor y el dueño): de pie con los pies en su sitio y sin meterse en nada, o igual
+	// con los pies en su sitio si algo encima no deja (el movimiento lo vuelve a mirar en cada paso fuera del panzazo).
+	if (GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		if (UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement())
+		{
+			TurtleMove->RestoreStandingCapsule();
+			return;
+		}
+	}
+	// Las demás máquinas: crece y sube lo mismo, con los pies en su sitio (la posición buena llega por red). Creciendo en su
+	// sitio, la malla se hundía en la arena hasta la siguiente actualización y la cápsula podía desincrustarse hacia abajo.
+	const float OldScaledHalf = Capsule->GetScaledCapsuleHalfHeight();
+	Capsule->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+	const float Rise = Capsule->GetScaledCapsuleHalfHeight() - OldScaledHalf;
+	if (Rise > 0.f)
+	{
+		AddActorWorldOffset(FVector(0.0, 0.0, Rise), false, nullptr, ETeleportType::TeleportPhysics);
 	}
 }
 
@@ -436,7 +464,7 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 		{
 			if (!bIsDiving)
 			{
-				GetCapsuleComponent()->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+				RestoreDiveCapsule();
 			}
 			if (USkeletalMeshComponent* SkelMesh = GetMesh())
 			{

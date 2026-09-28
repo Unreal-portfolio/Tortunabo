@@ -1317,9 +1317,24 @@ protected:
 	void TickDive(float DeltaTime);
 	void TickJumpAnim(float DeltaTime);
 
+	/**
+	 * Fin del panzazo: la cápsula vuelve a estar de pie con los pies donde están. En el servidor y el dueño lo hace el
+	 * movimiento (UTN_TurtleMovementComponent::RestoreStandingCapsule); en los demás, crece y sube lo mismo. Antes crecía en
+	 * su sitio y la mitad de abajo se metía en la malla fina del terreno: al desincrustarse caía por debajo del mapa.
+	 */
+	void RestoreDiveCapsule();
+
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 * Servidor: si la base de movimiento que se va a replicar no se puede encontrar por red (malla creada en ejecución: el
+	 * terreno y el decorado local de la playa, piezas de los elementos), se replica como «sin base», con la posición del
+	 * mundo de siempre. Si no, los demás clientes la ven «sin resolver» y el motor deja de simular y de suavizar a esta
+	 * tortuga (se queda quieta, a tirones o con la malla en otro sitio). Ver UTN_TurtleMovementComponent::IsNetResolvableBase.
+	 */
+	virtual void PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker) override;
 
 	/** Campos de visión de la cámara en reposo y al correr (el ajuste de campo de visión del menú de pausa los cambia). */
 	float GetCameraFOVDefault() const { return CameraFOVDefault; }

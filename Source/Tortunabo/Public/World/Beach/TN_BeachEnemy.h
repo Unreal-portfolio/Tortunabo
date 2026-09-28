@@ -165,6 +165,15 @@ public:
 	/** La marca (o desmarca) como llevada en el pico: nadie más le da mientras tanto. */
 	static void SetTurtleHeld(ATortugaCharacter* Turtle, bool bHeld);
 
+	/** El enemigo que sujeta a esta tortuga en esta máquina (en la boca, el pico...), o null. */
+	static ATN_BeachEnemy* FindHolder(const ATortugaCharacter* Turtle);
+
+	/**
+	 * Servidor: quien sujete a esta tortuga la suelta ya, como el seguro de tiempo (no la vuelve a coger en 2 s). La usa la
+	 * red de seguridad de ATN_BeachRaceGameMode antes de devolverla encima de la arena. true si alguien la sujetaba.
+	 */
+	static bool ServerReleaseHeldTurtle(ATortugaCharacter* Turtle, const TCHAR* Reason);
+
 	/** Se le puede dar: viva, sin aturdir, sin derribar y sin ir en el pico de nadie. */
 	static bool CanBeHit(const ATortugaCharacter* Turtle);
 

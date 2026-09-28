@@ -22,6 +22,19 @@ enum class ETNBellyPhase : uint8
 };
 
 /**
+ * Movimientos del cliente al servidor sin bases que el servidor no puede encontrar por red (ver
+ * UTN_TurtleMovementComponent::IsNetResolvableBase). Sobre una base que se mueve (movilidad Movable) el motor manda la
+ * posición relativa a ella y la base; si esa base es una malla creada en ejecución (las teselas del terreno de la playa,
+ * el decorado local, las piezas de los elementos), el servidor la recibe nula y toma la posición relativa como absoluta.
+ * Con estas bases se manda la posición y la aceleración del mundo, sin base.
+ */
+struct FTNTurtleNetworkMoveDataContainer : public FCharacterNetworkMoveDataContainer
+{
+	virtual void ClientFillNetworkMoveData(const FSavedMove_Character* ClientNewMove, const FSavedMove_Character* ClientPendingMove,
+		const FSavedMove_Character* ClientOldMove) override;
+};
+
+/**
  * Movimiento de la tortuga: el de UCharacterMovementComponent más el arrastre del panzazo.
  *
  * Al caer de tripa (ATortugaCharacter::IsDiving, número de panzazo nuevo), en vez de quedarse tiesa se arrastra: conserva
@@ -97,6 +110,38 @@ public:
 	virtual bool CanAttemptJump() const override;
 	virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+
+	/**
+	 * Cliente: corrección del servidor. Si el servidor ha quitado la base por no poderse encontrar por red (ver
+	 * ServerMoveHandleClientError) y la tortuga anda, busca aquí su suelo, como hace el motor con una base sin resolver: sin
+	 * él, el primer paso de los movimientos que se repiten se perdería y daría otra corrección.
+	 */
+	virtual void ClientAdjustPosition_Implementation(float TimeStamp, FVector NewLoc, FVector NewVel, UPrimitiveComponent* NewBase,
+		FName NewBaseBoneName, bool bHasBase, bool bBaseRelativePosition, uint8 ServerMovementMode,
+		TOptional<FRotator> OptionalRotation = TOptional<FRotator>()) override;
+
+	// ── Red: bases de movimiento que no se encuentran por red ───────────────
+
+	/**
+	 * Si la otra máquina puede encontrar Base por red (o sea, si vale como base relativa en correcciones y movimientos).
+	 * No valen las mallas creadas en ejecución sin nombre estable ni réplica: las teselas del terreno y el decorado local de
+	 * la playa, las piezas que los elementos montan en ApplySpec, los montículos... Con ellas el motor mandaba posiciones
+	 * relativas a algo que el otro lado recibe nulo: el cliente ignoraba todas las correcciones («could not resolve the new
+	 * relative movement base actor, ignoring server correction!») y el servidor tomaba posiciones relativas por absolutas.
+	 * Con estas bases todo va en coordenadas del mundo (Docs/Modo_Carrera.md, «Seguridad: nunca bajo el mapa»).
+	 */
+	static bool IsNetResolvableBase(const UPrimitiveComponent* Base);
+
+	// ── Cápsula ─────────────────────────────────────────────────────────────
+
+	/**
+	 * La cápsula de pie ya (el panzazo ha acabado o se ha cortado sin que se levantara), con los pies donde están: como
+	 * TryStandUp y, si no cabe de pie (algo encima), igual, sin barrer. Nunca crece en su sitio: así la mitad de abajo
+	 * quedaba metida en la malla fina del terreno y, al desincrustarse, la tortuga caía por debajo del mapa. La llaman el
+	 * fin del panzazo (ATortugaCharacter::RestoreDiveCapsule) y, por si acaso, cada movimiento fuera del panzazo. true si ha
+	 * cambiado algo.
+	 */
+	bool RestoreStandingCapsule();
 
 	// ── Ajustes del arrastre ─────────────────────────────────────────────────
 	// Rozamiento por superficie: lo que frena por sí solo (cm/s²), aparte del freno por velocidad (BellyDrag). Con la
@@ -235,6 +280,14 @@ protected:
 	virtual void HandleImpact(const FHitResult& Hit, float TimeSlice = 0.f, const FVector& MoveDelta = FVector::ZeroVector) override;
 	virtual void OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity) override;
 
+	/**
+	 * Servidor: tras decidir si corrige al cliente, si la corrección va relativa a una base que el cliente no puede
+	 * encontrar por red (IsNetResolvableBase), la pasa a coordenadas del mundo y sin base. Si no, el cliente la ignoraba
+	 * entera y se quedaba donde creía estar mientras el servidor la tenía en otro sitio (bajo el mapa, metida en algo...).
+	 */
+	virtual void ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& RelativeClientLocation,
+		UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
+
 private:
 	ATortugaCharacter* GetTurtle() const;
 
@@ -300,4 +353,7 @@ private:
 	TNTurtleSurface::FNameCache SurfaceNameCache;
 	TWeakObjectPtr<ATN_ProcMapGenerator> Generator;
 	double NextGeneratorLookup = 0.0;
+
+	/** Lo que el cliente manda al servidor en cada movimiento (SetNetworkMoveDataContainer en el constructor). */
+	FTNTurtleNetworkMoveDataContainer TurtleNetworkMoveData;
 };

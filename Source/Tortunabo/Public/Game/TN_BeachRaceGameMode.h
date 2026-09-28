@@ -31,6 +31,17 @@ struct FTNBeachSafeSpot
 	float Time = 0.f;
 };
 
+/** Red de seguridad bajo la arena (ATN_BeachRaceGameMode::GuardUnderSand): lo que se lleva visto de cada tortuga. */
+struct FTNBeachUnderSandWatch
+{
+	/** Miradas seguidas bajo la arena (se confirma con dos: una penetración de un fotograma de la física no cuenta). */
+	int32 Strikes = 0;
+	/** Desde cuándo (hora del mundo) cae sin suelo con colisión debajo; < 0 si no. */
+	float FallNoFloorSince = -1.f;
+	/** Último rescate (hora del mundo): otro en seguida va al último sitio seguro, no al mismo punto. */
+	float LastRescue = -100.f;
+};
+
 /** Una llegada al agua de meta en la ronda en curso. */
 struct FTNBeachArrival
 {
@@ -161,6 +172,9 @@ public:
 	/** Aturde a la tortuga Seconds segundos. */
 	void DebugStun(int32 PlayerIndex, float Seconds);
 
+	/** Mete a la tortuga Meters metros bajo la arena donde está (para ver la red de seguridad: vuelve encima en bola). */
+	void DebugBury(int32 PlayerIndex, float Meters);
+
 protected:
 	virtual void OnWaitingTimeout() override;
 	virtual void UpdateRoundProgressAndMaybeFinish() override;
@@ -185,6 +199,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "1.0"))
 	float RoundReadyTimeoutSeconds = 20.f;
 
+	/**
+	 * Con la ronda lista en el servidor, lo que se espera como mucho (s) a que cada cliente que corre diga que tiene montada
+	 * su parte (asientos del terreno y decorado local con su colisión: UTN_BeachRoundSyncComponent). Pasado, se corre igual
+	 * (con aviso en el registro).
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0"))
+	float ClientRoundReadyTimeoutSeconds = 12.f;
+
 	/** Cuenta atrás en la salida antes de cada ronda que no abre el huevo de la pantalla de carga. 0 = sin cuenta. */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0"))
 	float PreRaceCountdownSeconds = 3.f;
@@ -193,9 +215,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "1.0"))
 	float RoundResultsSeconds = 7.f;
 
-	/** Límite de cada ronda (unos 5 min de media): al agotarse gana quien esté más cerca del mar. 0 = sin límite. */
+	/**
+	 * Límite de cada ronda (unos 3 min 20 s de media con 800 m a ~4 m/s): al agotarse gana quien esté más cerca del mar. 0 =
+	 * sin límite. 6 min: 1,8 veces la media, como los 9 min de antes con 1200 m.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0"))
-	float RoundTimeLimitSeconds = 540.f;
+	float RoundTimeLimitSeconds = 360.f;
 
 	/**
 	 * Segundos que cada tortuga que llega se queda a la vista dentro del agua de meta, con su chapuzón, antes de que la
@@ -223,9 +248,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "1.0"))
 	float SprintIntroSeconds = 5.f;
 
-	/** Límite del sprint (media playa): al agotarse gana la más cerca del mar. 0 = sin límite. */
+	/**
+	 * Límite del sprint (media playa, unos 400 m: ~1 min 40 s a ~4 m/s): al agotarse gana la más cerca del mar. 0 = sin
+	 * límite. 3 min (eran 5 con 600 m).
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "0.0"))
-	float SprintTimeLimitSeconds = 300.f;
+	float SprintTimeLimitSeconds = 180.f;
 
 	/** Margen (cm) alrededor del nido del sprint en el que se quitan los elementos de la ronda (donde caen al salir). */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "0.0"))
@@ -257,6 +285,22 @@ protected:
 	/** Antigüedad mínima (s) del sitio seguro al que se vuelve (para no reaparecer justo en el borde). */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Stun", meta = (ClampMin = "0.0"))
 	float SafeSpotMinAgeSeconds = 1.f;
+
+	/**
+	 * Red de seguridad (servidor, diez veces por segundo): si lo que mueve a la tortuga (su cápsula, la caja de la bola o el
+	 * ragdoll) queda más de esto (cm) por debajo de la arena del generador (GetGroundHeightAt: terreno fijo, pozas,
+	 * trincheras y asientos de la ronda), vuelve encima. En las trincheras, 1 m más de margen; en las pozas y nadando, nada.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "50.0"))
+	float UnderSandMargin = 160.f;
+
+	/** Cayendo (cápsula) sin colisión de suelo debajo más de estos segundos: vuelve a su último sitio seguro. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.1"))
+	float NoFloorFallSeconds = 0.6f;
+
+	/** La bola corta (aturdida) con la que vuelve encima la red de seguridad. 0 = sin bola. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.0"))
+	float SafetyNetStunSeconds = 0.8f;
 
 	/** Nombre de la clase de la tormenta de bañistas (en /Script/Tortunabo); si no existe, no hay tormenta. */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Storm")
@@ -320,6 +364,12 @@ private:
 	/** Jugadores con el movimiento bloqueado, con el peón que tenían (si cambia, se vuelve a avisar al cliente). */
 	TMap<TWeakObjectPtr<APlayerController>, TWeakObjectPtr<APawn>> FrozenControllers;
 
+	/** Red de seguridad bajo la arena: lo visto de cada tortuga en la ronda. */
+	TMap<TWeakObjectPtr<APlayerController>, FTNBeachUnderSandWatch> UnderSandWatch;
+
+	/** Desde cuándo (hora del mundo) la ronda está lista en el servidor y se espera a los clientes; < 0 si no se espera. */
+	float ClientWaitStartTime = -1.f;
+
 	FTimerHandle PrepPollHandle;
 	FTimerHandle PhaseClockHandle;
 	FTimerHandle PhaseEndHandle;
@@ -338,6 +388,11 @@ private:
 	/** Reparte la ronda CurrentRound y espera a que esté lista; con bCleanup, antes quita tortugas y tormenta. */
 	void PrepareRound(bool bCleanup);
 	void PollRoundReady();
+	/**
+	 * Cada cliente que va a correr ha dicho tener montada la ronda actual del generador (UTN_BeachRoundSyncComponent, que
+	 * se le añade aquí si aún no lo tiene). OutWaiting, si se pide, los nombres de quienes faltan.
+	 */
+	bool AreClientsRoundReady(FString* OutWaiting = nullptr);
 	void BeginRace();
 	void WatchRacers();
 	void OnRoundTimeLimit();
@@ -415,6 +470,22 @@ private:
 	 * (ATortugaCharacter::SetFallImmuneUntilLanded): entra de cabeza al agua. El resto de caídas de la playa, igual.
 	 */
 	void GuardCliffJump(APawn* Pawn) const;
+	/**
+	 * Red de seguridad (Docs/Modo_Carrera.md, «Seguridad: nunca bajo el mapa»), en cada mirada de WatchRacers: si lo que
+	 * mueve a la tortuga está más de UnderSandMargin por debajo de la arena del generador (fuera de pozas, del agua y del
+	 * borde del acantilado), o cae sin colisión de suelo debajo, la devuelve encima (RescueFromUnderSand).
+	 */
+	void GuardUnderSand(APlayerController* PlayerController, ATortugaCharacter* Turtle, float Now);
+	/**
+	 * La saca de lo que la tenga (enemigo, otra tortuga, caparazón, derribo), la pone encima de la arena en ese mismo punto
+	 * (bSameSpot, si ahí cabe de pie) o en su último sitio seguro, con una bola corta, y lo apunta en el registro con la
+	 * causa, su estado, su velocidad y qué la movía.
+	 */
+	void RescueFromUnderSand(APlayerController* PlayerController, ATortugaCharacter* Turtle, const FVector& Probe, const FString& Cause, bool bSameSpot);
+	/** Encima de la arena en el punto de Where, con la cápsula de pie cabiendo (sin meterse en rocas ni murallas). */
+	bool FindSandSpot(const ATortugaCharacter* Turtle, const FVector& Where, FTransform& OutTransform) const;
+	/** Hay colisión de suelo (lo que para a una tortuga) cerca de la arena del generador en la vertical de Where. */
+	bool HasFloorCollisionAt(const ATortugaCharacter* Turtle, const FVector& Where) const;
 	double GetVoidZ() const;
 	float GetCourseProgress(const APawn* Pawn) const;
 

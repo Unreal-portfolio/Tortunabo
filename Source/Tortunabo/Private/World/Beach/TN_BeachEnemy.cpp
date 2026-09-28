@@ -343,6 +343,43 @@ void ATN_BeachEnemy::SetTurtleHeld(ATortugaCharacter* Turtle, bool bHeld)
 	}
 }
 
+ATN_BeachEnemy* ATN_BeachEnemy::FindHolder(const ATortugaCharacter* Turtle)
+{
+	if (!Turtle)
+	{
+		return nullptr;
+	}
+	for (const TWeakObjectPtr<ATN_BeachEnemy>& Weak : TNBeachEnemyShared::AllEnemies())
+	{
+		ATN_BeachEnemy* Enemy = Weak.Get();
+		if (Enemy && Enemy->GetWorld() == Turtle->GetWorld() && Enemy->HeldTurtle.Get() == Turtle)
+		{
+			return Enemy;
+		}
+	}
+	return nullptr;
+}
+
+bool ATN_BeachEnemy::ServerReleaseHeldTurtle(ATortugaCharacter* Turtle, const TCHAR* Reason)
+{
+	if (!Turtle || !Turtle->HasAuthority())
+	{
+		return false;
+	}
+	ATN_BeachEnemy* Holder = FindHolder(Turtle);
+	if (!Holder)
+	{
+		return false;
+	}
+	// Como el seguro de tiempo de PlaceHeldTurtle: suelta ya y no la vuelve a coger en un momento (que caiga de verdad).
+	const UWorld* World = Holder->GetWorld();
+	Holder->HoldBlocked = Turtle;
+	Holder->HoldBlockedUntil = (World ? World->GetTimeSeconds() : 0.0) + TNBeachEnemyShared::HoldBlockSeconds;
+	Holder->EndHoldTurtle();
+	UE_LOG(LogTortunabo, Warning, TEXT("[Playa] %s suelta a %s (%s)."), *Holder->GetName(), *Turtle->GetName(), Reason ? Reason : TEXT("sin motivo"));
+	return true;
+}
+
 bool ATN_BeachEnemy::CanBeHit(const ATortugaCharacter* Turtle)
 {
 	return IsValid(Turtle) && !Turtle->IsDead() && !Turtle->IsKnockedDown() && !TNBeach::IsTurtleStunned(Turtle) && !IsTurtleHeld(Turtle);
