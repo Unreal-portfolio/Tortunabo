@@ -145,6 +145,17 @@ public:
 	/** Enemigos de este mundo y cuántos van despacio por estar lejos (TN.Beach.Enemy.Stats). */
 	static void GatherStats(const UObject* WorldContext, int32& OutTotal, int32& OutThrottled, int32& OutMovers);
 
+	/**
+	 * Servidor: un objeto lanzado (piedra, pulpo, bola de caparazón…) le ha dado: queda mareado Seconds (pajaritos y
+	 * estrellas encima; ni persigue ni ataca ni agarra, y suelta lo que lleve). Si ya lo estaba, alarga hasta el mayor de
+	 * los dos finales. Lo llama ATN_ThrowableItemActor al chocar con un enemigo vivo. Las subclases miran IsHitStunned en
+	 * su lógica; pueden sobrescribirlo para reaccionar (llamando a la base).
+	 */
+	virtual void ApplyHitStun(float Seconds, AActor* InstigatorActor);
+
+	/** true mientras dura el mareo por un golpe (replicado: se ve igual en todas las máquinas). */
+	bool IsHitStunned() const;
+
 	virtual void PostInitializeComponents() override;
 
 protected:
