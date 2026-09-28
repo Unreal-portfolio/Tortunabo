@@ -11,6 +11,7 @@ class APawn;
 class UPrimitiveComponent;
 class UProceduralMeshComponent;
 class UStaticMeshComponent;
+class UTextRenderComponent;
 class UTN_PlaygroundSynthComponent;
 
 /**
@@ -33,6 +34,10 @@ class UTN_PlaygroundSynthComponent;
  * y empuja BoostedForwardPush hacia el mar (tope BoostedMaxHorizontal): unas 2-2,4 veces más lejos que uno normal en
  * llano. Aro dorado en la arena, cuatro palos con guirnaldas de banderines y la bandera de Tortunavy, destellos dorados,
  * un boing más grave con barrido y la fanfarria.
+ *
+ * Cartel (TNBeachSignKit): tabla de madera clavada en la arena por el lado por el que se llega (-X del marco), a un lado
+ * y por fuera del cuerpo (de cara a quien llega), con una flecha que baja y rebota hacia arriba pintada y el rótulo
+ * «¡BOING!» (dorada y con estrella en el potenciado). Rebota y brilla al acercarse la tortuga local.
  *
  * Red (como la medusa del lobby): el rebote lo aplican a la vez el servidor y el cliente dueño dentro del mismo
  * movimiento (golpe con la colisión o solape con el sensor), así que la predicción cuadra; el resto ve la deformación y
@@ -131,6 +136,18 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Trampolín")
 	TObjectPtr<UProceduralMeshComponent> BounceSensor;
 
+	/** Pie del cartel (en el marco, por el lado por el que se llega). */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Trampolín")
+	TObjectPtr<USceneComponent> SignPivot;
+
+	/** Postes, tabla e icono pintado. */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Trampolín")
+	TObjectPtr<UStaticMeshComponent> SignMesh;
+
+	/** Rótulo «¡BOING!». */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Trampolín")
+	TObjectPtr<UTextRenderComponent> SignText;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_PlaygroundSynthComponent> Toy;
 
@@ -160,8 +177,19 @@ private:
 	float EffectiveMaxHorizontal() const { return bBoosted ? BoostedMaxHorizontal : MaxHorizontal; }
 	float EffectiveMaxUp() const { return FMath::Max(bBoosted ? FMath::Max(BoostedMaxUp, MaxUp) : MaxUp, BaseUp); }
 
+	/** Coloca el cartel por fuera del cuerpo (en ApplySpec, con las medidas de la variante ya puestas). */
+	void PlaceSign(double Fit, uint32 Seed);
+
 	int32 Variant = 0;
 	bool bBoosted = false;
+	/** Cartel: giro de su tabla y estado de su animación. */
+	double SignYawDeg = 0.0;
+	float SignAge = 10.f;
+	bool bSignNear = false;
+	float SignGlow = 0.f;
+	float SignGlowApplied = -1.f;
+	/** El cartel se está moviendo (solo entonces se toca su transformada). */
+	bool bSignMoving = false;
 	/** Última fanfarria en esta máquina (tiempo del mundo): no más de una cada pocos segundos. */
 	double LastFanfareAt = -100.0;
 	FTNTrapBurst Sparkle;

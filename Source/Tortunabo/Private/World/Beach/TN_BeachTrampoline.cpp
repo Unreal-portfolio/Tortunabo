@@ -4,6 +4,7 @@
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "Engine/CollisionProfile.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -13,6 +14,7 @@
 #include "ProceduralMeshComponent.h"
 #include "TN_BeachBoostKit.h"
 #include "TN_BeachRideKit.h"
+#include "TN_BeachSignKit.h"
 #include "TN_BeachTrapKit.h"
 
 /**
@@ -415,6 +417,16 @@ ATN_BeachTrampoline::ATN_BeachTrampoline()
 	BounceSensor->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	BounceSensor->SetGenerateOverlapEvents(true);
 	BounceSensor->SetCanEverAffectNavigation(false);
+
+	// Cartel de madera (sin colisión): tabla con el icono y rótulo.
+	SignPivot = CreateDefaultSubobject<USceneComponent>(TEXT("SignPivot"));
+	SignPivot->SetupAttachment(Frame);
+	SignMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SignMesh"));
+	SignMesh->SetupAttachment(SignPivot);
+	TNBeachTrapKit::ConfigureVisual(SignMesh);
+	SignText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("SignText"));
+	SignText->SetupAttachment(SignPivot);
+	TNBeachSignKit::ConfigureText(SignText);
 }
 
 void ATN_BeachTrampoline::ApplySpec()
@@ -515,6 +527,7 @@ void ATN_BeachTrampoline::ApplySpec()
 		}
 	}
 	TNBeachTrapKit::SetMesh(DecorMesh, this, Decor);
+	PlaceSign(Fit, Seed);
 
 	BodyCollision->SetCollisionConvexMeshes(Hulls);
 	TNBeachTrapKit::FHulls Grown;
@@ -538,6 +551,37 @@ void ATN_BeachTrampoline::ApplySpec()
 	bBodyDirty = false;
 	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Trampolín %s: variante %d, radio %.0f cm, alto %.0f cm%s."), *GetName(), Variant, BodyR, TopZ,
 		bBoosted ? TEXT(", potenciado") : TEXT(""));
+}
+
+void ATN_BeachTrampoline::PlaceSign(double Fit, uint32 Seed)
+{
+	// Por el lado por el que se llega (-X del marco), 24° a un lado (no delante del salto) y por fuera de todo lo que
+	// rebota (y de los palos del potenciado), con la tabla de cara hacia fuera: a quien llega.
+	const double SideSign = TNBeachSignKit::SideOf(Spec.Seed);
+	const double AngDeg = 180.0 - SideSign * 24.0;
+	const FVector2D Dir(FMath::Cos(FMath::DegreesToRadians(AngDeg)), FMath::Sin(FMath::DegreesToRadians(AngDeg)));
+	double Reach = 0.0;
+	for (double R = 0.0; R <= 2.0 * Fit + 200.0; R += 10.0)
+	{
+		if (IsNearBody(FVector(Dir.X * R, Dir.Y * R, 20.0), 0.0) || IsNearBody(FVector(Dir.X * R, Dir.Y * R, 0.5 * TopZ), 0.0))
+		{
+			Reach = R;
+		}
+	}
+	double SignR = FMath::Max(Reach, 0.8 * BodyR) + 80.0;
+	if (bBoosted)
+	{
+		SignR = FMath::Max(SignR, BodyR + 58.0 + 80.0);
+	}
+	SignYawDeg = AngDeg - 180.0;
+	SignPivot->SetRelativeLocationAndRotation(FVector(Dir.X * SignR, Dir.Y * SignR, 0.0), FRotator(0.0, SignYawDeg, 0.0));
+	SignPivot->SetRelativeScale3D(FVector::OneVector);
+	bSignMoving = false;
+	TNBeachTrapKit::FBuffers Sign;
+	TNBeachSignKit::BuildSign(Sign, TNBeachSignKit::EIcon::Bounce, bBoosted, Seed);
+	TNBeachTrapKit::SetMesh(SignMesh, this, Sign);
+	TNBeachSignKit::SetText(SignText, NSLOCTEXT("TNBeach", "TrampolineSign", "¡BOING!"), TNBeachSignKit::TextColor(bBoosted));
+	SignGlowApplied = -1.f;
 }
 
 void ATN_BeachTrampoline::BeginPlay()
@@ -805,6 +849,22 @@ void ATN_BeachTrampoline::Tick(float DeltaSeconds)
 	}
 	AnimateBody(DeltaSeconds);
 	Sparkle.Tick(DeltaSeconds);
+
+	// Cartel: un botecito al acercarse la tortuga de esta máquina y el rótulo más claro mientras está cerca.
+	if (GetNetMode() != NM_DedicatedServer)
+	{
+		float Stretch = 0.f;
+		float Sway = 0.f;
+		TNBeachSignKit::TickSignAnim(DeltaSeconds, World, SignPivot->GetComponentLocation(), SignAge, bSignNear, SignGlow, Stretch, Sway);
+		const bool bMoving = FMath::Abs(Stretch) > 0.0005f || FMath::Abs(Sway) > 0.01f;
+		if (bMoving || bSignMoving)
+		{
+			SignPivot->SetRelativeRotation(FRotator(0.0, SignYawDeg, bMoving ? Sway : 0.f));
+			SignPivot->SetRelativeScale3D(FVector(1.0, 1.0, bMoving ? 1.0 + Stretch : 1.0));
+			bSignMoving = bMoving;
+		}
+		TNBeachSignKit::ApplySignGlow(SignText, TNBeachSignKit::TextColor(bBoosted), SignGlow, SignGlowApplied);
+	}
 }
 
 void ATN_BeachTrampoline::AnimateBody(float DeltaSeconds)

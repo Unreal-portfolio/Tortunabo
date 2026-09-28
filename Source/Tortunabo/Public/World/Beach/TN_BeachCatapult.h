@@ -8,6 +8,7 @@
 class ACharacter;
 class UProceduralMeshComponent;
 class UStaticMeshComponent;
+class UTextRenderComponent;
 class UTN_BeachTrapSynthComponent;
 class UTN_PlaygroundSynthComponent;
 
@@ -36,6 +37,11 @@ class UTN_PlaygroundSynthComponent;
  * Potenciada (Spec.Flags & TNBeach::FlagBoosted, la de la cima de las fortalezas): cuchara dorada, cubito azul marino
  * con la estrella de Tortunavy, guirnalda de banderines y bandera; lanza a BoostedLaunchSpeed (unas 2,2 veces más lejos en
  * llano), con menos desvío, un «¡ZAAAS!» dorado, más temblor y la fanfarria.
+ *
+ * Cartel (TNBeachSignKit): tabla de madera clavada en la arena por el lado por el que se llega (-X del marco), a un lado
+ * del brazo y girada hacia el centro, con una palanca y una flecha en arco pintadas y el rótulo «¡CATAPULTA!» (dorada y
+ * con estrella en la potenciada). Rebota y brilla al acercarse la tortuga local. Partida, se tuerce, lleva una cinta roja
+ * en aspa y dice «¡ROTA!».
  *
  * Red: el servidor decide (ArmedAt y FiredAt, horas del servidor replicadas) y lanza las bolas (la caja física se
  * replica sola: sin predicción ni correcciones). Cada máquina anima la cuchara, la rotura, el palo, el banderín, el polvo
@@ -171,6 +177,22 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Catapulta")
 	TObjectPtr<UStaticMeshComponent> FlagRed;
 
+	/** Pie del cartel (en el marco, por el lado por el que se llega): rebota, y se tuerce al partirse la catapulta. */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<USceneComponent> SignPivot;
+
+	/** Postes, tabla e icono pintado. */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<UStaticMeshComponent> SignMesh;
+
+	/** Cinta roja en aspa (solo partida). */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<UStaticMeshComponent> SignCross;
+
+	/** Rótulo: «¡CATAPULTA!» o «¡ROTA!». */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Catapulta")
+	TObjectPtr<UTextRenderComponent> SignText;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_BeachTrapSynthComponent> Voice;
 
@@ -202,6 +224,9 @@ private:
 	void TickVisuals(double Now, float DeltaSeconds);
 	void SetBowlCollision(bool bOn);
 
+	/** Cartel: pose (botecito o torcido) y rótulo según el estado (en máquinas con pantalla). */
+	void TickSign(double Now, float DeltaSeconds, bool bBroken);
+
 	// Medidas (cm; espacio del eje del brazo, X hacia el cubito).
 	double LongArm = 750.0;
 	double ShortArm = 350.0;
@@ -220,6 +245,16 @@ private:
 	double DangleDeg = 110.0;
 
 	bool bBoosted = false;
+	/** Cartel: lado (+1/-1 en Y del marco), giro de su tabla y estado de su animación. */
+	double SignSide = 1.0;
+	double SignYawDeg = 0.0;
+	bool bSignShowsBroken = false;
+	float SignAge = 10.f;
+	bool bSignNear = false;
+	float SignGlow = 0.f;
+	float SignGlowApplied = -1.f;
+	/** El cartel se está moviendo (solo entonces se toca su transformada). */
+	bool bSignMoving = false;
 	double LastVisualNow = -1.0;
 	double LastRatchetAt = -1.0;
 	float CreakTimer = 0.f;

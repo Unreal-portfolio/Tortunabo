@@ -13,6 +13,7 @@
 #include "ProceduralMeshComponent.h"
 #include "UObject/UObjectGlobals.h"
 #include "TN_BeachFortressKit.h"
+#include "TN_BeachSignKit.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ATN_BeachFortress
@@ -81,10 +82,12 @@ void ATN_BeachFortress::ApplySpec()
 	SummitLocal = FVector(0.0, 0.0, Plan.Summit().Z);
 	SummitHalf = static_cast<float>(Plan.Summit().K);
 	LauncherLocal = Flip(Plan.LauncherAt);
-	ChestLocal = Flip(Plan.ChestAt);
-	ChestYaw = SideSign * Plan.ChestYaw;
 	bLauncherIsCatapult = Plan.bCatapult;
 	LauncherSize = Plan.LauncherSize;
+	LauncherSeed = static_cast<int32>(TNBeachTrapKit::SeedOf(Spec.Seed, 211u) & 0x7FFFFFFFu);
+	// El cofre, en el lado de la cima contrario al cartel del lanzador (TNBeachSignKit::SideOf de su semilla).
+	ChestLocal = FVector(Plan.ChestAt.X, -TNBeachSignKit::SideOf(LauncherSeed) * FMath::Abs(Plan.ChestAt.Y), Plan.ChestAt.Z);
+	ChestYaw = Plan.ChestYaw;
 	PrizeShells.Reset();
 	for (const TNBeachFortressKit::FShellSpot& Spot : Plan.Shells)
 	{
@@ -126,7 +129,7 @@ void ATN_BeachFortress::SpawnPrizes()
 	// Lanzador potenciado en el borde +X de la cima, mirando al +X de la fortaleza (si no queda hacia el mar, se gira solo).
 	FTNBeachElementSpec LauncherSpec;
 	LauncherSpec.Element = bLauncherIsCatapult ? ETNBeachElement::Catapult : ETNBeachElement::Trampoline;
-	LauncherSpec.Seed = static_cast<int32>(TNBeachTrapKit::SeedOf(Spec.Seed, 211u) & 0x7FFFFFFFu);
+	LauncherSpec.Seed = LauncherSeed;
 	LauncherSpec.SizeScale = LauncherSize;
 	LauncherSpec.Flags = TNBeach::FlagBoosted;
 	if (ATN_BeachElement* Launcher = ATN_BeachElement::SpawnElement(World, FTransform(Facing, ActorXf.TransformPosition(LauncherLocal)), LauncherSpec))

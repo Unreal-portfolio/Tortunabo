@@ -4,6 +4,7 @@
 #include "Lobby/Playground/TN_PlaygroundSynthComponent.h"
 #include "Core/TN_Log.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
@@ -12,6 +13,7 @@
 #include "ProceduralMeshComponent.h"
 #include "TN_BeachBoostKit.h"
 #include "TN_BeachRideKit.h"
+#include "TN_BeachSignKit.h"
 #include "TN_BeachTrapKit.h"
 
 /**
@@ -346,6 +348,20 @@ ATN_BeachCatapult::ATN_BeachCatapult()
 	FlagRed->SetupAttachment(Frame);
 	TNBeachTrapKit::ConfigureVisual(FlagRed);
 	FlagRed->SetVisibility(false);
+
+	// Cartel de madera (sin colisión): tabla con el icono, cinta de «rota» y rótulo.
+	SignPivot = CreateDefaultSubobject<USceneComponent>(TEXT("SignPivot"));
+	SignPivot->SetupAttachment(Frame);
+	SignMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SignMesh"));
+	SignMesh->SetupAttachment(SignPivot);
+	TNBeachTrapKit::ConfigureVisual(SignMesh);
+	SignCross = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SignCross"));
+	SignCross->SetupAttachment(SignPivot);
+	TNBeachTrapKit::ConfigureVisual(SignCross);
+	SignCross->SetVisibility(false);
+	SignText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("SignText"));
+	SignText->SetupAttachment(SignPivot);
+	TNBeachSignKit::ConfigureText(SignText);
 }
 
 void ATN_BeachCatapult::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -489,6 +505,24 @@ void ATN_BeachCatapult::ApplySpec()
 	TNPlaygroundKit::AddStick(Prop, FVector(0.0, 0.0, 0.5 * PropLen), FVector::UpVector, FVector::RightVector, PropLen + 20.0, 48.0, 12.0,
 		TNPlaygroundKit::Rgb(0xE9CC98, 0.05f));
 	TNBeachTrapKit::SetMesh(PropMesh, this, Prop);
+
+	// Cartel por el lado por el que se llega (-X del marco): a medio brazo largo, a un lado (fuera del cazo, la piedra y los
+	// banderines; el arco va hacia +X) y girado 20° hacia el centro para leerse al venir de frente.
+	SignSide = TNBeachSignKit::SideOf(Spec.Seed);
+	SignYawDeg = SignSide * 20.0;
+	SignPivot->SetRelativeLocationAndRotation(FVector(PivotX - 0.5 * A.Long, SignSide * (FMath::Max(A.BowlHW, StoneBaseR) + 175.0), 0.0),
+		FRotator(0.0, SignYawDeg, 0.0));
+	SignPivot->SetRelativeScale3D(FVector::OneVector);
+	TNBeachTrapKit::FBuffers Sign;
+	TNBeachSignKit::BuildSign(Sign, TNBeachSignKit::EIcon::Arc, bBoosted, Seed);
+	TNBeachTrapKit::SetMesh(SignMesh, this, Sign);
+	TNBeachTrapKit::FBuffers Cross;
+	TNBeachSignKit::BuildBrokenCross(Cross);
+	TNBeachTrapKit::SetMesh(SignCross, this, Cross);
+	SignCross->SetVisibility(false);
+	TNBeachSignKit::SetText(SignText, NSLOCTEXT("TNBeach", "CatapultSign", "¡CATAPULTA!"), TNBeachSignKit::TextColor(bBoosted));
+	bSignShowsBroken = false;
+	SignGlowApplied = -1.f;
 
 	// Si se rehace con el brazo ya partido, que el Tick vuelva a poner la pose.
 	SetActorTickEnabled(true);
@@ -793,6 +827,42 @@ void ATN_BeachCatapult::Tick(float DeltaSeconds)
 	}
 }
 
+void ATN_BeachCatapult::TickSign(double Now, float DeltaSeconds, bool bBroken)
+{
+	using namespace TNBeachCatapultDetail;
+	// Rótulo según el estado (también para quien llega tarde y la ve ya partida).
+	if (bBroken != bSignShowsBroken)
+	{
+		bSignShowsBroken = bBroken;
+		SignCross->SetVisibility(bBroken);
+		TNBeachSignKit::SetText(SignText, bBroken ? NSLOCTEXT("TNBeach", "CatapultSignBroken", "¡ROTA!") : NSLOCTEXT("TNBeach", "CatapultSign", "¡CATAPULTA!"),
+			TNBeachSignKit::TextColor(bBoosted, bBroken));
+		SignGlowApplied = -1.f;
+	}
+	if (bBroken)
+	{
+		// Con el crujido de la rotura, el cartel se tuerce hacia fuera y hacia atrás (se pasa un poco y se asienta).
+		const double U = Now - static_cast<double>(FiredAt) - BreakSeconds;
+		const double Lean = U <= 0.0 ? 0.0 : 1.0 - FMath::Exp(-U / 0.12) * FMath::Cos(TNPlaygroundKit::KitTwoPi * U / 0.6);
+		SignPivot->SetRelativeRotation(FRotator(-12.0 * Lean, SignYawDeg + 6.0 * SignSide * Lean, 24.0 * SignSide * Lean));
+		SignPivot->SetRelativeScale3D(FVector::OneVector);
+		return;
+	}
+	// Entera: un botecito al acercarse la tortuga de esta máquina y el rótulo más claro mientras está cerca.
+	float Stretch = 0.f;
+	float Sway = 0.f;
+	TNBeachSignKit::TickSignAnim(DeltaSeconds, GetWorld(), SignPivot->GetComponentLocation(), SignAge, bSignNear, SignGlow, Stretch, Sway);
+	const bool bMoving = FMath::Abs(Stretch) > 0.0005f || FMath::Abs(Sway) > 0.01f;
+	if (bMoving || bSignMoving)
+	{
+		// Una última vez al pararse, para dejarlo recto.
+		SignPivot->SetRelativeRotation(FRotator(0.0, SignYawDeg, bMoving ? Sway : 0.f));
+		SignPivot->SetRelativeScale3D(FVector(1.0, 1.0, bMoving ? 1.0 + Stretch : 1.0));
+		bSignMoving = bMoving;
+	}
+	TNBeachSignKit::ApplySignGlow(SignText, TNBeachSignKit::TextColor(bBoosted), SignGlow, SignGlowApplied);
+}
+
 void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 {
 	using namespace TNBeachCatapultDetail;
@@ -844,6 +914,7 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 		LastVisualNow = Now;
 		return;
 	}
+	TickSign(Now, DeltaSeconds, bBroken);
 
 	// Banderín: verde lista; rojo parpadeando armada; rojo fijo recargando; ninguno con el brazo partido (arrancado).
 	const bool bShowRed = !bBroken && (!bLoaded || (bArmed && FMath::Frac(Now * 4.0) < 0.5));

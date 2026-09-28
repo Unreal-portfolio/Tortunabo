@@ -91,6 +91,8 @@ private:
 	double ChestYaw = 0.0;
 	bool bLauncherIsCatapult = true;
 	float LauncherSize = 1.f;
+	/** Semilla del lanzador (de ella sale el lado de su cartel: el cofre va al otro). */
+	int32 LauncherSeed = 0;
 	TArray<FPrizeShell> PrizeShells;
 
 	bool bPrizesSpawned = false;
