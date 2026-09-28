@@ -4,6 +4,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_MatchFlowTypes.h"
+#include "Game/TN_BeachRaceGameState.h"
 #include "Game/TN_ProcMapGameState.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -214,6 +215,25 @@ void UTN_MatchMusicSubsystem::Poll(UWorld& InWorld, double InNowSeconds)
 	for (const FTN_RaceResultEntry& ResultEntry : MatchState->RaceResults)
 	{
 		Snap.bTeamReachedGoal |= !ResultEntry.bIsEliminated && ResultEntry.FinishRank > 0;
+	}
+	if (const ATN_BeachRaceGameState* BeachState = Cast<ATN_BeachRaceGameState>(MatchState))
+	{
+		// Carrera en la playa: las conchas van en medias (la concha entera de la primera y las medias de la cuenta atrás
+		// suenan a ronda ganada) y la partida la decide el campeón (con empate a tres, el sprint final).
+		const int32 TargetHalves = FMath::Max(1, BeachState->RoundTarget) * 2;
+		const ATN_CoopPlayerState* LocalState = LocalController->GetPlayerState<ATN_CoopPlayerState>();
+		Snap.RoundTarget = TargetHalves;
+		Snap.LocalRoundWins = LocalState ? LocalState->RaceShellHalves : 0;
+		Snap.MaxRoundWins = 0;
+		for (const APlayerState* BaseState : MatchState->PlayerArray)
+		{
+			Snap.MaxRoundWins = FMath::Max(Snap.MaxRoundWins, ATN_BeachRaceGameState::GetShellHalves(BaseState));
+		}
+		if (const APlayerState* ChampionState = BeachState->Champion.Get())
+		{
+			Snap.LocalRoundWins = ChampionState == LocalState ? TargetHalves : 0;
+			Snap.MaxRoundWins = TargetHalves;
+		}
 	}
 
 	// Con la carrera en marcha el componente se prepara ya, en silencio: cuando llegue la fanfarria o el jingle el

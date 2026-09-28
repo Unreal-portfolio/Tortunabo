@@ -157,6 +157,7 @@ void UTN_RaceChampionWidget::BuildTree()
 		}
 		if (UVerticalBoxSlot* S = Info->AddChildToVerticalBox(ShellRow)) { S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
 		UTextBlock* Subtitle = TNRaceUI::MakeText(Tree, NSLOCTEXT("TNRace", "ChampionSubtitle", "¡Se lleva la partida!"), TEXT("Regular"), 19, TNHUDArt::Foam);
+		SubtitleText = Subtitle;
 		if (UVerticalBoxSlot* S = Info->AddChildToVerticalBox(Subtitle)) { S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
 		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(Info)) { S->SetVerticalAlignment(VAlign_Center); }
 		UBorder* Card = TNRaceUI::MakeCard(Tree, TNHUDArt::CardTexture(), TNRaceUI::CardMargin, Row, FMargin(30.f, 34.f, 44.f, 46.f));
@@ -237,6 +238,12 @@ void UTN_RaceChampionWidget::Setup(const FTNRaceChampionSetup& InSetup)
 
 	const FTNRaceTallyRow* First = ChampionSetup.Podium.IsValidIndex(0) ? &ChampionSetup.Podium[0] : nullptr;
 	if (ChampionName) { ChampionName->SetText(FText::FromString(First && !First->Name.IsEmpty() ? First->Name : FString(TEXT("Tortuga")))); }
+	if (SubtitleText)
+	{
+		SubtitleText->SetText(ChampionSetup.bSprintWin
+			? NSLOCTEXT("TNRace", "ChampionSubtitleSprint", "¡Gana el sprint final y se lleva la partida!")
+			: NSLOCTEXT("TNRace", "ChampionSubtitle", "¡Se lleva la partida!"));
+	}
 	if (ChampionFace && First) { TNRaceUI::SetImageTexture(ChampionFace, TNRaceArt::TurtleFaceFor(this, First->Look, ETNTurtleFace::Win)); }
 	for (int32 k = 0; k < ChampionShells.Num(); ++k)
 	{

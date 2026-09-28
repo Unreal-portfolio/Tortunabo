@@ -19,8 +19,10 @@
 namespace TNRaceScreensDetail
 {
 	/** Capas de la pantalla: por encima del HUD (4, 5 y 10) y por debajo de las ruedas (30) y los menús (40). */
+	constexpr int32 CountdownZOrder = 15;
 	constexpr int32 TallyZOrder = 20;
 	constexpr int32 ChampionZOrder = 21;
+	constexpr int32 SprintZOrder = 22;
 
 	/**
 	 * La música de victoria del podio se pide pasado este tiempo de la fase: para entonces el director de la música de
@@ -30,6 +32,15 @@ namespace TNRaceScreensDetail
 
 	/** Segundos que dura la vista previa del recuento (con la cuenta atrás de mentira). */
 	constexpr float PreviewTallySeconds = 8.f;
+
+	/** Vistas previas del título del sprint y de la cuenta atrás tras la primera en el agua (con su «¡TIEMPO!»). */
+	constexpr float PreviewSprintSeconds = 7.f;
+	constexpr float PreviewCountdownSeconds = 10.f;
+	constexpr float PreviewTimeUpSeconds = 1.8f;
+
+	/** Las dos medias conchas del recuento (para dibujarlas de antemano con el resto del arte). */
+	UTexture2D* HalfShellA() { return TNRaceArt::HalfShell(false); }
+	UTexture2D* HalfShellB() { return TNRaceArt::HalfShell(true); }
 
 	APlayerController* FindLocalController(UWorld& World)
 	{
@@ -57,7 +68,7 @@ namespace TNRaceScreensDetail
 	{
 		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World))
 		{
-			Screens->StartTallyPreview(IntArg(Args, 0, 0), IntArg(Args, 1, 4), IntArg(Args, 2, 0) != 0);
+			Screens->StartTallyPreview(IntArg(Args, 0, 0), IntArg(Args, 1, 4), IntArg(Args, 2, 0) != 0, IntArg(Args, 3, 1));
 		}
 	}
 
@@ -66,21 +77,39 @@ namespace TNRaceScreensDetail
 		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StartPodiumPreview(IntArg(Args, 0, 3)); }
 	}
 
+	void RunSprintPreview(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StartSprintPreview(IntArg(Args, 0, 2)); }
+	}
+
+	void RunCountdownPreview(UWorld* World)
+	{
+		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StartCountdownPreview(); }
+	}
+
 	void RunPreviewOff(UWorld* World)
 	{
 		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StopPreview(); }
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs CmdTally(TEXT("TN.Race.Tally"),
-		TEXT("Vista previa del recuento de conchas: TN.Race.Tally [ganador 0-5, -1 = nadie] [jugadores 1-6] [1 = la concha que corona y luego el podio]."),
+		TEXT("Vista previa del recuento de conchas: TN.Race.Tally [ganador 0-5, -1 = nadie] [jugadores 1-6] [1 = la concha que corona y luego el podio] [medias conchas = 1]."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTally));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdSprintPreview(TEXT("TN.Race.SprintPreview"),
+		TEXT("Vista previa del título del sprint final (fanfarria, caras con «VS» y confeti): TN.Race.SprintPreview [finalistas 2-6]."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunSprintPreview));
+
+	FAutoConsoleCommandWithWorld CmdCountdownPreview(TEXT("TN.Race.CountdownPreview"),
+		TEXT("Vista previa de la cuenta atrás de 10 s tras la primera tortuga en el agua (con su «¡TIEMPO!»)."),
+		FConsoleCommandWithWorldDelegate::CreateStatic(&RunCountdownPreview));
 
 	FAutoConsoleCommandWithWorldAndArgs CmdPodium(TEXT("TN.Race.Podium"),
 		TEXT("Vista previa de la pantalla del campeón con el podio animado: TN.Race.Podium [jugadores 1-3]. Cualquier botón la cierra."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunPodium));
 
 	FAutoConsoleCommandWithWorld CmdPreviewOff(TEXT("TN.Race.PreviewOff"),
-		TEXT("Cierra la vista previa del recuento o del podio."),
+		TEXT("Cierra la vista previa del recuento, del podio, del sprint o de la cuenta atrás."),
 		FConsoleCommandWithWorldDelegate::CreateStatic(&RunPreviewOff));
 }
 
@@ -125,7 +154,7 @@ void UTN_RaceScreensSubsystem::Tick(float DeltaTime)
 	const ATN_BeachRaceGameState* State = World->GetGameState<ATN_BeachRaceGameState>();
 	if (!State)
 	{
-		if (Tally || ChampionScreen) { HideAll(); }
+		if (Tally || ChampionScreen || CountdownScreen || SprintScreen) { HideAll(); }
 		bHasPhase = false;
 		return;
 	}
@@ -147,33 +176,46 @@ void UTN_RaceScreensSubsystem::TickMatch(float DeltaTime, APlayerController* PC,
 		PhaseClock = 0.f;
 		if (Phase == ETNBeachRacePhase::RoundResults)
 		{
-			ShowTally(PC, BuildTally(State, PC, State.RoundWinner.Get()));
+			ShowTally(PC, BuildTally(State, PC));
 			LandedRound = Round;
+		}
+		else if (Phase == ETNBeachRacePhase::SprintIntro)
+		{
+			// Empate en lo más alto: el recuento se va por debajo mientras entra el título del sprint final.
+			ShowSprint(PC, BuildSprint(State, PC));
 		}
 		else if (Phase == ETNBeachRacePhase::Champion)
 		{
-			// Sin recuento de esta ronda (se saltó directamente al campeón): primero la concha que le corona.
-			if (LandedRound != Round)
+			// Sin recuento de esta ronda (se saltó directamente al campeón): primero la concha que le corona. Tras el sprint
+			// final no: la ganadora va directa al podio.
+			if (LandedRound != Round && !State.bSprintFinal && State.Champion)
 			{
-				ShowTally(PC, BuildTally(State, PC, State.Champion ? State.Champion.Get() : State.RoundWinner.Get()));
+				ShowTally(PC, BuildTally(State, PC, State.Champion.Get()));
 				LandedRound = Round;
 			}
+			if (IsValid(SprintScreen)) { SprintScreen->Dismiss(); }
+			SprintScreen = nullptr;
 		}
 		else
 		{
-			// Ronda nueva (o partida nueva tras «Volver a jugar»): ningún recuento pendiente.
+			// Ronda nueva (o partida nueva tras «Volver a jugar», o el sprint que se prepara): ningún recuento pendiente.
 			HideAll();
 			LandedRound = -1;
 		}
 	}
 	PhaseClock += DeltaTime;
+	TickCountdown(PC, State);
 
 	if (Phase == ETNBeachRacePhase::RoundResults && Tally)
 	{
 		Tally->SetSecondsLeft(State.PhaseSecondsLeft);
-		// El ganador puede llegar por red un poco después que la fase.
+		// La ganadora puede llegar por red un poco después que la fase.
 		const APlayerState* Winner = State.RoundWinner.Get();
 		Tally->UpdateWinner(Winner ? TallyPlayerIds.IndexOfByKey(Winner->GetPlayerId()) : INDEX_NONE);
+	}
+	else if (Phase == ETNBeachRacePhase::SprintIntro)
+	{
+		if (SprintScreen) { SprintScreen->SetSecondsLeft(State.PhaseSecondsLeft); }
 	}
 	else if (Phase == ETNBeachRacePhase::Champion)
 	{
@@ -190,6 +232,51 @@ void UTN_RaceScreensSubsystem::TickMatch(float DeltaTime, APlayerController* PC,
 	}
 }
 
+void UTN_RaceScreensSubsystem::TickCountdown(APlayerController* PC, const ATN_BeachRaceGameState& State)
+{
+	using namespace TNRaceScreensDetail;
+	const bool bWanted = State.RacePhase == ETNBeachRacePhase::Racing && State.FinishCountdown != ETNBeachFinishCountdown::None;
+	if (!bWanted)
+	{
+		if (IsValid(CountdownScreen)) { CountdownScreen->Dismiss(); }
+		CountdownScreen = nullptr;
+		return;
+	}
+	if (!CountdownScreen || CountdownScreen->IsDismissing())
+	{
+		CountdownScreen = CreateWidget<UTN_RaceFinishCountdownWidget>(PC, UTN_RaceFinishCountdownWidget::StaticClass());
+		if (!CountdownScreen) { return; }
+		CountdownScreen->AddToViewport(CountdownZOrder);
+	}
+	FTNRaceCountdownView View;
+	View.State = State.FinishCountdown;
+	View.SecondsLeft = State.GetFinishCountdownLeft();
+	View.TotalSeconds = State.FinishCountdownSeconds;
+	const APlayerState* Leader = State.RoundWinner.Get();
+	if (const ATN_CoopPlayerState* LeaderState = Cast<ATN_CoopPlayerState>(Leader))
+	{
+		const FTNRaceTallyRow LeaderRow = RowOf(*LeaderState, PC);
+		View.LeaderName = LeaderRow.Name;
+		View.LeaderLook = LeaderRow.Look;
+	}
+	// Lo que le toca a quien mira: la entera, una media, correr a por ella o solo mirar (ya no corre).
+	const APlayerState* Own = PC ? PC->PlayerState.Get() : nullptr;
+	if (Own && Own == Leader)
+	{
+		View.LocalStatus = 1;
+	}
+	else if (Own && State.RoundHalfShells.Contains(Own))
+	{
+		View.LocalStatus = 2;
+	}
+	else
+	{
+		const ATN_CoopPlayerState* OwnState = Cast<ATN_CoopPlayerState>(Own);
+		View.LocalStatus = (!OwnState || OwnState->bHasFinishedRun || OwnState->IsOnlyASpectator()) ? 3 : 0;
+	}
+	CountdownScreen->SetView(View);
+}
+
 void UTN_RaceScreensSubsystem::TrackWins(float DeltaTime, const ATN_BeachRaceGameState& State)
 {
 	const bool bRoundPhase = State.RacePhase == ETNBeachRacePhase::Waiting || State.RacePhase == ETNBeachRacePhase::Racing;
@@ -201,19 +288,19 @@ void UTN_RaceScreensSubsystem::TrackWins(float DeltaTime, const ATN_BeachRaceGam
 	if (!bTrackingRound)
 	{
 		bTrackingRound = true;
-		WinsAtRoundStart.Reset();
+		HalvesAtRoundStart.Reset();
 		RacingClock = 0.f;
 	}
 	if (State.RacePhase == ETNBeachRacePhase::Racing) { RacingClock += DeltaTime; }
 	// Mientras se prepara la ronda y en sus primeros segundos se sigue apuntando (por si algo llega tarde); después, solo
-	// los jugadores nuevos: la concha de la ronda nunca entra aquí aunque su RoundWins llegue antes que el recuento.
+	// los jugadores nuevos: las conchas de la ronda nunca entran aquí aunque RaceShellHalves llegue antes que el recuento.
 	const bool bSettling = State.RacePhase == ETNBeachRacePhase::Waiting || RacingClock < 4.f;
 	for (const TObjectPtr<APlayerState>& Base : State.PlayerArray)
 	{
 		const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(Base);
 		if (!PS) { continue; }
 		const int32 Id = PS->GetPlayerId();
-		if (bSettling || !WinsAtRoundStart.Contains(Id)) { WinsAtRoundStart.Add(Id, PS->RoundWins); }
+		if (bSettling || !HalvesAtRoundStart.Contains(Id)) { HalvesAtRoundStart.Add(Id, PS->RaceShellHalves); }
 	}
 }
 
@@ -221,7 +308,8 @@ void UTN_RaceScreensSubsystem::WarmArt(const ATN_BeachRaceGameState& State)
 {
 	using FMakeTexture = UTexture2D* (*)();
 	static const FMakeTexture Fixed[] = { &TNRaceArt::TallyBackdrop, &TNRaceArt::ShellSocket, &TNRaceArt::SoftGlow, &TNRaceArt::Sparkle,
-		&TNRaceArt::Crown, &TNRaceArt::SkyGradient, &TNRaceArt::SunGlow, &TNRaceArt::Cloud, &TNRaceArt::SidePanel };
+		&TNRaceArt::Crown, &TNRaceArt::SkyGradient, &TNRaceArt::SunGlow, &TNRaceArt::Cloud, &TNRaceArt::SidePanel,
+		&TNRaceScreensDetail::HalfShellA, &TNRaceScreensDetail::HalfShellB };
 	if (WarmStatic < static_cast<int32>(UE_ARRAY_COUNT(Fixed)))
 	{
 		Fixed[WarmStatic++]();
@@ -247,51 +335,84 @@ FTNRaceTallyRow UTN_RaceScreensSubsystem::RowOf(const ATN_CoopPlayerState& PS, c
 	Row.Look.SkinId = PS.EquippedSkinId;
 	Row.Look.EyesId = PS.EquippedEyesId;
 	Row.bLocal = PC && PC->PlayerState.Get() == &PS;
-	Row.WinsBefore = PS.RoundWins;
+	Row.HalvesBefore = PS.RaceShellHalves;
 	return Row;
 }
 
-FTNRaceTallySetup UTN_RaceScreensSubsystem::BuildTally(const ATN_BeachRaceGameState& State, const APlayerController* PC, const APlayerState* Winner)
+FTNRaceTallySetup UTN_RaceScreensSubsystem::BuildTally(const ATN_BeachRaceGameState& State, const APlayerController* PC, const APlayerState* ChampionOnly)
 {
 	FTNRaceTallySetup Setup;
 	TallyPlayerIds.Reset();
+	const APlayerState* Winner = ChampionOnly ? ChampionOnly : State.RoundWinner.Get();
 	// Columnas en el orden de entrada a la partida (siempre el mismo): cada uno se encuentra en su sitio.
 	TArray<const ATN_CoopPlayerState*> Players;
 	for (const TObjectPtr<APlayerState>& Base : State.PlayerArray)
 	{
 		const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(Base);
-		if (PS && (!PS->IsInactive() || PS == Winner)) { Players.Add(PS); }
+		if (PS && (!PS->IsInactive() || PS == Winner || State.RoundHalfShells.Contains(PS))) { Players.Add(PS); }
 	}
 	Players.Sort([](const ATN_CoopPlayerState& A, const ATN_CoopPlayerState& B) { return A.GetPlayerId() < B.GetPlayerId(); });
-	int32 MostWins = 0;
+	int32 MostHalves = 0;
 	for (int32 i = 0; i < Players.Num(); ++i)
 	{
 		const ATN_CoopPlayerState& PS = *Players[i];
 		FTNRaceTallyRow Row = RowOf(PS, PC);
-		if (&PS == Winner)
-		{
-			// La concha de la ronda vuela al hueco siguiente a las que tenía al empezar la ronda.
-			const int32* AtStart = WinsAtRoundStart.Find(PS.GetPlayerId());
-			Row.WinsBefore = AtStart ? *AtStart : FMath::Max(0, PS.RoundWins - 1);
-			Setup.WinnerRow = i;
-			MostWins = FMath::Max(MostWins, Row.WinsBefore + 1);
-		}
-		else
-		{
-			MostWins = FMath::Max(MostWins, Row.WinsBefore);
-		}
+		const bool bWon = &PS == Winner;
+		const bool bHalf = !ChampionOnly && !bWon && State.RoundHalfShells.Contains(&PS);
+		Row.HalvesGained = bWon ? 2 : (bHalf ? 1 : 0);
+		// Las conchas de esta ronda llegan desde las que tenía al empezarla (si no se apuntaron, las de ahora menos las
+		// ganadas); en el recuento de la concha que corona, desde las de ahora menos esa.
+		const int32* AtStart = ChampionOnly ? nullptr : HalvesAtRoundStart.Find(PS.GetPlayerId());
+		Row.HalvesBefore = AtStart ? *AtStart : FMath::Max(0, PS.RaceShellHalves - Row.HalvesGained);
+		if (bWon) { Setup.WinnerRow = i; }
+		MostHalves = FMath::Max(MostHalves, Row.HalvesBefore + Row.HalvesGained);
 		Setup.Rows.Add(Row);
 		TallyPlayerIds.Add(PS.GetPlayerId());
 	}
-	Setup.Target = FMath::Max(FMath::Max(1, State.RoundTarget), MostWins);
+	const int32 Target = FMath::Max(1, State.RoundTarget);
+	Setup.Target = FMath::Max(Target, (MostHalves + 1) / 2);
 	Setup.Round = FMath::Max(1, State.CurrentRound);
+	DecideVerdict(Setup, Target * 2);
+	if (ChampionOnly && Setup.Rows.IsValidIndex(Setup.WinnerRow))
+	{
+		// El campeón lo ha decidido el servidor (p. ej. TN.Race.Champion): a él le baja la corona, sin sprint.
+		Setup.ChampionRow = Setup.WinnerRow;
+		Setup.SprintRows.Reset();
+	}
 	return Setup;
+}
+
+void UTN_RaceScreensSubsystem::DecideVerdict(FTNRaceTallySetup& Setup, int32 TargetHalves)
+{
+	// Lo mismo que decide el servidor tras el recuento: la única en lo más alto con las conchas del campeón es campeona;
+	// si hay empate ahí arriba, sprint final entre las empatadas.
+	int32 Top = 0;
+	for (const FTNRaceTallyRow& Row : Setup.Rows)
+	{
+		Top = FMath::Max(Top, Row.HalvesBefore + Row.HalvesGained);
+	}
+	Setup.ChampionRow = INDEX_NONE;
+	Setup.SprintRows.Reset();
+	if (Top < TargetHalves)
+	{
+		return;
+	}
+	for (int32 i = 0; i < Setup.Rows.Num(); ++i)
+	{
+		if (Setup.Rows[i].HalvesBefore + Setup.Rows[i].HalvesGained == Top) { Setup.SprintRows.Add(i); }
+	}
+	if (Setup.SprintRows.Num() == 1)
+	{
+		Setup.ChampionRow = Setup.SprintRows[0];
+		Setup.SprintRows.Reset();
+	}
 }
 
 FTNRaceChampionSetup UTN_RaceScreensSubsystem::BuildChampion(const ATN_BeachRaceGameState& State, const APlayerController* PC) const
 {
 	FTNRaceChampionSetup Setup;
 	Setup.Target = FMath::Max(1, State.RoundTarget);
+	Setup.bSprintWin = State.bSprintFinal;
 	for (const TObjectPtr<APlayerState>& Base : State.Podium)
 	{
 		if (const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(Base)) { Setup.Podium.Add(RowOf(*PS, PC)); }
@@ -309,10 +430,26 @@ FTNRaceChampionSetup UTN_RaceScreensSubsystem::BuildChampion(const ATN_BeachRace
 		Players.Sort([ChampionState](const ATN_CoopPlayerState& A, const ATN_CoopPlayerState& B)
 		{
 			if ((&A == ChampionState) != (&B == ChampionState)) { return &A == ChampionState; }
-			return A.RoundWins > B.RoundWins;
+			return A.RaceShellHalves > B.RaceShellHalves;
 		});
 		for (int32 i = 0; i < Players.Num() && i < 3; ++i) { Setup.Podium.Add(RowOf(*Players[i], PC)); }
 	}
+	return Setup;
+}
+
+FTNRaceSprintSetup UTN_RaceScreensSubsystem::BuildSprint(const ATN_BeachRaceGameState& State, const APlayerController* PC) const
+{
+	FTNRaceSprintSetup Setup;
+	Setup.TieHalves = 0;
+	for (const TObjectPtr<APlayerState>& Base : State.SprintFinalists)
+	{
+		const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(Base);
+		if (!PS) { continue; }
+		Setup.Finalists.Add(RowOf(*PS, PC));
+		Setup.TieHalves = FMath::Max(Setup.TieHalves, PS->RaceShellHalves);
+		Setup.bLocalFinalist |= PC && PC->PlayerState.Get() == PS;
+	}
+	if (Setup.TieHalves == 0) { Setup.TieHalves = FMath::Max(1, State.RoundTarget) * 2; }
 	return Setup;
 }
 
@@ -358,12 +495,40 @@ void UTN_RaceScreensSubsystem::ShowChampion(APlayerController* PC, const FTNRace
 		Setup.bPreview ? TEXT(" (vista previa)") : TEXT(""));
 }
 
+void UTN_RaceScreensSubsystem::ShowSprint(APlayerController* PC, const FTNRaceSprintSetup& Setup)
+{
+	using namespace TNRaceScreensDetail;
+	if (!SprintScreen || SprintScreen->IsDismissing())
+	{
+		SprintScreen = CreateWidget<UTN_RaceSprintWidget>(PC, UTN_RaceSprintWidget::StaticClass());
+		if (!SprintScreen) { return; }
+		SprintScreen->AddToViewport(SprintZOrder);
+	}
+	SprintScreen->Setup(Setup);
+	// El recuento y la cuenta atrás se van con un fundido por debajo mientras entra el título.
+	if (Tally)
+	{
+		Tally->Dismiss();
+		Tally = nullptr;
+	}
+	if (CountdownScreen)
+	{
+		CountdownScreen->Dismiss();
+		CountdownScreen = nullptr;
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Sprint final: %d finalistas%s."), Setup.Finalists.Num(), Setup.bPreview ? TEXT(" (vista previa)") : TEXT(""));
+}
+
 void UTN_RaceScreensSubsystem::HideAll()
 {
 	if (IsValid(Tally)) { Tally->Dismiss(); }
 	Tally = nullptr;
 	if (IsValid(ChampionScreen)) { ChampionScreen->RemoveFromParent(); }
 	ChampionScreen = nullptr;
+	if (IsValid(CountdownScreen)) { CountdownScreen->Dismiss(); }
+	CountdownScreen = nullptr;
+	if (IsValid(SprintScreen)) { SprintScreen->Dismiss(); }
+	SprintScreen = nullptr;
 	// La música de victoria del podio la apaga el director al cambiar el flujo (ronda nueva o viaje); la de la vista
 	// previa, StopPreview.
 	bVictoryPlaying = false;
@@ -389,7 +554,8 @@ void UTN_RaceScreensSubsystem::BuildPreviewRows(APlayerController* PC, int32 Num
 	OutRows.Reset();
 	const int32 Count = FMath::Clamp(NumPlayers, 1, 6);
 	static const TCHAR* FakeNames[] = { TEXT("Coral"), TEXT("Bruma"), TEXT("Perla"), TEXT("Marea"), TEXT("Alga") };
-	static const int32 FakeWins[] = { 1, 0, 2, 1, 0, 2 };
+	// Medias conchas de mentira: una entera, media, dos, una y media, nada y dos y media.
+	static const int32 FakeHalves[] = { 2, 1, 4, 3, 0, 5 };
 	const UMP_GameInstance* GI = PC ? Cast<UMP_GameInstance>(UGameplayStatics::GetGameInstance(PC)) : nullptr;
 	const TArray<FName> Skins = GI ? GI->GetCosmeticCatalog(ETNCosmeticCategory::Body) : TArray<FName>();
 	const TArray<FName> Shells = GI ? GI->GetCosmeticCatalog(ETNCosmeticCategory::Shell) : TArray<FName>();
@@ -399,7 +565,7 @@ void UTN_RaceScreensSubsystem::BuildPreviewRows(APlayerController* PC, int32 Num
 	for (int32 i = 0; i < Count; ++i)
 	{
 		FTNRaceTallyRow Row;
-		Row.WinsBefore = FakeWins[i];
+		Row.HalvesBefore = FakeHalves[i];
 		if (i == 0)
 		{
 			// Tu tortuga, con tu aspecto de verdad.
@@ -407,7 +573,7 @@ void UTN_RaceScreensSubsystem::BuildPreviewRows(APlayerController* PC, int32 Num
 			if (Own)
 			{
 				Row = RowOf(*Own, PC);
-				Row.WinsBefore = FakeWins[i];
+				Row.HalvesBefore = FakeHalves[i];
 			}
 			else if (GI)
 			{
@@ -431,13 +597,14 @@ void UTN_RaceScreensSubsystem::BuildPreviewRows(APlayerController* PC, int32 Num
 	}
 }
 
-void UTN_RaceScreensSubsystem::StartTallyPreview(int32 WinnerRow, int32 NumPlayers, bool bChampionRound)
+void UTN_RaceScreensSubsystem::StartTallyPreview(int32 WinnerRow, int32 NumPlayers, bool bChampionRound, int32 NumHalves)
 {
 	UWorld* World = GetWorld();
 	APlayerController* PC = World ? TNRaceScreensDetail::FindLocalController(*World) : nullptr;
 	if (!PC) { return; }
 	StopPreview();
 	bPreview = true;
+	PreviewKind = 0;
 	PreviewClock = 0.f;
 	BuildPreviewRows(PC, NumPlayers, PreviewRows);
 	FTNRaceTallySetup Setup;
@@ -446,11 +613,67 @@ void UTN_RaceScreensSubsystem::StartTallyPreview(int32 WinnerRow, int32 NumPlaye
 	Setup.Round = bChampionRound ? 5 : 2;
 	Setup.bPreview = true;
 	Setup.WinnerRow = PreviewRows.IsValidIndex(WinnerRow) ? WinnerRow : INDEX_NONE;
-	if (bChampionRound && Setup.Rows.IsValidIndex(Setup.WinnerRow)) { Setup.Rows[Setup.WinnerRow].WinsBefore = Setup.Target - 1; }
+	const int32 TargetHalves = Setup.Target * 2;
+	if (Setup.Rows.IsValidIndex(Setup.WinnerRow))
+	{
+		// La entera para la ganadora (con la final, justo la que corona).
+		FTNRaceTallyRow& Winner = Setup.Rows[Setup.WinnerRow];
+		Winner.HalvesGained = 2;
+		Winner.HalvesBefore = bChampionRound ? TargetHalves - 2 : FMath::Min(Winner.HalvesBefore, TargetHalves - 3);
+	}
+	// Medias para las columnas siguientes (sin coronar a nadie más que a la ganadora).
+	int32 Given = 0;
+	for (int32 k = 1; k < Setup.Rows.Num() && Given < FMath::Max(0, NumHalves); ++k)
+	{
+		const int32 Index = (FMath::Max(0, Setup.WinnerRow) + k) % Setup.Rows.Num();
+		if (Index == Setup.WinnerRow) { continue; }
+		FTNRaceTallyRow& Row = Setup.Rows[Index];
+		Row.HalvesGained = 1;
+		Row.HalvesBefore = FMath::Min(Row.HalvesBefore, TargetHalves - 2);
+		++Given;
+	}
+	for (FTNRaceTallyRow& Row : Setup.Rows)
+	{
+		if (Row.HalvesGained == 0) { Row.HalvesBefore = FMath::Min(Row.HalvesBefore, TargetHalves - 1); }
+	}
+	DecideVerdict(Setup, TargetHalves);
 	PreviewRows = Setup.Rows;
 	PreviewWinner = Setup.WinnerRow;
-	bPreviewChampionAfter = bChampionRound && Setup.Rows.IsValidIndex(Setup.WinnerRow);
+	bPreviewChampionAfter = Setup.Rows.IsValidIndex(Setup.ChampionRow);
 	ShowTally(PC, Setup);
+}
+
+void UTN_RaceScreensSubsystem::StartSprintPreview(int32 NumPlayers)
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? TNRaceScreensDetail::FindLocalController(*World) : nullptr;
+	if (!PC) { return; }
+	StopPreview();
+	bPreview = true;
+	PreviewKind = 1;
+	PreviewClock = 0.f;
+	BuildPreviewRows(PC, FMath::Clamp(NumPlayers, 2, 6), PreviewRows);
+	FTNRaceSprintSetup Setup;
+	Setup.Finalists = PreviewRows;
+	Setup.TieHalves = 6;
+	Setup.bLocalFinalist = true;
+	Setup.bPreview = true;
+	ShowSprint(PC, Setup);
+}
+
+void UTN_RaceScreensSubsystem::StartCountdownPreview()
+{
+	using namespace TNRaceScreensDetail;
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? FindLocalController(*World) : nullptr;
+	if (!PC) { return; }
+	StopPreview();
+	bPreview = true;
+	PreviewKind = 2;
+	PreviewClock = 0.f;
+	BuildPreviewRows(PC, 2, PreviewRows);
+	CountdownScreen = CreateWidget<UTN_RaceFinishCountdownWidget>(PC, UTN_RaceFinishCountdownWidget::StaticClass());
+	if (CountdownScreen) { CountdownScreen->AddToViewport(CountdownZOrder); }
 }
 
 void UTN_RaceScreensSubsystem::StartPodiumPreview(int32 NumPlayers)
@@ -475,6 +698,7 @@ void UTN_RaceScreensSubsystem::StopPreview()
 {
 	if (!bPreview) { return; }
 	bPreview = false;
+	PreviewKind = 0;
 	const bool bWasPlaying = bVictoryPlaying;
 	HideAll();
 	if (bWasPlaying) { PlayVictory(false); }
@@ -486,6 +710,34 @@ void UTN_RaceScreensSubsystem::TickPreview(float DeltaTime, APlayerController* P
 {
 	using namespace TNRaceScreensDetail;
 	PreviewClock += DeltaTime;
+	if (PreviewKind == 1)
+	{
+		// Título del sprint: con su cuenta de mentira y se cierra solo.
+		if (SprintScreen) { SprintScreen->SetSecondsLeft(FMath::Max(0.f, PreviewSprintSeconds - 1.f - PreviewClock)); }
+		if (PreviewClock >= PreviewSprintSeconds) { StopPreview(); }
+		return;
+	}
+	if (PreviewKind == 2)
+	{
+		// Cuenta atrás: diez segundos contando y el «¡TIEMPO!»; la de la columna 1 es la primera y tú aún corres.
+		if (CountdownScreen)
+		{
+			FTNRaceCountdownView View;
+			View.SecondsLeft = FMath::Max(0.f, PreviewCountdownSeconds - PreviewClock);
+			View.TotalSeconds = PreviewCountdownSeconds;
+			View.State = View.SecondsLeft > 0.f ? ETNBeachFinishCountdown::Counting : ETNBeachFinishCountdown::TimeUp;
+			if (PreviewRows.IsValidIndex(1))
+			{
+				View.LeaderName = PreviewRows[1].Name;
+				View.LeaderLook = PreviewRows[1].Look;
+			}
+			View.LocalStatus = 0;
+			View.bPreview = true;
+			CountdownScreen->SetView(View);
+		}
+		if (PreviewClock >= PreviewCountdownSeconds + PreviewTimeUpSeconds) { StopPreview(); }
+		return;
+	}
 	if (Tally && !ChampionScreen)
 	{
 		Tally->SetSecondsLeft(FMath::Max(0.f, PreviewTallySeconds - PreviewClock));
@@ -501,10 +753,10 @@ void UTN_RaceScreensSubsystem::TickPreview(float DeltaTime, APlayerController* P
 			TArray<FTNRaceTallyRow> Ordered = PreviewRows;
 			if (Ordered.IsValidIndex(PreviewWinner))
 			{
-				Ordered[PreviewWinner].WinsBefore = Setup.Target;
+				Ordered[PreviewWinner].HalvesBefore = Setup.Target * 2;
 				const FTNRaceTallyRow Winner = Ordered[PreviewWinner];
 				Ordered.RemoveAt(PreviewWinner);
-				Ordered.StableSort([](const FTNRaceTallyRow& A, const FTNRaceTallyRow& B) { return A.WinsBefore > B.WinsBefore; });
+				Ordered.StableSort([](const FTNRaceTallyRow& A, const FTNRaceTallyRow& B) { return A.HalvesBefore + A.HalvesGained > B.HalvesBefore + B.HalvesGained; });
 				Ordered.Insert(Winner, 0);
 			}
 			Ordered.SetNum(FMath::Min(Ordered.Num(), 3));

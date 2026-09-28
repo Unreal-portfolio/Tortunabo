@@ -540,6 +540,11 @@ namespace TNTurtleAnim
 
 	/** Zambullida: segundos tras empezar a caer en los que aún puede empezar y giro del cuerpo (grados) mínimo y máximo. */
 	constexpr float CliffDiveStartWindow = 0.35f;
+	/**
+	 * Pasada esa ventana, también empieza si cae deprisa (cm/s) dentro de la zona: la caída que pasa por el vacío sobre el
+	 * agua (p. ej. lanzada desde más atrás) entra igualmente de cabeza. Un salto que vuelve a la repisa no llega a tanto.
+	 */
+	constexpr float CliffDiveLateFallSpeed = 1000.f;
 	constexpr float CliffDiveMinPitch = 40.f;
 	constexpr float CliffDiveMaxPitch = 165.f;
 
@@ -1037,7 +1042,7 @@ Ease(F.CarryW, bCarrying, 8.f);
 	{
 		bCliffDive = false;
 	}
-	else if (!bCliffDive && FallElapsed <= CliffDiveStartWindow
+	else if (!bCliffDive && (FallElapsed <= CliffDiveStartWindow || Velocity.Z < -CliffDiveLateFallSpeed)
 		&& IsCliffJumpZone(GetWorld(), CliffZoneSource, NextCliffZoneLookup, Turtle->GetActorLocation()))
 	{
 		bCliffDive = true;

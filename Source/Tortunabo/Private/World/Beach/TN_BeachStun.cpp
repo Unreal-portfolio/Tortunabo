@@ -1,5 +1,6 @@
 #include "World/Beach/TN_BeachStun.h"
 #include "World/Beach/TN_BeachStunComponent.h"
+#include "World/Beach/TN_BeachSandWorm.h"
 #include "Game/TN_BeachRaceGameState.h"
 #include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
@@ -47,7 +48,8 @@ namespace TNBeachStunDetail
 
 void TNBeach::StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launch)
 {
-	if (!Turtle || Seconds <= 0.f || !Turtle->HasAuthority() || Turtle->IsActorBeingDestroyed())
+	// En la boca de un gusano de arena (al acabar la cuenta atrás) ya no le pasa nada más hasta la ronda siguiente.
+	if (!Turtle || Seconds <= 0.f || !Turtle->HasAuthority() || Turtle->IsActorBeingDestroyed() || ATN_BeachSandWorm::IsBeingEaten(Turtle))
 	{
 		return;
 	}
@@ -66,7 +68,7 @@ void TNBeach::StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launc
 
 void TNBeach::KnockDownTurtle(ACharacter* Turtle, float Seconds, const FVector& Impulse)
 {
-	if (!Turtle || Seconds <= 0.f || !Turtle->HasAuthority() || Turtle->IsActorBeingDestroyed())
+	if (!Turtle || Seconds <= 0.f || !Turtle->HasAuthority() || Turtle->IsActorBeingDestroyed() || ATN_BeachSandWorm::IsBeingEaten(Turtle))
 	{
 		return;
 	}

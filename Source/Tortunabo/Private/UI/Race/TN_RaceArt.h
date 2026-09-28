@@ -165,6 +165,52 @@ namespace TNRaceArt
 		});
 	}
 
+	/**
+	 * Media concha del recuento: la concha reina de las de puntos (TNHUDArt::ShellIconTier(3), sin su estrella) partida
+	 * en diagonal, de abajo a la izquierda a arriba a la derecha, con el corte en zigzag como una concha rota y su borde
+	 * de pegatina también por el corte. Sin bSecond, la mitad de arriba a la izquierda; con bSecond, la otra, que encaja
+	 * con ella diente con diente: juntas son la concha entera (128 × 128, como el icono).
+	 */
+	inline UTexture2D* HalfShell(bool bSecond)
+	{
+		return TNHUDArt::Cached(bSecond ? TEXT("RaceHalfShellB") : TEXT("RaceHalfShellA"), [bSecond]
+		{
+			TNHUDArt::FPainter P(128, 128);
+			const FLinearColor Top = TNHUDArt::Hex(0xFFD6F5);
+			const FLinearColor Bottom = TNHUDArt::Hex(0xC04CE0);
+			const FLinearColor Ribs = TNHUDArt::Hex(0x7A1F9A, 0.55f);
+			const FLinearColor RimColor = TNHUDArt::Hex(0xE8A92E, 0.9f);
+			const FLinearColor Gloss = TNHUDArt::Hex(0xFFFFFF, 0.85f);
+			const float Side = bSecond ? -1.f : 1.f;
+			auto Body = [](float x, float y) { return FMath::Max(TNHUDArt::Circle(x, y, 64.f, 60.f, 44.f), y - 92.f); };
+			auto Ears = [](float x, float y) { return TNHUDArt::Box(x, y, 64.f, 96.f, 20.f, 9.f, 4.f); };
+			// Corte: U mide hacia abajo a la derecha desde la diagonal que pasa por el centro; los dientes van a lo largo
+			// de ella (onda triangular de ±2,4 px cada 13 px).
+			auto Cut = [Side](float x, float y)
+			{
+				const float U = ((x - 64.f) + (y - 64.f)) * 0.70710678f;
+				const float V = ((x - 64.f) - (y - 64.f)) * 0.70710678f;
+				const float Teeth = 4.8f * (2.f * FMath::Abs(FMath::Frac(V / 13.f) - 0.5f) - 0.5f);
+				return Side * (U - Teeth);
+			};
+			auto Piece = [&](float x, float y) { return FMath::Max(FMath::Min(Body(x, y), Ears(x, y)), Cut(x, y)); };
+			P.Sticker(Piece, 6.f);
+			P.Layer(Piece, [&Top, &Bottom](float, float y) { return TNHUDArt::Mix(Top, Bottom, (y - 18.f) / 80.f); });
+			// Costillas desde la charnela, solo en su mitad.
+			for (int32 k = -4; k <= 4; ++k)
+			{
+				const float A = k * 0.3f;
+				const float Ex = 64.f + FMath::Sin(A) * 50.f;
+				const float Ey = 96.f - FMath::Cos(A) * 50.f;
+				P.Fill([&](float x, float y) { return FMath::Max(TNHUDArt::Segment(x, y, 64.f, 96.f, Ex, Ey, 1.8f), FMath::Max(Body(x, y), Cut(x, y))); }, Ribs);
+			}
+			// Filo dorado alrededor, también por el corte (se ve roto), y el brillo si le toca.
+			P.Fill([&](float x, float y) { return TNHUDArt::Rim(Piece, x, y, 2.f, 1.4f); }, RimColor);
+			P.Fill([&](float x, float y) { return FMath::Max(TNHUDArt::Ellipse(x, y, 48.f, 38.f, 9.f, 6.f), Cut(x, y)); }, Gloss);
+			return P.ToTexture(bSecond ? TEXT("TN_Race_HalfShellB") : TEXT("TN_Race_HalfShellA"));
+		});
+	}
+
 	/** Brillo redondo y suave (blanco, para teñirlo): detrás del ganador y en los destellos. */
 	inline UTexture2D* SoftGlow()
 	{

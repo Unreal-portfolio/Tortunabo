@@ -160,6 +160,7 @@ void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(ATN_CoopPlayerState, bIsEliminated);
 	DOREPLIFETIME(ATN_CoopPlayerState, RaceScore);
 	DOREPLIFETIME(ATN_CoopPlayerState, RoundWins);
+	DOREPLIFETIME(ATN_CoopPlayerState, RaceShellHalves);
 	DOREPLIFETIME(ATN_CoopPlayerState, TeamIndex);
 }
 

@@ -195,6 +195,14 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
 	int32 RoundWins = 0;
 
+	/**
+	 * Carrera en la playa (ATN_BeachRaceGameMode): conchas de la partida en medias (2 = una concha entera). La primera en
+	 * tocar el agua se lleva una entera y quien llega en la cuenta atrás de después, media. Gana quien llega a
+	 * RoundTarget conchas (RoundTarget * 2 medias). Lo resetea el GameMode al empezar la partida; no ResetForNewRace.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
+	int32 RaceShellHalves = 0;
+
 	/** Pareja de la ronda actual en 2vs2 (0 o 1). -1 fuera de 2vs2. */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
 	int32 TeamIndex = -1;

@@ -41,6 +41,9 @@ namespace TNRaceTallyDetail
 	constexpr float FlightSize = 210.f;
 	constexpr float HoverSeconds = 0.55f;
 	constexpr float FlightSeconds = 0.65f;
+	/** Medias conchas: una cada tanto (s) y lo que tarda la otra mitad en encajar con la que ya había. */
+	constexpr float HalfStagger = 0.35f;
+	constexpr float JoinSeconds = 0.25f;
 	/** Burbujas del fondo. */
 	constexpr int32 NumBubbles = 14;
 
@@ -51,6 +54,12 @@ namespace TNRaceTallyDetail
 		return FVector2D(ColumnW * 0.5f + ((K % 2) == 0 ? -ZigX : ZigX), SlotBottomY - Step * K);
 	}
 
+	/** Giro de reposo de la concha del hueco K (se van alternando, como colgadas de la cuerda). */
+	float SlotAngle(int32 K)
+	{
+		return K % 2 == 0 ? -10.f : 10.f;
+	}
+
 	/** Tramo de cuerda entre dos puntos del lienzo de la columna. */
 	void AddRope(UWidgetTree* Tree, UCanvasPanel* Col, const FVector2D& From, const FVector2D& To)
 	{
@@ -59,6 +68,17 @@ namespace TNRaceTallyDetail
 		Rope->SetBrush(TNHUDStyle::Rounded(TNHUDArt::Hex(0xE9C48A), 5.f, TNHUDArt::Hex(0x8A6A3A), 1.5f));
 		Rope->SetRenderTransformAngle(FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(Delta.Y), static_cast<float>(Delta.X))));
 		TNRaceUI::PlaceAt(Col, Rope, (From + To) * 0.5, FVector2D(Delta.Size(), 10.f), FVector2D(0.5f, 0.5f));
+	}
+
+	/** Imagen de concha (entera o media) en el hueco, oculta hasta que le toque. */
+	UImage* AddSlotShell(UWidgetTree* Tree, UCanvasPanel* Col, UTexture2D* Texture, const FVector2D& Center, int32 K)
+	{
+		UImage* Shell = TNRaceUI::MakeImage(Tree, Texture, FVector2D(ShellSize, ShellSize));
+		Shell->SetRenderTransformPivot(FVector2D(0.5f, 0.6f));
+		Shell->SetRenderOpacity(0.f);
+		Shell->SetRenderTransformAngle(SlotAngle(K));
+		TNRaceUI::PlaceAt(Col, Shell, Center, FVector2D(ShellSize, ShellSize), FVector2D(0.5f, 0.5f));
+		return Shell;
 	}
 
 	/** Número pseudoaleatorio estable en [0, 1) por índice (burbujas). */
@@ -146,15 +166,24 @@ void UTN_RaceTallyWidget::Setup(const FTNRaceTallySetup& InSetup)
 	BuildTree();
 	TallySetup = InSetup;
 	TallySetup.Target = FMath::Clamp(TallySetup.Target, 1, 5);
+	const int32 MaxHalves = TallySetup.Target * 2;
 	for (FTNRaceTallyRow& Row : TallySetup.Rows)
 	{
-		Row.WinsBefore = FMath::Clamp(Row.WinsBefore, 0, TallySetup.Target);
+		Row.HalvesBefore = FMath::Clamp(Row.HalvesBefore, 0, MaxHalves);
+		Row.HalvesGained = FMath::Clamp(Row.HalvesGained, 0, 2);
 	}
 	if (HasWinner())
 	{
+		// La primera en el agua gana la entera (dos medias); si ya no le cabe, se le hace sitio en el último hueco.
 		FTNRaceTallyRow& Winner = TallySetup.Rows[TallySetup.WinnerRow];
-		Winner.WinsBefore = FMath::Min(Winner.WinsBefore, TallySetup.Target - 1);
+		Winner.HalvesGained = 2;
+		Winner.HalvesBefore = FMath::Min(Winner.HalvesBefore, MaxHalves - 2);
 	}
+	if (!TallySetup.Rows.IsValidIndex(TallySetup.ChampionRow))
+	{
+		TallySetup.ChampionRow = INDEX_NONE;
+	}
+	TallySetup.SprintRows.RemoveAll([this](int32 Row) { return !TallySetup.Rows.IsValidIndex(Row); });
 	Time = 0.f;
 	bLanded = false;
 	bAppeared = false;
@@ -202,24 +231,22 @@ void UTN_RaceTallyWidget::BuildColumns()
 		TNRaceUI::PlaceAt(Col, CrownImg, FVector2D(ColumnW * 0.5f, CrownY), FVector2D(CrownW, CrownH), FVector2D(0.5f, 0.5f));
 		Column.Crown = CrownImg;
 
-		// Huecos y conchas.
+		// Huecos y, en cada uno, sus dos medias conchas y la entera (encima).
 		for (int32 k = 0; k < Target; ++k)
 		{
 			const FVector2D Center = SlotCenter(k, Target);
 			UImage* Socket = TNRaceUI::MakeImage(Tree, TNRaceArt::ShellSocket(), FVector2D(SocketSize, SocketSize));
 			TNRaceUI::PlaceAt(Col, Socket, Center, FVector2D(SocketSize, SocketSize), FVector2D(0.5f, 0.5f));
-			UImage* Shell = TNRaceUI::MakeImage(Tree, TNHUDArt::ShellIconTier(3), FVector2D(ShellSize, ShellSize));
-			Shell->SetRenderTransformPivot(FVector2D(0.5f, 0.6f));
-			Shell->SetRenderOpacity(0.f);
-			Shell->SetRenderTransformAngle(k % 2 == 0 ? -10.f : 10.f);
-			TNRaceUI::PlaceAt(Col, Shell, Center, FVector2D(ShellSize, ShellSize), FVector2D(0.5f, 0.5f));
 			Column.Sockets.Add(Socket);
-			Column.Shells.Add(Shell);
-			Column.ShellTimes.Add(-1.f);
-			Column.ShellSounded.Add(false);
+			Column.HalvesA.Add(AddSlotShell(Tree, Col, TNRaceArt::HalfShell(false), Center, k));
+			Column.HalvesB.Add(AddSlotShell(Tree, Col, TNRaceArt::HalfShell(true), Center, k));
+			Column.Shells.Add(AddSlotShell(Tree, Col, TNHUDArt::ShellIconTier(3), Center, k));
+			Column.SocketLevel.Add(0);
+			Column.SocketFrom.Add(0);
+			Column.SocketChangedAt.Add(-1.f);
 		}
 
-		// Brillo detrás de la cara (del ganador), aro del color de la tortuga y la cara con su piel.
+		// Brillo detrás de la cara (del que celebra), aro del color de la tortuga y la cara con su piel.
 		UImage* GlowImg = TNRaceUI::MakeImage(Tree, TNRaceArt::SoftGlow(), FVector2D(330.f, 330.f));
 		GlowImg->SetColorAndOpacity(TNHUDArt::Gold);
 		GlowImg->SetRenderOpacity(0.f);
@@ -265,42 +292,85 @@ void UTN_RaceTallyWidget::BuildColumns()
 
 void UTN_RaceTallyWidget::PlanTimeline()
 {
-	// Entran las columnas, aparecen una a una las conchas que ya tenía cada jugador y, al acabar, nace la de la ronda.
+	using namespace TNRaceTallyDetail;
+	// Entran las columnas y aparecen una a una las conchas que ya tenía cada jugador (la media, al final); al acabar nace
+	// la entera de la ronda y, cuando cae, saltan las medias de la cuenta atrás.
 	float LastPop = 0.45f;
+	NumHalfRows = 0;
 	for (int32 c = 0; c < Columns.Num(); ++c)
 	{
 		FTNTallyColumn& Column = Columns[c];
+		const FTNRaceTallyRow& Row = TallySetup.Rows[c];
 		Column.InAt = 0.12f + 0.11f * c;
-		int32 Have = TallySetup.Rows[c].WinsBefore;
-		if (c == TallySetup.WinnerRow && TallySetup.bAlreadyLanded) { Have = FMath::Min(Have + 1, TallySetup.Target); }
-		for (int32 k = 0; k < Column.ShellTimes.Num(); ++k)
+		Column.ShownHalves = 0;
+		Column.bWinnerCounted = false;
+		Column.bHalfCounted = false;
+		int32 Before = Row.HalvesBefore;
+		if (TallySetup.bAlreadyLanded) { Before = FMath::Min(Before + Row.HalvesGained, TallySetup.Target * 2); }
+		Column.BeforeFullAt.Reset();
+		for (int32 k = 0; k < Before / 2; ++k)
 		{
-			Column.ShellTimes[k] = k < Have ? 0.55f + 0.12f * c + 0.1f * k : -1.f;
-			LastPop = FMath::Max(LastPop, Column.ShellTimes[k]);
+			Column.BeforeFullAt.Add(0.55f + 0.12f * c + 0.1f * k);
+			LastPop = FMath::Max(LastPop, Column.BeforeFullAt.Last());
+		}
+		Column.BeforeHalfAt = (Before % 2) ? 0.55f + 0.12f * c + 0.1f * (Before / 2) : -1.f;
+		LastPop = FMath::Max(LastPop, Column.BeforeHalfAt);
+		Column.HalfOrder = INDEX_NONE;
+		if (!TallySetup.bAlreadyLanded && c != TallySetup.WinnerRow && Row.HalvesGained == 1)
+		{
+			Column.HalfOrder = NumHalfRows++;
 		}
 	}
 	AppearAt = FMath::Max(1.25f, LastPop + 0.45f);
-	if (TallySetup.bAlreadyLanded && HasWinner())
+	if (TallySetup.bAlreadyLanded)
 	{
-		// Ya se vio volar: el ganador celebra en cuanto sale su concha.
+		// Ya se vio llegar: se celebra en cuanto salen las conchas.
 		LaunchAt = AppearAt;
 		LandAt = AppearAt;
-		DoneAt = LandAt + (IsChampionTally() ? 2.4f : 1.6f);
+		HalvesFromAt = AppearAt;
+		FinalAt = AppearAt;
+		VerdictAt = AppearAt + 0.3f;
+		DoneAt = VerdictAt + ((IsChampionTally() || IsSprintTally()) ? 2.4f : 1.6f);
 		return;
 	}
-	LaunchAt = AppearAt + TNRaceTallyDetail::HoverSeconds;
-	LandAt = LaunchAt + TNRaceTallyDetail::FlightSeconds;
-	DoneAt = HasWinner() ? LandAt + (IsChampionTally() ? 3.f : 2.4f) : AppearAt + 2.2f;
+	LaunchAt = AppearAt + HoverSeconds;
+	LandAt = LaunchAt + FlightSeconds;
+	HalvesFromAt = HasWinner() ? LandAt + 0.45f : AppearAt + 0.2f;
+	FinalAt = NumHalfRows > 0 ? HalvesFromAt + HalfStagger * static_cast<float>(NumHalfRows - 1) + 0.3f : (HasWinner() ? LandAt : AppearAt);
+	VerdictAt = FinalAt + 0.5f;
+	DoneAt = (IsChampionTally() || IsSprintTally()) ? VerdictAt + 2.5f : FinalAt + ((HasWinner() || HasHalves()) ? 2.4f : 2.2f);
 }
 
 int32 UTN_RaceTallyWidget::NewSlot() const
 {
-	return HasWinner() ? FMath::Clamp(TallySetup.Rows[TallySetup.WinnerRow].WinsBefore, 0, TallySetup.Target - 1) : INDEX_NONE;
+	return HasWinner() ? FMath::Clamp(TallySetup.Rows[TallySetup.WinnerRow].HalvesBefore / 2, 0, TallySetup.Target - 1) : INDEX_NONE;
+}
+
+float UTN_RaceTallyWidget::HalfLandAt(int32 ColumnIndex) const
+{
+	const FTNTallyColumn* Column = Columns.IsValidIndex(ColumnIndex) ? &Columns[ColumnIndex] : nullptr;
+	return Column && Column->HalfOrder >= 0 ? HalvesFromAt + TNRaceTallyDetail::HalfStagger * static_cast<float>(Column->HalfOrder) : -1.f;
+}
+
+int32 UTN_RaceTallyWidget::HalvesShownAt(int32 ColumnIndex) const
+{
+	if (!Columns.IsValidIndex(ColumnIndex)) { return 0; }
+	const FTNTallyColumn& Column = Columns[ColumnIndex];
+	int32 Halves = 0;
+	for (const float At : Column.BeforeFullAt)
+	{
+		if (Time >= At) { Halves += 2; }
+	}
+	if (Column.BeforeHalfAt >= 0.f && Time >= Column.BeforeHalfAt) { Halves += 1; }
+	if (ColumnIndex == TallySetup.WinnerRow && !TallySetup.bAlreadyLanded && bLanded) { Halves += 2; }
+	const float HalfAt = HalfLandAt(ColumnIndex);
+	if (HalfAt >= 0.f && Time >= HalfAt) { Halves += 1; }
+	return FMath::Min(Halves, TallySetup.Target * 2);
 }
 
 bool UTN_RaceTallyWidget::IsChampionTally() const
 {
-	return HasWinner() && TallySetup.Rows[TallySetup.WinnerRow].WinsBefore + 1 >= TallySetup.Target;
+	return TallySetup.Rows.IsValidIndex(TallySetup.ChampionRow);
 }
 
 void UTN_RaceTallyWidget::UpdateWinner(int32 InWinnerRow)
@@ -310,7 +380,8 @@ void UTN_RaceTallyWidget::UpdateWinner(int32 InWinnerRow)
 	if (HasWinner())
 	{
 		FTNRaceTallyRow& Winner = TallySetup.Rows[TallySetup.WinnerRow];
-		Winner.WinsBefore = FMath::Min(Winner.WinsBefore, TallySetup.Target - 1);
+		Winner.HalvesGained = 2;
+		Winner.HalvesBefore = FMath::Min(Winner.HalvesBefore, TallySetup.Target * 2 - 2);
 	}
 	const float Now = Time;
 	PlanTimeline();
@@ -330,6 +401,21 @@ void UTN_RaceTallyWidget::Dismiss()
 	if (DismissAt < 0.f) { DismissAt = Time; }
 }
 
+FText UTN_RaceTallyWidget::JoinNames(const TArray<int32>& RowIndices) const
+{
+	TArray<FText> Names;
+	for (const int32 RowIndex : RowIndices)
+	{
+		if (!TallySetup.Rows.IsValidIndex(RowIndex)) { continue; }
+		const FString& Name = TallySetup.Rows[RowIndex].Name;
+		Names.Add(FText::FromString(Name.IsEmpty() ? FString(TEXT("Tortuga")) : Name));
+	}
+	if (Names.Num() == 0) { return FText::GetEmpty(); }
+	if (Names.Num() == 1) { return Names[0]; }
+	const FText Last = Names.Pop();
+	return FText::Format(NSLOCTEXT("TNRace", "NamesAnd", "{0} y {1}"), FText::Join(NSLOCTEXT("TNRace", "NamesComma", ", "), Names), Last);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Animación
 // ─────────────────────────────────────────────────────────────────────────────
@@ -342,8 +428,8 @@ void UTN_RaceTallyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 	const FVector2f Size = FVector2f(MyGeometry.GetLocalSize());
 	if (Size.X > 1.f) { LocalSize = FVector2D(Size.X, Size.Y); }
 
-	TickColumns(Dt);
 	TickFlight(MyGeometry);
+	TickColumns(Dt);
 	TickTexts();
 	TickBubbles();
 	TickSparks(Dt);
@@ -364,7 +450,7 @@ void UTN_RaceTallyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 void UTN_RaceTallyWidget::TickColumns(float DeltaTime)
 {
 	using namespace TNRaceTallyDetail;
-	const bool bNobody = !HasWinner() && Time >= AppearAt;
+	const bool bNobody = !HasWinner() && !HasHalves() && Time >= AppearAt;
 	for (int32 c = 0; c < Columns.Num(); ++c)
 	{
 		FTNTallyColumn& Column = Columns[c];
@@ -379,39 +465,42 @@ void UTN_RaceTallyWidget::TickColumns(float DeltaTime)
 			Root->SetRenderScale(FVector2D(FMath::Max(0.01f, Pop), FMath::Max(0.01f, Pop)));
 		}
 
-		// Conchas: las que ya tenía aparecen con un «pom» que sube de nota; la de la ronda, al llegar volando.
-		for (int32 k = 0; k < Column.Shells.Num(); ++k)
+		// Conchas: las que ya tenía, con un «pom» que sube de nota (la media, más bajito); la entera de la ronda suena al
+		// caer (Land) y la media de la cuenta atrás, con un «plin» pequeño.
+		const int32 Halves = HalvesShownAt(c);
+		if (Halves > Column.ShownHalves)
 		{
-			UImage* Shell = Column.Shells[k].Get();
-			if (!Shell) { continue; }
-			float At = Column.ShellTimes[k];
-			if (bWinner && k == NewSlot() && !TallySetup.bAlreadyLanded) { At = bLanded ? LandAt : -1.f; }
-			if (At < 0.f || Time < At)
+			const float OwnHalfAt = HalfLandAt(c);
+			if (bWinner && bLanded && !Column.bWinnerCounted && !TallySetup.bAlreadyLanded)
 			{
-				Shell->SetRenderOpacity(0.f);
-				continue;
+				Column.bWinnerCounted = true;
 			}
-			const float Since = Time - At;
-			const float Pop = TNRaceUI::PopIn(Since / 0.28f);
-			// La recién llegada se aplasta al caer y se endereza (rebote).
-			const bool bFresh = bWinner && k == NewSlot() && Since < 0.6f;
-			const float Squash = bFresh ? 0.25f * FMath::Sin(Since * 18.f) * FMath::Exp(-Since * 6.f) : 0.f;
-			Shell->SetRenderOpacity(1.f);
-			Shell->SetRenderScale(FVector2D(Pop * (1.f + Squash), Pop * (1.f - Squash)));
-			if (!Column.ShellSounded[k])
+			else if (OwnHalfAt >= 0.f && Time >= OwnHalfAt && !Column.bHalfCounted)
 			{
-				Column.ShellSounded[k] = true;
-				if (!(bWinner && k == NewSlot() && !TallySetup.bAlreadyLanded))
-				{
-					PlaySound(false, 1, static_cast<float>(TNScoreShells::PomSemitones(PomStep)), 0.75f);
-					++PomStep;
-				}
+				Column.bHalfCounted = true;
+				PlaySound(true, 1, 3.f, 0.85f);
+				Column.FacePop = 1.f;
 			}
+			else
+			{
+				const bool bHalfPop = Halves - Column.ShownHalves == 1;
+				PlaySound(false, bHalfPop ? 0 : 1, static_cast<float>(TNScoreShells::PomSemitones(PomStep)) - (bHalfPop ? 5.f : 0.f), bHalfPop ? 0.6f : 0.75f);
+				++PomStep;
+			}
+			Column.ShownHalves = Halves;
 		}
+		TickSockets(c);
 
-		// Cara: feliz y balanceándose; el ganador, con ojos de estrella y saltando al llegar su concha; si nadie ganó,
-		// mareadas.
-		const bool bCelebrate = bWinner && bLanded;
+		// Cara: feliz y balanceándose; la que celebra (la entera al caer, la media al llegar, la campeona con su corona o
+		// las del sprint al anunciarlo), con ojos de estrella y saltando; si nadie llegó al agua, mareadas.
+		const float HalfAt = HalfLandAt(c);
+		const bool bWinnerCelebrate = bWinner && bLanded;
+		const bool bHalfCelebrate = HalfAt >= 0.f && Time >= HalfAt;
+		const bool bChampionCol = c == TallySetup.ChampionRow && Time >= VerdictAt;
+		const bool bSprintCol = TallySetup.SprintRows.Contains(c) && Time >= VerdictAt && IsSprintTally();
+		const bool bCelebrate = bWinnerCelebrate || bHalfCelebrate || bChampionCol || bSprintCol;
+		const float CelebrateFrom = bWinnerCelebrate ? LandAt : (bHalfCelebrate ? HalfAt : VerdictAt);
+		const float JumpHeight = (bWinnerCelebrate || bChampionCol) ? 22.f : (bSprintCol ? 16.f : 12.f);
 		const ETNTurtleFace Face = bCelebrate ? ETNTurtleFace::Win : (bNobody ? ETNTurtleFace::Down : ETNTurtleFace::Happy);
 		if (Column.FaceShown != static_cast<uint8>(Face))
 		{
@@ -425,9 +514,9 @@ void UTN_RaceTallyWidget::TickColumns(float DeltaTime)
 			const float Pop = 1.f + 0.25f * FMath::Sin(Column.FacePop * PI);
 			if (bCelebrate)
 			{
-				const float Jump = FMath::Abs(FMath::Sin((Time - LandAt) * 7.f));
-				FaceImg->SetRenderTranslation(FVector2D(0.f, -22.f * Jump));
-				FaceImg->SetRenderTransformAngle(9.f * FMath::Sin((Time - LandAt) * 5.f));
+				const float Jump = FMath::Abs(FMath::Sin((Time - CelebrateFrom) * 7.f));
+				FaceImg->SetRenderTranslation(FVector2D(0.f, -JumpHeight * Jump));
+				FaceImg->SetRenderTransformAngle(9.f * FMath::Sin((Time - CelebrateFrom) * 5.f));
 				FaceImg->SetRenderScale(FVector2D(Pop * (1.f + 0.06f * Jump), Pop * (1.f + 0.06f * Jump)));
 			}
 			else if (bNobody)
@@ -444,12 +533,15 @@ void UTN_RaceTallyWidget::TickColumns(float DeltaTime)
 			}
 		}
 
-		// Brillo dorado detrás del que celebra y destellos que le salen alrededor de vez en cuando.
+		// Brillo detrás del que celebra (dorado; más flojo con la media; coral y latiendo en el sprint) y destellos
+		// alrededor de la entera y de la campeona.
 		if (UImage* GlowImg = Column.Glow.Get())
 		{
-			const float Glow = bCelebrate ? FMath::Clamp((Time - LandAt) / 0.4f, 0.f, 1.f) * (0.65f + 0.2f * FMath::Sin(Time * 4.f)) : 0.f;
+			const float Strength = (bWinnerCelebrate || bChampionCol) ? 1.f : (bSprintCol ? 0.8f : (bHalfCelebrate ? 0.45f : 0.f));
+			const float Glow = Strength * FMath::Clamp((Time - CelebrateFrom) / 0.4f, 0.f, 1.f) * (0.65f + 0.2f * FMath::Sin(Time * (bSprintCol ? 7.f : 4.f)));
+			GlowImg->SetColorAndOpacity(bSprintCol && !bChampionCol ? TNHUDArt::CoralC : TNHUDArt::Gold);
 			GlowImg->SetRenderOpacity(Glow);
-			if (bCelebrate && Time >= Column.NextSparkle)
+			if ((bWinnerCelebrate || bChampionCol) && Time >= Column.NextSparkle)
 			{
 				Column.NextSparkle = Time + 0.3f;
 				if (Column.Face.IsValid())
@@ -464,22 +556,88 @@ void UTN_RaceTallyWidget::TickColumns(float DeltaTime)
 			}
 		}
 
-		// Corona: apagada arriba; al campeón le baja a la cabeza.
+		// Corona: apagada arriba; a la campeona le baja a la cabeza.
 		if (UImage* CrownImg = Column.Crown.Get())
 		{
-			const bool bChampion = bCelebrate && IsChampionTally();
-			const float Drop = bChampion ? TNRaceUI::Smooth((Time - LandAt - 0.5f) / 0.7f) : 0.f;
-			if (bChampion && Drop > 0.f && !bCrownSounded)
+			const float Drop = bChampionCol ? TNRaceUI::Smooth((Time - VerdictAt) / 0.7f) : 0.f;
+			if (bChampionCol && Drop > 0.f && !bCrownSounded)
 			{
 				bCrownSounded = true;
 				PlaySound(true, 1, 0.f, 0.8f);
 			}
 			const float HeadY = FaceY - RingSize * 0.5f - 22.f;
-			const float Bounce = Drop >= 1.f ? 6.f * FMath::Abs(FMath::Sin((Time - LandAt) * 7.f)) : 0.f;
+			const float Bounce = Drop >= 1.f ? 6.f * FMath::Abs(FMath::Sin((Time - VerdictAt) * 7.f)) : 0.f;
 			CrownImg->SetRenderTranslation(FVector2D(0.f, (HeadY - CrownY) * Drop - Bounce));
 			CrownImg->SetRenderScale(FVector2D(1.f + 0.3f * Drop, 1.f + 0.3f * Drop));
 			CrownImg->SetRenderTransformAngle(Drop > 0.f ? 10.f * FMath::Sin(Time * 3.f) * Drop : 0.f);
 			CrownImg->SetColorAndOpacity(FMath::Lerp(FLinearColor(0.6f, 0.62f, 0.7f, 0.5f), FLinearColor::White, Drop));
+		}
+	}
+}
+
+void UTN_RaceTallyWidget::TickSockets(int32 ColumnIndex)
+{
+	using namespace TNRaceTallyDetail;
+	FTNTallyColumn& Column = Columns[ColumnIndex];
+	for (int32 k = 0; k < Column.Shells.Num(); ++k)
+	{
+		// Cada hueco, dos medias: vacío, media (la de arriba a la izquierda) o entera.
+		const int32 Level = FMath::Clamp(Column.ShownHalves - 2 * k, 0, 2);
+		if (Level != Column.SocketLevel[k])
+		{
+			Column.SocketFrom[k] = Column.SocketLevel[k];
+			Column.SocketLevel[k] = Level;
+			Column.SocketChangedAt[k] = Time;
+			if (Level > 0 && Time >= AppearAt && Column.Sockets.IsValidIndex(k))
+			{
+				// Las de esta ronda salen con destellos (la entera los suyos al caer, en Land).
+				FVector2D SocketCenter;
+				if (CenterOf(Column.Sockets[k].Get(), GetCachedGeometry(), SocketCenter) && !(ColumnIndex == TallySetup.WinnerRow && k == NewSlot()))
+				{
+					Burst(SocketCenter, Level == 2 ? 10 : 6, Level == 2 ? 300.f : 200.f, 26.f);
+				}
+			}
+		}
+		UImage* Full = Column.Shells[k].Get();
+		UImage* HalfA = Column.HalvesA.IsValidIndex(k) ? Column.HalvesA[k].Get() : nullptr;
+		UImage* HalfB = Column.HalvesB.IsValidIndex(k) ? Column.HalvesB[k].Get() : nullptr;
+		if (!Full || !HalfA || !HalfB) { continue; }
+		const float Since = Time - Column.SocketChangedAt[k];
+		const float Base = SlotAngle(k);
+		// Las de esta ronda se aplastan al caer y se enderezan (rebote); las que ya tenía solo aparecen con un rebote.
+		const bool bFresh = Column.SocketChangedAt[k] >= AppearAt - 0.01f && !TallySetup.bAlreadyLanded;
+		Full->SetRenderOpacity(0.f);
+		HalfA->SetRenderOpacity(0.f);
+		HalfB->SetRenderOpacity(0.f);
+		if (Level == 1)
+		{
+			// Media concha: salta a su hueco con un rebote y se mece un momento.
+			const float Pop = TNRaceUI::PopIn(Since / 0.3f);
+			HalfA->SetRenderOpacity(1.f);
+			HalfA->SetRenderScale(FVector2D(Pop, Pop));
+			HalfA->SetRenderTransformAngle(Base + (bFresh ? 14.f * FMath::Sin(Since * 16.f) * FMath::Exp(-Since * 5.f) : 0.f));
+		}
+		else if (Level == 2 && Column.SocketFrom[k] == 1 && Since < JoinSeconds)
+		{
+			// La otra mitad llega desde abajo a la derecha y encaja con la que había.
+			const float Slide = 1.f - TNRaceUI::Smooth(Since / JoinSeconds);
+			HalfA->SetRenderOpacity(1.f);
+			HalfA->SetRenderScale(FVector2D(1.f, 1.f));
+			HalfA->SetRenderTransformAngle(Base);
+			HalfB->SetRenderOpacity(FMath::Clamp(Since / (JoinSeconds * 0.4f), 0.f, 1.f));
+			HalfB->SetRenderScale(FVector2D(1.f, 1.f));
+			HalfB->SetRenderTransformAngle(Base);
+			HalfB->SetRenderTranslation(FVector2D(34.f, 34.f) * Slide);
+		}
+		else if (Level == 2)
+		{
+			const bool bJoined = Column.SocketFrom[k] == 1;
+			const float Since2 = Since - (bJoined ? JoinSeconds : 0.f);
+			const float Pop = bJoined ? 1.f : TNRaceUI::PopIn(Since2 / 0.28f);
+			const float Squash = (bFresh && Since2 < 0.6f) ? 0.25f * FMath::Sin(Since2 * 18.f) * FMath::Exp(-Since2 * 6.f) : 0.f;
+			Full->SetRenderOpacity(1.f);
+			Full->SetRenderScale(FVector2D(Pop * (1.f + Squash), Pop * (1.f - Squash)));
+			Full->SetRenderTransformAngle(Base);
 		}
 	}
 }
@@ -492,8 +650,8 @@ void UTN_RaceTallyWidget::TickFlight(const FGeometry& MyGeometry)
 	bFlying = false;
 	if (!HasWinner())
 	{
-		// Nadie llegó al agua: dos «pom» que bajan, «pom... pom».
-		if (Time >= AppearAt && !bAppeared)
+		// Nadie llegó al agua: dos «pom» que bajan, «pom... pom» (con medias conchas sueltas, no).
+		if (!HasHalves() && Time >= AppearAt && !bAppeared)
 		{
 			bAppeared = true;
 			PlaySound(false, 0, -5.f, 0.9f);
@@ -533,7 +691,7 @@ void UTN_RaceTallyWidget::TickFlight(const FGeometry& MyGeometry)
 		return;
 	}
 
-	// Vuelo en arco hasta el hueco del ganador (curva de Bézier), acelerando al final y dando una vuelta.
+	// Vuelo en arco hasta el hueco de la ganadora (curva de Bézier), acelerando al final y dando una vuelta.
 	FVector2D Goal = FlyFrom;
 	const FTNTallyColumn& Column = Columns[TallySetup.WinnerRow];
 	const int32 SlotIndex = NewSlot();
@@ -561,13 +719,20 @@ void UTN_RaceTallyWidget::TickFlight(const FGeometry& MyGeometry)
 
 void UTN_RaceTallyWidget::Land()
 {
+	using namespace TNRaceTallyDetail;
 	if (bLanded) { return; }
 	bLanded = true;
 	bFlyVisible = false;
 	bFlying = false;
+	// Desde la llegada de verdad (el vuelo puede empezar tarde si el ganador llegó tarde por red): las medias, el
+	// veredicto y el final.
 	LandAt = Time;
-	DoneAt = LandAt + (IsChampionTally() ? 3.f : 2.4f);
-	PlaySound(true, IsChampionTally() ? 3 : 2, 0.f, 1.f);
+	HalvesFromAt = LandAt + 0.45f;
+	FinalAt = NumHalfRows > 0 ? HalvesFromAt + HalfStagger * static_cast<float>(NumHalfRows - 1) + 0.3f : LandAt;
+	VerdictAt = FinalAt + 0.5f;
+	DoneAt = (IsChampionTally() || IsSprintTally()) ? VerdictAt + 2.5f : FinalAt + 2.4f;
+	const bool bCrowns = TallySetup.ChampionRow == TallySetup.WinnerRow && NumHalfRows == 0;
+	PlaySound(true, bCrowns ? 3 : 2, 0.f, 1.f);
 	Burst(FlyPos, 16, 420.f, 34.f);
 	if (FTNTallyColumn* Column = Columns.IsValidIndex(TallySetup.WinnerRow) ? &Columns[TallySetup.WinnerRow] : nullptr)
 	{
@@ -578,24 +743,56 @@ void UTN_RaceTallyWidget::Land()
 
 void UTN_RaceTallyWidget::TickTexts()
 {
-	// Cartel de arriba: «Recuento de conchas» hasta que nace la concha de la ronda; luego, el ganador (o nadie).
-	const int32 Want = Time >= AppearAt ? 1 : 0;
+	// Cartel de arriba: «Recuento de conchas» hasta que nace la concha de la ronda; luego, quién gana entera y quién
+	// media (o nadie); al final, la campeona o el sprint final.
+	int32 Want = Time >= AppearAt ? 1 : 0;
+	if ((IsChampionTally() || IsSprintTally()) && Time >= VerdictAt) { Want = 2; }
 	if (Want != ResultShown && ResultText && ResultFace)
 	{
 		ResultShown = Want;
+		TArray<int32> HalfRows;
+		for (int32 c = 0; c < Columns.Num(); ++c)
+		{
+			if (Columns[c].HalfOrder >= 0) { HalfRows.Add(c); }
+		}
+		HalfRows.Sort([this](int32 A, int32 B) { return Columns[A].HalfOrder < Columns[B].HalfOrder; });
 		if (Want == 0)
 		{
 			ResultText->SetText(NSLOCTEXT("TNRace", "TallyTitle", "Recuento de conchas"));
 			TNRaceUI::SetImageTexture(ResultFace, TNHUDFaces::TurtleFace(ETNTurtleFace::Happy));
 		}
+		else if (Want == 2 && IsChampionTally())
+		{
+			const FTNRaceTallyRow& Champ = TallySetup.Rows[TallySetup.ChampionRow];
+			const FText Name = FText::FromString(Champ.Name.IsEmpty() ? FString(TEXT("Tortuga")) : Champ.Name);
+			ResultText->SetText(FText::Format(NSLOCTEXT("TNRace", "ChampionWins", "¡{0} gana la partida!"), Name));
+			TNRaceUI::SetImageTexture(ResultFace, TNRaceArt::TurtleFaceFor(this, Champ.Look, ETNTurtleFace::Win));
+		}
+		else if (Want == 2)
+		{
+			ResultText->SetText(FText::Format(NSLOCTEXT("TNRace", "SprintTie", "¡Empate en lo más alto entre {0}! ¡Sprint final!"), JoinNames(TallySetup.SprintRows)));
+			TNRaceUI::SetImageTexture(ResultFace, TNHUDFaces::TurtleFace(ETNTurtleFace::Win));
+		}
 		else if (HasWinner())
 		{
 			const FTNRaceTallyRow& Winner = TallySetup.Rows[TallySetup.WinnerRow];
 			const FText Name = FText::FromString(Winner.Name.IsEmpty() ? FString(TEXT("Tortuga")) : Winner.Name);
-			ResultText->SetText(IsChampionTally()
-				? FText::Format(NSLOCTEXT("TNRace", "ChampionWins", "¡{0} gana la partida!"), Name)
-				: FText::Format(NSLOCTEXT("TNRace", "RoundWinner", "¡Concha para {0}!"), Name));
+			if (HalfRows.Num() == 0)
+			{
+				ResultText->SetText(FText::Format(NSLOCTEXT("TNRace", "RoundWinner", "¡Concha para {0}!"), Name));
+			}
+			else
+			{
+				ResultText->SetText(FText::Format(HalfRows.Num() == 1
+					? NSLOCTEXT("TNRace", "RoundWinnerHalf", "¡Concha para {0}! Media para {1}.")
+					: NSLOCTEXT("TNRace", "RoundWinnerHalves", "¡Concha para {0}! Medias para {1}."), Name, JoinNames(HalfRows)));
+			}
 			TNRaceUI::SetImageTexture(ResultFace, TNRaceArt::TurtleFaceFor(this, Winner.Look, ETNTurtleFace::Win));
+		}
+		else if (HalfRows.Num() > 0)
+		{
+			ResultText->SetText(FText::Format(NSLOCTEXT("TNRace", "RoundHalvesOnly", "Media concha para {0}."), JoinNames(HalfRows)));
+			TNRaceUI::SetImageTexture(ResultFace, TNRaceArt::TurtleFaceFor(this, TallySetup.Rows[HalfRows[0]].Look, ETNTurtleFace::Win));
 		}
 		else
 		{
@@ -605,10 +802,10 @@ void UTN_RaceTallyWidget::TickTexts()
 	}
 	if (ResultCard)
 	{
-		const float Since = ResultShown == 1 ? Time - AppearAt : Time;
+		const float Since = ResultShown == 2 ? Time - VerdictAt : (ResultShown == 1 ? Time - AppearAt : Time);
 		const float Pop = TNRaceUI::PopIn(Since / 0.35f);
 		ResultCard->SetRenderScale(FVector2D(Pop, Pop));
-		ResultCard->SetRenderTransformAngle(ResultShown == 1 ? 1.5f * FMath::Sin(Time * 2.f) : 0.f);
+		ResultCard->SetRenderTransformAngle(ResultShown >= 1 ? 1.5f * FMath::Sin(Time * 2.f) : 0.f);
 	}
 
 	// Cuenta atrás de la fase.
@@ -619,8 +816,9 @@ void UTN_RaceTallyWidget::TickTexts()
 		if (Seconds > 0 && Seconds != ShownSeconds)
 		{
 			ShownSeconds = Seconds;
-			CountdownText->SetText(FText::Format(IsChampionTally() ? NSLOCTEXT("TNRace", "ToPodium", "¡Al podio en {0}!")
-				: NSLOCTEXT("TNRace", "NextRound", "Siguiente ronda en {0}"), FText::AsNumber(Seconds)));
+			const FText Pattern = IsChampionTally() ? NSLOCTEXT("TNRace", "ToPodium", "¡Al podio en {0}!")
+				: (IsSprintTally() ? NSLOCTEXT("TNRace", "ToSprint", "¡Sprint final en {0}!") : NSLOCTEXT("TNRace", "NextRound", "Siguiente ronda en {0}"));
+			CountdownText->SetText(FText::Format(Pattern, FText::AsNumber(Seconds)));
 		}
 		CountdownTag->SetRenderScale(FVector2D(1.f + 0.03f * FMath::Sin(Time * 4.f)));
 	}

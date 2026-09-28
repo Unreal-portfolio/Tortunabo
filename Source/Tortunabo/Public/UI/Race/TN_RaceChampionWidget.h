@@ -24,6 +24,8 @@ struct FTNRaceChampionSetup
 	TArray<FTNRaceTallyRow> Podium;
 	/** Conchas para ganar (las que luce la campeona). */
 	int32 Target = 3;
+	/** La partida se decidió en el sprint final de desempate (lo dice el cartel de la campeona). */
+	bool bSprintWin = false;
 	/** Vista previa por consola (TN.Race.Podium): cualquier botón la cierra. */
 	bool bPreview = false;
 };
@@ -105,6 +107,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UImage> ChampionCrown;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ChampionName;
 	UPROPERTY(Transient) TArray<TObjectPtr<UImage>> ChampionShells;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> SubtitleText;
 	UPROPERTY(Transient) TObjectPtr<UButton> PlayAgainButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> ChangeModeButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> QuitButton;

@@ -31,6 +31,20 @@ struct FTNBeachSafeSpot
 	float Time = 0.f;
 };
 
+/** Una llegada al agua de meta en la ronda en curso. */
+struct FTNBeachArrival
+{
+	TWeakObjectPtr<APlayerController> Controller;
+	TWeakObjectPtr<APlayerState> State;
+	FString Name;
+	/** Medias conchas que se lleva: 2 la primera, 1 las de la cuenta atrás. */
+	int32 Halves = 0;
+	/** Hasta cuándo (hora del mundo) se la ve en el agua con su chapuzón antes de pasar a espectadora. */
+	float HoldEnd = 0.f;
+	/** Ya ha pasado por la meta de la base (puesto, puntos, oculta y espectadora). */
+	bool bSettled = false;
+};
+
 /**
  * @brief GameMode del modo carrera en la playa (LVL_BeachRace; Docs/Modo_Carrera.md, sección «Flujo de la carrera»).
  *
@@ -45,18 +59,29 @@ struct FTNBeachSafeSpot
  *     GetStartTransform; los sitios rotan cada ronda) y se quedan quietas. En la primera ronda tras el viaje la cuenta
  *     atrás es el huevo de la pantalla de carga; en las demás, PreRaceCountdownSeconds (CountdownValue y
  *     PhaseSecondsLeft: 3, 2, 1).
- *  2. Carrera (Racing, InProgress): gana la ronda la primera tortuga que toca el agua de meta tras saltar el acantilado
- *     (el GameMode mira ATN_BeachRaceGenerator::IsFinishWater diez veces por segundo; también vale que algo llame a
- *     MarkPlayerFinished). Se lleva una concha (ATN_CoopPlayerState::RoundWins). Arranca la tormenta de bañistas
+ *  2. Carrera (Racing, InProgress): la primera tortuga que toca el agua de meta tras saltar el acantilado gana la ronda y
+ *     una concha entera (el GameMode mira ATN_BeachRaceGenerator::IsFinishWater diez veces por segundo; también vale
+ *     que algo llame a MarkPlayerFinished). Desde ahí, cuenta atrás de FinishCountdownSeconds (10 s) para todas: quien
+ *     llegue dentro se lleva media concha. Al acabar, a cada una que no ha llegado se la come un gusano de arena
+ *     (ATN_BeachSandWorm) y, al acabar el bocado (o enseguida si ya han llegado todas), el recuento. Las conchas
+ *     van en medias (ATN_CoopPlayerState::RaceShellHalves). Quien llega se queda a la vista en el agua con su chapuzón
+ *     FinishSplashHoldSeconds y luego pasa a espectadora por la meta de la base. Arranca la tormenta de bañistas
  *     (ATN_BeachStorm, por nombre) y la para al acabar. Aquí no se muere: MarkPlayerDead aturde (TNBeach::StunTurtle) y,
  *     fuera del mapa, en una zona de muerte o en el vacío, devuelve a la tortuga a un sitio seguro cercano y la aturde.
- *  3. Recuento (RoundResults, Countdown): RoundResultsSeconds con el ganador de la ronda (RoundWinner). Después, otra
- *     ronda o, si alguien ha llegado a WinsToWinMatch conchas, el campeón.
- *  4. Campeón (Champion, Results): Champion y Podium rellenos; se queda así hasta que el anfitrión elige con
+ *     El salto del acantilado no hace bola ni aturde (se cae de cabeza al agua).
+ *  3. Recuento (RoundResults, Countdown): RoundResultsSeconds con la ganadora (RoundWinner) y las medias
+ *     (RoundHalfShells). Después, otra ronda o, si alguien ha llegado a WinsToWinMatch conchas, el campeón; si en lo más
+ *     alto hay empate con WinsToWinMatch o más, el sprint final.
+ *  4. Sprint final (SprintIntro y luego Waiting/Racing con bSprintFinal): título «¡SPRINT FINAL!»; después solo las
+ *     empatadas corren, desde el nido de huevos llevado a la línea del sprint a mitad del recorrido (SetStartEggsAtSprint;
+ *     reaparecen dentro con RestartPlayerAtTransform en GetSprintStartTransform y OpenStartEggs las lanza al dar la
+ *     salida); la primera en el agua es campeona (sin cuenta de 10 s ni gusanos; en el límite, la más cerca del mar).
+ *     Las demás, espectadoras.
+ *  5. Campeón (Champion, Results): Champion y Podium rellenos; se queda así hasta que el anfitrión elige con
  *     RequestChampionChoice (Volver a jugar, Cambiar de modo o Salir).
  *
- * Pruebas: opciones de URL ?BeachSeed=N ?BeachWins=N y la consola TN.Race.* (WinRound, Champion, Stun, Kill, Void,
- * PlayAgain, ChangeMode, Menu) y TN.Mode (ver Docs/Modo_Carrera.md).
+ * Pruebas: opciones de URL ?BeachSeed=N ?BeachWins=N y la consola TN.Race.* (WinRound, Champion, Sprint, Stun, Kill,
+ * Void, PlayAgain, ChangeMode, Menu) y TN.Mode (ver Docs/Modo_Carrera.md).
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachRaceGameMode : public ATN_RunGameMode
@@ -112,11 +137,20 @@ public:
 
 	// ── Pruebas (consola TN.Race.*) ──────────────────────────────────────────────────────────────────────────────
 
-	/** El jugador PlayerIndex (orden de PlayerArray) gana la ronda en curso como si tocara el agua. */
+	/**
+	 * El jugador PlayerIndex (orden de PlayerArray) toca el agua como si llegara: la primera gana la ronda y arranca la
+	 * cuenta atrás; las siguientes, media concha.
+	 */
 	void DebugWinRound(int32 PlayerIndex);
 
 	/** El jugador PlayerIndex pasa a tener las conchas del campeón y se salta directamente a su pantalla. */
 	void DebugChampion(int32 PlayerIndex);
+
+	/**
+	 * Empate forzado: los jugadores PlayerIndices pasan a WinsToWinMatch conchas (las demás, por debajo) y empieza el
+	 * sprint final entre ellas (con una sola también, para probarlo).
+	 */
+	void DebugSprint(const TArray<int32>& PlayerIndices);
 
 	/** Pasa por MarkPlayerDead (lo que en el cooperativo mataría). */
 	void DebugKill(int32 PlayerIndex);
@@ -135,7 +169,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Beach")
 	TSubclassOf<ATN_BeachRaceGenerator> GeneratorClass;
 
-	/** Conchas (rondas ganadas) para ser campeón. */
+	/** Conchas enteras para ser campeón (en medias, el doble). */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "1"))
 	int32 WinsToWinMatch = 3;
 
@@ -162,6 +196,40 @@ protected:
 	/** Límite de cada ronda (unos 5 min de media): al agotarse gana quien esté más cerca del mar. 0 = sin límite. */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0"))
 	float RoundTimeLimitSeconds = 540.f;
+
+	/**
+	 * Segundos que cada tortuga que llega se queda a la vista dentro del agua de meta, con su chapuzón, antes de que la
+	 * base la oculte y la pase a espectadora. El puesto se decide en el instante del contacto.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0", ClampMax = "1.5"))
+	float FinishSplashHoldSeconds = 0.8f;
+
+	/** Cuenta atrás para todas tras la primera en el agua: quien llegue dentro se lleva media concha. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "1.0"))
+	float FinishCountdownSeconds = 10.f;
+
+	/** Segundos con «¡TIEMPO!» en pantalla (las tortugas quietas) antes del recuento. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.2"))
+	float TimeUpHoldSeconds = 1.6f;
+
+	/**
+	 * Margen tras el bocado de los gusanos de arena (ATN_BeachSandWorm::EatSeconds) antes del recuento. Solo si al acabar
+	 * la cuenta quedaba alguna sin llegar; si no, TimeUpHoldSeconds.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0"))
+	float SandWormMarginSeconds = 0.6f;
+
+	/** Segundos del título «¡SPRINT FINAL!» antes de preparar el sprint. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "1.0"))
+	float SprintIntroSeconds = 5.f;
+
+	/** Límite del sprint (media playa): al agotarse gana la más cerca del mar. 0 = sin límite. */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "0.0"))
+	float SprintTimeLimitSeconds = 300.f;
+
+	/** Margen (cm) alrededor del nido del sprint en el que se quitan los elementos de la ronda (donde caen al salir). */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "0.0"))
+	float SprintClearMargin = 1500.f;
 
 	/** Segundos entre la elección del campeón y el viaje (el huevo se cierra y la música se funde). */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Champion", meta = (ClampMin = "0.1"))
@@ -217,19 +285,31 @@ private:
 	int32 UrlSeed = 0;
 	bool bPlayersArrived = false;
 	bool bPreparingRound = false;
+	/** Se puede llegar a la meta (carrera y cuenta atrás tras la primera). */
 	bool bRoundActive = false;
 	bool bMatchOver = false;
 	bool bSuppressRoundCheck = false;
 	bool bLeaving = false;
 	/** La próxima preparación enseña la cuenta atrás (no la primera tras el viaje, que la tapa el huevo). */
 	bool bShowPreRaceCountdown = false;
+	/** Se acabó la cuenta atrás (o llegaron todas): «¡TIEMPO!» en pantalla y todas quietas hasta el recuento. */
+	bool bTimeUp = false;
+	/** La ronda en curso (o la que se prepara) es el sprint final de desempate. */
+	bool bSprint = false;
 	float PrepStartTime = 0.f;
 	float PhaseEndTime = 0.f;
 	float NextSafeSampleTime = 0.f;
 	/** Suelo más bajo pisado en la ronda (o la salida): referencia del vacío. */
 	double LowestGroundZ = 0.0;
+	/** Salida de la ronda (en el sprint, el centro de su nido) y hacia dónde está el mar: tormenta y progreso. */
 	FVector CourseOrigin = FVector::ZeroVector;
 	FVector CourseForward = FVector::ForwardVector;
+
+	/** Llegadas al agua de meta en la ronda en curso, en orden. */
+	TArray<FTNBeachArrival> Arrivals;
+
+	/** Finalistas del sprint (su orden es el de sus huevos). */
+	TArray<TWeakObjectPtr<APlayerController>> SprintFinalists;
 
 	/** Última ronda que ganó cada jugador (PlayerId → ronda), para desempatar el podio. */
 	TMap<int32, int32> LastRoundWonByPlayer;
@@ -245,6 +325,9 @@ private:
 	FTimerHandle PhaseEndHandle;
 	FTimerHandle WatchHandle;
 	FTimerHandle RoundTimeLimitHandle;
+	FTimerHandle FinishCountdownHandle;
+	FTimerHandle TimeUpHandle;
+	FTimerHandle SprintWinHandle;
 	FTimerHandle LeaveHandle;
 
 	ATN_BeachRaceGameState* GetBeachGameState() const;
@@ -258,15 +341,48 @@ private:
 	void BeginRace();
 	void WatchRacers();
 	void OnRoundTimeLimit();
-	void EndRound(APlayerController* Winner, const FString& ResultText);
+
+	// Llegadas y cuenta atrás tras la primera
+	bool HasArrived(const AController* Controller) const;
+	/** true si ya no queda nadie corriendo (todas han llegado, se han ido o miran); Ignore, la que se está yendo. */
+	bool AreAllRacersIn(const AController* Ignore = nullptr) const;
+	/** Pasa por la meta de la base a quien ya ha tenido su margen en el agua (o a todas, con bAll). */
+	void SettleArrivals(bool bAll);
+	void OnFinishCountdownEnd();
+	/**
+	 * Se acaba la cuenta (o han llegado todas): «¡TIEMPO!», todas quietas y, en TimeUpHoldSeconds, el recuento. Con
+	 * bSandWorms (la cuenta ha llegado a 0), a las que no han llegado se las comen los gusanos de arena y el recuento espera
+	 * a que acabe el bocado.
+	 */
+	void FinishTimeUp(bool bAllIn, bool bSandWorms = false);
+	/** Un gusano de arena para cada tortuga que aún corría (fuera antes del caparazón, el mareo y la carga); cuántas. */
+	int32 FeedSandWorms();
+	void CloseRoundAfterTimeUp();
+	/** Recuento: reparte las conchas de las llegadas (entera la primera, medias las demás) y pasa a RoundResults. */
+	void EndRound(const FString& ResultText);
 	void AfterRoundResults();
 	void StartNextRound();
 	void EnterChampion(ATN_CoopPlayerState* ChampionState);
 	void ResetMatchScores();
 	void ResetRoundPlayerStates();
+	void ResetRoundGameState() const;
 	void CancelRoundTimers();
 	void CleanupRoundActors();
 	void LeaveAfterDelay(TFunction<void()> Action);
+
+	// Sprint final
+	void EnterSprintIntro(const TArray<ATN_CoopPlayerState*>& Finalists);
+	void StartSprint();
+	/** Despeja la línea del sprint y pone a cada finalista dentro de su huevo del nido; false si ya no queda ninguna. */
+	bool PlaceSprintFinalists();
+	/** Tortuga nueva para la finalista Index, dentro de su huevo (RestartPlayerAtTransform en GetSprintStartTransform). */
+	void PlaceSprintFinalist(APlayerController* PlayerController, int32 Index);
+	void CompleteSprintWin();
+	/** Si se van finalistas: con una sola, gana; sin ninguna, la de más conchas. */
+	void CheckSprintForfeit();
+	bool IsSprintFinalist(const AController* Controller) const;
+	/** Fuera del sprint: sin tortuga y a espectadora por la vía normal (MovePlayerToSpectator). */
+	void SendOutOfSprint(APlayerController* PlayerController);
 
 	// Fases y estado replicado
 	void SetRacePhase(ETNBeachRacePhase NewPhase) const;
@@ -293,6 +409,12 @@ private:
 	FTransform FindSafeTransform(APlayerController* PlayerController);
 	void SampleSafeSpot(APlayerController* PlayerController, const ACharacter* Character, float Now);
 	bool IsInsideHazard(const APawn* Pawn) const;
+	/**
+	 * Salto del acantilado de meta: si la tortuga cae dentro de la zona del salto (ATN_BeachRaceGenerator::
+	 * IsCliffJumpZone), esa caída no la mete sola en el caparazón ni la aturde al aterrizar
+	 * (ATortugaCharacter::SetFallImmuneUntilLanded): entra de cabeza al agua. El resto de caídas de la playa, igual.
+	 */
+	void GuardCliffJump(APawn* Pawn) const;
 	double GetVoidZ() const;
 	float GetCourseProgress(const APawn* Pawn) const;
 
@@ -302,4 +424,5 @@ private:
 
 	APlayerController* GetControllerByIndex(int32 PlayerIndex) const;
 	static bool CallNoParamFunction(UObject* Target, FName FunctionName);
+	static int32 HalvesOf(const APlayerState* PlayerState);
 };
