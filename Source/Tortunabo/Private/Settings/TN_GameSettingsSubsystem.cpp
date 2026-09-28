@@ -8,6 +8,7 @@
 #include "UI/Loading/TN_LoadingScreenSubsystem.h"
 #include "UI/Pause/TN_PauseMenuWidget.h"
 #include "Voice/ProximityVoiceComponent.h"
+#include "World/Beach/TN_BeachCritterSynth.h"
 #include "AudioDevice.h"
 #include "AudioDeviceManager.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
@@ -794,6 +795,15 @@ USoundClass* UTN_GameSettingsSubsystem::ClassFor(const UAudioComponent* Componen
 	if (Outer->IsA<UTN_AmbientSynthComponent>())
 	{
 		return AmbientClass;
+	}
+	// Sonidos de fondo de la carrera hechos con el sintetizador de las criaturas (burbujas del pulpo): son ambiente.
+	if (Outer->IsA<UTN_BeachCritterSynthComponent>())
+	{
+		if (static_cast<const UTN_BeachCritterSynthComponent*>(Outer)->bAmbientBed)
+		{
+			return AmbientClass;
+		}
+		return nullptr;
 	}
 	// La voz de un compañero: onda procedural del grupo de voz (UProximityVoiceComponent::SetupPlayback).
 	const USoundWaveProcedural* Wave = Cast<USoundWaveProcedural>(Component->Sound);

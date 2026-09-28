@@ -99,6 +99,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Beach|Audio", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float Loudness = 1.f;
 
+	/**
+	 * Lo que suena por aquí es ambiente (burbujas de fondo del pulpo), no un efecto que avisa de algo: baja con el volumen
+	 * de Ambiente del menú de pausa, no con el de Efectos (UTN_GameSettingsSubsystem::ClassFor). Se puede cambiar en cualquier momento.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Beach|Audio")
+	bool bAmbientBed = false;
+
 protected:
 	virtual bool Init(int32& SampleRate) override;
 	virtual ISoundGeneratorPtr CreateSoundGenerator(const FSoundGeneratorInitParams& InParams) override;

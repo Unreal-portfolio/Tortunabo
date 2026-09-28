@@ -525,7 +525,8 @@ void ATN_BeachSandFleas::VisualTick(float DeltaSeconds)
 	TNBeachCritterKit::SetShown(FleaDots, bVisible);
 	if (Sound)
 	{
-		const float Level = !bVisible || ViewDistance > 4000.f ? 0.f : (bOnVictim ? 1.f : 0.45f);
+		// Zumbido de fondo del enjambre suelto: bajo y de cerca (era 0,45 hasta 40 m: un chisporroteo agudo casi continuo).
+		const float Level = !bVisible || ViewDistance > 3000.f ? 0.f : (bOnVictim ? 1.f : 0.3f);
 		Sound->SetWorldLocation(bOnVictim ? NewAnchor : ShownLoc);
 		Sound->SetSwarm(Level);
 	}

@@ -437,4 +437,101 @@ namespace TNBeachKit
 		X ^= X >> 16;
 		return static_cast<float>(X & 0xFFFFFF) / 16777216.f;
 	}
+
+	/**
+	 * Presupuesto de un sonido de ambiente que se repite en muchas instancias a la vez (las burbujas de los pulpos de las
+	 * siete pozas). Cada emisor anuncia su distancia al oyente local en cada fotograma (AmbientVoiceTouch) y, cuando le toca
+	 * sonar, pide sitio (AmbientVoiceClaim): solo suenan los MaxAudible más cercanos y nunca dos disparos con menos de
+	 * MinGapSeconds de diferencia, sean de quien sean. Sin esto, cada pulpo cercano burbujeaba por su cuenta y varias pozas
+	 * a la vez sonaban a una fuente que no para. Solo el hilo de juego; el estado es por mundo (dos ventanas de PIE en el
+	 * mismo proceso no se pisan) y se descarta al cambiar de mundo.
+	 */
+	struct FAmbientVoiceBudget
+	{
+		struct FEntry
+		{
+			const void* Who = nullptr;
+			float Distance = 0.f;
+			double Seen = 0.0;
+		};
+
+		TArray<FEntry> Entries;
+		double LastClaim = -1.0e9;
+	};
+
+	inline FAmbientVoiceBudget& AmbientVoiceBudgetFor(const UWorld* World)
+	{
+		static TMap<const UWorld*, FAmbientVoiceBudget> Budgets;
+		if (!Budgets.Contains(World) && Budgets.Num() >= 4)
+		{
+			// Mundos de partidas anteriores: es estado de un rato, se descarta.
+			Budgets.Reset();
+		}
+		return Budgets.FindOrAdd(World);
+	}
+
+	/** El emisor Who está a Distance cm del oyente local: se llama en cada fotograma mientras pueda llegar a sonar. */
+	inline void AmbientVoiceTouch(const UWorld* World, const void* Who, float Distance)
+	{
+		if (!World || !Who)
+		{
+			return;
+		}
+		FAmbientVoiceBudget& Budget = AmbientVoiceBudgetFor(World);
+		const double Now = World->GetTimeSeconds();
+		// Fuera los que llevan más de 1 s sin anunciarse (lejos, destruidos) o de un mundo que ha reiniciado su reloj.
+		Budget.Entries.RemoveAll([Who, Now](const FAmbientVoiceBudget::FEntry& Entry)
+		{
+			return Entry.Who != Who && (Now - Entry.Seen > 1.0 || Entry.Seen > Now);
+		});
+		FAmbientVoiceBudget::FEntry* Mine = Budget.Entries.FindByPredicate([Who](const FAmbientVoiceBudget::FEntry& Entry) { return Entry.Who == Who; });
+		if (!Mine)
+		{
+			Mine = &Budget.Entries.AddDefaulted_GetRef();
+			Mine->Who = Who;
+		}
+		Mine->Distance = Distance;
+		Mine->Seen = Now;
+	}
+
+	/**
+	 * Who pide sonar ahora. true si es de los MaxAudible más cercanos de los que se han anunciado en el último medio
+	 * segundo y han pasado MinGapSeconds desde el último disparo concedido a cualquiera (lo concedido queda apuntado).
+	 */
+	inline bool AmbientVoiceClaim(const UWorld* World, const void* Who, int32 MaxAudible, float MinGapSeconds)
+	{
+		if (!World || !Who)
+		{
+			return false;
+		}
+		FAmbientVoiceBudget& Budget = AmbientVoiceBudgetFor(World);
+		const double Now = World->GetTimeSeconds();
+		if (Now < Budget.LastClaim)
+		{
+			Budget.LastClaim = -1.0e9;
+		}
+		if (Now - Budget.LastClaim < static_cast<double>(MinGapSeconds))
+		{
+			return false;
+		}
+		const FAmbientVoiceBudget::FEntry* Mine = Budget.Entries.FindByPredicate([Who](const FAmbientVoiceBudget::FEntry& Entry) { return Entry.Who == Who; });
+		if (!Mine)
+		{
+			return false;
+		}
+		int32 Closer = 0;
+		for (const FAmbientVoiceBudget::FEntry& Entry : Budget.Entries)
+		{
+			if (Entry.Who != Who && Now - Entry.Seen <= 0.5 && Entry.Distance < Mine->Distance)
+			{
+				++Closer;
+			}
+		}
+		if (Closer >= MaxAudible)
+		{
+			return false;
+		}
+		Budget.LastClaim = Now;
+		return true;
+	}
 }

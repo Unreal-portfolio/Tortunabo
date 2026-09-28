@@ -2,8 +2,10 @@
 #include "World/Beach/TN_BeachTrapSynthComponent.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "Core/TN_Log.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/Package.h"
 #include "TN_BeachRideKit.h"
@@ -26,6 +28,24 @@ namespace TNBeachPlatformDetail
 	constexpr double RimWidth = 90.0;
 	constexpr double Tan30 = 0.57735;
 	constexpr int32 RingSectors = 20;
+
+	/**
+	 * Hasta dónde se oyen las salidas y llegadas (cm desde la cámara local). La balsa y el ascensor no paran nunca: cada
+	 * pocos segundos, un roce y un chof (o un crujido y un golpe). Oídos a 40 m, con seis u ocho repartidos por la playa, la
+	 * carrera entera sonaba a una fuente que no cesa; ahora solo se oyen si hay alguien lo bastante cerca para usarlas.
+	 */
+	constexpr double SoundReach = 1800.0;
+
+	/** Distancia de la cámara local (la primera) a Where; enorme si no hay jugador local. */
+	inline double CameraDistance(const UWorld* World, const FVector& Where)
+	{
+		const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		if (!PC || !PC->PlayerCameraManager)
+		{
+			return 1.0e9;
+		}
+		return FVector::Dist(PC->PlayerCameraManager->GetCameraLocation(), Where);
+	}
 
 	enum class ERide : uint8
 	{
@@ -418,7 +438,7 @@ void ATN_BeachMovingPlatform::BuildElevator(double Fit, uint32 Seed)
 void ATN_BeachMovingPlatform::BeginPlay()
 {
 	Super::BeginPlay();
-	Voice = UTN_BeachTrapSynthComponent::AttachTo(this, Frame->GetComponentLocation() + FVector(0.0, 0.0, 200.0), 900.f, 3200.f);
+	Voice = UTN_BeachTrapSynthComponent::AttachTo(this, Frame->GetComponentLocation() + FVector(0.0, 0.0, 200.0), 700.f, 2400.f);
 	Splash.Init(this, ETNTrapBurstShape::Blob, TNPlaygroundKit::Rgb(0xE6F7FF, 0.5f), 24);
 	Splash.SetMotion(-800.f, 1.2f, 26.f, 8.f, 0.35f, 0.7f);
 	if (!bElevator)
@@ -590,20 +610,36 @@ void ATN_BeachMovingPlatform::Tick(float DeltaSeconds)
 		const bool bLeft = (Before <= 0.0 && Alpha > 0.0) || (Before >= 1.0 && Alpha < 1.0);
 		const bool bArrived = (Before > 0.0 && Alpha <= 0.0) || (Before < 1.0 && Alpha >= 1.0);
 		const FVector At = RideRoot->GetComponentLocation();
-		if (bLeft)
+		// Los sonidos solo si la cámara local está cerca (TNBeachPlatformDetail::SoundReach), más flojos cuanto más lejos y
+		// con el tono algo distinto cada vez. Las partículas de la llegada, siempre.
+		float Near = 0.f;
+		float Jitter = 1.f;
+		if (bLeft || bArrived)
 		{
-			Voice->TriggerSoundAt(bElevator ? ETNBeachTrapSound::Creak : ETNBeachTrapSound::Grind, At, bElevator ? 0.8f : 1.2f, 0.6f);
+			const double CamDist = TNBeachPlatformDetail::CameraDistance(GetWorld(), At);
+			Near = CamDist < TNBeachPlatformDetail::SoundReach ? 1.f - 0.55f * static_cast<float>(CamDist / TNBeachPlatformDetail::SoundReach) : 0.f;
+			Jitter = FMath::FRandRange(0.92f, 1.08f);
+		}
+		if (bLeft && Near > 0.f)
+		{
+			Voice->TriggerSoundAt(bElevator ? ETNBeachTrapSound::Creak : ETNBeachTrapSound::Grind, At, (bElevator ? 0.8f : 1.2f) * Jitter, 0.45f * Near);
 		}
 		if (bArrived)
 		{
 			if (bElevator)
 			{
-				Voice->TriggerSoundAt(ETNBeachTrapSound::Thud, At, 1.1f, 0.6f);
+				if (Near > 0.f)
+				{
+					Voice->TriggerSoundAt(ETNBeachTrapSound::Thud, At, 1.1f * Jitter, 0.5f * Near);
+				}
 			}
 			else
 			{
 				const FVector Nose = At + RideRoot->GetForwardVector() * (Alpha >= 1.0 ? RideHalfX : -RideHalfX);
-				Voice->TriggerSoundAt(ETNBeachTrapSound::Squelch, Nose, 0.9f, 0.7f);
+				if (Near > 0.f)
+				{
+					Voice->TriggerSoundAt(ETNBeachTrapSound::Squelch, Nose, 0.9f * Jitter, 0.4f * Near);
+				}
 				Splash.Burst(Nose, 10, FVector::UpVector, 320.f, 0.9f, 60.f);
 			}
 		}

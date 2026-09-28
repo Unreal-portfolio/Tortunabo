@@ -472,13 +472,15 @@ namespace TNBeachCritterDSP
 			}
 			case KindBubble:
 			{
-				// Burbuja: tono que sube (la resonancia de la burbuja al encogerse) y se apaga enseguida.
-				const float Freq = P * (380.f + 620.f * X * X);
-				const float Env = std::exp(-T / 0.055f) * FMath::Min(1.f, T / 0.003f);
+				// Burbuja: tono redondo que sube un poco (la resonancia de la burbuja al encogerse) y se apaga enseguida. Más
+				// grave, más blanda de ataque y más floja que antes (380-1000 Hz, 0,6): un seno agudo y seco repetido cada
+				// par de segundos taladraba y sonaba a fuente.
+				const float Freq = P * (290.f + 430.f * X * X);
+				const float Env = std::exp(-T / 0.06f) * FMath::Min(1.f, T / 0.006f);
 				for (int32 i = 0; i < Count; ++i)
 				{
 					const float Ph = CsAdvance(Voice.PhaseA, Freq, Dt);
-					MixBuf[i] += 0.6f * std::sin(CsTwoPi * Ph) * Env * Voice.Gain;
+					MixBuf[i] += 0.42f * std::sin(CsTwoPi * Ph) * Env * Voice.Gain;
 				}
 				break;
 			}

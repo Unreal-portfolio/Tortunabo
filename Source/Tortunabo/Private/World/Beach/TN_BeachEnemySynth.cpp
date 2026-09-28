@@ -582,10 +582,15 @@ namespace TNBeachSynthDSP
 			}
 			Gust += (GustTarget - Gust) * (1.f - std::exp(-BlockDt / 0.5f));
 			const float Dt = InvRate;
+			// Banda alta más grave y más floja (antes 1050 Hz y 0,45): a ese nivel y siempre encendido, el siseo ancho de
+			// ruido sonaba a agua corriente detrás de la carrera, no a viento.
 			const float GA = BsSvfCoef(320.f * Gust, Rate);
-			const float GB = BsSvfCoef(1050.f * Gust, Rate);
+			const float GB = BsSvfCoef(760.f * Gust, Rate);
 			const float WhistleFreq = 560.f + 140.f * Gust;
 			const float WhistleGain = 0.04f * Gust * Gust;
+			// Curva cuadrática hasta 1: el frente lejano (nivel 0,3) queda unos 10 dB más bajo que antes y crece según se
+			// acerca; dentro de la tormenta (nivel 1) suena igual que siempre.
+			const float Amp = WindLevel * FMath::Min(WindLevel, 1.f);
 			for (int32 i = 0; i < Count; ++i)
 			{
 				const float N = BsNoise(WindNoise);
@@ -593,7 +598,7 @@ namespace TNBeachSynthDSP
 				WindB.Tick(N, GB, 0.6f);
 				WhistlePhase += WhistleFreq * Dt;
 				WhistlePhase -= std::floor(WhistlePhase);
-				MixBuf[i] += (0.9f * WindA.Band + 0.45f * WindB.Band + WhistleGain * std::sin(BsTwoPi * WhistlePhase)) * WindLevel * Gust;
+				MixBuf[i] += (0.9f * WindA.Band + 0.32f * WindB.Band + WhistleGain * std::sin(BsTwoPi * WhistlePhase)) * Amp * Gust;
 			}
 		}
 	};
