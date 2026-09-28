@@ -6,6 +6,17 @@
 #include "InputActionValue.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "UI/HUD/TN_CoopFlowHUDWidget.h"
+#include "UI/HUD/TN_RunHUDWidget.h"
+#include "UI/Shop/TN_ShopWidgets.h"
+#include "UI/Briefing/TN_BriefingWidget.h"
+#include "Lobby/TN_ChangingBooth.h"
+#include "Lobby/TN_ShopKeeper.h"
+#include "Audio/TN_AmbientSoundscape.h"
+#include "World/ProcMap/TN_PathStorm.h"
+#include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "EngineUtils.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "UI/HUD/TN_RadialWheelWidgetBase.h"
 #include "UI/HUD/TN_EmoteWheelDataAsset.h"
 #include "UI/HUD/TN_QuickChatWheelDataAsset.h"
@@ -14,6 +25,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_MatchFlowTypes.h"
 #include "Player/TortugaCharacter.h"
+#include "Game/TN_ProcMapGameMode.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/GameStateBase.h"
 #include "Engine/Engine.h"
@@ -41,6 +53,8 @@ AMP_GamePlayerController::AMP_GamePlayerController()
 	OpenEmoteWheelAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_OpenEmoteWheel.IA_OpenEmoteWheel")));
 	OpenQuickChatWheelAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_OpenChatWheel.IA_OpenChatWheel")));
 	RadialNavigateAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprints/Gameplay/Controls/IA_RadialNavigate.IA_RadialNavigate")));
+
+	AmbientSoundscape = CreateDefaultSubobject<UTN_AmbientSoundscapeComponent>(TEXT("AmbientSoundscape"));
 }
 
 void AMP_GamePlayerController::BeginPlay()
@@ -238,6 +252,14 @@ void AMP_GamePlayerController::ForceRestoreInput()
 {
 	ResetIgnoreInputFlags();
 	ApplyGameplayInputMode();
+}
+
+void AMP_GamePlayerController::ServerReportProcMapReady_Implementation(int32 Generation)
+{
+	if (ATN_ProcMapGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ATN_ProcMapGameMode>() : nullptr)
+	{
+		GM->NotifyClientMapReady(this, Generation);
+	}
 }
 
 void AMP_GamePlayerController::ClientReceiveVoice_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor)
@@ -447,7 +469,9 @@ void AMP_GamePlayerController::RefreshHUDAfterPossession()
 
 void AMP_GamePlayerController::CreateVoiceHUD()
 {
-	if (!IsLocalController() || !VoiceIndicatorWidgetClass)
+	// El HUD hecho en código (UTN_RunHUDWidget) ya dice cuándo habla la tortuga: la cara del distintivo rebota y
+	// sale un bocadillo. El indicador suelto solo hace falta con el HUD de Blueprint.
+	if (!IsLocalController() || !VoiceIndicatorWidgetClass || bUseCodeHUD || !bShowHUD)
 	{
 		return;
 	}
@@ -468,7 +492,7 @@ void AMP_GamePlayerController::CreateVoiceHUD()
 
 void AMP_GamePlayerController::CreateCoopFlowHUD()
 {
-	if (!IsLocalController())
+	if (!IsLocalController() || !bShowHUD)
 	{
 		return;
 	}
@@ -476,11 +500,11 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 	// Crear el widget solo si no existe.
 	if (!CoopFlowWidget)
 	{
-		UClass* WidgetClass = CoopFlowWidgetClass
-			? CoopFlowWidgetClass.Get()
-			: UTN_CoopFlowHUDWidget::StaticClass();
+		UClass* WidgetClass = bUseCodeHUD
+			? UTN_RunFlowHUDWidget::StaticClass()
+			: (CoopFlowWidgetClass ? CoopFlowWidgetClass.Get() : UTN_CoopFlowHUDWidget::StaticClass());
 
-		if (!CoopFlowWidgetClass)
+		if (!CoopFlowWidgetClass && !bUseCodeHUD)
 		{
 			UE_LOG(LogTortunabo, Warning, TEXT("[HUD] CoopFlowWidgetClass no asignado en %s. Asignalo en el BP derivado del PlayerController. Usando clase C++ como fallback."), *GetNameSafe(this));
 		}
@@ -497,7 +521,7 @@ void AMP_GamePlayerController::CreateCoopFlowHUD()
 
 void AMP_GamePlayerController::CreatePlayerHUD()
 {
-	if (!IsLocalController())
+	if (!IsLocalController() || !bShowHUD)
 	{
 		return;
 	}
@@ -505,13 +529,14 @@ void AMP_GamePlayerController::CreatePlayerHUD()
 	// Crear el widget solo si no existe.
 	if (!PlayerHUDWidget)
 	{
-		if (!PlayerHUDWidgetClass)
+		UClass* HudClass = bUseCodeHUD ? UTN_RunHUDWidget::StaticClass() : PlayerHUDWidgetClass.Get();
+		if (!HudClass)
 		{
 			UE_LOG(LogTortunabo, Warning, TEXT("[HUD] PlayerHUDWidgetClass no asignado en %s. Asignalo en BP_GamePlayerController → Class Defaults."), *GetNameSafe(this));
 			return;
 		}
 
-		PlayerHUDWidget = CreateWidget<UUserWidget>(this, PlayerHUDWidgetClass);
+		PlayerHUDWidget = CreateWidget<UUserWidget>(this, HudClass);
 	}
 
 	// Re-añadir al viewport si fue eliminado durante seamless travel.
@@ -526,14 +551,19 @@ void AMP_GamePlayerController::CreatePlayerHUD()
 
 void AMP_GamePlayerController::CreateRadialWidgets()
 {
-	if (!IsLocalController())
+	if (!IsLocalController() || !bShowHUD)
 	{
 		return;
 	}
 
-	if (!EmoteWheelWidget && EmoteWheelWidgetClass)
+	// Con el HUD en código, las ruedas también lo son (estilo Tortunavy, centradas donde se mide el ratón).
+	if (!EmoteWheelWidget && (bUseCodeHUD || EmoteWheelWidgetClass))
 	{
-		EmoteWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, EmoteWheelWidgetClass);
+		EmoteWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, bUseCodeHUD ? UTN_RunRadialWheelWidget::StaticClass() : EmoteWheelWidgetClass.Get());
+		if (UTN_RunRadialWheelWidget* CodeWheel = Cast<UTN_RunRadialWheelWidget>(EmoteWheelWidget))
+		{
+			CodeWheel->SetTitle(NSLOCTEXT("TNHUD", "EmoteWheelTitle", "EMOTES"));
+		}
 	}
 	if (EmoteWheelWidget && !EmoteWheelWidget->IsInViewport())
 	{
@@ -541,9 +571,13 @@ void AMP_GamePlayerController::CreateRadialWidgets()
 		EmoteWheelWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	if (!QuickChatWheelWidget && QuickChatWheelWidgetClass)
+	if (!QuickChatWheelWidget && (bUseCodeHUD || QuickChatWheelWidgetClass))
 	{
-		QuickChatWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, QuickChatWheelWidgetClass);
+		QuickChatWheelWidget = CreateWidget<UTN_RadialWheelWidgetBase>(this, bUseCodeHUD ? UTN_RunRadialWheelWidget::StaticClass() : QuickChatWheelWidgetClass.Get());
+		if (UTN_RunRadialWheelWidget* CodeWheel = Cast<UTN_RunRadialWheelWidget>(QuickChatWheelWidget))
+		{
+			CodeWheel->SetTitle(NSLOCTEXT("TNHUD", "ChatWheelTitle", "FRASES"));
+		}
 	}
 	if (QuickChatWheelWidget && !QuickChatWheelWidget->IsInViewport())
 	{
@@ -730,6 +764,25 @@ FVector2D AMP_GamePlayerController::ResolveCurrentWheelVector() const
 	return bUseStick ? CachedStickVector : ComputeMouseWheelVector();
 }
 
+void AMP_GamePlayerController::TNWheel(int32 Type, float X, float Y)
+{
+	if (Type < 0)
+	{
+		CloseRadialWheel(false);
+		return;
+	}
+	if (ActiveWheelType == ETN_RadialWheelType::None)
+	{
+		OpenRadialWheel(Type == 0 ? ETN_RadialWheelType::Emote : ETN_RadialWheelType::QuickChat);
+	}
+	// Sin el temporizador del ratón, que machacaría la dirección pedida.
+	GetWorldTimerManager().ClearTimer(RadialWheelUpdateTimerHandle);
+	if (UTN_RadialWheelWidgetBase* Widget = GetActiveWheelWidget())
+	{
+		Widget->UpdateInputVector(FVector2D(X, Y));
+	}
+}
+
 void AMP_GamePlayerController::UpdateRadialWheelInput()
 {
 	if (UTN_RadialWheelWidgetBase* Widget = GetActiveWheelWidget())
@@ -823,6 +876,194 @@ void AMP_GamePlayerController::ClientOpenCosmeticsMenu_Implementation()
 	OpenCosmeticsMenu();
 }
 
+// ── Tienda y probador ─────────────────────────────────────────────────────────
+
+bool AMP_GamePlayerController::RequestEquipSkin(FName SkinId)
+{
+	UMP_GameInstance* GI = GetTNGameInstance();
+	if (GI && !GI->IsCosmeticUnlocked(ETNCosmeticCategory::Body, SkinId)) { return false; }
+	if (GI) { GI->EquipSkin(SkinId); }
+	ServerSetEquippedSkin(SkinId);
+	return true;
+}
+
+bool AMP_GamePlayerController::RequestEquipShell(FName ShellId)
+{
+	UMP_GameInstance* GI = GetTNGameInstance();
+	if (GI && !GI->IsCosmeticUnlocked(ETNCosmeticCategory::Shell, ShellId)) { return false; }
+	if (GI) { GI->EquipShell(ShellId); }
+	ServerSetEquippedShell(ShellId);
+	return true;
+}
+
+bool AMP_GamePlayerController::RequestEquipEyes(FName EyesId)
+{
+	UMP_GameInstance* GI = GetTNGameInstance();
+	if (GI && !GI->IsCosmeticUnlocked(ETNCosmeticCategory::Eyes, EyesId)) { return false; }
+	if (GI) { GI->EquipEyes(EyesId); }
+	ServerSetEquippedEyes(EyesId);
+	return true;
+}
+
+bool AMP_GamePlayerController::RequestPurchaseCosmetic(ETNCosmeticCategory Category, FName Id)
+{
+	UMP_GameInstance* GI = GetTNGameInstance();
+	if (!GI || !GI->PurchaseCosmetic(Category, Id)) { return false; }
+	if (Category == ETNCosmeticCategory::Helmet) { ServerSyncUnlockedHelmets(GI->GetUnlockedHelmetIds()); }
+	else { ServerSyncUnlockedSkins(GI->GetUnlockedSkinIds()); }
+	return true;
+}
+
+void AMP_GamePlayerController::ClientOpenShop_Implementation(ATN_ShopKeeper* Shop)
+{
+	if (!IsLocalController()) { return; }
+	CloseShopUI();
+	UTN_ShopWidget* Widget = CreateWidget<UTN_ShopWidget>(this, UTN_ShopWidget::StaticClass());
+	if (!Widget) { return; }
+	Widget->SetShop(Shop);
+	Widget->AddToViewport(MPGamePlayerController_ZOrderCosmetics);
+	ShopUIWidget = Widget;
+	// Solo la interfaz: el menú recibe todas las teclas (Escape lo cierra) y la tortuga no se mueve.
+	FInputModeUIOnly Mode;
+	Mode.SetWidgetToFocus(Widget->TakeWidget());
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(Mode);
+	SetShowMouseCursor(true);
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+}
+
+void AMP_GamePlayerController::ClientOpenBriefing_Implementation(ATN_GeneralBriefing* General)
+{
+	if (!IsLocalController()) { return; }
+	CloseShopUI();
+	UTN_BriefingWidget* Widget = CreateWidget<UTN_BriefingWidget>(this, UTN_BriefingWidget::StaticClass());
+	if (!Widget) { return; }
+	Widget->SetGeneral(General);
+	Widget->AddToViewport(MPGamePlayerController_ZOrderCosmetics);
+	ShopUIWidget = Widget;
+	// Como la tienda: solo la interfaz (Escape cierra) y la tortuga quieta mientras escucha.
+	FInputModeUIOnly Mode;
+	Mode.SetWidgetToFocus(Widget->TakeWidget());
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(Mode);
+	SetShowMouseCursor(true);
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+}
+
+void AMP_GamePlayerController::ClientOpenBooth_Implementation(ATN_ChangingBooth* Booth)
+{
+	if (!IsLocalController()) { return; }
+	CloseShopUI();
+	ActiveBooth = Booth;
+	if (Booth) { SetViewTargetWithBlend(Booth, 0.7f, VTBlend_EaseInOut, 2.f); }
+	UTN_BoothWidget* Widget = CreateWidget<UTN_BoothWidget>(this, UTN_BoothWidget::StaticClass());
+	if (!Widget) { return; }
+	Widget->SetBooth(Booth);
+	Widget->AddToViewport(MPGamePlayerController_ZOrderCosmetics);
+	ShopUIWidget = Widget;
+	// Solo la interfaz: el menú recibe todas las teclas (Escape lo cierra) y la tortuga no se mueve.
+	FInputModeUIOnly Mode;
+	Mode.SetWidgetToFocus(Widget->TakeWidget());
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(Mode);
+	SetShowMouseCursor(true);
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+}
+
+void AMP_GamePlayerController::CloseShopUI()
+{
+	if (ShopUIWidget)
+	{
+		ShopUIWidget->RemoveFromParent();
+		ShopUIWidget = nullptr;
+		SetShowMouseCursor(false);
+		ResetIgnoreMoveInput();
+		ResetIgnoreLookInput();
+		ApplyGameplayInputMode();
+	}
+	if (ATN_ChangingBooth* Booth = ActiveBooth.Get())
+	{
+		if (APawn* MyPawn = GetPawn()) { SetViewTargetWithBlend(MyPawn, 0.5f, VTBlend_EaseInOut, 2.f); }
+		ServerLeaveBooth(Booth);
+	}
+	ActiveBooth.Reset();
+}
+
+void AMP_GamePlayerController::ServerLeaveBooth_Implementation(ATN_ChangingBooth* Booth)
+{
+	if (Booth) { Booth->ReleaseOccupant(GetPawn()); }
+}
+
+bool AMP_GamePlayerController::ServerSyncUnlockedSkins_Validate(const TArray<FName>& UnlockedSkinIds)
+{
+	return UnlockedSkinIds.Num() <= 256;
+}
+
+void AMP_GamePlayerController::ServerSyncUnlockedSkins_Implementation(const TArray<FName>& UnlockedSkinIds)
+{
+	// Como los cascos: solo lo que exista en el DataTable del servidor.
+	const UMP_GameInstance* GI = GetTNGameInstance();
+	const UDataTable* SkinTable = GI ? GI->GetSkinDataTable() : nullptr;
+	if (!SkinTable || UnlockedSkinIds.Num() > 100) { return; }
+	const TArray<FName> Known = SkinTable->GetRowNames();
+	ServerUnlockedSkins.Reset();
+	for (const FName SkinId : UnlockedSkinIds)
+	{
+		if (SkinId != NAME_None && Known.Contains(SkinId)) { ServerUnlockedSkins.Add(SkinId); }
+	}
+}
+
+void AMP_GamePlayerController::ServerSetEquippedShell_Implementation(FName ShellId)
+{
+	if (ShellId != NAME_None)
+	{
+		const UMP_GameInstance* GI = GetTNGameInstance();
+		const FTN_SkinData* Row = GI ? GI->FindSkinRow(ShellId, TEXT("ServerSetEquippedShell")) : nullptr;
+		if (!Row || Row->Category != ETNCosmeticCategory::Shell || !ServerUnlockedSkins.Contains(ShellId))
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSetEquippedShell: '%s' no es un caparazón desbloqueado de %s"), *ShellId.ToString(), *GetNameSafe(this));
+			return;
+		}
+	}
+	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		TNPS->EquippedShellId = ShellId;
+		TNPS->ForceNetUpdate();
+		// El servidor (autoridad) no recibe OnRep: aplica aquí.
+		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+		{
+			TurtleChar->UpdateSkinVisual(TNPS->EquippedSkinId);
+		}
+	}
+}
+
+void AMP_GamePlayerController::ServerSetEquippedEyes_Implementation(FName EyesId)
+{
+	if (EyesId != NAME_None)
+	{
+		const UMP_GameInstance* GI = GetTNGameInstance();
+		const FTN_SkinData* Row = GI ? GI->FindSkinRow(EyesId, TEXT("ServerSetEquippedEyes")) : nullptr;
+		if (!Row || Row->Category != ETNCosmeticCategory::Eyes || !ServerUnlockedSkins.Contains(EyesId))
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSetEquippedEyes: '%s' no son unos ojos desbloqueados de %s"), *EyesId.ToString(), *GetNameSafe(this));
+			return;
+		}
+	}
+	if (ATN_CoopPlayerState* TNPS = GetPlayerState<ATN_CoopPlayerState>())
+	{
+		TNPS->EquippedEyesId = EyesId;
+		TNPS->ForceNetUpdate();
+		// El servidor (autoridad) no recibe OnRep: aplica aquí.
+		if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+		{
+			TurtleChar->UpdateSkinVisual(TNPS->EquippedSkinId);
+		}
+	}
+}
+
 void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
 {
 	// Cerrar cualquier menú o rueda abiertos antes del travel para restaurar el
@@ -838,6 +1079,7 @@ void AMP_GamePlayerController::ClientNotifyServerTravel_Implementation()
 		CosmeticsWidget->SetVisibility(ESlateVisibility::Hidden);
 		ApplyGameplayInputMode();
 	}
+	CloseShopUI();
 
 	// Marcar que estamos en travel para que OnNetworkFailure active auto-rejoin
 	// en vez de destruir la sesión y mostrar error.
@@ -924,15 +1166,15 @@ void AMP_GamePlayerController::ServerSetEquippedHelmet_Implementation(FName Helm
 
 void AMP_GamePlayerController::ServerSetEquippedSkin_Implementation(FName SkinId)
 {
-	// NAME_None = unequip (always allowed).
-	// Any other ID must exist in the server's SkinDataTable to prevent spoofing.
+	// NAME_None = el color de serie (siempre permitido). Cualquier otro: una fila de DT_Skins que el jugador tenga
+	// desbloqueada en la tienda (ServerSyncUnlockedSkins).
 	if (SkinId != NAME_None)
 	{
 		const UMP_GameInstance* GI = GetTNGameInstance();
 		const UDataTable* SkinTable = GI ? GI->GetSkinDataTable() : nullptr;
-		if (!SkinTable || !SkinTable->GetRowNames().Contains(SkinId))
+		if (!SkinTable || !SkinTable->GetRowNames().Contains(SkinId) || !ServerUnlockedSkins.Contains(SkinId))
 		{
-			UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSetEquippedSkin: '%s' not in SkinDataTable for %s"),
+			UE_LOG(LogTortunabo, Warning, TEXT("[PC] ServerSetEquippedSkin: '%s' no es un color desbloqueado de %s"),
 				*SkinId.ToString(), *GetNameSafe(this));
 			return;
 		}
@@ -987,10 +1229,13 @@ void AMP_GamePlayerController::SyncCosmeticsToServer()
 	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		ServerSyncUnlockedHelmets(GI->GetUnlockedHelmetIds());
+		ServerSyncUnlockedSkins(GI->GetUnlockedSkinIds());
 		// Sincronizar casco (NAME_None = sin casco, siempre enviar para no revertir un desequipado explícito)
 		ServerSetEquippedHelmet(GI->GetEquippedHelmetId());
-		// Sincronizar skin (NAME_None = sin skin, siempre enviar)
+		// Sincronizar color y caparazón (NAME_None = los de serie, siempre enviar)
 		ServerSetEquippedSkin(GI->GetEquippedSkinId());
+		ServerSetEquippedShell(GI->GetEquippedShellId());
+		ServerSetEquippedEyes(GI->GetEquippedEyesId());
 	}
 }
 
@@ -1073,4 +1318,154 @@ void AMP_GamePlayerController::ServerSendQuickChat_Implementation(uint8 MessageI
 
 	const int32 SenderId = PlayerState ? PlayerState->GetPlayerId() : 0;
 	GS->AddQuickChatEntry(SenderId, MessageID, Now);
+}
+
+// ── Pruebas de la tormenta (TNStorm) ──────────────────────────────────────────
+
+void AMP_GamePlayerController::TNStorm(const FString& Where, float Ahead)
+{
+	ServerStormTest(Where, Ahead);
+}
+
+void AMP_GamePlayerController::ServerStormTest_Implementation(const FString& Where, float Ahead)
+{
+	UWorld* World = GetWorld();
+	ATN_ProcMapGenerator* Gen = nullptr;
+	ATN_PathStorm* Storm = nullptr;
+	for (TActorIterator<ATN_ProcMapGenerator> It(World); It; ++It) { Gen = *It; break; }
+	for (TActorIterator<ATN_PathStorm> It(World); It; ++It) { Storm = *It; break; }
+	APawn* MyPawn = GetPawn();
+	if (!Gen || !Storm || !MyPawn || !Gen->IsMapReady())
+	{
+		ClientMessage(TEXT("TNStorm: solo en el mapa procedural, con el mapa listo y la tortuga viva."));
+		return;
+	}
+	const FString Key = Where.ToLower();
+	if (Key == TEXT("off") || Key == TEXT("apagar"))
+	{
+		Storm->DebugPlaceFront(-3000.f, false);
+		Storm->StopStorm();
+		ClientMessage(TEXT("TNStorm: tormenta parada y otra vez peligrosa."));
+		return;
+	}
+
+	const TNProcMap::FLayout& L = Gen->GetLayout();
+	const FTransform MapXf = Gen->GetActorTransform();
+	FVector Spot = FVector::ZeroVector;
+	FVector Facing = FVector::ForwardVector;
+	bool bFound = false;
+
+	static const TMap<FString, ETNProcBiome> BiomeNames = {
+		{ TEXT("selva"), ETNProcBiome::Jungle }, { TEXT("jungle"), ETNProcBiome::Jungle },
+		{ TEXT("playa"), ETNProcBiome::Beach }, { TEXT("beach"), ETNProcBiome::Beach },
+		{ TEXT("desierto"), ETNProcBiome::Desert }, { TEXT("desert"), ETNProcBiome::Desert },
+		{ TEXT("volcan"), ETNProcBiome::Volcanic }, { TEXT("volcán"), ETNProcBiome::Volcanic }, { TEXT("volcanic"), ETNProcBiome::Volcanic },
+		{ TEXT("agua"), ETNProcBiome::Water }, { TEXT("water"), ETNProcBiome::Water },
+		{ TEXT("rocas"), ETNProcBiome::Rocky }, { TEXT("rocky"), ETNProcBiome::Rocky }, { TEXT("acantilados"), ETNProcBiome::Rocky },
+		{ TEXT("manglar"), ETNProcBiome::Mangrove }, { TEXT("mangrove"), ETNProcBiome::Mangrove },
+		{ TEXT("pueblo"), ETNProcBiome::Human }, { TEXT("human"), ETNProcBiome::Human }, { TEXT("humana"), ETNProcBiome::Human },
+	};
+	if (const ETNProcBiome* Biome = BiomeNames.Find(Key))
+	{
+		// El tramo más largo del camino principal en ese bioma: su muestra del medio.
+		int32 BestFrom = INDEX_NONE, BestLen = 0;
+		for (int32 i = 0; i < L.Main.Num();)
+		{
+			if (L.Main[i].Biome != *Biome) { ++i; continue; }
+			int32 j = i;
+			while (j < L.Main.Num() && L.Main[j].Biome == *Biome) { ++j; }
+			if (j - i > BestLen) { BestLen = j - i; BestFrom = i; }
+			i = j;
+		}
+		if (BestFrom != INDEX_NONE)
+		{
+			const TNProcMap::FPathSample& S = L.Main[BestFrom + BestLen / 2];
+			Spot = MapXf.TransformPosition(FVector(S.P.X, S.P.Y, S.Z + 110.0));
+			Facing = MapXf.TransformVectorNoScale(FVector(S.Dir.X, S.Dir.Y, 0.0));
+			bFound = true;
+		}
+	}
+	else if (Key.StartsWith(TEXT("gey")) || Key.StartsWith(TEXT("gei")) || Key.StartsWith(TEXT("géi")) || Key.StartsWith(TEXT("casc")) || Key.StartsWith(TEXT("water")))
+	{
+		// Cada vez el siguiente géiser (o cascada) del mapa.
+		const bool bGeyser = !Key.StartsWith(TEXT("casc")) && !Key.StartsWith(TEXT("water"));
+		static int32 NextGeyser = 0;
+		static int32 NextFall = 0;
+		TArray<const TNProcMap::FFeature*> Found;
+		for (const TNProcMap::FFeature& F : L.Features)
+		{
+			if (F.Type == (bGeyser ? TNProcMap::EFeature::Geyser : TNProcMap::EFeature::SlideZone)) { Found.Add(&F); }
+		}
+		if (Found.Num() > 0)
+		{
+			int32& Next = bGeyser ? NextGeyser : NextFall;
+			const TNProcMap::FFeature& F = *Found[Next++ % Found.Num()];
+			if (bGeyser)
+			{
+				const FVector Base = MapXf.TransformPosition(F.Location);
+				FVector PathDir;
+				Gen->GetPathLocationAtProgress(Gen->GetPathProgress(Base), PathDir);
+				Facing = PathDir.GetSafeNormal2D();
+				Spot = Base - Facing * 320.f + FVector(0.f, 0.f, 120.f);
+			}
+			else
+			{
+				const TArray<TNProcMap::FPathSample>& Samples = F.BranchIndex == INDEX_NONE ? L.Main : L.Branches[F.BranchIndex].Samples;
+				if (Samples.IsValidIndex(F.PathIndex))
+				{
+					const TNProcMap::FPathSample& Lip = Samples[FMath::Max(0, F.PathIndex - 2)];
+					Spot = MapXf.TransformPosition(FVector(Lip.P.X, Lip.P.Y, Lip.Z + 110.0));
+					Facing = MapXf.TransformVectorNoScale(FVector(Lip.Dir.X, Lip.Dir.Y, 0.0));
+				}
+			}
+			bFound = !Spot.IsZero();
+		}
+	}
+	if (!bFound)
+	{
+		ClientMessage(FString::Printf(TEXT("TNStorm: no hay '%s' en este mapa."), *Where));
+		return;
+	}
+
+	if (ACharacter* Char = Cast<ACharacter>(MyPawn)) { Char->GetCharacterMovement()->StopMovementImmediately(); }
+	MyPawn->TeleportTo(Spot, Facing.Rotation(), false, true);
+	ClientSetRotation(Facing.Rotation());
+	const float Progress = Gen->GetPathProgress(Spot);
+	Storm->DebugPlaceFront(Progress - Ahead, true);
+	ClientMessage(FString::Printf(TEXT("TNStorm: %s (progreso %.0f), frente a %.0f cm."), *Where, Progress, Ahead));
+}
+
+// ── Pruebas del lobby (TNShop, TNBooth) ────────────────────────────────────────
+
+void AMP_GamePlayerController::TNShop()
+{
+	ATN_ShopKeeper* Nearest = nullptr;
+	double Best = TNumericLimits<double>::Max();
+	const FVector From = GetPawn() ? GetPawn()->GetActorLocation() : FVector::ZeroVector;
+	for (TActorIterator<ATN_ShopKeeper> It(GetWorld()); It; ++It)
+	{
+		const double D = FVector::DistSquared(From, It->GetActorLocation());
+		if (D < Best) { Best = D; Nearest = *It; }
+	}
+	ClientOpenShop(Nearest);
+}
+
+void AMP_GamePlayerController::TNBooth()
+{
+	ServerTestBooth();
+}
+
+void AMP_GamePlayerController::ServerTestBooth_Implementation()
+{
+	APawn* MyPawn = GetPawn();
+	if (!MyPawn) { return; }
+	ATN_ChangingBooth* Nearest = nullptr;
+	double Best = TNumericLimits<double>::Max();
+	for (TActorIterator<ATN_ChangingBooth> It(GetWorld()); It; ++It)
+	{
+		const double D = FVector::DistSquared(MyPawn->GetActorLocation(), It->GetActorLocation());
+		if (It->CanInteract(MyPawn) && D < Best) { Best = D; Nearest = *It; }
+	}
+	if (Nearest) { Nearest->Interact(MyPawn); }
+	else { ClientMessage(TEXT("TNBooth: no hay ningún probador libre.")); }
 }

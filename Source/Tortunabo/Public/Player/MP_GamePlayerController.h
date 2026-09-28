@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "UI/HUD/TN_RadialWheelTypes.h"
+#include "Core/TN_CosmeticsTypes.h"
 #include "MP_GamePlayerController.generated.h"
 
 struct FInputActionValue;
@@ -15,6 +16,10 @@ class UTN_QuickChatWheelDataAsset;
 class UMP_GameInstance;
 class APlayerState;
 class AGameStateBase;
+class ATN_ShopKeeper;
+class ATN_ChangingBooth;
+class ATN_GeneralBriefing;
+class UTN_AmbientSoundscapeComponent;
 
 /**
  * @brief PlayerController principal del gameplay. Centraliza HUD, espectador, cosméticos, ruedas radiales, VOIP, Quick Chat y emotes.
@@ -72,6 +77,43 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientOpenCosmeticsMenu();
 
+	// ── Tienda y probador del lobby ──────────────────────────────────────────
+
+	/** @brief Equipa un color de cuerpo desbloqueado (NAME_None = el de serie): lo guarda y lo replica. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool RequestEquipSkin(FName SkinId);
+
+	/** @brief Equipa un caparazón desbloqueado (NAME_None = el de serie): lo guarda y lo replica. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool RequestEquipShell(FName ShellId);
+
+	/** @brief Equipa unos ojos desbloqueados (NAME_None = los clásicos): los guarda y los replica. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool RequestEquipEyes(FName EyesId);
+
+	/** @brief Tienda: lo compra (hoy todo cuesta 0), lo guarda y manda los desbloqueos al servidor. */
+	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
+	bool RequestPurchaseCosmetic(ETNCosmeticCategory Category, FName Id);
+
+	/** @brief Client RPC: abre la tienda del tendero (UTN_ShopWidget). */
+	UFUNCTION(Client, Reliable)
+	void ClientOpenShop(ATN_ShopKeeper* Shop);
+
+	/** @brief Client RPC: abre la sesión informativa del general del cuartel (UTN_BriefingWidget). */
+	UFUNCTION(Client, Reliable)
+	void ClientOpenBriefing(ATN_GeneralBriefing* General);
+
+	/** @brief Client RPC: el probador se ha cerrado contigo dentro: la cámara se aparta y sale el selector (UTN_BoothWidget). */
+	UFUNCTION(Client, Reliable)
+	void ClientOpenBooth(ATN_ChangingBooth* Booth);
+
+	/** @brief Server RPC: sales del probador (lo elegido ya va equipado): se abre la puerta y vuelves a moverte. */
+	UFUNCTION(Server, Reliable)
+	void ServerLeaveBooth(ATN_ChangingBooth* Booth);
+
+	/** @brief Cierra la tienda o el probador (lo llaman sus widgets) y devuelve el control al juego. */
+	void CloseShopUI();
+
 	/**
 	 * Server → Client: "Prepárate, el servidor va a hacer ServerTravel."
 	 * El cliente marca bIsPendingTravel en su GameInstance y muestra loading screen.
@@ -89,6 +131,30 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "QuickChat")
 	void SendQuickChat(uint8 MessageID);
+
+	/**
+	 * @brief Consola (pruebas y vista previa): abre la rueda de emotes (Type 0) o de frases (1) y la apunta en la
+	 *        dirección (X, Y) (X a la derecha, Y hacia arriba); Type -1 la cierra sin elegir.
+	 */
+	UFUNCTION(Exec)
+	void TNWheel(int32 Type, float X, float Y);
+
+	/**
+	 * @brief Consola (pruebas de la tormenta en el mapa procedural): lleva a tu tortuga a un sitio y pone la tormenta
+	 *        encima, inofensiva. Where: un bioma (Selva, Playa, Desierto, Volcan, Agua, Rocas, Manglar, Pueblo), Geiser
+	 *        o Cascada (cada vez el siguiente del mapa) u Off (tormenta normal otra vez). Ahead: cm entre el frente y
+	 *        la tortuga (positivo = llega por detrás; negativo = ya estás dentro).
+	 */
+	UFUNCTION(Exec)
+	void TNStorm(const FString& Where, float Ahead = 900.f);
+
+	/** @brief Consola (pruebas del lobby): abre la tienda del tendero más cercano sin ir hasta él. */
+	UFUNCTION(Exec)
+	void TNShop();
+
+	/** @brief Consola (pruebas del lobby): entra en el probador libre más cercano sin ir hasta él. */
+	UFUNCTION(Exec)
+	void TNBooth();
 
 	/**
 	 * @brief Pide al servidor reproducir un emote por ID (Multicast tras validación).
@@ -117,6 +183,14 @@ public:
 
 	/** @brief Versión sin RPC para el listen-server (los Client RPCs no se ejecutan en el host). */
 	void ForceRestoreInput();
+
+	/**
+	 * @brief El cliente avisa de que ya construyó el mapa procedural de esa generación.
+	 * @note Lo llama ATN_ProcMapGenerator en el cliente; el servidor lo reenvía a
+	 *       ATN_ProcMapGameMode para arrancar la ronda cuando todos lo tienen.
+	 */
+	UFUNCTION(Server, Reliable)
+	void ServerReportProcMapReady(int32 Generation);
 
 	/**
 	 * @brief Recibe audio de voz filtrado por proximidad desde el servidor.
@@ -173,6 +247,21 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UUserWidget> PlayerHUDWidgetClass;
+
+	/**
+	 * Usar el HUD hecho en código (UTN_RunHUDWidget y UTN_RunFlowHUDWidget, estilo común) en vez de
+	 * PlayerHUDWidgetClass y CoopFlowWidgetClass.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	bool bUseCodeHUD = true;
+
+	/** Con false no se crea ninguna interfaz de partida (HUD, flujo, voz, ruedas): nivel de solo terreno. */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	bool bShowHUD = true;
+
+	/** Paisaje sonoro sintetizado por bioma (solo suena en el jugador local). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Audio")
+	TObjectPtr<UTN_AmbientSoundscapeComponent> AmbientSoundscape;
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Radial")
 	TSubclassOf<UTN_RadialWheelWidgetBase> EmoteWheelWidgetClass;
@@ -241,6 +330,18 @@ private:
 	/** @brief Server RPC: aplica el skin de personaje en el PlayerState (llamado desde SyncCosmeticsToServer). */
 	UFUNCTION(Server, Reliable)
 	void ServerSetEquippedSkin(FName SkinId);
+
+	/** @brief Server RPC: colores y caparazones desbloqueados del cliente (validados contra DT_Skins). */
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerSyncUnlockedSkins(const TArray<FName>& UnlockedSkinIds);
+
+	/** @brief Server RPC: asigna el caparazón equipado en el PlayerState. */
+	UFUNCTION(Server, Reliable)
+	void ServerSetEquippedShell(FName ShellId);
+
+	/** @brief Server RPC: asigna los ojos equipados en el PlayerState. */
+	UFUNCTION(Server, Reliable)
+	void ServerSetEquippedEyes(FName EyesId);
 
 	/** @brief Client RPC: guarda SkinId en GameInstance del cliente dueño. */
 	UFUNCTION(Client, Reliable)
@@ -321,9 +422,27 @@ private:
 
 	TSet<FName> ServerUnlockedHelmets;
 
+	/** Colores y caparazones desbloqueados de este jugador (servidor). */
+	TSet<FName> ServerUnlockedSkins;
+
+	/** Tienda o probador abiertos (solo en el cliente dueño). */
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> ShopUIWidget;
+
+	/** Probador en el que está este jugador (cliente dueño). */
+	TWeakObjectPtr<ATN_ChangingBooth> ActiveBooth;
+
 	/** @brief Server RPC: valida ID, aplica rate limit y escribe el QuickChat en el GameState. */
 	UFUNCTION(Server, Reliable)
 	void ServerSendQuickChat(uint8 MessageID);
+
+	/** Servidor: el trabajo de TNStorm (mueve la tortuga y el frente de la tormenta). */
+	UFUNCTION(Server, Reliable)
+	void ServerStormTest(const FString& Where, float Ahead);
+
+	/** Servidor: el trabajo de TNBooth. */
+	UFUNCTION(Server, Reliable)
+	void ServerTestBooth();
 
 	ETN_RadialWheelType ActiveWheelType = ETN_RadialWheelType::None;
 	FVector2D CachedStickVector = FVector2D::ZeroVector;

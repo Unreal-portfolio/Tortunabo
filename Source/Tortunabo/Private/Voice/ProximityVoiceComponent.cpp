@@ -525,12 +525,24 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 	}
 }
 
+bool UProximityVoiceComponent::IsHeardSpeaking() const
+{
+	if (IsLocallyOwned())
+	{
+		return bIsSpeaking;
+	}
+	const UWorld* World = GetWorld();
+	return World && LastRemoteVoiceTime >= 0.0 && World->GetRealTimeSeconds() - LastRemoteVoiceTime < 0.35;
+}
+
 void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
 	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || IsLocallyOwned())
 	{
 		return;
 	}
+
+	LastRemoteVoiceTime = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0;
 
 	// Defensa en el consumidor: acotar el sample rate recibido por red al rango
 	// humano antes de configurar el playback.

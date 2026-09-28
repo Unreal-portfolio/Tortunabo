@@ -84,6 +84,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
 	FString MatchMapPath = TEXT("/Game/Maps/Run/LVL_Run");
 
+	/** Nivel del mapa procedural (Coop / Carrera / 2vs2 elegidos con ATN_ProcModeSelector). */
+	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
+	FString ProcMapPath = TEXT("/Game/Maps/Run/LVL_ProcMap");
+
 private:
 	/**
 	 * Puesto a true en BeginPlay cuando el GameInstance del servidor reporta primera partida.
@@ -127,4 +131,11 @@ private:
 
 	/** @brief Cambia el MatchFlowState replicado + dispara broadcast manual a listen-server. */
 	void SetFlowState(ETNMatchFlowState NewState) const;
+
+	/**
+	 * @brief Coloca la tienda (ATN_ShopKeeper) y los probadores (ATN_ChangingBooth) si el nivel no los trae puestos.
+	 *        Sitios: actores con la etiqueta TN_ShopAnchor / TN_BoothAnchor; si no hay, los de la maqueta del lobby
+	 *        (el tendero es la tortuga grande junto a la carpa; los probadores, las botellas BP_VestidorBotella).
+	 */
+	void SpawnLobbyShops();
 };

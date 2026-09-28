@@ -9,11 +9,54 @@ class UStaticMesh;
 class UTexture2D;
 
 /**
- * Fila de DataTable que describe un casco cosmético.
- * Crear DT_Helmets en Content/Blueprints/Gameplay/Cosmetics/ con esta struct.
+ * Categoría de cosmético de la tienda y del probador del lobby. Un casco es una fila de DT_Helmets; el caparazón, el
+ * color del cuerpo y los ojos son filas de DT_Skins, y se equipan por separado (EquippedShellId, EquippedSkinId y
+ * EquippedEyesId).
+ */
+UENUM(BlueprintType)
+enum class ETNCosmeticCategory : uint8
+{
+	Helmet UMETA(DisplayName = "Casco"),
+	Shell  UMETA(DisplayName = "Caparazón"),
+	Body   UMETA(DisplayName = "Color"),
+	Eyes   UMETA(DisplayName = "Ojos"),
+};
+
+/** Tipo de ojo (parámetro EyeStyle de M_TurtleBody). */
+UENUM(BlueprintType)
+enum class ETNEyeStyle : uint8
+{
+	Classic UMETA(DisplayName = "Clásicos"),
+	Iris    UMETA(DisplayName = "Iris de color"),
+	Star    UMETA(DisplayName = "Pupila de estrella"),
+	Heart   UMETA(DisplayName = "Pupila de corazón"),
+	Toon    UMETA(DisplayName = "De dibujo"),
+	Spiral  UMETA(DisplayName = "Espiral"),
+	Cat     UMETA(DisplayName = "De gato"),
+	Galaxy  UMETA(DisplayName = "Galaxia"),
+};
+
+/** Dibujo del caparazón (parámetro ShellPattern de M_TurtleBody). */
+UENUM(BlueprintType)
+enum class ETNShellPattern : uint8
+{
+	Plain   UMETA(DisplayName = "Liso"),
+	Scutes  UMETA(DisplayName = "Escamas"),
+	Spots   UMETA(DisplayName = "Lunares"),
+	Waves   UMETA(DisplayName = "Olas"),
+	Stars   UMETA(DisplayName = "Estrellas"),
+	Lava    UMETA(DisplayName = "Grietas de lava"),
+	Checker UMETA(DisplayName = "Ajedrez"),
+	Melon   UMETA(DisplayName = "Sandía"),
+};
+
+/**
+ * Fila de DataTable que describe un casco cosmético (DT_Helmets en Content/Blueprints/Gameplay/Cosmetics/).
  * La RowName debe coincidir con el HelmetId usado en MP_GameInstance y PlayerState.
  *
- * Nombre del socket/componente en el personaje: "Sombrero"
+ * El casco va en el socket "Sombrero" de la malla si lo tiene; si no, en el hueso "Head", con el ajuste de abajo
+ * medido desde la coronilla en el espacio de la malla (UTN_CosmeticLook::AttachHelmet). Los cascos de la tienda
+ * (SM_Helmet_*, Scripts/build_cosmetics.py) ya están modelados sobre la coronilla: ajuste a cero.
  */
 USTRUCT(BlueprintType)
 struct FTN_HelmetData : public FTableRowBase
@@ -45,26 +88,25 @@ struct FTN_HelmetData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	TObjectPtr<UTexture2D> Icon = nullptr;
 
-	/**
-	 * Escala del mesh en el socket Sombrero.
-	 * (1,1,1) = escala original. Ajusta para que encaje en la cabeza de la tortuga.
-	 */
+	/** Escala del casco sobre la de la malla de la tortuga ((1,1,1) = la del modelo). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	FVector MeshScale = FVector::OneVector;
 
-	/**
-	 * Offset de posición relativo al socket Sombrero (cm).
-	 * Ajusta para centrar el casco sobre la cabeza correctamente.
-	 */
+	/** Desplazamiento desde la coronilla, en unidades de la malla (sin la escala del personaje). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	FVector MeshOffset = FVector::ZeroVector;
 
-	/**
-	 * Offset de rotación relativo al socket Sombrero (grados).
-	 * Ajusta si el casco importado tiene orientación diferente.
-	 */
+	/** Giro sobre la coronilla (grados). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	FRotator MeshRotation = FRotator::ZeroRotator;
+
+	/** Precio en la tienda (0 = gratis; la economía de conchas o estrellas llegará más adelante). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Shop", meta = (ClampMin = "0"))
+	int32 Price = 0;
+
+	/** Lo que dice el tendero al enseñarlo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Shop")
+	FText Description;
 
 	bool IsValid() const { return HelmetId != NAME_None; }
 };
@@ -121,6 +163,105 @@ struct FTN_SkinData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
 	TObjectPtr<UTexture2D> Icon = nullptr;
 
+	/**
+	 * Qué es en la tienda y el probador: Shell cambia solo el caparazón y se equipa aparte (EquippedShellId); Body es
+	 * el color del cuerpo (EquippedSkinId).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Shop")
+	ETNCosmeticCategory Category = ETNCosmeticCategory::Body;
+
+	/** Precio en la tienda (0 = gratis). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Shop", meta = (ClampMin = "0"))
+	int32 Price = 0;
+
+	/** Lo que dice el tendero al enseñarlo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Shop")
+	FText Description;
+
+	// ── Aspecto en la tortuga de demo (TotugaDemo_Rig: el caparazón comparte material con el cuerpo) ──
+	// UTN_CosmeticLook pinta con estos valores M_TurtleBody (/Game/Cosmetics/Materials). Los materiales por ranura de
+	// arriba son para la malla unificada de 5 ranuras y, si están puestos, mandan sobre estos.
+
+	/** Color principal: el del cuerpo (Body) o el de fondo del caparazón (Shell). También es la muestra de la tienda. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look")
+	FLinearColor Color = FLinearColor(0.045f, 0.33f, 0.05f, 1.f);
+
+	/** Segundo color: el de la barriga (Body) o el del dibujo del caparazón (Shell). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look")
+	FLinearColor Color2 = FLinearColor(0.9f, 0.77f, 0.38f, 1.f);
+
+	/** Body: cuánto se nota la barriga (0 = del mismo color que el cuerpo). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look", meta = (ClampMin = "0", ClampMax = "1"))
+	float BellyAmount = 0.f;
+
+	/** Shell: dibujo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look")
+	ETNShellPattern Pattern = ETNShellPattern::Plain;
+
+	/** Shell: tamaño del dibujo (1 = el de serie). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look", meta = (ClampMin = "0.2", ClampMax = "4"))
+	float PatternScale = 1.f;
+
+	/** Shell: brillo metálico (0 mate, 1 metal pulido). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look", meta = (ClampMin = "0", ClampMax = "1"))
+	float Shine = 0.f;
+
+	/** Shell: luz propia del dibujo (lava, galaxia). Eyes: luz propia del iris (galaxia). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look", meta = (ClampMin = "0", ClampMax = "20"))
+	float Glow = 0.f;
+
+	/** Eyes: tipo de ojo (Color = iris o pupila de color; Color2 = segundo color: brillos de la galaxia). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics|Look")
+	ETNEyeStyle EyeStyle = ETNEyeStyle::Classic;
+
 	bool IsValid() const { return SkinId != NAME_None; }
 };
 
+/**
+ * Conjunto de cosméticos de una tortuga: lo que replica el PlayerState y lo que enseñan la tienda, el probador y el
+ * tendero. NAME_None = el de serie (casco rojo, cuerpo verde, caparazón del color del cuerpo y ojos clásicos).
+ */
+USTRUCT(BlueprintType)
+struct FTN_TurtleLook
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	FName HelmetId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	FName ShellId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	FName SkinId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cosmetics")
+	FName EyesId = NAME_None;
+
+	FName Get(ETNCosmeticCategory Category) const
+	{
+		switch (Category)
+		{
+		case ETNCosmeticCategory::Helmet: return HelmetId;
+		case ETNCosmeticCategory::Shell:  return ShellId;
+		case ETNCosmeticCategory::Eyes:   return EyesId;
+		default:                          return SkinId;
+		}
+	}
+
+	void Set(ETNCosmeticCategory Category, FName Id)
+	{
+		switch (Category)
+		{
+		case ETNCosmeticCategory::Helmet: HelmetId = Id; break;
+		case ETNCosmeticCategory::Shell:  ShellId = Id; break;
+		case ETNCosmeticCategory::Eyes:   EyesId = Id; break;
+		default:                          SkinId = Id; break;
+		}
+	}
+
+	bool Equals(const FTN_TurtleLook& Other) const
+	{
+		return HelmetId == Other.HelmetId && ShellId == Other.ShellId && SkinId == Other.SkinId && EyesId == Other.EyesId;
+	}
+};

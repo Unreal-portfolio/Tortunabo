@@ -15,6 +15,14 @@
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
+#include "Lobby/TN_ChangingBooth.h"
+#include "Lobby/TN_GeneralBriefing.h"
+#include "Lobby/TN_LobbyReadyZone.h"
+#include "Lobby/TN_SandCastleLobby.h"
+#include "Lobby/TN_ShopKeeper.h"
+#include "Animation/SkeletalMeshActor.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkinnedAsset.h"
 
 ATN_HQGameMode::ATN_HQGameMode()
 {
@@ -29,6 +37,7 @@ void ATN_HQGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureFallbackPlayerStart();
+	SpawnLobbyShops();
 
 	// ── Tutorial first-time check (fallback para join directo sin seamless) ──
 	// Para seamless travel, el flag se evalúa en HandleSeamlessTravelPlayer
@@ -319,11 +328,26 @@ void ATN_HQGameMode::BeginMatchTravel()
 	// ── Guardar cuántos jugadores hay en el lobby ANTES de viajar ──────
 	// GameInstance sobrevive al seamless travel; TN_RunGameMode
 	// lo leerá en BeginPlay para saber cuántos jugadores esperar.
+	FString TravelURL = MatchMapPath;
 	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
 	{
 		const int32 ConnectedCount = TN_CountConnectedCoopPlayers(GameState);
 		GI->PendingTravelPlayerCount = ConnectedCount;
 		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
+
+		// ── Modo elegido en el lobby: Clásico → LVL_Run; el resto → mapa procedural ──
+		if (GI->SelectedProcMode == ETNProcGameMode::TwoVsTwo && ConnectedCount != 4)
+		{
+			// El selector ya lo impide, pero alguien pudo salir durante la cuenta atrás.
+			UE_LOG(LogTortunabo, Warning, TEXT("[HQGameMode] 2vs2 exige 4 jugadores (hay %d) → Carrera."), ConnectedCount);
+			GI->SelectedProcMode = ETNProcGameMode::Race;
+		}
+		if (GI->SelectedProcMode != ETNProcGameMode::Classic)
+		{
+			TravelURL = ProcMapPath;
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo %s · dificultad %s"),
+			*UEnum::GetValueAsString(GI->SelectedProcMode), *UEnum::GetValueAsString(GI->SelectedProcDifficulty));
 	}
 
 	// ── Destroy all pawns BEFORE travel for WASAPI cleanup ──────────────
@@ -343,7 +367,6 @@ void ATN_HQGameMode::BeginMatchTravel()
 	// NO ?listen (seamless travel reuses the existing NetDriver).
 	// NO destroying NetDriver (that kills client connections).
 	// NO ClientNotifyServerTravel (clients travel with the server automatically).
-	const FString TravelURL = MatchMapPath;
 	UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Seamless ServerTravel to: %s"), *TravelURL);
 	World->ServerTravel(TravelURL);
 }
@@ -495,5 +518,169 @@ void ATN_HQGameMode::PostSeamlessTravel()
 	});
 }
 
+void ATN_HQGameMode::SpawnLobbyShops()
+{
+	UWorld* World = GetWorld();
+	if (!World) { return; }
+	static const FName ShopTag(TEXT("TN_ShopAnchor"));
+	static const FName BoothTag(TEXT("TN_BoothAnchor"));
+	static const FName GeneralTag(TEXT("TN_GeneralAnchor"));
+	/** Donde está el general de la maqueta de LVL_Lobby (TotugaDemo_Rig2). */
+	const FVector BlockoutGeneralSpot(-892.0, 1479.0, 0.0);
 
+	bool bHasShop = false;
+	bool bHasBooth = false;
+	bool bHasGeneral = false;
+	TArray<AActor*> ShopAnchors;
+	TArray<AActor*> BoothAnchors;
+	TArray<AActor*> GeneralAnchors;
+	AActor* BlockoutGeneral = nullptr;
+	TArray<AActor*> BlockoutKeepers;
+	TArray<AActor*> BlockoutBottles;
+	TArray<AActor*> BlockoutDoors;
+	AActor* Tent = nullptr;
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor) { continue; }
+		bHasShop |= Actor->IsA<ATN_ShopKeeper>();
+		bHasBooth |= Actor->IsA<ATN_ChangingBooth>();
+		bHasGeneral |= Actor->IsA<ATN_GeneralBriefing>();
+		if (Actor->ActorHasTag(ShopTag)) { ShopAnchors.Add(Actor); }
+		if (Actor->ActorHasTag(BoothTag)) { BoothAnchors.Add(Actor); }
+		if (Actor->ActorHasTag(GeneralTag)) { GeneralAnchors.Add(Actor); }
+		const FString ClassName = Actor->GetClass()->GetName();
+		if (ClassName.Contains(TEXT("VestidorBotella"))) { BlockoutBottles.Add(Actor); }
+		else if (ClassName.Contains(TEXT("ShellDoor"))) { BlockoutDoors.Add(Actor); }
+		else if (ClassName.Contains(TEXT("ChangingTent"))) { Tent = Actor; }
+		if (const ASkeletalMeshActor* SkelActor = Cast<ASkeletalMeshActor>(Actor))
+		{
+			const USkinnedAsset* Asset = SkelActor->GetSkeletalMeshComponent() ? SkelActor->GetSkeletalMeshComponent()->GetSkinnedAsset() : nullptr;
+			if (Asset && Asset->GetName().Contains(TEXT("TotugaDemo")) && Actor->GetActorScale3D().Z >= 3.2f) { BlockoutKeepers.Add(Actor); }
+			// El general de la maqueta: la tortuga suelta más cerca de su sitio (sea cual sea su escala).
+			if (Asset && Asset->GetName().Contains(TEXT("TotugaDemo")) && FVector::Dist2D(Actor->GetActorLocation(), BlockoutGeneralSpot) < 500.0
+				&& (!BlockoutGeneral || FVector::Dist2D(Actor->GetActorLocation(), BlockoutGeneralSpot) < FVector::Dist2D(BlockoutGeneral->GetActorLocation(), BlockoutGeneralSpot)))
+			{
+				BlockoutGeneral = Actor;
+			}
+		}
+	}
 
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// El lobby como castillo de arena (P4): solo sobre la maqueta de LVL_Lobby (vallas, torres o paredes «Extrude»
+	// de la zona de salida) y si no se ha apagado con TN.Lobby.Castle 0. Se coloca en el origen, a ras del suelo.
+	{
+		bool bHasCastle = false;
+		bool bLooksLikeMaquette = false;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const AActor* Actor = *It;
+			if (!Actor) { continue; }
+			bHasCastle |= Actor->IsA<ATN_SandCastleLobby>();
+			const FString ClassName = Actor->GetClass()->GetName();
+			bLooksLikeMaquette |= Actor->IsA<ATN_LobbyReadyZone>() || ClassName.Contains(TEXT("BP_Fence")) || ClassName.Contains(TEXT("BP_Tower"));
+		}
+		if (!bHasCastle && bLooksLikeMaquette && ATN_SandCastleLobby::IsEnabled())
+		{
+			FCollisionQueryParams Query(SCENE_QUERY_STAT(TN_CastleGround), false);
+			FHitResult Hit;
+			double GroundZ = 0.0;
+			if (World->LineTraceSingleByChannel(Hit, FVector(0.0, 0.0, 2000.0), FVector(0.0, 0.0, -3000.0), ECC_WorldStatic, Query))
+			{
+				GroundZ = Hit.ImpactPoint.Z;
+			}
+			World->SpawnActor<ATN_SandCastleLobby>(ATN_SandCastleLobby::StaticClass(), FVector(0.0, 0.0, GroundZ), FRotator::ZeroRotator, Params);
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Castillo de arena colocado (suelo a %.0f)."), GroundZ);
+		}
+	}
+
+	// Suelo bajo el ancla: traza hacia abajo sin las piezas de la maqueta; si no hay, el fondo de su caja.
+	auto GroundOf = [World, &BlockoutKeepers, &BlockoutBottles, &BlockoutDoors, BlockoutGeneral](const AActor* Actor) -> FVector
+	{
+		FVector Origin, Extent;
+		Actor->GetActorBounds(false, Origin, Extent);
+		const FVector Top(Actor->GetActorLocation().X, Actor->GetActorLocation().Y, Origin.Z + Extent.Z + 50.0);
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(TN_LobbyShopGround), false);
+		Query.AddIgnoredActors(BlockoutKeepers);
+		Query.AddIgnoredActors(BlockoutBottles);
+		Query.AddIgnoredActors(BlockoutDoors);
+		if (BlockoutGeneral) { Query.AddIgnoredActor(BlockoutGeneral); }
+		FHitResult Hit;
+		if (World->LineTraceSingleByChannel(Hit, Top, Top - FVector(0.0, 0.0, Extent.Z * 2.0 + 2000.0), ECC_WorldStatic, Query))
+		{
+			return Hit.ImpactPoint;
+		}
+		return FVector(Top.X, Top.Y, Origin.Z - Extent.Z);
+	};
+
+	if (!bHasShop)
+	{
+		// El tendero de la maqueta mira a su +Y (la malla de la tortuga): la tienda mira a su +X.
+		AActor* Anchor = ShopAnchors.Num() > 0 ? ShopAnchors[0] : nullptr;
+		float Yaw = Anchor ? Anchor->GetActorRotation().Yaw : 0.f;
+		if (!Anchor && BlockoutKeepers.Num() > 0)
+		{
+			BlockoutKeepers.Sort([Tent](const AActor& A, const AActor& B)
+			{
+				return !Tent || FVector::DistSquared(A.GetActorLocation(), Tent->GetActorLocation()) < FVector::DistSquared(B.GetActorLocation(), Tent->GetActorLocation());
+			});
+			Anchor = BlockoutKeepers[0];
+			Yaw = Anchor->GetActorRotation().Yaw + 90.f;
+		}
+		if (Anchor)
+		{
+			const FVector Where = ShopAnchors.Contains(Anchor) ? Anchor->GetActorLocation() : GroundOf(Anchor);
+			World->SpawnActor<ATN_ShopKeeper>(ATN_ShopKeeper::StaticClass(), Where, FRotator(0.f, Yaw, 0.f), Params);
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Tienda colocada en %s (sobre %s)."), *Where.ToString(), *Anchor->GetName());
+		}
+	}
+
+	if (!bHasBooth)
+	{
+		const TArray<AActor*>& Spots = BoothAnchors.Num() > 0 ? BoothAnchors : BlockoutBottles;
+		// Sin puerta de maqueta al lado, la puerta mira al centro del lobby (el PlayerStart).
+		FVector Center = FVector::ZeroVector;
+		for (TActorIterator<APlayerStart> It(World); It; ++It)
+		{
+			if ((*It)->PlayerStartTag != TutorialStartTag) { Center = (*It)->GetActorLocation(); break; }
+		}
+		for (const AActor* Spot : Spots)
+		{
+			const bool bTagged = BoothAnchors.Contains(Spot);
+			const FVector Where = bTagged ? Spot->GetActorLocation() : GroundOf(Spot);
+			float Yaw = bTagged ? Spot->GetActorRotation().Yaw : FMath::RadiansToDegrees(FMath::Atan2(Center.Y - Where.Y, Center.X - Where.X));
+			if (!bTagged)
+			{
+				for (const AActor* DoorActor : BlockoutDoors)
+				{
+					const FVector ToDoor = DoorActor->GetActorLocation() - Where;
+					if (ToDoor.Size2D() < 450.0) { Yaw = FMath::RadiansToDegrees(FMath::Atan2(ToDoor.Y, ToDoor.X)); }
+				}
+			}
+			World->SpawnActor<ATN_ChangingBooth>(ATN_ChangingBooth::StaticClass(), Where, FRotator(0.f, Yaw, 0.f), Params);
+		}
+		if (Spots.Num() > 0) { UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] %d probadores colocados."), Spots.Num()); }
+	}
+
+	if (!bHasGeneral)
+	{
+		// Con ancla, donde diga; si no, sobre el general de la maqueta (que se esconde) mirando al centro del lobby, con
+		// la mesa delante.
+		AActor* Anchor = GeneralAnchors.Num() > 0 ? GeneralAnchors[0] : BlockoutGeneral;
+		if (Anchor)
+		{
+			const bool bTagged = GeneralAnchors.Contains(Anchor);
+			const FVector Where = bTagged ? Anchor->GetActorLocation() : GroundOf(Anchor);
+			FVector Center = FVector::ZeroVector;
+			for (TActorIterator<APlayerStart> It(World); It; ++It)
+			{
+				if ((*It)->PlayerStartTag != TutorialStartTag) { Center = (*It)->GetActorLocation(); break; }
+			}
+			const float Yaw = bTagged ? Anchor->GetActorRotation().Yaw : FMath::RadiansToDegrees(FMath::Atan2(Center.Y - Where.Y, Center.X - Where.X));
+			World->SpawnActor<ATN_GeneralBriefing>(ATN_GeneralBriefing::StaticClass(), Where, FRotator(0.f, Yaw, 0.f), Params);
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] General colocado en %s (sobre %s)."), *Where.ToString(), *Anchor->GetName());
+		}
+	}
+}

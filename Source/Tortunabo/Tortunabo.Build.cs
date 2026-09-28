@@ -14,10 +14,14 @@ public class Tortunabo : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			// Material físico del caparazón con física propia (UPhysicalMaterial, FPhysicsInterface::UpdateMaterial).
+			"PhysicsCore",
 			"EnhancedInput",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
 			"UMG",
+			// Pantalla de carga del huevo durante los LoadMap bloqueantes fuera del editor.
+			"MoviePlayer",
 			"Slate",
 			"SlateCore",
 			"AudioCapture",
@@ -26,12 +30,16 @@ public class Tortunabo : ModuleRules
 			"SignalProcessing",
 			"Niagara",
 			"NiagaraCore",
-			"ProceduralMeshComponent"
+			// Mapa procedural por módulos (World/ProcMap): terreno en runtime y grafos PCG por bioma.
+			"ProceduralMeshComponent",
+			"PCG",
+			// Vegetación procedural: mallas estáticas construidas en ejecución.
+			"MeshDescription",
+			"StaticMeshDescription"
 		});
 
-		// Mapa volumetrico: los trozos se convierten en StaticMesh editables (MeshDescription).
 		// Json: ATN_MapVariantLoader lee manifest.json e index.json de Scripts/terrain_volumes/Variants/.
-		PrivateDependencyModuleNames.AddRange(new string[] { "MeshDescription", "StaticMeshDescription", "Json" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("AssetRegistry");

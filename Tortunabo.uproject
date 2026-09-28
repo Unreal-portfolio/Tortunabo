@@ -39,6 +39,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "PCG",
+			"Enabled": true
+		},
+		{
 			"Name": "PythonScriptPlugin",
 			"Enabled": true,
 			"TargetAllowList": [

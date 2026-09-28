@@ -85,6 +85,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Stamina")
 	float GetMaxStamina() const { return MaxStamina; }
 
+	/** Velocidad de andar (cm/s), sin esprintar ni penalizaciones. */
+	UFUNCTION(BlueprintPure, Category = "Stamina|Movement")
+	float GetWalkSpeed() const { return WalkSpeed; }
+
 	/**
 	 * Stamina máxima efectiva tras aplicar la penalización por peso.
 	 * EffectiveMax = MaxStamina - (TotalWeight * StaminaPerWeightUnit).
@@ -127,7 +131,7 @@ protected:
 	float StaminaPerWeightUnit = 20.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
-	float SprintDrainPerSecond = 45.0f;
+	float SprintDrainPerSecond = 15.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stamina", meta = (ClampMin = "0.0"))
 	float RechargeDelaySeconds = 0.8f;

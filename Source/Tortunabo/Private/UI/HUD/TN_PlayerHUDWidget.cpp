@@ -224,12 +224,10 @@ void UTN_PlayerHUDWidget::RefreshStaminaWidgets()
 			: ESlateVisibility::Hidden);
 	}
 
+	// La barra no lleva número: basta con ver cuánto queda.
 	if (StaminaText)
 	{
-		StaminaText->SetVisibility(ESlateVisibility::HitTestInvisible);
-		// Muestra stamina actual vs el efectivo (más informativo que el máximo base)
-		StaminaText->SetText(FText::FromString(
-			FString::Printf(TEXT("%.0f / %.0f"), Current, EffMax)));
+		StaminaText->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
 	OnStaminaUpdated(Current, MaxStam, bExhaust);

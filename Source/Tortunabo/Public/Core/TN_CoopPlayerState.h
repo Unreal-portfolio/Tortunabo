@@ -119,6 +119,25 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastForceApplySkin(FName SkinId);
 
+	/**
+	 * Caparazón equipado (fila de DT_Skins de categoría Shell, de la tienda). Manda sobre la ranura del caparazón que
+	 * ponga el color (EquippedSkinId). NAME_None = el de serie o el del color.
+	 */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedShellId, Category = "Cosmetics")
+	FName EquippedShellId = NAME_None;
+
+	/** @brief OnRep de EquippedShellId: reaplica los materiales en el pawn local. */
+	UFUNCTION()
+	void OnRep_EquippedShellId();
+
+	/** Ojos equipados (fila de DT_Skins de categoría Eyes). NAME_None = los clásicos. */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedEyesId, Category = "Cosmetics")
+	FName EquippedEyesId = NAME_None;
+
+	/** @brief OnRep de EquippedEyesId: reaplica los materiales en el pawn local. */
+	UFUNCTION()
+	void OnRep_EquippedEyesId();
+
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	float FinishTimeSeconds = -1.f;
 
@@ -149,6 +168,18 @@ public:
 	/** @brief OnRep de RaceScore: dispara OnRaceScoreChanged para refrescar el HUD. */
 	UFUNCTION()
 	void OnRep_RaceScore();
+
+	/**
+	 * Rondas ganadas en la partida del mapa procedural (Carrera y 2vs2: gana quien
+	 * llega a 3). Lo resetea ATN_ProcMapGameMode al empezar la partida; no se toca
+	 * en ResetForNewRace porque este se llama en cada ronda.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
+	int32 RoundWins = 0;
+
+	/** Pareja de la ronda actual en 2vs2 (0 o 1). -1 fuera de 2vs2. */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
+	int32 TeamIndex = -1;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 

@@ -13,6 +13,8 @@ class UInputMappingContext;
 class UInputAction;
 class UTN_InventoryComponent;
 class UTN_ShellComponent;
+class UTN_CarryComponent;
+class UTN_DizzyBirdsComponent;
 class UTN_StaminaComponent;
 class UTN_WadingComponent;
 class ATN_InteractableBase;
@@ -240,6 +242,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="15.0"))
 	float DiveCapsuleHalfHeight = 35.f;
 
+	/**
+	 * Altura (cm) sobre el suelo del punto de giro de la malla (sus pies) con el panzazo completo. La malla se sube
+	 * para que la tripa quede apoyada: sin esto, al encoger la cápsula el cuerpo tumbado se hunde entero en el suelo.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0"))
+	float DiveBellyPivotHeight = 11.f;
+
+	/** Aplastado de la malla en el panzazo: tripa-espalda (se aplasta contra el suelo), ancho y largo (se estira). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive")
+	FVector DiveSquash = FVector(1.08, 0.8, 1.05);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	TObjectPtr<UTN_InventoryComponent> InventoryComponent;
 
@@ -252,6 +265,52 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shell")
 	TObjectPtr<UTN_ShellComponent> ShellComponent;
+
+	/** Coger y lanzar a otras tortugas (issue #6, fase 2). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Carry")
+	TObjectPtr<UTN_CarryComponent> CarryComponent;
+
+	/** Pajaritos y estrellitas del mareo sobre la cabeza mientras está noqueada (local y cosmético). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knockdown")
+	TObjectPtr<UTN_DizzyBirdsComponent> DizzyBirds;
+
+	// ── Nado ─────────────────────────────────────────────────────────────────
+
+	/** Velocidad nadando (cm/s): entre andar (450) y esprintar (800). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimSpeed = 625.f;
+
+	/** Flotabilidad: algo por encima de 1 para que la tortuga suba a la superficie. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimBuoyancy = 1.08f;
+
+	/** Impulso vertical del salto desde el agua (el CMC no salta nadando): subir a orillas e isletas. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimHopVelocity = 640.f;
+
+	/** Impulso hacia delante del salto desde el agua. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Swim", meta = (ClampMin = "0.0"))
+	float SwimHopForward = 250.f;
+
+	// ── Caídas ───────────────────────────────────────────────────────────────
+
+	/** Caída libre a partir de la cual la tortuga se mete sola en el caparazón (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fall", meta = (ClampMin = "0.0"))
+	float AutoShellFallHeight = 500.f;
+
+	/** Caída a partir de la cual la tortuga se rompe al aterrizar (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fall", meta = (ClampMin = "0.0"))
+	float FatalFallHeight = 3500.f;
+
+	// ── Caparazón (visual procedural) ────────────────────────────────────────
+
+	/** Segundos para encoger cabeza, patas y cola al meterse. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shell|Visual", meta = (ClampMin = "0.01"))
+	float ShellRetractSeconds = 0.12f;
+
+	/** Segundos para estirarse al salir (el "desplegarse" tras un rebote). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shell|Visual", meta = (ClampMin = "0.01"))
+	float ShellExtendSeconds = 0.35f;
 
 	/**
 	 * Mesh del casco equipado. Se adjunta al SceneComponent "Sombrero" en BeginPlay.
@@ -599,6 +658,9 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> DefaultSkelMeshMaterials;
 
+	/** Conjunto de cosméticos que lleva puesto (lo rellenan UpdateHelmetMesh, UpdateSkinVisual y ApplyShellSlot). */
+	FTN_TurtleLook CosmeticLook;
+
 	// ── Leg animation state (cosmetic, local-only, never replicated) ──────────
 	float LegPhaseAccumulator    = 0.f;   // cycles [0,1)
 	float LegAmplitudeMultiplier = 0.f;   // [0,1] fade envelope
@@ -615,8 +677,40 @@ private:
 	virtual void Landed(const FHitResult& Hit) override;
 	void PerformAirDashLocally();
 
+	// ── Caídas, caparazón visual y temblor al llevar a alguien ───────────────
+	void TickFallRules(float DeltaTime);
+	void TickShellVisual(float DeltaTime);
+
+	/** Ojos (cosmético, local): parpadeo de dibujo cada pocos segundos y ojos en espiral noqueada o muerta. */
+	void TickEyes(float DeltaTime);
+	float EyeBlinkTimer = 2.f;
+	float EyeBlinkClock = 0.f;
+	bool bEyeBlinking = false;
+	/** Últimos valores escritos en el material (-1 = hay que volver a escribirlos, p. ej. tras cambiar el aspecto). */
+	float EyeBlinkApplied = -1.f;
+	float EyeDizzyApplied = -1.f;
+
+	/** Cota más alta desde que empezó la caída actual (ápice). */
+	float FallApexZ = 0.f;
+	bool bTrackingFall = false;
+	/** Géiser, tobogán: la próxima caída no cuenta hasta aterrizar. */
+	bool bFallImmune = false;
+	bool bAutoShelledThisFall = false;
+	/** 0 = fuera del caparazón, 1 = metida del todo. Local y cosmético. */
+	float ShellVisualAlpha = 0.f;
+	bool bShellVisualApplied = false;
+	FRotator CarryShake = FRotator::ZeroRotator;
+
 	UFUNCTION(Server, Reliable)
 	void ServerPerformAirDash();
+
+	// ── Salto desde el agua (mismo patrón que el air dash: local + servidor) ──
+	float LastSwimHopTime = -10.f;
+	bool CanSwimHop() const;
+	void PerformSwimHop();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSwimHop();
 
 	void Move(const FInputActionValue& Value);
 	void OnMoveReleased();
@@ -895,6 +989,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
 	float KnockdownGroundLockSpeed = 50.f;
 
+	/** Tiempo mínimo tumbada en el suelo (s): aunque el golpe pida menos, se queda quieta un momento. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
+	float MinKnockdownSeconds = 2.2f;
+
+	/** Duración de la animación de levantarse desde la pose del ragdoll (s); sin moverse mientras tanto. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.1"))
+	float GetUpSeconds = 0.75f;
+
 	/**
 	 * Si true y el SkelMesh (GetMesh) tiene PhysicsAsset asignado, el knockdown
 	 * activa ragdoll físico completo (`SetSimulatePhysics(true)`) en lugar del
@@ -1036,6 +1138,10 @@ protected:
 	FName SnapshotSkelMeshCollisionProfile = NAME_None;
 	/** true mientras el ragdoll físico está activo (evita doble-activación y no-ops al recover). */
 	bool bKnockdownRagdollActive = false;
+	/** Hasta cuándo (tiempo del mundo) dura la animación de levantarse: sin moverse ni saltar (local). */
+	float GetUpLockUntil = -1.f;
+	/** Pasa la pose del ragdoll (en locales, ya en el sitio nuevo de la cápsula) a la animación de levantarse. */
+	void BeginGetUpFromWorldPose(const TArray<FTransform>& WorldPose);
 
 	// ── Dive state ────────────────────────────────────────────────────────────
 
@@ -1089,6 +1195,12 @@ protected:
 
 	/** Rotación relativa por defecto de GetMesh() (guardada en BeginPlay). */
 	FRotator DiveMeshDefaultRot = FRotator::ZeroRotator;
+
+	/** Posición relativa por defecto de GetMesh() (guardada en BeginPlay; el panzazo la sube). */
+	FVector DiveMeshDefaultLoc = FVector::ZeroVector;
+
+	/** Escala relativa por defecto de GetMesh() (guardada en BeginPlay; el panzazo la aplasta). */
+	FVector DiveMeshDefaultScale = FVector::OneVector;
 
 	// ── Jump Animation state (cosmetic, local-only) ───────────────────────────
 	bool  bJumpAnimActive = false;
@@ -1159,6 +1271,30 @@ public:
 	/** Devuelve el componente de caparazón (acceso de solo lectura para sistemas externos). */
 	UTN_ShellComponent* GetShellComponent() const { return ShellComponent; }
 
+	/** Componente de coger y lanzar. */
+	UTN_CarryComponent* GetCarryComponent() const { return CarryComponent; }
+
+	/** Interactuable al alcance que se usaría ahora (solo en el jugador local; lo enseña el aviso del HUD). */
+	ATN_InteractableBase* GetFocusedInteractable() const { return FocusedInteractable.Get(); }
+
+	/** Acción de interactuar (Enhanced Input), para mostrar su tecla. */
+	UInputAction* GetInteractAction() const { return LoadedInteractAction; }
+
+	/** Emote que se está animando (-1 = ninguno; KNOCKDOWN_EMOTE_ID = tumbada) y su tiempo, para UTN_TurtleAnimInstance. */
+	int32 GetActiveEmoteIndex() const { return ActiveEmoteIndex; }
+	float GetEmoteTime() const { return EmoteTime; }
+
+	/** La caída en curso (o la siguiente) no auto-encapsula ni mata hasta aterrizar o entrar al agua. */
+	void SetFallImmuneUntilLanded() { bFallImmune = true; }
+
+	UFUNCTION(BlueprintPure, Category = "Fall")
+	bool IsFallImmune() const { return bFallImmune; }
+
+	/** Temblor de cámara local (lo pone UTN_CarryComponent cuando la carga forcejea). */
+	void SetCarryShake(const FRotator& Shake) { CarryShake = Shake; }
+
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
+
 	/** @brief true mientras el personaje está metido en su caparazón. */
 	UFUNCTION(BlueprintPure, Category = "Shell")
 	bool IsInShell() const;
@@ -1170,6 +1306,15 @@ public:
 	 *       al personaje (cancelar el emote en curso, visual del caparazón).
 	 */
 	void OnShellStateChanged(bool bInShell);
+
+	/**
+	 * Caparazón con física propia (UTN_ShellComponent / ATN_ShellBody): pone la cápsula de pie sobre la caja y la malla
+	 * tumbada sobre la tripa con la transformación de la caja. Todas las máquinas, cada fotograma tras la física.
+	 */
+	void PlaceOnShellBody(const FTransform& BoxWorld);
+
+	/** Devuelve la malla a su posición, giro y escala de serie dentro de la cápsula. */
+	void ResetMeshTransform();
 
 	/**
 	 * Punto centralizado para matar a este personaje.
@@ -1241,6 +1386,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
 	void UpdateSkinVisual(FName SkinId);
+
+	/** Relee el caparazón del PlayerState (EquippedShellId) y vuelve a vestir a la tortuga. */
+	void ApplyShellSlot();
+
+	/** Viste a la tortuga con CosmeticLook (UTN_CosmeticLook::ApplyLook). */
+	void RefreshCosmeticLook();
 
 	/**
 	 * @brief Re-aplica casco y skin leyendo el PlayerState actual (EquippedHelmetId/EquippedSkinId).

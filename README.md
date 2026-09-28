@@ -1,9 +1,10 @@
-# Tortunabo
+# Tortunavy
 
-**Tortunabo** es un juego cooperativo multijugador (1–4 jugadores) en tercera persona desarrollado en **Unreal Engine 5.6** con C++. Los jugadores controlan tortugas antropomórficas que avanzan juntas por niveles generados proceduralmente por chunks, enfrentándose a obstáculos, recogiendo y lanzando objetos, y compitiendo por llegar antes a la meta.
+**Tortunavy** es un juego cooperativo multijugador (1–4 jugadores) en tercera persona desarrollado en **Unreal Engine 5.6** con C++. Los jugadores controlan tortugas antropomórficas que avanzan juntas por niveles generados proceduralmente por chunks, enfrentándose a obstáculos, recogiendo y lanzando objetos, y compitiendo por llegar antes a la meta.
 
 - **Motor**: Unreal Engine 5.6
 - **Lenguaje**: C++ (módulo `Tortunabo`) + Blueprints
+- **Nombre en clave**: `Tortunabo` sigue siendo el nombre técnico (módulo, `.uproject`, rutas, categorías de tests y de log); el título del juego es **Tortunavy**
 - **Red**: Steam Sockets (`SteamDevAppId=480` en testing)
 - **Equipo**: Rodrigo Fernández y José Antonio (Mokius)
 - **Contexto académico**: entrega T-Day, U-tad
@@ -15,6 +16,7 @@
 | [`Docs/LDD_Tortunabo.md`](Docs/LDD_Tortunabo.md) | Level Design Document. |
 | [`Docs/Inventario_Scripts.md`](Docs/Inventario_Scripts.md) | Inventario completo de los 73 archivos `.h` del módulo, por dominio, con descripción y autores. |
 | [`Docs/Plan_Correccion_Fases.md`](Docs/Plan_Correccion_Fases.md) | Plan de correccion por fases del sprint en curso. |
+| [`Docs/Mapa_Procedural.md`](Docs/Mapa_Procedural.md) | Mapa procedural por módulos (`World/ProcMap`): generación, modos Coop/Carrera/2vs2, nado, coger y lanzar, cómo probarlo. |
 
 ## Setup paso a paso
 
@@ -120,6 +122,15 @@ Guarda todos los mapas.
 5. En el GameMode de run, confirma:
    - `LobbyMapPath=/Game/Maps/Lobby/LVL_HQ`.
    - `Default Pawn Class` y `Player Controller Class` de gameplay correctos.
+
+## 7b) Setup de `LVL_ProcMap` (mapa procedural, opcional)
+
+1. Con el C++ compilado, ejecuta en la consola Python del editor
+   `exec(open(r"<repo>/Scripts/build_procmap_assets.py", encoding="utf-8").read())`.
+2. El script crea `/Game/ProcMap`, `LVL_ProcMap` (GameMode `BP_ProcMapGameMode`) y dos
+   `TN_ProcModeSelector` en `LVL_HQ` junto a la zona de listos; revisa su posición.
+3. En el lobby, *Clásico* sigue viajando a `LVL_Run`; Coop, Carrera y 2vs2 viajan a
+   `ProcMapPath=/Game/Maps/Run/LVL_ProcMap`. Detalle en [`Docs/Mapa_Procedural.md`](Docs/Mapa_Procedural.md).
 
 ## 8) Guardar y setear mapa de arranque
 

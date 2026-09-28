@@ -70,6 +70,22 @@ void ATN_CoopPlayerState::OnRep_EquippedSkinId()
 	}
 }
 
+void ATN_CoopPlayerState::OnRep_EquippedShellId()
+{
+	if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+	{
+		TurtleChar->UpdateSkinVisual(EquippedSkinId);
+	}
+}
+
+void ATN_CoopPlayerState::OnRep_EquippedEyesId()
+{
+	if (ATortugaCharacter* TurtleChar = Cast<ATortugaCharacter>(GetPawn()))
+	{
+		TurtleChar->UpdateSkinVisual(EquippedSkinId);
+	}
+}
+
 void ATN_CoopPlayerState::MulticastForceApplySkin_Implementation(FName SkinId)
 {
 	EquippedSkinId = SkinId;
@@ -135,10 +151,14 @@ void ATN_CoopPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME_CONDITION(ATN_CoopPlayerState, DeathZoneTimeRemaining, COND_OwnerOnly);
 	DOREPLIFETIME(ATN_CoopPlayerState, EquippedHelmetId);
 	DOREPLIFETIME(ATN_CoopPlayerState, EquippedSkinId);
+	DOREPLIFETIME(ATN_CoopPlayerState, EquippedShellId);
+	DOREPLIFETIME(ATN_CoopPlayerState, EquippedEyesId);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishTimeSeconds);
 	DOREPLIFETIME(ATN_CoopPlayerState, FinishRank);
 	DOREPLIFETIME(ATN_CoopPlayerState, bIsEliminated);
 	DOREPLIFETIME(ATN_CoopPlayerState, RaceScore);
+	DOREPLIFETIME(ATN_CoopPlayerState, RoundWins);
+	DOREPLIFETIME(ATN_CoopPlayerState, TeamIndex);
 }
 
 void ATN_CoopPlayerState::OnRep_RaceScore()

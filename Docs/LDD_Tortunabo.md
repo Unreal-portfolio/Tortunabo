@@ -297,7 +297,7 @@ strong { font-weight: 600; color: var(--navy); }
 <div class="cover">
   <div class="cover-left">
     <span class="doc-label">Level Design Document</span>
-    <h1>Tortunabo</h1>
+    <h1>Tortunavy</h1>
     <table class="meta-table">
       <tr><td>Nivel</td><td>Sistema de Carrera — Chunks Procedurales</td></tr>
       <tr><td>Versión</td><td>3.0</td></tr>
@@ -308,14 +308,14 @@ strong { font-weight: 600; color: var(--navy); }
     </table>
   </div>
   <div class="cover-right">
-    <img class="cover-art" src="TURTLE_IMG" alt="Tortunabo — artwork">
+    <img class="cover-art" src="TURTLE_IMG" alt="Tortunavy — artwork">
     <span class="art-credit">Iván Burgueño</span>
   </div>
 </div>
 
 ## Project Overview
 
-- **Título:** Tortunabo
+- **Título:** Tortunavy
 - **Tipo:** Corredor lineal cooperativo (1–4 jugadores) estructurado en **5 rondas**, cada una compuesta por **6 módulos** generados de forma semialeatoria dentro de una curva de dificultad prediseñada. Entre rondas el grupo regresa al Lobby.
 - **Condición de victoria:** Completar las 5 rondas sin que el grupo sea eliminado. La derrota reinicia la partida desde la Ronda 1 — no hay checkpoints.
 - **Rejugabilidad:** Cada módulo de dificultad se elige de forma aleatoria dentro del nivel de dificultad asignado para esa posición, por lo que la secuencia exacta varía en cada partida aunque la curva general sea conocida.
@@ -327,7 +327,7 @@ strong { font-weight: 600; color: var(--navy); }
   - Que cada elemento del entorno comunique sus reglas visualmente antes de que el jugador interactúe con él
   - Que el Lobby entre rondas sea un espacio de descompresión activa, no una pantalla de carga
 
-> Tortunabo no tiene un nivel único. Tiene un sistema que ensambla módulos de diseño validados en secuencias distintas cada partida, dentro de una progresión de 5 rondas con dificultad creciente. Este documento describe ese sistema: qué elementos existen, cómo se comportan, cómo escalan y qué experiencia producen en conjunto.
+> Tortunavy no tiene un nivel único. Tiene un sistema que ensambla módulos de diseño validados en secuencias distintas cada partida, dentro de una progresión de 5 rondas con dificultad creciente. Este documento describe ese sistema: qué elementos existen, cómo se comportan, cómo escalan y qué experiencia producen en conjunto.
 
 ---
 
@@ -353,7 +353,7 @@ strong { font-weight: 600; color: var(--navy); }
 ## Narrative & Setting
 
 - **Context:**
-  - Tortunabo transcurre en una playa caótica. Un grupo de tortugas antropomórficas participa en una carrera cooperativa. No hay historia que el jugador deba seguir: el contexto lo da el entorno visual y el diseño de los enemigos. La playa es hostil por naturaleza, no porque haya un antagonista con motivación.
+  - Tortunavy transcurre en una playa caótica. Un grupo de tortugas antropomórficas participa en una carrera cooperativa. No hay historia que el jugador deba seguir: el contexto lo da el entorno visual y el diseño de los enemigos. La playa es hostil por naturaleza, no porque haya un antagonista con motivación.
 
 - **Environment:**
   - Playa tropical con luz intensa y arena dorada, con estética de circuito de entrenamiento militar de playa: obstáculos de madera, pasajes estrechos, vallas, señalización de campaña. Los chunks tienen variaciones de densidad y apertura, pero el bioma es siempre playa. El agua al fondo es la meta: llegar a ella es ganar. La presión de avance no viene del terreno sino de los bañistas que avanzan desde atrás — si el grupo se detiene demasiado tiempo, lo alcanzan y lo eliminan. Las gaviotas son fauna local que se ha vuelto agresiva. Los cangrejos defienden su territorio.
@@ -760,5 +760,5 @@ El grupo sale del spawn junto. Las gaviotas empiezan a hostigar desde el primer 
 ---
 
 <p style="text-align:center; color:#5a6a80; font-size:8.5pt; border-top:1px solid #d8dce6; padding-top:16px; margin-top:48px;">
-Tortunabo &middot; LDD v3.0 &middot; Mayo 2026 &middot; José Antonio Mota &middot; Rodrigo Fernández Carnicer
+Tortunavy &middot; LDD v3.0 &middot; Mayo 2026 &middot; José Antonio Mota &middot; Rodrigo Fernández Carnicer
 </p>

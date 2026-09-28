@@ -268,8 +268,13 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 		}
 		if (bIsKnockedDown || bIsDead)
 		{
-			// Cancelar interpolación pendiente sin tocar el mesh — ya lo
-			// gestiona ApplyKnockdownVisual / SetDeadVisual.
+			// Cancelar interpolación pendiente sin tocar el giro del mesh — ya lo
+			// gestiona ApplyKnockdownVisual / SetDeadVisual. La subida del panzazo sí se deshace.
+			if (DiveTiltAlpha > 0.f && SkelMeshGuard)
+			{
+				SkelMeshGuard->SetRelativeLocation(DiveMeshDefaultLoc);
+				SkelMeshGuard->SetRelativeScale3D(DiveMeshDefaultScale);
+			}
 			DiveTiltAlpha = 0.f;
 			bDiveYawInterpActive = false;
 			return;
@@ -335,6 +340,13 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 			const FVector TiltAxisNorm = DiveTiltAxis.IsNearlyZero() ? FVector(1.f, 0.f, 0.f) : DiveTiltAxis.GetSafeNormal();
 			const FQuat TiltQuat(TiltAxisNorm, FMath::DegreesToRadians(DivePitch * env));
 			SkelMesh->SetRelativeRotation(TiltQuat * BaseQuat);
+
+			// La malla gira sobre sus pies y la cápsula encoge a DiveCapsuleHalfHeight: se sube para que los pies
+			// queden a DiveBellyPivotHeight del suelo y el cuerpo tumbado se apoye en la tripa en vez de hundirse; y
+			// se aplasta un poco contra el suelo (ejes locales de la malla: X ancho, Y tripa-espalda, Z largo).
+			const double Lift = (DiveBellyPivotHeight - DiveCapsuleHalfHeight - DiveMeshDefaultLoc.Z) * env;
+			SkelMesh->SetRelativeLocation(DiveMeshDefaultLoc + FVector(0.0, 0.0, FMath::Max(0.0, Lift)));
+			SkelMesh->SetRelativeScale3D(DiveMeshDefaultScale * FMath::Lerp(FVector::OneVector, DiveSquash, static_cast<double>(env)));
 		}
 
 		// 2) KnockdownVisualComp (Cuerpo) — only if NOT already a descendant of GetMesh()
@@ -364,6 +376,8 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 			if (USkeletalMeshComponent* SkelMesh = GetMesh())
 			{
 				SkelMesh->SetRelativeRotation(DiveMeshDefaultRot);
+				SkelMesh->SetRelativeLocation(DiveMeshDefaultLoc);
+				SkelMesh->SetRelativeScale3D(DiveMeshDefaultScale);
 			}
 			if (KnockdownVisualComp.IsValid())
 			{
