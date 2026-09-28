@@ -11,6 +11,8 @@
 #include "Core/TN_Log.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Player/TN_TurtleAnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "World/TN_InteractableBase.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ThrowableItemActor.h"
@@ -341,24 +343,35 @@ void ATortugaCharacter::HandleUseBigHead(const FTN_InventoryItem& EquippedItem)
 	GetWorldTimerManager().SetTimer(BigHeadTimerHandle, BigHeadDel, BigHeadDurationSeconds, false);
 }
 
+FVector ATortugaCharacter::GetThrowDirection(const FRotator& AimRotation) const
+{
+	// La cámara mira con el giro del mando más su propio cabeceo (CameraAimPitchOffset, hacia abajo). Con ella a nivel, el
+	// lanzamiento sale a ThrowBasePitchDeg; mirar arriba o abajo solo lo cambia en parte, para que no salga por las nubes.
+	const float CameraPitch = FRotator::NormalizeAxis(AimRotation.Pitch) + CameraAimPitchOffset;
+	const float MinPitch = FMath::Min(ThrowMinPitchDeg, ThrowMaxPitchDeg);
+	const float Pitch = FMath::Clamp(ThrowBasePitchDeg + ThrowAimPitchFactor * CameraPitch, MinPitch, ThrowMaxPitchDeg);
+	return FRotator(Pitch, AimRotation.Yaw, 0.f).Vector();
+}
+
+void ATortugaCharacter::MulticastItemThrowAnim_Implementation()
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (UTN_TurtleAnimInstance* TurtleAnim = SkelMesh ? Cast<UTN_TurtleAnimInstance>(SkelMesh->GetAnimInstance()) : nullptr)
+	{
+		TurtleAnim->PlayThrow(false);
+	}
+}
+
 void ATortugaCharacter::HandleUseThrowable(const FTN_InventoryItem& EquippedItem)
 {
 	const FVector SpawnLocation = GetItemSpawnLocation();
 
-	// ── Dirección de lanzamiento: cámara + arco parabólico ────────────
-	// Usar la dirección de cámara directamente (incluye pitch) para que
-	// apuntar arriba/abajo cambie la trayectoria del lanzamiento.
-	// ThrowUpAngleDeg se añade ENCIMA de la dirección de cámara como arco extra.
-	const FVector CamDir     = GetItemForwardDirection(); // incluye pitch del controlador
-	const FVector SafeCamDir = CamDir.IsNearlyZero() ? GetActorForwardVector() : CamDir.GetSafeNormal();
-
-	// Eje de inclinación: perpendicular a la proyección horizontal de la cámara.
-	const FVector HorizProj = FVector(SafeCamDir.X, SafeCamDir.Y, 0.f).GetSafeNormal();
-	const FVector TiltAxis  = HorizProj.IsNearlyZero()
-		? GetActorRightVector().GetSafeNormal()
-		: FVector::CrossProduct(HorizProj, FVector::UpVector).GetSafeNormal();
-	const FQuat   UpTilt(TiltAxis, FMath::DegreesToRadians(ThrowUpAngleDeg));
-	const FVector ArcedDirection = UpTilt.RotateVector(SafeCamDir).GetSafeNormal();
+	// ── Dirección de lanzamiento: hacia donde mira la cámara, con el arco bajo de todos los lanzamientos ──
+	const FVector ArcedDirection = GetThrowDirection(Controller ? Controller->GetControlRotation() : GetActorRotation());
 
 	const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
 
@@ -381,6 +394,7 @@ void ATortugaCharacter::HandleUseThrowable(const FTN_InventoryItem& EquippedItem
 		ThrowableActor->InitializeThrow(SpawnLocation, LaunchVelocity);
 
 		if (ThrowSound) { MulticastPlaySfx(ThrowSound); }
+		MulticastItemThrowAnim();
 	}
 	else
 	{
@@ -413,10 +427,12 @@ void ATortugaCharacter::HandleUseInkThrower(const FTN_InventoryItem& EquippedIte
 	FTN_InventoryItem ConsumedItem;
 	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
 
+	// Con el mismo arco bajo que el resto de lanzamientos (la tinta también cae con la gravedad).
 	const FVector Origin    = GetItemSpawnLocation();
-	const FVector Direction = GetItemForwardDirection();
+	const FVector Direction = GetThrowDirection(Controller ? Controller->GetControlRotation() : GetActorRotation());
 	ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
 		Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
+	MulticastItemThrowAnim();
 }
 
 void ATortugaCharacter::HandleUseTotem(const FTN_InventoryItem& EquippedItem)

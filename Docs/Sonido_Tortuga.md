@@ -117,6 +117,14 @@ máquinas. Durante el panzazo no hay pasos; en cuanto se levanta, vuelven.
 
 Los «plaf» y «tonc» suenan aunque el Blueprint tenga `FootstepSound` (no son pasos).
 
+## Guardar y sacar del caparazón
+
+Al cambiar de ranura del inventario (o al sacar lo guardado porque se ha gastado lo de la mano), la aleta va a la
+espalda y el objeto entra o sale del caparazón (`Docs/Animacion_Tortuga.md`, «Objetos en las aletas»). En ese momento
+`UTN_InventoryComponent` pide `UTN_TurtleFoleyComponent::PlayStash`, en cada máquina y sin red: un «toc» hueco y corto
+(`StepKind::Stash`) con los mismos modos del caparazón que el «tonc», sin suelo, más agudos (330-380 Hz al guardar,
+440-520 Hz al sacar), más flojos (fuerza 0,6 y 0,5) y algo más cortos. Suena aunque el Blueprint tenga `FootstepSound`.
+
 ## Jadeo
 
 - Objetivo 0..1: nada por encima de `PantBelowStamina` (45 % de la estamina máxima con el peso que lleva), sube con curva

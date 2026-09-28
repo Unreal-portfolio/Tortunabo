@@ -22,17 +22,23 @@ La evaluación (`FTNTurtleAnimProxy::Evaluate`, que puede correr fuera del hilo 
    cabeza caída) y los emotes 0-8 (saludar, aplauso, helicóptero, palmada potente, aplaudir, baile irlandés, flotar,
    señalar y modo loco). Encima de todas, las del modo carrera: la zambullida de cabeza desde el acantilado de la meta
    y las celebraciones del podio (ver «Modo carrera: celebraciones del podio y zambullida»).
-4. **Capas encima:** inclinación hacia delante al correr y hacia dentro en las curvas, cansancio (se encorva y
-   jadea), el golpe de brazos al lanzar y el caparazón: cabeza, brazos y patas encogen hacia el cuerpo y el cuerpo
+4. **Aletas** (solo los huesos de cada brazo, desde el hombro: las piernas siguen andando): los brazos que sujetan lo
+   que lleva (en una aleta, abrazado o por un extremo), la aleta que va a la espalda a guardar o sacar algo del
+   caparazón y el lanzamiento (saque de banda con las dos aletas o golpe de la derecha). Ver «Objetos en las aletas» y
+   «Lanzar: saque de banda y panzazo».
+5. **Capas encima:** inclinación hacia delante al correr y hacia dentro en las curvas, cansancio (se encorva y
+   jadea) y el caparazón: cabeza, brazos y patas encogen hacia el cuerpo y el cuerpo
    baja al suelo. Con caparazón físico (`bShellBody`, ver abajo) el cuerpo **no** baja: la malla ya va tumbada sobre la
    tripa y ese eje apunta hacia delante.
-5. **Levantarse del ragdoll** (`BeginGetUp`): al acabar un derribo, la pose del ragdoll se mezcla hacia la pose de pie
+6. **Levantarse del ragdoll** (`BeginGetUp`): al acabar un derribo, la pose del ragdoll se mezcla hacia la pose de pie
    en 0,75 s (`GetUpW`, curva suave), con un empujón de brazos y rodillas dobladas a mitad de camino (`GetUpFlex`). El
    mismo empujón (`BellyGetUpW`, 0,45 s) al levantarse de la tripa tras el panzazo.
 
 Las poses se escriben como giros alrededor de los ejes de la malla (mira a +Y, arriba +Z, su izquierda +X) en la
 articulación de cada hueso; los hijos le siguen. Brazo izquierdo: abajo +Y, arriba -Y, adelante +Z (el derecho, al
-revés en Y y en Z). Piernas: adelante +X, rodilla -X. Espalda hacia delante -X; cabeza arriba +X.
+revés en Y y en Z). Piernas: adelante +X, rodilla -X. Espalda hacia delante -X; cabeza arriba +X. Las poses nuevas de
+las aletas llevan primero el brazo al frente (Z, +90 el izquierdo y -90 el derecho) y luego lo suben o bajan sobre X
+(+ sube, - baja; más de 90 lo lleva detrás de la cabeza); el antebrazo se dobla hacia arriba con +X.
 
 ## Panzazo: arrastre sobre la tripa
 
@@ -83,6 +89,34 @@ movimiento replicado.
      de pie, el servidor acaba el panzazo (`TickDive` → `EndDive`); el dueño y el servidor quitan la pose al momento,
      las demás máquinas al llegar el fin del panzazo.
 
+### El cuerpo tumbado choca entero
+
+**Causa de que se metiera en las paredes.** El movimiento del personaje solo sabe mover una cápsula vertical (radio 34;
+tumbada, semialtura 35). La malla giraba -80° sobre sus pies, que están en el centro de la cápsula, así que el cuerpo
+tumbado (~1,4 m) quedaba entero por delante: la cápsula tapaba las patas y la cabeza, las aletas y medio caparazón
+entraban en las paredes, las murallas y las fortalezas antes de que la cápsula chocara. Una cápsula más gorda no sirve
+(la del movimiento es siempre vertical y su altura no puede ser menor que su radio: una que cubriera 1,4 m tendría
+1,4 m de alto y no pasaría por debajo de nada).
+
+**Arreglo** (en el propio movimiento, predicho igual en el cliente dueño y el servidor):
+
+- La malla se echa hacia atrás `DiveBodyCenterShift` (70 cm) con el panzazo completo (`TickDive`): tumbada, la tripa y
+  el caparazón quedan sobre la cápsula (gira sobre la tripa, no sobre los pies) y la cápsula tapa lo más gordo. Al
+  levantarse, el desplazamiento vuelve a 0 con el giro (los pies se recogen bajo el cuerpo durante el empujón).
+- Tumbada (panzazo en el aire, arrastre y reptar), tras cada movimiento `UTN_TurtleMovementComponent::
+  KeepBellyBodyOutOfWalls` barre una esfera (`BellyBodyRadius` 14 cm, a `BellyBodyProbeHeight` 32 cm de la base de la
+  cápsula, a la altura del caparazón) desde el centro hacia la cabeza (`BellyBodyReachFront` 66 cm) y hacia las patas
+  (`BellyBodyReachBack` 62 cm). Si una punta se metería en una pared, la tortuga se aparta lo justo (con barrido: la
+  cápsula tampoco atraviesa lo que tenga detrás), deja de ir contra la pared y, arrastrándose, rebota como si hubiera
+  chocado la cápsula (mismo «tonc» y la misma bocanada). También al girar junto a una pared o al empezar el panzazo de
+  espaldas a una: las patas se echan atrás y la empujan hacia delante.
+- No cuentan como pared el suelo ni las cuestas por las que se anda (normal por encima de la del suelo andable), los
+  techos, lo que quede por debajo de 18 cm (bordillos y baches: los pisa la cápsula como siempre), otras tortugas ni
+  cuerpos con física (se mueven distinto en cada máquina).
+- Todo va dentro de `PerformMovement` (`OnMovementUpdated`): se repite igual al corregir y el servidor llega al mismo
+  sitio que el cliente. `TN.Dive.Body 0` lo apaga para comparar; con `TN.Dive.Debug 1` se dibuja el cuerpo que choca
+  (celeste; rojo con una flecha cuando se aparta).
+
 Seguridad: la fase, su tiempo y el número de panzazo del que viene viajan en cada movimiento guardado del cliente
 (`FTNSavedMove_Turtle`) y se repiten tras una corrección, cápsula encogida incluida; `DiveSerial` impide volver a
 arrastrarse con el mismo panzazo mientras llega su fin. Con `TN.Dive.Slide 0` todo vuelve a ser como antes. Tope de
@@ -124,10 +158,12 @@ solo se mueven con partículas vivas; nada a más de 50 m de la cámara. Ajustes
 | `TN.Dive.Friction <x>` | Multiplica el rozamiento en todas las superficies (0,5 = resbala el doble; 2 = se para antes) |
 | `TN.Dive.Slope <x>` | Multiplica cuánto tiran las pendientes (0 = como en llano) |
 | `TN.Dive.MaxTime <s>` | Tope de segundos arrastrándose (0 = el del componente, 2,6 s) |
-| `TN.Dive.Debug 1` | Por cada tortuga simulada en esta máquina: fase, tiempo, velocidad, superficie y rozamiento; flecha verde de la velocidad y naranja de la pendiente |
+| `TN.Dive.Body 0\|1` | 0 = solo choca la cápsula (la cabeza y las patas vuelven a meterse en las paredes), como antes |
+| `TN.Dive.Debug 1` | Por cada tortuga simulada en esta máquina: fase, tiempo, velocidad, superficie y rozamiento; flecha verde de la velocidad y naranja de la pendiente; el cuerpo tumbado que choca (celeste, rojo al apartarse) |
 
 Los ajustes finos son `UPROPERTY` del movimiento (`Belly Slide`: rozamientos, `BellyDrag`, entrada, topes, tiempos,
-salida, rebote y giro) y del personaje (`DiveGetUpTiltSpeed`, `DiveMaxSeconds`).
+salida, rebote y giro; `Belly Slide|Body`: medidas del cuerpo tumbado) y del personaje (`DiveGetUpTiltSpeed`,
+`DiveMaxSeconds`, `DiveBodyCenterShift`).
 
 ### Probar en PIE
 
@@ -136,7 +172,10 @@ salida, rebote y giro) y del personaje (`DiveGetUpTiltSpeed`, `DiveMaxSeconds`).
    brazos y pies moviéndose, y se levanta con el empujón de brazos. Repetir en tierra (selva), roca (acantilados),
    tablones de un puente y agua poco profunda de la orilla: más o menos arrastre, otro sonido y otro polvo.
 3. Panzazo cuesta abajo: se arrastra más; cuesta arriba, menos. En una cuesta suave se queda quieta.
-4. Panzazo contra una pared: rebota un poco hacia atrás con un «tonc» y una bocanada.
+4. Panzazo contra una pared: rebota un poco hacia atrás con un «tonc» y una bocanada, **con la cabeza tocando la
+   pared, sin meterse** (antes entraba medio cuerpo). Lo mismo contra una muralla de fortaleza de la playa, contra una
+   roca y de lado, a lo largo de una pared (el cuerpo resbala por ella sin que la cabeza entre). Empezar el panzazo de
+   espaldas a una pared: las patas no se meten, la tortuga sale un poco hacia delante. `TN.Dive.Body 0` para comparar.
 5. Saltar o moverse casi parada: sale antes (el salto, con brinco). Deprisa, ni lo uno ni lo otro.
 6. Panzazo que acabe bajo algo bajo (un tablón, una rampa): repta hasta salir y se levanta sin atravesar nada.
 7. En el cliente: lo mismo sin tirones al caer ni al levantarse (con `TN.Dive.Debug 1`, la fase del cliente y la del
@@ -157,17 +196,120 @@ caja, la tripa abajo); `ResetMeshTransform` la devuelve a su sitio al salir.
 - Lanzada o escapando del que la lleva: nace tumbada con volteretas y la tortuga sale sola cuando la caja se para.
 - Caída de más de 5 m: se hace bola con física y sale al pararse. Al agua: sale y nada.
 - Mientras la llevan no hay caja (va enganchada al que la lleva).
+- La caja ya cubre la tortuga metida (el caparazón mide ~40 × 36 × 30 cm y lo demás encoge dentro): sus choques son
+  los de la caja, sin cabeza ni patas que sobresalgan. No ha hecho falta tocarla.
 
 ## Derribo, pajaritos y ojos
 
 - Todas las fuentes de derribo pasan por el ragdoll de `ApplyKnockdownVisual` y se quedan al menos
-  `MinKnockdownSeconds` (2,2 s) en el suelo. Luego se levanta con la mezcla del paso 5.
+  `MinKnockdownSeconds` (2,2 s) en el suelo. Luego se levanta con la mezcla del paso 6.
+- Choques del ragdoll: los cuerpos llevan el perfil `Ragdoll` (tipo PhysicsBody; bloquea WorldStatic y WorldDynamic e
+  ignora las cápsulas), con colisión continua y la sonda anti-túnel del terreno (`TickKnockdownRagdoll`). El terreno,
+  las rocas y el decorado de la playa son `BlockAll` (WorldStatic) y las murallas y fortalezas, `BlockAllDynamic`
+  (WorldDynamic, cascos convexos): todo bloquea al ragdoll. Si algún cuerpo del Physics Asset tuviera la colisión
+  desactivada, el primer derribo de cada tortuga lo avisa en el registro (`[Ragdoll] ... no chocan con el mundo`).
+- Al levantarse, la cápsula vuelve a tener colisión **antes** de buscar sitio de pie: `FindTeleportSpot` solo aparta
+  una cápsula con colisión de consulta y, con la del ragdoll apagada, no hacía nada; junto a una roca o una muralla la
+  tortuga se ponía de pie con media cápsula (y la malla) dentro y luego el movimiento la sacaba a saltos. Ahora se
+  pone de pie justo al lado.
 - `UTN_DizzyBirdsComponent`: tres pájaros y tres estrellitas dando vueltas sobre el hueso `Head` mientras está
   noqueada, con su sonido sintetizado (`UTN_DizzySynthComponent`: trinos y cuerdas mareadas). Se encienden en todas
   las máquinas con el derribo.
 - Ojos (`ATortugaCharacter::TickEyes` → `UTN_CosmeticLook::SetEyeState`): parpadea cada 2,5-5,5 s en 0,16 s (a veces
   dos veces seguidas) y pone los ojos en espiral (`EyeDizzy`) mientras está noqueada o muerta. Son dos parámetros de
   `M_TurtleBody`; los tipos de ojo están en `Docs/Tienda_Probador.md`.
+
+## Lanzar: saque de banda y panzazo
+
+### Ángulo de todos los lanzamientos
+
+Antes cada lanzamiento subía a su manera: al compañero, el cabeceo del mando más 40° (entre 28° y 72°); los objetos, la
+dirección del mando más 15°. Como la cámara mira 14° por debajo del mando (`CameraAimPitchOffset`), con la cámara a
+nivel el compañero salía a ~54° y los objetos a ~29°, y al mirar un poco arriba, por las nubes.
+
+Ahora todos (objetos, tinta y el compañero, con la E o con el panzazo) usan `ATortugaCharacter::GetThrowDirection`: el
+rumbo de la cámara y, sobre la horizontal, `ThrowBasePitchDeg` (25°) con la cámara a nivel más solo una parte de lo
+que se mire arriba o abajo (`ThrowAimPitchFactor` 0,4), entre `ThrowMinPitchDeg` (10°) y `ThrowMaxPitchDeg` (45°). Con
+la cámara 20° hacia abajo sale a 17°; 30° hacia arriba, a 37°. Se calcula en el servidor con el giro del mando que ya le
+llega (sin RPC nuevas). Sustituye a `ThrowUpAngleDeg` (personaje) y a `MinThrowPitch`/`MaxThrowPitch` (carga), que
+ningún Blueprint tenía cambiados.
+
+### Saque de banda con la E
+
+Llevando a una tortuga en alto (las dos aletas ya por encima de la cabeza), la E no la suelta al momento: durante
+`ThrowWindupSeconds` (0,18 s) las dos aletas se echan detrás de la cabeza con la espalda arqueada y vuelven a subir, y
+al acabar (`UTN_CarryComponent::FinishThrowWindup`, en el servidor) la suelta por encima de la cabeza; luego los brazos
+acompañan hacia delante y abajo con el cuerpo inclinado (0,35 s). El dueño empieza la toma de impulso al pulsar; las
+demás máquinas, al recibir `ThrowWindupSerial` (replicado a todos menos al dueño). Si mientras tanto la suelta por
+otra cosa (derribo, se escapa, panzazo), la toma de impulso se cancela. Con `ThrowWindupSeconds` a 0, como antes.
+
+### Con el panzazo
+
+Llevándola en alto, saltar y hacer el panzazo la lanza (`Server_StartDive` → `UTN_CarryComponent::ThrowWithDive`)
+hacia donde se tira, con el lanzamiento de siempre (25°) más parte del impulso del panzazo en horizontal (que ya lleva
+la carrera; `DiveThrowCarryFactor` 0,6) y de la velocidad hacia arriba del salto (`DiveThrowJumpFactor` 0,5), como
+mucho `DiveThrowMaxSpeed` (23 m/s). Sale como caparazón con física, igual que con la E. La portadora sigue su panzazo
+y sus brazos hacen el final del saque de banda mientras se tumba. Todo en el servidor; la caja de la lanzada se replica
+como siempre.
+
+### Animación (`UTN_TurtleAnimInstance`, capa de aletas)
+
+`ThrowKeyAt(U)` interpola cinco momentos del saque de banda (U de -1 a 1): en alto como al llevarla (-1), detrás de la
+cabeza con la espalda arqueada (-0,4), soltando por encima de la cabeza (0), al frente con el cuerpo hacia delante (0,5)
+y acompañando hacia abajo (1). La toma de impulso recorre de -1 a 0 (`GetThrowWindupAlpha`); al soltarla, de 0 a 1.
+Un objeto lanzado (bola, tinta) hace lo mismo con la aleta derecha desde detrás de la cabeza (-0,4 a 1): lo pide el
+servidor con `MulticastItemThrowAnim` (no fiable, cosmético).
+
+## Objetos en las aletas
+
+**Causa de que salieran en los pies.** El Blueprint guarda `EquippedAttachSocket = EspaldaSocket` de la malla vieja;
+`TotugaDemo_Rig` no tiene sockets, así que el objeto se enganchaba al origen de la malla (sus pies) y el giro de la
+malla (yaw -90) le daba cualquier orientación.
+
+**Ahora** (`UTN_InventoryComponent`, cosmético y local en cada máquina a partir de lo replicado; nada en el servidor
+dedicado) el objeto va enganchado a los huesos de las aletas (`RightHand`; abrazado, a `Spine2`) y cada fotograma, tras
+la animación de la malla (su tick depende del de la malla), se coloca según cómo se lleva (`ETNItemHold`):
+
+| Cómo | Cuándo (tamaño en el mundo: malla × `EquippedMeshScale`, con `EquippedMeshRotation`) | Dónde |
+|---|---|---|
+| En una aleta | lo demás (pequeño) | Apoyado encima de la aleta derecha, de pie y de frente; brazo abajo con el codo junto a la cadera y el antebrazo al frente, como una bandeja |
+| Abrazado | lado mayor ≥ `HugMinSize` (34 cm) o `ItemWeight` ≥ `HugMinWeight` (3) | Entre las dos aletas por delante de la tripa (sin meterse en ella); brazos al frente y abajo con los antebrazos que lo rodean. La apertura se ajusta sola hasta que el hueco entre las manos es su ancho (`HugOpen`), y el cuerpo se echa un poco atrás |
+| Por un extremo | largo ≥ `ByEndMinLength` (30 cm) y ≥ `ByEndMinRatio` (2,2) veces su ancho | Su eje largo apunta hacia delante y arriba (40°, algo abierto hacia fuera) con la punta de atrás en la aleta derecha; antebrazo algo más alto |
+
+- `HoldOverrides` (por `ItemId`, en el Blueprint) fuerza la forma de un objeto concreto si el tamaño no acierta.
+- El centro del objeto (el de su caja, aunque la malla tenga el pivote en la base) es lo que se coloca; su tamaño en el
+  mundo es el mismo que en el suelo.
+- Los brazos lo sujetan andando, corriendo y saltando. Nadando, en el panzazo, con un emote o levantándose, las aletas
+  hacen lo suyo y el objeto las sigue tal como estaba en la mano (lo abrazado sigue abrazado también ahí). Metida en el
+  caparazón, llevando a otra tortuga o muerta, encoge y desaparece; al salir, vuelve.
+- Al cogerlo del suelo aparece con un pequeño «pop» (0,2 s).
+- Mallas sin esos huesos: el socket `EquippedAttachSocket` si existe o la raíz con `EquippedRelativeLocation/Rotation`,
+  como antes.
+
+### Guardar y sacar del caparazón
+
+Al cambiar de ranura (`RotateItems`) o al sacar lo guardado porque se ha gastado lo de la mano, el servidor sube
+`StashSerial` y apunta qué ha pasado en `StashKind` (bits: 1 = entra lo de la mano, 2 = sale lo guardado, 4 = tras gastar lo de la mano);
+cada máquina lo anima al recibirlo (`StashSeconds`, 0,5 s): la aleta derecha va a la espalda por encima del hombro (el
+pecho gira un poco y mira por encima del hombro), lo de la mano encoge y entra con un «toc» hueco (`PlayStash`, ver
+`Docs/Sonido_Tortuga.md`), sale lo guardado creciendo con un «toc» más agudo y la aleta vuelve a su sitio. Si solo sale
+lo guardado (tras lanzar o comerse lo de la mano), empieza 0,3 s después, cuando la aleta ha acabado. Metida en el
+caparazón o llevando a alguien, cambia sin animación. Lo primero que llega (al aparecer o entrar a media partida) se
+pone sin animar.
+
+### Probar en PIE (lanzar y objetos; escuchando más un cliente, mirando desde las dos ventanas)
+
+1. Coger a la otra tortuga metida en el caparazón y lanzarla con la E: las dos aletas van detrás de la cabeza, vuelven
+   arriba, la sueltan y acompañan hacia delante; sale baja (~25° con la cámara a nivel). Mirando arriba, algo más alta.
+2. Cogida, saltar y hacer el panzazo: sale lanzada hacia donde se tira, más lejos que con la E (corriendo, más aún) y
+   la portadora hace el panzazo normal.
+3. Lanzar una bola y la tinta: salen bajas y la aleta derecha hace el golpe de lanzar.
+4. Coger cada objeto del catálogo: pequeño encima de la aleta derecha, grande abrazado con las dos (las aletas lo
+   rodean) y alargado por un extremo apuntando adelante y arriba. Andar, correr, saltar, nadar, panzazo y un emote con
+   él; meterse en el caparazón (desaparece y vuelve). Si alguno no se clasifica bien, `HoldOverrides` en el Blueprint.
+5. Con dos objetos, cambiar de ranura (R): la aleta va a la espalda, uno encoge y entra con «toc», el otro sale con
+   un «toc» más agudo. Lanzar el de la mano teniendo otro guardado: al poco, la aleta va a la espalda y lo saca.
+6. Todo lo anterior se ve igual desde la otra ventana (cliente y anfitrión).
 
 ## Cara: lengua, cansancio, sudor y boca
 
@@ -286,8 +428,10 @@ En la playa del modo carrera la meta es un acantilado (`TNBeach::CliffHeight` = 
 
 Del personaje: velocidad, `IsFalling`/`IsSwimming` del movimiento, `IsBellyPoseActive` e `IsBellyOnGround` (el
 panzazo en el aire y sobre la tripa), `IsInShell` (y si el caparazón tiene caja física), `IsKnockedDown`, la pose guardada al levantarse, el emote activo y su tiempo (`GetActiveEmoteIndex`,
-`GetEmoteTime`); del `UTN_CarryComponent`, si lleva o la llevan (al soltar se hace el lanzamiento); del
-`UTN_StaminaComponent`, si está agotada; en la playa del modo carrera, la zona de la zambullida
+`GetEmoteTime`); del `UTN_CarryComponent`, si lleva o la llevan (al soltar se hace el lanzamiento) y la toma de
+impulso del saque de banda (`GetThrowWindupAlpha`); del `UTN_InventoryComponent`, cómo lleva lo de las aletas
+(`GetShownHold`), cuánto abre abrazando (`GetHugOpen`) y la aleta a la espalda (`GetStashReach`); el lanzamiento de un
+objeto llega con `PlayThrow`; del `UTN_StaminaComponent`, si está agotada; en la playa del modo carrera, la zona de la zambullida
 (`ATN_BeachRaceGenerator::IsCliffJumpZone`). La celebración del podio la pide quien la use (`SetCelebration`). La cara (`UTN_TurtleFaceComponent`) lee además la estamina, el sprint, la
 velocidad, el giro, el chat rápido y la voz.
 

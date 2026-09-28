@@ -45,6 +45,13 @@ namespace TNBellySlide
 		TEXT("Tope de segundos arrastrándose tras el panzazo (0 = el del componente, 2,6 s)."),
 		ECVF_Cheat);
 
+	static int32 GBodyProbe = 1;
+	static FAutoConsoleVariableRef CVarBodyProbe(
+		TEXT("TN.Dive.Body"),
+		GBodyProbe,
+		TEXT("1 = tumbada (panzazo, arrastre y reptar), la cabeza y las patas no se meten en las paredes: la tortuga se aparta lo justo; 0 = solo choca la cápsula, como antes. Igual en el servidor y los clientes."),
+		ECVF_Cheat);
+
 	static int32 GDebug = 0;
 	static FAutoConsoleVariableRef CVarDebug(
 		TEXT("TN.Dive.Debug"),
@@ -550,6 +557,126 @@ void UTN_TurtleMovementComponent::CalcBellySlideVelocity(float DeltaTime)
 	LastSlopeAccel = SlopeAccel;
 }
 
+void UTN_TurtleMovementComponent::KeepBellyBodyOutOfWalls()
+{
+	LastBodyPush = FVector::ZeroVector;
+	const ATortugaCharacter* Turtle = GetTurtle();
+	UWorld* MoveWorld = GetWorld();
+	if (TNBellySlide::GBodyProbe == 0 || !Turtle || !MoveWorld || !UpdatedComponent || !CharacterOwner || !SimulatesBelly())
+	{
+		return;
+	}
+	// Solo tumbada: el panzazo en el aire, arrastrándose y reptando (ni nadando, ni sin movimiento, ni ya de pie).
+	if (!Turtle->IsBellyPoseActive() || !(IsMovingOnGround() || IsFalling()))
+	{
+		return;
+	}
+	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	if (!Capsule)
+	{
+		return;
+	}
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const float CapsuleRadius = Capsule->GetScaledCapsuleRadius();
+	// La esfera sale de dentro de la cápsula (así nunca empieza metida en nada) a la altura del caparazón.
+	const float Radius = FMath::Clamp(BellyBodyRadius, 5.f, FMath::Max(5.f, FMath::Min(CapsuleRadius, HalfHeight) - 1.f));
+	const float ProbeZ = FMath::Clamp(BellyBodyProbeHeight - HalfHeight, Radius - HalfHeight, HalfHeight - Radius);
+	const FVector Origin = UpdatedComponent->GetComponentLocation() + FVector(0.0, 0.0, static_cast<double>(ProbeZ));
+	FVector Forward = UpdatedComponent->GetForwardVector();
+	Forward.Z = 0.0;
+	if (!Forward.Normalize())
+	{
+		return;
+	}
+
+	// Lo mismo que bloquea a la cápsula menos otras tortugas y cuerpos con física: se mueven distinto en cada máquina y
+	// el cliente dueño y el servidor tienen que llegar al mismo sitio.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TNBellyBodyProbe), false, CharacterOwner);
+	FCollisionResponseParams Responses;
+	InitCollisionParams(Params, Responses);
+	Responses.CollisionResponse.SetResponse(ECC_Pawn, ECR_Ignore);
+	Responses.CollisionResponse.SetResponse(ECC_PhysicsBody, ECR_Ignore);
+	const ECollisionChannel Channel = UpdatedComponent->GetCollisionObjectType();
+	const FCollisionShape Sphere = FCollisionShape::MakeSphere(Radius);
+
+	FVector Push = FVector::ZeroVector;
+	FVector MainNormal = FVector::ZeroVector;
+	double MainDepth = 0.0;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		// Hacia la cabeza y hacia las patas.
+		const FVector Dir = Side == 0 ? Forward : -Forward;
+		const double Reach = static_cast<double>((Side == 0 ? BellyBodyReachFront : BellyBodyReachBack) - Radius);
+		if (Reach <= 1.0)
+		{
+			continue;
+		}
+		FHitResult Hit;
+		if (!MoveWorld->SweepSingleByChannel(Hit, Origin, Origin + Dir * Reach, FQuat::Identity, Channel, Sphere, Params, Responses)
+			|| Hit.bStartPenetrating)
+		{
+			continue;
+		}
+		// El suelo o una cuesta por delante (se pisan) y los techos no son pared.
+		const FVector N = Hit.Normal;
+		if (N.Z >= static_cast<double>(GetWalkableFloorZ()) || N.Z <= -0.7)
+		{
+			continue;
+		}
+		const FVector Flat(N.X, N.Y, 0.0);
+		if (Flat.SizeSquared() < 0.09)
+		{
+			continue;
+		}
+		const FVector WallNormal = Flat.GetSafeNormal();
+		const double Facing = -FVector::DotProduct(Dir, WallNormal);
+		if (Facing <= 0.05)
+		{
+			continue;
+		}
+		// Lo que se metería esa punta en la pared, medido hacia fuera de ella.
+		const double Depth = Reach * (1.0 - static_cast<double>(Hit.Time)) * Facing;
+		if (Depth <= 0.1)
+		{
+			continue;
+		}
+		Push += WallNormal * (Depth + 0.5);
+		if (Depth > MainDepth)
+		{
+			MainDepth = Depth;
+			MainNormal = WallNormal;
+		}
+	}
+	if (Push.IsNearlyZero() || MainNormal.IsNearlyZero())
+	{
+		return;
+	}
+
+	// Se aparta lo justo, con barrido: la cápsula tampoco atraviesa lo que tenga detrás.
+	Push = Push.GetClampedToMaxSize(60.0);
+	FHitResult MoveHit;
+	SafeMoveUpdatedComponent(Push, UpdatedComponent->GetComponentQuat(), true, MoveHit);
+	if (MoveHit.IsValidBlockingHit())
+	{
+		SlideAlongSurface(Push, 1.f - MoveHit.Time, MoveHit.Normal, MoveHit, false);
+	}
+	bForceNextFloorCheck = true;
+	LastBodyPush = Push;
+
+	// Deja de ir contra la pared; arrastrándose, además rebota como si hubiera chocado la cápsula (en OnMovementUpdated).
+	const double Into = FVector::DotProduct(Velocity, MainNormal);
+	if (Into < 0.0)
+	{
+		Velocity -= MainNormal * Into;
+	}
+	if (BellyPhase == ETNBellyPhase::Slide && IsMovingOnGround()
+		&& (!bPendingBounce || FVector::DotProduct(SlideIntentVelocity, MainNormal) < FVector::DotProduct(SlideIntentVelocity, PendingBounceNormal)))
+	{
+		PendingBounceNormal = MainNormal;
+		bPendingBounce = true;
+	}
+}
+
 void UTN_TurtleMovementComponent::HandleImpact(const FHitResult& Hit, float TimeSlice, const FVector& MoveDelta)
 {
 	// Arrastrándose contra una pared u obstáculo (no un escalón que sube): se apunta para rebotar al final del movimiento.
@@ -573,6 +700,9 @@ void UTN_TurtleMovementComponent::HandleImpact(const FHitResult& Hit, float Time
 void UTN_TurtleMovementComponent::OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity)
 {
 	Super::OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
+
+	// Tumbada, la cabeza y las patas (fuera de la cápsula) tampoco se meten en las paredes: puede apuntar un rebote.
+	KeepBellyBodyOutOfWalls();
 
 	// Rebote: de lo que iba contra la pared, devuelve una parte hacia fuera; lo que iba a lo largo, casi todo.
 	if (bPendingBounce)
@@ -740,6 +870,27 @@ void UTN_TurtleMovementComponent::ShowBellyDebug() const
 		if (!LastSlopeAccel.IsNearlyZero())
 		{
 			DrawDebugDirectionalArrow(MoveWorld, From, From + LastSlopeAccel * 0.25, 15.f, FColor::Orange, false, -1.f, 0, 1.5f);
+		}
+	}
+
+	// El cuerpo tumbado que choca (celeste; rojo si se ha apartado de una pared en este movimiento, con la flecha).
+	if (TNBellySlide::GBodyProbe != 0 && Turtle && Turtle->IsBellyPoseActive() && CharacterOwner->GetCapsuleComponent())
+	{
+		const UWorld* MoveWorld = GetWorld();
+		FVector Fwd = UpdatedComponent->GetForwardVector();
+		Fwd.Z = 0.0;
+		Fwd = Fwd.GetSafeNormal();
+		const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const FVector Mid = UpdatedComponent->GetComponentLocation() + FVector(0.0, 0.0, static_cast<double>(BellyBodyProbeHeight - HalfHeight));
+		const FColor BodyColor = LastBodyPush.IsNearlyZero() ? FColor::Cyan : FColor::Red;
+		const FVector Head = Mid + Fwd * static_cast<double>(BellyBodyReachFront - BellyBodyRadius);
+		const FVector Feet = Mid - Fwd * static_cast<double>(BellyBodyReachBack - BellyBodyRadius);
+		DrawDebugLine(MoveWorld, Feet, Head, BodyColor, false, -1.f, 0, 2.f);
+		DrawDebugSphere(MoveWorld, Head, BellyBodyRadius, 8, BodyColor, false, -1.f, 0, 1.f);
+		DrawDebugSphere(MoveWorld, Feet, BellyBodyRadius, 8, BodyColor, false, -1.f, 0, 1.f);
+		if (!LastBodyPush.IsNearlyZero())
+		{
+			DrawDebugDirectionalArrow(MoveWorld, Mid, Mid + LastBodyPush * 3.0, 15.f, FColor::Red, false, -1.f, 0, 2.f);
 		}
 	}
 }

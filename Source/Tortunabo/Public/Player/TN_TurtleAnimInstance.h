@@ -62,9 +62,22 @@ struct FTNTurtleAnimFrame
 	float TiredW = 0.f;
 	/** El caparazón tiene cuerpo físico (la malla va tumbada sobre la caja): sin bajar el cuerpo al meterse. */
 	bool bShellBody = false;
-/** Lanzamiento en curso (segundos desde que empezó; negativo = ninguno) y si era con las dos manos. */
-	float ThrowT = -1.f;
+	/**
+	 * Lanzamiento como un saque de banda: fase (de -1 a 0 toma impulso con las aletas detrás de la cabeza y vuelve a
+	 * subirlas; de 0 a 1 suelta y acompaña hacia delante y abajo), peso y si es con las dos aletas (o solo la derecha).
+	 */
+	float ThrowU = -2.f;
+	float ThrowW = 0.f;
 	bool bThrowBoth = false;
+	/**
+	 * Lo que lleva en las aletas (UTN_InventoryComponent): cómo (0 = nada, 1 = en la aleta derecha, 2 = abrazado con las
+	 * dos, 3 = por un extremo; como ETNItemHold), su peso, cuánto abre las aletas abrazando (0..1) y la aleta derecha
+	 * hacia la espalda al guardar o sacar algo del caparazón.
+	 */
+	uint8 HoldStyle = 0;
+	float HoldW = 0.f;
+	float HoldOpen = 0.5f;
+	float StashW = 0.f;
 	/** Emote (índice del catálogo 0-9 o -1), su tiempo y su peso (entra y sale suave). */
 	int32 Emote = -1;
 	float EmoteTime = 0.f;
@@ -109,7 +122,9 @@ struct FTNTurtleAnimProxy : public FAnimInstanceProxy
  * Animación de la tortuga del jugador sobre el esqueleto Mixamo de TotugaDemo_Rig, sin AnimBP: espera y andar con los
  * clips (mezclados por velocidad, como ABS_Walk), la carrera del sprint hecha en código y, encima, poses para el
  * salto, el panzazo (en el aire y arrastrándose sobre la tripa, con el empujón para levantarse), el nado, el caparazón
- * (se esconden cabeza y patas), llevar y ser llevado, el lanzamiento, el tumbado, el cansancio y los emotes del catálogo.
+ * (se esconden cabeza y patas), llevar y ser llevado, el lanzamiento (saque de banda con las dos aletas o golpe de una),
+ * los brazos que sujetan lo que lleva en las aletas (en una, abrazado o por un extremo) y la aleta que va a la espalda a
+ * guardarlo o sacarlo del caparazón, el tumbado, el cansancio y los emotes del catálogo.
  * Hereda de UTN_ProcAnimInstance: los ajustes por hueso que escriben los sistemas viejos se siguen aplicando al final.
  *
  * Las poses se escriben como giros en el espacio de la malla (mira a +Y, arriba +Z, su izquierda +X) sobre la
@@ -148,6 +163,15 @@ public:
 	/** true mientras se zambulle de cabeza desde el acantilado de la meta (modo carrera). */
 	bool IsCliffDiving() const { return bCliffDive; }
 
+	/**
+	 * Golpe de brazo de lanzar: con la aleta derecha (un objeto) o con las dos. El de soltar a la tortuga que lleva en alto
+	 * sale solo (con la toma de impulso de UTN_CarryComponent antes, si es con la E).
+	 */
+	void PlayThrow(bool bBothFlippers);
+
+	/** Cuánto sujetan ahora los brazos lo que lleva en las aletas (0..1): con menos, el objeto solo sigue a la aleta. */
+	float GetHoldWeight() const { return Frame.HoldW; }
+
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 	virtual void DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy) override;
@@ -166,6 +190,14 @@ private:
 	float PrevYaw = 0.f;
 	bool bWasCarrying = false;
 	int32 LastEmote = -1;
+
+	/** Acompañar el lanzamiento: segundos desde que soltó (negativo = nada), fase de partida y duración. */
+	float ThrowFollowElapsed = -1.f;
+	float ThrowFollowFrom = 0.f;
+	float ThrowFollowSeconds = 0.35f;
+	/** PlayThrow pedido desde el último fotograma y con cuántas aletas. */
+	bool bPendingThrow = false;
+	bool bPendingThrowBoth = false;
 
 	/** Panzazo en el fotograma anterior: sobre la tripa en el suelo, en el aire y velocidad (golpes y levantarse). */
 	bool bWasBellyGround = false;

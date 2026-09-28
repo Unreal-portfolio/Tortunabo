@@ -272,6 +272,27 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			// pequeño atraviesa en un paso de física la colisión fina del terreno (mallas procedurales) y la tortuga
 			// acaba bajo el suelo. Además, un tope a la velocidad de entrada.
 			SkelMesh->SetAllUseCCD(true);
+			// Una vez por tortuga: avisa si algún cuerpo del ragdoll no choca con lo estático o lo dinámico del mundo
+			// (terreno, rocas y decorado son WorldStatic; murallas y fortalezas de la playa, WorldDynamic). Con el perfil
+			// Ragdoll todos bloquean; solo falla si el Physics Asset tiene cuerpos con la colisión desactivada.
+			if (!bRagdollCollisionReported)
+			{
+				bRagdollCollisionReported = true;
+				int32 NotBlocking = 0;
+				for (const FBodyInstance* Body : SkelMesh->Bodies)
+				{
+					if (Body && (!CollisionEnabledHasPhysics(Body->GetCollisionEnabled())
+						|| Body->GetResponseToChannel(ECC_WorldStatic) != ECR_Block || Body->GetResponseToChannel(ECC_WorldDynamic) != ECR_Block))
+					{
+						++NotBlocking;
+					}
+				}
+				if (NotBlocking > 0)
+				{
+					UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] %s: %d de %d cuerpos del ragdoll (perfil '%s') no chocan con el mundo: revisa su colisión en el Physics Asset."),
+						*GetName(), NotBlocking, SkelMesh->Bodies.Num(), *RagdollCollisionProfile.ToString());
+				}
+			}
 			KnockdownInitialVel = KnockdownInitialVel.GetClampedToMaxSize(KnockdownRagdollMaxEntrySpeed);
 			// Orden Epic: SIMULAR primero, pausar anims DESPUÉS. Evita el frame
 			// "semitieso" (bPauseAnims=true congela pose antes de que física arranque).
@@ -327,6 +348,13 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 				if (!FindStandSpotNear(RagdollLoc, StandLoc))
 				{
 					StandLoc = PreKnockdownStandLocation;
+				}
+				// La cápsula vuelve a chocar ANTES de buscar sitio: FindTeleportSpot solo aparta una cápsula con colisión de
+				// consulta. Con la del ragdoll (sin colisión) no hacía nada y, junto a una roca o una muralla, la tortuga se
+				// levantaba con media cápsula (y la malla) dentro. El ragdoll no choca con cápsulas (perfil Ragdoll).
+				if (UCapsuleComponent* Cap = GetCapsuleComponent())
+				{
+					Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 				}
 				if (UWorld* World = GetWorld())
 				{

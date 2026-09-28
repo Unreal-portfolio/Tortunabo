@@ -265,6 +265,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0"))
 	float DiveBellyPivotHeight = 11.f;
 
+	/**
+	 * Cuánto se desplaza la malla hacia atrás (cm) con el panzazo completo: tumbada, el centro del cuerpo (la tripa y el
+	 * caparazón) queda sobre la cápsula en vez de los pies, así que gira sobre la tripa y la cápsula cubre la parte más
+	 * gruesa. La cabeza y las patas, que sobresalen, las frena UTN_TurtleMovementComponent (Belly Slide|Body), cuyas
+	 * medidas suponen este centrado.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0", ClampMax="150.0"))
+	float DiveBodyCenterShift = 70.f;
+
 	/** Aplastado de la malla en el panzazo: tripa-espalda (se aplasta contra el suelo), ancho y largo (se estira). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive")
 	FVector DiveSquash = FVector(1.08, 0.8, 1.05);
@@ -456,9 +465,23 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction|Networking", meta = (ClampMin = "0.0"))
 	float MaxLagCompensationDistance = 120.f;
 
-	/** Ángulo adicional hacia arriba (grados) al lanzar objetos, para que hagan arco parabólico. */
+	// ── Puntería de los lanzamientos (objetos, tinta y el compañero cogido, con la E o con el panzazo) ──
+	// Salen hacia donde mira la cámara en horizontal, con un ángulo bajo y recto: ThrowBasePitchDeg con la cámara a nivel
+	// y solo una parte de lo que se mire arriba o abajo (ThrowAimPitchFactor), entre los topes.
+
+	/** Ángulo sobre la horizontal (grados) con la cámara a nivel. */
 	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "60.0"))
-	float ThrowUpAngleDeg = 15.f;
+	float ThrowBasePitchDeg = 25.f;
+
+	/** Parte del cabeceo de la cámara que se suma al ángulo (0 = siempre el mismo; 1 = todo lo que se mire arriba o abajo). */
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ThrowAimPitchFactor = 0.4f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "-30.0", ClampMax = "60.0"))
+	float ThrowMinPitchDeg = 10.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "80.0"))
+	float ThrowMaxPitchDeg = 45.f;
 
 	// ── Camera Cinematic Settings (AAA) ───────────────────────────────────────
 
@@ -1177,6 +1200,8 @@ protected:
 	FName SnapshotSkelMeshCollisionProfile = NAME_None;
 	/** true mientras el ragdoll físico está activo (evita doble-activación y no-ops al recover). */
 	bool bKnockdownRagdollActive = false;
+	/** Ya se ha comprobado (y avisado, si hacía falta) que los cuerpos del ragdoll chocan con el mundo. */
+	bool bRagdollCollisionReported = false;
 	/** Cuerpo raíz del ragdoll en el fotograma anterior: si de uno a otro cruza el suelo, se devuelve encima. */
 	FVector RagdollProbeLast = FVector::ZeroVector;
 	bool bRagdollProbeValid = false;
@@ -1355,6 +1380,16 @@ public:
 
 	/** Componente de coger y lanzar. */
 	UTN_CarryComponent* GetCarryComponent() const { return CarryComponent; }
+
+	/**
+	 * Dirección de un lanzamiento (objeto, tinta o compañero) con el giro del mando AimRotation: el rumbo de la cámara y un
+	 * ángulo bajo sobre la horizontal (ThrowBasePitchDeg con la cámara a nivel; ver Throwable). Vale en el servidor.
+	 */
+	FVector GetThrowDirection(const FRotator& AimRotation) const;
+
+	/** El golpe de brazo de lanzar un objeto, en todas las máquinas (cosmético; lo manda el servidor al lanzarlo). */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastItemThrowAnim();
 
 	/** Interactuable al alcance que se usaría ahora (solo en el jugador local; lo enseña el aviso del HUD). */
 	ATN_InteractableBase* GetFocusedInteractable() const { return FocusedInteractable.Get(); }

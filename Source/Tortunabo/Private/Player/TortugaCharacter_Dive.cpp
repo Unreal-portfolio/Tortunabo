@@ -8,6 +8,7 @@
 
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_Log.h"
+#include "Player/TN_CarryComponent.h"
 #include "Player/TN_TurtleMovementComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -202,6 +203,15 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	const float CombinedForwardSpeed = FMath::Clamp(DiveForwardSpeed + MomentumBonus,
 		-DiveMaxTotalSpeed, DiveMaxTotalSpeed);
 	const FVector DiveVelocity = DiveDir * CombinedForwardSpeed + FVector(0.f, 0.f, -DiveDownwardSpeed);
+
+	// Llevando a un compañero en alto: el panzazo lo lanza, con el impulso del panzazo (la carrera va dentro) y el del
+	// salto sumados al del lanzamiento. Antes de lanzarse ella: la velocidad de ahora es la del salto.
+	if (CarryComponent && CarryComponent->IsCarrying())
+	{
+		const UCharacterMovementComponent* ThrowMove = GetCharacterMovement();
+		CarryComponent->ThrowWithDive(DiveDir, DiveVelocity, ThrowMove ? ThrowMove->Velocity : FVector::ZeroVector);
+	}
+
 	LaunchCharacter(DiveVelocity, /*bXYOverride=*/true, /*bZOverride=*/true);
 
 	// Activate dive state — triggers OnRep on clients. El número nuevo le dice al movimiento que este panzazo aún no se
@@ -391,9 +401,12 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 			// queden a DiveBellyPivotHeight del suelo y el cuerpo tumbado se apoye en la tripa en vez de hundirse; y
 			// se aplasta un poco contra el suelo (ejes locales de la malla: X ancho, Y tripa-espalda, Z largo). Con la
 			// cápsula que haya ahora: al levantarse ya está de pie y la subida baja con el giro, sin dar un salto.
+			// Además se echa hacia atrás DiveBodyCenterShift: tumbada, la tripa queda sobre la cápsula (gira sobre ella
+			// y la cápsula tapa lo más gordo); la cabeza y las patas las frena el movimiento (Belly Slide|Body).
 			const double CurrentCapsuleHalf = GetCapsuleComponent() ? GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() : DiveCapsuleHalfHeight;
 			const double Lift = (DiveBellyPivotHeight - CurrentCapsuleHalf - DiveMeshDefaultLoc.Z) * env;
-			SkelMesh->SetRelativeLocation(DiveMeshDefaultLoc + FVector(0.0, 0.0, FMath::Max(0.0, Lift)));
+			const double Back = static_cast<double>(DiveBodyCenterShift) * env;
+			SkelMesh->SetRelativeLocation(DiveMeshDefaultLoc + FVector(-Back, 0.0, FMath::Max(0.0, Lift)));
 			SkelMesh->SetRelativeScale3D(DiveMeshDefaultScale * FMath::Lerp(FVector::OneVector, DiveSquash, static_cast<double>(env)));
 		}
 

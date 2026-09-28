@@ -580,13 +580,33 @@ void UTN_TurtleFoleyComponent::UpdateDrag(float /*DeltaTime*/, double Now, const
 	bWasBellyGround = Frame.bBellyGround;
 }
 
+void UTN_TurtleFoleyComponent::PlayStash(bool bIntoShell)
+{
+	const UWorld* CompWorld = GetWorld();
+	if (!CompWorld || !SharedParams.IsValid())
+	{
+		return;
+	}
+	const double Now = CompWorld->GetTimeSeconds();
+	TNTurtleFoley::FTurtleState Frame;
+	ReadFrame(Frame, Now);
+	if (!Frame.bValid)
+	{
+		return;
+	}
+	// El pie elige el tono (0 = guardar, más grave; 1 = sacar, más agudo).
+	EmitStep(TNTurtleFoley::StepKind::Stash, static_cast<uint8>(bIntoShell ? 0 : 1), bIntoShell ? 0.6f : 0.5f, 0.4f, Now, Frame);
+}
+
 void UTN_TurtleFoleyComponent::EmitStep(uint8 Kind, uint8 Foot, float Force, float Pace, double Now, const TNTurtleFoley::FTurtleState& Frame)
 {
 	LastStepTime = Now;
 	LastActivityTime = Now;
 	NextFoot = static_cast<uint8>((Foot & 1u) ^ 1u);
-	// Con los pasos de siempre del Blueprint, los sintetizados callan; los del panzazo no son pasos y suenan igual.
-	const bool bPanzazo = Kind == TNTurtleFoley::StepKind::Belly || Kind == TNTurtleFoley::StepKind::Bump;
+	// Con los pasos de siempre del Blueprint, los sintetizados callan; los del panzazo (y guardar en el caparazón) no son
+	// pasos y suenan igual.
+	const bool bPanzazo = Kind == TNTurtleFoley::StepKind::Belly || Kind == TNTurtleFoley::StepKind::Bump
+		|| Kind == TNTurtleFoley::StepKind::Stash;
 	if (!SharedParams.IsValid() || !Frame.bNear || (Frame.bLegacySteps && !bPanzazo) || TNTurtleFoley::GVoiceVolume <= 0.f) { return; }
 	if (!IsActive())
 	{

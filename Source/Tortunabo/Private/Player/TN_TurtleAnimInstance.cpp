@@ -1,6 +1,7 @@
 #include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
+#include "Player/TN_InventoryComponent.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Animation/AnimNodeBase.h"
@@ -131,6 +132,31 @@ namespace TNTurtleAnim
 		if (W <= 0.001f) { return; }
 		for (const FCompactPoseBoneIndex I : A.ForEachBoneIndex())
 		{
+			const FTransform Current = A[I];
+			A[I].Blend(Current, B[I], W);
+		}
+	}
+
+	/**
+	 * Como BlendInto, pero solo en Root y los huesos que cuelgan de él (un brazo entero desde el hombro): lo demás sigue
+	 * con su animación (andar, correr, saltar).
+	 */
+	void BlendChainInto(FCompactPose& A, const FCompactPose& B, FCompactPoseBoneIndex Root, float Weight)
+	{
+		const float W = FMath::Clamp(Weight, 0.f, 1.f);
+		if (!Root.IsValid() || W <= 0.001f) { return; }
+		for (const FCompactPoseBoneIndex I : A.ForEachBoneIndex())
+		{
+			bool bInChain = false;
+			for (FCompactPoseBoneIndex P = I; P.IsValid(); P = A.GetParentBoneIndex(P))
+			{
+				if (P == Root)
+				{
+					bInChain = true;
+					break;
+				}
+			}
+			if (!bInChain) { continue; }
 			const FTransform Current = A[I];
 			A[I].Blend(Current, B[I], W);
 		}
@@ -390,6 +416,107 @@ namespace TNTurtleAnim
 		Turn(P, B.LLeg, AxisX, -30.f);
 		Turn(P, B.RLeg, AxisX, -30.f);
 		Turn(P, B.Head, AxisY, 15.f * FMath::Sin(T * 7.f));
+	}
+
+	// ── Aletas: lo que lleva, guardar o sacar del caparazón y lanzar ─────────
+	// Los brazos se colocan desde la postura en T girando primero sobre Z (al frente: +Z el izquierdo, -Z el derecho) y
+	// luego sobre X, que sube (+) o baja (-) el brazo ya puesto al frente; el antebrazo, sobre X, se dobla por el codo
+	// hacia arriba (+). Solo se mezclan los huesos de cada brazo (BlendChainInto): las piernas siguen andando.
+
+	/**
+	 * En la aleta derecha: el brazo abajo con el codo junto a la cadera y el antebrazo al frente, como una bandeja (por un
+	 * extremo, el antebrazo algo más alto), y la aleta un poco hacia el centro.
+	 */
+	void PoseHoldOne(FCompactPose& P, const FBones& B, bool bByEnd)
+	{
+		Turn(P, B.RArm, AxisZ, -98.f);
+		Turn(P, B.RArm, AxisX, -72.f);
+		Turn(P, B.RFore, AxisX, bByEnd ? 96.f : 80.f);
+		Turn(P, B.RFore, AxisZ, -10.f);
+	}
+
+	/**
+	 * Abrazado con las dos aletas: brazos al frente y abajo con los codos abiertos y los antebrazos que se cierran por
+	 * delante rodeándolo. Open (0..1) lo abre para lo más ancho (lo ajusta el inventario midiendo las manos).
+	 */
+	void PoseHug(FCompactPose& P, const FBones& B, float Open)
+	{
+		const float Spread = FMath::Lerp(10.f, 38.f, Open);
+		const float Wrap = FMath::Lerp(62.f, 22.f, Open);
+		Turn(P, B.LArm, AxisZ, 90.f - Spread);
+		Turn(P, B.RArm, AxisZ, -(90.f - Spread));
+		Turn(P, B.LArm, AxisX, -40.f);
+		Turn(P, B.RArm, AxisX, -40.f);
+		Turn(P, B.LFore, AxisX, 38.f);
+		Turn(P, B.RFore, AxisX, 38.f);
+		Turn(P, B.LFore, AxisZ, Wrap);
+		Turn(P, B.RFore, AxisZ, -Wrap);
+	}
+
+	/** La aleta derecha a la espalda por encima del hombro, a la altura del caparazón (guardar o sacar algo). */
+	void PoseStashReach(FCompactPose& P, const FBones& B)
+	{
+		Turn(P, B.RArm, AxisZ, -65.f);
+		Turn(P, B.RArm, AxisX, 140.f);
+		Turn(P, B.RFore, AxisX, 60.f);
+	}
+
+	/** Un momento del saque de banda: altura del brazo, codo, cuánto se juntan las aletas, espalda y cabeza. */
+	struct FThrowKey
+	{
+		float U;
+		float Elev;
+		float Bend;
+		float In;
+		float Spine;
+		float Head;
+	};
+
+	/**
+	 * Saque de banda por fases (U): de -1 a 0 toma impulso (de las aletas en alto, como al llevarla, a detrás de la cabeza
+	 * con la espalda arqueada, y otra vez arriba, donde suelta); de 0 a 1 acompaña hacia delante y abajo con el cuerpo.
+	 */
+	FThrowKey ThrowKeyAt(float U)
+	{
+		static constexpr FThrowKey Keys[] = {
+			{ -1.f,  95.f, 15.f,  8.f,   4.f,  2.f },
+			{ -0.4f, 128.f, 58.f, 10.f,  12.f,  8.f },
+			{  0.f,  98.f, 12.f, 12.f,   0.f,  3.f },
+			{  0.5f, 18.f,  0.f, 10.f, -12.f, -4.f },
+			{  1.f, -30.f,  0.f,  6.f,  -6.f, -2.f },
+		};
+		constexpr int32 Num = static_cast<int32>(UE_ARRAY_COUNT(Keys));
+		if (U <= Keys[0].U) { return Keys[0]; }
+		for (int32 k = 1; k < Num; ++k)
+		{
+			if (U <= Keys[k].U)
+			{
+				const FThrowKey& A = Keys[k - 1];
+				const FThrowKey& C = Keys[k];
+				const float X = (U - A.U) / FMath::Max(0.001f, C.U - A.U);
+				const float S = X * X * (3.f - 2.f * X);
+				return FThrowKey{ U, FMath::Lerp(A.Elev, C.Elev, S), FMath::Lerp(A.Bend, C.Bend, S), FMath::Lerp(A.In, C.In, S),
+					FMath::Lerp(A.Spine, C.Spine, S), FMath::Lerp(A.Head, C.Head, S) };
+			}
+		}
+		return Keys[Num - 1];
+	}
+
+	/** Los brazos del saque de banda en el momento K (las dos aletas o solo una). */
+	void PoseThrowArms(FCompactPose& P, const FBones& B, const FThrowKey& K, bool bLeft, bool bRight)
+	{
+		if (bLeft)
+		{
+			Turn(P, B.LArm, AxisZ, 90.f + K.In);
+			Turn(P, B.LArm, AxisX, K.Elev);
+			Turn(P, B.LFore, AxisX, K.Bend);
+		}
+		if (bRight)
+		{
+			Turn(P, B.RArm, AxisZ, -(90.f + K.In));
+			Turn(P, B.RArm, AxisX, K.Elev);
+			Turn(P, B.RFore, AxisX, K.Bend);
+		}
 	}
 
 	/**
@@ -820,7 +947,47 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 		BlendInto(Output.Pose, Ground.Pose, F.GetUpW);
 	}
 
-	// 4. Capas encima de lo que haya: inclinación al correr y en las curvas, cansancio, lanzamiento y caparazón.
+	// 3c. Aletas: los brazos que sujetan lo que lleva, la aleta a la espalda para guardar o sacar algo del caparazón y el
+	// saque de banda. Solo los brazos (desde el hombro): el resto sigue con lo de arriba.
+	const FCompactPoseBoneIndex LChain = B.LShoulder.IsValid() ? B.LShoulder : B.LArm;
+	const FCompactPoseBoneIndex RChain = B.RShoulder.IsValid() ? B.RShoulder : B.RArm;
+	auto ArmLayer = [&](float Weight, bool bLeftArm, bool bRightArm, TFunctionRef<void(FCompactPose&)> Build)
+	{
+		if (Weight < 0.01f) { return; }
+		FPoseContext Target(Output);
+		Target.ResetToRefPose();
+		Build(Target.Pose);
+		if (bLeftArm) { BlendChainInto(Output.Pose, Target.Pose, LChain, Weight); }
+		if (bRightArm) { BlendChainInto(Output.Pose, Target.Pose, RChain, Weight); }
+	};
+	if (F.HoldStyle != 0 && F.HoldW >= 0.01f)
+	{
+		const bool bHug = F.HoldStyle == 2;
+		ArmLayer(F.HoldW, bHug, true, [&](FCompactPose& P)
+		{
+			if (bHug) { PoseHug(P, B, F.HoldOpen); }
+			else { PoseHoldOne(P, B, F.HoldStyle == 3); }
+		});
+		// Abrazando algo grande, el cuerpo se echa un poco atrás.
+		if (bHug) { Turn(Output.Pose, B.Spine, AxisX, 3.f * F.HoldW); }
+	}
+	if (F.StashW >= 0.01f)
+	{
+		ArmLayer(F.StashW, false, true, [&](FCompactPose& P) { PoseStashReach(P, B); });
+		// El pecho se gira un poco hacia ese lado y mira por encima del hombro.
+		Turn(Output.Pose, B.Spine1, AxisZ, 10.f * F.StashW);
+		Turn(Output.Pose, B.Head, AxisZ, 18.f * F.StashW);
+	}
+	if (F.ThrowW >= 0.01f)
+	{
+		const FThrowKey Key = ThrowKeyAt(F.ThrowU);
+		ArmLayer(F.ThrowW, F.bThrowBoth, true, [&](FCompactPose& P) { PoseThrowArms(P, B, Key, F.bThrowBoth, true); });
+		const float BodyShare = (F.bThrowBoth ? 1.f : 0.6f) * F.ThrowW;
+		Turn(Output.Pose, B.Spine, AxisX, Key.Spine * BodyShare);
+		Turn(Output.Pose, B.Head, AxisX, Key.Head * BodyShare);
+	}
+
+	// 4. Capas encima de lo que haya: inclinación al correr y en las curvas, cansancio y caparazón.
 	Turn(Output.Pose, B.Spine, AxisX, F.LeanPitch);
 	Turn(Output.Pose, B.Spine, AxisY, F.LeanRoll);
 	if (F.TiredW > 0.01f)
@@ -828,20 +995,6 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 		Turn(Output.Pose, B.Spine1, AxisX, -12.f * F.TiredW);
 		Turn(Output.Pose, B.Spine2, AxisX, -3.f * FMath::Sin(F.Clock * 5.f) * F.TiredW);
 		Turn(Output.Pose, B.Head, AxisX, -10.f * F.TiredW);
-	}
-	if (F.ThrowT >= 0.f && F.ThrowT <= 0.45f)
-	{
-		// Toma impulso con el brazo arriba y atrás y lo suelta hacia delante.
-		const float Ph = F.ThrowT / 0.45f;
-		const float Raise = Ph < 0.3f ? Ph / 0.3f : 1.f - (Ph - 0.3f) / 0.7f;
-		const float Swing = Ph < 0.3f ? 30.f * Ph / 0.3f : 30.f - 100.f * (Ph - 0.3f) / 0.7f;
-		Turn(Output.Pose, B.RArm, AxisY, 110.f * Raise);
-		Turn(Output.Pose, B.RArm, AxisZ, Swing);
-		if (F.bThrowBoth)
-		{
-			Turn(Output.Pose, B.LArm, AxisY, -110.f * Raise);
-			Turn(Output.Pose, B.LArm, AxisZ, -Swing);
-		}
 	}
 	if (F.ShellW > 0.01f)
 	{
@@ -976,17 +1129,50 @@ Ease(F.CarryW, bCarrying, 8.f);
 	Ease(F.DownW, Turtle && Turtle->IsKnockedDown(), 6.f);
 	Ease(F.TiredW, Stamina && Stamina->IsExhausted(), 4.f);
 
-	// Lanzamiento: al soltar a quien llevaba en alto, el golpe de brazos hacia delante.
+	// Lanzamiento como un saque de banda: con la E, mientras la lleva en alto, las dos aletas toman impulso detrás de la
+	// cabeza (lo marca UTN_CarryComponent) y, al soltarla (con la E o con el panzazo), acompañan hacia delante y abajo. Un
+	// objeto (PlayThrow), con la aleta derecha: desde detrás de la cabeza hacia delante.
+	const float Windup = (bCarrying && Carry) ? Carry->GetThrowWindupAlpha() : -1.f;
 	if (bWasCarrying && !bCarrying)
 	{
-		F.ThrowT = 0.f;
+		ThrowFollowElapsed = 0.f;
+		ThrowFollowFrom = 0.f;
+		ThrowFollowSeconds = 0.35f;
 		F.bThrowBoth = true;
 	}
-	bWasCarrying = bCarrying;
-	if (F.ThrowT >= 0.f)
+	if (bPendingThrow)
 	{
-		F.ThrowT += Dt;
-		if (F.ThrowT > 0.5f) { F.ThrowT = -1.f; }
+		bPendingThrow = false;
+		ThrowFollowElapsed = 0.f;
+		ThrowFollowFrom = bPendingThrowBoth ? 0.f : -0.4f;
+		ThrowFollowSeconds = bPendingThrowBoth ? 0.35f : 0.42f;
+		F.bThrowBoth = bPendingThrowBoth;
+	}
+	bWasCarrying = bCarrying;
+	if (Windup >= 0.f)
+	{
+		// Entra casi de golpe desde la pose de llevarla en alto (se parecen: las aletas ya están arriba).
+		F.ThrowU = -1.f + Windup;
+		F.ThrowW = FMath::FInterpTo(F.ThrowW, 1.f, Dt, 25.f);
+		F.bThrowBoth = true;
+		ThrowFollowElapsed = -1.f;
+	}
+	else if (ThrowFollowElapsed >= 0.f)
+	{
+		ThrowFollowElapsed += Dt;
+		const float ThrowX = FMath::Clamp(ThrowFollowElapsed / FMath::Max(0.05f, ThrowFollowSeconds), 0.f, 1.f);
+		F.ThrowU = FMath::Lerp(ThrowFollowFrom, 1.f, ThrowX);
+		F.ThrowW = ThrowX < 0.7f ? 1.f : 1.f - (ThrowX - 0.7f) / 0.3f;
+		if (ThrowX >= 1.f)
+		{
+			ThrowFollowElapsed = -1.f;
+			F.ThrowW = 0.f;
+		}
+	}
+	else
+	{
+		// Toma de impulso que no acabó en lanzamiento (se cortó): las aletas vuelven.
+		Ease(F.ThrowW, false, 10.f);
 	}
 
 	// Emote: entra suave y, al acabar, sale suave con el último.
@@ -1059,6 +1245,30 @@ Ease(F.CarryW, bCarrying, 8.f);
 		F.CliffDivePitch = FMath::FInterpTo(F.CliffDivePitch, FMath::Clamp(Along, CliffDiveMinPitch, CliffDiveMaxPitch), Dt, 4.f);
 	}
 
+	// Lo que lleva en las aletas (UTN_InventoryComponent): los brazos lo sujetan andando, corriendo o saltando; abrazado
+	// (grande), también nadando, en el panzazo o con un emote. Con las aletas en otra cosa, el objeto solo las sigue. Si
+	// cambia la forma de sujetarlo, la de antes sale antes de que entre la nueva.
+	{
+		const UTN_InventoryComponent* Inventory = Turtle ? Turtle->GetInventoryComponent() : nullptr;
+		const uint8 WantHold = Inventory ? static_cast<uint8>(Inventory->GetShownHold()) : 0;
+		const bool bHandsFree = Turtle && !Turtle->IsKnockedDown() && !Turtle->IsInShell() && !bCarrying
+			&& !(Carry && Carry->IsBeingCarried()) && GetUpDuration <= 0.f && !bCliffDive;
+		const bool bArmsFree = bHandsFree && !bDive && !bSwim && Emote < 0;
+		const bool bHugStyle = WantHold == static_cast<uint8>(ETNItemHold::Hug);
+		const bool bWantHold = WantHold != 0 && (bHugStyle ? bHandsFree : bArmsFree);
+		if (WantHold != F.HoldStyle)
+		{
+			Ease(F.HoldW, false, 14.f);
+			if (F.HoldW < 0.03f) { F.HoldStyle = WantHold; }
+		}
+		else
+		{
+			Ease(F.HoldW, bWantHold, 10.f);
+		}
+		F.HoldOpen = Inventory ? Inventory->GetHugOpen() : 0.5f;
+		F.StashW = Inventory ? Inventory->GetStashReach() : 0.f;
+	}
+
 	// Inclinación: hacia dentro de las curvas y un poco hacia delante al correr.
 	const float Yaw = Turtle ? static_cast<float>(Turtle->GetActorRotation().Yaw) : PrevYaw;
 	const float YawRate = FMath::FindDeltaAngleDegrees(PrevYaw, Yaw) / Dt;
@@ -1103,6 +1313,12 @@ Ease(F.CarryW, bCarrying, 8.f);
 void UTN_TurtleAnimInstance::SetCelebration(ETNTurtleCelebration InCelebration)
 {
 	WantedCelebration = InCelebration;
+}
+
+void UTN_TurtleAnimInstance::PlayThrow(bool bBothFlippers)
+{
+	bPendingThrow = true;
+	bPendingThrowBoth = bBothFlippers;
 }
 
 void UTN_TurtleAnimInstance::BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds)

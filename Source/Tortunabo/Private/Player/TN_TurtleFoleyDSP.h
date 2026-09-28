@@ -62,6 +62,7 @@ namespace TNTurtleFoley
 		constexpr uint8 Scuff = 2;  ///< Impulso del salto: roce de despegue, más textura que golpe.
 		constexpr uint8 Belly = 3;  ///< Panzazo contra el suelo: «plaf» de tripa (golpe grave ancho y chasquido blando).
 		constexpr uint8 Bump = 4;   ///< Choque del caparazón contra un obstáculo arrastrándose: «tonc» hueco.
+		constexpr uint8 Stash = 5;  ///< Guardar (Foot 0) o sacar (Foot 1, más agudo) algo del caparazón: «toc» hueco corto.
 	}
 
 	/** Una pisada que manda el hilo de juego. */
@@ -754,9 +755,11 @@ namespace TNTurtleFoley
 			// caparazón hueco contra el obstáculo, sin la textura del suelo.
 			const bool bBelly = InEvent.Kind == StepKind::Belly;
 			const bool bBump = InEvent.Kind == StepKind::Bump;
+			// Guardar o sacar algo del caparazón: el mismo hueco que el choque, más corto, agudo y flojo, sin suelo.
+			const bool bStash = InEvent.Kind == StepKind::Stash;
 			V.Slap = bBelly ? 1.f : 0.f;
-			V.Shell = bBump ? 1.f : 0.f;
-			if (bBump)
+			V.Shell = (bBump || bStash) ? 1.f : 0.f;
+			if (bBump || bStash)
 			{
 				for (int32 s = 0; s < Surface::Num; ++s) { V.W[s] = 0.f; }
 			}
@@ -774,8 +777,8 @@ namespace TNTurtleFoley
 			V.HitAt[0] = 0.f;
 			V.HitAmp[0] = 1.f;
 			V.HitAtk[0] = bScuff ? 0.012f : FMath::Lerp(0.004f, 0.0025f, V.Bright);
-			V.HitDec[0] = (bScuff ? 0.05f : FMath::Lerp(0.028f, 0.018f, Pace)) * LandDecay;
-			if (bScuff || bBump)
+			V.HitDec[0] = (bScuff ? 0.05f : FMath::Lerp(0.028f, 0.018f, Pace)) * LandDecay * (bStash ? 0.7f : 1.f);
+			if (bScuff || bBump || bStash)
 			{
 				V.HitAt[1] = 0.f;
 				V.HitAmp[1] = 0.f;
@@ -806,7 +809,7 @@ namespace TNTurtleFoley
 			// Golpe sordo de la pata: cada tortuga el suyo, la derecha un pelín más aguda y más grave si carga peso. La
 			// tripa entera, bastante más grave.
 			const float FootTilt = InEvent.Foot == 0 ? 0.97f : 1.03f;
-			const float PadScale = bBelly ? 0.62f : (bBump ? 0.75f : (bLand ? 0.85f : 1.f));
+			const float PadScale = bBelly ? 0.62f : (bBump ? 0.75f : (bStash ? 1.4f : (bLand ? 0.85f : 1.f)));
 			V.PadF0 = Traits.FootHz * FootTilt * R.Range(0.92f, 1.08f) / FMath::Sqrt(Heavy) * PadScale;
 			V.PadF1 = V.PadF0 * R.Range(0.58f, 0.68f);
 			V.PadPhase = 0.f;
@@ -850,7 +853,9 @@ namespace TNTurtleFoley
 
 			// Madera: tablón libre (modos 1 : 2,76 : 5,40) golpeado con algo blando. En un choque arrastrándose, los mismos
 			// modos afinados al caparazón (más agudo y corto que un tablón).
-			const float Plank = bBump ? R.Range(270.f, 340.f) : R.Range(170.f, 250.f) / FMath::Sqrt(Heavy);
+			// Guardar en el caparazón suena más grave (entra) y sacar, más agudo (sale).
+			const float Plank = bStash ? (InEvent.Foot == 0 ? R.Range(330.f, 380.f) : R.Range(440.f, 520.f))
+				: (bBump ? R.Range(270.f, 340.f) : R.Range(170.f, 250.f) / FMath::Sqrt(Heavy));
 			V.WoodLP.SetHz(FMath::Lerp(1200.f, 2200.f, V.Bright), InvRate);
 			V.WoodLP.Reset();
 			V.Modes[0].Set(Plank, R.Range(0.06f, 0.09f), InvRate);
@@ -882,7 +887,7 @@ namespace TNTurtleFoley
 			}
 
 			V.Dur = FMath::Max(V.HitAt[0], V.HitAt[1]) + (bBelly ? 0.42f : (bLand ? 0.32f : 0.24f)) + (V.W[Surface::Water] > 0.f ? 0.25f : 0.f)
-				+ ((V.W[Surface::Wood] > 0.f || bBump) ? 0.12f : 0.f);
+				+ ((V.W[Surface::Wood] > 0.f || bBump || bStash) ? 0.12f : 0.f);
 		}
 
 		void RenderStep(FStepVoice& V, int32 N)

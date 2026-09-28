@@ -78,6 +78,12 @@ public:
 	/** Jadeo enviado por última vez (0 = respira normal; 1 = agotada). */
 	float GetPantLevel() const { return PantSent; }
 
+	/**
+	 * «Toc» hueco y corto de guardar algo en el caparazón (bIntoShell) o de sacarlo (más agudo). Lo pide
+	 * UTN_InventoryComponent en cada máquina cuando la aleta llega a la espalda (cosmético, sin red).
+	 */
+	void PlayStash(bool bIntoShell);
+
 	/** Volumen general (pasos y jadeo). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TurtleFoley", meta = (ClampMin = "0.0", ClampMax = "4.0"))
 	float Loudness = 1.f;
