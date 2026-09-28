@@ -244,7 +244,14 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			// Capturamos la velocity del CMC ANTES de pararlo para transferirla a los
 			// bodies del ragdoll después — si no, el ragdoll arranca inerte y se cae
 			// donde estabas sin "resbalar" por el impulso del plátano.
-			const FVector KnockdownInitialVel = CMC_Ragdoll ? CMC_Ragdoll->Velocity : FVector::ZeroVector;
+			FVector KnockdownInitialVel = CMC_Ragdoll ? CMC_Ragdoll->Velocity : FVector::ZeroVector;
+			// El LaunchCharacter de ApplyKnockdown aún no se ha aplicado (el CMC lo gasta en su siguiente tick, que se
+			// apaga aquí mismo): se pasa al ragdoll y se descarta, para que no lance la cápsula al levantarse.
+			if (CMC_Ragdoll && !CMC_Ragdoll->PendingLaunchVelocity.IsZero())
+			{
+				KnockdownInitialVel = CMC_Ragdoll->PendingLaunchVelocity;
+				CMC_Ragdoll->PendingLaunchVelocity = FVector::ZeroVector;
+			}
 
 			if (CMC_Ragdoll)
 			{
