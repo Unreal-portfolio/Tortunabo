@@ -6,6 +6,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Core/ITN_EnemyTargetInterface.h"
 #include "World/TN_PickupInteractableBase.h"
+#include "World/Beach/TN_BeachEnemy.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
@@ -98,6 +99,21 @@ void ATN_ThrowableItemActor::BeginPlay()
 void ATN_ThrowableItemActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	// Enemigos de la playa sin colisión que pare la bola: el tramo de este fotograma contra su cuerpo.
+	if (ProjectileMovement && ProjectileMovement->IsActive() && bLaunchApplied)
+	{
+		const FVector Here = GetActorLocation();
+		if (bHasPrevFlightLocation)
+		{
+			CheckBeachEnemyHit(PrevFlightLocation, Here);
+		}
+		PrevFlightLocation = Here;
+		bHasPrevFlightLocation = true;
+	}
+	else
+	{
+		bHasPrevFlightLocation = false;
+	}
 	if (!ProjectileMovement || !ProjectileMovement->IsActive() || ThrowAngularVelocityDegSec.IsNearlyZero())
 	{
 		return;
@@ -256,6 +272,21 @@ void ATN_ThrowableItemActor::OnMeshHit(UPrimitiveComponent* HitComponent, AActor
 		return;
 	}
 
+	// Enemigo de la playa con cuerpo sólido (cangrejo gigante) → mareo con pajaritos, como los demás de la playa.
+	if (ATN_BeachEnemy* BeachEnemy = Cast<ATN_BeachEnemy>(OtherActor))
+	{
+		if (!AlreadyHitEnemies.Contains(BeachEnemy))
+		{
+			const float CurrentSpeed = ProjectileMovement ? ProjectileMovement->Velocity.Size() : 0.f;
+			if (CurrentSpeed >= MinKnockdownSpeed)
+			{
+				AlreadyHitEnemies.Add(BeachEnemy);
+				BeachEnemy->ApplyHitStun(TNBeachHitStun::ThrownSeconds, this);
+			}
+		}
+		return;
+	}
+
 	// Enemigo → stun si la bola va rápida. Una sola vez por enemy (track via AlreadyHitActors).
 	if (ITN_EnemyTargetInterface* Enemy = Cast<ITN_EnemyTargetInterface>(OtherActor))
 	{
@@ -307,6 +338,38 @@ void ATN_ThrowableItemActor::OnMeshHit(UPrimitiveComponent* HitComponent, AActor
 				*GetNameSafe(HitPlayer), CurrentSpeed, MinKnockdownSpeed);
 		}
 	}
+}
+
+void ATN_ThrowableItemActor::CheckBeachEnemyHit(const FVector& From, const FVector& To)
+{
+	if (!ProjectileMovement || FVector::DistSquared(From, To) < 1.0)
+	{
+		return;
+	}
+	const float Radius = FMath::Clamp(Mesh ? static_cast<float>(Mesh->Bounds.SphereRadius) : 20.f, 10.f, 80.f);
+	FVector AxisPoint = To;
+	ATN_BeachEnemy* BeachEnemy = ATN_BeachEnemy::FindProjectileHit(this, From, To, Radius, &AxisPoint);
+	if (!BeachEnemy || AlreadyHitEnemies.Contains(BeachEnemy))
+	{
+		return;
+	}
+	AlreadyHitEnemies.Add(BeachEnemy);
+	const FVector Velocity = ProjectileMovement->Velocity;
+	if (HasAuthority() && !bPickupSpawned && Velocity.Size() >= MinKnockdownSpeed)
+	{
+		BeachEnemy->ApplyHitStun(TNBeachHitStun::ThrownSeconds, this);
+		UE_LOG(LogTortunabo, Log, TEXT("[ThrowableItem] Hit beach enemy %s at %.0f cm/s → mareo %.1fs"),
+			*GetNameSafe(BeachEnemy), Velocity.Size(), TNBeachHitStun::ThrownSeconds);
+	}
+	// Rebota en su cuerpo (no hay colisión que la pare): hacia fuera del eje del cuerpo, perdiendo fuerza.
+	FVector Normal = To - AxisPoint;
+	if (!Normal.Normalize())
+	{
+		Normal = -Velocity.GetSafeNormal();
+	}
+	const double Into = FVector::DotProduct(Velocity, Normal);
+	const FVector Bounced = Into < 0.0 ? Velocity - Normal * (2.0 * Into) : Velocity;
+	ProjectileMovement->Velocity = Bounced * 0.45 + FVector(0.0, 0.0, 150.0);
 }
 
 void ATN_ThrowableItemActor::OnProjectileStopped(const FHitResult& ImpactResult)

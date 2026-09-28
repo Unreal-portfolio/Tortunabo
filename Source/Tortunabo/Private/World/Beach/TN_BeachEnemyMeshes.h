@@ -397,6 +397,32 @@ namespace TNBeachMeshes
 		}
 	}
 
+	/**
+	 * Lagarto generoso: motas doradas a lo largo del lomo (entre donde irían las manchas azules del ocelado) y un collar
+	 * dorado detrás de la cabeza. Se añaden a la malla del cuerpo (medidas de la fauna).
+	 */
+	inline void AddLizardGoldSpots(FTNProcMeshBuffers& M, const TNFauna::FTNFaunaQuadLook& L)
+	{
+		const FLinearColor Gold = Rgb(1.f, 0.8f, 0.15f);
+		for (int32 k = 0; k < 6; ++k)
+		{
+			const double SpotX = L.Len * (0.5 - 0.2 * k);
+			const double SpotY = (k % 2 == 0 ? -0.18 : 0.18) * L.Width;
+			const double Rel = FMath::Square(SpotX / L.Len) + FMath::Square(SpotY / L.Width);
+			const double SpotZ = L.Girth * FMath::Sqrt(FMath::Max(0.05, 1.0 - Rel)) * 0.95;
+			M.AddBox(FVector(SpotX, SpotY, SpotZ), FVector::ForwardVector, FVector(L.Len * 0.06, L.Width * 0.1, L.Girth * 0.12), Gold);
+		}
+		M.AddBox(FVector(L.Len * 0.72, 0.0, L.Girth * 0.35), FVector::ForwardVector, FVector(L.Len * 0.06, L.Width * 0.72, L.Girth * 0.55), Gold * 0.95f);
+	}
+
+	/** Lagarto mordedor: la cresta de púas de la iguana, roja con las puntas oscuras, y la punta de la cola roja. */
+	inline void MakeLizardBiter(TNFauna::FTNFaunaQuadLook& L)
+	{
+		L.bCrest = true;
+		L.CrestC = Rgb(0.88f, 0.12f, 0.1f);
+		L.TailTip = Rgb(0.7f, 0.08f, 0.06f);
+	}
+
 	/** Pivote de la lengua en el espacio de la cabeza (punta del hocico, medidas de la fauna). */
 	inline FVector LizardTonguePivot(const TNFauna::FTNFaunaQuadLook& L)
 	{

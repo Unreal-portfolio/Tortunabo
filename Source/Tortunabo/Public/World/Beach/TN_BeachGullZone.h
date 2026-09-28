@@ -21,7 +21,10 @@ struct FTNBeachGullAttack
 	UPROPERTY()
 	FVector_NetQuantize Aim = FVector_NetQuantize(0.0, 0.0, 0.0);
 
-	/** Centro de la tortuga al cogerla: de ahí sale su camino colgada del pico (el mismo en todas las máquinas). */
+	/**
+	 * Picado con agarre: centro de la tortuga al cogerla (de ahí sale su camino colgada del pico, el mismo en todas las
+	 * máquinas). Picado fallido: dónde pica (la arena o lo que la cubría). Mareo: la arena donde se queda sentada.
+	 */
 	UPROPERTY()
 	FVector_NetQuantize Hold = FVector_NetQuantize(0.0, 0.0, 0.0);
 
@@ -29,7 +32,7 @@ struct FTNBeachGullAttack
 	UPROPERTY()
 	float StartTime = 0.f;
 
-	/** 0 nada, 1 cagada, 2 picado. */
+	/** 0 nada, 1 cagada, 2 picado, 3 mareada (le han dado con algo: cae a la arena y se queda sentada con pajaritos). */
 	UPROPERTY()
 	uint8 Kind = 0;
 
@@ -59,10 +62,15 @@ struct FTNBeachGullAttack
  *  - Cagada: vuela sobre ella y la suelta desde 30 m; cae un pegote blanco bien visible con su estela y su sombra que se
  *    encoge. Quien esté dentro al caer (y no a cubierto) cae derribada con ragdoll y mareo (TNBeach::KnockDownTurtle),
  *    con la mancha en el caparazón; en la arena queda la mancha un rato. «¡PLOF!».
- *  - Picado: sube, se lanza en picado (su sombra crece y se acerca), abre el pico en el último momento y, si la tortuga
- *    sigue debajo (se esquiva apartándose o con el panzazo), la coge por el caparazón: la tortuga queda colgando del pico
- *    pataleando (pose de pataleta, sin caparazón en bola), y el pájaro tira de ella, sube aleteando fuerte, vuela un poco
- *    hacia la salida y la suelta abriendo el pico: cae en bola aturdida (TNBeach::StunTurtle).
+ *  - Picado: sube casi encima de ella, se lanza en picado (su sombra se va a la tortuga y se cierra sobre ella, cada vez
+ *    más pequeña, nítida y oscura), abre el pico en el último momento y, si la tortuga sigue debajo (se esquiva
+ *    apartándose, con el panzazo o en bola), la coge por el caparazón: la tortuga queda colgando del pico pataleando
+ *    (pose de pataleta), y el pájaro tira de ella, sube aleteando fuerte, vuela un poco hacia la salida y la suelta
+ *    abriendo el pico: cae en bola aturdida (TNBeach::StunTurtle). Si falla, baja igual hasta clavar el pico en la arena
+ *    (o en la sombrilla que la cubría), pica dos veces (arena que salta y sonido) y vuelve a subir.
+ *  - Sombras: la de verdad, bajo el cuerpo de cada pájaro; cuanto más baja, más pequeña, nítida y oscura.
+ *  - Lo que se le lanza al que baja en picado (o al que lleva una tortuga) lo marea (ApplyHitStun): suelta a la tortuga,
+ *    cae a la arena y se queda sentado con pajaritos; mientras, la zona no ataca. Luego vuelve a su círculo.
  *
  * Red: el servidor decide a quién, cuándo y si acierta; replica un único ataque (FTNBeachGullAttack) y los efectos
  * puntuales van por multicast. Mientras la lleva, cada máquina coloca a la tortuga en el pico con el mismo camino (del
@@ -81,6 +89,12 @@ public:
 
 	/** Servidor (pruebas): ataca ya a la tortuga más cercana (1 cagada, 2 picado, 0 al azar). */
 	void DebugAttackNow(int32 InKind);
+
+	// ── Mareo por lo que se le lanza (solo el pájaro que baja en picado, el que lleva a una tortuga o el ya mareado) ──
+	virtual void ApplyHitStun(float Seconds, AActor* InstigatorActor) override;
+	virtual bool GetHitCapsule(FVector& OutA, FVector& OutB, float& OutRadius) const override;
+	virtual FVector GetHitStunAnchor() const override;
+	virtual float GetHitStunScale() const override;
 
 protected:
 	virtual void ApplySpec() override;
@@ -134,6 +148,8 @@ private:
 		/** Pico: abierto (grados) y tiempo que le queda abierto por un graznido. */
 		float Jaw = 0.f;
 		float JawOpenLeft = 0.f;
+		/** Malla de su sombra según lo nítida que va (0 blanda, 1 media, 2 nítida; -1 = aún la de serie). */
+		int32 ShadowEdge = -1;
 	};
 
 	TArray<FBird> Birds;
@@ -194,10 +210,13 @@ private:
 	bool bSwoopPlayed = false;
 	bool bWhistlePlayed = false;
 	bool bReleasePlayed = false;
+	bool bPeckPlayed = false;
+	int32 DropShadowEdge = -1;
 	TNAmbientFX::FEmitter Droplets;
 	TNAmbientFX::FEmitter Feathers;
 	TNAmbientFX::FEmitter Trail;
 	TNAmbientFX::FEmitter SandPuff;
+	TNAmbientFX::FEmitter PeckSand;
 
 	void BuildBirds();
 	/** Todas las máquinas: posición de la raíz del pájaro en su vuelta (sin ataque) en el instante Now. */
@@ -220,6 +239,14 @@ private:
 	float CarryHeadPitch(float U) const;
 	/** Raíz del pájaro al final del picado: con el pico en el punto del caparazón de la tortuga. */
 	FVector StrikeRoot(const FBird& Bird, double Now) const;
+	/** Rumbo del picado (de donde empezó el ataque hacia el blanco). */
+	float DiveYaw(const FBird& Bird, const FVector& Target) const;
+	/** Raíz del pájaro con el pico clavado en Attack.Hold (el picado fallido). */
+	FVector PeckRoot(const FBird& Bird) const;
+	/** Todas las máquinas: dónde está y cómo va girado el pájaro Index en Now, sin suavizar (para darle con lo lanzado). */
+	void BirdPose(int32 Index, double Now, FVector& OutRoot, FRotator& OutRot) const;
+	/** Servidor: suelta a la tortuga que lleva en el pico (cae en bola aturdida). */
+	void ReleaseCarried();
 	/** Raíz de un pájaro con el pico (girado Rot, cabeza HeadPitch) en Grip. */
 	FVector RootForGrip(const FBird& Bird, const FVector& Grip, const FRotator& Rot, float HeadPitch) const;
 	/** Hacia dónde mira la tortuga colgada (la misma dirección que el pájaro: hacia la salida). */

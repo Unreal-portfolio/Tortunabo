@@ -11,6 +11,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/Package.h"
 #include "World/ProcMap/TN_ProcMapAmbientFX.h"
@@ -191,6 +192,101 @@ namespace TNBeachKit
 			const double S = Radius / 100.0;
 			Comp->SetWorldTransform(FTransform(FQuat::Identity, Ground + FVector(0.0, 0.0, 12.0), FVector(S, S, 1.0)));
 		}
+	}
+
+	/**
+	 * Sombra redonda de radio 100 cm con alfa 1 en el centro y el borde difuminado desde InnerFrac del radio (0,55 =
+	 * blanda, como ShadowDisc; 0,85 = nítida). La opacidad va en el parámetro «Opacity» del material (SetOpacity), así una
+	 * misma malla sirve para una sombra que se oscurece al acercarse.
+	 */
+	inline UStaticMesh* ShadowDiscEdge(float InnerFrac)
+	{
+		const FString Key = FString::Printf(TEXT("Beach.ShadowEdge.%d"), FMath::RoundToInt32(InnerFrac * 100.f));
+		return CachedMesh(Key, [InnerFrac](FTNProcMeshBuffers& M)
+		{
+			constexpr int32 Seg = 28;
+			const double Inner = 100.0 * FMath::Clamp(static_cast<double>(InnerFrac), 0.1, 0.95);
+			const FLinearColor Dark(0.02f, 0.02f, 0.03f, 1.f);
+			auto AlphaOf = [Inner](const FVector& P)
+			{
+				const double R = P.Size2D();
+				return R <= Inner + 0.5 ? 1.f : static_cast<float>(FMath::Clamp((100.0 - R) / FMath::Max(1.0, 100.0 - Inner), 0.0, 1.0));
+			};
+			for (int32 k = 0; k < Seg; ++k)
+			{
+				const double A0 = TNProcMap::TwoPi * k / Seg;
+				const double A1 = TNProcMap::TwoPi * (k + 1) / Seg;
+				const FVector I0(FMath::Cos(A0) * Inner, FMath::Sin(A0) * Inner, 0.0);
+				const FVector I1(FMath::Cos(A1) * Inner, FMath::Sin(A1) * Inner, 0.0);
+				const FVector O0(FMath::Cos(A0) * 100.0, FMath::Sin(A0) * 100.0, 0.0);
+				const FVector O1(FMath::Cos(A1) * 100.0, FMath::Sin(A1) * 100.0, 0.0);
+				AddTriAlpha(M, FVector::ZeroVector, I0, I1, FVector::UpVector, Dark, AlphaOf);
+				AddTriAlpha(M, I0, O0, O1, FVector::UpVector, Dark, AlphaOf);
+				AddTriAlpha(M, I0, O1, I1, FVector::UpVector, Dark, AlphaOf);
+			}
+		}, EBeachMeshMat::SoftVertexAlpha);
+	}
+
+	/**
+	 * Material dinámico del material suave (M_ProcFXSoft: color = color del vértice sin luz, opacidad = alfa del vértice
+	 * × «Opacity») puesto en Comp; si ya lo tiene, el mismo.
+	 */
+	inline UMaterialInstanceDynamic* SoftMID(UStaticMeshComponent* Comp)
+	{
+		if (!Comp)
+		{
+			return nullptr;
+		}
+		if (UMaterialInstanceDynamic* Existing = Cast<UMaterialInstanceDynamic>(Comp->GetMaterial(0)))
+		{
+			return Existing;
+		}
+		return Comp->CreateDynamicMaterialInstance(0, SoftMaterial());
+	}
+
+	/** Parámetro «Opacity» de M_ProcFXSoft, M_ProcFXCloud y M_ProcStormVeil (multiplica el alfa del vértice). */
+	inline void SetOpacity(UMaterialInstanceDynamic* Mid, float Opacity)
+	{
+		if (Mid)
+		{
+			static const FName OpacityName(TEXT("Opacity"));
+			Mid->SetScalarParameterValue(OpacityName, FMath::Max(0.f, Opacity));
+		}
+	}
+
+	/**
+	 * Surco de arrastre en la arena (el cangrejo que frena clavando las patas): franja de 100 cm de largo (X) por 44 de
+	 * ancho (Y), hundida y oscura en medio con dos lomos claros de arena apartada a los lados; se difumina en las puntas.
+	 * Se escala al usarla; la opacidad, con SoftMID + SetOpacity.
+	 */
+	inline UStaticMesh* FurrowStrip()
+	{
+		return CachedMesh(TEXT("Beach.Furrow"), [](FTNProcMeshBuffers& M)
+		{
+			const FLinearColor Groove(0.5f, 0.4f, 0.27f, 1.f);
+			const FLinearColor Ridge(0.95f, 0.86f, 0.66f, 1.f);
+			auto EndFade = [](double X) { return FMath::Clamp((50.0 - FMath::Abs(X)) / 18.0, 0.0, 1.0); };
+			const double Bands[4] = { -22.0, -9.0, 9.0, 22.0 };
+			constexpr int32 NX = 5;
+			for (int32 b = 0; b < 3; ++b)
+			{
+				const bool bGroove = b == 1;
+				const FLinearColor& Color = bGroove ? Groove : Ridge;
+				const double Peak = bGroove ? 0.7 : 0.45;
+				auto AlphaOf = [&EndFade, Peak](const FVector& P) { return static_cast<float>(Peak * EndFade(P.X)); };
+				for (int32 i = 0; i < NX; ++i)
+				{
+					const double X0 = -50.0 + 100.0 * i / NX;
+					const double X1 = -50.0 + 100.0 * (i + 1) / NX;
+					const FVector A(X0, Bands[b], bGroove ? 0.0 : 2.0);
+					const FVector B(X1, Bands[b], bGroove ? 0.0 : 2.0);
+					const FVector C(X1, Bands[b + 1], bGroove ? 0.0 : 2.0);
+					const FVector D(X0, Bands[b + 1], bGroove ? 0.0 : 2.0);
+					AddTriAlpha(M, A, B, C, FVector::UpVector, Color, AlphaOf);
+					AddTriAlpha(M, A, C, D, FVector::UpVector, Color, AlphaOf);
+				}
+			}
+		}, EBeachMeshMat::SoftVertexAlpha);
 	}
 
 	/** Emisor de partículas propio del actor (no pasa por el registro global de TNAmbientFX). Nada en servidor dedicado. */

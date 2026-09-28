@@ -3,6 +3,7 @@
 #include "World/Beach/TN_BeachEnemy.h"
 #include "World/Beach/TN_BeachEnemySynth.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
+#include "World/Beach/TN_BeachSandWorm.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "World/ProcMap/TN_PathStormFX.h"
 #include "World/ProcMap/TN_StormCough.h"
@@ -16,18 +17,21 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/App.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/TN_CarryComponent.h"
 #include "Player/TortugaCharacter.h"
 
 namespace TNBeachStormTuning
 {
-	/** Trastos volando a la vez (alrededor de la cámara) y bañistas a lo ancho. */
+	/** Trastos volando a la vez (alrededor de la cámara), bañistas a lo ancho y piernas de patada a la vez. */
 	constexpr int32 NumDebris = 24;
 	constexpr int32 NumBathers = 8;
+	constexpr int32 NumKickLegs = 2;
 	/** El frente se ve y se simula si la cámara está a menos de esto (cm, a lo largo de la carrera). */
 	constexpr float VisibleRange = 45000.f;
-	/** Cada cuánto mira el servidor quién está dentro y a qué velocidad debe ir (s). */
+	/** Cada cuánto mira el servidor quién está detrás del frente y a qué velocidad debe ir (s). */
 	constexpr float CheckInterval = 0.2f;
 	constexpr float SpeedInterval = 1.f;
 	/** Segundos dentro para la peor tos (la tormenta de la playa no mata). */
@@ -37,8 +41,17 @@ namespace TNBeachStormTuning
 	constexpr double HipHalfWidth = 10.0;
 	/** Alto del velo (cm): una pared de arena sobre la playa, no una nube en el cielo. */
 	constexpr double VeilHeight = 5500.0;
-	/** Vuelta del ragdoll en el revolcón (grados/s, hacia delante). */
-	constexpr float TumbleSpin = 300.f;
+	/** Fundidos (s): de un trasto al nacer y al morir, de un bañista y de la pierna de la patada. */
+	constexpr float DebrisFadeIn = 0.45f;
+	constexpr float DebrisFadeOut = 0.6f;
+	constexpr float BatherFade = 0.7f;
+	/** Patada: la pierna barre en KickSwing s, se queda KickHold y se funde en KickFadeOut (sube un poco). */
+	constexpr float KickSwing = 0.25f;
+	constexpr float KickHold = 0.2f;
+	constexpr float KickFadeOut = 0.45f;
+	/** Gravedad con la que se calcula el vuelo de la bola de la patada (cm/s²) y lo que frena la caja en el aire. */
+	constexpr float KickGravity = 980.f;
+	constexpr float KickDampingComp = 0.13f;
 
 	inline FLinearColor SandVeil()
 	{
@@ -55,6 +68,12 @@ namespace TNBeachStormTuning
 	{
 		using TNBeachMeshes::EStormItem;
 		return Item == EStormItem::Umbrella || Item == EStormItem::Chair || Item == EStormItem::Towel || Item == EStormItem::Float;
+	}
+
+	inline float Smooth01(float X)
+	{
+		const float C = FMath::Clamp(X, 0.f, 1.f);
+		return C * C * (3.f - 2.f * C);
 	}
 }
 
@@ -94,6 +113,7 @@ void ATN_BeachStorm::BeginPlay()
 	Super::BeginPlay();
 	Rng.GenerateNewSeed();
 	FrontGroundZ = static_cast<float>(GetActorLocation().Z);
+	BaseSpeed = DefaultSpeed;
 }
 
 void ATN_BeachStorm::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -174,8 +194,8 @@ void ATN_BeachStorm::StartStormAt(float InStartOffset, float Speed, float GraceS
 	bActive = true;
 	bShown = true;
 	bCatchingUp = false;
-	LastHit.Reset();
-	InsideFor.Reset();
+	BehindFor.Reset();
+	KickedUntil.Reset();
 	CheckTimer = 0.f;
 	SpeedTimer = 0.f;
 	ForceNetUpdate();
@@ -191,10 +211,38 @@ void ATN_BeachStorm::StopStorm()
 	}
 	FrozenFront = GetFrontDistance();
 	bActive = false;
-	LastHit.Reset();
-	InsideFor.Reset();
+	BehindFor.Reset();
+	KickedUntil.Reset();
 	ForceNetUpdate();
 	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Tormenta de bañistas parada en %.0f cm."), FrozenFront);
+}
+
+void ATN_BeachStorm::DebugSetFront(float InFront)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	// Un tramo nuevo desde InFront a la velocidad que llevaba (parada, a la normal), sin gracia.
+	const float Speed = bActive ? FMath::Max(GetFrontSpeed(), BaseSpeed) : FMath::Max(BaseSpeed, 1.f);
+	const float Now = static_cast<float>(ATN_BeachEnemy::ServerNow(this));
+	if (!bActive)
+	{
+		MarchStartTime = Now;
+	}
+	StartOffset = InFront;
+	StartServerTime = Now;
+	Grace = 0.f;
+	FrontSpeed = Speed;
+	TargetSpeed = Speed;
+	FrontAccel = FMath::Max(1.f, SpeedChangeAccel);
+	FrozenFront = InFront;
+	bActive = true;
+	bShown = true;
+	BehindFor.Reset();
+	KickedUntil.Reset();
+	ForceNetUpdate();
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Tormenta: frente puesto a %.0f cm del actor, a %.0f cm/s."), InFront, Speed);
 }
 
 void ATN_BeachStorm::SegmentAt(double T, float& OutDistance, float& OutSpeed) const
@@ -373,10 +421,6 @@ void ATN_BeachStorm::Tick(float DeltaSeconds)
 			ServerUpdateSpeed();
 		}
 	}
-	if (!RagdollPushes.IsEmpty())
-	{
-		RagdollPushes.Tick(DeltaSeconds);
-	}
 	if (GetNetMode() != NM_DedicatedServer)
 	{
 		TickFX(DeltaSeconds);
@@ -385,7 +429,7 @@ void ATN_BeachStorm::Tick(float DeltaSeconds)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Servidor: revolcones
+// Servidor: la patada a quien se queda detrás del frente
 // ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_BeachStorm::ServerCheck()
@@ -394,46 +438,60 @@ void ATN_BeachStorm::ServerCheck()
 	ATN_BeachEnemy::GatherTurtles(this, Turtles);
 	const double WorldNow = GetWorld()->GetTimeSeconds();
 	const FTransform Xf = GetActorTransform();
+	const float Front = GetFrontDistance();
+	const float Speed = GetFrontSpeed();
+	const bool bLive = ATN_BeachEnemy::IsRaceLive(this);
 	for (ATortugaCharacter* Turtle : Turtles)
 	{
-		float& Inside = InsideFor.FindOrAdd(Turtle);
-		if (!IsLocationInside(Turtle->GetActorLocation()))
+		float& Behind = BehindFor.FindOrAdd(Turtle);
+		const FVector Local = Xf.InverseTransformPositionNoScale(Turtle->GetActorLocation());
+		if (Local.X >= Front - KickSlack || FMath::Abs(Local.Y) >= HalfWidth)
 		{
-			Inside = 0.f;
+			Behind = 0.f;
 			continue;
 		}
-		Inside += TNBeachStormTuning::CheckInterval;
-		// Un momento dentro antes del primero y nunca a quien ya está en el suelo, en bola o en el pico de una gaviota.
-		if (Inside < FirstHitDelay || !ATN_BeachEnemy::CanBeHit(Turtle))
+		Behind += TNBeachStormTuning::CheckInterval;
+		// Ni con la ronda parada, ni a la que va en el pico de una gaviota o en la boca de un lagarto (la patada llega al
+		// soltarla), ni a la que se come un gusano, ni a la que lleva otra en brazos (patean a la que la lleva).
+		if (!bLive || Behind < KickDelay || ATN_BeachEnemy::IsTurtleHeld(Turtle) || ATN_BeachSandWorm::IsBeingEaten(Turtle))
 		{
 			continue;
 		}
-		if (const double* Last = LastHit.Find(Turtle))
+		const UTN_CarryComponent* Carry = Turtle->GetCarryComponent();
+		if (Carry && Carry->IsBeingCarried())
 		{
-			if (WorldNow - *Last < HitInterval)
+			continue;
+		}
+		if (const double* Until = KickedUntil.Find(Turtle))
+		{
+			if (WorldNow < *Until)
 			{
 				continue;
 			}
 		}
-		LastHit.Add(Turtle, WorldNow);
-		// Revolcón: derribo con ragdoll empujado hacia delante (hacia el mar: ayuda a salir), algo hacia arriba y de lado.
-		const FVector LocalPush(PushForward * Rng.FRandRange(0.85f, 1.15f), PushSide * Rng.FRandRange(-1.f, 1.f), 0.0);
-		const FVector Push = Xf.TransformVectorNoScale(LocalPush) + FVector(0.0, 0.0, PushUp * Rng.FRandRange(0.8f, 1.2f));
-		const FVector Spin = FVector::CrossProduct(FVector::UpVector, Xf.GetUnitAxis(EAxis::X)) * TNBeachStormTuning::TumbleSpin;
-		if (ATN_BeachEnemy::ServerKnockDown(Turtle, KnockSeconds, Push, Spin))
-		{
-			MulticastTumble(Turtle, Push, Spin);
-			UE_LOG(LogTortunabo, Log, TEXT("[Playa] La tormenta revuelca a %s."), *GetNameSafe(Turtle));
-		}
+		// Vuelo más largo cuanto más lejos tiene que llegar: KickAhead por delante del frente, que mientras sigue andando.
+		const float Flight = FMath::Clamp(1.f + (Front + KickAhead - static_cast<float>(Local.X)) / 2800.f, KickMinFlight, KickMaxFlight);
+		const float Land = Front + KickAhead + Speed * (Flight + 0.5f);
+		// La caja del caparazón frena un poco en el aire (amortiguación): se lanza algo más fuerte para que llegue.
+		const float Forward = (Land - static_cast<float>(Local.X)) / Flight * (1.f + TNBeachStormTuning::KickDampingComp * Flight);
+		const float Up = 0.5f * TNBeachStormTuning::KickGravity * Flight * (1.f + 0.1f * Flight);
+		const FVector Launch = Xf.TransformVectorNoScale(FVector(Forward, Rng.FRandRange(-120.f, 120.f), 0.0)) + FVector(0.0, 0.0, Up);
+		// Patada: dentro del caparazón y lanzada en bola, mareada lo que dura el vuelo y un poco más.
+		TNBeach::StunTurtle(Turtle, Flight + KickStunExtra, Launch);
+		KickedUntil.Add(Turtle, WorldNow + Flight + 0.6f);
+		Behind = 0.f;
+		MulticastKick(Turtle, Launch);
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] La tormenta patea a %s: %.0f m detrás del frente, vuela %.1f s hasta %.0f m por delante."),
+			*GetNameSafe(Turtle), (Front - Local.X) / 100.f, Flight, (Land - Front) / 100.f);
 	}
-	for (auto It = LastHit.CreateIterator(); It; ++It)
+	for (auto It = BehindFor.CreateIterator(); It; ++It)
 	{
 		if (!It.Key().IsValid())
 		{
 			It.RemoveCurrent();
 		}
 	}
-	for (auto It = InsideFor.CreateIterator(); It; ++It)
+	for (auto It = KickedUntil.CreateIterator(); It; ++It)
 	{
 		if (!It.Key().IsValid())
 		{
@@ -442,31 +500,39 @@ void ATN_BeachStorm::ServerCheck()
 	}
 }
 
-void ATN_BeachStorm::MulticastTumble_Implementation(ATortugaCharacter* Victim, FVector_NetQuantize10 Push, FVector_NetQuantize10 Spin)
+void ATN_BeachStorm::MulticastKick_Implementation(ATortugaCharacter* Victim, FVector_NetQuantize10 Launch)
 {
-	if (!Victim)
-	{
-		return;
-	}
-	// El servidor ya lo ha dado (ServerKnockDown); aquí, en cuanto el ragdoll simule.
-	if (!HasAuthority())
-	{
-		RagdollPushes.Add(Victim, Push, Spin);
-	}
-	if (GetNetMode() == NM_DedicatedServer)
+	if (!Victim || GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
 	const FVector At = Victim->GetActorLocation();
+	if (!bFXReady)
+	{
+		SetupFX();
+	}
+	// La pierna de un bañista que barre por detrás de la tortuga (se ve un momento y se funde).
+	if (KickLegs.Num() > 0)
+	{
+		FKickLeg& Leg = KickLegs[NextKick];
+		NextKick = (NextKick + 1) % KickLegs.Num();
+		const FTransform Xf = GetActorTransform();
+		const double Ground = GroundAt(At);
+		Leg.Hip = FVector(At.X, At.Y, Ground + TNBeachStormTuning::HipHeight * TNBeach::Scale);
+		Leg.Yaw = static_cast<float>(Xf.Rotator().Yaw);
+		Leg.Age = 0.f;
+	}
 	if (Voice)
 	{
 		Voice->SetWorldLocation(At);
-		Voice->Play(ETNBeachSfx::Swoop, 0.7f, 1.2f);
+		Voice->Play(ETNBeachSfx::Stomp, 1.1f, 1.2f);
+		Voice->Play(ETNBeachSfx::Slam, 1.4f, 1.f);
 	}
-	UTN_BeachCameraShake::Kick(this, At, 0.6f, 300.f, 2000.f);
+	TNBeachKit::BurstAt(FrontDust, At + FVector(0.0, 0.0, 100.0), FVector::UpVector, 6);
+	UTN_BeachCameraShake::Kick(this, At, 0.7f, 300.f, 2500.f);
 	if (ATN_BeachEnemy::LocalViewDistance(this, At) < 6000.f)
 	{
-		HitPop.Show(this, NSLOCTEXT("TNBeach", "StormTumble", "¡REVOLCÓN!"), FColor(235, 190, 120), At + FVector(0.0, 0.0, 280.0), 150.f);
+		HitPop.Show(this, NSLOCTEXT("TNBeach", "StormKick", "¡PATADA!"), FColor(255, 150, 70), At + FVector(0.0, 0.0, 280.0), 160.f);
 	}
 }
 
@@ -482,13 +548,51 @@ float ATN_BeachStorm::Rand01()
 	return static_cast<float>(FxRng & 0xFFFFFF) / 16777215.f;
 }
 
+void ATN_BeachStorm::ApplyFade(UStaticMeshComponent* Comp, UStaticMesh* Solid, UStaticMesh* Soft, TObjectPtr<UMaterialInstanceDynamic>& Mid, float Fade)
+{
+	if (!Comp)
+	{
+		return;
+	}
+	const bool bShow = Fade > 0.01f;
+	if (Comp->IsVisible() != bShow)
+	{
+		Comp->SetVisibility(bShow);
+	}
+	if (!bShow)
+	{
+		return;
+	}
+	if (Fade >= 0.999f || !Soft)
+	{
+		// Entera: la de siempre, opaca y con su luz.
+		if (Comp->GetStaticMesh() != Solid)
+		{
+			Comp->SetStaticMesh(Solid);
+			Comp->SetMaterial(0, nullptr);
+		}
+		return;
+	}
+	if (Comp->GetStaticMesh() != Soft)
+	{
+		Comp->SetStaticMesh(Soft);
+		if (!Mid)
+		{
+			Mid = UMaterialInstanceDynamic::Create(TNBeachKit::SoftMaterial(), this);
+		}
+		Comp->SetMaterial(0, Mid);
+	}
+	TNBeachKit::SetOpacity(Mid, Fade);
+}
+
 void ATN_BeachStorm::SetupFX()
 {
 	bFXReady = true;
 	using TNProcMesh::FTNProcMeshBuffers;
 	using TNBeachMeshes::EStormItem;
 
-	// Velo del frente: las láminas de la tormenta del camino, color arena, tan anchas como la playa y apoyadas en ella.
+	// Velo del frente: las láminas de la tormenta del camino, color arena, tan anchas como la playa y apoyadas en ella. Su
+	// «Opacity» sigue a FrontBlend: se funde al acercarse o alejarse el frente de la cámara.
 	FTNProcMeshBuffers VeilBuffers;
 	TNStormFX::BuildVeil(VeilBuffers, TNBeachStormTuning::SandVeil(), HalfWidth * 2.0 + 8000.0, TNBeachStormTuning::VeilHeight, 3, 23u);
 	UMaterialInterface* VeilMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcStormVeil.M_ProcStormVeil"), nullptr, LOAD_NoWarn);
@@ -502,9 +606,12 @@ void ATN_BeachStorm::SetupFX()
 	{
 		Veil->SetAbsolute(true, true, true);
 		Veil->SetVisibility(false);
+		VeilMid = Veil->CreateDynamicMaterialInstance(0, VeilMat);
+		TNBeachKit::SetOpacity(VeilMid, 0.f);
 	}
 
-	// Trastos que vuelan: sombrillas, cubos, sillas, toallas, flotadores, palas, chanclas y pelotas.
+	// Trastos que vuelan: sombrillas, cubos, sillas, toallas, flotadores, palas, chanclas y pelotas (opacos y, para
+	// fundirse, su copia translúcida).
 	const int32 NumItems = static_cast<int32>(EStormItem::Count);
 	for (int32 i = 0; i < TNBeachStormTuning::NumDebris; ++i)
 	{
@@ -512,8 +619,10 @@ void ATN_BeachStorm::SetupFX()
 		D.Item = i % NumItems;
 		const int32 Variant = (i * 3 + 1) % 4;
 		const EStormItem Item = static_cast<EStormItem>(D.Item);
-		UStaticMesh* Mesh = TNBeachKit::CachedMesh(FString::Printf(TEXT("Beach.Storm.%d.%d"), D.Item, Variant),
-			[Item, Variant](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildStormItem(M, Item, Variant); });
+		const FString Key = FString::Printf(TEXT("Beach.Storm.%d.%d"), D.Item, Variant);
+		UStaticMesh* Mesh = TNBeachKit::CachedMesh(Key, [Item, Variant](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildStormItem(M, Item, Variant); });
+		UStaticMesh* SoftMesh = TNBeachKit::CachedMesh(Key + TEXT(".Soft"), [Item, Variant](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildStormItem(M, Item, Variant); },
+			TNBeachKit::EBeachMeshMat::SoftVertexAlpha);
 		UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Root, Mesh, FVector::ZeroVector, TNBeachStormTuning::IsBigItem(Item));
 		if (Comp)
 		{
@@ -521,9 +630,12 @@ void ATN_BeachStorm::SetupFX()
 			Comp->SetVisibility(false);
 		}
 		DebrisComps.Add(Comp);
+		DebrisSolid.Add(Mesh);
+		DebrisSoft.Add(SoftMesh);
+		DebrisMids.Add(nullptr);
 	}
 
-	// Bañistas: caderas y dos piernas cada uno, repartidos a lo ancho.
+	// Bañistas: caderas y dos piernas cada uno, repartidos a lo ancho y pisando en el borde del frente.
 	const double S = TNBeach::Scale;
 	const double HipZ = TNBeachStormTuning::HipHeight * S;
 	for (int32 b = 0; b < TNBeachStormTuning::NumBathers; ++b)
@@ -531,14 +643,21 @@ void ATN_BeachStorm::SetupFX()
 		FBather& B = Bathers.AddDefaulted_GetRef();
 		const float Spread = static_cast<float>(b) / static_cast<float>(FMath::Max(1, TNBeachStormTuning::NumBathers - 1));
 		B.SlotY = FMath::Lerp(-0.85f, 0.85f, Spread) * HalfWidth + 1500.f * (TNBeachKit::Hash01(b * 13u + 1u) - 0.5f);
-		B.Depth = 2600.f + 2600.f * TNBeachKit::Hash01(b * 29u + 7u);
+		// Los pies justo dentro del borde del polvo (2,5-11,5 m tras el frente): se ven pisar en el borde.
+		B.Depth = 250.f + 900.f * TNBeachKit::Hash01(b * 29u + 7u);
 		B.Rate = 0.45f + 0.15f * TNBeachKit::Hash01(b * 31u + 3u);
 		B.Phase = TNBeachKit::Hash01(b * 37u + 11u);
 		B.Scale = 0.9f + 0.2f * TNBeachKit::Hash01(b * 41u + 5u);
 		B.GroundTimer = 0.03f * static_cast<float>(b);
 		const TNBeachMeshes::FBatherLook Look = TNBeachMeshes::BatherPalette(b);
-		UStaticMesh* HipsMesh = TNBeachKit::CachedMesh(FString::Printf(TEXT("Beach.Bather.%d.Hips"), b % 8), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherHips(M, Look); });
-		UStaticMesh* LegMesh = TNBeachKit::CachedMesh(FString::Printf(TEXT("Beach.Bather.%d.Leg"), b % 8), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherLeg(M, Look); });
+		const FString HipsKey = FString::Printf(TEXT("Beach.Bather.%d.Hips"), b % 8);
+		const FString LegKey = FString::Printf(TEXT("Beach.Bather.%d.Leg"), b % 8);
+		UStaticMesh* HipsMesh = TNBeachKit::CachedMesh(HipsKey, [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherHips(M, Look); });
+		UStaticMesh* LegMesh = TNBeachKit::CachedMesh(LegKey, [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherLeg(M, Look); });
+		UStaticMesh* HipsSoft = TNBeachKit::CachedMesh(HipsKey + TEXT(".Soft"), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherHips(M, Look); },
+			TNBeachKit::EBeachMeshMat::SoftVertexAlpha);
+		UStaticMesh* LegSoft = TNBeachKit::CachedMesh(LegKey + TEXT(".Soft"), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherLeg(M, Look); },
+			TNBeachKit::EBeachMeshMat::SoftVertexAlpha);
 		USceneComponent* BatherRoot = NewObject<USceneComponent>(this, NAME_None, RF_Transient);
 		BatherRoot->SetupAttachment(Root);
 		BatherRoot->SetAbsolute(true, true, true);
@@ -547,15 +666,48 @@ void ATN_BeachStorm::SetupFX()
 		BatherParts.Add(TNBeachKit::AddPart(this, BatherRoot, HipsMesh, FVector(0.0, 0.0, HipZ), true));
 		BatherParts.Add(TNBeachKit::AddPart(this, BatherRoot, LegMesh, FVector(0.0, -TNBeachStormTuning::HipHalfWidth * S, HipZ), true));
 		BatherParts.Add(TNBeachKit::AddPart(this, BatherRoot, LegMesh, FVector(0.0, TNBeachStormTuning::HipHalfWidth * S, HipZ), true));
-		BatherRoot->SetVisibility(false, true);
+		BatherSolid.Add(HipsMesh);
+		BatherSolid.Add(LegMesh);
+		BatherSolid.Add(LegMesh);
+		BatherSoft.Add(HipsSoft);
+		BatherSoft.Add(LegSoft);
+		BatherSoft.Add(LegSoft);
+		for (int32 k = 0; k < 3; ++k)
+		{
+			BatherMids.Add(nullptr);
+			if (UStaticMeshComponent* Part = BatherParts[BatherParts.Num() - 3 + k])
+			{
+				Part->SetVisibility(false);
+			}
+		}
+	}
+
+	// Piernas de las patadas (una pierna de bañista suelta, con su copia translúcida para fundirse).
+	{
+		const TNBeachMeshes::FBatherLook Look = TNBeachMeshes::BatherPalette(3);
+		KickSolid = TNBeachKit::CachedMesh(TEXT("Beach.Bather.3.Leg"), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherLeg(M, Look); });
+		KickSoft = TNBeachKit::CachedMesh(TEXT("Beach.Bather.3.Leg.Soft"), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBatherLeg(M, Look); },
+			TNBeachKit::EBeachMeshMat::SoftVertexAlpha);
+		for (int32 k = 0; k < TNBeachStormTuning::NumKickLegs; ++k)
+		{
+			UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Root, KickSolid, FVector::ZeroVector, true);
+			if (Comp)
+			{
+				Comp->SetAbsolute(true, true, true);
+				Comp->SetVisibility(false);
+			}
+			KickComps.Add(Comp);
+			KickMids.Add(nullptr);
+			KickLegs.AddDefaulted();
+		}
 	}
 
 	// Arena y polvo en el frente y, dentro (o a punto), alrededor de la cámara.
 	using TNAmbientFX::EShape;
 	auto MakeEmitter = [this](TNAmbientFX::FEmitter& E, EShape Shape, const FLinearColor& Color, bool bSoft, float Alpha, int32 MaxCount, float BaseRate,
-		float BaseSpeed, float Fall, float Rise, float LifeMin, float LifeMax, float SizeStart, float SizeEnd, float Radius, float Height, uint32 EmitterSeed)
+		float EmitSpeed, float Fall, float Rise, float LifeMin, float LifeMax, float SizeStart, float SizeEnd, float Radius, float Height, uint32 EmitterSeed)
 	{
-		TNAmbientFX::FEmitterDesc D = TNBeachKit::MakeDesc(Shape, Color, bSoft, Alpha, MaxCount, BaseRate, BaseSpeed, Fall, LifeMin, LifeMax, SizeStart, SizeEnd);
+		TNAmbientFX::FEmitterDesc D = TNBeachKit::MakeDesc(Shape, Color, bSoft, Alpha, MaxCount, BaseRate, EmitSpeed, Fall, LifeMin, LifeMax, SizeStart, SizeEnd);
 		D.Buoyancy = Rise;
 		D.SpawnRadius = Radius;
 		D.SpawnHeight = Height;
@@ -634,6 +786,7 @@ void ATN_BeachStorm::TickFX(float DeltaSeconds)
 	}
 	FrontPoint.Z = FrontGroundZ;
 
+	// Velo: se funde (opacidad) y crece desde la arena (escala) con FrontBlend; nada de aparecer de golpe.
 	if (Veil)
 	{
 		const bool bShowVeil = FrontBlend > 0.01f;
@@ -643,9 +796,11 @@ void ATN_BeachStorm::TickFX(float DeltaSeconds)
 		}
 		if (bShowVeil)
 		{
+			const float Grow = TNBeachStormTuning::Smooth01(FrontBlend);
 			FVector At = Xf.TransformPositionNoScale(FVector(Front + 180.f * FMath::Sin(FXTime * 0.55f), 0.0, 0.0));
 			At.Z = FrontGroundZ + 60.f * FMath::Sin(FXTime * 0.31f);
-			Veil->SetWorldLocationAndRotation(At, FRotator(0.f, static_cast<float>(Xf.Rotator().Yaw), 0.f));
+			Veil->SetWorldTransform(FTransform(FRotator(0.f, static_cast<float>(Xf.Rotator().Yaw), 0.f), At, FVector(1.0, 1.0, 0.25 + 0.75 * Grow)));
+			TNBeachKit::SetOpacity(VeilMid, FrontBlend);
 		}
 	}
 
@@ -667,33 +822,10 @@ void ATN_BeachStorm::TickFX(float DeltaSeconds)
 	Run(ViewSand, View + Flat * 700.0 - FVector(0.0, 0.0, 350.0), Around);
 	Run(ViewDust, View + Flat * 700.0 - FVector(0.0, 0.0, 350.0), InsideBlend);
 
-	// Trastos y bañistas: solo con el frente a la vista.
-	if (FrontBlend > 0.01f)
-	{
-		TickDebris(DeltaSeconds, Front, ViewLocal);
-		TickBathers(DeltaSeconds, Front, ViewLocal);
-	}
-	else
-	{
-		for (int32 i = 0; i < DebrisComps.Num(); ++i)
-		{
-			if (DebrisComps[i] && DebrisComps[i]->IsVisible())
-			{
-				DebrisComps[i]->SetVisibility(false);
-			}
-			if (Debris.IsValidIndex(i))
-			{
-				Debris[i].bLive = false;
-			}
-		}
-		for (USceneComponent* BatherRoot : BatherRoots)
-		{
-			if (BatherRoot && BatherRoot->IsVisible())
-			{
-				BatherRoot->SetVisibility(false, true);
-			}
-		}
-	}
+	// Trastos, bañistas y patadas (se funden solos; lejos del frente no nace ninguno).
+	TickDebris(DeltaSeconds, Front, ViewLocal);
+	TickBathers(DeltaSeconds, Front, ViewLocal);
+	TickKicks(DeltaSeconds);
 
 	// Viento: fuerte en el frente y dentro. Aviso claro si el frente te pisa los talones; temblor dentro.
 	if (Voice)
@@ -747,16 +879,19 @@ void ATN_BeachStorm::SpawnDebris(FDebris& D, float Front, const FVector& ViewLoc
 	const FTransform Xf = GetActorTransform();
 	const EStormItem Item = static_cast<EStormItem>(D.Item);
 	const bool bBig = TNBeachStormTuning::IsBigItem(Item);
-	// Nace dentro del polvo, justo detrás del frente, y sale volando por delante.
-	const FVector Local(Front - FMath::Lerp(300.f, 4500.f, Rand01()),
+	// Nace en el polvo del borde (1-7 m tras el frente) y se queda por el borde: su sitio respecto al frente, de 2 m por
+	// detrás a 5 m por delante (los grandes, algo más fuera, que se vean).
+	D.EdgeOffset = bBig ? FMath::Lerp(-100.f, 500.f, Rand01()) : FMath::Lerp(-200.f, 350.f, Rand01());
+	const FVector Local(Front - FMath::Lerp(100.f, 700.f, Rand01()),
 		FMath::Clamp(static_cast<float>(ViewLocal.Y) + FMath::Lerp(-9000.f, 9000.f, Rand01()), -HalfWidth, HalfWidth), 0.0);
 	D.Pos = Xf.TransformPositionNoScale(Local);
 	D.Ground = GroundAt(D.Pos);
 	D.GroundTimer = 0.25f * Rand01();
 	// A la altura de verdad: lo pequeño rueda y rebota a pocos metros; lo grande planea más alto (una sombrilla mide 50 m).
-	D.Pos.Z = D.Ground + (bBig ? FMath::Lerp(600.f, 2600.f, Rand01()) : FMath::Lerp(150.f, 800.f, Rand01()));
-	D.Vel = Xf.TransformVectorNoScale(FVector(GetFrontSpeed() + FMath::Lerp(300.f, 900.f, Rand01()), FMath::Lerp(-350.f, 350.f, Rand01()), 0.0))
-		+ FVector(0.0, 0.0, FMath::Lerp(-100.f, bBig ? 300.f : 600.f, Rand01()));
+	D.Pos.Z = D.Ground + (bBig ? FMath::Lerp(500.f, 2200.f, Rand01()) : FMath::Lerp(120.f, 600.f, Rand01()));
+	// Con el frente (su velocidad y un poco más) y, sobre todo, de lado: barre el borde de la tormenta.
+	D.Vel = Xf.TransformVectorNoScale(FVector(GetFrontSpeed() + FMath::Lerp(50.f, 350.f, Rand01()), FMath::Lerp(-650.f, 650.f, Rand01()), 0.0))
+		+ FVector(0.0, 0.0, FMath::Lerp(100.f, bBig ? 350.f : 650.f, Rand01()));
 	D.SpinAxis = FVector(Rand01() - 0.5f, Rand01() - 0.5f, Rand01() - 0.5f).GetSafeNormal();
 	if (D.SpinAxis.IsNearlyZero())
 	{
@@ -767,6 +902,10 @@ void ATN_BeachStorm::SpawnDebris(FDebris& D, float Front, const FVector& ViewLoc
 	D.Scale = bBig ? FMath::Lerp(0.6f, 0.85f, Rand01()) : FMath::Lerp(0.9f, 1.15f, Rand01());
 	// Lo grande hace de vela: el viento lo sostiene (cae mucho menos).
 	D.Lift = bBig ? 0.75f : 0.f;
+	D.Fade = 0.f;
+	D.Age = 0.f;
+	D.Life = FMath::Lerp(3.5f, 7.f, Rand01());
+	D.bDying = false;
 	D.bLive = true;
 }
 
@@ -774,22 +913,34 @@ void ATN_BeachStorm::TickDebris(float DeltaSeconds, float Front, const FVector& 
 {
 	const FTransform Xf = GetActorTransform();
 	const FVector Fwd = Xf.GetUnitAxis(EAxis::X);
-	const double Wind = GetFrontSpeed() + 600.0;
+	const FVector Side = Xf.GetUnitAxis(EAxis::Y);
+	const double FrontV = GetFrontSpeed();
 	for (int32 i = 0; i < Debris.Num(); ++i)
 	{
 		FDebris& D = Debris[i];
 		UStaticMeshComponent* Comp = DebrisComps.IsValidIndex(i) ? DebrisComps[i].Get() : nullptr;
-		if (!Comp)
+		if (!Comp || !DebrisSolid.IsValidIndex(i) || !DebrisSoft.IsValidIndex(i) || !DebrisMids.IsValidIndex(i))
 		{
 			continue;
 		}
 		if (!D.bLive)
 		{
+			// Lejos del frente no nace ninguno (los que había ya se han fundido).
+			if (FrontBlend <= 0.01f)
+			{
+				ApplyFade(Comp, DebrisSolid[i], DebrisSoft[i], DebrisMids[i], 0.f);
+				continue;
+			}
 			SpawnDebris(D, Front, ViewLocal);
 		}
-		// Arrastrados por el viento de la tormenta, cayendo y dando vueltas; rebotan y ruedan por la arena.
+		// Por el borde: el viento lo lleva a la velocidad del frente y un muelle lo devuelve a su sitio respecto a él (ni se
+		// adelanta ni se queda atrás); de lado se frena poco a poco; cae (lo grande, planeando), rebota y rueda por la arena.
+		FVector Local = Xf.InverseTransformPositionNoScale(D.Pos);
 		const double Along = FVector::DotProduct(D.Vel, Fwd);
-		D.Vel += Fwd * ((Wind - Along) * 0.5 * DeltaSeconds);
+		const double Across = FVector::DotProduct(D.Vel, Side);
+		const double WantX = static_cast<double>(Front + D.EdgeOffset);
+		D.Vel += Fwd * (((FrontV - Along) * 1.2 + (WantX - Local.X) * 0.9) * DeltaSeconds);
+		D.Vel -= Side * (Across * 0.25 * DeltaSeconds);
 		D.Vel.Z -= 700.0 * (1.0 - D.Lift) * DeltaSeconds;
 		D.Pos += D.Vel * DeltaSeconds;
 		D.Rot = (FQuat(D.SpinAxis, FMath::DegreesToRadians(D.SpinRate) * DeltaSeconds) * D.Rot).GetNormalized();
@@ -806,17 +957,26 @@ void ATN_BeachStorm::TickDebris(float DeltaSeconds, float Front, const FVector& 
 			D.Vel.Z = FMath::Abs(D.Vel.Z) * 0.5 + 200.0;
 			D.SpinRate *= 0.85f;
 		}
-		const FVector Local = Xf.InverseTransformPositionNoScale(D.Pos);
-		if (Local.X > Front + 3500.0 || Local.X < Front - 9000.0 || FMath::Abs(Local.Y - ViewLocal.Y) > 14000.0 || D.Pos.Z > D.Ground + 4000.0)
+		// Se funde al acabar su vida, al salirse del borde o de la vista, o si el frente se aleja de la cámara.
+		Local = Xf.InverseTransformPositionNoScale(D.Pos);
+		D.Age += DeltaSeconds;
+		if (!D.bDying && (D.Age > D.Life || FrontBlend <= 0.01f || Local.X > Front + 1200.0 || Local.X < Front - 1800.0
+			|| FMath::Abs(Local.Y - ViewLocal.Y) > 14000.0 || FMath::Abs(Local.Y) > HalfWidth + 3000.0 || D.Pos.Z > D.Ground + 4000.0))
+		{
+			D.bDying = true;
+		}
+		D.Fade = D.bDying ? FMath::Max(0.f, D.Fade - DeltaSeconds / TNBeachStormTuning::DebrisFadeOut)
+			: FMath::Min(1.f, D.Fade + DeltaSeconds / TNBeachStormTuning::DebrisFadeIn);
+		if (D.bDying && D.Fade <= 0.f)
 		{
 			D.bLive = false;
+			ApplyFade(Comp, DebrisSolid[i], DebrisSoft[i], DebrisMids[i], 0.f);
 			continue;
 		}
-		Comp->SetWorldTransform(FTransform(D.Rot, D.Pos, FVector(D.Scale)));
-		if (!Comp->IsVisible())
-		{
-			Comp->SetVisibility(true);
-		}
+		// Crece al nacer y encoge al irse, además de la opacidad.
+		const float Grow = 0.45f + 0.55f * TNBeachStormTuning::Smooth01(D.Fade);
+		Comp->SetWorldTransform(FTransform(D.Rot, D.Pos, FVector(D.Scale * Grow)));
+		ApplyFade(Comp, DebrisSolid[i], DebrisSoft[i], DebrisMids[i], D.Fade * FrontBlend);
 	}
 }
 
@@ -832,17 +992,21 @@ void ATN_BeachStorm::TickBathers(float DeltaSeconds, float Front, const FVector&
 	{
 		FBather& B = Bathers[b];
 		USceneComponent* BatherRoot = BatherRoots.IsValidIndex(b) ? BatherRoots[b].Get() : nullptr;
-		if (!BatherRoot)
+		const int32 First = b * 3;
+		if (!BatherRoot || !BatherParts.IsValidIndex(First + 2) || !BatherSolid.IsValidIndex(First + 2) || !BatherMids.IsValidIndex(First + 2))
 		{
 			continue;
 		}
 		const FVector Local(Front - B.Depth, B.SlotY, 0.0);
-		const bool bShow = FMath::Abs(Local.Y - ViewLocal.Y) < 30000.0;
-		if (BatherRoot->IsVisible() != bShow)
+		// Entra y sale fundiéndose (con el frente a la vista y a lo ancho cerca de la cámara).
+		const bool bWanted = FrontBlend > 0.01f && FMath::Abs(Local.Y - ViewLocal.Y) < 30000.0;
+		B.Fade = FMath::FInterpConstantTo(B.Fade, bWanted ? 1.f : 0.f, DeltaSeconds, 1.f / TNBeachStormTuning::BatherFade);
+		const float Shown = B.Fade * FrontBlend;
+		for (int32 k = 0; k < 3; ++k)
 		{
-			BatherRoot->SetVisibility(bShow, true);
+			ApplyFade(BatherParts[First + k], BatherSolid[First + k], BatherSoft[First + k], BatherMids[First + k], Shown);
 		}
-		if (!bShow)
+		if (Shown <= 0.01f)
 		{
 			continue;
 		}
@@ -858,28 +1022,24 @@ void ATN_BeachStorm::TickBathers(float DeltaSeconds, float Front, const FVector&
 		const float Cycle = bActive ? FXTime * B.Rate + B.Phase : B.Phase;
 		const float Swing = FMath::Sin(Cycle * 2.f * PI);
 		const float Bob = FMath::Abs(FMath::Cos(Cycle * 2.f * PI)) * 0.04f;
-		BatherRoot->SetWorldTransform(FTransform(FRotator(0.f, Yaw, 3.f * Swing), At, FVector(B.Scale)));
-		const int32 First = b * 3;
-		if (BatherParts.IsValidIndex(First + 2))
-		{
-			const FVector Hip(0.0, 0.0, HipZ * (1.0 + Bob));
-			TNBeachKit::Pose(BatherParts[First], Hip, FRotator(0.f, 4.f * Swing, 0.f));
-			TNBeachKit::Pose(BatherParts[First + 1], Hip + FVector(0.0, -TNBeachStormTuning::HipHalfWidth * S, 0.0), FRotator(24.f * Swing, 0.f, 0.f));
-			TNBeachKit::Pose(BatherParts[First + 2], Hip + FVector(0.0, TNBeachStormTuning::HipHalfWidth * S, 0.0), FRotator(-24.f * Swing, 0.f, 0.f));
-		}
-		// Un pisotón en cada paso (dos por ciclo).
+		BatherRoot->SetWorldTransform(FTransform(FRotator(0.f, Yaw, 3.f * Swing), At, FVector(B.Scale * (0.85f + 0.15f * Shown))));
+		const FVector Hip(0.0, 0.0, HipZ * (1.0 + Bob));
+		TNBeachKit::Pose(BatherParts[First], Hip, FRotator(0.f, 4.f * Swing, 0.f));
+		TNBeachKit::Pose(BatherParts[First + 1], Hip + FVector(0.0, -TNBeachStormTuning::HipHalfWidth * S, 0.0), FRotator(24.f * Swing, 0.f, 0.f));
+		TNBeachKit::Pose(BatherParts[First + 2], Hip + FVector(0.0, TNBeachStormTuning::HipHalfWidth * S, 0.0), FRotator(-24.f * Swing, 0.f, 0.f));
+		// Un pisotón en cada paso (dos por ciclo), justo en el borde.
 		const float Step = FMath::FloorToFloat(Cycle * 2.f);
 		if (bActive && Step != B.LastStep)
 		{
 			B.LastStep = Step;
 			const double DistSq = FVector::DistSquared2D(Local, ViewLocal);
-			if (DistSq < FMath::Square(20000.0))
+			if (DistSq < FMath::Square(20000.0) && Shown > 0.5f)
 			{
-				const float Side = FMath::Fmod(Step, 2.f) < 0.5f ? -1.f : 1.f;
-				const FVector Foot = Xf.TransformPositionNoScale(Local + FVector(1500.0, Side * TNBeachStormTuning::HipHalfWidth * S, 0.0));
+				const float FootSide = FMath::Fmod(Step, 2.f) < 0.5f ? -1.f : 1.f;
+				const FVector Foot = Xf.TransformPositionNoScale(Local + FVector(300.0, FootSide * TNBeachStormTuning::HipHalfWidth * S, 0.0));
 				TNBeachKit::BurstAt(FrontDust, FVector(Foot.X, Foot.Y, B.Ground + 200.0), FVector::UpVector, 3);
 			}
-			if (DistSq < NearestSq)
+			if (DistSq < NearestSq && Shown > 0.5f)
 			{
 				NearestSq = DistSq;
 				Nearest = b;
@@ -897,6 +1057,34 @@ void ATN_BeachStorm::TickBathers(float DeltaSeconds, float Front, const FVector&
 			Voice->Play(ETNBeachSfx::Stomp, 0.9f + 0.2f * Rand01(), 1.1f);
 		}
 		UTN_BeachCameraShake::Kick(this, At, 0.28f, 3000.f, 12000.f);
+	}
+}
+
+void ATN_BeachStorm::TickKicks(float DeltaSeconds)
+{
+	using namespace TNBeachStormTuning;
+	for (int32 k = 0; k < KickLegs.Num(); ++k)
+	{
+		FKickLeg& Leg = KickLegs[k];
+		UStaticMeshComponent* Comp = KickComps.IsValidIndex(k) ? KickComps[k].Get() : nullptr;
+		if (!Comp || !KickMids.IsValidIndex(k))
+		{
+			continue;
+		}
+		const float Total = KickSwing + KickHold + KickFadeOut;
+		if (Leg.Age >= Total)
+		{
+			ApplyFade(Comp, KickSolid, KickSoft, KickMids[k], 0.f);
+			continue;
+		}
+		Leg.Age += DeltaSeconds;
+		// Barre de atrás (dentro de la tormenta) hacia delante pasando por la tortuga, se queda arriba y se va fundiendo.
+		const float Out = FMath::Clamp((Leg.Age - KickSwing - KickHold) / KickFadeOut, 0.f, 1.f);
+		const float Pitch = Leg.Age < KickSwing ? FMath::Lerp(-25.f, 50.f, Smooth01(Leg.Age / KickSwing)) : 50.f + 8.f * Out;
+		const float Fade = FMath::Min(1.f, Leg.Age / 0.08f) * (1.f - Out);
+		const FVector Hip = Leg.Hip + FVector(0.0, 0.0, 600.0 * Out);
+		Comp->SetWorldTransform(FTransform(FRotator(Pitch, Leg.Yaw, 0.f), Hip, FVector(1.0)));
+		ApplyFade(Comp, KickSolid, KickSoft, KickMids[k], Fade);
 	}
 }
 

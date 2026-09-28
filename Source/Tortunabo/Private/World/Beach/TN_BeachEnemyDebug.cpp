@@ -4,17 +4,22 @@
 //   TN.Beach.Quad.Now                    todos los pasos de quads empiezan su aviso ya.
 //   TN.Beach.Gull.Attack [1|2]           cada zona de gaviotas ataca ya a la tortuga más cercana (1 cagada, 2 picado).
 //   TN.Beach.Storm.Start [Metros] [Speed] arranca la tormenta (la crea si no hay, detrás de ti mirando hacia donde miras)
-//                                        con el frente Metros por detrás de ti (30 por defecto) a Speed cm/s (300).
+//                                        con el frente Metros por detrás de ti (30 por defecto) a Speed cm/s (180).
 //   TN.Beach.Storm.Stop                  la para (se queda a la vista).
 //   TN.Beach.Storm.Info                  frente, velocidad, a qué velocidad va y distancia a la última tortuga.
+//   TN.Beach.Storm.Here                  pone el frente 4 m por delante de tu tortuga (te deja dentro: patada).
+//   TN.Beach.Lizard <huidizo|generoso|mordedor>  un lagarto de ese carácter 22 m delante de ti.
+//   TN.Beach.StunNearest [s]             marea al enemigo más cercano a tu tortuga (3 s por defecto; los quads no).
 //   TN.Beach.Enemy.Stats                 enemigos del mundo, cuántos van despacio por estar lejos y cuántos se apartan.
 //   TN.Beach.Enemy.Debug 1               (CVar) radios, oído, recorridos y estados en el servidor.
-// Para crear enemigos sueltos: TN.Beach.Spawn GiantCrab (SeaUrchin, Lizard, QuadLane, GullZone), del generador.
+// Para crear enemigos sueltos: TN.Beach.Place GiantCrab (SeaUrchin, Lizard, QuadLane, GullZone), del generador.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachGullZone.h"
+#include "World/Beach/TN_BeachLizard.h"
 #include "World/Beach/TN_BeachQuadLane.h"
 #include "World/Beach/TN_BeachStorm.h"
+#include "CollisionQueryParams.h"
 #include "Core/TN_Log.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -147,6 +152,116 @@ namespace TNBeachEnemyConsole
 		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Storm.Info: %s"), Storm ? *Storm->DescribeState() : TEXT("no hay tormenta"));
 	}
 
+	void StormHere(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		const APawn* Pawn = LocalPawn(InWorld);
+		if (!World || !Pawn)
+		{
+			return;
+		}
+		ATN_BeachStorm* Storm = ATN_BeachStorm::FindStorm(World);
+		if (!Storm)
+		{
+			// Sin tormenta (otro mapa): una detrás de ti, mirando hacia donde miras.
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			const FRotator Facing(0.f, Pawn->GetActorRotation().Yaw, 0.f);
+			Storm = World->SpawnActor<ATN_BeachStorm>(ATN_BeachStorm::StaticClass(), Pawn->GetActorLocation() - Facing.Vector() * 3000.0 - FVector(0.0, 0.0, 90.0), Facing, Params);
+		}
+		if (!Storm)
+		{
+			return;
+		}
+		// El frente 4 m por delante de la tortuga: se queda dentro y le llega la patada.
+		const FVector Local = Storm->GetActorTransform().InverseTransformPositionNoScale(Pawn->GetActorLocation());
+		Storm->DebugSetFront(static_cast<float>(Local.X) + 400.f);
+	}
+
+	void LizardHere(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		const APawn* Pawn = LocalPawn(InWorld);
+		if (!World || !Pawn)
+		{
+			return;
+		}
+		ETNBeachLizardTemper Temper = ETNBeachLizardTemper::Shy;
+		const FString Kind = Args.Num() > 0 ? Args[0].ToLower() : FString(TEXT("huidizo"));
+		if (Kind.StartsWith(TEXT("gen")))
+		{
+			Temper = ETNBeachLizardTemper::Generous;
+		}
+		else if (Kind.StartsWith(TEXT("mor")) || Kind.StartsWith(TEXT("bit")))
+		{
+			Temper = ETNBeachLizardTemper::Biter;
+		}
+		// 22 m delante (lo bastante lejos para que no huya ni muerda al aparecer), apoyado en el suelo.
+		const FRotator Facing(0.f, Pawn->GetActorRotation().Yaw, 0.f);
+		FVector At = Pawn->GetActorLocation() + Facing.Vector() * 2200.0;
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(TNBeachLizardHere), false);
+		if (World->LineTraceSingleByObjectType(Hit, At + FVector(0.0, 0.0, 3000.0), At - FVector(0.0, 0.0, 6000.0), FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+		{
+			At.Z = Hit.ImpactPoint.Z;
+		}
+		else
+		{
+			At.Z -= 90.0;
+		}
+		FTNBeachElementSpec LizardSpec;
+		LizardSpec.Element = ETNBeachElement::Lizard;
+		LizardSpec.Seed = ATN_BeachLizard::FindSeedForTemper(Temper, FMath::Rand());
+		LizardSpec.SizeScale = 1.f;
+		// Mirando hacia la tortuga.
+		ATN_BeachElement* Spawned = ATN_BeachElement::SpawnElement(World, FTransform(FRotator(0.f, Facing.Yaw + 180.f, 0.f), At), LizardSpec);
+		if (Spawned)
+		{
+			Spawned->Tags.AddUnique(FName(TEXT("TNBeachDebug")));
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Lizard: lagarto %s (semilla %d) %s."), ATN_BeachLizard::TemperName(Temper), LizardSpec.Seed,
+			Spawned ? TEXT("delante") : TEXT("no se ha podido crear"));
+	}
+
+	void StunNearest(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		const APawn* Pawn = LocalPawn(InWorld);
+		if (!World)
+		{
+			return;
+		}
+		const float Seconds = Args.Num() > 0 ? FMath::Max(0.1f, FCString::Atof(*Args[0])) : TNBeachHitStun::ThrownSeconds;
+		const FVector From = Pawn ? Pawn->GetActorLocation() : FVector::ZeroVector;
+		ATN_BeachEnemy* Best = nullptr;
+		double BestSq = 1.0e20;
+		for (TActorIterator<ATN_BeachEnemy> It(World); It; ++It)
+		{
+			ATN_BeachEnemy* Enemy = *It;
+			if (!Enemy || !Enemy->AcceptsHitStun())
+			{
+				continue;
+			}
+			// Donde está su cuerpo (los que andan no mueven el actor); sin cuerpo al que dar, el actor.
+			FVector A;
+			FVector B;
+			float Radius = 0.f;
+			const FVector At = Enemy->GetHitCapsule(A, B, Radius) ? (A + B) * 0.5 : Enemy->GetActorLocation();
+			const double DistSq = FVector::DistSquared(At, From);
+			if (DistSq < BestSq)
+			{
+				BestSq = DistSq;
+				Best = Enemy;
+			}
+		}
+		if (Best)
+		{
+			Best->ApplyHitStun(Seconds, nullptr);
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.StunNearest: %s mareado %.1f s (a %.0f m)."), Best ? *Best->GetName() : TEXT("ningún enemigo"),
+			Seconds, Best ? FMath::Sqrt(BestSq) / 100.0 : 0.0);
+	}
+
 	void EnemyStats(const TArray<FString>& Args, UWorld* InWorld)
 	{
 		UWorld* World = AuthorityWorld(InWorld);
@@ -171,7 +286,7 @@ namespace TNBeachEnemyConsole
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&GullAttack), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormStart(TEXT("TN.Beach.Storm.Start"),
-		TEXT("Arranca la tormenta de bañistas: TN.Beach.Storm.Start [metros por detrás=30] [cm/s=300] (en el anfitrión)."),
+		TEXT("Arranca la tormenta de bañistas: TN.Beach.Storm.Start [metros por detrás=30] [cm/s=180] (en el anfitrión)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormStart), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormStop(TEXT("TN.Beach.Storm.Stop"),
@@ -181,6 +296,18 @@ namespace TNBeachEnemyConsole
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormInfo(TEXT("TN.Beach.Storm.Info"),
 		TEXT("Frente, velocidad y distancia a la última tortuga de la tormenta de bañistas (en el anfitrión)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormInfo), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormHere(TEXT("TN.Beach.Storm.Here"),
+		TEXT("Pone el frente de la tormenta 4 m por delante de tu tortuga, para ver la patada (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormHere), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachLizard(TEXT("TN.Beach.Lizard"),
+		TEXT("Un lagarto delante de tu tortuga: TN.Beach.Lizard <huidizo|generoso|mordedor> (en el anfitrión; TN.Beach.Place clear lo quita)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&LizardHere), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStunNearest(TEXT("TN.Beach.StunNearest"),
+		TEXT("Marea al enemigo de la playa más cercano a tu tortuga: TN.Beach.StunNearest [segundos=3] (en el anfitrión; los quads no)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StunNearest), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachEnemyStats(TEXT("TN.Beach.Enemy.Stats"),
 		TEXT("Cuántos enemigos de la playa hay, cuántos van despacio por estar lejos y cuántos se apartan (en el anfitrión)."),

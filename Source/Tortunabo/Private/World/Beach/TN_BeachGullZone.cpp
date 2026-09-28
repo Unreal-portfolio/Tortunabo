@@ -44,14 +44,30 @@ namespace TNBeachGull
 	constexpr float LockTime = 1.9f;
 	constexpr float StrikeTime = 2.45f;
 	constexpr float JawLead = 0.45f;
-	/** De dónde arranca el picado (cm desde la tortuga), radio en el que la coge (por el tamaño) y adelanto (s). */
-	constexpr float DiveStartDist = 4800.f;
-	constexpr float DiveStartHeight = 4200.f;
+	/**
+	 * De dónde arranca el picado (cm desde la tortuga: casi encima, para que baje en picado de verdad y su sombra caiga
+	 * sobre ella), radio en el que la coge (por el tamaño) y adelanto (s).
+	 */
+	constexpr float DiveStartDist = 1800.f;
+	constexpr float DiveStartHeight = 4600.f;
 	constexpr float GrabRadius = 300.f;
 	constexpr float LeadDive = 0.25f;
 	/** Al llegar abajo frena levantando el morro (grados) con la cabeza gacha. */
 	constexpr float StrikePitch = 12.f;
 	constexpr float StrikeHeadPitch = -30.f;
+	/**
+	 * Picado fallido: desde StrikeTime baja en PeckDown s hasta clavar el pico en la arena (con el morro y la cabeza hacia
+	 * abajo), pica hasta PeckHold y remonta.
+	 */
+	constexpr float PeckDown = 0.14f;
+	constexpr float PeckHold = 0.55f;
+	constexpr float PeckPitch = -6.f;
+	constexpr float PeckHeadPitch = -55.f;
+	/** Mareada: cae a la arena dando tumbos (s) y, pasado el mareo, despega hacia su círculo (s). */
+	constexpr float DazeFall = 0.8f;
+	constexpr float DazeTakeOff = 1.8f;
+	/** Solo se le puede dar con algo lanzado si su cuerpo está a menos de esto sobre la arena (cm). */
+	constexpr float HittableHeight = 1800.f;
 
 	// ── Agarre ──
 	/**
@@ -70,7 +86,7 @@ namespace TNBeachGull
 	constexpr float AfterDropStun = 2.f;
 	constexpr float GrabIgnore = 12.f;
 	constexpr float DiveEndHit = StrikeTime + CarryTime + 2.4f;
-	constexpr float DiveEndMiss = StrikeTime + 3.f;
+	constexpr float DiveEndMiss = StrikeTime + PeckHold + 2.9f;
 	constexpr float Gravity = 980.f;
 	/** Del hueso de la espalda de la tortuga (Spine2) a la superficie del caparazón que muerde el pico (cm). */
 	constexpr float ShellBack = 35.f;
@@ -97,6 +113,31 @@ namespace TNBeachGull
 	{
 		static const FName Name(TEXT("Spine2"));
 		return Name;
+	}
+
+	/**
+	 * Coloca una sombra de pájaro: en Ground con radio Radius (0 la esconde), opacidad Opacity y nitidez Sharp (0 borde
+	 * difuminado, 1 nítido; cambia de malla por tramos). Bucket guarda la malla que lleva.
+	 */
+	inline void PlaceBirdShadow(UStaticMeshComponent* Comp, int32& Bucket, const FVector& Ground, float Radius, float Opacity, float Sharp)
+	{
+		if (!Comp)
+		{
+			return;
+		}
+		TNBeachKit::PlaceShadow(Comp, Ground, Radius);
+		if (Radius <= 1.f)
+		{
+			return;
+		}
+		static const float InnerFrac[3] = { 0.35f, 0.6f, 0.85f };
+		const int32 Want = Sharp < 0.33f ? 0 : (Sharp < 0.66f ? 1 : 2);
+		if (Want != Bucket)
+		{
+			Bucket = Want;
+			Comp->SetStaticMesh(TNBeachKit::ShadowDiscEdge(InnerFrac[Want]));
+		}
+		TNBeachKit::SetOpacity(TNBeachKit::SoftMID(Comp), Opacity);
 	}
 }
 
@@ -315,6 +356,11 @@ void ATN_BeachGullZone::BuildBirds()
 	SandDesc.Spread = 1.f;
 	SandDesc.SpawnRadius = 400.f;
 	TNBeachKit::InitEmitter(SandPuff, this, SandDesc, Seed + 54u);
+	// Granos de arena que saltan al picar en el sitio (el picado fallido).
+	TNAmbientFX::FEmitterDesc PeckDesc = TNBeachKit::MakeDesc(EShape::Ember, FLinearColor(0.82f, 0.72f, 0.52f), false, 1.f, 40, 0.f, 1100.f, -1500.f, 0.6f, 1.1f, 30.f, 22.f);
+	PeckDesc.Spread = 0.8f;
+	PeckDesc.SpawnRadius = 90.f;
+	TNBeachKit::InitEmitter(PeckSand, this, PeckDesc, Seed + 55u);
 	GetVoice(GetRootComponent(), 2500.f, 16000.f);
 }
 
@@ -336,6 +382,24 @@ FVector ATN_BeachGullZone::AttackPos(const FBird& Bird, double Now, float Tau) c
 {
 	using namespace TNBeachGull;
 	const FVector Circle = CirclePos(Bird, Now);
+	if (Attack.Kind == 3)
+	{
+		// Mareada: cae a la arena dando tumbos, se queda sentada lo que dura el mareo y despega hacia su círculo.
+		const FVector HitAt = Attack.Aim;
+		const FVector Sit = Attack.Hold;
+		const float StunFor = FMath::Max(DazeFall, HitStunEndTime - Attack.StartTime);
+		if (Tau < DazeFall)
+		{
+			const float A = Tau / DazeFall;
+			return FMath::Lerp(HitAt, Sit, static_cast<double>(A * A)) + FVector(0.0, 0.0, 300.0 * FMath::Sin(PI * A) * (1.f - A));
+		}
+		if (Tau < StunFor)
+		{
+			return Sit;
+		}
+		const float B = Smooth01((Tau - StunFor) / DazeTakeOff);
+		return FMath::Lerp(Sit, Circle, static_cast<double>(B)) + FVector(0.0, 0.0, 900.0 * FMath::Sin(PI * B));
+	}
 	const FVector From = CirclePos(Bird, Attack.StartTime);
 	const ATortugaCharacter* Victim = Attack.Victim;
 	const FVector VictimLoc = Victim ? Victim->GetActorLocation() : FVector(Attack.Aim);
@@ -384,17 +448,28 @@ FVector ATN_BeachGullZone::AttackPos(const FBird& Bird, double Now, float Tau) c
 		const float B = Smooth01((Tau - StrikeTime - CarryTime) / (DiveEndHit - StrikeTime - CarryTime));
 		return FMath::Lerp(Release + FVector(0.0, 0.0, 1500.0 * B), Circle, static_cast<double>(B));
 	}
-	// Fallo: remonta de largo y vuelve.
+	// Fallo: baja igual hasta clavar el pico en la arena (o en lo que la cubría), pica dos veces, remonta de largo y vuelve.
+	const float U = Tau - StrikeTime;
+	const FVector Peck = PeckRoot(Bird);
+	if (U < PeckDown)
+	{
+		return FMath::Lerp(Strike, Peck, static_cast<double>(Smooth01(U / PeckDown)));
+	}
+	if (U < PeckHold)
+	{
+		// Picotazos: el cuerpo sube y baja un poco con cada uno.
+		return Peck + FVector(0.0, 0.0, 45.0 * FMath::Abs(FMath::Sin((U - PeckDown) * 14.f)));
+	}
 	FVector Fwd = Target - DiveStart;
 	Fwd.Z = 0.0;
 	Fwd = Fwd.IsNearlyZero() ? FVector::ForwardVector : Fwd.GetSafeNormal();
-	const float K = FMath::Min(Tau - StrikeTime, 0.9f);
-	const FVector Pull = Strike + Fwd * (K * 3000.0) + FVector(0.0, 0.0, K * K * 3500.0);
-	if (Tau < StrikeTime + 0.9f)
+	const float K = FMath::Min(U - PeckHold, 0.9f);
+	const FVector Pull = Peck + Fwd * (K * 3000.0) + FVector(0.0, 0.0, K * K * 3500.0);
+	if (U < PeckHold + 0.9f)
 	{
 		return Pull;
 	}
-	const float B = Smooth01((Tau - StrikeTime - 0.9f) / (DiveEndMiss - StrikeTime - 0.9f));
+	const float B = Smooth01((U - PeckHold - 0.9f) / (DiveEndMiss - StrikeTime - PeckHold - 0.9f));
 	return FMath::Lerp(Pull, Circle, static_cast<double>(B));
 }
 
@@ -473,7 +548,12 @@ FVector ATN_BeachGullZone::StrikeRoot(const FBird& Bird, double Now) const
 	const ATortugaCharacter* Victim = Attack.Victim;
 	const float Drop = GripDropFor(Victim);
 	FVector Grip;
-	if (Attack.bLocked)
+	if (Attack.Kind == 2 && Attack.Result == 2)
+	{
+		// Falla: el pico llega justo encima de donde va a picar (la arena o la sombrilla que la cubría).
+		Grip = FVector(Attack.Hold) + FVector(0.0, 0.0, 160.0);
+	}
+	else if (Attack.bLocked)
 	{
 		// Aim está en el suelo: el caparazón, media cápsula más arriba.
 		const UCapsuleComponent* Capsule = Victim ? Victim->GetCapsuleComponent() : nullptr;
@@ -484,10 +564,44 @@ FVector ATN_BeachGullZone::StrikeRoot(const FBird& Bird, double Now) const
 	{
 		Grip = (Victim ? Victim->GetActorLocation() : FVector(Attack.Aim)) + FVector(0.0, 0.0, Drop);
 	}
-	FVector Dir = Grip - CirclePos(Bird, Attack.StartTime);
+	return RootForGrip(Bird, Grip, FRotator(StrikePitch, DiveYaw(Bird, Grip), 0.f), StrikeHeadPitch);
+}
+
+float ATN_BeachGullZone::DiveYaw(const FBird& Bird, const FVector& Target) const
+{
+	FVector Dir = Target - CirclePos(Bird, Attack.StartTime);
 	Dir.Z = 0.0;
-	const float Yaw = Dir.IsNearlyZero() ? 0.f : static_cast<float>(Dir.Rotation().Yaw);
-	return RootForGrip(Bird, Grip, FRotator(StrikePitch, Yaw, 0.f), StrikeHeadPitch);
+	return Dir.IsNearlyZero() ? 0.f : static_cast<float>(Dir.Rotation().Yaw);
+}
+
+FVector ATN_BeachGullZone::PeckRoot(const FBird& Bird) const
+{
+	using namespace TNBeachGull;
+	// El pico clavado en la arena (un pelo por encima del punto), con el morro y la cabeza hacia abajo.
+	const FVector Grip = FVector(Attack.Hold) + FVector(0.0, 0.0, 15.0);
+	return RootForGrip(Bird, Grip, FRotator(PeckPitch, DiveYaw(Bird, Grip), 0.f), PeckHeadPitch);
+}
+
+void ATN_BeachGullZone::BirdPose(int32 Index, double Now, FVector& OutRoot, FRotator& OutRot) const
+{
+	using namespace TNBeachGull;
+	const FBird& Bird = Birds[Index];
+	const bool bAttacking = Attack.Kind != 0 && Attack.Bird == Index;
+	const float Tau = bAttacking ? static_cast<float>(Now - static_cast<double>(Attack.StartTime)) : 0.f;
+	const float U = Tau - StrikeTime;
+	if (bAttacking && Attack.Kind == 2 && Attack.Result == 1 && U >= 0.f && U < CarryTime)
+	{
+		OutRot = CarryRotation(U);
+		OutRoot = RootForGrip(Bird, GripPath(U), OutRot, CarryHeadPitch(U));
+		return;
+	}
+	OutRoot = bAttacking ? AttackPos(Bird, Now, Tau) : CirclePos(Bird, Now);
+	// El giro que se ve (en el servidor sin pantalla, solo el rumbo del picado): basta para su cuerpo.
+	OutRot = FRotator(Bird.Pitch, Bird.Yaw, Bird.Bank);
+	if (!bHasScreen && bAttacking && Attack.Kind == 2)
+	{
+		OutRot = FRotator(-40.f, DiveYaw(Bird, FVector(Attack.Aim)), 0.f);
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -579,6 +693,15 @@ void ATN_BeachGullZone::EndAttack(double Now)
 void ATN_BeachGullZone::ServerTick(float DeltaSeconds)
 {
 	const double Now = ServerNow(this);
+	if (Attack.Kind == 3)
+	{
+		// Mareada en la arena: cuando se le pasa y ha despegado, vuelve a su círculo (y la zona, a atacar).
+		if (Now > static_cast<double>(HitStunEndTime) + TNBeachGull::DazeTakeOff)
+		{
+			EndAttack(Now);
+		}
+		return;
+	}
 	if (Attack.Kind != 0)
 	{
 		const float Tau = static_cast<float>(Now - static_cast<double>(Attack.StartTime));
@@ -596,7 +719,7 @@ void ATN_BeachGullZone::ServerTick(float DeltaSeconds)
 		}
 		return;
 	}
-	if (Now < NextAttackTime || !IsRaceLive(this) || Birds.Num() == 0)
+	if (Now < NextAttackTime || !IsRaceLive(this) || Birds.Num() == 0 || IsHitStunned())
 	{
 		return;
 	}
@@ -716,13 +839,14 @@ void ATN_BeachGullZone::ServerDive(float Tau)
 		}
 		Attack.Aim = Point;
 		Attack.bLocked = 1;
-		// Con algo encima (sombrilla, techo) no puede bajar: fallará.
+		// Con algo encima (sombrilla, techo) no puede bajar: fallará y picará en lo que la cubre.
 		FHitResult RoofHit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(BeachGullRoof), false);
 		if (GetWorld()->LineTraceSingleByObjectType(RoofHit, Point + FVector(0.0, 0.0, 3000.0), Point + FVector(0.0, 0.0, 250.0),
 			FCollisionObjectQueryParams(ECC_WorldStatic), Params))
 		{
 			Attack.Result = 2;
+			Attack.Hold = RoofHit.ImpactPoint;
 			OnAttackChanged();
 		}
 		ForceNetUpdate();
@@ -778,7 +902,9 @@ void ATN_BeachGullZone::ServerDive(float Tau)
 		}
 		else
 		{
+			// Nadie bajo el pico: pica igual en la arena donde iba.
 			Attack.Result = 2;
+			Attack.Hold = Attack.Aim;
 		}
 		ForceNetUpdate();
 		OnAttackChanged();
@@ -792,24 +918,134 @@ void ATN_BeachGullZone::ServerDive(float Tau)
 		const bool bSlipped = !bGone && (Carried->IsInShell() || Carried->IsKnockedDown());
 		if (bGone || bSlipped || U >= CarryTime)
 		{
-			bReleased = true;
-			EndHoldLocal();
-			if (!bGone && !Carried->IsKnockedDown())
-			{
-				// Cae en bola y sigue aturdida un rato al llegar al suelo.
-				float GroundZ = static_cast<float>(Attack.Hold.Z);
-				GroundHeightAt(Carried->GetActorLocation(), GroundZ);
-				const float Height = FMath::Max(0.f, static_cast<float>(Carried->GetActorLocation().Z) - GroundZ);
-				const float FallSeconds = FMath::Sqrt(2.f * Height / Gravity);
-				StunTurtle(Carried, FallSeconds + AfterDropStun, CourseBack * ReleaseLaunch + FVector(0.0, 0.0, -50.0));
-			}
-			ForceNetUpdate();
+			ReleaseCarried();
 		}
 	}
 	if (Attack.Result != 0 && Tau >= (Attack.Result == 1 ? DiveEndHit : DiveEndMiss))
 	{
 		EndAttack(ServerNow(this));
 	}
+}
+
+void ATN_BeachGullZone::ReleaseCarried()
+{
+	using namespace TNBeachGull;
+	ATortugaCharacter* Carried = Attack.Victim;
+	bReleased = true;
+	EndHoldLocal();
+	if (IsValid(Carried) && !Carried->IsDead() && !Carried->IsKnockedDown())
+	{
+		// Cae en bola y sigue aturdida un rato al llegar al suelo (si cae dentro de la tormenta, la patada la saca).
+		float GroundZ = static_cast<float>(Attack.Hold.Z);
+		GroundHeightAt(Carried->GetActorLocation(), GroundZ);
+		const float Height = FMath::Max(0.f, static_cast<float>(Carried->GetActorLocation().Z) - GroundZ);
+		const float FallSeconds = FMath::Sqrt(2.f * Height / Gravity);
+		StunTurtle(Carried, FallSeconds + AfterDropStun, CourseBack * ReleaseLaunch + FVector(0.0, 0.0, -50.0));
+	}
+	ForceNetUpdate();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mareo por lo que se le lanza
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_BeachGullZone::ApplyHitStun(float Seconds, AActor* InstigatorActor)
+{
+	Super::ApplyHitStun(Seconds, InstigatorActor);
+	if (!HasAuthority() || !IsHitStunned() || Birds.Num() == 0 || Attack.Kind == 3)
+	{
+		// Ya mareada: solo se alarga (el final va en HitStunEndTime).
+		return;
+	}
+	// El pájaro que atacaba (o, sin ataque, el más cercano a lo que le ha dado).
+	int32 BirdIndex = Attack.Kind != 0 ? static_cast<int32>(Attack.Bird) : INDEX_NONE;
+	if (!Birds.IsValidIndex(BirdIndex))
+	{
+		BirdIndex = FMath::Max(0, PickBird(InstigatorActor ? InstigatorActor->GetActorLocation() : GetActorLocation(), false));
+	}
+	const double Now = ServerNow(this);
+	FVector Root;
+	FRotator Rot;
+	BirdPose(BirdIndex, Now, Root, Rot);
+	// Suelta a la que llevara en el pico.
+	if (Attack.Kind == 2 && Attack.Result == 1 && !bReleased)
+	{
+		ReleaseCarried();
+	}
+	Attack.Kind = 3;
+	Attack.Bird = static_cast<uint8>(BirdIndex);
+	Attack.Victim = nullptr;
+	Attack.Aim = Root;
+	Attack.Hold = FVector(Root.X, Root.Y, GroundAt(Root));
+	Attack.StartTime = static_cast<float>(Now);
+	Attack.Result = 0;
+	Attack.bLocked = 1;
+	++Attack.Serial;
+	ForceNetUpdate();
+	OnAttackChanged();
+}
+
+bool ATN_BeachGullZone::GetHitCapsule(FVector& OutA, FVector& OutB, float& OutRadius) const
+{
+	using namespace TNBeachGull;
+	if (!Birds.IsValidIndex(Attack.Bird))
+	{
+		return false;
+	}
+	const double Now = ServerNow(this);
+	const float Tau = static_cast<float>(Now - static_cast<double>(Attack.StartTime));
+	// Solo el que baja en picado (también picando en el sitio), el que lleva una tortuga y el ya mareado.
+	bool bHittable = false;
+	if (Attack.Kind == 2)
+	{
+		bHittable = Tau >= ClimbTime && (Attack.Result != 1 || Tau - StrikeTime < CarryTime);
+	}
+	else if (Attack.Kind == 3)
+	{
+		bHittable = true;
+	}
+	if (!bHittable)
+	{
+		return false;
+	}
+	const FBird& Bird = Birds[Attack.Bird];
+	FVector Root;
+	FRotator Rot;
+	BirdPose(Attack.Bird, Now, Root, Rot);
+	const TNBeachMeshes::FBirdGeom G = TNBeachMeshes::BirdGeom(Bird.bPelican);
+	const FVector BodyAt = Root + Rot.RotateVector(G.BodyPivot * Bird.Scale);
+	// A tiro de piedra: cerca de la arena.
+	if (BodyAt.Z - GroundAt(BodyAt) > HittableHeight)
+	{
+		return false;
+	}
+	OutA = BodyAt;
+	OutB = Root + Rot.RotateVector((G.BodyPivot + G.HeadPivot) * Bird.Scale);
+	OutRadius = Bird.Span * 0.12f;
+	return true;
+}
+
+FVector ATN_BeachGullZone::GetHitStunAnchor() const
+{
+	if (Attack.Kind == 3 && Birds.IsValidIndex(Attack.Bird))
+	{
+		const FBird& Bird = Birds[Attack.Bird];
+		const TNBeachMeshes::FBirdGeom G = TNBeachMeshes::BirdGeom(Bird.bPelican);
+		FVector Root = Bird.Pos;
+		FRotator Rot(Bird.Pitch, Bird.Yaw, Bird.Bank);
+		if (Root.IsZero())
+		{
+			BirdPose(Attack.Bird, ServerNow(this), Root, Rot);
+		}
+		return Root + Rot.RotateVector((G.BodyPivot + G.HeadPivot) * Bird.Scale) + FVector(0.0, 0.0, 12.0 * Bird.Scale);
+	}
+	return GetActorLocation() + FVector(0.0, 0.0, 3000.0);
+}
+
+float ATN_BeachGullZone::GetHitStunScale() const
+{
+	const bool bPelican = Birds.IsValidIndex(Attack.Bird) && Birds[Attack.Bird].bPelican;
+	return (bPelican ? 9.f : 7.f) * SizeK;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -973,7 +1209,20 @@ void ATN_BeachGullZone::OnAttackChanged()
 		bSwoopPlayed = false;
 		bWhistlePlayed = false;
 		bReleasePlayed = false;
-		if (Attack.Kind != 0 && Voice && bValidBird)
+		bPeckPlayed = false;
+		if (Attack.Kind == 3 && bValidBird)
+		{
+			// Le han dado: plumas por el aire y un graznido que se viene abajo.
+			const FVector At = Attack.Aim;
+			TNBeachKit::BurstAt(Feathers, At + FVector(0.0, 0.0, 200.0), FVector::UpVector, 16);
+			if (Voice)
+			{
+				Voice->SetWorldLocation(At);
+				Voice->Play(ETNBeachSfx::Squawk, Pitch * 0.7f, 1.2f);
+			}
+			Birds[Attack.Bird].JawOpenLeft = 0.6f;
+		}
+		else if (Attack.Kind != 0 && Voice && bValidBird)
 		{
 			Voice->SetWorldLocation(Birds[Attack.Bird].Pos);
 			Voice->Play(ETNBeachSfx::Squawk, Pitch, 1.1f);
@@ -988,9 +1237,12 @@ void ATN_BeachGullZone::OnAttackChanged()
 			const ATortugaCharacter* Victim = Attack.Victim;
 			if (Voice)
 			{
-				// Pico que se cierra de golpe (con la tortuga dentro o en el aire) y el graznido.
+				// Con la tortuga: pico que se cierra de golpe y graznido. Sin ella: graznido de rabia (el picotazo, al llegar).
 				Voice->SetWorldLocation(Birds[Attack.Bird].Pos);
-				Voice->Play(ETNBeachSfx::Clack, Attack.Result == 1 ? 1.6f : 1.9f, 1.1f);
+				if (Attack.Result == 1)
+				{
+					Voice->Play(ETNBeachSfx::Clack, 1.6f, 1.1f);
+				}
 				Voice->Play(ETNBeachSfx::Squawk, Pitch * (Attack.Result == 1 ? 1.15f : 0.85f), 1.2f);
 			}
 			if (Attack.Result == 1 && Victim)
@@ -1127,9 +1379,49 @@ void ATN_BeachGullZone::PoseBird(int32 Index, float DeltaSeconds, bool bAttackin
 			JawTarget = U < CarryTime + 0.5f ? 35.f : 0.f;
 			Flap = 40.f * FMath::Sin(Clock * 2.f * PI * 3.f * Rate);
 		}
+		else if (U < PeckHold)
+		{
+			// Falla y pica en el sitio: cabeza abajo con dos picotazos, alas abiertas para no caerse y patas delante.
+			const float Bob = FMath::Abs(FMath::Sin(FMath::Max(0.f, U - PeckDown) * 14.f));
+			HeadPitch = PeckHeadPitch + 25.f * Bob;
+			HeadYaw = 0.f;
+			JawTarget = 22.f * Bob;
+			Flap = 18.f * FMath::Sin(Clock * 2.f * PI * 3.f * Rate);
+			Sweep = -15.f;
+			Tuck = 30.f;
+		}
 		else
 		{
 			Flap = 40.f * FMath::Sin(Clock * 2.f * PI * 3.f * Rate);
+		}
+	}
+	else if (bAttacking && Attack.Kind == 3)
+	{
+		const float StunFor = FMath::Max(DazeFall, HitStunEndTime - Attack.StartTime);
+		if (Tau < DazeFall)
+		{
+			// Cae dando tumbos, aleteando como puede.
+			Flap = 55.f * FMath::Sin(Clock * 2.f * PI * 4.f * Rate);
+			Sweep = -10.f;
+			HeadPitch = 25.f * FMath::Sin(Clock * 9.f);
+			Tuck = 0.f;
+			JawTarget = 30.f;
+		}
+		else if (Tau < StunFor)
+		{
+			// Sentada en la arena, alas caídas y la cabeza dando vueltas.
+			Flap = -30.f + 3.f * FMath::Sin(Clock * 2.f);
+			Sweep = 25.f;
+			Tuck = 0.f;
+			HeadPitch = -15.f + 8.f * FMath::Sin(Clock * 1.7f);
+			HeadYaw = 30.f * FMath::Sin(Clock * 2.6f);
+			JawTarget = 14.f;
+		}
+		else
+		{
+			// Despega aleteando fuerte.
+			Flap = 45.f * FMath::Sin(Clock * 2.f * PI * 3.2f * Rate);
+			Tuck = -40.f;
 		}
 	}
 	else if (bAttacking && Attack.Kind == 1 && Tau < DropTime + 0.4f)
@@ -1211,12 +1503,35 @@ void ATN_BeachGullZone::VisualTick(float DeltaSeconds)
 				Bird.Bank = FMath::FInterpTo(Bird.Bank, FMath::Clamp(YawRate * 0.3f, -40.f, 40.f), Dt, 3.f);
 			}
 			float Climb = static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(Bird.Vel.Z, FMath::Max(1.0, Bird.Vel.Size2D()))));
-			// Al final del picado frena levantando el morro (el pico llega por delante, abierto).
-			if (bAttacking && Attack.Kind == 2 && Attack.Result != 2 && Tau > StrikeTime - 0.5f)
+			// Al final del picado frena levantando el morro (el pico llega por delante, abierto); si falla, baja el morro
+			// para picar en la arena (como lo cuenta PeckRoot).
+			const bool bPecking = bAttacking && Attack.Kind == 2 && Attack.Result == 2 && U >= -0.5f && U < PeckHold;
+			if (bAttacking && Attack.Kind == 2 && Tau > StrikeTime - 0.5f)
 			{
-				Climb = FMath::Lerp(Climb, StrikePitch, Smooth01((Tau - (StrikeTime - 0.5f)) / 0.4f));
+				const float Brake = Smooth01((Tau - (StrikeTime - 0.5f)) / 0.4f);
+				if (Attack.Result != 2)
+				{
+					Climb = FMath::Lerp(Climb, StrikePitch, Brake);
+				}
+				else if (bPecking)
+				{
+					Climb = FMath::Lerp(Climb, PeckPitch, Brake);
+				}
 			}
-			Bird.Pitch = FMath::FInterpTo(Bird.Pitch, FMath::Clamp(Climb, -60.f, 45.f), Dt, 5.f);
+			Bird.Pitch = FMath::FInterpTo(Bird.Pitch, FMath::Clamp(Climb, -60.f, 45.f), Dt, bPecking ? 12.f : 5.f);
+			if (bAttacking && Attack.Kind == 3)
+			{
+				// Mareada: da tumbos al caer y se tambalea sentada.
+				const float StunFor = FMath::Max(DazeFall, HitStunEndTime - Attack.StartTime);
+				if (Tau < DazeFall)
+				{
+					Bird.Bank = 35.f * FMath::Sin(Clock * 11.f);
+				}
+				else if (Tau < StunFor)
+				{
+					Bird.Bank = 8.f * FMath::Sin(Clock * 2.2f);
+				}
+			}
 		}
 		if (BirdRoots.IsValidIndex(i) && BirdRoots[i])
 		{
@@ -1227,18 +1542,62 @@ void ATN_BeachGullZone::VisualTick(float DeltaSeconds)
 			PoseBird(i, DeltaSeconds, bAttacking, Tau);
 		}
 
-		// Sombra en la arena: más grande y cercana cuanto más baja el pájaro.
+		// Sombra en la arena: la de verdad, bajo el cuerpo; cuanto más baja el pájaro, más pequeña, nítida y oscura. En el
+		// picado se va a donde va a dar (la tortuga, o donde pica si falla) y se cierra sobre ella: el aviso.
+		const TNBeachMeshes::FBirdGeom G = TNBeachMeshes::BirdGeom(Bird.bPelican);
+		const FVector BodyAt = Bird.Pos + FRotator(Bird.Pitch, Bird.Yaw, Bird.Bank).RotateVector(G.BodyPivot * Bird.Scale);
+		float Mark = 0.f;
+		FVector MarkAt = BodyAt;
+		if (bAttacking && Attack.Kind == 2 && Attack.Result != 1)
+		{
+			Mark = Tau < StrikeTime + PeckHold ? Smooth01((Tau - ClimbTime) / 0.4f) : 1.f - Smooth01((Tau - StrikeTime - PeckHold) / 0.4f);
+			const ATortugaCharacter* Victim = Attack.Victim;
+			MarkAt = Attack.Result == 2 ? FVector(Attack.Hold) : ((Attack.bLocked || !Victim) ? FVector(Attack.Aim) : Victim->GetActorLocation());
+		}
+		const FVector ShadowXY = FMath::Lerp(BodyAt, MarkAt, static_cast<double>(Mark));
 		Bird.ShadowTimer -= DeltaSeconds;
 		if (Bird.ShadowTimer <= 0.f)
 		{
-			Bird.ShadowTimer = 0.25f;
-			Bird.ShadowZ = GroundAt(Bird.Pos);
+			Bird.ShadowTimer = Mark > 0.f ? 0.05f : 0.25f;
+			Bird.ShadowZ = GroundAt(ShadowXY);
 		}
-		const float Height = static_cast<float>(Bird.Pos.Z) - Bird.ShadowZ;
-		const float ShadowR = bNear ? Bird.Span * 0.32f * FMath::Clamp(1.5f - Height / 9000.f, 0.35f, 1.3f) : 0.f;
+		const float Height = FMath::Max(0.f, static_cast<float>(BodyAt.Z) - Bird.ShadowZ);
+		// Suelta: nítida y de unos 4 m a ras de arena; en lo alto, más grande y tenue.
+		const float FreeH = FMath::Clamp(Height / 8000.f, 0.f, 1.f);
+		float ShadowR = Bird.Span * 0.2f * (0.75f + 0.5f * FreeH);
+		float Opacity = FMath::Lerp(0.5f, 0.12f, FreeH);
+		float Sharp = 1.f - FreeH;
+		if (Mark > 0.f)
+		{
+			// Aviso del picado: grande y tenue arriba; al llegar, del tamaño de lo que coge, oscura y nítida.
+			const float DiveH = FMath::Clamp(Height / DiveStartHeight, 0.f, 1.f);
+			ShadowR = FMath::Lerp(ShadowR, FMath::Lerp(GrabRadius * SizeK * 1.15f, Bird.Span * 0.32f, DiveH), Mark);
+			Opacity = FMath::Lerp(Opacity, FMath::Lerp(0.72f, 0.16f, DiveH), Mark);
+			Sharp = FMath::Lerp(Sharp, 1.f - DiveH, Mark);
+		}
 		if (Shadows.IsValidIndex(i))
 		{
-			TNBeachKit::PlaceShadow(Shadows[i], FVector(Bird.Pos.X, Bird.Pos.Y, Bird.ShadowZ), ShadowR);
+			PlaceBirdShadow(Shadows[i], Bird.ShadowEdge, FVector(ShadowXY.X, ShadowXY.Y, Bird.ShadowZ), bNear ? ShadowR : 0.f, Opacity, Sharp);
+		}
+
+		// Picado fallido: el picotazo en la arena (o en la sombrilla), con arena que salta y el golpe.
+		if (bAttacking && Attack.Kind == 2 && Attack.Result == 2 && U >= PeckDown && !bPeckPlayed)
+		{
+			bPeckPlayed = true;
+			const FVector PeckAt = Attack.Hold;
+			if (bNear)
+			{
+				TNBeachKit::BurstAt(SandPuff, PeckAt + FVector(0.0, 0.0, 40.0), FVector::UpVector, 8);
+				TNBeachKit::BurstAt(PeckSand, PeckAt + FVector(0.0, 0.0, 30.0), FVector::UpVector, 26);
+				UTN_BeachCameraShake::Kick(this, PeckAt, 0.3f, 400.f, 2500.f);
+				ShowPop(NSLOCTEXT("TNBeach", "GullPeck", "¡PIC!"), FColor(255, 240, 200), PeckAt + FVector(0.0, 0.0, 260.0), 130.f);
+				if (Voice)
+				{
+					Voice->SetWorldLocation(PeckAt);
+					Voice->Play(ETNBeachSfx::Slam, 1.8f, 0.8f);
+					Voice->Play(ETNBeachSfx::Clack, 2.f, 1.f);
+				}
+			}
 		}
 
 		// Graznidos sueltos (abren el pico), el silbido del picado y la suelta.
@@ -1296,7 +1655,8 @@ void ATN_BeachGullZone::VisualTick(float DeltaSeconds)
 			const FVector Top = Target + FVector(0.0, 0.0, PoopHeight + 300.0);
 			const FVector At = FMath::Lerp(Top, Target, static_cast<double>(FMath::Pow(U, 1.8f)));
 			Dropping->SetWorldTransform(FTransform(FRotator(8.f * FMath::Sin(Clock * 9.f), Clock * 60.f, 0.f), At, FVector(SizeK * DropScale)));
-			TNBeachKit::PlaceShadow(DropShadow, Target, FMath::Lerp(520.f, SplatRadius * SizeK, FMath::Pow(U, 1.2f)));
+			// Su sombra se encoge, se oscurece y se afila según cae.
+			PlaceBirdShadow(DropShadow, DropShadowEdge, Target, FMath::Lerp(520.f, SplatRadius * SizeK, FMath::Pow(U, 1.2f)), FMath::Lerp(0.2f, 0.68f, U), U);
 			bShowDrop = true;
 			DropTrailTimer -= DeltaSeconds;
 			if (DropTrailTimer <= 0.f)
@@ -1353,4 +1713,5 @@ void ATN_BeachGullZone::VisualTick(float DeltaSeconds)
 	TNBeachKit::TickEmitterIfBusy(Feathers, DeltaSeconds, View);
 	TNBeachKit::TickEmitterIfBusy(Trail, DeltaSeconds, View);
 	TNBeachKit::TickEmitterIfBusy(SandPuff, DeltaSeconds, View);
+	TNBeachKit::TickEmitterIfBusy(PeckSand, DeltaSeconds, View);
 }

@@ -11,8 +11,8 @@
 
 namespace TNBeachUrchin
 {
-	/** Estados del erizo (Mover.State). */
-	enum class EState : uint8 { Idle, Wander, Roll, Recoil };
+	/** Estados del erizo (Mover.State). Dazed: mareado por algo que se le ha lanzado (ni rueda ni pincha). */
+	enum class EState : uint8 { Idle, Wander, Roll, Recoil, Dazed };
 
 	inline uint8 ToByte(EState E)
 	{
@@ -167,6 +167,16 @@ void ATN_BeachSeaUrchin::ServerTick(float DeltaSeconds)
 	using TNBeachUrchin::EState;
 	using TNBeachUrchin::ToByte;
 	StateLeft -= DeltaSeconds;
+	// Mareado por lo que se le ha lanzado: quieto, tambaleándose, sin rodar ni pinchar (se le puede pasar al lado).
+	if (IsHitStunned())
+	{
+		if (static_cast<EState>(GetMoverState()) != EState::Dazed)
+		{
+			Target.Reset();
+			ServerSetState(ToByte(EState::Dazed));
+		}
+		return;
+	}
 	if (CheckPricks())
 	{
 		return;
@@ -233,6 +243,11 @@ void ATN_BeachSeaUrchin::ServerTick(float DeltaSeconds)
 		RollToward(Victim->GetActorLocation(), TNBeachUrchin::RollSpeed * FMath::Sqrt(SizeK), DeltaSeconds);
 		break;
 	}
+	case EState::Dazed:
+		// Se le ha pasado el mareo: un respiro y a pasear.
+		StateLeft = TNBeachUrchin::RestMin;
+		ServerSetState(ToByte(EState::Idle));
+		break;
 	case EState::Recoil:
 	default:
 	{
@@ -291,11 +306,15 @@ void ATN_BeachSeaUrchin::VisualTick(float DeltaSeconds)
 	}
 	if (Ball && ViewDistance < GetVisualRange())
 	{
-		// Respira: las púas se abren y cierran un poco; al rodar se aplasta apenas.
+		// Respira: las púas se abren y cierran un poco; al rodar se aplasta apenas. Mareado, se tambalea en el sitio.
 		const float Breath = 1.f + 0.035f * FMath::Sin(Clock * 2.1f);
-		Ball->SetWorldRotation(Spin);
+		const bool bDazed = static_cast<TNBeachUrchin::EState>(GetMoverState()) == TNBeachUrchin::EState::Dazed;
+		const float Wobble = bDazed ? 1.f : 0.f;
+		const FQuat Tilt(FVector(FMath::Cos(Clock * 3.1f), FMath::Sin(Clock * 3.1f), 0.0), FMath::DegreesToRadians(9.f * Wobble));
+		Ball->SetWorldRotation(Tilt * Spin);
 		Ball->SetRelativeScale3D(FVector(SizeK * Breath));
-		Ball->SetRelativeLocation(FVector(0.0, 0.0, RollRadius * (1.0 - 0.02 * FMath::Min(1.f, Speed / 200.f))));
+		Ball->SetRelativeLocation(FVector(35.0 * Wobble * FMath::Sin(Clock * 3.1f), 35.0 * Wobble * FMath::Cos(Clock * 3.1f),
+			RollRadius * (1.0 - 0.02 * FMath::Min(1.f, Speed / 200.f))));
 	}
 
 	FVector View = ShownLoc;

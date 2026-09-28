@@ -16,7 +16,7 @@
 namespace TNBeachCrab
 {
 	/** Estados del cangrejo gigante (Mover.State). */
-	enum class EState : uint8 { Patrol, Idle, Chase, WindUp, Slam, Recover, Return, Dazed };
+	enum class EState : uint8 { Patrol, Idle, Chase, WindUp, Slam, Recover, Return, Dazed, ChargePrep, Charge, Skid };
 
 	inline uint8 ToByte(EState E)
 	{
@@ -43,6 +43,18 @@ namespace TNBeachCrab
 	constexpr float PatrolSpeed = 300.f;
 	constexpr float ChaseSpeed = 560.f;
 	constexpr float ReturnSpeed = 420.f;
+	/** Aceleración y frenada andando (cm/s², por el tamaño): de parado a la persecución en ~0,8 s, y frena en ~0,5 s. */
+	constexpr float WalkAccel = 700.f;
+	constexpr float WalkDecel = 1100.f;
+	/** Giro: velocidad máxima (grados/s) y cuánto tarda en llegar a lo que quiere (s): gira poco a poco, sin latigazos. */
+	constexpr float MaxTurnRate = 170.f;
+	constexpr float TurnResponse = 0.3f;
+	/** Mira por delante (cm, por el tamaño; además del cuerpo y de lo que anda en 0,6 s) para rodear lo grande del reparto. */
+	constexpr float LookAheadExtra = 250.f;
+	/** Atasco: si en StuckCheck s se ha movido menos que StuckMove (cm, por el tamaño) queriendo andar, sale de lado un rato. */
+	constexpr float StuckCheck = 1.f;
+	constexpr float StuckMove = 60.f;
+	constexpr float EscapeTime = 0.9f;
 	/** Paradas del recorrido (s): cortas, chasqueando la pinza. Si no llega a un punto en este tiempo, pasa al siguiente. */
 	constexpr float StopMin = 0.5f;
 	constexpr float StopMax = 0.95f;
@@ -63,18 +75,40 @@ namespace TNBeachCrab
 	/** Aturdimiento y tiempo que ignora a la golpeada. */
 	constexpr float StunSeconds = 3.5f;
 	constexpr float IgnoreSeconds = 6.f;
-	/** Giro (grados/s) y adelanto al apuntar (s de la velocidad de la tortuga). */
-	constexpr float TurnRate = 240.f;
+	/** Adelanto al apuntar (s de la velocidad de la tortuga). */
 	constexpr float LeadSeconds = 0.3f;
 	/** Cabeceo del brazo con la pinza en alto. */
 	constexpr float RaisePitch = 72.f;
-	/** Largo de una zancada (cm) para la marcha de las patas. */
-	constexpr float Stride = 180.f;
+	/** Largo de un ciclo de paso (cm, por el tamaño): cada pata da un paso por ciclo. */
+	constexpr float Stride = 190.f;
 
-	inline float TurnToward(float From, float To, float MaxStep)
-	{
-		return FMath::UnwindDegrees(From + FMath::Clamp(FMath::FindDeltaAngleDegrees(From, To), -MaxStep, MaxStep));
-	}
+	// ── Embestida ──
+	/** A qué distancia de la tortuga (cm, por el tamaño) embiste y cuántas veces por segundo lo intenta ahí. */
+	constexpr float ChargeMinDist = 900.f;
+	constexpr float ChargeMaxDist = 2100.f;
+	constexpr float ChargeChance = 0.55f;
+	/** Se agacha clavando las patas (s), sale disparado (cm/s y cm/s², por el tamaño: más que la tortuga esprintando). */
+	constexpr float ChargePrepTime = 0.55f;
+	constexpr float ChargeSpeed = 1150.f;
+	constexpr float ChargeAccel = 3200.f;
+	/** Como mucho este tiempo embistiendo; se pasa de la tortuga esto (cm) y luego derrapa (s, cm/s²). */
+	constexpr float ChargeMaxTime = 1.5f;
+	constexpr float ChargeOvershoot = 700.f;
+	constexpr float SkidTime = 0.8f;
+	constexpr float SkidDecel = 2000.f;
+	/** Tiempo sin volver a embestir (s). */
+	constexpr float ChargeCooldown = 5.f;
+	/** Arrollada: derribo con ragdoll (s), empujón en el sentido de la embestida, hacia arriba y de lado, y vueltas. */
+	constexpr float ChargeKnock = 2.4f;
+	constexpr float ChargePush = 950.f;
+	constexpr float ChargeUp = 480.f;
+	constexpr float ChargeSidePush = 260.f;
+	constexpr float ChargeSpin = 320.f;
+	/** Estampado contra algo grande: mareo (s). */
+	constexpr float CrashStun = 1.6f;
+	/** Surcos del derrape: cuántos a la vez y cuánto duran (s). */
+	constexpr int32 MaxFurrows = 16;
+	constexpr float FurrowLife = 5.f;
 
 	inline float Smooth01(float X)
 	{
@@ -98,7 +132,6 @@ float ATN_BeachGiantCrab::GetBodyRadius() const
 void ATN_BeachGiantCrab::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(ATN_BeachGiantCrab, StunEndTime);
 	DOREPLIFETIME(ATN_BeachGiantCrab, BlindEndTime);
 }
 
@@ -116,6 +149,7 @@ void ATN_BeachGiantCrab::ApplySpec()
 	LeashRadius = FMath::Max(TNBeachCrab::LeashRadius * SizeK, Footprint * 1.4f);
 	Reach = static_cast<float>(TNBeachMeshes::CrabRig().Reach) * SizeK;
 	GroundZ = static_cast<float>(GetActorLocation().Z);
+	StuckFrom = GetActorLocation();
 	BuildCrab();
 }
 
@@ -200,13 +234,19 @@ void ATN_BeachGiantCrab::BuildCrab()
 	GrainDesc.Spread = 0.85f;
 	GrainDesc.SpawnRadius = 120.f;
 	TNBeachKit::InitEmitter(SandGrains, this, GrainDesc, static_cast<uint32>(Spec.Seed) + 13u);
+	// Arena que levantan las patas al embestir y al derrapar (por delante, hacia arriba y hacia donde va).
+	TNAmbientFX::FEmitterDesc DragDesc = TNBeachKit::MakeDesc(EShape::Puff, FLinearColor(0.88f, 0.78f, 0.58f), true, 0.6f, 60, 26.f, 700.f, -250.f, 0.8f, 1.6f, 160.f, 420.f);
+	DragDesc.Drag = 1.4f;
+	DragDesc.Spread = 0.75f;
+	DragDesc.SpawnRadius = 260.f;
+	TNBeachKit::InitEmitter(DragSand, this, DragDesc, static_cast<uint32>(Spec.Seed) + 14u);
 
 	GetVoice(Body, 1200.f, 9000.f);
 	LastShown = ShownLoc;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Servidor
+// Servidor: recorrido y percepción
 // ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_BeachGiantCrab::BuildRoute()
@@ -274,10 +314,10 @@ void ATN_BeachGiantCrab::BuildRoute()
 			}
 			if (BestA != INDEX_NONE)
 			{
-				for (const int32 R : { BestA, BestB })
+				for (const int32 Ri : { BestA, BestB })
 				{
-					const FVector ToHome = (Home - Rocks[R].Pos).GetSafeNormal2D();
-					Route.Add(Rocks[R].Pos + ToHome * (Rocks[R].Radius * 0.85f + BodyR + 250.f));
+					const FVector ToHome = (Home - Rocks[Ri].Pos).GetSafeNormal2D();
+					Route.Add(Rocks[Ri].Pos + ToHome * (Rocks[Ri].Radius * 0.85f + BodyR + 250.f));
 					RouteStops.Add(1);
 				}
 				Route.Insert(Home, 1);
@@ -412,15 +452,20 @@ ATortugaCharacter* ATN_BeachGiantCrab::Perceive() const
 	return Best;
 }
 
-FVector ATN_BeachGiantCrab::StepToward(const FVector& Goal, float Speed, float DeltaSeconds, FVector& OutDir)
+// ─────────────────────────────────────────────────────────────────────────────
+// Servidor: marcha (acelera, frena, gira poco a poco, rodea y sale de los atascos)
+// ─────────────────────────────────────────────────────────────────────────────
+
+FVector ATN_BeachGiantCrab::Integrate(float DeltaSeconds, bool* bOutBlocked)
 {
-	FVector Flat = Goal - SimLoc;
-	Flat.Z = 0.0;
-	const double Dist = Flat.Size();
-	OutDir = Dist > 1.0 ? Flat / Dist : FVector::ZeroVector;
-	FVector Next = SimLoc + OutDir * FMath::Min(Dist, static_cast<double>(Speed * DeltaSeconds));
-	// Sin meterse en otro enemigo ni en lo grande del reparto (lo rodea).
-	Next = ResolveStep(Next, GetBodyRadius(), true);
+	const FVector Free = SimLoc + FVector(MoveVel.X, MoveVel.Y, 0.0) * DeltaSeconds;
+	// Sin meterse en otro enemigo ni en lo grande del reparto (se desliza por su borde).
+	FVector Next = ResolveStep(Free, GetBodyRadius(), true);
+	if (bOutBlocked)
+	{
+		const double Step = FVector::Dist2D(Free, SimLoc);
+		*bOutBlocked = Step > 2.0 && FVector::Dist2D(Next, Free) > Step * 0.65;
+	}
 	// Nunca más lejos de su sitio que la correa.
 	FVector FromHome = Next - Home;
 	FromHome.Z = 0.0;
@@ -439,31 +484,162 @@ FVector ATN_BeachGiantCrab::StepToward(const FVector& Goal, float Speed, float D
 		}
 	}
 	Next.Z = FMath::FInterpTo(SimLoc.Z, static_cast<double>(GroundZ), static_cast<double>(DeltaSeconds), 8.0);
+	// Lo que de verdad avanza: si algo lo frena, se frena (no sigue empujando ni patina contra el decorado).
+	if (DeltaSeconds > KINDA_SMALL_NUMBER)
+	{
+		const FVector2D Real((Next.X - SimLoc.X) / DeltaSeconds, (Next.Y - SimLoc.Y) / DeltaSeconds);
+		if (Real.SizeSquared() < MoveVel.SizeSquared())
+		{
+			MoveVel = Real;
+		}
+	}
 	return Next;
 }
 
-void ATN_BeachGiantCrab::ServerWalk(const FVector& Goal, float Speed, float DeltaSeconds, bool bSideways)
+FVector ATN_BeachGiantCrab::Drive(const FVector& Goal, float MaxSpeed, float DeltaSeconds, bool bArrive, float Accel, float Decel)
 {
-	FVector Dir;
-	const FVector Next = StepToward(Goal, Speed, DeltaSeconds, Dir);
-	float WantYaw = SimYaw;
-	if (!Dir.IsNearlyZero())
+	FVector To = Goal - SimLoc;
+	To.Z = 0.0;
+	const float Dist = static_cast<float>(To.Size());
+	float WantSpeed = Dist > 20.f ? MaxSpeed : 0.f;
+	if (bArrive)
 	{
-		const float Heading = static_cast<float>(Dir.Rotation().Yaw);
-		if (bSideways)
+		// Frena a tiempo para llegar parado (v² = 2·a·d).
+		WantSpeed = FMath::Min(WantSpeed, FMath::Sqrt(2.f * Decel * FMath::Max(0.f, Dist - 20.f)));
+	}
+	FVector Dir = Dist > 1.f ? To / Dist : FVector::ZeroVector;
+	if (EscapeLeft > 0.f)
+	{
+		// Saliendo de un atasco: hacia el lado elegido un momento.
+		EscapeLeft -= DeltaSeconds;
+		Dir = FVector(EscapeDir.X, EscapeDir.Y, 0.0);
+		WantSpeed = MaxSpeed * 0.8f;
+	}
+	else if (!Dir.IsNearlyZero())
+	{
+		// Mira por delante y rodea lo grande del reparto antes de chocar con ello.
+		const float Speed = static_cast<float>(MoveVel.Size());
+		const float Look = FMath::Min(Dist, GetBodyRadius() + TNBeachCrab::LookAheadExtra * SizeK + Speed * 0.6f);
+		const FVector Steered = SteerAroundObstacles(SimLoc, Dir, GetBodyRadius(), Look, DeltaSeconds);
+		if (!Steered.IsNearlyZero())
 		{
-			// De lado: hacia el costado que menos haya que girar (como los cangrejos de la fauna).
-			const float Right = Heading - 90.f;
-			const float Left = Heading + 90.f;
-			WantYaw = FMath::Abs(FMath::FindDeltaAngleDegrees(SimYaw, Right)) <= FMath::Abs(FMath::FindDeltaAngleDegrees(SimYaw, Left)) ? Right : Left;
-		}
-		else
-		{
-			WantYaw = Heading;
+			Dir = Steered;
 		}
 	}
-	ServerMoveTo(Next, TNBeachCrab::TurnToward(SimYaw, WantYaw, TNBeachCrab::TurnRate * DeltaSeconds));
+	// Acelera o frena hacia la velocidad que quiere; un cambio de rumbo también cuenta como frenada (gira sin patinar).
+	const FVector2D Want = FVector2D(Dir.X, Dir.Y) * WantSpeed;
+	FVector2D Change = Want - MoveVel;
+	const float Rate = (Want.SizeSquared() > MoveVel.SizeSquared() ? Accel : Decel) * DeltaSeconds;
+	const float ChangeSize = static_cast<float>(Change.Size());
+	if (ChangeSize > Rate && ChangeSize > KINDA_SMALL_NUMBER)
+	{
+		Change *= Rate / ChangeSize;
+	}
+	MoveVel += Change;
+
+	// Atasco: quiere andar y apenas se mueve. Sale un momento de lado (a un lado y al otro por turnos).
+	if (WantSpeed > 60.f && EscapeLeft <= 0.f)
+	{
+		StuckTimer += DeltaSeconds;
+		if (StuckTimer >= TNBeachCrab::StuckCheck)
+		{
+			if (FVector::Dist2D(SimLoc, StuckFrom) < TNBeachCrab::StuckMove * SizeK)
+			{
+				++StuckCount;
+				const FVector2D Ahead(Dir.X, Dir.Y);
+				const FVector2D Across(-Dir.Y, Dir.X);
+				EscapeDir = ((StuckCount % 2 == 1 ? Across : -Across) * 0.85 - Ahead * 0.5).GetSafeNormal();
+				EscapeLeft = TNBeachCrab::EscapeTime;
+			}
+			else
+			{
+				StuckCount = 0;
+			}
+			StuckTimer = 0.f;
+			StuckFrom = SimLoc;
+		}
+	}
+	else if (EscapeLeft <= 0.f)
+	{
+		StuckTimer = 0.f;
+		StuckFrom = SimLoc;
+	}
+	return Integrate(DeltaSeconds);
 }
+
+float ATN_BeachGiantCrab::UpdateFacing(float WantYaw, float DeltaSeconds, float MaxRate)
+{
+	const float Diff = FMath::FindDeltaAngleDegrees(SimYaw, WantYaw);
+	// El giro acelera y frena (nada de latigazos) y nunca se pasa de lo que quiere.
+	const float WantRate = FMath::Clamp(Diff / TNBeachCrab::TurnResponse, -MaxRate, MaxRate);
+	YawRate = FMath::FInterpTo(YawRate, WantRate, DeltaSeconds, 10.f);
+	float Turn = YawRate * DeltaSeconds;
+	if ((Diff >= 0.f && Turn > Diff) || (Diff < 0.f && Turn < Diff))
+	{
+		Turn = Diff;
+	}
+	return FMath::UnwindDegrees(SimYaw + Turn);
+}
+
+float ATN_BeachGiantCrab::SidewaysYaw(float Heading)
+{
+	// Mirando a Heading - 90 avanza hacia su derecha; a Heading + 90, hacia su izquierda. Se queda con el costado que lleva
+	// salvo que el otro esté mucho más a mano (no cambia de lado a cada curva).
+	const float Right = FMath::UnwindDegrees(Heading - 90.f);
+	const float Left = FMath::UnwindDegrees(Heading + 90.f);
+	const float ToRight = FMath::Abs(FMath::FindDeltaAngleDegrees(SimYaw, Right));
+	const float ToLeft = FMath::Abs(FMath::FindDeltaAngleDegrees(SimYaw, Left));
+	if (SideSign == 0.f)
+	{
+		SideSign = ToRight <= ToLeft ? 1.f : -1.f;
+	}
+	else if (SideSign > 0.f && ToRight > ToLeft + 50.f)
+	{
+		SideSign = -1.f;
+	}
+	else if (SideSign < 0.f && ToLeft > ToRight + 50.f)
+	{
+		SideSign = 1.f;
+	}
+	return SideSign > 0.f ? Right : Left;
+}
+
+void ATN_BeachGiantCrab::ServerWalk(const FVector& Goal, float Speed, float DeltaSeconds, bool bSideways, bool bArrive)
+{
+	const FVector Next = Drive(Goal, Speed, DeltaSeconds, bArrive, TNBeachCrab::WalkAccel * SizeK, TNBeachCrab::WalkDecel * SizeK);
+	float WantYaw = SimYaw;
+	FVector Heading(MoveVel.X, MoveVel.Y, 0.0);
+	if (Heading.SizeSquared() < FMath::Square(40.0))
+	{
+		Heading = Goal - SimLoc;
+		Heading.Z = 0.0;
+	}
+	if (Heading.SizeSquared() > FMath::Square(30.0))
+	{
+		const float HeadingYaw = static_cast<float>(Heading.Rotation().Yaw);
+		WantYaw = bSideways ? SidewaysYaw(HeadingYaw) : HeadingYaw;
+	}
+	ServerMoveTo(Next, UpdateFacing(WantYaw, DeltaSeconds, TNBeachCrab::MaxTurnRate));
+}
+
+void ATN_BeachGiantCrab::ServerBrake(float DeltaSeconds, float Decel, float WantYaw, float MaxTurnRate)
+{
+	const float Speed = static_cast<float>(MoveVel.Size());
+	const float Drop = Decel * DeltaSeconds;
+	MoveVel = Speed > Drop ? MoveVel * ((Speed - Drop) / Speed) : FVector2D::ZeroVector;
+	const FVector Next = Integrate(DeltaSeconds);
+	if (MaxTurnRate <= 0.f)
+	{
+		YawRate = 0.f;
+		ServerMoveTo(Next, SimYaw);
+		return;
+	}
+	ServerMoveTo(Next, UpdateFacing(WantYaw, DeltaSeconds, MaxTurnRate));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Servidor: mazazo y embestida
+// ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_BeachGiantCrab::StartWindUp(ATortugaCharacter* Victim)
 {
@@ -522,21 +698,130 @@ void ATN_BeachGiantCrab::ResolveSlam()
 	MulticastSlam(Impact, bHit);
 }
 
+bool ATN_BeachGiantCrab::IsChargeLaneClear(const FVector& To)
+{
+	FVector Lane = To - SimLoc;
+	Lane.Z = 0.0;
+	const double Length = Lane.Size();
+	if (Length < 1.0)
+	{
+		return false;
+	}
+	// Sin nada grande en medio (en tramos de 2,5 m, con casi todo el cuerpo) y sin salirse de la correa.
+	const FVector Dir = Lane / Length;
+	const double End = Length + TNBeachCrab::ChargeOvershoot * SizeK;
+	for (double D = 250.0; D <= End; D += 250.0)
+	{
+		const FVector P = SimLoc + Dir * D;
+		if (IsInsideObstacle(P, GetBodyRadius() * 0.8f) || FVector::Dist2D(P, Home) > LeashRadius)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+void ATN_BeachGiantCrab::StartChargePrep(ATortugaCharacter* Victim)
+{
+	const FVector Vel = Victim->GetVelocity();
+	const FVector Aim = Victim->GetActorLocation() + FVector(Vel.X, Vel.Y, 0.0) * 0.35;
+	FVector Dir = Aim - SimLoc;
+	Dir.Z = 0.0;
+	Dir = Dir.GetSafeNormal();
+	if (Dir.IsNearlyZero())
+	{
+		return;
+	}
+	// Se pasa un poco de la tortuga (no frena justo encima), sin salirse de su correa.
+	FVector End = Aim + Dir * (TNBeachCrab::ChargeOvershoot * SizeK);
+	for (int32 k = 0; k < 6 && FVector::Dist2D(End, Home) > LeashRadius * 0.95f; ++k)
+	{
+		End = FMath::Lerp(SimLoc, End, 0.8);
+	}
+	End.Z = SimLoc.Z;
+	ChargeDir = Dir;
+	Target = Victim;
+	ServerSetState(TNBeachCrab::ToByte(TNBeachCrab::EState::ChargePrep), End);
+}
+
+void ATN_BeachGiantCrab::ChargeHits()
+{
+	if (!IsRaceLive(this))
+	{
+		return;
+	}
+	const float Speed = static_cast<float>(MoveVel.Size());
+	if (Speed < 450.f * SizeK)
+	{
+		return;
+	}
+	TArray<ATortugaCharacter*> Turtles;
+	GatherTurtles(this, Turtles);
+	const FTransform Xf(FRotator(0.f, SimYaw, 0.f), SimLoc);
+	const double S = TNBeach::Scale * SizeK;
+	const double HalfX = TNBeachMeshes::CrabD * S + 90.0;
+	const double HalfY = TNBeachMeshes::CrabW * S * 1.08 + 110.0;
+	const FVector Dir = FVector(MoveVel.X, MoveVel.Y, 0.0).GetSafeNormal();
+	for (ATortugaCharacter* Turtle : Turtles)
+	{
+		if (!IsTargetable(Turtle))
+		{
+			continue;
+		}
+		const FVector At = Turtle->GetActorLocation();
+		const FVector Local = Xf.InverseTransformPositionNoScale(At);
+		if (FMath::Abs(Local.X) > HalfX || FMath::Abs(Local.Y) > HalfY || Local.Z < -150.0 || Local.Z > 700.0)
+		{
+			continue;
+		}
+		// Arrollada: lanzada en el sentido de la embestida, algo hacia fuera y hacia arriba, dando vueltas.
+		FVector Away = At - SimLoc;
+		Away.Z = 0.0;
+		const FVector Out = (Away - Dir * FVector::DotProduct(Away, Dir)).GetSafeNormal();
+		const FVector Push = Dir * TNBeachCrab::ChargePush + Out * TNBeachCrab::ChargeSidePush + FVector(0.0, 0.0, TNBeachCrab::ChargeUp);
+		const FVector Spin = FVector::CrossProduct(FVector::UpVector, Dir) * TNBeachCrab::ChargeSpin;
+		KnockDownTurtle(Turtle, TNBeachCrab::ChargeKnock, Push, Spin);
+		IgnoreTurtle(Turtle, TNBeachCrab::IgnoreSeconds);
+		MulticastRam(At);
+	}
+}
+
+void ATN_BeachGiantCrab::EndCharge()
+{
+	AttackCooldown = 0.8f;
+	ChargeCooldownLeft = TNBeachCrab::ChargeCooldown;
+	ATortugaCharacter* Next = Target.Get();
+	const bool bCanSee = IsRaceLive(this) && !IsBlinded();
+	if (!bCanSee || !IsTargetable(Next) || FVector::Dist2D(Next->GetActorLocation(), Home) > LeashRadius)
+	{
+		Next = bCanSee ? Perceive() : nullptr;
+	}
+	Target = Next;
+	ServerSetState(TNBeachCrab::ToByte(Next ? TNBeachCrab::EState::Chase : TNBeachCrab::EState::Return));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Servidor: estados
+// ─────────────────────────────────────────────────────────────────────────────
+
 void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 {
 	using TNBeachCrab::EState;
 	using TNBeachCrab::ToByte;
 	const EState State = static_cast<EState>(GetMoverState());
 	AttackCooldown -= DeltaSeconds;
+	ChargeCooldownLeft -= DeltaSeconds;
 	StateLeft -= DeltaSeconds;
 
-	if (IsStunned())
+	if (IsHitStunned())
 	{
 		if (State != EState::Dazed)
 		{
 			Target.Reset();
 			ServerSetState(ToByte(EState::Dazed));
 		}
+		// Mareado: frena en unos pasos (sin patinar) y se queda quieto, con los ojos dando vueltas.
+		ServerBrake(DeltaSeconds, TNBeachCrab::SkidDecel * SizeK, SimYaw, 0.f);
 		return;
 	}
 	const bool bLive = IsRaceLive(this);
@@ -567,14 +852,16 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 		}
 		if (State == EState::Patrol)
 		{
-			// Siempre andando su recorrido; en los puntos de parada, un momento chasqueando la pinza.
+			// Siempre andando su recorrido; frena para llegar a los puntos de parada y en ellos chasquea la pinza.
 			PatrolGoal = Route.IsValidIndex(RouteIndex) ? Route[RouteIndex] : Home;
-			ServerWalk(PatrolGoal, TNBeachCrab::PatrolSpeed * SizeK, DeltaSeconds, true);
-			if (FVector::Dist2D(SimLoc, PatrolGoal) < 150.0 || GetStateAge() > TNBeachCrab::LegTimeout)
+			const bool bStop = RouteStops.IsValidIndex(RouteIndex) && RouteStops[RouteIndex] != 0;
+			ServerWalk(PatrolGoal, TNBeachCrab::PatrolSpeed * SizeK, DeltaSeconds, true, bStop);
+			const bool bArrived = FVector::Dist2D(SimLoc, PatrolGoal) < (bStop ? 90.0 : 200.0);
+			if (bArrived || GetStateAge() > TNBeachCrab::LegTimeout || StuckCount >= 2)
 			{
-				const bool bStop = RouteStops.IsValidIndex(RouteIndex) && RouteStops[RouteIndex] != 0;
+				StuckCount = 0;
 				AdvanceRoute();
-				if (bStop)
+				if (bStop && bArrived)
 				{
 					StateLeft = ServerRng.FRandRange(TNBeachCrab::StopMin, TNBeachCrab::StopMax);
 					ServerSetState(ToByte(EState::Idle));
@@ -585,9 +872,13 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 				}
 			}
 		}
-		else if (StateLeft <= 0.f)
+		else
 		{
-			ServerSetState(ToByte(EState::Patrol));
+			ServerBrake(DeltaSeconds, TNBeachCrab::WalkDecel * SizeK, SimYaw, 0.f);
+			if (StateLeft <= 0.f)
+			{
+				ServerSetState(ToByte(EState::Patrol));
+			}
 		}
 		break;
 	}
@@ -598,6 +889,14 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 		const bool bValid = bCanSee && IsTargetable(Victim);
 		const float FromHome = bValid ? static_cast<float>(FVector::Dist2D(Victim->GetActorLocation(), Home)) : 0.f;
 		const float ToVictim = bValid ? static_cast<float>(FVector::Dist2D(Victim->GetActorLocation(), SimLoc)) : 0.f;
+		// A media distancia, de vez en cuando, embiste (si no hay nada grande en medio).
+		if (bValid && FromHome <= LeashRadius && ChargeCooldownLeft <= 0.f && AttackCooldown <= 0.f
+			&& ToVictim > TNBeachCrab::ChargeMinDist * SizeK && ToVictim < TNBeachCrab::ChargeMaxDist * SizeK
+			&& ServerRng.FRand() < TNBeachCrab::ChargeChance * DeltaSeconds && IsChargeLaneClear(Victim->GetActorLocation()))
+		{
+			StartChargePrep(Victim);
+			break;
+		}
 		// La misma decisión (probada) que el cangrejo de siempre, con las medidas del gigante.
 		switch (TNCrabLogic::DecideChaseTransition(bValid, FromHome, LeashRadius, ToVictim, Reach + TNBeachCrab::AttackSlack * SizeK))
 		{
@@ -619,11 +918,11 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 			}
 			else
 			{
-				ServerWalk(Victim->GetActorLocation(), TNBeachCrab::ChaseSpeed * SizeK * 0.5f, DeltaSeconds, true);
+				ServerWalk(Victim->GetActorLocation(), TNBeachCrab::ChaseSpeed * SizeK * 0.5f, DeltaSeconds, true, true);
 			}
 			break;
 		case TNCrabLogic::EChaseTransition::KeepChasing:
-			ServerWalk(Victim->GetActorLocation(), TNBeachCrab::ChaseSpeed * SizeK, DeltaSeconds, true);
+			ServerWalk(Victim->GetActorLocation(), TNBeachCrab::ChaseSpeed * SizeK, DeltaSeconds, true, false);
 			break;
 		}
 		break;
@@ -636,10 +935,9 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 		FVector Dir = Impact - SimLoc;
 		Dir.Z = 0.0;
 		Dir = Dir.IsNearlyZero() ? FRotator(0.f, SimYaw, 0.f).Vector() : Dir.GetSafeNormal();
-		FVector MoveDir;
-		const FVector Next = StepToward(Impact - Dir * Reach, TNBeachCrab::WindUpSpeed * SizeK, DeltaSeconds, MoveDir);
-		const float Facing = static_cast<float>(Dir.Rotation().Yaw);
-		ServerMoveTo(Next, TNBeachCrab::TurnToward(SimYaw, Facing, 420.f * DeltaSeconds));
+		const FVector Next = Drive(Impact - Dir * Reach, TNBeachCrab::WindUpSpeed * SizeK, DeltaSeconds, true,
+			TNBeachCrab::WalkAccel * 2.5f * SizeK, TNBeachCrab::WalkDecel * 2.5f * SizeK);
+		ServerMoveTo(Next, UpdateFacing(static_cast<float>(Dir.Rotation().Yaw), DeltaSeconds, 420.f));
 		if (GetStateAge() >= TNBeachCrab::WindUpTime)
 		{
 			ServerSetState(ToByte(EState::Slam), Impact);
@@ -648,6 +946,7 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 	}
 
 	case EState::Slam:
+		ServerBrake(DeltaSeconds, TNBeachCrab::SkidDecel * SizeK, SimYaw, 0.f);
 		if (GetStateAge() >= TNBeachCrab::SlamTime)
 		{
 			ResolveSlam();
@@ -657,6 +956,7 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 		break;
 
 	case EState::Recover:
+		ServerBrake(DeltaSeconds, TNBeachCrab::SkidDecel * SizeK, SimYaw, 0.f);
 		if (GetStateAge() >= TNBeachCrab::RecoverTime)
 		{
 			ATortugaCharacter* Next = Target.Get();
@@ -666,6 +966,63 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 			}
 			Target = Next;
 			ServerSetState(ToByte(Next ? EState::Chase : EState::Return));
+		}
+		break;
+
+	case EState::ChargePrep:
+	{
+		// Se agacha clavando las patas, frena y se pone de lado hacia la tortuga.
+		const float Heading = static_cast<float>(ChargeDir.Rotation().Yaw);
+		ServerBrake(DeltaSeconds, TNBeachCrab::SkidDecel * SizeK, SidewaysYaw(Heading), 360.f);
+		if (GetStateAge() >= TNBeachCrab::ChargePrepTime)
+		{
+			ServerSetState(ToByte(EState::Charge), FVector(Mover.Aim));
+		}
+		break;
+	}
+
+	case EState::Charge:
+	{
+		// Disparado de lado en línea recta (sin rodear: el camino estaba libre al empezar).
+		const FVector2D Want = FVector2D(ChargeDir.X, ChargeDir.Y) * (TNBeachCrab::ChargeSpeed * SizeK);
+		FVector2D Change = Want - MoveVel;
+		const float Rate = TNBeachCrab::ChargeAccel * SizeK * DeltaSeconds;
+		const float ChangeSize = static_cast<float>(Change.Size());
+		if (ChangeSize > Rate && ChangeSize > KINDA_SMALL_NUMBER)
+		{
+			Change *= Rate / ChangeSize;
+		}
+		MoveVel += Change;
+		bool bBlocked = false;
+		const FVector Next = Integrate(DeltaSeconds, &bBlocked);
+		const float Heading = static_cast<float>(ChargeDir.Rotation().Yaw);
+		ServerMoveTo(Next, UpdateFacing(SidewaysYaw(Heading), DeltaSeconds, 200.f));
+		ChargeHits();
+		if (bBlocked && GetStateAge() > 0.15f)
+		{
+			// Se ha estampado contra algo grande (o contra otro enemigo): se queda mareado.
+			MulticastCrash(SimLoc + ChargeDir * (TNBeachMeshes::CrabW * TNBeach::Scale * SizeK));
+			MoveVel = FVector2D::ZeroVector;
+			EndCharge();
+			ApplyHitStun(TNBeachCrab::CrashStun, this);
+			break;
+		}
+		FVector Left = FVector(Mover.Aim) - SimLoc;
+		Left.Z = 0.0;
+		if (FVector::DotProduct(Left, ChargeDir) < 60.0 || GetStateAge() > TNBeachCrab::ChargeMaxTime)
+		{
+			ServerSetState(ToByte(EState::Skid), FVector(Mover.Aim));
+		}
+		break;
+	}
+
+	case EState::Skid:
+		// Derrapa clavando las patas (surcos y arena por delante) y aún arrolla a quien pille.
+		ServerBrake(DeltaSeconds, TNBeachCrab::SkidDecel * SizeK, SimYaw, 0.f);
+		ChargeHits();
+		if (MoveVel.SizeSquared() < FMath::Square(40.0) || GetStateAge() > TNBeachCrab::SkidTime)
+		{
+			EndCharge();
 		}
 		break;
 
@@ -684,9 +1041,10 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 		// Vuelve a su recorrido por el punto más cercano y sigue patrullando desde ahí.
 		const int32 Nearest = NearestRoutePoint();
 		const FVector Back = Route.IsValidIndex(Nearest) ? Route[Nearest] : Home;
-		ServerWalk(Back, TNBeachCrab::ReturnSpeed * SizeK, DeltaSeconds, true);
-		if (FVector::Dist2D(SimLoc, Back) < 200.0 || GetStateAge() > TNBeachCrab::LegTimeout * 2.f)
+		ServerWalk(Back, TNBeachCrab::ReturnSpeed * SizeK, DeltaSeconds, true, false);
+		if (FVector::Dist2D(SimLoc, Back) < 200.0 || GetStateAge() > TNBeachCrab::LegTimeout * 2.f || StuckCount >= 3)
 		{
+			StuckCount = 0;
 			RouteIndex = Nearest;
 			AdvanceRoute();
 			ServerSetState(ToByte(EState::Patrol));
@@ -707,9 +1065,15 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 			const FVector B = Route[(i + 1) % Route.Num()] + FVector(0.0, 0.0, 60.0);
 			DrawDebugLine(World, A, B, RouteStops.IsValidIndex(i) && RouteStops[i] ? FColor::Green : FColor(0, 120, 0), false, -1.f, 0, 8.f);
 		}
-		if (State == EState::WindUp || State == EState::Slam)
+		DrawDebugLine(World, SimLoc + FVector(0.0, 0.0, 500.0), SimLoc + FVector(MoveVel.X, MoveVel.Y, 0.0) + FVector(0.0, 0.0, 500.0), FColor::White, false, -1.f, 0, 10.f);
+		const EState Shown = static_cast<EState>(GetMoverState());
+		if (Shown == EState::WindUp || Shown == EState::Slam)
 		{
 			DrawDebugCircle(World, FVector(Mover.Aim) + FVector(0.0, 0.0, 40.0), TNBeachCrab::HitRadius * SizeK, 32, FColor::Red, false, -1.f, 0, 12.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
+		}
+		if (Shown == EState::ChargePrep || Shown == EState::Charge || Shown == EState::Skid)
+		{
+			DrawDebugLine(World, SimLoc + FVector(0.0, 0.0, 200.0), FVector(Mover.Aim) + FVector(0.0, 0.0, 200.0), FColor::Magenta, false, -1.f, 0, 14.f);
 		}
 		if (const ATortugaCharacter* Victim = Target.Get())
 		{
@@ -719,19 +1083,13 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Objetos del jugador (ITN_EnemyTargetInterface)
+// Objetos del jugador (ITN_EnemyTargetInterface) y mareo por lo que se le lanza
 // ─────────────────────────────────────────────────────────────────────────────
 
 void ATN_BeachGiantCrab::ApplyStun(float Duration)
 {
-	if (!HasAuthority() || Duration <= 0.f)
-	{
-		return;
-	}
-	const float Now = static_cast<float>(ServerNow(this));
-	StunEndTime = TNCrabLogic::ExtendEffectEndTime(StunEndTime, Now, Duration);
-	Target.Reset();
-	ServerSetState(TNBeachCrab::ToByte(TNBeachCrab::EState::Dazed));
+	// La concha trampa (y lo que venga por la interfaz de siempre): el mareo de la playa, con pajaritos.
+	ApplyHitStun(Duration, nullptr);
 }
 
 void ATN_BeachGiantCrab::ApplyBlind(float Duration)
@@ -743,7 +1101,7 @@ void ATN_BeachGiantCrab::ApplyBlind(float Duration)
 	const float Now = static_cast<float>(ServerNow(this));
 	BlindEndTime = TNCrabLogic::ExtendEffectEndTime(BlindEndTime, Now, Duration);
 	const TNBeachCrab::EState State = static_cast<TNBeachCrab::EState>(GetMoverState());
-	if (State == TNBeachCrab::EState::Chase || State == TNBeachCrab::EState::WindUp)
+	if (State == TNBeachCrab::EState::Chase || State == TNBeachCrab::EState::WindUp || State == TNBeachCrab::EState::ChargePrep)
 	{
 		Target.Reset();
 		ServerSetState(TNBeachCrab::ToByte(TNBeachCrab::EState::Return));
@@ -752,12 +1110,46 @@ void ATN_BeachGiantCrab::ApplyBlind(float Duration)
 
 bool ATN_BeachGiantCrab::IsStunned() const
 {
-	return TNCrabLogic::ComputeEffectRemaining(StunEndTime, static_cast<float>(ServerNow(this))) > 0.f;
+	return IsHitStunned();
 }
 
 bool ATN_BeachGiantCrab::IsBlinded() const
 {
 	return TNCrabLogic::ComputeEffectRemaining(BlindEndTime, static_cast<float>(ServerNow(this))) > 0.f;
+}
+
+void ATN_BeachGiantCrab::ApplyHitStun(float Seconds, AActor* InstigatorActor)
+{
+	Super::ApplyHitStun(Seconds, InstigatorActor);
+	if (HasAuthority() && IsHitStunned() && static_cast<TNBeachCrab::EState>(GetMoverState()) != TNBeachCrab::EState::Dazed)
+	{
+		Target.Reset();
+		ServerSetState(TNBeachCrab::ToByte(TNBeachCrab::EState::Dazed));
+	}
+}
+
+bool ATN_BeachGiantCrab::GetHitCapsule(FVector& OutA, FVector& OutB, float& OutRadius) const
+{
+	// El caparazón: de un costado al otro (5 m de ancho) a la altura del cuerpo.
+	const double S = TNBeach::Scale * SizeK;
+	const FVector Right = FRotator(0.f, ShownYaw, 0.f).RotateVector(FVector::RightVector);
+	const FVector Center = ShownLoc + FVector(0.0, 0.0, TNBeachMeshes::CrabH * 1.25 * S);
+	const double Half = TNBeachMeshes::CrabW * S * 0.55;
+	OutA = Center - Right * Half;
+	OutB = Center + Right * Half;
+	OutRadius = static_cast<float>(TNBeachMeshes::CrabD * S);
+	return true;
+}
+
+FVector ATN_BeachGiantCrab::GetHitStunAnchor() const
+{
+	// Por encima de los ojos (pedúnculos incluidos).
+	return ShownLoc + FVector(0.0, 0.0, TNBeachMeshes::CrabH * TNBeach::Scale * SizeK * 3.3);
+}
+
+float ATN_BeachGiantCrab::GetHitStunScale() const
+{
+	return 6.f * SizeK;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -787,6 +1179,18 @@ void ATN_BeachGiantCrab::OnMoverStateChanged(uint8 OldState)
 	case EState::Dazed:
 		Voice->Play(ETNBeachSfx::Clack, Pitch * 0.6f, 0.8f);
 		break;
+	case EState::ChargePrep:
+		// Chasquido grave y las patas que se clavan en la arena.
+		Voice->Play(ETNBeachSfx::Clack, Pitch * 0.65f, 1.3f);
+		Voice->Play(ETNBeachSfx::Skitter, Pitch * 0.7f, 0.9f);
+		break;
+	case EState::Charge:
+		Voice->Play(ETNBeachSfx::Skitter, Pitch * 1.2f, 1.1f);
+		break;
+	case EState::Skid:
+		// Arena que rasca al frenar.
+		Voice->Play(ETNBeachSfx::Roll, 0.55f, 1.3f);
+		break;
 	default:
 		break;
 	}
@@ -809,15 +1213,57 @@ void ATN_BeachGiantCrab::MulticastSlam_Implementation(FVector_NetQuantize Where,
 	UTN_BeachCameraShake::Kick(this, At, bHit ? 0.8f : 0.55f, 1500.f, 6500.f);
 }
 
+void ATN_BeachGiantCrab::MulticastRam_Implementation(FVector_NetQuantize Where)
+{
+	if (!bHasScreen)
+	{
+		return;
+	}
+	const FVector At = Where;
+	if (Voice)
+	{
+		Voice->SetWorldLocation(At);
+		Voice->Play(ETNBeachSfx::Slam, 1.25f / FMath::Sqrt(SizeK), 1.3f);
+		Voice->Play(ETNBeachSfx::Clack, 1.1f, 1.f);
+	}
+	TNBeachKit::BurstAt(SandPuff, At, FVector::UpVector, 10);
+	TNBeachKit::BurstAt(SandGrains, At + FVector(0.0, 0.0, 40.0), FVector::UpVector, 20);
+	UTN_BeachCameraShake::Kick(this, At, 0.6f, 600.f, 3500.f);
+	ShowPop(NSLOCTEXT("TNBeach", "CrabRam", "¡EMBESTIDA!"), FColor(255, 110, 70), At + FVector(0.0, 0.0, 300.0), 150.f);
+}
+
+void ATN_BeachGiantCrab::MulticastCrash_Implementation(FVector_NetQuantize Where)
+{
+	if (!bHasScreen)
+	{
+		return;
+	}
+	const FVector At = Where;
+	if (Voice)
+	{
+		Voice->SetWorldLocation(At);
+		Voice->Play(ETNBeachSfx::Slam, 0.8f / FMath::Sqrt(SizeK), 1.5f);
+	}
+	TNBeachKit::BurstAt(SandPuff, At + FVector(0.0, 0.0, 80.0), FVector::UpVector, 14);
+	TNBeachKit::BurstAt(SandGrains, At + FVector(0.0, 0.0, 60.0), FVector::UpVector, 24);
+	UTN_BeachCameraShake::Kick(this, At, 0.7f, 1200.f, 5000.f);
+	ShowPop(NSLOCTEXT("TNBeach", "CrabCrash", "¡CATAPLÁN!"), FColor(255, 200, 80), At + FVector(0.0, 0.0, 350.0), 150.f);
+}
+
 void ATN_BeachGiantCrab::VisualTick(float DeltaSeconds)
 {
 	VisualClock += DeltaSeconds;
 	FVector Delta = ShownLoc - LastShown;
 	Delta.Z = 0.0;
 	LastShown = ShownLoc;
+	const float Dt = FMath::Max(DeltaSeconds, 1e-3f);
 	const float Step = static_cast<float>(Delta.Size());
-	const float Speed = Step / FMath::Max(DeltaSeconds, 1e-3f);
-	Moving = FMath::FInterpTo(Moving, FMath::Clamp(Speed / 300.f, 0.f, 1.5f), DeltaSeconds, 6.f);
+	// Velocidad que se ve (suavizada), en el mundo y en su marco (de lado = Y).
+	ShownVel = FMath::Lerp(ShownVel, Delta / Dt, static_cast<double>(1.f - FMath::Exp(-Dt / 0.12f)));
+	LocalVel = FRotator(0.f, ShownYaw, 0.f).UnrotateVector(ShownVel);
+	const float Speed = static_cast<float>(ShownVel.Size2D());
+	Moving = FMath::FInterpTo(Moving, FMath::Clamp(Speed / (300.f * SizeK), 0.f, 1.5f), DeltaSeconds, 6.f);
+	// Las patas dan un ciclo por zancada recorrida: el pie apoyado acompaña al cuerpo (no patina).
 	Gait += Step / (TNBeachCrab::Stride * SizeK);
 
 	FVector View = ShownLoc;
@@ -843,13 +1289,17 @@ void ATN_BeachGiantCrab::VisualTick(float DeltaSeconds)
 		case EState::Chase: Rate = 1.8f; break;
 		case EState::WindUp: Rate = 3.f; break;
 		case EState::Dazed: Rate = 2.5f; break;
+		case EState::ChargePrep:
+		case EState::Charge: Rate = 3.f; break;
 		default: break;
 		}
 		Foam.RateScale = bNear ? Rate : 0.f;
 	}
+	TickDrag(DeltaSeconds, bNear);
 	TNBeachKit::TickEmitterIfBusy(Foam, DeltaSeconds, View);
 	TNBeachKit::TickEmitterIfBusy(SandPuff, DeltaSeconds, View);
 	TNBeachKit::TickEmitterIfBusy(SandGrains, DeltaSeconds, View);
+	TNBeachKit::TickEmitterIfBusy(DragSand, DeltaSeconds, View);
 
 	// Sombra de la pinza durante el aviso: crece hasta el radio del golpe.
 	if (State == EState::WindUp || State == EState::Slam)
@@ -862,7 +1312,7 @@ void ATN_BeachGiantCrab::VisualTick(float DeltaSeconds)
 		TNBeachKit::PlaceShadow(ClawShadow, FVector::ZeroVector, 0.f);
 	}
 
-	// Patitas al andar y chasquidos al agitar la pinza.
+	// Patitas al andar (más seguidas cuanto más deprisa) y chasquidos al agitar la pinza.
 	if (Voice && bNear)
 	{
 		SkitterTimer -= DeltaSeconds * Moving;
@@ -885,6 +1335,95 @@ void ATN_BeachGiantCrab::VisualTick(float DeltaSeconds)
 	}
 }
 
+void ATN_BeachGiantCrab::TickDrag(float DeltaSeconds, bool bNear)
+{
+	using TNBeachCrab::EState;
+	const EState State = static_cast<EState>(GetMoverState());
+	const float Speed = static_cast<float>(ShownVel.Size2D());
+	const double S = TNBeach::Scale * SizeK;
+	// Hacia dónde va (o, parado, hacia su derecha) y el borde del cuerpo por ese lado.
+	FVector Dir = Speed > 50.f ? ShownVel.GetSafeNormal2D() : FRotator(0.f, ShownYaw, 0.f).RotateVector(FVector::RightVector);
+	Dir.Z = 0.0;
+	// Arena que levantan las patas: al agacharse (poca), al embestir y, sobre todo, al derrapar.
+	if (DragSand.ISM.IsValid())
+	{
+		float Rate = 0.f;
+		switch (State)
+		{
+		case EState::ChargePrep: Rate = 1.2f; break;
+		case EState::Charge: Rate = 2.5f; break;
+		case EState::Skid: Rate = 6.f * FMath::Clamp(Speed / (600.f * SizeK), 0.3f, 1.f); break;
+		default: break;
+		}
+		DragSand.Origin = ShownLoc + Dir * (TNBeachMeshes::CrabW * S * 0.95) + FVector(0.0, 0.0, 60.0);
+		DragSand.Desc.Direction = (Dir + FVector(0.0, 0.0, 0.9)).GetSafeNormal();
+		DragSand.RateScale = bNear ? Rate : 0.f;
+	}
+
+	// Surcos en la arena bajo las patas del lado hacia el que va (al derrapar y, más espaciados, al embestir).
+	const bool bFurrows = bNear && (State == EState::Skid || State == EState::Charge) && Speed > 150.f;
+	FurrowTimer -= DeltaSeconds;
+	if (bFurrows && FurrowTimer <= 0.f)
+	{
+		FurrowTimer = State == EState::Skid ? 0.07f : 0.14f;
+		const FRotator Facing(0.f, ShownYaw, 0.f);
+		const float Lead = FVector::DotProduct(Dir, Facing.RotateVector(FVector::RightVector)) >= 0.0 ? 1.f : -1.f;
+		const float Yaw = static_cast<float>(Dir.Rotation().Yaw);
+		const float Length = FMath::Clamp(Speed * 0.12f, 80.f, 260.f) * SizeK;
+		for (const double FrontBack : { 0.45, -0.45 })
+		{
+			const FVector Foot = ShownLoc + Facing.RotateVector(FVector(TNBeachMeshes::CrabD * S * FrontBack, Lead * TNBeachMeshes::CrabW * S * 1.02, 0.0));
+			UStaticMeshComponent* Comp = nullptr;
+			int32 Index = INDEX_NONE;
+			if (Furrows.Num() < TNBeachCrab::MaxFurrows)
+			{
+				Comp = TNBeachKit::AddPart(this, GetRootComponent(), TNBeachKit::FurrowStrip(), FVector::ZeroVector, false);
+				if (Comp)
+				{
+					Comp->SetAbsolute(true, true, true);
+					Comp->SetTranslucentSortPriority(1);
+				}
+				Index = Furrows.Add(Comp);
+				FurrowAge.Add(0.f);
+			}
+			else
+			{
+				Index = NextFurrow;
+				NextFurrow = (NextFurrow + 1) % Furrows.Num();
+				Comp = Furrows[Index];
+			}
+			if (!Comp)
+			{
+				continue;
+			}
+			FurrowAge[Index] = 0.f;
+			Comp->SetWorldTransform(FTransform(FRotator(0.f, Yaw, 0.f), FVector(Foot.X, Foot.Y, ShownLoc.Z + 3.0),
+				FVector(Length / 100.f, 1.4f * SizeK, 1.f)));
+			Comp->SetVisibility(true);
+			TNBeachKit::SetOpacity(TNBeachKit::SoftMID(Comp), 1.f);
+		}
+	}
+	// Se borran solos: enteros un rato y luego se desvanecen.
+	for (int32 i = 0; i < Furrows.Num(); ++i)
+	{
+		UStaticMeshComponent* Comp = Furrows[i];
+		if (!Comp || !Comp->IsVisible())
+		{
+			continue;
+		}
+		FurrowAge[i] += DeltaSeconds;
+		const float Left = TNBeachCrab::FurrowLife - FurrowAge[i];
+		if (Left <= 0.f)
+		{
+			Comp->SetVisibility(false);
+		}
+		else if (Left < 1.5f)
+		{
+			TNBeachKit::SetOpacity(TNBeachKit::SoftMID(Comp), Left / 1.5f);
+		}
+	}
+}
+
 void ATN_BeachGiantCrab::PoseCrab(float DeltaSeconds)
 {
 	using TNBeachCrab::EState;
@@ -894,38 +1433,84 @@ void ATN_BeachGiantCrab::PoseCrab(float DeltaSeconds)
 	const float Age = GetStateAge();
 	const float Phase = Gait * 2.f * PI;
 	const bool bDazed = State == EState::Dazed;
+	const bool bPrep = State == EState::ChargePrep;
+	const bool bCharge = State == EState::Charge;
+	const bool bSkid = State == EState::Skid;
+	const float Walk = FMath::Min(1.f, Moving);
+	// Hacia qué costado anda (en su marco, +Y = su derecha) y cuánto; y hacia delante o atrás.
+	const float Lateral = FMath::Clamp(static_cast<float>(LocalVel.Y) / (300.f * SizeK), -2.f, 2.f);
+	const float Forward = FMath::Clamp(static_cast<float>(LocalVel.X) / (300.f * SizeK), -2.f, 2.f);
+	const float MoveSign = FMath::Abs(Lateral) > 0.05f ? FMath::Sign(Lateral) : 0.f;
 
-	// Cuerpo: bote al andar, respiración y un temblor al levantar la pinza.
-	float BodyBob = 6.f * FMath::Sin(T * 1.7f) + 18.f * Moving * FMath::Sin(Phase * 2.f);
-	float BodyRoll = 3.f * Moving * FMath::Sin(Phase);
+	// Cuerpo: se inclina hacia donde va (más al embestir; al derrapar, hacia atrás), se balancea de un lado a otro con cada
+	// paso y bota dos veces por ciclo (una por grupo de patas).
+	const float WantRoll = bSkid ? -MoveSign * 10.f : Lateral * (bCharge ? 7.f : 5.f);
+	const float WantPitch = bSkid ? 0.f : -Forward * 4.f;
+	LeanRoll = FMath::FInterpTo(LeanRoll, FMath::Clamp(WantRoll, -16.f, 16.f), DeltaSeconds, 5.f);
+	LeanPitch = FMath::FInterpTo(LeanPitch, FMath::Clamp(WantPitch, -8.f, 8.f), DeltaSeconds, 5.f);
+	float BodyBob = 6.f * FMath::Sin(T * 1.7f) + 12.f * Walk * FMath::Sin(Phase * 2.f);
+	float BodyRoll = LeanRoll + 4.f * Walk * FMath::Sin(Phase);
+	const float BodyPitch = LeanPitch;
 	if (State == EState::WindUp)
 	{
 		BodyRoll += 2.f * FMath::Sin(T * 43.f);
+	}
+	if (bPrep)
+	{
+		// Agachado y temblando, a punto de salir disparado.
+		BodyBob -= 45.f * FMath::Clamp(Age / 0.2f, 0.f, 1.f);
+		BodyRoll += 2.5f * FMath::Sin(T * 38.f);
 	}
 	if (bDazed)
 	{
 		BodyRoll += 6.f * FMath::Sin(T * 3.f);
 		BodyBob -= 25.f;
 	}
-	TNBeachKit::Pose(Body, FVector(0.0, 0.0, R.BodyZ + BodyBob), FRotator(0.f, 0.f, BodyRoll));
+	TNBeachKit::Pose(Body, FVector(0.0, 0.0, R.BodyZ + BodyBob), FRotator(BodyPitch, 0.f, BodyRoll));
 
-	// Patas: cuatro por lado desfasadas, las de un lado a contratiempo de las del otro.
+	// Patas en dos grupos que se alternan: la 1 y la 3 de un lado con la 2 y la 4 del otro. En el aire, la pata se levanta;
+	// apoyada, se estira o se encoge según el cuerpo se aleja o se acerca a su pie (y al revés en el aire), así el pie no
+	// patina por la arena.
+	const float LiftAmp = bCharge ? 24.f : 16.f;
 	for (int32 k = 0; k < Legs.Num(); ++k)
 	{
 		const float Side = k < 4 ? -1.f : 1.f;
-		const float LegPhase = Phase + (k % 4) * PI * 0.5f + (Side > 0.f ? PI : 0.f);
-		const float Swing = 18.f * Moving * FMath::Sin(LegPhase);
-		const float Lift = 14.f * Moving * FMath::Max(0.f, FMath::Cos(LegPhase)) + (bDazed ? 10.f * FMath::Sin(T * 9.f + k) : 0.f);
-		TNBeachKit::Pose(Legs[k], R.LegPivot[k], FRotator(0.f, R.LegSplay[k] + Swing, -Side * Lift));
+		const int32 InSide = k % 4;
+		const bool bGroupA = (Side < 0.f) == (InSide % 2 == 0);
+		const float P = Phase + (bGroupA ? 0.f : PI);
+		float Lift = LiftAmp * Walk * FMath::Max(0.f, FMath::Sin(P));
+		float Stretch = -FMath::Cos(P) * Side * MoveSign * 0.1f * Walk;
+		float Swing = 4.f * Walk * FMath::Sin(P + static_cast<float>(InSide));
+		if (bPrep)
+		{
+			// Abiertas y clavadas en la arena.
+			Lift = -8.f;
+			Stretch = 0.12f;
+			Swing = 0.f;
+		}
+		else if (bSkid)
+		{
+			// Las del lado hacia el que va, clavadas y estiradas (frenan); las otras, en el aire.
+			const bool bLeading = Side == MoveSign;
+			Lift = bLeading ? -6.f : 10.f;
+			Stretch = bLeading ? 0.16f : -0.05f;
+			Swing = 0.f;
+		}
+		else if (bDazed)
+		{
+			Lift = 10.f * FMath::Sin(T * 9.f + static_cast<float>(k));
+			Stretch = 0.f;
+		}
+		TNBeachKit::Pose(Legs[k], R.LegPivot[k], FRotator(0.f, R.LegSplay[k] + Swing, -Side * Lift), FVector(1.0, 1.0 + Stretch, 1.0));
 	}
 
-	// Ojos: se balancean; en el aviso miran la sombra; aturdido, dan vueltas.
+	// Ojos: se balancean; en el aviso y al embestir miran al frente; mareado, dan vueltas.
 	for (int32 e = 0; e < Eyes.Num(); ++e)
 	{
 		const float Sign = e == 0 ? -1.f : 1.f;
 		float Yaw = 8.f * FMath::Sin(T * 1.1f + e * 2.f);
 		float Pitch = 6.f * FMath::Sin(T * 1.3f + e);
-		if (State == EState::WindUp || State == EState::Chase)
+		if (State == EState::WindUp || State == EState::Chase || bPrep || bCharge)
 		{
 			Pitch -= 10.f;
 			Yaw *= 0.3f;
@@ -939,8 +1524,8 @@ void ATN_BeachGiantCrab::PoseCrab(float DeltaSeconds)
 		TNBeachKit::Pose(Eyes[e], Pivot, FRotator(Pitch, Yaw, Sign * 6.f));
 	}
 
-	// Pinza grande: en reposo, agitándola, levantada temblando, cayendo, clavada y volviendo.
-	float ArmPitch = 8.f + 4.f * Moving * FMath::Sin(Phase);
+	// Pinza grande: en reposo, agitándola, levantada temblando, cayendo, clavada, en guardia al embestir y volviendo.
+	float ArmPitch = 8.f + 4.f * Walk * FMath::Sin(Phase);
 	float ArmRoll = 0.f;
 	float HandPitch = -10.f;
 	float FingerOpen = 10.f;
@@ -987,6 +1572,22 @@ void ATN_BeachGiantCrab::PoseCrab(float DeltaSeconds)
 		FingerOpen = 5.f;
 		break;
 	}
+	case EState::ChargePrep:
+		// En guardia: pinza recogida delante, abriéndose.
+		ArmPitch = 28.f + 2.f * FMath::Sin(T * 30.f);
+		HandPitch = -20.f;
+		FingerOpen = 20.f + 15.f * FMath::Clamp(Age / TNBeachCrab::ChargePrepTime, 0.f, 1.f);
+		break;
+	case EState::Charge:
+		ArmPitch = 22.f + 3.f * FMath::Sin(T * 18.f);
+		HandPitch = -15.f;
+		FingerOpen = 35.f;
+		break;
+	case EState::Skid:
+		ArmPitch = 4.f;
+		HandPitch = 0.f;
+		FingerOpen = 15.f;
+		break;
 	case EState::Dazed:
 		ArmPitch = static_cast<float>(R.SlamPitch) * 0.6f + 3.f * FMath::Sin(T * 2.f);
 		FingerOpen = 20.f;
@@ -999,6 +1600,6 @@ void ATN_BeachGiantCrab::PoseCrab(float DeltaSeconds)
 	TNBeachKit::Pose(BigFinger, R.BigKnuckle, FRotator(FingerOpen, 0.f, 0.f));
 
 	// Pinza pequeña: se mueve sola, más nerviosa al perseguir.
-	const float SmallRate = State == EState::Chase ? 7.f : 2.3f;
+	const float SmallRate = (State == EState::Chase || bCharge) ? 7.f : 2.3f;
 	TNBeachKit::Pose(SmallClaw, R.SmallShoulder, FRotator(10.f + 12.f * FMath::Sin(T * SmallRate), 8.f, 0.f));
 }

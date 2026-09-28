@@ -38,6 +38,9 @@ public:
 	/** Largo del paso (cm, de un borde de la playa al otro). */
 	float GetLaneLength() const { return HalfLength * 2.f; }
 
+	/** Un quad lanzado a 42 m/s no se marea con una piedra. */
+	virtual bool AcceptsHitStun() const override { return false; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void ApplySpec() override;

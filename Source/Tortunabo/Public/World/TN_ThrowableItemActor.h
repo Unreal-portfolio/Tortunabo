@@ -138,6 +138,17 @@ private:
 	TSet<TWeakObjectPtr<AActor>> AlreadyHitEnemies;
 
 	/**
+	 * Enemigos de la playa (ATN_BeachEnemy): casi ninguno tiene colisión que pare lo lanzado (erizo, lagarto, gaviota en
+	 * picado), así que en cada fotograma se mira el tramo recorrido contra su cuerpo. En todas las máquinas rebota igual
+	 * en él; el mareo (ApplyHitStun) lo decide el servidor, con la misma velocidad mínima que el derribo de un jugador.
+	 */
+	void CheckBeachEnemyHit(const FVector& From, const FVector& To);
+
+	/** Dónde estaba en el fotograma anterior (para el tramo de CheckBeachEnemyHit). */
+	FVector PrevFlightLocation = FVector::ZeroVector;
+	bool bHasPrevFlightLocation = false;
+
+	/**
 	 * Distribuye los parámetros de lanzamiento a TODAS las máquinas (Reliable).
 	 * Cada máquina simula el ProjectileMovement localmente desde las mismas
 	 * condiciones iniciales → trayectoria completamente fluida sin updates de red.

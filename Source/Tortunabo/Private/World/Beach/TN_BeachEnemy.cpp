@@ -1,21 +1,28 @@
 #include "World/Beach/TN_BeachEnemy.h"
+#include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachEnemySynth.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_Log.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Game/TN_BeachRaceGameState.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/TN_ShellBody.h"
+#include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TortugaCharacter.h"
 
 namespace TNBeachEnemyDebug
@@ -87,6 +94,95 @@ namespace TNBeachEnemyShared
 			return Item.bBlocking && Item.Radius >= 380.0;
 		}
 	}
+
+	/**
+	 * Distancia al cuadrado entre los segmentos P0-P1 y Q0-Q1 (Ericson, «Real-Time Collision Detection»). OutS es el
+	 * parámetro (0-1) del punto más cercano sobre P y OutOnQ, el punto más cercano sobre Q.
+	 */
+	double SegmentDistSq(const FVector& P0, const FVector& P1, const FVector& Q0, const FVector& Q1, double& OutS, FVector& OutOnQ)
+	{
+		const FVector D1 = P1 - P0;
+		const FVector D2 = Q1 - Q0;
+		const FVector R = P0 - Q0;
+		const double A = FVector::DotProduct(D1, D1);
+		const double E = FVector::DotProduct(D2, D2);
+		const double F = FVector::DotProduct(D2, R);
+		constexpr double Tiny = 1.0e-6;
+		double S = 0.0;
+		double T = 0.0;
+		if (A <= Tiny && E <= Tiny)
+		{
+			OutS = 0.0;
+			OutOnQ = Q0;
+			return R.SizeSquared();
+		}
+		if (A <= Tiny)
+		{
+			T = FMath::Clamp(F / E, 0.0, 1.0);
+		}
+		else
+		{
+			const double C = FVector::DotProduct(D1, R);
+			if (E <= Tiny)
+			{
+				S = FMath::Clamp(-C / A, 0.0, 1.0);
+			}
+			else
+			{
+				const double B = FVector::DotProduct(D1, D2);
+				const double Denom = A * E - B * B;
+				S = Denom > Tiny * A * E ? FMath::Clamp((B * F - C * E) / Denom, 0.0, 1.0) : 0.0;
+				T = (B * S + F) / E;
+				if (T < 0.0)
+				{
+					T = 0.0;
+					S = FMath::Clamp(-C / A, 0.0, 1.0);
+				}
+				else if (T > 1.0)
+				{
+					T = 1.0;
+					S = FMath::Clamp((B - C) / A, 0.0, 1.0);
+				}
+			}
+		}
+		OutS = S;
+		OutOnQ = Q0 + D2 * T;
+		return FVector::DistSquared(P0 + D1 * S, OutOnQ);
+	}
+
+	/**
+	 * Servidor, una vez por fotograma y mundo: las bolas de caparazón que van deprisa (una tortuga lanzada, o en bola
+	 * rodando a toda velocidad) marean al enemigo al que dan, como un objeto lanzado. Así no hay que tocar la bola.
+	 */
+	void ScanThrownShells(UWorld* World)
+	{
+		static TWeakObjectPtr<UWorld> ScanWorld;
+		static uint64 ScanFrame = 0;
+		if (!World || (ScanFrame == GFrameCounter && ScanWorld.Get() == World))
+		{
+			return;
+		}
+		ScanFrame = GFrameCounter;
+		ScanWorld = World;
+		const float Dt = FMath::Clamp(World->GetDeltaSeconds(), 0.005f, 0.05f);
+		for (TActorIterator<ATN_ShellBody> It(World); It; ++It)
+		{
+			ATN_ShellBody* Body = *It;
+			UBoxComponent* Box = Body ? Body->GetBox() : nullptr;
+			if (!Box || !Box->IsSimulatingPhysics())
+			{
+				continue;
+			}
+			const FVector Vel = Box->GetPhysicsLinearVelocity();
+			if (Vel.SizeSquared() < FMath::Square(static_cast<double>(TNBeachHitStun::ShellMinSpeed)))
+			{
+				continue;
+			}
+			const FVector At = Box->GetComponentLocation();
+			AActor* Thrower = Body->GetTurtle() ? static_cast<AActor*>(Body->GetTurtle()) : static_cast<AActor*>(Body);
+			ATN_BeachEnemy::ServerHitWithProjectile(Thrower, At - Vel * Dt, At, 40.f, TNBeachHitStun::ShellSeconds);
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,6 +251,7 @@ void ATN_BeachEnemy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_BeachEnemy, Mover);
+	DOREPLIFETIME(ATN_BeachEnemy, HitStunEndTime);
 }
 
 void ATN_BeachEnemy::PostInitializeComponents()
@@ -190,6 +287,7 @@ void ATN_BeachEnemy::BeginPlay()
 
 void ATN_BeachEnemy::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	EndHoldTurtle();
 	IgnoreUntil.Reset();
 	TArray<TWeakObjectPtr<ATN_BeachEnemy>>& All = TNBeachEnemyShared::AllEnemies();
 	for (int32 i = All.Num() - 1; i >= 0; --i)
@@ -725,6 +823,345 @@ void ATN_BeachEnemy::ShowPop(const FText& Text, const FColor& Color, const FVect
 	bPopsLive = true;
 }
 
+FVector ATN_BeachEnemy::SteerAroundObstacles(const FVector& From, const FVector& Dir, float SelfRadius, float LookAhead, float DeltaSeconds)
+{
+	FVector Flat(Dir.X, Dir.Y, 0.0);
+	if (!Flat.Normalize())
+	{
+		return FVector::ZeroVector;
+	}
+	AvoidTimer = FMath::Max(0.f, AvoidTimer - DeltaSeconds);
+	if (AvoidTimer <= 0.f)
+	{
+		AvoidSide = 0.f;
+	}
+	CacheObstacles();
+	if (Obstacles.Num() == 0 || LookAhead <= 1.f)
+	{
+		return Flat;
+	}
+	// El primer obstáculo que corta la sonda (de aquí a LookAhead por delante), contando el cuerpo.
+	const FVector P0(From.X, From.Y, 0.0);
+	const FVector P1 = P0 + Flat * LookAhead;
+	double BestS = 2.0;
+	FVector BestOnAxis = FVector::ZeroVector;
+	for (const FObstacle& Ob : Obstacles)
+	{
+		double S = 0.0;
+		FVector OnAxis;
+		const double DistSq = TNBeachEnemyShared::SegmentDistSq(P0, P1, FVector(Ob.A.X, Ob.A.Y, 0.0), FVector(Ob.B.X, Ob.B.Y, 0.0), S, OnAxis);
+		const double Reach = static_cast<double>(Ob.Radius + SelfRadius);
+		if (DistSq < Reach * Reach && S < BestS)
+		{
+			BestS = S;
+			BestOnAxis = OnAxis;
+		}
+	}
+	if (BestS > 1.5)
+	{
+		return Flat;
+	}
+	// Hacia fuera del obstáculo desde donde está y sus dos tangentes: la que más se parece a donde quiere ir (y la
+	// misma un rato, para no dudar a cada paso delante de una roca).
+	FVector Out = P0 - BestOnAxis;
+	Out.Z = 0.0;
+	if (!Out.Normalize())
+	{
+		Out = -Flat;
+	}
+	const FVector Tangent(-Out.Y, Out.X, 0.0);
+	if (AvoidSide == 0.f)
+	{
+		AvoidSide = FVector::DotProduct(Tangent, Flat) >= 0.0 ? 1.f : -1.f;
+	}
+	AvoidTimer = 0.8f;
+	// Cuanto más cerca, más de lado y algo hacia fuera; lejos, apenas se abre.
+	const double Urgency = 1.0 - FMath::Clamp(BestS, 0.0, 1.0);
+	FVector Steer = Flat * (1.0 - Urgency) + Tangent * (AvoidSide * (0.55 + Urgency)) + Out * (0.3 * Urgency);
+	Steer.Z = 0.0;
+	return Steer.Normalize() ? Steer : Flat;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mareo por lo que se le lanza
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_BeachEnemy::ApplyHitStun(float Seconds, AActor* InstigatorActor)
+{
+	if (!HasAuthority() || Seconds <= 0.f || !AcceptsHitStun() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	const double Now = ServerNow(this);
+	// El mismo objeto (o la misma bola) que sigue tocándolo unos fotogramas no lo vuelve a marear cada vez.
+	if (InstigatorActor && LastHitInstigator.Get() == InstigatorActor && Now - LastHitTime < 0.6)
+	{
+		return;
+	}
+	LastHitInstigator = InstigatorActor;
+	LastHitTime = Now;
+	HitStunEndTime = FMath::Max(HitStunEndTime, static_cast<float>(Now) + Seconds);
+	ForceNetUpdate();
+	FVector A;
+	FVector B;
+	float Radius = 0.f;
+	const FVector Where = GetHitCapsule(A, B, Radius) ? (A + B) * 0.5 : GetHitStunAnchor();
+	MulticastHitStunFX(Where);
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] %s mareado %.1f s por %s."), *GetName(), Seconds, *GetNameSafe(InstigatorActor));
+}
+
+bool ATN_BeachEnemy::IsHitStunned() const
+{
+	return HitStunEndTime > 0.f && ServerNow(this) < static_cast<double>(HitStunEndTime);
+}
+
+float ATN_BeachEnemy::GetHitStunLeft() const
+{
+	return HitStunEndTime > 0.f ? FMath::Max(0.f, static_cast<float>(static_cast<double>(HitStunEndTime) - ServerNow(this))) : 0.f;
+}
+
+bool ATN_BeachEnemy::GetHitCapsule(FVector& OutA, FVector& OutB, float& OutRadius) const
+{
+	const float Radius = GetBodyRadius();
+	if (!bUsesMover || Radius <= 0.f)
+	{
+		return false;
+	}
+	OutA = ShownLoc + FVector(0.0, 0.0, Radius);
+	OutB = OutA;
+	OutRadius = Radius;
+	return true;
+}
+
+FVector ATN_BeachEnemy::GetHitStunAnchor() const
+{
+	const FVector Base = bUsesMover ? ShownLoc : GetActorLocation();
+	return Base + FVector(0.0, 0.0, GetBodyRadius() * 1.5f + 150.f);
+}
+
+float ATN_BeachEnemy::GetHitStunScale() const
+{
+	return FMath::Clamp(GetBodyRadius() / 70.f, 2.f, 9.f);
+}
+
+ATN_BeachEnemy* ATN_BeachEnemy::FindProjectileHit(const UObject* WorldContext, const FVector& From, const FVector& To, float Radius, FVector* OutAxisPoint)
+{
+	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	if (!World)
+	{
+		return nullptr;
+	}
+	ATN_BeachEnemy* Best = nullptr;
+	double BestS = 2.0;
+	for (const TWeakObjectPtr<ATN_BeachEnemy>& Weak : TNBeachEnemyShared::AllEnemies())
+	{
+		ATN_BeachEnemy* Enemy = Weak.Get();
+		if (!Enemy || Enemy->GetWorld() != World || !Enemy->AcceptsHitStun() || Enemy->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		FVector A;
+		FVector B;
+		float BodyRadius = 0.f;
+		if (!Enemy->GetHitCapsule(A, B, BodyRadius))
+		{
+			continue;
+		}
+		// Descarte rápido: lejos del tramo del todo.
+		const double Reach = static_cast<double>(BodyRadius + Radius);
+		const FVector Mid = (From + To) * 0.5;
+		const double Span = FVector::Dist(From, To) * 0.5 + FVector::Dist(A, B) * 0.5 + Reach;
+		if (FVector::DistSquared(Mid, (A + B) * 0.5) > Span * Span)
+		{
+			continue;
+		}
+		double S = 0.0;
+		FVector OnAxis;
+		if (TNBeachEnemyShared::SegmentDistSq(From, To, A, B, S, OnAxis) < Reach * Reach && S < BestS)
+		{
+			BestS = S;
+			Best = Enemy;
+			if (OutAxisPoint)
+			{
+				*OutAxisPoint = OnAxis;
+			}
+		}
+	}
+	return Best;
+}
+
+ATN_BeachEnemy* ATN_BeachEnemy::ServerHitWithProjectile(AActor* Projectile, const FVector& From, const FVector& To, float Radius, float Seconds)
+{
+	if (!Projectile || !Projectile->HasAuthority())
+	{
+		return nullptr;
+	}
+	ATN_BeachEnemy* Hit = FindProjectileHit(Projectile, From, To, Radius);
+	if (Hit)
+	{
+		Hit->ApplyHitStun(Seconds, Projectile);
+	}
+	return Hit;
+}
+
+void ATN_BeachEnemy::MulticastHitStunFX_Implementation(FVector_NetQuantize Where)
+{
+	if (!bHasScreen)
+	{
+		return;
+	}
+	const FVector At = Where;
+	if (Voice)
+	{
+		// Golpe seco y un chasquido agudo: «¡TOING!».
+		Voice->SetWorldLocation(At);
+		Voice->Play(ETNBeachSfx::Slam, 1.9f, 0.75f);
+		Voice->Play(ETNBeachSfx::Clack, 1.5f, 1.f);
+	}
+	UTN_BeachCameraShake::Kick(this, At, 0.3f, 600.f, 3000.f);
+	ShowPop(NSLOCTEXT("TNBeach", "EnemyBonk", "¡TOING!"), FColor(255, 230, 90), At + FVector(0.0, 0.0, 250.0), 150.f);
+}
+
+void ATN_BeachEnemy::UpdateHitStunVisual()
+{
+	const bool bStunned = IsHitStunned();
+	if (bStunned == bDizzyShown)
+	{
+		return;
+	}
+	bDizzyShown = bStunned;
+	if (bStunned && !Dizzy)
+	{
+		Dizzy = NewObject<UTN_BeachEnemyDizzyComponent>(this, NAME_None, RF_Transient);
+		Dizzy->SetupAttachment(GetRootComponent());
+		Dizzy->RegisterComponent();
+	}
+	if (Dizzy)
+	{
+		// Absoluto (lo pone el propio componente): la escala es la del mundo y el corro crece con ella.
+		Dizzy->SetWorldScale3D(FVector(GetHitStunScale()));
+		Dizzy->SetWorldLocation(GetHitStunAnchor());
+		Dizzy->SetDizzy(bStunned);
+	}
+}
+
+void UTN_BeachEnemyDizzyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	// La base los pone sobre la cabeza de un personaje; aquí van donde diga el enemigo (su cabeza o encima del cuerpo).
+	if (const ATN_BeachEnemy* Enemy = Cast<ATN_BeachEnemy>(GetOwner()))
+	{
+		SetWorldLocation(Enemy->GetHitStunAnchor());
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tortuga sujeta (boca, pico...)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_BeachEnemy::BeginHoldTurtle(ATortugaCharacter* Turtle)
+{
+	if (!Turtle || HeldTurtle.Get() == Turtle)
+	{
+		return;
+	}
+	if (HeldTurtle.IsValid())
+	{
+		EndHoldTurtle();
+	}
+	HeldTurtle = Turtle;
+	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
+	{
+		// Sin movimiento propio mientras cuelga: la coloca el enemigo en cada máquina con las mismas cuentas.
+		Move->StopMovementImmediately();
+		Move->DisableMovement();
+		if (Turtle->GetLocalRole() == ROLE_SimulatedProxy)
+		{
+			HeldSavedSmoothing = static_cast<uint8>(Move->NetworkSmoothingMode);
+			bHeldSmoothingSaved = true;
+			Move->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+		}
+		if (HasAuthority())
+		{
+			// El dueño la coloca con su reloj: no se le corrige mientras cuelga.
+			Move->bIgnoreClientMovementErrorChecksAndCorrection = true;
+		}
+		// El enemigo se actualiza después de su movimiento: la última palabra sobre dónde está la tiene él.
+		PrimaryActorTick.AddPrerequisite(Move, Move->PrimaryComponentTick);
+	}
+	if (UTN_TurtleAnimInstance* Anim = Turtle->GetMesh() ? Cast<UTN_TurtleAnimInstance>(Turtle->GetMesh()->GetAnimInstance()) : nullptr)
+	{
+		Anim->SetCelebration(ETNTurtleCelebration::Tantrum);
+	}
+	SetTurtleHeld(Turtle, true);
+}
+
+void ATN_BeachEnemy::EndHoldTurtle()
+{
+	ATortugaCharacter* Turtle = HeldTurtle.Get();
+	HeldTurtle.Reset();
+	if (Turtle)
+	{
+		if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
+		{
+			PrimaryActorTick.RemovePrerequisite(Move, Move->PrimaryComponentTick);
+			if (HasAuthority())
+			{
+				Move->bIgnoreClientMovementErrorChecksAndCorrection = false;
+			}
+			if (bHeldSmoothingSaved)
+			{
+				Move->NetworkSmoothingMode = static_cast<ENetworkSmoothingMode>(HeldSavedSmoothing);
+			}
+			// Vuelve a caer por su cuenta (con la ronda parada la congela el GameMode).
+			if (Move->MovementMode == MOVE_None && IsRaceLive(this) && !Turtle->IsInShell() && !Turtle->IsKnockedDown() && !Turtle->IsDead())
+			{
+				Move->SetMovementMode(MOVE_Falling);
+			}
+		}
+		if (UTN_TurtleAnimInstance* Anim = Turtle->GetMesh() ? Cast<UTN_TurtleAnimInstance>(Turtle->GetMesh()->GetAnimInstance()) : nullptr)
+		{
+			Anim->SetCelebration(ETNTurtleCelebration::None);
+		}
+		Turtle->SetActorRotation(FRotator(0.f, Turtle->GetActorRotation().Yaw, 0.f));
+		SetTurtleHeld(Turtle, false);
+	}
+	bHeldSmoothingSaved = false;
+}
+
+void ATN_BeachEnemy::PlaceHeldTurtle(const FVector& Grip, float Yaw)
+{
+	ATortugaCharacter* Turtle = HeldTurtle.Get();
+	if (!Turtle)
+	{
+		return;
+	}
+	// Una corrección de red que llegue tarde podría devolverle el movimiento: mientras cuelga, ninguno.
+	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
+	{
+		if (Move->MovementMode != MOVE_None)
+		{
+			Move->StopMovementImmediately();
+			Move->DisableMovement();
+		}
+	}
+	// La espalda del caparazón en Grip: con malla, por su hueso de la espalda (la pataleta baja el cuerpo); sin ella
+	// (servidor dedicado), por la cápsula.
+	static const FName SpineBone(TEXT("Spine2"));
+	FVector Loc = Grip;
+	const USkeletalMeshComponent* Mesh = Turtle->GetMesh();
+	if (bHasScreen && Mesh && !Mesh->IsSimulatingPhysics() && Mesh->GetBoneIndex(SpineBone) != INDEX_NONE)
+	{
+		Loc -= Mesh->GetSocketLocation(SpineBone) - Turtle->GetActorLocation();
+	}
+	else
+	{
+		const UCapsuleComponent* Capsule = Turtle->GetCapsuleComponent();
+		Loc -= FVector(0.0, 0.0, Capsule ? Capsule->GetScaledCapsuleHalfHeight() * 0.75f : 70.f);
+	}
+	Turtle->SetActorLocationAndRotation(Loc, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+}
+
 void ATN_BeachEnemy::UpdateLod()
 {
 	if (!bThrottleWhenFar)
@@ -803,6 +1240,8 @@ void ATN_BeachEnemy::Tick(float DeltaSeconds)
 	}
 	if (HasAuthority())
 	{
+		// Bolas de caparazón lanzadas contra los enemigos (una vez por fotograma para todo el mundo).
+		TNBeachEnemyShared::ScanThrownShells(GetWorld());
 		ServerTick(DeltaSeconds);
 	}
 	if (bUsesMover)
@@ -813,6 +1252,7 @@ void ATN_BeachEnemy::Tick(float DeltaSeconds)
 	{
 		ViewDistance = LocalViewDistance(this, bUsesMover ? ShownLoc : GetActorLocation());
 		VisualTick(DeltaSeconds);
+		UpdateHitStunVisual();
 		if (bPopsLive)
 		{
 			bool bAny = false;

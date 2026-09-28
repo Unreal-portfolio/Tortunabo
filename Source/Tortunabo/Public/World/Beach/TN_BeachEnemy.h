@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/NetSerialization.h"
+#include "Player/TN_DizzyBirdsComponent.h"
 #include "World/Beach/TN_BeachElement.h"
 #include "World/Beach/TN_BeachTrapCommon.h"
 #include "TN_BeachEnemy.generated.h"
@@ -11,6 +12,33 @@ class ATN_BeachRaceGenerator;
 class ATortugaCharacter;
 class USceneComponent;
 class UTN_BeachEnemySynthComponent;
+
+/** Mareo de los enemigos por lo que se les lanza (ATN_BeachEnemy::ApplyHitStun). */
+namespace TNBeachHitStun
+{
+	/** Segundos de mareo que da un objeto lanzado (piedra, pulpo, bola...) a un enemigo vivo. */
+	constexpr float ThrownSeconds = 3.f;
+
+	/** Segundos de mareo que da una bola de caparazón lanzada (una tortuga en bola que va deprisa). */
+	constexpr float ShellSeconds = 2.5f;
+
+	/** Velocidad (cm/s) desde la que una bola de caparazón marea a un enemigo al darle. */
+	constexpr float ShellMinSpeed = 900.f;
+}
+
+/**
+ * Pajaritos y estrellas del mareo de un enemigo: los de las tortugas (UTN_DizzyBirdsComponent, con su sonido) a la escala
+ * del enemigo. Como no es un personaje con hueso de cabeza, cada fotograma se coloca donde dice
+ * ATN_BeachEnemy::GetHitStunAnchor. Lo crea el enemigo la primera vez que se marea, solo en máquinas con pantalla.
+ */
+UCLASS(ClassGroup = (Custom))
+class TORTUNABO_API UTN_BeachEnemyDizzyComponent : public UTN_DizzyBirdsComponent
+{
+	GENERATED_BODY()
+
+public:
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+};
 
 /**
  * Empujones pendientes al ragdoll del derribo (TNBeach::KnockDownTurtle). El derribo llega a cada máquina por el
@@ -93,8 +121,13 @@ struct FTNBeachMoverRep
  *    sintetizada (UTN_BeachEnemySynthComponent).
  *  - Muchos a la vez: los que andan se apartan entre sí (GetBodyRadius) y rodean lo grande del reparto; los numerosos
  *    (bThrottleWhenFar) se actualizan más despacio y mandan menos por red lejos de las tortugas y de la cámara.
+ *  - Mareo por lo que se les lanza (ApplyHitStun): piedras, pulpos, bolas de caparazón... que dan en su cuerpo
+ *    (GetHitCapsule) lo dejan mareado un momento, con pajaritos y estrellas (UTN_BeachEnemyDizzyComponent), sin atacar.
+ *    El final va replicado (HitStunEndTime); cada subclase decide qué hace mientras (IsHitStunned en su ServerTick).
+ *  - Tortuga sujeta (BeginHoldTurtle, PlaceHeldTurtle, EndHoldTurtle): en la boca, el pico... igual en todas las máquinas.
  *
- * Consola: TN.Beach.Enemy.Debug 1 dibuja radios y estados en el servidor; TN.Beach.Enemy.Stats cuenta y mide.
+ * Consola: TN.Beach.Enemy.Debug 1 dibuja radios y estados en el servidor; TN.Beach.Enemy.Stats cuenta y mide;
+ * TN.Beach.StunNearest [s] marea al más cercano.
  */
 UCLASS(Abstract)
 class TORTUNABO_API ATN_BeachEnemy : public ATN_BeachElement
@@ -155,6 +188,36 @@ public:
 
 	/** true mientras dura el mareo por un golpe (replicado: se ve igual en todas las máquinas). */
 	bool IsHitStunned() const;
+
+	/** Segundos que le quedan de mareo por un golpe (0 si no lo está). */
+	float GetHitStunLeft() const;
+
+	/** false en los que no se marean nunca (el paso de quads): ApplyHitStun no les hace nada. */
+	virtual bool AcceptsHitStun() const { return true; }
+
+	/**
+	 * Cuerpo que recibe lo que se lanza: cápsula de OutA a OutB con radio OutRadius (mundo, cm; lo que se ve en esta
+	 * máquina). false si ahora no se le puede dar (escondido, en lo alto del cielo...). Por defecto, los que andan con
+	 * radio de cuerpo: una esfera de ese radio apoyada en el suelo.
+	 */
+	virtual bool GetHitCapsule(FVector& OutA, FVector& OutB, float& OutRadius) const;
+
+	/** Dónde dan vueltas los pajaritos del mareo (mundo). Por defecto, encima del cuerpo. */
+	virtual FVector GetHitStunAnchor() const;
+
+	/** Escala de los pajaritos del mareo (1 = los de una tortuga). Por defecto, por el radio del cuerpo. */
+	virtual float GetHitStunScale() const;
+
+	/**
+	 * El enemigo vivo al que da algo que va de From a To con radio Radius (lo que se ve en esta máquina): el primero por
+	 * el camino, con el punto de su eje más cercano en OutAxisPoint. Null si no da a ninguno. Lo usan los objetos lanzados
+	 * (ATN_ThrowableItemActor, ATN_InkProjectile) y las bolas de caparazón.
+	 */
+	static ATN_BeachEnemy* FindProjectileHit(const UObject* WorldContext, const FVector& From, const FVector& To, float Radius, FVector* OutAxisPoint = nullptr);
+
+	/** Servidor: si lo que va de From a To (radio Radius) da a un enemigo, lo marea Seconds. Devuelve el enemigo o null. */
+	static ATN_BeachEnemy* ServerHitWithProjectile(AActor* Projectile, const FVector& From, const FVector& To, float Radius,
+		float Seconds = TNBeachHitStun::ThrownSeconds);
 
 	virtual void PostInitializeComponents() override;
 
@@ -252,6 +315,41 @@ protected:
 	/** Texto emergente de dibujos («¡PLOF!») en WorldAt; solo con pantalla y con la cámara a menos de 60 m. */
 	void ShowPop(const FText& Text, const FColor& Color, const FVector& WorldAt, float Size = 140.f);
 
+	/**
+	 * Servidor: dirección (unitaria, plana) para ir hacia Dir sin darse con lo grande del reparto: si a LookAhead por
+	 * delante hay un obstáculo, se abre hacia el lado de su borde que más se parece a Dir y lo rodea en vez de empujar
+	 * contra él (el lado se mantiene un momento para no dudar). Con miles de piezas en la ronda, evita los atascos.
+	 */
+	FVector SteerAroundObstacles(const FVector& From, const FVector& Dir, float SelfRadius, float LookAhead, float DeltaSeconds);
+
+	// ── Mareo por lo que se le lanza ─────────────────────────────────────
+
+	/** Reloj del servidor en que se le pasa el mareo por un golpe (0 = nunca se ha mareado). */
+	UPROPERTY(Replicated)
+	float HitStunEndTime = 0.f;
+
+	/** Todas las máquinas: el golpe que lo marea (estrellas, «¡TOING!», sonido y temblor) en Where. */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastHitStunFX(FVector_NetQuantize Where);
+
+	// ── Tortuga sujeta (en la boca, en el pico...) ───────────────────────
+
+	/**
+	 * Todas las máquinas: sujeta a la tortuga: movimiento apagado, sin suavizado de red en los demás clientes, sin
+	 * correcciones al dueño en el servidor, pataleta en el aire y marcada como llevada (nadie más le da). El enemigo la
+	 * coloca con PlaceHeldTurtle en cada fotograma, después de su movimiento. Una a la vez.
+	 */
+	void BeginHoldTurtle(ATortugaCharacter* Turtle);
+
+	/** Todas las máquinas: la suelta (con la carrera en marcha vuelve a caer por su cuenta). */
+	void EndHoldTurtle();
+
+	/** La tortuga que sujeta en esta máquina (o null). */
+	ATortugaCharacter* GetHeldTurtle() const { return HeldTurtle.Get(); }
+
+	/** Coloca a la sujeta con la espalda de su caparazón (hueso Spine2; sin malla, la cápsula) en Grip, mirando a Yaw. */
+	void PlaceHeldTurtle(const FVector& Grip, float Yaw);
+
 	/** Se actualiza más despacio lejos de las tortugas y de la cámara (los numerosos: cangrejo, erizo, lagarto). */
 	bool bThrottleWhenFar = false;
 
@@ -326,7 +424,26 @@ private:
 	int32 NextPop = 0;
 	bool bPopsLive = false;
 
+	/** Pajaritos del mareo (se crean la primera vez que hace falta, solo con pantalla). */
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_BeachEnemyDizzyComponent> Dizzy;
+	bool bDizzyShown = false;
+
+	/** Último objeto que lo ha mareado y cuándo (reloj del servidor): el mismo no lo vuelve a marear en cada fotograma. */
+	TWeakObjectPtr<AActor> LastHitInstigator;
+	double LastHitTime = -10.0;
+
+	/** Rodear obstáculos: lado elegido (+1/-1, 0 = ninguno) y cuánto se mantiene. */
+	float AvoidSide = 0.f;
+	float AvoidTimer = 0.f;
+
+	/** Tortuga sujeta en esta máquina y el suavizado de red que tenía. */
+	TWeakObjectPtr<ATortugaCharacter> HeldTurtle;
+	uint8 HeldSavedSmoothing = 0;
+	bool bHeldSmoothingSaved = false;
+
 	void UpdateShown(float DeltaSeconds);
 	void UpdateLod();
 	void CacheObstacles();
+	void UpdateHitStunVisual();
 };

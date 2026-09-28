@@ -12,7 +12,8 @@ class UStaticMeshComponent;
  * grande y lento, que rueda girando sobre sí mismo hacia la tortuga más cercana que entre en su radio, sin salirse de
  * su zona. Tocarlo pincha: la tortuga cae derribada con ragdoll y mareo (TNBeach::KnockDownTurtle), despedida hacia
  * fuera dando una vuelta (en carrera no se muere), y el erizo retrocede un poco rodando. Si no nota a nadie, pasea casi
- * sin parar por su zona (respiros cortos), rodeando lo grande del reparto y apartándose de los demás enemigos.
+ * sin parar por su zona (respiros cortos), rodeando lo grande del reparto y apartándose de los demás enemigos. Si le da
+ * algo lanzado se marea (ApplyHitStun): se tambalea en el sitio con pajaritos, sin rodar ni pinchar.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachSeaUrchin : public ATN_BeachEnemy

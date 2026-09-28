@@ -1,6 +1,7 @@
 #include "World/TN_InkProjectile.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/ITN_EnemyTargetInterface.h"
+#include "World/Beach/TN_BeachEnemy.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -95,6 +96,16 @@ void ATN_InkProjectile::Tick(float DeltaTime)
 	LaunchVelocity.Z -= GravityAcceleration * DeltaTime;
 
 	const FVector NewLocation = GetActorLocation() + LaunchVelocity * DeltaTime;
+
+	// Enemigos de la playa (casi ninguno tiene colisión que la pare): el pulpo que les da los marea con pajaritos.
+	if (ATN_BeachEnemy::ServerHitWithProjectile(this, GetActorLocation(), NewLocation, ProjectileRadius))
+	{
+		bHasHit = true;
+		SetActorHiddenInGame(true);
+		SetActorEnableCollision(false);
+		SetLifeSpan(1.0f);
+		return;
+	}
 	SetActorLocation(NewLocation, true);  // bSweep=true → genera hit events al barrer
 
 	// Rotar el actor para que el mesh apunte en la dirección del vuelo
@@ -147,6 +158,11 @@ void ATN_InkProjectile::OnSphereHit(UPrimitiveComponent* /*HitComponent*/, AActo
 	if (ATortugaCharacter* HitCharacter = Cast<ATortugaCharacter>(OtherActor))
 	{
 		MulticastApplyInkEffect(HitCharacter, InkDurationSeconds);
+	}
+	else if (ATN_BeachEnemy* BeachEnemy = Cast<ATN_BeachEnemy>(OtherActor))
+	{
+		// Enemigo de la playa con cuerpo sólido (cangrejo gigante): mareo con pajaritos, como los demás de la playa.
+		BeachEnemy->ApplyHitStun(TNBeachHitStun::ThrownSeconds, this);
 	}
 	else if (ITN_EnemyTargetInterface* Enemy = Cast<ITN_EnemyTargetInterface>(OtherActor))
 	{
