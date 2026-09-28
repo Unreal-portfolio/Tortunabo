@@ -396,6 +396,101 @@ FTransform TNBeachDecorKit::AnimPose(const TNBeachProp::FPropInfo& Info, float T
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Montículos de arena removida de los rebuscables (TNBeachDecorKit::SearchMoundMesh)
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNBeachDecorDetail
+{
+	/**
+	 * Montículo de arena removida (junto a lo que se puede rebuscar): casquete irregular a manchas, con un faldón bajo la
+	 * arena (sin hueco en las dunas), terrones alrededor y, según la variante, algo asomando. Aplanado: un disco casi a
+	 * ras con marcas de escarbar.
+	 */
+	void BuildSearchMound(TNProcMesh::FTNProcMeshBuffers& M, int32 Variant, bool bFlat)
+	{
+		const uint32 Seed = 0x40D5u + static_cast<uint32>(Variant) * 131u + (bFlat ? 7u : 0u);
+		const FLinearColor Sand = TNBeachProp::Hex(0xDCC08F);
+		const FLinearColor Dug = TNBeachProp::Hex(0xC4A170);
+		const FLinearColor Damp = TNBeachProp::Hex(0xAE8E61);
+		const TNBeachProp::FBeachFrame Base(FVector::ZeroVector, FQuat::Identity);
+		const double R = TNBeachDecorKit::SearchMoundRadius;
+		if (bFlat)
+		{
+			TNBeachProp::AddRevolve(M, Base, TNBeachProp::CapProfile(R * 1.15, 5.0, 3, 10.0), 14, Damp, 0.12, Seed);
+			for (int32 k = 0; k < 5; ++k)
+			{
+				const double A = TNProcMap::TwoPi * (k + 0.6 * TNBeachProp::Rnd(Seed, k)) / 5.0;
+				const double Rr = R * (0.35 + 0.45 * TNBeachProp::Rnd(Seed, 10 + k));
+				TNBeachProp::AddBlob(M, TNBeachProp::FBeachFrame(FVector(FMath::Cos(A) * Rr, FMath::Sin(A) * Rr, 3.0), TNBeachProp::YawQ(FMath::RadiansToDegrees(A))),
+					15.0, 7.0, 3.5, 6, 2, Dug);
+			}
+			return;
+		}
+		const double H = TNBeachDecorKit::SearchMoundHeight;
+		TNBeachProp::AddRevolve(M, Base, TNBeachProp::CapProfile(R, H, 5, 12.0), 16,
+			[&](int32 Ring, int32 Side)
+			{
+				const float Tone = 0.92f + 0.12f * static_cast<float>(TNBeachProp::Rnd(Seed, 40 + Ring * 16 + Side));
+				return TNBeachProp::Shade(((Ring + Side) % 3 == 0) ? Dug : Sand, Tone);
+			},
+			0.18, Seed);
+		// Terrones alrededor del pie y por la ladera.
+		for (int32 k = 0; k < 7; ++k)
+		{
+			const double A = TNProcMap::TwoPi * (k + 0.7 * TNBeachProp::Rnd(Seed, 60 + k)) / 7.0;
+			const double Rr = R * (0.7 + 0.35 * TNBeachProp::Rnd(Seed, 70 + k));
+			const double Lump = 10.0 + 9.0 * TNBeachProp::Rnd(Seed, 80 + k);
+			const double Z = FMath::Max(2.0, H * (1.0 - FMath::Square(FMath::Min(1.0, Rr / R))) * 0.8);
+			TNBeachProp::AddBlob(M, TNBeachProp::FBeachFrame(FVector(FMath::Cos(A) * Rr, FMath::Sin(A) * Rr, Z), TNBeachProp::YawQ(TNBeachProp::RndIn(Seed, 90 + k, 0.0, 360.0))),
+				Lump, Lump * 0.8, Lump * 0.55, 6, 3, (k % 2) ? Damp : Dug);
+		}
+		switch (Variant)
+		{
+		case 1:
+		{
+			// Chapa de botella roja, de canto y medio enterrada.
+			const TNBeachProp::FBeachFrame F(FVector(R * 0.2, -R * 0.12, H * 0.82), FQuat(FVector(1.0, 0.0, 0.0), FMath::DegreesToRadians(70.0)));
+			const TArray<FVector2D> Cap = { FVector2D(0.0, -4.0), FVector2D(15.0, -4.0), FVector2D(16.0, 3.0), FVector2D(0.0, 4.0) };
+			TNBeachProp::AddRevolve(M, F, Cap, 12, TNBeachProp::Hex(0xC8322D, 0.6f));
+			break;
+		}
+		case 2:
+		{
+			// Palito de helado clavado, inclinado.
+			const FQuat Rot = TNBeachProp::YawQ(30.0) * FQuat(FVector(0.0, 1.0, 0.0), FMath::DegreesToRadians(25.0));
+			TNBeachProp::AddOBox(M, FVector(-R * 0.15, R * 0.1, H + 14.0), Rot, FVector(4.0, 1.2, 30.0), TNBeachProp::Hex(0xE2C79A));
+			break;
+		}
+		case 3:
+		{
+			// Trozo de concha rosada asomando, de canto.
+			const TNBeachProp::FBeachFrame F(FVector(R * 0.1, R * 0.18, H * 0.85), FQuat(FVector(0.6, 0.8, 0.0).GetSafeNormal(), FMath::DegreesToRadians(55.0)));
+			TNBeachProp::AddBlob(M, F, 22.0, 17.0, 5.0, 10, 3, TNBeachProp::Hex(0xF2C4B4, 0.15f));
+			break;
+		}
+		default:
+			break;
+		}
+	}
+}
+
+UStaticMesh* TNBeachDecorKit::SearchMoundMesh(int32 Variant, bool bFlat)
+{
+	constexpr int32 FlatKey = 1000;
+	const int32 Key = bFlat ? FlatKey : FMath::Clamp(Variant, 0, NumSearchMoundVariants - 1);
+	static TMap<int32, TWeakObjectPtr<UStaticMesh>> Meshes;
+	TWeakObjectPtr<UStaticMesh>& Slot = Meshes.FindOrAdd(Key);
+	if (!Slot.IsValid())
+	{
+		TNProcMesh::FTNProcMeshBuffers Buffers;
+		TNBeachDecorDetail::BuildSearchMound(Buffers, Key == FlatKey ? 0 : Key, bFlat);
+		// Sin colisión (se pisa como la arena) y fuera del recolector: la comparten todos los montículos.
+		Slot = TNBeachDecorDetail::MakeMesh(Buffers, nullptr);
+	}
+	return Slot.Get();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ATN_BeachDecor: una pieza como actor replicado (TN.Beach.Place y lo que otras piezas creen con SpawnElement). El
 // decorado de cada ronda no pasa por aquí: lo monta instanciado ATN_BeachDecorField en cada máquina.
 // ─────────────────────────────────────────────────────────────────────────────

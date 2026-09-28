@@ -83,6 +83,36 @@ dan de lo mejor para avanzar. Detalle y red en `Docs/Modo_Carrera.md`, «Cofres�
 - Mientras una tortuga lo abre, a las demás no les sale el aviso (lo de siempre). Los premios que nadie coge se van con
   la ronda.
 
+## Montículos de arena (playa del modo carrera)
+
+En la playa del modo carrera, junto a cada decorado que se puede rebuscar hay un **montículo pequeño de arena
+removida** (a veces con una chapa, un palito de helado o un trozo de concha asomando) que **tiembla a ratos** con
+granitos que saltan, más a menudo y más fuerte cuando una tortuga se acerca: así se sabe desde lejos dónde se puede
+rebuscar. Ya rebuscado, se aplasta y **queda aplanado y quieto**.
+
+- Lo lleva el registro de rebuscables de la playa (`ATN_BeachSearchRegistry`, `TN_BeachLoot.h`, y
+  `Private/World/Beach/TN_BeachSearchMounds.cpp`): el servidor decide dónde va cada uno y lo replica, compacto, con el
+  estado de cada punto (libre o rebuscado); cada máquina con pantalla los monta igual. Mallas de
+  `TNBeachDecorKit::SearchMoundMesh` (`TN_BeachDecor.cpp`).
+- Barato para cientos: lejos, quietos e instanciados (sin sombra, hasta 120 m); cerca de una cámara (45 m, los 16 más
+  cercanos) los mueve un componente de una reserva, como las partes animadas del decorado de la playa. Nada en el
+  servidor dedicado.
+- Detalle, cifras y pruebas: `Docs/Modo_Carrera.md`, «Montículos de arena».
+
+**Cooperativo (mapa procedural): pendiente, anotado.** Los buscables del mapa procedural (`ATN_ProcSearchSpot`) no lo
+admiten sin tocar bastante:
+
+- Están en todos los biomas (selva, manglar, acantilados, volcán, desierto, nieve...) y el montículo es de arena a
+  color de vértice: haría falta teñirlo con el polvo de cada bioma (`FTNSearchSpotShape::Dust`), que
+  `M_CosmeticVertexColor` no admite (un material o una instancia con un parámetro de tinte, en `Content/`).
+- `ATN_ProcSearchSpot` es la base común del cofre del lobby (`ATN_TreasureChest`), de los cofres de la playa y de los
+  rebuscables de la playa: el montículo tendría que ir con un interruptor (p. ej. `bSandMound`, apagado por defecto) para
+  no salir dos veces en la playa ni junto a los cofres.
+- Cómo hacerlo cuando toque: cada `ATN_ProcSearchSpot` con el interruptor pondría su montículo con la misma receta en el
+  punto del borde de su huella hacia el camino principal; los quietos, en una malla instanciada por mapa (en
+  `ATN_ProcMapGenerator`, que ya reparte los buscables) y el temblor con `bNearView`/`TickLocalFX`, que ya existen para
+  las chispitas; aplanado al quedar `IsSearched()`.
+
 ## Brillo de lo que se coge (todos los modos)
 
 Todo lo que se puede coger lleva la misma marca, para que se entienda igual en el cooperativo, la carrera y el lobby:
@@ -260,6 +290,8 @@ alguien rebusca, hay saltito o quedan partículas; si no, su tick va cada 0,3 s.
 5. `TN.Beach.Place clear` (o la ronda siguiente) quita el cofre y lo que nadie cogió.
 
 ## Límites conocidos
+
+- Montículos de arena: solo en la playa del modo carrera (en el cooperativo, pendiente: ver «Montículos de arena»).
 
 - `IA_Interact` debe seguir con el disparador implícito (pulsada mientras se mantiene). Con un disparador *Pressed*,
   `Completed` llegaría enseguida y rebuscar se cortaría siempre.

@@ -73,7 +73,7 @@ necesita espera a que esté lista.
 | Comando | Qué hace |
 |---|---|
 | `TN.Beach.Gull.Attack 1` | Cada zona de gaviotas suelta una cagada sobre la tortuga más cercana (ragdoll y mancha). |
-| `TN.Beach.Gull.Attack 2` | Picado con agarre: te sube pataleando y te suelta en bola. Si te apartas (o te metes en bola), baja igual, pica la arena y vuelve a subir. Sin número, al azar. |
+| `TN.Beach.Gull.Attack 2` | Picado con agarre: sombra negra que nace diminuta y crece mientras baja siguiéndote (2,3 s). Andando te pilla: te sube pataleando y te suelta en bola (siempre caes al suelo). Si echas a correr al verla (o te metes en bola), baja igual, pica la arena y vuelve a subir. Sin número, al azar. |
 | `TN.Beach.Quad.Now` | Todos los pasos de quads avisan y pasan ya. |
 | `TN.Beach.Storm.Start [metros detrás=30] [cm/s=180]` | Arranca la tormenta de bañistas. |
 | `TN.Beach.Storm.Here` | Pone el frente de la tormenta 4 m por delante de tu tortuga: te quedas dentro y un bañista te da la patada (en bola, 20 m por delante del frente). Sin tormenta, crea una. |

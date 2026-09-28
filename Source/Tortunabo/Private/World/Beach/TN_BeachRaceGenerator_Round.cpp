@@ -162,10 +162,12 @@ namespace TNBeachRoundDetail
 		}
 		int32 Points = 0;
 		int32 Used = 0;
+		int32 Shaking = 0;
 		if (const ATN_BeachSearchRegistry* Registry = ATN_BeachSearchRegistry::Find(World))
 		{
 			Points = Registry->NumPoints();
 			Used = Registry->NumUsed();
+			Shaking = Registry->NumMoundAnims();
 		}
 		int32 Pickups = 0;
 		for (TActorIterator<ATN_PickupInteractableBase> It(World); It; ++It)
@@ -177,8 +179,8 @@ namespace TNBeachRoundDetail
 		{
 			++Shells;
 		}
-		UE_LOG(LogTortunabo, Display, TEXT("  rebuscables: %d puntos (%d ya rebuscados) y %d actores ahora (solo cerca de alguna tortuga) · objetos sueltos %d · conchas %d"),
-			Points, Used, Spots, Pickups, Shells);
+		UE_LOG(LogTortunabo, Display, TEXT("  rebuscables: %d puntos (%d ya rebuscados, con su montículo aplanado) y %d actores ahora (solo cerca de alguna tortuga) · %d montículos temblando · objetos sueltos %d · conchas %d"),
+			Points, Used, Spots, Shaking, Pickups, Shells);
 
 		if (const UNetDriver* Driver = World->GetNetDriver())
 		{

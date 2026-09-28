@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Info.h"
+#include "GameFramework/Actor.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "World/Beach/TN_BeachTypes.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
@@ -12,6 +12,8 @@ class AActor;
 class ATN_BeachElement;
 class ATN_BeachRaceGenerator;
 class UDataTable;
+class UInstancedStaticMeshComponent;
+class UStaticMeshComponent;
 struct FTN_InventoryItem;
 
 /**
@@ -147,6 +149,33 @@ protected:
 };
 
 /** Estado replicado de los puntos rebuscables de la ronda: cuántos hay y cuáles ya se han rebuscado (un bit por punto). */
+/**
+ * Montículo de arena removida de un punto rebuscable (lo que se ve en todas las máquinas), compacto: 8 bytes. Sitio en
+ * el espacio del generador (X cada 2 cm; Y y Z cada cm), giro y aspecto.
+ */
+USTRUCT()
+struct FTNBeachSearchMound
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	uint16 X = 0;
+
+	UPROPERTY()
+	int16 Y = 0;
+
+	UPROPERTY()
+	int16 Z = 0;
+
+	/** Giro alrededor de Z (256 pasos por vuelta). */
+	UPROPERTY()
+	uint8 Yaw = 0;
+
+	/** Variante (bits 0-1: liso, chapa, palito de helado o trozo de concha asomando) y tamaño (bits 2-7: 0,8-1,25). */
+	UPROPERTY()
+	uint8 Look = 0;
+};
+
 USTRUCT()
 struct FTNBeachSearchNet
 {
@@ -166,29 +195,73 @@ struct FTNBeachSearchNet
 	/** Bit i = punto i ya rebuscado (o quitado). */
 	UPROPERTY()
 	TArray<uint32> UsedBits;
+
+	/** El montículo de cada punto (mismo índice). Se manda una vez por ronda. */
+	UPROPERTY()
+	TArray<FTNBeachSearchMound> Mounds;
 };
+
+namespace TNBeachSearchMoundTypes
+{
+	/** Un montículo en esta máquina: sus instancias (vivo y aplanado) y cómo está. */
+	struct FMound
+	{
+		FTransform LiveXf;
+		FTransform FlatXf;
+		int32 Variant = 0;
+		int32 LiveInstance = INDEX_NONE;
+		int32 FlatInstance = INDEX_NONE;
+		bool bFlatShown = false;
+		/** Hay una tortuga cerca (tiembla más a menudo y más fuerte). */
+		bool bTurtleNear = false;
+	};
+
+	/** Montículo que tiembla ahora (un componente de la reserva, cerca de una cámara local). */
+	struct FMoundAnim
+	{
+		int32 Mound = INDEX_NONE;
+		float Time = 0.f;
+		float NextBurst = 0.f;
+		float BurstLeft = 0.f;
+		float BurstLength = 0.f;
+		float Strength = 0.f;
+		/** Aplastándose al quedar rebuscado (s desde que empezó; < 0 = no). */
+		float Flatten = -1.f;
+		FVector ShakeAxis = FVector(1.0, 0.0, 0.0);
+	};
+}
 
 /**
  * Registro replicado de los rebuscables de la playa (uno por mundo; lo crea el servidor). Solo lleva el estado de cada
- * punto, compacto (FTNBeachSearchNet: un bit por punto), siempre relevante y dormido salvo al cambiar: cientos de
- * rebuscables cuestan unos pocos bytes. Los puntos (su sitio y su huella) los tiene el servidor; el actor interactivo
+ * punto, compacto (FTNBeachSearchNet: un bit por punto y su montículo), siempre relevante y dormido salvo al cambiar:
+ * cientos de rebuscables cuestan unos pocos bytes. Los puntos (su huella) los tiene el servidor; el actor interactivo
  * de cada uno (ATN_BeachSearchSpot) solo existe cerca de alguna tortuga.
+ *
+ * Montículos (TN_BeachSearchMounds.cpp; Docs/Modo_Carrera.md y Docs/Botin_Decorados.md, «Montículos de arena»): junto a
+ * cada punto, en la arena, un montículo pequeño de arena removida (a veces con una chapa, un palito o un trozo de concha
+ * asomando) dice «aquí se puede rebuscar». En cada máquina con pantalla y a partir de lo replicado: instanciados (uno
+ * por variante) y quietos lejos; cerca de una cámara local (MoundAnimRange, los MaxMoundAnims más cercanos) un
+ * componente de una reserva los hace temblar a ratos, con granitos que saltan, más a menudo y más fuerte con una tortuga
+ * cerca. Rebuscado, se aplasta y queda aplanado y quieto.
  */
 UCLASS(NotPlaceable)
-class TORTUNABO_API ATN_BeachSearchRegistry : public AInfo
+class TORTUNABO_API ATN_BeachSearchRegistry : public AActor
 {
 	GENERATED_BODY()
 
 public:
 	ATN_BeachSearchRegistry();
 
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/** El registro de este mundo (null si aún no hay). */
 	static ATN_BeachSearchRegistry* Find(const UObject* WorldContext);
 
-	/** Servidor: puntos nuevos (Count), todos libres. */
-	void ServerReset(int32 Round, int32 Salt, int32 Count);
+	/** Servidor: puntos nuevos (uno por montículo), todos libres. */
+	void ServerReset(int32 Round, int32 Salt, const TArray<FTNBeachSearchMound>& InMounds);
 
 	/** Servidor: el punto Index ya está rebuscado (o quitado). */
 	void ServerMarkUsed(int32 Index);
@@ -198,14 +271,64 @@ public:
 	int32 NumUsed() const;
 	int32 GetRound() const { return SearchNet.Round; }
 
+	/** Montículos que tiemblan ahora en esta máquina (TN.Beach.Perf). */
+	int32 NumMoundAnims() const;
+
+	/** Distancia (cm) a una cámara local hasta la que tiembla un montículo, y cuántos a la vez como mucho. */
+	static constexpr float MoundAnimRange = 4500.f;
+	static constexpr int32 MaxMoundAnims = 16;
+	/** Distancia (cm) de una tortuga a la que el montículo tiembla más a menudo y más fuerte. */
+	static constexpr float MoundNearTurtle = 1200.f;
+	/** Distancia (cm) a la cámara hasta la que se dibujan. */
+	static constexpr float MoundCullDistance = 12000.f;
+
+protected:
+	UPROPERTY(VisibleAnywhere, Category = "Search")
+	TObjectPtr<USceneComponent> RegistryRoot;
+
 private:
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_SearchNet)
 	FTNBeachSearchNet SearchNet;
+
+	UFUNCTION()
+	void OnRep_SearchNet();
 
 	FTimerHandle SleepTimer;
 
 	/** Despierto para mandar un cambio y dormido otra vez al poco. */
 	void WakeForChange();
+
+	// ── Montículos (máquinas con pantalla; TN_BeachSearchMounds.cpp) ──
+
+	/** Uno por variante con los montículos vivos y el último con los aplanados. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> MoundComps;
+
+	/** Reserva de componentes que hacen temblar los montículos cercanos. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> MoundAnimPool;
+
+	TArray<TNBeachSearchMoundTypes::FMound> Mounds;
+	TArray<TNBeachSearchMoundTypes::FMoundAnim> MoundAnims;
+	/** Ronda, tirada y número de montículos con que se montaron (si cambia, se rehacen). */
+	uint32 BuiltMoundKey = 0;
+	float MoundCheckClock = 0.f;
+	int32 FxGrains = INDEX_NONE;
+	double LastGrainsTime = -100.0;
+
+	bool HasVisuals() const;
+	/** Pone los montículos como dice lo replicado (los rehace si cambian; aplana los rebuscados). */
+	void RefreshMounds();
+	void RebuildMounds();
+	UInstancedStaticMeshComponent* EnsureMoundComp(int32 Index);
+	void SetMoundFlat(int32 Index, bool bFlat);
+	void UpdateMoundAnims();
+	void StartMoundAnim(int32 Index);
+	void StopMoundAnim(int32 Slot);
+	void StopAllMoundAnims();
+	/** Pose del montículo que tiembla en el hueco Slot; false si ha acabado de aplastarse. */
+	bool PoseMoundAnim(int32 Slot, float DeltaSeconds);
+	void EmitGrains(const FVector& Where, int32 Count, float SpeedScale);
 };
 
 /**

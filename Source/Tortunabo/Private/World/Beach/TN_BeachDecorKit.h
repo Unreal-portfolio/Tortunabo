@@ -85,4 +85,19 @@ namespace TNBeachDecorKit
 	 */
 	FTransform AnimPose(const TNBeachProp::FPropInfo& Info, float Time, float Phase, int32 Seed, FAnimState& State,
 		TFunctionRef<bool()> IsSomeoneOnTop);
+
+	// ── Montículos de arena removida de los rebuscables (ATN_BeachSearchRegistry, TN_BeachSearchMounds.cpp) ──
+
+	/** Variantes: liso, con una chapa, con un palito de helado y con un trozo de concha asomando. */
+	constexpr int32 NumSearchMoundVariants = 4;
+
+	/** Radio y alto (cm) del montículo con tamaño 1 (la tortuga mide ~1,4 m). */
+	constexpr double SearchMoundRadius = 100.0;
+	constexpr double SearchMoundHeight = 38.0;
+
+	/**
+	 * Malla del montículo (Variant) o, con bFlat, el mismo ya aplanado (arena removida casi a ras, con marcas de
+	 * escarbar). Sin colisión; se monta una vez por partida.
+	 */
+	UStaticMesh* SearchMoundMesh(int32 Variant, bool bFlat);
 }
