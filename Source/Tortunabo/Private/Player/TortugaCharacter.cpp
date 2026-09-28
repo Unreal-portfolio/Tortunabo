@@ -65,6 +65,10 @@ ATortugaCharacter::ATortugaCharacter(const FObjectInitializer& ObjectInitializer
 	bUseControllerRotationRoll = false;
 	SetNetUpdateFrequency(60.f);
 	SetMinNetUpdateFrequency(30.f);
+	// Las tortugas de los jugadores (cuatro como mucho) llegan siempre a todas las máquinas, estén donde estén: con la
+	// distancia de corte de serie (150 m), en el mapa procedural y en la playa un cliente perdía la tortuga lejana y su
+	// cara del HUD (energía, caparazón), su marca en la pista y el espectador que la sigue se quedaban congelados.
+	bAlwaysRelevant = true;
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;

@@ -258,6 +258,33 @@ namespace TNRunHUDDetail
 		return Bubble;
 	}
 
+	/**
+	 * Tortuga de un jugador tal como está en esta máquina. La que apunta su PlayerState (GetPawn) solo vale si sigue viva
+	 * y la tortuga dice que es de ese jugador; si no (en un cliente puede apuntar a una tortuga ya destruida, de antes de
+	 * un cambio de tortuga, o a ninguna), se busca la tortuga cuyo PlayerState es ese, que es el enlace que replica la
+	 * propia tortuga (el mismo con el que se ponen los cosméticos).
+	 */
+	const APawn* TurtleOf(const UWorld* World, const APlayerState* PS)
+	{
+		const APawn* Linked = PS ? PS->GetPawn() : nullptr;
+		if (IsValid(Linked) && !Linked->IsActorBeingDestroyed() && Linked->GetPlayerState() == PS)
+		{
+			return Linked;
+		}
+		if (!World || !PS)
+		{
+			return nullptr;
+		}
+		for (TActorIterator<ATortugaCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It) && !It->IsActorBeingDestroyed() && It->GetPlayerState() == PS)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	}
+
 	/** Energía (0-1) y agotamiento de una tortuga por su componente de estamina (replicado a todos). */
 	void EnergyOf(const APawn* Pawn, float& OutEnergy, bool& bOutExhausted)
 	{
@@ -753,7 +780,7 @@ void UTN_RunHUDWidget::TickTrack(float DeltaTime)
 	const TArray<const APlayerState*> Crew = CrewOf(World, SubjectState);
 	for (int32 m = 0; m < MateMarkers.Num(); ++m)
 	{
-		const APawn* P = Crew.IsValidIndex(m) ? Crew[m]->GetPawn() : nullptr;
+		const APawn* P = Crew.IsValidIndex(m) ? TurtleOf(World, Crew[m]) : nullptr;
 		MateMarkers[m]->SetVisibility(P ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 		if (P) { MateMarkers[m]->SetRenderTranslation(FVector2D(ToX(Gen->GetPathProgress(P->GetActorLocation())) - 15.f, 17.f)); }
 	}
@@ -1365,7 +1392,7 @@ void UTN_RunFlowHUDWidget::TickCrew(float DeltaTime)
 		CrewRows[i]->SetVisibility(PS ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 		CrewPlayerIds[i] = PS ? PS->GetPlayerId() : INDEX_NONE;
 		if (!PS) { continue; }
-		const APawn* Pawn = PS->GetPawn();
+		const APawn* Pawn = TurtleOf(GetWorld(), PS);
 		float Energy = 1.f;
 		bool bExhausted = false;
 		EnergyOf(Pawn, Energy, bExhausted);
