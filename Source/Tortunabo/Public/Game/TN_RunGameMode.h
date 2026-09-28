@@ -114,6 +114,13 @@ public:
 	 */
 	bool IsPlayerReviveImmune(APlayerController* PC) const;
 
+	/**
+	 * @brief El anfitrión corta la partida desde el menú de pausa (UTN_PauseMenuWidget): todos vuelven al lobby con la
+	 *        misma limpieza y el mismo viaje sin cortes que al acabar la ronda (FinishRoundAndReturnToLobby).
+	 * @note Server-only.
+	 */
+	void ReturnToLobbyNow() { if (HasAuthority()) { FinishRoundAndReturnToLobby(); } }
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	float ResultsDurationSeconds = 8.0f;

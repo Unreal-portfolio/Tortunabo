@@ -38,7 +38,8 @@ public class Tortunabo : ModuleRules
 			"StaticMeshDescription"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		// FUniqueNetIdWrapper::ToString (ajustes de voz por compañero en el menú de pausa).
+		PrivateDependencyModuleNames.AddRange(new string[] { "CoreOnline" });
 
 		DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
 	}

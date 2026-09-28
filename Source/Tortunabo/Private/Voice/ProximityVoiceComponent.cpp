@@ -334,6 +334,16 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			Sample = FMath::Clamp(Sample * VoiceGain, -1.0f, 1.0f);
 		}
 
+		// Nivel para el medidor del menú de pausa: RMS del bloque recién capturado, con la ganancia ya aplicada.
+		{
+			float BlockSquares = 0.f;
+			for (const float Sample : MonoData)
+			{
+				BlockSquares += Sample * Sample;
+			}
+			MicLevel = MonoData.Num() > 0 ? FMath::Sqrt(BlockSquares / MonoData.Num()) : 0.f;
+		}
+
 		// ── Downsampling con box filter (anti-aliasing) ───────────────────
 		// Promedia DSFactor muestras antes de decimar → evita el efecto "lata"
 		// que produce la decimación simple (nth-sample sin filtro pasa-bajos).
@@ -376,6 +386,14 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		}
 	}
 
+	// Micrófono cerrado (silenciado o sin pulsar para hablar): la tortuga deja de hablar en el acto, sin la espera.
+	if (!bTransmitEnabled && bIsSpeaking)
+	{
+		bIsSpeaking = false;
+		SilenceHoldOffTimer = 0.f;
+		OnSpeakingChanged.Broadcast(false);
+	}
+
 	// ── Speaking detection con silence hold-off ──────────────────────────
 	{
 		FScopeLock Lock(&CaptureBufferLock);
@@ -387,7 +405,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 				SumSquares += Sample * Sample;
 			}
 			const float RMS = FMath::Sqrt(SumSquares / CaptureBuffer.Num());
-			const bool bAboveThreshold = RMS > SpeakingThreshold;
+			const bool bAboveThreshold = bTransmitEnabled && RMS > SpeakingThreshold;
 
 			if (bAboveThreshold)
 			{

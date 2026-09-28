@@ -1276,6 +1276,11 @@ protected:
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/** Campos de visión de la cámara en reposo y al correr (el ajuste de campo de visión del menú de pausa los cambia). */
+	float GetCameraFOVDefault() const { return CameraFOVDefault; }
+	float GetCameraFOVSprint() const { return CameraFOVSprint; }
+	void SetCameraFOVs(float InDefault, float InSprint) { CameraFOVDefault = InDefault; CameraFOVSprint = InSprint; }
+
 	/**
 	 * Aplica knockdown a este personaje durante Duration segundos.
 	 * Solo tiene efecto si se llama en el servidor (HasAuthority).

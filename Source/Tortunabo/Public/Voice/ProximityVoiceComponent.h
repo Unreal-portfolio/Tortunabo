@@ -72,6 +72,22 @@ public:
 	 */
 	bool IsHeardSpeaking() const;
 
+	/**
+	 * @brief Nivel del micrófono propio (RMS del último bloque capturado, ya con VoiceGain) para el medidor del menú de
+	 *        pausa. 0 si esta tortuga no captura.
+	 */
+	float GetMicLevel() const { return MicLevel; }
+
+	/** @brief true si esta tortuga (la local) tiene el micrófono abierto y capturando. */
+	bool IsCapturing() const { return AudioCaptureSynth.IsValid() && !bIsShuttingDown; }
+
+	/**
+	 * @brief Deja salir o no la voz propia (UTN_GameSettingsSubsystem: silenciarse y pulsar para hablar). Cerrada se sigue
+	 *        capturando (el medidor sigue vivo), pero la tortuga deja de «hablar» en el acto y no se envía nada.
+	 */
+	void SetTransmitEnabled(bool bEnabled) { bTransmitEnabled = bEnabled; }
+	bool IsTransmitEnabled() const { return bTransmitEnabled; }
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Attenuation")
@@ -176,6 +192,10 @@ private:
 
 	bool bIsShuttingDown = false;
 	bool bRuntimeResourcesCleanedUp = false;
+
+	/** Nivel RMS del último bloque capturado (GetMicLevel) y si la voz propia puede salir (SetTransmitEnabled). */
+	float MicLevel = 0.f;
+	bool bTransmitEnabled = true;
 
 	/** Rate limiting server-side para paquetes de voz (evita flooding). */
 	float LastVoicePacketServerTime = -1.f;
