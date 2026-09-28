@@ -3607,9 +3607,18 @@ namespace TNBeachProp
 	// Reparto por elemento
 	// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+	/** Decorado militar (sacos terreros ... soldaditos): sus recetas están en TN_BeachMilitaryMeshes.h, incluido al final. */
+	inline bool IsMilitaryDecor(ETNBeachElement E)
+	{
+		return E >= ETNBeachElement::Sandbags && E <= ETNBeachElement::ToySoldiers;
+	}
+	inline int32 NumMilitaryVariants(ETNBeachElement E);
+	inline void BuildMilitaryDecor(FParts& P, ETNBeachElement E, int32 Variant, uint32 Seed);
+
 	/** Mallas distintas (variantes) de cada elemento; la de cada ejemplar sale de su Seed. */
 	inline int32 NumVariants(ETNBeachElement E)
 	{
+		if (IsMilitaryDecor(E)) { return NumMilitaryVariants(E); }
 		switch (E)
 		{
 		case ETNBeachElement::Rock:           return 8;
@@ -3671,6 +3680,13 @@ namespace TNBeachProp
 		case ETNBeachElement::Cuttlebone:        BuildCuttlebone(P, Variant, Seed); break;
 		case ETNBeachElement::RubberDuck:        BuildRubberDuck(P, Variant, Seed); break;
 		case ETNBeachElement::GullFeather:       BuildGullFeather(P, Variant, Seed); break;
+		case ETNBeachElement::Sandbags:
+		case ETNBeachElement::AmmoCrate:
+		case ETNBeachElement::TankTrap:
+		case ETNBeachElement::MilitaryHelmet:
+		case ETNBeachElement::CamoNet:
+		case ETNBeachElement::Jerrycan:
+		case ETNBeachElement::ToySoldiers:       BuildMilitaryDecor(P, E, Variant, Seed); break;
 		default:                                 BuildRock(P, Variant, Seed); break;
 		}
 	}
@@ -3691,3 +3707,6 @@ namespace TNBeachProp
 		BuildPathPost(P, Piece, Seed);
 	}
 }
+
+// Recetas del decorado militar (definen NumMilitaryVariants y BuildMilitaryDecor, declaradas arriba).
+#include "TN_BeachMilitaryMeshes.h"
