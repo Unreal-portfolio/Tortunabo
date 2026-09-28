@@ -9,6 +9,7 @@
 class APawn;
 class UDataTable;
 class USphereComponent;
+class UStaticMeshComponent;
 struct FTN_InventoryItem;
 
 namespace TNSearchSynthDSP
@@ -166,7 +167,9 @@ private:
  * cajas, restos... (los elige ATN_ProcMapGenerator::SpawnSearchSpots). El decorado va fundido en las mallas grandes del
  * mapa; este actor ligero (replicado y dormido casi siempre) se pone en su sitio con la huella del decorado y da:
  *  - Aviso «Mantén para rebuscar» al acercarse a su borde por cualquier lado (GetInteractionPointFor = punto del borde
- *    más cercano) y unas chispitas doradas al pie mientras quede por buscar.
+ *    más cercano) y unas chispitas doradas al pie mientras quede por buscar. Cerca de la tortuga local, el anillo dorado
+ *    de los objetos del suelo (la marca común de «aquí hay algo que coger», TN_LootGlowKit.h) marca en el suelo el punto
+ *    del borde por el que se rebusca; gira deprisa mientras ella rebusca.
  *  - Mantener la tecla ~1,3 s (el servidor cuenta el tiempo y vigila que la tortuga siga cerca y en condiciones;
  *    soltar antes cancela): aro de progreso en el HUD, tierra y piedrecitas que saltan y el sonido de rebuscar.
  *  - Al completarse, el servidor sortea (LootChance, 55 %) un objeto de DT_Items (los consumibles y lanzables de
@@ -222,6 +225,13 @@ public:
 	 */
 	bool IsSpent() const;
 
+	/**
+	 * Sorteo de un objeto del catálogo (filas FTN_InventoryItem con PickupActorClass y un uso), con el peso que dé
+	 * WeightOf a cada fila (0 o menos la quita). Lo usan los rebuscables y el botín suelto de la playa (TN_BeachLoot.h).
+	 */
+	static bool PickCatalogItem(const UDataTable* Table, TFunctionRef<float(FName, const FTN_InventoryItem&)> WeightOf,
+		FTN_InventoryItem& OutItem);
+
 protected:
 	/** Esfera invisible que cubre la huella: la encuentra el escaneo de interactuables (WorldDynamic, solo consultas). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Search")
@@ -263,10 +273,25 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|Audio", meta = (ClampMin = "0.25", ClampMax = "3.0"))
 	float RummagePitch = 1.f;
 
+	/** Distancia (cm, en planta) de la cámara al borde a la que salen las chispitas de «aquí se puede rebuscar». */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "0.0"))
+	float HintDistance = 1800.f;
+
+	/** Distancia (cm, en planta) de la tortuga local al borde a la que sale el anillo que marca dónde rebuscar (0 = nunca). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "0.0"))
+	float MarkerDistance = 1100.f;
+
+	/** Radio (cm) de ese anillo. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "20.0"))
+	float MarkerRadius = 85.f;
+
 	// ── Ganchos para las subclases ───────────────────────────────────────────
 
 	/** Probabilidad de que salga un objeto (por defecto LootChance, o la de tn.Search.Luck si se fuerza). */
 	virtual float GetLuck() const;
+
+	/** Peso de una fila del catálogo en el sorteo (por defecto, el de LootWeights por nombre de fila o ItemId, o 1). */
+	virtual float GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const;
 
 	/** Servidor: de dónde sale el objeto o la nube al completarse (por defecto, el borde hacia Pawn, a 40 cm). */
 	virtual FVector GetLootOrigin(const APawn* Pawn) const;
@@ -340,10 +365,16 @@ private:
 	void StartHop(AActor* Pickup, double Elapsed);
 	void TickHop();
 	void DrawDebugSpot(float DeltaSeconds);
+	/** Anillo dorado en el suelo, en el punto del borde por el que rebuscaría la tortuga local (cerca y sin buscar). */
+	void TickMarker(float DeltaSeconds);
 
 	/** Sonido de este decorado (se crea al primer uso). */
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_SearchSynthComponent> Synth;
+
+	/** Anillo que marca dónde rebuscar (se crea la primera vez que hace falta; solo en máquinas con pantalla). */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> MarkerRing;
 
 	/** Servidor: objetos que han salido de aquí y no se han recogido (se van con el mapa al regenerarse). */
 	TArray<TWeakObjectPtr<AActor>> SpawnedLoot;
@@ -361,6 +392,14 @@ private:
 	float RummageClock = 0.f;
 	float DebugClock = 0.f;
 	bool bNearView = false;
+
+	/** Anillo que marca dónde rebuscar: cuánto se ve (0-1), su giro, dónde está en el suelo y cuándo se buscó el suelo. */
+	float MarkerAppear = 0.f;
+	float MarkerClock = 0.f;
+	FVector MarkerRim = FVector::ZeroVector;
+	FVector MarkerGround = FVector::ZeroVector;
+	FQuat MarkerTilt = FQuat::Identity;
+	double MarkerTraceTime = -100.0;
 
 	/** Saltito del objeto que ha salido (se anima en cada máquina con pantalla). */
 	TWeakObjectPtr<AActor> HopActor;

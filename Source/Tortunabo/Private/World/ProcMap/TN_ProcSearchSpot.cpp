@@ -1,6 +1,7 @@
 #include "World/ProcMap/TN_ProcSearchSpot.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "TN_ProcMapAmbientFX.h"
+#include "../TN_LootGlowKit.h"
 #include "Core/TN_InventoryTypes.h"
 #include "Core/TN_Log.h"
 #include "Player/TN_CarryComponent.h"
@@ -13,8 +14,11 @@
 #include "Components/WidgetComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DataTable.h"
+#include "Engine/GameInstance.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/Pawn.h"
 #include "HAL/IConsoleManager.h"
@@ -47,8 +51,9 @@ namespace TNSearchSpotDetail
 	constexpr float HopStartScale = 0.3f;
 	/** Los efectos de un resultado solo se ven si llegan con menos de esto (s) desde que pasó en el servidor. */
 	constexpr double FreshOutcomeSeconds = 1.5;
-	/** Distancia (cm) en planta de la cámara al borde a la que salen las chispitas de «aquí se puede rebuscar». */
-	constexpr double HintRange = 1800.0;
+	/** Perímetro (cm) de huella por cada chispita de «aquí se puede rebuscar» de más (los decorados grandes, más). */
+	constexpr float HintPerimeterPerSparkle = 3000.f;
+	constexpr int32 MaxHintSparkles = 4;
 	/** Alcance de interacción (cm): el del escaneo de la tortuga (ATortugaCharacter::MaxInteractionDistance). */
 	constexpr float Reach = 350.f;
 	/** Intervalo del tick sin nada que hacer (s): solo mira si la cámara se acerca. */
@@ -1008,12 +1013,36 @@ FVector ATN_ProcSearchSpot::GetRummageOrigin(const APawn* Searcher) const
 	return Searcher ? RimPointToward(Searcher->GetActorLocation(), 20.f) : GetActorLocation() + FVector(0.f, 0.f, 20.f);
 }
 
+float ATN_ProcSearchSpot::GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const
+{
+	if (const float* ByRow = LootWeights.Find(RowName))
+	{
+		return *ByRow;
+	}
+	if (const float* ById = LootWeights.Find(Row.ItemId))
+	{
+		return *ById;
+	}
+	return 1.f;
+}
+
 bool ATN_ProcSearchSpot::PickLoot(FTN_InventoryItem& OutItem) const
 {
 	const UDataTable* Table = LootTable.LoadSynchronous();
-	if (!Table || !Table->GetRowStruct() || !Table->GetRowStruct()->IsChildOf(FTN_InventoryItem::StaticStruct()))
+	if (!Table)
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[Search] Sin catálogo de objetos (%s): no sale nada."), *LootTable.ToString());
+		return false;
+	}
+	return PickCatalogItem(Table, [this](FName RowName, const FTN_InventoryItem& Row) { return GetLootWeight(RowName, Row); }, OutItem);
+}
+
+bool ATN_ProcSearchSpot::PickCatalogItem(const UDataTable* Table, TFunctionRef<float(FName, const FTN_InventoryItem&)> WeightOf,
+	FTN_InventoryItem& OutItem)
+{
+	if (!Table || !Table->GetRowStruct() || !Table->GetRowStruct()->IsChildOf(FTN_InventoryItem::StaticStruct()))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Search] El catálogo de objetos %s no es de FTN_InventoryItem: no sale nada."), *GetNameSafe(Table));
 		return false;
 	}
 
@@ -1021,21 +1050,13 @@ bool ATN_ProcSearchSpot::PickLoot(FTN_InventoryItem& OutItem) const
 	TArray<const FTN_InventoryItem*> Options;
 	TArray<float> Weights;
 	float Total = 0.f;
-	Table->ForeachRow<FTN_InventoryItem>(TEXT("ATN_ProcSearchSpot::PickLoot"), [&](const FName& RowName, const FTN_InventoryItem& Row)
+	Table->ForeachRow<FTN_InventoryItem>(TEXT("ATN_ProcSearchSpot::PickCatalogItem"), [&](const FName& RowName, const FTN_InventoryItem& Row)
 	{
 		if (!Row.IsValid() || !Row.PickupActorClass || Row.UseType == ETN_ItemUseType::None)
 		{
 			return;
 		}
-		float Weight = 1.f;
-		if (const float* ByRow = LootWeights.Find(RowName))
-		{
-			Weight = *ByRow;
-		}
-		else if (const float* ById = LootWeights.Find(Row.ItemId))
-		{
-			Weight = *ById;
-		}
+		const float Weight = WeightOf(RowName, Row);
 		if (Weight <= 0.f)
 		{
 			return;
@@ -1247,7 +1268,7 @@ void ATN_ProcSearchSpot::Tick(float DeltaSeconds)
 		}
 	}
 	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-	const bool bBusy = SearchState.Searcher != nullptr || bHopActive || (bNearView && !IsSpent())
+	const bool bBusy = SearchState.Searcher != nullptr || bHopActive || (bNearView && !IsSpent()) || MarkerAppear > 0.f
 		|| Now - LastFxTime < TNSearchSpotDetail::FxTail || WantsFrameTick();
 	const float WantedInterval = bBusy ? 0.f : TNSearchSpotDetail::IdleTickInterval;
 	if (!FMath::IsNearlyEqual(GetActorTickInterval(), WantedInterval))
@@ -1265,10 +1286,11 @@ void ATN_ProcSearchSpot::TickLocalFX(float DeltaSeconds)
 	}
 	const APlayerCameraManager* Camera = UGameplayStatics::GetPlayerCameraManager(this, 0);
 	const FVector View = Camera ? Camera->GetCameraLocation() : GetActorLocation();
-	bNearView = FVector::Dist2D(View, RimPointToward(View, 0.f)) < TNSearchSpotDetail::HintRange
+	bNearView = FVector::Dist2D(View, RimPointToward(View, 0.f)) < static_cast<double>(HintDistance)
 		&& FMath::Abs(View.Z - GetActorLocation().Z) < 3000.0;
 
-	// Por buscar: alguna chispita dorada al pie, de vez en cuando («aquí se puede rebuscar»).
+	// Por buscar: alguna chispita dorada al pie, de vez en cuando («aquí se puede rebuscar»); en los decorados grandes,
+	// más de una a la vez por el borde (una por cada 30 m de perímetro de más).
 	if (bNearView && !IsSpent() && !SearchState.Searcher)
 	{
 		HintClock -= DeltaSeconds;
@@ -1276,9 +1298,18 @@ void ATN_ProcSearchSpot::TickLocalFX(float DeltaSeconds)
 		{
 			HintClock = FMath::FRandRange(0.28f, 0.55f);
 			EnsureFX();
-			BurstFX(FxSparkle, RandomRimPoint(FMath::FRandRange(15.f, FMath::Min(SpotShape.Height * 0.6f, 140.f))), 1, FVector::UpVector);
+			const float Perimeter = 2.f * PI * SpotShape.Radius + 4.f * SpotShape.HalfLength;
+			const int32 Sparkles = FMath::Clamp(1 + FMath::FloorToInt32(Perimeter / TNSearchSpotDetail::HintPerimeterPerSparkle), 1,
+				TNSearchSpotDetail::MaxHintSparkles);
+			for (int32 k = 0; k < Sparkles; ++k)
+			{
+				BurstFX(FxSparkle, RandomRimPoint(FMath::FRandRange(15.f, FMath::Min(SpotShape.Height * 0.6f, 140.f))), 1, FVector::UpVector);
+			}
 		}
 	}
+
+	// Cerca de la tortuga local: el anillo dorado en el suelo, donde rebuscaría.
+	TickMarker(DeltaSeconds);
 
 	// Rebuscando: puñados de tierra y piedrecitas que saltan hacia el que busca, cada uno con su sonido.
 	if (const APawn* Searcher = SearchState.Searcher.Get())
@@ -1331,27 +1362,8 @@ void ATN_ProcSearchSpot::EnsureFX()
 	const FLinearColor DustColor = SpotShape.Dust.ReinterpretAsLinear();
 	const FVector Origin = GetActorLocation();
 
-	// Chispitas doradas (pista de «buscable» y estallido del premio).
-	TNAmbientFX::FEmitterDesc Sparkle;
-	Sparkle.Shape = TNAmbientFX::EShape::Ember;
-	Sparkle.bSoft = true;
-	Sparkle.Color = FLinearColor(1.f, 0.82f, 0.32f);
-	Sparkle.Alpha = 0.95f;
-	Sparkle.MaxParticles = 18;
-	Sparkle.Rate = 0.f;
-	Sparkle.SpawnRadius = 10.f;
-	Sparkle.Speed = 60.f;
-	Sparkle.SpeedJitter = 0.5f;
-	Sparkle.Spread = 0.8f;
-	Sparkle.Gravity = 0.f;
-	Sparkle.Buoyancy = 20.f;
-	Sparkle.Drag = 1.2f;
-	Sparkle.LifeMin = 0.7f;
-	Sparkle.LifeMax = 1.2f;
-	Sparkle.SizeStart = 9.f;
-	Sparkle.SizeEnd = 1.f;
-	Sparkle.WakeDistance = 6000.f;
-	FxSparkle = TNAmbientFX::AddEmitter(this, Sparkle, Origin);
+	// Chispitas doradas (pista de «buscable» y estallido del premio): las mismas que suben de los objetos del suelo.
+	FxSparkle = TNAmbientFX::AddEmitter(this, TNLootGlow::SparkleDesc(18, 6000.f), Origin);
 
 	// Nube de polvo del color del suelo del bioma (rebuscar y «¡pof!»).
 	TNAmbientFX::FEmitterDesc Dust;
@@ -1563,4 +1575,95 @@ void ATN_ProcSearchSpot::DrawDebugSpot(float DeltaSeconds)
 	DrawDebugLine(World, Base, Base + FVector(0.f, 0.f, 2500.f), Color, false, Life, SDPG_Foreground, 10.f);
 	DrawDebugCapsule(World, Base + FVector(0.f, 0.f, 30.f), SpotShape.HalfLength + SpotShape.Radius, SpotShape.Radius,
 		FRotationMatrix::MakeFromZ(Axis).ToQuat(), Color, false, Life, SDPG_Foreground, 3.f);
+}
+
+void ATN_ProcSearchSpot::TickMarker(float DeltaSeconds)
+{
+	UWorld* World = GetWorld();
+	if (!World || MarkerDistance <= 0.f)
+	{
+		return;
+	}
+	// La tortuga de esta máquina (la del jugador local; en el anfitrión, la suya).
+	const UGameInstance* GameInstance = World->GetGameInstance();
+	const APlayerController* LocalPC = GameInstance ? GameInstance->GetFirstLocalPlayerController(World) : nullptr;
+	const APawn* LocalPawn = LocalPC ? LocalPC->GetPawn() : nullptr;
+	const APawn* Current = SearchState.Searcher.Get();
+	const bool bLocalSearching = LocalPawn && Current == LocalPawn;
+
+	// Se ve con la tortuga local cerca del borde, sin buscar todavía y sin que otra esté rebuscando.
+	bool bWant = false;
+	FVector Rim = MarkerRim;
+	if (LocalPawn && bNearView && !IsSpent() && (!Current || bLocalSearching))
+	{
+		const FVector PawnLocation = LocalPawn->GetActorLocation();
+		Rim = RimPointToward(PawnLocation, 0.f);
+		bWant = FVector::Dist2D(PawnLocation, Rim) < static_cast<double>(MarkerDistance)
+			&& FMath::Abs(PawnLocation.Z - GetActorLocation().Z) < static_cast<double>(SpotShape.Height) + 600.0;
+	}
+	MarkerAppear = bWant ? FMath::Min(1.f, MarkerAppear + 3.f * DeltaSeconds) : FMath::Max(0.f, MarkerAppear - 4.f * DeltaSeconds);
+	if (MarkerAppear <= 0.f)
+	{
+		if (MarkerRing && MarkerRing->IsVisible())
+		{
+			MarkerRing->SetVisibility(false);
+		}
+		return;
+	}
+	if (!MarkerRing)
+	{
+		UStaticMesh* RingAsset = TNLootGlow::RingMesh();
+		if (!RingAsset)
+		{
+			MarkerAppear = 0.f;
+			return;
+		}
+		MarkerRing = NewObject<UStaticMeshComponent>(this, NAME_None, RF_Transient);
+		MarkerRing->SetupAttachment(SceneRoot);
+		MarkerRing->SetAbsolute(true, true, true);
+		MarkerRing->SetStaticMesh(RingAsset);
+		MarkerRing->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		MarkerRing->SetGenerateOverlapEvents(false);
+		MarkerRing->SetCanEverAffectNavigation(false);
+		MarkerRing->SetCastShadow(false);
+		MarkerRing->SetReceivesDecals(false);
+		MarkerRing->RegisterComponent();
+	}
+
+	// El suelo junto al borde, un poco hacia fuera (hacia la tortuga): se busca al moverse el punto o cada 0,3 s.
+	const double Now = World->GetTimeSeconds();
+	if (bWant && (FVector::DistSquared2D(Rim, MarkerRim) > FMath::Square(30.0) || Now - MarkerTraceTime > 0.3))
+	{
+		MarkerRim = Rim;
+		MarkerTraceTime = Now;
+		const FVector PawnLocation = LocalPawn->GetActorLocation();
+		const FVector Spot = Rim + (PawnLocation - Rim).GetSafeNormal2D() * 45.0;
+		const double Top = FMath::Max(PawnLocation.Z, GetActorLocation().Z) + 150.0;
+		FHitResult Hit;
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(TN_SearchMarker), false, this);
+		Query.AddIgnoredActor(LocalPawn);
+		if (World->LineTraceSingleByObjectType(Hit, FVector(Spot.X, Spot.Y, Top), FVector(Spot.X, Spot.Y, GetActorLocation().Z - 400.0),
+			FCollisionObjectQueryParams(ECC_WorldStatic), Query))
+		{
+			MarkerGround = Hit.ImpactPoint;
+			MarkerTilt = Hit.ImpactNormal.Z > 0.6 ? FQuat::FindBetweenNormals(FVector::UpVector, Hit.ImpactNormal.GetSafeNormal()) : FQuat::Identity;
+		}
+		else
+		{
+			MarkerGround = FVector(Spot.X, Spot.Y, GetActorLocation().Z);
+			MarkerTilt = FQuat::Identity;
+		}
+	}
+
+	// Gira despacio y respira, como el de los objetos; mientras la tortuga local rebusca, deprisa y latiendo.
+	MarkerClock += DeltaSeconds * (bLocalSearching ? 5.f : 1.f);
+	const float Grow = 1.f - FMath::Square(1.f - MarkerAppear);
+	const float Pulse = bLocalSearching ? 0.1f * FMath::Abs(FMath::Sin(MarkerClock * 1.6f)) : 0.045f * FMath::Sin(MarkerClock * 2.4f);
+	const FQuat Spin(FVector::UpVector, FMath::DegreesToRadians(MarkerClock * -24.f));
+	if (!MarkerRing->IsVisible())
+	{
+		MarkerRing->SetVisibility(true);
+	}
+	MarkerRing->SetWorldTransform(FTransform(MarkerTilt * Spin, MarkerGround + MarkerTilt.GetUpVector() * 2.5,
+		FVector(MarkerRadius / TNLootGlow::RingUnitRadius * Grow * (1.f + Pulse))));
 }

@@ -1,4 +1,5 @@
 ﻿#include "World/TN_PickupInteractableBase.h"
+#include "World/TN_PickupGlowComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Core/TN_Log.h"
 #include "Components/StaticMeshComponent.h"
@@ -10,11 +11,22 @@
 ATN_PickupInteractableBase::ATN_PickupInteractableBase()
 {
 	PromptText = FText::FromString(TEXT("Recoger"));
+
+	// Marca de «esto se coge» en todos los pickups (anillo, columna, chispitas, luz y el objeto que flota y gira).
+	PickupGlow = CreateDefaultSubobject<UTN_PickupGlowComponent>(TEXT("PickupGlow"));
+	PickupGlow->SetupAttachment(SceneRoot);
 }
 
 void ATN_PickupInteractableBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// La malla flota y gira sobre su sitio de reposo (el que acaba de ponerle la base: MeshFloorOffset o el del
+	// Blueprint). Si luego llega la malla del objeto, ApplyPickupMeshAndScale lo vuelve a fijar.
+	if (PickupGlow && Mesh)
+	{
+		PickupGlow->SetFloatTarget(Mesh, static_cast<float>(Mesh->GetRelativeLocation().Z));
+	}
 
 	// ── Aplicar estado "taken" desde la replicación inicial ──────────────────
 	// Si un cliente se une tarde y el pickup ya fue recogido, bTaken=true
@@ -203,6 +215,11 @@ void ATN_PickupInteractableBase::ApplyPickupMeshAndScale()
 	{
 		MeshFloorOffset = HalfHeight;
 		Mesh->SetRelativeLocation(FVector(0.f, 0.f, HalfHeight));
+		// Nuevo sitio de reposo (y tamaño del anillo) de la marca de «esto se coge».
+		if (PickupGlow)
+		{
+			PickupGlow->SetFloatTarget(Mesh, HalfHeight);
+		}
 	}
 
 	if (PromptWidgetComponent)
@@ -220,6 +237,10 @@ void ATN_PickupInteractableBase::ApplyTakenState()
 {
 	SetActorHiddenInGame(bTaken);
 	SetActorEnableCollision(!bTaken);
+	if (PickupGlow)
+	{
+		PickupGlow->SetGlowEnabled(!bTaken);
+	}
 }
 
 void ATN_PickupInteractableBase::EndPlay(const EEndPlayReason::Type EndPlayReason)

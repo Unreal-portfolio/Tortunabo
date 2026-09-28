@@ -9,7 +9,9 @@ siempre de un saltito («¡puf!»); si no, una nubecilla del color del suelo del
 
 1. Al acercarse al borde de un decorado buscable (por cualquier lado, a 3,5 m como mucho) sale el aviso
    **«Mantén para rebuscar»** con la tecla dentro de un aro vacío. Los buscables tienen alguna chispita dorada al pie
-   cuando la cámara está a menos de 18 m.
+   cuando la cámara está a menos de 18 m (más de una a la vez en los grandes) y, con la tortuga a menos de 11 m del
+   borde, el anillo dorado de los objetos del suelo marca en el suelo el punto del borde por el que rebuscaría (ver
+   «Brillo de lo que se coge»).
 2. Al **mantener E** el aro se llena en dorado (1,3 s), saltan tierra y piedrecitas del borde hacia la tortuga y suena
    un rebuscar de arena y chinitas (lo oyen los que estén cerca). **Soltar antes cancela** (y se puede volver a
    empezar). También se corta si la tortuga se aleja del decorado, se mete en el caparazón, queda tumbada, muere o la
@@ -54,6 +56,47 @@ En lo alto de la torre del homenaje del lobby hay un cofre que se rebusca igual 
   `LidThump` (golpe grave con la altura que cae, la caja que resuena y un tintineo de herrajes).
 - Dónde está y quién lo crea: ver `Docs/Lobby_Castillo.md`.
 
+## Brillo de lo que se coge (todos los modos)
+
+Todo lo que se puede coger lleva la misma marca, para que se entienda igual en el cooperativo, la carrera y el lobby:
+**oro que gira en el suelo y chispitas que suben = aquí hay algo para ti**.
+
+- **Objetos del suelo**: todo `ATN_PickupInteractableBase` (lo que da un objeto del inventario: zonas de objetos, lo que
+  sale de rebuscar o del cofre, lo que se suelta, la bola lanzada cuando se para y el botín de la playa) lleva de serie
+  `UTN_PickupGlowComponent` (`World/TN_PickupGlowComponent.h/.cpp`, componente `PickupGlow`). No hay que tocar ningún
+  Blueprint.
+  - **Anillo dorado** en el suelo: seis guiones afilados con un destello crema en cada hueco y un aro fino por dentro,
+    apoyado en el suelo que haya debajo (inclinado con él). Gira despacio (al revés que el objeto) y respira. Su radio
+    sale del tamaño del objeto (55-110 cm). Se dibuja hasta 90 m.
+  - **Columna de luz tenue** de 3,6 m que sube del anillo y se desvanece hacia arriba: lo que se ve de lejos (hasta
+    150 m).
+  - **Chispitas doradas** que suben del anillo (las mismas que las de los rebuscables), a menos de 30 m de la cámara.
+  - **Luz** dorada suave, sin sombras (420 lm, 3,8 m de alcance), solo a menos de 18 m de la cámara; se apaga al
+    alejarse.
+  - **El objeto** sube 14 cm, flota ±6 cm y gira despacio (0,2 vueltas/s) a menos de 40 m de la cámara.
+  - Mientras el objeto se mueve (el saltito al salir de un rebuscable) la marca se esconde; al pararse aparece
+    creciendo. Al recogerlo se apaga con él.
+  - Ajustes por Blueprint en `PickupGlow`: `RingRadius` (0 = según el objeto), `BeamHeight` (0 = sin columna),
+    `bFloatAndSpin`, `FloatLift`, `FloatBob`, `SpinTurnsPerSecond`, `LightLumens` (0 = sin luz), `LightRadius` y las
+    distancias (`LightRange`, `SparkleRange`, `AnimRange`, `RingDrawDistance`, `BeamDrawDistance`).
+- **Decorados que se rebuscan** (`ATN_ProcSearchSpot`, también el cofre del lobby y los de la playa): las mismas chispitas
+  doradas por el borde (en los grandes, una más por cada 30 m de perímetro, hasta cuatro a la vez) y, cuando la tortuga
+  de esta máquina está a menos de `MarkerDistance` del borde (11 m; en la playa, 18 m), **el mismo anillo dorado** en el
+  suelo, en el punto del borde por el que rebuscaría: la sigue alrededor del decorado, gira deprisa y late mientras ella
+  rebusca y se va al buscarse (o si rebusca otra). Radio `MarkerRadius` (85 cm; 105 en la playa).
+- **Conchas de puntos** (`ATN_ScorePickup`): siguen con su brillo propio (la vieira que gira, destellos, halo, luz y
+  columna de su color): se cogen al pasar, sin tecla, y así se distinguen.
+
+**Coste**: nada en el servidor dedicado ni en red (todo local en cada máquina). Una sola malla de anillo y una de columna
+para todos (`Private/World/TN_LootGlowKit.h`, construidas en ejecución con `M_ProcGlow`, opaco que brilla, y
+`M_ProcFXSoft`, translúcido sin luz; sin assets nuevos), sin sombras; la luz y las chispitas solo cerca; lejos de la
+cámara el componente mira la distancia cada 0,35 s y nada más.
+
+**Probar**: tirar un objeto (soltar el equipado) y la bola (al pararse sale su anillo); rebuscar con `tn.Search.Luck 1`
+(el objeto salta sin anillo y, al aterrizar, aparece creciendo); acercarse y alejarse (luz a 18 m, chispitas a 30 m,
+flotar a 40 m, anillo a 90 m, columna a 150 m); recogerlo (se apaga). En el lobby, el cofre: el anillo delante de él al
+acercarse. Con dos jugadores, cada uno ve el anillo del rebuscable solo alrededor de su tortuga.
+
 ## Qué decorados se pueden rebuscar
 
 Los elige `ATN_ProcMapGenerator::SpawnSearchSpots` (`TN_ProcMapGenerator_Spawn.cpp`) entre los decorados del layout,
@@ -85,6 +128,8 @@ el cráneo son alargados; el resto, redondos.
 | `ATortugaCharacter` | Si el interactuable al alcance es de mantener, E manda `ServerBeginHoldInteract` en vez de `ServerTryInteract`; al soltar (`Completed`/`Canceled` de `IA_Interact`) manda `ServerEndHoldInteract`. El escaneo y la validación usan `GetInteractionPointFor(this)`. |
 | `UTN_HoldRingWidget` (`UI/HUD`) | Aro de progreso pintado en código alrededor de la tecla del aviso: pista azul marino con filo crema y relleno dorado. `UTN_RunHUDWidget::TickPrompt` lo enseña en los interactuables de mantener (vacío nada más pulsar, mientras llega la respuesta del servidor). |
 | `ATN_TreasureChest` (`Lobby/TN_TreasureChest.h/.cpp`) | Subclase para el cofre del lobby: fija sus reglas en el constructor y usa los ganchos de la base (abajo). Malla propia (caja y tapa construidas en código) y caja de colisión. |
+| `ATN_BeachSearchSpot` (`World/Beach/TN_BeachLoot.h/.cpp`) | Subclase para el decorado de la playa del modo carrera: más suerte, pesos de la carrera, polvo de arena y pistas a la escala de la playa (ver `Docs/Modo_Carrera.md`, «Botín en la playa»). |
+| `UTN_PickupGlowComponent`, `TN_LootGlowKit.h` | La marca común de lo que se coge (arriba, «Brillo de lo que se coge»): el componente de los objetos del suelo y las mallas, colores y chispitas que comparten con los rebuscables. |
 
 ### Opciones y ganchos de `ATN_ProcSearchSpot` para subclases
 
@@ -95,7 +140,10 @@ Los decorados del mapa los dejan como están; el cofre del lobby los usa.
 | `bRepeatable`, `RepeatCooldown` | no, 2,5 s | Se puede rebuscar otra vez tras el respiro. `IsSpent()` dice si ahora no se puede: ya buscado (los de una vez) o dentro del respiro (los repetibles). Es lo que miran `CanInteract`, el aro, las chispitas y el tick. Los repetibles no salen nunca del escaneo. |
 | `MaxLootLying` | 0 (sin límite) | Objetos sin recoger que pueden quedar a la vez; al pasarse, `SpawnLoot` destruye el más viejo. Lo recogido no cuenta: el pickup se destruye al cogerlo. |
 | `RummagePitch` | 1 | Multiplica el tono del sonido de rebuscar. |
+| `HintDistance` | 18 m | Distancia de la cámara al borde a la que salen las chispitas de «aquí se puede rebuscar». |
+| `MarkerDistance`, `MarkerRadius` | 11 m, 85 cm | Distancia de la tortuga local al borde a la que sale el anillo que marca dónde rebuscar (0 = nunca) y su radio. |
 | `GetLuck()` | `LootChance` o `tn.Search.Luck` | Probabilidad de que salga algo. |
+| `GetLootWeight(Fila, Objeto)` | `LootWeights` por fila o `ItemId`, o 1 | Peso de cada objeto del catálogo en el sorteo (0 lo quita). La playa usa el de la carrera. |
 | `GetLootOrigin(Pawn)` | borde hacia la tortuga, a 40 cm | De dónde sale el objeto o la nube. |
 | `GetRummageOrigin(Searcher)` | borde hacia la tortuga, a 20 cm | De dónde saltan tierra y sonido mientras se rebusca. |
 | `FindLanding(Pawn, From)` | en el suelo, a un metro largo hacia la tortuga | Dónde cae el objeto (servidor). |
@@ -125,7 +173,9 @@ Los decorados del mapa los dejan como están; el cofre del lobby los usa.
   destruyen con el decorado al regenerarse el mapa.
 - **Catálogo**: todas las filas de `DT_Items` con `PickupActorClass` y un uso (`UseType` distinto de `None`), a
   sorteo con peso 1; `LootWeights` cambia el peso por nombre de fila o `ItemId` (el tótem, que revive, va a 0,3; un
-  peso 0 quita un objeto).
+  peso 0 quita un objeto). El sorteo es `ATN_ProcSearchSpot::PickCatalogItem(Tabla, Peso, Objeto)` (estático, con el
+  peso de cada fila como función): lo usan también los objetos sueltos de la playa; las subclases cambian el peso con
+  `GetLootWeight`.
 
 ### Efectos
 

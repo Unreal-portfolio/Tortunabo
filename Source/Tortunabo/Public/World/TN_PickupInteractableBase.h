@@ -6,6 +6,7 @@
 #include "TN_PickupInteractableBase.generated.h"
 
 class UTN_InventoryComponent;
+class UTN_PickupGlowComponent;
 class UDataTable;
 
 /**
@@ -14,6 +15,9 @@ class UDataTable;
  * Configurable vía DataTable (ItemDataTable + ItemRowName) o inline (PickupItem directo).
  * Cuando un jugador interactúa: TryAddOrReplaceEquipped en su UTN_InventoryComponent y destruye el pickup.
  * Subclases especializadas pueden override Interact para lógica adicional (ej. concha trampa, tótem).
+ *
+ * Todos llevan la marca de «esto se coge» (UTN_PickupGlowComponent: anillo dorado que gira en el suelo, columna de luz
+ * tenue, chispitas que suben, luz suave cerca y el objeto que flota y gira), en todos los modos y Blueprints.
  */
 UCLASS()
 class TORTUNABO_API ATN_PickupInteractableBase : public ATN_InteractableBase
@@ -59,6 +63,13 @@ protected:
 
 	UPROPERTY(ReplicatedUsing = OnRep_Taken, BlueprintReadOnly, Category = "Pickup")
 	bool bTaken = false;
+
+	/**
+	 * Marca de «esto se coge» (solo visual, en las máquinas con pantalla). Hace flotar y girar Mesh; sus ajustes
+	 * (tamaño del anillo, columna, luz, distancias) se pueden cambiar en cada Blueprint.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
+	TObjectPtr<UTN_PickupGlowComponent> PickupGlow;
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Pickup")
 	void OnPickedUp(APawn* Interactor);
