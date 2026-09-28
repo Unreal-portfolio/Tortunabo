@@ -15,7 +15,7 @@
 namespace TNBeachRaceKit
 {
 	/** Versión de la construcción: al cambiarla, la playa ya construida en el editor se rehace. */
-	constexpr uint32 BuildVersion = 1u;
+	constexpr uint32 BuildVersion = 2u;
 
 	/** Casillas por lado de cada tesela del terreno (las rondas rehacen solo las teselas con hoyos). */
 	constexpr int32 TerrainTileQuads = 40;

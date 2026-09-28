@@ -845,42 +845,53 @@ void ATN_LobbyValley::BuildFlora()
 			}
 			const double Sink = Pick.Shape == TNProcMap::EFloraShape::Prop ? 2.0 : (bRock ? 25.0 * PlantScale : 8.0 + 4.0 * PlantScale);
 			const double Stretch = bTree ? Rng.Range(0.88, 1.12) : 1.0;
-			const int32 Key = ((TNProcMap::BiomeIndex(Sector.Biome) * 64 + static_cast<int32>(Pick.Shape)) * 64 + static_cast<int32>(Pick.Prop)) * 4 + Variant;
+			// Bit bajo de la clave: las montañas lejanas (sin sombra).
+			const int32 Key = (((TNProcMap::BiomeIndex(Sector.Biome) * 64 + static_cast<int32>(Pick.Shape)) * 64 + static_cast<int32>(Pick.Prop)) * 4 + Variant) * 2
+				+ (bMountain ? 1 : 0);
 			ByMesh.FindOrAdd(Key).Add(FTransform(FRotator(0.0, Rng.Range(0.0, 360.0), 0.0), FVector(P, Low - Sink), FVector(PlantScale, PlantScale, PlantScale * Stretch)));
 		}
 	}
 
-	// Una malla por bioma, especie y variante (las del mapa procedural), instanciada.
+	// Una malla por bioma, especie y variante (las del mapa procedural), instanciada. Las montañas lejanas, sin sombra
+	// dinámica: mucha malla sin Nanite sobre mucho mapa de sombras virtuales para lo poco que se nota desde el castillo.
 	UMaterialInterface* Mat = ValleyFoliageMaterial();
+	TMap<int32, UStaticMesh*> MeshBySpecies;
 	for (TPair<int32, TArray<FTransform>>& Entry : ByMesh)
 	{
-		const int32 Variant = Entry.Key % 4;
-		const TNProcMap::EPropKind Prop = static_cast<TNProcMap::EPropKind>((Entry.Key / 4) % 64);
-		const TNProcMap::EFloraShape FloraShape = static_cast<TNProcMap::EFloraShape>((Entry.Key / 4 / 64) % 64);
-		const ETNProcBiome Biome = TNProcMap::BiomeFromIndex(Entry.Key / 4 / 64 / 64);
-		FLinearColor GroundC, RockC;
-		BiomeColors(Biome, GroundC, RockC);
-		FTNProcMeshBuffers Buffers;
-		const uint32 MeshSeed = TNProcMap::HashCell(SeedU() ^ 0xF10Au, Entry.Key / 4, Variant);
+		const bool bFar = (Entry.Key & 1) != 0;
+		const int32 Species = Entry.Key >> 1;
+		const int32 Variant = Species % 4;
+		const TNProcMap::EPropKind Prop = static_cast<TNProcMap::EPropKind>((Species / 4) % 64);
+		const TNProcMap::EFloraShape FloraShape = static_cast<TNProcMap::EFloraShape>((Species / 4 / 64) % 64);
+		const ETNProcBiome Biome = TNProcMap::BiomeFromIndex(Species / 4 / 64 / 64);
 		const bool bProp = FloraShape == TNProcMap::EFloraShape::Prop;
-		if (bProp)
-		{
-			TNPropMesh::TNPropBuild(Buffers, Prop, Variant, MeshSeed, TNPropMesh::TNPropCrystalColor(Biome), Biome == ETNProcBiome::Volcanic);
-			// La paleta de los objetos se ve como sRGB: se decodifica una vez más (como en el mapa procedural).
-			for (FLinearColor& Col : Buffers.Colors)
-			{
-				Col = FLinearColor(TNProcRuntimeMesh::SRGBToLinear(Col.R), TNProcRuntimeMesh::SRGBToLinear(Col.G), TNProcRuntimeMesh::SRGBToLinear(Col.B), Col.A);
-			}
-		}
-		else
-		{
-			TNFloraMesh::TNFloraBuild(Buffers, FloraShape, TNFloraMesh::TNFloraPaletteFor(Biome, GroundC, RockC), Variant, MeshSeed);
-		}
 		const TNFloraMesh::FTNFloraWind Wind = bProp ? TNFloraMesh::FTNFloraWind() : TNFloraMesh::TNFloraWindOf(FloraShape);
-		UStaticMesh* Mesh = TNProcRuntimeMesh::MakeStaticMesh(this, Buffers, Mat, false, Wind.Stiffness, Wind.Exponent);
-		if (!Mesh) { continue; }
-		GeneratedMeshes.Add(Mesh);
-		const bool bShadow = bProp || TNFloraMesh::TNFloraLookOf(FloraShape).bShadow;
+		UStaticMesh* Mesh = MeshBySpecies.FindRef(Species);
+		if (!Mesh)
+		{
+			FLinearColor GroundC, RockC;
+			BiomeColors(Biome, GroundC, RockC);
+			FTNProcMeshBuffers Buffers;
+			const uint32 MeshSeed = TNProcMap::HashCell(SeedU() ^ 0xF10Au, Species / 4, Variant);
+			if (bProp)
+			{
+				TNPropMesh::TNPropBuild(Buffers, Prop, Variant, MeshSeed, TNPropMesh::TNPropCrystalColor(Biome), Biome == ETNProcBiome::Volcanic);
+				// La paleta de los objetos se ve como sRGB: se decodifica una vez más (como en el mapa procedural).
+				for (FLinearColor& Col : Buffers.Colors)
+				{
+					Col = FLinearColor(TNProcRuntimeMesh::SRGBToLinear(Col.R), TNProcRuntimeMesh::SRGBToLinear(Col.G), TNProcRuntimeMesh::SRGBToLinear(Col.B), Col.A);
+				}
+			}
+			else
+			{
+				TNFloraMesh::TNFloraBuild(Buffers, FloraShape, TNFloraMesh::TNFloraPaletteFor(Biome, GroundC, RockC), Variant, MeshSeed);
+			}
+			Mesh = TNProcRuntimeMesh::MakeStaticMesh(this, Buffers, Mat, false, Wind.Stiffness, Wind.Exponent);
+			if (!Mesh) { continue; }
+			GeneratedMeshes.Add(Mesh);
+			MeshBySpecies.Add(Species, Mesh);
+		}
+		const bool bShadow = !bFar && (bProp || TNFloraMesh::TNFloraLookOf(FloraShape).bShadow);
 		// Viento solo cerca (lo lejano apenas se ve moverse); sin distancia de corte: el valle entero está a la vista.
 		const int32 WpoDistance = Wind.Stiffness > 0.f ? FMath::Min(Wind.DisableDistance, 12000) : 0;
 		if (UInstancedStaticMeshComponent* Comp = MakeInstanced(Mesh, true, bShadow, WpoDistance))

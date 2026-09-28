@@ -7,9 +7,11 @@
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "Core/TN_Log.h"
+#include "Algo/BinarySearch.h"
 #include "Async/ParallelFor.h"
 #include "Components/BoxComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "CoreGlobals.h"
 #include "Engine/CollisionProfile.h"
 #include "Engine/StaticMesh.h"
@@ -33,11 +35,12 @@ namespace TNBeachBuild
 	};
 
 	/**
-	 * Color de la arena (y del suelo de la selva en los bancos): manchas lentas, crestas de duna algo más claras, arena
-	 * húmeda cerca de la roca y apisonada en las rodadas de los quads (Tint). El alfa es la máscara de camino de
-	 * M_ProcTerrain: 1 en la arena (grano, guijarros y marcas del viento) y 0 en la selva.
+	 * Color de la arena (y del suelo de la selva en los bancos): manchas lentas, crestas algo más claras y hondonadas algo
+	 * más oscuras (Relief: la cota sobre la cuesta sin relieve), arena húmeda cerca de la roca y alrededor y dentro de las
+	 * pozas, pisada en el fondo de las trincheras y apisonada en las rodadas de los quads (Tint). El alfa es la máscara de
+	 * camino de M_ProcTerrain: 1 en la arena (grano, guijarros y marcas del viento) y 0 en la selva.
 	 */
-	FLinearColor SandColor(double X, double Y, const FVector& N, float Tint)
+	FLinearColor SandColor(double X, double Y, const FVector& N, float Tint, double Relief)
 	{
 		const uint32 S = TNBeachLayout::TerrainSeed;
 		const FLinearColor Sand(0.86f, 0.76f, 0.52f);
@@ -46,9 +49,21 @@ namespace TNBeachBuild
 		const FLinearColor Leaf(0.1f, 0.3f, 0.08f);
 		const FLinearColor Stone(0.25f, 0.25f, 0.2f);
 		const double Patch = 0.5 + 0.5 * TNProcMap::Noise2(S + 21u, X / 2600.0, Y / 2600.0);
-		const double Crest = FMath::Clamp(TNBeachLayout::DuneZ(X, Y) / 250.0, -1.0, 1.0);
+		const double Crest = FMath::Clamp(Relief / 250.0, -1.0, 1.0);
 		FLinearColor C = Sand * static_cast<float>((0.93 + 0.1 * Patch) * (1.0 + 0.05 * Crest));
 		C = TNProcMesh::TNProcLerpColor(C, Damp, static_cast<float>(0.3 * TNProcMap::SmoothStep(TNBeachLayout::Length - 7000.0, TNBeachLayout::Length - 1500.0, X)));
+		const FVector2D P(X, Y);
+		const int32 PoolIndex = TNBeachLayout::PoolAt(P, 1.35);
+		if (PoolIndex != INDEX_NONE)
+		{
+			const double U = TNBeachLayout::PoolU(TNBeachLayout::Pools()[PoolIndex], P);
+			C = TNProcMesh::TNProcLerpColor(C, Damp * 0.85f, static_cast<float>(0.75 * (1.0 - TNProcMap::SmoothStep(0.95, 1.35, U))));
+		}
+		if (X > 20000.0 && X < 50000.0)
+		{
+			const double Trench = TNBeachLayout::TrenchDistance(P, 500.0);
+			if (Trench < 400.0) { C = TNProcMesh::TNProcLerpColor(C, Damp, static_cast<float>(0.35 * (1.0 - TNProcMap::SmoothStep(150.0, 400.0, Trench)))); }
+		}
 		if (Tint > 0.f) { C = C * (1.f - Tint); }
 		const double Outside = FMath::Abs(Y) - TNBeachLayout::HalfWidth;
 		const double Jungle = FMath::Max(TNProcMap::SmoothStep(400.0, 3000.0, Outside), TNProcMap::SmoothStep(-2600.0, -5200.0, X));
@@ -121,7 +136,7 @@ namespace TNBeachBuild
 				Out.Verts.Add(P);
 				Out.Normals.Add(Normal);
 				Out.UVs.Add(FVector2D(P.X, P.Y) / 500.0);
-				Out.Colors.Add(SandColor(P.X, P.Y, Normal, Tints[(j - YA) * PW + (i - XA)]));
+				Out.Colors.Add(SandColor(P.X, P.Y, Normal, Tints[(j - YA) * PW + (i - XA)], P.Z - TNBeachLayout::BaseZ(P.X, P.Y)));
 			}
 		}
 		// Cara de arriba hacia +Z: en UE la frontal de (A, B, C) es la de normal (C - A) x (B - A).
@@ -150,14 +165,24 @@ namespace TNBeachBuild
 		return X1 >= TNBeachLayout::BackWallX - 2500.0 && Y1 >= -Reach && Y0 <= Reach;
 	}
 
-	UProceduralMeshComponent* NewTile(AActor* Owner, USceneComponent* Parent)
+	/**
+	 * Solo dan sombra las teselas de la playa y el pie de los bancos (las dunas se leen por su sombra); las de la selva
+	 * lejana, no: cada tesela cubre mucho mapa de sombras y son mallas sin Nanite.
+	 */
+	bool TileCastsShadow(double X0, double X1, double Y0, double Y1)
+	{
+		const double Reach = TNBeachLayout::HalfWidth + 6000.0;
+		return X1 >= TNBeachLayout::BackWallX - 4000.0 && Y1 >= -Reach && Y0 <= Reach;
+	}
+
+	UProceduralMeshComponent* NewTile(AActor* Owner, USceneComponent* Parent, bool bShadow)
 	{
 		UProceduralMeshComponent* Tile = NewObject<UProceduralMeshComponent>(Owner, NAME_None, RF_Transient | RF_DuplicateTransient);
 		Tile->ComponentTags.Add(TNBeachRaceKit::GeneratedTag());
 		Tile->SetupAttachment(Parent);
 		Tile->bUseAsyncCooking = false;
 		Tile->SetCanEverAffectNavigation(false);
-		Tile->SetCastShadow(true);
+		Tile->SetCastShadow(bShadow);
 		// Dato de primitiva 0 = 1: M_ProcTerrain aplica el relieve por normales y, donde el alfa es 1, grano y guijarros.
 		Tile->SetCustomPrimitiveDataFloat(0, 1.f);
 		Tile->RegisterComponent();
@@ -227,9 +252,14 @@ void ATN_BeachRaceGenerator::BuildAll()
 	BuildWalls();
 	BuildStartGrove();
 	BuildFinishDecor();
+	BuildFeatures();
+	BuildPoolWater();
+	BuildStartEggs();
 	if (!IsRunningDedicatedServer()) { BuildJungle(); }
 	bBuilt = true;
 	BuiltKey = Key;
+	// Las tapas recién hechas, como diga la ronda (cerradas o ya rotas, sin saltos).
+	ApplyStartEggs(false);
 	BuildFootprints();
 
 	int32 Tris = 0;
@@ -269,6 +299,13 @@ void ATN_BeachRaceGenerator::ClearGenerated()
 		if (Wall) { Wall->DestroyComponent(); }
 	}
 	Walls.Reset();
+	for (UStaticMeshComponent* Lid : StartEggLids)
+	{
+		if (Lid) { Lid->DestroyComponent(); }
+	}
+	StartEggLids.Reset();
+	StartEggLidMeshes.Reset();
+	bEggsAnimating = false;
 	// Por si alguno se quedó fuera de las listas (una copia del actor, una recarga).
 	TInlineComponentArray<UActorComponent*> Leftovers;
 	GetComponents(Leftovers);
@@ -277,7 +314,7 @@ void ATN_BeachRaceGenerator::ClearGenerated()
 		if (Comp && Comp->ComponentHasTag(TNBeachRaceKit::GeneratedTag())) { Comp->DestroyComponent(); }
 	}
 	for (UProceduralMeshComponent* Comp : { CliffMesh.Get(), SeabedMesh.Get(), SeaMesh.Get(), GroveSolidMesh.Get(), GroveDecoMesh.Get(), FinishSolidMesh.Get(),
-			 FinishDecoMesh.Get(), FloatMesh.Get(), FootprintMesh.Get() })
+			 FinishDecoMesh.Get(), FloatMesh.Get(), FootprintMesh.Get(), FeatureMesh.Get(), FeatureDecoMesh.Get(), PoolMesh.Get() })
 	{
 		if (Comp) { Comp->ClearAllMeshSections(); }
 	}
@@ -361,7 +398,7 @@ void ATN_BeachRaceGenerator::BuildTerrain()
 		const int32 J0 = (Index / TilesX) * Q;
 		const int32 I1 = FMath::Min(I0 + Q, GridXs.Num() - 1);
 		const int32 J1 = FMath::Min(J0 + Q, GridYs.Num() - 1);
-		UProceduralMeshComponent* Tile = TNBeachBuild::NewTile(this, BeachRoot);
+		UProceduralMeshComponent* Tile = TNBeachBuild::NewTile(this, BeachRoot, TNBeachBuild::TileCastsShadow(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]));
 		TNBeachBuild::UploadTile(Tile, Data[Index], TNBeachBuild::TileNeedsCollision(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]), Mat);
 		TerrainTiles[Index] = Tile;
 	}
@@ -369,21 +406,64 @@ void ATN_BeachRaceGenerator::BuildTerrain()
 
 void ATN_BeachRaceGenerator::BuildTerrainTile(int32 Index, const TArray<TNBeachLayout::FStamp>& Stamps)
 {
-	if (!TerrainTiles.IsValidIndex(Index) || TilesX <= 0) { return; }
+	BuildTerrainTiles({ Index }, Stamps);
+}
+
+void ATN_BeachRaceGenerator::BuildTerrainTiles(const TArray<int32>& Indices, const TArray<TNBeachLayout::FStamp>& Stamps)
+{
+	if (TilesX <= 0 || Indices.Num() == 0) { return; }
 	const int32 Q = TNBeachBuild::TileQuads;
-	const int32 I0 = (Index % TilesX) * Q;
-	const int32 J0 = (Index / TilesX) * Q;
-	const int32 I1 = FMath::Min(I0 + Q, GridXs.Num() - 1);
-	const int32 J1 = FMath::Min(J0 + Q, GridYs.Num() - 1);
-	TNBeachBuild::FTileData Data;
-	TNBeachBuild::ComputeTile(GridXs, GridYs, I0, I1, J0, J1, Stamps, Data);
-	UProceduralMeshComponent* Tile = TerrainTiles[Index];
-	if (!IsValid(Tile))
+	TArray<TNBeachBuild::FTileData> Data;
+	Data.SetNum(Indices.Num());
+	const TArray<double>& Xs = GridXs;
+	const TArray<double>& Ys = GridYs;
+	const int32 NumTilesX = TilesX;
+	ParallelFor(Indices.Num(), [&Data, &Indices, &Xs, &Ys, &Stamps, NumTilesX, Q](int32 k)
 	{
-		Tile = TNBeachBuild::NewTile(this, BeachRoot);
-		TerrainTiles[Index] = Tile;
+		const int32 Index = Indices[k];
+		const int32 I0 = (Index % NumTilesX) * Q;
+		const int32 J0 = (Index / NumTilesX) * Q;
+		TNBeachBuild::ComputeTile(Xs, Ys, I0, FMath::Min(I0 + Q, Xs.Num() - 1), J0, FMath::Min(J0 + Q, Ys.Num() - 1), Stamps, Data[k]);
+	});
+	UMaterialInterface* Mat = TNBeachRaceKit::TerrainMaterial();
+	for (int32 k = 0; k < Indices.Num(); ++k)
+	{
+		const int32 Index = Indices[k];
+		if (!TerrainTiles.IsValidIndex(Index)) { continue; }
+		const int32 I0 = (Index % TilesX) * Q;
+		const int32 J0 = (Index / TilesX) * Q;
+		const int32 I1 = FMath::Min(I0 + Q, GridXs.Num() - 1);
+		const int32 J1 = FMath::Min(J0 + Q, GridYs.Num() - 1);
+		UProceduralMeshComponent* Tile = TerrainTiles[Index];
+		if (!IsValid(Tile))
+		{
+			Tile = TNBeachBuild::NewTile(this, BeachRoot, TNBeachBuild::TileCastsShadow(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]));
+			TerrainTiles[Index] = Tile;
+		}
+		TNBeachBuild::UploadTile(Tile, Data[k], TNBeachBuild::TileNeedsCollision(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]), Mat);
 	}
-	TNBeachBuild::UploadTile(Tile, Data, TNBeachBuild::TileNeedsCollision(GridXs[I0], GridXs[I1], GridYs[J0], GridYs[J1]), TNBeachRaceKit::TerrainMaterial());
+}
+
+double ATN_BeachRaceGenerator::MeshGroundZ(double X, double Y) const
+{
+	const int32 NX = GridXs.Num();
+	const int32 NY = GridYs.Num();
+	if (NX < 2 || NY < 2) { return TNBeachLayout::SandZ(X, Y); }
+	const int32 I = FMath::Clamp(Algo::UpperBound(GridXs, X) - 1, 0, NX - 2);
+	const int32 J = FMath::Clamp(Algo::UpperBound(GridYs, Y) - 1, 0, NY - 2);
+	const double X0 = GridXs[I];
+	const double X1 = GridXs[I + 1];
+	const double Y0 = GridYs[J];
+	const double Y1 = GridYs[J + 1];
+	const double A = FMath::Clamp((X - X0) / FMath::Max(1.0, X1 - X0), 0.0, 1.0);
+	const double B = FMath::Clamp((Y - Y0) / FMath::Max(1.0, Y1 - Y0), 0.0, 1.0);
+	const double Z00 = TNBeachLayout::SandZ(X0, Y0);
+	const double Z10 = TNBeachLayout::SandZ(X1, Y0);
+	const double Z01 = TNBeachLayout::SandZ(X0, Y1);
+	const double Z11 = TNBeachLayout::SandZ(X1, Y1);
+	// Los mismos triángulos que las teselas: (V00, V01, V10) y (V10, V01, V11).
+	if (A + B <= 1.0) { return Z00 + A * (Z10 - Z00) + B * (Z01 - Z00); }
+	return Z11 + (1.0 - A) * (Z01 - Z11) + (1.0 - B) * (Z10 - Z11);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -644,5 +724,13 @@ void ATN_BeachRaceGenerator::SpawnWaterVolume()
 	const double Z1 = TNBeachLayout::WaterZ;
 	const FVector Center = GetActorTransform().TransformPosition(FVector(0.5 * (X0 + X1), 0.0, 0.5 * (Z0 + Z1)));
 	Water->AddWaterBox(Center, FVector(0.5 * (X1 - X0), TNBeachLayout::HalfWidth + TNBeachLayout::FinishWaterSide, 0.5 * (Z1 - Z0)));
+	// Las pozas: rebanadas de 2 m donde hay agua honda (se nada en medio y se sale por la orilla andando).
+	TArray<FBox> PoolBoxes;
+	for (const TNBeachLayout::FPool& Pool : TNBeachLayout::Pools()) { TNBeachLayout::PoolSwimBoxes(Pool, PoolBoxes); }
+	for (const FBox& Box : PoolBoxes)
+	{
+		Water->AddWaterBox(GetActorTransform().TransformPosition(Box.GetCenter()), Box.GetExtent());
+	}
 	WaterVolume = Water;
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] agua nadable: la de meta y %d pozas en %d cajas."), TNBeachLayout::Pools().Num(), PoolBoxes.Num());
 }

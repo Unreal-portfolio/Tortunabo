@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachRaceGenerator.h"
+#include "Core/TN_Log.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -124,6 +125,169 @@ namespace TNBeachScenery
 		double LeafLen;
 		double LeafWidth;
 	};
+
+	// ── Lianas y hojas de los huecos de la selva (mallas estáticas instanciadas, con viento por vértice) ──
+
+	/** Colores para una malla estática en ejecución: MakeStaticMesh decodifica una vez más, así que van en sRGB. */
+	FLinearColor Srgb(uint32 Hex, float Sway)
+	{
+		return FLinearColor(((Hex >> 16) & 255) / 255.f, ((Hex >> 8) & 255) / 255.f, (Hex & 255) / 255.f, Sway);
+	}
+
+	/** Tubo de 5 lados a lo largo de Points (radio que adelgaza hacia el final) con el viento de cada punto en el alfa. */
+	void AddVineTube(FBuffers& M, const TArray<FVector>& Points, const TArray<float>& Sway, double Radius, uint32 Hex)
+	{
+		const int32 N = Points.Num();
+		if (N < 2) { return; }
+		TArray<TArray<FVector>> Rings;
+		for (int32 i = 0; i < N; ++i)
+		{
+			const FVector Tan = (Points[FMath::Min(i + 1, N - 1)] - Points[FMath::Max(i - 1, 0)]).GetSafeNormal();
+			FVector U = FVector::CrossProduct(Tan, FMath::Abs(Tan.Z) < 0.9 ? FVector::UpVector : FVector::ForwardVector).GetSafeNormal();
+			const FVector V = FVector::CrossProduct(Tan, U);
+			const double R = Radius * FMath::Lerp(1.0, 0.55, static_cast<double>(i) / (N - 1));
+			TArray<FVector>& Ring = Rings.AddDefaulted_GetRef();
+			for (int32 k = 0; k < 5; ++k)
+			{
+				const double A = TNProcMap::TwoPi * k / 5.0;
+				Ring.Add(Points[i] + (U * FMath::Cos(A) + V * FMath::Sin(A)) * R);
+			}
+		}
+		const int32 First = M.Verts.Num();
+		M.AddSweep(Rings, true, Srgb(Hex, 0.f));
+		// El viento de cada vértice: el de su punto más cercano del eje.
+		for (int32 v = First; v < M.Verts.Num(); ++v)
+		{
+			int32 Best = 0;
+			double BestD = TNumericLimits<double>::Max();
+			for (int32 i = 0; i < N; ++i)
+			{
+				const double D = FVector::DistSquared(M.Verts[v], Points[i]);
+				if (D < BestD)
+				{
+					BestD = D;
+					Best = i;
+				}
+			}
+			M.Colors[v].A = Sway[Best];
+		}
+	}
+
+	/** Hoja de liana (acorazonada, dos caras) colgando de Base hacia Dir. */
+	void AddVineLeaf(FBuffers& M, const FVector& Base, const FVector& Dir, double Len, uint32 Hex, float Sway)
+	{
+		const FVector D = Dir.GetSafeNormal();
+		FVector Side = FVector::CrossProduct(D, FVector::UpVector).GetSafeNormal();
+		if (Side.IsNearlyZero()) { Side = FVector(0.0, 1.0, 0.0); }
+		const FVector Normal = FVector::CrossProduct(Side, D).GetSafeNormal();
+		const FVector Tip = Base + D * Len;
+		const FVector L = Base + D * (Len * 0.4) + Side * (Len * 0.32);
+		const FVector Rr = Base + D * (Len * 0.4) - Side * (Len * 0.32);
+		const FLinearColor C = Srgb(Hex, Sway);
+		M.AddQuad(Base, L, Tip, Rr, Normal, C);
+		M.AddQuad(Base, L, Tip, Rr, -Normal, C * 0.85f);
+	}
+
+	/** Liana colgada entre dos troncos: de (0, 0, 0) a (Span, 0, 0) con una comba de Sag, dos hebras, hojas y colgajos. */
+	void BuildLianaDrape(FBuffers& M, uint32 Seed)
+	{
+		constexpr double Span = 10000.0;
+		constexpr double Sag = 2200.0;
+		constexpr int32 Segs = 22;
+		for (int32 s = 0; s < 2; ++s)
+		{
+			TArray<FVector> Points;
+			TArray<float> Sway;
+			const double Phase = TNProcMap::TwoPi * TNBeachRaceKit::Hash01(s, 1, Seed);
+			for (int32 i = 0; i <= Segs; ++i)
+			{
+				const double T = static_cast<double>(i) / Segs;
+				const double Twist = (s == 0 ? 1.0 : -1.0) * 40.0 * FMath::Sin(T * PI * 6.0 + Phase);
+				Points.Add(FVector(T * Span, Twist, -Sag * 4.0 * T * (1.0 - T) - (s == 0 ? 0.0 : 60.0) + 25.0 * FMath::Cos(T * PI * 4.0 + Phase)));
+				Sway.Add(static_cast<float>(0.45 * FMath::Sin(PI * T)));
+			}
+			AddVineTube(M, Points, Sway, s == 0 ? 34.0 : 24.0, s == 0 ? 0x5C4B2Bu : 0x4E5A26u);
+			if (s == 0)
+			{
+				for (int32 i = 1; i < Segs; ++i)
+				{
+					const double Down = 0.6 + 0.4 * TNBeachRaceKit::Hash01(i, 3, Seed);
+					const FVector Dir(0.25 * TNProcMesh::TNProcHashNoise(i, 4, Seed), (i % 2 ? 1.0 : -1.0) * 0.6, -Down);
+					AddVineLeaf(M, Points[i], Dir, 240.0 + 80.0 * TNBeachRaceKit::Hash01(i, 5, Seed), i % 3 ? 0x2C6E1Cu : 0x3F8A26u, Sway[i] + 0.1f);
+				}
+			}
+		}
+		// Colgajos: hebras finas que caen de la comba, con alguna hoja.
+		for (int32 c = 0; c < 4; ++c)
+		{
+			const double T = 0.2 + 0.2 * c + 0.06 * TNProcMesh::TNProcHashNoise(c, 6, Seed);
+			const FVector Top(T * Span, 0.0, -Sag * 4.0 * T * (1.0 - T));
+			const double Drop = 600.0 + 1200.0 * TNBeachRaceKit::Hash01(c, 7, Seed);
+			TArray<FVector> Points;
+			TArray<float> Sway;
+			for (int32 i = 0; i <= 5; ++i)
+			{
+				const double F = i / 5.0;
+				Points.Add(Top + FVector(60.0 * FMath::Sin(F * 3.0 + c), 50.0 * FMath::Cos(F * 2.0 + c), -Drop * F));
+				Sway.Add(static_cast<float>(0.45 * FMath::Sin(PI * T) + 0.4 * F));
+			}
+			AddVineTube(M, Points, Sway, 12.0, 0x4E5A26u);
+			AddVineLeaf(M, Points[3], FVector(0.3, 0.8, -0.6), 200.0, 0x3F8A26u, Sway[3]);
+			AddVineLeaf(M, Points[5], FVector(-0.4, -0.6, -0.8), 180.0, 0x2C6E1Cu, Sway[5]);
+		}
+	}
+
+	/** Cortina de lianas que cuelga de (0, 0, 0) hasta ~120 m más abajo: tres hebras que se mecen, con hojas. */
+	void BuildLianaCurtain(FBuffers& M, uint32 Seed)
+	{
+		constexpr double Drop = 12000.0;
+		constexpr int32 Segs = 16;
+		for (int32 s = 0; s < 3; ++s)
+		{
+			const FVector2D Base(120.0 * FMath::Cos(2.1 * s + Seed % 7), 120.0 * FMath::Sin(2.1 * s + Seed % 7));
+			const double Len = Drop * (0.7 + 0.3 * TNBeachRaceKit::Hash01(s, 1, Seed));
+			const double Phase = TNProcMap::TwoPi * TNBeachRaceKit::Hash01(s, 2, Seed);
+			TArray<FVector> Points;
+			TArray<float> Sway;
+			for (int32 i = 0; i <= Segs; ++i)
+			{
+				const double T = static_cast<double>(i) / Segs;
+				const double Swing = 150.0 * T * FMath::Sin(T * PI * 2.5 + Phase);
+				Points.Add(FVector(Base.X + Swing, Base.Y + 0.6 * Swing, -Len * T));
+				Sway.Add(static_cast<float>(0.7 * FMath::Pow(T, 1.2)));
+			}
+			AddVineTube(M, Points, Sway, 26.0 - 5.0 * s, s == 1 ? 0x5C4B2Bu : 0x4E5A26u);
+			for (int32 i = 2; i <= Segs; i += 2)
+			{
+				const double A = TNProcMap::TwoPi * TNBeachRaceKit::Hash01(i, s + 3, Seed);
+				AddVineLeaf(M, Points[i], FVector(FMath::Cos(A), FMath::Sin(A), -0.7), 230.0 + 90.0 * TNBeachRaceKit::Hash01(i, s + 9, Seed),
+					(i + s) % 3 ? 0x2C6E1Cu : 0x4A9A2Eu, Sway[i]);
+			}
+		}
+	}
+
+	/** Mata de hojas enormes (como las de la salida, más pequeña): tallo de 10 m y 5-7 hojas que caen y se mecen por la punta. */
+	void BuildLeafClump(FBuffers& M, uint32 Seed)
+	{
+		TNProcMesh::TNProcAddCylinder(M, FVector(0.0, 0.0, -60.0), FVector(0.0, 0.0, 1000.0), 85.0, 50.0, 7, Srgb(0x6F8A3Eu, 0.f));
+		const int32 First = M.Verts.Num();
+		const int32 Leaves = 5 + static_cast<int32>(Seed % 3u);
+		for (int32 l = 0; l < Leaves; ++l)
+		{
+			// Hojas de 12-18 m: la punta cae ~0,4 veces el largo y se queda por encima del suelo.
+			const double Yaw = 360.0 * (l + 0.35 * TNProcMesh::TNProcHashNoise(l, 1, Seed)) / Leaves;
+			AddGiantLeaf(M, FVector(0.0, 0.0, 990.0), Yaw, 1200.0 + 600.0 * TNBeachRaceKit::Hash01(l, 2, Seed), 480.0 + 200.0 * TNBeachRaceKit::Hash01(l, 3, Seed),
+				Seed * 13u + static_cast<uint32>(l));
+		}
+		// Las hojas se hacen con colores lineales (las de la salida son malla procedural): a sRGB, con el viento hacia la punta.
+		for (int32 v = First; v < M.Verts.Num(); ++v)
+		{
+			FLinearColor& C = M.Colors[v];
+			C = FLinearColor(FMath::Pow(C.R, 1.f / 2.2f), FMath::Pow(C.G, 1.f / 2.2f), FMath::Pow(C.B, 1.f / 2.2f), 0.f);
+			const double Reach = FVector2D(M.Verts[v].X, M.Verts[v].Y).Size();
+			C.A = static_cast<float>(0.55 * FMath::Clamp(Reach / 2000.0, 0.0, 1.0));
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -246,9 +410,34 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 			55.0, 6.0, 4.0, Fill, Ink);
 	}
 
+	// Nido de la salida: los cuatro huevos en fila (las bases de los del lobby, medio enterradas) dentro de un anillo de
+	// arena removida que se pisa; las tapas son componentes aparte (TN_BeachRaceGenerator_Start.cpp).
+	TNBeachScenery::FBuffers Eggs;
+	const FLinearColor Mound = TNBeachRaceKit::Hex(0xE2C58Eu);
+	for (int32 i = 0; i < TNBeachLayout::NumStartSpots; ++i)
+	{
+		const FVector Spot = TNBeachLayout::StartSpot(i);
+		TNCastleKit::BuildEggCup(Eggs, Spot - FVector(0.0, 0.0, 8.0), TNCastleKit::Col(0xFFF3DC), TNCastleKit::Col(TNCastleKit::EggAccent(i)));
+		auto RingAt = [&Spot](double A, double R, double Z) { return FVector(Spot.X + FMath::Cos(A) * R, Spot.Y + FMath::Sin(A) * R, Spot.Z + Z); };
+		constexpr int32 Seg = 20;
+		for (int32 k = 0; k < Seg; ++k)
+		{
+			const double A0 = TNProcMap::TwoPi * k / Seg;
+			const double A1 = TNProcMap::TwoPi * (k + 1) / Seg;
+			const double Bump0 = 6.0 * TNProcMesh::TNProcHashNoise(k, i, 0xE66u);
+			const double Bump1 = 6.0 * TNProcMesh::TNProcHashNoise((k + 1) % Seg, i, 0xE66u);
+			const FVector Inward(-FMath::Cos(0.5 * (A0 + A1)), -FMath::Sin(0.5 * (A0 + A1)), 0.0);
+			// Lomo del anillo (de 1,3 m y 30 cm de alto a 2,8 m, enterrado) y su cara de dentro, hacia el huevo.
+			Solid.AddQuad(RingAt(A0, 130.0, 30.0 + Bump0), RingAt(A1, 130.0, 30.0 + Bump1), RingAt(A1, 280.0, -18.0), RingAt(A0, 280.0, -18.0), FVector::UpVector, Mound);
+			Solid.AddQuad(RingAt(A0, 130.0, -20.0), RingAt(A1, 130.0, -20.0), RingAt(A1, 130.0, 30.0 + Bump1), RingAt(A0, 130.0, 30.0 + Bump0), Inward, Mound * 0.9f);
+		}
+	}
+
 	UMaterialInterface* Mat = TNBeachRaceKit::TerrainMaterial();
 	TNBeachRaceKit::Upload(GroveSolidMesh, 0, Solid, Mat, true);
 	TNBeachRaceKit::Upload(GroveDecoMesh, 0, Deco, Mat, false);
+	// Las bases de los huevos, con el material de los del lobby (el de color de vértice de los cosméticos).
+	TNBeachRaceKit::Upload(GroveDecoMesh, 1, Eggs, TNCastleKit::VertexColorMaterial(), false);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,6 +569,10 @@ void ATN_BeachRaceGenerator::BuildJungle()
 		{ EShape::Bush, ETNProcBiome::Jungle, 0.15, 20.0, 30.0, 90.0 },
 		{ EShape::Fern, ETNProcBiome::Jungle, 0.05, 30.0, 40.0, 60.0 },
 	};
+	// Lo de los huecos entre copas: enredaderas por el suelo y helechos.
+	static const FPick GapCreeper = { EShape::Creeper, ETNProcBiome::Jungle, 1.0, 26.0, 34.0, 20.0 };
+	static const FPick GapFern = { EShape::Fern, ETNProcBiome::Jungle, 1.0, 30.0, 42.0, 60.0 };
+	static const FPick GapTreeFern = { EShape::TreeFern, ETNProcBiome::Jungle, 1.0, 20.0, 30.0, 25.0 };
 	auto Pick = [](TNProcMap::FRng& R, const FPick* Table, int32 Num) -> const FPick&
 	{
 		double Total = 0.0;
@@ -400,10 +593,30 @@ void ATN_BeachRaceGenerator::BuildJungle()
 		if (FMath::Abs(P.Y) - TNBeachLayout::HalfWidth >= 1800.0) { return true; }
 		return P.X <= -3800.0 && FVector2D::Distance(P, FVector2D(TNBeachLayout::TrunkX, 0.0)) > 3600.0;
 	};
+	/**
+	 * La selva no proyecta sombra dinámica: las copas de la primera franja se inclinan sobre la arena y, aun con el sol
+	 * casi cenital, dejaban casi toda la playa a la sombra (no se veía dónde iba a caer la gaviota ni dónde subirse).
+	 * Además, la selva gigante sin Nanite cubre muchísimo mapa de sombras virtuales y desborda su cola de marcado. La
+	 * sombra de la playa la dan sus elementos, el relieve y las rocas.
+	 */
+	auto ShadowZone = [](const FVector2D& /*P*/)
+	{
+		return false;
+	};
+	// Troncos (con su copa) y matas del sotobosque, para buscar los huecos.
+	struct FTrunk
+	{
+		FVector2D P;
+		double Ground;
+		double Height;
+		double Crown;
+	};
+	TArray<FTrunk> Trunks;
+	TArray<FVector2D> Bushes;
 
 	TMap<int32, TArray<FTransform>> ByMesh;
 	const uint32 Seed = TNBeachLayout::TerrainSeed ^ 0x7EE5u;
-	auto Plant = [&ByMesh](TNProcMap::FRng& R, const FPick& P, const FVector2D& Pos, double Yaw)
+	auto Plant = [&ByMesh, &Trunks, &Bushes, &ShadowZone](TNProcMap::FRng& R, const FPick& P, const FVector2D& Pos, double Yaw)
 	{
 		const double S = FMath::Lerp(P.ScaleMin, P.ScaleMax, R.Unit());
 		const int32 Variant = R.RangeInt(0, TNProcMap::FloraVariants - 1);
@@ -424,8 +637,29 @@ void ATN_BeachRaceGenerator::BuildJungle()
 		}
 		const double Sink = P.Shape == EShape::Rock ? 25.0 * S : 8.0 * S;
 		const double Stretch = P.Shape == EShape::Rock ? 1.0 : R.Range(0.9, 1.1);
-		const int32 Key = (static_cast<int32>(P.Shape) * 16 + static_cast<int32>(P.Biome)) * 4 + Variant;
+		const bool bShadow = TNFloraMesh::TNFloraLookOf(P.Shape).bShadow && ShadowZone(Pos);
+		const int32 Key = ((static_cast<int32>(P.Shape) * 16 + static_cast<int32>(P.Biome)) * 4 + Variant) * 2 + (bShadow ? 1 : 0);
 		ByMesh.FindOrAdd(Key).Add(FTransform(FRotator(0.0, Yaw, 0.0), FVector(Pos, Low - Sink), FVector(S, S, S * Stretch)));
+		// Alto y copa aproximados de las mallas del mapa procedural a escala 1 (cm).
+		double Height = 0.0;
+		double Crown = 0.0;
+		switch (P.Shape)
+		{
+			case EShape::Palm: Height = 900.0; Crown = 380.0; break;
+			case EShape::BroadTree: Height = 950.0; Crown = 300.0; break;
+			case EShape::Ceiba: Height = 2300.0; Crown = 480.0; break;
+			case EShape::Casuarina: Height = 850.0; Crown = 250.0; break;
+			case EShape::Pandanus: Height = 450.0; Crown = 250.0; break;
+			default: break;
+		}
+		if (Height > 0.0)
+		{
+			Trunks.Add({ Pos, Low, Height * S * Stretch, Crown * S });
+		}
+		else if (P.Shape != EShape::Rock)
+		{
+			Bushes.Add(Pos);
+		}
 	};
 
 	// Árboles grandes: rejilla de 48 m con desorden; espesa junto a la playa y más clara lejos.
@@ -440,7 +674,8 @@ void ATN_BeachRaceGenerator::BuildJungle()
 			for (int32 Gx = 0; Gx < NXc; ++Gx)
 			{
 				TNProcMap::FRng R(static_cast<uint64>(TNProcMap::HashCell(Seed, Gx, Gy)) * 0x9E3779B1ull + 17ull);
-				const FVector2D P(X0 + (Gx + R.Unit()) * Cell, Y0 + (Gy + R.Unit()) * Cell);
+				const double Py = Y0 + (Gy + R.Unit()) * Cell;
+				const FVector2D P(X0 + (Gx + R.Unit()) * Cell, Py);
 				if (!InJungle(P)) { continue; }
 				const double Outside = FMath::Abs(P.Y) - TNBeachLayout::HalfWidth;
 				const bool bNear = Outside < 16000.0;
@@ -449,8 +684,10 @@ void ATN_BeachRaceGenerator::BuildJungle()
 				double Yaw = R.Range(0.0, 360.0);
 				if (Choice.Shape == EShape::Palm && Outside > 0.0 && Outside < 9000.0)
 				{
-					// Las palmeras de la orilla se inclinan hacia la playa (la malla se inclina hacia su +X).
-					Yaw = (P.Y > 0.0 ? -90.0 : 90.0) + R.Range(-35.0, 35.0);
+					// Las palmeras de la orilla se inclinan hacia la playa y hacia el mar, en diagonal (la malla se inclina hacia
+					// su +X): de frente, sus copas cubrían casi toda la arena vista desde arriba.
+					const double Turn = R.Range(30.0, 60.0);
+					Yaw = P.Y > 0.0 ? -90.0 + Turn : 90.0 - Turn;
 				}
 				else if (Choice.Shape == EShape::Palm && Outside <= 0.0)
 				{
@@ -460,8 +697,11 @@ void ATN_BeachRaceGenerator::BuildJungle()
 			}
 		}
 	}
-	// Primera fila de palmeras a lo largo de las dos orillas, inclinadas sobre la arena (con cocos al pie en el reparto).
+	// Primera fila de palmeras a lo largo de las dos orillas, inclinadas sobre la arena hacia el mar (con cocos al pie en el
+	// reparto). Algo más bajas que las de detrás y en diagonal: las copas asoman sobre los lados de la playa y dejan el
+	// centro a cielo abierto (se ve la gaviota, su sombra y dónde subirse).
 	{
+		static const FPick FrontPalm = { EShape::Palm, ETNProcBiome::Beach, 1.0, 22.0, 29.0, 25.0 };
 		TNProcMap::FRng R(static_cast<uint64>(Seed) * 0x51ull + 3ull);
 		for (const double Side : { -1.0, 1.0 })
 		{
@@ -469,7 +709,8 @@ void ATN_BeachRaceGenerator::BuildJungle()
 			{
 				if (!R.Chance(0.85 * JungleDensity)) { continue; }
 				const FVector2D P(X, Side * (TNBeachLayout::HalfWidth + R.Range(1900.0, 2900.0)));
-				Plant(R, NearBig[0], P, (Side > 0.0 ? -90.0 : 90.0) + R.Range(-25.0, 25.0));
+				const double Turn = R.Range(30.0, 60.0);
+				Plant(R, FrontPalm, P, Side > 0.0 ? -90.0 + Turn : 90.0 - Turn);
 			}
 		}
 	}
@@ -485,34 +726,189 @@ void ATN_BeachRaceGenerator::BuildJungle()
 			for (int32 Gx = 0; Gx < NXc; ++Gx)
 			{
 				TNProcMap::FRng R(static_cast<uint64>(TNProcMap::HashCell(Seed ^ 0x50B0u, Gx, Gy)) * 0x9E3779B1ull + 29ull);
-				const FVector2D P(X0 + (Gx + R.Unit()) * Cell, Y0 + (Gy + R.Unit()) * Cell);
+				const double Py = Y0 + (Gy + R.Unit()) * Cell;
+				const FVector2D P(X0 + (Gx + R.Unit()) * Cell, Py);
 				if (!InJungle(P) || !R.Chance(0.55 * JungleDensity)) { continue; }
-				Plant(R, Pick(R, Under, static_cast<int32>(UE_ARRAY_COUNT(Under))), P, R.Range(0.0, 360.0));
+				const double Yaw = R.Range(0.0, 360.0);
+				const FPick& Choice = Pick(R, Under, static_cast<int32>(UE_ARRAY_COUNT(Under)));
+				Plant(R, Choice, P, Yaw);
 			}
 		}
 	}
 
-	// Una malla por especie, bioma y variante (las del mapa procedural), instanciada.
-	UMaterialInterface* Mat = TNBeachRaceKit::FoliageMaterial();
-	for (TPair<int32, TArray<FTransform>>& Entry : ByMesh)
+	// Huecos entre copas junto a la playa y detrás de la salida (lejos de todo tronco y de toda mata): lianas colgadas de
+	// un tronco a otro y cortinas que cuelgan de ellas, enredaderas y helechos por el suelo y matas de hojas enormes que
+	// tapan. Sin sombra; con viento cerca de la cámara.
+	TArray<FTransform> Drapes[2];
+	TArray<FTransform> Curtains[2];
+	TArray<FTransform> Clumps[2];
+	int32 NumGaps = 0;
 	{
-		const int32 Variant = Entry.Key % 4;
-		const ETNProcBiome Biome = static_cast<ETNProcBiome>((Entry.Key / 4) % 16);
-		const EShape Shape = static_cast<EShape>(Entry.Key / 4 / 16);
-		FLinearColor GroundC, PathC, RockC, BedC;
-		TN_DefaultBiomeColors(Biome, GroundC, PathC, RockC, BedC);
-		TNProcMesh::FTNProcMeshBuffers Buffers;
-		TNFloraMesh::TNFloraBuild(Buffers, Shape, TNFloraMesh::TNFloraPaletteFor(Biome, GroundC, RockC), Variant, TNProcMap::HashCell(Seed, Entry.Key, Variant));
-		const TNFloraMesh::FTNFloraWind Wind = TNFloraMesh::TNFloraWindOf(Shape);
-		UStaticMesh* Mesh = TNProcRuntimeMesh::MakeStaticMesh(this, Buffers, Mat, false, Wind.Stiffness, Wind.Exponent);
-		if (!Mesh) { continue; }
-		FloraMeshes.Add(Mesh);
-		// Viento solo cerca de la cámara (a esta escala casi no se ve y apagado ahorra sombras).
-		if (UInstancedStaticMeshComponent* Comp = MakeFlora(Mesh, TNFloraMesh::TNFloraLookOf(Shape).bShadow, Wind.Stiffness > 0.f ? 20000 : 0))
+		constexpr double Cell = 1500.0;
+		const double X0 = -14000.0;
+		const double Y0 = -(TNBeachLayout::HalfWidth + 12000.0);
+		const int32 NXc = FMath::CeilToInt32((TNBeachLayout::Length - 4000.0 - X0) / Cell);
+		const int32 NYc = FMath::CeilToInt32(-2.0 * Y0 / Cell);
+		for (int32 Gy = 0; Gy < NYc; ++Gy)
 		{
-			Comp->AddInstances(Entry.Value, false, false);
+			for (int32 Gx = 0; Gx < NXc; ++Gx)
+			{
+				TNProcMap::FRng R(static_cast<uint64>(TNProcMap::HashCell(Seed ^ 0x6A95u, Gx, Gy)) * 0x9E3779B1ull + 41ull);
+				const double Py = Y0 + (Gy + R.Unit()) * Cell;
+				const FVector2D P(X0 + (Gx + R.Unit()) * Cell, Py);
+				if (!InJungle(P) || !R.Chance(0.85 * JungleDensity)) { continue; }
+				// Los dos troncos más cercanos y la mata más cercana.
+				int32 First = INDEX_NONE;
+				int32 Second = INDEX_NONE;
+				double D1 = TNumericLimits<double>::Max();
+				double D2 = TNumericLimits<double>::Max();
+				for (int32 t = 0; t < Trunks.Num(); ++t)
+				{
+					const double D = FVector2D::DistSquared(P, Trunks[t].P);
+					if (D < D1)
+					{
+						D2 = D1;
+						Second = First;
+						D1 = D;
+						First = t;
+					}
+					else if (D < D2)
+					{
+						D2 = D;
+						Second = t;
+					}
+				}
+				double DBush = TNumericLimits<double>::Max();
+				for (const FVector2D& B : Bushes) { DBush = FMath::Min(DBush, FVector2D::DistSquared(P, B)); }
+				if (First == INDEX_NONE || D1 < FMath::Square(2200.0) || DBush < FMath::Square(1500.0)) { continue; }
+				++NumGaps;
+				const double Ground = TNBeachLayout::GroundZ(P.X, P.Y);
+				// Suelo: enredadera, helecho y, a menudo, una mata de hojas enormes.
+				if (R.Chance(0.6))
+				{
+					const double Cx = R.Range(-300.0, 300.0);
+					const double Cy = R.Range(-300.0, 300.0);
+					const double CreeperYaw = R.Range(0.0, 360.0);
+					Plant(R, GapCreeper, P + FVector2D(Cx, Cy), CreeperYaw);
+				}
+				if (R.Chance(0.5))
+				{
+					const FPick& Fern = R.Chance(0.5) ? GapFern : GapTreeFern;
+					const double Ang = R.Range(0.0, TNProcMap::TwoPi);
+					Plant(R, Fern, P + FVector2D(FMath::Cos(Ang), FMath::Sin(Ang)) * 700.0, R.Range(0.0, 360.0));
+				}
+				if (R.Chance(0.65))
+				{
+					const double Ang = R.Range(0.0, TNProcMap::TwoPi);
+					const FVector2D Q = P + FVector2D(FMath::Cos(Ang), FMath::Sin(Ang)) * R.Range(200.0, 800.0);
+					const double S = R.Range(0.9, 1.5);
+					const double ClumpYaw = R.Range(0.0, 360.0);
+					const int32 ClumpVariant = R.RangeInt(0, 1);
+					Clumps[ClumpVariant].Add(FTransform(FRotator(0.0, ClumpYaw, 0.0), FVector(Q, TNBeachLayout::GroundZ(Q.X, Q.Y) - 30.0), FVector(S)));
+				}
+				// Lianas: de un tronco al otro, por encima del hueco, y cortinas colgando de ellas.
+				const FTrunk& A = Trunks[First];
+				const bool bPair = Second != INDEX_NONE && D2 < FMath::Square(9000.0);
+				const double Span = bPair ? FVector2D::Distance(A.P, Trunks[Second].P) : 0.0;
+				if (bPair && Span > 3500.0 && Span < 11000.0)
+				{
+					const FTrunk& B = Trunks[Second];
+					const double HA = A.Ground + 0.62 * A.Height;
+					const double HB = B.Ground + 0.62 * B.Height;
+					const double Scale = Span / 10000.0;
+					const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(B.P.Y - A.P.Y, B.P.X - A.P.X));
+					const double Pitch = FMath::RadiansToDegrees(FMath::Atan2(HB - HA, Span));
+					Drapes[R.RangeInt(0, 1)].Add(FTransform(FRotator(Pitch, Yaw, 0.0), FVector(A.P, HA), FVector(Scale)));
+					const int32 Hanging = R.RangeInt(1, 3);
+					for (int32 h = 0; h < Hanging; ++h)
+					{
+						const double T = R.Range(0.25, 0.75);
+						const FVector2D Q = A.P + (B.P - A.P) * T;
+						const double Top = FMath::Lerp(HA, HB, T) - 2200.0 * Scale * 4.0 * T * (1.0 - T) - 50.0;
+						const double Len = Top - TNBeachLayout::GroundZ(Q.X, Q.Y) - R.Range(1200.0, 3500.0);
+						if (Len < 3000.0) { continue; }
+						const double CurtainScale = FMath::Clamp(Len / 12000.0, 0.4, 1.8);
+						const double CurtainYaw = R.Range(0.0, 360.0);
+						const int32 CurtainVariant = R.RangeInt(0, 1);
+						Curtains[CurtainVariant].Add(FTransform(FRotator(0.0, CurtainYaw, 0.0), FVector(Q, Top), FVector(CurtainScale)));
+					}
+				}
+				else
+				{
+					// Sin pareja: cuelgan del borde de la copa más cercana, del lado del hueco.
+					const FVector2D Dir = (P - A.P).GetSafeNormal();
+					const FVector2D Q = A.P + Dir * (0.8 * A.Crown);
+					const double Top = A.Ground + 0.75 * A.Height;
+					const double Len = Top - Ground - R.Range(1500.0, 4000.0);
+					if (Len > 3000.0)
+					{
+						const double CurtainYaw = R.Range(0.0, 360.0);
+						const int32 CurtainVariant = R.RangeInt(0, 1);
+						Curtains[CurtainVariant].Add(FTransform(FRotator(0.0, CurtainYaw, 0.0), FVector(Q, Top), FVector(FMath::Clamp(Len / 12000.0, 0.4, 1.8))));
+					}
+				}
+			}
 		}
 	}
+
+	// Una malla por especie, bioma y variante (las del mapa procedural), instanciada; con sombra o sin ella, en dos componentes.
+	UMaterialInterface* Mat = TNBeachRaceKit::FoliageMaterial();
+	TMap<int32, UStaticMesh*> MeshBySpecies;
+	int32 Shadowed = 0;
+	int32 Unshadowed = 0;
+	for (TPair<int32, TArray<FTransform>>& Entry : ByMesh)
+	{
+		const bool bShadow = (Entry.Key & 1) != 0;
+		const int32 Species = Entry.Key >> 1;
+		const int32 Variant = Species % 4;
+		const ETNProcBiome Biome = static_cast<ETNProcBiome>((Species / 4) % 16);
+		const EShape Shape = static_cast<EShape>(Species / 4 / 16);
+		const TNFloraMesh::FTNFloraWind Wind = TNFloraMesh::TNFloraWindOf(Shape);
+		UStaticMesh* Mesh = MeshBySpecies.FindRef(Species);
+		if (!Mesh)
+		{
+			FLinearColor GroundC, PathC, RockC, BedC;
+			TN_DefaultBiomeColors(Biome, GroundC, PathC, RockC, BedC);
+			TNProcMesh::FTNProcMeshBuffers Buffers;
+			TNFloraMesh::TNFloraBuild(Buffers, Shape, TNFloraMesh::TNFloraPaletteFor(Biome, GroundC, RockC), Variant, TNProcMap::HashCell(Seed, Species, Variant));
+			Mesh = TNProcRuntimeMesh::MakeStaticMesh(this, Buffers, Mat, false, Wind.Stiffness, Wind.Exponent);
+			if (!Mesh) { continue; }
+			FloraMeshes.Add(Mesh);
+			MeshBySpecies.Add(Species, Mesh);
+		}
+		// Viento solo cerca de la cámara (a esta escala casi no se ve y apagado ahorra sombras).
+		if (UInstancedStaticMeshComponent* Comp = MakeFlora(Mesh, bShadow, Wind.Stiffness > 0.f ? 20000 : 0))
+		{
+			Comp->AddInstances(Entry.Value, false, false);
+			(bShadow ? Shadowed : Unshadowed) += Entry.Value.Num();
+		}
+	}
+
+	// Lianas y matas de los huecos: dos variantes de cada una, sin sombra, con viento cerca y hasta 350 m de la cámara.
+	int32 GapInstances = 0;
+	auto AddGapMeshes = [this, Mat, &GapInstances](TArray<FTransform>* Instances, void (*Build)(TNBeachScenery::FBuffers&, uint32), uint32 BaseSeed)
+	{
+		for (int32 v = 0; v < 2; ++v)
+		{
+			if (Instances[v].Num() == 0) { continue; }
+			TNBeachScenery::FBuffers Buffers;
+			Build(Buffers, BaseSeed + static_cast<uint32>(v) * 101u);
+			UStaticMesh* Mesh = TNProcRuntimeMesh::MakeStaticMesh(this, Buffers, Mat, false, 0.f, 1.5f, -2.f);
+			if (!Mesh) { continue; }
+			FloraMeshes.Add(Mesh);
+			if (UInstancedStaticMeshComponent* Comp = MakeFlora(Mesh, false, 20000))
+			{
+				Comp->SetCullDistances(30000, 35000);
+				Comp->AddInstances(Instances[v], false, false);
+				GapInstances += Instances[v].Num();
+			}
+		}
+	};
+	AddGapMeshes(Drapes, &TNBeachScenery::BuildLianaDrape, 0x11A0u);
+	AddGapMeshes(Curtains, &TNBeachScenery::BuildLianaCurtain, 0x22B0u);
+	AddGapMeshes(Clumps, &TNBeachScenery::BuildLeafClump, 0x33C0u);
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] selva: %d árboles y plantas con sombra y %d sin ella · %d huecos entre copas con %d lianas y matas."),
+		Shadowed, Unshadowed, NumGaps, GapInstances);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -528,8 +924,9 @@ void ATN_BeachRaceGenerator::BuildFootprints()
 	TNBeachScenery::FBuffers M;
 	for (const TNBeachLayout::FItem& Item : Layout.Items)
 	{
-		// Amarillo decorado, naranja trampas, rojo enemigos, morado quads, celeste gaviotas, marrón pasarelas guía y
-		// rosa el castillo y sus alas.
+		// Amarillo decorado, naranja trampas, rojo enemigos, morado quads, celeste gaviotas, marrón pasarelas guía, rosa
+		// los castillos (con salas y sus alas, y los enormes), verde azulado las filas, oliva lo militar, blanco azulado los
+		// lanzadores de su pasada, marrón oscuro los rincones y gris los tapones de las líneas rectas.
 		FLinearColor Color(1.f, 0.8f, 0.1f, 0.f);
 		switch (TNBeach::CategoryOf(Item.Element))
 		{
@@ -543,7 +940,13 @@ void ATN_BeachRaceGenerator::BuildFootprints()
 			case TNBeachLayout::EItemRole::GullZone: Color = FLinearColor(0.1f, 0.75f, 1.f, 0.f); break;
 			case TNBeachLayout::EItemRole::GuidePath: Color = FLinearColor(0.55f, 0.35f, 0.15f, 0.f); break;
 			case TNBeachLayout::EItemRole::Dungeon:
-			case TNBeachLayout::EItemRole::DungeonWing: Color = FLinearColor(1.f, 0.2f, 0.7f, 0.f); break;
+			case TNBeachLayout::EItemRole::DungeonWing:
+			case TNBeachLayout::EItemRole::Castle: Color = FLinearColor(1.f, 0.2f, 0.7f, 0.f); break;
+			case TNBeachLayout::EItemRole::Row: Color = FLinearColor(0.1f, 0.8f, 0.6f, 0.f); break;
+			case TNBeachLayout::EItemRole::Military: Color = FLinearColor(0.45f, 0.55f, 0.15f, 0.f); break;
+			case TNBeachLayout::EItemRole::Launcher: Color = FLinearColor(0.7f, 1.f, 1.f, 0.f); break;
+			case TNBeachLayout::EItemRole::Nook: Color = FLinearColor(0.35f, 0.2f, 0.1f, 0.f); break;
+			case TNBeachLayout::EItemRole::Plug: Color = FLinearColor(0.75f, 0.75f, 0.75f, 0.f); break;
 			default: break;
 		}
 		// Contorno de la cápsula: dos medias vueltas unidas por sus lados rectos.
@@ -588,6 +991,43 @@ void ATN_BeachRaceGenerator::BuildFootprints()
 		const double Arrow = FMath::Clamp(Item.Radius * 0.6, 150.0, 900.0);
 		M.AddTri(Lift(Item.Pos + Ax * Arrow), Lift(Item.Pos - Ax * (Arrow * 0.3) + Sd * (Arrow * 0.4)), Lift(Item.Pos - Ax * (Arrow * 0.3) - Sd * (Arrow * 0.4)),
 			FVector::UpVector, Color);
+	}
+	// Puntos interesantes (para el botín): arcos de salto en blanco y atajos en fucsia (tiras de Pos a To); rincones,
+	// cimas, trincheras y caminos alternativos, rombos (marrón, amarillo, oliva y azul).
+	auto LiftAll = [this](const FVector2D& P)
+	{
+		return FVector(P, TNBeachLayout::StampedZ(Layout.Stamps, P.X, P.Y, TNBeachLayout::GroundZ(P.X, P.Y)) + 60.0);
+	};
+	for (const TNBeachLayout::FInterestPoint& Point : Layout.Interest)
+	{
+		FLinearColor Color(1.f, 1.f, 1.f, 0.f);
+		switch (Point.Kind)
+		{
+			case TNBeachLayout::EInterestKind::Shortcut: Color = FLinearColor(1.f, 0.1f, 0.9f, 0.f); break;
+			case TNBeachLayout::EInterestKind::Nook: Color = FLinearColor(0.35f, 0.2f, 0.1f, 0.f); break;
+			case TNBeachLayout::EInterestKind::Summit: Color = FLinearColor(1.f, 0.95f, 0.2f, 0.f); break;
+			case TNBeachLayout::EInterestKind::Trench: Color = FLinearColor(0.45f, 0.55f, 0.15f, 0.f); break;
+			case TNBeachLayout::EInterestKind::Detour: Color = FLinearColor(0.2f, 0.45f, 1.f, 0.f); break;
+			default: break;
+		}
+		const FVector2D Span = Point.To - Point.Pos;
+		if (Span.SizeSquared() > 1.0)
+		{
+			const FVector2D Side = FVector2D(-Span.Y, Span.X).GetSafeNormal() * 60.0;
+			constexpr int32 Pieces = 6;
+			for (int32 k = 0; k < Pieces; ++k)
+			{
+				const FVector2D P0 = Point.Pos + Span * (static_cast<double>(k) / Pieces);
+				const FVector2D P1 = Point.Pos + Span * (static_cast<double>(k + 1) / Pieces);
+				M.AddQuad(LiftAll(P0 - Side), LiftAll(P1 - Side), LiftAll(P1 + Side), LiftAll(P0 + Side), FVector::UpVector, Color);
+			}
+		}
+		else
+		{
+			const double R = 350.0;
+			M.AddQuad(LiftAll(Point.Pos + FVector2D(R, 0.0)), LiftAll(Point.Pos + FVector2D(0.0, R)), LiftAll(Point.Pos - FVector2D(R, 0.0)),
+				LiftAll(Point.Pos - FVector2D(0.0, R)), FVector::UpVector, Color);
+		}
 	}
 	TNBeachRaceKit::Upload(FootprintMesh, 0, M, TNCastleKit::VertexColorMaterial(), false);
 }

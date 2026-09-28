@@ -4,7 +4,7 @@ Se ejecuta DENTRO del editor de Unreal, con el C++ ya compilado (ATN_BeachRaceGe
     exec(open(r"<repo>/Scripts/build_beach_race.py", encoding="utf-8").read())
 
 Crea el nivel (o lo abre, si ya existe) y deja:
-  - Sol (luz direccional que mueve el cielo) a la espalda de la salida, cielo (SkyAtmosphere), luz del cielo en tiempo
+  - Sol (luz direccional que mueve el cielo) casi cenital sobre el mar, cielo (SkyAtmosphere), luz del cielo en tiempo
     real y niebla suave de altura, como LVL_ProcMap.
   - El generador de la playa (ATN_BeachRaceGenerator, etiqueta «PlayaCarrera») en el origen: el terreno fijo se
     construye solo, también en el editor; cada ronda la reparte el GameMode.
@@ -28,6 +28,13 @@ Vistas para las capturas (mueven la cámara del visor; con el nivel abierto):
     vista("acantilado")  # el borde de roca, el agua de meta y las banderas desde la playa
     vista("meta")        # desde el agua: el acantilado, el arco de la meta y la selva de los lados
     vista("selva")       # la orilla con las palmeras inclinadas sobre la arena
+    vista("huevos")      # la fila de cuatro huevos de la salida en su nido de arena (de frente, algo de lado)
+    vista("dunas")       # a ras de arena desde la salida: el relieve, los corredores y las crestas hasta la mitad
+    vista("trinchera")   # las dos líneas de trincheras en zigzag, con sacos, tablones y puentes
+    vista("poza")        # una poza que corta un corredor (agua nadable) y su orilla
+    vista("cresta")      # una duna con cresta desde su cara empinada: la cornisa que se salta y un collado
+    vista("huecos")      # desde la orilla hacia la selva: lianas, enredaderas y hojas enormes entre las copas
+    vista("sprint")      # la línea del sprint de desempate a mitad de la playa
 """
 
 import unreal
@@ -81,9 +88,11 @@ def build_level():
         by_label[label] = actor
         return actor, True
 
-    # Sol a la espalda de la salida: la luz va hacia +X (el mar), alta y algo de lado para que las dunas den sombra.
-    sun, created = ensure_actor("Sol", unreal.DirectionalLight, unreal.Vector(0, 0, 30000),
-                                unreal.Rotator(roll=0.0, pitch=-38.0, yaw=25.0))
+    # Sol casi cenital (72°) y por encima del mar (la luz va hacia la salida): la playa queda iluminada y cada cosa
+    # proyecta su sombra casi debajo (se ve dónde va a caer la gaviota y dónde se puede subir). Con el sol bajo, o a la
+    # espalda de la salida, la selva y el cerro de detrás de la salida lo dejaban todo a la sombra.
+    sun, created = ensure_actor("Sol", unreal.DirectionalLight, unreal.Vector(0, 0, 30000))
+    sun.set_actor_rotation(unreal.Rotator(roll=0.0, pitch=-72.0, yaw=200.0), False)
     if created:
         light = sun.get_component_by_class(unreal.DirectionalLightComponent)
         light.set_editor_property("atmosphere_sun_light", True)
@@ -128,6 +137,14 @@ VIEWS = {
     "acantilado": ((COURSE_LENGTH - 6000.0, 9000.0, CLIFF_TOP + 1200.0), (COURSE_LENGTH + 3000.0, -2000.0, 200.0)),
     "meta": ((COURSE_LENGTH + 16000.0, 4000.0, 2500.0), (COURSE_LENGTH - 4000.0, 0.0, 1400.0)),
     "selva": ((60000.0, HALF_WIDTH - 6000.0, 3500.0), (75000.0, HALF_WIDTH + 12000.0, 9000.0)),
+    # Relieve y salida nuevos (cotas medidas del terreno fijo de TN_BeachLayout.h, con margen por encima).
+    "huevos": ((1400.0, 2000.0, 5087.0 + 380.0), (-800.0, 0.0, 5186.0 + 120.0)),
+    "dunas": ((9000.0, 0.0, 4721.0 + 450.0), (60000.0, 0.0, 2661.0 + 200.0)),
+    "trinchera": ((33500.0, -2500.0, 3472.0 + 1500.0), (36600.0, 1500.0, 3575.0)),
+    "poza": ((36500.0, 3500.0, 3680.0 + 900.0), (40200.0, 7160.0, 3286.0)),
+    "cresta": ((40200.0, -3000.0, 3367.0 + 350.0), (43800.0, -3470.0, 3737.0 + 150.0)),
+    "huecos": ((50000.0, HALF_WIDTH - 1500.0, 3259.0 + 500.0), (53000.0, HALF_WIDTH + 6000.0, 4973.0 + 3500.0)),
+    "sprint": ((58500.0, 0.0, 2738.0 + 500.0), (61500.0, 0.0, 2602.0 + 150.0)),
 }
 
 

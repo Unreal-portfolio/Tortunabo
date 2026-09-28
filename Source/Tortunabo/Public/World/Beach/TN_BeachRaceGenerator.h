@@ -7,15 +7,18 @@
 
 class ACharacter;
 class ATN_BeachElement;
+class ATN_BeachRaceGenerator;
 class ATN_ProcWaterVolume;
 class UBoxComponent;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UProceduralMeshComponent;
 class UStaticMesh;
+class UStaticMeshComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBeachTurtleReachedWater, ACharacter*, Turtle);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBeachTurtleReachedWaterNative, ACharacter* /*Turtle*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnBeachRoundLayoutReady, ATN_BeachRaceGenerator* /*Generator*/);
 
 /** Lo único que se replica de la ronda: con la semilla, cada cliente rehace los asientos (los elementos llegan solos). */
 USTRUCT()
@@ -33,19 +36,34 @@ struct FTNBeachRoundNet
 	/** La ronda se ha quitado (ClearRound): playa vacía y sin asientos. */
 	UPROPERTY()
 	bool bCleared = false;
+
+	/** Los huevos de la salida se han roto (al dar la salida); cada ronda nueva los cierra. */
+	UPROPERTY()
+	bool bStartOpen = false;
+
+	/** Hora del servidor (GetServerWorldTimeSeconds) a la que se rompieron. */
+	UPROPERTY()
+	float StartOpenTime = 0.f;
+
+	/** Los huevos están en la línea del sprint final (SetStartEggsAtSprint); cada ronda nueva los devuelve a la salida. */
+	UPROPERTY()
+	bool bSprintEggs = false;
 };
 
 /**
  * La playa del modo carrera (LVL_BeachRace, Docs/Modo_Carrera.md): el terreno fijo y el reparto procedural de cada ronda.
  *
  * - Terreno fijo, igual en todas las máquinas y en el editor (TNBeachLayout): 1200 m de arena por 280 m jugables con
- *   leve desnivel hacia el mar y dunas suaves, en teselas de UProceduralMeshComponent con colisión y el material del
- *   terreno del mapa procedural (M_ProcTerrain con relieve y guijarros); a los lados y detrás, bancos que suben a la
- *   selva de palmeras y árboles de 200-300 m (vegetación instanciada del mapa procedural); al final, la repisa y el
- *   acantilado de roca de 15,5 m (TNBeach::CliffHeight) sobre el agua de meta, con el mar animado, las banderas que
- *   flotan y el arco de neumático de la meta del mapa procedural (a escala). Salida en el linde de la selva: entre las
- *   raíces de un árbol colosal y bajo hojas enormes, con el cartel «¡A LA META!». Muros invisibles a los lados, detrás
- *   y mar adentro.
+ *   desnivel hacia el mar y relieve irregular (dunas, corredores que se separan y se juntan, dunas con cresta y
+ *   cornisa, pozas de agua nadable y dos líneas de trincheras con caballones, tablones y sacos terreros), en teselas de
+ *   UProceduralMeshComponent con colisión y el material del terreno del mapa procedural (M_ProcTerrain con relieve y
+ *   guijarros); a los lados y detrás, bancos que suben a la selva de palmeras y árboles de 200-300 m (vegetación
+ *   instanciada del mapa procedural, con lianas, enredaderas, helechos y hojas enormes en los huecos entre copas); al
+ *   final, la repisa y el acantilado de roca de 15,5 m (TNBeach::CliffHeight) sobre el agua de meta, con el mar animado,
+ *   las banderas que flotan y el arco de neumático de la meta del mapa procedural (a escala). Salida en el linde de la
+ *   selva: una fila de cuatro huevos en su nido de arena, entre las raíces de un árbol colosal y bajo hojas enormes, con
+ *   el cartel «¡A LA META!»; al dar la salida (OpenStartEggs) las tapas saltan y las tortugas salen lanzadas hacia el
+ *   mar. Muros invisibles a los lados, detrás y mar adentro.
  * - Ronda (GenerateRound, servidor): destruye los elementos de la anterior, reparte con la semilla
  *   (TNBeachLayout::GenerateRound), deja en la arena el asiento de cada elemento (el suelo liso bajo su huella; rehace
  *   solo las teselas tocadas) y crea cada elemento con ATN_BeachElement::SpawnElement. Se replica la semilla: cada
@@ -103,6 +121,39 @@ public:
 	/** Elementos creados en esta ronda (solo servidor). */
 	const TArray<TObjectPtr<ATN_BeachElement>>& GetRoundElements() const { return RoundElements; }
 
+	/**
+	 * En cada máquina, al quedar aplicado el reparto de una ronda: en el servidor, tras crear sus elementos; en cada
+	 * cliente, al recibir la semilla (sin elementos todavía: llegan solos). Para lo que se reparte después con el mismo
+	 * diseño (el botín): GetRoundLayout().Interest trae los arcos de salto (libres), las cimas, los atajos, los rincones,
+	 * las trincheras y los caminos alternativos, en el espacio local del generador.
+	 */
+	FOnBeachRoundLayoutReady OnRoundLayoutReady;
+
+	// ── Salida: los huevos ──────────────────────────────────────────────────
+
+	/**
+	 * Servidor: rompe los huevos de la salida (las tapas saltan dando vueltas) y lanza hacia el mar a las tortugas que
+	 * estén en la salida (servidor y cliente dueño a la vez, como la salida de huevos del cooperativo). Cada ronda nueva
+	 * (GenerateRound) los vuelve a cerrar. El GameMode lo llama al dar la salida, con las tortugas ya sueltas.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Beach")
+	void OpenStartEggs();
+
+	UFUNCTION(BlueprintPure, Category = "Beach")
+	bool AreStartEggsOpen() const { return RoundNet.bStartOpen; }
+
+	/**
+	 * Servidor: lleva el nido de huevos de la salida a la línea del sprint final (bAtSprint) o lo devuelve a la salida, con
+	 * los huevos cerrados: bases y anillo de arena en los sitios del sprint (los de GetSprintStartTransform) y las tapas
+	 * encima. OpenStartEggs los rompe y lanza hacia el mar a las tortugas de la línea en la que estén. GenerateRound y
+	 * ClearRound los devuelven a la salida: el GameMode lo llama justo después de GenerateRound.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Beach")
+	void SetStartEggsAtSprint(bool bAtSprint);
+
+	UFUNCTION(BlueprintPure, Category = "Beach")
+	bool AreStartEggsAtSprint() const { return RoundNet.bSprintEggs; }
+
 	// ── Salida, meta y consultas (cualquier máquina) ────────────────────────
 
 	/** Dónde empieza el jugador PlayerIndex (4 en fila en la salida y más filas detrás), 110 cm sobre el suelo, mirando al mar. */
@@ -111,6 +162,22 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Beach")
 	int32 GetNumStartSpots() const { return TNBeachLayout::NumStartSpots; }
+
+	/**
+	 * Sitio Index del sprint de desempate: a mitad del recorrido (TNBeachLayout::SprintLineX, siempre la misma línea), en
+	 * fila como la salida (4 a 10 m y más filas detrás), 110 cm sobre el suelo (con los asientos de la ronda), mirando al
+	 * mar, sobre arena seca y casi llana, fuera de pozas, trincheras y cornisas.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Beach")
+	FTransform GetSprintStartTransform(int32 Index) const;
+
+	/**
+	 * Servidor: quita (destruye) los elementos de la ronda actual cuya huella toque el círculo de Radius (cm) alrededor de
+	 * WorldCenter y devuelve cuántos. Para despejar la salida del sprint; el resto de la ronda (y los asientos en la arena)
+	 * se queda.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Beach")
+	int32 ClearElementsAround(const FVector& WorldCenter, float Radius);
 
 	/** Si un punto (los pies de la tortuga) está en el agua de meta: más allá del filo y a ras del agua o por debajo. */
 	UFUNCTION(BlueprintPure, Category = "Beach")
@@ -223,6 +290,18 @@ protected:
 	UPROPERTY(VisibleAnywhere, Transient, Category = "Beach")
 	TObjectPtr<UProceduralMeshComponent> FootprintMesh;
 
+	/** Relieve fijo con colisión: caballones, sacos y puentes de las trincheras, cornisas de las crestas y rocas de las pozas. */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Beach")
+	TObjectPtr<UProceduralMeshComponent> FeatureMesh;
+
+	/** Relieve fijo sin colisión: tarimas del fondo de las trincheras y postes de los tablones. */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Beach")
+	TObjectPtr<UProceduralMeshComponent> FeatureDecoMesh;
+
+	/** Superficie del agua de las pozas (el agua nadable es el volumen). */
+	UPROPERTY(VisibleAnywhere, Transient, Category = "Beach")
+	TObjectPtr<UProceduralMeshComponent> PoolMesh;
+
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_RoundNet)
 	FTNBeachRoundNet RoundNet;
@@ -247,6 +326,21 @@ private:
 	/** Material del mar con la hondura y la espuma a la escala de la playa. */
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> SeaMaterial;
+
+	/** El mismo mar para las pozas, con la hondura y la espuma de un charco. */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> PoolMaterial;
+
+	/** Tapas de los huevos de la salida (creadas en ejecución, una por huevo) y sus mallas. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> StartEggLids;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMesh>> StartEggLidMeshes;
+
+	/** Nido del sprint final: las bases de los huevos y su anillo de arena en la línea del sprint (vacío fuera de él). */
+	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> SprintNestMesh;
 
 	/** Elementos de la ronda (servidor, o la ronda de prueba en el editor). */
 	UPROPERTY(Transient)
@@ -279,16 +373,53 @@ private:
 	bool bRoundReady = false;
 	bool bLiving = false;
 
+	/** Huevos de la salida en esta máquina: rotos o no, desde cuándo (s del mundo), cuáles ya y si lanzan a las tortugas. */
+	bool bEggsOpenLocal = false;
+	bool bEggsLaunch = false;
+	bool bEggsAnimating = false;
+	double EggsOpenedAt = 0.0;
+	int32 EggsHatchedMask = 0;
+	/** Línea de los huevos en esta máquina (la del sprint o la salida) y ronda aplicada con la que se hizo el nido del sprint. */
+	bool bEggsAtSprintLocal = false;
+	int32 SprintNestRound = -1;
+
 	// ── Construcción (TN_BeachRaceGenerator_Build.cpp) ──
 	void BuildAll();
 	void ClearGenerated();
 	void BuildTerrain();
 	/** Rehace la tesela Index del terreno con los asientos Stamps (crea su componente si falta). */
 	void BuildTerrainTile(int32 Index, const TArray<TNBeachLayout::FStamp>& Stamps);
+	/** Rehace varias teselas: las alturas en paralelo y la subida (con su colisión) en el hilo de juego. */
+	void BuildTerrainTiles(const TArray<int32>& Indices, const TArray<TNBeachLayout::FStamp>& Stamps);
 	void BuildCliff();
 	void BuildSeabedAndSea();
 	void BuildWalls();
 	void SpawnWaterVolume();
+	/** Cota del terreno fijo en (X, Y) local tal y como lo dibujan las teselas (sin asientos): interpola su triángulo. */
+	double MeshGroundZ(double X, double Y) const;
+
+	// ── Relieve fijo (TN_BeachRaceGenerator_Features.cpp) ──
+	/** Trincheras (caballones, tablones, sacos, tarimas y puentes), cornisas de las crestas y rocas de las pozas. */
+	void BuildFeatures();
+	/** Superficie del agua de las pozas. */
+	void BuildPoolWater();
+
+	// ── Salida con huevos (TN_BeachRaceGenerator_Start.cpp) ──
+	/** Tapas de los huevos (las bases y el nido van con la salida). */
+	void BuildStartEggs();
+	/** Pone los huevos según RoundNet.bStartOpen: cerrados, o rompiéndose (bLive: con salto de las tortugas) o ya rotos. */
+	void ApplyStartEggs(bool bLive);
+	/** Pose de las tapas mientras vuelan; false cuando ya no queda ninguna. */
+	bool UpdateStartEggs();
+	/** Lanza hacia el mar a quien esté en la línea de los huevos (servidor: todas; cliente: las suyas). */
+	void LaunchTurtlesFromEggs();
+	/** Base del huevo Index (local) en la línea de esta máquina: la salida o la del sprint (con los asientos de la ronda). */
+	FVector StartEggCup(int32 Index) const;
+	/** Los huevos de esta máquina no están en la línea que dice la ronda (o el nido del sprint es de otro reparto). */
+	bool IsStartEggLineStale() const;
+	/** Lleva los huevos a la línea que dice la ronda: hace el nido del sprint o lo vacía. */
+	void ApplyStartEggLine();
+	void BuildSprintNest();
 
 	// ── Escenografía (TN_BeachRaceGenerator_Scenery.cpp) ──
 	void BuildStartGrove();
