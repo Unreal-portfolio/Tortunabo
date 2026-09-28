@@ -1,18 +1,26 @@
 #include "World/ProcMap/TN_ProcStartStructure.h"
+#include "World/TN_EggHatch.h"
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/Engine.h"
 #include "Engine/Scene.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
+#include "TimerManager.h"
 #include "../../Lobby/TN_CastleKit.h"
 
 namespace TNProcStartDetail
@@ -37,6 +45,13 @@ namespace TNProcStartDetail
 	constexpr float EggLaunchSpeedXY = 380.f;
 	constexpr float EggLaunchSpeedZ = 620.f;
 	constexpr double EggLaunchRadius = 120.0;
+	/**
+	 * Un cliente al que le llegan los huevos rotos con este retraso (s) sobre el último lanzamiento (cada tortuga sale
+	 * TNEggHatch::PauseSeconds después de romperse su huevo) todavía hace la pausa y salta; más tarde, los ve ya rotos.
+	 */
+	constexpr double LateLaunchGrace = 1.5;
+	/** TN.Proc.Egg: segundos que se ven los huevos cerrados con las tortugas dentro antes de romperse otra vez. */
+	constexpr float ReplayClosedSeconds = 1.5f;
 	/** Paredes invisibles de cada huevo: radio (algo más que la cáscara) y alto (más que cualquier salto). */
 	constexpr double HolderRadius = 112.0;
 	constexpr double HolderHeight = 700.0;
@@ -247,6 +262,7 @@ void ATN_ProcStartStructure::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_ProcStartStructure, Style);
 	DOREPLIFETIME(ATN_ProcStartStructure, bOpen);
+	DOREPLIFETIME(ATN_ProcStartStructure, OpenServerTime);
 }
 
 double ATN_ProcStartStructure::GetBackDistance(ETNMatchStartStyle InStyle, double ClearingRadius)
@@ -341,7 +357,8 @@ void ATN_ProcStartStructure::OnRep_Open()
 	}
 	if (bOpen)
 	{
-		StartOpening(true);
+		// Con la pausa en el huevo y el salto si llega a tiempo; si no, ya abierta del todo.
+		StartOpening(IsOpeningFresh());
 	}
 	else
 	{
@@ -356,6 +373,7 @@ void ATN_ProcStartStructure::Open()
 		return;
 	}
 	bOpen = true;
+	OpenServerTime = static_cast<float>(TNEggHatch::ServerNow(GetWorld()));
 	StartOpening(true);
 	ForceNetUpdate();
 	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Se abre la salida (%s)."), Style == ETNMatchStartStyle::Eggs ? TEXT("huevos") : TEXT("puerta doble"));
@@ -370,6 +388,68 @@ void ATN_ProcStartStructure::Close()
 	bOpen = false;
 	ApplyClosedPose();
 	ForceNetUpdate();
+}
+
+void ATN_ProcStartStructure::ReplayEggs()
+{
+	using namespace TNProcStartDetail;
+	UWorld* World = GetWorld();
+	if (!HasAuthority() || !World || Style != ETNMatchStartStyle::Eggs)
+	{
+		return;
+	}
+	GetWorldTimerManager().ClearTimer(ReplayHandle);
+	// Cerrados otra vez, con las paredes invisibles puestas.
+	bOpen = false;
+	ApplyClosedPose();
+	ForceNetUpdate();
+
+	// Cada tortuga dentro de un huevo (por orden de jugador), de pie y mirando al camino, como al empezar la ronda.
+	int32 Slot = 0;
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It && Slot < NumSpots; ++It)
+	{
+		APlayerController* PC = It->Get();
+		ACharacter* Turtle = PC ? Cast<ACharacter>(PC->GetPawn()) : nullptr;
+		if (!Turtle)
+		{
+			continue;
+		}
+		TNEggHatch::Cancel(Turtle);
+		const UCapsuleComponent* Capsule = Turtle->GetCapsuleComponent();
+		FTransform Spot;
+		if (!GetSpawnTransform(Slot, Capsule ? Capsule->GetScaledCapsuleHalfHeight() : DefaultSpawnHalfHeight, Spot))
+		{
+			break;
+		}
+		++Slot;
+		UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
+		if (Move)
+		{
+			Move->StopMovementImmediately();
+		}
+		Turtle->SetActorLocationAndRotation(Spot.GetLocation(), Spot.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+		// Dentro, sujeta solo por las paredes del huevo (como al empezar la ronda: se puede mover dentro).
+		if (Move && Move->MovementMode == MOVE_None)
+		{
+			Move->SetMovementMode(MOVE_Falling);
+		}
+		PC->ClientSetRotation(Spot.Rotator(), true);
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] TN.Proc.Egg: %d tortugas otra vez en los huevos; se rompen en %.1f s."), Slot, ReplayClosedSeconds);
+	GetWorldTimerManager().SetTimer(ReplayHandle, this, &ATN_ProcStartStructure::Open, ReplayClosedSeconds, false);
+}
+
+bool ATN_ProcStartStructure::IsOpeningFresh() const
+{
+	using namespace TNProcStartDetail;
+	const UWorld* World = GetWorld();
+	// El servidor la vive siempre; la puerta doble, en cualquier máquina (solo gira).
+	if (HasAuthority() || Style != ETNMatchStartStyle::Eggs || !World || !World->GetGameState() || OpenServerTime <= 0.f)
+	{
+		return true;
+	}
+	const double Since = TNEggHatch::ServerNow(World) - static_cast<double>(OpenServerTime);
+	return Since < HatchStagger * (NumSpots - 1) + TNEggHatch::PauseSeconds + LateLaunchGrace;
 }
 
 bool ATN_ProcStartStructure::GetSpawnTransform(int32 Slot, float CapsuleHalfHeight, FTransform& OutTransform) const
@@ -515,6 +595,20 @@ void ATN_ProcStartStructure::ApplyClosedPose()
 		Lid->SetRelativeScale3D(FVector::OneVector);
 		Lid->SetVisibility(bEggs && Lid->GetStaticMesh() != nullptr);
 	}
+
+	// Ninguna tortuga a medias de su pausa en el huevo en esta máquina (TN.Proc.Egg): la pose, como estaba, y sin soltarla
+	// (quien la coloca ya la deja como toca).
+	UWorld* World = GetWorld();
+	if (bEggs && World && World->IsGameWorld())
+	{
+		for (TActorIterator<ACharacter> It(World); It; ++It)
+		{
+			if (TNEggHatch::IsHatching(*It))
+			{
+				TNEggHatch::Cancel(*It, false);
+			}
+		}
+	}
 }
 
 void ATN_ProcStartStructure::StartOpening(bool bLive)
@@ -593,13 +687,17 @@ void ATN_ProcStartStructure::HatchEgg(int32 Index)
 	const FTransform& Xf = GetActorTransform();
 	const FVector Spot = Xf.TransformPosition(SpotLocal(ETNMatchStartStyle::Eggs, Index));
 	const FVector HopVelocity = Xf.TransformVectorNoScale(EggLaunchDirLocal(Index)) * EggLaunchSpeedXY + FVector(0.0, 0.0, EggLaunchSpeedZ);
-	// Solo mueve a la tortuga quien la controla, a la vez: el servidor (a todas) y cada cliente (a la suya, al recibir
-	// bOpen). En el cliente, el iterador solo tiene sus controladores locales.
-	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	// Con el reloj del servidor: este huevo se rompe HatchStagger después del anterior y su tortuga sale despedida
+	// TNEggHatch::PauseSeconds después, tras ponerse de pie, sacudirse la cáscara y mirar al camino (+Y local).
+	const double HatchAt = static_cast<double>(OpenServerTime) + HatchStagger * Index;
+	const double LaunchAt = HatchAt + TNEggHatch::PauseSeconds;
+	const float PathYaw = static_cast<float>(Xf.Rotator().Yaw + 90.0);
+	// Quien esté en este huevo, en cada máquina: la pausa se ve en todas; la sujetan y la lanzan a la vez solo quienes la
+	// mueven, el servidor (a todas) y cada cliente (a la suya, al recibir bOpen).
+	for (TActorIterator<ACharacter> It(World); It; ++It)
 	{
-		const APlayerController* PC = It->Get();
-		ACharacter* Turtle = PC ? Cast<ACharacter>(PC->GetPawn()) : nullptr;
-		if (!Turtle || !(HasAuthority() || Turtle->IsLocallyControlled()))
+		ACharacter* Turtle = *It;
+		if (!IsValid(Turtle) || !Turtle->IsPlayerControlled())
 		{
 			continue;
 		}
@@ -608,7 +706,7 @@ void ATN_ProcStartStructure::HatchEgg(int32 Index)
 		{
 			continue;
 		}
-		Turtle->LaunchCharacter(HopVelocity, true, true);
+		TNEggHatch::Begin(Turtle, HatchAt, LaunchAt, HopVelocity, PathYaw, TNCastleKit::EggAccent(Index));
 	}
 }
 
@@ -636,4 +734,66 @@ bool ATN_ProcStartStructure::PoseLid(int32 Index, double T)
 	Lid->SetRelativeLocationAndRotation(Where, Spin);
 	Lid->SetRelativeScale3D(FVector(Shrink));
 	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TN.Proc.Egg: repetir la salida con huevos sin regenerar el mapa
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNProcStartDetail
+{
+	/** El mundo con autoridad del mismo proceso (el propio si no es un cliente; en PIE, el del servidor del mismo mapa). */
+	UWorld* FindAuthorityWorld(UWorld* InWorld)
+	{
+		if (!InWorld)
+		{
+			return nullptr;
+		}
+		if (InWorld->GetNetMode() != NM_Client)
+		{
+			return InWorld;
+		}
+		if (!GEngine)
+		{
+			return nullptr;
+		}
+		const FString MapName = UWorld::RemovePIEPrefix(InWorld->GetMapName());
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			UWorld* Candidate = Context.World();
+			if (Candidate && Candidate != InWorld && Candidate->IsGameWorld() && Candidate->GetNetMode() != NM_Client
+				&& UWorld::RemovePIEPrefix(Candidate->GetMapName()) == MapName)
+			{
+				return Candidate;
+			}
+		}
+		return nullptr;
+	}
+
+	void RunReplayEggs(const TArray<FString>& /*Args*/, UWorld* InWorld)
+	{
+		UWorld* AuthWorld = FindAuthorityWorld(InWorld);
+		int32 Replayed = 0;
+		if (AuthWorld)
+		{
+			for (TActorIterator<ATN_ProcStartStructure> It(AuthWorld); It; ++It)
+			{
+				if (It->GetStyle() == ETNMatchStartStyle::Eggs)
+				{
+					It->ReplayEggs();
+					++Replayed;
+				}
+			}
+		}
+		if (Replayed == 0)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[ProcMap] TN.Proc.Egg: no hay salida con huevos con autoridad (escríbelo en la ventana del anfitrión; con TN.Proc.StartStyle 1 sale en la siguiente generación)."));
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs ReplayEggsCommand(
+		TEXT("TN.Proc.Egg"),
+		TEXT("Cooperativo: cierra otra vez los huevos de la salida con las tortugas dentro y los vuelve a romper (1 s en el huevo y salen despedidas), sin regenerar el mapa. En el anfitrión."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunReplayEggs),
+		ECVF_Cheat);
 }

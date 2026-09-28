@@ -18,12 +18,14 @@ class UTextRenderComponent;
  *   contra el talud (parece que se sale de la pared). Los jugadores aparecen dentro (cuatro sitios); al abrirse, la
  *   puerta 2 gira hacia fuera y se sale corriendo.
  * - Huevos (ETNMatchStartStyle::Eggs): montículo con la pila de cuatro huevos; cada jugador aparece dentro de uno con la
- *   tapa puesta y unas paredes invisibles que lo sujetan. Al abrirse, las tapas saltan dando vueltas y cada tortuga sale
- *   despedida de un salto (servidor y cliente dueño a la vez, como en el probador).
+ *   tapa puesta y unas paredes invisibles que lo sujetan. Al abrirse, las tapas saltan dando vueltas, cada tortuga se ve
+ *   1 s en su huevo roto (se pone de pie, se sacude la cáscara y mira al camino: TNEggHatch, la pieza común con la
+ *   carrera) y sale despedida de un salto (servidor y cliente dueño a la vez y con el reloj del servidor, como en el
+ *   probador). Consola: TN.Proc.Egg repite la salida sin regenerar.
  *
  * La crea ATN_ProcMapGenerator en el servidor (una por mapa; se destruye al regenerar) y se replica siempre: solo viajan
- * el estilo y si está abierta, y cada máquina construye sus mallas. Espacio local: origen a ras de suelo, +Y hacia el
- * camino (la puerta 2 o el escalón del montículo); -Y, hacia el talud.
+ * el estilo, si está abierta y desde cuándo, y cada máquina construye sus mallas. Espacio local: origen a ras de suelo,
+ * +Y hacia el camino (la puerta 2 o el escalón del montículo); -Y, hacia el talud.
  */
 UCLASS()
 class TORTUNABO_API ATN_ProcStartStructure : public AActor
@@ -77,6 +79,12 @@ public:
 
 	/** Servidor: la deja cerrada de golpe (ronda nueva sin regenerar el mapa). */
 	void Close();
+
+	/**
+	 * Servidor (consola TN.Proc.Egg), solo con huevos: los cierra otra vez con cada tortuga dentro del suyo (por orden de
+	 * jugador) y al poco los vuelve a romper. Para probar la salida sin regenerar el mapa.
+	 */
+	void ReplayEggs();
 
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "StartStructure")
@@ -142,6 +150,13 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_Open)
 	bool bOpen = false;
 
+	/**
+	 * Hora del servidor (GetServerWorldTimeSeconds) a la que empezó a abrirse: con ella van la pausa en el huevo y el
+	 * lanzamiento de cada tortuga, igual en todas las máquinas.
+	 */
+	UPROPERTY(Replicated)
+	float OpenServerTime = 0.f;
+
 	UFUNCTION()
 	void OnRep_Style();
 
@@ -163,8 +178,14 @@ private:
 	/** Pose de la apertura en este instante; false cuando ya ha terminado. */
 	bool UpdateOpening();
 
-	/** Se rompe el huevo Index: sueltan las paredes invisibles y sale despedido quien esté dentro. */
+	/**
+	 * Se rompe el huevo Index: sueltan las paredes invisibles y quien esté dentro pasa 1 s en el huevo roto y sale
+	 * despedido (TNEggHatch).
+	 */
 	void HatchEgg(int32 Index);
+
+	/** La apertura llega a esta máquina a tiempo de vivirla (con la pausa en el huevo y el salto). */
+	bool IsOpeningFresh() const;
 
 	/** Coloca la tapa Index a T segundos de romperse su huevo; false cuando ya ha desaparecido. */
 	bool PoseLid(int32 Index, double T);
@@ -180,4 +201,7 @@ private:
 
 	/** Huevos ya rotos en esta máquina (bit por huevo). */
 	int32 HatchedMask = 0;
+
+	/** TN.Proc.Egg: rotura pendiente de los huevos que ha vuelto a cerrar (servidor). */
+	FTimerHandle ReplayHandle;
 };

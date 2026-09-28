@@ -562,10 +562,17 @@ Cada ronda empieza dentro de la misma pieza en la que los jugadores se pusieron 
   puerta 1 no se abre nunca. Lleva el rótulo «TORTUNAVY» en la cara de fuera de la puerta 2 y una luz cálida en la sala.
 - **Huevos** (`ETNMatchStartStyle::Eggs`): el montículo de dos alturas con la pila de cuatro huevos y el escalón hacia
   el camino. Cada jugador aparece dentro de un huevo con la tapa puesta; una pared invisible lo sujeta hasta que se
-  rompe. Los huevos se rompen uno tras otro, cada 0,12 s: la tapa salta dando vueltas, se posa y se esfuma, y la
-  tortuga sale despedida (`LaunchCharacter`, 3,8 m/s en horizontal, hacia fuera de la pila y hacia el camino, y
-  6,2 m/s hacia arriba). El salto lo dan a la vez el servidor (a todas) y el cliente dueño al recibir `bOpen`, como en
-  el probador.
+  rompe. Los huevos se rompen uno tras otro, cada 0,12 s: la tapa salta dando vueltas, se posa y se esfuma.
+  - **Pausa de 1 s en el huevo** (`TNEggHatch`, `World/TN_EggHatch.*`, la misma pieza que la salida de la carrera): la
+    tortuga se queda quieta en su huevo roto; se agacha un instante y se pone de pie de un estirón, se sacude la cáscara
+    (giros rápidos del cuerpo y trocitos de cáscara del color de su huevo, con un crujido) y gira hacia el camino (en la
+    máquina de su jugador, también la cámara); justo antes del salto se encoge un poco. En caparazón, tumbada o en
+    ragdoll no hay pose.
+  - Después, 1 s tras romperse su huevo, sale despedida (`LaunchCharacter`, 3,8 m/s en horizontal, hacia fuera de la pila
+    y hacia el camino, y 6,2 m/s hacia arriba). Con el reloj del servidor (`OpenServerTime`, replicado): la pose va igual
+    en todas las máquinas, y la sujetan (`MOVE_None`) y la lanzan a la vez el servidor (a todas) y el cliente dueño al
+    recibir `bOpen`, como en el probador. A un cliente que lo recibe más de ~2,9 s tarde le sale ya abierta, sin pausa ni
+    salto.
 
 **Colocación** (`ATN_ProcMapGenerator::SpawnStartStructure`, servidor, en cada generación). «Hacia el camino» es la
 dirección del punto de salida a la primera muestra del camino que queda fuera del claro. La estructura se coloca
@@ -591,9 +598,9 @@ dentro de ella, a 1,1 m del suelo como los del anillo; del quinto jugador en ade
 - Sin estructura, todo funciona como antes.
 
 **Apertura.** `BeginRoundPlay` programa `ATN_ProcStartStructure::Open` a `StartStructureOpenDelaySeconds`
-(1,2 s), a la vez que el «¡ADELANTE!» de la pantalla de carga. Solo se replican el estilo y `bOpen`. Quien recibe
-la estructura ya abierta la ve abierta del todo y no salta. Una ronda nueva sin regenerar el mapa la cierra
-(`Close`).
+(1,2 s), a la vez que el «¡ADELANTE!» de la pantalla de carga. Solo se replican el estilo, `bOpen` y desde cuándo
+(`OpenServerTime`, hora del servidor). Quien recibe la estructura ya abierta la ve abierta del todo y no salta. Una
+ronda nueva sin regenerar el mapa la cierra (`Close`).
 
 **Del lobby al mapa.** `ATN_HQGameMode::BeginMatchTravel` guarda `ATN_SandCastleLobby::GetStartStyle()` en
 `UMP_GameInstance::PendingStartStyle` y añade `?ProcStart=Gate|Eggs` a la URL del viaje. `GetStartStyle()` elige
@@ -603,7 +610,9 @@ puerta doble). El resultado queda en el log: `[ProcMap] Salida: puerta doble` o 
 
 **Para probar.** La variable de consola `TN.Proc.StartStyle` manda sobre todo lo anterior y vale desde la siguiente
 generación: −1 = lo del lobby (por defecto), 0 = puerta doble, 1 = huevos. Sin lobby también sirve
-`open LVL_ProcMap?ProcStart=Eggs`.
+`open LVL_ProcMap?ProcStart=Eggs`. Con los huevos, `TN.Proc.Egg` (en el anfitrión; `ATN_ProcStartStructure::ReplayEggs`)
+los cierra otra vez con cada tortuga dentro del suyo y a los 1,5 s los vuelve a romper: para ver la pausa en el huevo
+sin regenerar el mapa.
 
 ---
 

@@ -2,26 +2,35 @@
 // ATN_BeachRaceGenerator — salida con huevos: una fila de cuatro huevos en su nido de
 // arena (las bases y el nido van con la salida, en TN_BeachRaceGenerator_Scenery.cpp),
 // con la tortuga de cada jugador dentro durante la preparación y la cuenta atrás. Al dar
-// la salida (OpenStartEggs, del GameMode), las tapas saltan dando vueltas hacia los lados
-// y cada tortuga sale lanzada hacia el mar, ya corriendo: como la salida de huevos del
-// cooperativo (ATN_ProcStartStructure), pero en fila y con el salto hacia delante. En el
-// sprint final de desempate el nido va a la línea del sprint (SetStartEggsAtSprint): sus
-// bases y su anillo de arena se hacen allí (SprintNestMesh) y las tapas se mudan encima.
-// Se replica solo si están rotos, desde cuándo y en qué línea (RoundNet); cada máquina
-// anima sus tapas.
+// la salida (OpenStartEggs, del GameMode), las tapas saltan dando vueltas hacia los lados,
+// cada tortuga se ve 1 s en su huevo roto (se pone de pie, se sacude la cáscara y mira al
+// mar: TNEggHatch, la pieza común con el cooperativo) y todas salen lanzadas a la vez hacia
+// el mar, ya corriendo: como la salida de huevos del cooperativo (ATN_ProcStartStructure),
+// pero en fila y con el salto hacia delante. En el sprint final de desempate el nido va a la
+// línea del sprint (SetStartEggsAtSprint): sus bases y su anillo de arena se hacen allí
+// (SprintNestMesh) y las tapas se mudan encima. Se replica solo si están rotos, desde cuándo
+// y en qué línea (RoundNet); cada máquina anima sus tapas. Consola: TN.Beach.Egg repite la
+// salida sin cambiar de ronda.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachRaceGenerator.h"
+#include "World/TN_EggHatch.h"
+#include "CollisionQueryParams.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/TN_Log.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "ProceduralMeshComponent.h"
+#include "TimerManager.h"
 #include "TN_BeachRaceKit.h"
 
 namespace TNBeachEggs
@@ -42,6 +51,13 @@ namespace TNBeachEggs
 	constexpr double LidClosedYawStep = 45.0;
 	/** Lo que se hunde la base del huevo en la arena. */
 	constexpr double CupSink = 8.0;
+	/**
+	 * Un cliente al que le llegan los huevos rotos con este retraso (s) sobre el lanzamiento (que va TNEggHatch::PauseSeconds
+	 * después de romperse) todavía hace la pausa y salta; más tarde, los ve ya rotos.
+	 */
+	constexpr double LateLaunchGrace = 1.5;
+	/** TN.Beach.Egg: segundos que se ven los huevos cerrados con las tortugas dentro antes de romperse otra vez. */
+	constexpr float ReplayClosedSeconds = 1.5f;
 
 	/** Origen de la tapa cerrada sobre la base Cup (local): el centro de su costura. */
 	FVector LidClosed(const FVector& Cup)
@@ -220,7 +236,15 @@ void ATN_BeachRaceGenerator::ApplyStartEggs(bool bLive)
 	const double Now = World ? World->GetTimeSeconds() : 0.0;
 	bEggsOpenLocal = RoundNet.bStartOpen;
 	EggsHatchedMask = 0;
-	bEggsLaunch = bLive && bEggsOpenLocal;
+	// Un cliente los vive (pausa en el huevo y salto) si le llegan antes de que pase el lanzamiento, que va
+	// TNEggHatch::PauseSeconds después de romperse, con algo de margen; si no, los ve ya rotos.
+	bool bLiveNow = bLive;
+	if (!bLiveNow && bEggsOpenLocal && !HasAuthority() && World && World->GetGameState())
+	{
+		const double Since = TNEggHatch::ServerNow(World) - static_cast<double>(RoundNet.StartOpenTime);
+		bLiveNow = Since < TNEggHatch::PauseSeconds + TNBeachEggs::LateLaunchGrace;
+	}
+	bEggsLaunch = bLiveNow && bEggsOpenLocal;
 	if (!bEggsOpenLocal)
 	{
 		// Cerrados: cada tapa sobre su base.
@@ -233,10 +257,19 @@ void ATN_BeachRaceGenerator::ApplyStartEggs(bool bLive)
 			Lid->SetRelativeScale3D(FVector::OneVector);
 			Lid->SetVisibility(true);
 		}
+		// Y ninguna tortuga a medias de su pausa en esta máquina (TN.Beach.Egg o una ronda nueva en plena pausa): la pose,
+		// como estaba, y sin soltarla (quien la coloca ya la sujeta).
+		if (World && World->IsGameWorld())
+		{
+			for (TActorIterator<ACharacter> It(World); It; ++It)
+			{
+				if (TNEggHatch::IsHatching(*It)) { TNEggHatch::Cancel(*It, false); }
+			}
+		}
 		return;
 	}
-	// Rotos: al vivirlo, desde ahora (con el salto de las tortugas); si no, ya del todo.
-	EggsOpenedAt = bLive ? Now : Now - 1000.0;
+	// Rotos: al vivirlo, desde ahora (con la pausa en el huevo y el salto de las tortugas); si no, ya del todo.
+	EggsOpenedAt = bLiveNow ? Now : Now - 1000.0;
 	if (bEggsLaunch) { LaunchTurtlesFromEggs(); }
 	bEggsAnimating = UpdateStartEggs();
 }
@@ -291,23 +324,135 @@ void ATN_BeachRaceGenerator::LaunchTurtlesFromEggs()
 	const double LineShift = bEggsAtSprintLocal ? TNBeachLayout::SprintLineX() - TNBeachLayout::StartSpotX : 0.0;
 	const double MinX = TNBeachLayout::BackWallX + LineShift;
 	const double MaxX = TNBeachLayout::EggLaunchReachX + LineShift;
-	// Solo mueve a cada tortuga quien la controla, a la vez: el servidor (a todas) y cada cliente (a la suya, al recibir
-	// los huevos rotos). En un cliente, el iterador solo tiene sus controladores locales.
-	int32 Launched = 0;
-	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	// Con el reloj del servidor: la pausa empieza al romperse y el lanzamiento, TNEggHatch::PauseSeconds después, a la vez
+	// para todas (es una carrera: nadie sale antes por su huevo).
+	const double HatchAt = static_cast<double>(RoundNet.StartOpenTime);
+	const double LaunchAt = HatchAt + TNEggHatch::PauseSeconds;
+	const float SeaYaw = static_cast<float>(GetActorRotation().Yaw);
+	// Cada tortuga de la franja, en cada máquina: la pausa (ponerse de pie y sacudirse) se ve en todas; la sujetan y la
+	// lanzan a la vez solo quienes la mueven, el servidor (a todas) y cada cliente (a la suya), como antes.
+	int32 Hatched = 0;
+	for (TActorIterator<ACharacter> It(World); It; ++It)
 	{
-		const APlayerController* PC = It->Get();
-		ACharacter* Turtle = PC ? Cast<ACharacter>(PC->GetPawn()) : nullptr;
-		if (!Turtle || !(HasAuthority() || Turtle->IsLocallyControlled())) { continue; }
+		ACharacter* Turtle = *It;
+		if (!IsValid(Turtle) || !Turtle->IsPlayerControlled()) { continue; }
 		const FVector Local = Xf.InverseTransformPosition(Turtle->GetActorLocation());
 		if (Local.X < MinX || Local.X > MaxX || FMath::Abs(Local.Y) > TNBeachLayout::HalfWidth) { continue; }
-		// Recién soltada de la espera puede seguir sin modo de movimiento: el lanzamiento necesita uno.
-		if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
+		// Los trocitos de cáscara, del color del huevo más cercano.
+		int32 Egg = 0;
+		double BestDistSq = TNumericLimits<double>::Max();
+		for (int32 i = 0; i < TNBeachLayout::NumStartSpots; ++i)
 		{
-			if (Move->MovementMode == MOVE_None) { Move->SetMovementMode(MOVE_Falling); }
+			const double DistSq = FVector::DistSquared2D(Local, StartEggCup(i));
+			if (DistSq < BestDistSq)
+			{
+				BestDistSq = DistSq;
+				Egg = i;
+			}
 		}
-		Turtle->LaunchCharacter(Launch, true, true);
-		++Launched;
+		TNEggHatch::Begin(Turtle, HatchAt, LaunchAt, Launch, SeaYaw, TNCastleKit::EggAccent(Egg));
+		++Hatched;
 	}
-	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] huevos: %d tortugas lanzadas hacia el mar."), Launched);
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] huevos: %d tortugas en la pausa del huevo antes de salir lanzadas hacia el mar."), Hatched);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TN.Beach.Egg: repetir la salida sin cambiar de ronda
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_BeachRaceGenerator::ReplayStartEggs()
+{
+	UWorld* World = GetWorld();
+	if (!HasAuthority() || !World || !World->IsGameWorld() || StartEggLids.Num() == 0) { return; }
+	GetWorldTimerManager().ClearTimer(EggReplayHandle);
+	// Cerrados otra vez en la línea en la que estén (la salida o la del sprint final).
+	RoundNet.bStartOpen = false;
+	RoundNet.StartOpenTime = 0.f;
+	ApplyStartEggs(false);
+	ForceNetUpdate();
+
+	// Cada tortuga dentro de un huevo (por orden de jugador), quieta y mirando al mar, como al preparar la ronda.
+	FCollisionObjectQueryParams Floors;
+	Floors.AddObjectTypesToQuery(ECC_WorldStatic);
+	Floors.AddObjectTypesToQuery(ECC_WorldDynamic);
+	int32 Slot = 0;
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		ACharacter* Turtle = PC ? Cast<ACharacter>(PC->GetPawn()) : nullptr;
+		if (!Turtle) { continue; }
+		// Sin la pausa de antes, si aún estaba en ella.
+		TNEggHatch::Cancel(Turtle);
+		const FTransform Spot = bEggsAtSprintLocal ? GetSprintStartTransform(Slot) : GetStartTransform(Slot);
+		++Slot;
+		// De pie en el suelo del huevo, con el alto de su cápsula (como PutOnFloor del GameMode).
+		FVector Where = Spot.GetLocation();
+		const UCapsuleComponent* Capsule = Turtle->GetCapsuleComponent();
+		const double Half = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 90.0;
+		FHitResult Hit;
+		const FCollisionQueryParams Query(SCENE_QUERY_STAT(TNBeachEggReplay), false, Turtle);
+		if (World->LineTraceSingleByObjectType(Hit, Where + FVector(0.0, 0.0, 300.0), Where - FVector(0.0, 0.0, 1500.0), Floors, Query)
+			&& Hit.ImpactNormal.Z > 0.5)
+		{
+			Where.Z = Hit.ImpactPoint.Z + Half + 2.0;
+		}
+		UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
+		if (Move) { Move->StopMovementImmediately(); }
+		Turtle->SetActorLocationAndRotation(Where, Spot.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+		if (Move) { Move->DisableMovement(); }
+		PC->ClientSetRotation(Spot.Rotator(), true);
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Egg: %d tortugas otra vez en los huevos %s; se rompen en %.1f s."), Slot,
+		bEggsAtSprintLocal ? TEXT("del sprint final") : TEXT("de la salida"), TNBeachEggs::ReplayClosedSeconds);
+	// Un momento con los huevos cerrados y la salida de siempre: se rompen, 1 s en el huevo y todas lanzadas.
+	GetWorldTimerManager().SetTimer(EggReplayHandle, this, &ATN_BeachRaceGenerator::OpenStartEggs, TNBeachEggs::ReplayClosedSeconds, false);
+}
+
+namespace TNBeachEggs
+{
+	/** El mundo con autoridad del mismo proceso (el propio si no es un cliente; en PIE, el del servidor del mismo mapa). */
+	UWorld* FindAuthorityWorld(UWorld* InWorld)
+	{
+		if (!InWorld)
+		{
+			return nullptr;
+		}
+		if (InWorld->GetNetMode() != NM_Client)
+		{
+			return InWorld;
+		}
+		if (!GEngine)
+		{
+			return nullptr;
+		}
+		const FString MapName = UWorld::RemovePIEPrefix(InWorld->GetMapName());
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			UWorld* Candidate = Context.World();
+			if (Candidate && Candidate != InWorld && Candidate->IsGameWorld() && Candidate->GetNetMode() != NM_Client
+				&& UWorld::RemovePIEPrefix(Candidate->GetMapName()) == MapName)
+			{
+				return Candidate;
+			}
+		}
+		return nullptr;
+	}
+
+	void RunReplay(const TArray<FString>& /*Args*/, UWorld* InWorld)
+	{
+		UWorld* AuthWorld = FindAuthorityWorld(InWorld);
+		ATN_BeachRaceGenerator* Generator = AuthWorld ? ATN_BeachRaceGenerator::Find(AuthWorld) : nullptr;
+		if (!Generator)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Playa] TN.Beach.Egg: sin playa de la carrera con autoridad (escríbelo en la ventana del anfitrión, en LVL_BeachRace)."));
+			return;
+		}
+		Generator->ReplayStartEggs();
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs ReplayCommand(
+		TEXT("TN.Beach.Egg"),
+		TEXT("Carrera: cierra otra vez los huevos con las tortugas dentro y repite la salida (se rompen, 1 s en el huevo y salen lanzadas), sin cambiar de ronda. En el anfitrión."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunReplay),
+		ECVF_Cheat);
 }
