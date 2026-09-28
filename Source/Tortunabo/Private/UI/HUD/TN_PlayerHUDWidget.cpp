@@ -81,19 +81,33 @@ void UTN_PlayerHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 		}
 	}
 
-	// ── Inventario: re-cachear si el pawn propio cambió (travel, possession). ──
-	if (!CachedInventory.IsValid())
+	// ── Inventario: como la estamina, el del ViewTarget (de espectador, la tortuga seguida; Docs/Fantasma_Espectador.md)
+	// y, si no lleva, el del pawn propio (que cambia tras un viaje o una posesión). ──
 	{
-		if (const APawn* Pawn = GetOwningPlayerPawn())
+		UTN_InventoryComponent* DesiredInventory = nullptr;
+		if (const APlayerController* PC = GetOwningPlayer())
 		{
-			const bool bHadInventory = CachedInventory.IsValid();
-			CachedInventory = Pawn->FindComponentByClass<UTN_InventoryComponent>();
-			if (!bHadInventory && CachedInventory.IsValid())
+			if (const APawn* ViewPawn = Cast<APawn>(PC->GetViewTarget()))
 			{
-				LastEquippedId = NAME_None;
-				LastStoredId   = NAME_None;
-				UE_LOG(LogTortunabo, Log, TEXT("[PlayerHUD] Inventario re-encontrado tras travel — forzando refresh."));
+				DesiredInventory = ViewPawn->FindComponentByClass<UTN_InventoryComponent>();
 			}
+		}
+		if (!DesiredInventory)
+		{
+			if (const APawn* Pawn = GetOwningPlayerPawn())
+			{
+				DesiredInventory = Pawn->FindComponentByClass<UTN_InventoryComponent>();
+			}
+		}
+		if (DesiredInventory != CachedInventory.Get())
+		{
+			CachedInventory = DesiredInventory;
+			LastEquippedId = NAME_None;
+			LastStoredId   = NAME_None;
+			// Otra tortuga (o ninguna): se repinta ya, aunque las dos no lleven nada.
+			RefreshInventoryWidgets();
+			UE_LOG(LogTortunabo, Verbose, TEXT("[PlayerHUD] Inventory source → %s"),
+				*GetNameSafe(DesiredInventory ? DesiredInventory->GetOwner() : nullptr));
 		}
 	}
 

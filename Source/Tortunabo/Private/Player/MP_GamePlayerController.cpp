@@ -27,6 +27,8 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_MatchFlowTypes.h"
 #include "Player/TortugaCharacter.h"
+#include "Player/TN_Ghost.h"
+#include "TN_GhostInternal.h"
 #include "Game/TN_ProcMapGameMode.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/GameStateBase.h"
@@ -168,6 +170,9 @@ void AMP_GamePlayerController::ServerRequestReturnToMenu_Implementation()
 void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+
+	// Vuelve a tener tortuga: su fantasma espectador se desvanece (Docs/Fantasma_Espectador.md).
+	TNGhostInternal::OnPossess(this, InPawn);
 
 	ApplyGameplayInputMode();
 
@@ -326,6 +331,9 @@ void AMP_GamePlayerController::EnterSpectateMode()
 		ApplyGameplayInputMode();
 	}
 
+	// Fantasma espectador (Docs/Fantasma_Espectador.md): el servidor crea el de este jugador y apunta la tortuga que deja.
+	TNGhostInternal::OnEnterSpectate(this);
+
 	// ── Cambiar estado en el servidor ─────────────────────────────────────────
 	ChangeState(NAME_Spectating);
 	StartSpectatingOnly();
@@ -359,10 +367,10 @@ void AMP_GamePlayerController::SpectateByDirection(int32 Direction)
 		return;
 	}
 
-	// Solo permitir espectear si el jugador local terminó, murió o fue eliminado.
+	// Solo permitir espectear si el jugador local terminó, murió o fue eliminado (o es un fantasma, en cualquier modo).
 	// Evita que la rueda del ratón cambie la cámara mientras se está jugando.
 	const ATN_CoopPlayerState* LocalPS = GetPlayerState<ATN_CoopPlayerState>();
-	if (!LocalPS || (LocalPS->IsAliveAndPlaying() && !LocalPS->bHasFinishedRun))
+	if (!LocalPS || (LocalPS->IsAliveAndPlaying() && !LocalPS->bHasFinishedRun && !TNGhost::IsGhost(this)))
 	{
 		return;
 	}

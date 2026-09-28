@@ -2,6 +2,7 @@
 #include "TN_HUDStyle.h"
 #include "TN_HUDArt.h"
 #include "TN_HUDFaces.h"
+#include "TN_HUDGhostFace.h"
 #include "Audio/TN_ScoreShellSynthComponent.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
@@ -30,6 +31,7 @@
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
+#include "Player/TN_SpectatorGhost.h"
 #include "UI/HUD/TN_HoldRingWidget.h"
 #include "World/TN_InteractableBase.h"
 #include "World/TN_ScoreShells.h"
@@ -71,6 +73,9 @@ namespace TNRunHUDDetail
 
 	/** Duración de un bocadillo de chat (s). */
 	constexpr float BubbleLife = 4.5f;
+
+	/** Cara de fantasma (Docs/Fantasma_Espectador.md) en las caras mostradas: fuera de los valores de ETNTurtleFace. */
+	constexpr uint8 GhostFaceShown = 0xFE;
 
 	const FLinearColor NavyText = TNHUDArt::Ink;
 	/** Color de cada compañero: su caparazón en la pista y el aro de su cara en la tripulación. */
@@ -622,20 +627,33 @@ void UTN_RunHUDWidget::TickBadge(float DeltaTime)
 	}
 	if (bTired) { ExhaustedRoot->SetRenderScale(FVector2D(1.f + 0.07f * FMath::Abs(FMath::Sin(Time * 7.f)))); }
 
-	const APlayerController* PC = GetOwningPlayer();
-	const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
-	const APlayerState* PS = PC ? PC->PlayerState.Get() : nullptr;
+	// La tortuga cuya interfaz se enseña: la propia o, de fantasma espectador, la que se sigue (Docs/Fantasma_Espectador.md).
+	APawn* SubjectPawn = nullptr;
+	APlayerState* SubjectState = nullptr;
+	TNGhost::GetHUDSubject(GetOwningPlayer(), SubjectPawn, SubjectState);
+	const APawn* Pawn = SubjectPawn;
+	const APlayerState* PS = SubjectState;
 	if (NameText)
 	{
 		const FString Shown = PS && !PS->GetPlayerName().IsEmpty() ? PS->GetPlayerName() : FString(TEXT("Tortuga"));
 		if (!NameText->GetText().ToString().Equals(Shown)) { NameText->SetText(FText::FromString(Shown)); }
 	}
 
-	// Cara según cómo va la tortuga.
+	// Cara según cómo va la tortuga (un fantasma que aún no sigue a nadie, con su cara de fantasma).
 	const ETNTurtleFace Prev = static_cast<ETNTurtleFace>(ShownFace);
 	ETNTurtleFace Face = FaceFor(PS, Pawn, ShownEnergy, bTired, Prev);
 	if (CVarHUDFace.GetValueOnGameThread() >= 0) { Face = static_cast<ETNTurtleFace>(FMath::Clamp(CVarHUDFace.GetValueOnGameThread(), 0, static_cast<int32>(ETNTurtleFace::Win))); }
-	if (Face != Prev)
+	if (!Pawn && TNGhost::IsGhostPlayer(PS))
+	{
+		if (ShownFace != GhostFaceShown)
+		{
+			ShownFace = GhostFaceShown;
+			SetImageTexture(FaceImage, TNHUDGhostFace::Texture());
+			SetImageTexture(MiniFace, TNHUDGhostFace::Texture());
+			FacePop = 1.f;
+		}
+	}
+	else if (Face != Prev)
 	{
 		ShownFace = static_cast<uint8>(Face);
 		SetImageTexture(FaceImage, TNHUDFaces::TurtleFace(Face));
@@ -723,14 +741,16 @@ void UTN_RunHUDWidget::TickTrack(float DeltaTime)
 	const float Usable = (TrackTo - TrackFrom) * TrackW;
 	auto ToX = [&](float Progress) { return TrackFrom * TrackW + Usable * FMath::Clamp(Progress / Length, 0.f, 1.f); };
 
-	// Tu cara avanza del nido al mar.
-	const APlayerController* PC = GetOwningPlayer();
-	const APawn* Own = PC ? PC->GetPawn() : nullptr;
+	// Tu cara (o, de fantasma, la de la tortuga que sigues) avanza del nido al mar.
+	APawn* SubjectPawn = nullptr;
+	APlayerState* SubjectState = nullptr;
+	TNGhost::GetHUDSubject(GetOwningPlayer(), SubjectPawn, SubjectState);
+	const APawn* Own = SubjectPawn;
 	if (Own) { ShownProgress = FMath::FInterpTo(ShownProgress, Gen->GetPathProgress(Own->GetActorLocation()), DeltaTime, 4.f); }
 	if (MiniFace) { MiniFace->SetRenderTranslation(FVector2D(ToX(ShownProgress) - 27.f, -14.f + 2.f * FMath::Sin(Time * 5.f))); }
 
 	// Compañeros: caparazones de su color (el mismo orden y color que en la tripulación de la izquierda).
-	const TArray<const APlayerState*> Crew = CrewOf(World, PC ? PC->PlayerState.Get() : nullptr);
+	const TArray<const APlayerState*> Crew = CrewOf(World, SubjectState);
 	for (int32 m = 0; m < MateMarkers.Num(); ++m)
 	{
 		const APawn* P = Crew.IsValidIndex(m) ? Crew[m]->GetPawn() : nullptr;
@@ -800,8 +820,11 @@ void UTN_RunHUDWidget::TickScore(float DeltaTime)
 
 void UTN_RunHUDWidget::BindShellEvents()
 {
-	const APlayerController* PC = GetOwningPlayer();
-	ATN_CoopPlayerState* PS = PC ? PC->GetPlayerState<ATN_CoopPlayerState>() : nullptr;
+	// Los puntos de la tortuga cuya interfaz se enseña (la propia o, de fantasma, la seguida).
+	APawn* SubjectPawn = nullptr;
+	APlayerState* SubjectState = nullptr;
+	TNGhost::GetHUDSubject(GetOwningPlayer(), SubjectPawn, SubjectState);
+	ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(SubjectState);
 	if (PS == ShellEventsPS.Get()) { return; }
 	UnbindShellEvents();
 	ShellEventsPS = PS;
@@ -824,7 +847,10 @@ void UTN_RunHUDWidget::UnbindShellEvents()
 FVector2D UTN_RunHUDWidget::TurtleScreenPoint() const
 {
 	APlayerController* PC = GetOwningPlayer();
-	const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	APawn* SubjectPawn = nullptr;
+	APlayerState* SubjectState = nullptr;
+	TNGhost::GetHUDSubject(PC, SubjectPawn, SubjectState);
+	const APawn* Pawn = SubjectPawn;
 	FVector2D OnScreen = FVector2D::ZeroVector;
 	if (Pawn && UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, Pawn->GetActorLocation() + FVector(0.f, 0.f, 40.f), OnScreen, true))
 	{
@@ -1055,8 +1081,11 @@ int32 UTN_RunHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& All
 void UTN_RunHUDWidget::TickAlerts(float DeltaTime)
 {
 	using namespace TNRunHUDDetail;
-	const APlayerController* PC = GetOwningPlayer();
-	const ATN_CoopPlayerState* PS = PC ? PC->GetPlayerState<ATN_CoopPlayerState>() : nullptr;
+	// Avisos de la tortuga cuya interfaz se enseña (la propia o, de fantasma, la seguida).
+	APawn* SubjectPawn = nullptr;
+	APlayerState* SubjectState = nullptr;
+	TNGhost::GetHUDSubject(GetOwningPlayer(), SubjectPawn, SubjectState);
+	const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(SubjectState);
 
 	// Tormenta: cuenta atrás mientras se está dentro.
 	const bool bInStorm = PS && PS->DeathZoneTimeRemaining >= 0.f && PS->bIsAlive;
@@ -1085,7 +1114,7 @@ void UTN_RunHUDWidget::TickAlerts(float DeltaTime)
 	}
 
 	// Dando la vuelta a un compañero.
-	const ATortugaCharacter* Turtle = PC ? Cast<ATortugaCharacter>(PC->GetPawn()) : nullptr;
+	const ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(SubjectPawn);
 	const bool bReviving = Turtle && Turtle->bIsReviving;
 	if (ReviveBanner)
 	{
@@ -1319,7 +1348,11 @@ void UTN_RunFlowHUDWidget::TickCrew(float DeltaTime)
 {
 	using namespace TNRunHUDDetail;
 	const APlayerController* PC = GetOwningPlayer();
-	TArray<const APlayerState*> Crew = CrewOf(GetWorld(), PC ? PC->PlayerState.Get() : nullptr);
+	// Todos menos la tortuga del distintivo: tú o, de fantasma, la que sigues (y entonces sales tú, con tu cara de fantasma).
+	APawn* SubjectPawn = nullptr;
+	APlayerState* SubjectState = nullptr;
+	TNGhost::GetHUDSubject(PC, SubjectPawn, SubjectState);
+	TArray<const APlayerState*> Crew = CrewOf(GetWorld(), SubjectState);
 	const int32 Preview = FMath::Min(CVarHUDCrew.GetValueOnGameThread(), CrewRows.Num());
 	if (Preview > 0 && PC && PC->PlayerState)
 	{
@@ -1336,12 +1369,16 @@ void UTN_RunFlowHUDWidget::TickCrew(float DeltaTime)
 		float Energy = 1.f;
 		bool bExhausted = false;
 		EnergyOf(Pawn, Energy, bExhausted);
+		// Un fantasma sale con su cara de fantasma, flotando.
+		const bool bGhostRow = TNGhost::IsGhostPlayer(PS);
 		const ETNTurtleFace Face = FaceFor(PS, Pawn, Energy, bExhausted, static_cast<ETNTurtleFace>(CrewFaceShown[i]));
-		if (static_cast<uint8>(Face) != CrewFaceShown[i])
+		const uint8 WantedFace = bGhostRow ? GhostFaceShown : static_cast<uint8>(Face);
+		if (WantedFace != CrewFaceShown[i])
 		{
-			CrewFaceShown[i] = static_cast<uint8>(Face);
-			SetImageTexture(CrewFaces[i], TNHUDFaces::TurtleFace(Face));
+			CrewFaceShown[i] = WantedFace;
+			SetImageTexture(CrewFaces[i], bGhostRow ? TNHUDGhostFace::Texture() : TNHUDFaces::TurtleFace(Face));
 		}
+		CrewFaces[i]->SetRenderTranslation(FVector2D(0.0, bGhostRow ? -4.0 * FMath::Sin(Time * 2.4f + i) : 0.0));
 		const FString PlayerName = PS->GetPlayerName();
 		if (!CrewNames[i]->GetText().ToString().Equals(PlayerName)) { CrewNames[i]->SetText(FText::FromString(PlayerName)); }
 		// Voz: el bocadillo con barras mientras llega su audio.
@@ -1388,8 +1425,10 @@ void UTN_RunFlowHUDWidget::OnQuickChatEntryReceived_Implementation(int32 Sequenc
 	{
 		if (Entry.Sequence == Sequence) { SenderId = Entry.SenderPlayerId; }
 	}
-	const APlayerController* PC = GetOwningPlayer();
-	const APlayerState* Own = PC ? PC->PlayerState.Get() : nullptr;
+	// Junto a la cara de quien la dice: la del distintivo (tú o, de fantasma, la tortuga que sigues) o su fila.
+	APawn* SubjectPawn = nullptr;
+	APlayerState* Own = nullptr;
+	TNGhost::GetHUDSubject(GetOwningPlayer(), SubjectPawn, Own);
 	int32 Row = Bubbles.Num() - 1;
 	if (SenderId != INDEX_NONE && !(Own && Own->GetPlayerId() == SenderId))
 	{
