@@ -21,9 +21,12 @@
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/TN_CarryComponent.h"
 #include "Player/TN_ShellBody.h"
+#include "Player/TN_ShellComponent.h"
 #include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TortugaCharacter.h"
+#include "World/Beach/TN_BeachSandWorm.h"
 
 namespace TNBeachEnemyDebug
 {
@@ -60,6 +63,14 @@ namespace TNBeachEnemyShared
 
 	/** Velocidad mínima hacia abajo que se pasa al derribo: el empujón de verdad va al ragdoll (ver ServerKnockDown). */
 	constexpr float KnockSettle = 60.f;
+
+	/**
+	 * Seguro de la sujeción: una tortuga soltada se vigila estos segundos; una sujeción que dura más de MaxHoldSeconds se
+	 * suelta sola y esa tortuga no se puede volver a sujetar en HoldBlockSeconds.
+	 */
+	constexpr float ReleaseWatchSeconds = 3.f;
+	constexpr double MaxHoldSeconds = 6.0;
+	constexpr double HoldBlockSeconds = 2.0;
 
 	/** Revisión del nivel de detalle (s) y cada cuánto se actualiza lejos: a la vista y fuera de ella (s). */
 	constexpr float LodPeriod = 0.5f;
@@ -1065,11 +1076,27 @@ void ATN_BeachEnemy::BeginHoldTurtle(ATortugaCharacter* Turtle)
 	{
 		return;
 	}
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	// Recién soltada por el seguro de tiempo: un momento sin volver a sujetarla (que caiga de verdad).
+	if (HoldBlocked.Get() == Turtle && Now < HoldBlockedUntil)
+	{
+		return;
+	}
 	if (HeldTurtle.IsValid())
 	{
 		EndHoldTurtle();
 	}
+	// Si se vigilaba porque la acababa de soltar, ya no: vuelve a ser suya.
+	for (int32 i = ReleaseWatches.Num() - 1; i >= 0; --i)
+	{
+		if (!ReleaseWatches[i].Turtle.IsValid() || ReleaseWatches[i].Turtle.Get() == Turtle)
+		{
+			ReleaseWatches.RemoveAtSwap(i);
+		}
+	}
 	HeldTurtle = Turtle;
+	HoldStartTime = Now;
 	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
 	{
 		// Sin movimiento propio mientras cuelga: la coloca el enemigo en cada máquina con las mismas cuentas.
@@ -1105,28 +1132,109 @@ void ATN_BeachEnemy::EndHoldTurtle()
 		if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
 		{
 			PrimaryActorTick.RemovePrerequisite(Move, Move->PrimaryComponentTick);
-			if (HasAuthority())
-			{
-				Move->bIgnoreClientMovementErrorChecksAndCorrection = false;
-			}
-			if (bHeldSmoothingSaved)
-			{
-				Move->NetworkSmoothingMode = static_cast<ENetworkSmoothingMode>(HeldSavedSmoothing);
-			}
-			// Vuelve a caer por su cuenta (con la ronda parada la congela el GameMode).
-			if (Move->MovementMode == MOVE_None && IsRaceLive(this) && !Turtle->IsInShell() && !Turtle->IsKnockedDown() && !Turtle->IsDead())
-			{
-				Move->SetMovementMode(MOVE_Falling);
-			}
 		}
-		if (UTN_TurtleAnimInstance* Anim = Turtle->GetMesh() ? Cast<UTN_TurtleAnimInstance>(Turtle->GetMesh()->GetAnimInstance()) : nullptr)
+		Turtle->SetActorRotation(FRotator(0.f, Turtle->GetActorRotation().Yaw, 0.f));
+		// Suelta antes de restaurar: si otro enemigo (o un gusano) la tiene ya, lo suyo manda.
+		SetTurtleHeld(Turtle, false);
+		// Lo que se restaura ya y lo que se vigila 3 s: otro sistema puede tocarla a la vez (la bola del mareo que aún no
+		// ha llegado a esta máquina, una patada de la tormenta, un derribo...) y no puede quedarse colgada en el aire.
+		FReleaseWatch& Watch = ReleaseWatches.AddDefaulted_GetRef();
+		Watch.Turtle = Turtle;
+		Watch.Left = TNBeachEnemyShared::ReleaseWatchSeconds;
+		Watch.Smoothing = HeldSavedSmoothing;
+		Watch.bSmoothingSaved = bHeldSmoothingSaved;
+		RestoreReleasedTurtle(Watch, false);
+	}
+	bHeldSmoothingSaved = false;
+}
+
+void ATN_BeachEnemy::RestoreReleasedTurtle(FReleaseWatch& Watch, bool bFinal)
+{
+	ATortugaCharacter* Turtle = Watch.Turtle.Get();
+	if (!Turtle || Turtle->IsActorBeingDestroyed())
+	{
+		Watch.Left = 0.f;
+		return;
+	}
+	// Otro la sujeta ya (otro enemigo, un gusano): es suya, aquí no se toca nada.
+	if (IsTurtleHeld(Turtle) || ATN_BeachSandWorm::IsBeingEaten(Turtle))
+	{
+		return;
+	}
+	UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
+	if (!Move)
+	{
+		return;
+	}
+	// Servidor: el dueño vuelve a tener correcciones sí o sí (si no, su máquina manda sobre dónde está y puede quedarse
+	// flotando donde la dejó el pico sin que nadie la corrija).
+	if (Turtle->HasAuthority())
+	{
+		Move->bIgnoreClientMovementErrorChecksAndCorrection = false;
+	}
+	// Fuera la pataleta (la de la sujeción; si otra cosa ha puesto otra celebración, se respeta).
+	if (UTN_TurtleAnimInstance* Anim = Turtle->GetMesh() ? Cast<UTN_TurtleAnimInstance>(Turtle->GetMesh()->GetAnimInstance()) : nullptr)
+	{
+		if (Anim->GetCelebration() == ETNTurtleCelebration::Tantrum)
 		{
 			Anim->SetCelebration(ETNTurtleCelebration::None);
 		}
-		Turtle->SetActorRotation(FRotator(0.f, Turtle->GetActorRotation().Yaw, 0.f));
-		SetTurtleHeld(Turtle, false);
 	}
-	bHeldSmoothingSaved = false;
+	// Ya ha llegado a la meta (el GameMode la tiene en el agua): no se toca su movimiento.
+	if (const ATN_CoopPlayerState* Coop = Turtle->GetPlayerState<ATN_CoopPlayerState>())
+	{
+		if (Coop->bHasFinishedRun)
+		{
+			Watch.Left = 0.f;
+			return;
+		}
+	}
+	// ¿La mueve otro sistema? La bola del caparazón (sigue a su caja), el ragdoll del derribo (se levanta sola), otra
+	// tortuga que la lleva en brazos o la muerte: entonces, suyo. Un derribo sin ragdoll no la mueve: que caiga.
+	const UTN_ShellComponent* Shell = Turtle->GetShellComponent();
+	const USkeletalMeshComponent* Mesh = Turtle->GetMesh();
+	const UTN_CarryComponent* Carry = Turtle->GetCarryComponent();
+	const bool bOtherDriver = (Shell && Shell->HasLocalBody()) || (Mesh && Mesh->IsSimulatingPhysics()) || (Carry && Carry->IsBeingCarried())
+		|| Turtle->IsDead();
+	if (!bOtherDriver)
+	{
+		// Nadie la mueve: que caiga por su cuenta (también en bola sin caja en esta máquina o con la ronda parada: mejor en
+		// el suelo que colgada del aire).
+		if (!Move->IsComponentTickEnabled())
+		{
+			Move->SetComponentTickEnabled(true);
+		}
+		if (Move->MovementMode == MOVE_None)
+		{
+			Move->SetMovementMode(MOVE_Falling);
+		}
+		// El suavizado de red de los demás clientes, el que tenía (la bola o el ragdoll lo guardan apagado si llegan antes).
+		if (Watch.bSmoothingSaved)
+		{
+			Move->NetworkSmoothingMode = static_cast<ENetworkSmoothingMode>(Watch.Smoothing);
+			Watch.bSmoothingSaved = false;
+		}
+	}
+	else if (bFinal && Watch.bSmoothingSaved && !(Shell && Shell->HasLocalBody()) && !(Mesh && Mesh->IsSimulatingPhysics()))
+	{
+		Move->NetworkSmoothingMode = static_cast<ENetworkSmoothingMode>(Watch.Smoothing);
+		Watch.bSmoothingSaved = false;
+	}
+}
+
+void ATN_BeachEnemy::TickReleaseWatches(float DeltaSeconds)
+{
+	for (int32 i = ReleaseWatches.Num() - 1; i >= 0; --i)
+	{
+		FReleaseWatch& Watch = ReleaseWatches[i];
+		Watch.Left -= DeltaSeconds;
+		const bool bFinal = Watch.Left <= 0.f;
+		RestoreReleasedTurtle(Watch, bFinal);
+		if (bFinal || Watch.Left <= 0.f)
+		{
+			ReleaseWatches.RemoveAtSwap(i);
+		}
+	}
 }
 
 void ATN_BeachEnemy::PlaceHeldTurtle(const FVector& Grip, float Yaw)
@@ -1135,6 +1243,22 @@ void ATN_BeachEnemy::PlaceHeldTurtle(const FVector& Grip, float Yaw)
 	if (!Turtle)
 	{
 		return;
+	}
+	// Seguro de tiempo: ninguna sujeción de la playa dura tanto; si pasa, algo ha fallado y se suelta ya.
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	if (Now - HoldStartTime > TNBeachEnemyShared::MaxHoldSeconds)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] %s llevaba %.1f s sujetando a %s: se suelta por seguridad."), *GetName(), Now - HoldStartTime, *GetNameSafe(Turtle));
+		HoldBlocked = Turtle;
+		HoldBlockedUntil = Now + TNBeachEnemyShared::HoldBlockSeconds;
+		EndHoldTurtle();
+		return;
+	}
+	// Otro sistema le ha quitado la marca de llevada (se comparte): mientras la sujeta, sigue marcada.
+	if (!IsTurtleHeld(Turtle))
+	{
+		SetTurtleHeld(Turtle, true);
 	}
 	// Una corrección de red que llegue tarde podría devolverle el movimiento: mientras cuelga, ninguno.
 	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
@@ -1237,6 +1361,10 @@ void ATN_BeachEnemy::Tick(float DeltaSeconds)
 	if (!RagdollPushes.IsEmpty())
 	{
 		RagdollPushes.Tick(DeltaSeconds);
+	}
+	if (ReleaseWatches.Num() > 0)
+	{
+		TickReleaseWatches(DeltaSeconds);
 	}
 	if (HasAuthority())
 	{

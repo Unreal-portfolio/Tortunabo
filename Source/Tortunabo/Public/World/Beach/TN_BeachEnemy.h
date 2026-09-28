@@ -337,11 +337,18 @@ protected:
 	/**
 	 * Todas las máquinas: sujeta a la tortuga: movimiento apagado, sin suavizado de red en los demás clientes, sin
 	 * correcciones al dueño en el servidor, pataleta en el aire y marcada como llevada (nadie más le da). El enemigo la
-	 * coloca con PlaceHeldTurtle en cada fotograma, después de su movimiento. Una a la vez.
+	 * coloca con PlaceHeldTurtle en cada fotograma, después de su movimiento. Una a la vez. Seguro: si una sujeción dura
+	 * más de 6 s (algo ha fallado), se suelta sola y esa tortuga no se puede volver a sujetar en 2 s.
 	 */
 	void BeginHoldTurtle(ATortugaCharacter* Turtle);
 
-	/** Todas las máquinas: la suelta (con la carrera en marcha vuelve a caer por su cuenta). */
+	/**
+	 * Todas las máquinas: la suelta. A prueba de todo: el servidor le devuelve las correcciones al dueño, se quita la
+	 * pataleta y, si nada más la mueve (ni la bola del caparazón, ni el ragdoll del derribo, ni otra que la lleve, ni otro
+	 * enemigo o un gusano que la sujete), vuelve a caer por su cuenta (MOVE_Falling con el movimiento encendido). Y durante
+	 * 3 s lo vuelve a comprobar en cada fotograma, por si otro sistema la deja a medias (la bola que no llega a esta máquina,
+	 * una patada de la tormenta, un mareo...); al final devuelve el suavizado de red a los demás clientes.
+	 */
 	void EndHoldTurtle();
 
 	/** La tortuga que sujeta en esta máquina (o null). */
@@ -437,10 +444,29 @@ private:
 	float AvoidSide = 0.f;
 	float AvoidTimer = 0.f;
 
-	/** Tortuga sujeta en esta máquina y el suavizado de red que tenía. */
+	/** Tortuga sujeta en esta máquina, el suavizado de red que tenía y desde cuándo (reloj del mundo). */
 	TWeakObjectPtr<ATortugaCharacter> HeldTurtle;
 	uint8 HeldSavedSmoothing = 0;
 	bool bHeldSmoothingSaved = false;
+	double HoldStartTime = 0.0;
+
+	/** Tortuga que no se puede volver a sujetar hasta HoldBlockedUntil (tras soltarla por el seguro de tiempo). */
+	TWeakObjectPtr<ATortugaCharacter> HoldBlocked;
+	double HoldBlockedUntil = 0.0;
+
+	/** Una tortuga recién soltada que se vigila unos segundos (EndHoldTurtle). */
+	struct FReleaseWatch
+	{
+		TWeakObjectPtr<ATortugaCharacter> Turtle;
+		float Left = 0.f;
+		uint8 Smoothing = 0;
+		bool bSmoothingSaved = false;
+	};
+	TArray<FReleaseWatch> ReleaseWatches;
+
+	/** Devuelve a la soltada lo que la sujeción le quitó, si nada más la está moviendo (bFinal: la última vez). */
+	void RestoreReleasedTurtle(FReleaseWatch& Watch, bool bFinal);
+	void TickReleaseWatches(float DeltaSeconds);
 
 	void UpdateShown(float DeltaSeconds);
 	void UpdateLod();
