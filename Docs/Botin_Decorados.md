@@ -56,6 +56,33 @@ En lo alto de la torre del homenaje del lobby hay un cofre que se rebusca igual 
   `LidThump` (golpe grave con la altura que cae, la caja que resuena y un tintineo de herrajes).
 - Dónde está y quién lo crea: ver `Docs/Lobby_Castillo.md`.
 
+## Los cofres de la playa (`ATN_BeachChest`, modo carrera)
+
+En la playa del modo carrera hay cofres como el del lobby, en sitios especiales y en la cima de las fortalezas de
+arena (los pone el reparto con el elemento `TreasureChest`). Se abren igual que un rebuscable (mantener E, aro, «¡puf!»
+y saltito del objeto; `ATN_BeachChestSpot` hereda de `ATN_BeachSearchSpot`), pero son otra cosa: se tarda en abrir y
+dan de lo mejor para avanzar. Detalle y red en `Docs/Modo_Carrera.md`, «Cofres».
+
+| | Rebuscables de la playa | Cofre del lobby | Cofre de la playa |
+|---|---|---|---|
+| Duración | 1,3 s | 5 s | **5,5 s**, siempre (no hace caso de `tn.Search.Seconds`) |
+| Suerte | 70 % | siempre | **siempre** (no hace caso de `tn.Search.Luck`) |
+| Veces | una para todas | las que se quiera, con respiro | **una por ronda** para todas |
+| Qué da | un objeto (pesos de la carrera) | un objeto al azar | **dos objetos** con los pesos de la carrera **sesgados a lo mejor** y **seis conchas de puntos** (de 25 a 100: 200 o 250 puntos) |
+| Dónde cae | a un metro largo hacia la tortuga | delante, en su tarima | un objeto hacia la tortuga; el otro y las conchas **saltan de dentro y caen en corona** alrededor |
+| Después | sin aviso ni chispas | se cierra con un «¡clonc!» | **queda abierto y vacío, con un brillo dorado apagado** |
+| Aviso | «Mantén para rebuscar» | «Mantén para rebuscar en el cofre» | «Mantén para abrir el cofre» |
+
+- **Aspecto**: el cofre del lobby 2,2 veces más grande, de madera blanqueada con herrajes oxidados, percebes, algas, una
+  estrella de mar pegada y arena al pie; dentro, además de monedas y gemas, perlas y una vieira. Por abrir, una columna
+  de luz dorada que se ve de lejos y la luz de dentro que late por la rendija de la tapa.
+- **La tapa**, como la del lobby: cruje y se entreabre a tirones mientras se abre (de 12° a 48°) y cae con un «¡clonc!»
+  si se suelta antes; al salir el premio salta hacia atrás con un chorro de chispas y **se queda abierta** (104°).
+- **Pesos** (`ATN_BeachChestSpot::ChestWeight`, por el uso del objeto): energía sin fin 3, barra llena 2,2, bola y
+  tinta 1,6, concha trampa 0,6; la cabezota y el tótem, nunca (en la carrera no sirven); un uso nuevo, el de la carrera.
+- Mientras una tortuga lo abre, a las demás no les sale el aviso (lo de siempre). Los premios que nadie coge se van con
+  la ronda.
+
 ## Brillo de lo que se coge (todos los modos)
 
 Todo lo que se puede coger lleva la misma marca, para que se entienda igual en el cooperativo, la carrera y el lobby:
@@ -217,6 +244,20 @@ alguien rebusca, hay saltito o quedan partículas; si no, su tick va cada 0,3 s.
    sin recogerlos: el primero desaparece.
 6. Con dos jugadores: el otro ve la tapa, la luz y el saltito a la vez, y no le sale el aviso mientras el primero
    rebusca.
+
+### Los cofres de la playa
+
+1. `open LVL_BeachRace?BeachSeed=42` (1 jugador y luego anfitrión + cliente). En el anfitrión, `TN.Beach.Chest`: sale
+   un cofre delante, con el frente hacia la tortuga, la columna de luz dorada y la luz que late por la rendija.
+2. Mantener E: el aro tarda 5,5 s en llenarse; la tapa cruje y se entreabre a tirones, con luz dentro y monedas y
+   chispas hacia la tortuga. Soltar a los 3 s: la tapa cae con un «¡clonc!» y no sale nada. `tn.Search.Seconds 0.3`
+   no lo acorta.
+3. Aguantar los 5,5 s: «¡puf!», la tapa salta y se queda abierta; un objeto cae delante, hacia la tortuga, y otro
+   objeto y seis conchas saltan de dentro y caen alrededor. El cofre queda vacío, con la luz apagada y sin columna; ya no
+   sale el aviso. El registro del servidor dice qué ha dado (`[Playa] cofre ... abierto por ...`).
+4. Con dos jugadores: mientras una lo abre, a la otra no le sale el aviso; las dos ven la tapa, los saltos y los premios
+   en el mismo sitio, y las conchas suman a quien las coge.
+5. `TN.Beach.Place clear` (o la ronda siguiente) quita el cofre y lo que nadie cogió.
 
 ## Límites conocidos
 
