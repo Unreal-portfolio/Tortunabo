@@ -198,11 +198,12 @@ Cada pestaña (menos la de gráficos) tiene «Restablecer». En gráficos, «Cal
 - **Escala de la interfaz**: cambiaría toda la interfaz de Slate (en el editor, la del editor) y podría sacar el menú
   de 1280×720.
 
-## Aviso encontrado
+## Retroceso ya no saca de la partida
 
-`IA_Quit` está en `IMC_Player` (probablemente en Retroceso) y `BP_GamePlayerController` lo usa como `ReturnToMenuAction`:
-pulsarla jugando vuelve al menú sin preguntar y, en el anfitrión, cierra la partida para todos. Con el menú de pausa
-(que pide confirmación) quizá convenga quitarla o moverla. Mientras el menú está abierto, Retroceso solo va hacia atrás.
+`IA_Quit` estaba en `IMC_Player` con Retroceso y `BP_GamePlayerController` lo usa como `ReturnToMenuAction`: pulsarla
+jugando volvía al menú sin preguntar y, en el anfitrión, cerraba la partida para todos. Se quitó esa asignación de
+`IMC_Player` (28-09-2026): salir va ahora por el menú de pausa, que pide confirmación. Con el menú abierto, Retroceso
+solo va hacia atrás.
 
 ## Pruebas
 
