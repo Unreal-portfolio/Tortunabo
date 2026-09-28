@@ -10,7 +10,7 @@
  * Playa del modo carrera (ATN_BeachRaceGenerator, Docs/Modo_Carrera.md), lógica pura: el terreno fijo (perfil hacia el
  * mar, relieve con corredores, dunas con cresta, pozas de agua y trincheras, bancos de la selva, repisa y acantilado de
  * roca, fondo del mar), la salida, las zonas de meta y de zambullida, y el reparto de cada ronda con su semilla y su
- * dificultad (unos 5000 elementos: castillos con salas, fortalezas, filas que obligan a zigzaguear, pasos de quads, zonas
+ * dificultad (unos 3100 elementos en 800 m: castillos con salas, fortalezas, filas que obligan a zigzaguear, pasos de quads, zonas
  * de gaviotas, puestos militares, rincones con cofre, lanzadores, los enemigos de sitio fijo —pulpos en las pozas,
  * ermitaños en calles cuesta abajo, pulgas en claros de arena y tanques de juguete junto a lo militar—, cofres, relleno
  * por bandas, los puntos interesantes para el botín y el asiento de cada elemento en la arena). Sin mundo ni actores: lo
@@ -39,11 +39,18 @@ namespace TNBeachLayout
 
 	constexpr double Length = TNBeach::CourseLength;
 	constexpr double HalfWidth = TNBeach::CourseWidth * 0.5;
+	/**
+	 * Cuánto se ha acortado el recorrido respecto a los 1200 m con los que se afinaron las cuotas fijas de una ronda
+	 * (castillos, filas, puestos, calles de ermitaños, cofres...): 2/3 con 800 m (TNBeach::CourseLengthScale). El terreno
+	 * fijo se sitúa por fracciones del recorrido y el relleno por bandas de 50 m, así que ambos siguen solos; lo que se cuenta
+	 * «por ronda» se multiplica por LengthScale para conservar la densidad por metro cuadrado.
+	 */
+	constexpr double LengthScale = TNBeach::CourseLengthScale;
 	constexpr double WaterZ = 0.0;
 	/** Cota del borde del acantilado sobre el agua (la roca asoma RockRise más). */
 	constexpr double CliffTopZ = WaterZ + TNBeach::CliffHeight;
-	/** Desnivel de la arena de la salida al borde: 36 m en 1200 m, más al principio (siempre se ve el mar). */
-	constexpr double BeachDrop = 3600.0;
+	/** Desnivel de la arena de la salida al borde: el 3 % del recorrido (24 m en 800 m: la misma cuesta que los 36 m de 1200), más al principio (siempre se ve el mar). */
+	constexpr double BeachDrop = 0.03 * Length;
 	/** El borde del acantilado ondula ±2,5 m a lo ancho (siempre igual). */
 	constexpr double EdgeWobble = 250.0;
 	/** Repisa de roca: empieza enterrada 24 m antes del borde y asoma RockRise sobre la arena desde unos 16 m antes. */
@@ -106,9 +113,9 @@ namespace TNBeachLayout
 	constexpr double JumpArcHalfWidth = 500.0;
 	/**
 	 * Catapultas por ronda como poco (si no caben sueltas, pasan a serlo trampolines de delante de un obstáculo). Son de un
-	 * solo uso: hacen falta más que antes (eran 6).
+	 * solo uso: hacen falta más que antes (eran 6). 12 en 1200 m; 8 en 800 m.
 	 */
-	constexpr int32 MinCatapults = 12;
+	constexpr int32 MinCatapults = static_cast<int32>(12.0 * LengthScale + 0.5);
 	/**
 	 * Decorado pequeño (huella de menos de 6 m: basura, conchas, cocos, cubitos...): no cierra el paso. Se rodea o se pasa
 	 * entre las piezas (entre dos de ellas quedan SmallDecorPad entre huellas, ~1,5 m entre mallas: la tortuga es más
@@ -147,8 +154,8 @@ namespace TNBeachLayout
 	constexpr double SmallDecorShare = 0.8;
 	constexpr int32 MaxDecorPerBand = 500;
 	constexpr int32 MaxDecorAttemptsPerBand = 2000;
-	/** Cofres de sitio especial por ronda (sin los de los rincones), por las ayudas de la dificultad. */
-	constexpr double ChestsBase = 18.0;
+	/** Cofres de sitio especial por ronda (sin los de los rincones), por las ayudas de la dificultad: 18 en 1200 m, 12 en 800 m. */
+	constexpr double ChestsBase = 18.0 * LengthScale;
 
 	// ── Relieve fijo ──
 	/** Corredores: caminos naturales más bajos entre las dunas (dos que se separan y se juntan y un tercero en medio). */
@@ -425,17 +432,20 @@ namespace TNBeachLayout
 		// Cross: cruza la playa sobre el corredor Corridor con un collado en él. Divider: separa dos corredores a lo largo
 		// (el 0 separa 0 y 1, o 0 y el central; el 1, el central y 1). Flank: media luna entre el corredor de fuera y la
 		// selva, del lado con más sitio.
+		// Siete crestas (eran diez con 1200 m; ver Docs/Modo_Carrera.md): tres que cruzan, dos que separan corredores y dos
+		// medias lunas, cuatro con cornisa. Se quitan la del 12,5 % (pegada a la salida: el relieve aún no ha crecido), la
+		// media luna del 23,5 % y la que separa del 70,5 %; la media luna del final pasa del 89,5 % al 88,5 % (la roca
+		// empieza a apagar el relieve a 90 m del filo). Con las diez de antes y los tramos comprimidos a 2/3, las cornisas
+		// (bandas de 116 m sin sitio para un castillo con salas) y las pozas ocupaban tanto que no cabían los castillos con
+		// salas ni la fortaleza colosal (medido con el reparto de 24 rondas).
 		static const FSpec Specs[] = {
-			{ 0.125, EKind::Cross, 1, 300.0, 5200.0, true },
 			{ 0.205, EKind::Divider, 0, 380.0, 4200.0, false },
-			{ 0.235, EKind::Flank, 0, 330.0, 3400.0, true },
 			{ 0.365, EKind::Cross, 0, 420.0, 5600.0, true },
 			{ 0.64, EKind::Cross, 0, 400.0, 5000.0, true },
-			{ 0.705, EKind::Divider, 0, 420.0, 3800.0, false },
 			{ 0.77, EKind::Divider, 1, 420.0, 3600.0, false },
 			{ 0.715, EKind::Flank, 1, 380.0, 3600.0, true },
 			{ 0.835, EKind::Cross, 1, 380.0, 5000.0, true },
-			{ 0.895, EKind::Flank, 0, 260.0, 3000.0, false },
+			{ 0.885, EKind::Flank, 0, 260.0, 3000.0, false },
 		};
 		TNProcMap::FRng Rng(static_cast<uint64>(TerrainSeed) * 131ull + 11ull);
 		TArray<FRidge> Result;
@@ -730,15 +740,16 @@ namespace TNBeachLayout
 			bool bTide;
 		};
 		// Corridor >= 0: la poza corta ese corredor. -1: fuera de los corredores, del lado con más sitio (se rodea).
+		// Siete pozas (eran diez con 1200 m; ver Docs/Modo_Carrera.md): cuatro charcas y tres de marea, cuatro de ellas cortan
+		// un corredor. Se quitan las dos primeras (15,5 y 19 %: dejan libre el tramo de después de la salida, donde caben
+		// las fortalezas grandes) y la de marea que corta el corredor 0 del 80 % (las que más sitio quitaban a lo grande;
+		// ver las crestas).
 		static const FSpec Specs[] = {
-			{ 0.155, 0, 1100.0, 1800.0, false },
-			{ 0.19, -1, 800.0, 1000.0, false },
 			{ 0.335, 1, 1100.0, 1800.0, false },
 			{ 0.4, -1, 900.0, 700.0, false },
 			{ 0.605, 1, 1000.0, 1600.0, false },
 			{ 0.68, 2, 900.0, 1500.0, false },
 			{ 0.745, -1, 1400.0, 1100.0, true },
-			{ 0.8, 0, 1200.0, 2000.0, true },
 			{ 0.862, -1, 1000.0, 1300.0, true },
 			{ 0.9, 1, 1300.0, 2100.0, true },
 		};
@@ -2368,10 +2379,13 @@ namespace TNBeachLayout
 		for (const FVector2D& Lip : LipSamples()) { Mark(Lip, Lip, 250.0); }
 	}
 
-	/** Separación entre centros de zonas de gaviotas: 150 m hasta cinco zonas y algo menos con más (así caben las de Difícil). */
+	/**
+	 * Separación entre centros de zonas de gaviotas: 150 m hasta cinco zonas y algo menos con más en 1200 m (100 m hasta
+	 * tres y pico zonas en 800 m, por LengthScale; así caben las de Difícil).
+	 */
 	inline double GullZoneSpacing(int32 NumZones)
 	{
-		return 15000.0 * FMath::Min(1.0, FMath::Sqrt(5.0 / FMath::Max(1, NumZones)));
+		return 15000.0 * LengthScale * FMath::Min(1.0, FMath::Sqrt(5.0 * LengthScale / FMath::Max(1, NumZones)));
 	}
 
 	/**
@@ -2878,11 +2892,16 @@ namespace TNBeachLayout
 			return false;
 		}
 
-		/** Uno o dos castillos con salas más por las otras mitades (al menos uno), tras el principal y las fortalezas colosales. */
+		/**
+		 * Hasta dos castillos con salas más, tras el principal y las fortalezas colosales: uno entre el 12 y el 36 % y otro
+		 * entre el 62 y el 90 %. Con 1200 m salían siempre (uno al 60 % y, si no, el otro; a veces los dos): 2,1 castillos
+		 * con salas por ronda con el principal. Con 800 m cada uno sale con la probabilidad de antes por LengthScale (0,4 y
+		 * 0,33: 1,7 en total): son enormes y no deben cargar más la playa corta.
+		 */
 		void PlaceExtraDungeons()
 		{
-			const bool bEarly = Rng.Chance(0.6) && PlaceExtraDungeon(0.12, 0.36);
-			if (!bEarly || Rng.Chance(0.6)) { PlaceExtraDungeon(0.62, 0.9); }
+			if (Rng.Chance(0.6 * LengthScale)) { PlaceExtraDungeon(0.12, 0.36); }
+			if (Rng.Chance(0.5 * LengthScale)) { PlaceExtraDungeon(0.62, 0.9); }
 		}
 
 		void AddSummit(const FItem& Item, double Height)
@@ -2900,8 +2919,9 @@ namespace TNBeachLayout
 
 		/**
 		 * Fortalezas de arena colosales (ATN_BeachFortress, 100 m de ancho): una por ronda (a veces dos con muchas ayudas),
-		 * justo tras los castillos con salas: el terreno fijo solo les deja sitio hacia los 200-265, 490-700 y 870-930 m (el
-		 * del medio suele ser del castillo principal), y lo demás se lo iría quitando. Con rodeo (25 m libres entre la muralla
+		 * justo tras el castillo con salas principal: el terreno fijo solo les deja sitio hacia los 15-120 m y los 280-440 m (el
+		 * segundo suele ser del castillo principal; con 1200 m eran los 200-265, 490-700 y 870-930 m), y lo demás se lo iría
+		 * quitando. Casi siempre salen entre los 50 y los 150 m. Con rodeo (25 m libres entre la muralla
 		 * y la selva por cada lado), a 12 m como poco de lo que ya hubiera y con su franja de caída libre; miran al mar (±10°).
 		 * Alrededor, sus guardias.
 		 */
@@ -2926,15 +2946,16 @@ namespace TNBeachLayout
 		}
 
 		/**
-		 * Las demás fortalezas: dos grandes y tres medianas en Normal (por las ayudas de la dificultad), repartidas a lo largo
-		 * (un tramo cada una, al azar), con rodeo, holgura y franja de caída como las colosales. Miran al mar
-		 * (±10°); la cima (conchas, cofre y lanzador potenciado) la pone su clase. Alrededor, sus guardias.
+		 * Las demás fortalezas: dos grandes y tres medianas en Normal en 1200 m (1,3 y 2 en 800 m, por LengthScale; por las
+		 * ayudas de la dificultad), repartidas a lo largo (un tramo cada una, al azar), con rodeo, holgura y franja de caída
+		 * como las colosales. Miran al mar (±10°); la cima (conchas, cofre y lanzador potenciado) la pone su clase.
+		 * Alrededor, sus guardias.
 		 */
 		void PlaceFortresses()
 		{
 			TArray<ETNBeachElement> Sizes;
-			const int32 Large = Scaled(2.0, Profile.Aids);
-			const int32 Medium = Scaled(3.0, Profile.Aids);
+			const int32 Large = Scaled(2.0 * LengthScale, Profile.Aids);
+			const int32 Medium = Scaled(3.0 * LengthScale, Profile.Aids);
 			for (int32 k = 0; k < Large; ++k) { Sizes.Add(ETNBeachElement::FortressLarge); }
 			for (int32 k = 0; k < Medium; ++k) { Sizes.Add(ETNBeachElement::FortressMedium); }
 			const int32 Num = Sizes.Num();
@@ -3021,8 +3042,8 @@ namespace TNBeachLayout
 		// ── Quads y gaviotas ──
 
 		/**
-		 * Pasos de quads: 2 o 3 franjas que cruzan la playa entera, separadas 170 m como poco (una más en Difícil y una menos
-		 * en Fácil).
+		 * Pasos de quads: 2 o 3 franjas en 1200 m (1 o 2 en 800 m, por LengthScale) que cruzan la playa entera, separadas
+		 * 170 m (113 m en 800 m) como poco (una más en Difícil y una menos en Fácil, antes de escalar; siempre hay una).
 		 */
 		void PlaceQuadLanes()
 		{
@@ -3030,6 +3051,7 @@ namespace TNBeachLayout
 			int32 Wanted = Rng.Chance(0.5) ? 3 : 2;
 			if (Profile.Enemies >= 1.5) { ++Wanted; }
 			if (Profile.Enemies <= 0.8) { --Wanted; }
+			Wanted = FMath::Max(1, Scaled(static_cast<double>(Wanted), LengthScale));
 			int32 Placed = 0;
 			for (int32 Try = 0; Try < 60 && Placed < Wanted; ++Try)
 			{
@@ -3040,22 +3062,22 @@ namespace TNBeachLayout
 				bool bFar = true;
 				for (int32 i = 0; i < Out.Items.Num(); ++i)
 				{
-					if (Alive[i] && Out.Items[i].Role == EItemRole::QuadLane && FMath::Abs(Out.Items[i].Pos.X - Lane.Pos.X) < 17000.0) { bFar = false; }
+					if (Alive[i] && Out.Items[i].Role == EItemRole::QuadLane && FMath::Abs(Out.Items[i].Pos.X - Lane.Pos.X) < 17000.0 * LengthScale) { bFar = false; }
 				}
 				if (bFar && TryAdd(Lane, ItemPad + 800.0)) { ++Placed; }
 			}
 		}
 
 		/**
-		 * Zonas de gaviotas y pelícanos: 4-6 (por la raíz de los enemigos de la dificultad: 3-5 en Fácil y 6-9 en Difícil)
-		 * repartidas a lo largo (una por tramo) y a lo ancho (lados alternos), separadas GullZoneSpacing y cada una con su
-		 * tamaño (su círculo) distinto.
+		 * Zonas de gaviotas y pelícanos: 4-6 en 1200 m (por la raíz de los enemigos de la dificultad: 3-5 en Fácil y 6-9 en
+		 * Difícil) y 3-4 en 800 m (2-3 en Fácil y 4-6 en Difícil, por LengthScale), repartidas a lo largo (una por tramo) y a
+		 * lo ancho (lados alternos), separadas GullZoneSpacing y cada una con su tamaño (su círculo) distinto.
 		 */
 		void PlaceGullZones()
 		{
 			const FElementRule& Rule = CachedRule(ETNBeachElement::GullZone);
 			const int32 Base = Rng.RangeInt(4, 6);
-			const int32 Wanted = FMath::Clamp(FMath::RoundToInt32(Base * FMath::Sqrt(Profile.Enemies)), 3, 10);
+			const int32 Wanted = FMath::Clamp(FMath::RoundToInt32(Base * FMath::Sqrt(Profile.Enemies) * LengthScale), 2, 10);
 			const double Spacing = GullZoneSpacing(Wanted);
 			TArray<double> Sizes;
 			for (int32 k = 0; k < Wanted; ++k)
@@ -3091,11 +3113,12 @@ namespace TNBeachLayout
 		 * Filas de obstáculos que cierran casi toda la playa con un hueco que cambia de lado de una a otra (izquierda,
 		 * derecha, embudo al centro): obligan a zigzaguear. Cada fila es de un tema (militar con alambre, restos de la
 		 * marea o trastos de playa), a veces deja un hueco estrecho para apurar y, a veces, una catapulta o un trampolín
-		 * delante para saltarla.
+		 * delante para saltarla. Hasta cinco en 800 m (eran siete en 1200 m, al 10, 18, 37, 64, 72, 80 y 88,5 % del reparto):
+		 * se juntan las tres del mar en dos y las dos primeras en una, para que entre fila y fila queden decenas de metros.
 		 */
 		void PlaceBarrierRows()
 		{
-			static const double RowT[] = { 0.1, 0.18, 0.37, 0.64, 0.72, 0.8, 0.885 };
+			static const double RowT[] = { 0.11, 0.35, 0.62, 0.78, 0.885 };
 			static const TArray<ETNBeachElement> Military = { ETNBeachElement::Sandbags, ETNBeachElement::TankTrap, ETNBeachElement::AmmoCrate };
 			static const TArray<ETNBeachElement> Wrack = { ETNBeachElement::Driftwood, ETNBeachElement::MossyLog, ETNBeachElement::Rock,
 				ETNBeachElement::RockCluster, ETNBeachElement::OldPlanks, ETNBeachElement::FishingNet, ETNBeachElement::Buoy };
@@ -3275,12 +3298,13 @@ namespace TNBeachLayout
 		}
 
 		/**
-		 * Puestos (6-8), filas de erizos (2-3) y campos de minas (3-4, por las trampas de la dificultad) por toda la playa
-		 * (algunos, en los corredores: el camino natural).
+		 * Puestos (6-8 en 1200 m; 4-5 en 800 m), filas de erizos (2-3; 1-2) y campos de minas (3-4; 2-3, por las trampas de la
+		 * dificultad) por toda la playa (algunos, en los corredores: el camino natural). Las cuotas de 800 m salen de las de
+		 * 1200 m por LengthScale, con redondeo al azar.
 		 */
 		void PlaceMilitaryPosts()
 		{
-			const int32 Posts = Rng.RangeInt(6, 8);
+			const int32 Posts = Scaled(Rng.RangeInt(6, 8), LengthScale);
 			for (int32 p = 0; p < Posts; ++p)
 			{
 				for (int32 Try = 0; Try < 12; ++Try)
@@ -3289,7 +3313,7 @@ namespace TNBeachLayout
 					if (PlaceOutpost(FVector2D(PostX, Rng.Range(-0.75, 0.75) * HalfWidth))) { break; }
 				}
 			}
-			const int32 Lines = Rng.RangeInt(2, 3);
+			const int32 Lines = Scaled(Rng.RangeInt(2, 3), LengthScale);
 			for (int32 l = 0; l < Lines; ++l)
 			{
 				const double X = XOfProgress(Rng.Range(0.15, 0.9));
@@ -3299,7 +3323,7 @@ namespace TNBeachLayout
 				const FVector2D From(X, Y0);
 				PlaceTankTrapLine(From, From + FVector2D(FMath::Cos(Ang), FMath::Sin(Ang)) * Span);
 			}
-			const int32 Fields = Scaled(Rng.RangeInt(3, 4), Profile.Traps);
+			const int32 Fields = Scaled(Rng.RangeInt(3, 4) * LengthScale, Profile.Traps);
 			for (int32 f = 0; f < Fields; ++f)
 			{
 				const double X = XOfProgress(Rng.Range(0.12, 0.9));
@@ -3312,17 +3336,18 @@ namespace TNBeachLayout
 		// ── Rincones, castillos y lanzadores ──
 
 		/**
-		 * Rincones escondidos junto a la selva (6-9): una herradura de decorado grande con el hueco hacia el centro de la
-		 * playa o hacia el mar y, al fondo del hueco, un cofre que mira a la entrada.
+		 * Rincones escondidos junto a la selva (6-9 en 1200 m; 4-6 en 800 m, por LengthScale): una herradura de decorado grande
+		 * con el hueco hacia el centro de la playa o hacia el mar y, al fondo del hueco, un cofre que mira a la entrada.
 		 */
 		void PlaceNooks()
 		{
 			static const TArray<ETNBeachElement> Walls = { ETNBeachElement::Rock, ETNBeachElement::RockCluster, ETNBeachElement::MossyLog,
 				ETNBeachElement::Driftwood, ETNBeachElement::OldPlanks, ETNBeachElement::FishingNet, ETNBeachElement::SandCastleSmall,
 				ETNBeachElement::Sandbags };
-			const int32 Wanted = Rng.RangeInt(6, 9);
+			const int32 Wanted = Scaled(Rng.RangeInt(6, 9), LengthScale);
 			int32 Made = 0;
-			for (int32 Try = 0; Try < Wanted * 30 && Made < Wanted; ++Try)
+			// Como mínimo los intentos de 1200 m (hasta 9 rincones a 30 intentos): con menos playa quedan menos huecos junto a la selva.
+			for (int32 Try = 0; Try < FMath::Max(270, Wanted * 30) && Made < Wanted; ++Try)
 			{
 				const double Side = Rng.Chance(0.5) ? 1.0 : -1.0;
 				const double Hollow = Rng.Range(600.0, 900.0);
@@ -3377,13 +3402,13 @@ namespace TNBeachLayout
 		}
 
 		/**
-		 * Castillos de arena enormes por todo el recorrido (9-14), la mitad con un trampolín delante para subirse (más con
-		 * las ayudas de la dificultad). Uno por tramo, con sus intentos (un tramo de dunas no se come los de los demás), y los
-		 * que falten, donde quepan.
+		 * Castillos de arena enormes por todo el recorrido (9-14 en 1200 m; 6-9 en 800 m, por LengthScale), la mitad con un
+		 * trampolín delante para subirse (más con las ayudas de la dificultad). Uno por tramo, con sus intentos (un tramo de
+		 * dunas no se come los de los demás), y los que falten, donde quepan.
 		 */
 		void PlaceCastles()
 		{
-			const int32 Wanted = Rng.RangeInt(9, 14);
+			const int32 Wanted = Scaled(Rng.RangeInt(9, 14), LengthScale);
 			const double LauncherOdds = FMath::Min(0.95, 0.55 * Profile.Aids);
 			int32 Made = 0;
 			auto TryCastle = [this, &Made, LauncherOdds](double Progress)
@@ -3455,7 +3480,8 @@ namespace TNBeachLayout
 		 * plataformas sobre hoyos, palas, cubos y puertas), repartidas a lo largo por tramos antes del relleno: grandes como
 		 * son, con la playa ya llena no cabrían. Las catapultas, primero: su arco de salto libre es el más largo. Cada tramo
 		 * tiene sus intentos en sus huecos (casillas libres con sitio para su núcleo; uno difícil no se come los de los demás)
-		 * y lo que no cabe en el suyo se busca luego por toda la playa. Cuántas, por el grupo de cada una en la dificultad.
+		 * y lo que no cabe en el suyo se busca luego por toda la playa. Cuántas, por el grupo de cada una en la dificultad y
+		 * por LengthScale (las cuotas de abajo son para 1200 m).
 		 * bAids: las ayudas (catapultas, trampolines, plataformas móviles y palas; van primero); si no, las trampas (conchas,
 		 * plataformas sobre hoyos, cubos y puertas).
 		 */
@@ -3481,7 +3507,7 @@ namespace TNBeachLayout
 			{
 				if ((ScaleGroupOf(Quota.Element) == EScaleGroup::Aid) != bAids) { continue; }
 				const FElementRule& Rule = CachedRule(Quota.Element);
-				const int32 Wanted = Scaled(Rng.RangeInt(Quota.Min, Quota.Max), DifficultyScaleOf(Profile, Quota.Element));
+				const int32 Wanted = Scaled(Rng.RangeInt(Quota.Min, Quota.Max) * LengthScale, DifficultyScaleOf(Profile, Quota.Element));
 				const double FootCore = TNBeach::FootprintRadius(Quota.Element) * Rule.CoreFraction;
 				// En un hueco de verdad: una casilla libre del tramo con sitio para su núcleo (más pequeña si hace falta).
 				auto TryIn = [this, &Quota, &Rule, FootCore](FFreeCells& Free)
@@ -3573,7 +3599,7 @@ namespace TNBeachLayout
 				const double StartX = XOfProgress(Rng.Range(StartT[p][0], StartT[p][1]));
 				FVector2D Cursor(StartX, Rng.Range(-0.5, 0.5) * HalfWidth);
 				double Heading = Rng.Range(-10.0, 10.0);
-				const double Total = Rng.Range(15000.0, 35000.0);
+				const double Total = Rng.Range(15000.0, 35000.0) * LengthScale;
 				double Done = 0.0;
 				for (int32 Guard = 0; Guard < 40 && Done < Total && Cursor.X < ItemsEndX - 3000.0; ++Guard)
 				{
@@ -3615,16 +3641,18 @@ namespace TNBeachLayout
 		}
 
 		/**
-		 * Calles del cangrejo ermitaño (12 en Normal, por los enemigos de la dificultad): tramos rectos de 25-45 m cuesta abajo
+		 * Calles del cangrejo ermitaño (12 en Normal en 1200 m y 8 en 800 m, por los enemigos de la dificultad): tramos rectos de 25-45 m cuesta abajo
 		 * (LaneRollsDownhill), a ±25° de la bajada de la arena en su centro, con el 60 % central libre (su núcleo). El
 		 * ermitaño sale del extremo alto (-X local) y rueda hacia el bajo (+X local), derribando tortugas como bolos.
 		 */
 		void PlaceHermitLanes()
 		{
 			const FElementRule& Rule = CachedRule(ETNBeachElement::HermitCrab);
-			const int32 Wanted = Scaled(12.0, Profile.Enemies);
+			const int32 Wanted = Scaled(12.0 * LengthScale, Profile.Enemies);
 			int32 Made = 0;
-			for (int32 Try = 0; Try < Wanted * 25 && Made < Wanted; ++Try)
+			// Como mínimo los intentos de 1200 m (12 calles a 25 intentos): con menos cuota, una calle cuesta abajo sigue siendo
+			// igual de difícil de encontrar.
+			for (int32 Try = 0; Try < FMath::Max(300, Wanted * 25) && Made < Wanted; ++Try)
 			{
 				const double T = Rng.Range(Rule.MinT, 0.96);
 				const double LaneY = Rng.Range(-1.0, 1.0) * (HalfWidth - SideMargin - 1500.0);
@@ -3642,7 +3670,7 @@ namespace TNBeachLayout
 		}
 
 		/**
-		 * Tanques de juguete (9 en Normal, por los enemigos de la dificultad) en tramos de patrulla de 20-40 m de través
+		 * Tanques de juguete (9 en Normal en 1200 m y 6 en 800 m, por los enemigos de la dificultad) en tramos de patrulla de 20-40 m de través
 		 * (Yaw 90 ± 20°), a 15-35 m de lo militar: las redes de los puestos, los erizos, los sacos y las dos trincheras (por
 		 * delante y por detrás de cada una).
 		 */
@@ -3664,9 +3692,10 @@ namespace TNBeachLayout
 				}
 			}
 			if (Anchors.Num() == 0) { return; }
-			const int32 Wanted = Scaled(9.0, Profile.Enemies);
+			const int32 Wanted = Scaled(9.0 * LengthScale, Profile.Enemies);
 			int32 Made = 0;
-			for (int32 Try = 0; Try < Wanted * 40 && Made < Wanted; ++Try)
+			// Como mínimo los intentos de 1200 m (9 tanques a 40 intentos).
+			for (int32 Try = 0; Try < FMath::Max(360, Wanted * 40) && Made < Wanted; ++Try)
 			{
 				const FVector2D Anchor = Anchors[Rng.RangeInt(0, Anchors.Num() - 1)];
 				const double Ang = Rng.Range(0.0, TNProcMap::TwoPi);
@@ -3677,14 +3706,15 @@ namespace TNBeachLayout
 		}
 
 		/**
-		 * Enjambres de pulgas de arena (10 en Normal, por los enemigos de la dificultad) en claros de arena abierta: donde no
+		 * Enjambres de pulgas de arena (10 en Normal en 1200 m y 7 en 800 m, por los enemigos de la dificultad) en claros de arena abierta: donde no
 		 * hay nada en el 75 % central de su huella (~9 m de radio) ni pozas ni trincheras, y el claro se deja libre (reservado).
 		 */
 		void PlaceSandFleas()
 		{
-			const int32 Wanted = Scaled(10.0, Profile.Enemies);
+			const int32 Wanted = Scaled(10.0 * LengthScale, Profile.Enemies);
 			int32 Made = 0;
-			for (int32 Try = 0; Try < Wanted * 20 && Made < Wanted; ++Try)
+			// Como mínimo los intentos de 1200 m (10 enjambres a 20 intentos).
+			for (int32 Try = 0; Try < FMath::Max(200, Wanted * 20) && Made < Wanted; ++Try)
 			{
 				FItem Fleas = Make(ETNBeachElement::SandFleas, FVector2D::ZeroVector, EItemRole::Lair);
 				const double Usable = HalfWidth - SideMargin - Fleas.Radius;
@@ -4228,9 +4258,10 @@ namespace TNBeachLayout
 
 	/**
 	 * Reparto de la ronda con Seed y Difficulty (determinista: el mismo en el servidor y en cada cliente, que reciben las
-	 * dos cosas con la ronda). Orden: los castillos con salas (el principal con sus alas), las fortalezas colosales (el
-	 * terreno fijo solo les deja dos o tres tramos, los mismos que a los castillos con salas), pasos de quads (de lado a
-	 * lado: antes de que los castillos les quiten sitio), las demás fortalezas (todas con sus guardias), castillos enormes,
+	 * dos cosas con la ronda). Orden: el castillo con salas principal (con sus alas), las fortalezas colosales (el terreno
+	 * fijo solo les deja uno o dos tramos, y uno es el del castillo principal), los otros castillos con salas (si caben),
+	 * pasos de quads (de lado a lado: antes de que los castillos les quiten sitio), las demás fortalezas (todas con sus
+	 * guardias), castillos enormes,
 	 * gaviotas, la tropa de las trincheras, filas que obligan a zigzaguear, calles de los ermitaños y claros de las pulgas
 	 * (necesitan sitio libre), rincones con su cofre, puestos militares y sus tanques, las ayudas y las trampas destacadas
 	 * (las grandes, antes de que no quepan), lanzadores, pasarelas guía, pulpos, cofres, relleno por bandas (a la medida de
@@ -4247,8 +4278,8 @@ namespace TNBeachLayout
 		Out.Profile = DifficultyProfileOf(Difficulty);
 		FBuilder Builder(Out, Seed, Out.Profile);
 		Builder.PlaceMainDungeon();
-		Builder.PlaceExtraDungeons();
 		Builder.PlaceColossalFortresses();
+		Builder.PlaceExtraDungeons();
 		Builder.PlaceQuadLanes();
 		Builder.PlaceFortresses();
 		Builder.PlaceCastles();

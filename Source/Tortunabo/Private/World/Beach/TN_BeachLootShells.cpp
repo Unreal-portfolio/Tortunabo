@@ -74,8 +74,13 @@ namespace TNBeachShellDetail
 		}
 	}
 
-	/** Topes por ronda de cada tamaño (1, 25, 50 y 100). */
-	constexpr int32 MaxPerTier[TNScoreShells::NumTiers] = { 300, 40, 12, 2 };
+	/**
+	 * Topes por ronda de cada tamaño (1, 25, 50 y 100): 300, 40, 12 y 2 con 1200 m de recorrido; los tres primeros, por
+	 * TNBeach::CourseLengthScale con 800 m (la misma densidad). Las de 100 se quedan en 2: son las de la sala de arriba del
+	 * castillo con salas y las de lo alto de los castillos enormes, y hay tantos castillos con salas como antes.
+	 */
+	constexpr int32 MaxPerTier[TNScoreShells::NumTiers] = { static_cast<int32>(300.0 * TNBeach::CourseLengthScale + 0.5),
+		static_cast<int32>(40.0 * TNBeach::CourseLengthScale + 0.5), static_cast<int32>(12.0 * TNBeach::CourseLengthScale + 0.5), 2 };
 	/** Separación (cm) entre dos conchitas y entre cualquier concha y una de más valor. */
 	constexpr double SmallSpacing = 100.0;
 	constexpr double SpecialSpacing = 300.0;

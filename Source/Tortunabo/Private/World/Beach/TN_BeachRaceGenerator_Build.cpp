@@ -59,7 +59,8 @@ namespace TNBeachBuild
 			const double U = TNBeachLayout::PoolU(TNBeachLayout::Pools()[PoolIndex], P);
 			C = TNProcMesh::TNProcLerpColor(C, Damp * 0.85f, static_cast<float>(0.75 * (1.0 - TNProcMap::SmoothStep(0.95, 1.35, U))));
 		}
-		if (X > 20000.0 && X < 50000.0)
+		// Solo cerca de las trincheras (28-31 % del recorrido: 220-250 m con 800 m): del 15 al 45 %.
+		if (X > 0.15 * TNBeachLayout::Length && X < 0.45 * TNBeachLayout::Length)
 		{
 			const double Trench = TNBeachLayout::TrenchDistance(P, 500.0);
 			if (Trench < 400.0) { C = TNProcMesh::TNProcLerpColor(C, Damp, static_cast<float>(0.35 * (1.0 - TNProcMap::SmoothStep(150.0, 400.0, Trench)))); }

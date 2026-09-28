@@ -62,7 +62,7 @@ private:
  *
  * Red: el estado de la búsqueda es el de ATN_ProcSearchSpot (replicado y dormido casi siempre); además se replican los
  * premios que saltan y dónde caen (Prizes y PrizeLandings, junto con el resultado), y cada máquina anima sus saltos con
- * el reloj del servidor. Relevante a 400 m (la playa mide 1,2 km). Lo crea ATN_BeachChest en el servidor.
+ * el reloj del servidor. Relevante a 400 m (la playa mide 0,8 km). Lo crea ATN_BeachChest en el servidor.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachChestSpot : public ATN_BeachSearchSpot

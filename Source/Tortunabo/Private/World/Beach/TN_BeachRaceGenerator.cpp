@@ -179,7 +179,7 @@ void ATN_BeachRaceGenerator::Tick(float DeltaSeconds)
 	if (bLiving)
 	{
 		TNAmbientFX::TickOwner(this, Dt);
-		// Las boyas de meta se mecen (solo arriba y abajo: la línea entera está a 1,2 km del origen).
+		// Las boyas de meta se mecen (solo arriba y abajo: la línea entera está a 0,8 km del origen).
 		FloatClock += Dt;
 		if (FloatMesh) { FloatMesh->SetRelativeLocation(FVector(0.0, 0.0, 35.0 * FMath::Sin(FloatClock * 0.9f))); }
 		if (FootprintMesh)

@@ -26,9 +26,11 @@ class ATortugaCharacter;
  * toallas, flotadores, palas, chanclas y pelotas volando a escala por el borde de verdad del frente (ni por delante ni
  * por detrás). Nada aparece ni desaparece de golpe: el velo, los trastos y los bañistas se funden (opacidad y escala).
  *
- * Es justa: arranca tarde (15 s de gracia y 6 s cogiendo velocidad) y va bastante más despacio que la media de la carrera
- * (1,8 m/s; la tortuga anda a 4,5 y la media con obstáculos es ~4). Solo acelera al final: pasados 4 minutos, cuando la
- * primera tortuga ha hecho el 80 % del recorrido o si la última se ha quedado muy atrás (para que siempre se note). Antes
+ * Es justa: arranca tarde (10 s de gracia y 6 s cogiendo velocidad) y va bastante más despacio que la media de la carrera
+ * (1,8 m/s; la tortuga anda a 4,5 y la media con obstáculos es ~4). Solo acelera al final: pasados 2 min 40 s (con 800 m a
+ * ~4 m/s la ronda dura unos 3 min 20 s), cuando la primera tortuga ha hecho el 80 % del recorrido o si la última se ha
+ * quedado muy atrás (para que siempre se note). Sus tiempos y distancias salen de los de un recorrido de 1200 m (15 s de
+ * gracia, 4 min, 180 y 120 m) por 2/3, lo que se acortó la carrera (TNBeach::CourseLength). Antes
  * de alcanzarte avisa (temblor, viento, arena y «¡QUE VIENE LA TORMENTA!»). Nadie se puede quedar detrás del frente: a
  * quien se queda detrás (también si una gaviota la suelta ahí) un bañista le da una patada que la mete en su caparazón y
  * la lanza en bola hasta KickAhead (20 m) por delante del frente. Dentro, la imagen se cierra (niebla y tinte de arena) y
@@ -112,9 +114,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
 	float DefaultSpeed = 180.f;
 
-	/** Segundos quieta antes de echar a andar con StartStorm(). */
+	/** Segundos quieta antes de echar a andar con StartStorm() (eran 15 con 1200 m de recorrido). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
-	float DefaultGrace = 15.f;
+	float DefaultGrace = 10.f;
 
 	/** Aceleración al arrancar (cm/s²: de 0 a 1,8 m/s en 6 s) y al cambiar de velocidad después. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "1.0"))
@@ -123,12 +125,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "1.0"))
 	float SpeedChangeAccel = 15.f;
 
-	/** Ronda larga: pasados estos segundos de marcha acelera SpeedRampPerMinute (cm/s por minuto) hasta MaxSpeed. */
+	/**
+	 * Ronda larga: pasados estos segundos de marcha acelera SpeedRampPerMinute (cm/s por minuto) hasta MaxSpeed. Con 800 m
+	 * son 160 s (240 con 1200 m) y 45 cm/s por minuto (30): la ronda dura 2/3, así que llega antes y sube más deprisa a la
+	 * misma velocidad final.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
-	float LateStartSeconds = 240.f;
+	float LateStartSeconds = 160.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
-	float SpeedRampPerMinute = 30.f;
+	float SpeedRampPerMinute = 45.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
 	float MaxSpeed = 300.f;
@@ -140,12 +146,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
 	float EndRushSpeed = 250.f;
 
-	/** Si la última tortuga le saca más de CatchUpGap (cm), va a CatchUpSpeed hasta quedarse a CatchUpRelease. */
+	/**
+	 * Si la última tortuga le saca más de CatchUpGap (cm), va a CatchUpSpeed hasta quedarse a CatchUpRelease. 120 y 80 m
+	 * con 800 m de recorrido (180 y 120 m con 1200 m).
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
-	float CatchUpGap = 18000.f;
+	float CatchUpGap = 12000.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
-	float CatchUpRelease = 12000.f;
+	float CatchUpRelease = 8000.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
 	float CatchUpSpeed = 280.f;

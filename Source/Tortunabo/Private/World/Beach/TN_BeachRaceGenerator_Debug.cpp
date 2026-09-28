@@ -2,7 +2,7 @@
 // Consola de pruebas del reparto de la playa del modo carrera (ronda 3; Docs/Comandos_Prueba.md):
 //   TN.Beach.Go <salida|fortaleza|trinchera|poza|cresta|sprint|acantilado|meta|metros> [jugador]
 //       lleva a una tortuga allí: la tuya o, con [jugador], la de ese índice. Fortaleza, trinchera, poza y cresta: la
-//       siguiente por delante de la tortuga (si no hay, la primera). Un número: esos metros desde la línea de salida.
+//       siguiente por delante de la tortuga (si no hay, la primera). Un número: esos metros desde la línea de salida (0-800).
 //   TN.Race.Difficulty [Easy|Normal|Hard]
 //       dificultad del reparto desde la próxima ronda (sin argumento, dice la actual). TN.Beach.Reroll la aplica ya.
 //   TN.Beach.Reroll [semilla]
@@ -407,7 +407,7 @@ namespace TNBeachGoConsole
 		double Meters = 0.0;
 		if (Args.Num() < 1 || !ParseTarget(Args[0], Target, Meters))
 		{
-			UE_LOG(LogTortunabo, Display, TEXT("[Playa] Uso: TN.Beach.Go <salida|fortaleza|trinchera|poza|cresta|sprint|acantilado|meta|metros> [jugador]. Metros: desde la línea de salida (p. ej. TN.Beach.Go 600)."));
+			UE_LOG(LogTortunabo, Display, TEXT("[Playa] Uso: TN.Beach.Go <salida|fortaleza|trinchera|poza|cresta|sprint|acantilado|meta|metros> [jugador]. Metros: desde la línea de salida, de 0 a 800 (p. ej. TN.Beach.Go 400, la mitad del recorrido)."));
 			return;
 		}
 		UWorld* AuthWorld = AuthorityWorldOf(InWorld);

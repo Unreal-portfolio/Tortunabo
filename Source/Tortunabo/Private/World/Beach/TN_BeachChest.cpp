@@ -666,7 +666,7 @@ ATN_BeachChestSpot::ATN_BeachChestSpot()
 	HintDistance = 5000.f;
 	MarkerDistance = 2200.f;
 	MarkerRadius = 140.f;
-	// La playa mide 1,2 km: se ve (y su columna de luz) desde lejos; lo de serie son 150 m.
+	// La playa mide 0,8 km: se ve (y su columna de luz) desde lejos; lo de serie son 150 m.
 	SetNetCullDistanceSquared(FMath::Square(40000.f));
 
 	const FVector ChestScale3D(ChestScale);

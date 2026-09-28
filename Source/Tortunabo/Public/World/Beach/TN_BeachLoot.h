@@ -68,10 +68,11 @@ namespace TNBeachLoot
 	/**
 	 * Rebuscables por ronda como mucho, en cuántos tramos iguales del recorrido se reparten y cuántos por tramo (con la
 	 * dificultad normal; SearchSpotScale los multiplica). Son puntos del registro: el actor solo existe cerca de alguien.
+	 * 360 y 75 por tramo con 1200 m de recorrido; 240 y 50 con 800 m (TNBeach::CourseLengthScale: la misma densidad).
 	 */
-	constexpr int32 MaxSearchSpots = 360;
+	constexpr int32 MaxSearchSpots = static_cast<int32>(360.0 * TNBeach::CourseLengthScale + 0.5);
 	constexpr int32 Sections = 6;
-	constexpr int32 MaxSearchSpotsPerSection = 75;
+	constexpr int32 MaxSearchSpotsPerSection = static_cast<int32>(75.0 * TNBeach::CourseLengthScale + 0.5);
 
 	/**
 	 * El actor de un punto rebuscable aparece cuando una tortuga está a menos de ProxySpawnDistance (cm) de su borde y se
@@ -92,10 +93,13 @@ namespace TNBeachLoot
 	constexpr double MinSearchSpacing = 900.0;
 	constexpr double MinSearchRimGap = 300.0;
 
-	/** Objetos sueltos por ronda: sueltos (uno por tramo igual del recorrido) y filas de lado a lado de la playa. */
-	constexpr int32 MinLooseItems = 30;
-	constexpr int32 MaxLooseItems = 38;
-	constexpr int32 ItemRows = 4;
+	/**
+	 * Objetos sueltos por ronda: sueltos (uno por tramo igual del recorrido) y filas de lado a lado de la playa. Con 1200 m
+	 * eran 30-38 y 4 filas; con 800 m, 20-25 y 3 (TNBeach::CourseLengthScale).
+	 */
+	constexpr int32 MinLooseItems = static_cast<int32>(30.0 * TNBeach::CourseLengthScale + 0.5);
+	constexpr int32 MaxLooseItems = static_cast<int32>(38.0 * TNBeach::CourseLengthScale + 0.5);
+	constexpr int32 ItemRows = static_cast<int32>(4.0 * TNBeach::CourseLengthScale + 0.5);
 	/** Separación (cm) de los objetos de una fila, de lado a lado. */
 	constexpr double ItemRowStep = 3200.0;
 	/** Desde dónde hay objetos sueltos (cm desde la línea de salida: nada en la salida). */

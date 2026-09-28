@@ -25,7 +25,7 @@ necesita espera a que esté lista.
 
 | Comando | Qué hace |
 |---|---|
-| `TN.Beach.Go <sitio> [jugador]` | Lleva tu tortuga (o la de ese jugador) allí, sobre arena libre y mirando a lo que toca: `salida` (su huevo), `fortaleza` (delante de la puerta de la siguiente por delante; si no hay más, la primera), `trinchera` (12 m antes de la siguiente), `poza` (en su orilla), `cresta` (al pie de la cara empinada de la siguiente con cornisa), `sprint` (su sitio de la línea del sprint final), `acantilado` (25 m antes del filo), `meta` (a 3,5 m del filo: un paso y al agua) o un número: esos metros desde la salida (`TN.Beach.Go 600`). La saca de la bola o del caparazón. |
+| `TN.Beach.Go <sitio> [jugador]` | Lleva tu tortuga (o la de ese jugador) allí, sobre arena libre y mirando a lo que toca: `salida` (su huevo), `fortaleza` (delante de la puerta de la siguiente por delante; si no hay más, la primera), `trinchera` (12 m antes de la siguiente), `poza` (en su orilla), `cresta` (al pie de la cara empinada de la siguiente con cornisa), `sprint` (su sitio de la línea del sprint final), `acantilado` (25 m antes del filo), `meta` (a 3,5 m del filo: un paso y al agua) o un número: esos metros desde la salida, de 0 a 800 (`TN.Beach.Go 400` es la mitad del recorrido, donde sale el sprint final). La saca de la bola o del caparazón. |
 | `TN.Race.Difficulty <Easy\|Normal\|Hard>` | Dificultad del reparto desde la próxima ronda (también `fácil`, `normal`, `difícil`; sin argumento dice la de la ronda y la siguiente). Fácil: ayudas x1,6, trampas x0,7, enemigos x0,6; Difícil: enemigos x2,5, trampas x1,8, ayudas x1,4. |
 | `TN.Beach.Reroll [semilla]` | Rehace la ronda ya con la dificultad actual (semilla al azar si no se da). Los huevos vuelven a cerrarse; cuando está lista, dice cuántos elementos, fortalezas y cofres tiene. `TN.Race.Difficulty Hard` y luego `TN.Beach.Reroll 42` para ver la misma semilla en Difícil. |
 | `TN.Beach.ShowFootprints 1` | Huellas del reparto en el suelo (colores en `Docs/Modo_Carrera.md`, «Nivel y capturas»). |
@@ -96,6 +96,8 @@ necesita espera a que esté lista.
 | `TN.Race.Stun [segundos=3] [jugador=0]` | Aturde en bola a esa tortuga. |
 | `TN.Race.Kill [jugador=0]` | Pasa por la ruta de «muerte» (en la carrera, aturde). |
 | `TN.Race.Void [jugador=0]` | La tira al vacío: vuelve a su último sitio seguro aturdida. |
+| `TN.Race.Bury [metros=3] [jugador=0]` | La mete bajo la arena donde está: la red de seguridad la devuelve encima en ~0,2 s, en una bola corta, con dos avisos `[Carrera] Red de seguridad` en el registro (ver `Docs/Modo_Carrera.md`, «Seguridad: nunca bajo el mapa»). |
+| `TN.Race.SafetyNet 0\|1` | Apaga o enciende esa red de seguridad (en el anfitrión; para comparar). |
 | `TN.Race.Splash [tamaño=1]` | Chapuzón de meta delante de ti (solo en tu pantalla). |
 | `TN.Beach.Egg` | Cierra otra vez los huevos (de la salida o del sprint) con cada tortuga dentro y a los 1,5 s repite la salida: se rompen, 1 s en el huevo (de pie, sacudiéndose la cáscara y mirando al mar) y salen lanzadas. Sin cambiar de ronda. |
 

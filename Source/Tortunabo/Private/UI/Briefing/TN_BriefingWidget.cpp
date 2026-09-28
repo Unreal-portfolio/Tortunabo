@@ -453,7 +453,7 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingRespawn2", "•  Sin pila válida te quedas en el suelo y un compañero tiene que rescatarte."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingTimeH", "Tiempo"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingTime",
-			"•  En la Carrera de la playa cada ronda dura como mucho 9 minutos: si se acaba, gana la más cerca del mar. En 2 vs 2, 15 minutos, y gana el más adelantado en el camino."));
+			"•  En la Carrera de la playa cada ronda dura como mucho 6 minutos: si se acaba, gana la más cerca del mar. En 2 vs 2, 15 minutos, y gana el más adelantado en el camino."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingFairH", "Juego limpio"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingFair",
 			"•  Se puede coger y lanzar a cualquiera que esté metido en su caparazón, también a los rivales. Lo que no se puede es quedarse en la salida molestando: el general lo ve todo."));

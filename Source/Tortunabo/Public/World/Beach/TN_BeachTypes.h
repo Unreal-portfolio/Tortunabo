@@ -159,9 +159,20 @@ namespace TNBeach
 	/** Veces el tamaño real al que va todo (la tortuga, una cría de ~5 cm, mide ~1,4 m en el juego). */
 	constexpr double Scale = 28.0;
 
-	/** Recorrido de la carrera (cm): de la línea de salida al borde del acantilado, y ancho de la playa jugable. */
-	constexpr double CourseLength = 120000.0;
+	/**
+	 * Recorrido de la carrera (cm): de la línea de salida al borde del acantilado (800 m; eran 1200), y ancho de la playa
+	 * jugable. Todo lo que depende del largo sale de aquí (terreno fijo, reparto, botín, sprint, tormenta y tiempos).
+	 */
+	constexpr double CourseLength = 80000.0;
 	constexpr double CourseWidth = 28000.0;
+
+	/**
+	 * Largo (cm) con el que se afinaron las cuotas fijas de una ronda (1200 m) y cuánto se ha acortado el recorrido desde
+	 * entonces (2/3 con 800 m). Lo que se cuenta «por ronda» (castillos, filas, puestos, cofres, rebuscables, objetos
+	 * sueltos...) se multiplica por CourseLengthScale para conservar la densidad por metro cuadrado.
+	 */
+	constexpr double ReferenceCourseLength = 120000.0;
+	constexpr double CourseLengthScale = CourseLength / ReferenceCourseLength;
 
 	/**
 	 * Meta: acantilado de rocas al final de la playa, de unos 55 cm reales (5-6 veces la tortuga): se salta desde su

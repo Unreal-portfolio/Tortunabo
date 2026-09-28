@@ -13,8 +13,9 @@ Crea el nivel (o lo abre, si ya existe) y deja:
   - En World Settings, el GameMode /Script/Tortunabo.TN_BeachRaceGameMode.
 Lo guarda y queda abierto: con Play se juega una carrera (sin lobby, el GameMode reparte solo).
 
-Idempotente: lo que ya existe (por su etiqueta) se reutiliza sin tocarlo. Guarda antes lo que tengas abierto: el
-script cambia de nivel.
+Idempotente: lo que ya existe (por su etiqueta) se reutiliza sin tocarlo, salvo los cuatro PlayerStart, que se llevan a los
+sitios de salida de ahora (el terreno fijo cambia de cotas si cambia TNBeach::CourseLength: con 800 m, la salida queda a
+39,9 m sobre el agua en vez de a 51,9). Guarda antes lo que tengas abierto: el script cambia de nivel.
 
 Para revisar el reparto sin jugar: selecciona «PlayaCarrera» y en Details > Beach|Editor pulsa «Preview Round» (con
 Editor Seed o una al azar); «Clear Preview» lo quita. Nada de eso se guarda con el nivel.
@@ -43,8 +44,9 @@ MAP_PATH = "/Game/Maps/Run/LVL_BeachRace"
 GAME_MODE_CLASS = "/Script/Tortunabo.TN_BeachRaceGameMode"
 GENERATOR_LABEL = "PlayaCarrera"
 
-# Medidas de TN_BeachLayout.h (cm, espacio del generador: X hacia el mar, Y a lo ancho, el agua en Z = 0).
-COURSE_LENGTH = 120000.0
+# Medidas de TN_BeachLayout.h (cm, espacio del generador: X hacia el mar, Y a lo ancho, el agua en Z = 0). El recorrido
+# es TNBeach::CourseLength (Source/Tortunabo/Public/World/Beach/TN_BeachTypes.h): 800 m (eran 1200).
+COURSE_LENGTH = 80000.0
 HALF_WIDTH = 14000.0
 CLIFF_TOP = 1550.0
 
@@ -112,10 +114,13 @@ def build_level():
 
     generator, _ = ensure_actor(GENERATOR_LABEL, unreal.TN_BeachRaceGenerator)
 
-    # PlayerStart en los sitios de salida (GetStartTransform: 110 cm sobre el suelo, mirando al mar).
+    # PlayerStart en los sitios de salida (GetStartTransform: 110 cm sobre el suelo, mirando al mar). Si ya existen, se
+    # llevan a la salida de ahora (cambian de cota con el largo del recorrido).
     for index in range(4):
         start_xf = generator.get_start_transform(index)
-        ensure_actor(f"Salida_{index + 1}", unreal.PlayerStart, start_xf.translation, start_xf.rotation.rotator())
+        start, created = ensure_actor(f"Salida_{index + 1}", unreal.PlayerStart, start_xf.translation, start_xf.rotation.rotator())
+        if not created:
+            start.set_actor_location_and_rotation(start_xf.translation, start_xf.rotation.rotator(), False, True)
 
     world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
     game_mode = unreal.load_class(None, GAME_MODE_CLASS)
@@ -131,21 +136,24 @@ def build_level():
 # ── Vistas para las capturas ──────────────────────────────────────────────────
 
 VIEWS = {
-    # nombre: (punto de vista, punto al que mira), en el espacio del generador
-    "salida": ((-900.0, 0.0, 5186.0 + 450.0), (COURSE_LENGTH, 0.0, 1500.0)),
-    "planta": ((COURSE_LENGTH * 0.5, 0.0, 190000.0), (COURSE_LENGTH * 0.5 + 10.0, 0.0, 0.0)),
-    "castillo": ((42000.0, -9000.0, 5500.0), (60000.0, 0.0, 2500.0)),
+    # nombre: (punto de vista, punto al que mira), en el espacio del generador. Con 800 m: las posiciones a lo largo salen de
+    # las de 1200 m por 2/3 (el terreno fijo se sitúa por fracciones del recorrido) y las cotas son las del terreno fijo de
+    # TN_BeachLayout.h (GroundZ) más el mismo margen que antes. La vista de la poza mira la primera que corta un corredor
+    # (X = 268 m) y la de la cresta, la primera con cornisa que cruza la playa (X = 292 m).
+    "salida": ((-900.0, 0.0, 3986.0 + 450.0), (COURSE_LENGTH, 0.0, 1500.0)),
+    "planta": ((COURSE_LENGTH * 0.5, 0.0, COURSE_LENGTH * 1.58), (COURSE_LENGTH * 0.5 + 10.0, 0.0, 0.0)),
+    "castillo": ((28000.0, -9000.0, 4895.0), (40000.0, 0.0, 2110.0)),
     "acantilado": ((COURSE_LENGTH - 6000.0, 9000.0, CLIFF_TOP + 1200.0), (COURSE_LENGTH + 3000.0, -2000.0, 200.0)),
     "meta": ((COURSE_LENGTH + 16000.0, 4000.0, 2500.0), (COURSE_LENGTH - 4000.0, 0.0, 1400.0)),
-    "selva": ((60000.0, HALF_WIDTH - 6000.0, 3500.0), (75000.0, HALF_WIDTH + 12000.0, 9000.0)),
-    # Relieve y salida nuevos (cotas medidas del terreno fijo de TN_BeachLayout.h, con margen por encima).
-    "huevos": ((1400.0, 2000.0, 5087.0 + 380.0), (-800.0, 0.0, 5186.0 + 120.0)),
-    "dunas": ((9000.0, 0.0, 4721.0 + 450.0), (60000.0, 0.0, 2661.0 + 200.0)),
-    "trinchera": ((33500.0, -2500.0, 3472.0 + 1500.0), (36600.0, 1500.0, 3575.0)),
-    "poza": ((36500.0, 3500.0, 3680.0 + 900.0), (40200.0, 7160.0, 3286.0)),
-    "cresta": ((40200.0, -3000.0, 3367.0 + 350.0), (43800.0, -3470.0, 3737.0 + 150.0)),
-    "huecos": ((50000.0, HALF_WIDTH - 1500.0, 3259.0 + 500.0), (53000.0, HALF_WIDTH + 6000.0, 4973.0 + 3500.0)),
-    "sprint": ((58500.0, 0.0, 2738.0 + 500.0), (61500.0, 0.0, 2602.0 + 150.0)),
+    "selva": ((40000.0, HALF_WIDTH - 6000.0, 3003.0), (50000.0, HALF_WIDTH + 12000.0, 9336.0)),
+    # Relieve y salida (cotas medidas del terreno fijo de TN_BeachLayout.h, con margen por encima).
+    "huevos": ((1400.0, 2000.0, 3887.0 + 380.0), (-800.0, 0.0, 3986.0 + 120.0)),
+    "dunas": ((9000.0, 0.0, 3493.0 + 450.0), (40000.0, 0.0, 2270.0 + 200.0)),
+    "trinchera": ((22333.0, -2500.0, 2766.0 + 1500.0), (24400.0, 1500.0, 2851.0)),
+    "poza": ((23100.0, 3566.0, 3019.0 + 900.0), (26800.0, 7226.0, 2578.0)),
+    "cresta": ((25600.0, -1769.0, 2749.0 + 350.0), (29200.0, -2239.0, 2655.0 + 150.0)),
+    "huecos": ((33333.0, HALF_WIDTH - 1500.0, 2606.0 + 500.0), (35333.0, HALF_WIDTH + 6000.0, 4614.0 + 3500.0)),
+    "sprint": ((37000.0, 0.0, 2318.0 + 500.0), (40000.0, 0.0, 2270.0 + 150.0)),
 }
 
 

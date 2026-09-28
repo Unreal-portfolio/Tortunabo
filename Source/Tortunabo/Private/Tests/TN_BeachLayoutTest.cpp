@@ -1,7 +1,13 @@
 // Lógica pura de la playa del modo carrera (TNBeachLayout): terreno fijo (relieve, corredores, crestas, pozas y
-// trincheras), salida, sprint, meta, zambullida y reparto por ronda con su dificultad (unos 5000 elementos, fortalezas,
-// cofres y enemigos de sitio fijo). Sin mundo ni actores: se prueba el mismo código que usa ATN_BeachRaceGenerator (que
-// lo corre en otro hilo). Correr desde Session Frontend (categoría "Tortunabo.Beach") o sin ventana:
+// trincheras), salida, sprint, meta, zambullida y reparto por ronda con su dificultad (unos 3100 elementos en 800 m,
+// fortalezas, cofres y enemigos de sitio fijo). Sin mundo ni actores: se prueba el mismo código que usa
+// ATN_BeachRaceGenerator (que lo corre en otro hilo).
+//
+// Umbrales de cantidad: los que se afinaron con 1200 m de recorrido por TNBeachLayout::LengthScale (2/3 con 800 m), que es
+// lo que escala el reparto por ronda; los de calidad (paso libre, sin solapes, sin líneas rectas largas, ocupación por
+// metro cuadrado, terreno) no cambian. Medidos con esta misma prueba compilada fuera del motor (24 rondas en Normal, 8 en
+// Fácil y en Difícil): ver Docs/Modo_Carrera.md.
+// Correr desde Session Frontend (categoría "Tortunabo.Beach") o sin ventana:
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Beach; Quit" -nullrhi -unattended
 
 #include "Misc/AutomationTest.h"
@@ -135,11 +141,12 @@ bool FTNBeachTerrainTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("el borde queda CliffHeight sobre el agua"), TNBeachLayout::CliffTopZ - TNBeachLayout::WaterZ, TNBeach::CliffHeight);
 	TestTrue(TEXT("la arena baja hacia el mar"), TNBeachLayout::ProfileZ(0.0) > TNBeachLayout::ProfileZ(60000.0)
 		&& TNBeachLayout::ProfileZ(60000.0) > TNBeachLayout::ProfileZ(TNBeachLayout::Length));
-	TestTrue(TEXT("la salida, 36 m por encima del borde"), FMath::IsNearlyEqual(TNBeachLayout::ProfileZ(0.0) - TNBeachLayout::CliffTopZ, TNBeachLayout::BeachDrop, 1.0));
+	TestTrue(TEXT("la salida, 24 m (el 3 % del recorrido) por encima del borde"), FMath::IsNearlyEqual(TNBeachLayout::ProfileZ(0.0) - TNBeachLayout::CliffTopZ, TNBeachLayout::BeachDrop, 1.0)
+		&& FMath::IsNearlyEqual(TNBeachLayout::BeachDrop, 0.03 * TNBeach::CourseLength, 1.0));
 	for (double Y = -12000.0; Y <= 12000.0; Y += 3000.0)
 	{
 		const double Edge = TNBeachLayout::EdgeX(Y);
-		TestTrue(FString::Printf(TEXT("borde a 1200 m ± 2,5 m (Y %.0f)"), Y), FMath::Abs(Edge - TNBeachLayout::Length) <= TNBeachLayout::EdgeWobble + 1.0);
+		TestTrue(FString::Printf(TEXT("borde a 800 m ± 2,5 m (Y %.0f)"), Y), FMath::Abs(Edge - TNBeachLayout::Length) <= TNBeachLayout::EdgeWobble + 1.0);
 		const double Lip = GroundZ(Edge - 10.0, Y);
 		TestTrue(FString::Printf(TEXT("la repisa de roca, a ~15,5 m del agua (Y %.0f)"), Y),
 			Lip > TNBeachLayout::CliffTopZ && Lip < TNBeachLayout::CliffTopZ + TNBeachLayout::RockRise + 60.0);
@@ -324,7 +331,8 @@ bool FTNBeachReliefTest::RunTest(const FString& Parameters)
 			++CorridorSamples;
 		}
 	}
-	TestTrue(FString::Printf(TEXT("hay corredores separados (%d muestras)"), CorridorSamples), CorridorSamples > 40);
+	// 66 muestras con 1200 m y 43 con 800 m (se toma una cada 20 m de recorrido): el umbral de antes (40) por LengthScale.
+	TestTrue(FString::Printf(TEXT("hay corredores separados (%d muestras)"), CorridorSamples), CorridorSamples > static_cast<int32>(40.0 * LengthScale));
 	TestTrue(FString::Printf(TEXT("los corredores van más bajos que las dunas de al lado (%.0f cm de media)"), Lower / FMath::Max(1, CorridorSamples)),
 		CorridorSamples > 0 && Lower / CorridorSamples > 60.0);
 
@@ -555,7 +563,8 @@ bool FTNBeachLayoutDeterminismTest::RunTest(const FString& Parameters)
 			TNBeachLayout::GenerateRound(Seed, Difficulty, A);
 			TNBeachLayout::GenerateRound(Seed, Difficulty, B);
 			TestTrue(FString::Printf(TEXT("%s, semilla %d: el mismo reparto dos veces"), Name, Seed), TNBeachLayoutTest::SameLayout(A, B));
-			TestTrue(FString::Printf(TEXT("%s, semilla %d: hay reparto a rebosar (%d elementos)"), Name, Seed, A.Items.Num()), A.Items.Num() > 3500);
+			// 3500 con 1200 m (medido: 3900-5200); 2300 con 800 m (medido: 2450-3400).
+			TestTrue(FString::Printf(TEXT("%s, semilla %d: hay reparto a rebosar (%d elementos)"), Name, Seed, A.Items.Num()), A.Items.Num() > 2300);
 			TestTrue(FString::Printf(TEXT("%s, semilla %d: el reparto sabe su dificultad"), Name, Seed), A.Difficulty == Difficulty);
 		}
 	}
@@ -592,8 +601,12 @@ bool FTNBeachLayoutRulesTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("%s se reparte"), *UEnum::GetValueAsString(E)), Rule.bSpecial || (Rule.Weight > 0.0 && Rule.MinT < Rule.MaxT && Rule.MaxPerRound > 0));
 	}
 
-	// Normal con 24 semillas (las cifras de Docs/Modo_Carrera.md) y las otras dos con 8. Mínimos medidos con el puerto a Python
-	// del reparto (72 rondas), con margen.
+	// Normal con 24 semillas (las cifras de Docs/Modo_Carrera.md) y las otras dos con 8. Mínimos con margen de lo medido con
+	// 800 m (los de 1200 m, entre paréntesis, eran los medidos con el puerto a Python del reparto, 72 rondas): elementos
+	// 2876 / 2869 / 2458 (4431 / 4641 / 3936), enemigos 87 / 59 / 218 (128 / 91 / 351), cangrejos 12 / 11 / 52 (13 / 20 / 83),
+	// pasos de quads 1-2 / 1-2 / 2-3 (2-3 / 1-2 / 3-4) y zonas de gaviotas 3-4 / 2-3 / 4-6 (4-6 / 3-5 / 6-9), en Normal / Fácil /
+	// Difícil. Los pasos de quads y las gaviotas salen de su cuota de 1200 m por LengthScale (con redondeo al azar en los
+	// quads, mínimo uno); los demás mínimos son los de antes por LengthScale, bajados algo si la medida quedaba pegada.
 	struct FProfileCase
 	{
 		ETNProcDifficulty Difficulty;
@@ -607,9 +620,9 @@ bool FTNBeachLayoutRulesTest::RunTest(const FString& Parameters)
 		int32 MaxGulls;
 	};
 	const FProfileCase Cases[] = {
-		{ ETNProcDifficulty::Normal, 24, 4200, 110, 10, 2, 3, 4, 6 },
-		{ ETNProcDifficulty::Easy, 8, 4200, 70, 5, 1, 2, 3, 5 },
-		{ ETNProcDifficulty::Hard, 8, 3700, 300, 30, 2, 4, 6, 9 },
+		{ ETNProcDifficulty::Normal, 24, 2600, 72, 7, 1, 2, 3, 4 },
+		{ ETNProcDifficulty::Easy, 8, 2600, 46, 3, 1, 2, 2, 3 },
+		{ ETNProcDifficulty::Hard, 8, 2300, 200, 20, 2, 3, 4, 6 },
 	};
 
 	double AreaFirst = 0.0;
@@ -805,28 +818,33 @@ bool FTNBeachLayoutRulesTest::RunTest(const FString& Parameters)
 			TestTrue(Ctx + TEXT(": el paso sigue libre al rehacer la rejilla"), Grid.IsConnected());
 			TestTrue(Ctx + TEXT(": castillo principal hacia la mitad"), L.DungeonPos.X > TNBeachLayout::XOfProgress(0.35) && L.DungeonPos.X < TNBeachLayout::XOfProgress(0.65));
 			TestTrue(FString::Printf(TEXT("%s: muchos enemigos (%d, %d cangrejos)"), *Ctx, L.NumEnemies, L.NumCrabs), L.NumEnemies >= Case.MinEnemies && L.NumCrabs >= Case.MinCrabs);
+			// Antes (1200 m): 6 catapultas, 10 trampolines, 4 plataformas móviles, 3 filas y 6 piezas militares (medido con 360
+			// rondas: 3 catapultas, 5 trampolines, 3 móviles, 2 filas y 4 piezas como mínimo).
 			TestTrue(FString::Printf(TEXT("%s: lanzadores y plataformas (%d catapultas, %d trampolines, %d plataformas móviles)"), *Ctx, Catapults, Trampolines, Movers),
-				Catapults >= 6 && Trampolines >= 10 && Movers >= 4);
-			TestTrue(FString::Printf(TEXT("%s: filas que obligan a zigzaguear (%d)"), *Ctx, L.NumRows), L.NumRows >= 3);
-			TestTrue(FString::Printf(TEXT("%s: piezas militares (%d)"), *Ctx, L.NumMilitary), L.NumMilitary >= 6);
+				Catapults >= 3 && Trampolines >= 5 && Movers >= 3);
+			TestTrue(FString::Printf(TEXT("%s: filas que obligan a zigzaguear (%d)"), *Ctx, L.NumRows), L.NumRows >= 2);
+			TestTrue(FString::Printf(TEXT("%s: piezas militares (%d)"), *Ctx, L.NumMilitary), L.NumMilitary >= 4);
 			TestTrue(FString::Printf(TEXT("%s: ocupación (media %.0f %%, primer tercio %.0f %%)"), *Ctx, L.CoverMean * 100.0, L.CoverFirstThird * 100.0),
 				L.CoverMean >= 0.42 && L.CoverFirstThird >= 0.38 && L.BandCover.Num() == TNBeachLayout::NumBands());
+			// Antes (1200 m): 10 arcos, 10 cimas, 3 atajos, 10 trincheras (las dos líneas fijas: no cambian) y 10 caminos.
 			TestTrue(FString::Printf(TEXT("%s: puntos interesantes (%d arcos, %d cimas, %d atajos, %d trincheras, %d caminos)"), *Ctx,
 				Kinds[static_cast<int32>(EInterestKind::JumpArc)], Kinds[static_cast<int32>(EInterestKind::Summit)], Kinds[static_cast<int32>(EInterestKind::Shortcut)],
 				Kinds[static_cast<int32>(EInterestKind::Trench)], Kinds[static_cast<int32>(EInterestKind::Detour)]),
-				Kinds[static_cast<int32>(EInterestKind::JumpArc)] >= 10 && Kinds[static_cast<int32>(EInterestKind::Summit)] >= 10
-				&& Kinds[static_cast<int32>(EInterestKind::Shortcut)] >= 3 && Kinds[static_cast<int32>(EInterestKind::Trench)] >= 10
-				&& Kinds[static_cast<int32>(EInterestKind::Detour)] >= 10);
+				Kinds[static_cast<int32>(EInterestKind::JumpArc)] >= 7 && Kinds[static_cast<int32>(EInterestKind::Summit)] >= 7
+				&& Kinds[static_cast<int32>(EInterestKind::Shortcut)] >= 2 && Kinds[static_cast<int32>(EInterestKind::Trench)] >= 10
+				&& Kinds[static_cast<int32>(EInterestKind::Detour)] >= 7);
 			TestTrue(FString::Printf(TEXT("%s: sin líneas rectas libres hacia el mar (%d filas de más de %.0f m; la más larga, %.0f m)"), *Ctx, LongRuns,
 				1.6 * TNBeachLayout::MaxStraightRun / 100.0, Longest / 100.0), LongRuns <= 2);
 			// Piezas nuevas de la ronda 3.
+			// Antes (1200 m): 3 fortalezas, 15 cofres, 6 pulpos (10 pozas; ahora 7), 1 ermitaño, 4 pulgas y 3 tanques. Las fortalezas,
+			// de tres o más a una: la colosal siempre y las otras dos por su cuota, si caben (se miran aparte las de los tres tamaños).
 			TestTrue(FString::Printf(TEXT("%s: fortalezas (%d, %d colosales) con rodeo, al mar y en su huella"), *Ctx, Fortresses, Colossal),
-				Fortresses >= 3 && Colossal <= 2 && bFortressesOk && L.NumFortresses == Fortresses && L.NumColossal == Colossal);
-			TestTrue(FString::Printf(TEXT("%s: cofres en sitios especiales (%d)"), *Ctx, Chests), Chests >= 15 && bChestsOk && L.NumChests == Chests);
-			TestTrue(FString::Printf(TEXT("%s: pulpos dentro de las pozas (%d)"), *Ctx, Octopuses), Octopuses >= 6 && bOctopusesOk);
+				Fortresses >= 1 && Colossal <= 2 && bFortressesOk && L.NumFortresses == Fortresses && L.NumColossal == Colossal);
+			TestTrue(FString::Printf(TEXT("%s: cofres en sitios especiales (%d)"), *Ctx, Chests), Chests >= 10 && bChestsOk && L.NumChests == Chests);
+			TestTrue(FString::Printf(TEXT("%s: pulpos dentro de las pozas (%d)"), *Ctx, Octopuses), Octopuses >= 4 && bOctopusesOk);
 			TestTrue(FString::Printf(TEXT("%s: ermitaños en calles cuesta abajo (%d)"), *Ctx, Hermits), Hermits >= 1 && bHermitsOk);
-			TestTrue(FString::Printf(TEXT("%s: pulgas en claros de arena (%d)"), *Ctx, Fleas), Fleas >= 4 && bFleasOk);
-			TestTrue(FString::Printf(TEXT("%s: tanques de juguete junto a lo militar (%d)"), *Ctx, Tanks), Tanks >= 3 && bTanksOk);
+			TestTrue(FString::Printf(TEXT("%s: pulgas en claros de arena (%d)"), *Ctx, Fleas), Fleas >= 3 && bFleasOk);
+			TestTrue(FString::Printf(TEXT("%s: tanques de juguete junto a lo militar (%d)"), *Ctx, Tanks), Tanks >= 2 && bTanksOk);
 			if (bNormal) { WithTwoDungeons += Dungeons >= 2 ? 1 : 0; }
 			WithAllSizes += SizesMask == 7 ? 1 : 0;
 			WithColossal += Colossal > 0 ? 1 : 0;
@@ -834,7 +852,9 @@ bool FTNBeachLayoutRulesTest::RunTest(const FString& Parameters)
 	}
 
 	const int32 NormalSeeds = Cases[0].NumSeeds;
-	TestTrue(FString::Printf(TEXT("casi siempre dos castillos con salas o más (%d de %d)"), WithTwoDungeons, NormalSeeds), WithTwoDungeons * 10 >= NormalSeeds * 7);
+	// Con 1200 m salían dos o más en todas las rondas medidas (2,1 de media); con 800 m, el principal siempre y otro o dos por
+	// probabilidad (1,7 de media; dos o más en 15 de 24 rondas): al menos el 40 %.
+	TestTrue(FString::Printf(TEXT("a menudo dos castillos con salas o más (%d de %d)"), WithTwoDungeons, NormalSeeds), WithTwoDungeons * 10 >= NormalSeeds * 4);
 	TestTrue(FString::Printf(TEXT("más denso hacia el mar (%.0f m² en el último tercio frente a %.0f m² en el primero)"), AreaLast / 1e4, AreaFirst / 1e4),
 		AreaLast > 1.05 * AreaFirst);
 	TestTrue(TEXT("cangrejos y erizos, más cerca del mar"), SeawardNum > 0 && SeawardSum / SeawardNum > 0.5);
@@ -883,8 +903,8 @@ bool FTNBeachLayoutDifficultyTest::RunTest(const FString& Parameters)
 		&& TNBeachLayout::ScaleGroupOf(ETNBeachElement::Coconut) == TNBeachLayout::EScaleGroup::None);
 
 	// Lo que sale de verdad en 8 semillas por perfil. La playa ya está llena en Normal: los cupos llevan el multiplicador
-	// entero, pero en Difícil las trampas y las ayudas no caben todas (medido: enemigos x2,6, trampas x1,3, ayudas x1,1;
-	// en Fácil, x0,68, x0,68 y x1,43).
+	// entero, pero en Difícil las trampas y las ayudas no caben todas (medido con 800 m: enemigos x2,6, trampas x1,3, ayudas
+	// x1,1; en Fácil, x0,70, x0,69 y x1,40; con 1200 m, casi igual).
 	struct FTotals
 	{
 		int32 Enemies = 0;
@@ -927,8 +947,11 @@ bool FTNBeachLayoutDifficultyTest::RunTest(const FString& Parameters)
 		Ratio(E.Hazards, N.Hazards) <= 0.8 && Ratio(H.Hazards, N.Hazards) >= 1.2);
 	TestTrue(FString::Printf(TEXT("ayudas: Fácil x%.2f (>= 1,25), Difícil x%.2f (>= 1)"), Ratio(E.Aids, N.Aids), Ratio(H.Aids, N.Aids)),
 		Ratio(E.Aids, N.Aids) >= 1.25 && Ratio(H.Aids, N.Aids) >= 1.0);
-	TestTrue(FString::Printf(TEXT("cofres: Fácil x%.2f y Difícil x%.2f, no menos que en Normal"), Ratio(E.Chests, N.Chests), Ratio(H.Chests, N.Chests)),
-		E.Chests >= N.Chests && H.Chests >= N.Chests);
+	// Con 1200 m: Fácil x1,2 y Difícil x1,3 (medido). Con 800 m los sitios donde caben (unos 12 de los 60-90 que salen: tras las
+	// conchas que atrapan, los lanzadores, las trincheras...) limitan los cofres de sitio especial y salen casi los mismos en
+	// las tres dificultades (x0,98 y x1,07): no bajan del 90 % de Normal.
+	TestTrue(FString::Printf(TEXT("cofres: Fácil x%.2f y Difícil x%.2f, no menos del 90 %% que en Normal"), Ratio(E.Chests, N.Chests), Ratio(H.Chests, N.Chests)),
+		E.Chests * 10 >= N.Chests * 9 && H.Chests * 10 >= N.Chests * 9);
 	return true;
 }
 
