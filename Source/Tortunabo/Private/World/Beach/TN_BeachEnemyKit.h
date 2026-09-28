@@ -3,10 +3,13 @@
 #include "CoreMinimal.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/SkinnedAsset.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/Package.h"
@@ -283,6 +286,49 @@ namespace TNBeachKit
 		}
 		OutLoc = PC->PlayerCameraManager->GetCameraLocation();
 		return true;
+	}
+
+	/**
+	 * Engancha Comp a la espalda de la tortuga (el caparazón): al hueso Spine2 de su malla, BackCm por detrás y UpCm por
+	 * encima de él en la postura de referencia, mirando hacia fuera; con el ragdoll del derribo va pegado al cuerpo. Sin
+	 * ese hueso, a la cápsula (55 cm por encima del centro). WorldScale es su escala en el mundo (no hereda la de la malla).
+	 */
+	inline void AttachToTurtleBack(UStaticMeshComponent* Comp, ACharacter* Turtle, float WorldScale, float BackCm = 50.f, float UpCm = 18.f)
+	{
+		if (!Comp || !Turtle || !Turtle->GetRootComponent())
+		{
+			return;
+		}
+		static const FName SpineBone(TEXT("Spine2"));
+		USkeletalMeshComponent* Mesh = Turtle->GetMesh();
+		const USkinnedAsset* Asset = Mesh ? Mesh->GetSkinnedAsset() : nullptr;
+		const int32 BoneIndex = Asset ? Asset->GetRefSkeleton().FindBoneIndex(SpineBone) : INDEX_NONE;
+		if (BoneIndex == INDEX_NONE)
+		{
+			Comp->AttachToComponent(Turtle->GetRootComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+			Comp->SetRelativeLocation(FVector(0.0, 0.0, 55.0));
+			Comp->SetAbsolute(false, false, true);
+			Comp->SetWorldScale3D(FVector(WorldScale));
+			return;
+		}
+		// Hueso en el espacio de la malla con la postura de referencia (la de ahora puede ser ya la del ragdoll).
+		const FReferenceSkeleton& Ref = Asset->GetRefSkeleton();
+		const TArray<FTransform>& Pose = Ref.GetRefBonePose();
+		FTransform BoneCS = Pose[BoneIndex];
+		for (int32 Parent = Ref.GetParentIndex(BoneIndex); Parent != INDEX_NONE; Parent = Ref.GetParentIndex(Parent))
+		{
+			BoneCS = BoneCS * Pose[Parent];
+		}
+		// Espacio de la malla de la tortuga: mira a +Y y arriba es +Z, así que el caparazón queda hacia -Y.
+		const double MeshScale = FMath::Max(0.01, static_cast<double>(Mesh->GetComponentScale().Z));
+		const FVector Outward = FVector(0.0, -0.75, 0.66).GetSafeNormal();
+		const FVector At = BoneCS.GetLocation() + FVector(0.0, -BackCm / MeshScale, UpCm / MeshScale);
+		const FTransform Wanted(FRotationMatrix::MakeFromZ(Outward).ToQuat(), At);
+		const FTransform Rel = Wanted.GetRelativeTransform(BoneCS);
+		Comp->AttachToComponent(Mesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, SpineBone);
+		Comp->SetRelativeLocationAndRotation(Rel.GetLocation(), Rel.GetRotation());
+		Comp->SetAbsolute(false, false, true);
+		Comp->SetWorldScale3D(FVector(WorldScale));
 	}
 
 	/** Hash estable de un entero a [0, 1). */

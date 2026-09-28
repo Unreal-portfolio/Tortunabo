@@ -10,8 +10,9 @@ class UStaticMeshComponent;
 /**
  * Erizo de mar de la playa (ETNBeachElement::SeaUrchin): una bola de púas de unos 3 m (un erizo de 11 cm a escala),
  * grande y lento, que rueda girando sobre sí mismo hacia la tortuga más cercana que entre en su radio, sin salirse de
- * su zona. Tocarlo pincha: la tortuga sale despedida en bola aturdida (en carrera no se muere) y el erizo retrocede un
- * poco rodando. Si no ve a nadie, se queda quieto respirando o da paseos cortos por su zona.
+ * su zona. Tocarlo pincha: la tortuga cae derribada con ragdoll y mareo (TNBeach::KnockDownTurtle), despedida hacia
+ * fuera dando una vuelta (en carrera no se muere), y el erizo retrocede un poco rodando. Si no nota a nadie, pasea casi
+ * sin parar por su zona (respiros cortos), rodeando lo grande del reparto y apartándose de los demás enemigos.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachSeaUrchin : public ATN_BeachEnemy
@@ -25,6 +26,8 @@ protected:
 	virtual void ApplySpec() override;
 	virtual void ServerTick(float DeltaSeconds) override;
 	virtual void VisualTick(float DeltaSeconds) override;
+	virtual float GetBodyRadius() const override;
+	virtual float GetActiveRange() const override { return LeashRadius + DetectRadius + 1500.f; }
 
 	/** Todas las máquinas: ha pinchado a Victim en Where. */
 	UFUNCTION(NetMulticast, Unreliable)

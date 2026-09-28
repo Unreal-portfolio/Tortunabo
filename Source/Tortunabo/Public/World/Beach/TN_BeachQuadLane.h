@@ -14,11 +14,11 @@ class UStaticMeshComponent;
  * lado, TN_BeachLayout.h), con Spec.Extent de largo (0 = el ancho de la playa) y la huella del contrato como semiancho
  * por su Y local (a lo largo del camino). En la arena se ven las rodadas.
  *
- *  - Cada 15-24 s sale un quad enorme (a escala: 56 m de largo, ruedas de 17 m de alto y 7 m de ancho, con su piloto).
+ *  - Cada 12-20 s sale un quad enorme (a escala: 56 m de largo, ruedas de 17 m de alto y 7 m de ancho, con su piloto).
  *    Antes, 3,5 s de aviso: temblor de pantalla creciente para quien esté cerca, motor que se acerca y nube de humo y
  *    hojas entre las palmeras del lado por el que va a salir. Cruza a 42 m/s y se mete en las palmeras del otro lado.
- *  - Las ruedas aplastan: aturden y lanzan (TNBeach::StunTurtle). Entre las ruedas de un lado y las del otro hay un
- *    hueco de 10 m (y 7 m de altura libre bajo el chasis) en el que se sobrevive.
+ *  - Las ruedas atropellan: derribo con ragdoll y mareo, lanzada dando vueltas (TNBeach::KnockDownTurtle). Entre las
+ *    ruedas de un lado y las del otro hay un hueco de 10 m (y 7 m de altura libre bajo el chasis) en el que se sobrevive.
  *  - Red: el servidor solo replica la hora de la próxima pasada y el sentido; cada máquina calcula dónde va el quad con
  *    el reloj del servidor (sin replicar movimiento). Los golpes los decide el servidor.
  */

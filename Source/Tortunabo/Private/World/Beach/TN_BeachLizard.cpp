@@ -24,7 +24,13 @@ namespace TNBeachLizardTuning
 	constexpr float ScareRadius = 1700.f;
 	constexpr float PanicRadius = 900.f;
 	/** Probabilidad de dar un susto (si no, huye sin más). */
-	constexpr float ScareChance = 0.55f;
+	constexpr float ScareChance = 0.7f;
+	/** Toma el sol este rato (s) y luego se va a otro sitio de su zona (hasta este tanto de la huella). */
+	constexpr float BaskMin = 4.f;
+	constexpr float BaskMax = 8.f;
+	constexpr float RoamReach = 0.6f;
+	/** Radio del cuerpo en planta (cm, por el tamaño) para apartarse de los demás enemigos. */
+	constexpr float BodyRadius = 380.f;
 	/** Amago del susto: velocidad y duración; empujón a quien esté cerca de la cabeza (pequeño, sin aturdir). */
 	constexpr float LungeSpeed = 700.f;
 	constexpr float LungeTime = 0.35f;
@@ -62,6 +68,9 @@ namespace TNBeachLizardTuning
 		case ETNBeachElement::ShipSailWreck:
 		case ETNBeachElement::OldPlanks:
 		case ETNBeachElement::SandCastleSmall:
+		case ETNBeachElement::Sandbags:
+		case ETNBeachElement::AmmoCrate:
+		case ETNBeachElement::CamoNet:
 			return true;
 		default:
 			return false;
@@ -71,7 +80,14 @@ namespace TNBeachLizardTuning
 
 ATN_BeachLizard::ATN_BeachLizard()
 {
-	SetNetUpdateFrequency(8.f);
+	NetFrequencyNear = 8.f;
+	SetNetUpdateFrequency(NetFrequencyNear);
+	bThrottleWhenFar = true;
+}
+
+float ATN_BeachLizard::GetBodyRadius() const
+{
+	return TNBeachLizardTuning::BodyRadius * SizeK;
 }
 
 void ATN_BeachLizard::ApplySpec()
@@ -247,12 +263,15 @@ bool ATN_BeachLizard::RunToward(const FVector& Goal, float MoveSpeed, float Delt
 	}
 	const FVector Dir = Flat / Dist;
 	FVector Next = SimLoc + Dir * FMath::Min(Dist, static_cast<double>(MoveSpeed * DeltaSeconds));
+	// Se aparta de los demás enemigos; lo del reparto no lo rodea (se mete debajo de las rocas y los troncos).
+	Next = ResolveStep(Next, GetBodyRadius(), false);
 	GroundTimer -= DeltaSeconds;
 	if (GroundTimer <= 0.f)
 	{
 		GroundTimer = 0.1f;
 		float Z = GroundZ;
-		if (TraceGround(this, Next, Z))
+		// La arena (sin trazas): con una traza se subiría encima de la roca en vez de meterse debajo.
+		if (GroundHeightAt(Next, Z))
 		{
 			GroundZ = Z;
 		}
@@ -300,6 +319,23 @@ void ATN_BeachLizard::ServerTick(float DeltaSeconds)
 			CalmTime = 0.f;
 			ServerSetState(ToByte(EState::Alert), Near->GetActorLocation());
 		}
+		else if (StateLeft <= 0.f)
+		{
+			// Tras un rato al sol, se va a otro sitio de su zona (no dentro de una roca).
+			FVector Goal = Home;
+			for (int32 Try = 0; Try < 5; ++Try)
+			{
+				const float Angle = ServerRng.FRandRange(0.f, 2.f * PI);
+				const float Reach = GetFootprintRadius() * TNBeachLizardTuning::RoamReach * FMath::Sqrt(ServerRng.FRandRange(0.25f, 1.f));
+				const FVector Candidate = Home + FVector(FMath::Cos(Angle) * Reach, FMath::Sin(Angle) * Reach, 0.f);
+				if (!IsInsideObstacle(Candidate, GetBodyRadius()))
+				{
+					Goal = Candidate;
+					break;
+				}
+			}
+			ServerSetState(ToByte(EState::Walk), Goal);
+		}
 		break;
 
 	case EState::Alert:
@@ -316,6 +352,7 @@ void ATN_BeachLizard::ServerTick(float DeltaSeconds)
 			CalmTime += DeltaSeconds;
 			if (CalmTime > 2.f)
 			{
+				StateLeft = ServerRng.FRandRange(TNBeachLizardTuning::BaskMin, TNBeachLizardTuning::BaskMax);
 				ServerSetState(ToByte(EState::Bask));
 			}
 		}
@@ -363,7 +400,8 @@ void ATN_BeachLizard::ServerTick(float DeltaSeconds)
 			for (ATortugaCharacter* Turtle : Turtles)
 			{
 				const FVector At = Turtle->GetActorLocation();
-				if (FVector::Dist2D(At, HeadAt) > TNBeachLizardTuning::ShoveRadius * SizeK)
+				// Ni a las derribadas, aturdidas o en el pico de una gaviota (su movimiento no es suyo).
+				if (!CanBeHit(Turtle) || FVector::Dist2D(At, HeadAt) > TNBeachLizardTuning::ShoveRadius * SizeK)
 				{
 					continue;
 				}
@@ -408,18 +446,27 @@ void ATN_BeachLizard::ServerTick(float DeltaSeconds)
 	case EState::Emerge:
 		if (Age >= TNBeachLizardTuning::EmergeTime)
 		{
+			StateLeft = ServerRng.FRandRange(TNBeachLizardTuning::BaskMin, TNBeachLizardTuning::BaskMax);
 			ServerSetState(ToByte(FVector::Dist2D(SimLoc, Home) > 300.0 ? EState::Walk : EState::Bask), Home);
 		}
 		break;
 
 	case EState::Walk:
 	default:
+		// Anda a su sitio o al siguiente rincón al sol (Mover.Aim); si una tortuga se acerca, se para a mirarla.
 		if (Near && Dist < Scare)
 		{
 			StartFlee(Near->GetActorLocation());
 		}
-		else if (RunToward(Home, TNBeachLizardTuning::WalkSpeed * SizeK, DeltaSeconds, 200.f))
+		else if (Near && Dist < Alert)
 		{
+			Threat = Near;
+			CalmTime = 0.f;
+			ServerSetState(ToByte(EState::Alert), Near->GetActorLocation());
+		}
+		else if (RunToward(FVector(Mover.Aim), TNBeachLizardTuning::WalkSpeed * SizeK, DeltaSeconds, 200.f) || Age > 10.f)
+		{
+			StateLeft = ServerRng.FRandRange(TNBeachLizardTuning::BaskMin, TNBeachLizardTuning::BaskMax);
 			ServerSetState(ToByte(EState::Bask));
 		}
 		break;

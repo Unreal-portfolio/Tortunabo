@@ -575,12 +575,84 @@ namespace TNBeachMeshes
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
+	// Gaviotas y pelícanos: el pico que se abre (medidas de la fauna, se escalan con el pájaro)
+	// ─────────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Dónde van el cuerpo, la cabeza y el pico del ave de la fauna (TNFaunaBuildBird con las medidas de la gaviota y del
+	 * pelícano de TNFaunaBuildSpecies: si cambian allí, hay que cambiarlas aquí). BodyPivot en el espacio de la raíz del
+	 * pájaro, HeadPivot en el del cuerpo y el pico en el de la cabeza (su pivote es la base del cuello).
+	 */
+	struct FBirdGeom
+	{
+		FVector BodyPivot = FVector::ZeroVector;
+		FVector HeadPivot = FVector::ZeroVector;
+		FVector BeakBase = FVector::ZeroVector;
+		FVector BeakTip = FVector::ZeroVector;
+		double BeakR = 1.4;
+		/** Punto del pico que sujeta a la tortuga (espacio de la cabeza): entre la mitad y la punta, abajo. */
+		FVector Grip = FVector::ZeroVector;
+		FLinearColor BeakC = FLinearColor::White;
+		FLinearColor BeakTipC = FLinearColor::White;
+	};
+
+	inline FBirdGeom BirdGeom(bool bPelican)
+	{
+		// Gaviota: Len 16, Girth 8, Leg 9, Neck 4 (NeckFwd 0,3), Head 5,5, Beak 6, BeakR 1,4.
+		// Pelícano: Len 32, Girth 17, Leg 14, Neck 18 (NeckFwd 0,2), Head 8, Beak 34, BeakR 3, BeakDroop 0,1.
+		const double Len = bPelican ? 32.0 : 16.0;
+		const double Girth = bPelican ? 17.0 : 8.0;
+		const double Leg = bPelican ? 14.0 : 9.0;
+		const double Neck = bPelican ? 18.0 : 4.0;
+		const double NeckFwd = bPelican ? 0.2 : 0.3;
+		const double Head = bPelican ? 8.0 : 5.5;
+		const double Beak = bPelican ? 34.0 : 6.0;
+		const double Droop = bPelican ? 0.1 : 0.0;
+		FBirdGeom G;
+		G.BeakR = bPelican ? 3.0 : 1.4;
+		G.BodyPivot = FVector(0.0, 0.0, Leg + Girth * 0.45);
+		G.HeadPivot = FVector(Len * 0.7, 0.0, Girth * 0.45);
+		const FVector NeckTop(Neck * NeckFwd, 0.0, Neck);
+		const FVector HeadAt = NeckTop + FVector(Head * 0.25, 0.0, Head * 0.35);
+		G.BeakBase = HeadAt + FVector(Head * 0.95, 0.0, -Head * 0.1);
+		const FVector Mid = G.BeakBase + FVector(Beak * 0.5, 0.0, -Beak * 0.1 * Droop);
+		G.BeakTip = Mid + FVector(Beak * 0.5 * (1.0 - 0.45 * Droop), 0.0, -Beak * 0.42 * Droop);
+		G.Grip = FMath::Lerp(G.BeakBase, G.BeakTip, bPelican ? 0.62 : 0.72) - FVector(0.0, 0.0, G.BeakR * 0.6);
+		G.BeakC = bPelican ? Rgb(1.f, 0.78f, 0.25f) : Rgb(1.f, 0.8f, 0.15f);
+		G.BeakTipC = bPelican ? Rgb(0.95f, 0.5f, 0.15f) : Rgb(0.9f, 0.2f, 0.1f);
+		return G;
+	}
+
+	/**
+	 * Mandíbula de abajo (medidas de la fauna, pivote en la base del pico): cuña del color del pico pegada por debajo del
+	 * de arriba; cerrada no se nota y al girar hacia abajo el pico se abre. El pelícano lleva debajo su bolsa naranja.
+	 */
+	inline void BuildBirdJaw(FTNProcMeshBuffers& M, bool bPelican)
+	{
+		const FBirdGeom G = BirdGeom(bPelican);
+		const FVector Tip = G.BeakTip - G.BeakBase;
+		const FVector Low(0.0, 0.0, -G.BeakR * 0.45);
+		const FVector Mid = Tip * 0.5 + Low;
+		TNProcMesh::TNProcAddCylinder(M, Low, Mid, G.BeakR * 0.7, G.BeakR * 0.55, 4, G.BeakC * 0.92f, true);
+		TNProcMesh::TNProcAddCylinder(M, Mid, Tip * 0.97 + Low * 0.6, G.BeakR * 0.55, G.BeakR * 0.15, 4, G.BeakTipC * 0.9f, true);
+		// Por dentro de la boca, rojo oscuro (se ve al abrir).
+		M.AddBox(Tip * 0.35 + Low * 0.3, FVector::ForwardVector, FVector(Tip.Size() * 0.3, G.BeakR * 0.35, G.BeakR * 0.12), Rgb(0.55f, 0.1f, 0.12f));
+		if (bPelican)
+		{
+			TNFauna::TNFaunaBlob(M, Tip * 0.45 + FVector(0.0, 0.0, -G.BeakR * 1.4), FVector(Tip.Size() * 0.4, G.BeakR * 0.95, G.BeakR * 1.2),
+				Rgb(1.f, 0.6f, 0.22f), Rgb(0.92f, 0.52f, 0.18f), 6, 3);
+		}
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
 	// Gaviotas: la cagada y su mancha (cm de juego)
 	// ─────────────────────────────────────────────────────────────────────────
 
 	inline void BuildDropping(FTNProcMeshBuffers& M)
 	{
-		TNFauna::TNFaunaBlob(M, FVector::ZeroVector, FVector(55.0, 55.0, 62.0), Rgb(0.97f, 0.97f, 0.94f), Rgb(0.9f, 0.9f, 0.86f), 8, 4);
+		// Pegote blanco con su punta al caer (hacia arriba) y los grumos oscuros: bien visible desde lejos.
+		TNFauna::TNFaunaBlob(M, FVector::ZeroVector, FVector(55.0, 55.0, 62.0), Rgb(0.98f, 0.98f, 0.95f), Rgb(0.9f, 0.9f, 0.86f), 8, 4);
+		TNFauna::TNFaunaBlob(M, FVector(0.0, 0.0, 70.0), FVector(26.0, 26.0, 42.0), Rgb(0.98f, 0.98f, 0.95f), Rgb(0.92f, 0.92f, 0.88f), 6, 3);
 		TNFauna::TNFaunaBlob(M, FVector(18.0, 14.0, 30.0), FVector(18.0, 16.0, 16.0), Rgb(0.45f, 0.42f, 0.36f), Rgb(0.4f, 0.38f, 0.32f), 6, 3);
 		TNFauna::TNFaunaBlob(M, FVector(-20.0, -10.0, 10.0), FVector(14.0, 12.0, 12.0), Rgb(0.55f, 0.52f, 0.45f), Rgb(0.5f, 0.48f, 0.4f), 6, 3);
 	}

@@ -9,14 +9,16 @@ class UStaticMeshComponent;
 
 /**
  * Lagarto enorme de la playa (ETNBeachElement::Lizard): vida del ambiente, no un enemigo de verdad. Un lagarto de unos
- * 55 cm reales (15 m a escala) que toma el sol en su sitio (flexiones, cabeceos, lengua, cola que se mece).
+ * 55 cm reales (15 m a escala) que toma el sol (flexiones, cabeceos, lengua, cola que se mece) unos segundos y se va
+ * andando a otro rincón de su zona, apartándose de los demás enemigos.
  *
  *  - Si una tortuga se acerca, se pone alerta y la mira. Si se acerca más, unas veces da un susto (sacudida, se hincha,
  *    saca la lengua y bufa, con un amago hacia ella que como mucho empuja un poco) y otras sale corriendo sin más.
  *  - Huye a la roca, tronco o restos más cercanos que no queden hacia la tortuga y se mete debajo; si no hay ninguno, se
  *    entierra en la arena sacudiéndose. Al rato, si no hay nadie cerca, vuelve a salir y regresa a tomar el sol.
  *
- * No aturde a nadie: el empujón del susto es pequeño (servidor y dueño a la vez, como las piezas del parque del lobby).
+ * No aturde ni derriba a nadie: el empujón del susto es pequeño (servidor y dueño a la vez, como las piezas del parque del
+ * lobby), y nunca a una tortuga derribada, aturdida o en el pico de una gaviota.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachLizard : public ATN_BeachEnemy
@@ -31,6 +33,8 @@ protected:
 	virtual void ServerTick(float DeltaSeconds) override;
 	virtual void VisualTick(float DeltaSeconds) override;
 	virtual void OnMoverStateChanged(uint8 OldState) override;
+	virtual float GetBodyRadius() const override;
+	virtual float GetActiveRange() const override { return 4500.f * SizeK; }
 
 	/** Todas las máquinas: el susto empuja un poco a Victim (el dueño lo aplica también para no corregir). */
 	UFUNCTION(NetMulticast, Unreliable)

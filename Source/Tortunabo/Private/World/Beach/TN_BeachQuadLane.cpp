@@ -16,18 +16,23 @@ namespace TNBeachQuad
 	/** Velocidad del quad (cm/s). */
 	constexpr float Speed = 4200.f;
 	/** Tiempo entre pasadas (s, sin contar el aviso) y hasta la primera. */
-	constexpr float IntervalMin = 15.f;
-	constexpr float IntervalMax = 24.f;
+	constexpr float IntervalMin = 12.f;
+	constexpr float IntervalMax = 20.f;
 	constexpr float FirstMin = 5.f;
-	constexpr float FirstMax = 15.f;
+	constexpr float FirstMax = 14.f;
 	/** Lo que recorre metido entre las palmeras antes de salir y después de entrar (cm). */
 	constexpr float PalmMargin = 1500.f;
-	/** Aplastamiento: aturdimiento, espera antes de poder volver a golpear a la misma y lanzamiento. */
-	constexpr float StunSeconds = 3.2f;
+	/**
+	 * Atropello: derribo con ragdoll y mareo (s), espera antes de poder volver a golpear a la misma y lanzamiento del
+	 * ragdoll (cm/s: en el sentido del quad, hacia fuera de la rueda y hacia arriba) dando vueltas (grados/s). Moderado
+	 * para que el ragdoll no atraviese la arena al caer.
+	 */
+	constexpr float KnockSeconds = 3.f;
 	constexpr float HitCooldown = 1.2f;
-	constexpr float LaunchForward = 0.4f;
-	constexpr float LaunchSide = 350.f;
-	constexpr float LaunchUp = 1100.f;
+	constexpr float LaunchForward = 950.f;
+	constexpr float LaunchSide = 380.f;
+	constexpr float LaunchUp = 750.f;
+	constexpr float LaunchSpin = 420.f;
 	/** Paso de las rodadas en la arena (cm). */
 	constexpr double RutStep = 500.0;
 }
@@ -251,6 +256,10 @@ void ATN_BeachQuadLane::ServerTick(float DeltaSeconds)
 		const double WorldNow = GetWorld()->GetTimeSeconds();
 		for (ATortugaCharacter* Turtle : Turtles)
 		{
+			if (!CanBeHit(Turtle))
+			{
+				continue;
+			}
 			const FVector L = LaneXf.InverseTransformPosition(Turtle->GetActorLocation());
 			if (FMath::Abs(L.Z) > Height + 1500.0)
 			{
@@ -273,8 +282,10 @@ void ATN_BeachQuadLane::ServerTick(float DeltaSeconds)
 				LastHit.Add(Turtle, WorldNow);
 				const FVector Travel = LaneXf.TransformVectorNoScale(FVector(Dir, 0.0, 0.0));
 				const FVector Out = LaneXf.TransformVectorNoScale(FVector(0.0, L.Y >= W.Y ? 1.0 : -1.0, 0.0));
-				StunTurtle(Turtle, TNBeachQuad::StunSeconds, Travel * (TNBeachQuad::Speed * TNBeachQuad::LaunchForward) + Out * TNBeachQuad::LaunchSide
-					+ FVector(0.0, 0.0, TNBeachQuad::LaunchUp));
+				// Atropello: sale lanzada en ragdoll por delante de la rueda, dando vueltas de campana.
+				const FVector Push = Travel * TNBeachQuad::LaunchForward + Out * TNBeachQuad::LaunchSide + FVector(0.0, 0.0, TNBeachQuad::LaunchUp);
+				const FVector Spin = FVector::CrossProduct(FVector::UpVector, Travel) * TNBeachQuad::LaunchSpin;
+				KnockDownTurtle(Turtle, TNBeachQuad::KnockSeconds, Push, Spin);
 				MulticastRunOver(Turtle);
 				break;
 			}
@@ -304,6 +315,7 @@ void ATN_BeachQuadLane::MulticastRunOver_Implementation(ATortugaCharacter* Victi
 	}
 	TNBeachKit::BurstAt(Dust, At, FVector::UpVector, 10);
 	UTN_BeachCameraShake::Kick(this, At, 0.9f, 800.f, 4000.f);
+	ShowPop(NSLOCTEXT("TNBeach", "QuadRunOver", "¡ATROPELLO!"), FColor(255, 140, 40), At + FVector(0.0, 0.0, 300.0), 160.f);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,7 +387,8 @@ void ATN_BeachQuadLane::VisualTick(float DeltaSeconds)
 	const bool bPassing = QuadXAt(Now, QuadX);
 	if (bPassing)
 	{
-		// Suelo bajo cada rueda (diez veces por segundo): el quad se inclina con las dunas.
+		// Suelo bajo cada rueda (diez veces por segundo): el quad se inclina con las dunas. Del generador, sin trazas: entre
+		// las palmeras cruza los muros invisibles de los lados y una traza que empieza dentro de uno lo subiría 40 m.
 		GroundTimer -= DeltaSeconds;
 		if (GroundTimer <= 0.f)
 		{
@@ -384,7 +397,7 @@ void ATN_BeachQuadLane::VisualTick(float DeltaSeconds)
 			{
 				const FVector W = LaneXf.TransformPosition(WheelLocal(i, QuadX));
 				float Z = static_cast<float>(W.Z);
-				TraceGround(this, W, Z, nullptr, 4000.f, 8000.f);
+				GroundHeightAt(W, Z);
 				WheelGround[i] = Z;
 			}
 		}

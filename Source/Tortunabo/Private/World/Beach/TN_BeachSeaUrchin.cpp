@@ -19,25 +19,38 @@ namespace TNBeachUrchin
 		return static_cast<uint8>(E);
 	}
 
-	/** Ve a una tortuga a esta distancia (cm) y no se aleja de su sitio más que la correa (o 1,35 veces la huella). */
-	constexpr float DetectRadius = 2000.f;
+	/** Nota a una tortuga a esta distancia (cm, por las vibraciones: alrededor) y no se aleja de su sitio más que la correa (o 1,35 veces la huella). */
+	constexpr float DetectRadius = 2200.f;
 	constexpr float LeashRadius = 1600.f;
 	/** Velocidades (cm/s): paseo y rodar hacia una tortuga (la tortuga anda a 450: solo pilla a quien se despista). */
-	constexpr float WanderSpeed = 90.f;
-	constexpr float RollSpeed = 190.f;
+	constexpr float WanderSpeed = 120.f;
+	constexpr float RollSpeed = 210.f;
+	/** Paseos: casi seguidos, con respiros cortos, hasta este tanto de la huella; si no llega en este tiempo, otro. */
+	constexpr float RestMin = 0.6f;
+	constexpr float RestMax = 1.6f;
+	constexpr float WanderReach = 0.8f;
+	constexpr float WanderTimeout = 7.f;
 	/** Retroceso tras pinchar: velocidad y duración. */
 	constexpr float RecoilSpeed = 260.f;
 	constexpr float RecoilTime = 0.8f;
-	/** Pinchazo: aturdimiento, empujón y tiempo que ignora a la pinchada. */
-	constexpr float StunSeconds = 2.4f;
-	constexpr float PushSpeed = 700.f;
-	constexpr float PushUp = 450.f;
-	constexpr float IgnoreSeconds = 3.f;
+	/** Pinchazo: derribo con ragdoll y mareo, empujón (cm/s), vuelta del ragdoll (grados/s) y tiempo que ignora a la pinchada. */
+	constexpr float KnockSeconds = 2.4f;
+	constexpr float PushSpeed = 620.f;
+	constexpr float PushUp = 380.f;
+	constexpr float PushSpin = 260.f;
+	constexpr float IgnoreSeconds = 4.5f;
 }
 
 ATN_BeachSeaUrchin::ATN_BeachSeaUrchin()
 {
-	SetNetUpdateFrequency(8.f);
+	NetFrequencyNear = 8.f;
+	SetNetUpdateFrequency(NetFrequencyNear);
+	bThrottleWhenFar = true;
+}
+
+float ATN_BeachSeaUrchin::GetBodyRadius() const
+{
+	return RollRadius * 1.15f;
 }
 
 void ATN_BeachSeaUrchin::ApplySpec()
@@ -92,6 +105,8 @@ void ATN_BeachSeaUrchin::RollToward(const FVector& Goal, float MoveSpeed, float 
 	}
 	const FVector Dir = Flat / Dist;
 	FVector Next = SimLoc + Dir * FMath::Min(Dist, static_cast<double>(MoveSpeed * DeltaSeconds));
+	// Sin meterse en otro enemigo ni en lo grande del reparto (lo rodea rodando).
+	Next = ResolveStep(Next, GetBodyRadius(), true);
 	FVector FromHome = Next - Home;
 	FromHome.Z = 0.0;
 	if (FromHome.Size() > LeashRadius)
@@ -103,7 +118,7 @@ void ATN_BeachSeaUrchin::RollToward(const FVector& Goal, float MoveSpeed, float 
 	{
 		GroundTimer = 0.12f;
 		float Z = GroundZ;
-		if (TraceGround(this, Next, Z))
+		if (GroundHeightAt(Next, Z))
 		{
 			GroundZ = Z;
 		}
@@ -136,7 +151,9 @@ bool ATN_BeachSeaUrchin::CheckPricks()
 		FVector Away = At - Center;
 		Away.Z = 0.0;
 		Away = Away.IsNearlyZero() ? FRotator(0.f, SimYaw, 0.f).Vector() : Away.GetSafeNormal();
-		StunTurtle(Turtle, TNBeachUrchin::StunSeconds, Away * TNBeachUrchin::PushSpeed + FVector(0.0, 0.0, TNBeachUrchin::PushUp));
+		// Pinchazo: derribo con ragdoll y mareo, despedida hacia fuera y dando una vuelta hacia atrás.
+		const FVector Tumble = FVector::CrossProduct(FVector::UpVector, Away) * TNBeachUrchin::PushSpin;
+		KnockDownTurtle(Turtle, TNBeachUrchin::KnockSeconds, Away * TNBeachUrchin::PushSpeed + FVector(0.0, 0.0, TNBeachUrchin::PushUp), Tumble);
 		IgnoreTurtle(Turtle, TNBeachUrchin::IgnoreSeconds);
 		MulticastPrick(Turtle, (At + Center) * 0.5);
 		ServerSetState(TNBeachUrchin::ToByte(TNBeachUrchin::EState::Recoil), At);
@@ -174,18 +191,27 @@ void ATN_BeachSeaUrchin::ServerTick(float DeltaSeconds)
 		{
 			if (StateLeft <= 0.f)
 			{
-				const float Angle = ServerRng.FRandRange(0.f, 2.f * PI);
-				const float Dist = GetFootprintRadius() * 0.5f * FMath::Sqrt(ServerRng.FRand());
-				WanderGoal = Home + FVector(FMath::Cos(Angle) * Dist, FMath::Sin(Angle) * Dist, 0.f);
+				// Paseo a otro punto de su zona (nunca dentro de lo grande del reparto).
+				for (int32 Try = 0; Try < 6; ++Try)
+				{
+					const float Angle = ServerRng.FRandRange(0.f, 2.f * PI);
+					const float Dist = GetFootprintRadius() * TNBeachUrchin::WanderReach * FMath::Sqrt(ServerRng.FRandRange(0.2f, 1.f));
+					WanderGoal = Home + FVector(FMath::Cos(Angle) * Dist, FMath::Sin(Angle) * Dist, 0.f);
+					if (!IsInsideObstacle(WanderGoal, GetBodyRadius()))
+					{
+						break;
+					}
+					WanderGoal = Home;
+				}
 				ServerSetState(ToByte(EState::Wander), WanderGoal);
 			}
 		}
 		else
 		{
 			RollToward(WanderGoal, TNBeachUrchin::WanderSpeed * SizeK, DeltaSeconds);
-			if (FVector::Dist2D(SimLoc, WanderGoal) < 60.0)
+			if (FVector::Dist2D(SimLoc, WanderGoal) < 80.0 || GetStateAge() > TNBeachUrchin::WanderTimeout)
 			{
-				StateLeft = ServerRng.FRandRange(2.f, 5.f);
+				StateLeft = ServerRng.FRandRange(TNBeachUrchin::RestMin, TNBeachUrchin::RestMax);
 				ServerSetState(ToByte(EState::Idle));
 			}
 		}
@@ -199,7 +225,7 @@ void ATN_BeachSeaUrchin::ServerTick(float DeltaSeconds)
 			Target = bLive ? FindTarget(SimLoc, DetectRadius, Home, LeashRadius * 1.15f) : nullptr;
 			if (!Target.IsValid())
 			{
-				StateLeft = ServerRng.FRandRange(1.f, 2.5f);
+				StateLeft = ServerRng.FRandRange(TNBeachUrchin::RestMin, TNBeachUrchin::RestMax);
 				ServerSetState(ToByte(EState::Idle));
 			}
 			break;
@@ -216,7 +242,7 @@ void ATN_BeachSeaUrchin::ServerTick(float DeltaSeconds)
 		RollToward(SimLoc + Away * 500.0, TNBeachUrchin::RecoilSpeed, DeltaSeconds);
 		if (GetStateAge() >= TNBeachUrchin::RecoilTime)
 		{
-			StateLeft = 1.5f;
+			StateLeft = TNBeachUrchin::RestMin;
 			ServerSetState(ToByte(EState::Idle));
 		}
 		break;
@@ -244,7 +270,8 @@ void ATN_BeachSeaUrchin::MulticastPrick_Implementation(ATortugaCharacter* Victim
 		Voice->Play(ETNBeachSfx::Prick, 1.f, 1.2f);
 	}
 	TNBeachKit::BurstAt(Dust, At, FVector::UpVector, 8);
-	UTN_BeachCameraShake::Kick(this, At, 0.35f, 400.f, 2000.f);
+	UTN_BeachCameraShake::Kick(this, At, 0.45f, 400.f, 2000.f);
+	ShowPop(NSLOCTEXT("TNBeach", "UrchinPrick", "¡PINCHAZO!"), FColor(190, 90, 255), At + FVector(0.0, 0.0, 260.0));
 }
 
 void ATN_BeachSeaUrchin::VisualTick(float DeltaSeconds)

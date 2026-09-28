@@ -1,13 +1,16 @@
 #include "World/Beach/TN_BeachEnemy.h"
 #include "World/Beach/TN_BeachEnemySynth.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_Log.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "Game/TN_BeachRaceGameState.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -28,6 +31,114 @@ namespace TNBeachEnemyDebug
 		return static_cast<int32>(static_cast<int16>(static_cast<uint16>(A - B)));
 	}
 }
+
+namespace TNBeachEnemyShared
+{
+	/**
+	 * Tortugas que lleva en el pico alguna gaviota (en cualquier mundo del proceso: en el PIE, las copias de cada máquina
+	 * son objetos distintos, así que no se mezclan).
+	 */
+	TArray<TWeakObjectPtr<ATortugaCharacter>>& HeldTurtles()
+	{
+		static TArray<TWeakObjectPtr<ATortugaCharacter>> List;
+		return List;
+	}
+
+	/** Enemigos vivos (todos los mundos del proceso; se filtra por mundo al usarlos). */
+	TArray<TWeakObjectPtr<ATN_BeachEnemy>>& AllEnemies()
+	{
+		static TArray<TWeakObjectPtr<ATN_BeachEnemy>> List;
+		return List;
+	}
+
+	/** Velocidad mínima hacia abajo que se pasa al derribo: el empujón de verdad va al ragdoll (ver ServerKnockDown). */
+	constexpr float KnockSettle = 60.f;
+
+	/** Revisión del nivel de detalle (s) y cada cuánto se actualiza lejos: a la vista y fuera de ella (s). */
+	constexpr float LodPeriod = 0.5f;
+	constexpr float FarSeenInterval = 0.066f;
+	constexpr float FarHiddenInterval = 0.25f;
+
+	/** Elementos del reparto que un enemigo que anda rodea (lo que no se pisa sin más). */
+	bool IsObstacle(const TNBeachLayout::FItem& Item)
+	{
+		if (Item.bOverlay)
+		{
+			return false;
+		}
+		switch (Item.Element)
+		{
+		case ETNBeachElement::Seaweed:
+		case ETNBeachElement::Boardwalk:
+		case ETNBeachElement::WoodenPostPath:
+			return false;
+		default:
+			break;
+		}
+		switch (TNBeach::CategoryOf(Item.Element))
+		{
+		case ETNBeachCategory::Enemy:
+			return false;
+		case ETNBeachCategory::Trap:
+			return true;
+		case ETNBeachCategory::Decor:
+		default:
+			// Lo pequeño (latas, conchas, vasos) se pisa: el cangrejo mide 5 m.
+			return Item.bBlocking && Item.Radius >= 380.0;
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Empujones del ragdoll
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool FTNBeachRagdollPushes::TryApply(ACharacter* Turtle, const FVector& Push, const FVector& Spin)
+{
+	USkeletalMeshComponent* Mesh = Turtle ? Turtle->GetMesh() : nullptr;
+	if (!Mesh || !Mesh->IsSimulatingPhysics())
+	{
+		return false;
+	}
+	Mesh->SetAllPhysicsLinearVelocity(Push);
+	if (!Spin.IsNearlyZero())
+	{
+		Mesh->SetAllPhysicsAngularVelocityInRadians(FVector(FMath::DegreesToRadians(Spin.X), FMath::DegreesToRadians(Spin.Y), FMath::DegreesToRadians(Spin.Z)));
+	}
+	Mesh->WakeAllRigidBodies();
+	return true;
+}
+
+void FTNBeachRagdollPushes::Add(ACharacter* Turtle, const FVector& Push, const FVector& Spin)
+{
+	if (!Turtle || TryApply(Turtle, Push, Spin))
+	{
+		return;
+	}
+	FItem& Item = Items.AddDefaulted_GetRef();
+	Item.Turtle = Turtle;
+	Item.Push = Push;
+	Item.Spin = Spin;
+	Item.Left = 1.f;
+}
+
+void FTNBeachRagdollPushes::Tick(float DeltaSeconds)
+{
+	for (int32 i = Items.Num() - 1; i >= 0; --i)
+	{
+		FItem& Item = Items[i];
+		Item.Left -= DeltaSeconds;
+		ACharacter* Turtle = Item.Turtle.Get();
+		if (!Turtle || Item.Left <= 0.f || TryApply(Turtle, Item.Push, Item.Spin))
+		{
+			Items.RemoveAtSwap(i);
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATN_BeachEnemy
+// ─────────────────────────────────────────────────────────────────────────────
 
 ATN_BeachEnemy::ATN_BeachEnemy()
 {
@@ -69,14 +180,95 @@ void ATN_BeachEnemy::BeginPlay()
 		Mover.Location = SimLoc;
 		Mover.Yaw = FRotator::CompressAxisToShort(SimYaw);
 		Mover.StateTime = static_cast<float>(ServerNow(this));
+		SetNetUpdateFrequency(NetFrequencyNear);
 	}
+	TNBeachEnemyShared::AllEnemies().Add(this);
+	// Cada uno revisa su nivel de detalle en un momento distinto (no todos en el mismo fotograma).
+	LodTimer = TNBeachEnemyShared::LodPeriod * static_cast<float>((static_cast<uint32>(Spec.Seed) * 2654435761u) % 1000u) / 1000.f;
 	Super::BeginPlay();
 }
 
 void ATN_BeachEnemy::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	IgnoreUntil.Reset();
+	TArray<TWeakObjectPtr<ATN_BeachEnemy>>& All = TNBeachEnemyShared::AllEnemies();
+	for (int32 i = All.Num() - 1; i >= 0; --i)
+	{
+		if (!All[i].IsValid() || All[i].Get() == this)
+		{
+			All.RemoveAtSwap(i);
+		}
+	}
 	Super::EndPlay(EndPlayReason);
+}
+
+bool ATN_BeachEnemy::IsTurtleHeld(const ATortugaCharacter* Turtle)
+{
+	if (!Turtle)
+	{
+		return false;
+	}
+	for (const TWeakObjectPtr<ATortugaCharacter>& Held : TNBeachEnemyShared::HeldTurtles())
+	{
+		if (Held.Get() == Turtle)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void ATN_BeachEnemy::SetTurtleHeld(ATortugaCharacter* Turtle, bool bHeld)
+{
+	TArray<TWeakObjectPtr<ATortugaCharacter>>& List = TNBeachEnemyShared::HeldTurtles();
+	for (int32 i = List.Num() - 1; i >= 0; --i)
+	{
+		if (!List[i].IsValid() || List[i].Get() == Turtle)
+		{
+			List.RemoveAtSwap(i);
+		}
+	}
+	if (bHeld && Turtle)
+	{
+		List.Add(Turtle);
+	}
+}
+
+bool ATN_BeachEnemy::CanBeHit(const ATortugaCharacter* Turtle)
+{
+	return IsValid(Turtle) && !Turtle->IsDead() && !Turtle->IsKnockedDown() && !TNBeach::IsTurtleStunned(Turtle) && !IsTurtleHeld(Turtle);
+}
+
+bool ATN_BeachEnemy::ServerKnockDown(ATortugaCharacter* Turtle, float Seconds, const FVector& Push, const FVector& Spin)
+{
+	if (!IsValid(Turtle) || !Turtle->HasAuthority() || Turtle->IsDead())
+	{
+		return false;
+	}
+	// Al derribo solo se le pasa un pelo hacia abajo: lo que se le pasa lo lanza la cápsula al levantarse (queda pendiente
+	// en el movimiento mientras dura el ragdoll). El empujón de verdad va a los cuerpos del ragdoll.
+	TNBeach::KnockDownTurtle(Turtle, Seconds, FVector(0.0, 0.0, -TNBeachEnemyShared::KnockSettle));
+	FTNBeachRagdollPushes::TryApply(Turtle, Push, Spin);
+	return Turtle->IsKnockedDown();
+}
+
+void ATN_BeachEnemy::GatherStats(const UObject* WorldContext, int32& OutTotal, int32& OutThrottled, int32& OutMovers)
+{
+	OutTotal = 0;
+	OutThrottled = 0;
+	OutMovers = 0;
+	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	for (const TWeakObjectPtr<ATN_BeachEnemy>& Weak : TNBeachEnemyShared::AllEnemies())
+	{
+		const ATN_BeachEnemy* Enemy = Weak.Get();
+		if (!Enemy || Enemy->GetWorld() != World)
+		{
+			continue;
+		}
+		++OutTotal;
+		OutThrottled += Enemy->bThrottled ? 1 : 0;
+		OutMovers += (Enemy->bUsesMover && Enemy->GetBodyRadius() > 0.f) ? 1 : 0;
+	}
 }
 
 bool ATN_BeachEnemy::IsDebugDraw()
@@ -129,8 +321,11 @@ bool ATN_BeachEnemy::IsRaceLive(const UObject* WorldContext)
 {
 	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
 	const ATN_BeachRaceGameState* GS = World ? World->GetGameState<ATN_BeachRaceGameState>() : nullptr;
-	// Solo se para en el recuento y en el podio: si la fase se quedara en Waiting por lo que sea, se sigue atacando.
-	return !GS || (GS->RacePhase != ETNBeachRacePhase::RoundResults && GS->RacePhase != ETNBeachRacePhase::Champion);
+	// Solo se para al acabar la cuenta de meta (gusanos y «¡TODAS AL AGUA!»), en el recuento, en el título del sprint final
+	// y en el podio: si la fase se quedara en Waiting por lo que sea, se sigue atacando.
+	return !GS || (GS->RacePhase != ETNBeachRacePhase::RoundResults && GS->RacePhase != ETNBeachRacePhase::Champion
+		&& GS->RacePhase != ETNBeachRacePhase::SprintIntro && GS->FinishCountdown != ETNBeachFinishCountdown::TimeUp
+		&& GS->FinishCountdown != ETNBeachFinishCountdown::AllIn);
 }
 
 bool ATN_BeachEnemy::TraceGround(const UObject* WorldContext, const FVector& Where, float& OutZ, FVector* OutNormal, float Up, float Down)
@@ -292,6 +487,25 @@ void ATN_BeachEnemy::StunTurtle(ATortugaCharacter* Turtle, float Seconds, const 
 	UE_LOG(LogTortunabo, Log, TEXT("[Playa] %s aturde a %s %.1f s."), *GetName(), *GetNameSafe(Turtle), Seconds);
 }
 
+void ATN_BeachEnemy::KnockDownTurtle(ATortugaCharacter* Turtle, float Seconds, const FVector& Push, const FVector& Spin)
+{
+	if (!HasAuthority() || !ServerKnockDown(Turtle, Seconds, Push, Spin))
+	{
+		return;
+	}
+	MulticastRagdollPush(Turtle, Push, Spin);
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] %s derriba a %s %.1f s (empujón %.0f cm/s)."), *GetName(), *GetNameSafe(Turtle), Seconds, Push.Size());
+}
+
+void ATN_BeachEnemy::MulticastRagdollPush_Implementation(ACharacter* Turtle, FVector_NetQuantize10 Push, FVector_NetQuantize10 Spin)
+{
+	// En el servidor ya se ha dado (ServerKnockDown); en los clientes, en cuanto su ragdoll simule.
+	if (!HasAuthority() && Turtle)
+	{
+		RagdollPushes.Add(Turtle, Push, Spin);
+	}
+}
+
 void ATN_BeachEnemy::IgnoreTurtle(ATortugaCharacter* Turtle, float Seconds)
 {
 	if (!Turtle || !GetWorld())
@@ -320,7 +534,7 @@ bool ATN_BeachEnemy::IsIgnored(const ATortugaCharacter* Turtle) const
 
 bool ATN_BeachEnemy::IsTargetable(const ATortugaCharacter* Turtle) const
 {
-	return IsValid(Turtle) && !Turtle->IsDead() && !TNBeach::IsTurtleStunned(Turtle) && !IsIgnored(Turtle);
+	return CanBeHit(Turtle) && !IsIgnored(Turtle);
 }
 
 ATortugaCharacter* ATN_BeachEnemy::FindTarget(const FVector& From, float MaxDist, const FVector& InHome, float Leash) const
@@ -348,6 +562,205 @@ ATortugaCharacter* ATN_BeachEnemy::FindTarget(const FVector& From, float MaxDist
 		}
 	}
 	return Best;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Muchos enemigos: apartarse, rodear el reparto, suelo sin trazas y nivel de detalle
+// ─────────────────────────────────────────────────────────────────────────────
+
+ATN_BeachRaceGenerator* ATN_BeachEnemy::FindGenerator() const
+{
+	if (!Generator.IsValid() && !bGeneratorLooked)
+	{
+		bGeneratorLooked = true;
+		Generator = ATN_BeachRaceGenerator::Find(this);
+	}
+	return Generator.Get();
+}
+
+bool ATN_BeachEnemy::GroundHeightAt(const FVector& Where, float& OutZ) const
+{
+	if (const ATN_BeachRaceGenerator* Gen = FindGenerator())
+	{
+		OutZ = Gen->GetGroundHeightAt(Where);
+		return true;
+	}
+	return TraceGround(this, Where, OutZ);
+}
+
+void ATN_BeachEnemy::CacheObstacles()
+{
+	if (bObstaclesCached)
+	{
+		return;
+	}
+	const ATN_BeachRaceGenerator* Gen = FindGenerator();
+	if (!Gen)
+	{
+		bObstaclesCached = true;
+		return;
+	}
+	const TNBeachLayout::FRoundLayout& Layout = Gen->GetRoundLayout();
+	if (Layout.Items.Num() == 0)
+	{
+		// Aún no hay reparto (o se ha creado a mano antes de la primera ronda): se vuelve a mirar en el siguiente paso.
+		return;
+	}
+	bObstaclesCached = true;
+	const FTransform GenXf = Gen->GetActorTransform();
+	const FVector2D Home2D(Home.X, Home.Y);
+	const double Area = GetFootprintRadius() * 1.6 + 6000.0;
+	for (const TNBeachLayout::FItem& Item : Layout.Items)
+	{
+		if (!TNBeachEnemyShared::IsObstacle(Item))
+		{
+			continue;
+		}
+		const FVector2D EndA = Item.EndA();
+		const FVector2D EndB = Item.EndB();
+		const FVector A3 = GenXf.TransformPosition(FVector(EndA.X, EndA.Y, 0.0));
+		const FVector B3 = GenXf.TransformPosition(FVector(EndB.X, EndB.Y, 0.0));
+		FObstacle Ob;
+		Ob.A = FVector2D(A3.X, A3.Y);
+		Ob.B = FVector2D(B3.X, B3.Y);
+		// Un poco menos que la huella: la huella tiene aire alrededor de la pieza.
+		Ob.Radius = static_cast<float>(Item.Radius * 0.85);
+		double T = 0.0;
+		if (TNProcMap::DistPointSegment(Home2D, Ob.A, Ob.B, T) - Ob.Radius > Area)
+		{
+			continue;
+		}
+		Obstacles.Add(Ob);
+	}
+}
+
+bool ATN_BeachEnemy::IsInsideObstacle(const FVector& Point, float Margin)
+{
+	CacheObstacles();
+	const FVector2D P(Point.X, Point.Y);
+	for (const FObstacle& Ob : Obstacles)
+	{
+		double T = 0.0;
+		if (TNProcMap::DistPointSegment(P, Ob.A, Ob.B, T) < Ob.Radius + Margin)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FVector ATN_BeachEnemy::ResolveStep(const FVector& Next, float SelfRadius, bool bAvoidObstacles)
+{
+	FVector2D P(Next.X, Next.Y);
+	// Otros enemigos que andan: cada uno se aparta la mitad del solape (el otro hace lo mismo en su paso).
+	if (SelfRadius > 0.f)
+	{
+		const UWorld* World = GetWorld();
+		for (const TWeakObjectPtr<ATN_BeachEnemy>& Weak : TNBeachEnemyShared::AllEnemies())
+		{
+			const ATN_BeachEnemy* Other = Weak.Get();
+			if (!Other || Other == this || Other->GetWorld() != World || !Other->bUsesMover)
+			{
+				continue;
+			}
+			const float OtherRadius = Other->GetBodyRadius();
+			if (OtherRadius <= 0.f)
+			{
+				continue;
+			}
+			const FVector2D Delta = P - FVector2D(Other->SimLoc.X, Other->SimLoc.Y);
+			const double MinDist = static_cast<double>(SelfRadius + OtherRadius);
+			const double DistSq = Delta.SizeSquared();
+			if (DistSq >= MinDist * MinDist)
+			{
+				continue;
+			}
+			const double Dist = FMath::Sqrt(DistSq);
+			// Encima del todo: cada uno hacia un lado, siempre el mismo.
+			const FVector2D Dir = Dist > 1.0 ? Delta / Dist : FVector2D(this < Other ? 1.0 : -1.0, 0.0);
+			P += Dir * ((MinDist - Dist) * 0.5);
+		}
+	}
+	// Lo grande del reparto: se desliza por su borde (dos pasadas por si queda entre dos).
+	if (bAvoidObstacles)
+	{
+		CacheObstacles();
+		for (int32 Pass = 0; Pass < 2; ++Pass)
+		{
+			for (const FObstacle& Ob : Obstacles)
+			{
+				double T = 0.0;
+				const double Dist = TNProcMap::DistPointSegment(P, Ob.A, Ob.B, T);
+				const double MinDist = static_cast<double>(Ob.Radius + SelfRadius);
+				if (Dist >= MinDist)
+				{
+					continue;
+				}
+				const FVector2D Closest = Ob.A + (Ob.B - Ob.A) * T;
+				FVector2D Dir = P - Closest;
+				if (Dir.SizeSquared() < 1.0)
+				{
+					Dir = FVector2D(SimLoc.X, SimLoc.Y) - Closest;
+				}
+				Dir = Dir.GetSafeNormal();
+				if (Dir.IsNearlyZero())
+				{
+					Dir = FVector2D(1.0, 0.0);
+				}
+				P = Closest + Dir * MinDist;
+			}
+		}
+	}
+	return FVector(P.X, P.Y, Next.Z);
+}
+
+void ATN_BeachEnemy::ShowPop(const FText& Text, const FColor& Color, const FVector& WorldAt, float Size)
+{
+	if (!bHasScreen || LocalViewDistance(this, WorldAt) > 6000.f)
+	{
+		return;
+	}
+	Pops[NextPop].Show(this, Text, Color, WorldAt, Size);
+	NextPop = (NextPop + 1) % UE_ARRAY_COUNT(Pops);
+	bPopsLive = true;
+}
+
+void ATN_BeachEnemy::UpdateLod()
+{
+	if (!bThrottleWhenFar)
+	{
+		return;
+	}
+	// Distancia a la tortuga más cercana (servidor: la simulación; clientes: lo que se ve).
+	const FVector Here = HasAuthority() ? SimLoc : ShownLoc;
+	TArray<ATortugaCharacter*> Turtles;
+	GatherTurtles(this, Turtles);
+	double NearestSq = 1.0e18;
+	for (const ATortugaCharacter* Turtle : Turtles)
+	{
+		NearestSq = FMath::Min(NearestSq, FVector::DistSquared2D(Turtle->GetActorLocation(), Here));
+	}
+	const float Range = GetVisualRange();
+	const bool bActive = HasAuthority() && NearestSq < FMath::Square(static_cast<double>(GetActiveRange()));
+	const bool bClose = bHasScreen && ViewDistance < Range * 0.5f;
+	bThrottled = !bActive && !bClose;
+	float Interval = 0.f;
+	if (bThrottled)
+	{
+		Interval = (bHasScreen && ViewDistance < Range) ? TNBeachEnemyShared::FarSeenInterval : TNBeachEnemyShared::FarHiddenInterval;
+	}
+	if (!FMath::IsNearlyEqual(GetActorTickInterval(), Interval))
+	{
+		SetActorTickInterval(Interval);
+	}
+	if (HasAuthority())
+	{
+		const float Frequency = bActive ? NetFrequencyNear : FMath::Min(NetFrequencyNear, 3.f);
+		if (!FMath::IsNearlyEqual(GetNetUpdateFrequency(), Frequency))
+		{
+			SetNetUpdateFrequency(Frequency);
+		}
+	}
 }
 
 void ATN_BeachEnemy::UpdateShown(float DeltaSeconds)
@@ -378,6 +791,16 @@ void ATN_BeachEnemy::UpdateShown(float DeltaSeconds)
 void ATN_BeachEnemy::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	LodTimer -= DeltaSeconds;
+	if (LodTimer <= 0.f)
+	{
+		LodTimer = TNBeachEnemyShared::LodPeriod;
+		UpdateLod();
+	}
+	if (!RagdollPushes.IsEmpty())
+	{
+		RagdollPushes.Tick(DeltaSeconds);
+	}
 	if (HasAuthority())
 	{
 		ServerTick(DeltaSeconds);
@@ -390,6 +813,18 @@ void ATN_BeachEnemy::Tick(float DeltaSeconds)
 	{
 		ViewDistance = LocalViewDistance(this, bUsesMover ? ShownLoc : GetActorLocation());
 		VisualTick(DeltaSeconds);
+		if (bPopsLive)
+		{
+			bool bAny = false;
+			for (FTNTrapPopText& Pop : Pops)
+			{
+				if (Pop.Tick(DeltaSeconds, GetWorld()))
+				{
+					bAny = true;
+				}
+			}
+			bPopsLive = bAny;
+		}
 	}
 	if (HasAuthority() && IsDebugDraw())
 	{

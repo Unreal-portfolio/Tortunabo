@@ -3,11 +3,45 @@
 #include "CoreMinimal.h"
 #include "Engine/NetSerialization.h"
 #include "World/Beach/TN_BeachElement.h"
+#include "World/Beach/TN_BeachTrapCommon.h"
 #include "TN_BeachEnemy.generated.h"
 
+class ACharacter;
+class ATN_BeachRaceGenerator;
 class ATortugaCharacter;
 class USceneComponent;
 class UTN_BeachEnemySynthComponent;
+
+/**
+ * Empujones pendientes al ragdoll del derribo (TNBeach::KnockDownTurtle). El derribo llega a cada máquina por el
+ * multicast de la tortuga y el empujón por el del enemigo, sin orden entre ellos: el empujón se guarda hasta que el
+ * ragdoll de esa tortuga simula en esta máquina (o se descarta al segundo) y entonces se da la velocidad a sus cuerpos.
+ * Así el ragdoll sale lanzado igual en todas las máquinas (el derribo solo hereda la velocidad que llevaba la cápsula).
+ */
+struct TORTUNABO_API FTNBeachRagdollPushes
+{
+	/** Guarda el empujón (o lo da ya si el ragdoll simula). */
+	void Add(ACharacter* Turtle, const FVector& Push, const FVector& Spin);
+
+	/** Da los pendientes cuyo ragdoll ya simula y descarta los viejos. */
+	void Tick(float DeltaSeconds);
+
+	bool IsEmpty() const { return Items.Num() == 0; }
+
+	/** Velocidad Push (cm/s) y giro Spin (grados/s) a todos los cuerpos del ragdoll; false si no simula. */
+	static bool TryApply(ACharacter* Turtle, const FVector& Push, const FVector& Spin);
+
+private:
+	struct FItem
+	{
+		TWeakObjectPtr<ACharacter> Turtle;
+		FVector Push = FVector::ZeroVector;
+		FVector Spin = FVector::ZeroVector;
+		float Left = 1.f;
+	};
+
+	TArray<FItem> Items;
+};
 
 /**
  * Movimiento replicado barato de un enemigo de la playa: dónde está (el suelo bajo el cuerpo), hacia dónde mira, su
@@ -54,10 +88,13 @@ struct FTNBeachMoverRep
  *    reconstruiría sus mallas al alejarse más de 150 m por la playa.
  *  - Visual (VisualTick) solo en máquinas con pantalla; la raíz animada (Rig) se coloca en todas (su colisión cuenta
  *    también en un servidor dedicado).
- *  - Utilidades: tortugas vivas, suelo bajo un punto, reloj del servidor, carrera en marcha, aturdir (TNBeach::StunTurtle),
- *    temblor de cámara y una voz sintetizada (UTN_BeachEnemySynthComponent).
+ *  - Utilidades: tortugas vivas, suelo bajo un punto, reloj del servidor, carrera en marcha, aturdir en bola
+ *    (TNBeach::StunTurtle) o derribar con ragdoll y empujón (TNBeach::KnockDownTurtle), temblor de cámara y una voz
+ *    sintetizada (UTN_BeachEnemySynthComponent).
+ *  - Muchos a la vez: los que andan se apartan entre sí (GetBodyRadius) y rodean lo grande del reparto; los numerosos
+ *    (bThrottleWhenFar) se actualizan más despacio y mandan menos por red lejos de las tortugas y de la cámara.
  *
- * Consola: TN.Beach.Enemy.Debug 1 dibuja radios y estados en el servidor.
+ * Consola: TN.Beach.Enemy.Debug 1 dibuja radios y estados en el servidor; TN.Beach.Enemy.Stats cuenta y mide.
  */
 UCLASS(Abstract)
 class TORTUNABO_API ATN_BeachEnemy : public ATN_BeachElement
@@ -88,6 +125,25 @@ public:
 
 	/** Distancia (cm) de Where a la cámara local más cercana; enorme si no hay (servidor dedicado). */
 	static float LocalViewDistance(const UObject* WorldContext, const FVector& Where);
+
+	/** true si una gaviota o un pelícano lleva a esta tortuga en el pico (cualquier máquina). */
+	static bool IsTurtleHeld(const ATortugaCharacter* Turtle);
+
+	/** La marca (o desmarca) como llevada en el pico: nadie más le da mientras tanto. */
+	static void SetTurtleHeld(ATortugaCharacter* Turtle, bool bHeld);
+
+	/** Se le puede dar: viva, sin aturdir, sin derribar y sin ir en el pico de nadie. */
+	static bool CanBeHit(const ATortugaCharacter* Turtle);
+
+	/**
+	 * Servidor: derribo con ragdoll y mareo (TNBeach::KnockDownTurtle) y el empujón Push (cm/s) con giro Spin (grados/s)
+	 * al ragdoll de esta máquina. Quien lo llama manda el empujón a las demás (MulticastRagdollPush o el suyo propio).
+	 * false si no se ha podido derribar.
+	 */
+	static bool ServerKnockDown(ATortugaCharacter* Turtle, float Seconds, const FVector& Push, const FVector& Spin);
+
+	/** Enemigos de este mundo y cuántos van despacio por estar lejos (TN.Beach.Enemy.Stats). */
+	static void GatherStats(const UObject* WorldContext, int32& OutTotal, int32& OutThrottled, int32& OutMovers);
 
 	virtual void PostInitializeComponents() override;
 
@@ -136,8 +192,15 @@ protected:
 	/** Voz sintetizada enganchada a Parent (la crea la primera vez; null sin audio). */
 	UTN_BeachEnemySynthComponent* GetVoice(USceneComponent* Parent, float InnerRadius, float Falloff);
 
-	/** Servidor: aturde (TNBeach::StunTurtle) y apunta la hora para no repetir con la misma. */
+	/** Servidor: aturde en bola (TNBeach::StunTurtle) y apunta la hora para no repetir con la misma. */
 	void StunTurtle(ATortugaCharacter* Turtle, float Seconds, const FVector& Launch);
+
+	/** Servidor: derriba con ragdoll y mareo y lanza el ragdoll con Push y Spin en todas las máquinas. */
+	void KnockDownTurtle(ATortugaCharacter* Turtle, float Seconds, const FVector& Push, const FVector& Spin = FVector::ZeroVector);
+
+	/** Todas las máquinas: el empujón del ragdoll del derribo (se aplica en cuanto el ragdoll simula). */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRagdollPush(ACharacter* Turtle, FVector_NetQuantize10 Push, FVector_NetQuantize10 Spin);
 
 	/** Servidor: ignorar a esta tortuga durante Seconds (tras golpearla). */
 	void IgnoreTurtle(ATortugaCharacter* Turtle, float Seconds);
@@ -145,12 +208,44 @@ protected:
 
 	/**
 	 * Servidor: la tortuga atacable más cercana a From a menos de MaxDist (plano) que además esté a menos de Leash de
-	 * InHome (Leash <= 0: sin correa). Atacable: no aturdida y no ignorada.
+	 * InHome (Leash <= 0: sin correa). Atacable: CanBeHit y no ignorada.
 	 */
 	ATortugaCharacter* FindTarget(const FVector& From, float MaxDist, const FVector& InHome, float Leash) const;
 
-	/** Tortuga atacable (servidor): viva, no aturdida y no ignorada. */
+	/** Tortuga atacable (servidor): CanBeHit y no ignorada. */
 	bool IsTargetable(const ATortugaCharacter* Turtle) const;
+
+	// ── Muchos enemigos a la vez ─────────────────────────────────────────
+
+	/** Radio del cuerpo en planta (cm) para apartarse de los demás enemigos que andan; 0 = no se aparta. */
+	virtual float GetBodyRadius() const { return 0.f; }
+
+	/** Con una tortuga a menos de esto (cm) el servidor lo mueve en cada fotograma (bThrottleWhenFar). */
+	virtual float GetActiveRange() const { return 9000.f; }
+
+	/**
+	 * Servidor: Next corregido para no meterse en otro enemigo que anda (medio solape por fotograma: cada uno se aparta
+	 * su mitad) ni, con bAvoidObstacles, en lo grande del reparto (se desliza por su borde).
+	 */
+	FVector ResolveStep(const FVector& Next, float SelfRadius, bool bAvoidObstacles);
+
+	/** Servidor: true si Point cae dentro de un obstáculo del reparto más Margin (para no elegir metas imposibles). */
+	bool IsInsideObstacle(const FVector& Point, float Margin);
+
+	/** Suelo bajo Where: el del generador de la playa (sin trazas, con los asientos de la ronda) o, sin él, una traza. */
+	bool GroundHeightAt(const FVector& Where, float& OutZ) const;
+
+	/** El generador de la playa (se busca una vez); null fuera de la carrera. */
+	ATN_BeachRaceGenerator* FindGenerator() const;
+
+	/** Texto emergente de dibujos («¡PLOF!») en WorldAt; solo con pantalla y con la cámara a menos de 60 m. */
+	void ShowPop(const FText& Text, const FColor& Color, const FVector& WorldAt, float Size = 140.f);
+
+	/** Se actualiza más despacio lejos de las tortugas y de la cámara (los numerosos: cangrejo, erizo, lagarto). */
+	bool bThrottleWhenFar = false;
+
+	/** Frecuencia de red de cerca (la de lejos es 3 Hz como mucho). */
+	float NetFrequencyNear = 10.f;
 
 	/** Posición y giro simulados (servidor). */
 	FVector SimLoc = FVector::ZeroVector;
@@ -193,5 +288,34 @@ private:
 	bool bHasRep = false;
 	bool bVoiceTried = false;
 
+	/** Obstáculo del reparto en planta: cápsula de A a B (mundo) con su radio. */
+	struct FObstacle
+	{
+		FVector2D A = FVector2D::ZeroVector;
+		FVector2D B = FVector2D::ZeroVector;
+		float Radius = 0.f;
+	};
+
+	/** Lo grande del reparto alrededor de su sitio (se coge una vez, cuando el reparto ya está). */
+	TArray<FObstacle> Obstacles;
+	bool bObstaclesCached = false;
+
+	/** Generador de la playa (para el suelo sin trazas y el reparto); se busca una vez. */
+	mutable TWeakObjectPtr<ATN_BeachRaceGenerator> Generator;
+	mutable bool bGeneratorLooked = false;
+
+	/** Nivel de detalle: cada cuánto se revisa y si ahora va despacio. */
+	float LodTimer = 0.f;
+	bool bThrottled = false;
+
+	FTNBeachRagdollPushes RagdollPushes;
+
+	/** Textos emergentes (se reutilizan en rueda). */
+	FTNTrapPopText Pops[3];
+	int32 NextPop = 0;
+	bool bPopsLive = false;
+
 	void UpdateShown(float DeltaSeconds);
+	void UpdateLod();
+	void CacheObstacles();
 };

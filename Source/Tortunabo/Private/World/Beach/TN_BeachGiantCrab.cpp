@@ -1,6 +1,7 @@
 #include "World/Beach/TN_BeachGiantCrab.h"
 #include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachEnemySynth.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "World/TN_EnemyDecisions.h"
 #include "TN_BeachEnemyKit.h"
@@ -24,14 +25,30 @@ namespace TNBeachCrab
 
 	/** Zona de patrulla: esta fracción de la huella alrededor de su sitio. */
 	constexpr float PatrolFraction = 0.52f;
-	/** Ve a una tortuga a esta distancia del cuerpo (cm, por el tamaño). */
+	/** Ve a una tortuga a esta distancia del cuerpo (cm, por el tamaño) si está dentro de su cono delantero (±70°). */
 	constexpr float DetectRadius = 2200.f;
+	constexpr float SightHalfAngle = 70.f;
+	/**
+	 * Oye a una tortuga a esta distancia (cm, por el tamaño) desde cualquier lado: ×1,3 si corre (más de 6 m/s), ×0,6 si
+	 * va agachada, en bola, en panzazo o casi quieta (menos de 0,6 m/s).
+	 */
+	constexpr float HearRadius = 1000.f;
+	constexpr float HearLoud = 1.3f;
+	constexpr float HearQuiet = 0.6f;
+	constexpr float LoudSpeed = 600.f;
+	constexpr float QuietSpeed = 60.f;
 	/** La deja si la tortuga se aleja de su sitio más que esto (o 1,4 veces la huella). */
 	constexpr float LeashRadius = 3800.f;
-	/** Velocidades (cm/s, por el tamaño): paseo, persecución (tortuga: 450 andando, 800 esprintando) y vuelta a casa. */
-	constexpr float PatrolSpeed = 260.f;
+	/** Velocidades (cm/s, por el tamaño): paseo, persecución (tortuga: 450 andando, 800 esprintando) y vuelta al recorrido. */
+	constexpr float PatrolSpeed = 300.f;
 	constexpr float ChaseSpeed = 560.f;
-	constexpr float ReturnSpeed = 400.f;
+	constexpr float ReturnSpeed = 420.f;
+	/** Paradas del recorrido (s): cortas, chasqueando la pinza. Si no llega a un punto en este tiempo, pasa al siguiente. */
+	constexpr float StopMin = 0.5f;
+	constexpr float StopMax = 0.95f;
+	constexpr float LegTimeout = 12.f;
+	/** Radio del cuerpo en planta (cm, por el tamaño) para apartarse de los demás y de lo grande del reparto. */
+	constexpr float BodyRadius = 420.f;
 	/** Lo que se recoloca durante el aviso para que la pinza caiga donde marca la sombra. */
 	constexpr float WindUpSpeed = 650.f;
 	/** Empieza el mazazo si la tortuga está a su alcance más esto. */
@@ -68,7 +85,14 @@ namespace TNBeachCrab
 
 ATN_BeachGiantCrab::ATN_BeachGiantCrab()
 {
-	SetNetUpdateFrequency(12.f);
+	NetFrequencyNear = 12.f;
+	SetNetUpdateFrequency(NetFrequencyNear);
+	bThrottleWhenFar = true;
+}
+
+float ATN_BeachGiantCrab::GetBodyRadius() const
+{
+	return TNBeachCrab::BodyRadius * SizeK;
 }
 
 void ATN_BeachGiantCrab::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -88,6 +112,7 @@ void ATN_BeachGiantCrab::ApplySpec()
 	const float Footprint = GetFootprintRadius();
 	PatrolRadius = Footprint * TNBeachCrab::PatrolFraction;
 	DetectRadius = TNBeachCrab::DetectRadius * SizeK;
+	HearRadius = TNBeachCrab::HearRadius * SizeK;
 	LeashRadius = FMath::Max(TNBeachCrab::LeashRadius * SizeK, Footprint * 1.4f);
 	Reach = static_cast<float>(TNBeachMeshes::CrabRig().Reach) * SizeK;
 	GroundZ = static_cast<float>(GetActorLocation().Z);
@@ -184,11 +209,207 @@ void ATN_BeachGiantCrab::BuildCrab()
 // Servidor
 // ─────────────────────────────────────────────────────────────────────────────
 
-FVector ATN_BeachGiantCrab::PickPatrolGoal()
+void ATN_BeachGiantCrab::BuildRoute()
 {
-	const float Angle = ServerRng.FRandRange(0.f, 2.f * PI);
-	const float Dist = PatrolRadius * FMath::Sqrt(ServerRng.FRand());
-	return Home + FVector(FMath::Cos(Angle) * Dist, FMath::Sin(Angle) * Dist, 0.f);
+	bRouteBuilt = true;
+	Route.Reset();
+	RouteStops.Reset();
+	const float BodyR = GetBodyRadius();
+	const float Yaw0 = ServerRng.FRandRange(0.f, 360.f);
+	const FVector Axis = FRotator(0.f, Yaw0, 0.f).Vector();
+	const FVector Side = FRotator(0.f, Yaw0 + 90.f, 0.f).Vector();
+	const float Kind = ServerRng.FRand();
+
+	// Entre dos rocas (o troncos, maderas, castillos pequeños) que tenga cerca y a lados distintos: se para junto a cada una.
+	if (Kind < 0.35f)
+	{
+		if (const ATN_BeachRaceGenerator* Gen = FindGenerator())
+		{
+			const FTransform GenXf = Gen->GetActorTransform();
+			struct FRockSpot
+			{
+				FVector Pos;
+				float Radius;
+			};
+			TArray<FRockSpot> Rocks;
+			for (const TNBeachLayout::FItem& Item : Gen->GetRoundLayout().Items)
+			{
+				switch (Item.Element)
+				{
+				case ETNBeachElement::Rock:
+				case ETNBeachElement::RockCluster:
+				case ETNBeachElement::MossyLog:
+				case ETNBeachElement::Driftwood:
+				case ETNBeachElement::OldPlanks:
+				case ETNBeachElement::SandCastleSmall:
+				case ETNBeachElement::Sandbags:
+				case ETNBeachElement::TankTrap:
+					break;
+				default:
+					continue;
+				}
+				const FVector Pos = GenXf.TransformPosition(FVector(Item.Pos.X, Item.Pos.Y, 0.0));
+				if (FVector::Dist2D(Pos, Home) < LeashRadius * 0.9f)
+				{
+					Rocks.Add({ Pos, static_cast<float>(Item.Radius) });
+				}
+			}
+			// La pareja más separada en ángulo (vistas desde su sitio), si lo está de verdad.
+			int32 BestA = INDEX_NONE;
+			int32 BestB = INDEX_NONE;
+			double BestDot = -0.2;
+			for (int32 a = 0; a < Rocks.Num(); ++a)
+			{
+				const FVector DirA = (Rocks[a].Pos - Home).GetSafeNormal2D();
+				for (int32 b = a + 1; b < Rocks.Num(); ++b)
+				{
+					const double Dot = FVector::DotProduct(DirA, (Rocks[b].Pos - Home).GetSafeNormal2D());
+					if (Dot < BestDot)
+					{
+						BestDot = Dot;
+						BestA = a;
+						BestB = b;
+					}
+				}
+			}
+			if (BestA != INDEX_NONE)
+			{
+				for (const int32 R : { BestA, BestB })
+				{
+					const FVector ToHome = (Home - Rocks[R].Pos).GetSafeNormal2D();
+					Route.Add(Rocks[R].Pos + ToHome * (Rocks[R].Radius * 0.85f + BodyR + 250.f));
+					RouteStops.Add(1);
+				}
+				Route.Insert(Home, 1);
+				RouteStops.Insert(static_cast<uint8>(0), 1);
+				bRouteLoops = false;
+			}
+		}
+	}
+	// Un óvalo alrededor de su sitio (dos paradas por vuelta).
+	if (Route.Num() == 0 && Kind < 0.7f)
+	{
+		const float A = PatrolRadius * 0.9f;
+		const float B = A * ServerRng.FRandRange(0.45f, 0.7f);
+		constexpr int32 N = 8;
+		for (int32 k = 0; k < N; ++k)
+		{
+			const float Ang = 2.f * PI * k / N;
+			Route.Add(Home + Axis * (FMath::Cos(Ang) * A) + Side * (FMath::Sin(Ang) * B));
+			RouteStops.Add(k % 4 == 0 ? 1 : 0);
+		}
+		bRouteLoops = true;
+	}
+	// Ida y vuelta de lado por una recta que pasa por su sitio (se para en los extremos).
+	if (Route.Num() == 0)
+	{
+		const float L = PatrolRadius * 0.9f;
+		Route.Add(Home - Axis * L);
+		Route.Add(Home);
+		Route.Add(Home + Axis * L);
+		RouteStops.Add(1);
+		RouteStops.Add(0);
+		RouteStops.Add(1);
+		bRouteLoops = false;
+	}
+	// Ningún punto dentro de lo grande del reparto: se acerca a su sitio hasta que quede libre.
+	for (FVector& P : Route)
+	{
+		for (int32 k = 0; k < 5 && IsInsideObstacle(P, BodyR); ++k)
+		{
+			P = FMath::Lerp(P, Home, 0.3);
+		}
+		P.Z = Home.Z;
+	}
+	RouteIndex = ServerRng.RandRange(0, Route.Num() - 1);
+	RouteStep = ServerRng.FRand() < 0.5f ? 1 : -1;
+}
+
+void ATN_BeachGiantCrab::AdvanceRoute()
+{
+	const int32 Num = Route.Num();
+	if (Num < 2)
+	{
+		return;
+	}
+	if (bRouteLoops)
+	{
+		RouteIndex = (RouteIndex + RouteStep + Num) % Num;
+		return;
+	}
+	if (RouteIndex + RouteStep >= Num || RouteIndex + RouteStep < 0)
+	{
+		RouteStep = -RouteStep;
+	}
+	RouteIndex = FMath::Clamp(RouteIndex + RouteStep, 0, Num - 1);
+}
+
+int32 ATN_BeachGiantCrab::NearestRoutePoint() const
+{
+	int32 Best = 0;
+	double BestSq = 1.0e18;
+	for (int32 i = 0; i < Route.Num(); ++i)
+	{
+		const double DistSq = FVector::DistSquared2D(Route[i], SimLoc);
+		if (DistSq < BestSq)
+		{
+			BestSq = DistSq;
+			Best = i;
+		}
+	}
+	return Best;
+}
+
+ATortugaCharacter* ATN_BeachGiantCrab::Perceive() const
+{
+	TArray<ATortugaCharacter*> Turtles;
+	GatherTurtles(this, Turtles);
+	const FVector Facing = FRotator(0.f, SimYaw, 0.f).Vector();
+	const double CosSight = FMath::Cos(FMath::DegreesToRadians(static_cast<double>(TNBeachCrab::SightHalfAngle)));
+	ATortugaCharacter* Best = nullptr;
+	double BestSq = 1.0e18;
+	for (ATortugaCharacter* Turtle : Turtles)
+	{
+		if (!IsTargetable(Turtle))
+		{
+			continue;
+		}
+		const FVector At = Turtle->GetActorLocation();
+		if (FVector::Dist2D(At, Home) > LeashRadius)
+		{
+			continue;
+		}
+		FVector To = At - SimLoc;
+		To.Z = 0.0;
+		const double DistSq = To.SizeSquared();
+		if (DistSq >= BestSq)
+		{
+			continue;
+		}
+		const double Dist = FMath::Sqrt(DistSq);
+		// De frente la ve lejos; alrededor la oye: más si corre, menos si va agachada, en bola o casi quieta.
+		bool bSensed = Dist < DetectRadius && (Dist < 1.0 || FVector::DotProduct(To / Dist, Facing) >= CosSight);
+		if (!bSensed)
+		{
+			const float Speed = static_cast<float>(Turtle->GetVelocity().Size2D());
+			float Hear = HearRadius;
+			if (Turtle->IsInShell() || Turtle->IsBellyPoseActive() || Turtle->bIsCrouched || Speed < TNBeachCrab::QuietSpeed)
+			{
+				Hear *= TNBeachCrab::HearQuiet;
+			}
+			else if (Speed > TNBeachCrab::LoudSpeed)
+			{
+				Hear *= TNBeachCrab::HearLoud;
+			}
+			bSensed = Dist < Hear;
+		}
+		if (bSensed)
+		{
+			BestSq = DistSq;
+			Best = Turtle;
+		}
+	}
+	return Best;
 }
 
 FVector ATN_BeachGiantCrab::StepToward(const FVector& Goal, float Speed, float DeltaSeconds, FVector& OutDir)
@@ -198,6 +419,8 @@ FVector ATN_BeachGiantCrab::StepToward(const FVector& Goal, float Speed, float D
 	const double Dist = Flat.Size();
 	OutDir = Dist > 1.0 ? Flat / Dist : FVector::ZeroVector;
 	FVector Next = SimLoc + OutDir * FMath::Min(Dist, static_cast<double>(Speed * DeltaSeconds));
+	// Sin meterse en otro enemigo ni en lo grande del reparto (lo rodea).
+	Next = ResolveStep(Next, GetBodyRadius(), true);
 	// Nunca más lejos de su sitio que la correa.
 	FVector FromHome = Next - Home;
 	FromHome.Z = 0.0;
@@ -210,7 +433,7 @@ FVector ATN_BeachGiantCrab::StepToward(const FVector& Goal, float Speed, float D
 	{
 		GroundTimer = 0.1f;
 		float Z = GroundZ;
-		if (TraceGround(this, Next, Z))
+		if (GroundHeightAt(Next, Z))
 		{
 			GroundZ = Z;
 		}
@@ -278,7 +501,7 @@ void ATN_BeachGiantCrab::ResolveSlam()
 		const float Radius = TNBeachCrab::HitRadius * SizeK + 40.f;
 		for (ATortugaCharacter* Turtle : Turtles)
 		{
-			if (!IsValid(Turtle) || TNBeach::IsTurtleStunned(Turtle))
+			if (!CanBeHit(Turtle))
 			{
 				continue;
 			}
@@ -318,6 +541,10 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 	}
 	const bool bLive = IsRaceLive(this);
 	const bool bCanSee = bLive && !IsBlinded();
+	if (!bRouteBuilt)
+	{
+		BuildRoute();
+	}
 
 	switch (State)
 	{
@@ -331,25 +558,35 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 	{
 		if (bCanSee)
 		{
-			if (ATortugaCharacter* Seen = FindTarget(SimLoc, DetectRadius, Home, LeashRadius))
+			if (ATortugaCharacter* Sensed = Perceive())
 			{
-				Target = Seen;
+				Target = Sensed;
 				ServerSetState(ToByte(EState::Chase));
 				break;
 			}
 		}
 		if (State == EState::Patrol)
 		{
+			// Siempre andando su recorrido; en los puntos de parada, un momento chasqueando la pinza.
+			PatrolGoal = Route.IsValidIndex(RouteIndex) ? Route[RouteIndex] : Home;
 			ServerWalk(PatrolGoal, TNBeachCrab::PatrolSpeed * SizeK, DeltaSeconds, true);
-			if (FVector::Dist2D(SimLoc, PatrolGoal) < 120.0)
+			if (FVector::Dist2D(SimLoc, PatrolGoal) < 150.0 || GetStateAge() > TNBeachCrab::LegTimeout)
 			{
-				StateLeft = ServerRng.FRandRange(1.5f, 3.5f);
-				ServerSetState(ToByte(EState::Idle));
+				const bool bStop = RouteStops.IsValidIndex(RouteIndex) && RouteStops[RouteIndex] != 0;
+				AdvanceRoute();
+				if (bStop)
+				{
+					StateLeft = ServerRng.FRandRange(TNBeachCrab::StopMin, TNBeachCrab::StopMax);
+					ServerSetState(ToByte(EState::Idle));
+				}
+				else
+				{
+					ServerSetState(ToByte(EState::Patrol));
+				}
 			}
 		}
 		else if (StateLeft <= 0.f)
 		{
-			PatrolGoal = PickPatrolGoal();
 			ServerSetState(ToByte(EState::Patrol));
 		}
 		break;
@@ -365,7 +602,7 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 		switch (TNCrabLogic::DecideChaseTransition(bValid, FromHome, LeashRadius, ToVictim, Reach + TNBeachCrab::AttackSlack * SizeK))
 		{
 		case TNCrabLogic::EChaseTransition::ReturnToPatrol_TargetLost:
-			Target = bCanSee ? FindTarget(SimLoc, DetectRadius, Home, LeashRadius) : nullptr;
+			Target = bCanSee ? Perceive() : nullptr;
 			if (!Target.IsValid())
 			{
 				ServerSetState(ToByte(EState::Return));
@@ -425,7 +662,7 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 			ATortugaCharacter* Next = Target.Get();
 			if (!bCanSee || !IsTargetable(Next) || FVector::Dist2D(Next->GetActorLocation(), Home) > LeashRadius)
 			{
-				Next = bCanSee ? FindTarget(SimLoc, DetectRadius, Home, LeashRadius) : nullptr;
+				Next = bCanSee ? Perceive() : nullptr;
 			}
 			Target = Next;
 			ServerSetState(ToByte(Next ? EState::Chase : EState::Return));
@@ -437,19 +674,22 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 	{
 		if (bCanSee)
 		{
-			if (ATortugaCharacter* Seen = FindTarget(SimLoc, DetectRadius * 0.8f, Home, LeashRadius * 0.8f))
+			if (ATortugaCharacter* Sensed = Perceive())
 			{
-				Target = Seen;
+				Target = Sensed;
 				ServerSetState(ToByte(EState::Chase));
 				break;
 			}
 		}
-		ServerWalk(Home, TNBeachCrab::ReturnSpeed * SizeK, DeltaSeconds, true);
-		if (FVector::Dist2D(SimLoc, Home) < 200.0)
+		// Vuelve a su recorrido por el punto más cercano y sigue patrullando desde ahí.
+		const int32 Nearest = NearestRoutePoint();
+		const FVector Back = Route.IsValidIndex(Nearest) ? Route[Nearest] : Home;
+		ServerWalk(Back, TNBeachCrab::ReturnSpeed * SizeK, DeltaSeconds, true);
+		if (FVector::Dist2D(SimLoc, Back) < 200.0 || GetStateAge() > TNBeachCrab::LegTimeout * 2.f)
 		{
-			PatrolGoal = PickPatrolGoal();
-			StateLeft = 1.5f;
-			ServerSetState(ToByte(EState::Idle));
+			RouteIndex = Nearest;
+			AdvanceRoute();
+			ServerSetState(ToByte(EState::Patrol));
 		}
 		break;
 	}
@@ -460,7 +700,13 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 		UWorld* World = GetWorld();
 		DrawDebugCircle(World, SimLoc + FVector(0.0, 0.0, 40.0), DetectRadius, 48, FColor::Yellow, false, -1.f, 0, 10.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
 		DrawDebugCircle(World, Home + FVector(0.0, 0.0, 40.0), LeashRadius, 64, FColor::Orange, false, -1.f, 0, 10.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
-		DrawDebugCircle(World, Home + FVector(0.0, 0.0, 40.0), PatrolRadius, 48, FColor::Green, false, -1.f, 0, 6.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
+		DrawDebugCircle(World, SimLoc + FVector(0.0, 0.0, 40.0), HearRadius, 32, FColor::Cyan, false, -1.f, 0, 8.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
+		for (int32 i = 0; i + 1 < Route.Num() + (bRouteLoops ? 1 : 0); ++i)
+		{
+			const FVector A = Route[i] + FVector(0.0, 0.0, 60.0);
+			const FVector B = Route[(i + 1) % Route.Num()] + FVector(0.0, 0.0, 60.0);
+			DrawDebugLine(World, A, B, RouteStops.IsValidIndex(i) && RouteStops[i] ? FColor::Green : FColor(0, 120, 0), false, -1.f, 0, 8.f);
+		}
 		if (State == EState::WindUp || State == EState::Slam)
 		{
 			DrawDebugCircle(World, FVector(Mover.Aim) + FVector(0.0, 0.0, 40.0), TNBeachCrab::HitRadius * SizeK, 32, FColor::Red, false, -1.f, 0, 12.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
@@ -631,7 +877,8 @@ void ATN_BeachGiantCrab::VisualTick(float DeltaSeconds)
 			ClackTimer -= DeltaSeconds;
 			if (ClackTimer <= 0.f)
 			{
-				ClackTimer = 1.1f + FMath::FRand();
+				// Paradas cortas del recorrido: chasquidos seguidos de la pinza.
+				ClackTimer = 0.28f + 0.25f * FMath::FRand();
 				Voice->Play(ETNBeachSfx::Clack, 1.1f / FMath::Sqrt(SizeK), 0.6f);
 			}
 		}
@@ -700,8 +947,9 @@ void ATN_BeachGiantCrab::PoseCrab(float DeltaSeconds)
 	switch (State)
 	{
 	case EState::Idle:
-		ArmPitch = 35.f + 15.f * FMath::Sin(T * 3.f);
-		FingerOpen = 30.f * FMath::Abs(FMath::Sin(T * 5.f));
+		// Parada del recorrido: pinza en alto chasqueando deprisa.
+		ArmPitch = 38.f + 12.f * FMath::Sin(T * 4.f);
+		FingerOpen = 32.f * FMath::Abs(FMath::Sin(T * 11.f));
 		break;
 	case EState::Chase:
 		FingerOpen = 10.f + 25.f * FMath::Abs(FMath::Sin(T * 6.f));

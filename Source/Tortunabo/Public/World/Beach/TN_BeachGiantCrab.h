@@ -13,8 +13,11 @@ class UStaticMeshComponent;
  * Cangrejo gigante de la playa (ETNBeachElement::GiantCrab): cangrejo de unos 5 m de ancho (una cría de 20 cm a escala)
  * con una pinza enorme a la derecha. Anda de lado, con ojos en pedúnculos que se mueven y espuma en la boca.
  *
- *  - Patrulla su zona (paseos y ratos quieto agitando la pinza). Si una tortuga entra en su radio de visión y está
- *    dentro de su correa, la persigue de lado (más rápido que andando, más lento que esprintando).
+ *  - Patrulla todo el rato su propio recorrido (ida y vuelta de lado, un óvalo o entre dos rocas), con paradas cortas
+ *    chasqueando la pinza en los extremos. Ve de frente (cono de 140°) y oye alrededor: si una tortuga que está dentro
+ *    de su correa entra en el cono o en el radio de oído (mayor si corre, menor si va agachada, en bola o quieta), se da
+ *    la vuelta y la persigue de lado (más rápido que andando, más lento que esprintando). Si la pierde, vuelve a su
+ *    recorrido por el punto más cercano.
  *  - Mazazo: se para, levanta la pinza, que tiembla ~0,6 s, y en la arena aparece la sombra de dónde va a caer (donde
  *    estará la tortuga); la pinza cae de golpe y a quien pille dentro la deja en bola aturdida (TNBeach::StunTurtle).
  *    Luego se le queda la pinza clavada un momento y vuelve a por la siguiente (a la golpeada la ignora un rato).
@@ -45,6 +48,8 @@ protected:
 	virtual void ServerTick(float DeltaSeconds) override;
 	virtual void VisualTick(float DeltaSeconds) override;
 	virtual void OnMoverStateChanged(uint8 OldState) override;
+	virtual float GetBodyRadius() const override;
+	virtual float GetActiveRange() const override { return LeashRadius + DetectRadius + 1500.f; }
 
 	/** Todas las máquinas: la pinza ha caído en Where (bHit: ha pillado a alguien). */
 	UFUNCTION(NetMulticast, Unreliable)
@@ -93,6 +98,7 @@ private:
 	float SizeK = 1.f;
 	float PatrolRadius = 1300.f;
 	float DetectRadius = 2200.f;
+	float HearRadius = 1000.f;
 	float LeashRadius = 3800.f;
 	float Reach = 700.f;
 
@@ -103,6 +109,14 @@ private:
 	float AttackCooldown = 0.f;
 	float GroundTimer = 0.f;
 	float GroundZ = 0.f;
+
+	/** Recorrido de patrulla (puntos en el mundo), dónde va y en qué sentido, y en qué puntos se para. */
+	TArray<FVector> Route;
+	TArray<uint8> RouteStops;
+	int32 RouteIndex = 0;
+	int32 RouteStep = 1;
+	bool bRouteLoops = false;
+	bool bRouteBuilt = false;
 
 	// Visual.
 	float Gait = 0.f;
@@ -116,7 +130,14 @@ private:
 	TNAmbientFX::FEmitter SandGrains;
 
 	void BuildCrab();
-	FVector PickPatrolGoal();
+	/** Servidor: arma el recorrido (ida y vuelta, óvalo o entre dos rocas) fuera de lo grande del reparto. */
+	void BuildRoute();
+	/** Servidor: pasa al siguiente punto del recorrido (en la ida y vuelta, da la vuelta en los extremos). */
+	void AdvanceRoute();
+	/** Servidor: el punto del recorrido más cercano a donde está (para volver tras perder a la tortuga). */
+	int32 NearestRoutePoint() const;
+	/** Servidor: la tortuga que ve (cono delantero) u oye (alrededor), dentro de su correa; la más cercana. */
+	ATortugaCharacter* Perceive() const;
 	/** Servidor: siguiente posición hacia Goal (con la correa y el suelo) y la dirección de avance. */
 	FVector StepToward(const FVector& Goal, float Speed, float DeltaSeconds, FVector& OutDir);
 	/** Servidor: anda hacia Goal, de lado o de frente. */

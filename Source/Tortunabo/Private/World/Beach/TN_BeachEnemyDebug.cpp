@@ -4,9 +4,11 @@
 //   TN.Beach.Quad.Now                    todos los pasos de quads empiezan su aviso ya.
 //   TN.Beach.Gull.Attack [1|2]           cada zona de gaviotas ataca ya a la tortuga más cercana (1 cagada, 2 picado).
 //   TN.Beach.Storm.Start [Metros] [Speed] arranca la tormenta (la crea si no hay, detrás de ti mirando hacia donde miras)
-//                                        con el frente Metros por detrás de ti (30 por defecto) a Speed cm/s (330).
+//                                        con el frente Metros por detrás de ti (30 por defecto) a Speed cm/s (300).
 //   TN.Beach.Storm.Stop                  la para (se queda a la vista).
-//   TN.Beach.Enemy.Debug 1               (CVar) radios y estados en el servidor.
+//   TN.Beach.Storm.Info                  frente, velocidad, a qué velocidad va y distancia a la última tortuga.
+//   TN.Beach.Enemy.Stats                 enemigos del mundo, cuántos van despacio por estar lejos y cuántos se apartan.
+//   TN.Beach.Enemy.Debug 1               (CVar) radios, oído, recorridos y estados en el servidor.
 // Para crear enemigos sueltos: TN.Beach.Spawn GiantCrab (SeaUrchin, Lizard, QuadLane, GullZone), del generador.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -100,7 +102,7 @@ namespace TNBeachEnemyConsole
 		}
 		const APawn* Pawn = LocalPawn(InWorld);
 		const float Behind = (Args.Num() > 0 ? FCString::Atof(*Args[0]) : 30.f) * 100.f;
-		const float Speed = Args.Num() > 1 ? FCString::Atof(*Args[1]) : 330.f;
+		const float Speed = Args.Num() > 1 ? FCString::Atof(*Args[1]) : GetDefault<ATN_BeachStorm>()->DefaultSpeed;
 		ATN_BeachStorm* Storm = ATN_BeachStorm::FindStorm(World);
 		if (!Storm)
 		{
@@ -138,6 +140,28 @@ namespace TNBeachEnemyConsole
 		}
 	}
 
+	void StormInfo(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		const ATN_BeachStorm* Storm = World ? ATN_BeachStorm::FindStorm(World) : nullptr;
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Storm.Info: %s"), Storm ? *Storm->DescribeState() : TEXT("no hay tormenta"));
+	}
+
+	void EnemyStats(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		if (!World)
+		{
+			return;
+		}
+		int32 Total = 0;
+		int32 Throttled = 0;
+		int32 Movers = 0;
+		ATN_BeachEnemy::GatherStats(World, Total, Throttled, Movers);
+		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Enemy.Stats: %d enemigos, %d despacio por estar lejos, %d que andan y se apartan."),
+			Total, Throttled, Movers);
+	}
+
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachQuadNow(TEXT("TN.Beach.Quad.Now"),
 		TEXT("Todos los pasos de quads empiezan su aviso ya (en el anfitrión)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&QuadNow), ECVF_Cheat);
@@ -147,10 +171,18 @@ namespace TNBeachEnemyConsole
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&GullAttack), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormStart(TEXT("TN.Beach.Storm.Start"),
-		TEXT("Arranca la tormenta de bañistas: TN.Beach.Storm.Start [metros por detrás=30] [cm/s=330] (en el anfitrión)."),
+		TEXT("Arranca la tormenta de bañistas: TN.Beach.Storm.Start [metros por detrás=30] [cm/s=300] (en el anfitrión)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormStart), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormStop(TEXT("TN.Beach.Storm.Stop"),
 		TEXT("Para la tormenta de bañistas (en el anfitrión)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormStop), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormInfo(TEXT("TN.Beach.Storm.Info"),
+		TEXT("Frente, velocidad y distancia a la última tortuga de la tormenta de bañistas (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&StormInfo), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachEnemyStats(TEXT("TN.Beach.Enemy.Stats"),
+		TEXT("Cuántos enemigos de la playa hay, cuántos van despacio por estar lejos y cuántos se apartan (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&EnemyStats), ECVF_Cheat);
 }
