@@ -1,0 +1,179 @@
+{
+  "name": "placa_presion",
+  "title": "Placa de presión (subida y bajada)",
+  "category": "puzzles",
+  "status": "borrador IA",
+  "status_note": "Borrador para que el equipo de modelado lo rehaga; no importado a Content.",
+  "prompt": "Stylized low-poly square pressure plate with a stone frame, raised painted pad and a starfish emblem; two states: up (emblem plain) and down (emblem glowing), flat-shaded",
+  "tool": {
+    "requested": "Hunyuan3D / Tripo / Rodin vía Blender MCP",
+    "used": "bpy procedural",
+    "reason": "Blender MCP no disponible en la sesión que generó la biblioteca; forma construida por script."
+  },
+  "generator": {
+    "script": "Art/Library/IA/_pipeline/assets_puzzles.py",
+    "function": [
+      "placa_subida",
+      "placa_bajada"
+    ],
+    "command": "powershell -File Art/Library/IA/_pipeline/build_library.ps1 -Only placa_presion"
+  },
+  "blender": "5.2.1 LTS",
+  "license": "Original de Tortunabo, generado por script (sin fuentes externas)",
+  "source_url": null,
+  "style_reference": [
+    "Source/Tortunabo/Private/World/Beach/TN_BeachCritterMeshes.h (tanque de juguete)",
+    "Art/Source/Vehicles/Buggy/ (buggy biplaza)"
+  ],
+  "budget_tris": 800,
+  "tris_total": 384,
+  "parts": [
+    {
+      "name": "SM_TN_PlacaPresion_Subida",
+      "role": "estado subido",
+      "fbx": "Art/Library/IA/puzzles/placa_presion/SM_TN_PlacaPresion_Subida.fbx",
+      "tris": 196,
+      "budget_tris": 400,
+      "bbox_cm": {
+        "min": [
+          -62.0,
+          -62.0,
+          0.0
+        ],
+        "max": [
+          62.0,
+          62.0,
+          12.2
+        ],
+        "size": [
+          124.0,
+          124.0,
+          12.2
+        ]
+      },
+      "pivot": "base",
+      "sockets_cm_deg": {},
+      "collision_ucx": 1,
+      "checks": {
+        "non_manifold_edges": 0,
+        "degenerate_faces": 0,
+        "loose_verts": 0,
+        "inverted_pieces": 0,
+        "closed_pieces": 11,
+        "material_slots": 1,
+        "uv_layers": 1
+      },
+      "fbx_reimport": {
+        "unit_scale_factor": 0.9999999776482582,
+        "meshes": {
+          "SM_TN_PlacaPresion_Subida": {
+            "lo": [
+              -62.0,
+              -62.0,
+              -0.0
+            ],
+            "hi": [
+              62.0,
+              62.0,
+              12.2
+            ],
+            "vertex_colors": [
+              "Zone"
+            ]
+          }
+        },
+        "sockets": [],
+        "ucx": [
+          "UCX_SM_TN_PlacaPresion_Subida_00"
+        ]
+      }
+    },
+    {
+      "name": "SM_TN_PlacaPresion_Bajada",
+      "role": "estado bajado (emblema emisivo)",
+      "fbx": "Art/Library/IA/puzzles/placa_presion/SM_TN_PlacaPresion_Bajada.fbx",
+      "tris": 188,
+      "budget_tris": 400,
+      "bbox_cm": {
+        "min": [
+          -62.0,
+          -62.0,
+          0.0
+        ],
+        "max": [
+          62.0,
+          62.0,
+          8.4
+        ],
+        "size": [
+          124.0,
+          124.0,
+          8.4
+        ]
+      },
+      "pivot": "base",
+      "sockets_cm_deg": {},
+      "collision_ucx": 1,
+      "checks": {
+        "non_manifold_edges": 0,
+        "degenerate_faces": 0,
+        "loose_verts": 0,
+        "inverted_pieces": 0,
+        "closed_pieces": 11,
+        "material_slots": 1,
+        "uv_layers": 1
+      },
+      "fbx_reimport": {
+        "unit_scale_factor": 0.9999999776482582,
+        "meshes": {
+          "SM_TN_PlacaPresion_Bajada": {
+            "lo": [
+              -62.0,
+              -62.0,
+              -0.0
+            ],
+            "hi": [
+              62.0,
+              62.0,
+              8.4
+            ],
+            "vertex_colors": [
+              "Zone"
+            ]
+          }
+        },
+        "sockets": [],
+        "ucx": [
+          "UCX_SM_TN_PlacaPresion_Bajada_00"
+        ]
+      }
+    }
+  ],
+  "blend": "Art/Library/IA/puzzles/placa_presion/placa_presion.blend",
+  "sheet": "Art/Library/IA/puzzles/placa_presion/placa_presion_lamina.png",
+  "sheet_kb": 420.3,
+  "material": {
+    "slot": "M_TN_IAProp",
+    "vertex_color": "Zone",
+    "decode": "Base = lerp(lerp(lerp(lerp(Trim, Paint, R), Detail, G), Dark, B), Light, R*G*B) * A",
+    "palette_srgb": {
+      "paint": "#E4572E",
+      "detail": "#FFD23F",
+      "dark": "#6B4A33",
+      "trim": "#9C9186",
+      "light": "#7CFFB0"
+    },
+    "textures": "ninguna"
+  },
+  "unreal_import": {
+    "units": "cm (UnitScaleFactor 1), escala 1",
+    "axes": "+X delante, Z arriba",
+    "settings": "Static Mesh; Combine Meshes on; Import Vertex Color = Replace; Normal Import = Import Normals; Auto Generate Collision off (UCX_ del FBX si lo hay); sockets desde los empties SOCKET_*"
+  },
+  "notes": "Dos mallas completas (una por estado) según el encargo; alternativa barata: marco fijo + pad móvil.",
+  "validation": {
+    "passed": true,
+    "failures": []
+  },
+  "generated": "2026-09-29"
+}
