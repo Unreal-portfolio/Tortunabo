@@ -17,6 +17,7 @@
 #include "Misc/App.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Stats/Stats.h"
+#include "VR/TN_VRMode.h"
 
 // Con nombre (no anónimo): en la compilación por bloques (unity) los nombres de un espacio anónimo se ven en el resto
 // del bloque.
@@ -325,7 +326,7 @@ void UTN_RaceScreensSubsystem::TickCountdown(APlayerController* PC, const ATN_Be
 	{
 		CountdownScreen = CreateWidget<UTN_RaceFinishCountdownWidget>(PC, UTN_RaceFinishCountdownWidget::StaticClass());
 		if (!CountdownScreen) { return; }
-		CountdownScreen->AddToViewport(CountdownZOrder);
+		TNVR::AddToScreen(CountdownScreen, CountdownZOrder);
 	}
 	FTNRaceCountdownView View;
 	View.State = State.FinishCountdown;
@@ -382,7 +383,7 @@ void UTN_RaceScreensSubsystem::ShowRoundClock(APlayerController* PC, const FTNRa
 	{
 		RoundClock = CreateWidget<UTN_RaceRoundClockWidget>(PC, UTN_RaceRoundClockWidget::StaticClass());
 		if (!RoundClock) { return; }
-		RoundClock->AddToViewport(RoundClockZOrder);
+		TNVR::AddToScreen(RoundClock, RoundClockZOrder);
 	}
 	RoundClock->SetView(View);
 }
@@ -577,7 +578,7 @@ void UTN_RaceScreensSubsystem::ShowTally(APlayerController* PC, const FTNRaceTal
 	{
 		Tally = CreateWidget<UTN_RaceTallyWidget>(PC, UTN_RaceTallyWidget::StaticClass());
 		if (!Tally) { return; }
-		Tally->AddToViewport(TallyZOrder);
+		TNVR::AddToScreen(Tally, TallyZOrder);
 	}
 	Tally->Setup(Setup);
 	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Recuento: ronda %d, %d jugadores, ganador en la columna %d%s."), Setup.Round, Setup.Rows.Num(), Setup.WinnerRow,
@@ -591,7 +592,7 @@ void UTN_RaceScreensSubsystem::ShowChampion(APlayerController* PC, const FTNRace
 	{
 		ChampionScreen = CreateWidget<UTN_RaceChampionWidget>(PC, UTN_RaceChampionWidget::StaticClass());
 		if (!ChampionScreen) { return; }
-		ChampionScreen->AddToViewport(ChampionZOrder);
+		TNVR::AddToScreen(ChampionScreen, ChampionZOrder);
 	}
 	ChampionScreen->Setup(Setup);
 	if (Setup.bPreview)
@@ -619,7 +620,7 @@ void UTN_RaceScreensSubsystem::ShowSprint(APlayerController* PC, const FTNRaceSp
 	{
 		SprintScreen = CreateWidget<UTN_RaceSprintWidget>(PC, UTN_RaceSprintWidget::StaticClass());
 		if (!SprintScreen) { return; }
-		SprintScreen->AddToViewport(SprintZOrder);
+		TNVR::AddToScreen(SprintScreen, SprintZOrder);
 	}
 	SprintScreen->Setup(Setup);
 	// El recuento y la cuenta atrás se van con un fundido por debajo mientras entra el título.
@@ -745,7 +746,7 @@ void UTN_RaceScreensSubsystem::StartArrival(APlayerController* PC, int32 Confirm
 	ArrivalScreen = CreateWidget<UTN_RaceArrivalWidget>(PC, UTN_RaceArrivalWidget::StaticClass());
 	if (ArrivalScreen)
 	{
-		ArrivalScreen->AddToViewport(UTN_GhostHatchWidget::ViewportZOrder + 1);
+		TNVR::AddToScreen(ArrivalScreen, UTN_GhostHatchWidget::ViewportZOrder + 1);
 	}
 	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Llegada al agua: se cierra el huevo negro (%s)."),
 		bArrivalConfirmed ? *FString::Printf(TEXT("puesto %d"), ArrivalPlace) : TEXT("a la espera del puesto del servidor"));
@@ -835,7 +836,7 @@ void UTN_RaceScreensSubsystem::StartRoundIntro(APlayerController* PC, const FTNR
 	if (RoundIntro)
 	{
 		RoundIntro->Setup(Setup);
-		RoundIntro->AddToViewport(UTN_GhostHatchWidget::ViewportZOrder + 1);
+		TNVR::AddToScreen(RoundIntro, UTN_GhostHatchWidget::ViewportZOrder + 1);
 	}
 	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Paso entre rondas: se cierra el huevo negro con «%s»%s."),
 		Setup.bSprint ? TEXT("SPRINT FINAL") : *FString::Printf(TEXT("RONDA %d"), Setup.Round), Setup.bPreview ? TEXT(" (vista previa)") : TEXT(""));
@@ -1077,7 +1078,7 @@ void UTN_RaceScreensSubsystem::StartCountdownPreview()
 	PreviewClock = 0.f;
 	BuildPreviewRows(PC, 2, PreviewRows);
 	CountdownScreen = CreateWidget<UTN_RaceFinishCountdownWidget>(PC, UTN_RaceFinishCountdownWidget::StaticClass());
-	if (CountdownScreen) { CountdownScreen->AddToViewport(CountdownZOrder); }
+	if (CountdownScreen) { TNVR::AddToScreen(CountdownScreen, CountdownZOrder); }
 }
 
 void UTN_RaceScreensSubsystem::StartClockPreview(float StartSeconds)
@@ -1205,7 +1206,7 @@ void UTN_RaceScreensSubsystem::TickPreview(float DeltaTime, APlayerController* P
 		if (!CountdownScreen || CountdownScreen->IsDismissing())
 		{
 			CountdownScreen = CreateWidget<UTN_RaceFinishCountdownWidget>(PC, UTN_RaceFinishCountdownWidget::StaticClass());
-			if (CountdownScreen) { CountdownScreen->AddToViewport(CountdownZOrder); }
+			if (CountdownScreen) { TNVR::AddToScreen(CountdownScreen, CountdownZOrder); }
 		}
 		if (CountdownScreen)
 		{

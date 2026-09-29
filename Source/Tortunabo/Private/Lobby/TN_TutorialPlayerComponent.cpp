@@ -18,6 +18,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Net/UnrealNetwork.h"
+#include "VR/TN_VRMode.h"
 
 namespace TNTutorialPlayerDetail
 {
@@ -884,7 +885,7 @@ void UTN_TutorialPlayerComponent::EnsureWidget()
 	Widget = CreateWidget<UTN_TutorialWidget>(PC, UTN_TutorialWidget::StaticClass());
 	if (Widget)
 	{
-		Widget->AddToViewport(WidgetZOrder);
+		TNVR::AddToScreen(Widget, WidgetZOrder);
 	}
 }
 

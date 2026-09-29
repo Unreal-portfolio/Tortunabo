@@ -86,7 +86,8 @@ void UTN_CarryComponent::RequestThrow()
 	// Ya tomando impulso: el servidor tampoco aceptaría otro lanzamiento hasta soltarla.
 	if (GetThrowWindupAlpha() >= 0.f) { return; }
 	const ATortugaCharacter* Self = GetTurtle();
-	const FRotator Aim = Self ? Self->GetControlRotation() : FRotator::ZeroRotator;
+	// Hacia donde mira la cámara; en VR, hacia donde apunta la aleta derecha.
+	const FRotator Aim = Self ? Self->GetTurtleAimRotation() : FRotator::ZeroRotator;
 	// Las aletas se echan atrás al momento en esta máquina (el servidor la suelta al acabar la toma de impulso).
 	BeginLocalThrowWindup();
 	ServerThrow(Aim);

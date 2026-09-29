@@ -1,5 +1,6 @@
 #include "Menu/MP_MenuPlayerController.h"
 #include "Blueprint/UserWidget.h"
+#include "VR/TN_VRMode.h"
 
 AMP_MenuPlayerController::AMP_MenuPlayerController()
 {
@@ -24,7 +25,7 @@ void AMP_MenuPlayerController::BeginPlay()
 		MainMenuWidget = CreateWidget<UUserWidget>(this, MainMenuWidgetClass);
 		if (MainMenuWidget)
 		{
-			MainMenuWidget->AddToViewport();
+			TNVR::AddToScreen(MainMenuWidget);
 		}
 	}
 }

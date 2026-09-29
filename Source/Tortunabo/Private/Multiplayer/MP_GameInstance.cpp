@@ -32,6 +32,7 @@
 #include "UI/HUD/TN_LoadingScreenWidget.h"
 #include "UI/Loading/TN_LoadingScreenSubsystem.h"
 #include "Voice/ProximityVoiceComponent.h"
+#include "VR/TN_VRMode.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
@@ -205,7 +206,7 @@ void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 
 	// Si la loading screen ya estaba "visible" pero el widget fue destruido
 	// (ej. map transition destruye el PC que era outer del widget), resetear estado.
-	if (bIsLoadingScreenVisible && (!LoadingScreenWidget || !LoadingScreenWidget->IsInViewport()))
+	if (bIsLoadingScreenVisible && (!LoadingScreenWidget || !TNVR::IsOnScreen(LoadingScreenWidget)))
 	{
 		bIsLoadingScreenVisible = false;
 		LoadingScreenWidget = nullptr;
@@ -233,7 +234,7 @@ void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 		return;
 	}
 
-	LoadingScreenWidget->AddToViewport(100000);
+	TNVR::AddToScreen(LoadingScreenWidget, 100000);
 	bIsLoadingScreenVisible = true;
 	RefreshLoadingText(Reason);
 }
