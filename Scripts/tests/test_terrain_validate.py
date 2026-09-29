@@ -7,6 +7,7 @@ inalcanzables, presupuesto de malla y costuras entre trozos.
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -95,7 +96,7 @@ def test_budgets_follow_the_plan_and_the_catalogue():
     assert MeshBudget.for_mode(None, 6) == MeshBudget.for_grid(6)
 
 
-@pytest.mark.parametrize("name", ["E01_espana", "P01_plataformas"])
+@pytest.mark.parametrize("name", ["E01_espana", "P01_plataformas", "C01_camino"])
 def test_existing_maps_are_within_budget_and_without_cracks(name):
     budget = check_budget(VARIANTS / name)
     assert budget["ok"], budget
@@ -115,3 +116,13 @@ def test_a_shifted_chunk_is_a_crack(tmp_path):
     assert not seams["ok"] and ((1, 1), (2, 1)) in seams["cracks"]
     tight = check_budget(dst, MeshBudget(100_000, 50.0))
     assert not tight["ok"]
+
+
+def test_c01_camino_se_guarda_decimado():
+    """C01_camino sale de gen_terrain_path.py decimado a 5 cm: 3,8 M triangulos/km2 en la rejilla con
+    colision antes (608 k en 0,16 km2), 1,42 M despues; ningun trozo de 100 m pasa de 30 k."""
+    manifest = json.loads((VARIANTS / "C01_camino" / "manifest.json").read_text(encoding="utf-8"))
+    grid = [c for c in manifest["cells"] if "col" in c]
+    area_km2 = (manifest["grid"] * manifest["cell_uu"] / 100.0 / 1000.0) ** 2
+    assert sum(c["triangles"] for c in grid) / area_km2 <= 1_600_000
+    assert max(c["triangles"] for c in grid) <= 30_000

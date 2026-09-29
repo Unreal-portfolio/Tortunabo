@@ -2,10 +2,14 @@
 Scripts/terrain_volumes/Variants/<nombre>/ (trozos TNTM2, manifest, vistas) y los pone al
 principio de Variants/index.json (el desplegable de ATN_MapVariantLoader en LVL_MapVariants).
 
-    uv run --with numpy --with scipy --with pillow --with scikit-image python Scripts/gen_terrain_path.py
+    uv run --with numpy --with scipy --with pillow --with scikit-image --with pyfqmr python Scripts/gen_terrain_path.py
         C01 (por defecto)
     ... gen_terrain_path.py --catalog [C05_muchos_lazos ...]
         el catalogo de 30 (terrain_path/variants.py), o solo los nombres dados
+
+Los trozos se deciman al final (terrain_vol/decimate.py, necesita pyfqmr: anade --with pyfqmr al uv
+run) con un error maximo de --decimate-cm (5 cm; la corona sin colision, --outer-decimate-cm, 25 cm);
+0 = sin decimar. El borde de cada trozo no se mueve: las costuras siguen exactas.
 
 Cada mapa se comprueba: se llega a pie (o saltando) del inicio al final, se alcanzan todos los
 lazos y no se pisa el fondo de vistas. Si no, se reintenta con otra semilla (hasta 3 veces).
@@ -25,7 +29,7 @@ from gen_terrain_volume import build_all, global_standable, ground_level, walk, 
 from terrain_path.layout import GRID, UU_PER_M
 from terrain_path.canyon import kill_boxes_uu
 from terrain_path.model import PathModel, walkable
-from terrain_path.outer import write_outer
+from terrain_path.outer import DECIMATE_M as OUTER_DECIMATE_M, write_outer
 from terrain_path.style import C01_SEED, C01_STYLE, PathStyle
 from terrain_path.variants import PATH_VARIANTS
 from terrain_vol.export import global_top, write_map
@@ -34,6 +38,7 @@ from terrain_vol.mesh import z_levels
 VARIANTS = Path(__file__).resolve().parent / "terrain_volumes" / "Variants"
 RESEED_STEP = 1000
 MAX_TRIES = 10           # con 3, 18 de los 30 del catalogo salian no recorribles o sin camino
+DECIMATE_M = 0.05        # error maximo de la decimacion de los trozos con colision
 
 
 def walk_with_links(standable: np.ndarray, start: tuple[int, int, int], links) -> np.ndarray:
@@ -73,7 +78,8 @@ def check(model: PathModel, chunks) -> dict:
     return {"ok": ok, "loops_ok": loops_ok, "vista": vista}
 
 
-def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
+def build_one(name: str, seed: int, style: PathStyle, description: str, decimate_m: float = DECIMATE_M,
+              outer_decimate_m: float = OUTER_DECIMATE_M) -> dict:
     t0 = time.time()
     model = None
     for attempt in range(MAX_TRIES):
@@ -89,6 +95,11 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
             break
     if model is None:
         raise RuntimeError(f"ninguna de las {MAX_TRIES} semillas da un camino principal valido")
+    # La comprobacion mira el volumen (celdas pisables), no la malla: se decima despues, una vez.
+    triangles_full = sum(len(c.triangles) for c in chunks.values())
+    if decimate_m > 0.0:
+        from terrain_vol.decimate import decimate_chunks
+        chunks = decimate_chunks(chunks, decimate_m)
     top = global_top(chunks, grid=GRID)
     s_ij, e_ij = world_index(model.start), world_index(model.end)
     out = VARIANTS / name
@@ -102,7 +113,7 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
     # Corona de terreno barato alrededor (sin colision): el final del mapa no se ve desde dentro.
     manifest_path = out / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["cells"] += write_outer(model, out, name)
+    manifest["cells"] += write_outer(model, out, name, outer_decimate_m)
     manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     g = model.plan.graph
     return {"name": name, "seed": used, "description": description, "ok": result["ok"],
@@ -112,7 +123,8 @@ def build_one(name: str, seed: int, style: PathStyle, description: str) -> dict:
             "arches": len(model.arch_ranges), "canyon": len(model.canyons), "islands": len(model.river.islands) if model.river else 0,
             "streams": sum(p.stream for p in model.plan.profiles.values()),
             "lagoons": int(model.plan.profiles[0].lagoon is not None and model.plan.profiles[0].lagoon.max() > 0.5),
-            "vista": result["vista"], "loops_ok": result["loops_ok"], "steps": len(model.jump_steps)}
+            "vista": result["vista"], "loops_ok": result["loops_ok"], "steps": len(model.jump_steps),
+            "triangles_full": triangles_full, "triangles": sum(len(c.triangles) for c in chunks.values())}
 
 
 def update_index(results: list[dict]) -> None:
@@ -133,6 +145,10 @@ def main() -> None:
     parser.add_argument("--catalog", action="store_true", help="genera el catalogo C02-C31")
     parser.add_argument("--seed", type=int, default=C01_SEED, help="semilla de C01")
     parser.add_argument("--workers", type=int, default=3)
+    parser.add_argument("--decimate-cm", type=float, default=DECIMATE_M * 100.0,
+                        help="error maximo de la decimacion de los trozos (cm); 0 = sin decimar")
+    parser.add_argument("--outer-decimate-cm", type=float, default=OUTER_DECIMATE_M * 100.0,
+                        help="error maximo de la decimacion de la corona (cm); 0 = sin decimar")
     args = parser.parse_args()
     if not args.catalog:
         jobs = [(C01_STYLE.name, args.seed, C01_STYLE, C01_STYLE.description)]
@@ -141,7 +157,8 @@ def main() -> None:
         jobs = [(v.name, v.seed, v.style, v.description) for v in PATH_VARIANTS if not wanted or v.name in wanted]
     results = []
     with ProcessPoolExecutor(max_workers=max(1, min(args.workers, len(jobs)))) as pool:
-        futures = {pool.submit(build_one, *job): job[0] for job in jobs}
+        futures = {pool.submit(build_one, *job, args.decimate_cm / 100.0, args.outer_decimate_cm / 100.0): job[0]
+                   for job in jobs}
         for future in as_completed(futures):
             try:
                 r = future.result()
@@ -153,7 +170,8 @@ def main() -> None:
                   f"principal {r['length']} m, {r['loops']} lazos ({r['loops_ok']} alcanzados), "
                   f"{r['crossings']} cruces, {r['canyon']} barrancos, {r['arches']} arcos, {r['tunnels']} tuneles, {r['islands']} islas, "
                   f"{r['lagoons']} lagunas, {r['streams']} arroyos, "
-                  f"{r['steps']} escalones de medusa, vistas pisadas {r['vista']}, {r['size_mb']} MB", flush=True)
+                  f"{r['steps']} escalones de medusa, vistas pisadas {r['vista']}, "
+                  f"{r['triangles_full']} -> {r['triangles']} triangulos, {r['size_mb']} MB", flush=True)
     update_index(results)
     bad = [r["name"] for r in results if not r["ok"]]
     print(f"{len(results)} mapas, {sum(r['size_mb'] for r in results):.1f} MB; no validos: {bad or 'ninguno'}")

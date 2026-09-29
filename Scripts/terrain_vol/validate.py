@@ -237,7 +237,8 @@ def check_seams(map_dir: Path, tolerance_uu: float = SEAM_TOLERANCE_UU) -> dict:
     """Mayor distancia (uu) entre un vertice del borde de un trozo y el mas cercano del borde del vecino, en
     las dos direcciones; un borde con vertices solo en un lado es una grieta."""
     manifest = json.loads((map_dir / "manifest.json").read_text(encoding="utf-8"))
-    cells = {(c["col"], c["row"]): c for c in manifest["cells"]}
+    # Solo los trozos de la rejilla del mapa: la corona de fondo (sin col/row) no se suelda con ellos.
+    cells = {(c["col"], c["row"]): c for c in manifest["cells"] if "col" in c and "row" in c}
     half = manifest["cell_uu"] / 2.0
     world = {key: _world_vertices(map_dir, c) for key, c in cells.items()}
     worst, cracks = 0.0, []
