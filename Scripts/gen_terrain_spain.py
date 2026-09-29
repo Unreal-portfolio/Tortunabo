@@ -78,10 +78,10 @@ def kill_boxes_uu() -> list[dict]:
              "extent": [half * UU_PER_M, half * UU_PER_M, 0.5 * (z1 - z0) * UU_PER_M], "yaw": 0.0}]
 
 
-def update_index(name: str, seed: int, ok: bool, size_mb: float) -> None:
+def update_index(name: str, seed: int, ok: bool, size_mb: float, description: str = DESCRIPTION) -> None:
     index_path = VARIANTS / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else []
-    entry = {"name": name, "seed": seed, "description": DESCRIPTION, "recorrible": ok, "size_mb": size_mb}
+    entry = {"name": name, "seed": seed, "description": description, "recorrible": ok, "size_mb": size_mb}
     index = [e for e in index if e["name"] != name] + [entry]
     index_path.write_text(json.dumps(index, indent=1, ensure_ascii=False), encoding="utf-8")
 
