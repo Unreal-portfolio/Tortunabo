@@ -9,6 +9,8 @@
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerState.h"
+#include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 
@@ -321,4 +323,17 @@ int32 TN_CountConnectedCoopPlayers(const AGameStateBase* GameState)
 		}
 	}
 	return Count;
+}
+
+void TN_RestoreFullPlayerName(AGameModeBase* GameMode, APlayerController* PlayerController, const FString& Options)
+{
+	if (!GameMode || !PlayerController || !PlayerController->PlayerState)
+	{
+		return;
+	}
+	const FString FullName = UGameplayStatics::ParseOption(Options, TEXT("Name")).Left(TN_MaxPlayerNameLength);
+	if (FullName.Len() > 20 && FullName != PlayerController->PlayerState->GetPlayerName())
+	{
+		GameMode->ChangeName(PlayerController, FullName, false);
+	}
 }
