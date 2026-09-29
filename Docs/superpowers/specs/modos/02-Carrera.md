@@ -455,3 +455,11 @@ Riesgos que mueven la estimación: pasadas de ancla fija que no encuentran sitio
 | P6 | La huella de 8 huevos: el test del reparto solo cubre la fila de 4 | Ampliar en A6 (ya incluido) |
 
 Resumen de riesgos: alto = red de los tramos (mitigado por hash y colocación ya resuelta), medio = tiempos de ronda con 8 jugadores, bajo = objetos nuevos.
+
+## Anexo (2026-09-29): cómo aparecen los objetos
+
+1. **Filas y cajas en la pista** (lo ya especificado: 20–25 sueltas + 3 filas): al cogerlas **reaparecen a los 5 s** en el mismo sitio, para que el pelotón de detrás también tenga objeto (estilo Mario Kart). Las sueltas de fuera del camino ideal reaparecen a los 15 s.
+2. **Caja de remontada del cielo**: cada 30–40 s una gaviota existente suelta una caja 20–40 m por delante de las 2 últimas tortugas (la del último puesto tiene prioridad), con aviso de sombra de 2 s. Solo puede abrirla quien vaya en la mitad de atrás; para el resto es un obstáculo que se puede empujar. Misma malla de caja, sin assets nuevos.
+3. **Cofres y rebuscables** (existentes): fijos por tramo; no reaparecen dentro de la misma ronda.
+
+Todo lo decide el servidor (posición, reaparición y contenido con `RollLoot` por posición).
