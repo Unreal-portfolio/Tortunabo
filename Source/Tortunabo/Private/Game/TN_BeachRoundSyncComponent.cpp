@@ -77,6 +77,12 @@ void UTN_BeachRoundSyncComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 void UTN_BeachRoundSyncComponent::ServerReportRoundReady_Implementation(int32 Round)
 {
+	// Solo vale la ronda que el servidor ya ha montado: una ronda futura dejaría al servidor sin esperar a este cliente.
+	const ATN_BeachRaceGenerator* Gen = ATN_BeachRaceGenerator::Find(this);
+	if (!Gen || Round <= 0 || Round > Gen->GetRoundNumber())
+	{
+		return;
+	}
 	ReadyRound = FMath::Max(ReadyRound, Round);
 	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] %s tiene montada la ronda %d del generador."), *GetNameSafe(GetOwner()), Round);
 }
