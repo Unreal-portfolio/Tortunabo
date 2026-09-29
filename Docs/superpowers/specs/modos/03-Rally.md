@@ -531,3 +531,10 @@ E01B Después (bifurcación con puente natural 8 a 10, rampa 3 a 4, viaducto 2 a
 5. Rusia compactada con deformación aceptada (se reconoce la forma).
 6. Jugadora sola: contrarreloj en el MVP.
 7. Sí: anti-vuelco pasivo +0,10 g para el buggy de una sola tortuga.
+
+## Anexo D (2026-09-29): cómo aparecen los objetos
+
+1. **Filas de cajas en la calzada** (7 por carrera): cruzan todo el ancho; se cogen atravesándolas con el buggy y **reaparecen a los 3 s** (los buggies van rápido y el pelotón llega junto).
+2. **Cajas dobles en rutas alternativas** (bifurcaciones y atajos arriesgados): dan 2 objetos; reaparecen a los 10 s. Premian arriesgar.
+3. **Caja de remontada del cielo**: cada 30–40 s una gaviota existente la suelta sobre la calzada 60–100 m por delante de los 2 últimos buggies, con sombra de aviso de 2 s; se recoge al pasar por encima; solo cuenta para la mitad de atrás.
+Todo lo decide el servidor con `RollLoot` por posición; sin assets nuevos (misma caja).
