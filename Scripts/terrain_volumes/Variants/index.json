@@ -5,5 +5,12 @@
   "description": "Camino primero: un camino, lazos que vuelven, puentes naturales y tuneles, rio con islas y final abierto al mar.",
   "recorrible": true,
   "size_mb": 6.07
+ },
+ {
+  "name": "P01_plataformas",
+  "seed": 20260929,
+  "description": "Plataformas de arena a +20, +25 y +30 m sobre un rio a 0 m, unidas por puentes colgantes; caer al rio es morir.",
+  "recorrible": true,
+  "size_mb": 2.46
  }
 ]
