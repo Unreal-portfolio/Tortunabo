@@ -33,13 +33,24 @@ SHEETS = Path(__file__).resolve().parents[1] / "Docs" / "Mapas"
 
 
 def prepare_rasters(preset: GeoPreset, refetch: bool = False) -> tuple[np.ndarray, np.ndarray]:
-    """MDE (m reales) y cobertura del volumen: los guardados o, si no hay (o refetch), descargados y guardados."""
+    """MDE (m reales) y cobertura del volumen. El MDE: el guardado o, si no hay (o refetch), descargado y guardado.
+    La cobertura se recalcula del MDE guardado si solo depende de el (borde por costa, sin lagos de Natural
+    Earth): asi un cambio de los parametros de la region no deja una mascara vieja."""
     region = preset.region
     stored = None if refetch else load_rasters(region.name)
+    offline = region.edge == "coast" and not region.lakes
     if stored is not None:
-        return stored
+        dem, mask = stored
+        if not offline:
+            return dem, mask
+        coverage = region.coverage(dem)
+        save_rasters(region.name, dem, coverage)
+        return load_rasters(region.name)
     dem = region.fetch_dem()
     save_rasters(region.name, dem, region.coverage(dem))
+    if offline:
+        dem = load_rasters(region.name)[0]
+        save_rasters(region.name, dem, region.coverage(dem))
     return load_rasters(region.name)
 
 
@@ -60,7 +71,10 @@ def game_ij(model: GeoModel, lonlat: tuple[float, float]) -> tuple[int, int]:
     return world_index(model.to_game(*lonlat))
 
 
-def build_geo(key: str, name: str | None = None, refetch: bool = False, sheet: bool = False) -> dict:
+def build_geo(key: str, name: str | None = None, refetch: bool = False, sheet: bool = False,
+              register: bool = True, variants: Path = VARIANTS) -> dict:
+    """Genera, valida y escribe el preset en variants/<nombre>; register lo añade a index.json (solo si variants
+    es la carpeta del juego)."""
     t0 = time.time()
     preset = PRESETS[key]
     model, info = build_model(preset, refetch)
@@ -72,7 +86,7 @@ def build_geo(key: str, name: str | None = None, refetch: bool = False, sheet: b
     e_ij = game_ij(model, preset.end) if preset.end else farthest_reachable(top, reachable(top, s_ij), s_ij)
     marked = tuple(game_ij(model, p) for p in preset.unreachable_ok)
     start_xy, end_xy = world_point(s_ij), world_point(e_ij)
-    out = VARIANTS / name
+    out = variants / name
     manifest = {"description": preset.description, "mode": preset.mode, "kill_boxes_uu": kill_boxes_uu(grid),
                 "geo": info, "unreachable_ok_uu": [[v * 100.0 for v in world_point(p)] for p in marked]}
     write_map(out, name, preset.seed, chunks, (*start_xy, float(top[s_ij])), (*end_xy, float(top[e_ij])),
@@ -86,7 +100,8 @@ def build_geo(key: str, name: str | None = None, refetch: bool = False, sheet: b
     data["recorrible"] = report["ok"]
     manifest_path.write_text(json.dumps(data, indent=1), encoding="utf-8")
     size_mb = dir_size_mb(out)
-    update_index(name, preset.seed, report["ok"], size_mb, preset.description, {"mode": preset.mode})
+    if register and variants == VARIANTS:
+        update_index(name, preset.seed, report["ok"], size_mb, preset.description, {"mode": preset.mode})
     if sheet:
         scale = (f"1 m de juego = {info['ground_m_per_game_m']:.0f} m reales; exageración "
                  f"{info['exaggeration']:.2f}x".replace(".", ","))

@@ -140,6 +140,7 @@ class GeoRegion:
     min_island_m2: float = 0.0
     min_lake_m2: float = 40.0
     keep_points: tuple[tuple[float, float], ...] = ()
+    keep_largest: bool = False
     border_scale: str = "50m"
 
     def __post_init__(self) -> None:
@@ -254,7 +255,7 @@ class GeoRegion:
 
     def coverage(self, dem: np.ndarray, px_m: float = RASTER_PX_M) -> np.ndarray:
         """Tierra del mapa (0..1) segun `edge`, sin islas menores que min_island_m2 (ni las que no contienen
-        keep_points, si hay) y con el marco de mar."""
+        keep_points, si hay; ni otra que la mayor, con keep_largest) y con el marco de mar."""
         land = np.ones(dem.shape, dtype=bool)
         if self.edge in ("coast", "both"):
             land &= ndimage.gaussian_filter(dem, 1.0) > self.water_level_m
@@ -294,6 +295,10 @@ class GeoRegion:
                 j = int(np.clip(np.searchsorted(axis, float(Y)), 0, len(axis) - 1))
                 wanted[labels[i, j]] = labels[i, j] > 0
             keep &= wanted
+        if self.keep_largest:
+            largest = np.zeros(count + 1, dtype=bool)
+            largest[1 + int(np.argmax(np.where(keep[1:], areas, -1.0)))] = True
+            keep &= largest
         return keep[labels]
 
     def credits(self, extra: tuple[str, ...] = ()) -> str:
