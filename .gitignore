@@ -105,3 +105,15 @@ Scripts/textures/WaterSurface.bin
 
 # Mapas a partir de fotos (retratos): reproducen el relieve de una persona; no se suben (ver gen_terrain_portrait.py)
 Scripts/terrain_volumes/Variants/F*/
+
+# Cachés de herramientas (pytest, ruff, rumdl, superpowers)
+.pytest_cache/
+.rumdl_cache/
+.ruff_cache/
+.superpowers/
+
+# Logs de ejecución
+*.log
+
+# Carpetas personales del editor
+Content/Developers/
