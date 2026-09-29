@@ -28,6 +28,7 @@ jugador; la voz viaja por RPC `Unreliable`; los RPC de depuración del fantasma 
 ## HIGH
 
 ### H1 · RPC de pruebas sin protección en la build de Steam — esfuerzo S
+- **Hecho** (`88399d1da`): cuerpo vacío en Shipping y, en desarrollo, solo el controlador local del servidor escucha (`TN_DebugRpcDecisions.h`, test `Tortunabo.DebugRpc.HostOnly`). Rechazo suave con aviso en log, sin expulsar.
 - `Public/Player/MP_GamePlayerController.h:449-450` y `Private/Player/MP_GamePlayerController.cpp:1340-1450`
   (`ServerStormTest`), `.cpp:1555` (`ServerTestBooth`).
 - Escenario: en una sala pública de Steam, cualquier invitado con un cliente modificado (o con consola habilitada) llama
@@ -38,6 +39,7 @@ jugador; la voz viaja por RPC `Unreliable`; los RPC de depuración del fantasma 
   rechace si no es el anfitrión.
 
 ### H2 · Guardado de cosméticos y tutorial: sin versión, sin comprobar errores y con sobrescritura del corrupto — esfuerzo S-M
+- **Hecho** (`0d393c6f6`): `SaveVersion` + marca de fin `bWriteComplete` y migración v0→v1; el fichero ilegible o truncado se aparta a `<ranura>_corrupto_<fecha>` y no se pisa; `SaveGameToSlot` comprobado con un reintento (también en ajustes). Tests `Tortunabo.SaveGame.*`. Sin `AsyncSaveGameToSlot`.
 - `Public/Multiplayer/TN_CosmeticSaveGame.h:20-48` (sin campo de versión), `Private/Multiplayer/MP_GameInstance.cpp:1163-1203`
   (`LoadCosmeticProfile`/`SaveCosmeticProfile`) y `.cpp:1273-1330` (tutorial).
 - Escenario: el `.sav` queda truncado (cierre durante la escritura, disco lleno, conflicto de Steam Cloud).
@@ -50,6 +52,7 @@ jugador; la voz viaja por RPC `Unreliable`; los RPC de depuración del fantasma 
   `AsyncSaveGameToSlot`.
 
 ### H3 · `BP_ScorePickup` cargado por ruta literal y de forma síncrona en 8 sitios — esfuerzo M
+- **Hecho** (`e1e6fa0e5`): `UTN_GameplayAssetSettings::ScorePickupClass` (única ruta, en `DefaultGame.ini`), precarga asíncrona en `UMP_GameInstance::Init` y `Error` en log si falta. Test `Tortunabo.Assets.ScorePickupClass`. El catálogo de `DropPrize` (`:562`) sigue síncrono.
 - Ruta `/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C` repetida en `MP_GamePlayerController.cpp:1506`,
   `TN_BeachChest.cpp:950`, `TN_BeachFortress.cpp:162`, `TN_BeachLizard.cpp:577`, `TN_BeachLootShells.cpp:841`,
   `TN_ProcMapGenerator_Spawn.cpp:414` y `:632`, `TN_ProcMapTypes.cpp:222`.
@@ -61,6 +64,7 @@ jugador; la voz viaja por RPC `Unreliable`; los RPC de depuración del fantasma 
   existente), resuelto y retenido al empezar la partida.
 
 ### H4 · Assets referenciados solo por cadena fuera de `DirectoriesToAlwaysCook` — esfuerzo S (verificar con un cook)
+- **Hecho** (`5c1a471ad`): `/Game/Cosmetics`, `/Game/Animations` y `/Game/Meshses` en `DirectoriesToAlwaysCook` (cargan clases nativas sin asset: pasarlas a UPROPERTY no las cocinaría). Test `Tortunabo.Cook.StringPathsAreCooked` sobre todas las rutas literales de `Source/`. Pendiente: un cook real.
 - `Config/DefaultGame.ini:22-27` cocina siempre `/Game/Maps`, `/Game/UI`, `/Game/Input`, `/Game/Blueprints`, `/Game/ProcMap`.
   No cubre `/Game/Cosmetics` (14 literales), `/Game/Animations` (10) ni `/Game/Meshses` (4).
 - Escenario: en la build empaquetada, un asset que solo C++ nombra por cadena no se cocina y `LoadObject` devuelve
@@ -76,6 +80,7 @@ jugador; la voz viaja por RPC `Unreliable`; los RPC de depuración del fantasma 
 ## MEDIUM
 
 ### M1 · Algas: malla procedural reconstruida en CPU cada frame — esfuerzo M
+- **Hecho** (`66c8a93ad`): reconstrucción limitada por distancia a la cámara (cada frame < 25 m o enrollando; 20 Hz < 50 m; 8 Hz < 90 m; quieta más lejos), buffers reutilizados. Test `Tortunabo.Seaweed.RebuildRate`. Sin WPO; falta medir con `stat game`.
 - `World/Beach/TN_BeachSeaweed.cpp:162-167` (tick siempre activo, sin intervalo), `:789-809` (`Tick`),
   `:724-786` (`RebuildLiveMesh`: `TArray` nuevos por fronda y `UpdateMeshSection` por frame), más tres
   `TActorIterator<ACharacter>` por frame (`:355`, `:445`, `:679`).
