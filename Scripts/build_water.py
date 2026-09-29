@@ -198,16 +198,12 @@ def build_material(normal_texture, foam_texture):
 def build_surface_mesh(material):
     """Rejilla subdividida (Scripts/textures/WaterSurface.bin, TNTM1) convertida en StaticMesh
     con la misma via que los trozos del terreno (UTN_TerrainMeshAsset::BuildStaticMesh)."""
-    data_path = f"{WATER_ROOT}/DA_WaterSurface"
-    data = load_or_none(data_path)
-    if not data:
-        factory = unreal.DataAssetFactory()
-        factory.set_editor_property("data_asset_class", unreal.TN_TerrainMeshAsset)
-        data = asset_tools.create_asset("DA_WaterSurface", WATER_ROOT, unreal.TN_TerrainMeshAsset, factory)
+    # El DataAsset es solo un paso intermedio (6,4 MB con la rejilla entera): se crea transitorio y
+    # no se guarda. La malla SM_WaterSurface es lo único que se persiste.
+    data = unreal.new_object(unreal.TN_TerrainMeshAsset)
     source = os.path.join(unreal.Paths.project_dir(), "Scripts", "textures", "WaterSurface.bin").replace("\\", "/")
     if not data.load_from_file(source):
         raise RuntimeError(f"No se pudo cargar {source}: genera con Scripts/gen_water_textures.py")
-    asset_lib.save_loaded_asset(data)
     static_mesh = data.build_static_mesh(WATER_ROOT, SURFACE_MESH, material)
     if not static_mesh:
         raise RuntimeError("BuildStaticMesh del agua fallo")
