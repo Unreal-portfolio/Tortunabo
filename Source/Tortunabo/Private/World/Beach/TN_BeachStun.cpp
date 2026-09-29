@@ -2,6 +2,7 @@
 #include "World/Beach/TN_BeachStunComponent.h"
 #include "World/Beach/TN_RaceItems.h"
 #include "World/Beach/TN_BeachEnemy.h"
+#include "World/Beach/TN_BeachGullTuning.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachSandWorm.h"
 #include "World/Beach/TN_BeachStorm.h"
@@ -137,11 +138,13 @@ void TNBeach::StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launc
 	{
 		return;
 	}
-	// La patada de la tormenta o la red de seguridad la están recolocando: nada la relanza hasta que acaben (ellas se
-	// reservan la tortuga después de su propia llamada).
-	if (IsTurtleRelocating(Turtle))
+	// La patada de la tormenta o la red de seguridad la están recolocando, o la sujeta un enemigo: nada la relanza hasta que
+	// acaben (ellas se reservan la tortuga después de su propia llamada; el enemigo la suelta antes de aturdirla él). Una
+	// bola que nace mientras un enemigo la sigue colocando en su pico o en su boca tiene dos que la mueven a la vez.
+	const ETNBeachMover Mover = GetTurtleMover(Turtle);
+	if (!CanStunOver(Mover))
 	{
-		UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] %s: no se aturde, la recoloca %s."), *GetNameSafe(Turtle), GetMoverName(GetTurtleClaim(Turtle)));
+		UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] %s: no se aturde, la mueve %s."), *GetNameSafe(Turtle), GetMoverName(Mover));
 		return;
 	}
 	if (UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOrAddOn(Turtle))
@@ -157,7 +160,7 @@ void TNBeach::KnockDownTurtle(ACharacter* Turtle, float Seconds, const FVector& 
 		return;
 	}
 	ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
-	if (!TurtleCharacter || TurtleCharacter->IsDead() || IsTurtleRelocating(Turtle) || TNRaceItems::IsInvulnerable(Turtle))
+	if (!TurtleCharacter || TurtleCharacter->IsDead() || !CanStunOver(GetTurtleMover(Turtle)) || TNRaceItems::IsInvulnerable(Turtle))
 	{
 		return;
 	}
@@ -169,6 +172,24 @@ bool TNBeach::IsTurtleStunned(const ACharacter* Turtle)
 {
 	const UTN_BeachStunComponent* Stun = UTN_BeachStunComponent::FindOn(Turtle);
 	return Stun && Stun->IsStunned();
+}
+
+bool TNBeach::SlipFromHolder(ACharacter* Turtle)
+{
+	ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
+	return TurtleCharacter && TurtleCharacter->HasAuthority() && ATN_BeachEnemy::ServerSlipHeldTurtle(TurtleCharacter);
+}
+
+bool TNBeach::IsDodgingByBellyDive(const ACharacter* Turtle)
+{
+	const ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
+	if (!TurtleCharacter || !TurtleCharacter->IsBellyPoseActive())
+	{
+		return false;
+	}
+	const UCharacterMovementComponent* Move = TurtleCharacter->GetCharacterMovement();
+	const bool bAirborne = Move && Move->IsFalling();
+	return TNBeachGullTuning::DodgesByBellyDive(true, bAirborne, static_cast<float>(TurtleCharacter->GetVelocity().Size2D()));
 }
 
 bool TNBeach::IsNoDeathWorld(const UObject* WorldContext)
@@ -191,36 +212,15 @@ TNBeach::ETNBeachMover TNBeach::GetTurtleMover(const ACharacter* Turtle)
 	{
 		return ETNBeachMover::None;
 	}
-	if (ATN_BeachSandWorm::IsBeingEaten(TurtleCharacter))
-	{
-		return ETNBeachMover::Eaten;
-	}
-	const ETNBeachMover Claim = GetTurtleClaim(TurtleCharacter);
-	if (Claim != ETNBeachMover::None)
-	{
-		return Claim;
-	}
-	if (ATN_BeachEnemy::IsTurtleHeld(TurtleCharacter))
-	{
-		return ETNBeachMover::Held;
-	}
-	if (TNBeachStunDetail::IsCarried(TurtleCharacter))
-	{
-		return ETNBeachMover::Carried;
-	}
-	if (TurtleCharacter->IsKnockedDown())
-	{
-		return ETNBeachMover::Knockdown;
-	}
-	if (TurtleCharacter->IsInShell())
-	{
-		return ETNBeachMover::Ball;
-	}
-	if (TurtleCharacter->IsFallImmune())
-	{
-		return ETNBeachMover::Launch;
-	}
-	return ETNBeachMover::None;
+	FTNMoverView View;
+	View.bEaten = ATN_BeachSandWorm::IsBeingEaten(TurtleCharacter);
+	View.Claim = GetTurtleClaim(TurtleCharacter);
+	View.bHeld = ATN_BeachEnemy::IsTurtleHeld(TurtleCharacter);
+	View.bCarried = TNBeachStunDetail::IsCarried(TurtleCharacter);
+	View.bKnockedDown = TurtleCharacter->IsKnockedDown();
+	View.bInShell = TurtleCharacter->IsInShell();
+	View.bFallImmune = TurtleCharacter->IsFallImmune();
+	return ResolveMover(View);
 }
 
 const TCHAR* TNBeach::GetMoverName(ETNBeachMover Mover)
@@ -350,6 +350,15 @@ void TNBeach::RelocateTurtle(ACharacter* Turtle, const FTransform& Where)
 		if (!Move->IsComponentTickEnabled())
 		{
 			Move->SetComponentTickEnabled(true);
+		}
+		// El teletransporte no es una caída: la caída se empieza a contar aquí. Si ya estaba cayendo (al salir del caparazón o
+		// del derribo de arriba se le pone la caída donde estaba), pedir otra vez MOVE_Falling no hace nada y la tortuga se
+		// quedaba con la altura de antes (la caja de la bola en lo alto de un castillo, el vuelo de una patada, el pico de
+		// una gaviota): a los 5 m de «caída» se metía sola en una bola nada más ponerla de pie (ATortugaCharacter::
+		// TickFallRules) y el aterrizaje contaba una caída mortal. Pasando por MOVE_None, la caída vuelve a empezar aquí.
+		if (Move->MovementMode == MOVE_Falling)
+		{
+			Move->SetMovementMode(MOVE_None);
 		}
 		Move->SetMovementMode(MOVE_Falling);
 	}

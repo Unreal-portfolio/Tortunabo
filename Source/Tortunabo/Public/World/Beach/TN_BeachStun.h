@@ -45,20 +45,49 @@ namespace TNBeach
 	 * Servidor: mete a la tortuga en su caparazón como bola (UTN_ShellComponent: cuerpo físico, salida bloqueada) con
 	 * la velocidad Launch (cero = cae donde está), la deja temblando y mareada (pájaros y estrellas) durante Seconds y
 	 * después la suelta para que pueda salir. Si ya estaba aturdida, alarga el aturdimiento hasta el mayor de los dos
-	 * finales. No hace nada en clientes, con tortugas muertas, con Seconds <= 0 ni mientras la recoloca la tormenta o la
-	 * red de seguridad (IsTurtleRelocating).
+	 * finales. No hace nada en clientes, con tortugas muertas, con Seconds <= 0 ni si ahora la mueve algo que manda más
+	 * (CanStunOver: la sujeción de un enemigo, la patada de la tormenta, la red de seguridad o un gusano). El enemigo que
+	 * la sujeta la suelta él antes de aturdirla (EndHoldTurtle y después StunTurtle): nunca hay una bola que alguien
+	 * sigue colocando en su pico o en su boca.
 	 */
 	TORTUNABO_API void StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launch = FVector::ZeroVector);
 
 	/**
 	 * Servidor: derribo con ragdoll y mareo, como el de la piel de plátano (ATortugaCharacter::ApplyKnockdown), con el
 	 * empujón Impulse, durante Seconds. Para golpes secos (erizo, cagada de gaviota, rueda de quad…): no todo es la bola.
-	 * No hace nada en clientes, con tortugas muertas, con Seconds <= 0 ni mientras la recolocan (IsTurtleRelocating).
+	 * No hace nada en clientes, con tortugas muertas, con Seconds <= 0 ni si ahora la mueve algo que manda más
+	 * (CanStunOver).
 	 */
 	TORTUNABO_API void KnockDownTurtle(ACharacter* Turtle, float Seconds, const FVector& Impulse = FVector::ZeroVector);
 
+	/**
+	 * Lógica pura del árbitro: si aturdir o derribar (StunTurtle, KnockDownTurtle) puede con quien la mueve ahora (Mover,
+	 * de GetTurtleMover). No pueden con la sujeción de un enemigo (la suelta él antes), la patada de la tormenta, la red de
+	 * seguridad ni el gusano; con lo demás, sí (la bola se alarga, el derribo se levanta, quien la lleva la suelta, un
+	 * lanzamiento acaba).
+	 */
+	inline bool CanStunOver(ETNBeachMover Mover)
+	{
+		return Mover != ETNBeachMover::Held && Mover != ETNBeachMover::StormKick && Mover != ETNBeachMover::SafetyNet
+			&& Mover != ETNBeachMover::Eaten;
+	}
+
+	/**
+	 * Servidor: la tortuga se mete en su caparazón mientras la sujeta un enemigo (el pico de una gaviota, la boca de un
+	 * lagarto...): se escurre. Quien la sujeta la suelta ya, antes de que nazca la bola (ATN_BeachEnemy::ServerSlipHeldTurtle:
+	 * la gaviota, aturdida en bola como al acabar el vuelo; los demás, sin más). true si alguien la sujetaba.
+	 */
+	TORTUNABO_API bool SlipFromHolder(ACharacter* Turtle);
+
 	/** true si la tortuga está aturdida por StunTurtle (en cualquier máquina, con estado replicado). */
 	TORTUNABO_API bool IsTurtleStunned(const ACharacter* Turtle);
+
+	/**
+	 * true si la tortuga va tirada en plancha en el momento justo: pose de panzazo en el aire o arrastrándose aún deprisa
+	 * (TNBeachGullTuning::DodgesByBellyDive). Lo que cae desde arriba (cagadas de gaviota) le pasa por encima. Servidor y
+	 * dueño lo saben al momento; las demás máquinas, con el panzazo replicado.
+	 */
+	TORTUNABO_API bool IsDodgingByBellyDive(const ACharacter* Turtle);
 
 	/**
 	 * true si en este mundo no se muere (modo carrera en la playa): las zonas de muerte, caídas, tormenta y enemigos
@@ -68,13 +97,59 @@ namespace TNBeach
 
 	// ── Quién mueve a la tortuga (servidor) ──
 
+	/** Lo que se ve de la tortuga para decidir quién la mueve (ResolveMover). */
+	struct FTNMoverView
+	{
+		/** Reserva vigente (ClaimTurtle), None si no hay. */
+		ETNBeachMover Claim = ETNBeachMover::None;
+		bool bEaten = false;
+		bool bHeld = false;
+		bool bCarried = false;
+		bool bKnockedDown = false;
+		bool bInShell = false;
+		bool bFallImmune = false;
+	};
+
+	/**
+	 * Lógica pura del árbitro: quién la mueve según lo que se ve. El gusano, lo primero; luego la reserva vigente; luego
+	 * un enemigo que la sujeta, otra tortuga que la lleva, el derribo, su bola y un lanzamiento por el aire.
+	 */
+	inline ETNBeachMover ResolveMover(const FTNMoverView& View)
+	{
+		if (View.bEaten)
+		{
+			return ETNBeachMover::Eaten;
+		}
+		if (View.Claim != ETNBeachMover::None)
+		{
+			return View.Claim;
+		}
+		if (View.bHeld)
+		{
+			return ETNBeachMover::Held;
+		}
+		if (View.bCarried)
+		{
+			return ETNBeachMover::Carried;
+		}
+		if (View.bKnockedDown)
+		{
+			return ETNBeachMover::Knockdown;
+		}
+		if (View.bInShell)
+		{
+			return ETNBeachMover::Ball;
+		}
+		return View.bFallImmune ? ETNBeachMover::Launch : ETNBeachMover::None;
+	}
+
 	/** Quién la mueve ahora: la reserva vigente o, si no hay, lo que se ve de su estado (gusano, enemigo, brazos, derribo...). */
 	TORTUNABO_API ETNBeachMover GetTurtleMover(const ACharacter* Turtle);
 
 	/** Nombre para el registro. */
 	TORTUNABO_API const TCHAR* GetMoverName(ETNBeachMover Mover);
 
-	/** Servidor: Mover (StormKick o SafetyNet) se reserva la tortuga Seconds (sustituye a la reserva que hubiera). */
+	/** Servidor: Mover (StormKick, SafetyNet o Launch) se reserva la tortuga Seconds (sustituye a la reserva que hubiera). */
 	TORTUNABO_API void ClaimTurtle(ACharacter* Turtle, ETNBeachMover Mover, float Seconds);
 
 	/** Servidor: suelta la reserva de Mover (si es la suya; la de otro se queda). */
@@ -97,7 +172,9 @@ namespace TNBeach
 	 * ATN_BeachEnemy::ServerReleaseHeldTurtle), de lo que lleve y de quien la lleve en brazos, la levanta del derribo, le
 	 * quita el aturdimiento y el caparazón (sin bola), para su movimiento y la pone en Where (la cápsula de pie; si queda
 	 * algo en el aire, cae). Al salir del caparazón y del derribo se le devuelven la colisión de la cápsula, el movimiento,
-	 * su suavizado y la réplica del movimiento. No la toca un gusano de arena: a la que se come, no se la recoloca.
+	 * su suavizado y la réplica del movimiento. La caída se empieza a contar en Where (el teletransporte no cuenta como
+	 * caída: sin eso, desde lo alto se metía sola en una bola al ponerla de pie). No la toca un gusano de arena: a la que
+	 * se come, no se la recoloca.
 	 */
 	TORTUNABO_API void RelocateTurtle(ACharacter* Turtle, const FTransform& Where);
 

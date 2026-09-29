@@ -2,6 +2,7 @@
 #include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "World/Beach/TN_BeachStun.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/DecalComponent.h"
 #include "Net/UnrealNetwork.h"
@@ -160,6 +161,13 @@ void ATN_SeagullDroppingActor::ResolveImpact()
 		if (C->HasUmbrellaProtection())
 		{
 			UE_LOG(LogTortunabo, Log, TEXT("[SeagullDropping] %s protegido por sombrilla — impacto ignorado"),
+				*GetNameSafe(C));
+			continue;
+		}
+		// Tirado en plancha en el momento justo: la caca le pasa por encima.
+		if (bBellyDiveDodges && TNBeach::IsDodgingByBellyDive(C))
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[SeagullDropping] %s la esquiva en plancha — impacto ignorado"),
 				*GetNameSafe(C));
 			continue;
 		}

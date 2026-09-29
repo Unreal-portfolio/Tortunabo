@@ -2,6 +2,8 @@
 
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Core/TN_Log.h"
 #include "Engine/CollisionProfile.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -111,6 +113,11 @@ void UTN_ShellComponent::ServerToggleShell_Implementation()
 
 	if (!TNShellLogic::CanEnterShell(Context))
 	{
+		// Para el registro de las pruebas: la tecla no hace nada y no se ve por qué (lo más fácil de no ver, el objeto en la mano).
+		UE_LOG(LogTortunabo, Log, TEXT("[Caparazón] %s no se mete en el caparazón:%s%s%s%s%s."), *GetNameSafe(Turtle),
+			Context.bHasEquippedItem ? TEXT(" lleva un objeto en la mano") : TEXT(""), Context.bIsSwimming ? TEXT(" nadando") : TEXT(""),
+			Context.bIsDiving ? TEXT(" en pleno panzazo") : TEXT(""), Context.bIsKnockedDown ? TEXT(" derribada") : TEXT(""),
+			Context.bIsDead ? TEXT(" muerta") : TEXT(""));
 		return;
 	}
 	// En el pico del pelícano taxi (objeto de carrera) no: la bola caería desde la altura del vuelo.
@@ -120,6 +127,19 @@ void UTN_ShellComponent::ServerToggleShell_Implementation()
 		{
 			return;
 		}
+	}
+	// En la boca de un gusano de arena (se acabó su ronda) no: el gusano la sigue colocando en su boca y la bola la arrastraría
+	// a la vez.
+	if (TNBeach::GetTurtleMover(Turtle) == TNBeach::ETNBeachMover::Eaten)
+	{
+		return;
+	}
+	// Colgando del pico de una gaviota o en la boca de un lagarto: se escurre. Quien la sujeta la suelta antes de que nazca
+	// la bola (la gaviota, aturdida en bola como al acabar el vuelo, y entonces ya va metida en el caparazón): nunca hay una
+	// bola que un enemigo sigue colocando en su pico o en su boca (TN_BeachStun.h, «quién mueve a la tortuga»).
+	if (TNBeach::SlipFromHolder(Turtle) && bIsInShell)
+	{
+		return;
 	}
 
 	ShellEnteredServerTime = Now;
@@ -209,7 +229,8 @@ void UTN_ShellComponent::StartBody(const FVector& Velocity, bool bLaunched, bool
 	// A mano: la caja nace de pie en el tronco (su +X, la cabeza, hacia arriba) y se vuelca hacia delante sobre la
 	// tripa. Lanzada o soltada: nace tumbada donde está el actor.
 	const FRotator Rotation = bLaunched ? FRotator(0.f, Yaw, 0.f) : FRotator(90.f, Yaw, 0.f);
-	const FVector Center = bLaunched ? Location : Location - FVector(0.0, 0.0, 2.5);
+	// Nunca metida en algo (decorado, una muralla, la arena): saldría empujada y podría cruzar la malla fina del terreno.
+	const FVector Center = FindFreeBodySpot(bLaunched ? Location : Location - FVector(0.0, 0.0, 2.5), Rotation);
 
 	FActorSpawnParameters Params;
 	Params.Owner = Turtle;
@@ -237,6 +258,66 @@ void UTN_ShellComponent::StartBody(const FVector& Velocity, bool bLaunched, bool
 		BoxComp->SetPhysicsAngularVelocityInRadians(Right * 7.0);
 	}
 	Turtle->ForceNetUpdate();
+}
+
+FVector UTN_ShellComponent::FindFreeBodySpot(const FVector& Center, const FRotator& Rotation) const
+{
+	const ATortugaCharacter* Turtle = GetTurtleOwner();
+	const UWorld* World = GetWorld();
+	if (!Turtle || !World)
+	{
+		return Center;
+	}
+	// Lo que para a una caja de física (el terreno, el decorado, las murallas, otras tortugas), sin la propia tortuga (su
+	// cápsula deja de chocar en cuanto se engancha a la caja) ni su caja de antes. La caja, un pelo más pequeña: tocar el
+	// suelo no es estar metida en él.
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(TNShellFreeSpot), false, Turtle);
+	if (Body)
+	{
+		Query.AddIgnoredActor(Body.Get());
+	}
+	const FQuat Rot = Rotation.Quaternion();
+	const FCollisionShape Shape = FCollisionShape::MakeBox(ATN_ShellBody::BoxHalfExtent() - FVector(3.0));
+	auto IsFree = [World, &Rot, &Shape, &Query](const FVector& At)
+	{
+		return !World->OverlapBlockingTestByChannel(At, Rot, ECC_PhysicsBody, Shape, Query);
+	};
+	// Con la cápsula de pie libre, la caja (de pie o tumbada) cabe dentro de ella: esto solo busca cuando a la tortuga la han
+	// dejado metida en algo sin barrer (un enemigo que la arrastra en el pico o en la boca por el decorado, un teletransporte).
+	if (IsFree(Center))
+	{
+		return Center;
+	}
+	// Primero hacia arriba (lo normal: la han dejado hundida en la arena o en algo bajo) y después alrededor, cada vez más
+	// lejos y más alto.
+	static const float Ups[] = { 25.f, 50.f, 90.f, 140.f, 200.f };
+	for (const float Up : Ups)
+	{
+		const FVector Try = Center + FVector(0.0, 0.0, Up);
+		if (IsFree(Try))
+		{
+			return Try;
+		}
+	}
+	static const float Rings[] = { 60.f, 120.f, 200.f };
+	for (const float Ring : Rings)
+	{
+		for (int32 k = 0; k < 8; ++k)
+		{
+			const double Angle = UE_DOUBLE_TWO_PI * k / 8.0;
+			const FVector Side(FMath::Cos(Angle) * Ring, FMath::Sin(Angle) * Ring, 0.0);
+			for (const float Up : { 0.f, 50.f, 120.f })
+			{
+				const FVector Try = Center + Side + FVector(0.0, 0.0, Up);
+				if (IsFree(Try))
+				{
+					return Try;
+				}
+			}
+		}
+	}
+	UE_LOG(LogTortunabo, Verbose, TEXT("[Caparazón] %s: sin sitio libre para la bola en (%.0f, %.0f, %.0f)."), *GetNameSafe(Turtle), Center.X, Center.Y, Center.Z);
+	return Center;
 }
 
 void UTN_ShellComponent::StopBody()
@@ -354,6 +435,7 @@ void UTN_ShellComponent::FollowBody(ATN_ShellBody* InBody)
 	{
 		return;
 	}
+	EnforceBodyLocalState();
 	LastBoxTransform = InBody->GetBox()->GetComponentTransform();
 	bHasLastBox = true;
 	Turtle->PlaceOnShellBody(LastBoxTransform);
@@ -475,11 +557,6 @@ void UTN_ShellComponent::ApplyBodyLocalState(bool bOn)
 		{
 			Move->StopMovementImmediately();
 			Move->DisableMovement();
-			// Si ya lo tenía apagado otro (el ragdoll del derribo, un enemigo que la sujetaba o el panzazo, cuya vuelta llega a
-			// este cliente después que la bola), se guarda el de siempre de la tortuga: si no, al salir de la bola se quedaba
-			// sin suavizado y se veía a saltitos el resto de la ronda.
-			const ENetworkSmoothingMode Current = Move->NetworkSmoothingMode;
-			SavedSmoothingMode = static_cast<uint8>(Current != ENetworkSmoothingMode::Disabled ? Current : ENetworkSmoothingMode::Exponential);
 			Move->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 			Move->SetComponentTickEnabled(false);
 		}
@@ -487,9 +564,6 @@ void UTN_ShellComponent::ApplyBodyLocalState(bool bOn)
 		{
 			// La cápsula ya no choca con nada (el cuerpo es la caja), pero sigue solapando: zonas, agua y disparadores
 			// la siguen viendo.
-			SavedCapsuleProfile = Capsule->GetCollisionProfileName();
-			SavedCapsuleEnabled = Capsule->GetCollisionEnabled();
-			SavedCapsuleResponses = Capsule->GetCollisionResponseToChannels();
 			Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 			Capsule->SetCollisionResponseToAllChannels(ECR_Overlap);
 			Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
@@ -503,22 +577,49 @@ void UTN_ShellComponent::ApplyBodyLocalState(bool bOn)
 		return;
 	}
 
+	// Al soltar, lo de serie de la clase de la tortuga, no una copia de lo que hubiera al engancharse: si otro sistema lo
+	// tenía cambiado en ese momento (el ragdoll del derribo deja la cápsula sin colisión y su vuelta puede llegar a esta
+	// máquina después que la bola; un enemigo o el panzazo apagan el suavizado), se devolvía eso, y la tortuga salía de la
+	// bola sin chocar con el suelo o a saltitos. Así da igual cuántas veces entre y salga, y de dónde venga.
+	const ACharacter* Defaults = Turtle->GetClass()->GetDefaultObject<ACharacter>();
+	const UCapsuleComponent* DefaultCapsule = Defaults ? Defaults->GetCapsuleComponent() : nullptr;
+	const UCharacterMovementComponent* DefaultMove = Defaults ? Defaults->GetCharacterMovement() : nullptr;
+	const USkeletalMeshComponent* SkelMesh = Turtle->GetMesh();
+	const bool bRagdoll = SkelMesh && SkelMesh->IsSimulatingPhysics();
 	if (Capsule)
 	{
-		if (SavedCapsuleProfile != NAME_None && SavedCapsuleProfile != UCollisionProfile::CustomCollisionProfileName)
+		if (DefaultCapsule && DefaultCapsule->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
 		{
-			Capsule->SetCollisionProfileName(SavedCapsuleProfile);
+			Capsule->SetCollisionObjectType(DefaultCapsule->GetCollisionObjectType());
+			Capsule->SetCollisionResponseToChannels(DefaultCapsule->GetCollisionResponseToChannels());
+			Capsule->SetCollisionEnabled(DefaultCapsule->GetCollisionEnabled());
 		}
 		else
 		{
-			Capsule->SetCollisionEnabled(SavedCapsuleEnabled);
-			Capsule->SetCollisionResponseToChannels(SavedCapsuleResponses);
+			// Sin la de la clase (no debería pasar): la de un personaje, sin tapar la cámara (como la pone la tortuga).
+			Capsule->SetCollisionProfileName(UCollisionProfile::Pawn_ProfileName);
+			Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 		}
+		// El ragdoll de esta máquina sigue simulando (su derribo aún no ha acabado aquí): sin colisión hasta que se levante,
+		// como la deja el derribo (ATortugaCharacter::ApplyKnockdownVisual se la devuelve al levantarse).
+		if (bRagdoll)
+		{
+			Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
+	if (bRagdoll)
+	{
+		// La malla, el movimiento y su réplica son del ragdoll hasta que se levante: los devuelve el derribo.
+		if (Move)
+		{
+			Move->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+		}
+		return;
 	}
 	Turtle->ResetMeshTransform();
 	if (Move)
 	{
-		Move->NetworkSmoothingMode = static_cast<ENetworkSmoothingMode>(SavedSmoothingMode);
+		Move->NetworkSmoothingMode = DefaultMove ? DefaultMove->NetworkSmoothingMode : ENetworkSmoothingMode::Exponential;
 		Move->SetComponentTickEnabled(true);
 		if (!TNShellComponentDetail::IsCarried(Turtle))
 		{
@@ -528,6 +629,34 @@ void UTN_ShellComponent::ApplyBodyLocalState(bool bOn)
 	if (Turtle->HasAuthority())
 	{
 		Turtle->SetReplicateMovement(true);
+	}
+}
+
+void UTN_ShellComponent::EnforceBodyLocalState()
+{
+	ATortugaCharacter* Turtle = GetTurtleOwner();
+	if (!Turtle || !bBodyLocalApplied)
+	{
+		return;
+	}
+	// Mientras la mueve su caja, nada más la mueve: si otro sistema le ha devuelto el movimiento o la colisión (la vuelta de
+	// un derribo o una corrección de red que llegan a esta máquina con la bola ya puesta, una sujeción que se suelta...), la
+	// cápsula andaría o caería por su cuenta y chocaría con su propia caja. Se vuelve a dejar como la deja la bola.
+	UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
+	if (Move && (Move->IsComponentTickEnabled() || Move->MovementMode != MOVE_None))
+	{
+		Move->StopMovementImmediately();
+		Move->DisableMovement();
+		Move->SetComponentTickEnabled(false);
+		Move->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
+	}
+	UCapsuleComponent* Capsule = Turtle->GetCapsuleComponent();
+	if (Capsule && Capsule->GetCollisionEnabled() != ECollisionEnabled::QueryOnly)
+	{
+		Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Capsule->SetCollisionResponseToAllChannels(ECR_Overlap);
+		Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+		Capsule->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	}
 }
 

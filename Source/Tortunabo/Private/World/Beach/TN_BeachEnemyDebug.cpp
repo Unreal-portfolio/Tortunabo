@@ -3,6 +3,8 @@
 // servidor del mismo proceso; en un cliente remoto de verdad no hacen nada (hay que escribirlos en el anfitrión).
 //   TN.Beach.Quad.Now                    todos los pasos de quads empiezan su aviso ya.
 //   TN.Beach.Gull.Attack [1|2]           cada zona de gaviotas ataca ya a la tortuga más cercana (1 cagada, 2 picado).
+//   TN.Beach.Gull.Grab [veces] [jugador] la zona de gaviotas más cercana coge a tu tortuga (o la de ese jugador) con el
+//                                        pico N veces seguidas (2 por defecto), cada una en cuanto esté libre.
 //   TN.Beach.Storm.Start [Metros] [Speed] arranca la tormenta (la crea si no hay, detrás de ti mirando hacia donde miras)
 //                                        con el frente Metros por detrás de ti (30 por defecto) a Speed cm/s (180).
 //   TN.Beach.Storm.Stop                  la para (se queda a la vista).
@@ -30,6 +32,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
+#include "Player/TortugaCharacter.h"
 
 namespace TNBeachEnemyConsole
 {
@@ -99,6 +102,49 @@ namespace TNBeachEnemyConsole
 			++Count;
 		}
 		UE_LOG(LogTortunabo, Log, TEXT("[Playa] TN.Beach.Gull.Attack: %d zonas de gaviotas."), Count);
+	}
+
+	void GullGrab(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		UWorld* World = AuthorityWorld(InWorld);
+		if (!World)
+		{
+			return;
+		}
+		const int32 Times = Args.Num() > 0 ? FMath::Max(1, FCString::Atoi(*Args[0])) : 2;
+		// La tortuga del anfitrión o, con un número, la de ese jugador (índice en PlayerArray del anfitrión).
+		APawn* Pawn = LocalPawn(World);
+		if (Args.Num() > 1)
+		{
+			const AGameStateBase* GameState = World->GetGameState();
+			const int32 Index = FCString::Atoi(*Args[1]);
+			const APlayerState* PlayerState = GameState && GameState->PlayerArray.IsValidIndex(Index) ? GameState->PlayerArray[Index].Get() : nullptr;
+			Pawn = PlayerState ? PlayerState->GetPawn() : nullptr;
+		}
+		ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(Pawn);
+		if (!Turtle)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Playa] TN.Beach.Gull.Grab: no hay esa tortuga."));
+			return;
+		}
+		// La zona de gaviotas más cercana (en el plano).
+		ATN_BeachGullZone* Nearest = nullptr;
+		double BestSq = TNumericLimits<double>::Max();
+		for (TActorIterator<ATN_BeachGullZone> It(World); It; ++It)
+		{
+			const double DistSq = FVector::DistSquared2D(It->GetActorLocation(), Turtle->GetActorLocation());
+			if (DistSq < BestSq)
+			{
+				BestSq = DistSq;
+				Nearest = *It;
+			}
+		}
+		if (!Nearest)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Playa] TN.Beach.Gull.Grab: no hay zonas de gaviotas (TN.Beach.Place GullZone)."));
+			return;
+		}
+		Nearest->DebugGrab(Turtle, Times);
 	}
 
 	void StormStart(const TArray<FString>& Args, UWorld* InWorld)
@@ -298,6 +344,10 @@ namespace TNBeachEnemyConsole
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachGullAttack(TEXT("TN.Beach.Gull.Attack"),
 		TEXT("Cada zona de gaviotas ataca ya a la tortuga más cercana: 1 cagada, 2 picado, nada = al azar (en el anfitrión)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&GullAttack), ECVF_Cheat);
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBeachGullGrab(TEXT("TN.Beach.Gull.Grab"),
+		TEXT("La zona de gaviotas más cercana te coge con el pico N veces seguidas, cada una en cuanto estés libre: TN.Beach.Gull.Grab [veces=2] [jugador] (en el anfitrión)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&GullGrab), ECVF_Cheat);
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdBeachStormStart(TEXT("TN.Beach.Storm.Start"),
 		TEXT("Arranca la tormenta de bañistas: TN.Beach.Storm.Start [metros por detrás=30] [cm/s=180] (en el anfitrión)."),

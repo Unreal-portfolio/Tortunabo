@@ -174,6 +174,25 @@ public:
 	 */
 	static bool ServerReleaseHeldTurtle(ATortugaCharacter* Turtle, const TCHAR* Reason);
 
+	/**
+	 * Servidor: la tortuga se mete en su caparazón mientras la sujeta un enemigo (TNBeach::SlipFromHolder, desde
+	 * UTN_ShellComponent): se escurre. Quien la sujeta la suelta ya, antes de que nazca la bola (OnHeldTurtleSlips: la
+	 * gaviota, aturdida en bola como al acabar el vuelo; los demás, sin más, y su lógica ve la bola en su siguiente paso).
+	 * Así nunca hay una bola que un enemigo sigue colocando en su pico o en su boca. true si alguien la sujetaba.
+	 */
+	static bool ServerSlipHeldTurtle(ATortugaCharacter* Turtle);
+
+	/**
+	 * Lógica pura de la sujeción: si un enemigo puede colocar ahora a la tortuga en su pico o en su boca en esta máquina.
+	 * No si otra cosa la mueve aquí: su bola del caparazón (metida en el caparazón o con la caja enganchada), el ragdoll
+	 * del derribo, otra tortuga que la lleva o la muerte. Dos que la mueven a la vez (el pico la clava y la caja la
+	 * arrastra) es la bola que gira alrededor de la cápsula clavada y se hunde en la arena.
+	 */
+	static bool CanHoldTurtle(bool bInShell, bool bHasLocalBody, bool bRagdoll, bool bCarried, bool bDead)
+	{
+		return !bInShell && !bHasLocalBody && !bRagdoll && !bCarried && !bDead;
+	}
+
 	/** Se le puede dar: viva, sin aturdir, sin derribar y sin ir en el pico de nadie. */
 	static bool CanBeHit(const ATortugaCharacter* Turtle);
 
@@ -249,6 +268,13 @@ protected:
 	 * acabar la sujeción la lanzaría desde donde la han dejado o la volvería a coger.
 	 */
 	virtual void OnHoldAborted(ATortugaCharacter* Turtle) {}
+
+	/**
+	 * Servidor: se le escurre la tortuga que sujeta (se mete en su caparazón; ServerSlipHeldTurtle), justo antes de que nazca
+	 * su bola. Por defecto la suelta sin más (EndHoldTurtle) y la subclase lo ve en su siguiente paso (la tortuga ya va en
+	 * su caparazón). La gaviota la suelta como al acabar el vuelo: aturdida en bola hacia la salida.
+	 */
+	virtual void OnHeldTurtleSlips(ATortugaCharacter* Turtle);
 
 	/** Radio (cm) de relevancia visual: más lejos de la cámara local no se anima. */
 	virtual float GetVisualRange() const { return 30000.f; }
@@ -354,7 +380,10 @@ protected:
 	 * Todas las máquinas: sujeta a la tortuga: movimiento apagado, sin suavizado de red en los demás clientes, sin
 	 * correcciones al dueño en el servidor, pataleta en el aire y marcada como llevada (nadie más le da). El enemigo la
 	 * coloca con PlaceHeldTurtle en cada fotograma, después de su movimiento. Una a la vez. Seguro: si una sujeción dura
-	 * más de 6 s (algo ha fallado), se suelta sola y esa tortuga no se puede volver a sujetar en 2 s.
+	 * más de 6 s (algo ha fallado), se suelta sola y esa tortuga no se puede volver a sujetar en 2 s. No sujeta a una
+	 * tortuga que otra cosa mueve en esta máquina (CanHoldTurtle: su bola, su ragdoll, otra que la lleva), y
+	 * PlaceHeldTurtle la suelta en cuanto otra cosa empiece a moverla (en los clientes, la bola puede llegar antes que la
+	 * suelta del enemigo).
 	 */
 	void BeginHoldTurtle(ATortugaCharacter* Turtle);
 

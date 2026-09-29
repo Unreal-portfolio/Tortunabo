@@ -1,6 +1,7 @@
 #include "World/Beach/TN_RaceGullStrike.h"
 #include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachEnemy.h"
+#include "World/Beach/TN_BeachGullTuning.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachSandWorm.h"
 #include "World/Beach/TN_BeachStun.h"
@@ -30,9 +31,9 @@ namespace TNRaceGullStrikeDetail
 	// ── Línea de tiempo (segundos desde que nace) ──
 
 	/** Hasta aquí vuela hasta situarse sobre el objetivo; a los 3,2 s suelta la cagada. */
-	constexpr float ArriveSeconds = 3.2f;
+	constexpr float ArriveSeconds = TNBeachGullTuning::StrikeReleaseAge;
 	/** Lo que tarda en caer la cagada (s) y el instante del impacto. */
-	constexpr float FallSeconds = 1.7f;
+	constexpr float FallSeconds = TNBeachGullTuning::StrikeFallSeconds;
 	constexpr float ImpactAge = ArriveSeconds + FallSeconds;
 	/** A esta edad ha subido y se ha ido: acaba el objeto. */
 	constexpr float LeaveAge = 9.f;
@@ -57,10 +58,14 @@ namespace TNRaceGullStrikeDetail
 
 	// ── Cagada ──
 
-	/** El punto de impacto sigue al objetivo por la arena a esta velocidad como mucho (cm/s): andando (450) te pilla; corriendo (800), te libras. */
-	constexpr float AimSpeed = 700.f;
-	/** Radio del impacto en planta (cm) y altura máxima (cm) sobre la arena. */
-	constexpr float ImpactRadius = 330.f;
+	/**
+	 * El punto de impacto sigue al objetivo por la arena a esta velocidad como mucho (cm/s) hasta soltarla; mientras cae,
+	 * más despacio, y el último medio segundo ya no se mueve (TNBeachGullTuning::StrikeChaseSpeedAt). Corriendo (800),
+	 * cambiando de dirección al final o tirándose en plancha a tiempo, se libra.
+	 */
+	constexpr float AimSpeed = TNBeachGullTuning::StrikeChaseSpeed;
+	/** Radio del impacto en planta (cm; antes 330) y altura máxima (cm) sobre la arena. */
+	constexpr float ImpactRadius = TNBeachGullTuning::StrikeImpactRadius;
 	constexpr float ImpactHeight = 300.f;
 	/** Derribo (s), empujón hacia fuera (cm/s) y hacia arriba (cm/s). */
 	constexpr float KnockSeconds = 2.6f;
@@ -376,16 +381,12 @@ void ATN_RaceGullStrike::ServerTrackAim(float DeltaSeconds)
 		}
 	}
 
-	// El blanco va hacia el objetivo por la arena a AimSpeed como mucho.
-	FVector Step(GoalAt.X - AimServer.X, GoalAt.Y - AimServer.Y, 0.0);
-	const double StepLength = Step.Size();
-	const double MaxStep = static_cast<double>(AimSpeed) * static_cast<double>(DeltaSeconds);
-	if (StepLength > MaxStep && StepLength > 1.0e-4)
-	{
-		Step *= MaxStep / StepLength;
-	}
-	AimServer.X += Step.X;
-	AimServer.Y += Step.Y;
+	// El blanco va hacia el objetivo por la arena como mucho a lo que toque en este tramo: más deprisa mientras llega, lo que
+	// se anda mientras cae la cagada y quieto el último medio segundo.
+	const float MaxSpeed = TNBeachGullTuning::StrikeChaseSpeedAt(static_cast<float>(GetAge()), ArriveSeconds, FallSeconds);
+	const FVector2D Next = TNBeachGullTuning::StepToward(FVector2D(AimServer.X, AimServer.Y), FVector2D(GoalAt.X, GoalAt.Y), MaxSpeed, DeltaSeconds);
+	AimServer.X = Next.X;
+	AimServer.Y = Next.Y;
 	AimServer.Z = static_cast<double>(GroundHeightAt(AimServer, static_cast<float>(AimServer.Z)));
 	AimPoint = FVector_NetQuantize10(AimServer);
 }
@@ -430,6 +431,12 @@ void ATN_RaceGullStrike::ServerImpact()
 			}
 			if (!TNRaceItems::CanBeHurt(Racer) || !ATN_BeachEnemy::CanBeHit(Racer))
 			{
+				continue;
+			}
+			// Tirada en plancha en el momento justo: le pasa por encima.
+			if (TNBeach::IsDodgingByBellyDive(Racer))
+			{
+				UE_LOG(LogTortunabo, Log, TEXT("[Carrera] %s esquiva la gaviota justiciera en plancha."), *GetNameSafe(Racer));
 				continue;
 			}
 			// El pegote la tumba de espaldas: derribo con ragdoll y mareo, con un empujón hacia fuera del centro.

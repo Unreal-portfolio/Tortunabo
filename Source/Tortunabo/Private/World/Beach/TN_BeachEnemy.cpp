@@ -73,6 +73,30 @@ namespace TNBeachEnemyShared
 	constexpr double MaxHoldSeconds = 6.0;
 	constexpr double HoldBlockSeconds = 2.0;
 
+	/**
+	 * Soltada ya en su caparazón según el servidor, pero su caja aún no ha llegado a esta máquina: estos segundos se la deja
+	 * esperando la caja en vez de hacerla caer por su cuenta (si no, un cliente caería con su movimiento mientras el servidor
+	 * la tiene en bola y le corrige al modo sin movimiento: bola y caída a la vez). Si la caja no llega, cae.
+	 */
+	constexpr float BallArrivalGrace = 0.6f;
+
+	/**
+	 * Si un enemigo puede colocar ahora a Turtle en esta máquina (ATN_BeachEnemy::CanHoldTurtle con lo que se ve aquí): ni
+	 * en su caparazón, ni con su caja enganchada, ni en ragdoll, ni en brazos de otra, ni muerta.
+	 */
+	bool CanHoldHere(const ATortugaCharacter* Turtle)
+	{
+		if (!Turtle)
+		{
+			return false;
+		}
+		const UTN_ShellComponent* Shell = Turtle->GetShellComponent();
+		const USkeletalMeshComponent* Mesh = Turtle->GetMesh();
+		const UTN_CarryComponent* Carry = Turtle->GetCarryComponent();
+		return ATN_BeachEnemy::CanHoldTurtle(Turtle->IsInShell(), Shell && Shell->HasLocalBody(), Mesh && Mesh->IsSimulatingPhysics(),
+			Carry && Carry->IsBeingCarried(), Turtle->IsDead());
+	}
+
 	/** Revisión del nivel de detalle (s) y cada cuánto se actualiza lejos: a la vista y fuera de ella (s). */
 	constexpr float LodPeriod = 0.5f;
 	constexpr float FarSeenInterval = 0.066f;
@@ -381,6 +405,35 @@ bool ATN_BeachEnemy::ServerReleaseHeldTurtle(ATortugaCharacter* Turtle, const TC
 	Holder->EndHoldTurtle();
 	UE_LOG(LogTortunabo, Warning, TEXT("[Playa] %s suelta a %s (%s)."), *Holder->GetName(), *Turtle->GetName(), Reason ? Reason : TEXT("sin motivo"));
 	return true;
+}
+
+bool ATN_BeachEnemy::ServerSlipHeldTurtle(ATortugaCharacter* Turtle)
+{
+	if (!Turtle || !Turtle->HasAuthority())
+	{
+		return false;
+	}
+	ATN_BeachEnemy* Holder = FindHolder(Turtle);
+	if (!Holder)
+	{
+		return false;
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] A %s se le escurre %s: se mete en su caparazón."), *Holder->GetName(), *Turtle->GetName());
+	Holder->OnHeldTurtleSlips(Turtle);
+	// Pase lo que pase en la subclase, suelta ya: la bola no nace con nadie sujetándola.
+	if (Holder->GetHeldTurtle() == Turtle)
+	{
+		Holder->EndHoldTurtle();
+	}
+	return true;
+}
+
+void ATN_BeachEnemy::OnHeldTurtleSlips(ATortugaCharacter* Turtle)
+{
+	if (GetHeldTurtle() == Turtle)
+	{
+		EndHoldTurtle();
+	}
 }
 
 bool ATN_BeachEnemy::CanBeHit(const ATortugaCharacter* Turtle)
@@ -1124,6 +1177,12 @@ void ATN_BeachEnemy::BeginHoldTurtle(ATortugaCharacter* Turtle)
 	{
 		return;
 	}
+	// Otra cosa la mueve en esta máquina (su bola, su ragdoll, otra tortuga que la lleva): no se la sujeta encima. En un
+	// cliente, quien la llama lo vuelve a intentar en el siguiente fotograma hasta que le llegue el estado del servidor.
+	if (!TNBeachEnemyShared::CanHoldHere(Turtle))
+	{
+		return;
+	}
 	const UWorld* World = GetWorld();
 	const double Now = World ? World->GetTimeSeconds() : 0.0;
 	// Recién soltada por el seguro de tiempo: un momento sin volver a sujetarla (que caiga de verdad).
@@ -1245,8 +1304,11 @@ void ATN_BeachEnemy::RestoreReleasedTurtle(FReleaseWatch& Watch, bool bFinal)
 	const UTN_ShellComponent* Shell = Turtle->GetShellComponent();
 	const USkeletalMeshComponent* Mesh = Turtle->GetMesh();
 	const UTN_CarryComponent* Carry = Turtle->GetCarryComponent();
-	const bool bOtherDriver = (Shell && Shell->HasLocalBody()) || (Mesh && Mesh->IsSimulatingPhysics()) || (Carry && Carry->IsBeingCarried())
-		|| Turtle->IsDead();
+	// En su caparazón (estado replicado) y con la caja a punto de llegar a esta máquina: un momento, que la mueva su caja.
+	const float SinceRelease = TNBeachEnemyShared::ReleaseWatchSeconds - Watch.Left;
+	const bool bBallArriving = Shell && Shell->IsInShell() && !Shell->HasLocalBody() && SinceRelease < TNBeachEnemyShared::BallArrivalGrace;
+	const bool bOtherDriver = (Shell && Shell->HasLocalBody()) || bBallArriving || (Mesh && Mesh->IsSimulatingPhysics())
+		|| (Carry && Carry->IsBeingCarried()) || Turtle->IsDead();
 	if (!bOtherDriver)
 	{
 		// Nadie la mueve: que caiga por su cuenta (también en bola sin caja en esta máquina o con la ronda parada: mejor en
@@ -1303,6 +1365,14 @@ void ATN_BeachEnemy::PlaceHeldTurtle(const FVector& Grip, float Yaw)
 		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] %s llevaba %.1f s sujetando a %s: se suelta por seguridad."), *GetName(), Now - HoldStartTime, *GetNameSafe(Turtle));
 		HoldBlocked = Turtle;
 		HoldBlockedUntil = Now + TNBeachEnemyShared::HoldBlockSeconds;
+		EndHoldTurtle();
+		return;
+	}
+	// Otra cosa ha empezado a moverla en esta máquina (en un cliente, su bola o su ragdoll pueden llegar antes que la suelta
+	// del enemigo): se suelta ya, sin colocarla. Colocarla a la vez que la mueve su caja es clavar la cápsula en el pico
+	// mientras la caja la arrastra: la bola gira alrededor de ella y se mete en la arena.
+	if (!TNBeachEnemyShared::CanHoldHere(Turtle))
+	{
 		EndHoldTurtle();
 		return;
 	}

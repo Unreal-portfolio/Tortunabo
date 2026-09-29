@@ -20,8 +20,9 @@ struct FTNBeachGullAttack
 	TObjectPtr<ATortugaCharacter> Victim = nullptr;
 
 	/**
-	 * Dónde cae la cagada o dónde da el picado (en el suelo). Sigue a la tortuga a 6,25 m/s como mucho (entre andar y
-	 * correr) hasta el golpe; en los clientes se suaviza (ShownAim). Mareo: dónde le han dado.
+	 * Dónde cae la cagada o dónde da el picado (en el suelo). Sigue a la tortuga como mucho a lo que toque en cada tramo
+	 * del ataque (TN_BeachGullTuning.h: más que andando al principio, casi nada al final) hasta el golpe; en los clientes
+	 * se suaviza (ShownAim). Mareo: dónde le han dado.
 	 */
 	UPROPERTY()
 	FVector_NetQuantize Aim = FVector_NetQuantize(0.0, 0.0, 0.0);
@@ -70,20 +71,23 @@ struct FTNBeachGullAttack
  * envergadura y, a veces, un pelícano de 40 m) dando vueltas sobre la zona, cada una en su círculo (centro desplazado,
  * radio, forma y sentido propios) y a su altura (capas separadas 8 m), con sus sombras en la arena.
  *
- * Cuando hay tortugas debajo, cada 3-6 s la más cercana baja a por una de ellas:
+ * Cuando hay tortugas bien dentro de la zona (80 % de su huella), cada 4-7 s la más cercana baja a por una de ellas (las
+ * cifras, en TN_BeachGullTuning.h):
  *  - Cagada: vuela sobre ella y la suelta desde 30 m; cae un pegote blanco bien visible con su estela y una sombra dura y
  *    negra que nace pequeña y crece hasta la mancha según cae (2,1 s para apartarse). Sobre la tortuga a la que va, un
- *    signo de exclamación que parpadea cada vez más rápido según cae (WarnMark). El blanco sigue a la tortuga a
- *    6,25 m/s como mucho: andando te pilla; corriendo, te libras. Quien esté dentro al caer (y no a cubierto) cae
- *    derribada con ragdoll y mareo (TNBeach::KnockDownTurtle), con la cagada PINTADA en el caparazón (un decal sujeto a
- *    su hueso de la espalda con el material M_PoopSplatDecal; Scripts/create_poop_decal.py): 8 s entera y luego se seca y
- *    se desvanece hasta desaparecer a los 12 s. «¡PLOF!».
- *  - Picado: sube casi encima de ella y baja en picado 2,3 s siguiéndola por el aire, también a 6,25 m/s como mucho; en
- *    la arena, una sombra dura y negra que nace diminuta al empezar a bajar y crece con él marca dónde va a dar. Abre el
- *    pico en el último momento y, si la tortuga sigue debajo (se esquiva corriendo, con el panzazo o en bola), la coge por
- *    el caparazón: colgando del pico pataleando, sube, vuela un poco hacia la salida y la suelta abriendo el pico: cae en
- *    bola aturdida (TNBeach::StunTurtle). Si falla, baja igual hasta clavar el pico en la arena (o en la sombrilla que la
- *    cubría), pica dos veces (arena que salta y sonido) y vuelve a subir.
+ *    signo de exclamación que parpadea cada vez más rápido según cae (WarnMark). El blanco la sigue a 5,4 m/s mientras
+ *    vuela encima, a 4,5 m/s (lo que se anda) mientras cae y el último medio segundo ya no se mueve: andando en línea
+ *    recta te pilla justo; corriendo, cambiando de dirección al final o tirándote en plancha a tiempo, te libras. Quien
+ *    esté dentro al caer (y no a cubierto ni en plancha) cae derribada con ragdoll y mareo (TNBeach::KnockDownTurtle), con
+ *    la cagada PINTADA en el caparazón (un decal sujeto a su hueso de la espalda con el material M_PoopSplatDecal;
+ *    Scripts/create_poop_decal.py): 8 s entera y luego se seca y se desvanece hasta desaparecer a los 12 s. «¡PLOF!».
+ *  - Picado: sube casi encima de ella y baja en picado 2,3 s siguiéndola por el aire a 5,4 m/s y, los últimos 0,6 s, ya
+ *    lanzado, a 1,2 m/s; en la arena, una sombra dura y negra que nace diminuta al empezar a bajar y crece con él marca
+ *    dónde va a dar. Abre el pico en el último momento y, si la tortuga sigue debajo (se esquiva corriendo, cambiando de
+ *    dirección al final, con el panzazo o en bola), la coge por el caparazón: colgando del pico pataleando, sube, vuela un
+ *    poco hacia la salida y la suelta abriendo el pico: cae en bola aturdida (TNBeach::StunTurtle). Si falla, baja igual
+ *    hasta clavar el pico en la arena (o en la sombrilla que la cubría), pica dos veces (arena que salta y sonido) y
+ *    vuelve a subir.
  *  - Sombras de los que vuelan: la de verdad, bajo el cuerpo de cada pájaro; cuanto más baja, más pequeña y oscura.
  *  - Lo que se le lanza al que baja en picado (o al que lleva una tortuga) lo marea (ApplyHitStun): suelta a la tortuga,
  *    cae a la arena y se queda sentado con pajaritos; mientras, la zona no ataca. Luego vuelve a su círculo.
@@ -107,6 +111,13 @@ public:
 	/** Servidor (pruebas): ataca ya a la tortuga más cercana (1 cagada, 2 picado, 0 al azar). */
 	void DebugAttackNow(int32 InKind);
 
+	/**
+	 * Servidor (pruebas, TN.Beach.Gull.Grab): coge a Turtle con el pico Times veces seguidas. Cada vez, en cuanto está libre
+	 * (de pie, sin bola ni derribo), un picado que ya va por el último medio segundo y la coge si no se mueve; mientras
+	 * quedan agarres, la zona no ataca a nadie más. Para reproducir «segunda gaviota + caparazón».
+	 */
+	void DebugGrab(ATortugaCharacter* Turtle, int32 Times);
+
 	// ── Mareo por lo que se le lanza (solo el pájaro que baja en picado, el que lleva a una tortuga o el ya mareado) ──
 	virtual void ApplyHitStun(float Seconds, AActor* InstigatorActor) override;
 	virtual bool GetHitCapsule(FVector& OutA, FVector& OutB, float& OutRadius) const override;
@@ -120,6 +131,8 @@ protected:
 	virtual void ServerTick(float DeltaSeconds) override;
 	virtual void VisualTick(float DeltaSeconds) override;
 	virtual void OnHoldAborted(ATortugaCharacter* Turtle) override;
+	/** Se mete en el caparazón colgando del pico: la suelta como al acabar el vuelo (aturdida en bola hacia la salida). */
+	virtual void OnHeldTurtleSlips(ATortugaCharacter* Turtle) override;
 	virtual float GetVisualRange() const override { return 40000.f; }
 
 	/** Todas las máquinas: la cagada ha caído en Where y ha derribado a Hit (con la mancha en su caparazón). Fiable: la mancha se ve en todas. */
@@ -237,6 +250,10 @@ private:
 	bool bReleased = false;
 	bool bRoofChecked = false;
 
+	/** Pruebas (DebugGrab): a quién coger y cuántas veces más. */
+	TWeakObjectPtr<ATortugaCharacter> DebugGrabVictim;
+	int32 DebugGrabsLeft = 0;
+
 	/** Blanco que se ve en esta máquina: en el servidor, Attack.Aim; en los clientes, el replicado suavizado. */
 	FVector ShownAim = FVector::ZeroVector;
 	uint8 ShownAimSerial = 0;
@@ -300,8 +317,11 @@ private:
 	void StartAttack(ATortugaCharacter* Victim, uint8 InKind, int32 BirdIndex);
 	void ServerPoop(float Tau, float DeltaSeconds);
 	void ServerDive(float Tau, float DeltaSeconds);
-	/** Servidor: el blanco (Attack.Aim) va hacia la tortuga a DiveChaseSpeed como mucho, por la arena. */
-	void ServerTrackAim(float DeltaSeconds);
+	/**
+	 * Servidor: el blanco (Attack.Aim) va hacia la tortuga a MaxSpeed cm/s como mucho, por la arena (la del tramo del
+	 * ataque: TNBeachGullTuning::DiveChaseSpeedAt, PoopChaseSpeedAt; 0 = quieto).
+	 */
+	void ServerTrackAim(float DeltaSeconds, float MaxSpeed);
 	/** Blanco que se ve en esta máquina (ShownAim). */
 	FVector CurrentAim() const;
 	/** Todas las máquinas: ShownAim hacia el Attack.Aim replicado, sin saltos. */
@@ -311,6 +331,11 @@ private:
 	void EndAttack(double Now);
 	/** Servidor: el pájaro más cercano a Where (el pelícano no caga). */
 	int32 PickBird(const FVector& Where, bool bForPoop) const;
+	/**
+	 * Servidor: At está junto al frente de la tormenta en marcha (detrás o a menos de CarryBack + 10 m por delante): ahí no
+	 * se la lleva en el pico (el vuelo la metería dentro); caga en vez de picar y, si pica, falla.
+	 */
+	bool IsNearStormFront(const FVector& At) const;
 
 	/** Todas las máquinas: coloca a la tortuga en el pico o la suelta, según el ataque replicado. */
 	void TickHold();

@@ -18,12 +18,14 @@ class UStaticMeshComponent;
  *    (a menos de 120 m), que se marea 4 s; si no hay nada, ServerLaunch devuelve false. Como mucho hay 3 a la vez.
  *  - Línea de tiempo (segundos desde que nace, del reloj del servidor): 0–3,2 la gaviota nace a 90 m por detrás del objetivo y
  *    a 70 m de altura, y vuela hasta situarse sobre él a 30 m, con un graznido al nacer; a los 3,2 s suelta la cagada, que
- *    cae 1,7 s (silbido de caída y, si es una tortuga, un pitido de aviso en ella); al llegar abajo, el impacto (radio 3,3 m en
- *    planta, menos de 3 m de altura): derriba con ragdoll (TNBeach::KnockDownTurtle) a quien esté dentro y se pueda golpear y
- *    le deja un pegote en el caparazón unos 8 s. Después sube y se va (hasta los 9 s).
- *  - El punto de impacto (AimPoint) sigue al objetivo por la arena a 7 m/s como mucho (corriendo a 8 m/s se libra; andando no)
- *    y se congela al terminar la caída. Sobre la arena, una sombra dura y negra que nace pequeña al soltar y crece hasta el
- *    radio del impacto según cae la cagada.
+ *    cae 1,7 s (silbido de caída y, si es una tortuga, un pitido de aviso en ella); al llegar abajo, el impacto (radio 2,4 m en
+ *    planta, menos de 3 m de altura): derriba con ragdoll (TNBeach::KnockDownTurtle) a quien esté dentro, se pueda golpear y
+ *    no vaya tirada en plancha en ese momento (TNBeach::IsDodgingByBellyDive), y le deja un pegote en el caparazón unos 8 s.
+ *    Después sube y se va (hasta los 9 s).
+ *  - El punto de impacto (AimPoint) sigue al objetivo por la arena a 6 m/s como mucho hasta soltarla, a 4,5 m/s (lo que se
+ *    anda) mientras cae y quieto el último medio segundo (TN_BeachGullTuning.h): corriendo, cambiando de dirección al final o
+ *    tirándose en plancha a tiempo se libra; andando en línea recta, no. Se congela al terminar la caída. Sobre la arena, una
+ *    sombra dura y negra que nace pequeña al soltar y crece hasta el radio del impacto según cae la cagada.
  *
  * Red: el servidor decide a quién, dónde y a quién da. Replica el objetivo (Target) y el punto de impacto (AimPoint, que
  * los clientes suavizan); la gaviota no usa Track: su sitio sale de una fórmula del reloj del servidor y del sitio del
@@ -68,13 +70,13 @@ private:
 	UPROPERTY(Replicated)
 	TObjectPtr<AActor> Target = nullptr;
 
-	/** Dónde caerá la cagada (en la arena): sigue al objetivo a 7 m/s como mucho y se congela al acabar la caída. */
+	/** Dónde caerá la cagada (en la arena): sigue al objetivo (TNBeachGullTuning::StrikeChaseSpeedAt) y se congela al acabar la caída. */
 	UPROPERTY(Replicated)
 	FVector_NetQuantize10 AimPoint = FVector_NetQuantize10(0.0, 0.0, 0.0);
 
 	// ── Servidor ─────────────────────────────────────────────────────────────
 
-	/** El punto de impacto sigue al objetivo por la arena hasta AimSpeed. */
+	/** El punto de impacto sigue al objetivo por la arena como mucho a lo que toque en cada tramo (TNBeachGullTuning::StrikeChaseSpeedAt). */
 	void ServerTrackAim(float DeltaSeconds);
 
 	/** Suelta la cagada: pitido de aviso en la tortuga a la que va. */
