@@ -68,6 +68,9 @@ class GameProjection:
     grid: int = GRID
     proj4: str = ""
     center_xy: tuple[float, float] = field(default=(0.0, 0.0))   # centro en m proyectados
+    rotation_deg: float = 0.0            # rumbo geografico (grados, horario desde el Norte) que queda como Norte del juego
+    origin: tuple[float, float] | None = None                    # (X, Y) de juego del centro; None = centro del volumen
+    squash_e: float = 1.0                # compresion Este-Oeste (tras girar): Rusia "compactada en longitud"
 
     @cached_property
     def _pyproj(self):
@@ -92,14 +95,29 @@ class GameProjection:
     def mid(self) -> float:
         return MAP_MIN_M + self.grid * CELL_M / 2.0
 
+    def _origin(self) -> tuple[float, float]:
+        return self.origin if self.origin is not None else (self.mid, self.mid)
+
     def to_game(self, lon, lat):
         """(X Norte, Y Este) en m de juego."""
         x, y = self.project(lon, lat)
-        return self.mid + (y - self.center_xy[1]) / self.scale, self.mid + (x - self.center_xy[0]) / self.scale
+        X0, Y0 = self._origin()
+        dx, dy = x - self.center_xy[0], y - self.center_xy[1]
+        if self.rotation_deg == 0.0 and self.squash_e == 1.0:
+            return X0 + dy / self.scale, Y0 + dx / self.scale
+        b = math.radians(self.rotation_deg)
+        return (X0 + (dx * math.sin(b) + dy * math.cos(b)) / self.scale,
+                Y0 + self.squash_e * (dx * math.cos(b) - dy * math.sin(b)) / self.scale)
 
     def to_lonlat(self, X, Y):
-        return self.unproject(self.center_xy[0] + (np.asarray(Y) - self.mid) * self.scale,
-                              self.center_xy[1] + (np.asarray(X) - self.mid) * self.scale)
+        X0, Y0 = self._origin()
+        xr, yr = (np.asarray(X) - X0) * self.scale, (np.asarray(Y) - Y0) * self.scale
+        if self.rotation_deg == 0.0 and self.squash_e == 1.0:
+            return self.unproject(self.center_xy[0] + yr, self.center_xy[1] + xr)
+        yr = yr / self.squash_e
+        b = math.radians(self.rotation_deg)
+        return self.unproject(self.center_xy[0] + yr * math.cos(b) + xr * math.sin(b),
+                              self.center_xy[1] + xr * math.cos(b) - yr * math.sin(b))
 
     def ground_m_per_game_m(self) -> float:
         """Metros de suelo real por metro de juego en el centro (Mercator estira por 1/cos(lat))."""
@@ -141,6 +159,9 @@ class GeoRegion:
     min_lake_m2: float = 40.0
     keep_points: tuple[tuple[float, float], ...] = ()
     keep_largest: bool = False
+    rotation_deg: float = 0.0                        # rumbo que queda como Norte del juego (Japon: su eje SO-NE)
+    fit: tuple[int, int] | None = None               # (columnas, filas) de trozos del rectangulo que llena la region
+    squash_e: float = 1.0                            # compresion Este-Oeste tras girar (1 = sin deformar)
     border_scale: str = "50m"
 
     def __post_init__(self) -> None:
@@ -170,6 +191,50 @@ class GeoRegion:
         rings = np.concatenate([poly[0] for poly in self.country_polygons])
         return (float(rings[:, 0].min()), float(rings[:, 1].min()), float(rings[:, 0].max()), float(rings[:, 1].max()))
 
+    def rect(self) -> tuple[int, int, int, int]:
+        """(col0, fila0, columnas, filas) del rectangulo de trozos que usa el mapa, centrado en el volumen."""
+        cols, rows = self.fit or (self.grid, self.grid)
+        return (self.grid - cols) // 2, (self.grid - rows) // 2, cols, rows
+
+    def cells(self) -> list[tuple[int, int]]:
+        c0, r0, cols, rows = self.rect()
+        return [(c, r) for r in range(r0, r0 + rows) for c in range(c0, c0 + cols)]
+
+    def rect_center(self) -> tuple[float, float]:
+        c0, r0, cols, rows = self.rect()
+        return MAP_MIN_M + (r0 + rows / 2.0) * CELL_M, MAP_MIN_M + (c0 + cols / 2.0) * CELL_M
+
+    def extent_points(self) -> tuple[np.ndarray, np.ndarray]:
+        """lon, lat que tienen que caber: el contorno del pais dentro de la caja o, si no hay pais, la caja."""
+        if self.country:
+            rings = np.concatenate([poly[0] for poly in self.country_polygons])
+            if self.bbox is not None:
+                lon_min, lat_min, lon_max, lat_max = self.bbox
+                inside = (rings[:, 0] >= lon_min) & (rings[:, 0] <= lon_max) & (rings[:, 1] >= lat_min) & (rings[:, 1] <= lat_max)
+                rings = rings[inside]
+            return rings[:, 0], rings[:, 1]
+        lon_min, lat_min, lon_max, lat_max = self.bounds()
+        t = np.linspace(0.0, 1.0, 65)
+        return (np.concatenate([lon_min + (lon_max - lon_min) * t, np.full(65, lon_max), lon_min + (lon_max - lon_min) * t,
+                                np.full(65, lon_min)]),
+                np.concatenate([np.full(65, lat_min), lat_min + (lat_max - lat_min) * t, np.full(65, lat_max),
+                                lat_min + (lat_max - lat_min) * t]))
+
+    def _fitted_projection(self, kind: str, center: tuple[float, float], proj4: str) -> GameProjection:
+        """Escala y centro para que extent_points, girados rotation_deg, llenen el rectangulo fit menos el marco."""
+        probe = GameProjection(kind, center, 1.0, self.grid, proj4)
+        x, y = probe.project(*self.extent_points())
+        b = math.radians(self.rotation_deg)
+        xr, yr = x * math.sin(b) + y * math.cos(b), (x * math.cos(b) - y * math.sin(b)) * self.squash_e
+        _, _, cols, rows = self.rect()
+        scale = self.scale or max(float(xr.max() - xr.min()) / (rows * CELL_M - 2.0 * self.frame_m),
+                                  float(yr.max() - yr.min()) / (cols * CELL_M - 2.0 * self.frame_m))
+        xc, yc = 0.5 * (float(xr.min()) + float(xr.max())), 0.5 * (float(yr.min()) + float(yr.max()))
+        yc = yc / self.squash_e
+        cx, cy = yc * math.cos(b) + xc * math.sin(b), xc * math.cos(b) - yc * math.sin(b)
+        return GameProjection(kind, center, scale, self.grid, proj4, (cx, cy), self.rotation_deg, self.rect_center(),
+                              self.squash_e)
+
     def projection_kind(self) -> str:
         return choose_projection(self.bounds()) if self.projection == "auto" else self.projection
 
@@ -180,6 +245,8 @@ class GeoRegion:
             lat_min, lat_max = max(lat_min, -WORLD_LAT_LIMIT), min(lat_max, WORLD_LAT_LIMIT)
         center = self.center or (0.5 * (lon_min + lon_max), 0.5 * (lat_min + lat_max))
         kind = self.projection_kind()
+        if self.fit is not None or self.rotation_deg or self.squash_e != 1.0:
+            return self._fitted_projection(kind, center, _proj4(kind, center))
         probe = GameProjection(kind, center, 1.0, self.grid, _proj4(kind, center))
         t = np.linspace(0.0, 1.0, 65)
         lon = np.concatenate([lon_min + (lon_max - lon_min) * t, np.full(65, lon_max), lon_max - (lon_max - lon_min) * t,
@@ -239,11 +306,12 @@ class GeoRegion:
         """Distancia (m) al marco de mar, positiva dentro: un rectangulo de esquinas redondeadas a frame_m del borde
         del volumen y, si organic, ondulado (±FRAME_WOBBLE * frame_m) para que el corte no sea una recta."""
         axis = self.raster_axis(px_m) - MAP_MIN_M
-        size = self.grid * CELL_M
-        half = size / 2.0 - self.frame_m
-        radius = min(2.0 * self.frame_m, half)
-        q = np.abs(axis - size / 2.0) - (half - radius)
-        qx, qy = q[:, None], q[None, :]
+        _, _, cols, rows = self.rect()
+        X0, Y0 = (v - MAP_MIN_M for v in self.rect_center())
+        half_n, half_e = rows * CELL_M / 2.0 - self.frame_m, cols * CELL_M / 2.0 - self.frame_m
+        radius = min(2.0 * self.frame_m, half_n, half_e)
+        qx = (np.abs(axis - X0) - (half_n - radius))[:, None]
+        qy = (np.abs(axis - Y0) - (half_e - radius))[None, :]
         outside = np.hypot(np.maximum(qx, 0.0), np.maximum(qy, 0.0)) + np.minimum(np.maximum(qx, qy), 0.0) - radius
         d = -outside
         if organic and self.frame_m > 0.0:

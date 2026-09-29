@@ -38,16 +38,20 @@ def _save_small(fig, path: Path) -> int:
 
 def render_sheet(top: np.ndarray, path: Path, title: str, subtitle: str = "", start: tuple[int, int] | None = None,
                  end: tuple[int, int] | None = None, marks: dict[str, tuple[int, int]] | None = None,
-                 contour_step_m: float | None = None, perspective_z_scale: float = 1.0) -> int:
-    """top: cota absoluta (m) de cada muestra de 1 m, [Norte, Este] desde MAP_MIN_M. Devuelve los bytes del PNG."""
+                 contour_step_m: float | None = None, perspective_z_scale: float = 1.0,
+                 origin: tuple[float, float] = (MAP_MIN_M, MAP_MIN_M), outlines: list[np.ndarray] | None = None,
+                 route: list[np.ndarray] | None = None) -> int:
+    """top: cota absoluta (m) de cada muestra de 1 m, [Norte, Este]; origin = (X, Y) de top[0, 0]. start, end y
+    marks son indices de top. outlines: contornos reales (arrays (n, 2) de (X, Y) de juego) superpuestos en rojo;
+    route: lista de (n, 2) de indices de top (calzada y ramales). Devuelve los bytes del PNG."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.colors import LightSource, TwoSlopeNorm
 
     rel = top - WATER_M
-    size = top.shape[0] - 1
-    extent = (MAP_MIN_M, MAP_MIN_M + size, MAP_MIN_M, MAP_MIN_M + size)
+    rows, cols = top.shape[0] - 1, top.shape[1] - 1
+    X0, Y0 = origin
     vmax = max(float(rel.max()), 2.0)
     norm = TwoSlopeNorm(vcenter=0.0, vmin=min(float(rel.min()), -1.0), vmax=vmax)
     cmap = _colormap()
@@ -61,40 +65,46 @@ def render_sheet(top: np.ndarray, path: Path, title: str, subtitle: str = "", st
     ax = fig.add_axes((0.035, 0.06, 0.44, 0.78))
     shade = LightSource(azdeg=315, altdeg=40).hillshade(rel, vert_exag=2.0)
     rgb = cmap(norm(rel))[..., :3] * (0.55 + 0.45 * shade[..., None])
-    ax.imshow(rgb, origin="lower", extent=(extent[2], extent[3], extent[0], extent[1]))
-    axis = MAP_MIN_M + np.arange(top.shape[0])
+    ax.imshow(rgb, origin="lower", extent=(Y0, Y0 + cols, X0, X0 + rows))
+    xs, ys = Y0 + np.arange(top.shape[1]), X0 + np.arange(top.shape[0])
     levels = np.arange(step, vmax + step, step)
-    cs = ax.contour(axis, axis, rel, levels=levels, colors="k", linewidths=0.45, alpha=0.6)
+    cs = ax.contour(xs, ys, rel, levels=levels, colors="k", linewidths=0.4, alpha=0.55)
     ax.clabel(cs, cs.levels[::2] if len(cs.levels) > 8 else cs.levels, fmt="%g", fontsize=7, inline=True)
-    ax.contour(axis, axis, rel, levels=[0.0], colors=(0.05, 0.25, 0.5), linewidths=0.9)
+    ax.contour(xs, ys, rel, levels=[0.0], colors=(0.05, 0.25, 0.5), linewidths=0.9)
+    for line in outlines or []:
+        ax.plot(line[:, 1], line[:, 0], "-", color=(0.85, 0.05, 0.05), lw=0.8, alpha=0.85)
+    for line in route or []:
+        ax.plot(Y0 + line[:, 1], X0 + line[:, 0], "-", color=(0.1, 0.1, 0.1), lw=1.4, alpha=0.8)
     for label, point, color in (("inicio", start, "lime"), ("final", end, "red")):
         if point is not None:
-            ax.plot(MAP_MIN_M + point[1], MAP_MIN_M + point[0], "o", ms=9, mec="k", mfc=color)
-            ax.annotate(label, (MAP_MIN_M + point[1], MAP_MIN_M + point[0]), xytext=(6, 6), textcoords="offset points",
+            ax.plot(Y0 + point[1], X0 + point[0], "o", ms=9, mec="k", mfc=color)
+            ax.annotate(label, (Y0 + point[1], X0 + point[0]), xytext=(6, 6), textcoords="offset points",
                         fontsize=9, fontweight="bold", color="k", backgroundcolor=(1, 1, 1, 0.6))
     for label, point in (marks or {}).items():
-        ax.plot(MAP_MIN_M + point[1], MAP_MIN_M + point[0], "^", ms=7, mec="k", mfc="yellow")
-        ax.annotate(label, (MAP_MIN_M + point[1], MAP_MIN_M + point[0]), xytext=(5, -10), textcoords="offset points",
+        ax.plot(Y0 + point[1], X0 + point[0], "^", ms=7, mec="k", mfc="yellow")
+        ax.annotate(label, (Y0 + point[1], X0 + point[0]), xytext=(5, -10), textcoords="offset points",
                     fontsize=7.5, color="k", backgroundcolor=(1, 1, 1, 0.5))
+    ax.set_xlim(Y0, Y0 + cols)
+    ax.set_ylim(X0, X0 + rows)
     ax.set_xlabel("Este (m de juego)")
     ax.set_ylabel("Norte (m de juego)")
-    ax.set_title(f"Cenital: cotas sobre el agua, curvas cada {step:g} m (cima {vmax:.1f} m)", fontsize=10)
+    extra = " (rojo: contorno real)" if outlines else ""
+    ax.set_title(f"Cenital: cotas sobre el agua, curvas cada {step:g} m (cima {vmax:.1f} m){extra}", fontsize=10)
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     fig.colorbar(sm, ax=ax, fraction=0.04, pad=0.01, label="m sobre el agua")
 
     ax3 = fig.add_axes((0.49, 0.0, 0.51, 0.84), projection="3d")
-    stride = max(1, size // 180)
+    stride = max(1, max(rows, cols) // 180)
     sub = rel[::stride, ::stride]
-    xs = MAP_MIN_M + np.arange(sub.shape[1]) * stride
-    ys = MAP_MIN_M + np.arange(sub.shape[0]) * stride
-    Xg, Yg = np.meshgrid(xs, ys)
+    Xg, Yg = np.meshgrid(Y0 + np.arange(sub.shape[1]) * stride, X0 + np.arange(sub.shape[0]) * stride)
     shade3 = LightSource(azdeg=315, altdeg=35).hillshade(sub, vert_exag=2.0)
     colors = cmap(norm(np.maximum(sub, -0.5)))
     colors[..., :3] *= (0.5 + 0.5 * shade3[..., None])
     ax3.plot_surface(Xg, Yg, np.maximum(sub, -0.2) * perspective_z_scale, facecolors=colors, rstride=1, cstride=1,
                      linewidth=0, antialiased=False, shade=False)
     ax3.view_init(elev=38, azim=-62)
-    ax3.set_box_aspect((1.0, 1.0, max(0.12, min(0.5, vmax * perspective_z_scale / size * 1.3))), zoom=1.2)
+    span = max(rows, cols)
+    ax3.set_box_aspect((cols / span, rows / span, max(0.12, min(0.5, vmax * perspective_z_scale / span * 1.3))), zoom=1.2)
     ax3.set_axis_off()
     ax3.set_title("Perspectiva desde el Suroeste" + (f" (relieve x{perspective_z_scale:g})" if perspective_z_scale != 1 else ""),
                   fontsize=10)
