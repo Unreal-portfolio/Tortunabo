@@ -27,7 +27,7 @@ from terrain_vol.layout import Z_MIN_M
 
 VARIANTS = Path(__file__).resolve().parent / "terrain_volumes" / "Variants"
 DEFAULT_NAME = "E01_espana"
-DESCRIPTION = ("España con el relieve real (1 m de juego = 2,1 km de suelo, cimas a 28 m): la frontera es la costa y "
+DESCRIPTION = ("España con el relieve real (1 m de juego = 2,1 km de suelo, cimas a unos 29 m sobre el agua): la frontera es la costa y "
                "el mar es la muerte. Del Pirineo a Santiago por la Meseta.")
 DEFAULT_START = (43.009, -1.320)         # Roncesvalles
 DEFAULT_END = (42.881, -8.545)           # Santiago de Compostela
