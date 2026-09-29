@@ -1,5 +1,5 @@
 """Rango vertical configurable del voxelizado (terrain_vol.layout.ZRange): por defecto 128 niveles y sin
-cambiar la malla de los mapas que ya existian (P01, E01, Mapa01).
+cambiar la malla de los mapas vigentes (P01, E01 y C01_camino; Mapa01 esta obsoleto).
 
     uv run --with pytest --with numpy --with scipy --with pillow --with scikit-image \
         python -m pytest Scripts/tests/test_terrain_zrange.py
@@ -15,7 +15,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from terrain_vol.density import MapModel  # noqa: E402
 from terrain_vol.export import write_chunk  # noqa: E402
 from terrain_vol.layout import DEFAULT_Z_RANGE, LEGACY_Z_RANGE, STEP_Z_M, Z_MAX_M, Z_MIN_M, Z_SAMPLES, ZRange  # noqa: E402
 from terrain_vol.mesh import build_chunk, model_z_range  # noqa: E402
@@ -79,6 +78,9 @@ def test_platforms_mesh_does_not_change(tmp_path):
     _same_as_stored(model, 1, 1, VARIANTS / "P01_plataformas" / "Chunks" / "r1c1.bin", tmp_path)
 
 
-def test_volume_map_mesh_does_not_change():
-    model = MapModel(20260925)                       # Mapa01: el acantilado toca su techo de 32 m
-    _same_mesh(model, 0, 0)
+def test_path_map_mesh_does_not_change(tmp_path):
+    from terrain_path.model import PathModel
+    from terrain_path.style import C01_SEED, C01_STYLE
+    model = PathModel(C01_SEED, C01_STYLE)           # C01_camino: el trozo con mas triangulos, lomas a 20 m
+    _same_mesh(model, 2, 0)
+    _same_as_stored(model, 2, 0, VARIANTS / "C01_camino" / "Chunks" / "r0c2.bin", tmp_path)
