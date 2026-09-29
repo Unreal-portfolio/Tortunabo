@@ -15,6 +15,8 @@ description: Use when someone on the Tortunabo team asks what to work on, what i
 3. Recomienda una con el motivo (prioridad, tamaño, que no choque con lo que otro tiene en curso en la misma área o en los mismos ficheros). Para Ruby, prioriza tamaños XS/S y la etiqueta `buena-primera`.
 4. Si el usuario elige, sigue con la skill `tortu-coger`.
 
+Las tareas cuelgan de objetos (sistemas del juego: Rally Tortuga, HUD y menús…). `pendiente` no lista los objetos porque no se cogen; si el usuario quiere ver el trabajo por sistema o elegir por objeto, remítelo a la vista «Objetos» del proyecto (https://github.com/orgs/Unreal-portfolio/projects/2), que muestra cada objeto con el progreso de sus sub-issues, o lista sus sub-issues con `gh issue view <objeto>`.
+
 Si no hay nada en `Ready`, dilo y propone concretar una del Backlog: redactar criterios de aceptación verificables y pedir a un aprobador que la pase a `Ready`.
 
 No inventes tareas que no estén en el tablero. Si el usuario menciona un trabajo que no existe como issue, créalo primero con `tablero.py nueva`.

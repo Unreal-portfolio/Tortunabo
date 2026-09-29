@@ -6,8 +6,10 @@ Las decisiones de diseño de fondo (modos, mapas, prioridades de la macro update
 
 ## Vigentes
 
+- 2026-09-29 · SkiTemplar · La rama de integración se llama `dev` (antes `macro-update`). · `CLAUDE.md`
+- 2026-09-29 · SkiTemplar · Las tareas y fallos se agrupan por objeto con sub-issues. · https://github.com/orgs/Unreal-portfolio/projects/2
 - 2026-09-29 · SkiTemplar · El tablero «Tortunabo · Desarrollo» es la única lista de tareas y solo recoge desarrollo: código, pulido, bugs y revisión de assets. Nada de tareas de «diseñar X». · https://github.com/orgs/Unreal-portfolio/projects/2
-- 2026-09-29 · SkiTemplar · `macro-update` es la rama de desarrollo hasta el final del juego; todo sale de ella y vuelve a ella por PR. · `CLAUDE.md`
+- ~~2026-09-29 · SkiTemplar · `macro-update` es la rama de desarrollo hasta el final del juego; todo sale de ella y vuelve a ella por PR. · `CLAUDE.md`~~ Sustituida: la rama se llama `dev`.
 - 2026-09-29 · SkiTemplar · Revisión IA cruzada: lo de Ruby lo revisa Mokius o SkiTemplar; lo de SkiTemplar, Mokius; lo de Mokius, SkiTemplar. · `Scripts/tablero/equipo.json`
 - 2026-09-29 · SkiTemplar · Un fallo encontrado al revisar o probar una issue se comenta en la propia issue y la issue pasa a Revisiones; quien lo corrige la coge y pasa a In progress. · `CLAUDE.md`
 - 2026-09-29 · SkiTemplar · La capa de producto de Steam (AppID, trámites) queda fuera del tablero por ahora. · #7, #14
