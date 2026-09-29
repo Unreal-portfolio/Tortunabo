@@ -1,31 +1,30 @@
 ---
 name: tortu-revisar
-description: Use when SkiTemplar or Mokius (approvers) review or merge Tortunabo PRs, take pending decisions, triage the board, or break a phase epic into issues ("revisa las PR", "¿qué hay que decidir?", "desglosa la F1", "ordena el tablero").
+description: Use in Tortunabo when someone reviews work assigned to them, or when SkiTemplar or Mokius merge PRs, take pending decisions or break a phase epic into issues ("revisa lo que me toca", "revisa la PR", "¿qué hay que decidir?", "desglosa la F1", "ordena el tablero").
 ---
 
-# Revisar, fusionar y ordenar (solo aprobadores)
+# Revisar (revisión IA cruzada) y, si eres aprobador, fusionar
 
-Comprueba el login con `gh api user --jq .login`. Si no es SkiTemplar ni Mokius, esta skill no aplica: dile al usuario que pida la revisión a uno de ellos.
+`tablero.py pendiente` enseña en «Te toca revisar» las issues en In review cuyo Revisor eres tú.
 
-## Revisar y fusionar una PR
+## Revisar una issue asignada
 
-1. `gh pr view <pr> --comments` y `gh pr diff <pr>`. Mira la issue enlazada y su campo Revisión IA.
-2. Requisitos para fusionar en `macro-update`:
-   - Revisión IA = `Aprobada` (si no, lanza la revisión como en `tortu-entregar`, paso 5);
-   - compila en DebugGame en tu máquina si toca `Source/`, `Config/`, `Plugins/` o `.uproject` (las PR con `necesita-unreal` no se fusionan sin esto);
-   - no tiene conflictos con `macro-update`;
-   - si es de Ruby, la aprueba un aprobador explícitamente (`gh pr review <pr> --approve`).
-3. `gh pr merge <pr> --merge`, después `uv run python Scripts/tablero/tablero.py sync --aplicar`: las issues enlazadas pasan a `QA` con Editor = `Sin probar`.
-4. Si pides cambios: `gh pr review <pr> --request-changes --body "<qué y dónde>"`.
+1. `gh issue view <n> --comments`, la PR enlazada (`gh pr view <pr>` y `gh pr diff <pr>`) y los criterios de aceptación.
+2. Revisa como revisor sénior: que cumple los criterios, corrección, replicación (autoridad del servidor, RPC validadas, `DOREPLIFETIME`), punteros y ciclo de vida de UObject, que no toca binarios de otra issue en curso, y tests.
+3. Registra el veredicto en la issue:
+   - bien: `tablero.py ia <n> aprobada --revisor "<tu login> (Claude)" --nota "<qué has comprobado>"`;
+   - algo no funciona: `tablero.py ia <n> cambios --revisor "<tu login> (Claude)" --nota "<fallo, fichero:línea y cómo reproducirlo>"`. La issue pasa a Revisiones con el fallo comentado en ella.
+4. Si decides corregirlo tú en lugar de devolverlo, primero déjala en Revisiones con el fallo comentado (paso 3) y luego cógela con `tablero.py coger <n> --forzar`: así pasa a In progress a tu nombre y se sabe quién está con ella. Al terminar, `tortu-entregar`.
 
-## Decisiones
+## Fusionar (solo SkiTemplar o Mokius)
 
-Issues con la etiqueta `decision`: resume en 2-3 líneas qué hay que decidir y las opciones. Cuando el aprobador decida, escribe la decisión como comentario, quita la etiqueta y, si ya está concretada, pasa la issue a `Ready`.
+Comprueba el login con `gh api user --jq .login`.
 
-## Desglosar una épica de fase
+- Requisitos: Revisión IA = Aprobada; compila en DebugGame si toca `Source/`, `Config/`, `Plugins/` o `.uproject` (las PR con `necesita-unreal` no se fusionan sin esto); sin conflictos con `macro-update`.
+- `gh pr merge <pr> --merge` y después `tablero.py sync --aplicar`: las issues enlazadas pasan a QA editor con Editor = Sin probar.
 
-Las issues `[F0]`…`[F8]` (etiqueta `fase`) son épicas. Cuando una fase se active, crea sus issues concretas a partir de `Docs/ROADMAP-macro-update.md` y del plan maestro con `tablero.py nueva`: una unidad cerrable en 1-2 días, criterios de aceptación verificables, Área, Fase, Prioridad y Tamaño. Deja en `Ready` solo lo que no depende de nada abierto. Marca `buena-primera` lo XS/S aislado.
+## Decisiones y épicas (solo aprobadores)
 
-## Orden del tablero
-
-`tablero.py sync` (sin `--aplicar`) da el parte: PR sin issue, PR con conflictos, issues estancadas, pendientes de revisión IA y de editor. Corrige lo que proceda y aplica con `--aplicar`.
+- Issues con `decision`: resume qué hay que decidir y las opciones. Cuando se decida, comenta la decisión en la issue, añade una línea a `Docs/Equipo/Decisiones.md`, quita la etiqueta y, si ya está concretada, pásala a Ready.
+- Épicas `[F0]`…`[F8]` (etiqueta `fase`): cuando una fase se active, crea sus issues concretas desde `Docs/ROADMAP-macro-update.md` y el plan maestro con `tablero.py nueva` (unidad cerrable en 1-2 días, criterios verificables, Área, Fase, Prioridad y Tamaño; `buena-primera` para lo XS/S aislado).
+- `tablero.py sync` da el parte de avisos; aplica con `--aplicar`.

@@ -34,3 +34,19 @@ def test_orden_prioridad_antes_que_tamano():
     sin_campos = {"number": 2, "valores": {}}
     orden = sorted([baja_pequena, sin_campos, alta_grande], key=tablero.clave_orden)
     assert [i["number"] for i in orden] == [5, 1, 2]
+
+
+def _proyecto_con_revisiones(*revisores):
+    items = {n: {"valores": {"Status": "In review", "Revisor": r}} for n, r in enumerate(revisores)}
+    return {"items": items}
+
+
+def test_revisor_cruzado_nunca_el_autor():
+    proyecto = _proyecto_con_revisiones()
+    assert tablero.elegir_revisor(proyecto, "SkiTemplar") == "Mokius"
+    assert tablero.elegir_revisor(proyecto, "Mokius") == "SkiTemplar"
+
+
+def test_revisor_de_ruby_reparte_carga():
+    assert tablero.elegir_revisor(_proyecto_con_revisiones(), "Ruben-Besteiro") == "Mokius"
+    assert tablero.elegir_revisor(_proyecto_con_revisiones("Mokius"), "Ruben-Besteiro") == "SkiTemplar"

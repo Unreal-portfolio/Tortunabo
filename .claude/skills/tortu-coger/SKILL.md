@@ -1,6 +1,6 @@
 ---
 name: tortu-coger
-description: Use when a Tortunabo team member decides to start working on an issue ("cojo la #12", "empiezo con esto", "vamos con la del puente").
+description: Use when a Tortunabo team member decides to start or resume an issue, including fixing one that is in Revisiones ("cojo la #12", "empiezo con esto", "arreglo lo de la #20").
 ---
 
 # Empezar una issue

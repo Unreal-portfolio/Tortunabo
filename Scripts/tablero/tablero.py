@@ -31,7 +31,7 @@ REPO = CONFIG["repo"]
 OWNER = CONFIG["proyecto"]["owner"]
 NUMERO = CONFIG["proyecto"]["numero"]
 INTEGRACION = CONFIG["rama_integracion"]
-ESTADOS = ["Backlog", "Ready", "In progress", "In review", "QA", "Done"]
+ESTADOS = ["Backlog", "Ready", "In progress", "In review", "Revisiones", "QA editor", "Done"]
 ORDEN_PRIORIDAD = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 ORDEN_TAMANO = {"XS": 0, "S": 1, "M": 2, "L": 3}
 REF_ISSUE = re.compile(r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|cierra|resuelve|refs?)\s+#(\d+)", re.I)
@@ -109,9 +109,12 @@ def item_de_issue(proyecto: dict, numero: int) -> str:
     """Id del item del proyecto para la issue; la añade si aún no está."""
     if numero in proyecto["items"]:
         return proyecto["items"][numero]["item"]
-    url = f"https://github.com/{REPO}/issues/{numero}"
-    salida = gh("project", "item-add", str(NUMERO), "--owner", OWNER, "--url", url, "--format", "json")
-    return json.loads(salida)["id"]
+    cache = proyecto.setdefault("items_nuevos", {})
+    if numero not in cache:
+        url = f"https://github.com/{REPO}/issues/{numero}"
+        salida = gh("project", "item-add", str(NUMERO), "--owner", OWNER, "--url", url, "--format", "json")
+        cache[numero] = json.loads(salida)["id"]
+    return cache[numero]
 
 
 def poner_campo(proyecto: dict, numero: int, campo: str, valor: str) -> None:
@@ -163,6 +166,9 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
     prs = prs_abiertas()
     print(f"Tablero para {yo} ({CONFIG['miembros'].get(yo, {}).get('nombre', yo)}) · rama de integración: {INTEGRACION}\n")
     seccion("Tu trabajo en curso", [linea(i) for i in mias])
+    seccion("Te toca revisar (revisión IA cruzada)",
+            [linea(i) for i in por_estado["In review"] if i["valores"].get("Revisor") == yo])
+    seccion("Revisiones: algo no funciona, fallo comentado en la issue", [linea(i) for i in por_estado["Revisiones"]])
     seccion("Tus PR abiertas", [f"  PR #{p['number']} {p['title']} ({p['reviewDecision'] or 'sin revisar'}, {p['mergeable']})"
                                 for p in prs if p["author"]["login"] == yo])
     if aprobador:
@@ -170,7 +176,7 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
                                             for p in prs if p["author"]["login"] != yo and not p["isDraft"]])
         seccion("Decisiones pendientes (etiqueta decision)",
                 [linea(i) for i in abiertas if any(n["name"] == "decision" for n in i["labels"]["nodes"])])
-    seccion("En QA: fusionado, falta probar en PIE", [linea(i) for i in por_estado["QA"]])
+    seccion("En QA editor: fusionado, falta probar en el editor", [linea(i) for i in por_estado["QA editor"]])
     no_cogibles = {"decision", "bloqueado"}
     libres = [i for i in por_estado["Ready"] if not i["assignees"]["nodes"]
               and not no_cogibles & {n["name"] for n in i["labels"]["nodes"]}]
@@ -218,6 +224,32 @@ def cmd_estado(args: argparse.Namespace) -> None:
     print(f"#{args.numero} → {args.estado}")
 
 
+def elegir_revisor(proyecto: dict, autor: str) -> str:
+    """Revisor cruzado según equipo.json; entre varios, el que tiene menos revisiones abiertas."""
+    candidatos = CONFIG["revisores"].get(autor) or [a for a in CONFIG["aprobadores"] if a != autor]
+    carga = {c: 0 for c in candidatos}
+    for issue in proyecto["items"].values():
+        r = issue["valores"].get("Revisor")
+        if issue["valores"].get("Status") == "In review" and r in carga:
+            carga[r] += 1
+    return min(candidatos, key=lambda c: (carga[c], candidatos.index(c)))
+
+
+def cmd_revision(args: argparse.Namespace) -> None:
+    """Manda una issue terminada a revisión cruzada: In review, revisor asignado y Revisión IA pendiente."""
+    proyecto = cargar_proyecto()
+    autor = usuario_actual()
+    revisor = args.revisor or elegir_revisor(proyecto, autor)
+    poner_campo(proyecto, args.numero, "Status", "In review")
+    poner_campo(proyecto, args.numero, "Revisor", revisor)
+    poner_campo(proyecto, args.numero, "Revisión IA", "Pendiente")
+    for pr in prs_abiertas():
+        if args.numero in issues_de_pr(pr):
+            gh("pr", "edit", str(pr["number"]), "--repo", REPO, "--add-reviewer", revisor)
+    comentar(args.numero, f"Lista para revisión. Revisor: @{revisor} (su Claude hace la revisión IA con `tortu-revisar`).")
+    print(f"#{args.numero} → In review; revisa {revisor}")
+
+
 def cmd_campo(args: argparse.Namespace) -> None:
     proyecto = cargar_proyecto()
     poner_campo(proyecto, args.numero, args.campo, args.valor)
@@ -234,7 +266,7 @@ def cmd_nueva(args: argparse.Namespace) -> None:
     numero = int(url.rstrip("/").rsplit("/", 1)[-1])
     proyecto = cargar_proyecto()
     campos = {"Status": args.estado, "Prioridad": args.prioridad, "Tamaño": args.tamano, "Área": args.area, "Fase": args.fase,
-              "Editor": "Sin probar" if args.estado == "QA" else None}
+              "Editor": "Sin probar" if args.estado == "QA editor" else None}
     for campo, valor in campos.items():
         if valor:
             poner_campo(proyecto, numero, campo, valor)
@@ -262,7 +294,7 @@ def reconciliar_issues_sueltas(proyecto: dict, cambios: list) -> None:
     abiertas = json.loads(gh("issue", "list", "--repo", REPO, "--state", "open", "--limit", "500", "--json", "number,title"))
     for issue in abiertas:
         n = issue["number"]
-        if n not in proyecto["items"]:
+        if n not in proyecto["items"] and issue["title"] != "Parte diario del tablero":
             cambios.append((f"#{n} entra al tablero en Backlog ({issue['title']})",
                             lambda n=n: poner_campo(proyecto, n, "Status", "Backlog")))
     for n, issue in proyecto["items"].items():
@@ -283,20 +315,29 @@ def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
             estado = proyecto["items"].get(n, {}).get("valores", {}).get("Status")
             if estado in (None, "Backlog", "Ready", "In progress"):
                 cambios.append((f"#{n} → In review (PR #{pr['number']})",
-                                lambda n=n: poner_campo(proyecto, n, "Status", "In review")))
+                                lambda n=n, autor=pr["author"]["login"]: mover_a_review(proyecto, n, autor)))
     campos = "number,headRefName,body,mergedAt"
     fusionadas = json.loads(gh("pr", "list", "--repo", REPO, "--state", "merged", "--base", INTEGRACION,
                                "--limit", "40", "--json", campos))
     for pr in fusionadas:
         for n in issues_de_pr(pr):
             issue = proyecto["items"].get(n)
-            if issue and issue["state"] == "OPEN" and issue["valores"].get("Status") not in ("QA", "Done"):
+            if issue and issue["state"] == "OPEN" and issue["valores"].get("Status") not in ("QA editor", "Done"):
                 cambios.append((f"#{n} → QA (PR #{pr['number']} fusionada en {INTEGRACION})",
                                 lambda n=n: marcar_qa(proyecto, n)))
 
 
+def mover_a_review(proyecto: dict, numero: int, autor: str) -> None:
+    poner_campo(proyecto, numero, "Status", "In review")
+    valores = proyecto["items"].get(numero, {}).get("valores", {})
+    if not valores.get("Revisor"):
+        poner_campo(proyecto, numero, "Revisor", elegir_revisor(proyecto, autor))
+    if not valores.get("Revisión IA"):
+        poner_campo(proyecto, numero, "Revisión IA", "Pendiente")
+
+
 def marcar_qa(proyecto: dict, numero: int) -> None:
-    poner_campo(proyecto, numero, "Status", "QA")
+    poner_campo(proyecto, numero, "Status", "QA editor")
     poner_campo(proyecto, numero, "Editor", "Sin probar")
     gh("issue", "edit", str(numero), "--repo", REPO, "--add-label", "qa")
 
@@ -310,6 +351,8 @@ def cmd_ia(args: argparse.Namespace) -> None:
     proyecto = cargar_proyecto()
     valor = {"aprobada": "Aprobada", "cambios": "Cambios pedidos", "pendiente": "Pendiente"}[args.veredicto]
     poner_campo(proyecto, args.numero, "Revisión IA", valor)
+    if args.veredicto == "cambios":
+        poner_campo(proyecto, args.numero, "Status", "Revisiones")
     if args.nota:
         comentar(args.numero, f"**Revisión IA ({args.revisor}): {valor}.**\n\n{args.nota}")
     print(f"#{args.numero} Revisión IA → {valor}")
@@ -325,13 +368,13 @@ def cmd_editor(args: argparse.Namespace) -> None:
     if args.resultado == "funciona":
         poner_campo(proyecto, args.numero, "Editor", "Funciona")
         comentar(args.numero, f"**Editor: funciona** ({args.como}).\n\n{args.nota or ''}".strip())
-        if issue["valores"].get("Status") == "QA":
+        if issue["valores"].get("Status") == "QA editor":
             poner_campo(proyecto, args.numero, "Status", "Done")
             gh("issue", "close", str(args.numero), "--repo", REPO, "--reason", "completed")
         print(f"#{args.numero} Editor → Funciona")
         return
     poner_campo(proyecto, args.numero, "Editor", "Falla")
-    poner_campo(proyecto, args.numero, "Status", "In progress")
+    poner_campo(proyecto, args.numero, "Status", "Revisiones")
     poner_campo(proyecto, args.numero, "Revisión IA", "Pendiente")
     etiquetas = ["regresion"] if previo == "Funciona" or issue["state"] == "CLOSED" else []
     if issue["state"] == "CLOSED":
@@ -339,7 +382,7 @@ def cmd_editor(args: argparse.Namespace) -> None:
     for e in etiquetas:
         gh("issue", "edit", str(args.numero), "--repo", REPO, "--add-label", e)
     comentar(args.numero, f"**Editor: falla** ({args.como}).\n\n{args.nota or 'Sin detalle: añade pasos para reproducirlo.'}")
-    print(f"#{args.numero} Editor → Falla; vuelve a In progress{' como regresión' if etiquetas else ''}")
+    print(f"#{args.numero} Editor → Falla; pasa a Revisiones{' como regresión' if etiquetas else ''}")
 
 
 def reconciliar_estancadas(proyecto: dict, avisos: list) -> None:
@@ -362,7 +405,7 @@ def avisos_validacion(proyecto: dict, avisos: list) -> None:
     sin_ia = [f"#{n}" for n, i in abiertas
               if i["valores"].get("Status") == "In review" and i["valores"].get("Revisión IA") != "Aprobada"]
     sin_editor = [f"#{n}" for n, i in abiertas
-                  if i["valores"].get("Status") == "QA" and i["valores"].get("Editor") in (None, "Sin probar")]
+                  if i["valores"].get("Status") == "QA editor" and i["valores"].get("Editor") in (None, "Sin probar")]
     if sin_ia:
         avisos.append(f"En review sin revisión de una segunda IA: {', '.join(sin_ia)}")
     if sin_editor:
@@ -381,6 +424,10 @@ def main() -> int:
     p.add_argument("numero", type=int)
     p.add_argument("estado", choices=ESTADOS)
     p.set_defaults(fn=cmd_estado)
+    p = sub.add_parser("revision", help="mandar una issue terminada a revisión cruzada")
+    p.add_argument("numero", type=int)
+    p.add_argument("--revisor", choices=list(CONFIG["miembros"]))
+    p.set_defaults(fn=cmd_revision)
     p = sub.add_parser("campo", help="fijar Prioridad, Tamaño, Área, Fase, Editor… de una issue")
     p.add_argument("numero", type=int)
     p.add_argument("campo")

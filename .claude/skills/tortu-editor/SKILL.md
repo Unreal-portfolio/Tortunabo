@@ -10,13 +10,13 @@ El tablero guarda, por issue, si algo se ha probado en el editor y cómo salió.
 ## Cuando el usuario dice que algo falla
 
 1. Busca si ya existe: `gh issue list --state all --search "<palabras clave>"` y mira el tablero.
-2. Si existe y estaba en `QA` o `Done` (o con Editor = `Funciona`): `tablero.py editor <n> falla --como "<PIE 4P, Standalone…>" --nota "<qué pasa y cómo reproducirlo>"`. La reabre, la devuelve a `In progress` y, si ya se había dado por buena, la marca `regresion`.
+2. Si existe (en cualquier estado, incluso cerrada): `tablero.py editor <n> falla --como "<PIE 4P, Standalone…>" --nota "<qué pasa y cómo reproducirlo>"`. El fallo queda comentado en esa misma issue, que pasa a Revisiones (y se reabre con `regresion` si ya se había dado por buena). No abras una issue nueva para un fallo de algo que ya tiene issue.
 3. Si no existe: créala con `tablero.py nueva --tipo bug --estado Ready` con pasos para reproducir, resultado esperado y obtenido, mapa y número de jugadores. Pregunta la prioridad solo si no se deduce.
 4. Si el usuario enumera varios fallos seguidos, registra uno por issue, sin mezclarlos.
 
 ## Cuando el usuario confirma que algo funciona
 
-`tablero.py editor <n> funciona --como "<cómo lo probó>"`. Si la issue estaba en `QA`, pasa a `Done` y se cierra.
+`tablero.py editor <n> funciona --como "<cómo lo probó>"`. Si la issue estaba en QA editor, pasa a Done y se cierra.
 
 ## Validación implícita
 
