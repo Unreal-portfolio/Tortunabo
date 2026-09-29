@@ -1,4 +1,5 @@
 #include "Voice/ProximityVoiceComponent.h"
+#include "TN_VoiceDeviceCapture.h"
 #include "Core/TN_Log.h"
 #include "UI/Voice/VoiceIndicatorWidget.h"
 #include "Player/MP_GamePlayerController.h"
@@ -44,7 +45,8 @@ void UProximityVoiceComponent::BeginPlay()
 	bIsShuttingDown = false;
 	bRuntimeResourcesCleanedUp = false;
 
-	if (IsLocallyOwned())
+	// Con un micrófono elegido en el menú de pausa (y aún conectado), ese; si no, el predeterminado de siempre.
+	if (IsLocallyOwned() && !OpenPreferredCaptureDevice())
 	{
 		AudioCaptureSynth = MakeUnique<Audio::FAudioCaptureSynth>();
 		if (AudioCaptureSynth->OpenDefaultStream())
@@ -63,6 +65,78 @@ void UProximityVoiceComponent::BeginPlay()
 		}
 
 	}
+}
+
+namespace TNVoiceDevices
+{
+	/** Micrófono elegido (id de Windows; vacío = el predeterminado). Uno por proceso: es un ajuste de la máquina. */
+	FString& Preferred()
+	{
+		static FString DeviceId;
+		return DeviceId;
+	}
+
+	/**
+	 * Captura solo para enumerar micrófonos: nunca abre nada. Se crea una vez y no se destruye (por lo mismo que las
+	 * capturas de voz: nada de WASAPI en el cierre del proceso).
+	 */
+	Audio::FAudioCapture& Enumerator()
+	{
+		static Audio::FAudioCapture* Capture = new Audio::FAudioCapture();
+		return *Capture;
+	}
+}
+
+void UProximityVoiceComponent::SetPreferredCaptureDevice(const FString& DeviceId)
+{
+	TNVoiceDevices::Preferred() = DeviceId;
+}
+
+FString UProximityVoiceComponent::GetPreferredCaptureDevice()
+{
+	return TNVoiceDevices::Preferred();
+}
+
+void UProximityVoiceComponent::GetCaptureDevices(TArray<TPair<FString, FString>>& OutDevices)
+{
+	OutDevices.Reset();
+	TArray<Audio::FCaptureDeviceInfo> Devices;
+	TNVoiceDevices::Enumerator().GetCaptureDevicesAvailable(Devices);
+	for (const Audio::FCaptureDeviceInfo& Device : Devices)
+	{
+		OutDevices.Emplace(Device.DeviceId, Device.DeviceName);
+	}
+}
+
+bool UProximityVoiceComponent::OpenPreferredCaptureDevice()
+{
+	const FString Wanted = GetPreferredCaptureDevice();
+	if (Wanted.IsEmpty())
+	{
+		return false;
+	}
+	TArray<Audio::FCaptureDeviceInfo> Devices;
+	TNVoiceDevices::Enumerator().GetCaptureDevicesAvailable(Devices);
+	const int32 DeviceIndex = Devices.IndexOfByPredicate([&Wanted](const Audio::FCaptureDeviceInfo& Device) { return Device.DeviceId == Wanted; });
+	if (DeviceIndex == INDEX_NONE)
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Voice] El micrófono elegido ya no está conectado: se usa el predeterminado."));
+		return false;
+	}
+	// Se crea y no se destruye nunca (ni si falla): ver CleanupRuntimeResources.
+	FTNVoiceDeviceCapture* Capture = new FTNVoiceDeviceCapture();
+	if (!Capture->Open(DeviceIndex))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Voice] No se pudo abrir el micrófono «%s»: se usa el predeterminado."), *Devices[DeviceIndex].DeviceName);
+		return false;
+	}
+	DeviceCapture = Capture;
+	OpenCaptureDevice = Wanted;
+	VoiceSampleRate = Capture->GetSampleRate() > 0 ? Capture->GetSampleRate() : Devices[DeviceIndex].PreferredSampleRate;
+	// La captura propia ya entrega mono.
+	CaptureNumChannels = 1;
+	UE_LOG(LogTortunabo, Log, TEXT("[Voice] Micrófono: %s."), *Devices[DeviceIndex].DeviceName);
+	return true;
 }
 
 void UProximityVoiceComponent::PrepareForLevelTransition()
@@ -163,6 +237,8 @@ void UProximityVoiceComponent::CleanupRuntimeResources(bool bForceLeakAudio)
 	{
 		(void)AudioCaptureSynth.Release();
 	}
+	// La del micrófono elegido, igual: se suelta sin tocarla.
+	DeviceCapture = nullptr;
 
 	{
 		FScopeLock Lock(&CaptureBufferLock);
@@ -301,13 +377,14 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || !IsLocallyOwned() || !AudioCaptureSynth)
+	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || !IsLocallyOwned() || (!AudioCaptureSynth && !DeviceCapture))
 	{
 		return;
 	}
 
 	TArray<float> NewAudioData;
-	if (AudioCaptureSynth->GetAudioData(NewAudioData) && NewAudioData.Num() > 0)
+	const bool bGotAudio = DeviceCapture ? DeviceCapture->GetAudioData(NewAudioData) : AudioCaptureSynth->GetAudioData(NewAudioData);
+	if (bGotAudio && NewAudioData.Num() > 0)
 	{
 		TArray<float> MonoData;
 		if (CaptureNumChannels > 1)
@@ -334,10 +411,20 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			Sample = FMath::Clamp(Sample * VoiceGain, -1.0f, 1.0f);
 		}
 
+		// Nivel para el medidor del menú de pausa: RMS del bloque recién capturado, con la ganancia ya aplicada.
+		{
+			float BlockSquares = 0.f;
+			for (const float Sample : MonoData)
+			{
+				BlockSquares += Sample * Sample;
+			}
+			MicLevel = MonoData.Num() > 0 ? FMath::Sqrt(BlockSquares / MonoData.Num()) : 0.f;
+		}
+
 		// ── Downsampling con box filter (anti-aliasing) ───────────────────
 		// Promedia DSFactor muestras antes de decimar → evita el efecto "lata"
 		// que produce la decimación simple (nth-sample sin filtro pasa-bajos).
-		// Factor=2 → 48kHz a 24kHz. Packet size drops to 1/2.
+		// Factor=3 (de serie) → 48kHz a 16kHz: el paquete, a 1/3.
 		const int32 DSFactor = FMath::Max(1, VoiceDownsampleFactor);
 		if (DSFactor > 1 && MonoData.Num() > DSFactor)
 		{
@@ -376,6 +463,14 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		}
 	}
 
+	// Micrófono cerrado (silenciado o sin pulsar para hablar): la tortuga deja de hablar en el acto, sin la espera.
+	if (!bTransmitEnabled && bIsSpeaking)
+	{
+		bIsSpeaking = false;
+		SilenceHoldOffTimer = 0.f;
+		OnSpeakingChanged.Broadcast(false);
+	}
+
 	// ── Speaking detection con silence hold-off ──────────────────────────
 	{
 		FScopeLock Lock(&CaptureBufferLock);
@@ -387,7 +482,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 				SumSquares += Sample * Sample;
 			}
 			const float RMS = FMath::Sqrt(SumSquares / CaptureBuffer.Num());
-			const bool bAboveThreshold = RMS > SpeakingThreshold;
+			const bool bAboveThreshold = bTransmitEnabled && RMS > SpeakingThreshold;
 
 			if (bAboveThreshold)
 			{
@@ -503,6 +598,10 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 
 	const FVector SpeakerLoc = SpeakerActor->GetActorLocation();
 
+	// Los oyentes dentro de OuterRadius y, si son más de MaxVoiceListeners, solo los más cercanos (los de lejos la oirían
+	// muy baja de todos modos).
+	TArray<TPair<double, AMP_GamePlayerController*>, TInlineAllocator<16>> Listeners;
+	const double OuterSq = FMath::Square(static_cast<double>(OuterRadius));
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		AMP_GamePlayerController* PC = Cast<AMP_GamePlayerController>(It->Get());
@@ -518,10 +617,20 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 			continue;
 		}
 
-		if (FVector::Dist(ListenerPawn->GetActorLocation(), SpeakerLoc) <= OuterRadius)
+		const double DistSq = FVector::DistSquared(ListenerPawn->GetActorLocation(), SpeakerLoc);
+		if (DistSq <= OuterSq)
 		{
-			PC->ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor);
+			Listeners.Emplace(DistSq, PC);
 		}
+	}
+	if (MaxVoiceListeners > 0 && Listeners.Num() > MaxVoiceListeners)
+	{
+		Listeners.Sort([](const TPair<double, AMP_GamePlayerController*>& A, const TPair<double, AMP_GamePlayerController*>& B) { return A.Key < B.Key; });
+		Listeners.SetNum(MaxVoiceListeners);
+	}
+	for (const TPair<double, AMP_GamePlayerController*>& Listener : Listeners)
+	{
+		Listener.Value->ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor);
 	}
 }
 

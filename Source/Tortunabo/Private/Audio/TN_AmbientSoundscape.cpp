@@ -3,6 +3,7 @@
 #include "Audio/TN_AmbientSynthComponent.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_PathStorm.h"
+#include "World/Beach/TN_BeachStorm.h"
 #include "Components/AudioComponent.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
@@ -393,6 +394,11 @@ void UTN_AmbientSoundscapeComponent::UpdateMix(float DeltaTime)
 		{
 			for (TActorIterator<ATN_PathStorm> It(World); It; ++It) { Storm = *It; break; }
 		}
+		// La de la carrera en la playa (no hay generador ahí): se busca sola, la crea el GameMode en cada ronda.
+		if (!BeachStorm.IsValid() && !Generator.IsValid())
+		{
+			BeachStorm = ATN_BeachStorm::FindStorm(World);
+		}
 	}
 	const ATN_ProcMapGenerator* Gen = Generator.Get();
 	const bool bMap = Gen && Gen->IsMapReady() && Gen->GetLayout().bValid;
@@ -434,6 +440,22 @@ void UTN_AmbientSoundscapeComponent::UpdateMix(float DeltaTime)
 	else if (bPlayWithoutGenerator)
 	{
 		BiomeW[TNAmbGenericSlot] = 1.f;
+	}
+	if (!bMap)
+	{
+		// Sin mapa procedural, la tormenta de bañistas de la playa suena como la del camino (mismo viento, silbido y truenos;
+		// es su único ruido): dentro si la cámara va por detrás del frente (con el mismo margen de 4 m) y cerca en los 70 m
+		// por delante. El frente y su eje salen del propio actor, con el reloj del servidor, en cualquier máquina.
+		if (const ATN_BeachStorm* BeachStormActor = BeachStorm.Get())
+		{
+			if (BeachStormActor->IsStormActive())
+			{
+				const float Ahead = static_cast<float>(BeachStormActor->GetActorTransform().InverseTransformPositionNoScale(View).X)
+					- BeachStormActor->GetFrontDistance();
+				Ctx.StormInside = Ahead < -400.f ? 1.f : 0.f;
+				Ctx.StormNear = TNAmbienceSaturate(1.f - Ahead / 7000.f);
+			}
+		}
 	}
 
 	if (bDetectEnclosure)

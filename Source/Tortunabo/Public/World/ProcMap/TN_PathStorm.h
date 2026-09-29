@@ -10,6 +10,7 @@ class UProceduralMeshComponent;
 class UExponentialHeightFogComponent;
 class ATN_ProcMapGenerator;
 class APlayerController;
+class ATortugaCharacter;
 
 /**
  * Tormenta del mapa procedural (modo Coop). A diferencia de ATN_StormVolume, que
@@ -50,6 +51,13 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Storm")
 	bool IsStormActive() const { return bActive; }
+
+	/**
+	 * Si una posición del mundo queda dentro de la tormenta: su progreso sobre el camino (en 3D, para distinguir puentes
+	 * y cuevas) está más de InsideMargin por detrás del frente. Es la cuenta de la cuenta atrás de muerte del servidor;
+	 * en los clientes usa el frente replicado y extrapolado. Falso con la tormenta parada o el mapa sin generar.
+	 */
+	bool IsLocationInside(const FVector& WorldLocation) const;
 
 	/** Fuerza a re-evaluar a un jugador (tras revivir). */
 	void ForceCheckPlayer(APlayerController* PC);
@@ -104,6 +112,16 @@ private:
 
 	void ServerCheckPlayers(float Interval);
 	void UpdateVisual(float DeltaTime);
+
+	// ── Tos de las tortugas (solo en máquinas con audio) ────────────────────
+	/**
+	 * Cada 0,1 s da a cada tortuga viva su UTN_StormCoughComponent y le pasa si está dentro según esta máquina (con el
+	 * frente replicado, sin RPC) y qué fracción lleva de SecondsInsideToDie; a las muertas las calla.
+	 */
+	void TickCough(float DeltaTime);
+	float CoughAccumulator = 0.f;
+	/** Segundos que lleva dentro cada tortuga según esta máquina (como InsideTime en el servidor). */
+	TMap<TWeakObjectPtr<ATortugaCharacter>, float> CoughInsideTime;
 
 	// ── Efectos (solo con pantalla) ─────────────────────────────────────────
 	static constexpr int32 MaxBiomes = 8;

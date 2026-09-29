@@ -93,7 +93,7 @@ public:
 	int32 PlayersInStartZone = 0;
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
-	int32 ExpectedPlayers = 4;
+	int32 ExpectedPlayers = 8;
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop")
 	int32 CountdownValue = 0;

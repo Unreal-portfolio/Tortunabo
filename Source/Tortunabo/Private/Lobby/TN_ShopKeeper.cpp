@@ -2,16 +2,19 @@
 #include "Audio/TN_MusicSynthComponent.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
+#include "Lobby/TN_NpcAnimInstance.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Animation/AnimationAsset.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/Scene.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
@@ -20,6 +23,7 @@
 #include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
+#include "TN_CastleKit.h"
 
 namespace TNShopKeeperDetail
 {
@@ -30,10 +34,10 @@ namespace TNShopKeeperDetail
 			TNProcRuntimeMesh::SRGBToLinear((Hex & 255) / 255.f), 1.f);
 	}
 
-	/** Mostrador delante del tendero (en su +X). */
+	/** Mostrador delante del tendero (en su +X): largo, para que el puesto llene el hueco entre dos torres. */
 	constexpr double CounterX = 125.0;
 	constexpr double CounterHalfDepth = 32.0;
-	constexpr double CounterHalfWidth = 190.0;
+	constexpr double CounterHalfWidth = 260.0;
 	constexpr double CounterHeight = 108.0;
 	/** Toldo: el borde de delante (con el volante de picos) y el de detrás, más alto. */
 	constexpr double CanopyFrontX = CounterX + 75.0;
@@ -46,6 +50,85 @@ namespace TNShopKeeperDetail
 	constexpr double SignZ = CanopyFrontZ + 34.0;
 	constexpr double SignHalfW = 215.0;
 	constexpr double SignHalfH = 27.0;
+	/** Estantería del fondo (pegada a la muralla): centro en X, medio ancho, fondo, alto y cota de cada balda. */
+	constexpr double ShelfX = CanopyBackX - 20.0;
+	constexpr double ShelfHalfW = CounterHalfWidth + 10.0;
+	constexpr double ShelfHalfD = 20.0;
+	constexpr double ShelfH = 252.0;
+	constexpr double ShelfZ[4] = { 18.0, 92.0, 166.0, 240.0 };
+
+	using FBuffers = TNProcMesh::FTNProcMeshBuffers;
+
+	/** Sombrero de paja con cinta roja (centro en la base del ala). */
+	void AddStrawHat(FBuffers& B, const FVector& C, double S)
+	{
+		TNProcMesh::TNProcAddCylinder(B, C, C + FVector(0.0, 0.0, 1.6 * S), 21.0 * S, 21.0 * S, 14, Pal(0xE9C46A));
+		TNProcMesh::TNProcAddCylinder(B, C, C + FVector(0.0, 0.0, 10.0 * S), 10.5 * S, 9.0 * S, 12, Pal(0xE0B654));
+		TNProcMesh::TNProcAddCylinder(B, C + FVector(0.0, 0.0, 1.6 * S), C + FVector(0.0, 0.0, 4.2 * S), 10.8 * S, 10.5 * S, 12, Pal(0xE63946));
+	}
+
+	/** Gorra de marinero blanca con franja azul y borla roja. */
+	void AddSailorCap(FBuffers& B, const FVector& C, double S)
+	{
+		TNProcMesh::TNProcAddCylinder(B, C, C + FVector(0.0, 0.0, 7.5 * S), 11.0 * S, 12.0 * S, 12, Pal(0xFFFFFF));
+		TNProcMesh::TNProcAddCylinder(B, C, C + FVector(0.0, 0.0, 2.6 * S), 11.3 * S, 11.4 * S, 12, Pal(0x12305A));
+		TNProcMesh::TNProcAddCylinder(B, C + FVector(0.0, 0.0, 7.5 * S), C + FVector(0.0, 0.0, 10.0 * S), 3.2 * S, 2.0 * S, 8, Pal(0xE63946));
+	}
+
+	/** Corona dorada con cinco picos y gemas. */
+	void AddCrown(FBuffers& B, const FVector& C, double S)
+	{
+		TNProcMesh::TNProcAddCylinder(B, C, C + FVector(0.0, 0.0, 6.0 * S), 10.0 * S, 10.5 * S, 15, Pal(0xFFCB3D));
+		for (int32 k = 0; k < 5; ++k)
+		{
+			const double A = TNProcMap::TwoPi * k / 5.0;
+			const FVector Dir(FMath::Cos(A), FMath::Sin(A), 0.0);
+			const FVector Base = C + Dir * 10.0 * S + FVector(0.0, 0.0, 6.0 * S);
+			const FVector Side = FVector(-Dir.Y, Dir.X, 0.0) * 4.5 * S;
+			B.AddTri(Base - Side, Base + Side, Base + FVector(0.0, 0.0, 8.0 * S), Dir, Pal(0xFFCB3D));
+			B.AddTri(Base - Side, Base + Side, Base + FVector(0.0, 0.0, 8.0 * S), -Dir, Pal(0xE0A92E));
+			B.AddBox(C + Dir * 10.6 * S + FVector(0.0, 0.0, 3.0 * S), Dir, FVector(0.8, 1.6 * S, 1.6 * S), (k % 2) ? Pal(0xE63946) : Pal(0x2EC4B6));
+		}
+	}
+
+	/** Gorro de fiesta: cono a rayas con pompón. */
+	void AddPartyHat(FBuffers& B, const FVector& C, double S)
+	{
+		for (int32 k = 0; k < 4; ++k)
+		{
+			const double Z0 = 22.0 * S * k / 4.0, Z1 = 22.0 * S * (k + 1) / 4.0;
+			TNProcMesh::TNProcAddCylinder(B, C + FVector(0.0, 0.0, Z0), C + FVector(0.0, 0.0, Z1), 9.0 * S * (1.0 - k / 4.0) + 0.5, 9.0 * S * (1.0 - (k + 1) / 4.0) + 0.5, 10,
+				(k % 2) ? Pal(0xFF6FA8) : Pal(0x4CC9F0), false);
+		}
+		TNProcMesh::TNProcAddCylinder(B, C + FVector(0.0, 0.0, 21.0 * S), C + FVector(0.0, 0.0, 25.0 * S), 3.0 * S, 2.0 * S, 8, Pal(0xFFD23F));
+	}
+
+	/** Gorro de hélice: cúpula de colores y hélice encima. */
+	void AddPropellerCap(FBuffers& B, const FVector& C, double S)
+	{
+		TNProcMesh::TNProcAddCylinder(B, C, C + FVector(0.0, 0.0, 5.0 * S), 11.0 * S, 9.5 * S, 12, Pal(0xFF6A52));
+		TNProcMesh::TNProcAddCylinder(B, C + FVector(0.0, 0.0, 5.0 * S), C + FVector(0.0, 0.0, 9.0 * S), 9.5 * S, 4.0 * S, 12, Pal(0x3DDC62));
+		B.AddBeam(C + FVector(0.0, 0.0, 9.0 * S), C + FVector(0.0, 0.0, 13.0 * S), 0.8 * S, Pal(0x3B3F4A));
+		B.AddBox(C + FVector(0.0, 0.0, 13.2 * S), FVector(0.8, 0.6, 0.0).GetSafeNormal(), FVector(12.0 * S, 2.2 * S, 0.5 * S), Pal(0xFFD23F));
+	}
+
+	/** Caparazón de muestra: cúpula a gajos de dos colores. */
+	void AddShellDome(FBuffers& B, const FVector& C, double S, const FLinearColor& A, const FLinearColor& Accent)
+	{
+		const TArray<double> Zs = { 0.0, 5.0 * S, 10.0 * S, 14.0 * S, 16.0 * S };
+		const TArray<double> Rs = { 20.0 * S, 18.5 * S, 14.0 * S, 7.5 * S, 1.0 };
+		TNCastleKit::AddRevolution(B, C, Zs, Rs, 12, A, true, Accent, 2);
+	}
+
+	/** Ojo de muestra: bola blanca con iris de color y pupila, mirando hacia Dir. */
+	void AddEyeball(FBuffers& B, const FVector& C, double Rad, const FVector& Dir, const FLinearColor& Iris)
+	{
+		const TArray<double> Zs = { -Rad, -Rad * 0.7, 0.0, Rad * 0.7, Rad };
+		const TArray<double> Rs = { 0.5, Rad * 0.71, Rad, Rad * 0.71, 0.5 };
+		TNCastleKit::AddRevolution(B, C, Zs, Rs, 10, Pal(0xFFFFFF), true);
+		TNProcMesh::TNProcAddCylinder(B, C + Dir * (Rad - 0.4), C + Dir * (Rad + 0.6), Rad * 0.55, Rad * 0.5, 10, Iris);
+		TNProcMesh::TNProcAddCylinder(B, C + Dir * (Rad + 0.4), C + Dir * (Rad + 1.0), Rad * 0.25, Rad * 0.22, 8, Pal(0x101418));
+	}
 }
 
 ATN_ShopKeeper::ATN_ShopKeeper()
@@ -69,6 +152,8 @@ ATN_ShopKeeper::ATN_ShopKeeper()
 		Mesh->SetStaticMesh(Cylinder.Object);
 		Mesh->SetRelativeLocation(FVector(CounterX + 70.0, 0.0, 60.0));
 		Mesh->SetRelativeScale3D(FVector(2.4f, 2.4f, 1.2f));
+		// Tampoco se ve en el editor: el nivel se enseña tal cual se juega.
+		Mesh->SetVisibility(false);
 		Mesh->SetHiddenInGame(true);
 	}
 	if (PromptWidgetComponent)
@@ -120,20 +205,83 @@ ATN_ShopKeeper::ATN_ShopKeeper()
 	Sign->SetTextRenderColor(FColor(255, 214, 90));
 	Sign->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	// Luces cálidas del puesto (sin sombras, suaves): se colocan a escala en BuildVisuals.
+	auto MakeLight = [this](const TCHAR* Name, float Lumens, const FLinearColor& Color)
+	{
+		UPointLightComponent* Light = CreateDefaultSubobject<UPointLightComponent>(Name);
+		Light->SetupAttachment(SceneRoot);
+		Light->SetIntensityUnits(ELightUnits::Lumens);
+		Light->SetIntensity(Lumens);
+		Light->SetLightColor(Color);
+		Light->SetCastShadows(false);
+		return Light;
+	};
+	CanopyLight = MakeLight(TEXT("CanopyLight"), 2400.f, FLinearColor(1.f, 0.82f, 0.6f));
+	ShelfLight = MakeLight(TEXT("ShelfLight"), 1500.f, FLinearColor(1.f, 0.86f, 0.66f));
+	LampLight = MakeLight(TEXT("LampLight"), 1100.f, FLinearColor(1.f, 0.72f, 0.42f));
+
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> Idle(TEXT("/Game/Animations/Character/TortugaDemo/Anim/Old_Man_Idle.Old_Man_Idle"));
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> Wave(TEXT("/Game/Animations/Character/TortugaDemo/Anim/Salute.Salute"));
 	IdleAnim = Idle.Succeeded() ? Idle.Object : nullptr;
 	WaveAnim = Wave.Succeeded() ? Wave.Object : nullptr;
 }
 
+void ATN_ShopKeeper::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	BuildVisuals();
+}
+
+void ATN_ShopKeeper::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+#if WITH_EDITOR
+	// Al abrir el nivel en el editor, la malla del puesto (transitoria) llega vacía: se rehace para verlo sin jugar.
+	if (!IsTemplate() && GetWorld() && GetWorld()->WorldType == EWorldType::Editor && Stall && !Stall->GetStaticMesh()) { BuildVisuals(); }
+#endif
+}
+
+void ATN_ShopKeeper::BuildVisuals()
+{
+	using namespace TNShopKeeperDetail;
+	Keeper->SetRelativeScale3D(FVector(KeeperScale));
+	Sign->SetText(ShopName.ToUpper());
+	UTN_CosmeticLook::ApplyLook(this, Keeper, KeeperHat, KeeperLook, KeeperDefaults);
+	// En el editor, el tendero en su espera (no en T).
+	UTN_NpcAnimInstance::PreviewInEditor(Keeper, IdleAnim);
+	BuildStall();
+	// El puesto crece alrededor del tendero (que se queda detrás del mostrador): malla, choques, cartel y aviso.
+	const double S = StallScale;
+	Stall->SetRelativeScale3D(FVector(S));
+	CounterBlock->SetBoxExtent(FVector(CounterHalfDepth + 4.0, CounterHalfWidth + 6.0, CounterHeight * 0.5) * S);
+	CounterBlock->SetRelativeLocation(FVector(CounterX, 0.0, CounterHeight * 0.5) * S);
+	Sign->SetRelativeLocation(FVector(SignX + 6.5, 0.0, SignZ) * S);
+	Sign->SetWorldSize(static_cast<float>(40.0 * S));
+	if (Mesh) { Mesh->SetRelativeLocation(FVector((CounterX + 70.0) * S, 0.0, 60.0)); }
+	// Luces: bajo el toldo sobre el tendero y el mostrador, delante de la estantería y en el farol del lado derecho.
+	if (CanopyLight)
+	{
+		CanopyLight->SetRelativeLocation(FVector(40.0, 0.0, 255.0) * S);
+		CanopyLight->SetAttenuationRadius(static_cast<float>(560.0 * S));
+	}
+	if (ShelfLight)
+	{
+		ShelfLight->SetRelativeLocation(FVector(ShelfX + 90.0, 0.0, 190.0) * S);
+		ShelfLight->SetAttenuationRadius(static_cast<float>(400.0 * S));
+	}
+	if (LampLight)
+	{
+		LampLight->SetRelativeLocation(FVector(CounterX + 68.0, CanopyHalfWidth + 40.0, 184.0) * S);
+		LampLight->SetAttenuationRadius(static_cast<float>(380.0 * S));
+	}
+}
+
 void ATN_ShopKeeper::BeginPlay()
 {
 	Super::BeginPlay();
-	Keeper->SetRelativeScale3D(FVector(KeeperScale));
-	Sign->SetText(FText::FromString(ShopName.ToString().ToUpper()));
-	if (IdleAnim) { Keeper->PlayAnimation(IdleAnim, true); }
-	UTN_CosmeticLook::ApplyLook(this, Keeper, KeeperHat, KeeperLook, KeeperDefaults);
-	BuildStall();
+	BuildVisuals();
+	// Espera en bucle con el saludo fundido encima (sin cortes al empezar y acabar el gesto).
+	UTN_NpcAnimInstance::SetupOn(Keeper, IdleAnim);
 	HideBlockoutKeeper();
 	if (GetNetMode() != NM_DedicatedServer)
 	{
@@ -145,7 +293,7 @@ void ATN_ShopKeeper::BeginPlay()
 FVector ATN_ShopKeeper::GetInteractionPoint() const
 {
 	using namespace TNShopKeeperDetail;
-	return GetActorTransform().TransformPosition(FVector(CounterX + CounterHalfDepth + 60.0, 0.0, 0.0));
+	return GetActorTransform().TransformPosition(FVector((CounterX + CounterHalfDepth) * StallScale + 60.0, 0.0, 0.0));
 }
 
 void ATN_ShopKeeper::SetRadiosDucked(UWorld* World, bool bDucked)
@@ -234,8 +382,111 @@ void ATN_ShopKeeper::BuildStall()
 		B.AddTri(Top0, Top1, Tip, FVector(-1.0, 0.0, 0.0), Flags[f % 4] * 0.8f);
 	}
 
+	// Estantería del fondo, pegada a la muralla: costados, fondo y cuatro baldas con lo que se vende.
+	const FLinearColor ShelfWood = Pal(0x9A6538);
+	const FLinearColor Tag = Pal(0xFFF6E8);
+	B.AddBox(FVector(ShelfX - ShelfHalfD + 2.0, 0.0, ShelfH * 0.5), FVector(1.0, 0.0, 0.0), FVector(2.0, ShelfHalfW, ShelfH * 0.5), WoodDark);
+	for (const double SideY : { -ShelfHalfW, ShelfHalfW })
+	{
+		B.AddBox(FVector(ShelfX, SideY, ShelfH * 0.5), FVector(1.0, 0.0, 0.0), FVector(ShelfHalfD, 4.0, ShelfH * 0.5), ShelfWood);
+	}
+	for (const double Z : ShelfZ)
+	{
+		B.AddBox(FVector(ShelfX, 0.0, Z), FVector(1.0, 0.0, 0.0), FVector(ShelfHalfD, ShelfHalfW, 3.0), ShelfWood);
+	}
+	// Balda baja: botes de pintura de los colores de la tortuga, con su chorretón.
+	const uint32 Paints[9] = { 0x3A9A3F, 0xF4A261, 0x4CC9F0, 0xFF6FA8, 0x9B5DE5, 0xFFD23F, 0xE63946, 0x2EC4B6, 0x264653 };
+	for (int32 p = 0; p < 9; ++p)
+	{
+		const FVector Pot(ShelfX + 2.0, -ShelfHalfW + 34.0 + p * (2.0 * ShelfHalfW - 68.0) / 8.0, ShelfZ[0] + 3.0);
+		TNProcMesh::TNProcAddCylinder(B, Pot, Pot + FVector(0.0, 0.0, 17.0), 10.5, 10.5, 10, Pal(0xB8C0C8));
+		TNProcMesh::TNProcAddCylinder(B, Pot + FVector(0.0, 0.0, 17.0), Pot + FVector(0.0, 0.0, 18.4), 10.2, 10.2, 10, Pal(Paints[p]));
+		B.AddBox(Pot + FVector(10.2, 0.0, 12.0), FVector(1.0, 0.0, 0.0), FVector(0.8, 2.4, 6.0), Pal(Paints[p]));
+	}
+	// Balda del medio: caparazones de muestra y dos tarros de ojos.
+	const uint32 ShellA[5] = { 0x2F7A34, 0xE9C46A, 0x4CC9F0, 0xFF6A52, 0x9B5DE5 };
+	const uint32 ShellB[5] = { 0x1F5424, 0xB5651D, 0xFFFFFF, 0xFFD23F, 0x3DDC62 };
+	for (int32 s = 0; s < 5; ++s)
+	{
+		AddShellDome(B, FVector(ShelfX + 2.0, -ShelfHalfW + 48.0 + s * 78.0, ShelfZ[1] + 3.0), 1.0, Pal(ShellA[s]), Pal(ShellB[s]));
+	}
+	for (int32 j = 0; j < 2; ++j)
+	{
+		const FVector Jar(ShelfX + 2.0, ShelfHalfW - 110.0 + j * 62.0, ShelfZ[1] + 3.0);
+		TNProcMesh::TNProcAddCylinder(B, Jar, Jar + FVector(0.0, 0.0, 30.0), 14.0, 14.0, 12, Pal(0xCDEBF2));
+		TNProcMesh::TNProcAddCylinder(B, Jar + FVector(0.0, 0.0, 30.0), Jar + FVector(0.0, 0.0, 35.0), 11.0, 11.0, 12, Pal(0xE63946));
+		AddEyeball(B, Jar + FVector(6.0, -5.0, 38.0), 6.0, FVector(1.0, 0.0, 0.0), Pal(j ? 0x3DDC62 : 0x4CC9F0));
+		AddEyeball(B, Jar + FVector(6.0, 5.5, 39.0), 6.0, FVector(1.0, 0.0, 0.0), Pal(j ? 0x3DDC62 : 0x4CC9F0));
+	}
+	// Balda de arriba: cascos (paja, marinero, corona, fiesta y hélice), dos veces.
+	for (int32 h = 0; h < 8; ++h)
+	{
+		const FVector Hat(ShelfX + 2.0, -ShelfHalfW + 38.0 + h * (2.0 * ShelfHalfW - 76.0) / 7.0, ShelfZ[2] + 3.0);
+		switch (h % 5)
+		{
+		case 0: AddStrawHat(B, Hat, 1.0); break;
+		case 1: AddSailorCap(B, Hat, 1.2); break;
+		case 2: AddCrown(B, Hat, 1.1); break;
+		case 3: AddPartyHat(B, Hat, 1.1); break;
+		default: AddPropellerCap(B, Hat, 1.1); break;
+		}
+	}
+	// Etiquetas de precio colgando de las baldas y banderines en lo alto.
+	for (int32 t = 0; t < 12; ++t)
+	{
+		const double Y = -ShelfHalfW + 30.0 + t * (2.0 * ShelfHalfW - 60.0) / 11.0;
+		const double Z = ShelfZ[t % 3 + 1] - 8.0;
+		B.AddBox(FVector(ShelfX + ShelfHalfD + 1.0, Y, Z), FVector(1.0, 0.0, 0.0), FVector(0.6, 6.0, 4.0), Tag);
+		B.AddBox(FVector(ShelfX + ShelfHalfD + 1.8, Y + 2.5, Z), FVector(1.0, 0.0, 0.0), FVector(0.3, 1.6, 1.6), Coral);
+	}
+
+	// Lado izquierdo: perchero con sombreros colgados y un barril con una pala de playa.
+	{
+		const FVector Rack(CounterX - 40.0, -CanopyHalfWidth - 55.0, 0.0);
+		TNProcMesh::TNProcAddCylinder(B, Rack, Rack + FVector(0.0, 0.0, 6.0), 26.0, 24.0, 10, WoodDark);
+		B.AddBeam(Rack, Rack + FVector(0.0, 0.0, 190.0), 4.0, Wood);
+		for (int32 k = 0; k < 4; ++k)
+		{
+			const double A = TNProcMap::TwoPi * k / 4.0 + 0.4;
+			const FVector Peg = Rack + FVector(0.0, 0.0, 150.0 + 18.0 * (k % 2));
+			const FVector PegTip = Peg + FVector(FMath::Cos(A) * 30.0, FMath::Sin(A) * 30.0, 12.0);
+			B.AddBeam(Peg, PegTip, 2.2, WoodDark);
+			const FVector HatAt = PegTip - FVector(0.0, 0.0, 6.0);
+			if (k == 0) { AddStrawHat(B, HatAt, 0.9); }
+			else if (k == 1) { AddSailorCap(B, HatAt, 1.0); }
+			else if (k == 2) { AddPartyHat(B, HatAt, 0.9); }
+			else { AddPropellerCap(B, HatAt, 0.9); }
+		}
+		const FVector Barrel(CanopyBackX + 40.0, -CanopyHalfWidth - 60.0, 0.0);
+		TNProcMesh::TNProcAddCylinder(B, Barrel, Barrel + FVector(0.0, 0.0, 74.0), 30.0, 30.0, 12, Wood);
+		for (const double Z : { 12.0, 62.0 })
+		{
+			TNProcMesh::TNProcAddCylinder(B, Barrel + FVector(0.0, 0.0, Z - 2.5), Barrel + FVector(0.0, 0.0, Z + 2.5), 31.0, 31.0, 12, Pal(0x3B3F4A));
+		}
+		B.AddBeam(Barrel + FVector(0.0, 0.0, 70.0), Barrel + FVector(18.0, 10.0, 150.0), 2.6, Pal(0xFFD23F));
+		B.AddBox(Barrel + FVector(21.0, 12.0, 160.0), FVector(0.23, 0.12, 0.96).GetSafeNormal(), FVector(15.0, 11.0, 1.5), Pal(0xFF6A52));
+	}
+
+	// Lado derecho: cofre del tesoro con monedas, pila de cajas con conchas y un farol.
+	{
+		const FVector Crates(CanopyBackX + 45.0, CanopyHalfWidth + 62.0, 0.0);
+		B.AddBox(Crates + FVector(0.0, 0.0, 30.0), FVector(1.0, 0.0, 0.0), FVector(34.0, 34.0, 30.0), Wood);
+		B.AddBox(Crates + FVector(-4.0, 6.0, 82.0), FVector(0.98, 0.2, 0.0).GetSafeNormal(), FVector(27.0, 27.0, 22.0), WoodTop);
+		for (int32 s = 0; s < 4; ++s)
+		{
+			const double A = s * 1.6;
+			TNCastleKit::AddScallop(B, Crates + FVector(12.0 * FMath::Cos(A) - 4.0, 12.0 * FMath::Sin(A) + 6.0, 104.5), FVector(0.0, 0.0, 1.0),
+				FVector(FMath::Cos(A), FMath::Sin(A), 0.0), 11.0, (s % 2) ? Pal(0xFFE0C2) : Pal(0xFFB4A2));
+		}
+		const FVector Lamp(CounterX + 40.0, CanopyHalfWidth + 40.0, 0.0);
+		B.AddBeam(Lamp, Lamp + FVector(0.0, 0.0, 210.0), 3.2, Pal(0x3B3F4A));
+		B.AddBeam(Lamp + FVector(0.0, 0.0, 205.0), Lamp + FVector(28.0, 0.0, 205.0), 2.2, Pal(0x3B3F4A));
+		TNProcMesh::TNProcAddCylinder(B, Lamp + FVector(28.0, 0.0, 170.0), Lamp + FVector(28.0, 0.0, 198.0), 9.0, 9.0, 8, Pal(0xFFE27A));
+		TNProcMesh::TNProcAddCylinder(B, Lamp + FVector(28.0, 0.0, 198.0), Lamp + FVector(28.0, 0.0, 206.0), 11.0, 3.0, 8, Pal(0x3B3F4A));
+	}
+
 	// Cofre del tesoro con monedas a un lado del mostrador.
-	const FVector Chest(CounterX - 10.0, CounterHalfWidth + 75.0, 0.0);
+	const FVector Chest(CounterX - 10.0, CanopyHalfWidth + 70.0, 0.0);
 	B.AddBox(Chest + FVector(0.0, 0.0, 26.0), FVector(1.0, 0.0, 0.0), FVector(30.0, 40.0, 26.0), Wood);
 	B.AddBox(Chest + FVector(-4.0, 0.0, 58.0), FVector(1.0, 0.0, 0.0), FVector(28.0, 41.0, 6.0), WoodDark);
 	B.AddBox(Chest + FVector(30.5, 0.0, 26.0), FVector(1.0, 0.0, 0.0), FVector(1.0, 7.0, 9.0), Gold);
@@ -295,7 +546,7 @@ void ATN_ShopKeeper::Tick(float DeltaSeconds)
 			TargetYaw = FMath::Clamp(FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X)), -55.f, 55.f);
 			if (Dist < 650.f && WaveCooldown <= 0.f && WaveAnim)
 			{
-				Keeper->PlayAnimation(WaveAnim, false);
+				UTN_NpcAnimInstance::PlayGestureOn(Keeper, WaveAnim);
 				WaveTimeLeft = WaveAnim->GetPlayLength();
 				WaveCooldown = 12.f;
 			}
@@ -307,6 +558,6 @@ void ATN_ShopKeeper::Tick(float DeltaSeconds)
 	if (WaveTimeLeft > 0.f)
 	{
 		WaveTimeLeft -= DeltaSeconds;
-		if (WaveTimeLeft <= 0.f && IdleAnim) { Keeper->PlayAnimation(IdleAnim, true); }
+		if (WaveTimeLeft <= 0.f) { UTN_NpcAnimInstance::ReturnToIdleOn(Keeper, IdleAnim); }
 	}
 }

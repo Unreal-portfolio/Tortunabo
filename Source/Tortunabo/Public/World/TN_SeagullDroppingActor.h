@@ -97,10 +97,17 @@ protected:
 		meta = (ClampMin = "10.0"))
 	float MinShadowRadius = 40.f;
 
-	/** Radio del hitbox de impacto (cm). */
+	/** Radio del hitbox de impacto (cm; antes 100: se esquivaba mal). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SeagullDropping",
 		meta = (ClampMin = "10.0"))
-	float ImpactRadius = 100.f;
+	float ImpactRadius = 75.f;
+
+	/**
+	 * Tirarse en plancha en el momento justo (en el aire o aún arrastrándose deprisa, TNBeach::IsDodgingByBellyDive) libra
+	 * del impacto: la caca le pasa por encima.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SeagullDropping")
+	bool bBellyDiveDodges = true;
 
 	/** Profundidad del Decal de sombra (cm). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SeagullDropping",

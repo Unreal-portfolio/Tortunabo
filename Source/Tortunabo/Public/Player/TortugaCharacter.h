@@ -15,8 +15,10 @@ class UTN_InventoryComponent;
 class UTN_ShellComponent;
 class UTN_CarryComponent;
 class UTN_DizzyBirdsComponent;
+class UTN_TurtleFaceComponent;
 class UTN_StaminaComponent;
 class UTN_WadingComponent;
+class UTN_TurtleMovementComponent;
 class ATN_InteractableBase;
 class USceneComponent;
 class UAudioComponent;
@@ -47,7 +49,8 @@ class TORTUNABO_API ATortugaCharacter : public ACharacter
 	GENERATED_BODY()
 
 public:
-	ATortugaCharacter();
+	/** Con UTN_TurtleMovementComponent como movimiento (el arrastre del panzazo va dentro de la simulación, predicho). */
+	ATortugaCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	/** Índice de emote reservado para el knockdown visual.
 	 *  Cuando el servidor aplica knockdown, establece ReplicatedEmoteIndex = KNOCKDOWN_EMOTE_ID.
@@ -186,6 +189,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
 	float DiveTiltSpeed = 12.f;
 
+	/**
+	 * Al levantarse del suelo tras el arrastre, el cuerpo vuelve a ponerse de pie algo más despacio (1/s) para que se vea
+	 * el empujón de brazos (UTN_TurtleAnimInstance).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="1.0"))
+	float DiveGetUpTiltSpeed = 7.f;
+
+	/**
+	 * Tope de seguridad de todo el panzazo (s): si algo lo deja colgado (sin sitio para levantarse mucho rato, por
+	 * ejemplo), el servidor lo acaba igualmente.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="2.0"))
+	float DiveMaxSeconds = 12.f;
+
 	/** Velocidad de rotación del actor Yaw hacia DiveDir al iniciar el dash (deg/seg).
 	 *  720 → completa 180° en 250 ms. Subir = más responsivo (más cerca de snap).
 	 *  Bajar = más fluido (puede no completar la rotación durante el dash). */
@@ -249,6 +266,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0"))
 	float DiveBellyPivotHeight = 11.f;
 
+	/**
+	 * Cuánto se desplaza la malla hacia atrás (cm) con el panzazo completo: tumbada, el centro del cuerpo (la tripa y el
+	 * caparazón) queda sobre la cápsula en vez de los pies, así que gira sobre la tripa y la cápsula cubre la parte más
+	 * gruesa. La cabeza y las patas, que sobresalen, las frena UTN_TurtleMovementComponent (Belly Slide|Body), cuyas
+	 * medidas suponen este centrado.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive", meta=(ClampMin="0.0", ClampMax="150.0"))
+	float DiveBodyCenterShift = 70.f;
+
 	/** Aplastado de la malla en el panzazo: tripa-espalda (se aplasta contra el suelo), ancho y largo (se estira). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dive")
 	FVector DiveSquash = FVector(1.08, 0.8, 1.05);
@@ -273,6 +299,13 @@ protected:
 	/** Pajaritos y estrellitas del mareo sobre la cabeza mientras está noqueada (local y cosmético). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knockdown")
 	TObjectPtr<UTN_DizzyBirdsComponent> DizzyBirds;
+
+	/**
+	 * Cara (local y cosmética, con estado replicado): lengua con física (al viento al esprintar, colgando al jadear),
+	 * caras de cansancio, sudor y boca que habla con el chat rápido o la voz.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Face")
+	TObjectPtr<UTN_TurtleFaceComponent> TurtleFace;
 
 	// ── Nado ─────────────────────────────────────────────────────────────────
 
@@ -437,9 +470,23 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction|Networking", meta = (ClampMin = "0.0"))
 	float MaxLagCompensationDistance = 120.f;
 
-	/** Ángulo adicional hacia arriba (grados) al lanzar objetos, para que hagan arco parabólico. */
+	// ── Puntería de los lanzamientos (objetos, tinta y el compañero cogido, con la E o con el panzazo) ──
+	// Salen hacia donde mira la cámara en horizontal, con un ángulo bajo y recto: ThrowBasePitchDeg con la cámara a nivel
+	// y solo una parte de lo que se mire arriba o abajo (ThrowAimPitchFactor), entre los topes.
+
+	/** Ángulo sobre la horizontal (grados) con la cámara a nivel. */
 	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "60.0"))
-	float ThrowUpAngleDeg = 15.f;
+	float ThrowBasePitchDeg = 25.f;
+
+	/** Parte del cabeceo de la cámara que se suma al ángulo (0 = siempre el mismo; 1 = todo lo que se mire arriba o abajo). */
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ThrowAimPitchFactor = 0.4f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "-30.0", ClampMax = "60.0"))
+	float ThrowMinPitchDeg = 10.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Throwable", meta = (ClampMin = "0.0", ClampMax = "80.0"))
+	float ThrowMaxPitchDeg = 45.f;
 
 	// ── Camera Cinematic Settings (AAA) ───────────────────────────────────────
 
@@ -568,6 +615,8 @@ private:
 	TObjectPtr<UInputAction> LoadedShellAction;
 
 	TWeakObjectPtr<ATN_InteractableBase> FocusedInteractable;
+	/** Interactuable de mantener (rebuscar) cuya tecla sigue pulsada en esta máquina; solo el jugador local. */
+	TWeakObjectPtr<ATN_InteractableBase> HoldInteractable;
 	FTimerHandle InteractionScanTimerHandle;
 	bool bInputAssetsLoaded = false;
 	FVector2D LastMovementInput = FVector2D::ZeroVector;
@@ -716,6 +765,8 @@ private:
 	void OnMoveReleased();
 	void Look(const FInputActionValue& Value);
 	void TryInteract();
+	/** Al soltar la tecla de interactuar: corta la interacción de mantener (rebuscar) si había una. */
+	void ReleaseInteract();
 	void RotateInventory();
 	void StartSprint();
 	void StopSprint();
@@ -801,6 +852,14 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerTryInteract(ATN_InteractableBase* Interactable);
+
+	/** Interacción de mantener (rebuscar un decorado): empieza. El servidor valida la distancia y cuenta el tiempo. */
+	UFUNCTION(Server, Reliable)
+	void ServerBeginHoldInteract(ATN_InteractableBase* Interactable);
+
+	/** Interacción de mantener: la tecla se ha soltado (si no se había completado, se cancela). */
+	UFUNCTION(Server, Reliable)
+	void ServerEndHoldInteract(ATN_InteractableBase* Interactable);
 
 	UFUNCTION(Server, Reliable)
 	void ServerUseEquippedItem();
@@ -989,6 +1048,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
 	float KnockdownGroundLockSpeed = 50.f;
 
+	/** Velocidad máxima (cm/s) con la que arranca el ragdoll del derribo (los golpes muy fuertes se recortan). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "100.0"))
+	float KnockdownRagdollMaxEntrySpeed = 2200.f;
+
+	/** Margen (cm) sobre la superficie al devolver encima un ragdoll que la ha atravesado. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
+	float KnockdownRagdollTunnelMargin = 25.f;
+
 	/** Tiempo mínimo tumbada en el suelo (s): aunque el golpe pida menos, se queda quieta un momento. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Knockdown", meta = (ClampMin = "0.0"))
 	float MinKnockdownSeconds = 2.2f;
@@ -1138,6 +1205,20 @@ protected:
 	FName SnapshotSkelMeshCollisionProfile = NAME_None;
 	/** true mientras el ragdoll físico está activo (evita doble-activación y no-ops al recover). */
 	bool bKnockdownRagdollActive = false;
+	/** Ya se ha comprobado (y avisado, si hacía falta) que los cuerpos del ragdoll chocan con el mundo. */
+	bool bRagdollCollisionReported = false;
+	/** Cuerpo raíz del ragdoll en el fotograma anterior: si de uno a otro cruza el suelo, se devuelve encima. */
+	FVector RagdollProbeLast = FVector::ZeroVector;
+	bool bRagdollProbeValid = false;
+	/** Dónde estaba de pie la cápsula al caer: último recurso si al levantarse no hay suelo bajo el cuerpo. */
+	FVector PreKnockdownStandLocation = FVector::ZeroVector;
+	/**
+	 * Cada fotograma con el ragdoll del derribo (en todas las máquinas): que el cuerpo no atraviese el suelo aunque vaya
+	 * muy rápido y que la cápsula lo siga, para que la cámara (en el brazo de la cápsula) siga a la tortuga tumbada.
+	 */
+	void TickKnockdownRagdoll(float DeltaTime);
+	/** Centro de la cápsula de pie sobre el suelo que hay bajo From (o encima, si el cuerpo quedó por debajo); false si no hay. */
+	bool FindStandSpotNear(const FVector& From, FVector& OutStandLoc) const;
 	/** Hasta cuándo (tiempo del mundo) dura la animación de levantarse: sin moverse ni saltar (local). */
 	float GetUpLockUntil = -1.f;
 	/** Pasa la pose del ragdoll (en locales, ya en el sitio nuevo de la cápsula) a la animación de levantarse. */
@@ -1151,6 +1232,14 @@ protected:
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_IsDiving, BlueprintReadOnly, Category = "Dive")
 	bool bIsDiving = false;
+
+	/**
+	 * Número del panzazo en curso (1-255; al dar la vuelta se salta el 0). Lo sube el servidor al empezar cada uno: el
+	 * movimiento (UTN_TurtleMovementComponent) sabe así de qué panzazo se ha levantado ya y no vuelve a arrastrarse
+	 * mientras llega el fin del panzazo.
+	 */
+	UPROPERTY(Replicated)
+	uint8 DiveSerial = 0;
 
 	// ── Sombrilla (#29) ───────────────────────────────────────────────────────
 
@@ -1176,13 +1265,16 @@ protected:
 	TObjectPtr<UPostProcessComponent> InkPostProcess;
 
 	// ── Head Look replication ─────────────────────────────────────────────────
-	/** Yaw (°) de la cabeza relativo al cuerpo. Positivo = mira a la derecha. Replicado a clientes remotos. */
+	/**
+	 * Yaw (grados enteros, -90..90) de la cabeza relativo al cuerpo. Positivo = mira a la derecha. Replicado a clientes
+	 * remotos en un byte: cada uno lo suaviza (SmoothedHeadYaw), así que un grado de resolución no se nota.
+	 */
 	UPROPERTY(Replicated)
-	float ReplicatedHeadYaw   = 0.f;
+	int8 ReplicatedHeadYaw   = 0;
 
-	/** Pitch (°) de la cabeza. Positivo = mira hacia arriba. Replicado a clientes remotos. */
+	/** Pitch (grados enteros, -80..80) de la cabeza. Positivo = mira hacia arriba. Replicado a clientes remotos (un byte). */
 	UPROPERTY(Replicated)
-	float ReplicatedHeadPitch = 0.f;
+	int8 ReplicatedHeadPitch = 0;
 
 	/** Tiempo acumulado desde que comenzó el dive (para DiveMinLockDuration). */
 	float DiveLockTimer = 0.f;
@@ -1211,12 +1303,18 @@ protected:
 	float LocalHeadPitch       = 0.f;
 	float SmoothedHeadYaw      = 0.f;   ///< interpolado en clientes remotos hacia ReplicatedHead*
 	float SmoothedHeadPitch    = 0.f;
+	/** Cliente dueño: lo último que ha mandado al servidor, lo que falta para poder mandar otra vez y desde cuándo no manda. */
+	int8  SentHeadYaw          = 0;
+	int8  SentHeadPitch        = 0;
+	float HeadSendCooldown     = 0.f;
+	float HeadSinceSend        = 0.f;
 
 	void TickHeadLook(float DeltaTime);
 	void ApplyHeadLookToCabeza(float Yaw, float Pitch);
 
+	/** Cabeza del dueño al servidor: grados enteros, como mucho HeadSendRate veces por segundo y solo si cambia. */
 	UFUNCTION(Server, Unreliable, WithValidation)
-	void ServerUpdateHeadRotation(float Yaw, float Pitch);
+	void ServerUpdateHeadRotation(int8 Yaw, int8 Pitch);
 
 	void TryDive();
 
@@ -1233,9 +1331,29 @@ protected:
 	void TickDive(float DeltaTime);
 	void TickJumpAnim(float DeltaTime);
 
+	/**
+	 * Fin del panzazo: la cápsula vuelve a estar de pie con los pies donde están. En el servidor y el dueño lo hace el
+	 * movimiento (UTN_TurtleMovementComponent::RestoreStandingCapsule); en los demás, crece y sube lo mismo. Antes crecía en
+	 * su sitio y la mitad de abajo se metía en la malla fina del terreno: al desincrustarse caía por debajo del mapa.
+	 */
+	void RestoreDiveCapsule();
+
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 * Servidor: si la base de movimiento que se va a replicar no se puede encontrar por red (malla creada en ejecución: el
+	 * terreno y el decorado local de la playa, piezas de los elementos), se replica como «sin base», con la posición del
+	 * mundo de siempre. Si no, los demás clientes la ven «sin resolver» y el motor deja de simular y de suavizar a esta
+	 * tortuga (se queda quieta, a tirones o con la malla en otro sitio). Ver UTN_TurtleMovementComponent::IsNetResolvableBase.
+	 */
+	virtual void PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker) override;
+
+	/** Campos de visión de la cámara en reposo y al correr (el ajuste de campo de visión del menú de pausa los cambia). */
+	float GetCameraFOVDefault() const { return CameraFOVDefault; }
+	float GetCameraFOVSprint() const { return CameraFOVSprint; }
+	void SetCameraFOVs(float InDefault, float InSprint) { CameraFOVDefault = InDefault; CameraFOVSprint = InSprint; }
 
 	/**
 	 * Aplica knockdown a este personaje durante Duration segundos.
@@ -1261,6 +1379,24 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Dive")
 	bool IsDiving() const { return bIsDiving; }
 
+	/** Número del panzazo en curso (0 = aún ninguno). */
+	uint8 GetDiveSerial() const { return DiveSerial; }
+
+	/** Movimiento de la tortuga (con el arrastre del panzazo); null si el Blueprint pusiera otra clase. */
+	UTN_TurtleMovementComponent* GetTurtleMovement() const;
+
+	/** Semialtura sin escalar de la cápsula de pie (la de la clase: sin el encogido del panzazo). */
+	float GetStandingCapsuleHalfHeight() const;
+
+	/**
+	 * Pose de panzazo (en el aire o sobre la tripa). Se apaga en cuanto se levanta: el dueño y el servidor lo saben al
+	 * momento por el movimiento; las demás máquinas, cuando llega el fin del panzazo.
+	 */
+	bool IsBellyPoseActive() const;
+
+	/** Sobre la tripa en el suelo: arrastrándose tras el panzazo o reptando sin sitio para levantarse. */
+	bool IsBellyOnGround() const;
+
 	/** Returns true once the character has died and before any revive restores it. */
 	UFUNCTION(BlueprintPure, Category = "Death")
 	bool IsDead() const { return bIsDead; }
@@ -1274,8 +1410,21 @@ public:
 	/** Componente de coger y lanzar. */
 	UTN_CarryComponent* GetCarryComponent() const { return CarryComponent; }
 
+	/**
+	 * Dirección de un lanzamiento (objeto, tinta o compañero) con el giro del mando AimRotation: el rumbo de la cámara y un
+	 * ángulo bajo sobre la horizontal (ThrowBasePitchDeg con la cámara a nivel; ver Throwable). Vale en el servidor.
+	 */
+	FVector GetThrowDirection(const FRotator& AimRotation) const;
+
+	/** El golpe de brazo de lanzar un objeto, en todas las máquinas (cosmético; lo manda el servidor al lanzarlo). */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastItemThrowAnim();
+
 	/** Interactuable al alcance que se usaría ahora (solo en el jugador local; lo enseña el aviso del HUD). */
 	ATN_InteractableBase* GetFocusedInteractable() const { return FocusedInteractable.Get(); }
+
+	/** Interactuable de mantener cuya tecla sigue pulsada aquí (solo el jugador local; el aro del HUD); o nullptr. */
+	ATN_InteractableBase* GetHoldInteractable() const { return HoldInteractable.Get(); }
 
 	/** Acción de interactuar (Enhanced Input), para mostrar su tecla. */
 	UInputAction* GetInteractAction() const { return LoadedInteractAction; }

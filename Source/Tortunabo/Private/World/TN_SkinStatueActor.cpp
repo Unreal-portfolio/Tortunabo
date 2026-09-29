@@ -28,7 +28,7 @@ ATN_SkinStatueActor::ATN_SkinStatueActor()
 	HelmetPreviewComp->SetIsReplicated(false);
 	HelmetPreviewComp->SetHiddenInGame(true);
 
-	PromptText = FText::FromString(TEXT("Equipar cosmético"));
+	PromptText = NSLOCTEXT("Tortunabo", "SkinStatuePrompt", "Equipar cosmético");
 	CooldownSeconds = 0.5f;
 }
 

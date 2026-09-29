@@ -56,8 +56,11 @@ FTNProcMapProfile TN_MakeDefaultProcProfile(ETNProcGameMode Mode, ETNProcDifficu
 
 	FTNProcMapProfile P;
 	P.Difficulty01 = Pick(0.2f, 0.5f, 0.9f);
-	P.HazardDensity = Pick(0.7f, 1.0f, 1.4f);
-	P.GapsPerKm = Pick(2.0f, 3.0f, 4.5f);
+	// Camino muy poblado de juego: bastantes más peligros, trampas, enemigos y saltos que al principio (se pidió
+	// «muchísimos más» obstáculos que no sean decorado y, después, aún más saltos). GapsPerKm es la densidad real de
+	// huecos donde caben (TNProcMap::PlaceGapsOn).
+	P.HazardDensity = Pick(1.6f, 2.4f, 3.2f);
+	P.GapsPerKm = Pick(9.0f, 13.0f, 17.0f);
 	P.EggNestEveryNPortals = Pick(1, 2, 3);
 
 	switch (Mode)

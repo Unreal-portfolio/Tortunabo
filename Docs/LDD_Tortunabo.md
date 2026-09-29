@@ -316,7 +316,7 @@ strong { font-weight: 600; color: var(--navy); }
 ## Project Overview
 
 - **Título:** Tortunavy
-- **Tipo:** Corredor lineal cooperativo (1–4 jugadores) estructurado en **5 rondas**, cada una compuesta por **6 módulos** generados de forma semialeatoria dentro de una curva de dificultad prediseñada. Entre rondas el grupo regresa al Lobby.
+- **Tipo:** Corredor lineal cooperativo (1–8 jugadores) estructurado en **5 rondas**, cada una compuesta por **6 módulos** generados de forma semialeatoria dentro de una curva de dificultad prediseñada. Entre rondas el grupo regresa al Lobby.
 - **Condición de victoria:** Completar las 5 rondas sin que el grupo sea eliminado. La derrota reinicia la partida desde la Ronda 1 — no hay checkpoints.
 - **Rejugabilidad:** Cada módulo de dificultad se elige de forma aleatoria dentro del nivel de dificultad asignado para esa posición, por lo que la secuencia exacta varía en cada partida aunque la curva general sea conocida.
 - **Design Goals:**

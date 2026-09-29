@@ -6,6 +6,7 @@
 #include "Online.h"
 #include "OnlineSessionSettings.h"
 #include "Engine/World.h"
+#include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -15,7 +16,16 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameSession.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
+#include "Misc/PackageName.h"
+#include "TimerManager.h"
 #include "Multiplayer/TN_CosmeticSaveGame.h"
+#include "Multiplayer/TN_RoomInfo.h"
+#include "Multiplayer/TN_RoomNames.h"
 #include "Multiplayer/TN_TutorialSaveGame.h"
 #include "UI/HUD/TN_LoadingScreenWidget.h"
 #include "UI/Loading/TN_LoadingScreenSubsystem.h"
@@ -35,6 +45,12 @@ namespace
 		}
 		return OSS;
 	}
+
+	/** Segundos que se espera una búsqueda de salas antes de darla por fallida. */
+	constexpr double MPGameInstance_RoomSearchTimeout = 25.0;
+
+	/** Segundos que tiene un expulsado para irse solo antes de que el servidor lo eche. */
+	constexpr float MPGameInstance_KickGraceSeconds = 2.5f;
 }
 
 UMP_GameInstance::UMP_GameInstance()
@@ -90,6 +106,13 @@ void UMP_GameInstance::Init()
 
 	FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &UMP_GameInstance::HandlePreLoadMap);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &UMP_GameInstance::HandlePostLoadMap);
+
+	// Salas: el cierre, las plazas y los expulsados se aplican al entrar, en cualquier GameMode (sin tocar ninguno).
+	PreLoginHandle = FGameModeEvents::GameModePreLoginEvent.AddUObject(this, &UMP_GameInstance::HandleGameModePreLogin);
+	PostLoginHandle = FGameModeEvents::GameModePostLoginEvent.AddUObject(this, &UMP_GameInstance::HandleGameModePostLogin);
+	// El temporizador de la GameInstance sobrevive a los viajes.
+	GetTimerManager().SetTimer(RoomTickHandle, FTimerDelegate::CreateUObject(this, &UMP_GameInstance::RoomTick), 1.f, true);
+
 	LoadCosmeticProfile();
 	LoadTutorialProfile();
 }
@@ -139,6 +162,12 @@ void UMP_GameInstance::Shutdown()
 {
 	FCoreUObjectDelegates::PreLoadMap.RemoveAll(this);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
+	// Los eventos de los GameModes son de todo el proceso: sin esto, otra GameInstance (el editor) llamaría a esta muerta.
+	FGameModeEvents::GameModePreLoginEvent.Remove(PreLoginHandle);
+	FGameModeEvents::GameModePostLoginEvent.Remove(PostLoginHandle);
+	PreLoginHandle.Reset();
+	PostLoginHandle.Reset();
+	GetTimerManager().ClearTimer(RoomTickHandle);
 	SaveCosmeticProfile();
 	SaveTutorialProfile();
 
@@ -154,13 +183,18 @@ void UMP_GameInstance::Shutdown()
 
 void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 {
-	// Con el huevo a la vista (UTN_LoadingScreenSubsystem), el mensaje va debajo del huevo y no se apila otra pantalla.
+	// El huevo de la pantalla de carga (UTN_LoadingScreenSubsystem) se cierra en el acto con este mensaje y se queda
+	// cerrado hasta que el viaje acabe; la pantalla de texto solo sale si no hay huevo que enseñar.
 	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
 	{
-		if (EggLoading->IsShowing())
+		if (EggLoading->CloseForTravel(Reason))
 		{
-			EggLoading->SetStatus(Reason);
-			HideLoadingScreen();
+			if (LoadingScreenWidget)
+			{
+				LoadingScreenWidget->RemoveFromParent();
+				LoadingScreenWidget = nullptr;
+			}
+			bIsLoadingScreenVisible = false;
 			return;
 		}
 	}
@@ -202,6 +236,12 @@ void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 
 void UMP_GameInstance::HideLoadingScreen()
 {
+	// Si el huevo se cerró para un viaje que no ha llegado a empezar (sesión fallida, sin partidas...), se abre otra vez.
+	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
+	{
+		EggLoading->CancelPendingClose();
+	}
+
 	if (LoadingScreenWidget)
 	{
 		LoadingScreenWidget->RemoveFromParent();
@@ -455,13 +495,15 @@ FString UMP_GameInstance::BuildStatusLog() const
 
 void UMP_GameInstance::HostSession()
 {
-	ShowLoadingScreen(TEXT("Creando lobby..."));
+	EnsureActiveRoom();
+	ShowLoadingScreen(FText::Format(NSLOCTEXT("TNRooms", "CreatingRoom", "Creando la sala «{0}»..."), TNRoomNames::Get(ActiveRoom.NameId)).ToString());
 
 	IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (!Sessions.IsValid())
 	{
 		UpdateStatus(TEXT("ERROR: No session interface"));
 		HideLoadingScreen();
+		PostRoomNotice(NSLOCTEXT("TNRooms", "NoOnline", "No hay conexión con Steam: ábrelo y vuelve a intentarlo."), true);
 		return;
 	}
 
@@ -484,18 +526,35 @@ void UMP_GameInstance::HostSession()
 
 	FOnlineSessionSettings Settings;
 	Settings.bIsLANMatch = false;
-	Settings.NumPublicConnections = MaxPlayers;
+	Settings.NumPublicConnections = ActiveRoom.MaxPlayers;
 	Settings.bShouldAdvertise = true;
 	Settings.bUsesPresence = true;
 	Settings.bUseLobbiesIfAvailable = true;
+	// Siempre «se puede unir» para Steam: así una sala cerrada sigue saliendo en la lista (con su candado). El cierre y las
+	// plazas los aplica el servidor al entrar (HandleGameModePreLogin), y la lista y el código avisan antes de intentarlo.
 	Settings.bAllowJoinInProgress = true;
+	// También las privadas son lobbies públicos de Steam: uno privado no sale en ninguna búsqueda y el código no lo
+	// encontraría. La lista las deja fuera con PRIVATE = 0 (en el servidor de Steam y aquí).
 	Settings.bAllowJoinViaPresence = true;
 	Settings.bAllowInvites = true;
 	Settings.bAllowJoinViaPresenceFriendsOnly = false;
-	Settings.Set(FName(TEXT("SEARCH_KEYWORDS")), FString(TEXT("TortunaboLobby")), EOnlineDataAdvertisementType::ViaOnlineService);
+	ApplyRoomSettings(Settings, 1);
+	AdvertisedPlayers = 1;
+	AdvertisedMode = static_cast<int32>(SelectedProcMode);
+	AdvertisedLocked = ActiveRoom.bLocked ? 1 : 0;
 
-	UpdateStatus(TEXT("Creating Steam lobby..."));
+	UpdateStatus(FString::Printf(TEXT("Creating Steam lobby (%s, %d plazas, código %s)..."), ActiveRoom.bPrivate ? TEXT("privada") : TEXT("pública"),
+		ActiveRoom.MaxPlayers, *ActiveRoom.Code));
 	Sessions->CreateSession(0, NAME_GameSession, Settings);
+}
+
+void UMP_GameInstance::HostSessionWithMode(ETNProcGameMode Mode)
+{
+	// Desde el menú solo hay dos modos; el lobby lo lee de aquí al viajar (ATN_HQGameMode::BeginMatchTravel).
+	FTNRoomConfig Config = MakeRoomDraft();
+	Config.Mode = Mode == ETNProcGameMode::Race ? ETNProcGameMode::Race : ETNProcGameMode::Coop;
+	UE_LOG(LogTortunabo, Log, TEXT("[MP] Crear partida en modo %s."), *UEnum::GetValueAsString(Config.Mode));
+	HostRoom(Config);
 }
 
 void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
@@ -510,44 +569,58 @@ void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucce
 	{
 		UpdateStatus(FString::Printf(TEXT("ERROR: Failed to create session '%s'"), *SessionName.ToString()));
 		HideLoadingScreen();
+		PostRoomNotice(NSLOCTEXT("TNRooms", "CreateFailed", "No se ha podido crear la sala. ¿Está Steam abierto y conectado?"), true);
 		return;
 	}
 
 	UpdateStatus(FString::Printf(TEXT("Lobby '%s' created! Travelling to game map..."), *SessionName.ToString()));
 
-	UWorld* World = GetWorld();
-	if (World)
+	// El viaje sale cuando el huevo de la pantalla de carga ha terminado de cerrarse (con el subsistema NULL la sesión se
+	// crea en el acto y el LoadMap congelaría el cierre a medias).
+	const FString TravelURL = GameMapPath + TEXT("?listen");
+	TWeakObjectPtr<UMP_GameInstance> WeakThis(this);
+	TFunction<void()> Travel = [WeakThis, TravelURL]()
 	{
-		World->ServerTravel(GameMapPath + TEXT("?listen"));
+		UMP_GameInstance* Self = WeakThis.Get();
+		UWorld* TravelWorld = Self ? Self->GetWorld() : nullptr;
+		if (!TravelWorld)
+		{
+			return;
+		}
+		// Menú que ya escucha (el Standalone del editor como servidor escuchando arranca en LVL_Menu?Listen): con Steam, el
+		// socket de escucha del puerto virtual 17777 se cierra un tic después de apagar su driver, y el LoadMap del
+		// ServerTravel intentaba escuchar en el lobby antes; fallaba (NetDriverListenFailure) y el motor devolvía al menú.
+		// Se apaga aquí el driver del menú y se viaja medio segundo después, con el puerto ya libre.
+		if (TravelWorld->GetNetDriver() && GEngine)
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[MP] El menú ya escuchaba: se cierra su driver de red antes de viajar al lobby."));
+			GEngine->ShutdownWorldNetDriver(TravelWorld);
+			FTimerHandle DelayedTravel;
+			TravelWorld->GetTimerManager().SetTimer(DelayedTravel, FTimerDelegate::CreateWeakLambda(Self, [WeakThis, TravelURL]()
+			{
+				if (UWorld* LaterWorld = WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr)
+				{
+					LaterWorld->ServerTravel(TravelURL);
+				}
+			}), 0.5f, false);
+			return;
+		}
+		TravelWorld->ServerTravel(TravelURL);
+	};
+	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
+	{
+		EggLoading->RunWhenClosed(MoveTemp(Travel));
+	}
+	else
+	{
+		Travel();
 	}
 }
 
 void UMP_GameInstance::FindAndJoinSession()
 {
-	ShowLoadingScreen(TEXT("Buscando lobbies..."));
-
-	IOnlineSessionPtr Sessions = GetSessionInterface();
-	if (!Sessions.IsValid())
-	{
-		UpdateStatus(TEXT("ERROR: No session interface"));
-		HideLoadingScreen();
-		return;
-	}
-
-	Sessions->ClearOnFindSessionsCompleteDelegates(this);
-	Sessions->AddOnFindSessionsCompleteDelegate_Handle(
-		FOnFindSessionsCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnFindSessionsComplete));
-
-	SessionSearch = MakeShareable(new FOnlineSessionSearch());
-	SessionSearch->bIsLanQuery = false;
-	SessionSearch->MaxSearchResults = 100;
-	SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCESEARCH")), true, EOnlineComparisonOp::Equals);
-	// Filtro servidor: Steam solo devuelve lobbies con SEARCH_KEYWORDS == "TortunaboLobby".
-	// Evita saturar el límite de resultados con lobbies de otros proyectos (App ID 480 es compartido).
-	SessionSearch->QuerySettings.Set(FName(TEXT("SEARCH_KEYWORDS")), FString(TEXT("TortunaboLobby")), EOnlineComparisonOp::Equals);
-
-	UpdateStatus(TEXT("Searching Steam lobbies..."));
-	Sessions->FindSessions(0, SessionSearch.ToSharedRef());
+	ShowLoadingScreen(TEXT("Buscando salas..."));
+	StartRoomSearch(ETNRoomSearch::QuickJoin);
 }
 
 void UMP_GameInstance::OnFindSessionsComplete(bool bWasSuccessful)
@@ -558,37 +631,116 @@ void UMP_GameInstance::OnFindSessionsComplete(bool bWasSuccessful)
 		Sessions->ClearOnFindSessionsCompleteDelegates(this);
 	}
 
-	if (!bWasSuccessful || !SessionSearch.IsValid())
+	const ETNRoomSearch Purpose = RoomSearchPurpose;
+	const FString Code = RoomSearchCode;
+	RoomSearchPurpose = ETNRoomSearch::None;
+	RoomSearchCode.Reset();
+	const TSharedPtr<FOnlineSessionSearch> Search = SessionSearch;
+	if (Purpose == ETNRoomSearch::None)
 	{
-		UpdateStatus(TEXT("Search failed. Make sure Steam is online."));
-		HideLoadingScreen();
+		// Respuesta tardía de una búsqueda que ya se dio por perdida (RoomTick).
 		return;
 	}
 
-	int32 MatchIndex = INDEX_NONE;
-	for (int32 i = 0; i < SessionSearch->SearchResults.Num(); ++i)
+	// Las salas de Tortunavy de los resultados (con el NULL llega todo lo de la red local; con Steam, ya filtrado).
+	TArray<FTNRoomListing> Found;
+	if (bWasSuccessful && Search.IsValid())
 	{
-		const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[i];
-		FString KeywordValue;
-		if (Result.Session.SessionSettings.Get(FName(TEXT("SEARCH_KEYWORDS")), KeywordValue) && KeywordValue == TEXT("TortunaboLobby"))
+		for (int32 i = 0; i < Search->SearchResults.Num(); ++i)
 		{
-			MatchIndex = i;
-			break;
+			FTNRoomListing Listing;
+			if (ReadRoomListing(Search->SearchResults[i].Session, i, Listing))
+			{
+				Found.Add(MoveTemp(Listing));
+			}
 		}
 	}
+	UpdateStatus(FString::Printf(TEXT("Búsqueda de salas: %s, %d resultados, %d de Tortunavy."), bWasSuccessful ? TEXT("ok") : TEXT("fallida"),
+		Search.IsValid() ? Search->SearchResults.Num() : 0, Found.Num()));
 
-	if (MatchIndex == INDEX_NONE)
+	if (Purpose == ETNRoomSearch::Code)
 	{
-		UpdateStatus(FString::Printf(TEXT("No matching lobbies found (%d total seen)."), SessionSearch->SearchResults.Num()));
-		HideLoadingScreen();
-		return;
+		const FTNRoomListing* Match = Found.FindByPredicate([&Code](const FTNRoomListing& Listing) { return Listing.Code == Code; });
+		if (!bWasSuccessful)
+		{
+			PostRoomNotice(NSLOCTEXT("TNRooms", "SearchFailed", "No se ha podido buscar salas. ¿Está Steam abierto y conectado?"), true);
+		}
+		else if (!Match)
+		{
+			PostRoomNotice(FText::Format(NSLOCTEXT("TNRooms", "CodeNotFound",
+				"No hay ninguna sala con el código {0}. Revisa el código (con Steam, una sala llena tampoco aparece)."), FText::FromString(Code)), true);
+		}
+		else
+		{
+			const FText RoomName = TNRoomNames::Get(Match->NameId);
+			if (Match->bLocked)
+			{
+				PostRoomNotice(FText::Format(NSLOCTEXT("TNRooms", "CodeLocked", "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."), RoomName), true);
+			}
+			else if (Match->IsFull())
+			{
+				PostRoomNotice(FText::Format(NSLOCTEXT("TNRooms", "CodeFull", "«{0}» está llena ({1}/{2})."), RoomName, FText::AsNumber(Match->Players),
+					FText::AsNumber(Match->MaxPlayers)), true);
+			}
+			else
+			{
+				JoinRoomResult(Search->SearchResults[Match->SearchIndex], RoomName);
+			}
+		}
+	}
+	else
+	{
+		// La lista (y «unirse a la primera», que mira la misma): solo las públicas; primero las que tienen sitio.
+		Found.RemoveAll([](const FTNRoomListing& Listing) { return Listing.bPrivate; });
+		Found.StableSort([](const FTNRoomListing& A, const FTNRoomListing& B)
+		{
+			if (A.CanJoin() != B.CanJoin())
+			{
+				return A.CanJoin();
+			}
+			return A.Players > B.Players;
+		});
+		if (bWasSuccessful)
+		{
+			RoomListings = MoveTemp(Found);
+			RoomListSearch = Search;
+		}
+		bRoomListReady = true;
+
+		if (Purpose == ETNRoomSearch::QuickJoin)
+		{
+			const int32 FirstOpen = RoomListings.IndexOfByPredicate([](const FTNRoomListing& Listing) { return Listing.CanJoin(); });
+			if (!bWasSuccessful)
+			{
+				HideLoadingScreen();
+				PostRoomNotice(NSLOCTEXT("TNRooms", "SearchFailed", "No se ha podido buscar salas. ¿Está Steam abierto y conectado?"), true);
+			}
+			else if (FirstOpen == INDEX_NONE)
+			{
+				HideLoadingScreen();
+				PostRoomNotice(NSLOCTEXT("TNRooms", "NoOpenRooms", "No hay partidas públicas abiertas ahora mismo: crea una o entra con un código."), true);
+			}
+			else
+			{
+				JoinListedRoom(FirstOpen);
+			}
+		}
+		else if (!bWasSuccessful)
+		{
+			PostRoomNotice(NSLOCTEXT("TNRooms", "SearchFailed", "No se ha podido buscar salas. ¿Está Steam abierto y conectado?"), true);
+		}
+		OnRoomListChanged.Broadcast();
 	}
 
-	UpdateStatus(TEXT("Found matching lobby! Joining..."));
-	Sessions->ClearOnJoinSessionCompleteDelegates(this);
-	Sessions->AddOnJoinSessionCompleteDelegate_Handle(
-		FOnJoinSessionCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnJoinSessionComplete));
-	Sessions->JoinSession(0, NAME_GameSession, SessionSearch->SearchResults[MatchIndex]);
+	// La que esperaba turno.
+	if (QueuedRoomSearch != ETNRoomSearch::None)
+	{
+		const ETNRoomSearch Next = QueuedRoomSearch;
+		const FString NextCode = QueuedRoomCode;
+		QueuedRoomSearch = ETNRoomSearch::None;
+		QueuedRoomCode.Reset();
+		StartRoomSearch(Next, NextCode);
+	}
 }
 
 void UMP_GameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
@@ -603,23 +755,61 @@ void UMP_GameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCo
 	{
 		UpdateStatus(FString::Printf(TEXT("ERROR joining '%s': code %d"), *SessionName.ToString(), static_cast<int32>(Result)));
 		HideLoadingScreen();
+		FText Why;
+		switch (Result)
+		{
+		case EOnJoinSessionCompleteResult::SessionIsFull:
+			Why = TNRoomText::RefusedMessage(TNRoomKeys::RefuseFull());
+			break;
+		case EOnJoinSessionCompleteResult::SessionDoesNotExist:
+			Why = NSLOCTEXT("TNRooms", "JoinGone", "Esa sala ya no existe: puede que el anfitrión se haya ido. Actualiza la lista.");
+			break;
+		case EOnJoinSessionCompleteResult::CouldNotRetrieveAddress:
+			Why = NSLOCTEXT("TNRooms", "JoinNoAddress", "No se ha podido contactar con el anfitrión de la sala.");
+			break;
+		default:
+			Why = TNRoomText::RefusedMessage(FString());
+			break;
+		}
+		PostRoomNotice(Why, true);
 		return;
 	}
 
 	FString ConnectInfo;
 	if (Sessions.IsValid() && Sessions->GetResolvedConnectString(SessionName, ConnectInfo) && !ConnectInfo.IsEmpty())
 	{
-		ShowLoadingScreen(TEXT("Conectando a la partida..."));
-		APlayerController* PC = GetFirstLocalPlayerController();
-		if (PC)
+		// Primera partida de esta máquina: se dice al entrar y el servidor la pone ya en el tutorial (Docs/Tutorial.md).
+		if (!HasCompletedTutorial())
 		{
-			PC->ClientTravel(ConnectInfo, TRAVEL_Absolute);
+			ConnectInfo += FString::Printf(TEXT("?%s=1"), TutorialJoinOption());
+		}
+		ShowLoadingScreen(PendingJoinRoomName.IsEmpty() ? FString(TEXT("Conectando a la partida..."))
+			: FText::Format(NSLOCTEXT("TNRooms", "Connecting", "Entrando en «{0}»..."), PendingJoinRoomName).ToString());
+		// Igual que al crear la sesión: se conecta cuando el huevo ya está cerrado del todo.
+		TWeakObjectPtr<UMP_GameInstance> WeakThis(this);
+		TFunction<void()> Travel = [WeakThis, ConnectInfo]()
+		{
+			if (APlayerController* PC = WeakThis.IsValid() ? WeakThis->GetFirstLocalPlayerController() : nullptr)
+			{
+				PC->ClientTravel(ConnectInfo, TRAVEL_Absolute);
+			}
+		};
+		if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
+		{
+			EggLoading->RunWhenClosed(MoveTemp(Travel));
+		}
+		else
+		{
+			Travel();
 		}
 	}
 	else
 	{
 		UpdateStatus(TEXT("ERROR: Could not resolve connect string"));
 		HideLoadingScreen();
+		// Se había entrado en la sesión, pero sin dirección no hay partida: fuera de ella para poder intentarlo otra vez.
+		DestroyCurrentSession();
+		PostRoomNotice(NSLOCTEXT("TNRooms", "JoinNoAddress", "No se ha podido contactar con el anfitrión de la sala."), true);
 	}
 }
 
@@ -672,6 +862,10 @@ void UMP_GameInstance::OnSessionUserInviteAccepted(const bool bWasSuccessful, co
 		UpdateStatus(TEXT("ERROR: No session interface to join invited session."));
 		return;
 	}
+
+	// Una invitación entra también en salas privadas; el cierre, las plazas y los expulsados los mira el servidor al entrar.
+	bKickedFromRoom = false;
+	PendingJoinRoomName = FText::GetEmpty();
 
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
@@ -743,7 +937,7 @@ void UMP_GameInstance::OnDestroySessionComplete(FName SessionName, bool bWasSucc
 
 void UMP_GameInstance::HandleReturnToMenu()
 {
-	ShowLoadingScreen(TEXT("Volviendo al menu..."));
+	ShowLoadingScreen(TEXT("Volviendo al menú..."));
 
 	// Stop all audio capture before travel to prevent WASAPI crash.
 	UProximityVoiceComponent::ShutdownAllCapture(GetWorld());
@@ -785,6 +979,12 @@ void UMP_GameInstance::HandlePreLoadMap(const FString& MapName)
 void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 {
 	bIsPendingTravel = false;
+
+	// De vuelta en el menú principal: la sala de antes (si se era anfitrión) ya no existe.
+	if (LoadedWorld && IsMenuWorld(LoadedWorld))
+	{
+		ResetRoomState();
+	}
 
 	// ── Si un auto-rejoin estaba pendiente y llegamos a un mapa ──
 	if (bPendingAutoRejoin)
@@ -1042,28 +1242,90 @@ void UMP_GameInstance::SetTutorialCompleted()
 		return;
 	}
 	TutorialProfile->bHasCompletedTutorial = true;
+	TutorialProfile->TimesCompleted = FMath::Max(0, TutorialProfile->TimesCompleted) + 1;
 	SaveTutorialProfile();
-	UE_LOG(LogTortunabo, Log, TEXT("[GameInstance] Tutorial marcado como completado y guardado."));
+	UE_LOG(LogTortunabo, Log, TEXT("[GameInstance] Tutorial marcado como completado y guardado (%s)."), *GetTutorialSlotName());
+}
+
+void UMP_GameInstance::ResetTutorialProgress()
+{
+	if (!TutorialProfile)
+	{
+		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_TutorialSaveGame::StaticClass()));
+	}
+	if (!TutorialProfile)
+	{
+		return;
+	}
+	TutorialProfile->bHasCompletedTutorial = false;
+	SaveTutorialProfile();
+	UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] Estado reiniciado (%s): la próxima vez que llegues a un lobby empiezas en el tutorial."), *GetTutorialSlotName());
+}
+
+FString UMP_GameInstance::GetTutorialSlotName() const
+{
+	// En el editor cada ventana de PIE es una «máquina»: su propia ranura (la primera ventana, la de siempre).
+	const FWorldContext* Context = GetWorldContext();
+	const int32 PIEInstance = (Context && Context->WorldType == EWorldType::PIE) ? Context->PIEInstance : INDEX_NONE;
+	return PIEInstance > 0 ? FString::Printf(TEXT("TutorialState_0_PIE%d"), PIEInstance) : FString(TEXT("TutorialState_0"));
 }
 
 void UMP_GameInstance::LoadTutorialProfile()
 {
-	if (UGameplayStatics::DoesSaveGameExist(TEXT("TutorialState_0"), 0))
+	const FString Slot = GetTutorialSlotName();
+	if (UGameplayStatics::DoesSaveGameExist(Slot, 0))
 	{
-		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("TutorialState_0"), 0));
+		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::LoadGameFromSlot(Slot, 0));
 	}
 
 	if (!TutorialProfile)
 	{
 		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_TutorialSaveGame::StaticClass()));
 	}
+
+	// Para probar (Docs/Tutorial.md): con Saved/ResetTutorial.txt, cada vez que arranca el juego (o cada PIE) el tutorial vuelve
+	// a estar por hacer. Vacío = todas las ventanas; con números, solo esas (0 = la primera ventana o el juego suelto,
+	// 1 = «Cliente 1», 2 = «Cliente 2»...). Se deja el archivo: para volver a lo normal, se borra.
+	const FString ResetFile = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("ResetTutorial.txt"));
+	if (TutorialProfile && FPaths::FileExists(ResetFile))
+	{
+		FString Contents;
+		FFileHelper::LoadFileToString(Contents, *ResetFile);
+		TArray<FString> Tokens;
+		Contents.ParseIntoArrayWS(Tokens, TEXT(",;"));
+		const FWorldContext* Context = GetWorldContext();
+		const int32 Window = (Context && Context->WorldType == EWorldType::PIE) ? FMath::Max(0, Context->PIEInstance) : 0;
+		bool bAll = true;
+		bool bMine = false;
+		for (const FString& Token : Tokens)
+		{
+			if (Token.IsNumeric())
+			{
+				bAll = false;
+				bMine |= FCString::Atoi(*Token) == Window;
+			}
+		}
+		if (bAll || bMine)
+		{
+			TutorialProfile->bHasCompletedTutorial = false;
+			SaveTutorialProfile();
+			UE_LOG(LogTortunabo, Warning, TEXT("[Tutorial] %s existe: tutorial reiniciado para la ventana %d (%s). Bórralo para volver a lo normal."),
+				*ResetFile, Window, *Slot);
+		}
+		else
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] %s no nombra la ventana %d: su tutorial no se toca."), *ResetFile, Window);
+		}
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] Guardado %s: %s."), *Slot,
+		TutorialProfile && TutorialProfile->bHasCompletedTutorial ? TEXT("tutorial hecho") : TEXT("tutorial por hacer"));
 }
 
 void UMP_GameInstance::SaveTutorialProfile() const
 {
 	if (TutorialProfile)
 	{
-		UGameplayStatics::SaveGameToSlot(TutorialProfile, TEXT("TutorialState_0"), 0);
+		UGameplayStatics::SaveGameToSlot(TutorialProfile, GetTutorialSlotName(), 0);
 	}
 }
 
@@ -1105,6 +1367,13 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	}
 
 	UE_LOG(LogTortunabo, Warning, TEXT("[MP] NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString);
+
+	// ---------- CLIENTE: la sala no nos deja entrar (cerrada, llena o expulsado: HandleGameModePreLogin) ----------
+	if (ErrorString.StartsWith(TNRoomKeys::RefusePrefix()))
+	{
+		HandleRoomRefused(ErrorString);
+		return;
+	}
 
 	// ---------- SERVIDOR: errores de socket/driver ----------
 	// Pueden ocurrir en dos contextos:
@@ -1186,6 +1455,14 @@ void UMP_GameInstance::HandleChecksumMismatch(const FString& ErrorString)
 
 void UMP_GameInstance::HandleConnectionLost(const FString& FailureTypeStr)
 {
+	// Expulsado: ya va camino del menú con su aviso (HandleKickedFromRoom); nada de reconectar.
+	if (bKickedFromRoom)
+	{
+		bPendingAutoRejoin = false;
+		UE_LOG(LogTortunabo, Log, TEXT("[MP] %s tras la expulsión: sin reconexión."), *FailureTypeStr);
+		return;
+	}
+
 	// Solo intentar auto-rejoin si el cliente sabía que el servidor iba a viajar.
 	// bIsPendingTravel=true significa que ClientNotifyServerTravel llegó antes
 	// de la desconexión (o que PreLoadMap empezó el travel).
@@ -1220,6 +1497,13 @@ void UMP_GameInstance::HandleConnectionLost(const FString& FailureTypeStr)
 	HideLoadingScreen();
 	DestroyCurrentSession();
 	UpdateStatus(FString::Printf(TEXT("El host abandonó la partida (%s)."), *FailureTypeStr));
+	// Lo verá el menú principal al llegar: desde el menú (entrando en una sala) o desde una partida.
+	const bool bWasJoining = IsMenuWorld(GetWorld());
+	PendingMenuNotice.Text = bWasJoining
+		? NSLOCTEXT("TNRooms", "ConnectFailed", "No se ha podido conectar con la sala: puede que el anfitrión se haya ido.")
+		: NSLOCTEXT("TNRooms", "HostLeft", "Se ha acabado la partida: el anfitrión se ha ido o se ha perdido la conexión.");
+	PendingMenuNotice.bError = true;
+	PendingMenuNotice.bOpenJoin = bWasJoining;
 	UE_LOG(LogTortunabo, Warning,
 		TEXT("[MP] %s sin travel pendiente — el host se fue. Destruyendo sesión y volviendo al menú."),
 		*FailureTypeStr);
@@ -1228,6 +1512,670 @@ void UMP_GameInstance::HandleConnectionLost(const FString& FailureTypeStr)
 		PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
 	}
 	return;
+}
+
+// ── Salas públicas y privadas (Docs/Salas.md) ─────────────────────────────────
+
+void UMP_GameInstance::HostRoom(const FTNRoomConfig& Config)
+{
+	const TArray<int32> Sizes = GetRoomSizeOptions();
+	ActiveRoom = Config;
+	ActiveRoom.Mode = Config.Mode == ETNProcGameMode::Race ? ETNProcGameMode::Race : ETNProcGameMode::Coop;
+	ActiveRoom.MaxPlayers = FMath::Clamp(Config.MaxPlayers, 2, Sizes.Num() > 0 ? Sizes.Last() : TNRoomLimits::Max);
+	if (Config.NameId < 0 || Config.NameId >= TNRoomNames::Num())
+	{
+		ActiveRoom.NameId = TNRoomNames::Random();
+	}
+	ActiveRoom.Code = TNRoomCode::Normalize(Config.Code);
+	if (!TNRoomCode::IsComplete(ActiveRoom.Code))
+	{
+		ActiveRoom.Code = TNRoomCode::Generate();
+	}
+	ActiveRoom.bLocked = false;
+	bHasActiveRoom = true;
+
+	// Sala nueva: nadie expulsado ni miembro todavía, y el anuncio, desde cero.
+	RoomMemberIds.Reset();
+	KickedRoomIds.Reset();
+	AdvertisedPlayers = INDEX_NONE;
+	AdvertisedMode = INDEX_NONE;
+	AdvertisedLocked = INDEX_NONE;
+	bKickedFromRoom = false;
+	SelectedProcMode = ActiveRoom.Mode;
+
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] Crear sala «%s» (%s, %s, %d plazas, código %s)."), *TNRoomNames::GetIn(ActiveRoom.NameId, true),
+		*UEnum::GetValueAsString(ActiveRoom.Mode), ActiveRoom.bPrivate ? TEXT("privada") : TEXT("pública"), ActiveRoom.MaxPlayers, *ActiveRoom.Code);
+	HostSession();
+}
+
+FTNRoomConfig UMP_GameInstance::MakeRoomDraft() const
+{
+	const TArray<int32> Sizes = GetRoomSizeOptions();
+	FTNRoomConfig Draft;
+	if (bHasRoomDraft)
+	{
+		Draft = RoomDraft;
+	}
+	else
+	{
+		Draft.Mode = SelectedProcMode == ETNProcGameMode::Race ? ETNProcGameMode::Race : ETNProcGameMode::Coop;
+		Draft.MaxPlayers = Sizes.Num() > 0 ? Sizes.Last() : TNRoomLimits::Max;
+	}
+	if (!Sizes.Contains(Draft.MaxPlayers) && Sizes.Num() > 0)
+	{
+		Draft.MaxPlayers = Sizes.Last();
+	}
+	// Nombre y código nuevos cada vez que se abre la pantalla (el nombre, distinto del de la última vez).
+	Draft.NameId = TNRoomNames::Random(bHasRoomDraft ? RoomDraft.NameId : INDEX_NONE);
+	Draft.Code = TNRoomCode::Generate();
+	Draft.bLocked = false;
+	return Draft;
+}
+
+void UMP_GameInstance::RememberRoomDraft(const FTNRoomConfig& Draft)
+{
+	RoomDraft = Draft;
+	bHasRoomDraft = true;
+}
+
+TArray<int32> UMP_GameInstance::GetRoomSizeOptions() const
+{
+	TArray<int32> Sizes;
+	for (const int32 Size : TNRoomLimits::Options)
+	{
+		if (Size <= MaxPlayers)
+		{
+			Sizes.Add(Size);
+		}
+	}
+	if (Sizes.Num() == 0)
+	{
+		Sizes.Add(FMath::Clamp(MaxPlayers, 2, TNRoomLimits::Max));
+	}
+	return Sizes;
+}
+
+void UMP_GameInstance::RefreshRoomList()
+{
+	StartRoomSearch(ETNRoomSearch::List);
+}
+
+bool UMP_GameInstance::IsSearchingRooms() const
+{
+	return RoomSearchPurpose != ETNRoomSearch::None;
+}
+
+void UMP_GameInstance::JoinListedRoom(int32 ListingIndex)
+{
+	if (!RoomListings.IsValidIndex(ListingIndex) || !RoomListSearch.IsValid()
+		|| !RoomListSearch->SearchResults.IsValidIndex(RoomListings[ListingIndex].SearchIndex))
+	{
+		HideLoadingScreen();
+		PostRoomNotice(NSLOCTEXT("TNRooms", "ListStale", "Esa sala ya no está en la lista: actualízala."), true);
+		return;
+	}
+	const FTNRoomListing& Listing = RoomListings[ListingIndex];
+	const FText RoomName = TNRoomNames::Get(Listing.NameId);
+	if (Listing.bLocked)
+	{
+		HideLoadingScreen();
+		PostRoomNotice(FText::Format(NSLOCTEXT("TNRooms", "ListLocked", "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."), RoomName), true);
+		return;
+	}
+	if (Listing.IsFull())
+	{
+		HideLoadingScreen();
+		PostRoomNotice(FText::Format(NSLOCTEXT("TNRooms", "ListFull", "«{0}» está llena ({1}/{2})."), RoomName, FText::AsNumber(Listing.Players),
+			FText::AsNumber(Listing.MaxPlayers)), true);
+		return;
+	}
+	JoinRoomResult(RoomListSearch->SearchResults[Listing.SearchIndex], RoomName);
+}
+
+void UMP_GameInstance::JoinRoomByCode(const FString& Code)
+{
+	const FString Clean = TNRoomCode::Normalize(Code);
+	if (!TNRoomCode::IsComplete(Clean))
+	{
+		PostRoomNotice(NSLOCTEXT("TNRooms", "CodeIncomplete", "El código tiene 5 letras y números (nunca lleva O, 0, I, 1 ni L)."), true);
+		return;
+	}
+	PostRoomNotice(FText::Format(NSLOCTEXT("TNRooms", "CodeSearching", "Buscando la sala {0}..."), FText::FromString(Clean)), false);
+	StartRoomSearch(ETNRoomSearch::Code, Clean);
+}
+
+void UMP_GameInstance::StartRoomSearch(ETNRoomSearch Purpose, const FString& Code)
+{
+	if (Purpose == ETNRoomSearch::None)
+	{
+		return;
+	}
+	// Una sola búsqueda a la vez (el NULL ignora la segunda sin avisar): la nueva espera su turno.
+	if (RoomSearchPurpose != ETNRoomSearch::None)
+	{
+		if (RoomSearchPurpose != Purpose || RoomSearchCode != Code)
+		{
+			QueuedRoomSearch = Purpose;
+			QueuedRoomCode = Code;
+		}
+		return;
+	}
+
+	IOnlineSessionPtr Sessions = GetSessionInterface();
+	if (!Sessions.IsValid())
+	{
+		UpdateStatus(TEXT("ERROR: No session interface"));
+		if (Purpose == ETNRoomSearch::QuickJoin)
+		{
+			HideLoadingScreen();
+		}
+		PostRoomNotice(NSLOCTEXT("TNRooms", "NoOnline", "No hay conexión con Steam: ábrelo y vuelve a intentarlo."), true);
+		if (Purpose != ETNRoomSearch::Code)
+		{
+			bRoomListReady = true;
+			OnRoomListChanged.Broadcast();
+		}
+		return;
+	}
+
+	RoomSearchPurpose = Purpose;
+	RoomSearchCode = Code;
+	RoomSearchStartTime = FPlatformTime::Seconds();
+	const int32 Serial = ++RoomSearchSerial;
+
+	Sessions->ClearOnFindSessionsCompleteDelegates(this);
+	Sessions->AddOnFindSessionsCompleteDelegate_Handle(
+		FOnFindSessionsCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnFindSessionsComplete));
+
+	SessionSearch = MakeShared<FOnlineSessionSearch>();
+	SessionSearch->bIsLanQuery = false;
+	SessionSearch->MaxSearchResults = Purpose == ETNRoomSearch::Code ? 50 : 200;
+	SessionSearch->QuerySettings.Set(TNRoomKeys::PresenceSearch(), true, EOnlineComparisonOp::Equals);
+	// Filtros en el servidor de Steam (el NULL los ignora y se filtra al leer los resultados, en ReadRoomListing y
+	// OnFindSessionsComplete): solo salas de Tortunavy (el AppId 480 lo comparten muchos proyectos), y además la del código
+	// o solo las públicas.
+	SessionSearch->QuerySettings.Set(TNRoomKeys::Keywords(), FString(TNRoomKeys::KeywordsValue()), EOnlineComparisonOp::Equals);
+	if (Purpose == ETNRoomSearch::Code)
+	{
+		SessionSearch->QuerySettings.Set(TNRoomKeys::Code(), Code, EOnlineComparisonOp::Equals);
+	}
+	else
+	{
+		SessionSearch->QuerySettings.Set(TNRoomKeys::Private(), 0, EOnlineComparisonOp::Equals);
+	}
+
+	if (Purpose != ETNRoomSearch::Code)
+	{
+		OnRoomListChanged.Broadcast();
+	}
+	UpdateStatus(Purpose == ETNRoomSearch::Code ? FString::Printf(TEXT("Buscando la sala %s..."), *Code) : FString(TEXT("Buscando salas públicas...")));
+	if (!Sessions->FindSessions(0, SessionSearch.ToSharedRef()) && RoomSearchSerial == Serial && RoomSearchPurpose == Purpose)
+	{
+		// No ha arrancado y no ha avisado: se da por fallida ya.
+		OnFindSessionsComplete(false);
+	}
+}
+
+bool UMP_GameInstance::ReadRoomListing(const FOnlineSession& Session, int32 Index, FTNRoomListing& Out)
+{
+	const FOnlineSessionSettings& Settings = Session.SessionSettings;
+	FString Keywords;
+	if (!Settings.Get(TNRoomKeys::Keywords(), Keywords) || Keywords != TNRoomKeys::KeywordsValue())
+	{
+		return false;
+	}
+	Out = FTNRoomListing();
+	Out.SearchIndex = Index;
+	int32 Value = 0;
+	Out.NameId = Settings.Get(TNRoomKeys::NameId(), Value) ? Value : INDEX_NONE;
+	FString Code;
+	Settings.Get(TNRoomKeys::Code(), Code);
+	Out.Code = TNRoomCode::Normalize(Code);
+	Value = 0;
+	Out.bPrivate = Settings.Get(TNRoomKeys::Private(), Value) && Value != 0;
+	Value = 0;
+	Out.bLocked = Settings.Get(TNRoomKeys::Locked(), Value) && Value != 0;
+	Value = 0;
+	Out.Mode = Settings.Get(TNRoomKeys::Mode(), Value) && Value >= 0 && Value < static_cast<int32>(ETNProcGameMode::Count)
+		? static_cast<ETNProcGameMode>(Value) : ETNProcGameMode::Coop;
+	Out.MaxPlayers = Settings.NumPublicConnections;
+	Value = 0;
+	Out.Players = Settings.Get(TNRoomKeys::Players(), Value) ? Value
+		: FMath::Max(0, Settings.NumPublicConnections - Session.NumOpenPublicConnections);
+	Out.HostName = Session.OwningUserName;
+	return true;
+}
+
+void UMP_GameInstance::JoinRoomResult(const FOnlineSessionSearchResult& Result, const FText& RoomName)
+{
+	IOnlineSessionPtr Sessions = GetSessionInterface();
+	if (!Sessions.IsValid())
+	{
+		HideLoadingScreen();
+		PostRoomNotice(NSLOCTEXT("TNRooms", "NoOnline", "No hay conexión con Steam: ábrelo y vuelve a intentarlo."), true);
+		return;
+	}
+	bKickedFromRoom = false;
+	PendingJoinRoomName = RoomName;
+	ShowLoadingScreen(FText::Format(NSLOCTEXT("TNRooms", "Connecting", "Entrando en «{0}»..."), RoomName).ToString());
+	UpdateStatus(FString::Printf(TEXT("Entrando en la sala «%s»..."), *RoomName.ToString()));
+
+	// Si queda una sesión de antes, se cierra primero y se entra al acabar (OnDestroySessionComplete).
+	if (Sessions->GetNamedSession(NAME_GameSession))
+	{
+		bPendingHostAfterDestroy = false;
+		bPendingJoinAfterDestroy = true;
+		PendingInviteResult = Result;
+		Sessions->ClearOnDestroySessionCompleteDelegates(this);
+		Sessions->AddOnDestroySessionCompleteDelegate_Handle(
+			FOnDestroySessionCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnDestroySessionComplete));
+		Sessions->DestroySession(NAME_GameSession);
+		return;
+	}
+
+	Sessions->ClearOnJoinSessionCompleteDelegates(this);
+	Sessions->AddOnJoinSessionCompleteDelegate_Handle(
+		FOnJoinSessionCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnJoinSessionComplete));
+	Sessions->JoinSession(0, NAME_GameSession, Result);
+}
+
+bool UMP_GameInstance::GetRoomSnapshot(FTNRoomSnapshot& Out) const
+{
+	Out = FTNRoomSnapshot();
+	const UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_Standalone)
+	{
+		return false;
+	}
+	Out.Players = CountRoomPlayers(World);
+
+	// Anfitrión: su sala.
+	if (World->GetNetMode() != NM_Client)
+	{
+		if (!bHasActiveRoom)
+		{
+			return false;
+		}
+		const APlayerController* HostPC = GetFirstLocalPlayerController(World);
+		Out.bValid = true;
+		Out.bIsHost = true;
+		Out.NameId = ActiveRoom.NameId;
+		Out.Code = ActiveRoom.Code;
+		Out.HostName = HostPC && HostPC->PlayerState ? HostPC->PlayerState->GetPlayerName() : FString();
+		Out.bPrivate = ActiveRoom.bPrivate;
+		Out.bLocked = ActiveRoom.bLocked;
+		Out.MaxPlayers = ActiveRoom.MaxPlayers;
+		return true;
+	}
+
+	// Invitado: lo que replica el anfitrión.
+	if (const ATN_RoomInfo* Info = ATN_RoomInfo::Find(World))
+	{
+		if (Info->GetMaxPlayers() > 0)
+		{
+			Out.bValid = true;
+			Out.NameId = Info->GetRoomNameId();
+			Out.Code = Info->GetRoomCode();
+			Out.HostName = Info->GetHostName();
+			Out.bPrivate = Info->IsPrivate();
+			Out.bLocked = Info->IsLocked();
+			Out.MaxPlayers = Info->GetMaxPlayers();
+			return true;
+		}
+	}
+
+	// Mientras llega (recién entrado o tras un cambio de mapa), el anuncio de la sesión en la que se entró.
+	const IOnlineSessionPtr Sessions = GetSessionInterface();
+	const FNamedOnlineSession* Named = Sessions.IsValid() ? Sessions->GetNamedSession(NAME_GameSession) : nullptr;
+	FTNRoomListing Listing;
+	if (Named && ReadRoomListing(*Named, INDEX_NONE, Listing))
+	{
+		Out.bValid = true;
+		Out.NameId = Listing.NameId;
+		Out.Code = Listing.Code;
+		Out.HostName = Named->OwningUserName;
+		Out.bPrivate = Listing.bPrivate;
+		Out.bLocked = Listing.bLocked;
+		Out.MaxPlayers = FMath::Max(Listing.MaxPlayers, Out.Players);
+	}
+	return Out.bValid;
+}
+
+bool UMP_GameInstance::CanManageRoom() const
+{
+	const UWorld* World = GetWorld();
+	return World && World->GetNetMode() == NM_ListenServer;
+}
+
+void UMP_GameInstance::SetRoomLocked(bool bLocked)
+{
+	UWorld* World = GetWorld();
+	if (!CanManageRoom())
+	{
+		return;
+	}
+	EnsureActiveRoom();
+	if (ActiveRoom.bLocked == bLocked)
+	{
+		return;
+	}
+	ActiveRoom.bLocked = bLocked;
+	// Los que están dentro ahora son de la sala: aunque esté cerrada, pueden volver si se les cae la conexión.
+	if (const AGameStateBase* State = World ? World->GetGameState() : nullptr)
+	{
+		for (const APlayerState* PS : State->PlayerArray)
+		{
+			if (PS && PS->GetUniqueId().IsValid())
+			{
+				RoomMemberIds.Add(PS->GetUniqueId().ToString());
+			}
+		}
+	}
+	EnsureRoomInfo(World);
+	UpdateRoomAdvertisement();
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] Sala %s."), bLocked ? TEXT("cerrada") : TEXT("abierta"));
+	PostRoomNotice(bLocked ? NSLOCTEXT("TNRooms", "Locked", "Sala cerrada: no entra nadie más (los que ya estaban pueden volver).")
+		: NSLOCTEXT("TNRooms", "Unlocked", "Sala abierta: puede entrar gente otra vez."), false);
+}
+
+bool UMP_GameInstance::KickFromRoom(APlayerState* Target)
+{
+	UWorld* World = GetWorld();
+	if (!Target || !CanManageRoom() || Target->GetWorld() != World)
+	{
+		return false;
+	}
+	APlayerController* TargetPC = Cast<APlayerController>(Target->GetOwner());
+	if (!TargetPC || TargetPC->IsLocalController())
+	{
+		return false;
+	}
+	const FString TargetName = Target->GetPlayerName();
+	const FUniqueNetIdRepl& TargetId = Target->GetUniqueId();
+	if (TargetId.IsValid())
+	{
+		KickedRoomIds.Add(TargetId.ToString());
+		RoomMemberIds.Remove(TargetId.ToString());
+	}
+	// Su cliente lo ve (ATN_RoomInfo) y se va solo al menú con el aviso.
+	if (ATN_RoomInfo* Info = EnsureRoomInfo(World))
+	{
+		Info->ServerMarkKicked(Target->GetPlayerId());
+	}
+	// Si no se ha ido en un momento (réplica perdida, cliente colgado), fuera igualmente.
+	TWeakObjectPtr<APlayerController> WeakTarget(TargetPC);
+	FTimerHandle KickHandle;
+	GetTimerManager().SetTimer(KickHandle, FTimerDelegate::CreateWeakLambda(this, [WeakTarget, TargetName]()
+	{
+		APlayerController* Stayed = WeakTarget.Get();
+		UWorld* StayedWorld = Stayed ? Stayed->GetWorld() : nullptr;
+		AGameModeBase* GameMode = StayedWorld ? StayedWorld->GetAuthGameMode() : nullptr;
+		if (GameMode && GameMode->GameSession)
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[Salas] %s no se ha ido solo: lo saca el servidor."), *TargetName);
+			GameMode->GameSession->KickPlayer(Stayed, NSLOCTEXT("TNRooms", "KickReason", "El anfitrión te ha expulsado de la sala."));
+		}
+	}), MPGameInstance_KickGraceSeconds, false);
+
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] Expulsado %s (id %s)."), *TargetName, TargetId.IsValid() ? *TargetId.ToString() : TEXT("sin id"));
+	UpdateStatus(FString::Printf(TEXT("%s ha sido expulsado de la sala."), *TargetName));
+	return true;
+}
+
+void UMP_GameInstance::HandleKickedFromRoom(int32 RoomNameId)
+{
+	if (bKickedFromRoom)
+	{
+		return;
+	}
+	bKickedFromRoom = true;
+	bPendingAutoRejoin = false;
+	PendingMenuNotice.Text = FText::Format(NSLOCTEXT("TNRooms", "KickedNotice", "El anfitrión te ha expulsado de la sala «{0}»."), TNRoomNames::Get(RoomNameId));
+	PendingMenuNotice.bError = true;
+	PendingMenuNotice.bOpenJoin = false;
+	UpdateStatus(PendingMenuNotice.Text.ToString());
+	HandleReturnToMenu();
+}
+
+bool UMP_GameInstance::CanInviteFriends() const
+{
+	IOnlineSubsystem* OSS = MPGameInstance_GetPreferredOnlineSubsystem();
+	if (!OSS || OSS->GetSubsystemName() == FName(TEXT("NULL")))
+	{
+		return false;
+	}
+	const IOnlineSessionPtr Sessions = OSS->GetSessionInterface();
+	return Sessions.IsValid() && Sessions->GetNamedSession(NAME_GameSession) && OSS->GetExternalUIInterface().IsValid();
+}
+
+FTNMenuNotice UMP_GameInstance::ConsumeMenuNotice()
+{
+	FTNMenuNotice Notice = PendingMenuNotice;
+	PendingMenuNotice = FTNMenuNotice();
+	return Notice;
+}
+
+void UMP_GameInstance::RoomTick()
+{
+	// Búsqueda que no contesta (Steam sin conexión, o el NULL con otra en marcha): se da por fallida.
+	if (RoomSearchPurpose != ETNRoomSearch::None && FPlatformTime::Seconds() - RoomSearchStartTime > MPGameInstance_RoomSearchTimeout)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Salas] La búsqueda de salas no contesta: se da por fallida."));
+		IOnlineSessionPtr Sessions = GetSessionInterface();
+		if (Sessions.IsValid())
+		{
+			Sessions->ClearOnFindSessionsCompleteDelegates(this);
+			Sessions->CancelFindSessions();
+		}
+		OnFindSessionsComplete(false);
+	}
+
+	// Anfitrión de una partida en red: la sala replicada y su anuncio, al día.
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() != NM_ListenServer || World->bIsTearingDown)
+	{
+		return;
+	}
+	EnsureActiveRoom();
+	ActiveRoom.Mode = SelectedProcMode;
+	EnsureRoomInfo(World);
+	const int32 Players = CountRoomPlayers(World);
+	if (Players != AdvertisedPlayers || static_cast<int32>(SelectedProcMode) != AdvertisedMode || (ActiveRoom.bLocked ? 1 : 0) != AdvertisedLocked)
+	{
+		UpdateRoomAdvertisement();
+	}
+}
+
+void UMP_GameInstance::HandleGameModePreLogin(AGameModeBase* GameMode, const FUniqueNetIdRepl& NewPlayer, FString& ErrorMessage)
+{
+	// Los eventos son de todo el proceso (en el editor hay una GameInstance por ventana): solo el servidor de esta.
+	if (!GameMode || GameMode->GetGameInstance() != this || !ErrorMessage.IsEmpty())
+	{
+		return;
+	}
+	EnsureActiveRoom();
+	const FString Id = NewPlayer.IsValid() ? NewPlayer.ToString() : FString();
+	const bool bMember = !Id.IsEmpty() && RoomMemberIds.Contains(Id);
+	const int32 Inside = GameMode->GetNumPlayers() + GameMode->GetNumSpectators();
+	if (!Id.IsEmpty() && KickedRoomIds.Contains(Id))
+	{
+		ErrorMessage = TNRoomKeys::RefuseKicked();
+	}
+	else if (ActiveRoom.bLocked && !bMember)
+	{
+		ErrorMessage = TNRoomKeys::RefuseLocked();
+	}
+	// Los miembros que vuelven (conexión caída) no cuentan contra el tope: su tortuga vieja puede seguir contando un rato.
+	else if (!bMember && Inside >= ActiveRoom.MaxPlayers)
+	{
+		ErrorMessage = TNRoomKeys::RefuseFull();
+	}
+	if (!ErrorMessage.IsEmpty())
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Salas] Rechazado al entrar (%s): %s (dentro %d/%d)."), Id.IsEmpty() ? TEXT("sin id") : *Id, *ErrorMessage,
+			Inside, ActiveRoom.MaxPlayers);
+	}
+}
+
+void UMP_GameInstance::HandleGameModePostLogin(AGameModeBase* GameMode, APlayerController* NewPlayer)
+{
+	if (!GameMode || GameMode->GetGameInstance() != this || !NewPlayer || !NewPlayer->PlayerState)
+	{
+		return;
+	}
+	const FUniqueNetIdRepl& Id = NewPlayer->PlayerState->GetUniqueId();
+	if (Id.IsValid())
+	{
+		RoomMemberIds.Add(Id.ToString());
+	}
+	UWorld* World = GameMode->GetWorld();
+	if (World && World->GetNetMode() == NM_ListenServer)
+	{
+		EnsureActiveRoom();
+		EnsureRoomInfo(World);
+	}
+}
+
+void UMP_GameInstance::EnsureActiveRoom()
+{
+	if (bHasActiveRoom)
+	{
+		return;
+	}
+	const TArray<int32> Sizes = GetRoomSizeOptions();
+	ActiveRoom = FTNRoomConfig();
+	ActiveRoom.Mode = SelectedProcMode;
+	ActiveRoom.MaxPlayers = Sizes.Num() > 0 ? Sizes.Last() : TNRoomLimits::Max;
+	ActiveRoom.NameId = TNRoomNames::Random();
+	ActiveRoom.Code = TNRoomCode::Generate();
+	bHasActiveRoom = true;
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] Sala por defecto: «%s», pública, %d plazas, código %s."), *TNRoomNames::GetIn(ActiveRoom.NameId, true),
+		ActiveRoom.MaxPlayers, *ActiveRoom.Code);
+}
+
+ATN_RoomInfo* UMP_GameInstance::EnsureRoomInfo(UWorld* World)
+{
+	if (!World || World->GetNetMode() == NM_Client || World->bIsTearingDown)
+	{
+		return nullptr;
+	}
+	ATN_RoomInfo* Info = RoomInfoActor.Get();
+	if (!IsValid(Info) || Info->GetWorld() != World)
+	{
+		Info = ATN_RoomInfo::Find(World);
+		if (!Info)
+		{
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			Params.ObjectFlags |= RF_Transient;
+			Info = World->SpawnActor<ATN_RoomInfo>(ATN_RoomInfo::StaticClass(), FTransform::Identity, Params);
+		}
+		RoomInfoActor = Info;
+	}
+	if (Info)
+	{
+		const APlayerController* HostPC = GetFirstLocalPlayerController(World);
+		Info->ServerApply(ActiveRoom, HostPC && HostPC->PlayerState ? HostPC->PlayerState->GetPlayerName() : FString());
+	}
+	return Info;
+}
+
+void UMP_GameInstance::UpdateRoomAdvertisement()
+{
+	const int32 Players = CountRoomPlayers(GetWorld());
+	AdvertisedPlayers = Players;
+	AdvertisedMode = static_cast<int32>(SelectedProcMode);
+	AdvertisedLocked = ActiveRoom.bLocked ? 1 : 0;
+
+	IOnlineSessionPtr Sessions = GetSessionInterface();
+	FNamedOnlineSession* Named = Sessions.IsValid() ? Sessions->GetNamedSession(NAME_GameSession) : nullptr;
+	if (!Named || !Named->bHosting)
+	{
+		return;
+	}
+	FOnlineSessionSettings Settings = Named->SessionSettings;
+	ApplyRoomSettings(Settings, Players);
+	Sessions->UpdateSession(NAME_GameSession, Settings, true);
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] Anuncio actualizado: %d/%d, %s, modo %d."), Players, ActiveRoom.MaxPlayers,
+		ActiveRoom.bLocked ? TEXT("cerrada") : TEXT("abierta"), AdvertisedMode);
+}
+
+void UMP_GameInstance::ApplyRoomSettings(FOnlineSessionSettings& Settings, int32 Players) const
+{
+	const EOnlineDataAdvertisementType::Type Advertise = EOnlineDataAdvertisementType::ViaOnlineService;
+	Settings.Set(TNRoomKeys::Keywords(), FString(TNRoomKeys::KeywordsValue()), Advertise);
+	Settings.Set(TNRoomKeys::NameId(), ActiveRoom.NameId, Advertise);
+	Settings.Set(TNRoomKeys::Code(), ActiveRoom.Code, Advertise);
+	Settings.Set(TNRoomKeys::Private(), ActiveRoom.bPrivate ? 1 : 0, Advertise);
+	Settings.Set(TNRoomKeys::Locked(), ActiveRoom.bLocked ? 1 : 0, Advertise);
+	Settings.Set(TNRoomKeys::Mode(), static_cast<int32>(SelectedProcMode), Advertise);
+	Settings.Set(TNRoomKeys::Players(), FMath::Max(1, Players), Advertise);
+}
+
+void UMP_GameInstance::ResetRoomState()
+{
+	bHasActiveRoom = false;
+	ActiveRoom = FTNRoomConfig();
+	RoomMemberIds.Reset();
+	KickedRoomIds.Reset();
+	AdvertisedPlayers = INDEX_NONE;
+	AdvertisedMode = INDEX_NONE;
+	AdvertisedLocked = INDEX_NONE;
+	RoomInfoActor.Reset();
+	bKickedFromRoom = false;
+	PendingJoinRoomName = FText::GetEmpty();
+}
+
+int32 UMP_GameInstance::CountRoomPlayers(const UWorld* World)
+{
+	const AGameStateBase* State = World ? World->GetGameState() : nullptr;
+	if (!State)
+	{
+		return 1;
+	}
+	int32 Count = 0;
+	for (const APlayerState* PS : State->PlayerArray)
+	{
+		if (PS && !PS->IsABot() && !PS->IsInactive())
+		{
+			++Count;
+		}
+	}
+	return FMath::Max(1, Count);
+}
+
+bool UMP_GameInstance::IsMenuWorld(const UWorld* World) const
+{
+	return World && UWorld::RemovePIEPrefix(World->GetMapName()) == FPackageName::GetShortName(MenuMapPath);
+}
+
+void UMP_GameInstance::HandleRoomRefused(const FString& Reason)
+{
+	const FText Message = TNRoomText::RefusedMessage(Reason);
+	UE_LOG(LogTortunabo, Warning, TEXT("[Salas] El servidor no nos deja entrar: %s"), *Reason);
+	bPendingAutoRejoin = false;
+	GetTimerManager().ClearTimer(AutoRejoinTimerHandle);
+	HideLoadingScreen();
+	DestroyCurrentSession();
+	UpdateStatus(Message.ToString());
+	// El motor vuelve a cargar el menú tras un fallo al conectar: el aviso lo enseña el menú nuevo, en «Unirse».
+	PendingMenuNotice.Text = Message;
+	PendingMenuNotice.bError = true;
+	PendingMenuNotice.bOpenJoin = true;
+	UWorld* World = GetWorld();
+	if (World && !IsMenuWorld(World))
+	{
+		if (APlayerController* PC = GetFirstLocalPlayerController())
+		{
+			PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
+		}
+	}
+}
+
+void UMP_GameInstance::PostRoomNotice(const FText& Message, bool bError)
+{
+	UpdateStatus(Message.ToString());
+	OnRoomNotice.Broadcast(Message, bError);
 }
 
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

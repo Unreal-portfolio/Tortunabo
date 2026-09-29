@@ -43,6 +43,13 @@ namespace TNFaunaSim
 	constexpr float SleepMargin = 800.f;
 	/** El susto se contagia a los de su especie que estén a menos de esto (cm). */
 	constexpr float GroupAlarmRadius = 900.f;
+	/**
+	 * Escala de los rangos de alarma de las especies: con los de la tabla huían a 6-9 m y, como la tortuga corre, casi
+	 * nadie llegaba a verlos. Así dejan acercarse la mitad antes de salir corriendo (y se paran a mirar antes).
+	 */
+	constexpr float AlarmScale = 0.5f;
+	/** Escala de la velocidad de huida: se les ve correr en vez de desaparecer de golpe. */
+	constexpr float FleeScale = 0.75f;
 	/** Nunca reaparece más cerca de una cámara (cm). */
 	constexpr float RespawnNear = 3000.f;
 	/** Los dormidos que quedan este trecho de camino (cm) por detrás de la cámara se reciclan por delante. */
@@ -329,10 +336,12 @@ void ATN_ProcFauna::BuildFauna()
 			FVector Best = FVector::ZeroVector;
 			for (int32 t = 0; t < Tries; ++t)
 			{
-				// En el propio camino (unos pocos) o a un lado, entre su borde y ~40 m fuera (60 m las de agua).
-				const bool bOnPath = !bWet && Rng.Chance(Sp.OnPath);
+				// En el propio camino (bastantes) o a un lado: la mayoría a menos de 9 m de su borde, para que se crucen con
+				// las tortugas; el resto, hasta 25 m (60 m las de agua).
+				const bool bOnPath = !bWet && Rng.Chance(FMath::Min(0.6f, Sp.OnPath * 1.6f));
+				const double Near = Rng.Chance(0.65) ? Rng.Range(60.0, 900.0) : Rng.Range(900.0, bWet ? 6000.0 : 2500.0);
 				const double Lateral = bOnPath ? Rng.Range(-0.4, 0.4) * An.Width
-					: (Rng.Chance(0.5) ? 1.0 : -1.0) * (An.Width * 0.5 + Rng.Range(150.0, bWet ? 6000.0 : 4000.0));
+					: (Rng.Chance(0.5) ? 1.0 : -1.0) * (An.Width * 0.5 + Near);
 				const FVector2D MapP = An.P + An.Dir * Rng.Range(-250.0, 250.0) + Across * Lateral;
 				if (Keep.Blocked(MapP)) { continue; }
 				const FVector WorldP = GenXf.TransformPosition(FVector(MapP.X, MapP.Y, 0.0));
@@ -844,7 +853,7 @@ void ATN_ProcFauna::SimCalm(FTNFaunaAnimal& A, FTNFaunaKind& K, float Dt, bool b
 	using namespace TNFauna;
 	const FTNFaunaSpec& Sp = TNFaunaSpec(static_cast<ETNFaunaSpecies>(A.Species));
 	// Un jugador dentro de su rango: huye.
-	if (bThreat && ThreatSq < FMath::Square(Sp.AlarmRange))
+	if (bThreat && ThreatSq < FMath::Square(Sp.AlarmRange * TNFaunaSim::AlarmScale))
 	{
 		StartFlee(A, K, ThreatLoc, true);
 		return;
@@ -863,7 +872,7 @@ void ATN_ProcFauna::SimCalm(FTNFaunaAnimal& A, FTNFaunaKind& K, float Dt, bool b
 		return;
 	}
 	// Algo se acerca: se para, lo mira y adopta su pose de alerta.
-	const bool bWary = bThreat && ThreatSq < FMath::Square(Sp.AlarmRange * 1.8f);
+	const bool bWary = bThreat && ThreatSq < FMath::Square(Sp.AlarmRange * TNFaunaSim::AlarmScale * 1.8f);
 	if (bWary && A.State != static_cast<uint8>(ETNFaunaState::Alert))
 	{
 		A.State = static_cast<uint8>(ETNFaunaState::Alert);
@@ -1018,7 +1027,7 @@ void ATN_ProcFauna::SimFlee(FTNFaunaAnimal& A, float Dt, bool bThreat, const FVe
 				}
 			}
 			const bool bRunUp = Phase == ETNFaunaPhase::Dash && UsedFlee == ETNFaunaFlee::Fly;
-			A.Speed = FMath::FInterpTo(A.Speed, Sp.FleeSpeed * (bRunUp ? 0.45f : 1.f), Dt, 6.f);
+			A.Speed = FMath::FInterpTo(A.Speed, Sp.FleeSpeed * TNFaunaSim::FleeScale * (bRunUp ? 0.45f : 1.f), Dt, 6.f);
 			if (!StepGround(A, A.FleeDir, A.Speed, Dt, Phase == ETNFaunaPhase::Climb, Phase == ETNFaunaPhase::ToWater))
 			{
 				A.Timer = 0.f;
@@ -1074,7 +1083,7 @@ void ATN_ProcFauna::SimFlee(FTNFaunaAnimal& A, float Dt, bool bThreat, const FVe
 			{
 				// A salvo en lo alto (o bien lejos y arriba): se queda mirando y el mono se burla dando saltitos.
 				const float Climbed = static_cast<float>(A.Pos.Z) - A.StartZ;
-				const bool bFar = ThreatDistSq > FMath::Square(Sp.AlarmRange * 1.6f);
+				const bool bFar = ThreatDistSq > FMath::Square(Sp.AlarmRange * TNFaunaSim::AlarmScale * 1.6f);
 				if ((Climbed > 450.f && FMath::Abs(A.Pitch) < 25.f) || (Climbed > 250.f && bFar && A.StateT > 1.2f))
 				{
 					A.Home = A.Pos;
@@ -1140,7 +1149,7 @@ void ATN_ProcFauna::SimFlee(FTNFaunaAnimal& A, float Dt, bool bThreat, const FVe
 			// Se aleja subiendo hasta ~22 m sobre donde estaba y sigue recto; lejos de la cámara se desvanece.
 			A.Timer += Dt;
 			const bool bClimbing = A.Pos.Z < A.StartZ + 2200.f;
-			const FVector Desired(A.FleeDir * Sp.FleeSpeed, bClimbing ? Sp.FleeSpeed * 0.45f : 0.f);
+			const FVector Desired(A.FleeDir * (Sp.FleeSpeed * TNFaunaSim::FleeScale), bClimbing ? Sp.FleeSpeed * TNFaunaSim::FleeScale * 0.45f : 0.f);
 			A.Vel = FMath::VInterpTo(A.Vel, Desired, Dt, 2.5f);
 			A.Pos += A.Vel * Dt;
 			const float Floor = GroundAt(A.Pos) + 150.f;
@@ -1183,7 +1192,7 @@ void ATN_ProcFauna::SimHidden(FTNFaunaAnimal& A, FTNFaunaKind& K, float Dt)
 	{
 		FVector ThreatLoc = FVector::ZeroVector;
 		float ThreatSq = TNumericLimits<float>::Max();
-		if (!NearestThreat(A.Pos, ThreatLoc, ThreatSq) || ThreatSq > FMath::Square(Sp.AlarmRange * 1.6f))
+		if (!NearestThreat(A.Pos, ThreatLoc, ThreatSq) || ThreatSq > FMath::Square(Sp.AlarmRange * TNFaunaSim::AlarmScale * 1.6f))
 		{
 			A.Pos.Z = GroundAt(A.Pos);
 			A.Home = A.Pos;
@@ -1284,7 +1293,7 @@ void ATN_ProcFauna::SimFish(FTNFaunaAnimal& A, float Dt, bool bThreat, float Thr
 	A.State = static_cast<uint8>(ETNFaunaState::Idle);
 	A.Presence = 0.f;
 	A.Timer -= Dt;
-	if (bThreat && ThreatSq < FMath::Square(Sp.AlarmRange))
+	if (bThreat && ThreatSq < FMath::Square(Sp.AlarmRange * TNFaunaSim::AlarmScale))
 	{
 		A.Timer = FMath::Max(A.Timer, 2.f);
 		return;
@@ -1526,7 +1535,7 @@ bool ATN_ProcFauna::Respawn(FTNFaunaAnimal& A, FTNFaunaKind& K, bool bFarOnly)
 		if (bFarOnly ? ViewSq < FMath::Square(WakeRadius + 600.f) : ViewSq < FMath::Square(TNFaunaSim::RespawnNear)) { continue; }
 		FVector ThreatLoc = FVector::ZeroVector;
 		float ThreatSq = TNumericLimits<float>::Max();
-		if (NearestThreat(Spot.Pos, ThreatLoc, ThreatSq) && ThreatSq < FMath::Square(Sp.AlarmRange * 2.f)) { continue; }
+		if (NearestThreat(Spot.Pos, ThreatLoc, ThreatSq) && ThreatSq < FMath::Square(Sp.AlarmRange * TNFaunaSim::AlarmScale * 2.f)) { continue; }
 		if (!bFarOnly && !bShowsUp && ViewSq < FMath::Square(WakeRadius))
 		{
 			bool bInView = false;

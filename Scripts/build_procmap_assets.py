@@ -3,8 +3,14 @@
 Se ejecuta DENTRO del editor de Unreal, con el C++ ya compilado:
     exec(open(r"<repo>/Scripts/build_procmap_assets.py", encoding="utf-8").read())
 
+Solo un material, sin cambiar de nivel (p. ej. el del terreno):
+    PROCMAP_SKIP_MAIN = True
+    exec(open(r"<repo>/Scripts/build_procmap_assets.py", encoding="utf-8").read())
+    build_terrain_material(rebuild=True)
+
 Crea en /Game/ProcMap:
-  - Materiales greybox: M_ProcTerrain (color de vértice), M_ProcFlat (+ MI de roca,
+  - Materiales greybox: M_ProcTerrain (color de vértice con relieve por normales en todo el suelo y
+    textura procedural en los caminos, sin texturas), M_ProcFlat (+ MI de roca,
     madera, lava y tobogán), M_ProcWater (translúcido, + MI del mar) y M_ProcFoliage
     (color de vértice, para la vegetación procedural instanciada).
   - M_ProcWaterAnim: agua animada (dos capas de ondas que se desplazan, color por
@@ -21,7 +27,8 @@ queda abierto al terminar: basta con darle a Play.
 Guarda antes lo que tengas abierto: el script cambia de nivel dos veces.
 
 Idempotente: lo que ya existe se reutiliza sin tocarlo (para no pisar ajustes hechos a
-mano). Para regenerar un asset, bórralo y vuelve a ejecutar el script.
+mano); solo M_ProcFoliage (sin viento) y M_ProcTerrain (sin normal) rehacen su grafo si
+son de una versión anterior. Para regenerar un asset, bórralo y vuelve a ejecutar el script.
 """
 
 import unreal
@@ -73,18 +80,253 @@ def save(asset):
 
 # ── Materiales ────────────────────────────────────────────────────────────────
 
-def build_terrain_material():
+TERRAIN_DETAIL_HLSL = r"""
+// Detalle procedural del terreno del mapa por módulos, sin texturas: relieve por normales en todo el suelo y textura
+// en los caminos (manchas secas y húmedas, grano, guijarros con su sombra y marcas del viento). Trabaja en metros de
+// mundo (XY), así que no depende de las UV ni de las tangentes de la malla; la normal sale en espacio de mundo.
+// Entradas: VC (color de vértice), PathMask (alfa del vértice: 1 en el suelo del camino), WorldPos (cm), VertexN,
+// PixDepth (cm), SunDir (hacia el sol), IsTerrain (dato de primitiva 0: 1 en las teselas del terreno), PathDetail,
+// Relief y DetailDistance (cm).
+struct FTNGround
+{
+	// Cuatro valores 0..1 de una celda entera (hash de enteros: estable a cualquier distancia del origen).
+	float4 TNHash4(float2 Cell)
+	{
+		uint2 Q = uint2(int2(Cell));
+		uint4 M = (Q.x * 0x8DA6B343u + Q.y * 0xD8163841u + 0x9E3779B9u) * uint4(0x27D4EB2Du, 0x165667B1u, 0x85EBCA6Bu, 0xC2B2AE35u);
+		M ^= M >> 15u;
+		M *= 0x2C1B3C6Du;
+		M ^= M >> 12u;
+		M *= 0x297A2D39u;
+		M ^= M >> 15u;
+		return float4(M >> 8u) * (1.0 / 16777216.0);
+	}
+	// Ruido de valor (0..1) con sus derivadas analíticas en unidades de celda: (valor, d/dx, d/dy). Las cuatro esquinas
+	// salen de un hash de enteros (estable a cualquier distancia del origen) calculado de una vez.
+	float3 TNNoise(float2 X)
+	{
+		float2 I = floor(X);
+		float2 F = X - I;
+		float2 U = F * F * (3.0 - 2.0 * F);
+		float2 DU = 6.0 * F * (1.0 - F);
+		uint2 Q = uint2(int2(I));
+		uint4 H = (Q.x * 0x8DA6B343u + Q.y * 0xD8163841u) + uint4(0u, 0x8DA6B343u, 0xD8163841u, 0x65BCEB84u);
+		H = (H << 13u) ^ H;
+		H = H * (H * H * 15731u + 789221u) + 1376312589u;
+		float4 V = float4(H >> 8u) * (1.0 / 16777216.0);
+		float K1 = V.y - V.x;
+		float K2 = V.z - V.x;
+		float K4 = V.x - V.y - V.z + V.w;
+		return float3(V.x + K1 * U.x + K2 * U.y + K4 * U.x * U.y, DU * float2(K1 + K4 * U.y, K2 + K4 * U.x));
+	}
+	// 1 mientras el píxel mide en el suelo menos de 0,3 veces el detalle (L, en m) y 0 desde la mitad: nada parpadea lejos.
+	float TNFade(float L, float Foot)
+	{
+		return saturate(2.5 - 5.0 * Foot / L);
+	}
+	// Piedra (o mota): como mucho una por celda de Cell m, elíptica, girada y entera dentro de ella con su sombra.
+	// Sun es el desplazamiento de la sombra arrojada en radios (en planta, lejos del sol). Devuelve (cobertura, tono,
+	// sombra en el suelo, coronilla: 1 en el centro y 0 en el borde) y en Slope la pendiente de su cúpula (0,4 radios).
+	float4 TNPebble(float2 P, float Cell, float Chance, float RMin, float RMax, float Foot, float2 Offset, float2 Sun, out float2 Slope)
+	{
+		Slope = float2(0.0, 0.0);
+		float2 Q = P / Cell + Offset;
+		float2 C = floor(Q);
+		float4 H = TNHash4(C);
+		if (H.w > Chance)
+		{
+			return float4(0.0, 0.0, 0.0, 0.0);
+		}
+		float R = lerp(RMin, RMax, H.z) / Cell;
+		float2 Center = C + 1.6 * R + (1.0 - 3.2 * R) * H.xy;
+		float Sa, Ca;
+		sincos(6.2832 * frac(H.w * 31.7), Sa, Ca);
+		float2 Ax = float2(Ca, Sa);
+		float2 Side = float2(-Sa, Ca);
+		float Squash = 1.15 + 0.4 * frac(H.x * 11.1);
+		float2 Dq = Q - Center;
+		float2 E = float2(dot(Dq, Ax), dot(Dq, Side) * Squash) / R;
+		float Dist = length(E);
+		float Cover = saturate((1.0 - Dist) / max(0.12, 1.5 * Foot / (R * Cell)));
+		Slope = -0.8 * (E.x * Ax + E.y * Squash * Side) * Cover;
+		float2 EOff = float2(dot(Sun, Ax), dot(Sun, Side) * Squash);
+		float Cast = saturate((1.1 - length(E - EOff)) * 3.0);
+		float Contact = 0.45 * saturate((1.3 - Dist) * 3.5);
+		return float4(Cover, frac(H.w * 7.77 + H.z * 3.1), max(Cast, Contact) * (1.0 - Cover), saturate(1.0 - Dist * Dist));
+	}
+};
+FTNGround TN;
+float3 N0 = normalize(VertexN);
+// Lo que mide un píxel en el suelo (m), antes de cualquier rama. En trazado de rayos no hay derivadas (0): detalle entero.
+float Foot = 0.01 * max(length(ddx(WorldPos)), length(ddy(WorldPos)));
+NormalWS = N0;
+Rough = 0.9;
+float3 Col = VC;
+// Las formaciones pintadas que comparten el material (dato de primitiva a 0) quedan con su color de vértice, como antes.
+[branch] if (IsTerrain > 0.5)
+{
+	float2 P = WorldPos.xy * 0.01;
+	float Flat = smoothstep(0.55, 0.92, N0.z);
+
+	// Relieve de todo el suelo: tres octavas giradas (3,2 m, 1,1 m y 0,33 m) de un campo de alturas en planta.
+	const float2x2 R1 = float2x2(0.8776, -0.4794, 0.4794, 0.8776);
+	const float2x2 R2 = float2x2(-0.3233, -0.9463, 0.9463, -0.3233);
+	const float2x2 R3 = float2x2(-0.9422, -0.3350, 0.3350, -0.9422);
+	float3 O1 = TN.TNNoise(mul(R1, P) / 3.2 + float2(13.1, 71.7));
+	float3 O2 = TN.TNNoise(mul(R2, P) / 1.1 + float2(-41.3, 7.9));
+	float3 O3 = TN.TNNoise(mul(R3, P) / 0.33 + float2(5.3, -29.1));
+	float F1 = TN.TNFade(3.2, Foot);
+	float F2 = TN.TNFade(1.1, Foot);
+	float F3 = TN.TNFade(0.33, Foot);
+	float PathM = smoothstep(0.45, 0.9, PathMask);
+	// Más fuerte en los caminos y en lo llano; en las paredes empinadas, un 30 %.
+	float Bump = Relief * lerp(0.3, 1.0, Flat) * (1.0 + 0.4 * PathM);
+	// Pendiente (m/m) en ejes de mundo: la derivada de cada octava vuelve por la traspuesta de su giro.
+	float2 Grad = Bump * (0.16 * F1 * mul(O1.yz, R1) + 0.13 * F2 * mul(O2.yz, R2) + 0.09 * F3 * mul(O3.yz, R3));
+	float V1 = lerp(0.5, O1.x, F1);
+	float V2 = lerp(0.5, O2.x, F2);
+	// Algo más oscuro en los hoyos y más claro en las lomas (unos 4 %), para que el relieve se lea también a la sombra.
+	float Height = 0.55 * V1 + 0.3 * V2 + 0.15 * lerp(0.5, O3.x, F3);
+	Col *= 1.0 + 0.14 * Relief * lerp(0.5, 1.0, Flat) * (Height - 0.5);
+
+	float Amount = PathM * PathDetail;
+	float NearFade = 1.0 - smoothstep(0.45 * max(DetailDistance, 1.0), max(DetailDistance, 1.0), PixDepth);
+	[branch] if (Amount > 0.001)
+	{
+		float Lum = dot(Col, float3(0.2126, 0.7152, 0.0722));
+		// Manchas (las mismas octavas del relieve): tierra seca y polvorienta en las lomas, húmeda y más oscura en los hoyos.
+		float Patch = saturate(0.62 * V1 + 0.38 * V2);
+		Col *= 1.0 + 0.3 * Amount * (Patch - 0.5);
+		float Dust = saturate(smoothstep(0.56, 0.72, Patch) * Amount);
+		float Damp = saturate(smoothstep(0.42, 0.28, Patch) * Amount);
+		Col = lerp(Col, lerp(Col, Lum.xxx, 0.3) * 1.12 + 0.01, 0.75 * Dust);
+		Col = lerp(Col, max(Lum + (Col - Lum) * 1.25, 0.0) * 0.86, 0.5 * Damp);
+		Rough = lerp(Rough, 0.75, Damp);
+
+		// Terrones de 12 cm con algo de relieve y grano de arena o tierra: motas redondas de 1-2,5 cm, claras u oscuras.
+		float FC = TN.TNFade(0.12, Foot) * NearFade * Amount;
+		float3 GB = TN.TNNoise(mul(R2, P) / 0.12 + float2(5.1, -8.4));
+		Col *= 1.0 + 0.14 * FC * (GB.x - 0.5);
+		Grad += 0.14 * FC * mul(GB.yz, R2);
+		float2 SlopeG;
+		float4 Grain = TN.TNPebble(mul(R1, P), 0.045, 0.55, 0.006, 0.013, Foot, float2(17.3, 3.1), float2(0.0, 0.0), SlopeG);
+		float FG = TN.TNFade(0.03, Foot) * NearFade * Amount;
+		Col *= 1.0 + FG * Grain.x * (Grain.y > 0.55 ? 0.28 : -0.24);
+
+		// Guijarros de 11-22 cm y piedrecitas de 4-9 cm del tono del camino, con la coronilla más clara y la sombra
+		// arrojada lejos del sol (así se leen como piedras y no como hoyos) y su sombra de contacto.
+		float2 Sun = -SunDir.xy / max(SunDir.z, 0.3) * 0.4;
+		Sun *= min(1.0, 0.6 / max(length(Sun), 0.001));
+		float2 SlopeA;
+		float2 SlopeB;
+		float4 PA = TN.TNPebble(P, 0.45, 0.22, 0.055, 0.11, Foot, float2(3.7, 1.9), Sun, SlopeA);
+		float4 PB = TN.TNPebble(P, 0.2, 0.2, 0.02, 0.045, Foot, float2(-7.3, 4.4), Sun, SlopeB);
+		float FA = TN.TNFade(0.2, Foot) * saturate(1.6 * NearFade) * Amount;
+		float FB = TN.TNFade(0.08, Foot) * NearFade * Amount;
+		float CA = saturate(PA.x * FA);
+		float CB = saturate(PB.x * FB) * (1.0 - CA);
+		Col *= (1.0 - 0.35 * saturate(PA.z * FA)) * (1.0 - 0.28 * saturate(PB.z * FB));
+		float3 StoneBase = lerp(Col, Lum.xxx, 0.3);
+		float3 Warm = float3(1.06, 1.0, 0.92);
+		float3 Cool = float3(0.95, 0.98, 1.05);
+		float3 StoneA = StoneBase * lerp(0.62, 1.18, PA.y) * lerp(Warm, Cool, frac(PA.y * 5.3)) * lerp(0.8, 1.12, PA.w);
+		float3 StoneB = StoneBase * lerp(0.6, 1.15, PB.y) * lerp(Warm, Cool, frac(PB.y * 3.7)) * lerp(0.82, 1.1, PB.w);
+		Col = lerp(Col, StoneB, CB);
+		Col = lerp(Col, StoneA, CA);
+		Rough = lerp(Rough, 0.66, max(CA, CB));
+		Grad += SlopeA * FA + SlopeB * FB * (1.0 - CA);
+
+		// Marcas del viento: ondas de 28 cm casi paralelas (el viento sopla igual en todo el mapa), onduladas por la
+		// octava de 1,1 m, solo en las zonas secas y fuera de las piedras.
+		float FR = TN.TNFade(0.18, Foot) * NearFade;
+		float Cyc = dot(P, float2(0.8, 0.6)) / 0.28 + 1.3 * O2.x;
+		float Wave = sin(6.2832 * frac(Cyc));
+		float RipM = smoothstep(0.55, 0.7, Patch) * FR * Amount * (1.0 - max(CA, CB));
+		Col *= 1.0 + 0.05 * Wave * RipM;
+		float2 DCyc = float2(0.8, 0.6) / 0.28 + 1.3 * mul(O2.yz, R2) / 1.1;
+		Grad += 0.0035 * 6.2832 * cos(6.2832 * frac(Cyc)) * DCyc * RipM;
+	}
+
+	// Normal perturbada por el gradiente de superficie del campo de alturas (sirve igual en lo llano y en los taludes).
+	float3 G3 = float3(Grad, 0.0);
+	NormalWS = normalize(N0 - (G3 - dot(G3, N0) * N0));
+}
+return max(Col, 0.0);
+"""
+
+
+def build_terrain_material(rebuild=False):
+    """Terreno del mapa procedural (teselas de TN_ProcMapGenerator_Build.cpp) y formaciones pintadas: color de vértice
+    con relieve por normales en todo el suelo y textura procedural en los caminos, todo en un nodo Custom sin texturas
+    (TERRAIN_DETAIL_HLSL). El alfa del vértice es la máscara del camino y el dato de primitiva 0 (parámetro
+    TerrainDetail) vale 1 solo en las teselas, así las formaciones pintadas que comparten el material se ven como antes.
+    La normal va en espacio de mundo (las teselas no tienen tangentes). Parámetros: PathDetail (textura del camino),
+    Relief (relieve) y DetailDistance (cm a los que se apaga el detalle fino). Si el material existe sin normal (el de
+    solo color de vértice) o con rebuild=True, se rehace su grafo en el mismo asset."""
     path = f"{MATERIALS}/M_ProcTerrain"
-    existing = load_or_none(path)
-    if existing:
-        return existing
-    material = asset_tools.create_asset("M_ProcTerrain", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
-    # El terreno lleva el bioma, el camino y la roca en el color de vértice.
-    vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -400, 0)
-    mel.connect_material_property(vertex_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 250)
-    roughness.set_editor_property("r", 0.9)
-    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    material = load_or_none(path)
+    if material and not rebuild and mel.get_material_property_input_node(material, unreal.MaterialProperty.MP_NORMAL):
+        return material
+    if material:
+        mel.delete_all_material_expressions(material)
+    else:
+        material = asset_tools.create_asset("M_ProcTerrain", MATERIALS, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("tangent_space_normal", False)
+
+    def expr(cls, x, y):
+        return mel.create_material_expression(material, cls, x, y)
+
+    def scalar(name, value, x, y):
+        e = expr(unreal.MaterialExpressionScalarParameter, x, y)
+        e.set_editor_property("parameter_name", name)
+        e.set_editor_property("default_value", value)
+        return e
+
+    vertex_color = expr(unreal.MaterialExpressionVertexColor, -900, -250)
+    world = expr(unreal.MaterialExpressionWorldPosition, -900, -50)
+    vertex_normal = expr(unreal.MaterialExpressionVertexNormalWS, -900, 50)
+    depth = expr(unreal.MaterialExpressionPixelDepth, -900, 150)
+    sun = expr(unreal.MaterialExpressionSkyAtmosphereLightDirection, -900, 200)
+    is_terrain = scalar("TerrainDetail", 0.0, -900, 250)
+    is_terrain.set_editor_property("use_custom_primitive_data", True)
+    is_terrain.set_editor_property("primitive_data_index", 0)
+    # (entrada del Custom, nodo, salida del nodo)
+    inputs = [
+        ("VC", vertex_color, ""),
+        ("PathMask", vertex_color, "A"),
+        ("WorldPos", world, ""),
+        ("VertexN", vertex_normal, ""),
+        ("PixDepth", depth, ""),
+        ("SunDir", sun, ""),
+        ("IsTerrain", is_terrain, ""),
+        ("PathDetail", scalar("PathDetail", 1.0, -900, 350), ""),
+        ("Relief", scalar("Relief", 1.0, -900, 450), ""),
+        ("DetailDistance", scalar("DetailDistance", 3500.0, -900, 550), ""),
+    ]
+    custom = expr(unreal.MaterialExpressionCustom, -450, 0)
+    custom.set_editor_property("code", TERRAIN_DETAIL_HLSL)
+    custom.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    custom.set_editor_property("description", "TNTerrainDetail")
+    custom_inputs = []
+    for name, _, _ in inputs:
+        ci = unreal.CustomInput()
+        ci.set_editor_property("input_name", name)
+        custom_inputs.append(ci)
+    custom.set_editor_property("inputs", custom_inputs)
+    custom_outputs = []
+    for name, output_type in (("NormalWS", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
+                              ("Rough", unreal.CustomMaterialOutputType.CMOT_FLOAT1)):
+        co = unreal.CustomOutput()
+        co.set_editor_property("output_name", name)
+        co.set_editor_property("output_type", output_type)
+        custom_outputs.append(co)
+    custom.set_editor_property("additional_outputs", custom_outputs)
+    for name, node, output in inputs:
+        mel.connect_material_expressions(node, output, custom, name)
+
+    mel.connect_material_property(custom, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    mel.connect_material_property(custom, "NormalWS", unreal.MaterialProperty.MP_NORMAL)
+    mel.connect_material_property(custom, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
     mel.recompile_material(material)
     return save(material)
 
@@ -860,4 +1102,7 @@ def main():
                "Modo/dificultad sin lobby: BP_ProcMapGameMode > Mode/Difficulty Without Lobby.")
 
 
-main()
+# Para rehacer solo un material sin cambiar de nivel: PROCMAP_SKIP_MAIN = True antes del exec (se consume en cada
+# ejecución) y después la función, p. ej. build_terrain_material(rebuild=True).
+if not globals().pop("PROCMAP_SKIP_MAIN", False):
+    main()

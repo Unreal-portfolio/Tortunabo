@@ -381,8 +381,8 @@ darles un color u otro al interior del ojo o de una manera u otra».
   - Tramos hundidos en los puentes colosales, con pasos estrechos, saltos, vigas o repisas.
   - Huecos que obliguen al salto y al panzazo.
 - Probar la poza, la fauna y el sonido ambiente en PIE.
-- Crear el nivel `LVL_ProcMap_Terrain`: duplicar `LVL_ProcMap` y poner el GameMode `ATN_TerrainViewGameMode`. Lo hace
-  el usuario en el editor.
+- ~~Crear el nivel `LVL_ProcMap_Terrain`~~: hecho el 27-09-2026 (copia de `LVL_ProcMap` con `ATN_TerrainViewGameMode`
+  y `bTerrainOnly`; sin versionar, como `LVL_ProcMap`).
 
 ### P8. Documentación — **hecho** en esta tanda
 Al cerrar cada tema, actualizar `Docs/Tienda_Probador.md`, `Docs/Animacion_Tortuga.md` y `Docs/Mapa_Procedural.md`, y

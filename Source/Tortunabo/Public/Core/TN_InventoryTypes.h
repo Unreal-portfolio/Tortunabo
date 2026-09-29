@@ -39,6 +39,11 @@ enum class ETN_ItemUseType : uint8
 	/** Tótem: si está en el inventario al morir → auto-revive.
 	 *  Si se usa manualmente → revive a un jugador eliminado. */
 	Totem            UMETA(DisplayName = "Totem"),
+	/**
+	 * Objeto de la carrera de la playa definido solo desde código (TNRaceItems, World/Beach/TN_RaceItems.h): el objeto
+	 * concreto sale del ItemId («Race_Coconut», «Race_PelicanTaxi»...). No tiene fila en DT_Items.
+	 */
+	RaceItem         UMETA(DisplayName = "Race Item"),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

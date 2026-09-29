@@ -1,11 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/SubclassOf.h"
 
 class AActor;
 class AController;
 class AGameModeBase;
 class AGameStateBase;
+class APawn;
 class APlayerController;
 class APlayerStart;
 class UWorld;
@@ -21,6 +23,25 @@ class UWorld;
  *       (difieren en logging entre Run y HQ).
  */
 AActor* TN_PickUnoccupiedPlayerStart(UWorld* World, TArray<AActor*>& PlayerStarts, AController* Player);
+
+/**
+ * @brief Como TN_PickUnoccupiedPlayerStart, pero si todos los PlayerStart están ocupados (partidas de más jugadores que
+ *        PlayerStart tiene el mapa: hasta 8) crea uno nuevo junto a los del mapa en vez de apilar al jugador encima.
+ * @details Los sitios nuevos salen de desplazar un PlayerStart existente a los lados o hacia atrás, en pasos de 2,2 m
+ *          (o de ~1,1 m si no cabe así), en el orden en que menos se alejan. Cada uno se comprueba: hay suelo firme
+ *          y casi a la misma cota que el de origen, cabe la cápsula del peón, un barrido desde el origen no choca con
+ *          nada y no queda encima de otro peón. Entre los sitios posibles de la misma distancia se elige el más
+ *          despejado. Los PlayerStart del mapa se usan igual que antes: solo se crea uno nuevo cuando no queda ninguno
+ *          libre. Los nuevos son actores de servidor, copian la etiqueta y la orientación del PlayerStart de origen, se
+ *          añaden a PlayerStarts y se reutilizan en llamadas siguientes (el jugador que se va deja libre el suyo).
+ * @param World Mundo donde iterar los peones actuales y hacer las comprobaciones.
+ * @param PlayerStarts Pool de candidatos; se baraja in-place y, si se crea un sitio nuevo, se le añade.
+ * @param Player Controller que va a poseer el spawn: su peón, si tiene, no cuenta como ocupante.
+ * @param PawnClass Clase del peón que va a aparecer (su cápsula manda en las comprobaciones); nula = una tortuga normal.
+ * @param LogTag Prefijo de log ("Run" / "Lobby").
+ * @return Un PlayerStart libre (del pool o nuevo), o nullptr si no hay sitio ni se pudo crear uno: el llamador usa su respaldo.
+ */
+AActor* TN_PickSpreadPlayerStart(UWorld* World, TArray<AActor*>& PlayerStarts, AController* Player, TSubclassOf<APawn> PawnClass, const TCHAR* LogTag);
 
 /**
  * @brief Garantiza que el jugador tenga un pawn vivo: RestartPlayer, y si sigue sin pawn,

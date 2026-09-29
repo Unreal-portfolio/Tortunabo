@@ -10,6 +10,7 @@ class UAudioComponent;
 class USoundClass;
 class ATN_ProcMapGenerator;
 class ATN_PathStorm;
+class ATN_BeachStorm;
 class APlayerController;
 
 /** Un sonido del DataAsset que suena en lugar de la parte de una capa sintetizada que aporta un bioma. */
@@ -39,7 +40,8 @@ struct FTNAmbienceOverrideVoice
  *   - Agua: terreno bajo el nivel del mar en tres anillos (15, 40 y 80 m) y la costa norte (mar abierto: rompientes
  *     grandes); cerca del río, agua corriente.
  *   - Altura: sobre el mar y sobre el suelo (cimas, puentes y acantilados: más viento, más ráfaga y silbido).
- *   - Tormenta del camino: dentro, mucho más viento, truenos y casi sin fauna; al acercarse el frente, algo de eso.
+ *   - Tormenta del camino: dentro, mucho más viento, truenos y casi sin fauna; al acercarse el frente, algo de eso. La
+ *     tormenta de bañistas de la playa (ATN_BeachStorm, sin generador) suena igual: es su único ruido continuo.
  *   - Cierre: con techo encima (cueva, torre) o bajo el agua, paso bajo general y menos fauna.
  *   - Noche (NightAmount): menos aves y cigarras, más grillos y ranas.
  * Sin generador (lobby, mapa clásico) suena un ambiente genérico suave (bPlayWithoutGenerator). En servidor dedicado y
@@ -136,6 +138,8 @@ private:
 
 	TWeakObjectPtr<ATN_ProcMapGenerator> Generator;
 	TWeakObjectPtr<ATN_PathStorm> Storm;
+	/** La tormenta de bañistas de la carrera en la playa (sin generador): mismo viento, silbido y truenos que la del camino. */
+	TWeakObjectPtr<ATN_BeachStorm> BeachStorm;
 	float LookupTimer = 0.f;
 
 	// Último estado (depuración).

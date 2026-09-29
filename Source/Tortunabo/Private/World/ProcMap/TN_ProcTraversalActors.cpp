@@ -16,7 +16,8 @@
 #include "TN_ProcMapAmbientFX.h"
 #include "Audio/TN_AmbientSynthComponent.h"
 
-namespace
+// Con nombre (no anónimo) para que su using no se filtre al resto del bloque unity.
+namespace TNGeyserDetail
 {
 	using namespace TNProcMesh;
 
@@ -189,6 +190,7 @@ ATN_ProcGeyser::ATN_ProcGeyser()
 
 void ATN_ProcGeyser::BeginPlay()
 {
+	using namespace TNGeyserDetail;
 	Super::BeginPlay();
 	Trigger->OnComponentBeginOverlap.AddDynamic(this, &ATN_ProcGeyser::OnTriggerOverlap);
 	PulseTime = FMath::FRand() * 3.f;
@@ -339,6 +341,7 @@ void ATN_ProcGeyser::BeginPlay()
 
 void ATN_ProcGeyser::Tick(float DeltaTime)
 {
+	using namespace TNGeyserDetail;
 	Super::Tick(DeltaTime);
 
 	// Chorro (solo visual, local): sube de golpe hasta JetHigh, se sostiene temblando, baja y queda borboteando a

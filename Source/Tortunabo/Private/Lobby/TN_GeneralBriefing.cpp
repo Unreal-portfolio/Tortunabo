@@ -1,22 +1,29 @@
 #include "Lobby/TN_GeneralBriefing.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
+#include "Lobby/TN_LobbyMission.h"
+#include "Lobby/TN_NpcAnimInstance.h"
+#include "Multiplayer/MP_GameInstance.h"
 #include "Player/MP_GamePlayerController.h"
+#include "Settings/TN_LanguageSettings.h"
 #include "Animation/AnimationAsset.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/Scene.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInterface.h"
+#include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
 
@@ -37,11 +44,24 @@ namespace TNGeneralDetail
 	/** Maqueta: el lobby (±2500 cm) a escala 1:45 sobre la mesa; la salida del castillo mira al general. */
 	constexpr double ModelScale = 0.022;
 	constexpr double ModelBase = TableTop + 0.8;
-	/** Cartel detrás del general. */
-	constexpr double SignX = -48.0;
-	constexpr double SignZ = 300.0;
-	constexpr double SignHalfW = 130.0;
+	/**
+	 * Cartel clavado en el frontón de la tienda militar, sobre la entrada (el poste de delante pasa por detrás): bajo y
+	 * estrecho para quedar entero dentro del triángulo del frontón (sin asomar por encima del tejado).
+	 */
+	constexpr double SignX = 290.0;
+	constexpr double SignZ = 295.0;
+	constexpr double SignHalfW = 122.0;
 	constexpr double SignHalfH = 24.0;
+	/**
+	 * Pizarra de la orden del día (la misión de la próxima partida) en un caballete junto a la mesa, dentro de la tienda
+	 * y mirando a los reclutas (+X): centro, medio ancho y medio alto de la pizarra y tamaño de la tiza.
+	 */
+	constexpr double BoardX = 238.0;
+	constexpr double BoardY = -215.0;
+	constexpr double BoardZ = 150.0;
+	constexpr double BoardHalfW = 68.0;
+	constexpr double BoardHalfH = 40.0;
+	constexpr float BoardChalkSize = 13.f;
 
 	/** Punto del lobby (cm, x a la izquierda de la salida e y hacia la salida) sobre la maqueta, a altura Z sobre su base. */
 	FVector ModelPoint(double LobbyX, double LobbyY, double Z)
@@ -114,6 +134,8 @@ ATN_GeneralBriefing::ATN_GeneralBriefing()
 		Mesh->SetStaticMesh(Cylinder.Object);
 		Mesh->SetRelativeLocation(FVector(TableX + TableHalfDepth + 60.0, 0.0, 60.0));
 		Mesh->SetRelativeScale3D(FVector(2.4f, 2.4f, 1.2f));
+		// Tampoco se ve en el editor: el nivel se enseña tal cual se juega.
+		Mesh->SetVisibility(false);
 		Mesh->SetHiddenInGame(true);
 	}
 	if (PromptWidgetComponent)
@@ -163,6 +185,27 @@ ATN_GeneralBriefing::ATN_GeneralBriefing()
 	Sign->SetTextRenderColor(FColor(255, 214, 90));
 	Sign->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	// La orden del día escrita con tiza en la pizarra del caballete (la pizarra es parte de la malla de la mesa).
+	MissionBoard = CreateDefaultSubobject<UTextRenderComponent>(TEXT("MissionBoard"));
+	MissionBoard->SetupAttachment(SceneRoot);
+	MissionBoard->SetRelativeLocation(FVector(BoardX + 3.6, BoardY, BoardZ));
+	MissionBoard->SetHorizontalAlignment(EHTA_Center);
+	MissionBoard->SetVerticalAlignment(EVRTA_TextCenter);
+	MissionBoard->SetWorldSize(BoardChalkSize);
+	MissionBoard->SetTextRenderColor(FColor(242, 240, 226));
+	MissionBoard->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Luz cálida del farol de dentro de la tienda: se ve bien al general y la mesa. Con sombras y alcance corto, la lona la
+	// tapa y no se sale por las paredes ni alumbra la muralla de detrás (solo asoma por la entrada).
+	TentLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("TentLight"));
+	TentLight->SetupAttachment(SceneRoot);
+	TentLight->SetRelativeLocation(FVector(TableX - 40.0, 0.0, 285.0));
+	TentLight->SetIntensityUnits(ELightUnits::Lumens);
+	TentLight->SetIntensity(2000.f);
+	TentLight->SetAttenuationRadius(430.f);
+	TentLight->SetLightColor(FLinearColor(1.f, 0.78f, 0.5f));
+	TentLight->SetCastShadows(true);
+
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> Idle(TEXT("/Game/Animations/Character/TortugaDemo/Anim/Old_Man_Idle.Old_Man_Idle"));
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> Salute(TEXT("/Game/Animations/Character/TortugaDemo/Anim/Salute.Salute"));
 	IdleAnim = Idle.Succeeded() ? Idle.Object : nullptr;
@@ -173,11 +216,126 @@ void ATN_GeneralBriefing::BeginPlay()
 {
 	Super::BeginPlay();
 	General->SetRelativeScale3D(FVector(GeneralScale));
-	Sign->SetText(FText::FromString(HeadquartersName.ToString().ToUpper()));
-	if (IdleAnim) { General->PlayAnimation(IdleAnim, true); }
+	FitSignText();
+	// Espera en bucle con el saludo militar fundido encima (sin cortes al empezar y acabar el gesto).
+	UTN_NpcAnimInstance::SetupOn(General, IdleAnim);
 	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
 	BuildTable();
 	HideBlockout();
+	// La misión del anfitrión (sobrevive a los viajes en su GameInstance); en los clientes llega replicada.
+	if (HasAuthority())
+	{
+		SyncMissionFromGameInstance();
+	}
+	RefreshMissionBoard();
+	LanguageHandle = TNLanguage::OnApplied().AddUObject(this, &ATN_GeneralBriefing::HandleLanguageApplied);
+}
+
+void ATN_GeneralBriefing::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	TNLanguage::OnApplied().Remove(LanguageHandle);
+	LanguageHandle.Reset();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_GeneralBriefing::HandleLanguageApplied()
+{
+	FitSignText();
+	RefreshMissionBoard();
+}
+
+void ATN_GeneralBriefing::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATN_GeneralBriefing, MissionMode);
+	DOREPLIFETIME(ATN_GeneralBriefing, MissionDifficulty);
+}
+
+void ATN_GeneralBriefing::SyncMissionFromGameInstance()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	if (!GI || (MissionMode == GI->SelectedProcMode && MissionDifficulty == GI->SelectedProcDifficulty))
+	{
+		return;
+	}
+	MissionMode = GI->SelectedProcMode;
+	MissionDifficulty = GI->SelectedProcDifficulty;
+	// En el servidor el RepNotify no salta solo; a los demás, cuanto antes.
+	OnRep_Mission();
+	ForceNetUpdate();
+}
+
+void ATN_GeneralBriefing::OnRep_Mission()
+{
+	RefreshMissionBoard();
+}
+
+void ATN_GeneralBriefing::RefreshMissionBoard()
+{
+	using namespace TNGeneralDetail;
+	if (!MissionBoard)
+	{
+		return;
+	}
+	MissionBoard->SetText(FText::Format(NSLOCTEXT("Tortunabo", "GeneralMissionBoard", "ORDEN DEL DÍA<br>MISIÓN: {0}<br>DIFICULTAD: {1}"),
+		TNLobbyMission::ModeName(MissionMode).ToUpper(), TNLobbyMission::DifficultyName(MissionDifficulty).ToUpper()));
+	// Siempre dentro de la pizarra, con un margen de tiza alrededor.
+	MissionBoard->SetWorldSize(BoardChalkSize);
+	const FVector TextSize = MissionBoard->GetTextLocalSize();
+	const double MaxWidth = 2.0 * BoardHalfW - 16.0;
+	const double MaxHeight = 2.0 * BoardHalfH - 12.0;
+	double Fit = 1.0;
+	if (TextSize.Y > MaxWidth) { Fit = FMath::Min(Fit, MaxWidth / TextSize.Y); }
+	if (TextSize.Z > MaxHeight) { Fit = FMath::Min(Fit, MaxHeight / TextSize.Z); }
+	if (Fit < 1.0)
+	{
+		MissionBoard->SetWorldSize(static_cast<float>(BoardChalkSize * Fit));
+	}
+}
+
+void ATN_GeneralBriefing::FitSignText()
+{
+	using namespace TNGeneralDetail;
+	// El rótulo cabe siempre dentro del cartel (también en el editor): parte del tamaño de siempre y se encoge si el
+	// nombre es largo, con un margen a cada lado.
+	Sign->SetText(HeadquartersName.ToUpper());
+	Sign->SetWorldSize(36.f);
+	const double MaxWidth = 2.0 * SignHalfW - 34.0;
+	const double Width = Sign->GetTextLocalSize().Y;
+	if (Width > MaxWidth)
+	{
+		Sign->SetWorldSize(static_cast<float>(36.0 * MaxWidth / Width));
+	}
+}
+
+void ATN_GeneralBriefing::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	General->SetRelativeScale3D(FVector(GeneralScale));
+	FitSignText();
+	RefreshMissionBoard();
+	UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
+	// En el editor, el general en su espera (no en T).
+	UTN_NpcAnimInstance::PreviewInEditor(General, IdleAnim);
+	BuildTable();
+}
+
+void ATN_GeneralBriefing::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+#if WITH_EDITOR
+	// Al abrir el nivel en el editor, la tienda y la mesa (malla transitoria) llegan vacías: se rehacen.
+	if (!IsTemplate() && GetWorld() && GetWorld()->WorldType == EWorldType::Editor && Table && !Table->GetStaticMesh())
+	{
+		UTN_CosmeticLook::ApplyLook(this, General, GeneralHat, GeneralLook, GeneralDefaults);
+		UTN_NpcAnimInstance::PreviewInEditor(General, IdleAnim);
+		BuildTable();
+	}
+#endif
 }
 
 FVector ATN_GeneralBriefing::GetInteractionPoint() const
@@ -303,16 +461,135 @@ void ATN_GeneralBriefing::BuildTable()
 		B.AddBeam(Mug + FVector(0.0, 8.4, 5.0), Mug + FVector(0.0, 5.6, 2.5), 0.9, Cream);
 	}
 
-	// Cartel detrás del general (tablero azul marino con marco dorado sobre dos postes) y mástil con bandera.
+	// Pizarra de la orden del día en su caballete (la tiza es MissionBoard): marco de madera, pizarra verde oscuro, dos
+	// patas delante a los lados, una detrás y la repisa con dos tizas.
+	{
+		const FLinearColor Slate = Pal(0x2F4538);
+		B.AddBox(FVector(BoardX - 1.0, BoardY, BoardZ), AxisX, FVector(2.5, BoardHalfW + 5.0, BoardHalfH + 5.0), Wood);
+		B.AddBox(FVector(BoardX + 0.5, BoardY, BoardZ), AxisX, FVector(2.5, BoardHalfW, BoardHalfH), Slate);
+		for (const double Side : { -1.0, 1.0 })
+		{
+			const FVector Foot(BoardX + 6.0, BoardY + Side * (BoardHalfW + 12.0), 0.0);
+			const FVector Top(BoardX + 1.0, BoardY + Side * (BoardHalfW + 6.0), BoardZ + BoardHalfH + 10.0);
+			B.AddBeam(Foot, Top, 2.2, WoodDark);
+		}
+		B.AddBeam(FVector(BoardX - 38.0, BoardY, 0.0), FVector(BoardX - 3.0, BoardY, BoardZ + BoardHalfH), 2.2, WoodDark);
+		B.AddBox(FVector(BoardX + 5.0, BoardY, BoardZ - BoardHalfH - 5.0), AxisX, FVector(4.0, BoardHalfW + 2.0, 1.2), WoodDark);
+		B.AddBeam(FVector(BoardX + 5.0, BoardY - 30.0, BoardZ - BoardHalfH - 3.2), FVector(BoardX + 5.0, BoardY - 20.0, BoardZ - BoardHalfH - 3.2), 0.9, Cream);
+		B.AddBeam(FVector(BoardX + 5.0, BoardY + 12.0, BoardZ - BoardHalfH - 3.2), FVector(BoardX + 5.0, BoardY + 19.0, BoardZ - BoardHalfH - 3.2), 0.9, Gold);
+	}
+
+	// ── Tienda militar de lona verde oliva: techo a dos aguas, paredes, frontón con el cartel, faldón enrollado sobre
+	// la entrada, lonas de las esquinas atadas hacia fuera, postes, vientos, sacos terreros y cajas. Abierta por delante
+	// (hacia la mesa), con el general dentro.
+	{
+		constexpr double XB = -175.0, XF = 280.0, HalfW = 320.0, EaveZ = 185.0, RidgeZ = 440.0;
+		const FLinearColor Olive = Pal(0x6E7B3C);
+		const FLinearColor OliveIn = Pal(0x55602D);
+		const FLinearColor PatchDark = Pal(0x56622E);
+		const FLinearColor PatchLight = Pal(0x8A8F4E);
+		const FLinearColor Khaki = Pal(0xC8B98A);
+		const FLinearColor Rope = Pal(0xD8C8A0);
+		auto Canvas = [&B, &Olive, &OliveIn](const FVector& P0, const FVector& P1, const FVector& P2, const FVector& P3, const FVector& Out)
+		{
+			B.AddQuad(P0, P1, P2, P3, Out, Olive);
+			B.AddQuad(P0, P1, P2, P3, -Out, OliveIn);
+		};
+		// Techo, paredes y pared de atrás (con su hastial).
+		for (const double Side : { -1.0, 1.0 })
+		{
+			const FVector RoofOut(0.0, Side * (RidgeZ - EaveZ), HalfW);
+			Canvas(FVector(XB, 0.0, RidgeZ), FVector(XF, 0.0, RidgeZ), FVector(XF, Side * HalfW, EaveZ), FVector(XB, Side * HalfW, EaveZ), RoofOut);
+			Canvas(FVector(XB, Side * HalfW, 0.0), FVector(XF, Side * HalfW, 0.0), FVector(XF, Side * HalfW, EaveZ), FVector(XB, Side * HalfW, EaveZ), FVector(0.0, Side, 0.0));
+			// Lona de la esquina de delante, recogida y atada hacia fuera.
+			B.AddTri(FVector(XF, Side * HalfW, 0.0), FVector(XF, Side * HalfW, EaveZ), FVector(XF + 55.0, Side * (HalfW + 45.0), EaveZ * 0.35), FVector(1.0, Side, 0.0), Olive);
+			B.AddTri(FVector(XF, Side * HalfW, 0.0), FVector(XF, Side * HalfW, EaveZ), FVector(XF + 55.0, Side * (HalfW + 45.0), EaveZ * 0.35), FVector(-1.0, -Side, 0.0), OliveIn);
+			// Sacos terreros a los lados de la entrada.
+			for (int32 Row = 0; Row < 3; ++Row)
+			{
+				for (int32 Bag = 0; Bag < 3 - Row; ++Bag)
+				{
+					const FVector BagC(XF + 70.0, Side * (HalfW - 20.0 - Bag * 58.0 - Row * 29.0), 12.0 + Row * 22.0);
+					B.AddBox(BagC, FVector(1.0, 0.0, 0.0), FVector(26.0, 27.0, 11.0), (Bag + Row) % 2 ? Khaki : Khaki * 0.9f);
+				}
+			}
+			// Cajas de madera al fondo.
+			B.AddBox(FVector(XB + 55.0, Side * (HalfW - 60.0), 32.0), FVector(1.0, 0.0, 0.0), FVector(34.0, 34.0, 32.0), WoodDark);
+			B.AddBox(FVector(XB + 55.0, Side * (HalfW - 60.0), 66.0), FVector(1.0, 0.0, 0.0), FVector(35.0, 35.0, 3.0), Wood);
+			// Vientos: de las esquinas del alero a estacas en el suelo (los de atrás, cortos: la tienda va pegada a la muralla).
+			for (const double X : { XB, XF })
+			{
+				const FVector Eave(X, Side * HalfW, EaveZ);
+				const FVector Stake(X + (X > 0.0 ? 60.0 : -25.0), Side * (HalfW + 60.0), 0.0);
+				B.AddBeam(Eave, Stake + FVector(0.0, 0.0, 12.0), 1.2, Rope);
+				B.AddBox(Stake + FVector(0.0, 0.0, 8.0), FVector(1.0, 0.0, 0.0), FVector(3.0, 3.0, 9.0), WoodDark);
+			}
+		}
+		Canvas(FVector(XB, -HalfW, 0.0), FVector(XB, HalfW, 0.0), FVector(XB, HalfW, EaveZ), FVector(XB, -HalfW, EaveZ), FVector(-1.0, 0.0, 0.0));
+		B.AddTri(FVector(XB, -HalfW, EaveZ), FVector(XB, HalfW, EaveZ), FVector(XB, 0.0, RidgeZ), FVector(-1.0, 0.0, 0.0), Olive);
+		B.AddTri(FVector(XB, -HalfW, EaveZ), FVector(XB, HalfW, EaveZ), FVector(XB, 0.0, RidgeZ), FVector(1.0, 0.0, 0.0), OliveIn);
+		// Frontón de delante (por encima de la entrada) y el faldón enrollado.
+		constexpr double GableZ = 250.0;
+		const double GableHalf = HalfW * (RidgeZ - GableZ) / (RidgeZ - EaveZ);
+		B.AddTri(FVector(XF, -GableHalf, GableZ), FVector(XF, GableHalf, GableZ), FVector(XF, 0.0, RidgeZ), FVector(1.0, 0.0, 0.0), Olive);
+		B.AddTri(FVector(XF, -GableHalf, GableZ), FVector(XF, GableHalf, GableZ), FVector(XF, 0.0, RidgeZ), FVector(-1.0, 0.0, 0.0), OliveIn);
+		TNProcMesh::TNProcAddCylinder(B, FVector(XF + 6.0, -GableHalf, GableZ - 6.0), FVector(XF + 6.0, GableHalf, GableZ - 6.0), 14.0, 14.0, 10, PatchDark);
+		for (const double Y : { -GableHalf * 0.6, GableHalf * 0.6 })
+		{
+			B.AddBeam(FVector(XF + 4.0, Y, GableZ + 10.0), FVector(XF + 22.0, Y, GableZ - 22.0), 1.4, Rope);
+		}
+		// Manchas de camuflaje en el techo y las paredes (por fuera, un pelo separadas de la lona).
+		for (int32 m = 0; m < 26; ++m)
+		{
+			const double U = FMath::Frac(m * 0.618034 + 0.13), V = FMath::Frac(m * 0.754877 + 0.41);
+			const double Side = (m % 2) ? 1.0 : -1.0;
+			const double X = FMath::Lerp(XB + 30.0, XF - 30.0, U);
+			const double Sz = 26.0 + 16.0 * FMath::Frac(m * 0.31);
+			const FLinearColor PatchC = (m % 3) ? PatchDark : PatchLight;
+			if (m % 4 == 0)
+			{
+				// En la pared: rombo vertical.
+				const double Z = FMath::Lerp(30.0, EaveZ - 30.0, V);
+				const FVector C(X, Side * (HalfW + 1.0), Z);
+				B.AddQuad(C + FVector(-Sz, 0.0, 0.0), C + FVector(0.0, 0.0, -Sz * 0.6), C + FVector(Sz, 0.0, 0.0), C + FVector(0.0, 0.0, Sz * 0.6), FVector(0.0, Side, 0.0), PatchC);
+			}
+			else
+			{
+				// En el techo: rombo sobre el faldón inclinado.
+				const double T = FMath::Lerp(0.12, 0.88, V);
+				const double Y = Side * HalfW * T;
+				const double Z = FMath::Lerp(RidgeZ, EaveZ, T) + 1.2;
+				const FVector C(X, Y, Z);
+				const FVector Down = FVector(0.0, Side * HalfW, EaveZ - RidgeZ).GetSafeNormal();
+				const FVector RoofOut(0.0, Side * (RidgeZ - EaveZ), HalfW);
+				B.AddQuad(C + FVector(-Sz, 0.0, 0.0), C + Down * Sz * 0.6, C + FVector(Sz, 0.0, 0.0), C - Down * Sz * 0.6, RoofOut, PatchC);
+			}
+		}
+		// Postes de delante y de atrás; el de delante sigue hasta la bandera.
+		TNProcMesh::TNProcAddCylinder(B, FVector(XB, 0.0, 0.0), FVector(XB, 0.0, RidgeZ + 15.0), 5.0, 4.5, 8, Wood);
+		TNProcMesh::TNProcAddCylinder(B, FVector(XF, 0.0, 0.0), FVector(XF, 0.0, RidgeZ + 230.0), 5.0, 4.0, 8, Wood);
+		for (const double Side : { -1.0, 1.0 })
+		{
+			B.AddBeam(FVector(XF, 0.0, RidgeZ), FVector(XF + 150.0, Side * 190.0, 12.0), 1.2, Rope);
+			B.AddBeam(FVector(XB, 0.0, RidgeZ), FVector(XB - 25.0, Side * 190.0, 12.0), 1.2, Rope);
+		}
+		// Farol colgado del caballete sobre la mesa (la luz es TentLight).
+		{
+			const FVector LampTop(TableX - 30.0, 0.0, RidgeZ - 6.0);
+			const FLinearColor Iron = Pal(0x3B3F4A);
+			B.AddBeam(LampTop, LampTop - FVector(0.0, 0.0, 92.0), 1.2, Rope);
+			TNProcMesh::TNProcAddCylinder(B, LampTop - FVector(0.0, 0.0, 100.0), LampTop - FVector(0.0, 0.0, 90.0), 13.0, 3.0, 8, Iron);
+			TNProcMesh::TNProcAddCylinder(B, LampTop - FVector(0.0, 0.0, 130.0), LampTop - FVector(0.0, 0.0, 100.0), 11.0, 11.0, 8, Pal(0xFFE27A));
+			TNProcMesh::TNProcAddCylinder(B, LampTop - FVector(0.0, 0.0, 136.0), LampTop - FVector(0.0, 0.0, 130.0), 13.0, 13.0, 8, Iron);
+		}
+	}
+
+	// Cartel clavado en el frontón (tablero azul marino con marco dorado) y bandera en lo alto del poste de delante.
 	B.AddBox(FVector(SignX, 0.0, SignZ), AxisX, FVector(4.0, SignHalfW, SignHalfH), Navy);
 	B.AddBox(FVector(SignX - 1.5, 0.0, SignZ), AxisX, FVector(4.0, SignHalfW + 7.0, SignHalfH + 7.0), Gold);
-	for (const double LegY : { -SignHalfW * 0.7, SignHalfW * 0.7 })
 	{
-		B.AddBeam(FVector(SignX - 2.0, LegY, 0.0), FVector(SignX - 2.0, LegY, SignZ - SignHalfH), 4.5, WoodDark);
-	}
-	{
-		const FVector PoleFoot(-70.0, -170.0, 0.0);
-		const FVector PoleTop = PoleFoot + FVector(0.0, 0.0, 400.0);
+		const FVector PoleFoot(280.0, 0.0, 440.0);
+		const FVector PoleTop = PoleFoot + FVector(0.0, 0.0, 230.0);
 		TNProcMesh::TNProcAddCylinder(B, PoleFoot, PoleTop, 4.0, 3.0, 8, Cream);
 		TNProcMesh::TNProcAddCylinder(B, PoleTop, PoleTop + FVector(0.0, 0.0, 8.0), 6.0, 6.0, 8, Gold);
 		const FVector F0 = PoleTop - FVector(0.0, 0.0, 12.0);
@@ -393,7 +670,7 @@ void ATN_GeneralBriefing::Tick(float DeltaSeconds)
 			TargetYaw = FMath::Clamp(FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X)), -55.f, 55.f);
 			if (Dist < 650.f && SaluteCooldown <= 0.f && SaluteAnim)
 			{
-				General->PlayAnimation(SaluteAnim, false);
+				UTN_NpcAnimInstance::PlayGestureOn(General, SaluteAnim);
 				SaluteTimeLeft = SaluteAnim->GetPlayLength();
 				SaluteCooldown = 14.f;
 			}
@@ -405,6 +682,6 @@ void ATN_GeneralBriefing::Tick(float DeltaSeconds)
 	if (SaluteTimeLeft > 0.f)
 	{
 		SaluteTimeLeft -= DeltaSeconds;
-		if (SaluteTimeLeft <= 0.f && IdleAnim) { General->PlayAnimation(IdleAnim, true); }
+		if (SaluteTimeLeft <= 0.f) { UTN_NpcAnimInstance::ReturnToIdleOn(General, IdleAnim); }
 	}
 }

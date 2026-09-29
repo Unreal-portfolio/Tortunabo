@@ -1,6 +1,7 @@
 #include "Lobby/TN_ProcModeSelector.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_GameModeSpawnUtils.h"
+#include "Lobby/TN_LobbyMission.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "Components/StaticMeshComponent.h"
@@ -67,39 +68,50 @@ void ATN_ProcModeSelector::OnInteracted_Implementation(APawn* Interactor)
 	{
 		return;
 	}
-	UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
 	if (!GI)
 	{
 		return;
 	}
 
+	// La misma lógica que el General Galápago (TNLobbyMission): cambia la GameInstance del anfitrión y lo replica en todo
+	// el lobby, este selector incluido.
 	if (Kind == ETNProcSelectorKind::Mode)
 	{
 		const AGameStateBase* LobbyState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
 		const int32 Players = LobbyState ? TN_CountConnectedCoopPlayers(LobbyState) : 1;
-		const int32 Count = static_cast<int32>(ETNProcGameMode::Count);
-		int32 Next = static_cast<int32>(GI->SelectedProcMode);
-		for (int32 Step = 0; Step < Count; ++Step)
-		{
-			Next = (Next + 1) % Count;
-			// 2vs2 solo se ofrece con exactamente 4 jugadores.
-			if (static_cast<ETNProcGameMode>(Next) != ETNProcGameMode::TwoVsTwo || Players == 4)
-			{
-				break;
-			}
-		}
-		GI->SelectedProcMode = static_cast<ETNProcGameMode>(Next);
-		Selection = static_cast<uint8>(Next);
+		TNLobbyMission::SetMode(this, TNLobbyMission::NextSelectorMode(GI->SelectedProcMode, Players));
 	}
 	else
 	{
 		const int32 Count = static_cast<int32>(ETNProcDifficulty::Count);
 		const int32 Next = (static_cast<int32>(GI->SelectedProcDifficulty) + 1) % Count;
-		GI->SelectedProcDifficulty = static_cast<ETNProcDifficulty>(Next);
-		Selection = static_cast<uint8>(Next);
+		TNLobbyMission::SetDifficulty(this, static_cast<ETNProcDifficulty>(Next));
 	}
 
 	UE_LOG(LogTortunabo, Log, TEXT("[ProcModeSelector] %s → %s"), *GetNameSafe(Interactor), *DescribeSelection().ToString());
+}
+
+void ATN_ProcModeSelector::SyncFromGameInstance()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
+	if (!GI)
+	{
+		return;
+	}
+	const uint8 Wanted = Kind == ETNProcSelectorKind::Mode
+		? static_cast<uint8>(GI->SelectedProcMode)
+		: static_cast<uint8>(GI->SelectedProcDifficulty);
+	if (Wanted == Selection)
+	{
+		return;
+	}
+	Selection = Wanted;
+	// En el servidor el RepNotify no salta solo.
 	OnRep_Selection();
 	ForceNetUpdate();
 }
@@ -124,20 +136,12 @@ void ATN_ProcModeSelector::RefreshLabel()
 
 FText ATN_ProcModeSelector::DescribeSelection() const
 {
+	// Los nombres son los de TNLobbyMission (los mismos del general y del menú).
 	if (Kind == ETNProcSelectorKind::Mode)
 	{
-		switch (static_cast<ETNProcGameMode>(Selection))
-		{
-		case ETNProcGameMode::Coop:     return NSLOCTEXT("Tortunabo", "ProcModeCoop", "MODO: COOP");
-		case ETNProcGameMode::Race:     return NSLOCTEXT("Tortunabo", "ProcModeRace", "MODO: CARRERA");
-		case ETNProcGameMode::TwoVsTwo: return NSLOCTEXT("Tortunabo", "ProcMode2v2", "MODO: 2 VS 2");
-		default:                        return NSLOCTEXT("Tortunabo", "ProcModeClassic", "MODO: CLÁSICO");
-		}
+		return FText::Format(NSLOCTEXT("Tortunabo", "ProcSelectorMode", "MODO: {0}"),
+			TNLobbyMission::ModeName(static_cast<ETNProcGameMode>(Selection)).ToUpper());
 	}
-	switch (static_cast<ETNProcDifficulty>(Selection))
-	{
-	case ETNProcDifficulty::Easy: return NSLOCTEXT("Tortunabo", "ProcDiffEasy", "DIFICULTAD: FÁCIL");
-	case ETNProcDifficulty::Hard: return NSLOCTEXT("Tortunabo", "ProcDiffHard", "DIFICULTAD: DIFÍCIL");
-	default:                      return NSLOCTEXT("Tortunabo", "ProcDiffNormal", "DIFICULTAD: NORMAL");
-	}
+	return FText::Format(NSLOCTEXT("Tortunabo", "ProcSelectorDifficulty", "DIFICULTAD: {0}"),
+		TNLobbyMission::DifficultyName(static_cast<ETNProcDifficulty>(Selection)).ToUpper());
 }

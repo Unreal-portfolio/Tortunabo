@@ -13,6 +13,8 @@ public class Tortunabo : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			// Lista de idiomas editable desde Config/DefaultGame.ini (UTN_LanguageSettings, Docs/Localizacion.md).
+			"DeveloperSettings",
 			"InputCore",
 			// Material físico del caparazón con física propia (UPhysicalMaterial, FPhysicsInterface::UpdateMaterial).
 			"PhysicsCore",
@@ -44,6 +46,9 @@ public class Tortunabo : ModuleRules
 		{
 			PrivateDependencyModuleNames.Add("AssetRegistry");
 		}
+		// FUniqueNetIdWrapper::ToString (ajustes de voz por compañero en el menú de pausa).
+		// ApplicationCore: portapapeles (FPlatformApplicationMisc) para copiar y pegar el código de sala (Docs/Salas.md).
+		PrivateDependencyModuleNames.AddRange(new string[] { "CoreOnline", "ApplicationCore" });
 
 		DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
 	}

@@ -1,0 +1,417 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Components/SynthComponent.h"
+#include "Engine/NetSerialization.h"
+#include "World/TN_InteractableBase.h"
+#include "TN_ProcSearchSpot.generated.h"
+
+class APawn;
+class UDataTable;
+class USphereComponent;
+class UStaticMeshComponent;
+struct FTN_InventoryItem;
+
+namespace TNSearchSynthDSP
+{
+	// Cola de disparos compartida con el generador de audio (Private/World/ProcMap/TN_ProcSearchSpot.cpp).
+	struct FSfxShared;
+}
+
+/** Sonidos sintetizados de rebuscar (el orden es el del motor DSP). */
+UENUM()
+enum class ETNSearchSound : uint8
+{
+	/** Un puñado de arena y piedrecitas removidas (se repite mientras dura la búsqueda). */
+	Rummage,
+	/** ¡Puf! Golpe de aire con un tintineo de premio: ha salido algo. */
+	Puff,
+	/** ¡Pof! Golpe sordo, polvo y un «buuu» bajito: no había nada. */
+	Pof,
+	/** Crujido de madera a tirones: la tapa de un cofre que se entreabre (ATN_TreasureChest). */
+	LidCreak,
+	/** ¡Clonc!: la tapa de un cofre que cae sobre la caja, con el tintineo de los herrajes. */
+	LidThump,
+};
+
+/** Resultado de rebuscar un decorado. */
+UENUM()
+enum class ETNSearchOutcome : uint8
+{
+	None,   ///< Sin buscar todavía.
+	Found,  ///< Había algo: sale un objeto de un saltito.
+	Empty,  ///< No había nada: nube de polvo del bioma.
+};
+
+/** Huella del decorado (cápsula en planta a lo largo del +X del actor) y color del polvo de su bioma. Se replica una vez. */
+USTRUCT()
+struct FTNSearchSpotShape
+{
+	GENERATED_BODY()
+
+	/** Radio de la huella (cm). */
+	UPROPERTY()
+	float Radius = 100.f;
+
+	/** Semilargo del eje de la cápsula (cm; 0 = redonda). */
+	UPROPERTY()
+	float HalfLength = 0.f;
+
+	/** Alto aproximado del decorado (cm). */
+	UPROPERTY()
+	float Height = 150.f;
+
+	/** Color del polvo (valores lineales guardados tal cual, sin sRGB). */
+	UPROPERTY()
+	FColor Dust = FColor(200, 180, 140);
+};
+
+/** Estado de la búsqueda (lo cambia solo el servidor; todos lo leen para el aro del HUD, el sonido y los efectos). */
+USTRUCT()
+struct FTNSearchSpotState
+{
+	GENERATED_BODY()
+
+	/** Quién está rebuscando ahora (nullptr = nadie). */
+	UPROPERTY()
+	TObjectPtr<APawn> Searcher = nullptr;
+
+	/** Hora del servidor (GetServerWorldTimeSeconds) a la que empezó. */
+	UPROPERTY()
+	float SearchStart = 0.f;
+
+	UPROPERTY()
+	ETNSearchOutcome Outcome = ETNSearchOutcome::None;
+
+	/** Hora del servidor del resultado: los efectos solo se ven si llega reciente (no al entrar más tarde en alcance). */
+	UPROPERTY()
+	float OutcomeTime = 0.f;
+
+	/** De dónde sale el objeto o la nube (a ras del borde del decorado, hacia el que buscaba). */
+	UPROPERTY()
+	FVector_NetQuantize10 LootFrom = FVector_NetQuantize10(FVector::ZeroVector);
+
+	/** Dónde cae el objeto (en el suelo, a un metro largo). */
+	UPROPERTY()
+	FVector_NetQuantize10 LootTo = FVector_NetQuantize10(FVector::ZeroVector);
+
+	/** El objeto recogible que ha salido (para su saltito en cada máquina). */
+	UPROPERTY()
+	TObjectPtr<AActor> LootPickup = nullptr;
+
+	/**
+	 * Búsquedas completadas (da la vuelta al pasar de 255). Cada resultado nuevo la cambia: así se distingue también el
+	 * segundo, el tercero... de los sitios que se rebuscan más de una vez (el cofre del lobby).
+	 */
+	UPROPERTY()
+	uint8 SearchCount = 0;
+};
+
+/**
+ * Efectos de sonido de rebuscar, sintetizados en tiempo real (sin archivos de audio): puñados de arena y piedrecitas
+ * (granos de fricción por un paso banda, siseo, retumbo de roca y a veces el clic de una chinita), el «¡puf!» de premio
+ * (aire que se cierra, «pop» grave y dos notas de campanita) y el «¡pof!» de vacío (golpe sordo, polvo y un «buuu»
+ * que baja). Para el cofre del lobby, además, el crujido de la tapa al entreabrirse (roce a tirones por dos resonancias
+ * de madera) y su «¡clonc!» al cerrarse (golpe grave, caja que resuena y tintineo de herrajes).
+ *
+ * Mismo patrón que UTN_PlaygroundSynthComponent: un ISoundGenerator en el hilo de render de audio sin UObjects,
+ * asignaciones ni bloqueos, una cola de disparos sin bloqueos desde el hilo de juego, mono y espacializado con la
+ * atenuación en código. Solo suena cuando hace falta y se para tras unos segundos de silencio.
+ */
+UCLASS(ClassGroup = (Audio))
+class TORTUNABO_API UTN_SearchSynthComponent : public USynthComponent
+{
+	GENERATED_BODY()
+
+public:
+	UTN_SearchSynthComponent(const FObjectInitializer& ObjectInitializer);
+
+	virtual void OnRegister() override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	/** Dispara un efecto (Pitch multiplica las frecuencias; Volume, 0..2). Nada si el oyente está fuera de alcance. */
+	void TriggerSound(ETNSearchSound Sound, float Pitch = 1.f, float Volume = 1.f);
+
+	/** Crea y registra el componente en InOwner, en InWorldLocation. Null en servidor dedicado, sin audio o fuera de juego. */
+	static UTN_SearchSynthComponent* AttachTo(AActor* InOwner, const FVector& InWorldLocation, float InInnerRadius = 350.f,
+		float InFalloff = 2200.f);
+
+	/** Radio con volumen pleno (cm). Solo antes de registrar. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Search|Audio", meta = (ClampMin = "0.0"))
+	float InnerRadius = 350.f;
+
+	/** Distancia (cm) desde el radio interior en la que se apaga. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Search|Audio", meta = (ClampMin = "100.0"))
+	float FalloffDistance = 2200.f;
+
+	/** Volumen general. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Search|Audio", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float Loudness = 1.f;
+
+protected:
+	virtual bool Init(int32& SampleRate) override;
+	virtual ISoundGeneratorPtr CreateSoundGenerator(const FSoundGeneratorInitParams& InParams) override;
+
+private:
+	void ConfigureSpatial();
+	bool IsListenerNear() const;
+
+	TSharedPtr<TNSearchSynthDSP::FSfxShared, ESPMode::ThreadSafe> SfxQueue;
+
+	/** Segundos de silencio que quedan antes de parar el sintetizador. */
+	float SilenceLeft = 0.f;
+};
+
+/**
+ * Decorado del mapa procedural que se puede rebuscar: estatuas, cabezas de piedra, rocas grandes, barcas, carros,
+ * cajas, restos... (los elige ATN_ProcMapGenerator::SpawnSearchSpots). El decorado va fundido en las mallas grandes del
+ * mapa; este actor ligero (replicado y dormido casi siempre) se pone en su sitio con la huella del decorado y da:
+ *  - Aviso «Mantén para rebuscar» al acercarse a su borde por cualquier lado (GetInteractionPointFor = punto del borde
+ *    más cercano) y unas chispitas doradas al pie mientras quede por buscar. Cerca de la tortuga local, el anillo dorado
+ *    de los objetos del suelo (la marca común de «aquí hay algo que coger», TN_LootGlowKit.h) marca en el suelo el punto
+ *    del borde por el que se rebusca; gira deprisa mientras ella rebusca.
+ *  - Mantener la tecla ~1,3 s (el servidor cuenta el tiempo y vigila que la tortuga siga cerca y en condiciones;
+ *    soltar antes cancela): aro de progreso en el HUD, tierra y piedrecitas que saltan y el sonido de rebuscar.
+ *  - Al completarse, el servidor sortea (LootChance, 55 %) un objeto de DT_Items (los consumibles y lanzables de
+ *    siempre, con su pickup de siempre): «¡puf!», nubecilla blanca con chispas y el objeto sale de un saltito corto y
+ *    queda a un metro largo; si no hay suerte, «¡pof!» y una nube pequeña del color del suelo del bioma.
+ *  - Cada decorado se rebusca una vez para todo el grupo: el botín queda en el suelo para quien lo coja. Ya buscado no
+ *    tiene aviso ni chispas.
+ *
+ * Red: el estado (FTNSearchSpotState) es replicado; los efectos salen de sus cambios en cada máquina (sin RPC
+ * multicast) y solo si el resultado es reciente. El saltito del objeto se anima en cada máquina con pantalla; el
+ * pickup (sin movimiento replicado) queda en LootTo en todas.
+ *
+ * Subclases: con bRepeatable se puede rebuscar otra vez tras RepeatCooldown s de respiro (MaxLootLying limita lo que
+ * queda sin recoger), y los ganchos protegidos (GetLuck, GetLootOrigin, GetRummageOrigin, FindLanding,
+ * OnSearchStateChanged, WantsFrameTick) cambian la suerte, de dónde sale y dónde cae el objeto y los efectos propios. Lo
+ * usa el cofre del tesoro de la torre del homenaje del lobby (ATN_TreasureChest).
+ *
+ * Pruebas: tn.Search.Luck (forzar la suerte), tn.Search.Seconds (duración), tn.Search.Show (balizas de los buscables) y
+ * TN.Debug.Interaction (registro del servidor). Ver Docs/Botin_Decorados.md.
+ */
+UCLASS()
+class TORTUNABO_API ATN_ProcSearchSpot : public ATN_InteractableBase
+{
+	GENERATED_BODY()
+
+public:
+	ATN_ProcSearchSpot();
+
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void Tick(float DeltaSeconds) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	// ── ATN_InteractableBase ─────────────────────────────────────────────────
+	virtual bool CanInteract(APawn* Interactor) const override;
+	virtual FVector GetInteractionPointFor(const APawn* Interactor) const override;
+	virtual float GetHoldDuration() const override;
+	virtual void BeginHoldInteract(APawn* Interactor) override;
+	virtual void EndHoldInteract(APawn* Interactor) override;
+	virtual float GetHoldProgress(const APawn* Interactor) const override;
+
+	/**
+	 * Servidor, justo después de crearlo: huella del decorado (cápsula en planta a lo largo del +X del actor, que va
+	 * en el suelo en el centro del decorado) y color del polvo de su bioma.
+	 */
+	void SetupSpot(float InRadius, float InHalfLength, float InHeight, const FLinearColor& InDustColor);
+
+	bool IsSearched() const { return SearchState.Outcome != ETNSearchOutcome::None; }
+
+	/**
+	 * Sin aviso ni búsqueda posible por ahora: ya buscado (los de una vez) o en el respiro tras el último resultado (los
+	 * repetibles). Mientras alguien rebusca no cuenta como agotado.
+	 */
+	bool IsSpent() const;
+
+	/**
+	 * Sorteo de un objeto del catálogo (filas FTN_InventoryItem con PickupActorClass y un uso), con el peso que dé
+	 * WeightOf a cada fila (0 o menos la quita). Lo usan los rebuscables y el botín suelto de la playa (TN_BeachLoot.h).
+	 */
+	static bool PickCatalogItem(const UDataTable* Table, TFunctionRef<float(FName, const FTN_InventoryItem&)> WeightOf,
+		FTN_InventoryItem& OutItem);
+
+protected:
+	/** Esfera invisible que cubre la huella: la encuentra el escaneo de interactuables (WorldDynamic, solo consultas). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Search")
+	TObjectPtr<USphereComponent> ScanSphere;
+
+	/** Segundos que hay que mantener la tecla. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search", meta = (ClampMin = "0.2"))
+	float SearchSeconds = 1.3f;
+
+	/** Probabilidad de que salga un objeto. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float LootChance = 0.55f;
+
+	/** Catálogo de objetos (filas FTN_InventoryItem con PickupActorClass y un uso). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search")
+	TSoftObjectPtr<UDataTable> LootTable;
+
+	/** Peso de cada objeto en el sorteo por nombre de fila o ItemId (1 si no sale aquí; 0 lo quita). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search")
+	TMap<FName, float> LootWeights;
+
+	/** Margen (cm) sobre el alcance de interacción mientras se rebusca antes de cancelar por alejarse. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search", meta = (ClampMin = "0.0"))
+	float ReachSlack = 120.f;
+
+	/** Se puede rebuscar más de una vez (el cofre del lobby); los decorados del mapa, una sola vez para todo el grupo. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search")
+	bool bRepeatable = false;
+
+	/** Repetibles: segundos de respiro tras cada resultado, para que salga el objeto antes de volver a empezar. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search", meta = (ClampMin = "0.0", EditCondition = "bRepeatable"))
+	float RepeatCooldown = 2.5f;
+
+	/** Objetos sin recoger que pueden quedar a la vez de este sitio (0 = sin límite); al pasarse, se quita el más viejo. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search", meta = (ClampMin = "0"))
+	int32 MaxLootLying = 0;
+
+	/** Tono del sonido de rebuscar (1 = arena y piedrecitas; más alto suena a chismes y monedas). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|Audio", meta = (ClampMin = "0.25", ClampMax = "3.0"))
+	float RummagePitch = 1.f;
+
+	/** Distancia (cm, en planta) de la cámara al borde a la que salen las chispitas de «aquí se puede rebuscar». */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "0.0"))
+	float HintDistance = 1800.f;
+
+	/** Distancia (cm, en planta) de la tortuga local al borde a la que sale el anillo que marca dónde rebuscar (0 = nunca). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "0.0"))
+	float MarkerDistance = 1100.f;
+
+	/** Radio (cm) de ese anillo. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "20.0"))
+	float MarkerRadius = 85.f;
+
+	// ── Ganchos para las subclases ───────────────────────────────────────────
+
+	/** Probabilidad de que salga un objeto (por defecto LootChance, o la de tn.Search.Luck si se fuerza). */
+	virtual float GetLuck() const;
+
+	/** Peso de una fila del catálogo en el sorteo (por defecto, el de LootWeights por nombre de fila o ItemId, o 1). */
+	virtual float GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const;
+
+	/**
+	 * Servidor: sortea el objeto que sale al completarse la búsqueda de Searcher (por defecto, del catálogo con GetLootWeight).
+	 * La playa lo sobrescribe: allí los pesos dependen del puesto de quien rebusca (TNRaceItems::RollLoot).
+	 */
+	virtual bool PickLoot(FTN_InventoryItem& OutItem, const APawn* Searcher) const;
+
+	/** Servidor: de dónde sale el objeto o la nube al completarse (por defecto, el borde hacia Pawn, a 40 cm). */
+	virtual FVector GetLootOrigin(const APawn* Pawn) const;
+
+	/** De dónde saltan la tierra y el sonido mientras Searcher rebusca (por defecto, el borde hacia él, a 20 cm). */
+	virtual FVector GetRummageOrigin(const APawn* Searcher) const;
+
+	/** Servidor: dónde cae el objeto que sale de From (por defecto, en el suelo a un metro largo hacia Pawn). */
+	virtual FVector FindLanding(const APawn* Pawn, const FVector& From) const;
+
+	/** Cada máquina, después de reaccionar a un cambio del estado (el anfitrión también). */
+	virtual void OnSearchStateChanged(const FTNSearchSpotState& OldState) {}
+
+	/** Cierto mientras la subclase necesite el tick a cada fotograma (animaciones propias). */
+	virtual bool WantsFrameTick() const { return false; }
+
+	const FTNSearchSpotState& GetSearchState() const { return SearchState; }
+
+	/** Hora del servidor (GetServerWorldTimeSeconds; la del mundo sin estado de juego). */
+	double ServerNow() const;
+
+	/** Sonido sintetizado en Where (nada en servidor dedicado). */
+	void PlaySearchSound(ETNSearchSound Sound, float Pitch, float Volume, const FVector& Where);
+
+	/** Chispitas doradas en Where (nada en servidor dedicado). */
+	void EmitSparkles(const FVector& Where, int32 Count, const FVector& Direction, float SpeedScale = 1.f);
+
+private:
+	UPROPERTY(ReplicatedUsing = OnRep_SpotShape)
+	FTNSearchSpotShape SpotShape;
+
+	UPROPERTY(ReplicatedUsing = OnRep_SearchState)
+	FTNSearchSpotState SearchState;
+
+	UFUNCTION()
+	void OnRep_SpotShape();
+
+	UFUNCTION()
+	void OnRep_SearchState(const FTNSearchSpotState& OldState);
+
+	/** Tamaño y sitio de la esfera de escaneo según la huella. */
+	void ApplySpotShape();
+
+	/** Reacción de esta máquina a un cambio del estado (efectos, sonido, colisión, saltito). */
+	void HandleStateChanged(const FTNSearchSpotState& OldState);
+
+	/** Servidor: despierta la réplica, aplica el cambio aquí (el anfitrión no recibe OnRep) y lo manda ya. */
+	void CommitState(const FTNSearchSpotState& OldState);
+
+	// ── Servidor ──
+	void ServerTickSearch();
+	void FinishSearch();
+	void CancelSearch(const TCHAR* Why);
+	bool CanPawnSearch(const APawn* Pawn) const;
+	bool IsPawnInReach(const APawn* Pawn, float Slack) const;
+	AActor* SpawnLoot(const FTN_InventoryItem& Item, const FVector& Where);
+	void ScheduleDormancy();
+
+	// ── Utilidades ──
+	/** Punto del borde de la huella más cercano a WorldPoint, a ZAbove cm sobre la base. */
+	FVector RimPointToward(const FVector& WorldPoint, float ZAbove) const;
+	/** Punto del borde al azar (chispitas). */
+	FVector RandomRimPoint(float ZAbove) const;
+
+	// ── Efectos locales (máquinas con pantalla) ──
+	void TickLocalFX(float DeltaSeconds);
+	void EnsureFX();
+	/** Estallido de Count partículas del emisor en Where (Direction: hacia dónde salen; SpeedScale: más o menos fuerte). */
+	void BurstFX(int32 Emitter, const FVector& Where, int32 Count, const FVector& Direction = FVector::ZeroVector, float SpeedScale = 1.f);
+	void StartHop(AActor* Pickup, double Elapsed);
+	void TickHop();
+	void DrawDebugSpot(float DeltaSeconds);
+	/** Anillo dorado en el suelo, en el punto del borde por el que rebuscaría la tortuga local (cerca y sin buscar). */
+	void TickMarker(float DeltaSeconds);
+
+	/** Sonido de este decorado (se crea al primer uso). */
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_SearchSynthComponent> Synth;
+
+	/** Anillo que marca dónde rebuscar (se crea la primera vez que hace falta; solo en máquinas con pantalla). */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> MarkerRing;
+
+	/** Servidor: objetos que han salido de aquí y no se han recogido (se van con el mapa al regenerarse). */
+	TArray<TWeakObjectPtr<AActor>> SpawnedLoot;
+
+	FTimerHandle DormancyTimer;
+
+	/** Emisores de TNAmbientFX (INDEX_NONE hasta que hacen falta). */
+	int32 FxSparkle = INDEX_NONE;
+	int32 FxDust = INDEX_NONE;
+	int32 FxBits = INDEX_NONE;
+	int32 FxPoof = INDEX_NONE;
+	/** Hora local (s) del último estallido: mientras queden partículas, el actor sigue moviéndolas. */
+	double LastFxTime = -100.0;
+	float HintClock = 0.f;
+	float RummageClock = 0.f;
+	float DebugClock = 0.f;
+	bool bNearView = false;
+
+	/** Anillo que marca dónde rebuscar: cuánto se ve (0-1), su giro, dónde está en el suelo y cuándo se buscó el suelo. */
+	float MarkerAppear = 0.f;
+	float MarkerClock = 0.f;
+	FVector MarkerRim = FVector::ZeroVector;
+	FVector MarkerGround = FVector::ZeroVector;
+	FQuat MarkerTilt = FQuat::Identity;
+	double MarkerTraceTime = -100.0;
+
+	/** Saltito del objeto que ha salido (se anima en cada máquina con pantalla). */
+	TWeakObjectPtr<AActor> HopActor;
+	TWeakObjectPtr<AActor> HoppedActor;
+	double HopStart = 0.0;
+	FVector HopFrom = FVector::ZeroVector;
+	FVector HopTo = FVector::ZeroVector;
+	FRotator HopRotation = FRotator::ZeroRotator;
+	bool bHopActive = false;
+};

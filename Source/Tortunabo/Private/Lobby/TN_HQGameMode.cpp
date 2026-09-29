@@ -6,6 +6,9 @@
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Engine/World.h"
+#include "UObject/Package.h"
+#include "Misc/PackageName.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/Character.h"
@@ -18,8 +21,11 @@
 #include "Lobby/TN_ChangingBooth.h"
 #include "Lobby/TN_GeneralBriefing.h"
 #include "Lobby/TN_LobbyReadyZone.h"
+#include "Lobby/TN_LobbyValley.h"
 #include "Lobby/TN_SandCastleLobby.h"
 #include "Lobby/TN_ShopKeeper.h"
+#include "Lobby/TN_TutorialCourse.h"
+#include "Lobby/TN_TutorialPlayerComponent.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkinnedAsset.h"
@@ -36,14 +42,19 @@ ATN_HQGameMode::ATN_HQGameMode()
 void ATN_HQGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	// Este es el lobby al que se volverá al acabar la partida (LVL_Lobby, o LVL_HQ si se juega en el antiguo).
+	if (UMP_GameInstance* TNGI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		TNGI->LobbyReturnMapPath = UWorld::RemovePIEPrefix(GetWorld()->GetOutermost()->GetName());
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Lobby de vuelta: %s"), *TNGI->LobbyReturnMapPath);
+		// El modo lo elige el anfitrión en el menú principal (o «Cambiar de modo» al acabar la carrera) y vive en su
+		// GameInstance: el castillo no tiene selector.
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo de la próxima partida: %s"), *UEnum::GetValueAsString(TNGI->SelectedProcMode));
+	}
 	EnsureFallbackPlayerStart();
 	SpawnLobbyShops();
-
-	// ── Tutorial first-time check (fallback para join directo sin seamless) ──
-	// Para seamless travel, el flag se evalúa en HandleSeamlessTravelPlayer
-	// ANTES de que Super spawne el pawn.  Este bloque cubre el caso en que el
-	// jugador accede directamente al mapa sin pasar por LVL_Menu.
-	CheckAndSetTutorialFlag();
+	// El recorrido del tutorial, con el castillo ya puesto (la cascada cae sobre la plaza).
+	SpawnTutorialCourse();
 
 	// ── Safety check: detectar si el mapa cargó con la clase C++ base en vez del BP ──
 	if (GetClass() == ATN_HQGameMode::StaticClass())
@@ -58,6 +69,7 @@ void ATN_HQGameMode::BeginPlay()
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		EnsurePlayerSpawned(It->Get());
+		SetupTutorialFor(It->Get());
 	}
 
 	RefreshLobbyState();
@@ -65,27 +77,8 @@ void ATN_HQGameMode::BeginPlay()
 
 AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
-	// ── Tutorial check — aquí es el único sitio donde SIEMPRE se ejecuta ─────
-	// Llamarlo aquí garantiza que el flag está evaluado justo antes de decidir
-	// el spawn, independientemente del camino (seamless travel, PostLogin, etc.)
-	// CheckAndSetTutorialFlag es idempotente: llamadas repetidas no hacen nada.
-	CheckAndSetTutorialFlag();
-
-	// ── Primera vez: dirigir al spawn del tutorial ───────────────────────────
-	if (bShouldUseTutorialStart)
-	{
-		for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
-		{
-			if ((*It)->PlayerStartTag == TutorialStartTag)
-			{
-				UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] ChoosePlayerStart → tutorial start encontrado."));
-				return *It;
-			}
-		}
-		UE_LOG(LogTortunabo, Warning,
-			TEXT("[HQGameMode] bShouldUseTutorialStart=true pero no hay PlayerStart con tag '%s' — spawn normal."),
-			*TutorialStartTag.ToString());
-	}
+	// El tutorial de la primera partida no pasa por aquí: se aparece en el lobby y el recorrido (ATN_TutorialCourse) sube a
+	// la tortuga en el mismo fotograma (?TNTut=1) o cuando su máquina lo pide (Docs/Tutorial.md).
 
 	// ── Selección normal: excluir spawns reservados para el tutorial ─────────
 	TArray<AActor*> PlayerStarts;
@@ -107,12 +100,13 @@ AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		return Super::ChoosePlayerStart_Implementation(Player);
 	}
 
-	if (AActor* Start = TN_PickUnoccupiedPlayerStart(GetWorld(), PlayerStarts, Player))
+	// Con más jugadores que PlayerStart (el lobby trae cuatro y caben ocho) salen sitios nuevos junto a los del mapa.
+	if (AActor* Start = TN_PickSpreadPlayerStart(GetWorld(), PlayerStarts, Player, DefaultPawnClass, TEXT("Lobby")))
 	{
 		return Start;
 	}
 
-	// Fallback: todos ocupados
+	// Fallback: todos ocupados y sin hueco cerca
 	return PlayerStarts[0];
 }
 
@@ -121,17 +115,29 @@ void ATN_HQGameMode::HandleStartingNewPlayer_Implementation(APlayerController* N
 {
 	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
 	EnsurePlayerSpawned(NewPlayer);
+	SetupTutorialFor(NewPlayer);
+}
+
+FString ATN_HQGameMode::InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options,
+	const FString& Portal)
+{
+	const FString Result = Super::InitNewPlayer(NewPlayerController, UniqueId, Options, Portal);
+	// Un cliente que no ha hecho el tutorial lo dice al entrar (UMP_GameInstance::OnJoinSessionComplete): aparece ya en él.
+	if (NewPlayerController && UGameplayStatics::HasOption(Options, UMP_GameInstance::TutorialJoinOption()))
+	{
+		PendingTutorialJoins.Add(NewPlayerController);
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] %s entra por primera vez (?%s): al tutorial."), *GetNameSafe(NewPlayerController),
+			UMP_GameInstance::TutorialJoinOption());
+	}
+	return Result;
 }
 
 void ATN_HQGameMode::PostLogin(APlayerController* NewPlayer)
 {
-	// Tutorial check aquí cubre el caso de un join fresco (sin seamless travel).
-	// En seamless travel PostLogin NO se llama → lo cubre HandleSeamlessTravelPlayer.
-	CheckAndSetTutorialFlag();
-
 	Super::PostLogin(NewPlayer);
 
 	EnsurePlayerSpawned(NewPlayer);
+	SetupTutorialFor(NewPlayer);
 
 	if (ATN_CoopPlayerState* TNPS = NewPlayer ? NewPlayer->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
 	{
@@ -177,22 +183,72 @@ void ATN_HQGameMode::SetPlayerReadyState(APlayerController* PlayerController, bo
 	RefreshLobbyState();
 }
 
-void ATN_HQGameMode::CheckAndSetTutorialFlag()
+void ATN_HQGameMode::SpawnTutorialCourse()
 {
-	// Idempotente: si ya detectamos primera vez en esta sesión, no repetir.
-	if (bShouldUseTutorialStart)
+	UWorld* World = GetWorld();
+	if (!World || !bTutorialEnabled || TutorialCourse || !HasAuthority())
 	{
 		return;
 	}
-
-	if (UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	if (ATN_TutorialCourse* Existing = ATN_TutorialCourse::Find(this))
 	{
-		if (!GI->HasCompletedTutorial())
+		TutorialCourse = Existing;
+		return;
+	}
+	// Donde se aterriza tras la cascada: el centro de los PlayerStart del lobby (la plaza, entre los huevos y la puerta doble,
+	// donde se aparece: siempre despejado), sobre el suelo.
+	FVector Sum = FVector::ZeroVector;
+	int32 Count = 0;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		if ((*It)->PlayerStartTag == TutorialStartTag || (*It)->ActorHasTag(TEXT("TNExtraStart")))
 		{
-			bShouldUseTutorialStart = true;
-			GI->SetTutorialCompleted();
-			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Primera partida detectada — spawn en zona tutorial (tag: '%s')."), *TutorialStartTag.ToString());
+			continue;
 		}
+		Sum += (*It)->GetActorLocation();
+		++Count;
+	}
+	if (Count == 0)
+	{
+		if (const APlayerStart* Fallback = EnsureFallbackPlayerStart())
+		{
+			Sum = Fallback->GetActorLocation();
+			Count = 1;
+		}
+	}
+	if (Count == 0)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[HQGameMode] Sin PlayerStart: no se coloca el tutorial."));
+		return;
+	}
+	const FVector Center = Sum / static_cast<double>(Count);
+	// El PlayerStart va a media cápsula del suelo; si hay suelo debajo (el castillo), justo en él.
+	FVector Landing = Center - FVector(0.0, 0.0, 90.0);
+	FHitResult Hit;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(TN_TutorialLandingSpot), false);
+	if (World->LineTraceSingleByChannel(Hit, Center + FVector(0.0, 0.0, 200.0), Center - FVector(0.0, 0.0, 3000.0), ECC_WorldStatic, Query))
+	{
+		Landing = Hit.ImpactPoint;
+	}
+	TutorialCourse = ATN_TutorialCourse::SpawnAbove(World, Landing, TutorialCourseYaw);
+}
+
+void ATN_HQGameMode::SetupTutorialFor(APlayerController* PlayerController)
+{
+	if (!PlayerController || !HasAuthority())
+	{
+		return;
+	}
+	UTN_TutorialPlayerComponent::EnsureFor(PlayerController);
+	if (!PendingTutorialJoins.Contains(PlayerController) || !PlayerController->GetPawn())
+	{
+		return;
+	}
+	PendingTutorialJoins.Remove(PlayerController);
+	ATN_TutorialCourse* Course = TutorialCourse ? TutorialCourse.Get() : ATN_TutorialCourse::Find(this);
+	if (Course)
+	{
+		Course->StartFor(PlayerController);
 	}
 }
 
@@ -218,7 +274,9 @@ void ATN_HQGameMode::RefreshLobbyState()
 		}
 	}
 
-	const int32 ExpectedPlayers = LobbyExpectedPlayers;
+	// Plazas de la sala: las de la sesión (ocho) salvo que LobbyExpectedPlayers fije otras.
+	const UMP_GameInstance* SessionGI = Cast<UMP_GameInstance>(GetGameInstance());
+	const int32 ExpectedPlayers = LobbyExpectedPlayers > 0 ? LobbyExpectedPlayers : (SessionGI ? SessionGI->GetMaxPlayers() : 8);
 	TNGS->ExpectedPlayers = ExpectedPlayers;
 	TNGS->ConnectedPlayers = ConnectedPlayers;
 	TNGS->PlayersInStartZone = ReadyPlayers;
@@ -335,19 +393,42 @@ void ATN_HQGameMode::BeginMatchTravel()
 		GI->PendingTravelPlayerCount = ConnectedCount;
 		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
 
-		// ── Modo elegido en el lobby: Clásico → LVL_Run; el resto → mapa procedural ──
+		// ── Modo (menú principal o selector del lobby viejo): Carrera → playa; Clásico → LVL_Run; el resto → mapa procedural ──
+		bool bProcMapRace = false;
 		if (GI->SelectedProcMode == ETNProcGameMode::TwoVsTwo && ConnectedCount != 4)
 		{
-			// El selector ya lo impide, pero alguien pudo salir durante la cuenta atrás.
+			// El selector ya lo impide, pero alguien pudo salir durante la cuenta atrás. Sigue en el mapa procedural.
 			UE_LOG(LogTortunabo, Warning, TEXT("[HQGameMode] 2vs2 exige 4 jugadores (hay %d) → Carrera."), ConnectedCount);
 			GI->SelectedProcMode = ETNProcGameMode::Race;
+			bProcMapRace = true;
 		}
-		if (GI->SelectedProcMode != ETNProcGameMode::Classic)
+		// ── Cómo se pusieron listos (sala de la puerta doble o huevos): así se sale en el mapa procedural ──
+		// Antes de destruir los peones; sin castillo (maqueta vieja), la puerta doble.
+		GI->PendingStartStyle = ETNMatchStartStyle::Gate;
+		for (TActorIterator<ATN_SandCastleLobby> It(World); It; ++It)
 		{
-			TravelURL = ProcMapPath;
+			GI->PendingStartStyle = It->GetStartStyle();
+			break;
 		}
-		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo %s · dificultad %s"),
-			*UEnum::GetValueAsString(GI->SelectedProcMode), *UEnum::GetValueAsString(GI->SelectedProcDifficulty));
+		const bool bBeachRace = GI->SelectedProcMode == ETNProcGameMode::Race && !bProcMapRace;
+		if (bBeachRace && FPackageName::DoesPackageExist(BeachRaceMapPath))
+		{
+			// Carrera: todos contra todos en la playa (ATN_BeachRaceGameMode, Docs/Modo_Carrera.md).
+			TravelURL = BeachRaceMapPath;
+		}
+		else if (GI->SelectedProcMode != ETNProcGameMode::Classic)
+		{
+			if (bBeachRace)
+			{
+				UE_LOG(LogTortunabo, Error, TEXT("[HQGameMode] No existe %s (se crea con Scripts/build_beach_race.py): la carrera se juega en el mapa procedural."),
+					*BeachRaceMapPath);
+			}
+			// También en la URL: la lee ATN_ProcMapGameMode y sustituye a la del viaje anterior.
+			TravelURL = ProcMapPath + (GI->PendingStartStyle == ETNMatchStartStyle::Eggs ? TEXT("?ProcStart=Eggs") : TEXT("?ProcStart=Gate"));
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Modo %s · dificultad %s · salida %s"),
+			*UEnum::GetValueAsString(GI->SelectedProcMode), *UEnum::GetValueAsString(GI->SelectedProcDifficulty),
+			GI->PendingStartStyle == ETNMatchStartStyle::Eggs ? TEXT("huevos") : TEXT("puerta doble"));
 	}
 
 	// ── Destroy all pawns BEFORE travel for WASAPI cleanup ──────────────
@@ -389,11 +470,6 @@ void ATN_HQGameMode::SetFlowState(ETNMatchFlowState NewState) const
 
 void ATN_HQGameMode::HandleSeamlessTravelPlayer(AController*& C)
 {
-	// ── Tutorial check — DEBE ir ANTES de Super ───────────────────────────────
-	// Super::HandleSeamlessTravelPlayer → RestartPlayer → ChoosePlayerStart.
-	// Si ponemos el flag después, el pawn ya está spawneado en el sitio normal.
-	CheckAndSetTutorialFlag();
-
 	// Limpiar estado espectador ANTES de Super — jugadores que murieron/terminaron
 	// en la carrera estaban en modo espectador. Sin esto, PlayerCanRestart() devuelve
 	// false y Super no les spawnea pawn.
@@ -417,6 +493,9 @@ void ATN_HQGameMode::HandleSeamlessTravelPlayer(AController*& C)
 	}
 
 	Super::HandleSeamlessTravelPlayer(C);
+
+	// El componente del tutorial (vuelve de una partida: si esa máquina aún no lo ha hecho, lo pedirá ella).
+	SetupTutorialFor(Cast<APlayerController>(C));
 }
 
 void ATN_HQGameMode::PostSeamlessTravel()
@@ -484,6 +563,7 @@ void ATN_HQGameMode::PostSeamlessTravel()
 		{
 			EnsurePlayerSpawned(PC);
 		}
+		SetupTutorialFor(PC);
 	}
 
 	// Actualizar conteo en el GameState
@@ -510,7 +590,8 @@ void ATN_HQGameMode::PostSeamlessTravel()
 		for (TActorIterator<APawn> It(World); It; ++It)
 		{
 			APawn* P = *It;
-			if (P && !P->GetController())
+			// Las tortugas de prácticas del tutorial (Rodolfo y Berta) no llevan controlador a propósito.
+			if (P && !P->GetController() && !P->ActorHasTag(TEXT("TN_TutorialPractice")))
 			{
 				P->Destroy();
 			}
@@ -593,6 +674,26 @@ void ATN_HQGameMode::SpawnLobbyShops()
 			}
 			World->SpawnActor<ATN_SandCastleLobby>(ATN_SandCastleLobby::StaticClass(), FVector(0.0, 0.0, GroundZ), FRotator::ZeroRotator, Params);
 			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Castillo de arena colocado (suelo a %.0f)."), GroundZ);
+		}
+	}
+
+	// El valle de biomas alrededor del castillo (ATN_LobbyValley) lo pone Scripts/place_lobby_castle.py; si el nivel trae
+	// castillo pero no valle, se pone aquí, sobre el castillo. Se replica (sin propiedades): cada cliente lo construye igual.
+	if (ATN_LobbyValley::IsEnabled())
+	{
+		const AActor* CastleActor = nullptr;
+		bool bHasValley = false;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const AActor* Actor = *It;
+			if (!Actor) { continue; }
+			if (!CastleActor && Actor->IsA<ATN_SandCastleLobby>()) { CastleActor = Actor; }
+			bHasValley |= Actor->IsA<ATN_LobbyValley>();
+		}
+		if (CastleActor && !bHasValley)
+		{
+			World->SpawnActor<ATN_LobbyValley>(ATN_LobbyValley::StaticClass(), CastleActor->GetActorTransform(), Params);
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Valle de biomas colocado alrededor del castillo."));
 		}
 	}
 

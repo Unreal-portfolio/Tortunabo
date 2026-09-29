@@ -64,6 +64,8 @@ private:
 
 	TArray<TWeakObjectPtr<APlayerController>> Waiting;
 	FTimerHandle PollTimer;
+	/** Desde cuándo (s) está el mapa hecho esperando a que haya suelo bajo la salida (-1 = aún no está hecho). */
+	double ReadySince = -1.0;
 
 	ATN_ProcMapGenerator* EnsureGenerator();
 	void PollReady();

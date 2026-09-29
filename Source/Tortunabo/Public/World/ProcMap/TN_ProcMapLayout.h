@@ -326,6 +326,14 @@ namespace TNProcMap
 		 * recompensa (BonusPickup) va en lo alto y la medusa (Bouncer) al pie de su cara de +Dir.
 		 */
 		ClimbTower,
+		/**
+		 * Mordisco en lo alto de una muralla colosal (adarve roto; WallBreachDims): Aux = cruce, Aux2 = EWallBreach,
+		 * Target.X..Target.Y = tramo del adarve que falta (distancia por el eje de la muralla desde su primera muestra),
+		 * Location = centro sobre el eje (Z = cota del adarve), Dir = eje, Length = largo del tramo, Width = ancho del
+		 * adarve, Height = hondura del mordisco, Radius = ancho de la cornisa que queda (0 en las brechas), PathIndex =
+		 * muestra más cercana del tramo alto.
+		 */
+		WallBreach,
 		Count
 	};
 
@@ -555,6 +563,230 @@ namespace TNProcMap
 	}
 
 	/**
+	 * Salto de la tortuga con los valores de BP_TortugaCharacter (JumpZVelocity 485 cm/s, gravedad del motor 980 cm/s²,
+	 * andar 200 cm/s y esprintar 400 cm/s en su UTN_StaminaComponent, cápsula de 34 cm de radio): sube 1,2 m y recorre en
+	 * llano 1,98 m andando y 3,96 m esprintando (el panzazo en lo alto añade ~1 m). Sirve para medir los retos nuevos.
+	 */
+	namespace TurtleJump
+	{
+		constexpr double JumpZ = 485.0;
+		constexpr double Gravity = 980.0;
+		constexpr double WalkSpeed = 200.0;
+		constexpr double SprintSpeed = 400.0;
+		constexpr double CapsuleRadius = 34.0;
+
+		/** Distancia horizontal de un salto en llano a la velocidad Speed (cm). */
+		constexpr double Reach(double Speed) { return 2.0 * JumpZ / Gravity * Speed; }
+		/** Altura máxima de un salto (cm). */
+		constexpr double Apex() { return JumpZ * JumpZ / (2.0 * Gravity); }
+	}
+
+	/** Mordisco del adarve de una muralla (Aux2 de EFeature::WallBreach). */
+	enum class EWallBreach : int32
+	{
+		/** Brecha de lado a lado: se salta. */
+		Gap = 0,
+		/** Solo queda una cornisa pegada al parapeto izquierdo (el de la normal izquierda del eje). */
+		LedgeLeft = 1,
+		/** Solo queda una cornisa pegada al parapeto derecho. */
+		LedgeRight = 2
+	};
+
+	/**
+	 * Adarve roto de las murallas colosales: mordiscos en lo alto (el parapeto y el adarve faltan y el muro queda hundido
+	 * 2,8-4,8 m, siempre por encima de la clave de la puerta) que se cruzan saltando o por una cornisa pegada a un parapeto.
+	 * Las medidas salen de TurtleJump: las brechas miden como mucho el 58 % de un salto esprintando y, hasta Normal, menos
+	 * que un salto andando. Lados: 0 = izquierdo (normal izquierda del eje), 1 = derecho.
+	 */
+	namespace WallBreachDims
+	{
+		/** Largo de una brecha según la dificultad [0, 1]: fácil (0,2) 1,19-1,66 m, normal 1,33-1,9 m, difícil (0,9) 1,5-2,22 m. */
+		inline double GapMin(double Diff) { return LerpD(110.0, 155.0, Saturate(Diff)); }
+		inline double GapMax(double Diff) { return LerpD(150.0, 230.0, Saturate(Diff)); }
+		/** Adarve entero entre dos brechas seguidas (aterrizar y volver a saltar): 2,4 m en fácil (0,2), 1,8 m en difícil (0,9), ±25 cm. */
+		inline double Island(double Diff) { return LerpD(260.0, 170.0, Saturate(Diff)); }
+		/** Cornisa: ancho que queda pegado al parapeto (85 cm en fácil, 68 cm en difícil) y largo del tramo. */
+		inline double LedgeWidth(double Diff) { return LerpD(90.0, 66.0, Saturate(Diff)); }
+		inline double LedgeLenMin(double Diff) { return LerpD(450.0, 650.0, Saturate(Diff)); }
+		inline double LedgeLenMax(double Diff) { return LerpD(700.0, 1100.0, Saturate(Diff)); }
+		/** Cornisa más estrecha posible (cm). */
+		constexpr double LedgeMin = 65.0;
+		/** Hondura del mordisco bajo el adarve: menos que la fábrica sobre la clave de la puerta (WallDims::Crown). */
+		constexpr double DepthMin = 280.0;
+		constexpr double DepthMax = 480.0;
+		/** Escalón más somero junto a cada borde del mordisco: nunca a menos de esto bajo el adarve (ya en la zona de muerte). */
+		constexpr double StepMin = 110.0;
+		/** Las cajas de muerte empiezan 60 cm bajo el adarve, como en los puentes. */
+		constexpr double KillTop = 60.0;
+		/** Cuánto se extienden las cajas de muerte más allá de las caras (quien salta hacia fuera por el mordisco) y del tramo. */
+		constexpr double KillSide = 900.0;
+		constexpr double KillAlong = 600.0;
+		/** Adarve libre desde el borde de cada torre y desde el arco de la puerta. */
+		constexpr double TowerClear = 900.0;
+		constexpr double GateClear = 600.0;
+		/** Cuánto más se rompe el parapeto que el adarve, como mucho, a cada lado del tramo. */
+		constexpr double ParapetBreakMax = 110.0;
+
+		inline EWallBreach KindOf(const FFeature& F) { return static_cast<EWallBreach>(FMath::Clamp(F.Aux2, 0, 2)); }
+
+		/** Si el mordisco se lleva el parapeto del lado Side (y ese lado del muro se hunde). */
+		inline bool CutsSide(const FFeature& F, int32 Side)
+		{
+			const EWallBreach K = KindOf(F);
+			return K == EWallBreach::Gap || (K == EWallBreach::LedgeLeft ? Side == 1 : Side == 0);
+		}
+
+		/** Semilla estable de un mordisco (su cruce, su muestra y su arranque). */
+		inline uint32 HashOf(const FFeature& F, int32 Salt)
+		{
+			return HashCell(0xB4EACu ^ static_cast<uint32>(F.Aux * 7919 + Salt * 104729), F.PathIndex, FMath::RoundToInt32(F.Target.X));
+		}
+
+		/** Escalón de cada borde (End 0 al principio del tramo, 1 al final): largo por el eje y hondura. */
+		inline void EndStep(const FFeature& F, int32 End, double& OutLen, double& OutDepth)
+		{
+			const uint32 H = HashOf(F, 3 + End);
+			OutLen = (F.Target.Y - F.Target.X) * (0.12 + 0.1 * static_cast<double>(H & 0xFF) / 255.0);
+			OutDepth = FMath::Max(StepMin, F.Height * (0.3 + 0.3 * static_cast<double>((H >> 8) & 0xFF) / 255.0));
+		}
+
+		/** Hondura del mordisco a la distancia Sq por el eje (0 fuera del tramo), con el escalón de cada borde. */
+		inline double DepthAt(const FFeature& F, double Sq)
+		{
+			if (Sq < F.Target.X || Sq > F.Target.Y) { return 0.0; }
+			double LenA = 0.0, DepthA = 0.0, LenB = 0.0, DepthB = 0.0;
+			EndStep(F, 0, LenA, DepthA);
+			EndStep(F, 1, LenB, DepthB);
+			if (Sq < F.Target.X + LenA) { return DepthA; }
+			if (Sq > F.Target.Y - LenB) { return DepthB; }
+			return F.Height;
+		}
+
+		/** Cuánto más se rompe el parapeto del lado Side antes (End 0) o después (End 1) del tramo: 30-110 cm. */
+		inline double ParapetBreak(const FFeature& F, int32 Side, int32 End)
+		{
+			return 30.0 + (ParapetBreakMax - 30.0) * static_cast<double>(HashOf(F, 10 + Side * 2 + End) & 0xFF) / 255.0;
+		}
+
+		/**
+		 * Resto de parapeto junto a su rotura (entre el 30 y el 70 % de ella) y su alto sobre el adarve: 8-22 cm, así desde
+		 * él no se alcanza la cima del parapeto entero (le faltan más de 1,2 m, TurtleJump::Apex).
+		 */
+		inline double StubRun(const FFeature& F, int32 Side, int32 End)
+		{
+			return ParapetBreak(F, Side, End) * (0.3 + 0.4 * static_cast<double>((HashOf(F, 20 + Side * 2 + End) >> 8) & 0xFF) / 255.0);
+		}
+		inline double StubH(const FFeature& F, int32 Side, int32 End)
+		{
+			return 8.0 + 14.0 * static_cast<double>((HashOf(F, 20 + Side * 2 + End) >> 16) & 0xFF) / 255.0;
+		}
+
+		/**
+		 * Cota de lo que queda del parapeto del lado Side en Sq con el adarve a TopZ: el parapeto entero (TopZ + ParapetH),
+		 * el resto bajo, su asiento a ras del adarve o el fondo del mordisco.
+		 */
+		inline double ParapetTopAt(const FFeature& F, int32 Side, double Sq, double TopZ)
+		{
+			const double Full = TopZ + WallDims::ParapetH;
+			if (!CutsSide(F, Side)) { return Full; }
+			const double Sa = F.Target.X, Sb = F.Target.Y;
+			const double E0 = ParapetBreak(F, Side, 0), E1 = ParapetBreak(F, Side, 1);
+			if (Sq < Sa - E0 || Sq > Sb + E1) { return Full; }
+			if (Sq >= Sa && Sq <= Sb) { return TopZ - DepthAt(F, Sq); }
+			if (Sq < Sa) { return Sq < Sa - E0 + StubRun(F, Side, 0) ? TopZ + StubH(F, Side, 0) : TopZ; }
+			return Sq > Sb + E1 - StubRun(F, Side, 1) ? TopZ + StubH(F, Side, 1) : TopZ;
+		}
+
+		/** Cota del adarve en Sq a la distancia lateral X del eje (+ a la izquierda), con Hw su semiancho allí. */
+		inline double WalkTopAt(const FFeature& F, double Sq, double X, double Hw, double TopZ)
+		{
+			if (Sq < F.Target.X || Sq > F.Target.Y) { return TopZ; }
+			const double Cut = TopZ - DepthAt(F, Sq);
+			switch (KindOf(F))
+			{
+				case EWallBreach::LedgeLeft:  return X > Hw - F.Radius ? TopZ : Cut;
+				case EWallBreach::LedgeRight: return X < -Hw + F.Radius ? TopZ : Cut;
+				default:                      return Cut;
+			}
+		}
+
+		/** Distancias por el eje en las que cambia alguna cota del mordisco (bordes, escalones, parapetos rotos y sus restos). */
+		inline void Breakpoints(const FFeature& F, TArray<double>& Out)
+		{
+			double LenA = 0.0, DepthA = 0.0, LenB = 0.0, DepthB = 0.0;
+			EndStep(F, 0, LenA, DepthA);
+			EndStep(F, 1, LenB, DepthB);
+			Out.Append({ F.Target.X, F.Target.X + LenA, F.Target.Y - LenB, F.Target.Y });
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				if (!CutsSide(F, Side)) { continue; }
+				const double E0 = ParapetBreak(F, Side, 0), E1 = ParapetBreak(F, Side, 1);
+				Out.Append({ F.Target.X - E0, F.Target.X - E0 + StubRun(F, Side, 0), F.Target.Y + E1 - StubRun(F, Side, 1), F.Target.Y + E1 });
+			}
+		}
+	}
+
+	/**
+	 * Eje de una muralla: su adarve (el tramo alto de un cruce, muestras From..To del principal), recorrible por distancia
+	 * en planta desde From. Lo usan la malla de la muralla y la colocación de sus mordiscos.
+	 */
+	struct FWallAxis
+	{
+		TArray<FVector2D> P;
+		TArray<double> S;
+		TArray<double> Hw;
+
+		void Build(const TArray<FPathSample>& M, int32 From, int32 To)
+		{
+			for (int32 i = From; i <= To; ++i)
+			{
+				S.Add(P.Num() == 0 ? 0.0 : S.Last() + FVector2D::Distance(P.Last(), M[i].P));
+				P.Add(M[i].P);
+				Hw.Add(M[i].Width * 0.5);
+			}
+		}
+
+		double Length() const { return S.Num() > 0 ? S.Last() : 0.0; }
+
+		/** Distancia a lo largo del eje del punto del eje más cercano a Q. */
+		double Project(const FVector2D& Q) const
+		{
+			double Best = 1e300, BestS = 0.0;
+			for (int32 i = 0; i + 1 < P.Num(); ++i)
+			{
+				double T = 0.0;
+				const double D = DistPointSegment(Q, P[i], P[i + 1], T);
+				if (D < Best) { Best = D; BestS = FMath::Lerp(S[i], S[i + 1], T); }
+			}
+			return BestS;
+		}
+
+		/** Punto, tangente y normal izquierda (suavizadas) y semiancho del adarve a la distancia Sq. */
+		void At(double Sq, FVector2D& OutP, FVector2D& OutT, FVector2D& OutN, double& OutHw) const
+		{
+			int32 Lo = 0, Hi = S.Num() - 1;
+			while (Hi - Lo > 1)
+			{
+				const int32 Mid = (Lo + Hi) / 2;
+				if (S[Mid] <= Sq) { Lo = Mid; } else { Hi = Mid; }
+			}
+			const double T = FMath::Clamp((Sq - S[Lo]) / FMath::Max(1.0, S[Hi] - S[Lo]), 0.0, 1.0);
+			OutP = P[Lo] + (P[Hi] - P[Lo]) * T;
+			OutT = (P[FMath::Min(Hi + 1, P.Num() - 1)] - P[FMath::Max(Lo - 1, 0)]).GetSafeNormal();
+			OutN = FVector2D(-OutT.Y, OutT.X);
+			OutHw = FMath::Lerp(Hw[Lo], Hw[Hi], T);
+		}
+
+		/** Índice (desde From) de la muestra del eje más cercana a la distancia Sq. */
+		int32 NearestIndex(double Sq) const
+		{
+			int32 Best = 0;
+			for (int32 i = 1; i < S.Num(); ++i) { if (FMath::Abs(S[i] - Sq) < FMath::Abs(S[Best] - Sq)) { Best = i; } }
+			return Best;
+		}
+	};
+
+	/**
 	 * Torres de los cruces colosales. La de entrada es hueca: puerta a ras de suelo hacia el camino que llega, suelo
 	 * llano dentro y el géiser en el centro, que lanza por un hueco del forjado de la cima; se aterriza junto al hueco,
 	 * hacia el puente o el adarve. Su FFeature lleva HollowBit en Aux2 y, en Target, el centro de la puerta en la
@@ -576,6 +808,21 @@ namespace TNProcMap
 		constexpr double Land = 640.0;
 		/** Aux2 de la torre hueca y del géiser que tiene dentro. */
 		constexpr int32 HollowBit = 1;
+		/**
+		 * Cuánto sube el enlosado de la cima (malla) sobre la cota de la torre: el núcleo del terreno y el tablero o el
+		 * adarve que entran en ella quedan justo debajo, sin pelearse con él.
+		 */
+		constexpr double PaveLift = 4.0;
+		/**
+		 * Franja (cm, medida en arco) de un lado cerrado junto a uno abierto en la que el núcleo del terreno ya no lleva
+		 * pretil: la rampa entre las dos cotas (hasta 0,5 m de malla del terreno) queda dentro del pretil de sillería.
+		 */
+		constexpr double EdgeMargin = 70.0;
+		/**
+		 * Torre de muralla: por los lados abiertos la sillería baja a plomo a Radius + FlushOut (el tobogán sale de ahí)
+		 * y el enlosado llega hasta ella: tapa el borde del núcleo del terreno (hasta 0,5 m de rampa).
+		 */
+		constexpr double FlushOut = 60.0;
 	}
 
 	/**

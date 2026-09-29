@@ -26,12 +26,18 @@
 #include "TimerManager.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Game/TN_RunGameMode.h"
+#include "World/Beach/TN_RaceItems.h"
 
 // ── Knockdown ─────────────────────────────────────────────────────────────────
 
 void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 {
 	if (!HasAuthority())
+	{
+		return;
+	}
+	// Con el protector solar puesto o volando en el pelícano taxi (objetos de la carrera) nada la derriba.
+	if (TNRaceItems::IsInvulnerable(this))
 	{
 		return;
 	}
@@ -111,6 +117,10 @@ void ATortugaCharacter::RecoverFromKnockdown()
 	{
 		return;
 	}
+
+	// Levantada antes de tiempo (la bola de un aturdimiento, un teletransporte, un rescate...): el temporizador del derribo ya
+	// no vale. Si no, saltaba más tarde y la ponía a andar en plena bola (y volvía a sonar el «¡arriba!»).
+	GetWorldTimerManager().ClearTimer(KnockdownTimerHandle);
 
 	bIsKnockedDown = false;
 
@@ -234,6 +244,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			SnapshotSkelMeshRelTransform.SetLocation(DiveMeshDefaultLoc);
 			SnapshotSkelMeshRelTransform.SetScale3D(DiveMeshDefaultScale);
 			SnapshotSkelMeshCollisionProfile = SkelMesh->GetCollisionProfileName();
+			PreKnockdownStandLocation = GetActorLocation();
 
 			if (HasAuthority())
 			{
@@ -244,7 +255,14 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			// Capturamos la velocity del CMC ANTES de pararlo para transferirla a los
 			// bodies del ragdoll después — si no, el ragdoll arranca inerte y se cae
 			// donde estabas sin "resbalar" por el impulso del plátano.
-			const FVector KnockdownInitialVel = CMC_Ragdoll ? CMC_Ragdoll->Velocity : FVector::ZeroVector;
+			FVector KnockdownInitialVel = CMC_Ragdoll ? CMC_Ragdoll->Velocity : FVector::ZeroVector;
+			// El LaunchCharacter de ApplyKnockdown aún no se ha aplicado (el CMC lo gasta en su siguiente tick, que se
+			// apaga aquí mismo): se pasa al ragdoll y se descarta, para que no lance la cápsula al levantarse.
+			if (CMC_Ragdoll && !CMC_Ragdoll->PendingLaunchVelocity.IsZero())
+			{
+				KnockdownInitialVel = CMC_Ragdoll->PendingLaunchVelocity;
+				CMC_Ragdoll->PendingLaunchVelocity = FVector::ZeroVector;
+			}
 
 			if (CMC_Ragdoll)
 			{
@@ -260,6 +278,32 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			}
 
 			SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+			// Colisión continua en todos los huesos: los golpes lanzan el ragdoll a 10-25 m/s y, sin ella, un hueso
+			// pequeño atraviesa en un paso de física la colisión fina del terreno (mallas procedurales) y la tortuga
+			// acaba bajo el suelo. Además, un tope a la velocidad de entrada.
+			SkelMesh->SetAllUseCCD(true);
+			// Una vez por tortuga: avisa si algún cuerpo del ragdoll no choca con lo estático o lo dinámico del mundo
+			// (terreno, rocas y decorado son WorldStatic; murallas y fortalezas de la playa, WorldDynamic). Con el perfil
+			// Ragdoll todos bloquean; solo falla si el Physics Asset tiene cuerpos con la colisión desactivada.
+			if (!bRagdollCollisionReported)
+			{
+				bRagdollCollisionReported = true;
+				int32 NotBlocking = 0;
+				for (const FBodyInstance* Body : SkelMesh->Bodies)
+				{
+					if (Body && (!CollisionEnabledHasPhysics(Body->GetCollisionEnabled())
+						|| Body->GetResponseToChannel(ECC_WorldStatic) != ECR_Block || Body->GetResponseToChannel(ECC_WorldDynamic) != ECR_Block))
+					{
+						++NotBlocking;
+					}
+				}
+				if (NotBlocking > 0)
+				{
+					UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] %s: %d de %d cuerpos del ragdoll (perfil '%s') no chocan con el mundo: revisa su colisión en el Physics Asset."),
+						*GetName(), NotBlocking, SkelMesh->Bodies.Num(), *RagdollCollisionProfile.ToString());
+				}
+			}
+			KnockdownInitialVel = KnockdownInitialVel.GetClampedToMaxSize(KnockdownRagdollMaxEntrySpeed);
 			// Orden Epic: SIMULAR primero, pausar anims DESPUÉS. Evita el frame
 			// "semitieso" (bPauseAnims=true congela pose antes de que física arranque).
 			SkelMesh->SetAllBodiesSimulatePhysics(true);
@@ -284,6 +328,7 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 				KnockdownInitialVel.X, KnockdownInitialVel.Y, KnockdownInitialVel.Z);
 
 			bKnockdownRagdollActive = true;
+			bRagdollProbeValid = false;
 		}
 		else
 		{
@@ -302,24 +347,32 @@ void ATortugaCharacter::ApplyKnockdownVisual(bool bKnocked)
 			// para que no teleporte de vuelta a la pos pre-knockdown. Con los pies en el suelo de debajo del cuerpo
 			// (si lo encuentra), no a la altura de la cadera tumbada.
 			{
-				const FName  RootBone      = SkelMesh->GetBoneName(0);
-				const FVector RagdollLoc   = SkelMesh->GetBoneLocation(RootBone, EBoneSpaces::WorldSpace);
-				const float  HalfH         = GetCapsuleComponent()
-				                             ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight()
-				                             : 0.f;
-				FVector StandLoc = RagdollLoc + FVector(0.f, 0.f, HalfH);
+				const FBodyInstance* RootBody = SkelMesh->GetBodyInstance();
+				const FVector RagdollLoc = RootBody && RootBody->IsValidBodyInstance()
+					? RootBody->GetUnrealWorldTransform().GetLocation()
+					: SkelMesh->GetBoneLocation(SkelMesh->GetBoneName(0), EBoneSpaces::WorldSpace);
+				// Sobre el suelo de debajo del cuerpo (o de encima, si el cuerpo acabó por debajo); si no lo hay, donde
+				// estaba de pie al caer. Y sin quedar metida en nada: si no, la cápsula se «desincrusta» hacia abajo por la
+				// colisión fina del terreno y cae por debajo del mapa.
+				FVector StandLoc = PreKnockdownStandLocation;
+				if (!FindStandSpotNear(RagdollLoc, StandLoc))
+				{
+					StandLoc = PreKnockdownStandLocation;
+				}
+				// La cápsula vuelve a chocar ANTES de buscar sitio: FindTeleportSpot solo aparta una cápsula con colisión de
+				// consulta. Con la del ragdoll (sin colisión) no hacía nada y, junto a una roca o una muralla, la tortuga se
+				// levantaba con media cápsula (y la malla) dentro. El ragdoll no choca con cápsulas (perfil Ragdoll).
+				if (UCapsuleComponent* Cap = GetCapsuleComponent())
+				{
+					Cap->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				}
 				if (UWorld* World = GetWorld())
 				{
-					FHitResult FloorHit;
-					FCollisionQueryParams FloorParams(SCENE_QUERY_STAT(KnockdownGetUpFloor), false, this);
-					if (World->LineTraceSingleByChannel(FloorHit, RagdollLoc + FVector(0.f, 0.f, 60.f), RagdollLoc - FVector(0.f, 0.f, 250.f),
-						ECC_WorldStatic, FloorParams))
-					{
-						StandLoc = FloorHit.ImpactPoint + FVector(0.f, 0.f, HalfH + 2.f);
-					}
+					World->FindTeleportSpot(this, StandLoc, GetActorRotation());
 				}
 				SetActorLocation(StandLoc, false, nullptr, ETeleportType::TeleportPhysics);
 			}
+			bRagdollProbeValid = false;
 
 			SkelMesh->SetAllBodiesPhysicsBlendWeight(0.f);
 			SkelMesh->SetAllBodiesSimulatePhysics(false);
@@ -714,6 +767,8 @@ void ATortugaCharacter::EnterRagdollState()
 	// 6. Use the same collision setup as knockdown. The Ragdoll profile should be
 	//    authored in the PhysicsAsset/project settings; do not override it here.
 	SkelMesh->SetCollisionProfileName(RagdollCollisionProfile);
+	// Colisión continua: el ragdoll de la muerte tampoco atraviesa la colisión fina del terreno.
+	SkelMesh->SetAllUseCCD(true);
 
 	// 7. (movido al paso 11 — bBlendPhysics se setea AL FINAL, después de
 	//    SetSimulate + Wake. Triple Mode round 2 — Gemini 8/10: setear
@@ -951,3 +1006,94 @@ void ATortugaCharacter::ShowLimbs()
 	if (HelmetMeshComp) { HelmetMeshComp->SetVisibility(true, true); }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Ragdoll del derribo: sin atravesar el suelo y con la cámara siguiéndolo
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATortugaCharacter::TickKnockdownRagdoll(float DeltaTime)
+{
+	if (!bKnockdownRagdollActive)
+	{
+		bRagdollProbeValid = false;
+		return;
+	}
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	UWorld* World = GetWorld();
+	FBodyInstance* RootBody = SkelMesh ? SkelMesh->GetBodyInstance() : nullptr;
+	if (!World || !RootBody || !RootBody->IsValidBodyInstance() || !SkelMesh->IsSimulatingPhysics())
+	{
+		return;
+	}
+	FVector Probe = RootBody->GetUnrealWorldTransform().GetLocation();
+
+	// 1) Si del fotograma anterior a este el cuerpo ha cruzado geometría estática (el terreno es una malla fina), se
+	//    devuelve encima de lo que ha cruzado y se le quita la velocidad hacia dentro. Solo objetos estáticos: otras
+	//    tortugas, enemigos o el propio ragdoll no cuentan.
+	if (bRagdollProbeValid && FVector::DistSquared(Probe, RagdollProbeLast) > 1.0)
+	{
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(KnockdownRagdollTunnel), true, this);
+		if (World->LineTraceSingleByObjectType(Hit, RagdollProbeLast, Probe, FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+		{
+			const FVector Normal = Hit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : Hit.ImpactNormal;
+			const FVector Fix = Hit.ImpactPoint + Normal * KnockdownRagdollTunnelMargin - Probe;
+			for (FBodyInstance* Body : SkelMesh->Bodies)
+			{
+				if (!Body || !Body->IsValidBodyInstance())
+				{
+					continue;
+				}
+				FTransform BodyXf = Body->GetUnrealWorldTransform();
+				BodyXf.AddToTranslation(Fix);
+				Body->SetBodyTransform(BodyXf, ETeleportType::TeleportPhysics);
+				const FVector Vel = Body->GetUnrealWorldVelocity();
+				const double Into = FVector::DotProduct(Vel, Normal);
+				if (Into < 0.0)
+				{
+					Body->SetLinearVelocity(Vel - Into * Normal, false);
+				}
+			}
+			Probe += Fix;
+			UE_LOG(LogTortunabo, Warning, TEXT("[Ragdoll] %s atravesaba %s: devuelto %.0f cm encima."),
+				*GetName(), *GetNameSafe(Hit.GetActor()), Fix.Size());
+		}
+	}
+	RagdollProbeLast = Probe;
+	bRagdollProbeValid = true;
+
+	// 2) La cápsula (sin colisión ni movimiento mientras dura) sigue al cuerpo: la cámara, en su brazo, sigue a la
+	//    tortuga tumbada como siempre en vez de quedarse donde empezó el golpe. Sin teletransporte físico: la malla
+	//    simulada no se mueve con ella.
+	const float HalfH = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 0.f;
+	SetActorLocation(Probe + FVector(0.f, 0.f, HalfH * 0.5f), false, nullptr, ETeleportType::None);
+}
+
+bool ATortugaCharacter::FindStandSpotNear(const FVector& From, FVector& OutStandLoc) const
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	const float HalfH = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 0.f;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(KnockdownGetUpFloor), true, this);
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	FHitResult Hit;
+	// Primero, el suelo justo debajo del cuerpo (lo normal).
+	if (World->LineTraceSingleByObjectType(Hit, From + FVector(0.0, 0.0, 120.0), From - FVector(0.0, 0.0, 600.0), Objects, Params)
+		&& Hit.ImpactNormal.Z > 0.3)
+	{
+		OutStandLoc = Hit.ImpactPoint + FVector(0.0, 0.0, HalfH + 2.0);
+		return true;
+	}
+	// Si no hay, el cuerpo puede haber quedado por debajo de la superficie: se busca desde bastante más arriba.
+	if (World->LineTraceSingleByObjectType(Hit, From + FVector(0.0, 0.0, 3000.0), From - FVector(0.0, 0.0, 600.0), Objects, Params)
+		&& Hit.ImpactNormal.Z > 0.3)
+	{
+		OutStandLoc = Hit.ImpactPoint + FVector(0.0, 0.0, HalfH + 2.0);
+		return true;
+	}
+	return false;
+}

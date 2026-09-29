@@ -14,12 +14,17 @@
 #include "Core/TN_CosmeticLook.h"
 #include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
+#include "Player/TN_ShellImpactFXComponent.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_DizzyBirdsComponent.h"
+#include "Player/TN_TurtleFaceComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TN_WadingComponent.h"
 #include "Player/TN_ProcAnimInstance.h"
 #include "Player/TN_TurtleAnimInstance.h"
+#include "Player/TN_TurtleDustComponent.h"
+#include "Player/TN_TurtleFoleyComponent.h"
+#include "Player/TN_TurtleMovementComponent.h"
 #include "World/TN_InteractableBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
@@ -51,7 +56,8 @@ TAutoConsoleVariable<int32> CVarDebugInteraction(
 	TEXT("1 = Draw debug lines/spheres para el raycast de interacción y logs detallados. 0 = off."),
 	ECVF_Cheat);
 
-ATortugaCharacter::ATortugaCharacter()
+ATortugaCharacter::ATortugaCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UTN_TurtleMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;   // needed for leg animation
 	SpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
@@ -59,8 +65,14 @@ ATortugaCharacter::ATortugaCharacter()
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-	SetNetUpdateFrequency(60.f);
-	SetMinNetUpdateFrequency(30.f);
+	// 30 Hz (10 como mínimo con la frecuencia adaptativa: quieta o lejos): el movimiento de los demás va suavizado y el del
+	// dueño lo corrigen sus propios RPC. Con 60/30 Hz y ocho jugadores, el anfitrión mandaba el doble a cada cliente.
+	SetNetUpdateFrequency(30.f);
+	SetMinNetUpdateFrequency(10.f);
+	// Las tortugas de los jugadores (ocho como mucho) llegan siempre a todas las máquinas, estén donde estén: con la
+	// distancia de corte de serie (150 m), en el mapa procedural y en la playa un cliente perdía la tortuga lejana y su
+	// cara del HUD (energía, caparazón), su marca en la pista y el espectador que la sigue se quedaban congelados.
+	bAlwaysRelevant = true;
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
@@ -133,6 +145,8 @@ ATortugaCharacter::ATortugaCharacter()
 	CarryComponent = CreateDefaultSubobject<UTN_CarryComponent>(TEXT("CarryComponent"));
 	DizzyBirds = CreateDefaultSubobject<UTN_DizzyBirdsComponent>(TEXT("DizzyBirds"));
 	DizzyBirds->SetupAttachment(RootComponent);
+	// Lengua, caras de cansancio, sudor y boca (se engancha sola a la cabeza de la malla en su primer fotograma).
+	TurtleFace = CreateDefaultSubobject<UTN_TurtleFaceComponent>(TEXT("TurtleFace"));
 
 	// Casco cosmético: adjunto directamente a GetMesh() (SkeletalMeshComponent).
 	// Al estar en el árbol del mesh, recibe el network smoothing del CMC → sin lag.
@@ -236,7 +250,10 @@ void ATortugaCharacter::BeginPlay()
 	ResolveKnockdownVisualComponent();
 
 	// ── Dive: guardar rotaciones por defecto y HalfHeight de la cápsula ─────────
+	// La de la clase manda: si el panzazo de otra tortuga llega antes que su BeginPlay (entrar a media partida), su
+	// cápsula ya viene encogida.
 	DiveCapsuleOrigHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	DiveCapsuleOrigHalfHeight = FMath::Max(DiveCapsuleOrigHalfHeight, GetStandingCapsuleHalfHeight());
 	if (USkeletalMeshComponent* SkelMesh = GetMesh())
 	{
 		DiveMeshDefaultRot = SkelMesh->GetRelativeRotation();
@@ -287,6 +304,16 @@ void ATortugaCharacter::BeginPlay()
 	CacheDefaultSkelMeshMaterials();
 
 	StartCosmeticRetryTimer();
+
+	// Pasos, aterrizajes y jadeo sintetizados (solo en máquinas con audio; lee el estado replicado, sin RPC).
+	UTN_TurtleFoleyComponent::FindOrAddTo(this);
+
+	// Polvo, arenilla, astillas o salpicaduras del arrastre del panzazo (cosmético y local; nada en servidor dedicado).
+	UTN_TurtleDustComponent::FindOrAddTo(this);
+
+	// Golpes de la bola del caparazón (sonido y mini efecto según contra qué choca): cosmético y local, cada máquina en su copia de la bola.
+	// Se engancha sola a la caja física cuando aparece (sin tocar TN_ShellBody ni TN_ShellComponent); nada en servidor dedicado.
+	UTN_ShellImpactFXComponent::FindOrAddTo(this);
 }
 
 void ATortugaCharacter::ResolveAnimationBones()
@@ -532,6 +559,7 @@ void ATortugaCharacter::Tick(float DeltaTime)
 		}
 	}
 
+	TickKnockdownRagdoll(DeltaTime); // ragdoll del derribo: sin atravesar el suelo y con la cámara siguiéndolo
 	TickDive(DeltaTime);           // dive physics recovery + procedural animation
 	TickJumpAnim(DeltaTime);       // jump procedural animation (suppressed during dive)
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
@@ -1018,6 +1046,10 @@ void ATortugaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		if (LoadedInteractAction)
 		{
 			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Started, this, &ATortugaCharacter::TryInteract);
+			// Soltar la tecla corta las interacciones de mantener (rebuscar). IA_Interact usa el disparador implícito
+			// (pulsada mientras se mantiene): con uno de tipo Pressed, Completed llegaría al instante y no se podría mantener.
+			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Completed, this, &ATortugaCharacter::ReleaseInteract);
+			EnhancedInput->BindAction(LoadedInteractAction, ETriggerEvent::Canceled, this, &ATortugaCharacter::ReleaseInteract);
 			UE_LOG(LogTortunabo, Log, TEXT("[Input] ✓ IA_Interact bound to TryInteract"));
 		}
 		else
@@ -1114,6 +1146,20 @@ void ATortugaCharacter::Jump()
 		return;
 	}
 
+	// Sobre la tripa tras el panzazo: casi parada, el salto es un brinco que la levanta (lo decide el movimiento, que lo
+	// predice igual que el servidor); deprisa no hace nada. Ya levantada, mientras llega el fin del panzazo, salta normal.
+	if (bIsDiving)
+	{
+		const UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement();
+		if (TurtleMove && TurtleMove->AcceptsInputDuringDive(DiveSerial) && CanJump())
+		{
+			bJumpAnimActive = true;
+			JumpAnimTime    = 0.f;
+			Super::Jump();
+		}
+		return;
+	}
+
 	// Grounded y no en dive → salto normal + trigger jump procedural animation
 	if (!bIsDiving)
 	{
@@ -1177,8 +1223,13 @@ void ATortugaCharacter::Move(const FInputActionValue& Value)
 		return;
 	}
 
-	// Movement is locked during the dive and recovery slide
-	if (bIsDiving) { return; }
+	// Durante el panzazo no se dirige: ni en el aire ni arrastrándose deprisa. Casi parada, moverse la levanta; reptando
+	// (sin sitio para ponerse de pie) o ya levantándose, se mueve (UTN_TurtleMovementComponent lo decide, predicho).
+	if (bIsDiving)
+	{
+		const UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement();
+		if (!TurtleMove || !TurtleMove->AcceptsInputDuringDive(DiveSerial)) { return; }
+	}
 	// Movement is locked during knockdown — momentum from LaunchCharacter takes over
 	if (bIsKnockedDown) { return; }
 	// Levantándose del derribo (unos 0,75 s): el cuerpo gira del suelo a de pie sin deslizarse.
@@ -1278,6 +1329,15 @@ void ATortugaCharacter::TryInteract()
 		UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] Sending ServerTryInteract → %s (CanInteract client-side: %s)"),
 			*FocusedInteractable->GetName(),
 			FocusedInteractable->CanInteract(this) ? TEXT("YES") : TEXT("NO"));
+	}
+
+	// Interacción de mantener (rebuscar un decorado): el servidor cuenta el tiempo mientras siga pulsada la tecla;
+	// ReleaseInteract avisa al soltarla.
+	if (FocusedInteractable->GetHoldDuration() > 0.f)
+	{
+		HoldInteractable = FocusedInteractable;
+		ServerBeginHoldInteract(FocusedInteractable.Get());
+		return;
 	}
 
 	ServerTryInteract(FocusedInteractable.Get());
@@ -1420,7 +1480,9 @@ void ATortugaCharacter::RefreshSprintRequest()
 	// Solo se desactiva cuando el jugador solta el stick/WASD por completo.
 	static constexpr float MovementInputDeadzone = 0.25f;
 	const bool bHasMovementInput = LastMovementInput.SizeSquared() > (MovementInputDeadzone * MovementInputDeadzone);
-	StaminaComponent->SetSprintRequested(bSprintHeld && bHasMovementInput);
+	// En el caparazón no se esprinta aunque la tecla siga pulsada: el input de movimiento llega igual y, sin esto, la
+	// petición de sprint volvía a activarse y gastaba estamina con la tortuga metida dentro.
+	StaminaComponent->SetSprintRequested(bSprintHeld && bHasMovementInput && !IsInShell() && !bIsKnockedDown && !bIsDead);
 }
 
 void ATortugaCharacter::GrantInfiniteStamina(float DurationSeconds)
@@ -1575,6 +1637,7 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(ATortugaCharacter, bBigHead);
 	// Dive
 	DOREPLIFETIME(ATortugaCharacter, bIsDiving);
+	DOREPLIFETIME(ATortugaCharacter, DiveSerial);
 	DOREPLIFETIME(ATortugaCharacter, DiveTargetYaw);
 	DOREPLIFETIME(ATortugaCharacter, bDiveYawInterpActive);
 	// Umbrella protection (#29)
@@ -1582,6 +1645,28 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	// Head look — SkipOwner: el owner aplica la rotación localmente sin pasar por la red
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadYaw,   COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadPitch, COND_SkipOwner);
+}
+
+void ATortugaCharacter::PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker)
+{
+	Super::PreReplication(ChangedPropertyTracker);
+
+	// Base que los demás no encuentran por red (teselas y decorado local de la playa, mallas creadas en ejecución): «sin
+	// base», con la posición del mundo de siempre (ReplicatedMovement). Si se mandara, llegaría nula con
+	// bServerHasBaseComponent y el motor daría la base por «sin resolver»: sin simular ni suavizar a esta tortuga en los
+	// demás clientes. Además, cada cambio de base avisaba en el registro del servidor («SupportsObject ... NOT Supported»).
+	FBasedMovementInfo& RepBased = GetReplicatedBasedMovement_Mutable();
+	if (RepBased.MovementBase && !UTN_TurtleMovementComponent::IsNetResolvableBase(RepBased.MovementBase))
+	{
+		RepBased.MovementBase = nullptr;
+		RepBased.BoneName = NAME_None;
+		RepBased.bServerHasBaseComponent = false;
+		RepBased.bRelativeRotation = false;
+		RepBased.bServerHasVelocity = false;
+		// Fijos mientras siga así: sin base no se usan (la posición y el giro van en ReplicatedMovement) y no se reenvían.
+		RepBased.Location = FVector::ZeroVector;
+		RepBased.Rotation = FRotator::ZeroRotator;
+	}
 }
 
 // ── Big Head Consumable ───────────────────────────────────────────────────────
@@ -1724,22 +1809,37 @@ void ATortugaCharacter::TickHeadLook(float DeltaTime)
 		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, LocalHeadPitch,        DeltaTime, 20.f);
 		ApplyHeadLookToCabeza(SmoothedHeadYaw, SmoothedHeadPitch);
 
-		// Enviar al servidor (listen-server escribe directo; cliente dedicado usa RPC unreliable)
+		// Al servidor, en grados enteros (los demás la suavizan). El anfitrión escribe directo; un cliente, por RPC no fiable,
+		// como mucho 12 veces por segundo y solo si ha cambiado (antes, un RPC por fotograma y jugador), y una vez por segundo
+		// aunque no cambie por si se perdió el último.
+		const int8 QuantYaw   = static_cast<int8>(FMath::Clamp(FMath::RoundToInt(LocalHeadRelativeYaw), -90, 90));
+		const int8 QuantPitch = static_cast<int8>(FMath::Clamp(FMath::RoundToInt(LocalHeadPitch), -80, 80));
 		if (HasAuthority())
 		{
-			ReplicatedHeadYaw   = LocalHeadRelativeYaw;
-			ReplicatedHeadPitch = LocalHeadPitch;
+			ReplicatedHeadYaw   = QuantYaw;
+			ReplicatedHeadPitch = QuantPitch;
 		}
 		else
 		{
-			ServerUpdateHeadRotation(LocalHeadRelativeYaw, LocalHeadPitch);
+			constexpr float HeadSendRate = 12.f;
+			HeadSendCooldown -= DeltaTime;
+			HeadSinceSend += DeltaTime;
+			const bool bChanged = QuantYaw != SentHeadYaw || QuantPitch != SentHeadPitch;
+			if (HeadSendCooldown <= 0.f && (bChanged || HeadSinceSend >= 1.f))
+			{
+				HeadSendCooldown = 1.f / HeadSendRate;
+				HeadSinceSend = 0.f;
+				SentHeadYaw = QuantYaw;
+				SentHeadPitch = QuantPitch;
+				ServerUpdateHeadRotation(QuantYaw, QuantPitch);
+			}
 		}
 	}
 	else
 	{
 		// Cliente remoto: interpolar hacia los valores replicados para suavidad
-		SmoothedHeadYaw   = FMath::FInterpTo(SmoothedHeadYaw,   ReplicatedHeadYaw,   DeltaTime, 15.f);
-		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, ReplicatedHeadPitch, DeltaTime, 15.f);
+		SmoothedHeadYaw   = FMath::FInterpTo(SmoothedHeadYaw,   static_cast<float>(ReplicatedHeadYaw),   DeltaTime, 15.f);
+		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, static_cast<float>(ReplicatedHeadPitch), DeltaTime, 15.f);
 		ApplyHeadLookToCabeza(SmoothedHeadYaw, SmoothedHeadPitch);
 	}
 }
@@ -1764,20 +1864,17 @@ void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
 	}
 }
 
-bool ATortugaCharacter::ServerUpdateHeadRotation_Validate(float Yaw, float Pitch)
+bool ATortugaCharacter::ServerUpdateHeadRotation_Validate(int8 /*Yaw*/, int8 /*Pitch*/)
 {
-	// NaN/Inf ATRAVIESAN el clamp de _Implementation (Clamp(NaN)=NaN) y romperían
-	// la animación de cabeza replicada en todos los clientes. Cota generosa ±720°:
-	// el cliente legítimo ya manda valores acotados.
-	return FMath::IsFinite(Yaw) && FMath::IsFinite(Pitch)
-		&& FMath::Abs(Yaw) <= 720.f && FMath::Abs(Pitch) <= 720.f;
+	// Grados enteros en un byte: no hay NaN ni infinitos que colar; el rango lo acota _Implementation.
+	return true;
 }
 
-void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(float Yaw, float Pitch)
+void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(int8 Yaw, int8 Pitch)
 {
 	// Validar rangos en el servidor para prevenir manipulación del cliente
-	ReplicatedHeadYaw   = FMath::Clamp(Yaw,   -90.f,  90.f);
-	ReplicatedHeadPitch = FMath::Clamp(Pitch,  -80.f,  80.f);
+	ReplicatedHeadYaw   = static_cast<int8>(FMath::Clamp(static_cast<int32>(Yaw),   -90,  90));
+	ReplicatedHeadPitch = static_cast<int8>(FMath::Clamp(static_cast<int32>(Pitch), -80,  80));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

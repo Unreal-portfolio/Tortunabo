@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_MatchStartTypes.h"
 #include "GameFramework/Actor.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "World/ProcMap/TN_ProcMapLayout.h"
@@ -18,10 +19,23 @@ class UMaterialInterface;
 class UPCGComponent;
 class APlayerStart;
 class ATN_ProcEggNest;
+class ATN_ProcStartStructure;
 class ATN_ProcWaterVolume;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnProcMapGenerated, int32, Generation);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnProcMapGeneratedNative, int32 /*Generation*/);
+
+/** Una concha especial (50 o 100) del mapa, en el mundo: para ir a por ella con «TNShells Especial». */
+struct FTNShellSpot
+{
+	/** Centro de la concha, dónde ponerse (en el suelo, unos metros antes) y hacia dónde mirar. */
+	FVector Shell = FVector::ZeroVector;
+	FVector Stand = FVector::ZeroVector;
+	FVector Facing = FVector::ForwardVector;
+	int32 Value = 0;
+	/** Qué sitio es (TNProcMap::ShellSpotName). */
+	FString Where;
+};
 
 /** Lo único que se replica del mapa: con esto cada máquina genera el mismo. */
 USTRUCT(BlueprintType)
@@ -104,9 +118,28 @@ public:
 	const TNProcMap::FLayout& GetLayout() const { return Layout; }
 	const FTNProcMapProfile& GetActiveProfile() const { return ActiveProfile; }
 
-	/** Transform de salida para el jugador N (alrededor del claro inicial). */
+	/**
+	 * Transform de salida para el jugador N (alrededor del claro inicial). En el servidor, con estructura de salida, los
+	 * primeros van dentro de ella (sala o huevos) a 110 cm del suelo, como los del anillo.
+	 */
 	UFUNCTION(BlueprintPure, Category = "ProcMap")
 	FTransform GetStartTransform(int32 PlayerIndex) const;
+
+	/** Si hay colisión del mapa (terreno o estructuras) bajo un punto: la del terreno se cocina en segundo plano. */
+	bool MapCollisionUnder(const FVector& WorldLocation) const;
+
+	/**
+	 * Estructura de salida (puerta doble o huevos, ATN_ProcStartStructure) que el servidor pone al fondo del claro de
+	 * salida en cada generación. La pide el GameMode de la partida antes de generar; si nadie la pide (solo terreno,
+	 * nivel abierto a mano), no hay.
+	 */
+	void SetStartStructureStyle(ETNMatchStartStyle InStyle) { bSpawnStartStructure = true; StartStructureStyle = InStyle; }
+
+	/** Estructura de salida del mapa actual (solo servidor; nullptr si no hay). */
+	ATN_ProcStartStructure* GetStartStructure() const;
+
+	/** PlayerStart del sitio de salida Index (los primeros, dentro de la estructura de salida si la hay). Solo servidor. */
+	APlayerStart* GetStartPlayerStart(int32 Index) const;
 
 	/** Progreso (cm a lo largo del camino principal) de una posición del mundo. */
 	UFUNCTION(BlueprintPure, Category = "ProcMap")
@@ -125,6 +158,12 @@ public:
 
 	/** Pilas de huevos (solo en servidor; los clientes las ven como actores replicados). */
 	const TArray<TWeakObjectPtr<ATN_ProcEggNest>>& GetEggNests() const { return EggNests; }
+
+	/** Conchas especiales (50 y 100) del mapa actual, en orden por el camino (solo servidor). */
+	const TArray<FTNShellSpot>& GetSpecialShellSpots() const { return SpecialShellSpots; }
+
+	/** Resumen de las conchas del mapa actual (cuántas de cada tamaño y dónde van las especiales; solo servidor). */
+	const FString& GetShellSummary() const { return ShellSummary; }
 
 	/** Altura del terreno generado en un punto del mundo (sin trazas: vale antes de cocinar colisión). */
 	float GetTerrainHeightAt(const FVector& WorldLocation) const;
@@ -198,7 +237,17 @@ private:
 	void BuildFlora();
 	void SpawnTraversalActors();
 	void SpawnServerActors();
+	/** Servidor: la estructura de salida al fondo del claro (antes que los PlayerStart, que van dentro de ella). */
+	void SpawnStartStructure();
+	/** Servidor: decorados del camino que se pueden rebuscar (ATN_ProcSearchSpot); no en el modo de solo terreno. */
+	void SpawnSearchSpots();
 	void SpawnHazards();
+	/**
+	 * Servidor: conchas de puntos del plan puro (TNProcMap::PlanShells: rachas de 1, arcos de salto, cornisas y
+	 * especiales de 50 y 100) y las especiales de los tramos hundidos de los puentes (BrokenSpanPrizes). Después de
+	 * SpawnHazards: no pisan lo que este ha puesto (HazardSpots). No en el modo de solo terreno.
+	 */
+	void SpawnShells();
 	void RunBiomePCG();
 	void BuildProgressIndex();
 	void DrawDebug() const;
@@ -241,8 +290,6 @@ private:
 	/** Detalle fino (DetailSpacing) de los cuadrados del mallado que lo necesitan: lo dibujado y su colisión. */
 	TNProcMap::FTerrainDetail TerrainDetail;
 
-	/** Si hay colisión del mapa (terreno o estructuras) bajo un punto: la del terreno se cocina en segundo plano. */
-	bool MapCollisionUnder(const FVector& WorldLocation) const;
 	/** Desde cuándo (s) está el mapa listo esperando a que haya suelo bajo el pawn local (-1 = no espera). */
 	double ReadySince = -1.0;
 
@@ -311,4 +358,34 @@ private:
 
 	TArray<TWeakObjectPtr<ATN_ProcEggNest>> EggNests;
 	TArray<FTransform> StartTransforms;
+
+	/** Estructura de salida pedida por el GameMode y su estilo. */
+	bool bSpawnStartStructure = false;
+	ETNMatchStartStyle StartStructureStyle = ETNMatchStartStyle::Gate;
+	TWeakObjectPtr<ATN_ProcStartStructure> StartStructure;
+
+	/** PlayerStart de cada sitio de salida (mismo índice que StartTransforms; solo servidor). */
+	TArray<TWeakObjectPtr<APlayerStart>> StartPlayerStarts;
+
+	/**
+	 * Punto pisable del medio de cada tramo hundido de un puente colosal (espacio del mapa, a la cota de lo que se pisa:
+	 * el codo de las vigas, la cima del poste o el tablón), dónde ponerse antes de él y su cruce y largo. Lo rellena
+	 * BuildStructures (en todas las máquinas) y lo usa SpawnShells.
+	 */
+	struct FBrokenSpanPrize
+	{
+		FVector Point = FVector::ZeroVector;
+		FVector Stand = FVector::ZeroVector;
+		FVector2D Facing = FVector2D(1.0, 0.0);
+		int32 Crossing = INDEX_NONE;
+		double Length = 0.0;
+	};
+	TArray<FBrokenSpanPrize> BrokenSpanPrizes;
+
+	/** Lo que SpawnHazards ha puesto en el servidor (x, y y radio en el mapa): las conchas del plan no lo pisan. */
+	TArray<FVector> HazardSpots;
+
+	/** Conchas especiales del mapa actual y resumen para el registro y TNShells (solo servidor). */
+	TArray<FTNShellSpot> SpecialShellSpots;
+	FString ShellSummary;
 };

@@ -173,8 +173,32 @@ private:
 	 * @brief Engancha (o suelta) la tortuga a su caja en esta máquina: movimiento del
 	 *        personaje apagado, cápsula que solo solapa y sin réplica de movimiento del
 	 *        personaje (cada máquina la sigue a partir de la caja replicada).
+	 * @note  Al soltar, la cápsula y el suavizado de red vuelven a los de serie de la clase
+	 *        de la tortuga (no a lo que hubiera al engancharse: otro sistema podía tenerlos
+	 *        cambiados un momento, como el ragdoll del derribo, y se devolvía eso). Si el
+	 *        ragdoll de esta máquina sigue simulando, la cápsula queda sin colisión hasta
+	 *        que se levante (lo devuelve el derribo).
 	 */
 	void ApplyBodyLocalState(bool bOn);
+
+	/**
+	 * @brief Con la caja enganchada en esta máquina, vuelve a dejar el movimiento apagado y la
+	 *        cápsula solo solapando si otro sistema se los ha devuelto mientras (la vuelta de un
+	 *        derribo o una corrección de red que llegan tarde): mientras la mueve la caja, nada
+	 *        más la mueve. Lo llama FollowBody en cada fotograma.
+	 */
+	void EnforceBodyLocalState();
+
+	/**
+	 * @brief Servidor: sitio libre para una caja nueva en Center con Rotation. Si ahí se
+	 *        mete en algo que la para (decorado, una muralla, la arena, otra tortuga), se
+	 *        prueba un poco más arriba y alrededor; sin sitio libre, Center tal cual (la red
+	 *        de seguridad de la carrera la saca si se hunde).
+	 * @note  Una caja que nace dentro de algo sale empujada y puede cruzar la malla fina del
+	 *        terreno: pasaba al meterse en el caparazón colgando del pico de una gaviota que
+	 *        arrastra a la tortuga por el decorado.
+	 */
+	FVector FindFreeBodySpot(const FVector& Center, const FRotator& Rotation) const;
 
 	/** Suelta la caja enganchada en esta máquina: coloca a la tortuga de pie y restaura. */
 	void ReleaseLocalBody();
@@ -189,12 +213,6 @@ private:
 	/** Última transformación seguida de la caja (para ponerse de pie si la caja ya no está). */
 	FTransform LastBoxTransform;
 	bool bHasLastBox = false;
-
-	/** Colisión de la cápsula y suavizado de red antes de engancharse, para restaurarlos. */
-	FName SavedCapsuleProfile = NAME_None;
-	TEnumAsByte<ECollisionEnabled::Type> SavedCapsuleEnabled = ECollisionEnabled::QueryAndPhysics;
-	FCollisionResponseContainer SavedCapsuleResponses;
-	uint8 SavedSmoothingMode = 0;
 
 	/** @brief Devuelve el personaje dueño, o nullptr si el componente cuelga de otra cosa. */
 	ATortugaCharacter* GetTurtleOwner() const;

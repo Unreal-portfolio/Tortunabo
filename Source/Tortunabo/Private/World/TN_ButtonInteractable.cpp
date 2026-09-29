@@ -18,7 +18,7 @@ namespace
 ATN_ButtonInteractable::ATN_ButtonInteractable()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	PromptText = FText::FromString(TEXT("Activar"));
+	PromptText = NSLOCTEXT("Tortunabo", "ButtonPrompt", "Activar");
 	bAlwaysRelevant = true; // El cliente nunca pierde el estado de bIsActivated (#B4/#B8)
 }
 

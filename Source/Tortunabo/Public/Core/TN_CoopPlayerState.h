@@ -1,10 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/NetSerialization.h"
 #include "GameFramework/PlayerState.h"
 #include "TN_CoopPlayerState.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRaceScoreChanged, int32, NewScore);
+/** Una concha de este jugador acaba de sumar: Value puntos, Tier (TNScoreShells::ETier) y dónde estaba (mundo). */
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnScoreShellCollected, int32 /*Value*/, uint8 /*Tier*/, const FVector& /*WorldLocation*/);
 
 class ATortugaCharacter;
 
@@ -40,6 +43,23 @@ public:
 	 *       este método en todos los sitios server que suman score (pickups, zonas, finish).
 	 */
 	void AddRaceScore(int32 Delta);
+
+	/**
+	 * Solo en la máquina de este jugador: una concha suya acaba de sumar (lo escucha el HUD para que los iconos vuelen
+	 * al contador). Lo difunde MulticastScoreShellCollected.
+	 */
+	FOnScoreShellCollected OnScoreShellCollected;
+
+	/**
+	 * Servidor (ATN_ScorePickup, tras AddRaceScore): este jugador ha cogido una concha de Value puntos y tamaño Tier
+	 * (TNScoreShells::ETier) en WorldLocation. Cada máquina con pantalla hace allí el estallido (ATN_ScoreShellBurst:
+	 * destello, chispas y «¡plin!»); la del propio jugador, además, difunde OnScoreShellCollected. Va por el
+	 * PlayerState (que no se destruye ni duerme, así que da igual que la concha se destruya justo después) y no fiable:
+	 * es solo lo que se ve y se oye (los puntos van en RaceScore, y el contador del HUD acaba siempre en él); con ocho
+	 * jugadores cogiendo conchas, un multicast fiable por concha llenaba los búferes de fiables.
+	 */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastScoreShellCollected(FVector_NetQuantize10 WorldLocation, uint8 Tier, int32 Value);
 
 	/**
 	 * @brief Resetea el estado a valores de ARRANQUE de carrera (vivo, sin finish/DBNO/
@@ -176,6 +196,14 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
 	int32 RoundWins = 0;
+
+	/**
+	 * Carrera en la playa (ATN_BeachRaceGameMode): conchas de la partida en medias (2 = una concha entera). La primera en
+	 * tocar el agua se lleva una entera y quien llega en la cuenta atrás de después, media. Gana quien llega a
+	 * RoundTarget conchas (RoundTarget * 2 medias). Lo resetea el GameMode al empezar la partida; no ResetForNewRace.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")
+	int32 RaceShellHalves = 0;
 
 	/** Pareja de la ronda actual en 2vs2 (0 o 1). -1 fuera de 2vs2. */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Coop|Rounds")

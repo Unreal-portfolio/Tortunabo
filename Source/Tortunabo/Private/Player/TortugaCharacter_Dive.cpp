@@ -8,6 +8,8 @@
 
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_Log.h"
+#include "Player/TN_CarryComponent.h"
+#include "Player/TN_TurtleMovementComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -19,15 +21,52 @@
 //
 // Flow:
 //   Input (client)  → TryDive()
-//   → Server_StartDive(DiveDir)      — validates, applies physics, sets bIsDiving
+//   → Server_StartDive(DiveDir)      — validates, applies physics, sets bIsDiving (+ DiveSerial)
 //   → Multicast_OnDiveVisual(true)   — all clients apply tilt + capsule resize
-//   TickDive (server) watches speed  → EndDive() when stopped
+//   Al caer de tripa, UTN_TurtleMovementComponent arrastra a la tortuga dentro de la simulación del movimiento
+//   (predicha en el cliente dueño): inercia, rozamiento por superficie, pendientes y rebotes. Casi parada, se levanta
+//   (cápsula de pie sin atravesar nada) y, con eso, TickDive (servidor) llama a EndDive().
 //   → bIsDiving = false              — OnRep_IsDiving fires on clients → restore
 //
 // Visual pattern mirrors knockdown: same KnockdownVisualComp, same NetworkSmoothingMode
 // disable, but pitch is FORWARD (-85°) instead of backward.
 // Capsule HalfHeight is reduced to simulate a horizontal hitbox.
 // ─────────────────────────────────────────────────────────────────────────────
+
+UTN_TurtleMovementComponent* ATortugaCharacter::GetTurtleMovement() const
+{
+	return Cast<UTN_TurtleMovementComponent>(GetCharacterMovement());
+}
+
+float ATortugaCharacter::GetStandingCapsuleHalfHeight() const
+{
+	// La cápsula de la clase (el objeto por defecto del Blueprint): nunca está encogida por un panzazo.
+	const ATortugaCharacter* DefaultTurtle = GetClass() ? GetClass()->GetDefaultObject<ATortugaCharacter>() : nullptr;
+	const UCapsuleComponent* DefaultCapsule = DefaultTurtle ? DefaultTurtle->GetCapsuleComponent() : nullptr;
+	if (DefaultCapsule && DefaultCapsule->GetUnscaledCapsuleHalfHeight() > 1.f)
+	{
+		return DefaultCapsule->GetUnscaledCapsuleHalfHeight();
+	}
+	return DiveCapsuleOrigHalfHeight;
+}
+
+bool ATortugaCharacter::IsBellyPoseActive() const
+{
+	if (!bIsDiving)
+	{
+		return false;
+	}
+	// El dueño y el servidor simulan el movimiento: saben al momento que ya se ha levantado. En el resto de máquinas el
+	// componente no lleva fase y manda el panzazo replicado.
+	const UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement();
+	return !(TurtleMove && TurtleMove->HasStoodUpFromDive(DiveSerial));
+}
+
+bool ATortugaCharacter::IsBellyOnGround() const
+{
+	const UCharacterMovementComponent* CMC = GetCharacterMovement();
+	return IsBellyPoseActive() && CMC && CMC->IsMovingOnGround();
+}
 
 void ATortugaCharacter::TryDive()
 {
@@ -37,17 +76,19 @@ void ATortugaCharacter::TryDive()
 		return;
 	}
 
-	// DASH-03 (2026-04-26): el dash siempre va EN LA DIRECCIÓN DE LA CÁMARA.
-	// Antes usaba CMC->Velocity (DASH-02) lo que ataba el dash al movimiento
-	// actual del char. Ahora la cámara es la fuente de verdad — feel más
-	// directo (al estilo shooter): donde miras es donde dasheas.
-	FVector DiveDir = FVector::ZeroVector;
+	// El dash va hacia donde el jugador pulsa WASD (relativo a la cámara, ya
+	// convertido a mundo por AddMovementInput). Sin input, hacia donde mira la cámara.
+	FVector DiveDir = GetLastMovementInputVector();
+	DiveDir.Z = 0.f;
 	const FRotator ControlRot = GetControlRotation();
-	FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
-	CamForward.Z = 0.f;
-	if (CamForward.Normalize())
+	if (!DiveDir.Normalize())
 	{
-		DiveDir = CamForward;
+		DiveDir = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
+		DiveDir.Z = 0.f;
+	}
+	if (!DiveDir.IsNearlyZero())
+	{
+		DiveDir.Normalize();
 	}
 	else
 	{
@@ -58,7 +99,7 @@ void ATortugaCharacter::TryDive()
 	}
 
 	UE_LOG(LogTortunabo, Log,
-		TEXT("[Dive] DASH-03 · DiveDir(camera)=(%.2f,%.2f,%.2f) ControlYaw=%.1f"),
+		TEXT("[Dive] DiveDir(input/camera)=(%.2f,%.2f,%.2f) ControlYaw=%.1f"),
 		DiveDir.X, DiveDir.Y, DiveDir.Z, ControlRot.Yaw);
 
 	Server_StartDive(DiveDir);
@@ -123,18 +164,8 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	{
 		const FVector JumpStartDir = JumpStartHorizontalVelocity / JumpStartSpeed;
 
-		// Forward cámara (control rotation Yaw, plano horizontal)
-		const FRotator ControlRot = GetControlRotation();
-		FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
-		CamForward.Z = 0.f;
-		if (!CamForward.Normalize())
-		{
-			CamForward = GetActorForwardVector();
-			CamForward.Z = 0.f;
-			CamForward.Normalize();
-		}
-
-		const float Alignment = FVector::DotProduct(CamForward, JumpStartDir); // [-1, 1]
+		// Se compara la dirección real del dash (ya saneada arriba) con la del salto.
+		const float Alignment = FVector::DotProduct(DiveDir, JumpStartDir); // [-1, 1]
 
 		float Factor;
 		if (Alignment >= 0.f)
@@ -164,9 +195,20 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	const float CombinedForwardSpeed = FMath::Clamp(DiveForwardSpeed + MomentumBonus,
 		-DiveMaxTotalSpeed, DiveMaxTotalSpeed);
 	const FVector DiveVelocity = DiveDir * CombinedForwardSpeed + FVector(0.f, 0.f, -DiveDownwardSpeed);
+
+	// Llevando a un compañero en alto: el panzazo lo lanza, con el impulso del panzazo (la carrera va dentro) y el del
+	// salto sumados al del lanzamiento. Antes de lanzarse ella: la velocidad de ahora es la del salto.
+	if (CarryComponent && CarryComponent->IsCarrying())
+	{
+		const UCharacterMovementComponent* ThrowMove = GetCharacterMovement();
+		CarryComponent->ThrowWithDive(DiveDir, DiveVelocity, ThrowMove ? ThrowMove->Velocity : FVector::ZeroVector);
+	}
+
 	LaunchCharacter(DiveVelocity, /*bXYOverride=*/true, /*bZOverride=*/true);
 
-	// Activate dive state — triggers OnRep on clients
+	// Activate dive state — triggers OnRep on clients. El número nuevo le dice al movimiento que este panzazo aún no se
+	// ha arrastrado (al dar la vuelta se salta el 0, que significa «ninguno»).
+	DiveSerial    = DiveSerial >= 255 ? static_cast<uint8>(1) : static_cast<uint8>(DiveSerial + 1);
 	bIsDiving     = true;
 	DiveLockTimer = 0.f;
 
@@ -215,8 +257,8 @@ void ATortugaCharacter::Multicast_OnDiveVisual_Implementation(bool bEnter)
 	}
 	else
 	{
-		// Restore capsule size
-		GetCapsuleComponent()->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+		// La cápsula de pie otra vez, con los pies en su sitio (nunca creciendo en su sitio: ver RestoreDiveCapsule).
+		RestoreDiveCapsule();
 
 		// Restore CMC smoothing
 		if (CMC)
@@ -226,6 +268,34 @@ void ATortugaCharacter::Multicast_OnDiveVisual_Implementation(bool bEnter)
 
 		// TickDive lerps DiveTiltAlpha back to 0 and restores rotations at that point.
 		// No immediate snap needed here — the lerp handles the smooth return.
+	}
+}
+
+void ATortugaCharacter::RestoreDiveCapsule()
+{
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	if (!Capsule || Capsule->GetUnscaledCapsuleHalfHeight() >= DiveCapsuleOrigHalfHeight - 0.5f)
+	{
+		return;
+	}
+	// Quien simula el movimiento (el servidor y el dueño): de pie con los pies en su sitio y sin meterse en nada, o igual
+	// con los pies en su sitio si algo encima no deja (el movimiento lo vuelve a mirar en cada paso fuera del panzazo).
+	if (GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		if (UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement())
+		{
+			TurtleMove->RestoreStandingCapsule();
+			return;
+		}
+	}
+	// Las demás máquinas: crece y sube lo mismo, con los pies en su sitio (la posición buena llega por red). Creciendo en su
+	// sitio, la malla se hundía en la arena hasta la siguiente actualización y la cápsula podía desincrustarse hacia abajo.
+	const float OldScaledHalf = Capsule->GetScaledCapsuleHalfHeight();
+	Capsule->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+	const float Rise = Capsule->GetScaledCapsuleHalfHeight() - OldScaledHalf;
+	if (Rise > 0.f)
+	{
+		AddActorWorldOffset(FVector(0.0, 0.0, Rise), false, nullptr, ETeleportType::TeleportPhysics);
 	}
 }
 
@@ -312,10 +382,16 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 	// (Cuerpo) by the same pitch so the entire character tilts as one solid unit.
 	// If Cuerpo is a child of GetMesh() the runtime ancestor check skips the
 	// separate rotation to prevent double-rotation.
-	if (bIsDiving || DiveTiltAlpha > 0.f)
+	// Tumbada mientras dure la pose de panzazo: en el dueño y el servidor acaba en cuanto el movimiento la levanta (sin
+	// esperar al fin del panzazo replicado); en el resto, con el fin del panzazo.
+	const bool bBellyPose = IsBellyPoseActive();
+	if (bBellyPose || DiveTiltAlpha > 0.f)
 	{
-		const float TargetAlpha = bIsDiving ? 1.f : 0.f;
-		DiveTiltAlpha = FMath::FInterpTo(DiveTiltAlpha, TargetAlpha, DeltaTime, DiveTiltSpeed);
+		const float TargetAlpha = bBellyPose ? 1.f : 0.f;
+		// Al levantarse del suelo, algo más despacio: se ve el empujón de brazos de UTN_TurtleAnimInstance.
+		const UCharacterMovementComponent* TiltMove = GetCharacterMovement();
+		const bool bGettingUpFromGround = !bBellyPose && TiltMove && !TiltMove->IsFalling();
+		DiveTiltAlpha = FMath::FInterpTo(DiveTiltAlpha, TargetAlpha, DeltaTime, bGettingUpFromGround ? DiveGetUpTiltSpeed : DiveTiltSpeed);
 		if (FMath::Abs(DiveTiltAlpha - TargetAlpha) < 0.005f)
 		{
 			DiveTiltAlpha = TargetAlpha;
@@ -343,9 +419,14 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 
 			// La malla gira sobre sus pies y la cápsula encoge a DiveCapsuleHalfHeight: se sube para que los pies
 			// queden a DiveBellyPivotHeight del suelo y el cuerpo tumbado se apoye en la tripa en vez de hundirse; y
-			// se aplasta un poco contra el suelo (ejes locales de la malla: X ancho, Y tripa-espalda, Z largo).
-			const double Lift = (DiveBellyPivotHeight - DiveCapsuleHalfHeight - DiveMeshDefaultLoc.Z) * env;
-			SkelMesh->SetRelativeLocation(DiveMeshDefaultLoc + FVector(0.0, 0.0, FMath::Max(0.0, Lift)));
+			// se aplasta un poco contra el suelo (ejes locales de la malla: X ancho, Y tripa-espalda, Z largo). Con la
+			// cápsula que haya ahora: al levantarse ya está de pie y la subida baja con el giro, sin dar un salto.
+			// Además se echa hacia atrás DiveBodyCenterShift: tumbada, la tripa queda sobre la cápsula (gira sobre ella
+			// y la cápsula tapa lo más gordo); la cabeza y las patas las frena el movimiento (Belly Slide|Body).
+			const double CurrentCapsuleHalf = GetCapsuleComponent() ? GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() : DiveCapsuleHalfHeight;
+			const double Lift = (DiveBellyPivotHeight - CurrentCapsuleHalf - DiveMeshDefaultLoc.Z) * env;
+			const double Back = static_cast<double>(DiveBodyCenterShift) * env;
+			SkelMesh->SetRelativeLocation(DiveMeshDefaultLoc + FVector(-Back, 0.0, FMath::Max(0.0, Lift)));
 			SkelMesh->SetRelativeScale3D(DiveMeshDefaultScale * FMath::Lerp(FVector::OneVector, DiveSquash, static_cast<double>(env)));
 		}
 
@@ -369,10 +450,14 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 			}
 		}
 
-		// Snap everything back to exact rest once fade-out completes
-		if (!bIsDiving && DiveTiltAlpha == 0.f)
+		// Snap everything back to exact rest once fade-out completes (la cápsula solo cuando el panzazo ha acabado: si ya
+		// se levantó, el movimiento la puso de pie).
+		if (!bBellyPose && DiveTiltAlpha == 0.f)
 		{
-			GetCapsuleComponent()->SetCapsuleHalfHeight(DiveCapsuleOrigHalfHeight);
+			if (!bIsDiving)
+			{
+				RestoreDiveCapsule();
+			}
 			if (USkeletalMeshComponent* SkelMesh = GetMesh())
 			{
 				SkelMesh->SetRelativeRotation(DiveMeshDefaultRot);
@@ -391,11 +476,43 @@ void ATortugaCharacter::TickDive(float DeltaTime)
 
 	DiveLockTimer += DeltaTime;
 
-	// Wait for minimum lock duration first, then check if character has stopped
+	// 1) Ya se ha levantado del arrastre (lo decide el movimiento, predicho igual en el cliente dueño): fin del panzazo.
+	const UTN_TurtleMovementComponent* TurtleMove = GetTurtleMovement();
+	if (TurtleMove && TurtleMove->HasStoodUpFromDive(DiveSerial))
+	{
+		EndDive();
+		return;
+	}
+	// 2) Al agua: se acaba y nada. Metida en el caparazón (caída larga) o sin movimiento (ragdoll, caja física): el
+	// movimiento no corre, así que tampoco se levantaría; se acaba aquí.
+	const UCharacterMovementComponent* RecoveryMove = GetCharacterMovement();
+	if (RecoveryMove && (RecoveryMove->IsSwimming() || RecoveryMove->MovementMode == MOVE_None))
+	{
+		EndDive();
+		return;
+	}
+	if (IsInShell())
+	{
+		EndDive();
+		return;
+	}
+	// 3) Sobre la tripa manda el movimiento (se levantará él); tope de seguridad por si algo lo deja colgado.
+	if (TurtleMove && TurtleMove->IsOnBelly())
+	{
+		if (DiveLockTimer >= DiveMaxSeconds)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Dive] %s — panzazo colgado %.1f s sobre la tripa: se acaba."), *GetNameSafe(this), DiveLockTimer);
+			EndDive();
+		}
+		return;
+	}
+
+	// 4) En el aire (o sin arrastre, TN.Dive.Slide 0): como siempre, tras el bloqueo mínimo, si se ha parado (contra una
+	// pared en pleno vuelo, por ejemplo) se acaba.
 	if (DiveLockTimer < DiveMinLockDuration) { return; }
 
 	const float Speed2D = GetVelocity().Size2D();
-	if (Speed2D <= DiveStopSpeedThreshold)
+	if (Speed2D <= DiveStopSpeedThreshold || DiveLockTimer >= DiveMaxSeconds)
 	{
 		EndDive();
 	}

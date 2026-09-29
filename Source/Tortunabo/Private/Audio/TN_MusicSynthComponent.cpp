@@ -11,6 +11,10 @@
 static_assert(static_cast<uint8>(ETNMusicTrack::None) == TNMusic::ETrack::None, "ETNMusicTrack y TNMusic::ETrack deben coincidir");
 static_assert(static_cast<uint8>(ETNMusicTrack::Shop) == TNMusic::ETrack::Shop, "ETNMusicTrack y TNMusic::ETrack deben coincidir");
 static_assert(static_cast<uint8>(ETNMusicTrack::Booth) == TNMusic::ETrack::Booth, "ETNMusicTrack y TNMusic::ETrack deben coincidir");
+static_assert(static_cast<uint8>(ETNMusicTrack::Victory) == TNMusic::ETrack::Victory, "ETNMusicTrack y TNMusic::ETrack deben coincidir");
+static_assert(static_cast<uint8>(ETNMusicTrack::Defeat) == TNMusic::ETrack::Defeat, "ETNMusicTrack y TNMusic::ETrack deben coincidir");
+static_assert(static_cast<uint8>(ETNMusicTrack::Eliminated) == TNMusic::ETrack::Eliminated, "ETNMusicTrack y TNMusic::ETrack deben coincidir");
+static_assert(static_cast<uint8>(ETNMusicTrack::Eliminated) + 1 == TNMusic::ETrack::Count, "ETNMusicTrack y TNMusic::ETrack deben coincidir");
 
 namespace
 {
@@ -152,10 +156,30 @@ void UTN_MusicSynthComponent::PlayTrack(ETNMusicTrack InTrack, float InFadeSecon
 {
 	if (!SharedParams.IsValid()) { return; }
 	const uint8 Requested = static_cast<uint8>(InTrack);
-	// Ya es la pista sonando o a la que se está llegando: no la reinicia.
-	if (SharedParams->RequestedTrack.load(std::memory_order_relaxed) == Requested) { return; }
-	TNMusic::FMusicSharedParams::Set(SharedParams->FadeSeconds, FMath::Max(0.02f, InFadeSeconds));
-	SharedParams->RequestedTrack.store(Requested, std::memory_order_relaxed);
+	const uint32 Serial = SharedParams->RequestSerial.load(std::memory_order_relaxed);
+	bool bNewRequest = true;
+	if (SharedParams->RequestedTrack.load(std::memory_order_relaxed) == Requested)
+	{
+		// Ya es la pista sonando o a la que se está llegando: no la reinicia (tampoco un jingle que acaba en bucle).
+		// Un jingle sin bucle que ya ha sonado entero sí se vuelve a tocar.
+		const bool bFinishedJingle = TNMusic::MusicIsOneShotTrack(Requested)
+			&& SharedParams->FinishedSerial.load(std::memory_order_acquire) == Serial;
+		bNewRequest = bFinishedJingle;
+	}
+	if (bNewRequest)
+	{
+		// El número de petición se publica el último (liberación): el hilo de audio ve la pista y el fundido nuevos.
+		TNMusic::FMusicSharedParams::Set(SharedParams->FadeSeconds, FMath::Max(0.02f, InFadeSeconds));
+		SharedParams->RequestedTrack.store(Requested, std::memory_order_relaxed);
+		SharedParams->RequestSerial.store(Serial + 1u, std::memory_order_release);
+	}
+	// Música 2D parada con algo que tocar: tras un viaje sin cortes (seamless) el componente llega al mundo nuevo
+	// registrado pero parado (el motor lo para al cambiar de nivel y BeginPlay no se repite), así que se vuelve a
+	// arrancar aquí; el generador nuevo empieza por la última petición.
+	if (!bSpatial && InTrack != ETNMusicTrack::None && IsRegistered() && !IsPlaying())
+	{
+		Start();
+	}
 }
 
 void UTN_MusicSynthComponent::StopMusic(float InFadeSeconds)

@@ -20,6 +20,8 @@ void UTN_CarryComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(UTN_CarryComponent, CarriedTurtle);
 	DOREPLIFETIME(UTN_CarryComponent, CarriedBy);
 	DOREPLIFETIME_CONDITION(UTN_CarryComponent, bCarriedStruggling, COND_OwnerOnly);
+	// El dueño empieza la toma de impulso al pulsar la E; los demás, con esto.
+	DOREPLIFETIME_CONDITION(UTN_CarryComponent, ThrowWindupSerial, COND_SkipOwner);
 }
 
 ATortugaCharacter* UTN_CarryComponent::GetTurtle() const
@@ -81,9 +83,53 @@ bool UTN_CarryComponent::TryGrabNearest()
 void UTN_CarryComponent::RequestThrow()
 {
 	if (!IsCarrying()) { return; }
+	// Ya tomando impulso: el servidor tampoco aceptaría otro lanzamiento hasta soltarla.
+	if (GetThrowWindupAlpha() >= 0.f) { return; }
 	const ATortugaCharacter* Self = GetTurtle();
 	const FRotator Aim = Self ? Self->GetControlRotation() : FRotator::ZeroRotator;
+	// Las aletas se echan atrás al momento en esta máquina (el servidor la suelta al acabar la toma de impulso).
+	BeginLocalThrowWindup();
 	ServerThrow(Aim);
+}
+
+float UTN_CarryComponent::GetThrowWindupAlpha() const
+{
+	const UWorld* World = GetWorld();
+	if (LocalWindupStart < 0.0 || !World || !IsCarrying())
+	{
+		return -1.f;
+	}
+	const double Elapsed = World->GetTimeSeconds() - LocalWindupStart;
+	// Si pasado un rato no la ha soltado (el servidor no llegó a lanzarla), deja de tomar impulso.
+	if (Elapsed > static_cast<double>(ThrowWindupSeconds) + 0.6)
+	{
+		return -1.f;
+	}
+	return ThrowWindupSeconds > 0.01f ? FMath::Clamp(static_cast<float>(Elapsed) / ThrowWindupSeconds, 0.f, 1.f) : 1.f;
+}
+
+void UTN_CarryComponent::BeginLocalThrowWindup()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const double Now = World->GetTimeSeconds();
+	// Ya la estaba tomando (el anfitrión que lanza la empieza al pulsar y otra vez al recibir su propio lanzamiento).
+	if (LocalWindupStart >= 0.0 && Now - LocalWindupStart < static_cast<double>(ThrowWindupSeconds) + 0.6)
+	{
+		return;
+	}
+	LocalWindupStart = Now;
+}
+
+void UTN_CarryComponent::OnRep_ThrowWindupSerial()
+{
+	if (IsCarrying())
+	{
+		BeginLocalThrowWindup();
+	}
 }
 
 void UTN_CarryComponent::RequestDrop()
@@ -151,6 +197,52 @@ void UTN_CarryComponent::ServerGrab_Implementation(ATortugaCharacter* Target)
 
 void UTN_CarryComponent::ServerThrow_Implementation(FRotator AimRotation)
 {
+	const ATortugaCharacter* Self = GetTurtle();
+	UWorld* World = GetWorld();
+	if (!Self || !CarriedTurtle || bThrowWindupPending)
+	{
+		return;
+	}
+	if (ThrowWindupSeconds <= 0.01f || !World)
+	{
+		ThrowCarried(AimRotation);
+		return;
+	}
+
+	// Saque de banda: primero las aletas detrás de la cabeza (todas las máquinas lo ven con ThrowWindupSerial); al acabar,
+	// la suelta hacia donde apuntaba al pulsar.
+	bThrowWindupPending = true;
+	PendingThrowAim = AimRotation;
+	ThrowWindupSerial = ThrowWindupSerial >= 255 ? static_cast<uint8>(1) : static_cast<uint8>(ThrowWindupSerial + 1);
+	BeginLocalThrowWindup();
+	World->GetTimerManager().SetTimer(ThrowWindupTimer,
+		FTimerDelegate::CreateUObject(this, &UTN_CarryComponent::FinishThrowWindup), ThrowWindupSeconds, false);
+}
+
+void UTN_CarryComponent::FinishThrowWindup()
+{
+	bThrowWindupPending = false;
+	if (CarriedTurtle)
+	{
+		ThrowCarried(PendingThrowAim);
+	}
+}
+
+void UTN_CarryComponent::CancelThrowWindup()
+{
+	if (!bThrowWindupPending)
+	{
+		return;
+	}
+	bThrowWindupPending = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThrowWindupTimer);
+	}
+}
+
+void UTN_CarryComponent::ThrowCarried(const FRotator& AimRotation)
+{
 	ATortugaCharacter* Self = GetTurtle();
 	ATortugaCharacter* Carried = CarriedTurtle;
 	if (!Self || !Carried)
@@ -158,15 +250,45 @@ void UTN_CarryComponent::ServerThrow_Implementation(FRotator AimRotation)
 		return;
 	}
 
-	// Mirar al frente lanza a ~40°; levantar la cámara lanza más alto.
-	const float AimPitch = FRotator::NormalizeAxis(AimRotation.Pitch);
-	const float Pitch = FMath::Clamp(AimPitch + 40.f, MinThrowPitch, MaxThrowPitch);
-	const FVector Dir = FRotator(Pitch, AimRotation.Yaw, 0.f).Vector();
+	// Hacia donde mira la cámara, con el arco bajo de todos los lanzamientos (~25° con la cámara a nivel).
+	const FVector Dir = Self->GetThrowDirection(AimRotation);
 	const float Speed = ThrowSpeed * (bCarriedStruggling ? StruggleThrowMultiplier : 1.f);
 	const FVector Flat = FRotator(0.f, AimRotation.Yaw, 0.f).Vector();
 	const FVector Start = Self->GetActorLocation() + Flat * 70.f + FVector(0.f, 0.f, CarryHeight + 20.f);
 
 	Release(Carried, Start, Dir * Speed, true, true);
+	if (ThrowSound)
+	{
+		Self->MulticastPlaySfx(ThrowSound);
+	}
+}
+
+void UTN_CarryComponent::ThrowWithDive(const FVector& DiveDir, const FVector& DiveVelocity, const FVector& CarrierVelocity)
+{
+	ATortugaCharacter* Self = GetTurtle();
+	ATortugaCharacter* Carried = CarriedTurtle;
+	if (!Self || !Carried || !Self->HasAuthority())
+	{
+		return;
+	}
+	CancelThrowWindup();
+
+	// El lanzamiento de siempre hacia donde se tira de panzazo, más el impulso del panzazo (en horizontal, con la carrera
+	// dentro) y el del salto (solo hacia arriba).
+	FVector Flat(DiveDir.X, DiveDir.Y, 0.0);
+	if (!Flat.Normalize())
+	{
+		Flat = Self->GetActorForwardVector();
+	}
+	const FRotator Aim(Self->GetControlRotation().Pitch, Flat.Rotation().Yaw, 0.f);
+	const float Speed = ThrowSpeed * (bCarriedStruggling ? StruggleThrowMultiplier : 1.f);
+	FVector Velocity = Self->GetThrowDirection(Aim) * Speed
+		+ FVector(DiveVelocity.X, DiveVelocity.Y, 0.0) * DiveThrowCarryFactor
+		+ FVector(0.0, 0.0, FMath::Max(0.0, CarrierVelocity.Z)) * DiveThrowJumpFactor;
+	Velocity = Velocity.GetClampedToMaxSize(DiveThrowMaxSpeed);
+	const FVector Start = Self->GetActorLocation() + Flat * 70.0 + FVector(0.0, 0.0, CarryHeight + 20.0);
+
+	Release(Carried, Start, Velocity, true, true);
 	if (ThrowSound)
 	{
 		Self->MulticastPlaySfx(ThrowSound);
@@ -218,6 +340,8 @@ void UTN_CarryComponent::ForceRelease(bool bEscapeHop)
 
 void UTN_CarryComponent::Release(ATortugaCharacter* Carried, const FVector& Location, const FVector& Velocity, bool bThrown, bool bExitOnRest)
 {
+	// Se suelta por lo que sea (lanzada, dejada, escapada, derribo): la toma de impulso pendiente ya no vale.
+	CancelThrowWindup();
 	UTN_CarryComponent* Other = Carried ? Carried->GetCarryComponent() : nullptr;
 	CarriedTurtle = nullptr;
 	bCarriedStruggling = false;
@@ -300,6 +424,8 @@ void UTN_CarryComponent::ApplyCarrierLocalState(bool bCarrying)
 		return;
 	}
 	bCarrierStateApplied = bCarrying;
+	// Al coger o al soltar, sin toma de impulso a medias (la de soltar ya ha acabado).
+	LocalWindupStart = -1.0;
 	if (UTN_StaminaComponent* Stamina = Self->GetStaminaComponent())
 	{
 		if (bCarrying) { Stamina->SetSpeedCap(CarrySpeedCap); }

@@ -81,7 +81,9 @@ namespace TNProcRuntimeMesh
 			Desc.CreateTriangle(Group, MakeArrayView(Tri, 3));
 		}
 
-		UStaticMesh* Mesh = NewObject<UStaticMesh>(Outer, NAME_None, RF_Transient);
+		// Fuera de toda duplicación (PIE, copiar y pegar): la copia saldría sin descripción de malla ("Bad
+		// MeshDescription" y Min LOD fuera de rango al empezar el PIE); cada actor la rehace en su BeginPlay/OnConstruction.
+		UStaticMesh* Mesh = NewObject<UStaticMesh>(Outer, NAME_None, RF_Transient | RF_DuplicateTransient);
 		Mesh->GetStaticMaterials().Add(FStaticMaterial(Material, SlotName));
 		UStaticMesh::FBuildMeshDescriptionsParams Params;
 		Params.bMarkPackageDirty = false;

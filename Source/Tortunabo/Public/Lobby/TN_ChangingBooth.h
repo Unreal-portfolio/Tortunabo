@@ -29,6 +29,9 @@ public:
 	ATN_ChangingBooth();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostRegisterAllComponents() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual bool CanInteract(APawn* Interactor) const override;
@@ -66,6 +69,11 @@ protected:
 	/** Letras de la etiqueta, una por carácter sobre la curva de la botella (se crean en BeginPlay). */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTextRenderComponent>> LabelLetters;
+
+	/** Cambio de idioma (TNLanguage::OnApplied): las letras son de la palabra en el idioma anterior, se rehacen. */
+	void HandleLanguageApplied();
+
+	FDelegateHandle LanguageHandle;
 
 	/** Tortuga que se está cambiando (nullptr = libre y con la puerta abierta). */
 	UPROPERTY(ReplicatedUsing = OnRep_Occupant, BlueprintReadOnly, Category = "Booth")
