@@ -5,6 +5,7 @@
 #include "Dom/JsonValue.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -133,6 +134,11 @@ bool UTN_MonkeySubsystem::StartSession(const FTNMonkeyConfig& InConfig)
 	// Jugadores locales que faltan: entran como cualquier otro (mismo modo de juego, misma salida).
 	if (UGameInstance* GameInstance = World->GetGameInstance())
 	{
+		// El motor limita a 4 los jugadores locales (pantalla partida); en headless no se dibuja nada, así que se sube el tope.
+		if (GEngine && GEngine->GameViewport && GEngine->GameViewport->MaxSplitscreenPlayers < Config.Players)
+		{
+			GEngine->GameViewport->MaxSplitscreenPlayers = Config.Players;
+		}
 		while (GameInstance->GetNumLocalPlayers() < Config.Players)
 		{
 			if (!UGameplayStatics::CreatePlayer(World, -1, true))

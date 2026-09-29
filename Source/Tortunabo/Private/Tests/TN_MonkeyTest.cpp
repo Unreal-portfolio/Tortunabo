@@ -146,6 +146,23 @@ bool FTNMonkeyFrameStatsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("p95"), Summary.P95, 95.05f, 0.01f);
 	TestEqual(TEXT("Máximo"), Summary.Max, 100.f, 0.01f);
 	TestEqual(TEXT("Sin muestras"), TNMonkey::Summarize(TArray<float>()).Frames, 0);
+
+	// Un pico de 20 ms cada 10 fotogramas de 5 ms: periodo de 65 ms (9 x 5 + 20) y 20 picos.
+	TArray<float> Frames;
+	TArray<float> Stamps;
+	float Clock = 0.f;
+	for (int32 Index = 0; Index < 200; ++Index)
+	{
+		const float Ms = Index % 10 == 9 ? 20.f : 5.f;
+		Clock += Ms;
+		Frames.Add(Ms);
+		Stamps.Add(Clock);
+	}
+	int32 Spikes = 0;
+	float Period = 0.f;
+	TNMonkey::FindSpikePeriod(Frames, Stamps, 1.8f, Spikes, Period);
+	TestEqual(TEXT("Picos encontrados"), Spikes, 20);
+	TestEqual(TEXT("Periodo de los picos"), Period, 65.f, 0.01f);
 	return true;
 }
 
@@ -210,6 +227,9 @@ bool FTNStressScenarioTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Cada fase dura 10 s"), Timeline[3].End - Timeline[3].Start, 10.f, 0.001f);
 	}
 	TestEqual(TEXT("race8 solo tiene la fase de referencia"), TNStress::BuildTimeline(Race8, 60.f).Num(), 1);
+	TNStress::FScenario Control;
+	TestTrue(TEXT("control existe"), TNStress::Parse(TEXT("control"), Control));
+	TestEqual(TEXT("control son seis fases de referencia"), TNStress::BuildTimeline(Control, 60.f).Num(), 6);
 	return true;
 }
 

@@ -43,6 +43,8 @@ private:
 		/** Lanzables vivos a la vez como máximo (tienen tope por clase en el mundo: se reponen cada 0,5 s hasta el pedido). */
 		int32 PeakAlive = 0;
 		TArray<float> FrameMs;
+		/** Instante (ms desde el inicio de la fase) en que acaba cada fotograma de FrameMs, para hallar el periodo de los picos. */
+		TArray<float> FrameStampMs;
 		TArray<float> GameThreadMs;
 		TArray<float> RenderThreadMs;
 		TArray<float> GpuMs;

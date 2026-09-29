@@ -225,6 +225,40 @@ namespace TNMonkey
 		float Max = 0.f;
 	};
 
+	/**
+	 * Picos periódicos: fotogramas que tardan más de Factor veces la mediana, agrupando los consecutivos. Devuelve cuántos picos hay
+	 * y la mediana de la distancia entre ellos (ms; 0 si hay menos de dos). Un periodo constante (p. ej. 100 ms) delata un
+	 * temporizador o un sondeo periódico; sin periodo, carga irregular. Stamps = instante de fin de cada fotograma (ms).
+	 */
+	inline void FindSpikePeriod(const TArray<float>& FrameMs, const TArray<float>& Stamps, float Factor, int32& OutSpikes, float& OutPeriodMs)
+	{
+		OutSpikes = 0;
+		OutPeriodMs = 0.f;
+		if (FrameMs.Num() < 4 || FrameMs.Num() != Stamps.Num())
+		{
+			return;
+		}
+		const float Threshold = Percentile(FrameMs, 0.5f) * Factor;
+		TArray<float> SpikeStarts;
+		bool bPrevSpike = false;
+		for (int32 Index = 0; Index < FrameMs.Num(); ++Index)
+		{
+			const bool bSpike = FrameMs[Index] > Threshold;
+			if (bSpike && !bPrevSpike)
+			{
+				SpikeStarts.Add(Stamps[Index]);
+			}
+			bPrevSpike = bSpike;
+		}
+		OutSpikes = SpikeStarts.Num();
+		TArray<float> Gaps;
+		for (int32 Index = 1; Index < SpikeStarts.Num(); ++Index)
+		{
+			Gaps.Add(SpikeStarts[Index] - SpikeStarts[Index - 1]);
+		}
+		OutPeriodMs = Percentile(Gaps, 0.5f);
+	}
+
 	inline FFrameSummary Summarize(const TArray<float>& FrameMs)
 	{
 		FFrameSummary Out;

@@ -51,7 +51,7 @@ namespace TNStressDetail
 		TNStress::FScenario Scenario;
 		if (Args.Num() < 1 || !TNStress::Parse(Args[0], Scenario))
 		{
-			UE_LOG(LogTortunabo, Display, TEXT("[Estrés] Uso: TN.Stress <light|heavy|race8> [segundos=60] | TN.Stress stop. light = 50 enemigos, 100 lanzables, 20 cajas; heavy = 200/500/100; race8 = 8 tortugas."));
+			UE_LOG(LogTortunabo, Display, TEXT("[Estrés] Uso: TN.Stress <light|heavy|race8|control> [segundos=60] | TN.Stress stop. light = 50 enemigos, 100 lanzables, 20 cajas; heavy = 200/500/100; race8 = 8 tortugas."));
 			return;
 		}
 		const float Total = Args.IsValidIndex(1) ? FMath::Clamp(FCString::Atof(*Args[1]), 6.f, 600.f) : 60.f;
@@ -59,7 +59,7 @@ namespace TNStressDetail
 	}
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStress(TEXT("TN.Stress"),
-		TEXT("Prueba de estrés: TN.Stress <light|heavy|race8> [segundos=60] | TN.Stress stop. Informe en Saved/Stress/."),
+		TEXT("Prueba de estrés: TN.Stress <light|heavy|race8|control> [segundos=60] | TN.Stress stop. Informe en Saved/Stress/."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunCommand), ECVF_Cheat);
 }
 
@@ -324,6 +324,7 @@ void UTN_StressSubsystem::SampleFrame(FPhaseData& Phase)
 		else if (Phase.FrameMs.Num() < 200000)
 		{
 			Phase.FrameMs.Add(Ms);
+			Phase.FrameStampMs.Add(static_cast<float>((Now - PhaseStart) * 1000.0));
 			Phase.GameThreadMs.Add(static_cast<float>(FPlatformTime::ToMilliseconds(GGameThreadTime)));
 			Phase.RenderThreadMs.Add(static_cast<float>(FPlatformTime::ToMilliseconds(GRenderThreadTime)));
 			Phase.GpuMs.Add(static_cast<float>(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())));
@@ -489,6 +490,11 @@ TSharedRef<FJsonObject> UTN_StressSubsystem::BuildReport(const TCHAR* Reason) co
 		Item->SetNumberField(TEXT("frame_p99_ms"), Frame.P99);
 		Item->SetNumberField(TEXT("frame_max_ms"), Frame.Max);
 		Item->SetNumberField(TEXT("spawn_hitch_ms"), Phase.HitchMs);
+		int32 Spikes = 0;
+		float SpikePeriod = 0.f;
+		TNMonkey::FindSpikePeriod(Phase.FrameMs, Phase.FrameStampMs, 1.8f, Spikes, SpikePeriod);
+		Item->SetNumberField(TEXT("spikes_over_1_8x_median"), Spikes);
+		Item->SetNumberField(TEXT("spike_median_period_ms"), SpikePeriod);
 		Item->SetNumberField(TEXT("game_thread_avg_ms"), TNMonkey::Summarize(Phase.GameThreadMs).Average);
 		Item->SetNumberField(TEXT("render_thread_avg_ms"), TNMonkey::Summarize(Phase.RenderThreadMs).Average);
 		Item->SetNumberField(TEXT("gpu_avg_ms"), TNMonkey::Summarize(Phase.GpuMs).Average);

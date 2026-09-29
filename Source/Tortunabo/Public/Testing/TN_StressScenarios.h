@@ -15,14 +15,14 @@ namespace TNStress
 		Crabs,
 		Gulls,
 		Tanks,
-		Throwables,
 		Items,
+		Throwables,
 		Count
 	};
 
 	inline const TCHAR* GroupName(EGroup Group)
 	{
-		static const TCHAR* const Names[] = { TEXT("baseline"), TEXT("crabs"), TEXT("gulls"), TEXT("tanks"), TEXT("throwables"), TEXT("race_items") };
+		static const TCHAR* const Names[] = { TEXT("baseline"), TEXT("crabs"), TEXT("gulls"), TEXT("tanks"), TEXT("race_items"), TEXT("throwables") };
 		static_assert(UE_ARRAY_COUNT(Names) == static_cast<int32>(EGroup::Count), "GroupName: falta un nombre");
 		const int32 Index = static_cast<int32>(Group);
 		return Index >= 0 && Index < UE_ARRAY_COUNT(Names) ? Names[Index] : TEXT("?");
@@ -37,9 +37,11 @@ namespace TNStress
 		int32 Items = 0;
 		/** Tortugas jugando (locales; las que faltan se crean como jugadores extra). */
 		int32 Turtles = 1;
+		/** Fases de referencia (sin crear nada); el control usa varias para medir cuánto deriva el juego solo con el tiempo. */
+		int32 BaselinePhases = 1;
 	};
 
-	/** light (50/100/20), heavy (200/500/100) y race8 (8 tortugas, sin extras). false si no existe. */
+	/** light (50/100/20), heavy (200/500/100), race8 (8 tortugas, sin extras) y control (una tortuga, nada que crear, 6 fases). false si no existe. */
 	inline bool Parse(const FString& Name, FScenario& Out)
 	{
 		Out = FScenario();
@@ -56,6 +58,11 @@ namespace TNStress
 			Out.Enemies = 200;
 			Out.Throwables = 500;
 			Out.Items = 100;
+			return true;
+		}
+		if (Out.Name == TEXT("control"))
+		{
+			Out.BaselinePhases = 6;
 			return true;
 		}
 		if (Out.Name == TEXT("race8"))
@@ -101,12 +108,16 @@ namespace TNStress
 	{
 		const FEnemySplit Split = SplitEnemies(Scenario.Enemies);
 		TArray<FPhase> Phases;
-		Phases.Add({ EGroup::Baseline, 0, 0.f, 0.f });
+		for (int32 Index = 0; Index < FMath::Max(1, Scenario.BaselinePhases); ++Index)
+		{
+			Phases.Add({ EGroup::Baseline, 0, 0.f, 0.f });
+		}
 		if (Split.Crabs > 0) { Phases.Add({ EGroup::Crabs, Split.Crabs, 0.f, 0.f }); }
 		if (Split.Gulls > 0) { Phases.Add({ EGroup::Gulls, Split.Gulls, 0.f, 0.f }); }
 		if (Split.Tanks > 0) { Phases.Add({ EGroup::Tanks, Split.Tanks, 0.f, 0.f }); }
-		if (Scenario.Throwables > 0) { Phases.Add({ EGroup::Throwables, Scenario.Throwables, 0.f, 0.f }); }
 		if (Scenario.Items > 0) { Phases.Add({ EGroup::Items, Scenario.Items, 0.f, 0.f }); }
+		// Los lanzables caducan solos, así que van los últimos: no falsean el coste de lo que se crea después.
+		if (Scenario.Throwables > 0) { Phases.Add({ EGroup::Throwables, Scenario.Throwables, 0.f, 0.f }); }
 		const float Each = TotalSeconds / static_cast<float>(Phases.Num());
 		for (int32 Index = 0; Index < Phases.Num(); ++Index)
 		{
