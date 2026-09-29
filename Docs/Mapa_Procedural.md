@@ -557,11 +557,12 @@ Cada ronda empieza dentro de la misma pieza en la que los jugadores se pusieron 
 
 - **Puerta doble** (`ETNMatchStartStyle::Gate`): la sala entre dos puertas, al fondo del claro de salida, con la
   puerta 1 contra el talud (parece que se sale de la pared) y la puerta 2 mirando al camino. Muros, pilares, torres y
-  zócalo bajan 4,5 m bajo el suelo por si el terreno no es plano. Hay cuatro sitios dentro. Al abrirse, las hojas de
+  zócalo bajan 4,5 m bajo el suelo por si el terreno no es plano. Hay ocho sitios dentro, en dos filas de cuatro a 2,3 m
+  unos de otros (`Gatehouse::SpawnSpot`). Al abrirse, las hojas de
   la puerta 2 giran 100° hacia fuera en 1,25 s y su bloqueo invisible desaparece en cuanto empiezan a girar; la
   puerta 1 no se abre nunca. Lleva el rótulo «TORTUNAVY» en la cara de fuera de la puerta 2 y una luz cálida en la sala.
-- **Huevos** (`ETNMatchStartStyle::Eggs`): el montículo de dos alturas con la pila de cuatro huevos y el escalón hacia
-  el camino. Cada jugador aparece dentro de un huevo con la tapa puesta; una pared invisible lo sujeta hasta que se
+- **Huevos** (`ETNMatchStartStyle::Eggs`): el montículo de dos alturas con la pila de ocho huevos (siete abajo y uno
+  arriba) y el escalón hacia el camino. Cada jugador aparece dentro de un huevo con la tapa puesta; una pared invisible lo sujeta hasta que se
   rompe. Los huevos se rompen uno tras otro, cada 0,12 s: la tapa salta dando vueltas, se posa y se esfuma.
   - **Pausa de 1 s en el huevo** (`TNEggHatch`, `World/TN_EggHatch.*`, la misma pieza que la salida de la carrera): la
     tortuga se queda quieta en su huevo roto; se agacha un instante y se pone de pie de un estirón, se sacude la cáscara
@@ -587,8 +588,10 @@ Se crea diferida, con el estilo puesto antes de su `BeginPlay`. Va en `SpawnedAc
 regenerar, como las pilas de huevos. No se crea en modo solo terreno ni si ningún GameMode la pide
 (`SetStartStructureStyle`).
 
-**Aparición.** Con estructura, `GetStartTransform(0..3)` y los PlayerStart 0–3 (etiqueta `TNProcStart`) quedan
-dentro de ella, a 1,1 m del suelo como los del anillo; del quinto jugador en adelante se usa el anillo del claro.
+**Aparición.** Con estructura, `GetStartTransform(0..7)` y los PlayerStart 0–7 (etiqueta `TNProcStart`) quedan
+dentro de ella, a 1,1 m del suelo como los del anillo: los ocho sitios de la sala o los ocho huevos
+(`ATN_ProcStartStructure::NumSpots`, atado con `static_assert` a `Gatehouse::NumSpawnSpots` y a `EggMound::NumEggs`).
+El anillo del claro (ocho sitios) solo se usa sin estructura.
 
 - `ChoosePlayerStart` da a cada jugador el sitio de su slot (índice en `PlayerArray`) o, si está ocupado, el
   siguiente libre de la estructura (durante el viaje sin cortes los slots aún se reordenan).

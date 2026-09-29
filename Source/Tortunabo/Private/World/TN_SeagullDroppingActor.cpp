@@ -139,7 +139,7 @@ void ATN_SeagullDroppingActor::ResolveImpact()
 	const FVector ImpactPoint = FVector(ImpactXY.X, ImpactXY.Y, GroundTargetZ);
 
 	// G4 fix: OverlapMultiByChannel en vez de TActorIterator. El iterator visita
-	// TODOS los ATortugaCharacter del mundo (4 jugadores × N cadáveres ragdoll
+	// TODOS los ATortugaCharacter del mundo (8 jugadores × N cadáveres ragdoll
 	// que también son ATortugaCharacter); el overlap con sphere ECC_Pawn solo
 	// devuelve los que tocan el hitbox real → O(few) en vez de O(all).
 	TArray<FOverlapResult> Overlaps;

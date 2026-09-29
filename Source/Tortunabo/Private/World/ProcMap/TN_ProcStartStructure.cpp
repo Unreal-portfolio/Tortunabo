@@ -68,6 +68,7 @@ namespace TNProcStartDetail
 	constexpr double LidClosedYawStep = 45.0;
 
 	static_assert(ATN_ProcStartStructure::NumSpots == TNCastleKit::EggMound::NumEggs, "Un sitio de salida por huevo de la pila.");
+	static_assert(ATN_ProcStartStructure::NumSpots == TNCastleKit::Gatehouse::NumSpawnSpots, "Un sitio de salida por estrella de la sala.");
 
 	/** Punto del suelo (local) del sitio Slot: en la sala de la puerta doble o en la base de su huevo. */
 	FVector SpotLocal(ETNMatchStartStyle InStyle, int32 Slot)
@@ -82,25 +83,26 @@ namespace TNProcStartDetail
 	/** Hacia fuera de la pila (local, horizontal) desde el huevo Index del piso bajo (el mismo ángulo que EggMoundSpot). */
 	FVector RadialLocal(int32 Index)
 	{
-		const double A = TNProcMap::TwoPi * Index / 3.0 + 0.35;
+		const double A = TNCastleKit::EggMoundRingAngle(Index);
 		return FVector(FMath::Cos(A), FMath::Sin(A), 0.0);
 	}
 
 	/**
 	 * Dirección horizontal (local) con la que sale despedida la tortuga del huevo Index: la del piso de arriba, hacia el
-	 * camino (+Y); las del piso bajo, a medias entre fuera de la pila y el camino (la de detrás sale de lado y no choca
-	 * con el piso alto).
+	 * camino (+Y); las del piso bajo, a medias entre fuera de la pila y el camino (las de detrás salen de lado y ninguna
+	 * choca con el piso alto: la mezcla nunca apunta hacia dentro de la pila).
 	 */
 	FVector EggLaunchDirLocal(int32 Index)
 	{
 		const FVector Forward(0.0, 1.0, 0.0);
-		if (Index >= TNCastleKit::EggMound::NumEggs - 1)
+		if (Index >= TNCastleKit::EggMound::NumLower)
 		{
 			return Forward;
 		}
 		const FVector Radial = RadialLocal(Index);
 		const FVector Blend = Radial + Forward;
-		return Blend.SizeSquared() < 1e-4 ? Radial : Blend.GetSafeNormal();
+		// El huevo justo detrás del alto (fuera y camino se anulan) sale de lado, hacia la izquierda.
+		return Blend.SizeSquared() < 1e-3 ? FVector(Radial.Y, -Radial.X, 0.0) : Blend.GetSafeNormal();
 	}
 
 	/**
@@ -109,7 +111,7 @@ namespace TNProcStartDetail
 	 */
 	FVector LidDirLocal(int32 Index)
 	{
-		if (Index >= TNCastleKit::EggMound::NumEggs - 1)
+		if (Index >= TNCastleKit::EggMound::NumLower)
 		{
 			const double A = FMath::DegreesToRadians(-65.0);
 			return FVector(FMath::Cos(A), FMath::Sin(A), 0.0);

@@ -87,13 +87,23 @@ AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	// ── Primera vez: dirigir al spawn del tutorial ───────────────────────────
 	if (bShouldUseTutorialStart)
 	{
+		TArray<AActor*> TutorialStarts;
 		for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
 		{
 			if ((*It)->PlayerStartTag == TutorialStartTag)
 			{
-				UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] ChoosePlayerStart → tutorial start encontrado."));
-				return *It;
+				TutorialStarts.Add(*It);
 			}
+		}
+		if (TutorialStarts.Num() > 0)
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] ChoosePlayerStart → tutorial start encontrado."));
+			// Todos aparecen en el tutorial: el primero en su PlayerStart y los demás (hasta ocho) al lado, sin encimarse.
+			if (AActor* Start = TN_PickSpreadPlayerStart(GetWorld(), TutorialStarts, Player, DefaultPawnClass, TEXT("Lobby")))
+			{
+				return Start;
+			}
+			return TutorialStarts[0];
 		}
 		UE_LOG(LogTortunabo, Warning,
 			TEXT("[HQGameMode] bShouldUseTutorialStart=true pero no hay PlayerStart con tag '%s' — spawn normal."),
@@ -120,12 +130,13 @@ AActor* ATN_HQGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		return Super::ChoosePlayerStart_Implementation(Player);
 	}
 
-	if (AActor* Start = TN_PickUnoccupiedPlayerStart(GetWorld(), PlayerStarts, Player))
+	// Con más jugadores que PlayerStart (el lobby trae cuatro y caben ocho) salen sitios nuevos junto a los del mapa.
+	if (AActor* Start = TN_PickSpreadPlayerStart(GetWorld(), PlayerStarts, Player, DefaultPawnClass, TEXT("Lobby")))
 	{
 		return Start;
 	}
 
-	// Fallback: todos ocupados
+	// Fallback: todos ocupados y sin hueco cerca
 	return PlayerStarts[0];
 }
 
@@ -231,7 +242,9 @@ void ATN_HQGameMode::RefreshLobbyState()
 		}
 	}
 
-	const int32 ExpectedPlayers = LobbyExpectedPlayers;
+	// Plazas de la sala: las de la sesión (ocho) salvo que LobbyExpectedPlayers fije otras.
+	const UMP_GameInstance* SessionGI = Cast<UMP_GameInstance>(GetGameInstance());
+	const int32 ExpectedPlayers = LobbyExpectedPlayers > 0 ? LobbyExpectedPlayers : (SessionGI ? SessionGI->GetMaxPlayers() : 8);
 	TNGS->ExpectedPlayers = ExpectedPlayers;
 	TNGS->ConnectedPlayers = ConnectedPlayers;
 	TNGS->PlayersInStartZone = ReadyPlayers;

@@ -15,13 +15,13 @@ class UTextRenderComponent;
  * Estructura de salida del mapa procedural: la misma pieza en la que los jugadores se pusieron listos en el lobby
  * (ATN_SandCastleLobby), hecha con el mismo kit (TNCastleKit), así que la geometría es idéntica.
  * - Puerta doble (ETNMatchStartStyle::Gate): sala entre dos puertas al fondo del claro de salida, con la puerta 1
- *   contra el talud (parece que se sale de la pared). Los jugadores aparecen dentro (cuatro sitios); al abrirse, la
- *   puerta 2 gira hacia fuera y se sale corriendo.
- * - Huevos (ETNMatchStartStyle::Eggs): montículo con la pila de cuatro huevos; cada jugador aparece dentro de uno con la
- *   tapa puesta y unas paredes invisibles que lo sujetan. Al abrirse, las tapas saltan dando vueltas, cada tortuga se ve
- *   1 s en su huevo roto (se pone de pie, se sacude la cáscara y mira al camino: TNEggHatch, la pieza común con la
- *   carrera) y sale despedida de un salto (servidor y cliente dueño a la vez y con el reloj del servidor, como en el
- *   probador). Consola: TN.Proc.Egg repite la salida sin regenerar.
+ *   contra el talud (parece que se sale de la pared). Los jugadores aparecen dentro (ocho sitios, en dos filas de
+ *   cuatro); al abrirse, la puerta 2 gira hacia fuera y se sale corriendo.
+ * - Huevos (ETNMatchStartStyle::Eggs): montículo con la pila de ocho huevos (siete abajo y uno arriba); cada jugador
+ *   aparece dentro de uno con la tapa puesta y unas paredes invisibles que lo sujetan. Al abrirse, las tapas saltan
+ *   dando vueltas, cada tortuga se ve 1 s en su huevo roto (se pone de pie, se sacude la cáscara y mira al camino:
+ *   TNEggHatch, la pieza común con la carrera) y sale despedida de un salto (servidor y cliente dueño a la vez y con el
+ *   reloj del servidor, como en el probador). Consola: TN.Proc.Egg repite la salida sin regenerar.
  *
  * La crea ATN_ProcMapGenerator en el servidor (una por mapa; se destruye al regenerar) y se replica siempre: solo viajan
  * el estilo, si está abierta y desde cuándo, y cada máquina construye sus mallas. Espacio local: origen a ras de suelo,
@@ -39,8 +39,8 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	/** Sitios de salida (uno por jugador): los cuatro de la sala o los cuatro huevos. */
-	static constexpr int32 NumSpots = 4;
+	/** Sitios de salida (uno por jugador, ocho como mucho): los ocho de la sala o los ocho huevos. */
+	static constexpr int32 NumSpots = 8;
 
 	/**
 	 * Semialtura de cápsula con la que se calculan los sitios cuando no se conoce la del peón (PlayerStart, reaparición):
@@ -69,7 +69,7 @@ public:
 
 	/**
 	 * Sitio (mundo) del jugador Slot: dentro de la sala o de su huevo, con una cápsula de semialtura CapsuleHalfHeight de
-	 * pie sobre el suelo y mirando al camino (+Y local). false si el slot no tiene sitio (más de cuatro jugadores): el
+	 * pie sobre el suelo y mirando al camino (+Y local). false si el slot no tiene sitio (más de ocho jugadores): el
 	 * llamador usa otra salida.
 	 */
 	bool GetSpawnTransform(int32 Slot, float CapsuleHalfHeight, FTransform& OutTransform) const;

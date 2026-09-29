@@ -427,10 +427,10 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 	case TNBriefingUI::TabModes:
 		Say(NSLOCTEXT("Tortunabo", "BriefingSayModes",
 			"Cuatro formas de llegar al mar. La de hoy la fija el anfitrión conmigo, en la pestaña «Misión»."));
-		AddHeading(NSLOCTEXT("Tortunabo", "BriefingCoopH", "Cooperativo (de 1 a 4 tortugas)"));
+		AddHeading(NSLOCTEXT("Tortunabo", "BriefingCoopH", "Cooperativo (de 1 a 8 tortugas)"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingCoop",
 			"Todo el equipo tiene que llegar a la meta. Una tormenta avanza por el camino detrás de vosotros y nunca va más rápido que una tortuga andando: si os quedáis atrás, os alcanza. Es el mapa más largo."));
-		AddHeading(NSLOCTEXT("Tortunabo", "BriefingRaceH", "Carrera (de 1 a 4)"));
+		AddHeading(NSLOCTEXT("Tortunabo", "BriefingRaceH", "Carrera (de 1 a 8)"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingRace",
 			"Todas contra todas en la playa: la primera que salta del acantilado y toca el agua gana la ronda y una concha, y la partida es para quien consiga tres. Aquí no se muere nadie: lo que en el cooperativo mata, en la playa te deja un rato hecha una bola."));
 		AddHeading(NSLOCTEXT("Tortunabo", "Briefing2v2H", "2 vs 2 (exactamente 4)"));

@@ -2,6 +2,7 @@
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Border.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -400,28 +401,79 @@ void UTN_CoopFlowHUDWidget::RefreshScoreboard(const ATN_CoopGameState* GameState
 
 	const TArray<FTN_RaceResultEntry>& Results = GameState->RaceResults;
 
-	for (int32 i = 0; i < 4; ++i)
+	for (int32 i = 0; i < MaxScoreboardRows; ++i)
 	{
 		const FTN_RaceResultEntry* Entry = (i < Results.Num()) ? &Results[i] : nullptr;
 		FillScoreboardRow(i, Entry);
+	}
+	ApplyScoreboardDensity(Results.Num());
+}
+
+void UTN_CoopFlowHUDWidget::GetScoreboardRowTexts(int32 RowIndex, UTextBlock* (&OutTexts)[4]) const
+{
+	OutTexts[0] = OutTexts[1] = OutTexts[2] = OutTexts[3] = nullptr;
+	switch (RowIndex)
+	{
+	case 0: OutTexts[0] = Row1RankText; OutTexts[1] = Row1NameText; OutTexts[2] = Row1TimeText; OutTexts[3] = Row1ScoreText; break;
+	case 1: OutTexts[0] = Row2RankText; OutTexts[1] = Row2NameText; OutTexts[2] = Row2TimeText; OutTexts[3] = Row2ScoreText; break;
+	case 2: OutTexts[0] = Row3RankText; OutTexts[1] = Row3NameText; OutTexts[2] = Row3TimeText; OutTexts[3] = Row3ScoreText; break;
+	case 3: OutTexts[0] = Row4RankText; OutTexts[1] = Row4NameText; OutTexts[2] = Row4TimeText; OutTexts[3] = Row4ScoreText; break;
+	case 4: OutTexts[0] = Row5RankText; OutTexts[1] = Row5NameText; OutTexts[2] = Row5TimeText; OutTexts[3] = Row5ScoreText; break;
+	case 5: OutTexts[0] = Row6RankText; OutTexts[1] = Row6NameText; OutTexts[2] = Row6TimeText; OutTexts[3] = Row6ScoreText; break;
+	case 6: OutTexts[0] = Row7RankText; OutTexts[1] = Row7NameText; OutTexts[2] = Row7TimeText; OutTexts[3] = Row7ScoreText; break;
+	case 7: OutTexts[0] = Row8RankText; OutTexts[1] = Row8NameText; OutTexts[2] = Row8TimeText; OutTexts[3] = Row8ScoreText; break;
+	default: break;
+	}
+}
+
+void UTN_CoopFlowHUDWidget::ApplyScoreboardDensity(int32 NumEntries)
+{
+	if (ScoreboardRowPanels.Num() == 0)
+	{
+		return;
+	}
+	// Hasta cuatro resultados, las cuatro filas de siempre; con más, una fila por resultado y más compactas (letra y
+	// relleno algo menores) para que quepan los ocho de la sesión.
+	const int32 Shown = FMath::Clamp(NumEntries, 4, MaxScoreboardRows);
+	const bool bCompact = Shown > 4;
+	for (int32 Row = 0; Row < ScoreboardRowPanels.Num(); ++Row)
+	{
+		if (UBorder* Panel = ScoreboardRowPanels[Row])
+		{
+			Panel->SetVisibility(Row < Shown ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+			Panel->SetPadding(bCompact ? FMargin(14.f, 2.f) : FMargin(14.f, 5.f));
+		}
+		UTextBlock* Cells[4];
+		GetScoreboardRowTexts(Row, Cells);
+		for (UTextBlock* Cell : Cells)
+		{
+			if (!Cell)
+			{
+				continue;
+			}
+			FSlateFontInfo Font = Cell->GetFont();
+			if (ScoreboardBaseFontSize <= 0.f)
+			{
+				ScoreboardBaseFontSize = Font.Size;
+			}
+			const float Wanted = bCompact ? FMath::RoundToFloat(ScoreboardBaseFontSize * 0.88f) : ScoreboardBaseFontSize;
+			if (!FMath::IsNearlyEqual(Font.Size, Wanted))
+			{
+				Font.Size = Wanted;
+				Cell->SetFont(Font);
+			}
+		}
 	}
 }
 
 void UTN_CoopFlowHUDWidget::FillScoreboardRow(int32 RowIndex, const FTN_RaceResultEntry* Entry)
 {
-	UTextBlock* Rank = nullptr;
-	UTextBlock* Name = nullptr;
-	UTextBlock* Time = nullptr;
-	UTextBlock* Score = nullptr;
-
-	switch (RowIndex)
-	{
-	case 0: Rank = Row1RankText; Name = Row1NameText; Time = Row1TimeText; Score = Row1ScoreText; break;
-	case 1: Rank = Row2RankText; Name = Row2NameText; Time = Row2TimeText; Score = Row2ScoreText; break;
-	case 2: Rank = Row3RankText; Name = Row3NameText; Time = Row3TimeText; Score = Row3ScoreText; break;
-	case 3: Rank = Row4RankText; Name = Row4NameText; Time = Row4TimeText; Score = Row4ScoreText; break;
-	default: return;
-	}
+	UTextBlock* Cells[4];
+	GetScoreboardRowTexts(RowIndex, Cells);
+	UTextBlock* Rank = Cells[0];
+	UTextBlock* Name = Cells[1];
+	UTextBlock* Time = Cells[2];
+	UTextBlock* Score = Cells[3];
 
 	if (!Entry)
 	{

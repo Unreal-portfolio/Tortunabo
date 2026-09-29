@@ -12,7 +12,8 @@ class APlayerStart;
  * @brief GameMode del lobby HQ (LVL_HQ). Gestiona ready-up, countdown y travel al mapa Run.
  *
  * Responsabilidades:
- *  - Spawn de jugadores (con desvío al tutorial la primera partida del listen-server).
+ *  - Spawn de jugadores (con desvío al tutorial la primera partida del listen-server). Hasta ocho: si los PlayerStart del
+ *    mapa (cuatro) se acaban, los siguientes salen en sitios nuevos junto a ellos (TN_PickSpreadPlayerStart).
  *  - Lectura del estado ready (ATN_LobbyReadyZone) y countdown cuando todos los conectados están listos.
  *  - Reseteo del countdown si alguien sale de la zona o se desconecta.
  *  - Seamless Travel hacia LVL_Run con persistencia de PendingTravelPlayerCount en GameInstance.
@@ -61,8 +62,12 @@ public:
 	void SetPlayerReadyState(APlayerController* PlayerController, bool bReady);
 
 protected:
+	/**
+	 * Plazas que enseña el marcador «Sala: X/Y» del lobby (ATN_CoopGameState::ExpectedPlayers). 0 = las de la sesión
+	 * (UMP_GameInstance::GetMaxPlayers, ocho); mayor que 0 lo fija a mano.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")
-	int32 LobbyExpectedPlayers = 4;
+	int32 LobbyExpectedPlayers = 0;
 
 	/** Mínimo de jugadores conectados para que el countdown pueda arrancar. Default=1 para pruebas en solitario. */
 	UPROPERTY(EditDefaultsOnly, Category = "Lobby")

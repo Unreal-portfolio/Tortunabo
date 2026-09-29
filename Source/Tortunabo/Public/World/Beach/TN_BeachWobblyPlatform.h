@@ -43,7 +43,7 @@ public:
 	bool IsBroken() const { return BrokenAt >= 0.f; }
 
 	/** Tortugas a la vez que la rompen. */
-	UPROPERTY(EditAnywhere, Category = "Plataforma", meta = (ClampMin = "1", ClampMax = "4"))
+	UPROPERTY(EditAnywhere, Category = "Plataforma", meta = (ClampMin = "1", ClampMax = "8"))
 	int32 BreakRiders = 2;
 
 	/** Segundos con BreakRiders tortugas encima hasta partirse (baja despacio si se bajan). */

@@ -5,6 +5,7 @@
 #include "Core/TN_MatchFlowTypes.h"
 #include "TN_CoopFlowHUDWidget.generated.h"
 
+class UBorder;
 class UHorizontalBox;
 class UTextBlock;
 class UTexture2D;
@@ -18,7 +19,8 @@ class ATN_CoopPlayerState;
  *
  * Responsabilidades:
  *  - Status strip (PrimaryText/SecondaryText) con el estado actual: "Esperando jugadores", countdown, "1º / 2º / 3º", etc.
- *  - Panel de Resultados al final de la run con scoreboard de 4 filas (Row1..Row4 RankNameTimeScore).
+ *  - Panel de Resultados al final de la run con scoreboard de hasta 8 filas (Row1..Row8 RankNameTimeScore): las cuatro de
+ *    siempre y, con más de cuatro jugadores, una por jugador.
  *  - Hint de espectador mientras el jugador está observando a otros.
  *  - Feed de Quick Chat con fade-out automático tras inactividad.
  *  - Bindings dobles: polling cada RefreshInterval + delegate OnMatchFlowStateChanged como backup.
@@ -69,11 +71,13 @@ protected:
 	TObjectPtr<UTextBlock> SpectatorHint;
 
 	// ── Scoreboard global (Results) ─────────────────────────────────────────────
-	// Hasta 4 filas (max coop). En el BP nómbralas exactamente:
+	// Hasta 8 filas (los jugadores que caben en la sesión). En el BP nómbralas exactamente:
 	//   Row1RankText, Row1NameText, Row1TimeText, Row1ScoreText
-	//   Row2... Row3... Row4...
+	//   Row2... Row3... Row4... Row5... Row6... Row7... Row8...
+	// Las filas 5 a 8 son opcionales: un BP con solo cuatro sigue valiendo (los resultados de más de cuatro jugadores no
+	// se enseñan).
 	// Si una fila no tiene datos (ej: solo 3 jugadores), sus textos se vacían.
-	// El número del rank: "1º"/"2º"/"3º"/"4º" o "✗" si eliminado.
+	// El número del rank: "1º"/"2º"/... o "✗" si eliminado.
 
 	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row1RankText;
 	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row1NameText;
@@ -94,6 +98,37 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row4NameText;
 	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row4TimeText;
 	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row4ScoreText;
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row5RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row5NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row5TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row5ScoreText;
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row6RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row6NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row6TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row6ScoreText;
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row7RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row7NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row7TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row7ScoreText;
+
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row8RankText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row8NameText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row8TimeText;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UTextBlock> Row8ScoreText;
+
+	/** Filas del marcador: los ocho jugadores que caben en la sesión. */
+	static constexpr int32 MaxScoreboardRows = 8;
+
+	/**
+	 * Fondo de cada fila del marcador, en orden (opcional: lo rellena el HUD que construye las filas en código, como
+	 * UTN_RunFlowHUDWidget; un Blueprint dibujado a mano no lo necesita). Con cuatro resultados o menos se ven las cuatro
+	 * filas de siempre; con más, una fila por resultado y algo más compactas para que quepan ocho.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UBorder>> ScoreboardRowPanels;
 
 	// Optional Blueprint hook — called when the flow state changes.
 	// Override in BP if you need extra visual effects; all logic is already in C++.
@@ -157,6 +192,15 @@ private:
 
 	void RefreshScoreboard(const ATN_CoopGameState* GameState);
 	void FillScoreboardRow(int32 RowIndex, const struct FTN_RaceResultEntry* Entry);
+
+	/** Los cuatro textos de una fila del marcador (puesto, nombre, tiempo, puntos); nulos los que el diseño no trae. */
+	void GetScoreboardRowTexts(int32 RowIndex, UTextBlock* (&OutTexts)[4]) const;
+
+	/** Enseña las filas que hacen falta (ScoreboardRowPanels) y las compacta si son más de cuatro. */
+	void ApplyScoreboardDensity(int32 NumEntries);
+
+	/** Tamaño de letra de las filas antes de compactarlas (se lee la primera vez). */
+	float ScoreboardBaseFontSize = 0.f;
 
 	UFUNCTION()
 	void HandleRaceResultsUpdated();

@@ -61,7 +61,7 @@ umbral de la puerta 1, en y = `GateY` = 2470, y la sala sale hacia fuera de la m
   - cada hueco mide 8,6 × 5,4 m, con pilares que tapan los cantos de las hojas (sin rendijas);
   - fachadas de 7,6 m con almenas, marcas de cubo y arco de dovelas;
   - sala de 9,2 × 7 m, abierta al cielo, con paredes de 6,4 m con almenas, conchas y dos antorchas (`RoomLight`);
-  - cuatro estrellas en el suelo, donde se aparece en el mapa procedural;
+  - ocho estrellas en el suelo, en dos filas de cuatro (a 2,3 m unas de otras), donde se aparece en el mapa procedural;
   - dos torres grandes (13,5 m) a los lados de la puerta 1 y dos torreones (9,8 m) a los de la puerta 2;
   - barreras invisibles encima de paredes y fachadas.
 - **Hojas**: son de tablones sobre un tablero de fondo, con la cara de arriba recta, así que no se ve a través.
@@ -111,11 +111,15 @@ umbral de la puerta 1, en y = `GateY` = 2470, y la sala sale hacia fuera de la m
 
 ### Pila de huevos (plaza, centro en (0, 700))
 
-Montículo de dos alturas (`TNCastleKit::BuildEggMound`).
+Montículo de dos alturas (`TNCastleKit::BuildEggMound`), con un huevo por cada jugador que cabe en la sesión (ocho,
+`ATN_SandCastleLobby::NumEggs`, atado con un `static_assert` a `TNCastleKit::EggMound::NumEggs`).
 - **Montículo**:
-  - el piso bajo mide 430 de radio y 60 de alto; el alto, 175 de radio y 200 de alto;
-  - tres huevos van en el piso bajo, a 265 del centro, y el cuarto en lo alto;
-  - el escalón para subir es un tocón de arena con una vieira encima.
+  - el piso bajo mide 480 de radio y 60 de alto; el alto, 175 de radio y 200 de alto;
+  - siete huevos van en el piso bajo, a 335 del centro, en un arco de 282° (47° entre vecinos) centrado detrás, de 129°
+    a 51° (`TNCastleKit::EggMoundRingAngle`); el octavo, en lo alto;
+  - el arco deja 78° libres delante, en el lado de la puerta, por donde se llega al escalón;
+  - el escalón para subir es un tocón de arena con una vieira encima;
+  - colores de los huevos (`EggAccent`): turquesa, coral, amarillo, lila, verde lima, rosa, azul y naranja.
 - **Estar listo**: meterse en un huevo marca al jugador como listo y baja su tapa. Cuenta si está a menos de 95 cm de
   su eje y entre su base y 3,2 m por encima. Salir del huevo lo quita de listo.
 - Las tapas libres flotan encima dando vueltas. La zona de listos vieja (`ATN_LobbyReadyZone`) se apaga.
@@ -123,6 +127,29 @@ Montículo de dos alturas (`TNCastleKit::BuildEggMound`).
 ### Adornos
 
 Hasta sesenta conchas y estrellas de mar sueltas por la plaza y el patio, y otras ocho alrededor del montículo.
+
+### Ocho jugadores
+
+La sesión admite ocho (`MaxPlayers`); el lobby, la salida del cooperativo y el clásico están hechos para todos.
+- **Listos**: ocho huevos en la pila (ver arriba) y la sala de la puerta doble, que no tiene tope. El marcador «Sala: X/Y»
+  enseña las plazas de la sesión (`ATN_HQGameMode::LobbyExpectedPlayers`, 0 = `UMP_GameInstance::GetMaxPlayers`).
+- **Dónde aparecen**: `LVL_Lobby`, `LVL_HQ` y `LVL_Run` siguen teniendo cuatro `PlayerStart` (no se ha tocado ningún mapa).
+  Los cuatro primeros aparecen donde siempre. Cuando no queda ninguno libre, `ChoosePlayerStart` de `ATN_HQGameMode` y de
+  `ATN_RunGameMode` llama a `TN_PickSpreadPlayerStart` (`Core/TN_GameModeSpawnUtils.*`), que crea un `PlayerStart` nuevo
+  junto a uno del mapa:
+  - prueba desplazamientos de 2,2 m a los lados (primero), hacia atrás y hacia delante del `PlayerStart` de origen, del
+    más corto al más largo; con el mismo desplazamiento, el sitio más lejos de los demás peones;
+  - cada sitio tiene que tener suelo firme a menos de 45 cm de altura del de origen, caber la cápsula del peón, no
+    chocar con nada en un barrido desde el origen y quedar a 2 m de cualquier peón ajeno; si no cabe ninguno así, repite
+    con pasos de ~1,1 m y 90 cm de margen;
+  - el `PlayerStart` nuevo copia la orientación y la etiqueta del de origen (lleva además el `Tag` `TNExtraStart`), se
+    queda en el mundo y se reutiliza cuando su jugador se va; el mapa se recarga al viajar, así que no se guarda nada;
+  - en el tutorial de la primera partida (todos aparecen en el `PlayerStart` con la etiqueta de tutorial) pasa lo mismo.
+- `GetSpawnSpots()` da ahora ocho sitios (los cuatro de siempre y una segunda fila 3 m detrás, hacia la puerta). El script
+  `Scripts/place_lobby_castle.py` sigue poniendo los cuatro `Salida_1` … `Salida_4` y no hace falta cambiarlo (con ocho
+  `PlayerStart` en el nivel no se crearía ninguno de más).
+- **Al viajar**: con huevos, cada jugador aparece en el suyo (siete abajo y uno arriba); con la puerta doble, en una de las
+  ocho estrellas de la sala (`Gatehouse::SpawnSpot`).
 
 ## Valle (`ATN_LobbyValley`, `Lobby/TN_LobbyValley*`)
 
@@ -242,7 +269,7 @@ editor y sin guardar el nivel.
 | `Medusa_4` … `Medusa_7` | (2050, -420), (1280, -180), (1700, -250) y (1150, 280) | 0,7 celeste, 0,9 lila, 1,0 rosa y 0,75 celeste |
 | `Prueba_01` … `Prueba_08` (`ATN_PlaygroundPiece`) | patio de pruebas | escalones de polo, galleta, postes de cubo, pala giratoria, túnel (se pasa de pie), tobogán de concha |
 | `Puente_Bamboleante` (`ATN_WobblyBridge`) | (350, -1950), yaw 180 | 7 m de vano, tablero a 2,3 m |
-| `Salida_1` … `Salida_4` (`PlayerStart`) | x = ±150, ±450; y = 1700 - 0,25·\|x\| | z 97, mirando a los huevos |
+| `Salida_1` … `Salida_4` (`PlayerStart`) | x = ±150, ±450; y = 1700 - 0,25·\|x\| | z 97, mirando a los huevos (del quinto al octavo jugador, ver «Ocho jugadores») |
 | Cofre del tesoro (`ATN_TreasureChest`) | (0, -600, 924), yaw 90 (mirando a la plaza) | **no está en el nivel**: lo crea el castillo en el servidor, en `BeginPlay` |
 
 La maqueta original (paredes «Extrude»/SandWall, vallas, torres, botellas, carpas, huevos «Capsule»…) está 50 m más

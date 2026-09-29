@@ -21,6 +21,9 @@
 #include "ProceduralMeshComponent.h"
 #include "TN_CastleKit.h"
 
+// Un sitio en la pila por cada jugador que cabe: el montículo del kit y el castillo cuentan igual.
+static_assert(ATN_SandCastleLobby::NumEggs == TNCastleKit::EggMound::NumEggs, "Un huevo del kit por cada huevo de la pila del lobby.");
+
 namespace TNCastleDetail
 {
 	using namespace TNCastleKit;
@@ -254,11 +257,15 @@ FVector ATN_SandCastleLobby::LayoutSpot(double ClockHour, double Dist, float& Ou
 void ATN_SandCastleLobby::GetSpawnSpots(TArray<FTransform>& OutLocalSpots)
 {
 	OutLocalSpots.Reset();
-	for (const double X : { -450.0, -150.0, 150.0, 450.0 })
+	// Dos filas de cuatro: la de siempre y otra 3 m detrás, hacia la puerta (los cuatro primeros no se mueven).
+	for (const double RowBack : { 0.0, 300.0 })
 	{
-		const FVector Where(X, 1700.0 - FMath::Abs(X) * 0.25, TNCastleDetail::FloorZ + 95.0);
-		const FVector ToEggs = FVector(TNCastleDetail::EggsCenter.X, TNCastleDetail::EggsCenter.Y, Where.Z) - Where;
-		OutLocalSpots.Add(FTransform(ToEggs.Rotation(), Where));
+		for (const double X : { -450.0, -150.0, 150.0, 450.0 })
+		{
+			const FVector Where(X, 1700.0 - FMath::Abs(X) * 0.25 + RowBack, TNCastleDetail::FloorZ + 95.0);
+			const FVector ToEggs = FVector(TNCastleDetail::EggsCenter.X, TNCastleDetail::EggsCenter.Y, Where.Z) - Where;
+			OutLocalSpots.Add(FTransform(ToEggs.Rotation(), Where));
+		}
 	}
 }
 

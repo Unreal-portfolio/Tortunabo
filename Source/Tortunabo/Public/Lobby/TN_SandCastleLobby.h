@@ -30,8 +30,9 @@ class UTextRenderComponent;
  *   baja otra al adarve de la izquierda, que acaba en un tobogán a la plaza. El de la derecha (se llega botando en las
  *   medusas) tiene un mirador y un tobogán al patio de pruebas. En la azotea, delante del torreón y sobre una tarima,
  *   el cofre del tesoro (ATN_TreasureChest): lo crea el servidor en BeginPlay y no se guarda en el nivel.
- * - Plaza: pila de cuatro huevos en un montículo de dos alturas (EggsCenter); meterse en uno marca al jugador como
- *   listo (ATN_HQGameMode::SetPlayerReadyState) y con todos listos empieza la cuenta atrás.
+ * - Plaza: pila de ocho huevos en un montículo de dos alturas (EggsCenter): siete en el piso bajo y uno arriba, uno por
+ *   jugador de los ocho que caben en la sesión. Meterse en uno marca al jugador como listo
+ *   (ATN_HQGameMode::SetPlayerReadyState) y con todos listos empieza la cuenta atrás.
  * - Los puestos (tienda de las 10 a las 11, cuartel de la 12 a la 1, probadores de las 2 a las 3:30 y medusas de las
  *   8:20 a las 10) y las piezas del patio de pruebas son actores propios colocados en el nivel; LayoutSpot() da sus
  *   sitios.
@@ -56,8 +57,8 @@ public:
 	/** false con TN.Lobby.Castle 0. */
 	static bool IsEnabled();
 
-	/** Número de huevos de la pila (uno por jugador). */
-	static constexpr int32 NumEggs = 4;
+	/** Número de huevos de la pila (uno por jugador; ocho, el máximo de la sesión). */
+	static constexpr int32 NumEggs = 8;
 
 	/** Radio interior de la muralla (cm). */
 	static constexpr double Radius = 2400.0;
@@ -71,7 +72,10 @@ public:
 	 */
 	static FVector LayoutSpot(double ClockHour, double Dist, float& OutYawToCenter);
 
-	/** Sitios de salida de los jugadores en la plaza (locales), entre la puerta y la pila de huevos, mirando a la pila. */
+	/**
+	 * Sitios de salida de los jugadores en la plaza (locales), entre la puerta y la pila de huevos, mirando a la pila: los
+	 * cuatro de siempre en una fila y otros cuatro en una segunda fila detrás, hacia la puerta (NumEggs en total).
+	 */
 	static void GetSpawnSpots(TArray<FTransform>& OutLocalSpots);
 
 	/**
