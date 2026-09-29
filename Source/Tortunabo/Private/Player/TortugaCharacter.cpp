@@ -14,6 +14,7 @@
 #include "Core/TN_CosmeticLook.h"
 #include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
+#include "Player/TN_ShellImpactFXComponent.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_DizzyBirdsComponent.h"
 #include "Player/TN_TurtleFaceComponent.h"
@@ -307,6 +308,10 @@ void ATortugaCharacter::BeginPlay()
 
 	// Polvo, arenilla, astillas o salpicaduras del arrastre del panzazo (cosmético y local; nada en servidor dedicado).
 	UTN_TurtleDustComponent::FindOrAddTo(this);
+
+	// Golpes de la bola del caparazón (sonido y mini efecto según contra qué choca): cosmético y local, cada máquina en su copia de la bola.
+	// Se engancha sola a la caja física cuando aparece (sin tocar TN_ShellBody ni TN_ShellComponent); nada en servidor dedicado.
+	UTN_ShellImpactFXComponent::FindOrAddTo(this);
 }
 
 void ATortugaCharacter::ResolveAnimationBones()
