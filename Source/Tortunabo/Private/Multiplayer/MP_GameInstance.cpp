@@ -581,10 +581,31 @@ void UMP_GameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucce
 	TWeakObjectPtr<UMP_GameInstance> WeakThis(this);
 	TFunction<void()> Travel = [WeakThis, TravelURL]()
 	{
-		if (UWorld* TravelWorld = WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr)
+		UMP_GameInstance* Self = WeakThis.Get();
+		UWorld* TravelWorld = Self ? Self->GetWorld() : nullptr;
+		if (!TravelWorld)
 		{
-			TravelWorld->ServerTravel(TravelURL);
+			return;
 		}
+		// Menú que ya escucha (el Standalone del editor como servidor escuchando arranca en LVL_Menu?Listen): con Steam, el
+		// socket de escucha del puerto virtual 17777 se cierra un tic después de apagar su driver, y el LoadMap del
+		// ServerTravel intentaba escuchar en el lobby antes; fallaba (NetDriverListenFailure) y el motor devolvía al menú.
+		// Se apaga aquí el driver del menú y se viaja medio segundo después, con el puerto ya libre.
+		if (TravelWorld->GetNetDriver() && GEngine)
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[MP] El menú ya escuchaba: se cierra su driver de red antes de viajar al lobby."));
+			GEngine->ShutdownWorldNetDriver(TravelWorld);
+			FTimerHandle DelayedTravel;
+			TravelWorld->GetTimerManager().SetTimer(DelayedTravel, FTimerDelegate::CreateWeakLambda(Self, [WeakThis, TravelURL]()
+			{
+				if (UWorld* LaterWorld = WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr)
+				{
+					LaterWorld->ServerTravel(TravelURL);
+				}
+			}), 0.5f, false);
+			return;
+		}
+		TravelWorld->ServerTravel(TravelURL);
 	};
 	if (UTN_LoadingScreenSubsystem* EggLoading = GetSubsystem<UTN_LoadingScreenSubsystem>())
 	{
