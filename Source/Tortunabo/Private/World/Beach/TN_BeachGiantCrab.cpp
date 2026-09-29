@@ -194,7 +194,7 @@ void ATN_BeachGiantCrab::BuildCrab()
 	Scaler->SetRelativeScale3D(FVector(SizeK));
 	Scaler->RegisterComponent();
 
-	// Cuerpo sólido en todas las máquinas: la tortuga (y su bola) no lo atraviesan. Tipo Pawn que bloquea lo dinámico,
+	// Cuerpo sólido en todas las máquinas: la tortuga no lo atraviesa (su bola, por el empuje propio). Tipo Pawn que bloquea lo dinámico,
 	// como el cangrejo de siempre, para que los objetos del jugador le den (ITN_EnemyTargetInterface).
 	BodyBlock = NewObject<UBoxComponent>(this, TEXT("CrabBlock"));
 	BodyBlock->SetupAttachment(Scaler);
@@ -204,11 +204,12 @@ void ATN_BeachGiantCrab::BuildCrab()
 	BodyBlock->SetCollisionObjectType(ECC_Pawn);
 	BodyBlock->SetCollisionResponseToAllChannels(ECR_Ignore);
 	BodyBlock->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-	BodyBlock->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
 	BodyBlock->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 	BodyBlock->SetCanEverAffectNavigation(false);
 	BodyBlock->SetGenerateOverlapEvents(true);
 	BodyBlock->RegisterComponent();
+	// La bola del caparazón no choca con él en la física: la saca el servidor por un lado (movido sin barrido, la hundía).
+	RegisterSolidBlock(BodyBlock);
 
 	if (!bHasScreen)
 	{

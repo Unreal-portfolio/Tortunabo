@@ -11,6 +11,8 @@
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Camera/PlayerCameraManager.h"
+#include "World/TN_SeaweedDecisions.h"
 #include "ProceduralMeshComponent.h"
 #include "TN_BeachTrapKit.h"
 
@@ -729,12 +731,16 @@ void ATN_BeachSeaweed::RebuildLiveMesh()
 		return;
 	}
 	TNBeachTrapKit::FBuffers Live;
+	// Buffers de trabajo reutilizados entre tallos y hebras: sin reservar memoria por tubo.
+	TArray<FVector> Path;
+	TArray<double> Radii;
+	TArray<FLinearColor> Colors;
 	// Tallos de pie que se mecen (más cuando alguien está enganchado cerca).
 	for (int32 f = 0; f < FrondBases.Num(); ++f)
 	{
-		TArray<FVector> Path;
-		TArray<double> Radii;
-		TArray<FLinearColor> Colors;
+		Path.Reset();
+		Radii.Reset();
+		Colors.Reset();
 		const float Phase = FrondPhases.IsValidIndex(f) ? FrondPhases[f] : 0.f;
 		const double Height = FrondHeights.IsValidIndex(f) ? FrondHeights[f] : 90.0;
 		for (int32 i = 0; i < FrondPoints; ++i)
@@ -753,9 +759,9 @@ void ATN_BeachSeaweed::RebuildLiveMesh()
 		const double C = Slot.Curl;
 		for (int32 j = 0; j < WrapStrands; ++j)
 		{
-			TArray<FVector> Path;
-			TArray<double> Radii;
-			TArray<FLinearColor> Colors;
+			Path.Reset();
+			Radii.Reset();
+			Colors.Reset();
 			const double Base = TNPlaygroundKit::KitTwoPi * j / WrapStrands + Slot.Phase;
 			for (int32 i = 0; i < WrapPoints; ++i)
 			{
@@ -786,6 +792,28 @@ void ATN_BeachSeaweed::RebuildLiveMesh()
 	}
 }
 
+namespace
+{
+	/** Distancia (cm) de Location a la cámara local más cercana; muy grande si no hay ninguna. */
+	double TNSeaweedViewDistance(const UWorld* World, const FVector& Location)
+	{
+		double Best = TNumericLimits<double>::Max();
+		if (!World)
+		{
+			return Best;
+		}
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			const APlayerController* PC = It->Get();
+			if (PC && PC->IsLocalController() && PC->PlayerCameraManager)
+			{
+				Best = FMath::Min(Best, FVector::Dist(Location, PC->PlayerCameraManager->GetCameraLocation()));
+			}
+		}
+		return Best;
+	}
+}
+
 void ATN_BeachSeaweed::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -804,9 +832,14 @@ void ATN_BeachSeaweed::Tick(float DeltaSeconds)
 		{
 			bWrapping |= Slot.Curl > 0.f;
 		}
-		if (bWrapping || LiveMesh->WasRecentlyRendered(0.3f))
+		// El vaivén en reposo no se reconstruye cada frame salvo cerca de la cámara (TN_SeaweedDecisions.h).
+		SinceLiveRebuild += DeltaSeconds;
+		const float Interval = TNSeaweedLogic::RebuildInterval(bWrapping, LiveMesh->WasRecentlyRendered(0.3f),
+			TNSeaweedViewDistance(GetWorld(), GetActorLocation()));
+		if (TNSeaweedLogic::ShouldRebuild(Interval, SinceLiveRebuild))
 		{
 			RebuildLiveMesh();
+			SinceLiveRebuild = 0.f;
 		}
 		Splash.Tick(DeltaSeconds);
 	}

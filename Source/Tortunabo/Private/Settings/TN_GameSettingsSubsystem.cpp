@@ -1,6 +1,7 @@
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Core/TN_Log.h"
 #include "Menu/MP_MenuPlayerController.h"
+#include "Multiplayer/TN_SaveGameIO.h"
 #include "Audio/TN_AmbientSoundscape.h"
 #include "Audio/TN_AmbientSynthComponent.h"
 #include "Audio/TN_MusicSynthComponent.h"
@@ -619,9 +620,9 @@ void UTN_GameSettingsSubsystem::SaveNow()
 		if (UTN_SettingsSaveGame* Save = Cast<UTN_SettingsSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_SettingsSaveGame::StaticClass())))
 		{
 			Save->Settings = Settings;
-			UGameplayStatics::SaveGameToSlot(Save, SlotName, SlotUser);
+			// Si falla (tras un reintento, con error en el log) queda sucio y se vuelve a intentar en el siguiente SaveNow.
+			bSettingsDirty = !TNSaveGameIO::SaveChecked(Save, SlotName, SlotUser, TEXT("Ajustes"));
 		}
-		bSettingsDirty = false;
 	}
 	// Una resolución sin confirmar no se guarda (si el juego se cerrase con ella, arrancaría otra vez así).
 	if (bGraphicsDirty && !bVideoModePending)

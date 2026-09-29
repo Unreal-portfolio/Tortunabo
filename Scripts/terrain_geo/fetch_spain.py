@@ -16,7 +16,6 @@ from __future__ import annotations
 import io
 import json
 import math
-import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -25,24 +24,13 @@ from scipy import ndimage
 
 from .layout import (DATA_DIR, DEM_FILE, ELEVATION_OFFSET_M, EARTH_R_M, MAP_MAX_M, MAP_MIN_M, MASK_FILE, RASTER_PX,
                      RASTER_PX_M, WORLD_M, game_to_lonlat, lonlat_to_game, lonlat_to_mercator, raster_axis)
+from .sources import CACHE, TILE_URL, download  # noqa: F401  (misma fuente y cache que terrain_geo.region)
 
 ZOOM = 7
-TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
 BORDERS_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson"
-CACHE = Path(__file__).resolve().parents[2] / "Saved" / "terrain_geo_cache"
 SUPERSAMPLE = 4                  # la mascara se dibuja a 4x y se promedia: cobertura, no borde escalonado
 TILE_M = WORLD_M / 2 ** ZOOM
 PIXEL_M = TILE_M / 256.0
-
-
-def download(url: str, target: Path) -> bytes:
-    if target.exists():
-        return target.read_bytes()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url, timeout=60) as response:
-        data = response.read()
-    target.write_bytes(data)
-    return data
 
 
 def tile_range() -> tuple[range, range]:

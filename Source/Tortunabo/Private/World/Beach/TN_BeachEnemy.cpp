@@ -24,6 +24,7 @@
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
+#include "Player/TN_ShellDecisions.h"
 #include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TortugaCharacter.h"
 #include "World/Beach/TN_BeachSandWorm.h"
@@ -1470,6 +1471,57 @@ void ATN_BeachEnemy::UpdateShown(float DeltaSeconds)
 	}
 }
 
+namespace TNBeachEnemySolidBlock
+{
+	/** Radio con el que cuenta la bola del caparazón (cm; la caja mide 55 x 46 x 42) y velocidad mínima de salida (cm/s). */
+	constexpr float BallRadius = 25.f;
+	constexpr float PushSpeed = 350.f;
+}
+
+void ATN_BeachEnemy::RegisterSolidBlock(UBoxComponent* Block)
+{
+	if (!Block)
+	{
+		return;
+	}
+	// Tampoco en los clientes: allí el bloque va con la posición extrapolada del enemigo y empujaría una bola que es del
+	// servidor. Las tortugas (Pawn) y los objetos lanzados (WorldDynamic) siguen chocando con él.
+	Block->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Ignore);
+	SolidBlock = Block;
+}
+
+void ATN_BeachEnemy::ServerPushShellBalls() const
+{
+	using namespace TNBeachEnemySolidBlock;
+	const UBoxComponent* Block = SolidBlock.Get();
+	UWorld* World = GetWorld();
+	if (!Block || !World || !Block->IsCollisionEnabled())
+	{
+		return;
+	}
+	const FTransform BlockXf = Block->GetComponentTransform();
+	const FVector Extent = Block->GetScaledBoxExtent();
+	const double ReachSq = FMath::Square(Extent.Size() + BallRadius);
+	for (TActorIterator<ATN_ShellBody> It(World); It; ++It)
+	{
+		UBoxComponent* Box = It->GetBox();
+		if (!Box || !Box->IsSimulatingPhysics())
+		{
+			continue;
+		}
+		const FVector At = Box->GetComponentLocation();
+		if (FVector::DistSquared(At, BlockXf.GetLocation()) > ReachSq)
+		{
+			continue;
+		}
+		FVector LocalVelocity = BlockXf.InverseTransformVectorNoScale(Box->GetPhysicsLinearVelocity());
+		if (TNShellLogic::PushBallOutOfBlock(BlockXf.InverseTransformPositionNoScale(At), Extent, BallRadius, PushSpeed, LocalVelocity))
+		{
+			Box->SetPhysicsLinearVelocity(BlockXf.TransformVectorNoScale(LocalVelocity));
+		}
+	}
+}
+
 void ATN_BeachEnemy::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -1496,6 +1548,10 @@ void ATN_BeachEnemy::Tick(float DeltaSeconds)
 	if (bUsesMover)
 	{
 		UpdateShown(DeltaSeconds);
+	}
+	if (HasAuthority() && SolidBlock.IsValid())
+	{
+		ServerPushShellBalls();
 	}
 	if (bHasScreen)
 	{

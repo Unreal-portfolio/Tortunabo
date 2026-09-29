@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "World/ProcMap/TN_ProcMapFeatures.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcTraversalActors.h"
@@ -411,7 +412,7 @@ void ATN_ProcMapGenerator::SpawnServerActors()
 			{
 				if (bTerrainOnly) { break; }
 				// Recompensa en un sitio concreto: la cima de una atalaya o de un parkour.
-				if (UClass* Score = LoadClass<AActor>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C")))
+				if (UClass* Score = UTN_GameplayAssetSettings::GetScorePickupClass())
 				{
 					SpawnMapActor(Score, FTransform(Rot, MapToWorld(F.Location)), true);
 				}
@@ -629,11 +630,7 @@ void ATN_ProcMapGenerator::SpawnShells()
 		return;
 	}
 	// El Blueprint de siempre (la vieira de código, con su valor puesto antes de aparecer); sin él, la clase nativa.
-	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
-	if (!ShellClass)
-	{
-		ShellClass = ATN_ScorePickup::StaticClass();
-	}
+	UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
 
 	// Plan puro (determinista): no pisa lo que ya han puesto los peligros (conchas normales, medusas, zonas...).
 	TArray<TNProcMap::FShellSpawn> Plan;

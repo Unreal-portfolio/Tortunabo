@@ -37,7 +37,8 @@ def build_all(model: MapModel, grid: int = GRID) -> dict[tuple[int, int], ChunkM
 
 def global_standable(chunks: dict[tuple[int, int], ChunkMesh], grid: int = GRID) -> np.ndarray:
     size = grid * (CELL_SAMPLES - 1) + 1
-    out = np.zeros((size, size, Z_SAMPLES), dtype=bool)
+    levels = next(iter(chunks.values())).standable.shape[2] if chunks else Z_SAMPLES
+    out = np.zeros((size, size, levels), dtype=bool)
     for (col, row), chunk in chunks.items():
         i0, j0 = row * (CELL_SAMPLES - 1), col * (CELL_SAMPLES - 1)
         out[i0:i0 + CELL_SAMPLES, j0:j0 + CELL_SAMPLES] |= chunk.standable
@@ -54,10 +55,10 @@ def ground_level(standable: np.ndarray, i: int, j: int) -> int:
     return int(levels.max()) if len(levels) else -1
 
 
-def walk(standable: np.ndarray, start: tuple[int, int, int], dry_only: bool = True) -> np.ndarray:
+def walk(standable: np.ndarray, start: tuple[int, int, int], dry_only: bool = True, z_min_m: float = Z_MIN_M) -> np.ndarray:
     """Celdas alcanzables desde start andando (desnivel <= CLIMB_STEPS entre vecinas) o saltando
-    en linea recta hasta JUMP_CELLS celdas (sin subir mas de una muestra)."""
-    dry_k = int(np.ceil((WATER_M + 0.2 - Z_MIN_M) / STEP_Z_M)) if dry_only else 0
+    en linea recta hasta JUMP_CELLS celdas (sin subir mas de una muestra). z_min_m: cota del nivel 0."""
+    dry_k = int(np.ceil((WATER_M + 0.2 - z_min_m) / STEP_Z_M)) if dry_only else 0
     seen = np.zeros_like(standable)
     if not standable[start]:
         return seen

@@ -10,6 +10,7 @@
 class ACharacter;
 class ATN_BeachRaceGenerator;
 class ATortugaCharacter;
+class UBoxComponent;
 class USceneComponent;
 class UTN_BeachEnemySynthComponent;
 
@@ -255,6 +256,19 @@ protected:
 
 	/** Servidor: objetivos, estados, golpes. */
 	virtual void ServerTick(float DeltaSeconds) {}
+
+	/**
+	 * Bloque sólido del cuerpo (cangrejo gigante, tanque): no choca con los cuerpos físicos (PhysicsBody) y, en su lugar, el
+	 * servidor saca de él a las bolas de caparazón por un lado y nunca hacia abajo (TNShellLogic::PushBallOutOfBlock). Movido
+	 * sin barrido con la raíz animada (y extrapolado en los clientes), se metía en la bola y la hundía en el terreno.
+	 */
+	void RegisterSolidBlock(UBoxComponent* Block);
+
+	/** Servidor, cada tic tras colocar la raíz: el empuje propio del bloque sólido sobre las bolas de caparazón. */
+	void ServerPushShellBalls() const;
+
+	/** El bloque sólido del cuerpo, si tiene (RegisterSolidBlock). */
+	TWeakObjectPtr<UBoxComponent> SolidBlock;
 
 	/** Máquinas con pantalla: animación, efectos y sonido. */
 	virtual void VisualTick(float DeltaSeconds) {}

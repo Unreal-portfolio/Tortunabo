@@ -1,0 +1,5 @@
+# Sin Git LFS para estas extensiones: FBX y .blend se regeneran con _pipeline/build_library.ps1
+*.fbx
+*.blend
+*.blend1
+__pycache__/

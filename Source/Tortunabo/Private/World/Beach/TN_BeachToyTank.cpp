@@ -578,11 +578,12 @@ void ATN_BeachToyTank::BuildTank()
 	Block->SetCollisionObjectType(ECC_Pawn);
 	Block->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Block->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-	Block->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
 	Block->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 	Block->SetCanEverAffectNavigation(false);
 	Block->SetGenerateOverlapEvents(false);
 	Block->RegisterComponent();
+	// La bola del caparazón no choca con él en la física: la saca el servidor por un lado (movido sin barrido, la hundía).
+	RegisterSolidBlock(Block);
 
 	if (!bHasScreen)
 	{

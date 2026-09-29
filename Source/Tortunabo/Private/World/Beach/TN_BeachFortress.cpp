@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachFortress.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "World/TN_ScorePickup.h"
 #include "World/TN_ScoreShells.h"
 #include "Core/TN_Log.h"
@@ -159,11 +160,7 @@ void ATN_BeachFortress::SpawnPrizes()
 	}
 
 	// Conchas de puntos (las del botín: suman a RaceScore), a su altura sobre el suelo.
-	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
-	if (!ShellClass)
-	{
-		ShellClass = ATN_ScorePickup::StaticClass();
-	}
+	UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
 	int32 Points = 0;
 	int32 Shells = 0;
 	for (const FPrizeShell& Prize : PrizeShells)

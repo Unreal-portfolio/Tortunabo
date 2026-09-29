@@ -1,0 +1,192 @@
+{
+  "name": "molino",
+  "title": "Molino (de L04 Rin / pl)",
+  "category": "decoracion",
+  "status": "borrador IA",
+  "status_note": "Borrador para que el equipo de modelado lo rehaga; no importado a Content.",
+  "prompt": "Stylized low-poly European tower windmill: stone base, whitewashed octagonal tapered tower with a gallery, red boat-shaped cap, four lattice sails with half-furled canvas, flat-shaded",
+  "tool": {
+    "requested": "Hunyuan3D / Tripo / Rodin vía Blender MCP",
+    "used": "bpy procedural",
+    "reason": "Blender MCP no disponible en la sesión que generó la biblioteca; forma construida por script."
+  },
+  "generator": {
+    "script": "Art/Library/IA/_pipeline/assets_deco.py",
+    "function": [
+      "molino_torre",
+      "molino_aspas"
+    ],
+    "command": "powershell -File Art/Library/IA/_pipeline/build_library.ps1 -Only molino"
+  },
+  "blender": "5.2.1 LTS",
+  "license": "Original de Tortunabo, generado por script (sin fuentes externas)",
+  "source_url": null,
+  "style_reference": [
+    "Source/Tortunabo/Private/World/Beach/TN_BeachCritterMeshes.h (tanque de juguete)",
+    "Art/Source/Vehicles/Buggy/ (buggy biplaza)"
+  ],
+  "budget_tris": 1500,
+  "tris_total": 902,
+  "parts": [
+    {
+      "name": "SM_TN_MolinoTorre",
+      "role": "torre fija",
+      "fbx": "Art/Library/IA/decoracion/molino/SM_TN_MolinoTorre.fbx",
+      "tris": 380,
+      "budget_tris": 900,
+      "bbox_cm": {
+        "min": [
+          -190.32,
+          -190.32,
+          0.0
+        ],
+        "max": [
+          236.0,
+          190.32,
+          672.0
+        ],
+        "size": [
+          426.32,
+          380.64,
+          672.0
+        ]
+      },
+      "pivot": "base",
+      "sockets_cm_deg": {
+        "Sails": {
+          "loc": [
+            236.0,
+            0.0,
+            590.0
+          ],
+          "rot": [
+            0.0,
+            -0.0,
+            0.0
+          ]
+        }
+      },
+      "collision_ucx": 1,
+      "checks": {
+        "non_manifold_edges": 0,
+        "degenerate_faces": 0,
+        "loose_verts": 0,
+        "inverted_pieces": 0,
+        "closed_pieces": 21,
+        "material_slots": 1,
+        "uv_layers": 1
+      },
+      "fbx_reimport": {
+        "unit_scale_factor": 0.9999999776482582,
+        "meshes": {
+          "SM_TN_MolinoTorre": {
+            "lo": [
+              -190.32,
+              -190.32,
+              -0.0
+            ],
+            "hi": [
+              236.0,
+              190.32,
+              672.0
+            ],
+            "vertex_colors": [
+              "Zone"
+            ]
+          }
+        },
+        "sockets": [
+          "SOCKET_Sails"
+        ],
+        "ucx": [
+          "UCX_SM_TN_MolinoTorre_00"
+        ]
+      }
+    },
+    {
+      "name": "SM_TN_MolinoAspas",
+      "role": "aspas (giran en X alrededor del origen)",
+      "fbx": "Art/Library/IA/decoracion/molino/SM_TN_MolinoAspas.fbx",
+      "tris": 522,
+      "budget_tris": 600,
+      "bbox_cm": {
+        "min": [
+          -6.0,
+          -374.77,
+          -374.77
+        ],
+        "max": [
+          34.0,
+          374.77,
+          374.77
+        ],
+        "size": [
+          40.0,
+          749.54,
+          749.54
+        ]
+      },
+      "pivot": "hub",
+      "sockets_cm_deg": {},
+      "collision_ucx": 0,
+      "checks": {
+        "non_manifold_edges": 0,
+        "degenerate_faces": 0,
+        "loose_verts": 0,
+        "inverted_pieces": 0,
+        "closed_pieces": 42,
+        "material_slots": 1,
+        "uv_layers": 1
+      },
+      "fbx_reimport": {
+        "unit_scale_factor": 0.9999999776482582,
+        "meshes": {
+          "SM_TN_MolinoAspas": {
+            "lo": [
+              -6.0,
+              -374.77,
+              -374.77
+            ],
+            "hi": [
+              34.0,
+              374.77,
+              374.77
+            ],
+            "vertex_colors": [
+              "Zone"
+            ]
+          }
+        },
+        "sockets": [],
+        "ucx": []
+      }
+    }
+  ],
+  "blend": "Art/Library/IA/decoracion/molino/molino.blend",
+  "sheet": "Art/Library/IA/decoracion/molino/molino_lamina.png",
+  "sheet_kb": 478.5,
+  "material": {
+    "slot": "M_TN_IAProp",
+    "vertex_color": "Zone",
+    "decode": "Base = lerp(lerp(lerp(lerp(Trim, Paint, R), Detail, G), Dark, B), Light, R*G*B) * A",
+    "palette_srgb": {
+      "paint": "#C9463D",
+      "detail": "#F1EBDD",
+      "dark": "#6B4A33",
+      "trim": "#9C9186",
+      "light": "#FFD27A"
+    },
+    "textures": "ninguna"
+  },
+  "unreal_import": {
+    "units": "cm (UnitScaleFactor 1), escala 1",
+    "axes": "+X delante, Z arriba",
+    "settings": "Static Mesh; Combine Meshes on; Import Vertex Color = Replace; Normal Import = Import Normals; Auto Generate Collision off (UCX_ del FBX si lo hay); sockets desde los empties SOCKET_*"
+  },
+  "notes": "Las aspas se enganchan en el socket Sails y giran en X (RotatingMovementComponent).",
+  "validation": {
+    "passed": true,
+    "failures": []
+  },
+  "generated": "2026-09-29"
+}

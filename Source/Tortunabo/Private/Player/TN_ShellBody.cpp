@@ -9,8 +9,12 @@
 #include "Net/UnrealNetwork.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Physics/PhysicsInterfaceCore.h"
+#include "Core/TN_Log.h"
 #include "Player/TN_ShellComponent.h"
+#include "Player/TN_ShellDecisions.h"
 #include "Player/TortugaCharacter.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
+#include "World/Beach/TN_BeachStun.h"
 
 namespace TNShellBodyDetail
 {
@@ -34,6 +38,27 @@ namespace TNShellBodyDetail
 	 * sin tope, la física la escupía a varios metros por segundo.
 	 */
 	constexpr float MaxInitialDepenetration = 300.f;
+
+	/** Instrumento TN.Shell.Debug: cada cuánto mira si la caja está bajo el terreno (s), entre avisos de una caja (s) y choques guardados. */
+	constexpr float DepthInterval = 0.1f;
+	constexpr float DebugLogInterval = 0.5f;
+	constexpr int32 DebugMaxContacts = 6;
+	/** A menos de esto (cm) del filo del acantilado no se mira la hondura: la pared está socavada y ahí se cae al agua de meta. */
+	constexpr float CliffSkip = 1000.f;
+
+	TAutoConsoleVariable<int32> CVarShellDebug(TEXT("TN.Shell.Debug"), 1,
+		TEXT("Instrumento de la bola del caparazón (todas las máquinas): 1 = avisa en el registro («[Caparazón] TN.Shell.Debug») cuando la caja gira cerca de su tope durante 0,4 s (torbellino), cuando su parte de abajo queda más de 25 cm bajo el terreno de la playa o cuando su velocidad salta más de 9 m/s en un paso fuera de un lanzamiento, con sus últimos choques (quién la empuja) y, en los clientes, el desfase con el servidor; 0 = apagado."));
+
+	const TCHAR* AnomalyName(TNShellLogic::EShellMotionAnomaly Anomaly)
+	{
+		switch (Anomaly)
+		{
+		case TNShellLogic::EShellMotionAnomaly::Spin: return TEXT("torbellino (giro sostenido cerca del tope)");
+		case TNShellLogic::EShellMotionAnomaly::Sunk: return TEXT("caja bajo el terreno");
+		case TNShellLogic::EShellMotionAnomaly::VelocityJump: return TEXT("salto de velocidad sin lanzamiento");
+		default: return TEXT("nada");
+		}
+	}
 
 	TAutoConsoleVariable<int32> CVarShellPhysicsRep(TEXT("TN.Shell.PhysicsRep"), 1,
 		TEXT("Réplica de la física de la bola del caparazón en los clientes (se aplica a las bolas nuevas): 1 = interpolación predictiva (de serie: corrige con velocidad hacia el estado del servidor extrapolado, sin tirones); 0 = la de siempre del motor (fijaba cada paso la velocidad y el 40 % del giro hacia un estado ya viejo: la bola temblaba y rebotaba en los clientes)."));
@@ -152,14 +177,75 @@ void ATN_ShellBody::Tick(float DeltaSeconds)
 	}
 	// Todas las máquinas: la tortuga sigue a la caja (solo si es su caja y la tiene enganchada en esta máquina).
 	Shell->FollowBody(this);
+	const bool bFreshDepth = SampleTerrainDepth(DeltaSeconds);
+	TickDebugWatch(DeltaSeconds);
 
 	if (HasAuthority())
 	{
-		ServerChecks(DeltaSeconds);
+		ServerChecks(DeltaSeconds, bFreshDepth);
 	}
 }
 
-void ATN_ShellBody::ServerChecks(float DeltaSeconds)
+bool ATN_ShellBody::SampleTerrainDepth(float DeltaSeconds)
+{
+	using namespace TNShellBodyDetail;
+	if (!Box || !Box->IsSimulatingPhysics() || (!HasAuthority() && CVarShellDebug.GetValueOnGameThread() <= 0))
+	{
+		return false;
+	}
+	DepthTimer -= DeltaSeconds;
+	if (DepthTimer > 0.f)
+	{
+		return false;
+	}
+	DepthTimer = DepthInterval;
+	const FVector Bottom(Box->Bounds.Origin.X, Box->Bounds.Origin.Y, Box->Bounds.Origin.Z - Box->Bounds.BoxExtent.Z);
+	const ATN_BeachRaceGenerator* Gen = ATN_BeachRaceGenerator::Find(this);
+	// Junto al acantilado la pared está socavada: bajar de la arena ahí es caer al agua de meta, no atravesar nada.
+	TerrainDepth = (Gen && Gen->GetCliffEdgeDistance(Bottom) < -CliffSkip) ? TNBeach::DepthUnderTerrain(this, Bottom) : -1000.f;
+	return true;
+}
+
+void ATN_ShellBody::RescueFromUnderTerrain()
+{
+	UWorld* World = GetWorld();
+	if (!Box || !World)
+	{
+		return;
+	}
+	const float Depth = TerrainDepth;
+	const FVector Center = Box->GetComponentLocation();
+	const double BottomOffset = Center.Z - (Box->Bounds.Origin.Z - Box->Bounds.BoxExtent.Z);
+	const double SurfaceGuess = Center.Z - BottomOffset + Depth;
+	// Desde encima de la superficie de su vertical hacia abajo: lo primero firme que para a la caja (el terreno o lo que haya
+	// encima de él), sin la propia bola ni su tortuga.
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(TNShellSunkRescue), false, this);
+	Query.AddIgnoredActor(Turtle.Get());
+	FHitResult Hit;
+	const FVector Start(Center.X, Center.Y, SurfaceGuess + 250.0);
+	const FVector End(Center.X, Center.Y, SurfaceGuess - 50.0);
+	const bool bGround = World->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, Query) && !Hit.bStartPenetrating && Hit.ImpactNormal.Z > 0.5;
+	const float Lift = bGround ? static_cast<float>(Hit.ImpactPoint.Z + BottomOffset + 2.0 - Center.Z) : 0.f;
+	if (!bGround || !TNShellLogic::IsSunkLiftAllowed(Lift))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Caparazón] %s de %s %.0f cm bajo el terreno sin suelo firme cerca (subida %.0f cm): la deja a la red de seguridad de la carrera."),
+			*GetName(), *GetNameSafe(Turtle.Get()), Depth, Lift);
+		return;
+	}
+	FVector Linear = Box->GetPhysicsLinearVelocity();
+	FVector Angular = Box->GetPhysicsAngularVelocityInRadians();
+	TNShellLogic::SettleRescuedVelocity(Linear, Angular);
+	Box->SetWorldLocation(FVector(Center.X, Center.Y, Center.Z + Lift), false, nullptr, ETeleportType::TeleportPhysics);
+	Box->SetPhysicsLinearVelocity(Linear);
+	Box->SetPhysicsAngularVelocityInRadians(Angular);
+	// Encima de la arena (hasta la muestra siguiente): el instrumento no la vuelve a contar como hundida.
+	TerrainDepth = -2.f;
+	ForceNetUpdate();
+	UE_LOG(LogTortunabo, Warning, TEXT("[Caparazón] %s de %s había cruzado el terreno (%.0f cm bajo la arena): recolocada %.0f cm más arriba."),
+		*GetName(), *GetNameSafe(Turtle.Get()), Depth, Lift);
+}
+
+void ATN_ShellBody::ServerChecks(float DeltaSeconds, bool bFreshDepth)
 {
 	using namespace TNShellBodyDetail;
 	ATortugaCharacter* OwnerTurtle = Turtle;
@@ -181,6 +267,13 @@ void ATN_ShellBody::ServerChecks(float DeltaSeconds)
 		}
 	}
 
+	// Ha cruzado la malla fina del terreno (dos muestras seguidas): encima de la arena en el acto, sin esperar a la red de
+	// seguridad de la carrera (1,6 m y un rescate con aturdimiento).
+	if (bFreshDepth && TNShellLogic::ShouldRescueSunkenBody(TerrainDepth, SunkStrikes))
+	{
+		RescueFromUnderTerrain();
+	}
+
 	if (!bExitOnRest)
 	{
 		return;
@@ -195,6 +288,105 @@ void ATN_ShellBody::ServerChecks(float DeltaSeconds)
 	{
 		Shell->NotifyBodyAtRest();
 	}
+}
+
+void ATN_ShellBody::TickDebugWatch(float DeltaSeconds)
+{
+	using namespace TNShellBodyDetail;
+	const UWorld* World = GetWorld();
+	if (CVarShellDebug.GetValueOnGameThread() <= 0 || !Box || !World || DeltaSeconds <= 0.f || !Box->IsSimulatingPhysics())
+	{
+		return;
+	}
+	if (!bDebugBound)
+	{
+		bDebugBound = true;
+		Box->OnComponentHit.AddUniqueDynamic(this, &ATN_ShellBody::HandleDebugHit);
+	}
+
+	const FVector Velocity = Box->GetPhysicsLinearVelocity();
+	const FVector Spin = Box->GetPhysicsAngularVelocityInRadians();
+	// Sin los avisos de choque de la física no hay «quién la empuja» (el sonido de los golpes también los enciende y los apaga
+	// al soltar la caja).
+	if (!Box->BodyInstance.bNotifyRigidBodyCollision)
+	{
+		Box->SetNotifyRigidBodyCollision(true);
+	}
+
+	TNShellLogic::FShellMotionSample Sample;
+	Sample.DeltaSeconds = DeltaSeconds;
+	Sample.AngularSpeed = static_cast<float>(Spin.Size());
+	Sample.VelocityChange = static_cast<float>((Velocity - DebugPrevVelocity).Size());
+	Sample.BottomDepthUnderTerrain = TerrainDepth;
+	Sample.AgeSeconds = Age;
+	DebugPrevVelocity = Velocity;
+	const TNShellLogic::EShellMotionAnomaly Anomaly = TNShellLogic::ClassifyShellMotion(Sample, DebugSpinSeconds);
+	const float Now = World->GetTimeSeconds();
+	if (Anomaly == TNShellLogic::EShellMotionAnomaly::None || Now < DebugNextLogTime)
+	{
+		return;
+	}
+	DebugNextLogTime = Now + DebugLogInterval;
+
+	// En los clientes, cuánto se ha ido la caja de la última posición que mandó el servidor (la réplica de física la corrige).
+	const double ServerGap = HasAuthority() ? 0.0 : FVector::Dist(Box->GetComponentLocation(), GetReplicatedMovement().Location);
+	const FVector At = Box->GetComponentLocation();
+	UE_LOG(LogTortunabo, Warning,
+		TEXT("[Caparazón] TN.Shell.Debug %s de %s en %s: %s · caja en (%.1f, %.1f, %.1f) m, su parte de abajo %.0f cm bajo el terreno · v %.0f cm/s (cambio de %.0f en el paso) · giro %.1f rad/s (vertical %.1f) desde hace %.2f s · desfase con el servidor %.0f cm · edad %.2f s · choques: %s"),
+		*GetName(), *GetNameSafe(Turtle.Get()), HasAuthority() ? TEXT("el servidor") : TEXT("un cliente"), AnomalyName(Anomaly),
+		At.X / 100.0, At.Y / 100.0, At.Z / 100.0, TerrainDepth, Velocity.Size(), Sample.VelocityChange, Sample.AngularSpeed, Spin.Z,
+		DebugSpinSeconds, ServerGap, Age, *DescribeDebugContacts(Now));
+}
+
+void ATN_ShellBody::HandleDebugHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse,
+	const FHitResult& Hit)
+{
+	using namespace TNShellBodyDetail;
+	const UWorld* World = GetWorld();
+	if (!OtherComp || !World || CVarShellDebug.GetValueOnGameThread() <= 0)
+	{
+		return;
+	}
+	FDebugContact* Entry = DebugContacts.FindByPredicate([OtherComp](const FDebugContact& Contact) { return Contact.Component.Get() == OtherComp; });
+	if (!Entry)
+	{
+		if (DebugContacts.Num() >= DebugMaxContacts)
+		{
+			int32 Oldest = 0;
+			for (int32 Index = 1; Index < DebugContacts.Num(); ++Index)
+			{
+				Oldest = DebugContacts[Index].Time < DebugContacts[Oldest].Time ? Index : Oldest;
+			}
+			DebugContacts.RemoveAtSwap(Oldest);
+		}
+		Entry = &DebugContacts.AddDefaulted_GetRef();
+		Entry->Component = OtherComp;
+		Entry->Name = FString::Printf(TEXT("%s.%s"), *GetNameSafe(OtherActor), *OtherComp->GetName());
+	}
+	Entry->Time = World->GetTimeSeconds();
+	Entry->Normal = Hit.ImpactNormal;
+	Entry->Impulse = static_cast<float>(NormalImpulse.Size());
+	Entry->bOtherSimulating = OtherComp->IsSimulatingPhysics();
+	// De un cinemático (enemigo, plataforma) la física da la velocidad con la que lo mueve su objetivo; de lo estático, cero.
+	Entry->OtherVelocity = OtherComp->GetPhysicsLinearVelocity();
+}
+
+FString ATN_ShellBody::DescribeDebugContacts(float Now) const
+{
+	if (DebugContacts.IsEmpty())
+	{
+		return TEXT("ninguno");
+	}
+	TArray<FDebugContact> Sorted = DebugContacts;
+	Sorted.Sort([](const FDebugContact& A, const FDebugContact& B) { return A.Time > B.Time; });
+	TArray<FString> Parts;
+	for (const FDebugContact& Contact : Sorted)
+	{
+		Parts.Add(FString::Printf(TEXT("%s hace %.2f s (normal %.2f, %.2f, %.2f · impulso %.0f · el otro %s a %.0f cm/s)"), *Contact.Name, Now - Contact.Time,
+			Contact.Normal.X, Contact.Normal.Y, Contact.Normal.Z, Contact.Impulse, Contact.bOtherSimulating ? TEXT("simula") : TEXT("cinemático o fijo"),
+			Contact.OtherVelocity.Size()));
+	}
+	return FString::Join(Parts, TEXT(" | "));
 }
 
 void ATN_ShellBody::EndPlay(const EEndPlayReason::Type EndPlayReason)

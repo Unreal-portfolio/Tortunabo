@@ -1,4 +1,5 @@
 #include "World/ProcMap/TN_ProcMapTypes.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "Engine/StaticMesh.h"
@@ -219,7 +220,7 @@ void TN_DefaultBiomeHazards(ETNProcBiome Biome, TArray<FTNProcHazardEntry>& Out)
 	auto BP = [](const TCHAR* Path) -> UClass* { return LoadClass<AActor>(nullptr, Path); };
 
 	UClass* Items = BP(TEXT("/Game/Blueprints/Gameplay/Items/BP_ItemSpawnZone.BP_ItemSpawnZone_C"));
-	UClass* Score = BP(TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
+	UClass* Score = UTN_GameplayAssetSettings::GetScorePickupClass();
 	UClass* Crabs = BP(TEXT("/Game/Blueprints/Gameplay/Enemies/Crabs/BP_CrabSpawnZone.BP_CrabSpawnZone_C"));
 	UClass* Gulls = BP(TEXT("/Game/Blueprints/Gameplay/Enemies/Seagull/BP_SeagullSpawnZone.BP_SeagullSpawnZone_C"));
 	UClass* Jelly = BP(TEXT("/Game/Blueprints/Gameplay/Items/BP_JellyfishActor.BP_JellyfishActor_C"));

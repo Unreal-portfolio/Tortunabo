@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
+#include "Multiplayer/TN_SaveGameDecisions.h"
 #include "TN_TutorialSaveGame.generated.h"
 
 /**
@@ -18,6 +19,13 @@ class TORTUNABO_API UTN_TutorialSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
+	/**
+	 * Versión del formato (TNSaveLogic::TUTORIAL_SAVE_VERSION). 0 = guardado anterior al campo: se migra al cargar.
+	 * Primera propiedad a propósito: junto con bWriteComplete (la última) detecta ficheros truncados.
+	 */
+	UPROPERTY()
+	int32 SaveVersion = 0;
+
 	/** true cuando el jugador de esta máquina ha terminado (o saltado) el tutorial: el siguiente lobby empieza normal. */
 	UPROPERTY(BlueprintReadWrite, Category = "Tutorial")
 	bool bHasCompletedTutorial = false;
@@ -25,4 +33,21 @@ public:
 	/** Veces que se ha terminado o saltado (para el registro y las pruebas). */
 	UPROPERTY(BlueprintReadWrite, Category = "Tutorial")
 	int32 TimesCompleted = 0;
+
+	/** Marca de fin (última propiedad a propósito). Falta en un fichero truncado. */
+	UPROPERTY()
+	bool bWriteComplete = false;
+
+	/** @brief Sella el estado con la versión actual y la marca de fin (nuevo o recién migrado). */
+	void StampCurrentVersion()
+	{
+		SaveVersion = TNSaveLogic::TUTORIAL_SAVE_VERSION;
+		bWriteComplete = true;
+	}
+
+	/** @brief false si el fichero del que sale estaba truncado. */
+	bool IsIntact() const
+	{
+		return !TNSaveLogic::IsTruncated(SaveVersion, bWriteComplete);
+	}
 };

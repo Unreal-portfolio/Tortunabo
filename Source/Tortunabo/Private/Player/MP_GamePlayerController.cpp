@@ -1,4 +1,5 @@
 #include "Player/MP_GamePlayerController.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "Core/TN_Log.h"
 #include "Blueprint/UserWidget.h"
 #include "EnhancedInputComponent.h"
@@ -28,6 +29,7 @@
 #include "Core/TN_MatchFlowTypes.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_Ghost.h"
+#include "Player/TN_DebugRpcDecisions.h"
 #include "TN_GhostInternal.h"
 #include "Game/TN_ProcMapGameMode.h"
 #include "GameFramework/Pawn.h"
@@ -1332,6 +1334,27 @@ void AMP_GamePlayerController::ServerSendQuickChat_Implementation(uint8 MessageI
 
 // ── Pruebas de la tormenta (TNStorm) ──────────────────────────────────────────
 
+namespace
+{
+	/**
+	 * Guard de los RPC de pruebas: fuera de Shipping y solo para el anfitrión.
+	 * Un invitado con un cliente modificado no puede parar ni mover la tormenta de todos.
+	 */
+	bool TNIsHostDebugCallAllowed(AMP_GamePlayerController* PC, const TCHAR* Command)
+	{
+		const UWorld* World = PC ? PC->GetWorld() : nullptr;
+		const ENetMode NetMode = World ? World->GetNetMode() : NM_DedicatedServer;
+		const bool bIsLocal = PC && PC->IsLocalController();
+		if (TNDebugRpcLogic::CanRunHostOnlyDebugRpc(TNDebugRpcLogic::IsShippingBuild(), NetMode, bIsLocal))
+		{
+			return true;
+		}
+		UE_LOG(LogTortunabo, Warning, TEXT("[Debug] %s rechazado: '%s' no es el anfitrión o la build es Shipping."),
+			Command, *GetNameSafe(PC));
+		return false;
+	}
+}
+
 void AMP_GamePlayerController::TNStorm(const FString& Where, float Ahead)
 {
 	ServerStormTest(Where, Ahead);
@@ -1339,6 +1362,15 @@ void AMP_GamePlayerController::TNStorm(const FString& Where, float Ahead)
 
 void AMP_GamePlayerController::ServerStormTest_Implementation(const FString& Where, float Ahead)
 {
+#if UE_BUILD_SHIPPING
+	// Mueve la tormenta de todos: solo en las builds de desarrollo.
+	TNIsHostDebugCallAllowed(this, TEXT("TNStorm"));
+#else
+	if (!TNIsHostDebugCallAllowed(this, TEXT("TNStorm")))
+	{
+		ClientMessage(TEXT("TNStorm: solo el anfitrión."));
+		return;
+	}
 	UWorld* World = GetWorld();
 	ATN_ProcMapGenerator* Gen = nullptr;
 	ATN_PathStorm* Storm = nullptr;
@@ -1443,6 +1475,7 @@ void AMP_GamePlayerController::ServerStormTest_Implementation(const FString& Whe
 	const float Progress = Gen->GetPathProgress(Spot);
 	Storm->DebugPlaceFront(Progress - Ahead, true);
 	ClientMessage(FString::Printf(TEXT("TNStorm: %s (progreso %.0f), frente a %.0f cm."), *Where, Progress, Ahead));
+#endif
 }
 
 // ── Pruebas de las conchas de puntos (TNShells) ─────────────────────────────────
@@ -1503,11 +1536,7 @@ void AMP_GamePlayerController::ServerShellsTest_Implementation(const FString& Wh
 		ClientMessage(TEXT("TNShells: 1|25|50|100 [cantidad] suelta conchas delante; Especial lleva a la siguiente especial; Lista las cuenta."));
 		return;
 	}
-	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
-	if (!ShellClass)
-	{
-		ShellClass = ATN_ScorePickup::StaticClass();
-	}
+	UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
 	// En fila delante de la tortuga, a la altura de siempre sobre sus pies, para cogerlas de una carrera.
 	const int32 Number = FMath::Clamp(Count, 1, 20);
 	const FVector Forward = MyPawn->GetActorForwardVector().GetSafeNormal2D();
@@ -1554,6 +1583,14 @@ void AMP_GamePlayerController::TNBooth()
 
 void AMP_GamePlayerController::ServerTestBooth_Implementation()
 {
+#if UE_BUILD_SHIPPING
+	TNIsHostDebugCallAllowed(this, TEXT("TNBooth"));
+#else
+	if (!TNIsHostDebugCallAllowed(this, TEXT("TNBooth")))
+	{
+		ClientMessage(TEXT("TNBooth: solo el anfitrión."));
+		return;
+	}
 	APawn* MyPawn = GetPawn();
 	if (!MyPawn) { return; }
 	ATN_ChangingBooth* Nearest = nullptr;
@@ -1565,4 +1602,5 @@ void AMP_GamePlayerController::ServerTestBooth_Implementation()
 	}
 	if (Nearest) { Nearest->Interact(MyPawn); }
 	else { ClientMessage(TEXT("TNBooth: no hay ningún probador libre.")); }
+#endif
 }

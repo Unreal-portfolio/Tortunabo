@@ -74,7 +74,54 @@ private:
 	TObjectPtr<UPhysicalMaterial> Slippery;
 
 	/** Servidor: parada (si toca salir al pararse), agua y límite de tiempo. */
-	void ServerChecks(float DeltaSeconds);
+	void ServerChecks(float DeltaSeconds, bool bFreshDepth);
+
+	/**
+	 * Cada 0,1 s (en el servidor siempre; en los clientes solo con TN.Shell.Debug): cuánto queda la parte de abajo de la
+	 * caja bajo el terreno de la playa (TerrainDepth; -1000 sin terreno o junto al acantilado). true si hay muestra nueva.
+	 */
+	bool SampleTerrainDepth(float DeltaSeconds);
+
+	/**
+	 * Servidor: la caja ha cruzado la malla fina del terreno (TNShellLogic::ShouldRescueSunkenBody). La pone encima de la
+	 * superficie de su vertical, sin velocidad hacia abajo y con el giro limitado. Sin suelo cerca, no la mueve (la red de
+	 * seguridad de la carrera se encarga).
+	 */
+	void RescueFromUnderTerrain();
+
+	/**
+	 * Instrumento TN.Shell.Debug (todas las máquinas): torbellino, caja bajo el terreno y saltos de velocidad, con los
+	 * últimos choques de la caja (quién la empuja, su normal, su impulso y la velocidad del otro) y, en los clientes, el
+	 * desfase con el último estado del servidor. Solo escribe cuando hay una anomalía (TNShellLogic::ClassifyShellMotion).
+	 */
+	void TickDebugWatch(float DeltaSeconds);
+
+	UFUNCTION()
+	void HandleDebugHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse,
+		const FHitResult& Hit);
+
+	/** Los choques recientes, del más nuevo al más viejo, para el registro. */
+	FString DescribeDebugContacts(float Now) const;
+
+	/** Último choque con cada componente (los más recientes, sin repetir componente). */
+	struct FDebugContact
+	{
+		TWeakObjectPtr<const UPrimitiveComponent> Component;
+		FString Name;
+		FVector Normal = FVector::ZeroVector;
+		FVector OtherVelocity = FVector::ZeroVector;
+		float Impulse = 0.f;
+		float Time = 0.f;
+		bool bOtherSimulating = false;
+	};
+	TArray<FDebugContact> DebugContacts;
+	FVector DebugPrevVelocity = FVector::ZeroVector;
+	float DebugSpinSeconds = 0.f;
+	float TerrainDepth = -1000.f;
+	float DepthTimer = 0.f;
+	int32 SunkStrikes = 0;
+	float DebugNextLogTime = 0.f;
+	bool bDebugBound = false;
 
 	bool bExitOnRest = false;
 	bool bReleased = false;

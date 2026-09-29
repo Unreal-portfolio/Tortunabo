@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachLoot.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "World/Beach/TN_BeachDecorField.h"
 #include "World/Beach/TN_BeachElement.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
@@ -838,11 +839,7 @@ FString UTN_BeachLootSubsystem::SpawnRoundShells(ATN_BeachRaceGenerator& Gen, in
 	Plan.PlanSideStreaks();
 
 	// La concha de siempre (el Blueprint, con su valor puesto antes de aparecer; sin él, la clase nativa).
-	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
-	if (!ShellClass)
-	{
-		ShellClass = ATN_ScorePickup::StaticClass();
-	}
+	UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
 	const FRotator Facing(0.0, Gen.GetActorRotation().Yaw, 0.0);
 	for (const FPlanned& Planned : Plan.Shells)
 	{

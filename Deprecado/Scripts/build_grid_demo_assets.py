@@ -1,0 +1,612 @@
+"""Construye los assets greybox de la demo del mapa en grid.
+
+Se ejecuta DENTRO del editor de Unreal (consola Python, MCP o -run=pythonscript):
+    exec(open(r"<repo>/Scripts/build_grid_demo_assets.py", encoding="utf-8").read())
+
+Crea en /Game/Blueprints/Gameplay/GridMap: material plano + instancias de color,
+tiles greybox de recta y giro, tres rellenos, los materiales de terreno y de basura, el BP
+del tile de terreno,
+el material del agua, el GameMode de la demo y BP_GridMapGenerator (en modo terreno).
+Crea el mapa /Game/Maps/Run/LVL_ProcGenDemo con luz, cielo, generador y PlayerStart.
+
+Idempotente: los assets que ya existen se reutilizan, no se recrean.
+El generador queda en modo terreno con celdas de TERRAIN_CELL_SIZE. Para probar el modo
+greybox hay que vaciar TerrainTileClass y poner CellSize = CELL_SIZE en el generador.
+"""
+
+import os
+
+import unreal
+
+ROOT = "/Game/Blueprints/Gameplay/GridMap"
+MAP_PATH = "/Game/Maps/Run/LVL_ProcGenDemo"
+CUBE_PATH = "/Engine/BasicShapes/Cube"
+TEXTURE_ROOT = "/Game/Textures/Terrain"
+GRAIN_TEXTURE = "T_TerrainGrain"
+GRAIN_SOURCE = "Scripts/textures/T_TerrainGrain.png"  # lo genera Scripts/gen_terrain_textures.py
+# Normales de detalle (Scripts/gen_terrain_textures.py): suelo RG arena / BA camino, pared RG.
+DETAIL_NORMALS = {"T_TerrainFloorN": "Scripts/textures/T_TerrainFloorN.png",
+                  "T_TerrainWallN": "Scripts/textures/T_TerrainWallN.png"}
+CHARACTER_BP = "/Game/Blueprints/Characters/BP_TortugaCharacter"
+GENERATOR_CLASS = "/Script/Tortunabo.TN_GridMapGenerator"
+TERRAIN_TILE_CLASS = "/Script/Tortunabo.TN_GridTerrainTile"
+
+CELL_SIZE = 2000.0  # tiles greybox
+TERRAIN_CELL_SIZE = 4000.0  # modo terreno: debe casar con FTNGridTerrainSettings
+CUBE_SIZE = 100.0
+WALL_THICKNESS = 50.0
+WALL_HEIGHT = 400.0
+FLOOR_THICKNESS = 50.0
+
+COLORS = {
+    "MI_Grid_Path": (0.85, 0.70, 0.42),
+    "MI_Grid_Wall": (0.30, 0.17, 0.08),
+    "MI_Grid_Dune": (0.62, 0.47, 0.24),
+    "MI_Grid_Rock": (0.22, 0.22, 0.24),
+    "MI_Grid_Water": (0.05, 0.30, 0.55),
+}
+
+asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+asset_lib = unreal.EditorAssetLibrary
+subobjects = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+
+
+def load_or_none(path):
+    return asset_lib.load_asset(path) if asset_lib.does_asset_exist(path) else None
+
+
+def build_flat_material():
+    path = f"{ROOT}/M_GridFlat"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    material = asset_tools.create_asset("M_GridFlat", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+    mel = unreal.MaterialEditingLibrary
+    color = mel.create_material_expression(material, unreal.MaterialExpressionVectorParameter, -400, 0)
+    color.set_editor_property("parameter_name", "Color")
+    color.set_editor_property("default_value", unreal.LinearColor(0.5, 0.5, 0.5, 1.0))
+    mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+
+    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 300)
+    roughness.set_editor_property("r", 0.9)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+
+    mel.recompile_material(material)
+    asset_lib.save_loaded_asset(material)
+    return material
+
+
+def build_color_instance(name, rgb, parent):
+    path = f"{ROOT}/{name}"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    instance = asset_tools.create_asset(
+        name, ROOT, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
+    mel = unreal.MaterialEditingLibrary
+    mel.set_material_instance_parent(instance, parent)
+    mel.set_material_instance_vector_parameter_value(
+        instance, "Color", unreal.LinearColor(rgb[0], rgb[1], rgb[2], 1.0))
+    mel.update_material_instance(instance)
+    asset_lib.save_loaded_asset(instance)
+    return instance
+
+
+def create_blueprint(name, parent_class):
+    factory = unreal.BlueprintFactory()
+    factory.set_editor_property("parent_class", parent_class)
+    return asset_tools.create_asset(name, ROOT, unreal.Blueprint, factory)
+
+
+def add_box(blueprint, name, size, location, material, cube, yaw=0.0):
+    """Añade un StaticMeshComponent con forma de caja (size y location en uu)."""
+    root_handle = subobjects.k2_gather_subobject_data_for_blueprint(blueprint)[0]
+    params = unreal.AddNewSubobjectParams(
+        parent_handle=root_handle, new_class=unreal.StaticMeshComponent, blueprint_context=blueprint)
+    handle, fail_reason = subobjects.add_new_subobject(params)
+    if not unreal.SubobjectDataBlueprintFunctionLibrary.is_handle_valid(handle):
+        raise RuntimeError(f"No se pudo añadir '{name}' a {blueprint.get_name()}: {fail_reason}")
+
+    subobjects.rename_subobject(handle, unreal.Text(name))
+    data = subobjects.k2_find_subobject_data_from_handle(handle)
+    component = unreal.SubobjectDataBlueprintFunctionLibrary.get_associated_object(data)
+    component.set_editor_property("static_mesh", cube)
+    component.set_editor_property("relative_location", unreal.Vector(*location))
+    component.set_editor_property("relative_rotation", unreal.Rotator(0.0, 0.0, yaw))
+    component.set_editor_property(
+        "relative_scale3d", unreal.Vector(size[0] / CUBE_SIZE, size[1] / CUBE_SIZE, size[2] / CUBE_SIZE))
+    component.set_editor_property("override_materials", [material])
+    component.set_editor_property("mobility", unreal.ComponentMobility.STATIC)
+
+
+def build_tile(name, boxes, cube):
+    """boxes: lista de (nombre, size, location, material[, yaw])."""
+    path = f"{ROOT}/{name}"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    blueprint = create_blueprint(name, unreal.Actor)
+    for box in boxes:
+        add_box(blueprint, box[0], box[1], box[2], box[3], cube, box[4] if len(box) > 4 else 0.0)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
+def build_tiles(materials, cube):
+    half = CELL_SIZE / 2.0
+    wall_offset = half - WALL_THICKNESS / 2.0
+    wall_z = WALL_HEIGHT / 2.0
+    floor = lambda mat: ("Floor", (CELL_SIZE, CELL_SIZE, FLOOR_THICKNESS), (0.0, 0.0, -FLOOR_THICKNESS / 2.0), mat)
+    wall_along_x = lambda n, y: (n, (CELL_SIZE, WALL_THICKNESS, WALL_HEIGHT), (0.0, y, wall_z), materials["MI_Grid_Wall"])
+    wall_along_y = lambda n, x: (n, (WALL_THICKNESS, CELL_SIZE, WALL_HEIGHT), (x, 0.0, wall_z), materials["MI_Grid_Wall"])
+
+    path_mat = materials["MI_Grid_Path"]
+    return {
+        # Recta canónica: abierta a lo largo de X, paredes en ±Y.
+        "straight": build_tile("BP_GridTile_Straight", [
+            floor(path_mat), wall_along_x("WallLeft", -wall_offset), wall_along_x("WallRight", wall_offset),
+        ], cube),
+        # Giro canónico: abierto por -X y +Y, paredes en +X y -Y, poste en la esquina interior.
+        "turn": build_tile("BP_GridTile_Turn", [
+            floor(path_mat), wall_along_y("WallFront", wall_offset), wall_along_x("WallLeft", -wall_offset),
+            ("CornerPost", (WALL_THICKNESS, WALL_THICKNESS, WALL_HEIGHT), (-wall_offset, wall_offset, wall_z),
+             materials["MI_Grid_Wall"]),
+        ], cube),
+        "fillers": [
+            build_tile("BP_GridFiller_Dune", [
+                floor(materials["MI_Grid_Dune"]),
+                ("Mound", (1400.0, 1400.0, 300.0), (0.0, 0.0, 150.0), materials["MI_Grid_Dune"]),
+                ("Crest", (800.0, 800.0, 250.0), (100.0, -100.0, 425.0), materials["MI_Grid_Dune"], 30.0),
+            ], cube),
+            build_tile("BP_GridFiller_Rock", [
+                floor(materials["MI_Grid_Dune"]),
+                ("RockBig", (1000.0, 900.0, 800.0), (-150.0, 100.0, 400.0), materials["MI_Grid_Rock"], 25.0),
+                ("RockSmall", (500.0, 450.0, 400.0), (550.0, -450.0, 200.0), materials["MI_Grid_Rock"], -15.0),
+            ], cube),
+            build_tile("BP_GridFiller_Water", [
+                ("Water", (CELL_SIZE, CELL_SIZE, 20.0), (0.0, 0.0, -70.0), materials["MI_Grid_Water"]),
+            ], cube),
+        ],
+    }
+
+
+def build_grain_texture():
+    """Importa la textura de grano del terreno desde el PNG versionado en Scripts/textures."""
+    path = f"{TEXTURE_ROOT}/{GRAIN_TEXTURE}"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    source = os.path.join(unreal.Paths.project_dir(), GRAIN_SOURCE)
+    if not os.path.isfile(source):
+        raise RuntimeError(f"Falta {GRAIN_SOURCE}; genéralo con Scripts/gen_terrain_textures.py.")
+
+    task = unreal.AssetImportTask()
+    task.set_editor_property("filename", source)
+    task.set_editor_property("destination_path", TEXTURE_ROOT)
+    task.set_editor_property("destination_name", GRAIN_TEXTURE)
+    task.set_editor_property("automated", True)
+    task.set_editor_property("replace_existing", True)
+    asset_tools.import_asset_tasks([task])
+
+    texture = load_or_none(path)
+    if not texture:
+        raise RuntimeError(f"La importación de {GRAIN_TEXTURE} no ha producido asset en {TEXTURE_ROOT}.")
+    # El grano es un multiplicador, no un color: se muestrea en espacio lineal.
+    texture.set_editor_property("srgb", False)
+    texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_GRAYSCALE)
+    asset_lib.save_loaded_asset(texture)
+    return texture
+
+
+def build_detail_normal_textures(reimport=False):
+    """Importa las normales de detalle (XY empaquetadas, sin sRGB). Devuelve (suelo, pared)."""
+    out = []
+    for name, relative in DETAIL_NORMALS.items():
+        path = f"{TEXTURE_ROOT}/{name}"
+        existing = None if reimport else load_or_none(path)
+        if existing:
+            out.append(existing)
+            continue
+        source = os.path.join(unreal.Paths.project_dir(), relative)
+        if not os.path.isfile(source):
+            raise RuntimeError(f"Falta {relative}; genéralo con Scripts/gen_terrain_textures.py.")
+        task = unreal.AssetImportTask()
+        task.set_editor_property("filename", source)
+        task.set_editor_property("destination_path", TEXTURE_ROOT)
+        task.set_editor_property("destination_name", name)
+        task.set_editor_property("automated", True)
+        task.set_editor_property("replace_existing", True)
+        asset_tools.import_asset_tasks([task])
+        texture = load_or_none(path)
+        if not texture:
+            raise RuntimeError(f"La importación de {name} no ha producido asset en {TEXTURE_ROOT}.")
+        # Son vectores, no color: lineales y con compresion de alta calidad (4 canales utiles).
+        texture.set_editor_property("srgb", False)
+        texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_BC7)
+        asset_lib.save_loaded_asset(texture)
+        out.append(texture)
+    return tuple(out)
+
+
+# Normal de detalle en espacio de mundo (el material no usa tangentes: los trozos en ProcMesh no
+# las traen). Suelo: arena con rizos o arena pisada segun SandMask (alfa del color de vertice,
+# 0 = camino); paredes: estratos y roca en las dos proyecciones laterales. Los tamanos de tile
+# dividen 10 000 uu (un trozo) para que no haya costura entre trozos.
+DETAIL_NORMAL_HLSL = """\
+float3 N = normalize(Normal);
+float3 W = pow(max(abs(N), 1e-4f), 4.0f);
+W /= max(W.x + W.y + W.z, 1e-4f);
+float4 F = Texture2DSample(FloorTex, FloorTexSampler, P.xy / max(FloorTile, 1.0f));
+float2 s = F.rg * 2.0f - 1.0f;
+// Rizos algo mas marcados (cartoon suave): la pendiente se curva hacia su signo, el borde de cada
+// rizo se lee mas limpio sin cambiar su dibujo.
+s = sign(s) * pow(abs(s), 0.7f);
+float2 sand = s * SandStrength;
+// El camino lleva los mismos rizos (mas suaves) con un poco de arena pisada encima: su color
+// oscuro va en el color de vertice.
+float2 path = s * PathStrength + (F.ba * 2.0f - 1.0f) * 0.25f;
+float2 fl = lerp(path, sand, saturate(SandMask));
+float2 wx = (Texture2DSample(WallTex, WallTexSampler, P.yz / max(WallTile, 1.0f)).rg * 2.0f - 1.0f) * WallStrength;
+float2 wy = (Texture2DSample(WallTex, WallTexSampler, P.xz / max(WallTile, 1.0f)).rg * 2.0f - 1.0f) * WallStrength;
+float3 d = W.z * float3(fl.x, fl.y, 0.0f) + W.x * float3(0.0f, wx.x, wx.y) + W.y * float3(wy.x, 0.0f, wy.y);
+return normalize(N + d);
+"""
+
+DETAIL_NORMAL_INPUTS = ("P", "Normal", "FloorTex", "WallTex", "SandMask", "FloorTile", "WallTile",
+                        "SandStrength", "PathStrength", "WallStrength")
+
+# Variacion de color a gran escala (manchas de 50 m): rompe la uniformidad del color de vertice.
+MACRO_HLSL = """\
+return 1.0f + (Texture2DSample(Tex, TexSampler, P.xy / 5000.0f).r - 0.5f) * Contrast;
+"""
+
+
+def add_detail_normal(material, local_position, normal, vertex_color, detail_normals):
+    """Conecta la normal de detalle al material (normal en espacio de mundo)."""
+    mel = unreal.MaterialEditingLibrary
+    floor_tex, wall_tex = detail_normals
+    floor_obj = mel.create_material_expression(material, unreal.MaterialExpressionTextureObjectParameter, -1000, 900)
+    floor_obj.set_editor_property("parameter_name", "FloorDetailNormal")
+    floor_obj.set_editor_property("texture", floor_tex)
+    floor_obj.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    wall_obj = mel.create_material_expression(material, unreal.MaterialExpressionTextureObjectParameter, -1000, 1020)
+    wall_obj.set_editor_property("parameter_name", "WallDetailNormal")
+    wall_obj.set_editor_property("texture", wall_tex)
+    wall_obj.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    pins = {
+        "P": local_position, "Normal": normal, "FloorTex": floor_obj, "WallTex": wall_obj,
+        "FloorTile": scalar_parameter(material, "DetailFloorTile", 250.0, -1000, 1140),
+        "WallTile": scalar_parameter(material, "DetailWallTile", 500.0, -1000, 1240),
+        "SandStrength": scalar_parameter(material, "DetailSandStrength", 0.8, -1000, 1340),
+        "PathStrength": scalar_parameter(material, "DetailPathStrength", 0.85, -1000, 1440),
+        "WallStrength": scalar_parameter(material, "DetailWallStrength", 0.9, -1000, 1540),
+    }
+    custom = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -600, 900)
+    custom.set_editor_property("code", DETAIL_NORMAL_HLSL)
+    custom.set_editor_property("description", "DetailNormalWS")
+    custom.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    custom.set_editor_property("inputs", [custom_input(name) for name in DETAIL_NORMAL_INPUTS])
+    for pin, expression in pins.items():
+        mel.connect_material_expressions(expression, "", custom, pin)
+    mel.connect_material_expressions(vertex_color, "A", custom, "SandMask")
+    material.set_editor_property("tangent_space_normal", False)
+    mel.connect_material_property(custom, "", unreal.MaterialProperty.MP_NORMAL)
+
+
+# Proyección triplanar: tres muestreos en los planos locales XY, XZ e YZ, mezclados por la
+# normal elevada a Sharpness y normalizada. Mantiene el tamaño de texel constante en
+# cualquier pendiente, cosa que una UV planar no hace (el talud de una pared de 800 uu
+# estiraba el texel un factor 2,3). Devuelve un multiplicador alrededor de 1 que modula el
+# color de vértice sin desplazar su media.
+TRIPLANAR_HLSL = """\
+float3 N = abs(Normal);
+N = pow(max(N, 1e-4f), max(Sharpness, 1.0f));
+N /= max(N.x + N.y + N.z, 1e-4f);
+// Pared (normal casi horizontal): grano mas fino y marcado que el del suelo.
+float Steep = 1.0f - saturate((abs(Normal.z) - 0.75f) / 0.15f);
+float Inv = 1.0f / max(TileSize * lerp(1.0f, WallTileScale, Steep), 1.0f);
+float Gx = Texture2DSample(Tex, TexSampler, P.yz * Inv).r;
+float Gy = Texture2DSample(Tex, TexSampler, P.xz * Inv).r;
+float Gz = Texture2DSample(Tex, TexSampler, P.xy * Inv).r;
+float G = Gx * N.x + Gy * N.y + Gz * N.z;
+return 1.0f + (G - 0.5f) * Contrast * lerp(1.0f, WallContrastScale, Steep);
+"""
+
+
+TRIPLANAR_INPUTS = ("P", "Normal", "Tex", "TileSize", "Sharpness", "Contrast", "WallTileScale", "WallContrastScale")
+
+# Arena mojada (uu): la ola llega de 10 a 40 uu sobre el agua y vuelve; la arena que moja se
+# oscurece y se seca en 25 uu de altura. Multiplicador del color.
+WET_HLSL = """\
+float wave = 0.5 + 0.5 * sin(T * 6.2831853 / max(Period, 0.1));
+float reach = WaterZ + 10.0 + 30.0 * wave;
+float dry = saturate((Z - reach) / 25.0);
+return lerp(0.55, 1.0, dry);
+"""
+
+
+def custom_input(name):
+    """FCustomInput no acepta argumentos en su constructor de Python: se rellena a posteriori."""
+    entry = unreal.CustomInput()
+    entry.set_editor_property("input_name", name)
+    return entry
+
+
+def scalar_parameter(material, name, value, x, y):
+    mel = unreal.MaterialEditingLibrary
+    parameter = mel.create_material_expression(material, unreal.MaterialExpressionScalarParameter, x, y)
+    parameter.set_editor_property("parameter_name", name)
+    parameter.set_editor_property("default_value", value)
+    return parameter
+
+
+def build_terrain_material(grain_texture, name="M_GridTerrain", recreate=False, wall_tile_scale=1.0,
+                           wall_contrast_scale=1.0, detail_normals=None):
+    """Color de vértice (estratos, arena, moteado) modulado por grano triplanar y oscurecido
+    donde la ola moja la arena. recreate=True borra y crea el asset (en el commandlet,
+    delete_all_material_expressions sobre un material cargado revienta con !IsRooted())."""
+    path = f"{ROOT}/{name}"
+    if recreate and asset_lib.does_asset_exist(path):
+        asset_lib.delete_asset(path)
+    material = load_or_none(path)
+    if not material:
+        material = asset_tools.create_asset(name, ROOT, unreal.Material, unreal.MaterialFactoryNew())
+
+    mel = unreal.MaterialEditingLibrary
+    # Se reconstruye el grafo entero en vez de recrear el asset: así el material conserva su
+    # path y las referencias del BP del tile siguen siendo válidas.
+    mel.delete_all_material_expressions(material)
+
+    # Posición local del tile: World - ObjectPosition. Restar dos posiciones LWC da un
+    # float3 de precisión normal, que es lo que el nodo Custom puede consumir.
+    world_position = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -1200, -200)
+    object_position = mel.create_material_expression(material, unreal.MaterialExpressionObjectPositionWS, -1200, -20)
+    local_position = mel.create_material_expression(material, unreal.MaterialExpressionSubtract, -1000, -120)
+    mel.connect_material_expressions(world_position, "", local_position, "A")
+    mel.connect_material_expressions(object_position, "", local_position, "B")
+
+    normal = mel.create_material_expression(material, unreal.MaterialExpressionVertexNormalWS, -1000, 60)
+    texture_object = mel.create_material_expression(
+        material, unreal.MaterialExpressionTextureObjectParameter, -1000, 180)
+    texture_object.set_editor_property("parameter_name", "GrainTexture")
+    texture_object.set_editor_property("texture", grain_texture)
+
+    tile_size = scalar_parameter(material, "GrainTileSize", 400.0, -1000, 340)
+    sharpness = scalar_parameter(material, "GrainSharpness", 4.0, -1000, 440)
+    contrast = scalar_parameter(material, "GrainContrast", 0.35, -1000, 540)
+
+    triplanar = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -600, 60)
+    triplanar.set_editor_property("code", TRIPLANAR_HLSL)
+    triplanar.set_editor_property("description", "TriplanarGrain")
+    triplanar.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+    triplanar.set_editor_property("inputs", [custom_input(name) for name in TRIPLANAR_INPUTS])
+    # Pared distinta del suelo (1.0 = igual): escala del grano y del contraste en lo empinado.
+    wall_tile = scalar_parameter(material, "WallTileScale", wall_tile_scale, -1000, 640)
+    wall_contrast = scalar_parameter(material, "WallContrastScale", wall_contrast_scale, -1000, 740)
+    for expression, pin in ((local_position, "P"), (normal, "Normal"), (texture_object, "Tex"),
+                            (tile_size, "TileSize"), (sharpness, "Sharpness"), (contrast, "Contrast"),
+                            (wall_tile, "WallTileScale"), (wall_contrast, "WallContrastScale")):
+        mel.connect_material_expressions(expression, "", triplanar, pin)
+
+    # Arena mojada: la ola sube y baja por la orilla (periodo WetPeriod) y oscurece la arena hasta
+    # donde llega; mas arriba, seca. Mismo periodo que la espuma de M_TortunaboWaterToon. Cota del
+    # mundo (la local se mide desde el centro de los limites de cada trozo y cambia de uno a otro:
+    # salian franjas por trozo).
+    local_z = mel.create_material_expression(material, unreal.MaterialExpressionComponentMask, -900, -380)
+    # Solo Z: R y G vienen activados por defecto y el nodo recibia la X del mundo (la arena se
+    # oscurecia al sur de X = WaterZ en una franja recta que cruzaba todo el mapa).
+    local_z.set_editor_property("r", False)
+    local_z.set_editor_property("g", False)
+    local_z.set_editor_property("b", True)
+    mel.connect_material_expressions(world_position, "", local_z, "")
+    time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -900, -300)
+    water_z = scalar_parameter(material, "WaterZ", -400.0, -900, -220)
+    period = scalar_parameter(material, "WetPeriod", 4.0, -900, -140)
+    wet = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -600, -380)
+    wet.set_editor_property("code", WET_HLSL)
+    wet.set_editor_property("description", "ArenaMojada")
+    wet.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+    wet.set_editor_property("inputs", [custom_input(name) for name in ("Z", "T", "WaterZ", "Period")])
+    for expression, pin in ((local_z, "Z"), (time, "T"), (water_z, "WaterZ"), (period, "Period")):
+        mel.connect_material_expressions(expression, "", wet, pin)
+
+    vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -600, -180)
+    grained = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -400, -100)
+    mel.connect_material_expressions(vertex_color, "", grained, "A")
+    mel.connect_material_expressions(triplanar, "", grained, "B")
+    base_color = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -250, -160)
+    mel.connect_material_expressions(grained, "", base_color, "A")
+    mel.connect_material_expressions(wet, "", base_color, "B")
+    if detail_normals is None:
+        mel.connect_material_property(base_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    else:
+        macro = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -400, -520)
+        macro.set_editor_property("code", MACRO_HLSL)
+        macro.set_editor_property("description", "ManchasGrandes")
+        macro.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+        macro.set_editor_property("inputs", [custom_input(name) for name in ("P", "Tex", "Contrast")])
+        mel.connect_material_expressions(local_position, "", macro, "P")
+        mel.connect_material_expressions(texture_object, "", macro, "Tex")
+        mel.connect_material_expressions(scalar_parameter(material, "MacroContrast", 0.22, -900, -600), "", macro,
+                                         "Contrast")
+        varied = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -120, -220)
+        mel.connect_material_expressions(base_color, "", varied, "A")
+        mel.connect_material_expressions(macro, "", varied, "B")
+        mel.connect_material_property(varied, "", unreal.MaterialProperty.MP_BASE_COLOR)
+        add_detail_normal(material, local_position, normal, vertex_color, detail_normals)
+
+    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -300, 300)
+    roughness.set_editor_property("r", 0.95)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+
+    mel.recompile_material(material)
+    asset_lib.save_loaded_asset(material)
+    return material
+
+
+def build_water_material():
+    path = f"{ROOT}/M_GridWater"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    material = asset_tools.create_asset("M_GridWater", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    material.set_editor_property("translucency_lighting_mode", unreal.TranslucencyLightingMode.TLM_SURFACE)
+    mel = unreal.MaterialEditingLibrary
+
+    color = mel.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, -400, 0)
+    color.set_editor_property("constant", unreal.LinearColor(0.03, 0.22, 0.30, 1.0))
+    mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    for value, prop, y in ((0.08, unreal.MaterialProperty.MP_ROUGHNESS, 200),
+                           (0.78, unreal.MaterialProperty.MP_OPACITY, 400)):
+        constant = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, y)
+        constant.set_editor_property("r", value)
+        mel.connect_material_property(constant, "", prop)
+
+    mel.recompile_material(material)
+    asset_lib.save_loaded_asset(material)
+    return material
+
+
+def build_junk_material():
+    """Material de los objetos de basura: el color llega por instancia (PerInstanceCustomData)."""
+    path = f"{ROOT}/M_GridJunk"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    material = asset_tools.create_asset("M_GridJunk", ROOT, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+    mel = unreal.MaterialEditingLibrary
+    color = mel.create_material_expression(material, unreal.MaterialExpressionPerInstanceCustomData3Vector, -400, 0)
+    color.set_editor_property("data_index", 0)
+    color.set_editor_property("const_default_value", unreal.LinearColor(0.2, 0.2, 0.2, 1.0))
+    mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    roughness = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -400, 300)
+    roughness.set_editor_property("r", 0.7)
+    mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.recompile_material(material)
+    asset_lib.save_loaded_asset(material)
+    return material
+
+
+def build_terrain_tile(terrain_material, junk_material):
+    path = f"{ROOT}/BP_GridTerrainTile"
+    blueprint = load_or_none(path)
+    if not blueprint:
+        blueprint = create_blueprint("BP_GridTerrainTile", unreal.load_class(None, TERRAIN_TILE_CLASS))
+        unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+
+    defaults = unreal.get_default_object(blueprint.generated_class())
+    defaults.set_editor_property("terrain_material", terrain_material)
+    defaults.set_editor_property("junk_material", junk_material)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
+def build_game_mode():
+    path = f"{ROOT}/BP_GridDemoGameMode"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    blueprint = create_blueprint("BP_GridDemoGameMode", unreal.GameModeBase)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    character = asset_lib.load_blueprint_class(CHARACTER_BP)
+    unreal.get_default_object(blueprint.generated_class()).set_editor_property("default_pawn_class", character)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
+def build_generator(tiles, terrain_tile_bp, water_material):
+    path = f"{ROOT}/BP_GridMapGenerator"
+    blueprint = load_or_none(path)
+    if not blueprint:
+        blueprint = create_blueprint("BP_GridMapGenerator", unreal.load_class(None, GENERATOR_CLASS))
+        unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+
+    defaults = unreal.get_default_object(blueprint.generated_class())
+    defaults.set_editor_property("straight_tile_class", tiles["straight"].generated_class())
+    defaults.set_editor_property("turn_tile_class", tiles["turn"].generated_class())
+    defaults.set_editor_property("filler_tile_classes", [bp.generated_class() for bp in tiles["fillers"]])
+    defaults.set_editor_property("cell_size", TERRAIN_CELL_SIZE)
+    # Con TerrainTileClass asignado el generador trabaja en modo terreno; los tiles
+    # greybox se quedan configurados como alternativa (basta con vaciar esta propiedad).
+    defaults.set_editor_property("terrain_tile_class", terrain_tile_bp.generated_class())
+    defaults.set_editor_property("water_material", water_material)
+    # Sin recompilar, las instancias nuevas no heredan los defaults recién escritos en el CDO.
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
+def build_map(generator_bp, game_mode_bp):
+    level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+
+    if asset_lib.does_asset_exist(MAP_PATH):
+        level_subsystem.load_level(MAP_PATH)
+    else:
+        level_subsystem.new_level(MAP_PATH)
+
+    by_label = {actor.get_actor_label(): actor for actor in actor_subsystem.get_all_level_actors()}
+
+    def ensure_actor(label, actor_class, location=unreal.Vector(0, 0, 0), rotation=unreal.Rotator(0, 0, 0)):
+        if label in by_label:
+            return by_label[label]
+        actor = actor_subsystem.spawn_actor_from_class(actor_class, location, rotation)
+        actor.set_actor_label(label)
+        return actor
+
+    ensure_actor("Sun", unreal.DirectionalLight, unreal.Vector(0, 0, 3000), unreal.Rotator(0.0, -50.0, 35.0))
+    ensure_actor("SkyAtmosphere", unreal.SkyAtmosphere)
+    sky_light = ensure_actor("SkyLight", unreal.SkyLight, unreal.Vector(0, 0, 3000))
+    # Luz de cielo móvil y reforzada: el terreno es un cañón y las paredes en sombra se
+    # quedaban negras con los valores por defecto.
+    sky_component = sky_light.get_component_by_class(unreal.SkyLightComponent)
+    sky_component.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
+    sky_component.set_editor_property("real_time_capture", True)
+    sky_component.set_editor_property("intensity", 2.0)
+
+    generator = ensure_actor("GridMapGenerator", generator_bp.generated_class())
+    generator.call_method("Generate")
+
+    # Con semilla fija el inicio del camino es estable: el PlayerStart se coloca sobre él.
+    # Los tiles son Transient y EditorActorSubsystem no los lista: se buscan por tag en el mundo.
+    world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+    start_tiles = unreal.GameplayStatics.get_all_actors_with_tag(world, "TNGridStart")
+    if not start_tiles:
+        raise RuntimeError("Generate() no ha producido tile de inicio; revisa el Output Log ([GridMap]).")
+    player_start = ensure_actor("PlayerStart_PathStart", unreal.PlayerStart)
+    player_start.set_actor_location(
+        start_tiles[0].get_actor_location() + unreal.Vector(-TERRAIN_CELL_SIZE * 0.3, 0.0, 250.0), False, False)
+
+    world.get_world_settings().set_editor_property("default_game_mode", game_mode_bp.generated_class())
+    level_subsystem.save_current_level()
+
+
+def main():
+    asset_lib.make_directory(ROOT)
+    asset_lib.make_directory(TEXTURE_ROOT)
+    cube = asset_lib.load_asset(CUBE_PATH)
+    flat = build_flat_material()
+    materials = {name: build_color_instance(name, rgb, flat) for name, rgb in COLORS.items()}
+    tiles = build_tiles(materials, cube)
+    terrain_material = build_terrain_material(build_grain_texture())
+    terrain_tile_bp = build_terrain_tile(terrain_material, build_junk_material())
+    generator_bp = build_generator(tiles, terrain_tile_bp, build_water_material())
+    game_mode_bp = build_game_mode()
+    build_map(generator_bp, game_mode_bp)
+    unreal.log("[GridDemo] Assets y mapa de la demo listos.")
+
+
+if __name__ == "__main__":
+    main()

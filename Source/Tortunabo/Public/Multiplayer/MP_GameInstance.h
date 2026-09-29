@@ -534,6 +534,12 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_TutorialSaveGame> TutorialProfile;
 
+	/** El perfil cosmético del disco no se pudo leer ni apartar: no se escribe encima en esta sesión. */
+	bool bCosmeticSaveBlocked = false;
+
+	/** Igual para el estado del tutorial. */
+	bool bTutorialSaveBlocked = false;
+
 	bool bIsLoadingScreenVisible = false;
 
 	/** true si HandlePostLoadMap debe reintentar crear el listen server. */

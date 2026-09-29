@@ -175,5 +175,9 @@ private:
 	double LocalFXTime = -10.0;
 
 	float AnimTime = 0.f;
+
+	/** Segundos desde la última reconstrucción de LiveMesh (TNSeaweedLogic decide cuándo toca). */
+	float SinceLiveRebuild = 0.f;
+
 	FTNTrapBurst Splash;
 };
