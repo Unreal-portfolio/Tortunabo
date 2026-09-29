@@ -6,12 +6,14 @@
 #include "TN_BeachEnemyKit.h"
 #include "TN_BeachEnemyMeshes.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/DecalComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/TN_Log.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_TurtleAnimInstance.h"
@@ -50,6 +52,36 @@ namespace TNBeachGull
 	constexpr float PoopKnock = 2.4f;
 	constexpr float PoopPush = 240.f;
 	constexpr float PoopIgnore = 6.f;
+	/** Radio con el que nace la sombra de la cagada (cm): lo bastante grande para leerse desde que se suelta. */
+	constexpr float PoopMarkerStartRadius = 90.f;
+
+	// ── Aviso sobre la tortuga objetivo de la cagada ──
+	/**
+	 * Un signo de exclamación sobre su cabeza (WarnAbove cm por encima) empieza WarnLead s antes de soltar la cagada y
+	 * parpadea de WarnRateSlow a WarnRateFast veces por segundo según cae (está encendido WarnOnFraction de cada
+	 * parpadeo). Mide 105 cm; lejos se agranda (distancia / WarnGrowDist, entre 1 y WarnMaxScale) para leerse.
+	 */
+	constexpr float WarnLead = 0.5f;
+	constexpr float WarnRateSlow = 2.f;
+	constexpr float WarnRateFast = 12.f;
+	constexpr float WarnOnFraction = 0.6f;
+	constexpr float WarnAbove = 40.f;
+	constexpr float WarnGrowDist = 1500.f;
+	constexpr float WarnMaxScale = 3.5f;
+
+	// ── La cagada pintada en la tortuga (decal) ──
+	/**
+	 * Vive StainLife s: entera hasta StainFadeStart, luego se seca desde los bordes y se desvanece hasta desaparecer. El
+	 * decal proyecta en una caja de medio lado StainHalfSize y media profundidad StainHalfDepth (cm) que sale del hueso de
+	 * la espalda StainBackCm por detrás (el caparazón está a ~24) y StainUpCm por encima, mirando hacia delante y abajo.
+	 */
+	constexpr float StainLife = 12.f;
+	constexpr float StainFadeStart = 8.f;
+	constexpr float StainHalfSize = 38.f;
+	constexpr float StainHalfDepth = 30.f;
+	constexpr float StainBackCm = 21.f;
+	constexpr float StainUpCm = 10.f;
+	constexpr int32 MaxStains = 12;
 
 	// ── Picado ──
 	/**
@@ -179,6 +211,83 @@ namespace TNBeachGull
 		Comp->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Up).ToQuat(), At + Up * 25.0, FVector(S, S, 1.0)));
 		TNBeachKit::SetOpacity(TNBeachKit::SoftMID(Comp), Opacity);
 	}
+
+	/**
+	 * Material del decal de la cagada (Scripts/create_poop_decal.py). Null si aún no se ha creado: no se recuerda que falta
+	 * (el script puede ejecutarse con el editor abierto entre dos partidas) y se pide de nuevo la siguiente vez.
+	 */
+	inline UMaterialInterface* PoopDecalMaterial()
+	{
+		static TWeakObjectPtr<UMaterialInterface> Cached;
+		if (!Cached.IsValid())
+		{
+			Cached = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_PoopSplatDecal.M_PoopSplatDecal"), nullptr, LOAD_NoWarn);
+		}
+		return Cached.Get();
+	}
+
+	/**
+	 * Material de los avisos duros (M_ProcFXHard, del mismo script): translúcido sin luz como M_ProcFXSoft pero sin su fundido
+	 * por profundidad (80 cm), que dejaba un disco a 25 cm de la arena a medio ver. Null si falta: se usa el suave.
+	 */
+	inline UMaterialInterface* HardFxMaterial()
+	{
+		static TWeakObjectPtr<UMaterialInterface> Cached;
+		if (!Cached.IsValid())
+		{
+			Cached = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFXHard.M_ProcFXHard"), nullptr, LOAD_NoWarn);
+		}
+		return Cached.Get();
+	}
+
+	/** Pone en Comp el material dinámico de un aviso duro (el suave de siempre si falta el duro) con la opacidad Opacity. */
+	inline void SetupHardMid(UStaticMeshComponent* Comp, float Opacity)
+	{
+		if (!Comp)
+		{
+			return;
+		}
+		if (UMaterialInterface* Hard = HardFxMaterial())
+		{
+			Comp->CreateDynamicMaterialInstance(0, Hard);
+		}
+		TNBeachKit::SetOpacity(TNBeachKit::SoftMID(Comp), Opacity);
+	}
+
+	/**
+	 * Sujeta Decal al hueso de la espalda de Turtle, ya apuntando a su caparazón. Las medidas salen de la postura de
+	 * referencia de la malla (en su espacio mira a +Y y arriba es +Z; el caparazón queda hacia -Y): el centro, StainBackCm
+	 * por detrás del hueso y StainUpCm por encima, y proyecta hacia delante y abajo (como cae: por detrás y desde arriba).
+	 * El decal va con el hueso, así que sigue al ragdoll y a la bola. Escala 1 en el mundo (DecalSize va en cm). False sin
+	 * malla ni hueso.
+	 */
+	inline bool PlaceStainDecal(UDecalComponent* Decal, ACharacter* Turtle)
+	{
+		USkeletalMeshComponent* Mesh = Turtle ? Turtle->GetMesh() : nullptr;
+		const USkinnedAsset* Asset = Mesh ? Mesh->GetSkinnedAsset() : nullptr;
+		const int32 BoneIndex = Asset ? Asset->GetRefSkeleton().FindBoneIndex(SpineBone()) : INDEX_NONE;
+		if (!Decal || BoneIndex == INDEX_NONE)
+		{
+			return false;
+		}
+		const FReferenceSkeleton& Ref = Asset->GetRefSkeleton();
+		const TArray<FTransform>& Pose = Ref.GetRefBonePose();
+		FTransform BoneCS = Pose[BoneIndex];
+		for (int32 Parent = Ref.GetParentIndex(BoneIndex); Parent != INDEX_NONE; Parent = Ref.GetParentIndex(Parent))
+		{
+			BoneCS = BoneCS * Pose[Parent];
+		}
+		const double MeshScale = FMath::Max(0.01, static_cast<double>(Mesh->GetComponentScale().Z));
+		const FVector Center = BoneCS.GetLocation() + FVector(0.0, -StainBackCm / MeshScale, StainUpCm / MeshScale);
+		const FVector Into = FVector(0.0, 0.85, -0.53).GetSafeNormal();
+		const FTransform Wanted(FRotationMatrix::MakeFromXZ(Into, FVector::UpVector).ToQuat(), Center);
+		const FTransform Rel = Wanted.GetRelativeTransform(BoneCS);
+		Decal->SetupAttachment(Mesh, SpineBone());
+		Decal->SetRelativeLocationAndRotation(Rel.GetLocation(), Rel.GetRotation());
+		Decal->SetAbsolute(false, false, true);
+		Decal->SetRelativeScale3D(FVector::OneVector);
+		return true;
+	}
 }
 
 ATN_BeachGullZone::ATN_BeachGullZone()
@@ -231,6 +340,16 @@ void ATN_BeachGullZone::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		}
 	}
 	Splats.Reset();
+	for (UDecalComponent* Decal : StainDecals)
+	{
+		if (Decal)
+		{
+			Decal->DestroyComponent();
+		}
+	}
+	StainDecals.Reset();
+	StainMids.Reset();
+	StainBorn.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -422,9 +541,20 @@ void ATN_BeachGullZone::BuildBirds()
 		{
 			Comp->SetStaticMesh(TNBeachKit::ShadowDiscEdge(MarkerEdge));
 			Comp->SetTranslucentSortPriority(4);
-			TNBeachKit::SetOpacity(TNBeachKit::SoftMID(Comp), 0.f);
+			SetupHardMid(Comp, 0.f);
 			Comp->SetVisibility(false);
 		}
+	}
+	// Signo de exclamación sobre la tortuga objetivo de la cagada (amarillo con borde rojo oscuro; mira a la cámara).
+	WarnMark = TNBeachKit::AddPart(this, GetRootComponent(),
+		TNBeachKit::CachedMesh(TEXT("Beach.WarnMark"), [](TNProcMesh::FTNProcMeshBuffers& M) { TNBeachMeshes::BuildWarningMark(M); }, TNBeachKit::EBeachMeshMat::SoftVertexAlpha),
+		FVector::ZeroVector, false);
+	if (WarnMark)
+	{
+		WarnMark->SetAbsolute(true, true, true);
+		WarnMark->SetTranslucentSortPriority(6);
+		SetupHardMid(WarnMark, 1.f);
+		WarnMark->SetVisibility(false);
 	}
 
 	using TNAmbientFX::EShape;
@@ -1230,6 +1360,7 @@ void ATN_BeachGullZone::OnAttackChanged()
 	{
 		SeenSerial = Attack.Serial;
 		SeenResult = 0;
+		WarnPhase = 0.f;
 		bSwoopPlayed = false;
 		bWhistlePlayed = false;
 		bReleasePlayed = false;
@@ -1295,11 +1426,12 @@ void ATN_BeachGullZone::MulticastSplat_Implementation(FVector_NetQuantize Where,
 	}
 	TNBeachKit::BurstAt(Droplets, At + FVector(0.0, 0.0, 40.0), FVector::UpVector, 26);
 	SpawnSplat(At, nullptr, TNBeachGull::SplatRadius * SizeK / 100.f, 12.f);
+	int32 StainVariant = 0;
 	for (ATortugaCharacter* Turtle : Hit)
 	{
 		if (Turtle)
 		{
-			SpawnSplat(FVector::ZeroVector, Turtle, 1.3f, TNBeachGull::PoopKnock + 4.f);
+			SpawnStain(Turtle, StainVariant++);
 			TNBeachKit::BurstAt(Droplets, Turtle->GetActorLocation() + FVector(0.0, 0.0, 120.0), FVector::UpVector, 14);
 			UTN_BeachCameraShake::Kick(this, Turtle->GetActorLocation(), 0.4f, 200.f, 1200.f);
 		}
@@ -1326,7 +1458,8 @@ void ATN_BeachGullZone::SpawnSplat(const FVector& Where, ATortugaCharacter* InTu
 	if (InTurtle)
 	{
 		// En el caparazón, pegado a su espalda: con el ragdoll del derribo va con el cuerpo.
-		TNBeachKit::AttachToTurtleBack(Comp, InTurtle, InScale);
+		// Pegado al caparazón (el hueso de la espalda está a ~24 cm de su superficie): solo es el plan B de SpawnStain.
+		TNBeachKit::AttachToTurtleBack(Comp, InTurtle, InScale, 24.f, 6.f);
 	}
 	else
 	{
@@ -1338,6 +1471,110 @@ void ATN_BeachGullZone::SpawnSplat(const FVector& Where, ATortugaCharacter* InTu
 	SplatBorn.Add(Clock);
 	SplatLife.Add(Life);
 	SplatScale.Add(InScale);
+}
+
+void ATN_BeachGullZone::SpawnStain(ATortugaCharacter* InTurtle, int32 Variant)
+{
+	using namespace TNBeachGull;
+	if (!InTurtle)
+	{
+		return;
+	}
+	UMaterialInterface* Material = PoopDecalMaterial();
+	UDecalComponent* Decal = Material ? NewObject<UDecalComponent>(this, NAME_None, RF_Transient) : nullptr;
+	UMaterialInstanceDynamic* Mid = Decal ? UMaterialInstanceDynamic::Create(Material, this) : nullptr;
+	if (!Mid || !PlaceStainDecal(Decal, InTurtle))
+	{
+		// Sin el material (falta ejecutar Scripts/create_poop_decal.py) o sin hueso: el pegote de siempre, pero pequeño y pegado.
+		SpawnSplat(FVector::ZeroVector, InTurtle, 0.6f, StainLife);
+		return;
+	}
+	// Si se acumulan, se va la más vieja.
+	if (StainDecals.Num() >= MaxStains)
+	{
+		if (StainDecals[0])
+		{
+			StainDecals[0]->DestroyComponent();
+		}
+		StainDecals.RemoveAt(0);
+		StainMids.RemoveAt(0);
+		StainBorn.RemoveAt(0);
+	}
+	static const FName SeedName(TEXT("Seed"));
+	static const FName FadeName(TEXT("Fade"));
+	// La misma forma en todas las máquinas: sale del ataque (su número de serie replicado) y de cuál de las manchadas es.
+	Mid->SetScalarParameterValue(SeedName, 1.f + 97.f * TNBeachKit::Hash01(static_cast<uint32>(Attack.Serial) * 131u + static_cast<uint32>(Variant) * 17u + 7u));
+	Mid->SetScalarParameterValue(FadeName, 1.f);
+	Decal->SetDecalMaterial(Mid);
+	Decal->DecalSize = FVector(StainHalfDepth, StainHalfSize, StainHalfSize);
+	Decal->FadeScreenSize = 0.002f;
+	Decal->RegisterComponent();
+	StainDecals.Add(Decal);
+	StainMids.Add(Mid);
+	StainBorn.Add(Clock);
+}
+
+void ATN_BeachGullZone::TickStains()
+{
+	using namespace TNBeachGull;
+	static const FName FadeName(TEXT("Fade"));
+	for (int32 s = StainDecals.Num() - 1; s >= 0; --s)
+	{
+		UDecalComponent* Decal = StainDecals[s];
+		const float Age = Clock - StainBorn[s];
+		// Se va a su hora o si su tortuga ya no está (sin la malla a la que iba sujeta no hay dónde pintar).
+		if (!Decal || Age >= StainLife || !Decal->GetAttachParent())
+		{
+			if (Decal)
+			{
+				Decal->DestroyComponent();
+			}
+			StainDecals.RemoveAt(s);
+			StainMids.RemoveAt(s);
+			StainBorn.RemoveAt(s);
+			continue;
+		}
+		// Entera hasta StainFadeStart; después se seca desde los bordes y se desvanece (el material lo hace con Fade).
+		if (Age > StainFadeStart && StainMids.IsValidIndex(s) && StainMids[s])
+		{
+			StainMids[s]->SetScalarParameterValue(FadeName, 1.f - Smooth01((Age - StainFadeStart) / (StainLife - StainFadeStart)));
+		}
+	}
+}
+
+void ATN_BeachGullZone::TickWarnMark(float DeltaSeconds, double Now, const FVector& View, bool bNear)
+{
+	using namespace TNBeachGull;
+	if (!WarnMark)
+	{
+		return;
+	}
+	bool bShow = false;
+	ATortugaCharacter* Victim = Attack.Victim;
+	if (bNear && Attack.Kind == 1 && Attack.Result == 0 && IsValid(Victim) && !Victim->IsDead())
+	{
+		const float Tau = static_cast<float>(Now - static_cast<double>(Attack.StartTime));
+		const float WarnStart = DropTime - WarnLead;
+		const float FallEnd = DropTime + FallTime;
+		if (Tau >= WarnStart && Tau < FallEnd)
+		{
+			// Cuanto más cae, más deprisa parpadea (empieza a 2 Hz y acaba a 12 Hz).
+			const float U = FMath::Clamp((Tau - WarnStart) / (FallEnd - WarnStart), 0.f, 1.f);
+			WarnPhase += DeltaSeconds * FMath::Lerp(WarnRateSlow, WarnRateFast, U * U);
+			bShow = FMath::Frac(WarnPhase) < WarnOnFraction;
+			// Sobre su cabeza, de cara a la cámara (solo gira en vertical) y más grande cuanto más lejos.
+			const FVector Head = Victim->GetActorLocation() + FVector(0.0, 0.0, Victim->GetSimpleCollisionHalfHeight() + WarnAbove + 6.0 * FMath::Sin(Clock * 9.f));
+			FVector ToCamera = View - Head;
+			ToCamera.Z = 0.0;
+			const float Yaw = ToCamera.IsNearlyZero() ? 0.f : static_cast<float>(ToCamera.Rotation().Yaw);
+			const float Grow = FMath::Clamp(static_cast<float>(FVector::Dist(View, Head)) / WarnGrowDist, 1.f, WarnMaxScale);
+			WarnMark->SetWorldTransform(FTransform(FRotator(0.f, Yaw, 0.f), Head, FVector(Grow)));
+		}
+	}
+	if (WarnMark->IsVisible() != bShow)
+	{
+		WarnMark->SetVisibility(bShow);
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1663,9 +1900,9 @@ void ATN_BeachGullZone::VisualTick(float DeltaSeconds)
 				DropGroundTimer = 0.1f;
 				DropNormal = GroundNormalAt(Target);
 			}
-			const float Grow = 0.3f * U + 0.7f * FMath::Pow(U, 1.8f);
+			const float Grow = 0.45f * U + 0.55f * FMath::Pow(U, 1.6f);
 			const float Fade = FMath::Clamp((Tau - DropTime) / MarkerFadeIn, 0.f, 1.f);
-			PlaceMarker(DropShadow, Target, DropNormal, FMath::Lerp(MarkerStartRadius, SplatRadius * SizeK, Grow), MarkerOpacity * Fade);
+			PlaceMarker(DropShadow, Target, DropNormal, FMath::Lerp(PoopMarkerStartRadius, SplatRadius * SizeK, Grow), MarkerOpacity * Fade);
 			bShowDrop = true;
 			DropTrailTimer -= DeltaSeconds;
 			if (DropTrailTimer <= 0.f)
@@ -1718,6 +1955,10 @@ void ATN_BeachGullZone::VisualTick(float DeltaSeconds)
 		}
 	}
 	PlaceMarker(DiveMarker, MarkerAt, MarkerNormal, bNear ? MarkerR : 0.f, MarkerA);
+
+	// Aviso de la cagada sobre la tortuga objetivo y las cagadas pintadas en las tortugas (se secan y se van).
+	TickWarnMark(DeltaSeconds, Now, View, bNear);
+	TickStains();
 
 	// Manchas: duran su vida y se encogen el último segundo.
 	for (int32 s = Splats.Num() - 1; s >= 0; --s)

@@ -23,7 +23,8 @@ class UStaticMeshComponent;
  *    la vuelta y la persigue de lado (más rápido que andando, más lento que esprintando). Si la pierde, vuelve a su
  *    recorrido por el punto más cercano.
  *  - Mazazo (de cerca): se para, levanta la pinza, que tiembla ~0,6 s, y en la arena aparece la sombra de dónde va a
- *    caer (donde estará la tortuga); la pinza cae de golpe y a quien pille dentro la deja en bola aturdida.
+ *    caer (donde estará la tortuga); la pinza cae de golpe y a quien pille dentro (1,7 m de radio, y solo donde la punta de la pinza toca de verdad) la deja
+ *    en bola aturdida. Ataca desde unos 8 m del cuerpo.
  *  - Embestida (a media distancia): se agacha clavando las patas, sale disparado de lado hacia la tortuga, más rápido
  *    que ella esprintando, y frena derrapando con surcos y arena por delante. A quien arrolla la derriba (ragdoll)
  *    lanzada en su sentido; si se estampa contra algo grande, se queda mareado.

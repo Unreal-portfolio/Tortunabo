@@ -61,43 +61,61 @@ namespace TNBeachCrab
 	constexpr float LegTimeout = 12.f;
 	/** Radio del cuerpo en planta (cm, por el tamaño) para apartarse de los demás y de lo grande del reparto. */
 	constexpr float BodyRadius = 420.f;
-	/** Lo que se recoloca durante el aviso para que la pinza caiga donde marca la sombra. */
-	constexpr float WindUpSpeed = 650.f;
-	/** Empieza el mazazo si la tortuga está a su alcance más esto. */
-	constexpr float AttackSlack = 300.f;
+	/**
+	 * Lo que se recoloca durante el aviso para que la pinza caiga donde marca la sombra (cm/s, por el tamaño: antes 650, que
+	 * le dejaba avanzar 3,1 m durante el aviso y golpear desde ~10 m).
+	 */
+	constexpr float WindUpSpeed = 400.f;
+	/** Empieza el mazazo si la tortuga está a su alcance más esto (antes 300: atacaba desde 10,1 m; ahora desde ~8,1 m). */
+	constexpr float AttackSlack = 100.f;
 	/** Aviso (pinza en alto temblando), caída, pinza clavada y espera hasta el siguiente mazazo (s). */
 	constexpr float WindUpTime = 0.6f;
 	constexpr float SlamTime = 0.14f;
 	constexpr float RecoverTime = 1.1f;
 	constexpr float CooldownTime = 1.4f;
-	/** Radio del golpe alrededor de la sombra (cm, por el tamaño). */
-	constexpr float HitRadius = 280.f;
+	/**
+	 * Radio del golpe alrededor de la sombra (cm, por el tamaño): la mano y el dedo, no medio campo (antes 280). Sale más
+	 * 40 cm del radio de la tortuga. Además la pinza tiene que haber llegado de verdad a la sombra: si al caer su punta está
+	 * a más de SlamTipTolerance de ella, el golpe cuenta donde toca la punta (ResolveSlam).
+	 */
+	constexpr float HitRadius = 170.f;
+	constexpr float SlamTipTolerance = 150.f;
+	/** Diferencia de altura máxima con la tortuga para que la pinza (a ras de arena) la pille: saltando por encima se libra. */
+	constexpr float SlamHeight = 280.f;
 	/** Aturdimiento y tiempo que ignora a la golpeada. */
 	constexpr float StunSeconds = 3.5f;
 	constexpr float IgnoreSeconds = 6.f;
-	/** Adelanto al apuntar (s de la velocidad de la tortuga). */
-	constexpr float LeadSeconds = 0.3f;
+	/** Adelanto al apuntar (s de la velocidad de la tortuga; antes 0,3). */
+	constexpr float LeadSeconds = 0.2f;
 	/** Cabeceo del brazo con la pinza en alto. */
 	constexpr float RaisePitch = 72.f;
 	/** Largo de un ciclo de paso (cm, por el tamaño): cada pata da un paso por ciclo. */
 	constexpr float Stride = 190.f;
 
 	// ── Embestida ──
-	/** A qué distancia de la tortuga (cm, por el tamaño) embiste y cuántas veces por segundo lo intenta ahí. */
-	constexpr float ChargeMinDist = 900.f;
-	constexpr float ChargeMaxDist = 2100.f;
+	/**
+	 * A qué distancia de la tortuga (cm, por el tamaño) embiste y cuántas veces por segundo lo intenta ahí. Antes de 9 a
+	 * 21 m; ahora empieza donde acaba el alcance de la pinza (8,5 m) y llega a 13 m.
+	 */
+	constexpr float ChargeMinDist = 850.f;
+	constexpr float ChargeMaxDist = 1300.f;
 	constexpr float ChargeChance = 0.55f;
 	/** Se agacha clavando las patas (s), sale disparado (cm/s y cm/s², por el tamaño: más que la tortuga esprintando). */
 	constexpr float ChargePrepTime = 0.55f;
 	constexpr float ChargeSpeed = 1150.f;
 	constexpr float ChargeAccel = 3200.f;
-	/** Como mucho este tiempo embistiendo; se pasa de la tortuga esto (cm) y luego derrapa (s, cm/s²). */
-	constexpr float ChargeMaxTime = 1.5f;
-	constexpr float ChargeOvershoot = 700.f;
+	/** Como mucho este tiempo embistiendo (antes 1,5); se pasa de la tortuga esto (cm; antes 700) y luego derrapa (s, cm/s²). */
+	constexpr float ChargeMaxTime = 1.4f;
+	constexpr float ChargeOvershoot = 400.f;
 	constexpr float SkidTime = 0.8f;
 	constexpr float SkidDecel = 2000.f;
 	/** Tiempo sin volver a embestir (s). */
 	constexpr float ChargeCooldown = 5.f;
+	/**
+	 * Holgura de la caja que arrolla, además del cuerpo con las patas (cm): el radio de la tortuga. Antes 90 y 110 cm,
+	 * que arrollaban a 1 m del cangrejo sin tocarlo.
+	 */
+	constexpr float RamMargin = 45.f;
 	/** Arrollada: derribo con ragdoll (s), empujón en el sentido de la embestida, hacia arriba y de lado, y vueltas. */
 	constexpr float ChargeKnock = 2.4f;
 	constexpr float ChargePush = 950.f;
@@ -668,7 +686,14 @@ void ATN_BeachGiantCrab::StartWindUp(ATortugaCharacter* Victim)
 
 void ATN_BeachGiantCrab::ResolveSlam()
 {
-	const FVector Impact = Mover.Aim;
+	// El golpe cuenta donde la pinza toca de verdad: la punta del dedo, delante del cuerpo a lo que alcanza (Reach). Si al caer
+	// aún no ha llegado a la sombra (no le ha dado tiempo a recolocarse en el aviso), vale donde ha caído, no donde iba.
+	FVector Impact = Mover.Aim;
+	const FVector Tip = SimLoc + FRotator(0.f, SimYaw, 0.f).RotateVector(FVector(Reach, 0.0, 0.0));
+	if (FVector::Dist2D(Tip, Impact) > TNBeachCrab::SlamTipTolerance * SizeK)
+	{
+		Impact = FVector(Tip.X, Tip.Y, Impact.Z);
+	}
 	bool bHit = false;
 	if (IsRaceLive(this))
 	{
@@ -682,7 +707,7 @@ void ATN_BeachGiantCrab::ResolveSlam()
 				continue;
 			}
 			const FVector At = Turtle->GetActorLocation();
-			if (FVector::Dist2D(At, Impact) > Radius || FMath::Abs(At.Z - Impact.Z) > 450.0)
+			if (FVector::Dist2D(At, Impact) > Radius || FMath::Abs(At.Z - Impact.Z) > TNBeachCrab::SlamHeight)
 			{
 				continue;
 			}
@@ -759,8 +784,8 @@ void ATN_BeachGiantCrab::ChargeHits()
 	GatherTurtles(this, Turtles);
 	const FTransform Xf(FRotator(0.f, SimYaw, 0.f), SimLoc);
 	const double S = TNBeach::Scale * SizeK;
-	const double HalfX = TNBeachMeshes::CrabD * S + 90.0;
-	const double HalfY = TNBeachMeshes::CrabW * S * 1.08 + 110.0;
+	const double HalfX = TNBeachMeshes::CrabD * S + TNBeachCrab::RamMargin;
+	const double HalfY = TNBeachMeshes::CrabW * S * 1.08 + TNBeachCrab::RamMargin;
 	const FVector Dir = FVector(MoveVel.X, MoveVel.Y, 0.0).GetSafeNormal();
 	for (ATortugaCharacter* Turtle : Turtles)
 	{

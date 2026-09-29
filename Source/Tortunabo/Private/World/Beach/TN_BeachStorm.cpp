@@ -1286,13 +1286,9 @@ void ATN_BeachStorm::TickFX(float DeltaSeconds)
 	TickBathers(DeltaSeconds, Front, ViewLocal);
 	TickKicks(DeltaSeconds);
 
-	// Viento: fuerte en el frente y dentro. Aviso claro si el frente te pisa los talones; temblor dentro.
-	if (Voice)
-	{
-		Voice->SetWorldLocation(FrontPoint + FVector(0.0, 0.0, 500.0));
-		const float Near = FMath::Clamp(1.f - FMath::Abs(static_cast<float>(ViewLocal.X) - Front) / 30000.f, 0.f, 1.f);
-		Voice->SetWind(bShown ? FMath::Max(Near * (bActive ? 0.9f : 0.45f), InsideBlend) : 0.f);
-	}
+	// El ruido de la tormenta no lo hace este actor: es el paisaje sonoro de siempre (viento, silbido y truenos, el mismo del
+	// cooperativo), que se sube al acercarse el frente y dentro (UTN_AmbientSoundscapeComponent::UpdateMix). Aquí no suena nada
+	// continuo ni rítmico; solo el golpe de la patada. Aviso claro si el frente te pisa los talones; temblor dentro.
 	if (bActive && LocalPawn)
 	{
 		if (bLocalInside)
@@ -1315,10 +1311,6 @@ void ATN_BeachStorm::TickFX(float DeltaSeconds)
 			{
 				bWarned = true;
 				WarnPop.Show(this, NSLOCTEXT("TNBeach", "StormWarn", "¡QUE VIENE LA TORMENTA!"), FColor(240, 180, 90), LocalAt + Flat * 450.0 + FVector(0.0, 0.0, 260.0), 110.f);
-				if (Voice)
-				{
-					Voice->Play(ETNBeachSfx::Stomp, 0.8f, 1.2f);
-				}
 			}
 		}
 		else if (Ahead > WarnDistance * 1.6f)
@@ -1445,8 +1437,6 @@ void ATN_BeachStorm::TickBathers(float DeltaSeconds, float Front, const FVector&
 	const float Yaw = static_cast<float>(Xf.Rotator().Yaw);
 	const double S = TNBeach::Scale;
 	const double HipZ = TNBeachStormTuning::HipHeight * S;
-	int32 Nearest = INDEX_NONE;
-	double NearestSq = FMath::Square(15000.0);
 	for (int32 b = 0; b < Bathers.Num(); ++b)
 	{
 		FBather& B = Bathers[b];
@@ -1486,7 +1476,8 @@ void ATN_BeachStorm::TickBathers(float DeltaSeconds, float Front, const FVector&
 		TNBeachKit::Pose(BatherParts[First], Hip, FRotator(0.f, 4.f * Swing, 0.f));
 		TNBeachKit::Pose(BatherParts[First + 1], Hip + FVector(0.0, -TNBeachStormTuning::HipHalfWidth * S, 0.0), FRotator(24.f * Swing, 0.f, 0.f));
 		TNBeachKit::Pose(BatherParts[First + 2], Hip + FVector(0.0, TNBeachStormTuning::HipHalfWidth * S, 0.0), FRotator(-24.f * Swing, 0.f, 0.f));
-		// Un pisotón en cada paso (dos por ciclo), justo en el borde.
+		// Un pisotón en cada paso (dos por ciclo), justo en el borde: solo se ve (polvo). Sin sonido ni sacudida por paso: el
+		// «pum, pum, pum» constante era lo más molesto de la tormenta (el ruido es el del paisaje sonoro, como en el cooperativo).
 		const float Step = FMath::FloorToFloat(Cycle * 2.f);
 		if (bActive && Step != B.LastStep)
 		{
@@ -1498,24 +1489,7 @@ void ATN_BeachStorm::TickBathers(float DeltaSeconds, float Front, const FVector&
 				const FVector Foot = Xf.TransformPositionNoScale(Local + FVector(300.0, FootSide * TNBeachStormTuning::HipHalfWidth * S, 0.0));
 				TNBeachKit::BurstAt(FrontDust, FVector(Foot.X, Foot.Y, B.Ground + 200.0), FVector::UpVector, 3);
 			}
-			if (DistSq < NearestSq && Shown > 0.5f)
-			{
-				NearestSq = DistSq;
-				Nearest = b;
-			}
 		}
-	}
-	// Solo el pisotón más cercano suena y hace temblar.
-	if (Nearest != INDEX_NONE)
-	{
-		const FBather& B = Bathers[Nearest];
-		FVector At = Xf.TransformPositionNoScale(FVector(Front - B.Depth, B.SlotY, 0.0));
-		At.Z = B.Ground;
-		if (Voice)
-		{
-			Voice->Play(ETNBeachSfx::Stomp, 0.9f + 0.2f * Rand01(), 1.1f);
-		}
-		UTN_BeachCameraShake::Kick(this, At, 0.28f, 3000.f, 12000.f);
 	}
 }
 

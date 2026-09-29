@@ -722,6 +722,42 @@ namespace TNBeachMeshes
 		TNFauna::TNFaunaBlob(M, FVector(8.0, -6.0, 7.0), FVector(10.0, 9.0, 5.0), Rgb(0.45f, 0.42f, 0.36f), Rgb(0.4f, 0.38f, 0.32f), 6, 3);
 	}
 
+	/**
+	 * Signo de exclamación de aviso (cm de juego) sobre la tortuga a la que va la cagada: barra y punto amarillos con borde
+	 * rojo oscuro, planos en YZ (mira a +X), de 105 cm de alto con el pie en Z = 0. Sin caras solapadas (el borde es un
+	 * anillo aparte del relleno) para que no se pisen al ser translúcido. Se hace mirar a la cámara al usarlo.
+	 */
+	inline void BuildWarningMark(FTNProcMeshBuffers& M)
+	{
+		const FLinearColor Fill = Rgb(1.f, 0.86f, 0.08f);
+		const FLinearColor Rim = Rgb(0.78f, 0.06f, 0.04f);
+		const FVector Front = FVector::ForwardVector;
+		auto P = [](double Y, double Z) { return FVector(0.0, Y, Z); };
+		// Barra: trapecio ancho arriba y estrecho abajo, con su borde.
+		const FVector BarIn[4] = { P(-11.0, 100.0), P(11.0, 100.0), P(6.5, 35.0), P(-6.5, 35.0) };
+		const FVector BarOut[4] = { P(-15.5, 104.5), P(15.5, 104.5), P(10.5, 30.5), P(-10.5, 30.5) };
+		M.AddQuad(BarIn[0], BarIn[1], BarIn[2], BarIn[3], Front, Fill);
+		for (int32 k = 0; k < 4; ++k)
+		{
+			const int32 Next = (k + 1) % 4;
+			M.AddQuad(BarOut[k], BarOut[Next], BarIn[Next], BarIn[k], Front, Rim);
+		}
+		// Punto: disco de 12 lados con su borde.
+		constexpr int32 Seg = 12;
+		const FVector Center = P(0.0, 14.0);
+		for (int32 k = 0; k < Seg; ++k)
+		{
+			const double A0 = TNProcMap::TwoPi * k / Seg;
+			const double A1 = TNProcMap::TwoPi * (k + 1) / Seg;
+			const FVector I0 = P(FMath::Cos(A0) * 8.5, 14.0 + FMath::Sin(A0) * 8.5);
+			const FVector I1 = P(FMath::Cos(A1) * 8.5, 14.0 + FMath::Sin(A1) * 8.5);
+			const FVector O0 = P(FMath::Cos(A0) * 13.0, 14.0 + FMath::Sin(A0) * 13.0);
+			const FVector O1 = P(FMath::Cos(A1) * 13.0, 14.0 + FMath::Sin(A1) * 13.0);
+			M.AddTri(Center, I0, I1, Front, Fill);
+			M.AddQuad(O0, O1, I1, I0, Front, Rim);
+		}
+	}
+
 	// ─────────────────────────────────────────────────────────────────────────
 	// Tormenta de bañistas: trastos que vuelan y piernas que pisan (medidas reales a escala)
 	// ─────────────────────────────────────────────────────────────────────────

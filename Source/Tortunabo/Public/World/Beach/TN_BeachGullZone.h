@@ -5,6 +5,8 @@
 #include "World/ProcMap/TN_ProcMapAmbientFX.h"
 #include "TN_BeachGullZone.generated.h"
 
+class UDecalComponent;
+class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
 
 /** Ataque en curso de una zona de gaviotas (replicado; cada máquina anima el pájaro con el reloj del servidor). */
@@ -70,9 +72,12 @@ struct FTNBeachGullAttack
  *
  * Cuando hay tortugas debajo, cada 3-6 s la más cercana baja a por una de ellas:
  *  - Cagada: vuela sobre ella y la suelta desde 30 m; cae un pegote blanco bien visible con su estela y una sombra dura y
- *    negra que nace diminuta y crece hasta la mancha según cae (2,1 s para apartarse). El blanco sigue a la tortuga a
+ *    negra que nace pequeña y crece hasta la mancha según cae (2,1 s para apartarse). Sobre la tortuga a la que va, un
+ *    signo de exclamación que parpadea cada vez más rápido según cae (WarnMark). El blanco sigue a la tortuga a
  *    6,25 m/s como mucho: andando te pilla; corriendo, te libras. Quien esté dentro al caer (y no a cubierto) cae
- *    derribada con ragdoll y mareo (TNBeach::KnockDownTurtle), con la mancha en el caparazón. «¡PLOF!».
+ *    derribada con ragdoll y mareo (TNBeach::KnockDownTurtle), con la cagada PINTADA en el caparazón (un decal sujeto a
+ *    su hueso de la espalda con el material M_PoopSplatDecal; Scripts/create_poop_decal.py): 8 s entera y luego se seca y
+ *    se desvanece hasta desaparecer a los 12 s. «¡PLOF!».
  *  - Picado: sube casi encima de ella y baja en picado 2,3 s siguiéndola por el aire, también a 6,25 m/s como mucho; en
  *    la arena, una sombra dura y negra que nace diminuta al empezar a bajar y crece con él marca dónde va a dar. Abre el
  *    pico en el último momento y, si la tortuga sigue debajo (se esquiva corriendo, con el panzazo o en bola), la coge por
@@ -117,8 +122,8 @@ protected:
 	virtual void OnHoldAborted(ATortugaCharacter* Turtle) override;
 	virtual float GetVisualRange() const override { return 40000.f; }
 
-	/** Todas las máquinas: la cagada ha caído en Where y ha derribado a Hit (con la mancha en su caparazón). */
-	UFUNCTION(NetMulticast, Unreliable)
+	/** Todas las máquinas: la cagada ha caído en Where y ha derribado a Hit (con la mancha en su caparazón). Fiable: la mancha se ve en todas. */
+	UFUNCTION(NetMulticast, Reliable)
 	void MulticastSplat(FVector_NetQuantize Where, const TArray<ATortugaCharacter*>& Hit);
 
 private:
@@ -195,13 +200,30 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> DiveMarker;
 
-	/** Manchas en la arena y pegotes en los caparazones, con su hora de nacer y su vida. */
+	/** Manchas en la arena (y, sin el material del decal, pegotes en los caparazones), con su hora de nacer y su vida. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> Splats;
 
 	TArray<float> SplatBorn;
 	TArray<float> SplatLife;
 	TArray<float> SplatScale;
+
+	/** Cagadas pintadas en las tortugas: decal sujeto al hueso de la espalda, su material propio (Seed y Fade) y su hora de nacer. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UDecalComponent>> StainDecals;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> StainMids;
+
+	TArray<float> StainBorn;
+
+	/** Aviso de la cagada: signo de exclamación sobre la tortuga a la que va (parpadea más deprisa según cae). */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> WarnMark;
+
+	/** Fase del parpadeo del aviso (vueltas) y contador de manchas para variar la forma de cada una. */
+	float WarnPhase = 0.f;
+	int32 StainCounter = 0;
 
 	float SizeK = 1.f;
 	float AttackRadius = 3800.f;
@@ -296,6 +318,12 @@ private:
 	/** Todas las máquinas: ha cambiado el ataque replicado (graznidos, plumas, arena). */
 	void OnAttackChanged();
 	void PoseBird(int32 Index, float DeltaSeconds, bool bAttacking, float Tau);
-	/** Mancha en la arena (InTurtle nulo) o pegote en el caparazón de InTurtle. */
+	/** Mancha en la arena (InTurtle nulo) o pegote en el caparazón de InTurtle (el plan B de SpawnStain). */
 	void SpawnSplat(const FVector& Where, ATortugaCharacter* InTurtle, float InScale, float Life);
+	/** Todas las máquinas: cagada pintada (decal) en el caparazón de InTurtle; sin el material, el pegote pequeño y pegado. */
+	void SpawnStain(ATortugaCharacter* InTurtle, int32 Variant);
+	/** Visual: las cagadas de las tortugas se secan (Fade del material) y se quitan a los 12 s. */
+	void TickStains();
+	/** Visual: el signo de exclamación sobre la tortuga objetivo de la cagada (posición, cámara y parpadeo). */
+	void TickWarnMark(float DeltaSeconds, double Now, const FVector& View, bool bNear);
 };

@@ -31,7 +31,8 @@ class ATortugaCharacter;
  * ~4 m/s la ronda dura unos 3 min 20 s), cuando la primera tortuga ha hecho el 80 % del recorrido o si la última se ha
  * quedado muy atrás (para que siempre se note). Sus tiempos y distancias salen de los de un recorrido de 1200 m (15 s de
  * gracia, 4 min, 180 y 120 m) por 2/3, lo que se acortó la carrera (TNBeach::CourseLength). Antes
- * de alcanzarte avisa (temblor, viento, arena y «¡QUE VIENE LA TORMENTA!»). Nadie se puede quedar detrás del frente: a
+ * de alcanzarte avisa (temblor, viento, arena y «¡QUE VIENE LA TORMENTA!»; el viento, el silbido y los truenos son los del paisaje sonoro, como en el cooperativo, y los
+ * pisotones de los bañistas no suenan). Nadie se puede quedar detrás del frente: a
  * quien se queda detrás (también si una gaviota la suelta ahí) un bañista le da una patada que la lleva hasta KickAhead
  * (20 m) por delante del frente. El sitio lo resuelve el servidor antes de patear (arena abierta de verdad, cabe de pie,
  * fuera del agua; TNBeach::FindOpenSandSpot) y la patada acaba ahí sí o sí: en bola por el aire si el arco está libre
