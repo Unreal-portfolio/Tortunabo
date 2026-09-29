@@ -334,18 +334,32 @@ public:
 	// ── Tutorial state ───────────────────────────────────────────────────────
 
 	/**
-	 * @brief Devuelve true si esta máquina ya ha spawneado al jugador en la zona de tutorial.
-	 * @note El flag se persiste en disco y se consulta una sola vez al entrar al HQ.
+	 * @brief true si el jugador de esta máquina ya ha hecho (o saltado) el tutorial de la primera partida.
+	 * @note Guardado local (UTN_TutorialSaveGame, GetTutorialSlotName). Lo mira UTN_TutorialPlayerComponent al llegar al
+	 *       lobby y, al unirse a una sala, decide la opción ?TNTut=1 de la URL. Docs/Tutorial.md.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Tutorial")
 	bool HasCompletedTutorial() const;
 
 	/**
-	 * @brief Marca el tutorial como completado y persiste el flag inmediatamente.
-	 * @note Llamado por TN_HQGameMode la primera vez que enruta a un jugador a la zona de tutorial.
+	 * @brief Marca el tutorial como hecho y lo guarda en el acto.
+	 * @note Lo llama UTN_TutorialPlayerComponent al caer por la cascada o al saltarlo.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Tutorial")
 	void SetTutorialCompleted();
+
+	/** Vuelve a dejar el tutorial por hacer (consola TN.Tutorial.Reset y el archivo Saved/ResetTutorial.txt) y lo guarda. */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void ResetTutorialProgress();
+
+	/**
+	 * Ranura del guardado del tutorial de esta máquina: TutorialState_0 y, en el editor con varias ventanas (PIE), una por
+	 * ventana (TutorialState_0_PIE1, _PIE2...), así el anfitrión y un cliente nuevo se prueban en el mismo PC.
+	 */
+	FString GetTutorialSlotName() const;
+
+	/** Opción de la URL con la que un cliente que no ha hecho el tutorial se une a una sala (el servidor lo pone ya en él). */
+	static const TCHAR* TutorialJoinOption() { return TEXT("TNTut"); }
 
 	/**
 	 * Número de jugadores conectados en el lobby ANTES de hacer ServerTravel al Run.

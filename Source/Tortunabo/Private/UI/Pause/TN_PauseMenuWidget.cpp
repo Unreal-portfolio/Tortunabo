@@ -10,6 +10,7 @@
 #include "Game/TN_RunGameMode.h"
 #include "Game/TN_TerrainViewGameMode.h"
 #include "Lobby/TN_HQGameMode.h"
+#include "Lobby/TN_TutorialPlayerComponent.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Multiplayer/TN_RoomNames.h"
 #include "Player/TortugaCharacter.h"
@@ -1298,6 +1299,37 @@ void UTN_PauseMenuWidget::BuildHomeButtons()
 	AddBig(NSLOCTEXT("TNPause", "Controls", "Controles"), TNPauseArt::EMenuIcon::Controls,
 		NSLOCTEXT("TNPause", "ControlsDesc", "Todas las teclas y botones del juego, con teclado y ratón o con mando."),
 		[WeakThis]() { if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowPage(ETNPausePage::Controls); } });
+
+	// Tutorial de la primera partida (Docs/Tutorial.md): saltarlo, con confirmación. Solo mientras se está en él.
+	const UTN_TutorialPlayerComponent* TutorialComp = UTN_TutorialPlayerComponent::FindFor(GetOwningPlayer());
+	if (TutorialComp && TutorialComp->IsInTutorial())
+	{
+		AddBig(NSLOCTEXT("TNTutorial", "PauseSkip", "Saltar el tutorial"), TNPauseArt::EMenuIcon::Lobby,
+			NSLOCTEXT("TNTutorial", "PauseSkipDesc", "Bajas directamente al lobby del castillo y no vuelve a salir en las siguientes partidas."),
+			[WeakThis]()
+			{
+				UTN_PauseMenuWidget* Menu = WeakThis.Get();
+				if (!Menu)
+				{
+					return;
+				}
+				Menu->AskConfirm(NSLOCTEXT("TNTutorial", "PauseSkipTitle", "¿Saltar el tutorial?"),
+					NSLOCTEXT("TNTutorial", "PauseSkipText", "Vuelves al lobby y el tutorial queda hecho en este ordenador. Las teclas siempre están en Controles."),
+					NSLOCTEXT("TNTutorial", "PauseSkipYes", "Saltar"), [WeakThis]()
+					{
+						UTN_PauseMenuWidget* SkipMenu = WeakThis.Get();
+						if (!SkipMenu)
+						{
+							return;
+						}
+						if (UTN_TutorialPlayerComponent* Comp = UTN_TutorialPlayerComponent::FindFor(SkipMenu->GetOwningPlayer()))
+						{
+							Comp->RequestSkip();
+						}
+						SkipMenu->CloseMenu();
+					});
+			});
+	}
 
 	// Sala (partida en red): su nombre y código, cerrarla y abrirla y expulsar (el anfitrión), y quién está dentro.
 	if (HasRoomPage())

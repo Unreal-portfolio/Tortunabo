@@ -6,6 +6,7 @@
 #include "Online.h"
 #include "OnlineSessionSettings.h"
 #include "Engine/World.h"
+#include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -756,6 +757,11 @@ void UMP_GameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCo
 	FString ConnectInfo;
 	if (Sessions.IsValid() && Sessions->GetResolvedConnectString(SessionName, ConnectInfo) && !ConnectInfo.IsEmpty())
 	{
+		// Primera partida de esta máquina: se dice al entrar y el servidor la pone ya en el tutorial (Docs/Tutorial.md).
+		if (!HasCompletedTutorial())
+		{
+			ConnectInfo += FString::Printf(TEXT("?%s=1"), TutorialJoinOption());
+		}
 		ShowLoadingScreen(PendingJoinRoomName.IsEmpty() ? FString(TEXT("Conectando a la partida..."))
 			: FText::Format(NSLOCTEXT("TNRooms", "Connecting", "Entrando en «{0}»..."), PendingJoinRoomName).ToString());
 		// Igual que al crear la sesión: se conecta cuando el huevo ya está cerrado del todo.
@@ -1215,28 +1221,90 @@ void UMP_GameInstance::SetTutorialCompleted()
 		return;
 	}
 	TutorialProfile->bHasCompletedTutorial = true;
+	TutorialProfile->TimesCompleted = FMath::Max(0, TutorialProfile->TimesCompleted) + 1;
 	SaveTutorialProfile();
-	UE_LOG(LogTortunabo, Log, TEXT("[GameInstance] Tutorial marcado como completado y guardado."));
+	UE_LOG(LogTortunabo, Log, TEXT("[GameInstance] Tutorial marcado como completado y guardado (%s)."), *GetTutorialSlotName());
+}
+
+void UMP_GameInstance::ResetTutorialProgress()
+{
+	if (!TutorialProfile)
+	{
+		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_TutorialSaveGame::StaticClass()));
+	}
+	if (!TutorialProfile)
+	{
+		return;
+	}
+	TutorialProfile->bHasCompletedTutorial = false;
+	SaveTutorialProfile();
+	UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] Estado reiniciado (%s): la próxima vez que llegues a un lobby empiezas en el tutorial."), *GetTutorialSlotName());
+}
+
+FString UMP_GameInstance::GetTutorialSlotName() const
+{
+	// En el editor cada ventana de PIE es una «máquina»: su propia ranura (la primera ventana, la de siempre).
+	const FWorldContext* Context = GetWorldContext();
+	const int32 PIEInstance = (Context && Context->WorldType == EWorldType::PIE) ? Context->PIEInstance : INDEX_NONE;
+	return PIEInstance > 0 ? FString::Printf(TEXT("TutorialState_0_PIE%d"), PIEInstance) : FString(TEXT("TutorialState_0"));
 }
 
 void UMP_GameInstance::LoadTutorialProfile()
 {
-	if (UGameplayStatics::DoesSaveGameExist(TEXT("TutorialState_0"), 0))
+	const FString Slot = GetTutorialSlotName();
+	if (UGameplayStatics::DoesSaveGameExist(Slot, 0))
 	{
-		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("TutorialState_0"), 0));
+		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::LoadGameFromSlot(Slot, 0));
 	}
 
 	if (!TutorialProfile)
 	{
 		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_TutorialSaveGame::StaticClass()));
 	}
+
+	// Para probar (Docs/Tutorial.md): con Saved/ResetTutorial.txt, cada vez que arranca el juego (o cada PIE) el tutorial vuelve
+	// a estar por hacer. Vacío = todas las ventanas; con números, solo esas (0 = la primera ventana o el juego suelto,
+	// 1 = «Cliente 1», 2 = «Cliente 2»...). Se deja el archivo: para volver a lo normal, se borra.
+	const FString ResetFile = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("ResetTutorial.txt"));
+	if (TutorialProfile && FPaths::FileExists(ResetFile))
+	{
+		FString Contents;
+		FFileHelper::LoadFileToString(Contents, *ResetFile);
+		TArray<FString> Tokens;
+		Contents.ParseIntoArrayWS(Tokens, TEXT(",;"));
+		const FWorldContext* Context = GetWorldContext();
+		const int32 Window = (Context && Context->WorldType == EWorldType::PIE) ? FMath::Max(0, Context->PIEInstance) : 0;
+		bool bAll = true;
+		bool bMine = false;
+		for (const FString& Token : Tokens)
+		{
+			if (Token.IsNumeric())
+			{
+				bAll = false;
+				bMine |= FCString::Atoi(*Token) == Window;
+			}
+		}
+		if (bAll || bMine)
+		{
+			TutorialProfile->bHasCompletedTutorial = false;
+			SaveTutorialProfile();
+			UE_LOG(LogTortunabo, Warning, TEXT("[Tutorial] %s existe: tutorial reiniciado para la ventana %d (%s). Bórralo para volver a lo normal."),
+				*ResetFile, Window, *Slot);
+		}
+		else
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] %s no nombra la ventana %d: su tutorial no se toca."), *ResetFile, Window);
+		}
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] Guardado %s: %s."), *Slot,
+		TutorialProfile && TutorialProfile->bHasCompletedTutorial ? TEXT("tutorial hecho") : TEXT("tutorial por hacer"));
 }
 
 void UMP_GameInstance::SaveTutorialProfile() const
 {
 	if (TutorialProfile)
 	{
-		UGameplayStatics::SaveGameToSlot(TutorialProfile, TEXT("TutorialState_0"), 0);
+		UGameplayStatics::SaveGameToSlot(TutorialProfile, GetTutorialSlotName(), 0);
 	}
 }
 

@@ -1,11 +1,14 @@
 #include "World/TN_TutorialEntryInteractable.h"
 #include "Core/TN_Log.h"
+#include "Lobby/TN_TutorialCourse.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "EngineUtils.h"
 
 ATN_TutorialEntryInteractable::ATN_TutorialEntryInteractable()
 {
-	PromptText        = FText::FromString(TEXT("Repetir Tutorial"));
+	PromptText        = NSLOCTEXT("TNTutorial", "ReplayPrompt", "Repetir el tutorial");
 	InteractionDistance = 300.f;
 	CooldownSeconds   = 1.0f;
 }
@@ -17,7 +20,18 @@ void ATN_TutorialEntryInteractable::Interact(APawn* Interactor)
 		return;
 	}
 
-	// Find the nearest PlayerStart tagged as tutorial zone entry
+	// El tutorial del cielo (ATN_TutorialCourse, Docs/Tutorial.md): se vuelve a empezar desde la salida.
+	if (ATN_TutorialCourse* Course = ATN_TutorialCourse::Find(this))
+	{
+		if (APlayerController* PC = Cast<APlayerController>(Interactor->GetController()))
+		{
+			Course->StartFor(PC);
+			Super::Interact(Interactor);
+			return;
+		}
+	}
+
+	// Sin él (mapa antiguo): al PlayerStart de la zona de tutorial más cercano.
 	APlayerStart* TutorialStart = nullptr;
 	float BestDistSq = MAX_FLT;
 	const FVector InteractorLoc = Interactor->GetActorLocation();

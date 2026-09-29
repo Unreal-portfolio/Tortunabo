@@ -75,10 +75,11 @@ necesita espera a que esté lista.
 
 | Comando | Qué hace |
 |---|---|
-| `TN.Beach.Gull.Attack 1` | Cada zona de gaviotas suelta una cagada sobre la tortuga más cercana (ragdoll y mancha). Quieta o andando te da; corriendo, cambiando de dirección cuando el «!» parpadea deprisa (el blanco ya no se mueve el último 0,45 s) o tirándote en plancha en el momento justo, te libras (`esquiva la cagada … en plancha` en el registro). |
-| `TN.Beach.Gull.Attack 2` | Picado con agarre: sombra negra que nace diminuta y crece mientras baja siguiéndote (2,3 s). Andando te pilla: te sube pataleando y te suelta en bola (siempre caes al suelo). Si echas a correr al verla, cambias de dirección corriendo en los últimos 0,6 s (ya va lanzada y apenas corrige), te tiras en plancha o te metes en bola, baja igual, pica la arena y vuelve a subir. Sin número, al azar. |
+| `TN.Beach.Gull.Attack 1` | Cada zona de gaviotas suelta una cagada sobre la tortuga más cercana (ragdoll y mancha). Quieta, andando o corriendo en línea recta te da; si al quedarse fijo el «!» (el último 1,5 s: ya cae por la línea que llevabas) giras corriendo 60° o más o te das la vuelta, o te tiras en plancha justo antes de que caiga, te libras (`esquiva la cagada … en plancha` en el registro). |
+| `TN.Beach.Gull.Attack 2` | Picado con agarre: sombra negra que nace diminuta y crece mientras baja siguiéndote (2,3 s). Andando o corriendo en línea recta te pilla: te sube pataleando y te suelta en bola (siempre caes al suelo). Si cuando pliega las alas del todo (el último 1,5 s: ya va lanzada por tu línea) giras corriendo 60° o más o te das la vuelta, te tiras en plancha o te metes en bola, baja igual, pica la arena y vuelve a subir. Sin número, al azar. |
 | `TN.Beach.Gull.Grab [veces=2] [jugador]` | La zona de gaviotas más cercana coge a tu tortuga (o a la del jugador N, índice en `PlayerArray` del anfitrión) con el pico N veces seguidas: cada vez que estés libre (de pie, sin bola ni derribo), un picado que ya va por su último medio segundo y te coge si no te mueves. Para el fallo «segunda gaviota + caparazón»: colgando, pulsa el caparazón (sin objeto en la mano) y cae en bola aturdida, como al acabar el vuelo; en el registro, `se le escurre` y ningún `Red de seguridad`. Ver `Docs/Modo_Carrera.md`, «Segunda gaviota + caparazón = torbellino». |
-| `Automation RunTests Tortunabo.Beach.Hold` / `Automation RunTests Tortunabo.Beach.Gull` | Pruebas automáticas de lógica pura (en la consola del editor o en Session Frontend): quién mueve a la tortuga y la sujeción de los enemigos con agarres seguidos, y el nerf de las gaviotas (andando te pilla, corriendo o cambiando de dirección al final te libras, la plancha libra de la cagada). |
+| `Automation RunTests Tortunabo.Beach.Hold` / `Automation RunTests Tortunabo.Beach.Gull` / `Automation RunTests Tortunabo.Beach.Crab` | Pruebas automáticas de lógica pura (en la consola del editor o en Session Frontend), con las velocidades de verdad (2 y 4 m/s): quién mueve a la tortuga y la sujeción de los enemigos con agarres seguidos; el nerf de las gaviotas (andando o corriendo recto te pilla; girando corriendo al lanzarse te libras; la plancha libra de la cagada); el cangrejo gigante (persigue entre andar y correr, su mazazo se salta). |
+| `TN.Beach.Place GiantCrab` | Un cangrejo gigante delante: andando te alcanza, corriendo se te escapa poco a poco; al levantar la pinza, salta (lo pasa por encima: `salta por encima del mazazo` en el registro) o corre hacia otro lado. |
 | `TN.Beach.Quad.Now` | Todos los pasos de quads avisan y pasan ya. |
 | `TN.Beach.Storm.Start [metros detrás=30] [cm/s=180]` | Arranca la tormenta de bañistas. |
 | `TN.Beach.Storm.Here [jugador] [metros=4]` | Pone el frente de la tormenta 4 m (o `metros`) por delante de tu tortuga o de la del jugador N (índice en `PlayerArray`: así se prueba la del cliente desde el anfitrión): se queda dentro y un bañista le da la patada. Acaba sí o sí en arena abierta ~20 m por delante del frente: en bola si el arco está libre, de un salto con polvo si no (o si está a más de 45 m). Con `metros` = 30 o 60 se prueban la patada larga y el salto. Sin tormenta, crea una. Ver `Docs/Modo_Carrera.md`, «La patada que no puede entrar en bucle». |
@@ -255,3 +256,17 @@ los resultados con ocho filas. `TN.Proc.StartStyle 0|1` fuerza cómo se sale.
 | `TN.Voice.Drag 1` / `TN.Voice.Drag 2` | Arrastre de panzazo de prueba: `1` lento, `2` rápido; `0` lo apaga. |
 | `TN.Dive.Debug 1` | Datos del deslizamiento del panzazo. |
 | `TN.Music.Play Victoria` | Hace sonar una pista: `Victoria`, `Derrota`, `Eliminado`, `Tienda`, `Probador` o `Silencio`. |
+
+## Tutorial de la primera partida
+
+Estos se escriben en la ventana de **quien lo prueba** (anfitrión o cliente): cada ventana de PIE tiene su guardado. Para
+reiniciarlo al arrancar sin consola, `Saved/ResetTutorial.txt` (vacío = todas las ventanas; `0 1` = solo esas). Detalle en
+`Docs/Tutorial.md`.
+
+| Comando | Qué hace |
+|---|---|
+| `TN.Tutorial.Reset` | Deja el tutorial por hacer en esta ventana: empieza al llegar al siguiente lobby. |
+| `TN.Tutorial.Start` | En el lobby: empieza ahora desde la salida (aunque ya esté hecho o se esté dentro). |
+| `TN.Tutorial.Skip` | Lo salta como el menú de pausa: baja a la plaza del castillo y queda apuntado como hecho. |
+| `TN.Tutorial.Station 12` | Lleva a la estación 12 (1-19) y mete en el tutorial si hace falta. Sin número, escribe la lista. |
+| `TN.Tutorial.Info` | Ranura del guardado, hecho o no, dentro o fuera, estación y cuántos hay dentro (en el servidor). |
