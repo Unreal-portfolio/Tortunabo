@@ -1343,7 +1343,7 @@ tortuga ya caía. `TN.Beach.Gull.Grab` junto al frente de la tormenta falla a pr
 `ServerSlipHeldTurtle` y `CanHoldTurtle` (estáticas); `TNBeach::FTNMoverView`, `ResolveMover` y `CanStunOver` (en línea en
 `TN_BeachStun.h`), `SlipFromHolder` e `IsDodgingByBellyDive`; en `UTN_ShellComponent`, `FindFreeBodySpot` y
 `EnforceBodyLocalState` y fuera los campos `Saved*` de la cápsula y del suavizado; `ATN_BeachGullZone::DebugGrab`,
-`IsNearStormFront` y `ServerTrackAim(float, float)` (la zona incluye ahora `TN_BeachStorm.h`); `TN_BeachEnemyDebug.cpp`
+`IsNearStormFront` y `ServerTrackAim(float, float, const FChasePlan&)` (la zona incluye ahora `TN_BeachStorm.h`, y las cabeceras de la zona y de la justiciera, `TN_BeachGullTuning.h`, con los `struct` `FChasePlan` y `FChaseState`); `TNBeachCrabTuning` en `TN_BeachGiantCrab.h`; `TN_BeachEnemyDebug.cpp`
 incluye `Player/TortugaCharacter.h`; `TN_SeagullDroppingActor.h` tiene un `UPROPERTY` nuevo (`bBellyDiveDodges`).
 
 **Qué probar** (anfitrión y, si se puede, cliente):
@@ -2159,7 +2159,7 @@ la cima de la fortaleza más cercana, detrás del lanzador. Semillas seguidas pa
 | `TN_BeachLizard.*` | `ATN_BeachLizard`: lagarto que toma el sol; por semilla, huidizo, generoso (deja premio) o mordedor |
 | `TN_BeachQuadLane.*` | `ATN_BeachQuadLane`: paso de quads que cruza la playa |
 | `TN_BeachGullZone.*` | `ATN_BeachGullZone`: gaviotas y pelícanos que cagan (la cagada queda PINTADA en el caparazón con un decal y avisa con un signo de exclamación), bajan en picado y se llevan tortugas en el pico |
-| `TN_BeachGullTuning.h` | Cifras y cuentas puras de las gaviotas (zona y justiciera): radios, velocidad del blanco por tramos, plancha (ronda 4); pruebas en `Private/Tests/TN_BeachGullTuningTest.cpp` |
+| `TN_BeachGullTuning.h` | Cifras y cuentas puras de las gaviotas (zona y justiciera): radios, persecución del blanco y su último tramo lanzado, plancha (ronda 4); las del cangrejo gigante, en `TNBeachCrabTuning` (`TN_BeachGiantCrab.h`); pruebas en `Private/Tests/TN_BeachGullTuningTest.cpp` |
 | `TN_BeachStorm.*` | `ATN_BeachStorm`: la tormenta de bañistas (no es un elemento; la crea el GameMode) |
 | `TN_BeachSandWorm.*`, `TN_BeachSandWormMeshes.h`, `TN_BeachSandWormSynth.*` | `ATN_BeachSandWorm`: el gusano de arena gigante que se come a las rezagadas al acabar la cuenta atrás (no es un elemento; lo crea el GameMode), sus mallas y sus sonidos |
 | `TN_BeachCameraShake.*` | `UTN_BeachCameraShake`: temblor de cámara (no había ninguno en el proyecto) |
@@ -2290,9 +2290,12 @@ tortugas: se queda mareado un momento, con pajaritos y sin atacar.
   recta que pasa por su sitio (se para en los extremos). Las paradas duran 0,5-0,95 s, con la pinza en alto
   chasqueando deprisa. Ningún punto dentro de lo grande del reparto; si no llega a uno en 12 s, pasa al siguiente.
 - **Vista y oído**: ve de frente (±70° hacia donde mira) a 22 m y oye alrededor a 10 m (por el tamaño): 13 m si la
-  tortuga corre a más de 6 m/s y 6 m si va agachada, en bola, en panzazo o casi quieta (menos de 0,6 m/s). Tiene que
-  estar dentro de su correa (38 m o 1,4 veces la huella desde su sitio). Entonces se da la vuelta (chasquido) y la
-  persigue de lado a 5,6 m/s (se escapa esprintando: 8 m/s). Si la pierde, vuelve a 4,2 m/s al punto más cercano de su
+  tortuga corre a más de 3 m/s (ronda 4; antes 6, que con las velocidades de verdad no se alcanzaba) y 6 m si va agachada,
+  en bola, en panzazo o casi quieta (menos de 0,6 m/s). Tiene que estar dentro de su correa (38 m o 1,4 veces la huella
+  desde su sitio). Entonces se da la vuelta (chasquido) y la persigue de lado a **3,5 m/s** por el tamaño, entre 3 y 3,7
+  (`TNBeachCrabTuning::ChaseSpeedFor`, ronda 4; antes 5,6 × tamaño, más que la tortuga corriendo a 4 m/s con el
+  Blueprint): a quien anda (2 m/s) la alcanza; corriendo se le escapa poco a poco (0,3-1 m/s), aunque a 8,5-13 m puede
+  embestir (más rápido, pero en línea recta: se esquiva de lado). Si la pierde, vuelve a 4,2 m/s al punto más cercano de su
   recorrido y sigue patrullando. Decide con `TNCrabLogic::DecideChaseTransition`, la del cangrejo de siempre.
 - **Mazazo** (alcance recortado a petición del usuario: «te dan desde un rango bastante lejos»): con la tortuga a su
   alcance (la pinza llega a 7,1 m del centro del cuerpo) más 1 m (`AttackSlack`, antes 3 m), o sea a unos 8,1 m, se para,
@@ -2301,9 +2304,15 @@ tortugas: se queda mareado un momento, con pajaritos y sin atacar.
   de adelanto, antes 0,3) y crece hasta 1,7 m de radio (`HitRadius`, antes 2,8: la mano y el dedo, no medio campo). Cae en
   0,14 s y **solo cuenta si la pinza toca de verdad**: el golpe se mide desde la punta del dedo al caer (delante del cuerpo
   a lo que alcanza, según cómo esté girado); si esa punta queda a más de 1,5 m de la sombra (no le dio tiempo a recolocarse),
-  cuenta donde ha caído, no donde iba (`ResolveSlam`). Quien esté dentro (1,7 m + 0,4) y a menos de 2,8 m de altura
-  (`SlamHeight`, antes 4,5 m: saltando por encima de la pinza se libra) queda despachurrada en bola aturdida 3,5 s con un
-  empujoncito hacia fuera. Luego 1,1 s con la pinza clavada, 1,4 s sin poder repetir y a la golpeada la ignora 6 s. Arena,
+  cuenta donde ha caído, no donde iba (`ResolveSlam`). Quien esté dentro (1,7 m + 0,4), a menos de 2,8 m de altura
+  (`SlamHeight`, antes 4,5 m: subida a algo alto no llega) y **no la salte** queda despachurrada en bola aturdida 3,5 s con
+  un empujoncito hacia fuera. **Saltarla** (ronda 4): antes se decía que saltando se libraba, pero un salto solo sube la
+  cápsula 1,2 m, menos que los 2,8 de `SlamHeight`, así que no libraba nunca. Ahora la libra quien va por el aire con los
+  pies a 60 cm o más de su suelo al caer la pinza (`TNBeachCrabTuning::ClearsSlamByJump`): un salto (485 cm/s) los tiene ahí
+  del 0,15 al 0,85 s, y la pinza cae 0,74 s después de levantarse, así que saltar en cuanto la levanta (o a mitad del aviso)
+  la libra; en el registro, `[Playa] <tortuga> salta por encima del mazazo de <cangrejo>`. También girando corriendo: la
+  sombra se fija al levantar la pinza (con 0,2 s de adelanto por donde iba) y en 0,74 s corriendo hacia otro lado (3 m) se
+  sale de ella; en línea recta, por los pelos o no (el adelanto la pone por delante); andando (1,5 m), no. Luego 1,1 s con la pinza clavada, 1,4 s sin poder repetir y a la golpeada la ignora 6 s. Arena,
   temblor fuerte a menos de 15 m.
 - **Embestida** (a media distancia; alcance recortado): persiguiendo, con la tortuga a 8,5-13 m (por el tamaño; antes
   9-21 m: empieza donde acaba la pinza) y el camino libre de lo grande del reparto (en tramos de 2,5 m, sin salirse de su
@@ -2405,27 +2414,29 @@ tortugas: se queda mareado un momento, con pajaritos y sin atacar.
   (`Scripts/create_poop_decal.py`), el mismo material sin ese fundido (0,88 entero); sin el asset, el suave de siempre. La
   sombra de la cagada nace con 90 cm de radio (antes 35) y crece antes (45 % lineal + 55 % acelerado, antes 30/70) para que
   se lea desde que se suelta; la del picado no cambia.
-- **El blanco te sigue, más despacio que corriendo** (`ServerTrackAim`, con la velocidad de cada tramo de
-  `TN_BeachGullTuning.h`; ronda 4, ver «Nerf de la gaviota y de su caca»): el punto al que van el picado y la cagada
-  (`FTNBeachGullAttack::Aim`, por la arena) va hacia la tortuga a 5,4 m/s como mucho (antes 6,25), entre andar (4,5) y
-  correr (8); en el último tramo del picado (0,6 s), a 1,2 m/s, y mientras cae la cagada, a 4,5 m/s y quieto el último
-  0,45 s. Andando te pilla; corriendo, cambiando de dirección al final o tirándote en plancha a tiempo, te libras. El
-  servidor lo mueve y lo replica (10 Hz); cada cliente lo suaviza (`ShownAim`, sin saltos) y con él coloca el pájaro, la
-  cagada y la sombra.
+- **El blanco te sigue y, al final, va lanzado** (`ServerTrackAim` con `TNBeachGullTuning::StepAim`; ronda 4, ver «Nerf de
+  la gaviota y de su caca»): el punto al que van el picado y la cagada (`FTNBeachGullAttack::Aim`, por la arena) va hacia
+  la tortuga a 4,2 m/s como mucho (antes 6,25), algo más de lo que corre (4 m/s con el Blueprint); los últimos 1,5 s (el
+  picado pliega las alas del todo; el «!» de la cagada se queda fijo) va lanzado por la línea que llevaba la tortuga: por
+  ella la acompaña y hacia los lados corrige a 0,75 m/s. Andando o corriendo en línea recta te pilla; girando corriendo
+  (60° o más) o dándote la vuelta en ese momento, o tirándote en plancha a tiempo, te libras. El servidor lo mueve y lo
+  replica (10 Hz); cada cliente lo suaviza (`ShownAim`, sin saltos) y con él coloca el pájaro, la cagada y la sombra.
 - Ataca cada 4-7 s (antes 3-6) a una tortuga al azar de las que están a menos del 80 % de su huella del centro (antes, su
   huella + 8 m; atacable y sin sombrilla); va el pájaro más cercano. La mitad de las veces caga una gaviota; si no,
   picado (el pelícano solo pica).
 - **Cagada**: 1,5 s volando hasta encima (siguiendo al blanco); la suelta desde 30 m y cae acelerando en 2,1 s (tiempo
   para verla venir y apartarse corriendo), también siguiendo al blanco: un pegote de 1,6 m con su estela de gotitas, un
   silbido y la sombra dura que crece hasta la mancha. Sobre la tortuga a la que va, un signo de exclamación que parpadea
-  cada vez más rápido (ver «Cagada pintada y aviso»). Al caer, la traza desde arriba da en el techo si lo hay. Quien esté
-  dentro (2 m por el tamaño + 0,25, antes 2,8 + 0,45, y a menos de 3 m en altura: a cubierto la mancha cae encima) y no vaya
+  cada vez más rápido y se queda fijo cuando la cagada ya cae por su línea (ver «Cagada pintada y aviso»). Al caer, la traza
+  desde arriba da en el techo si lo hay. Quien esté
+  dentro (2 m por el tamaño + 0,35, antes 2,8 + 0,45, y a menos de 3 m en altura: a cubierto la mancha cae encima) y no vaya
   tirada en plancha en ese momento (`TNBeach::IsDodgingByBellyDive`: en el aire o arrastrándose a 2,5 m/s o más) cae
   derribada (tabla de arriba) con la cagada PINTADA en el caparazón (12 s, ver abajo); gotas, «¡PLOF!» y la mancha en la
   arena 12 s.
 - **Picado**: 1 s colocándose casi encima (a 18 m del blanco y 46 m de altura). Luego baja en picado 2,3 s
-  (`DiveTime`: desde que aparece la sombra hay 2,3 s para reaccionar), acelerando con las alas recogidas y siguiendo a la
-  tortuga por el aire con el blanco (los dos extremos de su bajada se mueven con él). A 0,45 s de llegar abre el pico,
+  (`DiveTime`: desde que aparece la sombra hay 2,3 s para reaccionar), acelerando con las alas medio recogidas y siguiendo
+  a la tortuga por el aire con el blanco (los dos extremos de su bajada se mueven con él); los últimos 1,5 s pliega las
+  alas del todo y va lanzado por la línea que ella llevaba: es el momento de girar. A 0,45 s de llegar abre el pico,
   abre las alas y adelanta las patas para frenar con el morro levantado; en ese momento, si la cubre algo (sombrilla,
   techo), fallará y picará encima. A los 3,3 s coge a la tortuga que esté bajo el pico (2,2 m por el tamaño + 0,25 del
   blanco; antes 3 + 0,45) si está de pie: ni en pleno panzazo (`IsBellyPoseActive`), ni en bola, ni en brazos de otra, ni
@@ -2498,8 +2509,9 @@ caparazón (que está a ~24 cm: el tronco mide 42 cm de tripa a lomo con el hues
   quita si su tortuga desaparece; como mucho 12 a la vez por zona.
 - **Aviso** (`WarnMark`, `TNBeachMeshes::BuildWarningMark`): un signo de exclamación amarillo con borde rojo oscuro (105 cm de
   alto), a 40 cm sobre la cabeza de la tortuga a la que va, de cara a la cámara de cada máquina, que empieza 0,5 s antes de
-  soltar la cagada y parpadea de 2 a 12 veces por segundo según cae (`Rate = lerp(2, 12, U²)`, encendido el 60 % de cada
-  parpadeo) hasta que cae. Lejos se agranda (distancia / 15 m, entre 1 y 3,5 veces). Lo ven todas las máquinas con pantalla
+  soltar la cagada y parpadea cada vez más deprisa según cae (`Rate = lerp(2, 12, U²)`, encendido el 60 % de cada
+  parpadeo) hasta que, los últimos 1,5 s (ronda 4), se queda **fijo**: la cagada ya cae por la línea que llevaba la tortuga y es
+  el momento de girar. Lejos se agranda (distancia / 15 m, entre 1 y 3,5 veces). Lo ven todas las máquinas con pantalla
   (la del jugador al que va y las demás); no hace ruido.
 - **Assets**: `Scripts/create_poop_decal.py`, dentro del editor, crea `M_PoopSplatDecal` y `M_ProcFXHard` en
   `/Game/ProcMap/Materials` (se puede volver a ejecutar para rehacerlos). Se cargan por ruta al usarlos; si faltan, plan B
@@ -2508,57 +2520,78 @@ caparazón (que está a ~24 cm: el tronco mide 42 cm de tripa a lomo con el hues
 ### Nerf de la gaviota y de su caca (ronda 4, tarea 5)
 
 Lo que pidió el usuario: casi no se podían esquivar; tiene que poderse corriendo, cambiando de dirección y tirándose en
-plancha en el momento justo. Todas las cifras, con nombre, en `Public/World/Beach/TN_BeachGullTuning.h` (lógica pura: las
-usan `ATN_BeachGullZone` y `ATN_RaceGullStrike`, y las pruebas `Tortunabo.Beach.Gull.*`); la caca del cooperativo
-(`ATN_SeagullDroppingActor`) tiene las suyas como `UPROPERTY` editables.
+plancha en el momento justo. Criterio: **andando te pilla; corriendo y cambiando de dirección en el momento justo, o
+tirándote en plancha a tiempo, te libras**, del picado, de la cagada de la zona y de la gaviota justiciera. Todas las cifras,
+con nombre, en `Public/World/Beach/TN_BeachGullTuning.h` (lógica pura: las usan `ATN_BeachGullZone` y `ATN_RaceGullStrike`, y
+las pruebas `Tortunabo.Beach.Gull.*`); la caca del cooperativo (`ATN_SeagullDroppingActor`) tiene las suyas como `UPROPERTY`.
 
-**Por qué no se podía**: el blanco seguía a la tortuga a 6,25 m/s hasta el mismo golpe; corriendo a 8 m/s solo se le
-sacaban 1,75 m/s, y el golpe alcanzaba 3,45 m (picado) y 3,25 m (cagada) desde el blanco: había que correr en línea recta
-desde que salía la sombra, con estamina, y aun así por poco. Cambiar de dirección no servía (el blanco corregía igual al
-final) y la plancha no libraba de la cagada. Y atacaban desde la huella de la zona + 8 m (32-47 m de radio) cada 3-6 s.
+**Velocidades de verdad**: las de la tortuga que se juegan son las del Blueprint, **2 m/s andando y 4 m/s corriendo** (no los
+4,5 y 8 del C++; `Docs/Biblia_Tortunavy.md` §13: 141 de 190 saltos de los registros del 28-09 salen a 400 cm/s exactos). La
+plancha es un segundo salto en el aire: sale a 350 cm/s más la velocidad del salto (750 corriendo hacia delante) y 100 hacia
+abajo; en el aire 0,3-0,4 s y luego se arrastra por la arena (de ~675 cm/s a menos de 250 en 0,29 s).
+
+**Por qué no se podía**: el blanco seguía a la tortuga a 6,25 m/s hasta el mismo golpe (la justiciera, a 7): más de lo que
+corre (4 m/s), así que ni corriendo ni cambiando de dirección se despegaba; el golpe alcanzaba 3,45 m (picado) y 3,25 m
+(cagada); la plancha no libraba de la cagada. Y atacaban desde la huella de la zona + 8 m (32-47 m de radio) cada 3-6 s.
+
+**Cómo es ahora** (`TNBeachGullTuning::StepAim`): el blanco persigue a la tortuga a 4,2 m/s (un poco más de lo que corre: en
+línea recta no se despega de nadie) y, los **últimos 1,5 s**, va **lanzado por la línea que llevaba la tortuga** en ese momento:
+por esa línea la acompaña (lo que ella avance por ella, hasta su velocidad de entonces y nunca hacia atrás) y hacia los lados
+solo corrige 0,75 m/s. Quien sigue recto (andando o corriendo) se lo come; quien gira corriendo 60° o más, se da la vuelta o
+sale corriendo de parada justo al lanzarse, se libra; andando no da tiempo a salir del golpe. Cómo se ve cuándo: el picado
+**pliega las alas del todo** (antes baja con ellas medio abiertas), el «!» de la cagada **deja de parpadear y se queda fijo**, y
+la justiciera se lanza justo al soltar la cagada.
 
 | Qué | Antes | Ahora |
 |---|---|---|
 | Radio de ataque de la zona | huella + 8 m (32-47 m) | 80 % de la huella (19-31 m) |
 | Tiempo entre ataques | 3-6 s | 4-7 s |
-| Picado: el blanco sigue a | 6,25 m/s hasta el golpe | 5,4 m/s; los últimos 0,6 s, ya lanzado, 1,2 m/s |
+| Picado: el blanco sigue a | 6,25 m/s hasta el golpe | 4,2 m/s; los últimos 1,5 s, lanzado por su línea y 0,75 m/s de lado |
 | Picado: coge a menos de | 3 m × tamaño + 0,45 | 2,2 m × tamaño + 0,25 |
-| Cagada: el blanco mientras vuela encima (1,5 s) | 6,25 m/s | 5,4 m/s |
-| Cagada: el blanco mientras cae (2,1 s) | 6,25 m/s hasta el golpe | 4,5 m/s (lo que se anda); quieto los últimos 0,45 s |
-| Cagada: mancha (y su sombra) y golpe | 2,8 m × tamaño + 0,45 | 2 m × tamaño + 0,25 |
+| Cagada: el blanco (1,5 s volando encima + 2,1 s cayendo) | 6,25 m/s hasta el golpe | 4,2 m/s; los últimos 1,5 s (el «!» fijo), lanzado por su línea y 0,75 m/s de lado |
+| Cagada: mancha (y su sombra) y golpe | 2,8 m × tamaño + 0,45 | 2 m × tamaño + 0,35 |
 | Cagada: plancha | no libraba | libra si va en plancha en el aire o arrastrándose a ≥ 2,5 m/s |
-| Justiciera: el blanco hasta soltarla (3,2 s) | 7 m/s | 6 m/s |
-| Justiciera: el blanco mientras cae (1,7 s) | 7 m/s hasta el golpe | 4,5 m/s; quieto los últimos 0,5 s |
+| Justiciera: el blanco (3,2 s llegando + 1,7 s cayendo) | 7 m/s hasta el golpe | 4,2 m/s; desde justo después de soltarla (1,5 s antes del golpe), lanzado por su línea y 0,75 m/s de lado |
 | Justiciera: radio del impacto | 3,3 m | 2,4 m (su sombra y su mancha, igual) |
 | Justiciera: plancha | no libraba | libra (igual que la cagada) |
 | Caca del cooperativo: radio del impacto (`ImpactRadius`) | 100 cm | 75 cm |
 | Caca del cooperativo: plancha (`bBellyDiveDodges`) | no libraba | libra |
 
 Lo que queda igual: los tiempos (1 s colocándose + 2,3 s de picado; 1,5 s + 2,1 s de cagada; 3,2 s + 1,7 s la justiciera),
-la sombra dura que crece hasta lo que alcanza, el «!» que parpadea, el panzazo que ya libraba del picado entero, la bola y
-la sombrilla.
+la sombra dura que crece hasta lo que alcanza, el panzazo que ya libraba del picado entero, la bola y la sombrilla. (El
+primer ajuste de esta ronda, con 5,4 m/s, 0,6 s de tramo final y las velocidades del C++, no valía con las de verdad.)
 
-**Resultado** (simulado a 60 pasos por segundo con las mismas cuentas del servidor; distancia entre el blanco y la tortuga
-al llegar el golpe, tamaño 1):
+**Resultado** (simulado a 60 pasos por segundo con la misma función que el servidor; distancia entre el blanco y la tortuga
+al llegar el golpe; el golpe alcanza 1,9 / 2,45 / 3,1 m el picado y 1,85 / 2,35 / 2,95 m la cagada con tamaño 0,75 / 1 / 1,3, y
+2,4 m la justiciera):
 
-| Qué hace la tortuga | Picado (coge a ≤ 2,45 m) | Cagada (da a ≤ 2,25 m) | Justiciera (da a ≤ 2,4 m) |
+| Qué hace la tortuga | Picado | Cagada | Justiciera |
 |---|---|---|---|
-| Quieta | 0 m: la coge | 0 m: le da | 0 m: le da |
-| Andando en línea recta todo el rato | 1,9 m: la coge | 1,95 m: le da | 2,2 m: le da |
-| Corriendo en línea recta (desde la sombra / desde que la suelta) | 11 m: se libra | 9,2 m: se libra | 8,1 m: se libra |
-| Andando y, en el último tramo, corriendo de lado | 4 m: se libra | 3,5 m: se libra | 3,9 m: se libra |
-| Antes (6,25 y 7 m/s), andando y corriendo de lado en el último tramo | 1 m: la cogía | 0,8 m: le daba | — |
+| Quieta, andando o corriendo en línea recta | 0 m: la coge | 0 m: le da | 0 m: le da |
+| Corriendo y, al lanzarse, gira de lado (90°) | 4,7 m: se libra | 4,7 m: se libra | 4,7 m: se libra |
+| Corriendo y, al lanzarse, gira 60° | 3,9 m: se libra | 3,9 m: se libra | 3,9 m: se libra |
+| Corriendo y, al lanzarse, gira 45° | 3 m: se libra salvo la más grande | 3 m: se libra | 3 m: se libra |
+| Corriendo y, al lanzarse, se da la vuelta | 4,7 m: se libra | 4,7 m: se libra | 4,7 m: se libra |
+| Quieta y, al lanzarse, echa a correr | 4,7 m: se libra | 4,7 m: se libra | 4,7 m: se libra |
+| Corriendo y gira a mitad del tramo final (0,75 s después) | 2,4 m: se libra en las pequeñas | 2,4 m: se libra salvo la más grande | 2,4 m: la coge |
+| Corriendo y gira 0,2 s antes de que se lance | 0 m: la coge | 0 m: le da | 0 m: le da |
+| Corriendo y gira demasiado tarde (0,4 s antes del golpe) | 1,25 m: la coge | 1,25 m: le da | 1,25 m: le da |
+| Corriendo y se para al lanzarse | 0 m: la coge | 0 m: le da | 0 m: le da |
+| Andando y, al lanzarse, gira de lado o se da la vuelta | 1,8 m: la coge | 1,8 m: le da | 1,8 m: le da |
 
-La plancha en el momento justo libra de las tres (del picado ya libraba el panzazo entero). En el registro: `[Playa] <tortuga>
-esquiva la cagada de <zona> en plancha.` y `[Carrera] <tortuga> esquiva la gaviota justiciera en plancha.`
+**La plancha**: si pulsa el segundo salto 0,2-0,5 s después de saltar, va 0,3-0,4 s por el aire y se arrastra deprisa 0,3 s
+más: **0,6-0,7 s en los que las cagadas le pasan por encima** (`TNBeach::IsDodgingByBellyDive`), y del picado libra todo el
+panzazo (~1,2 s hasta ponerse de pie). Además se lleva a la tortuga 4-6 m a 7,5 m/s, más de lo que el blanco lanzado la sigue.
+En el registro: `[Playa] <tortuga> esquiva la cagada de <zona> en plancha.` y `[Carrera] <tortuga> esquiva la gaviota
+justiciera en plancha.`
 
-**Nota**: si un Blueprint hijo de `ATN_SeagullDroppingActor` (cooperativo) cambió `ImpactRadius`, conserva su valor; el
-nuevo de serie solo vale donde no se tocó.
+**Nota**: `BP_SeagullDropping` (cooperativo) no cambia `ImpactRadius` (comprobado en el `.uasset`): vale el nuevo de serie.
 
-**Qué probar**: `TN.Beach.Gull.Attack 2` quieta (te coge), andando (te coge) y echando a correr de lado cuando la sombra ya
-es grande (se libra y pica la arena); `TN.Beach.Gull.Attack 1` andando (le da), corriendo o tirándote en plancha cuando el
-«!» parpadea deprisa (se libra, con el aviso en el registro); `TN.Race.ItemUse GullStrike 1` con dos jugadores, lo mismo con
-la justiciera. Y una ronda normal: las gaviotas atacan solo bien dentro de su zona y con algo más de pausa.
+**Qué probar**: `TN.Beach.Gull.Attack 2` quieta, andando y corriendo recto (te coge); corriendo y girando de golpe cuando la
+gaviota pliega las alas (se libra y pica la arena); tirándote en plancha antes de que llegue (se libra). `TN.Beach.Gull.Attack
+1`: andando o corriendo recto (le da); girando corriendo cuando el «!» se queda fijo, o en plancha justo antes de caer (se
+libra, con el aviso en el registro). `TN.Race.ItemUse GullStrike 1` con dos jugadores, lo mismo con la justiciera (girar al
+soltarla). Y una ronda normal: las gaviotas atacan solo bien dentro de su zona y con algo más de pausa.
 
 ### Tormenta de bañistas (`ATN_BeachStorm`)
 
@@ -3168,7 +3201,7 @@ replica ni se guarda (un objeto en ejecución no tiene nombre de red: llega nulo
 | **Pelícano taxi** (`PelicanTaxi`) | bala | Un pelícano gigante baja en picado desde atrás, te coge por el caparazón y te lleva volando **por delante de todas** unos 120 m (22 m/s), y te suelta **de pie en arena abierta** por delante. Ver «Pelícano taxi». |
 | **Protector solar** (`Sunscreen`) | estrella | **8 s** invulnerable (nada te aturde ni te derriba; los enemigos ni te miran), un 25 % más rápida, con brillo dorado, chispas y una luz que late. **Derriba a las tortugas que toca** (ragdoll de 2 s, empujadas hacia fuera; 2,5 s de respiro por víctima) y **marea 4 s a los enemigos** que toca. |
 | **Cangrejo teledirigido** (`HomingCrab`) | concha roja | Un cangrejito rojo de juguete (1,1 m, con antena de mando que parpadea) sale corriendo con saltitos hacia **la tortuga más cercana por delante** (900 → 1600 cm/s, gira 420°/s) y, si la alcanza, la **derriba** 2,2 s. Sin tortuga por delante va a por el **enemigo más cercano por delante** (< 80 m) y lo marea 4 s. Vive 12 s; con el protector puesto, rebota sin efecto. Máximo 10 a la vez. |
-| **Gaviota justiciera** (`GullStrike`) | concha azul | Una gaviota gigante (la de las zonas de gaviotas) vuela hasta ponerse sobre **la tortuga que va la primera** (solo si va por delante de quien la lanza) y le suelta una cagada: aviso de sombra negra que crece 1,7 s hasta 2,4 m (antes 3,3); el blanco sigue a la víctima a 600 cm/s hasta soltarla, a 450 mientras cae y quieto el último medio segundo (antes, 700 hasta el golpe: ronda 4, «Nerf de la gaviota y de su caca») (**andando te pilla; corriendo, cambiando de dirección al final o tirándote en plancha a tiempo, te libras**); si alcanza, derriba 2,6 s y deja la mancha en la arena y el pegote en el caparazón. Sin líder por delante, va a por el enemigo más cercano por delante. Máximo 3 a la vez. |
+| **Gaviota justiciera** (`GullStrike`) | concha azul | Una gaviota gigante (la de las zonas de gaviotas) vuela hasta ponerse sobre **la tortuga que va la primera** (solo si va por delante de quien la lanza) y le suelta una cagada: aviso de sombra negra que crece 1,7 s hasta 2,4 m (antes 3,3); el blanco sigue a la víctima a 420 cm/s (algo más de lo que corre) y, desde justo después de soltarla, cae por la línea que llevaba (antes, 700 hasta el golpe: ronda 4, «Nerf de la gaviota y de su caca») (**andando o corriendo recto te pilla; girando corriendo al soltarla o tirándote en plancha a tiempo, te libras**); si alcanza, derriba 2,6 s y deja la mancha en la arena y el pegote en el caparazón. Sin líder por delante, va a por el enemigo más cercano por delante. Máximo 3 a la vez. |
 | **Mina de arena** (`SandMine`) | bob-omb | Mina lanzable hacia donde mira la cámara: vuela con gravedad, rebota una vez y queda quieta; se arma a los 0,9 s (pitido y luz roja que late cada vez más deprisa) y salta cuando se acerca una tortuga (la de quien la lanzó, pasado 1,5 s) o un enemigo: mecha de 0,35 s y explosión que **aturde en bola 3 s** a las tortugas a menos de 5,5 m y **marea 5 s** a los enemigos a menos de 13 m. Explota sola a los 10 s de armada. Máximo 12 a la vez. |
 | **Nube de tormenta** (`StormCloud`) | rayo | Una nube negra crece sobre **cada otra tortuga en carrera** (1,1 s de aviso, con sombra y truenos) y les cae un rayo que las **aturde en bola 2,2 s**. Con el protector puesto el rayo cae a su lado sin efecto. Necesita al menos otra víctima. Máximo 2 a la vez. |
 | **Disco volador** (`Frisbee`) | bumerán | Sale hacia delante dibujando un arco (26 m, curvado 7 m), gira y **vuelve a la mano** de quien lo lanzó (2,9 s en total), **derribando 1,9 s** a las tortugas (una vez por pasada) y **mareando 4 s** a los enemigos que toca; no golpea a quien lo lanza. Máximo 6 a la vez. |

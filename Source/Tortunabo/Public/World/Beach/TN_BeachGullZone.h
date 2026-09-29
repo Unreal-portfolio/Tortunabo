@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "World/Beach/TN_BeachEnemy.h"
+#include "World/Beach/TN_BeachGullTuning.h"
 #include "World/ProcMap/TN_ProcMapAmbientFX.h"
 #include "TN_BeachGullZone.generated.h"
 
@@ -20,9 +21,9 @@ struct FTNBeachGullAttack
 	TObjectPtr<ATortugaCharacter> Victim = nullptr;
 
 	/**
-	 * Dónde cae la cagada o dónde da el picado (en el suelo). Sigue a la tortuga como mucho a lo que toque en cada tramo
-	 * del ataque (TN_BeachGullTuning.h: más que andando al principio, casi nada al final) hasta el golpe; en los clientes
-	 * se suaviza (ShownAim). Mareo: dónde le han dado.
+	 * Dónde cae la cagada o dónde da el picado (en el suelo). Sigue a la tortuga (TN_BeachGullTuning.h: algo más rápido de
+	 * lo que corre y, en el último tramo, lanzado por la línea que ella llevaba) hasta el golpe; en los clientes se suaviza
+	 * (ShownAim). Mareo: dónde le han dado.
 	 */
 	UPROPERTY()
 	FVector_NetQuantize Aim = FVector_NetQuantize(0.0, 0.0, 0.0);
@@ -75,16 +76,18 @@ struct FTNBeachGullAttack
  * cifras, en TN_BeachGullTuning.h):
  *  - Cagada: vuela sobre ella y la suelta desde 30 m; cae un pegote blanco bien visible con su estela y una sombra dura y
  *    negra que nace pequeña y crece hasta la mancha según cae (2,1 s para apartarse). Sobre la tortuga a la que va, un
- *    signo de exclamación que parpadea cada vez más rápido según cae (WarnMark). El blanco la sigue a 5,4 m/s mientras
- *    vuela encima, a 4,5 m/s (lo que se anda) mientras cae y el último medio segundo ya no se mueve: andando en línea
- *    recta te pilla justo; corriendo, cambiando de dirección al final o tirándote en plancha a tiempo, te libras. Quien
+ *    signo de exclamación que parpadea cada vez más rápido según cae (WarnMark). El blanco la sigue a 4,2 m/s (algo más
+ *    de lo que se corre) y, los últimos 1,5 s (el «!» se queda fijo), cae por la línea que llevaba la tortuga: andando o
+ *    corriendo en línea recta te pilla; girando corriendo (60° o más) o dándote la vuelta en ese momento, o tirándote en
+ *    plancha a tiempo, te libras. Quien
  *    esté dentro al caer (y no a cubierto ni en plancha) cae derribada con ragdoll y mareo (TNBeach::KnockDownTurtle), con
  *    la cagada PINTADA en el caparazón (un decal sujeto a su hueso de la espalda con el material M_PoopSplatDecal;
  *    Scripts/create_poop_decal.py): 8 s entera y luego se seca y se desvanece hasta desaparecer a los 12 s. «¡PLOF!».
- *  - Picado: sube casi encima de ella y baja en picado 2,3 s siguiéndola por el aire a 5,4 m/s y, los últimos 0,6 s, ya
- *    lanzado, a 1,2 m/s; en la arena, una sombra dura y negra que nace diminuta al empezar a bajar y crece con él marca
- *    dónde va a dar. Abre el pico en el último momento y, si la tortuga sigue debajo (se esquiva corriendo, cambiando de
- *    dirección al final, con el panzazo o en bola), la coge por el caparazón: colgando del pico pataleando, sube, vuela un
+ *  - Picado: sube casi encima de ella y baja en picado 2,3 s siguiéndola por el aire a 4,2 m/s y, los últimos 1,5 s
+ *    (pliega las alas del todo), lanzado por la línea que llevaba la tortuga; en la arena, una sombra dura y negra que
+ *    nace diminuta al empezar a bajar y crece con él marca dónde va a dar. Abre el pico en el último momento y, si la
+ *    tortuga sigue debajo (se esquiva girando corriendo al lanzarse, con el panzazo o en bola), la coge por el
+ *    caparazón: colgando del pico pataleando, sube, vuela un
  *    poco hacia la salida y la suelta abriendo el pico: cae en bola aturdida (TNBeach::StunTurtle). Si falla, baja igual
  *    hasta clavar el pico en la arena (o en la sombrilla que la cubría), pica dos veces (arena que salta y sonido) y
  *    vuelve a subir.
@@ -250,6 +253,9 @@ private:
 	bool bReleased = false;
 	bool bRoofChecked = false;
 
+	/** Lo que el blanco recuerda al lanzarse en el último tramo del ataque (se pone a cero con cada ataque nuevo). */
+	TNBeachGullTuning::FChaseState AimChase;
+
 	/** Pruebas (DebugGrab): a quién coger y cuántas veces más. */
 	TWeakObjectPtr<ATortugaCharacter> DebugGrabVictim;
 	int32 DebugGrabsLeft = 0;
@@ -318,10 +324,11 @@ private:
 	void ServerPoop(float Tau, float DeltaSeconds);
 	void ServerDive(float Tau, float DeltaSeconds);
 	/**
-	 * Servidor: el blanco (Attack.Aim) va hacia la tortuga a MaxSpeed cm/s como mucho, por la arena (la del tramo del
-	 * ataque: TNBeachGullTuning::DiveChaseSpeedAt, PoopChaseSpeedAt; 0 = quieto).
+	 * Servidor: el blanco (Attack.Aim) sigue a la tortuga por la arena según Plan a los Tau s del ataque
+	 * (TNBeachGullTuning::StepAim: a su velocidad de persecución y, en el último tramo, lanzado por la línea que ella
+	 * llevaba).
 	 */
-	void ServerTrackAim(float DeltaSeconds, float MaxSpeed);
+	void ServerTrackAim(float DeltaSeconds, float Tau, const TNBeachGullTuning::FChasePlan& Plan);
 	/** Blanco que se ve en esta máquina (ShownAim). */
 	FVector CurrentAim() const;
 	/** Todas las máquinas: ShownAim hacia el Attack.Aim replicado, sin saltos. */

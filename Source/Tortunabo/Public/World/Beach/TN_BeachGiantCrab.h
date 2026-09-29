@@ -10,6 +10,40 @@ class UBoxComponent;
 class UStaticMeshComponent;
 
 /**
+ * Cifras puras del cangrejo gigante que dependen de la tortuga (ronda 4; pruebas en Tortunabo.Beach.Crab). Con las
+ * velocidades de verdad de la tortuga (las del Blueprint: andando 200 cm/s, corriendo 400) perseguía a 5,6 m/s y no se le
+ * escapaba corriendo; y su mazazo pedía más altura (2,8 m) de la que da un salto (1,2 m).
+ */
+namespace TNBeachCrabTuning
+{
+	/**
+	 * Persigue a ChaseSpeed × tamaño, entre ChaseSpeedMin y ChaseSpeedMax (cm/s; antes 560 × tamaño): más que andando (a
+	 * quien anda lo alcanza), menos que corriendo (corriendo se le escapa poco a poco). La embestida sigue siendo más
+	 * rápida que correr: se esquiva de lado.
+	 */
+	constexpr float ChaseSpeed = 350.f;
+	constexpr float ChaseSpeedMin = 300.f;
+	constexpr float ChaseSpeedMax = 370.f;
+
+	inline float ChaseSpeedFor(float SizeK)
+	{
+		return FMath::Clamp(ChaseSpeed * SizeK, ChaseSpeedMin, ChaseSpeedMax);
+	}
+
+	/**
+	 * El mazazo no pilla a quien va por el aire con los pies a SlamJumpClearance cm o más de su suelo al caer la pinza: un
+	 * salto (485 cm/s hacia arriba, 1,2 m de alto) lo pasa del 0,15 al 0,85 s, así que saltar en cuanto levanta la pinza
+	 * (0,6 s de aviso + 0,14 de caída) la libra.
+	 */
+	constexpr float SlamJumpClearance = 60.f;
+
+	inline bool ClearsSlamByJump(bool bAirborne, float FeetAboveGround)
+	{
+		return bAirborne && FeetAboveGround >= SlamJumpClearance;
+	}
+}
+
+/**
  * Cangrejo gigante de la playa (ETNBeachElement::GiantCrab): cangrejo de unos 5 m de ancho (una cría de 20 cm a escala)
  * con una pinza enorme a la derecha. Anda de lado, con ojos en pedúnculos que se mueven y espuma en la boca.
  *

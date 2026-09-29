@@ -82,8 +82,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crab|Movement")
 	float PatrolSpeed = 250.f;
 
+	/**
+	 * Persecución (cm/s): entre andar y correr de la tortuga (200 y 400 con el Blueprint): a quien anda lo alcanza; corriendo
+	 * se le escapa. Antes 450, más que correr. Si el Blueprint hijo tiene su propio valor, manda el suyo.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crab|Movement")
-	float ChaseSpeed = 450.f;
+	float ChaseSpeed = 350.f;
 
 	// ── Detección ────────────────────────────────────────────────────────────────
 	/** Radio de la esfera de detección para iniciar persecución. */

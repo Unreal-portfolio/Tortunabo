@@ -917,6 +917,7 @@ void ATN_BeachGullZone::StartAttack(ATortugaCharacter* Victim, uint8 InKind, int
 	++Attack.Serial;
 	bReleased = false;
 	bRoofChecked = false;
+	AimChase = TNBeachGullTuning::FChaseState();
 	ForceNetUpdate();
 	OnAttackChanged();
 }
@@ -1025,17 +1026,20 @@ void ATN_BeachGullZone::ServerTick(float DeltaSeconds)
 	}
 }
 
-void ATN_BeachGullZone::ServerTrackAim(float DeltaSeconds, float MaxSpeed)
+void ATN_BeachGullZone::ServerTrackAim(float DeltaSeconds, float Tau, const TNBeachGullTuning::FChasePlan& Plan)
 {
-	// El blanco va hacia la tortuga a MaxSpeed como mucho (lo que toque en ese tramo del ataque), por la arena.
+	// El blanco sigue a la tortuga por la arena: algo más rápido de lo que corre y, en el último tramo, lanzado por la línea
+	// que ella llevaba (TNBeachGullTuning::StepAim).
 	const ATortugaCharacter* Victim = Attack.Victim;
-	if (!IsValid(Victim) || Attack.bLocked || MaxSpeed <= 0.f)
+	if (!IsValid(Victim) || Attack.bLocked)
 	{
 		return;
 	}
 	const FVector Cur = Attack.Aim;
 	const FVector Want = Victim->GetActorLocation();
-	const FVector2D Step = TNBeachGullTuning::StepToward(FVector2D(Cur.X, Cur.Y), FVector2D(Want.X, Want.Y), MaxSpeed, DeltaSeconds);
+	const FVector Vel = Victim->GetVelocity();
+	const FVector2D Step = TNBeachGullTuning::StepAim(Plan, Tau, AimChase, FVector2D(Cur.X, Cur.Y), FVector2D(Want.X, Want.Y),
+		FVector2D(Vel.X, Vel.Y), DeltaSeconds);
 	FVector Next(Step.X, Step.Y, Cur.Z);
 	Next.Z = GroundAt(Next);
 	Attack.Aim = Next;
@@ -1044,11 +1048,11 @@ void ATN_BeachGullZone::ServerTrackAim(float DeltaSeconds, float MaxSpeed)
 void ATN_BeachGullZone::ServerPoop(float Tau, float DeltaSeconds)
 {
 	using namespace TNBeachGull;
-	// Mientras vuela encima, el blanco sigue a la tortuga algo más rápido de lo que se anda; mientras cae, lo que se anda,
-	// y el último medio segundo ya no se mueve (corriendo, cambiando de dirección o con la plancha a tiempo, te libras).
+	// Mientras vuela encima y mientras cae, el blanco sigue a la tortuga algo más rápido de lo que corre; los últimos 1,5 s
+	// (el «!» fijo) cae por la línea que ella llevaba: girando corriendo, dándose la vuelta o con la plancha a tiempo, se libra.
 	if (Attack.Result == 0 && Tau < DropTime + FallTime)
 	{
-		ServerTrackAim(DeltaSeconds, TNBeachGullTuning::PoopChaseSpeedAt(Tau, DropTime, FallTime));
+		ServerTrackAim(DeltaSeconds, Tau, TNBeachGullTuning::PoopPlan());
 	}
 	if (Attack.Result == 0 && Tau >= DropTime + FallTime)
 	{
@@ -1110,12 +1114,12 @@ void ATN_BeachGullZone::ServerPoop(float Tau, float DeltaSeconds)
 void ATN_BeachGullZone::ServerDive(float Tau, float DeltaSeconds)
 {
 	using namespace TNBeachGull;
-	// Hasta el golpe, el blanco (y con él el pájaro y la sombra) sigue a la tortuga algo más rápido de lo que se anda; en el
-	// último tramo del picado ya va lanzado y apenas corrige: un cambio de dirección corriendo o una plancha a tiempo la
-	// hacen fallar.
+	// Hasta el golpe, el blanco (y con él el pájaro y la sombra) sigue a la tortuga algo más rápido de lo que corre; en el
+	// último tramo del picado (alas plegadas) va lanzado por la línea que ella llevaba: un giro corriendo o una plancha a
+	// tiempo lo hacen fallar.
 	if (Attack.Result == 0 && Tau < StrikeTime)
 	{
-		ServerTrackAim(DeltaSeconds, TNBeachGullTuning::DiveChaseSpeedAt(Tau, StrikeTime));
+		ServerTrackAim(DeltaSeconds, Tau, TNBeachGullTuning::DivePlan());
 	}
 	// Al abrir el pico: con algo encima (sombrilla, techo) no puede bajar; fallará y picará en lo que la cubre.
 	if (!bRoofChecked && Attack.Result == 0 && Tau >= StrikeTime - JawLead)
@@ -1626,10 +1630,11 @@ void ATN_BeachGullZone::TickWarnMark(float DeltaSeconds, double Now, const FVect
 		const float FallEnd = DropTime + FallTime;
 		if (Tau >= WarnStart && Tau < FallEnd)
 		{
-			// Cuanto más cae, más deprisa parpadea (empieza a 2 Hz y acaba a 12 Hz).
+			// Cuanto más cae, más deprisa parpadea (empieza a 2 Hz y acaba a 12 Hz); cuando ya cae por la línea que llevaba la
+			// tortuga (TNBeachGullTuning::IsCommitted), se queda fijo: es el momento de girar.
 			const float U = FMath::Clamp((Tau - WarnStart) / (FallEnd - WarnStart), 0.f, 1.f);
 			WarnPhase += DeltaSeconds * FMath::Lerp(WarnRateSlow, WarnRateFast, U * U);
-			bShow = FMath::Frac(WarnPhase) < WarnOnFraction;
+			bShow = TNBeachGullTuning::IsCommitted(TNBeachGullTuning::PoopPlan(), Tau) || FMath::Frac(WarnPhase) < WarnOnFraction;
 			// Sobre su cabeza, de cara a la cámara (solo gira en vertical) y más grande cuanto más lejos.
 			const FVector Head = Victim->GetActorLocation() + FVector(0.0, 0.0, Victim->GetSimpleCollisionHalfHeight() + WarnAbove + 6.0 * FMath::Sin(Clock * 9.f));
 			FVector ToCamera = View - Head;
@@ -1676,10 +1681,12 @@ void ATN_BeachGullZone::PoseBird(int32 Index, float DeltaSeconds, bool bAttackin
 		}
 		else if (Tau < StrikeTime - JawLead)
 		{
-			// En picado: alas recogidas hacia atrás.
-			Sweep = 55.f;
-			Flap = 8.f;
-			HeadPitch = -20.f;
+			// En picado: alas medio abiertas mientras aún corrige hacia la tortuga; recogidas del todo hacia atrás cuando ya va
+			// lanzado por su línea (el aviso para girar: TNBeachGullTuning::IsCommitted).
+			const bool bCommitted = TNBeachGullTuning::IsCommitted(TNBeachGullTuning::DivePlan(), Tau);
+			Sweep = bCommitted ? 60.f : 25.f;
+			Flap = bCommitted ? 4.f : 14.f * FMath::Sin(Clock * 2.f * PI * 2.f * Rate);
+			HeadPitch = bCommitted ? -28.f : -15.f;
 			Tuck = -85.f;
 		}
 		else if (Tau < StrikeTime || Attack.Result == 0)

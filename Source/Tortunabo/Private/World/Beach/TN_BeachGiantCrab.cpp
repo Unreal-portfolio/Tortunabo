@@ -7,9 +7,12 @@
 #include "TN_BeachEnemyKit.h"
 #include "TN_BeachEnemyMeshes.h"
 #include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/TN_Log.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/TortugaCharacter.h"
 
@@ -29,19 +32,22 @@ namespace TNBeachCrab
 	constexpr float DetectRadius = 2200.f;
 	constexpr float SightHalfAngle = 70.f;
 	/**
-	 * Oye a una tortuga a esta distancia (cm, por el tamaño) desde cualquier lado: ×1,3 si corre (más de 6 m/s), ×0,6 si
-	 * va agachada, en bola, en panzazo o casi quieta (menos de 0,6 m/s).
+	 * Oye a una tortuga a esta distancia (cm, por el tamaño) desde cualquier lado: ×1,3 si corre (más de 3 m/s: la tortuga
+	 * anda a 2 y corre a 4; antes 6, que no se alcanzaba nunca), ×0,6 si va agachada, en bola, en panzazo o casi quieta
+	 * (menos de 0,6 m/s).
 	 */
 	constexpr float HearRadius = 1000.f;
 	constexpr float HearLoud = 1.3f;
 	constexpr float HearQuiet = 0.6f;
-	constexpr float LoudSpeed = 600.f;
+	constexpr float LoudSpeed = 300.f;
 	constexpr float QuietSpeed = 60.f;
 	/** La deja si la tortuga se aleja de su sitio más que esto (o 1,4 veces la huella). */
 	constexpr float LeashRadius = 3800.f;
-	/** Velocidades (cm/s, por el tamaño): paseo, persecución (tortuga: 450 andando, 800 esprintando) y vuelta al recorrido. */
+	/**
+	 * Velocidades (cm/s, por el tamaño): paseo y vuelta al recorrido. La persecución, en TNBeachCrabTuning::ChaseSpeedFor
+	 * (entre andar y correr: la tortuga anda a 200 y corre a 400).
+	 */
 	constexpr float PatrolSpeed = 300.f;
-	constexpr float ChaseSpeed = 560.f;
 	constexpr float ReturnSpeed = 420.f;
 	/** Aceleración y frenada andando (cm/s², por el tamaño): de parado a la persecución en ~0,8 s, y frena en ~0,5 s. */
 	constexpr float WalkAccel = 700.f;
@@ -80,7 +86,10 @@ namespace TNBeachCrab
 	 */
 	constexpr float HitRadius = 170.f;
 	constexpr float SlamTipTolerance = 150.f;
-	/** Diferencia de altura máxima con la tortuga para que la pinza (a ras de arena) la pille: saltando por encima se libra. */
+	/**
+	 * Diferencia de altura máxima con la tortuga para que la pinza (a ras de arena) la pille (subida a algo alto no llega).
+	 * Saltando por encima se libra: TNBeachCrabTuning::ClearsSlamByJump (un salto solo sube la cápsula 1,2 m, menos que esto).
+	 */
 	constexpr float SlamHeight = 280.f;
 	/** Aturdimiento y tiempo que ignora a la golpeada. */
 	constexpr float StunSeconds = 3.5f;
@@ -711,6 +720,18 @@ void ATN_BeachGiantCrab::ResolveSlam()
 			{
 				continue;
 			}
+			// Saltando por encima de la pinza: por el aire, con los pies bien despegados de su suelo al caer la pinza.
+			const UCapsuleComponent* Capsule = Turtle->GetCapsuleComponent();
+			const UCharacterMovementComponent* Move = Turtle->GetCharacterMovement();
+			const float HalfHeight = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 88.f;
+			float TurtleGroundZ = static_cast<float>(At.Z) - HalfHeight;
+			GroundHeightAt(At, TurtleGroundZ);
+			const float FeetAboveGround = static_cast<float>(At.Z) - HalfHeight - TurtleGroundZ;
+			if (TNBeachCrabTuning::ClearsSlamByJump(Move && Move->IsFalling(), FeetAboveGround))
+			{
+				UE_LOG(LogTortunabo, Log, TEXT("[Playa] %s salta por encima del mazazo de %s (%.0f cm)."), *GetNameSafe(Turtle), *GetName(), FeetAboveGround);
+				continue;
+			}
 			FVector Away = At - Impact;
 			Away.Z = 0.0;
 			Away = Away.GetSafeNormal();
@@ -943,11 +964,11 @@ void ATN_BeachGiantCrab::ServerTick(float DeltaSeconds)
 			}
 			else
 			{
-				ServerWalk(Victim->GetActorLocation(), TNBeachCrab::ChaseSpeed * SizeK * 0.5f, DeltaSeconds, true, true);
+				ServerWalk(Victim->GetActorLocation(), TNBeachCrabTuning::ChaseSpeedFor(SizeK) * 0.5f, DeltaSeconds, true, true);
 			}
 			break;
 		case TNCrabLogic::EChaseTransition::KeepChasing:
-			ServerWalk(Victim->GetActorLocation(), TNBeachCrab::ChaseSpeed * SizeK, DeltaSeconds, true, false);
+			ServerWalk(Victim->GetActorLocation(), TNBeachCrabTuning::ChaseSpeedFor(SizeK), DeltaSeconds, true, false);
 			break;
 		}
 		break;

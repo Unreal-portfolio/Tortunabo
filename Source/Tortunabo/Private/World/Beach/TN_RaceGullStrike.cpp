@@ -59,9 +59,9 @@ namespace TNRaceGullStrikeDetail
 	// ── Cagada ──
 
 	/**
-	 * El punto de impacto sigue al objetivo por la arena a esta velocidad como mucho (cm/s) hasta soltarla; mientras cae,
-	 * más despacio, y el último medio segundo ya no se mueve (TNBeachGullTuning::StrikeChaseSpeedAt). Corriendo (800),
-	 * cambiando de dirección al final o tirándose en plancha a tiempo, se libra.
+	 * El punto de impacto sigue al objetivo por la arena a esta velocidad como mucho (cm/s; algo más de lo que corre una
+	 * tortuga) y, desde justo después de soltarla, cae por la línea que llevaba (TNBeachGullTuning::StrikePlan). Girando
+	 * corriendo o dándose la vuelta en ese momento, o tirándose en plancha a tiempo, se libra; en línea recta, no.
 	 */
 	constexpr float AimSpeed = TNBeachGullTuning::StrikeChaseSpeed;
 	/** Radio del impacto en planta (cm; antes 330) y altura máxima (cm) sobre la arena. */
@@ -381,10 +381,11 @@ void ATN_RaceGullStrike::ServerTrackAim(float DeltaSeconds)
 		}
 	}
 
-	// El blanco va hacia el objetivo por la arena como mucho a lo que toque en este tramo: más deprisa mientras llega, lo que
-	// se anda mientras cae la cagada y quieto el último medio segundo.
-	const float MaxSpeed = TNBeachGullTuning::StrikeChaseSpeedAt(static_cast<float>(GetAge()), ArriveSeconds, FallSeconds);
-	const FVector2D Next = TNBeachGullTuning::StepToward(FVector2D(AimServer.X, AimServer.Y), FVector2D(GoalAt.X, GoalAt.Y), MaxSpeed, DeltaSeconds);
+	// El blanco sigue al objetivo por la arena algo más rápido de lo que corre una tortuga y, desde justo después de soltar la
+	// cagada, cae por la línea que llevaba (TNBeachGullTuning::StepAim): girando corriendo o con la plancha a tiempo se libra.
+	const FVector GoalVel = Goal->GetVelocity();
+	const FVector2D Next = TNBeachGullTuning::StepAim(TNBeachGullTuning::StrikePlan(), static_cast<float>(GetAge()), AimChase,
+		FVector2D(AimServer.X, AimServer.Y), FVector2D(GoalAt.X, GoalAt.Y), FVector2D(GoalVel.X, GoalVel.Y), DeltaSeconds);
 	AimServer.X = Next.X;
 	AimServer.Y = Next.Y;
 	AimServer.Z = static_cast<double>(GroundHeightAt(AimServer, static_cast<float>(AimServer.Z)));

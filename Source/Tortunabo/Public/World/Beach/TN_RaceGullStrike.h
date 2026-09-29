@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "World/Beach/TN_BeachGullTuning.h"
 #include "World/Beach/TN_RaceItemActor.h"
 #include "World/ProcMap/TN_ProcMapAmbientFX.h"
 #include "TN_RaceGullStrike.generated.h"
@@ -22,9 +23,10 @@ class UStaticMeshComponent;
  *    planta, menos de 3 m de altura): derriba con ragdoll (TNBeach::KnockDownTurtle) a quien esté dentro, se pueda golpear y
  *    no vaya tirada en plancha en ese momento (TNBeach::IsDodgingByBellyDive), y le deja un pegote en el caparazón unos 8 s.
  *    Después sube y se va (hasta los 9 s).
- *  - El punto de impacto (AimPoint) sigue al objetivo por la arena a 6 m/s como mucho hasta soltarla, a 4,5 m/s (lo que se
- *    anda) mientras cae y quieto el último medio segundo (TN_BeachGullTuning.h): corriendo, cambiando de dirección al final o
- *    tirándose en plancha a tiempo se libra; andando en línea recta, no. Se congela al terminar la caída. Sobre la arena, una
+ *  - El punto de impacto (AimPoint) sigue al objetivo por la arena a 4,2 m/s como mucho (algo más de lo que corre una
+ *    tortuga) y, desde justo después de soltar la cagada (1,5 s antes del golpe), cae por la línea que llevaba
+ *    (TN_BeachGullTuning.h): girando corriendo (60° o más) o dándose la vuelta en ese momento, o tirándose en plancha a
+ *    tiempo, se libra; andando o corriendo en línea recta, no. Se congela al terminar la caída. Sobre la arena, una
  *    sombra dura y negra que nace pequeña al soltar y crece hasta el radio del impacto según cae la cagada.
  *
  * Red: el servidor decide a quién, dónde y a quién da. Replica el objetivo (Target) y el punto de impacto (AimPoint, que
@@ -70,13 +72,13 @@ private:
 	UPROPERTY(Replicated)
 	TObjectPtr<AActor> Target = nullptr;
 
-	/** Dónde caerá la cagada (en la arena): sigue al objetivo (TNBeachGullTuning::StrikeChaseSpeedAt) y se congela al acabar la caída. */
+	/** Dónde caerá la cagada (en la arena): sigue al objetivo (TNBeachGullTuning::StepAim) y se congela al acabar la caída. */
 	UPROPERTY(Replicated)
 	FVector_NetQuantize10 AimPoint = FVector_NetQuantize10(0.0, 0.0, 0.0);
 
 	// ── Servidor ─────────────────────────────────────────────────────────────
 
-	/** El punto de impacto sigue al objetivo por la arena como mucho a lo que toque en cada tramo (TNBeachGullTuning::StrikeChaseSpeedAt). */
+	/** El punto de impacto sigue al objetivo por la arena (TNBeachGullTuning::StepAim con StrikePlan). */
 	void ServerTrackAim(float DeltaSeconds);
 
 	/** Suelta la cagada: pitido de aviso en la tortuga a la que va. */
@@ -87,6 +89,8 @@ private:
 
 	/** El punto de impacto en doble precisión (lo que se replica es AimPoint). */
 	FVector AimServer = FVector::ZeroVector;
+	/** Lo que el blanco recuerda al lanzarse, tras soltar la cagada (la línea que llevaba la víctima). */
+	TNBeachGullTuning::FChaseState AimChase;
 	float RacerClock = 0.f;
 	bool bTargetLost = false;
 	bool bDropped = false;

@@ -1,20 +1,24 @@
-// Lógica pura de las gaviotas de la carrera (TN_BeachGullTuning.h, ronda 4, tarea 5: el nerf): a qué velocidad sigue el
-// blanco en cada tramo del ataque, si una tortuga que anda, corre o cambia de dirección se libra del picado, de la cagada de
-// la zona y de la gaviota justiciera, y cuándo la plancha libra. Sin mundo ni actores: se simula el blanco con las mismas
-// funciones que usan ATN_BeachGullZone y ATN_RaceGullStrike en el servidor, a 60 pasos por segundo.
-// Correr desde Session Frontend (categoría "Tortunabo.Beach.Gull") o sin ventana:
+// Lógica pura de las gaviotas y del cangrejo gigante de la carrera (ronda 4, tarea 5: el nerf; TN_BeachGullTuning.h y
+// TNBeachCrabTuning en TN_BeachGiantCrab.h), con las velocidades de verdad de la tortuga (las del Blueprint: andando 200 cm/s,
+// corriendo 400). Lo que se pidió: andando te pilla; corriendo y cambiando de dirección en el momento justo (cuando el
+// pájaro o lo que cae ya va lanzado), o tirándote en plancha a tiempo, te libras del picado, de la cagada de la zona y de la
+// gaviota justiciera; el cangrejo gigante persigue más despacio de lo que se corre y su mazazo se salta. Sin mundo ni actores:
+// se simula el blanco con la misma función que usan ATN_BeachGullZone y ATN_RaceGullStrike en el servidor, a 60 pasos por
+// segundo.
+// Correr desde Session Frontend (categorías "Tortunabo.Beach.Gull" y "Tortunabo.Beach.Crab") o sin ventana:
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Beach.Gull; Quit" -nullrhi -unattended
 
 #include "Misc/AutomationTest.h"
+#include "World/Beach/TN_BeachGiantCrab.h"
 #include "World/Beach/TN_BeachGullTuning.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 namespace TNBeachGullTuningTest
 {
-	/** Velocidades de la tortuga (cm/s): andando y corriendo (UTN_StaminaComponent). */
-	constexpr float TurtleWalk = 450.f;
-	constexpr float TurtleRun = 800.f;
+	/** Velocidades de la tortuga (cm/s): las del Blueprint, que son las que se juegan. */
+	constexpr float TurtleWalk = TNBeachGullTuning::TurtleWalkSpeed;
+	constexpr float TurtleRun = TNBeachGullTuning::TurtleRunSpeed;
 
 	/** Un tramo de la huida: desde Start s, en dirección Dir (unitaria) a Speed cm/s. */
 	struct FLeg
@@ -24,72 +28,91 @@ namespace TNBeachGullTuningTest
 		float Speed = 0.f;
 	};
 
+	FVector2D Heading(float Degrees)
+	{
+		const float Radians = FMath::DegreesToRadians(Degrees);
+		return FVector2D(FMath::Cos(Radians), FMath::Sin(Radians));
+	}
+
 	/**
-	 * Simula un ataque: la tortuga sale del origen y se mueve por tramos; el blanco nace sobre ella y la sigue con
-	 * SpeedAt(T) hasta EndTime. Devuelve la distancia en planta entre el blanco y la tortuga al llegar el golpe.
+	 * Simula un ataque con Plan: la tortuga sale del origen y se mueve por tramos; el blanco nace sobre ella y la sigue con
+	 * TNBeachGullTuning::StepAim hasta Plan.EndAt. Devuelve la distancia en planta entre el blanco y la tortuga al golpe.
 	 */
-	template <typename FSpeedAt>
-	double SimulateMissDistance(const TArray<FLeg>& Legs, float EndTime, FSpeedAt SpeedAt)
+	double SimulateMissDistance(const TNBeachGullTuning::FChasePlan& Plan, const TArray<FLeg>& Legs)
 	{
 		constexpr float Dt = 1.f / 60.f;
 		FVector2D Turtle = FVector2D::ZeroVector;
 		FVector2D Aim = Turtle;
-		for (float T = 0.f; T < EndTime - KINDA_SMALL_NUMBER; T += Dt)
+		TNBeachGullTuning::FChaseState State;
+		for (float T = 0.f; T < Plan.EndAt - KINDA_SMALL_NUMBER; T += Dt)
 		{
-			const float Step = FMath::Min(Dt, EndTime - T);
-			// La tortuga se mueve con el último tramo que ya ha empezado.
-			const FLeg* Current = nullptr;
+			const float Step = FMath::Min(Dt, Plan.EndAt - T);
+			// La tortuga va con el último tramo que ya ha empezado.
+			FVector2D Velocity = FVector2D::ZeroVector;
 			for (const FLeg& Leg : Legs)
 			{
 				if (T >= Leg.Start)
 				{
-					Current = &Leg;
+					Velocity = Leg.Dir * Leg.Speed;
 				}
 			}
-			if (Current)
-			{
-				Turtle += Current->Dir * (Current->Speed * Step);
-			}
+			Turtle += Velocity * Step;
 			// Como en el servidor: después de moverse ella, el blanco va hacia donde está.
-			Aim = TNBeachGullTuning::StepToward(Aim, Turtle, SpeedAt(T), Step);
+			Aim = TNBeachGullTuning::StepAim(Plan, T, State, Aim, Turtle, Velocity, Step);
 		}
 		return FVector2D::Distance(Aim, Turtle);
 	}
 
-	double DiveMiss(const TArray<FLeg>& Legs)
+	/** Lo que coge el pico y lo que alcanza cada cagada, con el tamaño SizeK. */
+	bool DiveCatches(double Miss, float SizeK = 1.f)
 	{
-		using namespace TNBeachGullTuning;
-		const float StrikeTime = DiveClimbTime + DiveTime;
-		return SimulateMissDistance(Legs, StrikeTime, [StrikeTime](float T) { return DiveChaseSpeedAt(T, StrikeTime); });
+		return TNBeachGullTuning::IsInsideHit(Miss, TNBeachGullTuning::GrabRadius, SizeK, TNBeachGullTuning::GrabPad);
 	}
 
-	double PoopMiss(const TArray<FLeg>& Legs)
+	bool PoopHits(double Miss, float SizeK = 1.f)
 	{
-		using namespace TNBeachGullTuning;
-		return SimulateMissDistance(Legs, PoopDropTime + PoopFallTime, [](float T) { return PoopChaseSpeedAt(T, PoopDropTime, PoopFallTime); });
-	}
-
-	double StrikeMiss(const TArray<FLeg>& Legs)
-	{
-		using namespace TNBeachGullTuning;
-		return SimulateMissDistance(Legs, StrikeReleaseAge + StrikeFallSeconds,
-			[](float T) { return StrikeChaseSpeedAt(T, StrikeReleaseAge, StrikeFallSeconds); });
-	}
-
-	/** Lo que coge el pico (tamaño 1) y lo que alcanza cada cagada. */
-	bool DiveCatches(double Miss)
-	{
-		return TNBeachGullTuning::IsInsideHit(Miss, TNBeachGullTuning::GrabRadius, 1.f, TNBeachGullTuning::GrabPad);
-	}
-
-	bool PoopHits(double Miss)
-	{
-		return TNBeachGullTuning::IsInsideHit(Miss, TNBeachGullTuning::SplatRadius, 1.f, TNBeachGullTuning::SplatPad);
+		return TNBeachGullTuning::IsInsideHit(Miss, TNBeachGullTuning::SplatRadius, SizeK, TNBeachGullTuning::SplatPad);
 	}
 
 	bool StrikeHits(double Miss)
 	{
 		return TNBeachGullTuning::IsInsideHit(Miss, TNBeachGullTuning::StrikeImpactRadius, 1.f, 0.f);
+	}
+
+	/**
+	 * Las mismas situaciones para los tres ataques. Hit(Miss, SizeK) dice si le da; se prueba con el tamaño más pequeño y el
+	 * más grande de las zonas (0,75 y 1,3) donde importa.
+	 */
+	template <typename FHit>
+	void CheckDodges(FAutomationTestBase& Test, const TCHAR* What, const TNBeachGullTuning::FChasePlan& Plan, FHit Hit)
+	{
+		const float Commit = Plan.CommitAt + 0.05f;
+		const FVector2D Ahead = Heading(0.f);
+		const FVector2D Side = Heading(90.f);
+		const FVector2D Back = Heading(180.f);
+		auto Miss = [&Plan](const TArray<FLeg>& Legs) { return SimulateMissDistance(Plan, Legs); };
+
+		Test.TestTrue(FString::Printf(TEXT("%s: quieta, le da"), What), Hit(Miss({}), 0.75f));
+		Test.TestTrue(FString::Printf(TEXT("%s: andando en línea recta, le da"), What), Hit(Miss({ { 0.f, Ahead, TurtleWalk } }), 0.75f));
+		Test.TestTrue(FString::Printf(TEXT("%s: corriendo en línea recta, le da"), What), Hit(Miss({ { 0.f, Ahead, TurtleRun } }), 0.75f));
+		Test.TestFalse(FString::Printf(TEXT("%s: corriendo y, al lanzarse, girando de lado, se libra"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleRun }, { Commit, Side, TurtleRun } }), 1.3f));
+		Test.TestFalse(FString::Printf(TEXT("%s: corriendo y, al lanzarse, girando 60°, se libra"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleRun }, { Commit, Heading(60.f), TurtleRun } }), 1.3f));
+		Test.TestFalse(FString::Printf(TEXT("%s: corriendo y, al lanzarse, dándose la vuelta, se libra"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleRun }, { Commit, Back, TurtleRun } }), 1.3f));
+		Test.TestFalse(FString::Printf(TEXT("%s: quieta y, al lanzarse, echando a correr, se libra"), What),
+			Hit(Miss({ { Commit, Side, TurtleRun } }), 1.3f));
+		Test.TestTrue(FString::Printf(TEXT("%s: andando y, al lanzarse, girando de lado, le da"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleWalk }, { Commit, Side, TurtleWalk } }), 0.75f));
+		Test.TestTrue(FString::Printf(TEXT("%s: andando y, al lanzarse, dándose la vuelta, le da"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleWalk }, { Commit, Back, TurtleWalk } }), 0.75f));
+		Test.TestTrue(FString::Printf(TEXT("%s: corriendo y girando antes de que se lance (0,2 s), le da"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleRun }, { Plan.CommitAt - 0.2f, Side, TurtleRun } }), 0.75f));
+		Test.TestTrue(FString::Printf(TEXT("%s: corriendo y girando demasiado tarde (0,4 s antes del golpe), le da"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleRun }, { Plan.EndAt - 0.4f, Side, TurtleRun } }), 0.75f));
+		Test.TestTrue(FString::Printf(TEXT("%s: corriendo y parándose al lanzarse, le da"), What),
+			Hit(Miss({ { 0.f, Ahead, TurtleRun }, { Commit, Ahead, 0.f } }), 0.75f));
 	}
 }
 
@@ -97,112 +120,105 @@ namespace TNBeachGullTuningTest
 // Tramos del blanco
 // ─────────────────────────────────────────────────────────────────────────────
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachGullChasePhasesTest,
-	"Tortunabo.Beach.Gull.ChasePhases",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachGullChasePlanTest,
+	"Tortunabo.Beach.Gull.ChasePlan",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNBeachGullChasePhasesTest::RunTest(const FString& Parameters)
+bool FTNBeachGullChasePlanTest::RunTest(const FString& Parameters)
 {
 	using namespace TNBeachGullTuning;
 	using namespace TNBeachGullTuningTest;
-	const float StrikeTime = DiveClimbTime + DiveTime;
 
-	TestTrue(TEXT("Picado: al principio sigue más rápido de lo que se anda y más lento de lo que se corre"),
-		DiveChaseSpeedAt(0.5f, StrikeTime) > TurtleWalk && DiveChaseSpeedAt(0.5f, StrikeTime) < TurtleRun);
-	TestEqual(TEXT("Picado: en el último tramo ya va lanzado y apenas corrige"),
-		DiveChaseSpeedAt(StrikeTime - DiveCommitSeconds * 0.5f, StrikeTime), DiveLateChaseSpeed);
-	TestTrue(TEXT("Picado: lo que corrige al final es mucho menos que lo que se anda"), DiveLateChaseSpeed < TurtleWalk * 0.5f);
-	TestEqual(TEXT("Picado: al llegar abajo el blanco ya no se mueve"), DiveChaseSpeedAt(StrikeTime + 0.01f, StrikeTime), 0.f);
-
-	TestTrue(TEXT("Cagada: mientras vuela encima sigue más rápido de lo que se anda (andando no se escapa del aviso)"),
-		PoopChaseSpeedAt(PoopDropTime * 0.5f, PoopDropTime, PoopFallTime) > TurtleWalk);
-	TestTrue(TEXT("Cagada: mientras cae no sigue más rápido de lo que se anda"),
-		PoopChaseSpeedAt(PoopDropTime + 0.2f, PoopDropTime, PoopFallTime) <= TurtleWalk);
-	TestEqual(TEXT("Cagada: el último tramo de la caída el blanco está quieto"),
-		PoopChaseSpeedAt(PoopDropTime + PoopFallTime - PoopLockSeconds * 0.5f, PoopDropTime, PoopFallTime), 0.f);
-
-	TestTrue(TEXT("Justiciera: hasta soltarla sigue más lenta de lo que se corre"),
-		StrikeChaseSpeedAt(1.f, StrikeReleaseAge, StrikeFallSeconds) < TurtleRun);
-	TestEqual(TEXT("Justiciera: el último tramo de la caída el blanco está quieto"),
-		StrikeChaseSpeedAt(StrikeReleaseAge + StrikeFallSeconds - StrikeLockSeconds * 0.5f, StrikeReleaseAge, StrikeFallSeconds), 0.f);
-
-	TestTrue(TEXT("La velocidad del suavizado de los clientes cubre el tramo más rápido"),
-		MaxChaseSpeed() >= DiveChaseSpeed && MaxChaseSpeed() >= PoopChaseSpeed);
+	TestTrue(TEXT("Picado: persigue algo más rápido de lo que se corre (en línea recta no se despega)"), DiveChaseSpeed >= TurtleRun);
+	TestTrue(TEXT("Cagada: ídem"), PoopChaseSpeed >= TurtleRun);
+	TestTrue(TEXT("Justiciera: ídem"), StrikeChaseSpeed >= TurtleRun);
+	TestTrue(TEXT("Lanzado, hacia los lados corrige mucho menos de lo que se anda"),
+		DiveLateCorrection < TurtleWalk * 0.5f && PoopLateCorrection < TurtleWalk * 0.5f && StrikeLateCorrection < TurtleWalk * 0.5f);
+	TestTrue(TEXT("Picado: se lanza antes de llegar abajo y después de empezar a bajar"),
+		DivePlan().CommitAt > DiveClimbTime && DivePlan().CommitAt < DivePlan().EndAt);
+	TestTrue(TEXT("Justiciera: se lanza justo después de soltar la cagada"),
+		StrikePlan().CommitAt >= StrikeReleaseAge && StrikePlan().CommitAt < StrikeReleaseAge + 0.5f);
+	TestTrue(TEXT("El «!» de la cagada se queda fijo cuando ya cae por su línea"),
+		!IsCommitted(PoopPlan(), PoopPlan().CommitAt - 0.01f) && IsCommitted(PoopPlan(), PoopPlan().CommitAt));
+	TestTrue(TEXT("La velocidad del suavizado de los clientes cubre la persecución"),
+		MaxChaseSpeed() >= DiveChaseSpeed && MaxChaseSpeed() >= PoopChaseSpeed && MaxChaseSpeed() >= StrikeChaseSpeed);
 
 	{
 		const FVector2D Stepped = StepToward(FVector2D(0.0, 0.0), FVector2D(100.0, 0.0), 600.f, 0.1f);
 		TestTrue(TEXT("El blanco no se pasa de su objetivo"), Stepped.Equals(FVector2D(60.0, 0.0), 0.01));
 		const FVector2D Arrived = StepToward(FVector2D(0.0, 0.0), FVector2D(30.0, 40.0), 600.f, 0.1f);
 		TestTrue(TEXT("Si llega en este paso, se queda justo encima"), Arrived.Equals(FVector2D(30.0, 40.0), 0.01));
-		const FVector2D Frozen = StepToward(FVector2D(5.0, 5.0), FVector2D(300.0, 0.0), 0.f, 0.1f);
-		TestTrue(TEXT("A velocidad 0 el blanco no se mueve"), Frozen.Equals(FVector2D(5.0, 5.0), 0.01));
+	}
+	{
+		// Lanzado: por su línea acompaña lo que ella avanza por ella, nunca hacia atrás.
+		const FChasePlan Plan = DivePlan();
+		FChaseState State;
+		const FVector2D Forward = StepAim(Plan, Plan.CommitAt, State, FVector2D::ZeroVector, FVector2D(40.0, 0.0), FVector2D(TurtleRun, 0.0), 0.1f);
+		TestTrue(TEXT("Lanzado: apunta su línea y su velocidad"), State.bCommitted && State.Dir.Equals(FVector2D(1.0, 0.0), 0.001));
+		TestTrue(TEXT("Lanzado: avanza con ella por su línea"), Forward.X >= TurtleRun * 0.1f - 1.0);
+		const FVector2D Backwards = StepAim(Plan, Plan.CommitAt + 0.1f, State, FVector2D::ZeroVector, FVector2D(-40.0, 0.0), FVector2D(-TurtleRun, 0.0), 0.1f);
+		TestTrue(TEXT("Lanzado: si ella se da la vuelta, él no retrocede más que su corrección"),
+			Backwards.X >= -static_cast<double>(Plan.LateCorrection) * 0.1 - 0.01);
+		const FVector2D After = StepAim(Plan, Plan.EndAt + 0.1f, State, FVector2D(5.0, 5.0), FVector2D(300.0, 0.0), FVector2D(TurtleRun, 0.0), 0.1f);
+		TestTrue(TEXT("Tras el golpe el blanco no se mueve"), After.Equals(FVector2D(5.0, 5.0), 0.01));
 	}
 	return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Esquivar el picado
+// Esquivar el picado, la cagada y la justiciera
 // ─────────────────────────────────────────────────────────────────────────────
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachGullDiveDodgeTest,
-	"Tortunabo.Beach.Gull.DiveDodge",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachGullDodgeTest,
+	"Tortunabo.Beach.Gull.Dodge",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNBeachGullDiveDodgeTest::RunTest(const FString& Parameters)
+bool FTNBeachGullDodgeTest::RunTest(const FString& Parameters)
 {
 	using namespace TNBeachGullTuning;
 	using namespace TNBeachGullTuningTest;
-	const float StrikeTime = DiveClimbTime + DiveTime;
-	const float Commit = StrikeTime - DiveCommitSeconds;
-	const FVector2D Ahead(1.0, 0.0);
-	const FVector2D Side(0.0, 1.0);
 
-	TestTrue(TEXT("Quieta: la coge"), DiveCatches(DiveMiss({})));
-	TestTrue(TEXT("Andando en línea recta todo el picado: la coge"), DiveCatches(DiveMiss({ { 0.f, Ahead, TurtleWalk } })));
-	TestFalse(TEXT("Corriendo en línea recta desde que aparece la sombra: se libra"), DiveCatches(DiveMiss({ { 0.f, Ahead, TurtleRun } })));
-	TestFalse(TEXT("Andando y, al lanzarse el picado, corriendo de lado: se libra"),
-		DiveCatches(DiveMiss({ { 0.f, Ahead, TurtleWalk }, { Commit, Side, TurtleRun } })));
-	TestFalse(TEXT("Andando y, al lanzarse el picado, corriendo hacia atrás: se libra"),
-		DiveCatches(DiveMiss({ { 0.f, Ahead, TurtleWalk }, { Commit, -Ahead, TurtleRun } })));
-	TestTrue(TEXT("Quieta y echando a correr demasiado tarde (0,1 s antes): la coge"),
-		DiveCatches(DiveMiss({ { StrikeTime - 0.1f, Side, TurtleRun } })));
-	return true;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Esquivar la cagada (zona y justiciera)
-// ─────────────────────────────────────────────────────────────────────────────
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachGullPoopDodgeTest,
-	"Tortunabo.Beach.Gull.PoopDodge",
-	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
-
-bool FTNBeachGullPoopDodgeTest::RunTest(const FString& Parameters)
-{
-	using namespace TNBeachGullTuning;
-	using namespace TNBeachGullTuningTest;
-	const FVector2D Ahead(1.0, 0.0);
-	const FVector2D Side(0.0, 1.0);
-	const float PoopLock = PoopDropTime + PoopFallTime - PoopLockSeconds;
-	const float StrikeLock = StrikeReleaseAge + StrikeFallSeconds - StrikeLockSeconds;
-
-	TestTrue(TEXT("Cagada: quieta, le da"), PoopHits(PoopMiss({})));
-	TestTrue(TEXT("Cagada: andando en línea recta, le da"), PoopHits(PoopMiss({ { 0.f, Ahead, TurtleWalk } })));
-	TestFalse(TEXT("Cagada: corriendo desde que la suelta, se libra"), PoopHits(PoopMiss({ { PoopDropTime, Ahead, TurtleRun } })));
-	TestFalse(TEXT("Cagada: andando y, cuando el blanco se queda quieto, corriendo de lado, se libra"),
-		PoopHits(PoopMiss({ { 0.f, Ahead, TurtleWalk }, { PoopLock, Side, TurtleRun } })));
-
-	TestTrue(TEXT("Justiciera: quieta, le da"), StrikeHits(StrikeMiss({})));
-	TestTrue(TEXT("Justiciera: andando en línea recta, le da"), StrikeHits(StrikeMiss({ { 0.f, Ahead, TurtleWalk } })));
-	TestFalse(TEXT("Justiciera: corriendo desde que la suelta, se libra"), StrikeHits(StrikeMiss({ { StrikeReleaseAge, Ahead, TurtleRun } })));
-	TestFalse(TEXT("Justiciera: andando y, cuando el blanco se queda quieto, corriendo de lado, se libra"),
-		StrikeHits(StrikeMiss({ { 0.f, Ahead, TurtleWalk }, { StrikeLock, Side, TurtleRun } })));
+	CheckDodges(*this, TEXT("Picado"), DivePlan(), [](double Miss, float SizeK) { return DiveCatches(Miss, SizeK); });
+	CheckDodges(*this, TEXT("Cagada"), PoopPlan(), [](double Miss, float SizeK) { return PoopHits(Miss, SizeK); });
+	CheckDodges(*this, TEXT("Justiciera"), StrikePlan(), [](double Miss, float) { return StrikeHits(Miss); });
 
 	// La plancha: tirarse en el momento justo (en el aire o aún deprisa sobre la tripa), no tumbarse a esperar.
 	TestTrue(TEXT("Plancha en el aire: libra"), DodgesByBellyDive(true, true, 0.f));
 	TestTrue(TEXT("Plancha arrastrándose aún deprisa: libra"), DodgesByBellyDive(true, false, BellyDodgeMinSpeed + 10.f));
 	TestFalse(TEXT("Tumbada casi parada sobre la tripa: no libra"), DodgesByBellyDive(true, false, BellyDodgeMinSpeed * 0.5f));
 	TestFalse(TEXT("Sin plancha, aunque vaya por el aire (un salto): no libra"), DodgesByBellyDive(false, true, 900.f));
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cangrejo gigante: persecución y mazazo
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachCrabDodgeTest,
+	"Tortunabo.Beach.Crab.Dodge",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBeachCrabDodgeTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBeachCrabTuning;
+	using namespace TNBeachGullTuningTest;
+
+	for (const float SizeK : { 0.8f, 1.f, 1.2f })
+	{
+		const float Speed = ChaseSpeedFor(SizeK);
+		TestTrue(FString::Printf(TEXT("Cangrejo de tamaño %.1f: alcanza a quien anda"), SizeK), Speed > TurtleWalk);
+		TestTrue(FString::Printf(TEXT("Cangrejo de tamaño %.1f: corriendo se le escapa"), SizeK), Speed < TurtleRun);
+	}
+
+	// Salto (485 cm/s hacia arriba, gravedad 980): altura de los pies a los T s de despegar.
+	auto FeetAt = [](float T) { return 485.f * T - 490.f * T * T; };
+	TestFalse(TEXT("De pie en la arena: el mazazo le da"), ClearsSlamByJump(false, 0.f));
+	TestTrue(TEXT("En lo alto del salto: lo salta"), ClearsSlamByJump(true, FeetAt(0.5f)));
+	TestFalse(TEXT("Recién despegada (0,05 s): aún le da"), ClearsSlamByJump(true, FeetAt(0.05f)));
+	TestFalse(TEXT("Aterrizando (0,95 s): ya le da"), ClearsSlamByJump(true, FeetAt(0.95f)));
+	// La pinza cae 0,74 s después de levantarse (0,6 de aviso + 0,14): saltar en cuanto se levanta la libra.
+	TestTrue(TEXT("Saltando al levantar la pinza (cae 0,74 s después): lo salta"), ClearsSlamByJump(true, FeetAt(0.74f)));
+	TestTrue(TEXT("Saltando a mitad del aviso (cae 0,44 s después): lo salta"), ClearsSlamByJump(true, FeetAt(0.44f)));
 	return true;
 }
 
