@@ -1,4 +1,5 @@
 #include "Player/MP_GamePlayerController.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "Core/TN_Log.h"
 #include "Blueprint/UserWidget.h"
 #include "EnhancedInputComponent.h"
@@ -1535,11 +1536,7 @@ void AMP_GamePlayerController::ServerShellsTest_Implementation(const FString& Wh
 		ClientMessage(TEXT("TNShells: 1|25|50|100 [cantidad] suelta conchas delante; Especial lleva a la siguiente especial; Lista las cuenta."));
 		return;
 	}
-	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
-	if (!ShellClass)
-	{
-		ShellClass = ATN_ScorePickup::StaticClass();
-	}
+	UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
 	// En fila delante de la tortuga, a la altura de siempre sobre sus pies, para cogerlas de una carrera.
 	const int32 Number = FMath::Clamp(Count, 1, 20);
 	const FVector Forward = MyPawn->GetActorForwardVector().GetSafeNormal2D();

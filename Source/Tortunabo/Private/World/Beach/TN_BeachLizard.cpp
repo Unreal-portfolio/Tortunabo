@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachLizard.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachDecorField.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
@@ -574,11 +575,7 @@ void ATN_BeachLizard::DropPrize()
 	}
 	if (!Prize.IsValid())
 	{
-		UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
-		if (!ShellClass)
-		{
-			ShellClass = ATN_ScorePickup::StaticClass();
-		}
+		UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
 		const FTransform ShellAt(FRotator(0.0, GetActorRotation().Yaw, 0.0), Where + FVector(0.0, 0.0, TNScoreShells::Hover));
 		if (ATN_ScorePickup* Shell = World->SpawnActorDeferred<ATN_ScorePickup>(ShellClass, ShellAt, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn))
 		{

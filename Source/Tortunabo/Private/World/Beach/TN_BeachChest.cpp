@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachChest.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ScorePickup.h"
 #include "World/TN_ScoreShells.h"
@@ -947,11 +948,7 @@ void ATN_BeachChestSpot::SpawnPrizes(const APawn* Opener)
 	{
 		Values.Swap(i, FMath::RandRange(0, i));
 	}
-	UClass* ShellClass = LoadClass<ATN_ScorePickup>(nullptr, TEXT("/Game/Blueprints/Gameplay/Items/BP_ScorePickup.BP_ScorePickup_C"));
-	if (!ShellClass)
-	{
-		ShellClass = ATN_ScorePickup::StaticClass();
-	}
+	UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
 	const UDataTable* Table = LootTable.LoadSynchronous();
 
 	// En corona alrededor del cofre, dejando libre el frente de quien lo ha abierto (ahí cae el objeto de siempre): el

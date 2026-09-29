@@ -26,6 +26,7 @@
 #include "Multiplayer/TN_CosmeticSaveGame.h"
 #include "Multiplayer/TN_RoomInfo.h"
 #include "Multiplayer/TN_SaveGameIO.h"
+#include "Settings/TN_GameplayAssetSettings.h"
 #include "Multiplayer/TN_RoomNames.h"
 #include "Multiplayer/TN_TutorialSaveGame.h"
 #include "UI/HUD/TN_LoadingScreenWidget.h"
@@ -73,6 +74,8 @@ void UMP_GameInstance::Init()
 {
 	Super::Init();
 	EnsureSteamAppIdFile();
+	// La concha de puntos se precarga ya: nada la carga en frío al morir un lagarto o abrirse un cofre.
+	UTN_GameplayAssetSettings::PreloadAsync();
 
 	IOnlineSubsystem* OSS = MPGameInstance_GetPreferredOnlineSubsystem();
 
