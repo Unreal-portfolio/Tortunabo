@@ -292,7 +292,7 @@ Orden sugerido: U5+U6 (selector y equipos) → lógica 2 vs 2 → M1/M4/N4/N5 + 
 Tomadas por delegación del director, coherentes con el plan maestro:
 
 1. El 2 vs 2 procedural actual (`ETNProcGameMode::TwoVsTwo`, generador de carriles) se retira a favor del 2 vs 2 volumétrico de §7.9; el código pasa a `Deprecado/` cuando exista el nuevo.
-2. En el MVP no se puede agarrar ni lanzar a rivales en las zonas comunes del 2 vs 2; solo a la compañera.
+2. **Corregido por el director:** en el 2 vs 2 SÍ se puede agarrar y lanzar a los rivales (con la regla general: solo a quien está en caparazón), además de a la compañera. Es parte del sabotaje entre equipos.
 3. Si una jugadora abandona, su pareja pierde la ronda a los 45 s si no vuelve; sin bots.
 4. Clásico sale del selector de modos y se retira con el modo Run (plan F0–F2, tareas T35–T37).
 5. Los valores marcados «supuesto» se miden en PIE antes de fijarlos.
