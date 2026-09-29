@@ -19,6 +19,7 @@
 #include "World/Beach/TN_BeachStun.h"
 #include "World/Beach/TN_BeachStunComponent.h"
 #include "World/Beach/TN_BeachTypes.h"
+#include "World/Beach/TN_RaceItemComponent.h"
 #include "World/TN_DeathZoneVolume.h"
 #include "World/TN_StormVolume.h"
 #include "Components/BoxComponent.h"
@@ -932,6 +933,11 @@ void ATN_BeachRaceGameMode::MarkPlayerFinished(APlayerController* PlayerControll
 		{
 			Shell->SetExitLocked(false);
 			Shell->ForceExitShell();
+		}
+		// Lo que promete TN_RaceItemComponent.h: al llegar se quitan turbo y protector (no derriba a las que entran).
+		if (UTN_RaceItemComponent* Effects = UTN_RaceItemComponent::FindOn(Turtle))
+		{
+			Effects->CancelEffects();
 		}
 	}
 
