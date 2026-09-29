@@ -151,6 +151,18 @@ struct FTNGameSettings
 	UPROPERTY()
 	bool bMuteInBackground = false;
 
+	/**
+	 * Modo VR (Docs/Modo_VR.md): 0 automático (primera persona con gafas si el juego arranca con ellas), 1 desactivado
+	 * (con gafas, la pantalla plana de siempre), 2 simulado sin gafas (primera persona, aletas e interfaz en el mundo con el
+	 * ratón, para probar el modo en el PC). La variable de consola TN.VR y -vrsim / -novr mandan sobre él.
+	 */
+	UPROPERTY()
+	uint8 VRMode = 0;
+
+	/** Giro con el stick derecho en VR: 0 a pasos de 30°, 1 a pasos de 45°, 2 suave. */
+	UPROPERTY()
+	uint8 VRTurn = 0;
+
 	// ── Pantalla (lo que no guarda UGameUserSettings) ────────────────────────
 
 	/** Brillo (0..1; 0,5 = el de siempre): cambia la gamma de salida del motor. */

@@ -49,6 +49,7 @@
 #include "Sound/SoundMix.h"
 #include "Sound/SoundWaveProcedural.h"
 #include "UObject/UObjectHash.h"
+#include "VR/TN_VRMode.h"
 
 // Con nombre (no anónimo): en la compilación por bloques (unity) los nombres de un espacio anónimo se ven en el resto
 // del bloque.
@@ -166,6 +167,8 @@ namespace TNGameSettingsDetail
 		S.ColorFilterStrength = FMath::Clamp(S.ColorFilterStrength, 0.f, 1.f);
 		S.Brightness = FMath::Clamp(S.Brightness, 0.f, 1.f);
 		S.UIScale = FMath::Clamp(S.UIScale, MinUIScale, MaxUIScale);
+		S.VRMode = static_cast<uint8>(FMath::Clamp<int32>(S.VRMode, 0, 2));
+		S.VRTurn = static_cast<uint8>(FMath::Clamp<int32>(S.VRTurn, 0, 2));
 		// Un idioma que ya no está en la lista (se quitó de la configuración): sin elegir, que toca el del sistema.
 		if (!S.Language.IsEmpty() && TNLanguage::IndexOf(S.Language) == INDEX_NONE)
 		{
@@ -684,6 +687,8 @@ void UTN_GameSettingsSubsystem::ResetGroup(ETNSettingsGroup Group)
 		// Idioma sin elegir (el del sistema, o el español) y el ojo de pez de serie.
 		Settings.Language = Defaults.Language;
 		Settings.bFisheye = Defaults.bFisheye;
+		Settings.VRMode = Defaults.VRMode;
+		Settings.VRTurn = Defaults.VRTurn;
 		break;
 	default:
 		// Gráficos: el brillo y el contador; la calidad se elige con «Calidad recomendada» (UGameUserSettings).
@@ -819,8 +824,9 @@ void UTN_GameSettingsSubsystem::UpdateFisheye(APlayerController* PC, float Delta
 		return;
 	}
 
-	// Se enciende y se apaga poco a poco (así no salta al cambiar el ajuste).
-	FisheyeAmount = FMath::FInterpConstantTo(FisheyeAmount, Settings.bFisheye ? 1.f : 0.f, DeltaTime, 1.f / FisheyeFadeSeconds);
+	// Se enciende y se apaga poco a poco (así no salta al cambiar el ajuste). En VR nunca: deformar la imagen con gafas marea.
+	FisheyeAmount = TNVR::IsEnabled() ? 0.f
+		: FMath::FInterpConstantTo(FisheyeAmount, Settings.bFisheye ? 1.f : 0.f, DeltaTime, 1.f / FisheyeFadeSeconds);
 
 	float D = 0.f;
 	float S = 0.f;
@@ -1168,6 +1174,8 @@ void UTN_GameSettingsSubsystem::UpdateLocalVoice(APlayerController* PC)
 		const FKey Key(Settings.PushToTalkKey);
 		const FKey PadKey(Settings.PushToTalkPadKey);
 		bTalkKeyDown = (Key.IsValid() && PC->IsInputKeyDown(Key)) || (PadKey.IsValid() && PC->IsInputKeyDown(PadKey));
+		// En VR, pulsando el stick izquierdo (Docs/Modo_VR.md).
+		bTalkKeyDown = bTalkKeyDown || (TNVR::IsEnabled() && FTNVRKeys::LeftStickClick.IsValid() && PC->IsInputKeyDown(FTNVRKeys::LeftStickClick));
 	}
 	bTransmitAllowed = !Settings.bMicMuted && (!Settings.bPushToTalk || bTalkKeyDown);
 
@@ -1226,8 +1234,9 @@ void UTN_GameSettingsSubsystem::UpdateCamera(APlayerController* PC)
 		}
 	}
 
-	// Temblor de cámara: los modificadores que tiemblan, apagados (o encendidos otra vez los que se apagaron aquí).
-	if (!Settings.bCameraShake)
+	// Temblor de cámara: los modificadores que tiemblan, apagados (o encendidos otra vez los que se apagaron aquí). En VR,
+	// siempre apagados: mover la vista sin mover la cabeza marea.
+	if (!Settings.bCameraShake || TNVR::IsEnabled())
 	{
 		Camera->ForEachCameraModifier([this](UCameraModifier* Modifier)
 		{
@@ -1253,7 +1262,7 @@ void UTN_GameSettingsSubsystem::UpdateFpsCounter(APlayerController* PC)
 {
 	if (!Settings.bShowFps)
 	{
-		if (FpsWidget && FpsWidget->IsInViewport()) { FpsWidget->RemoveFromParent(); }
+		if (FpsWidget && TNVR::IsOnScreen(FpsWidget)) { FpsWidget->RemoveFromParent(); }
 		return;
 	}
 	if (!FpsWidget)
@@ -1261,9 +1270,9 @@ void UTN_GameSettingsSubsystem::UpdateFpsCounter(APlayerController* PC)
 		FpsWidget = CreateWidget<UTN_FpsCounterWidget>(GetGameInstance(), UTN_FpsCounterWidget::StaticClass());
 	}
 	// Tras un viaje el mundo quita todos los widgets: se vuelve a poner.
-	if (FpsWidget && !FpsWidget->IsInViewport())
+	if (FpsWidget && !TNVR::IsOnScreen(FpsWidget))
 	{
-		FpsWidget->AddToViewport(TNGameSettingsDetail::FpsZOrder);
+		TNVR::AddToScreen(FpsWidget, TNGameSettingsDetail::FpsZOrder);
 	}
 }
 
@@ -1272,16 +1281,16 @@ void UTN_GameSettingsSubsystem::UpdateTalkers(APlayerController* PC)
 	// Solo en la partida (lobby incluido), no en el menú principal.
 	if (!Settings.bShowTalkers || !Cast<AMP_GamePlayerController>(PC))
 	{
-		if (TalkersWidget && TalkersWidget->IsInViewport()) { TalkersWidget->RemoveFromParent(); }
+		if (TalkersWidget && TNVR::IsOnScreen(TalkersWidget)) { TalkersWidget->RemoveFromParent(); }
 		return;
 	}
 	if (!TalkersWidget)
 	{
 		TalkersWidget = CreateWidget<UTN_TalkersWidget>(GetGameInstance(), UTN_TalkersWidget::StaticClass());
 	}
-	if (TalkersWidget && !TalkersWidget->IsInViewport())
+	if (TalkersWidget && !TNVR::IsOnScreen(TalkersWidget))
 	{
-		TalkersWidget->AddToViewport(TNGameSettingsDetail::TalkersZOrder);
+		TNVR::AddToScreen(TalkersWidget, TNGameSettingsDetail::TalkersZOrder);
 	}
 }
 
@@ -1921,6 +1930,8 @@ void UTN_GameSettingsSubsystem::EnsurePauseInput(APlayerController* PC)
 		if (Key.IsValid()) { Keys.AddUnique(Key); }
 	}
 	if (GIsEditor) { Keys.AddUnique(EKeys::Tab); }
+	// El botón de menú del mando izquierdo de las gafas (si el motor tiene los mandos de Meta; sin OpenXR no existe).
+	if (FTNVRKeys::Menu.IsValid()) { Keys.AddUnique(FTNVRKeys::Menu); }
 	for (const FKey& Key : Keys)
 	{
 		PauseInput->BindKey(Key, IE_Pressed, this, &UTN_GameSettingsSubsystem::HandlePauseKey);
@@ -1987,7 +1998,7 @@ void UTN_GameSettingsSubsystem::OpenPauseMenu(APlayerController* PC)
 		return;
 	}
 	PauseMenu = Menu;
-	Menu->AddToViewport(TNGameSettingsDetail::PauseMenuZOrder);
+	TNVR::AddToScreen(Menu, TNGameSettingsDetail::PauseMenuZOrder);
 	Menu->TakeInput();
 	UE_LOG(LogTortunabo, Log, TEXT("[Pausa] Menú abierto (%s)."), *GetNameSafe(PC->GetWorld()));
 }
@@ -2005,7 +2016,7 @@ void UTN_GameSettingsSubsystem::OpenMainMenuSettings(APlayerController* PC)
 		return;
 	}
 	PauseMenu = Menu;
-	Menu->AddToViewport(TNGameSettingsDetail::PauseMenuZOrder);
+	TNVR::AddToScreen(Menu, TNGameSettingsDetail::PauseMenuZOrder);
 	Menu->TakeInput();
 	UE_LOG(LogTortunabo, Log, TEXT("[Pausa] Ajustes abiertos desde el menú principal."));
 }
@@ -2022,7 +2033,7 @@ void UTN_GameSettingsSubsystem::ClosePauseMenu()
 
 bool UTN_GameSettingsSubsystem::IsPauseMenuOpen() const
 {
-	return PauseMenu && PauseMenu->IsInViewport();
+	return PauseMenu && TNVR::IsOnScreen(PauseMenu);
 }
 
 void UTN_GameSettingsSubsystem::NotifyPauseMenuClosed(UTN_PauseMenuWidget* Menu)

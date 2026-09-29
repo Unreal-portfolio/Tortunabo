@@ -1,0 +1,179 @@
+// Cuentas del modo VR sin mundo ni actores (VR/TN_VRMath.h, Docs/Modo_VR.md): el rayo del puntero contra el panel de la
+// interfaz, el HUD que sigue a la cabeza con retraso, el giro por pasos, la distancia y la escala del panel y los botones de
+// los mandos en los menús. Se pueden correr sin gafas.
+// Correr desde Session Frontend (categoría "Tortunabo.VR") o sin ventana:
+//   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.VR; Quit" -nullrhi -unattended
+
+#include "Misc/AutomationTest.h"
+#include "InputCoreTypes.h"
+#include "VR/TN_VRMath.h"
+#include "VR/TN_VRMode.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+namespace TNVRTest
+{
+	/** Tamaño de dibujo del panel de la interfaz (UTN_VRScreenWidget: 1920 × 1080). */
+	const FVector2D VRPanelSize(1920.0, 1080.0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Puntero contra el panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRRayPanelHitTest,
+	"Tortunabo.VR.RayPanelHit",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRRayPanelHitTest::RunTest(const FString& Parameters)
+{
+	using namespace TNVRTest;
+	FVector Hit;
+	FVector2D UV;
+
+	// Panel en el origen mirando a +X; el rayo viene de delante.
+	const FTransform Identity = FTransform::Identity;
+	TestTrue(TEXT("De frente al centro: toca"), TNVRMath::RayPanelHit(FVector(100.0, 0.0, 0.0), FVector(-1.0, 0.0, 0.0), Identity, VRPanelSize, Hit, UV));
+	TestTrue(TEXT("Centro → UV (0,5; 0,5)"), UV.Equals(FVector2D(0.5, 0.5), 1e-4));
+	TestTrue(TEXT("Punto tocado en el plano del panel"), Hit.Equals(FVector::ZeroVector, 1e-3));
+
+	// Visto desde delante, la derecha es -Y y arriba +Z.
+	TestTrue(TEXT("Arriba a la derecha: toca"), TNVRMath::RayPanelHit(FVector(100.0, -480.0, 270.0), FVector(-1.0, 0.0, 0.0), Identity, VRPanelSize, Hit, UV));
+	TestTrue(TEXT("Arriba a la derecha → UV (0,75; 0,25)"), UV.Equals(FVector2D(0.75, 0.25), 1e-4));
+
+	TestFalse(TEXT("Rayo que se aleja del panel: no toca"), TNVRMath::RayPanelHit(FVector(100.0, 0.0, 0.0), FVector(1.0, 0.0, 0.0), Identity, VRPanelSize, Hit, UV));
+	TestFalse(TEXT("Rayo paralelo al panel: no toca"), TNVRMath::RayPanelHit(FVector(100.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), Identity, VRPanelSize, Hit, UV));
+	TestFalse(TEXT("Fuera del borde: no toca"), TNVRMath::RayPanelHit(FVector(100.0, 1000.0, 0.0), FVector(-1.0, 0.0, 0.0), Identity, VRPanelSize, Hit, UV));
+
+	// Con escala (el panel mide unos centímetros en el mundo) y girado: las cuentas van en el espacio del panel.
+	const FTransform Placed(FRotator(0.0, 90.0, 0.0), FVector(0.0, 200.0, 150.0), FVector(0.1));
+	// Girado 90° el panel mira a +Y; su derecha (vista desde delante) queda en +X.
+	TestTrue(TEXT("Panel girado y escalado: toca"), TNVRMath::RayPanelHit(FVector(48.0, 300.0, 150.0), FVector(0.0, -1.0, 0.0), Placed, VRPanelSize, Hit, UV));
+	TestTrue(TEXT("Panel girado y escalado → UV (0,75; 0,5)"), UV.Equals(FVector2D(0.75, 0.5), 1e-3));
+	TestTrue(TEXT("Punto tocado en el mundo"), Hit.Equals(FVector(48.0, 200.0, 150.0), 1e-2));
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HUD que sigue a la cabeza
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRLazyFollowTest,
+	"Tortunabo.VR.LazyFollowYaw",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRLazyFollowTest::RunTest(const FString& Parameters)
+{
+	constexpr float Dt = 1.f / 72.f;
+	bool bFollowing = false;
+
+	// Mirar un poco a un lado no mueve el HUD.
+	float Yaw = TNVRMath::LazyFollowYaw(0.f, 10.f, Dt, bFollowing);
+	TestEqual(TEXT("Cabeza a 10°: el HUD no se mueve"), Yaw, 0.f);
+	TestFalse(TEXT("Cabeza a 10°: no empieza a seguir"), bFollowing);
+
+	// Girar la cabeza del todo: el HUD va detrás y se para cerca.
+	Yaw = TNVRMath::LazyFollowYaw(0.f, 40.f, Dt, bFollowing);
+	TestTrue(TEXT("Cabeza a 40°: empieza a seguir"), bFollowing);
+	TestTrue(TEXT("Cabeza a 40°: se mueve hacia ella"), Yaw > 0.f && Yaw < 40.f);
+	for (int32 Step = 0; Step < 200 && bFollowing; ++Step)
+	{
+		Yaw = TNVRMath::LazyFollowYaw(Yaw, 40.f, Dt, bFollowing);
+	}
+	TestFalse(TEXT("Llega y deja de seguir"), bFollowing);
+	TestTrue(TEXT("Se para a menos de 2° de la cabeza"), FMath::Abs(Yaw - 40.f) < 2.f);
+
+	// Por el lado corto al pasar de 180 a -180.
+	bFollowing = false;
+	Yaw = TNVRMath::LazyFollowYaw(170.f, -150.f, Dt, bFollowing);
+	TestTrue(TEXT("De 170° a -150°: sigue"), bFollowing);
+	TestTrue(TEXT("De 170° a -150°: gira por el lado corto (hacia 180)"), Yaw > 170.f || Yaw < -170.f);
+	for (int32 Step = 0; Step < 200 && bFollowing; ++Step)
+	{
+		Yaw = TNVRMath::LazyFollowYaw(Yaw, -150.f, Dt, bFollowing);
+	}
+	TestTrue(TEXT("De 170° a -150°: acaba junto a -150°"), FMath::Abs(FRotator::NormalizeAxis(static_cast<double>(Yaw) + 150.0)) < 2.0);
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Giro por pasos
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRSnapTurnTest,
+	"Tortunabo.VR.SnapTurnStep",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRSnapTurnTest::RunTest(const FString& Parameters)
+{
+	bool bLatched = false;
+	TestEqual(TEXT("Stick casi quieto: no gira"), TNVRMath::SnapTurnStep(0.3f, bLatched), 0);
+	TestEqual(TEXT("Stick a la derecha: un paso a la derecha"), TNVRMath::SnapTurnStep(0.8f, bLatched), 1);
+	TestEqual(TEXT("Sin soltar: no da otro"), TNVRMath::SnapTurnStep(0.95f, bLatched), 0);
+	TestEqual(TEXT("A medio volver (0,5): tampoco"), TNVRMath::SnapTurnStep(0.5f, bLatched), 0);
+	TestEqual(TEXT("Suelto: nada"), TNVRMath::SnapTurnStep(0.1f, bLatched), 0);
+	TestFalse(TEXT("Suelto: listo para otro"), bLatched);
+	TestEqual(TEXT("Stick a la izquierda: un paso a la izquierda"), TNVRMath::SnapTurnStep(-0.9f, bLatched), -1);
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Distancia y escala del panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRPanelPlacementTest,
+	"Tortunabo.VR.PanelPlacement",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRPanelPlacementTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Sin nada delante: a la distancia pedida"), TNVRMath::PanelDistance(140.f, false, 0.f), 140.f);
+	TestEqual(TEXT("Pared a 100 cm: justo delante de ella"), TNVRMath::PanelDistance(140.f, true, 100.f), 92.f);
+	TestEqual(TEXT("Pared pegada: nunca más cerca que el mínimo"), TNVRMath::PanelDistance(140.f, true, 10.f), 40.f);
+	TestEqual(TEXT("Algo más lejos que el panel: no cambia"), TNVRMath::PanelDistance(140.f, true, 500.f), 140.f);
+
+	// 50° de ancho a 140 cm: 2 · 140 · tan 25° ≈ 130,6 cm repartidos en 1920 píxeles.
+	const float Scale = TNVRMath::PanelScale(140.f, 50.f, 1920.f);
+	TestTrue(TEXT("Escala del HUD: ~130,6 cm de ancho"), FMath::IsNearlyEqual(Scale * 1920.f, 130.56f, 0.1f));
+	TestTrue(TEXT("Más lejos, más grande (mismo ángulo)"), TNVRMath::PanelScale(280.f, 50.f, 1920.f) > Scale * 1.99f);
+	TestTrue(TEXT("Ancho de dibujo 0: sin dividir por cero"), FMath::IsFinite(TNVRMath::PanelScale(140.f, 50.f, 0.f)));
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mandos en los menús
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRMenuKeysTest,
+	"Tortunabo.VR.MenuKeys",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRMenuKeysTest::RunTest(const FString& Parameters)
+{
+	// Los sticks mueven por el menú en cuatro direcciones.
+	TestEqual(TEXT("Stick arriba"), TNVRMath::StickDirection(FVector2D(0.0, 0.9)), 1);
+	TestEqual(TEXT("Stick abajo"), TNVRMath::StickDirection(FVector2D(0.1, -0.9)), 2);
+	TestEqual(TEXT("Stick izquierda"), TNVRMath::StickDirection(FVector2D(-0.9, 0.2)), 3);
+	TestEqual(TEXT("Stick derecha"), TNVRMath::StickDirection(FVector2D(0.9, -0.2)), 4);
+	TestEqual(TEXT("Stick poco movido: nada"), TNVRMath::StickDirection(FVector2D(0.3, 0.3)), 0);
+	TestTrue(TEXT("Dirección 1 → cruceta arriba"), TNVRMath::DirectionKey(1) == EKeys::Gamepad_DPad_Up);
+	TestTrue(TEXT("Dirección 4 → cruceta derecha"), TNVRMath::DirectionKey(4) == EKeys::Gamepad_DPad_Right);
+	TestFalse(TEXT("Sin dirección → ninguna tecla"), TNVRMath::DirectionKey(0).IsValid());
+
+	// Los botones hacen lo mismo que los del mando en todos los menús.
+	TestTrue(TEXT("A → aceptar"), TNVRMath::MenuKeyFor(FTNVRKeys::A) == EKeys::Gamepad_FaceButton_Bottom);
+	TestTrue(TEXT("X → aceptar"), TNVRMath::MenuKeyFor(FTNVRKeys::X) == EKeys::Gamepad_FaceButton_Bottom);
+	TestTrue(TEXT("B → atrás"), TNVRMath::MenuKeyFor(FTNVRKeys::B) == EKeys::Gamepad_FaceButton_Right);
+	TestTrue(TEXT("Y → atrás"), TNVRMath::MenuKeyFor(FTNVRKeys::Y) == EKeys::Gamepad_FaceButton_Right);
+	TestTrue(TEXT("Agarre izquierdo → pestaña anterior"), TNVRMath::MenuKeyFor(FTNVRKeys::LeftGrip) == EKeys::Gamepad_LeftShoulder);
+	TestTrue(TEXT("Agarre derecho → pestaña siguiente"), TNVRMath::MenuKeyFor(FTNVRKeys::RightGrip) == EKeys::Gamepad_RightShoulder);
+	TestTrue(TEXT("Menú → Start"), TNVRMath::MenuKeyFor(FTNVRKeys::Menu) == EKeys::Gamepad_Special_Right);
+	TestTrue(TEXT("Stick derecho abajo → cruceta abajo"), TNVRMath::MenuKeyFor(FTNVRKeys::RightStickDown) == EKeys::Gamepad_DPad_Down);
+	TestFalse(TEXT("Gatillo: es el clic del puntero, no una tecla"), TNVRMath::MenuKeyFor(FTNVRKeys::RightTrigger).IsValid());
+
+	TestTrue(TEXT("A es un botón de los mandos VR"), FTNVRKeys::IsVRKey(FTNVRKeys::A));
+	TestFalse(TEXT("Un botón del mando normal no lo es"), FTNVRKeys::IsVRKey(EKeys::Gamepad_FaceButton_Bottom));
+	return true;
+}
+
+#endif // WITH_DEV_AUTOMATION_TESTS

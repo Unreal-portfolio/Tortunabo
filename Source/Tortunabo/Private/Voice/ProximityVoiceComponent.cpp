@@ -9,6 +9,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Input/Events.h"
 #include "EngineUtils.h"
+#include "VR/TN_VRMode.h"
 
 UProximityVoiceComponent::UProximityVoiceComponent()
 {
@@ -312,7 +313,7 @@ void UProximityVoiceComponent::CreateVoiceIndicatorHUD()
 	VoiceIndicatorWidgetInstance = CreateWidget<UUserWidget>(PC, WidgetClass);
 	if (VoiceIndicatorWidgetInstance)
 	{
-		VoiceIndicatorWidgetInstance->AddToViewport(10);
+		TNVR::AddToScreen(VoiceIndicatorWidgetInstance, 10);
 	}
 }
 

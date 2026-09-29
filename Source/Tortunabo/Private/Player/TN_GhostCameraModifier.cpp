@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/SpectatorPawn.h"
+#include "VR/TN_VRMode.h"
 
 namespace TNGhostCameraDetail
 {
@@ -151,8 +152,9 @@ bool UTN_GhostCameraModifier::ModifyCamera(float DeltaTime, FMinimalViewInfo& In
 {
 	ATN_SpectatorGhost* GhostActor = Ghost.Get();
 	const APlayerController* PC = CameraOwner ? CameraOwner->GetOwningPlayerController() : nullptr;
-	// Sin fantasma, o ya con tortuga propia (acaba de salir del huevo): la cámara de siempre.
-	if (!GhostActor || !PC || !GhostActor->IsActiveGhost() || PC->GetPawn())
+	// Sin fantasma, o ya con tortuga propia (acaba de salir del huevo): la cámara de siempre. En VR también: una cámara que
+	// orbita sola no sigue a la cabeza y marea; se ve desde la cámara del jugador seguido (Docs/Modo_VR.md).
+	if (!GhostActor || !PC || !GhostActor->IsActiveGhost() || PC->GetPawn() || TNVR::IsEnabled())
 	{
 		return false;
 	}
