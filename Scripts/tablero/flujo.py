@@ -1,0 +1,72 @@
+"""Reglas puras del ciclo de una issue: validaciones, envío a revisión y fusión en dev.
+
+- In progress: el autor puede probar en el editor. Si funciona, Editor = Funciona y la issue
+  no pasará por QA editor; si falla, se queda en In progress (no se manda algo que no funciona).
+- In review: terminada. Si el autor no la probó, va con Editor = Sin probar y se dice
+  («Sin QA editor»).
+- Revisiones: la revisión o la prueba encontraron un fallo.
+- Tras la aprobación y la fusión en dev: Editor = Funciona → Done; si no, QA editor → Done.
+- Validada: solo para miembros de un lote, aprobados y probados, a la espera del resto.
+"""
+
+from __future__ import annotations
+
+# Estados con trabajo en marcha o ya terminado: una fusión antigua no debe arrastrarlos.
+ESTADOS_EN_CURSO = ("In progress", "Revisiones", "Done")
+AVISO_SIN_QA = "**Sin QA editor**: el autor no lo ha probado en el editor; hay que probarlo tras la fusión."
+
+
+class EnvioRechazado(ValueError):
+    """No se puede mandar a revisión algo que falla en el editor."""
+
+
+def estado_objetivo(actual: str | None, valores: dict, fusionada: bool, en_lote: bool,
+                    sin_pr: bool = False) -> tuple[str | None, bool]:
+    """Estado que corresponde a la issue y si hay que cerrarla; None = no cambia.
+
+    - Cambios pedidos o Editor = Falla → Revisiones, salvo en In progress: quien la tiene la arregla ahí.
+    - Sin fusionar: miembro de un lote aprobado y probado → Validada; en otro caso no cambia.
+    - Fusionada en dev: sin revisión aprobada → In review; aprobada sin probar → QA editor;
+      aprobada y probada → Done, y se cierra.
+    - Tarea solo de prueba (en QA editor y sin ninguna PR): Editor = Funciona → Done.
+    """
+    ia, editor = valores.get("Revisión IA"), valores.get("Editor")
+    if editor == "Falla" or ia == "Cambios pedidos":
+        return (None, False) if actual == "In progress" else ("Revisiones", False)
+    if sin_pr and actual == "QA editor":
+        return ("Done", True) if editor == "Funciona" else (None, False)
+    lista = ia == "Aprobada" and editor == "Funciona"
+    if not fusionada:
+        return ("Validada", False) if lista and en_lote else (None, False)
+    if ia != "Aprobada":
+        return "In review", False
+    if editor != "Funciona":
+        return "QA editor", False
+    return "Done", True
+
+
+def estado_tras_fallo_editor(actual: str | None) -> str | None:
+    """Estado tras `editor falla`: en In progress no cambia (se sigue arreglando); en otro, Revisiones."""
+    return None if actual == "In progress" else "Revisiones"
+
+
+def preparar_revision(valores: dict) -> tuple[str | None, str | None]:
+    """(Editor a fijar, aviso a comentar) al mandar a revisión. Error si falla en el editor."""
+    editor = valores.get("Editor")
+    if editor == "Falla":
+        raise EnvioRechazado("Falla en el editor: no se manda a revisión algo que no funciona. "
+                             "Arréglalo y pruébalo (`editor <n> funciona`); si ya está corregido y no puedes "
+                             "probarlo, `campo <n> Editor \"Sin probar\"` y vuelve a mandarla.")
+    if editor == "Funciona":
+        return None, None
+    return ("Sin probar" if editor != "Sin probar" else None), AVISO_SIN_QA
+
+
+def editor_tras_fusion(valores: dict) -> str | None:
+    """Editor al fusionar: Sin probar si no había valor o había fallado; se conserva un Funciona."""
+    return None if valores.get("Editor") == "Funciona" else "Sin probar"
+
+
+def mueve_por_fusion(estado: str | None, con_pr_abierta: bool) -> bool:
+    """Si una PR fusionada puede mover la issue: no si hay trabajo en marcha o una PR abierta."""
+    return estado not in ESTADOS_EN_CURSO and not con_pr_abierta

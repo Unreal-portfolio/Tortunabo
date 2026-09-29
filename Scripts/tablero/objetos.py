@@ -23,6 +23,7 @@ CONSULTA_ISSUE = """
 query($owner: String!, $repo: String!, $num: Int!) {
   repository(owner: $owner, name: $repo) { issue(number: $num) {
     id number title state
+    blockedBy(first: 50) { nodes { number state } }
     parent { number title }
     subIssues(first: 100) { nodes { number title state } }
   } }
@@ -78,10 +79,15 @@ def comprobar_padre(hijo: int, padre: int, padre_actual: int | None) -> bool:
     raise ErrorObjeto(f"#{hijo} ya cuelga de #{padre_actual}. Quítala de allí antes de colgarla de #{padre}.")
 
 
-def asegurar_etiqueta(gh: Gh, repo: str) -> None:
+def crear_etiqueta_si_falta(gh: Gh, repo: str, nombre: str, color: str, descripcion: str) -> None:
+    """Crea la etiqueta en el repo si aún no existe (la usan objetos, auditoría y colisiones)."""
     existentes = json.loads(gh("label", "list", "--repo", repo, "--limit", "200", "--json", "name"))
-    if not any(e["name"] == ETIQUETA for e in existentes):
-        gh("label", "create", ETIQUETA, "--repo", repo, "--color", COLOR, "--description", DESCRIPCION_ETIQUETA)
+    if not any(e["name"] == nombre for e in existentes):
+        gh("label", "create", nombre, "--repo", repo, "--color", color, "--description", descripcion)
+
+
+def asegurar_etiqueta(gh: Gh, repo: str) -> None:
+    crear_etiqueta_si_falta(gh, repo, ETIQUETA, COLOR, DESCRIPCION_ETIQUETA)
 
 
 def objetos_abiertos(gh: Gh, repo: str) -> list[dict]:

@@ -1,0 +1,235 @@
+"""Comandos de memoria y control del tablero.
+
+- `resumen` y `decidir`: la memoria del equipo vive en las issues (memoria.py).
+- `auditar`: problemas de organización de las issues de trabajo (auditoria.py).
+- `colisiones`: PR abiertas contra dev que tocan los mismos ficheros (colisiones.py).
+- `bloquear`: dependencias nativas de GitHub y estado Bloqueada (bloqueos.py).
+- `lote` y `resumenes`: en control_lotes.py.
+- `asegurar-estados`: añade Bloqueada y Validada al campo Status sin perder valores (estados.py).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import tempfile
+from collections import Counter
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+
+import auditoria
+import bloqueos
+import colisiones
+import estados
+import memoria
+import objetos
+import lotes
+from base import (INTEGRACION, NUMERO, OWNER, REPO, ErrorTablero, cargar_proyecto, comentar, elegir_revisor,
+                  esta_fusionada, gh, issues_de_pr, poner_campo, prs_abiertas, prs_fusionadas, usuario_actual)
+
+
+def cmd_resumen(args: argparse.Namespace) -> None:
+    comentar(args.numero, memoria.texto_resumen(args.que, args.como, args.pr, args.por_que))
+    print(f"#{args.numero}: resumen publicado")
+
+
+def cmd_decidir(args: argparse.Namespace) -> None:
+    comentar(args.numero, memoria.texto_decision(args.texto, args.quien or usuario_actual(), date.today()))
+    print(f"#{args.numero}: decisión publicada")
+
+
+# --- auditar --------------------------------------------------------------------------------------
+
+def contexto_prs(nodos: list[dict], proyecto: dict, abiertas: list[dict], fusionadas: list[dict]) -> dict[int, dict]:
+    """Por issue: si tiene PR, si está fusionada, lote fusionado, PR sin lote y revisor sugerido."""
+    lotes_abiertos = {n["number"] for n in nodos if lotes.ETIQUETA in objetos.nombres_etiquetas(n)}
+    no_trabajo = lotes_abiertos | {n["number"] for n in nodos if objetos.es_objeto(n)}
+    con_pr = {n for pr in abiertas + fusionadas for n in issues_de_pr(pr)}
+    contexto: dict[int, dict] = {}
+    for nodo in nodos:
+        n = nodo["number"]
+        asignados = [a["login"] for a in nodo["assignees"]["nodes"]]
+        contexto[n] = {"con_pr": n in con_pr, "fusionada": esta_fusionada(n, fusionadas, abiertas),
+                       "revisor_sugerido": elegir_revisor(proyecto, asignados[0]) if asignados else None,
+                       "prs_sin_lote": [], "lote_fusionado": None}
+    for nodo in nodos:
+        if nodo["number"] not in lotes_abiertos:
+            continue
+        pr = next((p["number"] for p in fusionadas if p["baseRefName"] == INTEGRACION
+                   and nodo["number"] in issues_de_pr(p)), None)
+        for miembro in bloqueos.bloqueantes(nodo):
+            if pr and miembro["number"] in contexto:
+                contexto[miembro["number"]]["lote_fusionado"] = pr
+    for pr in abiertas:
+        refs = issues_de_pr(pr)
+        trabajo = refs - no_trabajo
+        if lotes.pr_necesita_lote(trabajo, con_lote=bool(refs & lotes_abiertos)):
+            for n in trabajo & contexto.keys():
+                contexto[n]["prs_sin_lote"].append(pr["number"])
+    return contexto
+
+
+def issues_auditables(proyecto: dict, ahora: datetime) -> list[dict]:
+    """Issues de trabajo abiertas y cerradas en los últimos días, con el contexto de sus PR."""
+    desde = ahora - timedelta(days=auditoria.DIAS_RESUMEN)
+    nodos = auditoria.leer_issues(gh, REPO, "OPEN") + auditoria.leer_issues(gh, REPO, "CLOSED", desde)
+    contexto = contexto_prs(nodos, proyecto, prs_abiertas(), prs_fusionadas())
+    issues = [auditoria.normalizar(n, proyecto["items"].get(n["number"], {}).get("valores", {}), contexto[n["number"]])
+              for n in nodos]
+    return [i for i in issues if auditoria.es_de_trabajo(i)]
+
+
+def cmd_auditar(args: argparse.Namespace) -> None:
+    proyecto, ahora = cargar_proyecto(), datetime.now(timezone.utc)
+    informe = [(i, auditoria.problemas(i, ahora)) for i in issues_auditables(proyecto, ahora)]
+    con_problemas = sorted([(i, lista) for i, lista in informe if lista], key=lambda x: x[0]["numero"])
+    tipos = Counter(p["tipo"] for _, lista in con_problemas for p in lista)
+    print(f"## Auditoría de organización · {len(informe)} issues revisadas, {len(con_problemas)} con problemas "
+          f"({tipos['grave']} graves, {tipos['trivial']} triviales, {tipos['organizacion']} de organización)"
+          + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
+    for issue, lista in con_problemas:
+        print(f"- #{issue['numero']} {issue['titulo']}: " + "; ".join(f"[{p['tipo']}] {p['texto']}" for p in lista))
+    recuento = Counter(p["texto"].split(" (")[0] for _, lista in con_problemas for p in lista)
+    print("\n### Recuento por problema")
+    print("\n".join(f"- {n} × {p}" for p, n in recuento.most_common()) or "- ninguno")
+    if args.aplicar:
+        aplicar_auditoria(proyecto, informe)
+
+
+def aplicar_auditoria(proyecto: dict, informe: list[tuple[dict, list[dict]]]) -> None:
+    """Graves → Revisiones y P0; triviales → se corrigen; organización → etiqueta y comentario."""
+    if any(p["tipo"] == "organizacion" for _, lista in informe for p in lista):
+        objetos.crear_etiqueta_si_falta(gh, REPO, auditoria.ETIQUETA, auditoria.COLOR, auditoria.DESCRIPCION_ETIQUETA)
+    for issue, lista in informe:
+        accion = auditoria.acciones(issue, lista)
+        numero = str(issue["numero"])
+        if accion["reabrir"]:
+            gh("issue", "reopen", numero, "--repo", REPO)
+        for campo, valor in accion["campos"].items():
+            poner_campo(proyecto, issue["numero"], campo, valor)
+        for texto in accion["comentarios"]:
+            comentar(issue["numero"], texto)
+        if accion["etiquetar"]:
+            gh("issue", "edit", numero, "--repo", REPO, "--add-label", auditoria.ETIQUETA)
+        if accion["desetiquetar"]:
+            gh("issue", "edit", numero, "--repo", REPO, "--remove-label", auditoria.ETIQUETA)
+
+
+# --- colisiones -----------------------------------------------------------------------------------
+
+def cmd_colisiones(args: argparse.Namespace) -> None:
+    prs = {p["number"]: p for p in prs_abiertas() if p["baseRefName"] == INTEGRACION}
+    pares = colisiones.pares({n: colisiones.ficheros_de_pr(gh, REPO, n) for n in prs})
+    existentes = colisiones.colisiones_abiertas(gh, REPO)
+    nuevos = [par for par in pares if colisiones.titulo(par[0], par[1]) not in existentes]
+    print(f"## Colisiones entre PR abiertas contra {INTEGRACION} · {len(prs)} PR, {len(pares)} pares, "
+          f"{len(nuevos)} sin issue" + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
+    for a, b, ficheros in pares:
+        estado = "nueva" if (a, b, ficheros) in nuevos else "ya tiene issue"
+        binarios = "; con binarios: decision" if colisiones.hay_binarios(ficheros) else ""
+        print(f"- PR #{a} y #{b}: {len(ficheros)} ficheros en común ({estado}{binarios})")
+    if args.aplicar and nuevos:
+        objetos.crear_etiqueta_si_falta(gh, REPO, colisiones.ETIQUETA, colisiones.COLOR, colisiones.DESCRIPCION_ETIQUETA)
+        proyecto = cargar_proyecto()
+        for a, b, ficheros in nuevos:
+            crear_issue_colision(proyecto, prs[a], prs[b], ficheros)
+
+
+def objeto_y_area(proyecto: dict, pr: dict) -> tuple[int | None, str | None]:
+    """Objeto del que cuelga la primera issue enlazada de la PR y su Área, si se pueden saber."""
+    for n in sorted(issues_de_pr(pr)):
+        try:
+            padre = (objetos.leer_issue(gh, REPO, n).get("parent") or {}).get("number")
+        except (objetos.ErrorObjeto, ErrorTablero):
+            continue
+        area = proyecto["items"].get(n, {}).get("valores", {}).get("Área")
+        if padre:
+            return padre, area
+    return None, None
+
+
+def crear_issue_colision(proyecto: dict, pr_a: dict, pr_b: dict, ficheros: list[str]) -> None:
+    antigua, reciente = sorted((pr_a, pr_b), key=lambda p: (p.get("createdAt") or "", p["number"]))
+    titulo = colisiones.titulo(pr_a["number"], pr_b["number"])
+    crear = ["issue", "create", "--repo", REPO, "--title", titulo,
+             "--body", colisiones.cuerpo(antigua, reciente, ficheros, INTEGRACION)]
+    for etiqueta in colisiones.etiquetas(ficheros):
+        crear += ["--label", etiqueta]
+    numero = int(gh(*crear).strip().splitlines()[-1].rstrip("/").rsplit("/", 1)[-1])
+    padre, area = objeto_y_area(proyecto, pr_a)
+    if padre:
+        objetos.colgar(gh, REPO, numero, padre)
+    for campo, valor in {"Status": "Revisiones", "Prioridad": "P1", "Tamaño": "S", "Área": area}.items():
+        if valor:
+            poner_campo(proyecto, numero, campo, valor)
+    print(f"#{numero} creada: {titulo}{f' (dentro de #{padre})' if padre else ''}")
+
+
+# --- dependencias ---------------------------------------------------------------------------------
+
+def cmd_bloquear(args: argparse.Namespace) -> None:
+    """Registra de qué issues depende `numero` (relación nativa «blocked by») y la pasa a Bloqueada."""
+    issue = objetos.leer_issue(gh, REPO, args.numero)
+    try:
+        nuevas = bloqueos.nuevas_dependencias(args.numero, args.por, bloqueos.bloqueantes(issue))
+    except ValueError as exc:
+        raise ErrorTablero(str(exc)) from exc
+    for m in nuevas:
+        bloqueante = objetos.leer_issue(gh, REPO, m)
+        gh("api", "graphql", "-f", f"query={bloqueos.MUTACION}", "-f", f"issue={issue['id']}",
+           "-f", f"bloqueante={bloqueante['id']}")
+    poner_campo(cargar_proyecto(), args.numero, "Status", bloqueos.ESTADO)
+    gh("issue", "edit", str(args.numero), "--repo", REPO, "--add-label", bloqueos.ETIQUETA)
+    todas = ", ".join(f"#{m}" for m in sorted({*args.por, *(b["number"] for b in bloqueos.bloqueantes(issue))}))
+    print(f"#{args.numero} → Bloqueada; depende de {todas}. `sync` la pasa a Ready cuando se cierren.")
+
+
+# --- opciones de Status ---------------------------------------------------------------------------
+
+def cmd_asegurar_estados(args: argparse.Namespace) -> None:
+    """Añade Bloqueada y Validada a Status y corrige descripciones, conservando el Status de los items."""
+    antes = estados.leer(gh, OWNER, NUMERO)
+    nuevas = estados.opciones_objetivo(antes["opciones"], estados.NUEVAS, estados.DESCRIPCIONES)
+    if nuevas is None:
+        print("Status ya está al día: " + ", ".join(f"{o['name']} ({o['id']})" for o in antes["opciones"]))
+        return
+    if not args.aplicar:
+        print("Opciones de Status (simulación: usa --aplicar):")
+        print("\n".join(f"- {o['name']}: {o['description']}" for o in nuevas))
+        return
+    foto = Path(tempfile.gettempdir()) / f"tablero-status-{datetime.now():%Y%m%d-%H%M%S}.json"
+    foto.write_text(json.dumps(antes["foto"], ensure_ascii=False, indent=1), encoding="utf-8")
+    opciones = {o["name"]: o["id"] for o in estados.redefinir(gh, antes["campo"], nuevas)}
+    despues = estados.leer(gh, OWNER, NUMERO)
+    cambios = estados.pendientes_de_restaurar(antes["foto"], despues["foto"])
+    estados.restaurar(gh, despues, opciones, cambios)
+    final = estados.pendientes_de_restaurar(antes["foto"], estados.leer(gh, OWNER, NUMERO)["foto"])
+    print("Opciones de Status: " + ", ".join(f"{n} ({i})" for n, i in opciones.items()))
+    print(f"Foto de {len(antes['foto'])} items en {foto}; restaurados {len(cambios)}; "
+          f"distintos de la foto al final: {len(final)}.")
+
+
+def anadir_comandos(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("resumen", help="comentar el **Resumen** de una issue (qué fallaba, por qué y cómo se arregló)")
+    p.add_argument("numero", type=int)
+    p.add_argument("--que", required=True, help=f"qué fallaba (máx. {memoria.MAX_CARACTERES} caracteres)")
+    p.add_argument("--por-que", dest="por_que", help=f"causa, si se sabe (máx. {memoria.MAX_CARACTERES} caracteres)")
+    p.add_argument("--como", required=True, help=f"cómo se arregló (máx. {memoria.MAX_CARACTERES} caracteres)")
+    p.add_argument("--pr", type=int)
+    p.set_defaults(fn=cmd_resumen)
+    p = sub.add_parser("decidir", help="comentar una **Decisión** en la issue u objeto afectado")
+    p.add_argument("numero", type=int)
+    p.add_argument("--texto", required=True, help=f"la decisión (máx. {memoria.MAX_CARACTERES} caracteres)")
+    p.add_argument("--quien", help="quién decide (por defecto, tu login)")
+    p.set_defaults(fn=cmd_decidir)
+    for nombre, ayuda, fn in (("auditar", "problemas de organización de las issues de trabajo", cmd_auditar),
+                              ("colisiones", "PR abiertas contra dev que tocan los mismos ficheros", cmd_colisiones),
+                              ("asegurar-estados", "añadir Bloqueada y Validada a Status sin perder valores",
+                               cmd_asegurar_estados)):
+        p = sub.add_parser(nombre, help=ayuda)
+        p.add_argument("--aplicar", action="store_true")
+        p.set_defaults(fn=fn)
+    p = sub.add_parser("bloquear", help="registrar de qué issues depende una y pasarla a Bloqueada")
+    p.add_argument("numero", type=int)
+    p.add_argument("--por", type=int, action="append", required=True, help="issue de la que depende (repetible)")
+    p.set_defaults(fn=cmd_bloquear)
