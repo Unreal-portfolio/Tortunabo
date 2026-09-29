@@ -185,3 +185,7 @@ Preguntas para el director:
 4. Tamaño de las arenas TcT (90 a 180 m): se ha supuesto sin haber medido P01. Confirmar contra el tamaño y la velocidad reales antes de generar A01.
 5. Nombres en la interfaz: L12 («Guilin») y L13 («Cordillera Central y Taroko») usan solo nombres geográficos. ¿Algún nombre más que se quiera evitar?
 6. Humor de los rasgos («ovejas de roca», «Nessie», «Cézanne»): ¿se traduce por idioma o se deja el nombre local con nota?
+
+## Decisión del director (2026-09-29): países enteros miniaturizados
+
+Los mapas por idioma dejan de ser regiones emblemáticas: cada uno es el **país entero miniaturizado** con MDE real y su contorno (costa y frontera como borde), como E01 España, adaptado a su modo (Rally: calzada tallada que cruza el país; Todos contra Todos: zonas llanas y puentes naturales). Asignación: es-ES España (E01/E01B), en Reino Unido, fr Francia, de Alemania, it Italia, pt-BR Brasil, ru Rusia (muy compactada en longitud), pl Polonia, tr Turquía, ja Japón, ko Corea del Sur, zh-Hans China continental (solo geografía, sin fronteras internas ni rótulos políticos), zh-Hant isla de Taiwán (nombre geográfico). Las regiones del catálogo anterior pueden reutilizarse como tramos o puntos emblemáticos dentro de cada país. Relieve con la exageración calibrada de E01; sin exagerar de más.
