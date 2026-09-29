@@ -25,6 +25,7 @@
 #include "TimerManager.h"
 #include "Multiplayer/TN_CosmeticSaveGame.h"
 #include "Multiplayer/TN_RoomInfo.h"
+#include "Multiplayer/TN_SaveGameIO.h"
 #include "Multiplayer/TN_RoomNames.h"
 #include "Multiplayer/TN_TutorialSaveGame.h"
 #include "UI/HUD/TN_LoadingScreenWidget.h"
@@ -1160,17 +1161,54 @@ void UMP_GameInstance::AttemptAutoRejoin()
 	}
 }
 
+namespace
+{
+	/** Migra en memoria un perfil cosmético antiguo a la versión actual. Devuelve si hay que volver a guardarlo. */
+	bool TNMigrateCosmeticProfile(UTN_CosmeticSaveGame& Profile, const FString& Slot)
+	{
+		switch (TNSaveLogic::DecideMigration(Profile.SaveVersion, TNSaveLogic::COSMETIC_SAVE_VERSION))
+		{
+		case TNSaveLogic::EMigration::Upgrade:
+			// v0 → v1: listas sin NAME_None ni repetidos y puntos nunca negativos.
+			UE_LOG(LogTortunabo, Log, TEXT("[SaveGame] Perfil cosmético '%s' migrado de v%d a v%d."),
+				*Slot, Profile.SaveVersion, TNSaveLogic::COSMETIC_SAVE_VERSION);
+			Profile.UnlockedHelmetIds = TNSaveLogic::SanitizeIds(Profile.UnlockedHelmetIds);
+			Profile.UnlockedSkinIds = TNSaveLogic::SanitizeIds(Profile.UnlockedSkinIds);
+			Profile.AccumulatedRaceScore = FMath::Max(0, Profile.AccumulatedRaceScore);
+			Profile.StampCurrentVersion();
+			return true;
+		case TNSaveLogic::EMigration::FromNewerBuild:
+			UE_LOG(LogTortunabo, Warning, TEXT("[SaveGame] Perfil cosmético '%s' guardado por una versión más nueva (v%d > v%d)."),
+				*Slot, Profile.SaveVersion, TNSaveLogic::COSMETIC_SAVE_VERSION);
+			return false;
+		case TNSaveLogic::EMigration::UpToDate:
+			return false;
+		}
+		return false;
+	}
+}
+
 void UMP_GameInstance::LoadCosmeticProfile()
 {
 	const FString SlotName = BuildCosmeticSaveSlot();
-	if (UGameplayStatics::DoesSaveGameExist(SlotName, 0))
-	{
-		CosmeticProfile = Cast<UTN_CosmeticSaveGame>(UGameplayStatics::LoadGameFromSlot(SlotName, 0));
-	}
+	const TNSaveGameIO::FLoadResult Loaded = TNSaveGameIO::LoadOrQuarantine(SlotName, 0, UTN_CosmeticSaveGame::StaticClass(),
+		[](const USaveGame& Save) { return CastChecked<UTN_CosmeticSaveGame>(&Save)->IsIntact(); },
+		TEXT("Perfil cosmético"));
+	bCosmeticSaveBlocked = Loaded.bSaveBlocked;
+	CosmeticProfile = Cast<UTN_CosmeticSaveGame>(Loaded.Loaded);
 
-	if (!CosmeticProfile)
+	bool bNeedsSave = false;
+	if (CosmeticProfile)
+	{
+		bNeedsSave = TNMigrateCosmeticProfile(*CosmeticProfile, SlotName);
+	}
+	else
 	{
 		CosmeticProfile = Cast<UTN_CosmeticSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_CosmeticSaveGame::StaticClass()));
+		if (CosmeticProfile)
+		{
+			CosmeticProfile->StampCurrentVersion();
+		}
 	}
 
 	if (!CosmeticProfile)
@@ -1190,6 +1228,11 @@ void UMP_GameInstance::LoadCosmeticProfile()
 	{
 		CosmeticProfile->EquippedHelmetId = CosmeticProfile->UnlockedHelmetIds[0];
 	}
+
+	if (bNeedsSave)
+	{
+		SaveCosmeticProfile();
+	}
 }
 
 void UMP_GameInstance::SaveCosmeticProfile() const
@@ -1198,8 +1241,14 @@ void UMP_GameInstance::SaveCosmeticProfile() const
 	{
 		return;
 	}
+	if (bCosmeticSaveBlocked)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[SaveGame] Perfil cosmético sin guardar: el fichero dañado no se pudo apartar y no se pisa."));
+		return;
+	}
 
-	UGameplayStatics::SaveGameToSlot(CosmeticProfile, BuildCosmeticSaveSlot(), 0);
+	CosmeticProfile->bWriteComplete = true;
+	TNSaveGameIO::SaveChecked(CosmeticProfile, BuildCosmeticSaveSlot(), 0, TEXT("Perfil cosmético"));
 }
 
 FString UMP_GameInstance::BuildCosmeticSaveSlot() const
@@ -1252,6 +1301,10 @@ void UMP_GameInstance::ResetTutorialProgress()
 	if (!TutorialProfile)
 	{
 		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_TutorialSaveGame::StaticClass()));
+		if (TutorialProfile)
+		{
+			TutorialProfile->StampCurrentVersion();
+		}
 	}
 	if (!TutorialProfile)
 	{
@@ -1273,14 +1326,38 @@ FString UMP_GameInstance::GetTutorialSlotName() const
 void UMP_GameInstance::LoadTutorialProfile()
 {
 	const FString Slot = GetTutorialSlotName();
-	if (UGameplayStatics::DoesSaveGameExist(Slot, 0))
-	{
-		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::LoadGameFromSlot(Slot, 0));
-	}
+	const TNSaveGameIO::FLoadResult Loaded = TNSaveGameIO::LoadOrQuarantine(Slot, 0, UTN_TutorialSaveGame::StaticClass(),
+		[](const USaveGame& Save) { return CastChecked<UTN_TutorialSaveGame>(&Save)->IsIntact(); },
+		TEXT("Tutorial"));
+	bTutorialSaveBlocked = Loaded.bSaveBlocked;
+	TutorialProfile = Cast<UTN_TutorialSaveGame>(Loaded.Loaded);
 
-	if (!TutorialProfile)
+	if (TutorialProfile)
+	{
+		const TNSaveLogic::EMigration Migration =
+			TNSaveLogic::DecideMigration(TutorialProfile->SaveVersion, TNSaveLogic::TUTORIAL_SAVE_VERSION);
+		if (Migration == TNSaveLogic::EMigration::Upgrade)
+		{
+			// v0 → v1: sin cambios de datos salvo el contador, que nunca es negativo.
+			UE_LOG(LogTortunabo, Log, TEXT("[SaveGame] Tutorial '%s' migrado de v%d a v%d."),
+				*Slot, TutorialProfile->SaveVersion, TNSaveLogic::TUTORIAL_SAVE_VERSION);
+			TutorialProfile->TimesCompleted = FMath::Max(0, TutorialProfile->TimesCompleted);
+			TutorialProfile->StampCurrentVersion();
+			SaveTutorialProfile();
+		}
+		else if (Migration == TNSaveLogic::EMigration::FromNewerBuild)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[SaveGame] Tutorial '%s' guardado por una versión más nueva (v%d)."),
+				*Slot, TutorialProfile->SaveVersion);
+		}
+	}
+	else
 	{
 		TutorialProfile = Cast<UTN_TutorialSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_TutorialSaveGame::StaticClass()));
+		if (TutorialProfile)
+		{
+			TutorialProfile->StampCurrentVersion();
+		}
 	}
 
 	// Para probar (Docs/Tutorial.md): con Saved/ResetTutorial.txt, cada vez que arranca el juego (o cada PIE) el tutorial vuelve
@@ -1323,10 +1400,17 @@ void UMP_GameInstance::LoadTutorialProfile()
 
 void UMP_GameInstance::SaveTutorialProfile() const
 {
-	if (TutorialProfile)
+	if (!TutorialProfile)
 	{
-		UGameplayStatics::SaveGameToSlot(TutorialProfile, GetTutorialSlotName(), 0);
+		return;
 	}
+	if (bTutorialSaveBlocked)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[SaveGame] Tutorial sin guardar: el fichero dañado no se pudo apartar y no se pisa."));
+		return;
+	}
+	TutorialProfile->bWriteComplete = true;
+	TNSaveGameIO::SaveChecked(TutorialProfile, GetTutorialSlotName(), 0, TEXT("Tutorial"));
 }
 
 void UMP_GameInstance::RefreshLoadingText(const FString& Reason) const

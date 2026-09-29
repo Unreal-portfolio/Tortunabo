@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
+#include "Multiplayer/TN_SaveGameDecisions.h"
 #include "TN_CosmeticSaveGame.generated.h"
 
 /**
@@ -17,6 +18,13 @@ class TORTUNABO_API UTN_CosmeticSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
+	/**
+	 * Versión del formato (TNSaveLogic::COSMETIC_SAVE_VERSION). 0 = guardado anterior al campo: se migra al cargar.
+	 * Primera propiedad a propósito: junto con bWriteComplete (la última) detecta ficheros truncados.
+	 */
+	UPROPERTY()
+	int32 SaveVersion = 0;
+
 	UPROPERTY(BlueprintReadWrite, Category = "Cosmetics")
 	TArray<FName> UnlockedHelmetIds;
 
@@ -46,4 +54,21 @@ public:
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Score")
 	int32 AccumulatedRaceScore = 0;
+
+	/** Marca de fin (última propiedad a propósito). Falta en un fichero truncado. */
+	UPROPERTY()
+	bool bWriteComplete = false;
+
+	/** @brief Sella el perfil con la versión actual y la marca de fin (perfil nuevo o recién migrado). */
+	void StampCurrentVersion()
+	{
+		SaveVersion = TNSaveLogic::COSMETIC_SAVE_VERSION;
+		bWriteComplete = true;
+	}
+
+	/** @brief false si el fichero del que sale estaba truncado. */
+	bool IsIntact() const
+	{
+		return !TNSaveLogic::IsTruncated(SaveVersion, bWriteComplete);
+	}
 };
