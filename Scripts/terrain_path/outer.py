@@ -27,6 +27,7 @@ BLEND_M = 80.0            # tramo en el que la cota del borde pasa a las dunas d
 TUCK_M = 3.0              # la fila del borde de la corona se mete esto bajo el mapa
 TUCK_DROP_M = 0.35        # ... y queda esto por debajo de su suelo
 SEAM_DROP_M = 0.0        # la fila del borde, a la misma cota que la malla de dentro (con 0,4 m se veia la rendija)
+DECIMATE_M = 0.25         # error maximo de la decimacion de la corona (sin colision, a 50 m o mas casi siempre)
 
 
 def outer_height(model, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
@@ -66,7 +67,7 @@ def _tuck_under_map(X: np.ndarray, Y: np.ndarray):
     return X, Y, TUCK_DROP_M * on
 
 
-def _cell_mesh(model, x0: float, y0: float):
+def _cell_mesh(model, x0: float, y0: float, decimate_m: float = 0.0):
     n = int(round(CELL_OUT_M / STEP_OUT_M)) + 1
     # Una muestra de margen: gradiente centrado tambien en el borde (normales iguales en el vecino).
     xs = x0 + STEP_OUT_M * np.arange(-1, n + 1)
@@ -91,13 +92,20 @@ def _cell_mesh(model, x0: float, y0: float):
     colors = vertex_colors(model, world, normals)
     center = np.array([x0 + CELL_OUT_M / 2.0, y0 + CELL_OUT_M / 2.0])
     local = (world - np.array([center[0], center[1], 0.0])) * UU_PER_M
-    return center, SimpleNamespace(vertices=local.astype(np.float32), normals=normals.astype(np.float32),
-                                   colors=colors, triangles=tris.astype(np.uint32),
+    normals, tris = normals.astype(np.float32), tris.astype(np.uint32)
+    if decimate_m > 0.0:
+        # Dunas lejanas casi llanas: sobran la mayoria de los triangulos. El borde del trozo (y la
+        # fila metida bajo el mapa) no se mueve.
+        from terrain_vol.decimate import decimate_mesh
+        local, normals, colors, tris = decimate_mesh(local, normals, colors, tris, max_error_m=decimate_m)
+    return center, SimpleNamespace(vertices=local.astype(np.float32), normals=normals,
+                                   colors=colors, triangles=tris,
                                    instances=np.zeros((0, 11), np.float32))
 
 
-def write_outer(model, out, name: str) -> list[dict]:
-    """Escribe la corona en out/Outer/ y devuelve sus entradas de "cells" para el manifest."""
+def write_outer(model, out, name: str, decimate_m: float = 0.0) -> list[dict]:
+    """Escribe la corona en out/Outer/ y devuelve sus entradas de "cells" para el manifest.
+    decimate_m > 0: decima cada trozo con ese error maximo (m)."""
     (out / "Outer").mkdir(exist_ok=True)
     cells = []
     start = MAP_MIN_M - OUTER_M
@@ -108,7 +116,7 @@ def write_outer(model, out, name: str) -> list[dict]:
             inside = MAP_MIN_M <= x0 < MAP_MAX_M and MAP_MIN_M <= y0 < MAP_MAX_M
             if inside:
                 continue
-            center, mesh = _cell_mesh(model, x0, y0)
+            center, mesh = _cell_mesh(model, x0, y0, decimate_m)
             file = f"Outer/o{i}_{j}.bin"
             write_chunk(out / file, mesh)
             cells.append({"name": f"M_{name}_outer_{i}_{j}", "file": file, "collision": False,

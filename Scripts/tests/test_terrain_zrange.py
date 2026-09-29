@@ -83,4 +83,10 @@ def test_path_map_mesh_does_not_change(tmp_path):
     from terrain_path.style import C01_SEED, C01_STYLE
     model = PathModel(C01_SEED, C01_STYLE)           # C01_camino: el trozo con mas triangulos, lomas a 20 m
     _same_mesh(model, 2, 0)
-    _same_as_stored(model, 2, 0, VARIANTS / "C01_camino" / "Chunks" / "r0c2.bin", tmp_path)
+    # C01_camino se guarda decimado (gen_terrain_path.py, 5 cm): se compara con el mismo proceso.
+    pytest.importorskip("pyfqmr")
+    from terrain_vol.decimate import decimate_chunks
+    out = tmp_path / "r0c2.bin"
+    write_chunk(out, decimate_chunks({(2, 0): build_chunk(model, 2, 0)})[(2, 0)])
+    stored = VARIANTS / "C01_camino" / "Chunks" / "r0c2.bin"
+    assert out.read_bytes() == stored.read_bytes(), f"{stored} ha cambiado"
