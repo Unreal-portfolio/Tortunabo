@@ -6,6 +6,8 @@
 #include "TN_BeachCatapult.generated.h"
 
 class ACharacter;
+class ATN_ShellBody;
+class ATortugaCharacter;
 class UProceduralMeshComponent;
 class UStaticMeshComponent;
 class UTextRenderComponent;
@@ -22,8 +24,13 @@ class UTN_PlaygroundSynthComponent;
  * Con SizeScale = 1: brazo de ~11 m, fulcro a 2,5 m, cazo de ~3 x 2,2 m. Se entra en el cazo andando (borde bajo) o se
  * sube por el mango hasta el cubito.
  *
- * Reglas (servidor): una tortuga libre en el cazo la arma: aviso de WarnSeconds (el palo que sujeta tiembla y cruje cada
- * vez más, el banderín parpadea); si el cazo se queda vacío, se desarma. Si otra tortuga cae de un salto sobre el cubito,
+ * Reglas (servidor): una tortuga libre en el cazo, o metida en su caparazón y quieta en él (su bola física, ATN_ShellBody:
+ * la forma divertida de usarla), la arma: mientras dura el aviso la bola se mantiene quieta (velocidad a cero en cada tic
+ * del servidor) y al disparar el servidor le da la velocidad de lanzamiento a su caja, igual que a una de pie, con la reserva
+ * Launch del árbitro mientras vuela. Aviso de WarnSeconds (el palo que sujeta tiembla y cruje cada
+ * vez más, el banderín parpadea; el temblor del brazo y del cazo es solo de sus mallas visibles: el eje y las colisiones no
+ * se mueven hasta el disparo, así que la tortuga, o la bola de caparazón, que espera en el cazo no sale despedida); si el
+ * cazo se queda vacío, se desarma. Si otra tortuga cae de un salto sobre el cubito,
  * dispara al momento. Al disparar, el palo sale volando, el cubito cae, la cuchara da la vuelta (golpe y rebote contra la
  * arena) y lanza como bolas de caparazón (UTN_ShellComponent: vuelan, rebotan y ruedan; salen solas al pararse) a las
  * que estén en el cazo (LaunchSpeed a LaunchPitch grados hacia el mar, ±DeviationDeg de desvío al azar) y, más flojo, a
@@ -221,8 +228,35 @@ private:
 	int32 WhereOnArm(const ACharacter* Character) const;
 
 	FVector LaunchVelocity(float Fraction) const;
+
+	/**
+	 * Servidor: el cuerpo físico del caparazón (ATN_ShellBody) de esta tortuga si está metida en él, quieta dentro del cazo
+	 * y puede ir de pasajera (viva, sin aturdir, sin que la lleve ni la sujete nadie, sin reserva de la tormenta o de la red
+	 * de seguridad); nullptr si no. Cuenta como una tortuga de pie en el cazo: arma la catapulta y sale lanzada.
+	 */
+	ATN_ShellBody* BowlBallOf(const ACharacter* Character) const;
+
+	/**
+	 * Servidor: lanza la bola del cazo dándole la velocidad al cuerpo físico que ya tiene (sin recrearlo: solo la API pública
+	 * de la caja). Queda con la salida bloqueada y sale sola del caparazón al pararse, como las demás lanzadas.
+	 */
+	bool LaunchBowlBall(ATortugaCharacter* Turtle, ATN_ShellBody* Body, const FVector& Velocity);
+
+	/** Servidor: reserva a la lanzada con el árbitro (TNBeach::ClaimTurtle, Launch) mientras vuela en su bola. */
+	void BeginFlight(ACharacter* Turtle);
+
+	/** Servidor: suelta la reserva de las que ya han aterrizado (salen del caparazón) o se han pasado de tiempo. */
+	void TickFlights();
+
 	void TickVisuals(double Now, float DeltaSeconds);
 	void SetBowlCollision(bool bOn);
+
+	/**
+	 * Temblor del aviso, solo visual: mueve la malla visible del brazo y la del cazo (sin colisión), nunca el eje ni las
+	 * colisiones, que se quedan quietas con el cabeceo de reposo (la tortuga o la bola que espera en el cazo no se mueve).
+	 * Warn de 0 a 1 es la intensidad; menos de 0 lo apaga y deja las mallas en su sitio. Solo en máquinas con pantalla.
+	 */
+	void ApplyVisualShake(double Now, double Warn);
 
 	/** Cartel: pose (botecito o torcido) y rótulo según el estado (en máquinas con pantalla). */
 	void TickSign(double Now, float DeltaSeconds, bool bBroken);
@@ -260,9 +294,13 @@ private:
 	float CreakTimer = 0.f;
 	bool bArmCollisionOn = true;
 	bool bBowlCollisionOn = true;
+	/** Las mallas visibles del brazo y del cazo están desplazadas por el temblor (solo entonces se restauran). */
+	bool bMeshShaken = false;
 	double EmptySince = -1.0;
 
 	TMap<TWeakObjectPtr<ACharacter>, FRider> Riders;
+	/** Servidor: lanzadas en vuelo con la reserva Launch del árbitro y la hora del mundo en que caduca. */
+	TMap<TWeakObjectPtr<ACharacter>, double> Flights;
 	FTNTrapClock Clock;
 	FTNTrapBurst Dust;
 	FTNTrapBurst Chips;

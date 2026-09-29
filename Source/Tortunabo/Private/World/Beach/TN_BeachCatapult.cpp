@@ -3,6 +3,7 @@
 #include "World/Beach/TN_BeachTrapSynthComponent.h"
 #include "Lobby/Playground/TN_PlaygroundSynthComponent.h"
 #include "Core/TN_Log.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/World.h"
@@ -10,7 +11,12 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/TN_CarryComponent.h"
+#include "Player/TN_ShellBody.h"
+#include "Player/TN_ShellComponent.h"
+#include "Player/TortugaCharacter.h"
 #include "ProceduralMeshComponent.h"
+#include "World/Beach/TN_BeachStun.h"
 #include "TN_BeachBoostKit.h"
 #include "TN_BeachRideKit.h"
 #include "TN_BeachSignKit.h"
@@ -35,6 +41,28 @@ namespace TNBeachCatapultDetail
 	constexpr double RatchetStep = 0.2;
 	/** Colisión del brazo apagada durante el golpe (las bolas salen sin tocarlo). */
 	constexpr double NoCollisionSeconds = 0.55;
+	/**
+	 * Temblor visual del aviso (grados sobre el eje; base + ganancia * aviso, con el aviso de 0 a 1). Es solo de las mallas, así
+	 * que su desfase con la colisión se queda en unos centímetros a 5,5 m del eje: cabeceo hasta 0,65° (~6 cm en el cazo),
+	 * balanceo hasta 2,5° (~5 cm en el borde del cazo) y guiñada hasta 0,5° (~5 cm de lado).
+	 */
+	constexpr double ShakePitchBase = 0.2;
+	constexpr double ShakePitchGain = 0.45;
+	constexpr double ShakeRollBase = 0.5;
+	constexpr double ShakeRollGain = 2.0;
+	constexpr double ShakeYawBase = 0.15;
+	constexpr double ShakeYawGain = 0.35;
+	/**
+	 * Bola de caparazón en el cazo: por encima de esta velocidad (cm/s) no cuenta (una que pasa rodando no arma la catapulta;
+	 * la que se acaba de meter aún se asienta). Margen del suelo del cazo (cm) para darla por dentro y por encima.
+	 */
+	constexpr double BowlBallMaxSpeed = 220.0;
+	constexpr double BowlBallFloorBelow = 40.0;
+	constexpr double BowlBallFloorAbove = 110.0;
+	/** Giro con el que sale la bola lanzada, como el de UTN_ShellComponent::StartBody (rad/s, volteretas). */
+	constexpr double BowlBallSpin = 7.0;
+	/** Reserva Launch del árbitro mientras vuela: lo que tarda la caja en salir sola del caparazón como mucho (9 s) y un poco más. */
+	constexpr double FlightClaimSeconds = 10.0;
 	/** Un solo uso: al acabar el rebote el brazo se parte por el cuello del cazo. */
 	constexpr double BreakSeconds = 0.62;
 	/** Un solo uso: desde el disparo hasta que ya no se mueve nada (se apaga el Tick). */
@@ -314,6 +342,8 @@ ATN_BeachCatapult::ATN_BeachCatapult()
 	ArmMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArmMesh"));
 	ArmMesh->SetupAttachment(ArmPivot);
 	TNBeachTrapKit::ConfigureVisual(ArmMesh);
+	// Se mueve por sí sola con el temblor del aviso (ApplyVisualShake): un componente estático no puede.
+	ArmMesh->SetMobility(EComponentMobility::Movable);
 
 	ArmCollision = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ArmCollision"));
 	ArmCollision->SetupAttachment(ArmPivot);
@@ -325,6 +355,7 @@ ATN_BeachCatapult::ATN_BeachCatapult()
 	BowlMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BowlMesh"));
 	BowlMesh->SetupAttachment(BowlHinge);
 	TNBeachTrapKit::ConfigureVisual(BowlMesh);
+	BowlMesh->SetMobility(EComponentMobility::Movable);
 
 	BowlCollision = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("BowlCollision"));
 	BowlCollision->SetupAttachment(BowlHinge);
@@ -651,6 +682,109 @@ FVector ATN_BeachCatapult::LaunchVelocity(float Fraction) const
 	return Frame->GetComponentTransform().TransformVectorNoScale(Local) * Speed;
 }
 
+ATN_ShellBody* ATN_BeachCatapult::BowlBallOf(const ACharacter* Character) const
+{
+	using namespace TNBeachCatapultDetail;
+	const ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(Character);
+	if (!IsValid(Turtle) || Turtle->IsDead() || Turtle->IsKnockedDown() || !Turtle->IsInShell())
+	{
+		return nullptr;
+	}
+	// Como IsFreeRider/IsFreeTurtle, pero dentro del caparazón: sin aturdir, sin sujetar un enemigo ni un gusano, sin que la
+	// recoloque la tormenta o la red de seguridad y sin que la lleve nadie.
+	if (TNBeach::IsTurtleStunned(Turtle) || TNBeach::IsTurtleRelocating(Turtle) || ATN_BeachEnemy::IsTurtleHeld(Turtle) || ATN_BeachSandWorm::IsBeingEaten(Turtle))
+	{
+		return nullptr;
+	}
+	const UTN_CarryComponent* Carry = Turtle->GetCarryComponent();
+	if (Carry && (Carry->GetCarrier() != nullptr || Carry->IsCarrying()))
+	{
+		return nullptr;
+	}
+	// Su cuerpo físico (solo existe con la tortuga suelta; a la que llevan no lo tiene).
+	const UTN_ShellComponent* Shell = Turtle->GetShellComponent();
+	ATN_ShellBody* Body = Shell ? Shell->GetBody() : nullptr;
+	const UBoxComponent* Box = Body ? Body->GetBox() : nullptr;
+	if (!Box || !Box->IsSimulatingPhysics())
+	{
+		return nullptr;
+	}
+	// Quieta: la que pasa rodando a toda velocidad no arma la catapulta.
+	if (Box->GetComponentVelocity().SizeSquared() > FMath::Square(BowlBallMaxSpeed))
+	{
+		return nullptr;
+	}
+	// Dentro del cazo, apoyada en su suelo (el centro de la caja, en el espacio del eje: el cazo es lo que queda a -X).
+	const FVector Local = ArmPivot->GetComponentTransform().InverseTransformPosition(Box->GetComponentLocation());
+	const double Floor = 0.5 * ArmThick - BowlDepth;
+	if (Local.X > -LongArm + BowlLength + 10.0 || Local.X < -LongArm - 30.0 || FMath::Abs(Local.Y) > BowlHalfWidth + 15.0
+		|| Local.Z < Floor - BowlBallFloorBelow || Local.Z > Floor + BowlBallFloorAbove)
+	{
+		return nullptr;
+	}
+	return Body;
+}
+
+bool ATN_BeachCatapult::LaunchBowlBall(ATortugaCharacter* Turtle, ATN_ShellBody* Body, const FVector& Velocity)
+{
+	using namespace TNBeachCatapultDetail;
+	UTN_ShellComponent* Shell = Turtle ? Turtle->GetShellComponent() : nullptr;
+	UBoxComponent* Box = Body ? Body->GetBox() : nullptr;
+	if (!Turtle || !Turtle->HasAuthority() || !Shell || !Box || Shell->GetBody() != Body)
+	{
+		return false;
+	}
+	// Lanzada: no se sale en el aire (ForceExitShell, al pararse la caja o caer al agua, la desbloquea). InitBody, pública, es
+	// lo que hace falta para que la caja salga sola al pararse (y reinicia su edad para el límite de 9 s); no crea otra caja.
+	Shell->SetExitLocked(true);
+	Body->InitBody(Turtle, true);
+	// La velocidad va a la caja del servidor y la réplica de física la lleva a los clientes, igual que cualquier empujón.
+	const FVector Right = FRotator(0.0, Velocity.Rotation().Yaw, 0.0).RotateVector(FVector::RightVector);
+	Box->SetPhysicsLinearVelocity(Velocity);
+	Box->SetPhysicsAngularVelocityInRadians(Right * BowlBallSpin);
+	Turtle->ForceNetUpdate();
+	return true;
+}
+
+void ATN_BeachCatapult::BeginFlight(ACharacter* Turtle)
+{
+	using namespace TNBeachCatapultDetail;
+	UWorld* World = GetWorld();
+	if (!Turtle || !World)
+	{
+		return;
+	}
+	// Lanzada por el aire en su bola: el árbitro la da por lanzada (Launch), así la tormenta no la patea como si rodara ella
+	// misma por gusto. (La red de seguridad solo mira bajo la arena y en una patada de la tormenta, no aquí.)
+	TNBeach::ClaimTurtle(Turtle, TNBeach::ETNBeachMover::Launch, static_cast<float>(FlightClaimSeconds));
+	Flights.Add(Turtle, World->GetTimeSeconds() + FlightClaimSeconds);
+	SetActorTickEnabled(true);
+}
+
+void ATN_BeachCatapult::TickFlights()
+{
+	if (Flights.IsEmpty() || !GetWorld())
+	{
+		return;
+	}
+	const double WorldNow = GetWorld()->GetTimeSeconds();
+	for (auto It = Flights.CreateIterator(); It; ++It)
+	{
+		ACharacter* Walker = It.Key().Get();
+		const ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(Walker);
+		if (Turtle && Turtle->IsInShell() && WorldNow < It.Value())
+		{
+			continue;
+		}
+		// Ya aterrizó (salió del caparazón), se cayó del mundo o se pasó de tiempo.
+		if (Walker)
+		{
+			TNBeach::ReleaseTurtle(Walker, TNBeach::ETNBeachMover::Launch);
+		}
+		It.RemoveCurrent();
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Servidor
 // ─────────────────────────────────────────────────────────────────────────────
@@ -662,6 +796,8 @@ void ATN_BeachCatapult::ServerTick(double Now)
 	{
 		return;
 	}
+	// Las lanzadas siguen reservadas hasta que aterrizan, aunque la catapulta ya esté gastada.
+	TickFlights();
 	if (IsSpent())
 	{
 		// Gastada: ya no se arma ni dispara en toda la ronda.
@@ -691,7 +827,24 @@ void ATN_BeachCatapult::ServerTick(double Now)
 			continue;
 		}
 		FRider& Rider = Riders.FindOrAdd(Walker);
-		const int32 Where = TNBeachRideKit::IsFreeRider(Walker) ? WhereOnArm(Walker) : 0;
+		int32 Where = TNBeachRideKit::IsFreeRider(Walker) ? WhereOnArm(Walker) : 0;
+		if (Where == 0)
+		{
+			// Metida en su caparazón y quieta en el cazo: pasajera como cualquiera. Con el aviso en marcha se la sujeta quieta
+			// (velocidad a cero en cada tic del servidor: ni la empuja otra tortuga que entre ni resbala por el cazo inclinado).
+			if (ATN_ShellBody* Ball = BowlBallOf(Walker))
+			{
+				Where = 1;
+				if (ArmedAt >= 0.f)
+				{
+					if (UBoxComponent* Box = Ball->GetBox())
+					{
+						Box->SetPhysicsLinearVelocity(FVector::ZeroVector);
+						Box->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+					}
+				}
+			}
+		}
 		// Cae de un salto sobre el cubito: dispara.
 		if (Where == 3 && !Rider.bOnBucket && Rider.LastVz < -80.f)
 		{
@@ -766,11 +919,27 @@ void ATN_BeachCatapult::Fire(double Now)
 	bArmCollisionOn = false;
 	SetBowlCollision(false);
 	int32 Launched = 0;
+	int32 LaunchedBalls = 0;
 	for (auto It = Riders.CreateIterator(); It; ++It)
 	{
 		ACharacter* Walker = It.Key().Get();
-		if (!Walker || !TNBeachRideKit::IsFreeRider(Walker))
+		if (!Walker)
 		{
+			continue;
+		}
+		if (!TNBeachRideKit::IsFreeRider(Walker))
+		{
+			// La bola de caparazón quieta en el cazo sale igual que una de pie (la colisión ya está apagada: nace sin tropezar).
+			ATortugaCharacter* BallTurtle = Cast<ATortugaCharacter>(Walker);
+			if (ATN_ShellBody* Ball = BowlBallOf(Walker))
+			{
+				if (LaunchBowlBall(BallTurtle, Ball, LaunchVelocity(1.f)))
+				{
+					BeginFlight(Walker);
+					++Launched;
+					++LaunchedBalls;
+				}
+			}
 			continue;
 		}
 		const int32 Where = WhereOnArm(Walker);
@@ -780,12 +949,13 @@ void ATN_BeachCatapult::Fire(double Now)
 		}
 		if (TNBeachRideKit::LaunchAsBall(Cast<ATortugaCharacter>(Walker), LaunchVelocity(Where == 1 ? 1.f : HandleLaunchFraction)))
 		{
+			BeginFlight(Walker);
 			++Launched;
 		}
 	}
 	ForceNetUpdate();
-	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Catapulta %s%s dispara: %d lanzadas%s."), *GetName(), bBoosted ? TEXT(" potenciada") : TEXT(""), Launched,
-		bSingleUse ? TEXT("; queda partida") : TEXT(""));
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] Catapulta %s%s dispara: %d lanzadas (%d ya en su bola)%s."), *GetName(), bBoosted ? TEXT(" potenciada") : TEXT(""), Launched,
+		LaunchedBalls, bSingleUse ? TEXT("; queda partida") : TEXT(""));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -807,6 +977,31 @@ void ATN_BeachCatapult::SetBowlCollision(bool bOn)
 	}
 }
 
+void ATN_BeachCatapult::ApplyVisualShake(double Now, double Warn)
+{
+	using namespace TNBeachCatapultDetail;
+	if (Warn < 0.0)
+	{
+		if (bMeshShaken)
+		{
+			// Una última vez al acabar el aviso (o al disparar): las mallas vuelven exactas a su sitio sobre las colisiones.
+			bMeshShaken = false;
+			ArmMesh->SetRelativeTransform(FTransform::Identity);
+			BowlMesh->SetRelativeTransform(FTransform::Identity);
+		}
+		return;
+	}
+	bMeshShaken = true;
+	const FRotator Shake((ShakePitchBase + ShakePitchGain * Warn) * FMath::Sin(Now * 63.0), (ShakeYawBase + ShakeYawGain * Warn) * FMath::Sin(Now * 47.0 + 1.3),
+		(ShakeRollBase + ShakeRollGain * Warn) * FMath::Sin(Now * 71.0 + 0.6));
+	const FTransform ShakeXf(Shake);
+	// El brazo tiembla sobre el eje. El cazo cuelga de la bisagra del cuello, no del eje: para que gire igual sobre el eje
+	// hay que llevar el temblor al espacio de la bisagra (aplicar la bisagra, el temblor y la bisagra inversa).
+	ArmMesh->SetRelativeTransform(ShakeXf);
+	const FTransform HingeRel = BowlHinge->GetRelativeTransform();
+	BowlMesh->SetRelativeTransform(HingeRel * ShakeXf * HingeRel.Inverse());
+}
+
 void ATN_BeachCatapult::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -821,7 +1016,9 @@ void ATN_BeachCatapult::Tick(float DeltaSeconds)
 	const bool bPopLive = Pop.Tick(DeltaSeconds, GetWorld());
 	const bool bBreakPopLive = BreakPop.Tick(DeltaSeconds, GetWorld());
 	// Gastada y quieta: nada que animar hasta la ronda siguiente (OnRep_Shot o ApplySpec lo vuelven a encender).
-	if (IsSpent() && Now - static_cast<double>(FiredAt) > TNBeachCatapultDetail::SettledSeconds && !bDustLive && !bChipsLive && !bPopLive && !bBreakPopLive)
+	// (Con lanzadas en vuelo, el servidor sigue con el Tick para soltar su reserva del árbitro al aterrizar.)
+	if (IsSpent() && Now - static_cast<double>(FiredAt) > TNBeachCatapultDetail::SettledSeconds && !bDustLive && !bChipsLive && !bPopLive && !bBreakPopLive
+		&& Flights.IsEmpty())
 	{
 		SetActorTickEnabled(false);
 	}
@@ -876,13 +1073,10 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 	const bool bArmed = !bBroken && ArmedAt >= 0.f && Now >= static_cast<double>(ArmedAt);
 	const double Warn = bArmed ? FMath::Clamp((Now - static_cast<double>(ArmedAt)) / FMath::Max(0.05, static_cast<double>(WarnSeconds)), 0.0, 1.0) : 0.0;
 
-	// Brazo: con el aviso tiembla en su sitio; partido, el cazo cuelga de su bisagra.
-	double Pitch = ArmPitchAt(Now);
-	if (bArmed && bLoaded)
-	{
-		Pitch += (0.4 + 1.2 * Warn) * FMath::Sin(Now * 63.0);
-	}
-	ArmPivot->SetRelativeRotation(FRotator(Pitch, 0.0, 0.0));
+	// Brazo: el eje (y con él las colisiones del brazo y del cazo) solo sigue el cabeceo real. El temblor del aviso NO se
+	// suma aquí: mover las colisiones a 10 Hz desplazaba el suelo bajo la tortuga o la bola de caparazón que espera en el
+	// cazo y la despedía antes del disparo. Tiembla solo la malla visible (ApplyVisualShake). Partido, el cazo cuelga de su bisagra.
+	ArmPivot->SetRelativeRotation(FRotator(ArmPitchAt(Now), 0.0, 0.0));
 	BowlHinge->SetRelativeRotation(FRotator(BowlPitchAt(Now), 0.0, 0.0));
 	const bool bShowSplinters = bSingleUse && bShot && T >= BreakSeconds;
 	if (SplinterMesh->IsVisible() != bShowSplinters)
@@ -917,6 +1111,7 @@ void ATN_BeachCatapult::TickVisuals(double Now, float DeltaSeconds)
 		return;
 	}
 	TickSign(Now, DeltaSeconds, bBroken);
+	ApplyVisualShake(Now, bArmed && bLoaded ? Warn : -1.0);
 
 	// Banderín: verde lista; rojo parpadeando armada; rojo fijo recargando; ninguno con el brazo partido (arrancado).
 	const bool bShowRed = !bBroken && (!bLoaded || (bArmed && FMath::Frac(Now * 4.0) < 0.5));

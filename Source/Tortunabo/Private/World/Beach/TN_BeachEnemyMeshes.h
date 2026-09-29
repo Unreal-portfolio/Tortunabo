@@ -478,16 +478,37 @@ namespace TNBeachMeshes
 		return L;
 	}
 
-	/** Rueda con el eje en Y centrada en su origen: neumático con tacos y llanta con buje por las dos caras. */
+	/**
+	 * Rueda con el eje en Y centrada en su origen: neumático con tacos y llanta con buje por las dos caras.
+	 *
+	 * Cerrada por las dos caras: la banda de rodadura no lleva tapas (las cierran los flancos), y cada flanco (cono de R a 0,9 R)
+	 * termina en un hombro plano que llega hasta la llanta. Sin ese hombro quedaba un anillo abierto entre el flanco y la
+	 * llanta y, como el material es de una cara, desde fuera se veía a través de la rueda (y su interior, sin pintar). Los
+	 * tacos llevan tapa en la punta por lo mismo.
+	 */
 	inline void BuildQuadWheel(FTNProcMeshBuffers& M, const FQuadLook& L)
 	{
 		const double S = TNBeach::Scale;
 		const double R = QuadWheelR * S;
 		const double Hw = QuadWheelHalfW * S;
-		TNProcMesh::TNProcAddCylinder(M, FVector(0.0, -Hw, 0.0), FVector(0.0, Hw, 0.0), R, R, 18, L.Tire, false);
+		constexpr int32 TireSeg = 18;
+		// Corona plana entre dos radios en el plano Y, mirando hacia Facing (los vértices coinciden con los del cono de 18 lados).
+		auto AddRing = [&M](double Y, double RIn, double ROut, const FVector& Facing, const FLinearColor& Color)
+		{
+			for (int32 k = 0; k < TireSeg; ++k)
+			{
+				const double A0 = TNProcMap::TwoPi * k / TireSeg;
+				const double A1 = TNProcMap::TwoPi * (k + 1) / TireSeg;
+				M.AddQuad(FVector(FMath::Cos(A0) * ROut, Y, FMath::Sin(A0) * ROut), FVector(FMath::Cos(A1) * ROut, Y, FMath::Sin(A1) * ROut),
+					FVector(FMath::Cos(A1) * RIn, Y, FMath::Sin(A1) * RIn), FVector(FMath::Cos(A0) * RIn, Y, FMath::Sin(A0) * RIn), Facing, Color);
+			}
+		};
+		TNProcMesh::TNProcAddCylinder(M, FVector(0.0, -Hw, 0.0), FVector(0.0, Hw, 0.0), R, R, TireSeg, L.Tire, false);
 		for (const double Side : { -1.0, 1.0 })
 		{
-			TNProcMesh::TNProcAddCylinder(M, FVector(0.0, Side * Hw, 0.0), FVector(0.0, Side * (Hw + 1.5 * S), 0.0), R, R * 0.9, 18, L.Tire * 0.85f, false);
+			TNProcMesh::TNProcAddCylinder(M, FVector(0.0, Side * Hw, 0.0), FVector(0.0, Side * (Hw + 1.5 * S), 0.0), R, R * 0.9, TireSeg, L.Tire * 0.85f, false);
+			// Hombro: del flanco (0,9 R) hacia dentro, por debajo de la llanta (0,5 R < radio de la llanta de 12 lados).
+			AddRing(Side * (Hw + 1.5 * S), R * 0.5, R * 0.9, FVector(0.0, Side, 0.0), L.Tire * 0.8f);
 			TNProcMesh::TNProcAddCylinder(M, FVector(0.0, Side * (Hw + 1.4 * S), 0.0), FVector(0.0, Side * (Hw + 2.0 * S), 0.0), R * 0.62, R * 0.58, 12, L.Rim, true);
 			TNProcMesh::TNProcAddCylinder(M, FVector(0.0, Side * (Hw + 1.9 * S), 0.0), FVector(0.0, Side * (Hw + 3.2 * S), 0.0), R * 0.2, R * 0.16, 8, L.Frame, true);
 			for (int32 b = 0; b < 5; ++b)
@@ -496,8 +517,10 @@ namespace TNBeachMeshes
 				M.AddBox(FVector(FMath::Cos(A) * R * 0.38, Side * (Hw + 2.2 * S), FMath::Sin(A) * R * 0.38), FVector::ForwardVector, FVector(1.2 * S, 0.5 * S, 1.2 * S), L.Frame);
 			}
 		}
-		// Tacos en dos filas alternas.
+		// Tacos en dos filas alternas: viga cuadrada (AddBeam no lleva tapas) con su tapa en la punta; la base queda dentro de la banda.
 		constexpr int32 Knobs = 18;
+		const double KnobHalf = 2.4 * S;
+		const FLinearColor KnobColor = L.Tire * 0.75f;
 		for (int32 k = 0; k < Knobs; ++k)
 		{
 			for (int32 Row = 0; Row < 2; ++Row)
@@ -505,7 +528,18 @@ namespace TNBeachMeshes
 				const double A = TNProcMap::TwoPi * (k + 0.5 * Row) / Knobs;
 				const FVector Dir(FMath::Cos(A), 0.0, FMath::Sin(A));
 				const FVector Off(0.0, (Row == 0 ? -0.45 : 0.45) * Hw, 0.0);
-				M.AddBeam(Dir * (R * 0.97) + Off, Dir * (R + 2.6 * S) + Off, 2.4 * S, L.Tire * 0.75f);
+				const FVector Tip = Dir * (R + 2.6 * S) + Off;
+				M.AddBeam(Dir * (R * 0.97) + Off, Tip, KnobHalf, KnobColor);
+				// Mismo marco que AddBeam: eje = Dir, Y = arriba x eje (o el eje Y del mundo si es vertical), Z = eje x Y.
+				FVector KnobY = FVector::CrossProduct(FVector::UpVector, Dir);
+				if (KnobY.SizeSquared() < 1e-6)
+				{
+					KnobY = FVector(0.0, 1.0, 0.0);
+				}
+				KnobY.Normalize();
+				const FVector KnobZ = FVector::CrossProduct(Dir, KnobY);
+				M.AddQuad(Tip + (KnobY + KnobZ) * KnobHalf, Tip + (KnobZ - KnobY) * KnobHalf, Tip + (-KnobY - KnobZ) * KnobHalf, Tip + (KnobY - KnobZ) * KnobHalf, Dir,
+					KnobColor * 1.15f);
 			}
 		}
 	}
