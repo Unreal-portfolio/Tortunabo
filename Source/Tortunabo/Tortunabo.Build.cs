@@ -42,6 +42,8 @@ public class Tortunabo : ModuleRules
 
 		// Json: ATN_MapVariantLoader lee manifest.json e index.json de Scripts/terrain_volumes/Variants/.
 		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
+		// Monkey y estrés (Source/Tortunabo/Private/Testing): tiempos de hilo de juego, de render y de GPU (GGameThreadTime, RHIGetGPUFrameCycles).
+		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI" });
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("AssetRegistry");
