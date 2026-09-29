@@ -19,5 +19,29 @@
   "description": "España con el relieve real (1 m de juego = 2,1 km de suelo, cimas a unos 29 m sobre el agua): la frontera es la costa y el mar es la muerte. Del Pirineo a Santiago por la Meseta.",
   "recorrible": true,
   "size_mb": 6.14
+ },
+ {
+  "name": "I01_filipinas_rara",
+  "seed": 1001,
+  "description": "Filipinas rara («Archipiélago de las Mil Bolas», Todos contra Todos): una isla con forma de tortuga y un volcán de cima plana en el centro, rodeada de 3 islas medianas y 3 pequeñas unidas por 9 puentes naturales; caer al agua es la muerte.",
+  "recorrible": true,
+  "size_mb": 1.11,
+  "mode": "tct"
+ },
+ {
+  "name": "A01_diana",
+  "seed": 3001,
+  "description": "Diana (Todos contra Todos): 5 anillos concéntricos de 120 m a +2, +4, +6, +9 y +12 m sobre el agua, unidos por 4 rampas radiales de 6 m a 15°; el centro manda, caer al agua es la muerte.",
+  "recorrible": true,
+  "size_mb": 0.41,
+  "mode": "tct"
+ },
+ {
+  "name": "L10_japon_fuji",
+  "seed": 2010,
+  "description": "Japón, monte Fuji (Rally, piloto): de la costa de Fuji en la bahía de Suruga al cráter, con el relieve real calibrado por pendiente (1 m de juego = 72 m, cima a +47 m); el mar es la muerte.",
+  "recorrible": true,
+  "size_mb": 5.44,
+  "mode": "rally"
  }
 ]

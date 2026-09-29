@@ -94,7 +94,7 @@ def render_sheet(top: np.ndarray, path: Path, title: str, subtitle: str = "", st
     ax3.plot_surface(Xg, Yg, np.maximum(sub, -0.2) * perspective_z_scale, facecolors=colors, rstride=1, cstride=1,
                      linewidth=0, antialiased=False, shade=False)
     ax3.view_init(elev=38, azim=-62)
-    ax3.set_box_aspect((1.0, 1.0, max(0.12, min(0.5, vmax * perspective_z_scale / size * 1.3))), zoom=1.35)
+    ax3.set_box_aspect((1.0, 1.0, max(0.12, min(0.5, vmax * perspective_z_scale / size * 1.3))), zoom=1.2)
     ax3.set_axis_off()
     ax3.set_title("Perspectiva desde el Suroeste" + (f" (relieve x{perspective_z_scale:g})" if perspective_z_scale != 1 else ""),
                   fontsize=10)
