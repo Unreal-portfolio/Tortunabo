@@ -46,6 +46,8 @@ necesita espera a que esté lista.
   - `ClamTrap`: concha que atrapa.
   - `MovingPlatform`: plataforma móvil. Con semilla par sale la balsa (`TN.Beach.Place MovingPlatform 1 0 2`) y con impar, el ascensor con catapulta (`… 1 0 3`).
   - `Catapult`: catapulta (de un solo uso: tras el primer disparo queda partida hasta la ronda siguiente; para otra, ponla otra vez).
+    - Bola de caparazón (ronda 4), sola: `TN.Beach.Place Catapult`, entra en el cazo andando y pulsa la tecla del caparazón. La bola arma la catapulta como una tortuga de pie: 1 s de aviso («¡AGÁRRATE!») con la bola clavada en su sitio (tiembla solo la madera del brazo y del cazo) y sale lanzada hacia el mar dando volteretas, rueda y sale sola del caparazón al pararse. Igual con `TN.Beach.PlaceBoosted Catapult` (mucho más lejos).
+    - Con dos tortugas (o dos ventanas / un cliente): una metida en su caparazón dentro del cazo y la otra que entra andando y arma la catapulta. La bola no debe moverse aunque la otra la roce, y las dos salen lanzadas. En el cliente la bola debe volar igual que en el anfitrión, sin tirones ni saltos al salir. Una bola aturdida (la que deja un golpe de mina o de enemigo) no cuenta. En el log del anfitrión: `[Playa] Catapulta … dispara: N lanzadas (M ya en su bola)`.
   - `Mine`: mina.
   - `Trampoline`: trampolín (4 variantes por semilla).
   - `FortressMedium`, `FortressLarge`, `FortressColossal`: fortaleza de arena con premio en la cima (lanzador potenciado, cofre y conchas de 50 y 100). Mira hacia donde miras (lanza hacia allí) y sale lejos: la colosal, a ~54 m. Por ejemplo `TN.Beach.Place FortressColossal 1 0 7`; semillas seguidas cambian catapulta o trampolín y el lado de la espiral.
@@ -57,6 +59,7 @@ necesita espera a que esté lista.
   - `SeaUrchin`: erizo.
   - `Lizard`: lagarto.
   - `QuadLane`: paso de quads (Extent = ancho).
+    - Ruedas (ronda 4): `TN.Beach.Place QuadLane` y `TN.Beach.Quad.Now` para que pase ya. Mira las ruedas desde el hueco entre ellas y desde fuera: la cara de dentro y la de fuera deben verse enteras (neumático oscuro, llanta clara, buje y tornillos), sin huecos ni el interior del neumático sin pintar, y los tacos con la punta cerrada.
   - `GullZone`: zona de gaviotas.
   - `HermitCrab`: cangrejo ermitaño bola (Extent = largo de su calle; 0 = 40 m). La calle va hacia donde miras, centrada 13 m delante; lo alto (donde espera) es el extremo más cercano a ti. Con `TN.Beach.Place HermitCrab 1 2000` queda 3 m delante y la calle llega a 23 m: rodéalo y ponte en su calle, delante de él.
   - `PoolOctopus`: pulpo de poza. Dentro de una poza vive en ella (si cae a menos del 70 % de la orilla, se queda ahí); en la arena hace su propio charco de 7 m de radio y cualquier tortuga que entre cuenta como nadando.
@@ -72,8 +75,10 @@ necesita espera a que esté lista.
 
 | Comando | Qué hace |
 |---|---|
-| `TN.Beach.Gull.Attack 1` | Cada zona de gaviotas suelta una cagada sobre la tortuga más cercana (ragdoll y mancha). |
-| `TN.Beach.Gull.Attack 2` | Picado con agarre: sombra negra que nace diminuta y crece mientras baja siguiéndote (2,3 s). Andando te pilla: te sube pataleando y te suelta en bola (siempre caes al suelo). Si echas a correr al verla (o te metes en bola), baja igual, pica la arena y vuelve a subir. Sin número, al azar. |
+| `TN.Beach.Gull.Attack 1` | Cada zona de gaviotas suelta una cagada sobre la tortuga más cercana (ragdoll y mancha). Quieta o andando te da; corriendo, cambiando de dirección cuando el «!» parpadea deprisa (el blanco ya no se mueve el último 0,45 s) o tirándote en plancha en el momento justo, te libras (`esquiva la cagada … en plancha` en el registro). |
+| `TN.Beach.Gull.Attack 2` | Picado con agarre: sombra negra que nace diminuta y crece mientras baja siguiéndote (2,3 s). Andando te pilla: te sube pataleando y te suelta en bola (siempre caes al suelo). Si echas a correr al verla, cambias de dirección corriendo en los últimos 0,6 s (ya va lanzada y apenas corrige), te tiras en plancha o te metes en bola, baja igual, pica la arena y vuelve a subir. Sin número, al azar. |
+| `TN.Beach.Gull.Grab [veces=2] [jugador]` | La zona de gaviotas más cercana coge a tu tortuga (o a la del jugador N, índice en `PlayerArray` del anfitrión) con el pico N veces seguidas: cada vez que estés libre (de pie, sin bola ni derribo), un picado que ya va por su último medio segundo y te coge si no te mueves. Para el fallo «segunda gaviota + caparazón»: colgando, pulsa el caparazón (sin objeto en la mano) y cae en bola aturdida, como al acabar el vuelo; en el registro, `se le escurre` y ningún `Red de seguridad`. Ver `Docs/Modo_Carrera.md`, «Segunda gaviota + caparazón = torbellino». |
+| `Automation RunTests Tortunabo.Beach.Hold` / `Automation RunTests Tortunabo.Beach.Gull` | Pruebas automáticas de lógica pura (en la consola del editor o en Session Frontend): quién mueve a la tortuga y la sujeción de los enemigos con agarres seguidos, y el nerf de las gaviotas (andando te pilla, corriendo o cambiando de dirección al final te libras, la plancha libra de la cagada). |
 | `TN.Beach.Quad.Now` | Todos los pasos de quads avisan y pasan ya. |
 | `TN.Beach.Storm.Start [metros detrás=30] [cm/s=180]` | Arranca la tormenta de bañistas. |
 | `TN.Beach.Storm.Here [jugador] [metros=4]` | Pone el frente de la tormenta 4 m (o `metros`) por delante de tu tortuga o de la del jugador N (índice en `PlayerArray`: así se prueba la del cliente desde el anfitrión): se queda dentro y un bañista le da la patada. Acaba sí o sí en arena abierta ~20 m por delante del frente: en bola si el arco está libre, de un salto con polvo si no (o si está a más de 45 m). Con `metros` = 30 o 60 se prueban la patada larga y el salto. Sin tormenta, crea una. Ver `Docs/Modo_Carrera.md`, «La patada que no puede entrar en bucle». |
@@ -89,7 +94,8 @@ necesita espera a que esté lista.
 
 | Comando | Qué hace |
 |---|---|
-| `TN.Race.WinRound [jugador=0]` | Ese jugador «toca el agua». La primera gana la concha y arranca la cuenta de 10 s; repítelo con otro índice para la media concha; deja a alguien sin llegar para ver el gusano. |
+| `TN.Race.WinRound [jugador=0] [puesto]` | Ese jugador «toca el agua». La primera gana la concha y arranca la cuenta de 10 s; repítelo con otro índice para la media concha; deja a alguien sin llegar para ver el gusano. En su pantalla se cierra el huevo negro con «Has quedado X.º»; con `puesto` (1-8), esa pantalla enseña ese puesto y su premio aunque sean pocos (las conchas van por el orden de verdad): `TN.Race.WinRound 1 8` le da al cliente el alga de peluca. |
+| `TN.Race.NextRound` | Salta a la ronda siguiente: en plena carrera la cierra ya con su recuento (conchas para quien haya llegado); en el recuento o en el título del sprint, sigue sin esperar. Dos veces seguidas en plena carrera: el paso entre rondas con el huevo negro, «RONDA N» y el 3, 2, 1. |
 | `TN.Race.Sprint [jugador] [jugador]…` | Empate forzado a 3 conchas y sprint final (por defecto, 0 y 1). |
 | `TN.Race.Champion [jugador=0]` | Salta directo a la pantalla del campeón con ese ganador. |
 | `TN.Race.PlayAgain` / `TN.Race.ChangeMode` / `TN.Race.Menu` | Los botones de la pantalla del campeón. |
@@ -109,6 +115,8 @@ necesita espera a que esté lista.
 | `TN.Race.Tally [ganador 0-5, -1 nadie] [jugadores 1-6] [1 = corona y podio] [medias=1]` | El recuento, con las medias conchas; por ejemplo `TN.Race.Tally 0 4 0 2`. |
 | `TN.Race.SprintPreview [finalistas 2-6]` | El título del sprint final con el «VS». |
 | `TN.Race.Podium [jugadores 1-3]` | La pantalla del campeón con el podio animado. |
+| `TN.Race.ArrivalPreview [puesto 1-8 = 1] [1 = sprint]` | La llegada al agua: el huevo negro se cierra desde arriba y desde abajo, «Has quedado X.º» con su premio (coronas de oro, plata y bronce; cubo, media concha rota, flotador pinchado, calcetín mojado, alga), un mensaje al azar y su sonido, y se rompe. |
+| `TN.Race.RoundPreview [ronda = 2] [1 = sprint]` | El paso entre rondas: el huevo negro, «RONDA N» (o «SPRINT FINAL») con su frase, «Colocando la playa…», tres «pum» con 3, 2, 1 y se rompe. Desde la ronda 4, la frase de la bola de partido. |
 | `TN.Race.PreviewOff` | Cierra cualquier vista previa. |
 
 ## Botín, brillo y conchas
@@ -152,6 +160,46 @@ Pruebas con una sola tortuga: `TN.Race.ItemUse Coconut`, `Sunscreen`, `PelicanTa
 cerca) y `HomingCrab` (contra el enemigo más cercano por delante). La gaviota justiciera y la nube de tormenta necesitan a otra
 tortuga: con el anfitrión y un cliente, `TN.Race.ItemUse GullStrike 1` da la gaviota al cliente y va a por quien vaya delante de él.
 Con dos jugadores, `TN.Beach.Go 200 0` y `TN.Beach.Go 100 1` colocan al anfitrión por delante para ver quién recibe qué en las cajas.
+
+## Música de fondo de la carrera
+
+Detalle en `Docs/Sonido_Tortuga.md` («Música de fondo de la carrera»). Suena sola en la carrera; estos comandos sirven para oírla
+y probarla en **cualquier mapa** (también en el lobby o el cooperativo) sin jugar una ronda. Van en la ventana de quien escucha.
+
+| Comando | Qué hace |
+|---|---|
+| `TN.Race.Music.Play [tensión] [duck]` | La hace sonar ya, con la introducción y el tema. `TN.Race.Music.Play 0 0` = la base; `TN.Race.Music.Play 1` = a tope de tensión; `TN.Race.Music.Play 0 0.55` = como en la cuenta de salida; `TN.Race.Music.Play 0.7 0.5` = como en la cuenta de 10 s. |
+| `TN.Race.Music.Tension <0..1>` / `TN.Race.Music.Duck <0..1>` | Mueven la tensión o el «ducking» (`-1` = los decide la partida). Suben y bajan suaves (2 s / 0,3 s): probar `Tension 0`, `0.5`, `1` y `Duck 0`, `1` con la música sonando. |
+| `TN.Race.Music.Layers <máscara>` | Capas: 1 ritmo, 2 armonía, 4 melodía, 8 corneta, 16 tensión (31 = todas). `TN.Race.Music.Layers 16` con `Tension 1` es la capa de tensión sola; `Layers 4`, solo la melodía. |
+| `TN.Race.Music.Restart` | Vuelve a la introducción. |
+| `TN.Race.Music.Status` | Qué decide el director y cómo va el motor (compás de 32, vuelta de 2, tensión y «ducking» suavizados). |
+| `TN.Race.Music.Volume <0..1,5>` | Volumen propio de esta música (1 por defecto), aparte del deslizador de Música. |
+| `TN.Race.Music.Stop` / `TN.Race.Music.Auto` | Calla (fundido) / vuelve al modo normal (la decide la partida y se quitan `Tension`, `Duck`, `Layers`). |
+| `TN.Race.Music.Debug 1` | Un aviso en el registro por cada cambio de decisión (cuenta de salida, carrera, último minuto, cuenta de 10 s, recuento...). |
+
+Para verlo en una ronda de verdad (PIE de 2, ventana del anfitrión): `TN.Race.Music.Debug 1`, salir (suena apartada durante la cuenta
+3, 2, 1 y se abre al dar la salida), `TN.Race.WinRound 1` (llega el otro jugador y tú sigues corriendo: cuenta de 10 s, sube la
+tensión y se aparta) y esperar el «¡TIEMPO!» (se calla). Si llegas tú, se calla a propósito: empieza tu música de victoria. Para el
+último minuto del tiempo de la ronda (el límite son 9 min), `TN.Race.Music.Tension 0.6`. El recuento, el título del sprint
+(`TN.Race.Sprint`) y el podio (`TN.Race.Champion`) también la callan porque ya tienen su música.
+
+## Golpes del caparazón
+
+Detalle en `Docs/Sonido_Tortuga.md` («Golpes del caparazón»). Sonido y mini efecto cuando la bola choca, en todas las máquinas
+(cada una en su copia de la bola, sin red).
+
+| Comando | Qué hace |
+|---|---|
+| `TN.Shell.Impact.Test [arena, roca, madera, agua, tortuga, enemigo, trasto o todos] [fuerza 0..1]` | Un golpe de ese timbre delante de tu tortuga (sonido y partículas). Sin argumentos, los siete uno cada 0,9 s. Prueba `0.15`, `0.5` y `1` de cada uno. |
+| `TN.Shell.Impact.Debug 1` | Una línea por golpe real: timbre, velocidad del impacto, fuerza y contra qué choca. |
+| `TN.Shell.Impact.MinSpeed <cm/s>` | Velocidad mínima para que suene (260 de serie; `100` para oír más roces, `600` para menos). |
+| `TN.Shell.Impact.Volume <x>` / `TN.Shell.Impact 0` | Volumen de los golpes / apagarlos y encenderlos (`1`). |
+
+Con física de verdad (PIE de 2, anfitrión y cliente): meterse en el caparazón (la tecla de siempre) y rodar por una cuesta o
+lanzarse con una catapulta, el trampolín o `TN.Race.Stun 3` (bola aturdida); la otra ventana debe ver y oír lo mismo. Contra
+la arena de la playa, el acantilado (`TN.Beach.Go acantilado`), una fortaleza (`TN.Beach.Place FortressMedium`), una catapulta,
+la plataforma móvil, un enemigo (`TN.Beach.Place GiantCrab`), un cubo roto y otra tortuga en bola, y cayendo al mar. Rodar
+despacio por la arena no debe sonar; un bote de más de 2,6 m/s, sí.
 
 ## Fantasma espectador y volver a la vida
 

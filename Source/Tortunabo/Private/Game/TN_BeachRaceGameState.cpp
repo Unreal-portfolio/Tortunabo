@@ -9,6 +9,7 @@ void ATN_BeachRaceGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 	DOREPLIFETIME(ATN_BeachRaceGameState, RacePhase);
 	DOREPLIFETIME(ATN_BeachRaceGameState, RoundWinner);
 	DOREPLIFETIME(ATN_BeachRaceGameState, RoundHalfShells);
+	DOREPLIFETIME(ATN_BeachRaceGameState, RoundArrivals);
 	DOREPLIFETIME(ATN_BeachRaceGameState, Champion);
 	DOREPLIFETIME(ATN_BeachRaceGameState, Podium);
 	DOREPLIFETIME(ATN_BeachRaceGameState, PhaseSecondsLeft);
@@ -46,4 +47,33 @@ int32 ATN_BeachRaceGameState::GetShellHalves(const APlayerState* PlayerState)
 {
 	const ATN_CoopPlayerState* PS = Cast<ATN_CoopPlayerState>(PlayerState);
 	return PS ? PS->RaceShellHalves : 0;
+}
+
+int32 ATN_BeachRaceGameState::GetArrivalPlace(const APlayerState* PlayerState) const
+{
+	if (!PlayerState)
+	{
+		return 0;
+	}
+	for (const FTNBeachRoundArrival& Arrival : RoundArrivals)
+	{
+		if (Arrival.Player.Get() == PlayerState)
+		{
+			return FMath::Max(1, Arrival.Place);
+		}
+	}
+	return 0;
+}
+
+void ATN_BeachRaceGameState::AddRoundArrival(APlayerState* PlayerState, int32 Place)
+{
+	if (!HasAuthority() || !PlayerState || GetArrivalPlace(PlayerState) > 0)
+	{
+		return;
+	}
+	FTNBeachRoundArrival& Arrival = RoundArrivals.AddDefaulted_GetRef();
+	Arrival.Player = PlayerState;
+	Arrival.Place = FMath::Max(1, Place);
+	// La pantalla del puesto de quien llega se cierra ya: que le llegue cuanto antes.
+	ForceNetUpdate();
 }

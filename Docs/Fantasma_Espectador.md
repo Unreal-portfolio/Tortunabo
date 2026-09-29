@@ -24,7 +24,7 @@ ejecución, interfaz en C++ y sonidos sintetizados; sin assets nuevos.
 | `TN_GhostInternal.h` | `Private/Player/` | Enganches internos (no son contrato). |
 | `TN_GhostMeshes.h` | `Private/Player/` | La malla del fantasmita. |
 | `UTN_GhostHUDWidget` | `UI/HUD/TN_GhostHUDWidget.*` | El cartel del fantasma y «Te mira...» para los que tienen tortuga. |
-| `UTN_GhostHatchWidget` | `UI/HUD/TN_GhostHatchWidget.*` | La transición de la cáscara oscura en la pantalla del que vuelve. |
+| `UTN_GhostHatchWidget` | `UI/HUD/TN_GhostHatchWidget.*` | La transición de la cáscara oscura en la pantalla del que vuelve; en la carrera, también la de la llegada al agua y la del paso entre rondas (modo `ShowCurtain`, ver «La cáscara oscura en la carrera»). |
 | `TNHUDGhostFace` | `Private/UI/HUD/TN_HUDGhostFace.h` | La cara de tortuga fantasma del HUD (el HUD no tenía icono de fantasma: es nueva, con el estilo de `TN_HUDFaces.h`). |
 
 Toques en código compartido (pequeños y agrupados):
@@ -159,6 +159,25 @@ TNGhost::IsGhost(PC);     // espectador ahora (volviendo incluido)
   salen despedidas entre trozos de cáscara y un fogonazo, y se ve a su tortuga saliendo del huevo de un saltito.
   Reutiliza el blanco, los trozos de cáscara y los sonidos de la pantalla de carga del huevo.
 
+## La cáscara oscura en la carrera (ronda 4)
+
+La misma cáscara (`UTN_GhostHatchWidget`) hace de transición en la carrera, en un modo propio que no cambia la de volver a
+la vida (`ShowFor` sigue igual). La maneja `UTN_RaceScreensSubsystem` (detalle en `Docs/Modo_Carrera.md`, «Llegada al agua»
+y «Entre ronda y ronda»):
+
+- `UTN_GhostHatchWidget::ShowCurtain(PC, SegundosDeCierre, EsperaMáxima)`: sin fundido a negro ni «¡PUM!»; las dos mitades
+  entran desde fuera de la pantalla, desde arriba y desde abajo, cada vez más deprisa (se ve la partida por la rendija) y
+  se juntan con un «¡clac!» y una sacudida; cerrada, la unión brilla. Devuelve el widget (ZOrder `ViewportZOrder` = 50).
+- `Knock()`: un «pum» desde dentro (tiembla, golpe y crujido); los tres primeros abren una grieta de luz y la luz crece.
+- `Open(true)`: se rompe como al eclosionar (fogonazo, mitades despedidas y trozos); `Open(false)`: se funde en 0,25 s. Se
+  quita sola al acabar. Si nadie la abre en la espera máxima, se rompe sola.
+- `IsClosed()` (las mitades ya tapan toda la pantalla) e `IsOpening()`.
+- **Llegada al agua**: se cierra en 0,28 s según se zambulle la tortuga y encima va «Has quedado X.º»; al romperse, quien
+  ha llegado ya es fantasma espectador (el servidor la pasa a espectadora a los 0,8 s, tapado) y ve a las que siguen
+  corriendo; si ya no queda nadie, se rompe sobre el recuento.
+- **Entre rondas**: se cierra al irse el recuento con «RONDA N» encima, da un «pum» por cada número del 3, 2, 1 y se
+  rompe al dar la salida. Detrás, el fantasma se va (la tortuga nueva ya está en su huevo) sin que se vea el cambio.
+
 ## Consola (pruebas)
 
 - `TN.Ghost.Become [índice]`: ese jugador pasa a fantasma espectador (0 = anfitrión, 1 = el primer cliente...; sin
@@ -188,8 +207,10 @@ PIE con 2 y con 3 jugadores (escucha: anfitrión + clientes). En cada máquina m
      se abre dejando ver su tortuga saliendo; se puede mover enseguida; el cuerpo panza arriba y su rescate desaparecen.
    - Con el anfitrión de fantasma (`TN.Ghost.Become 0` y `TN.Ghost.Revive 0`): lo mismo en la máquina del anfitrión.
 2. **Carrera** (llegar a la meta; o `TN.Ghost.Become 1`): el que ha llegado es fantasma y ve a los que siguen corriendo,
-   con todo lo anterior. `TN.Ghost.Revive` no hace nada (lo dice el registro). Ronda nueva: el fantasma se desvanece y
-   la tortuga sale en la salida como siempre.
+   con todo lo anterior. Al llegar al agua, su pantalla pasa por la cáscara oscura con «Has quedado X.º» y se rompe
+   dejándole ya de fantasma (sin ver el cambio de cámara). `TN.Ghost.Revive` no hace nada (lo dice el registro). Ronda
+   nueva: la cáscara con «RONDA N» tapa el cambio, el fantasma se va y, al romperse, la tortuga sale de su huevo.
+   Vistas previas en cualquier mapa: `TN.Race.ArrivalPreview [puesto]` y `TN.Race.RoundPreview [ronda]`.
 3. **Lobby**: `TN.Ghost.Become 1` → fantasma con cámaras y cartel; los demás lo ven flotando; `TN.Ghost.Revive 1` →
    sale del huevo delante de la otra tortuga y se mueve normal (y vuelve a poder entrar en la tienda y el probador).
 4. **Viaje**: siendo fantasma, acabar la partida y volver al lobby: la cámara y los controles vuelven a los de siempre.

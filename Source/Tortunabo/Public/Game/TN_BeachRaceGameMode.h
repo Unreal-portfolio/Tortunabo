@@ -66,6 +66,11 @@ struct FTNBeachArrival
 	int32 Halves = 0;
 	/** Hasta cuándo (hora del mundo) se la ve en el agua con su chapuzón antes de pasar a espectadora. */
 	float HoldEnd = 0.f;
+	/**
+	 * Cuándo tocó el agua (hora del mundo); 0 si no llegó de verdad (la concha del tiempo de ronda agotado). El recuento no
+	 * sale hasta que acaba su pantalla del puesto (ArrivalScreenHoldSeconds).
+	 */
+	float ArrivedAt = 0.f;
 	/** Ya ha pasado por la meta de la base (puesto, puntos, oculta y espectadora). */
 	bool bSettled = false;
 };
@@ -90,7 +95,9 @@ struct FTNBeachArrival
  *     llegue dentro se lleva media concha. Al acabar, a cada una que no ha llegado se la come un gusano de arena
  *     (ATN_BeachSandWorm) y, al acabar el bocado (o enseguida si ya han llegado todas), el recuento. Las conchas
  *     van en medias (ATN_CoopPlayerState::RaceShellHalves). Quien llega se queda a la vista en el agua con su chapuzón
- *     FinishSplashHoldSeconds y luego pasa a espectadora por la meta de la base. Arranca la tormenta de bañistas
+ *     FinishSplashHoldSeconds y luego pasa a espectadora por la meta de la base; su puesto va replicado
+ *     (ATN_BeachRaceGameState::RoundArrivals) y en su pantalla se cierra el huevo negro con «Has quedado X.º», su premio
+ *     y un mensaje (UTN_RaceScreensSubsystem). Arranca la tormenta de bañistas
  *     (ATN_BeachStorm, por nombre) y la para al acabar. Aquí no se muere: MarkPlayerDead aturde (TNBeach::StunTurtle) y,
  *     fuera del mapa, en una zona de muerte o en el vacío, devuelve a la tortuga a un sitio seguro cercano y la aturde.
  *     El salto del acantilado no hace bola ni aturde (se cae de cabeza al agua).
@@ -105,8 +112,8 @@ struct FTNBeachArrival
  *  5. Campeón (Champion, Results): Champion y Podium rellenos; se queda así hasta que el anfitrión elige con
  *     RequestChampionChoice (Volver a jugar, Cambiar de modo o Salir).
  *
- * Pruebas: opciones de URL ?BeachSeed=N ?BeachWins=N y la consola TN.Race.* (WinRound, Champion, Sprint, Stun, Kill,
- * Void, PlayAgain, ChangeMode, Menu) y TN.Mode (ver Docs/Modo_Carrera.md).
+ * Pruebas: opciones de URL ?BeachSeed=N ?BeachWins=N y la consola TN.Race.* (WinRound, NextRound, Champion, Sprint, Stun,
+ * Kill, Void, PlayAgain, ChangeMode, Menu) y TN.Mode (ver Docs/Modo_Carrera.md).
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachRaceGameMode : public ATN_RunGameMode
@@ -164,9 +171,16 @@ public:
 
 	/**
 	 * El jugador PlayerIndex (orden de PlayerArray) toca el agua como si llegara: la primera gana la ronda y arranca la
-	 * cuenta atrás; las siguientes, media concha.
+	 * cuenta atrás; las siguientes, media concha. Con ForcedPlace > 0, su pantalla del puesto dice ese puesto (las conchas
+	 * siguen el orden de llegada de verdad): para ver los premios del 4.º al 8.º con pocos jugadores.
 	 */
-	void DebugWinRound(int32 PlayerIndex);
+	void DebugWinRound(int32 PlayerIndex, int32 ForcedPlace = 0);
+
+	/**
+	 * Salta a la ronda siguiente: en plena carrera (o con «¡TIEMPO!»), la cierra ya con el recuento (conchas para quien haya
+	 * llegado); en el recuento o en el título del sprint, sigue sin esperar (con la transición del huevo y «RONDA N»).
+	 */
+	void DebugNextRound();
 
 	/** El jugador PlayerIndex pasa a tener las conchas del campeón y se salta directamente a su pantalla. */
 	void DebugChampion(int32 PlayerIndex);
@@ -258,6 +272,14 @@ protected:
 	/** Segundos con «¡TIEMPO!» en pantalla (las tortugas quietas) antes del recuento. */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.2"))
 	float TimeUpHoldSeconds = 1.6f;
+
+	/**
+	 * Lo que tapa la pantalla del puesto a quien llega (el huevo negro se cierra en ~0,3 s y «Has quedado X.º» dura 2,7 s;
+	 * UTN_RaceArrivalWidget), con margen por la red. Al cerrarse la ronda, el recuento espera a que acabe la de la última en
+	 * llegar: así el huevo se abre directamente sobre el recuento (con todas en el agua, en vez de 1,6 s).
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0"))
+	float ArrivalScreenHoldSeconds = 3.3f;
 
 	/**
 	 * Margen tras el bocado de los gusanos de arena (ATN_BeachSandWorm::EatSeconds) antes del recuento. Solo si al acabar
@@ -417,6 +439,9 @@ private:
 
 	/** Desde cuándo (hora del mundo) la ronda está lista en el servidor y se espera a los clientes; < 0 si no se espera. */
 	float ClientWaitStartTime = -1.f;
+
+	/** TN.Race.WinRound con puesto: el que dirá la pantalla del puesto de la próxima llegada (0 = el de verdad). */
+	int32 DebugForcedPlace = 0;
 
 	FTimerHandle PrepPollHandle;
 	FTimerHandle PhaseClockHandle;

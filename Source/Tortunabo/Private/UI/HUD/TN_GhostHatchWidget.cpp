@@ -20,7 +20,13 @@
 namespace TNGhostHatchDetail
 {
 	/** Por encima del HUD, las ruedas y los menús de la partida; por debajo del menú de pausa y de la pantalla de carga. */
-	constexpr int32 ZOrder = 50;
+	constexpr int32 ZOrder = UTN_GhostHatchWidget::ViewportZOrder;
+	/**
+	 * Modo carrera: lo que recorre cada mitad al entrar (fracción del alto de la pantalla: su unión empieza fuera, más allá
+	 * de los dientes) y lo que tarda en fundirse cuando se abre sin fiesta.
+	 */
+	constexpr float CurtainTravel = 0.58f;
+	constexpr float CurtainFadeSeconds = 0.25f;
 	/** Dientes de la unión en zigzag y su alto (fracción del alto de la pantalla). */
 	constexpr int32 SeamTeeth = 12;
 	constexpr float ToothHeight = 0.034f;
@@ -121,6 +127,22 @@ void UTN_GhostHatchWidget::ShowFor(APlayerController* PC, float SecondsToDark, f
 	Widget->AddToViewport(TNGhostHatchDetail::ZOrder);
 }
 
+UTN_GhostHatchWidget* UTN_GhostHatchWidget::ShowCurtain(APlayerController* PC, float CloseSeconds, float MaxHoldSeconds)
+{
+	if (!PC || !PC->IsLocalController() || PC->GetNetMode() == NM_DedicatedServer)
+	{
+		return nullptr;
+	}
+	UTN_GhostHatchWidget* Widget = CreateWidget<UTN_GhostHatchWidget>(PC, UTN_GhostHatchWidget::StaticClass());
+	if (!Widget)
+	{
+		return nullptr;
+	}
+	Widget->BeginCurtain(CloseSeconds, MaxHoldSeconds);
+	Widget->AddToViewport(TNGhostHatchDetail::ZOrder);
+	return Widget;
+}
+
 void UTN_GhostHatchWidget::NativeOnInitialized()
 {
 	if (WidgetTree && !Root)
@@ -148,7 +170,25 @@ void UTN_GhostHatchWidget::Begin(float SecondsToDark, float SecondsToHatch)
 	{
 		KnockTimes.Add(DarkAt + (HatchAt - DarkAt) * Fraction);
 	}
+	BuildShell();
+}
 
+void UTN_GhostHatchWidget::BeginCurtain(float CloseSeconds, float MaxHoldSeconds)
+{
+	// Sin fundido a negro ni golpes programados: las mitades entran desde fuera y se juntan en DarkAt; los «pum» los da
+	// Knock y la abre Open (o se rompe sola en HatchAt, si nadie lo hace).
+	bCurtain = true;
+	StartTime = FPlatformTime::Seconds();
+	DarkAt = FMath::Max(0.08f, CloseSeconds);
+	HatchAt = DarkAt + FMath::Max(1.f, MaxHoldSeconds);
+	KnockTimes.Reset();
+	KnocksDone = 0;
+	BuildShell();
+}
+
+void UTN_GhostHatchWidget::BuildShell()
+{
+	using namespace TNGhostHatchDetail;
 	// Unión en zigzag, grietas, trozos y motas: una semilla por transición (0-1 de la pantalla).
 	FRandomStream Random(static_cast<int32>(FPlatformTime::Cycles() & 0x7fffffff));
 	Seam.Reset();
@@ -160,18 +200,18 @@ void UTN_GhostHatchWidget::Begin(float SecondsToDark, float SecondsToHatch)
 		Seam.Add(FVector2f(X, 0.5f + Tooth + 0.012f * FMath::Sin(X * 7.f)));
 	}
 	Cracks.Reset();
-	for (int32 Knock = 1; Knock <= 3; ++Knock)
+	for (int32 KnockIndex = 1; KnockIndex <= 3; ++KnockIndex)
 	{
 		for (const bool bTop : { true, false })
 		{
 			FTNGhostHatchCrack Crack;
 			Crack.bTop = bTop;
-			Crack.Knock = Knock;
+			Crack.Knock = KnockIndex;
 			const FVector2f& From = Seam[Random.RandRange(2, SeamPoints - 3)];
 			FVector2f Point = From;
 			Crack.Points.Add(Point);
 			const int32 Segments = Random.RandRange(4, 6);
-			const float Length = Random.FRandRange(0.1f, 0.2f) + 0.04f * Knock;
+			const float Length = Random.FRandRange(0.1f, 0.2f) + 0.04f * KnockIndex;
 			for (int32 s = 0; s < Segments; ++s)
 			{
 				Point += FVector2f(Random.FRandRange(-0.05f, 0.05f), (bTop ? -1.f : 1.f) * Length / Segments);
@@ -181,7 +221,7 @@ void UTN_GhostHatchWidget::Begin(float SecondsToDark, float SecondsToHatch)
 			// Una rama pequeña que sale de la mitad de la grieta.
 			FTNGhostHatchCrack Branch;
 			Branch.bTop = bTop;
-			Branch.Knock = Knock;
+			Branch.Knock = KnockIndex;
 			FVector2f BranchPoint = Crack.Points[Segments / 2];
 			Branch.Points.Add(BranchPoint);
 			for (int32 s = 0; s < 2; ++s)
@@ -250,6 +290,11 @@ void UTN_GhostHatchWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 		return;
 	}
 	const float Now = Elapsed();
+	if (bCurtain)
+	{
+		TickCurtain(Now);
+		return;
+	}
 	// ¡Pum!: la cáscara se cierra de golpe.
 	if (!bSlamDone && Now >= DarkAt)
 	{
@@ -290,6 +335,83 @@ void UTN_GhostHatchWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 		return;
 	}
 	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void UTN_GhostHatchWidget::TickCurtain(float Now)
+{
+	using namespace TNGhostHatchDetail;
+	// ¡Clac!: las dos mitades se juntan.
+	if (!bSlamDone && Now >= DarkAt)
+	{
+		bSlamDone = true;
+		if (Synth)
+		{
+			Synth->PlayKnock(1.f);
+		}
+	}
+	// Nadie la abre: se rompe sola pasado el tiempo de espera (nunca se queda la pantalla tapada).
+	if (OpenAt < 0.f && FadeOutAt < 0.f && Now >= HatchAt)
+	{
+		Open(true);
+	}
+	if (FadeOutAt >= 0.f)
+	{
+		const float Out = FMath::Clamp((Now - FadeOutAt) / CurtainFadeSeconds, 0.f, 1.f);
+		SetRenderOpacity(1.f - Out);
+		if (Out >= 1.f)
+		{
+			Finish();
+			return;
+		}
+	}
+	if (OpenAt >= 0.f && Now >= OpenAt + FinishAfterOpen)
+	{
+		Finish();
+		return;
+	}
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void UTN_GhostHatchWidget::Knock()
+{
+	if (!bCurtain || IsOpening())
+	{
+		return;
+	}
+	KnockTimes.Add(Elapsed());
+	KnocksDone = KnockTimes.Num();
+	if (Synth)
+	{
+		const float Step = static_cast<float>(FMath::Min(KnocksDone - 1, 3));
+		Synth->PlayKnock(0.6f + 0.1f * Step);
+		Synth->PlayCrack(0.45f + 0.2f * Step);
+	}
+}
+
+void UTN_GhostHatchWidget::Open(bool bBurst)
+{
+	if (IsOpening())
+	{
+		return;
+	}
+	const float Now = Elapsed();
+	if (!bBurst)
+	{
+		FadeOutAt = Now;
+		return;
+	}
+	OpenAt = Now;
+	KnocksDone = KnockTimes.Num();
+	if (Synth)
+	{
+		Synth->PlayCrack(1.f);
+		Synth->PlayWhoosh(0.9f);
+	}
+}
+
+bool UTN_GhostHatchWidget::IsClosed() const
+{
+	return !IsOpening() && Elapsed() >= DarkAt;
 }
 
 void UTN_GhostHatchWidget::Finish()
@@ -347,37 +469,44 @@ int32 UTN_GhostHatchWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 	const float SinceOpen = bOpening ? Now - OpenAt : 0.f;
 
 	// ── 1. Todo negro mientras el fantasma se mete en el huevo (y detrás de la cáscara hasta que se abre) ──
-	const float Black = bOpening ? 0.f : FMath::SmoothStep(FMath::Max(0.f, DarkAt - 0.4f), DarkAt, Now);
+	// En el modo carrera no: se ve la partida por la rendija hasta que las mitades se juntan.
+	const float Black = (bOpening || bCurtain) ? 0.f : FMath::SmoothStep(FMath::Max(0.f, DarkAt - 0.4f), DarkAt, Now);
 	if (Black > 0.f)
 	{
 		FSlateDrawElement::MakeBox(OutDrawElements, BaseLayer + 1, AllottedGeometry.ToPaintGeometry(), &WhiteBrush, ESlateDrawEffect::None,
 			FLinearColor(0.f, 0.f, 0.f, Black) * Tint);
 	}
-	if (Now < DarkAt)
+	if (!bCurtain && Now < DarkAt)
 	{
 		return BaseLayer + 1;
 	}
 
 	// ── 2. La cáscara oscura: dos mitades que se estampan (¡pum!), tiemblan con cada golpe y al final salen despedidas ──
 	const float SinceSlam = Now - DarkAt;
-	float Jolt = FMath::Max(0.f, 1.f - SinceSlam / 0.3f);
+	float Jolt = SinceSlam >= 0.f ? FMath::Max(0.f, 1.f - SinceSlam / 0.3f) : 0.f;
 	for (int32 k = 0; k < KnocksDone && k < KnockTimes.Num(); ++k)
 	{
-		Jolt = FMath::Max(Jolt, FMath::Max(0.f, 1.f - (Now - KnockTimes[k]) / 0.25f) * (0.6f + 0.15f * k));
+		if (Now >= KnockTimes[k])
+		{
+			Jolt = FMath::Max(Jolt, FMath::Max(0.f, 1.f - (Now - KnockTimes[k]) / 0.25f) * (0.6f + 0.15f * FMath::Min(k, 3)));
+		}
 	}
 	const float Shake = bOpening ? 0.f : Jolt * Jolt * 12.f * FMath::Sin(Now * 70.f);
-	const float Slam = FMath::Square(FMath::Max(0.f, 1.f - SinceSlam / 0.14f)) * 0.08f * Sh;
+	// Revivir: las mitades se estampan con un rebote. Carrera: entran desde fuera de la pantalla, cada vez más deprisa, y se
+	// juntan en DarkAt (sin rebote: nunca se vuelve a ver la partida hasta que se abre).
+	const float Slam = bCurtain ? 0.f : FMath::Square(FMath::Max(0.f, 1.f - SinceSlam / 0.14f)) * 0.08f * Sh;
+	const float Slide = bCurtain ? (1.f - FMath::Square(FMath::Clamp(Now / DarkAt, 0.f, 1.f))) * CurtainTravel * Sh : 0.f;
 	const float OpenEase = bOpening ? FMath::Square(FMath::Clamp(SinceOpen / OpenSeconds, 0.f, 1.f)) : 0.f;
 	FHalfPose TopPose;
 	TopPose.Pivot = FVector2f(0.15f * Sw, 0.5f * Sh);
-	TopPose.Offset = FVector2f(Shake, -Slam - OpenEase * 1.15f * Sh);
+	TopPose.Offset = FVector2f(Shake, -Slam - Slide - OpenEase * 1.15f * Sh);
 	TopPose.Angle = -0.14f * OpenEase;
 	FHalfPose BottomPose;
 	BottomPose.Pivot = FVector2f(0.85f * Sw, 0.5f * Sh);
-	BottomPose.Offset = FVector2f(-0.7f * Shake, Slam + OpenEase * 1.15f * Sh);
+	BottomPose.Offset = FVector2f(-0.7f * Shake, Slam + Slide + OpenEase * 1.15f * Sh);
 	BottomPose.Angle = 0.11f * OpenEase;
 	// Luz que se cuela: tenue tras el ¡pum!, más con cada golpe y con destellos en cada uno.
-	const float Light = FMath::Clamp(0.15f + 0.25f * KnocksDone + 0.5f * Jolt, 0.f, 1.3f);
+	const float Light = FMath::Clamp(0.15f + 0.25f * FMath::Min(KnocksDone, 3) + 0.5f * Jolt, 0.f, 1.3f);
 
 	if (OpenEase < 1.f)
 	{
@@ -431,7 +560,7 @@ int32 UTN_GhostHatchWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 	}
 
 	// ── 3. Líneas de luz: la unión (mientras está cerrada) y las grietas de cada golpe ──
-	if (!bOpening)
+	if (!bOpening && SinceSlam >= 0.f)
 	{
 		TArray<FVector2f> SeamLine;
 		for (const FVector2f& SeamPoint : Seam)
@@ -485,8 +614,8 @@ int32 UTN_GhostHatchWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 		}
 	}
 
-	// ── 4. «¡PUM!» al estamparse ──
-	if (SinceSlam < PumSeconds && !bOpening)
+	// ── 4. «¡PUM!» al estamparse (en el modo carrera no: encima va el puesto o el título de la ronda) ──
+	if (!bCurtain && SinceSlam < PumSeconds && !bOpening)
 	{
 		static const FString PumText(TEXT("¡PUM!"));
 		const TSharedRef<FSlateFontMeasure> Measurer = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();

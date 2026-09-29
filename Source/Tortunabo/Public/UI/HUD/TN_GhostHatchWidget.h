@@ -36,6 +36,12 @@ struct FTNGhostHatchShard
  * tiene su tortuga) las dos mitades salen despedidas entre trozos de cáscara y un fogonazo, y se ve a su tortuga saliendo
  * del huevo. Pintado en código (como la pantalla de carga del huevo, de la que reutiliza el blanco, los trozos de
  * cáscara y los sonidos sintetizados: crujidos, «¡pum!» y el soplido de las mitades).
+ *
+ * Modo carrera (ShowCurtain; Docs/Modo_Carrera.md, «Llegada al agua» y «Entre ronda y ronda»): la misma cáscara, pero sus
+ * dos mitades entran deprisa desde arriba y desde abajo de la pantalla (se ve la partida por la rendija hasta que se
+ * juntan con un «¡clac!»), se queda cerrada con la unión brillando mientras encima se enseña el puesto o el título de la
+ * ronda, cada Knock es un «pum» desde dentro con su grieta de luz y Open la rompe (o la funde). La maneja
+ * UTN_RaceScreensSubsystem.
  */
 UCLASS()
 class TORTUNABO_API UTN_GhostHatchWidget : public UUserWidget
@@ -43,11 +49,35 @@ class TORTUNABO_API UTN_GhostHatchWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
+	/** Capa en el viewport: encima del HUD, las ruedas y las pantallas de la carrera; debajo del menú de pausa y de la carga. */
+	static constexpr int32 ViewportZOrder = 50;
+
 	/**
 	 * Enseña la transición en la pantalla del jugador local PC. SecondsToDark: hasta que el fantasma entra en el huevo
 	 * (todo negro y ¡pum!); SecondsToHatch: hasta que eclosiona (se abre en cuanto además ya tiene su tortuga).
 	 */
 	static void ShowFor(APlayerController* PC, float SecondsToDark, float SecondsToHatch);
+
+	/**
+	 * Modo carrera: la cáscara se cierra desde arriba y desde abajo en CloseSeconds y espera cerrada a Open; si nadie la
+	 * abre en MaxHoldSeconds (desde que se cierra), se rompe sola. Null si PC no es un jugador local.
+	 */
+	static UTN_GhostHatchWidget* ShowCurtain(APlayerController* PC, float CloseSeconds, float MaxHoldSeconds = 30.f);
+
+	/** Modo carrera: un «pum» desde dentro (tiembla, suena y, en los tres primeros, se abre una grieta de luz más). */
+	void Knock();
+
+	/**
+	 * Se abre ya. Con bBurst, como al eclosionar: fogonazo y las mitades salen despedidas entre trozos de cáscara; si no, se
+	 * funde en un momento (para devolver la vista sin fiesta). Se quita sola al acabar.
+	 */
+	void Open(bool bBurst);
+
+	/** Las dos mitades tapan la pantalla entera (ya juntas y sin empezar a abrirse). */
+	bool IsClosed() const;
+
+	/** Ya se está abriendo o fundiendo (o se ha quitado). */
+	bool IsOpening() const { return bFinished || OpenAt >= 0.f || FadeOutAt >= 0.f; }
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -58,6 +88,10 @@ protected:
 
 private:
 	void Begin(float SecondsToDark, float SecondsToHatch);
+	void BeginCurtain(float CloseSeconds, float MaxHoldSeconds);
+	/** Unión, grietas, trozos y motas (una semilla por transición), pinceles y los sonidos del huevo. */
+	void BuildShell();
+	void TickCurtain(float Now);
 	void Finish();
 	float Elapsed() const;
 
@@ -77,6 +111,10 @@ private:
 	TArray<float> KnockTimes;
 	bool bSlamDone = false;
 	bool bFinished = false;
+	/** Modo carrera: las mitades entran desde fuera (DarkAt es cuando se juntan) y la abre quien la puso (o HatchAt). */
+	bool bCurtain = false;
+	/** Cuándo empezó a fundirse (< 0: no se funde). */
+	float FadeOutAt = -1.f;
 
 	/** Línea de unión (0-1 de la pantalla, en zigzag), grietas y trozos (con una semilla por transición). */
 	TArray<FVector2f> Seam;

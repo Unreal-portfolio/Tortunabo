@@ -6,8 +6,10 @@
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachSplashSynthComponent.h"
 #include "Core/TN_Log.h"
+#include "Game/TN_BeachRaceGameState.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/GameStateBase.h"
@@ -23,6 +25,12 @@ namespace TNBeachFinishSplashDetail
 
 	/** Cada cuánto se vuelve a buscar el generador de la playa mientras no hay (fuera de la playa, cada 2 s). */
 	constexpr float GeneratorLookupSeconds = 2.f;
+
+	/**
+	 * Una tortuga con la postura congelada al llegar que sigue a la vista pasado esto (s) no era una llegada (la meta oculta
+	 * a las que llegan a los 0,8 s): se descongela.
+	 */
+	constexpr float ThawVisibleSeconds = 2.5f;
 
 	FAutoConsoleCommandWithWorldAndArgs CmdSplash(TEXT("TN.Race.Splash"),
 		TEXT("Chapuzón de la meta (chorro y sonido) delante de tu tortuga, solo en esta máquina: TN.Race.Splash [tamaño = 1]."),
@@ -117,6 +125,12 @@ void UTN_BeachFinishSplashSubsystem::WatchTurtles(ATN_BeachRaceGenerator& InGene
 	{
 		return;
 	}
+	// Llegadas que cuentan (ronda en juego y sin cerrar; en el sprint, solo la primera): al tocar el agua, la tortuga se queda
+	// con la postura de la zambullida hasta que la meta la oculta (nunca se ve ponerse de pie en el agua).
+	const ATN_BeachRaceGameState* BeachState = Cast<ATN_BeachRaceGameState>(GS);
+	const bool bLiveArrivals = BeachState && BeachState->RacePhase == ETNBeachRacePhase::Racing
+		&& (BeachState->FinishCountdown == ETNBeachFinishCountdown::None || BeachState->FinishCountdown == ETNBeachFinishCountdown::Counting)
+		&& !(BeachState->bSprintFinal && BeachState->RoundWinner);
 	// Lo mismo que mira el generador para su corona de gotas: los pies de cada tortuga al entrar en el agua de meta.
 	const FTransform BeachTransform = InGenerator.GetActorTransform();
 	for (APlayerState* PS : GS->PlayerArray)
@@ -138,6 +152,16 @@ void UTN_BeachFinishSplashSubsystem::WatchTurtles(ATN_BeachRaceGenerator& InGene
 			const float Size = FMath::Clamp(FallSpeed / FullSplashFallSpeed, 0.35f, 1.4f);
 			const FVector Local = BeachTransform.InverseTransformPosition(Feet);
 			PlaySplash(BeachTransform.TransformPosition(FVector(Local.X, Local.Y, TNBeachLayout::WaterZ)), Size);
+			if (bLiveArrivals)
+			{
+				FreezePose(*Turtle, Water);
+			}
+		}
+		else if (Water.bPoseFrozen && (!bWet || (!Turtle->IsHidden() && Clock - Water.FrozenAt > ThawVisibleSeconds)))
+		{
+			// La han sacado del agua sin llegar, o sigue a la vista mucho después (la meta oculta a las que llegan a los 0,8 s):
+			// vuelve a animarse.
+			ThawPose(*Turtle, Water);
 		}
 		Water.bWet = bWet;
 		Water.VelocityZ = static_cast<float>(Turtle->GetVelocity().Z);
@@ -152,6 +176,29 @@ void UTN_BeachFinishSplashSubsystem::WatchTurtles(ATN_BeachRaceGenerator& InGene
 				It.RemoveCurrent();
 			}
 		}
+	}
+}
+
+void UTN_BeachFinishSplashSubsystem::FreezePose(ACharacter& Turtle, FTurtleWater& Water) const
+{
+	USkeletalMeshComponent* Mesh = Turtle.GetMesh();
+	// Con la física del derribo (o ya pausada por otro) no se toca: la descongelaría quien no la congeló.
+	if (!Mesh || Mesh->bPauseAnims || Mesh->IsSimulatingPhysics())
+	{
+		return;
+	}
+	Mesh->bPauseAnims = true;
+	Water.bPoseFrozen = true;
+	Water.FrozenAt = Clock;
+}
+
+void UTN_BeachFinishSplashSubsystem::ThawPose(ACharacter& Turtle, FTurtleWater& Water)
+{
+	Water.bPoseFrozen = false;
+	USkeletalMeshComponent* Mesh = Turtle.GetMesh();
+	if (Mesh && !Mesh->IsSimulatingPhysics())
+	{
+		Mesh->bPauseAnims = false;
 	}
 }
 

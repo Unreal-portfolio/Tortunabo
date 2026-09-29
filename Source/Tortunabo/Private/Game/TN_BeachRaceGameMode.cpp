@@ -213,10 +213,17 @@ namespace TNBeachRaceGameModeDetail
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs CmdWinRound(TEXT("TN.Race.WinRound"),
-		TEXT("Carrera en la playa: el jugador N (0 = el primero, normalmente el anfitrión) toca el agua como si llegara: la primera gana la ronda y arranca la cuenta atrás de 10 s; las siguientes, media concha."),
+		TEXT("Carrera en la playa: el jugador N (0 = el primero, normalmente el anfitrión) toca el agua como si llegara: la primera gana la ronda y arranca la cuenta atrás de 10 s; las siguientes, media concha. TN.Race.WinRound [jugador = 0] [puesto]: con puesto (1-8), su pantalla «Has quedado X.º» enseña ese puesto y su premio."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
-			WithGameMode(World, TEXT("TN.Race.WinRound"), [&Args](ATN_BeachRaceGameMode& GM) { GM.DebugWinRound(IntArg(Args, 0, 0)); });
+			WithGameMode(World, TEXT("TN.Race.WinRound"), [&Args](ATN_BeachRaceGameMode& GM) { GM.DebugWinRound(IntArg(Args, 0, 0), IntArg(Args, 1, 0)); });
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdNextRound(TEXT("TN.Race.NextRound"),
+		TEXT("Carrera en la playa (anfitrión): salta a la ronda siguiente. En plena carrera la cierra ya con el recuento; en el recuento o en el título del sprint, sigue sin esperar (huevo negro y «RONDA N»)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			WithGameMode(World, TEXT("TN.Race.NextRound"), [](ATN_BeachRaceGameMode& GM) { GM.DebugNextRound(); });
 		}));
 
 	FAutoConsoleCommandWithWorldAndArgs CmdChampion(TEXT("TN.Race.Champion"),
@@ -899,14 +906,19 @@ void ATN_BeachRaceGameMode::MarkPlayerFinished(APlayerController* PlayerControll
 
 	// El puesto se decide en el instante del contacto: la primera se lleva la concha entera; las de la cuenta atrás, media.
 	const bool bFirst = Arrivals.Num() == 0;
+	const float Now = GetWorld()->GetTimeSeconds();
 	FTNBeachArrival& Arrival = Arrivals.AddDefaulted_GetRef();
 	Arrival.Controller = PlayerController;
 	Arrival.State = PS;
 	Arrival.Name = PS->GetPlayerName();
 	Arrival.Halves = bFirst ? 2 : 1;
 	// Se queda a la vista dentro del agua con su chapuzón (en todas las máquinas) y luego pasa a espectadora (WatchRacers).
-	Arrival.HoldEnd = GetWorld()->GetTimeSeconds() + FinishSplashHoldSeconds;
+	Arrival.HoldEnd = Now + FinishSplashHoldSeconds;
+	Arrival.ArrivedAt = Now;
 	const FString ArrivalName = Arrival.Name;
+	// El puesto, replicado: en la pantalla de quien llega se cierra el huevo negro con «Has quedado X.º» y su premio
+	// (UTN_RaceScreensSubsystem). TN.Race.WinRound puede pedir otro para ver los premios con pocos jugadores.
+	const int32 Place = DebugForcedPlace > 0 ? DebugForcedPlace : Arrivals.Num();
 
 	// Al agua como tortuga, no como bola: fuera del caparazón, del aturdimiento y de quien la llevara.
 	if (ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(PlayerController->GetPawn()))
@@ -924,15 +936,21 @@ void ATN_BeachRaceGameMode::MarkPlayerFinished(APlayerController* PlayerControll
 	}
 
 	ATN_BeachRaceGameState* BeachState = GetBeachGameState();
+	if (BeachState)
+	{
+		BeachState->AddRoundArrival(PS, Place);
+	}
 	if (bSprint)
 	{
-		// Sprint final: la primera en el agua es campeona, sin cuenta atrás. El podio sale tras su chapuzón.
+		// Sprint final: la primera en el agua es campeona, sin cuenta atrás. El podio sale tras su chapuzón (debajo de su
+		// pantalla del puesto, que se abre ya sobre él).
 		bRoundActive = false;
 		StopRoundClock();
 		if (BeachState)
 		{
 			BeachState->RoundWinner = PS;
 			BeachState->NotifyRacePhaseChanged();
+			BeachState->ForceNetUpdate();
 		}
 		UE_LOG(LogTortunabo, Log, TEXT("[Carrera] ═══ %s gana el sprint final ═══"), *ArrivalName);
 		GetWorldTimerManager().SetTimer(SprintWinHandle, this, &ATN_BeachRaceGameMode::CompleteSprintWin, FMath::Max(0.05f, FinishSplashHoldSeconds), false);
@@ -1049,7 +1067,17 @@ void ATN_BeachRaceGameMode::FinishTimeUp(ETNBeachRoundEnd Reason)
 	const int32 Eaten = Reason == ETNBeachRoundEnd::Countdown && !bSprint ? FeedSandWorms() : 0;
 	FreezePlayers();
 	StopStorm(false);
-	const float Hold = Eaten > 0 ? FMath::Max(TimeUpHoldSeconds, ATN_BeachSandWorm::EatSeconds + SandWormMarginSeconds) : TimeUpHoldSeconds;
+	float Hold = Eaten > 0 ? FMath::Max(TimeUpHoldSeconds, ATN_BeachSandWorm::EatSeconds + SandWormMarginSeconds) : TimeUpHoldSeconds;
+	// Quien acaba de llegar está viendo su pantalla del puesto (huevo negro y «Has quedado X.º»): el recuento no la corta, y
+	// así su huevo se abre directamente sobre él (con todas en el agua, la última acaba de llegar).
+	const float Now = GetWorld()->GetTimeSeconds();
+	for (const FTNBeachArrival& Arrival : Arrivals)
+	{
+		if (Arrival.ArrivedAt > 0.f)
+		{
+			Hold = FMath::Max(Hold, Arrival.ArrivedAt + ArrivalScreenHoldSeconds - Now);
+		}
+	}
 	if (Reason == ETNBeachRoundEnd::TimeLimit)
 	{
 		UE_LOG(LogTortunabo, Log, TEXT("[Carrera] ¡Tiempo de ronda agotado! Ronda %d: nadie en el agua; concha para %s, la más cerca del mar."), CurrentRound,
@@ -1808,6 +1836,7 @@ void ATN_BeachRaceGameMode::ResetMatchScores()
 	{
 		BeachState->RoundWinner = nullptr;
 		BeachState->RoundHalfShells.Reset();
+		BeachState->RoundArrivals.Reset();
 		BeachState->Champion = nullptr;
 		BeachState->Podium.Reset();
 		BeachState->RoundResultText.Reset();
@@ -1821,11 +1850,12 @@ void ATN_BeachRaceGameMode::ResetMatchScores()
 
 void ATN_BeachRaceGameMode::ResetRoundGameState() const
 {
-	// Lo de la ronda anterior fuera (el recuento ya se vio): sin ganadora, medias ni cuenta atrás.
+	// Lo de la ronda anterior fuera (el recuento ya se vio): sin ganadora, medias, llegadas ni cuenta atrás.
 	if (ATN_BeachRaceGameState* BeachState = GetBeachGameState())
 	{
 		BeachState->RoundWinner = nullptr;
 		BeachState->RoundHalfShells.Reset();
+		BeachState->RoundArrivals.Reset();
 		BeachState->FinishCountdown = ETNBeachFinishCountdown::None;
 		BeachState->FinishCountdownEndTime = 0.f;
 		BeachState->FinishCountdownSeconds = FinishCountdownSeconds;
@@ -2799,7 +2829,7 @@ APlayerController* ATN_BeachRaceGameMode::GetControllerByIndex(int32 PlayerIndex
 	return PS ? PS->GetPlayerController() : nullptr;
 }
 
-void ATN_BeachRaceGameMode::DebugWinRound(int32 PlayerIndex)
+void ATN_BeachRaceGameMode::DebugWinRound(int32 PlayerIndex, int32 ForcedPlace)
 {
 	if (!bRoundActive)
 	{
@@ -2808,8 +2838,54 @@ void ATN_BeachRaceGameMode::DebugWinRound(int32 PlayerIndex)
 	}
 	if (APlayerController* PC = GetControllerByIndex(PlayerIndex))
 	{
+		// Con puesto, solo la pantalla del puesto lo enseña (las conchas van por el orden de llegada de verdad).
+		DebugForcedPlace = FMath::Clamp(ForcedPlace, 0, 8);
 		MarkPlayerFinished(PC);
+		DebugForcedPlace = 0;
+		if (ForcedPlace > 0)
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[Carrera] TN.Race.WinRound: %s llega con la pantalla del %d.º puesto."), *GetNameSafe(PC), FMath::Clamp(ForcedPlace, 1, 8));
+		}
 	}
+}
+
+void ATN_BeachRaceGameMode::DebugNextRound()
+{
+	if (bMatchOver || bLeaving)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] TN.Race.NextRound: la partida ha acabado (pantalla del campeón: TN.Race.PlayAgain)."));
+		return;
+	}
+	const ETNBeachRacePhase Phase = GetRacePhase();
+	if (Phase == ETNBeachRacePhase::RoundResults)
+	{
+		// Sin esperar al final del recuento: la ronda siguiente (o el campeón, o el sprint).
+		GetWorldTimerManager().ClearTimer(PhaseEndHandle);
+		UE_LOG(LogTortunabo, Log, TEXT("[Carrera] TN.Race.NextRound: se salta el resto del recuento de la ronda %d."), CurrentRound);
+		AfterRoundResults();
+		return;
+	}
+	if (Phase == ETNBeachRacePhase::SprintIntro)
+	{
+		GetWorldTimerManager().ClearTimer(PhaseEndHandle);
+		UE_LOG(LogTortunabo, Log, TEXT("[Carrera] TN.Race.NextRound: se salta el título del sprint final."));
+		StartSprint();
+		return;
+	}
+	if (bSprint)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] TN.Race.NextRound: en el sprint final no hay ronda siguiente (TN.Race.WinRound para ganarlo)."));
+		return;
+	}
+	if (bRoundActive || bTimeUp)
+	{
+		// La ronda se cierra ya, con las conchas de quien haya llegado, y sale su recuento.
+		UE_LOG(LogTortunabo, Log, TEXT("[Carrera] TN.Race.NextRound: se cierra la ronda %d (%d en el agua)."), CurrentRound, Arrivals.Num());
+		EndRound(Arrivals.Num() > 0 ? FString::Printf(TEXT("¡%s gana la ronda!"), *Arrivals[0].Name) : FString(TEXT("Ronda saltada: nadie gana")));
+		return;
+	}
+	UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] TN.Race.NextRound: la ronda %d se está preparando (fase %s); espera a que empiece."), CurrentRound,
+		*UEnum::GetValueAsString(Phase));
 }
 
 void ATN_BeachRaceGameMode::DebugChampion(int32 PlayerIndex)

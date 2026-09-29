@@ -24,6 +24,7 @@ namespace TNRaceCueDSP
 	constexpr uint8 KindTimeUp = 1;
 	constexpr uint8 KindFanfare = 2;
 	constexpr uint8 KindSlam = 3;
+	constexpr uint8 KindSadTrombone = 4;
 
 	struct FCueEvent
 	{
@@ -169,6 +170,11 @@ namespace TNRaceCueDSP
 	constexpr float FanfareLengths[4] = { 0.12f, 0.12f, 0.12f, 1.25f };
 	constexpr float FanfareHz[4] = { 392.f, 392.f, 392.f, 523.25f };
 
+	/** Trombón triste: si bemol, la, la bemol y sol (la larga), en s desde el inicio. */
+	constexpr float TromboneStarts[4] = { 0.f, 0.36f, 0.72f, 1.08f };
+	constexpr float TromboneLengths[4] = { 0.3f, 0.3f, 0.3f, 1.15f };
+	constexpr float TromboneHz[4] = { 233.08f, 220.f, 207.65f, 196.f };
+
 	class FCueCore
 	{
 	public:
@@ -260,6 +266,7 @@ namespace TNRaceCueDSP
 			case KindTimeUp: Voice.Duration = 0.9f; break;
 			case KindFanfare: Voice.Duration = 2.1f; break;
 			case KindSlam: Voice.Duration = 0.5f; break;
+			case KindSadTrombone: Voice.Duration = 2.3f; break;
 			default: Voice.Duration = 0.3f; break;
 			}
 		}
@@ -381,6 +388,52 @@ namespace TNRaceCueDSP
 				}
 				break;
 			}
+			case KindSadTrombone:
+			{
+				// Trombón con sordina: diente de sierra con otro una octava por debajo, por dos polos cuyo corte sube y baja en
+				// cada nota («buaa»); la larga tiembla cada vez más, se apaga la sordina y se cae de tono al final.
+				int32 Note = -1;
+				for (int32 n = 3; n >= 0; --n)
+				{
+					if (T >= TromboneStarts[n]) { Note = n; break; }
+				}
+				float NoteEnv = 0.f;
+				float Freq = TromboneHz[0] * Voice.Pitch;
+				float Wah = 0.f;
+				if (Note >= 0)
+				{
+					const float Lt = T - TromboneStarts[Note];
+					const float Len = TromboneLengths[Note];
+					const bool bLong = Note == 3;
+					NoteEnv = Lt > Len ? 0.f : FMath::Min(1.f, Lt / 0.035f) * FMath::Min(1.f, (Len - Lt) / (bLong ? 0.25f : 0.06f));
+					float Bend = 1.f;
+					if (bLong)
+					{
+						const float Depth = 0.004f + 0.02f * FMath::Min(1.f, Lt / Len);
+						const float Fall = FMath::Square(FMath::Max(0.f, (Lt - 0.7f) / 0.45f));
+						Bend = (1.f + Depth * std::sin(CueTwoPi * 5.2f * Lt)) * (1.f - 0.07f * FMath::Min(1.f, Fall));
+					}
+					Freq = TromboneHz[Note] * Voice.Pitch * Bend;
+					Wah = std::sin(CuePi * FMath::Clamp(Lt / (bLong ? Len * 0.6f : Len), 0.f, 1.f));
+				}
+				const float Cut = 280.f + 1500.f * Wah;
+				const float LpCoef = 1.f - std::exp(-CueTwoPi * Cut / SampleRate);
+				const float StepA = Freq * Dt;
+				const float StepB = 0.5f * Freq * Dt;
+				for (int32 i = 0; i < Count; ++i)
+				{
+					Voice.PhaseA += StepA;
+					if (Voice.PhaseA >= 1.f) { Voice.PhaseA -= 1.f; }
+					Voice.PhaseB += StepB;
+					if (Voice.PhaseB >= 1.f) { Voice.PhaseB -= 1.f; }
+					const float SawA = 2.f * Voice.PhaseA - 1.f - CuePolyBlep(Voice.PhaseA, StepA);
+					const float SawB = 2.f * Voice.PhaseB - 1.f - CuePolyBlep(Voice.PhaseB, StepB);
+					Voice.Lp1 += LpCoef * ((SawA + 0.35f * SawB) - Voice.Lp1);
+					Voice.Lp2 += LpCoef * (Voice.Lp1 - Voice.Lp2);
+					MixBuf[i] += 0.55f * NoteEnv * Voice.Lp2 * Voice.Gain;
+				}
+				break;
+			}
 			case KindSlam:
 			default:
 			{
@@ -450,6 +503,7 @@ static_assert(static_cast<uint8>(ETNRaceCue::Tick) == TNRaceCueDSP::KindTick, "E
 static_assert(static_cast<uint8>(ETNRaceCue::TimeUp) == TNRaceCueDSP::KindTimeUp, "ETNRaceCue y el motor DSP deben coincidir");
 static_assert(static_cast<uint8>(ETNRaceCue::Fanfare) == TNRaceCueDSP::KindFanfare, "ETNRaceCue y el motor DSP deben coincidir");
 static_assert(static_cast<uint8>(ETNRaceCue::Slam) == TNRaceCueDSP::KindSlam, "ETNRaceCue y el motor DSP deben coincidir");
+static_assert(static_cast<uint8>(ETNRaceCue::SadTrombone) == TNRaceCueDSP::KindSadTrombone, "ETNRaceCue y el motor DSP deben coincidir");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UTN_RaceCueSynthComponent
@@ -497,7 +551,7 @@ void UTN_RaceCueSynthComponent::Play(ETNRaceCue Cue, float Pitch, float Volume)
 	Shot.Pitch = Pitch;
 	Shot.Gain = Volume;
 	CueQueue->Push(Shot);
-	// La fanfarria dura 2,1 s: con 3 s de margen no se corta ninguna cola.
+	// La fanfarria dura 2,1 s y el trombón triste 2,3: con 3 s de margen no se corta ninguna cola.
 	SilenceLeft = 3.f;
 	SetComponentTickEnabled(true);
 }

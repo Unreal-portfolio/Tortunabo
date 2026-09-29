@@ -1,4 +1,5 @@
 #include "UI/Race/TN_RaceScreens.h"
+#include "TN_RaceArrivalArt.h"
 #include "TN_RaceArt.h"
 #include "../../Audio/TN_MatchMusicSubsystem.h"
 #include "Audio/TN_MusicSynthComponent.h"
@@ -6,8 +7,11 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_Log.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "UI/HUD/TN_GhostHatchWidget.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
@@ -41,6 +45,26 @@ namespace TNRaceScreensDetail
 
 	/** El reloj de la ronda sale cuando quedan estos segundos (el último minuto; con medio segundo de margen por la red). */
 	constexpr float RoundClockShowSeconds = 60.5f;
+
+	/**
+	 * Cáscara de la llegada al agua: lo que tarda en cerrarse (rápido, según se zambulle), lo que se espera el puesto del
+	 * servidor (si no llega, no era una llegada), lo más que puede quedarse cerrada y lo que se espera tapado al recuento
+	 * cuando ya no queda nadie corriendo (el servidor lo retrasa hasta que acaba la pantalla del puesto).
+	 */
+	constexpr float ArrivalCloseSeconds = 0.28f;
+	constexpr float ArrivalConfirmSeconds = 1.6f;
+	constexpr float ArrivalMaxHoldSeconds = 14.f;
+	constexpr float ArrivalTallyWaitSeconds = 2.5f;
+
+	/** Cáscara del paso entre rondas: cierre y lo más que puede quedarse cerrada (la preparación espera como mucho ~35 s). */
+	constexpr float RoundIntroCloseSeconds = 0.32f;
+	constexpr float RoundIntroMaxSeconds = 50.f;
+
+	/** Vista previa del paso entre rondas: segundos de «Colocando la playa…» antes del 3, 2, 1 (uno por número). */
+	constexpr float PreviewIntroPrepSeconds = 1.8f;
+
+	/** Cada cuánto se busca el generador de la playa mientras no hay (fuera de la playa no existe). */
+	constexpr float GeneratorLookupSeconds = 2.f;
 
 	/** Las dos medias conchas del recuento (para dibujarlas de antemano con el resto del arte). */
 	UTexture2D* HalfShellA() { return TNRaceArt::HalfShell(false); }
@@ -102,6 +126,24 @@ namespace TNRaceScreensDetail
 		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StopPreview(); }
 	}
 
+	void RunArrivalPreview(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StartArrivalPreview(IntArg(Args, 0, 1), IntArg(Args, 1, 0) != 0); }
+	}
+
+	void RunRoundPreview(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StartRoundIntroPreview(IntArg(Args, 0, 2), IntArg(Args, 1, 0) != 0); }
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdArrivalPreview(TEXT("TN.Race.ArrivalPreview"),
+		TEXT("Vista previa de la llegada al agua: el huevo negro se cierra, «Has quedado X.º» con su premio y su mensaje, y se rompe. TN.Race.ArrivalPreview [puesto 1-8 = 1] [1 = sprint final]."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunArrivalPreview));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdRoundPreview(TEXT("TN.Race.RoundPreview"),
+		TEXT("Vista previa del paso entre rondas: el huevo negro, «RONDA N» (o «SPRINT FINAL»), «Colocando la playa…», 3, 2, 1 y se rompe. TN.Race.RoundPreview [ronda = 2] [1 = sprint final]."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunRoundPreview));
+
 	FAutoConsoleCommandWithWorldAndArgs CmdTally(TEXT("TN.Race.Tally"),
 		TEXT("Vista previa del recuento de conchas: TN.Race.Tally [ganador 0-7, -1 = nadie] [jugadores 1-8] [1 = la concha que corona y luego el podio] [medias conchas = 1]."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTally));
@@ -148,6 +190,7 @@ TStatId UTN_RaceScreensSubsystem::GetStatId() const
 
 void UTN_RaceScreensSubsystem::Deinitialize()
 {
+	HideCurtain();
 	HideAll();
 	Super::Deinitialize();
 }
@@ -169,6 +212,7 @@ void UTN_RaceScreensSubsystem::Tick(float DeltaTime)
 	if (!State)
 	{
 		if (Tally || ChampionScreen || CountdownScreen || SprintScreen || RoundClock) { HideAll(); }
+		if (Curtain || ArrivalScreen || RoundIntro) { HideCurtain(); }
 		bHasPhase = false;
 		return;
 	}
@@ -184,6 +228,8 @@ void UTN_RaceScreensSubsystem::TickMatch(float DeltaTime, APlayerController* PC,
 	const int32 Round = State.CurrentRound;
 	if (!bHasPhase || Phase != ShownPhase || (Phase == ETNBeachRacePhase::RoundResults && Round != ShownRound))
 	{
+		const bool bHadPhase = bHasPhase;
+		const ETNBeachRacePhase PreviousPhase = ShownPhase;
 		bHasPhase = true;
 		ShownPhase = Phase;
 		ShownRound = Round;
@@ -215,11 +261,29 @@ void UTN_RaceScreensSubsystem::TickMatch(float DeltaTime, APlayerController* PC,
 			// Ronda nueva (o partida nueva tras «Volver a jugar», o el sprint que se prepara): ningún recuento pendiente.
 			HideAll();
 			LandedRound = -1;
+			if (Phase == ETNBeachRacePhase::Waiting)
+			{
+				// La llegada al agua se vuelve a mirar en la ronda nueva y, si se viene del recuento, del título del sprint o del
+				// podio (no del viaje: esa la tapa el huevo de la pantalla de carga), la cáscara se cierra con «RONDA N».
+				bArrivalHandled = false;
+				const bool bBetweenRounds = bHadPhase && (PreviousPhase == ETNBeachRacePhase::RoundResults
+					|| PreviousPhase == ETNBeachRacePhase::SprintIntro || PreviousPhase == ETNBeachRacePhase::Champion);
+				if (bBetweenRounds)
+				{
+					IntroQuip = FMath::RandRange(0, FMath::Max(0, UTN_RaceRoundIntroWidget::NumQuips() - 1));
+					StartRoundIntro(PC, BuildRoundIntro(State));
+				}
+			}
 		}
 	}
 	PhaseClock += DeltaTime;
 	TickCountdown(PC, State);
 	TickRoundClock(PC, State);
+	TickArrival(DeltaTime, PC, State);
+	if (CurtainUse == ETNRaceCurtainUse::RoundIntro)
+	{
+		AdvanceRoundIntro(DeltaTime, &State);
+	}
 
 	if (Phase == ETNBeachRacePhase::RoundResults && Tally)
 	{
@@ -359,6 +423,12 @@ void UTN_RaceScreensSubsystem::WarmArt(const ATN_BeachRaceGameState& State)
 	if (WarmStatic < static_cast<int32>(UE_ARRAY_COUNT(Fixed)))
 	{
 		Fixed[WarmStatic++]();
+		return;
+	}
+	// Los premios de la pantalla del puesto (la llegada al agua no puede esperar a dibujarlos).
+	if (WarmPrize < static_cast<int32>(TNRaceArrivalArt::EPrize::Count))
+	{
+		TNRaceArrivalArt::PrizeTexture(static_cast<TNRaceArrivalArt::EPrize>(WarmPrize++));
 		return;
 	}
 	// Caras de cada jugador con su piel: feliz, con ojos de estrella y mareada (en caché: las ya hechas no cuestan).
@@ -595,6 +665,290 @@ void UTN_RaceScreensSubsystem::PlayVictory(bool bOn)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Cáscara oscura: llegada al agua y paso entre rondas
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_RaceScreensSubsystem::TickArrival(float DeltaTime, APlayerController* PC, const ATN_BeachRaceGameState& State)
+{
+	if (CurtainUse == ETNRaceCurtainUse::Arrival)
+	{
+		AdvanceArrival(DeltaTime, PC, &State);
+		return;
+	}
+	if (CurtainUse != ETNRaceCurtainUse::None || bArrivalHandled || State.RacePhase != ETNBeachRacePhase::Racing)
+	{
+		return;
+	}
+	// En cuanto la tortuga entra en el agua de meta (sin esperar a la red: el puesto llega después) o, si no se ha visto aquí (la
+	// bola del caparazón, TN.Race.WinRound), en cuanto llega el puesto del servidor.
+	const int32 Place = State.GetArrivalPlace(PC ? PC->PlayerState.Get() : nullptr);
+	if (Place > 0 || IsLocalTurtleInFinishWater(PC, State))
+	{
+		StartArrival(PC, Place);
+	}
+}
+
+bool UTN_RaceScreensSubsystem::IsLocalTurtleInFinishWater(const APlayerController* PC, const ATN_BeachRaceGameState& State)
+{
+	using namespace TNRaceScreensDetail;
+	const ACharacter* Turtle = PC ? Cast<ACharacter>(PC->GetPawn()) : nullptr;
+	const ATN_CoopPlayerState* OwnState = PC ? PC->GetPlayerState<ATN_CoopPlayerState>() : nullptr;
+	if (!Turtle || !OwnState || Turtle->IsHidden() || !Turtle->IsLocallyControlled() || OwnState->bHasFinishedRun || OwnState->IsOnlyASpectator())
+	{
+		return false;
+	}
+	// Con la ronda cerrada («¡TIEMPO!» o todas dentro) ya no se llega; en el sprint, solo la primera finalista.
+	if (State.FinishCountdown == ETNBeachFinishCountdown::TimeUp || State.FinishCountdown == ETNBeachFinishCountdown::AllIn)
+	{
+		return false;
+	}
+	if (State.bSprintFinal && (State.RoundWinner || !State.SprintFinalists.Contains(OwnState)))
+	{
+		return false;
+	}
+	UWorld* World = GetWorld();
+	ATN_BeachRaceGenerator* Generator = BeachGenerator.Get();
+	if (!Generator && World && World->GetTimeSeconds() >= NextGeneratorLookup)
+	{
+		NextGeneratorLookup = World->GetTimeSeconds() + GeneratorLookupSeconds;
+		Generator = ATN_BeachRaceGenerator::Find(World);
+		BeachGenerator = Generator;
+	}
+	if (!Generator)
+	{
+		return false;
+	}
+	// Lo mismo que mira el servidor (el centro de la tortuga en el agua de meta, ATN_BeachRaceGameMode::WatchRacers): en la
+	// zambullida llega unas centésimas después que los pies y así una tortuga que solo chapotea en la orilla del agua no
+	// cierra la cáscara sin llegar.
+	return Generator->IsFinishWater(Turtle->GetActorLocation());
+}
+
+void UTN_RaceScreensSubsystem::StartArrival(APlayerController* PC, int32 ConfirmedPlace)
+{
+	using namespace TNRaceScreensDetail;
+	// La vista previa no gasta la llegada de verdad de la ronda en curso.
+	if (!bPreview)
+	{
+		bArrivalHandled = true;
+	}
+	HideCurtain();
+	Curtain = UTN_GhostHatchWidget::ShowCurtain(PC, ArrivalCloseSeconds, ArrivalMaxHoldSeconds);
+	if (!Curtain)
+	{
+		return;
+	}
+	CurtainUse = ETNRaceCurtainUse::Arrival;
+	CurtainClock = 0.f;
+	bArrivalConfirmed = ConfirmedPlace > 0;
+	ArrivalPlace = ConfirmedPlace;
+	ArrivalScreen = CreateWidget<UTN_RaceArrivalWidget>(PC, UTN_RaceArrivalWidget::StaticClass());
+	if (ArrivalScreen)
+	{
+		ArrivalScreen->AddToViewport(UTN_GhostHatchWidget::ViewportZOrder + 1);
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Llegada al agua: se cierra el huevo negro (%s)."),
+		bArrivalConfirmed ? *FString::Printf(TEXT("puesto %d"), ArrivalPlace) : TEXT("a la espera del puesto del servidor"));
+}
+
+void UTN_RaceScreensSubsystem::AdvanceArrival(float DeltaTime, APlayerController* PC, const ATN_BeachRaceGameState* State)
+{
+	using namespace TNRaceScreensDetail;
+	CurtainClock += DeltaTime;
+	if (!IsValid(Curtain) || Curtain->IsOpening())
+	{
+		// Algo la ha quitado (o se ha roto sola tras la espera máxima): fuera lo de encima.
+		OpenCurtain(true);
+		return;
+	}
+	if (!bArrivalConfirmed)
+	{
+		const int32 Place = State ? State->GetArrivalPlace(PC ? PC->PlayerState.Get() : nullptr) : 0;
+		if (Place > 0)
+		{
+			bArrivalConfirmed = true;
+			ArrivalPlace = Place;
+		}
+		else
+		{
+			// El servidor no la ha contado (la ronda se cerraba justo, o no era el agua de meta): la cáscara se funde.
+			if (CurtainClock >= ArrivalConfirmSeconds || (State && State->RacePhase != ETNBeachRacePhase::Racing))
+			{
+				UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Llegada al agua sin puesto del servidor en %.1f s: se abre el huevo negro."), CurtainClock);
+				OpenCurtain(false);
+			}
+			return;
+		}
+	}
+	if (!ArrivalScreen)
+	{
+		// Sin pantalla del puesto (no se pudo crear): la cáscara se abre a su hora.
+		if (CurtainClock >= ArrivalCloseSeconds + UTN_RaceArrivalWidget::ContentSeconds) { OpenCurtain(true); }
+		return;
+	}
+	if (!ArrivalScreen->IsPlaying())
+	{
+		// Con la cáscara ya cerrada (nunca se ve a la tortuga ponerse de pie), el puesto.
+		if (Curtain->IsClosed())
+		{
+			FTNRaceArrivalSetup Setup;
+			Setup.Place = ArrivalPlace;
+			Setup.Round = State ? FMath::Max(1, State->CurrentRound) : (bPreviewSprint ? 4 : 2);
+			Setup.bSprint = State ? State->bSprintFinal : bPreviewSprint;
+			Setup.bPreview = State == nullptr;
+			ArrivalScreen->Play(Setup);
+			UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Pantalla del puesto: %d.º%s."), Setup.Place, Setup.bPreview ? TEXT(" (vista previa)") : TEXT(""));
+		}
+		return;
+	}
+	if (!ArrivalScreen->IsDone())
+	{
+		return;
+	}
+	// Ya no queda nadie corriendo (todas en el agua): el recuento sale enseguida (el servidor lo ha retrasado hasta que acabe
+	// esta pantalla), así que se espera tapado y la cáscara se rompe directamente sobre él.
+	const bool bTallyComing = State && State->RacePhase == ETNBeachRacePhase::Racing && State->FinishCountdown == ETNBeachFinishCountdown::AllIn;
+	if (bTallyComing && ArrivalScreen->GetTimeSinceDone() < ArrivalTallyWaitSeconds)
+	{
+		return;
+	}
+	// Si no, a la vista del fantasma espectador (quedan tortugas corriendo), del gusano o del recuento o el podio.
+	OpenCurtain(true);
+}
+
+void UTN_RaceScreensSubsystem::StartRoundIntro(APlayerController* PC, const FTNRaceRoundIntroSetup& Setup)
+{
+	using namespace TNRaceScreensDetail;
+	HideCurtain();
+	Curtain = UTN_GhostHatchWidget::ShowCurtain(PC, RoundIntroCloseSeconds, RoundIntroMaxSeconds);
+	if (!Curtain)
+	{
+		return;
+	}
+	CurtainUse = ETNRaceCurtainUse::RoundIntro;
+	CurtainClock = 0.f;
+	IntroCountLeft = -1.f;
+	IntroLastReplicated = -1.f;
+	IntroShownNumber = 0;
+	bIntroSawPrep = false;
+	RoundIntro = CreateWidget<UTN_RaceRoundIntroWidget>(PC, UTN_RaceRoundIntroWidget::StaticClass());
+	if (RoundIntro)
+	{
+		RoundIntro->Setup(Setup);
+		RoundIntro->AddToViewport(UTN_GhostHatchWidget::ViewportZOrder + 1);
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Paso entre rondas: se cierra el huevo negro con «%s»%s."),
+		Setup.bSprint ? TEXT("SPRINT FINAL") : *FString::Printf(TEXT("RONDA %d"), Setup.Round), Setup.bPreview ? TEXT(" (vista previa)") : TEXT(""));
+}
+
+FTNRaceRoundIntroSetup UTN_RaceScreensSubsystem::BuildRoundIntro(const ATN_BeachRaceGameState& State) const
+{
+	FTNRaceRoundIntroSetup Setup;
+	Setup.Round = FMath::Max(1, State.CurrentRound);
+	Setup.bSprint = State.bSprintFinal;
+	Setup.Quip = IntroQuip;
+	// Bola de partido: la concha entera de esta ronda coronaría a alguien.
+	const int32 TargetHalves = FMath::Max(1, State.RoundTarget) * 2;
+	for (const TObjectPtr<APlayerState>& Base : State.PlayerArray)
+	{
+		if (ATN_BeachRaceGameState::GetShellHalves(Base) + 2 >= TargetHalves)
+		{
+			Setup.bMatchPoint = true;
+			break;
+		}
+	}
+	return Setup;
+}
+
+void UTN_RaceScreensSubsystem::AdvanceRoundIntro(float DeltaTime, const ATN_BeachRaceGameState* State)
+{
+	using namespace TNRaceScreensDetail;
+	CurtainClock += DeltaTime;
+	if (!IsValid(Curtain) || Curtain->IsOpening())
+	{
+		OpenCurtain(true);
+		return;
+	}
+	if (RoundIntro && !RoundIntro->IsPlaying())
+	{
+		// La ronda puede llegar por red un poco después que la fase: el título se corrige hasta que entra.
+		if (State) { RoundIntro->Setup(BuildRoundIntro(*State)); }
+		if (Curtain->IsClosed()) { RoundIntro->Play(); }
+	}
+	int32 Number = 0;
+	if (State)
+	{
+		// ¡A correr! (o la partida se ha ido por otro lado, p. ej. el sprint sin rival): se rompe la cáscara.
+		if (State->RacePhase != ETNBeachRacePhase::Waiting || CurtainClock >= RoundIntroMaxSeconds)
+		{
+			OpenCurtain(true);
+			return;
+		}
+		// Con las tortugas ya en sus huevos empieza la cuenta de salida (PhaseSecondsLeft, a 4 Hz): entre valores replicados
+		// se descuenta aquí (sin llegar a 0: la cáscara se rompe con la salida, no con el reloj de esta máquina).
+		const float Replicated = State->PhaseSecondsLeft;
+		if (Replicated <= 0.f)
+		{
+			bIntroSawPrep = true;
+		}
+		else if (bIntroSawPrep)
+		{
+			if (IntroCountLeft < 0.f || Replicated != IntroLastReplicated)
+			{
+				IntroCountLeft = Replicated;
+			}
+			else
+			{
+				IntroCountLeft = FMath::Max(0.01f, IntroCountLeft - DeltaTime);
+			}
+			IntroLastReplicated = Replicated;
+			Number = FMath::CeilToInt(IntroCountLeft);
+		}
+	}
+	else
+	{
+		// Vista previa: «Colocando la playa…» un rato, 3, 2, 1 (uno por segundo) y se rompe.
+		const float Counting = PreviewClock - PreviewIntroPrepSeconds;
+		if (Counting >= 3.f)
+		{
+			OpenCurtain(true);
+			return;
+		}
+		if (Counting >= 0.f) { Number = 3 - FMath::FloorToInt(Counting); }
+	}
+	// Un «pum» de la cáscara por cada número nuevo (solo hacia abajo).
+	if (Number >= 1 && (IntroShownNumber == 0 || Number < IntroShownNumber))
+	{
+		IntroShownNumber = Number;
+		Curtain->Knock();
+		if (RoundIntro) { RoundIntro->ShowCount(Number); }
+	}
+}
+
+void UTN_RaceScreensSubsystem::OpenCurtain(bool bBurst)
+{
+	if (IsValid(Curtain)) { Curtain->Open(bBurst); }
+	// La cáscara se quita sola al acabar de abrirse; lo de encima se va ya.
+	Curtain = nullptr;
+	if (IsValid(ArrivalScreen)) { ArrivalScreen->Dismiss(); }
+	ArrivalScreen = nullptr;
+	if (IsValid(RoundIntro)) { RoundIntro->Dismiss(); }
+	RoundIntro = nullptr;
+	CurtainUse = ETNRaceCurtainUse::None;
+}
+
+void UTN_RaceScreensSubsystem::HideCurtain()
+{
+	if (IsValid(Curtain)) { Curtain->RemoveFromParent(); }
+	Curtain = nullptr;
+	if (IsValid(ArrivalScreen)) { ArrivalScreen->RemoveFromParent(); }
+	ArrivalScreen = nullptr;
+	if (IsValid(RoundIntro)) { RoundIntro->RemoveFromParent(); }
+	RoundIntro = nullptr;
+	CurtainUse = ETNRaceCurtainUse::None;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Vista previa por consola
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -739,6 +1093,37 @@ void UTN_RaceScreensSubsystem::StartClockPreview(float StartSeconds)
 	BuildPreviewRows(PC, 2, PreviewRows);
 }
 
+void UTN_RaceScreensSubsystem::StartArrivalPreview(int32 Place, bool bSprint)
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? TNRaceScreensDetail::FindLocalController(*World) : nullptr;
+	if (!PC) { return; }
+	StopPreview();
+	bPreview = true;
+	PreviewKind = 4;
+	PreviewClock = 0.f;
+	bPreviewSprint = bSprint;
+	StartArrival(PC, FMath::Clamp(Place, 1, 8));
+}
+
+void UTN_RaceScreensSubsystem::StartRoundIntroPreview(int32 Round, bool bSprint)
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? TNRaceScreensDetail::FindLocalController(*World) : nullptr;
+	if (!PC) { return; }
+	StopPreview();
+	bPreview = true;
+	PreviewKind = 5;
+	PreviewClock = 0.f;
+	FTNRaceRoundIntroSetup Setup;
+	Setup.Round = FMath::Max(1, Round);
+	Setup.bSprint = bSprint;
+	Setup.bMatchPoint = !bSprint && Setup.Round >= 4;
+	Setup.Quip = FMath::RandRange(0, FMath::Max(0, UTN_RaceRoundIntroWidget::NumQuips() - 1));
+	Setup.bPreview = true;
+	StartRoundIntro(PC, Setup);
+}
+
 void UTN_RaceScreensSubsystem::StartPodiumPreview(int32 NumPlayers)
 {
 	UWorld* World = GetWorld();
@@ -763,6 +1148,7 @@ void UTN_RaceScreensSubsystem::StopPreview()
 	bPreview = false;
 	PreviewKind = 0;
 	const bool bWasPlaying = bVictoryPlaying;
+	HideCurtain();
 	HideAll();
 	if (bWasPlaying) { PlayVictory(false); }
 	bVictoryPlaying = false;
@@ -773,6 +1159,24 @@ void UTN_RaceScreensSubsystem::TickPreview(float DeltaTime, APlayerController* P
 {
 	using namespace TNRaceScreensDetail;
 	PreviewClock += DeltaTime;
+	if (PreviewKind == 4 || PreviewKind == 5)
+	{
+		// Llegada al agua o paso entre rondas: la cáscara hace su guion y, un momento después de romperse, se acaba.
+		if (CurtainUse == ETNRaceCurtainUse::Arrival)
+		{
+			AdvanceArrival(DeltaTime, PC, nullptr);
+		}
+		else if (CurtainUse == ETNRaceCurtainUse::RoundIntro)
+		{
+			AdvanceRoundIntro(DeltaTime, nullptr);
+		}
+		else
+		{
+			// Ya se ha roto (se quita sola al acabar de abrirse, porque ya no se apunta aquí): fin de la vista previa.
+			StopPreview();
+		}
+		return;
+	}
 	if (PreviewKind == 1)
 	{
 		// Título del sprint: con su cuenta de mentira y se cierra solo.

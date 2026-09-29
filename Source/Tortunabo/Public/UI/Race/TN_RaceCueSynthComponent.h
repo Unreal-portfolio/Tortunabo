@@ -22,11 +22,17 @@ enum class ETNRaceCue : uint8
 	Fanfare,
 	/** Golpe grave («¡pum!») de las caras que entran en el sprint y del «VS». */
 	Slam,
+	/**
+	 * Trombón triste con sordina, «buaa, buaa, buaa, buaaaa»: tres notas que bajan por semitonos y una larga que tiembla y
+	 * se cae de tono. Los premios humillantes de la pantalla del puesto (Pitch lo baja cuanto peor es el puesto).
+	 */
+	SadTrombone,
 };
 
 /**
  * Sonidos de las pantallas del modo carrera sintetizados en tiempo real (sin archivos de audio): la cuenta atrás tras la
- * primera en el agua (UTN_RaceFinishCountdownWidget) y el título del sprint final (UTN_RaceSprintWidget). En 2D, sin
+ * primera en el agua (UTN_RaceFinishCountdownWidget), el título del sprint final (UTN_RaceSprintWidget), la pantalla del
+ * puesto al llegar (UTN_RaceArrivalWidget) y el título de cada ronda (UTN_RaceRoundIntroWidget). En 2D, sin
  * espacializar, en el PlayerController de quien mira. Mismo patrón que UTN_ScoreShellSynthComponent: un ISoundGenerator
  * en el hilo de render de audio sin UObjects, asignaciones ni bloqueos, y una cola de disparos sin bloqueos desde el hilo
  * de juego. Solo suena cuando hace falta y se para tras unos segundos de silencio.

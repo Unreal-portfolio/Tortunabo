@@ -53,6 +53,24 @@ enum class ETNBeachRoundEnd : uint8
 	Forfeit         UMETA(DisplayName = "Sprint sin rival")
 };
 
+/**
+ * Una llegada al agua de meta en la ronda en curso, con el puesto que ha decidido el servidor en el instante del contacto
+ * (ATN_BeachRaceGameMode::MarkPlayerFinished). La lee la pantalla del puesto de cada jugador («Has quedado X.º»,
+ * UTN_RaceArrivalWidget).
+ */
+USTRUCT(BlueprintType)
+struct FTNBeachRoundArrival
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Beach")
+	TObjectPtr<APlayerState> Player = nullptr;
+
+	/** Puesto en la ronda (1 = la primera en el agua). */
+	UPROPERTY(BlueprintReadOnly, Category = "Beach")
+	int32 Place = 0;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBeachRacePhaseChanged);
 
 /**
@@ -84,6 +102,14 @@ public:
 	/** Las que llegaron durante la cuenta atrás, en orden de llegada (media concha cada una). */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RacePhase, Category = "Beach")
 	TArray<TObjectPtr<APlayerState>> RoundHalfShells;
+
+	/**
+	 * Todas las llegadas al agua de meta de la ronda en curso, en orden y con su puesto (también la del sprint final). Solo
+	 * de verdad: la concha del tiempo de ronda agotado (la más cerca del mar) no está aquí. Se vacía al preparar cada ronda.
+	 * Sin aviso de cambio de fase: la pantalla del puesto lo mira cada fotograma.
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Beach")
+	TArray<FTNBeachRoundArrival> RoundArrivals;
 
 	/** Campeón de la partida (el primero en llegar a RoundTarget conchas, o quien gana el sprint final). */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RacePhase, Category = "Beach")
@@ -150,6 +176,12 @@ public:
 
 	/** Medias conchas de un jugador (0 si no es un ATN_CoopPlayerState). */
 	static int32 GetShellHalves(const APlayerState* PlayerState);
+
+	/** Puesto de PlayerState en la ronda en curso (RoundArrivals); 0 si no ha llegado al agua. En cualquier máquina. */
+	int32 GetArrivalPlace(const APlayerState* PlayerState) const;
+
+	/** Servidor: apunta que PlayerState ha llegado al agua en el puesto Place (una vez por ronda). */
+	void AddRoundArrival(APlayerState* PlayerState, int32 Place);
 
 protected:
 	UFUNCTION()

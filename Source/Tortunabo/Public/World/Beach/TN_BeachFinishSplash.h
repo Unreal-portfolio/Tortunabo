@@ -17,6 +17,11 @@ class UTN_BeachSplashSynthComponent;
  * «¡chof!» sintetizado (UTN_BeachSplashSynthComponent). El tamaño sale de la velocidad de caída al tocar el agua: el
  * salto del acantilado es el grande. Efectos de TNAmbientFX en un actor local sin réplica; nada en servidor dedicado.
  *
+ * Además, con la ronda de la carrera en juego, la tortuga que entra en el agua de meta se queda con la postura de la
+ * zambullida (bPauseAnims de su malla, solo cosmético y en cada máquina) hasta que la meta la oculta: nadie la ve ponerse de
+ * pie en el agua mientras en su pantalla se cierra el huevo negro del puesto (UTN_RaceScreensSubsystem). Si sale del agua
+ * sin llegar (la sacan de ahí), o sigue a la vista 2,5 s después (no era una llegada), recupera la animación.
+ *
  * Consola (solo en la máquina que lo escribe): TN.Race.Splash [tamaño] hace un chapuzón donde está tu tortuga.
  */
 UCLASS()
@@ -43,6 +48,10 @@ private:
 		bool bWet = false;
 		/** Velocidad vertical del fotograma anterior (al tocar el agua, la de la caída; el agua ya la ha frenado). */
 		float VelocityZ = 0.f;
+		/** Su postura se ha congelado aquí al llegar (bPauseAnims): solo esta la descongela. */
+		bool bPoseFrozen = false;
+		/** Cuándo se congeló (reloj del subsistema): si sigue a la vista mucho después, no era una llegada y se descongela. */
+		float FrozenAt = 0.f;
 	};
 
 	/** Chorro que sube un momento después del golpe (cuando se cierra el hueco que abre la tortuga). */
@@ -72,4 +81,7 @@ private:
 	bool EnsureFX(const FVector& Near);
 	void WatchTurtles(ATN_BeachRaceGenerator& InGenerator);
 	void LaunchJet(const FPendingJet& Pending);
+	/** Deja a la tortuga con la postura de la zambullida (o se la devuelve) sin tocar lo que haya pausado otro (el derribo). */
+	void FreezePose(ACharacter& Turtle, FTurtleWater& Water) const;
+	static void ThawPose(ACharacter& Turtle, FTurtleWater& Water);
 };
