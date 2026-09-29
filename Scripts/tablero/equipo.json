@@ -1,0 +1,40 @@
+{
+  "repo": "Unreal-portfolio/Tortunabo",
+  "proyecto": {
+    "owner": "Unreal-portfolio",
+    "numero": 2
+  },
+  "rama_integracion": "dev",
+  "rama_estable": "main",
+  "aprobadores": [
+    "SkiTemplar",
+    "Mokius"
+  ],
+  "miembros": {
+    "SkiTemplar": {
+      "nombre": "Rodrigo",
+      "rol": "director y aprobador"
+    },
+    "Mokius": {
+      "nombre": "Mokius",
+      "rol": "código y aprobador"
+    },
+    "Ruben-Besteiro": {
+      "nombre": "Ruby",
+      "rol": "código; sus PR las aprueba SkiTemplar o Mokius"
+    }
+  },
+  "dias_sin_movimiento": 3,
+  "revisores": {
+    "Ruben-Besteiro": [
+      "Mokius",
+      "SkiTemplar"
+    ],
+    "SkiTemplar": [
+      "Mokius"
+    ],
+    "Mokius": [
+      "SkiTemplar"
+    ]
+  }
+}

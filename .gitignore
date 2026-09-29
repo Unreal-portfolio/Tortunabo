@@ -5,7 +5,8 @@
 .idea/.idea.Tortunabo
 .idea/.idea.Tortunabo/.idea
 .idea/.idea.Tortunabo/.idea/workspace.xml
-.claude/
+.claude/*
+!.claude/skills/
 # Compiled Object files
 *.slo
 *.lo
