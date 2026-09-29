@@ -1,9 +1,16 @@
 """Tests de las funciones puras de Scripts/tablero/tablero.py (sin red ni gh)."""
 
 import importlib.util
+import sys
 from pathlib import Path
 
-RUTA = Path(__file__).resolve().parents[1] / "tablero" / "tablero.py"
+import pytest
+
+CARPETA = Path(__file__).resolve().parents[1] / "tablero"
+sys.path.insert(0, str(CARPETA))  # tablero.py importa objetos.py de su misma carpeta
+import objetos  # noqa: E402
+
+RUTA = CARPETA / "tablero.py"
 spec = importlib.util.spec_from_file_location("tablero", RUTA)
 assert spec is not None and spec.loader is not None
 tablero = importlib.util.module_from_spec(spec)
@@ -50,3 +57,36 @@ def test_revisor_cruzado_nunca_el_autor():
 def test_revisor_de_ruby_reparte_carga():
     assert tablero.elegir_revisor(_proyecto_con_revisiones(), "Ruben-Besteiro") == "Mokius"
     assert tablero.elegir_revisor(_proyecto_con_revisiones("Mokius"), "Ruben-Besteiro") == "SkiTemplar"
+
+
+def test_es_objeto_con_etiquetas_de_gh_y_del_proyecto():
+    assert objetos.es_objeto({"labels": [{"name": "objeto"}]})
+    assert objetos.es_objeto({"labels": {"nodes": [{"name": "tarea"}, {"name": "objeto"}]}})
+    assert not objetos.es_objeto({"labels": {"nodes": [{"name": "tarea"}]}})
+    assert not objetos.es_objeto({})
+
+
+def test_buscar_por_titulo_exacto_y_solo_abiertas():
+    issues = [
+        {"number": 3, "title": "Rally Tortuga", "state": "CLOSED"},
+        {"number": 7, "title": "Rally Tortuga · Red", "state": "OPEN"},
+        {"number": 9, "title": " Rally Tortuga ", "state": "OPEN"},
+    ]
+    assert objetos.buscar_por_titulo(issues, "Rally Tortuga") == 9
+    assert objetos.buscar_por_titulo(issues, "rally tortuga") is None
+    assert objetos.buscar_por_titulo([], "Rally Tortuga") is None
+
+
+def test_comprobar_padre_idempotente_y_sin_robar_hijos():
+    assert objetos.comprobar_padre(20, 90, None) is True
+    assert objetos.comprobar_padre(20, 90, 90) is False
+    with pytest.raises(objetos.ErrorObjeto, match="ya cuelga de #40"):
+        objetos.comprobar_padre(20, 90, 40)
+    with pytest.raises(objetos.ErrorObjeto):
+        objetos.comprobar_padre(90, 90, None)
+
+
+def test_cuerpo_objeto_usa_la_descripcion_o_el_nombre():
+    assert objetos.cuerpo_objeto("HUD y menús", "HUD, tutorial y ajustes.").startswith("HUD, tutorial y ajustes.")
+    assert objetos.cuerpo_objeto("HUD y menús", None).startswith("Objeto «HUD y menús».")
+    assert "vista «Objetos»" in objetos.cuerpo_objeto("X", "")

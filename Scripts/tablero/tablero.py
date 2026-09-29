@@ -9,8 +9,13 @@ Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py pendiente
     uv run python Scripts/tablero/tablero.py coger 42
     uv run python Scripts/tablero/tablero.py estado 42 "In review"
-    uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug --area Red --prioridad P1 --tamano S --cuerpo cuerpo.md
+    uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug --area Red --prioridad P1 --tamano S --cuerpo cuerpo.md --objeto "Rally Tortuga"
+    uv run python Scripts/tablero/tablero.py objeto "Rally Tortuga" --area Modos --descripcion "..."
+    uv run python Scripts/tablero/tablero.py colgar 57 90
     uv run python Scripts/tablero/tablero.py sync [--aplicar]
+
+Las tareas y los fallos se agrupan por objeto (issue padre con la etiqueta `objeto`)
+como sub-issues nativas de GitHub; la lógica de objetos vive en objetos.py.
 
 Requiere `gh` autenticado con el scope `project` (`gh auth refresh -s project`).
 """
@@ -25,6 +30,8 @@ import sys
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import objetos
 
 CONFIG = json.loads((Path(__file__).parent / "equipo.json").read_text(encoding="utf-8"))
 REPO = CONFIG["repo"]
@@ -125,6 +132,12 @@ def poner_campo(proyecto: dict, numero: int, campo: str, valor: str) -> None:
        "--field-id", info["id"], "--single-select-option-id", info["opciones"][valor])
 
 
+def vaciar_campo(proyecto: dict, numero: int, campo: str) -> None:
+    """Deja el campo sin valor; los objetos, por ejemplo, no llevan Status."""
+    gh("project", "item-edit", "--project-id", proyecto["id"], "--id", item_de_issue(proyecto, numero),
+       "--field-id", proyecto["campos"][campo]["id"], "--clear")
+
+
 def usuario_actual() -> str:
     return gh("api", "user", "--jq", ".login").strip()
 
@@ -160,7 +173,7 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
     yo = usuario_actual()
     aprobador = yo in CONFIG["aprobadores"]
     proyecto = cargar_proyecto()
-    abiertas = [i for i in proyecto["items"].values() if i["state"] == "OPEN"]
+    abiertas = [i for i in proyecto["items"].values() if i["state"] == "OPEN" and not objetos.es_objeto(i)]
     por_estado = {e: sorted([i for i in abiertas if i["valores"].get("Status") == e], key=clave_orden) for e in ESTADOS}
     mias = [i for i in por_estado["In progress"] if yo in {a["login"] for a in i["assignees"]["nodes"]}]
     prs = prs_abiertas()
@@ -256,7 +269,24 @@ def cmd_campo(args: argparse.Namespace) -> None:
     print(f"#{args.numero} {args.campo} → {args.valor}")
 
 
+def resolver_padre(args: argparse.Namespace) -> int | None:
+    """Número del objeto del que colgará la issue nueva (lo crea si `--objeto` no existe)."""
+    if args.padre is not None:
+        return args.padre
+    if not args.objeto:
+        return None
+    numero, creado = objetos.buscar_o_crear(gh, REPO, args.objeto)
+    if creado:
+        item_de_issue(cargar_proyecto(), numero)
+        print(f"Objeto nuevo #{numero}: {args.objeto}")
+    return numero
+
+
 def cmd_nueva(args: argparse.Namespace) -> None:
+    padre = resolver_padre(args)
+    if padre is not None and (repetida := objetos.sub_issue_existente(gh, REPO, padre, args.titulo)):
+        print(f"#{repetida} ya existe en el objeto #{padre} con ese título; no se crea otra.")
+        return
     etiqueta = "⚠️bug⚠️" if args.tipo == "bug" else "tarea"
     etiquetas = [etiqueta, *args.etiqueta]
     crear = ["issue", "create", "--repo", REPO, "--title", args.titulo, "--body-file", args.cuerpo]
@@ -264,13 +294,33 @@ def cmd_nueva(args: argparse.Namespace) -> None:
         crear += ["--label", e]
     url = gh(*crear).strip().splitlines()[-1]
     numero = int(url.rstrip("/").rsplit("/", 1)[-1])
+    if padre is not None:
+        objetos.colgar(gh, REPO, numero, padre)
     proyecto = cargar_proyecto()
     campos = {"Status": args.estado, "Prioridad": args.prioridad, "Tamaño": args.tamano, "Área": args.area, "Fase": args.fase,
               "Editor": "Sin probar" if args.estado == "QA editor" else None}
     for campo, valor in campos.items():
         if valor:
             poner_campo(proyecto, numero, campo, valor)
-    print(f"#{numero} creada en {args.estado}: {url}")
+    print(f"#{numero} creada en {args.estado}{f' dentro de #{padre}' if padre else ''}: {url}")
+
+
+def cmd_objeto(args: argparse.Namespace) -> None:
+    """Busca el objeto abierto con ese título o lo crea; lo deja en el proyecto sin Status."""
+    numero, creado = objetos.buscar_o_crear(gh, REPO, args.nombre, args.descripcion)
+    proyecto = cargar_proyecto()
+    item_de_issue(proyecto, numero)
+    if args.area:
+        poner_campo(proyecto, numero, "Área", args.area)
+    print(numero)
+    print(f"{'Creado' if creado else 'Ya existía'} el objeto #{numero}: {args.nombre}", file=sys.stderr)
+
+
+def cmd_colgar(args: argparse.Namespace) -> None:
+    if objetos.colgar(gh, REPO, args.hijo, args.padre):
+        print(f"#{args.hijo} cuelga ahora de #{args.padre}")
+    else:
+        print(f"#{args.hijo} ya colgaba de #{args.padre}")
 
 
 def cmd_sync(args: argparse.Namespace) -> None:
@@ -291,14 +341,24 @@ def cmd_sync(args: argparse.Namespace) -> None:
 
 
 def reconciliar_issues_sueltas(proyecto: dict, cambios: list) -> None:
-    abiertas = json.loads(gh("issue", "list", "--repo", REPO, "--state", "open", "--limit", "500", "--json", "number,title"))
+    abiertas = json.loads(gh("issue", "list", "--repo", REPO, "--state", "open", "--limit", "500",
+                             "--json", "number,title,labels"))
     for issue in abiertas:
         n = issue["number"]
-        if n not in proyecto["items"] and issue["title"] != "Parte diario del tablero":
+        if n in proyecto["items"] or issue["title"] == "Parte diario del tablero":
+            continue
+        if objetos.es_objeto(issue):
+            cambios.append((f"#{n} (objeto) entra al tablero sin Status ({issue['title']})",
+                            lambda n=n: item_de_issue(proyecto, n)))
+        else:
             cambios.append((f"#{n} entra al tablero en Backlog ({issue['title']})",
                             lambda n=n: poner_campo(proyecto, n, "Status", "Backlog")))
     for n, issue in proyecto["items"].items():
-        if issue["state"] == "CLOSED" and issue["valores"].get("Status") != "Done":
+        if objetos.es_objeto(issue):
+            if issue["valores"].get("Status"):
+                cambios.append((f"#{n} es un objeto: se le quita el Status «{issue['valores']['Status']}»",
+                                lambda n=n: vaciar_campo(proyecto, n, "Status")))
+        elif issue["state"] == "CLOSED" and issue["valores"].get("Status") != "Done":
             cambios.append((f"#{n} cerrada → Done", lambda n=n: poner_campo(proyecto, n, "Status", "Done")))
 
 
@@ -312,7 +372,11 @@ def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
         if not refs:
             avisos.append(f"PR #{pr['number']} no enlaza ninguna issue (falta «Closes #n» o rama tipo/<n>-slug)")
         for n in refs:
-            estado = proyecto["items"].get(n, {}).get("valores", {}).get("Status")
+            issue = proyecto["items"].get(n, {})
+            if issue and objetos.es_objeto(issue):
+                avisos.append(f"PR #{pr['number']} enlaza el objeto #{n}: debe enlazar una de sus sub-issues")
+                continue
+            estado = issue.get("valores", {}).get("Status")
             if estado in (None, "Backlog", "Ready", "In progress"):
                 cambios.append((f"#{n} → In review (PR #{pr['number']})",
                                 lambda n=n, autor=pr["author"]["login"]: mover_a_review(proyecto, n, autor)))
@@ -322,6 +386,8 @@ def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
     for pr in fusionadas:
         for n in issues_de_pr(pr):
             issue = proyecto["items"].get(n)
+            if issue and objetos.es_objeto(issue):
+                continue
             if issue and issue["state"] == "OPEN" and issue["valores"].get("Status") not in ("QA editor", "Done"):
                 cambios.append((f"#{n} → QA (PR #{pr['number']} fusionada en {INTEGRACION})",
                                 lambda n=n: marcar_qa(proyecto, n)))
@@ -412,9 +478,8 @@ def avisos_validacion(proyecto: dict, avisos: list) -> None:
         avisos.append(f"En QA sin probar en el editor: {', '.join(sin_editor)}")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Tablero de desarrollo de Tortunabo")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+def anadir_comandos_de_flujo(sub: argparse._SubParsersAction) -> None:
+    """Comandos que mueven una issue por el ciclo: coger, estado, revisión, validaciones."""
     sub.add_parser("pendiente", help="qué hay para mí ahora").set_defaults(fn=cmd_pendiente)
     p = sub.add_parser("coger", help="asignarme una issue y crear su rama")
     p.add_argument("numero", type=int)
@@ -433,17 +498,6 @@ def main() -> int:
     p.add_argument("campo")
     p.add_argument("valor")
     p.set_defaults(fn=cmd_campo)
-    p = sub.add_parser("nueva", help="crear issue y colocarla en el tablero")
-    p.add_argument("--titulo", required=True)
-    p.add_argument("--tipo", choices=["bug", "tarea"], required=True)
-    p.add_argument("--cuerpo", required=True, help="fichero markdown con el cuerpo")
-    p.add_argument("--estado", default="Backlog", choices=ESTADOS)
-    p.add_argument("--prioridad", choices=list(ORDEN_PRIORIDAD))
-    p.add_argument("--tamano", choices=list(ORDEN_TAMANO))
-    p.add_argument("--area")
-    p.add_argument("--fase")
-    p.add_argument("--etiqueta", action="append", default=[])
-    p.set_defaults(fn=cmd_nueva)
     p = sub.add_parser("ia", help="registrar la revisión de una segunda IA")
     p.add_argument("numero", type=int)
     p.add_argument("veredicto", choices=["aprobada", "cambios", "pendiente"])
@@ -456,13 +510,47 @@ def main() -> int:
     p.add_argument("--como", default="PIE", help="PIE 1P, PIE 4P, Standalone… o «validación implícita»")
     p.add_argument("--nota")
     p.set_defaults(fn=cmd_editor)
+
+
+def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
+    """Comandos que crean u organizan issues: nueva, objeto, colgar y sync."""
+    p = sub.add_parser("nueva", help="crear issue y colocarla en el tablero")
+    p.add_argument("--titulo", required=True)
+    p.add_argument("--tipo", choices=["bug", "tarea"], required=True)
+    p.add_argument("--cuerpo", required=True, help="fichero markdown con el cuerpo")
+    p.add_argument("--estado", default="Backlog", choices=ESTADOS)
+    p.add_argument("--prioridad", choices=list(ORDEN_PRIORIDAD))
+    p.add_argument("--tamano", choices=list(ORDEN_TAMANO))
+    p.add_argument("--area")
+    p.add_argument("--fase")
+    p.add_argument("--etiqueta", action="append", default=[])
+    padre = p.add_mutually_exclusive_group()
+    padre.add_argument("--objeto", help="título del objeto del que cuelga (se crea si no existe)")
+    padre.add_argument("--padre", type=int, help="número de la issue padre")
+    p.set_defaults(fn=cmd_nueva)
+    p = sub.add_parser("objeto", help="buscar o crear un objeto (issue padre) e imprimir su número")
+    p.add_argument("nombre")
+    p.add_argument("--area")
+    p.add_argument("--descripcion")
+    p.set_defaults(fn=cmd_objeto)
+    p = sub.add_parser("colgar", help="colgar una issue existente como sub-issue de otra")
+    p.add_argument("hijo", type=int)
+    p.add_argument("padre", type=int)
+    p.set_defaults(fn=cmd_colgar)
     p = sub.add_parser("sync", help="reconciliar tablero, PR e issues")
     p.add_argument("--aplicar", action="store_true")
     p.set_defaults(fn=cmd_sync)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Tablero de desarrollo de Tortunabo")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    anadir_comandos_de_flujo(sub)
+    anadir_comandos_de_alta(sub)
     args = parser.parse_args()
     try:
         args.fn(args)
-    except ErrorTablero as exc:
+    except (ErrorTablero, objetos.ErrorObjeto) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     return 0
