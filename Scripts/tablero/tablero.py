@@ -3,20 +3,32 @@
 Una sola fuente de verdad para los tres desarrolladores y sus Claude: las issues
 del repo y el proyecto «Tortunabo · Desarrollo». Este script hace de forma
 determinista lo que no debe depender de que una IA se acuerde: listar lo
-pendiente, coger una tarea, mover estados y reconciliar el tablero con las PR.
+pendiente, coger una tarea, mover estados, reconciliar el tablero con las PR, dejar
+memoria en las issues y auditar la organización del tablero.
 
 Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py pendiente
     uv run python Scripts/tablero/tablero.py coger 42
     uv run python Scripts/tablero/tablero.py estado 42 "In review"
-    uv run python Scripts/tablero/tablero.py editor 42 funciona --como "PIE 4P"   # en cualquier estado
+    uv run python Scripts/tablero/tablero.py editor 42 funciona|falla --como "PIE 4P"   # en cualquier estado
     uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug --area Red --prioridad P1 --tamano S --cuerpo cuerpo.md --objeto "Rally Tortuga"
     uv run python Scripts/tablero/tablero.py objeto "Rally Tortuga" --area Modos --descripcion "..."
     uv run python Scripts/tablero/tablero.py colgar 57 90
     uv run python Scripts/tablero/tablero.py sync [--aplicar]
+    uv run python Scripts/tablero/tablero.py resumen 42 --que "..." [--por-que "..."] --como "..." [--pr 118]
+    uv run python Scripts/tablero/tablero.py resumenes 42
+    uv run python Scripts/tablero/tablero.py lote crear --titulo "..." 57 58 59 [--pr 120]
+    uv run python Scripts/tablero/tablero.py lote estado 130
+    uv run python Scripts/tablero/tablero.py decidir 42 --texto "..."
+    uv run python Scripts/tablero/tablero.py auditar [--aplicar]
+    uv run python Scripts/tablero/tablero.py colisiones [--aplicar]
+    uv run python Scripts/tablero/tablero.py bloquear 57 --por 40 [--por 41]
 
 Las tareas y los fallos se agrupan por objeto (issue padre con la etiqueta `objeto`)
-como sub-issues nativas de GitHub; la lógica de objetos vive en objetos.py.
+como sub-issues nativas de GitHub. Módulos: base.py (gh, git, proyecto, PR), flujo.py
+(reglas del ciclo), objetos.py, bloqueos.py (dependencias), lotes.py, memoria.py (Resumen
+y Decisión), auditoria.py, colisiones.py, estados.py (opciones de Status), control.py
+(memoria, auditoría, colisiones, dependencias) y control_lotes.py (lotes y resúmenes).
 
 Requiere `gh` autenticado con el scope `project` (`gh auth refresh -s project`).
 """
@@ -25,122 +37,22 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
-import subprocess
 import sys
-import unicodedata
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
+import auditoria
+import bloqueos
+import colisiones
+import control
+import control_lotes
+import flujo
+import lotes
+import memoria
 import objetos
-
-CONFIG = json.loads((Path(__file__).parent / "equipo.json").read_text(encoding="utf-8"))
-REPO = CONFIG["repo"]
-OWNER = CONFIG["proyecto"]["owner"]
-NUMERO = CONFIG["proyecto"]["numero"]
-INTEGRACION = CONFIG["rama_integracion"]
-ESTADOS = ["Backlog", "Ready", "In progress", "In review", "Revisiones", "QA editor", "Done"]
-ORDEN_PRIORIDAD = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-ORDEN_TAMANO = {"XS": 0, "S": 1, "M": 2, "L": 3}
-REF_ISSUE = re.compile(r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|cierra|resuelve|refs?)\s+#(\d+)", re.I)
-REF_RAMA = re.compile(r"/(\d+)-")
-
-CONSULTA_ITEMS = """
-query($org: String!, $num: Int!, $cursor: String) {
-  organization(login: $org) { projectV2(number: $num) {
-    id
-    fields(first: 30) { nodes { ... on ProjectV2SingleSelectField { id name options { id name } } } }
-    items(first: 100, after: $cursor) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        id
-        content { __typename
-          ... on Issue { number title state url updatedAt
-            assignees(first: 5) { nodes { login } } labels(first: 15) { nodes { name } } }
-          ... on PullRequest { number title state url }
-        }
-        fieldValues(first: 20) { nodes {
-          ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } }
-        } }
-      }
-    }
-  } }
-}
-"""
-
-
-class ErrorTablero(RuntimeError):
-    """Fallo de gh o de git que el usuario debe ver tal cual."""
-
-
-def gh(*args: str, entrada: str | None = None) -> str:
-    """Ejecuta gh y devuelve stdout; si falla, lanza ErrorTablero con su stderr."""
-    proc = subprocess.run(["gh", *args], capture_output=True, text=True, encoding="utf-8", input=entrada)
-    if proc.returncode != 0:
-        raise ErrorTablero(f"gh {' '.join(args[:3])}…: {proc.stderr.strip()}")
-    return proc.stdout
-
-
-def git(*args: str) -> str:
-    proc = subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8")
-    if proc.returncode != 0:
-        raise ErrorTablero(f"git {' '.join(args)}: {proc.stderr.strip()}")
-    return proc.stdout.strip()
-
-
-def cargar_proyecto() -> dict:
-    """Devuelve id del proyecto, campos {nombre: {id, opciones}} e items de issues por número."""
-    items, cursor, datos = {}, None, None
-    while True:
-        args = ["api", "graphql", "-f", f"query={CONSULTA_ITEMS}", "-f", f"org={OWNER}", "-F", f"num={NUMERO}"]
-        if cursor:
-            args += ["-f", f"cursor={cursor}"]
-        datos = json.loads(gh(*args))["data"]["organization"]["projectV2"]
-        for nodo in datos["items"]["nodes"]:
-            contenido = nodo.get("content") or {}
-            if contenido.get("__typename") != "Issue":
-                continue
-            valores = {v["field"]["name"]: v["name"] for v in nodo["fieldValues"]["nodes"] if v.get("field")}
-            items[contenido["number"]] = {"item": nodo["id"], "valores": valores, **contenido}
-        pagina = datos["items"]["pageInfo"]
-        if not pagina["hasNextPage"]:
-            break
-        cursor = pagina["endCursor"]
-    campos = {
-        f["name"]: {"id": f["id"], "opciones": {o["name"]: o["id"] for o in f["options"]}}
-        for f in datos["fields"]["nodes"] if f
-    }
-    return {"id": datos["id"], "campos": campos, "items": items}
-
-
-def item_de_issue(proyecto: dict, numero: int) -> str:
-    """Id del item del proyecto para la issue; la añade si aún no está."""
-    if numero in proyecto["items"]:
-        return proyecto["items"][numero]["item"]
-    cache = proyecto.setdefault("items_nuevos", {})
-    if numero not in cache:
-        url = f"https://github.com/{REPO}/issues/{numero}"
-        salida = gh("project", "item-add", str(NUMERO), "--owner", OWNER, "--url", url, "--format", "json")
-        cache[numero] = json.loads(salida)["id"]
-    return cache[numero]
-
-
-def poner_campo(proyecto: dict, numero: int, campo: str, valor: str) -> None:
-    info = proyecto["campos"].get(campo)
-    if info is None or valor not in info["opciones"]:
-        raise ErrorTablero(f"El campo «{campo}» no admite «{valor}». Opciones: {list((info or {}).get('opciones', {}))}")
-    gh("project", "item-edit", "--project-id", proyecto["id"], "--id", item_de_issue(proyecto, numero),
-       "--field-id", info["id"], "--single-select-option-id", info["opciones"][valor])
-
-
-def vaciar_campo(proyecto: dict, numero: int, campo: str) -> None:
-    """Deja el campo sin valor; los objetos, por ejemplo, no llevan Status."""
-    gh("project", "item-edit", "--project-id", proyecto["id"], "--id", item_de_issue(proyecto, numero),
-       "--field-id", proyecto["campos"][campo]["id"], "--clear")
-
-
-def usuario_actual() -> str:
-    return gh("api", "user", "--jq", ".login").strip()
+from base import (CONFIG, ESTADOS, INTEGRACION, ORDEN_PRIORIDAD, ORDEN_TAMANO, REPO,
+                  ErrorTablero, cargar_proyecto, comentar, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
+                  item_de_issue, poner_campo, prs_abiertas, prs_fusionadas, slug, usuario_actual,
+                  vaciar_campo)
 
 
 def clave_orden(issue: dict) -> tuple:
@@ -159,48 +71,17 @@ def linea(issue: dict) -> str:
     return f"  #{issue['number']} [{meta}] {issue['title']}  ({quien}{'; ' + etiquetas if etiquetas else ''})"
 
 
-def prs_abiertas() -> list[dict]:
-    campos = "number,title,headRefName,baseRefName,body,author,mergeable,isDraft,reviewDecision,updatedAt"
-    return json.loads(gh("pr", "list", "--repo", REPO, "--state", "open", "--limit", "100", "--json", campos))
+def etiquetas_de(issue: dict) -> set[str]:
+    return {n["name"] for n in issue.get("labels", {}).get("nodes", [])}
 
 
-def issues_de_pr(pr: dict) -> set[int]:
-    refs = {int(n) for n in REF_ISSUE.findall(pr.get("body") or "")}
-    refs |= {int(n) for n in REF_RAMA.findall(pr.get("headRefName") or "")}
-    return refs
+def urgentes_de_organizacion(issues: list[dict], login: str, aprobador: bool) -> list[dict]:
+    """Lo que va antes que cualquier otra tarea: colisiones entre PR e issues `revisar-organizacion`.
 
-
-def es_de(issue: dict, login: str) -> bool:
-    return login in {a["login"] for a in issue.get("assignees", {}).get("nodes", [])}
-
-
-def estado_tras_fusion(valores: dict) -> tuple[str, bool]:
-    """Estado al fusionar la PR en dev y si hay que cerrar la issue.
-
-    Si ya se probó en el editor (Editor = Funciona) y la revisión IA está aprobada, no queda nada
-    que validar: Done y se cierra. Si no, QA editor, a la espera de que alguien la pruebe.
+    Las colisiones son de todo el equipo; las de organización, del asignado (los aprobadores ven todas).
     """
-    if valores.get("Editor") == "Funciona" and valores.get("Revisión IA") == "Aprobada":
-        return "Done", True
-    return "QA editor", False
-
-
-def editor_tras_fusion(valores: dict) -> str | None:
-    """Valor de Editor al pasar a QA editor: Sin probar, salvo que ya constara que funciona."""
-    return None if valores.get("Editor") == "Funciona" else "Sin probar"
-
-
-def estado_tras_editor(estado: str | None, resultado: str) -> tuple[str | None, bool]:
-    """Estado tras registrar una prueba en el editor (None = no cambia) y si hay que cerrar la issue.
-
-    La prueba no espera a la revisión: `funciona` en In progress o In review solo fija el campo;
-    si la issue ya estaba fusionada (QA editor), pasa a Done. `falla` lleva a Revisiones siempre.
-    """
-    if resultado == "falla":
-        return "Revisiones", False
-    if estado == "QA editor":
-        return "Done", True
-    return None, False
+    return [i for i in issues if colisiones.ETIQUETA in etiquetas_de(i)
+            or (auditoria.ETIQUETA in etiquetas_de(i) and (aprobador or es_de(i, login)))]
 
 
 def probables_en_editor(issues: list[dict], login: str) -> list[dict]:
@@ -213,11 +94,14 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
     yo = usuario_actual()
     aprobador = yo in CONFIG["aprobadores"]
     proyecto = cargar_proyecto()
-    abiertas = [i for i in proyecto["items"].values() if i["state"] == "OPEN" and not objetos.es_objeto(i)]
+    abiertas = [i for i in proyecto["items"].values()
+                if i["state"] == "OPEN" and not objetos.es_objeto(i) and not lotes.es_lote(i)]
     por_estado = {e: sorted([i for i in abiertas if i["valores"].get("Status") == e], key=clave_orden) for e in ESTADOS}
     mias = [i for i in por_estado["In progress"] if es_de(i, yo)]
     prs = prs_abiertas()
     print(f"Tablero para {yo} ({CONFIG['miembros'].get(yo, {}).get('nombre', yo)}) · rama de integración: {INTEGRACION}\n")
+    seccion("Primero: colisiones entre PR y organización del tablero",
+            [linea(i) for i in sorted(urgentes_de_organizacion(abiertas, yo, aprobador), key=clave_orden)])
     seccion("Tu trabajo en curso", [linea(i) for i in mias])
     seccion("Puedes probar en el editor (tus tareas en curso o en revisión; no esperes a la revisión)",
             [linea(i) for i in sorted(probables_en_editor(abiertas, yo), key=clave_orden)])
@@ -232,8 +116,9 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
         seccion("Decisiones pendientes (etiqueta decision)",
                 [linea(i) for i in abiertas if any(n["name"] == "decision" for n in i["labels"]["nodes"])])
     seccion("En QA editor: fusionado, falta probar en el editor", [linea(i) for i in por_estado["QA editor"]])
+    seccion("Validadas: revisadas y probadas, esperan a que su PR se fusione en dev", [linea(i) for i in por_estado["Validada"]])
     no_cogibles = {"decision", "bloqueado"}
-    libres = [i for i in por_estado["Ready"] if not i["assignees"]["nodes"]
+    libres = [i for i in por_estado["Ready"] if not i["assignees"]["nodes"] and not bloqueos.abiertas(i)
               and not no_cogibles & {n["name"] for n in i["labels"]["nodes"]}]
     if not aprobador:
         libres.sort(key=lambda i: (ORDEN_TAMANO.get(i["valores"].get("Tamaño"), 9) > 1, clave_orden(i)))
@@ -248,16 +133,13 @@ def seccion(titulo: str, lineas: list[str]) -> None:
     print()
 
 
-def slug(texto: str) -> str:
-    ascii_ = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", ascii_.lower()).strip("-")[:40].strip("-")
-
-
 def cmd_coger(args: argparse.Namespace) -> None:
     proyecto = cargar_proyecto()
     issue = proyecto["items"].get(args.numero)
     if issue is None:
         raise ErrorTablero(f"La issue #{args.numero} no está en el tablero. Ejecuta `sync --aplicar` o créala con `nueva`.")
+    if motivo := bloqueos.motivo_para_no_coger(args.numero, issue):
+        raise ErrorTablero(motivo)
     yo = usuario_actual()
     otros = [a["login"] for a in issue["assignees"]["nodes"] if a["login"] != yo]
     if otros and not args.forzar:
@@ -279,29 +161,29 @@ def cmd_estado(args: argparse.Namespace) -> None:
     print(f"#{args.numero} → {args.estado}")
 
 
-def elegir_revisor(proyecto: dict, autor: str) -> str:
-    """Revisor cruzado según equipo.json; entre varios, el que tiene menos revisiones abiertas."""
-    candidatos = CONFIG["revisores"].get(autor) or [a for a in CONFIG["aprobadores"] if a != autor]
-    carga = {c: 0 for c in candidatos}
-    for issue in proyecto["items"].values():
-        r = issue["valores"].get("Revisor")
-        if issue["valores"].get("Status") == "In review" and r in carga:
-            carga[r] += 1
-    return min(candidatos, key=lambda c: (carga[c], candidatos.index(c)))
-
-
 def cmd_revision(args: argparse.Namespace) -> None:
-    """Manda una issue terminada a revisión cruzada: In review, revisor asignado y Revisión IA pendiente."""
+    """Manda una issue terminada a revisión cruzada: In review, revisor asignado y Revisión IA pendiente.
+
+    Si el autor no la ha probado en el editor, va con Editor = Sin probar y lo dice («Sin QA editor»);
+    si falla en el editor, no se manda.
+    """
     proyecto = cargar_proyecto()
+    try:
+        editor, aviso = flujo.preparar_revision(proyecto["items"].get(args.numero, {}).get("valores", {}))
+    except flujo.EnvioRechazado as exc:
+        raise ErrorTablero(f"#{args.numero}: {exc}") from exc
     autor = usuario_actual()
     revisor = args.revisor or elegir_revisor(proyecto, autor)
     poner_campo(proyecto, args.numero, "Status", "In review")
     poner_campo(proyecto, args.numero, "Revisor", revisor)
     poner_campo(proyecto, args.numero, "Revisión IA", "Pendiente")
+    if editor:
+        poner_campo(proyecto, args.numero, "Editor", editor)
     for pr in prs_abiertas():
         if args.numero in issues_de_pr(pr):
             gh("pr", "edit", str(pr["number"]), "--repo", REPO, "--add-reviewer", revisor)
-    comentar(args.numero, f"Lista para revisión. Revisor: @{revisor} (su Claude hace la revisión IA con `tortu-revisar`).")
+    comentar(args.numero, f"Lista para revisión. Revisor: @{revisor} (su Claude hace la revisión IA con `tortu-revisar`)."
+             + (f"\n\n{aviso}" if aviso else ""))
     print(f"#{args.numero} → In review; revisa {revisor}")
 
 
@@ -369,6 +251,8 @@ def cmd_sync(args: argparse.Namespace) -> None:
     proyecto = cargar_proyecto()
     cambios, avisos = [], []
     reconciliar_issues_sueltas(proyecto, cambios)
+    reconciliar_bloqueos(proyecto, cambios)
+    reconciliar_lotes(proyecto, cambios, avisos)
     reconciliar_prs(proyecto, cambios, avisos)
     reconciliar_estancadas(proyecto, avisos)
     avisos_validacion(proyecto, avisos)
@@ -389,23 +273,61 @@ def reconciliar_issues_sueltas(proyecto: dict, cambios: list) -> None:
         n = issue["number"]
         if n in proyecto["items"] or issue["title"] == "Parte diario del tablero":
             continue
-        if objetos.es_objeto(issue):
-            cambios.append((f"#{n} (objeto) entra al tablero sin Status ({issue['title']})",
+        if objetos.es_objeto(issue) or lotes.es_lote(issue):
+            cambios.append((f"#{n} (objeto o lote) entra al tablero sin Status ({issue['title']})",
                             lambda n=n: item_de_issue(proyecto, n)))
         else:
             cambios.append((f"#{n} entra al tablero en Backlog ({issue['title']})",
                             lambda n=n: poner_campo(proyecto, n, "Status", "Backlog")))
     for n, issue in proyecto["items"].items():
-        if objetos.es_objeto(issue):
+        if objetos.es_objeto(issue) or lotes.es_lote(issue):
             if issue["valores"].get("Status"):
-                cambios.append((f"#{n} es un objeto: se le quita el Status «{issue['valores']['Status']}»",
+                cambios.append((f"#{n} es un objeto o un lote: se le quita el Status «{issue['valores']['Status']}»",
                                 lambda n=n: vaciar_campo(proyecto, n, "Status")))
         elif issue["state"] == "CLOSED" and issue["valores"].get("Status") != "Done":
             cambios.append((f"#{n} cerrada → Done", lambda n=n: poner_campo(proyecto, n, "Status", "Done")))
 
 
+def reconciliar_bloqueos(proyecto: dict, cambios: list) -> None:
+    """Bloqueadas cuyas dependencias ya están todas cerradas: pasan a Ready y pierden `bloqueado`."""
+    for n, issue in proyecto["items"].items():
+        if issue["state"] == "OPEN" and bloqueos.desbloquea(issue):
+            cerradas = ", ".join(f"#{b['number']}" for b in bloqueos.bloqueantes(issue))
+            cambios.append((f"#{n} → Ready (ya están cerradas {cerradas})", lambda n=n: desbloquear(proyecto, n)))
+
+
+def reconciliar_lotes(proyecto: dict, cambios: list, avisos: list) -> None:
+    """Lotes abiertos: miembros listos → Validada; con la PR del lote en dev y todos cerrados, se cierra el lote."""
+    fusionadas = prs_fusionadas()
+    for n, issue in proyecto["items"].items():
+        if issue["state"] != "OPEN" or objetos.es_objeto(issue) or lotes.es_lote(issue) or not lotes.lotes_de(issue):
+            continue
+        destino, _ = flujo.estado_objetivo(issue["valores"].get("Status"), issue["valores"], False, en_lote=True)
+        if destino == "Validada" and issue["valores"].get("Status") != "Validada":
+            cambios.append((f"#{n} → Validada (aprobada y probada; espera al resto de su lote)",
+                            lambda n=n: poner_campo(proyecto, n, "Status", "Validada")))
+    for n, lote in proyecto["items"].items():
+        if lote["state"] != "OPEN" or not lotes.es_lote(lote):
+            continue
+        miembros = [b for b in (lote.get("blockedBy") or {}).get("nodes", [])]
+        pr = next((p["number"] for p in fusionadas if n in issues_de_pr(p) and p["baseRefName"] == INTEGRACION), None)
+        if pr is None or any(m["state"] == "OPEN" for m in miembros):
+            continue
+        if not tiene_resumen(n):
+            avisos.append(f"lote #{n} se cierra sin **Resumen** del conjunto: añádelo con `resumen {n}`")
+        cambios.append((f"lote #{n} se cierra: PR #{pr} fusionada y todos sus miembros cerrados",
+                        lambda n=n: gh("issue", "close", str(n), "--repo", REPO, "--reason", "completed")))
+
+
+def desbloquear(proyecto: dict, numero: int) -> None:
+    poner_campo(proyecto, numero, "Status", "Ready")
+    if bloqueos.ETIQUETA in etiquetas_de(proyecto["items"][numero]):
+        gh("issue", "edit", str(numero), "--repo", REPO, "--remove-label", bloqueos.ETIQUETA)
+
+
 def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
-    for pr in prs_abiertas():
+    abiertas = prs_abiertas()
+    for pr in abiertas:
         refs = issues_de_pr(pr)
         if pr["baseRefName"] != INTEGRACION:
             avisos.append(f"PR #{pr['number']} apunta a {pr['baseRefName']}, no a {INTEGRACION}")
@@ -418,30 +340,61 @@ def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
             if issue and objetos.es_objeto(issue):
                 avisos.append(f"PR #{pr['number']} enlaza el objeto #{n}: debe enlazar una de sus sub-issues")
                 continue
+            if issue and lotes.es_lote(issue):
+                continue
             estado = issue.get("valores", {}).get("Status")
-            if estado in (None, "Backlog", "Ready", "In progress"):
+            if estado in (None, "Backlog", "Ready", "In progress") and issue.get("valores", {}).get("Editor") == "Falla":
+                avisos.append(f"#{n} tiene PR abierta (#{pr['number']}) pero falla en el editor: no pasa a In review")
+            elif estado in (None, "Backlog", "Ready", "In progress"):
                 cambios.append((f"#{n} → In review (PR #{pr['number']})",
                                 lambda n=n, autor=pr["author"]["login"]: mover_a_review(proyecto, n, autor)))
-    campos = "number,headRefName,body,mergedAt"
-    fusionadas = json.loads(gh("pr", "list", "--repo", REPO, "--state", "merged", "--base", INTEGRACION,
-                               "--limit", "40", "--json", campos))
-    ya_vistas: set[int] = set()  # una issue con varias PR fusionadas se mueve una sola vez
-    for pr in fusionadas:
+    reconciliar_fusiones(proyecto, abiertas, cambios, avisos)
+
+
+def reconciliar_fusiones(proyecto: dict, abiertas: list[dict], cambios: list, avisos: list) -> None:
+    """Issues con la PR fusionada en dev: Done si están revisadas y probadas; si no, el estado dice qué falta."""
+    con_pr_abierta = {n for pr in abiertas for n in issues_de_pr(pr)}
+    ya_vistas: set[int] = set()  # una issue con varias PR fusionadas se decide por la más reciente
+    for pr in prs_fusionadas():
+        if pr["baseRefName"] != INTEGRACION:
+            continue
         for n in issues_de_pr(pr) - ya_vistas:
             ya_vistas.add(n)
             issue = proyecto["items"].get(n)
-            if issue and objetos.es_objeto(issue):
+            if not issue or objetos.es_objeto(issue) or issue["state"] != "OPEN":
                 continue
-            if issue and issue["state"] == "OPEN" and issue["valores"].get("Status") not in ("QA editor", "Done"):
-                destino, cerrar = estado_tras_fusion(issue["valores"])
-                motivo = "; ya probada en el editor y aprobada: se cierra" if cerrar else ""
-                cambios.append((f"#{n} → {destino} (PR #{pr['number']} fusionada en {INTEGRACION}{motivo})",
-                                lambda n=n: aplicar_fusion(proyecto, n)))
+            actual = issue["valores"].get("Status")
+            if not flujo.mueve_por_fusion(actual, n in con_pr_abierta):
+                continue
+            valores = valores_tras_fusion(issue["valores"])
+            destino, cerrar = flujo.estado_objetivo(actual, valores, fusionada=True, en_lote=False)
+            if destino == actual and valores == issue["valores"]:
+                continue
+            if cerrar and not tiene_resumen(n):
+                avisos.append(f"#{n} se cierra sin comentario **Resumen**: añádelo con `resumen {n}`")
+            motivo = "; revisada y probada: se cierra" if cerrar else ""
+            cambios.append((f"#{n} → {destino} (PR #{pr['number']} fusionada en {INTEGRACION}{motivo})",
+                            lambda n=n: aplicar_fusion(proyecto, n)))
+
+
+def valores_tras_fusion(valores: dict) -> dict:
+    editor = flujo.editor_tras_fusion(valores)
+    return {**valores, "Editor": editor} if editor and valores.get("Editor") != editor else dict(valores)
+
+
+def tiene_resumen(numero: int) -> bool:
+    datos = json.loads(gh("issue", "view", str(numero), "--repo", REPO, "--json", "comments"))
+    return any(memoria.es_resumen(c["body"]) for c in datos["comments"])
 
 
 def mover_a_review(proyecto: dict, numero: int, autor: str) -> None:
     poner_campo(proyecto, numero, "Status", "In review")
     valores = proyecto["items"].get(numero, {}).get("valores", {})
+    editor, aviso = flujo.preparar_revision(valores)
+    if editor:
+        poner_campo(proyecto, numero, "Editor", editor)
+    if aviso:
+        comentar(numero, aviso)
     if not valores.get("Revisor"):
         poner_campo(proyecto, numero, "Revisor", elegir_revisor(proyecto, autor))
     if not valores.get("Revisión IA"):
@@ -449,22 +402,28 @@ def mover_a_review(proyecto: dict, numero: int, autor: str) -> None:
 
 
 def aplicar_fusion(proyecto: dict, numero: int) -> None:
-    """Issue cuya PR se ha fusionado en dev: Done y cerrada si ya estaba validada; si no, QA editor."""
-    valores = proyecto["items"][numero]["valores"]
-    estado, cerrar = estado_tras_fusion(valores)
-    poner_campo(proyecto, numero, "Status", estado)
-    if cerrar:
-        comentar(numero, f"Fusionada en `{INTEGRACION}` con la revisión IA aprobada y ya probada en el editor: Done.")
+    """Issue cuya PR se ha fusionado en dev: Editor sin probar si no constaba y el estado que falte."""
+    previos = proyecto["items"][numero]["valores"]
+    valores = valores_tras_fusion(previos)
+    if valores.get("Editor") != previos.get("Editor"):
+        poner_campo(proyecto, numero, "Editor", valores["Editor"])
+    estado = aplicar_estado(proyecto, numero, valores, fusionada=True)
+    if estado == "QA editor":
+        gh("issue", "edit", str(numero), "--repo", REPO, "--add-label", "qa")
+
+
+def aplicar_estado(proyecto: dict, numero: int, valores: dict, fusionada: bool, sin_pr: bool = False) -> str | None:
+    """Pone el estado que marcan las validaciones, la fusión y el lote; cierra si toca. Devuelve el estado nuevo."""
+    issue = proyecto["items"].get(numero, {})
+    actual = issue.get("valores", {}).get("Status")
+    estado, cerrar = flujo.estado_objetivo(actual, valores, fusionada, en_lote=bool(lotes.lotes_de(issue)), sin_pr=sin_pr)
+    if estado and estado != actual:
+        poner_campo(proyecto, numero, "Status", estado)
+    if cerrar and proyecto["items"].get(numero, {}).get("state") != "CLOSED":
+        motivo = "Probada en el editor" if sin_pr else f"Fusionada en `{INTEGRACION}`, revisión IA aprobada y probada en el editor"
+        comentar(numero, f"{motivo}: Done. Deja el resumen con `tablero.py resumen`.")
         gh("issue", "close", str(numero), "--repo", REPO, "--reason", "completed")
-        return
-    editor = editor_tras_fusion(valores)
-    if editor:
-        poner_campo(proyecto, numero, "Editor", editor)
-    gh("issue", "edit", str(numero), "--repo", REPO, "--add-label", "qa")
-
-
-def comentar(numero: int, texto: str) -> None:
-    gh("issue", "comment", str(numero), "--repo", REPO, "--body", texto)
+    return estado
 
 
 def cmd_ia(args: argparse.Namespace) -> None:
@@ -479,7 +438,13 @@ def cmd_ia(args: argparse.Namespace) -> None:
             poner_campo(proyecto, args.numero, "Editor", "Sin probar")
     if args.nota:
         comentar(args.numero, f"**Revisión IA ({args.revisor}): {valor}.**\n\n{args.nota}")
-    print(f"#{args.numero} Revisión IA → {valor}")
+    destino = None
+    if args.veredicto == "aprobada":
+        issue = proyecto["items"].get(args.numero, {})
+        valores = {**issue.get("valores", {}), "Revisión IA": valor}
+        destino = aplicar_estado(proyecto, args.numero, valores,
+                                 esta_fusionada(args.numero, prs_fusionadas(), prs_abiertas()))
+    print(f"#{args.numero} Revisión IA → {valor}{f'; estado: {destino}' if destino else ''}")
 
 
 def issue_para_editor(proyecto: dict, numero: int) -> dict:
@@ -495,26 +460,32 @@ def issue_para_editor(proyecto: dict, numero: int) -> dict:
 def cmd_editor(args: argparse.Namespace) -> None:
     """Registra la prueba en el editor de Unreal (PIE o Standalone) en cualquier estado de la issue.
 
-    `funciona` solo fija el campo, salvo en QA editor (ya fusionada), donde pasa a Done y se cierra.
-    `falla` la lleva a Revisiones y la reabre si estaba cerrada, con `regresion` si ya funcionaba.
+    `funciona` fija el campo (en In progress la issue ya no pasará por QA editor) y aplica la
+    regla: aprobada y en dev → Done; aprobada, miembro de un lote y sin fusionar → Validada.
+    `falla` en In progress solo lo anota (se sigue arreglando ahí); en otro estado la lleva a
+    Revisiones y la reabre si estaba cerrada, con `regresion` si ya funcionaba.
     """
     proyecto = cargar_proyecto()
     issue = issue_para_editor(proyecto, args.numero)
     if objetos.es_objeto(issue):
         raise ErrorTablero(f"#{args.numero} es un objeto: registra la prueba en su sub-issue o crea una con `nueva --objeto`.")
     previo = issue["valores"].get("Editor")
-    estado, cerrar = estado_tras_editor(issue["valores"].get("Status"), args.resultado)
     if args.resultado == "funciona":
         poner_campo(proyecto, args.numero, "Editor", "Funciona")
         comentar(args.numero, f"**Editor: funciona** ({args.como}).\n\n{args.nota or ''}".strip())
-        if estado:
-            poner_campo(proyecto, args.numero, "Status", estado)
-        if cerrar:
-            gh("issue", "close", str(args.numero), "--repo", REPO, "--reason", "completed")
-        print(f"#{args.numero} Editor → Funciona{f'; pasa a {estado} y se cierra' if cerrar else ''}")
+        valores = {**issue["valores"], "Editor": "Funciona"}
+        fusionadas, abiertas = prs_fusionadas(), prs_abiertas()
+        sin_pr = not any(args.numero in issues_de_pr(pr) for pr in fusionadas + abiertas)
+        estado = aplicar_estado(proyecto, args.numero, valores, esta_fusionada(args.numero, fusionadas, abiertas), sin_pr)
+        print(f"#{args.numero} Editor → Funciona{f'; estado: {estado}' if estado else ''}")
         return
     poner_campo(proyecto, args.numero, "Editor", "Falla")
-    poner_campo(proyecto, args.numero, "Status", estado)
+    destino = flujo.estado_tras_fallo_editor(issue["valores"].get("Status"))
+    if destino is None:
+        comentar(args.numero, f"**Editor: falla** ({args.como}), en curso.\n\n{args.nota or 'Sin detalle.'}")
+        print(f"#{args.numero} Editor → Falla; sigue en In progress hasta que funcione")
+        return
+    poner_campo(proyecto, args.numero, "Status", destino)
     poner_campo(proyecto, args.numero, "Revisión IA", "Pendiente")
     etiquetas = ["regresion"] if previo == "Funciona" or issue["state"] == "CLOSED" else []
     if issue["state"] == "CLOSED":
@@ -621,10 +592,12 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     anadir_comandos_de_flujo(sub)
     anadir_comandos_de_alta(sub)
+    control.anadir_comandos(sub)
+    control_lotes.anadir_comandos(sub)
     args = parser.parse_args()
     try:
         args.fn(args)
-    except (ErrorTablero, objetos.ErrorObjeto) as exc:
+    except (ErrorTablero, objetos.ErrorObjeto, memoria.ErrorMemoria) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     return 0

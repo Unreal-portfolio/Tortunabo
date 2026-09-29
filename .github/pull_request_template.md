@@ -1,5 +1,7 @@
 Closes #
 
+<!-- PR pequeñas y frecuentes. Un lote de varios bugs puede ir en una sola PR: una línea «Closes #n» por issue y su lote (`tablero.py lote crear`, que añade «Refs #<lote>»). -->
+
 ## Qué cambia
 
 <!-- Una o dos frases: qué hace esta rama y por qué. -->
