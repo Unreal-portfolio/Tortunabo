@@ -68,7 +68,14 @@ namespace TNBeachLayout
 	constexpr uint32 TerrainSeed = 0xB3AC4u;
 
 	// ── Salida: una fila de cuatro huevos en el linde de la selva, entre las raíces de un árbol colosal ──
+	/** Huevos por fila (columnas de la salida y del sprint). */
 	constexpr int32 NumStartSpots = 4;
+	/**
+	 * Huevos del nido (salida y sprint): dos filas de cuatro, para ocho jugadores. La segunda va StartRowSpacing detrás, cada
+	 * uno detrás de uno de la primera: el salto de los huevos (~15 m y 2 m de alto) pasa por encima de la base rota de delante
+	 * (sin colisión). Los sitios rotan cada ronda, así que nadie sale siempre detrás.
+	 */
+	constexpr int32 MaxStartEggs = NumStartSpots * 2;
 	constexpr double StartSpotX = -800.0;
 	constexpr double StartSpotSpacing = 1000.0;
 	constexpr double StartRowSpacing = 900.0;
@@ -1129,7 +1136,10 @@ namespace TNBeachLayout
 
 	// ── Salida, meta y zambullida ──
 
-	/** Sitio de salida Index (local, en el suelo, mirando al mar): 4 huevos en fila a 10 m y más filas detrás si hacen falta. */
+	/**
+	 * Sitio de salida Index (local, en el suelo, mirando al mar): 4 huevos en fila a 10 m y, del quinto al octavo, la fila de
+	 * detrás (MaxStartEggs); una tercera si hiciera falta.
+	 */
 	inline FVector StartSpot(int32 Index)
 	{
 		const int32 Slot = FMath::Max(0, Index);

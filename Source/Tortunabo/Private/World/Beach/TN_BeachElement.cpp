@@ -64,6 +64,13 @@ float ATN_BeachElement::GetNetRelevanceDistance() const
 {
 	// Lo que ocupa, con el largo de los alargados (alambre, pasos de quads): lo grande se ve desde más lejos.
 	const float Reach = GetFootprintRadius() + 0.5f * FMath::Max(0.f, Spec.Extent);
+	if (TNBeach::CategoryOf(Spec.Element) == ETNBeachCategory::Enemy)
+	{
+		// Los enemigos no duermen (se mueven y mandan su estado a 10 Hz cerca): cada cliente que los tiene cuesta. Con ocho
+		// jugadores, la zona de gaviotas (350 m antes) y los pasos de quads (450 m) iban a casi todos a la vez. Hasta 300 m,
+		// donde empieza la niebla.
+		return FMath::Clamp(EnemyMinNetRelevance + 2.f * Reach, EnemyMinNetRelevance, EnemyMaxNetRelevance);
+	}
 	return FMath::Clamp(MinNetRelevance + 3.f * Reach, MinNetRelevance, MaxNetRelevance);
 }
 

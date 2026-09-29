@@ -14,6 +14,7 @@
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "World/Beach/TN_BeachStun.h"
+#include "World/Beach/TN_RaceItemComponent.h"
 
 namespace TNShellComponentDetail
 {
@@ -111,6 +112,14 @@ void UTN_ShellComponent::ServerToggleShell_Implementation()
 	if (!TNShellLogic::CanEnterShell(Context))
 	{
 		return;
+	}
+	// En el pico del pelícano taxi (objeto de carrera) no: la bola caería desde la altura del vuelo.
+	if (const UTN_RaceItemComponent* RaceItems = UTN_RaceItemComponent::FindOn(Turtle))
+	{
+		if (RaceItems->IsRiding())
+		{
+			return;
+		}
 	}
 
 	ShellEnteredServerTime = Now;
@@ -466,7 +475,11 @@ void UTN_ShellComponent::ApplyBodyLocalState(bool bOn)
 		{
 			Move->StopMovementImmediately();
 			Move->DisableMovement();
-			SavedSmoothingMode = static_cast<uint8>(Move->NetworkSmoothingMode);
+			// Si ya lo tenía apagado otro (el ragdoll del derribo, un enemigo que la sujetaba o el panzazo, cuya vuelta llega a
+			// este cliente después que la bola), se guarda el de siempre de la tortuga: si no, al salir de la bola se quedaba
+			// sin suavizado y se veía a saltitos el resto de la ronda.
+			const ENetworkSmoothingMode Current = Move->NetworkSmoothingMode;
+			SavedSmoothingMode = static_cast<uint8>(Current != ENetworkSmoothingMode::Disabled ? Current : ENetworkSmoothingMode::Exponential);
 			Move->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 			Move->SetComponentTickEnabled(false);
 		}

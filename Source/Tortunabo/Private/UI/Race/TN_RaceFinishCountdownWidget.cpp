@@ -121,19 +121,44 @@ void UTN_RaceFinishCountdownWidget::RefreshTexts()
 {
 	if (PreviewTag) { PreviewTag->SetVisibility(View.bPreview ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed); }
 	const bool bLeaderChanged = View.LeaderName != ShownLeader;
-	if (bLeaderChanged || View.State != ShownState)
+	if (bLeaderChanged || View.State != ShownState || View.Reason != ShownReason)
 	{
 		ShownLeader = View.LeaderName;
+		ShownReason = View.Reason;
 		const FText Leader = FText::FromString(View.LeaderName.IsEmpty() ? FString(TEXT("Tortuga")) : View.LeaderName);
+		// Tiempo de la ronda (o del sprint) agotado: nadie está en el agua y hay que decirlo, no «la primera ya está en el
+		// agua».
+		const bool bRoundLimit = View.Reason == ETNBeachRoundEnd::TimeLimit;
+		const bool bSprintLimit = View.Reason == ETNBeachRoundEnd::SprintTimeLimit;
 		if (BannerText)
 		{
-			BannerText->SetText(View.State == ETNBeachFinishCountdown::AllIn
-				? NSLOCTEXT("TNRace", "CountdownAllIn", "¡Todas en el agua!")
-				: NSLOCTEXT("TNRace", "CountdownBanner", "¡La primera ya está en el agua!"));
+			if (bRoundLimit || bSprintLimit)
+			{
+				BannerText->SetText(bSprintLimit
+					? NSLOCTEXT("TNRace", "CountdownSprintLimit", "¡Se acabó el tiempo del sprint!")
+					: NSLOCTEXT("TNRace", "CountdownRoundLimit", "¡Se acabó el tiempo de la ronda!"));
+			}
+			else
+			{
+				BannerText->SetText(View.State == ETNBeachFinishCountdown::AllIn
+					? NSLOCTEXT("TNRace", "CountdownAllIn", "¡Todas en el agua!")
+					: NSLOCTEXT("TNRace", "CountdownBanner", "¡La primera ya está en el agua!"));
+			}
 		}
 		if (SubText)
 		{
-			SubText->SetText(FText::Format(NSLOCTEXT("TNRace", "CountdownSub", "Concha para {0} · media concha para quien llegue antes del final"), Leader));
+			if (bRoundLimit || bSprintLimit)
+			{
+				SubText->SetText(View.LeaderName.IsEmpty()
+					? NSLOCTEXT("TNRace", "CountdownLimitNobody", "Nadie ha llegado al agua")
+					: FText::Format(bSprintLimit
+						? NSLOCTEXT("TNRace", "CountdownSprintLimitSub", "Nadie ha llegado al agua · gana {0}, la más cerca del mar")
+						: NSLOCTEXT("TNRace", "CountdownRoundLimitSub", "Nadie ha llegado al agua · concha para {0}, la más cerca del mar"), Leader));
+			}
+			else
+			{
+				SubText->SetText(FText::Format(NSLOCTEXT("TNRace", "CountdownSub", "Concha para {0} · media concha para quien llegue antes del final"), Leader));
+			}
 		}
 		if (LeaderFace) { TNRaceUI::SetImageTexture(LeaderFace, TNRaceArt::TurtleFaceFor(this, View.LeaderLook, ETNTurtleFace::Win)); }
 	}

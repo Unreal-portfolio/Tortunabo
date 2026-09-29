@@ -228,8 +228,10 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UWidget> OutCard;
 	UPROPERTY(Transient) TObjectPtr<UImage> ResultsFace;
 
-	/** Filas de la tripulación (hasta 3 compañeros) y, en la última posición de las listas de bocadillos, el tuyo. */
+	/** Filas de la tripulación (hasta 7 compañeros) y, en la última posición de las listas de bocadillos, el tuyo. */
 	UPROPERTY(Transient) TArray<TObjectPtr<UWidget>> CrewRows;
+	/** La columna de la tripulación (se junta y encoge con más de tres compañeros). */
+	UPROPERTY(Transient) TObjectPtr<UWidget> CrewBox;
 	UPROPERTY(Transient) TArray<TObjectPtr<UImage>> CrewFaces;
 	UPROPERTY(Transient) TArray<TObjectPtr<UImage>> CrewRings;
 	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> CrewNames;
@@ -241,6 +243,8 @@ private:
 	TArray<int32> CrewPlayerIds;
 	TArray<float> BubbleTime;
 	TArray<uint8> CrewFaceShown;
+	/** Disposición de la tripulación que se ve (0: hasta tres; 1: cuatro o cinco; 2: seis o siete). */
+	int32 CrewLayoutShown = -1;
 	float Time = 0.f;
 };
 

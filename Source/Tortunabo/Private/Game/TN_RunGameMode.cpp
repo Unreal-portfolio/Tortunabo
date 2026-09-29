@@ -264,12 +264,13 @@ AActor* ATN_RunGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		return Super::ChoosePlayerStart_Implementation(Player);
 	}
 
-	if (AActor* Start = TN_PickUnoccupiedPlayerStart(GetWorld(), PlayerStarts, Player))
+	// LVL_Run trae cuatro PlayerStart y caben ocho jugadores: los que sobran salen en sitios nuevos junto a los del mapa.
+	if (AActor* Start = TN_PickSpreadPlayerStart(GetWorld(), PlayerStarts, Player, DefaultPawnClass, TEXT("Run")))
 	{
 		return Start;
 	}
 
-	// Fallback: todos ocupados → devolver el primero (barajado)
+	// Fallback: todos ocupados y sin hueco cerca → devolver el primero (barajado)
 	UE_LOG(LogTortunabo, Warning, TEXT("[RunGameMode] ChoosePlayerStart: todos los PlayerStarts ocupados — usando fallback"));
 	return PlayerStarts[0];
 }
@@ -312,14 +313,17 @@ void ATN_RunGameMode::MarkPlayerFinished(APlayerController* PlayerController)
 	TNPS->bHasFinishedRun = true;
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->FinishRank = NextFinishRank++;
+	// El PlayerState replica a 5 Hz (1 Hz en reposo): los cambios de estado salen ya.
+	TNPS->ForceNetUpdate();
 
 	// ── Asignar puntos finales: RankScore + TimeBonus ────────────────────────
 	// El RaceScore actual ya contiene los puntos de ScorePickups recogidos
 	// durante la run + bonus de CollectionZones. Aquí sumamos los componentes
 	// finales: posición de llegada y bonus por velocidad.
-	static const int32 RankScoreTable[] = { 400, 300, 200, 100 };
+	// Ocho puestos (partidas de hasta ocho): del quinto en adelante bajan poco a poco hasta los 50 de siempre para el resto.
+	static const int32 RankScoreTable[] = { 400, 300, 200, 100, 80, 65, 55, 50 };
 	const int32 RankIndex = TNPS->FinishRank - 1;
-	const int32 RankScore = (RankIndex >= 0 && RankIndex < 4) ? RankScoreTable[RankIndex] : 50;
+	const int32 RankScore = (RankIndex >= 0 && RankIndex < static_cast<int32>(UE_ARRAY_COUNT(RankScoreTable))) ? RankScoreTable[RankIndex] : 50;
 
 	// TimeBonus: premia llegar antes del baseline. Capeado a 0 (no negativo).
 	const float TimeUnderBaseline = TimeBonusBaselineSeconds - TNPS->FinishTimeSeconds;
@@ -418,6 +422,7 @@ void ATN_RunGameMode::MarkPlayerDead(APlayerController* PlayerController)
 	TNPS->bIsEliminated = true;
 	TNPS->FinishTimeSeconds = GetWorld()->GetTimeSeconds() - MatchStartServerTime;
 	TNPS->DeathZoneTimeRemaining = -1.f;
+	TNPS->ForceNetUpdate();
 
 	UE_LOG(LogTortunabo, Log, TEXT("[DEATH] '%s' eliminated · time=%.2fs · score=%d"),
 		*GetNameSafe(PlayerController), TNPS->FinishTimeSeconds, TNPS->RaceScore);
@@ -606,6 +611,7 @@ void ATN_RunGameMode::EnterDBNO(APlayerController* PlayerController)
 
 	TNPS->bIsDBNO = true;
 	TNPS->DBNOBleedoutTimeRemaining = DBNOBleedoutSeconds;
+	TNPS->ForceNetUpdate();
 
 	// Apply infinite knockdown (Duration=0 means permanent — we'll clear it manually on revive/death)
 	if (ATortugaCharacter* Character = Cast<ATortugaCharacter>(PlayerController->GetPawn()))
@@ -672,6 +678,7 @@ void ATN_RunGameMode::RevivePlayer(APlayerController* PlayerController)
 	TNPS->FinishRank = 0;
 	TNPS->FinishTimeSeconds = -1.f;
 	TNPS->DeathZoneTimeRemaining = -1.f;
+	TNPS->ForceNetUpdate();
 	// NOTA: NO resetear RaceScore aquí. Revivir a un compañero a mitad de carrera NO
 	// debe borrar los puntos ya ganados (ScorePickups/zonas). El reset a 0 solo procede
 	// al ARRANCAR la run (BeginPlay/PostSeamlessTravel), no en un revive.

@@ -23,7 +23,8 @@ namespace TNBeachSeaweedDetail
 {
 	using FBuffers = TNBeachTrapKit::FBuffers;
 
-	constexpr int32 MaxCatches = 4;
+	/** Tortugas enganchadas a la vez como mucho (partidas de hasta ocho: con cuatro, la quinta pasaba sin que la cogiera). */
+	constexpr int32 MaxCatches = 8;
 	constexpr int32 WrapStrands = 5;
 	constexpr int32 WrapPoints = 9;
 	constexpr int32 NumFronds = 7;

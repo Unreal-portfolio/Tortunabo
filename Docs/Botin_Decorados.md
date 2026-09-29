@@ -68,7 +68,7 @@ dan de lo mejor para avanzar. Detalle y red en `Docs/Modo_Carrera.md`, «Cofres�
 | Duración | 1,3 s | 5 s | **5,5 s**, siempre (no hace caso de `tn.Search.Seconds`) |
 | Suerte | 70 % | siempre | **siempre** (no hace caso de `tn.Search.Luck`) |
 | Veces | una para todas | las que se quiera, con respiro | **una por ronda** para todas |
-| Qué da | un objeto (pesos de la carrera) | un objeto al azar | **dos objetos** con los pesos de la carrera **sesgados a lo mejor** y **seis conchas de puntos** (de 25 a 100: 200 o 250 puntos) |
+| Qué da | un objeto (pesos por posición de la carrera: los de atrás reciben lo que hace remontar) | un objeto al azar | **dos objetos** con los pesos de la carrera **sesgados a lo mejor** y **seis conchas de puntos** (de 25 a 100: 200 o 250 puntos) |
 | Dónde cae | a un metro largo hacia la tortuga | delante, en su tarima | un objeto hacia la tortuga; el otro y las conchas **saltan de dentro y caen en corona** alrededor |
 | Después | sin aviso ni chispas | se cierra con un «¡clonc!» | **queda abierto y vacío, con un brillo dorado apagado** |
 | Aviso | «Mantén para rebuscar» | «Mantén para rebuscar en el cofre» | «Mantén para abrir el cofre» |
@@ -78,10 +78,26 @@ dan de lo mejor para avanzar. Detalle y red en `Docs/Modo_Carrera.md`, «Cofres�
   de luz dorada que se ve de lejos y la luz de dentro que late por la rendija de la tapa.
 - **La tapa**, como la del lobby: cruje y se entreabre a tirones mientras se abre (de 12° a 48°) y cae con un «¡clonc!»
   si se suelta antes; al salir el premio salta hacia atrás con un chorro de chispas y **se queda abierta** (104°).
-- **Pesos** (`ATN_BeachChestSpot::ChestWeight`, por el uso del objeto): energía sin fin 3, barra llena 2,2, bola y
-  tinta 1,6, concha trampa 0,6; la cabezota y el tótem, nunca (en la carrera no sirven); un uso nuevo, el de la carrera.
+- **Pesos por posición** (`TNRaceItems::RollLoot` con la fuente `Chest`, `Docs/Modo_Carrera.md`, «Objetos de carrera»): los
+  dos objetos se sortean según el puesto de quien abre el cofre, entre los de siempre de `DT_Items` y los objetos de carrera
+  (turbos, pelícano taxi, protector solar, cangrejo teledirigido, gaviota justiciera, mina, nube de tormenta, disco volador,
+  silbato). Al cofre se le aplica un factor que sesga a lo mejor para avanzar (energía sin fin ×2, coco dorado ×2, pelícano
+  taxi ×1,6, barra llena ×1,6, triple coco y protector solar ×1,4) y que baja lo flojo (concha trampa ×0,6, silbato ×0,6); la
+  cabezota y el tótem, nunca (en la carrera no sirven). Antes: energía sin fin 3, barra llena 2,2, bola y tinta 1,6, concha
+  trampa 0,6 (`ATN_BeachChestSpot::ChestWeight`, que queda como respaldo).
 - Mientras una tortuga lo abre, a las demás no les sale el aviso (lo de siempre). Los premios que nadie coge se van con
   la ronda.
+
+## Objetos de carrera en el botín (playa del modo carrera)
+
+En la carrera, lo que sale de los **rebuscables**, de los **cofres** y de las **cajas de objetos** sueltas ya no es solo el
+catálogo de `DT_Items`: se suman los objetos de carrera definidos en código (coco turbo, triple coco, coco dorado, pelícano taxi,
+protector solar, cangrejo teledirigido, gaviota justiciera, mina de arena, nube de tormenta, disco volador y silbato del
+sargento) y **todos se sortean según el puesto de quien rebusca, abre o coge** (`TNRaceItems::RollLoot`): a las de atrás les
+tocan la bala (pelícano) y la estrella (protector solar); a las de delante, lo que se lanza y lo defensivo. No hay filas nuevas
+en `DT_Items` ni script del editor. Las cajas de objetos (`ATN_RaceItemBox`, un cubo de colores con una «?») sustituyen a los
+objetos fijos sueltos por la playa. Detalle, pesos y pruebas: `Docs/Modo_Carrera.md`, «Objetos de carrera»; comandos:
+`Docs/Comandos_Prueba.md`.
 
 ## Montículos de arena (playa del modo carrera)
 

@@ -900,7 +900,7 @@ void ATN_ProcSearchSpot::FinishSearch()
 	FTN_InventoryItem Item;
 	AActor* Loot = nullptr;
 	FVector Landing = From;
-	if (FMath::FRand() < GetLuck() && PickLoot(Item))
+	if (FMath::FRand() < GetLuck() && PickLoot(Item, Pawn))
 	{
 		Landing = FindLanding(Pawn, From);
 		Loot = SpawnLoot(Item, Landing);
@@ -1026,7 +1026,7 @@ float ATN_ProcSearchSpot::GetLootWeight(FName RowName, const FTN_InventoryItem& 
 	return 1.f;
 }
 
-bool ATN_ProcSearchSpot::PickLoot(FTN_InventoryItem& OutItem) const
+bool ATN_ProcSearchSpot::PickLoot(FTN_InventoryItem& OutItem, const APawn* /*Searcher*/) const
 {
 	const UDataTable* Table = LootTable.LoadSynchronous();
 	if (!Table)

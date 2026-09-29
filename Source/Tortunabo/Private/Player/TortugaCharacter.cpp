@@ -63,9 +63,11 @@ ATortugaCharacter::ATortugaCharacter(const FObjectInitializer& ObjectInitializer
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-	SetNetUpdateFrequency(60.f);
-	SetMinNetUpdateFrequency(30.f);
-	// Las tortugas de los jugadores (cuatro como mucho) llegan siempre a todas las máquinas, estén donde estén: con la
+	// 30 Hz (10 como mínimo con la frecuencia adaptativa: quieta o lejos): el movimiento de los demás va suavizado y el del
+	// dueño lo corrigen sus propios RPC. Con 60/30 Hz y ocho jugadores, el anfitrión mandaba el doble a cada cliente.
+	SetNetUpdateFrequency(30.f);
+	SetMinNetUpdateFrequency(10.f);
+	// Las tortugas de los jugadores (ocho como mucho) llegan siempre a todas las máquinas, estén donde estén: con la
 	// distancia de corte de serie (150 m), en el mapa procedural y en la playa un cliente perdía la tortuga lejana y su
 	// cara del HUD (energía, caparazón), su marca en la pista y el espectador que la sigue se quedaban congelados.
 	bAlwaysRelevant = true;
@@ -1800,22 +1802,37 @@ void ATortugaCharacter::TickHeadLook(float DeltaTime)
 		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, LocalHeadPitch,        DeltaTime, 20.f);
 		ApplyHeadLookToCabeza(SmoothedHeadYaw, SmoothedHeadPitch);
 
-		// Enviar al servidor (listen-server escribe directo; cliente dedicado usa RPC unreliable)
+		// Al servidor, en grados enteros (los demás la suavizan). El anfitrión escribe directo; un cliente, por RPC no fiable,
+		// como mucho 12 veces por segundo y solo si ha cambiado (antes, un RPC por fotograma y jugador), y una vez por segundo
+		// aunque no cambie por si se perdió el último.
+		const int8 QuantYaw   = static_cast<int8>(FMath::Clamp(FMath::RoundToInt(LocalHeadRelativeYaw), -90, 90));
+		const int8 QuantPitch = static_cast<int8>(FMath::Clamp(FMath::RoundToInt(LocalHeadPitch), -80, 80));
 		if (HasAuthority())
 		{
-			ReplicatedHeadYaw   = LocalHeadRelativeYaw;
-			ReplicatedHeadPitch = LocalHeadPitch;
+			ReplicatedHeadYaw   = QuantYaw;
+			ReplicatedHeadPitch = QuantPitch;
 		}
 		else
 		{
-			ServerUpdateHeadRotation(LocalHeadRelativeYaw, LocalHeadPitch);
+			constexpr float HeadSendRate = 12.f;
+			HeadSendCooldown -= DeltaTime;
+			HeadSinceSend += DeltaTime;
+			const bool bChanged = QuantYaw != SentHeadYaw || QuantPitch != SentHeadPitch;
+			if (HeadSendCooldown <= 0.f && (bChanged || HeadSinceSend >= 1.f))
+			{
+				HeadSendCooldown = 1.f / HeadSendRate;
+				HeadSinceSend = 0.f;
+				SentHeadYaw = QuantYaw;
+				SentHeadPitch = QuantPitch;
+				ServerUpdateHeadRotation(QuantYaw, QuantPitch);
+			}
 		}
 	}
 	else
 	{
 		// Cliente remoto: interpolar hacia los valores replicados para suavidad
-		SmoothedHeadYaw   = FMath::FInterpTo(SmoothedHeadYaw,   ReplicatedHeadYaw,   DeltaTime, 15.f);
-		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, ReplicatedHeadPitch, DeltaTime, 15.f);
+		SmoothedHeadYaw   = FMath::FInterpTo(SmoothedHeadYaw,   static_cast<float>(ReplicatedHeadYaw),   DeltaTime, 15.f);
+		SmoothedHeadPitch = FMath::FInterpTo(SmoothedHeadPitch, static_cast<float>(ReplicatedHeadPitch), DeltaTime, 15.f);
 		ApplyHeadLookToCabeza(SmoothedHeadYaw, SmoothedHeadPitch);
 	}
 }
@@ -1840,20 +1857,17 @@ void ATortugaCharacter::ApplyHeadLookToCabeza(float Yaw, float Pitch)
 	}
 }
 
-bool ATortugaCharacter::ServerUpdateHeadRotation_Validate(float Yaw, float Pitch)
+bool ATortugaCharacter::ServerUpdateHeadRotation_Validate(int8 /*Yaw*/, int8 /*Pitch*/)
 {
-	// NaN/Inf ATRAVIESAN el clamp de _Implementation (Clamp(NaN)=NaN) y romperían
-	// la animación de cabeza replicada en todos los clientes. Cota generosa ±720°:
-	// el cliente legítimo ya manda valores acotados.
-	return FMath::IsFinite(Yaw) && FMath::IsFinite(Pitch)
-		&& FMath::Abs(Yaw) <= 720.f && FMath::Abs(Pitch) <= 720.f;
+	// Grados enteros en un byte: no hay NaN ni infinitos que colar; el rango lo acota _Implementation.
+	return true;
 }
 
-void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(float Yaw, float Pitch)
+void ATortugaCharacter::ServerUpdateHeadRotation_Implementation(int8 Yaw, int8 Pitch)
 {
 	// Validar rangos en el servidor para prevenir manipulación del cliente
-	ReplicatedHeadYaw   = FMath::Clamp(Yaw,   -90.f,  90.f);
-	ReplicatedHeadPitch = FMath::Clamp(Pitch,  -80.f,  80.f);
+	ReplicatedHeadYaw   = static_cast<int8>(FMath::Clamp(static_cast<int32>(Yaw),   -90,  90));
+	ReplicatedHeadPitch = static_cast<int8>(FMath::Clamp(static_cast<int32>(Pitch), -80,  80));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

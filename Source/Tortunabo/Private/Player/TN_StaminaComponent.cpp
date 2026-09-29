@@ -36,15 +36,17 @@ void UTN_StaminaComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 
 	TickUnlimitedTimer(DeltaTime);
 	TickStamina(DeltaTime);
+	SyncStaminaShared();
 }
 
 void UTN_StaminaComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	// CurrentStamina y bIsExhausted replican a todos (no solo al owner) para que
-	// los espectadores vean la stamina real del jugador que están mirando.
-	DOREPLIFETIME(UTN_StaminaComponent, CurrentStamina);
+	// La stamina exacta, solo al dueño; los demás (espectadores que la miran, las caras del HUD y el foley) la reciben en un
+	// byte que solo se manda al cambiar (StaminaShared). bIsExhausted, a todos.
+	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, CurrentStamina, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, StaminaShared, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bIsSprinting, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bSprintRequested, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UTN_StaminaComponent, bUnlimitedStamina, COND_OwnerOnly);
@@ -54,10 +56,14 @@ void UTN_StaminaComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 
 void UTN_StaminaComponent::SetSprintRequested(bool bRequested)
 {
+	const bool bChanged = bRequested != bSprintRequested;
 	bSprintRequested = bRequested;
 	RecomputeSprintState();
 
-	if (GetOwner() && !GetOwner()->HasAuthority())
+	// Al servidor solo cuando cambia: el personaje lo pide en cada fotograma mientras se mueve (RefreshSprintRequest) y un
+	// RPC fiable por fotograma y jugador llenaba el búfer de fiables del cliente. Si el servidor lo cambia por su cuenta (al
+	// meterse en el caparazón), la réplica (solo al dueño) lo trae aquí y la siguiente petición vuelve a salir.
+	if (bChanged && GetOwner() && !GetOwner()->HasAuthority())
 	{
 		ServerSetSprintRequested(bRequested);
 	}
@@ -146,6 +152,21 @@ float UTN_StaminaComponent::GetEffectiveMaxStamina() const
 void UTN_StaminaComponent::OnRep_IsSprinting()
 {
 	ApplyMovementSpeed();
+}
+
+void UTN_StaminaComponent::SyncStaminaShared()
+{
+	const float Fraction = FMath::Clamp(CurrentStamina / FMath::Max(1.f, MaxStamina), 0.f, 1.f);
+	const uint8 Byte = static_cast<uint8>(FMath::RoundToInt(Fraction * 255.f));
+	if (Byte != StaminaShared)
+	{
+		StaminaShared = Byte;
+	}
+}
+
+void UTN_StaminaComponent::OnRep_StaminaShared()
+{
+	CurrentStamina = StaminaShared / 255.f * MaxStamina;
 }
 
 void UTN_StaminaComponent::OnRep_UnlimitedStamina()
@@ -286,6 +307,11 @@ void UTN_StaminaComponent::ApplyMovementSpeed() const
 			{
 				BaseSpeed *= PostBoostSpeedMultiplier;
 			}
+			if (RaceSpeedMultiplier > 1.0f)
+			{
+				// Turbo de carrera: al menos la velocidad de correr, por el multiplicador (sin la penalización de después).
+				BaseSpeed = FMath::Max(BaseSpeed, SprintSpeed) * RaceSpeedMultiplier;
+			}
 			Movement->MaxWalkSpeed = FMath::Min(BaseSpeed, ActiveSpeedCap);
 		}
 	}
@@ -300,6 +326,32 @@ void UTN_StaminaComponent::SetSpeedCap(float Cap)
 void UTN_StaminaComponent::ClearSpeedCap()
 {
 	ActiveSpeedCap = TNumericLimits<float>::Max();
+	ApplyMovementSpeed();
+}
+
+void UTN_StaminaComponent::SetRaceSpeedMultiplier(float Multiplier)
+{
+	const float NewMultiplier = FMath::Clamp(Multiplier, 1.0f, 4.0f);
+	if (FMath::IsNearlyEqual(NewMultiplier, RaceSpeedMultiplier))
+	{
+		return;
+	}
+	if (const ACharacter* Character = Cast<ACharacter>(GetOwner()))
+	{
+		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
+		{
+			// La aceleración sube con la velocidad (el doble de rápido: el triple de aceleración) para que el empujón del
+			// turbo sea casi inmediato; al acabar vuelve la de antes.
+			if (RaceSpeedMultiplier <= 1.0f + KINDA_SMALL_NUMBER)
+			{
+				RaceBaseAcceleration = Movement->MaxAcceleration;
+			}
+			Movement->MaxAcceleration = NewMultiplier > 1.0f
+				? RaceBaseAcceleration * (1.0f + (NewMultiplier - 1.0f) * 2.0f)
+				: RaceBaseAcceleration;
+		}
+	}
+	RaceSpeedMultiplier = NewMultiplier;
 	ApplyMovementSpeed();
 }
 

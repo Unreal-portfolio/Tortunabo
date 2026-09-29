@@ -130,6 +130,29 @@ necesita espera a que esté lista.
 | `TN.Beach.BuildBudgetMs 6` | Milisegundos por fotograma para montar la ronda (asientos, decorado local y actores). |
 | `TN.Beach.AsyncBuild 0` | Monta la ronda entera en un fotograma, como antes (para comparar); `1` vuelve a por partes. |
 
+## Objetos de carrera (tipo Mario Kart)
+
+Se escriben en la ventana del anfitrión (o de un cliente del PIE: actúan en el mundo del servidor). Los objetos se llaman por
+su nombre en inglés, en español o por su número: `Coconut`/`coco`, `TripleCoconut3`/`triple`, `GoldenCoconut`/`dorado`,
+`PelicanTaxi`/`pelicano`/`taxi`, `Sunscreen`/`protector`/`estrella`, `HomingCrab`/`cangrejo`, `GullStrike`/`gaviota`,
+`SandMine`/`mina`, `StormCloud`/`nube`/`rayo`, `Frisbee`/`disco`, `Whistle`/`silbato`. `TN.Race.Item list` enseña todos.
+Para usarlos, la tecla de siempre de usar el objeto de la mano (E si no hay nada que coger cerca).
+
+| Comando | Qué hace |
+|---|---|
+| `TN.Race.Item <objeto\|list> [jugador=0]` | Da ese objeto a la tortuga (a la mano; si la mochila está llena, sustituye lo de la mano). |
+| `TN.Race.ItemUse <objeto> [jugador=0]` | Se lo da y lo usa en el acto (para ver el efecto sin más). Si no se puede usar (sin nadie a quien apuntar, sin sitio...), suena el «nop». |
+| `TN.Race.ItemBox [n=1]` / `TN.Race.ItemBox clear` | `n` cajas de objetos en fila delante de ti; `clear` quita las puestas así. |
+| `TN.Race.ItemRank [jugador=0]` | Puesto en la carrera y peso de cada objeto de carrera para ese puesto (rebuscar, caja y cofre). |
+| `TN.Race.Boost [segundos=3] [multiplicador=2] [jugador=0]` | Turbo sin gastar objeto. |
+| `TN.Race.Star [segundos=8] [jugador=0]` | Protector solar sin gastar objeto. |
+| `TN.Race.ItemClear` | Quita lo lanzado (cangrejos, minas, discos, gaviotas, nubes, pelícanos) y cancela los efectos de todas las tortugas. |
+
+Pruebas con una sola tortuga: `TN.Race.ItemUse Coconut`, `Sunscreen`, `PelicanTaxi`, `SandMine`, `Frisbee`, `Whistle` (con enemigos
+cerca) y `HomingCrab` (contra el enemigo más cercano por delante). La gaviota justiciera y la nube de tormenta necesitan a otra
+tortuga: con el anfitrión y un cliente, `TN.Race.ItemUse GullStrike 1` da la gaviota al cliente y va a por quien vaya delante de él.
+Con dos jugadores, `TN.Beach.Go 200 0` y `TN.Beach.Go 100 1` colocan al anfitrión por delante para ver quién recibe qué en las cajas.
+
 ## Fantasma espectador y volver a la vida
 
 | Comando | Qué hace |
@@ -154,6 +177,11 @@ Escape en el juego y Tabulador en el editor (PIE); Start en el mando. No tiene c
 | `TN.Loading.Test.GoOnly` | Solo el «¡ADELANTE!». |
 
 ## Cooperativo (mapa procedural y lobby)
+
+Con ocho jugadores (PIE con 8 jugadores y modo «Listen server», o `-game` con ocho clientes): en el lobby, los cuatro primeros
+aparecen en las `Salida_*` y del quinto al octavo, junto a ellas (`[Lobby] Todos los PlayerStart ocupados: sitio nuevo…` en
+el log del anfitrión); ocho huevos en la pila y «Sala: 8/8»; al viajar, ocho sitios en la sala o en los huevos y, al acabar,
+los resultados con ocho filas. `TN.Proc.StartStyle 0|1` fuerza cómo se sale.
 
 | Comando | Qué hace |
 |---|---|

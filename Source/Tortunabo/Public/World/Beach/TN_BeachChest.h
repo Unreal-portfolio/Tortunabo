@@ -92,6 +92,8 @@ protected:
 	// ── ATN_ProcSearchSpot ───────────────────────────────────────────────────
 	virtual float GetLuck() const override;
 	virtual float GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const override;
+	/** El cofre da lo mejor: los objetos de carrera con los pesos del cofre, según el puesto de quien lo abre. */
+	virtual ETNRaceLootSource GetRaceLootSource() const override { return ETNRaceLootSource::Chest; }
 	virtual FVector GetLootOrigin(const APawn* Pawn) const override;
 	virtual FVector GetRummageOrigin(const APawn* Searcher) const override;
 	virtual FVector FindLanding(const APawn* Pawn, const FVector& From) const override;

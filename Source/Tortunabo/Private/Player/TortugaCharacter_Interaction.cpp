@@ -18,6 +18,7 @@
 #include "World/TN_ThrowableItemActor.h"
 #include "World/TN_ConchPickup.h"
 #include "World/TN_InkProjectile.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Game/TN_RunGameMode.h"
 #include "GameFramework/PlayerController.h"
@@ -294,6 +295,13 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 	if (EquippedItem.UseType == ETN_ItemUseType::Totem)
 	{
 		HandleUseTotem(EquippedItem);
+		return;
+	}
+
+	// ── Objetos de la carrera de la playa (turbo, pelícano taxi, protector solar...): World/Beach/TN_RaceItems.h ──
+	if (EquippedItem.UseType == ETN_ItemUseType::RaceItem)
+	{
+		TNRaceItems::ServerUse(this, EquippedItem);
 		return;
 	}
 }

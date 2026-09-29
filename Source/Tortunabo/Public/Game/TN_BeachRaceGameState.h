@@ -32,6 +32,27 @@ enum class ETNBeachFinishCountdown : uint8
 	AllIn     UMETA(DisplayName = "Todas en el agua")
 };
 
+/**
+ * Por qué se ha cerrado la ronda en curso (ATN_BeachRaceGameMode): lo enseñan el «¡TIEMPO!», su cinta y el recuento, para
+ * que nunca parezca que alguien ha llegado al agua si no es así.
+ */
+UENUM(BlueprintType)
+enum class ETNBeachRoundEnd : uint8
+{
+	/** La ronda sigue (o se prepara). */
+	None            UMETA(DisplayName = "Sin cerrar"),
+	/** La cuenta de 10 s tras la primera en el agua ha llegado a 0. */
+	Countdown       UMETA(DisplayName = "Fin de la cuenta tras la primera"),
+	/** Han llegado todas (o ya no queda nadie corriendo) antes del final de la cuenta. */
+	AllIn           UMETA(DisplayName = "Todas en el agua"),
+	/** Se ha acabado el tiempo de la ronda sin nadie en el agua: la concha es para la más cerca del mar. */
+	TimeLimit       UMETA(DisplayName = "Tiempo de la ronda agotado"),
+	/** Se ha acabado el tiempo del sprint final sin nadie en el agua: gana la finalista más cerca del mar. */
+	SprintTimeLimit UMETA(DisplayName = "Tiempo del sprint agotado"),
+	/** El sprint final se ha quedado sin rival (se han ido las demás finalistas). */
+	Forfeit         UMETA(DisplayName = "Sprint sin rival")
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBeachRacePhaseChanged);
 
 /**
@@ -88,6 +109,21 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Beach")
 	float FinishCountdownSeconds = 10.f;
 
+	/**
+	 * Hora del servidor (GetServerWorldTimeSeconds) a la que se acaba el tiempo de la ronda (o del sprint) si nadie llega al
+	 * agua; 0 = sin límite, o ya no cuenta (alguien ha llegado y manda la cuenta de 10 s, o la ronda está cerrada).
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Beach")
+	float RoundEndServerTime = 0.f;
+
+	/** Duración del tiempo de la ronda en curso (s), para la interfaz. */
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Beach")
+	float RoundTimeLimitSeconds = 0.f;
+
+	/** Por qué se ha cerrado la ronda en curso (None mientras se corre o se prepara). */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RacePhase, Category = "Beach")
+	ETNBeachRoundEnd RoundEndReason = ETNBeachRoundEnd::None;
+
 	/** La ronda en curso (o la que se prepara) es el sprint final de desempate. */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RacePhase, Category = "Beach")
 	bool bSprintFinal = false;
@@ -105,6 +141,12 @@ public:
 
 	/** Segundos que quedan de la cuenta atrás tras la primera en el agua (0 si no está contando). En cualquier máquina. */
 	float GetFinishCountdownLeft() const;
+
+	/**
+	 * Segundos que quedan del tiempo de la ronda (o del sprint) para que alguien llegue al agua; -1 si no hay límite o ya no
+	 * cuenta (alguien ha llegado, o la ronda no está en marcha). En cualquier máquina.
+	 */
+	float GetRoundTimeLeft() const;
 
 	/** Medias conchas de un jugador (0 si no es un ATN_CoopPlayerState). */
 	static int32 GetShellHalves(const APlayerState* PlayerState);

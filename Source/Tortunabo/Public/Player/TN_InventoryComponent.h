@@ -82,6 +82,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool CanReceiveItem(const FTN_InventoryItem& NewItem, bool bAllowReplaceIfFull = true) const;
 
+	/**
+	 * Servidor: cambia el objeto de la mano por NewItem sin gastarlo ni tocar lo guardado (el triple coco pasa a tener un uso
+	 * menos). false si no hay nada en la mano.
+	 */
+	bool TryReplaceEquippedItem(const FTN_InventoryItem& NewItem);
+
 	/** @brief Rota equipado ↔ guardado. RPC al servidor desde cliente. */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void RotateItems();

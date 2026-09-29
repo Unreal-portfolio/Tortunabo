@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// ATN_BeachRaceGenerator — salida con huevos: una fila de cuatro huevos en su nido de
+// ATN_BeachRaceGenerator — salida con huevos: dos filas de cuatro huevos en su nido de
 // arena (las bases y el nido van con la salida, en TN_BeachRaceGenerator_Scenery.cpp),
 // con la tortuga de cada jugador dentro durante la preparación y la cuenta atrás. Al dar
 // la salida (OpenStartEggs, del GameMode), las tapas saltan dando vueltas hacia los lados,
@@ -160,7 +160,7 @@ void ATN_BeachRaceGenerator::BuildSprintNest()
 	SprintNestMesh->ClearAllMeshSections();
 	TNProcMesh::FTNProcMeshBuffers Ring;
 	TNProcMesh::FTNProcMeshBuffers Cups;
-	for (int32 i = 0; i < TNBeachLayout::NumStartSpots; ++i)
+	for (int32 i = 0; i < TNBeachLayout::MaxStartEggs; ++i)
 	{
 		TNBeachEggs::AddNest(Ring, Cups, StartEggCup(i) + FVector(0.0, 0.0, TNBeachEggs::CupSink), i);
 	}
@@ -194,7 +194,7 @@ void ATN_BeachRaceGenerator::BuildStartEggs()
 	SprintNestRound = -1;
 	if (!IsValid(SprintNestMesh)) { SprintNestMesh = nullptr; }
 	UMaterialInterface* Mat = TNCastleKit::VertexColorMaterial();
-	for (int32 i = 0; i < TNBeachLayout::NumStartSpots; ++i)
+	for (int32 i = 0; i < TNBeachLayout::MaxStartEggs; ++i)
 	{
 		// La misma tapa que los huevos del lobby y de la salida del cooperativo, con el color de cada huevo.
 		TNProcMesh::FTNProcMeshBuffers LidBuffers;
@@ -285,8 +285,9 @@ bool ATN_BeachRaceGenerator::UpdateStartEggs()
 	{
 		UStaticMeshComponent* Lid = StartEggLids[i];
 		if (!Lid) { continue; }
-		// De fuera adentro: primero los de las puntas de la fila.
-		const int32 Order = FMath::Min(i, Num - 1 - i);
+		// De fuera adentro: primero los de las puntas de cada fila; la de detrás, un paso después que la de delante.
+		const int32 EggColumn = i % TNBeachLayout::NumStartSpots;
+		const int32 Order = FMath::Min(EggColumn, TNBeachLayout::NumStartSpots - 1 - EggColumn) + i / TNBeachLayout::NumStartSpots;
 		const double T = Elapsed - HatchStagger * Order;
 		if (T < 0.0)
 		{
@@ -341,7 +342,7 @@ void ATN_BeachRaceGenerator::LaunchTurtlesFromEggs()
 		// Los trocitos de cáscara, del color del huevo más cercano.
 		int32 Egg = 0;
 		double BestDistSq = TNumericLimits<double>::Max();
-		for (int32 i = 0; i < TNBeachLayout::NumStartSpots; ++i)
+		for (int32 i = 0; i < TNBeachLayout::MaxStartEggs; ++i)
 		{
 			const double DistSq = FVector::DistSquared2D(Local, StartEggCup(i));
 			if (DistSq < BestDistSq)

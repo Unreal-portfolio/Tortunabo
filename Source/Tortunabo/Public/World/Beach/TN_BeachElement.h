@@ -49,7 +49,8 @@ public:
 
 	/**
 	 * Distancia (cm) hasta la que un cliente tiene el elemento: de 260 m a 450 m según lo que ocupa (huella y largo); la
-	 * niebla empieza a los 300 m. Más allá, el cliente no lo tiene (ni sus mallas) y no cuesta red.
+	 * niebla empieza a los 300 m. Más allá, el cliente no lo tiene (ni sus mallas) y no cuesta red. Los enemigos (que no
+	 * duermen: se mueven y mandan su estado a 10 Hz), de 200 m a 300 m, también las zonas de gaviotas y los pasos de quads.
 	 */
 	virtual float GetNetRelevanceDistance() const;
 
@@ -66,6 +67,9 @@ public:
 	/** Relevancia mínima y máxima de los elementos de la ronda (cm). */
 	static constexpr float MinNetRelevance = 26000.f;
 	static constexpr float MaxNetRelevance = 45000.f;
+	/** Relevancia mínima y máxima de los enemigos (cm): despiertos siempre, cuestan red por cada cliente que los tiene. */
+	static constexpr float EnemyMinNetRelevance = 20000.f;
+	static constexpr float EnemyMaxNetRelevance = 30000.f;
 
 	/** Frecuencia de réplica como mucho (Hz) de lo que duerme: despierto, cada cambio va con ForceNetUpdate. */
 	static constexpr float DormantNetFrequency = 2.f;

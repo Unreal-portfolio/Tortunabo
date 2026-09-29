@@ -973,8 +973,8 @@ void ATN_BeachChestSpot::SpawnPrizes(const APawn* Opener)
 		if (bItem)
 		{
 			FTN_InventoryItem Item;
-			if (Table && ATN_ProcSearchSpot::PickCatalogItem(Table, [](FName RowName, const FTN_InventoryItem& Row) { return ChestWeight(RowName, Row); }, Item)
-				&& Item.PickupActorClass)
+			// El objeto de más, sorteado según el puesto de quien abre el cofre (pesos del cofre: lo mejor para avanzar).
+			if (TNRaceItems::RollLoot(Opener, ETNRaceLootSource::Chest, Table, Item) && Item.PickupActorClass)
 			{
 				Landing = Ground + FVector(0.0, 0.0, 5.0);
 				FActorSpawnParameters Params;

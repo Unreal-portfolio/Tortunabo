@@ -204,7 +204,11 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerDrop();
 
-	UFUNCTION(Server, Unreliable)
+	/**
+	 * Forcejeo de la llevada. Fiable: solo se manda al cambiar (SetStruggleInput), así que uno perdido dejaba al servidor
+	 * con el estado viejo para siempre.
+	 */
+	UFUNCTION(Server, Reliable)
 	void ServerSetStruggling(bool bInStruggling);
 
 	/** En el dueño del lanzado: mismo impulso que en el servidor. */

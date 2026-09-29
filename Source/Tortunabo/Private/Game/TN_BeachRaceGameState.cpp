@@ -17,6 +17,19 @@ void ATN_BeachRaceGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 	DOREPLIFETIME(ATN_BeachRaceGameState, FinishCountdownSeconds);
 	DOREPLIFETIME(ATN_BeachRaceGameState, bSprintFinal);
 	DOREPLIFETIME(ATN_BeachRaceGameState, SprintFinalists);
+	DOREPLIFETIME(ATN_BeachRaceGameState, RoundEndServerTime);
+	DOREPLIFETIME(ATN_BeachRaceGameState, RoundTimeLimitSeconds);
+	DOREPLIFETIME(ATN_BeachRaceGameState, RoundEndReason);
+}
+
+float ATN_BeachRaceGameState::GetRoundTimeLeft() const
+{
+	if (RoundEndServerTime <= 0.f || RacePhase != ETNBeachRacePhase::Racing || FinishCountdown != ETNBeachFinishCountdown::None)
+	{
+		return -1.f;
+	}
+	const double Left = static_cast<double>(RoundEndServerTime) - GetServerWorldTimeSeconds();
+	return static_cast<float>(FMath::Clamp(Left, 0.0, static_cast<double>(FMath::Max(1.f, RoundTimeLimitSeconds))));
 }
 
 float ATN_BeachRaceGameState::GetFinishCountdownLeft() const

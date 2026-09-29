@@ -424,7 +424,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		// ── Downsampling con box filter (anti-aliasing) ───────────────────
 		// Promedia DSFactor muestras antes de decimar → evita el efecto "lata"
 		// que produce la decimación simple (nth-sample sin filtro pasa-bajos).
-		// Factor=2 → 48kHz a 24kHz. Packet size drops to 1/2.
+		// Factor=3 (de serie) → 48kHz a 16kHz: el paquete, a 1/3.
 		const int32 DSFactor = FMath::Max(1, VoiceDownsampleFactor);
 		if (DSFactor > 1 && MonoData.Num() > DSFactor)
 		{
@@ -598,6 +598,10 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 
 	const FVector SpeakerLoc = SpeakerActor->GetActorLocation();
 
+	// Los oyentes dentro de OuterRadius y, si son más de MaxVoiceListeners, solo los más cercanos (los de lejos la oirían
+	// muy baja de todos modos).
+	TArray<TPair<double, AMP_GamePlayerController*>, TInlineAllocator<16>> Listeners;
+	const double OuterSq = FMath::Square(static_cast<double>(OuterRadius));
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		AMP_GamePlayerController* PC = Cast<AMP_GamePlayerController>(It->Get());
@@ -613,10 +617,20 @@ void UProximityVoiceComponent::Server_SendVoiceData_Implementation(const TArray<
 			continue;
 		}
 
-		if (FVector::Dist(ListenerPawn->GetActorLocation(), SpeakerLoc) <= OuterRadius)
+		const double DistSq = FVector::DistSquared(ListenerPawn->GetActorLocation(), SpeakerLoc);
+		if (DistSq <= OuterSq)
 		{
-			PC->ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor);
+			Listeners.Emplace(DistSq, PC);
 		}
+	}
+	if (MaxVoiceListeners > 0 && Listeners.Num() > MaxVoiceListeners)
+	{
+		Listeners.Sort([](const TPair<double, AMP_GamePlayerController*>& A, const TPair<double, AMP_GamePlayerController*>& B) { return A.Key < B.Key; });
+		Listeners.SetNum(MaxVoiceListeners);
+	}
+	for (const TPair<double, AMP_GamePlayerController*>& Listener : Listeners)
+	{
+		Listener.Value->ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor);
 	}
 }
 

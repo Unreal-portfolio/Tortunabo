@@ -1260,13 +1260,16 @@ protected:
 	TObjectPtr<UPostProcessComponent> InkPostProcess;
 
 	// ── Head Look replication ─────────────────────────────────────────────────
-	/** Yaw (°) de la cabeza relativo al cuerpo. Positivo = mira a la derecha. Replicado a clientes remotos. */
+	/**
+	 * Yaw (grados enteros, -90..90) de la cabeza relativo al cuerpo. Positivo = mira a la derecha. Replicado a clientes
+	 * remotos en un byte: cada uno lo suaviza (SmoothedHeadYaw), así que un grado de resolución no se nota.
+	 */
 	UPROPERTY(Replicated)
-	float ReplicatedHeadYaw   = 0.f;
+	int8 ReplicatedHeadYaw   = 0;
 
-	/** Pitch (°) de la cabeza. Positivo = mira hacia arriba. Replicado a clientes remotos. */
+	/** Pitch (grados enteros, -80..80) de la cabeza. Positivo = mira hacia arriba. Replicado a clientes remotos (un byte). */
 	UPROPERTY(Replicated)
-	float ReplicatedHeadPitch = 0.f;
+	int8 ReplicatedHeadPitch = 0;
 
 	/** Tiempo acumulado desde que comenzó el dive (para DiveMinLockDuration). */
 	float DiveLockTimer = 0.f;
@@ -1295,12 +1298,18 @@ protected:
 	float LocalHeadPitch       = 0.f;
 	float SmoothedHeadYaw      = 0.f;   ///< interpolado en clientes remotos hacia ReplicatedHead*
 	float SmoothedHeadPitch    = 0.f;
+	/** Cliente dueño: lo último que ha mandado al servidor, lo que falta para poder mandar otra vez y desde cuándo no manda. */
+	int8  SentHeadYaw          = 0;
+	int8  SentHeadPitch        = 0;
+	float HeadSendCooldown     = 0.f;
+	float HeadSinceSend        = 0.f;
 
 	void TickHeadLook(float DeltaTime);
 	void ApplyHeadLookToCabeza(float Yaw, float Pitch);
 
+	/** Cabeza del dueño al servidor: grados enteros, como mucho HeadSendRate veces por segundo y solo si cambia. */
 	UFUNCTION(Server, Unreliable, WithValidation)
-	void ServerUpdateHeadRotation(float Yaw, float Pitch);
+	void ServerUpdateHeadRotation(int8 Yaw, int8 Pitch);
 
 	void TryDive();
 

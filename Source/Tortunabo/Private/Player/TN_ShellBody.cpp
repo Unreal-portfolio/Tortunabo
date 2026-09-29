@@ -1,9 +1,11 @@
 #include "Player/TN_ShellBody.h"
 
 #include "Components/BoxComponent.h"
+#include "Engine/EngineTypes.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PhysicsVolume.h"
+#include "HAL/IConsoleManager.h"
 #include "Net/UnrealNetwork.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Physics/PhysicsInterfaceCore.h"
@@ -20,6 +22,21 @@ namespace TNShellBodyDetail
 	constexpr float MaxSecondsBeforeExit = 9.f;
 	/** Cada cuánto mira si ha caído al agua (s). */
 	constexpr float WaterCheckInterval = 0.1f;
+
+	/**
+	 * Giro máximo de la caja (grados/s, unas 2,5 vueltas por segundo). Una caja que rueda no necesita más; lo que pasaba de
+	 * ahí era un rebote contra una arista o una corrección de red, y se veía como una bola que se vuelve loca.
+	 */
+	constexpr float MaxSpinDegrees = 900.f;
+
+	/**
+	 * Velocidad máxima (cm/s) con la que se separa de lo que ya solapaba al nacer o al recolocarla (la ponen dentro de algo):
+	 * sin tope, la física la escupía a varios metros por segundo.
+	 */
+	constexpr float MaxInitialDepenetration = 300.f;
+
+	TAutoConsoleVariable<int32> CVarShellPhysicsRep(TEXT("TN.Shell.PhysicsRep"), 1,
+		TEXT("Réplica de la física de la bola del caparazón en los clientes (se aplica a las bolas nuevas): 1 = interpolación predictiva (de serie: corrige con velocidad hacia el estado del servidor extrapolado, sin tirones); 0 = la de siempre del motor (fijaba cada paso la velocidad y el 40 % del giro hacia un estado ya viejo: la bola temblaba y rebotaba en los clientes)."));
 }
 
 ATN_ShellBody::ATN_ShellBody()
@@ -43,13 +60,24 @@ ATN_ShellBody::ATN_ShellBody()
 	Box->SetCanEverAffectNavigation(false);
 	Box->CanCharacterStepUpOn = ECB_No;
 	Box->BodyInstance.SetMassOverride(38.f, true);
+	// La lineal no se toca: la tormenta calcula sus patadas con ella (ATN_BeachStorm, BallisticLaunch).
 	Box->BodyInstance.LinearDamping = 0.25f;
-	Box->BodyInstance.AngularDamping = 1.1f;
+	Box->BodyInstance.AngularDamping = 1.4f;
+	// Estable sobre el terreno de la playa: sus teselas son mallas distintas y la caja tropezaba en cada costura y en cada
+	// arista interior (saltitos y vueltas sin motivo). Caro, pero son como mucho ocho bolas.
+	Box->BodyInstance.bSmoothEdgeCollisions = true;
+	Box->BodyInstance.bOverrideMaxAngularVelocity = true;
+	Box->BodyInstance.MaxAngularVelocity = TNShellBodyDetail::MaxSpinDegrees;
 
 	bReplicates = true;
 	SetReplicatingMovement(true);
 	SetNetUpdateFrequency(30.f);
 	SetMinNetUpdateFrequency(10.f);
+	// En los clientes la caja también simula (choca con lo de su máquina) y la réplica la lleva al estado del servidor. La de
+	// siempre del motor fijaba en cada paso la velocidad y el 40 % del giro hacia un estado de hace ~50-100 ms: una caja que
+	// rueda temblaba, rebotaba contra el suelo y daba tirones en la cámara de su dueño. La interpolación predictiva extrapola
+	// el estado del servidor y corrige con velocidad (TN.Shell.PhysicsRep 0 vuelve a la de siempre para comparar).
+	SetPhysicsReplicationMode(EPhysicsReplicationMode::PredictiveInterpolation);
 	// Relevante justo cuando lo es su tortuga (es su dueña): si no, un cliente podría ver a la tortuga sin su caja.
 	bNetUseOwnerRelevancy = true;
 }
@@ -77,9 +105,16 @@ void ATN_ShellBody::BeginPlay()
 	// ejecución hay que refrescar el material de Chaos.
 	Slippery = NewObject<UPhysicalMaterial>(this, TEXT("ShellSlippery"));
 	Slippery->Friction = 0.25f;
-	Slippery->Restitution = 0.35f;
+	// Rebota algo menos que antes (0,35): contra el decorado pequeño y los bordes de las teselas botaba sin parar.
+	Slippery->Restitution = 0.2f;
 	FPhysicsInterface::UpdateMaterial(Slippery->GetPhysicsMaterial(), Slippery);
 	Box->SetPhysMaterialOverride(Slippery);
+	// Si nace (o la recolocan) metida en algo, sale despacio en vez de salir disparada.
+	Box->BodyInstance.SetMaxDepenetrationVelocity(TNShellBodyDetail::MaxInitialDepenetration);
+	if (TNShellBodyDetail::CVarShellPhysicsRep.GetValueOnGameThread() == 0)
+	{
+		SetPhysicsReplicationMode(EPhysicsReplicationMode::Default);
+	}
 
 	// En los clientes la caja puede llegar antes o después que la referencia del componente de caparazón: el que
 	// llegue segundo engancha a la tortuga.

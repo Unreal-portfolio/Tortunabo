@@ -293,6 +293,12 @@ protected:
 	/** Peso de una fila del catálogo en el sorteo (por defecto, el de LootWeights por nombre de fila o ItemId, o 1). */
 	virtual float GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const;
 
+	/**
+	 * Servidor: sortea el objeto que sale al completarse la búsqueda de Searcher (por defecto, del catálogo con GetLootWeight).
+	 * La playa lo sobrescribe: allí los pesos dependen del puesto de quien rebusca (TNRaceItems::RollLoot).
+	 */
+	virtual bool PickLoot(FTN_InventoryItem& OutItem, const APawn* Searcher) const;
+
 	/** Servidor: de dónde sale el objeto o la nube al completarse (por defecto, el borde hacia Pawn, a 40 cm). */
 	virtual FVector GetLootOrigin(const APawn* Pawn) const;
 
@@ -347,7 +353,6 @@ private:
 	void CancelSearch(const TCHAR* Why);
 	bool CanPawnSearch(const APawn* Pawn) const;
 	bool IsPawnInReach(const APawn* Pawn, float Slack) const;
-	bool PickLoot(FTN_InventoryItem& OutItem) const;
 	AActor* SpawnLoot(const FTN_InventoryItem& Item, const FVector& Where);
 	void ScheduleDormancy();
 

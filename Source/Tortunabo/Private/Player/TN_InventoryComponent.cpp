@@ -4,6 +4,7 @@
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TN_TurtleFoleyComponent.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -155,6 +156,18 @@ bool UTN_InventoryComponent::TryAddOrReplaceEquipped(const FTN_InventoryItem& Ne
 	return AddOrReplaceEquippedInternal(NewItem, bReplaceIfFull);
 }
 
+bool UTN_InventoryComponent::TryReplaceEquippedItem(const FTN_InventoryItem& NewItem)
+{
+	if (!NewItem.IsValid() || !bHasEquippedItem || !GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+	EquippedItem = NewItem;
+	TNRaceItems::ResolveVisuals(EquippedItem);
+	RefreshEquippedVisual();
+	return true;
+}
+
 bool UTN_InventoryComponent::CanReceiveItem(const FTN_InventoryItem& NewItem, bool bAllowReplaceIfFull) const
 {
 	if (!NewItem.IsValid())
@@ -245,11 +258,14 @@ void UTN_InventoryComponent::ServerRotateItems_Implementation()
 
 void UTN_InventoryComponent::OnRep_EquippedItem()
 {
+	// Los objetos de carrera llegan sin malla ni icono (se construyen en cada máquina): se los pone el ItemId.
+	TNRaceItems::ResolveVisuals(EquippedItem);
 	RefreshEquippedVisual();
 }
 
 void UTN_InventoryComponent::OnRep_StoredItem()
 {
+	TNRaceItems::ResolveVisuals(StoredItem);
 	// Lo guardado no se ve (está dentro del caparazón); si ha salido a la mano, lo cuenta RefreshEquippedVisual.
 	RefreshEquippedVisual();
 }
@@ -706,11 +722,13 @@ bool UTN_InventoryComponent::AddItemInternal(const FTN_InventoryItem& NewItem)
 		case EAddDecision::ToEquipped:
 			EquippedItem = NewItem;
 			bHasEquippedItem = true;
+			TNRaceItems::ResolveVisuals(EquippedItem);
 			RefreshEquippedVisual();
 			break;
 		case EAddDecision::ToStored:
 			StoredItem = NewItem;
 			bHasStoredItem = true;
+			TNRaceItems::ResolveVisuals(StoredItem);
 			break;
 		default:
 			return false;
@@ -741,6 +759,7 @@ bool UTN_InventoryComponent::AddOrReplaceEquippedInternal(const FTN_InventoryIte
 
 	EquippedItem = NewItem;
 	bHasEquippedItem = true;
+	TNRaceItems::ResolveVisuals(EquippedItem);
 	RefreshEquippedVisual();
 	if (ATortugaCharacter* Char = Cast<ATortugaCharacter>(GetOwner()))
 	{

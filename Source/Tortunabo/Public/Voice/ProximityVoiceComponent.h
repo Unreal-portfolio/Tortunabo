@@ -125,11 +125,19 @@ public:
 
 	/**
 	 * Factor de downsampling antes de comprimir y enviar.
-	 * 2 = 48kHz → 24kHz (reduce paquete a 1/2; box filter evita aliasing).
-	 * 1 = sin downsampling.
+	 * 3 = 48kHz → 16kHz (voz de banda ancha, como un teléfono bueno: 16 KB/s por quien habla en vez de 24; box filter evita
+	 * aliasing). Con ocho jugadores hablando a la vez el anfitrión reenviaba más de 1 MB/s.
+	 * 2 = 48kHz → 24kHz. 1 = sin downsampling.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Network", meta = (ClampMin = "1", ClampMax = "6"))
-	int32 VoiceDownsampleFactor = 2;
+	int32 VoiceDownsampleFactor = 3;
+
+	/**
+	 * Oyentes como mucho por paquete: el servidor reenvía la voz solo a los más cercanos dentro de OuterRadius (con ocho
+	 * tortugas juntas en la salida, cada una iba a las otras siete). 0 = sin tope.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Network", meta = (ClampMin = "0", ClampMax = "15"))
+	int32 MaxVoiceListeners = 4;
 
 	/**
 	 * @brief Reproduce datos de voz remotos recibidos en este componente.

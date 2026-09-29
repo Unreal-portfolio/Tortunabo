@@ -25,6 +25,10 @@ namespace TNRaceSprintDetail
 	/** Entra la primera cara y, después, una cosa (cara o «VS») cada tanto. */
 	constexpr float FirstSlamAt = 0.75f;
 	constexpr float SlamStagger = 0.42f;
+	/** Lo que tardan en entrar todas las caras y «VS» como mucho (s): con muchas finalistas, el paso se acorta. */
+	constexpr float SlamSpanMax = 3.2f;
+	/** Ancho máximo de la fila de caras (px a 1080 p): con siete u ocho finalistas se encoge para caber. */
+	constexpr float MaxRowWidth = 1820.f;
 	/** Confeti y arena que caen (por segundo) y tope de papelitos a la vez. */
 	constexpr float ConfettiRate = 26.f;
 	constexpr int32 MaxConfetti = 220;
@@ -178,9 +182,12 @@ void UTN_RaceSprintWidget::BuildFinalists()
 			SlamWidgets.Add(VsSlot);
 		}
 	}
+	// Con ocho finalistas son 15 golpes: a 0,42 s cada uno no cabían en el título (5 s). El paso se acorta para que entren
+	// todas en SlamSpanMax.
+	const float Stagger = FMath::Min(SlamStagger, SlamSpanMax / static_cast<float>(FMath::Max(1, SlamWidgets.Num() - 1)));
 	for (int32 j = 0; j < SlamWidgets.Num(); ++j)
 	{
-		SlamAt.Add(FirstSlamAt + SlamStagger * j);
+		SlamAt.Add(FirstSlamAt + Stagger * j);
 		SlamDone.Add(false);
 	}
 	// La fila, centrada algo por debajo de la mitad de la pantalla (una sola vez: el lienzo se reutiliza).
@@ -191,6 +198,13 @@ void UTN_RaceSprintWidget::BuildFinalists()
 	else if (USizeBox* RowBox = Cast<USizeBox>(FinalistRow->GetParent()))
 	{
 		RowBox->SetWidthOverride(FMath::Max(RowW, FaceSlotW));
+	}
+	// Siete finalistas ya pasan de 1920 px: la fila se encoge desde su centro para caber.
+	if (UWidget* RowRoot = FinalistRow->GetParent())
+	{
+		const float RowScale = FMath::Min(1.f, MaxRowWidth / FMath::Max(1.f, RowW));
+		RowRoot->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+		RowRoot->SetRenderScale(FVector2D(RowScale, RowScale));
 	}
 }
 

@@ -410,11 +410,11 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 			55.0, 6.0, 4.0, Fill, Ink);
 	}
 
-	// Nido de la salida: los cuatro huevos en fila (las bases de los del lobby, medio enterradas) dentro de un anillo de
-	// arena removida que se pisa; las tapas son componentes aparte (TN_BeachRaceGenerator_Start.cpp).
+	// Nido de la salida: dos filas de cuatro huevos (las bases de los del lobby, medio enterradas; ocho jugadores como mucho)
+	// dentro de un anillo de arena removida que se pisa; las tapas son componentes aparte (TN_BeachRaceGenerator_Start.cpp).
 	TNBeachScenery::FBuffers Eggs;
 	const FLinearColor Mound = TNBeachRaceKit::Hex(0xE2C58Eu);
-	for (int32 i = 0; i < TNBeachLayout::NumStartSpots; ++i)
+	for (int32 i = 0; i < TNBeachLayout::MaxStartEggs; ++i)
 	{
 		const FVector Spot = TNBeachLayout::StartSpot(i);
 		TNCastleKit::BuildEggCup(Eggs, Spot - FVector(0.0, 0.0, 8.0), TNCastleKit::Col(0xFFF3DC), TNCastleKit::Col(TNCastleKit::EggAccent(i)));

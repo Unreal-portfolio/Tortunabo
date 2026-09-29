@@ -23,6 +23,11 @@ struct FTNRaceCountdownView
 	FTN_TurtleLook LeaderLook;
 	/** Qué le toca al jugador local: 0 sigue corriendo, 1 es la primera, 2 llegó en la cuenta (media), 3 solo mira. */
 	uint8 LocalStatus = 0;
+	/**
+	 * Por qué se ha cerrado la ronda (ETNBeachRoundEnd). Con el tiempo de la ronda (o del sprint) agotado nadie está en el
+	 * agua: la cinta lo dice y LeaderName es la más cerca del mar.
+	 */
+	ETNBeachRoundEnd Reason = ETNBeachRoundEnd::None;
 	/** Vista previa por consola (TN.Race.CountdownPreview). */
 	bool bPreview = false;
 };
@@ -33,7 +38,8 @@ struct FTNRaceCountdownView
  * el número (10, 9, 8… 1) en un medallón que late, se pone dorado y luego coral y tiembla al final; debajo, lo que te
  * toca («¡Corre! Media concha si llegas», «¡Concha entera para ti!», «¡Media concha para ti!»). Suena un «¡toc!» de caja
  * china cada segundo que se acelera (cada medio segundo desde los 5 y cada cuarto desde los 2,5). Al acabar, «¡TIEMPO!»
- * (o «¡TODAS AL AGUA!») con el silbato del árbitro.
+ * (o «¡TODAS AL AGUA!») con el silbato del árbitro. Si lo que se acaba es el tiempo de la ronda sin nadie en el agua, sale
+ * directamente «¡TIEMPO!» y la cinta lo dice («¡Se acabó el tiempo de la ronda!» y para quién es la concha).
  *
  * Lo crea y lo quita UTN_RaceScreensSubsystem en Racing (ZOrder 15: encima del HUD y debajo del recuento); también la
  * vista previa TN.Race.CountdownPreview. No coge el ratón ni el teclado.
@@ -86,6 +92,7 @@ private:
 	float TimeUpAt = -1.f;
 	/** Estado y textos pintados (para no reescribirlos cada fotograma). */
 	ETNBeachFinishCountdown ShownState = ETNBeachFinishCountdown::None;
+	ETNBeachRoundEnd ShownReason = ETNBeachRoundEnd::None;
 	uint8 ShownStatus = 0xFF;
 	FString ShownLeader;
 	float DismissAt = -1.f;

@@ -6,6 +6,7 @@
 #include "World/Beach/TN_BeachTypes.h"
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "World/ProcMap/TN_ProcSearchSpot.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "TN_BeachLoot.generated.h"
 
 class AActor;
@@ -150,6 +151,16 @@ public:
 
 protected:
 	virtual float GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const override;
+
+	/**
+	 * Los pesos dependen del puesto de quien rebusca (TNRaceItems::RollLoot): a las de atrás les tocan los objetos que
+	 * hacen remontar (el pelícano taxi, el protector solar...) y a las de delante, lo que se lanza y lo defensivo. Suma los
+	 * objetos de carrera definidos en código a los de DT_Items.
+	 */
+	virtual bool PickLoot(FTN_InventoryItem& OutItem, const APawn* Searcher) const override;
+
+	/** De dónde sale lo que se encuentra aquí (un rebuscable de la playa; el cofre lo cambia por el suyo). */
+	virtual ETNRaceLootSource GetRaceLootSource() const { return ETNRaceLootSource::Search; }
 };
 
 /** Estado replicado de los puntos rebuscables de la ronda: cuántos hay y cuáles ya se han rebuscado (un bit por punto). */

@@ -54,9 +54,11 @@ public:
 	 * Servidor (ATN_ScorePickup, tras AddRaceScore): este jugador ha cogido una concha de Value puntos y tamaño Tier
 	 * (TNScoreShells::ETier) en WorldLocation. Cada máquina con pantalla hace allí el estallido (ATN_ScoreShellBurst:
 	 * destello, chispas y «¡plin!»); la del propio jugador, además, difunde OnScoreShellCollected. Va por el
-	 * PlayerState (que no se destruye ni duerme) y fiable: la concha se destruye justo después.
+	 * PlayerState (que no se destruye ni duerme, así que da igual que la concha se destruya justo después) y no fiable:
+	 * es solo lo que se ve y se oye (los puntos van en RaceScore, y el contador del HUD acaba siempre en él); con ocho
+	 * jugadores cogiendo conchas, un multicast fiable por concha llenaba los búferes de fiables.
 	 */
-	UFUNCTION(NetMulticast, Reliable)
+	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastScoreShellCollected(FVector_NetQuantize10 WorldLocation, uint8 Tier, int32 Value);
 
 	/**

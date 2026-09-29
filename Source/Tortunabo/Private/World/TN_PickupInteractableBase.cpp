@@ -1,5 +1,6 @@
 ﻿#include "World/TN_PickupInteractableBase.h"
 #include "World/TN_PickupGlowComponent.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Core/TN_Log.h"
 #include "Components/StaticMeshComponent.h"
@@ -26,6 +27,17 @@ void ATN_PickupInteractableBase::BeginPlay()
 	if (PickupGlow && Mesh)
 	{
 		PickupGlow->SetFloatTarget(Mesh, static_cast<float>(Mesh->GetRelativeLocation().Z));
+	}
+
+	// Objetos de carrera definidos en código (la caja de objetos lleva su fila en el valor por defecto de la clase, que no
+	// se replica): malla y tamaño en cada máquina a partir del ItemId.
+	if (PickupItem.UseType == ETN_ItemUseType::RaceItem)
+	{
+		TNRaceItems::ResolveVisuals(PickupItem);
+		if (Mesh && PickupItem.EquippedMesh)
+		{
+			ApplyPickupMeshAndScale();
+		}
 	}
 
 	// ── Aplicar estado "taken" desde la replicación inicial ──────────────────
@@ -68,7 +80,7 @@ void ATN_PickupInteractableBase::BeginPlay()
 		UE_LOG(LogTortunabo, Log, TEXT("[Pickup] '%s' — usando PickupItem pre-configurado (sin DataTable): ItemId=%s"),
 			*GetName(), *PickupItem.ItemId.ToString());
 	}
-	else if (HasAuthority() && !ItemDataTable)
+	else if (HasAuthority() && !ItemDataTable && IsNetStartupActor())
 	{
 		// Solo advertir si NO hay DataTable en absoluto: actor colocado en nivel sin configurar.
 		// Si DataTable está asignado pero RowName=None, es un spawn dinámico válido:
@@ -194,6 +206,8 @@ void ATN_PickupInteractableBase::OnRep_Taken()
 
 void ATN_PickupInteractableBase::OnRep_PickupItem()
 {
+	// Los objetos de carrera llegan sin malla ni icono: cada máquina los construye por el ItemId.
+	TNRaceItems::ResolveVisuals(PickupItem);
 	if (!Mesh || !PickupItem.EquippedMesh) { return; }
 
 	ApplyPickupMeshAndScale();
@@ -264,6 +278,7 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 	if (!HasAuthority() || bTaken || !NewPickupItem.IsValid()) { return; }
 
 	PickupItem = NewPickupItem;
+	TNRaceItems::ResolveVisuals(PickupItem);
 	SetNetDormancy(DORM_Awake);
 	FlushNetDormancy();
 

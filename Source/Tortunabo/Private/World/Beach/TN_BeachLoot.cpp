@@ -3,6 +3,7 @@
 #include "TN_BeachDecorKit.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/TN_PickupInteractableBase.h"
+#include "World/Beach/TN_RaceItemBox.h"
 #include "Core/TN_InventoryTypes.h"
 #include "Core/TN_Log.h"
 #include "Engine/DataTable.h"
@@ -444,6 +445,16 @@ float ATN_BeachSearchSpot::GetLootWeight(FName RowName, const FTN_InventoryItem&
 	return TNBeachLoot::RaceWeight(RowName, Row);
 }
 
+bool ATN_BeachSearchSpot::PickLoot(FTN_InventoryItem& OutItem, const APawn* Searcher) const
+{
+	// Objetos de siempre y de carrera, con el peso según el puesto de quien rebusca; si algo falla, el sorteo de siempre.
+	if (TNRaceItems::RollLoot(Searcher, GetRaceLootSource(), LootTable.LoadSynchronous(), OutItem))
+	{
+		return true;
+	}
+	return Super::PickLoot(OutItem, Searcher);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UTN_BeachLootSubsystem
 // ─────────────────────────────────────────────────────────────────────────────
@@ -871,27 +882,22 @@ int32 UTN_BeachLootSubsystem::SpawnLooseItems(ATN_BeachRaceGenerator& Gen, FRand
 		return true;
 	};
 
-	// Un objeto del catálogo (pesos de la carrera) en la arena de P, con su pickup de siempre.
+	// Una caja de objetos (el «?» de las carreras de karts) en la arena de P. Lo que da se sortea al cogerla, según el puesto
+	// de quien la coge (ATN_RaceItemBox): los de atrás reciben lo que hace remontar y los de delante, lo defensivo.
+	static_cast<void>(Catalog);
 	auto SpawnAt = [&](const FVector2D& P)
 	{
-		FTN_InventoryItem Picked;
-		if (!ATN_ProcSearchSpot::PickCatalogItem(&Catalog,
-			[](FName RowName, const FTN_InventoryItem& Row) { return TNBeachLoot::RaceWeight(RowName, Row); }, Picked))
-		{
-			return false;
-		}
 		const FVector Flat = GenXf.TransformPosition(FVector(P.X, P.Y, 0.0));
 		const FVector Where(Flat.X, Flat.Y, Gen.GetGroundHeightAt(Flat) + 3.0);
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		ATN_PickupInteractableBase* Pickup = World->SpawnActor<ATN_PickupInteractableBase>(Picked.PickupActorClass, Where,
+		ATN_RaceItemBox* Box = World->SpawnActor<ATN_RaceItemBox>(ATN_RaceItemBox::StaticClass(), Where,
 			FRotator(0.0, Rng.FRandRange(0.f, 360.f), 0.0), Params);
-		if (!Pickup)
+		if (!Box)
 		{
 			return false;
 		}
-		Pickup->InitializeFromInventoryItem(Picked);
-		SpawnedItems.Add(Pickup);
+		SpawnedItems.Add(Box);
 		Placed.Add(P);
 		return true;
 	};

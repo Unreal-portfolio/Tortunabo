@@ -27,6 +27,7 @@
 #include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TortugaCharacter.h"
 #include "World/Beach/TN_BeachSandWorm.h"
+#include "World/Beach/TN_RaceItems.h"
 
 namespace TNBeachEnemyDebug
 {
@@ -384,9 +385,10 @@ bool ATN_BeachEnemy::ServerReleaseHeldTurtle(ATortugaCharacter* Turtle, const TC
 
 bool ATN_BeachEnemy::CanBeHit(const ATortugaCharacter* Turtle)
 {
-	// Tampoco mientras la patada de la tormenta o la red de seguridad la recolocan (TNBeach::IsTurtleRelocating).
+	// Tampoco mientras la patada de la tormenta o la red de seguridad la recolocan (TNBeach::IsTurtleRelocating), ni con el
+	// protector solar puesto (objeto de carrera: los enemigos no la miran).
 	return IsValid(Turtle) && !Turtle->IsDead() && !Turtle->IsKnockedDown() && !TNBeach::IsTurtleStunned(Turtle) && !IsTurtleHeld(Turtle)
-		&& !TNBeach::IsTurtleRelocating(Turtle);
+		&& !TNBeach::IsTurtleRelocating(Turtle) && !TNRaceItems::IsInvulnerable(Turtle);
 }
 
 bool ATN_BeachEnemy::ServerKnockDown(ATortugaCharacter* Turtle, float Seconds, const FVector& Push, const FVector& Spin)
@@ -1111,6 +1113,11 @@ void UTN_BeachEnemyDizzyComponent::TickComponent(float DeltaTime, ELevelTick Tic
 // Tortuga sujeta (boca, pico...)
 // ─────────────────────────────────────────────────────────────────────────────
 
+double ATN_BeachEnemy::GetMaxHoldSeconds() const
+{
+	return TNBeachEnemyShared::MaxHoldSeconds;
+}
+
 void ATN_BeachEnemy::BeginHoldTurtle(ATortugaCharacter* Turtle)
 {
 	if (!Turtle || HeldTurtle.Get() == Turtle)
@@ -1145,7 +1152,10 @@ void ATN_BeachEnemy::BeginHoldTurtle(ATortugaCharacter* Turtle)
 		Move->DisableMovement();
 		if (Turtle->GetLocalRole() == ROLE_SimulatedProxy)
 		{
-			HeldSavedSmoothing = static_cast<uint8>(Move->NetworkSmoothingMode);
+			// Si ya lo tenía apagado otro (su bola o su ragdoll, cuya vuelta llega aquí después que el agarre), se guarda el de
+			// siempre de la tortuga: si no, al soltarla se quedaba sin suavizado (a saltitos) el resto de la ronda.
+			const ENetworkSmoothingMode Current = Move->NetworkSmoothingMode;
+			HeldSavedSmoothing = static_cast<uint8>(Current != ENetworkSmoothingMode::Disabled ? Current : ENetworkSmoothingMode::Exponential);
 			bHeldSmoothingSaved = true;
 			Move->NetworkSmoothingMode = ENetworkSmoothingMode::Disabled;
 		}
@@ -1288,7 +1298,7 @@ void ATN_BeachEnemy::PlaceHeldTurtle(const FVector& Grip, float Yaw)
 	// Seguro de tiempo: ninguna sujeción de la playa dura tanto; si pasa, algo ha fallado y se suelta ya.
 	const UWorld* World = GetWorld();
 	const double Now = World ? World->GetTimeSeconds() : 0.0;
-	if (Now - HoldStartTime > TNBeachEnemyShared::MaxHoldSeconds)
+	if (Now - HoldStartTime > GetMaxHoldSeconds())
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] %s llevaba %.1f s sujetando a %s: se suelta por seguridad."), *GetName(), Now - HoldStartTime, *GetNameSafe(Turtle));
 		HoldBlocked = Turtle;

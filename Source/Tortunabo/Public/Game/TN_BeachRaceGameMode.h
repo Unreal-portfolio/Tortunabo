@@ -189,6 +189,12 @@ public:
 	/** Mete a la tortuga Meters metros bajo la arena donde está (para ver la red de seguridad: vuelve encima en bola). */
 	void DebugBury(int32 PlayerIndex, float Meters);
 
+	/**
+	 * Deja Seconds segundos de tiempo de ronda (o de sprint), si nadie ha llegado aún al agua: para ver el reloj del último
+	 * minuto, sus avisos y el «¡TIEMPO!» sin esperar nueve minutos.
+	 */
+	void DebugSetRoundTimeLeft(float Seconds);
+
 protected:
 	virtual void OnWaitingTimeout() override;
 	virtual void UpdateRoundProgressAndMaybeFinish() override;
@@ -230,11 +236,13 @@ protected:
 	float RoundResultsSeconds = 7.f;
 
 	/**
-	 * Límite de cada ronda (unos 3 min 20 s de media con 800 m a ~4 m/s): al agotarse gana quien esté más cerca del mar. 0 =
-	 * sin límite. 6 min: 1,8 veces la media, como los 9 min de antes con 1200 m.
+	 * Límite de cada ronda: al agotarse sin nadie en el agua, «¡TIEMPO!» y la concha entera para la más cerca del mar. 0 = sin
+	 * límite. 9 min con 800 m: a ~4 m/s serían 3 min 20 s, pero con la playa llena de trampas, enemigos y la tormenta las
+	 * rondas de prueba pasaban de 6 min (el tope de antes, que cortaba rondas sin aviso). El HUD lo enseña en el último
+	 * minuto, con aviso a los 60 y a los 30 s (ATN_BeachRaceGameState::RoundEndServerTime).
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Rounds", meta = (ClampMin = "0.0"))
-	float RoundTimeLimitSeconds = 360.f;
+	float RoundTimeLimitSeconds = 540.f;
 
 	/**
 	 * Segundos que cada tortuga que llega se queda a la vista dentro del agua de meta, con su chapuzón, antes de que la
@@ -263,11 +271,11 @@ protected:
 	float SprintIntroSeconds = 5.f;
 
 	/**
-	 * Límite del sprint (media playa, unos 400 m: ~1 min 40 s a ~4 m/s): al agotarse gana la más cerca del mar. 0 = sin
-	 * límite. 3 min (eran 5 con 600 m).
+	 * Límite del sprint (media playa, unos 400 m): al agotarse gana la finalista más cerca del mar, tras su «¡TIEMPO!». 0 =
+	 * sin límite. 4 min 30 s: la mitad del de la ronda (eran 3 min).
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "0.0"))
-	float SprintTimeLimitSeconds = 180.f;
+	float SprintTimeLimitSeconds = 270.f;
 
 	/** Margen (cm) alrededor del nido del sprint en el que se quitan los elementos de la ronda (donde caen al salir). */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Sprint", meta = (ClampMin = "0.0"))
@@ -379,6 +387,10 @@ private:
 	float PrepStartTime = 0.f;
 	float PhaseEndTime = 0.f;
 	float NextSafeSampleTime = 0.f;
+	/** Hora del mundo (GetTimeSeconds) a la que se acaba el tiempo de la ronda en curso; < 0 si no cuenta. */
+	float RoundClockEndTime = -1.f;
+	/** Avisos del tiempo de la ronda ya apuntados en el registro (1: el último minuto; 2: también los 30 s). */
+	int32 RoundTimeWarningsLogged = 0;
 	/** Suelo más bajo pisado en la ronda (o la salida): referencia del vacío. */
 	double LowestGroundZ = 0.0;
 	/** Salida de la ronda (en el sprint, el centro de su nido) y hacia dónde está el mar: tormenta y progreso. */
@@ -441,11 +453,16 @@ private:
 	void SettleArrivals(bool bAll);
 	void OnFinishCountdownEnd();
 	/**
-	 * Se acaba la cuenta (o han llegado todas): «¡TIEMPO!», todas quietas y, en TimeUpHoldSeconds, el recuento. Con
-	 * bSandWorms (la cuenta ha llegado a 0), a las que no han llegado se las comen los gusanos de arena y el recuento espera
-	 * a que acabe el bocado.
+	 * Se cierra la ronda por Reason (ETNBeachRoundEnd: fin de la cuenta tras la primera, todas en el agua o tiempo de la
+	 * ronda agotado): «¡TIEMPO!» (o «¡TODAS AL AGUA!»), todas quietas y, en TimeUpHoldSeconds, el recuento. Con Countdown (la
+	 * cuenta ha llegado a 0), a las que no han llegado se las comen los gusanos de arena y el recuento espera a que acabe el
+	 * bocado. El motivo va replicado en ATN_BeachRaceGameState::RoundEndReason (lo enseñan la cinta y el recuento).
 	 */
-	void FinishTimeUp(bool bAllIn, bool bSandWorms = false);
+	void FinishTimeUp(ETNBeachRoundEnd Reason);
+	/** Deja de contar el tiempo de la ronda (alguien ha llegado, o se cierra): sin temporizador y sin reloj en el HUD. */
+	void StopRoundClock();
+	/** En el registro, el aviso del último minuto y de los 30 s del tiempo de la ronda (el HUD los enseña por su cuenta). */
+	void LogRoundTimeWarnings(float Now);
 	/** Un gusano de arena para cada tortuga que aún corría (fuera antes del caparazón, el mareo y la carga); cuántas. */
 	int32 FeedSandWorms();
 	void CloseRoundAfterTimeUp();

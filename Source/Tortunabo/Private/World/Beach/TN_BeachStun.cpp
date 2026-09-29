@@ -1,5 +1,6 @@
 #include "World/Beach/TN_BeachStun.h"
 #include "World/Beach/TN_BeachStunComponent.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "World/Beach/TN_BeachEnemy.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachSandWorm.h"
@@ -131,6 +132,11 @@ void TNBeach::StunTurtle(ACharacter* Turtle, float Seconds, const FVector& Launc
 			return;
 		}
 	}
+	// Protector solar puesto o volando en el pelícano taxi (objetos de la carrera): nada la aturde.
+	if (TNRaceItems::IsInvulnerable(Turtle))
+	{
+		return;
+	}
 	// La patada de la tormenta o la red de seguridad la están recolocando: nada la relanza hasta que acaben (ellas se
 	// reservan la tortuga después de su propia llamada).
 	if (IsTurtleRelocating(Turtle))
@@ -151,7 +157,7 @@ void TNBeach::KnockDownTurtle(ACharacter* Turtle, float Seconds, const FVector& 
 		return;
 	}
 	ATortugaCharacter* TurtleCharacter = Cast<ATortugaCharacter>(Turtle);
-	if (!TurtleCharacter || TurtleCharacter->IsDead() || IsTurtleRelocating(Turtle))
+	if (!TurtleCharacter || TurtleCharacter->IsDead() || IsTurtleRelocating(Turtle) || TNRaceItems::IsInvulnerable(Turtle))
 	{
 		return;
 	}

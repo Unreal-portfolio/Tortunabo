@@ -10,10 +10,11 @@
 
 ATN_CoopPlayerState::ATN_CoopPlayerState()
 {
-	// Frecuencia de replicación alta para que cambios de estado (helmet, alive, DBNO)
-	// lleguen rápido a todos los clientes. Default de APlayerState es ~1-2 Hz.
-	SetNetUpdateFrequency(30.f);
-	SetMinNetUpdateFrequency(15.f);
+	// 5 Hz (1 Hz en reposo con la frecuencia adaptativa): con ocho jugadores, 30 Hz por PlayerState eran casi 1700 miradas
+	// por segundo en el anfitrión para datos que cambian poco. Lo que tiene que llegar ya (llegada, muerte, derribo, revive,
+	// conchas de la carrera, puntos) lo empuja quien lo cambia con ForceNetUpdate.
+	SetNetUpdateFrequency(5.f);
+	SetMinNetUpdateFrequency(1.f);
 }
 
 bool ATN_CoopPlayerState::CanServerSendQuickChat(float Now, float CooldownSeconds) const
@@ -185,6 +186,7 @@ void ATN_CoopPlayerState::AddRaceScore(int32 Delta)
 	}
 
 	RaceScore += Delta;
+	ForceNetUpdate();
 
 	// Listen-server: OnRep_RaceScore no llega a la máquina con autoridad (el host),
 	// así que difundimos manualmente para refrescar su propio HUD. En clientes remotos

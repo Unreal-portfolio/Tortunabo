@@ -249,12 +249,16 @@ public:
 
 	// ── Salida, meta y consultas (cualquier máquina) ────────────────────────
 
-	/** Dónde empieza el jugador PlayerIndex (4 en fila en la salida y más filas detrás), 110 cm sobre el suelo, mirando al mar. */
+	/**
+	 * Dónde empieza el jugador PlayerIndex (4 en fila en la salida y, del quinto al octavo, en la fila de huevos de detrás),
+	 * 110 cm sobre el suelo, mirando al mar.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Beach")
 	FTransform GetStartTransform(int32 PlayerIndex) const;
 
+	/** Huevos del nido de la salida (y del sprint): dos filas de cuatro (TNBeachLayout::MaxStartEggs). */
 	UFUNCTION(BlueprintPure, Category = "Beach")
-	int32 GetNumStartSpots() const { return TNBeachLayout::NumStartSpots; }
+	int32 GetNumStartSpots() const { return TNBeachLayout::MaxStartEggs; }
 
 	/**
 	 * Sitio Index del sprint de desempate: a mitad del recorrido (TNBeachLayout::SprintLineX, siempre la misma línea), en

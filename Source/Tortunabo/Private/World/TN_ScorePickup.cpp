@@ -221,10 +221,15 @@ ATN_ScorePickup::ATN_ScorePickup()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
-	bAlwaysRelevant = true;
 	// Quietas: basta con mirar su estado una vez por segundo (bActive y ScoreValue se fuerzan al cambiar). Hay cientos
-	// en el mapa procedural.
+	// en el mapa procedural y más de 200 en la playa.
 	SetNetUpdateFrequency(1.f);
+	// Relevantes a 200 m (antes, siempre y en todo el mapa: el anfitrión las miraba todas para cada cliente cada segundo) y
+	// dormidas: su estado solo cambia al cogerlas, reaparecer o cambiar de valor, y cada cambio llama a ForceNetUpdate, que
+	// las despierta y lo manda. La recogida es del servidor; el estallido va por el PlayerState.
+	bAlwaysRelevant = false;
+	SetNetCullDistanceSquared(FMath::Square(20000.f));
+	NetDormancy = DORM_DormantAll;
 
 	PickupMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PickupMesh"));
 	SetRootComponent(PickupMesh);
@@ -429,7 +434,12 @@ void ATN_ScorePickup::SetScoreValue(int32 NewValue)
 	const int32 Clamped = FMath::Max(1, NewValue);
 	if (Clamped == ScoreValue) { return; }
 	ScoreValue = Clamped;
-	if (HasActorBegunPlay()) { ApplyTierLook(); }
+	if (HasActorBegunPlay())
+	{
+		ApplyTierLook();
+		// Ya replicada y dormida: despierta del todo para mandar el valor nuevo (antes de empezar va con la primera réplica).
+		if (HasAuthority() && NetDormancy > DORM_Awake) { SetNetDormancy(DORM_Awake); }
+	}
 	ForceNetUpdate();
 }
 
@@ -474,6 +484,7 @@ void ATN_ScorePickup::OnSphereOverlap(UPrimitiveComponent* OverlappedComp, AActo
 
 	if (bRespawn)
 	{
+		if (NetDormancy > DORM_Awake) { SetNetDormancy(DORM_Awake); }
 		ForceNetUpdate();
 		FTimerDelegate RespawnDelegate;
 		RespawnDelegate.BindUObject(this, &ATN_ScorePickup::Respawn);
@@ -494,6 +505,8 @@ void ATN_ScorePickup::Respawn()
 {
 	bActive = true;
 	ApplyActiveState(true);
+	// Dormida desde que se cogió: despierta del todo para mandar que vuelve (solo las que reaparecen, en el cooperativo).
+	if (NetDormancy > DORM_Awake) { SetNetDormancy(DORM_Awake); }
 	ForceNetUpdate();
 }
 

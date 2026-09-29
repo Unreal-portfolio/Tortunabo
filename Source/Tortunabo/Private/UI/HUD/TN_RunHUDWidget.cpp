@@ -78,8 +78,11 @@ namespace TNRunHUDDetail
 	constexpr uint8 GhostFaceShown = 0xFE;
 
 	const FLinearColor NavyText = TNHUDArt::Ink;
+	/** Compañeros como mucho en la tripulación y en la pista (partidas de hasta ocho). */
+	constexpr int32 MaxMates = 7;
 	/** Color de cada compañero: su caparazón en la pista y el aro de su cara en la tripulación. */
-	const FLinearColor MateColors[3] = { TNHUDArt::Hex(0x59C96B), TNHUDArt::Hex(0xFFC23D), TNHUDArt::Hex(0xB07CFF) };
+	const FLinearColor MateColors[MaxMates] = { TNHUDArt::Hex(0x59C96B), TNHUDArt::Hex(0xFFC23D), TNHUDArt::Hex(0xB07CFF),
+		TNHUDArt::Hex(0x4FC3F7), TNHUDArt::Hex(0xFF8A65), TNHUDArt::Hex(0xF48FB1), TNHUDArt::Hex(0xC5E1A5) };
 	/** Márgenes de caja (fracción de la textura) de los carteles con arte de TNHUDArt. */
 	const FMargin CardMargin(0.16f, 0.2f, 0.16f, 0.34f);
 	const FMargin RibbonMargin(0.14f, 0.f, 0.14f, 0.f);
@@ -1208,7 +1211,7 @@ void UTN_RunFlowHUDWidget::BuildTree()
 	// ── Tripulación (izquierda): la cara de cada compañero en un aro de su color, su nombre y sus bocadillos ──
 	{
 		UVerticalBox* Crew = Make<UVerticalBox>(Tree);
-		for (int32 i = 0; i < 3; ++i)
+		for (int32 i = 0; i < MaxMates; ++i)
 		{
 			UOverlay* Row = Make<UOverlay>(Tree);
 			UOverlay* Portrait = Make<UOverlay>(Tree);
@@ -1244,8 +1247,9 @@ void UTN_RunFlowHUDWidget::BuildTree()
 			CrewRows.Add(Row);
 			if (UVerticalBoxSlot* S = Crew->AddChildToVerticalBox(Row)) { S->SetPadding(FMargin(0.f, 34.f, 0.f, 0.f)); }
 		}
-		CrewPlayerIds.Init(INDEX_NONE, 3);
-		CrewFaceShown.Init(0xFF, 3);
+		CrewPlayerIds.Init(INDEX_NONE, MaxMates);
+		CrewFaceShown.Init(0xFF, MaxMates);
+		CrewBox = Crew;
 		Place(Canvas, Crew, FVector2D(0.f, 0.3f), FVector2D(20.f, 0.f));
 	}
 
@@ -1286,14 +1290,21 @@ void UTN_RunFlowHUDWidget::BuildTree()
 		ResultsTimeText = MakeText(Tree, TEXT("ResultsTimeText"), FText::GetEmpty(), TEXT("Regular"), 20, TNHUDArt::Foam);
 		if (UVerticalBoxSlot* S = Board->AddChildToVerticalBox(ResultsTimeText)) { S->SetHorizontalAlignment(HAlign_Center); S->SetPadding(FMargin(0.f, 2.f, 0.f, 14.f)); }
 
-		// Clasificación: cuatro filas (puesto, nombre, tiempo, puntos con su concha), alternando el fondo.
-		TObjectPtr<UTextBlock>* Cells[4][4] = {
+		// Clasificación: una fila por jugador que cabe (puesto, nombre, tiempo, puntos con su concha), alternando el fondo.
+		// Las cuatro primeras se ven siempre; de la quinta a la octava, solo si hay tantos resultados (ApplyScoreboardDensity,
+		// que también las compacta).
+		TObjectPtr<UTextBlock>* Cells[MaxScoreboardRows][4] = {
 			{ &Row1RankText, &Row1NameText, &Row1TimeText, &Row1ScoreText },
 			{ &Row2RankText, &Row2NameText, &Row2TimeText, &Row2ScoreText },
 			{ &Row3RankText, &Row3NameText, &Row3TimeText, &Row3ScoreText },
-			{ &Row4RankText, &Row4NameText, &Row4TimeText, &Row4ScoreText } };
+			{ &Row4RankText, &Row4NameText, &Row4TimeText, &Row4ScoreText },
+			{ &Row5RankText, &Row5NameText, &Row5TimeText, &Row5ScoreText },
+			{ &Row6RankText, &Row6NameText, &Row6TimeText, &Row6ScoreText },
+			{ &Row7RankText, &Row7NameText, &Row7TimeText, &Row7ScoreText },
+			{ &Row8RankText, &Row8NameText, &Row8TimeText, &Row8ScoreText } };
 		const float Widths[4] = { 60.f, 270.f, 130.f, 90.f };
-		for (int32 r = 0; r < 4; ++r)
+		ScoreboardRowPanels.Reset();
+		for (int32 r = 0; r < MaxScoreboardRows; ++r)
 		{
 			UHorizontalBox* Line = Make<UHorizontalBox>(Tree);
 			for (int32 c = 0; c < 4; ++c)
@@ -1311,6 +1322,8 @@ void UTN_RunFlowHUDWidget::BuildTree()
 			UBorder* Stripe = Make<UBorder>(Tree);
 			StylePanel(Stripe, (r % 2) == 0 ? TNHUDArt::Hex(0x62D2EA, 0.1f) : FLinearColor::Transparent, 12.f, FMargin(14.f, 5.f), FLinearColor::Transparent, 0.f);
 			Stripe->SetContent(Line);
+			if (r >= 4) { Stripe->SetVisibility(ESlateVisibility::Collapsed); }
+			ScoreboardRowPanels.Add(Stripe);
 			if (UVerticalBoxSlot* S = Board->AddChildToVerticalBox(Stripe)) { S->SetPadding(FMargin(0.f, 1.f)); }
 		}
 		ResultsCountdown = MakeText(Tree, TEXT("ResultsCountdown"), FText::GetEmpty(), TEXT("Regular"), 17, TNHUDArt::Foam);
@@ -1414,6 +1427,30 @@ void UTN_RunFlowHUDWidget::TickCrew(float DeltaTime)
 		CrewTalk[i]->SetVisibility(bTalking ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 		if (bTalking) { AnimateTalkBars(CrewTalkBars, i * 4, Time, i * 2.1f); }
 		CrewFaces[i]->SetRenderScale(FVector2D(bTalking ? 1.f + 0.06f * FMath::Abs(FMath::Sin(Time * 17.f + i)) : 1.f));
+	}
+
+	// Con más de tres compañeros (hasta siete), las filas se juntan y, con seis o siete, se encogen un poco: caben entre el
+	// marcador de arriba y tu distintivo de abajo.
+	int32 VisibleRows = 0;
+	for (const TObjectPtr<UWidget>& CrewRow : CrewRows)
+	{
+		if (CrewRow && CrewRow->GetVisibility() != ESlateVisibility::Collapsed) { ++VisibleRows; }
+	}
+	const int32 Layout = VisibleRows <= 3 ? 0 : (VisibleRows <= 5 ? 1 : 2);
+	if (Layout != CrewLayoutShown)
+	{
+		CrewLayoutShown = Layout;
+		const float Gap = Layout == 0 ? 34.f : (Layout == 1 ? 12.f : 4.f);
+		for (const TObjectPtr<UWidget>& CrewRow : CrewRows)
+		{
+			if (UVerticalBoxSlot* RowSlot = CrewRow ? Cast<UVerticalBoxSlot>(CrewRow->Slot) : nullptr) { RowSlot->SetPadding(FMargin(0.f, Gap, 0.f, 0.f)); }
+		}
+		if (CrewBox)
+		{
+			const float Scale = Layout == 2 ? 0.88f : 1.f;
+			CrewBox->SetRenderTransformPivot(FVector2D(0.f, 0.3f));
+			CrewBox->SetRenderScale(FVector2D(Scale, Scale));
+		}
 	}
 
 	// Bocadillos del chat: entran con un rebote y se van encogiendo al final.

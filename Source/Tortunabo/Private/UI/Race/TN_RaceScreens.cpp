@@ -19,6 +19,7 @@
 namespace TNRaceScreensDetail
 {
 	/** Capas de la pantalla: por encima del HUD (4, 5 y 10) y por debajo de las ruedas (30) y los menús (40). */
+	constexpr int32 RoundClockZOrder = 14;
 	constexpr int32 CountdownZOrder = 15;
 	constexpr int32 TallyZOrder = 20;
 	constexpr int32 ChampionZOrder = 21;
@@ -37,6 +38,9 @@ namespace TNRaceScreensDetail
 	constexpr float PreviewSprintSeconds = 7.f;
 	constexpr float PreviewCountdownSeconds = 10.f;
 	constexpr float PreviewTimeUpSeconds = 1.8f;
+
+	/** El reloj de la ronda sale cuando quedan estos segundos (el último minuto; con medio segundo de margen por la red). */
+	constexpr float RoundClockShowSeconds = 60.5f;
 
 	/** Las dos medias conchas del recuento (para dibujarlas de antemano con el resto del arte). */
 	UTexture2D* HalfShellA() { return TNRaceArt::HalfShell(false); }
@@ -87,22 +91,32 @@ namespace TNRaceScreensDetail
 		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StartCountdownPreview(); }
 	}
 
+	void RunClockPreview(const TArray<FString>& Args, UWorld* World)
+	{
+		const float Start = Args.IsValidIndex(0) ? FCString::Atof(*Args[0]) : 62.f;
+		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StartClockPreview(Start); }
+	}
+
 	void RunPreviewOff(UWorld* World)
 	{
 		if (UTN_RaceScreensSubsystem* Screens = ScreensOf(World)) { Screens->StopPreview(); }
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs CmdTally(TEXT("TN.Race.Tally"),
-		TEXT("Vista previa del recuento de conchas: TN.Race.Tally [ganador 0-5, -1 = nadie] [jugadores 1-6] [1 = la concha que corona y luego el podio] [medias conchas = 1]."),
+		TEXT("Vista previa del recuento de conchas: TN.Race.Tally [ganador 0-7, -1 = nadie] [jugadores 1-8] [1 = la concha que corona y luego el podio] [medias conchas = 1]."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunTally));
 
 	FAutoConsoleCommandWithWorldAndArgs CmdSprintPreview(TEXT("TN.Race.SprintPreview"),
-		TEXT("Vista previa del título del sprint final (fanfarria, caras con «VS» y confeti): TN.Race.SprintPreview [finalistas 2-6]."),
+		TEXT("Vista previa del título del sprint final (fanfarria, caras con «VS» y confeti): TN.Race.SprintPreview [finalistas 2-8]."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunSprintPreview));
 
 	FAutoConsoleCommandWithWorld CmdCountdownPreview(TEXT("TN.Race.CountdownPreview"),
 		TEXT("Vista previa de la cuenta atrás de 10 s tras la primera tortuga en el agua (con su «¡TIEMPO!»)."),
 		FConsoleCommandWithWorldDelegate::CreateStatic(&RunCountdownPreview));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdClockPreview(TEXT("TN.Race.ClockPreview"),
+		TEXT("Vista previa del reloj del último minuto de la ronda (avisos a los 60 y a los 30 s) y del «¡TIEMPO!» sin nadie en el agua: TN.Race.ClockPreview [segundos = 62]."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RunClockPreview));
 
 	FAutoConsoleCommandWithWorldAndArgs CmdPodium(TEXT("TN.Race.Podium"),
 		TEXT("Vista previa de la pantalla del campeón con el podio animado: TN.Race.Podium [jugadores 1-3]. Cualquier botón la cierra."),
@@ -154,7 +168,7 @@ void UTN_RaceScreensSubsystem::Tick(float DeltaTime)
 	const ATN_BeachRaceGameState* State = World->GetGameState<ATN_BeachRaceGameState>();
 	if (!State)
 	{
-		if (Tally || ChampionScreen || CountdownScreen || SprintScreen) { HideAll(); }
+		if (Tally || ChampionScreen || CountdownScreen || SprintScreen || RoundClock) { HideAll(); }
 		bHasPhase = false;
 		return;
 	}
@@ -205,6 +219,7 @@ void UTN_RaceScreensSubsystem::TickMatch(float DeltaTime, APlayerController* PC,
 	}
 	PhaseClock += DeltaTime;
 	TickCountdown(PC, State);
+	TickRoundClock(PC, State);
 
 	if (Phase == ETNBeachRacePhase::RoundResults && Tally)
 	{
@@ -250,6 +265,7 @@ void UTN_RaceScreensSubsystem::TickCountdown(APlayerController* PC, const ATN_Be
 	}
 	FTNRaceCountdownView View;
 	View.State = State.FinishCountdown;
+	View.Reason = State.RoundEndReason;
 	View.SecondsLeft = State.GetFinishCountdownLeft();
 	View.TotalSeconds = State.FinishCountdownSeconds;
 	const APlayerState* Leader = State.RoundWinner.Get();
@@ -275,6 +291,36 @@ void UTN_RaceScreensSubsystem::TickCountdown(APlayerController* PC, const ATN_Be
 		View.LocalStatus = (!OwnState || OwnState->bHasFinishedRun || OwnState->IsOnlyASpectator()) ? 3 : 0;
 	}
 	CountdownScreen->SetView(View);
+}
+
+void UTN_RaceScreensSubsystem::TickRoundClock(APlayerController* PC, const ATN_BeachRaceGameState& State)
+{
+	using namespace TNRaceScreensDetail;
+	// Solo mientras el tiempo de la ronda cuenta (nadie ha llegado al agua: después manda la cuenta de 10 s) y en el último
+	// minuto; al acabarse, el «¡TIEMPO!» lo enseña la cuenta atrás con su motivo.
+	const float Left = State.GetRoundTimeLeft();
+	if (Left < 0.f || Left > RoundClockShowSeconds)
+	{
+		if (IsValid(RoundClock)) { RoundClock->Dismiss(); }
+		RoundClock = nullptr;
+		return;
+	}
+	FTNRaceRoundClockView View;
+	View.SecondsLeft = Left;
+	View.bSprint = State.bSprintFinal;
+	ShowRoundClock(PC, View);
+}
+
+void UTN_RaceScreensSubsystem::ShowRoundClock(APlayerController* PC, const FTNRaceRoundClockView& View)
+{
+	using namespace TNRaceScreensDetail;
+	if (!RoundClock || RoundClock->IsDismissing())
+	{
+		RoundClock = CreateWidget<UTN_RaceRoundClockWidget>(PC, UTN_RaceRoundClockWidget::StaticClass());
+		if (!RoundClock) { return; }
+		RoundClock->AddToViewport(RoundClockZOrder);
+	}
+	RoundClock->SetView(View);
 }
 
 void UTN_RaceScreensSubsystem::TrackWins(float DeltaTime, const ATN_BeachRaceGameState& State)
@@ -372,6 +418,7 @@ FTNRaceTallySetup UTN_RaceScreensSubsystem::BuildTally(const ATN_BeachRaceGameSt
 	const int32 Target = FMath::Max(1, State.RoundTarget);
 	Setup.Target = FMath::Max(Target, (MostHalves + 1) / 2);
 	Setup.Round = FMath::Max(1, State.CurrentRound);
+	Setup.bTimeLimit = !ChampionOnly && State.RoundEndReason == ETNBeachRoundEnd::TimeLimit;
 	DecideVerdict(Setup, Target * 2);
 	if (ChampionOnly && Setup.Rows.IsValidIndex(Setup.WinnerRow))
 	{
@@ -529,6 +576,8 @@ void UTN_RaceScreensSubsystem::HideAll()
 	CountdownScreen = nullptr;
 	if (IsValid(SprintScreen)) { SprintScreen->Dismiss(); }
 	SprintScreen = nullptr;
+	if (IsValid(RoundClock)) { RoundClock->Dismiss(); }
+	RoundClock = nullptr;
 	// La música de victoria del podio la apaga el director al cambiar el flujo (ronda nueva o viaje); la de la vista
 	// previa, StopPreview.
 	bVictoryPlaying = false;
@@ -552,10 +601,11 @@ void UTN_RaceScreensSubsystem::PlayVictory(bool bOn)
 void UTN_RaceScreensSubsystem::BuildPreviewRows(APlayerController* PC, int32 NumPlayers, TArray<FTNRaceTallyRow>& OutRows) const
 {
 	OutRows.Reset();
-	const int32 Count = FMath::Clamp(NumPlayers, 1, 6);
+	// Hasta ocho columnas (partidas de ocho: el recuento y el sprint se encogen para caber).
+	const int32 Count = FMath::Clamp(NumPlayers, 1, 8);
 	static const TCHAR* FakeNames[] = { TEXT("Coral"), TEXT("Bruma"), TEXT("Perla"), TEXT("Marea"), TEXT("Alga") };
-	// Medias conchas de mentira: una entera, media, dos, una y media, nada y dos y media.
-	static const int32 FakeHalves[] = { 2, 1, 4, 3, 0, 5 };
+	// Medias conchas de mentira: una entera, media, dos, una y media, nada, dos y media, media y una.
+	static const int32 FakeHalves[] = { 2, 1, 4, 3, 0, 5, 1, 2 };
 	const UMP_GameInstance* GI = PC ? Cast<UMP_GameInstance>(UGameplayStatics::GetGameInstance(PC)) : nullptr;
 	const TArray<FName> Skins = GI ? GI->GetCosmeticCatalog(ETNCosmeticCategory::Body) : TArray<FName>();
 	const TArray<FName> Shells = GI ? GI->GetCosmeticCatalog(ETNCosmeticCategory::Shell) : TArray<FName>();
@@ -652,7 +702,7 @@ void UTN_RaceScreensSubsystem::StartSprintPreview(int32 NumPlayers)
 	bPreview = true;
 	PreviewKind = 1;
 	PreviewClock = 0.f;
-	BuildPreviewRows(PC, FMath::Clamp(NumPlayers, 2, 6), PreviewRows);
+	BuildPreviewRows(PC, FMath::Clamp(NumPlayers, 2, 8), PreviewRows);
 	FTNRaceSprintSetup Setup;
 	Setup.Finalists = PreviewRows;
 	Setup.TieHalves = 6;
@@ -674,6 +724,19 @@ void UTN_RaceScreensSubsystem::StartCountdownPreview()
 	BuildPreviewRows(PC, 2, PreviewRows);
 	CountdownScreen = CreateWidget<UTN_RaceFinishCountdownWidget>(PC, UTN_RaceFinishCountdownWidget::StaticClass());
 	if (CountdownScreen) { CountdownScreen->AddToViewport(CountdownZOrder); }
+}
+
+void UTN_RaceScreensSubsystem::StartClockPreview(float StartSeconds)
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? TNRaceScreensDetail::FindLocalController(*World) : nullptr;
+	if (!PC) { return; }
+	StopPreview();
+	bPreview = true;
+	PreviewKind = 3;
+	PreviewClock = 0.f;
+	PreviewClockStart = FMath::Clamp(StartSeconds, 1.f, 120.f);
+	BuildPreviewRows(PC, 2, PreviewRows);
 }
 
 void UTN_RaceScreensSubsystem::StartPodiumPreview(int32 NumPlayers)
@@ -715,6 +778,46 @@ void UTN_RaceScreensSubsystem::TickPreview(float DeltaTime, APlayerController* P
 		// Título del sprint: con su cuenta de mentira y se cierra solo.
 		if (SprintScreen) { SprintScreen->SetSecondsLeft(FMath::Max(0.f, PreviewSprintSeconds - 1.f - PreviewClock)); }
 		if (PreviewClock >= PreviewSprintSeconds) { StopPreview(); }
+		return;
+	}
+	if (PreviewKind == 3)
+	{
+		// Reloj del último minuto (aparece a los 60 s) y, a 0, el «¡TIEMPO!» de la ronda sin nadie en el agua: la concha
+		// para la de la columna 1, la más cerca del mar.
+		const float Left = PreviewClockStart - PreviewClock;
+		if (Left > 0.f)
+		{
+			if (Left <= RoundClockShowSeconds)
+			{
+				FTNRaceRoundClockView View;
+				View.SecondsLeft = Left;
+				View.bPreview = true;
+				ShowRoundClock(PC, View);
+			}
+			return;
+		}
+		if (IsValid(RoundClock)) { RoundClock->Dismiss(); }
+		RoundClock = nullptr;
+		if (!CountdownScreen || CountdownScreen->IsDismissing())
+		{
+			CountdownScreen = CreateWidget<UTN_RaceFinishCountdownWidget>(PC, UTN_RaceFinishCountdownWidget::StaticClass());
+			if (CountdownScreen) { CountdownScreen->AddToViewport(CountdownZOrder); }
+		}
+		if (CountdownScreen)
+		{
+			FTNRaceCountdownView View;
+			View.State = ETNBeachFinishCountdown::TimeUp;
+			View.Reason = ETNBeachRoundEnd::TimeLimit;
+			if (PreviewRows.IsValidIndex(1))
+			{
+				View.LeaderName = PreviewRows[1].Name;
+				View.LeaderLook = PreviewRows[1].Look;
+			}
+			View.LocalStatus = 3;
+			View.bPreview = true;
+			CountdownScreen->SetView(View);
+		}
+		if (-Left >= PreviewTimeUpSeconds + 0.6f) { StopPreview(); }
 		return;
 	}
 	if (PreviewKind == 2)

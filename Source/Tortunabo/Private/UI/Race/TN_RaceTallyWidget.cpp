@@ -24,6 +24,8 @@ namespace TNRaceTallyDetail
 	constexpr float ColumnW = 240.f;
 	constexpr float ColumnH = 632.f;
 	constexpr float ColumnGap = 26.f;
+	/** Ancho máximo de la fila de columnas (px a 1080 p): con siete u ocho jugadores se encoge para caber. */
+	constexpr float MaxRowWidth = 1820.f;
 	/** Huecos en zigzag: del de abajo (el primero) al de arriba, y la corona del campeón encima. */
 	constexpr float SocketSize = 100.f;
 	constexpr float ShellSize = 88.f;
@@ -288,6 +290,13 @@ void UTN_RaceTallyWidget::BuildColumns()
 		Column.Root = Root;
 		Columns.Add(Column);
 	}
+	// Ocho columnas miden 2102 px: la fila entera se encoge (desde su centro) para caber en la pantalla. CenterOf mide con
+	// la geometría ya escalada, así que la concha que vuela sigue cayendo en su hueco.
+	const int32 NumColumns = Columns.Num();
+	const float RowWidth = NumColumns * ColumnW + FMath::Max(0, NumColumns - 1) * ColumnGap;
+	const float RowScale = FMath::Min(1.f, MaxRowWidth / FMath::Max(1.f, RowWidth));
+	ColumnBox->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	ColumnBox->SetRenderScale(FVector2D(RowScale, RowScale));
 }
 
 void UTN_RaceTallyWidget::PlanTimeline()
@@ -777,7 +786,12 @@ void UTN_RaceTallyWidget::TickTexts()
 		{
 			const FTNRaceTallyRow& Winner = TallySetup.Rows[TallySetup.WinnerRow];
 			const FText Name = FText::FromString(Winner.Name.IsEmpty() ? FString(TEXT("Tortuga")) : Winner.Name);
-			if (HalfRows.Num() == 0)
+			if (TallySetup.bTimeLimit)
+			{
+				// Nadie llegó al agua: la concha es de la más cerca del mar al acabarse el tiempo de la ronda.
+				ResultText->SetText(FText::Format(NSLOCTEXT("TNRace", "RoundWinnerTimeLimit", "¡Se acabó el tiempo! Nadie llegó al agua: concha para {0}, la más cerca del mar."), Name));
+			}
+			else if (HalfRows.Num() == 0)
 			{
 				ResultText->SetText(FText::Format(NSLOCTEXT("TNRace", "RoundWinner", "¡Concha para {0}!"), Name));
 			}

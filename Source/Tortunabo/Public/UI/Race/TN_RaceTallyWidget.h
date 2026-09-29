@@ -44,6 +44,11 @@ struct FTNRaceTallySetup
 	bool bAlreadyLanded = false;
 	/** Vista previa por consola (lo dice una etiqueta). */
 	bool bPreview = false;
+	/**
+	 * La ronda se cerró por el tiempo de la ronda sin nadie en el agua (ETNBeachRoundEnd::TimeLimit): la concha de WinnerRow
+	 * es de la más cerca del mar, y el cartel lo dice.
+	 */
+	bool bTimeLimit = false;
 };
 
 /** Partícula de los destellos del recuento (se pinta en NativePaint). */

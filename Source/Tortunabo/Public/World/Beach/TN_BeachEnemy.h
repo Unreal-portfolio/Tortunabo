@@ -358,6 +358,9 @@ protected:
 	 */
 	void BeginHoldTurtle(ATortugaCharacter* Turtle);
 
+	/** Segundos que puede durar una sujeción antes de que el seguro de tiempo la suelte (6; el pelícano taxi de la carrera lleva más). */
+	virtual double GetMaxHoldSeconds() const;
+
 	/**
 	 * Todas las máquinas: la suelta. A prueba de todo: el servidor le devuelve las correcciones al dueño, se quita la
 	 * pataleta y, si nada más la mueve (ni la bola del caparazón, ni el ragdoll del derribo, ni otra que la lleve, ni otro

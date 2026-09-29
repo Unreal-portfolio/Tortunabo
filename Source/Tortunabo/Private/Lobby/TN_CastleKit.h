@@ -198,11 +198,14 @@ namespace TNCastleKit
 	inline const double* EggZ() { static const double Z[] = { 0.0, 25.0, 60.0, 110.0, 150.0, 190.0, 222.0, 238.0 }; return Z; }
 	inline const double* EggR() { static const double R[] = { 55.0, 84.0, 97.0, 96.0, 88.0, 68.0, 40.0, 12.0 }; return R; }
 	constexpr int32 EggProfileNum = 8;
-	/** Color de cada huevo de la pila (turquesa, coral, amarillo y lila). */
+	/**
+	 * Color de cada huevo (turquesa, coral, amarillo y lila; del quinto al octavo: verde lima, rosa, azul y naranja). Son los
+	 * de la pila de ocho del lobby, la de la salida del cooperativo y el nido de la carrera.
+	 */
 	inline uint32 EggAccent(int32 Index)
 	{
-		static const uint32 Accents[4] = { 0x2EC4B6, 0xFF6A52, 0xFFCB3D, 0x9B5DE5 };
-		return Accents[((Index % 4) + 4) % 4];
+		static const uint32 Accents[8] = { 0x2EC4B6, 0xFF6A52, 0xFFCB3D, 0x9B5DE5, 0x7BD389, 0xFF8FC7, 0x4D96FF, 0xFF9F1C };
+		return Accents[((Index % 8) + 8) % 8];
 	}
 
 	/** Base (media cáscara con borde en zigzag) de un huevo en Center, con su nido de paja. */
@@ -273,29 +276,45 @@ namespace TNCastleKit
 		}
 	}
 
-	/** Montículo de dos alturas para la pila de cuatro huevos (medidas en cm). */
+	/**
+	 * Montículo de dos alturas para la pila de ocho huevos (medidas en cm): siete en el piso bajo, en arco alrededor del
+	 * alto y con un hueco delante (+Y, el lado del escalón), y el último arriba.
+	 */
 	namespace EggMound
 	{
-		constexpr int32 NumEggs = 4;
-		constexpr double Tier1R = 430.0;
+		constexpr int32 NumEggs = 8;
+		/** Huevos del piso bajo (índices 0 a NumLower - 1); el último (NumEggs - 1) va en el alto. */
+		constexpr int32 NumLower = NumEggs - 1;
+		constexpr double Tier1R = 480.0;
 		constexpr double Tier1H = 60.0;
 		constexpr double Tier2R = 175.0;
 		constexpr double Tier2H = 200.0;
-		/** Radio al que van los tres huevos del piso bajo. */
-		constexpr double RingR = 265.0;
+		/** Radio al que van los huevos del piso bajo. */
+		constexpr double RingR = 335.0;
+		/**
+		 * Grados entre dos huevos vecinos del piso bajo. El arco de siete, centrado detrás (270°), acaba a 129° y a 51°: deja
+		 * libres 78° delante para el escalón (90°) y queda simétrico respecto al eje del camino.
+		 */
+		constexpr double RingStepDeg = 47.0;
+	}
+
+	/** Ángulo (radianes, desde +X hacia +Y) del huevo Index del piso bajo, medido desde el centro del montículo. */
+	inline double EggMoundRingAngle(int32 Index)
+	{
+		return FMath::DegreesToRadians(270.0 + (Index - EggMound::NumLower / 2) * EggMound::RingStepDeg);
 	}
 
 	/**
-	 * Base del huevo Index de un montículo con centro Center (en el suelo, a la cota FloorZ): tres en el piso bajo y el
-	 * último arriba. StepDir apunta al escalón de subida (el lado por donde se llega).
+	 * Base del huevo Index de un montículo con centro Center (en el suelo, a la cota FloorZ): siete en el piso bajo y el
+	 * último arriba. El escalón de subida (lado por donde se llega, +Y) queda en el hueco del arco.
 	 */
 	inline FVector EggMoundSpot(int32 Index, const FVector& Center, double FloorZ)
 	{
-		if (Index >= EggMound::NumEggs - 1)
+		if (Index >= EggMound::NumLower)
 		{
 			return FVector(Center.X, Center.Y, FloorZ + EggMound::Tier2H);
 		}
-		const double A = TNProcMap::TwoPi * Index / 3.0 + 0.35;
+		const double A = EggMoundRingAngle(Index);
 		return FVector(Center.X + FMath::Cos(A) * EggMound::RingR, Center.Y + FMath::Sin(A) * EggMound::RingR, FloorZ + EggMound::Tier1H);
 	}
 
@@ -377,11 +396,18 @@ namespace TNCastleKit
 			return FMath::Abs(Local.X) < RoomHalfW && Local.Y > RoomY0 && Local.Y < RoomY1 && Local.Z > -60.0 && Local.Z < RoomTopZ;
 		}
 
-		/** Cuatro sitios de salida dentro de la sala (locales, a ras de suelo), mirando a la puerta 2 (+Y). */
+		/** Sitios de salida dentro de la sala: uno por jugador, ocho como mucho. */
+		constexpr int32 NumSpawnSpots = 8;
+
+		/**
+		 * Sitio de salida Index dentro de la sala (locales, a ras de suelo), mirando a la puerta 2 (+Y): dos filas de cuatro,
+		 * a 2,3 m unos de otros. Los cuatro primeros ocupan las dos columnas de en medio (izquierda y derecha, primero la fila
+		 * de delante); los otros cuatro, las de los lados.
+		 */
 		inline FVector SpawnSpot(int32 Index)
 		{
-			const double X = (Index % 2 == 0) ? -190.0 : 190.0;
-			const double Y = (Index / 2 == 0) ? Depth * 0.62 : Depth * 0.34;
+			const double X = ((Index % 2 == 0) ? -1.0 : 1.0) * ((Index % NumSpawnSpots < 4) ? 115.0 : 345.0);
+			const double Y = ((Index / 2) % 2 == 0) ? Depth * 0.62 : Depth * 0.34;
 			return FVector(X, Y, 0.0);
 		}
 	}
@@ -448,7 +474,7 @@ namespace TNCastleKit
 	{
 		using namespace Gatehouse;
 		const FVector Up(0.0, 0.0, 1.0);
-		// Suelo de la sala y de los umbrales, algo más claro, con cuatro estrellas donde se aparece.
+		// Suelo de la sala y de los umbrales, algo más claro, con una estrella donde se aparece (ocho).
 		B.AddQuad(O + FVector(-FloorHalfW, -FacadeHalfT, FloorZ), O + FVector(FloorHalfW, -FacadeHalfT, FloorZ),
 			O + FVector(FloorHalfW, Depth + FacadeHalfT, FloorZ), O + FVector(-FloorHalfW, Depth + FacadeHalfT, FloorZ), Up, Col(0xF3DDA6));
 		if (Sink > 0.0)
@@ -456,7 +482,7 @@ namespace TNCastleKit
 			// Zócalo bajo el suelo: tapa el hueco con el terreno si queda por debajo.
 			AddAxisBox(B, O + FVector(-FloorHalfW, -FacadeHalfT, -Sink), O + FVector(FloorHalfW, Depth + FacadeHalfT, FloorZ - 1.0), SandDark());
 		}
-		for (int32 i = 0; i < 4; ++i)
+		for (int32 i = 0; i < NumSpawnSpots; ++i)
 		{
 			AddStarfish(Decor, O + SpawnSpot(i) + FVector(0.0, 0.0, FloorZ), 34.0, 0.3 + i * 1.1, (i % 2) ? Col(0xFF8A70) : Col(0xFFB077));
 		}
