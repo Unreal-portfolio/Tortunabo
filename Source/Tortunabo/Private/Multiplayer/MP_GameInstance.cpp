@@ -162,6 +162,10 @@ void UMP_GameInstance::Shutdown()
 {
 	FCoreUObjectDelegates::PreLoadMap.RemoveAll(this);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
+	if (GEngine)
+	{
+		GEngine->OnNetworkFailure().RemoveAll(this);
+	}
 	// Los eventos de los GameModes son de todo el proceso: sin esto, otra GameInstance (el editor) llamaría a esta muerta.
 	FGameModeEvents::GameModePreLoginEvent.Remove(PreLoginHandle);
 	FGameModeEvents::GameModePostLoginEvent.Remove(PostLoginHandle);
@@ -981,7 +985,8 @@ void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 	bIsPendingTravel = false;
 
 	// De vuelta en el menú principal: la sala de antes (si se era anfitrión) ya no existe.
-	if (LoadedWorld && IsMenuWorld(LoadedWorld))
+	// PostLoadMapWithWorld salta para todas las GameInstance del proceso (PIE con varias ventanas): solo cuenta el mundo propio.
+	if (LoadedWorld && LoadedWorld->GetGameInstance() == this && IsMenuWorld(LoadedWorld))
 	{
 		ResetRoomState();
 	}
@@ -1364,6 +1369,17 @@ void UMP_GameInstance::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, EN
 	case ENetworkFailure::PendingConnectionFailure: FailureTypeStr = TEXT("PendingConnectionFailure"); break;
 	case ENetworkFailure::NetChecksumMismatch:      FailureTypeStr = TEXT("NetChecksumMismatch"); break;
 	default:                                        FailureTypeStr = TEXT("Unknown"); break;
+	}
+
+	// OnNetworkFailure es de todo el motor: en PIE con varias ventanas el fallo de un cliente no es asunto del host.
+	if (GEngine)
+	{
+		const FWorldContext* FailedContext = World ? GEngine->GetWorldContextFromWorld(World)
+			: GEngine->GetWorldContextFromPendingNetGameNetDriver(NetDriver);
+		if (FailedContext && FailedContext->OwningGameInstance && FailedContext->OwningGameInstance != this)
+		{
+			return;
+		}
 	}
 
 	UE_LOG(LogTortunabo, Warning, TEXT("[MP] NETWORK ERROR: %s - %s"), *FailureTypeStr, *ErrorString);
