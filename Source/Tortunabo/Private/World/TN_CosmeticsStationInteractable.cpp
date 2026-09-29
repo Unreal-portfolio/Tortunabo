@@ -5,7 +5,7 @@
 
 ATN_CosmeticsStationInteractable::ATN_CosmeticsStationInteractable()
 {
-	PromptText = FText::FromString(TEXT("Abrir cosmeticos"));
+	PromptText = NSLOCTEXT("Tortunabo", "CosmeticsStationPrompt", "Abrir cosméticos");
 }
 
 void ATN_CosmeticsStationInteractable::Interact(APawn* Interactor)

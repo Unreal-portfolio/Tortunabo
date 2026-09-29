@@ -8,7 +8,7 @@ void UTN_LoadingScreenWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	EnsureRuntimeLayout();
-	SetStatusMessage(FText::FromString(TEXT("Cargando...")));
+	SetStatusMessage(NSLOCTEXT("TNLoading", "WidgetLoading", "Cargando..."));
 }
 
 void UTN_LoadingScreenWidget::SetStatusMessage(const FText& NewMessage)

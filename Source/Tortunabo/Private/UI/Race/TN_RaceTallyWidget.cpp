@@ -263,7 +263,7 @@ void UTN_RaceTallyWidget::BuildColumns()
 		Column.Face = FaceImg;
 
 		// Nombre en una etiqueta de arena (dorada si es el tuyo) y, en el tuyo, «TÚ» en una cinta coral.
-		UTextBlock* NameText = TNRaceUI::MakeText(Tree, FText::FromString(Row.Name.IsEmpty() ? FString(TEXT("Tortuga")) : Row.Name), TEXT("Bold"), 20, TNHUDArt::Ink, false);
+		UTextBlock* NameText = TNRaceUI::MakeText(Tree, TNLocText::PlayerName(Row.Name), TEXT("Bold"), 20, TNHUDArt::Ink, false);
 		UBorder* NameTag = TNRaceUI::MakeCard(Tree, TNHUDArt::SandTagTexture(), TNRaceUI::TagMargin, NameText, FMargin(28.f, 13.f, 28.f, 14.f));
 		if (Row.bLocal) { NameTag->SetBrush(TNRaceUI::BoxBrush(TNHUDArt::SandTagTexture(), TNRaceUI::TagMargin, TNHUDArt::Hex(0xFFE08A))); }
 		USizeBox* NameFit = TNRaceUI::MakeSize(Tree, NameTag, 0.f, 0.f);
@@ -417,7 +417,7 @@ FText UTN_RaceTallyWidget::JoinNames(const TArray<int32>& RowIndices) const
 	{
 		if (!TallySetup.Rows.IsValidIndex(RowIndex)) { continue; }
 		const FString& Name = TallySetup.Rows[RowIndex].Name;
-		Names.Add(FText::FromString(Name.IsEmpty() ? FString(TEXT("Tortuga")) : Name));
+		Names.Add(TNLocText::PlayerName(Name));
 	}
 	if (Names.Num() == 0) { return FText::GetEmpty(); }
 	if (Names.Num() == 1) { return Names[0]; }
@@ -773,7 +773,7 @@ void UTN_RaceTallyWidget::TickTexts()
 		else if (Want == 2 && IsChampionTally())
 		{
 			const FTNRaceTallyRow& Champ = TallySetup.Rows[TallySetup.ChampionRow];
-			const FText Name = FText::FromString(Champ.Name.IsEmpty() ? FString(TEXT("Tortuga")) : Champ.Name);
+			const FText Name = TNLocText::PlayerName(Champ.Name);
 			ResultText->SetText(FText::Format(NSLOCTEXT("TNRace", "ChampionWins", "¡{0} gana la partida!"), Name));
 			TNRaceUI::SetImageTexture(ResultFace, TNRaceArt::TurtleFaceFor(this, Champ.Look, ETNTurtleFace::Win));
 		}
@@ -785,7 +785,7 @@ void UTN_RaceTallyWidget::TickTexts()
 		else if (HasWinner())
 		{
 			const FTNRaceTallyRow& Winner = TallySetup.Rows[TallySetup.WinnerRow];
-			const FText Name = FText::FromString(Winner.Name.IsEmpty() ? FString(TEXT("Tortuga")) : Winner.Name);
+			const FText Name = TNLocText::PlayerName(Winner.Name);
 			if (TallySetup.bTimeLimit)
 			{
 				// Nadie llegó al agua: la concha es de la más cerca del mar al acabarse el tiempo de la ronda.

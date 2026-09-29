@@ -245,7 +245,7 @@ void ATN_ShopKeeper::BuildVisuals()
 {
 	using namespace TNShopKeeperDetail;
 	Keeper->SetRelativeScale3D(FVector(KeeperScale));
-	Sign->SetText(FText::FromString(ShopName.ToString().ToUpper()));
+	Sign->SetText(ShopName.ToUpper());
 	UTN_CosmeticLook::ApplyLook(this, Keeper, KeeperHat, KeeperLook, KeeperDefaults);
 	// En el editor, el tendero en su espera (no en T).
 	UTN_NpcAnimInstance::PreviewInEditor(Keeper, IdleAnim);

@@ -113,11 +113,11 @@ void UTN_RaceSprintWidget::Setup(const FTNRaceSprintSetup& InSetup)
 
 	const int32 Halves = FMath::Max(0, SprintSetup.TieHalves);
 	const FText Shells = (Halves % 2)
-		? FText::Format(NSLOCTEXT("TNRace", "SprintShellsHalf", "{0} conchas y media"), FText::AsNumber(Halves / 2))
-		: FText::Format(NSLOCTEXT("TNRace", "SprintShells", "{0} conchas"), FText::AsNumber(Halves / 2));
+		? FText::Format(NSLOCTEXT("TNRace", "SprintShellsHalf", "{0} {0}|plural(one=concha,other=conchas) y media"), Halves / 2)
+		: FText::Format(NSLOCTEXT("TNRace", "SprintShells", "{0} {0}|plural(one=concha,other=conchas)"), Halves / 2);
 	if (TieText)
 	{
-		TieText->SetText(FText::Format(NSLOCTEXT("TNRace", "SprintTie",
+		TieText->SetText(FText::Format(NSLOCTEXT("TNRace", "SprintTieBanner",
 			"¡Empate a {0}! Solo corren las finalistas, desde la mitad de la playa: la primera en el agua se lleva la partida."), Shells));
 	}
 	if (NoteText)
@@ -156,7 +156,7 @@ void UTN_RaceSprintWidget::BuildFinalists()
 		TNRaceUI::AddAt(FaceBox, TNRaceUI::MakeSize(Tree, Ring, RingSize, RingSize), HAlign_Center, VAlign_Center);
 		UImage* FaceImg = TNRaceUI::MakeImage(Tree, TNRaceArt::TurtleFaceFor(this, Row.Look, ETNTurtleFace::Win), FVector2D(RingSize - 8.f, RingSize - 8.f));
 		TNRaceUI::AddAt(FaceBox, FaceImg, HAlign_Center, VAlign_Center, FMargin(0.f, 0.f, 0.f, 6.f));
-		UTextBlock* NameText = TNRaceUI::MakeText(Tree, FText::FromString(Row.Name.IsEmpty() ? FString(TEXT("Tortuga")) : Row.Name), TEXT("Bold"), 22, TNHUDArt::Ink, false);
+		UTextBlock* NameText = TNRaceUI::MakeText(Tree, TNLocText::PlayerName(Row.Name), TEXT("Bold"), 22, TNHUDArt::Ink, false);
 		UBorder* NameTag = TNRaceUI::MakeCard(Tree, TNHUDArt::SandTagTexture(), TNRaceUI::TagMargin, NameText, FMargin(28.f, 12.f, 28.f, 14.f));
 		if (Row.bLocal) { NameTag->SetBrush(TNRaceUI::BoxBrush(TNHUDArt::SandTagTexture(), TNRaceUI::TagMargin, TNHUDArt::Hex(0xFFE08A))); }
 		TNRaceUI::AddAt(FaceBox, NameTag, HAlign_Center, VAlign_Bottom, FMargin(0.f, 0.f, 0.f, -58.f));

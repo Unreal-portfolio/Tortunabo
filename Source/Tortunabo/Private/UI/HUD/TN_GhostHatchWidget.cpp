@@ -617,7 +617,7 @@ int32 UTN_GhostHatchWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 	// ── 4. «¡PUM!» al estamparse (en el modo carrera no: encima va el puesto o el título de la ronda) ──
 	if (!bCurtain && SinceSlam < PumSeconds && !bOpening)
 	{
-		static const FString PumText(TEXT("¡PUM!"));
+		const FString PumText = NSLOCTEXT("TNLoading", "EggPum", "¡PUM!").ToString();
 		const TSharedRef<FSlateFontMeasure> Measurer = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
 		const FVector2f TextSize = Measurer->Measure(PumText, PumFont, 1.f);
 		const float Pop = SinceSlam < 0.12f ? FMath::Lerp(0.6f, 1.15f, SinceSlam / 0.12f) : FMath::Lerp(1.15f, 1.f, FMath::Min(1.f, (SinceSlam - 0.12f) / 0.2f));

@@ -121,5 +121,5 @@ private:
 	void AddControlRow(const FText& ActionName, const TArray<FString>& ActionPaths);
 
 	/** Teclas de teclado y ratón (y de mando aparte) asignadas ahora a una acción de Enhanced Input. */
-	void KeysFor(const TArray<FString>& ActionPaths, TArray<FString>& OutKeyboard, TArray<FString>& OutGamepad) const;
+	void KeysFor(const TArray<FString>& ActionPaths, TArray<FText>& OutKeyboard, TArray<FText>& OutGamepad) const;
 };

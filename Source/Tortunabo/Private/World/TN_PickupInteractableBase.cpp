@@ -11,7 +11,7 @@
 
 ATN_PickupInteractableBase::ATN_PickupInteractableBase()
 {
-	PromptText = FText::FromString(TEXT("Recoger"));
+	PromptText = NSLOCTEXT("Tortunabo", "PickupPrompt", "Recoger");
 
 	// Marca de «esto se coge» en todos los pickups (anillo, columna, chispitas, luz y el objeto que flota y gira).
 	PickupGlow = CreateDefaultSubobject<UTN_PickupGlowComponent>(TEXT("PickupGlow"));

@@ -8,7 +8,7 @@ ATN_RaceItemBox::ATN_RaceItemBox()
 {
 	// La fila del pickup es la de la caja; al cogerla se cambia por el objeto sorteado (Interact).
 	PickupItem = TNRaceItems::MakeItem(ETNRaceItem::Box);
-	PromptText = FText::FromString(TEXT("Coger caja"));
+	PromptText = NSLOCTEXT("TNRace", "ItemBoxPrompt", "Coger caja");
 }
 
 void ATN_RaceItemBox::Interact(APawn* Interactor)

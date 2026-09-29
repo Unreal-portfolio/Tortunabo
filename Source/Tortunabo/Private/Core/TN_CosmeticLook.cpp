@@ -242,10 +242,12 @@ FText UTN_CosmeticLook::GetDisplayName(const UObject* WorldContext, ETNCosmeticC
 	if (Category == ETNCosmeticCategory::Helmet)
 	{
 		const FTN_HelmetData* Row = GI ? GI->FindHelmetRow(Id, TEXT("CosmeticName")) : nullptr;
-		return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::FromName(Id);
+		// Sin nombre en la tabla: el identificador de la fila, tal cual (no es texto del juego).
+		return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::AsCultureInvariant(Id.ToString());
 	}
 	const FTN_SkinData* Row = GI ? GI->FindSkinRow(Id, TEXT("CosmeticName")) : nullptr;
-	return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::FromName(Id);
+	// Sin nombre en la tabla: el identificador de la fila, tal cual (no es texto del juego).
+	return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::AsCultureInvariant(Id.ToString());
 }
 
 FText UTN_CosmeticLook::GetDescription(const UObject* WorldContext, ETNCosmeticCategory Category, FName Id)

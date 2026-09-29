@@ -1,5 +1,6 @@
 #include "UI/HUD/TN_GhostHUDWidget.h"
 #include "TN_HUDArt.h"
+#include "Core/TN_LocText.h"
 #include "TN_HUDGhostFace.h"
 #include "TN_HUDStyle.h"
 #include "Blueprint/WidgetTree.h"
@@ -81,21 +82,6 @@ namespace TNGhostHUDDetail
 		CanvasSlot->SetPosition(Offset);
 		CanvasSlot->SetAutoSize(true);
 		return CanvasSlot;
-	}
-
-	/** «Ana», «Ana y Leo», «Ana, Leo y Bea». */
-	FString JoinNames(const TArray<FString>& Names)
-	{
-		FString Joined;
-		for (int32 i = 0; i < Names.Num(); ++i)
-		{
-			if (i > 0)
-			{
-				Joined += (i == Names.Num() - 1) ? TEXT(" y ") : TEXT(", ");
-			}
-			Joined += Names[i];
-		}
-		return Joined;
 	}
 
 	/** Cartel de cada jugador local. */
@@ -266,12 +252,12 @@ void UTN_GhostHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	}
 	if (bShowCard)
 	{
-		SetTextIfChanged(OwnNameText, FText::FromString(OwnState ? OwnState->GetPlayerName() : FString(TEXT("Tortuga"))));
+		SetTextIfChanged(OwnNameText, TNLocText::PlayerName(OwnState ? OwnState->GetPlayerName() : FString()));
 		APawn* SubjectPawn = nullptr;
 		APlayerState* Subject = nullptr;
 		TNGhost::GetHUDSubject(PC, SubjectPawn, Subject);
 		const bool bFollowing = SubjectPawn && Subject;
-		const FText SubjectName = Subject ? FText::FromString(Subject->GetPlayerName()) : FText::GetEmpty();
+		const FText SubjectName = Subject ? TNLocText::Literal(Subject->GetPlayerName()) : FText::GetEmpty();
 		SetTextIfChanged(FollowText, bFollowing
 			? FText::Format(NSLOCTEXT("TNGhost", "Watching", "Mirando a {0}"), SubjectName)
 			: NSLOCTEXT("TNGhost", "NobodyToWatch", "No queda nadie a quien mirar"));
@@ -283,19 +269,18 @@ void UTN_GhostHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 			? NSLOCTEXT("TNGhost", "KeysPad", "LB / RB  cambiar   ·   R3  cámara   ·   gatillos  zoom")
 			: NSLOCTEXT("TNGhost", "KeysMouse", "← / →  cambiar   ·   C  cámara   ·   rueda  zoom"));
 		// Quién más mira a esa tortuga.
-		TArray<FString> Others;
+		TArray<FText> Others;
 		for (const ATN_SpectatorGhost* Ghost : Ghosts)
 		{
 			if (Ghost != Mine && Subject && Ghost->GetFollowedPlayerState() == Subject && Ghost->GetGhostPlayerState())
 			{
-				Others.Add(Ghost->GetGhostPlayerState()->GetPlayerName());
+				Others.Add(TNLocText::Literal(Ghost->GetGhostPlayerState()->GetPlayerName()));
 			}
 		}
 		AlsoText->SetVisibility(Others.Num() > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 		if (Others.Num() > 0)
 		{
-			SetTextIfChanged(AlsoText, FText::Format(NSLOCTEXT("TNGhost", "AlsoWatching", "También miran: {0}"),
-				FText::FromString(TNGhostHUDDetail::JoinNames(Others))));
+			SetTextIfChanged(AlsoText, FText::Format(NSLOCTEXT("TNGhost", "AlsoWatching", "También miran: {0}"), TNLocText::JoinList(Others)));
 		}
 		// El icono flota y se mece; el cartel entra con un rebote.
 		GhostIcon->SetRenderTranslation(FVector2D(0.0, -5.0 * FMath::Sin(Time * 2.4f)));
@@ -305,14 +290,14 @@ void UTN_GhostHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	}
 
 	// ── Con tortuga: quién te está mirando ──
-	TArray<FString> Watchers;
+	TArray<FText> Watchers;
 	if (!Mine && OwnState && PC->GetPawn())
 	{
 		for (const ATN_SpectatorGhost* Ghost : Ghosts)
 		{
 			if (Ghost->GetStage() == ETNGhostStage::Spectating && Ghost->GetFollowedPlayerState() == OwnState && Ghost->GetGhostPlayerState())
 			{
-				Watchers.Add(Ghost->GetGhostPlayerState()->GetPlayerName());
+				Watchers.Add(TNLocText::Literal(Ghost->GetGhostPlayerState()->GetPlayerName()));
 			}
 		}
 	}
@@ -327,7 +312,7 @@ void UTN_GhostHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	{
 		SetTextIfChanged(WatchersText, FText::Format(Watchers.Num() == 1
 			? NSLOCTEXT("TNGhost", "WatchedByOne", "Te mira {0}")
-			: NSLOCTEXT("TNGhost", "WatchedByMany", "Te miran {0}"), FText::FromString(TNGhostHUDDetail::JoinNames(Watchers))));
+			: NSLOCTEXT("TNGhost", "WatchedByMany", "Te miran {0}"), TNLocText::JoinList(Watchers)));
 		WatchersIcon->SetRenderTranslation(FVector2D(0.0, -3.0 * FMath::Sin(Time * 2.6f)));
 		WatchersPop = FMath::Max(0.f, WatchersPop - InDeltaTime * 3.f);
 		WatchersCard->SetRenderScale(FVector2D(1.f + 0.15f * FMath::Sin(WatchersPop * PI)));

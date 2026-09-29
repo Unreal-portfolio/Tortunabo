@@ -303,6 +303,12 @@ public:
 	/** Abre o cierra el menú de pausa del jugador local PC (no lo abre encima de otros menús o de la pantalla de carga). */
 	void TogglePauseMenu(APlayerController* PC);
 	void OpenPauseMenu(APlayerController* PC);
+	/**
+	 * Menú principal: abre los mismos ajustes que el menú de pausa (UTN_PauseMenuWidget, que en el controlador del menú principal
+	 * se monta sin las filas de partida) encima del menú principal. Solo con el controlador del menú (AMP_MenuPlayerController).
+	 * Se cierra con ClosePauseMenu o con el propio menú; IsPauseMenuOpen dice si sigue abierto. Docs/Menu_Pausa.md.
+	 */
+	void OpenMainMenuSettings(APlayerController* PC);
 	void ClosePauseMenu();
 	bool IsPauseMenuOpen() const;
 

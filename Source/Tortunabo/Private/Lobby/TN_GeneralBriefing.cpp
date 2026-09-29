@@ -5,6 +5,7 @@
 #include "Lobby/TN_NpcAnimInstance.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Player/MP_GamePlayerController.h"
+#include "Settings/TN_LanguageSettings.h"
 #include "Animation/AnimationAsset.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/BoxComponent.h"
@@ -227,6 +228,20 @@ void ATN_GeneralBriefing::BeginPlay()
 		SyncMissionFromGameInstance();
 	}
 	RefreshMissionBoard();
+	LanguageHandle = TNLanguage::OnApplied().AddUObject(this, &ATN_GeneralBriefing::HandleLanguageApplied);
+}
+
+void ATN_GeneralBriefing::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	TNLanguage::OnApplied().Remove(LanguageHandle);
+	LanguageHandle.Reset();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_GeneralBriefing::HandleLanguageApplied()
+{
+	FitSignText();
+	RefreshMissionBoard();
 }
 
 void ATN_GeneralBriefing::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -287,7 +302,7 @@ void ATN_GeneralBriefing::FitSignText()
 	using namespace TNGeneralDetail;
 	// El rótulo cabe siempre dentro del cartel (también en el editor): parte del tamaño de siempre y se encoge si el
 	// nombre es largo, con un margen a cada lado.
-	Sign->SetText(FText::FromString(HeadquartersName.ToString().ToUpper()));
+	Sign->SetText(HeadquartersName.ToUpper());
 	Sign->SetWorldSize(36.f);
 	const double MaxWidth = 2.0 * SignHalfW - 34.0;
 	const double Width = Sign->GetTextLocalSize().Y;

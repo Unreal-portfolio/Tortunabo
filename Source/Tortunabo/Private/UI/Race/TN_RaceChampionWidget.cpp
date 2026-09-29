@@ -237,7 +237,7 @@ void UTN_RaceChampionWidget::Setup(const FTNRaceChampionSetup& InSetup)
 	Confetti.Reset();
 
 	const FTNRaceTallyRow* First = ChampionSetup.Podium.IsValidIndex(0) ? &ChampionSetup.Podium[0] : nullptr;
-	if (ChampionName) { ChampionName->SetText(FText::FromString(First && !First->Name.IsEmpty() ? First->Name : FString(TEXT("Tortuga")))); }
+	if (ChampionName) { ChampionName->SetText(TNLocText::PlayerName(First ? First->Name : FString())); }
 	if (SubtitleText)
 	{
 		SubtitleText->SetText(ChampionSetup.bSprintWin
@@ -254,8 +254,8 @@ void UTN_RaceChampionWidget::Setup(const FTNRaceChampionSetup& InSetup)
 	{
 		if (ChampionSetup.Podium.IsValidIndex(i))
 		{
-			NameTagTexts[i]->SetText(FText::Format(NSLOCTEXT("TNRace", "PodiumPlace", "{0}.º {1}"), FText::AsNumber(i + 1),
-				FText::FromString(ChampionSetup.Podium[i].Name.IsEmpty() ? FString(TEXT("Tortuga")) : ChampionSetup.Podium[i].Name)));
+			NameTagTexts[i]->SetText(FText::Format(NSLOCTEXT("TNRace", "PodiumPlace", "{0}.º {1}"), i + 1,
+				TNLocText::PlayerName(ChampionSetup.Podium[i].Name)));
 		}
 	}
 	if (StatusText)

@@ -20,7 +20,7 @@ ATN_RescuePickup::ATN_RescuePickup()
 	NetDormancy = DORM_Awake;
 	SetNetUpdateFrequency(15.f);
 	SetMinNetUpdateFrequency(5.f);
-	PromptText = FText::FromString(TEXT("Rescatar"));
+	PromptText = NSLOCTEXT("Tortunabo", "RescuePrompt", "Rescatar");
 	InteractionDistance = 300.f;
 }
 

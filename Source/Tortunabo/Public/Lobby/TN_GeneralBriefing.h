@@ -38,6 +38,7 @@ public:
 	ATN_GeneralBriefing();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void PostRegisterAllComponents() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -117,6 +118,11 @@ private:
 
 	/** Escribe la orden del día en la pizarra y la encoge para que quepa. */
 	void RefreshMissionBoard();
+
+	/** Cambio de idioma (TNLanguage::OnApplied): el cartel y la pizarra se vuelven a ajustar al ancho del texto nuevo. */
+	void HandleLanguageApplied();
+
+	FDelegateHandle LanguageHandle;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> GeneralDefaults;

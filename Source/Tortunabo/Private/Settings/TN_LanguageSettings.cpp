@@ -1,11 +1,14 @@
 #include "Settings/TN_LanguageSettings.h"
+#include "Components/TextRenderComponent.h"
 #include "Core/TN_Log.h"
+#include "Engine/World.h"
 #include "Internationalization/Culture.h"
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/TextLocalizationManager.h"
 #include "Kismet/KismetInternationalizationLibrary.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "UObject/UObjectIterator.h"
 
 // Con nombre (no anónimo): en la compilación por bloques (unity) los nombres de un espacio anónimo se ven en el resto
 // del bloque.
@@ -13,6 +16,27 @@ namespace TNLanguageDetail
 {
 	/** El último idioma aplicado (vacío: todavía ninguno). Solo se toca desde el hilo del juego. */
 	FString GActiveLanguage;
+
+	FSimpleMulticastDelegate GAppliedEvent;
+
+	/**
+	 * El idioma acaba de cambiar: los carteles 3D (UTextRenderComponent) guardan el texto ya dibujado y no se enteran solos, así
+	 * que se les avisa de que se repinten con el texto nuevo; y quien tenga cadenas montadas a partir de textos se rehace.
+	 */
+	void NotifyApplied()
+	{
+		for (TObjectIterator<UTextRenderComponent> It; It; ++It)
+		{
+			UTextRenderComponent* Text = *It;
+			const UWorld* World = Text->GetWorld();
+			if (Text->IsTemplate() || !World || !World->IsGameWorld() || !Text->IsRegistered())
+			{
+				continue;
+			}
+			Text->MarkRenderStateDirty();
+		}
+		GAppliedEvent.Broadcast();
+	}
 
 	FTNLanguageEntry MakeEntry(const TCHAR* Culture, const TCHAR* Name, const TCHAR* FontRegular = TEXT(""), const TCHAR* FontBold = TEXT(""),
 		const TCHAR* FontScript = TEXT(""))
@@ -211,7 +235,12 @@ namespace TNLanguage
 			// El idioma del editor (sus menús) no se toca: solo los textos del juego, como la previsualización del idioma del juego
 			// de las preferencias del editor. Al acabar PIE, el propio editor la vuelve a apagar.
 			FTextLocalizationManager::Get().EnableGameLocalizationPreview(Culture);
+			const bool bChangedInEditor = TNLanguageDetail::GActiveLanguage != Culture;
 			TNLanguageDetail::GActiveLanguage = Culture;
+			if (bChangedInEditor)
+			{
+				TNLanguageDetail::NotifyApplied();
+			}
 			UE_LOG(LogTortunabo, Log, TEXT("[Idioma] Textos del juego en %s (previsualización del editor)."), *Culture);
 			return true;
 		}
@@ -225,17 +254,27 @@ namespace TNLanguage
 			return false;
 		}
 		// Sin guardarla en la configuración del motor: el idioma que manda es el de los ajustes del juego.
-		const bool bApplied = I18N.GetCurrentLanguage()->GetName() == Culture || UKismetInternationalizationLibrary::SetCurrentCulture(Culture, false);
+		const bool bAlreadyThere = I18N.GetCurrentLanguage()->GetName() == Culture;
+		const bool bApplied = bAlreadyThere || UKismetInternationalizationLibrary::SetCurrentCulture(Culture, false);
 		if (bApplied)
 		{
 			TNLanguageDetail::GActiveLanguage = Culture;
 			UE_LOG(LogTortunabo, Log, TEXT("[Idioma] Juego en %s."), *Culture);
+			if (!bAlreadyThere)
+			{
+				TNLanguageDetail::NotifyApplied();
+			}
 		}
 		else
 		{
 			UE_LOG(LogTortunabo, Warning, TEXT("[Idioma] No se pudo poner la cultura %s."), *Culture);
 		}
 		return bApplied;
+	}
+
+	FSimpleMulticastDelegate& OnApplied()
+	{
+		return TNLanguageDetail::GAppliedEvent;
 	}
 
 	FString GetActive()

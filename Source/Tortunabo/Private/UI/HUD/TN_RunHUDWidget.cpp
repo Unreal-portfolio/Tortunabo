@@ -21,6 +21,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_LocText.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
@@ -31,6 +32,7 @@
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
+#include "Settings/TN_GameSettingsSubsystem.h"
 #include "Player/TN_SpectatorGhost.h"
 #include "UI/HUD/TN_HoldRingWidget.h"
 #include "World/TN_InteractableBase.h"
@@ -526,7 +528,7 @@ void UTN_RunHUDWidget::BuildTree()
 	// ── Aviso de interacción: tecla en un botón azul marino y el texto del interactuable al alcance ──
 	{
 		UHorizontalBox* Row = Make<UHorizontalBox>(Tree);
-		PromptKeyText = MakeText(Tree, nullptr, FText::FromString(TEXT("E")), TEXT("Black"), 22, TNHUDArt::Cream, false);
+		PromptKeyText = MakeText(Tree, nullptr, INVTEXT("E"), TEXT("Black"), 22, TNHUDArt::Cream, false);
 		PromptKeyText->SetJustification(ETextJustify::Center);
 		UBorder* KeyCap = Make<UBorder>(Tree);
 		KeyCap->SetBrush(Rounded(TNHUDArt::Navy, 10.f, TNHUDArt::Cream, 2.5f));
@@ -617,7 +619,7 @@ void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
 		{
 			for (const FKey& Key : Input->QueryKeysMappedToAction(Turtle->GetInteractAction()))
 			{
-				if (Key.IsValid() && !Key.IsGamepadKey()) { PromptKeyText->SetText(Key.GetDisplayName(false)); break; }
+				if (Key.IsValid() && !Key.IsGamepadKey()) { PromptKeyText->SetText(UTN_GameSettingsSubsystem::KeyDisplayName(Key)); break; }
 			}
 		}
 	}
@@ -665,8 +667,8 @@ void UTN_RunHUDWidget::TickBadge(float DeltaTime)
 	const APlayerState* PS = SubjectState;
 	if (NameText)
 	{
-		const FString Shown = PS && !PS->GetPlayerName().IsEmpty() ? PS->GetPlayerName() : FString(TEXT("Tortuga"));
-		if (!NameText->GetText().ToString().Equals(Shown)) { NameText->SetText(FText::FromString(Shown)); }
+		const FText Shown = TNLocText::PlayerName(PS ? PS->GetPlayerName() : FString());
+		if (!NameText->GetText().ToString().Equals(Shown.ToString())) { NameText->SetText(Shown); }
 	}
 
 	// Cara según cómo va la tortuga (un fantasma que aún no sigue a nadie, con su cara de fantasma).
@@ -1420,7 +1422,7 @@ void UTN_RunFlowHUDWidget::TickCrew(float DeltaTime)
 		}
 		CrewFaces[i]->SetRenderTranslation(FVector2D(0.0, bGhostRow ? -4.0 * FMath::Sin(Time * 2.4f + i) : 0.0));
 		const FString PlayerName = PS->GetPlayerName();
-		if (!CrewNames[i]->GetText().ToString().Equals(PlayerName)) { CrewNames[i]->SetText(FText::FromString(PlayerName)); }
+		if (!CrewNames[i]->GetText().ToString().Equals(PlayerName)) { CrewNames[i]->SetText(TNLocText::Literal(PlayerName)); }
 		// Voz: el bocadillo con barras mientras llega su audio.
 		const UProximityVoiceComponent* Voice = Pawn ? Pawn->FindComponentByClass<UProximityVoiceComponent>() : nullptr;
 		const bool bTalking = (Voice && Voice->IsHeardSpeaking()) || (Preview > 1 && i == 1);

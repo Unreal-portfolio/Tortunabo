@@ -125,7 +125,7 @@ void UTN_RaceFinishCountdownWidget::RefreshTexts()
 	{
 		ShownLeader = View.LeaderName;
 		ShownReason = View.Reason;
-		const FText Leader = FText::FromString(View.LeaderName.IsEmpty() ? FString(TEXT("Tortuga")) : View.LeaderName);
+		const FText Leader = TNLocText::PlayerName(View.LeaderName);
 		// Tiempo de la ronda (o del sprint) agotado: nadie está en el agua y hay que decirlo, no «la primera ya está en el
 		// agua».
 		const bool bRoundLimit = View.Reason == ETNBeachRoundEnd::TimeLimit;

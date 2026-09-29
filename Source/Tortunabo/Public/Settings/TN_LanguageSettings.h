@@ -106,6 +106,13 @@ namespace TNLanguage
 	/** El último idioma aplicado; antes de aplicar ninguno, el que tocaría. */
 	TORTUNABO_API FString GetActive();
 
+	/**
+	 * Se emite justo después de que Apply cambie el idioma del juego. Los textos FText (widgets de UMG, Slate) se vuelven a leer
+	 * solos; lo que ya está montado con cadenas (los carteles 3D que se ajustan al ancho del texto, las letras sueltas del
+	 * rótulo del probador) se rehace aquí. Quien se suscriba debe quitarse al acabar (EndPlay/destructor). Hilo del juego.
+	 */
+	TORTUNABO_API FSimpleMulticastDelegate& OnApplied();
+
 	/** true si el idioma del juego es ese idioma (dos letras: «es», «en»...). */
 	TORTUNABO_API bool IsActiveLanguage(const TCHAR* TwoLetterCode);
 }

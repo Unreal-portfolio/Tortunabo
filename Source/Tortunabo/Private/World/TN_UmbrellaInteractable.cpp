@@ -10,7 +10,7 @@
 ATN_UmbrellaInteractable::ATN_UmbrellaInteractable()
 {
 	bReplicates = true;
-	PromptText = FText::FromString(TEXT("Abrir / Cerrar sombrilla"));
+	PromptText = NSLOCTEXT("Tortunabo", "UmbrellaPrompt", "Abrir / Cerrar sombrilla");
 
 	// ── BasicShapes usados para el mesh compound por defecto ─────────────────
 	// Cylinder: 50 cm radio, 100 cm alto a escala (1,1,1). Centro en el origen.

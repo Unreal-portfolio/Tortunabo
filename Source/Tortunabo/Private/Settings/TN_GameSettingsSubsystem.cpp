@@ -1,5 +1,6 @@
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Core/TN_Log.h"
+#include "Menu/MP_MenuPlayerController.h"
 #include "Audio/TN_AmbientSoundscape.h"
 #include "Audio/TN_AmbientSynthComponent.h"
 #include "Audio/TN_MusicSynthComponent.h"
@@ -340,7 +341,7 @@ namespace TNGameSettingsDetail
 			{ TEXT("Z+"), NSLOCTEXT("TNSettings", "DirUp", "arriba") }, { TEXT("Z-"), NSLOCTEXT("TNSettings", "DirDown", "abajo") },
 		};
 		const FText* Part = Parts.Find(Direction);
-		return FText::Format(NSLOCTEXT("TNSettings", "DirectionFmt", "{0} ({1})"), Base, Part ? *Part : FText::FromString(Direction));
+		return FText::Format(NSLOCTEXT("TNSettings", "DirectionFmt", "{0} ({1})"), Base, Part ? *Part : FText::AsCultureInvariant(Direction));
 	}
 
 	FText DeviceWord(int32 Device)
@@ -1319,36 +1320,47 @@ FText UTN_GameSettingsSubsystem::KeyDisplayName(const FKey& Key)
 	{
 		return NSLOCTEXT("TNSettings", "NoKey", "—");
 	}
-	static const TMap<FName, FString> Names = {
-		{ TEXT("SpaceBar"), TEXT("Espacio") }, { TEXT("LeftShift"), TEXT("Mayús izq.") }, { TEXT("RightShift"), TEXT("Mayús der.") },
-		{ TEXT("LeftControl"), TEXT("Ctrl izq.") }, { TEXT("RightControl"), TEXT("Ctrl der.") }, { TEXT("LeftAlt"), TEXT("Alt") },
-		{ TEXT("RightAlt"), TEXT("Alt Gr") }, { TEXT("BackSpace"), TEXT("Retroceso") }, { TEXT("Escape"), TEXT("Esc") }, { TEXT("Tab"), TEXT("Tab") },
-		{ TEXT("Enter"), TEXT("Intro") }, { TEXT("CapsLock"), TEXT("Bloq Mayús") }, { TEXT("PageUp"), TEXT("Re Pág") }, { TEXT("PageDown"), TEXT("Av Pág") },
-		{ TEXT("Delete"), TEXT("Supr") }, { TEXT("Insert"), TEXT("Insert") }, { TEXT("Home"), TEXT("Inicio") }, { TEXT("End"), TEXT("Fin") },
-		{ TEXT("Up"), TEXT("Flecha arriba") }, { TEXT("Down"), TEXT("Flecha abajo") }, { TEXT("Left"), TEXT("Flecha izquierda") },
-		{ TEXT("Right"), TEXT("Flecha derecha") },
-		{ TEXT("Mouse2D"), TEXT("Ratón") }, { TEXT("MouseX"), TEXT("Ratón") }, { TEXT("MouseY"), TEXT("Ratón") },
-		{ TEXT("LeftMouseButton"), TEXT("Clic izquierdo") }, { TEXT("RightMouseButton"), TEXT("Clic derecho") },
-		{ TEXT("MiddleMouseButton"), TEXT("Clic de la rueda") }, { TEXT("ThumbMouseButton"), TEXT("Botón lateral 1") },
-		{ TEXT("ThumbMouseButton2"), TEXT("Botón lateral 2") }, { TEXT("MouseScrollUp"), TEXT("Rueda") }, { TEXT("MouseScrollDown"), TEXT("Rueda") },
-		{ TEXT("MouseWheelAxis"), TEXT("Rueda") },
-		{ TEXT("Gamepad_Left2D"), TEXT("Stick izquierdo") }, { TEXT("Gamepad_Right2D"), TEXT("Stick derecho") },
-		{ TEXT("Gamepad_LeftX"), TEXT("Stick izquierdo") }, { TEXT("Gamepad_LeftY"), TEXT("Stick izquierdo") },
-		{ TEXT("Gamepad_RightX"), TEXT("Stick derecho") }, { TEXT("Gamepad_RightY"), TEXT("Stick derecho") },
-		{ TEXT("Gamepad_FaceButton_Bottom"), TEXT("A / Cruz") }, { TEXT("Gamepad_FaceButton_Right"), TEXT("B / Círculo") },
-		{ TEXT("Gamepad_FaceButton_Left"), TEXT("X / Cuadrado") }, { TEXT("Gamepad_FaceButton_Top"), TEXT("Y / Triángulo") },
-		{ TEXT("Gamepad_LeftShoulder"), TEXT("LB / L1") }, { TEXT("Gamepad_RightShoulder"), TEXT("RB / R1") },
-		{ TEXT("Gamepad_LeftTrigger"), TEXT("LT / L2") }, { TEXT("Gamepad_RightTrigger"), TEXT("RT / R2") },
-		{ TEXT("Gamepad_LeftTriggerAxis"), TEXT("LT / L2") }, { TEXT("Gamepad_RightTriggerAxis"), TEXT("RT / R2") },
-		{ TEXT("Gamepad_DPad_Up"), TEXT("Cruceta arriba") }, { TEXT("Gamepad_DPad_Down"), TEXT("Cruceta abajo") },
-		{ TEXT("Gamepad_DPad_Left"), TEXT("Cruceta izquierda") }, { TEXT("Gamepad_DPad_Right"), TEXT("Cruceta derecha") },
-		{ TEXT("Gamepad_LeftThumbstick"), TEXT("Clic stick izquierdo") }, { TEXT("Gamepad_RightThumbstick"), TEXT("Clic stick derecho") },
-		{ TEXT("Gamepad_Special_Right"), TEXT("Start / Menú") }, { TEXT("Gamepad_Special_Left"), TEXT("Select / Vista") },
+	// Los nombres de las teclas del juego, por su nombre de tecla. Una entrada por texto: las que se llaman igual comparten clave.
+	// Estático local (no de archivo): los NSLOCTEXT se crean con el sistema de localización ya en marcha.
+	static const TMap<FName, FText> Names = {
+		{ TEXT("SpaceBar"), NSLOCTEXT("TNKeys", "Space", "Espacio") },
+		{ TEXT("LeftShift"), NSLOCTEXT("TNKeys", "LeftShift", "Mayús izq.") }, { TEXT("RightShift"), NSLOCTEXT("TNKeys", "RightShift", "Mayús der.") },
+		{ TEXT("LeftControl"), NSLOCTEXT("TNKeys", "LeftCtrl", "Ctrl izq.") }, { TEXT("RightControl"), NSLOCTEXT("TNKeys", "RightCtrl", "Ctrl der.") },
+		{ TEXT("LeftAlt"), NSLOCTEXT("TNKeys", "Alt", "Alt") }, { TEXT("RightAlt"), NSLOCTEXT("TNKeys", "AltGr", "Alt Gr") },
+		{ TEXT("BackSpace"), NSLOCTEXT("TNKeys", "Backspace", "Retroceso") }, { TEXT("Escape"), NSLOCTEXT("TNKeys", "Escape", "Esc") },
+		{ TEXT("Tab"), NSLOCTEXT("TNKeys", "Tab", "Tab") }, { TEXT("Enter"), NSLOCTEXT("TNKeys", "Enter", "Intro") },
+		{ TEXT("CapsLock"), NSLOCTEXT("TNKeys", "CapsLock", "Bloq Mayús") },
+		{ TEXT("PageUp"), NSLOCTEXT("TNKeys", "PageUp", "Re Pág") }, { TEXT("PageDown"), NSLOCTEXT("TNKeys", "PageDown", "Av Pág") },
+		{ TEXT("Delete"), NSLOCTEXT("TNKeys", "Delete", "Supr") }, { TEXT("Insert"), NSLOCTEXT("TNKeys", "Insert", "Insert") },
+		{ TEXT("Home"), NSLOCTEXT("TNKeys", "Home", "Inicio") }, { TEXT("End"), NSLOCTEXT("TNKeys", "End", "Fin") },
+		{ TEXT("Up"), NSLOCTEXT("TNKeys", "ArrowUp", "Flecha arriba") }, { TEXT("Down"), NSLOCTEXT("TNKeys", "ArrowDown", "Flecha abajo") },
+		{ TEXT("Left"), NSLOCTEXT("TNKeys", "ArrowLeft", "Flecha izquierda") }, { TEXT("Right"), NSLOCTEXT("TNKeys", "ArrowRight", "Flecha derecha") },
+		{ TEXT("Mouse2D"), NSLOCTEXT("TNKeys", "Mouse", "Ratón") }, { TEXT("MouseX"), NSLOCTEXT("TNKeys", "Mouse", "Ratón") },
+		{ TEXT("MouseY"), NSLOCTEXT("TNKeys", "Mouse", "Ratón") },
+		{ TEXT("LeftMouseButton"), NSLOCTEXT("TNKeys", "MouseLeft", "Clic izquierdo") }, { TEXT("RightMouseButton"), NSLOCTEXT("TNKeys", "MouseRight", "Clic derecho") },
+		{ TEXT("MiddleMouseButton"), NSLOCTEXT("TNKeys", "MouseMiddle", "Clic de la rueda") },
+		{ TEXT("ThumbMouseButton"), NSLOCTEXT("TNKeys", "MouseSide1", "Botón lateral 1") }, { TEXT("ThumbMouseButton2"), NSLOCTEXT("TNKeys", "MouseSide2", "Botón lateral 2") },
+		{ TEXT("MouseScrollUp"), NSLOCTEXT("TNKeys", "Wheel", "Rueda") }, { TEXT("MouseScrollDown"), NSLOCTEXT("TNKeys", "Wheel", "Rueda") },
+		{ TEXT("MouseWheelAxis"), NSLOCTEXT("TNKeys", "Wheel", "Rueda") },
+		{ TEXT("Gamepad_Left2D"), NSLOCTEXT("TNKeys", "PadLeftStick", "Stick izquierdo") }, { TEXT("Gamepad_Right2D"), NSLOCTEXT("TNKeys", "PadRightStick", "Stick derecho") },
+		{ TEXT("Gamepad_LeftX"), NSLOCTEXT("TNKeys", "PadLeftStick", "Stick izquierdo") }, { TEXT("Gamepad_LeftY"), NSLOCTEXT("TNKeys", "PadLeftStick", "Stick izquierdo") },
+		{ TEXT("Gamepad_RightX"), NSLOCTEXT("TNKeys", "PadRightStick", "Stick derecho") }, { TEXT("Gamepad_RightY"), NSLOCTEXT("TNKeys", "PadRightStick", "Stick derecho") },
+		{ TEXT("Gamepad_FaceButton_Bottom"), NSLOCTEXT("TNKeys", "PadFaceBottom", "A / Cruz") }, { TEXT("Gamepad_FaceButton_Right"), NSLOCTEXT("TNKeys", "PadFaceRight", "B / Círculo") },
+		{ TEXT("Gamepad_FaceButton_Left"), NSLOCTEXT("TNKeys", "PadFaceLeft", "X / Cuadrado") }, { TEXT("Gamepad_FaceButton_Top"), NSLOCTEXT("TNKeys", "PadFaceTop", "Y / Triángulo") },
+		{ TEXT("Gamepad_LeftShoulder"), NSLOCTEXT("TNKeys", "PadLeftShoulder", "LB / L1") }, { TEXT("Gamepad_RightShoulder"), NSLOCTEXT("TNKeys", "PadRightShoulder", "RB / R1") },
+		{ TEXT("Gamepad_LeftTrigger"), NSLOCTEXT("TNKeys", "PadLeftTrigger", "LT / L2") }, { TEXT("Gamepad_RightTrigger"), NSLOCTEXT("TNKeys", "PadRightTrigger", "RT / R2") },
+		{ TEXT("Gamepad_LeftTriggerAxis"), NSLOCTEXT("TNKeys", "PadLeftTrigger", "LT / L2") }, { TEXT("Gamepad_RightTriggerAxis"), NSLOCTEXT("TNKeys", "PadRightTrigger", "RT / R2") },
+		{ TEXT("Gamepad_DPad_Up"), NSLOCTEXT("TNKeys", "PadDpadUp", "Cruceta arriba") }, { TEXT("Gamepad_DPad_Down"), NSLOCTEXT("TNKeys", "PadDpadDown", "Cruceta abajo") },
+		{ TEXT("Gamepad_DPad_Left"), NSLOCTEXT("TNKeys", "PadDpadLeft", "Cruceta izquierda") }, { TEXT("Gamepad_DPad_Right"), NSLOCTEXT("TNKeys", "PadDpadRight", "Cruceta derecha") },
+		{ TEXT("Gamepad_LeftThumbstick"), NSLOCTEXT("TNKeys", "PadLeftStickClick", "Clic stick izquierdo") },
+		{ TEXT("Gamepad_RightThumbstick"), NSLOCTEXT("TNKeys", "PadRightStickClick", "Clic stick derecho") },
+		{ TEXT("Gamepad_Special_Right"), NSLOCTEXT("TNKeys", "PadStart", "Start / Menú") }, { TEXT("Gamepad_Special_Left"), NSLOCTEXT("TNKeys", "PadSelect", "Select / Vista") },
 	};
-	if (const FString* Found = Names.Find(Key.GetFName()))
+	if (const FText* Found = Names.Find(Key.GetFName()))
 	{
-		return FText::FromString(*Found);
+		return *Found;
 	}
+	// Cualquier otra tecla (letras, números, F1...): el nombre que da el motor, que ya viene localizado.
 	return Key.GetDisplayName();
 }
 
@@ -1371,9 +1383,10 @@ FText UTN_GameSettingsSubsystem::ActionLabel(const FString& ActionName)
 	{
 		return *Found;
 	}
+	// Acción sin nombre conocido: el nombre del asset, tal cual (no es texto del juego: no se traduce).
 	FString Clean = ActionName;
 	Clean.RemoveFromStart(TEXT("IA_"));
-	return FText::FromString(Clean);
+	return FText::AsCultureInvariant(Clean);
 }
 
 bool UTN_GameSettingsSubsystem::IsIgnoredWhileCapturing(const FKey& Key)
@@ -1682,7 +1695,7 @@ void UTN_GameSettingsSubsystem::ResetKeyBinding(const FString& Id, FText& OutMes
 		return;
 	}
 	bool bChanged = false;
-	TArray<FString> Messages;
+	TArray<FText> Messages;
 	for (int32 Device = 0; Device < 2; ++Device)
 	{
 		FText Message;
@@ -1690,10 +1703,11 @@ void UTN_GameSettingsSubsystem::ResetKeyBinding(const FString& Id, FText& OutMes
 		if (AssignKey(*Row, Device, Row->Defaults[Device], false, Message) == ETNRebindResult::Changed)
 		{
 			bChanged = true;
-			Messages.Add(Message.ToString());
+			Messages.Add(Message);
 		}
 	}
-	OutMessage = bChanged ? FText::FromString(FString::Join(Messages, TEXT(" ")))
+	// Los mensajes de cada aparato, uno detrás de otro y separados por un espacio (sin pasar por FString: se siguen traduciendo).
+	OutMessage = bChanged ? FText::Join(INVTEXT(" "), Messages)
 		: FText::Format(NSLOCTEXT("TNSettings", "AlreadyDefault", "«{0}» ya iba con las de serie."), Row->Label);
 	if (bChanged)
 	{
@@ -1978,6 +1992,24 @@ void UTN_GameSettingsSubsystem::OpenPauseMenu(APlayerController* PC)
 	UE_LOG(LogTortunabo, Log, TEXT("[Pausa] Menú abierto (%s)."), *GetNameSafe(PC->GetWorld()));
 }
 
+void UTN_GameSettingsSubsystem::OpenMainMenuSettings(APlayerController* PC)
+{
+	// Solo el controlador del menú principal, local y con el menú de pausa cerrado.
+	if (IsPauseMenuOpen() || !PC || !PC->IsLocalController() || !PC->IsA<AMP_MenuPlayerController>())
+	{
+		return;
+	}
+	UTN_PauseMenuWidget* Menu = CreateWidget<UTN_PauseMenuWidget>(PC, UTN_PauseMenuWidget::StaticClass());
+	if (!Menu)
+	{
+		return;
+	}
+	PauseMenu = Menu;
+	Menu->AddToViewport(TNGameSettingsDetail::PauseMenuZOrder);
+	Menu->TakeInput();
+	UE_LOG(LogTortunabo, Log, TEXT("[Pausa] Ajustes abiertos desde el menú principal."));
+}
+
 void UTN_GameSettingsSubsystem::ClosePauseMenu()
 {
 	if (UTN_PauseMenuWidget* Menu = PauseMenu.Get())
@@ -1998,6 +2030,16 @@ void UTN_GameSettingsSubsystem::NotifyPauseMenuClosed(UTN_PauseMenuWidget* Menu)
 	if (PauseMenu == Menu)
 	{
 		PauseMenu = nullptr;
+	}
+	// Ajustes abiertos desde el menú principal: al cerrarse, la entrada vuelve a ser la de ese menú (solo interfaz, con el cursor a
+	// la vista), no la de una partida.
+	APlayerController* MenuPC = Menu ? Menu->GetOwningPlayer() : nullptr;
+	if (IsValid(MenuPC) && MenuPC->IsLocalController() && MenuPC->IsA<AMP_MenuPlayerController>())
+	{
+		FInputModeUIOnly InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		MenuPC->SetInputMode(InputMode);
+		MenuPC->SetShowMouseCursor(true);
 	}
 	// Si el menú se va con una resolución a medio confirmar (un viaje, por ejemplo), se deshace.
 	if (bVideoModePending)

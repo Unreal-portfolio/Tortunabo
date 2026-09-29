@@ -54,11 +54,12 @@ FText ATN_CoopGameState::ResolveQuickChatSenderName(int32 SenderPlayerId) const
 		const int32 LocalPlayerId = PS->GetPlayerId();
 		if (LocalPlayerId == SenderPlayerId)
 		{
-			return FText::FromString(PS->GetPlayerName());
+			return FText::AsCultureInvariant(PS->GetPlayerName());
 		}
 	}
 
-	return FText::FromString(TEXT("?"));
+	// Remitente desconocido: un signo de interrogación no depende del idioma.
+	return INVTEXT("?");
 }
 
 void ATN_CoopGameState::BroadcastFlowStateChange()

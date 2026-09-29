@@ -2,6 +2,7 @@
 
 #include "STN_EggLoadingScreen.h"
 #include "Core/TN_CoopGameState.h"
+#include "Core/TN_LocText.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_MatchFlowTypes.h"
 #include "Engine/Engine.h"
@@ -601,19 +602,20 @@ UWorld* UTN_LoadingScreenSubsystem::GetTickableGameObjectWorld() const
 
 FString UTN_LoadingScreenSubsystem::FriendlyStatusForMap(const FString& MapName)
 {
+	// Textos ya traducidos al idioma de esta máquina: la pantalla de carga los recibe como FString.
 	if (MapName.Contains(TEXT("Menu")))
 	{
-		return TEXT("Volviendo al menú");
+		return NSLOCTEXT("TNLoading", "StatusBackToMenu", "Volviendo al menú").ToString();
 	}
 	if (MapName.Contains(TEXT("HQ")) || MapName.Contains(TEXT("Lobby")))
 	{
-		return TEXT("Rumbo al cuartel");
+		return NSLOCTEXT("TNLoading", "StatusToHeadquarters", "Rumbo al cuartel").ToString();
 	}
 	if (MapName.Contains(TEXT("ProcMap")) || MapName.Contains(TEXT("LVL_Run")) || MapName.Contains(TEXT("BeachRace")))
 	{
-		return TEXT("Incubando la partida");
+		return NSLOCTEXT("TNLoading", "StatusHatching", "Incubando la partida").ToString();
 	}
-	return TEXT("Cargando");
+	return NSLOCTEXT("TNLoading", "StatusLoading", "Cargando").ToString();
 }
 
 FString UTN_LoadingScreenSubsystem::CleanStatus(const FString& InStatus)
@@ -667,7 +669,7 @@ void UTN_LoadingScreenSubsystem::HandlePreLoadMap(const FWorldContext& WorldCont
 	BreakAtTime = -1.0;
 	// Primera carga del juego (aún no había partida): «Cargando»; si no, el texto amable del mapa de destino.
 	bKeepLoadStatus = !(OldWorld && OldWorld->HasBegunPlay());
-	const FString LoadStatus = bKeepLoadStatus ? FString(TEXT("Cargando")) : FriendlyStatusForMap(MapName);
+	const FString LoadStatus = bKeepLoadStatus ? NSLOCTEXT("TNLoading", "StatusLoading", "Cargando").ToString() : FriendlyStatusForMap(MapName);
 	// Un viaje que esperaba a que el huevo se cerrara (RunWhenClosed) ya no toca: está empezando otro.
 	PendingWhenClosed.Reset();
 	// Cerrado del todo ya: durante el LoadMap no se repinta nada más.
@@ -756,7 +758,7 @@ void UTN_LoadingScreenSubsystem::BeginLoading(const FString& InStatus, bool bSta
 		}
 		if (!Clean.IsEmpty())
 		{
-			Screen->SetStatus(FText::FromString(Clean));
+			Screen->SetStatus(TNLocText::Literal(Clean));
 		}
 		AddToViewport();
 		return;
@@ -769,7 +771,7 @@ void UTN_LoadingScreenSubsystem::BeginLoading(const FString& InStatus, bool bSta
 	}
 	Screen = SNew(STN_EggLoadingScreen)
 		.StartClosed(bStartClosed)
-		.Status(FText::FromString(Clean));
+		.Status(TNLocText::Literal(Clean));
 	LoadDoneTime = -1.0;
 	WorldReadyTime = -1.0;
 	BreakAtTime = -1.0;
@@ -866,7 +868,7 @@ void UTN_LoadingScreenSubsystem::SetStatus(const FString& InStatus)
 	const FString Clean = CleanStatus(InStatus);
 	if (Screen.IsValid() && !Clean.IsEmpty())
 	{
-		Screen->SetStatus(FText::FromString(Clean));
+		Screen->SetStatus(TNLocText::Literal(Clean));
 	}
 }
 
@@ -1006,11 +1008,13 @@ void UTN_LoadingScreenSubsystem::ShowRoundWaitStatus(const UWorld* World)
 		return;
 	}
 	const ATN_CoopGameState* RoundState = TNLoadingRounds::GetRoundState(World);
-	const TCHAR* WaitStatus = (RoundState && RoundState->ConnectedPlayers > 1) ? TEXT("Esperando a las demás tortugas") : TEXT("Preparando la salida");
+	const FString WaitStatus = (RoundState && RoundState->ConnectedPlayers > 1)
+		? NSLOCTEXT("TNLoading", "StatusWaitingOthers", "Esperando a las demás tortugas").ToString()
+		: NSLOCTEXT("TNLoading", "StatusPreparingExit", "Preparando la salida").ToString();
 	if (LastAutoStatus != WaitStatus)
 	{
 		LastAutoStatus = WaitStatus;
-		Screen->SetStatus(FText::FromString(LastAutoStatus));
+		Screen->SetStatus(TNLocText::Literal(LastAutoStatus));
 	}
 }
 
@@ -1157,7 +1161,7 @@ void UTN_LoadingScreenSubsystem::UpdateAutoClose(UWorld* World, double Now)
 		HoldReason = TNEggLoading::EHold::None;
 		if (!Screen.IsValid() || Screen->IsBreaking() || Screen->IsOpening())
 		{
-			BeginLoading(LoadingMapName.IsEmpty() ? FString(TEXT("Incubando la partida")) : FriendlyStatusForMap(LoadingMapName));
+			BeginLoading(LoadingMapName.IsEmpty() ? NSLOCTEXT("TNLoading", "StatusHatching", "Incubando la partida").ToString() : FriendlyStatusForMap(LoadingMapName));
 		}
 		return;
 	}
@@ -1184,8 +1188,8 @@ void UTN_LoadingScreenSubsystem::UpdateAutoClose(UWorld* World, double Now)
 			bLobbyTravelImminent |= CoopState->MatchFlowState == ETNMatchFlowState::Cinematic;
 			const bool bCounting = CoopState->CountdownValue > 0;
 			const FString CountdownStatus = bCounting
-				? FString::Printf(TEXT("¡Todos listos! Salimos en %d"), CoopState->CountdownValue)
-				: FString(TEXT("Preparando la expedición"));
+				? FText::Format(NSLOCTEXT("TNLoading", "StatusAllReady", "¡Todos listos! Salimos en {0}"), TNLocText::Int(CoopState->CountdownValue)).ToString()
+				: NSLOCTEXT("TNLoading", "StatusPreparingExpedition", "Preparando la expedición").ToString();
 			if (HoldReason != TNEggLoading::EHold::Lobby || !Screen.IsValid() || Screen->IsBreaking() || Screen->IsOpening())
 			{
 				CloseAndHold(TNEggLoading::EHold::Lobby, CountdownStatus);
@@ -1193,7 +1197,7 @@ void UTN_LoadingScreenSubsystem::UpdateAutoClose(UWorld* World, double Now)
 			}
 			if (Screen.IsValid() && CountdownStatus != LastAutoStatus)
 			{
-				Screen->SetStatus(FText::FromString(CountdownStatus), !bCounting);
+				Screen->SetStatus(TNLocText::Literal(CountdownStatus), !bCounting);
 				LastAutoStatus = CountdownStatus;
 			}
 		}

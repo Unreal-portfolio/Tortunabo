@@ -1,6 +1,7 @@
 #include "Lobby/TN_ChangingBooth.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
+#include "Settings/TN_LanguageSettings.h"
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -164,6 +165,19 @@ void ATN_ChangingBooth::BeginPlay()
 	BuildMeshes();
 	BuildLabel();
 	HideBlockout();
+	LanguageHandle = TNLanguage::OnApplied().AddUObject(this, &ATN_ChangingBooth::HandleLanguageApplied);
+}
+
+void ATN_ChangingBooth::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	TNLanguage::OnApplied().Remove(LanguageHandle);
+	LanguageHandle.Reset();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_ChangingBooth::HandleLanguageApplied()
+{
+	BuildLabel();
 }
 
 void ATN_ChangingBooth::OnConstruction(const FTransform& Transform)
@@ -473,7 +487,7 @@ void ATN_ChangingBooth::BuildLabel()
 		Letter->SetVerticalAlignment(EVRTA_TextCenter);
 		Letter->SetWorldSize(24.f);
 		Letter->SetTextRenderColor(FColor(16, 32, 66));
-		Letter->SetText(FText::FromString(FString(1, &Ch)));
+		Letter->SetText(FText::AsCultureInvariant(FString(1, &Ch)));
 		Letter->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Letter->RegisterComponent();
 		LabelLetters.Add(Letter);

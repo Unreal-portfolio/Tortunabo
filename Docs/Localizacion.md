@@ -1,9 +1,10 @@
 # Localización: idiomas, traducciones y fuentes
 
 Tortunavy se escribe en **español de España** (es-ES, el idioma origen) y se puede traducir a los idiomas de la lista de
-abajo con el canal de localización del motor (`FText` + objetivo «Game» + archivos `.po`). Este documento es la **fase 1**
-(el canal, el ajuste de idioma, los nombres de sala y las fuentes). La **fase 2** —auditar que todos los textos visibles son
-`FText` y traducirlos— está por hacer; al final hay lo que ya se sabe que falta.
+abajo con el canal de localización del motor (`FText` + objetivo «Game» + archivos `.po`). La **fase 1** puso el canal, el
+ajuste de idioma, los nombres de sala y las fuentes. La **fase 2** (29-09-2026) audita el código: todo texto que llega a la
+pantalla es ya un `FText` localizable (o un dato que no se traduce, marcado como tal), y el idioma también se cambia desde el
+menú principal. Ver «Auditoría de textos (fase 2)» y, al final, «Qué queda».
 
 ## Qué hay
 
@@ -11,14 +12,16 @@ abajo con el canal de localización del motor (`FText` + objetivo «Game» + arc
 |---|---|---|
 | Lista de idiomas | `Config/DefaultGame.ini` → `[/Script/Tortunabo.TN_LanguageSettings]`; clase `UTN_LanguageSettings` en `Settings/TN_LanguageSettings.*` | Los idiomas que se pueden elegir, en orden, con su fuente de reserva si la tienen. Se edita sin tocar código (también en Ajustes del proyecto > Tortunavy > Idiomas). |
 | `TNLanguage` | `Settings/TN_LanguageSettings.*` | Idioma del sistema en términos de la lista, cambio en caliente de la cultura, idioma activo. |
-| Ajuste «Idioma» | Menú de pausa > Ajustes > Juego (primera fila) y `FTNGameSettings::Language` | Elegirlo; se guarda con los demás ajustes (`Saved/SaveGames/TN_Settings.sav`). |
+| Ajuste «Idioma» | Menú de pausa > Ajustes > Juego (primera fila), o **menú principal > Ajustes** (el mismo menú), y `FTNGameSettings::Language` | Elegirlo; se guarda con los demás ajustes (`Saved/SaveGames/TN_Settings.sav`). |
+| `TNLocText` | `Core/TN_LocText.h` | Ayudas para montar textos: `Int` (sin separador de millares), `OneDecimal`, `MinutesSeconds` («m:ss»), `Literal` (dato que no se traduce), `PlayerName` («Tortuga» si no hay nombre) y `JoinList` («A, B y C» con las conjunciones del idioma). |
+| `TNLanguage::OnApplied` | `Settings/TN_LanguageSettings.*` | Se emite al cambiar el idioma en caliente. Además, `TNLanguage::Apply` avisa a todos los carteles 3D (`UTextRenderComponent`) para que se repinten; el rótulo del probador y el cartel y la pizarra del general se rehacen con este evento. |
 | Objetivo de localización «Game» | `Config/DefaultEditor.ini` (`[/Script/Localization.LocalizationSettings]`) y `Config/Localization/Game_*.ini` | Qué se recoge, qué culturas se generan, cómo se exporta, importa y compila. |
 | Scripts | `Scripts/localization_gather_export.bat`, `Scripts/localization_import_compile.bat` | Recoger → exportar `.po`; importar `.po` → compilar `.locres`. |
 | Datos | `Content/Localization/Game/` (lo crea el primer script) | `Game.manifest`, `Game.locmeta`, `<cultura>/Game.archive`, `<cultura>/Game.po`, `<cultura>/Game.locres`. |
 | Empaquetado | `Config/DefaultGame.ini` → `[/Script/UnrealEd.ProjectPackagingSettings]` | `+CulturesToStage` de las 13 culturas, `InternationalizationPreset=All` y las fuentes de reserva como archivos sueltos. |
 | Nombres de sala | `Multiplayer/TN_RoomNames.*`, `Tools/Localization/room_names_en.csv` | 242 nombres con clave estable `TNRoomNames` / `Room_000`; inglés de antes en el CSV. |
 | Fuentes | `Private/UI/HUD/TN_HUDFonts.*` (usado por `TNHUDStyle::Font`), `Scripts/tools/check_font_coverage.py` | Fuente compuesta con reserva por idioma; comprobación de caracteres. |
-| Pruebas | `Tortunabo.Settings.Language.*`, `Tortunabo.Multiplayer.RoomNames.*` | Lista de idiomas, resolución del idioma, nombres de sala y su CSV inglés. |
+| Pruebas | `Tortunabo.Settings.Language.*`, `Tortunabo.Settings.LocText.*`, `Tortunabo.Multiplayer.RoomNames.*` | Lista de idiomas, resolución del idioma, ayudas de `TNLocText` (números, «m:ss», listas, plurales), nombres de teclas, nombres de sala y su CSV inglés. |
 
 ## Idiomas
 
@@ -101,14 +104,34 @@ traducciones ya hechas viven en los `.archive`/`.po` y se conservan al volver a 
 
 - Todo texto que se vea en pantalla es un `FText`: `NSLOCTEXT("Espacio", "Clave", "Texto en español")` o `LOCTEXT` con
   `LOCTEXT_NAMESPACE`. Nada de `FText::FromString("...")` con un literal, ni `FString` que acabe en un `TextBlock`. Espacios de
-  nombres que ya hay: `TNPause` (menú de pausa), `TNSettings` (ajustes y teclas), `TNRooms` (salas), `TNRoomNames` (nombres de sala).
+  nombres que ya hay: más abajo. **Nada de `NSLOCTEXT` en inicializadores estáticos de archivo** (se crean antes de que el
+  sistema de localización esté en marcha): dentro de una función, o en un estático local de función.
 - Clave única y estable por texto (en un mismo espacio, misma clave = mismo texto origen: si no, sale en `Game_Conflicts.txt`).
 - Nada de `+` para montar frases: `FText::Format(NSLOCTEXT(..., "Te quedan {0} intentos"), FText::AsNumber(N))`. Números, fechas y
-  porcentajes con `FText::AsNumber`, `AsPercent`, `AsDate`... (formato de la cultura). Plurales: `{0}|plural(one=intento,other=intentos)`.
+  porcentajes con `FText::AsNumber`, `AsPercent`, `AsDate`... (formato de la cultura).
 - El recolector solo entiende llamadas **literales**: `NSLOCTEXT("A", "B", "C")` con tres cadenas escritas ahí. Un macro que
   componga la clave o una tabla que llame a `FText::FromStringTable` desde código no se recoge (por eso los 242 nombres de sala
   están escritos uno a uno).
-- Nombres de teclas (`KeyDisplayName`), texto de los HUD y avisos compuestos con `FString`: fase 2.
+- Espacios de nombres que hay: `TNPause` (menú de pausa), `TNSettings` (ajustes), `TNKeys` (nombres de teclas y botones), `TNRooms`
+  (salas y menú principal), `TNRoomNames` (nombres de sala), `TNRace` (carrera y objetos), `TNBeach` (la playa), `TNHUD`
+  (HUD y flujo de la partida), `TNGhost` (espectador), `TNLoading` (pantalla de carga), `TNText` y `TNTime` (listas y «m:ss»,
+  de `TNLocText`), `TNTutorial` (tutorial) y `Tortunabo` (lobby, tienda, briefing, avisos de interacción).
+- **Nunca `FText::FromString` con un literal ni un `FString` traducido a medias.** Un dato del jugador (nombre, código de sala,
+  nombre del anfitrión) o un símbolo se marca como lo que es: `TNLocText::Literal(Nombre)`, `TNLocText::PlayerName(Nombre)`
+  (si el nombre está vacío sale «Tortuga») o `INVTEXT("·")`. Así una búsqueda de `FromString` en el código solo encuentra lo que
+  falta.
+- **Ni `Printf` ni `+` para lo que se ve.** Números: `TNLocText::Int` (puestos, cuentas atrás) u `OneDecimal`; tiempos:
+  `TNLocText::MinutesSeconds`; listas de nombres: `TNLocText::JoinList`. Una frase con datos es un solo `NSLOCTEXT` con
+  `{0}`, `{1}`... (o `{Player}` con `FFormatNamedArguments`).
+- **Plurales con la sintaxis del motor**, pasando el número como entero (no un `FText::AsNumber`, que ya no se puede
+  contar): `FText::Format(NSLOCTEXT("TNRooms", "RoomsCount", "{0} {0}|plural(one=sala,other=salas)"), Count)`. El traductor
+  añade las formas de su idioma (`few=`, `many=`...; ruso y polaco).
+- **Texto que depende del idioma y se guarda ya montado** (letras sueltas de un cartel 3D, cadenas para `FSlateDrawElement::MakeText`
+  en la pantalla de carga): se lee del `FText` en el momento (`.ToString()`), sin guardarlo entre partidas; y si un cartel 3D
+  se ajusta al ancho del texto, se suscribe a `TNLanguage::OnApplied()` (en `BeginPlay`, y se quita en `EndPlay`).
+- **Textos que no se traducen a propósito**: registros (`UE_LOG`), comandos y variables de consola con su ayuda, `UMETA(DisplayName)`
+  (solo el editor), avisos de los validadores de datos, previsualizaciones de desarrollo (`TN.Race.*` con nombres de mentira) y el
+  nombre de un asset que hace de reserva (`ActionLabel` de una acción sin nombre).
 
 ## Traducir con Claude (por bloques, con glosario)
 
@@ -204,15 +227,48 @@ más ligeras si no gustan: *M PLUS Rounded 1c* (japonés, redondeada, OFL; encaj
 OFL, 4 MB). Latín extendido y cirílico **no** hacen falta (Roboto los cubre). Para una escritura nueva (árabe con formas, tailandés,
 hindi) habría que ver *Noto Sans Arabic*, etc.
 
-## Pendiente de la fase 2 (auditoría de textos)
+## Auditoría de textos (fase 2)
 
-Ya se sabe que no se traduce todavía, porque no pasa por `FText` localizable:
+**Cómo se buscó.** En `Source/Tortunabo`, todo lo que acaba en pantalla: `FText::FromString` y `FromName`, `SetText`, `FString`
+que llegan a un `TextBlock` o a `FSlateDrawElement::MakeText`, `Printf` de avisos, `UTextRenderComponent`, `PromptText`,
+`AddOnScreenDebugMessage`/`ClientMessage`, `GetDisplayName` y los `UPROPERTY` con `FText`/`FString`; además de los assets
+de `Content` (cadenas de los `.uasset`).
 
-- `UTN_GameSettingsSubsystem::KeyDisplayName`: nombres de teclas («Espacio», «Clic izquierdo», «Stick izquierdo»...) con `FText::FromString`.
-- `UTN_GameSettingsSubsystem::ActionLabel`: las acciones sin nombre conocido usan el nombre del asset.
-- Textos con `FString` que acaban en pantalla (`ShowLoadingScreen`, `UpdateStatus` y otros en `MP_GameInstance`), la pantalla de carga del huevo,
-  los HUD de la carrera y el cooperativo, la tienda, el briefing y los `TextBlock` de los blueprints (los recoge el paso de assets).
-- Números y fechas escritos con `FString::Printf` en lugar de `FText::AsNumber`.
+**Qué se pasó a `NSLOCTEXT` o se marcó como dato** (cifras aproximadas por zona):
+
+| Zona | Cambio |
+|---|---|
+| Avisos de interacción (`PromptText`) | 9 actores (botón, cosméticos, base de interactuables, recoger, rescatar, estatua de skins, tótem, sombrilla, caja de objetos): `NSLOCTEXT("Tortunabo", "…Prompt")`. «Abrir cosmeticos» pasó a «Abrir cosméticos». El aviso por defecto del widget también. |
+| Nombres de teclas | `KeyDisplayName` (48 entradas, `TNKeys`; las que se llaman igual comparten clave), la tabla corta del briefing (`KeyLabel`, mismas claves más `Short…`; símbolos y letras del mando como `INVTEXT`) y la tecla de interactuar del HUD, que ahora usa `KeyDisplayName`. Las direcciones («siguiente», «arriba»...) ya eran `NSLOCTEXT`. |
+| Mensajes de teclas | «Volver a las de serie» une los mensajes de cada aparato con `FText::Join` (antes pasaba por `FString`). |
+| HUD del flujo de la partida (`UTN_CoopFlowHUDWidget`) | 25 textos (`TNHUD`): franja de estado, resultados, marcador, cuenta atrás del lobby, línea del chat rápido (`{0}: {1}`). Tiempos con `OneDecimal`. Se corrigieron dos erratas («Todos listos!» → «¡Todos listos!», «esten» → «estén»). |
+| Espectador (`TNGhost`) | Nombres de quien mira con `JoinList` (antes «y» escrito en el código). |
+| Pantalla de carga | 21 textos (`TNLoading`): las 8 frases y la palabra del «¡ADELANTE!», los 9 consejos con su prefijo, «¡Allá vamos!», «¡PUM!» (también el del huevo fantasma) y los 9 estados (`FriendlyStatusForMap`, cuenta atrás del lobby, espera a la ronda). Los estados viajan como `FString` ya traducido al idioma de la máquina. |
+| Carrera | Nombres de los 14 objetos (`TNRaceItems::DisplayName`, `TNRace`), «Tortuga» cuando no hay nombre (`PlayerName`), reloj de ronda («m:ss» con `MinutesSeconds`), plurales de «conchas» en el sprint. Aviso de caja «Coger caja». |
+| Salas | Plurales («1 sala / N salas», «N tortugas»), códigos y anfitriones como `Literal`. |
+| Tienda y briefing | Nombre del jugador y «marinero»/«recluta» cuando no hay; el rótulo del cuartel y de la tienda con `FText::ToUpper()` (antes `ToString().ToUpper()`); el texto que sale letra a letra es un trozo ya traducido (`Literal`). Precio en conchas con plural. |
+| Menú principal | «Listo. Crea una partida o únete a una.» y el botón «Ajustes» (`TNRooms`/`MenuSettings`). |
+| Carteles 3D | Letras del rótulo del probador y rótulo del cuartel/tienda ya no son `FString`; ver `TNLanguage::OnApplied`. |
+| Clave repetida | `TNRace/SprintTie` existía con dos textos distintos (recuento y título del sprint): el segundo pasó a `SprintTieBanner` (`Game_Conflicts.txt` debe salir vacío). |
+
+**Assets (`Content`).** Los `TextBlock` de los blueprints (`WBP_*`) no traen texto fijo: se rellenan desde código. Las tablas
+`DT_Helmets` y `DT_Skins` usan `FText` con clave propia (`Helmet_Crown_DisplayName`, `Body_Coral_Description`...): las recoge
+el paso de assets. `DA_QuickChatWheelCatalog` y `DA_EmoteWheelCatalog` guardan `FText`. `DT_Items` no tiene textos. **No hay
+ningún texto de asset en `FString`.** Comprobar tras la primera recogida que esas claves salen en `Game.po`.
+
+## Qué queda
+
+- **Archivos que estaban reservados por el tutorial** (se retoman cuando queden libres): `UI/Pause/TN_PauseMenuWidget.*`
+  (nombres de jugador y códigos con `FromString`, «{0} · {1} tortugas conectadas» y las conchas y victorias de la cabecera
+  con plural, el nombre del mapa de reserva), `Multiplayer/MP_GameInstance.*` (los `UpdateStatus` y `ShowLoadingScreen` con
+  texto suelto: «Buscando salas...», «Reconectando...», los errores de red) y `World/TN_TutorialEntryInteractable.cpp`
+  («Repetir Tutorial»).
+- **Modo «menú principal» dentro del menú de pausa**: ver `Docs/Menu_Pausa.md`, «Ajustes desde el menú principal».
+- La pantalla de carga del huevo y el «PUM» del huevo fantasma siguen con la fuente del motor (`FCoreStyle`), no con
+  `TNHUDFonts`: con japonés, coreano o chino salen con la reserva del motor hasta que haya fuentes propias.
+- Los textos del tutorial (`TNTutorial`) los escribe el agente del tutorial; sus nombres de teclas de reserva
+  (`TN_TutorialPlayerComponent.cpp`) deberían salir de `UTN_GameSettingsSubsystem::KeyDisplayName`.
 - Las pruebas automáticas (`Private/Tests`) no se recogen a propósito: no salen en pantalla.
 
-La forma de encontrarlos: `-culture=LEET` (todo lo que se vea «normal» no es localizable) y `Game_Conflicts.txt`.
+La forma de encontrar lo que falte: `-culture=LEET` (todo lo que se vea «normal» no es localizable), buscar `FromString` en el
+código y `Game_Conflicts.txt`.

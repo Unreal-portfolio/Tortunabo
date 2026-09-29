@@ -634,17 +634,18 @@ namespace TNEggLoadingDetail
 	}
 
 	/** Frase de ánimo al azar (como mucho 70 caracteres), nunca la misma dos veces seguidas. Hilo de juego. */
-	const TCHAR* PickGoLine()
+	FText PickGoLine()
 	{
-		static const TCHAR* const GoLines[] = {
-			TEXT("¡Corre hacia el mar, que la tormenta no te pille!"),
-			TEXT("¡Aletas a tope: el mar te está esperando!"),
-			TEXT("¡Sal del nido como un rayo y no mires atrás!"),
-			TEXT("¡Rueda, salta y nada: la playa es toda tuya!"),
-			TEXT("¡Más rápida que la marea, más valiente que la tormenta!"),
-			TEXT("¡Que la tormenta solo vea tu caparazón alejarse!"),
-			TEXT("¡A la carrera, tortuga, que la ola no espera!"),
-			TEXT("¡La última en llegar al agua invita a algas!"),
+		// Estático local, no de archivo: los NSLOCTEXT se crean con el sistema de localización ya en marcha.
+		static const FText GoLines[] = {
+			NSLOCTEXT("TNLoading", "GoLineStorm", "¡Corre hacia el mar, que la tormenta no te pille!"),
+			NSLOCTEXT("TNLoading", "GoLineFins", "¡Aletas a tope: el mar te está esperando!"),
+			NSLOCTEXT("TNLoading", "GoLineNest", "¡Sal del nido como un rayo y no mires atrás!"),
+			NSLOCTEXT("TNLoading", "GoLineRollJumpSwim", "¡Rueda, salta y nada: la playa es toda tuya!"),
+			NSLOCTEXT("TNLoading", "GoLineFasterThanTide", "¡Más rápida que la marea, más valiente que la tormenta!"),
+			NSLOCTEXT("TNLoading", "GoLineShellAway", "¡Que la tormenta solo vea tu caparazón alejarse!"),
+			NSLOCTEXT("TNLoading", "GoLineWaveWaits", "¡A la carrera, tortuga, que la ola no espera!"),
+			NSLOCTEXT("TNLoading", "GoLineAlgae", "¡La última en llegar al agua invita a algas!"),
 		};
 		static int32 LastPicked = -1;
 		const int32 NumLines = UE_ARRAY_COUNT(GoLines);
@@ -660,7 +661,7 @@ namespace TNEggLoadingDetail
 
 void FTNGoBannerPainter::Init()
 {
-	WordText = TEXT("¡ADELANTE!");
+	WordText = NSLOCTEXT("TNLoading", "GoWord", "¡ADELANTE!").ToString();
 	// A 1080 de alto la palabra sale casi a este tamaño; la escala de maquetación la ajusta al ancho de la pantalla. Todas
 	// las capas usan este contorno y solo cambian su color, que no cuenta para la caché de letras: se rasterizan una vez.
 	WordFont = FCoreStyle::GetDefaultFontStyle("Bold", 220);
@@ -674,7 +675,7 @@ void FTNGoBannerPainter::Init()
 
 void FTNGoBannerPainter::PickLine()
 {
-	LineText = TNEggLoadingDetail::PickGoLine();
+	LineText = TNEggLoadingDetail::PickGoLine().ToString();
 }
 
 bool FTNGoBannerPainter::ComputePlacement(const FGeometry& BannerGeo, FPlacement& OutPlace) const
@@ -1203,7 +1204,7 @@ FString STN_EggLoadingScreen::GetStatusString(double Now) const
 {
 	if (IsBreaking())
 	{
-		return TEXT("¡Allá vamos!");
+		return NSLOCTEXT("TNLoading", "EggBreaking", "¡Allá vamos!").ToString();
 	}
 	FString Line = Status.ToString();
 	if (bAnimateDots)
@@ -1216,21 +1217,21 @@ FString STN_EggLoadingScreen::GetStatusString(double Now) const
 
 FString STN_EggLoadingScreen::GetTipString(double Now) const
 {
-	static const TCHAR* Tips[] = {
-		TEXT("Métete en el caparazón: rodarás cuesta abajo y tus compañeros te podrán lanzar."),
-		TEXT("El panzazo cruza huecos que andando no se cruzan."),
-		TEXT("Si te noquean, espera a que se vayan los pajaritos."),
-		TEXT("Lleva a un compañero en su caparazón y lánzalo hacia la meta."),
-		TEXT("La tormenta avanza por el camino: no te quedes atrás."),
-		TEXT("En el agua se nada; las corrientes también empujan."),
-		TEXT("¿Aburrido en el castillo? Prueba el patio de pruebas y los toboganes del muro."),
-		TEXT("Para estar listo, métete en un huevo o en la sala de la puerta doble: con todos dentro, empieza la partida."),
-		TEXT("Como os pongáis listos, así saldréis al mapa: por la puerta doble o rompiendo los huevos."),
+	static const FText Tips[] = {
+		NSLOCTEXT("TNLoading", "TipShellRoll", "Métete en el caparazón: rodarás cuesta abajo y tus compañeros te podrán lanzar."),
+		NSLOCTEXT("TNLoading", "TipBellyFlop", "El panzazo cruza huecos que andando no se cruzan."),
+		NSLOCTEXT("TNLoading", "TipKnockout", "Si te noquean, espera a que se vayan los pajaritos."),
+		NSLOCTEXT("TNLoading", "TipCarryThrow", "Lleva a un compañero en su caparazón y lánzalo hacia la meta."),
+		NSLOCTEXT("TNLoading", "TipStorm", "La tormenta avanza por el camino: no te quedes atrás."),
+		NSLOCTEXT("TNLoading", "TipSwim", "En el agua se nada; las corrientes también empujan."),
+		NSLOCTEXT("TNLoading", "TipCastle", "¿Aburrido en el castillo? Prueba el patio de pruebas y los toboganes del muro."),
+		NSLOCTEXT("TNLoading", "TipReadyUp", "Para estar listo, métete en un huevo o en la sala de la puerta doble: con todos dentro, empieza la partida."),
+		NSLOCTEXT("TNLoading", "TipReadyExit", "Como os pongáis listos, así saldréis al mapa: por la puerta doble o rompiendo los huevos."),
 	};
 	const int32 NumTips = UE_ARRAY_COUNT(Tips);
 	const int32 First = static_cast<int32>(FMath::Frac(Timeline.Origin * 0.37) * NumTips);
 	const int32 Index = (First + static_cast<int32>(FMath::Max(0.0, Now - Timeline.Origin) / 4.5)) % NumTips;
-	return FString(TEXT("Consejo: ")) + Tips[FMath::Clamp(Index, 0, NumTips - 1)];
+	return FText::Format(NSLOCTEXT("TNLoading", "TipPrefix", "Consejo: {0}"), Tips[FMath::Clamp(Index, 0, NumTips - 1)]).ToString();
 }
 
 int32 STN_EggLoadingScreen::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
@@ -1484,7 +1485,7 @@ int32 STN_EggLoadingScreen::OnPaint(const FPaintArgs& Args, const FGeometry& All
 				FSlateDrawElement::MakeBox(OutDrawElements, Layer, AllottedGeometry.ToPaintGeometry(FVector2f(BurstSize, BurstSize),
 					FSlateLayoutTransform(FVector2f(0.5f * Sw - 0.5f * BurstSize, 0.5f * Sh - 0.5f * BurstSize))), &BurstBrush, ESlateDrawEffect::None,
 					FLinearColor(1.f, 1.f, 1.f, BurstAlpha * Alpha));
-				const FString PumLine(TEXT("¡PUM!"));
+				const FString PumLine = NSLOCTEXT("TNLoading", "EggPum", "¡PUM!").ToString();
 				const FVector2f PumSize = Measurer->Measure(PumLine, PumFont, 1.f);
 				const float PumScale = FMath::Max(0.05f, PopScale * TextScale);
 				const FVector2f PumPos(0.5f * Sw - 0.5f * PumSize.X * PumScale, 0.5f * Sh - 0.5f * PumSize.Y * PumScale);

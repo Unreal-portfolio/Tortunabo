@@ -3,6 +3,7 @@
 #include "../HUD/TN_HUDArt.h"
 #include "../HUD/TN_HUDStyle.h"
 #include "Audio/TN_ScoreShellSynthComponent.h"
+#include "Core/TN_LocText.h"
 #include "Lobby/TN_LobbyMission.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Multiplayer/TN_RoomNames.h"
@@ -184,7 +185,7 @@ namespace TNRoomUI
 
 	FText SizeText(int32 Size)
 	{
-		return FText::Format(NSLOCTEXT("TNRooms", "SizeFmt", "{0} tortugas"), FText::AsNumber(Size));
+		return FText::Format(NSLOCTEXT("TNRooms", "SizeFmt", "{0} {0}|plural(one=tortuga,other=tortugas)"), Size);
 	}
 }
 
@@ -277,7 +278,7 @@ void UTN_RoomCodeField::RefreshCells()
 		const FLinearColor FillColor = bCaret && bEditing ? TNHUDArt::Hex(0x5A3F0C, 0.95f) : TNHUDArt::Hex(0x0B2A4A, 0.92f);
 		const FLinearColor Edge = bCaret ? TNHUDArt::Gold : FLinearColor(1.f, 1.f, 1.f, bFocused ? 0.35f : 0.16f);
 		Cells[i]->SetBrush(TNHUDStyle::Rounded(FillColor, 10.f, Edge, bCaret ? 2.5f : 1.f));
-		CellTexts[i]->SetText(bFilled ? FText::FromString(FString::Chr(Chars[i])) : FText::FromString(TEXT("·")));
+		CellTexts[i]->SetText(bFilled ? TNLocText::Literal(FString::Chr(Chars[i])) : INVTEXT("·"));
 		CellTexts[i]->SetColorAndOpacity(FSlateColor(bFilled ? TNHUDArt::Cream : TNHUDStyle::TextDim));
 		Cells[i]->SetRenderOpacity(1.f);
 	}
@@ -988,13 +989,13 @@ void UTN_RoomMenuWidget::RefreshCreateRows()
 	if (CodeRow)
 	{
 		const FString Code = Draft.Code;
-		CodeRow->SetupEntry(NSLOCTEXT("TNRooms", "CodeRow", "Código de la sala"), FText::FromString(Code), NSLOCTEXT("TNRooms", "CodeCopy", "Copiar"),
+		CodeRow->SetupEntry(NSLOCTEXT("TNRooms", "CodeRow", "Código de la sala"), TNLocText::Literal(Code), NSLOCTEXT("TNRooms", "CodeCopy", "Copiar"),
 			[WeakThis, Code]()
 			{
 				FPlatformApplicationMisc::ClipboardCopy(*Code);
 				if (UTN_RoomMenuWidget* Menu = WeakThis.Get())
 				{
-					Menu->ShowNotice(FText::Format(NSLOCTEXT("TNRooms", "CodeCopied", "Código {0} copiado: pásaselo a tus amigos."), FText::FromString(Code)), false, 4.f);
+					Menu->ShowNotice(FText::Format(NSLOCTEXT("TNRooms", "CodeCopied", "Código {0} copiado: pásaselo a tus amigos."), TNLocText::Literal(Code)), false, 4.f);
 				}
 			});
 		CodeRow->SetValueColors(TNHUDArt::Gold, TNHUDArt::SeaLight);
@@ -1005,10 +1006,10 @@ void UTN_RoomMenuWidget::RefreshCreateRows()
 	if (CreateSummary)
 	{
 		CreateSummary->SetText(Draft.bPrivate
-			? FText::Format(NSLOCTEXT("TNRooms", "SummaryPrivate", "Sala privada de {0}, para {1} tortugas: no sale en la lista y tus amigos entran con el código {2} (o por invitación de Steam)."),
-				TNLobbyMission::ModeName(Draft.Mode), FText::AsNumber(Draft.MaxPlayers), FText::FromString(Draft.Code))
-			: FText::Format(NSLOCTEXT("TNRooms", "SummaryPublic", "Sala pública de {0}, para {1} tortugas: sale en la lista de «Unirse» y entra quien quiera (puedes cerrarla desde el menú de pausa)."),
-				TNLobbyMission::ModeName(Draft.Mode), FText::AsNumber(Draft.MaxPlayers)));
+			? FText::Format(NSLOCTEXT("TNRooms", "SummaryPrivate", "Sala privada de {0}, para {1} {1}|plural(one=tortuga,other=tortugas): no sale en la lista y tus amigos entran con el código {2} (o por invitación de Steam)."),
+				TNLobbyMission::ModeName(Draft.Mode), Draft.MaxPlayers, TNLocText::Literal(Draft.Code))
+			: FText::Format(NSLOCTEXT("TNRooms", "SummaryPublic", "Sala pública de {0}, para {1} {1}|plural(one=tortuga,other=tortugas): sale en la lista de «Unirse» y entra quien quiera (puedes cerrarla desde el menú de pausa)."),
+				TNLobbyMission::ModeName(Draft.Mode), Draft.MaxPlayers));
 	}
 }
 
@@ -1090,7 +1091,7 @@ void UTN_RoomMenuWidget::RebuildRoomRows()
 		}
 		const FText RoomName = TNRoomNames::Get(Listing.NameId);
 		const FText ModeLine = Listing.HostName.IsEmpty() ? TNLobbyMission::ModeName(Listing.Mode)
-			: FText::Format(NSLOCTEXT("TNRooms", "ModeHost", "{0} · de {1}"), TNLobbyMission::ModeName(Listing.Mode), FText::FromString(Listing.HostName));
+			: FText::Format(NSLOCTEXT("TNRooms", "ModeHost", "{0} · de {1}"), TNLobbyMission::ModeName(Listing.Mode), TNLocText::Literal(Listing.HostName));
 		const FText Count = FText::Format(NSLOCTEXT("TNRooms", "CountFmt", "{0}/{1}"), FText::AsNumber(Listing.Players), FText::AsNumber(Listing.MaxPlayers));
 		FText State = Count;
 		if (Listing.bLocked) { State = FText::Format(NSLOCTEXT("TNRooms", "CountLocked", "{0} · cerrada"), Count); }
@@ -1147,7 +1148,7 @@ void UTN_RoomMenuWidget::RefreshListStatus()
 	{
 		// Puntos que se mueven mientras busca.
 		const int32 Dots = 1 + static_cast<int32>(Clock * 2.5f) % 3;
-		ListStatus->SetText(FText::Format(NSLOCTEXT("TNRooms", "Searching", "Buscando{0}"), FText::FromString(FString::ChrN(Dots, TEXT('.')))));
+		ListStatus->SetText(FText::Format(NSLOCTEXT("TNRooms", "Searching", "Buscando{0}"), TNLocText::Literal(FString::ChrN(Dots, TEXT('.')))));
 		return;
 	}
 	const int32 Count = GameInstance ? GameInstance->GetRoomListings().Num() : 0;
@@ -1157,8 +1158,7 @@ void UTN_RoomMenuWidget::RefreshListStatus()
 	}
 	else
 	{
-		ListStatus->SetText(Count == 1 ? NSLOCTEXT("TNRooms", "OneRoom", "1 sala")
-			: FText::Format(NSLOCTEXT("TNRooms", "RoomsCount", "{0} salas"), FText::AsNumber(Count)));
+		ListStatus->SetText(FText::Format(NSLOCTEXT("TNRooms", "RoomsCount", "{0} {0}|plural(one=sala,other=salas)"), Count));
 	}
 }
 

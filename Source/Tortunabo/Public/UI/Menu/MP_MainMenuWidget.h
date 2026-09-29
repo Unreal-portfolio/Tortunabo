@@ -19,6 +19,10 @@ class UTextBlock;
  *    su código. El modo va a UMP_GameInstance::SelectedProcMode (HostRoom) y sobrevive al viaje.
  *  - Unirse: con un código o de la lista de salas públicas. Unirse no toca el modo (lo decide el anfitrión).
  *
+ * Un cuarto botón, «Ajustes», se monta en código entre «Unirse» y «Salir» (copia el aspecto y la colocación de «Unirse»; el
+ * Blueprint no cambia) y abre los mismos ajustes que el menú de pausa (UTN_GameSettingsSubsystem::OpenMainMenuSettings): idioma,
+ * gráficos, sonido, voz y controles. Mientras están abiertos este menú se queda a la vista pero sin recibir clics ni foco.
+ *
  * Se suscribe al delegate OnStatusChanged del UMP_GameInstance para reflejar estado de sesión y errores en StatusText, y
  * al llegar enseña el aviso que haya dejado la GameInstance (expulsado, sala cerrada o llena, el anfitrión se fue...).
  */
@@ -30,6 +34,7 @@ class TORTUNABO_API UMP_MainMenuWidget : public UUserWidget
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> HostButton;
@@ -56,6 +61,16 @@ private:
 	UFUNCTION()
 	void OnQuitClicked();
 
+	/** «Ajustes»: abre los ajustes del juego encima de este menú. */
+	UFUNCTION()
+	void OnSettingsClicked();
+
+	/** Monta el botón «Ajustes» junto a los del Blueprint (una sola vez). */
+	void BuildSettingsButton();
+
+	/** Los ajustes se han cerrado: este menú vuelve a recibir clics y el foco vuelve a «Ajustes». */
+	void HandleSettingsClosed();
+
 	UFUNCTION()
 	void OnGameInstanceStatusChanged(const FString& StatusMessage);
 
@@ -77,6 +92,16 @@ private:
 	/** Visibilidad de este menú antes de abrir las salas (para devolverla al cerrarlas). */
 	ESlateVisibility VisibilityBeforeRooms = ESlateVisibility::SelfHitTestInvisible;
 
-	/** Botón que abrió las salas (el foco vuelve a él). */
+	/** Botón que abrió las salas o los ajustes (el foco vuelve a él). */
 	TWeakObjectPtr<UButton> RoomsOpener;
+
+	/** «Ajustes»: el botón hecho en código. */
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> SettingsButton;
+
+	/** Los ajustes están abiertos encima de este menú (se vigila en NativeTick hasta que se cierren). */
+	bool bSettingsOpen = false;
+
+	/** Visibilidad de este menú antes de abrir los ajustes (para devolverla al cerrarlos). */
+	ESlateVisibility VisibilityBeforeSettings = ESlateVisibility::SelfHitTestInvisible;
 };

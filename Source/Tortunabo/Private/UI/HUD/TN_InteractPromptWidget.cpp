@@ -7,7 +7,7 @@ void UTN_InteractPromptWidget::NativeConstruct()
 
 	if (PromptTextBlock)
 	{
-		PromptTextBlock->SetText(CachedPromptText.IsEmpty() ? FText::FromString(TEXT("Interactuar")) : CachedPromptText);
+		PromptTextBlock->SetText(CachedPromptText.IsEmpty() ? NSLOCTEXT("Tortunabo", "InteractPrompt", "Interactuar") : CachedPromptText);
 	}
 }
 

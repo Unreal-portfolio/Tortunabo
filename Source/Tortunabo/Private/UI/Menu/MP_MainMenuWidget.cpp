@@ -1,11 +1,19 @@
 #include "UI/Menu/MP_MainMenuWidget.h"
 #include "UI/Menu/TN_RoomMenuWidget.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
+#include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
 #include "GameFramework/PlayerController.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Settings/TN_GameSettingsSubsystem.h"
 
 namespace TNMainMenuDetail
 {
@@ -38,10 +46,69 @@ namespace TNMainMenuDetail
 		}
 	}
 
-	const TCHAR* const IdleStatus = TEXT("Listo. Crea una partida o únete a una.");
-
 	/** Pantallas de salas: por encima de este menú. */
 	constexpr int32 RoomMenuZOrder = 10;
+
+	/** Colocación de un botón dentro de su caja (vertical u horizontal): margen, tamaño y alineación. */
+	struct FBoxSlotLayout
+	{
+		bool bValid = false;
+		FMargin Padding;
+		FSlateChildSize Size;
+		EHorizontalAlignment Horizontal = HAlign_Fill;
+		EVerticalAlignment Vertical = VAlign_Fill;
+	};
+
+	FBoxSlotLayout ReadLayout(UPanelSlot* Slot)
+	{
+		FBoxSlotLayout Layout;
+		if (const UVerticalBoxSlot* VSlot = Cast<UVerticalBoxSlot>(Slot))
+		{
+			Layout.bValid = true;
+			Layout.Padding = VSlot->GetPadding();
+			Layout.Size = VSlot->GetSize();
+			Layout.Horizontal = VSlot->GetHorizontalAlignment();
+			Layout.Vertical = VSlot->GetVerticalAlignment();
+		}
+		else if (const UHorizontalBoxSlot* HSlot = Cast<UHorizontalBoxSlot>(Slot))
+		{
+			Layout.bValid = true;
+			Layout.Padding = HSlot->GetPadding();
+			Layout.Size = HSlot->GetSize();
+			Layout.Horizontal = HSlot->GetHorizontalAlignment();
+			Layout.Vertical = HSlot->GetVerticalAlignment();
+		}
+		return Layout;
+	}
+
+	void ApplyLayout(UPanelSlot* Slot, const FBoxSlotLayout& Layout)
+	{
+		if (!Layout.bValid)
+		{
+			return;
+		}
+		if (UVerticalBoxSlot* VSlot = Cast<UVerticalBoxSlot>(Slot))
+		{
+			VSlot->SetPadding(Layout.Padding);
+			VSlot->SetSize(Layout.Size);
+			VSlot->SetHorizontalAlignment(Layout.Horizontal);
+			VSlot->SetVerticalAlignment(Layout.Vertical);
+		}
+		else if (UHorizontalBoxSlot* HSlot = Cast<UHorizontalBoxSlot>(Slot))
+		{
+			HSlot->SetPadding(Layout.Padding);
+			HSlot->SetSize(Layout.Size);
+			HSlot->SetHorizontalAlignment(Layout.Horizontal);
+			HSlot->SetVerticalAlignment(Layout.Vertical);
+		}
+	}
+
+	/** Un widget de la caja de botones y cómo estaba colocado (para volver a ponerlo tras el botón nuevo). */
+	struct FTailEntry
+	{
+		TWeakObjectPtr<UWidget> Widget;
+		FBoxSlotLayout Layout;
+	};
 }
 
 void UMP_MainMenuWidget::NativeConstruct()
@@ -77,6 +144,7 @@ void UMP_MainMenuWidget::NativeConstruct()
 	TNMainMenuDetail::SetLabel(HostButton, NSLOCTEXT("TNRooms", "MenuCreate", "Crear partida"));
 	TNMainMenuDetail::SetLabel(FindButton, NSLOCTEXT("TNRooms", "MenuJoin", "Unirse"));
 	TNMainMenuDetail::SetLabel(QuitButton, NSLOCTEXT("TNRooms", "MenuQuit", "Salir"));
+	BuildSettingsButton();
 	SetStatus(BuildIdleStatus());
 
 	// Pantallas de salas: su propio widget a pantalla completa, montado y en pantalla antes de enseñar nada.
@@ -124,6 +192,12 @@ void UMP_MainMenuWidget::NativeDestruct()
 	{
 		GI->OnStatusChanged.RemoveDynamic(this, &UMP_MainMenuWidget::OnGameInstanceStatusChanged);
 	}
+	// Ajustes abiertos al irse este menú (un viaje): se cierran con él.
+	if (bSettingsOpen)
+	{
+		bSettingsOpen = false;
+		if (UTN_GameSettingsSubsystem* Settings = UTN_GameSettingsSubsystem::Get(this)) { Settings->ClosePauseMenu(); }
+	}
 	if (RoomMenu)
 	{
 		RoomMenu->OnOpenChanged = nullptr;
@@ -131,6 +205,124 @@ void UMP_MainMenuWidget::NativeDestruct()
 		RoomMenu = nullptr;
 	}
 	Super::NativeDestruct();
+}
+
+void UMP_MainMenuWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	if (bSettingsOpen)
+	{
+		const UTN_GameSettingsSubsystem* Settings = UTN_GameSettingsSubsystem::Get(this);
+		if (!Settings || !Settings->IsPauseMenuOpen())
+		{
+			HandleSettingsClosed();
+		}
+	}
+}
+
+void UMP_MainMenuWidget::BuildSettingsButton()
+{
+	using namespace TNMainMenuDetail;
+	if (SettingsButton || !FindButton || !QuitButton || !WidgetTree)
+	{
+		return;
+	}
+	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("SettingsButton"));
+	if (!Button)
+	{
+		return;
+	}
+	// Mismo aspecto que «Unirse»: el estilo del botón y el del rótulo.
+	Button->SetStyle(FindButton->GetStyle());
+	Button->SetColorAndOpacity(FindButton->GetColorAndOpacity());
+	Button->SetBackgroundColor(FindButton->GetBackgroundColor());
+	Button->SetClickMethod(FindButton->GetClickMethod());
+	Button->SetTouchMethod(FindButton->GetTouchMethod());
+	Button->SetPressMethod(FindButton->GetPressMethod());
+	UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	if (const UTextBlock* Source = FindLabel(FindButton))
+	{
+		Label->SetFont(Source->GetFont());
+		Label->SetColorAndOpacity(Source->GetColorAndOpacity());
+		Label->SetShadowOffset(Source->GetShadowOffset());
+		Label->SetShadowColorAndOpacity(Source->GetShadowColorAndOpacity());
+		Label->SetMinDesiredWidth(Source->GetMinDesiredWidth());
+	}
+	Label->SetText(NSLOCTEXT("TNRooms", "MenuSettings", "Ajustes"));
+	Button->SetContent(Label);
+	Button->OnClicked.AddUniqueDynamic(this, &UMP_MainMenuWidget::OnSettingsClicked);
+	SettingsButton = Button;
+
+	// Entre «Unirse» y «Salir», con la colocación de «Unirse». UMG solo sabe insertar en su lista, no en la caja de Slate: lo
+	// que va desde «Salir» en adelante se quita y se vuelve a poner detrás del botón nuevo.
+	UPanelWidget* Parent = QuitButton->GetParent();
+	if (Parent && FindButton->GetParent() == Parent && (Parent->IsA<UVerticalBox>() || Parent->IsA<UHorizontalBox>()))
+	{
+		const FBoxSlotLayout FindLayout = ReadLayout(FindButton->Slot);
+		TArray<FTailEntry> Tail;
+		for (int32 ChildIndex = Parent->GetChildIndex(QuitButton); ChildIndex >= 0 && ChildIndex < Parent->GetChildrenCount(); ++ChildIndex)
+		{
+			UWidget* Child = Parent->GetChildAt(ChildIndex);
+			FTailEntry Entry;
+			Entry.Widget = Child;
+			Entry.Layout = ReadLayout(Child ? Child->Slot.Get() : nullptr);
+			Tail.Add(Entry);
+		}
+		for (const FTailEntry& Entry : Tail)
+		{
+			if (UWidget* Child = Entry.Widget.Get()) { Parent->RemoveChild(Child); }
+		}
+		ApplyLayout(Parent->AddChild(Button), FindLayout);
+		for (const FTailEntry& Entry : Tail)
+		{
+			if (UWidget* Child = Entry.Widget.Get()) { ApplyLayout(Parent->AddChild(Child), Entry.Layout); }
+		}
+	}
+	else if (UCanvasPanel* Root = Cast<UCanvasPanel>(WidgetTree->RootWidget))
+	{
+		// El Blueprint no tiene los botones en una caja: el botón nuevo va abajo, en el centro.
+		if (UCanvasPanelSlot* CanvasSlot = Root->AddChildToCanvas(Button))
+		{
+			CanvasSlot->SetAnchors(FAnchors(0.5f, 1.f));
+			CanvasSlot->SetAlignment(FVector2D(0.5f, 1.f));
+			CanvasSlot->SetPosition(FVector2D(0.0, -90.0));
+			CanvasSlot->SetAutoSize(true);
+		}
+	}
+}
+
+void UMP_MainMenuWidget::OnSettingsClicked()
+{
+	UTN_GameSettingsSubsystem* Settings = UTN_GameSettingsSubsystem::Get(this);
+	APlayerController* PC = GetOwningPlayer();
+	if (!Settings || !PC || bSettingsOpen)
+	{
+		return;
+	}
+	Settings->OpenMainMenuSettings(PC);
+	if (!Settings->IsPauseMenuOpen())
+	{
+		return;
+	}
+	RoomsOpener = SettingsButton.Get();
+	bSettingsOpen = true;
+	// A la vista tras el velo de los ajustes, pero sin clics ni foco: el mando no se escapa a estos botones.
+	if (GetVisibility() != ESlateVisibility::HitTestInvisible)
+	{
+		VisibilityBeforeSettings = GetVisibility();
+	}
+	SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+void UMP_MainMenuWidget::HandleSettingsClosed()
+{
+	bSettingsOpen = false;
+	SetVisibility(VisibilityBeforeSettings);
+	// Por si se ha cambiado el idioma: el saludo se vuelve a leer en el idioma nuevo.
+	SetStatus(BuildIdleStatus());
+	UButton* Back = RoomsOpener.Get();
+	if (!Back) { Back = HostButton.Get(); }
+	if (Back) { Back->SetKeyboardFocus(); }
 }
 
 void UMP_MainMenuWidget::OnHostClicked()
@@ -199,7 +391,8 @@ void UMP_MainMenuWidget::SetStatus(const FString& Message)
 {
 	if (StatusText)
 	{
-		StatusText->SetText(FText::FromString(Message));
+		// Los mensajes de la GameInstance llegan ya traducidos y como FString: se enseñan tal cual.
+		StatusText->SetText(FText::AsCultureInvariant(Message));
 	}
 }
 
@@ -207,5 +400,5 @@ FString UMP_MainMenuWidget::BuildIdleStatus() const
 {
 	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
 	const FString Existing = GI ? GI->BuildStatusLog() : FString();
-	return Existing.IsEmpty() ? FString(TNMainMenuDetail::IdleStatus) : Existing;
+	return Existing.IsEmpty() ? NSLOCTEXT("TNRooms", "MenuIdle", "Listo. Crea una partida o únete a una.").ToString() : Existing;
 }

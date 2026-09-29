@@ -33,8 +33,7 @@ namespace TNRaceRoundClockDetail
 	/** «0:59», «1:00». */
 	FText FormatClock(int32 Seconds)
 	{
-		const int32 Safe = FMath::Max(0, Seconds);
-		return FText::FromString(FString::Printf(TEXT("%d:%02d"), Safe / 60, Safe % 60));
+		return TNLocText::MinutesSeconds(Seconds);
 	}
 }
 

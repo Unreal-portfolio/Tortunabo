@@ -10,6 +10,7 @@
 #include "Components/OverlaySlot.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
+#include "Core/TN_LocText.h"
 #include "Styling/SlateBrush.h"
 #include "../HUD/TN_HUDArt.h"
 #include "../HUD/TN_HUDStyle.h"

@@ -16,7 +16,8 @@ con el estilo del HUD (`TN_HUDArt`, `TN_HUDStyle`, `TN_ShopArt`) y los ajustes s
 | `FTNGameSettings`, `UTN_SettingsSaveGame` | `Settings/TN_SettingsSaveGame.h` | Los ajustes que no son de `UGameUserSettings` y su ranura de guardado (versión 3: teclas, micrófono, interfaz, idioma y ojo de pez). |
 | `UTN_LanguageSettings`, `TNLanguage` | `Settings/TN_LanguageSettings.*` | La lista de idiomas (editable en `Config/DefaultGame.ini`, sin tocar código), el idioma del sistema en términos de esa lista y el cambio en caliente de la cultura. Ver [Localización](Localizacion.md). |
 | `TNHUDFonts` | `Private/UI/HUD/TN_HUDFonts.*` | La fuente compuesta de la interfaz (`TNHUDStyle::Font`): la del motor más una fuente de reserva por idioma cuando su archivo está en `Content/Slate/Fonts`. |
-| `UTN_PauseMenuWidget` | `UI/Pause/TN_PauseMenuWidget.*` | El menú: cabecera, portada, ajustes en cinco pestañas, página de controles (con el cambio de teclas), avisos y cuadro de confirmación. |
+| `UTN_PauseMenuWidget` | `UI/Pause/TN_PauseMenuWidget.*` | El menú: cabecera, portada, ajustes en cinco pestañas, página de controles (con el cambio de teclas), avisos y cuadro de confirmación. También sale desde el menú principal (ver «Ajustes desde el menú principal»). |
+| Botón «Ajustes» del menú principal | `UI/Menu/MP_MainMenuWidget.*`, `UTN_GameSettingsSubsystem::OpenMainMenuSettings` | Un botón hecho en código junto a los del Blueprint que abre este mismo menú. |
 | `UTN_PauseRow` | `UI/Pause/TN_PauseMenuWidget.*` | Fila enfocable: botón, deslizador, lista de opciones, texto, medidor o tecla. |
 | `UTN_FpsCounterWidget` | `UI/Pause/TN_PauseMenuWidget.*` | Contador de FPS (ajuste «Mostrar FPS»). |
 | `UTN_TalkersWidget` | `UI/Pause/TN_PauseMenuWidget.*` | «Quién habla»: los nombres de quien se oye hablar por voz, a la derecha (accesibilidad). |
@@ -36,7 +37,8 @@ OnlineSubsystem y Engine ya estaban; `DeveloperSettings` y `GameplayTags` llegan
 - No es el PlayerController quien lo escucha: `UTN_GameSettingsSubsystem` mete un `UInputComponent` propio (prioridad 100)
   en la pila de entrada del `AMP_GamePlayerController` local con `PushInputComponent`. Así vale jugando y de espectador,
   no hay que tocar el PlayerController y los viajes sin cortes lo conservan (tras uno con corte se vuelve a meter). En el
-  menú principal (`MP_MenuPlayerController`) no hay menú de pausa.
+  menú principal (`AMP_MenuPlayerController`) Escape no abre nada: los mismos ajustes salen del botón «Ajustes» (ver «Ajustes
+  desde el menú principal»).
 - **No se abre** si ya hay otra interfaz con el ratón a la vista (tienda, probador, general, ruedas de bailes y frases,
   campeón de la carrera...: esa manda y se cierra con su propio Escape), con la pantalla de carga del huevo a la vista
   (también el «¡ADELANTE!») o durante un viaje. Encima del recuento de la carrera sí (no tiene ratón ni teclas).
@@ -97,6 +99,34 @@ confirmación van a pantalla completa.
 
 **Avisos**: una línea dorada encima de la ayuda cuenta lo que acaba de pasar (qué tecla se ha puesto, a qué fila se le ha
 quitado, el micrófono nuevo...) y se apaga sola.
+
+## Ajustes desde el menú principal
+
+Hasta la fase 2 de la localización el idioma (y el resto de ajustes) solo se cambiaba dentro del lobby o de una partida. El menú
+principal tiene ahora un botón **«Ajustes»**, entre «Unirse» y «Salir», que abre las mismas páginas de ajustes que el menú de
+pausa, con teclado, ratón y mando.
+
+- **El botón** (`UMP_MainMenuWidget::BuildSettingsButton`, en `NativeConstruct`). `WBP_MainMenuWidget` no cambia: los tres
+  botones del Blueprint (`HostButton`, `FindButton`, `QuitButton`) están en una caja vertical, y el botón nuevo copia de
+  «Unirse» el estilo del botón, sus colores, su tipo de pulsación, el estilo del rótulo (fuente, color, sombra) y la
+  colocación en la caja (margen, tamaño, alineación). UMG solo sabe insertar en su lista, no en la caja de Slate
+  (`InsertChildAt` no reordena `SVerticalBox`), así que lo que va desde «Salir» en adelante se quita y se vuelve a poner detrás
+  del botón nuevo, con su colocación. Si los botones no estuvieran en una caja, el botón se pone abajo en el centro del lienzo.
+  El rótulo es `NSLOCTEXT("TNRooms", "MenuSettings", "Ajustes")`.
+- **Qué abre**: `UTN_GameSettingsSubsystem::OpenMainMenuSettings(PC)` (solo con el controlador del menú principal, local y con
+  el menú de pausa cerrado) crea el mismo `UTN_PauseMenuWidget` en la capa 60 y le da la entrada. Es el mismo objeto que
+  usa `IsPauseMenuOpen`/`ClosePauseMenu`. El idioma se elige en Ajustes > Juego > «Idioma / Language».
+- **El menú principal mientras tanto**: se queda a la vista detrás del velo, pero en `HitTestInvisible` (sin clics ni foco: el mando
+  no se escapa a sus botones, como con las pantallas de salas). `NativeTick` mira `IsPauseMenuOpen`; al cerrarse devuelve la
+  visibilidad, vuelve a leer el saludo (por si ha cambiado el idioma) y enfoca «Ajustes». Los rótulos de los botones son
+  `FText` y se traducen solos.
+- **La entrada**: el menú principal usa solo interfaz con el cursor (`FInputModeUIOnly`, `AMP_MenuPlayerController`). Al
+  cerrarse, `NotifyPauseMenuClosed` la devuelve a ese modo (y no al de juego, que escondería el cursor).
+- **Se guarda igual que en la partida** (`TN_Settings.sav` al cerrar; el idioma, el volumen, las teclas...).
+- **Estado del modo «menú principal» dentro de `UTN_PauseMenuWidget`** (portada con «Ajustes», «Controles» y «Volver» en vez de
+  Sala, Volver al lobby, Menú principal y Salir al escritorio; cabecera «AJUSTES» sin mapa, sala ni jugadores; pie con «Volver»; el
+  widget lo reconoce por el controlador que lo crea): **pendiente** de que se liberen los archivos reservados por el tutorial
+  (29-09-2026). Mientras tanto el botón abre el menú de pausa completo, que funciona.
 
 ## Ajustes
 
@@ -260,7 +290,7 @@ FPS a los de serie; la calidad gráfica y la pantalla no se tocan.
 - **Salida de audio (auriculares, altavoces)**: el dispositivo de audio del motor se abre al arrancar y cambiarlo es
   rehacer el mezclador; se usa la salida predeterminada de Windows.
 - **Vibración del mando**: el juego no usa vibración (no hay `ForceFeedback`).
-- **Idioma en el menú principal**: el menú de pausa no existe allí (`MP_MenuPlayerController`), así que el idioma se cambia dentro del lobby o de una partida; el del sistema se aplica desde el primer fotograma.
+- **Idioma en el menú principal**: se cambia con el botón «Ajustes» del menú principal (fase 2 de la localización); el del sistema se aplica desde el primer fotograma.
 - **Subtítulos**: no hay voces grabadas ni diálogos; la voz de los jugadores tiene «Quién habla» y las frases rápidas ya
   son texto.
 - **Cambiar las teclas del espectador**: son fijas en código (`ATN_SpectatorGhost`); se enseñan en la lista.
@@ -366,3 +396,8 @@ solo va hacia atrás.
 21. B / Círculo: con el mando, B mete en el caparazón y saca (y Ctrl izquierdo sigue valiendo). Abrir el menú con Start, cerrar con B
     manteniéndola un segundo: la tortuga NO se mete en el caparazón. Igual con A al pulsar «Continuar» (no salta) y en la
     tienda. En Ajustes > Controles > «Cambiar teclas y botones» la fila «Meterse en el caparazón» enseña «B / Círculo» en el mando.
+22. Menú principal > «Ajustes» (ratón, teclado y mando): el botón sale entre «Unirse» y «Salir» con el mismo aspecto; Intro/A o
+    clic lo abre; el foco cae en la primera fila; en Ajustes > Juego > «Idioma / Language» elegir English: los rótulos cambian
+    al momento (con traducciones; sin ellas, siguen en español); Escape/B vuelve atrás y, desde la portada, cierra y deja el
+    cursor a la vista y el foco en «Ajustes»; «Crear partida» y «Unirse» siguen funcionando y su pantalla usa el idioma nuevo;
+    cambiar el volumen y las teclas y entrar en el lobby: siguen.

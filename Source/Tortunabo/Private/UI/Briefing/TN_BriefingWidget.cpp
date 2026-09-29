@@ -14,6 +14,7 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Core/TN_LocText.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerState.h"
@@ -146,35 +147,59 @@ namespace TNBriefingUI
 		return FString::Printf(TEXT("%s%s.%s"), ControlsFolder, Name, Name);
 	}
 
-	/** Nombre corto y en castellano de una tecla (las raras, como las da el motor). */
-	FString KeyLabel(const FKey& Key)
+	/**
+	 * Nombre corto de una tecla, en el idioma del juego (las raras, como las da el motor). Los símbolos y las letras de los
+	 * botones del mando no se traducen (INVTEXT); las palabras («Espacio», «Clic izq.») sí, con las claves de TNKeys.
+	 */
+	FText KeyLabel(const FKey& Key)
 	{
-		struct FNamed { FKey Key; const TCHAR* Name; };
+		struct FNamed { FKey Key; FText Name; };
+		// Estático local, no de archivo: los NSLOCTEXT se crean con el sistema de localización ya en marcha.
 		static const FNamed Names[] = {
-			{ EKeys::SpaceBar, TEXT("Espacio") }, { EKeys::LeftShift, TEXT("Mayús") }, { EKeys::RightShift, TEXT("Mayús der.") },
-			{ EKeys::LeftControl, TEXT("Ctrl") }, { EKeys::RightControl, TEXT("Ctrl der.") }, { EKeys::LeftAlt, TEXT("Alt") },
-			{ EKeys::Mouse2D, TEXT("Ratón") }, { EKeys::MouseX, TEXT("Ratón") }, { EKeys::MouseY, TEXT("Ratón") },
-			{ EKeys::LeftMouseButton, TEXT("Clic izq.") }, { EKeys::RightMouseButton, TEXT("Clic der.") }, { EKeys::MiddleMouseButton, TEXT("Clic rueda") },
-			{ EKeys::MouseScrollUp, TEXT("Rueda") }, { EKeys::MouseScrollDown, TEXT("Rueda") }, { EKeys::MouseWheelAxis, TEXT("Rueda") },
-			{ EKeys::Enter, TEXT("Intro") }, { EKeys::Escape, TEXT("Esc") }, { EKeys::Tab, TEXT("Tab") },
-			{ EKeys::Up, TEXT("↑") }, { EKeys::Down, TEXT("↓") }, { EKeys::Left, TEXT("←") }, { EKeys::Right, TEXT("→") },
-			{ EKeys::Gamepad_FaceButton_Bottom, TEXT("A") }, { EKeys::Gamepad_FaceButton_Right, TEXT("B") },
-			{ EKeys::Gamepad_FaceButton_Left, TEXT("X") }, { EKeys::Gamepad_FaceButton_Top, TEXT("Y") },
-			{ EKeys::Gamepad_LeftShoulder, TEXT("LB") }, { EKeys::Gamepad_RightShoulder, TEXT("RB") },
-			{ EKeys::Gamepad_LeftTrigger, TEXT("LT") }, { EKeys::Gamepad_LeftTriggerAxis, TEXT("LT") },
-			{ EKeys::Gamepad_RightTrigger, TEXT("RT") }, { EKeys::Gamepad_RightTriggerAxis, TEXT("RT") },
-			{ EKeys::Gamepad_Left2D, TEXT("Stick izq.") }, { EKeys::Gamepad_LeftX, TEXT("Stick izq.") }, { EKeys::Gamepad_LeftY, TEXT("Stick izq.") },
-			{ EKeys::Gamepad_Right2D, TEXT("Stick der.") }, { EKeys::Gamepad_RightX, TEXT("Stick der.") }, { EKeys::Gamepad_RightY, TEXT("Stick der.") },
-			{ EKeys::Gamepad_LeftThumbstick, TEXT("L3") }, { EKeys::Gamepad_RightThumbstick, TEXT("R3") },
-			{ EKeys::Gamepad_DPad_Up, TEXT("Cruceta ↑") }, { EKeys::Gamepad_DPad_Down, TEXT("Cruceta ↓") },
-			{ EKeys::Gamepad_DPad_Left, TEXT("Cruceta ←") }, { EKeys::Gamepad_DPad_Right, TEXT("Cruceta →") },
-			{ EKeys::Gamepad_Special_Right, TEXT("Start") }, { EKeys::Gamepad_Special_Left, TEXT("Select") },
+			{ EKeys::SpaceBar, NSLOCTEXT("TNKeys", "Space", "Espacio") }, { EKeys::LeftShift, NSLOCTEXT("TNKeys", "ShortShift", "Mayús") },
+			{ EKeys::RightShift, NSLOCTEXT("TNKeys", "RightShift", "Mayús der.") },
+			{ EKeys::LeftControl, NSLOCTEXT("TNKeys", "ShortCtrl", "Ctrl") }, { EKeys::RightControl, NSLOCTEXT("TNKeys", "RightCtrl", "Ctrl der.") },
+			{ EKeys::LeftAlt, NSLOCTEXT("TNKeys", "Alt", "Alt") },
+			{ EKeys::Mouse2D, NSLOCTEXT("TNKeys", "Mouse", "Ratón") }, { EKeys::MouseX, NSLOCTEXT("TNKeys", "Mouse", "Ratón") },
+			{ EKeys::MouseY, NSLOCTEXT("TNKeys", "Mouse", "Ratón") },
+			{ EKeys::LeftMouseButton, NSLOCTEXT("TNKeys", "ShortMouseLeft", "Clic izq.") },
+			{ EKeys::RightMouseButton, NSLOCTEXT("TNKeys", "ShortMouseRight", "Clic der.") },
+			{ EKeys::MiddleMouseButton, NSLOCTEXT("TNKeys", "ShortMouseMiddle", "Clic rueda") },
+			{ EKeys::MouseScrollUp, NSLOCTEXT("TNKeys", "Wheel", "Rueda") }, { EKeys::MouseScrollDown, NSLOCTEXT("TNKeys", "Wheel", "Rueda") },
+			{ EKeys::MouseWheelAxis, NSLOCTEXT("TNKeys", "Wheel", "Rueda") },
+			{ EKeys::Enter, NSLOCTEXT("TNKeys", "Enter", "Intro") }, { EKeys::Escape, NSLOCTEXT("TNKeys", "Escape", "Esc") },
+			{ EKeys::Tab, NSLOCTEXT("TNKeys", "Tab", "Tab") },
+			{ EKeys::Up, INVTEXT("↑") }, { EKeys::Down, INVTEXT("↓") }, { EKeys::Left, INVTEXT("←") }, { EKeys::Right, INVTEXT("→") },
+			{ EKeys::Gamepad_FaceButton_Bottom, INVTEXT("A") }, { EKeys::Gamepad_FaceButton_Right, INVTEXT("B") },
+			{ EKeys::Gamepad_FaceButton_Left, INVTEXT("X") }, { EKeys::Gamepad_FaceButton_Top, INVTEXT("Y") },
+			{ EKeys::Gamepad_LeftShoulder, INVTEXT("LB") }, { EKeys::Gamepad_RightShoulder, INVTEXT("RB") },
+			{ EKeys::Gamepad_LeftTrigger, INVTEXT("LT") }, { EKeys::Gamepad_LeftTriggerAxis, INVTEXT("LT") },
+			{ EKeys::Gamepad_RightTrigger, INVTEXT("RT") }, { EKeys::Gamepad_RightTriggerAxis, INVTEXT("RT") },
+			{ EKeys::Gamepad_Left2D, NSLOCTEXT("TNKeys", "ShortLeftStick", "Stick izq.") }, { EKeys::Gamepad_LeftX, NSLOCTEXT("TNKeys", "ShortLeftStick", "Stick izq.") },
+			{ EKeys::Gamepad_LeftY, NSLOCTEXT("TNKeys", "ShortLeftStick", "Stick izq.") },
+			{ EKeys::Gamepad_Right2D, NSLOCTEXT("TNKeys", "ShortRightStick", "Stick der.") }, { EKeys::Gamepad_RightX, NSLOCTEXT("TNKeys", "ShortRightStick", "Stick der.") },
+			{ EKeys::Gamepad_RightY, NSLOCTEXT("TNKeys", "ShortRightStick", "Stick der.") },
+			{ EKeys::Gamepad_LeftThumbstick, INVTEXT("L3") }, { EKeys::Gamepad_RightThumbstick, INVTEXT("R3") },
+			{ EKeys::Gamepad_DPad_Up, NSLOCTEXT("TNKeys", "ShortDpadUp", "Cruceta ↑") }, { EKeys::Gamepad_DPad_Down, NSLOCTEXT("TNKeys", "ShortDpadDown", "Cruceta ↓") },
+			{ EKeys::Gamepad_DPad_Left, NSLOCTEXT("TNKeys", "ShortDpadLeft", "Cruceta ←") }, { EKeys::Gamepad_DPad_Right, NSLOCTEXT("TNKeys", "ShortDpadRight", "Cruceta →") },
+			{ EKeys::Gamepad_Special_Right, NSLOCTEXT("TNKeys", "ShortStart", "Start") }, { EKeys::Gamepad_Special_Left, NSLOCTEXT("TNKeys", "ShortSelect", "Select") },
 		};
 		for (const FNamed& Named : Names)
 		{
 			if (Named.Key == Key) { return Named.Name; }
 		}
-		return Key.GetDisplayName(false).ToString();
+		return Key.GetDisplayName(false);
+	}
+
+	/** Añade un nombre de tecla si no está ya (FText no se compara con ==: se mira el texto que se ve). */
+	void AddUniqueLabel(TArray<FText>& List, const FText& Label)
+	{
+		const FString Shown = Label.ToString();
+		for (const FText& Existing : List)
+		{
+			if (Existing.ToString().Equals(Shown)) { return; }
+		}
+		List.Add(Label);
 	}
 }
 
@@ -293,7 +318,7 @@ void UTN_BriefingWidget::SetGeneral(ATN_GeneralBriefing* InGeneral)
 	General = InGeneral;
 	if (InGeneral)
 	{
-		if (TitleText) { TitleText->SetText(FText::FromString(InGeneral->GetHeadquartersName().ToString().ToUpper())); }
+		if (TitleText) { TitleText->SetText(InGeneral->GetHeadquartersName().ToUpper()); }
 		if (NameText) { NameText->SetText(InGeneral->GetGeneralName()); }
 	}
 	ShowTab(0);
@@ -316,7 +341,7 @@ void UTN_BriefingWidget::AddParagraph(const FText& Text)
 	TNBriefingUI::AddV(Page, Paragraph, FMargin(0.f, 0.f, 8.f, 6.f));
 }
 
-void UTN_BriefingWidget::KeysFor(const TArray<FString>& ActionPaths, TArray<FString>& OutKeyboard, TArray<FString>& OutGamepad) const
+void UTN_BriefingWidget::KeysFor(const TArray<FString>& ActionPaths, TArray<FText>& OutKeyboard, TArray<FText>& OutGamepad) const
 {
 	const ULocalPlayer* LocalPlayer = GetOwningLocalPlayer();
 	const UEnhancedInputLocalPlayerSubsystem* Input = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
@@ -337,7 +362,7 @@ void UTN_BriefingWidget::KeysFor(const TArray<FString>& ActionPaths, TArray<FStr
 			{
 				continue;
 			}
-			(Key.IsGamepadKey() ? OutGamepad : OutKeyboard).AddUnique(TNBriefingUI::KeyLabel(Key));
+			TNBriefingUI::AddUniqueLabel(Key.IsGamepadKey() ? OutGamepad : OutKeyboard, TNBriefingUI::KeyLabel(Key));
 		}
 	}
 }
@@ -346,7 +371,7 @@ void UTN_BriefingWidget::AddControlRow(const FText& ActionName, const TArray<FSt
 {
 	using namespace TNBriefingUI;
 	UWidgetTree* Tree = WidgetTree;
-	TArray<FString> Keyboard, Gamepad;
+	TArray<FText> Keyboard, Gamepad;
 	KeysFor(ActionPaths, Keyboard, Gamepad);
 
 	UHorizontalBox* Row = New<UHorizontalBox>(Tree);
@@ -357,14 +382,14 @@ void UTN_BriefingWidget::AddControlRow(const FText& ActionName, const TArray<FSt
 	{
 		AddH(Row, Label(Tree, NSLOCTEXT("Tortunabo", "BriefingNoKey", "— sin tecla —"), TEXT("Regular"), 17, TNHUDArt::WetSand, false));
 	}
-	for (const FString& KeyName : Keyboard)
+	for (const FText& KeyName : Keyboard)
 	{
-		UTextBlock* KeyText = Label(Tree, FText::FromString(KeyName), TEXT("Bold"), 16, TNHUDArt::Ink, false);
+		UTextBlock* KeyText = Label(Tree, KeyName, TEXT("Bold"), 16, TNHUDArt::Ink, false);
 		AddH(Row, Framed(Tree, TNHUDArt::SandTagTexture(), TagBoxMargin, KeyText, FMargin(16.f, 4.f, 16.f, 8.f)), FMargin(0.f, 0.f, 6.f, 0.f));
 	}
-	for (const FString& KeyName : Gamepad)
+	for (const FText& KeyName : Gamepad)
 	{
-		UTextBlock* KeyText = Label(Tree, FText::FromString(KeyName), TEXT("Bold"), 15, TNHUDArt::Cream, true);
+		UTextBlock* KeyText = Label(Tree, KeyName, TEXT("Bold"), 15, TNHUDArt::Cream, true);
 		AddH(Row, Framed(Tree, TNShopArt::Pill(0x3B6EA8, 0x1D3F6E), PillBoxMargin, KeyText, FMargin(18.f, 5.f, 18.f, 9.f)), FMargin(0.f, 0.f, 6.f, 0.f));
 	}
 	AddV(Page, Row, FMargin(0.f, 3.f, 0.f, 3.f));
@@ -393,7 +418,7 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 	MissionOrders = nullptr;
 
 	const APlayerState* PS = GetOwningPlayer() ? GetOwningPlayer()->PlayerState : nullptr;
-	const FText Who = FText::FromString(PS ? PS->GetPlayerName() : FString(TEXT("recluta")));
+	const FText Who = PS ? TNLocText::Literal(PS->GetPlayerName()) : NSLOCTEXT("Tortunabo", "BriefingRecruit", "recluta");
 
 	switch (Tab)
 	{
@@ -493,7 +518,7 @@ void UTN_BriefingWidget::BuildMissionPage()
 	UWidgetTree* Tree = WidgetTree;
 	const bool bHost = CanChooseMission();
 	const APlayerState* PS = GetOwningPlayer() ? GetOwningPlayer()->PlayerState : nullptr;
-	const FText Who = FText::FromString(PS ? PS->GetPlayerName() : FString(TEXT("recluta")));
+	const FText Who = PS ? TNLocText::Literal(PS->GetPlayerName()) : NSLOCTEXT("Tortunabo", "BriefingRecruit", "recluta");
 	Say(bHost
 		? FText::Format(NSLOCTEXT("Tortunabo", "BriefingSayMissionHost",
 			"¡Firmes, {0}! Tú mandas: ¿qué misión le damos hoy a la tropa? Elige el modo y la dificultad."), Who)
@@ -726,7 +751,8 @@ void UTN_BriefingWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	if (DialogText && Reveal < FullLine.Len())
 	{
 		Reveal = FMath::Min<float>(FullLine.Len(), Reveal + InDeltaTime * 70.f);
-		DialogText->SetText(FText::FromString(FullLine.Left(FMath::CeilToInt(Reveal))));
+		// Letra a letra: es un trozo del texto ya traducido, no un texto nuevo.
+		DialogText->SetText(TNLocText::Literal(FullLine.Left(FMath::CeilToInt(Reveal))));
 	}
 	// «Misión»: si el anfitrión la cambia (a los demás les llega replicada en el general), se repinta y el general avisa.
 	if (Tab == TNBriefingUI::TabMission && ModeButtons.Num() > 0

@@ -199,8 +199,25 @@ ETNRaceItem TNRaceItems::KindOf(const FTN_InventoryItem& Item)
 
 FText TNRaceItems::DisplayName(ETNRaceItem Item)
 {
-	const TNRaceItemsDetail::FItemInfo* Info = TNRaceItemsDetail::FindInfo(Item);
-	return FText::FromString(Info ? Info->Spanish : TEXT("Objeto"));
+	// Un NSLOCTEXT por objeto (la columna «Spanish» de la tabla solo sirve para reconocer lo que se escribe en la consola).
+	switch (Item)
+	{
+	case ETNRaceItem::Box:            return NSLOCTEXT("TNRace", "ItemBox", "Caja de objetos");
+	case ETNRaceItem::Coconut:        return NSLOCTEXT("TNRace", "ItemCoconut", "Coco turbo");
+	case ETNRaceItem::TripleCoconut3: return NSLOCTEXT("TNRace", "ItemTripleCoconut", "Triple coco");
+	case ETNRaceItem::TripleCoconut2: return NSLOCTEXT("TNRace", "ItemTripleCoconut2", "Triple coco (2)");
+	case ETNRaceItem::TripleCoconut1: return NSLOCTEXT("TNRace", "ItemTripleCoconut1", "Triple coco (1)");
+	case ETNRaceItem::GoldenCoconut:  return NSLOCTEXT("TNRace", "ItemGoldenCoconut", "Coco dorado");
+	case ETNRaceItem::PelicanTaxi:    return NSLOCTEXT("TNRace", "ItemPelicanTaxi", "Pelícano taxi");
+	case ETNRaceItem::Sunscreen:      return NSLOCTEXT("TNRace", "ItemSunscreen", "Protector solar");
+	case ETNRaceItem::HomingCrab:     return NSLOCTEXT("TNRace", "ItemHomingCrab", "Cangrejo teledirigido");
+	case ETNRaceItem::GullStrike:     return NSLOCTEXT("TNRace", "ItemGullStrike", "Gaviota justiciera");
+	case ETNRaceItem::SandMine:       return NSLOCTEXT("TNRace", "ItemSandMine", "Mina de arena");
+	case ETNRaceItem::StormCloud:     return NSLOCTEXT("TNRace", "ItemStormCloud", "Nube de tormenta");
+	case ETNRaceItem::Frisbee:        return NSLOCTEXT("TNRace", "ItemFrisbee", "Disco volador");
+	case ETNRaceItem::Whistle:        return NSLOCTEXT("TNRace", "ItemWhistle", "Silbato del sargento");
+	default:                          return NSLOCTEXT("TNRace", "ItemUnknown", "Objeto");
+	}
 }
 
 FString TNRaceItems::CodeName(ETNRaceItem Item)
