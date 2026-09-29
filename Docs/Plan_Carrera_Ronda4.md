@@ -72,9 +72,26 @@ literal (como los nombres de sala).
 11. **Mando: Círculo / B para meterse en el caparazón.** Revisar choques con lo que haga ahora B en juego (en los menús es
     «volver») y actualizar la lista de controles del menú de pausa y la copia de `IMC_Player`. *Común*.
 
+12. **Elegir el idioma en los ajustes** (ahora la fila «Idioma» del menú de pausa solo dice que está en español). *Común*.
+    - Canal del motor: todos los textos visibles como `FText` (`NSLOCTEXT`/`LOCTEXT`); auditar y pasar a `FText` los que
+      hoy son `FString` literales en pantalla. Recoger con el Localization Dashboard (objetivo «Game», origen es-ES),
+      exportar `.po`, traducir, importar y compilar `.locres`; cambio en caliente con
+      `UKismetInternationalizationLibrary::SetCurrentCulture(Cultura, true)` desde el subsistema de ajustes, guardado en
+      su configuración. El idioma por defecto: el del sistema si está en la lista; si no, español.
+    - Traducción: la forma más óptima es traducir los `.po` con Claude en bloque por idioma, con un glosario del juego
+      (tortuga, caparazón, plancha, fantasma…) y la regla de adaptar el humor en vez de traducir literal; revisión nativa
+      después para los idiomas que importen.
+    - Idiomas propuestos (los más jugados en Steam): español (España), inglés, francés, alemán, italiano, portugués de
+      Brasil, ruso, polaco, turco, japonés, coreano, chino simplificado y chino tradicional; ampliables sin tocar código.
+      Para chino, japonés y coreano hace falta una fuente de reserva con esos caracteres (por ejemplo Noto Sans CJK) en
+      las fuentes compuestas de `TNHUDStyle`; comprobar que los textos largos (alemán, ruso) caben.
+    - Los nombres de sala (`TNRoomNames`) dejan la tabla de dos columnas y pasan a una columna por idioma (o al canal de
+      localización con una clave por índice); el idioma sale de este ajuste, no de la cultura del motor (tarea 2).
+    - Voz y textos generados en ejecución (avisos, fechas, números): formatearlos con `FText::Format` y `FText::AsNumber`.
+
 ## Documento maestro del juego
 
-12. Un documento con **toda** la información del juego, para tenerlo como criterio y capacidades completas: modos
+13. Un documento con **toda** la información del juego, para tenerlo como criterio y capacidades completas: modos
     (cooperativo, carrera, 2vs2, tutorial, lobby), mapas y cómo se generan, flujo de partida y de sala, la tortuga y todas
     sus mecánicas (movimiento, estamina, caparazón, plancha, cargar compañeros, derribo, inventario, emotes, voz),
     decorado pieza a pieza, trampas, enemigos uno a uno con su comportamiento y cómo se evitan, todos los objetos (los de
