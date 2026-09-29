@@ -12,5 +12,12 @@
   "description": "Plataformas de arena a +20, +25 y +30 m sobre un rio a 0 m, unidas por puentes colgantes; caer al rio es morir.",
   "recorrible": true,
   "size_mb": 2.46
+ },
+ {
+  "name": "E01_espana",
+  "seed": 20260929,
+  "description": "España con el relieve real (1 m de juego = 2,1 km de suelo, cimas a 28 m): la frontera es la costa y el mar es la muerte. Del Pirineo a Santiago por la Meseta.",
+  "recorrible": true,
+  "size_mb": 6.13
  }
 ]
