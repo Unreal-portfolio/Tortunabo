@@ -20,10 +20,13 @@ bool FTNSaveGameDecisionsTest::RunTest(const FString& Parameters)
 {
 	using namespace TNSaveLogic;
 
-	TestTrue(TEXT("Sin fichero: perfil nuevo"), DecideLoadAction(false, false) == ELoadAction::CreateFresh);
-	TestTrue(TEXT("Fichero leído: se usa"), DecideLoadAction(true, true) == ELoadAction::UseLoaded);
+	TestTrue(TEXT("Sin fichero: perfil nuevo"), DecideLoadAction(false, false, false) == ELoadAction::CreateFresh);
+	TestTrue(TEXT("Fichero leído: se usa"), DecideLoadAction(true, true, true) == ELoadAction::UseLoaded);
 	TestTrue(TEXT("Fichero ilegible: se aparta, nunca se pisa"),
-		DecideLoadAction(true, false) == ELoadAction::QuarantineAndCreateFresh);
+		DecideLoadAction(true, true, false) == ELoadAction::QuarantineAndCreateFresh);
+	// Sin compilar: verificar en local. Un fallo de E/S pasajero no puede apartar ni pisar un guardado bueno.
+	TestTrue(TEXT("Fichero bloqueado (sin bytes): no se toca"),
+		DecideLoadAction(true, false, false) == ELoadAction::KeepAndBlockSaves);
 
 	TestTrue(TEXT("v0 → actual: migrar"), DecideMigration(0, COSMETIC_SAVE_VERSION) == EMigration::Upgrade);
 	TestTrue(TEXT("Misma versión: nada"),

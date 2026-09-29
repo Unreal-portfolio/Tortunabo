@@ -252,6 +252,11 @@ void ATN_MapVariantLoader::MoveStartPlayerStart(const TSharedPtr<FJsonObject>& M
 	}
 	if (APlayerStart* Target = Tagged ? Tagged : First)
 	{
+		// La cápsula del PlayerStart es Static: en partida (BeginPlay) no se deja mover sin cambiarla antes a Movable.
+		if (USceneComponent* StartRoot = Target->GetRootComponent())
+		{
+			StartRoot->SetMobility(EComponentMobility::Movable);
+		}
 		Target->SetActorLocation(Start);
 	}
 	else

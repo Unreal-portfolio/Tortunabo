@@ -115,8 +115,10 @@ bool ATortugaCharacter::Server_StartDive_Validate(FVector DiveDir)
 
 void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 {
-	// Server-side guards
-	if (bIsDiving || bIsKnockedDown || bIsDead)
+	// Server-side guards (los mismos que TryDive en el cliente, más la llevada): si el servidor la metió en el
+	// caparazón mientras llegaba el RPC, el LaunchCharacter se quedaría pendiente y saltaría al salir del caparazón.
+	if (bIsDiving || bIsKnockedDown || bIsDead || IsInShell()
+		|| (CarryComponent && CarryComponent->IsBeingCarried()))
 	{
 		return;
 	}

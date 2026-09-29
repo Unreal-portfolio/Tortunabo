@@ -396,7 +396,9 @@ void ATN_RaceGullStrike::ServerWarnVictim()
 {
 	// Pitido de aviso en la tortuga a la que va la cagada (a un enemigo no hace falta). FindOrAddOn: la que lidera puede no
 	// haber cogido nunca un objeto y no tener aún el componente.
-	if (ATortugaCharacter* Warned = Cast<ATortugaCharacter>(Target.Get()))
+	ATortugaCharacter* Warned = Cast<ATortugaCharacter>(Target.Get());
+	// El objetivo puede haberse desconectado: no se añaden componentes a un peón en destrucción.
+	if (!bTargetLost && IsValid(Warned) && !Warned->IsActorBeingDestroyed())
 	{
 		if (UTN_RaceItemComponent* Effects = UTN_RaceItemComponent::FindOrAddOn(Warned))
 		{

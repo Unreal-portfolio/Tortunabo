@@ -227,7 +227,7 @@ FVector ATN_RaceFrisbee::ComputePosition(double Seconds, int32& OutLeg, double& 
 		OutBackAlpha = Back;
 		FVector Goal = Base;
 		const ATortugaCharacter* Thrower = GetOwnerTurtle();
-		if (Thrower && !Thrower->IsDead())
+		if (IsValid(Thrower) && !Thrower->IsDead())
 		{
 			const FVector ThrowerAt = Thrower->GetActorLocation();
 			Goal = FVector(ThrowerAt.X, ThrowerAt.Y, 0.0);
@@ -278,7 +278,7 @@ void ATN_RaceFrisbee::ServerTick(float DeltaSeconds)
 
 	// Lo caza quien lo lanzó (en la vuelta, a menos de 2 m) o se acaba el tiempo.
 	const ATortugaCharacter* Thrower = GetOwnerTurtle();
-	if (Leg == 2 && Thrower && !Thrower->IsDead() && FVector::Dist(Cur, Thrower->GetActorLocation()) < CatchRadius)
+	if (Leg == 2 && IsValid(Thrower) && !Thrower->IsDead() && FVector::Dist(Cur, Thrower->GetActorLocation()) < CatchRadius)
 	{
 		ServerFinish(FinishLingerSeconds);
 		return;

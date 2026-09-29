@@ -25,7 +25,12 @@ namespace TNSaveLogic
 		/** El fichero se ha leído bien: usarlo. */
 		UseLoaded,
 		/** Hay fichero pero no se puede leer: apartarlo con otro nombre y empezar de cero. Nunca sobrescribirlo. */
-		QuarantineAndCreateFresh
+		QuarantineAndCreateFresh,
+		/**
+		 * Hay fichero pero el sistema no ha devuelto sus bytes (bloqueado por el antivirus o la nube, permisos...):
+		 * no se sabe si está dañado, así que ni se aparta ni se sobrescribe en esta sesión.
+		 */
+		KeepAndBlockSaves
 	};
 
 	/** Qué migración aplicar a un guardado leído. */
@@ -38,12 +43,19 @@ namespace TNSaveLogic
 		FromNewerBuild
 	};
 
-	/** @brief Decide la acción de carga a partir de si el fichero existe y si se ha leído con la clase esperada. */
-	inline ELoadAction DecideLoadAction(bool bFileExists, bool bLoadedOk)
+	/**
+	 * @brief Decide la acción de carga a partir de si el fichero existe, si el sistema ha devuelto sus bytes y si se
+	 * han leído con la clase esperada.
+	 */
+	inline ELoadAction DecideLoadAction(bool bFileExists, bool bBytesRead, bool bLoadedOk)
 	{
 		if (!bFileExists)
 		{
 			return ELoadAction::CreateFresh;
+		}
+		if (!bBytesRead)
+		{
+			return ELoadAction::KeepAndBlockSaves;
 		}
 		return bLoadedOk ? ELoadAction::UseLoaded : ELoadAction::QuarantineAndCreateFresh;
 	}

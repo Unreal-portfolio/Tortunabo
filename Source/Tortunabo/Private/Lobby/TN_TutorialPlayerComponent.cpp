@@ -421,6 +421,13 @@ void UTN_TutorialPlayerComponent::TickLocal(float DeltaTime)
 	ATN_TutorialCourse* Course = GetCourse();
 	ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(PC->GetPawn());
 
+	// Cliente que entra ya metido en el tutorial: bInTutorial puede llegar antes que el actor del recorrido (se
+	// replica a 1 Hz) y HandleInTutorialChanged no lo encontró; se construye en cuanto aparece.
+	if (bInTutorial && Course && !Course->IsBuilt())
+	{
+		Course->EnsureBuilt();
+	}
+
 	// Al llegar a un lobby (una vez por mapa): si esta máquina no ha hecho el tutorial, se pide.
 	if (CheckedWorld.Get() != World)
 	{

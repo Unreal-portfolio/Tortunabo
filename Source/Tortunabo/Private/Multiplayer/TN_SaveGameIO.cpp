@@ -18,6 +18,13 @@ namespace
 	bool TNQuarantine(ISaveGameSystem& SaveSystem, const FString& Slot, int32 UserIndex, const TArray<uint8>& RawBytes,
 		const TCHAR* What)
 	{
+		if (RawBytes.Num() == 0)
+		{
+			// Una copia vacía no protege nada: mejor no borrar el original.
+			UE_LOG(LogTortunabo, Error, TEXT("[SaveGame] %s: '%s' vacío o ilegible; no se aparta ni se escribirá encima en esta sesión."),
+				What, *Slot);
+			return false;
+		}
 		const FString Quarantine = TNSaveLogic::BuildQuarantineSlotName(Slot, FDateTime::Now());
 		if (!SaveSystem.SaveGame(false, *Quarantine, UserIndex, RawBytes))
 		{
@@ -56,14 +63,20 @@ namespace TNSaveGameIO
 		const bool bExists = SaveSystem->DoesSaveGameExist(*Slot, UserIndex);
 		TArray<uint8> RawBytes;
 		USaveGame* Loaded = nullptr;
-		if (bExists && SaveSystem->LoadGame(false, *Slot, UserIndex, RawBytes))
+		const bool bBytesRead = bExists && SaveSystem->LoadGame(false, *Slot, UserIndex, RawBytes);
+		if (bBytesRead)
 		{
 			Loaded = UGameplayStatics::LoadGameFromMemory(RawBytes);
 		}
 		const bool bLoadedOk = Loaded && ExpectedClass && Loaded->IsA(ExpectedClass) && IsIntact(*Loaded);
 
-		switch (TNSaveLogic::DecideLoadAction(bExists, bLoadedOk))
+		switch (TNSaveLogic::DecideLoadAction(bExists, bBytesRead, bLoadedOk))
 		{
+		case TNSaveLogic::ELoadAction::KeepAndBlockSaves:
+			UE_LOG(LogTortunabo, Error,
+				TEXT("[SaveGame] %s: '%s' existe pero no se ha podido leer; no se toca en esta sesión."), What, *Slot);
+			Result.bSaveBlocked = true;
+			break;
 		case TNSaveLogic::ELoadAction::UseLoaded:
 			Result.Loaded = Loaded;
 			break;
