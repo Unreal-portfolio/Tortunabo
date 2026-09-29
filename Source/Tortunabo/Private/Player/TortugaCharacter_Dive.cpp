@@ -76,17 +76,19 @@ void ATortugaCharacter::TryDive()
 		return;
 	}
 
-	// DASH-03 (2026-04-26): el dash siempre va EN LA DIRECCIÓN DE LA CÁMARA.
-	// Antes usaba CMC->Velocity (DASH-02) lo que ataba el dash al movimiento
-	// actual del char. Ahora la cámara es la fuente de verdad — feel más
-	// directo (al estilo shooter): donde miras es donde dasheas.
-	FVector DiveDir = FVector::ZeroVector;
+	// El dash va hacia donde el jugador pulsa WASD (relativo a la cámara, ya
+	// convertido a mundo por AddMovementInput). Sin input, hacia donde mira la cámara.
+	FVector DiveDir = GetLastMovementInputVector();
+	DiveDir.Z = 0.f;
 	const FRotator ControlRot = GetControlRotation();
-	FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
-	CamForward.Z = 0.f;
-	if (CamForward.Normalize())
+	if (!DiveDir.Normalize())
 	{
-		DiveDir = CamForward;
+		DiveDir = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
+		DiveDir.Z = 0.f;
+	}
+	if (!DiveDir.IsNearlyZero())
+	{
+		DiveDir.Normalize();
 	}
 	else
 	{
@@ -97,7 +99,7 @@ void ATortugaCharacter::TryDive()
 	}
 
 	UE_LOG(LogTortunabo, Log,
-		TEXT("[Dive] DASH-03 · DiveDir(camera)=(%.2f,%.2f,%.2f) ControlYaw=%.1f"),
+		TEXT("[Dive] DiveDir(input/camera)=(%.2f,%.2f,%.2f) ControlYaw=%.1f"),
 		DiveDir.X, DiveDir.Y, DiveDir.Z, ControlRot.Yaw);
 
 	Server_StartDive(DiveDir);
@@ -162,18 +164,8 @@ void ATortugaCharacter::Server_StartDive_Implementation(FVector DiveDir)
 	{
 		const FVector JumpStartDir = JumpStartHorizontalVelocity / JumpStartSpeed;
 
-		// Forward cámara (control rotation Yaw, plano horizontal)
-		const FRotator ControlRot = GetControlRotation();
-		FVector CamForward = FRotationMatrix(FRotator(0.f, ControlRot.Yaw, 0.f)).GetUnitAxis(EAxis::X);
-		CamForward.Z = 0.f;
-		if (!CamForward.Normalize())
-		{
-			CamForward = GetActorForwardVector();
-			CamForward.Z = 0.f;
-			CamForward.Normalize();
-		}
-
-		const float Alignment = FVector::DotProduct(CamForward, JumpStartDir); // [-1, 1]
+		// Se compara la dirección real del dash (ya saneada arriba) con la del salto.
+		const float Alignment = FVector::DotProduct(DiveDir, JumpStartDir); // [-1, 1]
 
 		float Factor;
 		if (Alignment >= 0.f)
