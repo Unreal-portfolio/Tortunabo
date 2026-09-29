@@ -189,3 +189,15 @@ Preguntas para el director:
 ## Decisión del director (2026-09-29): países enteros miniaturizados
 
 Los mapas por idioma dejan de ser regiones emblemáticas: cada uno es el **país entero miniaturizado** con MDE real y su contorno (costa y frontera como borde), como E01 España, adaptado a su modo (Rally: calzada tallada que cruza el país; Todos contra Todos: zonas llanas y puentes naturales). Asignación: es-ES España (E01/E01B), en Reino Unido, fr Francia, de Alemania, it Italia, pt-BR Brasil, ru Rusia (muy compactada en longitud), pl Polonia, tr Turquía, ja Japón, ko Corea del Sur, zh-Hans China continental (solo geografía, sin fronteras internas ni rótulos políticos), zh-Hant isla de Taiwán (nombre geográfico). Las regiones del catálogo anterior pueden reutilizarse como tramos o puntos emblemáticos dentro de cada país. Relieve con la exageración calibrada de E01; sin exagerar de más.
+
+## 7. Catálogo completado: arenas A02 a A06 (lote C1, 2026-09-29)
+
+Generador: `Scripts/gen_terrain_inventados.py --lot C1` (A02, A03 y A05 con `terrain_shapes/arena.py`; A04 y A06 con `terrain_shapes/arena_extra.py`). Validadores en verde: transitable desde el inicio, pasarelas de ≥ 3 m a ≤ 20°, sin islas inalcanzables, costuras sin grietas, presupuesto TcT (≤ 0,35 M triángulos, ≤ 6 MB) y 8 nidos a ≥ 15 m entre sí y ≥ 5 m del agua (`nests_uu` en el manifest). Lámina en `Docs/Mapas/<id>.png`.
+
+| id | Nombre | Modo | Tamaño (m) | Triángulos | MB | Rasgos generados | Diferencias con §3 |
+|---|---|---|---|---|---|---|---|
+| A02 | Dónut | TcT | 130 (hueco 50) | 99 640 | 0,39 | Anillo a +4 m, 2 puentes naturales que cruzan el hueco | 2 puentes de lado a lado (equivalen a los 4 radiales de §3) |
+| A03 | Espiral | TcT | 115 | 121 066 | 0,56 | Rampa de 2,5 vueltas de +0,8 a +14 m entre fosos de agua | Ninguna |
+| A04 | Reloj | TcT | 120 | 97 522 | 0,39 | Disco a +4 m, 12 pilares de las horas (+7 m; el de las 12, +8 m), 48 marcas de minuto, estrado del eje; marcas `eje_agujas`, `catapulta` y 3 `trampolin` | Las agujas son actores (§6), no terreno |
+| A05 | Tablero de mesetas | TcT | 136 | 154 408 | 0,75 | Rejilla 5 × 5 a +3, +6 y +9 m unida por rampas naturales | Ninguna |
+| A06 | Panal | TcT | 114 | 114 690 | 0,52 | 19 hexágonos de 12 m de lado a +4 m (central a +6 m con el cofre), huecos de 2 m de agua; 26 istmos de 4 m (árbol + 8 al azar) y el resto de huecos marcados como `salto` | Istmos añadidos para que ningún hexágono dependa solo del salto |

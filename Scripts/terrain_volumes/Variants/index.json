@@ -43,5 +43,45 @@
   "recorrible": true,
   "size_mb": 5.44,
   "mode": "rally"
+ },
+ {
+  "name": "A02_donut",
+  "seed": 3002,
+  "description": "Dónut (Todos contra Todos): anillo de 130 m con un hueco de agua de 50 m que cruzan dos puentes naturales; se corre en círculo y caer al agua es la muerte.",
+  "recorrible": true,
+  "size_mb": 0.39,
+  "mode": "tct"
+ },
+ {
+  "name": "A03_espiral",
+  "seed": 3003,
+  "description": "Espiral (Todos contra Todos): rampa de 2,5 vueltas que sube de +0,8 a +14 m hacia el centro entre fosos de agua.",
+  "recorrible": true,
+  "size_mb": 0.56,
+  "mode": "tct"
+ },
+ {
+  "name": "A04_reloj",
+  "seed": 3004,
+  "description": "Reloj (Todos contra Todos): disco de 120 m a +4 m con los 12 pilares de las horas (+7 m; el de las 12, +8 m), marcas de minuto en el borde y el estrado del eje en el centro; las dos agujas son actores que barren la arena.",
+  "recorrible": true,
+  "size_mb": 0.39,
+  "mode": "tct"
+ },
+ {
+  "name": "A05_tablero",
+  "seed": 3005,
+  "description": "Tablero de mesetas (Todos contra Todos): 5 x 5 mesetas de 20 m a +3, +6 y +9 m unidas por rampas naturales de 9 m.",
+  "recorrible": true,
+  "size_mb": 0.75,
+  "mode": "tct"
+ },
+ {
+  "name": "A06_panal",
+  "seed": 3006,
+  "description": "Panal (Todos contra Todos): 19 hexágonos de 12 m de lado a +4 m separados por 2 m de agua que se saltan; istmos de 4 m unen el panal y el hexágono central, a +6 m, guarda el cofre.",
+  "recorrible": true,
+  "size_mb": 0.52,
+  "mode": "tct"
  }
 ]
