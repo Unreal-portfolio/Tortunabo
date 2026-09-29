@@ -16,6 +16,7 @@
 #include "Styling/CoreStyle.h"
 #include "TimerManager.h"
 #include "UI/Loading/TN_LoadingScreenSubsystem.h"
+#include "VR/TN_VRMode.h"
 
 namespace TNGhostHatchDetail
 {
@@ -124,7 +125,7 @@ void UTN_GhostHatchWidget::ShowFor(APlayerController* PC, float SecondsToDark, f
 		return;
 	}
 	Widget->Begin(SecondsToDark, SecondsToHatch);
-	Widget->AddToViewport(TNGhostHatchDetail::ZOrder);
+	TNVR::AddToScreen(Widget, TNGhostHatchDetail::ZOrder);
 }
 
 UTN_GhostHatchWidget* UTN_GhostHatchWidget::ShowCurtain(APlayerController* PC, float CloseSeconds, float MaxHoldSeconds)
@@ -139,7 +140,7 @@ UTN_GhostHatchWidget* UTN_GhostHatchWidget::ShowCurtain(APlayerController* PC, f
 		return nullptr;
 	}
 	Widget->BeginCurtain(CloseSeconds, MaxHoldSeconds);
-	Widget->AddToViewport(TNGhostHatchDetail::ZOrder);
+	TNVR::AddToScreen(Widget, TNGhostHatchDetail::ZOrder);
 	return Widget;
 }
 

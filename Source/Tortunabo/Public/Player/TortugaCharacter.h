@@ -1653,6 +1653,82 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPlaySfx(USoundBase* Sound);
 
+	// ── Modo VR (Docs/Modo_VR.md) ─────────────────────────────────────────────
+
+	/**
+	 * Primera persona VR en el jugador local: cámara a la altura de los ojos de la tortuga (con gafas, con el seguimiento
+	 * de la cabeza; simulado, con el ratón), el cuerpo propio oculto para uno mismo (su sombra sí se ve) y la tortuga
+	 * mirando hacia donde mira la cabeza, también para los demás. Lo pone ATN_VRRig cada fotograma; false la devuelve a la
+	 * cámara de siempre.
+	 */
+	void SetVRView(bool bOn, bool bHeadset);
+	bool IsVRView() const { return bVRViewActive; }
+
+	/** Origen del seguimiento (a la altura de los ojos, girado por el giro del stick) y cámara VR; nullptr sin VR. */
+	USceneComponent* GetVROrigin() const { return VROrigin; }
+	UCameraComponent* GetVRCamera() const { return VRCamera; }
+
+	/** Giro del stick derecho con gafas (por pasos o suave): gira el origen del seguimiento. */
+	void AddVRYaw(float DeltaYaw);
+
+	/** Hacia dónde apunta la aleta derecha de los mandos (lo pone ATN_VRRig); bValid false = se apunta con la cámara. */
+	void SetLocalVRAim(const FRotator& Aim, bool bValid);
+
+	/**
+	 * Hacia dónde se lanza o se usa algo (compañero, objeto, tinta, objetos de la carrera): en VR, la aleta derecha (en el
+	 * servidor, la última que mandó el dueño); si no, el giro del mando, que es la cámara. Vale en el dueño y en el servidor.
+	 */
+	FRotator GetTurtleAimRotation() const;
+
+	/** ¿Juega en VR el dueño de esta tortuga? (replicado: la tortuga gira con la cabeza, no con el movimiento). */
+	bool IsVRPlayer() const { return bVRPlayer; }
+
+private:
+	/**
+	 * Ojos de la tortuga respecto del centro de la cápsula (cm). Encima del centro y no delante: la tortuga gira con la
+	 * cabeza y unos ojos adelantados darían vueltas alrededor del centro al mirar a los lados (marea).
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "VR")
+	FVector VREyeOffset = FVector(0.f, 0.f, 45.f);
+
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> VROrigin;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCameraComponent> VRCamera;
+
+	UPROPERTY(ReplicatedUsing = OnRep_VRPlayer)
+	bool bVRPlayer = false;
+
+	UFUNCTION()
+	void OnRep_VRPlayer();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetVRPlayer(bool bOn);
+
+	/** La aleta derecha del dueño, justo antes de usar o lanzar algo (fiable: llega antes que la acción). */
+	UFUNCTION(Server, Reliable)
+	void ServerSetVRAim(FRotator Aim);
+
+	/** Con bVRPlayer, la tortuga gira con el mando (la cabeza) y no hacia donde anda. */
+	void ApplyVRRotationMode();
+
+	/** Con gafas: el giro del mando sigue a la cabeza (el andar y el cuello van con ella). */
+	void TickVRView(float DeltaTime);
+
+	/** Manda al servidor la aleta derecha antes de usar o lanzar (solo clientes en VR). */
+	void SendVRAimToServer();
+
+	bool bVRViewActive = false;
+	bool bVRHeadsetView = false;
+	float VRYaw = 0.f;
+	float VRLastControlYaw = 0.f;
+	bool bVRControlYawValid = false;
+	FRotator LocalVRAim = FRotator::ZeroRotator;
+	bool bLocalVRAimValid = false;
+	FRotator ServerVRAim = FRotator::ZeroRotator;
+	double ServerVRAimTime = -1.0;
+
 private:
 	bool IsValidWheelEmoteId(int32 EmoteID) const;
 	float GetWheelEmoteCooldown(int32 EmoteID) const;
