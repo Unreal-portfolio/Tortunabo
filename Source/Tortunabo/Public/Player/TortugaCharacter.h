@@ -48,6 +48,9 @@ class TORTUNABO_API ATortugaCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
+	/** El monkey test (TN.Monkey) pulsa los mismos manejadores de entrada que el jugador. */
+	friend class UTN_MonkeyComponent;
+
 public:
 	/** Con UTN_TurtleMovementComponent como movimiento (el arrastre del panzazo va dentro de la simulación, predicho). */
 	ATortugaCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
