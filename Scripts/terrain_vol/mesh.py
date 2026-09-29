@@ -14,8 +14,8 @@ from scipy import ndimage, sparse
 from skimage.measure import marching_cubes
 
 from .density import Fields, MapModel, smooth
-from .layout import (CELL_SAMPLES, STEP_XY_M, STEP_Z_M, UU_PER_M, WATER_M, Z_MAX_M, Z_MIN_M, Z_SAMPLES,
-                     cell_bounds, cell_center)
+from .layout import (CELL_SAMPLES, DEFAULT_Z_RANGE, STEP_XY_M, STEP_Z_M, UU_PER_M, WATER_M, ZRange, cell_bounds,
+                     cell_center)
 
 # Paletas lineales (las de FModuleColors y TNTerrainBiome::ColorsFor): suelo, alto, alto alt,
 # pared, pared alt, humedo.
@@ -56,8 +56,13 @@ class ChunkMesh:
     fields: Fields
 
 
-def z_levels() -> np.ndarray:
-    return Z_MIN_M + STEP_Z_M * np.arange(Z_SAMPLES)
+def z_levels(z_range: ZRange = DEFAULT_Z_RANGE) -> np.ndarray:
+    return z_range.z_values()
+
+
+def model_z_range(model) -> ZRange:
+    """Rango vertical del voxelizado de un modelo: su atributo `z_range` o DEFAULT_Z_RANGE."""
+    return getattr(model, "z_range", None) or DEFAULT_Z_RANGE
 
 
 def taubin(vertices: np.ndarray, faces: np.ndarray, pinned: np.ndarray, iterations: int) -> np.ndarray:
@@ -138,22 +143,23 @@ def vertex_colors(model: MapModel, world: np.ndarray, normals: np.ndarray) -> np
     return np.rint(rgba * 255.0).astype(np.uint8)
 
 
-def top_surface(D: np.ndarray) -> np.ndarray:
+def top_surface(D: np.ndarray, z_range: ZRange = DEFAULT_Z_RANGE) -> np.ndarray:
     """Cota (m) del paso de solido a aire mas alto de cada columna."""
     solid = D > 0.0
-    k = Z_SAMPLES - 1 - np.argmax(solid[:, :, ::-1], axis=2)          # indice del solido mas alto
-    k = np.clip(k, 0, Z_SAMPLES - 2)
+    levels = D.shape[2]
+    k = levels - 1 - np.argmax(solid[:, :, ::-1], axis=2)             # indice del solido mas alto
+    k = np.clip(k, 0, levels - 2)
     i, j = np.indices(k.shape)
     d0, d1 = D[i, j, k], D[i, j, k + 1]
     t = np.clip(d0 / np.maximum(d0 - d1, 1e-9), 0.0, 1.0)
-    return Z_MIN_M + STEP_Z_M * (k + t)
+    return z_range.z_min_m + z_range.step_m * (k + t)
 
 
-def standable_cells(D: np.ndarray, clearance_m: float = 2.0) -> np.ndarray:
+def standable_cells(D: np.ndarray, clearance_m: float = 2.0, step_z_m: float = STEP_Z_M) -> np.ndarray:
     """Solido con aire encima en clearance_m: donde cabe la tortuga de pie."""
     solid = D > 0.0
     free = ~solid
-    steps = int(round(clearance_m / STEP_Z_M))
+    steps = int(round(clearance_m / step_z_m))
     ok = solid.copy()
     for k in range(1, steps + 1):
         above = np.zeros_like(free)
@@ -199,25 +205,27 @@ def foliage_instances(model: MapModel, col: int, row: int, fields: Fields, top: 
     return np.column_stack([shape, lx, ly, gz + pivot, yaw, sx, sy, sz, color]).astype(np.float32)
 
 
-def build_chunk(model: MapModel, col: int, row: int) -> ChunkMesh:
+def build_chunk(model: MapModel, col: int, row: int, z_range: ZRange | None = None) -> ChunkMesh:
+    """z_range: rango vertical del voxelizado (por defecto el del modelo o DEFAULT_Z_RANGE)."""
+    zr = z_range or model_z_range(model)
     # Una muestra de margen para las normales (gradiente centrado tambien en el borde).
     fields_pad, X, Y = model.chunk_fields(col, row, pad=1)
-    Z = z_levels()
+    Z = z_levels(zr)
     D_pad = model.density(X, Y, Z, fields_pad)
     D = D_pad[1:-1, 1:-1, :]
     fields = fields_pad.window(1, CELL_SAMPLES + 1, 1, CELL_SAMPLES + 1)
 
-    verts, faces, _, _ = marching_cubes(D, level=0.0, spacing=(STEP_XY_M, STEP_XY_M, STEP_Z_M))
+    verts, faces, _, _ = marching_cubes(D, level=0.0, spacing=(STEP_XY_M, STEP_XY_M, zr.step_m))
     edge = CELL_SAMPLES - 1
     pinned = (verts[:, 0] < 1e-6) | (verts[:, 0] > edge * STEP_XY_M - 1e-6) \
         | (verts[:, 1] < 1e-6) | (verts[:, 1] > edge * STEP_XY_M - 1e-6)
     smoothed = taubin(verts, faces, pinned, SMOOTH_ITERATIONS)
     # (las normales de la malla se calculan tras orientar las caras: ver mesh_normals)
     x0, _, y0, _ = cell_bounds(col, row)
-    world = smoothed + np.array([x0, y0, Z_MIN_M])
+    world = smoothed + np.array([x0, y0, zr.z_min_m])
 
-    grad = np.gradient(D_pad, STEP_XY_M, STEP_XY_M, STEP_Z_M)
-    coords = np.stack([verts[:, 0] / STEP_XY_M + 1, verts[:, 1] / STEP_XY_M + 1, verts[:, 2] / STEP_Z_M], axis=0)
+    grad = np.gradient(D_pad, STEP_XY_M, STEP_XY_M, zr.step_m)
+    coords = np.stack([verts[:, 0] / STEP_XY_M + 1, verts[:, 1] / STEP_XY_M + 1, verts[:, 2] / zr.step_m], axis=0)
     g = np.stack([ndimage.map_coordinates(c, coords, order=1, mode="nearest") for c in grad], axis=1)
     normals = -g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-9)
 
@@ -238,7 +246,7 @@ def build_chunk(model: MapModel, col: int, row: int) -> ChunkMesh:
 
     cx, cy = cell_center(col, row)
     local = (world - np.array([cx, cy, 0.0])) * UU_PER_M
-    top = top_surface(D)
+    top = top_surface(D, zr)
     return ChunkMesh(col, row, local.astype(np.float32), normals.astype(np.float32), vertex_colors(model, world, normals),
                      faces.astype(np.uint32), foliage_instances(model, col, row, fields, top), top,
-                     standable_cells(D), fields)
+                     standable_cells(D, step_z_m=zr.step_m), fields)
