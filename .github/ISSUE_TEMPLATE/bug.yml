@@ -19,4 +19,4 @@ body:
     id: rama
     attributes:
       label: Rama o commit
-      placeholder: macro-update @ abc1234
+      placeholder: dev @ abc1234

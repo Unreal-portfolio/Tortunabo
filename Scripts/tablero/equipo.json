@@ -4,7 +4,7 @@
     "owner": "Unreal-portfolio",
     "numero": 2
   },
-  "rama_integracion": "macro-update",
+  "rama_integracion": "dev",
   "rama_estable": "main",
   "aprobadores": [
     "SkiTemplar",
