@@ -565,6 +565,7 @@ void ATortugaCharacter::Tick(float DeltaTime)
 	TickEmote(DeltaTime);          // emote system (overrides leg anim when active)
 	TickLegAnimation(DeltaTime);   // normal locomotion (suppressed during emotes/dive/jump)
 	TickCameraInterp(DeltaTime);   // cinematic camera zoom/FOV interpolation
+	TickVRView(DeltaTime);         // VR con gafas: el giro del mando sigue a la cabeza (TortugaCharacter_VR.cpp)
 	TickHeadLook(DeltaTime);       // head tracks camera direction, replicated a todos los clientes
 	TickFallRules(DeltaTime);      // caída larga → caparazón (servidor)
 	TickShellVisual(DeltaTime);    // encoger/estirar extremidades al entrar/salir del caparazón
@@ -670,6 +671,8 @@ void ATortugaCharacter::TickCameraInterp(float DeltaTime)
 	// Solo aplica en el cliente local que controla este pawn.
 	if (!IsLocallyControlled()) { return; }
 	if (!CameraBoom || !FollowCamera) { return; }
+	// En primera persona VR la cámara es otra (TortugaCharacter_VR.cpp).
+	if (bVRViewActive) { return; }
 
 	const bool bSprinting = StaminaComponent && StaminaComponent->IsSprinting();
 
@@ -1340,6 +1343,8 @@ void ATortugaCharacter::TryInteract()
 		return;
 	}
 
+	// Si el servidor acaba usando el objeto de la mano (recoger con la mano llena), en VR va hacia la aleta.
+	SendVRAimToServer();
 	ServerTryInteract(FocusedInteractable.Get());
 }
 
@@ -1466,6 +1471,8 @@ void ATortugaCharacter::DropEquippedItem()
 
 void ATortugaCharacter::TryUseEquippedItem()
 {
+	// En VR se lanza hacia donde apunta la aleta: el servidor la recibe antes que la acción (los dos son fiables).
+	SendVRAimToServer();
 	ServerUseEquippedItem();
 }
 
@@ -1645,6 +1652,8 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	// Head look — SkipOwner: el owner aplica la rotación localmente sin pasar por la red
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadYaw,   COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadPitch, COND_SkipOwner);
+	// Modo VR del dueño: la tortuga gira con la cabeza (Docs/Modo_VR.md).
+	DOREPLIFETIME(ATortugaCharacter, bVRPlayer);
 }
 
 void ATortugaCharacter::PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker)

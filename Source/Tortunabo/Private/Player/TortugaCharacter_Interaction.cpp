@@ -378,8 +378,8 @@ void ATortugaCharacter::HandleUseThrowable(const FTN_InventoryItem& EquippedItem
 {
 	const FVector SpawnLocation = GetItemSpawnLocation();
 
-	// ── Dirección de lanzamiento: hacia donde mira la cámara, con el arco bajo de todos los lanzamientos ──
-	const FVector ArcedDirection = GetThrowDirection(Controller ? Controller->GetControlRotation() : GetActorRotation());
+	// ── Dirección de lanzamiento: hacia donde mira la cámara (en VR, la aleta), con el arco bajo de todos los lanzamientos ──
+	const FVector ArcedDirection = GetThrowDirection(GetTurtleAimRotation());
 
 	const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
 
@@ -437,7 +437,7 @@ void ATortugaCharacter::HandleUseInkThrower(const FTN_InventoryItem& EquippedIte
 
 	// Con el mismo arco bajo que el resto de lanzamientos (la tinta también cae con la gravedad).
 	const FVector Origin    = GetItemSpawnLocation();
-	const FVector Direction = GetThrowDirection(Controller ? Controller->GetControlRotation() : GetActorRotation());
+	const FVector Direction = GetThrowDirection(GetTurtleAimRotation());
 	ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
 		Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
 	MulticastItemThrowAnim();

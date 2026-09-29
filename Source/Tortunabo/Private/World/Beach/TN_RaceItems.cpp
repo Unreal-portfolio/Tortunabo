@@ -532,11 +532,8 @@ bool TNRaceItems::CanUseNow(const ATortugaCharacter* Turtle)
 
 FVector TNRaceItems::ThrowDirection(const ATortugaCharacter* Turtle, float PitchDeg)
 {
-	FRotator View = Turtle ? Turtle->GetActorRotation() : FRotator::ZeroRotator;
-	if (Turtle && Turtle->GetController())
-	{
-		View = Turtle->GetController()->GetControlRotation();
-	}
+	// Hacia donde mira la cámara (en VR, hacia donde apunta la aleta derecha: ATortugaCharacter::GetTurtleAimRotation).
+	const FRotator View = Turtle ? Turtle->GetTurtleAimRotation() : FRotator::ZeroRotator;
 	return FRotator(PitchDeg, View.Yaw, 0.f).Vector();
 }
 

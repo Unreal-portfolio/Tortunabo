@@ -58,6 +58,7 @@
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystem.h"
 #include "Styling/SlateTypes.h"
+#include "VR/TN_VRMode.h"
 
 // Con nombre (no anónimo): en la compilación por bloques (unity) los nombres de un espacio anónimo se ven en el resto
 // del bloque.
@@ -2442,6 +2443,32 @@ void UTN_PauseMenuWidget::FillGameTab()
 		{
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bShowTalkers = bOn; }); }
 		});
+
+	// Modo VR (Docs/Modo_VR.md): se aplica en el acto (UTN_VRSubsystem lo mira cada fotograma).
+	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadVR", "REALIDAD VIRTUAL"));
+	if (UTN_PauseRow* Row = AddListRow(SettingsList))
+	{
+		const TArray<FText> Modes = { NSLOCTEXT("TNPause", "VRModeAuto", "Automático"), NSLOCTEXT("TNPause", "VRModeOff", "Desactivado"),
+			NSLOCTEXT("TNPause", "VRModeSim", "Simulado sin gafas") };
+		Row->SetupChoice(NSLOCTEXT("TNPause", "VRMode", "Modo VR"), Modes, FMath::Clamp<int32>(Data.VRMode, 0, 2), [WeakSettings](int32 Choice)
+		{
+			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.VRMode = static_cast<uint8>(Choice); }); }
+		});
+		Row->SetDescription(NSLOCTEXT("TNPause", "VRModeDesc",
+			"Automático: en primera persona con las gafas si el juego arranca con ellas (-vr o «VR Preview»). Desactivado: con gafas, la pantalla plana de siempre. Simulado: el modo VR sin gafas, con el ratón como aleta, para probarlo en el PC."));
+	}
+	if (UTN_PauseRow* Row = AddListRow(SettingsList))
+	{
+		const TArray<FText> Turns = { NSLOCTEXT("TNPause", "VRTurn30", "Por pasos de 30°"), NSLOCTEXT("TNPause", "VRTurn45", "Por pasos de 45°"),
+			NSLOCTEXT("TNPause", "VRTurnSmooth", "Suave") };
+		Row->SetupChoice(NSLOCTEXT("TNPause", "VRTurn", "Giro en VR"), Turns, FMath::Clamp<int32>(Data.VRTurn, 0, 2), [WeakSettings](int32 Choice)
+		{
+			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.VRTurn = static_cast<uint8>(Choice); }); }
+		});
+		Row->SetDescription(NSLOCTEXT("TNPause", "VRTurnDesc",
+			"Cómo gira la tortuga con el stick derecho. A pasos marea mucho menos; suave, para quien ya está acostumbrado."));
+	}
+
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
 		Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "ResetGame", "Restablecer esta pestaña"), [WeakThis, WeakSettings]()
@@ -2449,7 +2476,7 @@ void UTN_PauseMenuWidget::FillGameTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Game); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Game); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla» y el idioma de tu sistema."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema y el modo VR automático con giro a pasos de 30°."));
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
@@ -2801,7 +2828,7 @@ void UTN_PauseMenuWidget::CloseMenu()
 	}
 	bLeaving = true;
 	if (UTN_GameSettingsSubsystem* Settings = GetSettings()) { Settings->ClosePauseMenu(); }
-	if (IsInViewport()) { RemoveFromParent(); }
+	if (TNVR::IsOnScreen(this)) { RemoveFromParent(); }
 }
 
 void UTN_PauseMenuWidget::ReturnToLobby()
@@ -3089,8 +3116,9 @@ void UTN_PauseMenuWidget::TakeInput()
 	bInputTaken = true;
 
 	// Lo que ya había en pantalla (para saber al cerrar si ha salido otro menú que quiere el cursor).
+	// En VR los menús no están en el viewport sino dentro del panel de la interfaz (no son de primer nivel).
 	TArray<UUserWidget*> Found;
-	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Found, UUserWidget::StaticClass(), true);
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Found, UUserWidget::StaticClass(), !TNVR::IsEnabled());
 	for (UUserWidget* Widget : Found) { WidgetsAtOpen.Add(Widget); }
 
 	// Suelta lo que estuviera pulsado (correr, andar) y deja la tortuga quieta: ni se mueve ni gira la cámara.
@@ -3135,12 +3163,12 @@ void UTN_PauseMenuWidget::ReleaseInput()
 	// Si mientras tanto ha salido otro menú que se puede pulsar (p. ej. el campeón de la carrera), se le deja el cursor.
 	bool bOtherMenu = false;
 	TArray<UUserWidget*> Found;
-	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Found, UUserWidget::StaticClass(), true);
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Found, UUserWidget::StaticClass(), !TNVR::IsEnabled());
 	for (UUserWidget* Widget : Found)
 	{
 		// Solo cuenta lo que se ve, se puede pulsar y no estaba al abrir (no el contador de FPS ni el recuento).
 		const ESlateVisibility Shown = Widget ? Widget->GetVisibility() : ESlateVisibility::Collapsed;
-		if (!Widget || Widget == this || !Widget->IsInViewport()
+		if (!Widget || Widget == this || !TNVR::IsOnScreen(Widget)
 			|| (Shown != ESlateVisibility::Visible && Shown != ESlateVisibility::SelfHitTestInvisible)
 			|| WidgetsAtOpen.ContainsByPredicate([Widget](const TWeakObjectPtr<UUserWidget>& Old) { return Old.Get() == Widget; }))
 		{

@@ -23,6 +23,11 @@
 #include "Sound/SoundGenerator.h"
 #include "UObject/UObjectGlobals.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "VR/TN_VRMode.h"
+#include "VR/TN_VRSubsystem.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "RenderingThread.h"
+#include "Slate/WidgetRenderer.h"
 #include <atomic>
 #include <cmath>
 
@@ -575,6 +580,8 @@ void UTN_LoadingScreenSubsystem::Deinitialize()
 	RemoveGoBanner();
 	RemoveFromViewport();
 	Screen.Reset();
+	UpdateVRSplash();
+	VRSplashTarget = nullptr;
 	Super::Deinitialize();
 }
 
@@ -931,8 +938,8 @@ void UTN_LoadingScreenSubsystem::ShowGoBanner(float DelaySeconds)
 	}
 	RemoveGoBanner();
 	GoBanner = SNew(STN_GoBanner).Delay(DelaySeconds);
-	// Justo debajo del huevo, por encima del HUD y de los menús; no recibe clics.
-	Viewport->AddViewportWidgetContent(GoBanner.ToSharedRef(), TNLoadingLayers::GoBannerZOrder);
+	// Justo debajo del huevo, por encima del HUD y de los menús; no recibe clics. En VR, en el panel de la interfaz.
+	TNVR::AddSlateToScreen(Viewport, GoBanner.ToSharedRef(), TNLoadingLayers::GoBannerZOrder);
 	GoBannerViewport = Viewport;
 }
 
@@ -940,10 +947,7 @@ void UTN_LoadingScreenSubsystem::RemoveGoBanner()
 {
 	if (GoBanner.IsValid())
 	{
-		if (UGameViewportClient* Viewport = GoBannerViewport.Get())
-		{
-			Viewport->RemoveViewportWidgetContent(GoBanner.ToSharedRef());
-		}
+		TNVR::RemoveSlateFromScreen(GoBannerViewport.Get(), GoBanner.ToSharedRef());
 	}
 	GoBanner.Reset();
 	GoBannerViewport = nullptr;
@@ -1065,13 +1069,15 @@ void UTN_LoadingScreenSubsystem::AddToViewport()
 	{
 		return;
 	}
-	if (ScreenInViewport.IsValid() && ViewportUsed.Get() == Viewport)
+	// En VR, al panel de la interfaz en cuanto lo hay (tras cargar un mapa el rig llega unos fotogramas después).
+	const bool bWantVRPanel = TNVR::HasPanel(GameInstance);
+	if (ScreenInViewport.IsValid() && ViewportUsed.Get() == Viewport && bScreenOnVRPanel == bWantVRPanel)
 	{
 		return;
 	}
 	RemoveFromViewport();
 	// Por encima del HUD y de los menús; la pantalla de texto del GameInstance no sale mientras hay huevo.
-	Viewport->AddViewportWidgetContent(Screen.ToSharedRef(), TNLoadingLayers::EggZOrder);
+	bScreenOnVRPanel = TNVR::AddSlateToScreen(Viewport, Screen.ToSharedRef(), TNLoadingLayers::EggZOrder);
 	ScreenInViewport = Screen;
 	ViewportUsed = Viewport;
 }
@@ -1080,19 +1086,18 @@ void UTN_LoadingScreenSubsystem::RemoveFromViewport()
 {
 	if (ScreenInViewport.IsValid())
 	{
-		if (UGameViewportClient* Viewport = ViewportUsed.Get())
-		{
-			Viewport->RemoveViewportWidgetContent(ScreenInViewport.ToSharedRef());
-		}
+		TNVR::RemoveSlateFromScreen(ViewportUsed.Get(), ScreenInViewport.ToSharedRef());
 	}
 	ScreenInViewport.Reset();
 	ViewportUsed = nullptr;
+	bScreenOnVRPanel = false;
 }
 
 void UTN_LoadingScreenSubsystem::Hide()
 {
 	RemoveFromViewport();
 	Screen.Reset();
+	UpdateVRSplash();
 	bHold = false;
 	BreakAtTime = -1.0;
 	LoadDoneTime = -1.0;
@@ -1101,6 +1106,38 @@ void UTN_LoadingScreenSubsystem::Hide()
 	LobbyCancelSince = -1.0;
 	LastAutoStatus.Reset();
 	FlushWhenClosed(true);
+}
+
+void UTN_LoadingScreenSubsystem::UpdateVRSplash()
+{
+	UGameInstance* GameInstance = GetGameInstance();
+	UTN_VRSubsystem* VR = GameInstance ? GameInstance->GetSubsystem<UTN_VRSubsystem>() : nullptr;
+	// Solo con el huevo cerrado del todo: mientras entra, se abre o se rompe se ve el de verdad, en el panel.
+	const bool bWant = VR && TNVR::IsHeadset() && Screen.IsValid() && Screen->IsClosed();
+	if (bWant == bVRSplashShown)
+	{
+		return;
+	}
+	bVRSplashShown = bWant;
+	if (!bWant)
+	{
+		if (VR)
+		{
+			VR->HideLoadingSplash();
+		}
+		return;
+	}
+	if (!VRSplashTarget && FSlateApplication::IsInitialized())
+	{
+		// Un huevo cerrado dibujado una vez en una textura (la capa de las gafas no pinta Slate).
+		const TSharedRef<STN_EggLoadingScreen> Picture = SNew(STN_EggLoadingScreen)
+			.StartClosed(true)
+			.Status(NSLOCTEXT("TNVR", "LoadingSplashStatus", "Cargando"));
+		FWidgetRenderer* Renderer = new FWidgetRenderer(true, true);
+		VRSplashTarget = Renderer->DrawWidget(Picture, FVector2D(1920.0, 1080.0));
+		BeginCleanup(Renderer);
+	}
+	VR->ShowLoadingSplash(VRSplashTarget);
 }
 
 bool UTN_LoadingScreenSubsystem::IsWorldReady(UWorld* World, double Now) const
@@ -1311,6 +1348,7 @@ void UTN_LoadingScreenSubsystem::Tick(float DeltaTime)
 	UpdateAutoClose(World, Now);
 	UpdateRoundWatch(World);
 	TickGoBanner(Now);
+	UpdateVRSplash();
 	if (!Screen.IsValid())
 	{
 		return;

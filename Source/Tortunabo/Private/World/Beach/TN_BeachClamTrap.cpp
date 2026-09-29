@@ -14,6 +14,7 @@
 #include "ProceduralMeshComponent.h"
 #include "TN_BeachRideKit.h"
 #include "TN_BeachTrapKit.h"
+#include "VR/TN_VRMode.h"
 
 /**
  * Geometría de la concha, en el espacio del marco (X = sentido de la carrera, origen en la arena, en el centro): una
@@ -950,9 +951,12 @@ void ATN_BeachClamTrap::HoldLocal(ACharacter* Victim)
 				bInputIgnored = true;
 				IgnoringController = PC;
 			}
-			// Se ve desde fuera: la concha temblando y el humo.
-			PC->SetViewTargetWithBlend(this, 0.35f, VTBlend_EaseInOut, 2.f);
-			bViewOnClam = true;
+			// Se ve desde fuera: la concha temblando y el humo. En VR se sigue en primera persona (una cámara ajena marea).
+			if (!TNVR::KeepFirstPersonView())
+			{
+				PC->SetViewTargetWithBlend(this, 0.35f, VTBlend_EaseInOut, 2.f);
+				bViewOnClam = true;
+			}
 		}
 	}
 	if (GetNetMode() != NM_DedicatedServer)

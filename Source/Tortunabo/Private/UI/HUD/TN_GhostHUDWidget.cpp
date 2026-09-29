@@ -20,6 +20,7 @@
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TN_SpectatorGhost.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
+#include "VR/TN_VRMode.h"
 
 namespace TNGhostHUDDetail
 {
@@ -120,9 +121,9 @@ void UTN_GhostHUDWidget::EnsureFor(APlayerController* PC)
 		}
 		Map.Add(PC, Widget);
 	}
-	if (!Widget->IsInViewport())
+	if (!TNVR::IsOnScreen(Widget))
 	{
-		Widget->AddToViewport(TNGhostHUDDetail::ZOrder);
+		TNVR::AddToScreen(Widget, TNGhostHUDDetail::ZOrder);
 	}
 }
 

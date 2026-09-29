@@ -1,0 +1,93 @@
+# Validación obligatoria antes de entrar en main (Docs/Flujo_Git.md).
+#
+# - «Comprobaciones»: en los servidores de GitHub, rápida (1-2 min): archivos prohibidos o enormes, marcadores de conflicto,
+#   codificación, sintaxis de Python, JSON, claves de localización duplicadas y .po traducidos.
+# - «Compilar y pruebas (UE 5.6)»: compila el editor con UBT y pasa las pruebas automáticas «Tortunabo.*». Necesita un
+#   ejecutor propio con Unreal Engine 5.6 (etiquetas self-hosted, Windows, ue56). Mientras la variable del repositorio
+#   UE_RUNNER no valga «true», el trabajo se salta (y un trabajo saltado cuenta como correcto en las reglas de main).
+name: Validar para main
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validar-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  comprobaciones:
+    name: Comprobaciones
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Descargar (solo texto, sin los binarios de Content)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            .github
+            Config
+            Content/Localization
+            Docs
+            Scripts
+            Source
+            Tools
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Comprobaciones del repositorio
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python .github/scripts/validar.py --base "$BASE_SHA"
+
+  compilar-y-pruebas:
+    name: Compilar y pruebas (UE 5.6)
+    needs: comprobaciones
+    if: vars.UE_RUNNER == 'true'
+    runs-on: [self-hosted, Windows, ue56]
+    timeout-minutes: 150
+    env:
+      UE_ROOT: ${{ vars.UE_ROOT || 'C:\Program Files\Epic Games\UE_5.6' }}
+    steps:
+      - name: Descargar
+        uses: actions/checkout@v4
+        with:
+          # Conserva Intermediate y Binaries entre ejecuciones: compilación incremental.
+          clean: false
+
+      - name: Compilar el editor (UBT)
+        shell: cmd
+        run: call "%UE_ROOT%\Engine\Build\BatchFiles\Build.bat" TortunaboEditor Win64 Development -Project="%CD%\Tortunabo.uproject" -WaitMutex -NoHotReload
+
+      - name: Pruebas automáticas (Tortunabo.*)
+        shell: pwsh
+        run: |
+          $log = Join-Path $PWD "pruebas.log"
+          & "$env:UE_ROOT\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$PWD\Tortunabo.uproject" `
+            -ExecCmds="Automation RunTests Tortunabo; Quit" -unattended -nopause -nosplash -NullRHI -stdout -FullStdOutLogOutput `
+            *> $log
+          $ok = (Select-String -Path $log -Pattern 'Result=\{Success\}').Count
+          $fail = (Select-String -Path $log -Pattern 'Result=\{Fail').Count
+          "Pruebas: $ok bien, $fail mal" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          Select-String -Path $log -Pattern 'Result=\{Fail' | ForEach-Object { "::error::$($_.Line)" }
+          if (-not (Select-String -Path $log -Pattern 'TEST COMPLETE\. EXIT CODE: 0' -Quiet)) { exit 1 }
+          if ($fail -gt 0 -or $ok -eq 0) { exit 1 }
+
+      - name: Guardar el registro de las pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pruebas-log
+          path: pruebas.log
+          if-no-files-found: ignore

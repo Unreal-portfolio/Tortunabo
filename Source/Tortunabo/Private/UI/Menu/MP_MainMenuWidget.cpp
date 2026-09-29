@@ -14,6 +14,7 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
+#include "VR/TN_VRMode.h"
 
 namespace TNMainMenuDetail
 {
@@ -161,7 +162,7 @@ void UMP_MainMenuWidget::NativeConstruct()
 			{
 				if (UMP_MainMenuWidget* Menu = WeakThis.Get()) { Menu->HandleRoomsOpenChanged(bOpen); }
 			};
-			RoomMenu->AddToViewport(TNMainMenuDetail::RoomMenuZOrder);
+			TNVR::AddToScreen(RoomMenu, TNMainMenuDetail::RoomMenuZOrder);
 		}
 	}
 
