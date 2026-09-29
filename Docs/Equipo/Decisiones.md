@@ -6,6 +6,8 @@ Las decisiones de diseño de fondo (modos, mapas, prioridades de la macro update
 
 ## Vigentes
 
+- 2026-09-29 · SkiTemplar · Quien revisa una issue y encuentra un fallo lo arregla él mismo por defecto (Revisiones con el fallo comentado → coger → In progress); la nueva revisión la hace otro. · `CLAUDE.md`
+
 - 2026-09-29 · SkiTemplar · La rama de integración se llama `dev` (antes `macro-update`). · `CLAUDE.md`
 - 2026-09-29 · SkiTemplar · Las tareas y fallos se agrupan por objeto con sub-issues. · https://github.com/orgs/Unreal-portfolio/projects/2
 - 2026-09-29 · SkiTemplar · El tablero «Tortunabo · Desarrollo» es la única lista de tareas y solo recoge desarrollo: código, pulido, bugs y revisión de assets. Nada de tareas de «diseñar X». · https://github.com/orgs/Unreal-portfolio/projects/2

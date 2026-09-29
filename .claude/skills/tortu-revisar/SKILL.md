@@ -14,7 +14,7 @@ description: Use in Tortunabo when someone reviews work assigned to them, or whe
 3. Registra el veredicto en la issue:
    - bien: `tablero.py ia <n> aprobada --revisor "<tu login> (Claude)" --nota "<qué has comprobado>"`;
    - algo no funciona: `tablero.py ia <n> cambios --revisor "<tu login> (Claude)" --nota "<fallo, fichero:línea y cómo reproducirlo>"`. La issue pasa a Revisiones con el fallo comentado en ella.
-4. Si decides corregirlo tú en lugar de devolverlo, primero déjala en Revisiones con el fallo comentado (paso 3) y luego cógela con `tablero.py coger <n> --forzar`: así pasa a In progress a tu nombre y se sabe quién está con ella. Al terminar, `tortu-entregar`.
+4. Lo normal es que el revisor arregle él mismo lo que encuentra, porque ya tiene el código delante. Primero deja la issue en Revisiones con el fallo comentado (paso 3), para que quede constancia, y luego cógela con `tablero.py coger <n> --forzar`: pasa a In progress a tu nombre y se sabe quién está con ella. Al terminar, `tortu-entregar`: la nueva revisión la hace otro miembro del equipo según `equipo.json`. Si el arreglo es grande o no te toca, devuélvela al autor dejándola en Revisiones.
 
 ## Fusionar (solo SkiTemplar o Mokius)
 

@@ -35,7 +35,7 @@ GitHub Project «Tortunabo · Desarrollo» en vista Kanban: https://github.com/o
 | QA editor | Fusionada en dev; falta probarla en el editor |
 | Done | Probada en el editor y cerrada |
 
-Ciclo: Ready → In progress → In review → (Revisiones → In progress → In review)* → QA editor → Done. Si en QA editor algo falla, vuelve a Revisiones con el fallo comentado. Quien vaya a corregir una issue en Revisiones la coge (`tablero.py coger`) y pasa a In progress, para que se sepa quién está con ella.
+Ciclo: Ready → In progress → In review → (Revisiones → In progress → In review)* → QA editor → Done. Si en QA editor algo falla, vuelve a Revisiones con el fallo comentado. Lo normal es que el propio revisor arregle lo que encuentra: la deja en Revisiones con el fallo comentado y la coge (`tablero.py coger <n> --forzar`), así pasa a In progress a su nombre y se sabe quién está con ella.
 
 Cada issue lleva dos validaciones independientes:
 
