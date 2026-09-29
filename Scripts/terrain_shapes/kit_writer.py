@@ -36,6 +36,8 @@ class Clearance:
     width_m: float
     clearance_m: float
     name: str = "hueco"
+    min_cover_m: float = 0.0          # roca maciza minima sobre la boveda (tuneles: 8 m), lejos de las bocas
+    portal_m: float = 12.0            # tramo de boca en cada extremo sin exigir cobertura
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class Road:
     z: np.ndarray
     closed: bool = True
     covered: np.ndarray | None = None
+    exempt: np.ndarray | None = None                         # sin comprobar separacion (junto a un cruce a dos niveles)
     width_m: float = 12.0
     max_grade_deg: float = 12.0
     min_radius_m: float = 25.0
@@ -59,6 +62,7 @@ class Extras:
     nests: int = 0                                           # nidos exigidos (TcT: 8)
     markers: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     notes: str = ""                                          # linea extra de la lamina
+    static: dict[str, dict] = field(default_factory=dict)    # comprobaciones del generador ({"ok": ...})
 
 
 # ── Comprobaciones ───────────────────────────────────────────────────────────────
@@ -83,13 +87,42 @@ def check_clearance(shape: ShapeMap, hole: Clearance, every_m: float = 3.0) -> d
     X, Y = shape.canvas.to_world(probes[:, 0], probes[:, 1])
     Z = np.arange(floors.min() - 1.0, floors.max() + hole.clearance_m, 0.25)
     D = shape.model.density(np.asarray(X)[None, :], np.asarray(Y)[None, :], Z)[0]
-    bad = 0
+    bad = []
     for k, f in enumerate(floors):
         band = (Z > f + 0.3) & (Z < f + hole.clearance_m - 0.5)
         below = (Z > f - 1.0) & (Z < f - 0.4)
-        if (D[k, band] >= 0.0).any() or (D[k, below] <= 0.0).any():
-            bad += 1
-    return {"name": hole.name, "samples": int(len(floors)), "bad": bad, "ok": bad == 0}
+        if (D[k, band] >= 0.0).any():
+            bad.append((int(keep[k % len(keep)]), "techo"))
+        elif (D[k, below] <= 0.0).any():
+            bad.append((int(keep[k % len(keep)]), "suelo"))
+    cover = _cover(shape, hole, pts, z, arc) if hole.min_cover_m > 0.0 else None
+    if cover is not None and cover["thin"]:
+        bad.append((cover["thin"][0], "cobertura"))
+    out = {"name": hole.name, "samples": int(len(floors)), "bad": len(bad), "first_bad": bad[:6], "ok": not bad}
+    if cover is not None:
+        out["min_cover_m"] = cover["min_m"]
+    return out
+
+
+def _cover(shape: ShapeMap, hole: Clearance, pts, z, arc) -> dict:
+    """Roca maciza sobre la boveda en el eje, lejos de las bocas: la menor de todas y las muestras por debajo."""
+    inner = np.nonzero((arc >= hole.portal_m) & (arc <= arc[-1] - hole.portal_m))[0][::2]
+    if len(inner) == 0:
+        return {"min_m": 0.0, "thin": []}
+    X, Y = shape.canvas.to_world(pts[inner, 0], pts[inner, 1])
+    Z = np.arange(z[inner].min(), z[inner].max() + hole.clearance_m + 40.0, 0.25)
+    D = shape.model.density(np.asarray(X)[None, :], np.asarray(Y)[None, :], Z)[0]
+    covers, thin = [], []
+    for k, f in enumerate(z[inner]):
+        above_roof = Z > f + hole.clearance_m
+        solid = (D[k] > 0.0)[above_roof]
+        start = int(np.argmax(solid)) if solid.any() else len(solid)      # la boveda real (sobre el galibo)
+        rest = solid[start:]
+        run = 0.25 * (int(np.argmin(rest)) if (~rest).any() else len(rest))
+        covers.append(run)
+        if run < hole.min_cover_m:
+            thin.append(int(inner[k]))
+    return {"min_m": round(float(min(covers)), 2), "thin": thin}
 
 
 def check_road(shape: ShapeMap, top: np.ndarray, road: Road) -> dict:
@@ -98,8 +131,10 @@ def check_road(shape: ShapeMap, top: np.ndarray, road: Road) -> dict:
     radius, k_radius = min_radius(road.pts, road.closed)
     grade = max_grade_deg(arc, road.z, road.closed)
     covered = np.zeros(len(road.pts), dtype=bool) if road.covered is None else road.covered
+    exempt = np.zeros(len(road.pts), dtype=bool) if road.exempt is None else road.exempt
     wide = wide_ground(top, road.width_m, road.max_grade_deg)
-    open_idx = np.nonzero(~covered)[0][::2]
+    apron = np.convolve(np.concatenate([covered[-8:], covered, covered[:8]]).astype(float), np.ones(17), "same")[8:-8] > 0         if road.closed and covered.any() else covered
+    open_idx = np.nonzero(~apron)[0][::2]                    # sin la boca de cada tunel (8 m): alli manda la fachada
     ij = np.array([shape.canvas.to_ij(*road.pts[k]) for k in open_idx])
     narrow = [int(k) for k, (i, j) in zip(open_idx, ij) if not wide[i, j]]
     # Tramos no contiguos (a mas de 80 m de arco) a menos de ancho + 8 m, fuera de lo cubierto.
@@ -110,7 +145,7 @@ def check_road(shape: ShapeMap, top: np.ndarray, road: Road) -> dict:
         gap = abs(arc[a] - arc[b])
         if road.closed:
             gap = min(gap, total - gap)
-        if gap > 80.0 and not covered[a] and not covered[b]:
+        if gap > 80.0 and not covered[a] and not covered[b] and not exempt[a] and not exempt[b]:
             close.append((a, b))
     ok = radius >= road.min_radius_m and grade <= road.max_grade_deg and not narrow and not close
     return {"length_m": round(total, 1), "min_radius_m": round(radius, 1), "min_radius_at": k_radius,
@@ -183,6 +218,9 @@ def write_kit_map(shape: ShapeMap, extras: Extras | None = None, sheet: bool = T
     if holes:
         checks["clearances"] = holes
         ok = ok and all(h["ok"] for h in holes)
+    for key, value in extras.static.items():
+        checks[key] = value
+        ok = ok and bool(value.get("ok", True))
     data = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     marks: dict[str, tuple[int, int]] = {k: shape.canvas.to_ij(*p) for k, p in shape.required.items()}
     if extras.road is not None:
@@ -235,11 +273,14 @@ def kit_summary(r: dict) -> str:
     extra = []
     road = r.get("checks", {}).get("road")
     if road:
-        extra.append(f"calzada {road['length_m']} m r>={road['min_radius_m']} {road['max_grade_deg']}° estrechas "
+        extra.append(f"calzada {road['length_m']} m r>={road['min_radius_m']}@{road['min_radius_at']} {road['max_grade_deg']}° estrechas "
                      f"{road['narrow_samples']} cerca {road['too_close_pairs']}")
     for h in r.get("checks", {}).get("clearances", []):
         if not h["ok"]:
-            extra.append(f"hueco {h['name']} mal en {h['bad']}/{h['samples']}")
+            extra.append(f"hueco {h['name']} mal en {h['bad']}/{h['samples']} {h['first_bad']}")
+    for key, value in r.get("checks", {}).items():
+        if key not in ("road", "clearances", "nests") and isinstance(value, dict):
+            extra.append(f"{key} {'ok' if value.get('ok') else 'MAL'} {value.get('summary', '')}")
     nests = r.get("checks", {}).get("nests")
     if nests:
         extra.append(f"nidos {nests['found']}/{nests['wanted']}")

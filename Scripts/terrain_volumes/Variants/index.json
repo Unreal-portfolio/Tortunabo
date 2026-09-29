@@ -83,5 +83,53 @@
   "recorrible": true,
   "size_mb": 0.52,
   "mode": "tct"
+ },
+ {
+  "name": "I02_galapagos",
+  "seed": 1002,
+  "description": "Galápagos (Todos contra Todos): 5 islas unidas por 5 puentes naturales; Isabela con dos volcanes gemelos de +11 m y cada isla con un caparazón de roca (cúpula de +2,5 m) que guarda el mejor botín; cangrejos rojos en Floreana y Española.",
+  "recorrible": true,
+  "size_mb": 0.75,
+  "mode": "tct"
+ },
+ {
+  "name": "I03T_tortuga_magna",
+  "seed": 1103,
+  "description": "Tortuga Magna (Todos contra Todos): isla con forma de tortuga gigante; caparazón de 110 × 88 m con 13 escamas a +9 (central), +6 (6 interiores) y +3 m (6 exteriores) unidas por rampas a 15°, cuatro aletas que suben desde la playa y la boca de la cabeza como túnel de 14 m.",
+  "recorrible": true,
+  "size_mb": 0.52,
+  "mode": "tct"
+ },
+ {
+  "name": "I03R_tortuga_magna",
+  "seed": 2103,
+  "description": "Tortuga Magna (Rally): lazo de 1,4 km por el borde del caparazón de una isla-tortuga gigante; entra por la boca de la cabeza y sale por la cola en túnel, con el caparazón escalonado en el centro (hasta +18 m) y las aletas como cabos; calzada de +3 a +9 m.",
+  "recorrible": true,
+  "size_mb": 5.15,
+  "mode": "rally"
+ },
+ {
+  "name": "I04_volcan_hueco",
+  "seed": 2104,
+  "description": "Volcán Hueco (Rally): sube por el flanco hasta el borde de la caldera a +18 m, baja por el otro flanco, entra bajo el borde en túnel, cruza el lago de lava (agua de muerte) en viaducto a +6 m y sale bajo el borde sur hasta la playa; 1,5 km por vuelta.",
+  "recorrible": true,
+  "size_mb": 5.46,
+  "mode": "rally"
+ },
+ {
+  "name": "I05_santorini",
+  "seed": 1005,
+  "description": "Santorini (Todos contra Todos): anillo de caldera de 150 m con el borde interior en acantilado a +10 m y bajada suave a +2 m hacia fuera; dos puentes naturales cruzan la caldera, Thirasia queda separada por dos canales (uno con puente) y 8 cúpulas dan cobertura.",
+  "recorrible": true,
+  "size_mb": 0.82,
+  "mode": "tct"
+ },
+ {
+  "name": "I06_feroe",
+  "seed": 2106,
+  "description": "Islas Feroe (Rally, paramétrica: sin MDE): tres islas alargadas con cresta y acantilados al oeste; el lazo salta los estrechos en cuatro viaductos y cruza cada isla por su collado, bajo las crestas (sin túnel: no hay 8 m de roca encima); 1,2 km por vuelta.",
+  "recorrible": true,
+  "size_mb": 5.14,
+  "mode": "rally"
  }
 ]

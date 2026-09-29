@@ -153,8 +153,20 @@ class Tunnel:
         wall = 0.6 * self.clearance_m
         arch = np.sqrt(np.clip(1.0 - (d / hw) ** 2, 0.0, 1.0))
         ceiling = floor + wall + (self.clearance_m - wall) * arch
+        side = np.minimum(hw - d, self._cap(e, n, k))
         Z3 = Z[None, None, :]
-        return np.minimum(np.minimum((hw - d)[..., None], ceiling[..., None] - Z3), Z3 - floor[..., None])
+        return np.minimum(np.minimum(side[..., None], ceiling[..., None] - Z3), Z3 - floor[..., None])
+
+    def _cap(self, e, n, k) -> np.ndarray:
+        """Distancia (positiva dentro) a los planos de las bocas: el hueco termina en seco en cada extremo."""
+        a = self.axis.array
+        out = np.full(np.shape(e), 1e3)
+        for end, inner in ((0, 1), (len(a) - 1, len(a) - 2)):
+            u = a[inner] - a[end]
+            u = u / max(float(np.hypot(*u)), 1e-9)
+            along = (e - a[end][0]) * u[0] + (n - a[end][1]) * u[1]
+            out = np.where(k == end, np.minimum(out, along), out)
+        return out
 
     def manifest(self, canvas: Canvas) -> dict:
         a = self.axis.array
