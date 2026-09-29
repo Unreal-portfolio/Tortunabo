@@ -14,8 +14,13 @@ Crea o rehace:
       Ojos: máscara por posición (las dos esferas de los ojos, en (±4,47; 8,46; 46,06) con radio 3,98, solo el
       casquete que asoma) con EyeStyle (0 clásicos, 1 iris, 2 estrella, 3 corazón, 4 de dibujo, 5 espiral, 6 gato,
       7 galaxia), EyeColor, EyeColor2, EyeGlow y la animación EyeBlink (párpado) y EyeDizzy (espiral al noquear).
-    - M_TurtleHelmetSlot: ranura "lambert2" (casco rojo de serie + lengua) con el casco recortado: se usa cuando la
-      tortuga lleva un casco de la tienda. Solo queda la lengua.
+      Cara (la anima UTN_TurtleFaceComponent): EyeTired (párpados a media asta y mirada baja), EyeSqueeze (ojos
+      apretados «>_<»), MouthOpen y MouthSmile (boca pintada alrededor del hueco de la malla bajo la nariz) y FaceBlush
+      (colorete en los mofletes).
+    - M_TurtleHelmetSlot: ranura "lambert2" (casco rojo de serie + lengua rígida). HideHelmet recorta el casco (con uno
+      de la tienda) y HideTongue esconde la lengua de la malla (la del jugador es procedural); HelmetColor es el rojo
+      de serie (el difuso de M_TortugaDemo).
+    - M_TurtleFaceParts: lengua y gotas de sudor procedurales (color de vértice; el alfa es lo mojado: brillo).
   /Game/UI/Shop/M_UI_Preview: pinta en la UI la captura de la vista previa (SceneColorHDR: alfa invertido y sin
     curva de tono; Exposure la ajusta).
   /Game/Cosmetics/Helmets/SM_Helmet_<Id>: los cascos de Scripts/cosmetics_meshes.py.
@@ -232,8 +237,11 @@ float3 EyeGaze = normalize(float3(0.25, 0.93, 0.27));
 float3 EyeUp = normalize(float3(0.0, 0.0, 1.0) - EyeGaze * EyeGaze.z);
 float3 EyeRight = cross(EyeUp, EyeGaze);
 // Plano del ojo: radio del iris = 1 (unos 34 grados). EyeUV lleva la x igual en los dos ojos (brillos del mismo lado);
-// EyeSym es simétrica (para las formas simétricas).
-float2 EyeSym = float2(dot(EyeN, EyeRight), dot(EyeN, EyeUp)) / 0.56;
+// EyeSym es simétrica (para las formas simétricas); su x positiva va hacia la nariz. EyeFlat es el plano sin mover
+// (párpados y «>_<»); con cansancio (EyeTired: 0,5 cansada, 1 jadeando) la mirada baja: pupilas y formas se desplazan.
+float TiredK = saturate(EyeTired);
+float2 EyeFlat = float2(dot(EyeN, EyeRight), dot(EyeN, EyeUp)) / 0.56;
+float2 EyeSym = EyeFlat + float2(0.0, 0.34 * saturate(TiredK * 1.6));
 float2 EyeUV = float2(EyeSym.x * sign(P.x + 0.0001), EyeSym.y);
 float EyeR = length(EyeUV);
 float EyeFront = step(0.0, dot(EyeN, EyeGaze));
@@ -308,14 +316,64 @@ else
 float BigShine = 1.0 - smoothstep(EyeMode == 4 ? 0.26 : 0.15, EyeMode == 4 ? 0.3 : 0.19, length(EyeUV - float2(-0.3, 0.34)));
 float SmallShine = 1.0 - smoothstep(EyeMode == 4 ? 0.12 : 0.07, EyeMode == 4 ? 0.15 : 0.1, length(EyeUV - float2(0.3, -0.28)));
 EyeCol = lerp(EyeCol, float3(1.0, 1.0, 1.0), max(BigShine, SmallShine * 0.9) * EyeShine * EyeFront);
-// Párpado: baja desde arriba (EyeBlink) con una raya oscura de pestaña.
-float LidH = lerp(1.05, -1.05, saturate(EyeBlink));
+// Párpado: baja desde arriba (EyeBlink) con una raya oscura de pestaña. Con cansancio se queda a media asta (como las
+// caras del HUD: cansada tapa el tercio de arriba; jadeando, algo más de la mitad), un poco más caído por fuera.
 float EyeHeight = dot(EyeN, EyeUp);
-float Lid = step(LidH, EyeHeight) * step(0.01, EyeBlink);
-float Lash = (1.0 - smoothstep(0.0, 0.08, abs(EyeHeight - LidH))) * step(0.02, EyeBlink);
+float BlinkH = lerp(1.05, -1.05, saturate(EyeBlink));
+float TiredH = (TiredK < 0.5 ? lerp(1.05, 0.2, TiredK * 2.0) : lerp(0.2, -0.12, TiredK * 2.0 - 1.0)) + 0.08 * TiredK * EyeFlat.x;
+float LidH = min(BlinkH, TiredH);
+float LidOn = max(saturate(EyeBlink), TiredK);
+float Lid = step(LidH, EyeHeight) * step(0.01, LidOn);
+float Lash = (1.0 - smoothstep(0.0, 0.08, abs(EyeHeight - LidH))) * step(0.02, LidOn);
 EyeCol = lerp(lerp(EyeCol, EyeInk, Lash), BodyCol * 0.92, Lid);
+// Ojos apretados «>_<» (EyeSqueeze: al agotarse y al gritar): párpado cerrado con un galón de tinta que apunta a la nariz.
+if (EyeSqueeze > 0.5 && EyeDizzy < 0.5)
+{
+    float2 ChA = float2(-0.55, 0.5);
+    float2 ChB = float2(0.45, 0.0);
+    float2 ChC = float2(-0.55, -0.5);
+    float2 Pa = EyeFlat - ChA;
+    float2 Ba = ChB - ChA;
+    float Da = length(Pa - Ba * saturate(dot(Pa, Ba) / dot(Ba, Ba)));
+    float2 Pb = EyeFlat - ChB;
+    float2 Bb = ChC - ChB;
+    float Db = length(Pb - Bb * saturate(dot(Pb, Bb) / dot(Bb, Bb)));
+    float Chevron = (1.0 - smoothstep(0.1, 0.17, min(Da, Db))) * EyeFront;
+    EyeCol = lerp(BodyCol * 0.92, EyeInk, Chevron);
+    Lid = 1.0;
+}
 
-float3 BaseCol = lerp(BodyCol, ShellCol, ShellM);
+// ── Boca y mofletes, pintados en el plano de la cara (x, z). La malla tiene un hueco bajo la nariz (|x| < 1,7;
+// z 41,3-43,9; fondo en y ~ 10, borde en y ~ 13,7) por donde sale la lengua. MouthOpen (0 casi cerrada, 1 abierta del
+// todo) y MouthSmile (1 sonrisa con el borde de arriba recto, 0 óvalo) dan la forma: dentro, granate con la lengua al
+// fondo; alrededor, un filo oscuro; lo del hueco que queda fuera de la forma, piel en sombra.
+float FaceFront = step(9.0, P.y) * step(P.y, 15.3) * step(abs(P.x), 3.8) * step(38.4, P.z) * step(P.z, 44.1);
+float Cavity = FaceFront * step(P.y, 13.1) * step(abs(P.x), 1.95) * step(41.0, P.z);
+float MO = saturate(MouthOpen);
+float MS = saturate(MouthSmile);
+float MHalfW = lerp(1.1, 2.45, MO);
+float MHeight = lerp(0.9, 4.4, MO);
+float MTop = 43.75;
+float MCz = lerp(lerp(42.55, 41.55, MO), MTop, MS);
+float MRv = lerp(MHeight * 0.5, MHeight, MS);
+float MEll = (length(float2(P.x / MHalfW, (P.z - MCz) / MRv)) - 1.0) * min(MHalfW, MRv);
+float MDist = max(MEll, lerp(-10.0, P.z - MTop, MS));
+float MIn = (1.0 - smoothstep(-0.05, 0.05, MDist)) * FaceFront;
+float MRim = (1.0 - smoothstep(0.14, 0.22, MDist)) * (1.0 - MIn) * FaceFront * (1.0 - Cavity);
+float MBottom = MCz - MRv;
+float2 MTq = float2(P.x / (0.62 * MHalfW), (P.z - MBottom - 0.3 * MHeight) / (0.36 * MHeight));
+float MTongue = (1.0 - smoothstep(0.85, 1.0, length(MTq))) * MIn * smoothstep(0.12, 0.3, MO);
+float3 FaceCol = lerp(BodyCol, BodyCol * 0.5, Cavity);
+FaceCol = lerp(FaceCol, BodyCol * 0.25, MRim);
+FaceCol = lerp(FaceCol, float3(0.147, 0.0116, 0.0185) * lerp(1.0, 0.55, Cavity), MIn);
+FaceCol = lerp(FaceCol, float3(1.0, 0.159, 0.27) * lerp(0.9, 0.6, Cavity), MTongue);
+// Colorete rosa bajo los ojos (cansada y, sobre todo, jadeando).
+float2 BlushQ = float2((abs(P.x) - 5.0) / 1.8, (P.z - 41.1) / 1.15);
+float BlushM = (1.0 - smoothstep(0.45, 1.0, length(BlushQ))) * step(8.5, P.y) * step(P.y, 15.0) * saturate(FaceBlush) * 0.7;
+FaceCol = lerp(FaceCol, float3(1.0, 0.275, 0.366), BlushM);
+Rough = lerp(Rough, 0.3, MIn);
+
+float3 BaseCol = lerp(FaceCol, ShellCol, ShellM);
 Metal = Metal * (1.0 - EyeM);
 Rough = lerp(Rough, lerp(0.12, 0.6, Lid), EyeM);
 Emis = lerp(Emis, EyeEmis * (1.0 - Lid), EyeM);
@@ -349,6 +407,12 @@ def build_turtle_body_material():
         ("EyeGlow", scalar(m, "EyeGlow", 0.0, -1100, 1360)),
         ("EyeBlink", scalar(m, "EyeBlink", 0.0, -1100, 1440)),
         ("EyeDizzy", scalar(m, "EyeDizzy", 0.0, -1100, 1520)),
+        # Cara (UTN_TurtleFaceComponent): cansancio, ojos apretados, boca (de serie, sonrisa pequeña) y colorete.
+        ("EyeTired", scalar(m, "EyeTired", 0.0, -1100, 1600)),
+        ("EyeSqueeze", scalar(m, "EyeSqueeze", 0.0, -1100, 1680)),
+        ("MouthOpen", scalar(m, "MouthOpen", 0.3, -1100, 1760)),
+        ("MouthSmile", scalar(m, "MouthSmile", 1.0, -1100, 1840)),
+        ("FaceBlush", scalar(m, "FaceBlush", 0.0, -1100, 1920)),
     ]
     custom = custom_node(m, TURTLE_BODY_HLSL, inputs, unreal.CustomMaterialOutputType.CMOT_FLOAT3, -600, 200, "TurtleBody",
                          extra_outputs=[("Metal", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
@@ -365,9 +429,11 @@ def build_turtle_body_material():
 
 
 HELMET_SLOT_HLSL = r"""
-// Ranura del casco de serie de TotugaDemo_Rig: solo queda la lengua (delante de la boca).
+// Ranura del casco de serie de TotugaDemo_Rig: el casco (con sus correas) y la lengua rígida que sale de la boca.
+// HideHelmet recorta el casco (se lleva uno de la tienda) y HideTongue la lengua (la del jugador es procedural).
 float Tongue = step(abs(P.x), 2.3) * step(9.6, P.y) * step(P.z, 43.4) * step(39.8, P.z);
-return lerp(1.0, Tongue, HideHelmet);
+Col = lerp(HelmetColor, TongueColor, Tongue);
+return lerp(1.0 - Tongue * HideTongue, Tongue * (1.0 - HideTongue), HideHelmet);
 """
 
 
@@ -378,15 +444,40 @@ def build_helmet_slot_material():
     interp = expr(m, unreal.MaterialExpressionVertexInterpolator, -760, 200)
     mel.connect_material_expressions(pre, "", interp, "")
     hide = scalar(m, "HideHelmet", 1.0, -760, 320)
-    custom = custom_node(m, HELMET_SLOT_HLSL, [("P", interp), ("HideHelmet", hide)], unreal.CustomMaterialOutputType.CMOT_FLOAT1,
-                         -450, 220, "HelmetSlotMask")
-    color = vector(m, "TongueColor", unreal.LinearColor(0.0835, 0.0178, 0.0004, 1.0), -450, 0)
-    mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    hide_tongue = scalar(m, "HideTongue", 0.0, -760, 400)
+    # El rojo de serie es el difuso de M_TortugaDemo (lineal), el mismo que tenía la lengua.
+    helmet_color = vector(m, "HelmetColor", unreal.LinearColor(0.083478, 0.017751, 0.000447, 1.0), -760, -120)
+    tongue_color = vector(m, "TongueColor", unreal.LinearColor(0.0835, 0.0178, 0.0004, 1.0), -760, 0)
+    custom = custom_node(m, HELMET_SLOT_HLSL, [("P", interp), ("HideHelmet", hide), ("HideTongue", hide_tongue),
+                                              ("HelmetColor", helmet_color), ("TongueColor", tongue_color)],
+                         unreal.CustomMaterialOutputType.CMOT_FLOAT1, -450, 220, "HelmetSlotMask",
+                         extra_outputs=[("Col", unreal.CustomMaterialOutputType.CMOT_FLOAT3)])
+    mel.connect_material_property(custom, "Col", unreal.MaterialProperty.MP_BASE_COLOR)
     mel.connect_material_property(custom, "", unreal.MaterialProperty.MP_OPACITY_MASK)
     rough = expr(m, unreal.MaterialExpressionConstant, -450, 120)
     rough.set_editor_property("r", 0.55)
     mel.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
     m.set_editor_property("used_with_skeletal_mesh", True)
+    mel.recompile_material(m)
+    asset_lib.save_loaded_asset(m)
+    return m
+
+
+def build_face_parts_material():
+    """Lengua y gotas de sudor de UTN_TurtleFaceComponent (mallas procedurales): el color de vértice llega en lineal y su
+    alfa es lo mojado (0 mate, 1 brillante); un poco de luz propia para que el rosa y el celeste no se apaguen a la sombra."""
+    m = fresh_material(MAT_FOLDER, "M_TurtleFaceParts")
+    vc = expr(m, unreal.MaterialExpressionVertexColor, -700, 0)
+    rough = expr(m, unreal.MaterialExpressionLinearInterpolate, -400, 160)
+    rough.set_editor_property("const_a", 0.6)
+    rough.set_editor_property("const_b", 0.16)
+    mel.connect_material_expressions(vc, "A", rough, "Alpha")
+    glow = expr(m, unreal.MaterialExpressionMultiply, -400, 300)
+    glow.set_editor_property("const_b", 0.1)
+    mel.connect_material_expressions(vc, "", glow, "A")
+    mel.connect_material_property(vc, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    mel.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
     mel.recompile_material(m)
     asset_lib.save_loaded_asset(m)
     return m
@@ -609,6 +700,7 @@ def main():
     vc = build_vertex_color_material()
     build_turtle_body_material()
     build_helmet_slot_material()
+    build_face_parts_material()
     build_preview_ui_material()
     build_helmet_meshes(vc)
     if tables_ready():

@@ -1,7 +1,9 @@
 #include "UI/HUD/TN_CoopFlowHUDWidget.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_LocText.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Border.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -284,7 +286,7 @@ void UTN_CoopFlowHUDWidget::HandleQuickChatReceived(const FTN_QuickChatEntry& En
 
 		if (MessageText.IsEmpty())
 		{
-			MessageText = FText::FromString(FString::Printf(TEXT("Mensaje #%d"), static_cast<int32>(Entry.MessageID)));
+			MessageText = FText::Format(NSLOCTEXT("TNHUD", "QuickChatFallback", "Mensaje #{0}"), TNLocText::Int(static_cast<int32>(Entry.MessageID)));
 		}
 	}
 
@@ -339,11 +341,11 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 	{
 		if (bEliminated)
 		{
-			ResultsRankText->SetText(FText::FromString(TEXT("Eliminado")));
+			ResultsRankText->SetText(NSLOCTEXT("TNHUD", "ResultsRankEliminated", "Eliminado"));
 		}
 		else if (bFinishedNorm)
 		{
-			ResultsRankText->SetText(FText::FromString(FString::Printf(TEXT("Puesto: #%d"), Rank)));
+			ResultsRankText->SetText(FText::Format(NSLOCTEXT("TNHUD", "ResultsRankPlace", "Puesto: #{0}"), TNLocText::Int(Rank)));
 		}
 		else
 		{
@@ -355,7 +357,7 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 	if (ResultsTimeText)
 	{
 		ResultsTimeText->SetText((bFinishedNorm && Time > 0.f)
-			? FText::FromString(FString::Printf(TEXT("Tiempo: %.1fs"), Time))
+			? FText::Format(NSLOCTEXT("TNHUD", "ResultsTime", "Tiempo: {0}s"), TNLocText::OneDecimal(Time))
 			: FText::GetEmpty());
 	}
 
@@ -363,7 +365,7 @@ void UTN_CoopFlowHUDWidget::ShowResultsPanel(const ATN_CoopGameState* GameState)
 	if (SpectatorHint)
 	{
 		SpectatorHint->SetText(bEliminated
-			? FText::FromString(TEXT("Scroll para cambiar de jugador"))
+			? NSLOCTEXT("TNHUD", "ResultsSpectatorHint", "Scroll para cambiar de jugador")
 			: FText::GetEmpty());
 	}
 
@@ -400,28 +402,79 @@ void UTN_CoopFlowHUDWidget::RefreshScoreboard(const ATN_CoopGameState* GameState
 
 	const TArray<FTN_RaceResultEntry>& Results = GameState->RaceResults;
 
-	for (int32 i = 0; i < 4; ++i)
+	for (int32 i = 0; i < MaxScoreboardRows; ++i)
 	{
 		const FTN_RaceResultEntry* Entry = (i < Results.Num()) ? &Results[i] : nullptr;
 		FillScoreboardRow(i, Entry);
+	}
+	ApplyScoreboardDensity(Results.Num());
+}
+
+void UTN_CoopFlowHUDWidget::GetScoreboardRowTexts(int32 RowIndex, UTextBlock* (&OutTexts)[4]) const
+{
+	OutTexts[0] = OutTexts[1] = OutTexts[2] = OutTexts[3] = nullptr;
+	switch (RowIndex)
+	{
+	case 0: OutTexts[0] = Row1RankText; OutTexts[1] = Row1NameText; OutTexts[2] = Row1TimeText; OutTexts[3] = Row1ScoreText; break;
+	case 1: OutTexts[0] = Row2RankText; OutTexts[1] = Row2NameText; OutTexts[2] = Row2TimeText; OutTexts[3] = Row2ScoreText; break;
+	case 2: OutTexts[0] = Row3RankText; OutTexts[1] = Row3NameText; OutTexts[2] = Row3TimeText; OutTexts[3] = Row3ScoreText; break;
+	case 3: OutTexts[0] = Row4RankText; OutTexts[1] = Row4NameText; OutTexts[2] = Row4TimeText; OutTexts[3] = Row4ScoreText; break;
+	case 4: OutTexts[0] = Row5RankText; OutTexts[1] = Row5NameText; OutTexts[2] = Row5TimeText; OutTexts[3] = Row5ScoreText; break;
+	case 5: OutTexts[0] = Row6RankText; OutTexts[1] = Row6NameText; OutTexts[2] = Row6TimeText; OutTexts[3] = Row6ScoreText; break;
+	case 6: OutTexts[0] = Row7RankText; OutTexts[1] = Row7NameText; OutTexts[2] = Row7TimeText; OutTexts[3] = Row7ScoreText; break;
+	case 7: OutTexts[0] = Row8RankText; OutTexts[1] = Row8NameText; OutTexts[2] = Row8TimeText; OutTexts[3] = Row8ScoreText; break;
+	default: break;
+	}
+}
+
+void UTN_CoopFlowHUDWidget::ApplyScoreboardDensity(int32 NumEntries)
+{
+	if (ScoreboardRowPanels.Num() == 0)
+	{
+		return;
+	}
+	// Hasta cuatro resultados, las cuatro filas de siempre; con más, una fila por resultado y más compactas (letra y
+	// relleno algo menores) para que quepan los ocho de la sesión.
+	const int32 Shown = FMath::Clamp(NumEntries, 4, MaxScoreboardRows);
+	const bool bCompact = Shown > 4;
+	for (int32 Row = 0; Row < ScoreboardRowPanels.Num(); ++Row)
+	{
+		if (UBorder* Panel = ScoreboardRowPanels[Row])
+		{
+			Panel->SetVisibility(Row < Shown ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+			Panel->SetPadding(bCompact ? FMargin(14.f, 2.f) : FMargin(14.f, 5.f));
+		}
+		UTextBlock* Cells[4];
+		GetScoreboardRowTexts(Row, Cells);
+		for (UTextBlock* Cell : Cells)
+		{
+			if (!Cell)
+			{
+				continue;
+			}
+			FSlateFontInfo Font = Cell->GetFont();
+			if (ScoreboardBaseFontSize <= 0.f)
+			{
+				ScoreboardBaseFontSize = Font.Size;
+			}
+			const float Wanted = bCompact ? FMath::RoundToFloat(ScoreboardBaseFontSize * 0.88f) : ScoreboardBaseFontSize;
+			if (!FMath::IsNearlyEqual(Font.Size, Wanted))
+			{
+				Font.Size = Wanted;
+				Cell->SetFont(Font);
+			}
+		}
 	}
 }
 
 void UTN_CoopFlowHUDWidget::FillScoreboardRow(int32 RowIndex, const FTN_RaceResultEntry* Entry)
 {
-	UTextBlock* Rank = nullptr;
-	UTextBlock* Name = nullptr;
-	UTextBlock* Time = nullptr;
-	UTextBlock* Score = nullptr;
-
-	switch (RowIndex)
-	{
-	case 0: Rank = Row1RankText; Name = Row1NameText; Time = Row1TimeText; Score = Row1ScoreText; break;
-	case 1: Rank = Row2RankText; Name = Row2NameText; Time = Row2TimeText; Score = Row2ScoreText; break;
-	case 2: Rank = Row3RankText; Name = Row3NameText; Time = Row3TimeText; Score = Row3ScoreText; break;
-	case 3: Rank = Row4RankText; Name = Row4NameText; Time = Row4TimeText; Score = Row4ScoreText; break;
-	default: return;
-	}
+	UTextBlock* Cells[4];
+	GetScoreboardRowTexts(RowIndex, Cells);
+	UTextBlock* Rank = Cells[0];
+	UTextBlock* Name = Cells[1];
+	UTextBlock* Time = Cells[2];
+	UTextBlock* Score = Cells[3];
 
 	if (!Entry)
 	{
@@ -435,18 +488,16 @@ void UTN_CoopFlowHUDWidget::FillScoreboardRow(int32 RowIndex, const FTN_RaceResu
 
 	if (Rank)
 	{
-		const FString RankStr = Entry->bIsEliminated
-			? TEXT("✗")
-			: FString::Printf(TEXT("%dº"), Entry->FinishRank);
-		Rank->SetText(FText::FromString(RankStr));
+		Rank->SetText(Entry->bIsEliminated
+			? INVTEXT("✗")
+			: FText::Format(NSLOCTEXT("TNHUD", "ScoreboardRank", "{0}º"), Entry->FinishRank));
 	}
-	if (Name)  Name->SetText(FText::FromString(Entry->PlayerName));
+	if (Name)  Name->SetText(TNLocText::Literal(Entry->PlayerName));
 	if (Time)
 	{
-		const FString TimeStr = Entry->bIsEliminated
-			? TEXT("—")
-			: FString::Printf(TEXT("%.1fs"), Entry->FinishTimeSeconds);
-		Time->SetText(FText::FromString(TimeStr));
+		Time->SetText(Entry->bIsEliminated
+			? INVTEXT("—")
+			: FText::Format(NSLOCTEXT("TNHUD", "ScoreboardTime", "{0}s"), TNLocText::OneDecimal(Entry->FinishTimeSeconds)));
 	}
 	if (Score) Score->SetText(FText::AsNumber(Entry->RaceScore));
 }
@@ -469,25 +520,25 @@ void UTN_CoopFlowHUDWidget::RefreshResultsCountdown(const ATN_CoopGameState* Gam
 	}
 
 	ResultsCountdown->SetText(
-		FText::FromString(FString::Printf(TEXT("Volviendo al lobby en: %d"), GameState->CountdownValue)));
+		FText::Format(NSLOCTEXT("TNHUD", "ReturningToLobby", "Volviendo al lobby en: {0}"), TNLocText::Int(GameState->CountdownValue)));
 }
 
 FText UTN_CoopFlowHUDWidget::BuildRankTitle(int32 FinishRank, bool bEliminated) const
 {
 	if (bEliminated)
 	{
-		return FText::FromString(TEXT("¡Eliminado!"));
+		return NSLOCTEXT("TNHUD", "ResultsTitleEliminated", "¡Eliminado!");
 	}
 
 	switch (FinishRank)
 	{
-	case 1:  return FText::FromString(TEXT("¡Primero!"));
-	case 2:  return FText::FromString(TEXT("Segundo"));
-	case 3:  return FText::FromString(TEXT("Tercero"));
+	case 1:  return NSLOCTEXT("TNHUD", "ResultsTitleFirst", "¡Primero!");
+	case 2:  return NSLOCTEXT("TNHUD", "ResultsTitleSecond", "Segundo");
+	case 3:  return NSLOCTEXT("TNHUD", "ResultsTitleThird", "Tercero");
 	default:
 		return FinishRank > 0
-			? FText::FromString(FString::Printf(TEXT("Puesto #%d"), FinishRank))
-			: FText::FromString(TEXT("¡Eliminado!"));
+			? FText::Format(NSLOCTEXT("TNHUD", "ResultsTitlePlace", "Puesto #{0}"), TNLocText::Int(FinishRank))
+			: NSLOCTEXT("TNHUD", "ResultsTitleEliminated", "¡Eliminado!");
 	}
 }
 
@@ -500,19 +551,18 @@ FText UTN_CoopFlowHUDWidget::BuildPrimaryText(const ATN_CoopGameState* GameState
 	switch (GameState->MatchFlowState)
 	{
 	case ETNMatchFlowState::WaitingForPlayers:
-		return FText::FromString(FString::Printf(
-			TEXT("Sala: %d/%d | Zona: %d/%d"),
-			GameState->ConnectedPlayers, GameState->ExpectedPlayers,
-			GameState->PlayersInStartZone, GameState->ConnectedPlayers));
+		return FText::Format(NSLOCTEXT("TNHUD", "FlowWaiting", "Sala: {0}/{1} | Zona: {2}/{3}"),
+			TNLocText::Int(GameState->ConnectedPlayers), TNLocText::Int(GameState->ExpectedPlayers),
+			TNLocText::Int(GameState->PlayersInStartZone), TNLocText::Int(GameState->ConnectedPlayers));
 	case ETNMatchFlowState::Countdown:
-		return FText::FromString(FString::Printf(TEXT("Todos listos! Empieza en: %d"), GameState->CountdownValue));
+		return FText::Format(NSLOCTEXT("TNHUD", "FlowCountdown", "¡Todos listos! Empieza en: {0}"), TNLocText::Int(GameState->CountdownValue));
 	case ETNMatchFlowState::Cinematic:
-		return FText::FromString(TEXT("Preparando..."));
+		return NSLOCTEXT("TNHUD", "FlowPreparing", "Preparando...");
 	case ETNMatchFlowState::InProgress:
-		return FText::FromString(FString::Printf(TEXT("Carrera en curso. Meta: %d/%d"),
-			GameState->FinishedPlayers, GameState->ExpectedPlayers));
+		return FText::Format(NSLOCTEXT("TNHUD", "FlowInProgress", "Carrera en curso. Meta: {0}/{1}"),
+			TNLocText::Int(GameState->FinishedPlayers), TNLocText::Int(GameState->ExpectedPlayers));
 	case ETNMatchFlowState::Results:
-		return FText::FromString(FString::Printf(TEXT("Volviendo al lobby en: %d"), GameState->CountdownValue));
+		return FText::Format(NSLOCTEXT("TNHUD", "ReturningToLobby", "Volviendo al lobby en: {0}"), TNLocText::Int(GameState->CountdownValue));
 	default:
 		return FText::GetEmpty();
 	}
@@ -523,14 +573,13 @@ FText UTN_CoopFlowHUDWidget::BuildSecondaryText(const ATN_CoopGameState* GameSta
 	switch (GameState->MatchFlowState)
 	{
 	case ETNMatchFlowState::WaitingForPlayers:
-		return FText::FromString(TEXT("El contador arranca cuando todos los jugadores conectados esten en la zona."));
+		return NSLOCTEXT("TNHUD", "FlowWaitingHint", "El contador arranca cuando todos los jugadores conectados estén en la zona.");
 	case ETNMatchFlowState::Countdown:
-		return FText::FromString(FString::Printf(
-			TEXT("Conectados: %d/%d | Zona: %d/%d"),
-			GameState->ConnectedPlayers, GameState->ExpectedPlayers,
-			GameState->PlayersInStartZone, GameState->ConnectedPlayers));
+		return FText::Format(NSLOCTEXT("TNHUD", "FlowCountdownDetail", "Conectados: {0}/{1} | Zona: {2}/{3}"),
+			TNLocText::Int(GameState->ConnectedPlayers), TNLocText::Int(GameState->ExpectedPlayers),
+			TNLocText::Int(GameState->PlayersInStartZone), TNLocText::Int(GameState->ConnectedPlayers));
 	case ETNMatchFlowState::Cinematic:
-		return FText::FromString(TEXT("Mantente preparado para el viaje al mapa de carrera."));
+		return NSLOCTEXT("TNHUD", "FlowCinematicHint", "Mantente preparado para el viaje al mapa de carrera.");
 	case ETNMatchFlowState::InProgress:
 		if (const APlayerController* PC = GetOwningPlayer())
 		{
@@ -538,12 +587,12 @@ FText UTN_CoopFlowHUDWidget::BuildSecondaryText(const ATN_CoopGameState* GameSta
 			{
 				if (TNPS->DeathZoneTimeRemaining >= 0.f)
 				{
-					return FText::FromString(FString::Printf(
-						TEXT("Peligro: sal de la zona de muerte (%.1fs)"), TNPS->DeathZoneTimeRemaining));
+					return FText::Format(NSLOCTEXT("TNHUD", "FlowDeathZone", "Peligro: sal de la zona de muerte ({0}s)"),
+						TNLocText::OneDecimal(TNPS->DeathZoneTimeRemaining));
 				}
 			}
 		}
-		return FText::FromString(TEXT("Cruza la meta para pasar a espectador."));
+		return NSLOCTEXT("TNHUD", "FlowFinishHint", "Cruza la meta para pasar a espectador.");
 	case ETNMatchFlowState::Results:
 		return FText::GetEmpty(); // Results panel covers this state
 	default:
@@ -580,9 +629,8 @@ UHorizontalBox* UTN_CoopFlowHUDWidget::BuildChatRow(const FText& SenderName, con
 		}
 	}
 
-	const FString FullText = FString::Printf(TEXT("%s: %s"), *SenderName.ToString(), *MessageText.ToString());
 	UTextBlock* TextWidget = NewObject<UTextBlock>(this);
-	TextWidget->SetText(FText::FromString(FullText));
+	TextWidget->SetText(FText::Format(NSLOCTEXT("TNHUD", "ChatLine", "{0}: {1}"), SenderName, MessageText));
 	TextWidget->SetColorAndOpacity(FSlateColor(FLinearColor(ChatTextColor)));
 	TextWidget->SetAutoWrapText(true);
 	if (UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(TextWidget))

@@ -20,6 +20,7 @@
 #include "Components/WrapBoxSlot.h"
 #include "Audio/TN_MusicSynthComponent.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Core/TN_LocText.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Framework/Application/SlateApplication.h"
@@ -591,16 +592,16 @@ void UTN_ShopWidget::SetShop(ATN_ShopKeeper* InShop)
 {
 	Shop = InShop;
 	const FText ShopTitle = InShop ? InShop->GetShopName() : NSLOCTEXT("Tortunabo", "ShopDefaultName", "La Concha Dorada");
-	if (TitleText) { TitleText->SetText(FText::FromString(ShopTitle.ToString().ToUpper())); }
+	if (TitleText) { TitleText->SetText(ShopTitle.ToUpper()); }
 	if (KeeperNameText) { KeeperNameText->SetText(InShop ? InShop->GetKeeperName() : NSLOCTEXT("Tortunabo", "ShopKeeperName", "Don Tortugo")); }
 	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::Get(GetWorld())) { Stage->SetLook(GetWornLook()); }
 	RefreshWallet();
 	ShowTab(ETNCosmeticCategory::Helmet);
 
 	const APlayerState* PS = GetOwningPlayer() ? GetOwningPlayer()->PlayerState : nullptr;
-	const FString Who = PS ? PS->GetPlayerName() : FString(TEXT("marinero"));
+	const FText Who = PS ? TNLocText::Literal(PS->GetPlayerName()) : NSLOCTEXT("Tortunabo", "ShopSailor", "marinero");
 	Say(FText::Format(NSLOCTEXT("Tortunabo", "ShopHello", "¡Hola, {0}! Pasa, pasa: hoy en La Concha Dorada todo es gratis. Elige lo que quieras y pruébatelo luego en las botellas."),
-		FText::FromString(Who)));
+		Who));
 }
 
 void UTN_ShopWidget::ShowTab(ETNCosmeticCategory Category)
@@ -646,7 +647,7 @@ FText UTN_ShopWidget::TagFor(FName Id, FLinearColor& OutColor) const
 	OutColor = TNShopUI::PriceColor;
 	const int32 Price = GI->GetCosmeticPrice(Tab, Id);
 	return Price <= 0 ? NSLOCTEXT("Tortunabo", "ShopTagFree", "GRATIS")
-		: FText::Format(NSLOCTEXT("Tortunabo", "ShopTagPrice", "{0} conchas"), FText::AsNumber(Price));
+		: FText::Format(NSLOCTEXT("Tortunabo", "ShopTagPrice", "{0} {0}|plural(one=concha,other=conchas)"), Price);
 }
 
 void UTN_ShopWidget::RefreshCards()
@@ -753,7 +754,8 @@ void UTN_ShopWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	if (DialogText && Reveal < FullLine.Len())
 	{
 		Reveal = FMath::Min<float>(FullLine.Len(), Reveal + InDeltaTime * 70.f);
-		DialogText->SetText(FText::FromString(FullLine.Left(FMath::CeilToInt(Reveal))));
+		// Letra a letra: es un trozo del texto ya traducido, no un texto nuevo.
+		DialogText->SetText(TNLocText::Literal(FullLine.Left(FMath::CeilToInt(Reveal))));
 	}
 }
 

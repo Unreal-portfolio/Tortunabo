@@ -1,6 +1,6 @@
 # Tortunavy
 
-**Tortunavy** es un juego cooperativo multijugador (1–4 jugadores) en tercera persona desarrollado en **Unreal Engine 5.6** con C++. Los jugadores controlan tortugas antropomórficas que avanzan juntas por niveles generados proceduralmente por chunks, enfrentándose a obstáculos, recogiendo y lanzando objetos, y compitiendo por llegar antes a la meta.
+**Tortunavy** es un juego cooperativo multijugador (1–8 jugadores) en tercera persona desarrollado en **Unreal Engine 5.6** con C++. Los jugadores controlan tortugas antropomórficas que avanzan juntas por niveles generados proceduralmente por chunks, enfrentándose a obstáculos, recogiendo y lanzando objetos, y compitiendo por llegar antes a la meta.
 
 - **Motor**: Unreal Engine 5.6
 - **Lenguaje**: C++ (módulo `Tortunabo`) + Blueprints

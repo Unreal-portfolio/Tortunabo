@@ -14,8 +14,11 @@ namespace TNShellLogic
 	/** Entradas de estado del personaje que condicionan meterse en el caparazón. */
 	struct FShellEnterContext
 	{
-		/** El personaje pisa suelo. Entrar en el aire queda descartado por diseño. */
-		bool bOnGround = false;
+		/**
+		 * Nadando no se entra: el caparazón con física se hundiría y saldría en el acto. En el aire sí se entra (la
+		 * bolita en pleno salto, que sigue volando como cuerpo físico con la velocidad que llevaba).
+		 */
+		bool bIsSwimming = false;
 
 		bool bIsDead = false;
 		bool bIsKnockedDown = false;
@@ -36,7 +39,7 @@ namespace TNShellLogic
 			return false;
 		}
 
-		if (!Context.bOnGround || Context.bHasEquippedItem)
+		if (Context.bIsSwimming || Context.bHasEquippedItem)
 		{
 			return false;
 		}

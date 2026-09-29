@@ -12,7 +12,7 @@
 
 ATN_TotemInteractable::ATN_TotemInteractable()
 {
-	PromptText           = FText::FromString(TEXT("Activar Tótem"));
+	PromptText           = NSLOCTEXT("Tortunabo", "TotemPrompt", "Activar Tótem");
 	InteractionDistance  = 250.f;
 	CooldownSeconds      = 5.f;
 }

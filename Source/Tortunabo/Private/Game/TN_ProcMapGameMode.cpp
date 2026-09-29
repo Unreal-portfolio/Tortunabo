@@ -13,15 +13,28 @@
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
+#include "World/ProcMap/TN_ProcStartStructure.h"
 #include "World/ProcMap/TN_PathStorm.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/PlayerState.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 #include "Misc/DateTime.h"
+
+namespace TNProcMapGameModeDetail
+{
+	TAutoConsoleVariable<int32> CVarProcStartStyle(TEXT("TN.Proc.StartStyle"), -1,
+		TEXT("Salida del mapa procedural: -1 = lo del lobby (por defecto), 0 = puerta doble, 1 = huevos. Vale desde la siguiente generación del mapa."));
+
+	/** Con estructura de salida, un PlayerStart está ocupado si hay otro peón a menos de esto (los sitios de la sala distan ~2 m). */
+	constexpr double StructureStartTakenRadius = 80.0;
+}
 
 ATN_ProcMapGameMode::ATN_ProcMapGameMode()
 {
@@ -111,6 +124,39 @@ void ATN_ProcMapGameMode::ResolveModeAndDifficulty()
 	}
 }
 
+void ATN_ProcMapGameMode::ResolveStartStyle()
+{
+	using namespace TNProcMapGameModeDetail;
+	// Igual que se pusieron listos en el lobby (lo guarda ATN_HQGameMode en la GameInstance y en la URL del viaje); sin
+	// lobby, la puerta doble. Para probar, la consola manda sobre todo.
+	ETNMatchStartStyle Resolved = ETNMatchStartStyle::Gate;
+	const TCHAR* From = TEXT("por defecto");
+	if (const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance()))
+	{
+		Resolved = GI->PendingStartStyle;
+		From = TEXT("GameInstance");
+	}
+	const FString StartOption = UGameplayStatics::ParseOption(OptionsString, TEXT("ProcStart"));
+	if (StartOption.Equals(TEXT("Gate"), ESearchCase::IgnoreCase))
+	{
+		Resolved = ETNMatchStartStyle::Gate;
+		From = TEXT("URL");
+	}
+	else if (StartOption.Equals(TEXT("Eggs"), ESearchCase::IgnoreCase))
+	{
+		Resolved = ETNMatchStartStyle::Eggs;
+		From = TEXT("URL");
+	}
+	const int32 Forced = CVarProcStartStyle.GetValueOnGameThread();
+	if (Forced == 0 || Forced == 1)
+	{
+		Resolved = Forced == 1 ? ETNMatchStartStyle::Eggs : ETNMatchStartStyle::Gate;
+		From = TEXT("TN.Proc.StartStyle");
+	}
+	StartStyle = Resolved;
+	UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Salida: %s (%s)"), StartStyle == ETNMatchStartStyle::Eggs ? TEXT("huevos") : TEXT("puerta doble"), From);
+}
+
 void ATN_ProcMapGameMode::EnsureGenerator()
 {
 	if (!Generator)
@@ -142,6 +188,11 @@ void ATN_ProcMapGameMode::GenerateRoundMap()
 		UE_LOG(LogTortunabo, Error, TEXT("[ProcMapGameMode] Sin generador: no hay mapa que jugar."));
 		return;
 	}
+
+	// La estructura de salida (puerta doble o huevos) la pone el generador con el mapa; se vuelve a mirar cada ronda
+	// para que TN.Proc.StartStyle valga sin reiniciar.
+	ResolveStartStyle();
+	Generator->SetStartStructureStyle(StartStyle);
 
 	const int32 BaseSeed = UrlSeed != 0 ? UrlSeed : FixedSeed;
 	for (int32 Attempt = 0; Attempt < 3; ++Attempt)
@@ -305,6 +356,14 @@ void ATN_ProcMapGameMode::BeginRoundPlay()
 	bRoundActive = true;
 	StartStormIfNeeded();
 
+	// La salida se abre con el «¡ADELANTE!» de la pantalla de carga: gira la puerta 2 o se rompen los huevos.
+	GetWorldTimerManager().ClearTimer(StartStructureOpenHandle);
+	if (Generator && Generator->GetStartStructure())
+	{
+		GetWorldTimerManager().SetTimer(StartStructureOpenHandle, this, &ATN_ProcMapGameMode::OpenStartStructure,
+			FMath::Max(0.01f, StartStructureOpenDelaySeconds), false);
+	}
+
 	GetWorldTimerManager().ClearTimer(RoundTimeLimitHandle);
 	if (Mode != ETNProcGameMode::Coop && CompetitiveRoundTimeLimitSeconds > 0.f)
 	{
@@ -345,7 +404,8 @@ void ATN_ProcMapGameMode::PlacePlayersAtStart()
 			continue;
 		}
 
-		const FTransform Start = Generator->GetStartTransform(GetPlayerSlot(PC));
+		// Cada uno en su sitio de la estructura de salida (sala o huevo), de pie con su cápsula; si no, el anillo del claro.
+		const FTransform Start = GetRoundStartTransform(PC, Pawn);
 		ACharacter* Character = Cast<ACharacter>(Pawn);
 		UCharacterMovementComponent* Move = Character ? Character->GetCharacterMovement() : nullptr;
 		if (Move)
@@ -363,6 +423,35 @@ void ATN_ProcMapGameMode::PlacePlayersAtStart()
 	}
 
 	UnfreezeAllPlayers();
+}
+
+FTransform ATN_ProcMapGameMode::GetRoundStartTransform(const AController* Controller, const APawn* Pawn) const
+{
+	const int32 Slot = GetPlayerSlot(Controller);
+	if (const ATN_ProcStartStructure* Structure = Generator ? Generator->GetStartStructure() : nullptr)
+	{
+		const ACharacter* Character = Cast<ACharacter>(Pawn);
+		const UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
+		const float HalfHeight = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : ATN_ProcStartStructure::DefaultSpawnHalfHeight;
+		FTransform InStructure;
+		if (Structure->GetSpawnTransform(Slot, HalfHeight, InStructure))
+		{
+			return InStructure;
+		}
+	}
+	return Generator ? Generator->GetStartTransform(Slot) : FTransform::Identity;
+}
+
+void ATN_ProcMapGameMode::OpenStartStructure()
+{
+	if (!bRoundActive)
+	{
+		return;
+	}
+	if (ATN_ProcStartStructure* Structure = Generator ? Generator->GetStartStructure() : nullptr)
+	{
+		Structure->Open();
+	}
 }
 
 void ATN_ProcMapGameMode::RespawnControllerFresh(APlayerController* PlayerController)
@@ -981,8 +1070,15 @@ void ATN_ProcMapGameMode::EndRound(const TArray<APlayerController*>& Winners, co
 void ATN_ProcMapGameMode::StartNextRound()
 {
 	GetWorldTimerManager().ClearTimer(ResultsCountdownTimerHandle);
+	GetWorldTimerManager().ClearTimer(StartStructureOpenHandle);
 	++CurrentRound;
 	CleanupRoundActors();
+
+	// Ronda nueva sobre el mismo mapa: la salida vuelve a cerrarse (si se regenera, el generador pone otra).
+	if (ATN_ProcStartStructure* Structure = Generator ? Generator->GetStartStructure() : nullptr)
+	{
+		Structure->Close();
+	}
 
 	for (APlayerState* BasePS : GameState->PlayerArray)
 	{
@@ -1132,6 +1228,32 @@ void ATN_ProcMapGameMode::Logout(AController* Exiting)
 
 AActor* ATN_ProcMapGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
+	using namespace TNProcMapGameModeDetail;
+	// Con estructura de salida, cada jugador aparece dentro de ella: en el sitio de su slot (la sala de la puerta doble
+	// o su huevo) o, si está ocupado, en el siguiente libre. Durante el viaje sin cortes los slots aún se reordenan;
+	// PlacePlayersAtStart deja a cada uno en el suyo al empezar la ronda.
+	if (Generator && Generator->GetStartStructure())
+	{
+		const int32 Slot = GetPlayerSlot(Player);
+		for (int32 k = 0; k < ATN_ProcStartStructure::NumSpots; ++k)
+		{
+			APlayerStart* Candidate = Generator->GetStartPlayerStart((Slot + k) % ATN_ProcStartStructure::NumSpots);
+			if (!Candidate)
+			{
+				continue;
+			}
+			bool bTaken = false;
+			for (TActorIterator<APawn> It(GetWorld()); It && !bTaken; ++It)
+			{
+				bTaken = It->Controller != Player && FVector::Dist(It->GetActorLocation(), Candidate->GetActorLocation()) < StructureStartTakenRadius;
+			}
+			if (!bTaken)
+			{
+				return Candidate;
+			}
+		}
+	}
+
 	// Los PlayerStart del generador (etiqueta TNProcStart) mandan sobre cualquier
 	// otro del nivel, incluido el de respaldo que crea la base.
 	TArray<AActor*> ProcStarts;

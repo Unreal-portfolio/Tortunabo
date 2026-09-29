@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Engine/TimerHandle.h"
 #include "TN_CarryComponent.generated.h"
 
 class ATortugaCharacter;
@@ -16,9 +17,13 @@ class USoundBase;
  *  - La llevada no controla su movimiento. Si intenta moverse de forma continuada
  *    SecondsToEscape segundos, se libera. Mientras forcejea, al portador le tiembla
  *    la cámara y su lanzamiento pierde mucha fuerza.
- *  - Lanzamiento en parábola hacia donde apunta la cámara. La lanzada sale volando
- *    como caparazón con física propia (ATN_ShellBody): da volteretas, rebota y rueda
- *    y no puede salir hasta que la caja se para; entonces sale sola y se pone de pie.
+ *  - Lanzamiento como un saque de banda: con la E, las dos aletas toman impulso detrás
+ *    de la cabeza (ThrowWindupSeconds) y la sueltan hacia delante, hacia donde apunta la
+ *    cámara con un arco bajo (ATortugaCharacter::GetThrowDirection, ~25°). Saltando y
+ *    haciendo el panzazo con ella en alto, el panzazo la lanza con su impulso (el de la
+ *    carrera y el del salto sumados al del lanzamiento: ThrowWithDive). La lanzada sale
+ *    volando como caparazón con física propia (ATN_ShellBody): da volteretas, rebota y
+ *    rueda y no puede salir hasta que la caja se para; entonces sale sola y se pone de pie.
  *    Soltada, cae como caparazón y sale cuando quiera.
  *
  * Red: estado server-authoritative. CarriedTurtle (en el portador) y CarriedBy (en
@@ -76,6 +81,19 @@ public:
 	/** Servidor: suelta a quien lleve sin lanzarlo (muerte, derribo, escape). */
 	void ForceRelease(bool bEscapeHop);
 
+	/**
+	 * Servidor, al empezar el panzazo llevando a alguien en alto: lo lanza hacia DiveDir con el arco de siempre y, sumado,
+	 * parte del impulso del panzazo (DiveVelocity, que ya lleva la carrera) y de la velocidad hacia arriba del salto
+	 * (CarrierVelocity, la de antes de lanzarse).
+	 */
+	void ThrowWithDive(const FVector& DiveDir, const FVector& DiveVelocity, const FVector& CarrierVelocity);
+
+	/**
+	 * Toma de impulso del lanzamiento con la E (cosmético, en cada máquina): de 0 a 1 mientras echa las aletas detrás de
+	 * la cabeza y vuelve a subirlas para soltar; -1 si no está tomando impulso. Lo lee UTN_TurtleAnimInstance.
+	 */
+	float GetThrowWindupAlpha() const;
+
 protected:
 	/** Alcance para coger (cm). */
 	UPROPERTY(EditDefaultsOnly, Category = "Carry", meta = (ClampMin = "50.0"))
@@ -89,12 +107,26 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Carry", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float StruggleThrowMultiplier = 0.45f;
 
-	/** Ángulo de lanzamiento mínimo/máximo (grados sobre la horizontal). */
-	UPROPERTY(EditDefaultsOnly, Category = "Carry", meta = (ClampMin = "0.0", ClampMax = "89.0"))
-	float MinThrowPitch = 28.f;
+	// El ángulo del lanzamiento es el de todos los lanzamientos: ATortugaCharacter::GetThrowDirection (Throwable).
 
-	UPROPERTY(EditDefaultsOnly, Category = "Carry", meta = (ClampMin = "0.0", ClampMax = "89.0"))
-	float MaxThrowPitch = 72.f;
+	/**
+	 * Segundos que tarda en soltarla tras pulsar la E: las dos aletas se echan detrás de la cabeza y vuelven a subir, como
+	 * en un saque de banda (0 = la suelta al momento, sin tomar impulso).
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Carry|Throw", meta = (ClampMin = "0.0", ClampMax = "0.6"))
+	float ThrowWindupSeconds = 0.18f;
+
+	/** Lanzada con el panzazo: parte del impulso horizontal del panzazo (con la carrera dentro) que se lleva la lanzada. */
+	UPROPERTY(EditDefaultsOnly, Category = "Carry|Throw", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float DiveThrowCarryFactor = 0.6f;
+
+	/** Lanzada con el panzazo: parte de la velocidad hacia arriba del salto que se lleva la lanzada. */
+	UPROPERTY(EditDefaultsOnly, Category = "Carry|Throw", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float DiveThrowJumpFactor = 0.5f;
+
+	/** Tope de la velocidad de la lanzada con el panzazo (cm/s). */
+	UPROPERTY(EditDefaultsOnly, Category = "Carry|Throw", meta = (ClampMin = "100.0"))
+	float DiveThrowMaxSpeed = 2300.f;
 
 	/** Segundos de forcejeo continuo para liberarse. */
 	UPROPERTY(EditDefaultsOnly, Category = "Carry", meta = (ClampMin = "0.1"))
@@ -133,6 +165,36 @@ private:
 	UPROPERTY(Replicated)
 	bool bCarriedStruggling = false;
 
+	/**
+	 * Número de la última toma de impulso del lanzamiento con la E (lo sube el servidor; 0 = ninguna). Las demás
+	 * máquinas empiezan con él la animación; el dueño ya la empezó al pulsar.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_ThrowWindupSerial)
+	uint8 ThrowWindupSerial = 0;
+
+	UFUNCTION()
+	void OnRep_ThrowWindupSerial();
+
+	/** Servidor: lanza ya a la que lleva hacia AimRotation (con la E, al acabar de tomar impulso). */
+	void ThrowCarried(const FRotator& AimRotation);
+
+	/** Servidor: acabada la toma de impulso, la suelta. */
+	void FinishThrowWindup();
+
+	/** Servidor: olvida la toma de impulso pendiente (ya se ha soltado por otra cosa). */
+	void CancelThrowWindup();
+
+	/** Cosmético, en cada máquina: empieza la animación de tomar impulso (si no estaba ya). */
+	void BeginLocalThrowWindup();
+
+	/** Servidor: toma de impulso en curso, hacia dónde apuntaba y cuándo acaba. */
+	bool bThrowWindupPending = false;
+	FRotator PendingThrowAim = FRotator::ZeroRotator;
+	FTimerHandle ThrowWindupTimer;
+
+	/** Cosmético: cuándo empezó en esta máquina la toma de impulso (tiempo del mundo; negativo = ninguna). */
+	double LocalWindupStart = -1.0;
+
 	UFUNCTION(Server, Reliable)
 	void ServerGrab(ATortugaCharacter* Target);
 
@@ -142,7 +204,11 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerDrop();
 
-	UFUNCTION(Server, Unreliable)
+	/**
+	 * Forcejeo de la llevada. Fiable: solo se manda al cambiar (SetStruggleInput), así que uno perdido dejaba al servidor
+	 * con el estado viejo para siempre.
+	 */
+	UFUNCTION(Server, Reliable)
 	void ServerSetStruggling(bool bInStruggling);
 
 	/** En el dueño del lanzado: mismo impulso que en el servidor. */

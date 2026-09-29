@@ -43,7 +43,7 @@ ATN_InteractableBase::ATN_InteractableBase()
 	PromptWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
 	PromptWidgetComponent->SetVisibility(true);
 
-	PromptText = FText::FromString(TEXT("Interactuar"));
+	PromptText = NSLOCTEXT("Tortunabo", "InteractPrompt", "Interactuar");
 }
 
 void ATN_InteractableBase::BeginPlay()

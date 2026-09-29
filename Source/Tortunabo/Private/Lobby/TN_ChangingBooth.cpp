@@ -1,6 +1,7 @@
 #include "Lobby/TN_ChangingBooth.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
+#include "Settings/TN_LanguageSettings.h"
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -27,7 +28,7 @@ namespace TNBoothDetail
 	 * altura).
 	 */
 	constexpr double WallR = 150.0;
-	constexpr double WallTop = 262.0;
+	constexpr double WallTop = 305.0;
 	constexpr double DoorR = 88.0;
 	constexpr double DoorZ = 114.0;
 	/** Cara de la chapa, por fuera de la pared (la falda rizada va de la cara a la pared). */
@@ -35,8 +36,10 @@ namespace TNBoothDetail
 	constexpr int32 Seg = 40;
 	constexpr int32 CapFlutes = 21;
 	/** Etiqueta de refresco alrededor de la botella, por encima de la puerta. */
-	constexpr double LabelBottom = 216.0;
-	constexpr double LabelTop = 256.0;
+	constexpr double LabelBottom = 244.0;
+	constexpr double LabelTop = 288.0;
+	/** Suelo propio de tarima (tablones y alfombra redonda): tapa el suelo del nivel, sea cual sea. */
+	constexpr double FloorTop = 6.0;
 	/** Culo petaloide de las botellas de plástico de litro y medio: cinco pies redondos y valles estrechos entre ellos. */
 	constexpr int32 Feet = 5;
 	constexpr double FootHeight = 70.0;
@@ -105,6 +108,8 @@ ATN_ChangingBooth::ATN_ChangingBooth()
 		Mesh->SetStaticMesh(Cylinder.Object);
 		Mesh->SetRelativeLocation(FVector(WallR + 50.0, 0.0, 60.0));
 		Mesh->SetRelativeScale3D(FVector(1.6f, 1.6f, 1.2f));
+		// Tampoco se ve en el editor: el nivel se enseña tal cual se juega.
+		Mesh->SetVisibility(false);
 		Mesh->SetHiddenInGame(true);
 	}
 	if (PromptWidgetComponent)
@@ -142,9 +147,9 @@ ATN_ChangingBooth::ATN_ChangingBooth()
 	// "La cámara se aleja": vista desde fuera, de tres cuartos, con la botella entera.
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ViewCamera"));
 	ViewCamera->SetupAttachment(SceneRoot);
-	const FVector CamPos(720.0, -320.0, 260.0);
+	const FVector CamPos(780.0, -350.0, 300.0);
 	ViewCamera->SetRelativeLocation(CamPos);
-	ViewCamera->SetRelativeRotation((FVector(30.0, 0.0, 170.0) - CamPos).Rotation());
+	ViewCamera->SetRelativeRotation((FVector(30.0, 0.0, 195.0) - CamPos).Rotation());
 	ViewCamera->SetFieldOfView(62.f);
 }
 
@@ -160,6 +165,39 @@ void ATN_ChangingBooth::BeginPlay()
 	BuildMeshes();
 	BuildLabel();
 	HideBlockout();
+	LanguageHandle = TNLanguage::OnApplied().AddUObject(this, &ATN_ChangingBooth::HandleLanguageApplied);
+}
+
+void ATN_ChangingBooth::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	TNLanguage::OnApplied().Remove(LanguageHandle);
+	LanguageHandle.Reset();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_ChangingBooth::HandleLanguageApplied()
+{
+	BuildLabel();
+}
+
+void ATN_ChangingBooth::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	BuildMeshes();
+	BuildLabel();
+}
+
+void ATN_ChangingBooth::PostRegisterAllComponents()
+{
+	Super::PostRegisterAllComponents();
+#if WITH_EDITOR
+	// Al abrir el nivel en el editor, la botella (malla transitoria) llega vacía: se rehace para verla sin jugar.
+	if (!IsTemplate() && GetWorld() && GetWorld()->WorldType == EWorldType::Editor && Bottle && !Bottle->GetStaticMesh())
+	{
+		BuildMeshes();
+		BuildLabel();
+	}
+#endif
 }
 
 bool ATN_ChangingBooth::CanInteract(APawn* Interactor) const
@@ -181,7 +219,6 @@ void ATN_ChangingBooth::BuildMeshes()
 	const FLinearColor GlassDark = Pal(0x3E9C88);
 	const FLinearColor GlassLight = Pal(0xB4F0E0);
 	const FLinearColor GlassEdge = Pal(0xCFF8EC);
-	const FLinearColor Sand = Pal(0xF2D49B);
 
 	TNProcMesh::FTNProcMeshBuffers B;
 	// Quad con normal por vértice: el vidrio curvo (pared, techo y etiqueta) se ve liso, sin facetas. Se orienta como
@@ -294,7 +331,7 @@ void ATN_ChangingBooth::BuildMeshes()
 			}
 		}
 	}
-	// Canto del corte a ras de suelo (vidrio grueso, más claro) y suelo de arena.
+	// Canto del corte a ras de suelo (vidrio grueso, más claro).
 	for (int32 k = 0; k < Seg; ++k)
 	{
 		const FVector R0 = RingPoint(FVector2D(WallR + 5.0, 0.0), k), R1 = RingPoint(FVector2D(WallR + 5.0, 0.0), k + 1);
@@ -302,7 +339,42 @@ void ATN_ChangingBooth::BuildMeshes()
 		const FVector I0 = RingPoint(FVector2D(WallR - 1.0, 14.0), k), I1 = RingPoint(FVector2D(WallR - 1.0, 14.0), k + 1);
 		B.AddQuad(R0, R1, T1, T0, RadialOut((R0 + T1) * 0.5), GlassEdge);
 		B.AddQuad(T0, T1, I1, I0, FVector::UpVector, GlassEdge * 1.05f);
-		B.AddTri(FVector(0.0, 0.0, 2.0), RingPoint(FVector2D(WallR - 2.0, 2.0), k), RingPoint(FVector2D(WallR - 2.0, 2.0), k + 1), FVector::UpVector, Sand);
+	}
+	// Tarima de madera dentro de la botella: tablones que se cortan contra el círculo, canto hasta el suelo y una
+	// alfombra redonda en el centro. Queda por encima del suelo del nivel (arena o cuadrícula) y lo tapa entero.
+	{
+		const FLinearColor PlankA = Pal(0xB9804B);
+		const FLinearColor PlankB = Pal(0xA56E3E);
+		const FLinearColor PlankEdge = Pal(0x7A4E2A);
+		const FLinearColor Rug = Pal(0x3FB8AF);
+		const FLinearColor RugRim = Pal(0xFFF2D4);
+		constexpr double FloorR = WallR - 3.0;
+		constexpr double PlankW = 24.0;
+		const int32 Planks = FMath::CeilToInt32(2.0 * FloorR / PlankW);
+		for (int32 j = 0; j < Planks; ++j)
+		{
+			const double Y0 = -FloorR + PlankW * j;
+			const double Y1 = FMath::Min(FloorR, Y0 + PlankW);
+			// Largo del tablón: el de la cuerda más corta de sus dos bordes, para no salirse del círculo.
+			const double Half = FMath::Sqrt(FMath::Max(0.0, FloorR * FloorR - FMath::Max(Y0 * Y0, Y1 * Y1)));
+			if (Half < 4.0) { continue; }
+			const double Gap = 0.8;
+			B.AddQuad(FVector(-Half, Y0 + Gap, FloorTop), FVector(Half, Y0 + Gap, FloorTop), FVector(Half, Y1 - Gap, FloorTop),
+				FVector(-Half, Y1 - Gap, FloorTop), FVector::UpVector, (j % 2) ? PlankA : PlankB);
+			B.AddQuad(FVector(-Half, Y0, FloorTop - 0.6), FVector(Half, Y0, FloorTop - 0.6), FVector(Half, Y1, FloorTop - 0.6),
+				FVector(-Half, Y1, FloorTop - 0.6), FVector::UpVector, PlankEdge);
+		}
+		for (int32 k = 0; k < Seg; ++k)
+		{
+			const FVector E0 = RingPoint(FVector2D(FloorR, FloorTop), k), E1 = RingPoint(FVector2D(FloorR, FloorTop), k + 1);
+			const FVector G0 = RingPoint(FVector2D(FloorR, 0.0), k), G1 = RingPoint(FVector2D(FloorR, 0.0), k + 1);
+			B.AddQuad(G0, G1, E1, E0, -RadialOut((G0 + E1) * 0.5), PlankEdge);
+			B.AddTri(FVector(0.0, 0.0, FloorTop - 0.7), E0, E1, FVector::UpVector, PlankEdge);
+			const FVector R0 = RingPoint(FVector2D(58.0, FloorTop + 0.6), k), R1 = RingPoint(FVector2D(58.0, FloorTop + 0.6), k + 1);
+			const FVector Q0 = RingPoint(FVector2D(50.0, FloorTop + 0.7), k), Q1 = RingPoint(FVector2D(50.0, FloorTop + 0.7), k + 1);
+			B.AddQuad(Q0, Q1, R1, R0, FVector::UpVector, RugRim);
+			B.AddTri(FVector(0.0, 0.0, FloorTop + 0.7), Q0, Q1, FVector::UpVector, Rug);
+		}
 	}
 	// Boca de vidrio grueso alrededor del hueco (tapa los dientes del recorte) con canto hacia dentro y hacia fuera.
 	constexpr int32 LipSeg = 40;
@@ -396,6 +468,12 @@ void ATN_ChangingBooth::BuildLabel()
 	using namespace TNBoothDetail;
 	// Una letra por componente, girada hacia fuera en su punto de la curva: el texto queda impreso en la etiqueta en vez
 	// de flotar delante de la botella. Se lee de izquierda a derecha desde fuera (de +Y a -Y).
+	// Las letras de una construcción anterior (el editor vuelve a construir al mover la botella) se quitan.
+	for (UTextRenderComponent* Old : LabelLetters)
+	{
+		if (Old) { Old->DestroyComponent(); }
+	}
+	LabelLetters.Reset();
 	const FString Text = NSLOCTEXT("Tortunabo", "BoothLabel", "PROBADOR").ToString();
 	constexpr double Radius = WallR + 2.4;
 	constexpr double Tracking = 2.5;
@@ -403,13 +481,13 @@ void ATN_ChangingBooth::BuildLabel()
 	TArray<double> Widths;
 	for (const TCHAR Ch : Text)
 	{
-		UTextRenderComponent* Letter = NewObject<UTextRenderComponent>(this);
+		UTextRenderComponent* Letter = NewObject<UTextRenderComponent>(this, NAME_None, RF_Transient);
 		Letter->SetupAttachment(Bottle);
 		Letter->SetHorizontalAlignment(EHTA_Center);
 		Letter->SetVerticalAlignment(EVRTA_TextCenter);
 		Letter->SetWorldSize(24.f);
 		Letter->SetTextRenderColor(FColor(16, 32, 66));
-		Letter->SetText(FText::FromString(FString(1, &Ch)));
+		Letter->SetText(FText::AsCultureInvariant(FString(1, &Ch)));
 		Letter->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Letter->RegisterComponent();
 		LabelLetters.Add(Letter);

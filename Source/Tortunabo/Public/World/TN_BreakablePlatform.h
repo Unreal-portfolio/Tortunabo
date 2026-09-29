@@ -60,7 +60,7 @@ protected:
 	 * 1 = cualquier jugador la rompe (plataforma individual, #21).
 	 * 2+ = necesita X jugadores simultáneamente (puente cooperativo, #20).
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "1", ClampMax = "4"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Platform", meta = (ClampMin = "1", ClampMax = "8"))
 	int32 PlayerThreshold = 1;
 
 	/**

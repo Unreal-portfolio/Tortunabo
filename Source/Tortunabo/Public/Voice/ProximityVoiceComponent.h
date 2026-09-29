@@ -8,6 +8,7 @@
 #include "ProximityVoiceComponent.generated.h"
 
 class UUserWidget;
+class FTNVoiceDeviceCapture;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpeakingChanged, bool, bIsSpeaking);
 
@@ -72,6 +73,36 @@ public:
 	 */
 	bool IsHeardSpeaking() const;
 
+	/**
+	 * @brief Nivel del micrófono propio (RMS del último bloque capturado, ya con VoiceGain) para el medidor del menú de
+	 *        pausa. 0 si esta tortuga no captura.
+	 */
+	float GetMicLevel() const { return MicLevel; }
+
+	/** @brief true si esta tortuga (la local) tiene el micrófono abierto y capturando. */
+	bool IsCapturing() const { return (AudioCaptureSynth.IsValid() || DeviceCapture != nullptr) && !bIsShuttingDown; }
+
+	/**
+	 * @brief Micrófono elegido por el jugador (id del dispositivo de Windows; vacío = el predeterminado). Lo pone
+	 *        UTN_GameSettingsSubsystem y se usa al abrir la captura (BeginPlay): cambiarlo con la voz ya abierta surte
+	 *        efecto al reaparecer o al cambiar de mapa, porque la captura WASAPI abierta no se puede cerrar sin riesgo.
+	 */
+	static void SetPreferredCaptureDevice(const FString& DeviceId);
+	static FString GetPreferredCaptureDevice();
+
+	/** @brief Micrófonos activos de Windows: id y nombre (en el orden de los índices de captura). */
+	static void GetCaptureDevices(TArray<TPair<FString, FString>>& OutDevices);
+
+	/** @brief Micrófono con el que se abrió la captura de esta tortuga (vacío = el predeterminado). */
+	const FString& GetOpenCaptureDevice() const { return OpenCaptureDevice; }
+
+	/**
+	 * @brief Deja salir o no la voz propia (UTN_GameSettingsSubsystem: silenciarse y pulsar para hablar). Cerrada se sigue
+	 *        capturando (el medidor sigue vivo), pero la tortuga deja de «hablar» en el acto y no se envía nada.
+	 */
+	void SetTransmitEnabled(bool bEnabled) { bTransmitEnabled = bEnabled; }
+	bool IsTransmitEnabled() const { return bTransmitEnabled; }
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Attenuation")
@@ -94,11 +125,19 @@ public:
 
 	/**
 	 * Factor de downsampling antes de comprimir y enviar.
-	 * 2 = 48kHz → 24kHz (reduce paquete a 1/2; box filter evita aliasing).
-	 * 1 = sin downsampling.
+	 * 3 = 48kHz → 16kHz (voz de banda ancha, como un teléfono bueno: 16 KB/s por quien habla en vez de 24; box filter evita
+	 * aliasing). Con ocho jugadores hablando a la vez el anfitrión reenviaba más de 1 MB/s.
+	 * 2 = 48kHz → 24kHz. 1 = sin downsampling.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Network", meta = (ClampMin = "1", ClampMax = "6"))
-	int32 VoiceDownsampleFactor = 2;
+	int32 VoiceDownsampleFactor = 3;
+
+	/**
+	 * Oyentes como mucho por paquete: el servidor reenvía la voz solo a los más cercanos dentro de OuterRadius (con ocho
+	 * tortugas juntas en la salida, cada una iba a las otras siete). 0 = sin tope.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Network", meta = (ClampMin = "0", ClampMax = "15"))
+	int32 MaxVoiceListeners = 4;
 
 	/**
 	 * @brief Reproduce datos de voz remotos recibidos en este componente.
@@ -176,6 +215,22 @@ private:
 
 	bool bIsShuttingDown = false;
 	bool bRuntimeResourcesCleanedUp = false;
+
+	/** Nivel RMS del último bloque capturado (GetMicLevel) y si la voz propia puede salir (SetTransmitEnabled). */
+	float MicLevel = 0.f;
+	bool bTransmitEnabled = true;
+
+	/**
+	 * Captura de un micrófono concreto (el elegido en el menú de pausa) en vez de AudioCaptureSynth. Como esa, nunca se
+	 * para ni se destruye: al limpiar se suelta (puntero sin dueño a propósito).
+	 */
+	FTNVoiceDeviceCapture* DeviceCapture = nullptr;
+
+	/** Micrófono elegido con el que se abrió DeviceCapture (vacío con el predeterminado). */
+	FString OpenCaptureDevice;
+
+	/** @brief Abre el micrófono elegido (SetPreferredCaptureDevice) si hay uno y sigue conectado. */
+	bool OpenPreferredCaptureDevice();
 
 	/** Rate limiting server-side para paquetes de voz (evita flooding). */
 	float LastVoicePacketServerTime = -1.f;

@@ -9,13 +9,16 @@ class UAnimationAsset;
 class UBoxComponent;
 class UCapsuleComponent;
 class UMaterialInterface;
+class UPointLightComponent;
 class USkeletalMeshComponent;
 class UTextRenderComponent;
 class UTN_MusicSynthComponent;
 
 /**
- * Tienda del lobby: Don Tortugo, el tendero (una tortuga grande con su propio conjunto), detrás de un mostrador con
- * toldo de rayas y cartel. Al hablar con él se abre la tienda (UTN_ShopWidget) en el cliente que interactúa.
+ * Tienda del lobby: Don Tortugo, el tendero (una tortuga grande con su propio conjunto), detrás de un mostrador largo
+ * con toldo de rayas y cartel. Detrás, una estantería con lo que se vende (cascos, caparazones, botes de pintura de los
+ * colores y tarros de ojos); a los lados, un perchero con sombreros, un barril, cajas con conchas, el cofre y un farol.
+ * Va pegada a la muralla (su -X). Al hablar con él se abre la tienda (UTN_ShopWidget) en el cliente que interactúa.
  *
  * Cuando el jugador local se acerca, se gira hacia él y le saluda (efecto local de cada cliente). ATN_HQGameMode la
  * coloca sola donde está el tendero de la maqueta si el nivel no tiene una puesta a mano (ver SpawnLobbyShops).
@@ -30,6 +33,8 @@ public:
 	ATN_ShopKeeper();
 
 	virtual void BeginPlay() override;
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostRegisterAllComponents() override;
 
 	/** Delante del mostrador: desde ahí se habla con el tendero. */
 	virtual FVector GetInteractionPoint() const override;
@@ -63,6 +68,16 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shop")
 	TObjectPtr<UTextRenderComponent> Sign;
 
+	/** Luces del puesto: bajo el toldo (el tendero y el mostrador), sobre la estantería y la del farol del lado. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shop")
+	TObjectPtr<UPointLightComponent> CanopyLight;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shop")
+	TObjectPtr<UPointLightComponent> ShelfLight;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Shop")
+	TObjectPtr<UPointLightComponent> LampLight;
+
 	/** Radio del puesto: la música de la tienda en 3D (se crea en BeginPlay; no en servidor dedicado). */
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_MusicSynthComponent> Radio;
@@ -85,6 +100,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shop")
 	float KeeperScale = 3.4f;
 
+	/**
+	 * Tamaño del puesto (mostrador, toldo, cartel, estantería y adornos) sin agrandar al tendero. Por encima de 1, el
+	 * mostrador tapa al tendero.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shop", meta = (ClampMin = "0.5", ClampMax = "3.0"))
+	float StallScale = 1.f;
+
 private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> KeeperDefaults;
@@ -101,4 +123,7 @@ private:
 
 	void BuildStall();
 	void HideBlockoutKeeper();
+
+	/** Tendero vestido, puesto y cartel a su escala: en el editor (OnConstruction) y en ejecución. */
+	void BuildVisuals();
 };

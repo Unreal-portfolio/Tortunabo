@@ -1,4 +1,6 @@
 ﻿#include "World/TN_PickupInteractableBase.h"
+#include "World/TN_PickupGlowComponent.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Core/TN_Log.h"
 #include "Components/StaticMeshComponent.h"
@@ -9,12 +11,34 @@
 
 ATN_PickupInteractableBase::ATN_PickupInteractableBase()
 {
-	PromptText = FText::FromString(TEXT("Recoger"));
+	PromptText = NSLOCTEXT("Tortunabo", "PickupPrompt", "Recoger");
+
+	// Marca de «esto se coge» en todos los pickups (anillo, columna, chispitas, luz y el objeto que flota y gira).
+	PickupGlow = CreateDefaultSubobject<UTN_PickupGlowComponent>(TEXT("PickupGlow"));
+	PickupGlow->SetupAttachment(SceneRoot);
 }
 
 void ATN_PickupInteractableBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// La malla flota y gira sobre su sitio de reposo (el que acaba de ponerle la base: MeshFloorOffset o el del
+	// Blueprint). Si luego llega la malla del objeto, ApplyPickupMeshAndScale lo vuelve a fijar.
+	if (PickupGlow && Mesh)
+	{
+		PickupGlow->SetFloatTarget(Mesh, static_cast<float>(Mesh->GetRelativeLocation().Z));
+	}
+
+	// Objetos de carrera definidos en código (la caja de objetos lleva su fila en el valor por defecto de la clase, que no
+	// se replica): malla y tamaño en cada máquina a partir del ItemId.
+	if (PickupItem.UseType == ETN_ItemUseType::RaceItem)
+	{
+		TNRaceItems::ResolveVisuals(PickupItem);
+		if (Mesh && PickupItem.EquippedMesh)
+		{
+			ApplyPickupMeshAndScale();
+		}
+	}
 
 	// ── Aplicar estado "taken" desde la replicación inicial ──────────────────
 	// Si un cliente se une tarde y el pickup ya fue recogido, bTaken=true
@@ -56,7 +80,7 @@ void ATN_PickupInteractableBase::BeginPlay()
 		UE_LOG(LogTortunabo, Log, TEXT("[Pickup] '%s' — usando PickupItem pre-configurado (sin DataTable): ItemId=%s"),
 			*GetName(), *PickupItem.ItemId.ToString());
 	}
-	else if (HasAuthority() && !ItemDataTable)
+	else if (HasAuthority() && !ItemDataTable && IsNetStartupActor())
 	{
 		// Solo advertir si NO hay DataTable en absoluto: actor colocado en nivel sin configurar.
 		// Si DataTable está asignado pero RowName=None, es un spawn dinámico válido:
@@ -182,6 +206,8 @@ void ATN_PickupInteractableBase::OnRep_Taken()
 
 void ATN_PickupInteractableBase::OnRep_PickupItem()
 {
+	// Los objetos de carrera llegan sin malla ni icono: cada máquina los construye por el ItemId.
+	TNRaceItems::ResolveVisuals(PickupItem);
 	if (!Mesh || !PickupItem.EquippedMesh) { return; }
 
 	ApplyPickupMeshAndScale();
@@ -203,6 +229,11 @@ void ATN_PickupInteractableBase::ApplyPickupMeshAndScale()
 	{
 		MeshFloorOffset = HalfHeight;
 		Mesh->SetRelativeLocation(FVector(0.f, 0.f, HalfHeight));
+		// Nuevo sitio de reposo (y tamaño del anillo) de la marca de «esto se coge».
+		if (PickupGlow)
+		{
+			PickupGlow->SetFloatTarget(Mesh, HalfHeight);
+		}
 	}
 
 	if (PromptWidgetComponent)
@@ -220,6 +251,10 @@ void ATN_PickupInteractableBase::ApplyTakenState()
 {
 	SetActorHiddenInGame(bTaken);
 	SetActorEnableCollision(!bTaken);
+	if (PickupGlow)
+	{
+		PickupGlow->SetGlowEnabled(!bTaken);
+	}
 }
 
 void ATN_PickupInteractableBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -243,6 +278,7 @@ void ATN_PickupInteractableBase::InitializeFromInventoryItem(const FTN_Inventory
 	if (!HasAuthority() || bTaken || !NewPickupItem.IsValid()) { return; }
 
 	PickupItem = NewPickupItem;
+	TNRaceItems::ResolveVisuals(PickupItem);
 	SetNetDormancy(DORM_Awake);
 	FlushNetDormancy();
 

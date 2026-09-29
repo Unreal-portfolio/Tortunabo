@@ -1,0 +1,127 @@
+#include "TN_HUDFonts.h"
+#include "Core/TN_Log.h"
+#include "Settings/TN_LanguageSettings.h"
+#include "Fonts/CompositeFont.h"
+#include "Fonts/UnicodeBlockRange.h"
+#include "Misc/Paths.h"
+#include "Styling/CoreStyle.h"
+
+// Con nombre (no anónimo): en la compilación por bloques (unity) los nombres de un espacio anónimo se ven en el resto
+// del bloque.
+namespace TNHUDFontsDetail
+{
+	/** Carpeta, dentro de Content, donde se dejan las fuentes de reserva de los idiomas (se copia tal cual al empaquetar). */
+	const TCHAR* const FontFolder = TEXT("Slate/Fonts");
+
+	void AddBlocks(FCompositeSubFont& SubFont, std::initializer_list<EUnicodeBlockRange> Blocks)
+	{
+		for (const EUnicodeBlockRange Block : Blocks)
+		{
+			SubFont.CharacterRanges.Add(FUnicodeBlockRange::GetUnicodeBlockRange(Block).Range);
+		}
+	}
+
+	/** Los caracteres que cubre la fuente de un idioma según su «FontScript». */
+	void AddScriptRanges(FCompositeSubFont& SubFont, const FString& Script)
+	{
+		if (Script.Equals(TEXT("Cyrillic"), ESearchCase::IgnoreCase))
+		{
+			AddBlocks(SubFont, { EUnicodeBlockRange::Cyrillic, EUnicodeBlockRange::CyrillicSupplementary, EUnicodeBlockRange::CyrillicExtendedA,
+				EUnicodeBlockRange::CyrillicExtendedB, EUnicodeBlockRange::CyrillicExtendedC });
+		}
+		else if (Script.Equals(TEXT("Latin"), ESearchCase::IgnoreCase))
+		{
+			AddBlocks(SubFont, { EUnicodeBlockRange::Latin1Supplement, EUnicodeBlockRange::LatinExtendedA, EUnicodeBlockRange::LatinExtendedB,
+				EUnicodeBlockRange::LatinExtendedAdditional, EUnicodeBlockRange::LatinExtendedC, EUnicodeBlockRange::LatinExtendedD,
+				EUnicodeBlockRange::LatinExtendedE });
+		}
+		else
+		{
+			// «CJK» (y lo que no se reconozca): kanji, hanzi, kana, hangul y signos, como las del propio motor para ja, ko y zh.
+			AddBlocks(SubFont, { EUnicodeBlockRange::CJKCompatibility, EUnicodeBlockRange::CJKCompatibilityForms, EUnicodeBlockRange::CJKCompatibilityIdeographs,
+				EUnicodeBlockRange::CJKCompatibilityIdeographsSupplement, EUnicodeBlockRange::CJKRadicalsSupplement, EUnicodeBlockRange::CJKStrokes,
+				EUnicodeBlockRange::CJKSymbolsAndPunctuation, EUnicodeBlockRange::CJKUnifiedIdeographs, EUnicodeBlockRange::CJKUnifiedIdeographsExtensionA,
+				EUnicodeBlockRange::CJKUnifiedIdeographsExtensionB, EUnicodeBlockRange::CJKUnifiedIdeographsExtensionC,
+				EUnicodeBlockRange::CJKUnifiedIdeographsExtensionD, EUnicodeBlockRange::CJKUnifiedIdeographsExtensionE,
+				EUnicodeBlockRange::EnclosedCJKLettersAndMonths, EUnicodeBlockRange::Hiragana, EUnicodeBlockRange::Katakana,
+				EUnicodeBlockRange::KatakanaPhoneticExtensions, EUnicodeBlockRange::Kanbun, EUnicodeBlockRange::HalfwidthAndFullwidthForms,
+				EUnicodeBlockRange::HangulJamo, EUnicodeBlockRange::HangulJamoExtendedA, EUnicodeBlockRange::HangulJamoExtendedB,
+				EUnicodeBlockRange::HangulCompatibilityJamo, EUnicodeBlockRange::HangulSyllables });
+		}
+	}
+
+	/**
+	 * Todos los nombres de peso que pide la interfaz (y los de la fuente del motor), para que la reserva responda a cualquiera:
+	 * los gruesos con la negrita y el resto con la normal.
+	 */
+	void AddWeights(FTypeface& Typeface, const FString& Regular, const FString& Bold)
+	{
+		const EFontHinting Hinting = EFontHinting::Default;
+		const EFontLoadingPolicy Policy = EFontLoadingPolicy::LazyLoad;
+		for (const TCHAR* Name : { TEXT("Regular"), TEXT("Italic"), TEXT("Medium"), TEXT("Light"), TEXT("VeryLight") })
+		{
+			Typeface.AppendFont(FName(Name), Regular, Hinting, Policy);
+		}
+		for (const TCHAR* Name : { TEXT("Bold"), TEXT("BoldItalic"), TEXT("BoldCondensed"), TEXT("BoldCondensedItalic"), TEXT("Black"), TEXT("BlackItalic") })
+		{
+			Typeface.AppendFont(FName(Name), Bold, Hinting, Policy);
+		}
+	}
+
+	TSharedRef<const FCompositeFont> Build()
+	{
+		// Una copia de la fuente de serie del motor (Roboto, la reserva CJK y las de rangos sueltos)...
+		const TSharedRef<const FCompositeFont> Base = FCoreStyle::GetDefaultFont();
+		const TSharedRef<FStandaloneCompositeFont> Composite = MakeShared<FStandaloneCompositeFont>();
+		Composite->DefaultTypeface = Base->DefaultTypeface;
+		Composite->FallbackTypeface = Base->FallbackTypeface;
+		Composite->SubTypefaces = Base->SubTypefaces;
+		Composite->bEnableAscentDescentOverride = Base->bEnableAscentDescentOverride;
+
+		// ...más una fuente de reserva por idioma cuyos archivos existan. El motor la usa solo cuando el juego está en ese idioma
+		// (Cultures) y solo para los caracteres de su escritura (CharacterRanges); lo demás sigue con Roboto.
+		const FString Folder = FPaths::ProjectContentDir() / FontFolder;
+		for (const FTNLanguageEntry& Entry : TNLanguage::GetLanguages())
+		{
+			if (Entry.FontRegular.IsEmpty())
+			{
+				continue;
+			}
+			const FString Regular = Folder / Entry.FontRegular;
+			if (!FPaths::FileExists(Regular))
+			{
+				UE_LOG(LogTortunabo, Verbose, TEXT("[Fuentes] %s: no está %s; se queda con la de reserva del motor."), *Entry.Culture, *Regular);
+				continue;
+			}
+			FString Bold = Entry.FontBold.IsEmpty() ? Regular : Folder / Entry.FontBold;
+			if (!FPaths::FileExists(Bold))
+			{
+				Bold = Regular;
+			}
+			FCompositeSubFont SubFont;
+			SubFont.Cultures = Entry.Culture;
+			AddScriptRanges(SubFont, Entry.FontScript);
+			AddWeights(SubFont.Typeface, Regular, Bold);
+			Composite->SubTypefaces.Add(MoveTemp(SubFont));
+			UE_LOG(LogTortunabo, Log, TEXT("[Fuentes] %s: fuente de reserva %s."), *Entry.Culture, *Entry.FontRegular);
+		}
+
+		// Sin destruirla nunca: es un FGCObject y, al cerrar el proceso, ya no habría recolector al que avisar.
+		const TSharedRef<const FCompositeFont>* const Leaked = new TSharedRef<const FCompositeFont>(Composite);
+		return *Leaked;
+	}
+}
+
+namespace TNHUDFonts
+{
+	TSharedRef<const FCompositeFont> GetComposite()
+	{
+		static const TSharedRef<const FCompositeFont> Composite = TNHUDFontsDetail::Build();
+		return Composite;
+	}
+
+	FSlateFontInfo Make(FName Weight, int32 Size)
+	{
+		return FSlateFontInfo(GetComposite(), static_cast<float>(Size), Weight);
+	}
+}

@@ -11,11 +11,14 @@
 #include "Core/TN_Log.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
+#include "Player/TN_TurtleAnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "World/TN_InteractableBase.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ThrowableItemActor.h"
 #include "World/TN_ConchPickup.h"
 #include "World/TN_InkProjectile.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Game/TN_RunGameMode.h"
 #include "GameFramework/PlayerController.h"
@@ -64,7 +67,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		// Misma medida que la validación del servidor (ServerTryInteract): el aviso solo sale cuando pulsar funciona.
 		// El solapamiento encuentra cualquier colisión del actor (paredes del probador, mostrador), que puede estar
 		// mucho más cerca que su punto de interacción.
-		const float DistSq = FVector::DistSquared(GetActorLocation(), Interactable->GetInteractionPoint());
+		const float DistSq = FVector::DistSquared(GetActorLocation(), Interactable->GetInteractionPointFor(this));
 		if (DistSq > FMath::Square(MaxInteractionDistance)) { continue; }
 		if (DistSq < BestDistSq)
 		{
@@ -80,7 +83,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		{
 			UE_LOG(LogTortunabo, Log, TEXT("[Interact:DEBUG] Focus → %s  (dist=%.0f)"),
 				BestCandidate ? *BestCandidate->GetName() : TEXT("(none)"),
-				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetInteractionPoint()) : 0.f);
+				BestCandidate ? FVector::Dist(GetActorLocation(), BestCandidate->GetInteractionPointFor(this)) : 0.f);
 		}
 	}
 
@@ -93,7 +96,7 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 
 		if (BestCandidate)
 		{
-			DrawDebugLine(GetWorld(), GetActorLocation(), BestCandidate->GetInteractionPoint(),
+			DrawDebugLine(GetWorld(), GetActorLocation(), BestCandidate->GetInteractionPointFor(this),
 				FColor::Cyan, false, InteractionScanInterval * 1.5f, 0, 2.f);
 		}
 	}
@@ -162,7 +165,7 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 	}
 
 	const float TotalAllowed = MaxDistance + 100.f + PingDistanceAllowance;
-	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetInteractionPoint());
+	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetInteractionPointFor(this));
 
 	if (ActualDist > TotalAllowed)
 	{
@@ -173,6 +176,55 @@ void ATortugaCharacter::ServerTryInteract_Implementation(ATN_InteractableBase* I
 	if (bDebug) { UE_LOG(LogTortunabo, Log, TEXT("[Interact:SERVER] ✓ Calling Interact on '%s' — dist=%.1f"), *Interactable->GetName(), ActualDist); }
 
 	Interactable->Interact(this);
+}
+
+// ── Interacción de mantener la tecla (rebuscar un decorado, ATN_ProcSearchSpot) ──────────────────────────────────
+// El cliente solo avisa de que empieza y de que suelta; el tiempo lo cuenta el interactuable en el servidor, que
+// también vigila que la tortuga siga cerca y en condiciones mientras dura.
+
+void ATortugaCharacter::ReleaseInteract()
+{
+	if (ATN_InteractableBase* Held = HoldInteractable.Get())
+	{
+		ServerEndHoldInteract(Held);
+	}
+	HoldInteractable.Reset();
+}
+
+void ATortugaCharacter::ServerBeginHoldInteract_Implementation(ATN_InteractableBase* Interactable)
+{
+	const bool bDebug = CVarDebugInteraction.GetValueOnGameThread() != 0;
+	if (!Interactable || bIsKnockedDown || bIsDead || IsInShell() || Interactable->GetHoldDuration() <= 0.f)
+	{
+		return;
+	}
+	if (!Interactable->CanInteract(this))
+	{
+		if (bDebug) { UE_LOG(LogTortunabo, Warning, TEXT("[Interact:SERVER] Mantener: CanInteract=FALSE para '%s' (ya buscado u ocupado)."), *Interactable->GetName()); }
+		return;
+	}
+
+	// Misma medida y holgura que ServerTryInteract.
+	const float MaxDistance = FMath::Max(MaxInteractionDistance, Interactable->GetInteractionDistance());
+	const APlayerState* HoldPS = GetPlayerState();
+	const float PingDistanceAllowance = HoldPS ? FMath::Clamp(HoldPS->ExactPing * 0.25f, 0.f, MaxLagCompensationDistance) : 0.f;
+	const float ActualDist = FVector::Dist(GetActorLocation(), Interactable->GetInteractionPointFor(this));
+	if (ActualDist > MaxDistance + 100.f + PingDistanceAllowance)
+	{
+		if (bDebug) { UE_LOG(LogTortunabo, Warning, TEXT("[Interact:SERVER] Mantener: demasiado lejos de '%s' (%.0f cm)."), *Interactable->GetName(), ActualDist); }
+		return;
+	}
+
+	if (bDebug) { UE_LOG(LogTortunabo, Log, TEXT("[Interact:SERVER] ✓ Empieza a mantener '%s' — dist=%.1f"), *Interactable->GetName(), ActualDist); }
+	Interactable->BeginHoldInteract(this);
+}
+
+void ATortugaCharacter::ServerEndHoldInteract_Implementation(ATN_InteractableBase* Interactable)
+{
+	if (Interactable)
+	{
+		Interactable->EndHoldInteract(this);
+	}
 }
 
 void ATortugaCharacter::ServerUseEquippedItem_Implementation()
@@ -245,6 +297,13 @@ void ATortugaCharacter::ServerUseEquippedItem_Implementation()
 		HandleUseTotem(EquippedItem);
 		return;
 	}
+
+	// ── Objetos de la carrera de la playa (turbo, pelícano taxi, protector solar...): World/Beach/TN_RaceItems.h ──
+	if (EquippedItem.UseType == ETN_ItemUseType::RaceItem)
+	{
+		TNRaceItems::ServerUse(this, EquippedItem);
+		return;
+	}
 }
 
 void ATortugaCharacter::HandleUseSelfStaminaBoost(const FTN_InventoryItem& EquippedItem)
@@ -292,24 +351,35 @@ void ATortugaCharacter::HandleUseBigHead(const FTN_InventoryItem& EquippedItem)
 	GetWorldTimerManager().SetTimer(BigHeadTimerHandle, BigHeadDel, BigHeadDurationSeconds, false);
 }
 
+FVector ATortugaCharacter::GetThrowDirection(const FRotator& AimRotation) const
+{
+	// La cámara mira con el giro del mando más su propio cabeceo (CameraAimPitchOffset, hacia abajo). Con ella a nivel, el
+	// lanzamiento sale a ThrowBasePitchDeg; mirar arriba o abajo solo lo cambia en parte, para que no salga por las nubes.
+	const float CameraPitch = FRotator::NormalizeAxis(AimRotation.Pitch) + CameraAimPitchOffset;
+	const float MinPitch = FMath::Min(ThrowMinPitchDeg, ThrowMaxPitchDeg);
+	const float Pitch = FMath::Clamp(ThrowBasePitchDeg + ThrowAimPitchFactor * CameraPitch, MinPitch, ThrowMaxPitchDeg);
+	return FRotator(Pitch, AimRotation.Yaw, 0.f).Vector();
+}
+
+void ATortugaCharacter::MulticastItemThrowAnim_Implementation()
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	USkeletalMeshComponent* SkelMesh = GetMesh();
+	if (UTN_TurtleAnimInstance* TurtleAnim = SkelMesh ? Cast<UTN_TurtleAnimInstance>(SkelMesh->GetAnimInstance()) : nullptr)
+	{
+		TurtleAnim->PlayThrow(false);
+	}
+}
+
 void ATortugaCharacter::HandleUseThrowable(const FTN_InventoryItem& EquippedItem)
 {
 	const FVector SpawnLocation = GetItemSpawnLocation();
 
-	// ── Dirección de lanzamiento: cámara + arco parabólico ────────────
-	// Usar la dirección de cámara directamente (incluye pitch) para que
-	// apuntar arriba/abajo cambie la trayectoria del lanzamiento.
-	// ThrowUpAngleDeg se añade ENCIMA de la dirección de cámara como arco extra.
-	const FVector CamDir     = GetItemForwardDirection(); // incluye pitch del controlador
-	const FVector SafeCamDir = CamDir.IsNearlyZero() ? GetActorForwardVector() : CamDir.GetSafeNormal();
-
-	// Eje de inclinación: perpendicular a la proyección horizontal de la cámara.
-	const FVector HorizProj = FVector(SafeCamDir.X, SafeCamDir.Y, 0.f).GetSafeNormal();
-	const FVector TiltAxis  = HorizProj.IsNearlyZero()
-		? GetActorRightVector().GetSafeNormal()
-		: FVector::CrossProduct(HorizProj, FVector::UpVector).GetSafeNormal();
-	const FQuat   UpTilt(TiltAxis, FMath::DegreesToRadians(ThrowUpAngleDeg));
-	const FVector ArcedDirection = UpTilt.RotateVector(SafeCamDir).GetSafeNormal();
+	// ── Dirección de lanzamiento: hacia donde mira la cámara, con el arco bajo de todos los lanzamientos ──
+	const FVector ArcedDirection = GetThrowDirection(Controller ? Controller->GetControlRotation() : GetActorRotation());
 
 	const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
 
@@ -332,6 +402,7 @@ void ATortugaCharacter::HandleUseThrowable(const FTN_InventoryItem& EquippedItem
 		ThrowableActor->InitializeThrow(SpawnLocation, LaunchVelocity);
 
 		if (ThrowSound) { MulticastPlaySfx(ThrowSound); }
+		MulticastItemThrowAnim();
 	}
 	else
 	{
@@ -364,10 +435,12 @@ void ATortugaCharacter::HandleUseInkThrower(const FTN_InventoryItem& EquippedIte
 	FTN_InventoryItem ConsumedItem;
 	if (!InventoryComponent->TryConsumeEquippedItem(ConsumedItem)) { return; }
 
+	// Con el mismo arco bajo que el resto de lanzamientos (la tinta también cae con la gravedad).
 	const FVector Origin    = GetItemSpawnLocation();
-	const FVector Direction = GetItemForwardDirection();
+	const FVector Direction = GetThrowDirection(Controller ? Controller->GetControlRotation() : GetActorRotation());
 	ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
 		Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
+	MulticastItemThrowAnim();
 }
 
 void ATortugaCharacter::HandleUseTotem(const FTN_InventoryItem& EquippedItem)

@@ -16,7 +16,8 @@ class UTN_InventoryComponent;
  *  - GrantUnlimitedStamina activa boost temporal seguido de PostBoostExhaustion (velocidad reducida + drenaje ×N).
  *  - SetSpeedCap limita MaxWalkSpeed para zonas externas (TN_SlowZoneVolume).
  *
- * Replicación: CurrentStamina owner-only. bIsSprinting, bUnlimitedStamina y bIsExhausted to all.
+ * Replicación: CurrentStamina (float) solo al dueño; a los demás (espectadores, caras del HUD, foley), StaminaShared, un
+ * byte con la fracción de MaxStamina que solo se manda cuando cambia. bIsSprinting, bUnlimitedStamina y bIsExhausted to all.
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_StaminaComponent : public UActorComponent
@@ -75,6 +76,15 @@ public:
 	 *        — cada una aplica localmente, igual que SetSpeedCap.
 	 */
 	void SetEnvironmentSpeedMultiplier(float Multiplier);
+
+	/**
+	 * @brief Multiplica la velocidad máxima (objetos de carrera: coco turbo y protector solar, UTN_RaceItemComponent). 1 = sin
+	 *        efecto. Mientras sea mayor que 1, la velocidad base es al menos la de correr aunque no se esprinte, y la
+	 *        aceleración sube con ella para que el empujón sea inmediato. Llamar en todas las máquinas, como SetSpeedCap.
+	 */
+	void SetRaceSpeedMultiplier(float Multiplier);
+
+	float GetRaceSpeedMultiplier() const { return RaceSpeedMultiplier; }
 
 	/** @brief Vincula el componente de inventario para calcular el peso total cargado. */
 	void SetInventoryComponent(UTN_InventoryComponent* InvComp);
@@ -184,6 +194,13 @@ private:
 	UPROPERTY(Replicated)
 	float CurrentStamina = 100.0f;
 
+	/**
+	 * CurrentStamina para los que no son el dueño: fracción de MaxStamina en 0..255 (1 byte en vez de un float que cambiaba en
+	 * cada fotograma al esprintar o recargar). Lo pone el servidor; en esas máquinas OnRep lo vuelve a pasar a CurrentStamina.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_StaminaShared)
+	uint8 StaminaShared = 255;
+
 	UPROPERTY(ReplicatedUsing = OnRep_IsSprinting)
 	bool bIsSprinting = false;
 
@@ -216,6 +233,9 @@ private:
 
 	/** Multiplicador ambiental (vadeo, etc.). 1.0 = sin efecto. Ver SetEnvironmentSpeedMultiplier. */
 	float EnvironmentSpeedMultiplier = 1.0f;
+	/** Multiplicador de velocidad de los objetos de carrera (1 = ninguno) y la aceleración de antes del turbo. */
+	float RaceSpeedMultiplier = 1.0f;
+	float RaceBaseAcceleration = 0.0f;
 
 	/** @brief OnRep: aplica MovementSpeed/visual al cambiar el estado de sprint. */
 	UFUNCTION()
@@ -224,6 +244,13 @@ private:
 	/** @brief OnRep: feedback visual cuando el boost de stamina ilimitada cambia. */
 	UFUNCTION()
 	void OnRep_UnlimitedStamina();
+
+	/** @brief OnRep (los que no son el dueño): CurrentStamina aproximada a partir de StaminaShared. */
+	UFUNCTION()
+	void OnRep_StaminaShared();
+
+	/** @brief Servidor: StaminaShared al día con CurrentStamina (solo cambia si cambia el byte). */
+	void SyncStaminaShared();
 
 	/** @brief Decrementa el timer del boost; al llegar a 0 inicia la penalización post-boost. */
 	void TickUnlimitedTimer(float DeltaTime);

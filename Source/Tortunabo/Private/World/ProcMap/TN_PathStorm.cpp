@@ -1,6 +1,7 @@
 #include "World/ProcMap/TN_PathStorm.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "World/ProcMap/TN_StormCough.h"
 #include "TN_PathStormFX.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
@@ -16,6 +17,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Misc/App.h"
 
 ATN_PathStorm::ATN_PathStorm()
 {
@@ -139,6 +141,49 @@ void ATN_PathStorm::Tick(float DeltaTime)
 		}
 	}
 	UpdateVisual(DeltaTime);
+	TickCough(DeltaTime);
+}
+
+bool ATN_PathStorm::IsLocationInside(const FVector& WorldLocation) const
+{
+	if (!bActive || !Generator || !Generator->IsMapReady()) { return false; }
+	return Generator->GetPathProgress(WorldLocation) < FrontProgress - InsideMargin;
+}
+
+void ATN_PathStorm::TickCough(float DeltaTime)
+{
+	// Tos de las tortugas: cada máquina con audio decide quién está dentro con el frente replicado, sin RPC.
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_DedicatedServer || !FApp::CanEverRenderAudio()) { return; }
+	CoughAccumulator += DeltaTime;
+	if (CoughAccumulator < 0.1f) { return; }
+	const float Step = CoughAccumulator;
+	CoughAccumulator = 0.f;
+
+	for (TActorIterator<ATortugaCharacter> It(World); It; ++It)
+	{
+		ATortugaCharacter* Turtle = *It;
+		if (!IsValid(Turtle) || Turtle->IsActorBeingDestroyed()) { continue; }
+		// Las mismas que cuenta el servidor en ServerCheckPlayers (su estado de jugador llega a todas las máquinas).
+		const ATN_CoopPlayerState* PS = Turtle->GetPlayerState<ATN_CoopPlayerState>();
+		if (!PS) { continue; }
+		if (!PS->bIsAlive || Turtle->IsDead())
+		{
+			CoughInsideTime.Remove(Turtle);
+			if (UTN_StormCoughComponent* DeadCough = Turtle->FindComponentByClass<UTN_StormCoughComponent>()) { DeadCough->Hush(); }
+			continue;
+		}
+		UTN_StormCoughComponent* Cough = UTN_StormCoughComponent::FindOrAddTo(Turtle);
+		if (!Cough) { continue; }
+		const bool bInside = !PS->bHasFinishedRun && IsLocationInside(Turtle->GetActorLocation());
+		float& Seconds = CoughInsideTime.FindOrAdd(Turtle);
+		Seconds = bInside ? Seconds + Step : 0.f;
+		Cough->SetStormExposure(bInside, Seconds / FMath::Max(0.1f, SecondsInsideToDie));
+	}
+	for (auto It = CoughInsideTime.CreateIterator(); It; ++It)
+	{
+		if (!It.Key().IsValid()) { It.RemoveCurrent(); }
+	}
 }
 
 void ATN_PathStorm::UpdateVisual(float DeltaTime)
@@ -156,7 +201,7 @@ void ATN_PathStorm::UpdateVisual(float DeltaTime)
 		{
 			if (const APawn* Pawn = PC->GetPawn())
 			{
-				bLocalInside = Generator->GetPathProgress(Pawn->GetActorLocation()) < FrontProgress - InsideMargin;
+				bLocalInside = IsLocationInside(Pawn->GetActorLocation());
 			}
 		}
 	}
@@ -434,8 +479,7 @@ void ATN_PathStorm::ServerCheckPlayers(float Interval)
 			continue;
 		}
 
-		const float Progress = Generator->GetPathProgress(Turtle->GetActorLocation());
-		if (Progress < FrontProgress - InsideMargin)
+		if (IsLocationInside(Turtle->GetActorLocation()))
 		{
 			float& T = InsideTime.FindOrAdd(PC);
 			T += Interval;

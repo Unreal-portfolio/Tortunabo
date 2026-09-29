@@ -7,11 +7,12 @@
 #include "Fonts/SlateFontInfo.h"
 #include "Components/TextBlock.h"
 #include "Components/Border.h"
+#include "TN_HUDFonts.h"
 
 /**
  * Estilo del HUD de la partida (TN_RunHUDWidget): paneles azul marino translúcidos con esquinas redondeadas y
  * un filo turquesa, textos blancos con contorno, arena para lo que se gana y coral para los avisos. Todo en código,
- * sin texturas: pinceles redondeados de Slate y la fuente por defecto del motor.
+ * sin texturas: pinceles redondeados de Slate y la fuente por defecto del motor (más las de reserva de los idiomas).
  */
 namespace TNHUDStyle
 {
@@ -29,10 +30,13 @@ namespace TNHUDStyle
 		return FSlateRoundedBoxBrush(Fill, Radius, Outline, OutlineWidth);
 	}
 
-	/** Fuente del motor (Regular, Bold, Light...) con contorno oscuro para leerse sobre cualquier fondo. */
+	/**
+	 * Fuente de la interfaz (Regular, Bold, Light...) con contorno oscuro para leerse sobre cualquier fondo: la del motor con las
+	 * fuentes de reserva de cada idioma que haya en disco (TNHUDFonts, Docs/Localizacion.md).
+	 */
 	inline FSlateFontInfo Font(FName Weight, int32 Size, bool bOutline = true)
 	{
-		FSlateFontInfo F = FCoreStyle::GetDefaultFontStyle(Weight, Size);
+		FSlateFontInfo F = TNHUDFonts::Make(Weight, Size);
 		if (bOutline)
 		{
 			F.OutlineSettings.OutlineSize = FMath::Max(1, Size / 14);

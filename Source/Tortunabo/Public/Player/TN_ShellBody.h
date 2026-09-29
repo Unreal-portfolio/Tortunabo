@@ -15,10 +15,13 @@ class UPrimitiveComponent;
  * controla: su cápsula y su malla siguen a la caja en todas las máquinas.
  *
  * - Caja de 55 x 46 x 42 cm (largo cola-cabeza, ancho y alto tripa-lomo), sacada del tronco de la malla, con perfil
- *   PhysicsActor, 38 kg, amortiguación suave, CCD y un material resbaladizo (fricción 0,25, rebote 0,35).
- * - Replicada con su movimiento (física replicada) y con la relevancia de su tortuga (es su dueña). Cada máquina pone
- *   la cápsula de la tortuga de pie sobre la caja y la malla tumbada sobre la tripa con la transformación de la caja
- *   (Tick en TG_PostPhysics, a través de UTN_ShellComponent::FollowBody).
+ *   PhysicsActor, 38 kg, amortiguación suave, CCD, colisión con aristas suavizadas (no tropieza en las costuras de las
+ *   teselas del terreno), giro máximo de 900 °/s, salida lenta de lo que solape al nacer y un material resbaladizo
+ *   (fricción 0,25, rebote 0,2).
+ * - Replicada con su movimiento (física replicada, en interpolación predictiva: los clientes corrigen con velocidad hacia
+ *   el estado extrapolado del servidor; TN.Shell.PhysicsRep 0 vuelve a la de siempre) y con la relevancia de su tortuga
+ *   (es su dueña). Cada máquina pone la cápsula de la tortuga de pie sobre la caja y la malla tumbada sobre la tripa con
+ *   la transformación de la caja (Tick en TG_PostPhysics, a través de UTN_ShellComponent::FollowBody).
  * - En el servidor: si tiene que salir al pararse (lanzamiento, caída larga, escape), cuando se queda quieta saca a la
  *   tortuga del caparazón; si cae al agua, sale y nada; si la destruye el mundo (caída fuera), avisa al componente.
  *

@@ -140,10 +140,16 @@ void UTN_CosmeticLook::ApplyLook(const UObject* WorldContext, USkeletalMeshCompo
 		return;
 	}
 
-	// Malla de demo: el casco de serie se recorta si hay otro y el cuerpo se pinta con M_TurtleBody.
-	if (HelmMesh && Slots.HelmetSlot != INDEX_NONE)
+	// Malla de demo: la ranura del casco pinta el casco de serie (o lo recorta si hay otro) y esconde siempre la lengua
+	// rígida de la malla; el cuerpo se pinta con M_TurtleBody.
+	if (Slots.HelmetSlot != INDEX_NONE)
 	{
-		if (UMaterialInterface* SlotMat = LoadMaterial(HelmetSlotMaterialPath)) { Body->SetMaterial(Slots.HelmetSlot, SlotMat); }
+		UMaterialInterface* SlotMat = LoadMaterial(HelmetSlotMaterialPath);
+		if (UMaterialInstanceDynamic* SlotMID = SlotMat ? Body->CreateDynamicMaterialInstance(Slots.HelmetSlot, SlotMat) : nullptr)
+		{
+			SlotMID->SetScalarParameterValue(TEXT("HideHelmet"), HelmMesh ? 1.f : 0.f);
+			SlotMID->SetScalarParameterValue(TEXT("HideTongue"), 1.f);
+		}
 	}
 	// Siempre M_TurtleBody en el cuerpo (si existe): con el material original de la malla los ojos salen del color de
 	// la piel.
@@ -178,9 +184,32 @@ void UTN_CosmeticLook::ApplyLook(const UObject* WorldContext, USkeletalMeshCompo
 			MID->SetScalarParameterValue(TEXT("EyeGlow"), EyesRow ? EyesRow->Glow : 0.f);
 			MID->SetScalarParameterValue(TEXT("EyeBlink"), 0.f);
 			MID->SetScalarParameterValue(TEXT("EyeDizzy"), 0.f);
+			// Cara de reposo (la de las vistas previas y el tendero): sonrisa abierta pequeña, sin cansancio.
+			MID->SetScalarParameterValue(TEXT("EyeTired"), 0.f);
+			MID->SetScalarParameterValue(TEXT("EyeSqueeze"), 0.f);
+			MID->SetScalarParameterValue(TEXT("MouthOpen"), 0.3f);
+			MID->SetScalarParameterValue(TEXT("MouthSmile"), 1.f);
+			MID->SetScalarParameterValue(TEXT("FaceBlush"), 0.f);
 		}
 	}
 	Body->MarkRenderStateDirty();
+}
+
+UMaterialInstanceDynamic* UTN_CosmeticLook::GetBodyMaterial(USkeletalMeshComponent* Body)
+{
+	using namespace TNCosmeticLookDetail;
+	if (!Body) { return nullptr; }
+	const FTurtleSlots Slots = SlotsOf(Body);
+	if (Slots.bUnified || Slots.BodySlot == INDEX_NONE) { return nullptr; }
+	return Cast<UMaterialInstanceDynamic>(Body->GetMaterial(Slots.BodySlot));
+}
+
+bool UTN_CosmeticLook::IsDemoTurtle(const USkeletalMeshComponent* Body)
+{
+	using namespace TNCosmeticLookDetail;
+	if (!Body) { return false; }
+	const FTurtleSlots Slots = SlotsOf(Body);
+	return !Slots.bUnified && Slots.BodySlot != INDEX_NONE && Slots.HelmetSlot != INDEX_NONE;
 }
 
 void UTN_CosmeticLook::SetEyeState(USkeletalMeshComponent* Body, float Blink, float Dizzy)
@@ -213,10 +242,12 @@ FText UTN_CosmeticLook::GetDisplayName(const UObject* WorldContext, ETNCosmeticC
 	if (Category == ETNCosmeticCategory::Helmet)
 	{
 		const FTN_HelmetData* Row = GI ? GI->FindHelmetRow(Id, TEXT("CosmeticName")) : nullptr;
-		return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::FromName(Id);
+		// Sin nombre en la tabla: el identificador de la fila, tal cual (no es texto del juego).
+		return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::AsCultureInvariant(Id.ToString());
 	}
 	const FTN_SkinData* Row = GI ? GI->FindSkinRow(Id, TEXT("CosmeticName")) : nullptr;
-	return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::FromName(Id);
+	// Sin nombre en la tabla: el identificador de la fila, tal cual (no es texto del juego).
+	return Row && !Row->DisplayName.IsEmpty() ? Row->DisplayName : FText::AsCultureInvariant(Id.ToString());
 }
 
 FText UTN_CosmeticLook::GetDescription(const UObject* WorldContext, ETNCosmeticCategory Category, FName Id)

@@ -66,7 +66,7 @@ void ATN_SpawnZoneBase::GetLivingPlayersInside(TArray<ATortugaCharacter*>& OutPl
 	const FTransform ZoneTransform = SpawnVolume->GetComponentTransform();
 	const FVector    HalfExtent    = SpawnVolume->GetUnscaledBoxExtent();
 
-	// PlayerArray (≤4 jugadores) en vez de TActorIterator<ATortugaCharacter>:
+	// PlayerArray (≤8 jugadores) en vez de TActorIterator<ATortugaCharacter>:
 	// el iterador barría TODOS los actores del mundo en cada disparo de timer.
 	for (APlayerState* BasePS : GS->PlayerArray)
 	{
