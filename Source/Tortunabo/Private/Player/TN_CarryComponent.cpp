@@ -199,7 +199,8 @@ void UTN_CarryComponent::ServerThrow_Implementation(FRotator AimRotation)
 {
 	const ATortugaCharacter* Self = GetTurtle();
 	UWorld* World = GetWorld();
-	if (!Self || !CarriedTurtle || bThrowWindupPending)
+	// Puntería del cliente sin sanear: un NaN acabaría en la velocidad del lanzamiento en el host.
+	if (!Self || !CarriedTurtle || bThrowWindupPending || AimRotation.ContainsNaN())
 	{
 		return;
 	}
@@ -558,6 +559,31 @@ void UTN_CarryComponent::NotifyEnteredWater()
 // ─────────────────────────────────────────────────────────────────────────────
 // Tick
 // ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_CarryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Portador o llevada que desaparece (se desconecta, reaparece, la destruyen): la otra no puede quedarse enganchada
+	// con el movimiento apagado y el caparazón bloqueado. Solo al destruirse; en un viaje de mapa cae todo el mundo.
+	const AActor* Owner = GetOwner();
+	if (Owner && Owner->HasAuthority()
+		&& (EndPlayReason == EEndPlayReason::Destroyed || EndPlayReason == EEndPlayReason::RemovedFromWorld))
+	{
+		if (IsCarrying())
+		{
+			ForceRelease(false);
+		}
+		ATortugaCharacter* Carrier = CarriedBy;
+		if (IsValid(Carrier))
+		{
+			if (UTN_CarryComponent* CarrierComp = Carrier->GetCarryComponent())
+			{
+				CarrierComp->ForceRelease(false);
+			}
+		}
+	}
+	CancelThrowWindup();
+	Super::EndPlay(EndPlayReason);
+}
 
 void UTN_CarryComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
