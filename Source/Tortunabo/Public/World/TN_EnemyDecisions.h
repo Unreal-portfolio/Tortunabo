@@ -45,7 +45,8 @@ namespace TNSeagullLogic
 		float MinKillRadius, float MaxDangerRadius)
 	{
 		if (AttackTimerSeconds <= 0.f) { return MinKillRadius; }
-		const float NormT = FMath::Clamp(CountdownRemaining / AttackTimerSeconds, 0.f, 1.f);
+		// El Max no cambia nada tras la guarda, pero evita el C4723 de MSVC al alinear una llamada con AttackTimerSeconds = 0.
+		const float NormT = FMath::Clamp(CountdownRemaining / FMath::Max(AttackTimerSeconds, UE_KINDA_SMALL_NUMBER), 0.f, 1.f);
 		return FMath::Lerp(MinKillRadius, MaxDangerRadius, NormT);
 	}
 
