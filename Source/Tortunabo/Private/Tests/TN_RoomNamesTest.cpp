@@ -1,11 +1,17 @@
-// Nombres de sala (TN_RoomNames.h): la tabla fija que viaja por índice en la sesión. Se comprueba lo que la interfaz y
-// la red necesitan de ella: cantidad mínima, nada vacío, cabe en pantalla (28 caracteres), sin repetidos en ningún
-// idioma, nombre de reserva fuera de rango y sorteo dentro de rango que respeta «otro nombre». Correr desde Session
-// Frontend (categoría "Tortunabo.Multiplayer") o headless:
+// Nombres de sala (TN_RoomNames.h): la tabla fija que viaja por índice en la sesión y que ahora vive en el canal de
+// localización del motor. Se comprueba lo que la interfaz, la red y la localización necesitan de ella: cantidad mínima, nada
+// vacío, cabe en pantalla (28 caracteres), sin repetidos, identidad estable de cada texto (espacio «TNRoomNames», clave
+// «Room_NNN»), nombre de reserva fuera de rango, sorteo dentro de rango que respeta «otro nombre» y, con el CSV de las
+// adaptaciones inglesas (Tools/Localization/room_names_en.csv), que el inglés cumple las mismas reglas y cuadra con el
+// origen. Correr desde Session Frontend (categoría "Tortunabo.Multiplayer") o headless:
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Multiplayer.RoomNames; Quit" -nullrhi -unattended
 
+#include "Internationalization/Text.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Multiplayer/TN_RoomNames.h"
+#include "Settings/TN_LanguageSettings.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -35,10 +41,56 @@ namespace TNRoomNamesTest
 		}
 		return false;
 	}
+
+	/** Las reglas de cualquier nombre en cualquier idioma: no vacío, sin espacios en los bordes, cabe y sin comillas ni emojis. */
+	void CheckName(FAutomationTestBase& Test, const TCHAR* Lang, int32 Id, const FString& Name)
+	{
+		Test.TestTrue(FString::Printf(TEXT("%s #%d no está vacío"), Lang, Id), !Name.IsEmpty());
+		Test.TestTrue(FString::Printf(TEXT("%s #%d sin espacios sobrantes en los bordes"), Lang, Id), Name == Name.TrimStartAndEnd());
+		Test.TestTrue(FString::Printf(TEXT("%s #%d cabe en %d caracteres (%d): %s"), Lang, Id, MaxLength, Name.Len(), *Name), Name.Len() <= MaxLength);
+		Test.TestFalse(FString::Printf(TEXT("%s #%d sin comillas ni caracteres raros: %s"), Lang, Id, *Name), HasForbiddenChar(Name));
+	}
+
+	/** Un CSV con todo entre comillas (como el que escribe Tools/Localization/room_names_en.csv): las filas, cada una con sus campos. */
+	TArray<TArray<FString>> ParseCsv(const FString& Text)
+	{
+		TArray<TArray<FString>> Rows;
+		TArray<FString> Row;
+		FString Field;
+		bool bQuoted = false;
+		bool bAny = false;
+		for (int32 i = 0; i < Text.Len(); ++i)
+		{
+			const TCHAR Ch = Text[i];
+			if (bQuoted)
+			{
+				if (Ch == TEXT('"'))
+				{
+					if (i + 1 < Text.Len() && Text[i + 1] == TEXT('"')) { Field.AppendChar(TEXT('"')); ++i; }
+					else { bQuoted = false; }
+				}
+				else { Field.AppendChar(Ch); }
+				continue;
+			}
+			if (Ch == TEXT('"')) { bQuoted = true; bAny = true; }
+			else if (Ch == TEXT(',')) { Row.Add(Field); Field.Reset(); bAny = true; }
+			else if (Ch == TEXT('\n') || Ch == TEXT('\r'))
+			{
+				if (Ch == TEXT('\r') && i + 1 < Text.Len() && Text[i + 1] == TEXT('\n')) { ++i; }
+				if (bAny || !Field.IsEmpty()) { Row.Add(Field); Rows.Add(Row); }
+				Row.Reset();
+				Field.Reset();
+				bAny = false;
+			}
+			else { Field.AppendChar(Ch); }
+		}
+		if (bAny || !Field.IsEmpty()) { Row.Add(Field); Rows.Add(Row); }
+		return Rows;
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// La tabla: cantidad, contenido, largo y repetidos
+// La tabla: cantidad, contenido, largo, repetidos e identidad en la localización
 // ─────────────────────────────────────────────────────────────────────────────
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRoomNamesTableTest,
@@ -51,35 +103,87 @@ bool FTNRoomNamesTableTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("Hay al menos %d nombres (hay %d)"), TNRoomNamesTest::MinNames, Count),
 		Count >= TNRoomNamesTest::MinNames);
 
-	// Un conjunto por idioma; se compara sin distinguir mayúsculas para que «Sea You Later» y «sea you later» cuenten como uno.
-	TSet<FString> SeenSpanish;
-	TSet<FString> SeenEnglish;
+	// Se compara sin distinguir mayúsculas para que «Sea You Later» y «sea you later» cuenten como uno.
+	TSet<FString> SeenSource;
+	TSet<FString> SeenKeys;
 
 	for (int32 Id = 0; Id < Count; ++Id)
 	{
-		for (const bool bSpanish : { true, false })
-		{
-			const TCHAR* Lang = bSpanish ? TEXT("ES") : TEXT("EN");
-			const FString Name = TNRoomNames::GetIn(Id, bSpanish);
+		const FString Source = TNRoomNames::GetSource(Id);
+		TNRoomNamesTest::CheckName(*this, TEXT("ES"), Id, Source);
 
-			TestTrue(FString::Printf(TEXT("%s #%d no está vacío"), Lang, Id), !Name.IsEmpty());
-			TestTrue(FString::Printf(TEXT("%s #%d sin espacios sobrantes en los bordes"), Lang, Id),
-				Name == Name.TrimStartAndEnd());
-			TestTrue(FString::Printf(TEXT("%s #%d cabe en %d caracteres (%d): %s"), Lang, Id, TNRoomNamesTest::MaxLength, Name.Len(), *Name),
-				Name.Len() <= TNRoomNamesTest::MaxLength);
-			TestFalse(FString::Printf(TEXT("%s #%d sin comillas ni caracteres raros: %s"), Lang, Id, *Name),
-				TNRoomNamesTest::HasForbiddenChar(Name));
+		bool bAlreadyInSet = false;
+		SeenSource.Add(Source.ToLower(), &bAlreadyInSet);
+		TestFalse(FString::Printf(TEXT("ES #%d repetido: %s"), Id, *Source), bAlreadyInSet);
 
-			bool bAlreadyInSet = false;
-			(bSpanish ? SeenSpanish : SeenEnglish).Add(Name.ToLower(), &bAlreadyInSet);
-			TestFalse(FString::Printf(TEXT("%s #%d repetido: %s"), Lang, Id, *Name), bAlreadyInSet);
-		}
+		// La identidad del texto en la localización: espacio «TNRoomNames» y una clave estable por índice.
+		const FText Text = TNRoomNames::Get(Id);
+		const FString Key = TNRoomNames::GetKey(Id);
+		TestEqual(FString::Printf(TEXT("La clave de #%d"), Id), Key, FString::Printf(TEXT("Room_%03d"), Id));
+		SeenKeys.Add(Key, &bAlreadyInSet);
+		TestFalse(FString::Printf(TEXT("Clave repetida en #%d: %s"), Id, *Key), bAlreadyInSet);
+		TestTrue(FString::Printf(TEXT("#%d es un texto localizable (FTextInspector::ShouldGatherForLocalization)"), Id), FTextInspector::ShouldGatherForLocalization(Text));
+		TestEqual(FString::Printf(TEXT("Espacio de nombres de #%d"), Id), FTextInspector::GetNamespace(Text).Get(FString()), FString(TEXT("TNRoomNames")));
+		TestEqual(FString::Printf(TEXT("Clave de localización de #%d"), Id), FTextInspector::GetKey(Text).Get(FString()), Key);
+		const FString* TextSource = FTextInspector::GetSourceString(Text);
+		TestTrue(FString::Printf(TEXT("El origen de #%d es el español"), Id), TextSource && *TextSource == Source);
 
-		// La versión de FText sigue al idioma del juego y coincide con la de GetIn.
-		TestTrue(FString::Printf(TEXT("Get(%d) es el nombre en el idioma del juego"), Id),
-			TNRoomNames::Get(Id).ToString() == TNRoomNames::GetIn(Id, TNRoomNames::IsSpanish()));
+		// El texto que se ve es el del idioma elegido: el mismo que el origen si el idioma es el español (o no hay traducción).
+		TestFalse(FString::Printf(TEXT("Get(%d) no está vacío"), Id), Text.IsEmpty());
+		TestTrue(FString::Printf(TEXT("GetIn(%d, false) es lo que se ve"), Id), TNRoomNames::GetIn(Id, false) == Text.ToString());
+		TestTrue(FString::Printf(TEXT("GetIn(%d, true) es el origen"), Id), TNRoomNames::GetIn(Id, true) == Source);
 	}
 
+	// El idioma lo manda el ajuste del juego, no la cultura del motor.
+	TestTrue(TEXT("IsSpanish sigue al idioma del juego"), TNRoomNames::IsSpanish() == TNLanguage::IsActiveLanguage(TEXT("es")));
+
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Las adaptaciones inglesas (CSV para la fase de traducción): mismas reglas y cuadran con el origen
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRoomNamesEnglishCsvTest,
+	"Tortunabo.Multiplayer.RoomNames.EnglishCsv",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRoomNamesEnglishCsvTest::RunTest(const FString& Parameters)
+{
+	const FString Path = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("Tools/Localization/room_names_en.csv"));
+	FString Text;
+	if (!FFileHelper::LoadFileToString(Text, *Path))
+	{
+		// Un juego empaquetado no lleva las herramientas: no es un fallo.
+		AddWarning(FString::Printf(TEXT("No está %s: no se comprueba el inglés."), *Path));
+		return true;
+	}
+	if (Text.Len() > 0 && Text[0] == 0xFEFF)
+	{
+		Text.RightChopInline(1);
+	}
+
+	const TArray<TArray<FString>> Rows = TNRoomNamesTest::ParseCsv(Text);
+	const int32 Count = TNRoomNames::Num();
+	// La primera fila son los títulos de las columnas.
+	TestEqual(TEXT("Filas del CSV (sin los títulos)"), Rows.Num() - 1, Count);
+
+	TSet<FString> SeenEnglish;
+	for (int32 Id = 0; Id < Count && Rows.IsValidIndex(Id + 1); ++Id)
+	{
+		const TArray<FString>& Row = Rows[Id + 1];
+		if (!TestEqual(FString::Printf(TEXT("Campos de la fila de #%d"), Id), Row.Num(), 4))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("Espacio de nombres de la fila #%d"), Id), Row[0], FString(TEXT("TNRoomNames")));
+		TestEqual(FString::Printf(TEXT("Clave de la fila #%d"), Id), Row[1], TNRoomNames::GetKey(Id));
+		TestEqual(FString::Printf(TEXT("El español de la fila #%d cuadra con el código"), Id), Row[2], TNRoomNames::GetSource(Id));
+		TNRoomNamesTest::CheckName(*this, TEXT("EN"), Id, Row[3]);
+		bool bAlreadyInSet = false;
+		SeenEnglish.Add(Row[3].ToLower(), &bAlreadyInSet);
+		TestFalse(FString::Printf(TEXT("EN #%d repetido: %s"), Id, *Row[3]), bAlreadyInSet);
+	}
 	return true;
 }
 
@@ -98,19 +202,15 @@ bool FTNRoomNamesFallbackTest::RunTest(const FString& Parameters)
 
 	for (const int32 Id : OutOfRange)
 	{
-		TestTrue(FString::Printf(TEXT("Índice %d fuera de rango → reserva en español"), Id),
-			TNRoomNames::GetIn(Id, true) == TEXT("Sala sin nombre"));
-		TestTrue(FString::Printf(TEXT("Índice %d fuera de rango → reserva en inglés"), Id),
-			TNRoomNames::GetIn(Id, false) == TEXT("Nameless Nest"));
+		TestTrue(FString::Printf(TEXT("Índice %d fuera de rango → reserva (origen en español)"), Id),
+			TNRoomNames::GetSource(Id) == TEXT("Sala sin nombre") && TNRoomNames::GetIn(Id, true) == TEXT("Sala sin nombre"));
 		TestFalse(FString::Printf(TEXT("Get(%d) fuera de rango nunca devuelve vacío"), Id),
 			TNRoomNames::Get(Id).IsEmpty());
 	}
 
 	// Los extremos válidos siguen siendo nombres de la lista, no la reserva.
-	TestTrue(TEXT("El primer índice (0) es un nombre de la lista"),
-		TNRoomNames::GetIn(0, true) != TEXT("Sala sin nombre") && TNRoomNames::GetIn(0, false) != TEXT("Nameless Nest"));
-	TestTrue(TEXT("El último índice (Num() - 1) es un nombre de la lista"),
-		TNRoomNames::GetIn(Count - 1, true) != TEXT("Sala sin nombre") && TNRoomNames::GetIn(Count - 1, false) != TEXT("Nameless Nest"));
+	TestTrue(TEXT("El primer índice (0) es un nombre de la lista"), TNRoomNames::GetSource(0) != TEXT("Sala sin nombre"));
+	TestTrue(TEXT("El último índice (Num() - 1) es un nombre de la lista"), TNRoomNames::GetSource(Count - 1) != TEXT("Sala sin nombre"));
 
 	return true;
 }

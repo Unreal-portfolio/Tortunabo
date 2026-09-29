@@ -136,6 +136,17 @@ struct FTNGameSettings
 	UPROPERTY()
 	bool bShowTalkers = false;
 
+	/**
+	 * Idioma del juego: código de cultura de la lista de idiomas (UTN_LanguageSettings; «es-ES», «en», «pt-BR»...). Vacío =
+	 * todavía sin elegir: se usa el idioma del sistema si está en la lista y, si no, el español.
+	 */
+	UPROPERTY()
+	FString Language;
+
+	/** Ojo de pez leve (proyección Panini muy suave): todo se ve algo más inmenso. Encendido de serie. */
+	UPROPERTY()
+	bool bFisheye = true;
+
 	/** Silenciar el juego cuando la ventana no está activa. */
 	UPROPERTY()
 	bool bMuteInBackground = false;
@@ -158,9 +169,9 @@ class TORTUNABO_API UTN_SettingsSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
-	/** Versión del formato, por si algún día hay que convertir ajustes viejos (2: teclas, micrófono, interfaz). */
+	/** Versión del formato, por si algún día hay que convertir ajustes viejos (2: teclas, micrófono, interfaz; 3: idioma y ojo de pez). */
 	UPROPERTY()
-	int32 Version = 2;
+	int32 Version = 3;
 
 	UPROPERTY()
 	FTNGameSettings Settings;

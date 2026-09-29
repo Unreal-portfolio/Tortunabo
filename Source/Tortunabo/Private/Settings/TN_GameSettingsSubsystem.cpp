@@ -5,6 +5,7 @@
 #include "Audio/TN_MusicSynthComponent.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
+#include "Settings/TN_LanguageSettings.h"
 #include "UI/Loading/TN_LoadingScreenSubsystem.h"
 #include "UI/Pause/TN_PauseMenuWidget.h"
 #include "Voice/ProximityVoiceComponent.h"
@@ -25,6 +26,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/UserInterfaceSettings.h"
 #include "Engine/World.h"
+#include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameFramework/InputDeviceSubsystem.h"
@@ -77,6 +79,43 @@ namespace TNGameSettingsDetail
 	constexpr float MinUIScale = 0.75f;
 	constexpr float MaxUIScale = 1.3f;
 
+	/**
+	 * Ojo de pez leve: proyección Panini del motor (r.LensDistortion.Panini.D/S; en 5.6 se aplica en el pase de escalado o dentro del
+	 * TSR, sobre la imagen del mundo, así que el HUD de UMG, que se pinta después, no se deforma). D va de 0 (sin efecto) a 1
+	 * (estereográfica); con el campo de visión de la tortuga (72-82°) hasta 1 solo comprime el borde un 10 %, por eso el valor de serie
+	 * es medio. S (compresión vertical) a 0. Se pueden probar en vivo: TN.Fisheye.D y TN.Fisheye.S.
+	 */
+	TAutoConsoleVariable<float> CVarFisheyeD(TEXT("TN.Fisheye.D"), 0.55f,
+		TEXT("Ojo de pez leve (ajuste del menú de pausa): distancia Panini con todo encendido, de 0 (sin efecto) a 1 (estereográfica). Se afloja sola con el campo de visión."),
+		ECVF_Default);
+	TAutoConsoleVariable<float> CVarFisheyeS(TEXT("TN.Fisheye.S"), 0.f,
+		TEXT("Ojo de pez leve: compresión vertical Panini de 0 a 1."), ECVF_Default);
+
+	/** Segundos que tarda el ojo de pez en encenderse o apagarse del todo (así no da un salto al cambiar el ajuste). */
+	constexpr float FisheyeFadeSeconds = 1.2f;
+
+	/**
+	 * Distancia Panini que deja el borde de la imagen igual de comprimido con el campo de visión de ahora (Fov) que BaseD con el de
+	 * reposo (RestFov), para que correr (que abre el campo de visión) no se note más. La compresión del borde respecto a la
+	 * proyección normal es c = (1 + d) cos(f) / (d + cos(f)), con f la mitad del campo de visión; se despeja d. Si el campo de visión
+	 * no es mayor que el de reposo, o no hay dato, BaseD.
+	 */
+	float FisheyeDistanceForFov(float BaseD, float RestFov, float Fov)
+	{
+		if (BaseD <= KINDA_SMALL_NUMBER || RestFov < 20.f || Fov <= RestFov + 0.1f || Fov >= 175.f)
+		{
+			return BaseD;
+		}
+		const float CosRest = FMath::Cos(FMath::DegreesToRadians(RestFov * 0.5f));
+		const float CosNow = FMath::Cos(FMath::DegreesToRadians(Fov * 0.5f));
+		const float Edge = (1.f + BaseD) * CosRest / (BaseD + CosRest);
+		if (Edge <= CosNow + KINDA_SMALL_NUMBER)
+		{
+			return BaseD;
+		}
+		return FMath::Clamp(CosNow * (1.f - Edge) / (Edge - CosNow), 0.f, BaseD);
+	}
+
 	/** Controles del jugador (los que pone ATortugaCharacter; es el único contexto de controles del juego). */
 	const TCHAR* const PlayerMappingPath = TEXT("/Game/Blueprints/Gameplay/Controls/IMC_Player.IMC_Player");
 
@@ -98,6 +137,9 @@ namespace TNGameSettingsDetail
 		Scalability::FQualityLevels QualityLevels;
 		float MaxFPS = 0.f;
 		int32 VSync = 0;
+		/** Proyección Panini del motor (ojo de pez): lo que había antes de tocarla (0 = apagada). */
+		float PaniniD = 0.f;
+		float PaniniS = 0.f;
 	};
 
 	FProcessBaseline& Baseline()
@@ -123,6 +165,11 @@ namespace TNGameSettingsDetail
 		S.ColorFilterStrength = FMath::Clamp(S.ColorFilterStrength, 0.f, 1.f);
 		S.Brightness = FMath::Clamp(S.Brightness, 0.f, 1.f);
 		S.UIScale = FMath::Clamp(S.UIScale, MinUIScale, MaxUIScale);
+		// Un idioma que ya no está en la lista (se quitó de la configuración): sin elegir, que toca el del sistema.
+		if (!S.Language.IsEmpty() && TNLanguage::IndexOf(S.Language) == INDEX_NONE)
+		{
+			S.Language.Reset();
+		}
 		// Sin tecla (None) vale: una fila se puede quedar sin tecla al dársela a otra. Una que ya no existe, a la de serie.
 		const FTNGameSettings Defaults;
 		auto FixKey = [](FName& KeyName, const FName Fallback)
@@ -303,6 +350,67 @@ namespace TNGameSettingsDetail
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Teclas retenidas
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Vigilante de teclas retenidas: un procesador de entrada de Slate que ve cada tecla antes que ningún widget.
+ *
+ * El problema: la B / Círculo del mando cierra el menú de pausa (y el resto de pantallas: tienda, resumen...) y, en juego, mete en el
+ * caparazón. Con el menú a la vista, el menú se come la pulsación; si la tecla sigue apretada cuando el menú desaparece, el
+ * motor vuelve a mandar repeticiones de esa tecla, ya al juego, y Enhanced Input (Input.AutoReconcilePressedEventsOnFirstRepeat)
+ * las toma por una pulsación nueva: la tortuga se metería en el caparazón (o saltaría, con la A de «Continuar») sin que nadie
+ * lo pidiera. Igual con el teclado (Intro, Espacio).
+ *
+ * La solución: si una tecla de una acción del juego se pulsa con un menú a la vista, se apunta; cuando el menú ya no está, sus
+ * repeticiones se descartan hasta que se suelta. Con el menú a la vista pasan todas (el menú repite al mantener una flecha).
+ */
+class FTNHeldKeyGuard : public IInputProcessor
+{
+public:
+	explicit FTNHeldKeyGuard(UTN_GameSettingsSubsystem* InOwner) : Owner(InOwner) {}
+
+	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override
+	{
+		// Sin la ventana activa se pierden los «soltar»: se olvida todo.
+		if (Swallowing.Num() > 0 && !SlateApp.IsActive())
+		{
+			Swallowing.Reset();
+		}
+	}
+
+	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
+	{
+		const UTN_GameSettingsSubsystem* Settings = Owner.Get();
+		if (!Settings)
+		{
+			return false;
+		}
+		const FKey Key = InKeyEvent.GetKey();
+		if (!InKeyEvent.IsRepeat())
+		{
+			// Pulsación nueva: con un menú a la vista es del menú; si lo cierra y la tecla sigue apretada, lo que repita no es del juego.
+			if (Settings->IsMenuUp() && Settings->IsGameplayKey(Key)) { Swallowing.Add(Key); }
+			else { Swallowing.Remove(Key); }
+			return false;
+		}
+		return Swallowing.Contains(Key) && !Settings->IsMenuUp();
+	}
+
+	virtual bool HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
+	{
+		Swallowing.Remove(InKeyEvent.GetKey());
+		return false;
+	}
+
+	virtual const TCHAR* GetDebugName() const override { return TEXT("TNHeldKeyGuard"); }
+
+private:
+	TWeakObjectPtr<UTN_GameSettingsSubsystem> Owner;
+	TSet<FKey> Swallowing;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Ciclo de vida
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -326,6 +434,8 @@ void UTN_GameSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		Base.DisplayGamma = GEngine ? GEngine->DisplayGamma : 2.2f;
 		Base.ApplicationScale = GetDefault<UUserInterfaceSettings>()->ApplicationScale;
+		if (const IConsoleVariable* PaniniD = IConsoleManager::Get().FindConsoleVariable(TEXT("r.LensDistortion.Panini.D"))) { Base.PaniniD = PaniniD->GetFloat(); }
+		if (const IConsoleVariable* PaniniS = IConsoleManager::Get().FindConsoleVariable(TEXT("r.LensDistortion.Panini.S"))) { Base.PaniniS = PaniniS->GetFloat(); }
 #if WITH_EDITOR
 		// En el editor, la calidad, los FPS y la sincronización son los del editor: se guardan para devolverlos al acabar.
 		Base.bEditor = GIsEditor;
@@ -343,17 +453,30 @@ void UTN_GameSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	OriginalMapping = LoadObject<UInputMappingContext>(nullptr, TNGameSettingsDetail::PlayerMappingPath);
 	BuildDefaultBindings();
 	RebuildRemappedMapping();
+	// El idioma va lo primero: antes de que salga ningún menú, ni siquiera el de carga.
+	SystemLanguage = TNLanguage::FindSystemLanguage();
+	ApplyLanguage();
 	ApplyGlobalSettings();
-	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Cargados: general %.0f%%, música %.0f%%, efectos %.0f%%, ambiente %.0f%%, voz %.0f%%, %s, %d teclas cambiadas, interfaz %.0f%%."),
+	if (FSlateApplication::IsInitialized())
+	{
+		HeldKeyGuard = MakeShared<FTNHeldKeyGuard>(this);
+		FSlateApplication::Get().RegisterInputPreProcessor(HeldKeyGuard);
+	}
+	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Cargados: general %.0f%%, música %.0f%%, efectos %.0f%%, ambiente %.0f%%, voz %.0f%%, %s, %d teclas cambiadas, interfaz %.0f%%, idioma %s, ojo de pez %s."),
 		Settings.MasterVolume * 100.f, Settings.MusicVolume * 100.f, Settings.EffectsVolume * 100.f, Settings.AmbientVolume * 100.f,
 		Settings.VoiceVolume * 100.f, Settings.bPushToTalk ? TEXT("pulsar para hablar") : TEXT("voz abierta"), Settings.KeyOverrides.Num(),
-		Settings.UIScale * 100.f);
+		Settings.UIScale * 100.f, *AppliedLanguage, Settings.bFisheye ? TEXT("sí") : TEXT("no"));
 }
 
 void UTN_GameSettingsSubsystem::Deinitialize()
 {
 	if (bVideoModePending) { FinishVideoModeChange(false); }
 	SaveNow();
+	if (HeldKeyGuard.IsValid())
+	{
+		if (FSlateApplication::IsInitialized()) { FSlateApplication::Get().UnregisterInputPreProcessor(HeldKeyGuard); }
+		HeldKeyGuard.Reset();
+	}
 	if (UTN_PauseMenuWidget* Menu = PauseMenu.Get())
 	{
 		PauseMenu = nullptr;
@@ -393,6 +516,9 @@ void UTN_GameSettingsSubsystem::Deinitialize()
 	{
 		if (GEngine) { GEngine->DisplayGamma = Base.DisplayGamma; }
 		GetMutableDefault<UUserInterfaceSettings>()->ApplicationScale = Base.ApplicationScale;
+		// Ojo de pez: la proyección Panini vuelve a como estaba (apagada), para que los visores del editor no se queden con ella.
+		if (IConsoleVariable* PaniniD = IConsoleManager::Get().FindConsoleVariable(TEXT("r.LensDistortion.Panini.D"))) { PaniniD->Set(Base.PaniniD, ECVF_SetByGameSetting); }
+		if (IConsoleVariable* PaniniS = IConsoleManager::Get().FindConsoleVariable(TEXT("r.LensDistortion.Panini.S"))) { PaniniS->Set(Base.PaniniS, ECVF_SetByGameSetting); }
 		if (AppliedColorFilter != 0)
 		{
 			UWidgetBlueprintLibrary::SetColorVisionDeficiencyType(EColorVisionDeficiency::NormalVision, 0.f, false, false);
@@ -447,6 +573,7 @@ void UTN_GameSettingsSubsystem::Tick(float DeltaTime)
 	UpdateInputMapping();
 
 	APlayerController* PC = GameInstance->GetFirstLocalPlayerController(World);
+	UpdateFisheye(PC, DeltaTime);
 	// El paisaje sonoro del jugador (en su PlayerController): si no trae clase propia, la de Ambiente; así también sus
 	// sonidos de sustitución (assets, AmbienceData) bajan con Ambiente en vez de con Efectos.
 	if (UTN_AmbientSoundscapeComponent* Soundscape = PC ? PC->FindComponentByClass<UTN_AmbientSoundscapeComponent>() : nullptr)
@@ -553,6 +680,9 @@ void UTN_GameSettingsSubsystem::ResetGroup(ETNSettingsGroup Group)
 		Settings.ColorFilterStrength = Defaults.ColorFilterStrength;
 		Settings.UIScale = Defaults.UIScale;
 		Settings.bShowTalkers = Defaults.bShowTalkers;
+		// Idioma sin elegir (el del sistema, o el español) y el ojo de pez de serie.
+		Settings.Language = Defaults.Language;
+		Settings.bFisheye = Defaults.bFisheye;
 		break;
 	default:
 		// Gráficos: el brillo y el contador; la calidad se elige con «Calidad recomendada» (UGameUserSettings).
@@ -644,6 +774,78 @@ float UTN_GameSettingsSubsystem::BrightnessToGamma(float Brightness) const
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Idioma
+// ─────────────────────────────────────────────────────────────────────────────
+
+FString UTN_GameSettingsSubsystem::GetLanguage() const
+{
+	return AppliedLanguage.IsEmpty() ? (TNLanguage::IndexOf(Settings.Language) != INDEX_NONE ? Settings.Language : SystemLanguage) : AppliedLanguage;
+}
+
+void UTN_GameSettingsSubsystem::SetLanguage(const FString& Culture)
+{
+	const int32 Found = TNLanguage::IndexOf(Culture);
+	const FString Chosen = Found != INDEX_NONE ? TNLanguage::GetLanguages()[Found].Culture : FString();
+	EditSettings([&Chosen](FTNGameSettings& S) { S.Language = Chosen; });
+	SaveNow();
+}
+
+void UTN_GameSettingsSubsystem::ApplyLanguage()
+{
+	// El guardado si sigue en la lista; sin elegir (o si se quitó de la lista), el del sistema (calculado al crearse).
+	const int32 Found = TNLanguage::IndexOf(Settings.Language);
+	const FString Wanted = Found != INDEX_NONE ? TNLanguage::GetLanguages()[Found].Culture : (SystemLanguage.IsEmpty() ? TNLanguage::GetNativeCulture() : SystemLanguage);
+	if (Wanted == AppliedLanguage)
+	{
+		return;
+	}
+	AppliedLanguage = Wanted;
+	TNLanguage::Apply(Wanted);
+	UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Idioma: %s (%s)."), *Wanted, Found != INDEX_NONE ? TEXT("elegido") : TEXT("el del sistema"));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ojo de pez leve
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_GameSettingsSubsystem::UpdateFisheye(APlayerController* PC, float DeltaTime)
+{
+	using namespace TNGameSettingsDetail;
+	static IConsoleVariable* const PaniniD = IConsoleManager::Get().FindConsoleVariable(TEXT("r.LensDistortion.Panini.D"));
+	static IConsoleVariable* const PaniniS = IConsoleManager::Get().FindConsoleVariable(TEXT("r.LensDistortion.Panini.S"));
+	if (!PaniniD)
+	{
+		return;
+	}
+
+	// Se enciende y se apaga poco a poco (así no salta al cambiar el ajuste).
+	FisheyeAmount = FMath::FInterpConstantTo(FisheyeAmount, Settings.bFisheye ? 1.f : 0.f, DeltaTime, 1.f / FisheyeFadeSeconds);
+
+	float D = 0.f;
+	float S = 0.f;
+	if (FisheyeAmount > KINDA_SMALL_NUMBER)
+	{
+		// Correr abre el campo de visión: la distancia se afloja para que el borde se comprima igual que en reposo.
+		float BaseD = FMath::Clamp(CVarFisheyeD.GetValueOnGameThread(), 0.f, 1.f);
+		const APlayerCameraManager* Camera = PC ? PC->PlayerCameraManager.Get() : nullptr;
+		const ATortugaCharacter* Turtle = PC ? Cast<ATortugaCharacter>(PC->GetPawn()) : nullptr;
+		if (Camera && Turtle)
+		{
+			BaseD = FisheyeDistanceForFov(BaseD, Turtle->GetCameraFOVDefault(), Camera->GetFOVAngle());
+		}
+		const float Eased = FMath::SmoothStep(0.f, 1.f, FisheyeAmount);
+		D = BaseD * Eased;
+		S = FMath::Clamp(CVarFisheyeS.GetValueOnGameThread(), 0.f, 1.f) * Eased;
+	}
+	if (!FMath::IsNearlyEqual(D, AppliedPaniniD, 0.0005f))
+	{
+		AppliedPaniniD = D;
+		PaniniD->Set(D, ECVF_SetByGameSetting);
+		if (PaniniS) { PaniniS->Set(S, ECVF_SetByGameSetting); }
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Cámara (getters para cualquier cámara, también la del espectador)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -703,6 +905,9 @@ void UTN_GameSettingsSubsystem::CreateSoundClasses()
 
 void UTN_GameSettingsSubsystem::ApplyGlobalSettings()
 {
+	// Idioma (solo hace algo si ha cambiado).
+	ApplyLanguage();
+
 	// Clases propias: el dispositivo lee su volumen en cada actualización.
 	if (MusicClass) { MusicClass->Properties.Volume = Settings.MusicVolume; }
 	if (AmbientClass) { AmbientClass->Properties.Volume = Settings.AmbientVolume; }
@@ -1301,6 +1506,34 @@ void UTN_GameSettingsSubsystem::BuildDefaultBindings()
 	Pause.Defaults[1] = FKey(Defaults.PausePadKey);
 	Pause.Order = 20010;
 
+	// Teclas de serie que el código pone hasta que IMC_Player las traiga (Scripts/imc_player_shell_b.py): B / Círculo del mando para
+	// meterse en el caparazón. Si el asset ya tiene una tecla de mando en esa acción, o esa tecla la usa otra fila del mando, no se
+	// hace nada (y con el asset al día, esta lista queda vacía).
+	PendingCodeDefaults.Reset();
+	auto AddCodeDefault = [this](const TCHAR* RowId, int32 Device, const FKey& Key)
+	{
+		FTNKeyBinding* Row = DefaultBindings.FindByPredicate([RowId](const FTNKeyBinding& Existing) { return Existing.Id == RowId; });
+		if (!Row || !Row->Direction.IsEmpty() || Row->Defaults[Device].IsValid() || Row->FixedKeys[Device].IsValid())
+		{
+			return;
+		}
+		for (const FTNKeyBinding& Other : DefaultBindings)
+		{
+			if (Other.Id != Row->Id && SamePhysicalKey(Other.Defaults[Device], Key))
+			{
+				return;
+			}
+		}
+		Row->Defaults[Device] = Key;
+		Row->bEditable[Device] = true;
+		FCodeDefaultKey Pending;
+		Pending.RowId = Row->Id;
+		Pending.Device = Device;
+		Pending.Key = Key;
+		PendingCodeDefaults.Add(MoveTemp(Pending));
+	};
+	AddCodeDefault(TEXT("IA_Shell"), 1, EKeys::Gamepad_FaceButton_Right);
+
 	DefaultBindings.StableSort([](const FTNKeyBinding& A, const FTNKeyBinding& B) { return A.Order < B.Order; });
 	FixedControls.StableSort([](const FTNKeyBinding& A, const FTNKeyBinding& B) { return A.Order < B.Order; });
 	for (FTNKeyBinding& Row : DefaultBindings)
@@ -1500,12 +1733,21 @@ void UTN_GameSettingsSubsystem::RebuildRemappedMapping()
 	using namespace TNGameSettingsDetail;
 	UInputMappingContext* Previous = RemappedMapping;
 	RemappedMapping = nullptr;
-	if (OriginalMapping && Settings.KeyOverrides.Num() > 0)
+	if (OriginalMapping && (Settings.KeyOverrides.Num() > 0 || PendingCodeDefaults.Num() > 0))
 	{
 		// Copia transitoria de IMC_Player (con sus modificadores y disparadores) con las teclas del jugador.
 		UInputMappingContext* Copy = DuplicateObject<UInputMappingContext>(OriginalMapping, this,
 			MakeUniqueObjectName(this, UInputMappingContext::StaticClass(), TEXT("IMC_Player_Jugador")));
 		Copy->SetFlags(RF_Transient);
+		// Las teclas de serie que solo pone el código (IMC_Player aún no las trae), salvo que el jugador ya haya decidido esa fila.
+		for (const FCodeDefaultKey& Pending : PendingCodeDefaults)
+		{
+			const FTNKeyBinding* Row = FindDefaultBinding(Pending.RowId);
+			if (Row && Row->Action.Get() && !Settings.KeyOverrides.Contains(OverrideName(Pending.RowId, Pending.Device)))
+			{
+				Copy->MapKey(Row->Action.Get(), Pending.Key);
+			}
+		}
 		for (const FTNKeyBinding& Row : DefaultBindings)
 		{
 			const UInputAction* Action = Row.Action.Get();
@@ -1597,9 +1839,39 @@ const UInputMappingContext* UTN_GameSettingsSubsystem::ResolveMappingContext(con
 	return Mapping;
 }
 
+bool UTN_GameSettingsSubsystem::IsGameplayKey(const FKey& Key) const
+{
+	const UInputMappingContext* Mapping = RemappedMapping ? RemappedMapping.Get() : OriginalMapping.Get();
+	if (!Mapping)
+	{
+		return false;
+	}
+	for (const FEnhancedActionKeyMapping& Entry : Mapping->GetMappings())
+	{
+		if (Entry.Action && TNGameSettingsDetail::SamePhysicalKey(Entry.Key, Key))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Menú de pausa
 // ─────────────────────────────────────────────────────────────────────────────
+
+bool UTN_GameSettingsSubsystem::IsMenuUp() const
+{
+	if (IsPauseMenuOpen())
+	{
+		return true;
+	}
+	// Otra interfaz que se pulsa (tienda, probador, resumen de la carrera...): el juego enseña el cursor.
+	const UGameInstance* GameInstance = GetGameInstance();
+	const UWorld* World = GameInstance ? GameInstance->GetWorld() : nullptr;
+	const APlayerController* PC = World ? GameInstance->GetFirstLocalPlayerController(World) : nullptr;
+	return PC && PC->ShouldShowMouseCursor();
+}
 
 void UTN_GameSettingsSubsystem::EnsurePauseInput(APlayerController* PC)
 {

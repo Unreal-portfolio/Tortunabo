@@ -2,7 +2,7 @@
 
 Una partida de Tortunavy es una **sala**: la sesión de Steam (el subsistema NULL en el editor) que crea el anfitrión al
 pulsar «Crear partida». Cada sala tiene un **nombre** gracioso de la playa (al azar de `TNRoomNames`, cada jugador lo lee
-en su idioma), un **código** de 5 caracteres, un **modo** (Cooperativo o Carrera), unas **plazas** (4, 6 u 8, el
+en el idioma que ha elegido en el juego), un **código** de 5 caracteres, un **modo** (Cooperativo o Carrera), unas **plazas** (4, 6 u 8, el
 anfitrión incluido) y puede ser **pública** (sale en la lista de «Unirse») o **privada** (solo se entra con el código o
 por invitación de Steam). El anfitrión puede **cerrarla** (no entra nadie más) y **expulsar** a quien quiera. El cierre,
 las plazas y los expulsados los aplica el servidor al entrar (PreLogin), no solo el anuncio.
@@ -13,7 +13,7 @@ las plazas y los expulsados los aplica el servidor al entrar (PreLogin), no solo
 |---|---|---|
 | `UMP_GameInstance` | `Multiplayer/MP_GameInstance.*` | Crea la sala (`HostRoom` → `HostSession`), busca (`RefreshRoomList`, `JoinRoomByCode`, `FindAndJoinSession`), entra (`JoinListedRoom`), cierra y abre (`SetRoomLocked`), expulsa (`KickFromRoom`), rechaza al entrar (`HandleGameModePreLogin`) y mantiene el anuncio y el `ATN_RoomInfo` al día (`RoomTick`, cada segundo). |
 | `TN_RoomTypes` | `Multiplayer/TN_RoomTypes.*` | Claves de la sesión (`TNRoomKeys`), códigos (`TNRoomCode`), `FTNRoomConfig`, `FTNRoomListing`, `FTNRoomSnapshot` y los textos de rechazo (`TNRoomText`). |
-| `TNRoomNames` | `Multiplayer/TN_RoomNames.*` | La lista de nombres en español e inglés; la sesión anuncia solo el índice. |
+| `TNRoomNames` | `Multiplayer/TN_RoomNames.*` | Los 242 nombres, en el canal de localización del motor: texto origen en español de España (`NSLOCTEXT("TNRoomNames", "Room_000", ...)`, una clave estable por índice); cada idioma lo adapta en su `Game.po` ([Localización](Localizacion.md)). Las adaptaciones inglesas de antes están en `Tools/Localization/room_names_en.csv`, listas para meterse como traducción al inglés. La sesión anuncia solo el índice. |
 | `ATN_RoomInfo` | `Multiplayer/TN_RoomInfo.*` | Actor replicado (siempre relevante) con la sala: nombre, código, privada, cerrada, plazas y anfitrión, y los expulsados. Lo crea la GameInstance del anfitrión en cada mapa; los invitados lo leen para el menú de pausa. |
 | `UTN_RoomMenuWidget` | `UI/Menu/TN_RoomMenuWidget.*` | Pantallas «Crear partida» y «Unirse» del menú principal, y el aviso de arriba al volver al menú. |
 | `UTN_RoomCodeField` | `UI/Menu/TN_RoomMenuWidget.*` | Campo del código: cinco casillas, mayúsculas automáticas, pegar, teclado, ratón y mando. |
@@ -29,7 +29,7 @@ lobby con el sufijo del tipo (`ROOMCODE_s`, `PRIVATE_i`...).
 | Clave | Tipo | Qué es |
 |---|---|---|
 | `SEARCH_KEYWORDS` | texto | `TortunaboLobby`: separa nuestras salas de las de otros proyectos (el AppId 480 de pruebas es compartido). |
-| `ROOMNAME_ID` | número | Índice del nombre en `TNRoomNames` (nunca el texto: cada uno lo lee en su idioma). |
+| `ROOMNAME_ID` | número | Índice del nombre en `TNRoomNames` (nunca el texto: cada uno lo lee en el idioma elegido en el juego; el índice y el orden de la tabla no cambian nunca). |
 | `ROOMCODE` | texto | Código de 5 caracteres. Lo tienen todas las salas; solo se enseña en las privadas (y en la página «Sala»). |
 | `PRIVATE` | número | 1: privada. |
 | `LOCKED` | número | 1: cerrada por el anfitrión. |
@@ -79,7 +79,7 @@ PreLogin) y, si no, el tope de `DefaultGame.ini`.
   Mayús+Insert, clic derecho o «Pegar» pegan (de «Código: K7M2P» saca «K7M2P») e Intro entra. Con mando: A empieza a
   escribir; ↑ ↓ cambian la letra, ← → la casilla, X borra y A o B terminan. La rueda del ratón sobre una casilla también
   cambia su letra.
-- **Partidas públicas**: la lista (hasta 200 salas) con el nombre en tu idioma, el modo y el anfitrión, «3/4» y si está
+- **Partidas públicas**: la lista (hasta 200 salas) con el nombre en el idioma que has elegido, el modo y el anfitrión, «3/4» y si está
   cerrada (candado, en coral) o llena. Primero las que tienen sitio y, entre ellas, las más llenas. Se busca al abrir la
   pantalla, cada 20 s mientras está abierta y con «Actualizar» (F5 o Y del mando). Intro, A o clic en una sala: entrar.
 
@@ -137,7 +137,8 @@ su propia GameInstance, que en el editor hay una por ventana). En orden:
 3. No es miembro y ya hay tantas tortugas como plazas (`GetNumPlayers + GetNumSpectators`) → `TNRoom:Full`.
 
 El texto viaja como fallo de red (`NMT_Failure` → `PendingConnectionFailure`) y el cliente lo cambia por el mensaje en su
-idioma (`TNRoomText::RefusedMessage`), deja la sesión y vuelve al menú. Con el viaje sin cortes del juego (lobby ↔
+idioma (`TNRoomText::RefusedMessage`: `FText` de la localización, «TNRooms», así que sale en el idioma elegido en el juego y se
+traduce con el resto), deja la sesión y vuelve al menú. Con el viaje sin cortes del juego (lobby ↔
 partida) nadie vuelve a pasar por el PreLogin; solo quien se reconecta tras perder la conexión.
 
 ## Detalles
@@ -187,3 +188,20 @@ partida) nadie vuelve a pasar por el PreLogin; solo quien se reconecta tras perd
 8. Viajes: con la sala cerrada, empezar la partida (lobby → carrera o mapa procedural) y volver al lobby: nadie se queda
    fuera; la cabecera de la pausa sigue diciendo «cerrada» y el código es el mismo.
 9. El anfitrión cierra el juego a mitad: B vuelve al menú con «Se ha acabado la partida: el anfitrión se ha ido…».
+
+## Idioma de los nombres y de los avisos
+
+Antes `TNRoomNames::IsSpanish()` miraba la cultura del motor, que en el editor (y en un juego sin datos de localización «es»)
+es «en» aunque Windows esté en español, y el nombre salía en inglés. Ahora:
+
+- La tabla es texto origen en español de España en el canal de localización: `Get(Id)` devuelve un `FText` con espacio de
+  nombres `TNRoomNames` y clave `Room_%03d` (la prueba `Tortunabo.Multiplayer.RoomNames.Table` comprueba la identidad de los 242).
+  El idioma sale del ajuste «Idioma» del menú de pausa (`TNLanguage`), no de la cultura de Windows ni de la del editor: en el juego
+  es la cultura del motor y en el editor la previsualización del idioma del juego. Sin traducción, el nombre sale en español.
+- `TNRoomNames::GetSource` es el español (registros, localización) y `IsSpanish` sigue al idioma del juego.
+- El inglés de antes (adaptaciones con la misma gracia, no traducciones) está en `Tools/Localization/room_names_en.csv`
+  (`Namespace, Key, Spanish, English`); la fase de traducción lo usa tal cual como traducción al inglés y
+  `Tortunabo.Multiplayer.RoomNames.EnglishCsv` comprueba que cumple las mismas reglas (28 caracteres, sin repetidos) y cuadra con el
+  código.
+- Los avisos de rechazo (`TNRoomText::RefusedMessage`, «expulsado», «cerrada», «llena») ya eran `NSLOCTEXT` y siguen el mismo
+  idioma; el que se guarda en `PendingMenuNotice` es un `FText` y se vuelve a resolver al enseñarse.

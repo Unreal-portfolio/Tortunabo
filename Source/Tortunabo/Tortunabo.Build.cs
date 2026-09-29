@@ -13,6 +13,8 @@ public class Tortunabo : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			// Lista de idiomas editable desde Config/DefaultGame.ini (UTN_LanguageSettings, Docs/Localizacion.md).
+			"DeveloperSettings",
 			"InputCore",
 			// Material físico del caparazón con física propia (UPhysicalMaterial, FPhysicsInterface::UpdateMaterial).
 			"PhysicsCore",

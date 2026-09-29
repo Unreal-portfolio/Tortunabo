@@ -14,6 +14,7 @@
 #include "Multiplayer/TN_RoomNames.h"
 #include "Player/TortugaCharacter.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
+#include "Settings/TN_LanguageSettings.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
@@ -2315,6 +2316,33 @@ void UTN_PauseMenuWidget::FillGameTab()
 	TWeakObjectPtr<UTN_GameSettingsSubsystem> WeakSettings(Settings);
 	const FTNGameSettings& Data = Settings->GetSettings();
 
+	// El idioma, lo primero de la pestaña (y el título en dos idiomas): quien no lea el que tiene puesto debe poder encontrarlo.
+	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadLanguage", "IDIOMA / LANGUAGE"));
+	if (UTN_PauseRow* Row = AddListRow(SettingsList))
+	{
+		TArray<FText> Names;
+		TArray<FString> Cultures;
+		for (const FTNLanguageEntry& Entry : TNLanguage::GetLanguages())
+		{
+			Names.Add(FText::FromString(TNLanguage::GetDisplayName(Entry)));
+			Cultures.Add(Entry.Culture);
+		}
+		const int32 Current = FMath::Max(0, TNLanguage::IndexOf(Settings->GetLanguage()));
+		Row->SetupChoice(NSLOCTEXT("TNPause", "Language", "Idioma / Language"), Names, Current, [WeakThis, WeakSettings, Cultures](int32 Choice)
+		{
+			UTN_GameSettingsSubsystem* S = WeakSettings.Get();
+			if (!S || !Cultures.IsValidIndex(Choice))
+			{
+				return;
+			}
+			// Se pone en caliente: los textos son FText y se traducen solos; el menú solo refresca lo que guarda como texto.
+			S->SetLanguage(Cultures[Choice]);
+			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->OnLanguageChanged(); }
+		});
+		Row->SetDescription(NSLOCTEXT("TNPause", "LanguageDesc",
+			"El idioma de todo el juego, al momento. Sin elegir, el de tu sistema. «Restablecer esta pestaña» lo vuelve a poner así."));
+	}
+
 	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadCamera", "CÁMARA"));
 	AddToggleRow(NSLOCTEXT("TNPause", "Shake", "Temblor de cámara"),
 		NSLOCTEXT("TNPause", "ShakeDesc", "Golpes, quads de la carrera, tormenta... Apágalo si te marea."),
@@ -2342,6 +2370,12 @@ void UTN_PauseMenuWidget::FillGameTab()
 			Row->SetDescription(NSLOCTEXT("TNPause", "FovDesc", "Cuánto se ve a los lados. Al correr se abre un poco más, como siempre."));
 		}
 	}
+	AddToggleRow(NSLOCTEXT("TNPause", "Fisheye", "Ojo de pez leve"),
+		NSLOCTEXT("TNPause", "FisheyeDesc", "Curva un poco los bordes de la imagen para que todo se vea aún más inmenso. No toca el HUD. Apágalo si te marea."),
+		Data.bFisheye, [WeakSettings](bool bOn)
+		{
+			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bFisheye = bOn; }); }
+		});
 
 	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadInterface", "INTERFAZ"));
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
@@ -2378,17 +2412,12 @@ void UTN_PauseMenuWidget::FillGameTab()
 		});
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
-		Row->SetupInfo(NSLOCTEXT("TNPause", "Language", "Idioma"), NSLOCTEXT("TNPause", "Spanish", "Español"), FText::GetEmpty());
-		Row->SetDescription(NSLOCTEXT("TNPause", "LanguageDesc", "Por ahora Tortunavy solo está en español."));
-	}
-	if (UTN_PauseRow* Row = AddListRow(SettingsList))
-	{
 		Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "ResetGame", "Restablecer esta pestaña"), [WeakThis, WeakSettings]()
 		{
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Game); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Game); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara encendido, campo de visión e interfaz de siempre, sin filtro de color y sin «Quién habla»."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla» y el idioma de tu sistema."));
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
@@ -2400,7 +2429,7 @@ void UTN_PauseMenuWidget::FillGameTab()
 				return;
 			}
 			Menu->AskConfirm(NSLOCTEXT("TNPause", "ResetAllTitle", "¿Restablecer todos los ajustes?"),
-				NSLOCTEXT("TNPause", "ResetAllText", "Sonido, voz, micrófono, controles (teclas incluidas), juego, brillo y FPS vuelven a los de serie. La calidad gráfica y la pantalla no se tocan."),
+				NSLOCTEXT("TNPause", "ResetAllText", "Sonido, voz, micrófono, controles (teclas incluidas), juego (idioma incluido), brillo y FPS vuelven a los de serie. La calidad gráfica y la pantalla no se tocan."),
 				NSLOCTEXT("TNPause", "ResetAllYes", "Restablecer"), [WeakThis, WeakSettings]()
 				{
 					if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetAll(); }
@@ -3188,6 +3217,15 @@ void UTN_PauseMenuWidget::RefreshHint()
 		HintText->SetText(NSLOCTEXT("TNPause", "HintHome", "Intro · A  Elegir      Esc · B  Continuar      Tab · Start  Cerrar"));
 		break;
 	}
+}
+
+void UTN_PauseMenuWidget::OnLanguageChanged()
+{
+	// Los rótulos son FText de la localización y se traducen solos; aquí, lo que el menú compone como texto: la cabecera, el pie
+	// y la ayuda de la fila enfocada. No se rehace la lista para no perder el foco ni el desplazamiento.
+	RefreshHeader();
+	RefreshHint();
+	if (UTN_PauseRow* Row = LastFocused.Get()) { HandleRowFocused(Row); }
 }
 
 void UTN_PauseMenuWidget::PlayUISound(ETNPauseSound Sound, float Pitch)

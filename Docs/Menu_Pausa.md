@@ -13,7 +13,9 @@ con el estilo del HUD (`TN_HUDArt`, `TN_HUDStyle`, `TN_ShopArt`) y los ajustes s
 | `UTN_GameSettingsSubsystem` | `Settings/TN_GameSettingsSubsystem.*` | `UGameInstanceSubsystem` + `FTickableGameObject`. Carga, aplica y guarda los ajustes; teclas del jugador (copia de `IMC_Player`); mete la tecla del menú en el PlayerController; abre y cierra el menú; getters de cámara para cualquier cámara (el espectador incluido). |
 | `FTNKeyBinding`, `ETNRebindResult` | `Settings/TN_GameSettingsSubsystem.h` | Una fila de la lista de controles (acción o dirección, tecla de teclado y ratón y botón del mando, de ahora y de serie) y el resultado de cambiarla. |
 | `UTN_SettingsFovModifier` | `Settings/TN_GameSettingsSubsystem.h` | Modificador de cámara (prioridad 250) que suma el campo de visión del jugador cuando mira a otra tortuga (espectador). |
-| `FTNGameSettings`, `UTN_SettingsSaveGame` | `Settings/TN_SettingsSaveGame.h` | Los ajustes que no son de `UGameUserSettings` y su ranura de guardado (versión 2: teclas, micrófono, interfaz). |
+| `FTNGameSettings`, `UTN_SettingsSaveGame` | `Settings/TN_SettingsSaveGame.h` | Los ajustes que no son de `UGameUserSettings` y su ranura de guardado (versión 3: teclas, micrófono, interfaz, idioma y ojo de pez). |
+| `UTN_LanguageSettings`, `TNLanguage` | `Settings/TN_LanguageSettings.*` | La lista de idiomas (editable en `Config/DefaultGame.ini`, sin tocar código), el idioma del sistema en términos de esa lista y el cambio en caliente de la cultura. Ver [Localización](Localizacion.md). |
+| `TNHUDFonts` | `Private/UI/HUD/TN_HUDFonts.*` | La fuente compuesta de la interfaz (`TNHUDStyle::Font`): la del motor más una fuente de reserva por idioma cuando su archivo está en `Content/Slate/Fonts`. |
 | `UTN_PauseMenuWidget` | `UI/Pause/TN_PauseMenuWidget.*` | El menú: cabecera, portada, ajustes en cinco pestañas, página de controles (con el cambio de teclas), avisos y cuadro de confirmación. |
 | `UTN_PauseRow` | `UI/Pause/TN_PauseMenuWidget.*` | Fila enfocable: botón, deslizador, lista de opciones, texto, medidor o tecla. |
 | `UTN_FpsCounterWidget` | `UI/Pause/TN_PauseMenuWidget.*` | Contador de FPS (ajuste «Mostrar FPS»). |
@@ -232,7 +234,8 @@ código: se enseñan, no se cambian.
 | Tamaño de la interfaz (75-130 %) | `UUserInterfaceSettings::ApplicationScale` = el que había × el elegido. Es la escala extra que el motor multiplica a la escala DPI del viewport del juego (`SGameLayerManager`), así que cambia el HUD y los menús de UMG al momento y no la interfaz del editor. El menú de pausa se encoge si no cabe. |
 | Filtro para daltónicos (deuteranopía, protanopía, tritanopía) e intensidad | `UWidgetBlueprintLibrary::SetColorVisionDeficiencyType` en modo corrección: Slate lo aplica a la imagen final de la ventana, así que corrige a la vez el mapa, el HUD y sus marcadores (no hace falta tocar sus colores uno a uno). |
 | Quién habla (texto) | `UTN_TalkersWidget` a la derecha: «X habla» (o «Tú hablas») por cada jugador que se oye hablar (`IsHeardSpeaking`), sin los silenciados. Para jugar sin sonido o si se oye mal. Los mensajes de las frases rápidas ya son de texto. |
-| Idioma | Solo hay español: se enseña, no se cambia. |
+| Idioma (primera fila de la pestaña, con el título «IDIOMA / LANGUAGE» para que se encuentre aunque no se lea el idioma puesto) | Lista con los idiomas de `UTN_LanguageSettings`, cada uno con su nombre escrito en su idioma (Español, English, Français, Deutsch, Italiano, Português, Русский, Polski, Türkçe, 日本語, 한국어, 简体中文, 繁體中文). Se pone en caliente (`UTN_GameSettingsSubsystem::SetLanguage` → `TNLanguage::Apply`: en el juego, `SetCurrentCulture` sin guardarla en la configuración del motor; en el editor, solo los textos del juego con la previsualización del idioma del juego, para no cambiar el idioma del editor) y se guarda en `Language`. Sin elegir, al arrancar se usa el idioma del sistema si está en la lista (es-MX → es-ES, pt-PT → pt-BR, zh-TW → zh-Hant...) y, si no, el español; se aplica al crearse la GameInstance, antes de que salga ningún menú. «Restablecer esta pestaña» vuelve a «sin elegir». El menú refresca lo que compone como texto (cabecera, pie, ayuda); los rótulos son `FText` y se traducen solos. |
+| Ojo de pez leve (activado de serie) | Proyección Panini del motor: `r.LensDistortion.Panini.D` (en UE 5.6 los cvars son `r.LensDistortion.Panini.*`, no `r.Upscale.Panini.*`). Se aplica sobre la imagen del mundo, en el pase de escalado o dentro del TSR (`r.TSR.LensDistortion`), así que el HUD de UMG, que se pinta después, no se deforma. Valor suave (`TN.Fisheye.D` = 0,55 con todo encendido; con el campo de visión de la tortuga, 72-82°, la proyección Panini entera solo comprime el borde un 10 %), que se enciende y apaga en 1,2 s y se afloja con el campo de visión (`FisheyeDistanceForFov`: al correr, 82°, baja hasta ~0,35 para que el borde se comprima igual que en reposo). Ajustable en vivo con `TN.Fisheye.D` y `TN.Fisheye.S` (compresión vertical). Al acabar la partida en el editor, los cvars vuelven a como estaban. Las capturas de escena (probador, podio) también lo llevan: es un cvar de todo el proceso. |
 
 Cada pestaña (menos la de gráficos) tiene «Restablecer». En gráficos, «Calidad recomendada». En Juego, además,
 **«Restablecer todos los ajustes»** (con confirmación): sonido, voz, micrófono, controles con sus teclas, juego, brillo y
@@ -257,7 +260,7 @@ FPS a los de serie; la calidad gráfica y la pantalla no se tocan.
 - **Salida de audio (auriculares, altavoces)**: el dispositivo de audio del motor se abre al arrancar y cambiarlo es
   rehacer el mezclador; se usa la salida predeterminada de Windows.
 - **Vibración del mando**: el juego no usa vibración (no hay `ForceFeedback`).
-- **Idioma**: solo hay español.
+- **Idioma en el menú principal**: el menú de pausa no existe allí (`MP_MenuPlayerController`), así que el idioma se cambia dentro del lobby o de una partida; el del sistema se aplica desde el primer fotograma.
 - **Subtítulos**: no hay voces grabadas ni diálogos; la voz de los jugadores tiene «Quién habla» y las frases rápidas ya
   son texto.
 - **Cambiar las teclas del espectador**: son fijas en código (`ATN_SpectatorGhost`); se enseñan en la lista.
@@ -278,6 +281,28 @@ FPS a los de serie; la calidad gráfica y la pantalla no se tocan.
   a poner en el PlayerController, la tortuga y el viewport nuevos.
 - Cerrar y abrir el juego: todo sale de `TN_Settings.sav` (y `GameUserSettings.ini`) al crearse la GameInstance, antes de
   que empiece la voz, así que el micrófono elegido y las teclas valen desde el primer momento.
+
+## Mando: B / Círculo para meterse en el caparazón
+
+Meterse o salir del caparazón (`IA_Shell`) solo iba con Ctrl izquierdo. Ahora también va con **B / Círculo** del mando
+(`Gamepad_FaceButton_Right`):
+
+- **Qué hacía B en juego**: nada. `IMC_Player` no la usaba (solo A/Cruz, X/Cuadrado, Y/Triángulo, los hombros, los gatillos y
+  los sticks) y ningún otro asset ni código de juego la lee; B solo era «volver» en los menús (pausa, tienda, briefing, salas,
+  campeón de la carrera). No había un choque de acciones.
+- **Dónde se pone**: en `IMC_Player`, con `Scripts/imc_player_shell_b.py` (se ejecuta una vez desde el editor abierto: mira lo que
+  hay, se niega si B es de otra acción y guarda el asset). Mientras el asset no la traiga, `UTN_GameSettingsSubsystem` la pone como
+  tecla de serie de `IA_Shell` (`PendingCodeDefaults`: la copia transitoria de `IMC_Player` la añade), así que ya vale sin ejecutar
+  el script; con el asset al día esa lista queda vacía y manda el asset. La lista de controles («Meterse en el caparazón») y el
+  cambio de teclas la enseñan sola en la columna del mando: sale de `IMC_Player` en ejecución.
+- **El choque de verdad: B cierra un menú y, al mantenerla, mete en el caparazón.** Con el menú a la vista, el menú se come la
+  pulsación; si la tecla sigue apretada cuando el menú desaparece, el motor manda repeticiones de esa tecla ya al juego y
+  Enhanced Input las toma por una pulsación nueva (`Input.AutoReconcilePressedEventsOnFirstRepeat`): la tortuga se metería en el
+  caparazón sin que nadie lo pidiera. Lo mismo pasa con la A/Cruz al pulsar «Continuar» (saltaba) y con Intro o Espacio.
+  `UTN_GameSettingsSubsystem` registra un procesador de entrada de Slate (`FTNHeldKeyGuard`, el primero en ver cada tecla): si una
+  tecla de una acción del juego se pulsa con un menú a la vista (el de pausa u otra interfaz con el cursor: tienda, probador,
+  resumen de la carrera...), sus repeticiones se descartan cuando el menú ya no está y hasta que se suelta. Con el menú a la vista
+  pasan todas (mantener una flecha o A/D sigue repitiendo en las listas). Sirve para todas las pantallas, no solo esta.
 
 ## Retroceso ya no saca de la partida
 
@@ -330,3 +355,14 @@ solo va hacia atrás.
 17. «Menú principal» en el anfitrión cierra la partida para los dos; «Salir al escritorio» cierra el juego.
 18. Abrir el menú con el recuento de la carrera en pantalla y cerrar cuando sale el campeón: al cerrar, el cursor sigue
     para pulsar sus botones.
+19. Idioma: Ajustes > Juego > «Idioma / Language» (primera fila). Cambiar a English y a Deutsch: los rótulos del menú, la cabecera
+    y la ayuda cambian al momento (hasta que no haya traducciones, los textos siguen en español: es lo normal); el nombre de la sala
+    sale en el idioma elegido, no en el de Windows. Cerrar y abrir el juego: sigue el elegido. «Restablecer esta pestaña»: vuelve al
+    del sistema. Con Windows en español y sin elegir: español. En la fila se leen los trece nombres (日本語, 한국어, Русский...).
+20. Ojo de pez leve: viene encendido; se nota en los bordes (los árboles y la orilla se curvan un poco) y no en el HUD ni en el
+    menú. Ajustes > Juego > «Ojo de pez leve» = No: se apaga en poco más de un segundo. Correr (el campo de visión se abre): el
+    borde no salta ni marea. `TN.Fisheye.D 0.3` / `0.8` para comparar intensidades. Con el editor, al acabar PIE, el visor normal
+    no queda deformado.
+21. B / Círculo: con el mando, B mete en el caparazón y saca (y Ctrl izquierdo sigue valiendo). Abrir el menú con Start, cerrar con B
+    manteniéndola un segundo: la tortuga NO se mete en el caparazón. Igual con A al pulsar «Continuar» (no salta) y en la
+    tienda. En Ajustes > Controles > «Cambiar teclas y botones» la fila «Meterse en el caparazón» enseña «B / Círculo» en el mando.

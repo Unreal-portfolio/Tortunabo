@@ -99,6 +99,13 @@ literal (como los nombres de sala).
     jugadores), accesibilidad (cada opción y por qué está) y comandos de prueba. Sale del código y de los documentos de
     `Docs/`, no de memoria; con referencias a los archivos. Nombre propuesto: `Docs/Biblia_Tortunavy.md`.
 
+## Tutorial de primera partida
+
+14. **Pasillo de tutorial en el cielo** (petición del 29-09-2026, en curso): la primera partida de cada persona empieza en
+    un pasillo corto muy por encima del lobby (no se ve desde abajo) que enseña todos los controles y mecánicas con
+    objetos; acaba en una cascada que se desvanece a mitad de la caída y deja caer al lobby. Por jugador (también un
+    cliente nuevo), con reset desde un archivo para probarlo en el editor. Detalle en `Docs/Tutorial.md`.
+
 ## Pendiente de antes
 
 - Voz con Opus (ahora 16 kHz y 4 oyentes como arreglo provisional) y medir con `stat net` con 4 y 8.

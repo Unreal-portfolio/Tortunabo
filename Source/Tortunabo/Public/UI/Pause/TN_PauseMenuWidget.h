@@ -541,6 +541,8 @@ private:
 	void FocusRow(UTN_PauseRow* Row);
 	void FocusFirstOfPage();
 	void HandleRowFocused(UTN_PauseRow* Row);
+	/** El jugador ha cambiado el idioma (fila «Idioma»): refresca lo que el menú guarda como texto compuesto (cabecera, pie y ayuda). */
+	void OnLanguageChanged();
 	void PlayUISound(ETNPauseSound Sound, float Pitch);
 
 	// ── Contexto ─────────────────────────────────────────────────────────────

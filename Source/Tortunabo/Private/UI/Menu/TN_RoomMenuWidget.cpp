@@ -1147,7 +1147,7 @@ void UTN_RoomMenuWidget::RefreshListStatus()
 	{
 		// Puntos que se mueven mientras busca.
 		const int32 Dots = 1 + static_cast<int32>(Clock * 2.5f) % 3;
-		ListStatus->SetText(FText::FromString(FString(TEXT("Buscando")) + FString::ChrN(Dots, TEXT('.'))));
+		ListStatus->SetText(FText::Format(NSLOCTEXT("TNRooms", "Searching", "Buscando{0}"), FText::FromString(FString::ChrN(Dots, TEXT('.')))));
 		return;
 	}
 	const int32 Count = GameInstance ? GameInstance->GetRoomListings().Num() : 0;

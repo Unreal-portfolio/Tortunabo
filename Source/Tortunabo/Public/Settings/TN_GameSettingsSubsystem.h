@@ -10,6 +10,7 @@
 
 class APlayerController;
 class APlayerState;
+class IInputProcessor;
 class UAudioComponent;
 class UInputAction;
 class UInputComponent;
@@ -102,6 +103,12 @@ struct FTNKeyBinding
  *  - Tamaño de la interfaz: UUserInterfaceSettings::ApplicationScale, que solo multiplica la escala DPI del viewport del
  *    juego (UMG), no la interfaz del editor.
  *  - Quién habla: lista de texto con los jugadores que se oyen hablar (UTN_TalkersWidget).
+ *  - Idioma: el guardado (o, sin elegir, el del sistema si está en la lista y, si no, el español) se aplica al crearse la
+ *    GameInstance, antes de que salga ningún menú, y se cambia en caliente (TNLanguage::Apply); Docs/Localizacion.md.
+ *  - Ojo de pez leve: la proyección Panini del motor (r.LensDistortion.Panini.D) con un valor suave, que se suaviza al
+ *    encender o apagar y se afloja con el campo de visión para que correr no la note; el HUD no se deforma (se pinta después).
+ *  - Teclas retenidas: si el jugador pulsa una tecla del juego mientras hay un menú a la vista (Intro, A, B...), lo que esa tecla
+ *    repite al mantenerla no llega al juego cuando el menú se cierra (la B del mando cierra un menú y mete en el caparazón).
  *
  * Menú de pausa: mete en la pila de entrada del PlayerController local (AMP_GamePlayerController, también de
  * espectador) un UInputComponent propio con Escape, la tecla y el botón elegidos (Start de serie) y el Tabulador en el
@@ -143,6 +150,17 @@ public:
 
 	/** Vuelve a los valores de serie de una pestaña (en la gráfica, solo el brillo y el contador de FPS). */
 	void ResetGroup(ETNSettingsGroup Group);
+
+	// ── Idioma ───────────────────────────────────────────────────────────────
+
+	/** El idioma que se está usando (cultura de la lista de idiomas: «es-ES», «en», «pt-BR»...). */
+	FString GetLanguage() const;
+
+	/**
+	 * Elige el idioma (una cultura de la lista de idiomas) y lo pone en caliente; vacío = el del sistema si está en la lista y,
+	 * si no, el español. Se guarda con el resto de ajustes.
+	 */
+	void SetLanguage(const FString& Culture);
 
 	/**
 	 * Vuelve a los valores de serie todos los ajustes propios: sonido, voz, micrófono, controles (teclas incluidas), juego,
@@ -241,6 +259,9 @@ public:
 	/** IMC_Player tal cual (las teclas de serie). */
 	UInputMappingContext* GetPlayerMapping() const { return OriginalMapping; }
 
+	/** true si Key es una tecla o botón de una acción del juego (de IMC_Player, con las teclas del jugador). */
+	bool IsGameplayKey(const FKey& Key) const;
+
 	/**
 	 * El contexto de controles que hay que añadir en vez de Mapping: si es IMC_Player y el jugador ha cambiado teclas,
 	 * la copia con sus teclas; si no, el mismo. Para quien añada IMC_Player por su cuenta (el subsistema, de todas formas,
@@ -287,6 +308,9 @@ public:
 
 	/** true si ahora se puede abrir el menú de pausa para PC. */
 	bool CanOpenPauseMenu(const APlayerController* PC) const;
+
+	/** true si hay una interfaz que se puede pulsar a la vista: el menú de pausa u otra pantalla con el cursor del jugador local. */
+	bool IsMenuUp() const;
 
 	/** Lo llama el menú al quitarse de la pantalla (también en un viaje): guarda lo pendiente. */
 	void NotifyPauseMenuClosed(UTN_PauseMenuWidget* Menu);
@@ -351,6 +375,18 @@ private:
 	TArray<FTNKeyBinding> DefaultBindings;
 	TArray<FTNKeyBinding> FixedControls;
 
+	/**
+	 * Teclas de serie que el código pone porque IMC_Player todavía no las trae (fila, aparato 0/1 y tecla): la copia de IMC_Player las
+	 * añade. Con el asset al día (Scripts/imc_player_shell_b.py) está vacía.
+	 */
+	struct FCodeDefaultKey
+	{
+		FString RowId;
+		int32 Device = 0;
+		FKey Key;
+	};
+	TArray<FCodeDefaultKey> PendingCodeDefaults;
+
 	/** Modificadores de temblor apagados por el ajuste (para volver a encenderlos). */
 	TArray<TWeakObjectPtr<UCameraModifier>> DisabledShakes;
 
@@ -364,6 +400,17 @@ private:
 	uint8 AppliedColorFilter = 0;
 	float AppliedColorFilterStrength = -1.f;
 	float AppliedUIScale = -1.f;
+
+	/** Idioma puesto ahora (vacío: ninguno todavía) y el del sistema en términos de la lista de idiomas (se calcula al crearse). */
+	FString AppliedLanguage;
+	FString SystemLanguage;
+
+	/** Ojo de pez: cuánto está encendido (0..1, se suaviza al encender o apagar) y la última distancia Panini escrita. */
+	float FisheyeAmount = 0.f;
+	float AppliedPaniniD = -1.f;
+
+	/** Vigilante de teclas retenidas (procesador de entrada de Slate; ver TN_GameSettingsSubsystem.cpp). */
+	TSharedPtr<IInputProcessor> HeldKeyGuard;
 
 	void LoadSettings();
 	void MarkDirty(bool bGraphics);
@@ -379,6 +426,7 @@ private:
 	void UpdateSounds(UWorld* World);
 	void UpdateLocalVoice(APlayerController* PC);
 	void UpdateCamera(APlayerController* PC);
+	void UpdateFisheye(APlayerController* PC, float DeltaTime);
 	void UpdateFpsCounter(APlayerController* PC);
 	void UpdateTalkers(APlayerController* PC);
 
@@ -386,6 +434,9 @@ private:
 	USoundClass* ClassFor(const UAudioComponent* Component) const;
 
 	float BrightnessToGamma(float Brightness) const;
+
+	/** Pone el idioma de los ajustes si ha cambiado (la lista de idiomas, el del sistema y el nativo se resuelven en TNLanguage). */
+	void ApplyLanguage();
 
 	// Controles
 	void BuildDefaultBindings();
