@@ -5,6 +5,8 @@ description: Use in Tortunabo when someone reviews work assigned to them, or whe
 
 # Revisar (revisión IA cruzada) y, si eres aprobador, fusionar
 
+El tablero lo mantienes tú, sin esperar a que te lo pidan: veredicto → Revisión IA (y Revisiones si pides cambios); fusión → `sync --aplicar` en el mismo turno.
+
 `tablero.py pendiente` enseña en «Te toca revisar» las issues en In review cuyo Revisor eres tú.
 
 ## Revisar una issue asignada
@@ -13,7 +15,7 @@ description: Use in Tortunabo when someone reviews work assigned to them, or whe
 2. Revisa como revisor sénior: que cumple los criterios, corrección, replicación (autoridad del servidor, RPC validadas, `DOREPLIFETIME`), punteros y ciclo de vida de UObject, que no toca binarios de otra issue en curso, y tests.
 3. Registra el veredicto en la issue:
    - bien: `tablero.py ia <n> aprobada --revisor "<tu login> (Claude)" --nota "<qué has comprobado>"`;
-   - algo no funciona: `tablero.py ia <n> cambios --revisor "<tu login> (Claude)" --nota "<fallo, fichero:línea y cómo reproducirlo>"`. La issue pasa a Revisiones con el fallo comentado en ella.
+   - algo no funciona: `tablero.py ia <n> cambios --revisor "<tu login> (Claude)" --nota "<fallo, fichero:línea y cómo reproducirlo>"`. La issue pasa a Revisiones con el fallo comentado en ella; si ya constaba Editor = Funciona, vuelve a Sin probar, porque el arreglo hay que probarlo otra vez.
 4. Lo normal es que el revisor arregle él mismo lo que encuentra, porque ya tiene el código delante. Primero deja la issue en Revisiones con el fallo comentado (paso 3), para que quede constancia, y luego cógela con `tablero.py coger <n> --forzar`: pasa a In progress a tu nombre y se sabe quién está con ella. Al terminar, `tortu-entregar`: la nueva revisión la hace otro miembro del equipo según `equipo.json`. Si el arreglo es grande o no te toca, devuélvela al autor dejándola en Revisiones.
 
 ## Fusionar (solo SkiTemplar o Mokius)
@@ -21,7 +23,7 @@ description: Use in Tortunabo when someone reviews work assigned to them, or whe
 Comprueba el login con `gh api user --jq .login`.
 
 - Requisitos: Revisión IA = Aprobada; compila en DebugGame si toca `Source/`, `Config/`, `Plugins/` o `.uproject` (las PR con `necesita-unreal` no se fusionan sin esto); sin conflictos con `dev`.
-- `gh pr merge <pr> --merge` y después `tablero.py sync --aplicar`: las issues enlazadas pasan a QA editor con Editor = Sin probar.
+- `gh pr merge <pr> --merge` y después, sin que te lo pidan, `tablero.py sync --aplicar`: las issues enlazadas con Editor = Funciona y Revisión IA = Aprobada pasan a Done y se cierran; el resto, a QA editor (Editor = Sin probar si no constaba que funcionase).
 
 ## Decisiones y objetos (solo aprobadores)
 

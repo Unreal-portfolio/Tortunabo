@@ -2,6 +2,8 @@
 
 Juego cooperativo de 1 a 4 tortugas en Unreal Engine 5.6 con C++ (módulo `Source/Tortunabo`), listen server con Steam. Tres desarrolladores trabajan a la vez, cada uno con su Claude. Esta guía, las skills de `.claude/skills/` y `Docs/Equipo/Decisiones.md` son iguales para los tres: así las tres sesiones trabajan igual y saben lo mismo.
 
+**El tablero lo mantiene Claude: cada vez que hagas algo, actualiza su estado con `tablero.py`, sin esperar a que te lo pidan.** Coger → In progress; probar en el editor → campo Editor; subir → In review con revisor; aprobar o pedir cambios → Revisión IA (y Revisiones si hay cambios); fusionar → `sync --aplicar` (Done o QA editor); «esto no funciona» → registrar el fallo (ver «Objetos y sub-issues»).
+
 El tablero es solo de desarrollo: código, pulido, bugs y revisión de assets. El diseño ya está decidido (plan maestro y decisiones); se pueden hacer prototipos, pero no tareas de «diseñar X».
 
 ## Equipo
@@ -32,23 +34,25 @@ GitHub Project «Tortunabo · Desarrollo» en vista Kanban: https://github.com/o
 | In progress | Alguien la hace o la corrige (el asignado es quien está con ella) |
 | In review | Terminada; la IA de otro miembro del equipo la revisa (campo Revisor) |
 | Revisiones | Algo no funciona. El fallo va comentado en la propia issue, no en una issue nueva |
-| QA editor | Fusionada en dev; falta probarla en el editor |
-| Done | Probada en el editor y cerrada |
+| QA editor | Fusionada en dev sin que nadie la haya probado aún en el editor |
+| Done | Fusionada, con revisión IA aprobada y probada en el editor; cerrada |
 
-Ciclo: Ready → In progress → In review → (Revisiones → In progress → In review)* → QA editor → Done. Si en QA editor algo falla, vuelve a Revisiones con el fallo comentado. Lo normal es que el propio revisor arregle lo que encuentra: la deja en Revisiones con el fallo comentado y la coge (`tablero.py coger <n> --forzar`), así pasa a In progress a su nombre y se sabe quién está con ella.
+Ciclo: Ready → In progress → In review → (Revisiones → In progress → In review)* → fusión → Done, o QA editor → Done si nadie la había probado. La prueba en el editor no espera a la revisión: el autor (o cualquiera) la prueba mientras está en In progress o In review (`tablero.py editor <n> funciona`), y al fusionarla con Editor = Funciona y Revisión IA = Aprobada pasa directamente a Done y se cierra. In review y la prueba en el editor pueden ir en cualquier orden. Si la prueba falla, en cualquier estado, vuelve a Revisiones con el fallo comentado. Lo normal es que el propio revisor arregle lo que encuentra: la deja en Revisiones con el fallo comentado y la coge (`tablero.py coger <n> --forzar`), así pasa a In progress a su nombre y se sabe quién está con ella.
 
 Cada issue lleva dos validaciones independientes:
 
 - **Revisión IA** (`Pendiente` / `Aprobada` / `Cambios pedidos`): la hace el Claude del revisor asignado, nunca la sesión que escribió el código.
-- **Editor** (`Sin probar` / `Funciona` / `Falla`): prueba real en el editor de Unreal. Si algo que funcionaba vuelve a fallar, la issue se reabre con la etiqueta `regresion`.
+- **Editor** (`Sin probar` / `Funciona` / `Falla`): prueba real en el editor de Unreal, independiente del estado de la issue. Si algo que funcionaba vuelve a fallar, la issue se reabre con la etiqueta `regresion`. Si la revisión pide cambios sobre algo ya probado, Editor vuelve a `Sin probar`: el arreglo hay que probarlo otra vez.
 
 ### Objetos y sub-issues
 
 Las tareas y los fallos se agrupan por **objeto**: un sistema o una pieza del juego (el Rally, el puente y la plataforma tambaleantes, el HUD, las catapultas…). Un objeto es una issue padre con la etiqueta `objeto`; sus tareas y fallos cuelgan de él como sub-issues nativas de GitHub. El objeto no se mueve por el Kanban (no lleva Status): se ve en la vista «Objetos» del proyecto, con su barra de progreso de sub-issues, y las vistas de trabajo lo excluyen con `-label:objeto`.
 
-- **El mismo fallo vuelve**: comentario en su misma sub-issue y la issue pasa a Revisiones (`tablero.py editor <n> falla`). No se abre otra.
-- **Un fallo distinto del mismo objeto**: sub-issue nueva de ese objeto (`tablero.py nueva --tipo bug --objeto "<objeto>"`).
-- **Un fallo de algo que aún no tiene objeto**: se crea el objeto (`tablero.py objeto "<nombre>" --area <Área>`) y se cuelga de él.
+Cuando el usuario dice «esto no funciona», Claude decide y registra el fallo sin preguntar; solo pregunta si duda de verdad a qué objeto pertenece:
+
+- **El mismo fallo vuelve** (aunque su issue esté cerrada): se reactiva esa issue con `tablero.py editor <n> falla`, que la reabre, la pasa a Revisiones, le pone `regresion` si ya funcionaba y comenta el fallo. No se abre otra.
+- **Un fallo distinto del mismo objeto**: sub-issue nueva colgada de ese objeto (`tablero.py nueva --tipo bug --objeto "<objeto>"`).
+- **Un fallo de algo que aún no tiene objeto**: `nueva --objeto "<nombre>"` crea el objeto y cuelga de él la sub-issue (o antes `tablero.py objeto "<nombre>" --area <Área>` para fijar su Área).
 - **Sistemas grandes** como el Rally son objetos con todas sus tareas dentro; no se desglosan en épicas por fase. La fase de cada tarea va en su campo Fase.
 - Las PR enlazan la sub-issue concreta, nunca el objeto.
 
@@ -59,12 +63,12 @@ uv run python Scripts/tablero/tablero.py pendiente             # qué hay para m
 uv run python Scripts/tablero/tablero.py coger <n>             # asignarme, In progress y rama
 uv run python Scripts/tablero/tablero.py revision <n>          # terminada: In review con revisor cruzado
 uv run python Scripts/tablero/tablero.py ia <n> aprobada|cambios --revisor "<quién>" --nota "..."
-uv run python Scripts/tablero/tablero.py editor <n> funciona|falla --como "PIE 4P" --nota "..."
+uv run python Scripts/tablero/tablero.py editor <n> funciona|falla --como "PIE 4P" --nota "..."   # en cualquier estado
 uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug|tarea --cuerpo f.md --objeto "<objeto>" [--prioridad P1 --tamano S --area Red --estado Ready]
 uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripcion "..."]   # busca o crea el objeto; imprime su número
 uv run python Scripts/tablero/tablero.py colgar <hijo> <padre>  # colgar una issue existente de su objeto
 uv run python Scripts/tablero/tablero.py estado <n> <estado> | campo <n> <campo> <valor>
-uv run python Scripts/tablero/tablero.py sync [--aplicar]      # reconciliar PR, estados y avisos
+uv run python Scripts/tablero/tablero.py sync [--aplicar]      # reconciliar PR, estados y avisos; fusionadas → Done o QA editor
 ```
 
 Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`.

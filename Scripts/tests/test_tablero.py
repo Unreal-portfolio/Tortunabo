@@ -90,3 +90,56 @@ def test_cuerpo_objeto_usa_la_descripcion_o_el_nombre():
     assert objetos.cuerpo_objeto("HUD y menús", "HUD, tutorial y ajustes.").startswith("HUD, tutorial y ajustes.")
     assert objetos.cuerpo_objeto("HUD y menús", None).startswith("Objeto «HUD y menús».")
     assert "vista «Objetos»" in objetos.cuerpo_objeto("X", "")
+
+
+def test_fusion_probada_y_aprobada_va_directa_a_done():
+    assert tablero.estado_tras_fusion({"Editor": "Funciona", "Revisión IA": "Aprobada"}) == ("Done", True)
+
+
+@pytest.mark.parametrize("valores", [
+    {},
+    {"Editor": "Sin probar", "Revisión IA": "Aprobada"},
+    {"Editor": "Falla", "Revisión IA": "Aprobada"},
+    {"Editor": "Funciona", "Revisión IA": "Pendiente"},
+    {"Editor": "Funciona"},
+])
+def test_fusion_sin_validar_del_todo_va_a_qa_editor(valores):
+    assert tablero.estado_tras_fusion(valores) == ("QA editor", False)
+
+
+def test_fusion_no_pisa_una_prueba_que_ya_funciona():
+    assert tablero.editor_tras_fusion({"Editor": "Funciona"}) is None
+    assert tablero.editor_tras_fusion({"Editor": "Falla"}) == "Sin probar"
+    assert tablero.editor_tras_fusion({}) == "Sin probar"
+
+
+@pytest.mark.parametrize("estado", ["In progress", "In review", "Revisiones", None])
+def test_editor_funciona_antes_de_fusionar_solo_fija_el_campo(estado):
+    assert tablero.estado_tras_editor(estado, "funciona") == (None, False)
+
+
+def test_editor_funciona_en_qa_editor_cierra():
+    assert tablero.estado_tras_editor("QA editor", "funciona") == ("Done", True)
+
+
+@pytest.mark.parametrize("estado", ["In progress", "In review", "QA editor", "Done", None])
+def test_editor_falla_en_cualquier_estado_va_a_revisiones(estado):
+    assert tablero.estado_tras_editor(estado, "falla") == ("Revisiones", False)
+
+
+def _issue(numero, estado, editor=None, quien="Ruben-Besteiro"):
+    valores = {"Status": estado, **({"Editor": editor} if editor else {})}
+    return {"number": numero, "valores": valores, "assignees": {"nodes": [{"login": quien}]}}
+
+
+def test_probables_en_editor_solo_propias_en_curso_o_revision_sin_funcionar():
+    issues = [
+        _issue(1, "In progress"),
+        _issue(2, "In review", "Sin probar"),
+        _issue(3, "In review", "Funciona"),
+        _issue(4, "QA editor"),
+        _issue(5, "In progress", quien="Mokius"),
+        _issue(6, "In progress", "Falla"),
+    ]
+    assert [i["number"] for i in tablero.probables_en_editor(issues, "Ruben-Besteiro")] == [1, 2, 6]
+    assert tablero.probables_en_editor(issues, "SkiTemplar") == []

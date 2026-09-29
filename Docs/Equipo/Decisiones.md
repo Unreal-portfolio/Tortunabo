@@ -6,6 +6,9 @@ Las decisiones de diseño de fondo (modos, mapas, prioridades de la macro update
 
 ## Vigentes
 
+- 2026-09-29 · SkiTemplar · La prueba en el editor no espera a la revisión: el campo Editor es independiente del estado y se registra en In progress o In review. Al fusionar en dev, si Editor = Funciona y Revisión IA = Aprobada, la issue pasa directamente a Done y se cierra; QA editor queda solo para lo fusionado que nadie ha probado. In review y la prueba en el editor van en cualquier orden. · `CLAUDE.md`, `Scripts/tablero/tablero.py`
+- 2026-09-29 · SkiTemplar · El tablero lo mantiene Claude de forma automática: en cada paso (coger, probar, subir, revisar, fusionar) actualiza el estado con `tablero.py` sin que se lo pidan. · `CLAUDE.md`
+- 2026-09-29 · SkiTemplar · Ante «esto no funciona», Claude decide y registra sin preguntar: si es el mismo fallo de una issue existente, aunque esté cerrada, la reactiva (reabrir, Revisiones, `regresion` si ya funcionaba, fallo comentado); si es un fallo distinto del mismo objeto, sub-issue nueva colgada del objeto (creándolo si no existe). Solo pregunta si duda de verdad a qué objeto pertenece. · `.claude/skills/tortu-editor`
 - 2026-09-29 · SkiTemplar · Quien revisa una issue y encuentra un fallo lo arregla él mismo por defecto (Revisiones con el fallo comentado → coger → In progress); la nueva revisión la hace otro. · `CLAUDE.md`
 
 - 2026-09-29 · SkiTemplar · La rama de integración se llama `dev` (antes `macro-update`). · `CLAUDE.md`
