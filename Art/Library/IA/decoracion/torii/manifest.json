@@ -1,0 +1,119 @@
+{
+  "name": "torii",
+  "title": "Torii (ja, L10 Fuji)",
+  "category": "decoracion",
+  "status": "borrador IA",
+  "status_note": "Borrador para que el equipo de modelado lo rehaga; no importado a Content.",
+  "prompt": "Stylized low-poly vermilion torii gate: tapered pillars on black bases, nuki tie beam, central plaque, black kasagi top beam with upswept ends, flat-shaded",
+  "tool": {
+    "requested": "Hunyuan3D / Tripo / Rodin vía Blender MCP",
+    "used": "bpy procedural",
+    "reason": "Blender MCP no disponible en la sesión que generó la biblioteca; forma construida por script."
+  },
+  "generator": {
+    "script": "Art/Library/IA/_pipeline/assets_deco.py",
+    "function": [
+      "torii"
+    ],
+    "command": "powershell -File Art/Library/IA/_pipeline/build_library.ps1 -Only torii"
+  },
+  "blender": "5.2.1 LTS",
+  "license": "Original de Tortunabo, generado por script (sin fuentes externas)",
+  "source_url": null,
+  "style_reference": [
+    "Source/Tortunabo/Private/World/Beach/TN_BeachCritterMeshes.h (tanque de juguete)",
+    "Art/Source/Vehicles/Buggy/ (buggy biplaza)"
+  ],
+  "budget_tris": 1500,
+  "tris_total": 300,
+  "parts": [
+    {
+      "name": "SM_TN_Torii",
+      "role": "decoración con colisión",
+      "fbx": "Art/Library/IA/decoracion/torii/SM_TN_Torii.fbx",
+      "tris": 300,
+      "budget_tris": 1500,
+      "bbox_cm": {
+        "min": [
+          -31.0,
+          -335.0,
+          0.0
+        ],
+        "max": [
+          31.0,
+          335.0,
+          508.0
+        ],
+        "size": [
+          62.0,
+          670.0,
+          508.0
+        ]
+      },
+      "pivot": "base",
+      "sockets_cm_deg": {},
+      "collision_ucx": 2,
+      "checks": {
+        "non_manifold_edges": 0,
+        "degenerate_faces": 0,
+        "loose_verts": 0,
+        "inverted_pieces": 0,
+        "closed_pieces": 11,
+        "material_slots": 1,
+        "uv_layers": 1
+      },
+      "fbx_reimport": {
+        "unit_scale_factor": 0.9999999776482582,
+        "meshes": {
+          "SM_TN_Torii": {
+            "lo": [
+              -31.0,
+              -335.0,
+              -0.0
+            ],
+            "hi": [
+              31.0,
+              335.0,
+              508.0
+            ],
+            "vertex_colors": [
+              "Zone"
+            ]
+          }
+        },
+        "sockets": [],
+        "ucx": [
+          "UCX_SM_TN_Torii_00",
+          "UCX_SM_TN_Torii_01"
+        ]
+      }
+    }
+  ],
+  "blend": "Art/Library/IA/decoracion/torii/torii.blend",
+  "sheet": "Art/Library/IA/decoracion/torii/torii_lamina.png",
+  "sheet_kb": 439.3,
+  "material": {
+    "slot": "M_TN_IAProp",
+    "vertex_color": "Zone",
+    "decode": "Base = lerp(lerp(lerp(lerp(Trim, Paint, R), Detail, G), Dark, B), Light, R*G*B) * A",
+    "palette_srgb": {
+      "paint": "#D8432F",
+      "detail": "#E8C15A",
+      "dark": "#3A2E27",
+      "trim": "#23201F",
+      "light": "#FFE8A3"
+    },
+    "textures": "ninguna"
+  },
+  "unreal_import": {
+    "units": "cm (UnitScaleFactor 1), escala 1",
+    "axes": "+X delante, Z arriba",
+    "settings": "Static Mesh; Combine Meshes on; Import Vertex Color = Replace; Normal Import = Import Normals; Auto Generate Collision off (UCX_ del FBX si lo hay); sockets desde los empties SOCKET_*"
+  },
+  "notes": "4 m entre pilares, 5 m de alto: pasa una tortuga o el buggy (2,45 m).",
+  "validation": {
+    "passed": true,
+    "failures": []
+  },
+  "generated": "2026-09-29"
+}

@@ -1,0 +1,119 @@
+{
+  "name": "pagoda",
+  "title": "Pagoda (zh, L12 Guilin / L13 Taroko)",
+  "category": "decoracion",
+  "status": "borrador IA",
+  "status_note": "Borrador para que el equipo de modelado lo rehaga; no importado a Content.",
+  "prompt": "Stylized low-poly three-tier Chinese pagoda on a stone plinth: cream walls, red corner columns and doors, dark tiled roofs with upturned eaves, hanging lanterns and a golden finial, flat-shaded",
+  "tool": {
+    "requested": "Hunyuan3D / Tripo / Rodin vía Blender MCP",
+    "used": "bpy procedural",
+    "reason": "Blender MCP no disponible en la sesión que generó la biblioteca; forma construida por script."
+  },
+  "generator": {
+    "script": "Art/Library/IA/_pipeline/assets_deco.py",
+    "function": [
+      "pagoda"
+    ],
+    "command": "powershell -File Art/Library/IA/_pipeline/build_library.ps1 -Only pagoda"
+  },
+  "blender": "5.2.1 LTS",
+  "license": "Original de Tortunabo, generado por script (sin fuentes externas)",
+  "source_url": null,
+  "style_reference": [
+    "Source/Tortunabo/Private/World/Beach/TN_BeachCritterMeshes.h (tanque de juguete)",
+    "Art/Source/Vehicles/Buggy/ (buggy biplaza)"
+  ],
+  "budget_tris": 1500,
+  "tris_total": 838,
+  "parts": [
+    {
+      "name": "SM_TN_Pagoda",
+      "role": "decoración con colisión",
+      "fbx": "Art/Library/IA/decoracion/pagoda/SM_TN_Pagoda.fbx",
+      "tris": 838,
+      "budget_tris": 1500,
+      "bbox_cm": {
+        "min": [
+          -234.0,
+          -236.0,
+          0.0
+        ],
+        "max": [
+          234.0,
+          234.0,
+          744.0
+        ],
+        "size": [
+          468.0,
+          470.0,
+          744.0
+        ]
+      },
+      "pivot": "base",
+      "sockets_cm_deg": {},
+      "collision_ucx": 2,
+      "checks": {
+        "non_manifold_edges": 0,
+        "degenerate_faces": 0,
+        "loose_verts": 0,
+        "inverted_pieces": 0,
+        "closed_pieces": 54,
+        "material_slots": 1,
+        "uv_layers": 1
+      },
+      "fbx_reimport": {
+        "unit_scale_factor": 0.9999999776482582,
+        "meshes": {
+          "SM_TN_Pagoda": {
+            "lo": [
+              -234.0,
+              -236.0,
+              -0.0
+            ],
+            "hi": [
+              234.0,
+              234.0,
+              744.0
+            ],
+            "vertex_colors": [
+              "Zone"
+            ]
+          }
+        },
+        "sockets": [],
+        "ucx": [
+          "UCX_SM_TN_Pagoda_00",
+          "UCX_SM_TN_Pagoda_01"
+        ]
+      }
+    }
+  ],
+  "blend": "Art/Library/IA/decoracion/pagoda/pagoda.blend",
+  "sheet": "Art/Library/IA/decoracion/pagoda/pagoda_lamina.png",
+  "sheet_kb": 455.4,
+  "material": {
+    "slot": "M_TN_IAProp",
+    "vertex_color": "Zone",
+    "decode": "Base = lerp(lerp(lerp(lerp(Trim, Paint, R), Detail, G), Dark, B), Light, R*G*B) * A",
+    "palette_srgb": {
+      "paint": "#C23B2B",
+      "detail": "#F1E3C6",
+      "dark": "#2F5D50",
+      "trim": "#8C8479",
+      "light": "#FFB347"
+    },
+    "textures": "ninguna"
+  },
+  "unreal_import": {
+    "units": "cm (UnitScaleFactor 1), escala 1",
+    "axes": "+X delante, Z arriba",
+    "settings": "Static Mesh; Combine Meshes on; Import Vertex Color = Replace; Normal Import = Import Normals; Auto Generate Collision off (UCX_ del FBX si lo hay); sockets desde los empties SOCKET_*"
+  },
+  "notes": "",
+  "validation": {
+    "passed": true,
+    "failures": []
+  },
+  "generated": "2026-09-29"
+}
