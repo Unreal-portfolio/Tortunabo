@@ -1,0 +1,219 @@
+# Modo VR (gafas de realidad virtual)
+
+Tortunavy se puede jugar entero con unas gafas de realidad virtual (probado para Meta Quest con OpenXR): en primera
+persona, con la cabeza y las dos aletas con seguimiento, el HUD flotando delante y todos los menús en el mundo, que se
+apuntan con la aleta derecha. Usar, lanzar y coger también se hacen en primera persona: lo que se lanza sale hacia donde
+apunta la aleta. El mismo modo se puede probar **sin gafas** (modo simulado), en la ventana del PC con el ratón.
+
+Estado: rama `new-mota-vr`, 29-09-2026. Escrito sin poder compilar (sesión en la nube): la primera compilación puede pedir
+algún retoque.
+
+## Resumen rápido
+
+| Quiero... | Cómo |
+|---|---|
+| Probarlo sin gafas | En PIE, consola: `TN.VR 2`. O Ajustes > Juego > «Modo VR: Simulado sin gafas», o arrancar con `-vrsim`. `TN.VR -1` vuelve a lo normal. |
+| Pruebas automáticas | `Automation RunTests Tortunabo.VR` (consola del editor o Session Frontend). |
+| Jugar con las Quest conectadas al PC (recomendado) | Meta Quest Link (cable o Air Link) como runtime OpenXR; en el editor, Play > «VR Preview». En la build de Windows, `Tortunabo.exe -vr`. |
+| Jugar en las Quest sin PC (experimental) | Empaquetar para Android (ya configurado para Meta Quest) e instalar el APK. Ver «Build para las Quest». |
+| Ver qué está pasando | `TN.VR.Status` escribe en el registro el modo, si hay gafas y estéreo, el dispositivo y el estado del panel. |
+
+## Modos
+
+| Modo | Qué es |
+|---|---|
+| Apagado | El juego de siempre: tercera persona, HUD y menús en la pantalla. |
+| Gafas | OpenXR con estéreo: primera persona con la cabeza y los mandos con seguimiento. |
+| Simulado | Sin gafas, en la ventana: la misma primera persona, las mismas aletas (quietas delante) y la misma interfaz en el mundo; el ratón mueve la vista y hace de puntero en los menús. Sirve para probar todo el modo VR en el PC. |
+
+Cómo se elige (lo de arriba manda sobre lo de abajo). `UTN_VRSubsystem` lo mira cada fotograma, así que cambia en caliente:
+
+1. Consola `TN.VR`: `-1` (de serie: lo de abajo), `0` apagado, `1` gafas (enciende el HMD si hay gafas OpenXR), `2` simulado.
+2. Línea de comandos: `-novr` (apagado) o `-vrsim` (simulado). Con `-vr` el motor arranca en las gafas y entra el modo gafas.
+3. Ajuste **Ajustes > Juego > Realidad virtual > Modo VR**: Automático (de serie), Desactivado o Simulado sin gafas.
+4. Automático: gafas si el motor está pintando en estéreo (VR Preview del editor, `-vr`, la build de Quest); si no, apagado.
+   Sin gafas y sin tocar nada, el juego es exactamente el de siempre.
+
+## Qué cambia en VR
+
+- **Primera persona.** Cámara VR en los ojos de la tortuga (45 cm por encima del centro de la cápsula, `VREyeOffset`), con
+  el seguimiento de la cabeza. El cuerpo propio no se ve (su sombra sí); los demás te ven normal. La tortuga mira hacia
+  donde mira tu cabeza, también en las máquinas de los demás (`bVRPlayer` replicado). Andar va hacia donde miras.
+- **Giro** con el stick derecho: a pasos de 30° (de serie), de 45° o suave (Ajustes > Juego > «Giro en VR»). El clic del
+  stick derecho recentra la vista y vuelve a poner delante el HUD.
+- **Aletas.** Una aleta de tortuga en cada mando (malla procedural, verde con la manga de caparazón). El objeto que
+  llevas en la mano va en la aleta derecha, delante de tus ojos (los demás lo ven en la aleta de tu tortuga).
+- **Usar y lanzar** con el gatillo derecho, **apuntando con la aleta derecha**: lanzar al compañero que llevas, los
+  objetos arrojadizos, la tinta y los objetos de la carrera salen hacia donde apunta el mando. El cliente manda esa
+  dirección al servidor (fiable) justo antes de la acción; sin gafas se apunta con la cámara, como siempre.
+- **HUD** en un panel que flota delante (1,4 m, 50° de ancho, un poco por debajo de los ojos). Sigue a la cabeza con
+  retraso: se puede mirar de reojo y, si giras más de 24°, vuelve delante. Si hay una pared en medio, se acerca.
+- **Menús** (pausa, tienda, probador, general, salas, menú principal, campeón...): el panel se queda quieto delante
+  (1,6 m, 58°). La aleta derecha apunta con un láser y el gatillo es el clic. También con botones: A/X aceptar, B/Y atrás,
+  agarres = pestaña anterior/siguiente, sticks = moverse por el menú, botón de menú = cerrar.
+- **Ruedas** de emotes (Y) y de frases (gatillo izquierdo): mantener y elegir con el stick derecho, como con el mando.
+- **Pantalla de carga**: el huevo sale en el panel. Con gafas, mientras está cerrado, además una capa de carga de las
+  gafas con el huevo dibujado: la pinta el compositor de las gafas, así que no se congela la imagen mientras se carga un
+  mapa.
+- **Confort** (marea menos):
+  - sin temblores de cámara, sin ojo de pez, sin desenfoque de movimiento, sin aberración cromática ni profundidad de campo;
+  - cortes secos en vez de fundidos de cámara (cambiar de tortuga como espectador, entrar y salir del probador);
+  - la almeja y el gusano de la playa no se llevan la cámara (se sigue en primera persona);
+  - de fantasma espectador, la vista es la de la cámara del jugador seguido (sin la cámara libre que orbita sola).
+- **Voz**: con «Pulsar para hablar», el clic del stick izquierdo.
+
+## Controles (Meta Quest Touch)
+
+| Botón | Jugando | En un menú |
+|---|---|---|
+| Stick izquierdo | Andar (hacia donde miras) | Moverse por el menú |
+| Stick derecho | Girar (pasos o suave); en las ruedas, elegir; de espectador, cambiar de tortuga | Moverse por el menú |
+| Clic stick derecho | Recentrar la vista | — |
+| Clic stick izquierdo | Pulsar para hablar | — |
+| Gatillo derecho | Interactuar / usar / lanzar (apunta la aleta derecha) | Clic del láser |
+| Gatillo izquierdo | Rueda de frases (mantener) | Clic del láser |
+| Agarre derecho | Soltar el objeto | Pestaña siguiente |
+| Agarre izquierdo | Correr (mantener) | Pestaña anterior |
+| A | Saltar | Aceptar |
+| B | Caparazón | Atrás |
+| X | Cambiar de objeto | Aceptar |
+| Y | Rueda de emotes (mantener) | Atrás |
+| Menú (mando izquierdo) | Menú de pausa | Cerrar |
+
+## Cómo probar sin gafas
+
+1. **Pruebas automáticas** (lógica pura, sin mundo): `Automation RunTests Tortunabo.VR`. Cinco pruebas: rayo del puntero
+   contra el panel (`RayPanelHit`), HUD que sigue a la cabeza (`LazyFollowYaw`), giro por pasos (`SnapTurnStep`),
+   distancia y escala del panel (`PanelPlacement`) y botones de los mandos en los menús (`MenuKeys`). Sin ventana:
+   `UnrealEditor-Cmd Tortunabo.uproject -ExecCmds="Automation RunTests Tortunabo.VR; Quit" -nullrhi -unattended`.
+2. **Modo simulado** en PIE (1 o 2 jugadores): consola `TN.VR 2` en la ventana que quieras probar. Lista de pruebas abajo.
+3. **Meta XR Simulator** (opcional, para probar el modo gafas de verdad sin gafas): el simulador de Meta hace de gafas y
+   mandos OpenXR con el teclado y el ratón (o un mando de consola). Se descarga de la web de desarrolladores de Meta, se
+   activa como runtime OpenXR (su guía explica cómo; en resumen, apuntar el runtime OpenXR activo a su archivo `.json`) y
+   luego Play > «VR Preview». Sirve para ver la vista estéreo, el láser, los botones y la capa de carga.
+
+## Con las Quest
+
+### A) Conectadas al PC: Meta Quest Link (recomendado)
+
+La forma más rápida y fiable: el juego corre en el PC con todos los gráficos (Lumen, sombras virtuales) y las gafas son la
+pantalla. El multijugador por Steam funciona igual que siempre.
+
+1. En el PC (Windows): instalar la app **Meta Quest Link** (antes «Oculus»). En su Ajustes > General, **runtime OpenXR**:
+   ponerla como activa.
+2. En las gafas: activar **Link** (cable USB-C bueno) o **Air Link** (misma red wifi, 5 GHz).
+3. **Editor**: abrir el proyecto (la primera vez compila el módulo con los plugins nuevos, OpenXR y XRBase, y compila
+   shaders) y Play > **VR Preview**. El modo VR se enciende solo (Automático). `TN.VR.Status` debe decir «gafas».
+4. **Build**: Plataformas > Windows > Empaquetar proyecto (Development). Arrancar con Link activo:
+   `Tortunabo.exe -vr` (un acceso directo con `-vr` al final del destino). Sin `-vr` sale el juego plano de siempre.
+5. Si va a tirones: Ajustes > Gráficos a Media o Alta, y en la consola `vr.PixelDensity 0.8`. La opción de proyecto
+   **Instanced Stereo** (Ajustes del proyecto > Motor > Renderizado > VR) acelera mucho, pero obliga a recompilar todos los
+   shaders: no está puesta de serie.
+
+Nota: con el plugin OpenXR activo y SteamVR instalado, algún PC puede abrir SteamVR al arrancar el juego plano. Si molesta,
+arrancar con `-nohmd`.
+
+### B) En las propias Quest, sin PC (experimental)
+
+Ya está configurado para empaquetar para Meta Quest:
+
+- `Config/DefaultEngine.ini`, `[/Script/AndroidRuntimeSettings.AndroidRuntimeSettings]`: paquete `com.mokius.tortunavy`,
+  `bPackageForMetaQuest`, Vulkan, arm64, SDK 32 y permiso de micrófono.
+- `Config/Android/AndroidEngine.ini`: las dos vistas en una pasada (`vr.MobileMultiView`, sin HDR móvil), MSAA x4, subsistema
+  en línea NULL (Steam no existe en Android) y `IpNetDriver`.
+- `Config/Android/AndroidGame.ini`: `bStartInVR` (arranca en las gafas).
+- `Tortunabo.Build.cs`: el módulo de Steam solo se carga en escritorio.
+
+Pasos:
+
+1. Instalar Android Studio (la versión que pide UE 5.6: Koala 2024.1.2), abrir su SDK Manager una vez y ejecutar
+   `Engine/Extras/Android/SetupAndroid.bat` del motor (instala el SDK, las build-tools y el NDK r27c). Reiniciar el editor.
+2. Gafas en modo desarrollador (app Meta Horizon del móvil > Dispositivos > Modo desarrollador), conectadas por USB y
+   aceptada la depuración USB en las gafas.
+3. En el editor: Plataformas > Android > formato **ASTC** > Empaquetar proyecto. Instalar con el
+   `Install_Tortunabo-arm64.bat` que deja al lado (o `adb install`). También se puede lanzar directamente a las gafas desde
+   Plataformas > Android > (las Quest) > Lanzar.
+4. El juego sale en «Biblioteca > Orígenes desconocidos».
+
+Limitaciones: el renderizador móvil no tiene Lumen, sombras virtuales ni trazado de rayos (se verá más plano); el mapa
+procedural se genera en las gafas (tarda más y puede ir justo de rendimiento); las partidas son solo en red local (sin
+Steam, así que no se juega con los del PC). Para mañana, mejor la opción A.
+
+## Piezas
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `ETNVRMode`, `TNVR::*`, `FTNVRKeys` | `VR/TN_VRMode.*` | El modo actual y las ayudas que usa todo el juego (ver «Reglas para código nuevo»); los botones de los Touch por nombre. |
+| `UTN_VRSubsystem` | `VR/TN_VRSubsystem.*` | Decide el modo cada fotograma, crea el rig en cada mundo de juego, pone y quita los ajustes de confort, registra el procesador de entrada, la capa de carga de las gafas y los comandos `TN.VR*`. |
+| `ATN_VRRig` | `VR/TN_VRRig.*` | El jugador local en VR (solo en su máquina): aletas con `UMotionControllerComponent` (LeftGrip, RightGrip, RightAim), panel de la interfaz (`UWidgetComponent`), láser (`UWidgetInteractionComponent` con rayo propio), el contexto de entrada `IMC_VR` (prioridad 10) sobre las acciones de siempre, el giro y el recentrado. Sin peón (menú principal), la vista es su cámara. |
+| `UTN_VRScreenWidget` | `VR/TN_VRScreenWidget.*` | La pantalla VR: lienzo de 1920 × 1080 donde van todos los widgets de pantalla completa con su ZOrder. Se quitan con `RemoveFromParent` de siempre. |
+| `FTNVRInputProcessor` | `Private/VR/TN_VRInputProcessor.*` | Preprocesador de Slate: con un menú delante convierte los botones VR en las teclas de mando que ya entienden todos los menús y los gatillos en clics del láser; simulado, el clic y la rueda del ratón sobre la imagen del juego van al láser. Jugando no toca nada. |
+| `TNVRMath` | `VR/TN_VRMath.h` | Cuentas sin mundo (las prueba `Tortunabo.VR.*`). |
+| Tortuga | `Player/TortugaCharacter_VR.cpp` | `SetVRView` (cámara VR, cuerpo oculto, giro con la cabeza), `AddVRYaw`, `TickVRView`, `GetTurtleAimRotation`, `ServerSetVRAim`, `bVRPlayer`. |
+| Entrada OpenXR | `Config/DefaultInput.ini` | Asignaciones clásicas `TNVR_*` con los botones de los Touch: OpenXR crea sus acciones con ellas (sin ellas no llegan los botones). |
+| Ajustes | `FTNGameSettings::VRMode`, `VRTurn` | Ajustes > Juego > Realidad virtual. |
+
+Comandos: `TN.VR`, `TN.VR.Status`, `TN.VR.Recenter`, `TN.VR.HudDistance` (140), `TN.VR.HudFov` (50), `TN.VR.MenuDistance`
+(160), `TN.VR.MenuFov` (58), `TN.VR.SmoothTurnSpeed` (120).
+
+## Reglas para código nuevo
+
+Para que todo lo nuevo se vea y funcione en VR:
+
+- Widgets de pantalla: `TNVR::AddToScreen(Widget, ZOrder)` en lugar de `AddToViewport`, y `TNVR::IsOnScreen(Widget)` en
+  lugar de `IsInViewport`. Quitar, con `RemoveFromParent` de siempre. Slate suelto: `TNVR::AddSlateToScreen` /
+  `TNVR::RemoveSlateFromScreen`. (Lo que se cuele al viewport lo recoge el rig al empezar el mundo, pero no se ve en las
+  gafas si se añade después.)
+- Un menú debe enseñar el cursor (`SetShowMouseCursor(true)`): así el panel pasa a modo menú y sale el láser.
+- Cambiar de vista: `SetViewTargetWithBlend(X, TNVR::ViewBlendTime(segundos))`; una cámara de escena que se mueve sola,
+  solo si `!TNVR::KeepFirstPersonView()`.
+- Hacia dónde se lanza o se usa algo: `ATortugaCharacter::GetTurtleAimRotation()` (no `GetControlRotation()`), y en el
+  cliente llamar a `SendVRAimToServer()` antes del RPC al servidor que lo usa.
+- Efectos de cámara nuevos: los modificadores con «Shake» en el nombre se apagan solos en VR.
+
+## Límites conocidos
+
+- Las direcciones del stick como botones (`Thumbstick_Up`...) no se declaran para OpenXR; los menús usan el eje del stick
+  (con repetición al mantener).
+- Solo la aleta derecha lleva objetos; la izquierda es decorativa.
+- El HUD es el de siempre en un panel (no está repartido por el mundo). La pantalla dividida no está pensada para VR.
+- La capa de carga de las gafas es un huevo cerrado quieto (el de verdad, con su animación, sale en el panel).
+- Las cámaras de escena de la almeja y el gusano no se ven en VR (se sigue en primera persona).
+
+## Pruebas
+
+Sin gafas (modo simulado, PIE):
+
+1. `Automation RunTests Tortunabo.VR`: las cinco pasan.
+2. Menú principal con `-vrsim` (o `TN.VR 2` en la consola y volver al menú): el menú sale en un panel delante; el ratón
+   mueve el puntero sobre el panel y el clic pulsa los botones; la rueda baja las listas; «Ajustes» y «Crear partida» van.
+   Los botones del editor (parar PIE) se siguen pudiendo pulsar con el menú abierto.
+3. Lobby con `TN.VR 2`: primera persona a la altura de la tortuga, sin ver el propio cuerpo (sí la sombra); dos aletas
+   delante que se mecen un poco; el HUD en un panel delante; el ratón gira la vista y la tortuga gira con ella; andar va
+   hacia donde miras. `TN.VR 0`: vuelve la tercera persona de siempre con el HUD en pantalla.
+4. Coger un objeto: sale en la aleta derecha. Lanzarlo: sale hacia donde mira la cámara. Con 2 jugadores, el otro ve tu
+   tortuga girar hacia donde miras y el objeto en su aleta.
+5. Menú de pausa (Escape/Tabulador): el panel se queda quieto delante; el ratón apunta y pulsa; cerrarlo: vuelve el HUD.
+   Tienda, probador (sin fundido) y general: igual.
+6. Ruedas de emotes y de frases: salen en el panel y se eligen como siempre.
+7. Carrera: cuenta atrás, reloj de ronda, recuento, campeón y «¡ADELANTE!» salen en el panel; el huevo de carga también.
+8. Espectador/fantasma: se ve desde la cámara de la tortuga seguida, sin cámara libre; ←/→ cambian de tortuga sin fundido.
+9. Ajustes > Juego > Realidad virtual: «Modo VR» Simulado/Desactivado cambia en el acto; «Giro en VR» se guarda.
+   «Restablecer esta pestaña» los deja en Automático y 30°.
+10. Temblor de cámara y ojo de pez no se notan con el modo VR puesto, aunque estén encendidos.
+
+Con las Quest (VR Preview o `-vr`):
+
+11. `TN.VR.Status`: «Modo VR: gafas · OpenXR: sí · gafas conectadas: sí · estéreo: sí».
+12. Mirar alrededor: la vista sigue a la cabeza sin retraso; al agacharse, la vista baja. Clic del stick derecho: recentra.
+13. Las aletas siguen a los mandos; si un mando se apaga, su aleta desaparece.
+14. Stick izquierdo anda hacia donde miras; stick derecho gira a pasos de 30° (probar 45° y suave en Ajustes).
+15. A salta, B caparazón, agarre izquierdo corre, gatillo derecho interactúa. Coger un objeto: sale en la aleta derecha;
+    lanzarlo apuntando con la aleta a un lado: sale hacia allí (también al compañero que llevas, y la tinta).
+16. Menú (botón del mando izquierdo): la pausa sale delante y quieta; el láser de la aleta derecha apunta (punto en el
+    panel) y el gatillo pulsa; A/B aceptan y van atrás; los agarres cambian de pestaña; el stick se mueve por las filas.
+    Menú otra vez: se cierra.
+17. Y mantenido: rueda de emotes; elegir con el stick derecho y soltar.
+18. Viajar del lobby a la partida: el huevo cerrado sale en las gafas mientras carga (sin imagen congelada) y se rompe en
+    el panel al empezar.
+19. Nada tiembla ni se deforma; no hay fundidos de cámara.

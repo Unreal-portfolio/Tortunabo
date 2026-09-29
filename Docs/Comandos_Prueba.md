@@ -214,6 +214,23 @@ despacio por la arena no debe sonar; un bote de más de 2,6 m/s, sí.
 Escape en el juego y Tabulador en el editor (PIE); Start en el mando. No tiene comandos. La lista de pruebas está en
 `Docs/Menu_Pausa.md`.
 
+## Modo VR
+
+Detalle, controles y pruebas en `Docs/Modo_VR.md`. Se escriben en la ventana de **quien lo prueba** (el modo VR es de cada
+máquina).
+
+| Comando | Qué hace |
+|---|---|
+| `TN.VR 2` | Modo VR simulado sin gafas: primera persona, aletas quietas delante, HUD y menús en un panel del mundo; el ratón mira y apunta. También `-vrsim` al arrancar o Ajustes > Juego > «Modo VR». |
+| `TN.VR 1` | Modo gafas: enciende las gafas OpenXR si las hay (Meta Quest Link o el Meta XR Simulator como runtime). |
+| `TN.VR 0` / `TN.VR -1` | Apagado a la fuerza / lo que diga el ajuste (Automático: gafas solo si el motor pinta en estéreo). |
+| `TN.VR.Status` | Escribe el modo, si hay OpenXR, gafas y estéreo, el dispositivo, el rig y si hay un menú delante. |
+| `TN.VR.Recenter` | Recentra la vista (con gafas) y vuelve a poner delante el HUD o el menú. Con los mandos, clic del stick derecho. |
+| `TN.VR.HudDistance 140` / `TN.VR.HudFov 50` | Distancia (cm) y ancho (grados) del HUD. |
+| `TN.VR.MenuDistance 160` / `TN.VR.MenuFov 58` | Lo mismo para los menús. |
+| `TN.VR.SmoothTurnSpeed 120` | Grados por segundo del giro suave. |
+| `Automation RunTests Tortunabo.VR` | Pruebas automáticas del modo VR (puntero, HUD, giro, panel, botones de los menús). |
+
 ## Pantalla de carga del huevo
 
 | Comando | Qué hace |
