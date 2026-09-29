@@ -1,16 +1,17 @@
-"""Construye los materiales del terreno (antes, de la demo del mapa en grid).
+"""Construye los assets greybox de la demo del mapa en grid.
 
 Se ejecuta DENTRO del editor de Unreal (consola Python, MCP o -run=pythonscript):
     exec(open(r"<repo>/Scripts/build_grid_demo_assets.py", encoding="utf-8").read())
 
-Crea en /Game/Blueprints/Gameplay/GridMap: material plano + instancias de color, los
-materiales de terreno, de basura y del agua, y el GameMode de la demo. Los usan el mapa
-volumetrico (SM_M_Mapa01_*, LVL_Mapa01) y build_water_toon.py.
-
-El generador en rejilla (tiles, BP_GridMapGenerator y LVL_ProcGenDemo) se retiro el
-2026-09-29: la version completa del script esta en Deprecado/Scripts/build_grid_demo_assets.py.
+Crea en /Game/Blueprints/Gameplay/GridMap: material plano + instancias de color,
+tiles greybox de recta y giro, tres rellenos, los materiales de terreno y de basura, el BP
+del tile de terreno,
+el material del agua, el GameMode de la demo y BP_GridMapGenerator (en modo terreno).
+Crea el mapa /Game/Maps/Run/LVL_ProcGenDemo con luz, cielo, generador y PlayerStart.
 
 Idempotente: los assets que ya existen se reutilizan, no se recrean.
+El generador queda en modo terreno con celdas de TERRAIN_CELL_SIZE. Para probar el modo
+greybox hay que vaciar TerrainTileClass y poner CellSize = CELL_SIZE en el generador.
 """
 
 import os
@@ -18,6 +19,8 @@ import os
 import unreal
 
 ROOT = "/Game/Blueprints/Gameplay/GridMap"
+MAP_PATH = "/Game/Maps/Run/LVL_ProcGenDemo"
+CUBE_PATH = "/Engine/BasicShapes/Cube"
 TEXTURE_ROOT = "/Game/Textures/Terrain"
 GRAIN_TEXTURE = "T_TerrainGrain"
 GRAIN_SOURCE = "Scripts/textures/T_TerrainGrain.png"  # lo genera Scripts/gen_terrain_textures.py
@@ -25,7 +28,15 @@ GRAIN_SOURCE = "Scripts/textures/T_TerrainGrain.png"  # lo genera Scripts/gen_te
 DETAIL_NORMALS = {"T_TerrainFloorN": "Scripts/textures/T_TerrainFloorN.png",
                   "T_TerrainWallN": "Scripts/textures/T_TerrainWallN.png"}
 CHARACTER_BP = "/Game/Blueprints/Characters/BP_TortugaCharacter"
+GENERATOR_CLASS = "/Script/Tortunabo.TN_GridMapGenerator"
+TERRAIN_TILE_CLASS = "/Script/Tortunabo.TN_GridTerrainTile"
 
+CELL_SIZE = 2000.0  # tiles greybox
+TERRAIN_CELL_SIZE = 4000.0  # modo terreno: debe casar con FTNGridTerrainSettings
+CUBE_SIZE = 100.0
+WALL_THICKNESS = 50.0
+WALL_HEIGHT = 400.0
+FLOOR_THICKNESS = 50.0
 
 COLORS = {
     "MI_Grid_Path": (0.85, 0.70, 0.42),
@@ -87,6 +98,80 @@ def create_blueprint(name, parent_class):
     factory = unreal.BlueprintFactory()
     factory.set_editor_property("parent_class", parent_class)
     return asset_tools.create_asset(name, ROOT, unreal.Blueprint, factory)
+
+
+def add_box(blueprint, name, size, location, material, cube, yaw=0.0):
+    """Añade un StaticMeshComponent con forma de caja (size y location en uu)."""
+    root_handle = subobjects.k2_gather_subobject_data_for_blueprint(blueprint)[0]
+    params = unreal.AddNewSubobjectParams(
+        parent_handle=root_handle, new_class=unreal.StaticMeshComponent, blueprint_context=blueprint)
+    handle, fail_reason = subobjects.add_new_subobject(params)
+    if not unreal.SubobjectDataBlueprintFunctionLibrary.is_handle_valid(handle):
+        raise RuntimeError(f"No se pudo añadir '{name}' a {blueprint.get_name()}: {fail_reason}")
+
+    subobjects.rename_subobject(handle, unreal.Text(name))
+    data = subobjects.k2_find_subobject_data_from_handle(handle)
+    component = unreal.SubobjectDataBlueprintFunctionLibrary.get_associated_object(data)
+    component.set_editor_property("static_mesh", cube)
+    component.set_editor_property("relative_location", unreal.Vector(*location))
+    component.set_editor_property("relative_rotation", unreal.Rotator(0.0, 0.0, yaw))
+    component.set_editor_property(
+        "relative_scale3d", unreal.Vector(size[0] / CUBE_SIZE, size[1] / CUBE_SIZE, size[2] / CUBE_SIZE))
+    component.set_editor_property("override_materials", [material])
+    component.set_editor_property("mobility", unreal.ComponentMobility.STATIC)
+
+
+def build_tile(name, boxes, cube):
+    """boxes: lista de (nombre, size, location, material[, yaw])."""
+    path = f"{ROOT}/{name}"
+    existing = load_or_none(path)
+    if existing:
+        return existing
+
+    blueprint = create_blueprint(name, unreal.Actor)
+    for box in boxes:
+        add_box(blueprint, box[0], box[1], box[2], box[3], cube, box[4] if len(box) > 4 else 0.0)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
+def build_tiles(materials, cube):
+    half = CELL_SIZE / 2.0
+    wall_offset = half - WALL_THICKNESS / 2.0
+    wall_z = WALL_HEIGHT / 2.0
+    floor = lambda mat: ("Floor", (CELL_SIZE, CELL_SIZE, FLOOR_THICKNESS), (0.0, 0.0, -FLOOR_THICKNESS / 2.0), mat)
+    wall_along_x = lambda n, y: (n, (CELL_SIZE, WALL_THICKNESS, WALL_HEIGHT), (0.0, y, wall_z), materials["MI_Grid_Wall"])
+    wall_along_y = lambda n, x: (n, (WALL_THICKNESS, CELL_SIZE, WALL_HEIGHT), (x, 0.0, wall_z), materials["MI_Grid_Wall"])
+
+    path_mat = materials["MI_Grid_Path"]
+    return {
+        # Recta canónica: abierta a lo largo de X, paredes en ±Y.
+        "straight": build_tile("BP_GridTile_Straight", [
+            floor(path_mat), wall_along_x("WallLeft", -wall_offset), wall_along_x("WallRight", wall_offset),
+        ], cube),
+        # Giro canónico: abierto por -X y +Y, paredes en +X y -Y, poste en la esquina interior.
+        "turn": build_tile("BP_GridTile_Turn", [
+            floor(path_mat), wall_along_y("WallFront", wall_offset), wall_along_x("WallLeft", -wall_offset),
+            ("CornerPost", (WALL_THICKNESS, WALL_THICKNESS, WALL_HEIGHT), (-wall_offset, wall_offset, wall_z),
+             materials["MI_Grid_Wall"]),
+        ], cube),
+        "fillers": [
+            build_tile("BP_GridFiller_Dune", [
+                floor(materials["MI_Grid_Dune"]),
+                ("Mound", (1400.0, 1400.0, 300.0), (0.0, 0.0, 150.0), materials["MI_Grid_Dune"]),
+                ("Crest", (800.0, 800.0, 250.0), (100.0, -100.0, 425.0), materials["MI_Grid_Dune"], 30.0),
+            ], cube),
+            build_tile("BP_GridFiller_Rock", [
+                floor(materials["MI_Grid_Dune"]),
+                ("RockBig", (1000.0, 900.0, 800.0), (-150.0, 100.0, 400.0), materials["MI_Grid_Rock"], 25.0),
+                ("RockSmall", (500.0, 450.0, 400.0), (550.0, -450.0, 200.0), materials["MI_Grid_Rock"], -15.0),
+            ], cube),
+            build_tile("BP_GridFiller_Water", [
+                ("Water", (CELL_SIZE, CELL_SIZE, 20.0), (0.0, 0.0, -70.0), materials["MI_Grid_Water"]),
+            ], cube),
+        ],
+    }
 
 
 def build_grain_texture():
@@ -411,6 +496,21 @@ def build_junk_material():
     return material
 
 
+def build_terrain_tile(terrain_material, junk_material):
+    path = f"{ROOT}/BP_GridTerrainTile"
+    blueprint = load_or_none(path)
+    if not blueprint:
+        blueprint = create_blueprint("BP_GridTerrainTile", unreal.load_class(None, TERRAIN_TILE_CLASS))
+        unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+
+    defaults = unreal.get_default_object(blueprint.generated_class())
+    defaults.set_editor_property("terrain_material", terrain_material)
+    defaults.set_editor_property("junk_material", junk_material)
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
 def build_game_mode():
     path = f"{ROOT}/BP_GridDemoGameMode"
     existing = load_or_none(path)
@@ -426,17 +526,86 @@ def build_game_mode():
     return blueprint
 
 
+def build_generator(tiles, terrain_tile_bp, water_material):
+    path = f"{ROOT}/BP_GridMapGenerator"
+    blueprint = load_or_none(path)
+    if not blueprint:
+        blueprint = create_blueprint("BP_GridMapGenerator", unreal.load_class(None, GENERATOR_CLASS))
+        unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+
+    defaults = unreal.get_default_object(blueprint.generated_class())
+    defaults.set_editor_property("straight_tile_class", tiles["straight"].generated_class())
+    defaults.set_editor_property("turn_tile_class", tiles["turn"].generated_class())
+    defaults.set_editor_property("filler_tile_classes", [bp.generated_class() for bp in tiles["fillers"]])
+    defaults.set_editor_property("cell_size", TERRAIN_CELL_SIZE)
+    # Con TerrainTileClass asignado el generador trabaja en modo terreno; los tiles
+    # greybox se quedan configurados como alternativa (basta con vaciar esta propiedad).
+    defaults.set_editor_property("terrain_tile_class", terrain_tile_bp.generated_class())
+    defaults.set_editor_property("water_material", water_material)
+    # Sin recompilar, las instancias nuevas no heredan los defaults recién escritos en el CDO.
+    unreal.BlueprintEditorLibrary.compile_blueprint(blueprint)
+    asset_lib.save_loaded_asset(blueprint)
+    return blueprint
+
+
+def build_map(generator_bp, game_mode_bp):
+    level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+
+    if asset_lib.does_asset_exist(MAP_PATH):
+        level_subsystem.load_level(MAP_PATH)
+    else:
+        level_subsystem.new_level(MAP_PATH)
+
+    by_label = {actor.get_actor_label(): actor for actor in actor_subsystem.get_all_level_actors()}
+
+    def ensure_actor(label, actor_class, location=unreal.Vector(0, 0, 0), rotation=unreal.Rotator(0, 0, 0)):
+        if label in by_label:
+            return by_label[label]
+        actor = actor_subsystem.spawn_actor_from_class(actor_class, location, rotation)
+        actor.set_actor_label(label)
+        return actor
+
+    ensure_actor("Sun", unreal.DirectionalLight, unreal.Vector(0, 0, 3000), unreal.Rotator(0.0, -50.0, 35.0))
+    ensure_actor("SkyAtmosphere", unreal.SkyAtmosphere)
+    sky_light = ensure_actor("SkyLight", unreal.SkyLight, unreal.Vector(0, 0, 3000))
+    # Luz de cielo móvil y reforzada: el terreno es un cañón y las paredes en sombra se
+    # quedaban negras con los valores por defecto.
+    sky_component = sky_light.get_component_by_class(unreal.SkyLightComponent)
+    sky_component.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
+    sky_component.set_editor_property("real_time_capture", True)
+    sky_component.set_editor_property("intensity", 2.0)
+
+    generator = ensure_actor("GridMapGenerator", generator_bp.generated_class())
+    generator.call_method("Generate")
+
+    # Con semilla fija el inicio del camino es estable: el PlayerStart se coloca sobre él.
+    # Los tiles son Transient y EditorActorSubsystem no los lista: se buscan por tag en el mundo.
+    world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+    start_tiles = unreal.GameplayStatics.get_all_actors_with_tag(world, "TNGridStart")
+    if not start_tiles:
+        raise RuntimeError("Generate() no ha producido tile de inicio; revisa el Output Log ([GridMap]).")
+    player_start = ensure_actor("PlayerStart_PathStart", unreal.PlayerStart)
+    player_start.set_actor_location(
+        start_tiles[0].get_actor_location() + unreal.Vector(-TERRAIN_CELL_SIZE * 0.3, 0.0, 250.0), False, False)
+
+    world.get_world_settings().set_editor_property("default_game_mode", game_mode_bp.generated_class())
+    level_subsystem.save_current_level()
+
+
 def main():
     asset_lib.make_directory(ROOT)
     asset_lib.make_directory(TEXTURE_ROOT)
+    cube = asset_lib.load_asset(CUBE_PATH)
     flat = build_flat_material()
-    for name, rgb in COLORS.items():
-        build_color_instance(name, rgb, flat)
-    build_terrain_material(build_grain_texture())
-    build_junk_material()
-    build_water_material()
-    build_game_mode()
-    unreal.log("[GridDemo] Materiales del terreno y GameMode listos.")
+    materials = {name: build_color_instance(name, rgb, flat) for name, rgb in COLORS.items()}
+    tiles = build_tiles(materials, cube)
+    terrain_material = build_terrain_material(build_grain_texture())
+    terrain_tile_bp = build_terrain_tile(terrain_material, build_junk_material())
+    generator_bp = build_generator(tiles, terrain_tile_bp, build_water_material())
+    game_mode_bp = build_game_mode()
+    build_map(generator_bp, game_mode_bp)
+    unreal.log("[GridDemo] Assets y mapa de la demo listos.")
 
 
 if __name__ == "__main__":
