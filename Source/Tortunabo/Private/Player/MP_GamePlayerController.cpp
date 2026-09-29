@@ -1491,6 +1491,11 @@ void AMP_GamePlayerController::ServerShellsTest_Implementation(const FString& Wh
 	// Suelta puntos que van a la tienda: solo en las builds de desarrollo.
 	ClientMessage(TEXT("TNShells: solo en las builds de desarrollo."));
 #else
+	if (!TNIsHostDebugCallAllowed(this, TEXT("TNShells")))
+	{
+		ClientMessage(TEXT("TNShells: solo el anfitrión."));
+		return;
+	}
 	UWorld* World = GetWorld();
 	APawn* MyPawn = GetPawn();
 	if (!World || !MyPawn)

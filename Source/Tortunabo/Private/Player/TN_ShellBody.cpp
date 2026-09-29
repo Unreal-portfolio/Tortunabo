@@ -46,8 +46,8 @@ namespace TNShellBodyDetail
 	/** A menos de esto (cm) del filo del acantilado no se mira la hondura: la pared está socavada y ahí se cae al agua de meta. */
 	constexpr float CliffSkip = 1000.f;
 
-	TAutoConsoleVariable<int32> CVarShellDebug(TEXT("TN.Shell.Debug"), 1,
-		TEXT("Instrumento de la bola del caparazón (todas las máquinas): 1 = avisa en el registro («[Caparazón] TN.Shell.Debug») cuando la caja gira cerca de su tope durante 0,4 s (torbellino), cuando su parte de abajo queda más de 25 cm bajo el terreno de la playa o cuando su velocidad salta más de 9 m/s en un paso fuera de un lanzamiento, con sus últimos choques (quién la empuja) y, en los clientes, el desfase con el servidor; 0 = apagado."));
+	TAutoConsoleVariable<int32> CVarShellDebug(TEXT("TN.Shell.Debug"), UE_BUILD_SHIPPING ? 0 : 1,
+		TEXT("Instrumento de la bola del caparazón (todas las máquinas): 1 = avisa en el registro («[Caparazón] TN.Shell.Debug») cuando la caja gira cerca de su tope durante 0,4 s (torbellino), cuando su parte de abajo queda más de 25 cm bajo el terreno de la playa o cuando su velocidad salta más de 9 m/s en un paso fuera de un lanzamiento, con sus últimos choques (quién la empuja) y, en los clientes, el desfase con el servidor; 0 = apagado (por defecto en Shipping)."));
 
 	const TCHAR* AnomalyName(TNShellLogic::EShellMotionAnomaly Anomaly)
 	{
