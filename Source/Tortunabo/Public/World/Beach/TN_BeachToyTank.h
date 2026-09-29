@@ -42,8 +42,8 @@ struct FTNTankShot
  *    2,6 m/s, y en cada punta gira sobre sí mismo.
  *  - Con una tortuga atacable a menos de 25 m, se para y gira la torreta hacia ella (110°/s); cuando apunta, dispara
  *    bolitas de espuma naranjas (una cada 3,2 s; la primera a los 0,7 s) con una parábola visible (estela de humo), un
- *    «¡pomp!» y retroceso del cañón y del casco. Cada bolita que da solo empuja a la tortuga a
- *    5,2 m/s, sin meterla en el caparazón ni aturdirla. Tras el primer bote ya no hace nada.
+ *    «¡pomp!» y retroceso del cañón y del casco. Cada bolita que da empuja y marea un poco: bola aturdida 0,8 s
+ *    (TNBeach::StunTurtle) a 5,2 m/s, como el golpe directo de las minas. Tras el primer bote ya no hace nada.
  *  - Mareado por un golpe (IsHitStunned): se para, echa humo, tose y la antena da vueltas como una hélice.
  *  - Sólido: la tortuga no lo atraviesa (caja tipo Pawn, como el cangrejo gigante).
  *
@@ -75,9 +75,9 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastFire(uint8 ShotId, FVector_NetQuantize Origin, FVector_NetQuantize10 Velocity, float ServerTime, float LandZ);
 
-	/** Todas las máquinas: la bolita ShotId ha dado a Victim en Where y lo despide con Push (el dueño lo aplica también). */
+	/** Todas las máquinas: la bolita ShotId ha dado a Victim en Where. */
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastFoamHit(uint8 ShotId, FVector_NetQuantize Where, ATortugaCharacter* Victim, FVector_NetQuantize10 Push);
+	void MulticastFoamHit(uint8 ShotId, FVector_NetQuantize Where, ATortugaCharacter* Victim);
 
 private:
 	/** Caja sólida (en todas las máquinas), enganchada a la raíz animada. */

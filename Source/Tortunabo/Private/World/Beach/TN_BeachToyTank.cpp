@@ -42,8 +42,9 @@ namespace TNBeachTank
 	constexpr float MuzzleSpeed = 1900.f;
 	constexpr float FoamGravity = 700.f;
 	constexpr float LeadFactor = 0.6f;
-	/** Golpe: holgura (cm) y empujón (cm/s) de lado y hacia arriba. */
+	/** Golpe: holgura (cm), mareo en bola (s) y empujón (cm/s) de lado y hacia arriba. */
 	constexpr float HitPad = 70.f;
+	constexpr float HitStun = 0.8f;
 	constexpr float HitPush = 520.f;
 	constexpr float HitUp = 260.f;
 	/** La bolita dura esto como mucho y deja de botar tras tantos botes. */
@@ -317,11 +318,11 @@ void ATN_BeachToyTank::AdvanceShots(double Now, bool bServer)
 			{
 				continue;
 			}
-			// Solo la despide hacia donde iba la bolita: ni se mete en el caparazón ni queda aturdida.
+			// Empuja hacia donde iba la bolita y marea un poco (en bola).
 			const FVector Launch = Vel.GetSafeNormal2D() * TNBeachTank::HitPush + FVector(0.0, 0.0, TNBeachTank::HitUp);
-			Turtle->LaunchCharacter(Launch, true, true);
+			StunTurtle(Turtle, TNBeachTank::HitStun, Launch);
 			BounceOffTurtle(Shot, P, Now);
-			MulticastFoamHit(Shot.Id, P, Turtle, Launch);
+			MulticastFoamHit(Shot.Id, P, Turtle);
 			break;
 		}
 	}
@@ -500,14 +501,9 @@ void ATN_BeachToyTank::MulticastFire_Implementation(uint8 ShotId, FVector_NetQua
 	UTN_BeachCameraShake::Kick(this, MouthAt, 0.15f, 400.f, 1500.f);
 }
 
-void ATN_BeachToyTank::MulticastFoamHit_Implementation(uint8 ShotId, FVector_NetQuantize Where, ATortugaCharacter* Victim, FVector_NetQuantize10 Push)
+void ATN_BeachToyTank::MulticastFoamHit_Implementation(uint8 ShotId, FVector_NetQuantize Where, ATortugaCharacter* Victim)
 {
 	const FVector At = Where;
-	// El dueño aplica el mismo empujón que el servidor: sin corrección de movimiento.
-	if (Victim && !HasAuthority() && Victim->IsLocallyControlled())
-	{
-		Victim->LaunchCharacter(Push, true, true);
-	}
 	if (!HasAuthority())
 	{
 		FTNTankShot& Shot = Shots[ShotId % MaxShots];
