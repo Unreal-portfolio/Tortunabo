@@ -39,7 +39,8 @@ public class Tortunabo : ModuleRules
 		});
 
 		// FUniqueNetIdWrapper::ToString (ajustes de voz por compañero en el menú de pausa).
-		PrivateDependencyModuleNames.AddRange(new string[] { "CoreOnline" });
+		// ApplicationCore: portapapeles (FPlatformApplicationMisc) para copiar y pegar el código de sala (Docs/Salas.md).
+		PrivateDependencyModuleNames.AddRange(new string[] { "CoreOnline", "ApplicationCore" });
 
 		DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
 	}

@@ -55,13 +55,18 @@ OnlineSubsystem y Engine ya estaban; `DeveloperSettings` y `GameplayTags` llegan
 
 **Cabecera**: cinta «PAUSA» sobre un cartel azul marino con el mapa o modo (lobby del castillo o del cuartel; carrera
 en la playa con su ronda y las conchas para ganar; cooperativo con ronda, dificultad y semilla del mapa; 2 contra 2;
-solo terreno; carrera clásica), la sesión (partida de quién, sala —los 6 últimos caracteres del id de la sesión— y
-tortugas conectadas; sin sesión, si eres el anfitrión, un invitado o una partida local) y los jugadores con su cara, su
+solo terreno; carrera clásica), la sala (su nombre, de quién es, pública o privada con su código, «3/4 tortugas» y
+«cerrada» si lo está: [Salas](Salas.md); sin sala, la sesión como antes; sin sesión, si eres el anfitrión, un invitado
+o una partida local) y los jugadores con su cara, su
 nombre, «Tú», «Anfitrión» (corona) o su ping, y su icono de voz: micrófono para ti y altavoz para los demás, que late
 cuando habla y sale tachado si está silenciado.
 
-**Portada**: Continuar, Ajustes, Controles, Volver al lobby, Menú principal (anfitrión) o Salir de la partida
-(invitado) y Salir al escritorio. Abajo, la ayuda de la opción enfocada y los atajos.
+**Portada**: Continuar, Ajustes, Controles, Sala (en red), Volver al lobby, Menú principal (anfitrión) o Salir de la
+partida (invitado) y Salir al escritorio. Abajo, la ayuda de la opción enfocada y los atajos.
+
+**Sala** (partidas en red; ver [Salas](Salas.md)): nombre, pública o privada, el código (se copia), «Entrada: Abierta /
+Cerrada» (el anfitrión la cambia), «Invitar a amigos de Steam» y las tortugas de la sala; el anfitrión tiene un «⋮» en
+cada una para expulsarla (con confirmación).
 
 | Opción | Anfitrión | Invitado |
 |---|---|---|

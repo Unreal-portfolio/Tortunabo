@@ -39,6 +39,11 @@ enum class ETNPauseRowKind : uint8
 	 * del mando o clic derecho la devuelven a la de serie.
 	 */
 	KeyBind,
+	/**
+	 * Entrada de una lista que se pulsa como un botón (salas, jugadores de la sala): el nombre, dos columnas de texto y,
+	 * si hay, un icono al final (el «⋮» de las opciones de un jugador, el candado de una sala cerrada).
+	 */
+	Entry,
 };
 
 /** Aspecto de una fila. */
@@ -65,12 +70,14 @@ enum class ETNPauseSound : uint8
 	Tick,
 };
 
-/** Páginas del menú de pausa. */
+/** Páginas del menú de pausa (el orden es el de las páginas en el conmutador). */
 enum class ETNPausePage : uint8
 {
 	Home,
 	Settings,
 	Controls,
+	/** La sala: nombre, código, cerrar y abrir, y quién está dentro (con el «⋮» para expulsar, el anfitrión). */
+	Room,
 };
 
 /** Pestañas de los ajustes. */
@@ -106,6 +113,14 @@ public:
 	void SetupMeter(const FText& InLabel, TFunction<void(float& OutLevel, float& OutMark, FText& OutText)> InSampler);
 	/** Fila de tecla: InOnChange empieza a capturar la tecla nueva; InOnReset la devuelve a la de serie. */
 	void SetupKeyBind(const FText& InLabel, const FString& InBindingId, TFunction<void()> InOnChange, TFunction<void()> InOnReset);
+	/** Entrada: se pulsa como un botón; InValue e InValue2 van en dos columnas y, si hay, InIcon al final. */
+	void SetupEntry(const FText& InLabel, const FText& InValue, const FText& InValue2, TFunction<void()> InOnPressed, UTexture2D* InIcon = nullptr);
+
+	/** Colores de las dos columnas de texto (entradas y filas de texto). */
+	void SetValueColors(const FLinearColor& InValue, const FLinearColor& InValue2);
+
+	/** Ancho fijo (los botones de cuadro, para ponerlos en fila con otras cosas). */
+	void SetWidthOverride(float InWidth);
 
 	/** Teclas que enseña una fila de tecla (una columna sin cambio posible se ve apagada). */
 	void SetKeyTexts(const FText& InKeyboard, const FText& InPad, bool bKeyboardEditable, bool bPadEditable);
@@ -297,8 +312,9 @@ private:
 /**
  * @brief Menú de pausa de Tortunavy (todos los modos). No pausa el juego: la partida es en red y sigue.
  *
- * Arriba, el mapa o modo, la sesión y los jugadores conectados con su icono de voz (hablando, silenciado). Portada:
- * Continuar, Ajustes, Controles, Volver al lobby (el anfitrión lleva a todos; un invitado sale él solo al menú
+ * Arriba, el mapa o modo, la sala (nombre, código si es privada, «3/4» y si está cerrada) y los jugadores conectados con
+ * su icono de voz (hablando, silenciado). Portada: Continuar, Ajustes, Controles, Sala (en red: código, cerrar y abrir,
+ * y expulsar con el «⋮» de cada jugador, el anfitrión; Docs/Salas.md), Volver al lobby (el anfitrión lleva a todos; un invitado sale él solo al menú
  * principal), Salir de la partida o Menú principal y Salir al escritorio; lo que corta la partida pide confirmación. Ajustes en cinco pestañas
  * (Gráficos, Sonido, Voz, Controles, Juego) que se aplican al momento (UTN_GameSettingsSubsystem y UGameUserSettings);
  * Controles: las teclas y los botones del juego (de IMC_Player, más hablar y el menú), que se cambian aquí mismo
@@ -362,6 +378,13 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UScrollBox> ControlsList;
+
+	/** Página «Sala»: su lista y el botón de la portada que lleva a ella (para volver a enfocarlo). */
+	UPROPERTY(Transient)
+	TObjectPtr<UScrollBox> RoomList;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_PauseRow> RoomHomeRow;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> HelpText;
@@ -427,6 +450,9 @@ private:
 	/** Jugadores con fila propia en la pestaña de voz (para rehacerla si alguien entra o sale). */
 	TArray<TWeakObjectPtr<APlayerState>> VoiceTabPlayers;
 
+	/** Lo que enseña la página «Sala» (jugadores, cerrada, plazas...): se rehace si cambia. */
+	FString RoomListSignature;
+
 	/** Aviso en pantalla: segundos que le quedan. */
 	float NoticeTime = 0.f;
 
@@ -449,6 +475,7 @@ private:
 	UWidget* BuildHomePage();
 	UWidget* BuildSettingsPage();
 	UWidget* BuildControlsPage();
+	UWidget* BuildRoomPage();
 	UWidget* BuildConfirmLayer();
 	void BuildHomeButtons();
 	void RefreshHeader();
@@ -464,6 +491,11 @@ private:
 	void FillControlsTab();
 	void FillGameTab();
 	void FillControlsList();
+	/** Página «Sala»: la sala y sus jugadores (la vuelve a hacer si cambia algo, sin perder la fila enfocada). */
+	void FillRoomList();
+	FString BuildRoomSignature() const;
+	/** El «⋮» de un jugador (anfitrión): sus opciones, y expulsar con confirmación. */
+	void OpenPlayerOptions(APlayerState* Target);
 	void RefreshGraphicsRows();
 	void RefreshHint();
 
@@ -517,4 +549,6 @@ private:
 	bool IsHost() const;
 	bool IsInLobby() const;
 	bool CanReturnToLobby() const;
+	/** Partida en red (anfitrión o invitado): hay página «Sala». */
+	bool HasRoomPage() const;
 };

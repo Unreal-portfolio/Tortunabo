@@ -8,14 +8,44 @@
 #include "World/ProcMap/TN_ProcMapEnums.h"
 #include "Core/TN_CosmeticsTypes.h"
 #include "Core/TN_MatchStartTypes.h"
+#include "Multiplayer/TN_RoomTypes.h"
 #include "MP_GameInstance.generated.h"
 
+class AGameModeBase;
+class APlayerController;
+class APlayerState;
+class ATN_RoomInfo;
 class UNetDriver;
 class UUserWidget;
 class UTN_CosmeticSaveGame;
 class UTN_TutorialSaveGame;
 struct FTN_HelmetData;
 struct FTN_SkinData;
+struct FUniqueNetIdRepl;
+
+/** Aviso de las salas para la interfaz (sala cerrada, llena, código que no existe...). bError: en coral; si no, en dorado. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FTNOnRoomNotice, const FText& /*Message*/, bool /*bError*/);
+
+/** Para qué es la búsqueda de sesiones en marcha (UMP_GameInstance). */
+enum class ETNRoomSearch : uint8
+{
+	None,
+	/** Lista de salas públicas. */
+	List,
+	/** Sala de un código. */
+	Code,
+	/** «Unirse a la primera» (FindAndJoinSession). */
+	QuickJoin,
+};
+
+/** Aviso que espera al menú principal (tras volver a él: expulsado, sala cerrada, el anfitrión se fue...). */
+struct FTNMenuNotice
+{
+	FText Text;
+	bool bError = true;
+	/** Abrir la pantalla «Unirse» al llegar (el rechazo vino al intentar entrar en una sala). */
+	bool bOpenJoin = false;
+};
 
 /** @brief Entrada de la tabla de loot de cascos: id + peso para sorteo ponderado. */
 USTRUCT(BlueprintType)
@@ -58,21 +88,93 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Multiplayer")
 	FOnStatusChanged OnStatusChanged;
 
-	/** @brief Crea una sesión Steam (presence) y carga el mapa lobby como listen-server. */
+	/**
+	 * @brief Crea la sesión de la sala activa (ActiveRoom; si no hay, una pública nueva con nombre y código al azar) y carga
+	 *        el mapa lobby como servidor escucha.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void HostSession();
 
 	/**
-	 * @brief Crear partida desde el menú principal con el modo elegido: Cooperativo (lobby del castillo y mapa
-	 *        procedural) o Carrera (todos contra todos en la playa). Lo guarda en SelectedProcMode y llama a HostSession.
+	 * @brief Crear partida con el modo elegido: Cooperativo (lobby del castillo y mapa procedural) o Carrera (todos contra
+	 *        todos en la playa), con la última configuración de sala de esta ejecución (HostRoom).
 	 * @note  Solo Coop y Race: cualquier otro valor cuenta como Coop. Unirse no toca el modo (lo decide el anfitrión).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void HostSessionWithMode(ETNProcGameMode Mode);
 
-	/** @brief Busca sesiones públicas y se une a la primera disponible. */
+	/** @brief Busca salas públicas y se une a la primera en la que se pueda entrar (abierta y con sitio). */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
 	void FindAndJoinSession();
+
+	// ── Salas públicas y privadas (Docs/Salas.md) ───────────────────────────
+
+	/**
+	 * @brief Crea una sala: modo, pública o privada, plazas (4, 6 u 8), nombre y código. Guarda el modo en SelectedProcMode,
+	 *        empieza de cero las listas de expulsados y de miembros, y crea la sesión (HostSession) y viaja al lobby.
+	 */
+	void HostRoom(const FTNRoomConfig& Config);
+
+	/** Borrador para la pantalla «Crear partida»: lo último elegido en esta ejecución, con un nombre y un código nuevos. */
+	FTNRoomConfig MakeRoomDraft() const;
+
+	/** Apunta lo elegido en «Crear partida» para la próxima vez. */
+	void RememberRoomDraft(const FTNRoomConfig& Draft);
+
+	/** Plazas que se pueden elegir (4, 6 y 8, sin pasar de MaxPlayers de DefaultGame.ini). */
+	TArray<int32> GetRoomSizeOptions() const;
+
+	/** Busca las salas públicas (hasta 200). Al acabar, OnRoomListChanged; mientras tanto, IsSearchingRooms. */
+	void RefreshRoomList();
+
+	/** true mientras hay una búsqueda de salas en marcha (la lista o un código). */
+	bool IsSearchingRooms() const;
+
+	/** Salas públicas de la última búsqueda: primero las que tienen sitio, luego las más llenas. */
+	const TArray<FTNRoomListing>& GetRoomListings() const { return RoomListings; }
+
+	/** true si ya ha acabado alguna búsqueda de la lista (para distinguir «buscando» de «no hay salas»). */
+	bool HasRoomListResult() const { return bRoomListReady; }
+
+	/** Entra en una sala de la lista (índice en GetRoomListings). Si está cerrada o llena, lo dice sin intentarlo. */
+	void JoinListedRoom(int32 ListingIndex);
+
+	/** Busca la sala del código (pública o privada) y entra; si no existe, está cerrada o llena, lo dice. */
+	void JoinRoomByCode(const FString& Code);
+
+	/**
+	 * @brief La sala en la que se está: en el anfitrión, la suya; en un invitado, la que replica ATN_RoomInfo (o, mientras
+	 *        llega, la del anuncio de la sesión). false fuera de una partida en red.
+	 */
+	bool GetRoomSnapshot(FTNRoomSnapshot& Out) const;
+
+	/** true en el anfitrión de una partida en red (puede cerrar la sala y expulsar). */
+	bool CanManageRoom() const;
+
+	/** Anfitrión: cierra (nadie nuevo entra; los que ya estaban sí pueden volver) o abre la sala. Actualiza el anuncio. */
+	void SetRoomLocked(bool bLocked);
+
+	/**
+	 * @brief Anfitrión: expulsa a un jugador. Su cliente se va al menú con el aviso (ATN_RoomInfo) y, si no se ha ido en
+	 *        2,5 s, el servidor lo echa (AGameSession::KickPlayer). No puede volver a esta sala mientras dure.
+	 * @return false si no se puede (no eres el anfitrión, eres tú o no es un jugador conectado).
+	 */
+	bool KickFromRoom(APlayerState* Target);
+
+	/** Cliente: el anfitrión me ha expulsado (lo llama ATN_RoomInfo). Vuelve al menú con el aviso. */
+	void HandleKickedFromRoom(int32 RoomNameId);
+
+	/** true si hay una sesión y un overlay de Steam para invitar a amigos. */
+	bool CanInviteFriends() const;
+
+	/** Aviso pendiente para el menú principal (lo deja vacío al leerlo). */
+	FTNMenuNotice ConsumeMenuNotice();
+
+	/** Avisos de las salas (la pantalla de salas del menú los enseña). */
+	FTNOnRoomNotice OnRoomNotice;
+
+	/** La lista de salas públicas ha cambiado (o ha empezado o acabado una búsqueda). */
+	FSimpleMulticastDelegate OnRoomListChanged;
 
 	/** @brief Destruye la sesión Steam actual liberando el slot. */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
@@ -138,9 +240,12 @@ public:
 	/** @brief Devuelve el log de status formateado (últimos MaxStatusLines mensajes). */
 	FString BuildStatusLog() const;
 
-	/** @brief Máximo de jugadores configurado para la sesión. */
+	/**
+	 * @brief Plazas de la sesión: en el anfitrión con sala, las de su sala (4, 6 u 8, las mismas que aplica el PreLogin);
+	 *        si no, el tope de DefaultGame.ini (MaxPlayers, 8). Lo lee el marcador «Sala: X/Y» del lobby (ATN_HQGameMode).
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Multiplayer")
-	int32 GetMaxPlayers() const { return MaxPlayers; }
+	int32 GetMaxPlayers() const { return bHasActiveRoom ? ActiveRoom.MaxPlayers : MaxPlayers; }
 
 	/** Devuelve el DataTable de cascos para lookup externo (TortugaCharacter, widget). */
 	UFUNCTION(BlueprintCallable, Category = "Cosmetics")
@@ -283,7 +388,7 @@ protected:
 	/** @brief Callback online: sesión Steam creada — dispara ServerTravel al mapa lobby. */
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
 
-	/** @brief Callback online: búsqueda terminada — intenta join al primer resultado. */
+	/** @brief Callback online: búsqueda de salas terminada — rellena la lista, entra con el código o en la primera libre. */
 	void OnFindSessionsComplete(bool bWasSuccessful);
 
 	/** @brief Callback online: join completado — resuelve connect string y conecta al host. */
@@ -304,8 +409,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer")
 	FString MenuMapPath = TEXT("/Game/Maps/Lobby/LVL_Menu");
 
-	UPROPERTY(EditDefaultsOnly, Category = "Multiplayer")
-	int32 MaxPlayers = 4;
+	/**
+	 * Plazas de la sesión de Steam (el anfitrión incluido). 8: la carrera en la playa está preparada para ocho (salida,
+	 * nido del sprint, HUD, recuento y red: Docs/Modo_Carrera.md, «Red y rendimiento con 4 y 8 jugadores»). Se lee también de
+	 * DefaultGame.ini ([/Script/Tortunabo.MP_GameInstance] MaxPlayers) para bajarlo sin compilar.
+	 */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Multiplayer", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 MaxPlayers = 8;
 
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Multiplayer|Steam", meta=(ClampMin="1"))
 	int32 SteamDevAppId = 480;
@@ -443,4 +553,98 @@ private:
 
 	/** Intenta reconectar al host resolviendo el connect string de la sesión Steam. */
 	void AttemptAutoRejoin();
+
+	// ── Salas ───────────────────────────────────────────────────────────────
+
+	/** La sala de este anfitrión (válida con bHasActiveRoom). */
+	FTNRoomConfig ActiveRoom;
+	bool bHasActiveRoom = false;
+
+	/** Lo último elegido en «Crear partida» (modo, pública o privada, plazas). */
+	FTNRoomConfig RoomDraft;
+	bool bHasRoomDraft = false;
+
+	/** Quién ha estado en la sala (id único): con la sala cerrada, estos sí pueden volver a entrar. */
+	TSet<FString> RoomMemberIds;
+
+	/** Expulsados de la sala (id único): no vuelven a entrar mientras dure. */
+	TSet<FString> KickedRoomIds;
+
+	/** Salas públicas de la última búsqueda y la búsqueda que las encontró (sus resultados sirven para unirse). */
+	TArray<FTNRoomListing> RoomListings;
+	TSharedPtr<FOnlineSessionSearch> RoomListSearch;
+	bool bRoomListReady = false;
+
+	/** Búsqueda en marcha (en SessionSearch), cuándo empezó y la que espera turno (solo puede haber una a la vez). */
+	ETNRoomSearch RoomSearchPurpose = ETNRoomSearch::None;
+	FString RoomSearchCode;
+	double RoomSearchStartTime = 0.0;
+	int32 RoomSearchSerial = 0;
+	ETNRoomSearch QueuedRoomSearch = ETNRoomSearch::None;
+	FString QueuedRoomCode;
+
+	/** Resultado al que se entra después de cerrar la sesión vieja (unirse desde la lista o con código). */
+	FText PendingJoinRoomName;
+
+	/** Lo último anunciado en la sesión (para actualizarla solo si cambia). */
+	int32 AdvertisedPlayers = INDEX_NONE;
+	int32 AdvertisedMode = INDEX_NONE;
+	int32 AdvertisedLocked = INDEX_NONE;
+
+	/** Aviso que verá el menú principal al volver a él. */
+	FTNMenuNotice PendingMenuNotice;
+
+	/** Cliente expulsado camino del menú: sin reconexión automática. */
+	bool bKickedFromRoom = false;
+
+	TWeakObjectPtr<ATN_RoomInfo> RoomInfoActor;
+
+	FTimerHandle RoomTickHandle;
+	FDelegateHandle PreLoginHandle;
+	FDelegateHandle PostLoginHandle;
+
+	/** Cada segundo: en el anfitrión, la sala (ATN_RoomInfo y anuncio de la sesión); en todos, el plazo de las búsquedas. */
+	void RoomTick();
+
+	/** Servidor: rechaza a quien llegue con la sala cerrada o llena, o expulsado (FGameModeEvents, todos los GameModes). */
+	void HandleGameModePreLogin(AGameModeBase* GameMode, const FUniqueNetIdRepl& NewPlayer, FString& ErrorMessage);
+
+	/** Servidor: apunta al que entra como miembro de la sala. */
+	void HandleGameModePostLogin(AGameModeBase* GameMode, APlayerController* NewPlayer);
+
+	/** Anfitrión sin sala elegida (p. ej. servidor escucha del editor): una pública con nombre y código al azar. */
+	void EnsureActiveRoom();
+
+	/** Servidor: el ATN_RoomInfo de ese mundo (lo crea si no hay) con la sala al día. */
+	ATN_RoomInfo* EnsureRoomInfo(UWorld* World);
+
+	/** Anfitrión: vuelve a anunciar la sesión (cerrada, jugadores y modo). */
+	void UpdateRoomAdvertisement();
+
+	/** Escribe en la sesión los ajustes de la sala activa. */
+	void ApplyRoomSettings(FOnlineSessionSettings& Settings, int32 Players) const;
+
+	/** Al volver al menú: sin sala activa ni listas de la anterior. */
+	void ResetRoomState();
+
+	/** Tortugas en la partida de ese mundo (el anfitrión incluido, sin bots). */
+	static int32 CountRoomPlayers(const UWorld* World);
+
+	/** true si el mundo es el del menú principal. */
+	bool IsMenuWorld(const UWorld* World) const;
+
+	/** Busca salas para Purpose (con Steam, filtrando ya en el servidor). Si hay otra en marcha, espera su turno. */
+	void StartRoomSearch(ETNRoomSearch Purpose, const FString& Code = FString());
+
+	/** Lee una sala de una sesión (resultado de búsqueda o la sesión en la que se está); false si no es de Tortunavy. */
+	static bool ReadRoomListing(const FOnlineSession& Session, int32 Index, FTNRoomListing& Out);
+
+	/** Entra en la sala de ese resultado (cierra antes la sesión vieja si la hay). */
+	void JoinRoomResult(const FOnlineSessionSearchResult& Result, const FText& RoomName);
+
+	/** El servidor no nos ha dejado entrar (TNRoomKeys::Refuse...): aviso claro y de vuelta al menú. */
+	void HandleRoomRefused(const FString& Reason);
+
+	/** Aviso de las salas: al registro de estado y a OnRoomNotice. */
+	void PostRoomNotice(const FText& Message, bool bError);
 };

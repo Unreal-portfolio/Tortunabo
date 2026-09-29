@@ -3,6 +3,7 @@
 #include "../HUD/TN_HUDArt.h"
 #include "../HUD/TN_HUDFaces.h"
 #include "../HUD/TN_HUDStyle.h"
+#include "../Menu/TN_RoomArt.h"
 #include "../Shop/TN_ShopArt.h"
 #include "Audio/TN_ScoreShellSynthComponent.h"
 #include "Game/TN_ProcMapGameState.h"
@@ -10,6 +11,7 @@
 #include "Game/TN_TerrainViewGameMode.h"
 #include "Lobby/TN_HQGameMode.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Multiplayer/TN_RoomNames.h"
 #include "Player/TortugaCharacter.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Voice/ProximityVoiceComponent.h"
@@ -40,6 +42,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
+#include "HAL/PlatformApplicationMisc.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameFramework/InputSettings.h"
@@ -63,6 +66,11 @@ namespace TNPauseUI
 	constexpr float CardWidth = 1240.f;
 	constexpr float SettingsListHeight = 500.f;
 	constexpr float ControlsListHeight = 520.f;
+	constexpr float RoomListHeight = 540.f;
+	/** Columnas de una entrada (salas, jugadores): la primera y la segunda, y el icono del final. */
+	constexpr float EntryValueWidth = 360.f;
+	constexpr float EntryValue2Width = 190.f;
+	constexpr float EntryIconSize = 34.f;
 	constexpr float RowHeight = 52.f;
 	constexpr float BigWidth = 500.f;
 	constexpr float BigHeight = 70.f;
@@ -323,6 +331,14 @@ void UTN_PauseRow::NativeOnInitialized()
 	// Se enfoca para que el teclado y el mando la recorran (tiene que ser antes de montar su widget de Slate).
 	SetIsFocusable(true);
 	SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	// La raíz existe desde ya: las filas se meten en listas que ya están en pantalla antes de montarse (Setup...), y el
+	// widget de Slate de la fila se crea al entrar en la lista. Si la raíz llegara después, la fila quedaría vacía:
+	// se podría enfocar (la ayuda de abajo cambia), pero no se vería ni se podría pulsar.
+	if (WidgetTree && !Sizer)
+	{
+		Sizer = TNPauseUI::Make<USizeBox>(WidgetTree);
+		WidgetTree->RootWidget = Sizer;
+	}
 }
 
 void UTN_PauseRow::SetupButton(ETNPauseRowStyle InStyle, const FText& InLabel, TFunction<void()> InOnPressed, UTexture2D* InIcon, const FText& InActionText)
@@ -407,6 +423,34 @@ void UTN_PauseRow::SetupKeyBind(const FText& InLabel, const FString& InBindingId
 	RefreshLook();
 }
 
+void UTN_PauseRow::SetupEntry(const FText& InLabel, const FText& InValue, const FText& InValue2, TFunction<void()> InOnPressed, UTexture2D* InIcon)
+{
+	Kind = ETNPauseRowKind::Entry;
+	Style = ETNPauseRowStyle::List;
+	OnPressed = MoveTemp(InOnPressed);
+	Build();
+	SetLabel(InLabel);
+	if (ValueText) { ValueText->SetText(InValue); }
+	if (Value2Text) { Value2Text->SetText(InValue2); }
+	if (IconImage)
+	{
+		TNPauseUI::SetPicture(IconImage, InIcon);
+		IconImage->SetVisibility(InIcon ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+	RefreshLook();
+}
+
+void UTN_PauseRow::SetValueColors(const FLinearColor& InValue, const FLinearColor& InValue2)
+{
+	if (ValueText) { ValueText->SetColorAndOpacity(FSlateColor(InValue)); }
+	if (Value2Text) { Value2Text->SetColorAndOpacity(FSlateColor(InValue2)); }
+}
+
+void UTN_PauseRow::SetWidthOverride(float InWidth)
+{
+	if (Sizer && InWidth > 0.f) { Sizer->SetWidthOverride(InWidth); }
+}
+
 void UTN_PauseRow::SetKeyTexts(const FText& InKeyboard, const FText& InPad, bool bKeyboardEditable, bool bPadEditable)
 {
 	KeyTexts[0] = InKeyboard;
@@ -447,7 +491,11 @@ void UTN_PauseRow::Build()
 	UWidgetTree* Tree = WidgetTree;
 	Frame = TNPauseUI::Make<UBorder>(Tree);
 	Frame->SetVerticalAlignment(VAlign_Center);
-	Sizer = TNPauseUI::Make<USizeBox>(Tree);
+	if (!Sizer)
+	{
+		Sizer = TNPauseUI::Make<USizeBox>(Tree);
+		Tree->RootWidget = Sizer;
+	}
 	switch (Style)
 	{
 	case ETNPauseRowStyle::List:
@@ -479,7 +527,6 @@ void UTN_PauseRow::Build()
 		break;
 	}
 	Sizer->SetContent(Frame);
-	Tree->RootWidget = Sizer;
 }
 
 UWidget* UTN_PauseRow::BuildListContent()
@@ -546,6 +593,19 @@ UWidget* UTN_PauseRow::BuildListContent()
 		PadCap->SetVerticalAlignment(VAlign_Center);
 		PadCap->SetContent(Value2Text);
 		TNPauseUI::AddH(Line, TNPauseUI::Sized(Tree, PadCap, TNPauseUI::PadCapWidth, TNPauseUI::KeyCapHeight));
+		break;
+	}
+	case ETNPauseRowKind::Entry:
+	{
+		// Nombre a la izquierda, dos columnas y, si hay, el icono del final (el «⋮» o el candado).
+		ValueText = TNPauseUI::Label(Tree, FText::GetEmpty(), TEXT("Bold"), 18, TNHUDArt::SandC);
+		TNPauseUI::AddH(Line, TNPauseUI::Sized(Tree, ValueText, TNPauseUI::EntryValueWidth, 0.f), FMargin(0.f, 0.f, 12.f, 0.f));
+		Value2Text = TNPauseUI::Label(Tree, FText::GetEmpty(), TEXT("Bold"), 18, TNHUDArt::SeaLight);
+		Value2Text->SetJustification(ETextJustify::Right);
+		TNPauseUI::AddH(Line, TNPauseUI::Sized(Tree, Value2Text, TNPauseUI::EntryValue2Width, 0.f), FMargin(0.f, 0.f, 10.f, 0.f));
+		IconImage = TNPauseUI::Picture(Tree, nullptr, FVector2D(TNPauseUI::EntryIconSize, TNPauseUI::EntryIconSize));
+		IconImage->SetVisibility(ESlateVisibility::Collapsed);
+		TNPauseUI::AddH(Line, TNPauseUI::Sized(Tree, IconImage, TNPauseUI::EntryIconSize, TNPauseUI::EntryIconSize));
 		break;
 	}
 	case ETNPauseRowKind::Info:
@@ -780,7 +840,7 @@ void UTN_PauseRow::Activate()
 	{
 		return;
 	}
-	if (Kind == ETNPauseRowKind::Button)
+	if (Kind == ETNPauseRowKind::Button || Kind == ETNPauseRowKind::Entry)
 	{
 		PlaySound(ETNPauseSound::Press);
 		if (OnPressed) { OnPressed(); }
@@ -900,6 +960,7 @@ FReply UTN_PauseRow::NativeOnMouseButtonDown(const FGeometry& InGeometry, const 
 	{
 	case ETNPauseRowKind::Button:
 	case ETNPauseRowKind::KeyBind:
+	case ETNPauseRowKind::Entry:
 		// Se pulsa al soltar (así el clic que empieza a esperar una tecla no cuenta como la tecla).
 		bPressed = true;
 		return FReply::Handled();
@@ -1137,7 +1198,8 @@ void UTN_PauseMenuWidget::BuildTree()
 	TNPauseUI::Pin(Canvas, BuildHeader(), FVector2D(0.5f, 0.f), FVector2D(0.f, 18.f));
 
 	Pages = TNPauseUI::Make<UWidgetSwitcher>(Tree);
-	for (UWidget* PageWidget : { BuildHomePage(), BuildSettingsPage(), BuildControlsPage() })
+	// En el orden de ETNPausePage.
+	for (UWidget* PageWidget : { BuildHomePage(), BuildSettingsPage(), BuildControlsPage(), BuildRoomPage() })
 	{
 		if (UWidgetSwitcherSlot* PageSlot = Cast<UWidgetSwitcherSlot>(Pages->AddChild(PageWidget)))
 		{
@@ -1236,6 +1298,22 @@ void UTN_PauseMenuWidget::BuildHomeButtons()
 		NSLOCTEXT("TNPause", "ControlsDesc", "Todas las teclas y botones del juego, con teclado y ratón o con mando."),
 		[WeakThis]() { if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowPage(ETNPausePage::Controls); } });
 
+	// Sala (partida en red): su nombre y código, cerrarla y abrirla y expulsar (el anfitrión), y quién está dentro.
+	if (HasRoomPage())
+	{
+		RoomHomeRow = NewRow();
+		if (RoomHomeRow)
+		{
+			RoomHomeRow->SetupButton(ETNPauseRowStyle::Big, NSLOCTEXT("TNPause", "Room", "Sala"),
+				[WeakThis]() { if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowPage(ETNPausePage::Room); } }, TNRoomArt::RoomMenuIcon());
+			RoomHomeRow->SetDescription(IsHost()
+				? NSLOCTEXT("TNPause", "RoomDescHost", "El nombre y el código de tu sala, cerrarla para que no entre nadie más y expulsar a alguien.")
+				: NSLOCTEXT("TNPause", "RoomDescGuest", "El nombre y el código de la sala y quién está dentro."));
+			TNPauseUI::AddV(HomeColumn, RoomHomeRow, FMargin(0.f, 0.f, 0.f, 12.f), HAlign_Center);
+			HomeRows.Add(RoomHomeRow);
+		}
+	}
+
 	if (CanReturnToLobby())
 	{
 		AddBig(NSLOCTEXT("TNPause", "Lobby", "Volver al lobby"), TNPauseArt::EMenuIcon::Lobby,
@@ -1318,6 +1396,23 @@ UWidget* UTN_PauseMenuWidget::BuildControlsPage()
 	ControlsList->SetScrollbarThickness(FVector2D(8.f, 8.f));
 	ControlsList->SetScrollbarPadding(FMargin(8.f, 0.f, 0.f, 0.f));
 	TNPauseUI::AddV(Column, TNPauseUI::Sized(Tree, ControlsList, 0.f, TNPauseUI::ControlsListHeight));
+
+	return TNPauseUI::Sized(Tree, TNPauseUI::Card(Tree, Column, FMargin(34.f, 22.f, 34.f, 48.f)), TNPauseUI::CardWidth, 0.f);
+}
+
+UWidget* UTN_PauseMenuWidget::BuildRoomPage()
+{
+	UWidgetTree* Tree = WidgetTree;
+	UVerticalBox* Column = TNPauseUI::Make<UVerticalBox>(Tree);
+	UTextBlock* Title = TNPauseUI::Label(Tree, NSLOCTEXT("TNPause", "RoomTitle", "SALA"), TEXT("Black"), 28, TNHUDArt::Gold);
+	TNPauseUI::AddV(Column, Title, FMargin(0.f, 0.f, 0.f, 10.f), HAlign_Center);
+
+	RoomList = TNPauseUI::Make<UScrollBox>(Tree);
+	// La misma barra que la de los ajustes (esa página se monta antes).
+	if (SettingsList) { RoomList->SetWidgetBarStyle(SettingsList->GetWidgetBarStyle()); }
+	RoomList->SetScrollbarThickness(FVector2D(8.f, 8.f));
+	RoomList->SetScrollbarPadding(FMargin(8.f, 0.f, 0.f, 0.f));
+	TNPauseUI::AddV(Column, TNPauseUI::Sized(Tree, RoomList, 0.f, TNPauseUI::RoomListHeight));
 
 	return TNPauseUI::Sized(Tree, TNPauseUI::Card(Tree, Column, FMargin(34.f, 22.f, 34.f, 48.f)), TNPauseUI::CardWidth, 0.f);
 }
@@ -1537,12 +1632,28 @@ void UTN_PauseMenuWidget::RefreshHeader()
 	}
 	ModeText->SetText(Mode);
 
-	// Sesión: anfitrión, sala y plazas; sin sesión (editor, partida local), quién eres en la partida.
+	// Sesión: la sala (nombre, código si es privada, «3/4» y si está cerrada) y su anfitrión; sin sala, la sesión como
+	// antes; sin sesión (editor, partida local), quién eres en la partida.
 	const int32 Players = State ? State->PlayerArray.Num() : 1;
 	FText Session;
 	const IOnlineSessionPtr Sessions = TNPauseUI::SessionInterface();
 	const FNamedOnlineSession* Named = Sessions.IsValid() ? Sessions->GetNamedSession(NAME_GameSession) : nullptr;
-	if (Named)
+	const UMP_GameInstance* RoomGameInstance = Cast<UMP_GameInstance>(GetGameInstance());
+	FTNRoomSnapshot Room;
+	if (RoomGameInstance && RoomGameInstance->GetRoomSnapshot(Room))
+	{
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("Room"), TNRoomNames::Get(Room.NameId));
+		Args.Add(TEXT("Host"), FText::FromString(Room.HostName.IsEmpty() ? FString(TEXT("?")) : Room.HostName));
+		Args.Add(TEXT("Kind"), Room.bPrivate
+			? FText::Format(NSLOCTEXT("TNPause", "RoomPrivateCode", "privada · código {0}"), FText::FromString(Room.Code))
+			: NSLOCTEXT("TNPause", "RoomPublic", "pública"));
+		Args.Add(TEXT("Players"), FText::AsNumber(Room.Players));
+		Args.Add(TEXT("Max"), FText::AsNumber(FMath::Max(Room.Players, Room.MaxPlayers)));
+		Args.Add(TEXT("Locked"), Room.bLocked ? NSLOCTEXT("TNPause", "RoomLockedTag", " · cerrada") : FText::GetEmpty());
+		Session = FText::Format(NSLOCTEXT("TNPause", "RoomSessionFmt", "«{Room}» de {Host} · {Kind} · {Players}/{Max} tortugas{Locked}"), Args);
+	}
+	else if (Named)
 	{
 		FString Code = Named->SessionInfo.IsValid() ? Named->SessionInfo->GetSessionId().ToString() : FString();
 		Code = Code.Right(6).ToUpper();
@@ -1673,12 +1784,19 @@ void UTN_PauseMenuWidget::ShowPage(ETNPausePage NewPage)
 		FillControlsList();
 		FocusFirstOfPage();
 	}
+	else if (NewPage == ETNPausePage::Room)
+	{
+		RoomListSignature.Reset();
+		FillRoomList();
+		FocusFirstOfPage();
+	}
 	else
 	{
 		// Al volver a la portada, el foco en el botón por el que se salió.
 		UTN_PauseRow* Target = nullptr;
 		if (Previous == ETNPausePage::Settings && HomeRows.IsValidIndex(1)) { Target = HomeRows[1]; }
 		else if (Previous == ETNPausePage::Controls && HomeRows.IsValidIndex(2)) { Target = HomeRows[2]; }
+		else if (Previous == ETNPausePage::Room) { Target = RoomHomeRow; }
 		if (Target) { FocusRow(Target); }
 		else { FocusFirstOfPage(); }
 	}
@@ -2389,6 +2507,212 @@ void UTN_PauseMenuWidget::FillControlsList()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Menú: sala (Docs/Salas.md)
+// ─────────────────────────────────────────────────────────────────────────────
+
+FString UTN_PauseMenuWidget::BuildRoomSignature() const
+{
+	const UMP_GameInstance* GameInstance = Cast<UMP_GameInstance>(GetGameInstance());
+	FTNRoomSnapshot Room;
+	const bool bRoom = GameInstance && GameInstance->GetRoomSnapshot(Room);
+	FString Signature = FString::Printf(TEXT("%d|%d|%s|%d|%d|%d"), bRoom ? 1 : 0, Room.NameId, *Room.Code, Room.bLocked ? 1 : 0, Room.MaxPlayers,
+		Room.bIsHost ? 1 : 0);
+	const UWorld* World = GetWorld();
+	if (const AGameStateBase* State = World ? World->GetGameState() : nullptr)
+	{
+		for (const APlayerState* PS : State->PlayerArray)
+		{
+			if (PS) { Signature += FString::Printf(TEXT("|%d:%s"), PS->GetPlayerId(), *PS->GetPlayerName()); }
+		}
+	}
+	return Signature;
+}
+
+void UTN_PauseMenuWidget::FillRoomList()
+{
+	if (!RoomList)
+	{
+		return;
+	}
+	RoomListSignature = BuildRoomSignature();
+
+	// Para no perder el sitio al rehacerla: la posición de la fila enfocada y el desplazamiento.
+	UTN_PauseRow* FocusedRow = LastFocused.Get();
+	const int32 FocusedIndex = FocusedRow && FocusedRow->GetParent() == RoomList.Get() ? RoomList->GetChildIndex(FocusedRow) : INDEX_NONE;
+	const float Offset = RoomList->GetScrollOffset();
+	RoomList->ClearChildren();
+
+	UMP_GameInstance* GameInstance = Cast<UMP_GameInstance>(GetGameInstance());
+	FTNRoomSnapshot Room;
+	const bool bRoom = GameInstance && GameInstance->GetRoomSnapshot(Room);
+	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
+	TWeakObjectPtr<UMP_GameInstance> WeakGameInstance(GameInstance);
+	const UWorld* World = GetWorld();
+	const AGameStateBase* State = World ? World->GetGameState() : nullptr;
+	const int32 Inside = bRoom ? Room.Players : (State ? State->PlayerArray.Num() : 1);
+	const FText Places = FText::Format(NSLOCTEXT("TNPause", "RoomPlaces", "{0}/{1} tortugas"), FText::AsNumber(Inside),
+		FText::AsNumber(FMath::Max(Inside, Room.MaxPlayers)));
+
+	AddListHeader(RoomList, NSLOCTEXT("TNPause", "HeadRoom", "LA SALA"));
+	if (!bRoom)
+	{
+		AddListNote(RoomList, NSLOCTEXT("TNPause", "RoomUnknown", "Aún no ha llegado la información de la sala: un momento..."));
+	}
+	else
+	{
+		if (UTN_PauseRow* Row = AddListRow(RoomList))
+		{
+			Row->SetupInfo(NSLOCTEXT("TNPause", "RoomName", "Nombre"), TNRoomNames::Get(Room.NameId), TNRoomText::Visibility(Room.bPrivate));
+			Row->SetDescription(Room.bPrivate
+				? NSLOCTEXT("TNPause", "RoomNamePrivateDesc", "Sala privada: no sale en la lista de partidas; se entra con el código o por invitación de Steam.")
+				: NSLOCTEXT("TNPause", "RoomNamePublicDesc", "Sala pública: sale en la lista de partidas del menú principal («Unirse»)."));
+		}
+		if (UTN_PauseRow* Row = AddListRow(RoomList))
+		{
+			const FString RoomCode = Room.Code;
+			Row->SetupEntry(NSLOCTEXT("TNPause", "RoomCode", "Código de la sala"), FText::FromString(RoomCode), NSLOCTEXT("TNPause", "RoomCopy", "Copiar"),
+				[WeakThis, RoomCode]()
+				{
+					FPlatformApplicationMisc::ClipboardCopy(*RoomCode);
+					if (UTN_PauseMenuWidget* Menu = WeakThis.Get())
+					{
+						Menu->ShowNotice(FText::Format(NSLOCTEXT("TNPause", "RoomCopied", "Código {0} copiado: pégalo donde quieras (Ctrl+V)."), FText::FromString(RoomCode)));
+					}
+				});
+			Row->SetDescription(NSLOCTEXT("TNPause", "RoomCodeDesc",
+				"Con este código se entra en la sala desde el menú principal («Unirse» y escribirlo). Intro, A o clic: copiarlo."));
+			Row->SetValueColors(TNHUDArt::Gold, TNHUDArt::SeaLight);
+		}
+		if (Room.bIsHost)
+		{
+			if (UTN_PauseRow* Row = AddListRow(RoomList))
+			{
+				const TArray<FText> Doors = { NSLOCTEXT("TNPause", "RoomOpen", "Abierta"), NSLOCTEXT("TNPause", "RoomClosed", "Cerrada") };
+				Row->SetupChoice(NSLOCTEXT("TNPause", "RoomDoor", "Entrada"), Doors, Room.bLocked ? 1 : 0, [WeakThis, WeakGameInstance](int32 Choice)
+				{
+					if (UMP_GameInstance* RoomOwner = WeakGameInstance.Get()) { RoomOwner->SetRoomLocked(Choice == 1); }
+					if (UTN_PauseMenuWidget* Menu = WeakThis.Get())
+					{
+						Menu->ShowNotice(Choice == 1 ? NSLOCTEXT("TNPause", "RoomLockedNotice", "Sala cerrada: no entra nadie más (los que ya estaban pueden volver).")
+							: NSLOCTEXT("TNPause", "RoomUnlockedNotice", "Sala abierta: puede entrar gente otra vez."));
+					}
+				});
+				Row->SetDescription(NSLOCTEXT("TNPause", "RoomDoorDesc",
+					"Cerrada: no entra nadie nuevo, ni por la lista, ni con el código ni por invitación. Los que ya están siguen y pueden volver si se les cae la conexión."));
+			}
+		}
+		else if (UTN_PauseRow* Row = AddListRow(RoomList))
+		{
+			Row->SetupInfo(NSLOCTEXT("TNPause", "RoomDoor", "Entrada"), Room.bLocked ? NSLOCTEXT("TNPause", "RoomClosed", "Cerrada")
+				: NSLOCTEXT("TNPause", "RoomOpen", "Abierta"), Places);
+			Row->SetDescription(NSLOCTEXT("TNPause", "RoomDoorGuestDesc", "Solo el anfitrión puede cerrar la sala o expulsar a alguien."));
+		}
+		if (GameInstance && GameInstance->CanInviteFriends())
+		{
+			if (UTN_PauseRow* Row = AddListRow(RoomList))
+			{
+				Row->SetupButton(ETNPauseRowStyle::List, NSLOCTEXT("TNPause", "RoomInvite", "Invitar a amigos de Steam"), [WeakGameInstance]()
+				{
+					if (UMP_GameInstance* RoomOwner = WeakGameInstance.Get()) { RoomOwner->InviteFriends(); }
+				}, nullptr, NSLOCTEXT("TNPause", "RoomInviteAction", "Abrir Steam"));
+				Row->SetDescription(NSLOCTEXT("TNPause", "RoomInviteDesc", "La lista de amigos de Steam, para invitarles (la invitación también vale en las salas privadas)."));
+			}
+		}
+	}
+
+	// Quién está dentro: nombre, anfitrión o ping y, para el anfitrión, el «⋮» de los demás.
+	AddListHeader(RoomList, FText::Format(NSLOCTEXT("TNPause", "HeadRoomPlayers", "TORTUGAS EN LA SALA · {0}"), Places));
+	FUniqueNetIdRepl HostId;
+	const IOnlineSessionPtr Sessions = TNPauseUI::SessionInterface();
+	if (const FNamedOnlineSession* Named = Sessions.IsValid() ? Sessions->GetNamedSession(NAME_GameSession) : nullptr)
+	{
+		if (Named->OwningUserId.IsValid()) { HostId = FUniqueNetIdRepl(Named->OwningUserId); }
+	}
+	const APlayerState* Mine = GetOwningPlayerState();
+	const bool bHostView = IsHost();
+	if (State)
+	{
+		for (APlayerState* PS : State->PlayerArray)
+		{
+			if (!PS)
+			{
+				continue;
+			}
+			const bool bMe = PS == Mine;
+			const bool bRowHost = (bMe && bHostView) || (!bHostView && ((HostId.IsValid() && PS->GetUniqueId() == HostId)
+				|| (bRoom && !Room.HostName.IsEmpty() && PS->GetPlayerName() == Room.HostName)));
+			const bool bCanKick = bHostView && !bMe;
+			const FText Sub = bMe ? (bRowHost ? NSLOCTEXT("TNPause", "YouHost", "Tú · anfitrión") : NSLOCTEXT("TNPause", "You", "Tú"))
+				: (bRowHost ? NSLOCTEXT("TNPause", "Host", "Anfitrión")
+					: FText::Format(NSLOCTEXT("TNPause", "Ping", "{0} ms"), FText::AsNumber(FMath::RoundToInt(PS->GetPingInMilliseconds()))));
+			TWeakObjectPtr<APlayerState> WeakPlayer(PS);
+			if (UTN_PauseRow* Row = AddListRow(RoomList))
+			{
+				Row->SetupEntry(FText::FromString(PS->GetPlayerName()), Sub, FText::GetEmpty(), [WeakThis, WeakPlayer, bCanKick]()
+				{
+					UTN_PauseMenuWidget* Menu = WeakThis.Get();
+					if (Menu && bCanKick && WeakPlayer.IsValid()) { Menu->OpenPlayerOptions(WeakPlayer.Get()); }
+				}, bCanKick ? TNRoomArt::MoreIcon() : (bRowHost ? TNPauseArt::HostCrown() : nullptr));
+				Row->SetDescription(bCanKick ? NSLOCTEXT("TNPause", "PlayerRowHostDesc", "Intro, A o clic: opciones de esta tortuga (expulsarla de la sala).")
+					: (bMe ? NSLOCTEXT("TNPause", "PlayerRowMeDesc", "Tu tortuga.") : NSLOCTEXT("TNPause", "PlayerRowGuestDesc", "Solo el anfitrión puede expulsar a alguien.")));
+				Row->SetValueColors(bMe ? TNHUDArt::Gold : TNHUDArt::SandC, TNHUDArt::SeaLight);
+			}
+		}
+	}
+
+	RoomList->SetScrollOffset(Offset);
+	// Si el foco estaba en esta lista, vuelve a la misma posición (o a la fila de antes, si esa ya no es una fila).
+	if (FocusedIndex != INDEX_NONE)
+	{
+		for (int32 i = FMath::Min(FocusedIndex, RoomList->GetChildrenCount() - 1); i >= 0; --i)
+		{
+			if (UTN_PauseRow* Row = Cast<UTN_PauseRow>(RoomList->GetChildAt(i)))
+			{
+				FocusRow(Row);
+				return;
+			}
+		}
+		FocusFirstOfPage();
+	}
+}
+
+void UTN_PauseMenuWidget::OpenPlayerOptions(APlayerState* Target)
+{
+	if (!Target || !IsHost())
+	{
+		return;
+	}
+	const FText Name = FText::FromString(Target->GetPlayerName());
+	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
+	TWeakObjectPtr<APlayerState> WeakTarget(Target);
+	// Las opciones del «⋮» (hoy, expulsar) y, después, la confirmación.
+	AskConfirm(Name, FText::Format(NSLOCTEXT("TNPause", "PlayerOptionsText", "Opciones del anfitrión para {0}."), Name),
+		NSLOCTEXT("TNPause", "PlayerKick", "Expulsar"), [WeakThis, WeakTarget, Name]()
+		{
+			UTN_PauseMenuWidget* Menu = WeakThis.Get();
+			if (!Menu || !WeakTarget.IsValid())
+			{
+				return;
+			}
+			Menu->AskConfirm(FText::Format(NSLOCTEXT("TNPause", "KickTitle", "¿Expulsar a {0}?"), Name),
+				NSLOCTEXT("TNPause", "KickText", "Sale de la partida y vuelve al menú principal. No podrá volver a entrar en esta sala mientras dure."),
+				NSLOCTEXT("TNPause", "KickYes", "Sí, expulsar"), [WeakThis, WeakTarget, Name]()
+				{
+					UTN_PauseMenuWidget* KickMenu = WeakThis.Get();
+					UMP_GameInstance* RoomOwner = KickMenu ? Cast<UMP_GameInstance>(KickMenu->GetGameInstance()) : nullptr;
+					APlayerState* Kicked = WeakTarget.Get();
+					if (!KickMenu)
+					{
+						return;
+					}
+					const bool bKicked = RoomOwner && Kicked && RoomOwner->KickFromRoom(Kicked);
+					KickMenu->ShowNotice(FText::Format(bKicked ? NSLOCTEXT("TNPause", "KickDone", "{0} ha sido expulsado de la sala.")
+						: NSLOCTEXT("TNPause", "KickGone", "{0} ya no está en la sala."), Name));
+				});
+		});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Menú: acciones
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2823,8 +3147,9 @@ void UTN_PauseMenuWidget::FocusFirstOfPage()
 		break;
 	case ETNPausePage::Settings:
 	case ETNPausePage::Controls:
+	case ETNPausePage::Room:
 	{
-		UScrollBox* List = Page == ETNPausePage::Settings ? SettingsList.Get() : ControlsList.Get();
+		UScrollBox* List = Page == ETNPausePage::Settings ? SettingsList.Get() : (Page == ETNPausePage::Controls ? ControlsList.Get() : RoomList.Get());
 		const int32 Count = List ? List->GetChildrenCount() : 0;
 		for (int32 i = 0; i < Count; ++i)
 		{
@@ -2855,6 +3180,9 @@ void UTN_PauseMenuWidget::RefreshHint()
 		break;
 	case ETNPausePage::Controls:
 		HintText->SetText(NSLOCTEXT("TNPause", "HintControls", "Intro · A  Cambiar      Supr · Y  De serie      Esc · B  Volver      Tab · Start  Cerrar"));
+		break;
+	case ETNPausePage::Room:
+		HintText->SetText(NSLOCTEXT("TNPause", "HintRoom", "Intro · A  Elegir      ← →  Cambiar      Esc · B  Volver      Tab · Start  Cerrar"));
 		break;
 	default:
 		HintText->SetText(NSLOCTEXT("TNPause", "HintHome", "Intro · A  Elegir      Esc · B  Continuar      Tab · Start  Cerrar"));
@@ -2908,6 +3236,11 @@ void UTN_PauseMenuWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 				FillTab();
 				FocusFirstOfPage();
 			}
+		}
+		// Página «Sala»: si alguien entra o sale, o la sala se cierra o se abre, se rehace (FillRoomList conserva el foco).
+		if (Page == ETNPausePage::Room && !IsConfirmOpen() && BuildRoomSignature() != RoomListSignature)
+		{
+			FillRoomList();
 		}
 	}
 	UpdateVoiceIcons();
@@ -3113,6 +3446,12 @@ bool UTN_PauseMenuWidget::IsInLobby() const
 	const UWorld* World = GetWorld();
 	const AGameStateBase* State = World ? World->GetGameState() : nullptr;
 	return State && State->GameModeClass && State->GameModeClass->IsChildOf(ATN_HQGameMode::StaticClass());
+}
+
+bool UTN_PauseMenuWidget::HasRoomPage() const
+{
+	const UWorld* World = GetWorld();
+	return World && World->GetNetMode() != NM_Standalone && Cast<UMP_GameInstance>(GetGameInstance()) != nullptr;
 }
 
 bool UTN_PauseMenuWidget::CanReturnToLobby() const
