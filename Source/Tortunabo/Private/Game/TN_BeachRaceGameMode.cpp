@@ -338,6 +338,7 @@ ATN_BeachRaceGameMode::ATN_BeachRaceGameMode()
 {
 	GameStateClass = ATN_BeachRaceGameState::StaticClass();
 	GeneratorClass = ATN_BeachRaceGenerator::StaticClass();
+	StormClass = ATN_BeachStorm::StaticClass();
 
 	// Los mismos Blueprints que el mapa procedural: la clase C++ sirve tal cual como GameMode de LVL_BeachRace.
 	static ConstructorHelpers::FClassFinder<APawn> TurtleBP(TEXT("/Game/Blueprints/Characters/BP_TortugaCharacter"));
@@ -2660,7 +2661,7 @@ FTransform ATN_BeachRaceGameMode::ResolveRescueTarget(APlayerController* PlayerC
 		OutWhere = TEXT("a la salida (sin sitio seguro cerca) en");
 	}
 	// Dentro de la tormenta (o a menos de 5 m de su frente) la patearía en seguida: por delante del frente.
-	ATN_BeachStorm* BeachStorm = Cast<ATN_BeachStorm>(Storm);
+	ATN_BeachStorm* BeachStorm = Storm;
 	FTransform Ahead;
 	if (Turtle && BeachStorm && BeachStorm->IsBehindFront(Target.GetLocation(), -500.f) && BeachStorm->FindSpotAhead(Turtle, 0.5f, Ahead))
 	{
@@ -2753,27 +2754,19 @@ float ATN_BeachRaceGameMode::GetCourseProgress(const APawn* Pawn) const
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tormenta de bañistas (ATN_BeachStorm, del agente de enemigos: por nombre)
+// Tormenta de bañistas (ATN_BeachStorm)
 // ─────────────────────────────────────────────────────────────────────────────
+
+UClass* ATN_BeachRaceGameMode::GetStormClass() const
+{
+	return StormClass.Get();
+}
 
 void ATN_BeachRaceGameMode::StartStorm()
 {
-	if (!bStormClassResolved)
-	{
-		bStormClassResolved = true;
-		const FString Path = FString::Printf(TEXT("/Script/Tortunabo.%s"), *StormClassName);
-		UClass* Found = FindObject<UClass>(nullptr, *Path);
-		if (Found && Found->IsChildOf(AActor::StaticClass()))
-		{
-			StormClass = Found;
-		}
-		else
-		{
-			UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] Sin clase %s: se corre sin tormenta."), *Path);
-		}
-	}
 	if (!StormClass)
 	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Carrera] Sin StormClass: se corre sin tormenta."));
 		return;
 	}
 	StopStorm(true);
@@ -2782,10 +2775,10 @@ void ATN_BeachRaceGameMode::StartStorm()
 	const FTransform SpawnAt(CourseForward.Rotation(), CourseOrigin - CourseForward * StormSpawnBehind);
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	Storm = GetWorld()->SpawnActor<AActor>(StormClass, SpawnAt, Params);
+	Storm = GetWorld()->SpawnActor<ATN_BeachStorm>(StormClass, SpawnAt, Params);
 	if (Storm)
 	{
-		CallNoParamFunction(Storm, TEXT("StartStorm"));
+		Storm->StartStorm();
 		UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Tormenta de bañistas en marcha (%s)."), *GetNameSafe(Storm));
 	}
 }
@@ -2796,23 +2789,16 @@ void ATN_BeachRaceGameMode::StopStorm(bool bDestroy)
 	{
 		return;
 	}
-	// Al acabar la ronda se para (si sabe pararse, se queda a la vista durante el recuento); al preparar otra, fuera.
-	if (bDestroy || !CallNoParamFunction(Storm, TEXT("StopStorm")))
+	// Al acabar la ronda se para y se queda a la vista durante el recuento; al preparar otra, fuera.
+	if (bDestroy)
 	{
 		Storm->Destroy();
 		Storm = nullptr;
 	}
-}
-
-bool ATN_BeachRaceGameMode::CallNoParamFunction(UObject* Target, FName FunctionName)
-{
-	UFunction* Function = Target ? Target->FindFunction(FunctionName) : nullptr;
-	if (!Function || Function->NumParms != 0)
+	else
 	{
-		return false;
+		Storm->StopStorm();
 	}
-	Target->ProcessEvent(Function, nullptr);
-	return true;
 }
 
 int32 ATN_BeachRaceGameMode::HalvesOf(const APlayerState* PlayerState)

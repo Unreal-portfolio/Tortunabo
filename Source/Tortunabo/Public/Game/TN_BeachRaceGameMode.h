@@ -8,6 +8,7 @@
 class ACharacter;
 class APlayerStart;
 class ATN_BeachRaceGenerator;
+class ATN_BeachStorm;
 class ATN_CoopPlayerState;
 class ATortugaCharacter;
 
@@ -98,7 +99,7 @@ struct FTNBeachArrival
  *     FinishSplashHoldSeconds y luego pasa a espectadora por la meta de la base; su puesto va replicado
  *     (ATN_BeachRaceGameState::RoundArrivals) y en su pantalla se cierra el huevo negro con «Has quedado X.º», su premio
  *     y un mensaje (UTN_RaceScreensSubsystem). Arranca la tormenta de bañistas
- *     (ATN_BeachStorm, por nombre) y la para al acabar. Aquí no se muere: MarkPlayerDead aturde (TNBeach::StunTurtle) y,
+ *     (ATN_BeachStorm) y la para al acabar. Aquí no se muere: MarkPlayerDead aturde (TNBeach::StunTurtle) y,
  *     fuera del mapa, en una zona de muerte o en el vacío, devuelve a la tortuga a un sitio seguro cercano y la aturde.
  *     El salto del acantilado no hace bola ni aturde (se cae de cabeza al agua).
  *  3. Recuento (RoundResults, Countdown): RoundResultsSeconds con la ganadora (RoundWinner) y las medias
@@ -122,6 +123,9 @@ class TORTUNABO_API ATN_BeachRaceGameMode : public ATN_RunGameMode
 
 public:
 	ATN_BeachRaceGameMode();
+
+	/** Clase con la que la carrera crea la tormenta de bañistas. */
+	UClass* GetStormClass() const;
 
 	virtual void BeginPlay() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
@@ -368,9 +372,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Safety", meta = (ClampMin = "0.0"))
 	float SafetyNetBadSpotRadius = 800.f;
 
-	/** Nombre de la clase de la tormenta de bañistas (en /Script/Tortunabo); si no existe, no hay tormenta. */
+	/** Clase de la tormenta de bañistas; se puede cambiar por una hija (p. ej. un Blueprint). Sin clase, no hay tormenta. */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Storm")
-	FString StormClassName = TEXT("TN_BeachStorm");
+	TSubclassOf<ATN_BeachStorm> StormClass;
 
 	/** Distancia (cm) detrás de la salida a la que aparece la tormenta. */
 	UPROPERTY(EditDefaultsOnly, Category = "Beach|Storm", meta = (ClampMin = "0.0"))
@@ -381,14 +385,12 @@ private:
 	TObjectPtr<ATN_BeachRaceGenerator> Generator;
 
 	UPROPERTY(Transient)
-	TObjectPtr<AActor> Storm;
+	TObjectPtr<ATN_BeachStorm> Storm;
 
 	/** PlayerStart de cada sitio de la salida (creados en ejecución al primer uso). */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<APlayerStart>> StartPoints;
 
-	UClass* StormClass = nullptr;
-	bool bStormClassResolved = false;
 
 	int32 CurrentRound = 0;
 	int32 RoundSeed = 0;
@@ -590,6 +592,5 @@ private:
 	void StopStorm(bool bDestroy);
 
 	APlayerController* GetControllerByIndex(int32 PlayerIndex) const;
-	static bool CallNoParamFunction(UObject* Target, FName FunctionName);
 	static int32 HalvesOf(const APlayerState* PlayerState);
 };
