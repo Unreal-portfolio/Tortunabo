@@ -35,8 +35,21 @@ FText TNLobbyMission::ModeName(ETNProcGameMode Mode)
 	case ETNProcGameMode::Coop:     return NSLOCTEXT("Tortunabo", "MissionModeCoop", "Cooperativo");
 	case ETNProcGameMode::Race:     return NSLOCTEXT("Tortunabo", "MissionModeRace", "Carrera");
 	case ETNProcGameMode::TwoVsTwo: return NSLOCTEXT("Tortunabo", "MissionMode2v2", "2 vs 2");
+	case ETNProcGameMode::Survival: return NSLOCTEXT("Tortunabo", "MissionModeSurvival", "Supervivencia");
 	default:                        return NSLOCTEXT("Tortunabo", "MissionModeClassic", "Clásico");
 	}
+}
+
+ETNProcGameMode TNLobbyMission::NormalizeMenuMode(ETNProcGameMode Mode)
+{
+	for (const ETNProcGameMode MenuMode : MenuModes)
+	{
+		if (MenuMode == Mode)
+		{
+			return Mode;
+		}
+	}
+	return ETNProcGameMode::Coop;
 }
 
 FText TNLobbyMission::DifficultyName(ETNProcDifficulty Difficulty)
@@ -59,6 +72,8 @@ FText TNLobbyMission::ModeBlurb(ETNProcGameMode Mode)
 		return NSLOCTEXT("Tortunabo", "MissionBlurbRace", "todas contra todas en la playa; gana quien consigue tres conchas.");
 	case ETNProcGameMode::TwoVsTwo:
 		return NSLOCTEXT("Tortunabo", "MissionBlurb2v2", "por parejas y con exactamente cuatro; gana la pareja que llega antes.");
+	case ETNProcGameMode::Survival:
+		return NSLOCTEXT("Tortunabo", "MissionBlurbSurvival", "nivel tras nivel, cada vez más difícil; gana la última tortuga en pie (sola, hasta que caigas).");
 	default:
 		return NSLOCTEXT("Tortunabo", "MissionBlurbClassic", "el recorrido de siempre, por tramos.");
 	}

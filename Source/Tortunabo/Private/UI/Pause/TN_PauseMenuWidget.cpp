@@ -8,6 +8,7 @@
 #include "Audio/TN_ScoreShellSynthComponent.h"
 #include "Game/TN_ProcMapGameState.h"
 #include "Game/TN_RunGameMode.h"
+#include "Game/TN_SurvivalGameMode.h"
 #include "Game/TN_TerrainViewGameMode.h"
 #include "Lobby/TN_HQGameMode.h"
 #include "Lobby/TN_TutorialPlayerComponent.h"
@@ -1662,7 +1663,9 @@ void UTN_PauseMenuWidget::RefreshHeader()
 	}
 	else if (Map.Contains(TEXT("LVL_Run")))
 	{
-		Mode = NSLOCTEXT("TNPause", "ModeClassic", "Carrera clásica");
+		Mode = ModeClass && ModeClass->IsChildOf(ATN_SurvivalGameMode::StaticClass())
+			? NSLOCTEXT("TNPause", "ModeSurvival", "Supervivencia · nivel tras nivel hasta que quede una")
+			: NSLOCTEXT("TNPause", "ModeClassic", "Carrera clásica");
 	}
 	ModeText->SetText(Mode);
 

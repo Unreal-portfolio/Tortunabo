@@ -24,6 +24,7 @@
 #include "Misc/PackageName.h"
 #include "TimerManager.h"
 #include "Multiplayer/TN_CosmeticSaveGame.h"
+#include "Lobby/TN_LobbyMission.h"
 #include "Multiplayer/TN_RoomInfo.h"
 #include "Multiplayer/TN_SaveGameIO.h"
 #include "Settings/TN_GameplayAssetSettings.h"
@@ -559,9 +560,9 @@ void UMP_GameInstance::HostSession()
 
 void UMP_GameInstance::HostSessionWithMode(ETNProcGameMode Mode)
 {
-	// Desde el menú solo hay dos modos; el lobby lo lee de aquí al viajar (ATN_HQGameMode::BeginMatchTravel).
+	// Desde el menú solo se ofrecen los modos de TNLobbyMission::MenuModes; el lobby lo lee de aquí al viajar (ATN_HQGameMode::BeginMatchTravel).
 	FTNRoomConfig Config = MakeRoomDraft();
-	Config.Mode = Mode == ETNProcGameMode::Race ? ETNProcGameMode::Race : ETNProcGameMode::Coop;
+	Config.Mode = TNLobbyMission::NormalizeMenuMode(Mode);
 	UE_LOG(LogTortunabo, Log, TEXT("[MP] Crear partida en modo %s."), *UEnum::GetValueAsString(Config.Mode));
 	HostRoom(Config);
 }
@@ -1624,7 +1625,7 @@ void UMP_GameInstance::HostRoom(const FTNRoomConfig& Config)
 {
 	const TArray<int32> Sizes = GetRoomSizeOptions();
 	ActiveRoom = Config;
-	ActiveRoom.Mode = Config.Mode == ETNProcGameMode::Race ? ETNProcGameMode::Race : ETNProcGameMode::Coop;
+	ActiveRoom.Mode = TNLobbyMission::NormalizeMenuMode(Config.Mode);
 	ActiveRoom.MaxPlayers = FMath::Clamp(Config.MaxPlayers, 2, Sizes.Num() > 0 ? Sizes.Last() : TNRoomLimits::Max);
 	if (Config.NameId < 0 || Config.NameId >= TNRoomNames::Num())
 	{
@@ -1662,7 +1663,7 @@ FTNRoomConfig UMP_GameInstance::MakeRoomDraft() const
 	}
 	else
 	{
-		Draft.Mode = SelectedProcMode == ETNProcGameMode::Race ? ETNProcGameMode::Race : ETNProcGameMode::Coop;
+		Draft.Mode = TNLobbyMission::NormalizeMenuMode(SelectedProcMode);
 		Draft.MaxPlayers = Sizes.Num() > 0 ? Sizes.Last() : TNRoomLimits::Max;
 	}
 	if (!Sizes.Contains(Draft.MaxPlayers) && Sizes.Num() > 0)

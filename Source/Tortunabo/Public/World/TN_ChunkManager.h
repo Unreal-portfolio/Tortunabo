@@ -154,7 +154,42 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Chunks")
 	FVector GetSafeReviveLocation() const;
 
+	// ── Modo por niveles (Supervivencia) ─────────────────────────────────────
+
+	/** Chunks al azar de cada nivel, antes del chunk final con la meta. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Niveles", meta = (ClampMin = "1"))
+	int32 ChunksPerLevel = 3;
+
+	/**
+	 * Pasa al modo por niveles: sin streaming, cada nivel se genera entero con BuildLevel.
+	 * Lo llama ATN_SurvivalGameMode en StartPlay, antes del BeginPlay del manager; en BeginPlay se genera el nivel 1.
+	 */
+	void SetLevelMode(bool bEnable) { bLevelMode = bEnable; }
+
+	bool IsLevelMode() const { return bLevelMode; }
+
+	/**
+	 * Borra los chunks que haya y genera un nivel nuevo desde la posición del manager: ChunksPerLevel chunks al azar
+	 * (dificultad según el nivel, TNSurvivalLogic::LevelDifficulties) y el chunk final. Server-only.
+	 */
+	void BuildLevel(int32 Level);
+
+	/** Distancia (uu) que falta hasta la meta del nivel actual desde Location, a lo largo del camino de sockets. */
+	float GetRemainingDistance(const FVector& Location) const;
+
 private:
+
+	/** true en Supervivencia: niveles enteros en vez de streaming. */
+	bool bLevelMode = false;
+
+	/** Camino del nivel actual: salida, OutSocket de cada chunk y meta. */
+	TArray<FVector> LevelPath;
+
+	/** Elige un chunk del pool de esa dificultad (con fallbacks), lo spawnea en NextSpawnTransform y avanza al OutSocket. */
+	AActor* SpawnChunkOfDifficulty(ETNChunkDifficulty Difficulty);
+
+	/** Destruye todos los chunks activos y desconecta el EndTrigger. */
+	void DestroyAllChunks();
 
 	// Lista de chunks actualmente activos (FIFO: [0] = más viejo).
 	TArray<TWeakObjectPtr<AActor>> ActiveChunks;

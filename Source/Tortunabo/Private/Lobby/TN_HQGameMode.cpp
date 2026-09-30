@@ -393,7 +393,7 @@ void ATN_HQGameMode::BeginMatchTravel()
 		GI->PendingTravelPlayerCount = ConnectedCount;
 		UE_LOG(LogTortunabo, Log, TEXT("[HQGameMode] Saved PendingTravelPlayerCount = %d"), ConnectedCount);
 
-		// ── Modo (menú principal o selector del lobby viejo): Carrera → playa; Clásico → LVL_Run; el resto → mapa procedural ──
+		// ── Modo (menú principal o selector del lobby viejo): Carrera → playa; Clásico y Supervivencia → LVL_Run; el resto → mapa procedural ──
 		bool bProcMapRace = false;
 		if (GI->SelectedProcMode == ETNProcGameMode::TwoVsTwo && ConnectedCount != 4)
 		{
@@ -415,6 +415,11 @@ void ATN_HQGameMode::BeginMatchTravel()
 		{
 			// Carrera: todos contra todos en la playa (ATN_BeachRaceGameMode, Docs/Modo_Carrera.md).
 			TravelURL = BeachRaceMapPath;
+		}
+		else if (GI->SelectedProcMode == ETNProcGameMode::Survival)
+		{
+			// Supervivencia: los niveles del Clásico (LVL_Run) con su propio GameMode (alias «Survival», DefaultEngine.ini).
+			TravelURL = MatchMapPath + TEXT("?game=Survival");
 		}
 		else if (GI->SelectedProcMode != ETNProcGameMode::Classic)
 		{

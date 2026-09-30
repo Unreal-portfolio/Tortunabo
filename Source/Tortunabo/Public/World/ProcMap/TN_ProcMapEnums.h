@@ -24,7 +24,7 @@ enum class ETNProcBiome : uint8
 	Count     UMETA(Hidden)
 };
 
-/** Modo de juego. Classic viaja al mapa de chunks de siempre (LVL_Run). */
+/** Modo de juego. Classic y Survival viajan al mapa de chunks de siempre (LVL_Run); Survival, con ?game=Survival. */
 UENUM(BlueprintType)
 enum class ETNProcGameMode : uint8
 {
@@ -32,6 +32,7 @@ enum class ETNProcGameMode : uint8
 	Race      UMETA(DisplayName = "Carrera (todos contra todos)"),
 	TwoVsTwo  UMETA(DisplayName = "2 vs 2"),
 	Classic   UMETA(DisplayName = "Clásico (chunks)"),
+	Survival  UMETA(DisplayName = "Supervivencia"),
 	Count     UMETA(Hidden)
 };
 

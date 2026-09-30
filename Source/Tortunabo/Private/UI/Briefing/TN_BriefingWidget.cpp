@@ -53,9 +53,15 @@ namespace TNBriefingUI
 	/** Lo que dice el general al elegir cada modo y cada dificultad. */
 	FText ModeOrderLine(ETNProcGameMode Mode)
 	{
-		return Mode == ETNProcGameMode::Race
-			? NSLOCTEXT("Tortunabo", "BriefingOrderRace", "¡Carrera! Todas contra todas hasta el agua. Tres conchas y al podio.")
-			: NSLOCTEXT("Tortunabo", "BriefingOrderCoop", "¡Cooperativo! Aquí no se deja a nadie atrás: del castillo al mar, todas juntas.");
+		switch (Mode)
+		{
+		case ETNProcGameMode::Race:
+			return NSLOCTEXT("Tortunabo", "BriefingOrderRace", "¡Carrera! Todas contra todas hasta el agua. Tres conchas y al podio.");
+		case ETNProcGameMode::Survival:
+			return NSLOCTEXT("Tortunabo", "BriefingOrderSurvival", "¡Supervivencia! Nivel tras nivel, cada uno peor que el anterior. Solo queda en pie la última.");
+		default:
+			return NSLOCTEXT("Tortunabo", "BriefingOrderCoop", "¡Cooperativo! Aquí no se deja a nadie atrás: del castillo al mar, todas juntas.");
+		}
 	}
 
 	FText DifficultyOrderLine(ETNProcDifficulty Difficulty)
@@ -463,9 +469,12 @@ void UTN_BriefingWidget::ShowTab(int32 Index)
 			"Por parejas: gana la ronda la pareja cuyos dos miembros llegan antes. Hay muros que solo se superan lanzando al compañero (o bajando la rampa con el interruptor) y compuertas para sabotear a la otra pareja. Las parejas cambian cada ronda; si no sois cuatro, se juega Carrera."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingClassicH", "Clásico"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingClassic", "El recorrido de siempre, por tramos, para los veteranos del cuartel."));
+		AddHeading(NSLOCTEXT("Tortunabo", "BriefingSurvivalH", "Supervivencia"));
+		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingSurvival",
+			"Niveles cortos del recorrido de siempre, uno tras otro y cada vez más duros. Cuando todas las que siguen vivas llegan a la meta, empieza otro. Quien cae mira desde la grada, y gana la última en pie (si caen las últimas a la vez, la que cayó más cerca de la meta). Sola, dura hasta que caigas."));
 		AddHeading(NSLOCTEXT("Tortunabo", "BriefingPickH", "Cómo se elige"));
 		AddParagraph(NSLOCTEXT("Tortunabo", "BriefingPick",
-			"El anfitrión, aquí conmigo, en la pestaña «Misión»: Cooperativo o Carrera, y la dificultad (Fácil, Normal o Difícil), que en el cooperativo cambia el tamaño del mapa, los cruces colosales, los huecos y lo rápida que va la tormenta. También al crear la partida en el menú y, si el cuartel tiene selectores de modo y dificultad, con ellos (2 vs 2 y Clásico solo salen ahí)."));
+			"El anfitrión, aquí conmigo, en la pestaña «Misión»: Cooperativo, Carrera o Supervivencia, y la dificultad (Fácil, Normal o Difícil), que en el cooperativo cambia el tamaño del mapa, los cruces colosales, los huecos y lo rápida que va la tormenta. También al crear la partida en el menú y, si el cuartel tiene selectores de modo y dificultad, con ellos (2 vs 2 y Clásico solo salen ahí)."));
 		break;
 	case TNBriefingUI::TabRules:
 		Say(NSLOCTEXT("Tortunabo", "BriefingSayRules", "Las normas del cuartel no se discuten. Bueno, se pueden discutir... pero se pierde."));

@@ -289,9 +289,9 @@ void UTN_ProcMapSettings::FillDefaultProfiles()
 	for (int32 M = 0; M < static_cast<int32>(ETNProcGameMode::Count); ++M)
 	{
 		const ETNProcGameMode Mode = static_cast<ETNProcGameMode>(M);
-		if (Mode == ETNProcGameMode::Classic)
+		if (Mode == ETNProcGameMode::Classic || Mode == ETNProcGameMode::Survival)
 		{
-			continue;
+			continue; // viajan a LVL_Run: no usan el mapa procedural
 		}
 		for (int32 D = 0; D < static_cast<int32>(ETNProcDifficulty::Count); ++D)
 		{

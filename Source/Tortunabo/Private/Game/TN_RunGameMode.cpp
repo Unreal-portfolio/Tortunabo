@@ -556,6 +556,11 @@ void ATN_RunGameMode::ApplyDeathVisuals(APawn* Pawn, APlayerController* PlayerCo
 
 void ATN_RunGameMode::SpawnRescuePickupForDeath(ATN_CoopPlayerState* TNPS, const FVector& DeathLocation, APlayerController* PlayerController)
 {
+	if (!bAllowRevive)
+	{
+		return;
+	}
+
 	if (RescuePickupClass)
 	{
 		FActorSpawnParameters SpawnParams;
@@ -600,6 +605,13 @@ void ATN_RunGameMode::EnterDBNO(APlayerController* PlayerController)
 	if (!TNPS || !TNPS->bIsAlive || TNPS->bIsDBNO)
 	{
 		return;  // Already dead, already DBNO, or invalid
+	}
+
+	// Sin reanimación (Supervivencia): nadie puede levantarle, así que muere ya.
+	if (!bAllowRevive)
+	{
+		MarkPlayerDead(PlayerController);
+		return;
 	}
 
 	// Check revive immunity — recently revived players can't be downed again immediately
@@ -1062,7 +1074,13 @@ void ATN_RunGameMode::UpdateRoundProgressAndMaybeFinish()
 		return;
 	}
 
-	if (GetWorldTimerManager().IsTimerActive(ResultsTimerHandle))
+	StartResults();
+}
+
+void ATN_RunGameMode::StartResults()
+{
+	ATN_CoopGameState* TNGS = GetGameState<ATN_CoopGameState>();
+	if (!TNGS || GetWorldTimerManager().IsTimerActive(ResultsTimerHandle))
 	{
 		return;
 	}
@@ -1163,7 +1181,7 @@ void ATN_RunGameMode::FinishRoundAndReturnToLobby()
 		// ── Seamless ServerTravel — connection persists, no NetDriver destroy ─
 		// Se vuelve al lobby del que se salió (lo apunta ATN_HQGameMode en la GameInstance); si no se sabe, LobbyMapPath.
 		const UMP_GameInstance* TNGI = Cast<UMP_GameInstance>(World->GetGameInstance());
-		const FString TravelURL = TNGI && !TNGI->LobbyReturnMapPath.IsEmpty() ? TNGI->LobbyReturnMapPath : LobbyMapPath;
+		const FString TravelURL = (TNGI && !TNGI->LobbyReturnMapPath.IsEmpty() ? TNGI->LobbyReturnMapPath : LobbyMapPath) + GetLobbyTravelOptions();
 		UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] Seamless ServerTravel to: %s"), *TravelURL);
 		World->ServerTravel(TravelURL);
 	}

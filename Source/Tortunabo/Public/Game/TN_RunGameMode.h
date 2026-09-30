@@ -152,6 +152,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run|Death")
 	TSubclassOf<ATN_RescuePickup> RescuePickupClass;
 
+	/**
+	 * false = morir es definitivo: EnterDBNO mata directamente y no se deja RescuePickup. El tótem sigue salvando.
+	 * Lo apaga ATN_SurvivalGameMode.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Run|Death")
+	bool bAllowRevive = true;
+
 	// ── Sistema de puntuación final ─────────────────────────────────────────
 	// RaceScore final = RankScore (podio) + ScorePickups recogidos en la run + TimeBonus.
 	// RankScore: 1º=400, 2º=300, 3º=200, 4º=100, resto=50. Eliminados=0.
@@ -214,11 +221,21 @@ protected:
 	/** @brief Comprueba si la ronda terminó (todos los vivos cruzaron meta o murieron) y arranca Resultados. */
 	virtual void UpdateRoundProgressAndMaybeFinish();
 
+	/** @brief Pasa a Resultados y arma la cuenta atrás que acaba en FinishRoundAndReturnToLobby (una sola vez). */
+	void StartResults();
+
 	/** @brief Mueve a un jugador a modo espectador (UnPossess + spectate next alive). */
 	void MovePlayerToSpectator(APlayerController* PlayerController) const;
 
 	/** @brief Cierra la ronda: persiste scores, dispara Seamless Travel de vuelta a LVL_HQ. */
 	virtual void FinishRoundAndReturnToLobby();
+
+	/**
+	 * @brief Opciones que se añaden a la URL de vuelta al lobby (con su «?» delante). Vacío por defecto.
+	 * @note Las opciones de la URL del viaje anterior (p. ej. ?game=Survival) se heredan en el siguiente: un modo que
+	 *       viaja con «game» debe limpiarlo aquí, o el lobby carga con el GameMode de la partida y nadie arranca la cuenta atrás.
+	 */
+	virtual FString GetLobbyTravelOptions() const { return FString(); }
 
 	/** @brief Cambia el MatchFlowState en el GameState replicado + broadcast a listen-server. */
 	void SetFlowState(ETNMatchFlowState NewState) const;

@@ -1,10 +1,13 @@
 #include "World/TN_ChunkManager.h"
 #include "World/TN_ChunkDecisions.h"
+#include "World/TN_FinishLineVolume.h"
+#include "Game/TN_SurvivalRules.h"
 #include "Core/TN_Log.h"
 
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "DrawDebugHelpers.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,6 +44,13 @@ void ATN_ChunkManager::BeginPlay()
 	{
 		UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] No hay chunks configurados en ningún pool. "
 			"Asigna BPs en EasyChunkClasses / MediumChunkClasses / HardChunkClasses."));
+		return;
+	}
+
+	// Supervivencia: niveles enteros, sin buffer ni streaming. ATN_SurvivalGameMode genera los siguientes.
+	if (bLevelMode)
+	{
+		BuildLevel(1);
 		return;
 	}
 
@@ -130,6 +140,41 @@ void ATN_ChunkManager::SpawnNextChunk()
 		Difficulty = GetCurrentDifficulty();
 	}
 
+	AActor* SpawnedChunk = SpawnChunkOfDifficulty(Difficulty);
+	if (!SpawnedChunk)
+	{
+		return;
+	}
+
+	// Desconectar el trigger anterior y conectar solo el del nuevo chunk.
+	// Tener un único trigger activo garantiza que un solo SpawnNextChunk se llame
+	// por chunk cruzado, independientemente de cuántos jugadores haya.
+	if (ActiveEndTrigger.IsValid())
+	{
+		ActiveEndTrigger->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
+	}
+
+	if (UBoxComponent* EndTrigger = FindBoxComponentByName(SpawnedChunk, TEXT("EndTrigger")))
+	{
+		EndTrigger->OnComponentBeginOverlap.AddDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
+		ActiveEndTrigger = EndTrigger;
+	}
+	else
+	{
+		ActiveEndTrigger = nullptr;
+		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene BoxComponent 'EndTrigger'. "
+			"El jugador no podrá avanzar."), *GetNameSafe(SpawnedChunk));
+	}
+
+	ActiveChunks.Add(SpawnedChunk);
+	CleanupChunks();
+
+	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Spawneado chunk %s (dificultad=%d, total pasados=%d)."),
+		*GetNameSafe(SpawnedChunk), (int32)Difficulty, PassedChunkCount);
+}
+
+AActor* ATN_ChunkManager::SpawnChunkOfDifficulty(ETNChunkDifficulty Difficulty)
+{
 	// Intentar el pool primario, luego los otros como fallback
 	const TNChunkLogic::FPoolFallbackOrder Order = TNChunkLogic::GetPoolFallbackOrder(Difficulty);
 
@@ -172,37 +217,17 @@ void ATN_ChunkManager::SpawnNextChunk()
 	if (!ChunkClass)
 	{
 		UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] SpawnNextChunk: Todos los pools están vacíos."));
-		return;
+		return nullptr;
 	}
 
 	AActor* SpawnedChunk = SpawnAlignedChunk(ChunkClass, NextSpawnTransform);
 	if (!SpawnedChunk)
 	{
-		return;
+		return nullptr;
 	}
 
 	LastSelectedIndex = SelectedIndex;
 	LastSelectedPoolDifficulty = UsedPoolDifficulty;
-
-	// Desconectar el trigger anterior y conectar solo el del nuevo chunk.
-	// Tener un único trigger activo garantiza que un solo SpawnNextChunk se llame
-	// por chunk cruzado, independientemente de cuántos jugadores haya.
-	if (ActiveEndTrigger.IsValid())
-	{
-		ActiveEndTrigger->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
-	}
-
-	if (UBoxComponent* EndTrigger = FindBoxComponentByName(SpawnedChunk, TEXT("EndTrigger")))
-	{
-		EndTrigger->OnComponentBeginOverlap.AddDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
-		ActiveEndTrigger = EndTrigger;
-	}
-	else
-	{
-		ActiveEndTrigger = nullptr;
-		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Chunk '%s' no tiene BoxComponent 'EndTrigger'. "
-			"El jugador no podrá avanzar."), *GetNameSafe(SpawnedChunk));
-	}
 
 	// Actualizar NextSpawnTransform al OutSocket de este chunk
 	if (USceneComponent* OutSocket = FindSceneComponentByName(SpawnedChunk, TEXT("OutSocket")))
@@ -221,11 +246,7 @@ void ATN_ChunkManager::SpawnNextChunk()
 			"Los chunks siguientes se superpondrán."), *GetNameSafe(SpawnedChunk));
 	}
 
-	ActiveChunks.Add(SpawnedChunk);
-	CleanupChunks();
-
-	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Spawneado chunk %s (dificultad=%d, total pasados=%d)."),
-		*GetNameSafe(SpawnedChunk), (int32)Difficulty, PassedChunkCount);
+	return SpawnedChunk;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -512,4 +533,77 @@ FVector ATN_ChunkManager::GetSafeReviveLocation() const
 	// Siempre apunta a un área activa (el próximo chunk se spawneará aquí).
 	// Elevamos 100 cm para evitar que el pawn aparezca dentro del suelo.
 	return NextSpawnTransform.GetLocation() + FVector(0.f, 0.f, 100.f);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modo por niveles (Supervivencia)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_ChunkManager::DestroyAllChunks()
+{
+	if (ActiveEndTrigger.IsValid())
+	{
+		ActiveEndTrigger->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
+	}
+	ActiveEndTrigger = nullptr;
+
+	for (const TWeakObjectPtr<AActor>& Chunk : ActiveChunks)
+	{
+		if (Chunk.IsValid())
+		{
+			Chunk->Destroy();
+		}
+	}
+	ActiveChunks.Reset();
+}
+
+void ATN_ChunkManager::BuildLevel(int32 Level)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	DestroyAllChunks();
+	LevelPath.Reset();
+	PassedChunkCount = 0;
+	bFinalSpawned = false;
+	NextSpawnTransform = GetActorTransform();
+	LevelPath.Add(NextSpawnTransform.GetLocation());
+
+	// Sin EndTrigger ni CleanupChunks: el nivel entero existe desde el principio.
+	for (const ETNChunkDifficulty Difficulty : TNSurvivalLogic::LevelDifficulties(Level, ChunksPerLevel))
+	{
+		if (AActor* Chunk = SpawnChunkOfDifficulty(Difficulty))
+		{
+			ActiveChunks.Add(Chunk);
+			LevelPath.Add(NextSpawnTransform.GetLocation());
+		}
+	}
+
+	SpawnFinalChunk();
+
+	// La meta del camino: la línea de meta del chunk final (hijo suyo); si no se encuentra, su centro.
+	AActor* FinalChunk = bFinalSpawned && ActiveChunks.Num() > 0 ? ActiveChunks.Last().Get() : nullptr;
+	if (FinalChunk)
+	{
+		FVector Finish = FinalChunk->GetComponentsBoundingBox().GetCenter();
+		for (TActorIterator<ATN_FinishLineVolume> It(GetWorld()); It; ++It)
+		{
+			if (It->GetParentActor() == FinalChunk || It->GetAttachParentActor() == FinalChunk)
+			{
+				Finish = It->GetActorLocation();
+				break;
+			}
+		}
+		LevelPath.Add(Finish);
+	}
+
+	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Nivel %d generado: %d chunks + final, camino de %d puntos."),
+		Level, ActiveChunks.Num() - (FinalChunk ? 1 : 0), LevelPath.Num());
+}
+
+float ATN_ChunkManager::GetRemainingDistance(const FVector& Location) const
+{
+	return TNSurvivalLogic::RemainingAlongPath(LevelPath, Location);
 }
