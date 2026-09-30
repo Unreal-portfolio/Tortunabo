@@ -157,8 +157,9 @@ derecho** en el juego, y con `TN.Camera` en la consola (manda sobre el ajuste). 
 La forma más rápida y fiable: el juego corre en el PC con todos los gráficos (Lumen, sombras virtuales) y las gafas son la
 pantalla. El multijugador por Steam funciona igual que siempre.
 
-1. En el PC (Windows): instalar la app **Meta Quest Link** (antes «Oculus»). En su Ajustes > General, **runtime OpenXR**:
-   ponerla como activa.
+1. En el PC (Windows): instalar la app **Meta Quest Link** (antes «Oculus»). En su Ajustes > General: **runtime OpenXR**,
+   ponerla como activa, y **Orígenes desconocidos**, activado. Sin este último, al lanzar el juego las gafas enseñan un
+   aviso de «dispositivo o aplicación externa» que manda a Ajustes y el juego no se ve en ellas.
 2. En las gafas: activar **Link** (cable USB-C bueno) o **Air Link** (misma red wifi, 5 GHz).
 3. **Editor**: abrir el proyecto (la primera vez compila el módulo con los plugins nuevos, OpenXR y XRBase, y compila
    shaders) y Play > **VR Preview**. El modo VR se enciende solo (Automático). `TN.VR.Status` debe decir «gafas».
