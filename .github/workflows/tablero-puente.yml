@@ -12,6 +12,8 @@
 #
 # Secreto TABLERO_TOKEN: token classic con `repo`, `project`, `read:org` y `notifications` (el GITHUB_TOKEN de Actions no
 # llega a los Projects de la organización). Sin `notifications`, el último paso avisa y no silencia, pero no falla.
+# Es el token del cron y de la rutina. Si quien lanza el workflow a mano tiene su propio secreto (TABLERO_TOKEN_MOKIUS,
+# TABLERO_TOKEN_RUBI; mismos scopes), se usa el suyo: sus comentarios salen con su cuenta y gastan su límite de API.
 name: Puente del tablero
 
 on:
@@ -40,7 +42,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ secrets.TABLERO_TOKEN }}
+      GH_TOKEN: >-
+        ${{ (github.event_name == 'workflow_dispatch' && github.triggering_actor == 'Mokius' && secrets.TABLERO_TOKEN_MOKIUS)
+        || (github.event_name == 'workflow_dispatch' && github.triggering_actor == 'Ruben-Besteiro' && secrets.TABLERO_TOKEN_RUBI)
+        || secrets.TABLERO_TOKEN }}
     steps:
       - name: Descargar dev (solo los scripts)
         uses: actions/checkout@v4

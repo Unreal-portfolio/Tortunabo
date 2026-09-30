@@ -103,3 +103,8 @@ def test_atascadas_solo_las_que_esperan_a_alguien_y_llevan_dias_paradas():
     texto = volcado.render(_items(*issues), {}, AHORA, 3)
     assert "## Sin movimiento desde hace más de 3 días (2)" in texto and "| #2 | Revisiones | 9 |" in texto
     assert "Sin movimiento" not in volcado.render(_items(parada(3, "In review", 1)), {}, AHORA, 3)
+
+
+def test_el_puente_admite_pedir_y_atendida():
+    assert volcado.argumentos_de_puente('pedir 44 --texto "Recarga a 4 s"') == ["pedir", "44", "--texto", "Recarga a 4 s"]
+    assert volcado.argumentos_de_puente('atendida 44 --nota "Hecho"')[0] == "atendida"

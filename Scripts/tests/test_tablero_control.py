@@ -299,3 +299,51 @@ def test_aviso_de_organizacion_firmado_por_el_puente_no_se_repite():
     firmado = auditoria.texto_comentario(lista) + "\n\n_Lanzado por Mokius a través del puente._"
     ya = _issue(etiquetas={"tarea", auditoria.ETIQUETA}, comentarios=[firmado])
     assert auditoria.acciones(ya, lista)["comentarios"] == []
+
+
+# --- Conversación en la issue ----------------------------------------------------------------------
+
+def _charla(*turnos, asignados=("Ruben-Besteiro",), etiquetas=("tarea",), estado="OPEN"):
+    return _issue("In progress", asignados=list(asignados), etiquetas=set(etiquetas), estado=estado,
+                  autores=[a for a, _ in turnos], comentarios=[c for _, c in turnos])
+
+
+@pytest.mark.parametrize("turnos, pendiente", [
+    ([("SkiTemplar", "Mejor 4 s que 5, que se hace eterno.")], True),
+    ([("SkiTemplar", "Mejor 4 s."), ("Ruben-Besteiro", "Hecho, 4 s.")], False),
+    ([("SkiTemplar", "Mejor 4 s."), ("Ruben-Besteiro", "**Editor: funciona** (PIE).")], True),
+    ([("SkiTemplar", "**Decisión** (2026-09-30, SkiTemplar): recarga a 4 s.")], True),
+    ([("SkiTemplar", "**Petición** (2026-09-30, SkiTemplar): súbelo a 4 s."),
+      ("SkiTemplar", "**Petición atendida** (Ruben-Besteiro): hecho.")], False),
+    ([("SkiTemplar", "**Revisión IA (Mokius (Claude)): Aprobada.**\n\nBien.")], False),
+    ([("Ruben-Besteiro", "Lo dejo en 2,4 s.")], False),
+    ([("SkiTemplar", "Sube a 4 s.\n\n_Lanzado por Ruben-Besteiro a través del puente._")], False),
+    ([("SkiTemplar", "Sube a 4 s.\n\n_Lanzado por Mokius a través del puente._")], True),
+    ([], False),
+])
+def test_conversacion_pendiente_si_el_ultimo_en_hablar_no_es_el_asignado(turnos, pendiente):
+    assert auditoria.conversacion_pendiente(_charla(*turnos)) is pendiente
+
+
+def test_sin_asignado_solo_cuenta_una_peticion_expresa():
+    suelto = _charla(("Mokius", "Con un solo jugador va bien."), asignados=())
+    expresa = _charla(("Mokius", "**Petición** (2026-09-30, Mokius): reproducidlo con Rodrigo de anfitrión."), asignados=())
+    assert not auditoria.conversacion_pendiente(suelto) and auditoria.conversacion_pendiente(expresa)
+
+
+def test_la_etiqueta_peticion_se_pone_y_se_quita_sola():
+    pide = ("SkiTemplar", "Mejor 4 s.")
+    assert auditoria.accion_peticion(_charla(pide)) == "poner"
+    assert auditoria.accion_peticion(_charla(pide, etiquetas=("tarea", "peticion"))) is None
+    contestada = _charla(pide, ("Ruben-Besteiro", "Hecho."), etiquetas=("tarea", "peticion"))
+    assert auditoria.accion_peticion(contestada) == "quitar"
+    assert auditoria.accion_peticion(_charla(pide, ("Ruben-Besteiro", "Hecho."))) is None
+    assert auditoria.accion_peticion(_charla(pide, estado="CLOSED")) is None
+
+
+def test_conversacion_de_una_issue_leida_del_repo():
+    nodo = {"number": 44, "state": "OPEN", "labels": {"nodes": [{"name": "tarea"}]},
+            "assignees": {"nodes": [{"login": "Ruben-Besteiro"}]},
+            "comments": {"nodes": [{"body": "La decisión actual es de 4 segundos.", "author": {"login": "SkiTemplar"}},
+                                   {"body": "**Editor: funciona** (PIE).", "author": None}]}}
+    assert auditoria.accion_peticion(auditoria.conversacion_de(nodo)) == "poner"

@@ -21,6 +21,7 @@ Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py lote crear --titulo "..." 57 58 59 [--pr 120]
     uv run python Scripts/tablero/tablero.py lote estado 130
     uv run python Scripts/tablero/tablero.py decidir 42 --texto "..."
+    uv run python Scripts/tablero/tablero.py pedir 42 --texto "..." | atendida 42 --nota "..."
     uv run python Scripts/tablero/tablero.py auditar [--aplicar]
     uv run python Scripts/tablero/tablero.py colisiones [--aplicar]
     uv run python Scripts/tablero/tablero.py bloquear 57 --por 40 [--por 41]
@@ -31,8 +32,8 @@ Las tareas y los fallos se agrupan por objeto (issue padre con la etiqueta `obje
 como sub-issues nativas de GitHub. Módulos: base.py (gh, git, proyecto, PR), flujo.py
 (reglas del ciclo), objetos.py, bloqueos.py (dependencias), lotes.py, memoria.py (Resumen
 y Decisión), auditoria.py, colisiones.py, estados.py (opciones de Status), control.py
-(memoria, auditoría, colisiones, dependencias), control_lotes.py (lotes y resúmenes) y
-volcado.py (volcado a Markdown y puente para GitHub Actions).
+(memoria, auditoría, colisiones, dependencias), control_lotes.py (lotes y resúmenes),
+peticiones.py (pedir un cambio en la propia issue) y volcado.py (volcado a Markdown y puente para GitHub Actions).
 
 Requiere `gh` autenticado con el scope `project` (`gh auth refresh -s project`).
 """
@@ -54,6 +55,7 @@ import flujo
 import lotes
 import memoria
 import objetos
+import peticiones
 import volcado
 from base import (CONFIG, ESTADOS, INTEGRACION, ORDEN_PRIORIDAD, ORDEN_TAMANO, REPO,
                   ErrorTablero, cargar_proyecto, comentar, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
@@ -134,6 +136,8 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
     seccion("Primero: colisiones entre PR y organización del tablero",
             [linea(i) for i in sorted(urgentes_de_organizacion(abiertas + objetos_con_aviso(proyecto), yo, aprobador),
                                       key=clave_orden)])
+    seccion("Peticiones: alguien pide un cambio en la issue (lee sus comentarios antes de seguir)",
+            [linea(i) for i in sorted(peticiones.para(abiertas, yo, aprobador), key=clave_orden)])
     seccion("Tu trabajo en curso", [linea(i) for i in mias])
     seccion("Puedes probar en el editor (tus tareas en curso o en revisión; no esperes a la revisión)",
             [linea(i) for i in sorted(probables_en_editor(abiertas, yo), key=clave_orden)])
@@ -235,8 +239,7 @@ def cmd_revision(args: argparse.Namespace) -> None:
     for pr in prs_abiertas():
         if args.numero in issues_de_pr(pr):
             gh("pr", "edit", str(pr["number"]), "--repo", REPO, "--add-reviewer", revisor)
-    comentar(args.numero, f"Lista para revisión. Revisor: @{revisor} (su Claude hace la revisión IA con `tortu-revisar`)."
-             + (f"\n\n{aviso}" if aviso else ""))
+    comentar(args.numero, f"Lista para revisión: @{revisor}." + (f"\n\n{aviso}" if aviso else ""))
     print(f"#{args.numero} → In review; revisa {revisor}")
 
 
@@ -479,8 +482,8 @@ def aplicar_estado(proyecto: dict, numero: int, valores: dict, fusionada: bool, 
     if estado and estado != actual:
         poner_campo(proyecto, numero, "Status", estado)
     if cerrar and proyecto["items"].get(numero, {}).get("state") != "CLOSED":
-        motivo = "Probada en el editor" if sin_pr else f"Fusionada en `{INTEGRACION}`, revisión IA aprobada y probada en el editor"
-        comentar(numero, f"{motivo}: Done. Deja el resumen con `tablero.py resumen`.")
+        motivo = "Probada en el editor" if sin_pr else f"Fusionada en `{INTEGRACION}`, revisada y probada"
+        comentar(numero, f"{motivo}: Done.")
         gh("issue", "close", str(numero), "--repo", REPO, "--reason", "completed")
     return estado
 
@@ -717,6 +720,7 @@ def main() -> int:
     anadir_comandos_de_alta(sub)
     control.anadir_comandos(sub)
     control_lotes.anadir_comandos(sub)
+    peticiones.anadir_comandos(sub)
     args = parser.parse_args()
     try:
         if args.cmd == "puente":

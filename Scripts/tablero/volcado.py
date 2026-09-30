@@ -26,7 +26,7 @@ MAX_CUERPO = 60000
 # Subcomandos que el workflow acepta por `workflow_dispatch`: los que mantienen el tablero.
 # Quedan fuera los que crean ramas o dependen del usuario que los lanza (`coger`, `revision`).
 PERMITIDOS = ("estado", "campo", "sync", "auditar", "colisiones", "bloquear", "colgar", "resumen", "decidir",
-              "editor", "ia", "volcado")
+              "editor", "ia", "volcado", "pedir", "atendida")
 CABECERA = ("| # | Título | Asignados | Prio. | Tam. | Área | Fase | Revisión IA | Editor | Revisor | PR | Etiquetas "
             "| Espera a |")
 SEPARADOR = "|" + "---|" * 13
