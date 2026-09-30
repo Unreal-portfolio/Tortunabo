@@ -10,8 +10,8 @@
 # El código del tablero se toma siempre de `dev`. Este fichero tiene que estar también en `main`: GitHub solo ejecuta
 # los `schedule` de la rama por defecto.
 #
-# Secreto TABLERO_TOKEN: token classic con `repo`, `project` y `read:org` (el GITHUB_TOKEN de Actions no llega a los
-# Projects de la organización).
+# Secreto TABLERO_TOKEN: token classic con `repo`, `project`, `read:org` y `notifications` (el GITHUB_TOKEN de Actions no
+# llega a los Projects de la organización). Sin `notifications`, el último paso avisa y no silencia, pero no falla.
 name: Puente del tablero
 
 on:
@@ -57,7 +57,7 @@ jobs:
       - name: Comprobar el acceso al tablero
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::Falta el secreto TABLERO_TOKEN (token classic con repo, project y read:org)."
+            echo "::error::Falta el secreto TABLERO_TOKEN (token classic con repo, project, read:org y notifications)."
             exit 1
           fi
           gh api user --jq '"Tablero como " + .login'
