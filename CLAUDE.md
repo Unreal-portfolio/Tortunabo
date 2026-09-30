@@ -85,9 +85,14 @@ uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug|tarea -
 uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripcion "..."] | colgar <hijo> <objeto>
 uv run python Scripts/tablero/tablero.py estado <n> <estado> | campo <n> <campo> <valor>
 uv run python Scripts/tablero/tablero.py sync|auditar|colisiones [--aplicar]
+uv run python Scripts/tablero/tablero.py volcado [--publicar <issue>]   # tablero completo en Markdown
 ```
 
 Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`.
+
+### Revisión diaria en la nube
+
+Una rutina de Claude revisa cada mañana issues, PR y código y deja el parte en la issue #127. Su entorno solo llega a las rutas REST del repositorio, así que no puede leer ni mover el tablero. El workflow «Puente del tablero» (`.github/workflows/tablero-puente.yml`) lo hace por ella: a las 7:15 ejecuta `sync`, `auditar` y `colisiones` con `--aplicar` y publica el volcado del tablero en la issue #131; lanzado a mano con un comando (`estado 123 Ready`), lo ejecuta si está en la lista cerrada de `Scripts/tablero/volcado.py`. Las issues #127 y #131 no van al tablero. El workflow tiene que estar también en `main`, porque el cron solo se ejecuta desde la rama por defecto.
 
 ## Memoria del equipo: las issues
 

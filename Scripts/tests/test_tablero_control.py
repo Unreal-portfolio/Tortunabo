@@ -169,6 +169,7 @@ def test_objetos_lotes_y_parte_diario_no_son_de_trabajo():
     assert not auditoria.es_de_trabajo(_issue(etiquetas={"objeto"}))
     assert not auditoria.es_de_trabajo(_issue(etiquetas={"lote"}))
     assert not auditoria.es_de_trabajo(_issue(titulo="Parte diario del tablero"))
+    assert not auditoria.es_de_trabajo(_issue(titulo="Estado del tablero"))
     assert auditoria.es_de_trabajo(_issue())
 
 

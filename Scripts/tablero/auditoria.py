@@ -33,7 +33,7 @@ DESCRIPCION_ETIQUETA = "La issue tiene problemas de organización en el tablero 
 CABECERA = "**Revisión de organización**"
 DIAS_RESUMEN = 14
 CAMPOS_OBLIGATORIOS = ("Prioridad", "Área", "Tamaño")
-TITULOS_EXCLUIDOS = {"Parte diario del tablero"}
+TITULOS_EXCLUIDOS = {"Parte diario del tablero", "Estado del tablero"}
 # Comentarios que escribe el propio tablero y no explican por qué algo falla.
 PREFIJOS_AUTOMATICOS = ("Lista para revisión", "**Editor: funciona**", "**Revisión IA", "Fusionada en",
                         CABECERA, memoria.CABECERA_RESUMEN, memoria.CABECERA_DECISION, flujo.AVISO_SIN_QA)

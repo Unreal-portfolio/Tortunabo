@@ -23,12 +23,15 @@ Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py auditar [--aplicar]
     uv run python Scripts/tablero/tablero.py colisiones [--aplicar]
     uv run python Scripts/tablero/tablero.py bloquear 57 --por 40 [--por 41]
+    uv run python Scripts/tablero/tablero.py volcado [--publicar 131]
+    uv run python Scripts/tablero/tablero.py puente --comando "estado 42 Ready"
 
 Las tareas y los fallos se agrupan por objeto (issue padre con la etiqueta `objeto`)
 como sub-issues nativas de GitHub. Módulos: base.py (gh, git, proyecto, PR), flujo.py
 (reglas del ciclo), objetos.py, bloqueos.py (dependencias), lotes.py, memoria.py (Resumen
 y Decisión), auditoria.py, colisiones.py, estados.py (opciones de Status), control.py
-(memoria, auditoría, colisiones, dependencias) y control_lotes.py (lotes y resúmenes).
+(memoria, auditoría, colisiones, dependencias), control_lotes.py (lotes y resúmenes) y
+volcado.py (volcado a Markdown y puente para GitHub Actions).
 
 Requiere `gh` autenticado con el scope `project` (`gh auth refresh -s project`).
 """
@@ -49,6 +52,7 @@ import flujo
 import lotes
 import memoria
 import objetos
+import volcado
 from base import (CONFIG, ESTADOS, INTEGRACION, ORDEN_PRIORIDAD, ORDEN_TAMANO, REPO,
                   ErrorTablero, cargar_proyecto, comentar, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
                   item_de_issue, poner_campo, prs_abiertas, prs_fusionadas, slug, usuario_actual,
@@ -271,7 +275,7 @@ def reconciliar_issues_sueltas(proyecto: dict, cambios: list) -> None:
                              "--json", "number,title,labels"))
     for issue in abiertas:
         n = issue["number"]
-        if n in proyecto["items"] or issue["title"] == "Parte diario del tablero":
+        if n in proyecto["items"] or issue["title"] in auditoria.TITULOS_EXCLUIDOS:
             continue
         if objetos.es_objeto(issue) or lotes.es_lote(issue):
             cambios.append((f"#{n} (objeto o lote) entra al tablero sin Status ({issue['title']})",
@@ -557,6 +561,21 @@ def anadir_comandos_de_flujo(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(fn=cmd_editor)
 
 
+def cmd_volcado(args: argparse.Namespace) -> None:
+    """Imprime el tablero en Markdown o, con --publicar, lo deja como cuerpo de esa issue."""
+    proyecto = cargar_proyecto()
+    prs_por_issue: dict[int, list[int]] = {}
+    for pr in prs_abiertas():
+        for numero in issues_de_pr(pr):
+            prs_por_issue.setdefault(numero, []).append(pr["number"])
+    texto = volcado.render(proyecto["items"], prs_por_issue, datetime.now(timezone.utc))
+    if args.publicar is None:
+        print(texto)
+        return
+    gh("issue", "edit", str(args.publicar), "--repo", REPO, "--body-file", "-", entrada=texto)
+    print(f"Volcado publicado en #{args.publicar} ({len(texto)} caracteres)")
+
+
 def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     """Comandos que crean u organizan issues: nueva, objeto, colgar y sync."""
     p = sub.add_parser("nueva", help="crear issue y colocarla en el tablero")
@@ -582,6 +601,12 @@ def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     p.add_argument("hijo", type=int)
     p.add_argument("padre", type=int)
     p.set_defaults(fn=cmd_colgar)
+    p = sub.add_parser("volcado", help="tablero completo en Markdown, para quien no puede leer el Project")
+    p.add_argument("--publicar", type=int, metavar="ISSUE", help="sustituir el cuerpo de esa issue por el volcado")
+    p.set_defaults(fn=cmd_volcado)
+    p = sub.add_parser("puente", help="ejecutar un comando recibido por el workflow (lista cerrada)")
+    p.add_argument("--comando", required=True, help='por ejemplo: estado 42 Ready')
+    p.set_defaults(fn=None)
     p = sub.add_parser("sync", help="reconciliar tablero, PR e issues")
     p.add_argument("--aplicar", action="store_true")
     p.set_defaults(fn=cmd_sync)
@@ -596,6 +621,8 @@ def main() -> int:
     control_lotes.anadir_comandos(sub)
     args = parser.parse_args()
     try:
+        if args.cmd == "puente":
+            args = parser.parse_args(volcado.argumentos_de_puente(args.comando))
         args.fn(args)
     except (ErrorTablero, objetos.ErrorObjeto, memoria.ErrorMemoria) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
