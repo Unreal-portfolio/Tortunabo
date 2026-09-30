@@ -76,3 +76,10 @@ def test_puente_trocea_el_comando_permitido():
 def test_puente_rechaza_lo_que_no_esta_en_la_lista(comando):
     with pytest.raises(ErrorTablero):
         volcado.argumentos_de_puente(comando)
+
+
+def test_silenciar_solo_toca_las_suscritas():
+    nodos = [{"id": "a", "number": 1, "viewerSubscription": "SUBSCRIBED"},
+             {"id": "b", "number": 2, "viewerSubscription": "UNSUBSCRIBED"},
+             {"id": "c", "number": 3, "viewerSubscription": "IGNORED"}, {"id": "d", "number": 4}]
+    assert [n["id"] for n in volcado.a_silenciar(nodos)] == ["a"]
