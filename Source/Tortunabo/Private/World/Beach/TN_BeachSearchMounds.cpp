@@ -89,6 +89,20 @@ int32 ATN_BeachSearchRegistry::NumMoundAnims() const
 	return Count;
 }
 
+bool ATN_BeachSearchRegistry::GetMoundFoot(int32 Index, FVector& OutGround, float& OutRadius) const
+{
+	if (!Mounds.IsValidIndex(Index))
+	{
+		return false;
+	}
+	// Tal como se monta en esta máquina (LiveXf sale de lo replicado y del generador: mismo sitio y tamaño en todas). El
+	// radio de la base con los terrones que asoman (R x 1,1) y el tamaño del ejemplar.
+	const FTransform& Xf = Mounds[Index].LiveXf;
+	OutGround = Xf.GetLocation();
+	OutRadius = static_cast<float>(TNBeachDecorKit::SearchMoundRadius * 1.1 * Xf.GetScale3D().X);
+	return true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Montar y aplanar
 // ─────────────────────────────────────────────────────────────────────────────

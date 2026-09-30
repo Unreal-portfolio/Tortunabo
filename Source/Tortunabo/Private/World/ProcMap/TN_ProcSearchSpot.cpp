@@ -54,12 +54,25 @@ namespace TNSearchSpotDetail
 	/** Perímetro (cm) de huella por cada chispita de «aquí se puede rebuscar» de más (los decorados grandes, más). */
 	constexpr float HintPerimeterPerSparkle = 3000.f;
 	constexpr int32 MaxHintSparkles = 4;
-	/** Alcance de interacción (cm): el del escaneo de la tortuga (ATortugaCharacter::MaxInteractionDistance). */
-	constexpr float Reach = 350.f;
+	/** Alcance de interacción (cm): el del escaneo de la tortuga (ATortugaCharacter::MaxInteractionDistance; 250, antes 350). */
+	constexpr float Reach = ATortugaCharacter::DefaultInteractionDistance;
 	/** Intervalo del tick sin nada que hacer (s): solo mira si la cámara se acerca. */
 	constexpr float IdleTickInterval = 0.3f;
 	/** Segundos que siguen moviéndose las partículas tras el último estallido. */
 	constexpr double FxTail = 2.5;
+
+	/** Anillo fijo: margen (cm) entre el borde de la huella y donde empiezan los guiones; lo que tarda en salir y en irse (1/s). */
+	constexpr float MarkerMargin = 25.f;
+	constexpr float MarkerAppearSpeed = 3.f;
+	constexpr float MarkerHideSpeed = 4.f;
+	/** Anillo fijo: distancia (cm) de la cámara hasta la que se anima cada fotograma (la AnimRange de los objetos; más lejos, al ritmo lento del tick). */
+	constexpr float MarkerAnimDistance = 4000.f;
+	/** Anillo fijo mientras alguien rebusca: cuánto más deprisa gira y cuánto late (fracción del radio). */
+	constexpr float MarkerSearchSpinScale = 5.f;
+	constexpr float MarkerSearchPulse = 0.1f;
+	/** Anillo fijo: cuántas veces se busca el suelo como mucho y cada cuánto (s) si aún no tiene colisión. */
+	constexpr int32 MarkerMaxTraces = 6;
+	constexpr double MarkerRetraceSeconds = 1.0;
 
 	bool DebugInteraction()
 	{
@@ -745,6 +758,10 @@ void ATN_ProcSearchSpot::BeginPlay()
 	}
 	ApplySpotShape();
 	HintClock = FMath::FRandRange(0.f, 0.5f);
+	// Cada anillo desfasado (no giran ni respiran todos a la vez), como los de los objetos del suelo, pero con el desfase
+	// sacado de su sitio y no al azar: sale igual en todas las máquinas.
+	const FVector Where = GetActorLocation();
+	MarkerClock = FMath::Fmod(FMath::Abs(static_cast<float>(Where.X) * 0.0137f + static_cast<float>(Where.Y) * 0.0291f), 10.f);
 }
 
 void ATN_ProcSearchSpot::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -1289,7 +1306,7 @@ void ATN_ProcSearchSpot::Tick(float DeltaSeconds)
 		}
 	}
 	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-	const bool bBusy = SearchState.Searcher != nullptr || bHopActive || (bNearView && !IsSpent()) || MarkerAppear > 0.f
+	const bool bBusy = SearchState.Searcher != nullptr || bHopActive || (bNearView && !IsSpent()) || bMarkerAnimating
 		|| Now - LastFxTime < TNSearchSpotDetail::FxTail || WantsFrameTick();
 	const float WantedInterval = bBusy ? 0.f : TNSearchSpotDetail::IdleTickInterval;
 	if (!FMath::IsNearlyEqual(GetActorTickInterval(), WantedInterval))
@@ -1329,7 +1346,7 @@ void ATN_ProcSearchSpot::TickLocalFX(float DeltaSeconds)
 		}
 	}
 
-	// Cerca de la tortuga local: el anillo dorado en el suelo, donde rebuscaría.
+	// El anillo dorado fijo en el suelo, alrededor del decorado (sin seguir a nadie).
 	TickMarker(DeltaSeconds);
 
 	// Rebuscando: puñados de tierra y piedrecitas que saltan hacia el que busca, cada uno con su sonido.
@@ -1598,31 +1615,100 @@ void ATN_ProcSearchSpot::DrawDebugSpot(float DeltaSeconds)
 		FRotationMatrix::MakeFromZ(Axis).ToQuat(), Color, false, Life, SDPG_Foreground, 3.f);
 }
 
-void ATN_ProcSearchSpot::TickMarker(float DeltaSeconds)
+float ATN_ProcSearchSpot::GetMarkerRing(FVector& OutCenter, bool& bOutPending) const
 {
-	UWorld* World = GetWorld();
-	if (!World || MarkerDistance <= 0.f)
+	// Los guiones del anillo de los objetos del suelo van en la corona de fuera: se escala para que empiecen MarkerMargin cm
+	// más allá del borde de lo que rodea, y se vea alrededor en vez de quedar debajo.
+	const float DashStart = TNLootGlow::RingDashInnerRadius / TNLootGlow::RingUnitRadius;
+	OutCenter = GetActorLocation();
+	bOutPending = false;
+
+	// Con punto propio (el montículo de arena de la playa): centrado en él y algo mayor que su base.
+	FVector OwnGround = FVector::ZeroVector;
+	float OwnFoot = 0.f;
+	switch (GetMarkerAnchor(OwnGround, OwnFoot))
+	{
+		case ETNSearchMarkerAnchor::Point:
+			OutCenter = OwnGround;
+			return FMath::Max(MarkerRadius, (OwnFoot + TNSearchSpotDetail::MarkerMargin) / DashStart);
+		case ETNSearchMarkerAnchor::Pending:
+			bOutPending = true;
+			break;
+		default:
+			break;
+	}
+
+	// Sin él: abarca la huella entera. Es una cápsula que cabe en un círculo de radio Radius + HalfLength.
+	const float Footprint = SpotShape.Radius + SpotShape.HalfLength;
+	return FMath::Max(MarkerRadius, (Footprint + TNSearchSpotDetail::MarkerMargin) / DashStart);
+}
+
+void ATN_ProcSearchSpot::FitMarkerToGround(const FVector& Center, float RingRadius)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
 	{
 		return;
 	}
-	// La tortuga de esta máquina (la del jugador local; en el anfitrión, la suya).
-	const UGameInstance* GameInstance = World->GetGameInstance();
-	const APlayerController* LocalPC = GameInstance ? GameInstance->GetFirstLocalPlayerController(World) : nullptr;
-	const APawn* LocalPawn = LocalPC ? LocalPC->GetPawn() : nullptr;
-	const APawn* Current = SearchState.Searcher.Get();
-	const bool bLocalSearching = LocalPawn && Current == LocalPawn;
-
-	// Se ve con la tortuga local cerca del borde, sin buscar todavía y sin que otra esté rebuscando.
-	bool bWant = false;
-	FVector Rim = MarkerRim;
-	if (LocalPawn && bNearView && !IsSpent() && (!Current || bLocalSearching))
+	MarkerFitCenter = Center;
+	MarkerFitRadius = RingRadius;
+	MarkerTraceTime = World->GetTimeSeconds();
+	++MarkerTraces;
+	if (MarkerRing)
 	{
-		const FVector PawnLocation = LocalPawn->GetActorLocation();
-		Rim = RimPointToward(PawnLocation, 0.f);
-		bWant = FVector::Dist2D(PawnLocation, Rim) < static_cast<double>(MarkerDistance)
-			&& FMath::Abs(PawnLocation.Z - GetActorLocation().Z) < static_cast<double>(SpotShape.Height) + 600.0;
+		MarkerRing->SetCullDistance(MarkerDrawDistance + RingRadius);
 	}
-	MarkerAppear = bWant ? FMath::Min(1.f, MarkerAppear + 3.f * DeltaSeconds) : FMath::Max(0.f, MarkerAppear - 4.f * DeltaSeconds);
+
+	// Lo que hay en el centro (el decorado, el montículo) taparía la traza: el suelo se mira en cuatro puntos de la propia
+	// circunferencia del anillo, que queda fuera, y el anillo se apoya en el plano que forman. Un punto sin suelo a mano
+	// (la colisión del terreno aún se está cocinando) o muy distinto del centro (un escalón, otro nivel) cuenta como el
+	// suelo del centro, que es donde se puso el actor o el montículo.
+	const double MaxStep = 120.0 + 0.4 * static_cast<double>(RingRadius);
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(TN_SearchMarker), false, this);
+	FVector Points[4];
+	int32 Hits = 0;
+	for (int32 k = 0; k < 4; ++k)
+	{
+		const double Angle = UE_DOUBLE_HALF_PI * static_cast<double>(k);
+		const double X = Center.X + FMath::Cos(Angle) * static_cast<double>(RingRadius);
+		const double Y = Center.Y + FMath::Sin(Angle) * static_cast<double>(RingRadius);
+		Points[k] = FVector(X, Y, Center.Z);
+		FHitResult Hit;
+		if (World->LineTraceSingleByObjectType(Hit, FVector(X, Y, Center.Z + 150.0), FVector(X, Y, Center.Z - 400.0),
+			FCollisionObjectQueryParams(ECC_WorldStatic), Query) && FMath::Abs(Hit.ImpactPoint.Z - Center.Z) <= MaxStep)
+		{
+			Points[k].Z = Hit.ImpactPoint.Z;
+			++Hits;
+		}
+	}
+	bMarkerGrounded = Hits == 4;
+	MarkerGround = FVector(Center.X, Center.Y, (Points[0].Z + Points[1].Z + Points[2].Z + Points[3].Z) * 0.25);
+	// Normal del plano por las diagonales (+X/-X y +Y/-Y); con el suelo muy empinado, el anillo se queda plano.
+	const FVector Normal = FVector::CrossProduct(Points[0] - Points[2], Points[1] - Points[3]).GetSafeNormal();
+	MarkerTilt = Normal.Z > 0.6 ? FQuat::FindBetweenNormals(FVector::UpVector, Normal) : FQuat::Identity;
+}
+
+void ATN_ProcSearchSpot::TickMarker(float DeltaSeconds)
+{
+	UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld() || MarkerDrawDistance <= 0.f)
+	{
+		bMarkerAnimating = false;
+		return;
+	}
+	FVector Center = GetActorLocation();
+	bool bPending = false;
+	const float RingRadius = GetMarkerRing(Center, bPending);
+
+	// Se ve mientras quede por buscar y la cámara local esté a menos de MarkerDrawDistance de su borde, igual en todas las
+	// máquinas con pantalla (no depende de dónde esté ninguna tortuga).
+	const APlayerCameraManager* Camera = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	const double ViewDistance = Camera
+		? FMath::Max(0.0, FVector::Dist(Camera->GetCameraLocation(), Center) - static_cast<double>(RingRadius)) : 0.0;
+	const bool bWant = !bPending && !IsSpent() && ViewDistance < static_cast<double>(MarkerDrawDistance);
+	MarkerAppear = bWant ? FMath::Min(1.f, MarkerAppear + TNSearchSpotDetail::MarkerAppearSpeed * DeltaSeconds)
+		: FMath::Max(0.f, MarkerAppear - TNSearchSpotDetail::MarkerHideSpeed * DeltaSeconds);
+	bMarkerAnimating = MarkerAppear > 0.f && ViewDistance < static_cast<double>(TNSearchSpotDetail::MarkerAnimDistance);
 	if (MarkerAppear <= 0.f)
 	{
 		if (MarkerRing && MarkerRing->IsVisible())
@@ -1637,6 +1723,7 @@ void ATN_ProcSearchSpot::TickMarker(float DeltaSeconds)
 		if (!RingAsset)
 		{
 			MarkerAppear = 0.f;
+			bMarkerAnimating = false;
 			return;
 		}
 		MarkerRing = NewObject<UStaticMeshComponent>(this, NAME_None, RF_Transient);
@@ -1648,43 +1735,33 @@ void ATN_ProcSearchSpot::TickMarker(float DeltaSeconds)
 		MarkerRing->SetCanEverAffectNavigation(false);
 		MarkerRing->SetCastShadow(false);
 		MarkerRing->SetReceivesDecals(false);
+		MarkerRing->SetCullDistance(MarkerDrawDistance + RingRadius);
 		MarkerRing->RegisterComponent();
 	}
 
-	// El suelo junto al borde, un poco hacia fuera (hacia la tortuga): se busca al moverse el punto o cada 0,3 s.
-	const double Now = World->GetTimeSeconds();
-	if (bWant && (FVector::DistSquared2D(Rim, MarkerRim) > FMath::Square(30.0) || Now - MarkerTraceTime > 0.3))
+	// El suelo bajo el anillo: al salir por primera vez, si cambia el centro o el tamaño y, mientras falte algún punto,
+	// cada segundo unas pocas veces más. No se mueve con nadie: se busca una vez y queda.
+	const bool bFitChanged = !FMath::IsNearlyEqual(RingRadius, MarkerFitRadius, 1.f) || !Center.Equals(MarkerFitCenter, 1.0);
+	if (bFitChanged)
 	{
-		MarkerRim = Rim;
-		MarkerTraceTime = Now;
-		const FVector PawnLocation = LocalPawn->GetActorLocation();
-		const FVector Spot = Rim + (PawnLocation - Rim).GetSafeNormal2D() * 45.0;
-		const double Top = FMath::Max(PawnLocation.Z, GetActorLocation().Z) + 150.0;
-		FHitResult Hit;
-		FCollisionQueryParams Query(SCENE_QUERY_STAT(TN_SearchMarker), false, this);
-		Query.AddIgnoredActor(LocalPawn);
-		if (World->LineTraceSingleByObjectType(Hit, FVector(Spot.X, Spot.Y, Top), FVector(Spot.X, Spot.Y, GetActorLocation().Z - 400.0),
-			FCollisionObjectQueryParams(ECC_WorldStatic), Query))
-		{
-			MarkerGround = Hit.ImpactPoint;
-			MarkerTilt = Hit.ImpactNormal.Z > 0.6 ? FQuat::FindBetweenNormals(FVector::UpVector, Hit.ImpactNormal.GetSafeNormal()) : FQuat::Identity;
-		}
-		else
-		{
-			MarkerGround = FVector(Spot.X, Spot.Y, GetActorLocation().Z);
-			MarkerTilt = FQuat::Identity;
-		}
+		MarkerTraces = 0;
+	}
+	if (bFitChanged || (!bMarkerGrounded && MarkerTraces < TNSearchSpotDetail::MarkerMaxTraces
+		&& World->GetTimeSeconds() - MarkerTraceTime > TNSearchSpotDetail::MarkerRetraceSeconds))
+	{
+		FitMarkerToGround(Center, RingRadius);
 	}
 
-	// Gira despacio y respira, como el de los objetos; mientras la tortuga local rebusca, deprisa y latiendo.
-	MarkerClock += DeltaSeconds * (bLocalSearching ? 5.f : 1.f);
+	// Gira despacio y respira, como el de los objetos (la misma pose, TNLootGlow::RingPose); mientras alguien rebusca,
+	// deprisa y latiendo.
+	const bool bSearching = SearchState.Searcher != nullptr;
+	MarkerClock += DeltaSeconds * (bSearching ? TNSearchSpotDetail::MarkerSearchSpinScale : 1.f);
 	const float Grow = 1.f - FMath::Square(1.f - MarkerAppear);
-	const float Pulse = bLocalSearching ? 0.1f * FMath::Abs(FMath::Sin(MarkerClock * 1.6f)) : 0.045f * FMath::Sin(MarkerClock * 2.4f);
-	const FQuat Spin(FVector::UpVector, FMath::DegreesToRadians(MarkerClock * -24.f));
+	const float Breath = bSearching ? TNSearchSpotDetail::MarkerSearchPulse * FMath::Abs(FMath::Sin(MarkerClock * 1.6f))
+		: TNLootGlow::RingBreathDepth * FMath::Sin(MarkerClock * TNLootGlow::RingBreathRate);
 	if (!MarkerRing->IsVisible())
 	{
 		MarkerRing->SetVisibility(true);
 	}
-	MarkerRing->SetWorldTransform(FTransform(MarkerTilt * Spin, MarkerGround + MarkerTilt.GetUpVector() * 2.5,
-		FVector(MarkerRadius / TNLootGlow::RingUnitRadius * Grow * (1.f + Pulse))));
+	MarkerRing->SetWorldTransform(TNLootGlow::RingPose(MarkerGround, MarkerTilt, RingRadius, MarkerClock, Grow, Breath));
 }

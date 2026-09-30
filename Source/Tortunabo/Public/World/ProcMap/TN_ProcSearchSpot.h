@@ -43,6 +43,14 @@ enum class ETNSearchOutcome : uint8
 	Empty,  ///< No había nada: nube de polvo del bioma.
 };
 
+/** Dónde va el anillo fijo de un rebuscable (ATN_ProcSearchSpot::GetMarkerAnchor). */
+enum class ETNSearchMarkerAnchor : uint8
+{
+	Footprint,  ///< Centrado en el decorado y abarcando su huella (lo normal).
+	Point,      ///< En un punto propio del rebuscable (el montículo de arena de la playa), algo mayor que él.
+	Pending,    ///< Tiene punto propio, pero esta máquina aún no lo conoce: sin anillo hasta entonces.
+};
+
 /** Huella del decorado (cápsula en planta a lo largo del +X del actor) y color del polvo de su bioma. Se replica una vez. */
 USTRUCT()
 struct FTNSearchSpotShape
@@ -167,9 +175,13 @@ private:
  * cajas, restos... (los elige ATN_ProcMapGenerator::SpawnSearchSpots). El decorado va fundido en las mallas grandes del
  * mapa; este actor ligero (replicado y dormido casi siempre) se pone en su sitio con la huella del decorado y da:
  *  - Aviso «Mantén para rebuscar» al acercarse a su borde por cualquier lado (GetInteractionPointFor = punto del borde
- *    más cercano) y unas chispitas doradas al pie mientras quede por buscar. Cerca de la tortuga local, el anillo dorado
- *    de los objetos del suelo (la marca común de «aquí hay algo que coger», TN_LootGlowKit.h) marca en el suelo el punto
- *    del borde por el que se rebusca; gira deprisa mientras ella rebusca.
+ *    más cercano) y unas chispitas doradas al pie mientras quede por buscar. El anillo dorado de los objetos del suelo (la
+ *    marca común de «aquí hay algo que coger», TN_LootGlowKit.h) está fijo en el suelo, centrado en el decorado y
+ *    abarcando su huella (MarkerRadius es solo el mínimo) o, si la subclase da un punto propio (GetMarkerAnchor: el
+ *    montículo de los de la playa), centrado en él y algo mayor: gira y respira como el de los objetos (más deprisa mientras
+ *    alguien rebusca), se ve hasta MarkerDrawDistance de la cámara en todas las máquinas con pantalla y se apaga al
+ *    agotarse (IsSpent). No sigue a nadie: el punto del borde por el que se rebusca sigue siendo el de
+ *    GetInteractionPointFor, y de él salen la tierra y el objeto.
  *  - Mantener la tecla ~1,3 s (el servidor cuenta el tiempo y vigila que la tortuga siga cerca y en condiciones;
  *    soltar antes cancela): aro de progreso en el HUD, tierra y piedrecitas que saltan y el sonido de rebuscar.
  *  - Al completarse, el servidor sortea (LootChance, 55 %) un objeto de DT_Items (los consumibles y lanzables de
@@ -260,9 +272,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search")
 	TMap<FName, float> LootWeights;
 
-	/** Margen (cm) sobre el alcance de interacción mientras se rebusca antes de cancelar por alejarse. */
+	/**
+	 * Margen (cm) sobre el alcance de interacción mientras se rebusca antes de cancelar por alejarse. 85 = los 120 de
+	 * cuando el alcance era de 350, en proporción al de 250 (#214).
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search", meta = (ClampMin = "0.0"))
-	float ReachSlack = 120.f;
+	float ReachSlack = 85.f;
 
 	/** Se puede rebuscar más de una vez (el cofre del lobby); los decorados del mapa, una sola vez para todo el grupo. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search")
@@ -284,11 +299,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "0.0"))
 	float HintDistance = 1800.f;
 
-	/** Distancia (cm, en planta) de la tortuga local al borde a la que sale el anillo que marca dónde rebuscar (0 = nunca). */
+	/**
+	 * Distancia (cm) de la cámara local al borde del anillo hasta la que se dibuja el anillo fijo del decorado (la
+	 * RingDrawDistance de los objetos del suelo: 90 m; 0 = sin anillo). En la playa el actor solo existe cerca de alguna
+	 * tortuga, así que allí manda antes TNBeachLoot::ProxySpawnDistance.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "0.0"))
-	float MarkerDistance = 1100.f;
+	float MarkerDrawDistance = 9000.f;
 
-	/** Radio (cm) de ese anillo. */
+	/**
+	 * Radio mínimo (cm) del anillo. El anillo abarca la huella entera del decorado (SpotShape: radio más semilargo, más un
+	 * margen), así que esto solo manda en los diminutos.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search|FX", meta = (ClampMin = "20.0"))
 	float MarkerRadius = 85.f;
 
@@ -320,6 +342,14 @@ protected:
 
 	/** Cierto mientras la subclase necesite el tick a cada fotograma (animaciones propias). */
 	virtual bool WantsFrameTick() const { return false; }
+
+	/**
+	 * Dónde va el anillo fijo. Por defecto, Footprint: centrado en el decorado y abarcando su huella. Un rebuscable con un
+	 * punto propio (el montículo de arena de los de la playa, ATN_BeachSearchSpot) da Point con OutGround (el sitio en el
+	 * suelo) y OutFootRadius (radio de su base, cm; el anillo sale algo mayor), o Pending si aún no lo conoce esta
+	 * máquina. Tiene que dar lo mismo en todas las máquinas (sale de lo replicado).
+	 */
+	virtual ETNSearchMarkerAnchor GetMarkerAnchor(FVector& OutGround, float& OutFootRadius) const { return ETNSearchMarkerAnchor::Footprint; }
 
 	const FTNSearchSpotState& GetSearchState() const { return SearchState; }
 
@@ -377,14 +407,27 @@ private:
 	void StartHop(AActor* Pickup, double Elapsed);
 	void TickHop();
 	void DrawDebugSpot(float DeltaSeconds);
-	/** Anillo dorado en el suelo, en el punto del borde por el que rebuscaría la tortuga local (cerca y sin buscar). */
+	/**
+	 * Anillo dorado fijo en el suelo, centrado en el decorado y abarcando su huella (mientras quede por buscar y la cámara
+	 * local esté a menos de MarkerDrawDistance): el de los objetos del suelo, con su giro y su respiración.
+	 */
 	void TickMarker(float DeltaSeconds);
+
+	/**
+	 * Centro (en el suelo) y radio (cm) del anillo, según GetMarkerAnchor: la huella entera con un margen (los guiones
+	 * quedan fuera del decorado) o el punto propio algo mayor, y al menos MarkerRadius. bOutPending: el punto propio aún no
+	 * se conoce (sin anillo todavía).
+	 */
+	float GetMarkerRing(FVector& OutCenter, bool& bOutPending) const;
+
+	/** Apoya el anillo en el suelo: mira el suelo en cuatro puntos de su circunferencia y se inclina con el plano que forman. */
+	void FitMarkerToGround(const FVector& Center, float RingRadius);
 
 	/** Sonido de este decorado (se crea al primer uso). */
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_SearchSynthComponent> Synth;
 
-	/** Anillo que marca dónde rebuscar (se crea la primera vez que hace falta; solo en máquinas con pantalla). */
+	/** Anillo fijo del decorado (se crea la primera vez que hace falta; solo en máquinas con pantalla). */
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> MarkerRing;
 
@@ -405,13 +448,20 @@ private:
 	float DebugClock = 0.f;
 	bool bNearView = false;
 
-	/** Anillo que marca dónde rebuscar: cuánto se ve (0-1), su giro, dónde está en el suelo y cuándo se buscó el suelo. */
+	/**
+	 * Anillo fijo: cuánto se ve (0-1), su reloj (giro y respiración), su sitio e inclinación en el suelo, el radio con el que
+	 * se buscó el suelo, cuándo y cuántas veces (si el suelo aún no tiene colisión se reintenta) y si se anima cada fotograma.
+	 */
 	float MarkerAppear = 0.f;
 	float MarkerClock = 0.f;
-	FVector MarkerRim = FVector::ZeroVector;
 	FVector MarkerGround = FVector::ZeroVector;
 	FQuat MarkerTilt = FQuat::Identity;
+	FVector MarkerFitCenter = FVector::ZeroVector;
+	float MarkerFitRadius = -1.f;
 	double MarkerTraceTime = -100.0;
+	int32 MarkerTraces = 0;
+	bool bMarkerGrounded = false;
+	bool bMarkerAnimating = false;
 
 	/** Saltito del objeto que ha salido (se anima en cada máquina con pantalla). */
 	TWeakObjectPtr<AActor> HopActor;
