@@ -584,8 +584,21 @@ void UTN_ShellComponent::ApplyBodyLocalState(bool bOn)
 	const ACharacter* Defaults = Turtle->GetClass()->GetDefaultObject<ACharacter>();
 	const UCapsuleComponent* DefaultCapsule = Defaults ? Defaults->GetCapsuleComponent() : nullptr;
 	const UCharacterMovementComponent* DefaultMove = Defaults ? Defaults->GetCharacterMovement() : nullptr;
-	const USkeletalMeshComponent* SkelMesh = Turtle->GetMesh();
+	USkeletalMeshComponent* SkelMesh = Turtle->GetMesh();
 	const bool bRagdoll = SkelMesh && SkelMesh->IsSimulatingPhysics();
+	// La malla vuelve a chocar como toca (EnforceBodyLocalState le quitó la física mientras la movía la caja): la del
+	// ragdoll (perfil Ragdoll) si el derribo sigue en esta máquina; si no, la de serie de la clase.
+	if (SkelMesh)
+	{
+		const USkeletalMeshComponent* DefaultMesh = Defaults ? Defaults->GetMesh() : nullptr;
+		const ECollisionEnabled::Type WantedMeshCollision = bRagdoll
+			? ECollisionEnabled::QueryAndPhysics
+			: (DefaultMesh ? DefaultMesh->GetCollisionEnabled() : SkelMesh->GetCollisionEnabled());
+		if (SkelMesh->GetCollisionEnabled() != WantedMeshCollision)
+		{
+			SkelMesh->SetCollisionEnabled(WantedMeshCollision);
+		}
+	}
 	if (Capsule)
 	{
 		if (DefaultCapsule && DefaultCapsule->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
@@ -657,6 +670,16 @@ void UTN_ShellComponent::EnforceBodyLocalState()
 		Capsule->SetCollisionResponseToAllChannels(ECR_Overlap);
 		Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 		Capsule->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+	}
+	// Tampoco la malla: con el ragdoll de un derribo simulando (un golpe que la derriba ya en la bola, o una bola que nace
+	// antes de que acabe el derribo en esta máquina), sus cuerpos tienen el perfil Ragdoll, que choca con la caja
+	// (PhysicsActor). La tortuga se coloca dentro de la caja en cada fotograma (PlaceOnShellBody) y la física los separaba
+	// en cada paso: la bola giraba como un torbellino alrededor de un punto de fuera de la concha (#25). Sin física, el
+	// ragdoll sigue a la caja y ApplyBodyLocalState(false) le devuelve su colisión al soltarla.
+	USkeletalMeshComponent* SkelMesh = Turtle->GetMesh();
+	if (SkelMesh && CollisionEnabledHasPhysics(SkelMesh->GetCollisionEnabled()))
+	{
+		SkelMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	}
 }
 
