@@ -35,7 +35,8 @@ salga en verde:
 - **Comprobaciones** (servidores de GitHub, 1-2 min; `.github/scripts/validar.py`): sin archivos de `Binaries/`,
   `Intermediate/`, `Saved/`, `DerivedDataCache/` ni `.vs/`; nada de más de 50 MB; sin marcadores de conflicto; código en UTF-8;
   Python sin errores de sintaxis; JSON bien formado; ninguna clave de localización (`NSLOCTEXT`) con dos textos distintos;
-  traducciones (`.po`) sin marcadores ni plurales rotos. Se puede lanzar antes en local:
+  traducciones (`.po`) sin marcadores ni plurales rotos; ningún texto visible nuevo que no se pueda traducir
+  (`FText::FromString` con un literal, ver `Docs/Localizacion.md`). Se puede lanzar antes en local:
   `python .github/scripts/validar.py --base origin/dev`.
 - **Compilar y pruebas (UE 5.6)**: compila el editor con UBT y pasa todas las pruebas automáticas `Tortunabo.*`. Necesita un
   ejecutor propio con Unreal 5.6 (ver abajo); mientras no esté activado, este paso se salta.
