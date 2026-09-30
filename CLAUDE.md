@@ -146,6 +146,7 @@ La memoria del equipo son las issues: su cuerpo y sus comentarios **Resumen** (�
 - `Content/`, `.uasset` y `.umap` son binarios y no se pueden fusionar. El repo no usa Git LFS: antes de tocar un asset o un mapa, comprueba que ninguna issue en In progress lo nombra y escribe en tu issue qué assets vas a tocar.
 - No toques `Deprecado/` ni `/Game/_Deprecado`.
 - Commits en español técnico con ortografía completa y conventional commits (`feat|fix|refactor|docs|test|chore|perf`), sin líneas `Co-Authored-By`.
+- Todo texto nuevo o cambiado que se vea en pantalla es un `NSLOCTEXT`/`LOCTEXT` en español y **se traduce en la misma PR** a los 12 idiomas restantes: recoger (`Scripts\localization_gather_export.bat`), traducir las entradas nuevas de los `Game.po`, compilar (`Scripts\localization_import_compile.bat`) y commitear `Game.manifest`, `.archive`, `.po` y `.locres`. Claude lo hace sin que se lo pidan, con el glosario y las reglas de `Docs/Localizacion.md`. Un texto sin traducir sale en español.
 - La PR enlaza su issue con `Closes #<n>` en el cuerpo.
 - Nunca hagas push a `main` ni a `dev`, ni `--force` sobre ramas ajenas.
 
