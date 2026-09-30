@@ -56,6 +56,8 @@ namespace
 	/** Segundos que tiene un expulsado para irse solo antes de que el servidor lo eche. */
 	constexpr float MPGameInstance_KickGraceSeconds = 2.5f;
 
+#if !UE_BUILD_SHIPPING
+	// Comando de prueba: fuera de la build de Steam, como TNStorm y TNBooth.
 	void MPGameInstance_HandleFakeRoomError(const TArray<FString>& Args, UWorld* World)
 	{
 		UMP_GameInstance* GI = World ? Cast<UMP_GameInstance>(World->GetGameInstance()) : nullptr;
@@ -71,6 +73,7 @@ namespace
 		TEXT("TN.Rooms.FakeError"),
 		TEXT("Simula un fallo al entrar en una sala: TN.Rooms.FakeError <locked|full|kicked|other|joinfull|gone|noaddress>."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&MPGameInstance_HandleFakeRoomError));
+#endif
 }
 
 UMP_GameInstance::UMP_GameInstance()
@@ -2298,6 +2301,7 @@ void UMP_GameInstance::HandleRoomRefused(const FString& Reason)
 	}
 }
 
+#if !UE_BUILD_SHIPPING
 void UMP_GameInstance::DebugFakeRoomError(const FString& Kind)
 {
 	const FString K = Kind.ToLower();
@@ -2335,6 +2339,7 @@ void UMP_GameInstance::DebugFakeRoomError(const FString& Kind)
 	UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: JoinSession falla con «%s»."), *K);
 	OnJoinSessionComplete(NAME_GameSession, Result);
 }
+#endif
 
 void UMP_GameInstance::PostRoomNotice(const FText& Message, bool bError)
 {

@@ -401,7 +401,8 @@ public:
 	/**
 	 * Prueba (TN.Rooms.FakeError): simula un fallo al entrar en una sala sin necesitar otra instancia. locked, full,
 	 * kicked y other pasan por el rechazo del servidor (y recargan el menú, como el motor tras un fallo al conectar);
-	 * joinfull, gone y noaddress, por el fallo de JoinSession.
+	 * joinfull, gone y noaddress, por el fallo de JoinSession. Solo existe fuera de Shipping (en Shipping no se define:
+	 * no llamarla desde código de juego).
 	 */
 	void DebugFakeRoomError(const FString& Kind);
 
