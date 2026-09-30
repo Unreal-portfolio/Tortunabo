@@ -189,7 +189,7 @@ bool FTNVRCurvedPanelTest::RunTest(const FString& Parameters)
 	using namespace TNVRTest;
 	constexpr float Arc = 90.f;
 	const double Radius = TNVRMath::CurvedPanelRadius(VRPanelSize, Arc);
-	TestTrue(TEXT("Radio = ancho / arco"), FMath::IsNearlyEqual(Radius, 1920.0 / (PI * 0.5), 1e-6));
+	TestTrue(TEXT("Radio = ancho / arco"), FMath::IsNearlyEqual(Radius, 1920.0 / (UE_DOUBLE_PI * 0.5), 1e-6));
 
 	// Los puntos del panel están a Radius del eje (Radius, 0): el panel rodea los ojos.
 	for (const FVector2D UV : { FVector2D(0.0, 0.5), FVector2D(0.25, 0.1), FVector2D(0.5, 0.5), FVector2D(1.0, 0.9) })
