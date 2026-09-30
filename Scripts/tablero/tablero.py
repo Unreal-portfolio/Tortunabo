@@ -76,6 +76,23 @@ def linea(issue: dict) -> str:
     return f"  #{issue['number']} [{meta}] {issue['title']}  ({quien}{'; ' + etiquetas if etiquetas else ''})"
 
 
+ETIQUETA_DECISION = "decision"
+
+
+def motivo_decision(numero: int, issue: dict, forzar: bool) -> str | None:
+    """Por qué no coger aún una issue con una decisión pendiente (None si no la tiene o se fuerza)."""
+    if forzar or ETIQUETA_DECISION not in etiquetas_de(issue):
+        return None
+    return (f"#{numero} tiene una decisión pendiente (etiqueta `decision`): lee la pregunta en sus comentarios y "
+            "consúltala con la persona. Si decide seguir sin esperar, repite con --forzar; si la decisión ya está "
+            f"tomada, regístrala antes con `tablero.py decidir {numero} --texto \"...\"` y quita la etiqueta.")
+
+
+def con_decision(issues: list[dict], login: str, aprobador: bool) -> list[dict]:
+    """Issues y objetos con decisión pendiente: todas para los aprobadores; para el resto, las que tiene asignadas."""
+    return [i for i in issues if ETIQUETA_DECISION in etiquetas_de(i) and (aprobador or es_de(i, login))]
+
+
 def etiquetas_de(issue: dict) -> set[str]:
     return {n["name"] for n in issue.get("labels", {}).get("nodes", [])}
 
@@ -127,11 +144,12 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
     if aprobador:
         seccion("PR de otros por revisar", [f"  PR #{p['number']} de {p['author']['login']}: {p['title']}"
                                             for p in prs if p["author"]["login"] != yo and not p["isDraft"]])
-        seccion("Decisiones pendientes (etiqueta decision)",
-                [linea(i) for i in abiertas if any(n["name"] == "decision" for n in i["labels"]["nodes"])])
+    todas_abiertas = [i for i in proyecto["items"].values() if i["state"] == "OPEN"]
+    seccion("Decisiones pendientes (etiqueta decision)" if aprobador else "Esperan una decisión de SkiTemplar o Mokius",
+            [linea(i) for i in sorted(con_decision(todas_abiertas, yo, aprobador), key=clave_orden)])
     seccion("En QA editor: fusionado, falta probar en el editor", [linea(i) for i in por_estado["QA editor"]])
     seccion("Validadas: revisadas y probadas, esperan a que su PR se fusione en dev", [linea(i) for i in por_estado["Validada"]])
-    no_cogibles = {"decision", "bloqueado"}
+    no_cogibles = {ETIQUETA_DECISION, "bloqueado"}
     libres = [i for i in por_estado["Ready"] if not i["assignees"]["nodes"] and not bloqueos.abiertas(i)
               and not no_cogibles & {n["name"] for n in i["labels"]["nodes"]}]
     if not aprobador:
@@ -153,6 +171,8 @@ def cmd_coger(args: argparse.Namespace) -> None:
     if issue is None:
         raise ErrorTablero(f"La issue #{args.numero} no está en el tablero. Ejecuta `sync --aplicar` o créala con `nueva`.")
     if motivo := bloqueos.motivo_para_no_coger(args.numero, issue):
+        raise ErrorTablero(motivo)
+    if motivo := motivo_decision(args.numero, issue, args.forzar):
         raise ErrorTablero(motivo)
     yo = usuario_actual()
     otros = [a["login"] for a in issue["assignees"]["nodes"] if a["login"] != yo]

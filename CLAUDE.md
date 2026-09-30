@@ -14,7 +14,7 @@ El tablero es solo de desarrollo: código, pulido, bugs y revisión de assets. E
 | Mokius | Mokius | Código y aprobador | SkiTemplar |
 | Ruben-Besteiro | Ruby | Código | Mokius o SkiTemplar |
 
-Las decisiones que no estén escritas las toman SkiTemplar o Mokius. Si te falta una, etiqueta la issue con `decision`, di qué hay que decidir en un comentario y sigue con otra tarea.
+Las decisiones que no estén escritas las toman SkiTemplar o Mokius. Si te falta una, etiqueta la issue con `decision`, di qué hay que decidir en un comentario y sigue con otra tarea. `pendiente` enseña las decisiones abiertas y `coger` no coge una issue con `decision` sin consultarlo antes (`--forzar` para seguir sin esperar).
 
 ## Ramas
 

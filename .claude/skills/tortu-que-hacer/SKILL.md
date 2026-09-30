@@ -13,7 +13,8 @@ El tablero lo mantienes tú, sin esperar a que te lo pidan. Ciclo y estados: «T
    - lo que ya tiene en curso o con PR abierta: terminar antes de empezar otra cosa;
    - «Puedes probar en el editor»: sus tareas en In progress o In review sin probar (si funciona en In progress, no pasará por QA editor);
    - lo que le toca revisar y las issues en Revisiones que son suyas;
-   - si es aprobador: decisiones pendientes, lotes abiertos (`gh issue list --label lote` y `tablero.py lote estado <lote>`) (la auditoría ya la pasa el puente cada mañana: no hace falta lanzarla);
+   - si no es aprobador: «Esperan una decisión», sus issues paradas hasta que decidan SkiTemplar o Mokius (dile cuál es la pregunta);
+   - si es aprobador: decisiones pendientes (issues y objetos), lotes abiertos (`gh issue list --label lote` y `tablero.py lote estado <lote>`) (la auditoría ya la pasa el puente cada mañana: no hace falta lanzarla);
    - issues en QA editor que puede probar ahora mismo (probar es trabajo útil y rápido);
    - de 3 a 5 issues libres en Ready, por prioridad, con una frase de qué supone cada una. `pendiente` no ofrece las Bloqueadas ni las que tienen bloqueantes abiertas.
 3. Recomienda una con el motivo (prioridad, tamaño, que no choque con lo que otro tiene en curso en la misma área o ficheros). Para Ruby, tamaños XS/S y `buena-primera`.
