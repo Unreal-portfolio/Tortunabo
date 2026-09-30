@@ -178,12 +178,63 @@ void ATN_ShellBody::Tick(float DeltaSeconds)
 	// Todas las máquinas: la tortuga sigue a la caja (solo si es su caja y la tiene enganchada en esta máquina).
 	Shell->FollowBody(this);
 	const bool bFreshDepth = SampleTerrainDepth(DeltaSeconds);
+	// Antes del instrumento: mide la velocidad que queda. En los clientes no: allí la réplica acerca la caja al servidor.
+	bPushOutLimited = HasAuthority() && LimitTerrainPushOut();
 	TickDebugWatch(DeltaSeconds);
 
 	if (HasAuthority())
 	{
 		ServerChecks(DeltaSeconds, bFreshDepth);
+		RememberPushOutState();
 	}
+}
+
+FVector ATN_ShellBody::BoxBottom() const
+{
+	return FVector(Box->Bounds.Origin.X, Box->Bounds.Origin.Y, Box->Bounds.Origin.Z - Box->Bounds.BoxExtent.Z);
+}
+
+float ATN_ShellBody::TerrainDepthUnder(const UObject* WorldContext, const FVector& Bottom)
+{
+	using namespace TNShellBodyDetail;
+	const ATN_BeachRaceGenerator* Gen = ATN_BeachRaceGenerator::Find(WorldContext);
+	return (Gen && Gen->GetCliffEdgeDistance(Bottom) < -CliffSkip) ? TNBeach::DepthUnderTerrain(WorldContext, Bottom) : -1000.f;
+}
+
+bool ATN_ShellBody::LimitTerrainPushOut()
+{
+	using namespace TNShellBodyDetail;
+	// Recién lanzada (InitBody): el salto de velocidad es el propio lanzamiento, como en el instrumento.
+	if (!Box || !Box->IsSimulatingPhysics() || !bPushOutPrimed || Age < TNShellLogic::FShellMotionThresholds().LaunchGraceSeconds)
+	{
+		return false;
+	}
+	const FVector Before = Box->GetPhysicsLinearVelocity();
+	FVector Velocity = Before;
+	TNShellLogic::FTerrainPushOutRules Rules;
+	Rules.MaxPushOutSpeed = MaxInitialDepenetration;
+	if (!TNShellLogic::LimitTerrainPushOut(PushOutPrevVelocity, PushOutPrevDepth, Velocity, Rules))
+	{
+		return false;
+	}
+	Box->SetPhysicsLinearVelocity(Velocity);
+	UE_LOG(LogTortunabo, Log, TEXT("[Caparazón] %s de %s: estaba %.0f cm dentro del terreno y la escupía a %.0f cm/s; sale a %.0f cm/s."),
+		*GetName(), *GetNameSafe(Turtle.Get()), PushOutPrevDepth, Before.Size(), Velocity.Size());
+	return true;
+}
+
+void ATN_ShellBody::RememberPushOutState()
+{
+	if (!Box || !Box->IsSimulatingPhysics())
+	{
+		bPushOutPrimed = false;
+		return;
+	}
+	PushOutPrevVelocity = Box->GetPhysicsLinearVelocity();
+	// Desde el centro y con el semieje más corto (tumbada en su vertical), no con la parte de abajo de sus límites: en una
+	// cuesta, la esquina más baja de una caja que rueda queda cuesta abajo del centro y la daría por metida sin estarlo.
+	PushOutPrevDepth = TerrainDepthUnder(this, Box->GetComponentLocation() - FVector(0.0, 0.0, BoxHalfExtent().GetMin()));
+	bPushOutPrimed = true;
 }
 
 bool ATN_ShellBody::SampleTerrainDepth(float DeltaSeconds)
@@ -199,10 +250,7 @@ bool ATN_ShellBody::SampleTerrainDepth(float DeltaSeconds)
 		return false;
 	}
 	DepthTimer = DepthInterval;
-	const FVector Bottom(Box->Bounds.Origin.X, Box->Bounds.Origin.Y, Box->Bounds.Origin.Z - Box->Bounds.BoxExtent.Z);
-	const ATN_BeachRaceGenerator* Gen = ATN_BeachRaceGenerator::Find(this);
-	// Junto al acantilado la pared está socavada: bajar de la arena ahí es caer al agua de meta, no atravesar nada.
-	TerrainDepth = (Gen && Gen->GetCliffEdgeDistance(Bottom) < -CliffSkip) ? TNBeach::DepthUnderTerrain(this, Bottom) : -1000.f;
+	TerrainDepth = TerrainDepthUnder(this, BoxBottom());
 	return true;
 }
 
@@ -316,7 +364,9 @@ void ATN_ShellBody::TickDebugWatch(float DeltaSeconds)
 	TNShellLogic::FShellMotionSample Sample;
 	Sample.DeltaSeconds = DeltaSeconds;
 	Sample.AngularSpeed = static_cast<float>(Spin.Size());
-	Sample.VelocityChange = static_cast<float>((Velocity - DebugPrevVelocity).Size());
+	// Con el tope a la depenetración actuando, el cambio es parar la caída dentro del terreno más lo poco que la deja salir:
+	// no es un salto sin causa (el registro ya lo cuenta).
+	Sample.VelocityChange = bPushOutLimited ? 0.f : static_cast<float>((Velocity - DebugPrevVelocity).Size());
 	Sample.BottomDepthUnderTerrain = TerrainDepth;
 	Sample.AgeSeconds = Age;
 	DebugPrevVelocity = Velocity;

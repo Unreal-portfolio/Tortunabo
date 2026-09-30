@@ -278,9 +278,18 @@ FVector UTN_ShellComponent::FindFreeBodySpot(const FVector& Center, const FRotat
 	}
 	const FQuat Rot = Rotation.Quaternion();
 	const FCollisionShape Shape = FCollisionShape::MakeBox(ATN_ShellBody::BoxHalfExtent() - FVector(3.0));
-	auto IsFree = [World, &Rot, &Shape, &Query](const FVector& At)
+	// De su centro a su parte de abajo con este giro (de pie mide más de alto que tumbada).
+	const double HalfHeight = TNShellLogic::BoxHalfHeight(Rot, ATN_ShellBody::BoxHalfExtent());
+	auto BottomDepth = [Turtle, HalfHeight](const FVector& At)
 	{
-		return !World->OverlapBlockingTestByChannel(At, Rot, ECC_PhysicsBody, Shape, Query);
+		return ATN_ShellBody::TerrainDepthUnder(Turtle, At - FVector(0.0, 0.0, HalfHeight));
+	};
+	// Libre: nada que la pare solapándola y su parte de abajo encima del terreno de verdad. La malla del terreno de la playa
+	// es fina: una caja entera por debajo de ella ni la solapa, y con la parte de abajo dentro el terreno la escupía (#54).
+	auto IsFree = [World, &Rot, &Shape, &Query, &BottomDepth](const FVector& At)
+	{
+		return !World->OverlapBlockingTestByChannel(At, Rot, ECC_PhysicsBody, Shape, Query)
+			&& TNShellLogic::IsBottomAboveTerrain(BottomDepth(At));
 	};
 	// Con la cápsula de pie libre, la caja (de pie o tumbada) cabe dentro de ella: esto solo busca cuando a la tortuga la han
 	// dejado metida en algo sin barrer (un enemigo que la arrastra en el pico o en la boca por el decorado, un teletransporte).
@@ -288,12 +297,23 @@ FVector UTN_ShellComponent::FindFreeBodySpot(const FVector& Center, const FRotat
 	{
 		return Center;
 	}
-	// Primero hacia arriba (lo normal: la han dejado hundida en la arena o en algo bajo) y después alrededor, cada vez más
-	// lejos y más alto.
+	// Hundida en la arena: primero justo encima de la arena de su vertical, y desde ahí se busca lo demás.
+	FVector Base = Center;
+	const float Lift = TNShellLogic::SpawnLiftAboveTerrain(BottomDepth(Center));
+	if (Lift > 0.f)
+	{
+		Base.Z += Lift;
+		if (IsFree(Base))
+		{
+			return Base;
+		}
+	}
+	// Después hacia arriba (lo normal: la han dejado hundida en la arena o en algo bajo) y alrededor, cada vez más lejos y
+	// más alto.
 	static const float Ups[] = { 25.f, 50.f, 90.f, 140.f, 200.f };
 	for (const float Up : Ups)
 	{
-		const FVector Try = Center + FVector(0.0, 0.0, Up);
+		const FVector Try = Base + FVector(0.0, 0.0, Up);
 		if (IsFree(Try))
 		{
 			return Try;
@@ -308,7 +328,7 @@ FVector UTN_ShellComponent::FindFreeBodySpot(const FVector& Center, const FRotat
 			const FVector Side(FMath::Cos(Angle) * Ring, FMath::Sin(Angle) * Ring, 0.0);
 			for (const float Up : { 0.f, 50.f, 120.f })
 			{
-				const FVector Try = Center + Side + FVector(0.0, 0.0, Up);
+				const FVector Try = Base + Side + FVector(0.0, 0.0, Up);
 				if (IsFree(Try))
 				{
 					return Try;
@@ -317,7 +337,8 @@ FVector UTN_ShellComponent::FindFreeBodySpot(const FVector& Center, const FRotat
 		}
 	}
 	UE_LOG(LogTortunabo, Verbose, TEXT("[Caparazón] %s: sin sitio libre para la bola en (%.0f, %.0f, %.0f)."), *GetNameSafe(Turtle), Center.X, Center.Y, Center.Z);
-	return Center;
+	// Al menos encima de la arena, si se ha podido subir.
+	return Base;
 }
 
 void UTN_ShellComponent::StopBody()

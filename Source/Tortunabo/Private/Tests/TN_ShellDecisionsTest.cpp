@@ -282,4 +282,97 @@ bool FTNShellBlockPushTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// La caja nace encima del terreno y el terreno no la escupe (#54)
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNShellSpawnAboveTerrainTest,
+	"Tortunabo.Shell.SpawnAboveTerrain",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNShellSpawnAboveTerrainTest::RunTest(const FString& Parameters)
+{
+	using namespace TNShellLogic;
+	const FVector Extent(27.5, 23.0, 21.0);
+	TestEqual(TEXT("Tumbada: su parte de abajo, a 21 cm del centro"), BoxHalfHeight(FQuat::Identity, Extent), 21.0, 0.01);
+	TestEqual(TEXT("De pie (como nace a mano): a 27,5 cm"), BoxHalfHeight(FRotator(90.f, 35.f, 0.f).Quaternion(), Extent), 27.5, 0.01);
+
+	TestEqual(TEXT("Encima de la arena: no se sube"), SpawnLiftAboveTerrain(-30.f), 0.f);
+	TestEqual(TEXT("Apoyada en la arena: no se sube"), SpawnLiftAboveTerrain(0.f), 0.f);
+	TestEqual(TEXT("Sin terreno o junto al acantilado (-1000): no se sube"), SpawnLiftAboveTerrain(-1000.f), 0.f);
+	// Lo del monkey: la parte de abajo 14-127 cm dentro de la malla del generador.
+	TestEqual(TEXT("14 cm dentro: se sube 16 (2 por encima)"), SpawnLiftAboveTerrain(14.f), 16.f);
+	TestEqual(TEXT("127 cm dentro (entera por debajo): se sube 129"), SpawnLiftAboveTerrain(127.f), 129.f);
+	TestTrue(TEXT("Subida, queda encima"), IsBottomAboveTerrain(127.f - SpawnLiftAboveTerrain(127.f)));
+	TestTrue(TEXT("Más de 4 m dentro: no es encima de donde estaba, se busca otro sitio"), SpawnLiftAboveTerrain(500.f) < 0.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNShellTerrainPushOutTest,
+	"Tortunabo.Shell.TerrainPushOut",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNShellTerrainPushOutTest::RunTest(const FString& Parameters)
+{
+	using namespace TNShellLogic;
+	// La caja pesa 38 kg (ATN_ShellBody). Umbral: el impulso que da la depenetración además de parar la caída no pasa del de
+	// salir a 300 cm/s (el tope al nacer metida en algo).
+	const double Mass = 38.0;
+	const FTerrainPushOutRules Rules;
+	const double MaxImpulse = Mass * Rules.MaxPushOutSpeed + 1.0;
+	auto PushOutImpulse = [Mass](const FVector& Prev, const FVector& After)
+	{
+		const FVector Allowed(Prev.X, Prev.Y, FMath::Max(Prev.Z, 0.0));
+		return Mass * (After - Allowed).Size();
+	};
+
+	{
+		// Monkey del 2026-09-29: 50 cm dentro, cayendo a 3 m/s, y el terreno la saca a 11,7 m/s (impulso de 55 860).
+		const FVector Prev(0.0, 0.0, -300.0);
+		FVector Velocity(0.0, 0.0, 1170.0);
+		TestTrue(TEXT("Metida y escupida hacia arriba: se limita"), LimitTerrainPushOut(Prev, 50.f, Velocity, Rules));
+		TestTrue(TEXT("Impulso de la depenetración por debajo del umbral"), PushOutImpulse(Prev, Velocity) <= MaxImpulse);
+		TestEqual(TEXT("Sale a 300 cm/s hacia arriba"), Velocity.Z, 300.0, 0.5);
+		TestTrue(TEXT("El instrumento no lo vería como salto (menos de 9 m/s)"), (Velocity - Prev).Size() < 900.0);
+	}
+	{
+		// Junto a la fortaleza: 93 cm dentro e impulso de 432 690 (más de 100 m/s), casi todo de lado.
+		const FVector Prev(200.0, 0.0, -100.0);
+		FVector Velocity(-10800.0, 3500.0, 900.0);
+		TestTrue(TEXT("Escupida de lado: se limita"), LimitTerrainPushOut(Prev, 93.f, Velocity, Rules));
+		TestTrue(TEXT("Impulso por debajo del umbral"), PushOutImpulse(Prev, Velocity) <= MaxImpulse);
+	}
+	{
+		// Aterrizaje normal: encima de la arena antes del paso; el rebote es cosa del material.
+		const FVector Prev(300.0, 0.0, -1200.0);
+		FVector Velocity(250.0, 0.0, 240.0);
+		TestFalse(TEXT("Aterrizaje desde encima: no se toca"), LimitTerrainPushOut(Prev, -5.f, Velocity, Rules));
+		TestEqual(TEXT("Aterrizaje: el rebote sigue igual"), Velocity.Z, 240.0);
+	}
+	{
+		// Patada o cama elástica sobre la arena: no estaba metida.
+		const FVector Prev(0.0, 0.0, 0.0);
+		FVector Velocity(400.0, 0.0, 1500.0);
+		TestFalse(TEXT("Lanzada desde encima de la arena: no se toca"), LimitTerrainPushOut(Prev, 0.f, Velocity, Rules));
+		TestEqual(TEXT("Lanzada: la velocidad sigue igual"), Velocity.Z, 1500.0);
+	}
+	{
+		const FVector Prev(0.0, 0.0, -900.0);
+		FVector Velocity(0.0, 0.0, 0.0);
+		TestFalse(TEXT("Metida, el terreno solo para la caída: no se toca"), LimitTerrainPushOut(Prev, 40.f, Velocity, Rules));
+	}
+	{
+		const FVector Prev(800.0, 0.0, 0.0);
+		FVector Velocity(300.0, 0.0, 50.0);
+		TestFalse(TEXT("Metida, el terreno la frena: no se toca"), LimitTerrainPushOut(Prev, 40.f, Velocity, Rules));
+		TestEqual(TEXT("Frenada: sigue frenada"), Velocity.X, 300.0);
+	}
+	{
+		const FVector Prev(400.0, 0.0, 0.0);
+		FVector Velocity(450.0, 0.0, 100.0);
+		TestFalse(TEXT("Metida, sale despacio (menos de 3 m/s de más): no se toca"), LimitTerrainPushOut(Prev, 20.f, Velocity, Rules));
+	}
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
