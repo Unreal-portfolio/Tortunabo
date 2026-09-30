@@ -48,7 +48,9 @@ namespace TNWobblyBridgeDetail
 	constexpr double SwayHz = 0.52;
 	constexpr double BounceHz = 0.9;
 	constexpr double RippleHz = 0.75;
-	constexpr float MaxExcitation = 2.4f;
+	using TNWobblyBridgeNet::MaxExcitation;
+	/** Rapidez (1/s) con que un cliente sigue la agitación del servidor entre actualizaciones (llegan a 10 Hz). */
+	constexpr float ClientExcitationInterpSpeed = 12.f;
 
 	const uint32 WoodHex[3] = { 0xC8925A, 0xB98049, 0xD6A36B };
 
@@ -288,7 +290,8 @@ ATN_WobblyBridge::ATN_WobblyBridge()
 	bReplicates = true;
 	bAlwaysRelevant = true;
 	SetReplicatingMovement(false);
-	SetNetUpdateFrequency(2.f);
+	// La agitación (un byte) sale hasta 10 veces por segundo, solo cuando cambia; la configuración casi nunca cambia.
+	SetNetUpdateFrequency(10.f);
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
@@ -343,6 +346,7 @@ void ATN_WobblyBridge::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(ATN_WobblyBridge, DamageSeed);
 	DOREPLIFETIME(ATN_WobblyBridge, bSandTowers);
 	DOREPLIFETIME(ATN_WobblyBridge, bStairs);
+	DOREPLIFETIME(ATN_WobblyBridge, NetExcitation);
 }
 
 void ATN_WobblyBridge::OnConstruction(const FTransform& Transform)
@@ -354,6 +358,10 @@ void ATN_WobblyBridge::OnConstruction(const FTransform& Transform)
 void ATN_WobblyBridge::BeginPlay()
 {
 	Super::BeginPlay();
+	if (HasAuthority())
+	{
+		NetExcitation = TNWobblyBridgeNet::QuantizeExcitation(Excitation);
+	}
 	BuildAll(false);
 	BuildRuntimeDeck();
 	if (GetNetMode() != NM_DedicatedServer)
@@ -541,6 +549,7 @@ void ATN_WobblyBridge::BuildAll(bool bForce)
 
 	// Pose de reposo, cajas de los tablones (medidas y sitio) y velocidades a cero.
 	PlankPose.SetNum(NumPlanks);
+	VisualPose.SetNum(NumPlanks);
 	PrevPlankWorld.SetNum(NumPlanks);
 	Dips.Reset();
 	const FTransform ActorXf = GetActorTransform();
@@ -556,6 +565,7 @@ void ATN_WobblyBridge::BuildAll(bool bForce)
 		if (i < NumPlanks)
 		{
 			PlankPose[i] = PlankTransform(i, 0.0, 0.0, false);
+			VisualPose[i] = PlankPose[i];
 			const FTransform BoxXf = FTransform(FVector(0.0, Planks[i].CenterY, PlankThick * 0.5 - BoxHalfZ)) * PlankPose[i];
 			Slat->SetBoxExtent(FVector(PlankDepth * 0.5 + 1.0, Planks[i].HalfLength, BoxHalfZ), false);
 			Slat->SetRelativeLocationAndRotation(BoxXf.GetLocation(), BoxXf.GetRotation());
@@ -609,7 +619,7 @@ void ATN_WobblyBridge::BuildRuntimeDeck()
 	Dims.bTowers = bSandTowers;
 	Dims.bSteps = bSandTowers && bStairs;
 	FBuffers Deck;
-	BuildDeck(Deck, PlankPose, Planks, Dims);
+	BuildDeck(Deck, VisualPose, Planks, Dims);
 	const TArray<FProcMeshTangent> NoTangents;
 	DeckMesh->ClearAllMeshSections();
 	DeckMesh->CreateMeshSection_LinearColor(0, Deck.Verts, Deck.Tris, Deck.Normals, Deck.UVs, Deck.Colors, NoTangents, false);
@@ -640,7 +650,12 @@ void ATN_WobblyBridge::UpdateDeckMesh()
 		Deck.Colors.Reserve(Section->ProcVertexBuffer.Num());
 		Deck.Tris.Reserve(Section->ProcIndexBuffer.Num());
 	}
-	BuildDeck(Deck, PlankPose, Planks, Dims);
+	// La malla sí lleva los hundimientos bajo cada tortuga (la colisión no: ver MovePlanks).
+	for (int32 i = 0; i < NumPlanks && i < VisualPose.Num(); ++i)
+	{
+		VisualPose[i] = PlankTransform(i, PoseClock, Excitation, true);
+	}
+	BuildDeck(Deck, VisualPose, Planks, Dims);
 	// Solo posiciones y normales: colores, UV y triángulos se quedan los de la creación (misma topología).
 	const TArray<FVector2D> KeepUVs;
 	const TArray<FColor> KeepColors;
@@ -760,11 +775,22 @@ void ATN_WobblyBridge::UpdateRiders(float DeltaSeconds)
 		}
 	}
 
-	// Agitación: sube deprisa, baja despacio; los aterrizajes la disparan al momento.
-	const double Goal = FMath::Min(Target, static_cast<double>(MaxExcitation));
-	const double Rate = Goal > Excitation ? 1.6 : 0.45;
-	Excitation += static_cast<float>((Goal - Excitation) * FMath::Min(1.0, DeltaSeconds * Rate));
-	Excitation = FMath::Min(MaxExcitation, Excitation + Kick);
+	if (HasAuthority())
+	{
+		// Agitación (servidor): sube deprisa, baja despacio; los aterrizajes la disparan al momento.
+		const double Goal = FMath::Min(Target, static_cast<double>(MaxExcitation));
+		const double Rate = Goal > Excitation ? 1.6 : 0.45;
+		Excitation += static_cast<float>((Goal - Excitation) * FMath::Min(1.0, DeltaSeconds * Rate));
+		Excitation = FMath::Min(MaxExcitation, Excitation + Kick);
+		// Se replica cuando cambia el byte (hasta 10 Hz).
+		NetExcitation = TNWobblyBridgeNet::QuantizeExcitation(Excitation);
+	}
+	else
+	{
+		// Clientes: la del servidor, suavizada entre actualizaciones. Calcularla aquí con las tortugas que ve este cliente
+		// (las demás llegan con retraso) movía sus tablones a otro sitio que en el servidor.
+		Excitation = FMath::FInterpTo(Excitation, TNWobblyBridgeNet::DequantizeExcitation(NetExcitation), DeltaSeconds, ClientExcitationInterpSpeed);
+	}
 
 	// Crujido suelto de vez en cuando si se mueve bastante.
 	IdleCreakTimer -= DeltaSeconds;
@@ -782,9 +808,11 @@ void ATN_WobblyBridge::MovePlanks(double WobbleTime, float DeltaSeconds)
 {
 	using namespace TNWobblyBridgeDetail;
 	const FTransform ActorXf = GetActorTransform();
+	PoseClock = WobbleTime;
 	for (int32 i = 0; i < NumPlanks && i < PlankPose.Num(); ++i)
 	{
-		PlankPose[i] = PlankTransform(i, WobbleTime, Excitation, true);
+		// Sin hundimientos: dependen de dónde ve cada máquina a las tortugas y harían los tablones distintos en cada una.
+		PlankPose[i] = PlankTransform(i, WobbleTime, Excitation, false);
 		UBoxComponent* Slat = PlankBoxes.IsValidIndex(i) ? PlankBoxes[i].Get() : nullptr;
 		if (!Slat || Planks[i].bMissing)
 		{
