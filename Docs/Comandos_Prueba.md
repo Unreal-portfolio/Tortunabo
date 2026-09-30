@@ -244,6 +244,8 @@ máquina).
 
 ## Salas del menú
 
+No existen en la build Shipping.
+
 | Comando | Qué hace |
 |---|---|
 | `TN.Rooms.FakeError <locked\|full\|kicked\|other>` | Simula que el servidor no te deja entrar (sala cerrada, llena, expulsado u otro motivo): pantalla de vuelta al menú y el aviso en «Unirse». Sin segunda instancia. |
