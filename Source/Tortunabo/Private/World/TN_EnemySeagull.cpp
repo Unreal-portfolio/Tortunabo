@@ -36,9 +36,27 @@ ATN_EnemySeagull::ATN_EnemySeagull()
 	DangerDecal->DecalSize = FVector(DecalDepth, MaxDangerRadius, MaxDangerRadius);
 }
 
+TArray<TWeakObjectPtr<ATN_EnemySeagull>> ATN_EnemySeagull::Active;
+
+const ATN_EnemySeagull* ATN_EnemySeagull::FindMarking(const UWorld* World, const APlayerState* Player)
+{
+	if (!Player) { return nullptr; }
+	for (const TWeakObjectPtr<ATN_EnemySeagull>& Weak : Active)
+	{
+		const ATN_EnemySeagull* Seagull = Weak.Get();
+		if (Seagull && Seagull->GetWorld() == World && Seagull->TargetPlayerState == Player
+			&& !Seagull->bIsStriking && !Seagull->bIsRetreating && !Seagull->bAttackResolved)
+		{
+			return Seagull;
+		}
+	}
+	return nullptr;
+}
+
 void ATN_EnemySeagull::BeginPlay()
 {
 	Super::BeginPlay();
+	Active.AddUnique(this);
 	// Tick activo también en clientes: el decal se anima localmente derivando el
 	// countdown de AttackStartServerTime (la lógica de juego sigue siendo server-only,
 	// ver el early-branch de Tick).
@@ -46,6 +64,7 @@ void ATN_EnemySeagull::BeginPlay()
 
 void ATN_EnemySeagull::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	Active.RemoveSingleSwap(this);
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearAllTimersForObject(this);

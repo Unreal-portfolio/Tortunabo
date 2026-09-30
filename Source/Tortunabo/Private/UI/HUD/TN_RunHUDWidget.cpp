@@ -35,6 +35,7 @@
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Player/TN_SpectatorGhost.h"
 #include "UI/HUD/TN_HoldRingWidget.h"
+#include "World/TN_EnemySeagull.h"
 #include "World/TN_InteractableBase.h"
 #include "World/TN_ScoreShells.h"
 #include "EnhancedInputSubsystems.h"
@@ -505,6 +506,12 @@ void UTN_RunHUDWidget::BuildTree()
 		StormBanner->SetVisibility(ESlateVisibility::Collapsed);
 		StormBanner->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 		Place(Canvas, StormBanner, FVector2D(0.5f, 0.f), FVector2D(0.f, 118.f));
+
+		SeagullText = MakeText(Tree, nullptr, FText::GetEmpty(), TEXT("Bold"), 23, TNHUDArt::Hex(0xFF9A85));
+		SeagullBanner = MakeCard(Tree, TNHUDArt::CardTexture(), CardMargin, SeagullText, FMargin(26.f, 26.f, 32.f, 40.f));
+		SeagullBanner->SetVisibility(ESlateVisibility::Collapsed);
+		SeagullBanner->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+		Place(Canvas, SeagullBanner, FVector2D(0.5f, 0.f), FVector2D(0.f, 200.f));
 
 		DownText = MakeText(Tree, nullptr, FText::GetEmpty(), TEXT("Bold"), 21, TNHUDArt::SandC);
 		DownBanner = MakeFaceCard(Tree, ETNTurtleFace::Down, 92.f, DownText);
@@ -1135,6 +1142,21 @@ void UTN_RunHUDWidget::TickAlerts(float DeltaTime)
 			OneDecimal.SetMinimumFractionalDigits(1).SetMaximumFractionalDigits(1);
 			StormText->SetText(FText::Format(NSLOCTEXT("TNHUD", "Storm", "¡La tormenta te alcanza! ¡Al agua!   {0}"), FText::AsNumber(PS->DeathZoneTimeRemaining, &OneDecimal)));
 			StormBanner->SetRenderScale(FVector2D(1.f + 0.04f * FMath::Abs(FMath::Sin(Time * 6.f))));
+		}
+	}
+
+	// Gaviota encima: cuenta atrás hasta el picotazo (#164).
+	const ATN_EnemySeagull* Seagull = PS && PS->bIsAlive ? ATN_EnemySeagull::FindMarking(GetWorld(), PS) : nullptr;
+	if (SeagullBanner)
+	{
+		SeagullBanner->SetVisibility(Seagull ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		if (Seagull && SeagullText)
+		{
+			FNumberFormattingOptions OneDecimal;
+			OneDecimal.SetMinimumFractionalDigits(1).SetMaximumFractionalDigits(1);
+			SeagullText->SetText(FText::Format(NSLOCTEXT("TNHUD", "Seagull", "¡Una gaviota te ha marcado! Sal del círculo o métete bajo techo   {0}"),
+				FText::AsNumber(Seagull->GetCountdownRemaining(), &OneDecimal)));
+			SeagullBanner->SetRenderScale(FVector2D(1.f + 0.04f * FMath::Abs(FMath::Sin(Time * 6.f))));
 		}
 	}
 

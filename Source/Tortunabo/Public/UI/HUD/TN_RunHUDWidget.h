@@ -127,6 +127,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UOverlay> ScoreRoot;
 	UPROPERTY(Transient) TObjectPtr<UBorder> StormBanner;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StormText;
+	UPROPERTY(Transient) TObjectPtr<UBorder> SeagullBanner;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> SeagullText;
 	UPROPERTY(Transient) TObjectPtr<UBorder> DownBanner;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> DownText;
 	UPROPERTY(Transient) TObjectPtr<UBorder> ReviveBanner;

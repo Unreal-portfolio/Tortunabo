@@ -61,6 +61,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "EnemySeagull")
 	float GetCurrentDangerRadius() const;
 
+	/**
+	 * Gaviota viva que tiene marcado a este jugador en el mundo dado (nullptr si ninguna).
+	 * Para que el HUD avise a quien tiene una encima (#164). No cuenta la que ya pica o se retira.
+	 */
+	static const ATN_EnemySeagull* FindMarking(const UWorld* World, const APlayerState* Player);
+
 protected:
 	// ── Componentes ────────────────────────────────────────────────────────────
 
@@ -188,6 +194,9 @@ private:
 
 	UFUNCTION()
 	void OnRep_TargetPlayerState();
+
+	/** Gaviotas en juego (todas las máquinas), para FindMarking sin recorrer el mundo cada frame. */
+	static TArray<TWeakObjectPtr<ATN_EnemySeagull>> Active;
 
 	// ── Estado solo servidor ──────────────────────────────────────────────────
 
