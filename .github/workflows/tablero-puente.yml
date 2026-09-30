@@ -27,9 +27,8 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: tablero-puente
-  cancel-in-progress: false
+# Sin grupo de concurrencia: GitHub solo guarda una ejecución en espera por grupo y cancelaría el resto de los
+# comandos que la rutina lanza seguidos. Cada comando toca una tarjeta distinta.
 
 env:
   VOLCADO_ISSUE: "131"
