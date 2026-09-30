@@ -74,6 +74,23 @@ haga de ejecutor (self-hosted runner):
 2. En GitHub: Settings → Secrets and variables → Actions → Variables: crear `UE_RUNNER` = `true` (y `UE_ROOT` si el motor no
    está en `C:\Program Files\Epic Games\UE_5.6`).
 3. Desde ese momento cada PR compila y pasa las pruebas en ese PC (la primera vez tarda más: compila todo).
+4. Para que un fallo **bloquee la fusión en `dev`**: Settings → Branches → regla de `dev` → Require status checks to pass con
+   «Comprobaciones» y «Compilar y pruebas (UE 5.6)». Sin ejecutor, el trabajo se salta y cuenta como correcto.
+
+## Compilar y probar en local (`Scripts/ci`)
+
+Lo mismo que el ejecutor, en cualquiera de los tres PC y con el editor cerrado. Las rutas son relativas al repositorio; el
+motor sale de `UE_ROOT` (por defecto `C:\Program Files\Epic Games\UE_5.6`).
+
+- `Scripts\ci\build_check.bat [DebugGame|Development]`: compila `TortunaboEditor` (DebugGame de serie), enseña los errores
+  y avisos de C++ y sale con el código de UBT (`BUILD EXIT CODE: 0` = bien). Sustituye al `build_check.bat` viejo de
+  `Deprecado/`, que apuntaba a las carpetas de un solo PC.
+- `Scripts\ci\ci_local.bat`: compila, pasa `Automation RunTests Tortunabo` (informe en `Saved/Automation/CI`, comprobado con
+  `Scripts/ci/check_automation_report.py`: nada en rojo y al menos `TN_MIN_TESTS`, 100 de serie) y `uv run pytest`; con
+  `TN_CI_COOK=1`, además empaqueta Shipping en `Saved/Packages`. Códigos: 1 compilación, 2 tests de Unreal, 3 pytest, 4
+  cocinado; `CI LOCAL OK` si todo va bien.
+- Tras cada `git pull` o merge, de forma voluntaria: `git config core.hooksPath .githooks` activa `.githooks/post-merge`,
+  que llama a `ci_local.bat` (`TN_CI_SKIP=1 git pull` se la salta una vez).
 
 Aviso: el ejecutor compila y ejecuta el código de las PR en ese PC. Solo tienen acceso de escritura al repositorio los
 miembros del equipo; no aceptar ejecuciones de PR de forks.

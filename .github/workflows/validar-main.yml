@@ -70,6 +70,11 @@ jobs:
         shell: cmd
         run: call "%UE_ROOT%\Engine\Build\BatchFiles\Build.bat" TortunaboEditor Win64 Development -Project="%CD%\Tortunabo.uproject" -WaitMutex -NoHotReload
 
+      # La configuración con la que trabaja el equipo (CLAUDE.md, Scripts/ci/build_check.bat): también tiene que compilar.
+      - name: Compilar el editor en DebugGame (UBT)
+        shell: cmd
+        run: call "%UE_ROOT%\Engine\Build\BatchFiles\Build.bat" TortunaboEditor Win64 DebugGame -Project="%CD%\Tortunabo.uproject" -WaitMutex -NoHotReload
+
       - name: Pruebas automáticas (Tortunabo.*)
         shell: pwsh
         run: |
