@@ -1,0 +1,6 @@
+# Sin issues en blanco: toda issue nace de una plantilla, con su tipo y sus criterios de aceptación.
+blank_issues_enabled: false
+contact_links:
+  - name: Tablero «Tortunabo · Desarrollo»
+    url: https://github.com/orgs/Unreal-portfolio/projects/2
+    about: Mira antes si el fallo o la tarea ya existe en su objeto (vista «Objetos»).

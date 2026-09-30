@@ -67,6 +67,9 @@ Toda issue de trabajo cumple esto; `nueva` no crea una que no lo cumpla y `audit
 - **Etiqueta de tipo**: `tarea` o `⚠️bug⚠️`.
 - **Objeto** del que cuelga y los campos **Prioridad, Tamaño, Área y Fase** (F0–F8 del plan maestro; «Sin fase» si no es de ninguna).
 - Un **P0** está en Ready o más allá, nunca en Backlog. Tamaño L solo si no se puede partir en tareas de 1-2 días.
+- Un criterio que cambia mientras se trabaja se corrige en el cuerpo, no en un comentario suelto; si es una decisión de diseño, la registra un aprobador con `decidir`.
+
+Las plantillas de `.github/ISSUE_TEMPLATE` piden lo mismo a quien crea la issue en la web (GitHub las lee de `main`, así que un cambio en ellas va también a `main`). Una issue creada en la web nace sin objeto ni campos: `auditar` la marca.
 
 ### Objetos y sub-issues
 
@@ -76,7 +79,7 @@ Cuando el usuario dice «esto no funciona», Claude decide y registra sin pregun
 
 - **El mismo fallo vuelve** (aunque su issue esté cerrada): `editor <n> falla` reactiva esa issue. No se abre otra.
 - **Otro fallo del mismo objeto**: sub-issue nueva (`nueva --tipo bug --objeto "<objeto>"` con Prioridad, Tamaño y Área) que cita las issues parecidas.
-- **Algo que aún no tiene objeto**: `nueva --objeto "<nombre>"` crea el objeto y cuelga de él la sub-issue.
+- **Algo que aún no tiene objeto**: `nueva --objeto "<nombre>"` crea el objeto y cuelga de él la sub-issue. Si ya hay un objeto con nombre parecido, no lo crea y lo enseña: usa su título exacto o, si de verdad es otro sistema, `objeto "<nombre>" --nuevo`. Un objeto duplicado parte en dos la memoria de un sistema.
 
 ### Comandos
 
@@ -93,7 +96,7 @@ uv run python Scripts/tablero/tablero.py decidir <n> --texto "<decisión>"
 uv run python Scripts/tablero/tablero.py lote crear --titulo "..." <n> <n> ... | lote estado <lote>
 uv run python Scripts/tablero/tablero.py bloquear <n> --por <m> [--por <k>]   # en Backlog se queda en Backlog
 uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug|tarea --cuerpo f.md --objeto "<objeto>" --prioridad P1 --tamano S --area Red [--fase F4 --estado Ready]
-uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripcion "..."] | colgar <hijo> <objeto>
+uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripcion "..." --nuevo] | colgar <hijo> <objeto>
 uv run python Scripts/tablero/tablero.py estado <n> <estado> | campo <n> <campo> <valor>
 uv run python Scripts/tablero/tablero.py sync|auditar|colisiones [--aplicar]
 uv run python Scripts/tablero/tablero.py volcado [--publicar <issue>]   # tablero completo en Markdown
@@ -105,7 +108,7 @@ Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project
 
 Dos automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa código.
 
-- **Puente del tablero** (`.github/workflows/tablero-puente.yml`, 7:15): ejecuta `sync`, `auditar` y `colisiones` con `--aplicar` y publica el volcado del tablero en la issue #131. Lanzado a mano con un comando (`estado 123 Ready`), lo ejecuta si está en la lista cerrada de `Scripts/tablero/volcado.py`. Está también en `main`, porque el cron solo se ejecuta desde la rama por defecto.
+- **Puente del tablero** (`.github/workflows/tablero-puente.yml`, 7:15): ejecuta `sync`, `auditar` y `colisiones` con `--aplicar` y publica el volcado del tablero en la issue #131. Lanzado a mano con un comando (`estado 123 Ready`), lo ejecuta si está en la lista cerrada de `Scripts/tablero/volcado.py`; los comentarios que deja acaban en «Lanzado por <quién> a través del puente», porque todos salen con la cuenta del dueño del token. El volcado lleva una sección «Sin movimiento desde hace más de 3 días» con lo que espera a alguien (In progress, In review, Revisiones, QA editor y Validada). Está también en `main`, porque el cron solo se ejecuta desde la rama por defecto.
 - **Rutina de Claude** (7:30): hace de responsable de calidad de las issues. Lee el volcado, corrige por el puente lo que es evidente, avisa de lo que no lo es y deja el parte del día en la issue #127. Su entorno solo llega a las rutas REST del repositorio: por eso lee y mueve el tablero a través del puente.
 
 Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (la pone `auditar` y la quita sola cuando deja de ver el problema), etiqueta `revisar-qa` con su comentario (la pone y la quita la rutina, para lo que un script no ve), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.

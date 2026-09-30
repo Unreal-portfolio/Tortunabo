@@ -2,6 +2,10 @@ name: Tarea
 description: Trabajo planificado
 labels: ["tarea"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Título de 80 caracteres como mucho. Al crearla aquí queda sin objeto ni campos: pide a tu Claude que la cuelgue de su objeto y le ponga Prioridad, Tamaño, Área y Fase, o créala directamente con `tablero.py nueva`.
   - type: textarea
     id: contexto
     attributes:
