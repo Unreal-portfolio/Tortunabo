@@ -437,7 +437,8 @@ void ATN_VRRig::Tick(float DeltaSeconds)
 	APlayerController* PC = GetLocalPC();
 	if (!PC)
 	{
-		ScreenPanel->SetVisibility(false);
+		// El que se ve es el curvo (hijo del plano): se ocultan los dos.
+		ScreenPanel->SetVisibility(false, true);
 		return;
 	}
 
@@ -699,7 +700,8 @@ void ATN_VRRig::EnsureVRMapping(APlayerController* PC)
 				Mapping.Modifiers.Add(NewObject<UInputModifierSwizzleAxis>(VRMapping));
 			}
 		};
-		// Botón analógico (gatillo de los Touch): cuenta como pulsado a partir de ~55 % (OpenXR solo da su valor).
+		// Botón analógico (gatillo de los Touch): cuenta como pulsado a partir de ~55 % (OpenXR solo da su valor). La zona
+		// muerta pasa 0,1-1 a 0-1 y la acción booleana se activa en 0,5 de eso: 0,1 + 0,5 × 0,9 = 0,55 del gatillo.
 		auto MapAnalogButton = [this](UInputAction* Action, const FKey& Key)
 		{
 			if (!Action || !Key.IsValid())
@@ -709,7 +711,7 @@ void ATN_VRRig::EnsureVRMapping(APlayerController* PC)
 			FEnhancedActionKeyMapping& Mapping = VRMapping->MapKey(Action, Key);
 			UInputModifierDeadZone* Threshold = NewObject<UInputModifierDeadZone>(VRMapping);
 			Threshold->Type = EDeadZoneType::Axial;
-			Threshold->LowerThreshold = 0.55f;
+			Threshold->LowerThreshold = 0.1f;
 			Threshold->UpperThreshold = 1.f;
 			Mapping.Modifiers.Add(Threshold);
 		};
