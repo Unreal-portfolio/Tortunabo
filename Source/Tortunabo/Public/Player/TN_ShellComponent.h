@@ -191,12 +191,14 @@ private:
 
 	/**
 	 * @brief Servidor: sitio libre para una caja nueva en Center con Rotation. Si ahí se
-	 *        mete en algo que la para (decorado, una muralla, la arena, otra tortuga), se
-	 *        prueba un poco más arriba y alrededor; sin sitio libre, Center tal cual (la red
-	 *        de seguridad de la carrera la saca si se hunde).
+	 *        mete en algo que la para (decorado, una muralla, otra tortuga) o su parte de
+	 *        abajo queda bajo el terreno de la playa, se prueba justo encima de la arena, un
+	 *        poco más arriba y alrededor; sin sitio libre, encima de la arena si se ha podido
+	 *        subir o Center tal cual (la red de seguridad de la carrera la saca si se hunde).
 	 * @note  Una caja que nace dentro de algo sale empujada y puede cruzar la malla fina del
 	 *        terreno: pasaba al meterse en el caparazón colgando del pico de una gaviota que
-	 *        arrastra a la tortuga por el decorado.
+	 *        arrastra a la tortuga por el decorado. La malla del terreno es fina: una caja
+	 *        entera por debajo ni la solapa, por eso se mira también la hondura (#54).
 	 */
 	FVector FindFreeBodySpot(const FVector& Center, const FRotator& Rotation) const;
 

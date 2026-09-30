@@ -100,6 +100,87 @@ namespace TNShellLogic
 		InOutAngular = InOutAngular.GetClampedToMaxSize(Rules.MaxSpinAfter);
 	}
 
+	/** Del centro al punto más bajo (cm) de una caja de semiejes Extent con el giro Rotation (de pie mide más que tumbada). */
+	inline double BoxHalfHeight(const FQuat& Rotation, const FVector& Extent)
+	{
+		return FMath::Abs(Rotation.GetAxisX().Z) * Extent.X + FMath::Abs(Rotation.GetAxisY().Z) * Extent.Y
+			+ FMath::Abs(Rotation.GetAxisZ().Z) * Extent.Z;
+	}
+
+	/** Reglas para crear la caja encima del terreno (UTN_ShellComponent::FindFreeBodySpot). */
+	struct FSpawnClearRules
+	{
+		/** cm que queda su parte de abajo por encima del terreno de verdad cuando hay que subirla. */
+		float Skin = 2.f;
+		/** Subida máxima (cm), la de la recolocación: más que esto no es «encima de donde estaba». */
+		float MaxLift = 400.f;
+	};
+
+	/** true si la parte de abajo de la caja no queda bajo el terreno de verdad (apoyada en la arena vale). */
+	inline bool IsBottomAboveTerrain(float BottomDepthUnderTerrain)
+	{
+		return BottomDepthUnderTerrain <= 0.f;
+	}
+
+	/**
+	 * @brief Cuánto subir la caja al crearla para que su parte de abajo quede Skin por encima del terreno de verdad.
+	 *
+	 * La malla del terreno de la playa es fina: una caja que nace con la parte de abajo dentro (o entera por debajo, que ni
+	 * la solapa) sale escupida al primer contacto (#54; 9-15 m/s en el monkey del 2026-09-29).
+	 *
+	 * @param BottomDepthUnderTerrain cm de su parte de abajo bajo el terreno (negativo si está encima).
+	 * @return 0 si ya está encima; -1 si haría falta subirla más de MaxLift (hay que buscar otro sitio).
+	 */
+	inline float SpawnLiftAboveTerrain(float BottomDepthUnderTerrain, const FSpawnClearRules& Rules = FSpawnClearRules())
+	{
+		if (IsBottomAboveTerrain(BottomDepthUnderTerrain))
+		{
+			return 0.f;
+		}
+		const float Lift = BottomDepthUnderTerrain + Rules.Skin;
+		return Lift <= Rules.MaxLift ? Lift : -1.f;
+	}
+
+	/** Tope a lo que el terreno empuja la caja al sacarla de dentro (ATN_ShellBody, servidor). */
+	struct FTerrainPushOutRules
+	{
+		/** cm dentro del terreno de verdad, al acabar el paso anterior, para contarla como metida en él. */
+		float EmbeddedDepth = 10.f;
+		/** cm/s que puede añadir la depenetración además de parar la caída: lo mismo que al nacer metida en algo. */
+		float MaxPushOutSpeed = 300.f;
+	};
+
+	/**
+	 * @brief Limita la velocidad con que el terreno escupe la caja que se le había metido dentro.
+	 *
+	 * El tope de depenetración del motor (SetMaxDepenetrationVelocity) solo vale para lo que solapa al nacer o al
+	 * teletransportarla. Si la caja se mete en la malla fina del terreno, el contacto la saca con todo su impulso: 9-15 m/s
+	 * en el monkey del 2026-09-29 (impulsos de 21 000-76 000) y más de 100 m/s junto a una fortaleza (432 690). Parar la caída
+	 * vale; de lo demás que haya cambiado en el paso, si la acelera, se deja como mucho MaxPushOutSpeed. Lo que la frena no
+	 * se toca.
+	 *
+	 * @param PrevVelocity    Velocidad al acabar el paso anterior.
+	 * @param PrevDepthInTerrain cm que estaba dentro del terreno al acabar el paso anterior (negativo si estaba encima).
+	 * @param InOutVelocity   Velocidad tras el paso; se limita.
+	 * @return true si la ha limitado.
+	 */
+	inline bool LimitTerrainPushOut(const FVector& PrevVelocity, float PrevDepthInTerrain, FVector& InOutVelocity,
+		const FTerrainPushOutRules& Rules = FTerrainPushOutRules())
+	{
+		if (PrevDepthInTerrain <= Rules.EmbeddedDepth)
+		{
+			return false;
+		}
+		FVector Allowed = PrevVelocity;
+		Allowed.Z = FMath::Max(Allowed.Z, 0.0);
+		if (InOutVelocity.Size() <= Allowed.Size() + Rules.MaxPushOutSpeed)
+		{
+			return false;
+		}
+		InOutVelocity = Allowed + (InOutVelocity - Allowed).GetClampedToMaxSize(Rules.MaxPushOutSpeed);
+		return true;
+	}
+
 	/**
 	 * @brief Empuje propio de un bloque sólido de enemigo (cangrejo gigante, tanque) sobre la bola del caparazón.
 	 *
