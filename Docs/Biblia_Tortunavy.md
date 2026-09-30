@@ -4200,7 +4200,7 @@ Ninguno mata: **aturden** (bola temblando), **derriban** (ragdoll con mareo) o *
 | Ermitaño bola (§36.8) | en calles cuesta abajo de 25–45 m | tortuga en su calle a menos de 5,2 m del eje | rueda a 3–15 m/s y derriba a todas las de la fila (2,5 s) | apartarse 3 m de lado, subir el terreno de la calle | 4,7 / 6,3 / 8,5 |
 | Pulpo de poza (§36.9) | dentro del agua de las 7 pozas | nadadora atacable dentro de la orilla | agarre a 3 m (0,8 s en el aire) y lanzamiento en bola de 9–34 m hacia la salida | salir nadando antes de que llegue, no nadar | 7,1 / 11 / 26 |
 | Pulgas de arena (§36.10) | en claros de arena abierta | tortuga a 18 m dentro de su correa (24 m) | picada a 2,7 m: 2 s de saltitos sin control + bola 1 s | andar (van a 1,6 m/s), lanzarles algo | 4 / 6,7 / 16,7 |
-| Tanque de juguete (§36.11) | tramos de través de 20–40 m junto a lo militar y las trincheras | vista de 25 m | bolita de espuma cada 1,6 s: bola mareada 0,8 s | correr de lado, esconderse; es sólido | 4,7 / 6,6 / 7,8 |
+| Tanque de juguete (§36.11) | tramos de través de 20–40 m junto a lo militar y las trincheras | vista de 25 m | bolita de espuma cada 4 s: bola mareada 0,8 s | correr de lado, esconderse; es sólido | 4,7 / 6,6 / 7,8 |
 | Tormenta de bañistas (§36.12) | sale 30 m detrás de la salida al dar la salida | por posición (quien queda detrás del frente) | patada a arena abierta ~20 m por delante del frente | ir por delante de 1,8 m/s | una por ronda |
 | Gusano de arena (§36.13) | al acabar la cuenta de 10 s, uno por rezagada | todas las que no han llegado | se las come (3,2 s), sin daño; reaparecen en la siguiente ronda | llegar al agua antes de que acabe la cuenta | 0–N según rezagadas |
 
