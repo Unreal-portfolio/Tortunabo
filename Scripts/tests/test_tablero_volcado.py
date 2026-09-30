@@ -27,15 +27,17 @@ def _items(*issues):
 
 def test_fila_lleva_campos_pr_y_dependencias_abiertas():
     issue = _issue(44, "In review", titulo="Tanques", etiquetas=["⚠️bug⚠️"], asignados=["Ruben-Besteiro"],
-                   espera=[(40, "OPEN"), (41, "CLOSED")], Prioridad="P1", Editor="Funciona", Revisor="Mokius")
+                   espera=[(40, "OPEN"), (41, "CLOSED")], Prioridad="P1", Editor="Funciona", Revisor="Mokius",
+                   **{"Tamaño": "S", "Área": "Modos"})
     fila = volcado.fila(issue, [124])
-    assert fila == "| #44 | Tanques | Ruben-Besteiro | P1 | — | Funciona | Mokius | #124 | ⚠️bug⚠️ | #40 |"
+    assert fila == "| #44 | Tanques | Ruben-Besteiro | P1 | S | Modos | — | — | Funciona | Mokius | #124 | ⚠️bug⚠️ | #40 |"
+    assert fila.count("|") == volcado.CABECERA.count("|") == volcado.SEPARADOR.count("|")
 
 
 def test_fila_recorta_el_titulo_y_escapa_las_barras():
     fila = volcado.fila(_issue(1, "Ready", titulo="a|b " + "x" * 100), [])
     assert "a\\|b" in fila and "…" in fila
-    assert fila.count(" | ") == 9, "una barra del título no puede abrir una columna más"
+    assert fila.count(" | ") == 12, "una barra del título no puede abrir una columna más"
 
 
 def test_render_agrupa_por_estado_y_deja_fuera_done_cerradas():
@@ -43,7 +45,7 @@ def test_render_agrupa_por_estado_y_deja_fuera_done_cerradas():
                                   _issue(4, "Done", abierta=False)), {2: [9]}, AHORA)
     assert "2026-09-30 05:15 UTC · 3 issues abiertas" in texto
     assert texto.index("## Ready (1)") < texto.index("## In review (2)")
-    assert "| #2 | Tarea | — | — | — | — | — | #9 |" in texto
+    assert "| #2 | Tarea | — | — | — | — | — | — | — | — | #9 |" in texto
     assert "#4" not in texto and "## Done" not in texto and "Estado incoherente" not in texto
 
 

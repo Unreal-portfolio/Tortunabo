@@ -104,3 +104,14 @@ def test_colisiones_y_organizacion_van_primero():
               _con_etiquetas(3, "revisar-organizacion", quien="Mokius"), _con_etiquetas(4, "tarea")]
     assert [i["number"] for i in tablero.urgentes_de_organizacion(issues, "Ruben-Besteiro", False)] == [1, 2]
     assert [i["number"] for i in tablero.urgentes_de_organizacion(issues, "SkiTemplar", True)] == [1, 2, 3]
+
+
+def test_urgentes_incluye_los_avisos_de_la_rutina_de_qa():
+    def issue(numero, etiqueta, asignado=None):
+        return {"number": numero, "labels": {"nodes": [{"name": etiqueta}]},
+                "assignees": {"nodes": [{"login": asignado}] if asignado else []}}
+    issues = [issue(1, "revisar-qa", "Mokius"), issue(2, "revisar-organizacion"), issue(3, "tarea", "Mokius")]
+    assert [i["number"] for i in tablero.urgentes_de_organizacion(issues, "SkiTemplar", aprobador=True)] == [1, 2]
+    # Quien no es aprobador solo ve los avisos de lo suyo.
+    assert [i["number"] for i in tablero.urgentes_de_organizacion(issues, "Mokius", aprobador=False)] == [1]
+    assert tablero.urgentes_de_organizacion(issues, "Ruben-Besteiro", aprobador=False) == []

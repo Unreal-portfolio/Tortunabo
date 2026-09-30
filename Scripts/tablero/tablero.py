@@ -81,12 +81,20 @@ def etiquetas_de(issue: dict) -> set[str]:
 
 
 def urgentes_de_organizacion(issues: list[dict], login: str, aprobador: bool) -> list[dict]:
-    """Lo que va antes que cualquier otra tarea: colisiones entre PR e issues `revisar-organizacion`.
+    """Lo que va antes que cualquier otra tarea: colisiones entre PR e issues con avisos de organización.
 
-    Las colisiones son de todo el equipo; las de organización, del asignado (los aprobadores ven todas).
+    Los avisos son `revisar-organizacion` (de `auditar`) y `revisar-qa` (de la rutina diaria). Las colisiones son
+    de todo el equipo; los avisos, del asignado (los aprobadores ven todos).
     """
+    avisos = {auditoria.ETIQUETA, auditoria.ETIQUETA_QA}
     return [i for i in issues if colisiones.ETIQUETA in etiquetas_de(i)
-            or (auditoria.ETIQUETA in etiquetas_de(i) and (aprobador or es_de(i, login)))]
+            or (avisos & etiquetas_de(i) and (aprobador or es_de(i, login)))]
+
+
+def objetos_con_aviso(proyecto: dict) -> list[dict]:
+    """Objetos abiertos que la rutina de QA ha marcado: no se cogen, pero su aviso tiene que verse."""
+    return [i for i in proyecto["items"].values()
+            if i["state"] == "OPEN" and objetos.es_objeto(i) and auditoria.ETIQUETA_QA in etiquetas_de(i)]
 
 
 def probables_en_editor(issues: list[dict], login: str) -> list[dict]:
@@ -106,7 +114,8 @@ def cmd_pendiente(_args: argparse.Namespace) -> None:
     prs = prs_abiertas()
     print(f"Tablero para {yo} ({CONFIG['miembros'].get(yo, {}).get('nombre', yo)}) · rama de integración: {INTEGRACION}\n")
     seccion("Primero: colisiones entre PR y organización del tablero",
-            [linea(i) for i in sorted(urgentes_de_organizacion(abiertas, yo, aprobador), key=clave_orden)])
+            [linea(i) for i in sorted(urgentes_de_organizacion(abiertas + objetos_con_aviso(proyecto), yo, aprobador),
+                                      key=clave_orden)])
     seccion("Tu trabajo en curso", [linea(i) for i in mias])
     seccion("Puedes probar en el editor (tus tareas en curso o en revisión; no esperes a la revisión)",
             [linea(i) for i in sorted(probables_en_editor(abiertas, yo), key=clave_orden)])
