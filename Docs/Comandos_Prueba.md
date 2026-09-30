@@ -242,6 +242,13 @@ máquina).
 | `TN.Loading.Test.Go` | Cierra y rompe con «¡ADELANTE!». |
 | `TN.Loading.Test.GoOnly` | Solo el «¡ADELANTE!». |
 
+## Salas del menú
+
+| Comando | Qué hace |
+|---|---|
+| `TN.Rooms.FakeError <locked\|full\|kicked\|other>` | Simula que el servidor no te deja entrar (sala cerrada, llena, expulsado u otro motivo): pantalla de vuelta al menú y el aviso en «Unirse». Sin segunda instancia. |
+| `TN.Rooms.FakeError <joinfull\|gone\|noaddress>` | Simula que falla la entrada en la sesión (llena, ya no existe, sin dirección del anfitrión): el aviso sale en el menú de salas sin recargarlo. |
+
 ## Cooperativo (mapa procedural y lobby)
 
 Con ocho jugadores (PIE con 8 jugadores y modo «Listen server», o `-game` con ocho clientes): en el lobby, los cuatro primeros
