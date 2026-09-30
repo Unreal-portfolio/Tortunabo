@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineBaseTypes.h"
+#include "Misc/PackageName.h"
 
 /**
  * Qué hacer cuando un viaje de mapa falla (UEngine::OnTravelFailure: mapa sin cocinar, paquete que falta, URL mala). Sin
@@ -12,8 +13,10 @@ namespace TNTravel
 {
 	enum class ETravelFailureAction : uint8
 	{
-		/** El anfitrión vuelve al lobby con todos (ServerTravel). */
+		/** El anfitrión recarga el lobby con todos (ServerTravel, un tick después del fallo). */
 		ReturnHostToLobby,
+		/** El anfitrión ya está en un lobby en pie: no hay a dónde volver ni nada que recargar. */
+		StayInLobby,
 		/** Sesión cerrada y al menú con el aviso. */
 		ReturnToMenu,
 		/** Ya estaba en el menú: solo el aviso. */
@@ -26,15 +29,22 @@ namespace TNTravel
 	/**
 	 * @param NetMode        Modo de red del mundo que ha fallado.
 	 * @param bInMenu        El mundo es el del menú principal.
+	 * @param bLobbyIntact   El mundo es el lobby y sigue en pie (no estaba lanzando la partida). Un lobby que ya había
+	 *                       empezado la cuenta atrás no lo está: el servidor destruye las tortugas antes de viajar, así que
+	 *                       se recarga (ServerTravel al mismo lobby), como al volver de una partida.
 	 * @param PriorFailures  Fallos seguidos desde el último mapa cargado: el segundo ya no reintenta el lobby (sin bucle).
 	 */
-	inline ETravelFailureAction DecideTravelFailure(ENetMode NetMode, bool bInMenu, int32 PriorFailures)
+	inline ETravelFailureAction DecideTravelFailure(ENetMode NetMode, bool bInMenu, bool bLobbyIntact, int32 PriorFailures)
 	{
 		if (bInMenu)
 		{
 			return ETravelFailureAction::StayInMenu;
 		}
 		const bool bHost = NetMode == NM_ListenServer || NetMode == NM_DedicatedServer;
+		if (bHost && bLobbyIntact)
+		{
+			return ETravelFailureAction::StayInLobby;
+		}
 		return bHost && PriorFailures == 0 ? ETravelFailureAction::ReturnHostToLobby : ETravelFailureAction::ReturnToMenu;
 	}
 
@@ -44,12 +54,38 @@ namespace TNTravel
 		return LobbyReturnMapPath.IsEmpty() ? FString(DefaultLobbyPath) : LobbyReturnMapPath;
 	}
 
+	/**
+	 * true si MapName (nombre corto del mundo, sin el prefijo de PIE) es el del lobby al que se vuelve (LobbyTravelURL).
+	 * Las opciones de la URL (?...) no cuentan.
+	 */
+	inline bool IsLobbyMap(const FString& MapName, const FString& LobbyReturnMapPath)
+	{
+		FString LobbyMap = LobbyTravelURL(LobbyReturnMapPath);
+		int32 OptionsAt = INDEX_NONE;
+		if (LobbyMap.FindChar(TEXT('?'), OptionsAt))
+		{
+			LobbyMap.LeftInline(OptionsAt);
+		}
+		return !MapName.IsEmpty() && MapName == FPackageName::GetShortName(LobbyMap);
+	}
+
+	/**
+	 * ¿Ha arrancado el ServerTravel que se acaba de pedir? UWorld::ServerTravel devuelve true aunque no haga nada (si ya hay un
+	 * NextURL o un viaje sin cortes en marcha lo ignora), así que se mira el efecto: un viaje sin cortes en marcha o un NextURL
+	 * puesto (el viaje duro sale cuando acaba su cuenta atrás). Hay que mirar antes de pedirlo que no hubiera ya uno.
+	 */
+	inline bool DidTravelStart(bool bAccepted, bool bInSeamlessTravel, bool bHasNextURL)
+	{
+		return bAccepted && (bInSeamlessTravel || bHasNextURL);
+	}
+
 	/** Para el registro. */
 	inline const TCHAR* ActionName(ETravelFailureAction Action)
 	{
 		switch (Action)
 		{
 		case ETravelFailureAction::ReturnHostToLobby: return TEXT("anfitrión al lobby");
+		case ETravelFailureAction::StayInLobby:       return TEXT("se queda en el lobby");
 		case ETravelFailureAction::ReturnToMenu:      return TEXT("al menú");
 		default:                                      return TEXT("se queda en el menú");
 		}

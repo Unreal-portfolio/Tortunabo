@@ -20,6 +20,7 @@ las plazas y los expulsados los aplica el servidor al entrar (PreLogin), no solo
 | `UMP_MainMenuWidget` | `UI/Menu/MP_MainMenuWidget.*` | Los botones del Blueprint: «Crear partida» y «Unirse» abren las pantallas de salas; «Salir». |
 | `UTN_PauseMenuWidget` | `UI/Pause/TN_PauseMenuWidget.*` | Cabecera con la sala y página «Sala»: código, cerrar y abrir, invitar y quién está dentro con el «⋮» para expulsar. |
 | `TNRoomArt` | `Private/UI/Menu/TN_RoomArt.h` | Iconos pintados en código: «⋮», candado y el grupo de tortugas del botón «Sala». |
+| `UTN_TravelFailureSubsystem` | `Multiplayer/TN_TravelFailureSubsystem.*`, `TN_TravelFailureDecisions.h` | Qué pasa cuando un viaje de mapa falla (mapa sin cocinar, paquete que falta): el anfitrión recarga el lobby, el invitado vuelve al menú con el aviso. Ver [Viaje de mapa fallido](#viaje-de-mapa-fallido). |
 
 ## Ajustes de la sesión
 
@@ -141,6 +142,40 @@ idioma (`TNRoomText::RefusedMessage`: `FText` de la localización, «TNRooms», 
 traduce con el resto), deja la sesión y vuelve al menú. Con el viaje sin cortes del juego (lobby ↔
 partida) nadie vuelve a pasar por el PreLogin; solo quien se reconecta tras perder la conexión.
 
+## Viaje de mapa fallido
+
+`UTN_TravelFailureSubsystem` escucha `UEngine::OnTravelFailure` (mapa sin cocinar, paquete que falta, URL mala). Sin él, un
+`ServerTravel` fallido dejaba al invitado colgado en la pantalla de carga y sin mensaje. La regla es pura
+(`TNTravel::DecideTravelFailure`, tests `Tortunabo.Net.TravelFailure`):
+
+| Quién y dónde | Qué pasa |
+|---|---|
+| Anfitrión, primer fallo, fuera del lobby o en un lobby que ya había empezado la cuenta atrás | **Un tick después**, `ServerTravel` al lobby del que salió (`LobbyReturnMapPath`); la pantalla de carga dice «No se ha podido cargar la partida: volvéis al lobby.». Si el viaje no arranca, se oculta la pantalla de carga y va al menú. |
+| Anfitrión en un lobby en pie (sin cuenta atrás ni pausa antes de viajar) | No viaja: no hay a dónde volver. Se quita la pantalla de carga y se queda donde está. |
+| Invitado, partida sin red o segundo fallo seguido | Sesión cerrada y al menú, con «No se ha podido cargar la partida y has vuelto al menú.». |
+| Ya en el menú | Solo el aviso; se cierra la sesión de Steam que quedara. |
+
+- **Por qué un tick después.** En el viaje sin cortes (el de lobby y partida) el motor avisa del fallo *dentro* de
+  `ProcessServerTravel`, con `World->NextURL` aún lleno (se vacía al volver), y `UWorld::ServerTravel` no hace nada si
+  `NextURL` no está vacío, pero devuelve `true`. Por eso el subsistema espera un tick y luego comprueba el efecto
+  (`TNTravel::DidTravelStart`: viaje sin cortes en marcha o `NextURL` puesto), no el valor devuelto.
+- **El motor ya manda al anfitrión al menú.** `UEngine::HandleTravelFailure` (enlazado antes) llama a `HandleDisconnect`, que
+  deja pedido un viaje a `?closed` (la entrada por defecto, el menú) para el tick siguiente y le quita `?Listen` a la última URL;
+  su `LoadMap` cancelaría hasta un viaje sin cortes recién arrancado. Cuando el anfitrión se queda en su sesión, el subsistema
+  anula ese viaje y devuelve el `?Listen` (`KeepHostInSession`).
+- **Un lobby «en pie».** `ATN_HQGameMode::BeginMatchTravel` destruye las tortugas *antes* de pedir el viaje y el castillo no les
+  quita el «listo» ([Pantalla de carga](Pantalla_Carga.md)): tras un lanzamiento fallido el lobby no se puede jugar, así que
+  se recarga con el mismo `ServerTravel` con que se vuelve de una partida. Solo un lobby que no lanzaba nada se deja como está.
+- **Viaje duro** (PIE sin `net.AllowPIESeamlessTravel 1`, o `?NoSeamlessTravel`): el anfitrión **no** vuelve al lobby, acaba en
+  el menú. Cuando el motor avisa ya ha cerrado el driver de red (los invitados pierden la conexión), destruido el
+  mundo y los controladores y cargado el menú, y `HandlePostLoadMap` ya ha olvidado la sala (`ResetRoomState`). Volver al lobby
+  sería alojar una sala nueva desde el menú, sin los datos de la sala y con la carrera por el puerto de escucha de Steam de
+  `OnCreateSessionComplete`: no se hace. En el juego empaquetado el lobby y las partidas viajan sin cortes, así que este
+  camino solo lo recorren PIE y el viaje del menú al lobby.
+- **Los invitados** reciben el mismo viaje. Si el mapa también les falta (misma build), fallan igual y vuelven al menú por su
+  cuenta, con el aviso, mientras el anfitrión recarga el lobby; si lo tienen, el `ServerTravel` al lobby del anfitrión cancela
+  el suyo y lo siguen.
+
 ## Detalles
 
 - **Sala por defecto**: un servidor escucha sin sala elegida (p. ej. «Play As Listen Server» del editor) usa una pública
@@ -168,6 +203,13 @@ partida) nadie vuelve a pasar por el PreLogin; solo quien se reconecta tras perd
    entra desde ella.
 5. En el campo del código: escribir en minúsculas (pasan a mayúsculas), una «O» (avisa), Retroceso, flechas, clic en una
    casilla, rueda del ratón; con mando, A → ↑ ↓ ← → X → B.
+6. Viaje fallido (Play As Listen Server, 2 jugadores; en la consola del anfitrión `TN.Travel.Fail` pide un `ServerTravel` a un
+   mapa que no existe). Antes `net.AllowPIESeamlessTravel 1` para el viaje sin cortes (sin él el viaje es duro):
+   - Sin cortes, en el lobby en pie: no viaja, sin pantalla de carga; el registro dice «El lobby sigue en pie». Desde un mapa de
+     partida (p. ej. `LVL_Run`): el anfitrión vuelve al lobby (la pantalla de carga dice «…volvéis al lobby.»); el invitado, al
+     menú con «No se ha podido cargar la partida y has vuelto al menú.».
+   - Duro (sin la consola de arriba): el anfitrión acaba en el menú, sin sala (en Steam, la sesión cerrada); el invitado pierde
+     la conexión y vuelve al menú.
 
 ### Con dos PC y Steam (AppId 480)
 
@@ -188,6 +230,10 @@ partida) nadie vuelve a pasar por el PreLogin; solo quien se reconecta tras perd
 8. Viajes: con la sala cerrada, empezar la partida (lobby → carrera o mapa procedural) y volver al lobby: nadie se queda
    fuera; la cabecera de la pausa sigue diciendo «cerrada» y el código es el mismo.
 9. El anfitrión cierra el juego a mitad: B vuelve al menú con «Se ha acabado la partida: el anfitrión se ha ido…».
+10. Viaje fallido, en la build empaquetada: sin cocinar el mapa del modo elegido (p. ej. `LVL_Run` en el Clásico, o quitarlo
+    del `.pak`), todos listos en el lobby. Tras la cuenta atrás, A (anfitrión) vuelve a un lobby nuevo, con su
+    tortuga, sin quedarse tras la pantalla de carga («No se ha podido cargar la partida: volvéis al lobby.»); B vuelve al menú
+    con «No se ha podido cargar la partida y has vuelto al menú.». La sala de A sigue abierta y B puede volver a entrar.
 
 ## Idioma de los nombres y de los avisos
 
