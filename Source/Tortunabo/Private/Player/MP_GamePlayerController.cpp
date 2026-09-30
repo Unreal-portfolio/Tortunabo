@@ -24,6 +24,7 @@
 #include "UI/HUD/TN_EmoteWheelDataAsset.h"
 #include "UI/HUD/TN_QuickChatWheelDataAsset.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Multiplayer/TN_RoomInfo.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_MatchFlowTypes.h"
@@ -167,6 +168,21 @@ void AMP_GamePlayerController::ServerRequestReturnToMenu_Implementation()
 	if (UMP_GameInstance* GI = GetTNGameInstance())
 	{
 		GI->HandleReturnToMenu();
+	}
+}
+
+void AMP_GamePlayerController::ClientWasKicked_Implementation(const FText& KickReason)
+{
+	Super::ClientWasKicked_Implementation(KickReason);
+
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] El servidor me ha expulsado: %s"), *KickReason.ToString());
+	// Mismo camino que la expulsión por ATN_RoomInfo: aviso con el nombre de la sala y al menú. Deja bKickedFromRoom
+	// puesto, así que el corte de conexión que viene detrás no enseña «el anfitrión se ha ido» ni reconecta. Si el
+	// aviso ya había llegado por la réplica, HandleKickedFromRoom no hace nada.
+	if (UMP_GameInstance* GI = GetTNGameInstance())
+	{
+		const ATN_RoomInfo* Info = ATN_RoomInfo::Find(GetWorld());
+		GI->HandleKickedFromRoom(Info ? Info->GetRoomNameId() : INDEX_NONE);
 	}
 }
 
