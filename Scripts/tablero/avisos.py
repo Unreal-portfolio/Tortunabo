@@ -142,7 +142,7 @@ def render(login: str, por_secciones: list[tuple[str, list[dict]]], incidencias:
     """Comentario para `login`, con mención para que GitHub se lo mande por correo; None si no hay nada que decirle."""
     if not por_secciones and not incidencias:
         return None
-    resumen = [f"{len(incidencias)} incidencias"] if incidencias else []
+    resumen = [f"{len(incidencias)} incidencia{'s' if len(incidencias) != 1 else ''}"] if incidencias else []
     resumen += [f"{len(lista)} · {titulo.split(':')[0].lower()}" for titulo, lista in por_secciones]
     lineas = [f"@{login} · avisos del {ahora:%Y-%m-%d}: " + "; ".join(resumen) + ".", ""]
     if incidencias:
