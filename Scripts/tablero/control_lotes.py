@@ -9,6 +9,7 @@ import argparse
 import json
 
 import bloqueos
+import flujo
 import lotes
 import memoria
 import objetos
@@ -78,6 +79,10 @@ def cmd_lote_estado(args: argparse.Namespace) -> None:
     if not miembros or pendientes:
         detalle = "; ".join(f"#{n}: {', '.join(f)}" for n, f in pendientes.items()) or "el lote no tiene miembros"
         raise ErrorTablero(f"NO fusionar la PR del lote: {detalle}.")
+    etiquetas = {n: objetos.nombres_etiquetas(proyecto["items"].get(n, {})) for n in miembros}
+    if sin_decidir := lotes.con_decision(etiquetas, flujo.ETIQUETA_DECISION):
+        raise ErrorTablero(f"NO fusionar la PR del lote: {', '.join(f'#{n}' for n in sin_decidir)} con decisión "
+                           "pendiente. Regístrala con `tablero.py decidir <n> --texto \"...\"` y quita la etiqueta.")
     print("Todos los miembros están en Validada: la PR del lote se puede fusionar.")
 
 

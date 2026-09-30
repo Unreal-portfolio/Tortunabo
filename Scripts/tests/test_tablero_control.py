@@ -49,9 +49,10 @@ def test_decision_con_fecha_y_quien():
 # --- Auditoría -------------------------------------------------------------------------------------
 
 def _issue(status="Ready", **extra):
-    valores = {"Status": status, "Prioridad": "P1", "Área": "Red", "Tamaño": "S", **extra.pop("valores", {})}
+    valores = {"Status": status, "Prioridad": "P1", "Área": "Red", "Tamaño": "S", "Fase": "F4",
+               **extra.pop("valores", {})}
     base = {"numero": 5, "titulo": "Tarea", "estado": "OPEN", "motivo_cierre": None, "cerrada": None,
-            "etiquetas": set(), "asignados": [] if status in auditoria.ESTADOS_SIN_DUENO else ["Mokius"], "padre": 40, "bloqueantes": [], "lotes": [],
+            "cuerpo": "Qué hay que hacer.\n\n- [ ] Hecho.", "etiquetas": {"tarea"}, "asignados": [] if status in auditoria.ESTADOS_SIN_DUENO else ["Mokius"], "padre": 40, "bloqueantes": [], "lotes": [],
             "comentarios": [], "valores": valores, "con_pr": False, "fusionada": False, "lote_fusionado": None,
             "prs_sin_lote": [], "revisor_sugerido": "SkiTemplar"}
     return {**base, **extra}
@@ -66,9 +67,41 @@ def test_issue_en_orden_no_tiene_problemas():
 
 
 def test_sin_padre_ni_campos():
-    lista = auditoria.problemas(_issue(padre=None, valores={"Prioridad": None, "Área": None, "Tamaño": None}), AHORA)
-    assert len(lista) == 4 and lista[0]["texto"].startswith("no cuelga")
+    vacios = {"Prioridad": None, "Área": None, "Tamaño": None, "Fase": None}
+    lista = auditoria.problemas(_issue(padre=None, valores=vacios), AHORA)
+    assert len(lista) == 5 and lista[0]["texto"].startswith("no cuelga")
+    assert "sin Fase" in [p["texto"] for p in lista]
     assert {p["tipo"] for p in lista} == {"organizacion"}
+
+
+@pytest.mark.parametrize("extra, esperado", [
+    ({"etiquetas": set()}, "sin etiqueta de tipo"),
+    ({"titulo": "x" * 81}, "título de 81 caracteres"),
+    ({"cuerpo": "  \n"}, "sin cuerpo"),
+    ({"cuerpo": "Hay que hacerlo."}, "sin criterios de aceptación"),
+])
+def test_formato_de_la_issue(extra, esperado):
+    assert any(t.startswith(esperado) for t in _textos(_issue(**extra)))
+
+
+def test_formato_correcto_con_titulo_en_el_limite_y_casilla_marcada():
+    assert auditoria.problemas_de_formato("x" * 80, "Hecho:\n- [x] Compila.", {"⚠️bug⚠️"}) == []
+    assert auditoria.problemas(_issue("Revisiones", etiquetas={"colision"}, cuerpo=""), AHORA) == []
+
+
+def test_p0_en_backlog_se_avisa_y_en_ready_no():
+    assert any(t.startswith("P0 en Backlog") for t in _textos(_issue("Backlog", valores={"Prioridad": "P0"})))
+    assert auditoria.problemas(_issue("Ready", valores={"Prioridad": "P0"}), AHORA) == []
+    assert auditoria.problemas(_issue("Backlog"), AHORA) == []
+
+
+def test_ready_con_bloqueantes_abiertas_pasa_a_bloqueada():
+    espera = [{"number": 99, "state": "OPEN"}, {"number": 98, "state": "CLOSED"}]
+    lista = auditoria.problemas(_issue("Ready", bloqueantes=espera), AHORA)
+    assert [(p["tipo"], p["campo"], p["valor"]) for p in lista] == [("trivial", "Status", "Bloqueada")]
+    assert "#99" in lista[0]["texto"] and "#98" not in lista[0]["texto"]
+    assert auditoria.problemas(_issue("Ready", bloqueantes=[{"number": 98, "state": "CLOSED"}]), AHORA) == []
+    assert auditoria.problemas(_issue("Backlog", bloqueantes=espera), AHORA) == []
 
 
 @pytest.mark.parametrize("issue, esperado", [
@@ -222,6 +255,11 @@ def test_pendientes_del_lote_bloquean_la_fusion():
     assert pendientes[58] == ["falta probarla en el editor"]
     assert "tiene un fallo por arreglar" in pendientes[59]
     assert lotes.pendientes({57: ({"Status": "Validada"}, "OPEN")}) == {}
+
+
+def test_miembro_con_decision_pendiente_bloquea_la_fusion_del_lote():
+    assert lotes.con_decision({44: {"tarea", "decision"}, 45: {"⚠️bug⚠️"}, 46: set()}, "decision") == [44]
+    assert lotes.con_decision({45: {"⚠️bug⚠️"}}, "decision") == []
 
 
 def test_pr_con_varias_issues_necesita_lote():

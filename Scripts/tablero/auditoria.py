@@ -9,6 +9,9 @@ Cada problema tiene un tipo que decide qué hace `auditar --aplicar` (nunca toca
   sin más y se anota en un comentario.
 - `organizacion`: el resto. Etiqueta `revisar-organizacion` y un comentario con la lista.
 
+También comprueba la forma de la issue (`problemas_de_formato`): etiqueta de tipo, título corto, cuerpo y
+criterios de aceptación. `nueva` usa la misma función para no crear issues mal formadas.
+
 La detección es pura: `problemas` recibe la issue ya normalizada con el contexto de sus PR
 (`con_pr`, `fusionada`, `lote_fusionado`, `prs_sin_lote`, `revisor_sugerido`).
 """
@@ -16,6 +19,7 @@ La detección es pura: `problemas` recibe la issue ya normalizada con el context
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
@@ -38,7 +42,10 @@ DIAS_RESUMEN = 14
 INICIO_SISTEMA = datetime(2026, 9, 30, tzinfo=timezone.utc)
 # Asignado significa «estoy con ella ahora»: en estas columnas nadie está trabajando en la issue.
 ESTADOS_SIN_DUENO = ("Backlog", "Ready", bloqueos.ESTADO)
-CAMPOS_OBLIGATORIOS = ("Prioridad", "Área", "Tamaño")
+CAMPOS_OBLIGATORIOS = ("Prioridad", "Área", "Tamaño", "Fase")
+ETIQUETAS_TIPO = ("tarea", "⚠️bug⚠️", "bug")
+MAX_TITULO = 80
+CASILLA = re.compile(r"^\s*[-*] \[[ xX]\]", re.M)
 TITULOS_EXCLUIDOS = {"Parte diario del tablero", "Estado del tablero"}
 # Comentarios que escribe el propio tablero y no explican por qué algo falla.
 PREFIJOS_AUTOMATICOS = ("Lista para revisión", "**Editor: funciona**", "**Revisión IA", "Fusionada en",
@@ -49,7 +56,7 @@ query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
   repository(owner: $owner, name: $repo) {
     issues(first: 50, after: $cursor, states: [ESTADOS], filterBy: {since: $since}) {
       pageInfo { hasNextPage endCursor }
-      nodes { number title state stateReason closedAt
+      nodes { number title body state stateReason closedAt
         labels(first: 20) { nodes { name } }
         assignees(first: 5) { nodes { login } }
         parent { number }
@@ -115,6 +122,23 @@ def triviales_abierta(issue: dict) -> list[dict]:
         lista.append(problema("In review sin Revisor ni asignado del que deducirlo"))
     if estado == "QA editor" and not valores.get("Editor"):
         lista.append(problema("QA editor sin campo Editor", "trivial", "Editor", "Sin probar"))
+    if estado == "Ready" and (esperas := bloqueos.abiertas({"blockedBy": {"nodes": issue["bloqueantes"]}})):
+        lista.append(problema(f"está en Ready y depende de {', '.join(f'#{n}' for n in esperas)}, que siguen abiertas",
+                              "trivial", "Status", bloqueos.ESTADO))
+    return lista
+
+
+def problemas_de_formato(titulo: str, cuerpo: str | None, etiquetas: set[str]) -> list[str]:
+    """Defectos de forma de una issue de trabajo: tipo, título, cuerpo y criterios de aceptación."""
+    lista = []
+    if not etiquetas & set(ETIQUETAS_TIPO):
+        lista.append("sin etiqueta de tipo (`tarea` o `⚠️bug⚠️`)")
+    if len(titulo.strip()) > MAX_TITULO:
+        lista.append(f"título de {len(titulo.strip())} caracteres (máximo {MAX_TITULO}): el detalle va en el cuerpo")
+    if not (cuerpo or "").strip():
+        lista.append("sin cuerpo: falta qué hay que hacer o qué falla y los criterios de aceptación")
+    elif not CASILLA.search(cuerpo):
+        lista.append("sin criterios de aceptación (casillas `- [ ]` en el cuerpo)")
     return lista
 
 
@@ -123,6 +147,11 @@ def organizacion_abierta(issue: dict) -> list[dict]:
     estado = valores.get("Status")
     lista = [] if issue.get("padre") else [problema("no cuelga de ningún objeto (`tablero.py colgar <n> <objeto>`)")]
     lista += [problema(f"sin {campo}") for campo in CAMPOS_OBLIGATORIOS if not valores.get(campo)]
+    if "colision" not in issue["etiquetas"]:  # las issues `colision` las redacta el propio tablero
+        lista += [problema(t) for t in problemas_de_formato(issue["titulo"], issue.get("cuerpo"), issue["etiquetas"])]
+    if estado == "Backlog" and valores.get("Prioridad") == "P0":
+        lista.append(problema("P0 en Backlog: lo más urgente no puede estar sin aprobar; pásala a Ready o bájale "
+                              "la Prioridad"))
     if estado == "In progress" and not issue["asignados"]:
         lista.append(problema("In progress sin asignado"))
     if estado in ESTADOS_SIN_DUENO and issue["asignados"]:
@@ -207,7 +236,7 @@ def normalizar(nodo: dict, valores: dict, contexto: dict | None = None) -> dict:
         "numero": nodo["number"], "titulo": nodo["title"], "estado": nodo["state"],
         "motivo_cierre": nodo.get("stateReason"),
         "cerrada": datetime.fromisoformat(cerrada.replace("Z", "+00:00")) if cerrada else None,
-        "etiquetas": objetos.nombres_etiquetas(nodo),
+        "cuerpo": nodo.get("body") or "", "etiquetas": objetos.nombres_etiquetas(nodo),
         "asignados": [a["login"] for a in nodo["assignees"]["nodes"]],
         "padre": (nodo.get("parent") or {}).get("number"),
         "bloqueantes": bloqueos.bloqueantes(nodo),

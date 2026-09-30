@@ -1,7 +1,8 @@
 """Dependencias entre issues con las relaciones nativas de GitHub («blocked by»).
 
-Una issue que espera a otras está en el estado Bloqueada y lleva la etiqueta `bloqueado`.
-Cuando se cierran todas sus bloqueantes, `sync` la pasa a Ready y quita la etiqueta.
+Una issue aprobada que espera a otras está en el estado Bloqueada y lleva la etiqueta `bloqueado`.
+Cuando se cierran todas sus bloqueantes, `sync` la pasa a Ready y quita la etiqueta. En Backlog
+(sin aprobar) la dependencia se registra y la issue se queda en Backlog: bloquear no aprueba.
 Las funciones puras reciben la issue con `blockedBy` tal como la devuelve GraphQL.
 """
 
@@ -45,6 +46,16 @@ def motivo_para_no_coger(numero: int, issue: dict) -> str | None:
         return (f"#{numero} está en Bloqueada sin dependencias registradas. Registra de qué depende con "
                 f"`tablero.py bloquear {numero} --por <m>` o pide a un aprobador que la pase a Ready.")
     return None
+
+
+def estado_tras_bloquear(actual: str | None) -> str | None:
+    """Estado tras registrar una dependencia: Backlog se queda como está (None); el resto, Bloqueada."""
+    return None if actual == "Backlog" else ESTADO
+
+
+def estado_al_aprobar(pedido: str, issue: dict) -> str:
+    """Estado real al mover una issue: Ready con bloqueantes abiertas es Bloqueada."""
+    return ESTADO if pedido == "Ready" and abiertas(issue) else pedido
 
 
 def desbloquea(issue: dict) -> bool:

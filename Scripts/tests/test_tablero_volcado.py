@@ -83,3 +83,10 @@ def test_silenciar_solo_toca_las_suscritas():
              {"id": "b", "number": 2, "viewerSubscription": "UNSUBSCRIBED"},
              {"id": "c", "number": 3, "viewerSubscription": "IGNORED"}, {"id": "d", "number": 4}]
     assert [n["id"] for n in volcado.a_silenciar(nodos)] == ["a"]
+
+
+def test_silenciar_distingue_la_falta_del_scope_de_otros_errores():
+    sin_scope = ("gh api graphql -f…: gh: Your token has not been granted the required scopes to execute this query. "
+                 "The 'updateSubscription' field requires one of the following scopes: ['notifications']")
+    assert volcado.falta_scope_de_notificaciones(sin_scope)
+    assert not volcado.falta_scope_de_notificaciones("gh api graphql -f…: HTTP 502")

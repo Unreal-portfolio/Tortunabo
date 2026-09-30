@@ -77,6 +77,11 @@ def pendientes(miembros: dict[int, tuple[dict, str]]) -> dict[int, list[str]]:
     return {n: f for n, (valores, estado) in sorted(miembros.items()) if (f := faltas(valores, estado))}
 
 
+def con_decision(etiquetas_por_miembro: dict[int, set[str]], etiqueta: str) -> list[int]:
+    """Miembros con una decisión pendiente: la PR del lote no se fusiona hasta que se decida."""
+    return sorted(n for n, etiquetas in etiquetas_por_miembro.items() if etiqueta in etiquetas)
+
+
 def pr_necesita_lote(refs_trabajo: set[int], con_lote: bool) -> bool:
     """Una PR que cierra varias issues de trabajo debe ir con su lote."""
     return len(refs_trabajo) >= MINIMO_MIEMBROS and not con_lote

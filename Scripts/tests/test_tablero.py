@@ -54,7 +54,7 @@ def test_revisor_cruzado_nunca_el_autor():
     assert tablero.elegir_revisor(proyecto, "Mokius") == "SkiTemplar"
 
 
-def test_revisor_de_ruby_reparte_carga():
+def test_revisor_de_rubi_reparte_carga():
     assert tablero.elegir_revisor(_proyecto_con_revisiones(), "Ruben-Besteiro") == "Mokius"
     assert tablero.elegir_revisor(_proyecto_con_revisiones("Mokius"), "Ruben-Besteiro") == "SkiTemplar"
 

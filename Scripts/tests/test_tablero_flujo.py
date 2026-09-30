@@ -174,3 +174,23 @@ def test_restaurar_solo_lo_que_cambio_o_se_vacio():
     foto = {"i1": "Ready", "i2": "Done", "i3": None}
     assert estados.pendientes_de_restaurar(foto, {"i1": "Ready", "i2": None, "i3": None}) == {"i2": "Done"}
     assert estados.pendientes_de_restaurar(foto, foto) == {}
+
+
+def test_bloquear_en_backlog_no_aprueba():
+    assert bloqueos.estado_tras_bloquear("Backlog") is None
+    for estado in ("Ready", "In progress", "Bloqueada", None):
+        assert bloqueos.estado_tras_bloquear(estado) == "Bloqueada"
+
+
+def test_aprobar_con_bloqueantes_abiertas_deja_en_bloqueada():
+    con_espera = _bloqueada((12, "OPEN"), estado="Backlog")
+    assert bloqueos.estado_al_aprobar("Ready", con_espera) == "Bloqueada"
+    assert bloqueos.estado_al_aprobar("Ready", _bloqueada((12, "CLOSED"), estado="Backlog")) == "Ready"
+    assert bloqueos.estado_al_aprobar("Backlog", con_espera) == "Backlog"
+    assert bloqueos.estado_al_aprobar("Ready", {}) == "Ready"
+
+
+@pytest.mark.parametrize("firma, login", [("Mokius (Claude)", "Mokius"), ("SkiTemplar", "SkiTemplar"),
+                                          ("Codex", None), ("IA revisora", None), ("", None), (None, None)])
+def test_revisor_del_equipo_sale_de_la_firma(firma, login):
+    assert flujo.revisor_del_equipo(firma, {"SkiTemplar": {}, "Mokius": {}}) == login
