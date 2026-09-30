@@ -1,4 +1,5 @@
 #include "Game/TN_BeachRaceGameMode.h"
+#include "Game/TN_BeachRaceDecisions.h"
 #include "Game/TN_BeachRaceGameState.h"
 #include "Game/TN_BeachRoundSyncComponent.h"
 #include "Core/TN_Log.h"
@@ -786,25 +787,24 @@ void ATN_BeachRaceGameMode::OnRoundTimeLimit()
 	{
 		return;
 	}
-	// Nadie ha llegado al agua en el límite: gana quien esté más cerca del mar (en el sprint, entre las finalistas).
-	APlayerController* Best = nullptr;
-	float BestProgress = -TNumericLimits<float>::Max();
+	// Nadie ha llegado al agua en el límite: gana quien esté más cerca del mar (en el sprint, entre las finalistas). En el
+	// sprint, si ninguna finalista tiene tortuga (caída bajo KillZ, esperando su huevo), la primera que quede: antes no ganaba
+	// nadie y, con dos finalistas aún conectadas, CheckSprintForfeit dejaba la partida parada sin terminar (#56).
+	TArray<APlayerController*> Controllers;
+	TArray<TNBeachRaceRules::FTimeLimitCandidate> Candidates;
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* PC = It->Get();
 		const ATN_CoopPlayerState* PS = PC ? PC->GetPlayerState<ATN_CoopPlayerState>() : nullptr;
 		const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
-		if (!Pawn || !PS || PS->IsOnlyASpectator() || (bSprint && !IsSprintFinalist(PC)))
-		{
-			continue;
-		}
-		const float Progress = GetCourseProgress(Pawn);
-		if (Progress > BestProgress)
-		{
-			BestProgress = Progress;
-			Best = PC;
-		}
+		TNBeachRaceRules::FTimeLimitCandidate& Candidate = Candidates.AddDefaulted_GetRef();
+		Controllers.Add(PC);
+		Candidate.bEligible = PS && !PS->IsOnlyASpectator() && (!bSprint || IsSprintFinalist(PC));
+		Candidate.bHasPawn = Pawn != nullptr;
+		Candidate.Progress = Pawn ? GetCourseProgress(Pawn) : 0.f;
 	}
+	const int32 BestIndex = TNBeachRaceRules::PickTimeLimitWinner(Candidates, bSprint);
+	APlayerController* Best = Controllers.IsValidIndex(BestIndex) ? Controllers[BestIndex] : nullptr;
 	ATN_CoopPlayerState* BestState = Best ? Best->GetPlayerState<ATN_CoopPlayerState>() : nullptr;
 	const float LimitMinutes = (bSprint ? SprintTimeLimitSeconds : RoundTimeLimitSeconds) / 60.f;
 	ATN_BeachRaceGameState* BeachState = GetBeachGameState();
