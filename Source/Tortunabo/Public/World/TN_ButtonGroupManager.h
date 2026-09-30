@@ -5,6 +5,48 @@
 #include "TN_ButtonGroupManager.generated.h"
 
 class ATN_ButtonInteractable;
+class UNiagaraSystem;
+class USoundBase;
+
+/** Reglas del grupo de botones como lógica pura (las usa ATN_ButtonGroupManager; tests en Tortunabo.World.ButtonGroup). */
+namespace TNButtonGroupRules
+{
+	enum class EGroupChange : uint8
+	{
+		None,
+		Activate,
+		Deactivate
+	};
+
+	/**
+	 * @brief Qué le pasa al grupo con ActiveCount botones pulsados de Required.
+	 * @param bActive  Si el grupo ya está activado.
+	 * @param bOneShot Una vez activado no se desactiva aunque se suelten botones.
+	 */
+	inline EGroupChange Decide(int32 ActiveCount, int32 Required, bool bActive, bool bOneShot)
+	{
+		const bool bMet = ActiveCount >= Required;
+		if (bMet && !bActive)
+		{
+			return EGroupChange::Activate;
+		}
+		if (!bMet && bActive && !bOneShot)
+		{
+			return EGroupChange::Deactivate;
+		}
+		return EGroupChange::None;
+	}
+
+	/**
+	 * @brief ¿Tiene un cliente que mover él mismo el objetivo de una acción? Solo si el servidor no le replica su
+	 *        movimiento (p. ej. una puerta del nivel que no replica): si lo replica, moverlo también en el cliente lo
+	 *        desplazaría dos veces (los desplazamientos son relativos).
+	 */
+	inline bool ClientMovesTarget(bool bTargetReplicates, bool bTargetReplicatesMovement)
+	{
+		return !(bTargetReplicates && bTargetReplicatesMovement);
+	}
+}
 
 /**
  * Struct que representa una acción de transform sobre un actor objetivo.
@@ -45,8 +87,9 @@ struct FTN_TransformAction
 	 * Aplica un array de acciones. bForward=true añade offsets, false los revierte.
 	 * Punto centralizado para evitar duplicar la lógica en cada Manager.
 	 * World se usa para resolver TargetActorTag lazily si TargetActor es null.
+	 * bOnlyClientMoved: solo los objetivos cuyo movimiento no replica el servidor (TNButtonGroupRules::ClientMovesTarget).
 	 */
-	static void ApplyAll(TArray<FTN_TransformAction>& Actions, bool bForward = true, UWorld* World = nullptr);
+	static void ApplyAll(TArray<FTN_TransformAction>& Actions, bool bForward = true, UWorld* World = nullptr, bool bOnlyClientMoved = false);
 };
 
 /**
@@ -56,14 +99,17 @@ struct FTN_TransformAction
  * Cuando TODOS los botones del grupo están activados (bIsActivated=true):
  *   → Aplica las TriggerActions al array de actores objetivo.
  *
- * Autoridad: toda la lógica en el servidor. Las acciones se propagan
- * mediante replicación de los actores objetivo (si son replicados).
+ * Autoridad: toda la lógica en el servidor. El estado del grupo (bGroupActive) se replica con OnRep y es la fuente de
+ * verdad: quien entra tarde, o para quien el gestor no era relevante al resolverse el puzzle, lo ve resuelto. Las
+ * acciones las aplica el servidor; los objetivos que replican su movimiento llegan así a los clientes, y los que no (una
+ * puerta del nivel sin réplica) los mueve cada cliente en su OnRep. El sonido y el efecto del momento van aparte, por un
+ * multicast no fiable (solo quien está en ese momento).
  *
  * Uso en Editor:
  *   1. Colocar BP_ButtonGroupManager en el nivel.
  *   2. En la propiedad ManagedButtons, añadir referencias a los botones del puzzle.
  *   3. En TriggerActions, añadir los actores y los offsets de transform.
- *   4. Opcionalmente implementar OnAllButtonsActivated en BP para VFX.
+ *   4. Opcionalmente, en los valores por defecto, ActivatedSound, ActivatedVFX y DeactivatedSound.
  */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_ButtonGroupManager : public AActor
@@ -114,11 +160,25 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ButtonGroup")
 	int32 TriggerThreshold = -1;
 
-	/** Llamado en TODAS las máquinas cuando todos los botones están activados. */
-	UFUNCTION(BlueprintImplementableEvent, Category = "ButtonGroup")
-	void OnAllButtonsActivated();
+	/** Sonido al activarse el grupo (solo quien está en ese momento). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ButtonGroup|Efectos")
+	TObjectPtr<USoundBase> ActivatedSound;
+
+	/** Efecto visual al activarse el grupo, en el gestor (solo quien está en ese momento). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ButtonGroup|Efectos")
+	TObjectPtr<UNiagaraSystem> ActivatedVFX;
+
+	/** Sonido al desactivarse (solo con bOneShot = false). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ButtonGroup|Efectos")
+	TObjectPtr<USoundBase> DeactivatedSound;
 
 public:
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/** ¿Está activado el grupo? Replicado en todas las máquinas. */
+	UFUNCTION(BlueprintPure, Category = "ButtonGroup")
+	bool IsGroupActive() const { return bGroupActive; }
+
 	/**
 	 * Registra un botón con este gestor en runtime (llamado por ATN_ButtonInteractable
 	 * cuando tiene ManagerTag configurado). Idempotente: ignorar duplicados.
@@ -126,13 +186,19 @@ public:
 	 */
 	void RegisterButton(ATN_ButtonInteractable* Button);
 
-	/** Llamado en TODAS las máquinas cuando el grupo se desactiva (solo si bOneShot=false). */
-	UFUNCTION(BlueprintImplementableEvent, Category = "ButtonGroup")
-	void OnGroupDeactivated();
-
 private:
+	/** Fuente de verdad del estado del grupo: la pone el servidor y llega a todos (también a quien entra tarde). */
+	UPROPERTY(ReplicatedUsing = OnRep_GroupActive)
+	bool bGroupActive = false;
+
+	/** Servidor: ya se disparó un grupo bOneShot (no se vuelve a mirar). */
 	bool bTriggered = false;
-	bool bCurrentlyActivated = false;
+
+	/** Cliente: si ha movido ya los objetivos que no replican su movimiento (para no moverlos dos veces). */
+	bool bClientActionsApplied = false;
+
+	UFUNCTION()
+	void OnRep_GroupActive();
 
 	void OnButtonActivationChanged(ATN_ButtonInteractable* Button, bool bActivated);
 	void CheckAndTrigger();
@@ -143,9 +209,9 @@ private:
 
 	int32 GetEffectiveThreshold() const;
 
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastNotifyActivated();
+	/** Sonido y efecto del momento en cada máquina (el estado ya va en bGroupActive). */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayGroupEffect(bool bActivated);
 
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastNotifyDeactivated();
+	void PlayGroupEffect(bool bActivated) const;
 };
