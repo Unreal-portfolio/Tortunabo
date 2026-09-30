@@ -10,13 +10,16 @@
 # si lo escribiera el dueño de TABLERO_TOKEN no le llegaría el correo. Para leer el Project hace falta TABLERO_TOKEN,
 # el mismo secreto del puente. Los comentarios del GITHUB_TOKEN no lanzan otros workflows.
 #
+# Lo lanza la rutina de la nube al terminar su parte (workflow_dispatch), para que el correo salga justo detrás. El cron
+# es la red de seguridad: si ese día ya hay avisos publicados, no hace nada, para no mandar dos correos.
+#
 # El código se toma de `dev`. Este fichero tiene que estar también en `main`: GitHub solo ejecuta los `schedule` de la
 # rama por defecto.
 name: Avisos del tablero
 
 on:
   schedule:
-    - cron: "10 6 * * *" # 8:10 en España en horario de verano: después del puente (7:15) y de la rutina (7:30)
+    - cron: "0 7 * * *" # 9:00 en España en horario de verano, por si la rutina no los ha lanzado
   workflow_dispatch:
     inputs:
       publicar:
@@ -57,7 +60,17 @@ jobs:
       - name: uv
         uses: astral-sh/setup-uv@v5
 
+      - name: ¿Ya se publicaron hoy?
+        id: hoy
+        if: github.event_name == 'schedule'
+        run: |
+          desde="$(date -u +%F)T00:00:00Z"
+          n=$(gh api "repos/$GITHUB_REPOSITORY/issues/$AVISOS_ISSUE/comments?since=$desde&per_page=100" \n            --jq '[.[] | select(.user.login == "github-actions[bot]")] | length')
+          echo "publicados=$n" >> "$GITHUB_OUTPUT"
+          if [ "$n" != "0" ]; then echo "La rutina ya publicó los avisos de hoy ($n comentarios): no se repiten."; fi
+
       - name: Avisos
+        if: steps.hoy.outputs.publicados == '' || steps.hoy.outputs.publicados == '0'
         env:
           PUBLICAR: ${{ github.event_name == 'schedule' || inputs.publicar }}
         run: |
