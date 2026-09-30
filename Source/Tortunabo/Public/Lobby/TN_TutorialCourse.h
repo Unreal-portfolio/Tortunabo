@@ -75,6 +75,9 @@ public:
 	bool IsParticipant(const APlayerController* PC) const;
 	int32 NumParticipants() const { return Participants.Num(); }
 
+	/** Estación más avanzada que ha pisado PC (0 = la primera); INDEX_NONE si no está en el tutorial. */
+	int32 GetReachedStation(const APlayerController* PC) const;
+
 	/** El cangrejo de prácticas ha recibido un golpe de algo que lanzó Thrower. */
 	void NotifyDummyHit(APawn* Thrower);
 

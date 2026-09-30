@@ -1,9 +1,11 @@
 #include "Lobby/TN_TutorialPlayerComponent.h"
 #include "Lobby/TN_TutorialCourse.h"
 #include "Lobby/TN_TutorialWidget.h"
+#include "Lobby/TN_TutorialRules.h"
 #include "TN_TutorialLayout.h"
 #include "TN_TutorialTexts.h"
 #include "Core/TN_Log.h"
+#include "Player/TN_DebugRpcDecisions.h"
 #include "Core/TN_InventoryTypes.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
@@ -235,10 +237,22 @@ void UTN_TutorialPlayerComponent::ServerSkipTutorial_Implementation()
 
 void UTN_TutorialPlayerComponent::ServerGoToStation_Implementation(int32 StationIndex)
 {
-	if (ATN_TutorialCourse* Course = GetCourse())
+	ATN_TutorialCourse* Course = GetCourse();
+	APlayerController* PC = GetPC();
+	if (!Course || !PC)
 	{
-		Course->GoToStation(GetPC(), StationIndex);
+		return;
 	}
+	// Saltar a cualquier estación (y entrar si hace falta) es de pruebas: solo el anfitrión y fuera de Shipping. Un cliente
+	// solo puede volver a una estación que ya ha pisado; antes se teletransportaba a donde quería con cualquier número (#17).
+	const bool bDebugJump = TNDebugRpcLogic::CanRunHostOnlyDebugRpc(TNDebugRpcLogic::IsShippingBuild(), GetNetMode(), PC->IsLocalController());
+	if (!TNTutorialRules::CanGoToStation(StationIndex, TNTutorial::NumStations, Course->GetReachedStation(PC), bDebugJump))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Tutorial] %s pide ir a la estación %d: rechazada (no existe o aún no ha llegado)."),
+			*GetNameSafe(PC), StationIndex + 1);
+		return;
+	}
+	Course->GoToStation(PC, StationIndex);
 }
 
 void UTN_TutorialPlayerComponent::SetInTutorialOnServer(bool bIn)

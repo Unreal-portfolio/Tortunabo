@@ -9,6 +9,7 @@
 #include "Lobby/TN_TutorialPlayerComponent.h"
 #include "Lobby/TN_TutorialPractice.h"
 #include "Lobby/Playground/TN_JellyfishTrampoline.h"
+#include "Lobby/TN_TutorialRules.h"
 #include "TN_TutorialLayout.h"
 #include "Core/TN_InventoryTypes.h"
 #include "Core/TN_Log.h"
@@ -234,6 +235,12 @@ ATN_TutorialCourse::FParticipant* ATN_TutorialCourse::FindParticipant(const APla
 bool ATN_TutorialCourse::IsParticipant(const APlayerController* PC) const
 {
 	return PC && Participants.ContainsByPredicate([PC](const FParticipant& P) { return P.PC.Get() == PC; });
+}
+
+int32 ATN_TutorialCourse::GetReachedStation(const APlayerController* PC) const
+{
+	const FParticipant* P = PC ? Participants.FindByPredicate([PC](const FParticipant& Each) { return Each.PC.Get() == PC; }) : nullptr;
+	return P ? TNTutorialRules::StationOfCheckpoint(P->Checkpoint, static_cast<int32>(TNTutorial::EStation::Catapult)) : INDEX_NONE;
 }
 
 int32 ATN_TutorialCourse::FreeSlot() const
