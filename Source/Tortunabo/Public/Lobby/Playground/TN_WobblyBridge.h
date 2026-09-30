@@ -25,6 +25,24 @@ struct FTNBridgePlank
 	double LiftJitter = 0.0;
 };
 
+/** Red del puente: la agitación del servidor viaja en un byte (0..255 → 0..MaxExcitation). */
+namespace TNWobblyBridgeNet
+{
+	/** Agitación máxima (varias tortugas corriendo y saltando a la vez). */
+	constexpr float MaxExcitation = 2.4f;
+
+	/** Pasos de 2,4 / 255 ≈ 0,0094: con el vaivén de 24 cm, menos de 3 mm por paso. */
+	inline uint8 QuantizeExcitation(float Excitation)
+	{
+		return static_cast<uint8>(FMath::RoundToInt(FMath::Clamp(Excitation / MaxExcitation, 0.f, 1.f) * 255.f));
+	}
+
+	inline float DequantizeExcitation(uint8 Quantized)
+	{
+		return static_cast<float>(Quantized) / 255.f * MaxExcitation;
+	}
+}
+
 /** Personaje cerca del puente (cada máquina lleva la cuenta de los que ve). */
 struct FTNBridgeRider
 {
@@ -47,8 +65,11 @@ struct FTNBridgeRider
  * Tablones cinemáticos: cada uno es una caja de colisión (subobjeto por defecto, con nombre estable para la red) que se
  * mueve en cada fotograma; el CharacterMovement sigue a las bases que se mueven y, como la caja se puede nombrar por
  * red, el cliente manda su posición relativa al tablón: servidor y cliente coinciden aunque su vaivén vaya unos
- * milisegundos desfasado. El vaivén usa el reloj del servidor (GetServerWorldTimeSeconds, suavizado) y la agitación se
- * calcula en cada máquina con las tortugas que ve: no replica nada por fotograma. Los crujidos son locales.
+ * milisegundos desfasado. El vaivén usa el reloj del servidor (GetServerWorldTimeSeconds, suavizado) y la agitación la
+ * calcula el servidor con las tortugas que ve y la replica en un byte (NetExcitation, hasta 10 veces por segundo, solo
+ * cuando cambia); los clientes la siguen suavizada. Los hundimientos bajo cada tortuga solo están en la malla visual:
+ * la colisión de los tablones no los lleva, así es la misma en todas las máquinas (antes la agitación y los hundimientos
+ * se calculaban en cada una y los tablones no coincidían: correcciones y caídas). Los crujidos son locales.
  *
  * Espacio del actor (cm): origen en el suelo bajo el centro del vano; el puente va a lo largo de X. Los extremos del
  * tablero están en X = ±SpanLength/2 a DeckHeight de alto; los postes, 12 cm por fuera. Con bSandTowers, cada extremo
@@ -165,6 +186,10 @@ protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_PlaygroundSynthComponent> Voice;
 
+	/** Agitación del servidor cuantizada (TNWobblyBridgeNet); los clientes la siguen suavizada. */
+	UPROPERTY(Replicated)
+	uint8 NetExcitation = 0;
+
 private:
 	/** Todo lo que depende de la configuración; no hace nada si no ha cambiado (salvo bForce). */
 	void BuildAll(bool bForce);
@@ -198,8 +223,12 @@ private:
 	uint32 ConfigHash() const;
 
 	TArray<FTNBridgePlank> Planks;
-	/** Pose actual de cada tablón (espacio del actor). */
+	/** Pose actual de cada tablón (espacio del actor), sin hundimientos: la de su caja de colisión. */
 	TArray<FTransform> PlankPose;
+	/** La misma con los hundimientos bajo las tortugas: solo para la malla visual. */
+	TArray<FTransform> VisualPose;
+	/** Hora del vaivén del último MovePlanks (para la malla visual). */
+	double PoseClock = 0.0;
 	TArray<FVector> PrevPlankWorld;
 	/** Hundimientos de este fotograma: (X a lo largo, peso). */
 	TArray<FVector2D> Dips;
