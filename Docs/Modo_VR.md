@@ -1,12 +1,14 @@
 # Modo VR (gafas de realidad virtual)
 
 Tortunavy se puede jugar entero con unas gafas de realidad virtual (probado para Meta Quest con OpenXR): en primera
-persona, con la cabeza y las dos aletas con seguimiento, el HUD flotando delante y todos los menús en el mundo, que se
-apuntan con la aleta derecha. Usar, lanzar y coger también se hacen en primera persona: lo que se lanza sale hacia donde
-apunta la aleta. El mismo modo se puede probar **sin gafas** (modo simulado), en la ventana del PC con el ratón.
+persona, con la cabeza y las dos manos con seguimiento, el HUD curvo anclado a la vista y todos los menús curvos en el
+mundo, que se apuntan con la aleta derecha. Se coge con las manos (agarre, muy cerca del objeto) y se lanza con el gesto
+(soltar el agarre con impulso). El mismo modo se puede probar **sin gafas** (modo simulado), en la ventana del PC con el
+ratón. Sin gafas también hay **primera persona** (tecla V), con la misma cámara en la cabeza.
 
-Estado: rama `new-mota-vr`, 29-09-2026. Escrito sin poder compilar (sesión en la nube): la primera compilación puede pedir
-algún retoque.
+Estado: rama `new-mota-vr` (29-09-2026) y `new-mota-vr-inmersion` (30-09-2026: primera persona con cuerpo, brazos que
+siguen a los mandos, coger con física, gestos, interfaz curva y carga en 360). Escrito sin poder compilar (sesión en la
+nube): la primera compilación puede pedir algún retoque.
 
 ## Resumen rápido
 
@@ -36,25 +38,42 @@ Cómo se elige (lo de arriba manda sobre lo de abajo). `UTN_VRSubsystem` lo mira
 
 ## Qué cambia en VR
 
-- **Primera persona.** Cámara VR en los ojos de la tortuga (45 cm por encima del centro de la cápsula, `VREyeOffset`), con
-  el seguimiento de la cabeza. El cuerpo propio no se ve (su sombra sí); los demás te ven normal. La tortuga mira hacia
-  donde mira tu cabeza, también en las máquinas de los demás (`bVRPlayer` replicado). Andar va hacia donde miras.
+- **Primera persona.** Cámara VR en la cabeza de la tortuga, con el seguimiento de la cabeza: de pie, a una altura fija
+  (45 cm por encima del centro de la cápsula, `VREyeOffset`: que el paso no menee la vista); **tumbada, en el ragdoll y
+  derribada, pegada al hueso de la cabeza**, esté donde esté el cuerpo. Del cuerpo propio se ve todo **menos la cabeza**:
+  al mirar abajo se ven el cuerpo, los brazos, la lengua y las gotas de sudor. Los demás te ven normal. La tortuga mira
+  hacia donde mira tu cabeza, también en las máquinas de los demás (`bVRPlayer` replicado). Andar va hacia donde miras.
+- **Brazos que siguen a los mandos.** Las manos del cuerpo de la tortuga van a donde están los mandos (IK de brazo y
+  antebrazo en `UTN_TurtleAnimInstance`), salvo bailando, en el caparazón, tumbada o llevando a otra tortuga. Los demás
+  también lo ven (las manos se mandan al servidor unas 15 veces por segundo). Las aletas sueltas de los mandos solo salen
+  sin tortuga (menú principal, espectador) o dentro del caparazón.
+- **Caparazón.** Se ve desde dentro, en su centro y sin girar con la bola, **mucho más oscuro** (tono de concha y viñeta;
+  `TN.FirstPerson.ShellLight`, 0,2 de serie).
 - **Giro** con el stick derecho: a pasos de 30° (de serie), de 45° o suave (Ajustes > Juego > «Giro en VR»). El clic del
   stick derecho recentra la vista y vuelve a poner delante el HUD.
 - **Aletas.** Una aleta de tortuga en cada mando (malla procedural, verde con la manga de caparazón). El objeto que
   llevas en la mano va en la aleta derecha, delante de tus ojos (los demás lo ven en la aleta de tu tortuga).
+- **Coger y lanzar con las manos** (ver «Coger y lanzar»): el agarre coge lo que está **muy cerca de esa mano** (40 cm,
+  `VRHandReach`); soltar el agarre con impulso lo lanza hacia donde va la mano. Los objetos del suelo solo se cogen con
+  la mano (sin VR, por cercanía del cuerpo, como siempre).
 - **Usar y lanzar** con el gatillo derecho, **apuntando con la aleta derecha**: lanzar al compañero que llevas, los
   objetos arrojadizos, la tinta y los objetos de la carrera salen hacia donde apunta el mando. El cliente manda esa
   dirección al servidor (fiable) justo antes de la acción; sin gafas se apunta con la cámara, como siempre.
-- **HUD** en un panel que flota delante (1,4 m, 50° de ancho, un poco por debajo de los ojos). Sigue a la cabeza con
-  retraso: se puede mirar de reojo y, si giras más de 24°, vuelve delante. Si hay una pared en medio, se acerca.
-- **Menús** (pausa, tienda, probador, general, salas, menú principal, campeón...): el panel se queda quieto delante
-  (1,6 m, 58°). La aleta derecha apunta con un láser y el gatillo es el clic. También con botones: A/X aceptar, B/Y atrás,
-  agarres = pestaña anterior/siguiente, sticks = moverse por el menú, botón de menú = cerrar.
+- **Gatillos y agarres por su valor.** Con OpenXR los Touch solo dan el valor del gatillo y del agarre (no un «clic»):
+  cuentan como pulsados a partir de ~55 % y sueltos por debajo de ~35 % (en el juego y en los menús).
+- **HUD** curvo y **anclado a la cámara**: siempre fijo en la vista, como en la pantalla (1,5 m, 80° de arco, el eje del
+  cilindro en los ojos). Si hay una pared delante, se acerca. `TN.VR.HudFollow 1` lo deja suelto delante siguiendo a la
+  cabeza con retraso (a quien le maree el anclado).
+- **Menús** (pausa, tienda, probador, general, salas, menú principal, campeón...): un panel curvo que te rodea, quieto en
+  el mundo (1,6 m, 100° de arco). La aleta derecha apunta con un láser y el gatillo es el clic. También con botones: A/X
+  aceptar, B/Y atrás, agarres = pestaña anterior/siguiente, sticks = moverse por el menú, botón de menú = cerrar.
+- **Interfaz integrada.** El panel del motor (`UWidgetComponent`) queda plano e invisible (dibuja la interfaz en su
+  textura y sirve al puntero); lo que se ve es una malla curva con su mismo material (`CurvedPanel`).
 - **Ruedas** de emotes (Y) y de frases (gatillo izquierdo): mantener y elegir con el stick derecho, como con el mando.
-- **Pantalla de carga**: el huevo sale en el panel. Con gafas, mientras está cerrado, además una capa de carga de las
-  gafas con el huevo dibujado: la pinta el compositor de las gafas, así que no se congela la imagen mientras se carga un
-  mapa.
+- **Pantalla de carga en 360**: mientras sale el huevo, una playa en 360 rodea la cabeza (cielo, horizonte, mar y arena;
+  `TN.VR.LoadingDomeRadius`) con el huevo en el panel curvo. Con gafas, mientras está cerrado, además capas de carga de las
+  gafas: un cubo con la misma playa y el huevo delante. Las pinta el compositor de las gafas, así que no se congela la
+  imagen mientras se carga un mapa.
 - **Confort** (marea menos):
   - sin temblores de cámara, sin ojo de pez, sin desenfoque de movimiento, sin aberración cromática ni profundidad de campo;
   - cortes secos en vez de fundidos de cámara (cambiar de tortuga como espectador, entrar y salir del probador);
@@ -72,19 +91,58 @@ Cómo se elige (lo de arriba manda sobre lo de abajo). `UTN_VRSubsystem` lo mira
 | Clic stick izquierdo | Pulsar para hablar | — |
 | Gatillo derecho | Interactuar / usar / lanzar (apunta la aleta derecha) | Clic del láser |
 | Gatillo izquierdo | Rueda de frases (mantener) | Clic del láser |
-| Agarre derecho | Soltar el objeto | Pestaña siguiente |
-| Agarre izquierdo | Correr (mantener) | Pestaña anterior |
+| Agarre derecho | Coger con esa mano; soltar con impulso = lanzar; sin nada cerca y con un objeto en la aleta, soltar despacio = dejarlo caer | Pestaña siguiente |
+| Agarre izquierdo | Coger con esa mano; sin nada cerca, correr (mantener) | Pestaña anterior |
 | A | Saltar | Aceptar |
 | B | Caparazón | Atrás |
 | X | Cambiar de objeto | Aceptar |
 | Y | Rueda de emotes (mantener) | Atrás |
 | Menú (mando izquierdo) | Menú de pausa | Cerrar |
 
+## Coger y lanzar (con gafas)
+
+Todo se decide por la mano que aprieta el agarre, no por el cuerpo (`ATortugaCharacter::VRGripPressed` y
+`VRGripReleased`, `ATN_VRRig::UpdateGrips`). Al apretar, en este orden:
+
+1. **Algo al alcance de esa mano** (40 cm): un objeto del suelo o cualquier cosa con la que se interactúa (botones,
+   cofres, puestos). Se coge o se usa como con la E.
+2. **Un compañero** en el caparazón o aturdido al alcance de la mano: se coge (como con la E).
+3. **Un objeto con física** (pelotas, cajas, decorado suelto; hasta 250 kg, nunca tortugas, enemigos ni caparazones):
+   va pegado a la mano (`UTN_VRGrabComponent`, un `UPhysicsHandleComponent`) y sigue chocando con lo demás. Si el actor
+   se replica, lo mueve el servidor (la mano le llega unas 30 veces por segundo) y todos lo ven; si no, solo en tu máquina.
+4. Con el agarre derecho y un objeto ya en la aleta: se «agarra» ese objeto.
+5. Nada: con el izquierdo, correr mientras se mantiene.
+
+Al soltar el agarre:
+
+| Tenías cogido | Con impulso (la mano a más de 2,5 m/s, `VRThrowSpeed`) | Despacio |
+|---|---|---|
+| Un compañero | Lo lanzas hacia donde va la mano | Lo dejas en el suelo |
+| Un objeto recién cogido | Si es arrojadizo (proyectil, tinta, objeto de carrera, concha): sale hacia donde va la mano | Se queda en la aleta (el gatillo lo usa) |
+| El objeto que ya llevabas | Igual: si es arrojadizo, lo lanzas | Se te cae al suelo |
+| Algo con física | Sale con la velocidad de la mano (con tope de 16 m/s) | Se queda donde lo sueltas |
+
+Sin gafas nada de esto cambia: E, clic y las teclas de siempre.
+
+## Primera persona (sin gafas)
+
+Ajustes > Juego > **Cámara**: Tercera persona (de serie) o Primera persona; también con **V** o el **clic del stick
+derecho** en el juego, y con `TN.Camera` en la consola (manda sobre el ajuste). Es la misma cámara que en VR
+(`TortugaCharacter_FirstPerson.cpp`):
+
+- En la cabeza, también tumbada en el ragdoll y derribada (sigue al hueso `Head`, suavizado para que el paso no menee).
+- Del cuerpo propio se ve todo menos la cabeza (se oculta el hueso `Head` y el casco solo en tu máquina): al mirar abajo,
+  el cuerpo, las aletas, la lengua y las gotas de sudor. Con pantalla dividida la cabeza no se oculta (la otra vista la
+  vería sin cabeza).
+- La tortuga mira hacia donde mira la cámara, también para los demás (`bFirstPersonPlayer` replicado).
+- En el caparazón, la vista es desde dentro y mucho más oscura, como en VR.
+
 ## Cómo probar sin gafas
 
-1. **Pruebas automáticas** (lógica pura, sin mundo): `Automation RunTests Tortunabo.VR`. Cinco pruebas: rayo del puntero
+1. **Pruebas automáticas** (lógica pura, sin mundo): `Automation RunTests Tortunabo.VR`. Siete pruebas: rayo del puntero
    contra el panel (`RayPanelHit`), HUD que sigue a la cabeza (`LazyFollowYaw`), giro por pasos (`SnapTurnStep`),
-   distancia y escala del panel (`PanelPlacement`) y botones de los mandos en los menús (`MenuKeys`). Sin ventana:
+   distancia y escala del panel (`PanelPlacement`), botones de los mandos en los menús (`MenuKeys`), panel curvo
+   (`CurvedPanel`) y gatillos y agarres analógicos (`AnalogButton`). Sin ventana:
    `UnrealEditor-Cmd Tortunabo.uproject -ExecCmds="Automation RunTests Tortunabo.VR; Quit" -nullrhi -unattended`.
 2. **Modo simulado** en PIE (1 o 2 jugadores): consola `TN.VR 2` en la ventana que quieras probar. Lista de pruebas abajo.
 3. **Meta XR Simulator** (opcional, para probar el modo gafas de verdad sin gafas): el simulador de Meta hace de gafas y
@@ -145,7 +203,10 @@ Steam, así que no se juega con los del PC). Para mañana, mejor la opción A.
 |---|---|---|
 | `ETNVRMode`, `TNVR::*`, `FTNVRKeys` | `VR/TN_VRMode.*` | El modo actual y las ayudas que usa todo el juego (ver «Reglas para código nuevo»); los botones de los Touch por nombre. |
 | `UTN_VRSubsystem` | `VR/TN_VRSubsystem.*` | Decide el modo cada fotograma, crea el rig en cada mundo de juego, pone y quita los ajustes de confort, registra el procesador de entrada, la capa de carga de las gafas y los comandos `TN.VR*`. |
-| `ATN_VRRig` | `VR/TN_VRRig.*` | El jugador local en VR (solo en su máquina): aletas con `UMotionControllerComponent` (LeftGrip, RightGrip, RightAim), panel de la interfaz (`UWidgetComponent`), láser (`UWidgetInteractionComponent` con rayo propio), el contexto de entrada `IMC_VR` (prioridad 10) sobre las acciones de siempre, el giro y el recentrado. Sin peón (menú principal), la vista es su cámara. |
+| `ATN_VRRig` | `VR/TN_VRRig.*` | El jugador local en VR (solo en su máquina): manos con `UMotionControllerComponent` (LeftGrip, RightGrip, RightAim), panel de la interfaz (`UWidgetComponent` plano e invisible) y su malla curva (`CurvedPanel`), la playa en 360 de la carga (`LoadingDome`), láser (`UWidgetInteractionComponent` con rayo propio), el contexto de entrada `IMC_VR` (prioridad 10) sobre las acciones de siempre, los agarres (coger y lanzar), el giro y el recentrado. Sin peón (menú principal), la vista es su cámara. |
+| `UTN_VRGrabComponent` | `VR/TN_VRGrabComponent.*` | En la tortuga: coger objetos con física con la mano (servidor si el actor se replica, local si no). |
+| Primera persona | `Player/TortugaCharacter_FirstPerson.cpp` | Cámara en la cabeza (con y sin gafas), cuerpo sin cabeza, caparazón oscuro, tecla V y `TN.Camera`. |
+| IK de los brazos | `Player/TN_TurtleAnimInstance.cpp` (`ReachArm`) | Las manos del cuerpo van a los mandos en VR. |
 | `UTN_VRScreenWidget` | `VR/TN_VRScreenWidget.*` | La pantalla VR: lienzo de 1920 × 1080 donde van todos los widgets de pantalla completa con su ZOrder. Se quitan con `RemoveFromParent` de siempre. |
 | `FTNVRInputProcessor` | `Private/VR/TN_VRInputProcessor.*` | Preprocesador de Slate: con un menú delante convierte los botones VR en las teclas de mando que ya entienden todos los menús y los gatillos en clics del láser; simulado, el clic y la rueda del ratón sobre la imagen del juego van al láser. Jugando no toca nada. |
 | `TNVRMath` | `VR/TN_VRMath.h` | Cuentas sin mundo (las prueba `Tortunabo.VR.*`). |
@@ -153,8 +214,9 @@ Steam, así que no se juega con los del PC). Para mañana, mejor la opción A.
 | Entrada OpenXR | `Config/DefaultInput.ini` | Asignaciones clásicas `TNVR_*` con los botones de los Touch: OpenXR crea sus acciones con ellas (sin ellas no llegan los botones). |
 | Ajustes | `FTNGameSettings::VRMode`, `VRTurn` | Ajustes > Juego > Realidad virtual. |
 
-Comandos: `TN.VR`, `TN.VR.Status`, `TN.VR.Recenter`, `TN.VR.HudDistance` (140), `TN.VR.HudFov` (50), `TN.VR.MenuDistance`
-(160), `TN.VR.MenuFov` (58), `TN.VR.SmoothTurnSpeed` (120).
+Comandos: `TN.VR`, `TN.VR.Status`, `TN.VR.Recenter`, `TN.VR.HudDistance` (150), `TN.VR.HudFov` (80, arco del HUD),
+`TN.VR.HudFollow` (0 anclado a la cámara), `TN.VR.MenuDistance` (160), `TN.VR.MenuFov` (100, arco de los menús),
+`TN.VR.LoadingDomeRadius` (300), `TN.VR.SmoothTurnSpeed` (120), `TN.Camera` (-1), `TN.FirstPerson.ShellLight` (0,2).
 
 ## Reglas para código nuevo
 
@@ -175,8 +237,11 @@ Para que todo lo nuevo se vea y funcione en VR:
 
 - Las direcciones del stick como botones (`Thumbstick_Up`...) no se declaran para OpenXR; los menús usan el eje del stick
   (con repetición al mantener).
-- Solo la aleta derecha lleva objetos; la izquierda es decorativa.
-- El HUD es el de siempre en un panel (no está repartido por el mundo). La pantalla dividida no está pensada para VR.
+- Los objetos del inventario van siempre a la aleta derecha, aunque se cojan con la izquierda.
+- El HUD es el de siempre en un panel curvo (no está repartido por el mundo). La pantalla dividida no está pensada para VR.
+- Los brazos de la tortuga son más cortos que los de una persona: si el mando está más lejos, la aleta se estira hacia él
+  hasta donde llega.
+- Un objeto con física que se replica llega a la mano con el retraso de la red (lo mueve el servidor).
 - La capa de carga de las gafas es un huevo cerrado quieto (el de verdad, con su animación, sale en el panel).
 - Las cámaras de escena de la almeja y el gusano no se ven en VR (se sigue en primera persona).
 
@@ -184,7 +249,7 @@ Para que todo lo nuevo se vea y funcione en VR:
 
 Sin gafas (modo simulado, PIE):
 
-1. `Automation RunTests Tortunabo.VR`: las cinco pasan.
+1. `Automation RunTests Tortunabo.VR`: las siete pasan (también `CurvedPanel` y `AnalogButton`).
 2. Menú principal con `-vrsim` (o `TN.VR 2` en la consola y volver al menú): el menú sale en un panel delante; el ratón
    mueve el puntero sobre el panel y el clic pulsa los botones; la rueda baja las listas; «Ajustes» y «Crear partida» van.
    Los botones del editor (parar PIE) se siguen pudiendo pulsar con el menú abierto.
@@ -217,3 +282,19 @@ Con las Quest (VR Preview o `-vr`):
 18. Viajar del lobby a la partida: el huevo cerrado sale en las gafas mientras carga (sin imagen congelada) y se rompe en
     el panel al empezar.
 19. Nada tiembla ni se deforma; no hay fundidos de cámara.
+20. Gatillo derecho junto a un botón o un cofre: interactúa (también sin apretar a fondo). En un menú, el gatillo hace clic.
+21. Agarre con la mano pegada a un objeto del suelo: se coge; con la mano lejos (aunque el cuerpo esté cerca), no.
+    Soltarlo con un gesto de lanzar: sale hacia donde iba la mano. Agarre derecho sin nada cerca y soltar despacio: se cae.
+22. Agarre junto a una pelota o una caja con física: va con la mano y choca con lo demás; lanzarla con el gesto.
+23. Agarre junto a un compañero en el caparazón: se coge; soltar con impulso lo lanza hacia allí, despacio lo deja.
+24. Mirar abajo: se ven el cuerpo, los brazos siguiendo a los mandos, la lengua y el sudor; no la cabeza. Bailando, en el
+    caparazón y tumbada, los brazos van con su animación. Otro jugador ve tus brazos moviéndose con tus manos.
+25. Derribo con ragdoll: la vista va con la cabeza. Caparazón: se ve desde dentro, oscuro.
+26. HUD: fijo en la vista, curvo y grande; pegado a una pared, se acerca. Menús: curvos y rodeándote. Carga: la playa en 360.
+
+Sin gafas (primera persona):
+
+27. V (o clic del stick derecho): cambia a primera persona y vuelve. Ajustes > Juego > «Cámara» igual, y se guarda.
+28. Mirar abajo: cuerpo, aletas, lengua y sudor; sin cabeza ni casco. Andar de lado: la tortuga mira a la cámara; el otro
+    jugador la ve girar igual.
+29. Derribo con ragdoll: la vista va pegada a la cabeza. Caparazón: desde dentro y muy oscuro; al salir se aclara.

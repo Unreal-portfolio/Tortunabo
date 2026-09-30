@@ -7,11 +7,13 @@
 
 class APlayerController;
 class ATortugaCharacter;
+class UInputAction;
 class SWidget;
 class UCameraComponent;
 class UInputMappingContext;
 class UMaterialInstanceDynamic;
 class UMotionControllerComponent;
+class UProceduralMeshComponent;
 class UStaticMeshComponent;
 class UTN_VRScreenWidget;
 class UUserWidget;
@@ -26,11 +28,16 @@ class UWidgetInteractionComponent;
  *   ATortugaCharacter::GetVROrigin); simulado, la propia cámara. Sin peón (menú principal), la vista es su cámara.
  * - Aletas: dos mandos con seguimiento (MotionSource LeftGrip/RightGrip) con una aleta de tortuga en cada uno; simulado,
  *   quietas delante de la cámara.
- * - Pantalla: UTN_VRScreenWidget en un panel del mundo. Jugando, el HUD flota delante y sigue a la cabeza con retraso;
- *   con un menú (el juego enseña el cursor), el panel se queda quieto delante y la aleta derecha apunta con un láser
- *   (gatillo = clic). Simulado, apunta el ratón. El panel se acerca si hay una pared en medio.
+ * - Pantalla: UTN_VRScreenWidget en un panel curvo que rodea los ojos (un trozo de cilindro con el eje en la cabeza, pintado
+ *   con el mismo material del UWidgetComponent, que queda plano e invisible para el puntero). Jugando, el HUD flota
+ *   delante y sigue a la cabeza con retraso; con un menú (el juego enseña el cursor), el panel se queda quieto delante,
+ *   más ancho, y la aleta derecha apunta con un láser (gatillo = clic). Simulado, apunta el ratón. El panel se acerca si
+ *   hay una pared en medio.
+ * - Carga: mientras sale el huevo, una playa en 360 (cielo, horizonte, mar y arena) rodea la cabeza.
  * - Mandos jugando: los añade como mapeo propio sobre las acciones de siempre (IA_Move, IA_Jump...), gira por pasos con el
- *   stick derecho y recentra con su clic.
+ *   stick derecho y recentra con su clic. Los gatillos van también por su eje (OpenXR no da el «clic» de los Touch).
+ * - Agarres: cogen el objeto con física más cercano a la aleta (UTN_VRGrabComponent) y lo sueltan con la velocidad de la
+ *   mano; sin nada que coger, el derecho suelta el objeto de la mano y el izquierdo corre, como antes.
  */
 UCLASS(NotBlueprintable, Transient)
 class TORTUNABO_API ATN_VRRig : public AActor
@@ -111,8 +118,17 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "VR")
 	TObjectPtr<UWidgetInteractionComponent> Pointer;
 
+	/** Panel de la interfaz: plano, no se pinta (solo lo usa el puntero y dibuja la textura); se ve CurvedPanel. */
 	UPROPERTY(VisibleAnywhere, Category = "VR")
 	TObjectPtr<UWidgetComponent> ScreenPanel;
+
+	/** La interfaz curvada alrededor de los ojos, con el material del panel. */
+	UPROPERTY(VisibleAnywhere, Category = "VR")
+	TObjectPtr<UProceduralMeshComponent> CurvedPanel;
+
+	/** Playa en 360 alrededor de la cabeza mientras sale la pantalla de carga. */
+	UPROPERTY(VisibleAnywhere, Category = "VR")
+	TObjectPtr<UProceduralMeshComponent> LoadingDome;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_VRScreenWidget> Screen;
@@ -124,6 +140,10 @@ protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> LaserMaterial;
 
+	/** Correr con el agarre izquierdo cuando no hay nada que coger (se inyecta mientras se mantiene). */
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> SprintAction;
+
 private:
 	APlayerController* GetLocalPC() const;
 	void EnsureScreen();
@@ -132,7 +152,8 @@ private:
 
 	/** Raíz del rig en el origen de la vista que se esté viendo (ver arriba). */
 	void UpdateViewAttachment(APlayerController* PC, ATortugaCharacter* Turtle);
-	void UpdateHands(float DeltaSeconds);
+	/** Aletas de los mandos; con la tortuga, sus brazos van a ellas (IK) y las aletas sueltas se ocultan. */
+	void UpdateHands(ATortugaCharacter* Turtle, float DeltaSeconds);
 	void UpdatePanel(APlayerController* PC, float DeltaSeconds);
 	void UpdatePointer(APlayerController* PC);
 	void UpdateInput(APlayerController* PC, ATortugaCharacter* Turtle, float DeltaSeconds);
@@ -147,6 +168,38 @@ private:
 
 	/** Rayo del puntero: el mando derecho (gafas) o el ratón (simulado). */
 	bool GetPointerRay(APlayerController* PC, FVector& OutOrigin, FVector& OutDir) const;
+
+	/** Malla del panel curvo para ese arco (en el espacio del panel) y su material, el del UWidgetComponent. */
+	void UpdateCurvedPanel(float ArcDeg);
+	void BuildLoadingDome();
+	void UpdateLoadingDome(APlayerController* PC);
+
+	/** Agarres: coger objetos con física o, sin nada cerca, soltar el objeto (derecho) y correr (izquierdo). */
+	void UpdateGrips(APlayerController* PC, ATortugaCharacter* Turtle, float DeltaSeconds);
+	void ReleaseGrips(ATortugaCharacter* Turtle);
+	/** Punto de agarre de la aleta (cerca de la punta) en el mundo. */
+	FTransform GetGrabPoint(bool bRight) const;
+
+	/** Cámara desde la que se ve ahora (la de las gafas de la tortuga, la del rig o la del que se sigue). */
+	UCameraComponent* GetViewCamera(APlayerController* PC) const;
+	/** HUD anclado a la cámara (siempre fijo en la vista) o suelto en el mundo (menús). */
+	void AttachPanelToCamera(UCameraComponent* Camera);
+	void DetachPanelFromCamera();
+
+	/** Qué hace cada agarre mientras se mantiene: nada, algo de la tortuga (objeto, compañero), un objeto con física o
+	 *  correr (el izquierdo sin nada que coger). */
+	enum class EGripUse : uint8 { None, Turtle, Grab, Sprint };
+	EGripUse GripUse[2] = { EGripUse::None, EGripUse::None };
+	/** Lo que la tortuga tiene cogido con cada agarre (ATortugaCharacter::EVRGrip). */
+	uint8 GripTurtle[2] = { 0, 0 };
+	bool bGripHeld[2] = { false, false };
+	FVector PrevGrabPoint[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	FVector HandVelocity[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	bool bPrevGrabPointValid[2] = { false, false };
+
+	/** Arco (grados) con el que está hecha la malla del panel curvo y el que tiene ahora. */
+	float CurvedArcBuilt = -1.f;
+	float PanelArc = 60.f;
 
 	ETNVRMode Mode = ETNVRMode::Off;
 	bool bMenuMode = false;

@@ -65,6 +65,15 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		ATN_InteractableBase* Interactable = Cast<ATN_InteractableBase>(Result.GetActor());
 		if (!Interactable || !Interactable->CanInteract(this)) { continue; }
 
+		// En VR los objetos del suelo se cogen con la mano: solo cuentan los que están al alcance de una aleta.
+		if (bVRViewActive && (bLocalVRHandValid[0] || bLocalVRHandValid[1]) && Cast<ATN_PickupInteractableBase>(Interactable))
+		{
+			const FVector Point = Interactable->GetInteractionPointFor(this);
+			const bool bNearHand = (bLocalVRHandValid[0] && FVector::DistSquared(LocalVRHand[0], Point) <= FMath::Square(VRHandReach + 15.f))
+				|| (bLocalVRHandValid[1] && FVector::DistSquared(LocalVRHand[1], Point) <= FMath::Square(VRHandReach + 15.f));
+			if (!bNearHand) { continue; }
+		}
+
 		// Misma medida que la validación del servidor (ServerTryInteract): el aviso solo sale cuando pulsar funciona.
 		// El solapamiento encuentra cualquier colisión del actor (paredes del probador, mostrador), que puede estar
 		// mucho más cerca que su punto de interacción.

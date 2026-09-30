@@ -2447,6 +2447,18 @@ void UTN_PauseMenuWidget::FillGameTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bShowTalkers = bOn; }); }
 		});
 
+	// Cámara (Docs/Modo_VR.md, «Primera persona»): la tortuga la mira cada fotograma, se aplica en el acto.
+	if (UTN_PauseRow* Row = AddListRow(SettingsList))
+	{
+		const TArray<FText> Views = { NSLOCTEXT("TNPause", "CameraThird", "Tercera persona"), NSLOCTEXT("TNPause", "CameraFirst", "Primera persona") };
+		Row->SetupChoice(NSLOCTEXT("TNPause", "CameraView", "Cámara"), Views, FMath::Clamp<int32>(Data.CameraView, 0, 1), [WeakSettings](int32 Choice)
+		{
+			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.CameraView = static_cast<uint8>(Choice); }); }
+		});
+		Row->SetDescription(NSLOCTEXT("TNPause", "CameraViewDesc",
+			"Primera persona: la vista va en la cabeza de tu tortuga (también tumbada) y al mirar abajo ves tu cuerpo, tus aletas y tu lengua. Dentro del caparazón se ve desde dentro, a oscuras. También se cambia con V o con el clic del stick derecho."));
+	}
+
 	// Modo VR (Docs/Modo_VR.md): se aplica en el acto (UTN_VRSubsystem lo mira cada fotograma).
 	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadVR", "REALIDAD VIRTUAL"));
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
@@ -2479,7 +2491,7 @@ void UTN_PauseMenuWidget::FillGameTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Game); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Game); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema y el modo VR automático con giro a pasos de 30°."));
+		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema, la cámara en tercera persona y el modo VR automático con giro a pasos de 30°."));
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{

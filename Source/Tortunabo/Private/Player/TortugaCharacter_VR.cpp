@@ -3,11 +3,17 @@
 
 #include "Player/TortugaCharacter.h"
 #include "Core/TN_Log.h"
+#include "Core/TN_InventoryTypes.h"
+#include "Player/TN_CarryComponent.h"
+#include "Player/TN_InventoryComponent.h"
+#include "World/TN_InteractableBase.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 
@@ -34,6 +40,8 @@ void ATortugaCharacter::SetVRView(bool bOn, bool bHeadset)
 		{
 			VROrigin = NewObject<USceneComponent>(this, TEXT("VROrigin"), RF_Transient);
 			VROrigin->SetupAttachment(GetCapsuleComponent());
+			// Los ojos se ponen a mano cada fotograma (TickFirstPersonView): en la cabeza, también en el ragdoll.
+			VROrigin->SetUsingAbsoluteLocation(true);
 			VROrigin->RegisterComponent();
 		}
 		if (!VRCamera)
@@ -42,7 +50,8 @@ void ATortugaCharacter::SetVRView(bool bOn, bool bHeadset)
 			VRCamera->SetupAttachment(VROrigin);
 			VRCamera->RegisterComponent();
 		}
-		VROrigin->SetRelativeLocation(VREyeOffset);
+		VROrigin->SetWorldLocation(ComputeFirstPersonEye(bHeadset));
+		bFirstPersonEyeValid = false;
 		// Con gafas el origen no gira con la cápsula: lo gira el stick (y la cabeza gira la cámara dentro de él).
 		VROrigin->SetUsingAbsoluteRotation(bHeadset);
 		VRYaw = Controller ? static_cast<float>(Controller->GetControlRotation().Yaw) : static_cast<float>(GetActorRotation().Yaw);
@@ -58,7 +67,9 @@ void ATortugaCharacter::SetVRView(bool bOn, bool bHeadset)
 		VRCamera->bLockToHmd = bHeadset;
 		VRCamera->SetRelativeTransform(FTransform::Identity);
 		VRCamera->SetFieldOfView(90.f);
-		// La cámara activa es la que ve el juego (AActor::CalcCamera coge la primera activa).
+		// La cámara activa es la que ve el juego (AActor::CalcCamera coge la primera activa): la de VR manda sobre la
+		// primera persona sin gafas.
+		SetFirstPersonView(false);
 		if (FollowCamera)
 		{
 			FollowCamera->SetActive(false);
@@ -70,6 +81,7 @@ void ATortugaCharacter::SetVRView(bool bOn, bool bHeadset)
 	{
 		if (VRCamera)
 		{
+			ApplyShellDarkness(VRCamera, 0.f);
 			VRCamera->SetActive(false);
 		}
 		if (FollowCamera)
@@ -78,18 +90,7 @@ void ATortugaCharacter::SetVRView(bool bOn, bool bHeadset)
 		}
 		bLocalVRAimValid = false;
 	}
-
-	// Por dentro uno no se ve: la malla y el casco solo para los demás (la sombra propia sí se ve).
-	if (USkeletalMeshComponent* Body = GetMesh())
-	{
-		Body->SetOwnerNoSee(bOn);
-		Body->bCastHiddenShadow = bOn;
-		Body->MarkRenderStateDirty();
-	}
-	if (HelmetMeshComp)
-	{
-		HelmetMeshComp->SetOwnerNoSee(bOn);
-	}
+	// Lo que se ve del cuerpo propio (sin la cabeza, con los brazos de las aletas) lo pone TickFirstPersonView.
 
 	// La tortuga mira hacia donde mira la cabeza: aquí al momento y en el servidor (y de ahí a los demás).
 	if (bVRPlayer != bOn)
@@ -163,10 +164,13 @@ void ATortugaCharacter::OnRep_VRPlayer()
 
 void ATortugaCharacter::ApplyVRRotationMode()
 {
-	bUseControllerRotationYaw = bVRPlayer;
+	// En VR y en primera persona sin gafas la tortuga mira hacia donde mira la vista (también en el servidor, que mueve
+	// la cápsula con el giro del mando que le llega del cliente).
+	const bool bFacesView = bVRPlayer || bFirstPersonPlayer;
+	bUseControllerRotationYaw = bFacesView;
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
-		Movement->bOrientRotationToMovement = !bVRPlayer;
+		Movement->bOrientRotationToMovement = !bFacesView;
 	}
 }
 
@@ -194,4 +198,249 @@ void ATortugaCharacter::TickVRView(float DeltaTime)
 	Controller->SetControlRotation(FRotator(Pitch, TargetYaw, 0.f));
 	VRLastControlYaw = TargetYaw;
 	bVRControlYawValid = true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Manos VR: brazos del cuerpo que siguen a los mandos, coger con la mano y lanzar con el gesto
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNVRHandsDetail
+{
+	/** Veces por segundo que el dueño manda sus manos al servidor (para que los demás vean los brazos). */
+	constexpr double SendRate = 15.0;
+	/** Lo más lejos que una mano puede estar de su tortuga (cm): lo que llegue más lejos se recorta. */
+	constexpr float MaxHandDistance = 150.f;
+
+	/** Lo que se lanza con un gesto (soltar el agarre con impulso). El resto se usa con el gatillo. */
+	bool IsThrownByGesture(ETN_ItemUseType UseType)
+	{
+		return UseType == ETN_ItemUseType::Throwable || UseType == ETN_ItemUseType::InkThrower || UseType == ETN_ItemUseType::RaceItem
+			|| UseType == ETN_ItemUseType::Conch;
+	}
+
+	/** Distancia de un punto a una cápsula vertical (centro, radio y media altura). */
+	float DistanceToCapsule(const FVector& Point, const FVector& Center, float Radius, float HalfHeight)
+	{
+		const FVector Axis(0.0, 0.0, FMath::Max(0.f, HalfHeight - Radius));
+		const FVector Closest = FMath::ClosestPointOnSegment(Point, Center - Axis, Center + Axis);
+		return FMath::Max(0.f, static_cast<float>(FVector::Dist(Point, Closest)) - Radius);
+	}
+}
+
+void ATortugaCharacter::SetLocalVRHands(const FVector& Left, const FVector& Right, bool bLeftValid, bool bRightValid)
+{
+	LocalVRHand[0] = Left;
+	LocalVRHand[1] = Right;
+	bLocalVRHandValid[0] = bLeftValid && bVRViewActive;
+	bLocalVRHandValid[1] = bRightValid && bVRViewActive;
+
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetRealTimeSeconds() : 0.0;
+	if (LastVRHandsSent >= 0.0 && Now - LastVRHandsSent < 1.0 / TNVRHandsDetail::SendRate)
+	{
+		return;
+	}
+	LastVRHandsSent = Now;
+	const FTransform& ToWorld = GetActorTransform();
+	const FVector LeftLocal = ToWorld.InverseTransformPosition(Left).GetClampedToMaxSize(TNVRHandsDetail::MaxHandDistance);
+	const FVector RightLocal = ToWorld.InverseTransformPosition(Right).GetClampedToMaxSize(TNVRHandsDetail::MaxHandDistance);
+	const uint8 Valid = (bLocalVRHandValid[0] ? 1 : 0) | (bLocalVRHandValid[1] ? 2 : 0);
+	if (HasAuthority())
+	{
+		RepVRHandLeft = LeftLocal;
+		RepVRHandRight = RightLocal;
+		RepVRHandsValid = Valid;
+	}
+	else
+	{
+		ServerSetVRHands(LeftLocal, RightLocal, Valid);
+	}
+}
+
+void ATortugaCharacter::ServerSetVRHands_Implementation(FVector_NetQuantize10 Left, FVector_NetQuantize10 Right, uint8 Valid)
+{
+	RepVRHandLeft = Left.GetClampedToMaxSize(TNVRHandsDetail::MaxHandDistance);
+	RepVRHandRight = Right.GetClampedToMaxSize(TNVRHandsDetail::MaxHandDistance);
+	RepVRHandsValid = bVRPlayer ? (Valid & 3) : 0;
+}
+
+bool ATortugaCharacter::GetVRHandTargets(FVector& OutLeft, FVector& OutRight, bool& bOutLeft, bool& bOutRight) const
+{
+	if (IsLocallyControlled())
+	{
+		if (!bVRViewActive)
+		{
+			return false;
+		}
+		OutLeft = LocalVRHand[0];
+		OutRight = LocalVRHand[1];
+		bOutLeft = bLocalVRHandValid[0];
+		bOutRight = bLocalVRHandValid[1];
+		return bOutLeft || bOutRight;
+	}
+	if (!bVRPlayer || RepVRHandsValid == 0)
+	{
+		return false;
+	}
+	const FTransform& ToWorld = GetActorTransform();
+	OutLeft = ToWorld.TransformPosition(RepVRHandLeft);
+	OutRight = ToWorld.TransformPosition(RepVRHandRight);
+	bOutLeft = (RepVRHandsValid & 1) != 0;
+	bOutRight = (RepVRHandsValid & 2) != 0;
+	return true;
+}
+
+bool ATortugaCharacter::AreVRArmsFollowing() const
+{
+	const bool bVR = IsLocallyControlled() ? bVRViewActive : bVRPlayer;
+	if (!bVR || ActiveEmoteIndex >= 0 || IsInShell() || bIsKnockedDown || bIsDead)
+	{
+		return false;
+	}
+	if (CarryComponent && (CarryComponent->IsCarrying() || CarryComponent->IsBeingCarried()))
+	{
+		return false;
+	}
+	const USkeletalMeshComponent* Body = GetMesh();
+	return !(Body && Body->IsSimulatingPhysics());
+}
+
+ATN_InteractableBase* ATortugaCharacter::FindInteractableNearHand(const FVector& HandLocation)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	TArray<FOverlapResult> Overlaps;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TNVRHandInteract), false, this);
+	World->OverlapMultiByObjectType(Overlaps, HandLocation, FQuat::Identity, FCollisionObjectQueryParams(ECC_WorldDynamic),
+		FCollisionShape::MakeSphere(VRHandReach), Params);
+	ATN_InteractableBase* Best = nullptr;
+	float BestDistance = TNumericLimits<float>::Max();
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		ATN_InteractableBase* Interactable = Cast<ATN_InteractableBase>(Overlap.GetActor());
+		if (!Interactable || !Interactable->CanInteract(this))
+		{
+			continue;
+		}
+		// Lo que cuenta es lo cerca que está la mano de lo que toca (su colisión) o de su punto de interacción.
+		float Distance = static_cast<float>(FVector::Dist(HandLocation, Interactable->GetInteractionPointFor(this)));
+		if (const UPrimitiveComponent* Touched = Overlap.GetComponent())
+		{
+			FVector Closest;
+			const float ToCollision = Touched->GetClosestPointOnCollision(HandLocation, Closest);
+			if (ToCollision >= 0.f)
+			{
+				Distance = FMath::Min(Distance, ToCollision);
+			}
+		}
+		if (Distance <= VRHandReach && Distance < BestDistance)
+		{
+			BestDistance = Distance;
+			Best = Interactable;
+		}
+	}
+	return Best;
+}
+
+ATortugaCharacter::EVRGrip ATortugaCharacter::VRGripPressed(bool bRight, const FVector& HandLocation, bool bHeldItem)
+{
+	if (!IsLocallyControlled() || !bVRViewActive || bIsKnockedDown || bIsDead || IsInShell())
+	{
+		return EVRGrip::None;
+	}
+	if (bHeldItem)
+	{
+		// Nada que coger: el objeto que ya lleva en la aleta derecha (para lanzarlo o soltarlo al abrir la mano).
+		return bRight && InventoryComponent && InventoryComponent->HasEquippedItem() ? EVRGrip::HeldItem : EVRGrip::None;
+	}
+	if (CarryComponent && CarryComponent->IsCarrying())
+	{
+		return EVRGrip::Partner;
+	}
+	// Un objeto del suelo o algo con lo que interactuar, al alcance de ESTA mano.
+	if (ATN_InteractableBase* Touched = FindInteractableNearHand(HandLocation))
+	{
+		FocusedInteractable = Touched;
+		TryInteract();
+		return EVRGrip::Touched;
+	}
+	// Un compañero en el caparazón o aturdido, al alcance de la mano.
+	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
+	{
+		const ATortugaCharacter* Other = *It;
+		const UCapsuleComponent* Capsule = Other ? Other->GetCapsuleComponent() : nullptr;
+		if (!Other || Other == this || !Capsule)
+		{
+			continue;
+		}
+		const float Distance = TNVRHandsDetail::DistanceToCapsule(HandLocation, Other->GetActorLocation(),
+			Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
+		if (Distance <= VRHandReach)
+		{
+			return CarryComponent && CarryComponent->TryGrabNearest() ? EVRGrip::Partner : EVRGrip::None;
+		}
+	}
+	return EVRGrip::None;
+}
+
+void ATortugaCharacter::VRGripReleased(EVRGrip Held, const FVector& HandVelocity)
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+	const bool bSwing = HandVelocity.SizeSquared() >= FMath::Square(VRThrowSpeed);
+	// Con impulso, lo lanzado sale hacia donde va la mano (llega al servidor antes que la acción).
+	auto AimAlongHand = [this, &HandVelocity]()
+	{
+		SetLocalVRAim(HandVelocity.Rotation(), true);
+		SendVRAimToServer();
+	};
+	const bool bHasItem = InventoryComponent && InventoryComponent->HasEquippedItem();
+	switch (Held)
+	{
+	case EVRGrip::Partner:
+		if (CarryComponent && CarryComponent->IsCarrying())
+		{
+			if (bSwing)
+			{
+				AimAlongHand();
+				CarryComponent->RequestThrow();
+			}
+			else
+			{
+				CarryComponent->RequestDrop();
+			}
+		}
+		break;
+	case EVRGrip::Touched:
+		// Fin de las interacciones de mantener (rebuscar); lo recién cogido se queda en la aleta si no se lanza.
+		ReleaseInteract();
+		if (bSwing && bHasItem && TNVRHandsDetail::IsThrownByGesture(InventoryComponent->GetEquippedItem().UseType))
+		{
+			AimAlongHand();
+			TryUseEquippedItem();
+		}
+		break;
+	case EVRGrip::HeldItem:
+		if (bHasItem)
+		{
+			if (bSwing && TNVRHandsDetail::IsThrownByGesture(InventoryComponent->GetEquippedItem().UseType))
+			{
+				AimAlongHand();
+				TryUseEquippedItem();
+			}
+			else if (!bSwing)
+			{
+				// Abrir la mano despacio: el objeto se suelta al suelo.
+				ServerDropEquippedItem();
+			}
+		}
+		break;
+	default:
+		break;
+	}
 }

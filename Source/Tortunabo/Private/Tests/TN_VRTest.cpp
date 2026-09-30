@@ -176,4 +176,80 @@ bool FTNVRMenuKeysTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Panel curvo (menús y HUD alrededor de los ojos)
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRCurvedPanelTest,
+	"Tortunabo.VR.CurvedPanel",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRCurvedPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace TNVRTest;
+	constexpr float Arc = 90.f;
+	const double Radius = TNVRMath::CurvedPanelRadius(VRPanelSize, Arc);
+	TestTrue(TEXT("Radio = ancho / arco"), FMath::IsNearlyEqual(Radius, 1920.0 / (PI * 0.5), 1e-6));
+
+	// Los puntos del panel están a Radius del eje (Radius, 0): el panel rodea los ojos.
+	for (const FVector2D UV : { FVector2D(0.0, 0.5), FVector2D(0.25, 0.1), FVector2D(0.5, 0.5), FVector2D(1.0, 0.9) })
+	{
+		const FVector P = TNVRMath::CurvedPanelPoint(UV, VRPanelSize, Arc);
+		TestTrue(TEXT("Punto del panel a un radio del eje"), FMath::IsNearlyEqual(FVector2D(P.X - Radius, P.Y).Size(), Radius, 1e-6));
+	}
+	TestTrue(TEXT("El centro del panel en el origen"), TNVRMath::CurvedPanelPoint(FVector2D(0.5, 0.5), VRPanelSize, Arc).Equals(FVector::ZeroVector, 1e-6));
+	const FVector Left = TNVRMath::CurvedPanelPoint(FVector2D(0.0, 0.5), VRPanelSize, Arc);
+	TestTrue(TEXT("El borde izquierdo (vista desde delante) está en +Y y hacia los ojos (+X)"), Left.Y > 0.0 && Left.X > 0.0);
+
+	// Desde el eje (los ojos), cada rayo toca el punto que le corresponde y devuelve su UV.
+	const FVector Eye(Radius, 0.0, 0.0);
+	FVector Hit;
+	FVector2D UV;
+	for (const FVector2D Want : { FVector2D(0.5, 0.5), FVector2D(0.1, 0.2), FVector2D(0.9, 0.8), FVector2D(0.02, 0.5) })
+	{
+		const FVector Target = TNVRMath::CurvedPanelPoint(Want, VRPanelSize, Arc);
+		TestTrue(TEXT("Rayo desde los ojos: toca"), TNVRMath::RayCurvedPanelHit(Eye, (Target - Eye).GetSafeNormal(), FTransform::Identity, VRPanelSize, Arc, Hit, UV));
+		TestTrue(TEXT("Rayo desde los ojos → su UV"), UV.Equals(Want, 1e-6));
+		TestTrue(TEXT("Rayo desde los ojos → su punto"), Hit.Equals(Target, 1e-3));
+	}
+	TestFalse(TEXT("Hacia atrás: no toca"), TNVRMath::RayCurvedPanelHit(Eye, FVector(1.0, 0.0, 0.0), FTransform::Identity, VRPanelSize, Arc, Hit, UV));
+	TestFalse(TEXT("Por encima del panel: no toca"), TNVRMath::RayCurvedPanelHit(Eye, FVector(-1.0, 0.0, 2.0).GetSafeNormal(), FTransform::Identity, VRPanelSize, Arc, Hit, UV));
+	TestFalse(TEXT("Fuera del arco (a 60° con 90° de arco): no toca"), TNVRMath::RayCurvedPanelHit(Eye, FRotator(0.0, 180.0 - 60.0, 0.0).Vector(), FTransform::Identity, VRPanelSize, Arc, Hit, UV));
+
+	// Con la escala de CurvedPanelScale, el radio en el mundo es la distancia pedida: los ojos, en el eje.
+	const float Scale = TNVRMath::CurvedPanelScale(160.f, Arc, static_cast<float>(VRPanelSize.X));
+	TestTrue(TEXT("Radio en el mundo = distancia"), FMath::IsNearlyEqual(Radius * Scale, 160.0, 1e-3));
+	const FTransform Placed(FRotator(0.0, 180.0, 0.0), FVector(160.0, 0.0, 0.0), FVector(Scale));
+	TestTrue(TEXT("Panel colocado: desde los ojos al frente toca el centro"),
+		TNVRMath::RayCurvedPanelHit(FVector::ZeroVector, FVector(1.0, 0.0, 0.0), Placed, VRPanelSize, Arc, Hit, UV));
+	TestTrue(TEXT("Panel colocado → UV (0,5; 0,5)"), UV.Equals(FVector2D(0.5, 0.5), 1e-6));
+	TestTrue(TEXT("Panel colocado: a 160 cm"), Hit.Equals(FVector(160.0, 0.0, 0.0), 1e-3));
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gatillos y agarres analógicos, y lo que se suelta de la mano
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRAnalogButtonTest,
+	"Tortunabo.VR.AnalogButton",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRAnalogButtonTest::RunTest(const FString& Parameters)
+{
+	bool bHeld = false;
+	TestEqual(TEXT("Dedo apoyado (0,2): nada"), TNVRMath::AnalogButton(0.2f, bHeld), 0);
+	TestEqual(TEXT("Apretar (0,6): pulsa"), TNVRMath::AnalogButton(0.6f, bHeld), 1);
+	TestTrue(TEXT("Queda apretado"), bHeld);
+	TestEqual(TEXT("Mantener: nada"), TNVRMath::AnalogButton(0.9f, bHeld), 0);
+	TestEqual(TEXT("Aflojar un poco (0,45): sigue apretado"), TNVRMath::AnalogButton(0.45f, bHeld), 0);
+	TestEqual(TEXT("Soltar (0,1): suelta"), TNVRMath::AnalogButton(0.1f, bHeld), -1);
+	TestFalse(TEXT("Queda suelto"), bHeld);
+	TestEqual(TEXT("Rozar el umbral (0,5): nada"), TNVRMath::AnalogButton(0.5f, bHeld), 0);
+
+	TestTrue(TEXT("Mano lenta: sale con su velocidad"), TNVRMath::ThrowVelocity(FVector(300.0, 0.0, 100.0)).Equals(FVector(300.0, 0.0, 100.0)));
+	TestTrue(TEXT("Mano muy rápida: con tope"), FMath::IsNearlyEqual(TNVRMath::ThrowVelocity(FVector(0.0, 5000.0, 0.0)).Size(), 1600.0, 1e-3));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

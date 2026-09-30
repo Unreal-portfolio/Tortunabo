@@ -170,6 +170,7 @@ namespace TNGameSettingsDetail
 		S.UIScale = FMath::Clamp(S.UIScale, MinUIScale, MaxUIScale);
 		S.VRMode = static_cast<uint8>(FMath::Clamp<int32>(S.VRMode, 0, 2));
 		S.VRTurn = static_cast<uint8>(FMath::Clamp<int32>(S.VRTurn, 0, 2));
+		S.CameraView = static_cast<uint8>(FMath::Clamp<int32>(S.CameraView, 0, 1));
 		// Un idioma que ya no está en la lista (se quitó de la configuración): sin elegir, que toca el del sistema.
 		if (!S.Language.IsEmpty() && TNLanguage::IndexOf(S.Language) == INDEX_NONE)
 		{
@@ -690,6 +691,7 @@ void UTN_GameSettingsSubsystem::ResetGroup(ETNSettingsGroup Group)
 		Settings.bFisheye = Defaults.bFisheye;
 		Settings.VRMode = Defaults.VRMode;
 		Settings.VRTurn = Defaults.VRTurn;
+		Settings.CameraView = Defaults.CameraView;
 		break;
 	default:
 		// Gráficos: el brillo y el contador; la calidad se elige con «Calidad recomendada» (UGameUserSettings).

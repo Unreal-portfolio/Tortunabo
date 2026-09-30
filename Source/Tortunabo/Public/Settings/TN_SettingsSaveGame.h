@@ -163,6 +163,13 @@ struct FTNGameSettings
 	UPROPERTY()
 	uint8 VRTurn = 0;
 
+	/**
+	 * Cámara sin gafas (Docs/Modo_VR.md, «Primera persona»): 0 tercera persona (la de siempre), 1 primera persona (en la
+	 * cabeza, viendo el cuerpo propio sin la cabeza). Se cambia también con V o el clic del stick derecho; TN.Camera manda.
+	 */
+	UPROPERTY()
+	uint8 CameraView = 0;
+
 	// ── Pantalla (lo que no guarda UGameUserSettings) ────────────────────────
 
 	/** Brillo (0..1; 0,5 = el de siempre): cambia la gamma de salida del motor. */

@@ -2,16 +2,19 @@
 #include "VR/TN_VRScreenWidget.h"
 #include "VR/TN_VRSubsystem.h"
 #include "VR/TN_VRMath.h"
+#include "VR/TN_VRGrabComponent.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
+#include "UI/Loading/TN_LoadingScreenSubsystem.h"
 #include "Blueprint/UserWidget.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetInteractionComponent.h"
+#include "Engine/GameInstance.h"
 #include "Engine/HitResult.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
@@ -25,6 +28,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "MotionControllerComponent.h"
+#include "ProceduralMeshComponent.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectIterator.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
@@ -33,14 +37,18 @@
 // Consola
 // ─────────────────────────────────────────────────────────────────────────────
 
-static TAutoConsoleVariable<float> CVarTNVRHudDistance(TEXT("TN.VR.HudDistance"), 140.f,
+static TAutoConsoleVariable<float> CVarTNVRHudDistance(TEXT("TN.VR.HudDistance"), 150.f,
 	TEXT("Distancia (cm) del HUD delante de los ojos en VR. Se acerca solo si hay una pared en medio."), ECVF_Default);
-static TAutoConsoleVariable<float> CVarTNVRHudFov(TEXT("TN.VR.HudFov"), 50.f,
-	TEXT("Ancho (grados) que ocupa el HUD en VR."), ECVF_Default);
+static TAutoConsoleVariable<float> CVarTNVRHudFov(TEXT("TN.VR.HudFov"), 80.f,
+	TEXT("Ancho (grados) que ocupa el HUD en VR: el arco del panel curvo alrededor de los ojos."), ECVF_Default);
 static TAutoConsoleVariable<float> CVarTNVRMenuDistance(TEXT("TN.VR.MenuDistance"), 160.f,
 	TEXT("Distancia (cm) a la que se ponen los menús en VR."), ECVF_Default);
-static TAutoConsoleVariable<float> CVarTNVRMenuFov(TEXT("TN.VR.MenuFov"), 58.f,
-	TEXT("Ancho (grados) que ocupan los menús en VR."), ECVF_Default);
+static TAutoConsoleVariable<float> CVarTNVRMenuFov(TEXT("TN.VR.MenuFov"), 100.f,
+	TEXT("Ancho (grados) que ocupan los menús en VR: el arco del panel curvo que te rodea."), ECVF_Default);
+static TAutoConsoleVariable<int32> CVarTNVRHudFollow(TEXT("TN.VR.HudFollow"), 0,
+	TEXT("HUD en VR: 0 anclado a la cámara (siempre fijo en la vista, como en la pantalla), 1 suelto delante siguiendo a la cabeza con retraso (marea menos a algunos)."), ECVF_Default);
+static TAutoConsoleVariable<float> CVarTNVRLoadingDome(TEXT("TN.VR.LoadingDomeRadius"), 300.f,
+	TEXT("Radio (cm) de la playa en 360 que rodea la cabeza mientras sale la pantalla de carga en VR (0 = sin ella)."), ECVF_Default);
 static TAutoConsoleVariable<float> CVarTNVRSmoothTurnSpeed(TEXT("TN.VR.SmoothTurnSpeed"), 120.f,
 	TEXT("Grados por segundo del giro suave en VR (ajuste «Giro en VR: suave»)."), ECVF_Default);
 
@@ -127,6 +135,32 @@ namespace TNVRRigDetail
 			}
 		}
 		return nullptr;
+	}
+
+	/** Color de la playa en 360 de la carga según la altura (Z de -1 abajo a 1 arriba): cielo, bruma, mar y arena. */
+	FLinearColor DomeColor(double Z)
+	{
+		struct FStop { double Z; FColor Color; };
+		static const FStop Stops[] = {
+			{ -1.0, FColor(233, 211, 161) }, { -0.55, FColor(218, 196, 146) }, { -0.35, FColor(27, 110, 143) },
+			{ -0.05, FColor(64, 172, 196) }, { 0.0, FColor(255, 241, 214) }, { 0.12, FColor(170, 220, 245) },
+			{ 0.45, FColor(96, 176, 234) }, { 1.0, FColor(52, 132, 212) } };
+		for (int32 i = 1; i < static_cast<int32>(UE_ARRAY_COUNT(Stops)); ++i)
+		{
+			if (Z <= Stops[i].Z)
+			{
+				const float A = static_cast<float>((Z - Stops[i - 1].Z) / (Stops[i].Z - Stops[i - 1].Z));
+				return FMath::Lerp(FLinearColor::FromSRGBColor(Stops[i - 1].Color), FLinearColor::FromSRGBColor(Stops[i].Color), FMath::Clamp(A, 0.f, 1.f));
+			}
+		}
+		return FLinearColor::FromSRGBColor(Stops[UE_ARRAY_COUNT(Stops) - 1].Color);
+	}
+
+	/** Material de la cúpula: translúcido sin luz con el color del vértice (el de los avisos); si falta, el de color de vértice. */
+	UMaterialInterface* DomeMaterial()
+	{
+		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFXHard.M_ProcFXHard"), nullptr, LOAD_NoWarn);
+		return Mat ? Mat : VertexColorMaterial();
 	}
 
 	/** Postura de las aletas en la vista simulada (sin gafas): abajo a los lados, apuntando al frente. */
@@ -229,6 +263,29 @@ ATN_VRRig::ATN_VRRig()
 	ScreenPanel->SetCastShadow(false);
 	ScreenPanel->SetTranslucentSortPriority(100);
 	ScreenPanel->PrimaryComponentTick.bTickEvenWhenPaused = true;
+	// El panel plano no se pinta: dibuja la interfaz en su textura (sigue «visible») y sirve al puntero; se ve el curvo.
+	ScreenPanel->SetRenderInMainPass(false);
+	ScreenPanel->SetRenderInDepthPass(false);
+
+	CurvedPanel = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("CurvedPanel"));
+	CurvedPanel->SetupAttachment(ScreenPanel);
+	CurvedPanel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CurvedPanel->SetGenerateOverlapEvents(false);
+	CurvedPanel->SetCastShadow(false);
+	CurvedPanel->SetTranslucentSortPriority(100);
+	CurvedPanel->bUseAsyncCooking = true;
+
+	LoadingDome = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("LoadingDome"));
+	LoadingDome->SetupAttachment(RigRoot);
+	LoadingDome->SetUsingAbsoluteLocation(true);
+	LoadingDome->SetUsingAbsoluteRotation(true);
+	LoadingDome->SetUsingAbsoluteScale(true);
+	LoadingDome->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	LoadingDome->SetGenerateOverlapEvents(false);
+	LoadingDome->SetCastShadow(false);
+	// Detrás de la interfaz (mismo orden de translúcidos, menos prioridad).
+	LoadingDome->SetTranslucentSortPriority(50);
+	LoadingDome->SetVisibility(false);
 }
 
 void ATN_VRRig::BeginPlay()
@@ -266,6 +323,7 @@ void ATN_VRRig::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		PointerRelease();
 	}
+	ReleaseGrips(ViewTurtle.Get());
 	RemoveVRMapping();
 	if (Screen)
 	{
@@ -392,6 +450,7 @@ void ATN_VRRig::Tick(float DeltaSeconds)
 	ATortugaCharacter* Previous = ViewTurtle.Get();
 	if (Previous && Previous != Turtle)
 	{
+		ReleaseGrips(Previous);
 		Previous->SetVRView(false, false);
 	}
 	if (Turtle)
@@ -401,7 +460,7 @@ void ATN_VRRig::Tick(float DeltaSeconds)
 	ViewTurtle = Turtle;
 
 	UpdateViewAttachment(PC, Turtle);
-	UpdateHands(DeltaSeconds);
+	UpdateHands(Turtle, DeltaSeconds);
 
 	// Hacia dónde apunta la aleta derecha: lanzar compañeros y objetos (con gafas; simulado, la cámara).
 	if (Turtle)
@@ -433,8 +492,10 @@ void ATN_VRRig::Tick(float DeltaSeconds)
 	}
 
 	UpdateInput(PC, Turtle, DeltaSeconds);
+	UpdateGrips(PC, Turtle, DeltaSeconds);
 	UpdatePanel(PC, DeltaSeconds);
 	UpdatePointer(PC);
+	UpdateLoadingDome(PC);
 }
 
 void ATN_VRRig::UpdateViewAttachment(APlayerController* PC, ATortugaCharacter* Turtle)
@@ -519,27 +580,38 @@ void ATN_VRRig::UpdateViewAttachment(APlayerController* PC, ATortugaCharacter* T
 	}
 }
 
-void ATN_VRRig::UpdateHands(float DeltaSeconds)
+void ATN_VRRig::UpdateHands(ATortugaCharacter* Turtle, float DeltaSeconds)
 {
+	bool bLeftTracked = true;
+	bool bRightTracked = true;
 	if (Mode == ETNVRMode::Headset)
 	{
-		// Una aleta sin seguimiento (mando apagado, fuera de la vista de las cámaras) no se enseña.
-		LeftFlipper->SetVisibility(LeftGrip->IsTracked());
-		RightFlipper->SetVisibility(RightGrip->IsTracked());
-		return;
+		// Una aleta sin seguimiento (mando apagado, fuera de la vista de las cámaras) no cuenta.
+		bLeftTracked = LeftGrip->IsTracked();
+		bRightTracked = RightGrip->IsTracked();
 	}
-	// Simulado: quietas delante, con un vaivén muy suave para que se note que están vivas.
-	const float Time = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.f;
-	const FVector Bob(0.0, 0.0, FMath::Sin(Time * 1.7f) * 0.6);
-	FTransform Left = TNVRRigDetail::SimLeftHand;
-	Left.AddToTranslation(Bob);
-	FTransform Right = TNVRRigDetail::SimRightHand;
-	Right.AddToTranslation(-Bob);
-	LeftGrip->SetRelativeTransform(Left);
-	RightGrip->SetRelativeTransform(Right);
-	RightAim->SetRelativeTransform(Right);
-	LeftFlipper->SetVisibility(true);
-	RightFlipper->SetVisibility(true);
+	else
+	{
+		// Simulado: quietas delante, con un vaivén muy suave para que se note que están vivas.
+		const float Time = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.f;
+		const FVector Bob(0.0, 0.0, FMath::Sin(Time * 1.7f) * 0.6);
+		FTransform Left = TNVRRigDetail::SimLeftHand;
+		Left.AddToTranslation(Bob);
+		FTransform Right = TNVRRigDetail::SimRightHand;
+		Right.AddToTranslation(-Bob);
+		LeftGrip->SetRelativeTransform(Left);
+		RightGrip->SetRelativeTransform(Right);
+		RightAim->SetRelativeTransform(Right);
+	}
+	// Con la tortuga, sus manos de verdad van a los mandos (IK de los brazos): lo que coge es su mano. Las aletas sueltas
+	// solo se ven sin tortuga (menú principal, espectador) o dentro del caparazón, donde el cuerpo propio no se pinta.
+	if (Turtle)
+	{
+		Turtle->SetLocalVRHands(LeftHand->GetComponentLocation(), RightHand->GetComponentLocation(), bLeftTracked, bRightTracked);
+	}
+	const bool bLooseFlippers = !Turtle || Turtle->IsInShell();
+	LeftFlipper->SetVisibility(bLeftTracked && bLooseFlippers);
+	RightFlipper->SetVisibility(bRightTracked && bLooseFlippers);
 }
 
 void ATN_VRRig::UpdateInput(APlayerController* PC, ATortugaCharacter* Turtle, float DeltaSeconds)
@@ -627,17 +699,35 @@ void ATN_VRRig::EnsureVRMapping(APlayerController* PC)
 				Mapping.Modifiers.Add(NewObject<UInputModifierSwizzleAxis>(VRMapping));
 			}
 		};
+		// Botón analógico (gatillo de los Touch): cuenta como pulsado a partir de ~55 % (OpenXR solo da su valor).
+		auto MapAnalogButton = [this](UInputAction* Action, const FKey& Key)
+		{
+			if (!Action || !Key.IsValid())
+			{
+				return;
+			}
+			FEnhancedActionKeyMapping& Mapping = VRMapping->MapKey(Action, Key);
+			UInputModifierDeadZone* Threshold = NewObject<UInputModifierDeadZone>(VRMapping);
+			Threshold->Type = EDeadZoneType::Axial;
+			Threshold->LowerThreshold = 0.55f;
+			Threshold->UpperThreshold = 1.f;
+			Mapping.Modifiers.Add(Threshold);
+		};
 		UInputAction* Move = LoadAction(TEXT("IA_Move"));
 		Map(Move, FTNVRKeys::LeftStickX, false);
 		Map(Move, FTNVRKeys::LeftStickY, true);
 		Map(LoadAction(TEXT("IA_Jump")), FTNVRKeys::A, false);
 		Map(LoadAction(TEXT("IA_Shell")), FTNVRKeys::B, false);
-		Map(LoadAction(TEXT("IA_Interact")), FTNVRKeys::RightTrigger, false);
-		Map(LoadAction(TEXT("IA_DropItem")), FTNVRKeys::RightGrip, false);
-		Map(LoadAction(TEXT("IA_Sprint")), FTNVRKeys::LeftGrip, false);
+		UInputAction* Interact = LoadAction(TEXT("IA_Interact"));
+		Map(Interact, FTNVRKeys::RightTrigger, false);
+		MapAnalogButton(Interact, FTNVRKeys::RightTriggerAxis);
+		// Agarres: UpdateGrips (coger con la mano, lanzar con el gesto, soltar; el izquierdo sin nada que coger, correr).
+		SprintAction = LoadAction(TEXT("IA_Sprint"));
 		Map(LoadAction(TEXT("IA_RotateInventory")), FTNVRKeys::X, false);
 		Map(LoadAction(TEXT("IA_OpenEmoteWheel")), FTNVRKeys::Y, false);
-		Map(LoadAction(TEXT("IA_OpenChatWheel")), FTNVRKeys::LeftTrigger, false);
+		UInputAction* ChatWheel = LoadAction(TEXT("IA_OpenChatWheel"));
+		Map(ChatWheel, FTNVRKeys::LeftTrigger, false);
+		MapAnalogButton(ChatWheel, FTNVRKeys::LeftTriggerAxis);
 		UInputAction* Radial = LoadAction(TEXT("IA_RadialNavigate"));
 		Map(Radial, FTNVRKeys::RightStickX, false);
 		Map(Radial, FTNVRKeys::RightStickY, true);
@@ -707,7 +797,9 @@ void ATN_VRRig::PlacePanel(const FVector& ViewLocation, float Yaw, float Distanc
 	// +X del panel hacia los ojos (su cara de delante).
 	const FRotator Facing = (ViewLocation - Location).Rotation();
 	ScreenPanel->SetWorldLocationAndRotation(Location, Facing);
-	ScreenPanel->SetWorldScale3D(FVector(TNVRMath::PanelScale(Distance, HorizontalFov, UTN_VRScreenWidget::ScreenWidth)));
+	// Curvo, con el eje del cilindro en los ojos: todo el panel queda a la misma distancia y te rodea.
+	ScreenPanel->SetWorldScale3D(FVector(TNVRMath::CurvedPanelScale(Distance, HorizontalFov, UTN_VRScreenWidget::ScreenWidth)));
+	UpdateCurvedPanel(HorizontalFov);
 }
 
 void ATN_VRRig::UpdatePanel(APlayerController* PC, float DeltaSeconds)
@@ -718,10 +810,13 @@ void ATN_VRRig::UpdatePanel(APlayerController* PC, float DeltaSeconds)
 	{
 		return;
 	}
-	ScreenPanel->SetVisibility(Screen->CountVisible() > 0);
+	const bool bPanelVisible = Screen->CountVisible() > 0;
+	ScreenPanel->SetVisibility(bPanelVisible);
+	CurvedPanel->SetVisibility(bPanelVisible);
 
 	if (bMenuMode)
 	{
+		DetachPanelFromCamera();
 		// Menú: quieto delante, donde miraba la cabeza al abrirse (se vuelve a poner si la vista se va lejos).
 		if (!bPanelPlaced || FVector::Dist(ViewLocation, MenuPlacedFrom) > 150.0)
 		{
@@ -736,15 +831,31 @@ void ATN_VRRig::UpdatePanel(APlayerController* PC, float DeltaSeconds)
 		return;
 	}
 
-	// HUD: delante de los ojos. Con gafas sigue a la cabeza con retraso (se lee mirando de reojo); simulado, fijo en la
-	// pantalla como el HUD de siempre.
+	// HUD: anclado a la cámara (siempre fijo en la vista, grande como el de la pantalla y curvo alrededor de los ojos).
+	// Con TN.VR.HudFollow 1, suelto delante y siguiendo a la cabeza con retraso (se lee mirando de reojo).
+	const float HudArc = CVarTNVRHudFov.GetValueOnGameThread();
+	const float HudDistance = CVarTNVRHudDistance.GetValueOnGameThread();
+	UCameraComponent* ViewCamera = CVarTNVRHudFollow.GetValueOnGameThread() == 0 ? GetViewCamera(PC) : nullptr;
 	if (!bPanelPlaced)
 	{
 		HudYaw = static_cast<float>(ViewRotation.Yaw);
-		PanelDistanceSmoothed = CVarTNVRHudDistance.GetValueOnGameThread();
+		PanelDistanceSmoothed = HudDistance;
 		bHudFollowing = false;
 		bPanelPlaced = true;
 	}
+	if (ViewCamera)
+	{
+		// Si hay una pared delante, se acerca de golpe; se aleja poco a poco.
+		const float Wanted = FitDistance(ViewLocation, ViewRotation.Vector(), HudDistance);
+		PanelDistanceSmoothed = Wanted < PanelDistanceSmoothed ? Wanted : FMath::FInterpTo(PanelDistanceSmoothed, Wanted, DeltaSeconds, 4.f);
+		AttachPanelToCamera(ViewCamera);
+		// Colgado de la cámara (así lo mueve también la última pose de las gafas): delante, con su cara (+X) hacia los ojos.
+		ScreenPanel->SetRelativeLocationAndRotation(FVector(PanelDistanceSmoothed, 0.0, 0.0), FRotator(0.0, 180.0, 0.0));
+		ScreenPanel->SetRelativeScale3D(FVector(TNVRMath::CurvedPanelScale(PanelDistanceSmoothed, HudArc, UTN_VRScreenWidget::ScreenWidth)));
+		UpdateCurvedPanel(HudArc);
+		return;
+	}
+	DetachPanelFromCamera();
 	if (Mode == ETNVRMode::Headset)
 	{
 		HudYaw = TNVRMath::LazyFollowYaw(HudYaw, static_cast<float>(ViewRotation.Yaw), DeltaSeconds, bHudFollowing);
@@ -754,20 +865,55 @@ void ATN_VRRig::UpdatePanel(APlayerController* PC, float DeltaSeconds)
 		HudYaw = static_cast<float>(ViewRotation.Yaw);
 	}
 	const FRotator HudRotation(Mode == ETNVRMode::Headset ? 0.0 : ViewRotation.Pitch, HudYaw, 0.0);
-	const float Wanted = FitDistance(ViewLocation, HudRotation.Vector(), CVarTNVRHudDistance.GetValueOnGameThread());
-	// Se acerca de golpe (una pared) y se aleja poco a poco.
+	const float Wanted = FitDistance(ViewLocation, HudRotation.Vector(), HudDistance);
 	PanelDistanceSmoothed = Wanted < PanelDistanceSmoothed ? Wanted : FMath::FInterpTo(PanelDistanceSmoothed, Wanted, DeltaSeconds, 4.f);
-	if (Mode == ETNVRMode::Headset)
+	PlacePanel(ViewLocation, HudYaw, PanelDistanceSmoothed, HudArc);
+}
+
+UCameraComponent* ATN_VRRig::GetViewCamera(APlayerController* PC) const
+{
+	AActor* ViewTarget = PC ? PC->GetViewTarget() : nullptr;
+	if (!ViewTarget)
 	{
-		PlacePanel(ViewLocation, HudYaw, PanelDistanceSmoothed, CVarTNVRHudFov.GetValueOnGameThread());
+		return nullptr;
 	}
-	else
+	if (ViewTarget == this)
 	{
-		// Simulado: el panel pegado a la vista (también con la inclinación de la cámara).
-		const FVector Location = ViewLocation + HudRotation.Vector() * PanelDistanceSmoothed;
-		ScreenPanel->SetWorldLocationAndRotation(Location, (ViewLocation - Location).Rotation());
-		ScreenPanel->SetWorldScale3D(FVector(TNVRMath::PanelScale(PanelDistanceSmoothed, CVarTNVRHudFov.GetValueOnGameThread(), UTN_VRScreenWidget::ScreenWidth)));
+		return RigCamera;
 	}
+	if (const ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(ViewTarget))
+	{
+		if (Turtle->IsVRView() && Turtle->GetVRCamera())
+		{
+			return Turtle->GetVRCamera();
+		}
+	}
+	return TNVRRigDetail::FindActiveCamera(ViewTarget);
+}
+
+void ATN_VRRig::AttachPanelToCamera(UCameraComponent* Camera)
+{
+	if (!Camera || ScreenPanel->GetAttachParent() == Camera)
+	{
+		return;
+	}
+	ScreenPanel->SetUsingAbsoluteLocation(false);
+	ScreenPanel->SetUsingAbsoluteRotation(false);
+	ScreenPanel->SetUsingAbsoluteScale(false);
+	ScreenPanel->AttachToComponent(Camera, FAttachmentTransformRules::KeepRelativeTransform);
+}
+
+void ATN_VRRig::DetachPanelFromCamera()
+{
+	if (ScreenPanel->GetAttachParent() == RigRoot)
+	{
+		return;
+	}
+	// De vuelta al rig y suelto en el mundo (los menús se quedan quietos donde se abren).
+	ScreenPanel->AttachToComponent(RigRoot, FAttachmentTransformRules::KeepWorldTransform);
+	ScreenPanel->SetUsingAbsoluteLocation(true);
+	ScreenPanel->SetUsingAbsoluteRotation(true);
+	ScreenPanel->SetUsingAbsoluteScale(true);
 }
 
 void ATN_VRRig::RecenterPanel()
@@ -804,25 +950,31 @@ void ATN_VRRig::UpdatePointer(APlayerController* PC)
 	FVector HitPoint = FVector::ZeroVector;
 	FVector Origin = FVector::ZeroVector;
 	FVector Dir = FVector::ForwardVector;
+	FVector FlatPoint = FVector::ZeroVector;
+	FVector2D UV = FVector2D::ZeroVector;
 	bool bHasRay = false;
 	if (bMenuMode && ScreenPanel->IsVisible())
 	{
 		bHasRay = GetPointerRay(PC, Origin, Dir);
-		FVector2D UV;
-		bHit = bHasRay && TNVRMath::RayPanelHit(Origin, Dir, ScreenPanel->GetComponentTransform(),
-			FVector2D(UTN_VRScreenWidget::ScreenWidth, UTN_VRScreenWidget::ScreenHeight), HitPoint, UV);
+		const FVector2D Size(UTN_VRScreenWidget::ScreenWidth, UTN_VRScreenWidget::ScreenHeight);
+		bHit = bHasRay && TNVRMath::RayCurvedPanelHit(Origin, Dir, ScreenPanel->GetComponentTransform(), Size, PanelArc, HitPoint, UV);
+		if (bHit)
+		{
+			// El puntero del motor mira el panel plano (invisible): el mismo punto de la interfaz, en su plano.
+			FlatPoint = ScreenPanel->GetComponentTransform().TransformPosition(FVector(0.0, (0.5 - UV.X) * Size.X, (0.5 - UV.Y) * Size.Y));
+		}
 	}
 	if (bHit)
 	{
 		FHitResult Hit;
 		Hit.bBlockingHit = true;
-		Hit.Location = HitPoint;
-		Hit.ImpactPoint = HitPoint;
+		Hit.Location = FlatPoint;
+		Hit.ImpactPoint = FlatPoint;
 		Hit.Normal = ScreenPanel->GetForwardVector();
 		Hit.ImpactNormal = Hit.Normal;
 		Hit.TraceStart = Origin;
 		Hit.TraceEnd = Origin + Dir * Pointer->InteractionDistance;
-		Hit.Distance = static_cast<float>(FVector::Dist(Origin, HitPoint));
+		Hit.Distance = static_cast<float>(FVector::Dist(Origin, FlatPoint));
 		Hit.Component = ScreenPanel.Get();
 		Hit.HitObjectHandle = FActorInstanceHandle(this);
 		Pointer->SetCustomHitResult(Hit);
@@ -916,4 +1068,236 @@ void ATN_VRRig::ReleaseScreenToViewport()
 USceneComponent* ATN_VRRig::GetHand(bool bRight) const
 {
 	return bRight ? RightHand.Get() : LeftHand.Get();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Panel curvo y playa en 360 de la carga
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ATN_VRRig::UpdateCurvedPanel(float ArcDeg)
+{
+	PanelArc = ArcDeg;
+	if (!FMath::IsNearlyEqual(CurvedArcBuilt, ArcDeg, 0.01f))
+	{
+		// Un trozo de cilindro en el espacio del panel (TNVRMath::CurvedPanelPoint), con la UV de la interfaz. Los
+		// triángulos van en los dos sentidos: el material del panel es de una cara y así se ve desde donde toca.
+		const FVector2D Size(UTN_VRScreenWidget::ScreenWidth, UTN_VRScreenWidget::ScreenHeight);
+		const double Radius = TNVRMath::CurvedPanelRadius(Size, ArcDeg);
+		constexpr int32 Segments = 32;
+		TArray<FVector> Vertices;
+		TArray<int32> Triangles;
+		TArray<FVector> Normals;
+		TArray<FVector2D> UVs;
+		TArray<FLinearColor> Colors;
+		const TArray<FProcMeshTangent> NoTangents;
+		for (int32 i = 0; i <= Segments; ++i)
+		{
+			const double U = static_cast<double>(i) / Segments;
+			for (int32 Row = 0; Row < 2; ++Row)
+			{
+				const FVector2D UV(U, static_cast<double>(Row));
+				const FVector Point = TNVRMath::CurvedPanelPoint(UV, Size, ArcDeg);
+				Vertices.Add(Point);
+				Normals.Add(FVector(Radius - Point.X, -Point.Y, 0.0).GetSafeNormal());
+				UVs.Add(UV);
+				Colors.Add(FLinearColor::White);
+			}
+		}
+		for (int32 i = 0; i < Segments; ++i)
+		{
+			const int32 TopA = i * 2;
+			const int32 BottomA = TopA + 1;
+			const int32 TopB = TopA + 2;
+			const int32 BottomB = TopA + 3;
+			Triangles.Append({ TopA, BottomA, TopB, TopB, BottomA, BottomB });
+			Triangles.Append({ TopA, TopB, BottomA, TopB, BottomB, BottomA });
+		}
+		CurvedPanel->CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, UVs, Colors, NoTangents, false);
+		CurvedArcBuilt = ArcDeg;
+	}
+	// El material del panel (con la textura de la interfaz); lo crea el UWidgetComponent al dibujar la primera vez.
+	if (UMaterialInstanceDynamic* Material = ScreenPanel->GetMaterialInstance())
+	{
+		if (CurvedPanel->GetMaterial(0) != Material)
+		{
+			CurvedPanel->SetMaterial(0, Material);
+		}
+	}
+}
+
+void ATN_VRRig::BuildLoadingDome()
+{
+	// Esfera de radio 1 vista desde dentro, con el color de vértice de la playa (cielo, horizonte, mar y arena).
+	constexpr int32 Rings = 18;
+	constexpr int32 Sides = 36;
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<FLinearColor> Colors;
+	const TArray<FProcMeshTangent> NoTangents;
+	for (int32 r = 0; r <= Rings; ++r)
+	{
+		const double Theta = PI * r / Rings;
+		const double Z = FMath::Cos(Theta);
+		const double Ring = FMath::Sin(Theta);
+		const FLinearColor Color = TNVRRigDetail::DomeColor(Z);
+		for (int32 s = 0; s <= Sides; ++s)
+		{
+			const double Phi = 2.0 * PI * s / Sides;
+			const FVector Point(Ring * FMath::Cos(Phi), Ring * FMath::Sin(Phi), Z);
+			Vertices.Add(Point);
+			Normals.Add(-Point);
+			UVs.Add(FVector2D(static_cast<double>(s) / Sides, static_cast<double>(r) / Rings));
+			Colors.Add(Color);
+		}
+	}
+	for (int32 r = 0; r < Rings; ++r)
+	{
+		for (int32 s = 0; s < Sides; ++s)
+		{
+			const int32 A = r * (Sides + 1) + s;
+			const int32 B = A + Sides + 1;
+			Triangles.Append({ A, B, A + 1, A + 1, B, B + 1 });
+			Triangles.Append({ A, A + 1, B, A + 1, B + 1, B });
+		}
+	}
+	LoadingDome->CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, UVs, Colors, NoTangents, false);
+	LoadingDome->SetMaterial(0, TNVRRigDetail::DomeMaterial());
+}
+
+void ATN_VRRig::UpdateLoadingDome(APlayerController* PC)
+{
+	const float Radius = CVarTNVRLoadingDome.GetValueOnGameThread();
+	const UGameInstance* GameInstance = GetGameInstance();
+	const UTN_LoadingScreenSubsystem* Loading = GameInstance ? GameInstance->GetSubsystem<UTN_LoadingScreenSubsystem>() : nullptr;
+	const bool bShow = Radius > 1.f && Loading && Loading->IsShowing();
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	if (!bShow || !GetViewPoint(PC, ViewLocation, ViewRotation))
+	{
+		LoadingDome->SetVisibility(false);
+		return;
+	}
+	if (LoadingDome->GetNumSections() == 0)
+	{
+		BuildLoadingDome();
+	}
+	// Alrededor de la cabeza, sin girar con ella: la playa se queda quieta como un mapa.
+	LoadingDome->SetWorldLocationAndRotation(ViewLocation, FRotator::ZeroRotator);
+	LoadingDome->SetWorldScale3D(FVector(Radius));
+	LoadingDome->SetVisibility(true);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agarres: coger con la mano, lanzar con el gesto
+// ─────────────────────────────────────────────────────────────────────────────
+
+FTransform ATN_VRRig::GetGrabPoint(bool bRight) const
+{
+	const USceneComponent* Hand = bRight ? RightHand.Get() : LeftHand.Get();
+	FTransform Point = Hand ? Hand->GetComponentTransform() : GetActorTransform();
+	// Hacia la punta de la aleta (+X), donde se agarra.
+	Point.SetLocation(Point.GetLocation() + Point.GetRotation().GetForwardVector() * 10.0);
+	Point.SetScale3D(FVector::OneVector);
+	return Point;
+}
+
+void ATN_VRRig::UpdateGrips(APlayerController* PC, ATortugaCharacter* Turtle, float DeltaSeconds)
+{
+	UTN_VRGrabComponent* Grab = Turtle ? Turtle->GetVRGrabComponent() : nullptr;
+	const AMP_GamePlayerController* GamePC = Cast<AMP_GamePlayerController>(PC);
+	const bool bActive = Mode == ETNVRMode::Headset && Turtle && PC->GetViewTarget() == Turtle && !bMenuMode
+		&& !(GamePC && GamePC->IsRadialWheelOpen());
+	for (int32 Hand = 0; Hand < 2; ++Hand)
+	{
+		const bool bRight = Hand == 1;
+		const FTransform Point = GetGrabPoint(bRight);
+		// Velocidad de la mano (para lanzar con el gesto), algo suavizada.
+		if (bPrevGrabPointValid[Hand] && DeltaSeconds > KINDA_SMALL_NUMBER)
+		{
+			const FVector Now = (Point.GetLocation() - PrevGrabPoint[Hand]) / DeltaSeconds;
+			HandVelocity[Hand] = FMath::Lerp(HandVelocity[Hand], Now, 0.5f);
+		}
+		PrevGrabPoint[Hand] = Point.GetLocation();
+		bPrevGrabPointValid[Hand] = true;
+
+		const float Value = bActive ? FMath::Max(PC->GetInputAnalogKeyState(bRight ? FTNVRKeys::RightGripAxis : FTNVRKeys::LeftGripAxis),
+			PC->IsInputKeyDown(bRight ? FTNVRKeys::RightGrip : FTNVRKeys::LeftGrip) ? 1.f : 0.f) : 0.f;
+		const int32 Edge = TNVRMath::AnalogButton(Value, bGripHeld[Hand]);
+		if (Edge > 0)
+		{
+			using EVRGrip = ATortugaCharacter::EVRGrip;
+			// 1) Lo que toca esa mano: un objeto del suelo, algo con lo que interactuar o un compañero.
+			EVRGrip Result = Turtle ? Turtle->VRGripPressed(bRight, Point.GetLocation(), false) : EVRGrip::None;
+			if (Result != EVRGrip::None)
+			{
+				GripUse[Hand] = EGripUse::Turtle;
+				GripTurtle[Hand] = static_cast<uint8>(Result);
+			}
+			// 2) Un objeto con física.
+			else if (Grab && Grab->TryGrab(Hand, Point))
+			{
+				GripUse[Hand] = EGripUse::Grab;
+			}
+			// 3) Lo que ya lleva en la aleta derecha (para lanzarlo o soltarlo) o, con la izquierda, correr.
+			else if (Turtle && (Result = Turtle->VRGripPressed(bRight, Point.GetLocation(), true)) != EVRGrip::None)
+			{
+				GripUse[Hand] = EGripUse::Turtle;
+				GripTurtle[Hand] = static_cast<uint8>(Result);
+			}
+			else
+			{
+				GripUse[Hand] = bRight ? EGripUse::None : EGripUse::Sprint;
+			}
+		}
+		else if (Edge < 0)
+		{
+			if (GripUse[Hand] == EGripUse::Turtle && Turtle)
+			{
+				Turtle->VRGripReleased(static_cast<ATortugaCharacter::EVRGrip>(GripTurtle[Hand]), HandVelocity[Hand]);
+			}
+			else if (GripUse[Hand] == EGripUse::Grab && Grab)
+			{
+				Grab->Release(Hand, HandVelocity[Hand]);
+			}
+			GripUse[Hand] = EGripUse::None;
+		}
+
+		if (GripUse[Hand] == EGripUse::Grab && Grab)
+		{
+			if (Grab->IsGrabbing(Hand))
+			{
+				Grab->UpdateGrab(Hand, Point);
+			}
+			else
+			{
+				GripUse[Hand] = EGripUse::None;
+			}
+		}
+		else if (GripUse[Hand] == EGripUse::Sprint && SprintAction)
+		{
+			// Correr mientras se mantiene: la acción de siempre, inyectada (Completed al dejar de inyectarla).
+			ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+			if (UEnhancedInputLocalPlayerSubsystem* Input = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr)
+			{
+				Input->InjectInputForAction(SprintAction, FInputActionValue(true));
+			}
+		}
+	}
+}
+
+void ATN_VRRig::ReleaseGrips(ATortugaCharacter* Turtle)
+{
+	UTN_VRGrabComponent* Grab = Turtle ? Turtle->GetVRGrabComponent() : nullptr;
+	for (int32 Hand = 0; Hand < 2; ++Hand)
+	{
+		if (GripUse[Hand] == EGripUse::Grab && Grab)
+		{
+			Grab->Release(Hand, FVector::ZeroVector);
+		}
+		GripUse[Hand] = EGripUse::None;
+		bGripHeld[Hand] = false;
+		bPrevGrabPointValid[Hand] = false;
+	}
 }

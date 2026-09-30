@@ -129,6 +129,11 @@ bool FTNVRInputProcessor::HandleKeyDownEvent(FSlateApplication& SlateApp, const 
 	{
 		LastDigitalStickTime = FPlatformTime::Seconds();
 	}
+	// Los agarres cambian de pestaña por su eje (HandleAnalogInputEvent) si llega: el botón no lo repite.
+	if ((Key == FTNVRKeys::LeftGrip || Key == FTNVRKeys::RightGrip) && FPlatformTime::Seconds() - LastGripAxisTime < 1.0)
+	{
+		return true;
+	}
 	const FKey Mapped = TNVRMath::MenuKeyFor(Key);
 	if (Mapped.IsValid())
 	{
@@ -165,6 +170,42 @@ bool FTNVRInputProcessor::HandleAnalogInputEvent(FSlateApplication& SlateApp, co
 {
 	const FKey Key = InAnalogInputEvent.GetKey();
 	const float Value = InAnalogInputEvent.GetAnalogValue();
+	const bool bTriggerAxis = Key == FTNVRKeys::LeftTriggerAxis || Key == FTNVRKeys::RightTriggerAxis;
+	const bool bGripAxis = Key == FTNVRKeys::LeftGripAxis || Key == FTNVRKeys::RightGripAxis;
+	if (bTriggerAxis || bGripAxis)
+	{
+		const int32 Side = (Key == FTNVRKeys::RightTriggerAxis || Key == FTNVRKeys::RightGripAxis) ? 1 : 0;
+		if (!IsMenuUp() || !TNVR::IsHeadset())
+		{
+			// Jugando no se toca nada (el juego los lee por Enhanced Input y ATN_VRRig).
+			bTriggerAxisHeld[Side] = bGripAxisHeld[Side] = false;
+			return false;
+		}
+		UserIndex = InAnalogInputEvent.GetUserIndex();
+		if (bTriggerAxis)
+		{
+			// Gatillo = clic del láser.
+			const int32 Edge = TNVRMath::AnalogButton(Value, bTriggerAxisHeld[Side]);
+			if (ATN_VRRig* Rig = GetRig())
+			{
+				if (Edge > 0) { Rig->PointerPress(); }
+				else if (Edge < 0) { Rig->PointerRelease(); }
+			}
+		}
+		else
+		{
+			// Agarre = pestaña anterior (izquierdo) o siguiente (derecho).
+			LastGripAxisTime = FPlatformTime::Seconds();
+			const int32 Edge = TNVRMath::AnalogButton(Value, bGripAxisHeld[Side]);
+			const FKey Mapped = TNVRMath::MenuKeyFor(Side == 1 ? FTNVRKeys::RightGrip : FTNVRKeys::LeftGrip);
+			if (Edge != 0 && Mapped.IsValid())
+			{
+				SendKey(SlateApp, Mapped, Edge > 0, false);
+			}
+		}
+		// Con un menú delante, los gatillos y los agarres no llegan al juego.
+		return true;
+	}
 	if (Key == FTNVRKeys::LeftStickX) { Sticks[0].X = Value; }
 	else if (Key == FTNVRKeys::LeftStickY) { Sticks[0].Y = Value; }
 	else if (Key == FTNVRKeys::RightStickX) { Sticks[1].X = Value; }
