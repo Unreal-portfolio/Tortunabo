@@ -1,4 +1,6 @@
 #include "World/TN_ScorePickup.h"
+#include "World/TN_ScorePickupWakeSubsystem.h"
+#include "Components/WidgetComponent.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Player/TortugaCharacter.h"
@@ -283,14 +285,46 @@ void ATN_ScorePickup::BeginPlay()
 	if (GetNetMode() == NM_DedicatedServer)
 	{
 		// Sin pantalla no hay nada que animar.
+		bAnimates = false;
 		SetActorTickEnabled(false);
+	}
+	else if (UTN_ScorePickupWakeSubsystem* Wake = GetWorld() ? GetWorld()->GetSubsystem<UTN_ScorePickupWakeSubsystem>() : nullptr)
+	{
+		// Dormida hasta que la cámara se acerque: el subsistema mira las distancias de todas de una vez.
+		Wake->Register(this);
+		bWakeRegistered = true;
+	}
+	else
+	{
+		// Sin subsistema (un mundo que no es de juego): siempre despierta, como antes.
+		SetAwake(true);
 	}
 }
 
 void ATN_ScorePickup::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (bWakeRegistered)
+	{
+		if (UTN_ScorePickupWakeSubsystem* Wake = GetWorld() ? GetWorld()->GetSubsystem<UTN_ScorePickupWakeSubsystem>() : nullptr)
+		{
+			Wake->Unregister(this);
+		}
+		bWakeRegistered = false;
+	}
 	TNAmbientFX::RemoveOwner(this);
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_ScorePickup::SetAwake(bool bAwake)
+{
+	bNearView = bAwake;
+	SetActorTickEnabled(bAwake && bAnimates);
+	// El WidgetComponent del Blueprint (si lo hay) tampoco se redibuja de lejos.
+	TInlineComponentArray<UWidgetComponent*> Widgets(this);
+	for (UWidgetComponent* Widget : Widgets)
+	{
+		Widget->SetComponentTickEnabled(bAwake);
+	}
 }
 
 void ATN_ScorePickup::ClearTierExtras()
@@ -317,10 +351,13 @@ void ATN_ScorePickup::ApplyTierLook()
 	UStaticMesh* Shell = bPlaceholder ? TNScorePickupDetail::ShellCoinMesh(ShellTier) : nullptr;
 	if (!Shell || !ShellMesh)
 	{
+		bAnimates = false;
 		SetActorTickEnabled(false);
 		if (ShellMesh) { ShellMesh->SetVisibility(false); }
 		return;
 	}
+	bAnimates = GetNetMode() != NM_DedicatedServer;
+	SetActorTickEnabled(bNearView && bAnimates);
 	const float Lift = TNScoreShells::MeshLift(ShellTier);
 	PickupMesh->SetVisibility(false, false);
 	ShellMesh->SetVisibility(true);
@@ -390,20 +427,7 @@ void ATN_ScorePickup::Tick(float DeltaTime)
 	if (!ShellMesh || !ShellMesh->IsVisible()) { return; }
 	const TNScoreShells::ETier ShellTier = GetShellTier();
 
-	// Lejos de la cámara local ni gira ni mueve destellos: se mira dos veces por segundo.
-	ViewCheckClock -= DeltaTime;
-	if (ViewCheckClock <= 0.f)
-	{
-		ViewCheckClock = 0.5f;
-		const APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0);
-		const float Wake = TNScoreShells::WakeDistance(ShellTier);
-		const bool bNear = !Cam || FVector::DistSquared(Cam->GetCameraLocation(), GetActorLocation()) < FMath::Square(Wake);
-		if (bNear != bNearView)
-		{
-			bNearView = bNear;
-			SetActorTickInterval(bNear ? 0.f : 0.5f);
-		}
-	}
+	// Lejos de la cámara local el Tick está apagado (UTN_ScorePickupWakeSubsystem); esto es solo por si acaso.
 	if (!bNearView) { return; }
 
 	// Giro de moneda y balanceo suave; los destellos, al paso.

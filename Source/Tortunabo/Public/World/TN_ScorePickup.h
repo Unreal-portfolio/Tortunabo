@@ -52,6 +52,15 @@ public:
 	/** Tamaño que corresponde a ScoreValue. */
 	TNScoreShells::ETier GetShellTier() const { return TNScoreShells::TierForValue(ScoreValue); }
 
+	/** A qué distancia de la cámara despierta (la de su tamaño). */
+	float GetWakeDistance() const { return TNScoreShells::WakeDistance(GetShellTier()); }
+
+	/**
+	 * Cerca de la cámara (UTN_ScorePickupWakeSubsystem): gira, se balancea y mueve sus destellos con su Tick. Lejos: el
+	 * Tick de la concha y el de sus WidgetComponent, apagados del todo.
+	 */
+	void SetAwake(bool bAwake);
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ScorePickup")
 	TObjectPtr<UStaticMeshComponent> PickupMesh;
@@ -108,9 +117,14 @@ private:
 	/** Reloj del giro y del balanceo (cada concha desfasada). */
 	float SpinTime = 0.f;
 
-	/** Cada cuánto se mira si la cámara local está cerca (s) y si lo está: lejos, ni gira ni mueve destellos. */
-	float ViewCheckClock = 0.f;
-	bool bNearView = true;
+	/** Cerca de la cámara local (SetAwake): lejos, ni gira ni mueve destellos. */
+	bool bNearView = false;
+
+	/** Tiene algo que animar (la concha de código); con una malla propia de arte o en el servidor dedicado, no. */
+	bool bAnimates = true;
+
+	/** Apuntada en UTN_ScorePickupWakeSubsystem (máquinas con pantalla). */
+	bool bWakeRegistered = false;
 
 	/** Tamaño cuyo aspecto está puesto (255 = ninguno todavía). */
 	uint8 AppliedTier = 255;
