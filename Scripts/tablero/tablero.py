@@ -9,6 +9,7 @@ memoria en las issues y auditar la organización del tablero.
 Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py pendiente
     uv run python Scripts/tablero/tablero.py coger 42
+    uv run python Scripts/tablero/tablero.py soltar 42 --motivo "..."
     uv run python Scripts/tablero/tablero.py estado 42 "In review"
     uv run python Scripts/tablero/tablero.py editor 42 funciona|falla --como "PIE 4P"   # en cualquier estado
     uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug --area Red --prioridad P1 --tamano S --cuerpo cuerpo.md --objeto "Rally Tortuga"
@@ -23,12 +24,15 @@ Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py auditar [--aplicar]
     uv run python Scripts/tablero/tablero.py colisiones [--aplicar]
     uv run python Scripts/tablero/tablero.py bloquear 57 --por 40 [--por 41]
+    uv run python Scripts/tablero/tablero.py volcado [--publicar 131]
+    uv run python Scripts/tablero/tablero.py puente --comando "estado 42 Ready"
 
 Las tareas y los fallos se agrupan por objeto (issue padre con la etiqueta `objeto`)
 como sub-issues nativas de GitHub. Módulos: base.py (gh, git, proyecto, PR), flujo.py
 (reglas del ciclo), objetos.py, bloqueos.py (dependencias), lotes.py, memoria.py (Resumen
 y Decisión), auditoria.py, colisiones.py, estados.py (opciones de Status), control.py
-(memoria, auditoría, colisiones, dependencias) y control_lotes.py (lotes y resúmenes).
+(memoria, auditoría, colisiones, dependencias), control_lotes.py (lotes y resúmenes) y
+volcado.py (volcado a Markdown y puente para GitHub Actions).
 
 Requiere `gh` autenticado con el scope `project` (`gh auth refresh -s project`).
 """
@@ -49,6 +53,7 @@ import flujo
 import lotes
 import memoria
 import objetos
+import volcado
 from base import (CONFIG, ESTADOS, INTEGRACION, ORDEN_PRIORIDAD, ORDEN_TAMANO, REPO,
                   ErrorTablero, cargar_proyecto, comentar, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
                   item_de_issue, poner_campo, prs_abiertas, prs_fusionadas, slug, usuario_actual,
@@ -153,6 +158,17 @@ def cmd_coger(args: argparse.Namespace) -> None:
     git("fetch", "origin", INTEGRACION)
     git("switch", "-c", rama, f"origin/{INTEGRACION}")
     print(f"#{args.numero} asignada a {yo}, en In progress. Rama nueva: {rama} (desde origin/{INTEGRACION}).")
+
+
+def cmd_soltar(args: argparse.Namespace) -> None:
+    """Dejo de trabajar en la issue: sin asignado y de vuelta a Ready. Asignado significa «estoy con ella ahora»."""
+    proyecto = cargar_proyecto()
+    if args.numero not in proyecto["items"]:
+        raise ErrorTablero(f"La issue #{args.numero} no está en el tablero.")
+    gh("issue", "edit", str(args.numero), "--repo", REPO, "--remove-assignee", "@me")
+    poner_campo(proyecto, args.numero, "Status", "Ready")
+    comentar(args.numero, f"Vuelve a Ready sin asignado: {args.motivo}")
+    print(f"#{args.numero} → Ready, sin asignado")
 
 
 def cmd_estado(args: argparse.Namespace) -> None:
@@ -271,7 +287,7 @@ def reconciliar_issues_sueltas(proyecto: dict, cambios: list) -> None:
                              "--json", "number,title,labels"))
     for issue in abiertas:
         n = issue["number"]
-        if n in proyecto["items"] or issue["title"] == "Parte diario del tablero":
+        if n in proyecto["items"] or issue["title"] in auditoria.TITULOS_EXCLUIDOS:
             continue
         if objetos.es_objeto(issue) or lotes.es_lote(issue):
             cambios.append((f"#{n} (objeto o lote) entra al tablero sin Status ({issue['title']})",
@@ -530,6 +546,10 @@ def anadir_comandos_de_flujo(sub: argparse._SubParsersAction) -> None:
     p.add_argument("numero", type=int)
     p.add_argument("--forzar", action="store_true")
     p.set_defaults(fn=cmd_coger)
+    p = sub.add_parser("soltar", help="dejar una issue que tenía en curso: sin asignado y de vuelta a Ready")
+    p.add_argument("numero", type=int)
+    p.add_argument("--motivo", required=True, help="por qué la dejo y en qué punto queda")
+    p.set_defaults(fn=cmd_soltar)
     p = sub.add_parser("estado", help="mover una issue de columna")
     p.add_argument("numero", type=int)
     p.add_argument("estado", choices=ESTADOS)
@@ -557,6 +577,21 @@ def anadir_comandos_de_flujo(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(fn=cmd_editor)
 
 
+def cmd_volcado(args: argparse.Namespace) -> None:
+    """Imprime el tablero en Markdown o, con --publicar, lo deja como cuerpo de esa issue."""
+    proyecto = cargar_proyecto()
+    prs_por_issue: dict[int, list[int]] = {}
+    for pr in prs_abiertas():
+        for numero in issues_de_pr(pr):
+            prs_por_issue.setdefault(numero, []).append(pr["number"])
+    texto = volcado.render(proyecto["items"], prs_por_issue, datetime.now(timezone.utc))
+    if args.publicar is None:
+        print(texto)
+        return
+    gh("issue", "edit", str(args.publicar), "--repo", REPO, "--body-file", "-", entrada=texto)
+    print(f"Volcado publicado en #{args.publicar} ({len(texto)} caracteres)")
+
+
 def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     """Comandos que crean u organizan issues: nueva, objeto, colgar y sync."""
     p = sub.add_parser("nueva", help="crear issue y colocarla en el tablero")
@@ -582,6 +617,12 @@ def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     p.add_argument("hijo", type=int)
     p.add_argument("padre", type=int)
     p.set_defaults(fn=cmd_colgar)
+    p = sub.add_parser("volcado", help="tablero completo en Markdown, para quien no puede leer el Project")
+    p.add_argument("--publicar", type=int, metavar="ISSUE", help="sustituir el cuerpo de esa issue por el volcado")
+    p.set_defaults(fn=cmd_volcado)
+    p = sub.add_parser("puente", help="ejecutar un comando recibido por el workflow (lista cerrada)")
+    p.add_argument("--comando", required=True, help='por ejemplo: estado 42 Ready')
+    p.set_defaults(fn=None)
     p = sub.add_parser("sync", help="reconciliar tablero, PR e issues")
     p.add_argument("--aplicar", action="store_true")
     p.set_defaults(fn=cmd_sync)
@@ -596,6 +637,8 @@ def main() -> int:
     control_lotes.anadir_comandos(sub)
     args = parser.parse_args()
     try:
+        if args.cmd == "puente":
+            args = parser.parse_args(volcado.argumentos_de_puente(args.comando))
         args.fn(args)
     except (ErrorTablero, objetos.ErrorObjeto, memoria.ErrorMemoria) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

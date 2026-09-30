@@ -12,7 +12,7 @@ import colisiones  # noqa: E402
 import lotes  # noqa: E402
 import memoria  # noqa: E402
 
-AHORA = datetime(2026, 9, 29, 12, tzinfo=UTC)
+AHORA = datetime(2026, 10, 20, 12, tzinfo=UTC)
 
 
 # --- Resumen y Decisión ----------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def test_decision_con_fecha_y_quien():
 def _issue(status="Ready", **extra):
     valores = {"Status": status, "Prioridad": "P1", "Área": "Red", "Tamaño": "S", **extra.pop("valores", {})}
     base = {"numero": 5, "titulo": "Tarea", "estado": "OPEN", "motivo_cierre": None, "cerrada": None,
-            "etiquetas": set(), "asignados": ["Mokius"], "padre": 40, "bloqueantes": [], "lotes": [],
+            "etiquetas": set(), "asignados": [] if status in auditoria.ESTADOS_SIN_DUENO else ["Mokius"], "padre": 40, "bloqueantes": [], "lotes": [],
             "comentarios": [], "valores": valores, "con_pr": False, "fusionada": False, "lote_fusionado": None,
             "prs_sin_lote": [], "revisor_sugerido": "SkiTemplar"}
     return {**base, **extra}
@@ -144,6 +144,22 @@ def test_cerrada_completada_sin_probar_se_reabre_en_revisiones_con_p0():
     assert accion["reabrir"] and accion["campos"]["Prioridad"] == "P0"
 
 
+def test_cerrada_antes_del_inicio_del_sistema_no_se_audita():
+    ahora = auditoria.INICIO_SISTEMA + timedelta(days=1)
+    previa = _issue("Done", estado="CLOSED", motivo_cierre="COMPLETED", cerrada=auditoria.INICIO_SISTEMA - timedelta(hours=2))
+    posterior = {**previa, "cerrada": auditoria.INICIO_SISTEMA + timedelta(hours=2)}
+    assert auditoria.problemas(previa, ahora) == []
+    assert [p["tipo"] for p in auditoria.problemas(posterior, ahora)] == ["grave", "organizacion"]
+
+
+@pytest.mark.parametrize("estado", ["Backlog", "Ready", "Bloqueada"])
+def test_asignado_fuera_de_curso_se_avisa(estado):
+    extra = {"bloqueantes": [7]} if estado == "Bloqueada" else {}
+    assert any("tiene asignado (Mokius)" in t for t in _textos(_issue(estado, asignados=["Mokius"], **extra)))
+    assert not any("tiene asignado" in t for t in _textos(_issue(estado, **extra)))
+    assert not any("tiene asignado" in t for t in _textos(_issue("In progress")))
+
+
 def test_cerrada_reciente_sin_resumen_y_antigua_no_se_audita():
     reciente = _issue("Done", estado="CLOSED", motivo_cierre="NOT_PLANNED", cerrada=AHORA - timedelta(days=3))
     antigua = _issue("Done", estado="CLOSED", motivo_cierre="COMPLETED", cerrada=AHORA - timedelta(days=15))
@@ -169,6 +185,7 @@ def test_objetos_lotes_y_parte_diario_no_son_de_trabajo():
     assert not auditoria.es_de_trabajo(_issue(etiquetas={"objeto"}))
     assert not auditoria.es_de_trabajo(_issue(etiquetas={"lote"}))
     assert not auditoria.es_de_trabajo(_issue(titulo="Parte diario del tablero"))
+    assert not auditoria.es_de_trabajo(_issue(titulo="Estado del tablero"))
     assert auditoria.es_de_trabajo(_issue())
 
 

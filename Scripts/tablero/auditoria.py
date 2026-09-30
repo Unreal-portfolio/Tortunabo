@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import bloqueos
 import flujo
@@ -32,8 +32,12 @@ COLOR = "FBCA04"
 DESCRIPCION_ETIQUETA = "La issue tiene problemas de organización en el tablero (tablero.py auditar)"
 CABECERA = "**Revisión de organización**"
 DIAS_RESUMEN = 14
+# Las issues cerradas antes de que existiera este sistema no tienen Resumen ni validaciones: no se auditan.
+INICIO_SISTEMA = datetime(2026, 9, 30, tzinfo=timezone.utc)
+# Asignado significa «estoy con ella ahora»: en estas columnas nadie está trabajando en la issue.
+ESTADOS_SIN_DUENO = ("Backlog", "Ready", bloqueos.ESTADO)
 CAMPOS_OBLIGATORIOS = ("Prioridad", "Área", "Tamaño")
-TITULOS_EXCLUIDOS = {"Parte diario del tablero"}
+TITULOS_EXCLUIDOS = {"Parte diario del tablero", "Estado del tablero"}
 # Comentarios que escribe el propio tablero y no explican por qué algo falla.
 PREFIJOS_AUTOMATICOS = ("Lista para revisión", "**Editor: funciona**", "**Revisión IA", "Fusionada en",
                         CABECERA, memoria.CABECERA_RESUMEN, memoria.CABECERA_DECISION, flujo.AVISO_SIN_QA)
@@ -119,6 +123,9 @@ def organizacion_abierta(issue: dict) -> list[dict]:
     lista += [problema(f"sin {campo}") for campo in CAMPOS_OBLIGATORIOS if not valores.get(campo)]
     if estado == "In progress" and not issue["asignados"]:
         lista.append(problema("In progress sin asignado"))
+    if estado in ESTADOS_SIN_DUENO and issue["asignados"]:
+        lista.append(problema(f"tiene asignado ({', '.join(issue['asignados'])}) y está en {estado}: quien la tenga "
+                              "que la coja (`tablero.py coger <n>`) o la suelte (`tablero.py soltar <n>`)"))
     if estado == "In review" and not issue.get("con_pr"):
         lista.append(problema("In review sin PR enlazada (`Closes #n` en la PR o rama `tipo/<n>-slug`)"))
     if estado == "Revisiones" and "colision" not in issue["etiquetas"] \
@@ -134,7 +141,7 @@ def organizacion_abierta(issue: dict) -> list[dict]:
 def problemas_cerrada(issue: dict, ahora: datetime) -> list[dict]:
     """Cerradas en los últimos DIAS_RESUMEN días: resumen y, si se completaron, que estuvieran probadas."""
     cerrada = issue.get("cerrada")
-    if cerrada is None or ahora - cerrada > timedelta(days=DIAS_RESUMEN):
+    if cerrada is None or cerrada < INICIO_SISTEMA or ahora - cerrada > timedelta(days=DIAS_RESUMEN):
         return []
     lista = []
     completada = issue.get("motivo_cierre") == "COMPLETED"
