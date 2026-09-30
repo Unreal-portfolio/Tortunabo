@@ -117,7 +117,7 @@ def test_render_menciona_resume_y_adjunta_el_parte():
     texto = avisos.render("SkiTemplar", secciones, ["**Ruben-Besteiro** subió a dev por push directo."], AHORA,
                           parte="**Parte 2026-10-01**\n- nada")
     primera = texto.splitlines()[0]
-    assert primera.startswith("@SkiTemplar · avisos del 2026-10-01: 1 incidencias; ")
+    assert primera.startswith("@SkiTemplar · avisos del 2026-10-01: 1 incidencia; ")
     assert "1 · te toca revisar" in primera
     assert "### Incidencias: código en dev sin revisión" in texto and "- #13 Tarea 13 (P1, Mokius)" in texto
     assert texto.index("### Incidencias") < texto.index("### Te toca revisar") < texto.index("### Parte de la rutina")
