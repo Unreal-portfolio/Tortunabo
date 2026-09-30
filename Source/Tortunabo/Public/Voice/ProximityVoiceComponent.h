@@ -5,6 +5,7 @@
 #include "Sound/SoundWaveProcedural.h"
 #include "Components/AudioComponent.h"
 #include "AudioCaptureCore.h"
+#include "Voice/TN_VoiceRate.h"
 #include "ProximityVoiceComponent.generated.h"
 
 class UUserWidget;
@@ -185,6 +186,21 @@ private:
 	float SendTimer = 0.f;
 	float SilenceHoldOffTimer = 0.f;
 	int32 CaptureNumChannels = 1;
+
+	/**
+	 * Frecuencia real de lo que entrega la captura, medida con las muestras que llegan (#154): la del dispositivo
+	 * (VoiceSampleRate) puede no ser la del flujo, y la voz etiquetada con ella se oía aguda y acelerada.
+	 */
+	TNVoiceRate::FCaptureRateMeter CaptureRateMeter;
+
+	/** Frecuencia con la que se envía: la medida en cuanto se conoce; hasta entonces, la del dispositivo. */
+	int32 GetCaptureSampleRate() const { return CaptureRateMeter.Rate > 0 ? CaptureRateMeter.Rate : VoiceSampleRate; }
+
+	/** Frecuencia de la onda con la que se reproduce la voz de esta tortuga en esta máquina (0 sin onda). */
+	int32 PlaybackSampleRate = 0;
+
+	/** La onda procedural de la voz a InSampleRate, mono y en bucle indefinido. */
+	USoundWaveProcedural* CreateVoiceWave(int32 InSampleRate);
 
 	UPROPERTY()
 	TObjectPtr<UAudioComponent> PlaybackAudioComponent;

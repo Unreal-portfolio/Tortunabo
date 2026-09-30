@@ -332,19 +332,11 @@ void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 
 	const int32 ActualSampleRate = (InSampleRate > 0) ? InSampleRate : VoiceSampleRate;
 
-	ProceduralSoundWave = NewObject<USoundWaveProcedural>(this);
+	ProceduralSoundWave = CreateVoiceWave(ActualSampleRate);
 	if (!ProceduralSoundWave)
 	{
 		return;
 	}
-
-	ProceduralSoundWave->SetSampleRate(ActualSampleRate);
-	ProceduralSoundWave->NumChannels = VoiceNumChannels;
-	ProceduralSoundWave->Duration = INDEFINITELY_LOOPING_DURATION;
-	ProceduralSoundWave->SoundGroup = SOUNDGROUP_Voice;
-	ProceduralSoundWave->bLooping = false;
-	ProceduralSoundWave->bProcedural = true;
-	ProceduralSoundWave->Volume = PlaybackVolume;
 
 	PlaybackAudioComponent = NewObject<UAudioComponent>(Owner);
 	if (!PlaybackAudioComponent)
@@ -372,6 +364,24 @@ void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 	PlaybackAudioComponent->SetVolumeMultiplier(PlaybackVolume);
 	PlaybackAudioComponent->SetSound(ProceduralSoundWave);
 	PlaybackAudioComponent->Play();
+}
+
+USoundWaveProcedural* UProximityVoiceComponent::CreateVoiceWave(int32 InSampleRate)
+{
+	USoundWaveProcedural* Wave = NewObject<USoundWaveProcedural>(this);
+	if (!Wave)
+	{
+		return nullptr;
+	}
+	Wave->SetSampleRate(InSampleRate);
+	Wave->NumChannels = VoiceNumChannels;
+	Wave->Duration = INDEFINITELY_LOOPING_DURATION;
+	Wave->SoundGroup = SOUNDGROUP_Voice;
+	Wave->bLooping = false;
+	Wave->bProcedural = true;
+	Wave->Volume = PlaybackVolume;
+	PlaybackSampleRate = InSampleRate;
+	return Wave;
 }
 
 void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -405,6 +415,22 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		else
 		{
 			MonoData = MoveTemp(NewAudioData);
+		}
+
+		// Frecuencia real: muestras mono que llegan por segundo (antes de reducirlas). Si no es la que dice el dispositivo
+		// (cancelación de eco de Windows a 16 kHz, canales distintos), la voz se etiquetaba mal y se oía de ardilla.
+		if (CaptureRateMeter.Add(MonoData.Num(), FPlatformTime::Seconds()))
+		{
+			const int32 SendRate = FMath::Max(1, CaptureRateMeter.Rate / FMath::Max(1, VoiceDownsampleFactor));
+			if (CaptureRateMeter.Rate != VoiceSampleRate)
+			{
+				UE_LOG(LogTortunabo, Warning, TEXT("[Voice] La captura llega a %d Hz en mono, no a los %d Hz del dispositivo (%d canales): se envía a %d Hz."),
+					CaptureRateMeter.Rate, VoiceSampleRate, CaptureNumChannels, SendRate);
+			}
+			else
+			{
+				UE_LOG(LogTortunabo, Log, TEXT("[Voice] Captura a %d Hz (%d canales): se envía a %d Hz."), CaptureRateMeter.Rate, CaptureNumChannels, SendRate);
+			}
 		}
 
 		for (float& Sample : MonoData)
@@ -543,7 +569,7 @@ void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			constexpr int32 ClientPayloadCap = MaxVoicePayloadBytes;
 			if (Compressed.Num() > 0 && Compressed.Num() <= ClientPayloadCap)
 			{
-				const int32 EffectiveSampleRate = FMath::Max(1, VoiceSampleRate / FMath::Max(1, VoiceDownsampleFactor));
+				const int32 EffectiveSampleRate = FMath::Max(1, GetCaptureSampleRate() / FMath::Max(1, VoiceDownsampleFactor));
 				Server_SendVoiceData(Compressed, EffectiveSampleRate);
 			}
 			else if (Compressed.Num() > ClientPayloadCap)
@@ -661,6 +687,15 @@ void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedDa
 	if (!ProceduralSoundWave || !PlaybackAudioComponent)
 	{
 		SetupPlayback(SenderSampleRate);
+	}
+	else if (PlaybackSampleRate != SenderSampleRate)
+	{
+		// El que habla ya ha medido su frecuencia real (TNVoiceRate) y es otra: onda nueva a esa frecuencia. Con la de
+		// antes se oía más aguda y acelerada (o más grave y lenta).
+		UE_LOG(LogTortunabo, Log, TEXT("[Voice] La voz de %s pasa de %d a %d Hz."), *GetNameSafe(GetOwner()), PlaybackSampleRate, SenderSampleRate);
+		PlaybackAudioComponent->Stop();
+		ProceduralSoundWave = CreateVoiceWave(SenderSampleRate);
+		PlaybackAudioComponent->SetSound(ProceduralSoundWave);
 	}
 
 	if (!ProceduralSoundWave || !PlaybackAudioComponent)
