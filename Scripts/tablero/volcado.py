@@ -116,6 +116,11 @@ mutation($id: ID!) { updateSubscription(input: {subscribableId: $id, state: UNSU
 """
 
 
+def falta_scope_de_notificaciones(error: str) -> bool:
+    """True si gh rechazó la consulta porque al token le falta el scope `notifications`."""
+    return "notifications" in error and "scopes" in error
+
+
 def a_silenciar(nodos: list[dict]) -> list[dict]:
     """Issues abiertas a las que el dueño del token está suscrito (las ignoradas y las ya silenciadas no se tocan)."""
     return [n for n in nodos if n.get("viewerSubscription") == "SUBSCRIBED"]

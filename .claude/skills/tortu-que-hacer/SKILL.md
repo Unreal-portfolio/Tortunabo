@@ -17,9 +17,9 @@ El tablero lo mantienes tú, sin esperar a que te lo pidan. Ciclo y estados: «T
    - si es aprobador: decisiones pendientes (issues y objetos), lotes abiertos (`gh issue list --label lote` y `tablero.py lote estado <lote>`) (la auditoría ya la pasa el puente cada mañana: no hace falta lanzarla);
    - issues en QA editor que puede probar ahora mismo (probar es trabajo útil y rápido);
    - de 3 a 5 issues libres en Ready, por prioridad, con una frase de qué supone cada una. `pendiente` no ofrece las Bloqueadas ni las que tienen bloqueantes abiertas.
-3. Recomienda una con el motivo (prioridad, tamaño, que no choque con lo que otro tiene en curso en la misma área o ficheros). Para Ruby, tamaños XS/S y `buena-primera`.
+3. Recomienda una con el motivo (prioridad, tamaño, que no choque con lo que otro tiene en curso en la misma área o ficheros). Para Rubi, tamaños XS/S y `buena-primera`.
 4. Si el usuario elige, sigue con `tortu-coger`. Si dice que deja algo que tenía en curso, `tablero.py soltar <n> --motivo "..."`.
 
 Las tareas cuelgan de objetos (sistemas del juego); `pendiente` no los lista porque no se cogen. Para verlos, la vista «Objetos» del proyecto o `gh issue view <objeto>`.
 
-Si no hay nada en Ready, dilo y propone concretar una del Backlog (criterios verificables) para que un aprobador la pase a Ready. No inventes tareas: si el usuario menciona un trabajo que no existe, créalo con `tablero.py nueva`.
+Si no hay nada en Ready, dilo y propone concretar una del Backlog (criterios verificables) para que un aprobador la pase a Ready. No inventes tareas: si el usuario menciona un trabajo que no existe, créalo con `tablero.py nueva` (objeto, Prioridad, Tamaño, Área y criterios como casillas: «Forma de una issue» en `CLAUDE.md`). Los P0 van antes que cualquier otra issue libre.

@@ -12,7 +12,7 @@ El tablero es solo de desarrollo: código, pulido, bugs y revisión de assets. E
 |---|---|---|---|
 | SkiTemplar | Rodrigo | Director y aprobador | Mokius |
 | Mokius | Mokius | Código y aprobador | SkiTemplar |
-| Ruben-Besteiro | Ruby | Código | Mokius o SkiTemplar |
+| Ruben-Besteiro | Rubi | Código | Mokius o SkiTemplar |
 
 Las decisiones que no estén escritas las toman SkiTemplar o Mokius. Si te falta una, etiqueta la issue con `decision`, di qué hay que decidir en un comentario y sigue con otra tarea. `pendiente` enseña las decisiones abiertas y `coger` no coge una issue con `decision` sin consultarlo antes (`--forzar` para seguir sin esperar).
 
@@ -20,7 +20,7 @@ Las decisiones que no estén escritas las toman SkiTemplar o Mokius. Si te falta
 
 - `dev`: la rama de desarrollo hasta el final del juego. Todas las ramas salen de `origin/dev` y todas las PR van hacia `dev`.
 - `main`: versión estable. No se toca ni se abren PR hacia ella.
-- Rama de trabajo: `feat/<issue>-<slug>` o `fix/<issue>-<slug>`, una por issue. La crea `tablero.py coger`.
+- Rama de trabajo: `feat/<issue>-<slug>` o `fix/<issue>-<slug>`, una por issue. La crea `tablero.py coger`. La rama de un lote lleva el número de su primera issue.
 - Antes de abrir o actualizar una PR: `git fetch origin && git rebase origin/dev`. Ramas cortas: si una rama vive más de 2-3 días, rebase diario.
 
 ## Tablero: la única lista de tareas
@@ -43,20 +43,30 @@ Dos validaciones por issue: **Revisión IA** (`Pendiente` / `Aprobada` / `Cambio
 
 Ciclo paso a paso:
 
-1. **Coger** (`coger <n>`): In progress, asignada y rama desde `origin/dev`. `coger` rechaza las issues con bloqueantes abiertas. Asignado significa «estoy con ella ahora»: si la dejas sin terminar, `soltar <n> --motivo "..."` la devuelve a Ready sin asignado.
+1. **Coger** (`coger <n>`): In progress, asignada y rama desde `origin/dev`. `coger` rechaza las issues con bloqueantes abiertas y exige el árbol de trabajo sin cambios en ficheros versionados. Asignado significa «estoy con ella ahora»: si la dejas sin terminar, `soltar <n> --motivo "..."` la devuelve a Ready sin asignado.
 2. **Probar mientras se trabaja** (`editor <n> funciona|falla`): si funciona, Editor = Funciona y la issue no pasará por QA editor; si falla, se queda en In progress con el fallo comentado: no se manda algo que no funciona.
 3. **Entregar** (`revision <n>`): In review con revisor cruzado. Si el autor no la ha probado, va con Editor = Sin probar y el comentario «Sin QA editor». Con Editor = Falla, `revision` la rechaza.
-4. **Revisar** (`ia <n> aprobada|cambios`): con cambios pasa a Revisiones con el fallo comentado. Lo normal es que el propio revisor lo arregle: la coge con `coger <n> --forzar` (In progress a su nombre) y la vuelve a entregar; la nueva revisión la hace otro.
+4. **Revisar** (`ia <n> aprobada|cambios --revisor "<login> (Claude)"`): el campo Revisor pasa a ser quien ha revisado de verdad. Con cambios pasa a Revisiones con el fallo comentado. Lo normal es que el propio revisor lo arregle: la coge con `coger <n> --forzar` (In progress a su nombre) y la vuelve a entregar; la nueva revisión la hace otro.
 5. **Fusionar** (aprobadores; `gh pr merge` y `sync --aplicar`): Editor = Funciona → Done y se cierra; si no, QA editor, la prueba quien sea (`editor <n> funciona`) → Done.
 6. **Cerrar** (`resumen <n>`): cada issue que llega a Done lleva su comentario **Resumen**.
 
 Una prueba que falla en In review, QA editor o con la issue cerrada la lleva a Revisiones (la reabre si hace falta, con `regresion` si ya funcionaba). Regla única que aplican `ia`, `editor` y `sync`: Done solo con la PR en dev, Revisión IA = Aprobada y Editor = Funciona.
 
-**PR pequeñas y frecuentes a dev.** Un lote de varios bugs puede ir en una PR con `Closes` de todos, siempre con su lote: `lote crear --titulo "…" <n> <n> …` crea una issue temporal `lote` («Lote: …») que depende de cada miembro y la enlaza a la PR con «Refs». Cada miembro se revisa y se prueba por separado y, con las dos validaciones, espera en Validada. La PR del lote no se fusiona hasta que `lote estado <lote>` confirma que todos están en Validada; al fusionarla pasan a Done a la vez y el lote se cierra con un **Resumen** del conjunto.
+**PR pequeñas y frecuentes a dev.** Un lote de varios bugs puede ir en una PR con `Closes` de todos, siempre con su lote: `lote crear --titulo "…" <n> <n> …` crea una issue temporal `lote` («Lote: …») que depende de cada miembro y la enlaza a la PR con «Refs». Cada miembro se revisa y se prueba por separado y, con las dos validaciones, espera en Validada. La PR del lote no se fusiona hasta que `lote estado <lote>` confirma que todos están en Validada y que ninguno tiene una `decision` pendiente; al fusionarla pasan a Done a la vez y el lote se cierra con un **Resumen** del conjunto.
 
-**Dependencias**: si una issue no puede empezar hasta que se cierren otras, `bloquear <n> --por <m>` la deja en Bloqueada; `sync --aplicar` la pasa a Ready cuando se cierran todas.
+**Dependencias**: si una issue no puede empezar hasta que se cierren otras, `bloquear <n> --por <m>` la deja en Bloqueada; `sync --aplicar` la pasa a Ready cuando se cierran todas. En Backlog la dependencia se registra y la issue sigue en Backlog (bloquear no aprueba); al aprobarla con `estado <n> Ready`, si sus bloqueantes siguen abiertas va a Bloqueada.
 
-**Colisiones y auditoría**: `colisiones --aplicar` crea una issue `colision` (P1, Revisiones) por cada par de PR abiertas que tocan los mismos ficheros, con las instrucciones para mezclarlas (si hay `.uasset`/`.umap`, `decision` y no se mezclan). `auditar --aplicar` revisa la organización sin tocar código: lo trivial (mover la tarjeta a su columna, rellenar un campo evidente) lo corrige y lo anota; lo que afecta al trabajo (PR de lote fusionada sin validar, estado incoherente con la PR, issue cerrada sin probar) lo pasa a Revisiones con P0 y lo explica; el resto lo etiqueta `revisar-organizacion` con un comentario. Las issues `colision` y `revisar-organizacion` van antes que cualquier otra tarea. Sin `--aplicar`, ambos solo informan.
+**Colisiones y auditoría**: `colisiones --aplicar` crea una issue `colision` (P1, Revisiones) por cada par de PR abiertas que tocan los mismos ficheros, con las instrucciones para mezclarlas (si hay `.uasset`/`.umap`, `decision` y no se mezclan). `auditar --aplicar` revisa la organización sin tocar código: lo trivial (mover la tarjeta a su columna, rellenar un campo evidente) lo corrige y lo anota; lo que afecta al trabajo (PR de lote fusionada sin validar, estado incoherente con la PR, issue cerrada sin probar) lo pasa a Revisiones con P0 y lo explica; el resto (campos vacíos, forma de la issue, P0 en Backlog, asignado fuera de curso…) lo etiqueta `revisar-organizacion` con un comentario. Las issues `colision` y `revisar-organizacion` van antes que cualquier otra tarea. Sin `--aplicar`, ambos solo informan.
+
+### Forma de una issue
+
+Toda issue de trabajo cumple esto; `nueva` no crea una que no lo cumpla y `auditar` marca las que se crean a mano en GitHub:
+
+- **Título** de 80 caracteres como mucho: el síntoma o la tarea, sin el detalle. Dentro de un objeto con varias tareas, «Objeto: tarea».
+- **Cuerpo** con el contexto (en un fallo: pasos, esperado y obtenido, mapa y jugadores) y los **criterios de aceptación** como casillas `- [ ]` verificables en el editor o con tests.
+- **Etiqueta de tipo**: `tarea` o `⚠️bug⚠️`.
+- **Objeto** del que cuelga y los campos **Prioridad, Tamaño, Área y Fase** (F0–F8 del plan maestro; «Sin fase» si no es de ninguna).
+- Un **P0** está en Ready o más allá, nunca en Backlog. Tamaño L solo si no se puede partir en tareas de 1-2 días.
 
 ### Objetos y sub-issues
 
@@ -65,7 +75,7 @@ Las tareas y los fallos se agrupan por **objeto**: un sistema o una pieza del ju
 Cuando el usuario dice «esto no funciona», Claude decide y registra sin preguntar (solo pregunta si duda de verdad a qué objeto pertenece), después de mirar los resúmenes del objeto (`resumenes <n>`):
 
 - **El mismo fallo vuelve** (aunque su issue esté cerrada): `editor <n> falla` reactiva esa issue. No se abre otra.
-- **Otro fallo del mismo objeto**: sub-issue nueva (`nueva --tipo bug --objeto "<objeto>"`) que cita las issues parecidas.
+- **Otro fallo del mismo objeto**: sub-issue nueva (`nueva --tipo bug --objeto "<objeto>"` con Prioridad, Tamaño y Área) que cita las issues parecidas.
 - **Algo que aún no tiene objeto**: `nueva --objeto "<nombre>"` crea el objeto y cuelga de él la sub-issue.
 
 ### Comandos
@@ -81,15 +91,15 @@ uv run python Scripts/tablero/tablero.py resumen <n> --que "<qué fallaba>" [--p
 uv run python Scripts/tablero/tablero.py resumenes <n>         # resúmenes de las demás sub-issues de su objeto
 uv run python Scripts/tablero/tablero.py decidir <n> --texto "<decisión>"
 uv run python Scripts/tablero/tablero.py lote crear --titulo "..." <n> <n> ... | lote estado <lote>
-uv run python Scripts/tablero/tablero.py bloquear <n> --por <m> [--por <k>]
-uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug|tarea --cuerpo f.md --objeto "<objeto>" [--prioridad P1 --tamano S --area Red --estado Ready]
+uv run python Scripts/tablero/tablero.py bloquear <n> --por <m> [--por <k>]   # en Backlog se queda en Backlog
+uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug|tarea --cuerpo f.md --objeto "<objeto>" --prioridad P1 --tamano S --area Red [--fase F4 --estado Ready]
 uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripcion "..."] | colgar <hijo> <objeto>
 uv run python Scripts/tablero/tablero.py estado <n> <estado> | campo <n> <campo> <valor>
 uv run python Scripts/tablero/tablero.py sync|auditar|colisiones [--aplicar]
 uv run python Scripts/tablero/tablero.py volcado [--publicar <issue>]   # tablero completo en Markdown
 ```
 
-Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`.
+Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`. Si `coger` no puede cambiar de rama por cambios sin guardar, resuélvelo con la persona (commit o `git stash`); nunca los descartes.
 
 ### Organización diaria: el puente y la rutina
 
@@ -100,7 +110,7 @@ Dos automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa códi
 
 Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (la pone `auditar` y la quita sola cuando deja de ver el problema), etiqueta `revisar-qa` con su comentario (la pone y la quita la rutina, para lo que un script no ve), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.
 
-Las issues #127 y #131 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado).
+Las issues #127 y #131 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado). El token del secreto `TABLERO_TOKEN` es classic con `repo`, `project`, `read:org` y `notifications`; sin el último, `silenciar` avisa y no silencia, pero el puente no falla.
 
 ## Memoria del equipo: las issues
 

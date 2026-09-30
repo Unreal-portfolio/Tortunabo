@@ -168,7 +168,10 @@ def crear_issue_colision(proyecto: dict, pr_a: dict, pr_b: dict, ficheros: list[
 # --- dependencias ---------------------------------------------------------------------------------
 
 def cmd_bloquear(args: argparse.Namespace) -> None:
-    """Registra de qué issues depende `numero` (relación nativa «blocked by») y la pasa a Bloqueada."""
+    """Registra de qué issues depende `numero` (relación nativa «blocked by») y la pasa a Bloqueada.
+
+    En Backlog solo registra la dependencia: la issue aún no está aprobada y bloquearla no la aprueba.
+    """
     issue = objetos.leer_issue(gh, REPO, args.numero)
     try:
         nuevas = bloqueos.nuevas_dependencias(args.numero, args.por, bloqueos.bloqueantes(issue))
@@ -178,9 +181,14 @@ def cmd_bloquear(args: argparse.Namespace) -> None:
         bloqueante = objetos.leer_issue(gh, REPO, m)
         gh("api", "graphql", "-f", f"query={bloqueos.MUTACION}", "-f", f"issue={issue['id']}",
            "-f", f"bloqueante={bloqueante['id']}")
-    poner_campo(cargar_proyecto(), args.numero, "Status", bloqueos.ESTADO)
-    gh("issue", "edit", str(args.numero), "--repo", REPO, "--add-label", bloqueos.ETIQUETA)
     todas = ", ".join(f"#{m}" for m in sorted({*args.por, *(b["number"] for b in bloqueos.bloqueantes(issue))}))
+    proyecto = cargar_proyecto()
+    actual = proyecto["items"].get(args.numero, {}).get("valores", {}).get("Status")
+    if bloqueos.estado_tras_bloquear(actual) is None:
+        print(f"#{args.numero} sigue en Backlog; depende de {todas}. Al aprobarla pasará a Bloqueada si siguen abiertas.")
+        return
+    poner_campo(proyecto, args.numero, "Status", bloqueos.ESTADO)
+    gh("issue", "edit", str(args.numero), "--repo", REPO, "--add-label", bloqueos.ETIQUETA)
     print(f"#{args.numero} → Bloqueada; depende de {todas}. `sync` la pasa a Ready cuando se cierren.")
 
 
@@ -229,7 +237,7 @@ def anadir_comandos(sub: argparse._SubParsersAction) -> None:
         p = sub.add_parser(nombre, help=ayuda)
         p.add_argument("--aplicar", action="store_true")
         p.set_defaults(fn=fn)
-    p = sub.add_parser("bloquear", help="registrar de qué issues depende una y pasarla a Bloqueada")
+    p = sub.add_parser("bloquear", help="registrar de qué issues depende una y pasarla a Bloqueada (en Backlog se queda)")
     p.add_argument("numero", type=int)
     p.add_argument("--por", type=int, action="append", required=True, help="issue de la que depende (repetible)")
     p.set_defaults(fn=cmd_bloquear)

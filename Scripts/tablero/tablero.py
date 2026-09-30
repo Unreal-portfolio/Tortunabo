@@ -12,7 +12,7 @@ Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py soltar 42 --motivo "..."
     uv run python Scripts/tablero/tablero.py estado 42 "In review"
     uv run python Scripts/tablero/tablero.py editor 42 funciona|falla --como "PIE 4P"   # en cualquier estado
-    uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug --area Red --prioridad P1 --tamano S --cuerpo cuerpo.md --objeto "Rally Tortuga"
+    uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug --area Red --prioridad P1 --tamano S [--fase F4] --cuerpo cuerpo.md --objeto "Rally Tortuga"
     uv run python Scripts/tablero/tablero.py objeto "Rally Tortuga" --area Modos --descripcion "..."
     uv run python Scripts/tablero/tablero.py colgar 57 90
     uv run python Scripts/tablero/tablero.py sync [--aplicar]
@@ -43,6 +43,7 @@ import argparse
 import json
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import auditoria
 import bloqueos
@@ -76,7 +77,7 @@ def linea(issue: dict) -> str:
     return f"  #{issue['number']} [{meta}] {issue['title']}  ({quien}{'; ' + etiquetas if etiquetas else ''})"
 
 
-ETIQUETA_DECISION = "decision"
+ETIQUETA_DECISION = flujo.ETIQUETA_DECISION
 
 
 def motivo_decision(numero: int, issue: dict, forzar: bool) -> str | None:
@@ -202,8 +203,15 @@ def cmd_soltar(args: argparse.Namespace) -> None:
 
 def cmd_estado(args: argparse.Namespace) -> None:
     proyecto = cargar_proyecto()
-    poner_campo(proyecto, args.numero, "Status", args.estado)
-    print(f"#{args.numero} → {args.estado}")
+    issue = proyecto["items"].get(args.numero, {})
+    estado = bloqueos.estado_al_aprobar(args.estado, issue)
+    poner_campo(proyecto, args.numero, "Status", estado)
+    if estado != args.estado:
+        gh("issue", "edit", str(args.numero), "--repo", REPO, "--add-label", bloqueos.ETIQUETA)
+        espera = ", ".join(f"#{n}" for n in bloqueos.abiertas(issue))
+        print(f"#{args.numero} → {estado} (aprobada, pero depende de {espera}; `sync` la pasa a Ready al cerrarse)")
+        return
+    print(f"#{args.numero} → {estado}")
 
 
 def cmd_revision(args: argparse.Namespace) -> None:
@@ -258,6 +266,12 @@ def cmd_nueva(args: argparse.Namespace) -> None:
         return
     etiqueta = "⚠️bug⚠️" if args.tipo == "bug" else "tarea"
     etiquetas = [etiqueta, *args.etiqueta]
+    try:
+        cuerpo = Path(args.cuerpo).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ErrorTablero(f"No se puede leer el cuerpo «{args.cuerpo}»: {exc}") from exc
+    if defectos := auditoria.problemas_de_formato(args.titulo, cuerpo, set(etiquetas)):
+        raise ErrorTablero("La issue no se crea: " + "; ".join(defectos) + ".")
     crear = ["issue", "create", "--repo", REPO, "--title", args.titulo, "--body-file", args.cuerpo]
     for e in etiquetas:
         crear += ["--label", e]
@@ -481,6 +495,9 @@ def cmd_ia(args: argparse.Namespace) -> None:
         if proyecto["items"].get(args.numero, {}).get("valores", {}).get("Editor") == "Funciona":
             # El arreglo cambia el código que se probó: la prueba anterior ya no lo valida.
             poner_campo(proyecto, args.numero, "Editor", "Sin probar")
+    revisor = flujo.revisor_del_equipo(args.revisor, CONFIG["miembros"])
+    if revisor and proyecto["items"].get(args.numero, {}).get("valores", {}).get("Revisor") != revisor:
+        poner_campo(proyecto, args.numero, "Revisor", revisor)  # el campo dice quién ha revisado de verdad
     if args.nota:
         comentar(args.numero, f"**Revisión IA ({args.revisor}): {valor}.**\n\n{args.nota}")
     destino = None
@@ -622,7 +639,21 @@ def cmd_volcado(args: argparse.Namespace) -> None:
 
 
 def cmd_silenciar(_args: argparse.Namespace) -> None:
-    """Da de baja al usuario del token de las notificaciones de las issues abiertas (no de las PR)."""
+    """Da de baja al usuario del token de las notificaciones de las issues abiertas (no de las PR).
+
+    Sin el scope `notifications` no se puede: avisa y termina bien, para no dar por fallido un puente que sí
+    ha reconciliado y volcado el tablero.
+    """
+    try:
+        silenciar_issues_abiertas()
+    except ErrorTablero as exc:
+        if not volcado.falta_scope_de_notificaciones(str(exc)):
+            raise
+        print("::warning::No se silencian las issues: al token le falta el scope `notifications` "
+              "(añádelo al token del secreto TABLERO_TOKEN).")
+
+
+def silenciar_issues_abiertas() -> None:
     owner, repo = REPO.split("/", 1)
     nodos, cursor = [], None
     while True:
@@ -647,10 +678,10 @@ def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--tipo", choices=["bug", "tarea"], required=True)
     p.add_argument("--cuerpo", required=True, help="fichero markdown con el cuerpo")
     p.add_argument("--estado", default="Backlog", choices=ESTADOS)
-    p.add_argument("--prioridad", choices=list(ORDEN_PRIORIDAD))
-    p.add_argument("--tamano", choices=list(ORDEN_TAMANO))
-    p.add_argument("--area")
-    p.add_argument("--fase")
+    p.add_argument("--prioridad", choices=list(ORDEN_PRIORIDAD), required=True)
+    p.add_argument("--tamano", choices=list(ORDEN_TAMANO), required=True)
+    p.add_argument("--area", required=True)
+    p.add_argument("--fase", default="Sin fase", help="F0…F8 del plan maestro; por defecto, «Sin fase»")
     p.add_argument("--etiqueta", action="append", default=[])
     padre = p.add_mutually_exclusive_group()
     padre.add_argument("--objeto", help="título del objeto del que cuelga (se crea si no existe)")

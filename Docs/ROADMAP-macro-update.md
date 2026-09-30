@@ -177,7 +177,7 @@ Estado: planificado, en curso, hecho o condicional (fuera del total hasta que el
 | E4-07 | F2-T32 CP01 (mapa propio de Claude) | 600 × 600 m con generador camino y puentes naturales | 8 | E2-03,E2-04 | agente Python + game-designer | CP01 ≤ 1,1 M tri y recorrible | plans/F0-F2 T32; P02 | planificado | MVP | 43,44 |
 | E4-08 | F2-T33 Importar CP01 y C01 | — | 3 | E2-16,E4-06,E4-07 | UE | Ambos en el catálogo y cocinados | plans/F0-F2 T33 | planificado | MVP | 69 |
 | E4-09 | F2-T34 PIE 4P gate F2 | PktLag 150 | 6 | E4-03,E4-04,E4-05,E4-08 | Rodrigo + UE | Aceptación del plan §3.1 completa | plans/F0-F2 T34 | planificado | MVP | 72 |
-| E4-10 | F2-T35 Clásico fuera del selector | LVL_Run sale del cocinado | 2 | E1-01 | UE | Selector sin Clásico; cook sin LVL_Run | plans/F0-F2 T35 | planificado | MVP | 69 |
+| E4-10 | F2-T35 Clásico fuera del selector | LVL_Run sale del cocinado | 2 | E1-01 | UE | Selector sin Clásico; cook sin LVL_Run | plans/F0-F2 T35 | anulada (Decisión en #143: Supervivencia conserva LVL_Run y los chunks) | MVP | 69 |
 | E4-11 | F2-T36 ATN_MatchGameModeBase | Run → base abstracta; rescatar ReviveImmunitySeconds | 3 | E4-10 | UE | ProcMap y BeachRace heredan de la base nueva; tests verdes | plans/F0-F2 T36 | planificado | MVP | 70 |
 | E4-12 | F2-T37 LVL_Demo01 fuera | Y resolver el stash wip LVL_Demo01 | 1 | E4-08 | UE | Mapa y script borrados; stash resuelto | plans/F0-F2 T37 | planificado | MVP | 70 |
 | E4-13 | Botones de mapa en la pizarra del general | Desviación 3 del plan F0-F2 | 4 | E4-06 | UE | Elegir mapa Coop sin consola | plans/F0-F2 desviación 3 | planificado | MVP | 71 |
@@ -354,7 +354,7 @@ Estado: planificado, en curso, hecho o condicional (fuera del total hasta que el
 | E12-02 | C-4 Interfaz común (incluye U2, U3) | Anillo de progreso, marcadores de compañera, flechas | 25–36 | E0-12 | UE | Pantallas de 01-Coop §7.1 con estado replicado | 01-Coop §7.1; UI-FX U2-U3 | planificado | MVP | 210,211,212,213,214,215 |
 | E12-03 | C-5 Efectos y sonido comunes | §7.3 (F1 y F3 en E8-05) | 14–19 | E0-12 | UE | Efectos de §7.3 disparados por mensajería | 01-Coop §7.3 | planificado | MVP | 216,217,218 |
 | E12-04 | U9 Tally y Champion por equipos | Arrival con dos caras, podio de pareja | 10–14 | E7-06 | UE | Podio de pareja en 2 vs 2 | UI-FX U9 | planificado | MVP | 298,299,300 |
-| E12-05 | Textos de Briefing y Pausa | Quitar Clásico y 2 vs 2 viejo | 1–2 | E4-10 | UE | 0 menciones al Clásico | UI-FX §0.3 | planificado | MVP | 219 |
+| E12-05 | Textos de Briefing y Pausa | Quitar Clásico y 2 vs 2 viejo | 1–2 | E4-10 | UE | 0 menciones al Clásico | UI-FX §0.3 | anulada (Decisión en #143: Supervivencia conserva LVL_Run y los chunks) | MVP | 219 |
 | E12-06 | U10 Cartel de primera vez | Pictogramas de puzzle | 4–6 | E12-02 | UE | — | UI-FX U10 | planificado | Después | 513 |
 | E12-07 | F4 +1 flotante y marcas de derrape F5 | — | 8–11 | E7-05 | UE | — | UI-FX F4-F5 | planificado | Después | 514,515 |
 | E12-08 | Vista previa del mapa en la carga y menú con miniaturas | — | 10–14 | E12-01 | UE | — | Plan §3.6; UI-FX §4.6 | planificado | Después | 516,517,518 |
@@ -378,7 +378,7 @@ Estado: planificado, en curso, hecho o condicional (fuera del total hasta que el
 | E14-01 | Mapa01 a Deprecado | LVL_Mapa01, mallas y Scripts/terrain_volumes/Mapa01 | 2–3 | — | UE | Cook sin Mapa01; generadores de terrain_vol verdes | Limpieza §Decisión; P20 | planificado | MVP | 391 |
 | E14-02 | Retirar C++ de la rejilla (2.1) | Tras aceptar borrar los BP movidos | 3–4 | E14-01 | UE + Rodrigo (decide) | 6.059 líneas fuera; build y tests verdes | Limpieza 2.1 | planificado | MVP | 391 |
 | E14-03 | Python pospuesto (2.1) | gen_terrain_biomes, terrain_gen; chaikin/generate_path a terrain_vol | 2–3 | — | agente Python | Pytest verde | Limpieza 2.1 | planificado | MVP | 390 |
-| E14-04 | Run por chunks y LVL_Run (2.2, 2.3, 4.5) | Decisión de equipo | 4–6 | E4-11 | UE + Rodrigo + equipo | LVL_Run y 14 BP en _Deprecado; build verde | Limpieza 2.2-2.3, 4.5 | planificado | MVP | 392 |
+| E14-04 | Run por chunks y LVL_Run (2.2, 2.3, 4.5) | Decisión de equipo | 4–6 | E4-11 | UE + Rodrigo + equipo | LVL_Run y 14 BP en _Deprecado; build verde | Limpieza 2.2-2.3, 4.5 | anulada (Decisión en #143: Supervivencia conserva LVL_Run y los chunks) | MVP | 392 |
 | E14-05 | MapVariantLoader y TerrainMeshTile (2.4, 4.8) | Tras F1 | 2–3 | E4-12 | UE | 603 líneas fuera; vista previa por importador | Limpieza 2.4, 4.8 | planificado | MVP | 393 |
 | E14-06 | SeagullActor, QuadActor y EnemySeagull (2.5, 2.6, Q11) | — | 2–3 | E14-04 | UE | Clases en Deprecado; build verde | Limpieza 2.5-2.6; 01-Coop Q11 | planificado | MVP | 393 |
 | E14-07 | Visor de terreno (2.7) y LVL_TestMap (4.6) | Reanalizar huérfanos (~2.300 líneas) | 3–5 | E14-04 | UE | Informe de huérfanos y movidos | Limpieza 2.7, 4.6 | planificado | MVP | 394 |
