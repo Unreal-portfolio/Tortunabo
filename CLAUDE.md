@@ -127,7 +127,6 @@ Tres automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa cód
 
 Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (la pone `auditar` y la quita sola cuando deja de ver el problema), etiqueta `revisar-qa` con su comentario (la pone y la quita la rutina, para lo que un script no ve), etiqueta `peticion` (conversación sin contestar), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.
 
-
 Las issues #127, #131 y #196 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado). Si quien lanza el puente a mano tiene su propio secreto (`TABLERO_TOKEN_MOKIUS`, `TABLERO_TOKEN_RUBI`), el puente usa el suyo y sus comentarios salen con su cuenta. El token del secreto `TABLERO_TOKEN` es classic con `repo`, `project`, `read:org` y `notifications`; sin el último, `silenciar` avisa y no silencia, pero el puente no falla.
 
 ## Memoria del equipo: las issues
