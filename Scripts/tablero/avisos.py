@@ -1,13 +1,16 @@
-"""Avisos diarios: qué espera por cada persona y qué ha entrado en dev sin pasar por revisión.
+"""Avisos diarios: qué ha entrado en dev sin pasar por revisión y el resultado de la rutina, por correo al director.
 
-Fusionar o subir directamente a dev está permitido; lo que no puede faltar es la revisión IA cruzada y la
-prueba en el editor. `sync` y `auditar` ya devuelven a revisión lo que llega por una PR sin validar. Aquí se
-cubre lo que ellos no ven, un push directo con commits que no son de ninguna PR fusionada, y se resume el
-tablero por persona para mandárselo por correo.
+Subir o fusionar en dev puede cualquiera de los tres; lo que no puede faltar, en el trabajo que las lleva, es la
+revisión IA cruzada y la prueba en el editor. `sync` y `auditar` ya devuelven a revisión lo que llega por una PR sin
+validar. Aquí se cubre lo que ellos no ven y se junta todo en un correo:
 
-- Cada push directo de alguien que no es aprobador se convierte en una issue `sin-revision` (In review, P0,
-  con revisor cruzado): el aviso queda como estado en el tablero, no solo en el correo.
-- El resumen de cada persona se publica como comentario que la menciona; GitHub se lo manda por correo.
+- Un push directo con commits de código que no son de ninguna PR fusionada abre una issue `sin-revision` (In review,
+  P0, con revisor cruzado), sea quien sea el autor: el aviso queda como estado en el tablero, no solo en el correo.
+- Una PR fusionada en dev con una issue sin revisión aprobada (o, en un lote, sin probar), o sin issue y con código,
+  sale como incidencia.
+- Lo que solo toca rutas de organización (tablero, skills, workflows, guía, documentación) va sin revisión a
+  propósito: no es incidencia.
+- El aviso se publica como comentario que menciona a cada destinatario; GitHub se lo manda por correo.
 
 Funciones puras; hablar con GitHub es cosa de control_avisos.py.
 """
@@ -60,6 +63,38 @@ def commits_sin_pr(commits: list[dict], prs_por_commit: dict[str, list[dict]], c
     return [c for c in commits if c["padres"] < 2 and not prs_del_push([c], prs_por_commit, cuando)]
 
 
+def es_organizativo(ficheros: list[str], rutas: list[str]) -> bool:
+    """True si todos los ficheros están en rutas de organización (una lista vacía no lo es: no se sabe qué toca)."""
+    return bool(ficheros) and all(any(f == r or f.startswith(r) for r in rutas) for f in ficheros)
+
+
+def pr_sin_validar(pr: dict, issues: dict[int, dict], rutas: list[str], lotes_: set[int]) -> str | None:
+    """Incidencia de una PR fusionada en dev: issues sin revisión aprobada (en un lote, también sin probar) o sin issue.
+
+    `issues` son los items del tablero por número (con `valores`); `lotes_`, los números de las issues `lote`.
+    """
+    ficheros = [f["path"] for f in pr.get("files") or []]
+    if es_organizativo(ficheros, rutas):
+        return None
+    refs = sorted(pr["refs"] - lotes_)
+    en_lote = bool(pr["refs"] & lotes_)
+    quien = (pr.get("mergedBy") or {}).get("login") or "alguien"
+    cabecera = f"PR #{pr['number']} fusionada en dev por **{quien}** ({fecha(pr['mergedAt']):%d-%m %H:%M} UTC)"
+    if not refs:
+        return f"{cabecera} sin enlazar ninguna issue y con código ({len(ficheros)} ficheros)."
+    faltan = []
+    for n in refs:
+        valores = (issues.get(n) or {}).get("valores") or {}
+        if not valores:
+            continue  # issue fuera del tablero (p. ej. de otro repo): no se puede juzgar
+        falta = [] if valores.get("Revisión IA") == "Aprobada" else [f"Revisión IA = {valores.get('Revisión IA') or 'vacía'}"]
+        if en_lote and valores.get("Editor") != "Funciona":
+            falta.append(f"Editor = {valores.get('Editor') or 'vacío'} (lote)")
+        if falta:
+            faltan.append(f"#{n} ({', '.join(falta)})")
+    return f"{cabecera} con {', '.join(faltan)}." if faltan else None
+
+
 def titulo_issue(actor: str, despues: str) -> str:
     return f"Revisar el push directo a dev de {actor} ({despues[:9]})"
 
@@ -78,12 +113,12 @@ def cuerpo_issue(push: dict, commits: list[dict], repo: str, integracion: str) -
             "- [ ] Si estos commits ya tienen su propia issue, está enlazada en un comentario.\n")
 
 
-def linea_push(push: dict, sin_pr: list[dict], prs: set[int], issue: int | None, aprobador: bool) -> str:
+def linea_push(push: dict, sin_pr: list[dict], prs: set[int], issue: int | None) -> str:
     """Una línea del correo por push directo: quién, cuántos commits sin revisión y dónde queda registrado."""
     partes = [f"**{push['actor']}** subió a dev por push directo{' forzado' if push['forzado'] else ''} "
               f"({push['cuando']:%d-%m %H:%M} UTC)"]
     if sin_pr:
-        destino = f" → #{issue}" if issue else (" (es aprobador: no se abre issue)" if aprobador else "")
+        destino = f" → #{issue}" if issue else ""
         partes.append(f"{_commits(len(sin_pr))} sin PR ni revisión{destino}: "
                       + ", ".join(f"`{c['sha'][:9]}` {c['titulo']}" for c in sin_pr[:5])
                       + ("…" if len(sin_pr) > 5 else ""))
