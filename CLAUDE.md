@@ -112,20 +112,23 @@ uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripci
 uv run python Scripts/tablero/tablero.py estado <n> <estado> | campo <n> <campo> <valor>
 uv run python Scripts/tablero/tablero.py sync|auditar|colisiones [--aplicar]
 uv run python Scripts/tablero/tablero.py volcado [--publicar <issue>]   # tablero completo en Markdown
+uv run python Scripts/tablero/tablero.py avisos [--aplicar] [--publicar 196 --parte 127]   # pushes directos sin revisión y aviso por persona
 ```
 
 Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`. **Cada persona ejecuta `tablero.py` en local con su `gh`**: así sus comentarios y validaciones salen con su cuenta. El puente es para la rutina y para quien no tiene el repo a mano. Cada comando gasta unos 110 puntos de los 5000 por hora de la API de GraphQL de esa cuenta: no lances decenas seguidas. Si `coger` no puede cambiar de rama por cambios sin guardar, resuélvelo con la persona (commit o `git stash`); nunca los descartes.
 
 ### Organización diaria: el puente y la rutina
 
-Dos automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa código.
+Tres automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa código.
 
 - **Puente del tablero** (`.github/workflows/tablero-puente.yml`, 7:15): ejecuta `sync`, `auditar` y `colisiones` con `--aplicar` y publica el volcado del tablero en la issue #131. Lanzado a mano con un comando (`estado 123 Ready`), lo ejecuta si está en la lista cerrada de `Scripts/tablero/volcado.py`; los comentarios que deja acaban en «Lanzado por <quién> a través del puente», porque todos salen con la cuenta del dueño del token. El volcado lleva una sección «Sin movimiento desde hace más de 3 días» con lo que espera a alguien (In progress, In review, Revisiones, QA editor y Validada). Está también en `main`, porque el cron solo se ejecuta desde la rama por defecto.
 - **Rutina de Claude** (7:30): hace de responsable de calidad de las issues. Lee el volcado, corrige por el puente lo que es evidente, avisa de lo que no lo es y deja el parte del día en la issue #127. Su entorno solo llega a las rutas REST del repositorio: por eso lee y mueve el tablero a través del puente.
 
 Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (la pone `auditar` y la quita sola cuando deja de ver el problema), etiqueta `revisar-qa` con su comentario (la pone y la quita la rutina, para lo que un script no ve), etiqueta `peticion` (conversación sin contestar), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.
 
-Las issues #127 y #131 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado). Si quien lanza el puente a mano tiene su propio secreto (`TABLERO_TOKEN_MOKIUS`, `TABLERO_TOKEN_RUBI`), el puente usa el suyo y sus comentarios salen con su cuenta. El token del secreto `TABLERO_TOKEN` es classic con `repo`, `project`, `read:org` y `notifications`; sin el último, `silenciar` avisa y no silencia, pero el puente no falla.
+- **Avisos del tablero** (`.github/workflows/tablero-avisos.yml`, 8:10): `avisos --aplicar`. Cada push directo a `dev` con commits que no son de ninguna PR fusionada abre una issue `sin-revision` (In review, P0, revisor cruzado) si quien lo hizo no es aprobador; los de los aprobadores solo se avisan. Subir o fusionar directamente está permitido: lo que no puede faltar es la revisión IA y la prueba en el editor, y la issue se cierra sola cuando las dos están. Después comenta en la issue #196 un aviso por persona (incidencias, lo que tiene que revisar, Revisiones, QA editor, peticiones, decisiones y atascadas) que la menciona, con el parte de la rutina para los aprobadores: GitHub se lo manda por correo. Lo escribe github-actions, porque GitHub no avisa a nadie de lo que hace su propia cuenta. También está en `main`.
+
+Las issues #127, #131 y #196 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado). Si quien lanza el puente a mano tiene su propio secreto (`TABLERO_TOKEN_MOKIUS`, `TABLERO_TOKEN_RUBI`), el puente usa el suyo y sus comentarios salen con su cuenta. El token del secreto `TABLERO_TOKEN` es classic con `repo`, `project`, `read:org` y `notifications`; sin el último, `silenciar` avisa y no silencia, pero el puente no falla.
 
 ## Memoria del equipo: las issues
 

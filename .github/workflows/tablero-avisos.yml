@@ -1,0 +1,76 @@
+# Avisos del tablero: después de la rutina de Claude en la nube, un correo por persona con lo que espera por ella.
+#
+# Ejecuta `tablero.py avisos --aplicar`:
+# - abre una issue `sin-revision` (In review, P0, revisor cruzado) por cada push directo a `dev` con commits que no son
+#   de ninguna PR fusionada, si quien lo hizo no es aprobador; y cierra las que ya están revisadas y probadas;
+# - comenta en la issue AVISOS_ISSUE un aviso por persona (incidencias, revisiones, Revisiones, QA editor, peticiones,
+#   decisiones, atascadas) que la menciona, con el parte del día de la rutina (PARTE_ISSUE) para los aprobadores.
+#
+# El comentario lo escribe github-actions con el GITHUB_TOKEN: GitHub no avisa a nadie de sus propias acciones, así que
+# si lo escribiera el dueño de TABLERO_TOKEN no le llegaría el correo. Para leer el Project hace falta TABLERO_TOKEN,
+# el mismo secreto del puente. Los comentarios del GITHUB_TOKEN no lanzan otros workflows.
+#
+# El código se toma de `dev`. Este fichero tiene que estar también en `main`: GitHub solo ejecuta los `schedule` de la
+# rama por defecto.
+name: Avisos del tablero
+
+on:
+  schedule:
+    - cron: "10 6 * * *" # 8:10 en España en horario de verano: después del puente (7:15) y de la rutina (7:30)
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: "Comentar los avisos (y mandar los correos). Sin marcar, solo se ven en el resumen de la ejecución."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: tablero-avisos
+  cancel-in-progress: false
+
+env:
+  AVISOS_ISSUE: "196"
+  PARTE_ISSUE: "127"
+
+jobs:
+  avisos:
+    name: Avisar a cada persona
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.TABLERO_TOKEN }}
+      AVISOS_TOKEN: ${{ github.token }}
+    steps:
+      - name: Descargar dev (solo los scripts)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          filter: blob:none
+          sparse-checkout: |
+            Scripts
+          sparse-checkout-cone-mode: false
+
+      - name: uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Avisos
+        env:
+          PUBLICAR: ${{ github.event_name == 'schedule' || inputs.publicar }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Falta el secreto TABLERO_TOKEN (el mismo del puente)."
+            exit 1
+          fi
+          destino=()
+          if [ "$PUBLICAR" = "true" ]; then destino=(--publicar "$AVISOS_ISSUE"); fi
+          uv run python Scripts/tablero/tablero.py avisos --aplicar --parte "$PARTE_ISSUE" "${destino[@]}" 2>&1 | tee avisos.txt
+          exit "${PIPESTATUS[0]}"
+
+      - name: Resumen de la ejecución
+        if: always()
+        run: |
+          { echo "## Avisos del tablero"; echo '```'; cat avisos.txt 2>/dev/null; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
