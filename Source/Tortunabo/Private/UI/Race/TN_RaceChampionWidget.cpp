@@ -1,4 +1,5 @@
 #include "UI/Race/TN_RaceChampionWidget.h"
+#include "Core/TN_GameplayPreload.h"
 #include "TN_RaceArt.h"
 #include "TN_RaceUIKit.h"
 #include "Audio/TN_ScoreShellSynthComponent.h"
@@ -32,9 +33,6 @@ namespace TNRaceChampionDetail
 {
 	TAutoConsoleVariable<float> CVarPodiumExposure(TEXT("TN.Race.PodiumExposure"), 1.5f,
 		TEXT("Podio del campeón: exposición de la captura en la pantalla (M_UI_Preview)."));
-
-	/** Material de la interfaz que pinta una captura SceneColorHDR (el del escaparate de la tienda). */
-	const TCHAR* const PreviewMaterialPath = TEXT("/Game/UI/Shop/M_UI_Preview.M_UI_Preview");
 
 	/** Ancho del panel azul marino de la izquierda y de los botones (unidades de la interfaz a 1080 p). */
 	constexpr float PanelWidth = 860.f;
@@ -89,7 +87,7 @@ void UTN_RaceChampionWidget::BuildTree()
 
 	// El podio: la captura de ATN_RacePodiumStage (se encaja a pantalla completa cada fotograma).
 	PodiumImage = TNRaceUI::Make<UImage>(Tree);
-	if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, PreviewMaterialPath))
+	if (UMaterialInterface* Base = TNPreload::PreviewMaterial())
 	{
 		PodiumMID = UMaterialInstanceDynamic::Create(Base, this);
 		PodiumImage->SetBrushFromMaterial(PodiumMID);

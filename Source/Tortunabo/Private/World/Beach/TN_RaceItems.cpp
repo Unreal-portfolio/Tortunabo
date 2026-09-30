@@ -1,4 +1,5 @@
 #include "World/Beach/TN_RaceItems.h"
+#include "Core/TN_GameplayPreload.h"
 #include "TN_RaceItemArt.h"
 #include "World/Beach/TN_RaceItemBox.h"
 #include "World/Beach/TN_RaceItemComponent.h"
@@ -296,7 +297,8 @@ const TCHAR* TNRaceItems::CatalogPath()
 
 const UDataTable* TNRaceItems::LoadCatalog()
 {
-	return TSoftObjectPtr<UDataTable>(FSoftObjectPath(CatalogPath())).LoadSynchronous();
+	// Precargado al arrancar (UTN_GameplayPreloadSubsystem): en partida solo se resuelve.
+	return TNPreload::ItemCatalog();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

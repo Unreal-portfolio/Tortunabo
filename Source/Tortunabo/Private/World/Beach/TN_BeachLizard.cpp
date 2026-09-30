@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachLizard.h"
+#include "Core/TN_GameplayPreload.h"
 #include "Settings/TN_GameplayAssetSettings.h"
 #include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachDecorField.h"
@@ -560,7 +561,7 @@ void ATN_BeachLizard::DropPrize()
 	// Un objeto del catálogo con los pesos de la carrera (como el botín suelto) o, si no, una concha de puntos.
 	if (ServerRng.FRand() < TNBeachLizardTuning::PrizeItemChance)
 	{
-		const UDataTable* Catalog = LoadObject<UDataTable>(nullptr, TNBeachLoot::CatalogPath(), nullptr, LOAD_NoWarn);
+		const UDataTable* Catalog = TNPreload::ItemCatalog();
 		FTN_InventoryItem Picked;
 		if (Catalog && ATN_ProcSearchSpot::PickCatalogItem(Catalog,
 			[](FName RowName, const FTN_InventoryItem& Row) { return TNBeachLoot::RaceWeight(RowName, Row); }, Picked) && Picked.PickupActorClass)

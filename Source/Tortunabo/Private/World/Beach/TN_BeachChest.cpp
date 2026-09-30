@@ -949,7 +949,7 @@ void ATN_BeachChestSpot::SpawnPrizes(const APawn* Opener)
 		Values.Swap(i, FMath::RandRange(0, i));
 	}
 	UClass* ShellClass = UTN_GameplayAssetSettings::GetScorePickupClass();
-	const UDataTable* Table = LootTable.LoadSynchronous();
+	const UDataTable* Table = GetLootTable();
 
 	// En corona alrededor del cofre, dejando libre el frente de quien lo ha abierto (ahí cae el objeto de siempre): el
 	// objeto de más, al lado de ese hueco; las conchas, repartidas por el resto.
