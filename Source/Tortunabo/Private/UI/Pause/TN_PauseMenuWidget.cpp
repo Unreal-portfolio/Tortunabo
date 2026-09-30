@@ -2455,8 +2455,10 @@ void UTN_PauseMenuWidget::FillGameTab()
 		{
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.CameraView = static_cast<uint8>(Choice); }); }
 		});
-		Row->SetDescription(NSLOCTEXT("TNPause", "CameraViewDesc",
-			"Primera persona: la vista va en la cabeza de tu tortuga (también tumbada) y al mirar abajo ves tu cuerpo, tus aletas y tu lengua. Dentro del caparazón se ve desde dentro, a oscuras. También se cambia con V o con el clic del stick derecho."));
+		// Con las teclas de ahora de «Cambiar de cámara» (T y el clic del stick derecho de serie; se cambian en Controles).
+		Row->SetDescription(FText::Format(NSLOCTEXT("TNPause", "CameraViewDesc",
+			"Primera persona: la vista va en la cabeza de tu tortuga (también tumbada) y al mirar abajo ves tu cuerpo, tus aletas y tu lengua. Dentro del caparazón se ve desde dentro, a oscuras. También se cambia jugando con {0} o, con el mando, con {1} (en Controles, «Cambiar de cámara»)."),
+			TNPauseUI::KeyName(Settings->GetCameraToggleKey(false)), TNPauseUI::KeyName(Settings->GetCameraToggleKey(true))));
 	}
 
 	// Modo VR (Docs/Modo_VR.md): se aplica en el acto (UTN_VRSubsystem lo mira cada fotograma).
@@ -2550,8 +2552,12 @@ void UTN_PauseMenuWidget::FillControlsList()
 		{
 			continue;
 		}
-		const FText Description = Binding.bEditable[1] ? ChangeHelp
+		FText Description = Binding.bEditable[1] ? ChangeHelp
 			: FText::Format(NSLOCTEXT("TNPause", "KeyRowPadFixed", "{0} Con el mando va con {1}."), ChangeHelp, TNPauseUI::KeyName(Binding.FixedKeys[1]));
+		if (Binding.Id == TEXT("Camera"))
+		{
+			Description = FText::Format(NSLOCTEXT("TNPause", "CameraKeyRowDesc", "Tercera o primera persona, sin gafas (como Ajustes > Juego > Cámara). {0}"), ChangeHelp);
+		}
 		AddKeyBindRow(ControlsList, Binding.Id, Description);
 		++Actions;
 	}

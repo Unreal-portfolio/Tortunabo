@@ -2,7 +2,9 @@
 #include "VR/TN_VRMath.h"
 #include "Core/TN_Log.h"
 #include "Player/TN_ShellBody.h"
+#include "World/TN_PhysicsObjectActor.h"
 #include "Components/PrimitiveComponent.h"
+#include "Engine/EngineTypes.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -15,9 +17,24 @@ namespace TNVRGrabDetail
 	/** Cuánto se tolera de más en la distancia de la mano al objeto al aceptarlo en el servidor (latencia). */
 	constexpr float ServerGrabSlack = 60.f;
 
+	/** Etiqueta de actor: se coge con la mano aunque en el cliente no simule física (la simula el servidor). */
+	const FName GrabTag(TEXT("VRGrab"));
+	/** Etiqueta de actor: nunca se coge con la mano. */
+	const FName NoGrabTag(TEXT("NoVRGrab"));
+
 	bool IsValidHand(int32 Hand)
 	{
 		return Hand == 0 || Hand == 1;
+	}
+
+	/**
+	 * Lo que la mano nunca mueve: tortugas, enemigos y caparazones (tienen sus reglas: coger compañeros, derribos), lo que
+	 * lleva NoVRGrab y un actor replicado que no replica su movimiento (los demás no lo verían moverse).
+	 */
+	bool IsExcludedOwner(const AActor* Owner, const AActor* ByActor)
+	{
+		return !Owner || Owner == ByActor || Owner->IsA<APawn>() || Owner->IsA<ATN_ShellBody>() || Owner->ActorHasTag(NoGrabTag)
+			|| (Owner->GetIsReplicated() && !Owner->IsReplicatingMovement());
 	}
 }
 
@@ -42,13 +59,47 @@ bool UTN_VRGrabComponent::IsGrabbable(const UPrimitiveComponent* Component, cons
 	{
 		return false;
 	}
-	const AActor* Owner = Component->GetOwner();
-	// Tortugas, enemigos y caparazones tienen sus reglas (coger compañeros, derribos): la mano no los mueve.
-	if (!Owner || Owner == ByActor || Owner->IsA<APawn>() || Owner->IsA<ATN_ShellBody>() || Owner->ActorHasTag(TEXT("NoVRGrab")))
+	if (TNVRGrabDetail::IsExcludedOwner(Component->GetOwner(), ByActor))
 	{
 		return false;
 	}
 	return Component->GetMass() <= MaxMassKg;
+}
+
+bool UTN_VRGrabComponent::IsGrabbableFromClient(UPrimitiveComponent* Component, const AActor* ByActor, float MaxMassKg)
+{
+	if (!Component || Component->Mobility != EComponentMobility::Movable)
+	{
+		return false;
+	}
+	const AActor* Owner = Component->GetOwner();
+	if (TNVRGrabDetail::IsExcludedOwner(Owner, ByActor) || !Owner->GetIsReplicated())
+	{
+		return false;
+	}
+	bool bCandidate = false;
+	if (const ATN_PhysicsObjectActor* Physics = Cast<ATN_PhysicsObjectActor>(Owner))
+	{
+		// Los objetos con física del juego solo simulan en el servidor: su malla, salvo los cubos de empujar (sin física).
+		bCandidate = !Physics->UsesKinematicPush() && Component == Physics->GetPhysicsMesh();
+	}
+	else
+	{
+		bCandidate = Component->IsSimulatingPhysics() || Owner->ActorHasTag(TNVRGrabDetail::GrabTag);
+	}
+	// Sin simular, la masa sale de su forma (la de verdad la mira el servidor al aceptarlo).
+	return bCandidate && Component->CalculateMass() <= MaxMassKg;
+}
+
+bool UTN_VRGrabComponent::IsGrabbableHere(UPrimitiveComponent* Component) const
+{
+	const AActor* Target = Component ? Component->GetOwner() : nullptr;
+	// Lo que mueve el servidor (actor replicado y esta máquina no es el servidor): por clase o etiqueta; el servidor decide.
+	if (Target && Target->GetIsReplicated() && !Target->HasAuthority())
+	{
+		return IsGrabbableFromClient(Component, GetOwner(), MaxMass);
+	}
+	return IsGrabbable(Component, GetOwner(), MaxMass);
 }
 
 UPrimitiveComponent* UTN_VRGrabComponent::FindGrabbable(const FVector& At) const
@@ -69,7 +120,7 @@ UPrimitiveComponent* UTN_VRGrabComponent::FindGrabbable(const FVector& At) const
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		UPrimitiveComponent* Candidate = Overlap.GetComponent();
-		if (!IsGrabbable(Candidate, GetOwner(), MaxMass))
+		if (!IsGrabbableHere(Candidate))
 		{
 			continue;
 		}
@@ -120,7 +171,8 @@ bool UTN_VRGrabComponent::TryGrab(int32 Hand, const FTransform& HandWorld)
 		return false;
 	}
 	const AActor* TargetActor = Target->GetOwner();
-	const bool bViaServer = TargetActor && TargetActor->GetIsReplicated() && GetOwner() && !GetOwner()->HasAuthority();
+	// Replicado y no somos el servidor: lo coge y lo mueve el servidor (que también lo valida).
+	const bool bViaServer = TargetActor && TargetActor->GetIsReplicated() && !TargetActor->HasAuthority();
 	if (bViaServer)
 	{
 		// Lo mueve el servidor; aquí solo se recuerda para mandarle la mano y soltarlo.
@@ -182,9 +234,10 @@ bool UTN_VRGrabComponent::GrabHere(int32 Hand, UPrimitiveComponent* Target, cons
 	{
 		return false;
 	}
-	if (Handle->GetGrabbedComponent())
+	// Lo que llevara ya esa mano, fuera (con todo lo suyo: el agarre y, en el servidor, que vuelva a dormirse en red).
+	if (Held[Hand].IsValid() || Handle->GetGrabbedComponent())
 	{
-		Handle->ReleaseComponent();
+		ReleaseHere(Hand, FVector::ZeroVector);
 	}
 	// Se coge por el punto más cercano a la mano, con el giro que tiene: no salta a la palma.
 	FVector GrabPoint;
@@ -198,6 +251,7 @@ bool UTN_VRGrabComponent::GrabHere(int32 Hand, UPrimitiveComponent* Target, cons
 	Handle->GrabComponentAtLocationWithRotation(Target, NAME_None, GrabPoint, Target->GetComponentRotation());
 	Held[Hand] = Target;
 	bHeldByServer[Hand] = false;
+	KeepAwakeWhileHeld(Hand, Target->GetOwner());
 	UE_LOG(LogTortunabo, Verbose, TEXT("[VR] %s coge %s con la aleta %s."), *GetNameSafe(GetOwner()), *GetNameSafe(Target->GetOwner()),
 		Hand == 0 ? TEXT("izquierda") : TEXT("derecha"));
 	return true;
@@ -233,15 +287,50 @@ void UTN_VRGrabComponent::ReleaseHere(int32 Hand, const FVector& Velocity)
 	{
 		Target->SetPhysicsLinearVelocity(Velocity);
 	}
+	// Servidor: el objeto con física vuelve a dormirse en red cuando se pare (su temporizador de siempre).
+	if (ATN_PhysicsObjectActor* Physics = Cast<ATN_PhysicsObjectActor>(AwakeActor[Hand].Get()))
+	{
+		Physics->SetExternallyHeld(false);
+	}
+	AwakeActor[Hand].Reset();
 	Held[Hand].Reset();
 	bHeldByServer[Hand] = false;
+}
+
+void UTN_VRGrabComponent::KeepAwakeWhileHeld(int32 Hand, AActor* Target)
+{
+	AwakeActor[Hand].Reset();
+	// Solo el servidor de un actor replicado: los clientes lo ven moverse por su réplica, que no sale si está dormido en red
+	// (ATN_PhysicsObjectActor duerme con DORM_DormantAll hasta que algo lo golpea).
+	if (!Target || !Target->GetIsReplicated() || !Target->HasAuthority())
+	{
+		return;
+	}
+	if (ATN_PhysicsObjectActor* Physics = Cast<ATN_PhysicsObjectActor>(Target))
+	{
+		Physics->SetExternallyHeld(true);
+		AwakeActor[Hand] = Target;
+	}
+	else if (Target->NetDormancy > DORM_Awake)
+	{
+		// Otro actor replicado (etiqueta VRGrab): despierto desde ahora (no tiene temporizador para volver a dormirse).
+		Target->FlushNetDormancy();
+		Target->SetNetDormancy(DORM_Awake);
+	}
 }
 
 void UTN_VRGrabComponent::ServerGrab_Implementation(uint8 Hand, UPrimitiveComponent* Target, FVector_NetQuantize10 HandLocation, FRotator HandRotation)
 {
 	const AActor* Owner = GetOwner();
-	if (!TNVRGrabDetail::IsValidHand(Hand) || !Owner || !IsGrabbable(Target, Owner, MaxMass))
+	if (!TNVRGrabDetail::IsValidHand(Hand))
 	{
+		return;
+	}
+	// Aquí sí simula (el servidor): con física de verdad, móvil, con su movimiento replicado y de hasta MaxMass kg.
+	if (!Owner || !IsGrabbable(Target, Owner, MaxMass))
+	{
+		UE_LOG(LogTortunabo, Verbose, TEXT("[VR] %s: agarre de %s rechazado (no se puede coger)."), *GetNameSafe(Owner), *GetNameSafe(Target ? Target->GetOwner() : nullptr));
+		ClientGrabRejected(Hand, Target);
 		return;
 	}
 	// Al alcance de la tortuga y de su mano (con margen por la latencia).
@@ -255,9 +344,23 @@ void UTN_VRGrabComponent::ServerGrab_Implementation(uint8 Hand, UPrimitiveCompon
 		|| HandDistance > GrabRadius + TNVRGrabDetail::ServerGrabSlack)
 	{
 		UE_LOG(LogTortunabo, Verbose, TEXT("[VR] %s: agarre de %s rechazado (lejos)."), *GetNameSafe(Owner), *GetNameSafe(Target->GetOwner()));
+		ClientGrabRejected(Hand, Target);
 		return;
 	}
-	GrabHere(Hand, Target, FTransform(HandRotation, HandLocation));
+	if (!GrabHere(Hand, Target, FTransform(HandRotation, HandLocation)))
+	{
+		ClientGrabRejected(Hand, Target);
+	}
+}
+
+void UTN_VRGrabComponent::ClientGrabRejected_Implementation(uint8 Hand, UPrimitiveComponent* Target)
+{
+	// El dueño deja de mandar la mano (ATN_VRRig ve que ya no coge nada y suelta el agarre).
+	if (TNVRGrabDetail::IsValidHand(Hand) && bHeldByServer[Hand] && Held[Hand].Get() == Target)
+	{
+		Held[Hand].Reset();
+		bHeldByServer[Hand] = false;
+	}
 }
 
 void UTN_VRGrabComponent::ServerMoveGrab_Implementation(uint8 Hand, FVector_NetQuantize10 HandLocation, FRotator HandRotation)

@@ -175,11 +175,15 @@ namespace TNVRMath
 		return static_cast<float>(Distance * FMath::DegreesToRadians(FMath::Clamp(static_cast<double>(ArcDeg), 5.0, 180.0)) / FMath::Max(1.0, static_cast<double>(DrawWidth)));
 	}
 
+	/** Valor del gatillo o del agarre de los Touch a partir del cual cuenta como pulsado, y por debajo del cual, suelto. */
+	constexpr float AnalogPressThreshold = 0.55f;
+	constexpr float AnalogReleaseThreshold = 0.35f;
+
 	/**
 	 * Botón analógico (gatillo o agarre de los Touch) con histéresis: +1 al pasar de OnThreshold, -1 al volver por debajo
 	 * de OffThreshold, 0 si no cambia. Con OpenXR, los Touch solo dan el valor del gatillo y del agarre (no el «clic»).
 	 */
-	inline int32 AnalogButton(float Value, bool& bHeld, float OnThreshold = 0.55f, float OffThreshold = 0.35f)
+	inline int32 AnalogButton(float Value, bool& bHeld, float OnThreshold = AnalogPressThreshold, float OffThreshold = AnalogReleaseThreshold)
 	{
 		if (!bHeld && Value >= OnThreshold)
 		{
@@ -198,6 +202,91 @@ namespace TNVRMath
 	inline FVector ThrowVelocity(const FVector& HandVelocity, float MaxSpeed = 1600.f)
 	{
 		return HandVelocity.GetClampedToMaxSize(MaxSpeed);
+	}
+
+	/**
+	 * Velocidad de la mano respecto del origen de la vista (el del seguimiento de las gafas, que va con el cuerpo), en los
+	 * ejes del mundo de ahora (cm/s). Andar, saltar o girar con el stick mueven el origen y la mano a la vez: no cuentan;
+	 * solo cuenta lo que se mueve la mano de verdad. Origin: la transformación del origen en cada fotograma.
+	 */
+	inline FVector RelativeHandVelocity(const FTransform& PrevOrigin, const FVector& PrevHand, const FTransform& NowOrigin, const FVector& NowHand,
+		float DeltaTime)
+	{
+		if (DeltaTime <= UE_KINDA_SMALL_NUMBER)
+		{
+			return FVector::ZeroVector;
+		}
+		const FVector PrevLocal = PrevOrigin.InverseTransformPosition(PrevHand);
+		const FVector NowLocal = NowOrigin.InverseTransformPosition(NowHand);
+		return NowOrigin.TransformVector((NowLocal - PrevLocal) / DeltaTime);
+	}
+
+	/** ¿Soltar con esta velocidad de la mano (respecto del cuerpo) es un gesto de lanzar? */
+	inline bool IsThrowSwing(const FVector& HandRelativeVelocity, float MinSpeed)
+	{
+		return HandRelativeVelocity.SizeSquared() >= FMath::Square(MinSpeed);
+	}
+
+	/**
+	 * Velocidad con la que sale un objeto con física al soltarlo: la de la mano respecto del cuerpo más, si bAddBody, la del
+	 * cuerpo (lo que llevas andando sigue andando contigo), con tope.
+	 */
+	inline FVector ReleaseVelocity(const FVector& HandRelativeVelocity, const FVector& BodyVelocity, bool bAddBody, float MaxSpeed = 1600.f)
+	{
+		return ThrowVelocity(bAddBody ? HandRelativeVelocity + BodyVelocity : HandRelativeVelocity, MaxSpeed);
+	}
+
+	/**
+	 * ¿Cabe en la imagen el panel curvo de ArcRad radianes, mirado de frente desde el eje del cilindro? TanHalfH y TanHalfV:
+	 * tangentes de la mitad del campo de visión horizontal y vertical; DrawAspect: alto / ancho del dibujo del panel;
+	 * DropFraction: cuánto va el centro del panel por debajo de los ojos (en distancias). Las esquinas de abajo son lo que
+	 * antes se sale: están a la distancia del panel, pero de lado, y en la imagen se ven más abajo (se dividen por el coseno).
+	 */
+	inline bool CurvedPanelFits(double ArcRad, double TanHalfH, double TanHalfV, double DrawAspect, double DropFraction)
+	{
+		const double Half = ArcRad * 0.5;
+		if (Half >= UE_DOUBLE_HALF_PI * 0.95)
+		{
+			return false;
+		}
+		const double Cos = FMath::Cos(Half);
+		const double HalfHeight = 0.5 * ArcRad * DrawAspect;
+		const double Bottom = (DropFraction + HalfHeight) / Cos;
+		const double Top = FMath::Abs(HalfHeight - DropFraction) / Cos;
+		return FMath::Tan(Half) <= TanHalfH && FMath::Max(Bottom, Top) <= TanHalfV;
+	}
+
+	/**
+	 * Arco (grados) del menú curvo sin gafas (modo simulado): el pedido, pero sin pasar de lo que cabe en la imagen con el
+	 * campo de visión horizontal de la cámara (HorizontalFov), la proporción de la ventana (ancho / alto) y un margen (la
+	 * fracción de la imagen que puede ocupar). El panel curvo tiene el eje en los ojos (ATN_VRRig::PlacePanel).
+	 */
+	inline float SimulatedMenuArc(float WantedArc, float HorizontalFov, float AspectRatio, float DropFraction = 0.f, float Margin = 0.85f,
+		float DrawAspect = 1080.f / 1920.f)
+	{
+		const double TanH = FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(static_cast<double>(HorizontalFov), 20.0, 170.0) * 0.5)) * Margin;
+		const double TanV = TanH / FMath::Max(0.1, static_cast<double>(AspectRatio));
+		const double Wanted = FMath::DegreesToRadians(FMath::Clamp(static_cast<double>(WantedArc), 5.0, 180.0));
+		if (CurvedPanelFits(Wanted, TanH, TanV, DrawAspect, DropFraction))
+		{
+			return static_cast<float>(FMath::RadiansToDegrees(Wanted));
+		}
+		// El mayor que cabe (entre 5° y el pedido), por bisección.
+		double Lo = FMath::DegreesToRadians(5.0);
+		double Hi = Wanted;
+		for (int32 Step = 0; Step < 30; ++Step)
+		{
+			const double Mid = (Lo + Hi) * 0.5;
+			if (CurvedPanelFits(Mid, TanH, TanV, DrawAspect, DropFraction))
+			{
+				Lo = Mid;
+			}
+			else
+			{
+				Hi = Mid;
+			}
+		}
+		return static_cast<float>(FMath::RadiansToDegrees(Lo));
 	}
 
 	/** Escala del panel para que ocupe HorizontalFovDeg grados de ancho a Distance: el ancho de dibujo pasa a centímetros. */

@@ -1657,10 +1657,11 @@ void ATortugaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	// Head look — SkipOwner: el owner aplica la rotación localmente sin pasar por la red
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadYaw,   COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, ReplicatedHeadPitch, COND_SkipOwner);
-	// Modo VR del dueño: la tortuga gira con la cabeza (Docs/Modo_VR.md).
-	DOREPLIFETIME(ATortugaCharacter, bVRPlayer);
-	// Primera persona sin gafas: igual, la tortuga gira con la cámara.
-	DOREPLIFETIME(ATortugaCharacter, bFirstPersonPlayer);
+	// Modo VR del dueño: la tortuga gira con la cabeza (Docs/Modo_VR.md). SkipOwner: el dueño lo pone él mismo al momento
+	// (SetVRView) y un valor viejo del servidor, al alternar deprisa, pisaría el suyo.
+	DOREPLIFETIME_CONDITION(ATortugaCharacter, bVRPlayer, COND_SkipOwner);
+	// Primera persona sin gafas: igual, la tortuga gira con la cámara (también SkipOwner, por lo mismo).
+	DOREPLIFETIME_CONDITION(ATortugaCharacter, bFirstPersonPlayer, COND_SkipOwner);
 	// Manos VR del dueño (los demás ven los brazos siguiéndolas; el dueño usa las suyas).
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, RepVRHandLeft, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(ATortugaCharacter, RepVRHandRight, COND_SkipOwner);

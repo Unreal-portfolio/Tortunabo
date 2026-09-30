@@ -8,6 +8,7 @@
 class APlayerController;
 class ATortugaCharacter;
 class UInputAction;
+class UInputTrigger;
 class SWidget;
 class UCameraComponent;
 class UInputMappingContext;
@@ -78,6 +79,12 @@ public:
 
 	/** El modo cambió entre gafas y simulado. */
 	void OnModeChanged(ETNVRMode NewMode);
+
+	/**
+	 * Disparador de las asignaciones de los gatillos por su eje: la acción solo se activa con el gatillo a partir del 55 %
+	 * (TNVRMath::AnalogPressThreshold). Lo prueba Tortunabo.VR.TriggerThreshold.
+	 */
+	static UInputTrigger* MakeAnalogPressTrigger(UObject* Outer);
 
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "VR")
@@ -152,8 +159,9 @@ private:
 
 	/** Raíz del rig en el origen de la vista que se esté viendo (ver arriba). */
 	void UpdateViewAttachment(APlayerController* PC, ATortugaCharacter* Turtle);
-	/** Aletas de los mandos; con la tortuga, sus brazos van a ellas (IK) y las aletas sueltas se ocultan. */
-	void UpdateHands(ATortugaCharacter* Turtle, float DeltaSeconds);
+	/** Aletas de los mandos; con la tortuga vista desde sus ojos (bTurtleView), sus brazos van a ellas (IK) y las aletas
+	 *  sueltas se ocultan. */
+	void UpdateHands(ATortugaCharacter* Turtle, bool bTurtleView, float DeltaSeconds);
 	void UpdatePanel(APlayerController* PC, float DeltaSeconds);
 	void UpdatePointer(APlayerController* PC);
 	void UpdateInput(APlayerController* PC, ATortugaCharacter* Turtle, float DeltaSeconds);
@@ -164,7 +172,9 @@ private:
 	bool GetViewPoint(APlayerController* PC, FVector& OutLocation, FRotator& OutRotation) const;
 	/** Distancia a la que cabe el panel delante de la vista sin meterse en una pared. */
 	float FitDistance(const FVector& From, const FVector& Dir, float Desired) const;
-	void PlacePanel(const FVector& ViewLocation, float Yaw, float Distance, float HorizontalFov);
+	/** Panel curvo a Distance en la dirección Direction, DropFraction de la distancia por debajo de los ojos, con el eje del
+	 *  cilindro en los ojos y HorizontalFov grados de arco. */
+	void PlacePanel(const FVector& ViewLocation, const FRotator& Direction, float Distance, float HorizontalFov, float DropFraction = 0.1f);
 
 	/** Rayo del puntero: el mando derecho (gafas) o el ratón (simulado). */
 	bool GetPointerRay(APlayerController* PC, FVector& OutOrigin, FVector& OutDir) const;
@@ -179,6 +189,8 @@ private:
 	void ReleaseGrips(ATortugaCharacter* Turtle);
 	/** Punto de agarre de la aleta (cerca de la punta) en el mundo. */
 	FTransform GetGrabPoint(bool bRight) const;
+	/** La velocidad de las manos vuelve a medirse desde cero (tras un giro de golpe, al recentrar o al cambiar de tortuga). */
+	void ResetHandVelocity();
 
 	/** Cámara desde la que se ve ahora (la de las gafas de la tortuga, la del rig o la del que se sigue). */
 	UCameraComponent* GetViewCamera(APlayerController* PC) const;
@@ -193,9 +205,14 @@ private:
 	/** Lo que la tortuga tiene cogido con cada agarre (ATortugaCharacter::EVRGrip). */
 	uint8 GripTurtle[2] = { 0, 0 };
 	bool bGripHeld[2] = { false, false };
+	/** Punto de agarre y origen de la vista del fotograma anterior, y la velocidad de cada mano respecto de ese origen (en
+	 *  los ejes del mundo): andar, saltar o girar con el stick no la cambian (TNVRMath::RelativeHandVelocity). */
 	FVector PrevGrabPoint[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	FTransform PrevGrabOrigin[2];
 	FVector HandVelocity[2] = { FVector::ZeroVector, FVector::ZeroVector };
 	bool bPrevGrabPointValid[2] = { false, false };
+	/** Giros de golpe de la tortuga ya vistos (ATortugaCharacter::GetVRTurnSerial). */
+	uint32 LastTurnSerial = 0;
 
 	/** Arco (grados) con el que está hecha la malla del panel curvo y el que tiene ahora. */
 	float CurvedArcBuilt = -1.f;

@@ -50,7 +50,8 @@ enum class ETNRebindResult : uint8
  */
 struct FTNKeyBinding
 {
-	/** «IA_Jump», «IA_Move:Y+» (una dirección) o las del juego: «Talk» (pulsar para hablar) y «Pause» (menú de pausa). */
+	/** «IA_Jump», «IA_Move:Y+» (una dirección) o las del juego: «Talk» (pulsar para hablar), «Pause» (menú de pausa) y
+	 *  «Camera» (cambiar de cámara). */
 	FString Id;
 
 	/** Nombre para el jugador («Saltar», «Avanzar»...). */
@@ -243,6 +244,12 @@ public:
 
 	/** true si alguna fila no va con su tecla de serie. */
 	bool HasCustomKeys() const;
+
+	/**
+	 * Tecla (bGamepad false) o botón del mando de «Cambiar de cámara» (tercera o primera persona sin gafas); inválida si esa
+	 * fila no tiene. Nunca es la de hablar.
+	 */
+	FKey GetCameraToggleKey(bool bGamepad) const;
 
 	/** Tecla que se puede poner en una fila (no Escape, la consola, los sticks, la rueda, el Tabulador en el editor...). */
 	static bool IsBindableKey(const FKey& Key);
@@ -453,6 +460,8 @@ private:
 	void SetBindingKey(const FTNKeyBinding& Row, int32 Device, const FKey& Key);
 	ETNRebindResult AssignKey(const FTNKeyBinding& Row, int32 Device, const FKey& Key, bool bValidate, FText& OutMessage);
 	void OnKeyBindingsChanged();
+	/** Al cargar: si otra fila ya va con la tecla de «Cambiar de cámara» (ajustes de antes de esa fila), la cámara se queda sin ella. */
+	void FreeCameraKeyConflicts();
 };
 
 /**

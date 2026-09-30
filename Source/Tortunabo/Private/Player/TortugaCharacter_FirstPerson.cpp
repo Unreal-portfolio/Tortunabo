@@ -7,6 +7,7 @@
 #include "Core/TN_Log.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -80,8 +81,9 @@ void ATortugaCharacter::SetFirstPersonView(bool bOn)
 		if (!FirstPersonCamera)
 		{
 			FirstPersonCamera = NewObject<UCameraComponent>(this, TEXT("FirstPersonCamera"), RF_Transient);
+			// Colgada de la cápsula (los ojos se ponen cada fotograma respecto de ella): lo que mueva la cápsula después del
+			// Tick (bases que se mueven, correcciones de red) la lleva consigo, sin ir un fotograma por detrás.
 			FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
-			FirstPersonCamera->SetUsingAbsoluteLocation(true);
 			FirstPersonCamera->bUsePawnControlRotation = true;
 			FirstPersonCamera->RegisterComponent();
 		}
@@ -120,6 +122,39 @@ void ATortugaCharacter::SetFirstPersonView(bool bOn)
 		}
 	}
 	UE_LOG(LogTortunabo, Log, TEXT("[Cámara] %s: primera persona %s."), *GetName(), bOn ? TEXT("encendida") : TEXT("apagada"));
+}
+
+bool ATortugaCharacter::IsLocalViewTarget() const
+{
+	const APlayerController* PC = Cast<APlayerController>(Controller);
+	if (!PC || !PC->IsLocalController() || PC->GetViewTarget() != this)
+	{
+		return false;
+	}
+	// Con un cambio de vista con fundido en marcha (al probador, a una cámara de escena), la vista ya se está yendo.
+	const APlayerCameraManager* CameraManager = PC->PlayerCameraManager;
+	const AActor* Pending = CameraManager ? CameraManager->PendingViewTarget.Target.Get() : nullptr;
+	return !Pending || Pending == this;
+}
+
+bool ATortugaCharacter::WasCameraToggleJustPressed(const APlayerController* PC) const
+{
+	if (!PC)
+	{
+		return false;
+	}
+	// La fila «Cambiar de cámara» de los controles (T y clic del stick derecho de serie; nunca la de hablar).
+	const UTN_GameSettingsSubsystem* Settings = UTN_GameSettingsSubsystem::Get(this);
+	const FTNGameSettings Defaults;
+	for (int32 Device = 0; Device < 2; ++Device)
+	{
+		const FKey Key = Settings ? Settings->GetCameraToggleKey(Device == 1) : FKey(Device == 1 ? Defaults.CameraPadKey : Defaults.CameraKey);
+		if (Key.IsValid() && PC->WasInputKeyJustPressed(Key))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void ATortugaCharacter::ServerSetFirstPersonPlayer_Implementation(bool bOn)
@@ -246,10 +281,11 @@ void ATortugaCharacter::TickFirstPersonView(float DeltaTime)
 		return;
 	}
 
-	// Tecla de cambio (V o clic del stick derecho), sin gafas: con ellas la vista siempre es en primera persona.
-	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	// Tecla de cambio («Cambiar de cámara» en los controles: T y el clic del stick derecho de serie), sin gafas (con ellas la
+	// vista siempre es en primera persona) y sin un menú o una rueda a la vista.
+	if (const APlayerController* PC = Cast<APlayerController>(Controller))
 	{
-		if (!bVRViewActive && (PC->WasInputKeyJustPressed(EKeys::V) || PC->WasInputKeyJustPressed(EKeys::Gamepad_RightThumbstick)))
+		if (!bVRViewActive && !PC->ShouldShowMouseCursor() && WasCameraToggleJustPressed(PC))
 		{
 			ToggleCameraView();
 		}
@@ -282,20 +318,24 @@ void ATortugaCharacter::TickFirstPersonView(float DeltaTime)
 		FirstPersonEyeOffset = FMath::VInterpTo(FirstPersonEyeOffset, WantedOffset, DeltaTime,
 			bRagdoll || bInShell ? EyeFollowRagdoll : EyeFollowStanding);
 	}
+	// Relativos a la cápsula (de la que cuelgan el origen VR y la cámara): si algo la mueve después de este Tick, los ojos
+	// van con ella en el mismo fotograma.
 	const FVector EyeWorld = GetActorLocation() + FirstPersonEyeOffset;
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const FVector EyeRelative = Capsule ? Capsule->GetComponentTransform().InverseTransformPosition(EyeWorld) : FirstPersonEyeOffset;
 
 	UCameraComponent* ActiveCamera = nullptr;
 	if (bVRViewActive)
 	{
 		if (VROrigin)
 		{
-			VROrigin->SetWorldLocation(EyeWorld);
+			VROrigin->SetRelativeLocation(EyeRelative);
 		}
 		ActiveCamera = VRCamera;
 	}
 	else if (FirstPersonCamera)
 	{
-		FirstPersonCamera->SetWorldLocation(EyeWorld);
+		FirstPersonCamera->SetRelativeLocation(EyeRelative);
 		// El campo de visión del ajuste y el del esprint, como la cámara de siempre (que sigue calculándolo).
 		if (FollowCamera)
 		{
@@ -305,7 +345,16 @@ void ATortugaCharacter::TickFirstPersonView(float DeltaTime)
 	}
 
 	// Del cuerpo propio: todo menos la cabeza (en VR, con los brazos siguiendo a los mandos); dentro del caparazón, nada.
-	ApplyFirstPersonBody(bInShell ? EFirstPersonBody::Hidden : EFirstPersonBody::Headless);
+	// Solo si se ve desde esta tortuga: ocultar el hueso de la cabeza vale para todas las cámaras, y desde otra (el probador,
+	// la almeja, el gusano) se vería sin cabeza y con el casco flotando. Al volver a otra vista se pinta entera.
+	if (!IsLocalViewTarget())
+	{
+		ApplyFirstPersonBody(EFirstPersonBody::Full);
+	}
+	else
+	{
+		ApplyFirstPersonBody(bInShell ? EFirstPersonBody::Hidden : EFirstPersonBody::Headless);
+	}
 
 	// Dentro del caparazón, mucho más oscuro.
 	ShellDarknessAlpha = FMath::FInterpConstantTo(ShellDarknessAlpha, bInShell ? 1.f : 0.f, DeltaTime, ShellDarkenSpeed);

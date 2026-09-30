@@ -7,6 +7,7 @@
 #include "Core/TN_CosmeticsTypes.h"
 #include "TortugaCharacter.generated.h"
 
+class APlayerController;
 class UCameraComponent;
 class USpringArmComponent;
 class UInputMappingContext;
@@ -1674,6 +1675,15 @@ public:
 	/** Giro del stick derecho con gafas (por pasos o suave): gira el origen del seguimiento. */
 	void AddVRYaw(float DeltaYaw);
 
+	/** Cuántos giros de golpe (más de unos grados de una vez: a pasos, al reaparecer) ha dado el origen del seguimiento. */
+	uint32 GetVRTurnSerial() const { return VRTurnSerial; }
+
+	/**
+	 * ¿Ve el jugador local el juego desde esta tortuga? (Es su vista y no hay un cambio de vista en marcha hacia otra.) Con
+	 * otra vista (probador, cámaras de escena, espectador) el cuerpo propio se pinta entero y las manos VR no valen.
+	 */
+	bool IsLocalViewTarget() const;
+
 	/** Hacia dónde apunta la aleta derecha de los mandos (lo pone ATN_VRRig); bValid false = se apunta con la cámara. */
 	void SetLocalVRAim(const FRotator& Aim, bool bValid);
 
@@ -1729,7 +1739,8 @@ public:
 	// ── Primera persona (Docs/Modo_VR.md, «Primera persona») ──────────────────
 
 	/**
-	 * Cámara en primera persona sin gafas (tecla V o clic del stick derecho, ajuste «Cámara» o consola TN.Camera): en la
+	 * Cámara en primera persona sin gafas (fila «Cambiar de cámara» de los controles, T y el clic del stick derecho de serie;
+	 * ajuste «Cámara» o consola TN.Camera): en la
 	 * cabeza, también tumbada en el ragdoll; se ve el cuerpo propio sin la cabeza (con la lengua y las gotas de sudor) y
 	 * la tortuga mira hacia donde mira la cámara, también para los demás. En el caparazón, la vista es desde dentro y
 	 * mucho más oscura. En VR la primera persona es la de las gafas (SetVRView) y usa lo mismo.
@@ -1787,6 +1798,9 @@ private:
 	/** Cada fotograma en el dueño: la tecla de cambio, la cámara en la cabeza y lo que se ve del cuerpo propio. */
 	void TickFirstPersonView(float DeltaTime);
 
+	/** ¿Se ha pulsado en este fotograma la tecla o el botón de «Cambiar de cámara» (UTN_GameSettingsSubsystem)? */
+	bool WasCameraToggleJustPressed(const APlayerController* PC) const;
+
 	/** Dónde van los ojos: la cabeza (tumbada, la del ragdoll), el centro del caparazón o, con gafas y de pie, la cápsula. */
 	FVector ComputeFirstPersonEye(bool bHeadsetStable) const;
 
@@ -1842,6 +1856,7 @@ private:
 
 	bool bVRViewActive = false;
 	bool bVRHeadsetView = false;
+	uint32 VRTurnSerial = 0;
 	float VRYaw = 0.f;
 	float VRLastControlYaw = 0.f;
 	bool bVRControlYawValid = false;

@@ -51,10 +51,12 @@ private:
 	/** Si el motor manda las direcciones del stick como botones, se usan esas y no las del eje (sin pasos dobles). */
 	double LastDigitalStickTime = -100.0;
 
-	/** Gatillos y agarres por su eje (0 izquierdo, 1 derecho), con histéresis; y cuándo llegó el último eje de agarre (si
-	 *  llegan ejes, el botón del agarre no cambia de pestaña otra vez). */
+	/** Gatillos y agarres por su eje (0 izquierdo, 1 derecho), con histéresis, también jugando (así uno ya apretado al abrir
+	 *  un menú no cuenta hasta soltarlo); si se ha mandado al menú la pulsación de pestaña de cada agarre (para mandar su
+	 *  «soltar»); y cuándo llegó el último eje de agarre (si llegan ejes, el botón del agarre no cambia de pestaña otra vez). */
 	bool bTriggerAxisHeld[2] = { false, false };
 	bool bGripAxisHeld[2] = { false, false };
+	bool bGripKeySent[2] = { false, false };
 	double LastGripAxisTime = -100.0;
 
 	uint32 UserIndex = 0;

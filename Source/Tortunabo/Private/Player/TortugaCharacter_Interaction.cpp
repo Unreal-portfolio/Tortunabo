@@ -65,8 +65,9 @@ void ATortugaCharacter::UpdateFocusedInteractable()
 		ATN_InteractableBase* Interactable = Cast<ATN_InteractableBase>(Result.GetActor());
 		if (!Interactable || !Interactable->CanInteract(this)) { continue; }
 
-		// En VR los objetos del suelo se cogen con la mano: solo cuentan los que están al alcance de una aleta.
-		if (bVRViewActive && (bLocalVRHandValid[0] || bLocalVRHandValid[1]) && Cast<ATN_PickupInteractableBase>(Interactable))
+		// Con gafas los objetos del suelo se cogen con la mano: solo cuentan los que están al alcance de una aleta. En el modo
+		// simulado las aletas van quietas delante de la cámara (no llegan al suelo): se coge con E por cercanía, como siempre.
+		if (bVRViewActive && bVRHeadsetView && (bLocalVRHandValid[0] || bLocalVRHandValid[1]) && Cast<ATN_PickupInteractableBase>(Interactable))
 		{
 			const FVector Point = Interactable->GetInteractionPointFor(this);
 			const bool bNearHand = (bLocalVRHandValid[0] && FVector::DistSquared(LocalVRHand[0], Point) <= FMath::Square(VRHandReach + 15.f))

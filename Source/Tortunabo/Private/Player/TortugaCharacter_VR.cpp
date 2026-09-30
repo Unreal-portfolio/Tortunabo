@@ -7,6 +7,7 @@
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "World/TN_InteractableBase.h"
+#include "VR/TN_VRMath.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -40,8 +41,8 @@ void ATortugaCharacter::SetVRView(bool bOn, bool bHeadset)
 		{
 			VROrigin = NewObject<USceneComponent>(this, TEXT("VROrigin"), RF_Transient);
 			VROrigin->SetupAttachment(GetCapsuleComponent());
-			// Los ojos se ponen a mano cada fotograma (TickFirstPersonView): en la cabeza, también en el ragdoll.
-			VROrigin->SetUsingAbsoluteLocation(true);
+			// Los ojos se ponen a mano cada fotograma (TickFirstPersonView), respecto de la cápsula: en la cabeza, también en
+			// el ragdoll, y sin quedarse atrás si algo mueve la cápsula después.
 			VROrigin->RegisterComponent();
 		}
 		if (!VRCamera)
@@ -108,6 +109,12 @@ void ATortugaCharacter::SetVRView(bool bOn, bool bHeadset)
 
 void ATortugaCharacter::AddVRYaw(float DeltaYaw)
 {
+	// Un giro de golpe (a pasos, al reaparecer mirando al frente): ATN_VRRig vuelve a medir desde cero la velocidad de las
+	// manos. El giro suave (unos pocos grados por fotograma) no cuenta.
+	if (FMath::Abs(DeltaYaw) > 5.f)
+	{
+		++VRTurnSerial;
+	}
 	VRYaw = static_cast<float>(FRotator::NormalizeAxis(static_cast<double>(VRYaw + DeltaYaw)));
 	if (VROrigin && bVRHeadsetView)
 	{
@@ -392,7 +399,8 @@ void ATortugaCharacter::VRGripReleased(EVRGrip Held, const FVector& HandVelocity
 	{
 		return;
 	}
-	const bool bSwing = HandVelocity.SizeSquared() >= FMath::Square(VRThrowSpeed);
+	// La velocidad de la mano respecto del cuerpo (ATN_VRRig): andando con la mano quieta no se lanza nada.
+	const bool bSwing = TNVRMath::IsThrowSwing(HandVelocity, VRThrowSpeed);
 	// Con impulso, lo lanzado sale hacia donde va la mano (llega al servidor antes que la acción).
 	auto AimAlongHand = [this, &HandVelocity]()
 	{
