@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
+#include "Multiplayer/TN_SaveGameDecisions.h"
 #include "TN_SettingsSaveGame.generated.h"
 
 /**
@@ -181,10 +182,18 @@ class TORTUNABO_API UTN_SettingsSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
-	/** Versión del formato, por si algún día hay que convertir ajustes viejos (2: teclas, micrófono, interfaz; 3: idioma y ojo de pez). */
+	/**
+	 * Versión del formato (TNSaveLogic::SETTINGS_SAVE_VERSION); al cargar, TNSettingsMigration la lleva a la actual.
+	 * 0 = sin número. UE solo escribe en el fichero lo que difiere del valor por defecto de la clase: cuando este valía la
+	 * versión de entonces (1, 2 o 3), no se escribía nunca y no se podía saber de qué versión era un guardado. Por eso el
+	 * valor por defecto es 0 y se sella al guardar (StampCurrentVersion), como el perfil cosmético y el tutorial.
+	 */
 	UPROPERTY()
-	int32 Version = 3;
+	int32 Version = 0;
 
 	UPROPERTY()
 	FTNGameSettings Settings;
+
+	/** @brief Sella el guardado con la versión actual (antes de escribirlo). */
+	void StampCurrentVersion() { Version = TNSaveLogic::SETTINGS_SAVE_VERSION; }
 };

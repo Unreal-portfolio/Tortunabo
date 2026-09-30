@@ -2,6 +2,7 @@
 #include "Core/TN_Log.h"
 #include "Menu/MP_MenuPlayerController.h"
 #include "Multiplayer/TN_SaveGameIO.h"
+#include "Settings/TN_SettingsMigration.h"
 #include "Audio/TN_AmbientSoundscape.h"
 #include "Audio/TN_AmbientSynthComponent.h"
 #include "Audio/TN_MusicSynthComponent.h"
@@ -610,6 +611,21 @@ void UTN_GameSettingsSubsystem::LoadSettings()
 		if (const UTN_SettingsSaveGame* Saved = Cast<UTN_SettingsSaveGame>(UGameplayStatics::LoadGameFromSlot(SlotName, SlotUser)))
 		{
 			Settings = Saved->Settings;
+			switch (TNSettingsMigration::Migrate(Settings, Saved->Version))
+			{
+			case TNSaveLogic::EMigration::Upgrade:
+				// Se vuelve a guardar sellado con la versión actual (en el Tick, con el guardado diferido).
+				UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Guardado de la versión %d: pasa a la %d."),
+					TNSettingsMigration::ResolveSavedVersion(Saved->Version), TNSaveLogic::SETTINGS_SAVE_VERSION);
+				MarkDirty(false);
+				break;
+			case TNSaveLogic::EMigration::FromNewerBuild:
+				UE_LOG(LogTortunabo, Warning, TEXT("[Ajustes] Guardado de una build más nueva (versión %d, esta es la %d): se usa tal cual."),
+					Saved->Version, TNSaveLogic::SETTINGS_SAVE_VERSION);
+				break;
+			default:
+				break;
+			}
 		}
 	}
 	ClampSettings(Settings);
@@ -623,6 +639,7 @@ void UTN_GameSettingsSubsystem::SaveNow()
 		if (UTN_SettingsSaveGame* Save = Cast<UTN_SettingsSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_SettingsSaveGame::StaticClass())))
 		{
 			Save->Settings = Settings;
+			Save->StampCurrentVersion();
 			// Si falla (tras un reintento, con error en el log) queda sucio y se vuelve a intentar en el siguiente SaveNow.
 			bSettingsDirty = !TNSaveGameIO::SaveChecked(Save, SlotName, SlotUser, TEXT("Ajustes"));
 		}

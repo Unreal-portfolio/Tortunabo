@@ -17,6 +17,12 @@ namespace TNSaveLogic
 	/** Versión actual del estado del tutorial. 0 = guardado anterior al campo SaveVersion. */
 	constexpr int32 TUTORIAL_SAVE_VERSION = 1;
 
+	/**
+	 * Versión actual de los ajustes (UTN_SettingsSaveGame::Version): 1 sonido, voz y juego; 2 teclas, micrófono e interfaz;
+	 * 3 idioma y ojo de pez. 0 = guardado sin número (ver TNSettingsMigration).
+	 */
+	constexpr int32 SETTINGS_SAVE_VERSION = 3;
+
 	/** Qué hacer con una ranura al cargarla. */
 	enum class ELoadAction : uint8
 	{
