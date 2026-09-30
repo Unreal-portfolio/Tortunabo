@@ -1,10 +1,13 @@
 #include "World/TN_ButtonGroupManager.h"
 #include "World/TN_ButtonInteractable.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
+#include "NiagaraFunctionLibrary.h"
 
 // ── FTN_TransformAction ───────────────────────────────────────────────────────
 
-void FTN_TransformAction::ApplyAll(TArray<FTN_TransformAction>& Actions, bool bForward, UWorld* World)
+void FTN_TransformAction::ApplyAll(TArray<FTN_TransformAction>& Actions, bool bForward, UWorld* World, bool bOnlyClientMoved)
 {
 	for (FTN_TransformAction& Action : Actions)
 	{
@@ -34,6 +37,10 @@ void FTN_TransformAction::ApplyAll(TArray<FTN_TransformAction>& Actions, bool bF
 		if (!Action.TargetActor) { continue; }
 
 		AActor* Target = Action.TargetActor;
+		if (bOnlyClientMoved && !TNButtonGroupRules::ClientMovesTarget(Target->GetIsReplicated(), Target->IsReplicatingMovement()))
+		{
+			continue;
+		}
 		const FVector  LocDelta = bForward ? Action.LocationOffset : -Action.LocationOffset;
 		const FRotator RotDelta = bForward
 			? Action.RotationOffset
@@ -48,6 +55,12 @@ ATN_ButtonGroupManager::ATN_ButtonGroupManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+}
+
+void ATN_ButtonGroupManager::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATN_ButtonGroupManager, bGroupActive);
 }
 
 void ATN_ButtonGroupManager::BeginPlay()
@@ -105,23 +118,36 @@ void ATN_ButtonGroupManager::CheckAndTrigger()
 		if (Button && Button->IsActivated()) { ++ActiveCount; }
 	}
 
-	const int32 Required = GetEffectiveThreshold();
-	const bool  bMet     = ActiveCount >= Required;
-
-	if (bMet && !bCurrentlyActivated)
+	switch (TNButtonGroupRules::Decide(ActiveCount, GetEffectiveThreshold(), bGroupActive, bOneShot))
 	{
-		// Umbral alcanzado — disparar
-		bCurrentlyActivated = true;
+	case TNButtonGroupRules::EGroupChange::Activate:
+		// Umbral alcanzado: disparar. El estado replica solo (también a quien entre tarde); el efecto, al momento.
+		bGroupActive = true;
 		bTriggered = bOneShot;
 		ApplyTriggerActions(true);
-		MulticastNotifyActivated();
-	}
-	else if (!bMet && bCurrentlyActivated && !bOneShot)
-	{
-		// Bajamos de umbral y no es one-shot — revertir
-		bCurrentlyActivated = false;
+		MulticastPlayGroupEffect(true);
+		ForceNetUpdate();
+		break;
+	case TNButtonGroupRules::EGroupChange::Deactivate:
+		// Bajamos de umbral y no es one-shot: revertir.
+		bGroupActive = false;
 		ApplyTriggerActions(false);
-		MulticastNotifyDeactivated();
+		MulticastPlayGroupEffect(false);
+		ForceNetUpdate();
+		break;
+	default:
+		break;
+	}
+}
+
+void ATN_ButtonGroupManager::OnRep_GroupActive()
+{
+	// Clientes: los objetivos cuyo movimiento no replica el servidor los mueve cada cliente, una vez por cambio. Llega
+	// también a quien entra tarde con el puzzle ya resuelto (antes solo había un multicast que no le llegaba).
+	if (bGroupActive != bClientActionsApplied)
+	{
+		FTN_TransformAction::ApplyAll(TriggerActions, bGroupActive, GetWorld(), true);
+		bClientActionsApplied = bGroupActive;
 	}
 }
 
@@ -177,12 +203,23 @@ void ATN_ButtonGroupManager::DeferredTagButtonScan()
 	}
 }
 
-void ATN_ButtonGroupManager::MulticastNotifyActivated_Implementation()
+void ATN_ButtonGroupManager::MulticastPlayGroupEffect_Implementation(bool bActivated)
 {
-	OnAllButtonsActivated();
+	PlayGroupEffect(bActivated);
 }
 
-void ATN_ButtonGroupManager::MulticastNotifyDeactivated_Implementation()
+void ATN_ButtonGroupManager::PlayGroupEffect(bool bActivated) const
 {
-	OnGroupDeactivated();
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	if (USoundBase* Sound = bActivated ? ActivatedSound.Get() : DeactivatedSound.Get())
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, Sound, GetActorLocation());
+	}
+	if (bActivated && ActivatedVFX)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ActivatedVFX, GetActorLocation());
+	}
 }
