@@ -86,3 +86,8 @@ jobs:
       - name: Publicar el volcado
         if: always()
         run: $TABLERO volcado --publicar "$VOLCADO_ISSUE"
+
+      # El puente actúa con el token de una persona y GitHub la suscribe a cada issue que toca.
+      - name: Silenciar las issues para el dueño del token
+        if: always()
+        run: $TABLERO silenciar

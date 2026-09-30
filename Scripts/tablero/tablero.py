@@ -601,6 +601,25 @@ def cmd_volcado(args: argparse.Namespace) -> None:
     print(f"Volcado publicado en #{args.publicar} ({len(texto)} caracteres)")
 
 
+def cmd_silenciar(_args: argparse.Namespace) -> None:
+    """Da de baja al usuario del token de las notificaciones de las issues abiertas (no de las PR)."""
+    owner, repo = REPO.split("/", 1)
+    nodos, cursor = [], None
+    while True:
+        args = ["api", "graphql", "-f", f"query={volcado.CONSULTA_SUSCRIPCIONES}", "-f", f"owner={owner}", "-f", f"repo={repo}"]
+        if cursor:
+            args += ["-f", f"cursor={cursor}"]
+        datos = json.loads(gh(*args))["data"]["repository"]["issues"]
+        nodos += datos["nodes"]
+        if not datos["pageInfo"]["hasNextPage"]:
+            break
+        cursor = datos["pageInfo"]["endCursor"]
+    pendientes = volcado.a_silenciar(nodos)
+    for nodo in pendientes:
+        gh("api", "graphql", "-f", f"query={volcado.MUTACION_SILENCIAR}", "-f", f"id={nodo['id']}")
+    print(f"Silenciadas {len(pendientes)} issues de {len(nodos)} abiertas para {usuario_actual()}")
+
+
 def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     """Comandos que crean u organizan issues: nueva, objeto, colgar y sync."""
     p = sub.add_parser("nueva", help="crear issue y colocarla en el tablero")
@@ -629,6 +648,8 @@ def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("volcado", help="tablero completo en Markdown, para quien no puede leer el Project")
     p.add_argument("--publicar", type=int, metavar="ISSUE", help="sustituir el cuerpo de esa issue por el volcado")
     p.set_defaults(fn=cmd_volcado)
+    sub.add_parser("silenciar", help="darme de baja de las notificaciones de las issues abiertas (no de las PR)"
+                   ).set_defaults(fn=cmd_silenciar)
     p = sub.add_parser("puente", help="ejecutar un comando recibido por el workflow (lista cerrada)")
     p.add_argument("--comando", required=True, help='por ejemplo: estado 42 Ready')
     p.set_defaults(fn=None)

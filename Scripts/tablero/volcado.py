@@ -5,6 +5,9 @@ puede leer ni mover el Project, que es de la organización. El workflow
 `.github/workflows/tablero-puente.yml` sí puede. Publica este volcado en una issue del
 repo, que la rutina lee, y ejecuta por ella los comandos de `PERMITIDOS`.
 
+El puente comenta y mueve issues con el token de una persona, y GitHub la suscribe a cada issue que toca: `silenciar`
+la da de baja de las issues abiertas para que solo le lleguen las PR, las menciones y lo que tenga asignado.
+
 Funciones puras; hablar con GitHub es cosa de tablero.py.
 """
 
@@ -96,3 +99,23 @@ def render(items: dict[int, dict], prs_por_issue: dict[int, list[int]], ahora: d
     if len(texto) > MAX_CUERPO:
         texto = texto[:MAX_CUERPO].rsplit("\n", 1)[0] + "\n\n… (recortado: no cabe en una issue)\n"
     return texto
+
+
+CONSULTA_SUSCRIPCIONES = """
+query($owner: String!, $repo: String!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    issues(first: 100, after: $cursor, states: [OPEN]) {
+      pageInfo { hasNextPage endCursor }
+      nodes { id number viewerSubscription }
+    }
+  }
+}
+"""
+MUTACION_SILENCIAR = """
+mutation($id: ID!) { updateSubscription(input: {subscribableId: $id, state: UNSUBSCRIBED}) { subscribable { id } } }
+"""
+
+
+def a_silenciar(nodos: list[dict]) -> list[dict]:
+    """Issues abiertas a las que el dueño del token está suscrito (las ignoradas y las ya silenciadas no se tocan)."""
+    return [n for n in nodos if n.get("viewerSubscription") == "SUBSCRIBED"]
