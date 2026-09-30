@@ -845,14 +845,13 @@ void ATN_BeachCatapult::ServerTick(double Now)
 				}
 			}
 		}
-		// Cae de un salto sobre el cubito: dispara.
-		if (Where == 3 && !Rider.bOnBucket && Rider.LastVz < -80.f)
+		// Llega al cubito (el punto más alto): dispara. Sin pedir velocidad de caída: desde el mango se sube de un salto de
+		// ~1,1 m y se aterriza en la cima del salto, casi sin velocidad.
+		if (Where == 3 && !Rider.bOnBucket)
 		{
 			bKick = true;
 		}
 		Rider.bOnBucket = Where == 3;
-		const UCharacterMovementComponent* Move = Walker->GetCharacterMovement();
-		Rider.LastVz = Move ? static_cast<float>(Move->Velocity.Z) : 0.f;
 		if (Where == 1)
 		{
 			++InBowl;
