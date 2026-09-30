@@ -2586,7 +2586,8 @@ namespace TNBeachProp
 		const bool bRolled = Kind == 3;
 		const double RollR = Cm(5.0);
 		const double FlatEnd = bRolled ? Lx * 0.5 - RollR * 1.1 : Lx * 0.5;
-		// Pliegues: tiendas de menos de 32° a lo ancho de la toalla (la colisión son sus dos caras).
+		// Pliegues: tiendas de menos de 32° a lo ancho de la toalla (la colisión son sus dos caras). Lo bastante altas para que
+		// la tortuga de pie (cápsula de 34 cm de radio y 176 de alto) pase por debajo: parecen un túnel y lo son.
 		struct FFold
 		{
 			double X = 0.0;
@@ -2599,8 +2600,8 @@ namespace TNBeachProp
 		{
 			FFold Fold;
 			Fold.X = FMath::Lerp(-Lx * 0.3, FlatEnd - Lx * 0.2, NumFolds == 1 ? 0.5 : static_cast<double>(f) / (NumFolds - 1)) + Cm(RndIn(Seed, f, -5.0, 5.0));
-			Fold.Half = Cm(RndIn(Seed, 10 + f, 9.0, 13.0));
-			Fold.H = FMath::Min(Cm(RndIn(Seed, 20 + f, 4.0, 7.0)), Fold.Half * 0.6);
+			Fold.Half = Cm(RndIn(Seed, 10 + f, 13.0, 15.0));
+			Fold.H = FMath::Min(Cm(RndIn(Seed, 20 + f, 7.8, 9.1)), Fold.Half * 0.6);
 			Folds.Add(Fold);
 		}
 		auto FoldHeight = [&Folds](double X)

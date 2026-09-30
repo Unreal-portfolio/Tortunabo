@@ -55,6 +55,22 @@ namespace
 
 	/** Segundos que tiene un expulsado para irse solo antes de que el servidor lo eche. */
 	constexpr float MPGameInstance_KickGraceSeconds = 2.5f;
+
+	void MPGameInstance_HandleFakeRoomError(const TArray<FString>& Args, UWorld* World)
+	{
+		UMP_GameInstance* GI = World ? Cast<UMP_GameInstance>(World->GetGameInstance()) : nullptr;
+		if (!GI)
+		{
+			UE_LOG(LogTortunabo, Display, TEXT("[Salas] TN.Rooms.FakeError: no hay GameInstance de Tortunavy."));
+			return;
+		}
+		GI->DebugFakeRoomError(Args.Num() > 0 ? Args[0] : FString());
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs MPGameInstance_FakeRoomErrorCommand(
+		TEXT("TN.Rooms.FakeError"),
+		TEXT("Simula un fallo al entrar en una sala: TN.Rooms.FakeError <locked|full|kicked|other|joinfull|gone|noaddress>."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&MPGameInstance_HandleFakeRoomError));
 }
 
 UMP_GameInstance::UMP_GameInstance()
@@ -489,6 +505,11 @@ void UMP_GameInstance::UpdateStatus(const FString& Message)
 {
 	UE_LOG(LogTortunabo, Log, TEXT("[MP] %s"), *Message);
 
+	// Un mensaje idéntico al anterior no se apunta otra vez (p. ej. el aviso de sala que además es estado).
+	if (StatusLog.Num() > 0 && StatusLog.Last() == Message)
+	{
+		return;
+	}
 	if (StatusLog.Num() >= MaxStatusLines)
 	{
 		StatusLog.RemoveAt(0);
@@ -665,7 +686,7 @@ void UMP_GameInstance::OnFindSessionsComplete(bool bWasSuccessful)
 			}
 		}
 	}
-	UpdateStatus(FString::Printf(TEXT("Búsqueda de salas: %s, %d resultados, %d de Tortunavy."), bWasSuccessful ? TEXT("ok") : TEXT("fallida"),
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] %s"), *FString::Printf(TEXT("Búsqueda de salas: %s, %d resultados, %d de Tortunavy."), bWasSuccessful ? TEXT("ok") : TEXT("fallida"),
 		Search.IsValid() ? Search->SearchResults.Num() : 0, Found.Num()));
 
 	if (Purpose == ETNRoomSearch::Code)
@@ -1813,7 +1834,7 @@ void UMP_GameInstance::StartRoomSearch(ETNRoomSearch Purpose, const FString& Cod
 	{
 		OnRoomListChanged.Broadcast();
 	}
-	UpdateStatus(Purpose == ETNRoomSearch::Code ? FString::Printf(TEXT("Buscando la sala %s..."), *Code) : FString(TEXT("Buscando salas públicas...")));
+	UE_LOG(LogTortunabo, Log, TEXT("[Salas] %s"), Purpose == ETNRoomSearch::Code ? *FString::Printf(TEXT("Buscando la sala %s..."), *Code) : TEXT("Buscando salas públicas..."));
 	if (!Sessions->FindSessions(0, SessionSearch.ToSharedRef()) && RoomSearchSerial == Serial && RoomSearchPurpose == Purpose)
 	{
 		// No ha arrancado y no ha avisado: se da por fallida ya.
@@ -2277,9 +2298,53 @@ void UMP_GameInstance::HandleRoomRefused(const FString& Reason)
 	}
 }
 
+void UMP_GameInstance::DebugFakeRoomError(const FString& Kind)
+{
+	const FString K = Kind.ToLower();
+	FString Reason;
+	if (K == TEXT("locked")) { Reason = TNRoomKeys::RefuseLocked(); }
+	else if (K == TEXT("full")) { Reason = TNRoomKeys::RefuseFull(); }
+	else if (K == TEXT("kicked")) { Reason = TNRoomKeys::RefuseKicked(); }
+	else if (K == TEXT("other")) { Reason = TEXT("TNRoom:Prueba"); }
+
+	if (!Reason.IsEmpty())
+	{
+		UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: rechazo del servidor «%s»."), *Reason);
+		HandleRoomRefused(Reason);
+		// En el menú, HandleRoomRefused no viaja: se recarga como hace el motor tras un fallo al conectar.
+		UWorld* World = GetWorld();
+		if (World && IsMenuWorld(World))
+		{
+			if (APlayerController* PC = GetFirstLocalPlayerController())
+			{
+				PC->ClientTravel(MenuMapPath, TRAVEL_Absolute);
+			}
+		}
+		return;
+	}
+
+	EOnJoinSessionCompleteResult::Type Result;
+	if (K == TEXT("joinfull")) { Result = EOnJoinSessionCompleteResult::SessionIsFull; }
+	else if (K == TEXT("gone")) { Result = EOnJoinSessionCompleteResult::SessionDoesNotExist; }
+	else if (K == TEXT("noaddress")) { Result = EOnJoinSessionCompleteResult::CouldNotRetrieveAddress; }
+	else
+	{
+		UE_LOG(LogTortunabo, Display, TEXT("[Salas] TN.Rooms.FakeError <locked|full|kicked|other|joinfull|gone|noaddress>"));
+		return;
+	}
+	UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: JoinSession falla con «%s»."), *K);
+	OnJoinSessionComplete(NAME_GameSession, Result);
+}
+
 void UMP_GameInstance::PostRoomNotice(const FText& Message, bool bError)
 {
-	UpdateStatus(Message.ToString());
+	// Cada aviso de sala sustituye al anterior en el registro de estado: no se acumulan los de intentos previos.
+	if (!LastRoomNoticeStatus.IsEmpty())
+	{
+		StatusLog.RemoveSingle(LastRoomNoticeStatus);
+	}
+	LastRoomNoticeStatus = Message.ToString();
+	UpdateStatus(LastRoomNoticeStatus);
 	OnRoomNotice.Broadcast(Message, bError);
 }
 

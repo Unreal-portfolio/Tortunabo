@@ -108,6 +108,14 @@ void ATN_RunGameMode::BeginPlay()
 	TryStartMatch();
 }
 
+FString ATN_RunGameMode::InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options,
+	const FString& Portal)
+{
+	const FString Result = Super::InitNewPlayer(NewPlayerController, UniqueId, Options, Portal);
+	TN_RestoreFullPlayerName(this, NewPlayerController, Options);
+	return Result;
+}
+
 void ATN_RunGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);

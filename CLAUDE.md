@@ -71,6 +71,17 @@ Toda issue de trabajo cumple esto; `nueva` no crea una que no lo cumpla y `audit
 
 Las plantillas de `.github/ISSUE_TEMPLATE` piden lo mismo a quien crea la issue en la web (GitHub las lee de `main`, así que un cambio en ellas va también a `main`). Una issue creada en la web nace sin objeto ni campos: `auditar` la marca.
 
+### Hablar en la issue
+
+Para pedir, cambiar o preguntar algo sobre una issue se escribe en sus comentarios, como en un chat; no hace falta pasar por nadie. Quien trabaja una issue lee antes su conversación entera.
+
+- Al comentar, el workflow «Conversación en las issues» (`.github/workflows/tablero-conversacion.yml`, también en `main`) mira quién habló el último: si no fue quien la tiene asignada, le pone la etiqueta `peticion` y `pendiente` se la enseña antes que su trabajo. Cuando el asignado contesta, la etiqueta se quita sola. `auditar` lo repasa cada mañana y `conversacion <n> --aplicar` lo hace a mano.
+- Al atender lo que se pide: haz el cambio, corrige los criterios del cuerpo y contesta en la issue (o `atendida <n> --nota "..."`, que quita la etiqueta al momento).
+- `pedir <n> --texto "..."` es lo mismo sin esperar a la mañana y, si la issue ya estaba entregada (In review, QA editor o Validada), la devuelve a Revisiones. La PR de un lote no se fusiona con un miembro con `peticion`.
+- Un cambio de diseño lo registra un aprobador con `decidir`; una decisión que corrige otra se escribe como decisión nueva, no se edita la anterior.
+
+Los comentarios automáticos del tablero son de una línea: dicen qué ha pasado, no cómo funciona el sistema.
+
 ### Objetos y sub-issues
 
 Las tareas y los fallos se agrupan por **objeto**: un sistema o una pieza del juego (el Rally, el puente tambaleante, el HUD, las catapultas…). Un objeto es una issue padre con la etiqueta `objeto`, sin Status, que se ve en la vista «Objetos»; sus tareas y fallos cuelgan de él como sub-issues. Los sistemas grandes no se desglosan en épicas por fase: la fase va en el campo Fase. Las PR enlazan la sub-issue concreta, nunca el objeto.
@@ -93,6 +104,7 @@ uv run python Scripts/tablero/tablero.py ia <n> aprobada|cambios --revisor "<qui
 uv run python Scripts/tablero/tablero.py resumen <n> --que "<qué fallaba>" [--por-que "<causa>"] --como "<arreglo>" [--pr <n>]
 uv run python Scripts/tablero/tablero.py resumenes <n>         # resúmenes de las demás sub-issues de su objeto
 uv run python Scripts/tablero/tablero.py decidir <n> --texto "<decisión>"
+uv run python Scripts/tablero/tablero.py pedir <n> --texto "<qué pido>" | atendida <n> --nota "<qué he hecho>"
 uv run python Scripts/tablero/tablero.py lote crear --titulo "..." <n> <n> ... | lote estado <lote>
 uv run python Scripts/tablero/tablero.py bloquear <n> --por <m> [--por <k>]   # en Backlog se queda en Backlog
 uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug|tarea --cuerpo f.md --objeto "<objeto>" --prioridad P1 --tamano S --area Red [--fase F4 --estado Ready]
@@ -102,7 +114,7 @@ uv run python Scripts/tablero/tablero.py sync|auditar|colisiones [--aplicar]
 uv run python Scripts/tablero/tablero.py volcado [--publicar <issue>]   # tablero completo en Markdown
 ```
 
-Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`. Si `coger` no puede cambiar de rama por cambios sin guardar, resuélvelo con la persona (commit o `git stash`); nunca los descartes.
+Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`. **Cada persona ejecuta `tablero.py` en local con su `gh`**: así sus comentarios y validaciones salen con su cuenta. El puente es para la rutina y para quien no tiene el repo a mano. Cada comando gasta unos 110 puntos de los 5000 por hora de la API de GraphQL de esa cuenta: no lances decenas seguidas. Si `coger` no puede cambiar de rama por cambios sin guardar, resuélvelo con la persona (commit o `git stash`); nunca los descartes.
 
 ### Organización diaria: el puente y la rutina
 
@@ -111,9 +123,9 @@ Dos automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa códi
 - **Puente del tablero** (`.github/workflows/tablero-puente.yml`, 7:15): ejecuta `sync`, `auditar` y `colisiones` con `--aplicar` y publica el volcado del tablero en la issue #131. Lanzado a mano con un comando (`estado 123 Ready`), lo ejecuta si está en la lista cerrada de `Scripts/tablero/volcado.py`; los comentarios que deja acaban en «Lanzado por <quién> a través del puente», porque todos salen con la cuenta del dueño del token. El volcado lleva una sección «Sin movimiento desde hace más de 3 días» con lo que espera a alguien (In progress, In review, Revisiones, QA editor y Validada). Está también en `main`, porque el cron solo se ejecuta desde la rama por defecto.
 - **Rutina de Claude** (7:30): hace de responsable de calidad de las issues. Lee el volcado, corrige por el puente lo que es evidente, avisa de lo que no lo es y deja el parte del día en la issue #127. Su entorno solo llega a las rutas REST del repositorio: por eso lee y mueve el tablero a través del puente.
 
-Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (la pone `auditar` y la quita sola cuando deja de ver el problema), etiqueta `revisar-qa` con su comentario (la pone y la quita la rutina, para lo que un script no ve), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.
+Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (la pone `auditar` y la quita sola cuando deja de ver el problema), etiqueta `revisar-qa` con su comentario (la pone y la quita la rutina, para lo que un script no ve), etiqueta `peticion` (conversación sin contestar), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.
 
-Las issues #127 y #131 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado). El token del secreto `TABLERO_TOKEN` es classic con `repo`, `project`, `read:org` y `notifications`; sin el último, `silenciar` avisa y no silencia, pero el puente no falla.
+Las issues #127 y #131 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado). Si quien lanza el puente a mano tiene su propio secreto (`TABLERO_TOKEN_MOKIUS`, `TABLERO_TOKEN_RUBI`), el puente usa el suyo y sus comentarios salen con su cuenta. El token del secreto `TABLERO_TOKEN` es classic con `repo`, `project`, `read:org` y `notifications`; sin el último, `silenciar` avisa y no silencia, pero el puente no falla.
 
 ## Memoria del equipo: las issues
 

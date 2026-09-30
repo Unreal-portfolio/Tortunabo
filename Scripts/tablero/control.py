@@ -24,6 +24,7 @@ import estados
 import memoria
 import objetos
 import lotes
+import peticiones
 from base import (INTEGRACION, NUMERO, OWNER, REPO, ErrorTablero, cargar_proyecto, comentar, elegir_revisor,
                   esta_fusionada, gh, issues_de_pr, poner_campo, prs_abiertas, prs_fusionadas, usuario_actual)
 
@@ -89,11 +90,46 @@ def cmd_auditar(args: argparse.Namespace) -> None:
           + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
     for issue, lista in con_problemas:
         print(f"- #{issue['numero']} {issue['titulo']}: " + "; ".join(f"[{p['tipo']}] {p['texto']}" for p in lista))
+    conversaciones = {i["numero"]: a for i, _ in informe if (a := auditoria.accion_peticion(i))}
+    if conversaciones:
+        print("\n### Conversación en las issues (etiqueta `peticion`)")
+        print("\n".join(f"- #{n}: {'alguien espera respuesta del asignado' if a == 'poner' else 'ya contestada'}"
+                        for n, a in sorted(conversaciones.items())))
     recuento = Counter(p["texto"].split(" (")[0] for _, lista in con_problemas for p in lista)
     print("\n### Recuento por problema")
     print("\n".join(f"- {n} × {p}" for p, n in recuento.most_common()) or "- ninguno")
     if args.aplicar:
         aplicar_auditoria(proyecto, informe)
+        aplicar_conversaciones(conversaciones)
+
+
+def cmd_conversacion(args: argparse.Namespace) -> None:
+    """Pone o quita `peticion` en una sola issue según quién habló el último. No lee el Project: le basta el repo."""
+    owner, nombre = REPO.split("/", 1)
+    salida = gh("api", "graphql", "-f", f"query={auditoria.CONSULTA_CONVERSACION}", "-f", f"owner={owner}",
+                "-f", f"repo={nombre}", "-F", f"num={args.numero}")
+    nodo = json.loads(salida)["data"]["repository"]["issue"]
+    if nodo is None:
+        raise ErrorTablero(f"La issue #{args.numero} no existe.")
+    etiquetas = objetos.nombres_etiquetas(nodo)
+    if objetos.ETIQUETA in etiquetas or lotes.ETIQUETA in etiquetas:
+        print(f"#{args.numero} es un objeto o un lote: no lleva `peticion`")
+        return
+    accion = auditoria.accion_peticion(auditoria.conversacion_de(nodo))
+    print(f"#{args.numero}: " + {"poner": "conversación sin contestar por el asignado → `peticion`",
+                                 "quitar": "conversación contestada → fuera `peticion`", None: "sin cambios"}[accion]
+          + ("" if args.aplicar or accion is None else " (simulación: usa --aplicar)"))
+    if args.aplicar and accion:
+        aplicar_conversaciones({args.numero: accion})
+
+
+def aplicar_conversaciones(conversaciones: dict[int, str]) -> None:
+    """Pone o quita `peticion` según quién habló el último en cada issue."""
+    if "poner" in conversaciones.values():
+        objetos.crear_etiqueta_si_falta(gh, REPO, peticiones.ETIQUETA, peticiones.COLOR, peticiones.DESCRIPCION_ETIQUETA)
+    for numero, accion in conversaciones.items():
+        gh("issue", "edit", str(numero), "--repo", REPO,
+           "--add-label" if accion == "poner" else "--remove-label", peticiones.ETIQUETA)
 
 
 def aplicar_auditoria(proyecto: dict, informe: list[tuple[dict, list[dict]]]) -> None:
@@ -182,7 +218,7 @@ def cmd_bloquear(args: argparse.Namespace) -> None:
         gh("api", "graphql", "-f", f"query={bloqueos.MUTACION}", "-f", f"issue={issue['id']}",
            "-f", f"bloqueante={bloqueante['id']}")
     todas = ", ".join(f"#{m}" for m in sorted({*args.por, *(b["number"] for b in bloqueos.bloqueantes(issue))}))
-    proyecto = cargar_proyecto()
+    proyecto = cargar_proyecto(args.numero)
     actual = proyecto["items"].get(args.numero, {}).get("valores", {}).get("Status")
     if bloqueos.estado_tras_bloquear(actual) is None:
         print(f"#{args.numero} sigue en Backlog; depende de {todas}. Al aprobarla pasará a Bloqueada si siguen abiertas.")
@@ -237,6 +273,10 @@ def anadir_comandos(sub: argparse._SubParsersAction) -> None:
         p = sub.add_parser(nombre, help=ayuda)
         p.add_argument("--aplicar", action="store_true")
         p.set_defaults(fn=fn)
+    p = sub.add_parser("conversacion", help="poner o quitar `peticion` en una issue según quién habló el último")
+    p.add_argument("numero", type=int)
+    p.add_argument("--aplicar", action="store_true")
+    p.set_defaults(fn=cmd_conversacion)
     p = sub.add_parser("bloquear", help="registrar de qué issues depende una y pasarla a Bloqueada (en Backlog se queda)")
     p.add_argument("numero", type=int)
     p.add_argument("--por", type=int, action="append", required=True, help="issue de la que depende (repetible)")

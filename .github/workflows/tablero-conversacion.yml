@@ -1,0 +1,45 @@
+# Conversación en las issues: cuando alguien comenta en una issue, mira quién habló el último y pone o quita la etiqueta
+# `peticion` (Scripts/tablero/peticiones.py). Así un comentario llega al momento a quien tiene la issue, sin esperar a
+# la auditoría de la mañana.
+#
+# Solo toca etiquetas del repositorio: le basta el GITHUB_TOKEN y no gasta el límite de API de nadie. No se lanza con
+# los comentarios automáticos del tablero (empiezan por «**», «Lista para revisión», «Fusionada en» o «En el lote») ni
+# con los de las PR. El código se toma de `dev`; este fichero tiene que estar en `main`, como el puente.
+name: Conversación en las issues
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  conversacion:
+    name: Avisar al asignado si alguien le habla
+    if: >-
+      !github.event.issue.pull_request && github.event.issue.state == 'open'
+      && (startsWith(github.event.comment.body, '**Petición') || startsWith(github.event.comment.body, '**Decisión')
+      || !(startsWith(github.event.comment.body, '**') || startsWith(github.event.comment.body, 'Lista para revisión')
+      || startsWith(github.event.comment.body, 'Fusionada en') || startsWith(github.event.comment.body, 'En el lote')
+      || startsWith(github.event.comment.body, 'Vuelve a Ready') || startsWith(github.event.comment.body, 'Probada en el editor')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Descargar dev (solo los scripts)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          filter: blob:none
+          sparse-checkout: |
+            Scripts
+          sparse-checkout-cone-mode: false
+
+      - name: uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Etiqueta peticion según quién habló el último
+        run: uv run python Scripts/tablero/tablero.py conversacion "${{ github.event.issue.number }}" --aplicar

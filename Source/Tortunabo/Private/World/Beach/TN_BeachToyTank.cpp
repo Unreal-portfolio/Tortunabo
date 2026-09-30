@@ -37,7 +37,7 @@ namespace TNBeachTank
 	constexpr float TurretRate = 110.f;
 	constexpr float AimTolerance = 7.f;
 	constexpr float FirstShotDelay = 0.7f;
-	constexpr float ReloadTime = 1.6f;
+	constexpr float ReloadTime = 4.f;
 	/** Bolita: velocidad de salida (cm/s), gravedad (flota un poco: es espuma), parte del adelanto a la tortuga. */
 	constexpr float MuzzleSpeed = 1900.f;
 	constexpr float FoamGravity = 700.f;

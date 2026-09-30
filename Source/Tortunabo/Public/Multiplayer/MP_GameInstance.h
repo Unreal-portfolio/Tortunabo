@@ -398,6 +398,13 @@ public:
 	UPROPERTY(Transient)
 	FString LobbyReturnMapPath;
 
+	/**
+	 * Prueba (TN.Rooms.FakeError): simula un fallo al entrar en una sala sin necesitar otra instancia. locked, full,
+	 * kicked y other pasan por el rechazo del servidor (y recargan el menú, como el motor tras un fallo al conectar);
+	 * joinfull, gone y noaddress, por el fallo de JoinSession.
+	 */
+	void DebugFakeRoomError(const FString& Kind);
+
 protected:
 	/** @brief Callback online: sesión Steam creada — dispara ServerTravel al mapa lobby. */
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
@@ -467,6 +474,9 @@ protected:
 
 	static constexpr int32 MaxStatusLines = 12;
 	TArray<FString> StatusLog;
+
+	/** @brief Último aviso de sala apuntado en StatusLog; el siguiente aviso lo sustituye. */
+	FString LastRoomNoticeStatus;
 
 private:
 	/** @brief Devuelve la interfaz online de sesiones (o nullptr si OnlineSubsystem no está disponible). */

@@ -53,8 +53,7 @@ def cmd_lote_crear(args: argparse.Namespace) -> None:
     for m in miembros:
         gh("api", "graphql", "-f", f"query={bloqueos.MUTACION}", "-f", f"issue={id_lote}",
            "-f", f"bloqueante={objetos.leer_issue(gh, REPO, m)['id']}")
-        comentar(m, f"Forma parte del lote #{numero}{f' (PR #{pr})' if pr else ''}: se revisa y se prueba por separado "
-                    "y, lista, espera en Validada a las demás.")
+        comentar(m, f"En el lote #{numero}{f' (PR #{pr})' if pr else ''}.")
     item_de_issue(proyecto, numero)  # en el tablero sin Status, como los objetos
     if pr:
         cuerpo = json.loads(gh("pr", "view", str(pr), "--repo", REPO, "--json", "body"))["body"] or ""
@@ -83,6 +82,9 @@ def cmd_lote_estado(args: argparse.Namespace) -> None:
     if sin_decidir := lotes.con_decision(etiquetas, flujo.ETIQUETA_DECISION):
         raise ErrorTablero(f"NO fusionar la PR del lote: {', '.join(f'#{n}' for n in sin_decidir)} con decisión "
                            "pendiente. Regístrala con `tablero.py decidir <n> --texto \"...\"` y quita la etiqueta.")
+    if sin_contestar := lotes.con_decision(etiquetas, "peticion"):
+        raise ErrorTablero(f"NO fusionar la PR del lote: {', '.join(f'#{n}' for n in sin_contestar)} con una "
+                           "conversación sin contestar (etiqueta `peticion`): léela y resuélvela antes.")
     print("Todos los miembros están en Validada: la PR del lote se puede fusionar.")
 
 

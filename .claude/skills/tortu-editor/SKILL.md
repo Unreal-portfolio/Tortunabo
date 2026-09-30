@@ -15,6 +15,7 @@ Lo decides y lo haces tú, sin preguntar; solo preguntas, en una línea, si duda
 2. **Mismo fallo** que una issue existente (misma causa o síntoma, aunque esté cerrada): `tablero.py editor <n> falla --como "<PIE 4P, Standalone…>" --nota "<qué pasa y cómo reproducirlo>"`. En In progress se queda ahí con el fallo comentado; en otro estado pasa a Revisiones, se reabre si estaba cerrada y lleva `regresion` si ya funcionaba. No abras otra.
 3. **Fallo distinto del mismo objeto**: sub-issue nueva (`tablero.py nueva --tipo bug --estado Ready --objeto "<objeto>" --prioridad <P0-P3> --tamano <XS-L> --area <Área> [--fase <F0-F8>] --titulo "..." --cuerpo f.md`) con pasos, esperado y obtenido, mapa y jugadores, citando las issues parecidas con su resumen. `nueva` la rechaza si el título pasa de 80 caracteres o el cuerpo no trae al menos un criterio de aceptación como casilla (`- [ ] Ya no pasa X en PIE 4P`). Si el objeto no existe, `nueva --objeto "<nombre>"` lo crea (nombre de sistema, no de síntoma); si hay uno parecido, lo enseña y no crea nada: casi siempre es ese, usa su título exacto.
 4. Varios fallos seguidos: uno por issue. Di en una línea qué has hecho.
+5. Si lo que dice el usuario no es un fallo sino un cambio de opinión sobre una issue de otro («mejor 4 s que 5»), no abras nada: `tablero.py pedir <n> --texto "..."` (o `decidir` si es una decisión de diseño de un aprobador).
 
 ## Cuando algo funciona
 

@@ -72,3 +72,16 @@ APlayerStart* TN_EnsureFallbackPlayerStart(UWorld* World, FName SpawnActorName, 
  *       de conteo (solo cambiaba el nombre de la variable acumuladora).
  */
 int32 TN_CountConnectedCoopPlayers(const AGameStateBase* GameState);
+
+/** Largo máximo de un nombre de jugador: el de Steam (32). */
+constexpr int32 TN_MaxPlayerNameLength = 32;
+
+/**
+ * @brief Devuelve al jugador su nombre completo tras AGameModeBase::InitNewPlayer, que corta la opción ?Name= a 20
+ *        caracteres (un nombre de Steam de hasta 32 llegaba recortado al HUD, al tendero y a los resultados).
+ * @param GameMode GameMode que acaba de inicializar al jugador.
+ * @param PlayerController Jugador recién entrado.
+ * @param Options Opciones del login (las mismas que recibió InitNewPlayer).
+ * @note Se llama desde InitNewPlayer de ATN_HQGameMode y ATN_RunGameMode, justo después de Super.
+ */
+void TN_RestoreFullPlayerName(AGameModeBase* GameMode, APlayerController* PlayerController, const FString& Options);

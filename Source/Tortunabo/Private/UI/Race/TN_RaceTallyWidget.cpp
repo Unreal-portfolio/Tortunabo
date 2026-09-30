@@ -8,6 +8,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
+#include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -264,7 +265,13 @@ void UTN_RaceTallyWidget::BuildColumns()
 
 		// Nombre en una etiqueta de arena (dorada si es el tuyo) y, en el tuyo, «TÚ» en una cinta coral.
 		UTextBlock* NameText = TNRaceUI::MakeText(Tree, TNLocText::PlayerName(Row.Name), TEXT("Bold"), 20, TNHUDArt::Ink, false);
-		UBorder* NameTag = TNRaceUI::MakeCard(Tree, TNHUDArt::SandTagTexture(), TNRaceUI::TagMargin, NameText, FMargin(28.f, 13.f, 28.f, 14.f));
+		NameText->SetJustification(ETextJustify::Center);
+		// Un nombre largo (hasta 32) se encoge para caber en la etiqueta, centrado, en vez de cortarse por la derecha.
+		UScaleBox* NameShrink = TNRaceUI::Make<UScaleBox>(Tree);
+		NameShrink->SetStretch(EStretch::ScaleToFit);
+		NameShrink->SetStretchDirection(EStretchDirection::DownOnly);
+		NameShrink->SetContent(NameText);
+		UBorder* NameTag = TNRaceUI::MakeCard(Tree, TNHUDArt::SandTagTexture(), TNRaceUI::TagMargin, NameShrink, FMargin(28.f, 13.f, 28.f, 14.f));
 		if (Row.bLocal) { NameTag->SetBrush(TNRaceUI::BoxBrush(TNHUDArt::SandTagTexture(), TNRaceUI::TagMargin, TNHUDArt::Hex(0xFFE08A))); }
 		USizeBox* NameFit = TNRaceUI::MakeSize(Tree, NameTag, 0.f, 0.f);
 		NameFit->SetMaxDesiredWidth(ColumnW + 10.f);

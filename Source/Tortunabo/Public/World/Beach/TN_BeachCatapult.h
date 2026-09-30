@@ -30,8 +30,8 @@ class UTN_PlaygroundSynthComponent;
  * Launch del árbitro mientras vuela. Aviso de WarnSeconds (el palo que sujeta tiembla y cruje cada
  * vez más, el banderín parpadea; el temblor del brazo y del cazo es solo de sus mallas visibles: el eje y las colisiones no
  * se mueven hasta el disparo, así que la tortuga, o la bola de caparazón, que espera en el cazo no sale despedida); si el
- * cazo se queda vacío, se desarma. Si otra tortuga cae de un salto sobre el cubito,
- * dispara al momento. Al disparar, el palo sale volando, el cubito cae, la cuchara da la vuelta (golpe y rebote contra la
+ * cazo se queda vacío, se desarma. Si una tortuga sube al cubito (de un salto desde el mango o
+ * cayendo encima), dispara al momento. Al disparar, el palo sale volando, el cubito cae, la cuchara da la vuelta (golpe y rebote contra la
  * arena) y lanza como bolas de caparazón (UTN_ShellComponent: vuelan, rebotan y ruedan; salen solas al pararse) a las
  * que estén en el cazo (LaunchSpeed a LaunchPitch grados hacia el mar, ±DeviationDeg de desvío al azar) y, más flojo, a
  * las que estén en el mango.
@@ -209,7 +209,6 @@ protected:
 private:
 	struct FRider
 	{
-		float LastVz = 0.f;
 		bool bOnBucket = false;
 	};
 

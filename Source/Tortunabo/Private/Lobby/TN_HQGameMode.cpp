@@ -122,6 +122,7 @@ FString ATN_HQGameMode::InitNewPlayer(APlayerController* NewPlayerController, co
 	const FString& Portal)
 {
 	const FString Result = Super::InitNewPlayer(NewPlayerController, UniqueId, Options, Portal);
+	TN_RestoreFullPlayerName(this, NewPlayerController, Options);
 	// Un cliente que no ha hecho el tutorial lo dice al entrar (UMP_GameInstance::OnJoinSessionComplete): aparece ya en él.
 	if (NewPlayerController && UGameplayStatics::HasOption(Options, UMP_GameInstance::TutorialJoinOption()))
 	{

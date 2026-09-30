@@ -33,6 +33,10 @@ public:
 	/** @brief Inicializa timers, reloj de carrera y bindings con CollectionZones presentes en el mapa. */
 	virtual void BeginPlay() override;
 
+	/** @brief Tras Super, devuelve al jugador su nombre completo (el motor lo corta a 20 caracteres). */
+	virtual FString InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options,
+		const FString& Portal = TEXT("")) override;
+
 	/** @brief Llamado por UE cuando un PlayerController NUEVO entra (no por seamless travel). */
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 

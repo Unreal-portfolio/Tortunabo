@@ -41,9 +41,9 @@ struct FTNTankShot
  *  - Patrulla adelante y atrás su tramo (el eje X local del actor, centrado en él, con Spec.Extent de largo; 0 = 24 m) a
  *    2,6 m/s, y en cada punta gira sobre sí mismo.
  *  - Con una tortuga atacable a menos de 25 m, se para y gira la torreta hacia ella (110°/s); cuando apunta, dispara
- *    bolitas de espuma naranjas (una cada 1,6 s; la primera a los 0,7 s) con una parábola visible (estela de humo), un
+ *    bolitas de espuma naranjas (una cada 4 s; la primera a los 0,7 s) con una parábola visible (estela de humo), un
  *    «¡pomp!» y retroceso del cañón y del casco. Cada bolita que da empuja y marea un poco: bola aturdida 0,8 s
- *    (TNBeach::StunTurtle) a 5,2 m/s. Tras el primer bote ya no hace nada.
+ *    (TNBeach::StunTurtle) a 5,2 m/s, como el golpe directo de las minas. Tras el primer bote ya no hace nada.
  *  - Mareado por un golpe (IsHitStunned): se para, echa humo, tose y la antena da vueltas como una hélice.
  *  - Sólido: la tortuga no lo atraviesa (caja tipo Pawn, como el cangrejo gigante).
  *

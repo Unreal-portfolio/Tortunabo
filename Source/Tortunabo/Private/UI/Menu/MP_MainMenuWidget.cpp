@@ -385,7 +385,9 @@ void UMP_MainMenuWidget::HandleRoomsOpenChanged(bool bOpen)
 
 void UMP_MainMenuWidget::OnGameInstanceStatusChanged(const FString& StatusMessage)
 {
-	SetStatus(StatusMessage);
+	// El delegate trae el registro entero: en pantalla solo va el último mensaje, para que no se acumulen los de antes.
+	int32 LastBreak = INDEX_NONE;
+	SetStatus(StatusMessage.FindLastChar(TEXT('\n'), LastBreak) ? StatusMessage.Mid(LastBreak + 1) : StatusMessage);
 }
 
 void UMP_MainMenuWidget::SetStatus(const FString& Message)
@@ -400,6 +402,11 @@ void UMP_MainMenuWidget::SetStatus(const FString& Message)
 FString UMP_MainMenuWidget::BuildIdleStatus() const
 {
 	const UMP_GameInstance* GI = Cast<UMP_GameInstance>(GetGameInstance());
-	const FString Existing = GI ? GI->BuildStatusLog() : FString();
+	FString Existing = GI ? GI->BuildStatusLog() : FString();
+	int32 LastBreak = INDEX_NONE;
+	if (Existing.FindLastChar(TEXT('\n'), LastBreak))
+	{
+		Existing = Existing.Mid(LastBreak + 1);
+	}
 	return Existing.IsEmpty() ? NSLOCTEXT("TNRooms", "MenuIdle", "Listo. Crea una partida o únete a una.").ToString() : Existing;
 }

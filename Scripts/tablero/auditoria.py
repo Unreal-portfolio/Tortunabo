@@ -44,12 +44,18 @@ INICIO_SISTEMA = datetime(2026, 9, 30, tzinfo=timezone.utc)
 ESTADOS_SIN_DUENO = ("Backlog", "Ready", bloqueos.ESTADO)
 CAMPOS_OBLIGATORIOS = ("Prioridad", "Área", "Tamaño", "Fase")
 ETIQUETAS_TIPO = ("tarea", "⚠️bug⚠️", "bug")
+# La misma de peticiones.py, que no se importa aquí para que la auditoría siga siendo pura.
+ETIQUETA_PETICION = "peticion"
+CABECERA_PETICION = "**Petición**"
+CABECERA_ATENDIDA = "**Petición atendida**"
 MAX_TITULO = 80
 CASILLA = re.compile(r"^\s*[-*] \[[ xX]\]", re.M)
 TITULOS_EXCLUIDOS = {"Parte diario del tablero", "Estado del tablero"}
 # Comentarios que escribe el propio tablero y no explican por qué algo falla.
 PREFIJOS_AUTOMATICOS = ("Lista para revisión", "**Editor: funciona**", "**Revisión IA", "Fusionada en",
-                        CABECERA, memoria.CABECERA_RESUMEN, memoria.CABECERA_DECISION, flujo.AVISO_SIN_QA)
+                        CABECERA_ATENDIDA, "**Rutina",
+                        CABECERA, memoria.CABECERA_RESUMEN, memoria.CABECERA_DECISION, "**Sin QA editor**",
+                        "Forma parte del lote", "En el lote #", "Vuelve a Ready sin asignado", "Probada en el editor")
 
 CONSULTA_ISSUES = """
 query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
@@ -62,10 +68,22 @@ query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
         parent { number }
         blockedBy(first: 10) { nodes { number state } }
         blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } }
-        comments(last: 40) { nodes { body } }
+        comments(last: 40) { nodes { body author { login } } }
       }
     }
   }
+}
+"""
+
+
+CONSULTA_CONVERSACION = """
+query($owner: String!, $repo: String!, $num: Int!) {
+  repository(owner: $owner, name: $repo) { issue(number: $num) {
+    number state
+    labels(first: 20) { nodes { name } }
+    assignees(first: 5) { nodes { login } }
+    comments(last: 40) { nodes { body author { login } } }
+  } }
 }
 """
 
@@ -82,6 +100,60 @@ def explica_fallo(comentario: str) -> bool:
     if texto.startswith("**Revisión IA"):
         return "Cambios pedidos" in texto.splitlines()[0]
     return bool(texto) and not texto.startswith(PREFIJOS_AUTOMATICOS)
+
+
+def es_conversacion(comentario: str) -> bool:
+    """True si el comentario lo escribe alguien para los demás: texto libre, petición (o su respuesta) o decisión."""
+    texto = comentario.lstrip()
+    if texto.startswith((CABECERA_PETICION, CABECERA_ATENDIDA, memoria.CABECERA_DECISION)):
+        return True
+    return bool(texto) and not texto.startswith(PREFIJOS_AUTOMATICOS)
+
+
+def autor_real(autor: str | None, comentario: str) -> str | None:
+    """Quién habla: el autor del comentario o, si lo escribió el puente, quien lanzó el comando."""
+    if flujo.MARCA_PUENTE in comentario:
+        return comentario.rsplit(flujo.MARCA_PUENTE, 1)[1].split(" ", 1)[0]
+    return autor
+
+
+def conversacion_pendiente(issue: dict) -> bool:
+    """True si lo último que se ha dicho en la issue espera respuesta de quien la tiene.
+
+    Cuenta el último comentario de conversación (`es_conversacion`): si no es de un asignado, alguien ha pedido,
+    decidido o comentado algo que el asignado aún no ha contestado. Sin asignado solo cuenta una petición
+    expresa (`tablero.py pedir`): los comentarios sueltos los lee quien la coja.
+    """
+    autores = issue.get("autores") or [None] * len(issue["comentarios"])
+    for autor, comentario in reversed(list(zip(autores, issue["comentarios"]))):
+        if not es_conversacion(comentario):
+            continue
+        texto = comentario.lstrip()
+        if texto.startswith(CABECERA_ATENDIDA):
+            return False
+        if not issue["asignados"]:
+            return texto.startswith(CABECERA_PETICION)
+        return autor_real(autor, comentario) not in issue["asignados"]
+    return False
+
+
+def conversacion_de(nodo: dict) -> dict:
+    """Lo que necesita `accion_peticion` de una issue leída con CONSULTA_CONVERSACION."""
+    comentarios = nodo["comments"]["nodes"]
+    return {"estado": nodo["state"], "etiquetas": objetos.nombres_etiquetas(nodo),
+            "asignados": [a["login"] for a in nodo["assignees"]["nodes"]],
+            "comentarios": [c["body"] for c in comentarios],
+            "autores": [(c.get("author") or {}).get("login") for c in comentarios]}
+
+
+def accion_peticion(issue: dict) -> str | None:
+    """«poner» o «quitar» la etiqueta `peticion` según la conversación de una issue abierta; None si está bien."""
+    if issue["estado"] != "OPEN":
+        return None
+    pendiente, etiquetada = conversacion_pendiente(issue), ETIQUETA_PETICION in issue["etiquetas"]
+    if pendiente == etiquetada:
+        return None
+    return "poner" if pendiente else "quitar"
 
 
 def graves_abierta(issue: dict) -> list[dict]:
@@ -242,6 +314,7 @@ def normalizar(nodo: dict, valores: dict, contexto: dict | None = None) -> dict:
         "bloqueantes": bloqueos.bloqueantes(nodo),
         "lotes": lotes.lotes_de(nodo),
         "comentarios": [c["body"] for c in nodo["comments"]["nodes"]],
+        "autores": [(c.get("author") or {}).get("login") for c in nodo["comments"]["nodes"]],
         "valores": valores,
         **(contexto or {}),
     }

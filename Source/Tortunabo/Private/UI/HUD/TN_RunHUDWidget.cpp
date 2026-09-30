@@ -646,8 +646,19 @@ void UTN_RunHUDWidget::TickPrompt(float DeltaTime)
 void UTN_RunHUDWidget::TickBadge(float DeltaTime)
 {
 	using namespace TNRunHUDDetail;
-	// Energía del salvavidas (suavizada), zona bloqueada por el peso y latido al quedarse sin aliento.
-	float Energy = StaminaBar && StaminaBar->IsVisible() ? StaminaBar->GetPercent() : 1.f;
+	// La tortuga cuya interfaz se enseña: la propia o, de fantasma espectador, la que se sigue (Docs/Fantasma_Espectador.md).
+	APawn* SubjectPawn = nullptr;
+	APlayerState* SubjectState = nullptr;
+	TNGhost::GetHUDSubject(GetOwningPlayer(), SubjectPawn, SubjectState);
+	const APawn* Pawn = SubjectPawn;
+	const APlayerState* PS = SubjectState;
+
+	// Energía del salvavidas (suavizada), zona bloqueada por el peso y latido al quedarse sin aliento. Sale del componente de
+	// estamina, como los retratos de los compañeros, y no de la barra oculta de la clase base (al empezar la partida enseñaba
+	// la mitad hasta que se esprintaba).
+	float Energy = 1.f;
+	[[maybe_unused]] bool bDrained = false;
+	EnergyOf(Pawn, Energy, bDrained);
 	if (CVarHUDEnergy.GetValueOnGameThread() >= 0.f) { Energy = FMath::Clamp(CVarHUDEnergy.GetValueOnGameThread(), 0.f, 1.f); }
 	ShownEnergy = FMath::FInterpTo(ShownEnergy, Energy, DeltaTime, 7.f);
 	const bool bTired = ExhaustedRoot && ExhaustedRoot->IsVisible();
@@ -659,12 +670,6 @@ void UTN_RunHUDWidget::TickBadge(float DeltaTime)
 	}
 	if (bTired) { ExhaustedRoot->SetRenderScale(FVector2D(1.f + 0.07f * FMath::Abs(FMath::Sin(Time * 7.f)))); }
 
-	// La tortuga cuya interfaz se enseña: la propia o, de fantasma espectador, la que se sigue (Docs/Fantasma_Espectador.md).
-	APawn* SubjectPawn = nullptr;
-	APlayerState* SubjectState = nullptr;
-	TNGhost::GetHUDSubject(GetOwningPlayer(), SubjectPawn, SubjectState);
-	const APawn* Pawn = SubjectPawn;
-	const APlayerState* PS = SubjectState;
 	if (NameText)
 	{
 		const FText Shown = TNLocText::PlayerName(PS ? PS->GetPlayerName() : FString());
