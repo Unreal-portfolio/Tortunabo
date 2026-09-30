@@ -187,6 +187,9 @@ public:
 	 * 0 = sin número. UE solo escribe en el fichero lo que difiere del valor por defecto de la clase: cuando este valía la
 	 * versión de entonces (1, 2 o 3), no se escribía nunca y no se podía saber de qué versión era un guardado. Por eso el
 	 * valor por defecto es 0 y se sella al guardar (StampCurrentVersion), como el perfil cosmético y el tutorial.
+	 * Siempre se sella con la versión de esta build, también si el fichero venía de una más nueva: el número dice cómo
+	 * es el contenido escrito (solo los campos que esta build conoce), y así la build nueva vuelve a migrarlo. Lo que
+	 * esta build pierde al reescribirlo se conserva en una copia (UTN_GameSettingsSubsystem::SaveSettingsFile).
 	 */
 	UPROPERTY()
 	int32 Version = 0;

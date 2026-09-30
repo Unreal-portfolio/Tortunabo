@@ -38,4 +38,10 @@ namespace TNSaveGameIO
 
 	/** @brief SaveGameToSlot comprobado: un reintento y error en el log si falla. Devuelve si se ha escrito. */
 	bool SaveChecked(USaveGame* Save, const FString& Slot, int32 UserIndex, const TCHAR* What);
+
+	/**
+	 * @brief Copia los bytes de Slot a la ranura Backup (la sobrescribe) sin tocar el original. Devuelve si la copia
+	 * existe. Es para antes de reescribir un guardado que esta build no sabe leer entero (lo guardó una más nueva).
+	 */
+	bool BackupSlot(const FString& Slot, const FString& Backup, int32 UserIndex, const TCHAR* What);
 }

@@ -24,7 +24,9 @@ namespace TNSettingsMigration
 	/**
 	 * @brief Lleva Settings, leídos de un guardado con SavedVersion, a la versión actual.
 	 * @return Upgrade si venía de una versión anterior (hay que volver a guardarlo, ya sellado); UpToDate si ya era la
-	 *         actual; FromNewerBuild si lo guardó una build más nueva (se usa tal cual y se avisa).
+	 *         actual; FromNewerBuild si lo guardó una build más nueva (se usa tal cual y se avisa; no se reescribe por
+	 *         cargarlo, y si el jugador cambia algo el subsistema copia antes el fichero a <ranura>_respaldo_v<versión>
+	 *         porque esta build no conoce todos sus campos).
 	 */
 	inline TNSaveLogic::EMigration Migrate(FTNGameSettings& Settings, int32 SavedVersion)
 	{
