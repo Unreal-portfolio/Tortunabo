@@ -17,6 +17,7 @@ Funciones puras; hablar con GitHub es cosa de control_avisos.py.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
 import auditoria
@@ -32,6 +33,7 @@ MAX_COMMITS = 40
 MAX_LINEAS = 15
 MAX_TITULO = 70
 MAX_PARTE = 6000
+MAX_EXTRACTO = 140
 ETIQUETAS_DE_AVISO = (ETIQUETA, auditoria.ETIQUETA, auditoria.ETIQUETA_QA)
 
 
@@ -172,16 +174,65 @@ def _linea(issue: dict) -> str:
     return f"- #{issue['number']} {titulo}" + (f" ({detalle})" if detalle else "")
 
 
+def _numero(comentario: dict) -> int:
+    url = comentario.get("issue_url") or comentario.get("pull_request_url") or ""
+    return int(url.rstrip("/").rsplit("/", 1)[-1])
+
+
+def menciones(comentarios: list[dict], login: str, desde: datetime) -> list[dict]:
+    """Comentarios (de issues o de revisión de PR) escritos desde `desde` por otra persona que mencionan a `login`.
+
+    Los automáticos del tablero no cuentan: lo que dicen ya está en las demás secciones.
+    """
+    patron = re.compile(rf"@{re.escape(login)}(?![\w-])", re.I)
+    propias = {login.lower(), "github-actions[bot]"}
+    lista = [c for c in comentarios if fecha(c["created_at"]) >= desde and patron.search(c.get("body") or "")
+             and auditoria.es_conversacion(c.get("body") or "")  # «Lista para revisión» ya sale en «Te toca revisar»
+             and ((c.get("user") or {}).get("login") or "").lower() not in propias]
+    return sorted(lista, key=lambda c: c["created_at"])
+
+
+def linea_mencion(comentario: dict) -> str:
+    texto = " ".join((comentario.get("body") or "").split())
+    if len(texto) > MAX_EXTRACTO:
+        texto = texto[:MAX_EXTRACTO - 1] + "…"
+    return (f"[#{_numero(comentario)}]({comentario['html_url']}) **{comentario['user']['login']}** "
+            f"({fecha(comentario['created_at']):%d-%m %H:%M}): {texto}")
+
+
+def prs_nuevas(prs: list[dict], desde: datetime) -> list[dict]:
+    return sorted([p for p in prs if fecha(p["createdAt"]) >= desde], key=lambda p: p["number"])
+
+
+def linea_pr(pr: dict, integracion: str) -> str:
+    estado = {"OPEN": "abierta", "MERGED": "fusionada", "CLOSED": "cerrada"}.get(pr.get("state"), pr.get("state"))
+    if pr.get("isDraft") and pr.get("state") == "OPEN":
+        estado = "borrador"
+    destino = pr.get("baseRefName") or "?"
+    aviso = f" · **hacia `{destino}`**" if destino != integracion else ""
+    return f"#{pr['number']} {pr['title']} ({pr['author']['login']}, {estado}){aviso}"
+
+
 def render(login: str, por_secciones: list[tuple[str, list[dict]]], incidencias: list[str], ahora: datetime,
-           parte: str | None = None) -> str | None:
-    """Comentario para `login`, con mención para que GitHub se lo mande por correo; None si no hay nada que decirle."""
-    if not por_secciones and not incidencias:
+           parte: str | None = None, extras: list[tuple[str, list[str]]] = ()) -> str | None:
+    """Comentario para `login`, con mención para que GitHub se lo mande por correo; None si no hay nada que decirle.
+
+    `extras` son secciones ya redactadas (título, líneas), como las PR nuevas y las menciones; van tras las incidencias.
+    """
+    extras = [(titulo, lineas) for titulo, lineas in extras if lineas]
+    if not por_secciones and not incidencias and not extras:
         return None
     resumen = [f"{len(incidencias)} incidencia{'s' if len(incidencias) != 1 else ''}"] if incidencias else []
+    resumen += [f"{len(lineas)} · {titulo.lower()}" for titulo, lineas in extras]
     resumen += [f"{len(lista)} · {titulo.split(':')[0].lower()}" for titulo, lista in por_secciones]
     lineas = [f"@{login} · avisos del {ahora:%Y-%m-%d}: " + "; ".join(resumen) + ".", ""]
     if incidencias:
         lineas += ["### Incidencias: código en dev sin revisión", "", *(f"- {i}" for i in incidencias), ""]
+    for titulo, extra in extras:
+        lineas += [f"### {titulo} ({len(extra)})", "", *(f"- {e}" for e in extra[:MAX_LINEAS])]
+        if len(extra) > MAX_LINEAS:
+            lineas.append(f"- … y {len(extra) - MAX_LINEAS} más")
+        lineas.append("")
     for titulo, lista in por_secciones:
         lineas += [f"### {titulo} ({len(lista)})", "", *(_linea(i) for i in lista[:MAX_LINEAS])]
         if len(lista) > MAX_LINEAS:

@@ -169,3 +169,51 @@ def test_parte_reciente_solo_si_es_de_hoy():
     assert avisos.parte_reciente([viejo, nuevo], AHORA) == "hoy"
     assert avisos.parte_reciente([viejo], AHORA) is None
     assert avisos.parte_reciente([], AHORA) is None
+
+
+# --- PR nuevas y menciones -------------------------------------------------------------------------
+
+def _comentario(autor, cuerpo, cuando="2026-10-01T05:00:00Z", numero=144, pr=False):
+    url = f"https://api.github.com/repos/o/r/{'pulls' if pr else 'issues'}/{numero}"
+    return {"user": {"login": autor}, "body": cuerpo, "created_at": cuando,
+            "html_url": f"https://github.com/o/r/issues/{numero}#issuecomment-1",
+            **({"pull_request_url": url} if pr else {"issue_url": url})}
+
+
+def test_menciones_de_otros_en_la_ventana():
+    desde = AHORA - timedelta(hours=26)
+    comentarios = [_comentario("Mokius", "@SkiTemplar ¿lo pruebas en PIE 2P?"),
+                   _comentario("Ruben-Besteiro", "Hecho, @skitemplar", numero=191, pr=True),
+                   _comentario("SkiTemplar", "@SkiTemplar nota para mí"),
+                   _comentario("github-actions[bot]", "@SkiTemplar · avisos"),
+                   _comentario("Mokius", "@SkiTemplarX no es él"),
+                   _comentario("Mokius", "Lista para revisión. Revisor: @SkiTemplar (su Claude hace la revisión IA)."),
+                   _comentario("Mokius", "@SkiTemplar antiguo", cuando="2026-09-28T10:00:00Z")]
+    lista = avisos.menciones(comentarios, "SkiTemplar", desde)
+    assert [c["body"] for c in lista] == ["@SkiTemplar ¿lo pruebas en PIE 2P?", "Hecho, @skitemplar"]
+    linea = avisos.linea_mencion(lista[1])
+    assert linea.startswith("[#191](https://github.com/o/r/issues/191#issuecomment-1) **Ruben-Besteiro** (01-10 05:00)")
+
+
+def test_linea_mencion_recorta_y_aplana():
+    linea = avisos.linea_mencion(_comentario("Mokius", "@SkiTemplar\n\n" + "x" * 300))
+    assert "\n" not in linea and linea.endswith("…") and len(linea.split("): ", 1)[1]) == avisos.MAX_EXTRACTO
+
+
+def test_prs_nuevas_marcan_las_que_no_van_a_dev():
+    prs = [{"number": 231, "title": "ci: plantilla", "author": {"login": "SkiTemplar"}, "baseRefName": "main",
+            "createdAt": "2026-09-30T18:30:00Z", "state": "MERGED", "isDraft": False},
+           {"number": 206, "title": "fix(red): FakeError", "author": {"login": "SkiTemplar"}, "baseRefName": "dev",
+            "createdAt": "2026-09-30T17:50:00Z", "state": "OPEN", "isDraft": True},
+           {"number": 87, "title": "vr", "author": {"login": "Mokius"}, "baseRefName": "main",
+            "createdAt": "2026-09-20T10:00:00Z", "state": "MERGED", "isDraft": False}]
+    nuevas = avisos.prs_nuevas(prs, AHORA - timedelta(hours=26))
+    assert [p["number"] for p in nuevas] == [206, 231]
+    assert avisos.linea_pr(nuevas[0], "dev") == "#206 fix(red): FakeError (SkiTemplar, borrador)"
+    assert avisos.linea_pr(nuevas[1], "dev") == "#231 ci: plantilla (SkiTemplar, fusionada) · **hacia `main`**"
+
+
+def test_render_con_solo_menciones_publica_y_las_cuenta():
+    texto = avisos.render("SkiTemplar", [], [], AHORA, extras=[("PR nuevas", []), ("Te mencionan", ["[#1](u) **Mokius**: hola"])])
+    assert texto.splitlines()[0] == "@SkiTemplar · avisos del 2026-10-01: 1 · te mencionan."
+    assert "### Te mencionan (1)" in texto and "### PR nuevas" not in texto

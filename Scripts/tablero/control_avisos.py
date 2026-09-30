@@ -147,6 +147,24 @@ def publicar(numero: int, texto: str) -> None:
         raise ErrorTablero(f"gh issue comment {numero}: {proc.stderr.strip()}")
 
 
+def leer_comentarios(desde: datetime) -> list[dict]:
+    """Comentarios de issues y de revisión de PR actualizados desde `desde` (la API filtra por actualización)."""
+    lista = []
+    for ruta in ("issues/comments", "pulls/comments"):
+        salida = gh("api", "--paginate", f"repos/{REPO}/{ruta}?since={desde:%Y-%m-%dT%H:%M:%SZ}&per_page=100",
+                    "--jq", ".[] | @json")
+        lista += [json.loads(linea) for linea in salida.splitlines() if linea.strip()]
+    return lista
+
+
+def extras(login: str, desde: datetime) -> list[tuple[str, list[str]]]:
+    """Secciones «PR nuevas» y «Te mencionan» del aviso de `login`."""
+    campos = "number,title,author,baseRefName,createdAt,state,isDraft"
+    prs = json.loads(gh("pr", "list", "--repo", REPO, "--state", "all", "--limit", "60", "--json", campos))
+    return [("PR nuevas", [avisos.linea_pr(p, INTEGRACION) for p in avisos.prs_nuevas(prs, desde)]),
+            ("Te mencionan", [avisos.linea_mencion(c) for c in avisos.menciones(leer_comentarios(desde), login, desde)])]
+
+
 def cmd_avisos(args: argparse.Namespace) -> None:
     ahora = datetime.now(timezone.utc)
     proyecto = cargar_proyecto()
@@ -164,7 +182,7 @@ def cmd_avisos(args: argparse.Namespace) -> None:
     for login in DESTINATARIOS:
         aprobador = login in CONFIG["aprobadores"]
         texto = avisos.render(login, avisos.secciones(trabajo, login, aprobador, ahora, CONFIG["dias_sin_movimiento"]),
-                              lista, ahora, parte)
+                              lista, ahora, parte, extras(login, desde))
         if texto is None:
             print(f"\n{login}: nada que avisar")
             continue
