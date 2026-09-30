@@ -14,7 +14,7 @@ Funciones puras; hablar con GitHub es cosa de tablero.py.
 from __future__ import annotations
 
 import shlex
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import lotes
 import objetos
@@ -30,6 +30,8 @@ PERMITIDOS = ("estado", "campo", "sync", "auditar", "colisiones", "bloquear", "c
 CABECERA = ("| # | Título | Asignados | Prio. | Tam. | Área | Fase | Revisión IA | Editor | Revisor | PR | Etiquetas "
             "| Espera a |")
 SEPARADOR = "|" + "---|" * 13
+# Estados en los que una issue espera a alguien: si no se mueve, está atascada.
+ESTADOS_VIVOS = ("In progress", "In review", "Revisiones", "QA editor", "Validada")
 
 
 def argumentos_de_puente(texto: str) -> list[str]:
@@ -69,8 +71,21 @@ def _tabla(issues: list[dict], prs_por_issue: dict[int, list[int]]) -> list[str]
     return [CABECERA, SEPARADOR, *(fila(i, prs_por_issue.get(i["number"], [])) for i in issues)]
 
 
-def render(items: dict[int, dict], prs_por_issue: dict[int, list[int]], ahora: datetime) -> str:
-    """Tablero completo en Markdown: las issues abiertas por estado, lo incoherente aparte y los objetos."""
+def atascadas(issues: list[dict], ahora: datetime, dias: int) -> list[tuple[dict, int]]:
+    """Issues abiertas que esperan a alguien y llevan más de `dias` sin movimiento, con los días que llevan."""
+    lista = []
+    for issue in issues:
+        actualizada = issue.get("updatedAt")
+        if issue.get("state") != "OPEN" or issue.get("valores", {}).get("Status") not in ESTADOS_VIVOS or not actualizada:
+            continue
+        parada = ahora - datetime.fromisoformat(actualizada.replace("Z", "+00:00"))
+        if parada > timedelta(days=dias):
+            lista.append((issue, parada.days))
+    return sorted(lista, key=lambda par: (-par[1], par[0]["number"]))
+
+
+def render(items: dict[int, dict], prs_por_issue: dict[int, list[int]], ahora: datetime, dias_atasco: int = 3) -> str:
+    """Tablero completo en Markdown: las issues abiertas por estado, lo atascado y lo incoherente aparte, y los objetos."""
     issues = sorted(items.values(), key=lambda i: i["number"])
     trabajo = [i for i in issues if not objetos.es_objeto(i) and not lotes.es_lote(i)]
     abiertas = [i for i in trabajo if i.get("state") == "OPEN"]
@@ -81,6 +96,13 @@ def render(items: dict[int, dict], prs_por_issue: dict[int, list[int]], ahora: d
         if estado == "Done" or not grupo:
             continue
         lineas += [f"## {estado or 'Sin estado'} ({len(grupo)})", "", *_tabla(grupo, prs_por_issue), ""]
+    if paradas := atascadas(trabajo, ahora, dias_atasco):
+        lineas += [f"## Sin movimiento desde hace más de {dias_atasco} días ({len(paradas)})", "",
+                   "| # | Status | Días | Asignados | Título |", "|---|---|---|---|---|"]
+        lineas += [f"| #{i['number']} | {i['valores']['Status']} | {dias} | "
+                   f"{_celda(', '.join(_nombres(i, 'assignees', 'login')))} | {_celda(i.get('title', '')[:MAX_TITULO])} |"
+                   for i, dias in paradas]
+        lineas.append("")
     incoherentes = [i for i in trabajo
                     if (i.get("state") == "OPEN") == (i.get("valores", {}).get("Status") == "Done")]
     if incoherentes:

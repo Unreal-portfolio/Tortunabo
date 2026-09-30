@@ -11,6 +11,8 @@ no depender de su configuración global; las puras se prueban sin red.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from collections.abc import Callable, Iterable
 
 Gh = Callable[..., str]
@@ -18,6 +20,9 @@ Gh = Callable[..., str]
 ETIQUETA = "objeto"
 COLOR = "1D76DB"
 DESCRIPCION_ETIQUETA = "Sistema o pieza del juego que agrupa sus tareas y fallos"
+# Palabras que no distinguen un objeto de otro al comparar nombres.
+PALABRAS_VACIAS = frozenset({"y", "e", "o", "de", "del", "el", "la", "los", "las", "en", "con", "a", "al"})
+MIN_LETRAS_PALABRA = 3
 
 CONSULTA_ISSUE = """
 query($owner: String!, $repo: String!, $num: Int!) {
@@ -60,6 +65,18 @@ def buscar_por_titulo(issues: Iterable[dict], titulo: str) -> int | None:
         if issue.get("state", "OPEN") == "OPEN" and issue["title"].strip() == buscado:
             return issue["number"]
     return None
+
+
+def palabras_clave(nombre: str) -> set[str]:
+    """Palabras del nombre en minúsculas y sin tildes, sin las vacías ni las de menos de tres letras."""
+    ascii_ = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().lower()
+    return {p for p in re.findall(r"[a-z0-9]+", ascii_) if len(p) >= MIN_LETRAS_PALABRA and p not in PALABRAS_VACIAS}
+
+
+def parecidos(issues: Iterable[dict], nombre: str) -> list[dict]:
+    """Objetos abiertos que comparten alguna palabra clave con el nombre: posibles duplicados («HUD» y «HUD y menús»)."""
+    buscadas = palabras_clave(nombre)
+    return [i for i in issues if i.get("state", "OPEN") == "OPEN" and buscadas & palabras_clave(i["title"])]
 
 
 def cuerpo_objeto(nombre: str, descripcion: str | None) -> str:
@@ -114,11 +131,22 @@ def crear_objeto(gh: Gh, repo: str, nombre: str, descripcion: str | None) -> int
     return int(url.rstrip("/").rsplit("/", 1)[-1])
 
 
-def buscar_o_crear(gh: Gh, repo: str, nombre: str, descripcion: str | None = None) -> tuple[int, bool]:
-    """Número del objeto abierto con ese título; lo crea si no existe. Devuelve (número, creado)."""
-    existente = buscar_por_titulo(objetos_abiertos(gh, repo), nombre)
+def buscar_o_crear(gh: Gh, repo: str, nombre: str, descripcion: str | None = None,
+                   nuevo: bool = False) -> tuple[int, bool]:
+    """Número del objeto abierto con ese título; lo crea si no existe. Devuelve (número, creado).
+
+    Si no existe pero hay objetos con nombre parecido, no lo crea salvo que se pida con `nuevo`: un objeto
+    duplicado parte en dos la memoria de un mismo sistema.
+    """
+    abiertos = objetos_abiertos(gh, repo)
+    existente = buscar_por_titulo(abiertos, nombre)
     if existente is not None:
         return existente, False
+    if not nuevo and (candidatos := parecidos(abiertos, nombre)):
+        lista = "; ".join(f"#{c['number']} «{c['title'].strip()}»" for c in candidatos)
+        raise ErrorObjeto(f"No existe el objeto «{nombre.strip()}», pero hay parecidos: {lista}. Usa el título exacto "
+                          f"de uno de ellos o, si de verdad es otro sistema, créalo con "
+                          f"`tablero.py objeto \"{nombre.strip()}\" --nuevo`.")
     return crear_objeto(gh, repo, nombre, descripcion), True
 
 

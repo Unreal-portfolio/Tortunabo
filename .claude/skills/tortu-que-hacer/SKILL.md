@@ -16,6 +16,7 @@ El tablero lo mantienes tú, sin esperar a que te lo pidan. Ciclo y estados: «T
    - si no es aprobador: «Esperan una decisión», sus issues paradas hasta que decidan SkiTemplar o Mokius (dile cuál es la pregunta);
    - si es aprobador: decisiones pendientes (issues y objetos), lotes abiertos (`gh issue list --label lote` y `tablero.py lote estado <lote>`) (la auditoría ya la pasa el puente cada mañana: no hace falta lanzarla);
    - issues en QA editor que puede probar ahora mismo (probar es trabajo útil y rápido);
+   - lo suyo que lleve más de 3 días sin movimiento (sección «Sin movimiento» del volcado, issue #131): terminarlo, entregarlo o soltarlo;
    - de 3 a 5 issues libres en Ready, por prioridad, con una frase de qué supone cada una. `pendiente` no ofrece las Bloqueadas ni las que tienen bloqueantes abiertas.
 3. Recomienda una con el motivo (prioridad, tamaño, que no choque con lo que otro tiene en curso en la misma área o ficheros). Para Rubi, tamaños XS/S y `buena-primera`.
 4. Si el usuario elige, sigue con `tortu-coger`. Si dice que deja algo que tenía en curso, `tablero.py soltar <n> --motivo "..."`.

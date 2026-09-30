@@ -137,3 +137,32 @@ def test_decisiones_todas_para_aprobadores_y_las_suyas_para_el_resto():
     assert [i["number"] for i in tablero.con_decision(issues, "SkiTemplar", aprobador=True)] == [44, 128]
     assert [i["number"] for i in tablero.con_decision(issues, "Ruben-Besteiro", aprobador=False)] == [44]
     assert tablero.con_decision(issues, "Otro", aprobador=False) == []
+
+
+def test_objetos_parecidos_evitan_duplicados():
+    abiertos = [{"number": 95, "title": "HUD y menús", "state": "OPEN"},
+                {"number": 93, "title": "Red · Conexión y lobby", "state": "OPEN"},
+                {"number": 128, "title": "HUD", "state": "CLOSED"}]
+    assert [o["number"] for o in objetos.parecidos(abiertos, "HUD")] == [95]
+    assert [o["number"] for o in objetos.parecidos(abiertos, "Menus del juego")] == [95]
+    assert objetos.parecidos(abiertos, "Supervivencia") == []
+    assert objetos.palabras_clave("Voz y audio de la sala") == {"voz", "audio", "sala"}
+
+
+def test_buscar_o_crear_no_crea_un_objeto_parecido_sin_pedirlo():
+    creadas = []
+
+    def gh(*args, **_):
+        if args[:2] == ("issue", "list"):
+            return '[{"number": 95, "title": "HUD y menús", "state": "OPEN"}]'
+        if args[:2] == ("label", "list"):
+            return '[{"name": "objeto"}]'
+        creadas.append(args)
+        return "https://github.com/x/y/issues/200\n"
+
+    assert objetos.buscar_o_crear(gh, "x/y", "HUD y menús") == (95, False)
+    with pytest.raises(objetos.ErrorObjeto, match="#95 «HUD y menús»"):
+        objetos.buscar_o_crear(gh, "x/y", "HUD")
+    assert not creadas
+    assert objetos.buscar_o_crear(gh, "x/y", "HUD", nuevo=True) == (200, True)
+    assert objetos.buscar_o_crear(gh, "x/y", "Supervivencia") == (200, True)

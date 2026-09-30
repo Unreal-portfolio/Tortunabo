@@ -6,10 +6,13 @@ La comparten tablero.py y control.py; aquí no hay reglas del ciclo (están en f
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import unicodedata
 from pathlib import Path
+
+import flujo
 
 CONFIG = json.loads((Path(__file__).parent / "equipo.json").read_text(encoding="utf-8"))
 REPO = CONFIG["repo"]
@@ -143,7 +146,7 @@ def slug(texto: str) -> str:
 
 
 def comentar(numero: int, texto: str) -> None:
-    gh("issue", "comment", str(numero), "--repo", REPO, "--body", texto)
+    gh("issue", "comment", str(numero), "--repo", REPO, "--body", texto + flujo.firma_de_puente(os.environ))
 
 
 def prs_fusionadas() -> list[dict]:

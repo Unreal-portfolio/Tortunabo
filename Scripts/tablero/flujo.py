@@ -14,6 +14,8 @@ from __future__ import annotations
 # Estados con trabajo en marcha o ya terminado: una fusión antigua no debe arrastrarlos.
 ESTADOS_EN_CURSO = ("In progress", "Revisiones", "Done")
 ETIQUETA_DECISION = "decision"
+# Pie de los comentarios que escribe el puente cuando alguien lanza un comando a mano.
+MARCA_PUENTE = "\n\n_Lanzado por "
 AVISO_SIN_QA = "**Sin QA editor**: el autor no lo ha probado en el editor; hay que probarlo tras la fusión."
 
 
@@ -67,6 +69,22 @@ def revisor_del_equipo(firma: str | None, miembros) -> str | None:
     """Login del equipo con el que empieza la firma de una revisión («Mokius (Claude)» → Mokius)."""
     login = (firma or "").split(" ", 1)[0].strip()
     return login if login in miembros else None
+
+
+def firma_de_puente(entorno) -> str:
+    """Pie «Lanzado por <quién>» si el comando corre en el puente por `workflow_dispatch`; si no, cadena vacía.
+
+    El puente comenta con el token de una sola persona: sin la firma no se sabe quién lanzó el comando.
+    """
+    actor = entorno.get("GITHUB_TRIGGERING_ACTOR") or entorno.get("GITHUB_ACTOR")
+    if entorno.get("GITHUB_ACTIONS") != "true" or entorno.get("GITHUB_EVENT_NAME") != "workflow_dispatch" or not actor:
+        return ""
+    return f"{MARCA_PUENTE}{actor} a través del puente._"
+
+
+def sin_firma(comentario: str) -> str:
+    """El comentario sin el pie del puente, para compararlo con el texto que genera el tablero."""
+    return comentario.split(MARCA_PUENTE, 1)[0].strip()
 
 
 def editor_tras_fusion(valores: dict) -> str | None:
