@@ -66,7 +66,7 @@ def para(issues: list[dict], login: str, aprobador: bool) -> list[dict]:
 
 
 def cmd_pedir(args: argparse.Namespace) -> None:
-    proyecto = cargar_proyecto()
+    proyecto = cargar_proyecto(args.numero)
     issue = proyecto["items"].get(args.numero)
     if issue is None:
         raise ErrorTablero(f"La issue #{args.numero} no está en el tablero.")

@@ -51,6 +51,23 @@ query($org: String!, $num: Int!, $cursor: String) {
 """
 
 
+# Una issue con su item de este Project. El listado del Project tarda en traer los items recién añadidos.
+CONSULTA_ITEM = """
+query($owner: String!, $repo: String!, $num: Int!) {
+  repository(owner: $owner, name: $repo) { issue(number: $num) {
+    number title state url updatedAt
+    assignees(first: 5) { nodes { login } } labels(first: 15) { nodes { name } }
+    blockedBy(first: 10) { nodes { number state } }
+    blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } }
+    projectItems(first: 10) { nodes { id project { number }
+      fieldValues(first: 20) { nodes {
+        ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } }
+      } } } }
+  } }
+}
+"""
+
+
 class ErrorTablero(RuntimeError):
     """Fallo de gh o de git que el usuario debe ver tal cual."""
 
@@ -70,8 +87,35 @@ def git(*args: str) -> str:
     return proc.stdout.strip()
 
 
-def cargar_proyecto() -> dict:
-    """Devuelve id del proyecto, campos {nombre: {id, opciones}} e items de issues por número."""
+def item_desde_issue(issue: dict | None, numero_proyecto: int) -> dict | None:
+    """Item del tablero a partir de una issue leída con CONSULTA_ITEM; None si no existe o no está en este Project."""
+    if not issue:
+        return None
+    propios = [i for i in issue["projectItems"]["nodes"] if i["project"]["number"] == numero_proyecto]
+    if not propios:
+        return None
+    valores = {v["field"]["name"]: v["name"] for v in propios[0]["fieldValues"]["nodes"] if v.get("field")}
+    contenido = {k: v for k, v in issue.items() if k != "projectItems"}
+    return {"item": propios[0]["id"], "valores": valores, **contenido}
+
+
+def completar_con(proyecto: dict, numero: int) -> None:
+    """Si el listado del Project aún no trae la issue (recién añadida), la lee directamente y la incorpora."""
+    if numero in proyecto["items"]:
+        return
+    owner, nombre = REPO.split("/", 1)
+    salida = gh("api", "graphql", "-f", f"query={CONSULTA_ITEM}", "-f", f"owner={owner}", "-f", f"repo={nombre}",
+                "-F", f"num={numero}")
+    item = item_desde_issue(json.loads(salida)["data"]["repository"]["issue"], NUMERO)
+    if item:
+        proyecto["items"][numero] = item
+
+
+def cargar_proyecto(numero: int | None = None) -> dict:
+    """Devuelve id del proyecto, campos {nombre: {id, opciones}} e items de issues por número.
+
+    Con `numero`, garantiza que esa issue está entre los items aunque el listado todavía no la traiga.
+    """
     items, cursor, datos = {}, None, None
     while True:
         args = ["api", "graphql", "-f", f"query={CONSULTA_ITEMS}", "-f", f"org={OWNER}", "-F", f"num={NUMERO}"]
@@ -92,7 +136,10 @@ def cargar_proyecto() -> dict:
         f["name"]: {"id": f["id"], "opciones": {o["name"]: o["id"] for o in f["options"]}}
         for f in datos["fields"]["nodes"] if f
     }
-    return {"id": datos["id"], "campos": campos, "items": items}
+    proyecto = {"id": datos["id"], "campos": campos, "items": items}
+    if numero is not None:
+        completar_con(proyecto, numero)
+    return proyecto
 
 
 def item_de_issue(proyecto: dict, numero: int) -> str:
