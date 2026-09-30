@@ -50,7 +50,9 @@ CABECERA_PETICION = "**Petición**"
 CABECERA_ATENDIDA = "**Petición atendida**"
 MAX_TITULO = 80
 CASILLA = re.compile(r"^\s*[-*] \[[ xX]\]", re.M)
-TITULOS_EXCLUIDOS = {"Parte diario del tablero", "Estado del tablero"}
+TITULOS_EXCLUIDOS = {"Parte diario del tablero", "Estado del tablero", "Avisos diarios del tablero"}
+# Issues que abre `avisos` por un push directo a dev: su ciclo lo lleva control_avisos.py, no la auditoría.
+ETIQUETA_SIN_REVISION = "sin-revision"
 # Comentarios que escribe el propio tablero y no explican por qué algo falla.
 PREFIJOS_AUTOMATICOS = ("Lista para revisión", "**Editor: funciona**", "**Revisión IA", "Fusionada en",
                         CABECERA_ATENDIDA, "**Rutina",
@@ -298,7 +300,7 @@ def acciones(issue: dict, lista: list[dict]) -> dict:
 def es_de_trabajo(issue: dict) -> bool:
     etiquetas = issue["etiquetas"]
     return (objetos.ETIQUETA not in etiquetas and lotes.ETIQUETA not in etiquetas
-            and issue["titulo"] not in TITULOS_EXCLUIDOS)
+            and ETIQUETA_SIN_REVISION not in etiquetas and issue["titulo"] not in TITULOS_EXCLUIDOS)
 
 
 def normalizar(nodo: dict, valores: dict, contexto: dict | None = None) -> dict:

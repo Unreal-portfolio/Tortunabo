@@ -26,6 +26,7 @@ Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py colisiones [--aplicar]
     uv run python Scripts/tablero/tablero.py bloquear 57 --por 40 [--por 41]
     uv run python Scripts/tablero/tablero.py volcado [--publicar 131]
+    uv run python Scripts/tablero/tablero.py avisos [--aplicar] [--publicar 196 --parte 127]
     uv run python Scripts/tablero/tablero.py puente --comando "estado 42 Ready"
 
 Las tareas y los fallos se agrupan por objeto (issue padre con la etiqueta `objeto`)
@@ -33,7 +34,8 @@ como sub-issues nativas de GitHub. Módulos: base.py (gh, git, proyecto, PR), fl
 (reglas del ciclo), objetos.py, bloqueos.py (dependencias), lotes.py, memoria.py (Resumen
 y Decisión), auditoria.py, colisiones.py, estados.py (opciones de Status), control.py
 (memoria, auditoría, colisiones, dependencias), control_lotes.py (lotes y resúmenes),
-peticiones.py (pedir un cambio en la propia issue) y volcado.py (volcado a Markdown y puente para GitHub Actions).
+peticiones.py (pedir un cambio en la propia issue), volcado.py (volcado a Markdown y puente para GitHub Actions)
+y avisos.py y control_avisos.py (pushes directos a dev sin revisión y avisos diarios por persona).
 
 Requiere `gh` autenticado con el scope `project` (`gh auth refresh -s project`).
 """
@@ -50,6 +52,7 @@ import auditoria
 import bloqueos
 import colisiones
 import control
+import control_avisos
 import control_lotes
 import flujo
 import lotes
@@ -103,10 +106,11 @@ def etiquetas_de(issue: dict) -> set[str]:
 def urgentes_de_organizacion(issues: list[dict], login: str, aprobador: bool) -> list[dict]:
     """Lo que va antes que cualquier otra tarea: colisiones entre PR e issues con avisos de organización.
 
-    Los avisos son `revisar-organizacion` (de `auditar`) y `revisar-qa` (de la rutina diaria). Las colisiones son
+    Los avisos son `revisar-organizacion` (de `auditar`), `revisar-qa` (de la rutina diaria) y `sin-revision` (push
+    directo a dev sin revisar, de `avisos`). Las colisiones son
     de todo el equipo; los avisos, del asignado (los aprobadores ven todos).
     """
-    avisos = {auditoria.ETIQUETA, auditoria.ETIQUETA_QA}
+    avisos = {auditoria.ETIQUETA, auditoria.ETIQUETA_QA, auditoria.ETIQUETA_SIN_REVISION}
     return [i for i in issues if colisiones.ETIQUETA in etiquetas_de(i)
             or (avisos & etiquetas_de(i) and (aprobador or es_de(i, login)))]
 
@@ -720,6 +724,7 @@ def main() -> int:
     anadir_comandos_de_alta(sub)
     control.anadir_comandos(sub)
     control_lotes.anadir_comandos(sub)
+    control_avisos.anadir_comandos(sub)
     peticiones.anadir_comandos(sub)
     args = parser.parse_args()
     try:

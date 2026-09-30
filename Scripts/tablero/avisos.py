@@ -1,0 +1,169 @@
+"""Avisos diarios: qué espera por cada persona y qué ha entrado en dev sin pasar por revisión.
+
+Fusionar o subir directamente a dev está permitido; lo que no puede faltar es la revisión IA cruzada y la
+prueba en el editor. `sync` y `auditar` ya devuelven a revisión lo que llega por una PR sin validar. Aquí se
+cubre lo que ellos no ven, un push directo con commits que no son de ninguna PR fusionada, y se resume el
+tablero por persona para mandárselo por correo.
+
+- Cada push directo de alguien que no es aprobador se convierte en una issue `sin-revision` (In review, P0,
+  con revisor cruzado): el aviso queda como estado en el tablero, no solo en el correo.
+- El resumen de cada persona se publica como comentario que la menciona; GitHub se lo manda por correo.
+
+Funciones puras; hablar con GitHub es cosa de control_avisos.py.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+import auditoria
+import volcado
+
+ETIQUETA = auditoria.ETIQUETA_SIN_REVISION
+COLOR = "B60205"
+DESCRIPCION_ETIQUETA = "Código que entró en dev por push directo, sin PR ni revisión (tablero.py avisos)"
+TIPOS_PUSH = ("push", "force_push")
+# Una PR que GitHub da por fusionada por el propio push lleva la hora del push, con segundos de diferencia.
+MARGEN_FUSION = timedelta(minutes=5)
+MAX_COMMITS = 40
+MAX_LINEAS = 15
+MAX_TITULO = 70
+MAX_PARTE = 6000
+ETIQUETAS_DE_AVISO = (ETIQUETA, auditoria.ETIQUETA, auditoria.ETIQUETA_QA)
+
+
+def _commits(n: int) -> str:
+    return f"{n} commit{'s' if n != 1 else ''}"
+
+
+def fecha(texto: str) -> datetime:
+    return datetime.fromisoformat(texto.replace("Z", "+00:00"))
+
+
+def pushes_directos(actividad: list[dict], desde: datetime) -> list[dict]:
+    """Pushes a la rama que no son la fusión de una PR, desde `desde`, del más antiguo al más reciente."""
+    lista = [{"actor": (a.get("actor") or {}).get("login") or "desconocido", "antes": a["before"],
+              "despues": a["after"], "cuando": fecha(a["timestamp"]), "forzado": a["activity_type"] == "force_push"}
+             for a in actividad if a.get("activity_type") in TIPOS_PUSH and fecha(a["timestamp"]) >= desde]
+    return sorted(lista, key=lambda p: p["cuando"])
+
+
+def prs_del_push(commits: list[dict], prs_por_commit: dict[str, list[dict]], cuando: datetime) -> set[int]:
+    """PR ya fusionadas cuando llegó el push (o fusionadas por él) a las que pertenecen sus commits."""
+    limite = cuando + MARGEN_FUSION
+    return {pr["number"] for c in commits for pr in prs_por_commit.get(c["sha"], [])
+            if pr.get("merged_at") and fecha(pr["merged_at"]) <= limite}
+
+
+def commits_sin_pr(commits: list[dict], prs_por_commit: dict[str, list[dict]], cuando: datetime) -> list[dict]:
+    """Commits del push que no son de ninguna PR fusionada. Los de mezcla no cuentan: no traen código propio."""
+    return [c for c in commits if c["padres"] < 2 and not prs_del_push([c], prs_por_commit, cuando)]
+
+
+def titulo_issue(actor: str, despues: str) -> str:
+    return f"Revisar el push directo a dev de {actor} ({despues[:9]})"
+
+
+def cuerpo_issue(push: dict, commits: list[dict], repo: str, integracion: str) -> str:
+    lista = "\n".join(f"- `{c['sha'][:9]}` {c['titulo']}" for c in commits)
+    return (f"@{push['actor']} subió {_commits(len(commits))} a `{integracion}` por push directo el "
+            f"{push['cuando']:%Y-%m-%d %H:%M} UTC. No son de ninguna PR fusionada y no han pasado revisión:\n\n"
+            f"{lista}\n\n"
+            f"Diff: https://github.com/{repo}/compare/{push['antes'][:9]}...{push['despues'][:9]}\n\n"
+            "Subir directamente está permitido; lo que no puede faltar es la revisión y la prueba. El código ya "
+            f"está en `{integracion}`: no se revierte, se revisa aquí.\n\n"
+            "## Criterios de aceptación\n\n"
+            "- [ ] Revisión IA cruzada del diff (`tablero.py ia <n> aprobada|cambios --revisor \"<quién> (Claude)\"`).\n"
+            "- [ ] Probado en el editor (`tablero.py editor <n> funciona|falla`).\n"
+            "- [ ] Si estos commits ya tienen su propia issue, está enlazada en un comentario.\n")
+
+
+def linea_push(push: dict, sin_pr: list[dict], prs: set[int], issue: int | None, aprobador: bool) -> str:
+    """Una línea del correo por push directo: quién, cuántos commits sin revisión y dónde queda registrado."""
+    partes = [f"**{push['actor']}** subió a dev por push directo{' forzado' if push['forzado'] else ''} "
+              f"({push['cuando']:%d-%m %H:%M} UTC)"]
+    if sin_pr:
+        destino = f" → #{issue}" if issue else (" (es aprobador: no se abre issue)" if aprobador else "")
+        partes.append(f"{_commits(len(sin_pr))} sin PR ni revisión{destino}: "
+                      + ", ".join(f"`{c['sha'][:9]}` {c['titulo']}" for c in sin_pr[:5])
+                      + ("…" if len(sin_pr) > 5 else ""))
+    if prs:
+        partes.append("trae la PR " + ", ".join(f"#{n}" for n in sorted(prs))
+                      + ", que consta como fusionada sin que nadie la fusionara")
+    return "; ".join(partes) + "."
+
+
+def _etiquetas(issue: dict) -> set[str]:
+    return {n["name"] for n in (issue.get("labels") or {}).get("nodes", [])}
+
+
+def _asignados(issue: dict) -> set[str]:
+    return {a["login"] for a in (issue.get("assignees") or {}).get("nodes", [])}
+
+
+def secciones(issues: list[dict], login: str, aprobador: bool, ahora: datetime, dias_atasco: int) -> list[tuple[str, list[dict]]]:
+    """Lo que espera por `login` entre las issues de trabajo abiertas, por secciones con contenido.
+
+    Los aprobadores ven además lo que no es de nadie: avisos de organización, decisiones y Revisiones sin asignar.
+    """
+    def suya(issue: dict) -> bool:
+        return login in _asignados(issue)
+
+    def en(estado: str) -> list[dict]:
+        return [i for i in issues if i["valores"].get("Status") == estado]
+
+    paradas = [i for i, _ in volcado.atascadas(issues, ahora, dias_atasco)
+               if suya(i) or i["valores"].get("Revisor") == login]
+    todas = [
+        ("Colisiones y avisos de organización", [i for i in issues if "colision" in _etiquetas(i)
+                                                 or (_etiquetas(i) & set(ETIQUETAS_DE_AVISO) and (aprobador or suya(i)))]),
+        ("Peticiones sin contestar", [i for i in issues if "peticion" in _etiquetas(i)
+                                      and (aprobador or suya(i) or not _asignados(i))]),
+        ("Te toca revisar", [i for i in en("In review") if i["valores"].get("Revisor") == login]),
+        ("Revisiones: algo falla", [i for i in en("Revisiones") if suya(i) or (aprobador and not _asignados(i))]),
+        ("Decisiones pendientes", [i for i in issues if "decision" in _etiquetas(i) and (aprobador or suya(i))]),
+        ("QA editor: falta probar en el editor", [i for i in en("QA editor") if aprobador or suya(i)]),
+        ("Tu trabajo en curso", [i for i in en("In progress") if suya(i)]),
+        (f"Sin movimiento desde hace más de {dias_atasco} días", paradas),
+    ]
+    return [(titulo, sorted(lista, key=lambda i: i["number"])) for titulo, lista in todas if lista]
+
+
+def _linea(issue: dict) -> str:
+    titulo = issue.get("title", "")
+    if len(titulo) > MAX_TITULO:
+        titulo = titulo[:MAX_TITULO - 1] + "…"
+    detalle = ", ".join(x for x in (issue["valores"].get("Prioridad"), ", ".join(sorted(_asignados(issue)))) if x)
+    return f"- #{issue['number']} {titulo}" + (f" ({detalle})" if detalle else "")
+
+
+def render(login: str, por_secciones: list[tuple[str, list[dict]]], incidencias: list[str], ahora: datetime,
+           parte: str | None = None) -> str | None:
+    """Comentario para `login`, con mención para que GitHub se lo mande por correo; None si no hay nada que decirle."""
+    if not por_secciones and not incidencias:
+        return None
+    resumen = [f"{len(incidencias)} incidencias"] if incidencias else []
+    resumen += [f"{len(lista)} · {titulo.split(':')[0].lower()}" for titulo, lista in por_secciones]
+    lineas = [f"@{login} · avisos del {ahora:%Y-%m-%d}: " + "; ".join(resumen) + ".", ""]
+    if incidencias:
+        lineas += ["### Incidencias: código en dev sin revisión", "", *(f"- {i}" for i in incidencias), ""]
+    for titulo, lista in por_secciones:
+        lineas += [f"### {titulo} ({len(lista)})", "", *(_linea(i) for i in lista[:MAX_LINEAS])]
+        if len(lista) > MAX_LINEAS:
+            lineas.append(f"- … y {len(lista) - MAX_LINEAS} más (`tablero.py pendiente`)")
+        lineas.append("")
+    if parte:
+        recortado = parte.strip()
+        if len(recortado) > MAX_PARTE:
+            recortado = recortado[:MAX_PARTE].rsplit("\n", 1)[0] + "\n\n… (recortado)"
+        lineas += ["---", "", "### Parte de la rutina", "", recortado, ""]
+    return "\n".join(lineas).rstrip() + "\n"
+
+
+def parte_reciente(comentarios: list[dict], ahora: datetime, horas: int = 12) -> str | None:
+    """Texto del último parte de la rutina si se escribió o se actualizó en las últimas `horas`."""
+    if not comentarios:
+        return None
+    ultimo = comentarios[-1]
+    momento = fecha(ultimo.get("updated_at") or ultimo["created_at"])
+    return ultimo.get("body") if ahora - momento <= timedelta(hours=horas) else None
