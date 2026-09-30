@@ -7811,6 +7811,27 @@ msgctxt "TNPause,QHigh"
 msgid "Alta"
 msgstr "Yüksek"
 
+#. Key:	VideoTitle
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2989)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2989)
+msgctxt "TNPause,VideoTitle"
+msgid "¿Mantener esta pantalla?"
+msgstr "Bu ekran korunsun mu?"
+
+#. Key:	VideoText
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2990)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2990)
+msgctxt "TNPause,VideoText"
+msgid "Si algo no se ve bien, no toques nada: se deshace sola en {0} s."
+msgstr "Bir şey düzgün görünmüyorsa hiçbir şeye dokunma: {0} sn içinde kendiliğinden geri alınır."
+
+#. Key:	VideoKeep
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2991)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2991)
+msgctxt "TNPause,VideoKeep"
+msgid "Mantener"
+msgstr "Koru"
+
 #. Key:	CaptureNotice
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3016)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3016)
@@ -7838,6 +7859,13 @@ msgstr "Değişiklik yok."
 msgctxt "TNPause,QCine"
 msgid "Cine"
 msgstr "Sinema"
+
+#. Key:	CaptureCancelled
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3066)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3066)
+msgctxt "TNPause,CaptureCancelled"
+msgid "Sin cambios."
+msgstr "Değişiklik yok."
 
 #. Key:	HintSettings
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3271)

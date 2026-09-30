@@ -7811,6 +7811,27 @@ msgctxt "TNPause,QHigh"
 msgid "Alta"
 msgstr "高"
 
+#. Key:	VideoTitle
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2989)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2989)
+msgctxt "TNPause,VideoTitle"
+msgid "¿Mantener esta pantalla?"
+msgstr "保留這個顯示設定嗎？"
+
+#. Key:	VideoText
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2990)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2990)
+msgctxt "TNPause,VideoText"
+msgid "Si algo no se ve bien, no toques nada: se deshace sola en {0} s."
+msgstr "如果畫面顯示不正常，什麼都不用點：{0} 秒後會自動還原。"
+
+#. Key:	VideoKeep
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2991)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2991)
+msgctxt "TNPause,VideoKeep"
+msgid "Mantener"
+msgstr "保留"
+
 #. Key:	CaptureNotice
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3016)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3016)
@@ -7838,6 +7859,13 @@ msgstr "未作變更。"
 msgctxt "TNPause,QCine"
 msgid "Cine"
 msgstr "電影"
+
+#. Key:	CaptureCancelled
+#. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3066)
+#: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3066)
+msgctxt "TNPause,CaptureCancelled"
+msgid "Sin cambios."
+msgstr "未作變更。"
 
 #. Key:	HintSettings
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(3271)
