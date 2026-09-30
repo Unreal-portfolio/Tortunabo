@@ -5,6 +5,7 @@
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "World/Beach/TN_RaceItems.h"
+#include "World/Beach/TN_RaceMineFlight.h"
 #include "TN_BeachEnemyKit.h"
 #include "TN_RaceItemArt.h"
 #include "../../Lobby/Playground/TN_PlaygroundMeshKit.h"
@@ -41,25 +42,10 @@ namespace TNRaceMineDetail
 	constexpr double ThrowSpeed = 1500.0;
 	constexpr double SpawnForward = 120.0;
 	constexpr double SpawnUp = 60.0;
-	/** Gravedad de la mina (cm/s²): 1,3 veces la normal. */
-	constexpr double GravityCm = 980.0 * 1.3;
-	/** Radio con el que toca el suelo (cm). */
-	constexpr double MineRadius = 30.0;
-	/** Primer contacto con la arena: lo que conserva de la velocidad vertical y lo que pierde de la horizontal. */
-	constexpr double Restitution = 0.35;
-	constexpr double BounceFriction = 0.5;
-	/** Rebotes que da antes de irse rodando hasta quedar quieta. */
-	constexpr int32 MaxBounces = 1;
-	/** Si el rebote sale con menos velocidad vertical (cm/s), ya no rebota. */
-	constexpr double MinBounceSpeed = 90.0;
-	/** Al rodar: frenado (cm/s²), velocidad a la que se da por quieta (cm/s) y desnivel (cm) a partir del cual se despega del suelo. */
-	constexpr double SlideDecel = 900.0;
-	constexpr double RestSpeed = 25.0;
-	constexpr double SlideDetach = 30.0;
+	/** Radio con el que toca el suelo (cm). El resto del vuelo (gravedad, rebote, rodar) está en TN_RaceMineFlight.h. */
+	using TNRaceMineFlight::MineRadius;
 	/** Si a los 6 s aún no ha parado, se queda donde esté. */
 	constexpr double MaxFlightSeconds = 6.0;
-	/** Paso máximo de la simulación (s): con un tirón de fotograma no atraviesa la arena. */
-	constexpr double MaxStepSeconds = 0.05;
 
 	// ── Armada y disparo ──
 	constexpr float ArmDelaySeconds = 0.9f;
@@ -316,54 +302,29 @@ void ATN_RaceMine::ServerTick(float DeltaSeconds)
 void ATN_RaceMine::StepFlight(float DeltaSeconds)
 {
 	using namespace TNRaceMineDetail;
-	const double StepSeconds = FMath::Min(static_cast<double>(DeltaSeconds), MaxStepSeconds);
-	if (!bSliding)
-	{
-		Vel.Z -= GravityCm * StepSeconds;
-	}
-	FVector Next = Pos + Vel * StepSeconds;
-	const double GroundZ = static_cast<double>(GroundHeightAt(Next, static_cast<float>(Pos.Z - MineRadius))) + MineRadius;
-	if (bSliding && Next.Z - GroundZ > SlideDetach)
-	{
-		// Se acaba el suelo (un escalón, el borde de algo): vuelve a caer.
-		bSliding = false;
-	}
-	if (bSliding)
-	{
-		// Rodando por la arena: pegada al suelo y frenando hasta quedar quieta.
-		Next.Z = GroundZ;
-		Vel.Z = 0.0;
-		const double Speed = Vel.Size2D();
-		const double SlowedSpeed = FMath::Max(0.0, Speed - SlideDecel * StepSeconds);
-		Vel = Speed > UE_KINDA_SMALL_NUMBER ? Vel * (SlowedSpeed / Speed) : FVector::ZeroVector;
-		if (SlowedSpeed < RestSpeed)
+	TNRaceMineFlight::FState State;
+	State.Pos = Pos;
+	State.Vel = Vel;
+	State.Bounces = Bounces;
+	State.bSliding = bSliding;
+	const TNRaceMineFlight::FStepResult Result = TNRaceMineFlight::Step(State, static_cast<double>(DeltaSeconds),
+		[this](const FVector& Where, double FallbackZ)
 		{
-			Settle(Next);
-			return;
-		}
-	}
-	else if (Vel.Z <= 0.0 && Next.Z <= GroundZ)
+			return static_cast<double>(GroundHeightAt(Where, static_cast<float>(FallbackZ)));
+		});
+	Pos = State.Pos;
+	Vel = State.Vel;
+	Bounces = State.Bounces;
+	bSliding = State.bSliding;
+	if (Result.bAtRest)
 	{
-		// Toca la arena: el primer contacto rebota (restitución y fricción); el siguiente ya rueda.
-		Next.Z = GroundZ;
-		if (Bounces < MaxBounces && -Vel.Z * Restitution >= MinBounceSpeed)
-		{
-			++Bounces;
-			Vel.Z = -Vel.Z * Restitution;
-		}
-		else
-		{
-			bSliding = true;
-			Vel.Z = 0.0;
-		}
-		Vel.X *= 1.0 - BounceFriction;
-		Vel.Y *= 1.0 - BounceFriction;
+		Settle(Pos);
+		return;
 	}
-	Pos = Next;
 	SetActorLocation(Pos);
 	if (GetAge() > MaxFlightSeconds)
 	{
-		Settle(FVector(Pos.X, Pos.Y, GroundZ));
+		Settle(FVector(Pos.X, Pos.Y, Result.GroundZ));
 	}
 }
 
