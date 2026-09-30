@@ -1,0 +1,93 @@
+# Puente entre el tablero (GitHub Project 2 de la organización) y la rutina diaria de Claude en la nube.
+#
+# La rutina solo llega a las rutas REST del repositorio: no puede leer ni mover el Project. Este workflow sí.
+#
+# - Cada día, antes de la rutina: reconcilia el tablero (`sync`, `auditar` y `colisiones` con `--aplicar`) y publica
+#   el volcado del tablero en la issue VOLCADO_ISSUE, que la rutina lee.
+# - A mano (`workflow_dispatch`): ejecuta un comando de `tablero.py` de la lista cerrada de Scripts/tablero/volcado.py
+#   y vuelve a publicar el volcado. Así mueve tarjetas la rutina. Sin comando hace lo mismo que el cron.
+#
+# El código del tablero se toma siempre de `dev`. Este fichero tiene que estar también en `main`: GitHub solo ejecuta
+# los `schedule` de la rama por defecto.
+#
+# Secreto TABLERO_TOKEN: token classic con `repo`, `project`, `read:org` y `notifications` (el GITHUB_TOKEN de Actions no
+# llega a los Projects de la organización). Sin `notifications`, el último paso avisa y no silencia, pero no falla.
+name: Puente del tablero
+
+on:
+  schedule:
+    - cron: "15 5 * * *" # 7:15 en España en horario de verano; la rutina de Claude pasa a las 7:30
+  workflow_dispatch:
+    inputs:
+      comando:
+        description: 'Comando de tablero.py (p. ej. estado 123 Ready). Vacío: reconciliar y volcar, como el cron.'
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Sin grupo de concurrencia: GitHub solo guarda una ejecución en espera por grupo y cancelaría el resto de los
+# comandos que la rutina lanza seguidos. Cada comando toca una tarjeta distinta.
+
+env:
+  VOLCADO_ISSUE: "131"
+  TABLERO: uv run python Scripts/tablero/tablero.py
+
+jobs:
+  puente:
+    name: Reconciliar y volcar el tablero
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.TABLERO_TOKEN }}
+    steps:
+      - name: Descargar dev (solo los scripts)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          filter: blob:none
+          sparse-checkout: |
+            Scripts
+          sparse-checkout-cone-mode: false
+
+      - name: uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Comprobar el acceso al tablero
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Falta el secreto TABLERO_TOKEN (token classic con repo, project, read:org y notifications)."
+            exit 1
+          fi
+          gh api user --jq '"Tablero como " + .login'
+
+      - name: Comando recibido
+        if: github.event_name == 'workflow_dispatch' && inputs.comando != ''
+        env:
+          COMANDO: ${{ inputs.comando }}
+        run: $TABLERO puente --comando "$COMANDO"
+
+      - name: Reconciliar (sync, auditar y colisiones)
+        if: github.event_name == 'schedule' || inputs.comando == ''
+        run: |
+          {
+            echo "### sync"; $TABLERO sync --aplicar
+            echo "### auditar"; $TABLERO auditar --aplicar
+            echo "### colisiones"; $TABLERO colisiones --aplicar
+          } 2>&1 | tee reconciliacion.txt
+          {
+            echo "## Reconciliación del tablero"
+            echo '```'
+            cat reconciliacion.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar el volcado
+        if: always()
+        run: $TABLERO volcado --publicar "$VOLCADO_ISSUE"
+
+      # El puente actúa con el token de una persona y GitHub la suscribe a cada issue que toca.
+      - name: Silenciar las issues para el dueño del token
+        if: always()
+        run: $TABLERO silenciar
