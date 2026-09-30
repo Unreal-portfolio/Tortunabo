@@ -1283,7 +1283,7 @@ void ATN_VRRig::UpdateGrips(APlayerController* PC, ATortugaCharacter* Turtle, fl
 			ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
 			if (UEnhancedInputLocalPlayerSubsystem* Input = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr)
 			{
-				Input->InjectInputForAction(SprintAction, FInputActionValue(true));
+				Input->InjectInputForAction(SprintAction, FInputActionValue(true), {}, {});
 			}
 		}
 	}
