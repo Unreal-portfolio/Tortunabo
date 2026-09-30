@@ -166,3 +166,17 @@ def test_buscar_o_crear_no_crea_un_objeto_parecido_sin_pedirlo():
     assert not creadas
     assert objetos.buscar_o_crear(gh, "x/y", "HUD", nuevo=True) == (200, True)
     assert objetos.buscar_o_crear(gh, "x/y", "Supervivencia") == (200, True)
+
+
+def test_fusion_de_la_pr_de_un_lote_no_da_status_al_lote(monkeypatch):
+    """PR #166 (30-09): «Refs #167» no debe mover la issue del lote; sus miembros, sí."""
+    pr = {"number": 166, "baseRefName": "dev", "headRefName": "feat/144-supervivencia", "body": "Closes #144\nRefs #167"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    proyecto = {"items": {
+        144: {"state": "OPEN", "valores": {"Status": "In review", "Revisión IA": "Aprobada", "Editor": "Sin probar"},
+              "labels": {"nodes": [{"name": "tarea"}]}},
+        167: {"state": "OPEN", "valores": {}, "labels": {"nodes": [{"name": "lote"}]}},
+    }}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#144 → QA editor (PR #166 fusionada en dev)"]
