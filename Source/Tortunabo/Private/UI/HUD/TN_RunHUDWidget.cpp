@@ -15,6 +15,7 @@
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
+#include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -89,6 +90,8 @@ namespace TNRunHUDDetail
 	/** Márgenes de caja (fracción de la textura) de los carteles con arte de TNHUDArt. */
 	const FMargin CardMargin(0.16f, 0.2f, 0.16f, 0.34f);
 	const FMargin RibbonMargin(0.14f, 0.f, 0.14f, 0.f);
+	/** Ancho máximo del nombre bajo el salvavidas (px): uno más largo se encoge en vez de ensanchar la cinta. */
+	constexpr float BadgeNameMaxWidth = 220.f;
 	const FMargin TagMargin(0.2f, 0.f, 0.2f, 0.f);
 	const FMargin ChatBubbleMargin(0.26f, 0.3f, 0.18f, 0.45f);
 
@@ -391,7 +394,15 @@ void UTN_RunHUDWidget::BuildTree()
 
 		NameText = MakeText(Tree, nullptr, FText::GetEmpty(), TEXT("Bold"), 16, FLinearColor::White);
 		NameText->SetJustification(ETextJustify::Center);
-		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(MakeCard(Tree, TNHUDArt::RibbonTexture(), RibbonMargin, NameText, FMargin(40.f, 17.f, 40.f, 19.f))))
+		// Un nombre largo (hasta 32 caracteres, el máximo de Steam) se encoge para caber en la cinta, como en los resultados de
+		// la carrera: si la ensanchara, la columna centrada movería el salvavidas.
+		UScaleBox* NameShrink = Make<UScaleBox>(Tree);
+		NameShrink->SetStretch(EStretch::ScaleToFit);
+		NameShrink->SetStretchDirection(EStretchDirection::DownOnly);
+		NameShrink->SetContent(NameText);
+		USizeBox* NameFit = MakeSize(Tree, NameShrink, 0.f, 0.f);
+		NameFit->SetMaxDesiredWidth(BadgeNameMaxWidth);
+		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(MakeCard(Tree, TNHUDArt::RibbonTexture(), RibbonMargin, NameFit, FMargin(40.f, 17.f, 40.f, 19.f))))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
 			S->SetPadding(FMargin(0.f, -8.f, 0.f, 0.f));
