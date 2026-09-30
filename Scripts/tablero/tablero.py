@@ -427,8 +427,8 @@ def reconciliar_fusiones(proyecto: dict, abiertas: list[dict], cambios: list, av
         for n in issues_de_pr(pr) - ya_vistas:
             ya_vistas.add(n)
             issue = proyecto["items"].get(n)
-            if not issue or objetos.es_objeto(issue) or issue["state"] != "OPEN":
-                continue
+            if not issue or objetos.es_objeto(issue) or lotes.es_lote(issue) or issue["state"] != "OPEN":
+                continue  # los objetos y los lotes no llevan Status: solo se mueven las issues de trabajo
             actual = issue["valores"].get("Status")
             if not flujo.mueve_por_fusion(actual, n in con_pr_abierta):
                 continue
