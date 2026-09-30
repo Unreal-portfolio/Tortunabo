@@ -250,7 +250,9 @@ def problemas_cerrada(issue: dict, ahora: datetime) -> list[dict]:
         return []
     lista = []
     completada = issue.get("motivo_cierre") == "COMPLETED"
-    if completada and issue["valores"] and issue["valores"].get("Editor") != "Funciona":
+    # Una `colision` no trae código propio ni se prueba en el editor: se cierra cuando las dos PR se pueden fusionar.
+    probable = "colision" not in issue["etiquetas"]
+    if completada and probable and issue["valores"] and issue["valores"].get("Editor") != "Funciona":
         lista.append(problema("se cerró como completada sin estar probada en el editor (Editor ≠ Funciona)", "grave"))
     if not any(memoria.es_resumen(c) for c in issue["comentarios"]):
         lista.append(problema("cerrada sin comentario **Resumen** (`tablero.py resumen <n> --que ... --como ...`)"))
