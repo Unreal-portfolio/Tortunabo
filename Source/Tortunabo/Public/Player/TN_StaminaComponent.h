@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Player/TN_MovementLimits.h"
 #include "TN_StaminaComponent.generated.h"
 
 class UTN_InventoryComponent;
@@ -14,7 +15,9 @@ class UTN_InventoryComponent;
  *  - Sprint drena SprintDrainPerSecond. Al llegar a 0 entra en Exhausted (ExhaustionPenaltySeconds).
  *  - Recarga tras RechargeDelaySeconds con curva exponencial.
  *  - GrantUnlimitedStamina activa boost temporal seguido de PostBoostExhaustion (velocidad reducida + drenaje ×N).
- *  - SetSpeedCap limita MaxWalkSpeed para zonas externas (TN_SlowZoneVolume).
+ *  - SetSpeedCap(Source, Cap) limita MaxWalkSpeed con topes con nombre (zonas lentas, mareo, llevar a otra, algas,
+ *    caparazón): manda el menor y cada sistema quita el suyo. SetJumpLimit y SetGravityScaleOverride hacen lo mismo con
+ *    el salto y la gravedad, y devuelven la base al quitar el último (TN_MovementLimits.h).
  *
  * Replicación: CurrentStamina (float) solo al dueño; a los demás (espectadores, caras del HUD, foley), StaminaShared, un
  * byte con la fracción de MaxStamina que solo se manda cuando cambia. bIsSprinting, bUnlimitedStamina y bIsExhausted to all.
@@ -58,15 +61,35 @@ public:
 	void SetPostBoostExhaustionSeconds(float NewValue) { PostBoostExhaustionSeconds = FMath::Max(0.f, NewValue); }
 
 	/**
-	 * @brief Limita MaxWalkSpeed a Cap mientras sea activo (ej. zona de ralentización).
-	 *        ApplyMovementSpeed lo respeta: MaxWalkSpeed = Min(WalkSpeed|SprintSpeed, ActiveSpeedCap).
+	 * @brief Pone (o cambia) el tope de velocidad de Source: zona lenta, mareo, llevar a otra, alga, caparazón...
+	 *        Manda el menor de todos (TNMovementLimits::ResolveSpeedCap) y ApplyMovementSpeed lo respeta:
+	 *        MaxWalkSpeed = Min(WalkSpeed|SprintSpeed, ActiveSpeedCap). Cada sistema quita solo el suyo.
+	 * @param Source Quién lo pone (un nombre fijo, o el del actor si puede haber varios a la vez, como las zonas lentas).
 	 * @param Cap Velocidad máxima a forzar (cm/s).
 	 * @note Llamar en todas las máquinas (sin HasAuthority) — cada una aplica localmente.
 	 */
-	void SetSpeedCap(float Cap);
+	void SetSpeedCap(FName Source, float Cap);
 
-	/** @brief Quita el speed cap dejando que MaxWalkSpeed vuelva a Walk/SprintSpeed. */
-	void ClearSpeedCap();
+	/** @brief Quita el tope de Source; los de los demás siguen. */
+	void ClearSpeedCap(FName Source);
+
+	/**
+	 * @brief Pone (o cambia) el límite de salto de Source: JumpZVelocity = Min(base × multiplicadores, menor tope).
+	 *        La base se guarda al poner el primero y vuelve al quitar el último, en cualquier orden. Llamar donde se mueve
+	 *        el personaje (servidor y dueño), como antes se tocaba JumpZVelocity.
+	 * @param Cap Salto máximo (cm/s); TNMovementLimits::NoCap para ninguno.
+	 * @param Multiplier Sobre el salto de base (1 = ninguno).
+	 */
+	void SetJumpLimit(FName Source, float Cap, float Multiplier = 1.f);
+
+	/** @brief Quita el límite de salto de Source; sin ninguno, el salto vuelve a su base. */
+	void ClearJumpLimit(FName Source);
+
+	/** @brief Pone la escala de gravedad de Source (el sirope de las zonas lentas); manda la menor. Como SetJumpLimit. */
+	void SetGravityScaleOverride(FName Source, float Scale);
+
+	/** @brief Quita la escala de gravedad de Source; sin ninguna, la gravedad vuelve a su base. */
+	void ClearGravityScaleOverride(FName Source);
 
 	/**
 	 * @brief Multiplicador ambiental independiente del speed cap (ej. vadeo de agua).
@@ -225,11 +248,24 @@ private:
 	/** Referencia al inventario del propietario — necesaria para calcular el peso. */
 	TWeakObjectPtr<UTN_InventoryComponent> InventoryComponentRef;
 
+	/** Topes de velocidad por quien los pone (SetSpeedCap). */
+	TMap<FName, float> SpeedCaps;
+
 	/**
-	 * Velocidad máxima impuesta por zonas externas (ej. TN_SlowZoneVolume).
-	 * MAX_FLT = sin límite activo. ApplyMovementSpeed hace Min(baseSpeed, cap).
+	 * El menor de SpeedCaps (TNMovementLimits::ResolveSpeedCap): MAX_FLT = sin límite activo. ApplyMovementSpeed hace
+	 * Min(baseSpeed, cap).
 	 */
 	float ActiveSpeedCap = TNumericLimits<float>::Max();
+
+	/** Límites de salto y escalas de gravedad por quien los pone, y los valores de base guardados al poner el primero. */
+	TMap<FName, TNMovementLimits::FJumpLimit> JumpLimits;
+	TMap<FName, float> GravityScaleOverrides;
+	float BaseJumpZVelocity = 0.f;
+	float BaseGravityScale = 1.f;
+
+	/** Aplica al CharacterMovement el salto y la gravedad que mandan (la base si ya no hay límites). */
+	void ApplyJumpLimits();
+	void ApplyGravityScaleOverrides();
 
 	/** Multiplicador ambiental (vadeo, etc.). 1.0 = sin efecto. Ver SetEnvironmentSpeedMultiplier. */
 	float EnvironmentSpeedMultiplier = 1.0f;

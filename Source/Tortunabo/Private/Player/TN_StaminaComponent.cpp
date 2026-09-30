@@ -318,16 +318,91 @@ void UTN_StaminaComponent::ApplyMovementSpeed() const
 	}
 }
 
-void UTN_StaminaComponent::SetSpeedCap(float Cap)
+void UTN_StaminaComponent::SetSpeedCap(FName Source, float Cap)
 {
-	ActiveSpeedCap = Cap;
+	SpeedCaps.Add(Source, Cap);
+	ActiveSpeedCap = TNMovementLimits::ResolveSpeedCap(SpeedCaps);
 	ApplyMovementSpeed();
 }
 
-void UTN_StaminaComponent::ClearSpeedCap()
+void UTN_StaminaComponent::ClearSpeedCap(FName Source)
 {
-	ActiveSpeedCap = TNumericLimits<float>::Max();
+	SpeedCaps.Remove(Source);
+	ActiveSpeedCap = TNMovementLimits::ResolveSpeedCap(SpeedCaps);
 	ApplyMovementSpeed();
+}
+
+void UTN_StaminaComponent::SetJumpLimit(FName Source, float Cap, float Multiplier)
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (!Movement)
+	{
+		return;
+	}
+	// El salto de base se guarda con el primer límite (con alguno puesto, JumpZVelocity ya no es el de base).
+	if (JumpLimits.Num() == 0)
+	{
+		BaseJumpZVelocity = Movement->JumpZVelocity;
+	}
+	TNMovementLimits::FJumpLimit& Limit = JumpLimits.FindOrAdd(Source);
+	Limit.Cap = Cap;
+	Limit.Multiplier = Multiplier;
+	ApplyJumpLimits();
+}
+
+void UTN_StaminaComponent::ClearJumpLimit(FName Source)
+{
+	if (JumpLimits.Remove(Source) > 0)
+	{
+		ApplyJumpLimits();
+	}
+}
+
+void UTN_StaminaComponent::ApplyJumpLimits()
+{
+	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+	{
+		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
+		{
+			Movement->JumpZVelocity = TNMovementLimits::ResolveJumpZ(BaseJumpZVelocity, JumpLimits);
+		}
+	}
+}
+
+void UTN_StaminaComponent::SetGravityScaleOverride(FName Source, float Scale)
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (!Movement)
+	{
+		return;
+	}
+	if (GravityScaleOverrides.Num() == 0)
+	{
+		BaseGravityScale = Movement->GravityScale;
+	}
+	GravityScaleOverrides.Add(Source, Scale);
+	ApplyGravityScaleOverrides();
+}
+
+void UTN_StaminaComponent::ClearGravityScaleOverride(FName Source)
+{
+	if (GravityScaleOverrides.Remove(Source) > 0)
+	{
+		ApplyGravityScaleOverrides();
+	}
+}
+
+void UTN_StaminaComponent::ApplyGravityScaleOverrides()
+{
+	if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+	{
+		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
+		{
+			Movement->GravityScale = TNMovementLimits::ResolveGravityScale(BaseGravityScale, GravityScaleOverrides);
+		}
+	}
 }
 
 void UTN_StaminaComponent::SetEnvironmentSpeedMultiplier(float Multiplier)

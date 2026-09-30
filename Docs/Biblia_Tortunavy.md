@@ -1816,7 +1816,10 @@ carga (330), el de mareo (250), el nado (625), la caja del caparazón y todo lo 
 - **Correr** (`RefreshSprintRequest`): mantener Mayús con entrada de movimiento mayor que 0,25 (en cualquier dirección: lateral y
   diagonal valen) y **estamina > 0**. Se corta al soltar el stick, al meterse en el caparazón, al derribarla o al morir.
   `StartSprint` no hace nada en pleno panzazo.
-- **Topes de velocidad** (`SetSpeedCap`, se toma el menor):
+- **Topes de velocidad** (`SetSpeedCap(quién, tope)`, se toma el menor): cada sistema pone y quita **el suyo**
+  (`TN_MovementLimits.h`, tests `Tortunabo.Movement.Limits`); acabar el mareo ya no quita el tope de llevar a otra. El salto
+  (`SetJumpLimit`: sirope, agua, alga) y la gravedad del sirope (`SetGravityScaleOverride`) van igual: la base se guarda con el
+  primer límite y vuelve al quitar el último, en cualquier orden.
 
 | Tope | Valor | Cuándo | Origen |
 |---|---|---|---|

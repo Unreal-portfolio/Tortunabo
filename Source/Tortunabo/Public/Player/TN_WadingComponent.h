@@ -95,15 +95,11 @@ private:
 	float CurrentDepth = 0.f;
 	float TimeSinceLastSplash = 0.f;
 
-	/** JumpZVelocity original del CMC, cacheado al entrar en el agua para restaurarlo al salir. */
-	float OriginalJumpZVelocity = 0.f;
-	bool bJumpVelocityOverridden = false;
-
 	/** Referencia al componente de stamina del propietario — aplica el multiplicador ahí. */
 	TWeakObjectPtr<UTN_StaminaComponent> StaminaComponentRef;
 
-	/** Multiplicador de velocidad + JumpZVelocity. Solo servidor o cliente dueño del pawn. */
-	void ApplyMovementEffects(bool bWasInWater, UCharacterMovementComponent* CMC);
+	/** Multiplicador de velocidad y límite de salto (UTN_StaminaComponent). Solo servidor o cliente dueño del pawn. */
+	void ApplyMovementEffects(bool bWasInWater);
 
 	/** Salpicadura de entrada y de paso. Cualquier máquina con render, también simuladas. */
 	void UpdateSplashEffects(float DeltaTime, bool bWasInWater, const UCharacterMovementComponent* CMC);

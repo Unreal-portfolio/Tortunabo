@@ -489,19 +489,30 @@ void ATN_BeachSeaweed::ApplyHold(ACharacter* Turtle, float Cap, bool bHeld)
 	if (!State)
 	{
 		State = &Holds.Add(Turtle);
-		State->OrigJumpZ = Move->JumpZVelocity;
 	}
-	if (UTN_StaminaComponent* Stamina = Turtle->FindComponentByClass<UTN_StaminaComponent>())
+	UTN_StaminaComponent* Stamina = Turtle->FindComponentByClass<UTN_StaminaComponent>();
+	if (Stamina)
 	{
-		// Cada fotograma: otro sistema puede haber quitado el tope (fin del mareo, soltar algo cargado).
-		Stamina->SetSpeedCap(Cap);
+		// Con el nombre de esta alga: los topes de los demás (mareo, llevar a otra, caparazón) siguen aparte.
+		Stamina->SetSpeedCap(LimitSource(), Cap);
 	}
 	State->AppliedCap = Cap;
 	if (bHeld != State->bHeld)
 	{
 		State->bHeld = bHeld;
-		// Enganchada: el salto no la levanta (cada intento es un tirón que cuenta el servidor).
-		Move->JumpZVelocity = bHeld ? 0.f : State->OrigJumpZ;
+		// Enganchada: el salto no la levanta (cada intento es un tirón que cuenta el servidor). Al soltarse, el componente
+		// devuelve el salto que toque (el de base o el de otra zona que siga puesta).
+		if (Stamina)
+		{
+			if (bHeld)
+			{
+				Stamina->SetJumpLimit(LimitSource(), 0.f);
+			}
+			else
+			{
+				Stamina->ClearJumpLimit(LimitSource());
+			}
+		}
 		if (bHeld)
 		{
 			Turtle->MovementModeChangedDelegate.AddUniqueDynamic(this, &ATN_BeachSeaweed::OnHeldModeChanged);
@@ -531,18 +542,12 @@ void ATN_BeachSeaweed::RemoveHold(ACharacter* Turtle)
 	{
 		return;
 	}
-	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
-	{
-		Move->JumpZVelocity = State->OrigJumpZ;
-	}
 	Turtle->MovementModeChangedDelegate.RemoveDynamic(this, &ATN_BeachSeaweed::OnHeldModeChanged);
-	// Metida en el caparazón (aturdida), el tope es del caparazón: no se toca.
-	if (TNBeachTrapKit::IsFreeTurtle(Turtle))
+	// Solo lo de esta alga: si está en el caparazón (aturdida), el tope del caparazón sigue.
+	if (UTN_StaminaComponent* Stamina = Turtle->FindComponentByClass<UTN_StaminaComponent>())
 	{
-		if (UTN_StaminaComponent* Stamina = Turtle->FindComponentByClass<UTN_StaminaComponent>())
-		{
-			Stamina->ClearSpeedCap();
-		}
+		Stamina->ClearSpeedCap(LimitSource());
+		Stamina->ClearJumpLimit(LimitSource());
 	}
 	Holds.Remove(Turtle);
 }
