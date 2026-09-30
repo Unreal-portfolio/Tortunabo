@@ -99,7 +99,7 @@ la ventana N`).
 | `TN.Tutorial.Reset` | Deja el tutorial por hacer en esta ventana: empieza al llegar al siguiente lobby. |
 | `TN.Tutorial.Start` | En el lobby: empieza ahora desde la salida (aunque ya esté hecho o se esté dentro). |
 | `TN.Tutorial.Skip` | Lo salta como el menú de pausa: al lobby y apuntado como hecho. |
-| `TN.Tutorial.Station N` | Lleva a la estación N (1-19), metiendo en el tutorial si hace falta. Sin número, la lista. |
+| `TN.Tutorial.Station N` | Lleva a la estación N (1-19), metiendo en el tutorial si hace falta. Sin número, la lista. El salto a cualquiera es de pruebas: solo el anfitrión (o en Standalone) y fuera de Shipping; un cliente solo puede volver a una estación que ya ha pisado (el servidor rechaza el resto: `[Tutorial] … rechazada`). |
 | `TN.Tutorial.Info` | Escribe la ranura del guardado, si está hecho, si se está dentro, la estación y cuántos hay (en el servidor). |
 
 ## Archivos
