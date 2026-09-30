@@ -163,6 +163,9 @@ class GeoRegion:
     fit: tuple[int, int] | None = None               # (columnas, filas) de trozos del rectangulo que llena la region
     squash_e: float = 1.0                            # compresion Este-Oeste tras girar (1 = sin deformar)
     border_scale: str = "50m"
+    lon_cut: float | None = None                     # meridiano por el que se corta el mapa (mundo): longitudes en
+                                                     # [lon_cut, lon_cut + 360], tambien las de bbox, y la tierra
+                                                     # recortada a las latitudes de bbox; None = -180
 
     def __post_init__(self) -> None:
         if self.bbox is None and self.country is None:
@@ -183,7 +186,13 @@ class GeoRegion:
     # ── Geometria ────────────────────────────────────────────────────────────────
     @cached_property
     def country_polygons(self) -> list:
-        return sources.country_polygons(self.country, self.border_scale) if self.country else []
+        if not self.country:
+            return []
+        polygons = sources.country_polygons(self.country, self.border_scale)
+        if self.lon_cut is None:
+            return polygons
+        lat_range = (self.bbox[1], self.bbox[3]) if self.bbox is not None else (-90.0, 90.0)
+        return sources.wrap_polygons(polygons, self.lon_cut, lat_range)
 
     def bounds(self) -> tuple[float, float, float, float]:
         if self.bbox is not None:
@@ -275,7 +284,7 @@ class GeoRegion:
 
     # ── Rasters ──────────────────────────────────────────────────────────────────
     def dem_zoom(self, px_m: float = RASTER_PX_M) -> int:
-        lon, lat = self.lonlat_grid(px_m)
+        lon, lat = sources.tile_lonlat(*self.lonlat_grid(px_m))
         bounds = (float(lon.min()), float(lat.min()), float(lon.max()), float(lat.max()))
         return sources.pick_zoom(bounds, self._projection.ground_m_per_game_m() * px_m)
 
@@ -372,7 +381,8 @@ class GeoRegion:
     def credits(self, extra: tuple[str, ...] = ()) -> str:
         proj = self._projection
         lines = [f"Mapa {self.name}: región {self.bounds()} (lon_min, lat_min, lon_max, lat_max)"
-                 + (f", país {self.country}" if self.country else "") + f", borde por {EDGE_NAMES[self.edge]}.",
+                 + (", todas las tierras emergidas" if self.country == sources.ALL_LAND
+                    else f", país {self.country}" if self.country else "") + f", borde por {EDGE_NAMES[self.edge]}.",
                  f"Proyección {proj.kind} ({proj.proj4 or 'Web Mercator esférico, EPSG:3857'}); "
                  f"1 m de juego = {proj.ground_m_per_game_m():.0f} m de suelo real en el centro.",
                  "", sources.CREDITS["terrain_tiles"]]

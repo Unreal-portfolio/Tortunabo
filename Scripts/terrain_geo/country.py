@@ -26,6 +26,7 @@ from terrain_vol.layout import CELL_M, DEFAULT_Z_RANGE, MAP_MIN_M, WATER_M, ZRan
 
 from .geomodel import Calibration, GeoModel, ReliefParams, calibrate
 from .region import RASTER_PX_M, GeoRegion
+from .sources import ALL_LAND
 
 E01_K = 40.0 / 3480.0               # m de juego por m de cota real en E01 (PEAK_ABOVE_WATER_M / REAL_PEAK_M)
 E01_EXAGGERATION = 24.7             # exageracion efectiva de E01 (K_E01 * 2148 m de suelo por m de juego)
@@ -44,7 +45,7 @@ class Crossing:
 @dataclass(frozen=True)
 class CountryPreset:
     key: str                                      # nombre de la variante (index.json)
-    country: str                                  # ISO 3166 alfa-3 (Natural Earth)
+    country: str | None                           # ISO 3166 alfa-3 (Natural Earth); None = todas las tierras de bbox
     lang: str
     mode: str                                     # "rally" o "tct"
     description: str
@@ -64,6 +65,7 @@ class CountryPreset:
     road_shoulder_m: float = 10.0
     road_grade_deg: float = 9.0
     frame_m: float = 16.0
+    lon_cut: float | None = None                  # meridiano de corte del mapa (mundo); bbox en [lon_cut, lon_cut + 360]
     seed: int = 20260929
     params: ReliefParams = field(default_factory=ReliefParams)
 
@@ -93,11 +95,14 @@ def main_axis_bearing(x: np.ndarray, y: np.ndarray) -> float:
 def plan_region(preset: CountryPreset, max_chunks: int | None = None) -> GeoRegion:
     """GeoRegion del pais: giro (el dado o el que mejor escala da entre 0 y el eje principal) y el rectangulo de
     trozos (columnas x filas <= max_chunks) con la escala mas fina."""
-    base = GeoRegion(preset.key, bbox=preset.bbox, country=preset.country, edge="border", frame_m=preset.frame_m,
-                     min_island_m2=preset.min_island_m2, squash_e=preset.squash_e)
+    if preset.country is None and preset.bbox is None:
+        raise ValueError(f"{preset.key}: una region sin pais necesita bbox")
+    country = preset.country or ALL_LAND
+    base = GeoRegion(preset.key, bbox=preset.bbox, country=country, edge="border", frame_m=preset.frame_m,
+                     min_island_m2=preset.min_island_m2, squash_e=preset.squash_e, lon_cut=preset.lon_cut)
     budget = max_chunks or preset.max_chunks or CHUNKS[preset.mode]
-    probe = GeoRegion(preset.key, bbox=preset.bbox, country=preset.country, edge="border", grid=1, frame_m=0.0,
-                      scale=1.0, fit=(1, 1))
+    probe = GeoRegion(preset.key, bbox=preset.bbox, country=country, edge="border", grid=1, frame_m=0.0,
+                      scale=1.0, fit=(1, 1), lon_cut=preset.lon_cut)
     x, y = probe.game_projection().project(*base.extent_points())
     rotations = [preset.rotation_deg] if preset.rotation_deg is not None else [0.0, main_axis_bearing(x, y)]
     best: dict[float, tuple[float, int, int]] = {}

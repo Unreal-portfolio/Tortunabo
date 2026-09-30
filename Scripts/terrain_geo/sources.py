@@ -26,6 +26,9 @@ NE_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/
 CACHE = Path(__file__).resolve().parents[2] / "Saved" / "terrain_geo_cache"
 MAX_ZOOM = 14                    # terrarium llega a 15; 14 ya es ~10 m por pixel en el ecuador
 MAX_TILES = 324                  # mosaico maximo (18 x 18 teselas); si no cabe, se baja el zoom
+TILE_LAT_LIMIT = 85.0            # las teselas (Web Mercator) no pasan de 85,05 grados de latitud
+CUT_EPS_DEG = 1e-6               # margen del recorte por el meridiano de corte (mundo)
+ALL_LAND = "*"                   # en lugar de un pais: todas las tierras emergidas (capa `land` de Natural Earth)
 
 CREDITS = {
     "terrain_tiles": (
@@ -102,8 +105,19 @@ def fetch_mosaic(bounds: tuple[float, float, float, float], zoom: int) -> tuple[
     return mosaic, xs[0] * tile_m - WORLD_M / 2.0, WORLD_M / 2.0 - ys[0] * tile_m, tile_m / 256.0
 
 
+def tile_lonlat(lon, lat) -> tuple[np.ndarray, np.ndarray]:
+    """lon, lat dentro de lo que cubren las teselas: la latitud acotada a +-TILE_LAT_LIMIT y la longitud que se
+    sale de +-180 (mapa cortado por otro meridiano, o volumen mas alto que el planeta) devuelta a ese rango."""
+    lon = np.nan_to_num(np.asarray(lon, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0)
+    limit = TILE_LAT_LIMIT
+    lat = np.nan_to_num(np.asarray(lat, dtype=np.float64), nan=limit, posinf=limit, neginf=-limit)
+    wrapped = np.where(np.abs(lon) > 180.0, (lon + 180.0) % 360.0 - 180.0, lon)
+    return wrapped, np.clip(lat, -TILE_LAT_LIMIT, TILE_LAT_LIMIT)
+
+
 def sample_elevation(lon: np.ndarray, lat: np.ndarray, zoom: int) -> np.ndarray:
     """Elevacion (m, bilineal) en cada (lon, lat) del array; descarga el mosaico que los cubre."""
+    lon, lat = tile_lonlat(lon, lat)
     bounds = (float(lon.min()), float(lat.min()), float(lon.max()), float(lat.max()))
     mosaic, left, top, px_m = fetch_mosaic(bounds, zoom)
     mx, my = lonlat_to_mercator(lon, lat)
@@ -131,7 +145,59 @@ def matches_country(props: dict, code: str) -> bool:
     return any(str(props.get(k, "")).upper() == code for k in keys)
 
 
+def land_polygons(scale: str = "50m") -> list[Polygon]:
+    """Todas las tierras emergidas (continentes e islas) de Natural Earth."""
+    features = natural_earth("land", scale)["features"]
+    return [polygon for feature in features for polygon in _polygons(feature["geometry"])]
+
+
+def _clip_ring(ring: np.ndarray, value: float, axis: int, keep_above: bool) -> np.ndarray:
+    """Anillo recortado por la recta coordenada[axis] = value (Sutherland-Hodgman; axis 0 = lon, 1 = lat): queda
+    el lado de mas (keep_above) o el de menos."""
+    if len(ring) == 0:
+        return ring
+    inside = (ring[:, axis] >= value) if keep_above else (ring[:, axis] <= value)
+    out = []
+    for k in range(len(ring)):
+        p, q = ring[k - 1], ring[k]
+        if inside[k - 1] != inside[k]:
+            t = (value - p[axis]) / (q[axis] - p[axis])
+            cut = p + (q - p) * t
+            cut[axis] = value
+            out.append(tuple(cut))
+        if inside[k]:
+            out.append(tuple(q))
+    return np.asarray(out, dtype=np.float64).reshape(-1, 2)
+
+
+def wrap_polygons(polygons: list[Polygon], lon_cut: float,
+                  lat_range: tuple[float, float] = (-90.0, 90.0)) -> list[Polygon]:
+    """Poligonos con las longitudes en [lon_cut, lon_cut + 360] y las latitudes en lat_range: el mapa se corta por
+    el meridiano lon_cut (no por el antimeridiano) y por esos paralelos; lo que cruza el corte se parte. Para un
+    mundo centrado en el Pacifico sin los polos."""
+    out: list[Polygon] = []
+    for polygon in polygons:
+        for shift in (0.0, 360.0):
+            rings = []
+            for ring in polygon:
+                moved = ring + np.array([shift, 0.0])
+                # Un pelo dentro del corte: justo en el meridiano de corte la proyeccion no sabe si es el borde
+                # Oeste o el Este del mapa (y un borde del poligono cruzaria el mapa entero).
+                west, east = lon_cut + CUT_EPS_DEG, lon_cut + 360.0 - CUT_EPS_DEG
+                clipped = _clip_ring(_clip_ring(moved, west, 0, True), east, 0, False)
+                clipped = _clip_ring(_clip_ring(clipped, lat_range[0], 1, True), lat_range[1], 1, False)
+                if len(clipped) >= 3:
+                    rings.append(clipped)
+                elif not rings:
+                    break                           # sin anillo exterior no hay poligono
+            if rings:
+                out.append(rings)
+    return out
+
+
 def country_polygons(code: str, scale: str = "50m") -> list[Polygon]:
+    if code == ALL_LAND:
+        return land_polygons(scale)
     out: list[Polygon] = []
     for feature in natural_earth("admin_0_countries", scale)["features"]:
         if matches_country(feature["properties"], code):

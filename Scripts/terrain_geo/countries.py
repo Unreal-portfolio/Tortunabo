@@ -1,6 +1,10 @@
 """Paises enteros del catalogo (Docs/Catalogo-Mapas-2026-09-29.md, «Decision del director»): uno por idioma mas
 Filipinas. Modo del catalogo; los «Ambos» salen como Rally (la calzada que cruza el pais); Italia y Filipinas,
 Todos contra Todos. Las cajas solo recortan territorios lejanos (Okinawa, Canarias, islas del Atlantico...).
+
+Ademas (encargo del 2026-09-30): el mundo entero (W01, sin pais: todas las tierras de Natural Earth dentro de la
+caja, cortado por el Atlantico para que Bering quede en el centro y se pueda cruzar) y cuatro paises elegidos por
+su forma (Estados Unidos contiguos, Mexico, Australia y Chile).
 """
 
 from __future__ import annotations
@@ -14,6 +18,18 @@ JAPAN_CROSSINGS = (
     Crossing("Naruto", (134.72, 34.25), (134.63, 34.21)),
     Crossing("Seto-Ohashi", (133.81, 34.46), (133.83, 34.33)),
     Crossing("Shimanami", (133.20, 34.40), (133.00, 34.07)),
+)
+
+WORLD_CUT_LON = -26.0               # el mapa del mundo se corta por el Atlantico (entre Brasil y Africa)
+WORLD_CROSSINGS = (
+    Crossing("Gibraltar", (-5.45, 36.10), (-5.40, 35.85)),
+    Crossing("Bosforo", (28.95, 41.05), (29.10, 41.00)),
+    Crossing("Suez", (32.50, 30.00), (32.62, 30.00)),
+    Crossing("Bering", (-169.70, 66.05), (-168.10, 65.62)),
+    Crossing("Panama", (-83.50, 9.60), (-75.50, 7.00)),      # a esta escala el istmo no llega a 1 m: puente
+    Crossing("Malaca", (102.20, 2.20), (101.70, 1.75)),
+    Crossing("Torres", (142.50, -10.75), (142.20, -9.20)),
+    Crossing("Canal de la Mancha", (1.35, 51.10), (1.85, 50.95)),
 )
 
 COUNTRIES: dict[str, CountryPreset] = {p.key: p for p in (
@@ -72,4 +88,33 @@ COUNTRIES: dict[str, CountryPreset] = {p.key: p for p in (
         "L13_taiwan", "TWN", "zh-Hant", "rally",
         "Isla de Taiwán (Rally) con el relieve y la costa reales; calzada del Sur al Norte por la costa y la "
         "cordillera Central."),
+    CountryPreset(
+        "W01_mundo", None, "mul", "rally",
+        "El mundo entero (Rally): los continentes como islas con su costa y su relieve reales, sin la Antártida; "
+        "calzada de Ciudad del Cabo a la Patagonia por el Sinaí, Asia, el puente de Bering y Panamá, con puentes "
+        "naturales en los estrechos reales.",
+        bbox=(WORLD_CUT_LON, -56.0, WORLD_CUT_LON + 360.0, 75.0), lon_cut=WORLD_CUT_LON, rotation_deg=0.0,
+        start=(19.5, -33.5), end=(-71.5, -52.0), crossings=WORLD_CROSSINGS, auto_bridges=True, bridge_max_m=12.0,
+        min_island_m2=20.0),
+    CountryPreset(
+        "L14_estados_unidos", "USA", "en-US", "rally",
+        "Estados Unidos contiguos (Rally), sin Alaska ni Hawái, con el relieve y el contorno reales (la frontera es "
+        "costa); calzada de costa a costa, de Florida a Seattle.",
+        bbox=(-125.5, 24.0, -66.5, 49.8), rotation_deg=0.0, start=(-80.6, 26.2), end=(-122.2, 47.8)),
+    CountryPreset(
+        "L15_mexico", "MEX", "es-MX", "rally",
+        "México entero (Rally) con el relieve y el contorno reales (la frontera es costa); calzada de Cancún a Los "
+        "Cabos: Yucatán, el istmo, la costa del Pacífico y toda la península de Baja California.",
+        start=(-87.3, 20.8), end=(-109.9, 23.2)),
+    CountryPreset(
+        "L16_australia", "AUS", "en-AU", "rally",
+        "Australia entera (Rally) con Tasmania, relieve y costa reales; calzada de Hobart al cabo York con un puente "
+        "natural sobre el estrecho de Bass.",
+        bbox=(112.5, -44.0, 154.5, -9.5), rotation_deg=0.0, start=(147.2, -42.6), end=(142.6, -11.3),
+        crossings=(Crossing("Bass", (146.40, -41.10), (146.30, -38.95)),)),
+    CountryPreset(
+        "L17_chile", "CHL", "es-CL", "rally",
+        "Chile entero (Rally), de punta a punta, con el relieve y el contorno reales (la frontera es costa); calzada "
+        "de Punta Arenas a Arica entre los Andes y el Pacífico, con puentes naturales entre los fiordos.",
+        bbox=(-76.5, -56.0, -66.0, -17.2), start=(-71.0, -53.0), end=(-70.2, -18.6), auto_bridges=True),
 )}
