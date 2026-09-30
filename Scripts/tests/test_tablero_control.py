@@ -347,3 +347,9 @@ def test_conversacion_de_una_issue_leida_del_repo():
             "comments": {"nodes": [{"body": "La decisión actual es de 4 segundos.", "author": {"login": "SkiTemplar"}},
                                    {"body": "**Editor: funciona** (PIE).", "author": None}]}}
     assert auditoria.accion_peticion(auditoria.conversacion_de(nodo)) == "poner"
+
+
+def test_las_notas_de_la_rutina_no_son_conversacion():
+    nota = ("SkiTemplar", "**Rutina:** paso la tarjeta a Ready; estaba en In review sin PR.")
+    assert not auditoria.conversacion_pendiente(_charla(nota))
+    assert auditoria.conversacion_pendiente(_charla(nota, ("SkiTemplar", "Falta reproducirlo con 4 jugadores.")))

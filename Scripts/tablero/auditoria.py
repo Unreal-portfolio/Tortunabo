@@ -53,7 +53,7 @@ CASILLA = re.compile(r"^\s*[-*] \[[ xX]\]", re.M)
 TITULOS_EXCLUIDOS = {"Parte diario del tablero", "Estado del tablero"}
 # Comentarios que escribe el propio tablero y no explican por qué algo falla.
 PREFIJOS_AUTOMATICOS = ("Lista para revisión", "**Editor: funciona**", "**Revisión IA", "Fusionada en",
-                        CABECERA_ATENDIDA,
+                        CABECERA_ATENDIDA, "**Rutina",
                         CABECERA, memoria.CABECERA_RESUMEN, memoria.CABECERA_DECISION, "**Sin QA editor**",
                         "Forma parte del lote", "En el lote #", "Vuelve a Ready sin asignado", "Probada en el editor")
 

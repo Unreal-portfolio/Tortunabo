@@ -218,7 +218,7 @@ def cmd_bloquear(args: argparse.Namespace) -> None:
         gh("api", "graphql", "-f", f"query={bloqueos.MUTACION}", "-f", f"issue={issue['id']}",
            "-f", f"bloqueante={bloqueante['id']}")
     todas = ", ".join(f"#{m}" for m in sorted({*args.por, *(b["number"] for b in bloqueos.bloqueantes(issue))}))
-    proyecto = cargar_proyecto()
+    proyecto = cargar_proyecto(args.numero)
     actual = proyecto["items"].get(args.numero, {}).get("valores", {}).get("Status")
     if bloqueos.estado_tras_bloquear(actual) is None:
         print(f"#{args.numero} sigue en Backlog; depende de {todas}. Al aprobarla pasará a Bloqueada si siguen abiertas.")

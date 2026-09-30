@@ -250,3 +250,16 @@ def test_peticiones_para_el_asignado_las_sin_dueno_y_todas_para_aprobadores():
               issue(4, ["tarea"], "Ruben-Besteiro")]
     assert [i["number"] for i in peticiones.para(issues, "Ruben-Besteiro", aprobador=False)] == [1, 3]
     assert [i["number"] for i in peticiones.para(issues, "SkiTemplar", aprobador=True)] == [1, 2, 3]
+
+
+def test_item_desde_issue_recien_anadida_al_project():
+    issue = {"number": 176, "title": "Token", "state": "OPEN", "assignees": {"nodes": [{"login": "Mokius"}]},
+             "projectItems": {"nodes": [
+                 {"id": "otro", "project": {"number": 1}, "fieldValues": {"nodes": []}},
+                 {"id": "PVTI_x", "project": {"number": 2},
+                  "fieldValues": {"nodes": [{}, {"name": "In progress", "field": {"name": "Status"}},
+                                            {"name": "P0", "field": {"name": "Prioridad"}}]}}]}}
+    item = base.item_desde_issue(issue, 2)
+    assert item["item"] == "PVTI_x" and item["valores"] == {"Status": "In progress", "Prioridad": "P0"}
+    assert item["number"] == 176 and "projectItems" not in item
+    assert base.item_desde_issue(issue, 3) is None and base.item_desde_issue(None, 2) is None
