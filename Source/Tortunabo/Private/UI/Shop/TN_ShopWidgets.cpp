@@ -1,4 +1,5 @@
 #include "UI/Shop/TN_ShopWidgets.h"
+#include "Core/TN_GameplayPreload.h"
 #include "TN_ShopArt.h"
 #include "../HUD/TN_HUDFaces.h"
 #include "../HUD/TN_HUDStyle.h"
@@ -35,7 +36,6 @@
 
 namespace TNShopUI
 {
-	const TCHAR* const PreviewMaterialPath = TEXT("/Game/UI/Shop/M_UI_Preview.M_UI_Preview");
 	/** Exposición de las capturas del escaparate (SceneColorHDR) en la UI. */
 	constexpr float CaptureExposure = 1.6f;
 	/** Márgenes de caja de las texturas de TNShopArt y TNHUDArt. */
@@ -285,7 +285,7 @@ void UTN_ShopCard::Setup(UTextureRenderTarget2D* Thumb, const FText& Name, TFunc
 	if (NameText) { NameText->SetText(Name); }
 	if (ThumbImage && Thumb)
 	{
-		if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, TNShopUI::PreviewMaterialPath))
+		if (UMaterialInterface* Base = TNPreload::PreviewMaterial())
 		{
 			ThumbMID = UMaterialInstanceDynamic::Create(Base, this);
 			ThumbMID->SetTextureParameterValue(TEXT("Capture"), Thumb);
@@ -414,7 +414,7 @@ UTextureRenderTarget2D* UTN_CosmeticMenuBase::Thumbnail(ETNCosmeticCategory Cate
 
 UMaterialInstanceDynamic* UTN_CosmeticMenuBase::MakeCaptureMID(UTextureRenderTarget2D* RT)
 {
-	UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, TNShopUI::PreviewMaterialPath);
+	UMaterialInterface* Base = TNPreload::PreviewMaterial();
 	UMaterialInstanceDynamic* MID = Base ? UMaterialInstanceDynamic::Create(Base, this) : nullptr;
 	if (MID)
 	{

@@ -719,9 +719,30 @@ ATN_ProcSearchSpot::ATN_ProcSearchSpot()
 	LootWeights.Add(TEXT("Totem"), 0.3f);
 }
 
+const UDataTable* ATN_ProcSearchSpot::GetLootTable() const
+{
+	if (PreloadedLootTable)
+	{
+		return PreloadedLootTable;
+	}
+	// Sin BeginPlay todavía (o en un cliente): lo que haya cargado; si no, se carga igual para no quedarse sin objeto.
+	if (const UDataTable* Loaded = LootTable.Get())
+	{
+		return Loaded;
+	}
+	UE_LOG(LogTortunabo, Warning, TEXT("[Search] %s: catálogo sin precargar (%s), carga síncrona."), *GetName(), *LootTable.ToString());
+	return LootTable.LoadSynchronous();
+}
+
 void ATN_ProcSearchSpot::BeginPlay()
 {
 	Super::BeginPlay();
+	// El catálogo, ya ahora (el sitio nace al montar el mapa): la primera búsqueda o el primer cofre no cargan nada del
+	// disco. El de serie, DT_Items, ya lo precarga UTN_GameplayPreloadSubsystem y aquí solo se resuelve.
+	if (HasAuthority() && !LootTable.IsNull())
+	{
+		PreloadedLootTable = LootTable.LoadSynchronous();
+	}
 	ApplySpotShape();
 	HintClock = FMath::FRandRange(0.f, 0.5f);
 }
@@ -1028,7 +1049,7 @@ float ATN_ProcSearchSpot::GetLootWeight(FName RowName, const FTN_InventoryItem& 
 
 bool ATN_ProcSearchSpot::PickLoot(FTN_InventoryItem& OutItem, const APawn* /*Searcher*/) const
 {
-	const UDataTable* Table = LootTable.LoadSynchronous();
+	const UDataTable* Table = GetLootTable();
 	if (!Table)
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[Search] Sin catálogo de objetos (%s): no sale nada."), *LootTable.ToString());

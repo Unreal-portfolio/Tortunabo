@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachLoot.h"
+#include "Core/TN_GameplayPreload.h"
 #include "World/Beach/TN_BeachDecorField.h"
 #include "TN_BeachDecorKit.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
@@ -448,7 +449,7 @@ float ATN_BeachSearchSpot::GetLootWeight(FName RowName, const FTN_InventoryItem&
 bool ATN_BeachSearchSpot::PickLoot(FTN_InventoryItem& OutItem, const APawn* Searcher) const
 {
 	// Objetos de siempre y de carrera, con el peso según el puesto de quien rebusca; si algo falla, el sorteo de siempre.
-	if (TNRaceItems::RollLoot(Searcher, GetRaceLootSource(), LootTable.LoadSynchronous(), OutItem))
+	if (TNRaceItems::RollLoot(Searcher, GetRaceLootSource(), GetLootTable(), OutItem))
 	{
 		return true;
 	}
@@ -601,7 +602,7 @@ void UTN_BeachLootSubsystem::SpawnForRound(ATN_BeachRaceGenerator& Gen)
 	FRandomStream Rng(static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(0x10075EEDu + static_cast<uint32>(RerollSalt)))));
 	int32 Candidates = 0;
 	const int32 NumSpots = BuildSearchRegistry(Gen, Rng, Candidates);
-	const UDataTable* Catalog = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TNBeachLoot::CatalogPath())).LoadSynchronous();
+	const UDataTable* Catalog = TNPreload::ItemCatalog();
 	const int32 NumItems = Catalog ? SpawnLooseItems(Gen, Rng, *Catalog) : 0;
 	if (!Catalog)
 	{

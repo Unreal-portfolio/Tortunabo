@@ -249,6 +249,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search")
 	TSoftObjectPtr<UDataTable> LootTable;
 
+	/** LootTable ya cargado en BeginPlay (servidor), retenido mientras viva el sitio. */
+	UPROPERTY(Transient)
+	TObjectPtr<UDataTable> PreloadedLootTable;
+
+	/** El catálogo para sortear: el precargado; en partida no se carga nada del disco (M12). */
+	const UDataTable* GetLootTable() const;
+
 	/** Peso de cada objeto en el sorteo por nombre de fila o ItemId (1 si no sale aquí; 0 lo quita). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Search")
 	TMap<FName, float> LootWeights;
