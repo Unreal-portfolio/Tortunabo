@@ -40,10 +40,11 @@ def render_sheet(top: np.ndarray, path: Path, title: str, subtitle: str = "", st
                  end: tuple[int, int] | None = None, marks: dict[str, tuple[int, int]] | None = None,
                  contour_step_m: float | None = None, perspective_z_scale: float = 1.0,
                  origin: tuple[float, float] = (MAP_MIN_M, MAP_MIN_M), outlines: list[np.ndarray] | None = None,
-                 route: list[np.ndarray] | None = None) -> int:
+                 route: list[np.ndarray] | None = None, profile: tuple[np.ndarray, np.ndarray] | None = None) -> int:
     """top: cota absoluta (m) de cada muestra de 1 m, [Norte, Este]; origin = (X, Y) de top[0, 0]. start, end y
     marks son indices de top. outlines: contornos reales (arrays (n, 2) de (X, Y) de juego) superpuestos en rojo;
-    route: lista de (n, 2) de indices de top (calzada y ramales). Devuelve los bytes del PNG."""
+    route: lista de (n, 2) de indices de top (calzada y ramales). profile: (distancia, cota sobre el agua) en m de
+    la calzada, para el perfil longitudinal (sin el, la lamina no cambia). Devuelve los bytes del PNG."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -63,7 +64,7 @@ def render_sheet(top: np.ndarray, path: Path, title: str, subtitle: str = "", st
         fig.text(0.02, 0.945, subtitle, fontsize=9.5, ha="left", va="top", wrap=True)
 
     ax = fig.add_axes((0.035, 0.06, 0.44, 0.78))
-    shade = LightSource(azdeg=315, altdeg=40).hillshade(rel, vert_exag=2.0)
+    shade = LightSource(azdeg=315, altdeg=40).hillshade(rel, vert_exag=1.0)
     rgb = cmap(norm(rel))[..., :3] * (0.55 + 0.45 * shade[..., None])
     ax.imshow(rgb, origin="lower", extent=(Y0, Y0 + cols, X0, X0 + rows))
     xs, ys = Y0 + np.arange(top.shape[1]), X0 + np.arange(top.shape[0])
@@ -97,20 +98,40 @@ def render_sheet(top: np.ndarray, path: Path, title: str, subtitle: str = "", st
     stride = max(1, max(rows, cols) // 180)
     sub = rel[::stride, ::stride]
     Xg, Yg = np.meshgrid(Y0 + np.arange(sub.shape[1]) * stride, X0 + np.arange(sub.shape[0]) * stride)
-    shade3 = LightSource(azdeg=315, altdeg=35).hillshade(sub, vert_exag=2.0)
+    shade3 = LightSource(azdeg=315, altdeg=35).hillshade(sub, vert_exag=1.0)
     colors = cmap(norm(np.maximum(sub, -0.5)))
     colors[..., :3] *= (0.5 + 0.5 * shade3[..., None])
     ax3.plot_surface(Xg, Yg, np.maximum(sub, -0.2) * perspective_z_scale, facecolors=colors, rstride=1, cstride=1,
                      linewidth=0, antialiased=False, shade=False)
     ax3.view_init(elev=38, azim=-62)
     span = max(rows, cols)
-    ax3.set_box_aspect((cols / span, rows / span, max(0.12, min(0.5, vmax * perspective_z_scale / span * 1.3))), zoom=1.2)
+    # La caja lleva la misma escala en los tres ejes: la perspectiva enseña el relieve como se ve en el juego.
+    z_low, z_high = -0.2 * perspective_z_scale, vmax * perspective_z_scale
+    ax3.set_xlim(Y0, Y0 + cols)
+    ax3.set_ylim(X0, X0 + rows)
+    ax3.set_zlim(z_low, z_high)
+    ax3.set_box_aspect((cols / span, rows / span, (z_high - z_low) / span), zoom=1.2)
     ax3.set_axis_off()
-    ax3.set_title("Perspectiva desde el Suroeste" + (f" (relieve x{perspective_z_scale:g})" if perspective_z_scale != 1 else ""),
-                  fontsize=10)
+    scale_note = "relieve a escala real 1:1" if perspective_z_scale == 1 else f"relieve x{perspective_z_scale:g}"
+    ax3.set_title(f"Perspectiva desde el Suroeste ({scale_note})", fontsize=10)
+    if profile is not None:
+        _draw_profile(fig, *profile)
     written = _save_small(fig, path)
     plt.close(fig)
     return written
+
+
+def _draw_profile(fig, distance: np.ndarray, height: np.ndarray) -> None:
+    """Perfil longitudinal de la calzada (distancia y cota sobre el agua, m) bajo la perspectiva."""
+    ax = fig.add_axes((0.56, 0.055, 0.41, 0.13))
+    ax.fill_between(distance, 0.0, height, color=(0.82, 0.70, 0.45), alpha=0.85, linewidth=0)
+    ax.plot(distance, height, "-", color=(0.1, 0.1, 0.1), lw=1.0)
+    ax.set_xlim(float(distance[0]), float(distance[-1]))
+    ax.set_ylim(0.0, max(float(height.max()) * 1.1, 2.0))
+    ax.tick_params(labelsize=7)
+    ax.set_xlabel("distancia por la calzada (m)", fontsize=7.5, labelpad=1)
+    ax.set_title("Perfil longitudinal de la calzada (m sobre el agua)", fontsize=8.5, pad=2)
+    ax.patch.set_alpha(0.7)
 
 
 def _thousands(n: int) -> str:
