@@ -5,6 +5,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Engine/World.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 
@@ -358,7 +359,9 @@ void UTN_CarryComponent::Release(ATortugaCharacter* Carried, const FVector& Loca
 	Other->StruggleTime = 0.f;
 	Other->ApplyCarriedLocalState(nullptr);
 
-	Carried->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
+	// Hasta donde llegue sin atravesar nada; el cliente dueño se pone en el mismo sitio (ClientApplyThrow).
+	const FVector Placed = SweepReleaseLocation(Carried, Location);
+	Carried->SetActorLocation(Placed, false, nullptr, ETeleportType::TeleportPhysics);
 	UTN_ShellComponent* Shell = Carried->GetShellComponent();
 	const bool bAsShell = Shell && Shell->IsInShell();
 	// El rebote viejo (NotifyLanded) solo queda para quien no va en el caparazón.
@@ -377,7 +380,27 @@ void UTN_CarryComponent::Release(ATortugaCharacter* Carried, const FVector& Loca
 	{
 		Carried->LaunchCharacter(Velocity, true, true);
 	}
-	Other->ClientApplyThrow(Location, Velocity, bThrown && !bAsShell);
+	Other->ClientApplyThrow(Placed, Velocity, bThrown && !bAsShell);
+}
+
+FVector UTN_CarryComponent::SweepReleaseLocation(const ATortugaCharacter* Carried, const FVector& Target) const
+{
+	const UCapsuleComponent* Capsule = Carried ? Carried->GetCapsuleComponent() : nullptr;
+	UWorld* World = GetWorld();
+	if (!Capsule || !World)
+	{
+		return Target;
+	}
+	// Sin la propia llevada ni quien la lleva (van pegadas y se solapan); lo demás que pararía a su cápsula al andar.
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(TNCarryRelease), false, Carried);
+	Query.AddIgnoredActor(GetOwner());
+	FCollisionResponseParams Response;
+	Capsule->InitSweepCollisionParams(Query, Response);
+	FHitResult Hit;
+	const bool bHit = World->SweepSingleByChannel(Hit, Carried->GetActorLocation(), Target, Capsule->GetComponentQuat(),
+		Capsule->GetCollisionObjectType(), Capsule->GetCollisionShape(), Query, Response);
+	// Si ya empieza metida en algo (poco probable: va encima de quien la lleva), el sitio de siempre.
+	return bHit && !Hit.bStartPenetrating ? Hit.Location : Target;
 }
 
 void UTN_CarryComponent::ClientApplyThrow_Implementation(FVector StartLocation, FVector Velocity, bool bBounce)
