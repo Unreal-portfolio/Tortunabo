@@ -84,40 +84,40 @@ void UTN_WadingComponent::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	// pisar la predicción del CMC en máquinas ajenas (mismo criterio que TN_SlowZoneVolume).
 	if (Character->HasAuthority() || Character->IsLocallyControlled())
 	{
-		ApplyMovementEffects(bWasInWater, CMC);
+		ApplyMovementEffects(bWasInWater);
 	}
 
 	// Salpicaduras: en toda máquina con render, también para pawns simulados.
 	UpdateSplashEffects(DeltaTime, bWasInWater, CMC);
 }
 
-void UTN_WadingComponent::ApplyMovementEffects(bool bWasInWater, UCharacterMovementComponent* CMC)
+void UTN_WadingComponent::ApplyMovementEffects(bool bWasInWater)
 {
-	if (UTN_StaminaComponent* Stamina = StaminaComponentRef.Get())
+	UTN_StaminaComponent* Stamina = StaminaComponentRef.Get();
+	if (!Stamina)
 	{
-		const float SpeedMult = bIsInWater
-			? TNWadingLogic::ComputeSpeedMultiplier(CurrentDepth, MinDepth, FullDepth, WadeSpeedMultiplier)
-			: 1.f;
-		Stamina->SetEnvironmentSpeedMultiplier(SpeedMult);
+		return;
 	}
+	const float SpeedMult = bIsInWater
+		? TNWadingLogic::ComputeSpeedMultiplier(CurrentDepth, MinDepth, FullDepth, WadeSpeedMultiplier)
+		: 1.f;
+	Stamina->SetEnvironmentSpeedMultiplier(SpeedMult);
 
 	if (bIsInWater == bWasInWater)
 	{
 		return;
 	}
 
-	// Edge-trigger igual que el JumpVelocityInZone de TN_SlowZoneVolume: cachear el
-	// original al entrar, restaurarlo al salir.
+	// El salto en el agua es un límite con nombre (UTN_StaminaComponent), como el sirope de TN_SlowZoneVolume: el componente
+	// guarda el salto de base y lo devuelve al quitar el último, así que salir del agua dentro de una zona lenta (o al
+	// revés) ya no deja el salto cambiado.
 	if (bIsInWater)
 	{
-		OriginalJumpZVelocity = CMC->JumpZVelocity;
-		CMC->JumpZVelocity *= JumpInWaterMultiplier;
-		bJumpVelocityOverridden = true;
+		Stamina->SetJumpLimit(TNMovementLimits::WadingSource(), TNMovementLimits::NoCap, JumpInWaterMultiplier);
 	}
-	else if (bJumpVelocityOverridden)
+	else
 	{
-		CMC->JumpZVelocity = OriginalJumpZVelocity;
-		bJumpVelocityOverridden = false;
+		Stamina->ClearJumpLimit(TNMovementLimits::WadingSource());
 	}
 }
 

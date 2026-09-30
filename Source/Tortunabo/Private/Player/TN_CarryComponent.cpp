@@ -453,8 +453,8 @@ void UTN_CarryComponent::ApplyCarrierLocalState(bool bCarrying)
 	LocalWindupStart = -1.0;
 	if (UTN_StaminaComponent* Stamina = Self->GetStaminaComponent())
 	{
-		if (bCarrying) { Stamina->SetSpeedCap(CarrySpeedCap); }
-		else { Stamina->ClearSpeedCap(); }
+		if (bCarrying) { Stamina->SetSpeedCap(TNMovementLimits::CarrySource(), CarrySpeedCap); }
+		else { Stamina->ClearSpeedCap(TNMovementLimits::CarrySource()); }
 	}
 	if (!bCarrying)
 	{

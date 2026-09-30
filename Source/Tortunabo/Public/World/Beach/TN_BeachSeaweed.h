@@ -119,10 +119,12 @@ private:
 	/** Freno aplicado en esta máquina a una tortuga que simula. */
 	struct FHoldState
 	{
-		float OrigJumpZ = 0.f;
 		float AppliedCap = -1.f;
 		bool bHeld = false;
 	};
+
+	/** Nombre de los límites de esta alga en UTN_StaminaComponent (velocidad y salto; varias algas a la vez no se pisan). */
+	FName LimitSource() const { return FName(TEXT("Seaweed"), static_cast<int32>(GetUniqueID())); }
 
 	/** Hueco de la animación de algas enrolladas. */
 	struct FWrapSlot

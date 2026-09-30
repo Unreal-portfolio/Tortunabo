@@ -724,11 +724,11 @@ void UTN_ShellComponent::ApplyShellState(bool bInShell)
 			// El freno entra por el speed cap del componente de stamina, único punto
 			// del proyecto que escribe MaxWalkSpeed. Cap 0 = el personaje no se desplaza.
 			Stamina->SetSprintRequested(false);
-			Stamina->SetSpeedCap(0.f);
+			Stamina->SetSpeedCap(TNMovementLimits::ShellSource(), 0.f);
 		}
 		else
 		{
-			Stamina->ClearSpeedCap();
+			Stamina->ClearSpeedCap(TNMovementLimits::ShellSource());
 		}
 	}
 

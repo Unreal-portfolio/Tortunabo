@@ -76,28 +76,16 @@ void ATN_SlowZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, 
 	if (!StaminaComp) { return; }
 
 	CharactersInZone.Add(Char);
-	StaminaComp->SetSpeedCap(MaxSlowSpeed);
+	// Con el nombre de esta zona: cada zona solapada pone y quita el suyo, y manda el menor (UTN_StaminaComponent).
+	StaminaComp->SetSpeedCap(LimitSource(), MaxSlowSpeed);
 	Char->OnDestroyed.AddUniqueDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
 
-	// Guardar y reducir GravityScale + JumpZVelocity (sirope)
+	// Sirope: gravedad y salto reducidos. El componente guarda los de base con el primer límite y los devuelve al quitar
+	// el último, así que da igual en qué orden se entre y se salga de zonas solapadas (o del agua).
 	if (HasAuthority() || Char->IsLocallyControlled())
 	{
-		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
-		{
-			// Guardar el estado ORIGINAL solo en la PRIMERA SlowZone que pisa el jugador.
-			// Si ya está en otra, CMC->GravityScale ya es el valor "sirope" (no el real);
-			// sobrescribirlo perdería la gravedad a la que hay que volver al salir.
-			if (!OriginalCMCState.Contains(Char))
-			{
-				FSyrupState State;
-				State.OrigGravityScale = CMC->GravityScale;
-				State.OrigJumpZVel     = CMC->JumpZVelocity;
-				OriginalCMCState.Add(Char, State);
-			}
-
-			CMC->GravityScale  = GravityScaleInZone;
-			CMC->JumpZVelocity = JumpVelocityInZone;
-		}
+		StaminaComp->SetGravityScaleOverride(LimitSource(), GravityScaleInZone);
+		StaminaComp->SetJumpLimit(LimitSource(), JumpVelocityInZone);
 	}
 }
 
@@ -109,44 +97,36 @@ void ATN_SlowZoneVolume::OnBoxEndOverlap(UPrimitiveComponent* OverlappedComp, AA
 
 	CharactersInZone.Remove(Char);
 	Char->OnDestroyed.RemoveDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
+	RemoveLimits(Char);
+}
 
-	// El jugador puede estar en varias SlowZones solapadas. Solo revertimos los
-	// efectos (speed cap + gravedad/salto) cuando sale de la ÚLTIMA: si aún está
-	// dentro de otra, mantener el ralentizado.
-	bool bStillInSlowZone = false;
-	TArray<AActor*> Overlapping;
-	Char->GetOverlappingActors(Overlapping, ATN_SlowZoneVolume::StaticClass());
-	for (AActor* OA : Overlapping)
+void ATN_SlowZoneVolume::RemoveLimits(ATortugaCharacter* Char) const
+{
+	UTN_StaminaComponent* Stamina = Char ? Char->FindComponentByClass<UTN_StaminaComponent>() : nullptr;
+	if (!Stamina) { return; }
+
+	// Solo los de esta zona: si sigue en otra solapada, los de esa siguen mandando.
+	Stamina->ClearSpeedCap(LimitSource());
+	if (HasAuthority() || Char->IsLocallyControlled())
 	{
-		if (OA && OA != this) { bStillInSlowZone = true; break; }
+		Stamina->ClearGravityScaleOverride(LimitSource());
+		Stamina->ClearJumpLimit(LimitSource());
 	}
+}
 
-	if (!bStillInSlowZone)
+void ATN_SlowZoneVolume::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// La zona desaparece con tortugas dentro (fin de ronda, streaming): sin EndOverlap, sus límites se quedarían puestos.
+	for (const TWeakObjectPtr<ATortugaCharacter>& WeakChar : CharactersInZone)
 	{
-		// SpeedCap se aplicó en todas las máquinas (ver OnBoxBeginOverlap) → limpiarlo
-		// también en todas. Antes se limpiaba al salir de CUALQUIER zona, devolviendo
-		// velocidad de suelo plena si el jugador seguía dentro de otra solapada.
-		if (UTN_StaminaComponent* Stamina = Char->FindComponentByClass<UTN_StaminaComponent>())
+		if (ATortugaCharacter* Char = WeakChar.Get())
 		{
-			Stamina->ClearSpeedCap();
+			Char->OnDestroyed.RemoveDynamic(this, &ATN_SlowZoneVolume::OnCharacterDestroyed);
+			RemoveLimits(Char);
 		}
-
-		if (HasAuthority() || Char->IsLocallyControlled())
-		{
-			if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
-			{
-				if (const FSyrupState* State = OriginalCMCState.Find(Char))
-				{
-					CMC->GravityScale  = State->OrigGravityScale;
-					CMC->JumpZVelocity = State->OrigJumpZVel;
-				}
-			}
-		}
-
-		// Liberar el estado guardado solo al salir de la última zona; si sigue en otra,
-		// esa zona todavía necesita el original para restaurarlo cuando el jugador salga.
-		OriginalCMCState.Remove(Char);
 	}
+	CharactersInZone.Reset();
+	Super::EndPlay(EndPlayReason);
 }
 
 void ATN_SlowZoneVolume::OnCharacterDestroyed(AActor* DestroyedActor)
@@ -155,5 +135,4 @@ void ATN_SlowZoneVolume::OnCharacterDestroyed(AActor* DestroyedActor)
 	if (!Char) { return; }
 
 	CharactersInZone.Remove(Char);
-	OriginalCMCState.Remove(Char);
 }

@@ -977,7 +977,7 @@ void ATortugaCharacter::MulticastApplyMareoEffect_Implementation(float Duration)
 	{
 		if (UTN_StaminaComponent* SC = FindComponentByClass<UTN_StaminaComponent>())
 		{
-			SC->SetSpeedCap(MareoSpeedCap);
+			SC->SetSpeedCap(TNMovementLimits::MareoSource(), MareoSpeedCap);
 
 			FTimerDelegate Del = FTimerDelegate::CreateUObject(this, &ATortugaCharacter::ClearMareoSpeedCap);
 			GetWorldTimerManager().SetTimer(MareoTimerHandle, Del, Duration, false);
@@ -993,9 +993,10 @@ void ATortugaCharacter::MulticastApplyMareoEffect_Implementation(float Duration)
 
 void ATortugaCharacter::ClearMareoSpeedCap()
 {
+	// Solo el tope del mareo: el de llevar a otra, el del caparazón o el de una zona lenta siguen.
 	if (UTN_StaminaComponent* SC = FindComponentByClass<UTN_StaminaComponent>())
 	{
-		SC->ClearSpeedCap();
+		SC->ClearSpeedCap(TNMovementLimits::MareoSource());
 	}
 }
 

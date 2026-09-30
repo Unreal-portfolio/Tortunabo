@@ -26,6 +26,7 @@ public:
 	ATN_SlowZoneVolume();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaTime) override;
 
 protected:
@@ -82,9 +83,14 @@ private:
 	/** Personajes actualmente dentro de la zona — para evitar aplicar el cap dos veces. */
 	TSet<TWeakObjectPtr<ATortugaCharacter>> CharactersInZone;
 
-	struct FSyrupState { float OrigGravityScale = 1.f; float OrigJumpZVel = 600.f; };
-	/** Valores CMC originales por personaje — restaurados al salir de la zona. */
-	TMap<TWeakObjectPtr<ATortugaCharacter>, FSyrupState> OriginalCMCState;
+	/**
+	 * Quita a Char los límites de esta zona (velocidad, salto y gravedad, con el nombre de la zona en UTN_StaminaComponent).
+	 * Los de otras zonas solapadas siguen; al quitar el último, el salto y la gravedad vuelven a su base.
+	 */
+	void RemoveLimits(ATortugaCharacter* Char) const;
+
+	/** Nombre de los límites de esta zona en UTN_StaminaComponent (único aunque dos subniveles repitan el del actor). */
+	FName LimitSource() const { return FName(TEXT("SlowZone"), static_cast<int32>(GetUniqueID())); }
 
 	/** Limpia el estado de un personaje que se destruyó dentro de la zona. */
 	UFUNCTION()
