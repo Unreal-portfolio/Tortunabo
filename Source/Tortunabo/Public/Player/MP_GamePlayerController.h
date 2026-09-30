@@ -244,6 +244,13 @@ protected:
 	/** @brief Carga UInputActions (soft refs) y bindea acciones de ruedas radiales y menú. */
 	virtual void SetupInputComponent() override;
 
+	/**
+	 * @brief El servidor me echa (AGameSession::KickPlayer, cuando la expulsión por ATN_RoomInfo no ha llegado a tiempo).
+	 *        Vuelve al menú con el aviso de expulsión (UMP_GameInstance::HandleKickedFromRoom) antes de que se corte la
+	 *        conexión, para que no salga «el anfitrión se ha ido» ni se intente reconectar.
+	 */
+	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
+
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UUserWidget> VoiceIndicatorWidgetClass;
 
