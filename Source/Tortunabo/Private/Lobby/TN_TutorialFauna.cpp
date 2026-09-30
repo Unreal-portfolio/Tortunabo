@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Lobby/TN_TutorialFauna.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Lobby/TN_TutorialCourse.h"
 #include "TN_TutorialLayout.h"
 #include "../World/ProcMap/TN_ProcMapFaunaMeshes.h"
@@ -196,7 +197,7 @@ void ATN_TutorialFauna::Init(const ATN_TutorialCourse* InCourse)
 	UMaterialInterface* Solid = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFoliage.M_ProcFoliage"), nullptr, LOAD_NoWarn);
 	if (!Solid)
 	{
-		Solid = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		Solid = TNMaterials::VertexColor();
 	}
 	UMaterialInterface* Glow = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcGlow.M_ProcGlow"), nullptr, LOAD_NoWarn);
 	if (!Glow)

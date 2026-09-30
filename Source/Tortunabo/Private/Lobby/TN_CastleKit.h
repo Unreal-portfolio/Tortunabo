@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/UObjectGlobals.h"
@@ -36,8 +37,7 @@ namespace TNCastleKit
 
 	inline UMaterialInterface* VertexColorMaterial()
 	{
-		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-		return Mat ? Mat : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		return TNMaterials::VertexColor();
 	}
 
 	inline float SmoothStep01(float X)

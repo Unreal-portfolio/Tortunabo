@@ -268,7 +268,8 @@ private:
 	void SlidePool(const TNProcMap::FFeature& F, FVector2D& OutCenter, double& OutRadius, double& OutZ, FVector2D& OutFoot, FVector2D& OutFlow) const;
 	FVector TerrainNormalMap(const FVector2D& MapPoint) const;
 	double PathDistanceMap(const FVector2D& MapPoint) const;
-	UMaterialInterface* ResolveMaterial(UMaterialInterface* Preferred, const TCHAR* FallbackPath) const;
+	/** Preferred o, si es nulo, el material de color de vértice del proyecto (TNMaterials::VertexColor). */
+	UMaterialInterface* ResolveMaterial(UMaterialInterface* Preferred) const;
 	void ResolveBiomeColors(ETNProcBiome Biome, FLinearColor& Ground, FLinearColor& Path, FLinearColor& Rock, FLinearColor& Bed) const;
 	AActor* SpawnMapActor(UClass* Class, const FTransform& Transform, bool bTrackAsServer);
 

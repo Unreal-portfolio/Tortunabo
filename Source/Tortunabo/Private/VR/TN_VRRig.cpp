@@ -3,6 +3,7 @@
 #include "VR/TN_VRSubsystem.h"
 #include "VR/TN_VRMath.h"
 #include "Core/TN_Log.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
@@ -57,8 +58,7 @@ namespace TNVRRigDetail
 
 	UMaterialInterface* VertexColorMaterial()
 	{
-		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-		return Mat ? Mat : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		return TNMaterials::VertexColor();
 	}
 
 	UInputAction* LoadAction(const TCHAR* Name)

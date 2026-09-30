@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
@@ -1462,13 +1463,9 @@ void ATN_ProcMapGenerator::SlidePool(const TNProcMap::FFeature& F, FVector2D& Ou
 // Materiales y colores
 // ─────────────────────────────────────────────────────────────────────────────
 
-UMaterialInterface* ATN_ProcMapGenerator::ResolveMaterial(UMaterialInterface* Preferred, const TCHAR* FallbackPath) const
+UMaterialInterface* ATN_ProcMapGenerator::ResolveMaterial(UMaterialInterface* Preferred) const
 {
-	if (Preferred)
-	{
-		return Preferred;
-	}
-	return FallbackPath ? LoadObject<UMaterialInterface>(nullptr, FallbackPath) : nullptr;
+	return Preferred ? Preferred : TNMaterials::VertexColor();
 }
 
 void ATN_ProcMapGenerator::ResolveBiomeColors(ETNProcBiome Biome, FLinearColor& Ground, FLinearColor& Path, FLinearColor& Rock, FLinearColor& Bed) const
@@ -1542,8 +1539,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	}
 	const double FinishX = Layout.EndPoint.X;
 
-	UMaterialInterface* TerrainMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr,
-		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+	UMaterialInterface* TerrainMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr);
 	const uint32 ColorSeed = Layout.Params.Seed ^ 0xC0105u;
 
 	const int32 TilesX = QuadsX / TileQuads;
@@ -3041,8 +3037,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 
 	// ── Componentes ─────────────────────────────────────────────────────────
 	const TArray<FProcMeshTangent> NoTangents;
-	UMaterialInterface* BasicMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-	UMaterialInterface* VertexMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+	UMaterialInterface* VertexMat = TNMaterials::VertexColor();
 
 	StructureMesh = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
 	StructureMesh->SetupAttachment(RootComponent);
@@ -3052,16 +3047,15 @@ void ATN_ProcMapGenerator::BuildStructures()
 	if (!Rock.IsEmpty())
 	{
 		StructureMesh->CreateMeshSection_LinearColor(0, Rock.Verts, Rock.Tris, Rock.Normals, Rock.UVs, Rock.Colors, NoTangents, true);
-		StructureMesh->SetMaterial(0, (Settings && Settings->RockMaterial) ? Settings->RockMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		StructureMesh->SetMaterial(0, (Settings && Settings->RockMaterial) ? Settings->RockMaterial.Get() : VertexMat);
 	}
 	if (!Wood.IsEmpty())
 	{
 		StructureMesh->CreateMeshSection_LinearColor(1, Wood.Verts, Wood.Tris, Wood.Normals, Wood.UVs, Wood.Colors, NoTangents, true);
-		StructureMesh->SetMaterial(1, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		StructureMesh->SetMaterial(1, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : VertexMat);
 	}
 	// Formaciones temáticas con su color de vértice: las del camino con colisión, los hitos lejanos sin ella.
-	UMaterialInterface* PaintMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr,
-		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+	UMaterialInterface* PaintMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr);
 	if (!Painted.IsEmpty())
 	{
 		StructureMesh->CreateMeshSection_LinearColor(2, Painted.Verts, Painted.Tris, Painted.Normals, Painted.UVs, Painted.Colors, NoTangents, true);
@@ -3081,7 +3075,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 	if (!Lava.IsEmpty())
 	{
 		DecorMesh->CreateMeshSection_LinearColor(0, Lava.Verts, Lava.Tris, Lava.Normals, Lava.UVs, Lava.Colors, NoTangents, false);
-		DecorMesh->SetMaterial(0, (Settings && Settings->LavaMaterial) ? Settings->LavaMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		DecorMesh->SetMaterial(0, (Settings && Settings->LavaMaterial) ? Settings->LavaMaterial.Get() : VertexMat);
 	}
 	if (!SlideWater.IsEmpty())
 	{
@@ -3092,14 +3086,14 @@ void ATN_ProcMapGenerator::BuildStructures()
 		if (!SlideMat)
 		{
 			SlideMat = Settings && Settings->SlideWaterMaterial ? Settings->SlideWaterMaterial.Get()
-				: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+				: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : VertexMat);
 		}
 		DecorMesh->SetMaterial(1, SlideMat);
 	}
 	if (!Foliage.IsEmpty())
 	{
 		DecorMesh->CreateMeshSection_LinearColor(2, Foliage.Verts, Foliage.Tris, Foliage.Normals, Foliage.UVs, Foliage.Colors, NoTangents, false);
-		DecorMesh->SetMaterial(2, VertexMat ? VertexMat : BasicMat);
+		DecorMesh->SetMaterial(2, VertexMat);
 	}
 	// Lo que brilla en las cuevas (setas, cristales, llamas, ojos de la estatua, cielo del lucernario):
 	// emisivo del color del vértice; sin el material, el de depuración (también sin iluminar).
@@ -3107,7 +3101,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 	{
 		DecorMesh->CreateMeshSection_LinearColor(3, Glow.Verts, Glow.Tris, Glow.Normals, Glow.UVs, Glow.Colors, NoTangents, false);
 		UMaterialInterface* GlowMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcGlow.M_ProcGlow"));
-		DecorMesh->SetMaterial(3, GlowMat ? GlowMat : (VertexMat ? VertexMat : BasicMat));
+		DecorMesh->SetMaterial(3, GlowMat ? GlowMat : VertexMat);
 	}
 	// Haces de luz de los lucernarios: translúcido con la opacidad en el alfa del vértice.
 	if (!Beam.IsEmpty())
