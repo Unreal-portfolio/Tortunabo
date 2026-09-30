@@ -227,6 +227,12 @@ private:
 	void ApplyCarrierLocalState(bool bCarrying);
 	void ApplyCarriedLocalState(ATortugaCharacter* Carrier);
 	void Release(ATortugaCharacter* Carried, const FVector& Location, const FVector& Velocity, bool bThrown, bool bExitOnRest);
+
+	/**
+	 * Dónde queda la llevada al soltarla: barrido de su cápsula desde donde va (encima de quien la lleva) hasta Target; si
+	 * choca con algo, donde choca. Sin él, lanzarla de cara a un muro de menos de ~70 cm la dejaba al otro lado (#69).
+	 */
+	FVector SweepReleaseLocation(const ATortugaCharacter* Carried, const FVector& Target) const;
 	void RestoreCollisionWith(ATortugaCharacter* Other);
 
 	/** Servidor, en el llevado: forcejeo actual y tiempo acumulado. */
