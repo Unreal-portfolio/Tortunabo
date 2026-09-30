@@ -5,7 +5,7 @@
 # - Cada día, antes de la rutina: reconcilia el tablero (`sync`, `auditar` y `colisiones` con `--aplicar`) y publica
 #   el volcado del tablero en la issue VOLCADO_ISSUE, que la rutina lee.
 # - A mano (`workflow_dispatch`): ejecuta un comando de `tablero.py` de la lista cerrada de Scripts/tablero/volcado.py
-#   y vuelve a publicar el volcado. Así mueve tarjetas la rutina.
+#   y vuelve a publicar el volcado. Así mueve tarjetas la rutina. Sin comando hace lo mismo que el cron.
 #
 # El código del tablero se toma siempre de `dev`. Este fichero tiene que estar también en `main`: GitHub solo ejecuta
 # los `schedule` de la rama por defecto.
@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       comando:
-        description: 'Comando de tablero.py (p. ej. estado 123 Ready). Vacío: solo reconciliar y volcar.'
+        description: 'Comando de tablero.py (p. ej. estado 123 Ready). Vacío: reconciliar y volcar, como el cron.'
         required: false
         default: ""
 
@@ -70,7 +70,7 @@ jobs:
         run: $TABLERO puente --comando "$COMANDO"
 
       - name: Reconciliar (sync, auditar y colisiones)
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || inputs.comando == ''
         run: |
           {
             echo "### sync"; $TABLERO sync --aplicar

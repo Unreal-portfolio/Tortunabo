@@ -13,6 +13,7 @@ El tablero lo mantienes tú, sin esperar a que te lo pidan. Ciclo y estados: «T
 4. `uv run python Scripts/tablero/tablero.py coger <n>` (`--forzar` si la tenía otro, p. ej. al arreglar lo que encontraste revisando): asignada, In progress y rama `feat|fix/<n>-<slug>` desde `origin/dev`. Si hay cambios sin guardar, resuélvelo con el usuario (commit o `git stash`); nunca descartes cambios.
 5. Si vas a tocar assets o mapas binarios, comenta en la issue la lista de ficheros.
 6. Commits pequeños en conventional commits. En cuanto haya algo jugable, que el usuario lo pruebe y regístralo con `tortu-editor`: si funciona, Editor = Funciona y no pasará por QA editor; si falla, sigue en In progress. Al terminar, `tortu-entregar`: PR pequeñas y frecuentes.
+7. Si el usuario la deja sin terminar, `tablero.py soltar <n> --motivo "<por qué y en qué punto queda>"`: asignado significa «estoy con ella ahora», y una issue asignada que nadie toca engaña al resto.
 
 ## Issues `colision`
 

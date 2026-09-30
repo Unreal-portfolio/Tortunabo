@@ -9,6 +9,7 @@ memoria en las issues y auditar la organización del tablero.
 Uso (desde la raíz del repo):
     uv run python Scripts/tablero/tablero.py pendiente
     uv run python Scripts/tablero/tablero.py coger 42
+    uv run python Scripts/tablero/tablero.py soltar 42 --motivo "..."
     uv run python Scripts/tablero/tablero.py estado 42 "In review"
     uv run python Scripts/tablero/tablero.py editor 42 funciona|falla --como "PIE 4P"   # en cualquier estado
     uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug --area Red --prioridad P1 --tamano S --cuerpo cuerpo.md --objeto "Rally Tortuga"
@@ -157,6 +158,17 @@ def cmd_coger(args: argparse.Namespace) -> None:
     git("fetch", "origin", INTEGRACION)
     git("switch", "-c", rama, f"origin/{INTEGRACION}")
     print(f"#{args.numero} asignada a {yo}, en In progress. Rama nueva: {rama} (desde origin/{INTEGRACION}).")
+
+
+def cmd_soltar(args: argparse.Namespace) -> None:
+    """Dejo de trabajar en la issue: sin asignado y de vuelta a Ready. Asignado significa «estoy con ella ahora»."""
+    proyecto = cargar_proyecto()
+    if args.numero not in proyecto["items"]:
+        raise ErrorTablero(f"La issue #{args.numero} no está en el tablero.")
+    gh("issue", "edit", str(args.numero), "--repo", REPO, "--remove-assignee", "@me")
+    poner_campo(proyecto, args.numero, "Status", "Ready")
+    comentar(args.numero, f"Vuelve a Ready sin asignado: {args.motivo}")
+    print(f"#{args.numero} → Ready, sin asignado")
 
 
 def cmd_estado(args: argparse.Namespace) -> None:
@@ -534,6 +546,10 @@ def anadir_comandos_de_flujo(sub: argparse._SubParsersAction) -> None:
     p.add_argument("numero", type=int)
     p.add_argument("--forzar", action="store_true")
     p.set_defaults(fn=cmd_coger)
+    p = sub.add_parser("soltar", help="dejar una issue que tenía en curso: sin asignado y de vuelta a Ready")
+    p.add_argument("numero", type=int)
+    p.add_argument("--motivo", required=True, help="por qué la dejo y en qué punto queda")
+    p.set_defaults(fn=cmd_soltar)
     p = sub.add_parser("estado", help="mover una issue de columna")
     p.add_argument("numero", type=int)
     p.add_argument("estado", choices=ESTADOS)

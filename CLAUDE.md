@@ -43,7 +43,7 @@ Dos validaciones por issue: **Revisión IA** (`Pendiente` / `Aprobada` / `Cambio
 
 Ciclo paso a paso:
 
-1. **Coger** (`coger <n>`): In progress, asignada y rama desde `origin/dev`. `coger` rechaza las issues con bloqueantes abiertas.
+1. **Coger** (`coger <n>`): In progress, asignada y rama desde `origin/dev`. `coger` rechaza las issues con bloqueantes abiertas. Asignado significa «estoy con ella ahora»: si la dejas sin terminar, `soltar <n> --motivo "..."` la devuelve a Ready sin asignado.
 2. **Probar mientras se trabaja** (`editor <n> funciona|falla`): si funciona, Editor = Funciona y la issue no pasará por QA editor; si falla, se queda en In progress con el fallo comentado: no se manda algo que no funciona.
 3. **Entregar** (`revision <n>`): In review con revisor cruzado. Si el autor no la ha probado, va con Editor = Sin probar y el comentario «Sin QA editor». Con Editor = Falla, `revision` la rechaza.
 4. **Revisar** (`ia <n> aprobada|cambios`): con cambios pasa a Revisiones con el fallo comentado. Lo normal es que el propio revisor lo arregle: la coge con `coger <n> --forzar` (In progress a su nombre) y la vuelve a entregar; la nueva revisión la hace otro.
@@ -73,6 +73,7 @@ Cuando el usuario dice «esto no funciona», Claude decide y registra sin pregun
 ```bash
 uv run python Scripts/tablero/tablero.py pendiente             # qué hay para mí (colisiones y organización primero)
 uv run python Scripts/tablero/tablero.py coger <n> [--forzar]  # asignarme, In progress y rama
+uv run python Scripts/tablero/tablero.py soltar <n> --motivo "..." # la dejo: sin asignado y de vuelta a Ready
 uv run python Scripts/tablero/tablero.py editor <n> funciona|falla --como "PIE 4P" --nota "..."
 uv run python Scripts/tablero/tablero.py revision <n>          # terminada: In review con revisor cruzado
 uv run python Scripts/tablero/tablero.py ia <n> aprobada|cambios --revisor "<quién> (Claude)" --nota "..."
@@ -90,9 +91,16 @@ uv run python Scripts/tablero/tablero.py volcado [--publicar <issue>]   # tabler
 
 Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`.
 
-### Revisión diaria en la nube
+### Organización diaria: el puente y la rutina
 
-Una rutina de Claude revisa cada mañana issues, PR y código y deja el parte en la issue #127. Su entorno solo llega a las rutas REST del repositorio, así que no puede leer ni mover el tablero. El workflow «Puente del tablero» (`.github/workflows/tablero-puente.yml`) lo hace por ella: a las 7:15 ejecuta `sync`, `auditar` y `colisiones` con `--aplicar` y publica el volcado del tablero en la issue #131; lanzado a mano con un comando (`estado 123 Ready`), lo ejecuta si está en la lista cerrada de `Scripts/tablero/volcado.py`. Las issues #127 y #131 no van al tablero. El workflow tiene que estar también en `main`, porque el cron solo se ejecuta desde la rama por defecto.
+Dos automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa código.
+
+- **Puente del tablero** (`.github/workflows/tablero-puente.yml`, 7:15): ejecuta `sync`, `auditar` y `colisiones` con `--aplicar` y publica el volcado del tablero en la issue #131. Lanzado a mano con un comando (`estado 123 Ready`), lo ejecuta si está en la lista cerrada de `Scripts/tablero/volcado.py`. Está también en `main`, porque el cron solo se ejecuta desde la rama por defecto.
+- **Rutina de Claude** (7:30): hace de responsable de calidad de las issues. Lee el volcado, corrige por el puente lo que es evidente, avisa de lo que no lo es y deja el parte del día en la issue #127. Su entorno solo llega a las rutas REST del repositorio: por eso lee y mueve el tablero a través del puente.
+
+Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (se quita sola cuando `auditar` deja de ver el problema), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.
+
+Las issues #127 y #131 no van al tablero.
 
 ## Memoria del equipo: las issues
 
