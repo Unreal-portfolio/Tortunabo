@@ -1,7 +1,7 @@
 """Tests de Scripts/tablero/volcado.py (sin red ni gh)."""
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -90,3 +90,16 @@ def test_silenciar_distingue_la_falta_del_scope_de_otros_errores():
                  "The 'updateSubscription' field requires one of the following scopes: ['notifications']")
     assert volcado.falta_scope_de_notificaciones(sin_scope)
     assert not volcado.falta_scope_de_notificaciones("gh api graphql -f…: HTTP 502")
+
+
+def test_atascadas_solo_las_que_esperan_a_alguien_y_llevan_dias_paradas():
+    def parada(numero, status, dias, **extra):
+        fecha = (AHORA - timedelta(days=dias, hours=1)).isoformat().replace("+00:00", "Z")
+        return {**_issue(numero, status, **extra), "updatedAt": fecha}
+
+    issues = [parada(1, "In review", 5), parada(2, "Revisiones", 9), parada(3, "In review", 1), parada(4, "Ready", 30),
+              parada(5, "Validada", 4, abierta=False), _issue(6, "In progress")]
+    assert [(i["number"], dias) for i, dias in volcado.atascadas(issues, AHORA, 3)] == [(2, 9), (1, 5)]
+    texto = volcado.render(_items(*issues), {}, AHORA, 3)
+    assert "## Sin movimiento desde hace más de 3 días (2)" in texto and "| #2 | Revisiones | 9 |" in texto
+    assert "Sin movimiento" not in volcado.render(_items(parada(3, "In review", 1)), {}, AHORA, 3)

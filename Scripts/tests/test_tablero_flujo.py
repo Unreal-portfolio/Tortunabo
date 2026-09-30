@@ -194,3 +194,18 @@ def test_aprobar_con_bloqueantes_abiertas_deja_en_bloqueada():
                                           ("Codex", None), ("IA revisora", None), ("", None), (None, None)])
 def test_revisor_del_equipo_sale_de_la_firma(firma, login):
     assert flujo.revisor_del_equipo(firma, {"SkiTemplar": {}, "Mokius": {}}) == login
+
+
+def test_firma_de_puente_solo_en_comandos_lanzados_a_mano():
+    puente = {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_TRIGGERING_ACTOR": "Mokius"}
+    assert flujo.firma_de_puente(puente) == "\n\n_Lanzado por Mokius a través del puente._"
+    assert flujo.firma_de_puente({**puente, "GITHUB_EVENT_NAME": "schedule"}) == ""
+    assert flujo.firma_de_puente({}) == ""
+    assert flujo.firma_de_puente({"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "workflow_dispatch"}) == ""
+
+
+def test_sin_firma_recupera_el_texto_del_tablero():
+    texto = "**Revisión de organización** (`tablero.py auditar`)\n- sin Fase"
+    firmado = texto + flujo.firma_de_puente({"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "workflow_dispatch",
+                                             "GITHUB_ACTOR": "SkiTemplar"})
+    assert firmado != texto and flujo.sin_firma(firmado) == texto == flujo.sin_firma(texto)

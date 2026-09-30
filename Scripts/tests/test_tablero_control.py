@@ -292,3 +292,10 @@ def test_binarios_llevan_decision_y_no_se_mezclan():
     assert "No mezclar" in colisiones.cuerpo(antigua, reciente, ficheros, "dev")
     texto = colisiones.cuerpo(antigua, reciente, ["Source/X.cpp"], "dev")
     assert "Rebasa la PR más reciente, #12" in texto and "feat/9-a" in texto
+
+
+def test_aviso_de_organizacion_firmado_por_el_puente_no_se_repite():
+    lista = [auditoria.problema("sin Fase")]
+    firmado = auditoria.texto_comentario(lista) + "\n\n_Lanzado por Mokius a través del puente._"
+    ya = _issue(etiquetas={"tarea", auditoria.ETIQUETA}, comentarios=[firmado])
+    assert auditoria.acciones(ya, lista)["comentarios"] == []

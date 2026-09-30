@@ -290,7 +290,7 @@ def cmd_nueva(args: argparse.Namespace) -> None:
 
 def cmd_objeto(args: argparse.Namespace) -> None:
     """Busca el objeto abierto con ese título o lo crea; lo deja en el proyecto sin Status."""
-    numero, creado = objetos.buscar_o_crear(gh, REPO, args.nombre, args.descripcion)
+    numero, creado = objetos.buscar_o_crear(gh, REPO, args.nombre, args.descripcion, nuevo=args.nuevo)
     proyecto = cargar_proyecto()
     item_de_issue(proyecto, numero)
     if args.area:
@@ -630,7 +630,7 @@ def cmd_volcado(args: argparse.Namespace) -> None:
     for pr in prs_abiertas():
         for numero in issues_de_pr(pr):
             prs_por_issue.setdefault(numero, []).append(pr["number"])
-    texto = volcado.render(proyecto["items"], prs_por_issue, datetime.now(timezone.utc))
+    texto = volcado.render(proyecto["items"], prs_por_issue, datetime.now(timezone.utc), CONFIG["dias_sin_movimiento"])
     if args.publicar is None:
         print(texto)
         return
@@ -691,6 +691,7 @@ def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
     p.add_argument("nombre")
     p.add_argument("--area")
     p.add_argument("--descripcion")
+    p.add_argument("--nuevo", action="store_true", help="crearlo aunque haya objetos con nombre parecido")
     p.set_defaults(fn=cmd_objeto)
     p = sub.add_parser("colgar", help="colgar una issue existente como sub-issue de otra")
     p.add_argument("hijo", type=int)

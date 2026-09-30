@@ -217,7 +217,7 @@ def acciones(issue: dict, lista: list[dict]) -> dict:
         comentarios.append(f"{CABECERA}: corregido sin más.\n" + "\n".join(f"- {p['texto']}" for p in triviales))
     etiquetada = ETIQUETA in issue["etiquetas"]
     texto = texto_comentario(organizacion) if organizacion else None
-    if texto and not any(c.strip() == texto for c in issue["comentarios"]):
+    if texto and not any(flujo.sin_firma(c) == texto for c in issue["comentarios"]):
         comentarios.append(texto)
     return {"campos": campos, "reabrir": bool(graves) and issue["estado"] != "OPEN", "comentarios": comentarios,
             "etiquetar": bool(organizacion) and not etiquetada, "desetiquetar": not organizacion and etiquetada}
