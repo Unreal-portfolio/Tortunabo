@@ -47,7 +47,7 @@ Ciclo paso a paso:
 2. **Probar mientras se trabaja** (`editor <n> funciona|falla`): si funciona, Editor = Funciona y la issue no pasará por QA editor; si falla, se queda en In progress con el fallo comentado: no se manda algo que no funciona.
 3. **Entregar** (`revision <n>`): In review con revisor cruzado. Si el autor no la ha probado, va con Editor = Sin probar y el comentario «Sin QA editor». Con Editor = Falla, `revision` la rechaza.
 4. **Revisar** (`ia <n> aprobada|cambios --revisor "<login> (Claude)"`): el campo Revisor pasa a ser quien ha revisado de verdad. Con cambios pasa a Revisiones con el fallo comentado. Lo normal es que el propio revisor lo arregle: la coge con `coger <n> --forzar` (In progress a su nombre) y la vuelve a entregar; la nueva revisión la hace otro.
-5. **Fusionar** (aprobadores; `gh pr merge` y `sync --aplicar`): Editor = Funciona → Done y se cierra; si no, QA editor, la prueba quien sea (`editor <n> funciona`) → Done.
+5. **Fusionar** en `dev` (cualquiera de los tres, con la revisión IA aprobada y, en un lote, `lote estado` en verde; `gh pr merge` y `sync --aplicar`; lo que se salte el ciclo lo detecta «Avisos del tablero»): Editor = Funciona → Done y se cierra; si no, QA editor, la prueba quien sea (`editor <n> funciona`) → Done.
 6. **Cerrar** (`resumen <n>`): cada issue que llega a Done lleva su comentario **Resumen**.
 
 Una prueba que falla en In review, QA editor o con la issue cerrada la lleva a Revisiones (la reabre si hace falta, con `regresion` si ya funcionaba). Regla única que aplican `ia`, `editor` y `sync`: Done solo con la PR en dev, Revisión IA = Aprobada y Editor = Funciona.
@@ -112,7 +112,7 @@ uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripci
 uv run python Scripts/tablero/tablero.py estado <n> <estado> | campo <n> <campo> <valor>
 uv run python Scripts/tablero/tablero.py sync|auditar|colisiones [--aplicar]
 uv run python Scripts/tablero/tablero.py volcado [--publicar <issue>]   # tablero completo en Markdown
-uv run python Scripts/tablero/tablero.py avisos [--aplicar] [--publicar 196 --parte 127]   # pushes directos sin revisión y aviso por persona
+uv run python Scripts/tablero/tablero.py avisos [--aplicar] [--publicar 196 --parte 127]   # lo que entró en dev sin revisión y el parte, al director
 ```
 
 Requiere `gh` autenticado con el scope de proyectos: `gh auth refresh -s project`. **Cada persona ejecuta `tablero.py` en local con su `gh`**: así sus comentarios y validaciones salen con su cuenta. El puente es para la rutina y para quien no tiene el repo a mano. Cada comando gasta unos 110 puntos de los 5000 por hora de la API de GraphQL de esa cuenta: no lances decenas seguidas. Si `coger` no puede cambiar de rama por cambios sin guardar, resuélvelo con la persona (commit o `git stash`); nunca los descartes.
@@ -126,7 +126,7 @@ Tres automatismos mantienen el tablero cada mañana. Ninguno toca ni revisa cód
 
 Un aviso nunca vive solo en el parte. Siempre queda como estado en el tablero, y `pendiente` lo enseña arriba hasta que se resuelve: etiqueta `revisar-organizacion` con su comentario (la pone `auditar` y la quita sola cuando deja de ver el problema), etiqueta `revisar-qa` con su comentario (la pone y la quita la rutina, para lo que un script no ve), etiqueta `peticion` (conversación sin contestar), Revisiones con P0, o etiqueta `decision` con la pregunta. El parte solo resume. Al abrir sesión, lee el último (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`) y ejecuta los comandos que haya dejado pendientes.
 
-- **Avisos del tablero** (`.github/workflows/tablero-avisos.yml`): lo lanza la rutina al terminar su parte; a las 9:00, si ese día no se ha publicado, lo lanza el cron. Ejecuta `avisos --aplicar`. Cada push directo a `dev` con commits que no son de ninguna PR fusionada abre una issue `sin-revision` (In review, P0, revisor cruzado) si quien lo hizo no es aprobador; los de los aprobadores solo se avisan. Subir o fusionar directamente está permitido: lo que no puede faltar es la revisión IA y la prueba en el editor, y la issue se cierra sola cuando las dos están. Después comenta en la issue #196 un aviso por persona (incidencias, lo que tiene que revisar, Revisiones, QA editor, peticiones, decisiones y atascadas) que la menciona, con el parte de la rutina para los aprobadores: GitHub se lo manda por correo. Lo escribe github-actions, porque GitHub no avisa a nadie de lo que hace su propia cuenta. También está en `main`.
+- **Avisos del tablero** (`.github/workflows/tablero-avisos.yml`, 8:30): el correo del director con el resultado del día. Ejecuta `avisos --aplicar`: cada push directo a `dev` con commits de código que no son de ninguna PR fusionada abre una issue `sin-revision` (In review, P0, revisor cruzado), sea quien sea el autor, y la issue se cierra sola cuando tiene las dos validaciones; cada PR fusionada en `dev` con una issue sin revisión aprobada (en un lote, también sin probar), o sin issue y con código, sale como incidencia. Subir o fusionar en `dev` puede cualquiera de los tres: lo que se controla es que el trabajo que lleva revisión y prueba las tenga. Lo que solo toca rutas de organización (`avisos.rutas_organizacion` en `Scripts/tablero/equipo.json`: tablero, skills, workflows, guía y documentación) va sin ellas a propósito. Después comenta en la issue #196 el aviso de cada destinatario (`avisos.destinatarios`, hoy SkiTemplar) con una mención: incidencias, lo que espera por él y el parte de la rutina; GitHub se lo manda por correo. Lo escribe github-actions, porque GitHub no avisa a nadie de lo que hace su propia cuenta. También está en `main`.
 
 Las issues #127, #131 y #196 no van al tablero. El puente actúa con el token de SkiTemplar, y GitHub suscribe a quien comenta: por eso termina con `tablero.py silenciar`, que lo da de baja de las issues abiertas (le siguen llegando las PR, las menciones y lo asignado). Si quien lanza el puente a mano tiene su propio secreto (`TABLERO_TOKEN_MOKIUS`, `TABLERO_TOKEN_RUBI`), el puente usa el suyo y sus comentarios salen con su cuenta. El token del secreto `TABLERO_TOKEN` es classic con `repo`, `project`, `read:org` y `notifications`; sin el último, `silenciar` avisa y no silencia, pero el puente no falla.
 
@@ -139,7 +139,7 @@ La memoria del equipo son las issues: su cuerpo y sus comentarios **Resumen** (�
 - `tortu-que-hacer`: «¿qué hago?», «¿qué hay pendiente?». Lee el tablero y propone (colisiones y organización primero).
 - `tortu-coger`: empezar, retomar o arreglar una issue (también las `colision`).
 - `tortu-entregar`: PR hacia dev, lote si hay varias issues y paso a revisión cruzada.
-- `tortu-revisar`: revisión IA cruzada; los aprobadores, además, fusionan, deciden, auditan y desglosan objetos.
+- `tortu-revisar`: revisión IA cruzada y fusión en `dev`; los aprobadores, además, deciden, auditan y desglosan objetos.
 - `tortu-editor`: registrar lo que se prueba en el editor («esto no funciona», «esto ya va»).
 
 ## Reglas

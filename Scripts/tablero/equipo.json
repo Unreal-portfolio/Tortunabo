@@ -25,6 +25,19 @@
     }
   },
   "dias_sin_movimiento": 3,
+  "avisos": {
+    "destinatarios": [
+      "SkiTemplar"
+    ],
+    "rutas_organizacion": [
+      "Scripts/tablero/",
+      "Scripts/tests/test_tablero",
+      ".claude/",
+      ".github/",
+      "CLAUDE.md",
+      "Docs/"
+    ]
+  },
   "revisores": {
     "Ruben-Besteiro": [
       "Mokius",

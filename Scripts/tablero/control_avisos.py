@@ -1,4 +1,4 @@
-"""Comando `avisos`: pushes directos a dev sin revisión y resumen del tablero por persona.
+"""Comando `avisos`: lo que ha entrado en dev sin revisión y el resultado de la rutina, por correo al director.
 
 La lógica pura vive en avisos.py; aquí solo se habla con GitHub.
 """
@@ -15,8 +15,11 @@ import avisos
 import flujo
 import lotes
 import objetos
-from base import CONFIG, INTEGRACION, REPO, ErrorTablero, cargar_proyecto, comentar, elegir_revisor, gh, poner_campo
+from base import (CONFIG, INTEGRACION, REPO, ErrorTablero, cargar_proyecto, comentar, elegir_revisor, gh, issues_de_pr,
+                  poner_campo)
 
+RUTAS_ORGANIZACION = CONFIG["avisos"]["rutas_organizacion"]
+DESTINATARIOS = CONFIG["avisos"]["destinatarios"]
 # El comentario con la mención lo tiene que escribir otra cuenta: GitHub no avisa a nadie de lo que hace él mismo.
 VARIABLE_TOKEN_AVISOS = "AVISOS_TOKEN"
 
@@ -34,6 +37,27 @@ def leer_commits(push: dict) -> list[dict]:
 
 def leer_prs(commits: list[dict]) -> dict[str, list[dict]]:
     return {c["sha"]: json.loads(gh("api", f"repos/{REPO}/commits/{c['sha']}/pulls")) for c in commits}
+
+
+def con_codigo(commits: list[dict]) -> list[dict]:
+    """Commits que tocan algo más que rutas de organización (tablero, skills, workflows, guía, documentación)."""
+    return [c for c in commits if not avisos.es_organizativo(
+        json.loads(gh("api", f"repos/{REPO}/commits/{c['sha']}", "--jq", "[.files[].filename]")), RUTAS_ORGANIZACION)]
+
+
+def prs_sin_validar(proyecto: dict, desde: datetime) -> list[str]:
+    """Incidencias de las PR fusionadas en dev desde `desde`."""
+    campos = "number,body,headRefName,mergedAt,mergedBy,files"
+    prs = json.loads(gh("pr", "list", "--repo", REPO, "--state", "merged", "--base", INTEGRACION, "--limit", "50",
+                        "--json", campos))
+    lotes_ = {n for n, i in proyecto["items"].items() if lotes.es_lote(i)}
+    lineas = []
+    for pr in sorted(prs, key=lambda p: p["mergedAt"]):
+        if avisos.fecha(pr["mergedAt"]) < desde:
+            continue
+        if linea := avisos.pr_sin_validar({**pr, "refs": issues_de_pr(pr)}, proyecto["items"], RUTAS_ORGANIZACION, lotes_):
+            lineas.append(linea)
+    return lineas
 
 
 def issues_sin_revision() -> dict[str, int]:
@@ -59,30 +83,29 @@ def crear_issue(proyecto: dict, push: dict, commits: list[dict]) -> int:
     return numero
 
 
-def incidencias(proyecto: dict, desde: datetime, aplicar: bool) -> list[tuple[str, str]]:
-    """(actor, línea) por cada push directo desde `desde`; con `aplicar`, abre la issue de los que no son de un aprobador."""
+def incidencias(proyecto: dict, desde: datetime, aplicar: bool) -> list[str]:
+    """Una línea por push directo desde `desde`; con `aplicar`, abre la issue `sin-revision` de los que traen código."""
     existentes, lista = None, []
     for push in leer_pushes(desde):
         try:
             commits = leer_commits(push)
         except ErrorTablero as exc:  # p. ej. un push forzado cuyo commit anterior ya no existe
-            lista.append((push["actor"], f"**{push['actor']}** subió a dev por push directo "
-                                         f"({push['cuando']:%d-%m %H:%M} UTC) y no se puede leer su diff: {exc}"))
+            lista.append(f"**{push['actor']}** subió a dev por push directo ({push['cuando']:%d-%m %H:%M} UTC) "
+                         f"y no se puede leer su diff: {exc}")
             continue
         prs_por_commit = leer_prs(commits)
-        sin_pr = avisos.commits_sin_pr(commits, prs_por_commit, push["cuando"])
+        sin_pr = con_codigo(avisos.commits_sin_pr(commits, prs_por_commit, push["cuando"]))
         prs = avisos.prs_del_push(commits, prs_por_commit, push["cuando"])
         if not sin_pr and not prs:
             continue
-        aprobador = push["actor"] in CONFIG["aprobadores"]
         numero = None
-        if sin_pr and not aprobador:
+        if sin_pr:
             existentes = issues_sin_revision() if existentes is None else existentes
             titulo = avisos.titulo_issue(push["actor"], push["despues"])
             numero = existentes.get(titulo)
             if numero is None and aplicar:
                 numero = existentes[titulo] = crear_issue(proyecto, push, sin_pr)
-        lista.append((push["actor"], avisos.linea_push(push, sin_pr, prs, numero, aprobador)))
+        lista.append(avisos.linea_push(push, sin_pr, prs, numero))
     return lista
 
 
@@ -127,20 +150,21 @@ def publicar(numero: int, texto: str) -> None:
 def cmd_avisos(args: argparse.Namespace) -> None:
     ahora = datetime.now(timezone.utc)
     proyecto = cargar_proyecto()
-    lista = incidencias(proyecto, ahora - timedelta(hours=args.horas), args.aplicar)
+    desde = ahora - timedelta(hours=args.horas)
+    lista = incidencias(proyecto, desde, args.aplicar)
     cambios = reconciliar(proyecto, args.aplicar)
     if args.aplicar and (lista or cambios):
         proyecto = cargar_proyecto()  # con las issues recién creadas y los estados nuevos
     trabajo = [i for i in proyecto["items"].values()
                if i["state"] == "OPEN" and not objetos.es_objeto(i) and not lotes.es_lote(i)]
+    lista += prs_sin_validar(proyecto, desde)
     parte = leer_parte(args.parte, ahora)
     print(f"## Avisos · {ahora:%Y-%m-%d %H:%M} UTC" + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
     print("\n".join(f"- {c}" for c in cambios) or "- sin cambios en las issues `sin-revision`")
-    for login in CONFIG["miembros"]:
+    for login in DESTINATARIOS:
         aprobador = login in CONFIG["aprobadores"]
-        propias = [linea for actor, linea in lista if aprobador or actor == login]
         texto = avisos.render(login, avisos.secciones(trabajo, login, aprobador, ahora, CONFIG["dias_sin_movimiento"]),
-                              propias, ahora, parte if aprobador else None)
+                              lista, ahora, parte)
         if texto is None:
             print(f"\n{login}: nada que avisar")
             continue
@@ -152,9 +176,9 @@ def cmd_avisos(args: argparse.Namespace) -> None:
 
 
 def anadir_comandos(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("avisos", help="pushes directos a dev sin revisión y lo que espera por cada persona")
+    p = sub.add_parser("avisos", help="lo que ha entrado en dev sin revisión y el parte de la rutina, por correo al director")
     p.add_argument("--aplicar", action="store_true", help="abrir las issues `sin-revision` y avanzar las validadas")
-    p.add_argument("--publicar", type=int, metavar="ISSUE", help="comentar en esa issue el aviso de cada persona")
-    p.add_argument("--parte", type=int, metavar="ISSUE", help="issue del parte de la rutina, para adjuntarlo a los aprobadores")
-    p.add_argument("--horas", type=int, default=26, help="ventana de los pushes directos (por defecto, 26 h)")
+    p.add_argument("--publicar", type=int, metavar="ISSUE", help="comentar en esa issue el aviso de cada destinatario")
+    p.add_argument("--parte", type=int, metavar="ISSUE", help="issue del parte de la rutina, para adjuntarlo")
+    p.add_argument("--horas", type=int, default=26, help="ventana de los pushes y las fusiones (por defecto, 26 h)")
     p.set_defaults(fn=cmd_avisos)

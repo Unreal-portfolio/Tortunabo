@@ -47,7 +47,7 @@ def test_caso_del_30_09_commits_sin_pr_y_pr_marcada_fusionada_por_el_push():
     sin_pr = avisos.commits_sin_pr(commits, prs, PUSH_RUBI["cuando"])
     assert [c["sha"] for c in sin_pr] == ["01f663271", "f8dfd9aa2"], "el merge no trae código propio"
     assert avisos.prs_del_push(commits, prs, PUSH_RUBI["cuando"]) == {166}
-    linea = avisos.linea_push(PUSH_RUBI, sin_pr, {166}, 197, aprobador=False)
+    linea = avisos.linea_push(PUSH_RUBI, sin_pr, {166}, 197)
     assert "**Ruben-Besteiro**" in linea and "2 commits sin PR ni revisión → #197" in linea
     assert "`01f663271` feat(hud): aviso de gaviota" in linea and "PR #166" in linea
 
@@ -57,10 +57,42 @@ def test_una_pr_fusionada_despues_del_push_no_tapa_el_commit():
     assert avisos.commits_sin_pr([_commit("abc")], prs, PUSH_RUBI["cuando"]) == [_commit("abc")]
 
 
-def test_push_de_aprobador_se_avisa_sin_issue():
-    linea = avisos.linea_push({**PUSH_RUBI, "actor": "Mokius"}, [_commit("b4c5b022d", "Vr needed")], set(), None,
-                              aprobador=True)
-    assert "es aprobador: no se abre issue" in linea
+RUTAS = ["Scripts/tablero/", "Scripts/tests/test_tablero", ".claude/", ".github/", "CLAUDE.md", "Docs/"]
+
+
+def test_lo_organizativo_va_sin_revision_a_proposito():
+    assert avisos.es_organizativo(["Scripts/tablero/avisos.py", "Scripts/tests/test_tablero_avisos.py", "CLAUDE.md"], RUTAS)
+    assert avisos.es_organizativo([".claude/skills/tortu-revisar/SKILL.md", ".github/workflows/x.yml"], RUTAS)
+    assert not avisos.es_organizativo(["CLAUDE.md", "Source/Tortunabo/Private/World/TN_EnemySeagull.cpp"], RUTAS)
+    assert not avisos.es_organizativo(["Config/DefaultEngine.ini"], RUTAS), "el push de Mokius del 29-09 es código"
+    assert not avisos.es_organizativo([], RUTAS), "sin ficheros no se sabe qué toca"
+
+
+def _pr(numero, refs, ficheros, por="Ruben-Besteiro"):
+    return {"number": numero, "refs": set(refs), "files": [{"path": f} for f in ficheros],
+            "mergedBy": {"login": por}, "mergedAt": "2026-09-30T16:25:41Z"}
+
+
+def test_pr_de_lote_fusionada_con_miembros_sin_probar():
+    items = {144: {"valores": {"Revisión IA": "Aprobada", "Editor": "Sin probar"}},
+             145: {"valores": {"Revisión IA": "Aprobada"}},
+             156: {"valores": {"Revisión IA": "Aprobada", "Editor": "Funciona"}}}
+    linea = avisos.pr_sin_validar(_pr(166, [144, 145, 156, 167], ["Source/a.cpp"]), items, RUTAS, {167})
+    assert linea == ("PR #166 fusionada en dev por **Ruben-Besteiro** (30-09 16:25 UTC) con "
+                     "#144 (Editor = Sin probar (lote)), #145 (Editor = vacío (lote)).")
+
+
+def test_pr_fuera_de_lote_solo_exige_la_revision():
+    items = {44: {"valores": {"Revisión IA": "Aprobada", "Editor": "Sin probar"}},
+             45: {"valores": {"Revisión IA": "Pendiente"}}}
+    assert avisos.pr_sin_validar(_pr(1, [44], ["Source/a.cpp"]), items, RUTAS, set()) is None, "irá a QA editor"
+    assert "#45 (Revisión IA = Pendiente)" in avisos.pr_sin_validar(_pr(2, [45], ["Source/a.cpp"]), items, RUTAS, set())
+
+
+def test_pr_sin_issue_con_codigo_es_incidencia_y_la_organizativa_no():
+    assert "sin enlazar ninguna issue" in avisos.pr_sin_validar(_pr(3, [], ["Content/a.uasset"]), {}, RUTAS, set())
+    assert avisos.pr_sin_validar(_pr(4, [], ["Scripts/tablero/base.py"], "SkiTemplar"), {}, RUTAS, set()) is None
+    assert avisos.pr_sin_validar(_pr(5, [999], ["Source/a.cpp"]), {}, RUTAS, set()) is None, "fuera del tablero"
 
 
 def test_issue_sin_revision_titulo_corto_y_criterios():
