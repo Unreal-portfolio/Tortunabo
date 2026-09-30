@@ -162,26 +162,24 @@ namespace TNGhostApiDetail
 		UE_LOG(LogTortunabo, Log, TEXT("[Fantasma] TN.Ghost.Become %s."), *GetNameSafe(Target->PlayerState));
 	}
 
-	/** Consola: en el anfitrión se hace ya; en un cliente, a través de su fantasma (si lo es), que lo pide al servidor. */
+#if !UE_BUILD_SHIPPING
+	/**
+	 * Consola del anfitrión (o de una partida sin red): se hace ya. Un cliente no puede: no hay RPC de pruebas que un
+	 * invitado pueda llamar (Plan maestro §4, N-A).
+	 */
 	void RunFromConsole(TNGhostInternal::EDebugCommand Command, const TArray<FString>& Args, UWorld* World)
 	{
 		if (!World)
 		{
 			return;
 		}
+		if (World->GetNetMode() == NM_Client)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Fantasma] TN.Ghost.* solo en la consola del anfitrión."));
+			return;
+		}
 		const int32 Index = Args.Num() > 0 ? FCString::Atoi(*Args[0]) : -1;
-		if (World->GetNetMode() != NM_Client)
-		{
-			TNGhostInternal::RunDebugCommand(World, Command, Index);
-			return;
-		}
-		APlayerController* LocalPC = World->GetFirstPlayerController();
-		if (ATN_SpectatorGhost* Ghost = LocalPC ? ATN_SpectatorGhost::FindFor(LocalPC) : nullptr)
-		{
-			Ghost->RequestDebugCommand(static_cast<uint8>(Command), Index);
-			return;
-		}
-		UE_LOG(LogTortunabo, Warning, TEXT("[Fantasma] Escribe TN.Ghost.* en la consola del anfitrión (un cliente solo puede si ya es fantasma)."));
+		TNGhostInternal::RunDebugCommand(World, Command, Index);
 	}
 
 	void ReviveFromConsole(const TArray<FString>& Args, UWorld* World)
@@ -197,7 +195,7 @@ namespace TNGhostApiDetail
 	FAutoConsoleCommandWithWorldAndArgs GhostReviveCommand(
 		TEXT("TN.Ghost.Revive"),
 		TEXT("TN.Ghost.Revive [índice de jugador]: vuelve a la vida a ese jugador (0 = anfitrión) en un huevo delante de la primera ")
-		TEXT("tortuga viva. Sin índice: el primer fantasma (o quien lo escribe, si es un cliente fantasma)."),
+		TEXT("tortuga viva. Sin índice: el primer fantasma. Solo en la consola del anfitrión."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ReviveFromConsole));
 
 	FAutoConsoleCommandWithWorldAndArgs GhostBecomeCommand(
@@ -205,6 +203,7 @@ namespace TNGhostApiDetail
 		TEXT("TN.Ghost.Become [índice de jugador]: ese jugador (0 = anfitrión, por defecto) pasa a fantasma espectador; su tortuga ")
 		TEXT("se queda oculta hasta que vuelva a la vida (para probar en cualquier modo, también en el lobby)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&BecomeFromConsole));
+#endif
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -487,7 +486,7 @@ void TNGhostInternal::CompleteRevive(ATN_GhostEgg* Egg)
 	TNGhost::OnHatched().Broadcast(PC, Pawn);
 }
 
-void TNGhostInternal::RunDebugCommand(UWorld* World, EDebugCommand Command, int32 PlayerIndex, APlayerController* Requester)
+void TNGhostInternal::RunDebugCommand(UWorld* World, EDebugCommand Command, int32 PlayerIndex)
 {
 	using namespace TNGhostApiDetail;
 	if (!World || World->GetNetMode() == NM_Client)
@@ -505,7 +504,7 @@ void TNGhostInternal::RunDebugCommand(UWorld* World, EDebugCommand Command, int3
 			return;
 		}
 	}
-	APlayerController* Target = PlayerIndex >= 0 ? PlayerByIndex(World, PlayerIndex) : Requester;
+	APlayerController* Target = PlayerIndex >= 0 ? PlayerByIndex(World, PlayerIndex) : nullptr;
 	if (!Target && PlayerIndex < 0)
 	{
 		if (Command == EDebugCommand::Revive)

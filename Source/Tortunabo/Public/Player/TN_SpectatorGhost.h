@@ -149,9 +149,6 @@ public:
 	/** Segundos del servidor ahora (reloj común para los tiempos de la vuelta a la vida). */
 	static float ServerNow(const UWorld* World);
 
-	/** Consola en un cliente: pide al servidor una orden de prueba (TNGhostInternal::EDebugCommand). */
-	void RequestDebugCommand(uint8 Command, int32 PlayerIndex);
-
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -182,10 +179,6 @@ private:
 	/** Dueño → servidor: dónde está su cámara y a quién sigue. */
 	UFUNCTION(Server, Unreliable)
 	void ServerUpdateView(FVector_NetQuantize10 CameraLocation, APlayerState* Followed);
-
-	/** Dueño → servidor: órdenes de prueba de la consola (no en Shipping). */
-	UFUNCTION(Server, Reliable)
-	void ServerRunDebug(uint8 Command, int32 PlayerIndex);
 
 	// ── Malla (cada máquina con pantalla; RF_Transient, se construye en BeginPlay) ──
 

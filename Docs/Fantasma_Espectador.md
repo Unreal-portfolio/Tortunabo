@@ -187,8 +187,8 @@ y «Entre ronda y ronda»):
   otro jugador (si no hay, delante de la suya), en el suelo y mirando como ella. Sin índice: el primer fantasma. Si es
   un muerto del cooperativo, antes lo deja vivo en su PlayerState (solo esta orden de prueba). En la carrera no hace
   nada y lo dice en el registro.
-- Se escriben en la consola del anfitrión. En un cliente que ya es fantasma también valen (las pide al servidor su
-  fantasma; sin índice, `TN.Ghost.Revive` le revive a él).
+- Solo en la consola del anfitrión y fuera de Shipping. En un cliente no hacen nada (lo dicen en el registro): no hay
+  RPC de pruebas que un invitado pueda llamar (Plan maestro §4, N-A).
 - Registro: categoría `LogTortunabo`, mensajes `[Fantasma]`.
 
 ## Cómo probar

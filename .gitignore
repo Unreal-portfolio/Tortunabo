@@ -113,8 +113,9 @@ Scripts/terrain_volumes/Variants/F*/
 .ruff_cache/
 .superpowers/
 
-# Logs de ejecución
+# Logs de ejecución (Source/Logs: los registros que se guardaban junto al código; no van al repo)
 *.log
+Source/Logs/
 
 # Carpetas personales del editor
 Content/Developers/

@@ -2,6 +2,7 @@
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_Log.h"
+#include "Player/TN_DebugRpcDecisions.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 #include "EngineUtils.h"
@@ -23,10 +24,20 @@ void ATN_TerrainViewPlayerController::TNRegen(int32 Seed)
 
 void ATN_TerrainViewPlayerController::ServerRegen_Implementation(int32 Seed)
 {
-	if (ATN_TerrainViewGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ATN_TerrainViewGameMode>() : nullptr)
+#if !UE_BUILD_SHIPPING
+	// Regenera el mapa de todos: solo el anfitrión (un invitado con un cliente modificado no puede).
+	const UWorld* World = GetWorld();
+	if (!TNDebugRpcLogic::CanRunHostOnlyDebugRpc(TNDebugRpcLogic::IsShippingBuild(), World ? World->GetNetMode() : NM_DedicatedServer, IsLocalController()))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Debug] TNRegen rechazado: '%s' no es el anfitrión."), *GetNameSafe(this));
+		ClientMessage(TEXT("TNRegen: solo el anfitrión."));
+		return;
+	}
+	if (ATN_TerrainViewGameMode* GM = GetWorld()->GetAuthGameMode<ATN_TerrainViewGameMode>())
 	{
 		GM->Regenerate(Seed);
 	}
+#endif
 }
 
 ATN_TerrainViewGameMode::ATN_TerrainViewGameMode()

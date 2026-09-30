@@ -31,8 +31,7 @@ namespace TNGhostInternal
 
 	/**
 	 * Ejecuta una orden de prueba sobre el jugador PlayerIndex (orden de los PlayerController del servidor: 0 = anfitrión).
-	 * Con PlayerIndex < 0: quien la pide (Requester, si llega de la consola de un cliente) o, si no, el primer fantasma
-	 * (Revive) o el anfitrión (Become).
+	 * Con PlayerIndex < 0: el primer fantasma (Revive) o el anfitrión (Become). Solo desde la consola del anfitrión.
 	 */
-	void RunDebugCommand(UWorld* World, EDebugCommand Command, int32 PlayerIndex, APlayerController* Requester = nullptr);
+	void RunDebugCommand(UWorld* World, EDebugCommand Command, int32 PlayerIndex);
 }

@@ -472,26 +472,6 @@ void ATN_SpectatorGhost::ServerUpdateView_Implementation(FVector_NetQuantize10 C
 	ApplyServerFollow(Target);
 }
 
-void ATN_SpectatorGhost::RequestDebugCommand(uint8 Command, int32 PlayerIndex)
-{
-	if (HasAuthority())
-	{
-		TNGhostInternal::RunDebugCommand(GetWorld(), static_cast<TNGhostInternal::EDebugCommand>(Command), PlayerIndex, GetOwnerController());
-		return;
-	}
-	ServerRunDebug(Command, PlayerIndex);
-}
-
-void ATN_SpectatorGhost::ServerRunDebug_Implementation(uint8 Command, int32 PlayerIndex)
-{
-#if !UE_BUILD_SHIPPING
-	if (Command <= static_cast<uint8>(TNGhostInternal::EDebugCommand::Become))
-	{
-		TNGhostInternal::RunDebugCommand(GetWorld(), static_cast<TNGhostInternal::EDebugCommand>(Command), PlayerIndex, GetOwnerController());
-	}
-#endif
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Dueño: cámaras, controles y vista
 // ─────────────────────────────────────────────────────────────────────────────
