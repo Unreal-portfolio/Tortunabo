@@ -177,6 +177,13 @@ def test_cerrada_completada_sin_probar_se_reabre_en_revisiones_con_p0():
     assert accion["reabrir"] and accion["campos"]["Prioridad"] == "P0"
 
 
+
+def test_colision_cerrada_no_necesita_prueba_en_el_editor():
+    """#175 (30-09): la colisión entre las PR #124 y #166 se cerró sin Editor y la auditoría la reabría."""
+    issue = _issue("Done", estado="CLOSED", motivo_cierre="COMPLETED", cerrada=AHORA - timedelta(days=2),
+                   etiquetas={"colision"}, comentarios=[memoria.texto_resumen("a", "b")], valores={})
+    assert auditoria.problemas(issue, AHORA) == []
+
 def test_cerrada_antes_del_inicio_del_sistema_no_se_audita():
     ahora = auditoria.INICIO_SISTEMA + timedelta(days=1)
     previa = _issue("Done", estado="CLOSED", motivo_cierre="COMPLETED", cerrada=auditoria.INICIO_SISTEMA - timedelta(hours=2))
