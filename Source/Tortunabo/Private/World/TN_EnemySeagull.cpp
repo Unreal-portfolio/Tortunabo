@@ -252,7 +252,7 @@ void ATN_EnemySeagull::TickRoofCheck(float DeltaTime)
 	if (Now < NextRoofCheckTime) { return; }
 	NextRoofCheckTime = Now + RoofCheckInterval;
 
-	if (HasRoofBetweenSeagullAndTarget() || IsTargetUnderUmbrella())
+	if (HasRoofBetweenSeagullAndTarget())
 	{
 		AbortAndRetreat();
 	}
@@ -405,7 +405,7 @@ void ATN_EnemySeagull::AbortAndRetreat()
 
 bool ATN_EnemySeagull::IsTargetUnderUmbrella() const
 {
-	// La sombrilla abierta cuenta como techo: la gaviota se retira al momento (#164).
+	// La sombrilla abierta protege del ataque del final de la cuenta atrás: la gaviota se retira sin picar (#191).
 	const ATortugaCharacter* Target = TargetCharacter.Get();
 	return Target && Target->HasUmbrellaProtection();
 }
