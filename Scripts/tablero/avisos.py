@@ -1,7 +1,7 @@
 """Avisos diarios: qué ha entrado en dev sin pasar por revisión y el resultado de la rutina, por correo al director.
 
-Subir o fusionar en dev puede cualquiera de los tres; lo que no puede faltar, en el trabajo que las lleva, es la
-revisión IA cruzada y la prueba en el editor. `sync` y `auditar` ya devuelven a revisión lo que llega por una PR sin
+A dev solo se llega por PR (nunca por push directo) y fusionarla puede cualquiera de los tres; lo que no puede
+faltar, en el trabajo que las lleva, es la revisión IA cruzada y la prueba en el editor. `sync` y `auditar` ya devuelven a revisión lo que llega por una PR sin
 validar. Aquí se cubre lo que ellos no ven y se junta todo en un correo:
 
 - Un push directo con commits de código que no son de ninguna PR fusionada abre una issue `sin-revision` (In review,
@@ -105,8 +105,8 @@ def cuerpo_issue(push: dict, commits: list[dict], repo: str, integracion: str) -
             f"{push['cuando']:%Y-%m-%d %H:%M} UTC. No son de ninguna PR fusionada y no han pasado revisión:\n\n"
             f"{lista}\n\n"
             f"Diff: https://github.com/{repo}/compare/{push['antes'][:9]}...{push['despues'][:9]}\n\n"
-            "Subir directamente está permitido; lo que no puede faltar es la revisión y la prueba. El código ya "
-            f"está en `{integracion}`: no se revierte, se revisa aquí.\n\n"
+            f"A `{integracion}` solo se llega por PR desde la rama de la issue. Este código ya está dentro: no se "
+            "revierte, se revisa aquí.\n\n"
             "## Criterios de aceptación\n\n"
             "- [ ] Revisión IA cruzada del diff (`tablero.py ia <n> aprobada|cambios --revisor \"<quién> (Claude)\"`).\n"
             "- [ ] Probado en el editor (`tablero.py editor <n> funciona|falla`).\n"
