@@ -28,6 +28,8 @@ import objetos
 Gh = Callable[..., str]
 
 ETIQUETA = "revisar-organizacion"
+# La pone y la quita la rutina diaria de QA para lo que un script no ve; `auditar` no la toca.
+ETIQUETA_QA = "revisar-qa"
 COLOR = "FBCA04"
 DESCRIPCION_ETIQUETA = "La issue tiene problemas de organización en el tablero (tablero.py auditar)"
 CABECERA = "**Revisión de organización**"

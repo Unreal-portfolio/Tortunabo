@@ -7,9 +7,9 @@ description: Use when someone on the Tortunabo team asks what to work on, what i
 
 El tablero lo mantienes tú, sin esperar a que te lo pidan. Ciclo y estados: «Tablero» en `CLAUDE.md`.
 
-1. Lee el último parte diario (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`): lo que marque para el usuario va primero y, si deja comandos de tablero pendientes, ejecútalos. Después ejecuta `uv run python Scripts/tablero/tablero.py pendiente` (detecta al usuario por su login de `gh`). No leas todas las issues; sí las relacionadas: las que `pendiente` enseña arriba (`colision`, `revisar-organizacion`), las abiertas en Revisiones y, antes de proponer una, los resúmenes de su objeto (`tablero.py resumenes <n>`).
+1. Lee el último parte diario (`gh api repos/Unreal-portfolio/Tortunavy/issues/127/comments --jq '.[-1].body'`): lo que marque para el usuario va primero y, si deja comandos de tablero pendientes, ejecútalos. Después ejecuta `uv run python Scripts/tablero/tablero.py pendiente` (detecta al usuario por su login de `gh`). No leas todas las issues; sí las relacionadas: las que `pendiente` enseña arriba (`colision`, `revisar-organizacion`, `revisar-qa`), las abiertas en Revisiones y, antes de proponer una, los resúmenes de su objeto (`tablero.py resumenes <n>`).
 2. Responde en este orden y en pocas líneas:
-   - **primero** las issues `colision` (dos PR tocan los mismos ficheros: hay que mezclarlas) y `revisar-organizacion` (su comentario dice qué falta);
+   - **primero** las issues `colision` (dos PR tocan los mismos ficheros: hay que mezclarlas) y las que llevan `revisar-organizacion` o `revisar-qa` (su comentario dice qué falta; al arreglarlo, quita `revisar-qa` a mano, la otra se quita sola);
    - lo que ya tiene en curso o con PR abierta: terminar antes de empezar otra cosa;
    - «Puedes probar en el editor»: sus tareas en In progress o In review sin probar (si funciona en In progress, no pasará por QA editor);
    - lo que le toca revisar y las issues en Revisiones que son suyas;

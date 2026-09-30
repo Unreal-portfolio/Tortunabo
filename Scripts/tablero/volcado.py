@@ -24,8 +24,9 @@ MAX_CUERPO = 60000
 # Quedan fuera los que crean ramas o dependen del usuario que los lanza (`coger`, `revision`).
 PERMITIDOS = ("estado", "campo", "sync", "auditar", "colisiones", "bloquear", "colgar", "resumen", "decidir",
               "editor", "ia", "volcado")
-CABECERA = "| # | Título | Asignados | Prio. | Revisión IA | Editor | Revisor | PR | Etiquetas | Espera a |"
-SEPARADOR = "|---|---|---|---|---|---|---|---|---|---|"
+CABECERA = ("| # | Título | Asignados | Prio. | Tam. | Área | Fase | Revisión IA | Editor | Revisor | PR | Etiquetas "
+            "| Espera a |")
+SEPARADOR = "|" + "---|" * 13
 
 
 def argumentos_de_puente(texto: str) -> list[str]:
@@ -56,7 +57,7 @@ def fila(issue: dict, prs: list[int]) -> str:
         titulo = titulo[:MAX_TITULO - 1] + "…"
     espera = [f"#{b['number']}" for b in (issue.get("blockedBy") or {}).get("nodes", []) if b.get("state") == "OPEN"]
     celdas = (f"#{issue['number']}", titulo, ", ".join(_nombres(issue, "assignees", "login")), v.get("Prioridad", ""),
-              v.get("Revisión IA", ""), v.get("Editor", ""), v.get("Revisor", ""), ", ".join(f"#{n}" for n in prs),
+              v.get("Tamaño", ""), v.get("Área", ""), v.get("Fase", ""), v.get("Revisión IA", ""), v.get("Editor", ""), v.get("Revisor", ""), ", ".join(f"#{n}" for n in prs),
               ", ".join(_nombres(issue, "labels", "name")), ", ".join(espera))
     return "| " + " | ".join(_celda(c) for c in celdas) + " |"
 
