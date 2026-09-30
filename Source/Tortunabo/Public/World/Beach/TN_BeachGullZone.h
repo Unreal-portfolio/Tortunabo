@@ -67,6 +67,27 @@ struct FTNBeachGullAttack
 	uint8 Serial = 0;
 };
 
+/** Una mancha en el caparazón de una tortuga (replicada, para quien entra o reconecta con ella fresca). */
+USTRUCT()
+struct FTNBeachGullStain
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TObjectPtr<ATortugaCharacter> Turtle = nullptr;
+
+	/** Hora del servidor (ATN_BeachEnemy::ServerNow) en que cayó: la edad con la que se pinta y cuándo se seca. */
+	UPROPERTY()
+	float ServerTime = 0.f;
+
+	/** El ataque (FTNBeachGullAttack::Serial) y cuál de las manchadas es: dan la forma, la misma en todas las máquinas. */
+	UPROPERTY()
+	uint8 Serial = 0;
+
+	UPROPERTY()
+	uint8 Variant = 0;
+};
+
 /**
  * Zona de gaviotas y pelícanos (ETNBeachElement::GullZone): las aves de la fauna a escala (gaviotas de 25 m de
  * envergadura y, a veces, un pelícano de 40 m) dando vueltas sobre la zona, cada una en su círculo (centro desplazado,
@@ -138,7 +159,10 @@ protected:
 	virtual void OnHeldTurtleSlips(ATortugaCharacter* Turtle) override;
 	virtual float GetVisualRange() const override { return 40000.f; }
 
-	/** Todas las máquinas: la cagada ha caído en Where y ha derribado a Hit (con la mancha en su caparazón). Fiable: la mancha se ve en todas. */
+	/**
+	 * Todas las máquinas: la cagada ha caído en Where y ha derribado a Hit (sonido, gotas, mancha en la arena). La mancha del
+	 * caparazón la pinta aquí solo el anfitrión; en los clientes, OnRep_ShellStains (que también llega a quien entra luego).
+	 */
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastSplat(FVector_NetQuantize Where, const TArray<ATortugaCharacter*>& Hit);
 
@@ -148,6 +172,22 @@ private:
 
 	UFUNCTION()
 	void OnRep_Attack();
+
+	/**
+	 * Manchas en los caparazones como estado: el servidor las apunta al caer la cagada y las quita al secarse (StainLife).
+	 * Quien entra o reconecta con una fresca también la ve (F_gaps_steam N-C); la multicast solo trae el golpe.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_ShellStains)
+	TArray<FTNBeachGullStain> ShellStains;
+
+	UFUNCTION()
+	void OnRep_ShellStains();
+
+	/** Servidor: quita de ShellStains las que ya se han secado. */
+	void PruneShellStains(double Now);
+
+	/** Manchas ya pintadas en esta máquina (Serial << 8 | Variant), para no repetirlas. */
+	TSet<uint16> ShownStainKeys;
 
 	/** Un pájaro de la zona (vuelo en todas las máquinas; sus piezas, solo con pantalla, en BirdParts desde FirstPart). */
 	struct FBird
@@ -352,8 +392,11 @@ private:
 	void PoseBird(int32 Index, float DeltaSeconds, bool bAttacking, float Tau);
 	/** Mancha en la arena (InTurtle nulo) o pegote en el caparazón de InTurtle (el plan B de SpawnStain). */
 	void SpawnSplat(const FVector& Where, ATortugaCharacter* InTurtle, float InScale, float Life);
-	/** Todas las máquinas: cagada pintada (decal) en el caparazón de InTurtle; sin el material, el pegote pequeño y pegado. */
-	void SpawnStain(ATortugaCharacter* InTurtle, int32 Variant);
+	/**
+	 * Todas las máquinas: cagada pintada (decal) en el caparazón de InTurtle; sin el material, el pegote pequeño y pegado.
+	 * Serial y Variant dan la forma; Age, los segundos que ya lleva (quien entra la ve con la edad que tiene).
+	 */
+	void SpawnStain(ATortugaCharacter* InTurtle, uint8 Serial, int32 Variant, float Age = 0.f);
 	/** Visual: las cagadas de las tortugas se secan (Fade del material) y se quitan a los 12 s. */
 	void TickStains();
 	/** Visual: el signo de exclamación sobre la tortuga objetivo de la cagada (posición, cámara y parpadeo). */
