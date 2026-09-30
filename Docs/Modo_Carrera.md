@@ -1898,8 +1898,9 @@ la cima de la fortaleza más cercana, detrás del lanzador. Semillas seguidas pa
   950 hacia arriba (`LaunchUp`) y hasta 160 de lado según dónde estaba (si la pisan dos, no caen juntas): ~1,9 s de vuelo
   y ~7-8 m hacia atrás. Las de alrededor, hasta `PushRadius` (7 m), en pie y sin aturdir, reciben un empujón sin
   aturdir hacia fuera y algo hacia atrás (a quien va delante no le da un acelerón): de 750 cm/s y 450 hacia arriba
-  (`PushSpeed`, `PushUp`) junto a la explosión a un tercio en el borde; lo aplica también su cliente dueño (multicast,
-  como el susto del lagarto). Las medidas escalan con `SizeScale`.
+  (`PushSpeed`, `PushUp`) junto a la explosión a un tercio en el borde. Lo aplica solo el servidor: el dueño lo recibe
+  con el movimiento replicado (antes lo repetía al llegar un multicast y salía empujado dos veces). Las medidas escalan
+  con `SizeScale`.
 - **Efectos** (cada máquina con pantalla): fogonazo (bola de 2,4 m que crece y se apaga en 0,23 s y una luz naranja de
   0,28 s), bola de fuego, nube de arena, terrones, trozos de la carcasa, humo que sube 2-3 s, «¡BUM!», temblor de cámara
   (0,8 hasta 7 m, apagándose hasta 32 m) y, sintetizados (`UTN_BeachMineSynthComponent`), la explosión (chasquido que
@@ -1916,7 +1917,8 @@ la cima de la fortaleza más cercana, detrás del lanzador. Semillas seguidas pa
 - **Probar**: `TN.Beach.Place Mine [Tamaño] 0 [Semilla]` (el aspecto y la bandera salen de la semilla). Pisarla andando,
   esprintando (sale lanzada igual) y cayendo encima; saltarla por encima; quedarse a 3-6 m de la que pisa otra (empujón
   sin bola); ver el cráter y el rearme a los 9 s; una tortuga aturdida o rodando en su caparazón no la pisa. Con un
-  cliente: la bola vuela igual en las dos pantallas y el empujón no da tirones de corrección.
+  cliente y `p.NetShowCorrections 1`: la bola vuela igual en las dos pantallas y el empujón no se aplica dos veces ni da
+  tirones de corrección.
 
 ### Segunda tanda: concha, plataforma móvil, catapulta y trampolín (comunes)
 

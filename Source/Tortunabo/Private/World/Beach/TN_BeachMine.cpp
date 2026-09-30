@@ -518,9 +518,10 @@ void ATN_BeachMine::Explode(double Now)
 			const double Near = 1.0 - FMath::Clamp((Dist - Blast) / FMath::Max(1.0, Reach - Blast), 0.0, 1.0);
 			FVector Away = FVector(Rel.X, Rel.Y, 0.0).GetSafeNormal();
 			Away = (Away.IsNearlyZero() ? Back : (Away + Back * 0.6)).GetSafeNormal2D();
+			// Solo el servidor: su dueño lo recibe con el movimiento replicado. Repetirlo en el dueño al llegar un multicast
+			// lo empujaba dos veces, con un salto de retraso y otra corrección (Docs/Analisis/2026-09-29/B_buggy_sync.md).
 			const FVector Push = Away * (PushSpeed * (0.35 + 0.65 * Near)) + FVector::UpVector * (PushUp * (0.4 + 0.6 * Near));
 			Turtle->LaunchCharacter(Push, true, true);
-			MulticastShove(Turtle, Push);
 			++Shoved;
 		}
 	}
@@ -576,15 +577,6 @@ void ATN_BeachMine::OnRep_ExplodedAt()
 		return;
 	}
 	PlayExplosionFX();
-}
-
-void ATN_BeachMine::MulticastShove_Implementation(ATortugaCharacter* Victim, FVector_NetQuantize10 Push)
-{
-	// El dueño aplica el mismo empujón que el servidor: sin corrección de movimiento.
-	if (Victim && !HasAuthority() && Victim->IsLocallyControlled())
-	{
-		Victim->LaunchCharacter(Push, true, true);
-	}
 }
 
 void ATN_BeachMine::PlayClickFX()

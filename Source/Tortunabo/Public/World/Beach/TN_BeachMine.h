@@ -29,8 +29,8 @@ class UTN_BeachMineSynthComponent;
  *
  * Red: lo decide el servidor (sensor en su Tick) y replica dos horas del servidor, TriggeredAt (pisada) y ExplodedAt
  * (explosión); cada máquina anima el parpadeo, la explosión, el cráter y el rearme con su reloj del servidor suavizado, y
- * quien llega tarde ve ya el cráter. El empujón a las de alrededor lo aplica también su cliente dueño (multicast), como
- * el susto del lagarto: sin corrección de movimiento.
+ * quien llega tarde ve ya el cráter. El lanzamiento y el empujón a las de alrededor los aplica solo el servidor: el dueño
+ * los recibe con el movimiento replicado, sin repetirlos en local (antes el empujón se aplicaba dos veces).
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachMine : public ATN_BeachElement
@@ -89,10 +89,6 @@ protected:
 
 	UFUNCTION()
 	void OnRep_ExplodedAt();
-
-	/** El dueño de la tortuga empujada aplica el mismo empujón que el servidor. */
-	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastShove(ATortugaCharacter* Victim, FVector_NetQuantize10 Push);
 
 	/** Hora del servidor de la última pisada (< 0: nunca). */
 	UPROPERTY(ReplicatedUsing = OnRep_TriggeredAt)
