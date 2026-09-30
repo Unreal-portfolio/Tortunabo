@@ -229,6 +229,7 @@ private:
 	void ResolveAttack();
 	void AbortAndRetreat();
 	bool HasRoofBetweenSeagullAndTarget() const;
+	bool IsTargetUnderUmbrella() const;
 
 	void UpdateDecalSize();
 
