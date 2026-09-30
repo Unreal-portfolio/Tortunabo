@@ -19,4 +19,4 @@ Closes #
 - [ ] Textos visibles con `NSLOCTEXT` (Docs/Localizacion.md) y documentación al día en `Docs/`.
 - [ ] Revisión cruzada pedida con `tablero.py revision <n>` (la hace el Claude del revisor).
 
-<!-- La PR va a dev. Revisan y fusionan @Mokius o @SkiTemplar (Docs/Flujo_Git.md, CLAUDE.md). -->
+<!-- La PR va a dev desde la rama de la issue (nunca se trabaja sobre dev). La fusiona cualquiera de los tres con la revisión IA aprobada y, en un lote, con `lote estado` en verde (CLAUDE.md). -->
