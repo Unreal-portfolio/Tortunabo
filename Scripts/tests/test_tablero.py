@@ -115,3 +115,25 @@ def test_urgentes_incluye_los_avisos_de_la_rutina_de_qa():
     # Quien no es aprobador solo ve los avisos de lo suyo.
     assert [i["number"] for i in tablero.urgentes_de_organizacion(issues, "Mokius", aprobador=False)] == [1]
     assert tablero.urgentes_de_organizacion(issues, "Ruben-Besteiro", aprobador=False) == []
+
+
+def _issue_etiquetada(numero, etiquetas, asignado=None):
+    return {"number": numero, "labels": {"nodes": [{"name": e} for e in etiquetas]},
+            "assignees": {"nodes": [{"login": asignado}] if asignado else []}, "valores": {}}
+
+
+def test_coger_con_decision_pendiente_consulta_antes():
+    pendiente = _issue_etiquetada(44, ["tarea", "decision"])
+    motivo = tablero.motivo_decision(44, pendiente, forzar=False)
+    assert "decisión pendiente" in motivo and "--forzar" in motivo and "decidir 44" in motivo
+    # NEGATIVO: forzando, o sin la etiqueta, se coge como siempre.
+    assert tablero.motivo_decision(44, pendiente, forzar=True) is None
+    assert tablero.motivo_decision(45, _issue_etiquetada(45, ["tarea"]), forzar=False) is None
+
+
+def test_decisiones_todas_para_aprobadores_y_las_suyas_para_el_resto():
+    issues = [_issue_etiquetada(44, ["decision"], "Ruben-Besteiro"), _issue_etiquetada(128, ["objeto", "decision"]),
+              _issue_etiquetada(12, ["tarea"], "Ruben-Besteiro")]
+    assert [i["number"] for i in tablero.con_decision(issues, "SkiTemplar", aprobador=True)] == [44, 128]
+    assert [i["number"] for i in tablero.con_decision(issues, "Ruben-Besteiro", aprobador=False)] == [44]
+    assert tablero.con_decision(issues, "Otro", aprobador=False) == []
