@@ -16,7 +16,7 @@ ESTADOS_EN_CURSO = ("In progress", "Revisiones", "Done")
 ETIQUETA_DECISION = "decision"
 # Pie de los comentarios que escribe el puente cuando alguien lanza un comando a mano.
 MARCA_PUENTE = "\n\n_Lanzado por "
-AVISO_SIN_QA = "**Sin QA editor**: el autor no lo ha probado en el editor; hay que probarlo tras la fusión."
+AVISO_SIN_QA = "**Sin QA editor**: sin probar por el autor."
 
 
 class EnvioRechazado(ValueError):

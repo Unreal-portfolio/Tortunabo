@@ -209,3 +209,44 @@ def test_sin_firma_recupera_el_texto_del_tablero():
     firmado = texto + flujo.firma_de_puente({"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "workflow_dispatch",
                                              "GITHUB_ACTOR": "SkiTemplar"})
     assert firmado != texto and flujo.sin_firma(firmado) == texto == flujo.sin_firma(texto)
+
+
+# --- Peticiones ------------------------------------------------------------------------------------
+
+def test_peticion_lleva_fecha_y_quien_y_no_puede_ir_vacia():
+    from datetime import date
+    import peticiones
+    assert peticiones.texto_peticion("  Recarga a 4 s,  no 5. ", "SkiTemplar", date(2026, 9, 30)) == \
+        "**Petición** (2026-09-30, SkiTemplar): Recarga a 4 s, no 5."
+    assert peticiones.texto_atendida("Hecho en d1dbf5f.", "Ruben-Besteiro") == "**Petición atendida** (Ruben-Besteiro): Hecho en d1dbf5f."
+    for malo in ("", "   ", None):
+        with pytest.raises(ValueError):
+            peticiones.texto_peticion(malo, "SkiTemplar", date(2026, 9, 30))
+        with pytest.raises(ValueError):
+            peticiones.texto_atendida(malo, "SkiTemplar")
+
+
+@pytest.mark.parametrize("valores, campos", [
+    ({"Status": "Validada", "Editor": "Funciona", "Revisión IA": "Aprobada"},
+     {"Status": "Revisiones", "Revisión IA": "Cambios pedidos", "Editor": "Sin probar"}),
+    ({"Status": "In review", "Editor": "Sin probar"}, {"Status": "Revisiones", "Revisión IA": "Cambios pedidos"}),
+    ({"Status": "QA editor"}, {"Status": "Revisiones", "Revisión IA": "Cambios pedidos"}),
+    ({"Status": "In progress", "Editor": "Funciona"}, {}),
+    ({"Status": "Ready"}, {}), ({"Status": "Backlog"}, {}), ({"Status": "Revisiones"}, {}), ({}, {}),
+])
+def test_peticion_sobre_lo_entregado_vuelve_a_revisiones(valores, campos):
+    import peticiones
+    assert peticiones.campos_tras_peticion(valores) == campos
+
+
+def test_peticiones_para_el_asignado_las_sin_dueno_y_todas_para_aprobadores():
+    import peticiones
+
+    def issue(numero, etiquetas, *quien):
+        return {"number": numero, "labels": {"nodes": [{"name": e} for e in etiquetas]},
+                "assignees": {"nodes": [{"login": q} for q in quien]}}
+
+    issues = [issue(1, ["peticion"], "Ruben-Besteiro"), issue(2, ["peticion"], "Mokius"), issue(3, ["peticion"]),
+              issue(4, ["tarea"], "Ruben-Besteiro")]
+    assert [i["number"] for i in peticiones.para(issues, "Ruben-Besteiro", aprobador=False)] == [1, 3]
+    assert [i["number"] for i in peticiones.para(issues, "SkiTemplar", aprobador=True)] == [1, 2, 3]
