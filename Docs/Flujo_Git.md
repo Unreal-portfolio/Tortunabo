@@ -66,7 +66,15 @@ Regla de protección de `main`:
 ## Ejecutor propio para compilar y probar (opcional, recomendable)
 
 Los servidores de GitHub no tienen Unreal. Para que la pipeline compile y pase las pruebas hace falta un PC con UE 5.6 que
-haga de ejecutor (self-hosted runner):
+haga de ejecutor (self-hosted runner).
+
+**Antes de activarlo (obligatorio, el repositorio es público).** El ejecutor compila el código de la PR en ese PC, y UBT
+ejecuta sus `Build.cs` y `Target.cs`: una PR de un fork podría ejecutar lo que quisiera en él. Por eso:
+- El trabajo solo corre en push, a mano o en PR cuya rama está en este mismo repositorio (`head.repo.full_name ==
+  github.repository` en el `if` de `validar-main.yml`); una PR de un fork lo salta siempre.
+- Settings → Actions → General → «Approval for running fork pull request workflows from contributors»: **Require approval
+  for all external contributors** (hoy está en «first-time contributors»). O el repositorio privado.
+- El ejecutor, con una cuenta de Windows sin permisos de administrador y en una carpeta propia.
 
 1. En GitHub: Settings → Actions → Runners → New self-hosted runner → Windows. Seguir los pasos que da GitHub en una carpeta
    propia (por ejemplo `C:\actions-runner`); al configurar, añadir las etiquetas `ue56` (además de las de serie `self-hosted`
@@ -74,8 +82,9 @@ haga de ejecutor (self-hosted runner):
 2. En GitHub: Settings → Secrets and variables → Actions → Variables: crear `UE_RUNNER` = `true` (y `UE_ROOT` si el motor no
    está en `C:\Program Files\Epic Games\UE_5.6`).
 3. Desde ese momento cada PR compila y pasa las pruebas en ese PC (la primera vez tarda más: compila todo).
-4. Para que un fallo **bloquee la fusión en `dev`**: Settings → Branches → regla de `dev` → Require status checks to pass con
-   «Comprobaciones» y «Compilar y pruebas (UE 5.6)». Sin ejecutor, el trabajo se salta y cuenta como correcto.
+4. Para que un fallo **bloquee la fusión en `dev`**: Settings → Rules → Rulesets → «dev: solo por PR» → Require status
+   checks to pass con «Comprobaciones» y «Compilar y pruebas (UE 5.6)». Sin ejecutor, el trabajo se salta y cuenta como
+   correcto; en la propia PR que lo añade también sale saltado hasta que `UE_RUNNER` valga `true`.
 
 ## Compilar y probar en local (`Scripts/ci`)
 
@@ -93,4 +102,4 @@ motor sale de `UE_ROOT` (por defecto `C:\Program Files\Epic Games\UE_5.6`).
   que llama a `ci_local.bat` (`TN_CI_SKIP=1 git pull` se la salta una vez).
 
 Aviso: el ejecutor compila y ejecuta el código de las PR en ese PC. Solo tienen acceso de escritura al repositorio los
-miembros del equipo; no aceptar ejecuciones de PR de forks.
+miembros del equipo; el flujo no corre con PR de forks (ver «Antes de activarlo»).
