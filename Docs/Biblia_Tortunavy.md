@@ -3834,8 +3834,9 @@ Rebota hacia arriba y adelante; sirve para atajos y para subirse a castillos. Cu
   cima de una fortaleza, ~38–53 m [calc] (45–66 m con las del código). Aro dorado en la arena, cuatro palos con pomos dorados (uno con la bandera de Tortunavy) y
   guirnaldas de banderines; cada rebote suma boing grave, barrido de aire, destellos dorados y la fanfarria (una cada 3 s por
   máquina como mucho).
-- **Red**: el rebote lo aplican el servidor y el cliente dueño dentro del mismo movimiento (golpe con la colisión o solape con el
-  sensor, 15 cm más grande); el resto lo ve por un multicast no fiable. Lo potenciado sale de `Spec`.
+- **Red**: el rebote lo decide el movimiento de la tortuga al empezar cada paso en que su cápsula toca el sensor (15 cm más
+  grande): el servidor y el cliente dueño rebotan en el mismo paso, sin corrección (#21); el resto lo ve por un multicast no
+  fiable. Lo potenciado sale de `Spec`.
 - **Cómo se usa**: caer encima o andar contra un costado; encadenar dos para subir más; saltar desde uno por encima de un alambre.
   Trampolín delante de un castillo grande = subida rápida.
 
