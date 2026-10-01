@@ -35,6 +35,16 @@ namespace TNBuggyHealthDetail
 	const FVector SmokeOffset(-60.f, 0.f, 90.f);
 	/** Por debajo de esta medida (cm) la caja de la malla no es fiable y se usan las medidas por defecto. */
 	constexpr float MinReliableExtentCm = 40.f;
+	/** Sacudida de cámara al reventar: cabeceo y alabeo de la artillera (grados), retroceso (cm) y trauma de la conductora. */
+	constexpr float ExplodeKickPitchDeg = 10.f;
+	constexpr float ExplodeKickRollDeg = 8.f;
+	constexpr float ExplodeKickBackCm = 40.f;
+	constexpr float ExplodeTrauma = 1.f;
+	/** Sacudida de cámara en un choque fuerte (mismas unidades). */
+	constexpr float CrashKickPitchDeg = 3.f;
+	constexpr float CrashKickRollDeg = 5.f;
+	constexpr float CrashKickBackCm = 15.f;
+	constexpr float CrashTrauma = 0.4f;
 
 	/** Empujón de cámara a la artillera local de Buggy (reventón o choque). */
 	void KickLocalGunner(const ATN_Buggy* Buggy, float PitchDeg, float RollDeg, float BackCm)
@@ -85,7 +95,7 @@ void UTN_BuggyHealthComponent::BeginPlay()
 	ATN_Buggy* Buggy = GetBuggy();
 	if (!Buggy)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("%s: UTN_BuggyHealthComponent necesita un ATN_Buggy como dueño"), *GetNameSafe(GetOwner()));
+		UE_LOG(LogTNBuggy, Warning, TEXT("%s: UTN_BuggyHealthComponent necesita un ATN_Buggy como dueño"), *GetNameSafe(GetOwner()));
 		return;
 	}
 	CreateGunnerHitbox();
@@ -267,7 +277,7 @@ void UTN_BuggyHealthComponent::Explode()
 	Buggy->NotifyDestroyed();
 	World->GetTimerManager().SetTimer(RestoreTimer, this, &UTN_BuggyHealthComponent::RestoreAfterDeath,
 		TNRallyCombat::DeathRestoreSeconds, false);
-	UE_LOG(LogTNBuggy, Log, TEXT("%s: revienta y reaparece"), *Buggy->GetName());
+	UE_LOG(LogTNBuggy, Log, TEXT("%s: revienta"), *Buggy->GetName());
 }
 
 void UTN_BuggyHealthComponent::RestoreAfterDeath()
@@ -322,10 +332,11 @@ void UTN_BuggyHealthComponent::MulticastExplode_Implementation(FVector_NetQuanti
 	{
 		UGameplayStatics::SpawnSoundAtLocation(World, ExplosionSound, Where);
 	}
-	TNBuggyHealthDetail::KickLocalGunner(GetBuggy(), 10.f, 8.f, 40.f);
+	TNBuggyHealthDetail::KickLocalGunner(GetBuggy(), TNBuggyHealthDetail::ExplodeKickPitchDeg,
+		TNBuggyHealthDetail::ExplodeKickRollDeg, TNBuggyHealthDetail::ExplodeKickBackCm);
 	if (ATN_Buggy* Buggy = GetBuggy())
 	{
-		Buggy->AddCameraTrauma(1.f);
+		Buggy->AddCameraTrauma(TNBuggyHealthDetail::ExplodeTrauma);
 	}
 }
 
@@ -399,10 +410,11 @@ void UTN_BuggyHealthComponent::MulticastCrash_Implementation(FVector_NetQuantize
 	{
 		UGameplayStatics::SpawnSoundAtLocation(World, CrashSound, Where);
 	}
-	TNBuggyHealthDetail::KickLocalGunner(GetBuggy(), 3.f, 5.f, 15.f);
+	TNBuggyHealthDetail::KickLocalGunner(GetBuggy(), TNBuggyHealthDetail::CrashKickPitchDeg,
+		TNBuggyHealthDetail::CrashKickRollDeg, TNBuggyHealthDetail::CrashKickBackCm);
 	if (ATN_Buggy* Buggy = GetBuggy())
 	{
-		Buggy->AddCameraTrauma(0.4f);
+		Buggy->AddCameraTrauma(TNBuggyHealthDetail::CrashTrauma);
 	}
 }
 

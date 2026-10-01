@@ -50,6 +50,10 @@ protected:
 
 private:
 	void BuildTree();
+	/** Semáforo de la salida (tres luces en un panel, arriba en el centro). */
+	void BuildSemaphore();
+	/** Torreta abajo a la izquierda: munición, calentamiento, vida del buggy y aviso de noqueo. */
+	void BuildTurretPanel();
 	void BuildInk();
 	void BuildResults();
 	void Refresh(const ATN_RallyGameState& RallyState);

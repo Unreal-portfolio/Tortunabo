@@ -188,6 +188,39 @@ void UTN_RallyHUDWidget::BuildTree()
 	BoostBar->SetPercent(0.f);
 	Place(Canvas, MakeSize(Tree, BoostBar, 260.f, 18.f), FVector2D(1.f, 1.f), FVector2D(-48.f, -158.f));
 
+	BuildSemaphore();
+
+	CenterText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 110, FLinearColor::White);
+	Place(Canvas, CenterText, FVector2D(0.5f, 0.3f), FVector2D::ZeroVector);
+	StatusText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 30, TNHUDArt::SandLight);
+	Place(Canvas, StatusText, FVector2D(0.5f, 0.f), FVector2D(0.f, 130.f));
+	WrongWayText = MakeText(Tree, NSLOCTEXT("Rally", "WrongWay", "¡CONTRAMANO!"), TEXT("Bold"), 64, TNHUDArt::CoralC);
+	Place(Canvas, WrongWayText, FVector2D(0.5f, 0.42f), FVector2D::ZeroVector);
+	RespawnText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 36, TNHUDArt::SandC);
+	Place(Canvas, RespawnText, FVector2D(0.5f, 0.56f), FVector2D::ZeroVector);
+	RespawnHintText = MakeText(Tree, NSLOCTEXT("Rally", "RespawnHint", "Mantén R para volver a la pista"), TEXT("Bold"), 30,
+		TNHUDArt::SandLight);
+	Place(Canvas, RespawnHintText, FVector2D(0.5f, 0.64f), FVector2D::ZeroVector);
+	Crosshair = MakeText(Tree, TNLocText::Literal(TEXT("+")), TEXT("Bold"), 48, FLinearColor::White);
+	Place(Canvas, Crosshair, FVector2D(0.5f, 0.5f), FVector2D::ZeroVector);
+
+	BuildTurretPanel();
+
+	BuildResults();
+
+	for (UWidget* Hidden : TArray<UWidget*>{ WrongWayText, RespawnText, RespawnHintText, Crosshair, AmmoText, CenterText, StatusText,
+		ResultsPanel, BoostLabel, BoostBar ? BoostBar->GetParent() : nullptr, HealthLabel, HealthBar ? HealthBar->GetParent() : nullptr,
+		KnockText })
+	{
+		TNRallyHUD::Show(Hidden, false);
+	}
+	RefreshTurret();
+}
+
+void UTN_RallyHUDWidget::BuildSemaphore()
+{
+	using namespace TNRaceUI;
+	UWidgetTree* Tree = WidgetTree;
 	UHorizontalBox* Lights = Make<UHorizontalBox>(Tree);
 	for (int32 Index = 0; Index < 3; ++Index)
 	{
@@ -205,21 +238,12 @@ void UTN_RallyHUDWidget::BuildTree()
 	LightsPanel->SetContent(Lights);
 	SemaphoreBox = LightsPanel;
 	Place(Canvas, LightsPanel, FVector2D(0.5f, 0.f), FVector2D(0.f, 36.f));
+}
 
-	CenterText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 110, FLinearColor::White);
-	Place(Canvas, CenterText, FVector2D(0.5f, 0.3f), FVector2D::ZeroVector);
-	StatusText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 30, TNHUDArt::SandLight);
-	Place(Canvas, StatusText, FVector2D(0.5f, 0.f), FVector2D(0.f, 130.f));
-	WrongWayText = MakeText(Tree, NSLOCTEXT("Rally", "WrongWay", "¡CONTRAMANO!"), TEXT("Bold"), 64, TNHUDArt::CoralC);
-	Place(Canvas, WrongWayText, FVector2D(0.5f, 0.42f), FVector2D::ZeroVector);
-	RespawnText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 36, TNHUDArt::SandC);
-	Place(Canvas, RespawnText, FVector2D(0.5f, 0.56f), FVector2D::ZeroVector);
-	RespawnHintText = MakeText(Tree, NSLOCTEXT("Rally", "RespawnHint", "Mantén R para volver a la pista"), TEXT("Bold"), 30,
-		TNHUDArt::SandLight);
-	Place(Canvas, RespawnHintText, FVector2D(0.5f, 0.64f), FVector2D::ZeroVector);
-	Crosshair = MakeText(Tree, TNLocText::Literal(TEXT("+")), TEXT("Bold"), 48, FLinearColor::White);
-	Place(Canvas, Crosshair, FVector2D(0.5f, 0.5f), FVector2D::ZeroVector);
-
+void UTN_RallyHUDWidget::BuildTurretPanel()
+{
+	using namespace TNRaceUI;
+	UWidgetTree* Tree = WidgetTree;
 	AmmoText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 28, TNHUDArt::Foam);
 	Place(Canvas, AmmoText, FVector2D(0.f, 1.f), FVector2D(40.f, -84.f));
 	HeatLabel = MakeText(Tree, NSLOCTEXT("Rally", "TurretHeat", "Torreta"), TEXT("Regular"), 22, TNHUDStyle::TextDim);
@@ -237,16 +261,6 @@ void UTN_RallyHUDWidget::BuildTree()
 	Place(Canvas, MakeSize(Tree, HealthBar, 160.f, 10.f), FVector2D(0.f, 1.f), FVector2D(40.f, -134.f));
 	KnockText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 44, TNHUDArt::CoralC);
 	Place(Canvas, KnockText, FVector2D(0.5f, 0.72f), FVector2D::ZeroVector);
-
-	BuildResults();
-
-	for (UWidget* Hidden : TArray<UWidget*>{ WrongWayText, RespawnText, RespawnHintText, Crosshair, AmmoText, CenterText, StatusText,
-		ResultsPanel, BoostLabel, BoostBar ? BoostBar->GetParent() : nullptr, HealthLabel, HealthBar ? HealthBar->GetParent() : nullptr,
-		KnockText })
-	{
-		TNRallyHUD::Show(Hidden, false);
-	}
-	RefreshTurret();
 }
 
 void UTN_RallyHUDWidget::BuildInk()

@@ -136,9 +136,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Rally|Buggy")
 	void AddCameraTrauma(float Amount);
 
-	/** Si el PlayerController local ocupa este buggy (conductora o artillera): para la tinta del HUD. */
-	bool IsOccupiedByLocalPlayer() const;
-
 	/** Hora del servidor (vale en cualquier máquina). */
 	double GetServerNow() const;
 

@@ -287,18 +287,6 @@ void ATN_Buggy::FitTurtle(USkeletalMeshComponent* Turtle) const
 	}
 }
 
-bool ATN_Buggy::IsOccupiedByLocalPlayer() const
-{
-	const UWorld* World = GetWorld();
-	const APlayerController* Local = World ? World->GetFirstPlayerController() : nullptr;
-	if (!Local || !Local->IsLocalController())
-	{
-		return false;
-	}
-	const APawn* Pawn = Local->GetPawn();
-	return Pawn == this || (Pawn && Pawn == GunnerPawn);
-}
-
 void ATN_Buggy::UpdateGunnerKnockPose(float DeltaSeconds)
 {
 	USkeletalMeshComponent* Turtle = SeatTurtles.IsValidIndex(TNBuggySeats::GunnerIndex) ? SeatTurtles[TNBuggySeats::GunnerIndex].Get() : nullptr;

@@ -51,6 +51,39 @@ namespace
 {
 	/** Un cliente que llega tarde no avisa de reapariciones más viejas que esto (s). */
 	constexpr float RallyRespawnNoticeMaxAgeSeconds = 3.f;
+
+	/** Terreno de la variante cargado: usa el cargador del nivel (o crea uno) y lo recarga si tiene otra variante o está vacío. */
+	void EnsureVariantTerrain(UWorld& World, FName InVariant)
+	{
+		ATN_MapVariantLoader* Loader = nullptr;
+		for (TActorIterator<ATN_MapVariantLoader> It(&World); It; ++It)
+		{
+			Loader = *It;
+			break;
+		}
+		if (!Loader && !InVariant.IsNone())
+		{
+			// Nivel sin cargador (p. ej. un mapa de pruebas): se crea con la variante ya puesta, así OnConstruction carga el
+			// terreno y BeginPlay pone las zonas de muerte de la misma variante.
+			Loader = World.SpawnActorDeferred<ATN_MapVariantLoader>(ATN_MapVariantLoader::StaticClass(), FTransform::Identity, nullptr,
+				nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+			if (Loader)
+			{
+				Loader->Variant = InVariant;
+				Loader->FinishSpawning(FTransform::Identity);
+			}
+		}
+		if (Loader && !InVariant.IsNone())
+		{
+			TArray<UProceduralMeshComponent*> Chunks;
+			Loader->GetComponents(Chunks);
+			if (Loader->Variant != InVariant || Chunks.Num() == 0)
+			{
+				Loader->Variant = InVariant;
+				Loader->Recargar();
+			}
+		}
+	}
 }
 
 void ATN_RallyGameState::NotifyTeamRespawned(int32 TeamIndex, ETNRallyRespawnReason Reason, float ServerTime)
@@ -98,34 +131,7 @@ ATN_RallyTrack* ATN_RallyGameState::PrepareTrack(FName InVariant)
 		return nullptr;
 	}
 
-	ATN_MapVariantLoader* Loader = nullptr;
-	for (TActorIterator<ATN_MapVariantLoader> It(World); It; ++It)
-	{
-		Loader = *It;
-		break;
-	}
-	if (!Loader && !InVariant.IsNone())
-	{
-		// Nivel sin cargador (p. ej. un mapa de pruebas): se crea con la variante ya puesta, así OnConstruction carga el
-		// terreno y BeginPlay pone las zonas de muerte de la misma variante.
-		Loader = World->SpawnActorDeferred<ATN_MapVariantLoader>(ATN_MapVariantLoader::StaticClass(), FTransform::Identity, nullptr,
-			nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-		if (Loader)
-		{
-			Loader->Variant = InVariant;
-			Loader->FinishSpawning(FTransform::Identity);
-		}
-	}
-	if (Loader && !InVariant.IsNone())
-	{
-		TArray<UProceduralMeshComponent*> Chunks;
-		Loader->GetComponents(Chunks);
-		if (Loader->Variant != InVariant || Chunks.Num() == 0)
-		{
-			Loader->Variant = InVariant;
-			Loader->Recargar();
-		}
-	}
+	EnsureVariantTerrain(*World, InVariant);
 
 	if (!Track)
 	{
