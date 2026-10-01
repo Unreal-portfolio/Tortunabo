@@ -23,8 +23,12 @@ namespace
 	constexpr double RallyAIFireConeCos = 0.6;
 	/** Más lejos del eje está fuera de la calzada (14 m de calzada y arcén): vuelve a ella mirando cerca y despacio. */
 	constexpr double RallyAIOffRoadCm = 900.0;
-	constexpr double RallyAIRejoinLookAheadCm = 600.0;
-	constexpr float RallyAIRejoinKmh = 30.f;
+	constexpr double RallyAIRejoinLookAheadCm = 1500.0;
+	constexpr float RallyAIRejoinKmh = 35.f;
+	/** Pendiente que se mide por delante y cuánto baja la velocidad objetivo por cada unidad de bajada (12 % -> x0,7). */
+	constexpr double RallyAIGradeProbeCm = 2000.0;
+	constexpr double RallyAIDownhillSlowdown = 2.5;
+	constexpr double RallyAIMinDownhillFactor = 0.6;
 	/** Tras reaparecer, el buggy está inmóvil 3 s: no es un atasco. */
 	constexpr double RallyAITeleportGraceSeconds = 4.0;
 	/** Una marcha atrás a menos de esto de la anterior alarga la siguiente, hasta RallyAIReverseMaxSeconds. */
@@ -112,15 +116,18 @@ void ATN_RallyAIController::Drive(float DeltaSeconds, ATN_RallyTrack& Track)
 
 	const double SpeedCms = FMath::Abs(RallyVehicle->GetForwardSpeedCms());
 	const float SpeedKmh = static_cast<float>(TNRally::CmsToKmh(SpeedCms));
-	// Fuera de la calzada (un golpe, un charco o una explosión): mira a un punto cercano del eje y va despacio, para volver
-	// por el talud en vez de subirlo de frente.
+	// Fuera de la calzada (un golpe, un charco o una explosión): mira a un punto del eje 15 m por delante y va despacio,
+	// para volver en diagonal por el talud en vez de subirlo de frente.
 	const bool bOffRoad = FVector::Dist2D(Location, Track.GetLocationAtArc(Arc)) > RallyAIOffRoadCm;
 	const double LookAhead = bOffRoad ? RallyAIRejoinLookAheadCm : LookAheadBaseCm + SpeedCms * LookAheadSeconds;
 	const FVector Target = Track.GetLocationAtArc(Arc + LookAhead);
 	const float Steer = TNRally::SteerToward(Forward, Target - Location, SteerSaturationDeg);
 	const float CornerKmh = TNRally::CornerSpeedKmh(Track.GetDirectionAtArc(Arc),
 		Track.GetDirectionAtArc(Arc + RallyAICornerProbeCm + SpeedCms * RallyAICornerProbeSeconds), MaxSpeedKmh, MinCornerSpeedKmh);
-	const float TargetKmh = bOffRoad ? FMath::Min(CornerKmh, RallyAIRejoinKmh) : CornerKmh;
+	// Cuesta abajo se frena peor: menos velocidad objetivo (en las bajadas con curva de E01B se salían por fuera).
+	const double Grade = (Track.GetLocationAtArc(Arc + RallyAIGradeProbeCm).Z - Track.GetLocationAtArc(Arc).Z) / RallyAIGradeProbeCm;
+	const double Downhill = FMath::Clamp(1.0 + RallyAIDownhillSlowdown * FMath::Min(0.0, Grade), RallyAIMinDownhillFactor, 1.0);
+	const float TargetKmh = bOffRoad ? FMath::Min(CornerKmh, RallyAIRejoinKmh) : static_cast<float>(CornerKmh * Downhill);
 
 	if (Time < ReverseUntil)
 	{
