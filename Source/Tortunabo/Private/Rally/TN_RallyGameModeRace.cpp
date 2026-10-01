@@ -12,6 +12,12 @@
 #include "Rally/TN_RallyVehicle.h"
 #include "World/TN_DeathZoneVolume.h"
 
+namespace TNRallyGameModeStats
+{
+	/** Definido en TN_RallyGameMode.cpp. */
+	extern int32 RacesRun;
+}
+
 namespace
 {
 	/** Un salto mayor entre dos fotogramas es un teletransporte: no suma al recorrido ni cruza puertas. */
@@ -187,6 +193,16 @@ void ATN_RallyGameMode::EvaluateTeam(FTeamRuntime& Team, double DeltaSeconds)
 	const double Progress = TNRally::ForwardArc(bClosed ? TNRally::WrapArc(Reference, Length, true) : Reference, Team.Arc, Length, bClosed);
 	Team.SegmentProgressCm = Progress > SegmentLength + RallyTeleportJumpCm ? 0.0 : Progress;
 
+	const ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
+	const bool bFlipped = RallyVehicle && RallyVehicle->IsFlipped();
+	if (bFlipped && !Team.bWasFlipped)
+	{
+		++Team.Flips;
+		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d volcado en el arco %.0f m (%.0f km/h)."), Team.TeamIndex,
+			Team.Arc / 100.0, TNRally::CmsToKmh(Vehicle->GetVelocity().Size()));
+	}
+	Team.bWasFlipped = bFlipped;
+
 	if (Now() < Team.ImmuneUntil)
 	{
 		return;
@@ -270,9 +286,10 @@ void ATN_RallyGameMode::RespawnTeam(FTeamRuntime& Team, ERespawnReason Reason)
 	Team.Stuck = TNRally::FStuckState();
 	Team.OffTrack = TNRally::FOffTrackState();
 
+	++Team.Respawns[static_cast<uint8>(Reason)];
 	static const TCHAR* ReasonNames[] = { TEXT("zona de muerte o agua"), TEXT("fuera de pista"), TEXT("atasco"), TEXT("petición") };
-	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d reaparece en la puerta %d (%s)."), Team.TeamIndex, Team.LastGate,
-		ReasonNames[static_cast<uint8>(Reason)]);
+	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d reaparece en la puerta %d (%s) desde el arco %.0f m."), Team.TeamIndex,
+		Team.LastGate, ReasonNames[static_cast<uint8>(Reason)], Team.Arc / 100.0);
 	RebuildStandings();
 }
 
@@ -291,7 +308,36 @@ void ATN_RallyGameMode::TurnAround(FTeamRuntime& Team)
 	Team.ImmuneUntil = Now() + TurnAroundGhostSeconds;
 	Team.PrevLocation = Location;
 	Team.bWrongWay = false;
+	++Team.TurnArounds;
 	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d girado: 4 s en contramano."), Team.TeamIndex);
+}
+
+void ATN_RallyGameMode::LogRaceStats(bool bTimedOut) const
+{
+	int32 Finished = 0;
+	int32 Flips = 0;
+	int32 TurnArounds = 0;
+	int32 Respawns[4] = { 0, 0, 0, 0 };
+	double Winner = 0.0;
+	for (const FTeamRuntime& Team : Teams)
+	{
+		Finished += Team.bFinished ? 1 : 0;
+		Flips += Team.Flips;
+		TurnArounds += Team.TurnArounds;
+		for (int32 Reason = 0; Reason < 4; ++Reason)
+		{
+			Respawns[Reason] += Team.Respawns[Reason];
+		}
+		if (Team.bFinished && (Winner <= 0.0 || Team.FinishSeconds < Winner))
+		{
+			Winner = Team.FinishSeconds;
+		}
+	}
+	UE_LOG(LogTNRally, Log,
+		TEXT("[RallyStats] carrera %d variante %s: terminados %d/%d, atascos %d, vuelcos %d, caidas %d, fuera_de_pista %d, peticiones %d, giros %d, ganador %.1f s%s"),
+		TNRallyGameModeStats::RacesRun, *Variant.ToString(), Finished, Teams.Num(), Respawns[static_cast<uint8>(ERespawnReason::Stuck)], Flips,
+		Respawns[static_cast<uint8>(ERespawnReason::Hazard)], Respawns[static_cast<uint8>(ERespawnReason::OffTrack)],
+		Respawns[static_cast<uint8>(ERespawnReason::Request)], TurnArounds, Winner, bTimedOut ? TEXT(" (tope de tiempo)") : TEXT(""));
 }
 
 void ATN_RallyGameMode::RefreshSeats()

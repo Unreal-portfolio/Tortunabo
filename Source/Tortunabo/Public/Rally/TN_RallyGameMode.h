@@ -110,6 +110,11 @@ private:
 		TNRally::FWrongWayState WrongWay;
 		TNRally::FStuckState Stuck;
 		TNRally::FOffTrackState OffTrack;
+		/** Estadística de la carrera (línea [RallyStats] al dar los resultados): reapariciones por motivo y vuelcos. */
+		int32 Respawns[4] = { 0, 0, 0, 0 };
+		int32 Flips = 0;
+		int32 TurnArounds = 0;
+		bool bWasFlipped = false;
 	};
 
 	enum class ERespawnReason : uint8 { Hazard, OffTrack, Stuck, Request };
@@ -149,6 +154,8 @@ private:
 	void TurnAround(FTeamRuntime& Team);
 	void RebuildStandings();
 	void RefreshSeats();
+	/** Una línea [RallyStats] con terminados, reapariciones por motivo, vuelcos y tiempo del ganador (pruebas del piloto IA). */
+	void LogRaceStats(bool bTimedOut) const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ATN_RallyTrack> Track;
@@ -168,4 +175,12 @@ private:
 	bool bTrackReady = false;
 	bool bLoggedMissingVehicle = false;
 	bool bRestartRequested = false;
+
+	// Opciones de prueba (servidor sin jugadoras, carreras de la IA en bucle):
+	/** ?AutoStart: el calentamiento empieza solo aunque no se siente ninguna jugadora (carrera solo de bots). */
+	bool bAutoStart = false;
+	/** ?RaceTimeout=S: la carrera pasa a resultados a los S s del verde (0 = sin tope). */
+	float RaceTimeoutSeconds = 0.f;
+	/** ?Races=N: tras los resultados de la carrera N del proceso, el juego se cierra en vez de empezar otra (0 = nunca). */
+	int32 RaceLimit = 0;
 };

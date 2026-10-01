@@ -11,6 +11,12 @@
 #include "Rally/TN_RallyTrack.h"
 #include "Rally/TN_RallyVehicle.h"
 
+namespace TNRallyGameModeStats
+{
+	/** Carreras terminadas en este proceso (sobrevive al ?Restart, que crea otro GameMode): para ?Races=N. */
+	int32 RacesRun = 0;
+}
+
 ATN_RallyGameMode::ATN_RallyGameMode()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -35,8 +41,11 @@ void ATN_RallyGameMode::InitGame(const FString& MapName, const FString& Options,
 	Bots = FMath::Clamp(UGameplayStatics::GetIntOption(Options, TEXT("Bots"), 0), 0, TNRally::MaxGridSlots);
 	bLapsFromUrl = UGameplayStatics::HasOption(Options, TEXT("Laps"));
 	Laps = FMath::Clamp(UGameplayStatics::GetIntOption(Options, TEXT("Laps"), DefaultLaps), 1, 9);
-	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s: variante %s, %d plaza(s) por buggy, %d bots, %d vueltas."),
-		*MapName, *Variant.ToString(), Seats, Bots, Laps);
+	bAutoStart = UGameplayStatics::HasOption(Options, TEXT("AutoStart"));
+	RaceTimeoutSeconds = FMath::Max(0, UGameplayStatics::GetIntOption(Options, TEXT("RaceTimeout"), 0));
+	RaceLimit = FMath::Max(0, UGameplayStatics::GetIntOption(Options, TEXT("Races"), 0));
+	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s: variante %s, %d plaza(s) por buggy, %d bots, %d vueltas%s."),
+		*MapName, *Variant.ToString(), Seats, Bots, Laps, bAutoStart ? TEXT(", salida sin jugadoras") : TEXT(""));
 }
 
 void ATN_RallyGameMode::StartPlay()
@@ -77,6 +86,11 @@ void ATN_RallyGameMode::StartPlay()
 	{
 		SpawnBots();
 		RebuildStandings();
+		ATN_RallyGameState* RallyState = GetRallyGameState();
+		if (bAutoStart && RallyState && RallyState->PhaseEndServerTime <= 0.f && Teams.Num() > 0)
+		{
+			RallyState->PhaseEndServerTime = static_cast<float>(Now() + WarmupSeconds);
+		}
 	}
 }
 
@@ -417,6 +431,11 @@ void ATN_RallyGameMode::UpdatePhase()
 		{
 			StartResults();
 		}
+		else if (RaceTimeoutSeconds > 0.f && Time >= RallyState->StartServerTime + RaceTimeoutSeconds)
+		{
+			UE_LOG(LogTNRally, Warning, TEXT("[RallyGameMode] Tope de %.0f s sin nadie en meta: resultados."), RaceTimeoutSeconds);
+			StartResults();
+		}
 		break;
 	case ETNRallyPhase::Finishing:
 		if (Time >= RallyState->PhaseEndServerTime
@@ -428,6 +447,13 @@ void ATN_RallyGameMode::UpdatePhase()
 	case ETNRallyPhase::Results:
 		if (Time >= RallyState->PhaseEndServerTime && !bRestartRequested)
 		{
+			if (RaceLimit > 0 && TNRallyGameModeStats::RacesRun >= RaceLimit)
+			{
+				bRestartRequested = true;
+				UE_LOG(LogTNRally, Log, TEXT("[RallyStats] %d carreras hechas (?Races=%d): fin."), TNRallyGameModeStats::RacesRun, RaceLimit);
+				FPlatformMisc::RequestExit(false, TEXT("TN Rally ?Races"));
+				break;
+			}
 			// ?Restart reutiliza la URL actual: mismo mapa y mismas opciones (?Variant, ?Seats, ?Bots, ?Laps).
 			bRestartRequested = true;
 			UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Carrera nueva en el mismo mapa."));
@@ -500,6 +526,13 @@ void ATN_RallyGameMode::StartFinishing()
 void ATN_RallyGameMode::StartResults()
 {
 	ATN_RallyGameState* RallyState = GetRallyGameState();
+	if (RallyState->Phase != ETNRallyPhase::Results)
+	{
+		++TNRallyGameModeStats::RacesRun;
+		const bool bTimedOut = RallyState->Phase == ETNRallyPhase::Racing && RaceTimeoutSeconds > 0.f
+			&& Now() >= RallyState->StartServerTime + RaceTimeoutSeconds;
+		LogRaceStats(bTimedOut);
+	}
 	RallyState->Phase = ETNRallyPhase::Results;
 	RallyState->PhaseEndServerTime = static_cast<float>(Now() + ResultsSeconds);
 	SetAllEnginesLocked(true);
