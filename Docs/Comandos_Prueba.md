@@ -251,6 +251,17 @@ No existen en la build Shipping.
 | `TN.Rooms.FakeError <locked\|full\|kicked\|other>` | Simula que el servidor no te deja entrar (sala cerrada, llena, expulsado u otro motivo): pantalla de vuelta al menú y el aviso en «Unirse». Sin segunda instancia. |
 | `TN.Rooms.FakeError <joinfull\|gone\|noaddress>` | Simula que falla la entrada en la sesión (llena, ya no existe, sin dirección del anfitrión): el aviso sale en el menú de salas sin recargarlo. |
 
+## Partida local (pantalla partida)
+
+En una partida local (menú principal > «Local», Standalone). No existen en la build Shipping. Detalle en
+[Modo_Local.md](Modo_Local.md).
+
+| Comando | Qué hace |
+|---|---|
+| `TN.Local.AddGuest [N]` | En el lobby, añade N invitados (1 a 3, hasta 4 jugadores) sin mando: su tortuga aparece y la pantalla se reparte, pero no los mueve nadie. Para ver el reparto con 2, 3 y 4 sin tener cuatro mandos. |
+| `TN.Local.RemoveGuest [N]` | Saca al último invitado (o al jugador N, de 2 a 4): su tortuga y su vista desaparecen. |
+| `TN.Local.Info` | Escribe si la partida es local y, de cada jugador local, su usuario de la plataforma y sus aparatos (qué mando es de quién). |
+
 ## Cooperativo (mapa procedural y lobby)
 
 Con ocho jugadores (PIE con 8 jugadores y modo «Listen server», o `-game` con ocho clientes): en el lobby, los cuatro primeros
