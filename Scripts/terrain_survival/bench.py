@@ -81,6 +81,7 @@ def _fmt(value, unit: str = "") -> str:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")       # la consola de Windows (cp1252) no imprime «→» ni «°»
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--algoritmo", choices=sorted(ADAPTERS), help="generador Python a ejecutar")
     ap.add_argument("--carpeta", type=Path, help="mapas .npz ya generados (p. ej. el export de C++)")
