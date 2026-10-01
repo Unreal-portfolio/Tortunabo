@@ -8,10 +8,10 @@ Sistema real de cosméticos de Tortunavy: la tienda de Don Tortugo (catálogo y 
 
 1. **Tienda** (`ATN_ShopKeeper`). Al hablar con el tendero se abre `UTN_ShopWidget` en el cliente que interactúa:
    a la izquierda, tu tortuga posando y girando en una peana (arrastrar con el ratón la gira); a la derecha, el
-   tendero habla en su bocadillo, cuatro pestañas (cascos, caparazones, colores y ojos) y el catálogo con miniaturas
+   tendero habla en su bocadillo, cinco pestañas (cascos, caparazones, colores, ojos y buggy) y el catálogo con miniaturas
    y precio (las de ojos, con primer plano de la cara).
    Al elegir algo, la tortuga se lo prueba encima de lo que lleva y saluda. **Comprar** desbloquea el cosmético
-   (hoy todo cuesta 0 conchas) y lo guarda en el `SaveGame` local; el servidor recibe la lista de desbloqueados
+   (lo de la tortuga hoy cuesta 0 conchas; el buggy del Rally, conchas de verdad) y lo guarda en el `SaveGame` local; el servidor recibe la lista de desbloqueados
    (`ServerSyncUnlockedHelmets` / `ServerSyncUnlockedSkins`).
 2. **Probador** (`ATN_ChangingBooth`): botella de cristal de mar de unos 3 m, puesta boca abajo.
    - El techo es el culo de una botella de refresco de litro y medio, con sus cinco lóbulos.
@@ -144,3 +144,75 @@ postura de referencia (0; 5,5; 51) para que siga la animación de la cabeza. Con
 
 El precio (`Price`) ya se descuenta de las conchas acumuladas (`AccumulatedRaceScore`); la economía de conchas o
 estrellas queda para más adelante.
+
+## Buggy del Rally (#297, #114, #115)
+
+El aspecto del buggy del Rally es un modelo de carrocería y una pintura (`FTN_BuggyLook`). Se compran en la pestaña
+**BUGGY** de la tienda, que mezcla modelos y pinturas; el escaparate enseña el buggy en miniatura con la tortuga del
+jugador al volante y se prueba lo que se mira. Se ponen en la página **BUGGY** del probador (Q/E o los botones TORTUGA y
+BUGGY), con dos filas: modelo y pintura. En el Rally, cada buggy lleva el de su conductora; los de la IA y los vacíos,
+uno por equipo (`TNBuggyCosmetics::LookForTeam`), así que la parrilla enseña el catálogo.
+
+### Catálogo
+
+En C++, sin DataTable (`Vehicles/TN_BuggyCosmetics.h/.cpp`): el servidor y los tests lo leen sin assets. Ids
+`BuggyModel_*` y `BuggyPaint_*`; `NAME_None` es el de serie. Los textos son `NSLOCTEXT` (claves `BuggyModel*` y
+`BuggyPaint*`).
+
+| Modelo | Conchas | Carrocería |
+|---|---|---|
+| Buggy Clásico (de serie) | 0 | Tortuga común: caparazón de placas hexagonales, aletas por guardabarros, ojos-faro, cola de escape cromada y alerón de vieira |
+| Caimán Todoterreno (`BuggyModel_Caiman`) | 1200 | Tortuga caimán: placas con pinchos en tres quillas, ceño, colmillos, defensa tubular con faros, arco con barra de luces, tubo de buceo, faldillas y rueda de repuesto |
+| Laúd Bólido (`BuggyModel_Laud`) | 1500 | Tortuga laúd: caparazón bajo de siete crestas, cabeza en cuña con mirada de concentración, torreta para la artillera, alerón de carreras, faldón y escapes laterales |
+
+Pinturas (colores de carrocería, placas y piel, dibujo, brillo y luz propia): Verde de serie (0), Coral Bravo (300),
+Azul Marino (400, olas), Arena Dorada (300), Sandía Veraniega (500), Ajedrez de Meta (800), Lava Volcánica (1200, grietas
+que brillan), Noche Estrellada (1000, estrellas que brillan), Mariquita (450), Medusa Rosa (500), Oro Pirata (2000,
+metal), Plata Pulida (1500, metal), Camuflaje de Alga (600), Llamas Infernales (1200), Rayas de Carreras (600), Abisal
+Luminosa (1400, lunares que brillan), Carey (700), Hielo Polar (500), Atardecer Tropical (700), Tiburón (400), Pulpo
+Morado (550) y Caramelo de Feria (500).
+
+### Red y guardado
+
+- `ATN_CoopPlayerState::EquippedBuggyLook` se replica; su OnRep avisa (`OnAnyBuggyLookChanged`) y el buggy de esa
+  conductora se repinta al momento en cada máquina (y, por si acaso, cada medio segundo con los asientos).
+- Lo escribe solo el servidor tras validarlo contra el catálogo y lo comprado (`TNBuggyCosmetics::CanEquip`): en el
+  lobby, `ServerSyncUnlockedBuggy` y `ServerSetEquippedBuggyLook` (`AMP_GamePlayerController::RequestEquipBuggyLook`); en
+  el Rally, dentro del lote de `ServerSyncCosmetics`. Cotas: 256 Ids en la RPC y 64 aceptados.
+- Perfil cosmético: `UnlockedBuggyIds` y `EquippedBuggyLook` (sin cambio de versión: un perfil viejo los lee vacíos; un
+  Id que ya no existe se lee como el de serie).
+
+### Carrocería
+
+`Vehicles/TN_BuggyArt.cpp` construye en C++, una vez por pieza y modelo, mallas de caras planas (el estilo low poly del
+juego) que comparten todos los buggies. Cada pieza tiene un nombre estable `Rally.Buggy.<Pieza>.<Modelo>` (piezas
+`Chassis`, `Cockpit`, `Shell`, `Head`, `Fenders`, `Tail`, `Rear`, `Extras`, `Wheel`, `Cannon`, `Antenna` y
+`TurretPost`; modelos `Clasico`, `Caiman` y `Laud`) para poder cambiarla por arte con el catálogo de #319.
+
+- El caparazón es una cúpula elíptica con la escotadura de la cabina delante (como la muesca de la nuca de una tortuga),
+  placas levantadas con bisel en panal y una fila de marginales; la artillera va de pie en un sillín en lo alto.
+- La cabeza estira el cuello por delante de la cabina; los ojos son los faros (brillan), con el iris del color del
+  equipo. Las aletas salen del cuerpo y abrazan la rueda (con su paso de rueda). En la cabina: asiento, timón de barco,
+  salpicadero con relojes y una caja de cocos (la munición).
+- `UTN_BuggyLookComponent` monta las piezas, viste las ruedas de Chaos (los huesos `VisWheel_*`) y el cañón de la torreta
+  y mueve la antena (banderín del equipo) con los acelerones. Sin artillera, el cañón va en un poste sobre el sillín.
+  Solo visual: la física, la colisión (la de `SKM_Offroad`) y el chasis no cambian; la carrocería prestada de HellYeah
+  (`SM_BuggyBody`) se esconde.
+- La carrocería deja libres el barrido del cañón (pivote a 197,4 cm, 140 cm de largo, de -10 a 45 grados) y las cabezas
+  de las dos tortugas; lo comprueba `Tortunabo.Rally.Buggy.Art.Pieces`, con las medidas de las ruedas.
+
+### Material
+
+`/Game/Vehicles/Buggy/M_BuggyPaint` (`Scripts/build_buggy_paint.py`, sin interfaz con `-run=pythonscript`). El alfa del
+color de vértice es la zona, en octavos: 8 pintura, 7 pintura sin dibujo (llantas), 6 equipo, 4 luz, 2 metal, 0 mate. En
+la pintura, el RGB son las máscaras de carrocería (`BaseColor`), placas (`PlateColor`) y piel (`AccentColor`) con su
+sombreado. `Pattern` (0 liso, 1 escamas, 2 lunares, 3 olas, 4 estrellas, 5 lava, 6 ajedrez, 7 sandía, como el caparazón
+de la tortuga, y 8 franjas, 9 llamas, 10 camuflaje), `PatternColor`, `PatternScale`, `Shine`, `Glow`, `TeamColor` y
+`LightGlow`. Si falta el material, el buggy sale con los colores horneados en `M_CosmeticVertexColor` (sin dibujo).
+
+### Añadir
+
+- **Pintura:** una fila en `TNBuggyCosmetics::Paints()` con su `NSLOCTEXT`, precio, colores (sRGB hexadecimal), dibujo,
+  brillo y luz.
+- **Modelo:** una fila en `Models()` con un `ETNBuggyBodyStyle` nuevo y su rama en las piezas de `TNBuggyArt` (cúpula,
+  cabeza, aletas, detrás y extras). `Tortunabo.Rally.Buggy.*` comprueba el catálogo y las medidas.

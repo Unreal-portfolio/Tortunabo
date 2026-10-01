@@ -296,3 +296,16 @@ reiniciarlo al arrancar sin consola, `Saved/ResetTutorial.txt` (vacío = todas l
 | `TN.Tutorial.Skip` | Lo salta como el menú de pausa: baja a la plaza del castillo y queda apuntado como hecho. |
 | `TN.Tutorial.Station 12` | Lleva a la estación 12 (1-19) y mete en el tutorial si hace falta. Sin número, escribe la lista. |
 | `TN.Tutorial.Info` | Ranura del guardado, hecho o no, dentro o fuera, estación y cuántos hay dentro (en el servidor). |
+
+## Buggy del Rally: aspecto, tienda y probador
+
+Detalle en `Docs/Tienda_Probador.md` («Buggy del Rally»).
+
+| Comando | Qué hace |
+|---|---|
+| `TN.Shop.AddShells [conchas]` | Suma conchas al perfil local (5000 si no se dice), para comprar buggies y pinturas en la tienda. |
+| `TNShop` / `TNBooth` | Abre la tienda o entra en el probador libre más cercano (pestaña y página BUGGY con Q/E). |
+| `TN.Rally.DebugBuggy <modelo\|-> [pintura\|-] [espera]` | En el Rally: la jugadora local manda ese buggy al servidor como si lo hubiera comprado (`BuggyModel_Caiman`, `BuggyModel_Laud`, `BuggyPaint_Lava`...; `-` = el de serie). No toca el guardado. |
+| `TN.Buggy.Photos [carpeta] [tamaño] [espera]` | Fotos PNG del escaparate (los tres modelos desde varios lados y todas las pinturas) y cierra el juego. |
+| `TN.Buggy.WorldShots [carpeta] [espera]` | En el Rally (mejor con `?Bots=5`): congela el tiempo, saca fotos sin interfaz del buggy propio de cerca, de lejos y la parrilla, y cierra el juego. |
+| `TN.Shop.UIShots [carpeta] [espera]` | En el lobby: compra un Caimán y la pintura de lava de prueba y saca capturas de la tienda y del probador con la interfaz. |
