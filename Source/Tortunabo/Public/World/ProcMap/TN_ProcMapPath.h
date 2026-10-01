@@ -938,6 +938,20 @@ namespace TNProcMap
 		{
 			if ((L.Main[i].Flags & PathFlags::Start) != 0) { Z[i] = StartZ; }
 		}
+		if (P.bDrivable)
+		{
+			// Rally: del claro llano al camino sin escalón (el buggy no lo subiría): pendiente limitada hacia delante hasta
+			// que el perfil vuelve a cuadrar.
+			for (int32 i = 1; i < NumS; ++i)
+			{
+				if ((L.Main[i].Flags & PathFlags::Start) != 0) { continue; }
+				const double Ds = L.Main[i].S - L.Main[i - 1].S;
+				const double Lo = Z[i - 1] - P.MaxPathSlope * Ds;
+				const double Hi = Z[i - 1] + P.MaxPathSlope * Ds;
+				if (Z[i] >= Lo && Z[i] <= Hi) { break; }
+				Z[i] = FMath::Clamp(Z[i], Lo, Hi);
+			}
+		}
 		int32 FirstShore = NumS;
 		for (int32 i = 0; i < NumS; ++i) { if ((L.Main[i].Flags & PathFlags::Shore) != 0) { FirstShore = i; break; } }
 		// Rampa suave hasta la cota de la playa antes de llegar a ella.

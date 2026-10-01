@@ -72,8 +72,9 @@ namespace TNRally
 
 	/**
 	 * Arcos de las puertas: la salida en StartArc, una cada GateSpacingCm (si cae donde IsForbidden, se adelanta hasta
-	 * MaxGateShiftCm; si no encuentra sitio, esa no se pone) sin acercarse a menos de MinGateGapCm de la anterior ni de la
-	 * meta, y la meta en FinishArc. Siempre al menos la salida y la meta si FinishArc > StartArc.
+	 * MaxGateShiftCm o, si no hay sitio, se retrasa otro tanto; si tampoco, esa no se pone) sin acercarse a menos de
+	 * MinGateGapCm de la anterior ni de la meta, y la meta en FinishArc. Siempre al menos la salida y la meta si
+	 * FinishArc > StartArc.
 	 */
 	TORTUNABO_API TArray<double> PlanGateArcs(double StartArc, double FinishArc, const FRoutePlanParams& Params,
 		TFunctionRef<bool(double)> IsForbidden);

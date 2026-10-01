@@ -90,7 +90,8 @@ namespace TNRally
 		double Last = StartArc;
 		for (double Wanted = StartArc + Spacing; Wanted < FinishArc - MinGap; Wanted += Spacing)
 		{
-			// Adelanta la puerta hasta un sitio que valga (fuera de cuevas y estructuras), sin pasarse.
+			// Adelanta la puerta hasta un sitio que valga (fuera de cuevas y estructuras), sin pasarse; si no lo hay, la
+			// retrasa (una cueva larga deja la puerta antes de su boca).
 			double Chosen = -1.0;
 			for (double Probe = Wanted; Probe <= Wanted + Params.MaxGateShiftCm; Probe += RouteGateSearchStepCm)
 			{
@@ -98,6 +99,14 @@ namespace TNRally
 				{
 					Chosen = Probe;
 					break;
+				}
+			}
+			for (double Probe = Wanted - RouteGateSearchStepCm; Chosen < 0.0 && Probe >= Wanted - Params.MaxGateShiftCm
+				&& Probe - Last >= MinGap; Probe -= RouteGateSearchStepCm)
+			{
+				if (!IsForbidden(Probe))
+				{
+					Chosen = Probe;
 				}
 			}
 			if (Chosen < 0.0 || Chosen - Last < MinGap || FinishArc - Chosen < MinGap)
