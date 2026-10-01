@@ -60,6 +60,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enderezado")
 	float RespawnHoldSeconds = 1.5f;
 
+	/** Antivuelco: alabeo y cabeceo tolerados con ruedas en el suelo (grados); en el aire, ninguno. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco")
+	float AntiRollGroundFreeRollDeg = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco")
+	float AntiRollGroundFreePitchDeg = 30.f;
+
+	/** Muelle (aceleración angular por radián de exceso, 1/s²); 0 lo desactiva. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco")
+	float AntiRollStiffness = 14.f;
+
+	/** Amortiguador (1/s) y tope (rad/s²). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco")
+	float AntiRollDamping = 4.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco")
+	float AntiRollMaxAccel = 25.f;
+
 	/** Subida mínima del suelo bajo la rueda (cm) en un frame para contar como escalón. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Suspension")
 	float BumpMinStepCm = 4.f;

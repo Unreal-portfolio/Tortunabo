@@ -92,6 +92,30 @@ namespace TNBuggy
 	/** Transform del enderezado: Lift cm más arriba, con solo la guiñada (cabeceo y alabeo a 0). */
 	TORTUNABO_API FTransform SelfRightTransform(const FTransform& Current, float LiftCm);
 
+	// ── Antivuelco ──────────────────────────────────────────────────────────────
+
+	struct FAntiRollTuning
+	{
+		/** Alabeo (grados respecto a la vertical) que se tolera con ruedas en el suelo: peraltes y taludes. */
+		float GroundFreeRollDeg = 20.f;
+		/** Cabeceo tolerado con ruedas en el suelo (las rampas de la pista no pasan de 12 grados). */
+		float GroundFreePitchDeg = 30.f;
+		/** Muelle (1/s²): aceleración angular por radián de exceso. */
+		float Stiffness = 14.f;
+		/** Amortiguador (1/s) sobre la velocidad de alabeo y de cabeceo. */
+		float Damping = 4.f;
+		/** Tope de la aceleración angular (rad/s²). */
+		float MaxAccel = 25.f;
+	};
+
+	/**
+	 * Aceleración angular (rad/s², ejes del mundo) que devuelve el buggy hacia la vertical: muelle sobre el alabeo y el
+	 * cabeceo que pasan de lo tolerado (en el aire no se tolera nada) y amortiguador sobre su velocidad. No toca la
+	 * guiñada. Cero si ya está volcado (UpZ < FlippedUpZ: lo endereza DecideSelfRight) o si el ajuste es nulo.
+	 */
+	TORTUNABO_API FVector AntiRollAccel(const FVector& Forward, const FVector& Up, const FVector& AngularVelocityRad, bool bAirborne,
+		const FAntiRollTuning& Tuning);
+
 	/** Botón de reaparecer: true el frame en que se cumplen HoldSeconds pulsado (una vez por pulsación). */
 	struct FHold
 	{

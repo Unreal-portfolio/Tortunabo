@@ -101,6 +101,42 @@ namespace TNBuggy
 		return false;
 	}
 
+	namespace
+	{
+		/** Ángulo con signo (rad) de Axis alrededor del que Current se aparta de la vertical, con la zona libre Free (rad). */
+		double ExcessTilt(const FVector& Axis, const FVector& Current, double Free)
+		{
+			const FVector Vertical = (FVector::UpVector - Axis * (FVector::UpVector | Axis)).GetSafeNormal();
+			if (Vertical.IsNearlyZero())
+			{
+				return 0.0;
+			}
+			const double Angle = FMath::Atan2(Axis | (Vertical ^ Current), Vertical | Current);
+			return FMath::Sign(Angle) * FMath::Max(0.0, FMath::Abs(Angle) - Free);
+		}
+	}
+
+	FVector AntiRollAccel(const FVector& Forward, const FVector& Up, const FVector& AngularVelocityRad, bool bAirborne,
+		const FAntiRollTuning& Tuning)
+	{
+		if (IsFlipped(static_cast<float>(Up.Z)) || Tuning.Stiffness <= 0.f)
+		{
+			return FVector::ZeroVector;
+		}
+		const FVector F = Forward.GetSafeNormal();
+		const FVector R = (Up ^ F).GetSafeNormal();
+		const double FreeRoll = bAirborne ? 0.0 : FMath::DegreesToRadians(Tuning.GroundFreeRollDeg);
+		const double FreePitch = bAirborne ? 0.0 : FMath::DegreesToRadians(Tuning.GroundFreePitchDeg);
+		const double Roll = ExcessTilt(F, Up, FreeRoll);
+		const double Pitch = ExcessTilt(R, Up, FreePitch);
+		// El amortiguador solo actúa mientras hay exceso (o en el aire): en el suelo no frena el balanceo normal.
+		const double RollRate = (Roll != 0.0 || bAirborne) ? (AngularVelocityRad | F) : 0.0;
+		const double PitchRate = (Pitch != 0.0 || bAirborne) ? (AngularVelocityRad | R) : 0.0;
+		const FVector Accel = F * (-Tuning.Stiffness * Roll - Tuning.Damping * RollRate)
+			+ R * (-Tuning.Stiffness * Pitch - Tuning.Damping * PitchRate);
+		return Accel.GetClampedToMaxSize(FMath::Max(0.f, Tuning.MaxAccel));
+	}
+
 	FLinearColor TeamColor(int32 Index)
 	{
 		static const FLinearColor Palette[] = {

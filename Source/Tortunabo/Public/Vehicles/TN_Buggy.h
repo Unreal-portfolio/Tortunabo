@@ -177,6 +177,8 @@ private:
 	void ApplySteeringAssist();
 	void ApplyBumpKicks();
 	void ApplyPuddleSpeedCap();
+	/** Antivuelco (TNBuggy::AntiRollAccel) en cada máquina que simula el chasis. */
+	void ApplyAntiRoll();
 	void HoldLockedInPlace();
 	void UpdateSelfRight(float DeltaSeconds);
 	void DoSelfRight();

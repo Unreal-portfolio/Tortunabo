@@ -327,6 +327,7 @@ void ATN_Buggy::Tick(float DeltaSeconds)
 	}
 	ApplyBumpKicks();
 	ApplyPuddleSpeedCap();
+	ApplyAntiRoll();
 	if (IsLocallyControlled() || (HasAuthority() && !IsPlayerControlled()))
 	{
 		ApplySteeringAssist();
@@ -495,6 +496,35 @@ void ATN_Buggy::ApplyPuddleSpeedCap()
 	{
 		// Como aceleración (bAccelChange) en el centro de masas, en todas las máquinas que simulan el chasis.
 		Chassis->AddForce(-Flat.GetSafeNormal() * Decel, NAME_None, true);
+	}
+}
+
+void ATN_Buggy::ApplyAntiRoll()
+{
+	UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement();
+	USkeletalMeshComponent* Chassis = GetMesh();
+	if (!Move || !Move->HasValidPhysicsState() || !Chassis->IsSimulatingPhysics())
+	{
+		return;
+	}
+	bool bAnyContact = false;
+	for (int32 Index = 0; Index < Move->Wheels.Num() && !bAnyContact; ++Index)
+	{
+		bAnyContact = Move->GetWheelState(Index).bInContact;
+	}
+	const UTN_BuggyData* Tuning = GetData();
+	TNBuggy::FAntiRollTuning AntiRoll;
+	AntiRoll.GroundFreeRollDeg = Tuning->AntiRollGroundFreeRollDeg;
+	AntiRoll.GroundFreePitchDeg = Tuning->AntiRollGroundFreePitchDeg;
+	AntiRoll.Stiffness = Tuning->AntiRollStiffness;
+	AntiRoll.Damping = Tuning->AntiRollDamping;
+	AntiRoll.MaxAccel = Tuning->AntiRollMaxAccel;
+	const FVector Accel = TNBuggy::AntiRollAccel(GetActorForwardVector(), GetActorUpVector(),
+		Chassis->GetPhysicsAngularVelocityInRadians(), !bAnyContact, AntiRoll);
+	if (!Accel.IsNearlyZero())
+	{
+		// Como aceleración (bAccelChange): igual para cualquier masa e inercia del chasis.
+		Chassis->AddTorqueInRadians(Accel, NAME_None, true);
 	}
 }
 

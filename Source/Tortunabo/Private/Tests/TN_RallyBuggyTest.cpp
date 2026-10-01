@@ -41,6 +41,52 @@ bool FTNRallyBuggySelfRightTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyBuggyAntiRollTest,
+	"Tortunabo.Rally.Buggy.AntiRoll",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyBuggyAntiRollTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBuggy;
+	const FAntiRollTuning Tuning;
+	const FVector Forward = FVector::ForwardVector;
+	TestTrue(TEXT("derecho y quieto: nada"), AntiRollAccel(Forward, FVector::UpVector, FVector::ZeroVector, true, Tuning).IsNearlyZero());
+
+	const FQuat Roll15(Forward, FMath::DegreesToRadians(15.0));
+	TestTrue(TEXT("15 grados de alabeo en el suelo (peralte): nada"),
+		AntiRollAccel(Forward, Roll15.RotateVector(FVector::UpVector), FVector::ZeroVector, false, Tuning).IsNearlyZero());
+	TestFalse(TEXT("los mismos 15 grados en el aire: corrige"),
+		AntiRollAccel(Forward, Roll15.RotateVector(FVector::UpVector), FVector::ZeroVector, true, Tuning).IsNearlyZero());
+	TestTrue(TEXT("volcado: no corrige (lo endereza el servidor)"),
+		AntiRollAccel(Forward, -FVector::UpVector, FVector::ZeroVector, false, Tuning).IsNearlyZero());
+	FAntiRollTuning Off = Tuning;
+	Off.Stiffness = 0.f;
+	TestTrue(TEXT("rigidez 0: desactivado"), AntiRollAccel(Forward, Roll15.RotateVector(FVector::UpVector), FVector::ZeroVector, true, Off).IsNearlyZero());
+
+	// Integración simple (60 Hz, inercia unidad): un buggy que vuelca a 3 rad/s con 50 grados de alabeo en el suelo
+	// no llega a volcar y en 2 s queda cerca de lo tolerado (sin gravedad ni suspensión, dentro de la zona libre no hay
+	// nada que lo frene: oscila en su borde).
+	FQuat Attitude(Forward, FMath::DegreesToRadians(50.0));
+	FVector Omega = Forward * 3.0;
+	double MaxTiltDeg = 0.0;
+	for (int32 Step = 0; Step < 120; ++Step)
+	{
+		const FVector Up = Attitude.RotateVector(FVector::UpVector);
+		const FVector Fwd = Attitude.RotateVector(FVector::ForwardVector);
+		Omega += AntiRollAccel(Fwd, Up, Omega, false, Tuning) / 60.0;
+		const double Angle = Omega.Size() / 60.0;
+		if (Angle > 0.0)
+		{
+			Attitude = (FQuat(Omega.GetSafeNormal(), Angle) * Attitude).GetNormalized();
+		}
+		MaxTiltDeg = FMath::Max(MaxTiltDeg, FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Attitude.RotateVector(FVector::UpVector).Z, -1.0, 1.0))));
+	}
+	const double FinalTiltDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Attitude.RotateVector(FVector::UpVector).Z, -1.0, 1.0)));
+	TestTrue(FString::Printf(TEXT("no vuelca (máximo %.0f grados)"), MaxTiltDeg), !IsFlipped(static_cast<float>(FMath::Cos(FMath::DegreesToRadians(MaxTiltDeg)))));
+	TestTrue(FString::Printf(TEXT("vuelve cerca de lo tolerado (%.1f grados)"), FinalTiltDeg), FinalTiltDeg <= Tuning.GroundFreeRollDeg + 10.0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyBuggyRespawnHoldTest,
 	"Tortunabo.Rally.Buggy.RespawnHold",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
