@@ -53,6 +53,14 @@ Cajas de munición: filas en las puertas pares y a mitad de tramo; reaparecen a 
 
 Red: el servidor tiene la autoridad del buggy (movimiento replicado de Chaos, `PredictiveInterpolation`), de las puertas, los puestos y los impactos. Los clientes solo mandan entradas (conducción por el movimiento de Chaos, apuntado y disparo por RPC validada).
 
+## Pruebas sin editor (fuera de Shipping)
+
+- Nivel: `Scripts/build_rally_level.py` crea `LVL_Rally` (editor headless **sin** `-nullrhi`: con `-nullrhi` el editor revienta al colocar actores del proyecto). No está en `MapsToCook`.
+- Carreras solo de IA: `LVL_Rally?Variant=V?Bots=4?AutoStart?Races=10?RaceTimeout=300 -server -nullrhi`; cada carrera deja una línea `[RallyStats]` (terminados, atascos, vuelcos, caídas, fuera de pista, ganador).
+- Comandos: `TN.Rally.Measure [s] [cerrar]` (#100), `TN.Rally.StatusLater`, `TN.Rally.LocalFire`, `TN.Rally.DebugCosmetics`, `TN.Rally.DebugTeleport`.
+- Medida en I03R: punta 113,5 km/h, 0-100 km/h 6,6 s, frenada desde 60 km/h 12,9 m. En E01B: punta 99,8 km/h (no llega a 100 en 25 s), frenada 13,2 m.
+- Piloto IA (2026-10-01, 7 carreras por variante): I03R 23/28 terminados, 3 atascos, 1 vuelco, 3 caídas al agua, ganador 119-123 s; E01B 23/28, 2 atascos, 1 vuelco, 1 caída, ganador 111-120 s. Los fallos se concentran tras choques entre buggies: en I03R, en la curva de la cabeza (arco 200-285 m, con agua por fuera); en E01B, fuera de la calzada en un talud.
+
 ## Fuera de este MVP
 
 Física síncrona con subpasos (#101), `GeoRegion` y validador completo del corredor (#107–#109), decimado (#111), atribuciones (#112), skins y tienda (#114, #115), sonda de red con 8 buggies (#118), copa de 3 carreras y la integración en lobby y menú.
