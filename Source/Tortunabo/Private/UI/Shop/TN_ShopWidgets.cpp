@@ -398,10 +398,10 @@ FTN_TurtleLook UTN_CosmeticMenuBase::GetWornLook() const
 	}
 	else if (const UMP_GameInstance* GI = GetTNGI())
 	{
-		Worn.HelmetId = GI->GetEquippedHelmetId();
-		Worn.ShellId = GI->GetEquippedShellId();
-		Worn.SkinId = GI->GetEquippedSkinId();
-		Worn.EyesId = GI->GetEquippedEyesId();
+		Worn.HelmetId = GI->GetEquippedHelmetIdFor(PC);
+		Worn.ShellId = GI->GetEquippedShellIdFor(PC);
+		Worn.SkinId = GI->GetEquippedSkinIdFor(PC);
+		Worn.EyesId = GI->GetEquippedEyesIdFor(PC);
 	}
 	return Worn;
 }
@@ -639,7 +639,7 @@ FText UTN_ShopWidget::TagFor(FName Id, FLinearColor& OutColor) const
 		OutColor = TNShopUI::WornColor;
 		return NSLOCTEXT("Tortunabo", "ShopTagWorn", "PUESTO");
 	}
-	if (!GI || GI->IsCosmeticUnlocked(Tab, Id))
+	if (!GI || GI->IsCosmeticUnlockedFor(GetOwningPlayer(), Tab, Id))
 	{
 		OutColor = TNShopUI::OwnedColor;
 		return NSLOCTEXT("Tortunabo", "ShopTagOwned", "¡TUYO!");
@@ -665,7 +665,7 @@ void UTN_ShopWidget::RefreshBuyButton()
 	if (!BuyButton || !Items.IsValidIndex(Selected)) { return; }
 	const FName Id = Items[Selected];
 	const UMP_GameInstance* GI = GetTNGI();
-	const bool bOwned = !GI || GI->IsCosmeticUnlocked(Tab, Id);
+	const bool bOwned = !GI || GI->IsCosmeticUnlockedFor(GetOwningPlayer(), Tab, Id);
 	if (bOwned)
 	{
 		BuyButton->SetLabel(NSLOCTEXT("Tortunabo", "ShopBuyOwned", "¡YA ES TUYO!"));
@@ -675,13 +675,13 @@ void UTN_ShopWidget::RefreshBuyButton()
 	const int32 Price = GI->GetCosmeticPrice(Tab, Id);
 	BuyButton->SetLabel(Price <= 0 ? NSLOCTEXT("Tortunabo", "ShopBuyFree", "COMPRAR · GRATIS")
 		: FText::Format(NSLOCTEXT("Tortunabo", "ShopBuyPrice", "COMPRAR · {0}"), FText::AsNumber(Price)));
-	BuyButton->SetDisabled(Price > GI->GetAccumulatedRaceScore());
+	BuyButton->SetDisabled(Price > GI->GetAccumulatedRaceScoreFor(GetOwningPlayer()));
 }
 
 void UTN_ShopWidget::RefreshWallet()
 {
 	const UMP_GameInstance* GI = GetTNGI();
-	if (WalletText) { WalletText->SetText(FText::AsNumber(GI ? GI->GetAccumulatedRaceScore() : 0)); }
+	if (WalletText) { WalletText->SetText(FText::AsNumber(GI ? GI->GetAccumulatedRaceScoreFor(GetOwningPlayer()) : 0)); }
 }
 
 void UTN_ShopWidget::Select(int32 Index, bool bSpeak)
@@ -719,7 +719,7 @@ void UTN_ShopWidget::Buy()
 		Say(NSLOCTEXT("Tortunabo", "ShopSerie", "Eso ya viene de serie con tu caparazón. ¡Gratis desde que naciste!"));
 		return;
 	}
-	if (GI && GI->IsCosmeticUnlocked(Tab, Id))
+	if (GI && GI->IsCosmeticUnlockedFor(GetOwningPlayer(), Tab, Id))
 	{
 		Say(NSLOCTEXT("Tortunabo", "ShopAlready", "Ese ya es tuyo. Pruébatelo en las botellas: te queda de maravilla."));
 		return;
@@ -884,7 +884,7 @@ void UTN_BoothWidget::LoadOptions()
 		{
 			for (const FName Id : GI->GetCosmeticCatalog(Category))
 			{
-				if (GI->IsCosmeticUnlocked(Category, Id)) { Owned.Add(Id); }
+				if (GI->IsCosmeticUnlockedFor(GetOwningPlayer(), Category, Id)) { Owned.Add(Id); }
 			}
 		}
 		const int32 Worn = Owned.IndexOfByKey(Initial.Get(Category));

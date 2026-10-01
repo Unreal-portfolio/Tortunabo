@@ -24,6 +24,9 @@
 #include "Misc/PackageName.h"
 #include "TimerManager.h"
 #include "Multiplayer/TN_CosmeticSaveGame.h"
+#include "Multiplayer/TN_LocalPlayRules.h"
+#include "Multiplayer/TN_LocalPlaySubsystem.h"
+#include "Multiplayer/TN_LocalPlayerProfile.h"
 #include "Lobby/TN_LobbyMission.h"
 #include "Multiplayer/TN_RoomInfo.h"
 #include "Multiplayer/TN_SaveGameIO.h"
@@ -258,7 +261,7 @@ void UMP_GameInstance::ShowLoadingScreen(const FString& Reason)
 		return;
 	}
 
-	TNVR::AddToScreen(LoadingScreenWidget, 100000);
+	TNVR::AddToFullScreen(LoadingScreenWidget, 100000);
 	bIsLoadingScreenVisible = true;
 	RefreshLoadingText(Reason);
 }
@@ -282,7 +285,7 @@ void UMP_GameInstance::HideLoadingScreen()
 
 TArray<FName> UMP_GameInstance::GetUnlockedHelmetIds() const
 {
-	return CosmeticProfile ? CosmeticProfile->UnlockedHelmetIds : TArray<FName>();
+	return GetUnlockedHelmetIdsFor(nullptr);
 }
 
 bool UMP_GameInstance::IsHelmetUnlocked(FName HelmetId) const
@@ -292,75 +295,37 @@ bool UMP_GameInstance::IsHelmetUnlocked(FName HelmetId) const
 
 bool UMP_GameInstance::UnlockHelmet(FName HelmetId)
 {
-	if (!CosmeticProfile || HelmetId == NAME_None)
-	{
-		return false;
-	}
-
-	if (CosmeticProfile->UnlockedHelmetIds.Contains(HelmetId))
-	{
-		return true;
-	}
-
-	CosmeticProfile->UnlockedHelmetIds.Add(HelmetId);
-	SaveCosmeticProfile();
-	return true;
+	return UnlockHelmetFor(nullptr, HelmetId);
 }
 
 bool UMP_GameInstance::EquipHelmet(FName HelmetId)
 {
-	if (!IsHelmetUnlocked(HelmetId))
-	{
-		return false;
-	}
-
-	CosmeticProfile->EquippedHelmetId = HelmetId;
-	SaveCosmeticProfile();
-	return true;
+	return EquipHelmetFor(nullptr, HelmetId);
 }
 
 FName UMP_GameInstance::GetEquippedHelmetId() const
 {
-	return CosmeticProfile ? CosmeticProfile->EquippedHelmetId : NAME_None;
+	return GetEquippedHelmetIdFor(nullptr);
 }
 
 bool UMP_GameInstance::ForceEquipHelmet(FName HelmetId)
 {
-	if (!CosmeticProfile)
-	{
-		return false;
-	}
-	// Auto-desbloquear si viene de una estatua de lobby
-	if (HelmetId != NAME_None)
-	{
-		UnlockHelmet(HelmetId);
-	}
-	CosmeticProfile->EquippedHelmetId = HelmetId; // NAME_None = desequipar
-	SaveCosmeticProfile();
-	return true;
+	return ForceEquipHelmetFor(nullptr, HelmetId);
 }
 
 bool UMP_GameInstance::EquipSkin(FName SkinId)
 {
-	if (!CosmeticProfile)
-	{
-		return false;
-	}
-	CosmeticProfile->EquippedSkinId = SkinId; // NAME_None = sin skin (válido)
-	SaveCosmeticProfile();
-	return true;
+	return EquipSkinFor(nullptr, SkinId);
 }
 
 FName UMP_GameInstance::GetEquippedSkinId() const
 {
-	return CosmeticProfile ? CosmeticProfile->EquippedSkinId : NAME_None;
+	return GetEquippedSkinIdFor(nullptr);
 }
 
 bool UMP_GameInstance::IsCosmeticUnlocked(ETNCosmeticCategory Category, FName Id) const
 {
-	if (Id == NAME_None) { return true; }
-	if (!CosmeticProfile) { return false; }
-	return Category == ETNCosmeticCategory::Helmet ? CosmeticProfile->UnlockedHelmetIds.Contains(Id) : CosmeticProfile->UnlockedSkinIds.Contains(Id);
+	return IsCosmeticUnlockedFor(nullptr, Category, Id);
 }
 
 int32 UMP_GameInstance::GetCosmeticPrice(ETNCosmeticCategory Category, FName Id) const
@@ -377,16 +342,7 @@ int32 UMP_GameInstance::GetCosmeticPrice(ETNCosmeticCategory Category, FName Id)
 
 bool UMP_GameInstance::PurchaseCosmetic(ETNCosmeticCategory Category, FName Id)
 {
-	if (!CosmeticProfile || Id == NAME_None) { return false; }
-	if (IsCosmeticUnlocked(Category, Id)) { return true; }
-	const int32 Price = GetCosmeticPrice(Category, Id);
-	if (Price > CosmeticProfile->AccumulatedRaceScore) { return false; }
-	CosmeticProfile->AccumulatedRaceScore -= Price;
-	if (Category == ETNCosmeticCategory::Helmet) { CosmeticProfile->UnlockedHelmetIds.AddUnique(Id); }
-	else { CosmeticProfile->UnlockedSkinIds.AddUnique(Id); }
-	SaveCosmeticProfile();
-	UE_LOG(LogTortunabo, Log, TEXT("[Tienda] Desbloqueado '%s' por %d (quedan %d)."), *Id.ToString(), Price, CosmeticProfile->AccumulatedRaceScore);
-	return true;
+	return PurchaseCosmeticFor(nullptr, Category, Id);
 }
 
 TArray<FName> UMP_GameInstance::GetCosmeticCatalog(ETNCosmeticCategory Category) const
@@ -418,33 +374,191 @@ TArray<FName> UMP_GameInstance::GetCosmeticCatalog(ETNCosmeticCategory Category)
 
 TArray<FName> UMP_GameInstance::GetUnlockedSkinIds() const
 {
-	return CosmeticProfile ? CosmeticProfile->UnlockedSkinIds : TArray<FName>();
+	return GetUnlockedSkinIdsFor(nullptr);
 }
 
 bool UMP_GameInstance::EquipShell(FName ShellId)
 {
-	if (!CosmeticProfile) { return false; }
-	CosmeticProfile->EquippedShellId = ShellId;
-	SaveCosmeticProfile();
-	return true;
+	return EquipShellFor(nullptr, ShellId);
 }
 
 FName UMP_GameInstance::GetEquippedShellId() const
 {
-	return CosmeticProfile ? CosmeticProfile->EquippedShellId : NAME_None;
+	return GetEquippedShellIdFor(nullptr);
 }
 
 bool UMP_GameInstance::EquipEyes(FName EyesId)
 {
-	if (!CosmeticProfile) { return false; }
-	CosmeticProfile->EquippedEyesId = EyesId;
-	SaveCosmeticProfile();
-	return true;
+	return EquipEyesFor(nullptr, EyesId);
 }
 
 FName UMP_GameInstance::GetEquippedEyesId() const
 {
-	return CosmeticProfile ? CosmeticProfile->EquippedEyesId : NAME_None;
+	return GetEquippedEyesIdFor(nullptr);
+}
+
+// ── Aspecto de cada jugador local (#311) ──────────────────────────────────────
+
+UTN_CosmeticSaveGame* UMP_GameInstance::CosmeticsFor(const APlayerController* PC) const
+{
+	// Un invitado de la partida local: su aspecto de la partida (empieza con el de serie y no se guarda).
+	if (PC && UTN_LocalPlaySubsystem::IsGuest(PC))
+	{
+		if (UTN_LocalPlayerProfile* Profile = UTN_LocalPlayerProfile::Get(PC))
+		{
+			return Profile->GetGuestCosmetics(DefaultUnlockedHelmets);
+		}
+	}
+	return CosmeticProfile;
+}
+
+void UMP_GameInstance::SaveCosmeticsFor(const APlayerController* PC) const
+{
+	if (CosmeticsFor(PC) == CosmeticProfile)
+	{
+		SaveCosmeticProfile();
+	}
+}
+
+TArray<FName> UMP_GameInstance::GetUnlockedHelmetIdsFor(const APlayerController* PC) const
+{
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	return Profile ? Profile->UnlockedHelmetIds : TArray<FName>();
+}
+
+TArray<FName> UMP_GameInstance::GetUnlockedSkinIdsFor(const APlayerController* PC) const
+{
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	return Profile ? Profile->UnlockedSkinIds : TArray<FName>();
+}
+
+bool UMP_GameInstance::UnlockHelmetFor(const APlayerController* PC, FName HelmetId)
+{
+	UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile || HelmetId == NAME_None)
+	{
+		return false;
+	}
+	if (Profile->UnlockedHelmetIds.Contains(HelmetId))
+	{
+		return true;
+	}
+	Profile->UnlockedHelmetIds.Add(HelmetId);
+	SaveCosmeticsFor(PC);
+	return true;
+}
+
+bool UMP_GameInstance::EquipHelmetFor(const APlayerController* PC, FName HelmetId)
+{
+	UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile || HelmetId == NAME_None || !Profile->UnlockedHelmetIds.Contains(HelmetId))
+	{
+		return false;
+	}
+	Profile->EquippedHelmetId = HelmetId;
+	SaveCosmeticsFor(PC);
+	return true;
+}
+
+bool UMP_GameInstance::ForceEquipHelmetFor(const APlayerController* PC, FName HelmetId)
+{
+	UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile)
+	{
+		return false;
+	}
+	// Auto-desbloquear si viene de una estatua de lobby
+	if (HelmetId != NAME_None)
+	{
+		UnlockHelmetFor(PC, HelmetId);
+	}
+	Profile->EquippedHelmetId = HelmetId; // NAME_None = desequipar
+	SaveCosmeticsFor(PC);
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedHelmetIdFor(const APlayerController* PC) const
+{
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	return Profile ? Profile->EquippedHelmetId : NAME_None;
+}
+
+bool UMP_GameInstance::EquipSkinFor(const APlayerController* PC, FName SkinId)
+{
+	UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile)
+	{
+		return false;
+	}
+	Profile->EquippedSkinId = SkinId; // NAME_None = sin skin (válido)
+	SaveCosmeticsFor(PC);
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedSkinIdFor(const APlayerController* PC) const
+{
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	return Profile ? Profile->EquippedSkinId : NAME_None;
+}
+
+bool UMP_GameInstance::IsCosmeticUnlockedFor(const APlayerController* PC, ETNCosmeticCategory Category, FName Id) const
+{
+	if (Id == NAME_None) { return true; }
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile) { return false; }
+	return Category == ETNCosmeticCategory::Helmet ? Profile->UnlockedHelmetIds.Contains(Id) : Profile->UnlockedSkinIds.Contains(Id);
+}
+
+bool UMP_GameInstance::PurchaseCosmeticFor(const APlayerController* PC, ETNCosmeticCategory Category, FName Id)
+{
+	UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile || Id == NAME_None) { return false; }
+	if (IsCosmeticUnlockedFor(PC, Category, Id)) { return true; }
+	const int32 Price = GetCosmeticPrice(Category, Id);
+	if (Price > Profile->AccumulatedRaceScore) { return false; }
+	Profile->AccumulatedRaceScore -= Price;
+	if (Category == ETNCosmeticCategory::Helmet) { Profile->UnlockedHelmetIds.AddUnique(Id); }
+	else { Profile->UnlockedSkinIds.AddUnique(Id); }
+	SaveCosmeticsFor(PC);
+	UE_LOG(LogTortunabo, Log, TEXT("[Tienda] Desbloqueado '%s' por %d (quedan %d)%s."), *Id.ToString(), Price, Profile->AccumulatedRaceScore,
+		Profile == CosmeticProfile ? TEXT("") : TEXT(" para esta partida (invitado local)"));
+	return true;
+}
+
+bool UMP_GameInstance::EquipShellFor(const APlayerController* PC, FName ShellId)
+{
+	UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile) { return false; }
+	Profile->EquippedShellId = ShellId;
+	SaveCosmeticsFor(PC);
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedShellIdFor(const APlayerController* PC) const
+{
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	return Profile ? Profile->EquippedShellId : NAME_None;
+}
+
+bool UMP_GameInstance::EquipEyesFor(const APlayerController* PC, FName EyesId)
+{
+	UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	if (!Profile) { return false; }
+	Profile->EquippedEyesId = EyesId;
+	SaveCosmeticsFor(PC);
+	return true;
+}
+
+FName UMP_GameInstance::GetEquippedEyesIdFor(const APlayerController* PC) const
+{
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	return Profile ? Profile->EquippedEyesId : NAME_None;
+}
+
+int32 UMP_GameInstance::GetAccumulatedRaceScoreFor(const APlayerController* PC) const
+{
+	const UTN_CosmeticSaveGame* Profile = CosmeticsFor(PC);
+	return Profile ? Profile->AccumulatedRaceScore : 0;
 }
 
 const FTN_HelmetData* UMP_GameInstance::FindHelmetRow(FName HelmetId, const TCHAR* Ctx) const
@@ -460,6 +574,11 @@ const FTN_SkinData* UMP_GameInstance::FindSkinRow(FName SkinId, const TCHAR* Ctx
 }
 
 FName UMP_GameInstance::OpenHelmetCrate()
+{
+	return OpenHelmetCrateFor(nullptr);
+}
+
+FName UMP_GameInstance::OpenHelmetCrateFor(const APlayerController* PC)
 {
 	if (HelmetCrateTable.Num() == 0)
 	{
@@ -483,7 +602,7 @@ FName UMP_GameInstance::OpenHelmetCrate()
 		Roll -= FMath::Max(0.0f, Entry.Weight);
 		if (Roll <= 0.0f && Entry.HelmetId != NAME_None)
 		{
-			UnlockHelmet(Entry.HelmetId);
+			UnlockHelmetFor(PC, Entry.HelmetId);
 			return Entry.HelmetId;
 		}
 	}
@@ -969,12 +1088,41 @@ void UMP_GameInstance::OnDestroySessionComplete(FName SessionName, bool bWasSucc
 	}
 }
 
+int32 UMP_GameInstance::GetMaxPlayers() const
+{
+	if (UTN_LocalPlaySubsystem::IsLocalGame(this))
+	{
+		return TNLocalPlay::MaxPlayers;
+	}
+	return bHasActiveRoom ? ActiveRoom.MaxPlayers : MaxPlayers;
+}
+
+void UMP_GameInstance::StartLocalGame()
+{
+	UTN_LocalPlaySubsystem* LocalPlay = GetSubsystem<UTN_LocalPlaySubsystem>();
+	if (!LocalPlay)
+	{
+		return;
+	}
+	// Sin sesión ni sala: nada de Steam en la partida local (y si quedaba una sesión vieja, fuera).
+	DestroyCurrentSession();
+	ResetRoomState();
+	UpdateStatus(TEXT("Partida local: hasta 4 jugadores en este PC."));
+	LocalPlay->StartLocalGame(GameMapPath);
+}
+
 void UMP_GameInstance::HandleReturnToMenu()
 {
 	ShowLoadingScreen(TEXT("Volviendo al menú..."));
 
 	// Stop all audio capture before travel to prevent WASAPI crash.
 	UProximityVoiceComponent::ShutdownAllCapture(GetWorld());
+
+	// Partida local: los invitados fuera (sus tortugas y sus vistas) y la pantalla, los mandos y la calidad como estaban.
+	if (UTN_LocalPlaySubsystem* LocalPlay = GetSubsystem<UTN_LocalPlaySubsystem>())
+	{
+		LocalPlay->EndLocalGame();
+	}
 
 	DestroyCurrentSession();
 
@@ -1019,6 +1167,11 @@ void UMP_GameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 	if (LoadedWorld && LoadedWorld->GetGameInstance() == this && IsMenuWorld(LoadedWorld))
 	{
 		ResetRoomState();
+		// Si se llegó al menú sin pasar por HandleReturnToMenu (un fallo, un viaje de consola), la partida local acaba aquí.
+		if (UTN_LocalPlaySubsystem* LocalPlay = GetSubsystem<UTN_LocalPlaySubsystem>())
+		{
+			LocalPlay->EndLocalGame();
+		}
 	}
 
 	// ── Si un auto-rejoin estaba pendiente y llegamos a un mapa ──
