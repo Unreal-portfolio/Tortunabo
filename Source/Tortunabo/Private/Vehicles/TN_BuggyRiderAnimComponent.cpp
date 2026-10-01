@@ -1,0 +1,671 @@
+// UTN_BuggyRiderAnimComponent y su lógica pura (TNRiderAnim). Ver TN_BuggyRiderAnimComponent.h.
+
+#include "Vehicles/TN_BuggyRiderAnimComponent.h"
+#include "Vehicles/TN_BuggyTurretComponent.h"
+#include "Player/TN_ProcAnimInstance.h"
+#include "ChaosWheeledVehicleMovementComponent.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "ReferenceSkeleton.h"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lógica pura
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNRiderAnim
+{
+	namespace
+	{
+		constexpr float MaxFrequencyHz = 30.f;
+		constexpr float MinDampingRatio = 0.05f;
+
+		void ClampToLimit(FSpring& State, float Limit)
+		{
+			if (Limit <= 0.f || FMath::Abs(State.Value) <= Limit)
+			{
+				return;
+			}
+			const float Side = FMath::Sign(State.Value);
+			State.Value = Side * Limit;
+			if (State.Velocity * Side > 0.f)
+			{
+				State.Velocity = 0.f;
+			}
+		}
+	}
+
+	FSpring StepSpring(const FSpring& State, float Target, const FTNRiderSpringTuning& Tuning, float DeltaSeconds)
+	{
+		const float Limit = Tuning.Limit;
+		const float Goal = Limit > 0.f ? FMath::Clamp(Target, -Limit, Limit) : Target;
+		if (!FMath::IsFinite(Goal))
+		{
+			return FSpring();
+		}
+		if (Tuning.FrequencyHz <= KINDA_SMALL_NUMBER)
+		{
+			return FSpring{ Goal, 0.f };
+		}
+		FSpring Out = State;
+		if (!FMath::IsFinite(Out.Value) || !FMath::IsFinite(Out.Velocity))
+		{
+			Out = FSpring();
+		}
+		const float Dt = FMath::Clamp(FMath::IsFinite(DeltaSeconds) ? DeltaSeconds : 0.f, 0.f, MaxStepSeconds);
+		const float Omega = UE_TWO_PI * FMath::Min(Tuning.FrequencyHz, MaxFrequencyHz);
+		const float Zeta = FMath::Max(Tuning.DampingRatio, MinDampingRatio);
+		const int32 Steps = FMath::Max(1, FMath::CeilToInt(Dt / MaxSubstepSeconds));
+		const float H = Dt / static_cast<float>(Steps);
+		for (int32 Step = 0; Step < Steps; ++Step)
+		{
+			// Muelle explícito y amortiguador implícito: el amortiguamiento nunca invierte la velocidad.
+			Out.Velocity = (Out.Velocity + Omega * Omega * (Goal - Out.Value) * H) / (1.f + 2.f * Zeta * Omega * H);
+			Out.Value += Out.Velocity * H;
+			ClampToLimit(Out, Limit);
+		}
+		return Out;
+	}
+
+	FSpring KickSpring(const FSpring& State, float VelocityKick)
+	{
+		FSpring Out = State;
+		if (FMath::IsFinite(VelocityKick))
+		{
+			Out.Velocity += VelocityKick;
+		}
+		return Out;
+	}
+
+	float DeadZone(float Value, float Threshold)
+	{
+		const float Excess = FMath::Abs(Value) - FMath::Max(Threshold, 0.f);
+		return Excess > 0.f ? FMath::Sign(Value) * Excess : 0.f;
+	}
+
+	FTargets ReactionTargets(const FVector& AccelMesh, float Grip01, const FTNRiderReactionTuning& Tuning)
+	{
+		const float Soft = 1.f - FMath::Clamp(Grip01, 0.f, 1.f) * FMath::Clamp(Tuning.GripRigidity, 0.f, 1.f);
+		FTargets Out;
+		// Frenar (aceleración hacia atrás, -Y) lleva la cabeza hacia delante por inercia; acelerar, hacia atrás.
+		Out.HeadPitchDeg = DeadZone(static_cast<float>(-AccelMesh.Y), Tuning.HeadAccelThreshold) * Tuning.HeadDegPerAccel * Soft;
+		// La aceleración centrípeta apunta al interior de la curva: el cuerpo se va hacia el lado contrario.
+		Out.LeanRollDeg = DeadZone(static_cast<float>(-AccelMesh.X), Tuning.LeanAccelThreshold) * Tuning.LeanDegPerAccel * Soft;
+		return Out;
+	}
+
+	float SteerFromYawRate(float YawRateDegPerSec, float ForwardSpeedCms, float WheelbaseCm, float MaxSteerDeg, float MinSpeedCms)
+	{
+		if (FMath::Abs(ForwardSpeedCms) < FMath::Max(MinSpeedCms, 1.f) || MaxSteerDeg <= 0.f || WheelbaseCm <= 0.f)
+		{
+			return 0.f;
+		}
+		const float AngleRad = FMath::Atan(FMath::DegreesToRadians(YawRateDegPerSec) * WheelbaseCm / ForwardSpeedCms);
+		const float Steer = FMath::RadiansToDegrees(AngleRad) / MaxSteerDeg;
+		return FMath::IsFinite(Steer) ? FMath::Clamp(Steer, -1.f, 1.f) : 0.f;
+	}
+
+	bool IsShotSignal(float PrevHeat01, float Heat01, int32 PrevCharges, int32 Charges, bool bSameAmmo, float MinHeatStep)
+	{
+		if (Heat01 - PrevHeat01 >= FMath::Max(MinHeatStep, KINDA_SMALL_NUMBER))
+		{
+			return true;
+		}
+		return Charges < PrevCharges && (bSameAmmo || Charges == 0);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pose en el espacio de la malla
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace TNRiderAnimPose
+{
+	/** Ejes de la malla de la tortuga: su izquierda +X, delante +Y, arriba +Z. */
+	const FVector MeshLeft(1.0, 0.0, 0.0);
+	const FVector MeshForward(0.0, 1.0, 0.0);
+	const FVector MeshUp(0.0, 0.0, 1.0);
+
+	/** Huesos del esqueleto Mixamo de TotugaDemo_Rig que mueve la animación (INDEX_NONE si faltan). */
+	struct FRiderBones
+	{
+		int32 Hips = INDEX_NONE;
+		int32 Spine = INDEX_NONE;
+		int32 Neck = INDEX_NONE;
+		int32 Head = INDEX_NONE;
+		int32 LeftArm = INDEX_NONE;
+		int32 LeftHand = INDEX_NONE;
+		int32 RightArm = INDEX_NONE;
+		int32 RightHand = INDEX_NONE;
+	};
+
+	FRiderBones ResolveBones(const FReferenceSkeleton& Ref)
+	{
+		FRiderBones B;
+		B.Hips = Ref.FindBoneIndex(TEXT("Hips"));
+		B.Spine = Ref.FindBoneIndex(TEXT("Spine"));
+		B.Neck = Ref.FindBoneIndex(TEXT("Neck"));
+		B.Head = Ref.FindBoneIndex(TEXT("Head"));
+		B.LeftArm = Ref.FindBoneIndex(TEXT("LeftArm"));
+		B.LeftHand = Ref.FindBoneIndex(TEXT("LeftHand"));
+		B.RightArm = Ref.FindBoneIndex(TEXT("RightArm"));
+		B.RightHand = Ref.FindBoneIndex(TEXT("RightHand"));
+		return B;
+	}
+
+	/** Pose en el espacio de la malla con los huesos que se han tocado (los hijos siguen a su padre). */
+	struct FRiderPose
+	{
+		TArray<FTransform> Space;
+		TArray<int32> Parents;
+		TArray<bool> Touched;
+
+		bool Build(TArrayView<const FTransform> Locals, const FReferenceSkeleton& Ref)
+		{
+			const int32 Num = Ref.GetNum();
+			if (Num == 0 || Locals.Num() != Num)
+			{
+				return false;
+			}
+			Space.SetNum(Num);
+			Parents.SetNum(Num);
+			Touched.Init(false, Num);
+			for (int32 Bone = 0; Bone < Num; ++Bone)
+			{
+				// En el esqueleto de referencia el padre siempre va antes que el hijo.
+				Parents[Bone] = Ref.GetParentIndex(Bone);
+				Space[Bone] = Parents[Bone] == INDEX_NONE ? Locals[Bone] : Locals[Bone] * Space[Parents[Bone]];
+			}
+			return true;
+		}
+
+		template <typename FnType>
+		void ForSubtree(int32 Bone, FnType&& Fn)
+		{
+			TArray<bool, TInlineAllocator<64>> Inside;
+			Inside.Init(false, Space.Num());
+			Inside[Bone] = true;
+			for (int32 Index = Bone; Index < Space.Num(); ++Index)
+			{
+				if (Index != Bone && (Parents[Index] == INDEX_NONE || !Inside[Parents[Index]]))
+				{
+					continue;
+				}
+				Inside[Index] = true;
+				Touched[Index] = true;
+				Fn(Space[Index]);
+			}
+		}
+
+		/** Gira el hueso y sus hijos Degrees alrededor de Axis (ejes de la malla) por su articulación. */
+		void Rotate(int32 Bone, const FVector& Axis, float Degrees)
+		{
+			if (!Space.IsValidIndex(Bone) || FMath::Abs(Degrees) < 0.01f || Axis.IsNearlyZero())
+			{
+				return;
+			}
+			const FQuat Turn(Axis.GetSafeNormal(), FMath::DegreesToRadians(Degrees));
+			const FVector Pivot = Space[Bone].GetLocation();
+			ForSubtree(Bone, [&Turn, &Pivot](FTransform& T)
+			{
+				T.SetLocation(Pivot + Turn.RotateVector(T.GetLocation() - Pivot));
+				T.SetRotation((Turn * T.GetRotation()).GetNormalized());
+			});
+		}
+
+		/** Desplaza el hueso y sus hijos (unidades de la malla). */
+		void Translate(int32 Bone, const FVector& Offset)
+		{
+			if (!Space.IsValidIndex(Bone) || Offset.IsNearlyZero(1e-3))
+			{
+				return;
+			}
+			ForSubtree(Bone, [&Offset](FTransform& T) { T.AddToTranslation(Offset); });
+		}
+
+		/**
+		 * Sube la mano Degrees (o la baja si es negativo) girando el brazo por el hombro alrededor del eje horizontal
+		 * perpendicular al brazo: vale con el brazo en cruz, hacia abajo o hacia delante al volante.
+		 */
+		void RaiseArm(int32 Arm, int32 Hand, float Degrees)
+		{
+			if (!Space.IsValidIndex(Arm))
+			{
+				return;
+			}
+			const FVector Reach = Space.IsValidIndex(Hand) ? Space[Hand].GetLocation() - Space[Arm].GetLocation() : FVector::ZeroVector;
+			const FVector Axis = Reach ^ MeshUp;
+			Rotate(Arm, Axis.IsNearlyZero(1e-3) ? MeshLeft : Axis, Degrees);
+		}
+	};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Componente
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+UTN_BuggyRiderAnimComponent::UTN_BuggyRiderAnimComponent()
+{
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
+	// Después de la física: la velocidad del chasis ya es la de este fotograma.
+	PrimaryComponentTick.TickGroup = TG_PostPhysics;
+	SetIsReplicatedByDefault(false);
+}
+
+void UTN_BuggyRiderAnimComponent::Setup(USkeletalMeshComponent* InRiderMesh, ETNBuggyRiderRole InRole)
+{
+	if (RiderMesh && RiderMesh != InRiderMesh)
+	{
+		ResetRider();
+	}
+	RiderMesh = InRiderMesh;
+	Role = InRole;
+}
+
+UTN_BuggyRiderAnimComponent* UTN_BuggyRiderAnimComponent::FindForRole(const AActor* Owner, ETNBuggyRiderRole InRole)
+{
+	if (!Owner)
+	{
+		return nullptr;
+	}
+	TInlineComponentArray<UTN_BuggyRiderAnimComponent*> Riders(Owner);
+	for (UTN_BuggyRiderAnimComponent* Rider : Riders)
+	{
+		if (Rider && Rider->Role == InRole)
+		{
+			return Rider;
+		}
+	}
+	return nullptr;
+}
+
+void UTN_BuggyRiderAnimComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	// Solo es aspecto: el servidor dedicado no lo necesita.
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		SetComponentTickEnabled(false);
+	}
+}
+
+void UTN_BuggyRiderAnimComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ResetRider();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UTN_BuggyRiderAnimComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (!IsRiderActive())
+	{
+		if (bRiderWasActive)
+		{
+			ResetRider();
+		}
+		return;
+	}
+	bRiderWasActive = true;
+	const FVehicleSample Sample = SampleVehicle(DeltaTime);
+	if (!Sample.bValid)
+	{
+		return;
+	}
+	UpdateShotDetection();
+	UpdateChannels(Sample, DeltaTime);
+	ApplyPose();
+}
+
+bool UTN_BuggyRiderAnimComponent::IsRiderActive() const
+{
+	return GetOwner() && RiderMesh && !RiderMesh->bHiddenInGame && RiderMesh->GetSkeletalMeshAsset();
+}
+
+void UTN_BuggyRiderAnimComponent::ResetRider()
+{
+	ClearBoneOverrides();
+	RestoreComponentPose();
+	HeadPitch = LeanRoll = Steer = Crouch = Recoil = Grip = TNRiderAnim::FSpring();
+	SmoothedAccelWorld = FVector::ZeroVector;
+	bHasPrevSample = false;
+	bWasAirborne = false;
+	bRiderWasActive = false;
+	bHasTurretSample = false;
+	MaxFallSpeed = 0.f;
+}
+
+UTN_BuggyRiderAnimComponent::FVehicleSample UTN_BuggyRiderAnimComponent::SampleVehicle(float DeltaTime)
+{
+	FVehicleSample Sample;
+	const AActor* Owner = GetOwner();
+	const FVector Location = Owner->GetActorLocation();
+	const FVector Velocity = Owner->GetVelocity();
+	const bool bTeleported = bHasPrevSample && FVector::DistSquared(Location, PrevLocation) > FMath::Square(TeleportJumpCm);
+	PrevLocation = Location;
+	if (!bHasPrevSample || bTeleported || DeltaTime <= KINDA_SMALL_NUMBER)
+	{
+		// Primera medida o teletransporte (reaparición, RallyTeleport): sin aceleración inventada.
+		PrevVelocity = Velocity;
+		SmoothedAccelWorld = FVector::ZeroVector;
+		bHasPrevSample = true;
+		return Sample;
+	}
+	const FVector RawAccel = (Velocity - PrevVelocity) / DeltaTime;
+	PrevVelocity = Velocity;
+	const float Alpha = 1.f - FMath::Exp(-UE_TWO_PI * AccelSmoothingHz * DeltaTime);
+	SmoothedAccelWorld = FMath::Lerp(SmoothedAccelWorld, RawAccel, static_cast<double>(Alpha));
+
+	Sample.AccelMesh = RiderMesh->GetComponentTransform().InverseTransformVectorNoScale(SmoothedAccelWorld);
+	Sample.bAirborne = IsVehicleAirborne();
+	Sample.Steer01 = ReadSteer01(Velocity);
+	Sample.VelocityZ = static_cast<float>(Velocity.Z);
+	Sample.bValid = true;
+	return Sample;
+}
+
+bool UTN_BuggyRiderAnimComponent::IsVehicleAirborne()
+{
+	const UChaosWheeledVehicleMovementComponent* Move = GetVehicleMovement();
+	if (!Move || !Move->HasValidPhysicsState() || Move->Wheels.Num() == 0)
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < Move->Wheels.Num(); ++Index)
+	{
+		if (Move->GetWheelState(Index).bInContact)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+float UTN_BuggyRiderAnimComponent::ReadSteer01(const FVector& Velocity)
+{
+	if (Role != ETNBuggyRiderRole::Driver)
+	{
+		return 0.f;
+	}
+	AActor* Owner = GetOwner();
+	// La entrada de Chaos solo es real donde se produce: la conductora local o la IA en el servidor.
+	const APawn* Pawn = Cast<APawn>(Owner);
+	const bool bHasLocalInput = Pawn && (Pawn->IsLocallyControlled() || (Pawn->HasAuthority() && !Pawn->IsPlayerControlled()));
+	UChaosWheeledVehicleMovementComponent* Move = GetVehicleMovement();
+	if (Move && bHasLocalInput)
+	{
+		return FMath::Clamp(Move->GetSteeringInput(), -1.f, 1.f);
+	}
+	// En el resto de máquinas, la guiñada de la física replicada.
+	const UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Owner->GetRootComponent());
+	if (!Root)
+	{
+		return 0.f;
+	}
+	const float YawRate = static_cast<float>(Root->GetPhysicsAngularVelocityInDegrees() | Owner->GetActorUpVector());
+	const float Forward = static_cast<float>(Velocity | Owner->GetActorForwardVector());
+	return TNRiderAnim::SteerFromYawRate(YawRate, Forward, WheelbaseCm, MaxSteerDeg, MinSteerSpeedCms);
+}
+
+void UTN_BuggyRiderAnimComponent::UpdateShotDetection()
+{
+	if (Role != ETNBuggyRiderRole::Gunner || !bAutoDetectShots)
+	{
+		return;
+	}
+	const UTN_BuggyTurretComponent* Turret = GetTurret();
+	if (!Turret)
+	{
+		return;
+	}
+	const float Heat = Turret->GetHeat01();
+	const int32 Charges = Turret->GetSpecialCharges();
+	const uint8 Ammo = static_cast<uint8>(Turret->GetSpecialAmmo());
+	if (bHasTurretSample && TNRiderAnim::IsShotSignal(PrevHeat01, Heat, PrevCharges, Charges, Ammo == PrevAmmo, ShotHeatStep))
+	{
+		NotifyShot(Turret->GetAimWorldDirection());
+	}
+	PrevHeat01 = Heat;
+	PrevCharges = Charges;
+	PrevAmmo = Ammo;
+	bHasTurretSample = true;
+}
+
+void UTN_BuggyRiderAnimComponent::NotifyShot(FVector WorldDirection)
+{
+	if (!RiderMesh || WorldDirection.IsNearlyZero() || WorldDirection.ContainsNaN())
+	{
+		return;
+	}
+	// El torso va hacia atrás respecto al disparo, en horizontal y en los ejes de la malla (se mueven con el buggy).
+	FVector Back = -RiderMesh->GetComponentTransform().InverseTransformVectorNoScale(WorldDirection.GetSafeNormal());
+	Back.Z = 0.0;
+	RecoilDirMesh = Back.IsNearlyZero(1e-3) ? -TNRiderAnimPose::MeshForward : Back.GetSafeNormal();
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	if (Now - LastShotTime < ShotDedupSeconds)
+	{
+		return;
+	}
+	LastShotTime = Now;
+	Recoil = TNRiderAnim::KickSpring(Recoil, RecoilKickCms);
+}
+
+void UTN_BuggyRiderAnimComponent::UpdateChannels(const FVehicleSample& Sample, float DeltaTime)
+{
+	using namespace TNRiderAnim;
+	const bool bGunner = Role == ETNBuggyRiderRole::Gunner;
+	Grip = StepSpring(Grip, bGunner && Sample.bAirborne ? 1.f : 0.f, GripSpring, DeltaTime);
+	const FTargets Targets = ReactionTargets(Sample.AccelMesh, Grip.Value, Reaction);
+	ApplyImpactKicks(Sample.AccelMesh);
+	HeadPitch = StepSpring(HeadPitch, Targets.HeadPitchDeg, HeadSpring, DeltaTime);
+	LeanRoll = StepSpring(LeanRoll, Targets.LeanRollDeg, LeanSpring, DeltaTime);
+	Steer = StepSpring(Steer, bGunner ? 0.f : Sample.Steer01 * WheelTurnDeg, SteerSpring, DeltaTime);
+	Recoil = StepSpring(Recoil, 0.f, RecoilSpring, DeltaTime);
+	UpdateCrouch(Sample, DeltaTime);
+}
+
+void UTN_BuggyRiderAnimComponent::UpdateCrouch(const FVehicleSample& Sample, float DeltaTime)
+{
+	const float AirTarget = Role == ETNBuggyRiderRole::Driver ? 1.f : GunnerAirCrouch;
+	if (Sample.bAirborne)
+	{
+		MaxFallSpeed = FMath::Max(MaxFallSpeed, -Sample.VelocityZ);
+	}
+	else if (bWasAirborne)
+	{
+		// Aterrizaje: se aplasta un poco más según lo rápido que caía y el muelle la devuelve con rebote.
+		const float Kick = FMath::Min(FMath::Max(MaxFallSpeed, 0.f) * LandingKickPerCms, MaxLandingKick);
+		Crouch = TNRiderAnim::KickSpring(Crouch, Kick);
+		MaxFallSpeed = 0.f;
+	}
+	bWasAirborne = Sample.bAirborne;
+	Crouch = TNRiderAnim::StepSpring(Crouch, Sample.bAirborne ? AirTarget : 0.f, CrouchSpring, DeltaTime);
+}
+
+void UTN_BuggyRiderAnimComponent::ApplyImpactKicks(const FVector& AccelMesh)
+{
+	const float Threshold = FMath::Max(Reaction.ImpactDecel, 1.f);
+	const float Decel = static_cast<float>(-AccelMesh.Y);
+	const float Lateral = static_cast<float>(AccelMesh.X);
+	const float Excess = FMath::Max(Decel, FMath::Abs(Lateral)) / Threshold;
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	if (Excess < 1.f || Now - LastImpactTime < ImpactCooldownSeconds)
+	{
+		return;
+	}
+	LastImpactTime = Now;
+	const float Soft = 1.f - FMath::Clamp(Grip.Value, 0.f, 1.f) * FMath::Clamp(Reaction.GripRigidity, 0.f, 1.f);
+	const float Kick = Reaction.ImpactKickDegPerSec * FMath::Min(Excess, 2.f) * Soft;
+	if (Decel >= Threshold)
+	{
+		HeadPitch = TNRiderAnim::KickSpring(HeadPitch, Kick);
+	}
+	if (FMath::Abs(Lateral) >= Threshold)
+	{
+		// Golpe lateral: el cuerpo sale hacia el lado contrario a la aceleración.
+		LeanRoll = TNRiderAnim::KickSpring(LeanRoll, -FMath::Sign(Lateral) * Kick * 0.6f);
+	}
+}
+
+bool UTN_BuggyRiderAnimComponent::IsAtRest() const
+{
+	constexpr float Epsilon = 0.01f;
+	for (const TNRiderAnim::FSpring* Channel : { &HeadPitch, &LeanRoll, &Steer, &Crouch, &Recoil, &Grip })
+	{
+		if (FMath::Abs(Channel->Value) > Epsilon || FMath::Abs(Channel->Velocity) > Epsilon)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+float UTN_BuggyRiderAnimComponent::HeadPitchWithRecoil() const
+{
+	return HeadPitch.Value + Recoil.Value * RecoilHeadDegPerCm;
+}
+
+void UTN_BuggyRiderAnimComponent::ApplyPose()
+{
+	UTN_ProcAnimInstance* Anim = Cast<UTN_ProcAnimInstance>(RiderMesh->GetAnimInstance());
+	if (PosedAnim.IsValid() && PosedAnim.Get() != Anim)
+	{
+		// La clase de animación ha cambiado (ATN_Buggy::ApplySeatLook): se limpia la anterior.
+		ClearBoneOverrides();
+	}
+	if (IsAtRest())
+	{
+		ClearBoneOverrides();
+		RestoreComponentPose();
+		return;
+	}
+	if (Anim)
+	{
+		RestoreComponentPose();
+		// Sin pintarse no se evalúa la pose (OnlyTickPoseWhenRendered): no hace falta escribirla.
+		if (RiderMesh->WasRecentlyRendered(0.5f))
+		{
+			ApplyBonePose(*Anim);
+		}
+		return;
+	}
+	ApplyComponentPose();
+}
+
+void UTN_BuggyRiderAnimComponent::ApplyBonePose(UTN_ProcAnimInstance& Anim)
+{
+	const USkeletalMesh* Mesh = RiderMesh->GetSkeletalMeshAsset();
+	const FReferenceSkeleton& Ref = Mesh->GetRefSkeleton();
+	TNRiderAnimPose::FRiderPose Pose;
+	if (!Pose.Build(RiderMesh->GetBoneSpaceTransformsView(), Ref))
+	{
+		ClearBoneOverrides();
+		return;
+	}
+	const TNRiderAnimPose::FRiderBones B = TNRiderAnimPose::ResolveBones(Ref);
+	// Los cm del ajuste pasan a unidades de la malla (ATN_Buggy::FitTurtle la escala).
+	const float ToMesh = 1.f / FMath::Max(0.01f, static_cast<float>(RiderMesh->GetComponentScale().Z));
+	const bool bDriver = Role == ETNBuggyRiderRole::Driver;
+	Pose.Translate(B.Hips, TNRiderAnimPose::MeshUp * (-Crouch.Value * CrouchDropCm * ToMesh));
+	Pose.Translate(B.Spine, RecoilDirMesh * (Recoil.Value * ToMesh));
+	Pose.Rotate(B.Spine, TNRiderAnimPose::MeshForward, LeanRoll.Value);
+	// Cabeceo hacia delante = giro negativo sobre su izquierda (+X); se reparte entre el cuello y la cabeza.
+	const float HeadDeg = HeadPitchWithRecoil();
+	Pose.Rotate(B.Neck, TNRiderAnimPose::MeshLeft, -0.4f * HeadDeg);
+	Pose.Rotate(B.Head, TNRiderAnimPose::MeshLeft, -0.6f * HeadDeg);
+	Pose.Translate(B.Neck, TNRiderAnimPose::MeshUp * (-FMath::Max(Crouch.Value, 0.f) * NeckTuckCm * ToMesh));
+	// Volante: a la derecha (+) sube la mano izquierda y baja la derecha. En el aire, brazos recogidos o agarrados.
+	const float Down = bDriver ? FMath::Max(Crouch.Value, 0.f) * ArmTuckDeg : Grip.Value * GripArmDeg;
+	const float SteerDeg = bDriver ? Steer.Value : 0.f;
+	Pose.RaiseArm(B.LeftArm, B.LeftHand, SteerDeg - Down);
+	Pose.RaiseArm(B.RightArm, B.RightHand, -SteerDeg - Down);
+
+	TSet<FName> Written;
+	for (int32 Bone = 0; Bone < Pose.Space.Num(); ++Bone)
+	{
+		if (!Pose.Touched[Bone])
+		{
+			continue;
+		}
+		const FName Name = Ref.GetBoneName(Bone);
+		Anim.BoneQuat.Add(Name, Pose.Space[Bone].GetRotation());
+		Anim.BoneLoc.Add(Name, Pose.Space[Bone].GetLocation());
+		Written.Add(Name);
+	}
+	for (const FName& Stale : WrittenBones.Difference(Written))
+	{
+		Anim.BoneQuat.Remove(Stale);
+		Anim.BoneLoc.Remove(Stale);
+	}
+	WrittenBones = MoveTemp(Written);
+	PosedAnim = &Anim;
+}
+
+void UTN_BuggyRiderAnimComponent::ApplyComponentPose()
+{
+	if (!bComponentPosed)
+	{
+		BaseRelative = RiderMesh->GetRelativeTransform();
+		bComponentPosed = true;
+	}
+	// Sin huesos que mover, todo el cuerpo se inclina, cabecea (un tercio) y se desplaza en su asiento.
+	const FQuat BaseRotation = BaseRelative.GetRotation();
+	const FQuat Delta = FQuat(TNRiderAnimPose::MeshForward, FMath::DegreesToRadians(LeanRoll.Value))
+		* FQuat(TNRiderAnimPose::MeshLeft, FMath::DegreesToRadians(-HeadPitchWithRecoil() / 3.f));
+	const FVector OffsetMesh = TNRiderAnimPose::MeshUp * (-Crouch.Value * CrouchDropCm) + RecoilDirMesh * Recoil.Value;
+	RiderMesh->SetRelativeLocationAndRotation(BaseRelative.GetLocation() + BaseRotation.RotateVector(OffsetMesh),
+		(BaseRotation * Delta).GetNormalized());
+}
+
+void UTN_BuggyRiderAnimComponent::ClearBoneOverrides()
+{
+	if (UTN_ProcAnimInstance* Anim = PosedAnim.Get())
+	{
+		for (const FName& Name : WrittenBones)
+		{
+			Anim->BoneQuat.Remove(Name);
+			Anim->BoneLoc.Remove(Name);
+		}
+	}
+	WrittenBones.Reset();
+	PosedAnim.Reset();
+}
+
+void UTN_BuggyRiderAnimComponent::RestoreComponentPose()
+{
+	if (!bComponentPosed)
+	{
+		return;
+	}
+	bComponentPosed = false;
+	// Solo posición y giro: la escala la pone ATN_Buggy::FitTurtle y puede haber cambiado entretanto.
+	if (RiderMesh)
+	{
+		RiderMesh->SetRelativeLocationAndRotation(BaseRelative.GetLocation(), BaseRelative.GetRotation());
+	}
+}
+
+UChaosWheeledVehicleMovementComponent* UTN_BuggyRiderAnimComponent::GetVehicleMovement()
+{
+	if (!CachedMovement.IsValid() && GetOwner())
+	{
+		CachedMovement = GetOwner()->FindComponentByClass<UChaosWheeledVehicleMovementComponent>();
+	}
+	return CachedMovement.Get();
+}
+
+UTN_BuggyTurretComponent* UTN_BuggyRiderAnimComponent::GetTurret()
+{
+	if (!CachedTurret.IsValid() && GetOwner())
+	{
+		CachedTurret = GetOwner()->FindComponentByClass<UTN_BuggyTurretComponent>();
+	}
+	return CachedTurret.Get();
+}
