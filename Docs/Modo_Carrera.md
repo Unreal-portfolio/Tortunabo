@@ -2708,7 +2708,9 @@ dentro, oculta, hasta la ronda siguiente, que vuelve a crear a todas en la salid
   remolino, luego dentro de la boca) sin suavizado de red y sin correcciones al dueño; en el bocado se oculta
   (`SetActorHiddenInGame`, replicado) y se queda de pie, oculta, donde estaba. Su jugador pierde el control (sin input en
   su tortuga) y su cámara funde en 0,6 s a un lado del gusano (15 m durante el aviso y 32 m después, nunca dentro de
-  una roca ni de una duna), mirando a media altura para que quepa entero con la boca.
+  una roca ni de una duna), mirando a media altura para que quepa entero con la boca. El espectador que la sigue (fija o
+  libre) pasa a esa misma vista con otra mezcla de 0,6 s (`UTN_GhostCameraModifier` con
+  `ATN_BeachSandWorm::GetSpectatorView`, #260); al cambiar de jugador, vuelve a la suya.
 - **Hasta cuándo**: el gusano sigue vivo, sin nada que ver, hasta que la tortuga reaparece (alguien la vuelve a mostrar)
   o deja de existir (la ronda nueva la quita); entonces el servidor lo destruye y cada máquina devuelve lo que tocó
   (input, cámara si aún miraba al gusano, colisión y la marca de sujeta).

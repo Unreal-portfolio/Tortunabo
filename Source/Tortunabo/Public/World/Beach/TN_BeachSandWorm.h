@@ -53,6 +53,17 @@ public:
 	/** true si Turtle ya está en la boca de un gusano (en cualquier máquina). */
 	static bool IsBeingEaten(const ACharacter* Turtle);
 
+	/** El gusano que se está comiendo a Turtle en esta máquina, o null. */
+	static ATN_BeachSandWorm* FindEating(const ACharacter* Turtle);
+
+	/**
+	 * Máquinas con pantalla: la vista lejana de la escena (la misma que la cámara de la tortuga comida: a un lado, con el
+	 * gusano entero) para un espectador de esta máquina que sigue a la víctima (UTN_GhostCameraModifier). Se pide en cada
+	 * fotograma; la primera vez sale del lado de ViewFrom (la cámara del espectador). false mientras aún no hay vista (el
+	 * primer fotograma, el desfase o la escena ya soltada).
+	 */
+	bool GetSpectatorView(const FVector& ViewFrom, FVector& OutLocation, FRotator& OutRotation);
+
 	ATN_BeachSandWorm();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -157,11 +168,15 @@ private:
 	float ControlFromTau = 0.f;
 	float VictimYaw = 0.f;
 
-	// Cámara de la tortuga comida (solo en la máquina de su jugador).
+	// Cámara de la escena: la de la tortuga comida (en la máquina de su jugador) y la de los espectadores que la siguen.
 	TWeakObjectPtr<APlayerController> CameraPC;
 	bool bCameraTaken = false;
 	bool bCameraReady = false;
 	bool bCameraGaveUp = false;
+	/** El lado desde el que se mira ya está elegido (CamDir y lo demás de partida). */
+	bool bSceneCamInit = false;
+	/** Hora del mundo en que un espectador de esta máquina pidió la vista por última vez (GetSpectatorView). */
+	double SpectatorAskedTime = -1000.0;
 	FVector CamDir = FVector::ForwardVector;
 	float CamDist = 1500.f;
 	float CamHeight = 400.f;
@@ -217,5 +232,7 @@ private:
 
 	// ── Cámara ──
 	void TickCamera(float Tau, float DeltaSeconds);
+	/** Elige el lado desde el que se ve la escena: hacia un lado del gusano y un poco hacia ViewFrom (la cámara que la pide). */
+	void InitSceneCamera(const FVector& ViewFrom);
 	APlayerController* FindVictimLocalController() const;
 };
