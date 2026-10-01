@@ -250,7 +250,7 @@ No existen en la build Shipping.
 |---|---|
 | `TN.Rooms.FakeError <locked\|full\|kicked\|other>` | Simula que el servidor no te deja entrar (sala cerrada, llena, expulsado u otro motivo): pantalla de vuelta al menú y el aviso en «Unirse». Sin segunda instancia. |
 | `TN.Rooms.FakeError <joinfull\|gone\|noaddress>` | Simula que falla la entrada en la sesión (llena, ya no existe, sin dirección del anfitrión): el aviso sale en el menú de salas sin recargarlo. |
-| `TN.Travel.Fail [/Game/Ruta/Mapa]` | Solo en el anfitrión: pide un `ServerTravel` a un mapa que no existe (por defecto `/Game/Maps/Pruebas/TN_MapaQueNoExiste`) para ver el viaje fallido. Antes `net.AllowPIESeamlessTravel 1` si se prueba en PIE el viaje sin cortes. Ver [Salas](Salas.md#viaje-de-mapa-fallido). |
+| `TN.Travel.Fail [/Game/Ruta/Mapa]` | Solo en el anfitrión: pide un `ServerTravel` a un mapa que no existe (por defecto `/Game/Maps/TN_MapaQueNoExiste`) para ver el viaje fallido. Antes `net.AllowPIESeamlessTravel 1` si se prueba en PIE el viaje sin cortes. Ver [Salas](Salas.md#viaje-de-mapa-fallido). |
 | `Automation RunTests Tortunabo.Net.TravelFailure` | Prueba automática de lo que se hace ante un viaje fallido (anfitrión, invitado, menú, lobby en pie, segundo fallo) y de si el `ServerTravel` ha arrancado de verdad. |
 
 ## Cooperativo (mapa procedural y lobby)

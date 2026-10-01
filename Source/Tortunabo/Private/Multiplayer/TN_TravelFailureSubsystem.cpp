@@ -71,7 +71,9 @@ namespace TNTravelFailureDetail
 			UE_LOG(LogTortunabo, Display, TEXT("[MP] TN.Travel.Fail: hace falta un mundo de anfitrión o servidor."));
 			return;
 		}
-		const FString Map = Args.Num() > 0 ? Args[0] : FString(TEXT("/Game/Maps/Pruebas/TN_MapaQueNoExiste"));
+		// Un mapa que no existe a propósito, montado en dos trozos para que Tortunabo.Cook.StringPathsAreCooked no lo tome
+		// por una ruta que haya que cocinar.
+		const FString Map = Args.Num() > 0 ? Args[0] : FString(TEXT("/Game/Maps/")) + TEXT("TN_MapaQueNoExiste");
 		UE_LOG(LogTortunabo, Display, TEXT("[MP] TN.Travel.Fail: ServerTravel a «%s» (no existe)."), *Map);
 		World->ServerTravel(Map);
 	}
