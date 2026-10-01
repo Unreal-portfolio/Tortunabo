@@ -43,6 +43,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Core/TN_InventoryTypes.h"
 #include "Player/TN_CarryComponent.h"
+#include "World/Beach/TN_RaceItems.h"
 #include "Player/TN_InventoryComponent.h"
 #include "InputAction.h"
 #include "Voice/ProximityVoiceComponent.h"
@@ -624,7 +625,14 @@ bool UTN_RunHUDWidget::ShouldShowAimDot() const
 	{
 		return false;
 	}
-	const ETN_ItemUseType Use = Inv->GetEquippedItem().UseType;
+	const FTN_InventoryItem& Equipped = Inv->GetEquippedItem();
+	const ETN_ItemUseType Use = Equipped.UseType;
+	if (Use == ETN_ItemUseType::RaceItem)
+	{
+		// De la carrera, los que se lanzan a mano (el cangrejo va solo hacia su rival y el resto no se lanza).
+		const ETNRaceItem Kind = TNRaceItems::KindOf(Equipped);
+		return Kind == ETNRaceItem::SandMine || Kind == ETNRaceItem::Frisbee;
+	}
 	return Use == ETN_ItemUseType::Throwable || Use == ETN_ItemUseType::InkThrower;
 }
 

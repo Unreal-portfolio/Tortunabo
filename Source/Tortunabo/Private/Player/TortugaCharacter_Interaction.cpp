@@ -377,12 +377,12 @@ bool ATortugaCharacter::UsesCameraThrowAim() const
 	return FollowCamera && !bVRViewActive && !bVRPlayer;
 }
 
-FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed) const
+bool ATortugaCharacter::GetCrosshairPoint(FVector& OutPoint) const
 {
 	const UWorld* World = GetWorld();
-	if (!UsesCameraThrowAim() || !World || Speed < 1.f)
+	if (!UsesCameraThrowAim() || !World)
 	{
-		return GetThrowDirection(AimRotation);
+		return false;
 	}
 
 	// Rayo por el centro de la pantalla: sale de la cámara hacia delante. Su primer choque (menos la propia tortuga y lo que
@@ -400,7 +400,18 @@ FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, c
 	}
 	FHitResult Hit;
 	const bool bHit = World->LineTraceSingleByChannel(Hit, CamLoc, CamLoc + CamDir * AimRange, ECC_Visibility, Params);
-	const FVector Target = bHit ? Hit.ImpactPoint : CamLoc + CamDir * AimRange;
+	OutPoint = bHit ? FVector(Hit.ImpactPoint) : CamLoc + CamDir * AimRange;
+	return true;
+}
+
+FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed, float GravityCmS2) const
+{
+	const UWorld* World = GetWorld();
+	FVector Target;
+	if (!World || Speed < 1.f || !GetCrosshairPoint(Target))
+	{
+		return GetThrowDirection(AimRotation);
+	}
 
 	// Tiro parabólico (la gravedad del mundo, con ProjectileGravityScale 1): el ángulo bajo que llega justo al punto.
 	const FVector Delta = Target - Origin;
@@ -410,7 +421,7 @@ FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, c
 	{
 		return Delta.GetSafeNormal();
 	}
-	const double G = FMath::Max(1.0, -static_cast<double>(World->GetGravityZ()));
+	const double G = GravityCmS2 > 1.f ? static_cast<double>(GravityCmS2) : FMath::Max(1.0, -static_cast<double>(World->GetGravityZ()));
 	const double V2 = static_cast<double>(Speed) * Speed;
 	const double Disc = V2 * V2 - G * (G * D * D + 2.0 * Delta.Z * V2);
 	// Sin alcance (punto demasiado lejos): el ángulo de máximo alcance.
