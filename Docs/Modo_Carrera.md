@@ -3222,6 +3222,13 @@ carrera parada, sin nadie a quien apuntar, sin sitio delante, demasiados a la ve
 Todo lo decide el servidor y todos ven los efectos; en la carrera nunca se muere: lo que golpea aturde (`TNBeach::StunTurtle`)
 o derriba (`TNBeach::KnockDownTurtle`), y a los enemigos los marea `ATN_BeachEnemy::ApplyHitStun`.
 
+**Con la carrera parada nada golpea** (#72): tras «¡TIEMPO!» o «¡TODAS AL AGUA!», en el recuento, en el título del sprint y en el
+podio, los objetos lanzados siguen su camino pero no aplican efecto. La regla es una sola, `TNBeachRaceRules::IsRaceLive`
+(la usan `ATN_BeachEnemy::IsRaceLive` y `TNBeachRideKit::IsRaceLive`; `Tortunabo.BeachRace.RaceLive`): la mina congela su
+reloj, el cangrejo se disuelve y la gaviota cae sin víctimas; el disco (`ServerSweepHits`) y el protector solar
+(`ServerStarContacts`) no derriban ni marean, y **la nube de tormenta ya anunciada cae igualmente** (el rayo se ve, como el
+picotazo de la gaviota) pero no marea a nadie (`ServerStrike`; decisión de #72).
+
 ### Pelícano taxi (`ATN_RacePelicanTaxi`)
 
 - **Línea de tiempo** (desde el uso): 1 s de aproximación (la tortuga queda sujeta y pataleando donde está mientras el

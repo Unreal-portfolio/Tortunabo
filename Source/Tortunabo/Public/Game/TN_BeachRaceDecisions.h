@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Game/TN_BeachRaceGameState.h"
 
 /**
  * Reglas de la carrera en la playa (ATN_BeachRaceGameMode) como lógica pura: sin mundo ni controladores, todo entra por
@@ -59,5 +60,20 @@ namespace TNBeachRaceRules
 	inline bool ShouldClearRoundLeftover(bool bPlacedInLevel, bool bBeingDestroyed)
 	{
 		return !bPlacedInLevel && !bBeingDestroyed;
+	}
+
+	/**
+	 * @brief ¿La carrera deja jugar? (#72) Los enemigos, las trampas y los objetos de carrera (mina, cangrejo, gaviota, disco,
+	 *        protector solar, nube de tormenta...) lo miran antes de golpear.
+	 *
+	 * No deja jugar al acabar la cuenta de meta («¡TIEMPO!» y «¡TODAS AL AGUA!»: gusanos y recuento), en el recuento de
+	 * conchas, en el título del sprint final ni en el podio. A propósito, la fase Waiting cuenta como carrera (3, 2, 1
+	 * incluidos): si la fase se quedara en Waiting por lo que sea, se sigue atacando.
+	 */
+	inline bool IsRaceLive(ETNBeachRacePhase Phase, ETNBeachFinishCountdown Countdown)
+	{
+		return Phase != ETNBeachRacePhase::RoundResults && Phase != ETNBeachRacePhase::Champion
+			&& Phase != ETNBeachRacePhase::SprintIntro && Countdown != ETNBeachFinishCountdown::TimeUp
+			&& Countdown != ETNBeachFinishCountdown::AllIn;
 	}
 }
