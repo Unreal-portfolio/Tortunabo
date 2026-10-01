@@ -5,8 +5,9 @@
 - In review: terminada. Si el autor no la probó, va con Editor = Sin probar y se dice
   («Sin QA editor»).
 - Revisiones: la revisión o la prueba encontraron un fallo.
-- Tras la aprobación y la fusión en dev: Editor = Funciona → Done; si no, QA editor → Done.
-- Validada: solo para miembros de un lote, aprobados y probados, a la espera del resto.
+- Validada: revisión IA aprobada y probada en el editor en su rama, sin fusionar (#282). En un lote espera a
+  los demás miembros; con todo el lote (o la issue suelta) en Validada, pasa a Done y se fusiona la PR.
+- A dev solo entra lo que está en Done. QA editor queda para lo fusionado antes de esta regla sin probar.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ def estado_objetivo(actual: str | None, valores: dict, fusionada: bool, en_lote:
     """Estado que corresponde a la issue y si hay que cerrarla; None = no cambia.
 
     - Cambios pedidos o Editor = Falla → Revisiones, salvo en In progress: quien la tiene la arregla ahí.
-    - Sin fusionar: miembro de un lote aprobado y probado → Validada; en otro caso no cambia.
+    - Sin fusionar: aprobada y probada (en un lote o suelta) → Validada; en otro caso no cambia.
     - Fusionada en dev: sin revisión aprobada → In review; aprobada sin probar → QA editor;
       aprobada y probada → Done, y se cierra.
     - Tarea solo de prueba (en QA editor y sin ninguna PR): Editor = Funciona → Done.
@@ -40,7 +41,7 @@ def estado_objetivo(actual: str | None, valores: dict, fusionada: bool, en_lote:
         return ("Done", True) if editor == "Funciona" else (None, False)
     lista = ia == "Aprobada" and editor == "Funciona"
     if not fusionada:
-        return ("Validada", False) if lista and en_lote else (None, False)
+        return ("Validada", False) if lista else (None, False)
     if ia != "Aprobada":
         return "In review", False
     if editor != "Funciona":
