@@ -1792,7 +1792,7 @@ void UTN_PauseMenuWidget::UpdateVoiceIcons()
 		const bool bMe = PS == Mine;
 		const APawn* Pawn = PS->GetPawn();
 		const UProximityVoiceComponent* Voice = Pawn ? Pawn->FindComponentByClass<UProximityVoiceComponent>() : nullptr;
-		const bool bMuted = Settings && (bMe ? Settings->GetSettings().bMicMuted : Settings->IsPlayerMuted(UTN_GameSettingsSubsystem::PlayerKey(PS)));
+		const bool bMuted = Settings && (bMe ? Settings->GetEditedSettings().bMicMuted : Settings->IsPlayerMuted(UTN_GameSettingsSubsystem::PlayerKey(PS)));
 		const bool bSpeaking = !bMuted && Voice && Voice->IsHeardSpeaking();
 		TNPauseUI::SetPicture(Icon, bMe ? TNPauseArt::MicIcon(bMuted) : TNPauseArt::SpeakerIcon(bMuted));
 		// Hablando: late y brilla; callado: apagado.
@@ -1975,14 +1975,14 @@ void UTN_PauseMenuWidget::FillGraphicsTab()
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
-		Row->SetupSlider(NSLOCTEXT("TNPause", "Brightness", "Brillo"), 0.f, 1.f, 0.05f, Settings->GetSettings().Brightness,
+		Row->SetupSlider(NSLOCTEXT("TNPause", "Brightness", "Brillo"), 0.f, 1.f, 0.05f, Settings->GetEditedSettings().Brightness,
 			[](float V) { return TNPauseUI::Percent(V); },
 			[WeakSettings](float V) { if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([V](FTNGameSettings& Data) { Data.Brightness = V; }); } });
 		Row->SetDescription(NSLOCTEXT("TNPause", "BrightnessDesc", "Gamma de la imagen. 50 % es el brillo de siempre."));
 	}
 	AddToggleRow(NSLOCTEXT("TNPause", "ShowFps", "Mostrar FPS"),
 		NSLOCTEXT("TNPause", "ShowFpsDesc", "Contador de fotogramas por segundo abajo a la derecha (y el peor fotograma, en milisegundos)."),
-		Settings->GetSettings().bShowFps, [WeakSettings](bool bOn)
+		Settings->GetEditedSettings().bShowFps, [WeakSettings](bool bOn)
 		{
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& Data) { Data.bShowFps = bOn; }); }
 		});
@@ -2095,7 +2095,7 @@ void UTN_PauseMenuWidget::FillSoundTab()
 	}
 	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
 	TWeakObjectPtr<UTN_GameSettingsSubsystem> WeakSettings(Settings);
-	const FTNGameSettings& Data = Settings->GetSettings();
+	const FTNGameSettings& Data = Settings->GetEditedSettings();
 	auto Edit = [WeakSettings](TFunction<void(FTNGameSettings&, float)> Apply)
 	{
 		return [WeakSettings, Apply](float V)
@@ -2141,7 +2141,7 @@ void UTN_PauseMenuWidget::FillVoiceTab()
 	}
 	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
 	TWeakObjectPtr<UTN_GameSettingsSubsystem> WeakSettings(Settings);
-	const FTNGameSettings& Data = Settings->GetSettings();
+	const FTNGameSettings& Data = Settings->GetEditedSettings();
 
 	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadMates", "COMPAÑEROS"));
 	AddVolumeRow(NSLOCTEXT("TNPause", "MatesVoice", "Voz de los compañeros"), NSLOCTEXT("TNPause", "MatesVoiceDesc", "Volumen de la voz de todos los demás jugadores."),
@@ -2257,7 +2257,7 @@ void UTN_PauseMenuWidget::FillVoiceTab()
 				OutText = NSLOCTEXT("TNPause", "NoMic", "Sin micrófono");
 				return;
 			}
-			const FTNGameSettings& D = S->GetSettings();
+			const FTNGameSettings& D = S->GetEditedSettings();
 			OutLevel = TNPauseUI::MeterFromRms(S->GetMicLevel());
 			OutMark = TNPauseUI::MeterFromRms(S->GetSpeakingThreshold());
 			if (D.bMicMuted) { OutText = NSLOCTEXT("TNPause", "MicMuted", "Silenciado"); }
@@ -2290,7 +2290,7 @@ void UTN_PauseMenuWidget::FillControlsTab()
 	}
 	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
 	TWeakObjectPtr<UTN_GameSettingsSubsystem> WeakSettings(Settings);
-	const FTNGameSettings& Data = Settings->GetSettings();
+	const FTNGameSettings& Data = Settings->GetEditedSettings();
 	auto SensitivityRow = [this, WeakSettings](const FText& Label, const FText& Description, float Value, bool bPad)
 	{
 		if (UTN_PauseRow* Row = AddListRow(SettingsList))
@@ -2350,7 +2350,7 @@ void UTN_PauseMenuWidget::FillGameTab()
 	}
 	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
 	TWeakObjectPtr<UTN_GameSettingsSubsystem> WeakSettings(Settings);
-	const FTNGameSettings& Data = Settings->GetSettings();
+	const FTNGameSettings& Data = Settings->GetEditedSettings();
 
 	// El idioma, lo primero de la pestaña (y el título en dos idiomas): quien no lea el que tiene puesto debe poder encontrarlo.
 	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadLanguage", "IDIOMA / LANGUAGE"));
@@ -3445,7 +3445,7 @@ FReply UTN_PauseMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const F
 	}
 	if (const UTN_GameSettingsSubsystem* Settings = GetSettings())
 	{
-		const FTNGameSettings& Data = Settings->GetSettings();
+		const FTNGameSettings& Data = Settings->GetEditedSettings();
 		// La tecla o el botón elegidos para el menú lo cierran, como Tab y Start.
 		if ((!Data.PauseKey.IsNone() && Key.GetFName() == Data.PauseKey) || (!Data.PausePadKey.IsNone() && Key.GetFName() == Data.PausePadKey))
 		{

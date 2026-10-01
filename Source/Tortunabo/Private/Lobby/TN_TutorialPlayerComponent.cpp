@@ -726,7 +726,7 @@ void UTN_TutorialPlayerComponent::TickTasks(float DeltaTime, ATortugaCharacter* 
 		case EStation::PauseMenu:
 			if (const UTN_GameSettingsSubsystem* Settings = UTN_GameSettingsSubsystem::Get(this))
 			{
-				if (Settings->IsPauseMenuOpen()) { MarkTask(Here, 0); }
+				if (Settings->GetPauseMenuOwner() == PC) { MarkTask(Here, 0); }
 			}
 			break;
 		default:
@@ -757,7 +757,7 @@ void UTN_TutorialPlayerComponent::RefreshKeys()
 	TArray<FTNKeyBinding> Rows;
 	if (Settings)
 	{
-		Rows = Settings->GetKeyBindings();
+		Rows = Settings->GetKeyBindingsFor(PC);
 	}
 	auto FindRow = [&Rows](const FString& Id) -> const FTNKeyBinding*
 	{
