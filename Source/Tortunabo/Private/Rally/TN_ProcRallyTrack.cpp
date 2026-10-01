@@ -57,6 +57,21 @@ namespace TNProcRally
 			UE_LOG(LogTNRally, Error, TEXT("[ProcRally] El camino del mapa (%d muestras) no da para una pista."), Points.Num());
 			return false;
 		}
+		// Validación del camino para el buggy (en el log): las rampas más empinadas, los escalones y el paso más estrecho.
+		{
+			double MaxSlope = 0.0, MaxSlopeArc = 0.0, MinWidth = TNumericLimits<double>::Max(), MinWidthArc = 0.0;
+			int32 Steep = 0;
+			for (int32 Index = 1; Index < Plan.Road.Num(); ++Index)
+			{
+				const double Run = FMath::Max(1.0, FVector::Dist2D(Plan.Road[Index], Plan.Road[Index - 1]));
+				const double Slope = FMath::Abs(Plan.Road[Index].Z - Plan.Road[Index - 1].Z) / Run;
+				Steep += Slope > 0.3 ? 1 : 0;
+				if (Slope > MaxSlope) { MaxSlope = Slope; MaxSlopeArc = Plan.RoadArcCm[Index]; }
+				if (Plan.RoadWidthCm[Index] < MinWidth) { MinWidth = Plan.RoadWidthCm[Index]; MinWidthArc = Plan.RoadArcCm[Index]; }
+			}
+			UE_LOG(LogTNRally, Log, TEXT("[ProcRally] Camino: pendiente máxima %.0f %% en el arco %.0f m, %d tramos de más del 30 %%, paso más estrecho %.1f m en el arco %.0f m."),
+				100.0 * MaxSlope, MaxSlopeArc / 100.0, Steep, MinWidth / 100.0, MinWidthArc / 100.0);
+		}
 		TArray<FVector4> Raw;
 		Generator.GetMainPathObstaclesWorld(Raw);
 		TArray<TNRally::FLineObstacle> Obstacles;
@@ -77,6 +92,18 @@ namespace TNProcRally
 			OutGround = FVector(At.X, At.Y, Map->GetTerrainHeightAt(At));
 			return true;
 		}, true);
-		return Track.BuildFromRoutePlan(Plan, true, SeaZ, Obstacles);
+		const bool bBuilt = Track.BuildFromRoutePlan(Plan, true, SeaZ, Obstacles);
+		if (bBuilt && UE_LOG_ACTIVE(LogTNRally, Verbose))
+		{
+			for (const FVector4& Obstacle : Raw)
+			{
+				const FVector Center(Obstacle.X, Obstacle.Y, Obstacle.Z);
+				const double Arc = Track.FindArcGlobal(Center);
+				UE_LOG(LogTNRally, Verbose, TEXT("[ProcRally] Obstáculo en el arco %.0f m, a %.1f m del eje (calzada de %.0f m), radio %.1f m; la línea IA pasa a %.1f m."),
+					Arc / 100.0, FVector::Dist2D(Center, Track.GetLocationAtArc(Arc)) / 100.0, 2.0 * Track.GetRoadHalfWidthAtArc(Arc) / 100.0,
+					Obstacle.W / 100.0, FVector::Dist2D(Center, Track.GetRacingLineLocationAtArc(Arc)) / 100.0);
+			}
+		}
+		return bBuilt;
 	}
 }

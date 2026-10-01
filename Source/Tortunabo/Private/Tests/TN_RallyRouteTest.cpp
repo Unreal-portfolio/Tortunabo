@@ -160,6 +160,25 @@ bool FTNRallyRouteRacingLineTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Nunca fuera de la calzada"), FMath::Abs(Offsets[Index]) <= Half[Index] - 250.0 + 1.0);
 	}
 
+	// Dos obstáculos a 17 m uno del otro (lo que pasaba en la salida de un mapa normal): la línea los rodea a los dos.
+	TArray<double> WideHalf;
+	WideHalf.Init(1750.0, Road.Num());
+	const FLineObstacle A{ FVector2D(30000.0, 550.0), 300.0 };
+	const FLineObstacle B{ FVector2D(31700.0, 200.0), 170.0 };
+	const TArray<double> Weave = PlanRacingLineOffsets(Road, WideHalf, { A, B }, 450.0, 4500.0);
+	for (int32 Index = 0; Index < Road.Num(); ++Index)
+	{
+		for (const FLineObstacle& Obstacle : { A, B })
+		{
+			const double Along = FMath::Abs(Road[Index].X - Obstacle.Center.X);
+			if (Along <= Obstacle.RadiusCm + 450.0)
+			{
+				TestTrue(FString::Printf(TEXT("A la altura de un obstáculo (punto %d), la línea pasa a su holgura"), Index),
+					FMath::Abs(Weave[Index] - Obstacle.Center.Y) >= Obstacle.RadiusCm + 450.0 - 1.0);
+			}
+		}
+	}
+
 	// Un obstáculo fuera de la calzada no cambia nada.
 	const FLineObstacle Far{ FVector2D(30000.0, 6000.0), 400.0 };
 	TestTrue(TEXT("Obstáculo lejos del camino: línea por el eje"), FMath::IsNearlyZero(PlanRacingLineOffsets(Road, Half, { Far }, 450.0, 4500.0)[30]));

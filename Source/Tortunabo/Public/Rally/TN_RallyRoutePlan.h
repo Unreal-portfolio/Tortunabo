@@ -116,9 +116,10 @@ namespace TNRally
 	};
 
 	/**
-	 * Desplazamiento lateral (cm, + a la derecha) de la línea del piloto IA en cada punto del eje para pasar a ClearanceCm de
-	 * cada obstáculo por el lado con más sitio, entrando y saliendo en rampa de RampCm. Nunca más allá del semiancho menos
-	 * 2,5 m. Sin obstáculos, todo 0.
+	 * Desplazamiento lateral (cm, + a la derecha) de la línea del piloto IA en cada punto del eje: junto a un obstáculo (a lo
+	 * largo, a menos de su radio más ClearanceCm), el sitio libre más cercano al eje a ClearanceCm de todos los que tiene al
+	 * lado; entre dos obstáculos, de uno a otro en línea recta, y al entrar y salir, rampa de RampCm hasta el eje. Nunca más
+	 * allá del semiancho menos 2,5 m. Sin obstáculos, todo 0.
 	 */
 	TORTUNABO_API TArray<double> PlanRacingLineOffsets(const TArray<FVector>& Road, const TArray<double>& HalfWidthsCm,
 		const TArray<FLineObstacle>& Obstacles, double ClearanceCm, double RampCm);

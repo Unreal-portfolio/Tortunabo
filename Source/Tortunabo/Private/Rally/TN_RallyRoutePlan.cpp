@@ -275,73 +275,129 @@ namespace TNRally
 		{
 			return HalfWidthsCm.IsValidIndex(Index) ? FMath::Max(0.0, HalfWidthsCm[Index] - RouteLineEdgeMarginCm) : 0.0;
 		};
-		auto DirAt = [&Road, Num](int32 Index)
-		{
-			const FVector From = Road[FMath::Max(0, Index - 1)];
-			const FVector To = Road[FMath::Min(Num - 1, Index + 1)];
-			return FVector2D(To - From).GetSafeNormal();
-		};
 
-		// Lo que pide cada obstáculo en el punto del eje más cercano: pasar por el lado con más sitio.
-		struct FNeed
+		// Puntos «núcleo»: los que tienen un obstáculo al lado (a lo largo, a menos de su radio más la holgura). Ahí la línea
+		// va por el sitio libre más cercano al eje; entre núcleos, en rampa; lejos de todos, por el eje.
+		TArray<bool> bCore;
+		bCore.SetNumZeroed(Num);
+		struct FBlock
 		{
-			double Arc = 0.0;
-			double Offset = 0.0;
+			double Lateral = 0.0;
+			double Keep = 0.0;
 		};
-		TArray<FNeed> Needs;
-		for (const FLineObstacle& Obstacle : Obstacles)
+		TArray<FBlock> Blocks;
+		for (int32 Index = 0; Index < Num; ++Index)
 		{
-			int32 Nearest = INDEX_NONE;
-			double Best = TNumericLimits<double>::Max();
-			for (int32 Index = 0; Index < Num; ++Index)
+			const FVector2D Point(Road[Index]);
+			const FVector2D Dir = FVector2D(Road[FMath::Min(Num - 1, Index + 1)] - Road[FMath::Max(0, Index - 1)]).GetSafeNormal();
+			const FVector2D Right(-Dir.Y, Dir.X);
+			const double Edge = Limit(Index);
+			Blocks.Reset();
+			for (const FLineObstacle& Obstacle : Obstacles)
 			{
-				const double D = FVector2D::DistSquared(FVector2D(Road[Index]), Obstacle.Center);
-				if (D < Best)
+				const FVector2D To = Obstacle.Center - Point;
+				const double Keep = Obstacle.RadiusCm + ClearanceCm;
+				const double Along = FVector2D::DotProduct(To, Dir);
+				const double Lateral = FVector2D::DotProduct(To, Right);
+				// Solo lo que está a su altura y dentro de la calzada (con la holgura).
+				if (FMath::Abs(Along) <= Keep && FMath::Abs(Lateral) - Keep < Edge)
 				{
-					Best = D;
-					Nearest = Index;
+					Blocks.Add({ Lateral, Keep });
 				}
 			}
-			const double Reach = Limit(Nearest) + Obstacle.RadiusCm + ClearanceCm + RouteLineEdgeMarginCm;
-			if (Nearest == INDEX_NONE || Best > FMath::Square(Reach))
+			if (Blocks.Num() == 0)
 			{
 				continue;
 			}
-			const FVector2D Dir = DirAt(Nearest);
-			const FVector2D Right(-Dir.Y, Dir.X);
-			const double Lateral = FVector2D::DotProduct(Obstacle.Center - FVector2D(Road[Nearest]), Right);
-			const double Keep = Obstacle.RadiusCm + ClearanceCm;
-			const double Edge = Limit(Nearest);
-			// Hueco a cada lado del obstáculo dentro de la calzada.
-			const double LeftRoom = (Lateral - Keep) - (-Edge);
-			const double RightRoom = Edge - (Lateral + Keep);
-			FNeed Need;
-			Need.Arc = Arc[Nearest];
-			Need.Offset = LeftRoom >= RightRoom ? FMath::Min(0.0, Lateral - Keep) : FMath::Max(0.0, Lateral + Keep);
-			if (FMath::Abs(Need.Offset) > KINDA_SMALL_NUMBER)
+			auto IsFree = [&Blocks](double Offset)
 			{
-				Needs.Add(Need);
-			}
-		}
-
-		// Rampa de entrada y salida; si dos se pisan, manda la que pide más.
-		const double Ramp = FMath::Max(RampCm, 100.0);
-		for (int32 Index = 0; Index < Num; ++Index)
-		{
-			double Chosen = 0.0;
-			for (const FNeed& Need : Needs)
-			{
-				const double Weight = FMath::Clamp(1.0 - FMath::Abs(Arc[Index] - Need.Arc) / Ramp, 0.0, 1.0);
-				// Meseta de un tercio de la rampa alrededor del obstáculo: lo rodea entero, no solo en su centro.
-				const double Shaped = FMath::Clamp(Weight * 1.5, 0.0, 1.0);
-				const double Value = Need.Offset * Shaped;
-				if (FMath::Abs(Value) > FMath::Abs(Chosen))
+				for (const FBlock& Block : Blocks)
 				{
-					Chosen = Value;
+					if (FMath::Abs(Offset - Block.Lateral) < Block.Keep - 0.5)
+					{
+						return false;
+					}
+				}
+				return true;
+			};
+			// Candidatos: el eje, los bordes de cada hueco libre y los de la calzada; gana el libre más cercano al eje.
+			TArray<double> Candidates = { 0.0, -Edge, Edge };
+			for (const FBlock& Block : Blocks)
+			{
+				Candidates.Add(Block.Lateral - Block.Keep);
+				Candidates.Add(Block.Lateral + Block.Keep);
+			}
+			double Chosen = 0.0;
+			double Best = TNumericLimits<double>::Max();
+			double BestClear = -1.0;
+			bool bAnyFree = false;
+			for (const double Candidate : Candidates)
+			{
+				if (Candidate < -Edge - 0.5 || Candidate > Edge + 0.5)
+				{
+					continue;
+				}
+				if (IsFree(Candidate))
+				{
+					if (!bAnyFree || FMath::Abs(Candidate) < Best)
+					{
+						Best = FMath::Abs(Candidate);
+						Chosen = Candidate;
+					}
+					bAnyFree = true;
+				}
+				else if (!bAnyFree)
+				{
+					// Sin sitio libre (calzada muy estrecha): lo más lejos posible de los obstáculos.
+					double Clear = TNumericLimits<double>::Max();
+					for (const FBlock& Block : Blocks)
+					{
+						Clear = FMath::Min(Clear, FMath::Abs(Candidate - Block.Lateral));
+					}
+					if (Clear > BestClear)
+					{
+						BestClear = Clear;
+						Chosen = Candidate;
+					}
 				}
 			}
-			const double Edge = Limit(Index);
+			bCore[Index] = true;
 			Offsets[Index] = FMath::Clamp(Chosen, -Edge, Edge);
+		}
+
+		// Entre núcleos, en línea recta de uno a otro (si están a menos de dos rampas); al salir y al entrar, rampa hasta el eje.
+		const double Ramp = FMath::Max(RampCm, 100.0);
+		int32 Previous = INDEX_NONE;
+		for (int32 Index = 0; Index < Num; ++Index)
+		{
+			if (bCore[Index])
+			{
+				Previous = Index;
+				continue;
+			}
+			int32 Next = Index + 1;
+			while (Next < Num && !bCore[Next] && Arc[Next] - Arc[Index] <= Ramp)
+			{
+				++Next;
+			}
+			const bool bHasNext = Next < Num && bCore[Next];
+			const bool bHasPrevious = Previous != INDEX_NONE && Arc[Index] - Arc[Previous] <= Ramp;
+			double Value = 0.0;
+			if (bHasPrevious && bHasNext)
+			{
+				const double Span = FMath::Max(1.0, Arc[Next] - Arc[Previous]);
+				Value = FMath::Lerp(Offsets[Previous], Offsets[Next], (Arc[Index] - Arc[Previous]) / Span);
+			}
+			else if (bHasPrevious)
+			{
+				Value = Offsets[Previous] * (1.0 - (Arc[Index] - Arc[Previous]) / Ramp);
+			}
+			else if (bHasNext)
+			{
+				Value = Offsets[Next] * (1.0 - (Arc[Next] - Arc[Index]) / Ramp);
+			}
+			const double Edge = Limit(Index);
+			Offsets[Index] = FMath::Clamp(Value, -Edge, Edge);
 		}
 		return Offsets;
 	}
