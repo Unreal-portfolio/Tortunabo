@@ -2,8 +2,11 @@
 
 Supervivencia (#143) deja de usar los chunks del Clásico y pasa a **un mapa nuevo por nivel**, generado entero de
 una vez. Este documento fija cómo debe ser ese mapa y cómo se comparan los dos generadores candidatos: el de
-SkiTemplar (Python, «camino primero», `Scripts/terrain_path/`, más laberíntico) y el de Mokius (C++, el del modo
-cooperativo: `TNProcMap::GenerateLayout` y `TN_ProcMapTerrain`, más lineal). Se usará el que cumpla mejor. Las constantes viven en
+SkiTemplar (Python, «camino primero», `Scripts/terrain_path/`: el camino principal vuelve sobre sí mismo en lazos
+que se cruzan por arriba o por abajo) y el de Mokius (C++, el del modo cooperativo: `TNProcMap::GenerateLayout` y
+`TN_ProcMapTerrain`: el principal avanza de módulo en módulo, con ramas que se separan y vuelven a unirse y pasadas
+de cruce). El equipo ve el de Mokius más lineal y el de SkiTemplar más laberíntico; el banco debe confirmarlo
+con números. Se usará el que cumpla mejor. Las constantes viven en
 `Scripts/terrain_survival/spec.py`.
 
 ## Especificación
@@ -23,7 +26,23 @@ cooperativo: `TNProcMap::GenerateLayout` y `TN_ProcMapTerrain`, más lineal). Se
 El «reto» es informativo: `(camino / línea recta − 1) + 2 × (proporción del camino con pendiente > 25°)`.
 También lo es «fuera del camino», que mide lo laberíntico que es un mapa: la parte del suelo alcanzable que queda
 a más de 10 m del camino más corto (0 = lineal; cuanto más alto, más ramas y lazos). No tiene umbral: qué es mejor
-para Supervivencia se decide al comparar.
+para Supervivencia se decide al comparar. **Limitación conocida:** en un campo abierto también sale alta, así que
+solo separa lineal de laberinto cuando el borde del camino está cerrado. Medida sobre C01 (2,5D) da 0,95 porque
+desde el camino se llega a casi todo el suelo seco (ver «Medición de C01»).
+
+## Medición de C01 (2026-10-01)
+
+Rasterizando a 1 m la malla ya generada de `C01_camino` (cota máxima de cada celda, como `terrain_vol.validate`):
+
+- Meta alcanzable, pero sin camino de 3 m de ancho entre el inicio y la meta: el principal tiene estrechamientos.
+- El camino más corto a pie (8 vecinos, pendiente ≤ 45°) mide 381 m frente a 335 m en línea recta (1,14). No
+  sigue el camino diseñado: sale del cauce cerca del inicio y cruza la meseta, con escalones de 1,3 m como mucho.
+- Desde el inicio se alcanza el 99 % del suelo seco, incluido el fondo de vistas que el diseño (§4.3, banda de
+  bloqueo) quiere inalcanzable.
+
+El generador comprueba ese bloqueo con su recorrido 3D (`gen_terrain_path.check`, `vista == 0`) y C01 lo pasa, así
+que o el análisis 2,5D ve pasos que en 3D no existen o hay una fuga real. Hay que comprobarlo en el editor antes de
+fiarse de las métricas de C01.
 
 ## Formato de intercambio
 
