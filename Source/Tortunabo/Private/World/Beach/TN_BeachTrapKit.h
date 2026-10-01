@@ -12,6 +12,7 @@
 #include "World/Beach/TN_BeachSandWorm.h"
 #include "World/Beach/TN_BeachStun.h"
 #include "World/Beach/TN_BeachTypes.h"
+#include "../../Art/TN_ArtPieces.h"
 #include "../../Lobby/Playground/TN_PlaygroundMeshKit.h"
 
 /**
@@ -136,6 +137,46 @@ namespace TNBeachTrapKit
 			return;
 		}
 		Comp->SetStaticMesh(B.IsEmpty() ? nullptr : TNPlaygroundKit::BuildMesh(Outer, B, TNPlaygroundKit::VertexColorMaterial()));
+	}
+
+	/**
+	 * Lo mismo, como pieza de arte Slot (Docs/Arte_Assets.md, TNArt::SetMesh): con sustituto, la malla de arte va de hija de
+	 * Comp y se mueve, se esconde y se enseña con él. Llamar con las sombras y la colisión de Comp ya puestas.
+	 */
+	inline void SetMesh(UStaticMeshComponent* Comp, UObject* Outer, const FBuffers& B, FName Slot)
+	{
+		if (!Comp)
+		{
+			return;
+		}
+		TNArt::SetMesh(Comp, B.IsEmpty() ? nullptr : TNPlaygroundKit::BuildMesh(Outer, B, TNPlaygroundKit::VertexColorMaterial()), Slot);
+	}
+
+	/**
+	 * Como SetMesh, con piezas de arte dentro de la malla (las de Log, TN_ArtPieces.h): sin las que tienen sustituto. Su malla
+	 * de arte la pone luego TNArt::SpawnPieceArt(Comp, Log), una vez para todas las mallas del registro (los ejes de Comp han
+	 * de ser los de los buffers). Sin sustitutos, exactamente SetMesh. Solo para mallas sin colisión (ConfigureVisual).
+	 */
+	inline void SetMeshWithPieces(UStaticMeshComponent* Comp, UObject* Outer, const FBuffers& B, const TNArt::FPieceLog& Log)
+	{
+		if (!Comp)
+		{
+			return;
+		}
+		TArray<TNArt::FPieceRange> Removed;
+		// Como TNArt: solo donde se pueden cambiar las mallas (si no, SpawnPieceArt no pone nada).
+		if (TNArt::CanModify(Comp))
+		{
+			Log.CollectRemoved(B, false, Removed);
+		}
+		if (Removed.Num() == 0)
+		{
+			SetMesh(Comp, Outer, B);
+			return;
+		}
+		FBuffers Visible;
+		TNArt::FilterBuffers(B, Removed, Visible);
+		SetMesh(Comp, Outer, Visible);
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────

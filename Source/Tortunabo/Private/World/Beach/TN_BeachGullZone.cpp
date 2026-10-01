@@ -23,6 +23,22 @@
 
 namespace TNBeachGull
 {
+	/** Pieza de arte de cada hueso de una gaviota o un pelícano (Docs/Arte_Assets.md): pivote en su articulación. */
+	inline FName BirdSlot(bool bPelican, TNFauna::ETNFaunaBone Bone)
+	{
+		using EBone = TNFauna::ETNFaunaBone;
+		switch (Bone)
+		{
+		case EBone::Body: return bPelican ? TN_ART("Beach.Pelican.Body") : TN_ART("Beach.Gull.Body");
+		case EBone::Head: return bPelican ? TN_ART("Beach.Pelican.Head") : TN_ART("Beach.Gull.Head");
+		case EBone::WingL: return bPelican ? TN_ART("Beach.Pelican.WingLeft") : TN_ART("Beach.Gull.WingLeft");
+		case EBone::WingR: return bPelican ? TN_ART("Beach.Pelican.WingRight") : TN_ART("Beach.Gull.WingRight");
+		case EBone::LegBL: return bPelican ? TN_ART("Beach.Pelican.LegLeft") : TN_ART("Beach.Gull.LegLeft");
+		case EBone::LegBR: return bPelican ? TN_ART("Beach.Pelican.LegRight") : TN_ART("Beach.Gull.LegRight");
+		default: return NAME_None;
+		}
+	}
+
 	/** Tiempo entre ataques (s) mientras haya tortugas debajo (TN_BeachGullTuning.h: el nerf de la ronda 4). */
 	constexpr float AttackMin = TNBeachGullTuning::AttackIntervalMin;
 	constexpr float AttackMax = TNBeachGullTuning::AttackIntervalMax;
@@ -498,7 +514,7 @@ void ATN_BeachGullZone::BuildBirds()
 				UStaticMesh* Mesh = TNBeachKit::CachedMesh(FString::Printf(TEXT("Beach.%s.%d"), Bird.bPelican ? TEXT("Pelican") : TEXT("Gull"), i),
 					[&Buffers](TNProcMesh::FTNProcMeshBuffers& M) { M = Buffers; });
 				USceneComponent* Parent = bIsBody ? BirdRoot : static_cast<USceneComponent*>(BodyComp);
-				UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Parent ? Parent : BirdRoot, Mesh, Part.Pivot, false);
+				UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Parent ? Parent : BirdRoot, Mesh, Part.Pivot, false, TNBeachGull::BirdSlot(Bird.bPelican, Part.Bone));
 				if (bIsBody && !BodyComp)
 				{
 					BodyComp = Comp;
@@ -522,7 +538,8 @@ void ATN_BeachGullZone::BuildBirds()
 		const bool bPelican = Bird.bPelican;
 		UStaticMesh* JawMesh = TNBeachKit::CachedMesh(bPelican ? TEXT("Beach.Pelican.Jaw") : TEXT("Beach.Gull.Jaw"),
 			[bPelican](TNProcMesh::FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBirdJaw(M, bPelican); });
-		Jaws.Add(HeadComp ? TNBeachKit::AddPart(this, HeadComp, JawMesh, TNBeachMeshes::BirdGeom(bPelican).BeakBase, false) : nullptr);
+		Jaws.Add(HeadComp ? TNBeachKit::AddPart(this, HeadComp, JawMesh, TNBeachMeshes::BirdGeom(bPelican).BeakBase, false,
+			bPelican ? TN_ART("Beach.Pelican.Jaw") : TN_ART("Beach.Gull.Jaw")) : nullptr);
 
 		UStaticMeshComponent* Shadow = TNBeachKit::AddShadow(this, 0.38f);
 		TNBeachKit::PlaceShadow(Shadow, FVector::ZeroVector, 0.f);

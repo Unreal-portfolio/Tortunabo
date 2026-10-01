@@ -357,19 +357,20 @@ void ATN_BeachMine::ApplySpec()
 		// Sin pantalla no hace falta ninguna malla: la mina no tiene colisión.
 		return;
 	}
-	// Las mallas son de SizeScale 1 y compartidas: cada mina escala sus componentes.
+	// Las mallas son de SizeScale 1 y compartidas: cada mina escala sus componentes. Piezas de arte (Docs/Arte_Assets.md) salvo el
+	// destello de la explosión, que es un efecto.
 	const FMineLook Look = LookOf(Kind);
 	const uint32 KindSeed = 0x51u + static_cast<uint32>(Kind) * 977u;
 	const FVector Scale3(SizeK);
-	MineMesh->SetStaticMesh(SharedMesh(EMinePart::Body, Kind, [Kind, &Look, KindSeed](FBuffers& B) { BuildMine(B, Kind, Look, KindSeed); }));
+	TNArt::SetMesh(MineMesh, SharedMesh(EMinePart::Body, Kind, [Kind, &Look, KindSeed](FBuffers& B) { BuildMine(B, Kind, Look, KindSeed); }), TN_ART("Beach.Mine.Body"));
 	MineMesh->SetRelativeScale3D(Scale3);
-	LedMesh->SetStaticMesh(SharedMesh(EMinePart::Led, Kind, [&LedAt](FBuffers& B) { BuildLed(B, LedAt); }));
-	BlinkMesh->SetStaticMesh(SharedMesh(EMinePart::Cover, Kind, [Top1, CoverR](FBuffers& B) { BuildCover(B, Top1, CoverR); }));
+	TNArt::SetMesh(LedMesh, SharedMesh(EMinePart::Led, Kind, [&LedAt](FBuffers& B) { BuildLed(B, LedAt); }), TN_ART("Beach.Mine.Led"));
+	TNArt::SetMesh(BlinkMesh, SharedMesh(EMinePart::Cover, Kind, [Top1, CoverR](FBuffers& B) { BuildCover(B, Top1, CoverR); }), TN_ART("Beach.Mine.Cover"));
 	// Banderita de aviso en algo menos de la mitad, girada con la semilla.
 	const bool bFlag = TNBeachTrapKit::Hash01(9, 1, MineSeed) < 0.45;
-	FlagMesh->SetStaticMesh(bFlag ? SharedMesh(EMinePart::Flag, 0, [](FBuffers& B) { BuildFlag(B); }) : nullptr);
+	TNArt::SetMesh(FlagMesh, bFlag ? SharedMesh(EMinePart::Flag, 0, [](FBuffers& B) { BuildFlag(B); }) : nullptr, TN_ART("Beach.Mine.Flag"));
 	FlagMesh->SetRelativeTransform(FTransform(FQuat(FVector::UpVector, TNPlaygroundKit::KitTwoPi * TNBeachTrapKit::Hash01(1, 2, MineSeed)), FVector::ZeroVector, Scale3));
-	CraterMesh->SetStaticMesh(SharedMesh(EMinePart::Crater, Kind, [&Look, KindSeed](FBuffers& B) { BuildCrater(B, Look, KindSeed + 17u); }));
+	TNArt::SetMesh(CraterMesh, SharedMesh(EMinePart::Crater, Kind, [&Look, KindSeed](FBuffers& B) { BuildCrater(B, Look, KindSeed + 17u); }), TN_ART("Beach.Mine.Crater"));
 	CraterMesh->SetRelativeTransform(FTransform(FQuat(FVector::UpVector, TNPlaygroundKit::KitTwoPi * TNBeachTrapKit::Hash01(2, 3, MineSeed)), FVector::ZeroVector, Scale3));
 	CraterMesh->SetVisibility(ExplodedAt >= 0.f);
 	FlashMesh->SetStaticMesh(SharedMesh(EMinePart::Flash, 0, [](FBuffers& B) { TNPlaygroundKit::AddBall(B, FVector::ZeroVector, 100.0, 10, TNPlaygroundKit::Rgb(0xFFF0A0)); }));

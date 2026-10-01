@@ -343,12 +343,12 @@ void ATN_BeachMovingPlatform::BuildFerry(double Fit, uint32 Seed)
 			TNPlaygroundKit::AddBall(Base, FVector(Dx, Dy, SlopeZ + 150.0), 16.0, 8, TNPlaygroundKit::ToyColor(static_cast<int32>(Seed % 7u) + (End > 0.0 ? 1 : 4), 0.3f));
 		}
 	}
-	TNBeachTrapKit::SetMesh(BaseMesh, this, Base);
+	TNBeachTrapKit::SetMesh(BaseMesh, this, Base, TN_ART("Beach.MovingPlatform.FerryBase"));
 	BaseCollision->SetCollisionConvexMeshes(Hulls);
 
 	TNBeachTrapKit::FBuffers Ride;
 	BuildRide(Ride, Kind, RideHalfX, RideHalfY, RideThick, Seed);
-	TNBeachTrapKit::SetMesh(RideMesh, this, Ride);
+	TNBeachTrapKit::SetMesh(RideMesh, this, Ride, TN_ART("Beach.MovingPlatform.Raft"));
 	TArray<TArray<FVector>> RideHulls;
 	RideHulls.Add(RideHull(Kind, RideHalfX, RideHalfY, RideThick));
 	RideCollision->SetCollisionConvexMeshes(RideHulls);
@@ -420,12 +420,12 @@ void ATN_BeachMovingPlatform::BuildElevator(double Fit, uint32 Seed)
 	Hulls.Add(TNPlaygroundKit::HullAxisBox(FVector(MastFoot.X, MastFoot.Y, 0.5 * (TowerH + ArmZ)), FVector(7.0, 24.0, 0.5 * (ArmZ - TowerH))));
 	// Arena mojada donde se posa la plataforma.
 	TNPlaygroundKit::AddDisc(Base, FVector(LiftX, 0.0, 1.5), FVector::UpVector, LiftHalf + 40.0, 18, TNBeachTrapKit::SandWet());
-	TNBeachTrapKit::SetMesh(BaseMesh, this, Base);
+	TNBeachTrapKit::SetMesh(BaseMesh, this, Base, TN_ART("Beach.MovingPlatform.ElevatorBase"));
 	BaseCollision->SetCollisionConvexMeshes(Hulls);
 
 	TNBeachTrapKit::FBuffers Ride;
 	BuildLift(Ride, bRideRound, LiftHalf, Seed);
-	TNBeachTrapKit::SetMesh(RideMesh, this, Ride);
+	TNBeachTrapKit::SetMesh(RideMesh, this, Ride, TN_ART("Beach.MovingPlatform.Lift"));
 	TArray<TArray<FVector>> RideHulls;
 	RideHulls.Add(bRideRound ? TNPlaygroundKit::HullCylinder(FVector(0.0, 0.0, -34.0), 34.0, LiftHalf * 0.93, LiftHalf, 16)
 		: TNPlaygroundKit::HullAxisBox(FVector(0.0, 0.0, -17.0), FVector(LiftHalf, LiftHalf, 17.0)));
@@ -466,6 +466,8 @@ void ATN_BeachMovingPlatform::BeginPlay()
 				Rope->SetCastShadow(false);
 				Rope->SetupAttachment(Frame);
 				Rope->RegisterComponent();
+				// Pieza de arte: varilla de 100 a lo largo de +X desde su origen; se estira con el componente.
+				TNArt::ApplyToComponent(Rope, TN_ART("Beach.MovingPlatform.Rope"));
 				Rope->SetAbsolute(true, true, true);
 				Ropes.Add(Rope);
 			}

@@ -959,19 +959,25 @@ void ATN_BeachSandWorm::BuildVisuals()
 	});
 
 	// Cabeza (colocada en el mundo) con sus labios enganchados; anillos del cuerpo, cráter y remolino en el mundo.
+	// Piezas de arte (Docs/Arte_Assets.md): cabeza, labios, anillos y cráter (el remolino es un efecto).
 	Head = TNSandWorm::MakePart(this, SceneRoot, HeadMesh, true);
+	TNArt::ApplyToComponent(Head, TN_ART("Beach.SandWorm.Head"));
 	Head->SetAbsolute(true, true, true);
 	for (int32 i = 0; i < TNSandWormMeshes::LipCount; ++i)
 	{
-		Lips.Add(TNSandWorm::MakePart(this, Head, LipMesh, true));
+		UStaticMeshComponent* Lip = TNSandWorm::MakePart(this, Head, LipMesh, true);
+		TNArt::ApplyToComponent(Lip, TN_ART("Beach.SandWorm.Lip"));
+		Lips.Add(Lip);
 	}
 	for (int32 k = 0; k < TNSandWorm::NumSegments; ++k)
 	{
 		UStaticMeshComponent* Ring = TNSandWorm::MakePart(this, SceneRoot, SegmentMesh, true);
+		TNArt::ApplyToComponent(Ring, TN_ART("Beach.SandWorm.Segment"));
 		Ring->SetAbsolute(true, true, true);
 		Segments.Add(Ring);
 	}
 	Crater = TNSandWorm::MakePart(this, SceneRoot, CraterMesh, false);
+	TNArt::ApplyToComponent(Crater, TN_ART("Beach.SandWorm.Crater"));
 	Crater->SetAbsolute(true, true, true);
 	Whirl = TNSandWorm::MakePart(this, SceneRoot, WhirlMesh, false);
 	Whirl->SetAbsolute(true, true, true);
