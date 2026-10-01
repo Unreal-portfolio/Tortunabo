@@ -16,6 +16,9 @@ namespace TNProcRally
 	{
 		TNRally::FRoutePlanParams Params;
 		Params.MinFinishZ = SeaLevelZ + FinishAboveSeaCm;
+		// Un punto del eje por muestra del camino (4 m): la spline sigue el camino de verdad en las cuevas y las curvas
+		// cerradas, sin recortarlas contra las paredes.
+		Params.RoadStepCm = 400.0;
 		return Params;
 	}
 

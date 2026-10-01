@@ -200,7 +200,7 @@ bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 	{
 		const ETNProcDifficulty Difficulty = static_cast<ETNProcDifficulty>(D);
 		double LengthSum = 0.0;
-		for (const uint32 Seed : { 11u, 2027u })
+		for (const uint32 Seed : { 11u, 777u, 2027u })
 		{
 			// El perfil del cooperativo, como en el Rally (ATN_ProcMapGenerator::BuildLayout).
 			FGenParams Params = TN_MakeDefaultProcProfile(ETNProcGameMode::Coop, Difficulty).ToGenParams(Seed);
@@ -221,7 +221,7 @@ bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 			{
 				const FPathSample& Sample = Layout.Main[Index];
 				Blocked += (Sample.Flags & NotDrivable) != 0 ? 1 : 0;
-				if ((Sample.Flags & (PathFlags::Tunnel | PathFlags::Shore)) == 0)
+				if ((Sample.Flags & PathFlags::Shore) == 0)
 				{
 					MinWidth = FMath::Min(MinWidth, Sample.Width);
 				}
@@ -232,7 +232,7 @@ bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 				}
 			}
 			TestEqual(*FString::Printf(TEXT("Ni géiseres, ni toboganes, ni escalones, ni isletas, ni huecos (%s)"), *Where), Blocked, 0);
-			TestTrue(*FString::Printf(TEXT("Sin desfiladeros de menos de 5,5 m fuera de las cuevas (%s): %.0f cm"), *Where, MinWidth), MinWidth >= 550.0);
+			TestTrue(*FString::Printf(TEXT("Sin pasos de menos de 6,5 m, tampoco en las cuevas (%s): %.0f cm"), *Where, MinWidth), MinWidth >= 650.0);
 			TestTrue(*FString::Printf(TEXT("Pendiente conducible (%s): %.2f"), *Where, MaxSlope), MaxSlope <= Layout.Params.MaxPathSlope * 1.6);
 			int32 Forbidden = 0;
 			for (const FFeature& Feature : Layout.Features)

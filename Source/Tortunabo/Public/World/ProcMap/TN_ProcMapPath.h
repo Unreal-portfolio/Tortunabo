@@ -649,7 +649,8 @@ namespace TNProcMap
 				Cap = FMath::Min(Cap, FMath::Max(P.PathWidthMin, DSelf - 1800.0));
 			}
 			Cap *= 0.86 + 0.14 * (0.5 + 0.5 * Noise1(CapSeed, Sm.S / 2200.0));
-			W[i] = FMath::Max(330.0, SoftMinD(W[i], Cap, 250.0));
+			// En el Rally, nunca por debajo del ancho mínimo conducible (el mínimo suave bajaría de él).
+			W[i] = FMath::Max(P.bDrivable ? P.PathWidthMin : 330.0, SoftMinD(W[i], Cap, 250.0));
 		}
 		// Cerca de portales: anchura del portal.
 		for (const FRouteStep& Step : L.Route)
