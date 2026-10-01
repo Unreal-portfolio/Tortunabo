@@ -193,7 +193,7 @@ pasa con los sintetizadores del proyecto, que viven mucho más).
 | Ajuste | Cómo se aplica |
 |---|---|
 | Voz de los compañeros | Clase `TN_Voice` (todas las voces). |
-| Voz de cada compañero (0-200 %) y silenciarlo | Multiplicador de volumen del componente de reproducción de su voz (`PlaybackVolume` × el tuyo; 0 si está silenciado), cada fotograma. Se guarda por su id de la plataforma (Steam) o, si no hay, por su nombre, así que se recuerda entre partidas. |
+| Voz de cada compañero (0-200 %) y silenciarlo | Multiplicador de volumen del componente de reproducción de su voz (`PlaybackVolume` × el tuyo; 0 si está silenciado), cada fotograma. Además, la voz de un silenciado ni se descodifica ni se reproduce (`UProximityVoiceComponent::PlayRemoteVoice`), y su jugador se saca del peón o, si este no tiene `PlayerState`, del último que tuvo (`GetSpeakerState`, #248). Se guarda por su id de la plataforma (Steam) o, si no hay, por su nombre, así que se recuerda entre partidas. |
 | Silenciar mi micrófono | `UProximityVoiceComponent::SetTransmitEnabled(false)`: se sigue capturando (el medidor vive) pero no se envía nada y la tortuga deja de «hablar» en el acto. |
 | Modo: voz abierta o pulsar para hablar | Con pulsar para hablar, la salida solo se abre con la tecla pulsada (`IsInputKeyDown`); encima sigue haciendo falta superar el umbral. |
 | Tecla y botón para hablar | Una fila de tecla (la misma que en la página de controles): V y cruceta abajo de serie, y cualquier otra que se pulse. Si otra acción la tenía, se cambian entre sí (ver Controles). |
