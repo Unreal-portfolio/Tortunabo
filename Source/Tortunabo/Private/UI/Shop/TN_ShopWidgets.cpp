@@ -643,6 +643,22 @@ void UTN_ShopWidget::SetShop(ATN_ShopKeeper* InShop)
 		Who));
 }
 
+#if !UE_BUILD_SHIPPING
+void UTN_ShopWidget::DebugShowTab(int32 Index, int32 Item)
+{
+	const TArray<ETNCosmeticCategory>& List = TNShopUI::Categories();
+	ShowTab(List[FMath::Clamp(Index, 0, List.Num() - 1)]);
+	if (Items.IsValidIndex(Item)) { Select(Item, true); }
+}
+
+void UTN_BoothWidget::DebugShowPage(int32 InPage, int32 Row, int32 Steps)
+{
+	ShowPage(InPage);
+	FocusRow(Row);
+	for (int32 i = 0; i < Steps; ++i) { Cycle(Row, 1); }
+}
+#endif
+
 void UTN_ShopWidget::ShowTab(ETNCosmeticCategory Category)
 {
 	Tab = Category;

@@ -99,6 +99,17 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Preview")
 	TObjectPtr<UTN_BuggyLookComponent> Buggy;
 
+	/**
+	 * Otro buggy, solo para las miniaturas (no sale en la captura en vivo): se viste con cada modelo o pintura y espera
+	 * a que sus PSO estén listos antes de capturar (con la precarga de PSO, una malla recién hecha sale los primeros
+	 * fotogramas con el material por defecto, gris).
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Preview")
+	TObjectPtr<USceneComponent> ThumbBuggyRoot;
+
+	UPROPERTY(VisibleAnywhere, Category = "Preview")
+	TObjectPtr<UTN_BuggyLookComponent> ThumbBuggy;
+
 	UPROPERTY(VisibleAnywhere, Category = "Preview")
 	TObjectPtr<USceneCaptureComponent2D> Capture;
 
@@ -133,6 +144,9 @@ private:
 	TObjectPtr<UAnimationAsset> CheerAnim;
 
 	TArray<FThumbRequest> PendingThumbs;
+	/** Miniaturas del buggy: de una en una, con el buggy de miniaturas ya vestido y sus PSO listos. */
+	TArray<FThumbRequest> PendingBuggyThumbs;
+	int32 BuggyThumbFrames = 0;
 	FTN_TurtleLook Look;
 	FTN_BuggyLook BuggyLookState;
 	bool bBuggyMode = false;
@@ -148,4 +162,7 @@ private:
 	/** Primitivas del buggy (para las listas de las capturas). */
 	void BuggyPrimitives(TArray<UPrimitiveComponent*>& Out) const;
 	void CaptureThumbnail(const FThumbRequest& Request);
+	void CaptureBuggyThumbnail(const FThumbRequest& Request);
+	/** Sigue las miniaturas del buggy pendientes (una cada vez que el buggy de miniaturas está listo). */
+	void TickBuggyThumbs();
 };

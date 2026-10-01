@@ -170,6 +170,11 @@ class TORTUNABO_API UTN_ShopWidget : public UTN_CosmeticMenuBase
 public:
 	void SetShop(ATN_ShopKeeper* InShop);
 
+#if !UE_BUILD_SHIPPING
+	/** Pruebas (TN.Shop.UIShots): abre la pestaña Index y elige la carta Item. */
+	void DebugShowTab(int32 Index, int32 Item);
+#endif
+
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
@@ -234,6 +239,11 @@ class TORTUNABO_API UTN_BoothWidget : public UTN_CosmeticMenuBase
 
 public:
 	void SetBooth(ATN_ChangingBooth* InBooth);
+
+#if !UE_BUILD_SHIPPING
+	/** Pruebas (TN.Shop.UIShots): pasa a la página (0 tortuga, 1 buggy) y cambia la fila Row Steps veces. */
+	void DebugShowPage(int32 InPage, int32 Row, int32 Steps);
+#endif
 
 protected:
 	virtual void NativeOnInitialized() override;

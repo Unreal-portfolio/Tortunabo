@@ -32,8 +32,8 @@ namespace TNPreviewDetail
 	const FVector TurtleCamPos(430.f, 0.f, 112.f);
 	const FVector TurtleCamFocus(0.f, 0.f, 80.f);
 	/** Con el buggy, la cámara más alta para ver el lomo de placas. */
-	const FVector BuggyCamPos(470.f, 0.f, 168.f);
-	const FVector BuggyCamFocus(0.f, 0.f, 42.f);
+	const FVector BuggyCamPos(430.f, 0.f, 156.f);
+	const FVector BuggyCamFocus(0.f, 0.f, 46.f);
 	constexpr float PedestalTop = 12.f;
 	constexpr float AutoSpinSpeed = 24.f;
 	constexpr int32 LiveSize = 1024;
@@ -151,6 +151,13 @@ ATN_CosmeticPreview::ATN_CosmeticPreview()
 	Buggy = CreateDefaultSubobject<UTN_BuggyLookComponent>(TEXT("Buggy"));
 	Buggy->SetupAttachment(BuggyRoot);
 
+	ThumbBuggyRoot = CreateDefaultSubobject<USceneComponent>(TEXT("ThumbBuggyRoot"));
+	ThumbBuggyRoot->SetupAttachment(StageRoot);
+	ThumbBuggyRoot->SetRelativeLocation(FVector(0.f, 0.f, PedestalTop));
+	ThumbBuggyRoot->SetRelativeScale3D(FVector(BuggyScale));
+	ThumbBuggy = CreateDefaultSubobject<UTN_BuggyLookComponent>(TEXT("ThumbBuggy"));
+	ThumbBuggy->SetupAttachment(ThumbBuggyRoot);
+
 	// Cámara de frente, un pelín por encima: la tortuga (133 cm) y un sombrero alto caben con aire.
 	Capture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("Capture"));
 	Capture->SetupAttachment(StageRoot);
@@ -218,6 +225,8 @@ void ATN_CosmeticPreview::BeginPlay()
 	// El buggy: sus piezas se crean al vestirlo y solo las ven las capturas.
 	Buggy->SetStudio(StudioChannel());
 	Buggy->ApplyLook(BuggyLookState, BuggyPreviewTeam, true);
+	ThumbBuggy->SetStudio(StudioChannel());
+	ThumbBuggy->ApplyLook(FTN_BuggyLook(), BuggyPreviewTeam, true);
 	TArray<UPrimitiveComponent*> BuggyParts;
 	BuggyPrimitives(BuggyParts);
 	for (UPrimitiveComponent* Part : BuggyParts) { Capture->ShowOnlyComponent(Part); }
@@ -347,36 +356,55 @@ UTextureRenderTarget2D* ATN_CosmeticPreview::GetThumbnail(ETNCosmeticCategory Ca
 	Request.Category = Category;
 	Request.Id = Id;
 	Request.Target = RT;
-	PendingThumbs.Add(Request);
+	(TNIsBuggyCategory(Category) ? PendingBuggyThumbs : PendingThumbs).Add(Request);
 	return RT;
+}
+
+void ATN_CosmeticPreview::TickBuggyThumbs()
+{
+	if (PendingBuggyThumbs.Num() == 0 || !ThumbBuggy) { return; }
+	const FThumbRequest& Request = PendingBuggyThumbs[0];
+	FTN_BuggyLook Wanted;
+	Wanted.Set(Request.Category, Request.Id);
+	if (ThumbBuggy->GetLook() != Wanted)
+	{
+		ThumbBuggy->ApplyLook(Wanted, TNPreviewDetail::BuggyPreviewTeam);
+		BuggyThumbFrames = 0;
+		return;
+	}
+	// Un fotograma para que la escena tenga las mallas nuevas y, si hay precarga de PSO, a que acabe (con tope).
+	bool bPrecaching = false;
+	TArray<UPrimitiveComponent*> Parts;
+	ThumbBuggy->GetPrimitives(Parts);
+	for (UPrimitiveComponent* Part : Parts) { bPrecaching |= Part && Part->IsVisible() && Part->CheckPSOPrecachingAndBoostPriority(EPSOPrecachePriority::Highest); }
+	if (++BuggyThumbFrames < 2 || (bPrecaching && BuggyThumbFrames < 120)) { return; }
+	CaptureBuggyThumbnail(Request);
+	PendingBuggyThumbs.RemoveAt(0);
+}
+
+void ATN_CosmeticPreview::CaptureBuggyThumbnail(const FThumbRequest& Request)
+{
+	using namespace TNPreviewDetail;
+	// Buggy solo, de tres cuartos por el lado de la conductora: el modelo entero o, la pintura, desde más arriba.
+	ThumbCapture->ClearShowOnlyComponents();
+	TArray<UPrimitiveComponent*> Parts;
+	ThumbBuggy->GetPrimitives(Parts);
+	for (UPrimitiveComponent* Part : Parts) { ThumbCapture->ShowOnlyComponent(Part); }
+	const bool bModel = Request.Category == ETNCosmeticCategory::BuggyModel;
+	const FTransform BuggyXf = ThumbBuggyRoot->GetComponentTransform();
+	const FVector Focus = BuggyXf.TransformPosition(bModel ? FVector(0.f, 0.f, 90.f) : FVector(-40.f, 0.f, 96.f));
+	const FVector ViewDir = (bModel ? FVector(0.78, -0.52, 0.36) : FVector(0.3, -0.72, 0.62)).GetSafeNormal();
+	const float Reach = (bModel ? 270.f : 185.f) * BuggyScale;
+	const float Distance = Reach / FMath::Tan(FMath::DegreesToRadians(CaptureFOV * 0.5f)) * 1.02f;
+	const FVector CamPos = Focus + ViewDir * Distance;
+	ThumbCapture->SetWorldLocationAndRotation(CamPos, LookRotation(CamPos, Focus));
+	ThumbCapture->TextureTarget = Request.Target;
+	ThumbCapture->CaptureScene();
 }
 
 void ATN_CosmeticPreview::CaptureThumbnail(const FThumbRequest& Request)
 {
 	using namespace TNPreviewDetail;
-	if (TNIsBuggyCategory(Request.Category))
-	{
-		// Buggy solo, de tres cuartos por el lado de la conductora: el modelo entero o, la pintura, desde más arriba.
-		FTN_BuggyLook ThumbBuggy;
-		ThumbBuggy.Set(Request.Category, Request.Id);
-		BuggyRoot->SetVisibility(true, true);
-		Buggy->ApplyLook(ThumbBuggy, BuggyPreviewTeam);
-		ThumbCapture->ClearShowOnlyComponents();
-		TArray<UPrimitiveComponent*> Parts;
-		BuggyPrimitives(Parts);
-		for (UPrimitiveComponent* Part : Parts) { ThumbCapture->ShowOnlyComponent(Part); }
-		const bool bModel = Request.Category == ETNCosmeticCategory::BuggyModel;
-		const FTransform BuggyXf = BuggyRoot->GetComponentTransform();
-		const FVector Focus = BuggyXf.TransformPosition(bModel ? FVector(0.f, 0.f, 82.f) : FVector(-40.f, 0.f, 96.f));
-		const FVector ViewDir = (bModel ? FVector(0.78, -0.52, 0.36) : FVector(0.3, -0.72, 0.62)).GetSafeNormal();
-		const float Reach = (bModel ? 265.f : 185.f) * BuggyScale;
-		const float Distance = Reach / FMath::Tan(FMath::DegreesToRadians(CaptureFOV * 0.5f)) * 1.02f;
-		const FVector CamPos = Focus + ViewDir * Distance;
-		ThumbCapture->SetWorldLocationAndRotation(CamPos, LookRotation(CamPos, Focus));
-		ThumbCapture->TextureTarget = Request.Target;
-		ThumbCapture->CaptureScene();
-		return;
-	}
 	// Las miniaturas de la tortuga son con la tortuga en la peana.
 	if (bBuggyMode) { ApplyMode(false); }
 	FTN_TurtleLook ThumbLook;
@@ -455,11 +483,10 @@ void ATN_CosmeticPreview::Tick(float DeltaSeconds)
 		for (int32 i = 0; i < Count; ++i) { CaptureThumbnail(PendingThumbs[i]); }
 		PendingThumbs.RemoveAt(0, Count);
 		ApplyLookNow(Look);
-		Buggy->ApplyLook(BuggyLookState, BuggyPreviewTeam);
 		if (bBuggyMode != bWasBuggy) { ApplyMode(bWasBuggy); }
-		BuggyRoot->SetVisibility(bBuggyMode, true);
 		Turtle->SetVisibility(true, true);
 	}
+	TickBuggyThumbs();
 
 	if (ManualSpinHold > 0.f) { ManualSpinHold -= DeltaSeconds; }
 	else if (bLive) { SpinDeg = FMath::Fmod(SpinDeg + AutoSpinSpeed * DeltaSeconds, 360.f); }
