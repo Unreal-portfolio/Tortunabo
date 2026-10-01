@@ -47,7 +47,7 @@ struct TORTUNABO_API FTNArtOverride
 
 /**
  * Catálogo de arte de una zona (DA_Arte_Lobby y DA_Arte_ProcMap en /Game/Art): el nombre de cada pieza
- * generada desde C++ («Lobby.Castle.Tower», «ProcMap.Rock.Boulder»...) y, si Arte la ha hecho, su malla final. La lista de
+ * generada desde C++ («Lobby.Castle.Tower», «ProcMap.Rock.RoundBoulder»...) y, si Arte la ha hecho, su malla final. La lista de
  * nombres la da TN.Art.Slots y Scripts/arte/rellenar_catalogos.py la mete entera, vacía. Los catálogos que se usan están en
  * Ajustes del proyecto > Tortunavy > Arte (UTN_ArtSettings).
  */
