@@ -12,6 +12,7 @@
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
+#include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -36,6 +37,7 @@ namespace TNRaceChampionDetail
 
 	/** Ancho del panel azul marino de la izquierda y de los botones (unidades de la interfaz a 1080 p). */
 	constexpr float PanelWidth = 860.f;
+	constexpr float InfoMaxWidth = 360.f;
 	constexpr float ButtonW = 420.f;
 	constexpr float ButtonH = 86.f;
 
@@ -109,11 +111,7 @@ void UTN_RaceChampionWidget::BuildTree()
 		UTextBlock* TagText = TNRaceUI::MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 20, MedalColor(i));
 		UBorder* Tag = TNRaceUI::Make<UBorder>(Tree);
 		TNHUDStyle::StylePanel(Tag, TNHUDArt::Hex(0x0A1C38, 0.82f), 14.f, FMargin(16.f, 5.f, 18.f, 7.f), MedalColor(i), 2.f);
-		TagText->SetTextOverflowPolicy(ETextOverflowPolicy::Ellipsis);
-		USizeBox* TagLimit = TNRaceUI::Make<USizeBox>(Tree);
-		TagLimit->SetMaxDesiredWidth(280.f);
-		TagLimit->SetContent(TagText);
-		Tag->SetContent(TagLimit);
+		Tag->SetContent(TagText);
 		Tag->SetVisibility(ESlateVisibility::Collapsed);
 		Tag->SetRenderTransformPivot(FVector2D(0.5f, 1.f));
 		UCanvasPanelSlot* TagSlot = TNRaceUI::Place(Canvas, Tag, FVector2D(0.f, 0.f), FVector2D::ZeroVector);
@@ -147,7 +145,12 @@ void UTN_RaceChampionWidget::BuildTree()
 		}
 		UVerticalBox* Info = TNRaceUI::Make<UVerticalBox>(Tree);
 		ChampionName = TNRaceUI::MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 38, TNHUDArt::Gold);
-		Info->AddChildToVerticalBox(ChampionName);
+		// Un nombre largo se encoge y el subtítulo se parte en líneas: la tarjeta no pasa de InfoMaxWidth y no tapa el nombre del 2.º.
+		UScaleBox* NameShrink = TNRaceUI::Make<UScaleBox>(Tree);
+		NameShrink->SetStretch(EStretch::ScaleToFit);
+		NameShrink->SetStretchDirection(EStretchDirection::DownOnly);
+		NameShrink->SetContent(ChampionName);
+		if (UVerticalBoxSlot* S = Info->AddChildToVerticalBox(NameShrink)) { S->SetHorizontalAlignment(HAlign_Left); }
 		UHorizontalBox* ShellRow = TNRaceUI::Make<UHorizontalBox>(Tree);
 		for (int32 k = 0; k < 5; ++k)
 		{
@@ -159,9 +162,12 @@ void UTN_RaceChampionWidget::BuildTree()
 		}
 		if (UVerticalBoxSlot* S = Info->AddChildToVerticalBox(ShellRow)) { S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
 		UTextBlock* Subtitle = TNRaceUI::MakeText(Tree, NSLOCTEXT("TNRace", "ChampionSubtitle", "¡Se lleva la partida!"), TEXT("Regular"), 19, TNHUDArt::Foam);
+		Subtitle->SetAutoWrapText(true);
 		SubtitleText = Subtitle;
 		if (UVerticalBoxSlot* S = Info->AddChildToVerticalBox(Subtitle)) { S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
-		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(Info)) { S->SetVerticalAlignment(VAlign_Center); }
+		USizeBox* InfoFit = TNRaceUI::MakeSize(Tree, Info, 0.f, 0.f);
+		InfoFit->SetMaxDesiredWidth(InfoMaxWidth);
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(InfoFit)) { S->SetVerticalAlignment(VAlign_Center); }
 		UBorder* Card = TNRaceUI::MakeCard(Tree, TNHUDArt::CardTexture(), TNRaceUI::CardMargin, Row, FMargin(30.f, 34.f, 44.f, 46.f));
 		if (UVerticalBoxSlot* S = Column->AddChildToVerticalBox(Card)) { S->SetHorizontalAlignment(HAlign_Left); S->SetPadding(FMargin(0.f, 18.f, 0.f, 22.f)); }
 	}
