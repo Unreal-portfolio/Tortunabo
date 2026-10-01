@@ -1,4 +1,5 @@
 #include "Lobby/TN_TreasureChest.h"
+#include "Art/TN_Art.h"
 #include "Components/BoxComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -399,10 +400,10 @@ void ATN_TreasureChest::BuildChestMeshes()
 	UMaterialInterface* Mat = TNCastleKit::VertexColorMaterial();
 	FBuffers BodyBuffers;
 	BuildChestBody(BodyBuffers);
-	ChestBody->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, BodyBuffers, Mat));
+	TNArt::SetMesh(ChestBody, TNProcRuntimeMesh::MakeStaticMesh(this, BodyBuffers, Mat), TN_ART("Lobby.Chest.Body"));
 	FBuffers LidBuffers;
 	BuildChestLid(LidBuffers);
-	ChestLid->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, LidBuffers, Mat));
+	TNArt::SetMesh(ChestLid, TNProcRuntimeMesh::MakeStaticMesh(this, LidBuffers, Mat), TN_ART("Lobby.Chest.Lid"));
 }
 
 // ── Reglas del cofre ─────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+class UActorComponent;
 class UInstancedStaticMeshComponent;
 class UMaterialInterface;
 class UStaticMesh;
@@ -97,8 +98,17 @@ namespace TNArt
 	 * BatchUpdateInstancesTransforms para instancias animadas por código: con el ajuste del sustituto de ese ISM, si lo
 	 * tiene (ApplyToInstances). Sin sustituto es la llamada de siempre.
 	 */
-	TORTUNABO_API bool UpdateInstances(UInstancedStaticMeshComponent* ISM, int32 StartInstanceIndex, const TArray<FTransform>& Transforms,
+	TORTUNABO_API bool UpdateInstances(UInstancedStaticMeshComponent* ISM, int32 StartInstanceIndex, TArrayView<const FTransform> Transforms,
 		bool bWorldSpace = false, bool bMarkRenderStateDirty = false, bool bTeleport = false);
+
+	/**
+	 * Se pueden cambiar sus mallas: mundo de juego, o componente (o actor) que no se guarda con el nivel. Las funciones de
+	 * arriba no hacen nada con los demás (en el editor, lo que se guarda con el nivel se queda generado).
+	 */
+	TORTUNABO_API bool CanModify(const UActorComponent* Comp);
+
+	/** Es el gemelo invisible con la colisión generada que deja ApplyToInstances (para quien recicla sus ISM). */
+	TORTUNABO_API bool IsCollisionTwin(const UActorComponent* Comp);
 
 	/** Vacía la caché de catálogos y mallas (TN.Art.Reload, al editar un catálogo o los ajustes). */
 	TORTUNABO_API void InvalidateCache();

@@ -7,6 +7,8 @@ namespace TNArtSlotsDetail
 #define TN_ART_SLOT(Name, Kind, Source, What, Size, Pivot) { TEXT(Name), TEXT(Kind), TEXT(Source), TEXT(What), TEXT(Size), TEXT(Pivot) },
 	const TNArt::FSlotInfo Table[] = {
 #include "TN_ArtSlots_Lobby.inl"
+#include "TN_ArtSlots_LobbyValley.inl"
+#include "TN_ArtSlots_LobbyPlayground.inl"
 #include "TN_ArtSlots_ProcMap.inl"
 #include "TN_ArtSlots_Beach.inl"
 	};

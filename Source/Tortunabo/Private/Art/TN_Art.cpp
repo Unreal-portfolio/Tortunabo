@@ -14,6 +14,7 @@
 #include "Materials/MaterialInterface.h"
 #include "UObject/GCObject.h"
 #include "UObject/StrongObjectPtr.h"
+#include "Containers/Ticker.h"
 
 namespace TNArtDetail
 {
@@ -113,13 +114,21 @@ namespace TNArtDetail
 	/** Lo que dibuja un componente o una malla, para TN.Art.Slots. */
 	FString Describe(const UObject* Obj)
 	{
-		if (!Obj) { return TEXT("-"); }
+		// Sin malla anotada: la parte de una malla combinada, generada.
+		if (!Obj) { return TEXT("generada"); }
 		if (const UStaticMesh* Mesh = Cast<UStaticMesh>(Obj))
 		{
 			// Las generadas cuelgan de su actor (no son assets); las de arte y las del motor, sí.
 			return Mesh->IsAsset() ? Mesh->GetPathName() : FString(TEXT("generada"));
 		}
 		return Obj->GetName();
+	}
+
+	/** Etiqueta de los gemelos de colisión de ApplyToInstances. */
+	const FName& CollisionTwinTag()
+	{
+		static const FName Tag(TEXT("TNArtCollision"));
+		return Tag;
 	}
 
 	/** Se puede tocar: mundo de juego, o componente (o actor) que no se guarda con el nivel. */
@@ -247,9 +256,31 @@ namespace TNArtDetail
 			ActiveCatalogs().Num());
 	}
 
+	/** TN.Art.Slots [prefijo] [segundos]: con segundos, la lista sale pasado ese tiempo (lo que se construye al empezar ya está). */
+	void HandleSlots(const TArray<FString>& Args)
+	{
+		TArray<FString> Filter;
+		float Delay = 0.f;
+		for (const FString& Arg : Args)
+		{
+			if (Arg.IsNumeric()) { Delay = FCString::Atof(*Arg); }
+			else { Filter.Add(Arg); }
+		}
+		if (Delay <= 0.f)
+		{
+			LogSlots(Filter);
+			return;
+		}
+		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Filter](float)
+		{
+			LogSlots(Filter);
+			return false;
+		}), Delay);
+	}
+
 	FAutoConsoleCommand SlotsCommand(TEXT("TN.Art.Slots"),
-		TEXT("Lista las piezas de arte sustituibles (Docs/Arte_Assets.md): tipo, si se han visto en esta sesión, lo que dibujan y su sustituto. Argumento opcional: prefijo (Lobby, ProcMap.Rock...)."),
-		FConsoleCommandWithArgsDelegate::CreateStatic(&LogSlots));
+		TEXT("Lista las piezas de arte sustituibles (Docs/Arte_Assets.md): tipo, si se han visto en esta sesión, lo que dibujan y su sustituto. Opcional: prefijo (Lobby, ProcMap.Rock...) y segundos de espera."),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&HandleSlots));
 
 	FAutoConsoleCommand ReloadCommand(TEXT("TN.Art.Reload"),
 		TEXT("Vuelve a leer los catálogos de arte (lo ya construido no cambia hasta volver a cargar el nivel)."),
@@ -479,6 +510,11 @@ void TNArt::ApplyToInstances(UInstancedStaticMeshComponent* ISM, FName Slot)
 	if (!ISM) { return; }
 	UStaticMesh* Generated = ISM->GetStaticMesh();
 	const FResolved* R = Generated ? Find(Slot) : nullptr;
+	if (Generated != (R ? R->Mesh.Get() : nullptr))
+	{
+		// Las instancias están en el espacio de la malla generada: el ajuste de una aplicación anterior ya no vale.
+		Cache().InstanceAdjust.Remove(ISM);
+	}
 	if (!R || !CanModify(ISM) || Generated == R->Mesh)
 	{
 		NoteSlot(Slot, ISM->GetStaticMesh());
@@ -489,6 +525,7 @@ void TNArt::ApplyToInstances(UInstancedStaticMeshComponent* ISM, FName Slot)
 	{
 		UInstancedStaticMeshComponent* Twin = NewObject<UInstancedStaticMeshComponent>(ISM->GetOwner() ? static_cast<UObject*>(ISM->GetOwner()) : static_cast<UObject*>(ISM),
 			NAME_None, RF_Transient | RF_DuplicateTransient);
+		Twin->ComponentTags.Add(CollisionTwinTag());
 		Twin->SetStaticMesh(Generated);
 		CopyCollision(ISM, Twin);
 		Twin->SetMobility(ISM->Mobility);
@@ -540,7 +577,7 @@ void TNArt::ApplyToInstances(UInstancedStaticMeshComponent* ISM, FName Slot)
 	NoteSlot(Slot, R->Mesh);
 }
 
-bool TNArt::UpdateInstances(UInstancedStaticMeshComponent* ISM, int32 StartInstanceIndex, const TArray<FTransform>& Transforms, bool bWorldSpace,
+bool TNArt::UpdateInstances(UInstancedStaticMeshComponent* ISM, int32 StartInstanceIndex, TArrayView<const FTransform> Transforms, bool bWorldSpace,
 	bool bMarkRenderStateDirty, bool bTeleport)
 {
 	if (!ISM) { return false; }
@@ -554,6 +591,16 @@ bool TNArt::UpdateInstances(UInstancedStaticMeshComponent* ISM, int32 StartInsta
 	Scratch.Reset(Transforms.Num());
 	for (const FTransform& T : Transforms) { Scratch.Add(*Adjust * T); }
 	return ISM->BatchUpdateInstancesTransforms(StartInstanceIndex, Scratch, bWorldSpace, bMarkRenderStateDirty, bTeleport);
+}
+
+bool TNArt::CanModify(const UActorComponent* Comp)
+{
+	return TNArtDetail::CanModify(Comp);
+}
+
+bool TNArt::IsCollisionTwin(const UActorComponent* Comp)
+{
+	return Comp && Comp->ComponentHasTag(TNArtDetail::CollisionTwinTag());
 }
 
 void TNArt::InvalidateCache()

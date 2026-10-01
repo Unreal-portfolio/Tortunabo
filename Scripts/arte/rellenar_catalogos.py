@@ -9,8 +9,9 @@ Dentro del editor (Herramientas > Ejecutar script de Python, o en la consola de 
 Sin interfaz, con el editor cerrado:
     UnrealEditor-Cmd.exe "<repo>/Tortunabo.uproject" -run=pythonscript -script="<repo>/Scripts/arte/rellenar_catalogos.py"
 
-Fuera de Unreal escribe la lista de piezas en Markdown (la de Docs/Arte_Assets.md):
+Fuera de Unreal escribe la lista de piezas en Markdown, o la pone al día en Docs/Arte_Assets.md (entre sus marcas):
     uv run python Scripts/arte/rellenar_catalogos.py --markdown
+    uv run python Scripts/arte/rellenar_catalogos.py --doc
 
 Idempotente: crea lo que falta y nunca toca la malla, los materiales, el ajuste ni la colisión que Arte ya haya puesto. Solo
 reescribe el texto «Info» de cada pieza y avisa de las que están en un catálogo pero ya no en el código.
@@ -31,6 +32,9 @@ CATALOGS = OrderedDict([
     ("Beach", "/Game/Art/DA_Arte_ProcMap"),
 ])
 
+# Ficheros de la tabla, en el orden de TN_ArtSlots.cpp.
+TABLE_FILES = ("Lobby", "LobbyValley", "LobbyPlayground", "ProcMap", "Beach")
+
 # Una pieza por TN_ART_SLOT( a principio de línea (los comentarios de la cabecera no cuentan).
 SLOT_PATTERN = re.compile(
     r'(?m)^TN_ART_SLOT\(\s*"(?P<name>[^"]*)"\s*,\s*"(?P<kind>[^"]*)"\s*,\s*"(?P<source>[^"]*)"\s*,\s*"(?P<what>[^"]*)"\s*,'
@@ -50,8 +54,8 @@ def read_slots(root: str | None = None) -> list[dict]:
     """Piezas de la tabla del C++, en orden (Lobby, ProcMap, Beach)."""
     art_dir = os.path.join(root or repo_root(), "Source", "Tortunabo", "Private", "Art")
     slots = []
-    for zone in ("Lobby", "ProcMap", "Beach"):
-        path = os.path.join(art_dir, f"TN_ArtSlots_{zone}.inl")
+    for part in TABLE_FILES:
+        path = os.path.join(art_dir, f"TN_ArtSlots_{part}.inl")
         if not os.path.isfile(path):
             continue
         with open(path, encoding="utf-8") as f:
@@ -96,6 +100,26 @@ def markdown(slots: list[dict]) -> str:
         lines.append(f"| `{slot['name']}` | {slot['kind']} | {slot['what']} | {slot['size']} | {slot['pivot']} | "
                      f"`{slot['source']}` |")
     return "\n".join(lines).lstrip("\n") + "\n"
+
+
+DOC_BEGIN = "<!-- piezas: inicio (lo escribe Scripts/arte/rellenar_catalogos.py --doc) -->"
+DOC_END = "<!-- piezas: fin -->"
+
+
+def update_doc(root: str | None = None) -> bool:
+    """Cambia la lista de piezas de Docs/Arte_Assets.md (entre DOC_BEGIN y DOC_END) por la de la tabla."""
+    path = os.path.join(root or repo_root(), "Docs", "Arte_Assets.md")
+    with open(path, encoding="utf-8", newline="") as f:
+        text = f.read()
+    start, end = text.find(DOC_BEGIN), text.find(DOC_END)
+    if start < 0 or end < start:
+        return False
+    newline = "\r\n" if "\r\n" in text else "\n"
+    body = markdown(read_slots(root)).replace("\n", newline)
+    text = text[:start + len(DOC_BEGIN)] + newline + newline + body + newline + text[end:]
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+    return True
 
 
 def fill_catalogs() -> None:
@@ -147,10 +171,14 @@ def main(argv: list[str]) -> int:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stdout.write(markdown(read_slots()))
         return 0
+    if "--doc" in argv:
+        ok = update_doc()
+        print("Docs/Arte_Assets.md al día." if ok else "No encuentro las marcas de la lista en Docs/Arte_Assets.md.")
+        return 0 if ok else 1
     try:
         import unreal  # noqa: F401
     except ImportError:
-        print("Fuera de Unreal solo vale --markdown (ver la cabecera del script).")
+        print("Fuera de Unreal solo valen --markdown y --doc (ver la cabecera del script).")
         return 1
     fill_catalogs()
     return 0

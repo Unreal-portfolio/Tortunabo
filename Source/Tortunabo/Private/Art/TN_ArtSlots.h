@@ -3,8 +3,9 @@
 #include "CoreMinimal.h"
 
 /**
- * Tabla de todas las piezas de arte sustituibles (Docs/Arte_Assets.md). Se escribe en TN_ArtSlots_Lobby.inl,
- * TN_ArtSlots_ProcMap.inl y TN_ArtSlots_Beach.inl, una pieza por TN_ART_SLOT(...). La leen TN.Art.Slots, los tests
+ * Tabla de todas las piezas de arte sustituibles (Docs/Arte_Assets.md). Se escribe en TN_ArtSlots_<Parte>.inl (Lobby:
+ * castillo; LobbyValley: valle y tutorial; LobbyPlayground: parque y puestos; ProcMap; Beach), una pieza por
+ * TN_ART_SLOT(...). La leen TN.Art.Slots, los tests
  * (Tortunabo.Art.*) y Scripts/arte/rellenar_catalogos.py (que mete cada pieza vacía en su catálogo y genera la lista del
  * documento), así que cada campo es una cadena entre comillas dobles, sin comillas dentro.
  */

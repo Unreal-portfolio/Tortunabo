@@ -7,6 +7,7 @@
 
 #include "Lobby/TN_LobbyValley.h"
 #include "Lobby/TN_SandCastleLobby.h"
+#include "Art/TN_Art.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -67,6 +68,44 @@ namespace TNValleyFauna
 			default:                     Add(SP::Heron, 2); Add(SP::FiddlerCrab, 2); Add(SP::TreeFrog, 2); break;
 		}
 		return Num;
+	}
+
+	/**
+	 * Pieza de arte de cada animal del valle (Docs/Arte_Assets.md): el animal entero en reposo, con su parte que brilla.
+	 * Las gaviotas y palomas posadas del castillo son las mismas.
+	 */
+	FName FaunaSlot(ETNFaunaSpecies Species)
+	{
+		using SP = ETNFaunaSpecies;
+		switch (Species)
+		{
+			case SP::Flamingo:    return TN_ART("Lobby.Valley.Fauna.Flamingo");
+			case SP::Pelican:     return TN_ART("Lobby.Valley.Fauna.Pelican");
+			case SP::Fish:        return TN_ART("Lobby.Valley.Fauna.Fish");
+			case SP::BabyTurtle:  return TN_ART("Lobby.Valley.Fauna.BabyTurtle");
+			case SP::Crab:        return TN_ART("Lobby.Valley.Fauna.Crab");
+			case SP::Gull:        return TN_ART("Lobby.Valley.Fauna.Gull");
+			case SP::Meerkat:     return TN_ART("Lobby.Valley.Fauna.Meerkat");
+			case SP::Roadrunner:  return TN_ART("Lobby.Valley.Fauna.Roadrunner");
+			case SP::Lizard:      return TN_ART("Lobby.Valley.Fauna.Lizard");
+			case SP::Vulture:     return TN_ART("Lobby.Valley.Fauna.Vulture");
+			case SP::FireBeetle:  return TN_ART("Lobby.Valley.Fauna.FireBeetle");
+			case SP::Salamander:  return TN_ART("Lobby.Valley.Fauna.Salamander");
+			case SP::Ibex:        return TN_ART("Lobby.Valley.Fauna.Ibex");
+			case SP::Eagle:       return TN_ART("Lobby.Valley.Fauna.Eagle");
+			case SP::Marmot:      return TN_ART("Lobby.Valley.Fauna.Marmot");
+			case SP::Rabbit:      return TN_ART("Lobby.Valley.Fauna.Rabbit");
+			case SP::Hen:         return TN_ART("Lobby.Valley.Fauna.Hen");
+			case SP::Cat:         return TN_ART("Lobby.Valley.Fauna.Cat");
+			case SP::Pigeon:      return TN_ART("Lobby.Valley.Fauna.Pigeon");
+			case SP::Monkey:      return TN_ART("Lobby.Valley.Fauna.Monkey");
+			case SP::Toucan:      return TN_ART("Lobby.Valley.Fauna.Toucan");
+			case SP::Capybara:    return TN_ART("Lobby.Valley.Fauna.Capybara");
+			case SP::Heron:       return TN_ART("Lobby.Valley.Fauna.Heron");
+			case SP::FiddlerCrab: return TN_ART("Lobby.Valley.Fauna.FiddlerCrab");
+			case SP::TreeFrog:    return TN_ART("Lobby.Valley.Fauna.TreeFrog");
+			default:              return NAME_None;
+		}
 	}
 
 	/** Aumento para que se lean desde el castillo (a 60-120 m): los pequeños, más. */
@@ -302,14 +341,21 @@ void ATN_LobbyValley::BuildFauna()
 	for (int32 k = 0; k < Kinds.Num(); ++k)
 	{
 		FValleyKind& K = Kinds[k];
+		const FName Slot = TNValleyFauna::FaunaSlot(static_cast<ETNFaunaSpecies>(K.Species));
 		if (UStaticMesh* SolidMesh = TNProcRuntimeMesh::MakeStaticMesh(this, SolidParts[k], SolidMat, false, 0.f, 1.f, 0.f))
 		{
 			GeneratedMeshes.Add(SolidMesh);
 			if (UInstancedStaticMeshComponent* Comp = MakeInstanced(SolidMesh, false, false, 0))
 			{
 				Comp->AddInstances(K.Xf, false, false);
+				TNArt::ApplyToInstances(Comp, Slot);
 				K.Solid = Comp;
 			}
+		}
+		// Con sustituto de arte, la parte que brilla ya va en su malla.
+		if (TNArt::Find(Slot))
+		{
+			continue;
 		}
 		if (UStaticMesh* GlowMesh = TNProcRuntimeMesh::MakeStaticMesh(this, GlowParts[k], GlowMat, false, 0.f, 1.f, 0.f))
 		{
@@ -576,8 +622,8 @@ void ATN_LobbyValley::TickFauna(float Dt)
 	}
 	for (FValleyKind& K : Kinds)
 	{
-		if (UInstancedStaticMeshComponent* SolidComp = K.Solid.Get()) { SolidComp->BatchUpdateInstancesTransforms(0, K.Xf, false, false, false); }
-		if (UInstancedStaticMeshComponent* GlowComp = K.Glow.Get()) { GlowComp->BatchUpdateInstancesTransforms(0, K.Xf, false, false, false); }
+		if (UInstancedStaticMeshComponent* SolidComp = K.Solid.Get()) { TNArt::UpdateInstances(SolidComp, 0, K.Xf, false, false, false); }
+		if (UInstancedStaticMeshComponent* GlowComp = K.Glow.Get()) { TNArt::UpdateInstances(GlowComp, 0, K.Xf, false, false, false); }
 	}
 }
 
@@ -682,6 +728,7 @@ void ATN_LobbyValley::StartCastleBirds()
 			if (UInstancedStaticMeshComponent* FlyComp = MakeInstanced(FlyMesh, false, false, 30000))
 			{
 				FlyComp->AddInstances(BirdFlyXf[t], false, false);
+				TNArt::ApplyToInstances(FlyComp, t == 0 ? TN_ART("Lobby.Valley.Fauna.GullFlying") : TN_ART("Lobby.Valley.Fauna.PigeonFlying"));
 				BirdFlyISM[t] = FlyComp;
 			}
 		}
@@ -698,6 +745,8 @@ void ATN_LobbyValley::StartCastleBirds()
 			if (UInstancedStaticMeshComponent* PerchComp = MakeInstanced(PerchMesh, false, false, 0))
 			{
 				PerchComp->AddInstances(BirdPerchXf[t], false, false);
+				// La misma malla que la gaviota y la paloma de los sectores: la misma pieza de arte.
+				TNArt::ApplyToInstances(PerchComp, TNValleyFauna::FaunaSlot(PerchSpecies[t]));
 				BirdPerchISM[t] = PerchComp;
 			}
 		}
@@ -895,7 +944,7 @@ void ATN_LobbyValley::TickCastleBirds(float Dt)
 	// Estos van de punta a punta del castillo: se marcan para rehacer sus límites (como las bandadas de TNAmbientFX).
 	for (int32 t = 0; t < 2; ++t)
 	{
-		if (UInstancedStaticMeshComponent* FlyComp = BirdFlyISM[t].Get()) { FlyComp->BatchUpdateInstancesTransforms(0, BirdFlyXf[t], false, true, false); }
-		if (UInstancedStaticMeshComponent* PerchComp = BirdPerchISM[t].Get()) { PerchComp->BatchUpdateInstancesTransforms(0, BirdPerchXf[t], false, true, false); }
+		if (UInstancedStaticMeshComponent* FlyComp = BirdFlyISM[t].Get()) { TNArt::UpdateInstances(FlyComp, 0, BirdFlyXf[t], false, true, false); }
+		if (UInstancedStaticMeshComponent* PerchComp = BirdPerchISM[t].Get()) { TNArt::UpdateInstances(PerchComp, 0, BirdPerchXf[t], false, true, false); }
 	}
 }

@@ -1,4 +1,5 @@
 #include "Lobby/TN_ProcModeSelector.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_GameModeSpawnUtils.h"
 #include "Lobby/TN_LobbyMission.h"
@@ -47,6 +48,9 @@ void ATN_ProcModeSelector::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 void ATN_ProcModeSelector::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Peana del selector (el cilindro del motor del constructor): pieza de arte, ya con el actor en el mundo.
+	TNArt::ApplyToComponent(Mesh, TN_ART("Lobby.ModeSelector.Pedestal"));
 
 	// El host arranca con lo que ya estaba elegido (sobrevive a volver al lobby).
 	if (HasAuthority())
