@@ -38,7 +38,6 @@ namespace TNBuggyWorldShotsDetail
 			{ FVector(520.0, -420.0, 210.0), FVector(0.0, 0.0, 90.0), 45.f, TEXT("mundo_cerca_frente") },
 			{ FVector(0.0, -720.0, 160.0), FVector(0.0, 0.0, 90.0), 45.f, TEXT("mundo_cerca_lado") },
 			{ FVector(-560.0, 380.0, 330.0), FVector(0.0, 0.0, 90.0), 45.f, TEXT("mundo_cerca_detras") },
-			{ FVector(260.0, -130.0, 175.0), FVector(-40.0, -10.0, 110.0), 60.f, TEXT("mundo_cabina") },
 			{ FVector(2200.0, -1500.0, 1100.0), FVector(-600.0, 0.0, 0.0), 40.f, TEXT("mundo_lejos_parrilla") },
 			{ FVector(-5200.0, 2600.0, 2600.0), FVector(0.0, 0.0, 0.0), 30.f, TEXT("mundo_muy_lejos") },
 		};
