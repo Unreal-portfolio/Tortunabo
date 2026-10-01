@@ -1,10 +1,13 @@
 // ATN_Buggy: construcción, física de conducción (fricción, derrape, golpe de rueda, charco, motor cortado),
-// enderezado, cámara, tinte y contrato con la carrera. Asientos y tortugas en TN_Buggy_Seats.cpp; input en
-// TN_Buggy_Input.cpp; impactos en TN_Buggy_Effects.cpp.
+// enderezado, tinte y contrato con la carrera. Asientos y tortugas en TN_Buggy_Seats.cpp; input en TN_Buggy_Input.cpp;
+// impactos en TN_Buggy_Effects.cpp; estabilidad y turbo en TN_Buggy_Drive.cpp; cámara en TN_Buggy_Camera.cpp.
 
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyData.h"
+#include "Vehicles/TN_BuggyEngineAudioComponent.h"
 #include "Vehicles/TN_BuggyGunnerPawn.h"
+#include "Vehicles/TN_BuggyHealthComponent.h"
+#include "Vehicles/TN_BuggyRiderAnimComponent.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
 #include "Vehicles/TN_BuggyWheel.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
@@ -21,6 +24,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
+#include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 
 const FName ATN_Buggy::TintSlotName(TEXT("M_PlayerTint"));
@@ -43,28 +47,36 @@ namespace TNBuggyDetail
 	/** Cámara de persecución de HellYeah: pivote sobre el centro, cabeceo fijo en mundo, se abre con la velocidad. */
 	const FVector CameraPivotLocal(0.f, 0.f, 120.f);
 	constexpr float CameraPitchDeg = -18.f;
-	const FVector CameraSocketOffset(0.f, 0.f, 100.f);
-	constexpr float CameraBaseFov = 90.f;
-	constexpr float CameraMaxFov = 100.f;
-	constexpr float CameraBaseArm = 780.f;
-	constexpr float CameraMaxArm = 860.f;
-	constexpr float CameraFullSpeed = 3000.f;
 	constexpr float CameraLagSpeed = 15.f;
 	constexpr float CameraRotationLagSpeed = 6.f;
 	constexpr float CameraLagMaxDistance = 100.f;
 
-	/** Curva de par de OffroadCar_TorqueCurve (TP_VehicleAdvBP) en fracciones de MaxRPM. */
-	constexpr float TorqueCurveKeys[][2] = {
-		{ 0.f, 0.5f }, { 0.1f, 0.8f }, { 0.3f, 1.f }, { 0.55f, 1.f }, { 0.8f, 0.9f }, { 0.9f, 0.4f }, { 1.f, 0.f } };
+	/** Velocidad en cm/s a mph: la curva de dirección de Chaos se evalúa en mph. */
+	constexpr float CmsToMph = 0.0223694f;
 
-	void BuildTorqueCurve(FVehicleEngineConfig& Engine, float MaxRPM)
+	/** Copia Keys en Curve con interpolación lineal (como la evalúan los tests de TNBuggy), escalando X e Y. */
+	void FillLinearCurve(FRichCurve& Curve, TConstArrayView<TNBuggy::FCurveKey> Keys, float ScaleX, float ScaleY)
 	{
-		FRichCurve* Curve = Engine.TorqueCurve.GetRichCurve();
-		Curve->Reset();
-		for (const auto& Key : TorqueCurveKeys)
+		Curve.Reset();
+		for (const TNBuggy::FCurveKey& Key : Keys)
 		{
-			Curve->AddKey(Key[0] * MaxRPM, Key[1]);
+			const FKeyHandle Handle = Curve.AddKey(Key.X * ScaleX, Key.Y * ScaleY);
+			Curve.SetKeyInterpMode(Handle, RCIM_Linear);
 		}
+	}
+
+	/** Curva de par (TNBuggy::TorqueCurveKeys) en rpm. Se lee al crear la simulación. */
+	void BuildTorqueCurve(FVehicleEngineConfig& Engine, float MaxRPM, float MaxTorque)
+	{
+		const TArray<TNBuggy::FCurveKey> Keys = TNBuggy::TorqueCurveKeys(MaxTorque);
+		FillLinearCurve(*Engine.TorqueCurve.GetRichCurve(), Keys, MaxRPM, 1.f);
+	}
+
+	/** Curva de dirección (TNBuggy::SteerCurveKeys) en mph y fracción del ángulo parado. Se lee al crear la simulación. */
+	void BuildSteeringCurve(FVehicleSteeringConfig& Steering)
+	{
+		FillLinearCurve(*Steering.SteeringCurve.GetRichCurve(), TNBuggy::SteerCurveKeys(), CmsToMph,
+			1.f / TNBuggy::SteerAngleAtRestDeg);
 	}
 }
 
@@ -116,6 +128,12 @@ ATN_Buggy::ATN_Buggy()
 		Tires.Add(Tire);
 	}
 
+	HealthComponent = CreateDefaultSubobject<UTN_BuggyHealthComponent>(TEXT("Health"));
+	EngineAudio = CreateDefaultSubobject<UTN_BuggyEngineAudioComponent>(TEXT("EngineAudio"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> BoostLoopFinder(TEXT("/Game/Audio/Rally/SFX_Buggy_Turbo_Loop.SFX_Buggy_Turbo_Loop"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> BoostStartFinder(TEXT("/Game/Audio/Rally/SFX_Buggy_Turbo_Start.SFX_Buggy_Turbo_Start"));
+	BoostSound = BoostLoopFinder.Object;
+	BoostStartSound = BoostStartFinder.Object;
 	Turret = CreateDefaultSubobject<UTN_BuggyTurretComponent>(TEXT("Turret"));
 	Turret->SetupAttachment(Chassis);
 	Turret->SetRelativeLocation(GunnerSeatLocal + FVector(0.f, 0.f, UTN_BuggyTurretComponent::PivotAboveSeatCm));
@@ -145,6 +163,8 @@ ATN_Buggy::ATN_Buggy()
 		Turtle->SetSkeletalMesh(TurtleFinder.Object);
 		Turtle->SetHiddenInGame(true);
 		SeatTurtles.Add(Turtle);
+		CreateDefaultSubobject<UTN_BuggyRiderAnimComponent>(*FString::Printf(TEXT("%sRiderAnim"), SeatNames[Seat]))
+			->Setup(Turtle, Seat == 0 ? ETNBuggyRiderRole::Driver : ETNBuggyRiderRole::Gunner);
 
 		UStaticMeshComponent* Helmet = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("%sHelmet"), SeatNames[Seat]));
 		Helmet->SetupAttachment(Turtle);
@@ -154,9 +174,10 @@ ATN_Buggy::ATN_Buggy()
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(Chassis);
+	const TNBuggy::FDriverCameraTuning& CameraTuning = TNBuggy::DefaultDriverCamera();
 	SpringArm->SetRelativeLocationAndRotation(CameraPivotLocal, FRotator(CameraPitchDeg, 0.f, 0.f));
-	SpringArm->TargetArmLength = CameraBaseArm;
-	SpringArm->SocketOffset = CameraSocketOffset;
+	SpringArm->TargetArmLength = CameraTuning.BaseArmCm;
+	SpringArm->SocketOffset = FVector(0.f, 0.f, CameraTuning.SocketHeightCm);
 	SpringArm->bUsePawnControlRotation = false;
 	SpringArm->bInheritPitch = false;
 	SpringArm->bInheritRoll = false;
@@ -169,7 +190,7 @@ ATN_Buggy::ATN_Buggy()
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm);
-	Camera->SetFieldOfView(CameraBaseFov);
+	Camera->SetFieldOfView(CameraTuning.BaseFov);
 
 	UChaosWheeledVehicleMovementComponent* Move = CastChecked<UChaosWheeledVehicleMovementComponent>(GetVehicleMovementComponent());
 	Move->ChassisHeight = 160.f;
@@ -187,12 +208,14 @@ ATN_Buggy::ATN_Buggy()
 		Move->WheelSetups[Index].BoneName = FName(WheelBones[Index]);
 	}
 	// Provisional: PostInitializeComponents recrea el motor con el ajuste de Data.
-	Move->EngineSetup.MaxTorque = 850.f;
-	Move->EngineSetup.MaxRPM = 3400.f;
-	BuildTorqueCurve(Move->EngineSetup, Move->EngineSetup.MaxRPM);
+	const UTN_BuggyData* Defaults = GetDefault<UTN_BuggyData>();
+	Move->EngineSetup.MaxTorque = Defaults->MaxTorque;
+	Move->EngineSetup.MaxRPM = Defaults->MaxRPM;
+	BuildTorqueCurve(Move->EngineSetup, Defaults->MaxRPM, Defaults->MaxTorque);
 	Move->DifferentialSetup.DifferentialType = EVehicleDifferential::RearWheelDrive;
 	Move->SteeringSetup.SteeringType = ESteeringType::AngleRatio;
 	Move->SteeringSetup.AngleRatio = 0.7f;
+	BuildSteeringCurve(Move->SteeringSetup);
 
 	SetPhysicsReplicationMode(EPhysicsReplicationMode::PredictiveInterpolation);
 }
@@ -253,11 +276,12 @@ void ATN_Buggy::PostInitializeComponents()
 		UE_LOG(LogTNBuggy, Error, TEXT("%s: sin UChaosWheeledVehicleMovementComponent"), *GetName());
 		return;
 	}
-	// El motor se lee al crear la simulación: se recrea con el ajuste de Data.
+	// El motor y la dirección se leen al crear la simulación: se recrean con el ajuste de Data.
 	const UTN_BuggyData* Tuning = GetData();
 	Move->EngineSetup.MaxTorque = Tuning->MaxTorque;
 	Move->EngineSetup.MaxRPM = Tuning->MaxRPM;
-	TNBuggyDetail::BuildTorqueCurve(Move->EngineSetup, Tuning->MaxRPM);
+	TNBuggyDetail::BuildTorqueCurve(Move->EngineSetup, Tuning->MaxRPM, Tuning->MaxTorque);
+	TNBuggyDetail::BuildSteeringCurve(Move->SteeringSetup);
 	Move->TransmissionSetup.FinalRatio = Tuning->FinalDriveRatio;
 	Move->RecreatePhysicsState();
 	ApplyWheelFriction();
@@ -269,6 +293,10 @@ void ATN_Buggy::BeginPlay()
 	ApplyWheelFriction();
 	ApplyTint();
 	RefreshSeatVisuals(true);
+	if (HasAuthority())
+	{
+		BoostCharge01 = FMath::Clamp(GetData()->BoostStartCharge, 0.f, 1.f);
+	}
 }
 
 void ATN_Buggy::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -277,6 +305,9 @@ void ATN_Buggy::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		DestroyGunnerPawn();
 	}
+	bBoostActive = false;
+	bBoostHeld = false;
+	RefreshBoostEffects();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -293,12 +324,16 @@ void ATN_Buggy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(ATN_Buggy, GunnerPawn);
 	DOREPLIFETIME(ATN_Buggy, bEngineLockedByRace);
 	DOREPLIFETIME(ATN_Buggy, bWeaponsLockedByRace);
+	DOREPLIFETIME(ATN_Buggy, bRaceBrakeHeld);
 	DOREPLIFETIME(ATN_Buggy, LockEndServerTime);
 	DOREPLIFETIME(ATN_Buggy, bGhost);
 	DOREPLIFETIME(ATN_Buggy, ShieldEndServerTime);
 	DOREPLIFETIME(ATN_Buggy, InkEndServerTime);
 	DOREPLIFETIME(ATN_Buggy, WobbleEndServerTime);
 	DOREPLIFETIME(ATN_Buggy, bInPuddle);
+	DOREPLIFETIME(ATN_Buggy, BoostCharge01);
+	// La conductora predice su turbo con su botón (IsBoosting): solo lo reciben los demás.
+	DOREPLIFETIME_CONDITION(ATN_Buggy, bBoostActive, COND_SkipOwner);
 }
 
 void ATN_Buggy::Tick(float DeltaSeconds)
@@ -306,33 +341,15 @@ void ATN_Buggy::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	FlippedSeconds = TNBuggy::AdvanceFlipped(FlippedSeconds, GetActorUpVector().Z, DeltaSeconds);
+	UpdateAirborne();
 	if (HasAuthority())
 	{
 		UpdateServerTimers();
 		UpdateSelfRight(DeltaSeconds);
+		UpdateBoost(DeltaSeconds);
 	}
 
-	// Reintenta si la simulación no estaba lista; la fricción cambia con el freno de mano y el charco.
-	const float Grip = TNRallyTurret::PuddleGripMultiplier(bInPuddle);
-	if (!bWheelFrictionApplied || bHandbrakeHeld != bHandbrakeFrictionApplied || !FMath::IsNearlyEqual(Grip, AppliedGripMultiplier))
-	{
-		ApplyWheelFriction();
-	}
-	if (IsEngineLocked() != bEngineTorqueLockedApplied)
-	{
-		ApplyEngineTorque();
-	}
-	if (IsEngineLocked() && (HasAuthority() || IsLocallyControlled()))
-	{
-		HoldLockedInPlace();
-	}
-	ApplyBumpKicks();
-	ApplyPuddleSpeedCap();
-	ApplyAntiRoll();
-	if (IsLocallyControlled() || (HasAuthority() && !IsPlayerControlled()))
-	{
-		ApplySteeringAssist();
-	}
+	TickDrivePhysics();
 	if (IsLocallyControlled() && IsPlayerControlled())
 	{
 		UpdateCamera(DeltaSeconds);
@@ -342,11 +359,48 @@ void ATN_Buggy::Tick(float DeltaSeconds)
 		}
 	}
 
+	if (GetNetMode() != NM_DedicatedServer)
+	{
+		UpdateGunnerKnockPose(DeltaSeconds);
+	}
+
 	SeatLookCheckAccumulator += DeltaSeconds;
 	if (SeatLookCheckAccumulator >= 0.5f)
 	{
 		SeatLookCheckAccumulator = 0.f;
 		RefreshSeatVisuals(false);
+	}
+}
+
+void ATN_Buggy::TickDrivePhysics()
+{
+	// Reintenta si la simulación no estaba lista; la fricción cambia con el freno de mano y el charco.
+	const float Grip = TNRallyTurret::PuddleGripMultiplier(bInPuddle);
+	if (!bWheelFrictionApplied || bHandbrakeHeld != bHandbrakeFrictionApplied || !FMath::IsNearlyEqual(Grip, AppliedGripMultiplier))
+	{
+		ApplyWheelFriction();
+	}
+	if (IsEngineLocked() != bEngineTorqueLockedApplied || IsBoosting() != bBoostTorqueApplied)
+	{
+		ApplyEngineTorque();
+	}
+	if (IsEngineLocked() && (HasAuthority() || IsLocallyControlled()))
+	{
+		HoldLockedInPlace();
+	}
+	if (bRaceBrakeHeld && (HasAuthority() || IsLocallyControlled()))
+	{
+		ApplyRaceBrake();
+	}
+	ApplyBumpKicks();
+	ApplyPuddleSpeedCap();
+	ApplyAntiRoll();
+	ApplyStability();
+	ApplyBoostPush();
+	RefreshBoostEffects();
+	if (IsLocallyControlled() || (HasAuthority() && !IsPlayerControlled()))
+	{
+		ApplySteeringAssist();
 	}
 }
 
@@ -402,9 +456,13 @@ void ATN_Buggy::ApplyEngineTorque()
 		return;
 	}
 	const bool bLocked = IsEngineLocked();
-	// El par es parte de la simulación (no de la entrada): así el corte vale también en el servidor.
-	Move->SetMaxEngineTorque(bLocked ? 0.f : GetData()->MaxTorque);
+	const bool bBoost = IsBoosting();
+	const UTN_BuggyData* Tuning = GetData();
+	// El par es parte de la simulación (no de la entrada): así el corte y el turbo valen también en el servidor.
+	const float Torque = Tuning->MaxTorque * (bBoost ? Tuning->BoostTorqueMultiplier : 1.f);
+	Move->SetMaxEngineTorque(bLocked ? 0.f : Torque);
 	bEngineTorqueLockedApplied = bLocked;
+	bBoostTorqueApplied = bBoost;
 }
 
 void ATN_Buggy::HoldLockedInPlace()
@@ -508,11 +566,6 @@ void ATN_Buggy::ApplyAntiRoll()
 	{
 		return;
 	}
-	bool bAnyContact = false;
-	for (int32 Index = 0; Index < Move->Wheels.Num() && !bAnyContact; ++Index)
-	{
-		bAnyContact = Move->GetWheelState(Index).bInContact;
-	}
 	const UTN_BuggyData* Tuning = GetData();
 	TNBuggy::FAntiRollTuning AntiRoll;
 	AntiRoll.GroundFreeRollDeg = Tuning->AntiRollGroundFreeRollDeg;
@@ -521,7 +574,7 @@ void ATN_Buggy::ApplyAntiRoll()
 	AntiRoll.Damping = Tuning->AntiRollDamping;
 	AntiRoll.MaxAccel = Tuning->AntiRollMaxAccel;
 	const FVector Accel = TNBuggy::AntiRollAccel(GetActorForwardVector(), GetActorUpVector(),
-		Chassis->GetPhysicsAngularVelocityInRadians(), !bAnyContact, AntiRoll);
+		Chassis->GetPhysicsAngularVelocityInRadians(), bAirborne, AntiRoll);
 	if (!Accel.IsNearlyZero())
 	{
 		// Como aceleración (bAccelChange): igual para cualquier masa e inercia del chasis.
@@ -582,6 +635,26 @@ bool ATN_Buggy::ConsumeRespawnRequest()
 	return bWas;
 }
 
+bool ATN_Buggy::ConsumeDestroyed()
+{
+	const bool bWas = bDestroyedPending;
+	bDestroyedPending = false;
+	return bWas;
+}
+
+void ATN_Buggy::NotifyDestroyed()
+{
+	if (HasAuthority())
+	{
+		bDestroyedPending = true;
+	}
+}
+
+bool ATN_Buggy::IsRespawnProtected() const
+{
+	return GhostEndServerTime > static_cast<float>(GetServerNow());
+}
+
 bool ATN_Buggy::ConsumeFellOutOfWorld()
 {
 	const bool bWas = bFellOutOfWorld;
@@ -607,14 +680,6 @@ void ATN_Buggy::FellOutOfWorld(const UDamageType& DmgType)
 		Chassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
 		Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	}
-}
-
-void ATN_Buggy::UpdateCamera(float DeltaSeconds)
-{
-	using namespace TNBuggyDetail;
-	const float Alpha = FMath::Clamp(GetVelocity().Size() / CameraFullSpeed, 0.f, 1.f);
-	Camera->SetFieldOfView(FMath::Lerp(CameraBaseFov, CameraMaxFov, Alpha));
-	SpringArm->TargetArmLength = FMath::Lerp(CameraBaseArm, CameraMaxArm, Alpha);
 }
 
 void ATN_Buggy::SetRallyTeamIndex(int32 Index)
@@ -730,9 +795,9 @@ void ATN_Buggy::SetAIDriveInput(float Throttle, float Brake, float Steer, bool b
 	}
 	// Sin controlador local, Chaos solo procesa las entradas con esto desactivado.
 	Move->SetRequiresControllerForInputs(false);
-	const bool bLocked = IsEngineLocked();
+	const bool bLocked = IsEngineLocked() || bRaceBrakeHeld;
 	Move->SetThrottleInput(bLocked ? 0.f : FMath::Clamp(Throttle, 0.f, 1.f));
-	Move->SetBrakeInput(FMath::Clamp(Brake, 0.f, 1.f));
+	Move->SetBrakeInput(bRaceBrakeHeld ? 1.f : FMath::Clamp(Brake, 0.f, 1.f));
 	SteerRequest = FMath::Clamp(Steer, -1.f, 1.f);
 	if (bHandbrake != bHandbrakeHeld)
 	{

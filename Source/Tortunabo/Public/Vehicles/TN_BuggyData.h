@@ -1,5 +1,6 @@
-// Ajuste del buggy del Rally. Port de UHYBuggyData (HellYeah) sin carga ni boost: los valores por defecto son los de
-// BUGGY_DATA (Tools/Unreal/build_data_assets.py de HellYeah) y los usa ATN_Buggy si no se le asigna un asset.
+// Ajuste del buggy del Rally. Port de UHYBuggyData (HellYeah) sin carga: los valores por defecto parten de BUGGY_DATA
+// (Tools/Unreal/build_data_assets.py de HellYeah), con el agarre, el par y el turbo de #288 y #294, y los usa ATN_Buggy si
+// no se le asigna un asset.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -12,15 +13,18 @@ class TORTUNABO_API UTN_BuggyData : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
-	/** Par máximo del motor (N·m). */
+	/**
+	 * Par máximo del motor (N·m). 1275 = 1,5 × 850: 0-60 km/h en ~2 s en vez de ~3 s (el arranque va entero en la parte
+	 * plana de TNBuggy::TorqueCurveKeys). La curva conserva el par absoluto antiguo desde el 80 % de MaxRPM: misma punta.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
-	float MaxTorque = 850.f;
+	float MaxTorque = 1275.f;
 
-	/** Régimen máximo (rpm): fija la punta, unos 110 km/h con la relación final 2,0. */
+	/** Régimen máximo (rpm): fija la punta, unos 110 km/h con la relación final 2,0 (el cambio no pasa de 1.ª). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float MaxRPM = 3400.f;
 
-	/** Relación final de la transmisión: con 2,0 llega a 60 km/h en 3 s y deja derrapar con gas en curva. */
+	/** Relación final de la transmisión: junto con MaxRPM (en 1.ª) fija la punta. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float FinalDriveRatio = 2.0f;
 
@@ -28,21 +32,70 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float FrontFriction = 3.0f;
 
-	/** Multiplicador de fricción de las ruedas traseras. */
+	/**
+	 * Multiplicador de fricción de las ruedas traseras. Mayor que el delantero: con el volante a fondo satura antes el
+	 * eje delantero (subviraje) y la trasera no se va; el derrape largo queda para el freno de mano.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
-	float RearFriction = 2.6f;
+	float RearFriction = 3.4f;
 
 	/** Fricción trasera con el freno de mano: más baja = más derrape. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float HandbrakeRearFriction = 1.4f;
 
-	/** Contravolante añadido (fracción de la dirección) al llegar a MaxAssistAngleDeg de deriva. */
+	/** Contravolante añadido (fracción de la dirección) al llegar a MaxAssistAngleDeg de deriva. Con 0,8 sobrecorregía. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
-	float CounterSteerAssist = 0.8f;
+	float CounterSteerAssist = 0.5f;
 
 	/** Deriva (grados) a la que la asistencia llega a su máximo. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float MaxAssistAngleDeg = 35.f;
+
+	/** Control de estabilidad sin freno de mano (TNBuggy::StabilityYawAccel): deriva a la que empieza (grados). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Estabilidad")
+	float StabilityStartSlipDeg = 6.f;
+
+	/** Muelle (1/s² por radián de deriva de más), amortiguador (1/s) y tope (rad/s²); muelle 0 lo desactiva. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Estabilidad")
+	float StabilityStiffness = 12.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Estabilidad")
+	float StabilityDamping = 3.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Estabilidad")
+	float StabilityMaxAccel = 8.f;
+
+	/** Turbo: multiplicador del par mientras está activo. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostTorqueMultiplier = 1.35f;
+
+	/** Turbo: multiplicador de la punta (TNRallyTurret::BuggyTopSpeedCms) que alcanza el empuje del turbo. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostTopSpeedMultiplier = 1.15f;
+
+	/** Turbo: empuje (cm/s², hacia delante) y banda (cm/s) en la que se apaga antes de la punta del turbo. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostPushAccel = 300.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostPushFadeBandCms = 200.f;
+
+	/** Turbo: gasto (barra/s) y recargas derrapando con el freno de mano y en el aire (barra/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostDrainPerSecond = 1.f / 3.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostDriftRechargePerSecond = 0.3f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostAirRechargePerSecond = 0.4f;
+
+	/** Turbo: deriva mínima (grados) del derrape que recarga y carga al aparecer el buggy. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostMinDriftSlipDeg = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
+	float BoostStartCharge = 0.5f;
 
 	/** Segundos volcado antes de poder enderezar pulsando R (o Y). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enderezado")

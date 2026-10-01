@@ -1,4 +1,5 @@
 #include "Vehicles/TN_BuggyGunnerPawn.h"
+#include "Rally/UI/TN_RallyCopilotTablet.h"
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyData.h"
 #include "Vehicles/TN_BuggyInput.h"
@@ -10,16 +11,30 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "InputAction.h"
 #include "InputActionValue.h"
+#include "InputCoreTypes.h"
+#include "InputMappingContext.h"
 #include "Net/UnrealNetwork.h"
 
 namespace TNGunnerDetail
 {
-	/** Cámara detrás de la torreta: brazo, altura y cabeceo base (grados) más una fracción del de la torreta. */
-	constexpr float ArmLengthCm = 520.f;
-	const FVector SocketOffset(0.f, 0.f, 90.f);
-	constexpr float BasePitchDeg = -12.f;
-	constexpr float PitchFollow = 0.6f;
+	/** Por encima del hombro: cabeceo base (grados) más una fracción del de la torreta. */
+	constexpr float BasePitchDeg = -8.f;
+	constexpr float PitchFollow = 0.8f;
+	/** Primera persona: sobre el cañón, por delante del pivote (fuera de la cabeza de la tortuga) y algo por encima. */
+	const FVector FirstPersonOffset(60.f, 0.f, 22.f);
+	/** Retardo de giro en primera persona: muy corto para no estorbar al apuntar. */
+	constexpr float FirstPersonRotationLagSpeed = 30.f;
+	/** Pasos máximos de un cambio de munición (la rueda puede sumar varios). */
+	constexpr int32 MaxCycleSteps = 8;
+	/** Empujón de cámara al quedar noqueada: cabeceo y alabeo (grados) y hacia atrás (cm). */
+	constexpr float KnockKickPitchDeg = 14.f;
+	constexpr float KnockKickRollDeg = 10.f;
+	constexpr float KnockKickBackCm = 50.f;
+	/** Tope del empujón acumulado. */
+	constexpr float MaxKickDeg = 25.f;
+	constexpr float MaxKickBackCm = 80.f;
 }
 
 ATN_BuggyGunnerPawn::ATN_BuggyGunnerPawn()
@@ -37,16 +52,13 @@ ATN_BuggyGunnerPawn::ATN_BuggyGunnerPawn()
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(Root);
 	SpringArm->SetRelativeLocation(FVector(0.f, 0.f, UTN_BuggyTurretComponent::PivotAboveSeatCm));
-	SpringArm->TargetArmLength = TNGunnerDetail::ArmLengthCm;
-	SpringArm->SocketOffset = TNGunnerDetail::SocketOffset;
 	SpringArm->bUsePawnControlRotation = false;
 	SpringArm->SetUsingAbsoluteRotation(true);
-	SpringArm->bEnableCameraLag = false;
-	SpringArm->bDoCollisionTest = true;
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm);
 	Camera->SetFieldOfView(90.f);
+	ApplyCameraMode();
 }
 
 void ATN_BuggyGunnerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -58,6 +70,8 @@ void ATN_BuggyGunnerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 void ATN_BuggyGunnerPawn::BeginPlay()
 {
 	Super::BeginPlay();
+	// Los valores del Blueprint (EditDefaultsOnly) ya están puestos.
+	ApplyCameraMode();
 	AttachToBuggy();
 }
 
@@ -100,7 +114,8 @@ void ATN_BuggyGunnerPawn::Tick(float DeltaSeconds)
 	{
 		return;
 	}
-	UpdateCamera();
+	WatchKnock();
+	UpdateCamera(DeltaSeconds);
 	AimSendAccumulator += DeltaSeconds;
 	if (AimSendAccumulator >= 1.f / FMath::Max(AimSendRate, 1.f) && !LocalAim.Equals(LastSentAim, 0.5f))
 	{
@@ -114,18 +129,76 @@ void ATN_BuggyGunnerPawn::Tick(float DeltaSeconds)
 	}
 }
 
-void ATN_BuggyGunnerPawn::UpdateCamera()
+// ── Cámara ────────────────────────────────────────────────────────────────────
+
+void ATN_BuggyGunnerPawn::ApplyCameraMode()
 {
-	// Detrás de la torreta: guiñada del buggy más la del apuntado, sin alabeo, con parte del cabeceo de la torreta.
+	if (bFirstPerson)
+	{
+		SpringArm->TargetArmLength = 0.f;
+		SpringArm->SocketOffset = TNGunnerDetail::FirstPersonOffset;
+		SpringArm->bDoCollisionTest = false;
+		SpringArm->bEnableCameraLag = false;
+		SpringArm->bEnableCameraRotationLag = true;
+		SpringArm->CameraRotationLagSpeed = TNGunnerDetail::FirstPersonRotationLagSpeed;
+		return;
+	}
+	SpringArm->TargetArmLength = ShoulderArmLengthCm;
+	SpringArm->SocketOffset = ShoulderSocketOffset;
+	SpringArm->bDoCollisionTest = true;
+	SpringArm->bEnableCameraLag = true;
+	SpringArm->CameraLagSpeed = CameraLagSpeed;
+	SpringArm->bEnableCameraRotationLag = true;
+	SpringArm->CameraRotationLagSpeed = CameraRotationLagSpeed;
+}
+
+void ATN_BuggyGunnerPawn::ToggleFirstPerson()
+{
+	bFirstPerson = !bFirstPerson;
+	ApplyCameraMode();
+}
+
+void ATN_BuggyGunnerPawn::UpdateCamera(float DeltaSeconds)
+{
+	// Guiñada del buggy más la del apuntado, sin alabeo. Por encima del hombro sigue parte del cabeceo; en primera persona,
+	// todo (la cámara mira por el cañón).
 	const float Yaw = static_cast<float>(Buggy->GetActorRotation().Yaw + LocalAim.Yaw);
-	const float Pitch = TNGunnerDetail::BasePitchDeg + TNGunnerDetail::PitchFollow * static_cast<float>(LocalAim.Pitch);
+	const float AimPitch = static_cast<float>(LocalAim.Pitch);
+	const float Pitch = bFirstPerson ? AimPitch : TNGunnerDetail::BasePitchDeg + TNGunnerDetail::PitchFollow * AimPitch;
 	SpringArm->SetWorldRotation(FRotator(Pitch, Yaw, 0.f));
+
+	KickPitchDeg = FMath::FInterpTo(KickPitchDeg, 0.f, DeltaSeconds, CameraKickRecoverSpeed);
+	KickRollDeg = FMath::FInterpTo(KickRollDeg, 0.f, DeltaSeconds, CameraKickRecoverSpeed);
+	KickBackCm = FMath::FInterpTo(KickBackCm, 0.f, DeltaSeconds, CameraKickRecoverSpeed);
+	Camera->SetRelativeLocationAndRotation(FVector(-KickBackCm, 0.f, 0.f), FRotator(KickPitchDeg, 0.f, KickRollDeg));
+}
+
+void ATN_BuggyGunnerPawn::AddCameraKick(float PitchDeg, float RollDeg, float BackCm)
+{
+	using namespace TNGunnerDetail;
+	KickPitchDeg = FMath::Clamp(KickPitchDeg + PitchDeg, -MaxKickDeg, MaxKickDeg);
+	// El alabeo cambia de lado al azar: un empujón, no siempre el mismo giro.
+	KickRollDeg = FMath::Clamp(KickRollDeg + (FMath::RandBool() ? RollDeg : -RollDeg), -MaxKickDeg, MaxKickDeg);
+	KickBackCm = FMath::Clamp(KickBackCm + BackCm, 0.f, MaxKickBackCm);
+}
+
+void ATN_BuggyGunnerPawn::WatchKnock()
+{
+	const UTN_BuggyTurretComponent* Turret = Buggy->GetTurret();
+	const bool bKnocked = Turret && Turret->IsGunnerKnocked();
+	if (bKnocked && !bWasKnocked)
+	{
+		AddCameraKick(TNGunnerDetail::KnockKickPitchDeg, TNGunnerDetail::KnockKickRollDeg, TNGunnerDetail::KnockKickBackCm);
+	}
+	bWasKnocked = bKnocked;
 }
 
 void ATN_BuggyGunnerPawn::AddAim(float DeltaYaw, float DeltaPitch)
 {
 	LocalAim = TNRallyTurret::ClampAim(FRotator(LocalAim.Pitch + DeltaPitch, LocalAim.Yaw + DeltaYaw, 0.f));
 }
+
+// ── Entrada ───────────────────────────────────────────────────────────────────
 
 UTN_BuggyInputSet* ATN_BuggyGunnerPawn::GetInputSet()
 {
@@ -134,6 +207,19 @@ UTN_BuggyInputSet* ATN_BuggyGunnerPawn::GetInputSet()
 		InputSet = UTN_BuggyInputSet::Create(this);
 	}
 	return InputSet;
+}
+
+void ATN_BuggyGunnerPawn::EnsureCameraInput()
+{
+	if (CameraToggleAction)
+	{
+		return;
+	}
+	CameraToggleAction = NewObject<UInputAction>(this, TEXT("IA_GunnerCameraToggle"), RF_Transient);
+	CameraToggleAction->ValueType = EInputActionValueType::Boolean;
+	CameraContext = NewObject<UInputMappingContext>(this, TEXT("IMC_GunnerCamera"), RF_Transient);
+	CameraContext->MapKey(CameraToggleAction, EKeys::V);
+	CameraContext->MapKey(CameraToggleAction, EKeys::Gamepad_RightThumbstick);
 }
 
 void ATN_BuggyGunnerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -146,25 +232,35 @@ void ATN_BuggyGunnerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		return;
 	}
 	const UTN_BuggyInputSet* Set = GetInputSet();
+	EnsureCameraInput();
 	Input->BindAction(Set->AimMouse, ETriggerEvent::Triggered, this, &ATN_BuggyGunnerPawn::OnAimMouse);
 	Input->BindAction(Set->AimStick, ETriggerEvent::Triggered, this, &ATN_BuggyGunnerPawn::OnAimStick);
 	Input->BindAction(Set->FireCoco, ETriggerEvent::Triggered, this, &ATN_BuggyGunnerPawn::OnFireCoco);
+	Input->BindAction(Set->FireCoco, ETriggerEvent::Completed, this, &ATN_BuggyGunnerPawn::OnFireCocoReleased);
 	Input->BindAction(Set->FireSpecial, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnFireSpecial);
+	Input->BindAction(Set->CycleAmmo, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnCycleAmmo);
 	Input->BindAction(Set->SelfRight, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnSelfRightPressed);
 	Input->BindAction(Set->SelfRight, ETriggerEvent::Completed, this, &ATN_BuggyGunnerPawn::OnSelfRightReleased);
+	// Tableta de copiloto (M o el botón Vista; el Tabulador en el editor abre la pausa).
+	UTN_RallyCopilotTablet::BindToggleKeys(PlayerInputComponent, this);
+	Input->BindAction(CameraToggleAction, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnToggleCamera);
 }
 
 void ATN_BuggyGunnerPawn::NotifyControllerChanged()
 {
+	EnsureCameraInput();
 	if (InputSet)
 	{
 		UTN_BuggyInputSet::RemoveContext(Cast<APlayerController>(PreviousController), InputSet->GunnerContext);
 	}
+	UTN_BuggyInputSet::RemoveContext(Cast<APlayerController>(PreviousController), CameraContext);
 	if (const APlayerController* PC = Cast<APlayerController>(Controller); PC && PC->IsLocalController())
 	{
 		UTN_BuggyInputSet::AddContext(PC, GetInputSet()->GunnerContext);
+		UTN_BuggyInputSet::AddContext(PC, CameraContext);
 	}
 	bSelfRightHeld = false;
+	bMainFireLatched = false;
 	RespawnHold = TNBuggy::FHold();
 	Super::NotifyControllerChanged();
 }
@@ -184,13 +280,26 @@ void ATN_BuggyGunnerPawn::OnAimStick(const FInputActionValue& Value)
 
 void ATN_BuggyGunnerPawn::OnFireCoco(const FInputActionValue& Value)
 {
-	// Mantener el botón pide a la cadencia del coco; el servidor la vuelve a comprobar.
+	// Botón principal: la munición seleccionada. Mantenerlo pide a su cadencia (el servidor la vuelve a comprobar); con
+	// una especial, un disparo por pulsación.
+	const UTN_BuggyTurretComponent* Turret = Buggy ? Buggy->GetTurret() : nullptr;
+	if (!Turret || Turret->IsGunnerKnocked() || bMainFireLatched)
+	{
+		return;
+	}
+	const ETNRallyAmmo Selected = Turret->GetSelectedAmmo();
 	const double Now = GetWorld()->GetTimeSeconds();
-	if (Now - LastFireRequest >= TNRallyTurret::SpecFor(ETNRallyAmmo::Coco).FireInterval)
+	if (Now - LastFireRequest >= TNRallyTurret::SpecFor(Selected).FireInterval)
 	{
 		LastFireRequest = Now;
+		bMainFireLatched = TNRallyTurret::IsSpecial(Selected);
 		RequestFire(false);
 	}
+}
+
+void ATN_BuggyGunnerPawn::OnFireCocoReleased(const FInputActionValue& Value)
+{
+	bMainFireLatched = false;
 }
 
 void ATN_BuggyGunnerPawn::OnFireSpecial(const FInputActionValue& Value)
@@ -198,9 +307,37 @@ void ATN_BuggyGunnerPawn::OnFireSpecial(const FInputActionValue& Value)
 	RequestFire(true);
 }
 
+void ATN_BuggyGunnerPawn::OnCycleAmmo(const FInputActionValue& Value)
+{
+	const int32 Direction = UTN_BuggyInputSet::CycleDirection(Value);
+	if (UTN_BuggyTurretComponent* Turret = Buggy ? Buggy->GetTurret() : nullptr; Turret && Direction != 0)
+	{
+		// En un cliente, la torreta lo devuelve a RequestCycleAmmo; en el servidor escucha, lo aplica.
+		Turret->CycleAmmo(Direction);
+	}
+}
+
+void ATN_BuggyGunnerPawn::OnToggleCamera(const FInputActionValue& Value)
+{
+	ToggleFirstPerson();
+}
+
 void ATN_BuggyGunnerPawn::RequestFire(bool bSpecial)
 {
+	// Con la tableta grande abierta la artillera tiene las manos ocupadas: la torreta no dispara.
+	if (UTN_RallyCopilotTablet::IsOpenFor(Cast<APlayerController>(GetController())))
+	{
+		return;
+	}
 	ServerFire(bSpecial, static_cast<float>(LocalAim.Yaw), static_cast<float>(LocalAim.Pitch));
+}
+
+void ATN_BuggyGunnerPawn::RequestCycleAmmo(int32 Direction)
+{
+	if (Direction != 0)
+	{
+		ServerCycleAmmo(FMath::Clamp(Direction, -TNGunnerDetail::MaxCycleSteps, TNGunnerDetail::MaxCycleSteps));
+	}
 }
 
 void ATN_BuggyGunnerPawn::OnSelfRightPressed(const FInputActionValue& Value)
@@ -215,6 +352,8 @@ void ATN_BuggyGunnerPawn::OnSelfRightReleased(const FInputActionValue& Value)
 	bSelfRightHeld = false;
 	RespawnHold = TNBuggy::FHold();
 }
+
+// ── RPC ───────────────────────────────────────────────────────────────────────
 
 bool ATN_BuggyGunnerPawn::ServerSetAim_Validate(float Yaw, float Pitch)
 {
@@ -243,9 +382,23 @@ void ATN_BuggyGunnerPawn::ServerFire_Implementation(bool bSpecial, float Yaw, fl
 	}
 	UTN_BuggyTurretComponent* Turret = Buggy->GetTurret();
 	Turret->SetAimRelative(FRotator(Pitch, Yaw, 0.f));
-	const bool bFired = Turret->TryFire(bSpecial, Turret->GetAimWorldDirection());
+	const FVector Dir = Turret->GetAimWorldDirection();
+	const bool bFired = bSpecial ? Turret->TryFire(true, Dir) : Turret->TryFireSelected(Dir);
 	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: la artillera %s pide disparo %s: %s"), *Buggy->GetName(), *GetNameSafe(Controller),
-		bSpecial ? TEXT("especial") : TEXT("de coco"), bFired ? TEXT("sale") : TEXT("rechazado (cadencia, calor o cargas)"));
+		bSpecial ? TEXT("especial") : TEXT("de la munición seleccionada"), bFired ? TEXT("sale") : TEXT("rechazado (cadencia, calor, cargas o noqueo)"));
+}
+
+bool ATN_BuggyGunnerPawn::ServerCycleAmmo_Validate(int32 Direction)
+{
+	return Direction != 0 && FMath::Abs(Direction) <= TNGunnerDetail::MaxCycleSteps;
+}
+
+void ATN_BuggyGunnerPawn::ServerCycleAmmo_Implementation(int32 Direction)
+{
+	if (IsSeatedGunner())
+	{
+		Buggy->GetTurret()->ApplyCycle(Direction);
+	}
 }
 
 void ATN_BuggyGunnerPawn::ServerSelfRight_Implementation()

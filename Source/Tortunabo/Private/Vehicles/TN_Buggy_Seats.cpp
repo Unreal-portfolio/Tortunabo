@@ -21,6 +21,14 @@ namespace TNBuggySeats
 	constexpr int32 DriverIndex = 0;
 	constexpr int32 GunnerIndex = 1;
 
+	/** Giro de la tortuga sentada (el del constructor): su malla mira a +Y y así mira al morro. */
+	const FRotator SeatedTurtleRotation(0.f, -90.f, 0.f);
+	/** Artillera noqueada: grados que cae hacia atrás, cm que se desliza hacia la cola y velocidades de caída y vuelta (1/s). */
+	constexpr float KnockBackPitchDeg = 65.f;
+	constexpr float KnockSlideBackCm = 15.f;
+	constexpr float KnockFallPerSecond = 6.f;
+	constexpr float KnockRecoverPerSecond = 2.5f;
+
 	FTN_TurtleLook LookOf(const APlayerState* PlayerState)
 	{
 		FTN_TurtleLook Look;
@@ -289,4 +297,27 @@ bool ATN_Buggy::IsOccupiedByLocalPlayer() const
 	}
 	const APawn* Pawn = Local->GetPawn();
 	return Pawn == this || (Pawn && Pawn == GunnerPawn);
+}
+
+void ATN_Buggy::UpdateGunnerKnockPose(float DeltaSeconds)
+{
+	USkeletalMeshComponent* Turtle = SeatTurtles.IsValidIndex(TNBuggySeats::GunnerIndex) ? SeatTurtles[TNBuggySeats::GunnerIndex].Get() : nullptr;
+	if (!Turtle || !Turret)
+	{
+		return;
+	}
+	// Solo lee estado replicado (hora de fin del noqueo): vale igual en el servidor escucha y en los clientes.
+	const float Target = bGunnerSeated && Turret->IsGunnerKnocked() ? 1.f : 0.f;
+	if (GunnerKnockLean01 == Target)
+	{
+		return;
+	}
+	const float Speed = Target > GunnerKnockLean01 ? TNBuggySeats::KnockFallPerSecond : TNBuggySeats::KnockRecoverPerSecond;
+	GunnerKnockLean01 = FMath::FInterpConstantTo(GunnerKnockLean01, Target, DeltaSeconds, Speed);
+	const float Ease = FMath::InterpEaseOut(0.f, 1.f, GunnerKnockLean01, 2.f);
+	// Cabeceo positivo en el marco del chasis: la cabeza va hacia la cola. Gira sobre el origen de la malla (el asiento).
+	// UTN_BuggyRiderAnimComponent anima los huesos (UTN_TurtleAnimInstance), no el componente: no se pisan.
+	const FQuat Fall = FRotator(TNBuggySeats::KnockBackPitchDeg * Ease, 0.f, 0.f).Quaternion();
+	Turtle->SetRelativeLocationAndRotation(GunnerSeatLocal - FVector(TNBuggySeats::KnockSlideBackCm * Ease, 0.f, 0.f),
+		Fall * TNBuggySeats::SeatedTurtleRotation.Quaternion());
 }

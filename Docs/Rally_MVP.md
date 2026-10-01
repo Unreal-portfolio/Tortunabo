@@ -15,12 +15,14 @@ Fuentes: plan maestro §3.3 y §7.2, `Docs/Rally_Sistemas.md`, `Docs/Rally_E01B_
 | Acción | Conductora | Artillera |
 |---|---|---|
 | Acelerar / frenar / girar | W / S / A-D · RT / LT / stick izq. | — |
-| Freno de mano | Espacio · B | — |
+| Freno de mano | Shift izq. · X | — |
+| Turbo (mientras haya carga; se recarga derrapando con freno de mano y en el aire) | Espacio · A | — |
 | Enderezar (pulsar) / reaparecer (mantener 1,5 s) | R · Y | R · Y |
 | Apuntar | automático si va sola | ratón · stick der. |
 | Coco (básica) | clic izq. · RB (sola) | clic izq. · RT |
 | Munición especial | clic der. · LB (sola) | clic der. · LT |
-| Disparar hacia atrás | Q · X (sola) | — (apunta detrás) |
+| Disparar hacia atrás | Q · B (sola) | — (apunta detrás) |
+| Cambiar de munición | rueda del ratón · cruceta izq./der. (sola) | rueda del ratón · cruceta izq./der. |
 
 ## Torreta y munición
 
@@ -33,8 +35,9 @@ El retroceso es la mecánica central: cada disparo empuja al buggy propio en sen
 | Burbuja | caja, 1 carga | burbuja lenta que flota 6 s; el primer buggy que la toca (propio o rival) gana un escudo de 4 s que anula un impacto o un charco | 0 |
 | Mortero | caja, 1 carga | explosión de 5 m: impulso vertical 450 cm/s sin vuelco forzado a todos los buggies dentro, también al propio | 700 cm/s (hacia atrás = turbo) |
 | Tinta | caja, 2 cargas | mancha la pantalla de las dos ocupantes del buggy alcanzado 3 s | 60 cm/s |
+| Ancla | caja (rara), 2 cargas | se engancha al buggy alcanzado y lo frena 2 s | 200 cm/s |
 
-Cajas de munición: filas en las puertas pares y a mitad de tramo; reaparecen a los 3 s; el reparto pondera por puesto (los últimos, más Mortero y Burbuja; los primeros, más Alga y Tinta).
+Cajas de munición: filas en las puertas pares y a mitad de tramo; reaparecen a los 3 s; el reparto pondera por puesto (los últimos, más Mortero y Burbuja; los primeros, más Alga y Tinta; el Ancla es rara en todos los puestos, algo menos para los primeros).
 
 ## Arquitectura
 

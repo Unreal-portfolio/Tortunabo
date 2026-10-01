@@ -14,6 +14,41 @@ class UStaticMesh;
 class ATN_RallyGate;
 class ATN_RallyAmmoBox;
 
+/** Reglas puras de la parrilla y la reaparición (Tortunabo.Rally.Race.*): sin mundo, para poder probarlas. */
+namespace TNRallyRace
+{
+	/** Carriles de reaparición tras cada puerta: centro, izquierda y derecha, en ese orden de preferencia. */
+	inline constexpr int32 RespawnLaneCount = 3;
+	/** Separación lateral entre carriles de reaparición (cm). */
+	inline constexpr double RespawnLaneSpacingCm = 350.0;
+	/** Un carril está libre si no hay otro buggy a menos de esto de su punto de reaparición (cm). */
+	inline constexpr double RespawnClearRadiusCm = 300.0;
+	/** El fantasma dura al menos el bloqueo más esto: el buggy no recupera la colisión mientras sigue inmóvil (s). */
+	inline constexpr float GhostAfterLockSeconds = 0.5f;
+	/** Holgura sobre el suelo al aparecer en la parrilla o al reaparecer (cm). */
+	inline constexpr double SpawnClearanceCm = 5.0;
+	/** Tope de la altura del origen sobre el punto más bajo del vehículo: más es una medida rota (cm). */
+	inline constexpr double MaxOriginAboveBottomCm = 300.0;
+	/** Altura que se usa si no se puede medir el vehículo (la de antes de #289) (cm). */
+	inline constexpr double FallbackOriginAboveBottomCm = 75.0;
+
+	/** Desplazamiento lateral del carril (0 = centro, 1 = izquierda, 2 = derecha; módulo RespawnLaneCount). */
+	TORTUNABO_API double RespawnLaneLateralCm(int32 Lane, double SpacingCm = RespawnLaneSpacingCm);
+
+	/**
+	 * Primer carril (en orden de preferencia) sin ningún Occupied a menos de ClearRadiusCm; si no hay ninguno libre, el de
+	 * mayor distancia al buggy más cercano. INDEX_NONE sin carriles.
+	 */
+	TORTUNABO_API int32 PickFreeRespawnLane(const TArray<FVector>& LaneLocations, const TArray<FVector>& Occupied,
+		double ClearRadiusCm = RespawnClearRadiusCm);
+
+	/** Fantasma efectivo de una reaparición: nunca menos que el bloqueo más GhostAfterLockSeconds. */
+	TORTUNABO_API float EffectiveGhostSeconds(float LockSeconds, float GhostSeconds);
+
+	/** Altura del origen sobre el suelo para que el vehículo quede apoyado: lo medido (acotado) más la holgura. */
+	TORTUNABO_API double RestingLiftCm(double OriginAboveBottomCm, double ClearanceCm = SpawnClearanceCm);
+}
+
 /** Checkpoint colocado a mano para circuitos sin manifest: el orden de las puertas lo da Order (0 = salida). */
 UCLASS(Blueprintable)
 class TORTUNABO_API ATN_RallyCheckpoint : public AActor
@@ -90,10 +125,15 @@ public:
 	FTransform GetGateCrossingTransform(int32 GateIndex) const;
 	FVector GetGateHalfExtent() const;
 
-	/** Hueco Slot (0..7) de la parrilla 2 × 4 detrás de la salida, a ras de suelo + Lift. */
+	/** Hueco Slot (0..7) de la parrilla 2 × 4 detrás de la salida, a ras de suelo (traza hacia abajo) + Lift. */
 	FTransform GetGridSlotTransform(int32 Slot, double LiftCm = 80.0) const;
-	/** Punto de reaparición tras la puerta (orientado a la spline); Lane separa buggies que reaparecen a la vez. */
+	/** Punto de reaparición tras la puerta (orientado a la spline) en el carril Lane (TNRallyRace::RespawnLaneLateralCm). */
 	FTransform GetRespawnTransform(int32 GateIndex, int32 Lane, double LiftCm = 100.0) const;
+	/**
+	 * Punto de reaparición tras la puerta en el primer carril libre (TNRallyRace::PickFreeRespawnLane) respecto a las
+	 * posiciones Occupied (los demás buggies). Lo usa ATN_RallyGameMode::RespawnTeam.
+	 */
+	FTransform FindFreeRespawnTransform(int32 GateIndex, const TArray<FVector>& Occupied, double LiftCm, int32* OutLane = nullptr) const;
 
 	/** Arco más cercano en la ventana [Prev - 20 m, Prev + 120 m]. */
 	double FindArcNear(const FVector& Location, double PrevArc) const;
@@ -161,7 +201,6 @@ private:
 	void BuildSpline(const TArray<TNRally::FGateDef>& GateDefs);
 	void BuildSplineFromRoad(const TArray<FVector>& Road, const TArray<TNRally::FGateDef>& GateDefs);
 	void SpawnGates(const TArray<TNRally::FGateDef>& GateDefs);
-	void PlaceBorders();
 	void SpawnAmmoRows();
 	void SpawnAmmoRow(double Arc);
 	/** Suelo bajo Location (traza vertical); false si no hay. */

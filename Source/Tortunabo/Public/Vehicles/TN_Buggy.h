@@ -1,4 +1,4 @@
-// Buggy biplaza del Rally Tortuga (Docs/Rally_MVP.md). Port de AHYBuggy (HellYeah) sin carga, fichas ni boost.
+// Buggy biplaza del Rally Tortuga (Docs/Rally_MVP.md). Port de AHYBuggy (HellYeah) sin carga ni fichas, con turbo (#294).
 #pragma once
 
 #include "CoreMinimal.h"
@@ -14,12 +14,18 @@ class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
+class UAudioComponent;
+class UNiagaraComponent;
+class UNiagaraSystem;
+class USoundBase;
 class USkeletalMesh;
 class USkeletalMeshComponent;
 class USpringArmComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UTN_BuggyData;
+class UTN_BuggyHealthComponent;
+class UTN_BuggyEngineAudioComponent;
 class UTN_BuggyInputSet;
 class UTN_BuggyTurretComponent;
 struct FInputActionValue;
@@ -68,7 +74,16 @@ public:
 	virtual void AIFire(const FVector& AimWorldDir, bool bSpecial) override;
 	virtual bool ConsumeRespawnRequest() override;
 	virtual bool ConsumeFellOutOfWorld() override;
+	virtual bool ConsumeDestroyed() override;
+
+	/** Solo servidor: el buggy ha reventado; la carrera lo recoge con ConsumeDestroyed y lo hace reaparecer. */
+	void NotifyDestroyed();
+
+	/** Fantasma tras reaparecer o girar (hora del servidor): no recibe impactos ni daño. Válido en el servidor. */
+	bool IsRespawnProtected() const;
 	virtual void SetWeaponsLocked(bool bLocked) override;
+	/** Freno de carrera replicado: la conductora local y el servidor cortan el acelerador y frenan a fondo. */
+	virtual void SetRaceBrakeHeld(bool bHeld) override;
 
 	// ── Para el HUD, la carrera y la artillera ──────────────────────────────────
 
@@ -76,6 +91,7 @@ public:
 	const UTN_BuggyData* GetData() const;
 
 	UTN_BuggyTurretComponent* GetTurret() const { return Turret; }
+	UTN_BuggyHealthComponent* GetHealthComponent() const { return HealthComponent; }
 	ATN_BuggyGunnerPawn* GetGunnerPawn() const { return GunnerPawn; }
 	UStaticMeshComponent* GetBody() const { return Body; }
 	UChaosWheeledVehicleMovementComponent* GetWheeledMovement() const;
@@ -99,6 +115,26 @@ public:
 	/** Si la carrera tiene la torreta bloqueada (calentamiento, semáforo, resultados o equipo retirado). */
 	UFUNCTION(BlueprintPure, Category = "Rally|Buggy")
 	bool AreWeaponsLocked() const { return bWeaponsLockedByRace; }
+
+	/** Si la plaza de artillera está ocupada (estado replicado; vale en cualquier máquina). */
+	UFUNCTION(BlueprintPure, Category = "Rally|Buggy")
+	bool HasGunner() const { return bGunnerSeated; }
+
+	/** Si la carrera tiene el freno puesto (parrilla durante el semáforo): sin acelerador ni turbo. */
+	UFUNCTION(BlueprintPure, Category = "Rally|Buggy")
+	bool IsRaceBrakeHeld() const { return bRaceBrakeHeld; }
+
+	/** Carga del turbo en [0, 1] (la decide el servidor; vale en cualquier máquina). */
+	UFUNCTION(BlueprintPure, Category = "Rally|Buggy")
+	float GetBoost01() const { return BoostCharge01; }
+
+	/** Si el turbo empuja ahora: la conductora local lo predice con su botón; el resto lee el estado del servidor. */
+	UFUNCTION(BlueprintPure, Category = "Rally|Buggy")
+	bool IsBoosting() const;
+
+	/** Sacudida (0..1) para la cámara de la conductora local; en otras máquinas no hace nada. Para impactos y disparos. */
+	UFUNCTION(BlueprintCallable, Category = "Rally|Buggy")
+	void AddCameraTrauma(float Amount);
 
 	/** Si el PlayerController local ocupa este buggy (conductora o artillera): para la tinta del HUD. */
 	bool IsOccupiedByLocalPlayer() const;
@@ -178,8 +214,26 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Buggy")
 	TSubclassOf<ATN_BuggyGunnerPawn> GunnerPawnClass;
 
+	/** Llama del turbo en el escape: se crea en cada máquina con pantalla mientras el turbo empuja. Vacío = sin efecto. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	TObjectPtr<UNiagaraSystem> BoostEffect;
+
+	/** Sonido del turbo (en bucle mientras empuja), en cada máquina con pantalla. Vacío = sin sonido. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	TObjectPtr<USoundBase> BoostSound;
+
+	/** Golpe de arranque del turbo (una vez, al empezar a empujar). Vacío = sin sonido. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	TObjectPtr<USoundBase> BoostStartSound;
+
+	/** Escape relativo a la carrocería (cm): de ahí salen la llama y el sonido. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	FVector BoostEffectOffset = FVector(-190.f, 0.f, 70.f);
+
 private:
 	// ── Física ─────────────────────────────────────────────────────────────────
+	/** Fricción, par, frenos de carrera, golpes, charco, antivuelco, estabilidad, turbo y dirección de cada fotograma. */
+	void TickDrivePhysics();
 	void ApplyWheelFriction();
 	void ApplyEngineTorque();
 	void ApplySteeringAssist();
@@ -193,6 +247,26 @@ private:
 	void UpdateCamera(float DeltaSeconds);
 	void UpdateServerTimers();
 
+	// ── Estabilidad y turbo (TN_Buggy_Drive.cpp) ───────────────────────────────
+	/** Recalcula bAirborne (ninguna rueda en contacto) en cada máquina. */
+	void UpdateAirborne();
+	/** Control de estabilidad sin freno de mano (TNBuggy::StabilityYawAccel), en cada máquina que simula el chasis. */
+	void ApplyStability();
+	/** Gasto y recarga de la barra del turbo (solo servidor). */
+	void UpdateBoost(float DeltaSeconds);
+	/** Empuje del turbo hacia la punta aumentada, en cada máquina que simula el chasis. */
+	void ApplyBoostPush();
+	/** Llama y sonido del turbo según IsBoosting (solo en máquinas con pantalla). */
+	void RefreshBoostEffects();
+	void SetBoostHeld(bool bHeld);
+	/** Freno de carrera en el servidor y en la conductora local: acelerador a 0 y freno a fondo cada fotograma. */
+	void ApplyRaceBrake();
+	/** Al soltar el freno de carrera, quita el freno que puso (servidor y conductora local). */
+	void ReleaseRaceBrake();
+
+	UFUNCTION()
+	void OnRep_RaceBrake();
+
 	// ── Asientos y tortugas visuales ────────────────────────────────────────────
 	void SetDriverSeat(AController* NewDriver);
 	void SetGunnerSeat(AController* NewGunner);
@@ -201,6 +275,8 @@ private:
 	void RefreshSeatVisuals(bool bForce);
 	void ApplySeatLook(int32 SeatIndex, bool bForce);
 	void FitTurtle(USkeletalMeshComponent* Turtle) const;
+	/** Tortuga de la artillera caída hacia atrás mientras está noqueada (cosmético, en cada máquina con pantalla). */
+	void UpdateGunnerKnockPose(float DeltaSeconds);
 
 	UFUNCTION()
 	void OnRep_Seats();
@@ -223,13 +299,20 @@ private:
 	void OnSelfRightPressed(const FInputActionValue& Value);
 	void OnSelfRightReleased(const FInputActionValue& Value);
 	void OnFireCoco(const FInputActionValue& Value);
+	void OnFireCocoReleased(const FInputActionValue& Value);
 	void OnFireSpecial(const FInputActionValue& Value);
 	void OnFireBackPressed(const FInputActionValue& Value);
 	void OnFireBackReleased(const FInputActionValue& Value);
+	void OnBoostPressed(const FInputActionValue& Value);
+	void OnBoostReleased(const FInputActionValue& Value);
+	void OnCycleAmmo(const FInputActionValue& Value);
 	void SetHandbrakeHeld(bool bHeld);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetHandbrake(bool bHeld);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetBoostHeld(bool bHeld);
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerDriverFire(bool bSpecial, bool bBackward);
@@ -249,6 +332,14 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UTN_BuggyTurretComponent> Turret;
+
+	/** Vida del buggy: sus efectos (humo, explosión, choque) se asignan en el Blueprint. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UTN_BuggyHealthComponent> HealthComponent;
+
+	/** Motor en tres capas por RPM y derrape en bucle: local y cosmético (los sonidos, en el componente). */
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UTN_BuggyEngineAudioComponent> EngineAudio;
 
 	/** Cañón de la torreta (cilindro básico): gira con el apuntado. */
 	UPROPERTY(VisibleAnywhere, Category = "Components")
@@ -305,6 +396,10 @@ private:
 	UPROPERTY(Replicated)
 	bool bWeaponsLockedByRace = false;
 
+	/** Freno de carrera (parrilla durante el semáforo); lo pone y lo quita el servidor. */
+	UPROPERTY(ReplicatedUsing = OnRep_RaceBrake)
+	bool bRaceBrakeHeld = false;
+
 	/** Horas del servidor en que acaban los efectos (0 = sin efecto). */
 	UPROPERTY(Replicated)
 	float LockEndServerTime = 0.f;
@@ -324,6 +419,14 @@ private:
 	UPROPERTY(Replicated)
 	bool bInPuddle = false;
 
+	/** Carga del turbo [0, 1]; la gasta y la recarga el servidor. */
+	UPROPERTY(Replicated)
+	float BoostCharge01 = 0.f;
+
+	/** Turbo empujando según el servidor. La conductora no lo recibe: lo predice con su botón (IsBoosting). */
+	UPROPERTY(Replicated)
+	bool bBoostActive = false;
+
 	// ── Estado local o de servidor ─────────────────────────────────────────────
 	UPROPERTY(Transient)
 	TObjectPtr<AController> DriverController;
@@ -335,14 +438,34 @@ private:
 	float PuddleUntilServerTime = 0.f;
 	bool bRespawnRequested = false;
 	bool bFellOutOfWorld = false;
+	bool bDestroyedPending = false;
 	bool bSelfRightRequested = false;
 
 	bool bHandbrakeFrictionApplied = false;
 	bool bWheelFrictionApplied = false;
 	float AppliedGripMultiplier = 1.f;
 	bool bEngineTorqueLockedApplied = false;
+	bool bBoostTorqueApplied = false;
+	/** Botón del turbo: el de la conductora local y, en el servidor, el último que pidió por RPC. */
+	bool bBoostHeld = false;
+	bool bAirborne = false;
+	bool bBoostEffectsOn = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UNiagaraComponent> BoostEffectComponent;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> BoostSoundComponent;
+
+	/** Cámara dinámica de la conductora (#298) y sacudida pedida desde fuera para el siguiente fotograma. */
+	TNBuggy::FDriverCameraState CameraState;
+	float PendingCameraTrauma = 0.f;
 	bool bAimBackward = false;
 	double LastDriverFireRequest = -1000.0;
+	/** Con una especial seleccionada, la conductora sola dispara una vez por pulsación (como la artillera). */
+	bool bDriverFireLatched = false;
+	/** Caída de la tortuga de la artillera noqueada: 0 sentada, 1 tumbada hacia atrás. */
+	float GunnerKnockLean01 = 0.f;
 
 	float SteerRequest = 0.f;
 	float FlippedSeconds = 0.f;

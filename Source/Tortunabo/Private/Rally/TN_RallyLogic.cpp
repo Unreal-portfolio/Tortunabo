@@ -355,12 +355,13 @@ namespace TNRally
 		Weights.Tinta = FMath::Lerp(3.f, 1.f, T);
 		Weights.Burbuja = FMath::Lerp(1.f, 3.f, T);
 		Weights.Mortero = FMath::Lerp(1.f, 4.f, T);
+		Weights.Ancla = FMath::Lerp(0.5f, 1.5f, T);
 		return Weights;
 	}
 
 	ETNRallyAmmo PickAmmo(const FAmmoWeights& Weights, float Roll01)
 	{
-		const float Total = Weights.Alga + Weights.Burbuja + Weights.Mortero + Weights.Tinta;
+		const float Total = Weights.Alga + Weights.Burbuja + Weights.Mortero + Weights.Ancla + Weights.Tinta;
 		if (Total <= 0.f)
 		{
 			return ETNRallyAmmo::Alga;
@@ -369,6 +370,7 @@ namespace TNRally
 		if ((Pick -= Weights.Alga) < 0.f) { return ETNRallyAmmo::Alga; }
 		if ((Pick -= Weights.Burbuja) < 0.f) { return ETNRallyAmmo::Burbuja; }
 		if ((Pick -= Weights.Mortero) < 0.f) { return ETNRallyAmmo::Mortero; }
+		if ((Pick -= Weights.Ancla) < 0.f) { return ETNRallyAmmo::Ancla; }
 		return ETNRallyAmmo::Tinta;
 	}
 
@@ -378,6 +380,7 @@ namespace TNRally
 		{
 		case ETNRallyAmmo::Alga:
 		case ETNRallyAmmo::Tinta:
+		case ETNRallyAmmo::Ancla:
 			return 2;
 		case ETNRallyAmmo::Burbuja:
 		case ETNRallyAmmo::Mortero:

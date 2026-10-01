@@ -6,11 +6,27 @@
 #include "GameFramework/GameModeBase.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyGameState.h"
+#include "Rally/TN_RallyTrack.h"
+#include "Subsystems/GameInstanceSubsystem.h"
 #include "TN_RallyGameMode.generated.h"
 
 class ATN_RallyAIController;
+class ATN_RallyPlayerState;
 class ATN_RallyTrack;
 class APlayerController;
+
+/**
+ * Carreras terminadas en esta sesión de juego, para ?Races=N. Vive en la GameInstance: sobrevive al ?Restart (que crea otro
+ * GameMode) y se pierde al cerrar la sesión de PIE, a diferencia de una variable estática.
+ */
+UCLASS()
+class TORTUNABO_API UTN_RallyRaceCounter : public UGameInstanceSubsystem
+{
+	GENERATED_BODY()
+
+public:
+	int32 RacesRun = 0;
+};
 
 UCLASS()
 class TORTUNABO_API ATN_RallyGameMode : public AGameModeBase
@@ -47,18 +63,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally", meta = (ClampMin = "1", ClampMax = "9"))
 	int32 DefaultLaps = 2;
 
-	/** Calentamiento tras la llegada de la última tortuga (s) y tope desde la primera. */
+	/** Calentamiento tras la llegada de la última tortuga (s) y tope desde la primera. Solo lo cuenta el servidor: no se enseña. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
 	float WarmupSeconds = 5.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
 	float WarmupMaxSeconds = 20.f;
 
+	/** Semáforo: motores cortados y buggies frenados en su hueco hasta el verde. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
 	float CountdownSeconds = 3.f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
-	float EarlyStartPenaltySeconds = 1.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
 	float FinishGraceSeconds = 20.f;
@@ -69,8 +83,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
 	float RespawnLockSeconds = 3.f;
 
+	/** Fantasma tras reaparecer; nunca menos que RespawnLockSeconds + 0,5 s (TNRallyRace::EffectiveGhostSeconds, #103). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
-	float RespawnGhostSeconds = 2.f;
+	float RespawnGhostSeconds = 3.5f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Tiempos")
 	float TurnAroundGhostSeconds = 1.f;
@@ -80,16 +95,22 @@ public:
 	float EvaluateInterval = 0.2f;
 
 private:
+	static constexpr int32 RespawnReasonCount = static_cast<int32>(ETNRallyRespawnReason::Destroyed) + 1;
+
 	/** Estado del servidor de cada buggy (lo replicado va en FTNRallyStanding). */
 	struct FTeamRuntime
 	{
 		int32 TeamIndex = INDEX_NONE;
 		TWeakObjectPtr<APawn> Vehicle;
 		bool bBot = false;
+		/** Equipo de una jugadora artillera con piloto IA al volante (?BotDriver o TN.Rally.BotDriver 1, #298). */
+		bool bBotDriver = false;
 		bool bRetired = false;
 		int32 GridSlot = 0;
-		/** Hueco de la parrilla (con la cota del suelo), para la salida anticipada y la reaparición antes de la salida. */
+		/** Hueco de la parrilla con el buggy apoyado en el suelo, para la reaparición antes de la salida. */
 		FTransform GridTransform;
+		/** Altura del origen del buggy sobre el punto más bajo de sus ruedas (medida al crearlo; cm). */
+		double OriginAboveBottomCm = TNRallyRace::FallbackOriginAboveBottomCm;
 		int32 GatesPassed = 0;
 		int32 LastGate = INDEX_NONE;
 		/** Recorrido real desde la última puerta validada (regla del 60 %). */
@@ -104,28 +125,41 @@ private:
 		double RespawnEndTime = 0.0;
 		/** Sin comprobaciones de reaparición hasta esta hora (tras reaparecer o girar). */
 		double ImmuneUntil = 0.0;
-		bool bEarlyPenalized = false;
-		/** Salida anticipada: el motor sigue cortado hasta esta hora (1 s después del verde). */
-		double EngineUnlockAt = 0.0;
+		/** Última reaparición (motivo y hora del servidor), replicada en FTNRallyStanding para el HUD. */
+		ETNRallyRespawnReason LastRespawnReason = ETNRallyRespawnReason::None;
+		double LastRespawnTime = 0.0;
 		TNRally::FWrongWayState WrongWay;
 		TNRally::FStuckState Stuck;
 		TNRally::FOffTrackState OffTrack;
 		/** Estadística de la carrera (línea [RallyStats] al dar los resultados): reapariciones por motivo y vuelcos. */
-		int32 Respawns[4] = { 0, 0, 0, 0 };
+		int32 Respawns[RespawnReasonCount] = {};
 		int32 Flips = 0;
 		int32 TurnArounds = 0;
 		bool bWasFlipped = false;
 	};
 
-	enum class ERespawnReason : uint8 { Hazard, OffTrack, Stuck, Request };
-
 	ATN_RallyGameState* GetRallyGameState() const;
 	double Now() const;
 	TNRally::FLapRules MakeLapRules() const;
+	UTN_RallyRaceCounter* GetRaceCounter() const;
 
 	void AssignPlayer(APlayerController* Player);
+	/** Biplaza: sienta a la jugadora de artillera en el primer buggy de jugadoras con la torreta libre. */
+	bool TrySeatAsGunner(APlayerController* Player, ATN_RallyPlayerState& RallyPlayer);
+	/** ?BotDriver o TN.Rally.BotDriver 1: la jugadora entra de artillera y conduce el piloto IA. */
+	bool IsBotDriverMode() const;
+	/** Sienta un piloto IA al volante del equipo Index y a la jugadora en la torreta. */
+	bool SeatWithBotDriver(int32 Index, APlayerController* Player);
+	/** Crea el piloto IA y lo sienta al volante del equipo Index; nullptr (y nada creado) si no puede. */
+	AController* SpawnPilotFor(int32 Index, const FText& PilotName);
 	int32 CreateTeam(bool bBot);
 	int32 FindFreeGridSlot() const;
+	/** Hueco para un equipo nuevo: las jugadoras delante; si un bot ocupa un hueco anterior, el bot pasa al libre. */
+	int32 ClaimGridSlot(bool bBot);
+	/** Hueco Slot con el buggy apoyado en el suelo (traza hacia abajo + TNRallyRace::RestingLiftCm). */
+	FTransform GetRestingGridTransform(int32 Slot, double OriginAboveBottomCm) const;
+	/** Coloca el equipo en el hueco Slot, apoyado en el suelo. */
+	void PlaceTeamOnGrid(FTeamRuntime& Team, int32 Slot);
 	void SpawnBots();
 	FTeamRuntime* FindTeamByController(const AController* Controller);
 	FTeamRuntime* FindTeamByVehicle(const AActor* Vehicle);
@@ -139,6 +173,8 @@ private:
 	void StartRacing();
 	void StartFinishing();
 	void StartResults();
+	/** Fin de los resultados: carrera nueva con ?Restart o, con ?Races=N cumplido, cierra el juego. */
+	void RestartOrQuit();
 	void SetAllEnginesLocked(bool bLocked);
 	bool IsRaceRunning() const;
 	bool IsBeforeStart() const;
@@ -147,14 +183,17 @@ private:
 	/** Torretas activas solo en Racing y Finishing y en equipos sin retirar (TNRally::AreWeaponsLive). */
 	void ApplyWeaponLocks();
 
-	void CheckEarlyStarts();
+	/** Calentamiento y semáforo: pone el freno de carrera a cada buggy en su hueco (ITN_RallyVehicle::SetRaceBrakeHeld). */
+	void HoldBuggiesOnGrid();
 	void TickProgress();
 	void HandleGateCrossing(FTeamRuntime& Team, int32 GateIndex, bool bForward, double Alpha, float DeltaSeconds);
 	void CheckAmmoBoxes(FTeamRuntime& Team, const FVector& From, const FVector& To);
 	void EvaluateTeams(double DeltaSeconds);
 	void EvaluateTeam(FTeamRuntime& Team, double DeltaSeconds);
 	bool IsInHazard(const FVector& Location) const;
-	void RespawnTeam(FTeamRuntime& Team, ERespawnReason Reason);
+	/** Antes de la salida, su hueco; después, el primer carril libre tras la última puerta, apoyado en el suelo. */
+	FTransform ChooseRespawnTransform(const FTeamRuntime& Team) const;
+	void RespawnTeam(FTeamRuntime& Team, ETNRallyRespawnReason Reason);
 	/** Peticiones de reaparición de las ocupantes (ITN_RallyVehicle::ConsumeRespawnRequest): se atienden en carrera. */
 	void ConsumeRespawnRequests(bool bRacing);
 	void TurnAround(FTeamRuntime& Team);
@@ -177,6 +216,10 @@ private:
 	bool bLapsFromUrl = false;
 	int32 NextTeamIndex = 0;
 	double FirstSeatTime = -1.0;
+	/** Fin del calentamiento (hora del servidor; 0 = sin fijar). No se replica: el HUD solo enseña «esperando». */
+	double WarmupEndTime = 0.0;
+	/** ?BotDriver en la URL (la CVar TN.Rally.BotDriver se lee al sentar a cada jugadora). */
+	bool bBotDriverFromUrl = false;
 	double EvaluateAccumulator = 0.0;
 	bool bTrackReady = false;
 	bool bLoggedMissingVehicle = false;

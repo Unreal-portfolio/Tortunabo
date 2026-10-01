@@ -217,23 +217,30 @@ bool FTNRallyPointsAmmoTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("El último saca más Burbuja que el primero"), Last.Burbuja > First.Burbuja);
 	TestTrue(TEXT("El último: Mortero es lo más probable"), Last.Mortero >= Last.Alga && Last.Mortero >= Last.Tinta && Last.Mortero >= Last.Burbuja);
 	TestTrue(TEXT("El primero: Alga es lo más probable"), First.Alga >= First.Mortero && First.Alga >= First.Tinta && First.Alga >= First.Burbuja);
+	TestTrue(TEXT("El último saca más Ancla que el primero"), Last.Ancla > First.Ancla);
+	TestTrue(TEXT("El Ancla es rara: menos que el Mortero en todos los puestos"), First.Ancla < First.Mortero && Last.Ancla < Last.Mortero);
+	TestTrue(TEXT("El Ancla puede salir en cualquier puesto"), First.Ancla > 0.f);
 
 	// Frecuencias con tiradas uniformes: el reparto sale en proporción a los pesos.
 	int32 LastMortero = 0;
 	int32 FirstMortero = 0;
+	int32 LastAncla = 0;
 	constexpr int32 Rolls = 1000;
 	for (int32 Index = 0; Index < Rolls; ++Index)
 	{
 		const float Roll = (Index + 0.5f) / Rolls;
 		LastMortero += PickAmmo(Last, Roll) == ETNRallyAmmo::Mortero ? 1 : 0;
 		FirstMortero += PickAmmo(First, Roll) == ETNRallyAmmo::Mortero ? 1 : 0;
+		LastAncla += PickAmmo(Last, Roll) == ETNRallyAmmo::Ancla ? 1 : 0;
 	}
 	TestTrue(TEXT("El último recibe Mortero al menos el triple de veces que el primero"), LastMortero >= 3 * FirstMortero);
+	TestTrue(TEXT("El Ancla sale de las cajas, pero menos que el Mortero"), LastAncla > 0 && LastAncla < LastMortero);
 	TestTrue(TEXT("Nunca sale Coco ni None de una caja"), PickAmmo(First, 0.f) != ETNRallyAmmo::None && PickAmmo(First, 1.f) != ETNRallyAmmo::Coco);
 	TestEqual(TEXT("Alga: 2 cargas"), ChargesFor(ETNRallyAmmo::Alga), 2);
 	TestEqual(TEXT("Burbuja: 1 carga"), ChargesFor(ETNRallyAmmo::Burbuja), 1);
 	TestEqual(TEXT("Mortero: 1 carga"), ChargesFor(ETNRallyAmmo::Mortero), 1);
 	TestEqual(TEXT("Tinta: 2 cargas"), ChargesFor(ETNRallyAmmo::Tinta), 2);
+	TestEqual(TEXT("Ancla: 2 cargas"), ChargesFor(ETNRallyAmmo::Ancla), 2);
 	return true;
 }
 

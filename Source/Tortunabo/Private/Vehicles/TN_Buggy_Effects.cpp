@@ -55,7 +55,9 @@ void ATN_Buggy::DriverFireAuto(bool bSpecial, bool bBackward)
 	{
 		return;
 	}
-	const ETNRallyAmmo Ammo = bSpecial ? Turret->GetSpecialAmmo() : ETNRallyAmmo::Coco;
+	// El botón principal dispara la munición seleccionada (UTN_BuggyTurretComponent::CycleAmmo); el especial, la especial.
+	const bool bFireSpecial = bSpecial || TNRallyTurret::IsSpecial(Turret->GetSelectedAmmo());
+	const ETNRallyAmmo Ammo = bFireSpecial ? Turret->GetSpecialAmmo() : ETNRallyAmmo::Coco;
 	const FVector Forward = GetActorForwardVector() * (bBackward ? -1.f : 1.f);
 	const FVector Origin = Turret->GetComponentLocation();
 
@@ -74,7 +76,7 @@ void ATN_Buggy::DriverFireAuto(bool bSpecial, bool bBackward)
 	if (Target != INDEX_NONE && !bLobbed)
 	{
 		// Tiro directo al centro del blanco (la torreta limita el cabeceo).
-		Turret->TryFire(bSpecial, (Candidates[Target] + FVector(0.f, 0.f, TNBuggyEffects::TargetAimUpCm)) - Origin);
+		Turret->TryFire(bFireSpecial, (Candidates[Target] + FVector(0.f, 0.f, TNBuggyEffects::TargetAimUpCm)) - Origin);
 		return;
 	}
 	FVector Flat = Target != INDEX_NONE ? Candidates[Target] - Origin : Forward;
@@ -94,7 +96,7 @@ void ATN_Buggy::DriverFireAuto(bool bSpecial, bool bBackward)
 		const float Height = static_cast<float>(Origin.Z - Candidates[Target].Z);
 		Aim.Pitch = TNRallyTurret::LobPitchDeg(Range, Height, Spec.SpeedCms, -World->GetGravityZ() * Spec.GravityScale);
 	}
-	Turret->TryFire(bSpecial, Aim.Vector());
+	Turret->TryFire(bFireSpecial, Aim.Vector());
 }
 
 bool ATN_Buggy::ServerDriverFire_Validate(bool bSpecial, bool bBackward)
@@ -149,8 +151,8 @@ bool ATN_Buggy::TryConsumeShield()
 		return false;
 	}
 	ShieldEndServerTime = 0.f;
-	ATN_RallyBurstFX::Spawn(GetWorld(), ETNRallyBurstKind::Shield, GetActorLocation(), 250.f);
-	UE_LOG(LogTNBuggy, Log, TEXT("%s: el escudo anula el impacto"), *GetName());
+	ATN_RallyBurstFX::Broadcast(this, ETNRallyBurstKind::Shield, GetActorLocation(), 250.f);
+	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: el escudo anula el impacto"), *GetName());
 	ForceNetUpdate();
 	return true;
 }
@@ -162,7 +164,7 @@ void ATN_Buggy::GrantShield()
 		return;
 	}
 	ShieldEndServerTime = static_cast<float>(GetServerNow()) + TNRallyTurret::ShieldSeconds;
-	UE_LOG(LogTNBuggy, Log, TEXT("%s: escudo de burbuja %.0f s"), *GetName(), TNRallyTurret::ShieldSeconds);
+	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: escudo de burbuja %.0f s"), *GetName(), TNRallyTurret::ShieldSeconds);
 	ForceNetUpdate();
 }
 
@@ -172,15 +174,22 @@ void ATN_Buggy::ApplyCocoHit(const FVector& HitDir)
 	{
 		return;
 	}
-	// Empujón lateral: la parte de la dirección del coco perpendicular al morro, en horizontal.
-	const FVector Forward = GetActorForwardVector();
-	FVector Lateral = FVector(HitDir.X, HitDir.Y, 0.f);
-	Lateral -= FVector::DotProduct(Lateral, Forward) * FVector(Forward.X, Forward.Y, 0.f).GetSafeNormal();
-	if (Lateral.IsNearlyZero(0.05f))
+	// Dirección nula: solo el bamboleo. Es lo que pide UTN_BuggyHealthComponent, que ya aplica el empujón en el punto de
+	// impacto; con dirección, el empujón lateral de siempre (buggies sin componente de vida).
+	if (!HitDir.IsNearlyZero())
 	{
-		Lateral = GetActorRightVector() * (FVector::DotProduct(HitDir, GetActorRightVector()) >= 0.f ? 1.f : -1.f);
+		// Empujón lateral: la parte de la dirección del coco perpendicular al morro, todo en horizontal (con el morro
+		// inclinado, el Forward sin aplanar dejaba parte del empujón a lo largo).
+		const FVector FlatForward = FVector(GetActorForwardVector().X, GetActorForwardVector().Y, 0.f).GetSafeNormal();
+		FVector Lateral = FVector(HitDir.X, HitDir.Y, 0.f);
+		Lateral -= FVector::DotProduct(Lateral, FlatForward) * FlatForward;
+		if (Lateral.IsNearlyZero(0.05f))
+		{
+			const FVector FlatRight = FVector(-FlatForward.Y, FlatForward.X, 0.f);
+			Lateral = FlatRight * (FVector::DotProduct(HitDir, FlatRight) >= 0.f ? 1.f : -1.f);
+		}
+		ApplyVelocityImpulse(Lateral.GetSafeNormal() * TNRallyTurret::CocoLateralCms);
 	}
-	ApplyVelocityImpulse(Lateral.GetSafeNormal() * TNRallyTurret::CocoLateralCms);
 	WobbleEndServerTime = static_cast<float>(GetServerNow()) + TNRallyTurret::CocoWobbleSeconds;
 	ForceNetUpdate();
 }
@@ -201,7 +210,7 @@ void ATN_Buggy::ApplyInk()
 		return;
 	}
 	InkEndServerTime = static_cast<float>(GetServerNow()) + TNRallyTurret::InkSeconds;
-	UE_LOG(LogTNBuggy, Log, TEXT("%s: tinta %.0f s"), *GetName(), TNRallyTurret::InkSeconds);
+	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: tinta %.0f s"), *GetName(), TNRallyTurret::InkSeconds);
 	ForceNetUpdate();
 }
 

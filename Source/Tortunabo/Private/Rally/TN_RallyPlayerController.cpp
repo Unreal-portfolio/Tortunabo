@@ -9,6 +9,7 @@
 #include "Rally/TN_RallyHUDWidget.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
+#include "Rally/UI/TN_RallyCopilotTablet.h"
 
 ATN_RallyPlayerController::ATN_RallyPlayerController()
 {
@@ -32,6 +33,8 @@ void ATN_RallyPlayerController::BeginPlay()
 			RallyHUD->AddToViewport(0);
 		}
 	}
+	// Tableta de copiloto: grande para la artillera, compacta para la conductora sola; elige sola por la plaza.
+	UTN_RallyCopilotTablet::FindOrCreateFor(this);
 	SyncCosmeticsToServer();
 }
 

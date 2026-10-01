@@ -14,15 +14,61 @@
 
 namespace
 {
-	/** Sin rocas a menos de esta distancia de una puerta (los postes del arco ya marcan el sitio). */
-	constexpr double RallyBorderGateClearCm = 1200.0;
 	/** Paso de muestreo de la ventana de arco (cm). */
 	constexpr double RallyArcStepCm = 200.0;
 	/** Distancia tras la puerta a la que aparece una fila de cajas en las puertas pares (cm). */
 	constexpr double RallyAmmoAfterGateCm = 1500.0;
-	/** Reaparición: unos metros pasada la puerta y 3,5 m entre carriles. */
+	/** Reaparición: unos metros pasada la puerta (la separación entre carriles está en TNRallyRace). */
 	constexpr double RallyRespawnAfterGateCm = 400.0;
-	constexpr double RallyRespawnLaneCm = 350.0;
+}
+
+double TNRallyRace::RespawnLaneLateralCm(int32 Lane, double SpacingCm)
+{
+	switch (FMath::Abs(Lane) % RespawnLaneCount)
+	{
+	case 1:
+		return -SpacingCm;
+	case 2:
+		return SpacingCm;
+	default:
+		return 0.0;
+	}
+}
+
+int32 TNRallyRace::PickFreeRespawnLane(const TArray<FVector>& LaneLocations, const TArray<FVector>& Occupied, double ClearRadiusCm)
+{
+	int32 Roomiest = INDEX_NONE;
+	double RoomiestDistSq = -1.0;
+	for (int32 Lane = 0; Lane < LaneLocations.Num(); ++Lane)
+	{
+		double NearestSq = TNumericLimits<double>::Max();
+		for (const FVector& Other : Occupied)
+		{
+			NearestSq = FMath::Min(NearestSq, FVector::DistSquared(LaneLocations[Lane], Other));
+		}
+		if (NearestSq >= FMath::Square(ClearRadiusCm))
+		{
+			return Lane;
+		}
+		if (NearestSq > RoomiestDistSq)
+		{
+			RoomiestDistSq = NearestSq;
+			Roomiest = Lane;
+		}
+	}
+	return Roomiest;
+}
+
+float TNRallyRace::EffectiveGhostSeconds(float LockSeconds, float GhostSeconds)
+{
+	return FMath::Max(GhostSeconds, FMath::Max(0.f, LockSeconds) + GhostAfterLockSeconds);
+}
+
+double TNRallyRace::RestingLiftCm(double OriginAboveBottomCm, double ClearanceCm)
+{
+	const bool bMeasured = FMath::IsFinite(OriginAboveBottomCm) && OriginAboveBottomCm >= 0.0
+		&& OriginAboveBottomCm <= MaxOriginAboveBottomCm;
+	return (bMeasured ? OriginAboveBottomCm : FallbackOriginAboveBottomCm) + FMath::Max(0.0, ClearanceCm);
 }
 
 ATN_RallyCheckpoint::ATN_RallyCheckpoint()
@@ -151,7 +197,7 @@ bool ATN_RallyTrack::BuildFromGates(const TArray<TNRally::FGateDef>& GateDefs, b
 		BuildSpline(GateDefs);
 	}
 	SpawnGates(GateDefs);
-	PlaceBorders();
+	// Los límites del carril los pone ATN_RallyTrackDressing (PrepareTrack); aquí ya no hay rocas con colisión.
 	// Las cajas se replican: solo las crea el servidor. La pista no se replica (cada máquina construye la suya), así que en un
 	// cliente HasAuthority() es true y no sirve para distinguirlo.
 	if (GetNetMode() != NM_Client)
@@ -159,9 +205,9 @@ bool ATN_RallyTrack::BuildFromGates(const TArray<TNRally::FGateDef>& GateDefs, b
 		SpawnAmmoRows();
 	}
 	bBuilt = true;
-	UE_LOG(LogTNRally, Log, TEXT("[RallyTrack] Pista: %d puertas, %.0f m, %s, eje %s, %d rocas de borde, %d cajas."),
+	UE_LOG(LogTNRally, Log, TEXT("[RallyTrack] Pista: %d puertas, %.0f m, %s, eje %s, %d cajas."),
 		GateArcs.Num(), GetTrackLengthCm() / 100.0, bClosed ? TEXT("circuito") : TEXT("punto a punto"),
-		RoadAxis.Num() >= 2 ? TEXT("de road_uu") : TEXT("por las puertas"), GetBorderInstanceCount(), AmmoBoxes.Num());
+		RoadAxis.Num() >= 2 ? TEXT("de road_uu") : TEXT("por las puertas"), AmmoBoxes.Num());
 	return true;
 }
 
@@ -264,51 +310,6 @@ void ATN_RallyTrack::SpawnGates(const TArray<TNRally::FGateDef>& GateDefs)
 		const bool bFinish = bClosed ? Index == 0 : Index == GateDefs.Num() - 1;
 		Gate->Configure(Index, bFinish || Index == 0);
 		Gates.Add(Gate);
-	}
-}
-
-void ATN_RallyTrack::PlaceBorders()
-{
-	UStaticMesh* Mesh = BorderMesh ? BorderMesh.Get() : LoadObject<UStaticMesh>(nullptr, TNRallyMesh::BeamPath);
-	if (!Mesh)
-	{
-		return;
-	}
-	Borders->SetStaticMesh(Mesh);
-	const double Length = GetTrackLengthCm();
-	TArray<FTransform> Instances;
-	FRandomStream Stream(20261001);
-	for (double Arc = 0.0; Arc < Length; Arc += BorderSpacingCm)
-	{
-		bool bNearGate = false;
-		for (const double GateArc : GateArcs)
-		{
-			const double Ahead = TNRally::ForwardArc(GateArc, Arc, Length, bClosed);
-			const double Behind = TNRally::ForwardArc(Arc, GateArc, Length, bClosed);
-			bNearGate |= FMath::Abs(Ahead) < RallyBorderGateClearCm || FMath::Abs(Behind) < RallyBorderGateClearCm;
-		}
-		if (bNearGate)
-		{
-			continue;
-		}
-		const double AxisZ = GetLocationAtArc(Arc).Z;
-		for (const double Side : { -1.0, 1.0 })
-		{
-			FVector Ground;
-			const float Yaw = Stream.FRandRange(0.f, 360.f);
-			const float Size = Stream.FRandRange(0.8f, 1.25f);
-			if (!TraceGround(OffsetAtArc(Arc, Side * ActiveBorderOffsetCm), 400.0, 1500.0, Ground)
-				|| FMath::Abs(Ground.Z - AxisZ) > BorderMaxHeightDeltaCm)
-			{
-				continue;
-			}
-			const FVector RockSize = BorderSizeCm * Size;
-			Instances.Add(TNRallyMesh::FitToBox(Mesh, Ground + FVector(0.0, 0.0, RockSize.Z * 0.35), RockSize, FRotator(0.0, Yaw, 0.0)));
-		}
-	}
-	if (Instances.Num() > 0)
-	{
-		Borders->AddInstances(Instances, false, true);
 	}
 }
 
@@ -453,11 +454,27 @@ FTransform ATN_RallyTrack::GetRespawnTransform(int32 GateIndex, int32 Lane, doub
 	const double Arc = TNRally::WrapArc(GetGateArc(GateIndex) + RallyRespawnAfterGateCm, GetTrackLengthCm(), bClosed);
 	const FVector Direction = GetDirectionAtArc(Arc);
 	const FVector Right = FVector(-Direction.Y, Direction.X, 0.0).GetSafeNormal();
-	const double Lateral = ((FMath::Abs(Lane) % 3) - 1) * RallyRespawnLaneCm;
-	const FVector OnAxis = GetLocationAtArc(Arc) + Right * Lateral;
+	const FVector OnAxis = GetLocationAtArc(Arc) + Right * TNRallyRace::RespawnLaneLateralCm(Lane);
 	FVector Ground = OnAxis;
 	TraceGround(OnAxis, 400.0, 1500.0, Ground);
 	return FTransform(FRotator(0.0, Direction.Rotation().Yaw, 0.0), Ground + FVector(0.0, 0.0, LiftCm));
+}
+
+FTransform ATN_RallyTrack::FindFreeRespawnTransform(int32 GateIndex, const TArray<FVector>& Occupied, double LiftCm, int32* OutLane) const
+{
+	TArray<FTransform> Lanes;
+	TArray<FVector> LaneLocations;
+	for (int32 Lane = 0; Lane < TNRallyRace::RespawnLaneCount; ++Lane)
+	{
+		const FTransform& Candidate = Lanes.Add_GetRef(GetRespawnTransform(GateIndex, Lane, LiftCm));
+		LaneLocations.Add(Candidate.GetLocation());
+	}
+	const int32 Picked = FMath::Max(0, TNRallyRace::PickFreeRespawnLane(LaneLocations, Occupied));
+	if (OutLane)
+	{
+		*OutLane = Picked;
+	}
+	return Lanes[Picked];
 }
 
 double ATN_RallyTrack::FindArcNear(const FVector& Location, double PrevArc) const

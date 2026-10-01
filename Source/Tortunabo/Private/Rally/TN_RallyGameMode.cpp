@@ -2,8 +2,13 @@
 // en TN_RallyGameModeRace.cpp.
 #include "Rally/TN_RallyGameMode.h"
 
+#include "ChaosVehicleWheel.h"
+#include "ChaosWheeledVehicleMovementComponent.h"
+#include "Components/SkinnedMeshComponent.h"
+#include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Rally/TN_RallyAIController.h"
 #include "Rally/TN_RallyPlayerController.h"
@@ -11,10 +16,46 @@
 #include "Rally/TN_RallyTrack.h"
 #include "Rally/TN_RallyVehicle.h"
 
-namespace TNRallyGameModeStats
+#include <limits>
+
+namespace
 {
-	/** Carreras terminadas en este proceso (sobrevive al ?Restart, que crea otro GameMode): para ?Races=N. */
-	int32 RacesRun = 0;
+	TAutoConsoleVariable<int32> CVarRallyBotDriver(TEXT("TN.Rally.BotDriver"), 0,
+		TEXT("Rally (servidor): 1 = cada jugadora entra de artillera y su buggy lo conduce el piloto IA (como ?BotDriver)."),
+		ECVF_Default);
+
+	/**
+	 * Altura del origen del vehículo sobre el punto más bajo de sus ruedas (hueso de cada rueda menos su radio). Sin ruedas
+	 * Chaos, la caja de colisión del actor. NaN si no se puede medir (TNRallyRace::RestingLiftCm usa entonces la de reserva).
+	 */
+	double MeasureOriginAboveBottomCm(const APawn& Vehicle)
+	{
+		const UChaosWheeledVehicleMovementComponent* Move = Vehicle.FindComponentByClass<UChaosWheeledVehicleMovementComponent>();
+		const USkinnedMeshComponent* Mesh = Cast<USkinnedMeshComponent>(Vehicle.GetRootComponent());
+		double Lowest = TNumericLimits<double>::Max();
+		for (int32 Index = 0; Move && Mesh && Index < Move->WheelSetups.Num(); ++Index)
+		{
+			const FChaosWheelSetup& Setup = Move->WheelSetups[Index];
+			const UChaosVehicleWheel* Wheel = Move->Wheels.IsValidIndex(Index) && Move->Wheels[Index] ? Move->Wheels[Index].Get()
+				: (Setup.WheelClass ? Setup.WheelClass->GetDefaultObject<UChaosVehicleWheel>() : nullptr);
+			if (Wheel && !Setup.BoneName.IsNone() && Mesh->GetBoneIndex(Setup.BoneName) != INDEX_NONE)
+			{
+				Lowest = FMath::Min(Lowest, Mesh->GetSocketLocation(Setup.BoneName).Z - Wheel->WheelRadius);
+			}
+		}
+		if (Lowest == TNumericLimits<double>::Max())
+		{
+			FVector Origin;
+			FVector Extent;
+			Vehicle.GetActorBounds(true, Origin, Extent);
+			if (Extent.IsNearlyZero())
+			{
+				return std::numeric_limits<double>::quiet_NaN();
+			}
+			Lowest = Origin.Z - Extent.Z;
+		}
+		return Vehicle.GetActorLocation().Z - Lowest;
+	}
 }
 
 ATN_RallyGameMode::ATN_RallyGameMode()
@@ -44,8 +85,10 @@ void ATN_RallyGameMode::InitGame(const FString& MapName, const FString& Options,
 	bAutoStart = UGameplayStatics::HasOption(Options, TEXT("AutoStart"));
 	RaceTimeoutSeconds = FMath::Max(0, UGameplayStatics::GetIntOption(Options, TEXT("RaceTimeout"), 0));
 	RaceLimit = FMath::Max(0, UGameplayStatics::GetIntOption(Options, TEXT("Races"), 0));
-	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s: variante %s, %d plaza(s) por buggy, %d bots, %d vueltas%s."),
-		*MapName, *Variant.ToString(), Seats, Bots, Laps, bAutoStart ? TEXT(", salida sin jugadoras") : TEXT(""));
+	bBotDriverFromUrl = UGameplayStatics::HasOption(Options, TEXT("BotDriver"));
+	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s: variante %s, %d plaza(s) por buggy, %d bots, %d vueltas%s%s."),
+		*MapName, *Variant.ToString(), Seats, Bots, Laps, bAutoStart ? TEXT(", salida sin jugadoras") : TEXT(""),
+		bBotDriverFromUrl ? TEXT(", artilleras con piloto IA") : TEXT(""));
 }
 
 void ATN_RallyGameMode::StartPlay()
@@ -86,10 +129,9 @@ void ATN_RallyGameMode::StartPlay()
 	{
 		SpawnBots();
 		RebuildStandings();
-		ATN_RallyGameState* RallyState = GetRallyGameState();
-		if (bAutoStart && RallyState && RallyState->PhaseEndServerTime <= 0.f && Teams.Num() > 0)
+		if (bAutoStart && WarmupEndTime <= 0.0 && Teams.Num() > 0)
 		{
-			RallyState->PhaseEndServerTime = static_cast<float>(Now() + WarmupSeconds);
+			WarmupEndTime = Now() + WarmupSeconds;
 		}
 	}
 }
@@ -145,8 +187,10 @@ void ATN_RallyGameMode::CleanupTeams()
 	{
 		APawn* Vehicle = Team.Vehicle.Get();
 		ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
+		AController* Driver = RallyVehicle ? RallyVehicle->GetSeatController(ETNRallySeat::Driver) : nullptr;
+		// Con piloto IA de prueba (#298), el buggy está vacío cuando se va la artillera: el piloto no cuenta.
 		const bool bOccupied = RallyVehicle
-			&& (RallyVehicle->GetSeatController(ETNRallySeat::Driver) || RallyVehicle->GetSeatController(ETNRallySeat::Gunner));
+			&& ((Driver && !Team.bBotDriver) || RallyVehicle->GetSeatController(ETNRallySeat::Gunner));
 		const TNRally::ETeamCleanup Action = TNRally::DecideTeamCleanup(RallyVehicle != nullptr, bOccupied, bBeforeStart, Team.bRetired);
 		if (Action == TNRally::ETeamCleanup::Keep)
 		{
@@ -163,6 +207,10 @@ void ATN_RallyGameMode::CleanupTeams()
 		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d %s: %s."), Team.TeamIndex,
 			Action == TNRally::ETeamCleanup::Remove ? TEXT("fuera de la parrilla") : TEXT("retirado"),
 			RallyVehicle ? TEXT("buggy vacío") : TEXT("sin buggy"));
+		if (Driver && Team.bBotDriver)
+		{
+			Driver->Destroy();
+		}
 		if (Vehicle)
 		{
 			Vehicle->Destroy();
@@ -206,6 +254,12 @@ TNRally::FLapRules ATN_RallyGameMode::MakeLapRules() const
 	return Rules;
 }
 
+UTN_RallyRaceCounter* ATN_RallyGameMode::GetRaceCounter() const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	return GameInstance ? GameInstance->GetSubsystem<UTN_RallyRaceCounter>() : nullptr;
+}
+
 // ---- Jugadores y equipos ----
 
 void ATN_RallyGameMode::AssignPlayer(APlayerController* Player)
@@ -215,39 +269,23 @@ void ATN_RallyGameMode::AssignPlayer(APlayerController* Player)
 	{
 		return;
 	}
-	const ETNRallyPhase Phase = GetRallyGameState() ? GetRallyGameState()->Phase : ETNRallyPhase::Warmup;
-
-	// Biplaza: la 2.ª tortuga de cada pareja es la artillera del primer buggy de jugadoras con la plaza libre.
-	if (Seats == 2)
+	if (Seats == 2 && TrySeatAsGunner(Player, *RallyPlayer))
 	{
-		for (FTeamRuntime& Team : Teams)
-		{
-			ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get());
-			if (Team.bBot || Team.bRetired || !RallyVehicle || RallyVehicle->HasFreeSeat(ETNRallySeat::Driver)
-				|| !RallyVehicle->HasFreeSeat(ETNRallySeat::Gunner))
-			{
-				continue;
-			}
-			if (RallyVehicle->SeatController(Player, ETNRallySeat::Gunner))
-			{
-				RallyPlayer->SetRallySeat(Team.TeamIndex, ETNRallySeat::Gunner);
-				UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s, artillera del equipo %d."), *RallyPlayer->GetPlayerName(), Team.TeamIndex);
-				OnHumanSeated();
-				RebuildStandings();
-				return;
-			}
-		}
+		return;
 	}
-
 	// Con la carrera en marcha solo se entra de artillera (late-join fuera del MVP).
+	const ETNRallyPhase Phase = GetRallyGameState() ? GetRallyGameState()->Phase : ETNRallyPhase::Warmup;
 	if (Phase != ETNRallyPhase::Warmup && Phase != ETNRallyPhase::Countdown)
 	{
 		Spectate(Player);
 		return;
 	}
+	const bool bBotDriver = IsBotDriverMode();
 	const int32 Index = CreateTeam(false);
 	ITN_RallyVehicle* RallyVehicle = Teams.IsValidIndex(Index) ? Cast<ITN_RallyVehicle>(Teams[Index].Vehicle.Get()) : nullptr;
-	if (!RallyVehicle || !RallyVehicle->SeatController(Player, ETNRallySeat::Driver))
+	const bool bSeated = RallyVehicle
+		&& (bBotDriver ? SeatWithBotDriver(Index, Player) : RallyVehicle->SeatController(Player, ETNRallySeat::Driver));
+	if (!bSeated)
 	{
 		if (Teams.IsValidIndex(Index))
 		{
@@ -257,11 +295,74 @@ void ATN_RallyGameMode::AssignPlayer(APlayerController* Player)
 		Spectate(Player);
 		return;
 	}
-	RallyPlayer->SetRallySeat(Teams[Index].TeamIndex, ETNRallySeat::Driver);
-	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s conduce el equipo %d (hueco %d)."), *RallyPlayer->GetPlayerName(),
-		Teams[Index].TeamIndex, Teams[Index].GridSlot);
+	const ETNRallySeat Seat = bBotDriver ? ETNRallySeat::Gunner : ETNRallySeat::Driver;
+	RallyPlayer->SetRallySeat(Teams[Index].TeamIndex, Seat);
+	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s %s el equipo %d (hueco %d)."), *RallyPlayer->GetPlayerName(),
+		bBotDriver ? TEXT("es la artillera, con piloto IA, en") : TEXT("conduce"), Teams[Index].TeamIndex, Teams[Index].GridSlot);
 	OnHumanSeated();
 	RebuildStandings();
+}
+
+bool ATN_RallyGameMode::TrySeatAsGunner(APlayerController* Player, ATN_RallyPlayerState& RallyPlayer)
+{
+	// Biplaza: la 2.ª tortuga de cada pareja es la artillera del primer buggy de jugadoras con la plaza libre.
+	for (FTeamRuntime& Team : Teams)
+	{
+		ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get());
+		if (Team.bBot || Team.bBotDriver || Team.bRetired || !RallyVehicle || RallyVehicle->HasFreeSeat(ETNRallySeat::Driver)
+			|| !RallyVehicle->HasFreeSeat(ETNRallySeat::Gunner))
+		{
+			continue;
+		}
+		if (RallyVehicle->SeatController(Player, ETNRallySeat::Gunner))
+		{
+			RallyPlayer.SetRallySeat(Team.TeamIndex, ETNRallySeat::Gunner);
+			UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s, artillera del equipo %d."), *RallyPlayer.GetPlayerName(), Team.TeamIndex);
+			OnHumanSeated();
+			RebuildStandings();
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ATN_RallyGameMode::IsBotDriverMode() const
+{
+	return bBotDriverFromUrl || CVarRallyBotDriver.GetValueOnGameThread() != 0;
+}
+
+bool ATN_RallyGameMode::SeatWithBotDriver(int32 Index, APlayerController* Player)
+{
+	AController* Pilot = SpawnPilotFor(Index, NSLOCTEXT("Rally", "BotDriverName", "Piloto IA"));
+	ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Teams[Index].Vehicle.Get());
+	if (!Pilot || !RallyVehicle || !RallyVehicle->SeatController(Player, ETNRallySeat::Gunner))
+	{
+		UE_LOG(LogTNRally, Error, TEXT("[RallyGameMode] No se puede sentar a %s de artillera con piloto IA."), *GetNameSafe(Player));
+		if (Pilot) { Pilot->Destroy(); }
+		return false;
+	}
+	// La torreta es de la artillera: el piloto IA no dispara mientras ella ocupa la plaza (ATN_RallyAIController::TryFire).
+	Teams[Index].bBotDriver = true;
+	return true;
+}
+
+AController* ATN_RallyGameMode::SpawnPilotFor(int32 Index, const FText& PilotName)
+{
+	UClass* AIClass = AIControllerClass ? AIControllerClass.Get() : ATN_RallyAIController::StaticClass();
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AController* Pilot = GetWorld()->SpawnActor<AController>(AIClass, Teams[Index].GridTransform, Params);
+	ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Teams[Index].Vehicle.Get());
+	if (!Pilot || !RallyVehicle || !RallyVehicle->SeatController(Pilot, ETNRallySeat::Driver))
+	{
+		if (Pilot) { Pilot->Destroy(); }
+		return nullptr;
+	}
+	if (APlayerState* PilotState = Pilot->GetPlayerState<APlayerState>())
+	{
+		PilotState->SetPlayerName(PilotName.ToString());
+	}
+	return Pilot;
 }
 
 int32 ATN_RallyGameMode::FindFreeGridSlot() const
@@ -276,13 +377,51 @@ int32 ATN_RallyGameMode::FindFreeGridSlot() const
 	return INDEX_NONE;
 }
 
+int32 ATN_RallyGameMode::ClaimGridSlot(bool bBot)
+{
+	const int32 Free = FindFreeGridSlot();
+	if (bBot || Free == INDEX_NONE)
+	{
+		return Free;
+	}
+	// Jugadoras delante por orden de llegada y la IA detrás: el bot más adelantado que la nueva jugadora le cede su hueco.
+	// Se hace al llegar (en el calentamiento), no al empezar el semáforo (#289).
+	FTeamRuntime* Ahead = nullptr;
+	for (FTeamRuntime& Team : Teams)
+	{
+		if (Team.bBot && Team.GridSlot < Free && (!Ahead || Team.GridSlot < Ahead->GridSlot))
+		{
+			Ahead = &Team;
+		}
+	}
+	if (!Ahead)
+	{
+		return Free;
+	}
+	const int32 Claimed = Ahead->GridSlot;
+	PlaceTeamOnGrid(*Ahead, Free);
+	return Claimed;
+}
+
+FTransform ATN_RallyGameMode::GetRestingGridTransform(int32 Slot, double OriginAboveBottomCm) const
+{
+	return Track->GetGridSlotTransform(Slot, TNRallyRace::RestingLiftCm(OriginAboveBottomCm));
+}
+
+void ATN_RallyGameMode::PlaceTeamOnGrid(FTeamRuntime& Team, int32 Slot)
+{
+	Team.GridSlot = Slot;
+	Team.GridTransform = GetRestingGridTransform(Slot, Team.OriginAboveBottomCm);
+	if (ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get()))
+	{
+		RallyVehicle->RallyTeleport(Team.GridTransform, 0.f, 0.f);
+	}
+	Team.PrevLocation = Team.GridTransform.GetLocation();
+	Team.Arc = Track->FindArcGlobal(Team.PrevLocation);
+}
+
 int32 ATN_RallyGameMode::CreateTeam(bool bBot)
 {
-	const int32 Slot = FindFreeGridSlot();
-	if (!Track || Slot == INDEX_NONE)
-	{
-		return INDEX_NONE;
-	}
 	UClass* Class = VehicleClass.LoadSynchronous();
 	if (!Class)
 	{
@@ -294,10 +433,15 @@ int32 ATN_RallyGameMode::CreateTeam(bool bBot)
 		}
 		return INDEX_NONE;
 	}
-	const FTransform SlotTransform = Track->GetGridSlotTransform(Slot);
+	const int32 Slot = Track ? ClaimGridSlot(bBot) : INDEX_NONE;
+	if (Slot == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+	// Se crea con la holgura de reserva y, medido el buggy, se apoya en el suelo: así no cae al nacer (#289).
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-	APawn* Vehicle = GetWorld()->SpawnActor<APawn>(Class, SlotTransform, Params);
+	APawn* Vehicle = GetWorld()->SpawnActor<APawn>(Class, GetRestingGridTransform(Slot, TNRallyRace::FallbackOriginAboveBottomCm), Params);
 	ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
 	if (!RallyVehicle)
 	{
@@ -309,19 +453,18 @@ int32 ATN_RallyGameMode::CreateTeam(bool bBot)
 	Team.TeamIndex = NextTeamIndex++;
 	Team.Vehicle = Vehicle;
 	Team.bBot = bBot;
-	Team.GridSlot = Slot;
-	Team.GridTransform = SlotTransform;
-	Team.PrevLocation = Vehicle->GetActorLocation();
-	Team.Arc = Track->FindArcGlobal(Team.PrevLocation);
+	Team.OriginAboveBottomCm = MeasureOriginAboveBottomCm(*Vehicle);
+	PlaceTeamOnGrid(Team, Slot);
 	RallyVehicle->SetRallyTeamIndex(Team.TeamIndex);
 	RallyVehicle->SetEngineLocked(true);
 	RallyVehicle->SetWeaponsLocked(true);
+	UE_LOG(LogTNRally, Verbose, TEXT("[RallyGameMode] Equipo %d en el hueco %d, origen a %.0f cm sobre las ruedas."), Team.TeamIndex,
+		Slot, Team.OriginAboveBottomCm);
 	return Teams.Add(Team);
 }
 
 void ATN_RallyGameMode::SpawnBots()
 {
-	UClass* AIClass = AIControllerClass ? AIControllerClass.Get() : ATN_RallyAIController::StaticClass();
 	for (int32 Bot = 0; Bot < Bots; ++Bot)
 	{
 		const int32 Index = CreateTeam(true);
@@ -329,21 +472,13 @@ void ATN_RallyGameMode::SpawnBots()
 		{
 			break;
 		}
-		FActorSpawnParameters Params;
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		AController* Pilot = GetWorld()->SpawnActor<AController>(AIClass, Teams[Index].GridTransform, Params);
-		ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Teams[Index].Vehicle.Get());
-		if (!Pilot || !RallyVehicle || !RallyVehicle->SeatController(Pilot, ETNRallySeat::Driver))
+		const FText Name = FText::Format(NSLOCTEXT("Rally", "BotName", "Tortuga IA {0}"), FText::AsNumber(Bot + 1));
+		if (!SpawnPilotFor(Index, Name))
 		{
 			UE_LOG(LogTNRally, Error, TEXT("[RallyGameMode] No se puede sentar al piloto IA %d."), Bot + 1);
-			if (Pilot) { Pilot->Destroy(); }
 			if (APawn* Vehicle = Teams[Index].Vehicle.Get()) { Vehicle->Destroy(); }
 			Teams.RemoveAt(Index);
 			break;
-		}
-		if (APlayerState* BotState = Pilot->GetPlayerState<APlayerState>())
-		{
-			BotState->SetPlayerName(FText::Format(NSLOCTEXT("Rally", "BotName", "Tortuga IA {0}"), FText::AsNumber(Bot + 1)).ToString());
 		}
 	}
 }
@@ -415,10 +550,10 @@ void ATN_RallyGameMode::OnHumanSeated()
 	{
 		FirstSeatTime = Time;
 	}
-	// Cada llegada da unos segundos más para que la siguiente se siente, con tope desde la primera.
-	const double Wanted = FMath::Max<double>(RallyState->PhaseEndServerTime, Time + WarmupSeconds);
-	RallyState->PhaseEndServerTime = static_cast<float>(FMath::Min(Wanted, FirstSeatTime + WarmupMaxSeconds));
-	RallyState->ForceNetUpdate();
+	// Cada llegada da unos segundos más para que la siguiente se siente, con tope desde la primera. La espera no se publica
+	// en el GameState: el único temporizador visible de la salida es el semáforo (#289).
+	const double Wanted = FMath::Max(WarmupEndTime, Time + WarmupSeconds);
+	WarmupEndTime = FMath::Min(Wanted, FirstSeatTime + WarmupMaxSeconds);
 }
 
 // ---- Fases ----
@@ -433,9 +568,9 @@ void ATN_RallyGameMode::Tick(float DeltaSeconds)
 	}
 	UpdatePhase();
 	const ETNRallyPhase Phase = RallyState->Phase;
-	if (Phase == ETNRallyPhase::Countdown)
+	if (Phase == ETNRallyPhase::Warmup || Phase == ETNRallyPhase::Countdown)
 	{
-		CheckEarlyStarts();
+		HoldBuggiesOnGrid();
 	}
 	const bool bRacing = Phase == ETNRallyPhase::Racing || Phase == ETNRallyPhase::Finishing;
 	ConsumeRespawnRequests(bRacing);
@@ -463,7 +598,7 @@ void ATN_RallyGameMode::UpdatePhase()
 	switch (RallyState->Phase)
 	{
 	case ETNRallyPhase::Warmup:
-		if (RallyState->PhaseEndServerTime > 0.f && Time >= RallyState->PhaseEndServerTime && Teams.Num() > 0)
+		if (WarmupEndTime > 0.0 && Time >= WarmupEndTime && Teams.Num() > 0)
 		{
 			StartCountdown();
 		}
@@ -495,46 +630,46 @@ void ATN_RallyGameMode::UpdatePhase()
 	case ETNRallyPhase::Results:
 		if (Time >= RallyState->PhaseEndServerTime && !bRestartRequested)
 		{
-			if (RaceLimit > 0 && TNRallyGameModeStats::RacesRun >= RaceLimit)
-			{
-				bRestartRequested = true;
-				UE_LOG(LogTNRally, Log, TEXT("[RallyStats] %d carreras hechas (?Races=%d): fin."), TNRallyGameModeStats::RacesRun, RaceLimit);
-				FPlatformMisc::RequestExit(false, TEXT("TN Rally ?Races"));
-				break;
-			}
-			// ?Restart reutiliza la URL actual: mismo mapa y mismas opciones (?Variant, ?Seats, ?Bots, ?Laps).
-			bRestartRequested = true;
-			UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Carrera nueva en el mismo mapa."));
-			GetWorld()->ServerTravel(TEXT("?Restart"), false);
+			RestartOrQuit();
 		}
 		break;
 	}
 }
 
+void ATN_RallyGameMode::RestartOrQuit()
+{
+	bRestartRequested = true;
+	const UTN_RallyRaceCounter* Counter = GetRaceCounter();
+	const int32 RacesRun = Counter ? Counter->RacesRun : 0;
+	if (RaceLimit > 0 && RacesRun >= RaceLimit)
+	{
+		UE_LOG(LogTNRally, Log, TEXT("[RallyStats] %d carreras hechas (?Races=%d): fin."), RacesRun, RaceLimit);
+		FPlatformMisc::RequestExit(false, TEXT("TN Rally ?Races"));
+		return;
+	}
+	// ?Restart reutiliza la URL actual: mismo mapa y mismas opciones (?Variant, ?Seats, ?Bots, ?Laps, ?BotDriver).
+	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Carrera nueva en el mismo mapa."));
+	GetWorld()->ServerTravel(TEXT("?Restart"), false);
+}
+
 void ATN_RallyGameMode::StartCountdown()
 {
 	ATN_RallyGameState* RallyState = GetRallyGameState();
-	// Parrilla: jugadoras delante por orden de llegada y la IA detrás.
-	Teams.StableSort([](const FTeamRuntime& A, const FTeamRuntime& B) { return !A.bBot && B.bBot; });
-	for (int32 Index = 0; Index < Teams.Num(); ++Index)
+	// Los buggies ya están apoyados en su hueco desde que nacieron (jugadoras delante, IA detrás: ClaimGridSlot): el
+	// semáforo no los recoloca (#289).
+	for (FTeamRuntime& Team : Teams)
 	{
-		FTeamRuntime& Team = Teams[Index];
-		Team.GridSlot = Index;
-		Team.GridTransform = Track->GetGridSlotTransform(Index);
-		if (ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get()))
+		if (const APawn* Vehicle = Team.Vehicle.Get())
 		{
-			RallyVehicle->RallyTeleport(Team.GridTransform, 0.f, 0.f);
+			Team.PrevLocation = Vehicle->GetActorLocation();
+			Team.Arc = Track->FindArcGlobal(Team.PrevLocation);
 		}
-		Team.PrevLocation = Team.GridTransform.GetLocation();
-		Team.Arc = Track->FindArcGlobal(Team.PrevLocation);
-		Team.bEarlyPenalized = false;
 	}
 	RallyState->Phase = ETNRallyPhase::Countdown;
 	RallyState->StartServerTime = static_cast<float>(Now() + CountdownSeconds);
 	RallyState->PhaseEndServerTime = RallyState->StartServerTime;
-	// Motor libre durante el semáforo: quien sale antes del verde vuelve a su hueco con el motor cortado hasta 1 s
-	// después de la salida (CheckEarlyStarts).
-	SetAllEnginesLocked(false);
+	// Motor cortado hasta el verde y buggy frenado en su hueco (HoldBuggiesOnGrid): nadie puede salir antes.
+	SetAllEnginesLocked(true);
 	ApplyWeaponLocks();
 	RebuildStandings();
 	RallyState->ForceNetUpdate();
@@ -549,9 +684,14 @@ void ATN_RallyGameMode::StartRacing()
 	for (FTeamRuntime& Team : Teams)
 	{
 		ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get());
-		if (RallyVehicle && !Team.bRetired && !Team.bEarlyPenalized)
+		if (RallyVehicle)
 		{
-			RallyVehicle->SetEngineLocked(false);
+			// Verde: fuera el freno de la parrilla (HoldBuggiesOnGrid) y, si el equipo sigue, motor en marcha.
+			RallyVehicle->SetRaceBrakeHeld(false);
+			if (!Team.bRetired)
+			{
+				RallyVehicle->SetEngineLocked(false);
+			}
 		}
 		if (const APawn* Vehicle = Team.Vehicle.Get())
 		{
@@ -579,7 +719,10 @@ void ATN_RallyGameMode::StartResults()
 	ATN_RallyGameState* RallyState = GetRallyGameState();
 	if (RallyState->Phase != ETNRallyPhase::Results)
 	{
-		++TNRallyGameModeStats::RacesRun;
+		if (UTN_RallyRaceCounter* Counter = GetRaceCounter())
+		{
+			++Counter->RacesRun;
+		}
 		const bool bTimedOut = RallyState->Phase == ETNRallyPhase::Racing && RaceTimeoutSeconds > 0.f
 			&& Now() >= RallyState->StartServerTime + RaceTimeoutSeconds;
 		LogRaceStats(bTimedOut);

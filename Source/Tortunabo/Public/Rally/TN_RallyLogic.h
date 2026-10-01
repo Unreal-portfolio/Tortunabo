@@ -209,15 +209,19 @@ namespace TNRally
 		float Burbuja = 0.f;
 		float Mortero = 0.f;
 		float Tinta = 0.f;
+		float Ancla = 0.f;
 	};
 
-	/** Reparto por puesto: los primeros sacan más Alga y Tinta; los últimos, más Mortero y Burbuja. */
+	/**
+	 * Reparto por puesto: los primeros sacan más Alga y Tinta; los últimos, más Mortero y Burbuja. El Ancla es rara en
+	 * todos los puestos (menos que el Mortero) y, como él, algo más frecuente para los últimos.
+	 */
 	TORTUNABO_API FAmmoWeights AmmoWeightsForPlace(int32 Place, int32 NumTeams);
 
 	/** Elige munición con una tirada en [0, 1). */
 	TORTUNABO_API ETNRallyAmmo PickAmmo(const FAmmoWeights& Weights, float Roll01);
 
-	/** Cargas por caja: Alga 2, Burbuja 1, Mortero 1, Tinta 2 (Docs/Rally_MVP.md). */
+	/** Cargas por caja: Alga 2, Burbuja 1, Mortero 1, Tinta 2, Ancla 2 (Docs/Rally_MVP.md). */
 	TORTUNABO_API int32 ChargesFor(ETNRallyAmmo Ammo);
 
 	// ---- Spline y parrilla ----

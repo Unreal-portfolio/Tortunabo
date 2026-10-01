@@ -5,12 +5,14 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/Crc.h"
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
 #include "Rally/TN_RallyAmmoBox.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyTrack.h"
+#include "Rally/TN_RallyTrackDressing.h"
 #include "Rally/TN_RallyVehicle.h"
 #include "World/TN_MapVariantLoader.h"
 
@@ -43,6 +45,40 @@ const FTNRallyStanding* ATN_RallyGameState::FindStandingForVehicle(const APawn* 
 		return nullptr;
 	}
 	return Standings.FindByPredicate([Vehicle](const FTNRallyStanding& Entry) { return Entry.Vehicle == Vehicle; });
+}
+
+namespace
+{
+	/** Un cliente que llega tarde no avisa de reapariciones más viejas que esto (s). */
+	constexpr float RallyRespawnNoticeMaxAgeSeconds = 3.f;
+}
+
+void ATN_RallyGameState::NotifyTeamRespawned(int32 TeamIndex, ETNRallyRespawnReason Reason, float ServerTime)
+{
+	NotifiedRespawnTimes.Add(TeamIndex, ServerTime);
+	OnTeamRespawned.Broadcast(TeamIndex, Reason);
+}
+
+void ATN_RallyGameState::OnRep_Standings()
+{
+	const float Now = static_cast<float>(GetServerWorldTimeSeconds());
+	for (const FTNRallyStanding& Entry : Standings)
+	{
+		if (Entry.LastRespawnReason == ETNRallyRespawnReason::None || Entry.LastRespawnServerTime <= 0.f)
+		{
+			continue;
+		}
+		const float* Notified = NotifiedRespawnTimes.Find(Entry.TeamIndex);
+		if (Notified && *Notified >= Entry.LastRespawnServerTime)
+		{
+			continue;
+		}
+		NotifiedRespawnTimes.Add(Entry.TeamIndex, Entry.LastRespawnServerTime);
+		if (Now - Entry.LastRespawnServerTime <= RallyRespawnNoticeMaxAgeSeconds)
+		{
+			OnTeamRespawned.Broadcast(Entry.TeamIndex, Entry.LastRespawnReason);
+		}
+	}
 }
 
 void ATN_RallyGameState::OnRep_Variant()
@@ -108,6 +144,8 @@ ATN_RallyTrack* ATN_RallyGameState::PrepareTrack(FName InVariant)
 	if (Track)
 	{
 		Track->BuildFromVariant(InVariant);
+		// Límites, decorado y público: deterministas por variante, así el servidor y cada cliente construyen lo mismo.
+		ATN_RallyTrackDressing::BuildForTrack(Track, static_cast<int32>(FCrc::StrCrc32(*InVariant.ToString())));
 		OnTrackReady.Broadcast();
 	}
 	return Track;

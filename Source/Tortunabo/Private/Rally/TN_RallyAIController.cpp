@@ -2,6 +2,7 @@
 
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Rally/TN_RallyGameState.h"
 #include "Rally/TN_RallyLogic.h"
@@ -158,6 +159,11 @@ void ATN_RallyAIController::TryFire(const FVector& Location, const FVector& Forw
 	const ATN_RallyGameState* RallyState = GetWorld()->GetGameState<ATN_RallyGameState>();
 	ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(GetPawn());
 	if (Time < NextFireTime || !RallyState || !RallyVehicle)
+	{
+		return;
+	}
+	// Con una persona de artillera la torreta es suya: el piloto solo conduce. Si la plaza se queda libre, vuelve a disparar.
+	if (Cast<APlayerController>(RallyVehicle->GetSeatController(ETNRallySeat::Gunner)))
 	{
 		return;
 	}

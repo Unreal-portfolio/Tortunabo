@@ -28,7 +28,8 @@ enum class ETNRallyAmmo : uint8
 	Alga,
 	Burbuja,
 	Mortero,
-	Tinta
+	Tinta,
+	Ancla
 };
 
 UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
@@ -90,6 +91,18 @@ public:
 	 */
 	virtual bool ConsumeFellOutOfWorld() { return false; }
 
+	/**
+	 * Solo servidor: true una sola vez cuando el vehículo ha reventado (vida 0). La carrera lo hace reaparecer siempre, en
+	 * cualquier fase y sin esperar a la inmunidad, con el motivo ETNRallyRespawnReason::Destroyed.
+	 */
+	virtual bool ConsumeDestroyed() { return false; }
+
 	/** Solo servidor: bloquea la torreta (calentamiento, semáforo, resultados o equipo retirado). Por defecto, nada. */
 	virtual void SetWeaponsLocked(bool bLocked) {}
+
+	/**
+	 * Solo servidor: freno de carrera (parrilla durante el semáforo). Mientras está puesto, el vehículo no acelera ni usa
+	 * el turbo y frena a fondo; la salida lo suelta. Por defecto, nada.
+	 */
+	virtual void SetRaceBrakeHeld(bool bHeld) {}
 };

@@ -12,15 +12,32 @@ class ATN_RallyTrack;
 UENUM(BlueprintType)
 enum class ETNRallyPhase : uint8
 {
-	/** Llegan las tortugas y se sientan; motores cortados. */
+	/** Llegan las tortugas y se sientan; motores cortados. Sin cuenta en pantalla: el HUD enseña «esperando» (IsWaitingForPlayers). */
 	Warmup,
-	/** Semáforo de 3 s; salir antes corta el motor 1 s tras el verde. */
+	/** Semáforo de 3 s, el único temporizador visible de la salida: motores cortados y buggies frenados en su hueco. */
 	Countdown,
 	Racing,
 	/** El primero ya ha llegado: quedan 20 s para los demás. */
 	Finishing,
 	/** Tabla de resultados 15 s y carrera nueva en el mismo mapa. */
 	Results
+};
+
+/** Por qué ha reaparecido un buggy (lo decide el servidor en ATN_RallyGameMode::RespawnTeam). */
+UENUM(BlueprintType)
+enum class ETNRallyRespawnReason : uint8
+{
+	None,
+	/** Agua, zona de muerte del manifest o bajo el KillZ del mundo. */
+	Hazard,
+	/** A más de 40 m del eje durante 1 s. */
+	OffTrack,
+	/** 8 s sin salir de un radio de 5 m. */
+	Stuck,
+	/** Una ocupante ha mantenido R (o Y) 1,5 s. */
+	Request,
+	/** El buggy ha reventado (vida 0, UTN_BuggyHealthComponent). */
+	Destroyed
 };
 
 /** Un registro por buggy (equipo): ocupantes, progreso y puesto. Lo rellena el servidor a 5 Hz, ordenado por puesto. */
@@ -74,12 +91,22 @@ struct FTNRallyStanding
 	UPROPERTY(BlueprintReadOnly, Category = "Rally")
 	float RespawnEndServerTime = 0.f;
 
+	/** Motivo de la última reaparición del buggy (None si no ha reaparecido): el HUD lo explica. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rally")
+	ETNRallyRespawnReason LastRespawnReason = ETNRallyRespawnReason::None;
+
+	/** Hora del servidor de la última reaparición (0 = ninguna): sirve para saber si es nueva. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rally")
+	float LastRespawnServerTime = 0.f;
+
 	/** Puntos de copa por el puesto (10-8-6-5-4-3-2-1; 0 sin llegar). Definitivos en Results. */
 	UPROPERTY(BlueprintReadOnly, Category = "Rally")
 	int32 Points = 0;
 };
 
 DECLARE_MULTICAST_DELEGATE(FTNRallyTrackReady);
+/** Un equipo acaba de reaparecer: índice del equipo y motivo. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FTNRallyTeamRespawned, int32 /*TeamIndex*/, ETNRallyRespawnReason /*Reason*/);
 
 UCLASS()
 class TORTUNABO_API ATN_RallyGameState : public AGameStateBase
@@ -96,9 +123,16 @@ public:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Rally")
 	float StartServerTime = 0.f;
 
-	/** Fin de la fase en curso (calentamiento, cierre tras el primero o resultados); 0 = sin cuenta. */
+	/**
+	 * Fin de la fase en curso (semáforo, cierre tras el primero o resultados); 0 = sin cuenta. En el calentamiento siempre es
+	 * 0: su espera la lleva el servidor y no se enseña (#289).
+	 */
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Rally")
 	float PhaseEndServerTime = 0.f;
+
+	/** Calentamiento: se espera a que lleguen y se sienten las tortugas, sin cuenta atrás en pantalla. */
+	UFUNCTION(BlueprintPure, Category = "Rally")
+	bool IsWaitingForPlayers() const { return Phase == ETNRallyPhase::Warmup; }
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Rally")
 	int32 Laps = 1;
@@ -114,8 +148,17 @@ public:
 	FName Variant;
 
 	/** Ordenado por puesto. */
-	UPROPERTY(BlueprintReadOnly, Replicated, Category = "Rally")
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Standings, Category = "Rally")
 	TArray<FTNRallyStanding> Standings;
+
+	/**
+	 * Se dispara en cada máquina cuando un equipo reaparece: en el servidor al momento (NotifyTeamRespawned) y en los
+	 * clientes al llegar unos puestos con una reaparición nueva. Lo usa el HUD para explicar el motivo.
+	 */
+	FTNRallyTeamRespawned OnTeamRespawned;
+
+	/** Solo servidor (lo llama el GameMode): avisa de una reaparición en esta máquina. */
+	void NotifyTeamRespawned(int32 TeamIndex, ETNRallyRespawnReason Reason, float ServerTime);
 
 	/** Registro del buggy en que va este jugador (conductora o artillera); nullptr si no va en ninguno. */
 	const FTNRallyStanding* FindStandingForPlayer(const APlayerState* Player) const;
@@ -140,7 +183,13 @@ protected:
 	UFUNCTION()
 	void OnRep_Variant();
 
+	UFUNCTION()
+	void OnRep_Standings();
+
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<ATN_RallyTrack> Track;
+
+	/** Última reaparición ya avisada de cada equipo (índice → hora del servidor), para no repetir el aviso. */
+	TMap<int32, float> NotifiedRespawnTimes;
 };
