@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): las rondas del modo carrera se siguen desde `Docs/Modo_Carrera.md`, `Docs/superpowers/specs/modos/02-Carrera.md` y las issues del tablero.
+
 # Plan de la ronda 3 del modo carrera (y ajustes comunes)
 
 Planificado el 28-09-2026 con las notas del usuario tras probar la ronda 2. **Sin empezar**: se ejecuta cuando el

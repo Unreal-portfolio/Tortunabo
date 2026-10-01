@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): traspaso de la rama macro-update; los mapas aparcados se retoman desde `Docs/Catalogo-Mapas-2026-09-29.md` y las issues del tablero.
+
 # Relevo: mapas inventados (rama macro-update, sin push)
 
 ## Hecho (commits 65bad29aa y c12785e39)
