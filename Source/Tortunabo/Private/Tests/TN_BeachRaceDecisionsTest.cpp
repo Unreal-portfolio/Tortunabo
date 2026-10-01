@@ -54,4 +54,23 @@ bool FTNBeachRaceTimeLimitWinnerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachRaceRoundLeftoversTest,
+	"Tortunabo.BeachRace.RoundLeftovers",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBeachRaceRoundLeftoversTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBeachRaceRules;
+
+	// #71: al preparar la ronda siguiente se quita lo suelto que dejaron las jugadoras (pickups soltados, bolas paradas,
+	// conchas trampa, cajas de objetos): todo eso se crea jugando.
+	TestTrue(TEXT("Un pickup creado en la ronda se quita"), ShouldClearRoundLeftover(false, false));
+	// Lo colocado a mano en el nivel no es de ninguna ronda: no se pierde.
+	TestFalse(TEXT("Un pickup colocado en el nivel se queda"), ShouldClearRoundLeftover(true, false));
+	// Lo que ya se está destruyendo no se vuelve a destruir.
+	TestFalse(TEXT("Lo que ya se destruye se deja en paz"), ShouldClearRoundLeftover(false, true));
+	TestFalse(TEXT("Colocado en el nivel y destruyéndose: nada"), ShouldClearRoundLeftover(true, true));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

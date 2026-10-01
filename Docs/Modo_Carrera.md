@@ -3056,6 +3056,13 @@ Lo pidió el usuario: donde se puede rebuscar, un montículo de arena que vibre,
 - **Cajas de objetos** (`ATN_RaceItemBox`, el «?» de las carreras de karts): en cada sitio hay una caja y lo que da se sortea
   al cogerla, **según el puesto de quien la coge** (ver «Objetos de carrera»). Antes eran objetos fijos del catálogo con su
   pickup (`PickupActorClass` + `InitializeFromInventoryItem`).
+- **Nada suelto pasa a la ronda siguiente** (#71): lo que dejan las jugadoras (un objeto soltado con la tecla de soltar, el
+  pickup que sale de una bola al pararse, una concha trampa y la reciclada que deja al gastarse) y las bolas en el aire se
+  quitan al preparar la ronda siguiente, al volver a jugar y al empezar el sprint final
+  (`ATN_BeachRaceGameMode::CleanupRoundLeftovers`, que llama `CleanupRoundActors`). Los pickups de serie (cajas, lo que sale
+  de rebuscar) los vuelve a quitar el botín al cambiar la ronda. No se toca nada de lo colocado a mano en el nivel
+  (`AActor::IsNetStartupActor`); `LVL_BeachRace` solo lleva el generador. Regla pura: `TNBeachRaceRules::ShouldClearRoundLeftover`
+  (`Tortunabo.BeachRace.RoundLeftovers`).
 
 ### Pesos de la carrera (`TNBeachLoot::RaceWeight`, por el uso del objeto)
 

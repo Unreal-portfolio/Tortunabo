@@ -45,4 +45,19 @@ namespace TNBeachRaceRules
 		}
 		return Best;
 	}
+
+	/**
+	 * @brief ¿Se quita este objeto suelto al preparar la ronda siguiente? (#71)
+	 *
+	 * Lo suelto es de la ronda en que apareció: los objetos que se sueltan (pickups), las bolas que se paran, las conchas
+	 * trampa y las cajas de objetos no pasan a la ronda N+1 como objetos gratis o trampas (la tortuga que los dejó ya no
+	 * existe y la playa es otra). Se respeta lo que se colocó a mano en el nivel (no es de ninguna ronda) y lo que ya se
+	 * está destruyendo.
+	 * @param bPlacedInLevel El actor viene del nivel (AActor::IsNetStartupActor), no se creó jugando.
+	 * @param bBeingDestroyed Ya no es válido o se está destruyendo (IsValid, IsActorBeingDestroyed).
+	 */
+	inline bool ShouldClearRoundLeftover(bool bPlacedInLevel, bool bBeingDestroyed)
+	{
+		return !bPlacedInLevel && !bBeingDestroyed;
+	}
 }
