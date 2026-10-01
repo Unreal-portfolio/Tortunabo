@@ -3026,7 +3026,15 @@ Lo pidió el usuario: donde se puede rebuscar, un montículo de arena que vibre,
   punto del borde de la huella de rebuscar y 0,3 veces su radio por fuera, a la cota de la arena con los asientos. Lo
   decide el servidor al repartir el botín, con su propio azar (`MakeMound`), y va en el registro replicado
   (`FTNBeachSearchNet::Mounds`: X cada 2 cm, Y y Z cada cm, giro y aspecto; 8 bytes por punto, una vez por ronda). Así
-  es igual en todas las máquinas sin depender de que el cliente haya acabado su reparto.
+  es igual en todas las máquinas sin depender de que el cliente haya acabado su reparto. Se prueban hasta ocho lados
+  (`TNBeachLoot::PickMoundSide`: el de llegada, los costados, la espalda y las diagonales); **si ninguno está libre, ese
+  decorado no es rebuscable** (antes el montículo se dejaba en el primer lado aunque estuviera dentro de otra pieza o en el
+  agua de una poza, y el aviso salía sin montículo a la vista).
+- **El rebuscable es el montículo** (#254): el actor interactivo del punto (`ATN_BeachSearchSpot`) se pone en el pie de su
+  montículo, con la huella de su base (1,1 × 100 cm × su tamaño; `TNBeachLoot::FSearchAnchor`), y no en el centro del decorado.
+  El aviso «Mantén para rebuscar», el alcance, las chispitas, el anillo y la tierra que salta salen así junto al montículo, no
+  por cualquier lado de un decorado que puede dar la vuelta de más de 20 m (el castillo enorme, el barco, la sombrilla con
+  3,8 m de radio). Como el montículo del tutorial (huella y alto 110 cm).
 - **Cómo se ve**: lejos, quietos, en mallas instanciadas (una por variante y otra para los aplanados), sin sombra y
   hasta 120 m. Cerca de una cámara local (45 m, los 16 más cercanos), un componente de una reserva hace temblar el
   montículo **a ratos**: un temblor corto (0,35-0,6 s) cada 2,5-6 s, con 3 granitos de arena que saltan; con una
@@ -3041,7 +3049,8 @@ Lo pidió el usuario: donde se puede rebuscar, un montículo de arena que vibre,
 - Probar: `open LVL_BeachRace?BeachSeed=42`, con 1 y con 2 jugadores. Desde lejos se ven los montículos junto al
   decorado; al acercarse, alguno tiembla con granitos y, a menos de 12 m, más a menudo. Rebuscar: el montículo se
   aplasta y queda aplanado en las dos ventanas (también para la que llega después). `TN.Beach.Loot.Reroll` los cambia.
-  Con ~150 piezas de decorado por ronda salen del orden de 50-80 (el registro da el número exacto).
+  Con ~150 piezas de decorado por ronda salen del orden de 50-80 (el registro da el número exacto). El aviso «Mantén
+  para rebuscar» solo sale a unos metros de un montículo, nunca al otro lado del decorado.
 
 ### Objetos sueltos
 
@@ -3166,8 +3175,8 @@ trincheras) y las fortalezas (en su cima), con `ATN_BeachElement::SpawnElement` 
   botín de la ronda y lo reparte otra vez, en el anfitrión o desde un cliente del PIE). Los de siempre de los
   rebuscables: `tn.Search.Luck 1` (siempre sale algo), `tn.Search.Seconds`, `tn.Search.Show 1` (baliza y huella de
   cada rebuscable) y `TN.Debug.Interaction 1`.
-- Registro del servidor en cada ronda: `[Playa] botín de la ronda N: X decorados para rebuscar (de Y candidatos) y Z
-  objetos sueltos` y `[Playa] conchas de la ronda N: ... de 1, ... de 25, ... de 50 y ... de 100 (dónde)`.
+- Registro del servidor en cada ronda: `[Playa] botín de la ronda N: X decorados para rebuscar (de Y candidatos, W sin
+  sitio libre para su montículo) y Z objetos sueltos` y `[Playa] conchas de la ronda N: ... de 1, ... de 25, ... de 50 y ... de 100 (dónde)`.
 - Probar (`open LVL_BeachRace?BeachSeed=42`, con 1 y con 2 jugadores):
   1. Desde la salida se ven las columnas doradas de los objetos sueltos y, más cerca, sus anillos; las filas de lado a
      lado. Cogerlos (el anillo se apaga con ellos) y usarlos: bola y tinta contra la otra tortuga, concha trampa detrás.
