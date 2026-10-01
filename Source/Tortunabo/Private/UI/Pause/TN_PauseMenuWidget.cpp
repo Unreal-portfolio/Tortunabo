@@ -13,6 +13,8 @@
 #include "Lobby/TN_HQGameMode.h"
 #include "Lobby/TN_TutorialPlayerComponent.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Multiplayer/TN_LocalPlaySubsystem.h"
+#include "Engine/LocalPlayer.h"
 #include "Multiplayer/TN_RoomNames.h"
 #include "Player/TortugaCharacter.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
@@ -939,6 +941,11 @@ FNavigationReply UTN_PauseRow::NativeOnNavigation(const FGeometry& MyGeometry, c
 
 FReply UTN_PauseRow::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	// El menú de un invitado de la partida local lo maneja solo su mando: el ratón es del jugador 1.
+	if (UTN_LocalPlaySubsystem::IsGuest(GetOwningPlayer()))
+	{
+		return FReply::Handled();
+	}
 	// Fila de tecla: clic derecho, a la de serie.
 	if (Kind == ETNPauseRowKind::KeyBind && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
@@ -1013,8 +1020,9 @@ void UTN_PauseRow::NativeOnMouseEnter(const FGeometry& InGeometry, const FPointe
 {
 	Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
 	bHovered = true;
-	// El ratón mueve el foco: teclado, ratón y mando comparten el mismo resaltado.
-	if (!HasAnyUserFocus()) { SetKeyboardFocus(); }
+	// El ratón mueve el foco: teclado, ratón y mando comparten el mismo resaltado (no en el menú de un invitado de la
+	// partida local: el ratón es del jugador 1).
+	if (!HasAnyUserFocus() && !UTN_LocalPlaySubsystem::IsGuest(GetOwningPlayer())) { SetKeyboardFocus(); }
 }
 
 void UTN_PauseRow::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
@@ -1197,7 +1205,10 @@ void UTN_PauseMenuWidget::BuildTree()
 
 	// El menú, en un lienzo de 1920 × 1080 que se encoge si no cabe (tamaño de la interfaz grande, ventana pequeña).
 	Canvas = TNPauseUI::Make<UCanvasPanel>(Tree);
-	TNPauseUI::Fill(Root, TNPauseUI::Fit(Tree, Canvas));
+	UScaleBox* CanvasFit = TNPauseUI::Fit(Tree, Canvas);
+	// Partida local: en grande, a toda la pantalla aunque la interfaz vaya más pequeña por la pantalla partida.
+	if (IsLocalGame()) { CanvasFit->SetStretchDirection(EStretchDirection::Both); }
+	TNPauseUI::Fill(Root, CanvasFit);
 
 	TNPauseUI::Pin(Canvas, BuildHeader(), FVector2D(0.5f, 0.f), FVector2D(0.f, 18.f));
 
@@ -1268,7 +1279,9 @@ UWidget* UTN_PauseMenuWidget::BuildHomePage()
 	UWidgetTree* Tree = WidgetTree;
 	HomeColumn = TNPauseUI::Make<UVerticalBox>(Tree);
 	BuildHomeButtons();
-	HomeNote = TNPauseUI::Label(Tree, NSLOCTEXT("TNPause", "HomeNote", "La partida sigue en marcha mientras miras el menú: tu tortuga se queda quieta."),
+	HomeNote = TNPauseUI::Label(Tree, IsLocalGame()
+		? NSLOCTEXT("TNLocal", "PauseHomeNote", "La partida está parada para todos mientras este menú está abierto.")
+		: NSLOCTEXT("TNPause", "HomeNote", "La partida sigue en marcha mientras miras el menú: tu tortuga se queda quieta."),
 		TEXT("Regular"), 18, TNHUDArt::Foam);
 	HomeNote->SetJustification(ETextJustify::Center);
 	TNPauseUI::AddV(HomeColumn, HomeNote, FMargin(0.f, 6.f, 0.f, 0.f), HAlign_Center);
@@ -1333,6 +1346,57 @@ void UTN_PauseMenuWidget::BuildHomeButtons()
 			});
 	}
 
+	// Partida local, en el lobby: el tutorial no sale solo, se hace desde aquí (y se salta con «Saltar el tutorial»).
+	if (IsLocalGame() && IsInLobby() && TutorialComp && !TutorialComp->IsInTutorial())
+	{
+		AddBig(NSLOCTEXT("TNLocal", "PauseTutorial", "Hacer el tutorial"), TNPauseArt::EMenuIcon::Controls,
+			NSLOCTEXT("TNLocal", "PauseTutorialDesc", "Subes a las islas del cielo y aprendes todo lo que hace una tortuga. Se salta desde este menú."),
+			[WeakThis]()
+			{
+				UTN_PauseMenuWidget* Menu = WeakThis.Get();
+				UTN_TutorialPlayerComponent* Comp = Menu ? UTN_TutorialPlayerComponent::FindFor(Menu->GetOwningPlayer()) : nullptr;
+				if (!Menu)
+				{
+					return;
+				}
+				Menu->CloseMenu();
+				if (Comp) { Comp->RequestStart(true); }
+			});
+	}
+
+	// Un invitado de la partida local: solo lo suyo; en el lobby, puede dejar de jugar (su vista desaparece).
+	if (IsGuestMenu())
+	{
+		if (IsInLobby())
+		{
+			AddBig(NSLOCTEXT("TNLocal", "PauseLeave", "Dejar de jugar"), TNPauseArt::EMenuIcon::Menu,
+				NSLOCTEXT("TNLocal", "PauseLeaveDesc", "Tu tortuga se va y tu vista desaparece. Para volver, pulsa Start en tu mando. También se sale manteniendo B en el lobby."),
+				[WeakThis]()
+				{
+					UTN_PauseMenuWidget* Menu = WeakThis.Get();
+					if (!Menu)
+					{
+						return;
+					}
+					Menu->AskConfirm(NSLOCTEXT("TNLocal", "PauseLeaveTitle", "¿Dejar de jugar?"),
+						NSLOCTEXT("TNLocal", "PauseLeaveText", "Tu tortuga se va de la partida y los demás siguen jugando."),
+						NSLOCTEXT("TNPause", "LeaveYes", "Salir"), [WeakThis]()
+						{
+							UTN_PauseMenuWidget* LeaveMenu = WeakThis.Get();
+							APlayerController* PC = LeaveMenu ? LeaveMenu->GetOwningPlayer() : nullptr;
+							UTN_LocalPlaySubsystem* LocalPlay = UTN_LocalPlaySubsystem::Get(LeaveMenu);
+							if (!LeaveMenu)
+							{
+								return;
+							}
+							LeaveMenu->CloseMenu();
+							if (LocalPlay) { LocalPlay->LeaveGame(PC); }
+						});
+				});
+		}
+		return;
+	}
+
 	// Sala (partida en red): su nombre y código, cerrarla y abrirla y expulsar (el anfitrión), y quién está dentro.
 	if (HasRoomPage())
 	{
@@ -1392,6 +1456,8 @@ UWidget* UTN_PauseMenuWidget::BuildSettingsPage()
 		TabRow->SetDescription(NSLOCTEXT("TNPause", "TabDesc", "Q y E (o LB y RB) cambian de pestaña."));
 		TNPauseUI::AddH(TabBar, TabRow, FMargin(5.f, 0.f));
 		TabRows.Add(TabRow);
+		// Un invitado de la partida local, solo Controles y Juego; en la partida local, sin voz.
+		if (!IsTabAvailable(static_cast<ETNPauseTab>(i))) { TabRow->SetVisibility(ESlateVisibility::Collapsed); }
 	}
 	TNPauseUI::AddV(Column, TabBar, FMargin(0.f, 0.f, 0.f, 14.f), HAlign_Center);
 
@@ -1496,7 +1562,9 @@ UWidget* UTN_PauseMenuWidget::BuildConfirmLayer()
 	// El velo, a pantalla completa; el cuadro, en la misma caja que encoge el menú.
 	UOverlay* Stage = TNPauseUI::Make<UOverlay>(Tree);
 	TNPauseUI::AddO(Stage, Box, HAlign_Center, VAlign_Center);
-	TNPauseUI::AddO(Layer, TNPauseUI::Fit(Tree, Stage), HAlign_Fill, VAlign_Fill);
+	UScaleBox* StageFit = TNPauseUI::Fit(Tree, Stage);
+	if (IsLocalGame()) { StageFit->SetStretchDirection(EStretchDirection::Both); }
+	TNPauseUI::AddO(Layer, StageFit, HAlign_Fill, VAlign_Fill);
 	return Layer;
 }
 
@@ -1706,7 +1774,10 @@ void UTN_PauseMenuWidget::RefreshHeader()
 		const ENetMode NetMode = World->GetNetMode();
 		const FText Role = NetMode == NM_Client ? NSLOCTEXT("TNPause", "RoleGuest", "Estás de invitado")
 			: (NetMode == NM_Standalone ? NSLOCTEXT("TNPause", "RoleSolo", "Partida local") : NSLOCTEXT("TNPause", "RoleHost", "Eres el anfitrión"));
-		Session = FText::Format(NSLOCTEXT("TNPause", "SessionLocal", "{0} · {1} tortugas conectadas"), Role, FText::AsNumber(Players));
+		Session = IsLocalGame()
+			? FText::Format(NSLOCTEXT("TNLocal", "PauseSession", "Partida local · {0} tortugas · menú del jugador {1}: solo lo maneja él"),
+				FText::AsNumber(Players), FText::AsNumber(UTN_LocalPlaySubsystem::GetPlayerNumber(GetOwningPlayer())))
+			: FText::Format(NSLOCTEXT("TNPause", "SessionLocal", "{0} · {1} tortugas conectadas"), Role, FText::AsNumber(Players));
 	}
 	SessionText->SetText(Session);
 
@@ -1758,14 +1829,18 @@ void UTN_PauseMenuWidget::RebuildPlayers()
 		UVerticalBox* Names = TNPauseUI::Make<UVerticalBox>(Tree);
 		UTextBlock* Name = TNPauseUI::Label(Tree, FText::FromString(PS->GetPlayerName()), TEXT("Bold"), 18, bMe ? TNHUDArt::Gold : TNHUDArt::Cream);
 		TNPauseUI::AddV(Names, TNPauseUI::Sized(Tree, Name, 0.f, 0.f), FMargin(0.f), HAlign_Left);
+		const bool bLocalGame = IsLocalGame();
 		const FText Sub = bMe ? (bHost ? NSLOCTEXT("TNPause", "YouHost", "Tú · anfitrión") : NSLOCTEXT("TNPause", "You", "Tú"))
-			: (bHost ? NSLOCTEXT("TNPause", "Host", "Anfitrión")
-				: FText::Format(NSLOCTEXT("TNPause", "Ping", "{0} ms"), FText::AsNumber(FMath::RoundToInt(PS->GetPingInMilliseconds()))));
+			: (bLocalGame ? NSLOCTEXT("TNLocal", "ChipLocal", "En este PC")
+				: (bHost ? NSLOCTEXT("TNPause", "Host", "Anfitrión")
+					: FText::Format(NSLOCTEXT("TNPause", "Ping", "{0} ms"), FText::AsNumber(FMath::RoundToInt(PS->GetPingInMilliseconds())))));
 		TNPauseUI::AddV(Names, TNPauseUI::Label(Tree, Sub, TEXT("Regular"), 14, TNHUDArt::SeaLight), FMargin(0.f), HAlign_Left);
 		TNPauseUI::AddH(Chip, Names, FMargin(0.f, 0.f, 8.f, 0.f));
 		if (bHost) { TNPauseUI::AddH(Chip, TNPauseUI::Picture(Tree, TNPauseArt::HostCrown(), FVector2D(26.f, 26.f)), FMargin(0.f, 0.f, 6.f, 0.f)); }
 		UImage* Voice = TNPauseUI::Picture(Tree, bMe ? TNPauseArt::MicIcon(false) : TNPauseArt::SpeakerIcon(false), FVector2D(32.f, 32.f));
 		Voice->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+		// Partida local: sin chat de voz.
+		if (bLocalGame) { Voice->SetVisibility(ESlateVisibility::Collapsed); }
 		TNPauseUI::AddH(Chip, Voice);
 
 		UBorder* Frame = TNPauseUI::Make<UBorder>(Tree);
@@ -1842,6 +1917,10 @@ void UTN_PauseMenuWidget::ShowPage(ETNPausePage NewPage)
 
 void UTN_PauseMenuWidget::ShowTab(ETNPauseTab NewTab)
 {
+	if (!IsTabAvailable(NewTab))
+	{
+		NewTab = StepTab(1);
+	}
 	Tab = NewTab;
 	for (int32 i = 0; i < TabRows.Num(); ++i)
 	{
@@ -1859,6 +1938,18 @@ void UTN_PauseMenuWidget::FillTab()
 	}
 	CancelKeyCapture(true);
 	SettingsList->ClearChildren();
+	// Partida local: qué es de cada jugador y qué vale para todos.
+	if (IsGuestMenu() && (Tab == ETNPauseTab::Controls || Tab == ETNPauseTab::Game))
+	{
+		AddListNote(SettingsList, FText::Format(NSLOCTEXT("TNLocal", "GuestSettingsNote",
+			"Jugador {0}: estos ajustes son solo tuyos y duran esta partida. El sonido, la imagen y el idioma los elige el jugador 1."),
+			FText::AsNumber(UTN_LocalPlaySubsystem::GetPlayerNumber(GetOwningPlayer()))));
+	}
+	else if (IsLocalGame() && (Tab == ETNPauseTab::Controls || Tab == ETNPauseTab::Game))
+	{
+		AddListNote(SettingsList, NSLOCTEXT("TNLocal", "PrimarySettingsNote",
+			"La cámara, los controles, el temblor y el campo de visión son solo tuyos; lo demás vale para todos los jugadores de este PC."));
+	}
 	OverallRow = nullptr;
 	ResolutionRow = nullptr;
 	ResScaleRow = nullptr;
@@ -2351,10 +2442,15 @@ void UTN_PauseMenuWidget::FillGameTab()
 	TWeakObjectPtr<UTN_PauseMenuWidget> WeakThis(this);
 	TWeakObjectPtr<UTN_GameSettingsSubsystem> WeakSettings(Settings);
 	const FTNGameSettings& Data = Settings->GetEditedSettings();
+	const bool bGuest = IsGuestMenu();
 
 	// El idioma, lo primero de la pestaña (y el título en dos idiomas): quien no lea el que tiene puesto debe poder encontrarlo.
-	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadLanguage", "IDIOMA / LANGUAGE"));
-	if (UTN_PauseRow* Row = AddListRow(SettingsList))
+	// Un invitado de la partida local no lo ve (es del PC: lo elige el jugador 1).
+	if (!bGuest)
+	{
+		AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadLanguage", "IDIOMA / LANGUAGE"));
+	}
+	if (UTN_PauseRow* Row = bGuest ? nullptr : AddListRow(SettingsList))
 	{
 		TArray<FText> Names;
 		TArray<FString> Cultures;
@@ -2406,70 +2502,73 @@ void UTN_PauseMenuWidget::FillGameTab()
 			Row->SetDescription(NSLOCTEXT("TNPause", "FovDesc", "Cuánto se ve a los lados. Al correr se abre un poco más, como siempre."));
 		}
 	}
-	AddToggleRow(NSLOCTEXT("TNPause", "Fisheye", "Ojo de pez leve"),
-		NSLOCTEXT("TNPause", "FisheyeDesc", "Curva un poco los bordes de la imagen para que todo se vea aún más inmenso. No toca el HUD. Apágalo si te marea."),
-		Data.bFisheye, [WeakSettings](bool bOn)
-		{
-			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bFisheye = bOn; }); }
-		});
+	if (!bGuest)
+	{
+		AddToggleRow(NSLOCTEXT("TNPause", "Fisheye", "Ojo de pez leve"),
+			NSLOCTEXT("TNPause", "FisheyeDesc", "Curva un poco los bordes de la imagen para que todo se vea aún más inmenso. No toca el HUD. Apágalo si te marea."),
+			Data.bFisheye, [WeakSettings](bool bOn)
+			{
+				if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bFisheye = bOn; }); }
+			});
 
-	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadInterface", "INTERFAZ"));
-	if (UTN_PauseRow* Row = AddListRow(SettingsList))
-	{
-		Row->SetupSlider(NSLOCTEXT("TNPause", "UIScale", "Tamaño de la interfaz"), 0.75f, 1.3f, 0.05f, Data.UIScale,
-			[](float V) { return TNPauseUI::Percent(V); },
-			[WeakSettings](float V) { if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([V](FTNGameSettings& D) { D.UIScale = V; }); } });
-		Row->SetDescription(NSLOCTEXT("TNPause", "UIScaleDesc", "Agranda o achica el HUD y los menús del juego (el editor no cambia). Este menú se encoge si no cabe."));
-	}
+		AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadInterface", "INTERFAZ"));
+		if (UTN_PauseRow* Row = AddListRow(SettingsList))
+		{
+			Row->SetupSlider(NSLOCTEXT("TNPause", "UIScale", "Tamaño de la interfaz"), 0.75f, 1.3f, 0.05f, Data.UIScale,
+				[](float V) { return TNPauseUI::Percent(V); },
+				[WeakSettings](float V) { if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([V](FTNGameSettings& D) { D.UIScale = V; }); } });
+			Row->SetDescription(NSLOCTEXT("TNPause", "UIScaleDesc", "Agranda o achica el HUD y los menús del juego (el editor no cambia). Este menú se encoge si no cabe."));
+		}
 
-	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadAccess", "ACCESIBILIDAD"));
-	if (UTN_PauseRow* Row = AddListRow(SettingsList))
-	{
-		const TArray<FText> Filters = { NSLOCTEXT("TNPause", "FilterNone", "No"), NSLOCTEXT("TNPause", "FilterDeuter", "Deuteranopía (verde)"),
-			NSLOCTEXT("TNPause", "FilterProtan", "Protanopía (rojo)"), NSLOCTEXT("TNPause", "FilterTritan", "Tritanopía (azul)") };
-		Row->SetupChoice(NSLOCTEXT("TNPause", "ColorFilter", "Filtro para daltónicos"), Filters, FMath::Clamp<int32>(Data.ColorFilter, 0, 3), [WeakSettings](int32 Choice)
+		AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadAccess", "ACCESIBILIDAD"));
+		if (UTN_PauseRow* Row = AddListRow(SettingsList))
 		{
-			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.ColorFilter = static_cast<uint8>(Choice); }); }
-		});
-		Row->SetDescription(NSLOCTEXT("TNPause", "ColorFilterDesc", "Corrige los colores de toda la imagen para distinguirlos mejor: el mapa, el HUD y sus marcadores."));
-	}
-	if (UTN_PauseRow* Row = AddListRow(SettingsList))
-	{
-		Row->SetupSlider(NSLOCTEXT("TNPause", "FilterStrength", "Intensidad del filtro"), 0.f, 1.f, 0.05f, Data.ColorFilterStrength,
-			[](float V) { return TNPauseUI::Percent(V); },
-			[WeakSettings](float V) { if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([V](FTNGameSettings& D) { D.ColorFilterStrength = V; }); } });
-		Row->SetDescription(NSLOCTEXT("TNPause", "FilterStrengthDesc", "Cuánto corrige el filtro para daltónicos."));
-	}
-	AddToggleRow(NSLOCTEXT("TNPause", "Talkers", "Quién habla (texto)"),
-		NSLOCTEXT("TNPause", "TalkersDesc", "A la derecha de la pantalla, el nombre de quien está hablando por voz. Para jugar sin sonido o si oyes mal."),
-		Data.bShowTalkers, [WeakSettings](bool bOn)
+			const TArray<FText> Filters = { NSLOCTEXT("TNPause", "FilterNone", "No"), NSLOCTEXT("TNPause", "FilterDeuter", "Deuteranopía (verde)"),
+				NSLOCTEXT("TNPause", "FilterProtan", "Protanopía (rojo)"), NSLOCTEXT("TNPause", "FilterTritan", "Tritanopía (azul)") };
+			Row->SetupChoice(NSLOCTEXT("TNPause", "ColorFilter", "Filtro para daltónicos"), Filters, FMath::Clamp<int32>(Data.ColorFilter, 0, 3), [WeakSettings](int32 Choice)
+			{
+				if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.ColorFilter = static_cast<uint8>(Choice); }); }
+			});
+			Row->SetDescription(NSLOCTEXT("TNPause", "ColorFilterDesc", "Corrige los colores de toda la imagen para distinguirlos mejor: el mapa, el HUD y sus marcadores."));
+		}
+		if (UTN_PauseRow* Row = AddListRow(SettingsList))
 		{
-			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bShowTalkers = bOn; }); }
-		});
+			Row->SetupSlider(NSLOCTEXT("TNPause", "FilterStrength", "Intensidad del filtro"), 0.f, 1.f, 0.05f, Data.ColorFilterStrength,
+				[](float V) { return TNPauseUI::Percent(V); },
+				[WeakSettings](float V) { if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([V](FTNGameSettings& D) { D.ColorFilterStrength = V; }); } });
+			Row->SetDescription(NSLOCTEXT("TNPause", "FilterStrengthDesc", "Cuánto corrige el filtro para daltónicos."));
+		}
+		AddToggleRow(NSLOCTEXT("TNPause", "Talkers", "Quién habla (texto)"),
+			NSLOCTEXT("TNPause", "TalkersDesc", "A la derecha de la pantalla, el nombre de quien está hablando por voz. Para jugar sin sonido o si oyes mal."),
+			Data.bShowTalkers, [WeakSettings](bool bOn)
+			{
+				if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([bOn](FTNGameSettings& D) { D.bShowTalkers = bOn; }); }
+			});
 
-	// Modo VR (Docs/Modo_VR.md): se aplica en el acto (UTN_VRSubsystem lo mira cada fotograma).
-	AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadVR", "REALIDAD VIRTUAL"));
-	if (UTN_PauseRow* Row = AddListRow(SettingsList))
-	{
-		const TArray<FText> Modes = { NSLOCTEXT("TNPause", "VRModeAuto", "Automático"), NSLOCTEXT("TNPause", "VRModeOff", "Desactivado"),
-			NSLOCTEXT("TNPause", "VRModeSim", "Simulado sin gafas") };
-		Row->SetupChoice(NSLOCTEXT("TNPause", "VRMode", "Modo VR"), Modes, FMath::Clamp<int32>(Data.VRMode, 0, 2), [WeakSettings](int32 Choice)
+		// Modo VR (Docs/Modo_VR.md): se aplica en el acto (UTN_VRSubsystem lo mira cada fotograma).
+		AddListHeader(SettingsList, NSLOCTEXT("TNPause", "HeadVR", "REALIDAD VIRTUAL"));
+		if (UTN_PauseRow* Row = AddListRow(SettingsList))
 		{
-			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.VRMode = static_cast<uint8>(Choice); }); }
-		});
-		Row->SetDescription(NSLOCTEXT("TNPause", "VRModeDesc",
-			"Automático: en primera persona con las gafas si el juego arranca con ellas (-vr o «VR Preview»). Desactivado: con gafas, la pantalla plana de siempre. Simulado: el modo VR sin gafas, con el ratón como aleta, para probarlo en el PC."));
-	}
-	if (UTN_PauseRow* Row = AddListRow(SettingsList))
-	{
-		const TArray<FText> Turns = { NSLOCTEXT("TNPause", "VRTurn30", "Por pasos de 30°"), NSLOCTEXT("TNPause", "VRTurn45", "Por pasos de 45°"),
-			NSLOCTEXT("TNPause", "VRTurnSmooth", "Suave") };
-		Row->SetupChoice(NSLOCTEXT("TNPause", "VRTurn", "Giro en VR"), Turns, FMath::Clamp<int32>(Data.VRTurn, 0, 2), [WeakSettings](int32 Choice)
+			const TArray<FText> Modes = { NSLOCTEXT("TNPause", "VRModeAuto", "Automático"), NSLOCTEXT("TNPause", "VRModeOff", "Desactivado"),
+				NSLOCTEXT("TNPause", "VRModeSim", "Simulado sin gafas") };
+			Row->SetupChoice(NSLOCTEXT("TNPause", "VRMode", "Modo VR"), Modes, FMath::Clamp<int32>(Data.VRMode, 0, 2), [WeakSettings](int32 Choice)
+			{
+				if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.VRMode = static_cast<uint8>(Choice); }); }
+			});
+			Row->SetDescription(NSLOCTEXT("TNPause", "VRModeDesc",
+				"Automático: en primera persona con las gafas si el juego arranca con ellas (-vr o «VR Preview»). Desactivado: con gafas, la pantalla plana de siempre. Simulado: el modo VR sin gafas, con el ratón como aleta, para probarlo en el PC."));
+		}
+		if (UTN_PauseRow* Row = AddListRow(SettingsList))
 		{
-			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.VRTurn = static_cast<uint8>(Choice); }); }
-		});
-		Row->SetDescription(NSLOCTEXT("TNPause", "VRTurnDesc",
-			"Cómo gira la tortuga con el stick derecho. A pasos marea mucho menos; suave, para quien ya está acostumbrado."));
+			const TArray<FText> Turns = { NSLOCTEXT("TNPause", "VRTurn30", "Por pasos de 30°"), NSLOCTEXT("TNPause", "VRTurn45", "Por pasos de 45°"),
+				NSLOCTEXT("TNPause", "VRTurnSmooth", "Suave") };
+			Row->SetupChoice(NSLOCTEXT("TNPause", "VRTurn", "Giro en VR"), Turns, FMath::Clamp<int32>(Data.VRTurn, 0, 2), [WeakSettings](int32 Choice)
+			{
+				if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->EditSettings([Choice](FTNGameSettings& D) { D.VRTurn = static_cast<uint8>(Choice); }); }
+			});
+			Row->SetDescription(NSLOCTEXT("TNPause", "VRTurnDesc",
+				"Cómo gira la tortuga con el stick derecho. A pasos marea mucho menos; suave, para quien ya está acostumbrado."));
+		}
 	}
 
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
@@ -2479,7 +2578,8 @@ void UTN_PauseMenuWidget::FillGameTab()
 			if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetGroup(ETNSettingsGroup::Game); }
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(ETNPauseTab::Game); }
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema y el modo VR automático con giro a pasos de 30°."));
+		Row->SetDescription(bGuest ? NSLOCTEXT("TNLocal", "ResetGameGuestDesc", "Temblor de cámara encendido y campo de visión de siempre (solo los tuyos).")
+			: NSLOCTEXT("TNPause", "ResetGameDesc", "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema y el modo VR automático con giro a pasos de 30°."));
 	}
 	if (UTN_PauseRow* Row = AddListRow(SettingsList))
 	{
@@ -2491,7 +2591,8 @@ void UTN_PauseMenuWidget::FillGameTab()
 				return;
 			}
 			Menu->AskConfirm(NSLOCTEXT("TNPause", "ResetAllTitle", "¿Restablecer todos los ajustes?"),
-				NSLOCTEXT("TNPause", "ResetAllText", "Sonido, voz, micrófono, controles (teclas incluidas), juego (idioma incluido), brillo y FPS vuelven a los de serie. La calidad gráfica y la pantalla no se tocan."),
+				Menu->IsGuestMenu() ? NSLOCTEXT("TNLocal", "ResetAllGuestText", "Tu cámara, tus controles (teclas y botones incluidos), el temblor y el campo de visión vuelven a los de serie.")
+					: NSLOCTEXT("TNPause", "ResetAllText", "Sonido, voz, micrófono, controles (teclas incluidas), juego (idioma incluido), brillo y FPS vuelven a los de serie. La calidad gráfica y la pantalla no se tocan."),
 				NSLOCTEXT("TNPause", "ResetAllYes", "Restablecer"), [WeakThis, WeakSettings]()
 				{
 					if (UTN_GameSettingsSubsystem* S = WeakSettings.Get()) { S->ResetAll(); }
@@ -2502,7 +2603,8 @@ void UTN_PauseMenuWidget::FillGameTab()
 					}
 				});
 		}, nullptr, NSLOCTEXT("TNPause", "ResetAction", "Restablecer"));
-		Row->SetDescription(NSLOCTEXT("TNPause", "ResetAllDesc", "Todo lo del menú a los valores de serie, menos la calidad gráfica y la pantalla. Pide confirmación."));
+		Row->SetDescription(bGuest ? NSLOCTEXT("TNLocal", "ResetAllGuestDesc", "Todos tus ajustes de jugador a los de serie. Pide confirmación.")
+			: NSLOCTEXT("TNPause", "ResetAllDesc", "Todo lo del menú a los valores de serie, menos la calidad gráfica y la pantalla. Pide confirmación."));
 	}
 }
 
@@ -2548,8 +2650,16 @@ void UTN_PauseMenuWidget::FillControlsList()
 		AddListNote(ControlsList, NSLOCTEXT("TNPause", "NoMapping", "No se ha podido leer la lista de controles (IMC_Player)."));
 	}
 
-	AddListHeader(ControlsList, NSLOCTEXT("TNPause", "HeadVoiceMenu", "VOZ Y MENÚ"));
-	AddKeyBindRow(ControlsList, TEXT("Talk"), FText::Format(NSLOCTEXT("TNPause", "TalkKeyRowDesc", "Solo con el modo pulsar para hablar (Ajustes > Voz). {0}"), ChangeHelp));
+	// Partida local: sin chat de voz (no hay tecla de hablar).
+	if (IsLocalGame())
+	{
+		AddListHeader(ControlsList, NSLOCTEXT("TNLocal", "HeadMenu", "MENÚ"));
+	}
+	else
+	{
+		AddListHeader(ControlsList, NSLOCTEXT("TNPause", "HeadVoiceMenu", "VOZ Y MENÚ"));
+		AddKeyBindRow(ControlsList, TEXT("Talk"), FText::Format(NSLOCTEXT("TNPause", "TalkKeyRowDesc", "Solo con el modo pulsar para hablar (Ajustes > Voz). {0}"), ChangeHelp));
+	}
 	AddKeyBindRow(ControlsList, TEXT("Pause"), FText::Format(NSLOCTEXT("TNPause", "PauseKeyRowDesc", "Esc lo abre y lo cierra siempre (en el editor, Tab). {0}"), ChangeHelp));
 	if (UTN_PauseRow* Row = AddListRow(ControlsList))
 	{
@@ -3205,7 +3315,13 @@ void UTN_PauseMenuWidget::ReleaseInput()
 	{
 		PC->SetInputMode(FInputModeGameOnly());
 		PC->SetShowMouseCursor(false);
-		if (FSlateApplication::IsInitialized()) { FSlateApplication::Get().SetAllUserFocusToGameViewport(); }
+		if (FSlateApplication::IsInitialized())
+		{
+			// Con la pantalla partida, solo el foco de quien lo abrió (los menús de los demás siguen con el suyo).
+			const ULocalPlayer* Player = PC->GetLocalPlayer();
+			if (Player && IsLocalGame()) { FSlateApplication::Get().SetUserFocusToGameViewport(Player->GetControllerId()); }
+			else { FSlateApplication::Get().SetAllUserFocusToGameViewport(); }
+		}
 	}
 }
 
@@ -3222,9 +3338,25 @@ void UTN_PauseMenuWidget::FocusRow(UTN_PauseRow* Row)
 {
 	if (Row)
 	{
-		Row->SetKeyboardFocus();
+		FocusForOwner(Row);
 		LastFocused = Row;
 	}
+}
+
+void UTN_PauseMenuWidget::FocusForOwner(UWidget* Widget)
+{
+	if (!Widget)
+	{
+		return;
+	}
+	// Con la pantalla partida, el foco del jugador que lo abrió (un invitado lo maneja con su mando); si no, el del teclado.
+	APlayerController* PC = GetOwningPlayer();
+	if (PC && IsLocalGame())
+	{
+		Widget->SetUserFocus(PC);
+		return;
+	}
+	Widget->SetKeyboardFocus();
 }
 
 void UTN_PauseMenuWidget::FocusFirstOfPage()
@@ -3250,7 +3382,7 @@ void UTN_PauseMenuWidget::FocusFirstOfPage()
 		break;
 	}
 	}
-	SetKeyboardFocus();
+	FocusForOwner(this);
 }
 
 void UTN_PauseMenuWidget::HandleRowFocused(UTN_PauseRow* Row)
@@ -3422,13 +3554,13 @@ FReply UTN_PauseMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const F
 		if (IsKey(Key, { EKeys::Q, EKeys::Gamepad_LeftShoulder }))
 		{
 			PlayUISound(ETNPauseSound::Press, 0.f);
-			ShowTab(static_cast<ETNPauseTab>((static_cast<int32>(Tab) + Count - 1) % Count));
+			ShowTab(Count > 0 ? StepTab(-1) : Tab);
 			return FReply::Handled();
 		}
 		if (IsKey(Key, { EKeys::E, EKeys::Gamepad_RightShoulder }))
 		{
 			PlayUISound(ETNPauseSound::Press, 0.f);
-			ShowTab(static_cast<ETNPauseTab>((static_cast<int32>(Tab) + 1) % Count));
+			ShowTab(Count > 0 ? StepTab(1) : Tab);
 			return FReply::Handled();
 		}
 	}
@@ -3492,6 +3624,11 @@ FReply UTN_PauseMenuWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, 
 
 FReply UTN_PauseMenuWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	// El menú de un invitado de la partida local lo maneja solo su mando: el ratón (del jugador 1) no hace nada.
+	if (IsGuestMenu())
+	{
+		return FReply::Handled();
+	}
 	// Esperando una tecla: un botón del ratón también vale (el clic que empezó a esperar ya pasó: las filas se pulsan al soltar).
 	if (!IsCapturingKey())
 	{
@@ -3553,6 +3690,45 @@ bool UTN_PauseMenuWidget::HasRoomPage() const
 {
 	const UWorld* World = GetWorld();
 	return World && World->GetNetMode() != NM_Standalone && Cast<UMP_GameInstance>(GetGameInstance()) != nullptr;
+}
+
+bool UTN_PauseMenuWidget::IsGuestMenu() const
+{
+	return UTN_LocalPlaySubsystem::IsGuest(GetOwningPlayer());
+}
+
+bool UTN_PauseMenuWidget::IsLocalGame() const
+{
+	return UTN_LocalPlaySubsystem::IsLocalGame(this);
+}
+
+bool UTN_PauseMenuWidget::IsTabAvailable(ETNPauseTab InTab) const
+{
+	if (InTab == ETNPauseTab::Count)
+	{
+		return false;
+	}
+	if (IsGuestMenu())
+	{
+		return InTab == ETNPauseTab::Controls || InTab == ETNPauseTab::Game;
+	}
+	return !(InTab == ETNPauseTab::Voice && IsLocalGame());
+}
+
+ETNPauseTab UTN_PauseMenuWidget::StepTab(int32 Direction) const
+{
+	const int32 Count = static_cast<int32>(ETNPauseTab::Count);
+	const int32 Step = Direction < 0 ? Count - 1 : 1;
+	int32 Index = static_cast<int32>(Tab);
+	for (int32 Tries = 0; Tries < Count; ++Tries)
+	{
+		Index = (Index + Step) % Count;
+		if (IsTabAvailable(static_cast<ETNPauseTab>(Index)))
+		{
+			return static_cast<ETNPauseTab>(Index);
+		}
+	}
+	return Tab;
 }
 
 bool UTN_PauseMenuWidget::CanReturnToLobby() const
