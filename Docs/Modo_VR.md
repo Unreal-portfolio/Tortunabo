@@ -372,3 +372,15 @@ abrir un fallo del objeto «Modo VR» con lo que se vio.
   no tiembla y que tumbada (ragdoll) sigue pegada a la cabeza.
 - **Fundido al probador sin gafas**: el cuerpo se pinta entero desde el primer fotograma del fundido; la cámara sale desde
   dentro de la cabeza y puede verse el casco un instante.
+- **Manos del cuerpo**: comprobar que el esqueleto tiene los huesos `LeftHand` y `RightHand`; si no, el IK no actúa y no
+  se ve ninguna mano (las aletas sueltas se ocultan cuando hay tortuga).
+- **HUD tapado**: el HUD fijo a 150 cm respeta la profundidad, así que el suelo y el cuerpo propio pueden tapar su parte de
+  abajo al mirar abajo; y el rayo de `FitDistance` (`ATN_VRRig`) puede chocar con lo que se lleva y acercar el HUD a la cara.
+- **Probador con gafas**: la cámara del probador tiene `bLockToHmd` y el visor le pisa la posición (ya pasaba antes).
+- **Agarres**: apoyar el dedo en el agarre derecho y soltarlo despacio puede tirar el objeto; llevando a un compañero,
+  cualquier agarre lo suelta y el izquierdo deja de servir para correr; si llegan a la vez el clic y el eje del agarre, la
+  pestaña del menú puede cambiar dos veces.
+- **Coger y lanzar muy deprisa**: si el objeto nuevo aún no ha llegado al inventario, se puede lanzar el anterior.
+- **Alcance de la mano**: el servidor valida la interacción por la distancia al cuerpo, no a la mano, y puede rechazarla
+  sin aviso.
+- **Cúpula de la pantalla de carga**: el suelo tapa su mitad de abajo.
