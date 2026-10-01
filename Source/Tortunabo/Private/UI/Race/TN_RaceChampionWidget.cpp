@@ -109,7 +109,11 @@ void UTN_RaceChampionWidget::BuildTree()
 		UTextBlock* TagText = TNRaceUI::MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 20, MedalColor(i));
 		UBorder* Tag = TNRaceUI::Make<UBorder>(Tree);
 		TNHUDStyle::StylePanel(Tag, TNHUDArt::Hex(0x0A1C38, 0.82f), 14.f, FMargin(16.f, 5.f, 18.f, 7.f), MedalColor(i), 2.f);
-		Tag->SetContent(TagText);
+		TagText->SetTextOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+		USizeBox* TagLimit = TNRaceUI::Make<USizeBox>(Tree);
+		TagLimit->SetMaxDesiredWidth(280.f);
+		TagLimit->SetContent(TagText);
+		Tag->SetContent(TagLimit);
 		Tag->SetVisibility(ESlateVisibility::Collapsed);
 		Tag->SetRenderTransformPivot(FVector2D(0.5f, 1.f));
 		UCanvasPanelSlot* TagSlot = TNRaceUI::Place(Canvas, Tag, FVector2D(0.f, 0.f), FVector2D::ZeroVector);
@@ -417,7 +421,13 @@ void UTN_RaceChampionWidget::TickPodiumImage()
 		Tag->SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 		if (!bShow) { continue; }
 		const FVector2D OnImage = ImagePos + UV * ImageSize;
-		const FVector2D OnScreen = Pivot + (OnImage - Pivot) * Zoom;
+		FVector2D OnScreen = Pivot + (OnImage - Pivot) * Zoom;
+		// Un nombre largo no se mete bajo la columna de la izquierda: se desplaza a la derecha hasta quedar libre.
+		if (LeftColumn)
+		{
+			const double ColumnRight = 80.0 + LeftColumn->GetDesiredSize().X + 12.0;
+			OnScreen.X = FMath::Max(OnScreen.X, ColumnRight + 0.5 * Tag->GetDesiredSize().X);
+		}
 		if (UCanvasPanelSlot* TagSlot = Cast<UCanvasPanelSlot>(Tag->Slot))
 		{
 			TagSlot->SetPosition(OnScreen + FVector2D(0.f, -4.f * FMath::Sin(Time * 2.f + i)));
