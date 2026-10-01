@@ -1,0 +1,6 @@
+#!/bin/sh
+# CI local tras cada merge o pull (Scripts/ci/ci_local.bat). Es voluntaria: se activa con
+#   git config core.hooksPath .githooks
+# y TN_CI_SKIP=1 la salta una vez (TN_CI_SKIP=1 git pull).
+[ "$TN_CI_SKIP" = "1" ] && exit 0
+cmd.exe //c "Scripts\\ci\\ci_local.bat"
