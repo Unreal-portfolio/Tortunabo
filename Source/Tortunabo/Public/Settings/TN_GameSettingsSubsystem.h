@@ -312,6 +312,9 @@ public:
 	void ClosePauseMenu();
 	bool IsPauseMenuOpen() const;
 
+	/** El jugador que tiene abierto el menú de pausa (null si está cerrado). Con la pantalla partida, solo él lo maneja. */
+	APlayerController* GetPauseMenuOwner() const;
+
 	/** true si ahora se puede abrir el menú de pausa para PC. */
 	bool CanOpenPauseMenu(const APlayerController* PC) const;
 

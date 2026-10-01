@@ -2037,6 +2037,11 @@ bool UTN_GameSettingsSubsystem::IsPauseMenuOpen() const
 	return PauseMenu && TNVR::IsOnScreen(PauseMenu);
 }
 
+APlayerController* UTN_GameSettingsSubsystem::GetPauseMenuOwner() const
+{
+	return IsPauseMenuOpen() ? PauseMenu->GetOwningPlayer() : nullptr;
+}
+
 void UTN_GameSettingsSubsystem::NotifyPauseMenuClosed(UTN_PauseMenuWidget* Menu)
 {
 	if (PauseMenu == Menu)
