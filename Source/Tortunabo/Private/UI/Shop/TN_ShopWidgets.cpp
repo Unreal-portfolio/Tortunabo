@@ -347,7 +347,7 @@ void UTN_CosmeticMenuBase::NativeOnInitialized()
 void UTN_CosmeticMenuBase::NativeConstruct()
 {
 	Super::NativeConstruct();
-	Preview = ATN_CosmeticPreview::Get(GetWorld());
+	Preview = ATN_CosmeticPreview::GetFor(GetOwningPlayer());
 	if (ATN_CosmeticPreview* Stage = Preview.Get())
 	{
 		Stage->SetLiveCapture(true);
@@ -408,7 +408,7 @@ FTN_TurtleLook UTN_CosmeticMenuBase::GetWornLook() const
 
 UTextureRenderTarget2D* UTN_CosmeticMenuBase::Thumbnail(ETNCosmeticCategory Category, FName Id) const
 {
-	ATN_CosmeticPreview* Stage = Preview.IsValid() ? Preview.Get() : ATN_CosmeticPreview::Get(GetWorld());
+	ATN_CosmeticPreview* Stage = Preview.IsValid() ? Preview.Get() : ATN_CosmeticPreview::GetFor(GetOwningPlayer());
 	return Stage ? Stage->GetThumbnail(Category, Id) : nullptr;
 }
 
@@ -594,7 +594,7 @@ void UTN_ShopWidget::SetShop(ATN_ShopKeeper* InShop)
 	const FText ShopTitle = InShop ? InShop->GetShopName() : NSLOCTEXT("Tortunabo", "ShopDefaultName", "La Concha Dorada");
 	if (TitleText) { TitleText->SetText(ShopTitle.ToUpper()); }
 	if (KeeperNameText) { KeeperNameText->SetText(InShop ? InShop->GetKeeperName() : NSLOCTEXT("Tortunabo", "ShopKeeperName", "Don Tortugo")); }
-	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::Get(GetWorld())) { Stage->SetLook(GetWornLook()); }
+	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::GetFor(GetOwningPlayer())) { Stage->SetLook(GetWornLook()); }
 	RefreshWallet();
 	ShowTab(ETNCosmeticCategory::Helmet);
 
@@ -693,7 +693,7 @@ void UTN_ShopWidget::Select(int32 Index, bool bSpeak)
 	// La tortuga se prueba lo que miras encima de lo que lleva.
 	FTN_TurtleLook Trying = GetWornLook();
 	Trying.Set(Tab, Id);
-	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::Get(GetWorld()))
+	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::GetFor(GetOwningPlayer()))
 	{
 		Stage->SetLook(Trying);
 		if (bSpeak && bChanged) { Stage->PlayPose(false); }
@@ -729,7 +729,7 @@ void UTN_ShopWidget::Buy()
 	{
 		Say(FText::Format(NSLOCTEXT("Tortunabo", "ShopBought", "¡Hecho! {0} ya es tuyo. Ve a una botella del probador y póntelo."),
 			UTN_CosmeticLook::GetDisplayName(this, Tab, Id)));
-		if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::Get(GetWorld())) { Stage->PlayPose(true); }
+		if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::GetFor(GetOwningPlayer())) { Stage->PlayPose(true); }
 		RefreshWallet();
 		RefreshCards();
 		RefreshBuyButton();
@@ -919,7 +919,7 @@ void UTN_BoothWidget::RefreshRows()
 			if (UTextureRenderTarget2D* RT = Thumbnail(Category, Id)) { RowThumbMIDs[r]->SetTextureParameterValue(TEXT("Capture"), RT); }
 		}
 	}
-	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::Get(GetWorld())) { Stage->SetLook(ChosenLook()); }
+	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::GetFor(GetOwningPlayer())) { Stage->SetLook(ChosenLook()); }
 }
 
 void UTN_BoothWidget::FocusRow(int32 Row)
@@ -939,7 +939,7 @@ void UTN_BoothWidget::Cycle(int32 Row, int32 Dir)
 	const int32 Num = Options[Row].Num();
 	Choice[Row] = (Choice[Row] + Dir + Num) % Num;
 	RefreshRows();
-	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::Get(GetWorld())) { Stage->PlayPose(false); }
+	if (ATN_CosmeticPreview* Stage = ATN_CosmeticPreview::GetFor(GetOwningPlayer())) { Stage->PlayPose(false); }
 }
 
 void UTN_BoothWidget::Accept()
