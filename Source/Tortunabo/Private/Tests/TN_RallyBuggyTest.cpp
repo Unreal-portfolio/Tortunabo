@@ -5,6 +5,8 @@
 #include "Vehicles/TN_BuggyMath.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,8 +246,8 @@ bool FTNRallyTurretAimTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("cabeceo válido intacto"), ClampAim(FRotator(20.f, 0.f, 0.f)).Pitch, 20.0);
 	TestEqual(TEXT("guiñada normalizada"), ClampAim(FRotator(0.f, 270.f, 0.f)).Yaw, -90.0, 0.001);
 	TestEqual(TEXT("sin alabeo"), ClampAim(FRotator(0.f, 0.f, 30.f)).Roll, 0.0);
-	TestFalse(TEXT("NaN rechazado"), IsAimFinite(NAN, 0.f));
-	TestFalse(TEXT("infinito rechazado"), IsAimFinite(0.f, INFINITY));
+	TestFalse(TEXT("NaN rechazado"), IsAimFinite(std::numeric_limits<float>::quiet_NaN(), 0.f));
+	TestFalse(TEXT("infinito rechazado"), IsAimFinite(0.f, std::numeric_limits<float>::infinity()));
 	TestTrue(TEXT("valores normales aceptados"), IsAimFinite(170.f, 30.f));
 
 	const FRotator Buggy(0.f, 90.f, 0.f);
