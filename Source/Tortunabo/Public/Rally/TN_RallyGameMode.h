@@ -15,6 +15,25 @@ class ATN_RallyPlayerState;
 class ATN_RallyTrack;
 class APlayerController;
 
+namespace TNRallyRace
+{
+	/** Señales de reaparición que un buggy tiene pendientes en este fotograma (la carrera las consume todas a la vez). */
+	struct FRespawnSignals
+	{
+		bool bFellOutOfWorld = false;
+		bool bDestroyed = false;
+		bool bRequested = false;
+	};
+
+	/**
+	 * Qué reaparición toca a un equipo (None = ninguna). Caer bajo el KillZ y reventar reaparecen en cualquier fase y sin mirar
+	 * la inmunidad (durante ella no recibe daño); la petición de R, solo en carrera, sin haber llegado y fuera de la inmunidad.
+	 * Un equipo retirado (buggy vacío) no reaparece al reventar: se queda donde está en vez de ocupar un carril de reaparición.
+	 */
+	TORTUNABO_API ETNRallyRespawnReason ResolveRespawn(const FRespawnSignals& Signals, bool bRacing, bool bFinished, bool bRetired,
+		bool bImmune);
+}
+
 /**
  * Carreras terminadas en esta sesión de juego, para ?Races=N. Vive en la GameInstance: sobrevive al ?Restart (que crea otro
  * GameMode) y se pierde al cerrar la sesión de PIE, a diferencia de una variable estática.
@@ -190,6 +209,10 @@ private:
 	void CheckAmmoBoxes(FTeamRuntime& Team, const FVector& From, const FVector& To);
 	void EvaluateTeams(double DeltaSeconds);
 	void EvaluateTeam(FTeamRuntime& Team, double DeltaSeconds);
+	/** Avance dentro del tramo actual (desde la última puerta, o desde la parrilla antes de la salida). */
+	void UpdateSegmentProgress(FTeamRuntime& Team) const;
+	/** Cuenta un vuelco nuevo para las estadísticas de la carrera. */
+	void CountFlip(FTeamRuntime& Team, const APawn& Vehicle, const FVector& Location);
 	bool IsInHazard(const FVector& Location) const;
 	/** Antes de la salida, su hueco; después, el primer carril libre tras la última puerta, apoyado en el suelo. */
 	FTransform ChooseRespawnTransform(const FTeamRuntime& Team) const;

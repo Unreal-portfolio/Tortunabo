@@ -39,6 +39,40 @@ bool FTNRallyRaceRespawnLaneTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyRaceResolveRespawnTest, "Tortunabo.Rally.Race.ResolveRespawn",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyRaceResolveRespawnTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRallyRace;
+	FRespawnSignals Destroyed;
+	Destroyed.bDestroyed = true;
+	FRespawnSignals Request;
+	Request.bRequested = true;
+	FRespawnSignals Fell;
+	Fell.bFellOutOfWorld = true;
+
+	// Reventar reaparece siempre (#296): antes iba por el camino de la petición y se perdía fuera de carrera o con inmunidad.
+	TestEqual(TEXT("Reventado en carrera"), static_cast<int32>(ResolveRespawn(Destroyed, true, false, false, false)), static_cast<int32>(ETNRallyRespawnReason::Destroyed));
+	TestEqual(TEXT("Reventado antes del verde"), static_cast<int32>(ResolveRespawn(Destroyed, false, false, false, false)), static_cast<int32>(ETNRallyRespawnReason::Destroyed));
+	TestEqual(TEXT("Reventado con inmunidad"), static_cast<int32>(ResolveRespawn(Destroyed, true, false, false, true)), static_cast<int32>(ETNRallyRespawnReason::Destroyed));
+	TestEqual(TEXT("Reventado tras llegar"), static_cast<int32>(ResolveRespawn(Destroyed, true, true, false, false)), static_cast<int32>(ETNRallyRespawnReason::Destroyed));
+	TestEqual(TEXT("Un buggy retirado no reaparece al reventar"), static_cast<int32>(ResolveRespawn(Destroyed, true, false, true, false)), static_cast<int32>(ETNRallyRespawnReason::None));
+
+	TestEqual(TEXT("Petición en carrera"), static_cast<int32>(ResolveRespawn(Request, true, false, false, false)), static_cast<int32>(ETNRallyRespawnReason::Request));
+	TestEqual(TEXT("Petición antes del verde: nada"), static_cast<int32>(ResolveRespawn(Request, false, false, false, false)), static_cast<int32>(ETNRallyRespawnReason::None));
+	TestEqual(TEXT("Petición con inmunidad: nada"), static_cast<int32>(ResolveRespawn(Request, true, false, false, true)), static_cast<int32>(ETNRallyRespawnReason::None));
+	TestEqual(TEXT("Petición tras llegar: nada"), static_cast<int32>(ResolveRespawn(Request, true, true, false, false)), static_cast<int32>(ETNRallyRespawnReason::None));
+	TestEqual(TEXT("Petición de un retirado: nada"), static_cast<int32>(ResolveRespawn(Request, true, false, true, false)), static_cast<int32>(ETNRallyRespawnReason::None));
+
+	TestEqual(TEXT("Bajo el KillZ, en cualquier fase"), static_cast<int32>(ResolveRespawn(Fell, false, true, true, true)), static_cast<int32>(ETNRallyRespawnReason::Hazard));
+	FRespawnSignals All;
+	All.bFellOutOfWorld = All.bDestroyed = All.bRequested = true;
+	TestEqual(TEXT("El KillZ manda sobre el reventón y la petición"), static_cast<int32>(ResolveRespawn(All, true, false, false, false)), static_cast<int32>(ETNRallyRespawnReason::Hazard));
+	TestEqual(TEXT("Sin señales, nada"), static_cast<int32>(ResolveRespawn(FRespawnSignals(), true, false, false, false)), static_cast<int32>(ETNRallyRespawnReason::None));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyRaceGhostTest, "Tortunabo.Rally.Race.GhostCoversLock",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 

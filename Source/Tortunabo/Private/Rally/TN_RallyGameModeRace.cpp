@@ -23,6 +23,24 @@ namespace
 	constexpr double RallyWaterMarginCm = 50.0;
 }
 
+ETNRallyRespawnReason TNRallyRace::ResolveRespawn(const FRespawnSignals& Signals, bool bRacing, bool bFinished, bool bRetired,
+	bool bImmune)
+{
+	if (Signals.bFellOutOfWorld)
+	{
+		return ETNRallyRespawnReason::Hazard;
+	}
+	if (Signals.bDestroyed)
+	{
+		return bRetired ? ETNRallyRespawnReason::None : ETNRallyRespawnReason::Destroyed;
+	}
+	if (Signals.bRequested && bRacing && !bFinished && !bRetired && !bImmune)
+	{
+		return ETNRallyRespawnReason::Request;
+	}
+	return ETNRallyRespawnReason::None;
+}
+
 void ATN_RallyGameMode::ConsumeRespawnRequests(bool bRacing)
 {
 	const double Time = Now();
@@ -33,29 +51,17 @@ void ATN_RallyGameMode::ConsumeRespawnRequests(bool bRacing)
 		{
 			continue;
 		}
-		// Bajo el KillZ: vuelve a la pista en cualquier fase (al último arco o, antes de la salida, a su hueco).
-		if (RallyVehicle->ConsumeFellOutOfWorld())
+		// Las tres señales se consumen siempre: una que no toca ahora (R antes del verde, un reventón junto a una caída) no
+		// se guarda para otro fotograma. Antes de la salida, la reaparición devuelve el buggy a su hueco.
+		TNRallyRace::FRespawnSignals Signals;
+		Signals.bFellOutOfWorld = RallyVehicle->ConsumeFellOutOfWorld();
+		Signals.bDestroyed = RallyVehicle->ConsumeDestroyed();
+		Signals.bRequested = RallyVehicle->ConsumeRespawnRequest();
+		const ETNRallyRespawnReason Reason = TNRallyRace::ResolveRespawn(Signals, bRacing, Team.bFinished, Team.bRetired,
+			Time < Team.ImmuneUntil);
+		if (Reason != ETNRallyRespawnReason::None)
 		{
-			RallyVehicle->ConsumeRespawnRequest();
-			RespawnTeam(Team, ETNRallyRespawnReason::Hazard);
-			continue;
-		}
-		// Reventado: reaparece siempre, en cualquier fase y sin mirar la inmunidad (durante ella no recibe daño, así que no
-		// puede reventar dos veces seguidas). Antes de la salida vuelve a su hueco.
-		if (RallyVehicle->ConsumeDestroyed())
-		{
-			RallyVehicle->ConsumeRespawnRequest();
-			RespawnTeam(Team, ETNRallyRespawnReason::Destroyed);
-			continue;
-		}
-		// Se consume siempre: una petición de antes del verde no se guarda para la carrera.
-		if (!RallyVehicle->ConsumeRespawnRequest())
-		{
-			continue;
-		}
-		if (bRacing && !Team.bFinished && !Team.bRetired && Time >= Team.ImmuneUntil)
-		{
-			RespawnTeam(Team, ETNRallyRespawnReason::Request);
+			RespawnTeam(Team, Reason);
 		}
 	}
 }
@@ -175,29 +181,10 @@ void ATN_RallyGameMode::EvaluateTeam(FTeamRuntime& Team, double DeltaSeconds)
 	{
 		return;
 	}
-	const TNRally::FLapRules Rules = MakeLapRules();
-	const double Length = Track->GetTrackLengthCm();
-	const bool bClosed = Track->IsCircuit();
 	const FVector Location = Vehicle->GetActorLocation();
 	Team.Arc = Track->FindArcNear(Location, Team.Arc);
-
-	// Arco recorrido desde la última puerta (desempate dentro de la misma puerta).
-	const bool bStarted = Team.LastGate != INDEX_NONE;
-	const double Reference = bStarted ? Track->GetGateArc(Team.LastGate) : Track->GetGateArc(0) - RallyPreStartRefCm;
-	const double SegmentLength = bStarted
-		? Track->GetArcBetweenGates(Team.LastGate, Rules.NextGateIndex(Team.GatesPassed)) : RallyPreStartRefCm;
-	const double Progress = TNRally::ForwardArc(bClosed ? TNRally::WrapArc(Reference, Length, true) : Reference, Team.Arc, Length, bClosed);
-	Team.SegmentProgressCm = Progress > SegmentLength + RallyTeleportJumpCm ? 0.0 : Progress;
-
-	const ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
-	const bool bFlipped = RallyVehicle && RallyVehicle->IsFlipped();
-	if (bFlipped && !Team.bWasFlipped)
-	{
-		++Team.Flips;
-		UE_LOG(LogTNRally, Verbose, TEXT("[RallyGameMode] Equipo %d volcado en el arco %.0f m (%.0f km/h) en (%.0f, %.0f, %.0f)."),
-			Team.TeamIndex, Team.Arc / 100.0, TNRally::CmsToKmh(Vehicle->GetVelocity().Size()), Location.X, Location.Y, Location.Z);
-	}
-	Team.bWasFlipped = bFlipped;
+	UpdateSegmentProgress(Team);
+	CountFlip(Team, *Vehicle, Location);
 
 	if (Now() < Team.ImmuneUntil)
 	{
@@ -233,6 +220,33 @@ void ATN_RallyGameMode::EvaluateTeam(FTeamRuntime& Team, double DeltaSeconds)
 	{
 		RespawnTeam(Team, ETNRallyRespawnReason::Stuck);
 	}
+}
+
+void ATN_RallyGameMode::UpdateSegmentProgress(FTeamRuntime& Team) const
+{
+	// Arco recorrido desde la última puerta (desempate dentro de la misma puerta).
+	const TNRally::FLapRules Rules = MakeLapRules();
+	const double Length = Track->GetTrackLengthCm();
+	const bool bClosed = Track->IsCircuit();
+	const bool bStarted = Team.LastGate != INDEX_NONE;
+	const double Reference = bStarted ? Track->GetGateArc(Team.LastGate) : Track->GetGateArc(0) - RallyPreStartRefCm;
+	const double SegmentLength = bStarted
+		? Track->GetArcBetweenGates(Team.LastGate, Rules.NextGateIndex(Team.GatesPassed)) : RallyPreStartRefCm;
+	const double Progress = TNRally::ForwardArc(bClosed ? TNRally::WrapArc(Reference, Length, true) : Reference, Team.Arc, Length, bClosed);
+	Team.SegmentProgressCm = Progress > SegmentLength + RallyTeleportJumpCm ? 0.0 : Progress;
+}
+
+void ATN_RallyGameMode::CountFlip(FTeamRuntime& Team, const APawn& Vehicle, const FVector& Location)
+{
+	const ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(&Vehicle);
+	const bool bFlipped = RallyVehicle && RallyVehicle->IsFlipped();
+	if (bFlipped && !Team.bWasFlipped)
+	{
+		++Team.Flips;
+		UE_LOG(LogTNRally, Verbose, TEXT("[RallyGameMode] Equipo %d volcado en el arco %.0f m (%.0f km/h) en (%.0f, %.0f, %.0f)."),
+			Team.TeamIndex, Team.Arc / 100.0, TNRally::CmsToKmh(Vehicle.GetVelocity().Size()), Location.X, Location.Y, Location.Z);
+	}
+	Team.bWasFlipped = bFlipped;
 }
 
 bool ATN_RallyGameMode::IsInHazard(const FVector& Location) const
