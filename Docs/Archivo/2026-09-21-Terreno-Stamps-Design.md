@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): terreno de los mapas volumétricos fijos: referencia en `Docs/Diseno_Terreno_CaminoPrimero.md` y plan vigente en `Docs/2026-09-29-Plan-Maestro-Modos-y-Mapas.md` (el terreno procedural queda retirado).
+
 # Terreno por stamps — diseño
 
 Fecha: 2026-09-21

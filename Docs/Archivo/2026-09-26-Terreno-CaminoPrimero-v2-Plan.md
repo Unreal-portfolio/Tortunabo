@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): plan de implementación ya ejecutado; el diseño vigente está en `Docs/Diseno_Terreno_CaminoPrimero.md`.
+
 # Terreno «camino primero» v2 — plan de implementación
 
 > **Para agentes:** SUB-SKILL: superpowers:executing-plans (ejecución nativa). Pasos con casillas `- [ ]`.

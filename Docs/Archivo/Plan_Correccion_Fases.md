@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): plan del sprint de julio de 2026; el plan vigente es `Docs/2026-09-29-Plan-Maestro-Modos-y-Mapas.md` y el desglose está en `Docs/ROADMAP-macro-update.md`.
+
 # Plan de corrección y optimización — Tortunavy
 
 > Generado en la sesión de macro-audit (/maxdual · ULTRON + peer Codex).
