@@ -320,6 +320,8 @@ namespace TNBeachDungeonDetail
 		// Adornos: concha grande sobre la entrada, estrellas y conchas en las caras de fuera, guijarros por dentro.
 		TNPlaygroundKit::AddShellFan(Decor, FVector(-L.HX - 3.0, L.EntY, FloorZ + EntryH + 70.0), -FVector::ForwardVector, FVector::UpVector, 110.0,
 			TNBeachTrapKit::ShellTone(static_cast<int32>(Seed % 5u)));
+		// Aberturas de cada muralla de fuera, para no pegar adornos donde no hay pared (entrada, salida, ventanas y el hueco de encima).
+		const TArray<FOpening> SideOpenings[4] = { { Entry }, { Exit, SeaA, SeaB }, { LowA, HighC }, { LowA, HighD, HighC } };
 		for (int32 d = 0; d < 14; ++d)
 		{
 			const int32 Side = d % 4;
@@ -333,6 +335,28 @@ namespace TNBeachDungeonDetail
 			case 1: At = FVector(L.HX + 3.0, FMath::Lerp(-L.HY + 400.0, L.HY - 400.0, U), Z); Normal = FVector::ForwardVector; break;
 			case 2: At = FVector(FMath::Lerp(-L.HX + 400.0, L.HX - 400.0, U), L.HY + 3.0, Z); Normal = FVector::RightVector; break;
 			default: At = FVector(FMath::Lerp(-L.HX + 400.0, L.HX - 400.0, U), -L.HY - 3.0, Z); Normal = -FVector::RightVector; break;
+			}
+			const double Along = Side < 2 ? At.Y : At.X;
+			const double Reach = d % 3 == 0 ? 55.0 : 48.0;
+			bool bFloating = false;
+			for (const FOpening& Op : SideOpenings[Side])
+			{
+				// El adorno entero (radio Reach) tiene que quedar fuera de la abertura, y también de la concha grande de encima de la entrada.
+				const bool bBeside = FMath::Abs(Along - Op.Center) > 0.5 * Op.Width + Reach;
+				const bool bBelowOrAbove = Z + Reach < Op.Bottom || Z - Reach > Op.Top;
+				if (!bBeside && !bBelowOrAbove)
+				{
+					bFloating = true;
+					break;
+				}
+			}
+			if (Side == 0 && FMath::Abs(Along - L.EntY) < 110.0 + Reach && Z - Reach < FloorZ + EntryH + 70.0 + 110.0)
+			{
+				bFloating = true;
+			}
+			if (bFloating)
+			{
+				continue;
 			}
 			if (d % 3 == 0)
 			{
