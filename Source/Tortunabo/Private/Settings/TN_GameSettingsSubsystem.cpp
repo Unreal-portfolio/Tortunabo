@@ -1273,7 +1273,7 @@ void UTN_GameSettingsSubsystem::UpdateFpsCounter(APlayerController* PC)
 	// Tras un viaje el mundo quita todos los widgets: se vuelve a poner.
 	if (FpsWidget && !TNVR::IsOnScreen(FpsWidget))
 	{
-		TNVR::AddToScreen(FpsWidget, TNGameSettingsDetail::FpsZOrder);
+		TNVR::AddToFullScreen(FpsWidget, TNGameSettingsDetail::FpsZOrder);
 	}
 }
 
@@ -1291,7 +1291,7 @@ void UTN_GameSettingsSubsystem::UpdateTalkers(APlayerController* PC)
 	}
 	if (TalkersWidget && !TNVR::IsOnScreen(TalkersWidget))
 	{
-		TNVR::AddToScreen(TalkersWidget, TNGameSettingsDetail::TalkersZOrder);
+		TNVR::AddToFullScreen(TalkersWidget, TNGameSettingsDetail::TalkersZOrder);
 	}
 }
 
@@ -1999,7 +1999,7 @@ void UTN_GameSettingsSubsystem::OpenPauseMenu(APlayerController* PC)
 		return;
 	}
 	PauseMenu = Menu;
-	TNVR::AddToScreen(Menu, TNGameSettingsDetail::PauseMenuZOrder);
+	TNVR::AddToFullScreen(Menu, TNGameSettingsDetail::PauseMenuZOrder);
 	Menu->TakeInput();
 	UE_LOG(LogTortunabo, Log, TEXT("[Pausa] Menú abierto (%s)."), *GetNameSafe(PC->GetWorld()));
 }
@@ -2017,7 +2017,7 @@ void UTN_GameSettingsSubsystem::OpenMainMenuSettings(APlayerController* PC)
 		return;
 	}
 	PauseMenu = Menu;
-	TNVR::AddToScreen(Menu, TNGameSettingsDetail::PauseMenuZOrder);
+	TNVR::AddToFullScreen(Menu, TNGameSettingsDetail::PauseMenuZOrder);
 	Menu->TakeInput();
 	UE_LOG(LogTortunabo, Log, TEXT("[Pausa] Ajustes abiertos desde el menú principal."));
 }
