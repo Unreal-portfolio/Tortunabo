@@ -8,6 +8,7 @@
 #include "Rally/TN_RallyGameState.h"
 #include "TN_RallyHUDWidget.generated.h"
 
+class ATN_Buggy;
 class UBorder;
 class UCanvasPanel;
 class UImage;
@@ -44,6 +45,15 @@ private:
 	void RefreshResults(const ATN_RallyGameState& RallyState, double ServerTime);
 	void RefreshTurret();
 
+	/**
+	 * Buggy del jugador local: el que posee como conductora o el de su peón de artillera; si no, el de su fila de
+	 * puestos. Nullptr si mira la carrera sin plaza.
+	 */
+	const ATN_Buggy* FindLocalBuggy() const;
+
+	/** Lee del buggy local el calor, la munición especial y la tinta (estado replicado; vale en cliente y servidor). */
+	void PullFromLocalBuggy();
+
 	UPROPERTY(Transient) TObjectPtr<UCanvasPanel> Canvas;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PlaceText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> LapText;
@@ -65,6 +75,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ResultsFooter;
 
 	float TurretHeat = 0.f;
+	bool bTurretOverheated = false;
+	int32 SpecialCharges = 0;
 	float InkSeconds = 0.f;
 	float TextAccumulator = 1.f;
 	/** Firma de la tabla pintada (para no reconstruir las filas cada fotograma). */

@@ -12,6 +12,9 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyVehicle.h"
+#include "Vehicles/TN_Buggy.h"
+#include "Vehicles/TN_BuggyGunnerPawn.h"
+#include "Vehicles/TN_BuggyTurretComponent.h"
 
 namespace TNRallyHUD
 {
@@ -96,6 +99,39 @@ void UTN_RallyHUDWidget::SetTurretHeat(float Heat01)
 void UTN_RallyHUDWidget::SetInkSeconds(float SecondsLeft)
 {
 	InkSeconds = FMath::Max(0.f, SecondsLeft);
+}
+
+const ATN_Buggy* UTN_RallyHUDWidget::FindLocalBuggy() const
+{
+	const APlayerController* Player = GetOwningPlayer();
+	if (!Player)
+	{
+		return nullptr;
+	}
+	const APawn* Pawn = Player->GetPawn();
+	if (const ATN_Buggy* Driven = Cast<ATN_Buggy>(Pawn))
+	{
+		return Driven;
+	}
+	if (const ATN_BuggyGunnerPawn* Gunner = Cast<ATN_BuggyGunnerPawn>(Pawn))
+	{
+		return Gunner->GetBuggy();
+	}
+	// Sin peón propio (reaparición, cambio de plaza): el buggy de su fila de puestos.
+	const UWorld* World = GetWorld();
+	const ATN_RallyGameState* RallyState = World ? World->GetGameState<ATN_RallyGameState>() : nullptr;
+	const FTNRallyStanding* Mine = RallyState ? RallyState->FindStandingForPlayer(Player->GetPlayerState<ATN_RallyPlayerState>()) : nullptr;
+	return Mine ? Cast<ATN_Buggy>(Mine->Vehicle) : nullptr;
+}
+
+void UTN_RallyHUDWidget::PullFromLocalBuggy()
+{
+	const ATN_Buggy* Buggy = FindLocalBuggy();
+	const UTN_BuggyTurretComponent* Turret = Buggy ? Buggy->GetTurret() : nullptr;
+	bTurretOverheated = Turret && Turret->IsOverheated();
+	SpecialCharges = Turret ? Turret->GetSpecialCharges() : 0;
+	SetTurretHeat(Turret ? Turret->GetHeat01() : 0.f);
+	SetInkSeconds(Buggy ? Buggy->GetInkSecondsLeft() : 0.f);
 }
 
 void UTN_RallyHUDWidget::BuildTree()
@@ -215,7 +251,7 @@ void UTN_RallyHUDWidget::BuildResults()
 void UTN_RallyHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
-	InkSeconds = FMath::Max(0.f, InkSeconds - InDeltaTime);
+	PullFromLocalBuggy();
 	const float InkOpacity = FMath::Clamp(InkSeconds / TNRallyHUD::InkFadeSeconds, 0.f, 1.f) * 0.94f;
 	for (UImage* Ink : InkSplats)
 	{
@@ -280,8 +316,11 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 	Show(AmmoText, Special != ETNRallyAmmo::None && Special != ETNRallyAmmo::Coco);
 	if (AmmoText->GetVisibility() != ESlateVisibility::Collapsed)
 	{
-		AmmoText->SetText(FText::Format(NSLOCTEXT("Rally", "SpecialAmmo", "Munición: {0}"), AmmoName(Special)));
+		AmmoText->SetText(FText::Format(NSLOCTEXT("Rally", "SpecialAmmoCharges", "Munición: {0} ×{1}"), AmmoName(Special),
+			TNLocText::Int(FMath::Max(0, SpecialCharges))));
 	}
+	HeatLabel->SetText(bTurretOverheated ? NSLOCTEXT("Rally", "TurretOverheated", "¡Torreta sobrecalentada!")
+		: NSLOCTEXT("Rally", "TurretHeat", "Torreta"));
 	Show(Crosshair, Me && Me->IsGunner() && RallyState.Phase != ETNRallyPhase::Results);
 	Show(HeatBar ? HeatBar->GetParent() : nullptr, Mine != nullptr);
 	Show(HeatLabel, Mine != nullptr);
