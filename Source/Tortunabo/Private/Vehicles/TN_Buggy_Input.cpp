@@ -3,6 +3,7 @@
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyData.h"
 #include "Vehicles/TN_BuggyInput.h"
+#include "Vehicles/TN_BuggyTurretComponent.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
 #include "Engine/World.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
@@ -38,10 +39,15 @@ void ATN_Buggy::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 	Input->BindAction(Set->Steer, ETriggerEvent::Completed, this, &ATN_Buggy::OnSteer);
 	Input->BindAction(Set->Handbrake, ETriggerEvent::Started, this, &ATN_Buggy::OnHandbrakePressed);
 	Input->BindAction(Set->Handbrake, ETriggerEvent::Completed, this, &ATN_Buggy::OnHandbrakeReleased);
+	Input->BindAction(Set->Boost, ETriggerEvent::Started, this, &ATN_Buggy::OnBoostPressed);
+	Input->BindAction(Set->Boost, ETriggerEvent::Completed, this, &ATN_Buggy::OnBoostReleased);
+	// Started: una muesca de la rueda o una pulsación de la cruceta cambia una vez.
+	Input->BindAction(Set->CycleAmmo, ETriggerEvent::Started, this, &ATN_Buggy::OnCycleAmmo);
 	Input->BindAction(Set->SelfRight, ETriggerEvent::Started, this, &ATN_Buggy::OnSelfRightPressed);
 	Input->BindAction(Set->SelfRight, ETriggerEvent::Completed, this, &ATN_Buggy::OnSelfRightReleased);
 	// Mantener el botón repite el disparo: la cadencia la limita el servidor.
 	Input->BindAction(Set->FireCoco, ETriggerEvent::Triggered, this, &ATN_Buggy::OnFireCoco);
+	Input->BindAction(Set->FireCoco, ETriggerEvent::Completed, this, &ATN_Buggy::OnFireCocoReleased);
 	Input->BindAction(Set->FireSpecial, ETriggerEvent::Started, this, &ATN_Buggy::OnFireSpecial);
 	Input->BindAction(Set->FireBack, ETriggerEvent::Started, this, &ATN_Buggy::OnFireBackPressed);
 	Input->BindAction(Set->FireBack, ETriggerEvent::Completed, this, &ATN_Buggy::OnFireBackReleased);
@@ -59,6 +65,9 @@ void ATN_Buggy::NotifyControllerChanged()
 	}
 	bSelfRightHeld = false;
 	bAimBackward = false;
+	bDriverFireLatched = false;
+	// También en el servidor (PossessedBy y UnPossessed pasan por aquí): una conductora que sale no deja el turbo pisado.
+	bBoostHeld = false;
 	RespawnHold = TNBuggy::FHold();
 	Super::NotifyControllerChanged();
 }
@@ -67,7 +76,7 @@ void ATN_Buggy::OnThrottle(const FInputActionValue& Value)
 {
 	if (UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement())
 	{
-		Move->SetThrottleInput(IsEngineLocked() ? 0.f : Value.Get<float>());
+		Move->SetThrottleInput(IsEngineLocked() || bRaceBrakeHeld ? 0.f : Value.Get<float>());
 	}
 }
 
@@ -136,14 +145,26 @@ void ATN_Buggy::OnSelfRightReleased(const FInputActionValue& Value)
 
 void ATN_Buggy::OnFireCoco(const FInputActionValue& Value)
 {
-	// Con artillera, la conductora no dispara (lo revalida el servidor). Mantener el botón pide a la cadencia del coco,
-	// no cada frame.
+	// Con artillera, la conductora no dispara (lo revalida el servidor). Botón principal: la munición seleccionada. Con el
+	// coco, mantenerlo pide a su cadencia (no cada frame); con una especial, un disparo por pulsación (no gasta las cargas
+	// manteniendo el botón).
+	if (bGunnerSeated || bDriverFireLatched)
+	{
+		return;
+	}
+	const ETNRallyAmmo Selected = Turret ? Turret->GetSelectedAmmo() : ETNRallyAmmo::Coco;
 	const double Now = GetWorld()->GetTimeSeconds();
-	if (!bGunnerSeated && Now - LastDriverFireRequest >= TNRallyTurret::SpecFor(ETNRallyAmmo::Coco).FireInterval)
+	if (Now - LastDriverFireRequest >= TNRallyTurret::SpecFor(Selected).FireInterval)
 	{
 		LastDriverFireRequest = Now;
+		bDriverFireLatched = TNRallyTurret::IsSpecial(Selected);
 		RequestDriverFire(false, bAimBackward);
 	}
+}
+
+void ATN_Buggy::OnFireCocoReleased(const FInputActionValue& Value)
+{
+	bDriverFireLatched = false;
 }
 
 void ATN_Buggy::OnFireSpecial(const FInputActionValue& Value)
@@ -157,6 +178,26 @@ void ATN_Buggy::OnFireSpecial(const FInputActionValue& Value)
 void ATN_Buggy::RequestDriverFire(bool bSpecial, bool bBackward)
 {
 	ServerDriverFire(bSpecial, bBackward);
+}
+
+void ATN_Buggy::OnBoostPressed(const FInputActionValue& Value)
+{
+	SetBoostHeld(true);
+}
+
+void ATN_Buggy::OnBoostReleased(const FInputActionValue& Value)
+{
+	SetBoostHeld(false);
+}
+
+void ATN_Buggy::OnCycleAmmo(const FInputActionValue& Value)
+{
+	// Con artillera, la munición la elige ella (su peón liga la misma acción); la torreta manda la petición al servidor.
+	const int32 Direction = UTN_BuggyInputSet::CycleDirection(Value);
+	if (!bGunnerSeated && Turret && Direction != 0)
+	{
+		Turret->CycleAmmo(Direction);
+	}
 }
 
 void ATN_Buggy::OnFireBackPressed(const FInputActionValue& Value)

@@ -1,5 +1,6 @@
 #include "Vehicles/TN_BuggyInput.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputActionValue.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
 #include "InputAction.h"
@@ -28,6 +29,14 @@ namespace
 		Mapping.Modifiers.Add(NewObject<UInputModifierDeadZone>(Context));
 	}
 
+	/** Rueda del ratón (arriba +1, abajo -1) y crucetas (derecha +1, izquierda -1). */
+	void MapCycleAmmo(UInputMappingContext* Context, const UInputAction* Action)
+	{
+		Context->MapKey(Action, EKeys::MouseWheelAxis);
+		Context->MapKey(Action, EKeys::Gamepad_DPad_Right);
+		MapNegated(Context, Action, EKeys::Gamepad_DPad_Left);
+	}
+
 	UEnhancedInputLocalPlayerSubsystem* SubsystemOf(const APlayerController* PC)
 	{
 		if (!PC || !PC->IsLocalController())
@@ -45,10 +54,12 @@ UTN_BuggyInputSet* UTN_BuggyInputSet::Create(UObject* Outer)
 	Set->Brake = MakeAction(Set, TEXT("IA_BuggyBrake"), EInputActionValueType::Axis1D);
 	Set->Steer = MakeAction(Set, TEXT("IA_BuggySteer"), EInputActionValueType::Axis1D);
 	Set->Handbrake = MakeAction(Set, TEXT("IA_BuggyHandbrake"), EInputActionValueType::Boolean);
+	Set->Boost = MakeAction(Set, TEXT("IA_BuggyBoost"), EInputActionValueType::Boolean);
 	Set->FireBack = MakeAction(Set, TEXT("IA_BuggyFireBack"), EInputActionValueType::Boolean);
 	Set->SelfRight = MakeAction(Set, TEXT("IA_BuggySelfRight"), EInputActionValueType::Boolean);
 	Set->FireCoco = MakeAction(Set, TEXT("IA_BuggyFireCoco"), EInputActionValueType::Boolean);
 	Set->FireSpecial = MakeAction(Set, TEXT("IA_BuggyFireSpecial"), EInputActionValueType::Boolean);
+	Set->CycleAmmo = MakeAction(Set, TEXT("IA_BuggyCycleAmmo"), EInputActionValueType::Axis1D);
 	Set->AimMouse = MakeAction(Set, TEXT("IA_BuggyAimMouse"), EInputActionValueType::Axis2D);
 	Set->AimStick = MakeAction(Set, TEXT("IA_BuggyAimStick"), EInputActionValueType::Axis2D);
 
@@ -60,8 +71,11 @@ UTN_BuggyInputSet* UTN_BuggyInputSet::Create(UObject* Outer)
 	Driver->MapKey(Set->Steer, EKeys::D);
 	MapNegated(Driver, Set->Steer, EKeys::A);
 	MapDeadZone(Driver, Set->Steer, EKeys::Gamepad_LeftX);
-	Driver->MapKey(Set->Handbrake, EKeys::SpaceBar);
-	Driver->MapKey(Set->Handbrake, EKeys::Gamepad_FaceButton_Right);
+	// #294: Espacio y A son el turbo; el freno de mano pasa a Shift izquierdo y X, y disparar atrás, de X a B.
+	Driver->MapKey(Set->Handbrake, EKeys::LeftShift);
+	Driver->MapKey(Set->Handbrake, EKeys::Gamepad_FaceButton_Left);
+	Driver->MapKey(Set->Boost, EKeys::SpaceBar);
+	Driver->MapKey(Set->Boost, EKeys::Gamepad_FaceButton_Bottom);
 	Driver->MapKey(Set->SelfRight, EKeys::R);
 	Driver->MapKey(Set->SelfRight, EKeys::Gamepad_FaceButton_Top);
 	Driver->MapKey(Set->FireCoco, EKeys::LeftMouseButton);
@@ -69,7 +83,8 @@ UTN_BuggyInputSet* UTN_BuggyInputSet::Create(UObject* Outer)
 	Driver->MapKey(Set->FireSpecial, EKeys::RightMouseButton);
 	Driver->MapKey(Set->FireSpecial, EKeys::Gamepad_LeftShoulder);
 	Driver->MapKey(Set->FireBack, EKeys::Q);
-	Driver->MapKey(Set->FireBack, EKeys::Gamepad_FaceButton_Left);
+	Driver->MapKey(Set->FireBack, EKeys::Gamepad_FaceButton_Right);
+	MapCycleAmmo(Driver, Set->CycleAmmo);
 	Set->DriverContext = Driver;
 
 	UInputMappingContext* Gunner = NewObject<UInputMappingContext>(Set, TEXT("IMC_BuggyGunner"), RF_Transient);
@@ -81,8 +96,15 @@ UTN_BuggyInputSet* UTN_BuggyInputSet::Create(UObject* Outer)
 	Gunner->MapKey(Set->FireSpecial, EKeys::Gamepad_LeftTriggerAxis);
 	Gunner->MapKey(Set->SelfRight, EKeys::R);
 	Gunner->MapKey(Set->SelfRight, EKeys::Gamepad_FaceButton_Top);
+	MapCycleAmmo(Gunner, Set->CycleAmmo);
 	Set->GunnerContext = Gunner;
 	return Set;
+}
+
+int32 UTN_BuggyInputSet::CycleDirection(const FInputActionValue& Value)
+{
+	const float Axis = Value.Get<float>();
+	return FMath::IsNearlyZero(Axis) ? 0 : (Axis > 0.f ? 1 : -1);
 }
 
 void UTN_BuggyInputSet::AddContext(const APlayerController* PC, const UInputMappingContext* Context)

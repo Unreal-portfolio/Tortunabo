@@ -102,7 +102,8 @@ namespace TNBuggyMeasure
 		return TNRally::SteerToward(Buggy.GetActorForwardVector(), Track.GetLocationAtArc(Run.Arc + Ahead) - Location, SteerSaturationDeg);
 	}
 
-	void Finish(const TSharedRef<FRun>& Run, const TCHAR* Why)
+	/** Recibe el TSharedRef por valor: ClearTimer destruye la lambda que era su única dueña (uso tras liberar, #100). */
+	void Finish(TSharedRef<FRun> Run, const TCHAR* Why)
 	{
 		Run->Stage = EStage::Done;
 		if (UWorld* World = Run->World.Get())
@@ -124,7 +125,8 @@ namespace TNBuggyMeasure
 		}
 	}
 
-	void Step(const TSharedRef<FRun>& Run)
+	/** Por valor por lo mismo que Finish: la copia mantiene vivo FRun mientras dura el paso. */
+	void Step(TSharedRef<FRun> Run)
 	{
 		UWorld* World = Run->World.Get();
 		if (!World || Run->Stage == EStage::Done)

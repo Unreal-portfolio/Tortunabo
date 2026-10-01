@@ -1,4 +1,5 @@
 #include "Vehicles/TN_BuggyWheel.h"
+#include "Vehicles/TN_BuggyMath.h"
 
 namespace
 {
@@ -27,7 +28,9 @@ UTN_BuggyWheelFront::UTN_BuggyWheelFront()
 	ApplySharedWheelSetup(*this);
 	AxleType = EAxleType::Front;
 	bAffectedBySteering = true;
-	MaxSteerAngle = 40.f;
+	// Ángulo parado: la curva de dirección del movimiento (TNBuggy::SteerCurveKeys) lo baja a 12 grados a punta.
+	MaxSteerAngle = TNBuggy::SteerAngleAtRestDeg;
+	// ATN_Buggy::ApplyWheelFriction lo sustituye por UTN_BuggyData::FrontFriction en cuanto hay simulación.
 	FrictionForceMultiplier = 3.f;
 }
 
@@ -38,5 +41,6 @@ UTN_BuggyWheelRear::UTN_BuggyWheelRear()
 	bAffectedByHandbrake = true;
 	bAffectedByEngine = true;
 	MaxHandBrakeTorque = 6000.f;
-	FrictionForceMultiplier = 2.f;
+	// Igual o más que la delantera (UTN_BuggyData::RearFriction, que lo sustituye en cuanto hay simulación).
+	FrictionForceMultiplier = 3.4f;
 }

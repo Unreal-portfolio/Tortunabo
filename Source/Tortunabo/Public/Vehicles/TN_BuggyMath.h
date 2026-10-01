@@ -1,9 +1,11 @@
 // Lógica pura del buggy del Rally (sin mundo ni física): derrape asistido, golpe de rueda, enderezado, reaparición
 // pulsando, tinte por equipo y frenado del charco. Port de FHYDriftMath y FHYBumpMath (HellYeah) con tests en
-// Tortunabo.Rally.Buggy.*.
+// Tortunabo.Rally.Buggy.*. Curvas de dirección y de par, estabilidad, turbo y cámara de la conductora con tests en
+// Tortunabo.Rally.Drive.*.
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/ArrayView.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTNBuggy, Log, All);
 
@@ -138,4 +140,205 @@ namespace TNBuggy
 
 	/** Dirección extra del bamboleo del coco: seno de Frequency Hz que se apaga linealmente hasta TimeLeft = 0. */
 	TORTUNABO_API float SteerWobble(float TimeLeft, float Duration, float Amplitude, float Frequency);
+
+	// ── Curvas de conducción (#288, #294; tests en Tortunabo.Rally.Drive.*) ─────
+
+	/** Punto de una curva lineal a tramos. */
+	struct FCurveKey
+	{
+		float X = 0.f;
+		float Y = 0.f;
+	};
+
+	/** Interpolación lineal entre Keys (ordenadas por X); fuera del rango, el valor del extremo. 0 sin claves. */
+	TORTUNABO_API float EvalLinearKeys(TConstArrayView<FCurveKey> Keys, float X);
+
+	/** Ángulo de dirección de las ruedas delanteras parado (grados): el MaxSteerAngle de UTN_BuggyWheelFront. */
+	constexpr float SteerAngleAtRestDeg = 40.f;
+	/** Ángulo de dirección a la velocidad punta y por encima (grados). */
+	constexpr float SteerAngleAtTopDeg = 12.f;
+
+	/** Curva de dirección: X = velocidad de avance (cm/s), Y = ángulo máximo (grados). Baja de 40 parado a 12 a punta. */
+	TORTUNABO_API TConstArrayView<FCurveKey> SteerCurveKeys();
+
+	/** Ángulo máximo de dirección (grados) a SpeedCms de avance (el signo no cuenta: marcha atrás, igual). */
+	TORTUNABO_API float MaxSteerAngleDeg(float SpeedCms);
+
+	/** Par máximo de la versión anterior (N·m): la curva nueva da el mismo par absoluto desde el 80 % de MaxRPM. */
+	constexpr float LegacyMaxTorque = 850.f;
+
+	/**
+	 * Curva de par: X = fracción de MaxRPM, Y = fracción del par máximo (su máximo es 1, porque Chaos la normaliza).
+	 * Plana a 1 desde el 10 % hasta el 55 % (todo el arranque hasta 60 km/h; el ralentí de Chaos ya está en el 35 %) y,
+	 * desde el 80 %, el mismo par absoluto que la curva antigua con LegacyMaxTorque: la punta no cambia.
+	 */
+	TORTUNABO_API TArray<FCurveKey> TorqueCurveKeys(float MaxTorque);
+
+	/** Curva antigua (OffroadCar_TorqueCurve de TP_VehicleAdvBP, interpolada lineal) para comparar en los tests. */
+	TORTUNABO_API TConstArrayView<FCurveKey> LegacyTorqueCurveKeys();
+
+	// ── Estabilidad (#288) ──────────────────────────────────────────────────────
+
+	struct FStabilityTuning
+	{
+		/** Deriva (grados) a partir de la cual se corrige: por debajo, el giro normal no se toca. */
+		float StartSlipDeg = 6.f;
+		/** Muelle (1/s²): aceleración de guiñada por radián de deriva de más. */
+		float Stiffness = 12.f;
+		/** Amortiguador (1/s) sobre la guiñada que agranda la deriva. */
+		float Damping = 3.f;
+		/** Tope (rad/s²). */
+		float MaxAccel = 8.f;
+		/** Por debajo de esta velocidad (cm/s) no actúa: se puede girar sobre sí mismo parado. */
+		float MinSpeedCms = 500.f;
+	};
+
+	/**
+	 * Aceleración de guiñada (rad/s² sobre el eje vertical del buggy, positiva a la derecha) que devuelve el morro hacia
+	 * la velocidad cuando la deriva pasa de StartSlipDeg: un control de estabilidad. Cero con el freno de mano (el
+	 * derrape largo es suyo), en el aire, despacio o con más de MaxAssistedSlipDeg de deriva (trompo o marcha atrás).
+	 * SlipDeg es el de SlipAngleDeg; YawRateRad, la velocidad de guiñada (positiva a la derecha).
+	 */
+	TORTUNABO_API float StabilityYawAccel(float SlipDeg, float YawRateRad, float SpeedCms, bool bHandbrake, bool bAirborne,
+		const FStabilityTuning& Tuning);
+
+	// ── Turbo (#294) ────────────────────────────────────────────────────────────
+
+	struct FBoostTuning
+	{
+		/** Gasto con el turbo pisado (barra por segundo): una barra llena dura 3 s. */
+		float DrainPerSecond = 1.f / 3.f;
+		/** Recarga derrapando con el freno de mano (barra por segundo). */
+		float DriftRechargePerSecond = 0.3f;
+		/** Recarga en el aire (barra por segundo). */
+		float AirRechargePerSecond = 0.4f;
+		/** Deriva mínima (grados) para que el derrape recargue. */
+		float MinDriftSlipDeg = 20.f;
+		/** Velocidad mínima (cm/s) para recargar: ni volcado ni cayendo parado. */
+		float MinRechargeSpeedCms = 800.f;
+	};
+
+	struct FBoostInput
+	{
+		bool bWantBoost = false;
+		bool bEngineLocked = false;
+		bool bHandbrake = false;
+		bool bAirborne = false;
+		float SlipDeg = 0.f;
+		float SpeedCms = 0.f;
+	};
+
+	struct FBoostStep
+	{
+		float Charge01 = 0.f;
+		bool bActive = false;
+	};
+
+	/** Recarga por segundo que toca ahora (0 si no derrapa con el freno de mano ni vuela lo bastante rápido). */
+	TORTUNABO_API float BoostRechargeRate(const FBoostInput& In, const FBoostTuning& Tuning);
+
+	/** Un paso del turbo: activo si se pide, hay carga y el motor no está cortado; gasta si está activo y, si no, recarga. */
+	TORTUNABO_API FBoostStep AdvanceBoost(float Charge01, const FBoostInput& In, float Dt, const FBoostTuning& Tuning);
+
+	/**
+	 * Empuje del turbo (cm/s², hacia delante) para que la punta suba a BoostTopSpeedCms: PushAccel hasta FadeBandCms por
+	 * debajo de esa punta y 0 al llegar a ella o al ir marcha atrás.
+	 */
+	TORTUNABO_API float BoostPushAccel(float ForwardSpeedCms, float BoostTopSpeedCms, float PushAccel, float FadeBandCms);
+
+	// ── Cámara de la conductora (#298) ──────────────────────────────────────────
+
+	struct FDriverCameraTuning
+	{
+		/** Persecución de HellYeah: FOV y brazo (cm) parado y a FullSpeedCms, y altura del encuadre (cm). */
+		float BaseFov = 90.f;
+		float MaxFov = 100.f;
+		float BaseArmCm = 780.f;
+		float MaxArmCm = 860.f;
+		float FullSpeedCms = 3000.f;
+		float SocketHeightCm = 100.f;
+		/** Desplazamiento lateral hacia el interior de la curva (cm por grado/s de guiñada) y su tope. */
+		float LeadCmPerDegPerSec = 1.6f;
+		float MaxLeadCm = 140.f;
+		/** Velocidad (cm/s) a la que el desplazamiento lateral llega a su valor completo. */
+		float LeadFullSpeedCms = 1200.f;
+		/** Frenada (cm/s² de deceleración) a la que empieza a acercarse y a la que llega al todo. */
+		float BrakeStartDecel = 700.f;
+		float BrakeFullDecel = 2000.f;
+		/** Cuánto se acorta el brazo (cm) y cuánto baja (cm) con la frenada completa. */
+		float BrakeArmPullCm = 120.f;
+		float BrakeDropCm = 40.f;
+		/** Alabeo en el derrape: empieza a StartDeg de deriva y llega a MaxRollDeg a FullDeg. */
+		float DriftRollStartDeg = 10.f;
+		float DriftRollFullDeg = 40.f;
+		float MaxRollDeg = 4.f;
+		/** Suavizado (1/s) de los desplazamientos y del alabeo, y de la deceleración medida. */
+		float PoseInterpSpeed = 3.f;
+		float AccelInterpSpeed = 6.f;
+		/** FOV extra con el turbo (grados) y su suavizado (1/s). */
+		float BoostFovDeg = 8.f;
+		float BoostFovInterpSpeed = 4.f;
+		/** Sacudida: caída mínima y completa al aterrizar (cm/s hacia abajo), mínimo de tiempo en el aire (s). */
+		float LandingMinFallCms = 400.f;
+		float LandingFullFallCms = 1600.f;
+		float LandingMinAirSeconds = 0.2f;
+		/** Sacudida continua mínima con el turbo, olvido (por segundo) y amplitud máxima (cm y grados). */
+		float BoostTrauma = 0.3f;
+		float TraumaDecayPerSecond = 1.6f;
+		float MaxShakeCm = 14.f;
+		float MaxShakeDeg = 1.2f;
+	};
+
+	struct FDriverCameraInput
+	{
+		float Dt = 0.f;
+		/** Velocidad de avance (cm/s, negativa marcha atrás). */
+		float ForwardSpeedCms = 0.f;
+		/** Guiñada (grados/s, positiva a la derecha). */
+		float YawRateDegPerSec = 0.f;
+		float SlipDeg = 0.f;
+		/** Velocidad vertical del chasis (cm/s, positiva hacia arriba). */
+		float VerticalSpeedCms = 0.f;
+		bool bAirborne = false;
+		bool bBoosting = false;
+		/** Sacudida externa de este fotograma (impactos, disparos), 0..1. */
+		float AddedTrauma = 0.f;
+	};
+
+	/** Estado suavizado de la cámara de la conductora. */
+	struct FDriverCameraState
+	{
+		/** Desplazamiento lateral del encuadre (cm, positivo a la derecha). */
+		float LateralCm = 0.f;
+		/** Cambio del brazo (cm, negativo = más cerca) y de la altura (cm, negativo = más baja). */
+		float ArmDeltaCm = 0.f;
+		float HeightDeltaCm = 0.f;
+		float RollDeg = 0.f;
+		float BoostFovDeg = 0.f;
+		/** Sacudida en [0, 1]: la amplitud va con su cuadrado. */
+		float Trauma = 0.f;
+		/** Aceleración longitudinal suavizada (cm/s², negativa al frenar). */
+		float LongAccel = 0.f;
+		float PrevForwardSpeedCms = 0.f;
+		float AirSeconds = 0.f;
+		/** Mayor velocidad de caída (cm/s, positiva) del vuelo en curso. */
+		float FallSpeedCms = 0.f;
+		bool bHasPrevSpeed = false;
+	};
+
+	/** Ajuste por defecto de la cámara de la conductora (ATN_Buggy lo usa al construir y en cada fotograma). */
+	TORTUNABO_API const FDriverCameraTuning& DefaultDriverCamera();
+
+	/** Sacudida (0..1) de un aterrizaje tras AirSeconds en el aire cayendo a FallSpeedCms. */
+	TORTUNABO_API float LandingTrauma(float FallSpeedCms, float AirSeconds, const FDriverCameraTuning& Tuning);
+
+	/** Avanza la cámara un fotograma: objetivo (curva, frenada, derrape, turbo), suavizado y sacudida. */
+	TORTUNABO_API FDriverCameraState AdvanceDriverCamera(const FDriverCameraState& State, const FDriverCameraInput& In,
+		const FDriverCameraTuning& Tuning);
+
+	/** Desplazamiento de la sacudida (cm en X, Y, Z del brazo): suma de senos sin repetición visible, amplitud Trauma². */
+	TORTUNABO_API FVector ShakeOffset(float Trauma, float TimeSeconds, float MaxShakeCm);
+
+	/** Giro de la sacudida (grados de cabeceo y guiñada en X e Y; Z = 0), amplitud Trauma². */
+	TORTUNABO_API FVector ShakeRotation(float Trauma, float TimeSeconds, float MaxShakeDeg);
 }

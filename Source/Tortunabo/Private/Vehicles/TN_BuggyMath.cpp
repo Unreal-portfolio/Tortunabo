@@ -173,3 +173,234 @@ namespace TNBuggy
 		return Amplitude * Fade * FMath::Sin(2.f * UE_PI * Frequency * Elapsed + UE_HALF_PI);
 	}
 }
+
+namespace TNBuggy
+{
+	float EvalLinearKeys(TConstArrayView<FCurveKey> Keys, float X)
+	{
+		if (Keys.Num() == 0)
+		{
+			return 0.f;
+		}
+		if (X <= Keys[0].X)
+		{
+			return Keys[0].Y;
+		}
+		for (int32 Index = 1; Index < Keys.Num(); ++Index)
+		{
+			const FCurveKey& A = Keys[Index - 1];
+			const FCurveKey& B = Keys[Index];
+			if (X <= B.X)
+			{
+				const float Span = B.X - A.X;
+				return Span > UE_KINDA_SMALL_NUMBER ? FMath::Lerp(A.Y, B.Y, (X - A.X) / Span) : B.Y;
+			}
+		}
+		return Keys.Last().Y;
+	}
+
+	TConstArrayView<FCurveKey> SteerCurveKeys()
+	{
+		// 80 km/h (2222 cm/s) quedan en ~15 grados: las curvas del trazado se toman sin que el eje delantero muerda de más.
+		static const FCurveKey Keys[] = {
+			{ 0.f, SteerAngleAtRestDeg }, { 500.f, 36.f }, { 1000.f, 28.f }, { 1700.f, 19.f }, { 2400.f, 14.f },
+			{ 3050.f, SteerAngleAtTopDeg } };
+		return Keys;
+	}
+
+	float MaxSteerAngleDeg(float SpeedCms)
+	{
+		return EvalLinearKeys(SteerCurveKeys(), FMath::Abs(SpeedCms));
+	}
+
+	TConstArrayView<FCurveKey> LegacyTorqueCurveKeys()
+	{
+		static const FCurveKey Keys[] = {
+			{ 0.f, 0.5f }, { 0.1f, 0.8f }, { 0.3f, 1.f }, { 0.55f, 1.f }, { 0.8f, 0.9f }, { 0.9f, 0.4f }, { 1.f, 0.f } };
+		return Keys;
+	}
+
+	TArray<FCurveKey> TorqueCurveKeys(float MaxTorque)
+	{
+		// Desde el 80 % de MaxRPM, el par absoluto de la curva antigua: con más MaxTorque, la fracción baja en proporción.
+		const float Scale = MaxTorque > UE_KINDA_SMALL_NUMBER ? LegacyMaxTorque / MaxTorque : 1.f;
+		const TConstArrayView<FCurveKey> Legacy = LegacyTorqueCurveKeys();
+		TArray<FCurveKey> Keys = { { 0.f, 0.9f }, { 0.1f, 1.f }, { 0.55f, 1.f } };
+		for (const FCurveKey& Key : Legacy)
+		{
+			if (Key.X >= 0.8f)
+			{
+				Keys.Add({ Key.X, FMath::Min(1.f, Key.Y * Scale) });
+			}
+		}
+		return Keys;
+	}
+
+	float StabilityYawAccel(float SlipDeg, float YawRateRad, float SpeedCms, bool bHandbrake, bool bAirborne,
+		const FStabilityTuning& Tuning)
+	{
+		const float AbsSlip = FMath::Abs(SlipDeg);
+		if (bHandbrake || bAirborne || FMath::Abs(SpeedCms) < Tuning.MinSpeedCms || AbsSlip <= Tuning.StartSlipDeg
+			|| AbsSlip > MaxAssistedSlipDeg)
+		{
+			return 0.f;
+		}
+		// Deriva positiva = la velocidad va a la derecha del morro: girar a la derecha (guiñada positiva) la reduce.
+		const float Excess = FMath::DegreesToRadians(AbsSlip - Tuning.StartSlipDeg) * FMath::Sign(SlipDeg);
+		float Accel = Tuning.Stiffness * Excess;
+		// Solo se frena la guiñada que agranda la deriva (la que va en contra de su signo); la que la corrige se deja.
+		if (YawRateRad * SlipDeg < 0.f)
+		{
+			Accel -= Tuning.Damping * YawRateRad;
+		}
+		return FMath::Clamp(Accel, -Tuning.MaxAccel, Tuning.MaxAccel);
+	}
+
+	float BoostRechargeRate(const FBoostInput& In, const FBoostTuning& Tuning)
+	{
+		if (In.bEngineLocked || FMath::Abs(In.SpeedCms) < Tuning.MinRechargeSpeedCms)
+		{
+			return 0.f;
+		}
+		if (In.bAirborne)
+		{
+			return Tuning.AirRechargePerSecond;
+		}
+		const bool bDrifting = In.bHandbrake && FMath::Abs(In.SlipDeg) > Tuning.MinDriftSlipDeg
+			&& FMath::Abs(In.SlipDeg) <= MaxAssistedSlipDeg;
+		return bDrifting ? Tuning.DriftRechargePerSecond : 0.f;
+	}
+
+	FBoostStep AdvanceBoost(float Charge01, const FBoostInput& In, float Dt, const FBoostTuning& Tuning)
+	{
+		const float SafeDt = FMath::Max(Dt, 0.f);
+		const float Charge = FMath::Clamp(Charge01, 0.f, 1.f);
+		FBoostStep Out;
+		Out.bActive = In.bWantBoost && !In.bEngineLocked && Charge > 0.f;
+		const float Rate = Out.bActive ? -Tuning.DrainPerSecond : BoostRechargeRate(In, Tuning);
+		const float Next = FMath::Clamp(Charge + Rate * SafeDt, 0.f, 1.f);
+		// Un resto de redondeo no cuenta como carga: si no, el turbo empujaría un paso de más.
+		Out.Charge01 = Next < UE_KINDA_SMALL_NUMBER ? 0.f : Next;
+		return Out;
+	}
+
+	float BoostPushAccel(float ForwardSpeedCms, float BoostTopSpeedCms, float PushAccel, float FadeBandCms)
+	{
+		if (ForwardSpeedCms < 0.f || ForwardSpeedCms >= BoostTopSpeedCms || PushAccel <= 0.f)
+		{
+			return 0.f;
+		}
+		const float Fade = FadeBandCms > 0.f ? FMath::Clamp((BoostTopSpeedCms - ForwardSpeedCms) / FadeBandCms, 0.f, 1.f) : 1.f;
+		return PushAccel * Fade;
+	}
+}
+
+namespace TNBuggy
+{
+	namespace
+	{
+		/** Rampa de 0 a 1 entre Start y Full (0 si Full <= Start y X < Full). */
+		float Ramp01(float X, float Start, float Full)
+		{
+			return Full > Start ? FMath::Clamp((X - Start) / (Full - Start), 0.f, 1.f) : (X >= Full ? 1.f : 0.f);
+		}
+
+		/** Objetivo sin suavizar: desplazamiento hacia la curva, acercamiento al frenar y alabeo en el derrape. */
+		FDriverCameraState CameraTarget(const FDriverCameraInput& In, float LongAccel, const FDriverCameraTuning& Tuning)
+		{
+			FDriverCameraState Target;
+			const float SpeedAlpha = Ramp01(FMath::Abs(In.ForwardSpeedCms), 0.f, Tuning.LeadFullSpeedCms);
+			Target.LateralCm = FMath::Clamp(In.YawRateDegPerSec * Tuning.LeadCmPerDegPerSec, -Tuning.MaxLeadCm, Tuning.MaxLeadCm)
+				* SpeedAlpha * (In.bAirborne ? 0.f : 1.f);
+			// Frenar es decelerar yendo hacia delante (marcha atrás, la cámara no se mueve).
+			const float Decel = In.ForwardSpeedCms > 200.f ? -LongAccel : 0.f;
+			const float Brake = Ramp01(Decel, Tuning.BrakeStartDecel, Tuning.BrakeFullDecel);
+			Target.ArmDeltaCm = -Tuning.BrakeArmPullCm * Brake;
+			Target.HeightDeltaCm = -Tuning.BrakeDropCm * Brake;
+			const float Drift = Ramp01(FMath::Abs(In.SlipDeg), Tuning.DriftRollStartDeg, Tuning.DriftRollFullDeg);
+			Target.RollDeg = FMath::Sign(In.SlipDeg) * Tuning.MaxRollDeg * Drift * (In.bAirborne ? 0.f : 1.f);
+			return Target;
+		}
+
+		/** Olvido, aterrizaje, sacudida externa y mínimo con el turbo. Actualiza el registro del vuelo en Out. */
+		void AdvanceTrauma(FDriverCameraState& Out, const FDriverCameraInput& In, float Dt, const FDriverCameraTuning& Tuning)
+		{
+			float Trauma = FMath::Max(0.f, Out.Trauma - Tuning.TraumaDecayPerSecond * Dt);
+			if (In.bAirborne)
+			{
+				Out.AirSeconds += Dt;
+				Out.FallSpeedCms = FMath::Max(Out.FallSpeedCms, -In.VerticalSpeedCms);
+			}
+			else if (Out.AirSeconds > 0.f)
+			{
+				Trauma += LandingTrauma(Out.FallSpeedCms, Out.AirSeconds, Tuning);
+				Out.AirSeconds = 0.f;
+				Out.FallSpeedCms = 0.f;
+			}
+			Trauma += FMath::Max(0.f, In.AddedTrauma);
+			if (In.bBoosting)
+			{
+				Trauma = FMath::Max(Trauma, Tuning.BoostTrauma);
+			}
+			Out.Trauma = FMath::Clamp(Trauma, 0.f, 1.f);
+		}
+
+		/** Suma de dos senos de frecuencias sin múltiplo común, en [-1, 1]. */
+		float Wiggle(float Time, float RateA, float RateB, float Phase)
+		{
+			return (FMath::Sin(Time * RateA + Phase) + 0.5f * FMath::Sin(Time * RateB + 2.f * Phase)) / 1.5f;
+		}
+	}
+
+	const FDriverCameraTuning& DefaultDriverCamera()
+	{
+		static const FDriverCameraTuning Tuning;
+		return Tuning;
+	}
+
+	float LandingTrauma(float FallSpeedCms, float AirSeconds, const FDriverCameraTuning& Tuning)
+	{
+		if (AirSeconds < Tuning.LandingMinAirSeconds)
+		{
+			return 0.f;
+		}
+		return 0.8f * Ramp01(FallSpeedCms, Tuning.LandingMinFallCms, Tuning.LandingFullFallCms);
+	}
+
+	FDriverCameraState AdvanceDriverCamera(const FDriverCameraState& State, const FDriverCameraInput& In,
+		const FDriverCameraTuning& Tuning)
+	{
+		FDriverCameraState Out = State;
+		const float Dt = In.Dt;
+		if (Dt <= 0.f)
+		{
+			return Out;
+		}
+		const float RawAccel = Out.bHasPrevSpeed ? (In.ForwardSpeedCms - Out.PrevForwardSpeedCms) / Dt : 0.f;
+		Out.LongAccel = FMath::FInterpTo(Out.LongAccel, RawAccel, Dt, Tuning.AccelInterpSpeed);
+		Out.PrevForwardSpeedCms = In.ForwardSpeedCms;
+		Out.bHasPrevSpeed = true;
+
+		const FDriverCameraState Target = CameraTarget(In, Out.LongAccel, Tuning);
+		Out.LateralCm = FMath::FInterpTo(Out.LateralCm, Target.LateralCm, Dt, Tuning.PoseInterpSpeed);
+		Out.ArmDeltaCm = FMath::FInterpTo(Out.ArmDeltaCm, Target.ArmDeltaCm, Dt, Tuning.PoseInterpSpeed);
+		Out.HeightDeltaCm = FMath::FInterpTo(Out.HeightDeltaCm, Target.HeightDeltaCm, Dt, Tuning.PoseInterpSpeed);
+		Out.RollDeg = FMath::FInterpTo(Out.RollDeg, Target.RollDeg, Dt, Tuning.PoseInterpSpeed);
+		Out.BoostFovDeg = FMath::FInterpTo(Out.BoostFovDeg, In.bBoosting ? Tuning.BoostFovDeg : 0.f, Dt, Tuning.BoostFovInterpSpeed);
+		AdvanceTrauma(Out, In, Dt, Tuning);
+		return Out;
+	}
+
+	FVector ShakeOffset(float Trauma, float TimeSeconds, float MaxShakeCm)
+	{
+		const float Amplitude = FMath::Square(FMath::Clamp(Trauma, 0.f, 1.f)) * MaxShakeCm;
+		return Amplitude * FVector(Wiggle(TimeSeconds, 41.3f, 67.1f, 0.f), Wiggle(TimeSeconds, 47.9f, 73.3f, 1.3f),
+			Wiggle(TimeSeconds, 53.7f, 79.9f, 2.6f));
+	}
+
+	FVector ShakeRotation(float Trauma, float TimeSeconds, float MaxShakeDeg)
+	{
+		const float Amplitude = FMath::Square(FMath::Clamp(Trauma, 0.f, 1.f)) * MaxShakeDeg;
+		return Amplitude * FVector(Wiggle(TimeSeconds, 37.1f, 61.7f, 0.7f), Wiggle(TimeSeconds, 43.3f, 71.9f, 2.1f), 0.f);
+	}
+}

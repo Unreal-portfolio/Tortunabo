@@ -9,6 +9,7 @@
 class APlayerController;
 class UInputAction;
 class UInputMappingContext;
+struct FInputActionValue;
 
 UCLASS(Transient)
 class TORTUNABO_API UTN_BuggyInputSet : public UObject
@@ -26,18 +27,26 @@ public:
 	static void AddContext(const APlayerController* PC, const UInputMappingContext* Context);
 	static void RemoveContext(const APlayerController* PC, const UInputMappingContext* Context);
 
+	/** Sentido de CycleAmmo: +1 (rueda arriba, cruceta derecha), -1 (rueda abajo, cruceta izquierda) o 0. */
+	static int32 CycleDirection(const FInputActionValue& Value);
+
 	// Conductora
 	UPROPERTY() TObjectPtr<UInputAction> Throttle;
 	UPROPERTY() TObjectPtr<UInputAction> Brake;
 	UPROPERTY() TObjectPtr<UInputAction> Steer;
+	/** Freno de mano (Shift izquierdo · X). */
 	UPROPERTY() TObjectPtr<UInputAction> Handbrake;
-	/** Atrás (Q · X): mientras se mantiene, la conductora sola dispara hacia atrás. */
+	/** Turbo (Espacio · A): mientras se mantiene y haya carga. */
+	UPROPERTY() TObjectPtr<UInputAction> Boost;
+	/** Atrás (Q · B): mientras se mantiene, la conductora sola dispara hacia atrás. */
 	UPROPERTY() TObjectPtr<UInputAction> FireBack;
 
 	// Las dos
 	UPROPERTY() TObjectPtr<UInputAction> SelfRight;
 	UPROPERTY() TObjectPtr<UInputAction> FireCoco;
 	UPROPERTY() TObjectPtr<UInputAction> FireSpecial;
+	/** Cambio de munición (rueda del ratón · cruceta izquierda y derecha): Axis1D, el signo da el sentido. */
+	UPROPERTY() TObjectPtr<UInputAction> CycleAmmo;
 
 	// Artillera
 	/** Apuntar con el ratón (delta por frame). */
