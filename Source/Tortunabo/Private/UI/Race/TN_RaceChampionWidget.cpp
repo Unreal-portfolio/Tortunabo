@@ -38,6 +38,7 @@ namespace TNRaceChampionDetail
 	/** Ancho del panel azul marino de la izquierda y de los botones (unidades de la interfaz a 1080 p). */
 	constexpr float PanelWidth = 860.f;
 	constexpr float InfoMaxWidth = 360.f;
+	constexpr float TagMaxWidth = 300.f;
 	constexpr float ButtonW = 420.f;
 	constexpr float ButtonH = 86.f;
 
@@ -111,7 +112,14 @@ void UTN_RaceChampionWidget::BuildTree()
 		UTextBlock* TagText = TNRaceUI::MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 20, MedalColor(i));
 		UBorder* Tag = TNRaceUI::Make<UBorder>(Tree);
 		TNHUDStyle::StylePanel(Tag, TNHUDArt::Hex(0x0A1C38, 0.82f), 14.f, FMargin(16.f, 5.f, 18.f, 7.f), MedalColor(i), 2.f);
-		Tag->SetContent(TagText);
+		// Un nombre largo (hasta 32 caracteres) se encoge para que la etiqueta no pase de TagMaxWidth.
+		UScaleBox* TagShrink = TNRaceUI::Make<UScaleBox>(Tree);
+		TagShrink->SetStretch(EStretch::ScaleToFit);
+		TagShrink->SetStretchDirection(EStretchDirection::DownOnly);
+		TagShrink->SetContent(TagText);
+		USizeBox* TagFit = TNRaceUI::MakeSize(Tree, TagShrink, 0.f, 0.f);
+		TagFit->SetMaxDesiredWidth(TagMaxWidth);
+		Tag->SetContent(TagFit);
 		Tag->SetVisibility(ESlateVisibility::Collapsed);
 		Tag->SetRenderTransformPivot(FVector2D(0.5f, 1.f));
 		UCanvasPanelSlot* TagSlot = TNRaceUI::Place(Canvas, Tag, FVector2D(0.f, 0.f), FVector2D::ZeroVector);

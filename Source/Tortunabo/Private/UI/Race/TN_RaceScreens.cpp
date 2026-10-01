@@ -958,7 +958,7 @@ void UTN_RaceScreensSubsystem::BuildPreviewRows(APlayerController* PC, int32 Num
 	OutRows.Reset();
 	// Hasta ocho columnas (partidas de ocho: el recuento y el sprint se encogen para caber).
 	const int32 Count = FMath::Clamp(NumPlayers, 1, 8);
-	static const TCHAR* FakeNames[] = { TEXT("Kanye West de Cáceres"), TEXT("Coral"), TEXT("Perla"), TEXT("Marea"), TEXT("Alga") };
+	static const TCHAR* FakeNames[] = { TEXT("Maximiliano de la Cruz Montoya"), TEXT("Coral"), TEXT("Perla"), TEXT("Marea"), TEXT("Alga") };
 	// Medias conchas de mentira: una entera, media, dos, una y media, nada, dos y media, media y una.
 	static const int32 FakeHalves[] = { 2, 1, 4, 3, 0, 5, 1, 2 };
 	const UMP_GameInstance* GI = PC ? Cast<UMP_GameInstance>(UGameplayStatics::GetGameInstance(PC)) : nullptr;
