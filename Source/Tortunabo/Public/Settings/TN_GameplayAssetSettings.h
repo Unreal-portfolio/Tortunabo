@@ -35,10 +35,16 @@ public:
 	 */
 	static UClass* GetScorePickupClass();
 
+	/** @brief Si el handle de carga retiene la clase de la concha de puntos (la usa el test de retención). */
+	static bool IsScorePickupClassRetained();
+
 private:
-	/** Clase resuelta y retenida (el CDO de los ajustes vive toda la sesión). */
-	UPROPERTY(Transient)
-	TSubclassOf<ATN_ScorePickup> ResolvedScorePickupClass;
+	/**
+	 * Clase resuelta. Sin UPROPERTY a propósito: el CDO de los ajustes vive en el pool que el GC no recorre, y una
+	 * referencia fuerte desde él a una clase cargada después rompe la verificación del GC en las builds empaquetadas
+	 * (#328). La retiene PreloadHandle.
+	 */
+	TWeakObjectPtr<UClass> ResolvedScorePickupClass;
 
 	TSharedPtr<FStreamableHandle> PreloadHandle;
 
