@@ -2381,7 +2381,9 @@ tortugas: se queda mareado un momento, con pajaritos y sin atacar.
 ### Paso de quads (`ATN_BeachQuadLane`)
 
 - Eje X local del actor (el generador lo gira 90° y lo cruza de lado a lado), `Extent` de largo (0 = 280 m). En la arena,
-  dos rodadas que avisan por dónde pasa (se trazan contra el suelo; si aún no está, se reintenta).
+  dos rodadas que avisan por dónde pasa, pegadas a la arena (#259): con la ronda montada, la altura de la malla del terreno
+  (`TraceTerrainAt`, o la del generador) cada 1,25 m a lo largo y en 5 puntos a lo ancho; no se trazan contra el mundo
+  (los muros invisibles de los lados y el decorado las subían).
 - Quad a escala con piloto: 56 m de largo, ruedas de 16,8 m de alto y 6,7 m de ancho, centros a ±8,7 m (las ruedas
   llegan a ±12 m: la huella), hueco de 10,6 m entre ruedas y 7,3 m de altura libre bajo el chasis. `SizeScale` 0,7-1,4
   escala todo.
