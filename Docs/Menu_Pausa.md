@@ -63,7 +63,9 @@ solo terreno; carrera clásica), la sala (su nombre, de quién es, pública o pr
 «cerrada» si lo está: [Salas](Salas.md); sin sala, la sesión como antes; sin sesión, si eres el anfitrión, un invitado
 o una partida local) y los jugadores con su cara, su
 nombre, «Tú», «Anfitrión» (corona) o su ping, y su icono de voz: micrófono para ti y altavoz para los demás, que late
-cuando habla y sale tachado si está silenciado.
+cuando habla y sale tachado si está silenciado. Un invitado ve también su propio ping («Tú · 42 ms»); el anfitrión no
+tiene ping contra nadie y una partida local tampoco (`TNPlayerRowRules`, #256). El ping se lee al hacer la lista (al abrir
+el menú o cuando alguien entra o sale), no se refresca mientras está abierto.
 
 **Portada**: Continuar, Ajustes, Controles, Sala (en red), Volver al lobby, Menú principal (anfitrión) o Salir de la
 partida (invitado) y Salir al escritorio. Abajo, la ayuda de la opción enfocada y los atajos.
