@@ -819,6 +819,11 @@ namespace TNProcMap
 		const TArray<FPathSample>& M = L.Main;
 		const uint32 Bad = PathFlags::Elevated | PathFlags::Colossal | PathFlags::UnderTower | PathFlags::TowerTop | PathFlags::Slide
 			| PathFlags::GeyserBase | PathFlags::Tunnel | PathFlags::Islet | PathFlags::Boardwalk | PathFlags::Gap | PathFlags::Shore;
+		// Rally: los buggies reaparecen en las puertas de la carrera, no en huevos.
+		if (P.bDrivable || M.Num() == 0)
+		{
+			return;
+		}
 
 		int32 Order = 0;
 		{
@@ -1259,6 +1264,12 @@ namespace TNProcMap
 					L.Features.Add(F);
 					// El siguiente, pasada la roca.
 					NextS = FMath::Max(NextS, Sm.S + R + 1200.0);
+					continue;
+				}
+				// Rally: solo las agujas y mogotes de las explanadas (con carriles a los lados); troncos, torres, obstáculos de
+				// objetos y peñascos pararían en seco al buggy en mitad del camino.
+				if (L.Params.bDrivable)
+				{
 					continue;
 				}
 				if ((bForest || bDrift) && W >= 500.0 && W <= 2600.0 && U < (bForest ? 0.5 : 0.28))

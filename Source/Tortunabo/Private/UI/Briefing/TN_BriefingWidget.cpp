@@ -59,6 +59,8 @@ namespace TNBriefingUI
 			return NSLOCTEXT("Tortunabo", "BriefingOrderRace", "¡Carrera! Todas contra todas hasta el agua. Tres conchas y al podio.");
 		case ETNProcGameMode::Survival:
 			return NSLOCTEXT("Tortunabo", "BriefingOrderSurvival", "¡Supervivencia! Nivel tras nivel, cada uno peor que el anterior. Solo queda en pie la última.");
+		case ETNProcGameMode::Rally:
+			return NSLOCTEXT("Tortunabo", "BriefingOrderRally", "¡Rally! Al buggy de dos en dos: una al volante y otra a la torreta. Del castillo a la playa sin frenar.");
 		default:
 			return NSLOCTEXT("Tortunabo", "BriefingOrderCoop", "¡Cooperativo! Aquí no se deja a nadie atrás: del castillo al mar, todas juntas.");
 		}
@@ -541,7 +543,8 @@ void UTN_BriefingWidget::BuildMissionPage()
 	for (const ETNProcGameMode Mode : TNLobbyMission::MenuModes)
 	{
 		UTN_ShopButton* Option = CreateWidget<UTN_ShopButton>(this, UTN_ShopButton::StaticClass());
-		Option->Setup(TNLobbyMission::ModeName(Mode).ToUpper(), IdlePill(), TNHUDArt::Cream, 21, FVector2D(260.f, 58.f),
+		// Con cuatro modos o más, pastillas algo más estrechas para que quepan en la fila.
+		Option->Setup(TNLobbyMission::ModeName(Mode).ToUpper(), IdlePill(), TNHUDArt::Cream, 21, FVector2D(NumMenuModes > 3 ? 210.f : 260.f, 58.f),
 			[this, Mode]() { PickMode(Mode); });
 		AddH(ModeRow, Option, FMargin(0.f, 0.f, 12.f, 0.f));
 		ModeButtons.Add(Option);

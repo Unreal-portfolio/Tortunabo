@@ -422,6 +422,12 @@ void ATN_HQGameMode::BeginMatchTravel()
 			// Supervivencia: los niveles del Clásico (LVL_Run) con su propio GameMode (alias «Survival», DefaultEngine.ini).
 			TravelURL = MatchMapPath + TEXT("?game=Survival");
 		}
+		else if (GI->SelectedProcMode == ETNProcGameMode::Rally)
+		{
+			// Rally: el mapa procedural del cooperativo con buggies (ATN_ProcRallyGameMode, alias «Rally» en DefaultEngine.ini).
+			// La dificultad la lee el GameMode de la GameInstance.
+			TravelURL = ProcMapPath + TEXT("?game=Rally");
+		}
 		else if (GI->SelectedProcMode != ETNProcGameMode::Classic)
 		{
 			if (bBeachRace)

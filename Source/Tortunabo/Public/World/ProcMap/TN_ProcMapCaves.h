@@ -176,8 +176,8 @@ namespace TNProcMap
 				C.Width = Span;
 				L.Features.Add(C);
 
-				// Río de lava en la (primera) cámara de las cuevas del volcán: un hueco que se salta.
-				if (M[Mid].Biome == ETNProcBiome::Volcanic)
+				// Río de lava en la (primera) cámara de las cuevas del volcán: un hueco que se salta (en el Rally, no).
+				if (M[Mid].Biome == ETNProcBiome::Volcanic && !P.bDrivable)
 				{
 					FFeature G = MakeAtSample(EFeature::Gap, M[Mid], Mid, INDEX_NONE);
 					G.Aux2 = GapLava;

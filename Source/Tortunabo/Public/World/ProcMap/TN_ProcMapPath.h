@@ -972,7 +972,7 @@ namespace TNProcMap
 		// pasarelas, salvo junto a torres, géiseres y toboganes, que necesitan suelo.
 		double NextToggleS = -1.0;
 		bool bWetStretch = false;
-		for (int32 i = 0; i < NumS; ++i)
+		for (int32 i = 0; i < NumS && !P.bDrivable; ++i)
 		{
 			FPathSample& Sm = L.Main[i];
 			if (!IsWetBiome(Sm.Biome)) { NextToggleS = -1.0; continue; }

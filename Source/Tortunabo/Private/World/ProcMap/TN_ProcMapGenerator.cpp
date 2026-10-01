@@ -202,9 +202,13 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 		}
 		if (!bTerrainOnly)
 		{
-			SpawnHazards();
-			// Después de los peligros: las conchas del plan no pisan lo que estos han puesto (HazardSpots).
-			SpawnShells();
+			// Rally: sin enemigos, peligros ni conchas de las tortugas a pie (estorbarían al buggy en el camino).
+			if (!IsRallyMap())
+			{
+				SpawnHazards();
+				// Después de los peligros: las conchas del plan no pisan lo que estos han puesto (HazardSpots).
+				SpawnShells();
+			}
 			RunBiomePCG();
 		}
 	}
@@ -237,14 +241,20 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 
 bool ATN_ProcMapGenerator::BuildLayout()
 {
-	ActiveProfile = Settings ? Settings->ResolveProfile(NetConfig.Mode, NetConfig.Difficulty)
-		: TN_MakeDefaultProcProfile(NetConfig.Mode, NetConfig.Difficulty);
+	// El Rally usa el perfil del cooperativo (el mismo camino largo, y la dificultad cambia lo mismo que allí) con el camino
+	// hecho para el buggy.
+	const bool bRally = IsRallyMap();
+	const ETNProcGameMode ProfileMode = bRally ? ETNProcGameMode::Coop : NetConfig.Mode;
+	ActiveProfile = Settings ? Settings->ResolveProfile(ProfileMode, NetConfig.Difficulty)
+		: TN_MakeDefaultProcProfile(ProfileMode, NetConfig.Difficulty);
 
 	// Reintentos deterministas: todas las máquinas prueban la misma secuencia de semillas.
 	for (int32 Attempt = 0; Attempt < 5; ++Attempt)
 	{
 		const uint32 Seed = static_cast<uint32>(NetConfig.Seed) + static_cast<uint32>(Attempt) * 7919u;
-		if (TNProcMap::GenerateLayout(ActiveProfile.ToGenParams(Seed), Layout))
+		TNProcMap::FGenParams Params = ActiveProfile.ToGenParams(Seed);
+		Params.bDrivable = bRally;
+		if (TNProcMap::GenerateLayout(Params, Layout))
 		{
 			return true;
 		}
@@ -509,6 +519,46 @@ FVector ATN_ProcMapGenerator::GetPathLocationAtProgress(float Progress, FVector&
 	const double Z = FMath::Lerp(Layout.Main[Index].Z, Layout.Main[Next].Z, T);
 	OutDirection = GetActorTransform().TransformVectorNoScale(FVector(Dir.X, Dir.Y, 0.0));
 	return MapToWorld(FVector(P.X, P.Y, Z));
+}
+
+void ATN_ProcMapGenerator::GetMainPathWorld(TArray<FTNProcPathPoint>& OutPoints) const
+{
+	OutPoints.Reset(Layout.Main.Num());
+	const FTransform& Xf = GetActorTransform();
+	for (const TNProcMap::FPathSample& S : Layout.Main)
+	{
+		FTNProcPathPoint& Point = OutPoints.AddDefaulted_GetRef();
+		Point.Location = MapToWorld(FVector(S.P.X, S.P.Y, S.Z));
+		Point.Direction = Xf.TransformVectorNoScale(FVector(S.Dir.X, S.Dir.Y, 0.0)).GetSafeNormal2D();
+		Point.Width = static_cast<float>(S.Width * Xf.GetScale3D().X);
+		Point.Flags = S.Flags;
+	}
+}
+
+void ATN_ProcMapGenerator::GetMainPathObstaclesWorld(TArray<FVector4>& OutObstacles) const
+{
+	using namespace TNProcMap;
+	OutObstacles.Reset();
+	const double Scale = GetActorTransform().GetScale3D().X;
+	for (const FFeature& F : Layout.Features)
+	{
+		// Solo lo que pisa el camino principal: las piezas de explanada (los arcos se pasan por debajo y los hitos están lejos)
+		// y las agujas de roca.
+		const bool bPlazaPiece = F.Type == EFeature::Formation && F.BranchIndex == INDEX_NONE
+			&& !IsArchFormation(static_cast<EFormation>(F.Aux)) && !IsLandmarkFormation(static_cast<EFormation>(F.Aux));
+		const bool bSpire = F.Type == EFeature::RockSpire && F.BranchIndex == INDEX_NONE;
+		if (!bPlazaPiece && !bSpire)
+		{
+			continue;
+		}
+		const FVector Center = MapToWorld(F.Location);
+		OutObstacles.Add(FVector4(Center.X, Center.Y, Center.Z, F.Radius * Scale));
+	}
+}
+
+float ATN_ProcMapGenerator::GetSeaLevelWorldZ() const
+{
+	return static_cast<float>(MapToWorld(FVector(0.0, 0.0, TNProcMap::SeaLevel)).Z);
 }
 
 void ATN_ProcMapGenerator::BuildProgressIndex()

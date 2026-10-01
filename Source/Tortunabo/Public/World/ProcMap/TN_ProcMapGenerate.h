@@ -23,6 +23,21 @@ namespace TNProcMap
 	inline FGenParams SanitizeParams(const FGenParams& In)
 	{
 		FGenParams P = In;
+		if (P.bDrivable)
+		{
+			// Rally: sin lo que el buggy no puede recorrer (FGenParams::bDrivable). Los desniveles entre módulos se suben y
+			// se bajan por rampas con la pendiente máxima del camino en vez de por géiser o tobogán.
+			P.NumCrossings = 0;
+			P.NumBranches = 0;
+			P.NumLanes = 0;
+			P.GapsPerKm = 0.0;
+			P.SmoothTransitionMax = 1.0e9;
+			P.NarrowChance *= 0.5;
+			P.PathWidthMin = FMath::Max(P.PathWidthMin, DrivableMinPathWidth);
+			P.PathWidthMax = FMath::Max(P.PathWidthMax, P.PathWidthMin);
+			P.PortalWidthMin = FMath::Max(P.PortalWidthMin, DrivableMinPathWidth + 200.0);
+			P.PortalWidthMax = FMath::Max(P.PortalWidthMax, P.PortalWidthMin);
+		}
 		P.GridSize = FMath::Clamp(P.GridSize, 1, 10);
 		P.ModuleSize = FMath::Clamp(P.ModuleSize, 8000.0, 80000.0);
 		P.CellSize = FMath::Clamp(P.CellSize, 200.0, 1600.0);
