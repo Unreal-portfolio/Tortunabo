@@ -95,15 +95,7 @@ void UTN_RaceChampionWidget::BuildTree()
 	PodiumImage->SetRenderTransformPivot(FVector2D(0.62f, 0.5f));
 	TNRaceUI::PlaceAt(Canvas, PodiumImage, FVector2D::ZeroVector, FVector2D(1920.f, 1080.f), FVector2D(0.f, 0.f));
 
-	// Panel azul marino a la izquierda, que se funde con el fondo hacia la derecha.
-	{
-		UImage* Panel = TNRaceUI::MakeImage(Tree, TNRaceArt::SidePanel(), FVector2D(256.f, 8.f));
-		UCanvasPanelSlot* PanelSlot = Canvas->AddChildToCanvas(Panel);
-		PanelSlot->SetAnchors(FAnchors(0.f, 0.f, 0.f, 1.f));
-		PanelSlot->SetOffsets(FMargin(0.f, 0.f, PanelWidth, 0.f));
-	}
-
-	// Nombre de cada tortuga encima de su cabeza en el podio.
+	// Nombre de cada tortuga encima de su cabeza en el podio. Va debajo del panel y de la columna: un nombre largo no tapa el cartel.
 	for (int32 i = 0; i < 3; ++i)
 	{
 		UTextBlock* TagText = TNRaceUI::MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 20, MedalColor(i));
@@ -116,6 +108,14 @@ void UTN_RaceChampionWidget::BuildTree()
 		TagSlot->SetAlignment(FVector2D(0.5f, 1.f));
 		NameTags.Add(Tag);
 		NameTagTexts.Add(TagText);
+	}
+
+	// Panel azul marino a la izquierda, que se funde con el fondo hacia la derecha.
+	{
+		UImage* Panel = TNRaceUI::MakeImage(Tree, TNRaceArt::SidePanel(), FVector2D(256.f, 8.f));
+		UCanvasPanelSlot* PanelSlot = Canvas->AddChildToCanvas(Panel);
+		PanelSlot->SetAnchors(FAnchors(0.f, 0.f, 0.f, 1.f));
+		PanelSlot->SetOffsets(FMargin(0.f, 0.f, PanelWidth, 0.f));
 	}
 
 	// Columna de la izquierda: cinta, cartel de la campeona, botones y avisos.
