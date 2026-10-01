@@ -32,6 +32,9 @@ public:
 	/** Escaparate: las piezas solo salen en las capturas y las ilumina el canal de luz del estudio. */
 	void SetStudio(const FLightingChannels& Channels);
 
+	/** Con artillera, ella sujeta el cañón; sin ella, el cañón va en su poste sobre el sillín. */
+	void SetGunnerSeated(bool bSeated);
+
 	/** Viste el buggy (TeamIndex < 0 = sin equipo: banderín y iris blancos). Con bForce lo rehace aunque no cambie. */
 	void ApplyLook(const FTN_BuggyLook& InLook, int32 InTeamIndex, bool bForce = false);
 
@@ -70,6 +73,9 @@ private:
 	TObjectPtr<UStaticMeshComponent> Antenna;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> TurretPost;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> PaintMID;
 
 	FTN_BuggyLook Look;
@@ -78,6 +84,7 @@ private:
 	bool bExternalWheels = false;
 	bool bExternalCannon = false;
 	bool bStudio = false;
+	bool bGunnerSeated = false;
 	FLightingChannels StudioChannels;
 
 	// Antena: muelle amortiguado que se inclina con la aceleración del chasis.

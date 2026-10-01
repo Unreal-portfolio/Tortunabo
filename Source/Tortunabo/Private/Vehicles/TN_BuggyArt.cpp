@@ -1297,6 +1297,20 @@ namespace TNBuggyArtDetail
 		return B;
 	}
 
+	/** Poste giratorio del cañón (como los falconetes de los barcos) del sillín al pivote de la torreta. */
+	FTNProcMeshBuffers BuildTurretPost(ETNBuggyBodyStyle Style)
+	{
+		FTNProcMeshBuffers B;
+		const FVector Seat = Frame::GunnerSeat;
+		const FLinearColor Iron = Metal(Style == ETNBuggyBodyStyle::Racer ? 0x5A6068 : 0x3A3F47);
+		const FLinearColor Joint = Style == ETNBuggyBodyStyle::Offroad ? Metal(0x4A4F57) : (Style == ETNBuggyBodyStyle::Racer ? Metal(0xD0D6DE) : Metal(0xC08A3E));
+		AddLathe(B, FVector(Seat.X, Seat.Y, Seat.Z - 0.5), FVector::UpVector, { FVector2D(0.0, 13.0), FVector2D(2.5, 12.0), FVector2D(4.0, 6.0) }, 12, Iron, false, true);
+		AddLathe(B, FVector(Seat.X, Seat.Y, Seat.Z + 3.0), FVector::UpVector,
+			{ FVector2D(0.0, 4.2), FVector2D(Frame::TurretPivotZ - Seat.Z - 17.0, 3.6), FVector2D(Frame::TurretPivotZ - Seat.Z - 13.0, 5.0) }, 10, Iron, false, true);
+		AddEllipsoid(B, FVector(Seat.X, Seat.Y, Frame::TurretPivotZ - 6.0), FVector(8.5, 0.0, 0.0), FVector(0.0, 8.5, 0.0), FVector(0.0, 0.0, 8.5), 5, 10, Joint);
+		return B;
+	}
+
 	const TCHAR* ModelName(ETNBuggyBodyStyle Style)
 	{
 		switch (Style)
@@ -1322,6 +1336,7 @@ namespace TNBuggyArtDetail
 		case EPiece::Wheel: return TEXT("Wheel");
 		case EPiece::Cannon: return TEXT("Cannon");
 		case EPiece::Antenna: return TEXT("Antenna");
+		case EPiece::TurretPost: return TEXT("TurretPost");
 		default: return TEXT("Unknown");
 		}
 	}
@@ -1351,6 +1366,7 @@ namespace TNBuggyArt
 		case EPiece::Wheel: return BuildWheel(Style);
 		case EPiece::Cannon: return BuildCannon(Style);
 		case EPiece::Antenna: return BuildAntenna();
+		case EPiece::TurretPost: return BuildTurretPost(Style);
 		default: return FTNProcMeshBuffers();
 		}
 	}

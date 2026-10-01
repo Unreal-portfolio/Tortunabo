@@ -29,6 +29,8 @@ namespace TNBuggyArt
 		Wheel,
 		Cannon,
 		Antenna,
+		/** Poste del cañón sobre el sillín: solo se ve sin artillera (la conductora sola dispara con él). */
+		TurretPost,
 		Count
 	};
 

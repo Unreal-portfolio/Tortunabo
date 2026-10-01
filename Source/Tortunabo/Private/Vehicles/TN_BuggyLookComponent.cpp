@@ -58,6 +58,12 @@ void UTN_BuggyLookComponent::SetStudio(const FLightingChannels& Channels)
 	for (UPrimitiveComponent* Part : Parts) { if (UStaticMeshComponent* Mesh = Cast<UStaticMeshComponent>(Part)) { SetupPart(Mesh); } }
 }
 
+void UTN_BuggyLookComponent::SetGunnerSeated(bool bSeated)
+{
+	bGunnerSeated = bSeated;
+	if (TurretPost) { TurretPost->SetVisibility(!bGunnerSeated && TurretPost->GetStaticMesh() != nullptr); }
+}
+
 void UTN_BuggyLookComponent::SetupPart(UStaticMeshComponent* Part) const
 {
 	Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -104,15 +110,16 @@ void UTN_BuggyLookComponent::EnsureParts()
 	}
 	if (!Cannon)
 	{
-		// Escaparate: sin artillera, el cañón descansa sobre su sillín mirando adelante.
+		// Escaparate: sin artillera, el cañón en su poste, un poco levantado.
 		Cannon = MakePart(TEXT("BuggyCannon"), this);
-		Cannon->SetRelativeLocationAndRotation(FVector(Frame::GunnerSeat.X - 12.0, Frame::GunnerSeat.Y, Frame::GunnerSeat.Z + 13.5), FRotator(3.0, 0.0, 0.0));
+		Cannon->SetRelativeLocationAndRotation(FVector(Frame::GunnerSeat.X, Frame::GunnerSeat.Y, Frame::TurretPivotZ), FRotator(6.0, 0.0, 0.0));
 	}
 	AntennaPivot = NewObject<USceneComponent>(GetOwner() ? static_cast<UObject*>(GetOwner()) : static_cast<UObject*>(this),
 		MakeUniqueObjectName(GetOwner(), USceneComponent::StaticClass(), TEXT("BuggyAntennaPivot")), RF_Transient);
 	AntennaPivot->SetupAttachment(this);
 	if (IsRegistered()) { AntennaPivot->RegisterComponent(); }
 	Antenna = MakePart(TEXT("BuggyAntenna"), AntennaPivot);
+	TurretPost = MakePart(TEXT("BuggyTurretPost"), this);
 }
 
 void UTN_BuggyLookComponent::ApplyLook(const FTN_BuggyLook& InLook, int32 InTeamIndex, bool bForce)
@@ -152,6 +159,8 @@ void UTN_BuggyLookComponent::ApplyLook(const FTN_BuggyLook& InLook, int32 InTeam
 		if (bExternalCannon) { Cannon->SetRelativeTransform(FTransform::Identity); }
 	}
 	SetPiece(Antenna, EPiece::Antenna);
+	SetPiece(TurretPost, EPiece::TurretPost);
+	SetGunnerSeated(bGunnerSeated);
 	if (AntennaPivot) { AntennaPivot->SetRelativeLocation(AntennaMount(Model.Style)); }
 
 	Look = Clean;
@@ -168,6 +177,7 @@ void UTN_BuggyLookComponent::GetPrimitives(TArray<UPrimitiveComponent*>& Out) co
 	}
 	if (Cannon && !bExternalCannon) { Out.Add(Cannon); }
 	if (Antenna) { Out.Add(Antenna); }
+	if (TurretPost) { Out.Add(TurretPost); }
 }
 
 void UTN_BuggyLookComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)

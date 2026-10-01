@@ -24,8 +24,10 @@ void ATN_Buggy::RefreshBuggyLook(bool bForce)
 		BuggyLook->UseExternalCannon(TurretBarrel);
 		ATN_CoopPlayerState::OnAnyBuggyLookChanged.AddWeakLambda(this, [this](const ATN_CoopPlayerState* Changed) { NotifyDriverLookChanged(Changed); });
 	}
+	// Los pilotos IA también tienen PlayerState (para la tabla de puestos): llevan el buggy de su equipo.
 	const ATN_CoopPlayerState* Driver = bDriverSeated ? Cast<ATN_CoopPlayerState>(DriverPlayerState) : nullptr;
-	const FTN_BuggyLook Look = Driver ? Driver->EquippedBuggyLook : TNBuggyCosmetics::LookForTeam(TeamIndex);
+	const FTN_BuggyLook Look = Driver && !Driver->IsABot() ? Driver->EquippedBuggyLook : TNBuggyCosmetics::LookForTeam(TeamIndex);
+	BuggyLook->SetGunnerSeated(bGunnerSeated);
 	BuggyLook->ApplyLook(Look, TeamIndex, bForce);
 	if (BuggyLook->HasBuiltLook() && Body && Body->IsVisible())
 	{
