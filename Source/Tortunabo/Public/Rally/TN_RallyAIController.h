@@ -1,5 +1,5 @@
-// Piloto IA del Rally: sigue la spline de la pista con mirada adelantada, frena antes de las curvas, da marcha atrás si se
-// atasca y dispara (ITN_RallyVehicle::AIFire) al buggy de delante cuando lo tiene a menos de 40 m. Solo en el servidor.
+// Piloto IA del Rally: sigue la spline de la pista con mirada adelantada, frena antes de las curvas, vuelve despacio a la
+// calzada si se sale, da marcha atrás (cada vez más larga si se repite) si se atasca y dispara (ITN_RallyVehicle::AIFire) al buggy de delante cuando lo tiene a menos de 40 m. Solo en el servidor.
 // Hereda de AController (no de AAIController) para no añadir AIModule al módulo: no usa navegación ni percepción.
 #pragma once
 
@@ -59,5 +59,10 @@ private:
 	bool bHasArc = false;
 	float SlowSeconds = 0.f;
 	double ReverseUntil = 0.0;
+	/** Tras una reaparición (salto) no se cuenta la lentitud: el buggy está inmóvil unos segundos. */
+	double IgnoreSlowUntil = 0.0;
+	/** Marchas atrás seguidas (cada una más larga) y hora de la última. */
+	int32 ReverseStreak = 0;
+	double LastReverseTime = -1000.0;
 	double NextFireTime = 0.0;
 };

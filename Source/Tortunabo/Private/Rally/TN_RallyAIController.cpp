@@ -21,6 +21,15 @@ namespace
 	constexpr double RallyAIJumpCm = 3000.0;
 	/** Coseno del cono de disparo hacia delante. */
 	constexpr double RallyAIFireConeCos = 0.6;
+	/** Más lejos del eje está fuera de la calzada (14 m de calzada y arcén): vuelve a ella mirando cerca y despacio. */
+	constexpr double RallyAIOffRoadCm = 900.0;
+	constexpr double RallyAIRejoinLookAheadCm = 600.0;
+	constexpr float RallyAIRejoinKmh = 30.f;
+	/** Tras reaparecer, el buggy está inmóvil 3 s: no es un atasco. */
+	constexpr double RallyAITeleportGraceSeconds = 4.0;
+	/** Una marcha atrás a menos de esto de la anterior alarga la siguiente, hasta RallyAIReverseMaxSeconds. */
+	constexpr double RallyAIReverseMemorySeconds = 12.0;
+	constexpr double RallyAIReverseMaxSeconds = 4.0;
 }
 
 ATN_RallyAIController::ATN_RallyAIController()
@@ -77,10 +86,16 @@ void ATN_RallyAIController::Drive(float DeltaSeconds, ATN_RallyTrack& Track)
 	ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
 	const FVector Location = Vehicle->GetActorLocation();
 	const FVector Forward = Vehicle->GetActorForwardVector();
+	const double Time = GetWorld()->GetTimeSeconds();
 	if (!bHasArc || FVector::Dist(Location, LastLocation) > RallyAIJumpCm)
 	{
 		Arc = Track.FindArcGlobal(Location);
 		bHasArc = true;
+		// Reaparición o salida: empieza de cero.
+		IgnoreSlowUntil = Time + RallyAITeleportGraceSeconds;
+		ReverseUntil = 0.0;
+		SlowSeconds = 0.f;
+		ReverseStreak = 0;
 	}
 	else
 	{
@@ -97,12 +112,16 @@ void ATN_RallyAIController::Drive(float DeltaSeconds, ATN_RallyTrack& Track)
 
 	const double SpeedCms = FMath::Abs(RallyVehicle->GetForwardSpeedCms());
 	const float SpeedKmh = static_cast<float>(TNRally::CmsToKmh(SpeedCms));
-	const FVector Target = Track.GetLocationAtArc(Arc + LookAheadBaseCm + SpeedCms * LookAheadSeconds);
+	// Fuera de la calzada (un golpe, un charco o una explosión): mira a un punto cercano del eje y va despacio, para volver
+	// por el talud en vez de subirlo de frente.
+	const bool bOffRoad = FVector::Dist2D(Location, Track.GetLocationAtArc(Arc)) > RallyAIOffRoadCm;
+	const double LookAhead = bOffRoad ? RallyAIRejoinLookAheadCm : LookAheadBaseCm + SpeedCms * LookAheadSeconds;
+	const FVector Target = Track.GetLocationAtArc(Arc + LookAhead);
 	const float Steer = TNRally::SteerToward(Forward, Target - Location, SteerSaturationDeg);
-	const float TargetKmh = TNRally::CornerSpeedKmh(Track.GetDirectionAtArc(Arc),
+	const float CornerKmh = TNRally::CornerSpeedKmh(Track.GetDirectionAtArc(Arc),
 		Track.GetDirectionAtArc(Arc + RallyAICornerProbeCm + SpeedCms * RallyAICornerProbeSeconds), MaxSpeedKmh, MinCornerSpeedKmh);
+	const float TargetKmh = bOffRoad ? FMath::Min(CornerKmh, RallyAIRejoinKmh) : CornerKmh;
 
-	const double Time = GetWorld()->GetTimeSeconds();
 	if (Time < ReverseUntil)
 	{
 		// Marcha atrás con la dirección invertida (en Chaos, frenar parado da marcha atrás).
@@ -111,11 +130,16 @@ void ATN_RallyAIController::Drive(float DeltaSeconds, ATN_RallyTrack& Track)
 	}
 	const float Throttle = SpeedKmh < TargetKmh ? 1.f : 0.25f;
 	const float Brake = SpeedKmh > TargetKmh + 12.f ? 0.8f : 0.f;
-	SlowSeconds = (Throttle > 0.5f && SpeedKmh < RallyAIStuckKmh) ? SlowSeconds + DeltaSeconds : 0.f;
+	SlowSeconds = (Throttle > 0.5f && SpeedKmh < RallyAIStuckKmh && Time >= IgnoreSlowUntil) ? SlowSeconds + DeltaSeconds : 0.f;
 	if (SlowSeconds > RallyAIStuckSeconds)
 	{
 		SlowSeconds = 0.f;
-		ReverseUntil = Time + RallyAIReverseSeconds;
+		ReverseStreak = Time - LastReverseTime < RallyAIReverseMemorySeconds ? ReverseStreak + 1 : 0;
+		LastReverseTime = Time;
+		ReverseUntil = Time + FMath::Min(RallyAIReverseSeconds * (1 + ReverseStreak), RallyAIReverseMaxSeconds);
+		UE_LOG(LogTNRally, Verbose, TEXT("[RallyAI] %s marcha atrás en (%.0f, %.0f, %.0f), arco %.0f m, a %.0f m del eje, giro %.2f, arriba.Z %.2f"),
+			*GetNameSafe(Vehicle), Location.X, Location.Y, Location.Z, Arc / 100.0,
+			FVector::Dist(Location, Track.GetLocationAtArc(Arc)) / 100.0, Steer, Vehicle->GetActorUpVector().Z);
 	}
 	RallyVehicle->SetAIDriveInput(Throttle, Brake, Steer, false);
 	TryFire(Location, Forward);
