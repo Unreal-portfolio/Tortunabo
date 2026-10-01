@@ -2857,7 +2857,11 @@ cerca de lo militar y de las trincheras.
   estará la tortuga (el 60 % del adelanto), cae con 7 m/s² y deja una estela de humo; «¡pomp!», humo en la boca, el cañón
   recula 45 cm, el casco cabecea 5° y recula 20 cm y la antena se echa atrás. Bota (55 % en planta y 42 % hacia arriba)
   hasta 3 veces o 2,4 s; tras el primer bote o tras dar a alguien ya no hace nada. Da a quien pase a menos de 0,27 m +
-  0,7 m de su recorrido (tabla de arriba) y rebota hacia atrás.
+  0,7 m de su recorrido (tabla de arriba), si no hay nada entre las dos, y rebota hacia atrás.
+- **Choca con lo que hay por medio** (#247; antes solo la paraba el suelo sin trazas y cruzaba paredes, murallas y
+  fortalezas): en cada paso, en todas las máquinas, se barre su esfera por el canal `WorldDynamic` sin lo que es `Pawn`
+  (tortugas, enemigos, el propio tanque) ni las bolas de caparazón, sin contar lo que ya tocaba al salir. Si da en algo,
+  se queda ahí y rebota (`TNBeachTankFoam::BounceOffWall`: 40 % hacia fuera, 60 % a lo largo) y ya no hace nada.
 - **Red**: el casco en `Mover` (10 Hz); la torreta de cada máquina gira hacia `Mover.Aim` (la tortuga a la que apunta). Cada
   disparo va por multicast no fiable con su hora del servidor: la bolita del cliente sale adelantada lo que tardó el
   mensaje y va a la par que la del servidor. Si se pierde el mensaje, solo falta la bolita en esa pantalla (el golpe lo

@@ -283,7 +283,15 @@ void ATN_BeachToyTank::AdvanceShots(double Now, bool bServer)
 		// Suelo sin trazas: entre el de la boca del cañón y el de donde apuntaba.
 		const float Progress = FMath::Clamp(static_cast<float>(FVector::Dist2D(P, Shot.Origin)) / Shot.AimDist, 0.f, 1.f);
 		const float Ground = FMath::Lerp(Shot.GroundFrom, Shot.GroundTo, Progress);
-		if (P.Z - Radius < Ground && Vel.Z < 0.0)
+		// Lo que hay por medio (una pared, una muralla, una fortaleza, el decorado o una duna): la bolita se para en ello y rebota
+		// en vez de cruzarlo (en todas las máquinas, con el mismo barrido). Antes, solo el suelo sin trazas la paraba.
+		FHitResult WallHit;
+		const bool bWall = SweepFoam(Shot.Pos, P, Radius, WallHit);
+		if (bWall)
+		{
+			P = WallHit.Location + WallHit.ImpactNormal;
+		}
+		else if (P.Z - Radius < Ground && Vel.Z < 0.0)
 		{
 			// Bota: pierde fuerza y ya no marea a nadie.
 			P.Z = Ground + Radius;
@@ -299,33 +307,85 @@ void ATN_BeachToyTank::AdvanceShots(double Now, bool bServer)
 		}
 		Shot.LastPos = Shot.Pos;
 		Shot.Pos = P;
-		if (!bServer || !Shot.bArmed || !IsRaceLive(this))
+		// A quién da (servidor): solo con lo recorrido hasta la pared.
+		if (bServer && Shot.bArmed && IsRaceLive(this))
+		{
+			if (!bGathered)
+			{
+				bGathered = true;
+				GatherTurtles(this, Turtles);
+			}
+			if (HitTurtleOnSegment(Shot, Turtles, Radius, Vel, Now))
+			{
+				continue;
+			}
+		}
+		if (bWall)
+		{
+			// Rebota en la pared, pierde fuerza y ya no marea a nadie.
+			Shot.P0 = P;
+			Shot.V0 = TNBeachTankFoam::BounceOffWall(Vel, WallHit.ImpactNormal);
+			Shot.T0 = Now;
+			Shot.bArmed = false;
+			Shot.Origin = P;
+			Shot.GroundFrom = FMath::Min(Ground, static_cast<float>(P.Z) - Radius);
+			Shot.GroundTo = Shot.GroundFrom;
+			Shot.AimDist = 1000.f;
+			++Shot.Bounces;
+			if (Shot.Bounces > TNBeachTank::MaxBounces || Shot.V0.SizeSquared() < 80.0 * 80.0)
+			{
+				Shot.bAlive = false;
+			}
+		}
+	}
+}
+
+bool ATN_BeachToyTank::HitTurtleOnSegment(FTNTankShot& Shot, const TArray<ATortugaCharacter*>& Turtles, float Radius, const FVector& Velocity, double Now)
+{
+	for (ATortugaCharacter* Turtle : Turtles)
+	{
+		if (!IsTargetable(Turtle))
 		{
 			continue;
 		}
-		if (!bGathered)
+		const FVector At = Turtle->GetActorLocation();
+		if (FMath::PointDistToSegment(At, Shot.LastPos, Shot.Pos) > Radius + TNBeachTank::HitPad)
 		{
-			bGathered = true;
-			GatherTurtles(this, Turtles);
+			continue;
 		}
-		for (ATortugaCharacter* Turtle : Turtles)
+		// Con algo entre la bolita y la tortuga (la pared en la que acaba de chocar, una muralla fina), no le da: la holgura del
+		// golpe no pasa a través de las paredes.
+		FHitResult Between;
+		if (SweepFoam(FMath::ClosestPointOnSegment(At, Shot.LastPos, Shot.Pos), At, 5.f, Between))
 		{
-			if (!IsTargetable(Turtle))
-			{
-				continue;
-			}
-			if (FMath::PointDistToSegment(Turtle->GetActorLocation(), Shot.LastPos, Shot.Pos) > Radius + TNBeachTank::HitPad)
-			{
-				continue;
-			}
-			// Empuja hacia donde iba la bolita y marea un poco (en bola).
-			const FVector Launch = Vel.GetSafeNormal2D() * TNBeachTank::HitPush + FVector(0.0, 0.0, TNBeachTank::HitUp);
-			StunTurtle(Turtle, TNBeachTank::HitStun, Launch);
-			BounceOffTurtle(Shot, P, Now);
-			MulticastFoamHit(Shot.Id, P, Turtle);
-			break;
+			continue;
 		}
+		// Empuja hacia donde iba la bolita y marea un poco (en bola).
+		const FVector Launch = Velocity.GetSafeNormal2D() * TNBeachTank::HitPush + FVector(0.0, 0.0, TNBeachTank::HitUp);
+		StunTurtle(Turtle, TNBeachTank::HitStun, Launch);
+		BounceOffTurtle(Shot, Shot.Pos, Now);
+		MulticastFoamHit(Shot.Id, Shot.Pos, Turtle);
+		return true;
 	}
+	return false;
+}
+
+bool ATN_BeachToyTank::SweepFoam(const FVector& From, const FVector& To, float Radius, FHitResult& OutHit) const
+{
+	UWorld* World = GetWorld();
+	if (!World || From.Equals(To, 0.1))
+	{
+		return false;
+	}
+	// Como un objeto que se mueve por el mundo (canal WorldDynamic): la arena, el decorado, las fortalezas y los muros. Sin las
+	// tortugas ni los demás cuerpos (tipo Pawn: los enemigos, este tanque) ni las bolas de caparazón: a las tortugas se les da
+	// con su propia cuenta. Lo que ya tocaba al salir (la boca del cañón pegada a una pared) no cuenta.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BeachTankFoam), false, this);
+	Params.bFindInitialOverlaps = false;
+	FCollisionResponseParams Response(ECR_Block);
+	Response.CollisionResponse.SetResponse(ECC_Pawn, ECR_Ignore);
+	Response.CollisionResponse.SetResponse(ECC_PhysicsBody, ECR_Ignore);
+	return World->SweepSingleByChannel(OutHit, From, To, FQuat::Identity, ECC_WorldDynamic, FCollisionShape::MakeSphere(Radius), Params, Response);
 }
 
 void ATN_BeachToyTank::ServerTick(float DeltaSeconds)
