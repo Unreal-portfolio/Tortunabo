@@ -1,5 +1,6 @@
 """Especificación del mapa de Supervivencia (Docs/Mapa_Supervivencia.md). Un mapa nuevo por nivel, entero, de
-una pasada, rectangular y alargado: el inicio en el lado oeste y la meta en el este."""
+una pasada, rectangular y alargado, hecho con el generador del Coop adaptado. En el formato de intercambio el inicio
+va al oeste y la meta al este."""
 
 from __future__ import annotations
 

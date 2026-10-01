@@ -1,5 +1,5 @@
 """Métricas comunes de un mapa de Supervivencia. Usa los validadores de terrain_vol (mismo criterio de
-transitabilidad que los mapas de Coop) y mide lo que decide entre generadores: que se pueda recorrer, cuánto
+transitabilidad que los mapas de Coop) y mide si un mapa cumple la especificación: que se pueda recorrer, cuánto
 cuesta generarlo y si la dificultad se nota."""
 
 from __future__ import annotations
@@ -64,7 +64,8 @@ def _path_slopes(top: np.ndarray, path: list[tuple[int, int]]) -> list[float]:
 
 def off_route_share(seen: np.ndarray, path: list[tuple[int, int]]) -> float:
     """Parte del suelo alcanzable a más de OFF_ROUTE_M del camino más corto: 0 = lineal (todo es camino), cerca de
-    1 = laberinto (ramas, lazos y zonas que no llevan a la meta). Informativa: distingue el estilo de cada generador."""
+    1 = laberinto (ramas, lazos y zonas que no llevan a la meta). Informativa, y solo vale con el borde cerrado:
+    un campo abierto también la sube."""
     on_path = np.zeros(seen.shape, dtype=bool)
     on_path[tuple(np.array(path).T)] = True
     far = ndimage.distance_transform_edt(~on_path) > OFF_ROUTE_M

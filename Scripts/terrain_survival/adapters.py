@@ -1,9 +1,9 @@
 """Generadores que el banco sabe ejecutar. Cada uno es `generar(seed, difficulty) -> SurvivalMap`.
 
-  - `referencia`: línea base mínima (camino sinuoso entre muros de ruido). No es candidato: sirve para validar
-    el banco y para saber cuánto mejora un generador de verdad.
-  - Los candidatos entran aquí cuando se adaptan (issue del prototipo de SkiTemplar). El de Mokius es C++: su export
-    escribe los .npz y el banco los lee con `--carpeta` (ver bench.py).
+  - `referencia`: línea base mínima (camino sinuoso entre muros de ruido) que sirve para validar el banco.
+
+El generador de verdad es el del Coop adaptado (C++): su export escribe los .npz y el banco los lee con
+`--carpeta` (ver bench.py).
 """
 
 from __future__ import annotations

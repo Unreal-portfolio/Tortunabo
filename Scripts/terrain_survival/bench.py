@@ -1,8 +1,8 @@
-"""Banco de comparación de generadores del mapa de Supervivencia: mismas semillas, mismas dificultades, mismas
-métricas. Escribe `comparativa.json`, `comparativa.md` y, con --hojas, un PNG por mapa.
+"""Banco de métricas del mapa de Supervivencia: varias semillas y dificultades medidas contra la especificación.
+Escribe `<nombre>.json`, `<nombre>.md` y, con --hojas, un PNG por mapa.
 
-    uv run python -m terrain_survival.bench --algoritmo referencia --semillas 5 --salida Docs/Mapas/Supervivencia
-    uv run python -m terrain_survival.bench --carpeta <dir con semilla_dificultad.npz> --nombre mokius ...
+    uv run python -m terrain_survival.bench --carpeta <dir con semilla_dificultad.npz> --nombre coop ...
+    uv run python -m terrain_survival.bench --algoritmo referencia --semillas 5
 
 Un generador en C++ escribe sus mapas con `SurvivalMap.save` (mismo formato, ver mapa.py) con nombre
 `<semilla>_<dificultad>.npz` y el banco los lee con --carpeta. Se ejecuta desde Scripts/."""
