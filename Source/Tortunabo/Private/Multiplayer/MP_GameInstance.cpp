@@ -1575,6 +1575,11 @@ void UMP_GameInstance::HandleChecksumMismatch(const FString& ErrorString)
 	UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
 	// Destruir la sesión huérfana del lado cliente para poder reintentar.
 	DestroyCurrentSession();
+	// El motor vuelve solo al menú (?closed): que diga por qué y no parezca un fallo de la sala (#245).
+	PendingMenuNotice.Text = NSLOCTEXT("TNRooms", "BuildMismatch",
+		"Tu versión del juego no es la misma que la del anfitrión. Poneos los dos en la misma versión y volved a intentarlo.");
+	PendingMenuNotice.bError = true;
+	PendingMenuNotice.bOpenJoin = true;
 	UE_LOG(LogTortunabo, Error,
 		TEXT("[MP] NetChecksumMismatch — El cliente tiene un build distinto al servidor. "
 		     "Recompila sin Live Coding y asegúrate de que todos usan el mismo binario. "
