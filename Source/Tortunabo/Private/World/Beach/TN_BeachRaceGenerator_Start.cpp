@@ -86,12 +86,16 @@ namespace TNBeachEggs
 	 * Nido del huevo Index con el suelo en Spot (local): la base del huevo (la de los del lobby, medio enterrada) en Cups y
 	 * el anillo de arena removida que se pisa en Ring. El mismo nido que el de la salida (TN_BeachRaceGenerator_Scenery.cpp).
 	 */
-	void AddNest(TNProcMesh::FTNProcMeshBuffers& Ring, TNProcMesh::FTNProcMeshBuffers& Cups, const FVector& Spot, int32 Index)
+	void AddNest(TNProcMesh::FTNProcMeshBuffers& Ring, TNProcMesh::FTNProcMeshBuffers& Cups, const FVector& Spot, int32 Index, TNArt::FPieceLog& Log)
 	{
-		TNCastleKit::BuildEggCup(Cups, Spot - FVector(0.0, 0.0, CupSink), TNCastleKit::Col(0xFFF3DC), TNCastleKit::Col(TNCastleKit::EggAccent(Index)));
+		{
+			TNArt::FPieceScope CupPiece(Log, TN_ART("Beach.Start.EggCup"), TNArt::PiecePivot(Spot - FVector(0.0, 0.0, CupSink)), { &Cups });
+			TNCastleKit::BuildEggCup(Cups, Spot - FVector(0.0, 0.0, CupSink), TNCastleKit::Col(0xFFF3DC), TNCastleKit::Col(TNCastleKit::EggAccent(Index)));
+		}
 		const FLinearColor Mound = TNBeachRaceKit::Hex(0xE2C58Eu);
 		auto RingAt = [&Spot](double A, double R, double Z) { return FVector(Spot.X + FMath::Cos(A) * R, Spot.Y + FMath::Sin(A) * R, Spot.Z + Z); };
 		constexpr int32 Seg = 20;
+		TNArt::FPieceScope MoundPiece(Log, TN_ART("Beach.Start.NestMound"), TNArt::PiecePivot(Spot), { &Ring });
 		for (int32 k = 0; k < Seg; ++k)
 		{
 			const double A0 = TNProcMap::TwoPi * k / Seg;
@@ -137,8 +141,9 @@ void ATN_BeachRaceGenerator::ApplyStartEggLine()
 	}
 	else if (IsValid(SprintNestMesh))
 	{
-		// De vuelta en la salida: sin nido (ni su colisión) en la línea del sprint.
+		// De vuelta en la salida: sin nido (ni su colisión ni sus mallas de arte) en la línea del sprint.
 		SprintNestMesh->ClearAllMeshSections();
+		TNArt::ClearPieceArt(this, TEXT("SprintNest"));
 	}
 }
 
@@ -160,13 +165,16 @@ void ATN_BeachRaceGenerator::BuildSprintNest()
 	SprintNestMesh->ClearAllMeshSections();
 	TNProcMesh::FTNProcMeshBuffers Ring;
 	TNProcMesh::FTNProcMeshBuffers Cups;
+	// Las mismas piezas de arte que el nido de la salida (Docs/Arte_Assets.md).
+	TNArt::FPieceLog Log(TEXT("SprintNest"));
 	for (int32 i = 0; i < TNBeachLayout::MaxStartEggs; ++i)
 	{
-		TNBeachEggs::AddNest(Ring, Cups, StartEggCup(i) + FVector(0.0, 0.0, TNBeachEggs::CupSink), i);
+		TNBeachEggs::AddNest(Ring, Cups, StartEggCup(i) + FVector(0.0, 0.0, TNBeachEggs::CupSink), i, Log);
 	}
 	// El anillo se pisa (con el material del terreno); las bases, con el de los huevos del lobby y sin colisión.
-	TNBeachRaceKit::Upload(SprintNestMesh, 0, Ring, TNBeachRaceKit::TerrainMaterial(), true);
-	TNBeachRaceKit::Upload(SprintNestMesh, 1, Cups, TNCastleKit::VertexColorMaterial(), false);
+	TNBeachRaceKit::Upload(SprintNestMesh, 0, Ring, TNBeachRaceKit::TerrainMaterial(), true, &Log);
+	TNBeachRaceKit::Upload(SprintNestMesh, 1, Cups, TNCastleKit::VertexColorMaterial(), false, &Log);
+	TNArt::SpawnPieceArt(SprintNestMesh, Log);
 }
 
 void ATN_BeachRaceGenerator::SetStartEggsAtSprint(bool bAtSprint)
@@ -210,6 +218,8 @@ void ATN_BeachRaceGenerator::BuildStartEggs()
 		Lid->SetMobility(EComponentMobility::Movable);
 		Lid->SetupAttachment(BeachRoot);
 		Lid->RegisterComponent();
+		// Ya registrada: la malla de arte de la tapa (si la hay) va de hija y salta y se esfuma con ella.
+		TNArt::ApplyToComponent(Lid, TN_ART("Beach.Start.EggLid"));
 		Lid->SetRelativeLocationAndRotation(TNBeachEggs::LidClosed(StartEggCup(i)), FRotator(0.0, TNBeachEggs::LidClosedYawStep * i, 0.0));
 		StartEggLids.Add(Lid);
 	}

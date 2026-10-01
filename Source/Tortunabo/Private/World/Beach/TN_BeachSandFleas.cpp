@@ -420,7 +420,7 @@ void ATN_BeachSandFleas::BuildSwarm()
 	{
 		TNBeachCritterMeshes::BuildFlea(M, Variant);
 	});
-	FleaDots = TNBeachCritterKit::AddInstances(this, GetRootComponent(), FleaM, TNBeachFleas::NumFleas, true, false);
+	FleaDots = TNBeachCritterKit::AddInstances(this, GetRootComponent(), FleaM, TNBeachFleas::NumFleas, true, false, TN_ART("Beach.SandFleas.Flea"));
 	FleaXf.Init(FTransform(FQuat::Identity, GetActorLocation(), FVector::ZeroVector), TNBeachFleas::NumFleas);
 	Fleas.SetNum(TNBeachFleas::NumFleas);
 	for (FFlea& Flea : Fleas)

@@ -173,7 +173,7 @@ namespace TNCastleDetail
 	 * Tobogán de plástico desde el adarve del muro interior (X, cara Face: +1 plaza, -1 patio): canal con perfil que
 	 * empieza a ~60° (se resbala) y acaba plano en la arena, barandillas, panza por debajo y dos pilares de arena.
 	 */
-	void AddWallSlide(FBuffers& B, FBuffers& Decor, double X, double Face, const FLinearColor& Tone)
+	void AddWallSlide(FBuffers& B, FBuffers& Decor, double X, double Face, const FLinearColor& Tone, TNArt::FPieceLog* Log)
 	{
 		constexpr int32 N = 16;
 		const FVector Up(0.0, 0.0, 1.0);
@@ -218,7 +218,9 @@ namespace TNCastleDetail
 			}
 		}
 		// Conchas en los pilares y una estrella al pie.
-		AddStarfish(Decor, FVector(X + 40.0, Y0 + Face * (SlideRun + 90.0), FloorZ), 30.0, X * 0.01, Col(0xFF8A70));
+		const FVector StarAt(X + 40.0, Y0 + Face * (SlideRun + 90.0), FloorZ);
+		TNArt::FPieceScope Star(Log, TN_ART("Lobby.Castle.Starfish"), StarfishPivot(StarAt, 30.0, X * 0.01), { &Decor });
+		AddStarfish(Decor, StarAt, 30.0, X * 0.01, Col(0xFF8A70));
 	}
 
 	/** Guirnalda de banderines entre dos puntos (cuerda que cuelga un poco y triángulos de colores alternos). */
@@ -516,6 +518,8 @@ void ATN_SandCastleLobby::BuildCastle()
 	FBuffers B;
 	FBuffers Decor;
 	FBuffers Barrier;
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md): todas en locales del castillo; la barrera no es visible.
+	TNArt::FPieceLog Log(TEXT("Castle"));
 	const FVector Up(0.0, 0.0, 1.0);
 	bSeaBuilt = bDrawSea;
 
@@ -523,6 +527,7 @@ void ATN_SandCastleLobby::BuildCastle()
 	{
 		constexpr int32 Rings = 14;
 		constexpr int32 Spokes = 72;
+		TNArt::FPieceScope FloorPiece(Log, TN_ART("Lobby.Castle.Floor"), TNArt::PiecePivot(FVector(0.0, 0.0, FloorZ)), { &B });
 		for (int32 i = 0; i < Rings; ++i)
 		{
 			const double R0 = (RO + 30.0) * i / Rings;
@@ -537,23 +542,32 @@ void ATN_SandCastleLobby::BuildCastle()
 				B.AddQuad(P0, P1, P2, P3, Up, C);
 			}
 		}
-		// Playa de fuera (tapa el suelo de la maqueta) hasta el horizonte y el mar alrededor. Sin mar ni orilla si el valle
-		// del lobby ocupa su sitio (bDrawSea).
-		for (int32 k = 0; k < Spokes; ++k)
+	}
+	// Playa de fuera (tapa el suelo de la maqueta) hasta el horizonte y el mar alrededor. Sin mar ni orilla si el valle
+	// del lobby ocupa su sitio (bDrawSea).
+	{
+		constexpr int32 Spokes = 72;
+		constexpr double ROut = 3900.0;
 		{
-			const double A0 = TNProcMap::TwoPi * k / Spokes, A1 = TNProcMap::TwoPi * (k + 1) / Spokes;
-			const double RIn = RO + 20.0, ROut = 3900.0;
-			Decor.AddQuad(FVector(RIn * FMath::Cos(A0), RIn * FMath::Sin(A0), 4.0), FVector(RIn * FMath::Cos(A1), RIn * FMath::Sin(A1), 4.0),
-				FVector(ROut * FMath::Cos(A1), ROut * FMath::Sin(A1), 4.0), FVector(ROut * FMath::Cos(A0), ROut * FMath::Sin(A0), 4.0), Up,
-				(k % 5 == 0) ? Col(0xEBD39C) : Col(0xF2DCA8));
-			if (bDrawSea)
+			TNArt::FPieceScope BeachPiece(Log, TN_ART("Lobby.Castle.OuterBeach"), TNArt::PiecePivot(FVector(0.0, 0.0, 4.0)), { &Decor });
+			for (int32 k = 0; k < Spokes; ++k)
 			{
-				Decor.AddQuad(FVector(ROut * FMath::Cos(A0), ROut * FMath::Sin(A0), 4.0), FVector(ROut * FMath::Cos(A1), ROut * FMath::Sin(A1), 4.0),
-					FVector(4400.0 * FMath::Cos(A1), 4400.0 * FMath::Sin(A1), -30.0), FVector(4400.0 * FMath::Cos(A0), 4400.0 * FMath::Sin(A0), -30.0), Up, Col(0xE2F6F2));
+				const double A0 = TNProcMap::TwoPi * k / Spokes, A1 = TNProcMap::TwoPi * (k + 1) / Spokes;
+				const double RIn = RO + 20.0;
+				Decor.AddQuad(FVector(RIn * FMath::Cos(A0), RIn * FMath::Sin(A0), 4.0), FVector(RIn * FMath::Cos(A1), RIn * FMath::Sin(A1), 4.0),
+					FVector(ROut * FMath::Cos(A1), ROut * FMath::Sin(A1), 4.0), FVector(ROut * FMath::Cos(A0), ROut * FMath::Sin(A0), 4.0), Up,
+					(k % 5 == 0) ? Col(0xEBD39C) : Col(0xF2DCA8));
 			}
 		}
 		if (bDrawSea)
 		{
+			TNArt::FPieceScope SeaPiece(Log, TN_ART("Lobby.Castle.Sea"), TNArt::PiecePivot(FVector(0.0, 0.0, -34.0)), { &Decor });
+			for (int32 k = 0; k < Spokes; ++k)
+			{
+				const double A0 = TNProcMap::TwoPi * k / Spokes, A1 = TNProcMap::TwoPi * (k + 1) / Spokes;
+				Decor.AddQuad(FVector(ROut * FMath::Cos(A0), ROut * FMath::Sin(A0), 4.0), FVector(ROut * FMath::Cos(A1), ROut * FMath::Sin(A1), 4.0),
+					FVector(4400.0 * FMath::Cos(A1), 4400.0 * FMath::Sin(A1), -30.0), FVector(4400.0 * FMath::Cos(A0), 4400.0 * FMath::Sin(A0), -30.0), Up, Col(0xE2F6F2));
+			}
 			Decor.AddQuad(FVector(-30000.0, -30000.0, -34.0), FVector(30000.0, -30000.0, -34.0), FVector(30000.0, 30000.0, -34.0), FVector(-30000.0, 30000.0, -34.0),
 				Up, Col(0x1E9CC6));
 		}
@@ -562,6 +576,7 @@ void ATN_SandCastleLobby::BuildCastle()
 	// ── Muralla redonda: cara de dentro y de fuera, adarve arriba, almenas por fuera y el hueco de la puerta doble ──
 	{
 		constexpr int32 Seg = 180;
+		TNArt::FPieceScope WallPiece(Log, TN_ART("Lobby.Castle.Wall"), TNArt::PiecePivot(FVector::ZeroVector), { &B });
 		for (int32 k = 0; k < Seg; ++k)
 		{
 			const double A0 = TNProcMap::TwoPi * k / Seg, A1 = TNProcMap::TwoPi * (k + 1) / Seg;
@@ -593,13 +608,21 @@ void ATN_SandCastleLobby::BuildCastle()
 	}
 
 	// ── Puerta doble a las 12: la misma estructura con la que se sale en el mapa procedural ──
-	BuildGatehouse(B, Decor, Barrier, FVector(0.0, GateY, 0.0), GateFloorZ, 0);
+	{
+		TNArt::FPieceScope GatePiece(Log, TN_ART("Lobby.Castle.Gatehouse"), TNArt::PiecePivot(FVector(0.0, GateY, 0.0)), { &B, &Decor });
+		BuildGatehouse(B, Decor, Barrier, FVector(0.0, GateY, 0.0), GateFloorZ, 0);
+	}
 
 	// ── Torres irregulares repartidas por la muralla ──
 	for (int32 t = 0; t < static_cast<int32>(UE_ARRAY_COUNT(Towers)); ++t)
 	{
 		const FTowerDef& Def = Towers[t];
-		AddTower(B, Decor, ClockPoint(Def.Clock, RM), Def.Radius, Def.Height, Col(Def.Flag), t + 2);
+		{
+			const FVector2D At = ClockPoint(Def.Clock, RM);
+			TNArt::FPieceScope TowerPiece(Log, TN_ART("Lobby.Castle.Tower"),
+				TowerPivot(At, 0.0, Def.Radius, Def.Height, FMath::RadiansToDegrees(FMath::Atan2(At.Y, At.X))), { &B, &Decor });
+			AddTower(B, Decor, At, Def.Radius, Def.Height, Col(Def.Flag), t + 2);
+		}
 		// Barrera por fuera de la azotea de cada torre.
 		const FVector2D C = ClockPoint(Def.Clock, RM);
 		TNProcMesh::TNProcAddCylinder(Barrier, FVector(C.X, C.Y, Def.Height), FVector(C.X, C.Y, Def.Height + 900.0), Def.Radius + 40.0, Def.Radius + 40.0, 12, SandC(), false);
@@ -617,6 +640,8 @@ void ATN_SandCastleLobby::BuildCastle()
 		{
 			const double X0 = Sign * (KeepR - 20.0), X1 = Sign * Half;
 			const FVector Mid((X0 + X1) * 0.5, CutY, CutH * 0.5);
+			// Cada mitad del muro (sin conchas ni guirnaldas), +X hacia la muralla redonda.
+			TNArt::FPieceScope InnerWallPiece(Log, TN_ART("Lobby.Castle.InnerWall"), TNArt::PiecePivot(FVector(Mid.X, CutY, 0.0), Sign > 0.0 ? 0.0 : 180.0), { &B });
 			B.AddBox(Mid, FVector(1.0, 0.0, 0.0), FVector(FMath::Abs(X1 - X0) * 0.5, CutHalfT, CutH * 0.5), SandC());
 			for (const double Z : { 150.0, 320.0, 470.0 })
 			{
@@ -639,13 +664,17 @@ void ATN_SandCastleLobby::BuildCastle()
 			{
 				const double X = FMath::Lerp(X0, X1, 0.12 + 0.15 * s);
 				if (FMath::Abs(X - SlideLeftX) < SlideHalfW + 60.0) { continue; }
-				AddScallop(Decor, FVector(X, CutY + CutHalfT, 230.0 + 120.0 * ((s + (Sign > 0.0 ? 1 : 0)) % 3)), FVector(0.0, 1.0, 0.0), Up, 30.0,
-					ShellColors[s % 4]);
+				const FVector ShellAt(X, CutY + CutHalfT, 230.0 + 120.0 * ((s + (Sign > 0.0 ? 1 : 0)) % 3));
+				TNArt::FPieceScope ShellPiece(Log, TN_ART("Lobby.Castle.Shell"), ScallopPivot(ShellAt, FVector(0.0, 1.0, 0.0), Up, 30.0), { &Decor });
+				AddScallop(Decor, ShellAt, FVector(0.0, 1.0, 0.0), Up, 30.0, ShellColors[s % 4]);
 			}
 			// Guirnaldas de banderines por encima del adarve, de mástil en mástil sobre las almenas de la cara sur.
 			const double GX0 = Sign * (FMath::Abs(DownStepsX1) + 80.0);
 			const double GX1 = X1 - Sign * 260.0;
 			const int32 Poles = FMath::Max(2, FMath::RoundToInt32(FMath::Abs(GX1 - GX0) / 420.0) + 1);
+			// Toda la línea de mástiles y banderines de cada mitad: pie del primer mástil, +X hacia la muralla redonda.
+			TNArt::FPieceScope BuntingPiece(Log, TN_ART("Lobby.Castle.Bunting"),
+				TNArt::PiecePivot(FVector(GX0, CutY - (CutHalfT - 22.0), CutH + 90.0), Sign > 0.0 ? 0.0 : 180.0), { &Decor });
 			FVector PrevTop = FVector::ZeroVector;
 			for (int32 p = 0; p < Poles; ++p)
 			{
@@ -657,12 +686,20 @@ void ATN_SandCastleLobby::BuildCastle()
 				PrevTop = Top;
 			}
 		}
-		// Tobogán de la izquierda a la plaza y de la derecha al patio de pruebas.
-		AddWallSlide(B, Decor, SlideLeftX, 1.0, Col(0xFF6A52));
-		AddWallSlide(B, Decor, SlideRightX, -1.0, Col(0x2EC4B6));
+		// Tobogán de la izquierda a la plaza y de la derecha al patio de pruebas. Pivote: boca del tobogán en el muro, a ras
+		// de suelo, +X hacia donde baja.
+		{
+			TNArt::FPieceScope SlidePiece(Log, TN_ART("Lobby.Castle.Slide"), TNArt::PiecePivot(FVector(SlideLeftX, CutY + CutHalfT, 0.0), 90.0), { &B, &Decor });
+			AddWallSlide(B, Decor, SlideLeftX, 1.0, Col(0xFF6A52), &Log);
+		}
+		{
+			TNArt::FPieceScope SlidePiece(Log, TN_ART("Lobby.Castle.Slide"), TNArt::PiecePivot(FVector(SlideRightX, CutY - CutHalfT, 0.0), -90.0), { &B, &Decor });
+			AddWallSlide(B, Decor, SlideRightX, -1.0, Col(0x2EC4B6), &Log);
+		}
 		// Mirador del adarve derecho, junto a la muralla: catalejo en su trípode, cubo con pala y un banderón.
 		{
 			const FVector Look(Half - 520.0, CutY, CutH);
+			TNArt::FPieceScope LookoutPiece(Log, TN_ART("Lobby.Castle.Lookout"), TNArt::PiecePivot(Look), { &Decor });
 			for (int32 l = 0; l < 3; ++l)
 			{
 				const double A = TNProcMap::TwoPi * l / 3.0;
@@ -682,6 +719,8 @@ void ATN_SandCastleLobby::BuildCastle()
 	{
 		const FVector KeepC(0.0, CutY, 0.0);
 		constexpr int32 KSeg = 40;
+		// La torre con su paso por dentro (sin el torreón, la tarima del cofre ni las escaleras, que son piezas aparte).
+		const int32 KeepPiece = Log.Begin(TN_ART("Lobby.Castle.Keep"), TNArt::PiecePivot(KeepC), { &B, &Decor });
 		for (int32 k = 0; k < KSeg; ++k)
 		{
 			const double A0 = TNProcMap::TwoPi * k / KSeg, A1 = TNProcMap::TwoPi * (k + 1) / KSeg;
@@ -714,7 +753,9 @@ void ATN_SandCastleLobby::BuildCastle()
 		for (const double X : { -DoorHalfW, DoorHalfW })
 		{
 			B.AddBox(FVector(X + (X > 0.0 ? 8.0 : -8.0), CutY, DoorH * 0.5), FVector(1.0, 0.0, 0.0), FVector(8.0, KeepR, DoorH * 0.5), SandDark());
-			AddWallTorch(Decor, FVector(X, CutY, 220.0), FVector(X > 0.0 ? -1.0 : 1.0, 0.0, 0.0));
+			const FVector TorchAt(X, CutY, 220.0), TorchOut(X > 0.0 ? -1.0 : 1.0, 0.0, 0.0);
+			TNArt::FPieceScope TorchPiece(Log, TN_ART("Lobby.Castle.Torch"), TorchPivot(TorchAt, TorchOut), { &Decor });
+			AddWallTorch(Decor, TorchAt, TorchOut);
 		}
 		B.AddBox(FVector(0.0, CutY, DoorH + 10.0), FVector(1.0, 0.0, 0.0), FVector(DoorHalfW + 16.0, KeepR, 10.0), SandDark());
 		for (const double Face : { 1.0, -1.0 })
@@ -729,11 +770,16 @@ void ATN_SandCastleLobby::BuildCastle()
 				Decor.AddBox((C0 + C1) * 0.5, AxisX, FVector(FVector::Dist(C0, C1) * 0.5, 10.0, 16.0), (s % 2) ? SandDark() : Col(0xCFA766));
 			}
 		}
+		Log.End(KeepPiece);
 		// Torrecilla sobre la azotea (al sur), con tejado de cono y bandera: la silueta alta del castillo.
-		AddTower(B, Decor, FVector2D(0.0, CutY - 170.0), 150.0, 430.0, Col(0xFF6A52), 0, KeepRoofZ);
+		{
+			TNArt::FPieceScope TurretPiece(Log, TN_ART("Lobby.Castle.KeepTurret"), TNArt::PiecePivot(FVector(0.0, CutY - 170.0, KeepRoofZ)), { &B, &Decor });
+			AddTower(B, Decor, FVector2D(0.0, CutY - 170.0), 150.0, 430.0, Col(0xFF6A52), 0, KeepRoofZ);
+		}
 		// Tarima del cofre del tesoro, delante del torreón: arena con un reborde oscuro y conchas alrededor. El cofre lo
 		// pone el servidor encima (SpawnTreasureChest); la tarima lo sube un poco para que asome por las almenas.
 		{
+			TNArt::FPieceScope DaisPiece(Log, TN_ART("Lobby.Castle.TreasureDais"), TNArt::PiecePivot(FVector(TreasureSpot.X, TreasureSpot.Y, KeepRoofZ)), { &B, &Decor });
 			const double DaisTopZ = KeepRoofZ + TreasureDaisH;
 			TNProcMesh::TNProcAddCylinder(B, FVector(TreasureSpot.X, TreasureSpot.Y, KeepRoofZ - 2.0), FVector(TreasureSpot.X, TreasureSpot.Y, DaisTopZ),
 				TreasureDaisR, TreasureDaisR - 6.0, 28, SandC());
@@ -744,11 +790,15 @@ void ATN_SandCastleLobby::BuildCastle()
 			{
 				const double A = TNProcMap::TwoPi * (s + 0.5) / 6.0;
 				const FVector Out(FMath::Cos(A), FMath::Sin(A), 0.0);
-				AddScallop(Decor, FVector(TreasureSpot.X, TreasureSpot.Y, KeepRoofZ + 6.0) + Out * (TreasureDaisR - 2.5), Out, Up, 9.0, DaisShells[s % 3]);
+				const FVector ShellAt = FVector(TreasureSpot.X, TreasureSpot.Y, KeepRoofZ + 6.0) + Out * (TreasureDaisR - 2.5);
+				TNArt::FPieceScope ShellPiece(Log, TN_ART("Lobby.Castle.Shell"), ScallopPivot(ShellAt, Out, Up, 9.0), { &Decor });
+				AddScallop(Decor, ShellAt, Out, Up, 9.0, DaisShells[s % 3]);
 			}
 		}
 		// Escalera de caracol por fuera, de peldaños macizos: del suelo (este, 290°) a la azotea (oeste, 70°) pasando por
-		// encima del arco de la puerta (0°). Los de la entrada, más largos hacia la plaza.
+		// encima del arco de la puerta (0°). Los de la entrada, más largos hacia la plaza. Con los rellanos y las dos
+		// escaleras rectas a los adarves, una sola pieza con pivote en el eje de la torre.
+		TNArt::FPieceScope StairsPiece(Log, TN_ART("Lobby.Castle.KeepStairs"), TNArt::PiecePivot(KeepC), { &B });
 		const double StepDeg = (StairEndDeg - StairStartDeg) / StairSteps;
 		for (int32 s = 0; s < StairSteps; ++s)
 		{
@@ -839,7 +889,10 @@ void ATN_SandCastleLobby::BuildCastle()
 	}
 
 	// ── Montículo de la pila de huevos (dos alturas) con el escalón de la concha hacia la puerta ──
-	BuildEggMound(B, Decor, FVector(EggsCenter.X, EggsCenter.Y, 0.0), FloorZ, FVector(0.0, 1.0, 0.0));
+	{
+		TNArt::FPieceScope MoundPiece(Log, TN_ART("Lobby.Castle.EggMound"), TNArt::PiecePivot(FVector(EggsCenter.X, EggsCenter.Y, FloorZ), 90.0), { &B, &Decor });
+		BuildEggMound(B, Decor, FVector(EggsCenter.X, EggsCenter.Y, 0.0), FloorZ, FVector(0.0, 1.0, 0.0));
+	}
 
 	// ── Adornos sueltos por la plaza y el patio: conchas y estrellas ──
 	for (int32 i = 0; i < 60; ++i)
@@ -851,14 +904,27 @@ void ATN_SandCastleLobby::BuildCastle()
 		if (FMath::Abs(P.Y - CutY) < 260.0) { continue; }
 		if ((FMath::Abs(P.X - SlideLeftX) < 150.0 && P.Y > CutY && P.Y < CutY + CutHalfT + SlideRun + 60.0)
 			|| (FMath::Abs(P.X - SlideRightX) < 150.0 && P.Y < CutY && P.Y > CutY - CutHalfT - SlideRun - 60.0)) { continue; }
-		if (i % 3 == 0) { AddStarfish(Decor, P, 22.0 + 10.0 * FMath::Frac(i * 0.31), i * 0.7, (i % 2) ? Col(0xFF8A70) : Col(0xFFB077)); }
-		else { AddScallop(Decor, P + Up * 2.0, Up, FVector(FMath::Cos(i * 1.3), FMath::Sin(i * 1.3), 0.0), 18.0 + 8.0 * FMath::Frac(i * 0.43), (i % 2) ? Col(0xFFE0C2) : Col(0xFFB4A2)); }
+		if (i % 3 == 0)
+		{
+			const double Size = 22.0 + 10.0 * FMath::Frac(i * 0.31);
+			TNArt::FPieceScope StarPiece(Log, TN_ART("Lobby.Castle.Starfish"), StarfishPivot(P, Size, i * 0.7), { &Decor });
+			AddStarfish(Decor, P, Size, i * 0.7, (i % 2) ? Col(0xFF8A70) : Col(0xFFB077));
+		}
+		else
+		{
+			const FVector Dir(FMath::Cos(i * 1.3), FMath::Sin(i * 1.3), 0.0);
+			const double Size = 18.0 + 8.0 * FMath::Frac(i * 0.43);
+			TNArt::FPieceScope ShellPiece(Log, TN_ART("Lobby.Castle.Shell"), ScallopPivot(P + Up * 2.0, Up, Dir, Size), { &Decor });
+			AddScallop(Decor, P + Up * 2.0, Up, Dir, Size, (i % 2) ? Col(0xFFE0C2) : Col(0xFFB4A2));
+		}
 	}
 
 	UMaterialInterface* Mat = VertexColorMaterial();
-	UploadSection(CastleMesh, B, true, Mat);
-	UploadSection(DecorMesh, Decor, false, Mat);
+	UploadSection(CastleMesh, B, true, Mat, &Log);
+	UploadSection(DecorMesh, Decor, false, Mat, &Log);
 	UploadSection(BarrierMesh, Barrier, true, nullptr);
+	// La malla de arte de cada pieza con sustituto, en su sitio (hija de la malla del castillo: mismos ejes).
+	TNArt::SpawnPieceArt(CastleMesh, Log);
 
 	// Rótulos de los carteles de las dos puertas (la 1 por la cara de la plaza y la 2 por fuera): siempre dentro de la
 	// tabla (se encogen si el nombre es largo).
@@ -885,34 +951,37 @@ void ATN_SandCastleLobby::BuildGateAndEggs()
 	BuildLeaf(Leaf, Gatehouse::HalfW, Gatehouse::GateH);
 	UStaticMesh* LeafMesh = TNProcRuntimeMesh::MakeStaticMesh(this, Leaf, Mat);
 	const double Gate2Y = GateY + Gatehouse::Depth;
-	if (GateLeafLeft) { GateLeafLeft->SetStaticMesh(LeafMesh); GateLeafLeft->SetRelativeLocationAndRotation(FVector(-Gatehouse::HalfW, GateY, GateFloorZ), FRotator::ZeroRotator); }
-	if (GateLeafRight) { GateLeafRight->SetStaticMesh(LeafMesh); GateLeafRight->SetRelativeLocationAndRotation(FVector(Gatehouse::HalfW, GateY, GateFloorZ), FRotator(0.f, 180.f, 0.f)); }
-	if (Gate2LeafLeft) { Gate2LeafLeft->SetStaticMesh(LeafMesh); Gate2LeafLeft->SetRelativeLocationAndRotation(FVector(-Gatehouse::HalfW, Gate2Y, GateFloorZ), FRotator::ZeroRotator); }
-	if (Gate2LeafRight) { Gate2LeafRight->SetStaticMesh(LeafMesh); Gate2LeafRight->SetRelativeLocationAndRotation(FVector(Gatehouse::HalfW, Gate2Y, GateFloorZ), FRotator(0.f, 180.f, 0.f)); }
+	if (GateLeafLeft) { TNArt::SetMesh(GateLeafLeft, LeafMesh, TN_ART("Lobby.Castle.GateLeaf")); GateLeafLeft->SetRelativeLocationAndRotation(FVector(-Gatehouse::HalfW, GateY, GateFloorZ), FRotator::ZeroRotator); }
+	if (GateLeafRight) { TNArt::SetMesh(GateLeafRight, LeafMesh, TN_ART("Lobby.Castle.GateLeaf")); GateLeafRight->SetRelativeLocationAndRotation(FVector(Gatehouse::HalfW, GateY, GateFloorZ), FRotator(0.f, 180.f, 0.f)); }
+	if (Gate2LeafLeft) { TNArt::SetMesh(Gate2LeafLeft, LeafMesh, TN_ART("Lobby.Castle.GateLeaf")); Gate2LeafLeft->SetRelativeLocationAndRotation(FVector(-Gatehouse::HalfW, Gate2Y, GateFloorZ), FRotator::ZeroRotator); }
+	if (Gate2LeafRight) { TNArt::SetMesh(Gate2LeafRight, LeafMesh, TN_ART("Lobby.Castle.GateLeaf")); Gate2LeafRight->SetRelativeLocationAndRotation(FVector(Gatehouse::HalfW, Gate2Y, GateFloorZ), FRotator(0.f, 180.f, 0.f)); }
 	bGateBlocking = true;
 	if (GateBlock) { GateBlock->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); }
 
 	// Huevos: base en los adornos (sin colisión: se entra andando) y tapa que baja al ocuparlo.
 	FBuffers Cups;
+	TNArt::FPieceLog CupLog(TEXT("CastleEggCups"));
 	for (int32 i = 0; i < NumEggs; ++i)
 	{
 		const FVector Spot = EggSpot(i);
-		BuildEggCup(Cups, Spot, Col(0xFFF3DC), Col(EggAccent(i)));
+		{
+			TNArt::FPieceScope CupPiece(CupLog, TN_ART("Lobby.Castle.EggCup"), TNArt::PiecePivot(Spot), { &Cups });
+			BuildEggCup(Cups, Spot, Col(0xFFF3DC), Col(EggAccent(i)));
+		}
 		if (EggLids.IsValidIndex(i) && EggLids[i])
 		{
 			FBuffers Lid;
 			BuildEggLid(Lid, Pal(0xFFF3DC), Pal(EggAccent(i)));
-			EggLids[i]->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, Lid, Mat));
+			TNArt::SetMesh(EggLids[i], TNProcRuntimeMesh::MakeStaticMesh(this, Lid, Mat), TN_ART("Lobby.Castle.EggLid"));
 			EggLids[i]->SetRelativeLocation(Spot + FVector(0.0, 0.0, EggSeam + 160.0));
 		}
 	}
 	// Las bases van con los adornos del castillo: se añaden a su sección aparte.
 	if (DecorMesh && !Cups.IsEmpty())
 	{
-		const TArray<FProcMeshTangent> NoTangents;
-		DecorMesh->CreateMeshSection_LinearColor(1, Cups.Verts, Cups.Tris, Cups.Normals, Cups.UVs, Cups.Colors, NoTangents, false);
-		if (Mat) { DecorMesh->SetMaterial(1, Mat); }
+		TNArt::UploadSection(DecorMesh, 1, Cups, false, Mat, &CupLog);
 	}
+	TNArt::SpawnPieceArt(CastleMesh, CupLog);
 }
 
 void ATN_SandCastleLobby::ServerUpdate(float DeltaSeconds)

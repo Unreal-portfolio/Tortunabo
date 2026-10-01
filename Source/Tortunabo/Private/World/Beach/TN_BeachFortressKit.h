@@ -702,11 +702,26 @@ namespace TNBeachFortressKit
 	};
 
 	/**
+	 * Pivote de una pieza de arte de la fortaleza (Docs/Arte_Assets.md) en At, girado YawDeg, ya con el espejo en Y si la
+	 * fortaleza lo lleva (MirrorY): la malla de arte no se refleja, solo cambia de sitio y de giro.
+	 */
+	inline FTransform PiecePivot(bool bMirror, const FVector& At, double YawDeg, const FVector& Scale = FVector::OneVector)
+	{
+		return bMirror ? TNArt::PiecePivot(FVector(At.X, -At.Y, At.Z), -YawDeg, Scale) : TNArt::PiecePivot(At, YawDeg, Scale);
+	}
+
+	/** Giro (grados) de una dirección en planta. */
+	inline double YawOf(const FVector& Dir)
+	{
+		return FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
+	}
+
+	/**
 	 * Adornos de una cara vertical (Normal hacia fuera, U a lo largo): conchas y estrellas al azar entre Z0 y Z1. Los que
-	 * tocarían un KeepOut (con su radio) se descartan: nada flota delante de un hueco.
+	 * tocarían un KeepOut (con su radio) se descartan: nada flota delante de un hueco. Con Log, cada uno es una pieza de arte.
 	 */
 	inline void AddFaceShells(FBuffers& Decor, const FVector& Origin, const FVector& Normal, const FVector& Along, double HalfLen, double Z0, double Z1, int32 Count,
-		uint32 Seed, const TArray<FFaceKeepOut>& KeepOuts = {})
+		uint32 Seed, const TArray<FFaceKeepOut>& KeepOuts = {}, TNArt::FPieceLog* Log = nullptr, bool bMirror = false)
 	{
 		for (int32 d = 0; d < Count; ++d)
 		{
@@ -729,11 +744,16 @@ namespace TNBeachFortressKit
 			}
 			if (d % 3 == 0)
 			{
-				TNPlaygroundKit::AddStarfish(Decor, At, Normal, FVector::UpVector, 50.0 + 20.0 * TNBeachTrapKit::Hash01(d, 3, Seed), 5.0, TNPlaygroundKit::Rgb(0xFF8A70));
+				// Pivote: centro, +X hacia fuera de la pared; escala 1 = 50 de radio.
+				const double Size = 50.0 + 20.0 * TNBeachTrapKit::Hash01(d, 3, Seed);
+				TNArt::FPieceScope Piece(Log, TN_ART("Beach.SandCastle.Starfish"), PiecePivot(bMirror, At, YawOf(Normal), FVector(Size / 50.0)), { &Decor });
+				TNPlaygroundKit::AddStarfish(Decor, At, Normal, FVector::UpVector, Size, 5.0, TNPlaygroundKit::Rgb(0xFF8A70));
 			}
 			else
 			{
-				TNPlaygroundKit::AddShellFan(Decor, At, Normal, FVector::UpVector, 38.0 + 22.0 * TNBeachTrapKit::Hash01(d, 4, Seed), TNBeachTrapKit::ShellTone(d));
+				const double Size = 38.0 + 22.0 * TNBeachTrapKit::Hash01(d, 4, Seed);
+				TNArt::FPieceScope Piece(Log, TN_ART("Beach.SandCastle.Shell"), PiecePivot(bMirror, At, YawOf(Normal), FVector(Size / 50.0)), { &Decor });
+				TNPlaygroundKit::AddShellFan(Decor, At, Normal, FVector::UpVector, Size, TNBeachTrapKit::ShellTone(d));
 			}
 		}
 	}
@@ -756,9 +776,10 @@ namespace TNBeachFortressKit
 
 	/**
 	 * Construye la fortaleza sin espejo: Castle (arena, con colisión en Hulls) y Decor (almenas, banderas, conchas,
-	 * ventanas, cubos y pala; sin colisión salvo lo que se pisa, que va en Hulls).
+	 * ventanas, cubos y pala; sin colisión salvo lo que se pisa, que va en Hulls). Con Log, marca las piezas de arte (torres,
+	 * torrecillas, banderas, estandartes, banderines, pala, conchas y estrellas) con su pivote ya reflejado si bMirror.
 	 */
-	inline void BuildFortress(FBuffers& Castle, FBuffers& Decor, FHulls& Hulls, const FPlan& P, uint32 Seed)
+	inline void BuildFortress(FBuffers& Castle, FBuffers& Decor, FHulls& Hulls, const FPlan& P, uint32 Seed, TNArt::FPieceLog* Log = nullptr, bool bMirror = false)
 	{
 		const double A0 = P.A0;
 		const double In = P.In;
@@ -792,6 +813,9 @@ namespace TNBeachFortressKit
 			const double BannerH = FMath::Min(0.62 * Z0, 420.0);
 			for (const double By : { -Gw - 130.0, Gw + 130.0 })
 			{
+				// Pivote: centro del borde de arriba, +X hacia fuera de la pared; escala 1 = 150 de ancho y 420 de alto.
+				TNArt::FPieceScope BannerPiece(Log, TN_ART("Beach.Fortress.Banner"), PiecePivot(bMirror, FVector(Sx * (A0 + 2.0), By, Z0 - 40.0), YawOf(OutN),
+					FVector(1.0, 1.0, BannerH / 420.0)), { &Decor });
 				TNBeachBoostKit::AddBanner(Decor, FVector(Sx * (A0 + 2.0), By, Z0 - 40.0), OutN, 150.0, BannerH);
 			}
 		}
@@ -807,7 +831,7 @@ namespace TNBeachFortressKit
 			{
 				KeepOuts.Add({ -(Gw + 130.0 + 75.0), Gw + 130.0 + 75.0, 0.0, Z0 });
 			}
-			AddFaceShells(Decor, N * A0, N, Along, A0 - P.TowerInset - P.TowerR, 0.0, Z0, 6 + P.Size * 4, Seed + 101u * static_cast<uint32>(f), KeepOuts);
+			AddFaceShells(Decor, N * A0, N, Along, A0 - P.TowerInset - P.TowerR, 0.0, Z0, 6 + P.Size * 4, Seed + 101u * static_cast<uint32>(f), KeepOuts, Log, bMirror);
 		}
 
 		// ── Pretil del adarve (por fuera), torres de las esquinas con su cubo y su bandera ──
@@ -825,6 +849,10 @@ namespace TNBeachFortressKit
 			for (const double Sy : { -1.0, 1.0 })
 			{
 				const FVector2D C(Sx * (A0 - P.TowerInset), Sy * (A0 - P.TowerInset));
+				// Torre entera con su pretil, su cubo y su bandera: centro de la base a ras de suelo, +X hacia fuera (en diagonal);
+				// escala 1 = radio 290 y 500 hasta el adarve.
+				TNArt::FPieceScope TowerPiece(Log, TN_ART("Beach.Fortress.Tower"), PiecePivot(bMirror, FVector(C.X, C.Y, 0.0), YawOf(FVector(Sx, Sy, 0.0)),
+					FVector(Tr / 290.0, Tr / 290.0, Z0 / 500.0)), { &Castle, &Decor });
 				TNPlaygroundKit::AddFrustum(Castle, FVector(C.X, C.Y, -200.0), FVector(C.X, C.Y, Z0), Tr, TopTr, 24, TNBeachTrapKit::SandSide(), TNBeachTrapKit::SandTop(), false, true);
 				Hulls.Add(TNPlaygroundKit::HullCylinder(FVector(C.X, C.Y, -200.0), Z0 + 200.0, Tr, TopTr, 14));
 				for (const double K : { 0.3, 0.55, 0.8 })
@@ -844,8 +872,14 @@ namespace TNBeachFortressKit
 				const double BucketR = 0.42 * Tr;
 				const double BucketTop = AddBucketTurret(Decor, Hulls, FVector(C.X, C.Y, Z0), BucketR, 0.9 * Tr, TNPlaygroundKit::ToyColor(static_cast<int32>(Seed % 7u) + TowerIndex, 0.3f),
 					OutDir);
-				TNBeachBoostKit::AddNavyFlag(Decor, FVector(C.X, C.Y, BucketTop), 0.8 * Tr + 60.0, OutDir.RotateAngleAxis(60.0, FVector::UpVector), 0.55 * Tr, 0.36 * Tr,
-					Seed + static_cast<uint32>(TowerIndex));
+				{
+					// Bandera (dentro de la torre: si la torre tiene sustituto, va con ella). Pie del mástil, +X hacia donde ondea;
+					// escala 1 = mástil de 300.
+					const FVector FlagDir = OutDir.RotateAngleAxis(60.0, FVector::UpVector);
+					TNArt::FPieceScope FlagPiece(Log, TN_ART("Beach.Fortress.Flag"), PiecePivot(bMirror, FVector(C.X, C.Y, BucketTop), YawOf(FlagDir),
+						FVector((0.8 * Tr + 60.0) / 300.0)), { &Decor });
+					TNBeachBoostKit::AddNavyFlag(Decor, FVector(C.X, C.Y, BucketTop), 0.8 * Tr + 60.0, FlagDir, 0.55 * Tr, 0.36 * Tr, Seed + static_cast<uint32>(TowerIndex));
+				}
 				++TowerIndex;
 			}
 		}
@@ -882,7 +916,11 @@ namespace TNBeachFortressKit
 			}
 			AddFakeDoor(Decor, FVector(-K - 1.0, -(K - 180.0), FaceFrom), -FVector::ForwardVector, 240.0, FMath::Min(340.0, 0.55 * FaceH));
 			// Estandartes en la cara +X (la del mar) y conchas por las cuatro caras.
-			TNBeachBoostKit::AddBanner(Decor, FVector(K + 1.0, 0.0, Tier.Z - 30.0), FVector::ForwardVector, FMath::Min(220.0, 0.3 * K), FMath::Min(0.7 * FaceH, 600.0));
+			{
+				TNArt::FPieceScope BannerPiece(Log, TN_ART("Beach.Fortress.Banner"), PiecePivot(bMirror, FVector(K + 1.0, 0.0, Tier.Z - 30.0), 0.0,
+					FVector(1.0, FMath::Min(220.0, 0.3 * K) / 150.0, FMath::Min(0.7 * FaceH, 600.0) / 420.0)), { &Decor });
+				TNBeachBoostKit::AddBanner(Decor, FVector(K + 1.0, 0.0, Tier.Z - 30.0), FVector::ForwardVector, FMath::Min(220.0, 0.3 * K), FMath::Min(0.7 * FaceH, 600.0));
+			}
 			for (int32 f = 0; f < 4; ++f)
 			{
 				const ESide Side = static_cast<ESide>(f);
@@ -913,7 +951,7 @@ namespace TNBeachFortressKit
 						KeepOuts.Add({ -HalfBanner, HalfBanner, Tier.Z - FMath::Min(0.7 * FaceH, 600.0) - 30.0, Tier.Z });
 					}
 				}
-				AddFaceShells(Decor, N * K, N, Along, K, FaceFrom, Tier.Z, 3 + P.Size * 2, TierSeed + 31u * static_cast<uint32>(f), KeepOuts);
+				AddFaceShells(Decor, N * K, N, Along, K, FaceFrom, Tier.Z, 3 + P.Size * 2, TierSeed + 31u * static_cast<uint32>(f), KeepOuts, Log, bMirror);
 			}
 			// Banderines de colores en las esquinas de las terrazas de en medio; banderas de Tortunavy en las de la cima.
 			const bool bSummit = t == P.Tiers.Num() - 1;
@@ -926,10 +964,14 @@ namespace TNBeachFortressKit
 				if (bSummit)
 				{
 					const double PoleH = FMath::Max(300.0, P.TopH - Tier.Z - 20.0);
-					TNBeachBoostKit::AddNavyFlag(Decor, Foot, PoleH, OutDir.RotateAngleAxis(50.0, FVector::UpVector), 0.36 * PoleH, 0.24 * PoleH, TierSeed + static_cast<uint32>(c));
+					const FVector FlagDir = OutDir.RotateAngleAxis(50.0, FVector::UpVector);
+					TNArt::FPieceScope FlagPiece(Log, TN_ART("Beach.Fortress.Flag"), PiecePivot(bMirror, Foot, YawOf(FlagDir), FVector(PoleH / 300.0)), { &Decor });
+					TNBeachBoostKit::AddNavyFlag(Decor, Foot, PoleH, FlagDir, 0.36 * PoleH, 0.24 * PoleH, TierSeed + static_cast<uint32>(c));
 				}
 				else
 				{
+					// Palo y banderín: pie del palo, +X hacia donde ondea.
+					TNArt::FPieceScope PennantPiece(Log, TN_ART("Beach.Fortress.Pennant"), PiecePivot(bMirror, Foot, YawOf(OutDir)), { &Decor });
 					const FVector PoleTop = Foot + FVector(0.0, 0.0, 260.0);
 					TNPlaygroundKit::AddRod(Decor, Foot, PoleTop, 5.0, 6, TNBeachBoostKit::PoleWood(), FVector::ForwardVector);
 					TNPlaygroundKit::AddPennant(Decor, PoleTop, OutDir, 130.0, 80.0, TNPlaygroundKit::ToyColor(static_cast<int32>(TierSeed % 7u) + c, 0.2f));
@@ -968,19 +1010,30 @@ namespace TNBeachFortressKit
 		const double LedgeX0 = -(K1 + LedgeW);
 		const double LedgeX1 = -K1;
 		const double BladeLen = FMath::Min(P.T0 - ParapetT - 20.0, 240.0);
-		AddSpadeBridge(Decor, Hulls, -In - BladeLen, -In + 10.0, LedgeX0 + 8.0, P.SpadeY, Z0, Seed >> 3);
+		{
+			// Pala de juguete: donde la hoja se une al mango, a la altura de su cara de arriba; +X hacia el mango.
+			TNArt::FPieceScope SpadePiece(Log, TN_ART("Beach.Fortress.Spade"), PiecePivot(bMirror, FVector(-In + 10.0, P.SpadeY, Z0), 0.0), { &Decor });
+			AddSpadeBridge(Decor, Hulls, -In - BladeLen, -In + 10.0, LedgeX0 + 8.0, P.SpadeY, Z0, Seed >> 3);
+		}
 		// Rellano de la cornisa donde llega la pala, repisa que sube por la cara -X y rellano de arriba.
 		AddSand(Castle, &Hulls, LedgeX0, LedgeX1, P.LedgeY0, P.LedgeY0 + SpadeW, Z0 - LedgeThick, Z0, 0.0, 0.0);
 		AddLedge(Castle, Decor, Hulls, LedgeX0, LedgeX1, P.LedgeY0, Z0, P.LedgeY1, Z1, LedgeThick);
 		AddSand(Castle, &Hulls, LedgeX0, LedgeX1, P.LedgeY1 - LedgeW, P.LedgeY1, Z1 - LedgeThick, Z1, 0.0, 0.0);
 
 		// ── Torrecillas de cubo ──
+		// Pieza de arte de cada una: centro de la base, ejes de la fortaleza; escala 1 = radio 100 y 200 de alto.
+		auto PillarPivot = [bMirror](const FVector& Top, double BaseZ, double Radius)
+		{
+			return PiecePivot(bMirror, FVector(Top.X, Top.Y, BaseZ), 0.0, FVector(Radius / 100.0, Radius / 100.0, FMath::Max(1.0, Top.Z - BaseZ) / 200.0));
+		};
 		for (int32 i = 0; i < P.ChainA.Tops.Num(); ++i)
 		{
+			TNArt::FPieceScope PillarPiece(Log, TN_ART("Beach.Fortress.Pillar"), PillarPivot(P.ChainA.Tops[i], P.ChainA.BaseZ, P.ChainA.Radius), { &Castle, &Decor });
 			AddPillar(Castle, Decor, Hulls, P.ChainA.Tops[i], P.ChainA.BaseZ, P.ChainA.Radius, Seed, i);
 		}
 		for (int32 i = 0; i < P.ChainB.Tops.Num(); ++i)
 		{
+			TNArt::FPieceScope PillarPiece(Log, TN_ART("Beach.Fortress.Pillar"), PillarPivot(P.ChainB.Tops[i], P.ChainB.BaseZ, P.ChainB.Radius), { &Castle, &Decor });
 			AddPillar(Castle, Decor, Hulls, P.ChainB.Tops[i], P.ChainB.BaseZ, P.ChainB.Radius, Seed + 17u, i);
 		}
 

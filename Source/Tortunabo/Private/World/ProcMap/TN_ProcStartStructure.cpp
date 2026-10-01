@@ -479,25 +479,36 @@ void ATN_ProcStartStructure::Build()
 	FBuffers Solid;
 	FBuffers Decor;
 	FBuffers Barrier;
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md), en locales de la estructura; la barrera no es visible.
+	TNArt::FPieceLog ArtLog(TEXT("ProcMapStart"));
 	if (bGate)
 	{
 		// La misma puerta doble que la del lobby, con los muros hundidos en el terreno.
+		TNArt::FPieceScope GatePiece(ArtLog, TN_ART("ProcMap.Start.Gatehouse"), TNArt::PiecePivot(FVector::ZeroVector), { &Solid, &Decor });
 		BuildGatehouse(Solid, Decor, Barrier, FVector::ZeroVector, StructureFloorZ, 0, GatehouseSink);
 	}
 	else
 	{
 		// El mismo montículo con su pila de huevos que el del lobby, con el escalón hacia el camino.
-		BuildEggMound(Solid, Decor, FVector::ZeroVector, StructureFloorZ, FVector(0.0, 1.0, 0.0));
+		{
+			TNArt::FPieceScope MoundPiece(ArtLog, TN_ART("ProcMap.Start.EggMound"), TNArt::PiecePivot(FVector(0.0, 0.0, StructureFloorZ), 90.0), { &Solid, &Decor });
+			BuildEggMound(Solid, Decor, FVector::ZeroVector, StructureFloorZ, FVector(0.0, 1.0, 0.0));
+		}
 		for (int32 i = 0; i < NumSpots; ++i)
 		{
 			const FVector Spot = SpotLocal(ETNMatchStartStyle::Eggs, i);
-			BuildEggCup(Decor, Spot, Col(0xFFF3DC), Col(EggAccent(i)));
+			{
+				TNArt::FPieceScope CupPiece(ArtLog, TN_ART("ProcMap.Start.EggCup"), TNArt::PiecePivot(Spot), { &Decor });
+				BuildEggCup(Decor, Spot, Col(0xFFF3DC), Col(EggAccent(i)));
+			}
 			AddEggHolder(Barrier, Spot);
 		}
 	}
-	UploadSection(SolidMesh, Solid, true, Mat);
-	UploadSection(DecorMesh, Decor, false, Mat);
+	UploadSection(SolidMesh, Solid, true, Mat, &ArtLog);
+	UploadSection(DecorMesh, Decor, false, Mat, &ArtLog);
 	UploadSection(BarrierMesh, Barrier, true, nullptr);
+	// La malla de arte de cada pieza con sustituto, en su sitio (hija de SolidMesh: los ejes de la estructura).
+	TNArt::SpawnPieceArt(SolidMesh, ArtLog);
 
 	// Puerta doble: las hojas izquierdas (bisagra en -X) cerradas apuntan a +X; las derechas, a -X.
 	UStaticMesh* LeafMesh = nullptr;
@@ -510,7 +521,7 @@ void ATN_ProcStartStructure::Build()
 	auto PlaceLeaf = [LeafMesh, bGate](UStaticMeshComponent* Leaf, double HingeX, double GateY, float ClosedYaw)
 	{
 		if (!Leaf) { return; }
-		Leaf->SetStaticMesh(LeafMesh);
+		TNArt::SetMesh(Leaf, LeafMesh, TN_ART("ProcMap.Start.GateLeaf"));
 		Leaf->SetRelativeLocationAndRotation(FVector(HingeX, GateY, StructureFloorZ), FRotator(0.f, ClosedYaw, 0.f));
 		Leaf->SetVisibility(bGate);
 	};
@@ -536,7 +547,7 @@ void ATN_ProcStartStructure::Build()
 			BuildEggLid(LidBuffers, Pal(0xFFF3DC), Pal(EggAccent(i)));
 			LidMesh = TNProcRuntimeMesh::MakeStaticMesh(this, LidBuffers, Mat);
 		}
-		Lid->SetStaticMesh(LidMesh);
+		TNArt::SetMesh(Lid, LidMesh, TN_ART("ProcMap.Start.EggLid"));
 		Lid->SetVisibility(LidMesh != nullptr);
 	}
 

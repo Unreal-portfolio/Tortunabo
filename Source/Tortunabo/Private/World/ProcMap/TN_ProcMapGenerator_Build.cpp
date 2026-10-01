@@ -28,12 +28,284 @@
 #include "World/ProcMap/TN_ProcFauna.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SpotLightComponent.h"
+#include "Art/TN_Art.h"
+#include "../../Art/TN_ArtPieces.h"
 
 using namespace TNProcMesh;
 
 namespace
 {
 	// TNLuminance, TNContrastPath y TNTrailColor están en TN_ProcMapTrailColors.h (los usa también el tutorial).
+
+	// ── Piezas de arte de las estructuras (Docs/Arte_Assets.md, tabla en Private/Art/TN_ArtSlots_ProcMap.inl) ──
+	// Todas en el espacio del mapa (el de StructureMesh y DecorMesh). Las que cambian de tamaño llevan escala por copia
+	// respecto a un tamaño de referencia (el de la tabla).
+
+	/** Pivote en At con +X hacia Dir (en planta) y escala Scale. */
+	FTransform TNProcArtPivot(const FVector& At, const FVector2D& Dir, const FVector& Scale = FVector::OneVector)
+	{
+		return TNArt::PiecePivot(At, FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)), Scale);
+	}
+
+	/** Pivote de lo que va a lo largo del camino: en From, +X hacia To (en planta); escala X 1 = RefLength de From a To. */
+	FTransform TNProcArtSpanPivot(const FVector& From, const FVector& To, double RefLength)
+	{
+		const FVector2D D(To.X - From.X, To.Y - From.Y);
+		return TNProcArtPivot(From, D, FVector(FMath::Max(1.0, D.Size()) / RefLength, 1.0, 1.0));
+	}
+
+	/** Torre hueca: centro del suelo de la puerta, +X hacia la puerta; escala 1 = radio 1100 y 3000 del suelo a la cima. */
+	FTransform TNHollowTowerArtPivot(const TNProcMap::FFeature& F)
+	{
+		const FVector2D C(F.Location.X, F.Location.Y);
+		const double FloorZ = F.Target.Z;
+		return TNProcArtPivot(FVector(C, FloorZ), FVector2D(F.Target.X, F.Target.Y) - C,
+			FVector(F.Radius / 1100.0, F.Radius / 1100.0, FMath::Max(100.0, F.Height - FloorZ) / 3000.0));
+	}
+
+	/** Torre de sillería: centro de la cima, +X hacia donde va el camino; escala 1 = radio 1100 (baja hasta el terreno). */
+	FTransform TNSolidTowerArtPivot(const TNProcMap::FFeature& F)
+	{
+		return TNProcArtPivot(FVector(F.Location.X, F.Location.Y, F.Height), F.Dir, FVector(F.Radius / 1100.0, F.Radius / 1100.0, 1.0));
+	}
+
+	/** Tablero de un puente colosal según su estilo. */
+	FName TNBridgeDeckArt(TNProcMap::EBridgeStyle Style)
+	{
+		switch (Style)
+		{
+			case TNProcMap::EBridgeStyle::Stone:   return TN_ART("ProcMap.Bridge.StoneDeck");
+			case TNProcMap::EBridgeStyle::Trestle: return TN_ART("ProcMap.Bridge.TrestleDeck");
+			case TNProcMap::EBridgeStyle::Iron:    return TN_ART("ProcMap.Bridge.IronDeck");
+			case TNProcMap::EBridgeStyle::Rope:
+			default:                               return TN_ART("ProcMap.Bridge.RopeDeck");
+		}
+	}
+
+	/** Poste de un hueco de salto, según el bioma (como lo construye BuildStructures). */
+	FName TNGapPostArt(ETNProcBiome Biome)
+	{
+		switch (Biome)
+		{
+			case ETNProcBiome::Jungle:
+			case ETNProcBiome::Mangrove: return TN_ART("ProcMap.Gap.TrunkPost");
+			case ETNProcBiome::Beach:
+			case ETNProcBiome::Human:    return TN_ART("ProcMap.Gap.Piling");
+			case ETNProcBiome::Volcanic: return TN_ART("ProcMap.Gap.BasaltPost");
+			default:                     return TN_ART("ProcMap.Gap.StonePost");
+		}
+	}
+
+	/** Torre de escalada, según el bioma (como la construye BuildStructures). */
+	FName TNClimbTowerArt(ETNProcBiome Biome)
+	{
+		switch (Biome)
+		{
+			case ETNProcBiome::Beach:
+			case ETNProcBiome::Human:    return TN_ART("ProcMap.ClimbTower.Crates");
+			case ETNProcBiome::Jungle:
+			case ETNProcBiome::Mangrove: return TN_ART("ProcMap.ClimbTower.Stumps");
+			case ETNProcBiome::Volcanic: return TN_ART("ProcMap.ClimbTower.Basalt");
+			case ETNProcBiome::Rocky:    return TN_ART("ProcMap.ClimbTower.Slabs");
+			default:                     return TN_ART("ProcMap.ClimbTower.Sandstone");
+		}
+	}
+
+	/** Obstáculo de objetos del camino. */
+	FName TNProcPathPropArt(TNProcMap::EPathProp Kind)
+	{
+		using K = TNProcMap::EPathProp;
+		switch (Kind)
+		{
+			case K::CrateStack:     return TN_ART("ProcMap.PathProp.CrateStack");
+			case K::BarrelGroup:    return TN_ART("ProcMap.PathProp.BarrelGroup");
+			case K::Barricade:      return TN_ART("ProcMap.PathProp.Barricade");
+			case K::HayBales:       return TN_ART("ProcMap.PathProp.HayBales");
+			case K::Sandcastle:     return TN_ART("ProcMap.PathProp.Sandcastle");
+			case K::Rowboat:        return TN_ART("ProcMap.PathProp.Rowboat");
+			case K::BeachSet:       return TN_ART("ProcMap.PathProp.BeachSet");
+			case K::Totem:          return TN_ART("ProcMap.PathProp.Totem");
+			case K::RuinColumn:     return TN_ART("ProcMap.PathProp.RuinColumn");
+			case K::GiantMushrooms: return TN_ART("ProcMap.PathProp.GiantMushrooms");
+			case K::SkullRock:      return TN_ART("ProcMap.PathProp.SkullRock");
+			case K::PotteryJars:    return TN_ART("ProcMap.PathProp.PotteryJars");
+			case K::CrystalSpikes:  return TN_ART("ProcMap.PathProp.CrystalSpikes");
+			case K::Cairn:          return TN_ART("ProcMap.PathProp.Cairn");
+			case K::MineCart:       return TN_ART("ProcMap.PathProp.MineCart");
+			case K::CrabTraps:      return TN_ART("ProcMap.PathProp.CrabTraps");
+			case K::MarketStall:    return TN_ART("ProcMap.PathProp.MarketStall");
+			case K::ConeLine:       return TN_ART("ProcMap.PathProp.ConeLine");
+			default:                return NAME_None;
+		}
+	}
+
+	/**
+	 * Escala 1 de cada obstáculo: semihuella (el mayor de su radio y medio largo) y alto, los del medio de su rango
+	 * (TNProcMap::FeatureDetail::PathPropSize).
+	 */
+	FVector2D TNProcPathPropArtRef(TNProcMap::EPathProp Kind)
+	{
+		using K = TNProcMap::EPathProp;
+		switch (Kind)
+		{
+			case K::CrateStack:     return FVector2D(140.0, 165.0);
+			case K::BarrelGroup:    return FVector2D(125.0, 105.0);
+			case K::Barricade:      return FVector2D(165.0, 125.0);
+			case K::HayBales:       return FVector2D(150.0, 115.0);
+			case K::Sandcastle:     return FVector2D(140.0, 130.0);
+			case K::Rowboat:        return FVector2D(210.0, 80.0);
+			case K::BeachSet:       return FVector2D(180.0, 260.0);
+			case K::Totem:          return FVector2D(70.0, 350.0);
+			case K::RuinColumn:     return FVector2D(180.0, 270.0);
+			case K::GiantMushrooms: return FVector2D(180.0, 230.0);
+			case K::SkullRock:      return FVector2D(165.0, 150.0);
+			case K::PotteryJars:    return FVector2D(110.0, 100.0);
+			case K::CrystalSpikes:  return FVector2D(140.0, 230.0);
+			case K::Cairn:          return FVector2D(90.0, 210.0);
+			case K::MineCart:       return FVector2D(140.0, 150.0);
+			case K::CrabTraps:      return FVector2D(120.0, 110.0);
+			case K::MarketStall:    return FVector2D(200.0, 270.0);
+			case K::ConeLine:       return FVector2D(190.0, 70.0);
+			default:                return FVector2D(120.0, 120.0);
+		}
+	}
+
+	/** Peñasco según su estilo. */
+	FName TNProcBoulderArt(TNRockMesh::EBoulderStyle Style)
+	{
+		using S = TNRockMesh::EBoulderStyle;
+		switch (Style)
+		{
+			case S::Slab:    return TN_ART("ProcMap.Rock.SlabBoulder");
+			case S::Split:   return TN_ART("ProcMap.Rock.SplitBoulder");
+			case S::Stacked: return TN_ART("ProcMap.Rock.StackedBoulder");
+			case S::Strata:  return TN_ART("ProcMap.Rock.StrataBoulder");
+			case S::Basalt:  return TN_ART("ProcMap.Rock.BasaltBoulder");
+			case S::Mossy:   return TN_ART("ProcMap.Rock.MossyBoulder");
+			case S::Crystal: return TN_ART("ProcMap.Rock.CrystalBoulder");
+			case S::Coral:   return TN_ART("ProcMap.Rock.CoralBoulder");
+			case S::Round:
+			default:         return TN_ART("ProcMap.Rock.RoundBoulder");
+		}
+	}
+
+	/** Aguja o mogote según su estilo. */
+	FName TNProcSpireArt(TNRockMesh::ESpireStyle Style)
+	{
+		using S = TNRockMesh::ESpireStyle;
+		switch (Style)
+		{
+			case S::Leaning:    return TN_ART("ProcMap.Rock.LeaningSpire");
+			case S::Twin:       return TN_ART("ProcMap.Rock.TwinSpire");
+			case S::Hoodoo:     return TN_ART("ProcMap.Rock.HoodooSpire");
+			case S::Karst:      return TN_ART("ProcMap.Rock.KarstSpire");
+			case S::Organ:      return TN_ART("ProcMap.Rock.OrganSpire");
+			case S::Mogote:     return TN_ART("ProcMap.Rock.Mogote");
+			case S::Tor:        return TN_ART("ProcMap.Rock.Tor");
+			case S::StrataMesa: return TN_ART("ProcMap.Rock.StrataMesa");
+			case S::LavaDome:   return TN_ART("ProcMap.Rock.LavaDome");
+			case S::Spire:
+			default:            return TN_ART("ProcMap.Rock.Spire");
+		}
+	}
+
+	/** Escala 1 de una aguja o un mogote: radio y alto (agujas 240 x 950; mogotes, tor, mesas y domos 540 x 410). */
+	FVector2D TNProcSpireArtRef(TNRockMesh::ESpireStyle Style)
+	{
+		using S = TNRockMesh::ESpireStyle;
+		const bool bLow = Style == S::Mogote || Style == S::Tor || Style == S::StrataMesa || Style == S::LavaDome;
+		return bLow ? FVector2D(540.0, 410.0) : FVector2D(240.0, 950.0);
+	}
+
+	/** Formación temática. */
+	FName TNProcFormationArt(TNProcMap::EFormation Kind)
+	{
+		using K = TNProcMap::EFormation;
+		switch (Kind)
+		{
+			case K::StoneArch:      return TN_ART("ProcMap.Formation.StoneArch");
+			case K::WhaleRibs:      return TN_ART("ProcMap.Formation.WhaleRibs");
+			case K::RootArch:       return TN_ART("ProcMap.Formation.RootArch");
+			case K::TempleGate:     return TN_ART("ProcMap.Formation.TempleGate");
+			case K::FallenTrunk:    return TN_ART("ProcMap.Formation.FallenTrunk");
+			case K::RuinedAqueduct: return TN_ART("ProcMap.Formation.RuinedAqueduct");
+			case K::Shipwreck:      return TN_ART("ProcMap.Formation.Shipwreck");
+			case K::StoneHead:      return TN_ART("ProcMap.Formation.StoneHead");
+			case K::BasaltColumns:  return TN_ART("ProcMap.Formation.BasaltColumns");
+			case K::Fumarole:       return TN_ART("ProcMap.Formation.Fumarole");
+			case K::Hoodoo:         return TN_ART("ProcMap.Formation.Hoodoo");
+			case K::BalancedRock:   return TN_ART("ProcMap.Formation.BalancedRock");
+			case K::Wagon:          return TN_ART("ProcMap.Formation.Wagon");
+			case K::Cannon:         return TN_ART("ProcMap.Formation.Cannon");
+			case K::Sandbags:       return TN_ART("ProcMap.Formation.Sandbags");
+			case K::Bunker:         return TN_ART("ProcMap.Formation.Bunker");
+			case K::WatchTower:     return TN_ART("ProcMap.Formation.WatchTower");
+			case K::TankWreck:      return TN_ART("ProcMap.Formation.TankWreck");
+			case K::GiantShell:     return TN_ART("ProcMap.Formation.GiantShell");
+			case K::Anchor:         return TN_ART("ProcMap.Formation.Anchor");
+			case K::StoneCircle:    return TN_ART("ProcMap.Formation.StoneCircle");
+			case K::Obelisk:        return TN_ART("ProcMap.Formation.Obelisk");
+			case K::FossilSkull:    return TN_ART("ProcMap.Formation.FossilSkull");
+			case K::ObsidianSpires: return TN_ART("ProcMap.Formation.ObsidianSpires");
+			case K::ColossalTurtle: return TN_ART("ProcMap.Formation.ColossalTurtle");
+			case K::WaterTower:     return TN_ART("ProcMap.Formation.WaterTower");
+			case K::Pyramid:        return TN_ART("ProcMap.Formation.Pyramid");
+			case K::Lighthouse:     return TN_ART("ProcMap.Formation.Lighthouse");
+			case K::Mesa:           return TN_ART("ProcMap.Formation.Mesa");
+			case K::SeaStack:       return TN_ART("ProcMap.Formation.SeaStack");
+			case K::CastleRuin:     return TN_ART("ProcMap.Formation.CastleRuin");
+			case K::Windmill:       return TN_ART("ProcMap.Formation.Windmill");
+			case K::StiltHut:       return TN_ART("ProcMap.Formation.StiltHut");
+			default:                return NAME_None;
+		}
+	}
+
+	/**
+	 * Escala de una formación respecto a su tamaño de referencia (escala 1, la del medio de su rango en
+	 * TNProcMap::FormationDetail): en los arcos, fondo (X), ancho entre pies (Y) y alto (Z); en el resto, radio (X e Y) y alto.
+	 */
+	FVector TNProcFormationArtScale(const TNProcMap::FFeature& F, TNProcMap::EFormation Kind)
+	{
+		using K = TNProcMap::EFormation;
+		if (TNProcMap::IsArchFormation(Kind))
+		{
+			const double RefLength = Kind == K::WhaleRibs ? 1100.0 : 350.0;
+			return FVector(F.Length / RefLength, F.Width / 1700.0, F.Height / 1100.0);
+		}
+		FVector2D Ref(300.0, 300.0);
+		switch (Kind)
+		{
+			case K::Shipwreck:      Ref = FVector2D(800.0, 450.0); break;
+			case K::StoneHead:      Ref = FVector2D(300.0, 520.0); break;
+			case K::BasaltColumns:  Ref = FVector2D(420.0, 520.0); break;
+			case K::Fumarole:       Ref = FVector2D(320.0, 220.0); break;
+			case K::Hoodoo:         Ref = FVector2D(200.0, 850.0); break;
+			case K::BalancedRock:   Ref = FVector2D(250.0, 650.0); break;
+			case K::Wagon:          Ref = FVector2D(300.0, 300.0); break;
+			case K::Cannon:         Ref = FVector2D(260.0, 200.0); break;
+			case K::Sandbags:       Ref = FVector2D(380.0, 110.0); break;
+			case K::Bunker:         Ref = FVector2D(400.0, 260.0); break;
+			case K::WatchTower:     Ref = FVector2D(250.0, 850.0); break;
+			case K::TankWreck:      Ref = FVector2D(380.0, 280.0); break;
+			case K::GiantShell:     Ref = FVector2D(360.0, 650.0); break;
+			case K::Anchor:         Ref = FVector2D(300.0, 600.0); break;
+			case K::StoneCircle:    Ref = FVector2D(680.0, 380.0); break;
+			case K::Obelisk:        Ref = FVector2D(180.0, 1150.0); break;
+			case K::FossilSkull:    Ref = FVector2D(400.0, 320.0); break;
+			case K::ObsidianSpires: Ref = FVector2D(390.0, 750.0); break;
+			case K::ColossalTurtle: Ref = FVector2D(420.0, 460.0); break;
+			case K::WaterTower:     Ref = FVector2D(300.0, 1000.0); break;
+			case K::Pyramid:        Ref = FVector2D(2000.0, 1650.0); break;
+			case K::Lighthouse:     Ref = FVector2D(380.0, 3000.0); break;
+			case K::Mesa:           Ref = FVector2D(3750.0, 2650.0); break;
+			case K::SeaStack:       Ref = FVector2D(650.0, 2500.0); break;
+			case K::CastleRuin:     Ref = FVector2D(1850.0, 1300.0); break;
+			case K::Windmill:       Ref = FVector2D(420.0, 1600.0); break;
+			case K::StiltHut:       Ref = FVector2D(420.0, 650.0); break;
+			default:                break;
+		}
+		return FVector(F.Radius / Ref.X, F.Radius / Ref.X, F.Height / Ref.Y);
+	}
 
 	/** Polilínea de un tramo de camino con cota y media anchura, recorrible por distancia en planta. */
 	struct FTNPlankLine
@@ -189,9 +461,11 @@ namespace
 	 * borde (o puntales de hierro) hasta la pila, en el centro una fuente con la tortuga (o un farol alto),
 	 * bancos mirando al paisaje, farolas, una atalaya de bloques de 3 m con dos escalones de 1 m por su cara
 	 * de -Dir (arriba aparece la recompensa) y la almohadilla de la medusa al pie de su otra cara.
+	 *
+	 * Piezas de arte en Log: la plaza (suelo, pretil, ménsula y fuente o farol), cada farola, cada banco y la atalaya.
 	 */
 	void TNProcAddBridgePlaza(FTNProcMeshBuffers& Solid, FTNProcMeshBuffers& Glow, FTNProcMeshBuffers& Water, const TNProcMap::FFeature& F, double DeckHw, bool bIron,
-		const FLinearColor& Stone, const FLinearColor& Iron)
+		const FLinearColor& Stone, const FLinearColor& Iron, TNArt::FPieceLog* Log)
 	{
 		using namespace TNProcMap;
 		const FVector C = F.Location;
@@ -203,6 +477,9 @@ namespace
 		const FLinearColor Edge = bIron ? Iron : Stone * 0.9f;
 		constexpr int32 Seg = 32;
 		auto Dir = [&](double A) { return D * FMath::Cos(A) + N * FMath::Sin(A); };
+		// La plaza: centro a la cota del tablero, +X a lo largo del tablero; escala 1 = radio 1000.
+		const int32 PlazaPiece = Log ? Log->Begin(bIron ? TN_ART("ProcMap.Bridge.IronPlaza") : TN_ART("ProcMap.Bridge.StonePlaza"),
+			TNProcArtPivot(C, F.Dir, FVector(R / 1000.0, R / 1000.0, 1.0)), { &Solid, &Glow, &Water }) : INDEX_NONE;
 
 		// Suelo: disco con un anillo más oscuro y el centro más claro (sobre el tablero, que sigue debajo).
 		for (int32 Ring = 0; Ring < 3; ++Ring)
@@ -281,12 +558,15 @@ namespace
 			TNPropMesh::TNPropAppend(Solid, Statue, C + FVector(0.0, 0.0, 26.0), Yaw, 0.5);
 			TNPropMesh::TNPropAppend(Glow, StatueGlow, C + FVector(0.0, 0.0, 26.0), Yaw, 0.5);
 		}
+		if (Log) { Log->End(PlazaPiece); }
 		// Farolas en diagonal y dos bancos mirando al paisaje, en el lado contrario a la atalaya.
 		const double TowerSide = (F.Aux2 & 1) ? 1.0 : -1.0;
 		for (int32 k = 0; k < 4; ++k)
 		{
 			const double A = PI * 0.25 + HALF_PI * k;
 			const FVector P = C + Dir(A) * (R * 0.8);
+			// Pieza de arte: pie de la farola (con su luz).
+			TNArt::FPieceScope LampPiece(Log, TN_ART("ProcMap.Bridge.PlazaLamp"), TNArt::PiecePivot(P), { &Solid, &Glow });
 			FTNProcMeshBuffers Lamp;
 			TNPropMesh::TNPropLampPost(Lamp, 0);
 			TNPropMesh::TNPropAppend(Solid, Lamp, P, 0.0);
@@ -299,12 +579,18 @@ namespace
 			TNPropMesh::TNPropBench(Bench, 0);
 			// El banco mira hacia fuera (su respaldo, +Y local, hacia el centro).
 			const FVector Out = Dir(A);
+			// Pieza de arte: centro del banco en el suelo, con su giro (respaldo hacia +Y).
+			TNArt::FPieceScope BenchPiece(Log, TN_ART("ProcMap.Bridge.PlazaBench"), TNArt::PiecePivot(P, FMath::RadiansToDegrees(FMath::Atan2(Out.Y, Out.X)) + 90.0),
+				{ &Solid });
 			TNPropMesh::TNPropAppend(Solid, Bench, P, FMath::RadiansToDegrees(FMath::Atan2(Out.Y, Out.X)) + 90.0);
 		}
 		// Atalaya: tres bloques apilados de 1 m y dos escalones de 1 m por la cara de -Dir.
 		const FVector2D Tw2 = PlazaDims::TowerAt(F);
 		const FVector Tw(Tw2, Top);
 		constexpr double Th = PlazaDims::TowerHalf;
+		// Pieza de arte (atalaya, escalones, banderín y almohadilla de la medusa): centro de su base, +X a lo largo del
+		// tablero (los escalones bajan hacia -X).
+		TNArt::FPieceScope LookoutPiece(Log, TN_ART("ProcMap.Bridge.PlazaLookout"), TNProcArtPivot(Tw, F.Dir), { &Solid });
 		const FLinearColor Block = bIron ? FLinearColor(0.46f, 0.3f, 0.16f) : Stone * 0.95f;
 		const FLinearColor Trim = bIron ? Iron : Stone * 0.78f;
 		for (int32 b = 0; b < 3; ++b)
@@ -1756,6 +2042,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 	FTNProcMeshBuffers Rock, Wood, Lava, SlideWater, Foliage, Painted, PaintedFar;
 	// Decoración de las cuevas: lo que brilla (color de vértice emisivo) y los haces de luz (translúcido).
 	FTNProcMeshBuffers Glow, Beam;
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md): todas en el espacio del mapa, el de StructureMesh y DecorMesh.
+	// Clear quita sus mallas de arte por este mismo grupo.
+	TNArt::FPieceLog ArtLog(TEXT("ProcMapStructures"));
 	// Luz dentro de las torres huecas: cálida junto al suelo (antorchas) y fría bajo el forjado (la del hueco).
 	auto AddTowerLights = [this](const FFeature& T)
 	{
@@ -1819,8 +2108,17 @@ void ATN_ProcMapGenerator::BuildStructures()
 			{
 				if (Ft.Type != EFeature::Tower || Ft.Aux != c) { continue; }
 				const uint32 Ts = Seed ^ static_cast<uint32>(Ft.PathIndex * 2654435761u);
-				if (IsHollowTower(Ft)) { TNProcAddHollowTower(Rock, Glow, Foliage, Layout, Ft, TowerGround, StoneC, TowerBanners[c % 3], Ts); AddTowerLights(Ft); }
-				else { TNProcAddWallTower(Rock, Foliage, Layout, Ft, TowerGround, StoneC, TowerBanners[c % 3], Ts); }
+				if (IsHollowTower(Ft))
+				{
+					TNArt::FPieceScope TowerPiece(ArtLog, TN_ART("ProcMap.Tower.Hollow"), TNHollowTowerArtPivot(Ft), { &Rock, &Glow, &Foliage });
+					TNProcAddHollowTower(Rock, Glow, Foliage, Layout, Ft, TowerGround, StoneC, TowerBanners[c % 3], Ts);
+					AddTowerLights(Ft);
+				}
+				else
+				{
+					TNArt::FPieceScope TowerPiece(ArtLog, TN_ART("ProcMap.Tower.Solid"), TNSolidTowerArtPivot(Ft), { &Rock, &Foliage });
+					TNProcAddWallTower(Rock, Foliage, Layout, Ft, TowerGround, StoneC, TowerBanners[c % 3], Ts);
+				}
 			}
 		}
 		// Plaza del puente (piedra o hierro): el tablero y sus pretiles se cortan donde la entra el borde.
@@ -1916,6 +2214,13 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			if (Pb > Cur) { Emit(Cur, Pb); }
 		};
+		// Pieza de arte: el tablero con sus barandillas y los tramos hundidos, del principio al final (+X hacia el final;
+		// escala X 1 = 100 m).
+		FVector DeckFrom, DeckTo, DeckDir;
+		double DeckHw = 0.0;
+		Line.At(S0, DeckFrom, DeckDir, DeckHw);
+		Line.At(S1, DeckTo, DeckDir, DeckHw);
+		const int32 DeckPiece = ArtLog.Begin(TNBridgeDeckArt(Style), TNProcArtSpanPivot(DeckFrom, DeckTo, 10000.0), { &Wood, &Painted, &PaintedFar });
 		switch (Style)
 		{
 			case ETNBridgeStyle::Stone:
@@ -1967,10 +2272,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 			}
 			UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Cruce %d: tramo hundido de %.0f m (tipo %d, %d de %d)."), c, (Br.B - Br.A) / 100.0, Br.Kind, k + 1, Breaks.Num());
 		}
+		ArtLog.End(DeckPiece);
 
 		if (Plaza)
 		{
-			TNProcAddBridgePlaza(Painted, Glow, SlideWater, *Plaza, M[Plaza->PathIndex].Width * 0.5, Style == ETNBridgeStyle::Iron, StoneC, IronColor);
+			TNProcAddBridgePlaza(Painted, Glow, SlideWater, *Plaza, M[Plaza->PathIndex].Width * 0.5, Style == ETNBridgeStyle::Iron, StoneC, IronColor, &ArtLog);
 		}
 
 		// Apoyos: bordes de las torres y pilares de roca de este cruce.
@@ -2029,7 +2335,16 @@ void ATN_ProcMapGenerator::BuildStructures()
 					for (int32 a = 0; a <= Piers.Num(); ++a)
 					{
 						const double Next = a < Piers.Num() ? Piers[a] : B;
-						TNProcAddDeckArch(PaintedFar, Line, Prev + (a > 0 ? PierHalf : 0.0), Next - (a < Piers.Num() ? PierHalf : 0.0), C.TopZ, StoneC, GroundAt);
+						const double ArchA = Prev + (a > 0 ? PierHalf : 0.0);
+						const double ArchB = Next - (a < Piers.Num() ? PierHalf : 0.0);
+						// Pieza de arte: cada arco, del arranque a la otra pila a la cota del tablero (+X hacia la otra pila;
+						// escala X 1 = 36 m).
+						FVector ArchFrom, ArchTo, ArchDir;
+						double ArchHw = 0.0;
+						Line.At(ArchA, ArchFrom, ArchDir, ArchHw);
+						Line.At(ArchB, ArchTo, ArchDir, ArchHw);
+						TNArt::FPieceScope ArchPiece(ArtLog, TN_ART("ProcMap.Bridge.StoneArch"), TNProcArtSpanPivot(ArchFrom, ArchTo, 3600.0), { &PaintedFar });
+						TNProcAddDeckArch(PaintedFar, Line, ArchA, ArchB, C.TopZ, StoneC, GroundAt);
 						Prev = Next;
 					}
 					for (const double Sp : Piers)
@@ -2040,6 +2355,10 @@ void ATN_ProcMapGenerator::BuildStructures()
 						const double G0 = TerrainHeightMap(FVector2D(Pp.X, Pp.Y)) - 80.0;
 						const double Top = C.TopZ - 32.0;
 						if (Top - G0 < 200.0) { continue; }
+						// Pieza de arte: centro de la cima de la pila (bajo el tablero), +X a lo largo del puente; escala 1 = 600 de
+						// ancho y 2000 hasta el pie.
+						TNArt::FPieceScope PierPiece(ArtLog, TN_ART("ProcMap.Bridge.StonePier"),
+							TNProcArtPivot(FVector(Pp.X, Pp.Y, Top), FVector2D(Dp.X, Dp.Y), FVector(1.0, (Hwp + 45.0) / 300.0, (Top - G0) / 2000.0)), { &PaintedFar });
 						PaintedFar.AddBox(FVector(Pp.X, Pp.Y, 0.5 * (G0 + Top)), Dp, FVector(PierHalf, Hwp + 45.0, 0.5 * (Top - G0)), StoneC * 0.9f);
 						PaintedFar.AddBox(FVector(Pp.X, Pp.Y, G0 + 150.0), Dp, FVector(PierHalf + 40.0, Hwp + 85.0, 150.0), StoneC * 0.82f);
 					}
@@ -2054,6 +2373,10 @@ void ATN_ProcMapGenerator::BuildStructures()
 					Line.At(S, P, Dir, Hw);
 					const double GroundZ = TerrainHeightMap(FVector2D(P.X, P.Y));
 					if (OverPath(FVector2D(P.X, P.Y), Hw + (C.TopZ - GroundZ) * 0.14 + 30.0)) { continue; }
+					// Pieza de arte: centro del caballete a la cota del tablero, +X a lo largo del puente; escala 1 = 600 de ancho
+					// arriba y 2000 hasta el suelo.
+					TNArt::FPieceScope BentPiece(ArtLog, TN_ART("ProcMap.Bridge.TrestleBent"),
+						TNProcArtPivot(P, FVector2D(Dir.X, Dir.Y), FVector(1.0, Hw / 300.0, FMath::Max(1.0, C.TopZ - GroundZ) / 2000.0)), { &PaintedFar });
 					TNProcAddTrestleBent(PaintedFar, P, Dir, Hw, GroundZ, WoodColor * 0.85f);
 				}
 			}
@@ -2067,22 +2390,36 @@ void ATN_ProcMapGenerator::BuildStructures()
 			FVector P0, Dir0;
 			double Hw0 = 0.0;
 			Line.At(Supports[k], P0, Dir0, Hw0);
-			for (const double Side : { -1.0, 1.0 })
 			{
-				const FVector Base = P0 + FVector(-Dir0.Y, Dir0.X, 0.0) * (Side * (Hw0 + 25.0));
-				(bIron ? Painted : Wood).AddBox(Base + FVector(0.0, 0.0, MastH * 0.5 - 60.0), Dir0, FVector(16.0, 16.0, MastH * 0.5 + 60.0), bIron ? IronColor : WoodColor * 0.55f);
-			}
-			if (bIron)
-			{
-				// Pórtico: dintel de hierro entre los dos mástiles.
-				const FVector Nn(-Dir0.Y, Dir0.X, 0.0);
-				Painted.AddBeam(P0 - Nn * (Hw0 + 25.0) + FVector(0.0, 0.0, MastH - 40.0), P0 + Nn * (Hw0 + 25.0) + FVector(0.0, 0.0, MastH - 40.0), 14.0, IronColor);
+				// Pieza de arte: el par de mástiles de cada apoyo (con su dintel en el de hierro), centro en el tablero, +X a lo
+				// largo del puente; escala Y 1 = 300 del eje a cada mástil.
+				TNArt::FPieceScope MastPiece(ArtLog, bIron ? TN_ART("ProcMap.Bridge.IronPortal") : TN_ART("ProcMap.Bridge.RopeMasts"),
+					TNProcArtPivot(P0, FVector2D(Dir0.X, Dir0.Y), FVector(1.0, (Hw0 + 25.0) / 300.0, 1.0)), { &Painted, &Wood });
+				for (const double Side : { -1.0, 1.0 })
+				{
+					const FVector Base = P0 + FVector(-Dir0.Y, Dir0.X, 0.0) * (Side * (Hw0 + 25.0));
+					(bIron ? Painted : Wood).AddBox(Base + FVector(0.0, 0.0, MastH * 0.5 - 60.0), Dir0, FVector(16.0, 16.0, MastH * 0.5 + 60.0), bIron ? IronColor : WoodColor * 0.55f);
+				}
+				if (bIron)
+				{
+					// Pórtico: dintel de hierro entre los dos mástiles.
+					const FVector Nn(-Dir0.Y, Dir0.X, 0.0);
+					Painted.AddBeam(P0 - Nn * (Hw0 + 25.0) + FVector(0.0, 0.0, MastH - 40.0), P0 + Nn * (Hw0 + 25.0) + FVector(0.0, 0.0, MastH - 40.0), 14.0, IronColor);
+				}
 			}
 			if (k == 0) { continue; }
 			// Vano entre el apoyo anterior y este: cable parabólico y péndolas cada 3 m.
 			const double A = Supports[k - 1];
 			const double B = Supports[k];
 			const int32 NumSeg = FMath::Max(2, FMath::RoundToInt((B - A) / 300.0));
+			// Pieza de arte: los dos cables (o cadenas) del vano con sus péndolas, del apoyo anterior a este a la cota del
+			// tablero (+X hacia este apoyo; escala X 1 = 30 m, Y 1 = 300 del eje a cada cable).
+			FVector SpanFrom, SpanDir;
+			double SpanHw = 0.0;
+			Line.At(A, SpanFrom, SpanDir, SpanHw);
+			const FTransform SpanPivot = TNProcArtSpanPivot(SpanFrom, P0, 3000.0);
+			TNArt::FPieceScope SpanPiece(ArtLog, bIron ? TN_ART("ProcMap.Bridge.IronChains") : TN_ART("ProcMap.Bridge.RopeCables"),
+				FTransform(SpanPivot.GetRotation(), SpanPivot.GetLocation(), FVector(SpanPivot.GetScale3D().X, (SpanHw + 25.0) / 300.0, 1.0)), { &PaintedFar, &Wood });
 			for (const double Side : { -1.0, 1.0 })
 			{
 				FVector Prev = FVector::ZeroVector;
@@ -2142,7 +2479,16 @@ void ATN_ProcMapGenerator::BuildStructures()
 				NumLedges += WallBreachDims::KindOf(F) != EWallBreach::Gap ? 1 : 0;
 			}
 			// El cuerpo de la muralla entra 2 m en la torre de entrada (hueca: sin tocar su sala) y 4 m en la de salida.
-			TNProcAddWall(Rock, Axis, TowerR - 200.0, Len - TowerR + 400.0, TowerR, Len - TowerR, C.TopZ, Gate, Breaches, Ground, Stone, Seed);
+			{
+				// Pieza de arte: la muralla entera (con su puerta y los mordiscos), del principio al final del adarve a su cota
+				// (+X hacia la torre de salida; escala X 1 = 100 m).
+				FVector2D WallFrom, WallTo, WallT, WallN;
+				double WallHw = 0.0;
+				Axis.At(TowerR, WallFrom, WallT, WallN, WallHw);
+				Axis.At(Len - TowerR, WallTo, WallT, WallN, WallHw);
+				TNArt::FPieceScope WallPiece(ArtLog, TN_ART("ProcMap.Wall.Rampart"), TNProcArtSpanPivot(FVector(WallFrom, C.TopZ), FVector(WallTo, C.TopZ), 10000.0), { &Rock });
+				TNProcAddWall(Rock, Axis, TowerR - 200.0, Len - TowerR + 400.0, TowerR, Len - TowerR, C.TopZ, Gate, Breaches, Ground, Stone, Seed);
+			}
 			if (Breaches.Num() > 0)
 			{
 				UE_LOG(LogTortunabo, Log, TEXT("[ProcMap] Cruce %d: adarve roto con %d mordiscos (%d brechas y %d cornisas)."), c, Breaches.Num(),
@@ -2205,8 +2551,17 @@ void ATN_ProcMapGenerator::BuildStructures()
 				if (F.Type == EFeature::Tower && F.Aux == c)
 				{
 					const uint32 Ts = Seed ^ static_cast<uint32>(F.PathIndex * 2654435761u);
-					if (IsHollowTower(F)) { TNProcAddHollowTower(Rock, Glow, Foliage, Layout, F, Ground, Stone, Banners[c % 3], Ts); AddTowerLights(F); }
-					else { TNProcAddWallTower(Rock, Foliage, Layout, F, Ground, Stone, Banners[c % 3], Ts); }
+					if (IsHollowTower(F))
+					{
+						TNArt::FPieceScope TowerPiece(ArtLog, TN_ART("ProcMap.Tower.Hollow"), TNHollowTowerArtPivot(F), { &Rock, &Glow, &Foliage });
+						TNProcAddHollowTower(Rock, Glow, Foliage, Layout, F, Ground, Stone, Banners[c % 3], Ts);
+						AddTowerLights(F);
+					}
+					else
+					{
+						TNArt::FPieceScope TowerPiece(ArtLog, TN_ART("ProcMap.Tower.Solid"), TNSolidTowerArtPivot(F), { &Rock, &Foliage });
+						TNProcAddWallTower(Rock, Foliage, Layout, F, Ground, Stone, Banners[c % 3], Ts);
+					}
 				}
 			}
 		}
@@ -2219,6 +2574,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 			case EFeature::Islet:
 			{
 				// Hasta el lecho de la laguna (≈ -10 m): vistas desde el agua no quedan flotando.
+				// Pieza de arte: centro de la cima, +X a lo largo del camino; escala 1 = 10 x 10 m de planta.
+				TNArt::FPieceScope IsletPiece(ArtLog, TN_ART("ProcMap.Lagoon.Islet"), TNProcArtPivot(F.Location, F.Dir, FVector(F.Length / 1000.0, F.Width / 1000.0, 1.0)),
+					{ &Rock });
 				Rock.AddPrism(F.Polygon, F.Location.Z, -1300.0, FLinearColor(0.55f, 0.5f, 0.38f));
 				break;
 			}
@@ -2240,6 +2598,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 				for (int32 Side = -1; Side <= 1; Side += 2)
 				{
 					const FVector2D Center2 = FVector2D(F.Location.X, F.Location.Y) + D * (Side * (Inner + HalfLen));
+					// Pieza de arte: el labio de este lado, centro de su cara de arriba, +X hacia el hueco; escala 1 = 300 de largo
+					// y 1000 de ancho.
+					TNArt::FPieceScope LipPiece(ArtLog, bLava ? TN_ART("ProcMap.Gap.LavaLip") : (bStoneLips ? TN_ART("ProcMap.Gap.StoneLip") : TN_ART("ProcMap.Gap.WoodLip")),
+						TNProcArtPivot(FVector(Center2, F.Location.Z), D * static_cast<double>(-Side), FVector(HalfLen * 2.0 / 300.0, F.Width / 1000.0, 1.0)),
+						{ &Painted, &Wood, &Rock });
 					if (bStoneLips)
 					{
 						// Sillares: bloques con junta a lo ancho y el borde del salto más claro.
@@ -2269,6 +2632,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 					const FVector Base(Po.P, Floor);
 					const FVector TopP(Po.P, Po.TopZ);
 					const uint32 Ps = static_cast<uint32>(F.PathIndex) * 131u + static_cast<uint32>(k);
+					// Pieza de arte: centro de la cima del poste, +X a lo largo del hueco; escala 1 = radio 50 y 500 hasta el fondo.
+					TNArt::FPieceScope PostPiece(ArtLog, TNGapPostArt(F.Biome),
+						TNProcArtPivot(TopP, D, FVector(Po.Radius / 50.0, Po.Radius / 50.0, FMath::Max(1.0, Po.TopZ - Floor) / 500.0)), { &Wood, &Painted });
 					switch (F.Biome)
 					{
 						case ETNProcBiome::Jungle:
@@ -2307,12 +2673,17 @@ void ATN_ProcMapGenerator::BuildStructures()
 						const FVector2D A2 = FVector2D(F.Location.X, F.Location.Y) + Nn * Y - D * (Inner + 70.0);
 						const FVector2D B2 = FVector2D(F.Location.X, F.Location.Y) + Nn * Y + D * (Inner + 70.0);
 						constexpr double LogR = 32.0;
+						// Pieza de arte: centro del tronco, +X de labio a labio; escala X 1 = 600 de largo.
+						TNArt::FPieceScope LogPiece(ArtLog, TN_ART("ProcMap.Gap.BalanceLog"),
+							TNProcArtPivot(FVector((A2 + B2) * 0.5, F.Location.Z + 10.0 - LogR), D, FVector(FVector2D::Distance(A2, B2) / 600.0, 1.0, 1.0)), { &Wood });
 						TNProcAddLog(Wood, FVector(A2, F.Location.Z + 10.0 - LogR), FVector(B2, F.Location.Z + 10.0 - LogR), LogR, static_cast<uint32>(F.PathIndex) + k, WoodColor * 0.9f, WoodColor * 1.3f);
 					}
 				}
 				// Salto de panzazo: chevrones y cartel en el labio de llegada.
 				if (GapStyleOf(F) == EGapStyle::Dive)
 				{
+					// Pieza de arte (chevrones y cartel): centro del hueco a la cota del labio, +X a lo largo del hueco.
+					TNArt::FPieceScope SignPiece(ArtLog, TN_ART("ProcMap.Gap.DiveSign"), TNProcArtPivot(F.Location, D), { &Painted });
 					TNProcAddDiveHint(Painted, F, Inner);
 				}
 				if (bLava)
@@ -2322,6 +2693,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 					const double Hl = F.Height * 0.5 + 100.0;
 					const double Hs = F.Width * 0.5 + GapTrenchSideOf(F) + 100.0;
 					TArray<FVector2D> Poly = { C - D * Hl - N * Hs, C + D * Hl - N * Hs, C + D * Hl + N * Hs, C - D * Hl + N * Hs };
+					// Pieza de arte: la superficie del río de lava, centro a su cota, +X a lo largo del hueco; escala 1 = 10 x 10 m.
+					TNArt::FPieceScope RiverPiece(ArtLog, TN_ART("ProcMap.Gap.LavaRiver"),
+						TNProcArtPivot(FVector(C, F.Location.Z - 150.0), D, FVector(Hl * 2.0 / 1000.0, Hs * 2.0 / 1000.0, 1.0)), { &Lava });
 					Lava.AddPrism(Poly, F.Location.Z - 150.0, F.Location.Z - 160.0, FLinearColor(1.f, 0.35f, 0.05f), false);
 				}
 				break;
@@ -2340,6 +2714,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				FLinearColor Gc, Pcc, RockCc, Bdc;
 				ResolveBiomeColors(F.Biome, Gc, Pcc, RockCc, Bdc);
 				const FLinearColor Sand = TNProcLerpColor(RockCc, Gc, 0.5f) * 1.15f;
+				// Pieza de arte (torre, escalones, banderín y almohadilla de la medusa): centro de la base, +X hacia la medusa
+				// (los escalones bajan hacia -X); escala 1 = cuatro bloques de 1 m (la de tres va a 0,75 de alto).
+				TNArt::FPieceScope TowerPiece(ArtLog, TNClimbTowerArt(F.Biome), TNProcArtPivot(Base, F.Dir, FVector(1.0, 1.0, Levels / 4.0)), { &Painted });
 				auto Block = [&](const FVector& C, const FVector& Half, int32 k)
 				{
 					switch (F.Biome)
@@ -2420,6 +2797,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				FTNPlankLine Line;
 				for (int32 i = From; i <= To; ++i) { Line.Add(FVector(M[i].P, M[i].Z), M[i].Width * 0.5); }
 				const uint32 Seed = Layout.Params.Seed ^ (0xB0A2Du + static_cast<uint32>(From));
+				// Pieza de arte: la pasarela entera, del principio al final a la cota del camino (+X hacia el final; escala X 1 =
+				// 20 m).
+				TNArt::FPieceScope WalkPiece(ArtLog, TN_ART("ProcMap.Lagoon.Boardwalk"), TNProcArtSpanPivot(Line.P[0], Line.P.Last(), 2000.0), { &Wood });
 				TNProcAddPlanks(Wood, Line, 0.0, Line.Length(), WoodColor * 0.9f, Seed);
 				TNProcAddRopeRails(Wood, Line, 0.0, Line.Length(), 260.0, 320.0, 85.0, WoodColor * 0.6f, RopeColor);
 				break;
@@ -2471,6 +2851,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 				const bool bBrokenBridge = StairSide != 0;
 				const double OpenA = StairTop - StepRun * 0.5 - 10.0;
 				const double OpenB = StairTop + 110.0;
+				// Pieza de arte: el puente entero (intacto, o roto con la escalera a la izquierda o a la derecha de +X, con sus
+				// piedras), centro del tablero a su cota, +X a lo largo de Dir; escala 1 = 2000 de largo y 600 de ancho.
+				TNArt::FPieceScope RiverPiece(ArtLog,
+					!bBrokenBridge ? TN_ART("ProcMap.River.Bridge") : (StairSide > 0 ? TN_ART("ProcMap.River.BrokenBridgeLeft") : TN_ART("ProcMap.River.BrokenBridgeRight")),
+					TNProcArtPivot(FVector(Cb, DeckZ), D, FVector(F.Length / 2000.0, F.Width / 600.0, 1.0)), { &Wood, &Painted, &PaintedFar, &Rock });
 				// Tablero y barandillas de [Pa, Pb] (la barandilla del lado de la escalera, abierta en el rellano).
 				auto DeckPiece = [&](double Pa, double Pb)
 				{
@@ -2560,6 +2945,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 					const double A = TwoPi * k / 24.0;
 					Disc.Add(FVector2D(F.Location.X, F.Location.Y) + DirFromAngle(A) * (F.Radius * (1.0 + 0.06 * FMath::Sin(A * 3.0))));
 				}
+				// Pieza de arte: centro de la superficie de lava; escala 1 = radio 500.
+				TNArt::FPieceScope PoolPiece(ArtLog, TN_ART("ProcMap.Lava.Pool"), TNArt::PiecePivot(F.Location, 0.0, FVector(F.Radius / 500.0, F.Radius / 500.0, 1.0)),
+					{ &Lava });
 				Lava.AddPrism(Disc, F.Location.Z, F.Location.Z - 10.0, FLinearColor(1.f, 0.35f, 0.05f), false);
 				break;
 			}
@@ -2580,7 +2968,15 @@ void ATN_ProcMapGenerator::BuildStructures()
 				auto Ground = [&](double X, double Y) { return TerrainHeightMap(C + Dx * X + Dy * Y) - OriginZ; };
 				FTNProcMeshBuffers Local;
 				TNPropMesh::TNPathPropBuild(Local, static_cast<EPathProp>(F.Aux), Params, Ground);
-				TNFormMesh::TNFormAppend(Painted, Local, FVector(C, OriginZ), Dx);
+				{
+					// Pieza de arte: centro en el suelo, +X por su eje; escala respecto a su tamaño de referencia (TNProcPathPropArtRef).
+					const EPathProp Kind = static_cast<EPathProp>(F.Aux);
+					const FVector2D Ref = TNProcPathPropArtRef(Kind);
+					const double Foot = FMath::Max(F.Radius, F.Length * 0.5);
+					TNArt::FPieceScope PropPiece(ArtLog, TNProcPathPropArt(Kind), TNProcArtPivot(FVector(C, OriginZ), Dx, FVector(Foot / Ref.X, Foot / Ref.X, F.Height / Ref.Y)),
+						{ &Painted });
+					TNFormMesh::TNFormAppend(Painted, Local, FVector(C, OriginZ), Dx);
+				}
 				break;
 			}
 			case EFeature::Boulder:
@@ -2593,6 +2989,10 @@ void ATN_ProcMapGenerator::BuildStructures()
 				const uint32 Seed = static_cast<uint32>(F.Aux);
 				FTNProcMeshBuffers Local;
 				TNRockMesh::TNRockBuildBoulder(Local, TNRockMesh::TNBoulderStyleFor(F.Biome, Seed), F.Radius, F.Height, Seed, TNRockMesh::TNRockColorsFor(F.Biome, RockC, G));
+				// Pieza de arte: centro de la base sobre el terreno, con su giro; escala 1 = radio 150 y 180 de alto.
+				TNArt::FPieceScope RockPiece(ArtLog, TNProcBoulderArt(TNRockMesh::TNBoulderStyleFor(F.Biome, Seed)),
+					TNArt::PiecePivot(FVector(C, TerrainHeightMap(C)), TNRockMesh::TNRockRand(Seed, 9, 0.0, 360.0), FVector(F.Radius / 150.0, F.Radius / 150.0, F.Height / 180.0)),
+					{ &Painted });
 				TNPropMesh::TNPropAppend(Painted, Local, FVector(C, TerrainHeightMap(C)), TNRockMesh::TNRockRand(Seed, 9, 0.0, 360.0));
 				break;
 			}
@@ -2609,6 +3009,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 				FTNProcMeshBuffers Local;
 				TNRockMesh::TNRockBuildSpire(Local, TNRockMesh::TNSpireStyleFor(F.Biome, bSpire, Seed), F.Radius, F.Height, Seed,
 					TNRockMesh::TNRockColorsFor(F.Biome, RockC, G));
+				// Pieza de arte: centro de la base sobre el terreno, con su giro; escala respecto a su referencia (TNProcSpireArtRef).
+				const TNRockMesh::ESpireStyle SpireStyle = TNRockMesh::TNSpireStyleFor(F.Biome, bSpire, Seed);
+				const FVector2D SpireRef = TNProcSpireArtRef(SpireStyle);
+				TNArt::FPieceScope RockPiece(ArtLog, TNProcSpireArt(SpireStyle), TNArt::PiecePivot(FVector(C, TerrainHeightMap(C)), TNRockMesh::TNRockRand(Seed, 9, 0.0, 360.0),
+					FVector(F.Radius / SpireRef.X, F.Radius / SpireRef.X, F.Height / SpireRef.Y)), { &Painted });
 				TNPropMesh::TNPropAppend(Painted, Local, FVector(C, TerrainHeightMap(C)), TNRockMesh::TNRockRand(Seed, 9, 0.0, 360.0));
 				break;
 			}
@@ -2621,6 +3026,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				const bool bCharred = F.Biome == ETNProcBiome::Volcanic;
 				const FLinearColor Bark = bCharred ? FLinearColor(0.07f, 0.06f, 0.05f) : FLinearColor(0.3f, 0.2f, 0.11f);
 				const FLinearColor Cut = bCharred ? FLinearColor(0.35f, 0.12f, 0.05f) : FLinearColor(0.62f, 0.48f, 0.3f);
+				// Pieza de arte: centro del eje del tronco, +X a lo largo (con su inclinación); escala 1 = 400 de largo y radio 45.
+				TNArt::FPieceScope LogPiece(ArtLog, TN_ART("ProcMap.Tree.FallenLog"),
+					FTransform(FRotationMatrix::MakeFromX(B - A).ToQuat(), (A + B) * 0.5, FVector(FVector::Dist(A, B) / 400.0, F.Radius / 45.0, F.Radius / 45.0)), { &Wood });
 				TNProcAddLog(Wood, A, B, F.Radius, static_cast<uint32>(F.Aux), Bark, Cut);
 				break;
 			}
@@ -2647,6 +3055,10 @@ void ATN_ProcMapGenerator::BuildStructures()
 				Params.WaterZ = TNProcMap::SeaLevel - OriginZ;
 				FTNProcMeshBuffers Local;
 				TNFormMesh::TNFormBuild(Local, Kind, Params, TNFormMesh::TNFormColorsFor(F.Biome, RockC), Ground);
+				// Pieza de arte: origen de la formación (centro en el suelo), +X por su eje; escala respecto a su referencia
+				// (TNProcFormationArtScale).
+				TNArt::FPieceScope FormationPiece(ArtLog, TNProcFormationArt(Kind), TNProcArtPivot(FVector(C, OriginZ), Dx, TNProcFormationArtScale(F, Kind)),
+					{ bFar ? &PaintedFar : &Painted });
 				TNFormMesh::TNFormAppend(bFar ? PaintedFar : Painted, Local, FVector(C, OriginZ), Dx);
 				break;
 			}
@@ -2666,6 +3078,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				auto HalfWidthAt = [&](double X) { return 0.5 * FinishBeachWidthAt(Layout, F.Location.Y + X * Dx.Y); };
 				FTNProcMeshBuffers Solid, Deco;
 				TNFinishMesh::TNFinishBuild(Solid, Deco, Params, Ground, HalfWidthAt);
+				// Pieza de arte (neumático, pasarela, carteles, banderas, boyas y banderolas): centro de la línea a nivel del mar,
+				// +X hacia el mar.
+				TNArt::FPieceScope FinishPiece(ArtLog, TN_ART("ProcMap.Finish.Gate"), TNProcArtPivot(FVector(C, TNProcMap::SeaLevel), Dx), { &Painted, &PaintedFar });
 				TNFormMesh::TNFormAppend(Painted, Solid, FVector(C, TNProcMap::SeaLevel), Dx);
 				TNFormMesh::TNFormAppend(PaintedFar, Deco, FVector(C, TNProcMap::SeaLevel), Dx);
 				break;
@@ -2679,6 +3094,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				const double Ground = TerrainHeightMap(C);
 				const FVector Base(C, Ground - 60.0);
 				const FLinearColor Bark(0.36f, 0.17f, 0.09f);
+				// Pieza de arte (tronco, raíces y copa): centro del tronco a ras del suelo; escala 1 = radio 200 y 3900 de alto.
+				TNArt::FPieceScope TreePiece(ArtLog, TN_ART("ProcMap.Tree.GiantSequoia"), TNArt::PiecePivot(FVector(C, Ground), 0.0,
+					FVector(F.Radius / 200.0, F.Radius / 200.0, F.Height / 3900.0)), { &Wood, &Foliage });
 				TArray<double> Z, R;
 				for (int32 r = 0; r <= 9; ++r)
 				{
@@ -2766,6 +3184,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				TArray<FLinearColor> PrevCol;
 				double Travel = 0.0;
 				FVector2D LastC = S[From].P;
+				// Pieza de arte: la lámina entera, del labio al aterrizaje (+X hacia abajo; escala X 1 = 20 m en planta).
+				const int32 SheetPiece = ArtLog.Begin(TN_ART("ProcMap.Slide.WaterSheet"), TNProcArtSpanPivot(FVector(S[From].P, S[From].Z), FVector(S[To].P, S[To].Z), 2000.0),
+					{ &SlideWater });
 				for (int32 i = From; i <= To; ++i)
 				{
 					const int32 Sub = i < To ? FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(S[i].P, S[i + 1].P) / RowStep)) : 1;
@@ -2814,6 +3235,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 						PrevCol = MoveTemp(RowCol);
 					}
 				}
+				ArtLog.End(SheetPiece);
 				// Poza al pie: disco plano a la cota del agua, a ras de suelo, sobre el cuenco que hunde el terreno
 				// (TNProcMap::SlidePoolOf): la orilla es donde el terreno vuelve a salir del agua, y ahí va la espuma (los
 				// vértices con el suelo a menos de 20 cm del agua). Donde el terreno quede más bajo que el agua, el borde
@@ -2829,6 +3251,8 @@ void ATN_ProcMapGenerator::BuildStructures()
 					const double Radii[] = { 0.0, 0.16, 0.32, 0.48, 0.62, 0.74, 0.86, 1.0 };
 					constexpr int32 NumR = UE_ARRAY_COUNT(Radii);
 					const FLinearColor Water(0.16f, 0.5f, 0.76f, 0.88f), Foam(0.96f, 0.99f, 1.f, 0.85f);
+					// Pieza de arte: centro de la poza a la cota del agua, +X hacia donde corre el agua; escala 1 = radio 350.
+					TNArt::FPieceScope PoolPiece(ArtLog, TN_ART("ProcMap.Slide.Pool"), TNProcArtPivot(FVector(PC, WaterZ), Flow, FVector(R / 350.0, R / 350.0, 1.0)), { &SlideWater });
 					auto PoolVertex = [&](const FVector2D& Q, double Rr, FVector& OutP, FLinearColor& OutC)
 					{
 						const double PoolGround = TerrainHeightMap(Q);
@@ -2898,6 +3322,9 @@ void ATN_ProcMapGenerator::BuildStructures()
 				}
 				const bool bLily = Sm.Biome == ETNProcBiome::Water && AlgaeRng.Chance(0.4);
 				const FLinearColor Col = bLily ? FLinearColor(0.12f, 0.42f, 0.1f) : FLinearColor(0.16f, 0.3f, 0.06f) * static_cast<float>(AlgaeRng.Range(0.8, 1.2));
+				// Pieza de arte: centro de la mancha a ras del agua; escala 1 = radio 160.
+				TNArt::FPieceScope PatchPiece(ArtLog, bLily ? TN_ART("ProcMap.Lagoon.LilyPads") : TN_ART("ProcMap.Lagoon.Algae"),
+					TNArt::PiecePivot(FVector(Q, TNProcMap::SeaLevel + 4.0), 0.0, FVector(Rad / 160.0, Rad / 160.0, 1.0)), { &Foliage });
 				Foliage.AddPrism(Poly, TNProcMap::SeaLevel + 4.0, TNProcMap::SeaLevel - 2.0, Col, false);
 			}
 		}
@@ -2931,13 +3358,20 @@ void ATN_ProcMapGenerator::BuildStructures()
 		Look.Crystal = FLinearColor(0.45f, 0.8f, 0.95f);
 		Look.bCrystals = Style == TNCaveDecor::ECaveStyle::Limestone || Style == TNCaveDecor::ECaveStyle::Crystal;
 		TArray<TArray<FVector>> Inner;
-		TNCaveMesh::TNCaveBuildRoof(Painted, Stations, F.Height, F.Radius, CaveSeed, Look, &Inner);
+		// Piezas de arte del túnel (techo y tapa de montaña): de la boca de entrada a la de salida, en el suelo (+X hacia la
+		// salida; escala X 1 = 50 m en planta).
+		const FTransform CavePivot = Stations.Num() > 0 ? TNProcArtSpanPivot(Stations[0].Floor, Stations.Last().Floor, 5000.0) : FTransform::Identity;
+		{
+			TNArt::FPieceScope RoofPiece(ArtLog, TN_ART("ProcMap.Cave.Roof"), CavePivot, { &Painted });
+			TNCaveMesh::TNCaveBuildRoof(Painted, Stations, F.Height, F.Radius, CaveSeed, Look, &Inner);
+		}
 
 		// Tapa de montaña: el terreno no puede tener techo, así que por encima del túnel quedaba una ranura a lo largo
 		// del camino (la montaña «troquelada»). Se cubre con una superficie que une las laderas de los dos lados a su
 		// altura, con algo de relieve y los colores del bioma, solo donde la montaña queda por encima del techo de roca;
 		// sus bordes se meten un poco en el terreno para que no se vea la costura.
 		{
+			TNArt::FPieceScope CapPiece(ArtLog, TN_ART("ProcMap.Cave.MountainCap"), CavePivot, { &Painted });
 			constexpr int32 CapPts = 9;
 			constexpr double Reach = 700.0;
 			TArray<TArray<FVector>> CapRings;
@@ -3000,14 +3434,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 				}
 			}
 		}
-		TNCaveDecor::FTNCaveDecorOut Decor;
+		// La decoración se añade directamente al final de las secciones (antes se hacía aparte y se copiaba tal cual, sin
+		// mover nada: el resultado es el mismo) para que cada objeto quede marcado como pieza de arte en ellas.
+		TNCaveDecor::FTNCaveDecorOut Decor(Painted, PaintedFar, Glow, Lava, Beam, SlideWater);
+		Decor.Log = &ArtLog;
 		TNCaveDecor::TNCaveBuildDecor(Decor, Stations, Inner, NoFloor, F.Height, CaveSeed, Style, Look, bMagma ? &Magma : nullptr);
-		TNFormMesh::TNFormAppend(Painted, Decor.Solid, FVector::ZeroVector, FVector2D(1.0, 0.0));
-		TNFormMesh::TNFormAppend(PaintedFar, Decor.Detail, FVector::ZeroVector, FVector2D(1.0, 0.0));
-		TNFormMesh::TNFormAppend(Glow, Decor.Glow, FVector::ZeroVector, FVector2D(1.0, 0.0));
-		TNFormMesh::TNFormAppend(Lava, Decor.Ember, FVector::ZeroVector, FVector2D(1.0, 0.0));
-		TNFormMesh::TNFormAppend(Beam, Decor.Beam, FVector::ZeroVector, FVector2D(1.0, 0.0));
-		TNFormMesh::TNFormAppend(SlideWater, Decor.Water, FVector::ZeroVector, FVector2D(1.0, 0.0));
 		CaveFlames.Append(Decor.Flames);
 		CaveMotes.Append(Decor.Motes);
 
@@ -3040,7 +3471,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 	}
 
 	// ── Componentes ─────────────────────────────────────────────────────────
-	const TArray<FProcMeshTangent> NoTangents;
+	// Cada sección se sube sin las piezas que tienen sustituto de arte (TNArt::UploadSection; sin sustitutos, como siempre).
 	UMaterialInterface* BasicMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	UMaterialInterface* VertexMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
 
@@ -3051,26 +3482,22 @@ void ATN_ProcMapGenerator::BuildStructures()
 	StructureMesh->RegisterComponent();
 	if (!Rock.IsEmpty())
 	{
-		StructureMesh->CreateMeshSection_LinearColor(0, Rock.Verts, Rock.Tris, Rock.Normals, Rock.UVs, Rock.Colors, NoTangents, true);
-		StructureMesh->SetMaterial(0, (Settings && Settings->RockMaterial) ? Settings->RockMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		TNArt::UploadSection(StructureMesh, 0, Rock, true, (Settings && Settings->RockMaterial) ? Settings->RockMaterial.Get() : (VertexMat ? VertexMat : BasicMat), &ArtLog);
 	}
 	if (!Wood.IsEmpty())
 	{
-		StructureMesh->CreateMeshSection_LinearColor(1, Wood.Verts, Wood.Tris, Wood.Normals, Wood.UVs, Wood.Colors, NoTangents, true);
-		StructureMesh->SetMaterial(1, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		TNArt::UploadSection(StructureMesh, 1, Wood, true, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : (VertexMat ? VertexMat : BasicMat), &ArtLog);
 	}
 	// Formaciones temáticas con su color de vértice: las del camino con colisión, los hitos lejanos sin ella.
 	UMaterialInterface* PaintMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr,
 		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
 	if (!Painted.IsEmpty())
 	{
-		StructureMesh->CreateMeshSection_LinearColor(2, Painted.Verts, Painted.Tris, Painted.Normals, Painted.UVs, Painted.Colors, NoTangents, true);
-		StructureMesh->SetMaterial(2, PaintMat);
+		TNArt::UploadSection(StructureMesh, 2, Painted, true, PaintMat, &ArtLog);
 	}
 	if (!PaintedFar.IsEmpty())
 	{
-		StructureMesh->CreateMeshSection_LinearColor(3, PaintedFar.Verts, PaintedFar.Tris, PaintedFar.Normals, PaintedFar.UVs, PaintedFar.Colors, NoTangents, false);
-		StructureMesh->SetMaterial(3, PaintMat);
+		TNArt::UploadSection(StructureMesh, 3, PaintedFar, false, PaintMat, &ArtLog);
 	}
 
 	DecorMesh = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
@@ -3080,12 +3507,10 @@ void ATN_ProcMapGenerator::BuildStructures()
 	DecorMesh->RegisterComponent();
 	if (!Lava.IsEmpty())
 	{
-		DecorMesh->CreateMeshSection_LinearColor(0, Lava.Verts, Lava.Tris, Lava.Normals, Lava.UVs, Lava.Colors, NoTangents, false);
-		DecorMesh->SetMaterial(0, (Settings && Settings->LavaMaterial) ? Settings->LavaMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+		TNArt::UploadSection(DecorMesh, 0, Lava, false, (Settings && Settings->LavaMaterial) ? Settings->LavaMaterial.Get() : (VertexMat ? VertexMat : BasicMat), &ArtLog);
 	}
 	if (!SlideWater.IsEmpty())
 	{
-		DecorMesh->CreateMeshSection_LinearColor(1, SlideWater.Verts, SlideWater.Tris, SlideWater.Normals, SlideWater.UVs, SlideWater.Colors, NoTangents, false);
 		// Agua de cascada con ondas que corren ladera abajo (UV de flujo de la lámina); si no existe el
 		// material, el de los ajustes.
 		UMaterialInterface* SlideMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcCascade.M_ProcCascade"));
@@ -3094,20 +3519,18 @@ void ATN_ProcMapGenerator::BuildStructures()
 			SlideMat = Settings && Settings->SlideWaterMaterial ? Settings->SlideWaterMaterial.Get()
 				: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
 		}
-		DecorMesh->SetMaterial(1, SlideMat);
+		TNArt::UploadSection(DecorMesh, 1, SlideWater, false, SlideMat, &ArtLog);
 	}
 	if (!Foliage.IsEmpty())
 	{
-		DecorMesh->CreateMeshSection_LinearColor(2, Foliage.Verts, Foliage.Tris, Foliage.Normals, Foliage.UVs, Foliage.Colors, NoTangents, false);
-		DecorMesh->SetMaterial(2, VertexMat ? VertexMat : BasicMat);
+		TNArt::UploadSection(DecorMesh, 2, Foliage, false, VertexMat ? VertexMat : BasicMat, &ArtLog);
 	}
 	// Lo que brilla en las cuevas (setas, cristales, llamas, ojos de la estatua, cielo del lucernario):
 	// emisivo del color del vértice; sin el material, el de depuración (también sin iluminar).
 	if (!Glow.IsEmpty())
 	{
-		DecorMesh->CreateMeshSection_LinearColor(3, Glow.Verts, Glow.Tris, Glow.Normals, Glow.UVs, Glow.Colors, NoTangents, false);
 		UMaterialInterface* GlowMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcGlow.M_ProcGlow"));
-		DecorMesh->SetMaterial(3, GlowMat ? GlowMat : (VertexMat ? VertexMat : BasicMat));
+		TNArt::UploadSection(DecorMesh, 3, Glow, false, GlowMat ? GlowMat : (VertexMat ? VertexMat : BasicMat), &ArtLog);
 	}
 	// Haces de luz de los lucernarios: translúcido con la opacidad en el alfa del vértice.
 	if (!Beam.IsEmpty())
@@ -3115,10 +3538,11 @@ void ATN_ProcMapGenerator::BuildStructures()
 		UMaterialInterface* BeamMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFXSoft.M_ProcFXSoft"));
 		if (BeamMat)
 		{
-			DecorMesh->CreateMeshSection_LinearColor(4, Beam.Verts, Beam.Tris, Beam.Normals, Beam.UVs, Beam.Colors, NoTangents, false);
-			DecorMesh->SetMaterial(4, BeamMat);
+			TNArt::UploadSection(DecorMesh, 4, Beam, false, BeamMat, &ArtLog);
 		}
 	}
+	// La malla de arte de cada pieza con sustituto, en su sitio (hija de StructureMesh: los ejes del mapa, como DecorMesh).
+	TNArt::SpawnPieceArt(StructureMesh, ArtLog);
 
 	// ── Límites invisibles del mapa (la costa norte queda abierta hasta el mar) ─
 	const double World = Layout.WorldSize;

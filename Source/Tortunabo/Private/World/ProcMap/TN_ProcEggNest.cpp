@@ -1,5 +1,6 @@
 #include "World/ProcMap/TN_ProcEggNest.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "Art/TN_Art.h"
 #include "Game/TN_ProcMapGameMode.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/SphereComponent.h"
@@ -77,6 +78,9 @@ void ATN_ProcEggNest::BeginPlay()
 	}
 	TNProcActors::Tint(NestBase, FLinearColor(0.35f, 0.24f, 0.12f));
 	ApplyVisual();
+	// Mallas de arte (Docs/Arte_Assets.md): van de hijas y heredan la escala de cada componente.
+	TNArt::ApplyToComponent(NestBase, TN_ART("ProcMap.Nest.Base"));
+	for (UStaticMeshComponent* Egg : Eggs) { TNArt::ApplyToComponent(Egg, TN_ART("ProcMap.Nest.Egg")); }
 }
 
 FTransform ATN_ProcEggNest::GetRespawnTransform(int32 Slot) const

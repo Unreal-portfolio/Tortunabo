@@ -604,8 +604,8 @@ void ATN_BeachToyTank::BuildTank()
 	UStaticMesh* FlagM = TNBeachKit::CachedMesh(TEXT("Beach.Tank.Flag"), [](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildTankFlag(M); });
 	UStaticMesh* FoamM = TNBeachKit::CachedMesh(TEXT("Beach.Tank.Foam"), [](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildFoamBall(M); });
 
-	Hull = TNBeachCritterKit::AddPart(this, HullRoot, HullM, FVector::ZeroVector);
-	Wheels = TNBeachCritterKit::AddInstances(this, HullRoot, WheelM, 10, false, false);
+	Hull = TNBeachCritterKit::AddPart(this, HullRoot, HullM, FVector::ZeroVector, true, TN_ART("Beach.ToyTank.Hull"));
+	Wheels = TNBeachCritterKit::AddInstances(this, HullRoot, WheelM, 10, false, false, TN_ART("Beach.ToyTank.Wheel"));
 	WheelXf.SetNum(10);
 	for (int32 k = 0; k < 10; ++k)
 	{
@@ -613,13 +613,13 @@ void ATN_BeachToyTank::BuildTank()
 	}
 	TNBeachCritterKit::WriteInstances(Wheels, WheelXf, false);
 	TurretPivot = TNBeachCritterKit::AddPivot(this, HullRoot, D.TurretPivot);
-	Turret = TNBeachCritterKit::AddPart(this, TurretPivot, TurretM, FVector::ZeroVector);
+	Turret = TNBeachCritterKit::AddPart(this, TurretPivot, TurretM, FVector::ZeroVector, true, TN_ART("Beach.ToyTank.Turret"));
 	BarrelPivot = TNBeachCritterKit::AddPivot(this, TurretPivot, D.BarrelPivot);
-	Barrel = TNBeachCritterKit::AddPart(this, BarrelPivot, BarrelM, FVector::ZeroVector);
+	Barrel = TNBeachCritterKit::AddPart(this, BarrelPivot, BarrelM, FVector::ZeroVector, true, TN_ART("Beach.ToyTank.Barrel"));
 	AntennaPivot = TNBeachCritterKit::AddPivot(this, TurretPivot, D.AntennaPivot);
-	Antenna = TNBeachCritterKit::AddPart(this, AntennaPivot, AntennaM, FVector::ZeroVector, false);
-	Flag = TNBeachCritterKit::AddPart(this, AntennaPivot, FlagM, FVector(0.0, 0.0, D.AntennaLength - 0.6 * TNBeach::Scale), false);
-	FoamBalls = TNBeachCritterKit::AddInstances(this, GetRootComponent(), FoamM, MaxShots, true, false);
+	Antenna = TNBeachCritterKit::AddPart(this, AntennaPivot, AntennaM, FVector::ZeroVector, false, TN_ART("Beach.ToyTank.Antenna"));
+	Flag = TNBeachCritterKit::AddPart(this, AntennaPivot, FlagM, FVector(0.0, 0.0, D.AntennaLength - 0.6 * TNBeach::Scale), false, TN_ART("Beach.ToyTank.Flag"));
+	FoamBalls = TNBeachCritterKit::AddInstances(this, GetRootComponent(), FoamM, MaxShots, true, false, TN_ART("Beach.ToyTank.FoamBall"));
 	FoamXf.Init(FTransform(FQuat::Identity, GetActorLocation(), FVector::ZeroVector), MaxShots);
 
 	using TNAmbientFX::EShape;

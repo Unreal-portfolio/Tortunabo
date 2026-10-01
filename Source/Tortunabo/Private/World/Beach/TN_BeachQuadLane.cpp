@@ -83,13 +83,13 @@ void ATN_BeachQuadLane::BuildQuad()
 	QuadRoot->SetupAttachment(GetRootComponent());
 	QuadRoot->SetAbsolute(true, true, true);
 	QuadRoot->RegisterComponent();
-	QuadBody = TNBeachKit::AddPart(this, QuadRoot, BodyMesh, FVector::ZeroVector);
+	QuadBody = TNBeachKit::AddPart(this, QuadRoot, BodyMesh, FVector::ZeroVector, true, TN_ART("Beach.QuadLane.Quad"));
 	const double S = TNBeach::Scale;
 	for (int32 i = 0; i < 4; ++i)
 	{
 		const double X = (i < 2 ? 1.0 : -1.0) * TNBeachMeshes::QuadBaseHalf * S;
 		const double Y = (i % 2 == 0 ? -1.0 : 1.0) * TNBeachMeshes::QuadTrackHalf * S;
-		Wheels.Add(TNBeachKit::AddPart(this, QuadRoot, WheelMesh, FVector(X, Y, TNBeachMeshes::QuadWheelR * S)));
+		Wheels.Add(TNBeachKit::AddPart(this, QuadRoot, WheelMesh, FVector(X, Y, TNBeachMeshes::QuadWheelR * S), true, TN_ART("Beach.QuadLane.Wheel")));
 	}
 	QuadRoot->SetVisibility(false, true);
 

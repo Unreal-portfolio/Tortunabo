@@ -11,6 +11,8 @@
 #include "TN_TutorialTexts.h"
 #include "TN_CastleKit.h"
 #include "Playground/TN_PlaygroundMeshKit.h"
+#include "Art/TN_Art.h"
+#include "../Art/TN_ArtPieces.h"
 #include "../World/ProcMap/TN_ProcMapMeshKit.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
 #include "../World/ProcMap/TN_ProcMapFloraMeshes.h"
@@ -261,6 +263,95 @@ namespace TNTutorialBuildDetail
 		}
 	};
 
+	/**
+	 * Pieza de arte de cada especie de la vegetación y de cada objeto suelto del tutorial (Docs/Arte_Assets.md): sus variantes
+	 * y biomas comparten la malla de arte. Las de los siete biomas del recorrido (el volcán no sale).
+	 */
+	FName FloraSlot(TNProcMap::EFloraShape Shape, TNProcMap::EPropKind Prop)
+	{
+		using ES = TNProcMap::EFloraShape;
+		using EP = TNProcMap::EPropKind;
+		if (Shape == ES::Prop)
+		{
+			switch (Prop)
+			{
+				case EP::Crate:       return TN_ART("Lobby.Tutorial.Flora.Crate");
+				case EP::WoodBarrel:  return TN_ART("Lobby.Tutorial.Flora.WoodBarrel");
+				case EP::Barricade:   return TN_ART("Lobby.Tutorial.Flora.Barricade");
+				case EP::TrafficCone: return TN_ART("Lobby.Tutorial.Flora.TrafficCone");
+				case EP::HayBale:     return TN_ART("Lobby.Tutorial.Flora.HayBale");
+				case EP::Bench:       return TN_ART("Lobby.Tutorial.Flora.Bench");
+				case EP::LampPost:    return TN_ART("Lobby.Tutorial.Flora.LampPost");
+				case EP::Mailbox:     return TN_ART("Lobby.Tutorial.Flora.Mailbox");
+				case EP::Sacks:       return TN_ART("Lobby.Tutorial.Flora.Sacks");
+				case EP::FlowerPot:   return TN_ART("Lobby.Tutorial.Flora.FlowerPot");
+				case EP::Shell:       return TN_ART("Lobby.Tutorial.Flora.Shell");
+				case EP::Starfish:    return TN_ART("Lobby.Tutorial.Flora.Starfish");
+				case EP::SandBucket:  return TN_ART("Lobby.Tutorial.Flora.SandBucket");
+				case EP::BeachTowel:  return TN_ART("Lobby.Tutorial.Flora.BeachTowel");
+				case EP::Surfboard:   return TN_ART("Lobby.Tutorial.Flora.Surfboard");
+				case EP::Parasol:     return TN_ART("Lobby.Tutorial.Flora.Parasol");
+				case EP::Driftwood:   return TN_ART("Lobby.Tutorial.Flora.Driftwood");
+				case EP::Coconuts:    return TN_ART("Lobby.Tutorial.Flora.Coconuts");
+				case EP::Lifebuoy:    return TN_ART("Lobby.Tutorial.Flora.Lifebuoy");
+				case EP::Mushrooms:   return TN_ART("Lobby.Tutorial.Flora.Mushrooms");
+				case EP::ClayPot:     return TN_ART("Lobby.Tutorial.Flora.ClayPot");
+				case EP::TikiTorch:   return TN_ART("Lobby.Tutorial.Flora.TikiTorch");
+				case EP::SkullPost:   return TN_ART("Lobby.Tutorial.Flora.SkullPost");
+				case EP::CattleSkull: return TN_ART("Lobby.Tutorial.Flora.CattleSkull");
+				case EP::Bones:       return TN_ART("Lobby.Tutorial.Flora.Bones");
+				case EP::Amphora:     return TN_ART("Lobby.Tutorial.Flora.Amphora");
+				case EP::WagonWheel:  return TN_ART("Lobby.Tutorial.Flora.WagonWheel");
+				case EP::Signpost:    return TN_ART("Lobby.Tutorial.Flora.Signpost");
+				case EP::Tumbleweed:  return TN_ART("Lobby.Tutorial.Flora.Tumbleweed");
+				case EP::Crystals:    return TN_ART("Lobby.Tutorial.Flora.Crystals");
+				case EP::Stump:       return TN_ART("Lobby.Tutorial.Flora.Stump");
+				case EP::Cairn:       return TN_ART("Lobby.Tutorial.Flora.Cairn");
+				case EP::Lantern:     return TN_ART("Lobby.Tutorial.Flora.Lantern");
+				case EP::CrabTrap:    return TN_ART("Lobby.Tutorial.Flora.CrabTrap");
+				default:              return NAME_None;
+			}
+		}
+		switch (Shape)
+		{
+			case ES::BroadTree:    return TN_ART("Lobby.Tutorial.Flora.BroadTree");
+			case ES::Ceiba:        return TN_ART("Lobby.Tutorial.Flora.Ceiba");
+			case ES::Palm:         return TN_ART("Lobby.Tutorial.Flora.Palm");
+			case ES::MangroveTree: return TN_ART("Lobby.Tutorial.Flora.MangroveTree");
+			case ES::YoungSequoia: return TN_ART("Lobby.Tutorial.Flora.YoungSequoia");
+			case ES::Cypress:      return TN_ART("Lobby.Tutorial.Flora.Cypress");
+			case ES::Pine:         return TN_ART("Lobby.Tutorial.Flora.Pine");
+			case ES::Fir:          return TN_ART("Lobby.Tutorial.Flora.Fir");
+			case ES::Willow:       return TN_ART("Lobby.Tutorial.Flora.Willow");
+			case ES::Acacia:       return TN_ART("Lobby.Tutorial.Flora.Acacia");
+			case ES::DeadTree:     return TN_ART("Lobby.Tutorial.Flora.DeadTree");
+			case ES::Ornamental:   return TN_ART("Lobby.Tutorial.Flora.Ornamental");
+			case ES::Fern:         return TN_ART("Lobby.Tutorial.Flora.Fern");
+			case ES::Bush:         return TN_ART("Lobby.Tutorial.Flora.Bush");
+			case ES::Grass:        return TN_ART("Lobby.Tutorial.Flora.Grass");
+			case ES::Flowers:      return TN_ART("Lobby.Tutorial.Flora.Flowers");
+			case ES::Reeds:        return TN_ART("Lobby.Tutorial.Flora.Reeds");
+			case ES::Saguaro:      return TN_ART("Lobby.Tutorial.Flora.Saguaro");
+			case ES::Barrel:       return TN_ART("Lobby.Tutorial.Flora.BarrelCactus");
+			case ES::DryBush:      return TN_ART("Lobby.Tutorial.Flora.DryBush");
+			case ES::Hedge:        return TN_ART("Lobby.Tutorial.Flora.Hedge");
+			case ES::Umbrella:     return TN_ART("Lobby.Tutorial.Flora.Umbrella");
+			case ES::Creeper:      return TN_ART("Lobby.Tutorial.Flora.Creeper");
+			case ES::BananaPlant:  return TN_ART("Lobby.Tutorial.Flora.BananaPlant");
+			case ES::Bamboo:       return TN_ART("Lobby.Tutorial.Flora.Bamboo");
+			case ES::TreeFern:     return TN_ART("Lobby.Tutorial.Flora.TreeFern");
+			case ES::SeaGrape:     return TN_ART("Lobby.Tutorial.Flora.SeaGrape");
+			case ES::Pandanus:     return TN_ART("Lobby.Tutorial.Flora.Pandanus");
+			case ES::FanPalm:      return TN_ART("Lobby.Tutorial.Flora.FanPalm");
+			case ES::Casuarina:    return TN_ART("Lobby.Tutorial.Flora.Casuarina");
+			case ES::JoshuaTree:   return TN_ART("Lobby.Tutorial.Flora.JoshuaTree");
+			case ES::Birch:        return TN_ART("Lobby.Tutorial.Flora.Birch");
+			case ES::Rock:         return TN_ART("Lobby.Tutorial.Flora.Rock");
+			case ES::Stones:       return TN_ART("Lobby.Tutorial.Flora.Stones");
+			default:               return NAME_None;
+		}
+	}
+
 	/** Donde se ponen los carteles: marco del cartel (X hacia quien llega y un poco hacia el centro del pasillo). */
 	FTransform SignFrame(int32 Index)
 	{
@@ -334,6 +425,11 @@ void ATN_TutorialCourse::BuildIsland(int32 Part)
 
 	// ── Arriba: pasillo, taludes y meseta, de borde a borde (con colisión) ──
 	FTNProcMeshBuffers Top;
+	FTNProcMeshBuffers Under;
+	// La isla entera (arriba y la roca de debajo) es una pieza de arte, con el origen del recorrido de pivote: la colisión
+	// de arriba no cambia.
+	TNArt::FPieceLog Log(Part == 0 ? TEXT("TutorialIslandA") : TEXT("TutorialIslandB"));
+	const int32 IslandPiece = Log.Begin(Part == 0 ? TN_ART("Lobby.Tutorial.IslandA") : TN_ART("Lobby.Tutorial.IslandB"), FTransform::Identity, { &Top, &Under });
 	Top.Verts.Reserve(Rows * NumTop);
 	TArray<double> Offsets;
 	Offsets.SetNumUninitialized(Rows * NumTop);
@@ -358,7 +454,6 @@ void ATN_TutorialCourse::BuildIsland(int32 Part)
 	}
 
 	// ── Debajo: la roca en cono a cada lado, del borde a la quilla, y las tapas de los extremos (sin colisión) ──
-	FTNProcMeshBuffers Under;
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
 		const int32 Base = Under.Verts.Num();
@@ -418,20 +513,21 @@ void ATN_TutorialCourse::BuildIsland(int32 Part)
 		}
 	}
 	AccumulateNormals(Under);
+	Log.End(IslandPiece);
 
 	UMaterialInterface* TerrainMat = Settings && Settings->TerrainMaterial ? Settings->TerrainMaterial.Get()
 		: LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcTerrain.M_ProcTerrain"), DebugVertexMaterial());
 	UProceduralMeshComponent* Mesh = NewMeshComponent(Part == 0 ? TEXT("IslandA") : TEXT("IslandB"), true);
 	// Dato de primitiva 0 = 1: M_ProcTerrain pone el relieve por normales y la textura del camino (como las teselas del mapa).
 	Mesh->SetCustomPrimitiveDataFloat(0, 1.f);
-	const TArray<FProcMeshTangent> NoTangents;
-	Mesh->CreateMeshSection_LinearColor(0, Top.Verts, Top.Tris, Top.Normals, Top.UVs, Top.Colors, NoTangents, true);
-	Mesh->CreateMeshSection_LinearColor(1, Under.Verts, Under.Tris, Under.Normals, Under.UVs, Under.Colors, NoTangents, false);
+	TNArt::UploadSection(Mesh, 0, Top, true, nullptr, &Log);
+	TNArt::UploadSection(Mesh, 1, Under, false, nullptr, &Log);
 	if (TerrainMat)
 	{
 		Mesh->SetMaterial(0, TerrainMat);
 		Mesh->SetMaterial(1, TerrainMat);
 	}
+	TNArt::SpawnPieceArt(Mesh, Log);
 	IslandMeshes.Add(Mesh);
 }
 
@@ -441,11 +537,15 @@ void ATN_TutorialCourse::BuildDecor()
 	using TNCastleKit::Col;
 	FTNProcMeshBuffers Solid;
 	FTNProcMeshBuffers Deco;
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md), en locales del recorrido.
+	TNArt::FPieceLog Log(TEXT("TutorialDecor"));
 
 	// Tronco de equilibrio sobre el cañón, con sus estacas a cada lado.
 	{
 		const FVector A = LogStart();
 		const FVector B = LogEnd();
+		// Pivote: el eje del tronco en su punta de la terraza, +X a lo largo del tronco (baja hacia la isla B).
+		TNArt::FPieceScope Piece(Log, TN_ART("Lobby.Tutorial.BalanceLog"), FTransform(FRotationMatrix::MakeFromX(B - A).Rotator(), A), { &Solid, &Deco });
 		TNProcMesh::TNProcAddLog(Solid, A, B, Dims::LogRadius, Seed + 61u, Col(0x7A5232), Col(0xD9B98A));
 		for (const FVector& End : { A, B })
 		{
@@ -461,6 +561,7 @@ void ATN_TutorialCourse::BuildDecor()
 	{
 		const FVector Feet = MoundFeet();
 		const double R = Dims::MoundRadius;
+		TNArt::FPieceScope Piece(Log, TN_ART("Lobby.Tutorial.SearchMound"), TNArt::PiecePivot(Feet), { &Solid, &Deco });
 		TNPlaygroundKit::AddEllipsoid(Solid, Feet + FVector(0.0, 0.0, -20.0), FVector::ForwardVector, FVector::RightVector, FVector::UpVector,
 			FVector(R, R * 0.92, 95.0), 14, 7, Col(0xE4C489));
 		TNPlaygroundKit::AddEllipsoid(Deco, Feet + FVector(-R * 0.35, R * 0.25, 45.0), FVector::ForwardVector, FVector::RightVector, FVector::UpVector,
@@ -475,6 +576,7 @@ void ATN_TutorialCourse::BuildDecor()
 	// Peana de arena del cangrejo de prácticas (va y viene por encima).
 	{
 		const FVector Feet = DummyFeet();
+		TNArt::FPieceScope Piece(Log, TN_ART("Lobby.Tutorial.DummyDais"), TNArt::PiecePivot(Feet), { &Solid, &Deco });
 		TNPlaygroundKit::AddFrustum(Solid, Feet + FVector(0.0, 0.0, -30.0), Feet + FVector(0.0, 0.0, 6.0), 250.0, 225.0, 22, Col(0xE8CC92), Col(0xF0D49A), false, true);
 		// Diana pintada en la peana.
 		for (int32 k = 0; k < 3; ++k)
@@ -489,6 +591,7 @@ void ATN_TutorialCourse::BuildDecor()
 		const double X = Dims::TrenchX0 - 60.0;
 		const double C = CorridorCenter(X);
 		const double Z = FloorZ(X, 0.0) + 2.0;
+		TNArt::FPieceScope Piece(Log, TN_ART("Lobby.Tutorial.Chevrons"), TNArt::PiecePivot(FVector(X, C, Z - 2.0)), { &Deco });
 		for (int32 k = -2; k <= 2; ++k)
 		{
 			const double Y = C + k * 110.0;
@@ -501,6 +604,7 @@ void ATN_TutorialCourse::BuildDecor()
 	for (int32 i = 0; i < NumStations; ++i)
 	{
 		const FTransform Frame = SignFrame(i);
+		TNArt::FPieceScope Piece(Log, TN_ART("Lobby.Tutorial.Sign"), Frame, { &Deco });
 		auto P = [&Frame](double X, double Y, double Z) { return Frame.TransformPosition(FVector(X, Y, Z)); };
 		const FVector Fwd = Frame.GetUnitAxis(EAxis::X);
 		const FVector Right = Frame.GetUnitAxis(EAxis::Y);
@@ -523,25 +627,28 @@ void ATN_TutorialCourse::BuildDecor()
 	{
 		const double X = Dims::LipX - 60.0;
 		const double Y = CorridorCenter(X) + S * (Dims::StreamLipHalfW + 40.0);
-		TNProcMesh::TNProcAddBoulder(Solid, FVector(X, Y, FloorZ(X, S * (Dims::StreamLipHalfW + 40.0)) - 10.0), 70.0, 60.0, Seed + 71u + (S > 0.0 ? 1u : 0u), Col(0x8A8378));
+		const FVector Base(X, Y, FloorZ(X, S * (Dims::StreamLipHalfW + 40.0)) - 10.0);
+		TNArt::FPieceScope Piece(Log, TN_ART("Lobby.Tutorial.LipBoulder"), TNArt::PiecePivot(Base), { &Solid });
+		TNProcMesh::TNProcAddBoulder(Solid, Base, 70.0, 60.0, Seed + 71u + (S > 0.0 ? 1u : 0u), Col(0x8A8378));
 	}
 
 	UMaterialInterface* Mat = TNCastleKit::VertexColorMaterial();
 	DecorMesh = NewMeshComponent(TEXT("Decor"), true);
-	const TArray<FProcMeshTangent> NoTangents;
 	if (!Solid.IsEmpty())
 	{
-		DecorMesh->CreateMeshSection_LinearColor(0, Solid.Verts, Solid.Tris, Solid.Normals, Solid.UVs, Solid.Colors, NoTangents, true);
+		TNArt::UploadSection(DecorMesh, 0, Solid, true, nullptr, &Log);
 	}
 	if (!Deco.IsEmpty())
 	{
-		DecorMesh->CreateMeshSection_LinearColor(1, Deco.Verts, Deco.Tris, Deco.Normals, Deco.UVs, Deco.Colors, NoTangents, false);
+		TNArt::UploadSection(DecorMesh, 1, Deco, false, nullptr, &Log);
 	}
 	if (Mat)
 	{
 		DecorMesh->SetMaterial(0, Mat);
 		DecorMesh->SetMaterial(1, Mat);
 	}
+	// La malla de arte de cada pieza con sustituto, en su sitio (hija de los adornos: mismos ejes que los buffers).
+	TNArt::SpawnPieceArt(DecorMesh, Log);
 }
 
 void ATN_TutorialCourse::BuildWater()
@@ -658,8 +765,13 @@ void ATN_TutorialCourse::BuildClouds()
 	using namespace TNTutorialBuildDetail;
 	FTNProcMeshBuffers Clouds;
 	TNProcMap::FRng Rng(static_cast<uint64>(Seed) * 2654435761ull + 17ull);
-	auto AddCluster = [&Clouds, &Rng](const FVector& Center, double Size, float Alpha)
+	// Cada nube (y cada jirón de bruma de la cascada) es una pieza de arte: su centro, escala 1 = Size RefSize.
+	TNArt::FPieceLog Log(TEXT("TutorialClouds"));
+	FName CloudSlot = TN_ART("Lobby.Tutorial.Cloud");
+	double RefSize = 800.0;
+	auto AddCluster = [&Clouds, &Rng, &Log, &CloudSlot, &RefSize](const FVector& Center, double Size, float Alpha)
 	{
+		TNArt::FPieceScope Piece(Log, CloudSlot, TNArt::PiecePivot(Center, 0.0, FVector(Size / RefSize)), { &Clouds });
 		const int32 Puffs = Rng.RangeInt(4, 7);
 		for (int32 p = 0; p < Puffs; ++p)
 		{
@@ -684,6 +796,8 @@ void ATN_TutorialCourse::BuildClouds()
 		}
 	}
 	// Bruma donde se deshace la cascada (entre el 30 % y el 55 % de la caída), cada vez más tenue.
+	CloudSlot = TN_ART("Lobby.Tutorial.CascadeMist");
+	RefSize = 400.0;
 	for (int32 k = 0; k < 7; ++k)
 	{
 		const double Frac = 0.3 + 0.04 * k;
@@ -694,12 +808,8 @@ void ATN_TutorialCourse::BuildClouds()
 	UMaterialInterface* Mat = LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcFXCloud.M_ProcFXCloud"), DebugVertexMaterial());
 	CloudMesh = NewMeshComponent(TEXT("Clouds"), false);
 	CloudMesh->SetCastShadow(false);
-	const TArray<FProcMeshTangent> NoTangents;
-	CloudMesh->CreateMeshSection_LinearColor(0, Clouds.Verts, Clouds.Tris, Clouds.Normals, Clouds.UVs, Clouds.Colors, NoTangents, false);
-	if (Mat)
-	{
-		CloudMesh->SetMaterial(0, Mat);
-	}
+	TNArt::UploadSection(CloudMesh, 0, Clouds, false, Mat, &Log);
+	TNArt::SpawnPieceArt(CloudMesh, Log);
 }
 
 void ATN_TutorialCourse::BuildFlora()
@@ -828,6 +938,7 @@ void ATN_TutorialCourse::BuildFlora()
 		}
 		HISM->RegisterComponent();
 		HISM->AddInstances(Entry.Value, false, false);
+		TNArt::ApplyToInstances(HISM, TNTutorialBuildDetail::FloraSlot(Sp.Shape, Sp.Prop));
 		FloraComponents.Add(HISM);
 		Total += Entry.Value.Num();
 	}
