@@ -2125,7 +2125,9 @@ cuenta. Mientras forcejea, a quien carga **le tiembla la cámara** (2,5° a 41 y
 **45 %** de la fuerza (`StruggleThrowMultiplier`).
 
 Se suelta también sin lanzar (`ForceRelease(false)`) si quien carga o la cargada muere, si quien carga cae derribada, y en el
-mapa procedural al reaparecer o llegar (`ATN_ProcMapGameMode::ReleaseCarry`).
+mapa procedural al reaparecer o llegar (`ATN_ProcMapGameMode::ReleaseCarry`). Si **la cargada** cae derribada (el lanzable de
+un tercero, la piel de plátano, el DBNO), quien la lleva la suelta antes y ella cae derribada como en el suelo, fuera del
+caparazón (`TNCarryRules::KnockdownDropsFromCarrier`, #68); aturdida (la bola de la carrera) sigue en sus brazos.
 
 ### 19.3 Lanzar con la E: el saque de banda
 

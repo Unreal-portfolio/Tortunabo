@@ -7,6 +7,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TN_ShellComponent.h"
+#include "Player/TN_CarryComponent.h"
+#include "Player/TN_CarryRules.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_DizzyBirdsComponent.h"
 #include "Player/TN_TurtleAnimInstance.h"
@@ -49,6 +51,18 @@ void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 	if (ShellComponent)
 	{
 		ShellComponent->ForceExitShell();
+	}
+
+	// En brazos de otra (#68): quien la lleva la suelta antes del derribo, ya fuera del caparazón (sin una bola que nazca y
+	// se quite en el acto). Si no, el derribo empezaba con el movimiento apagado y enganchada encima del portador, y al
+	// levantarse andaba (MOVE_Walking) pegada a él con CarriedBy puesto.
+	if (CarryComponent && TNCarryRules::KnockdownDropsFromCarrier(CarryComponent->IsBeingCarried()))
+	{
+		ATortugaCharacter* Carrier = CarryComponent->GetCarrier();
+		if (UTN_CarryComponent* CarrierCarry = Carrier ? Carrier->GetCarryComponent() : nullptr)
+		{
+			CarrierCarry->ForceRelease(false);
+		}
 	}
 
 	// Evitar solapar knockdowns
