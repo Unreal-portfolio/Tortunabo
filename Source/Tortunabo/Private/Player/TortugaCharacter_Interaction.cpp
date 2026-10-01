@@ -10,6 +10,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Camera/CameraComponent.h"
 #include "Player/TN_CarryComponent.h"
+#include "Player/TN_ThrowArc.h"
 #include "Core/TN_Log.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
@@ -404,7 +405,7 @@ bool ATortugaCharacter::GetCrosshairPoint(FVector& OutPoint) const
 	return true;
 }
 
-FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed, float GravityCmS2) const
+FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed, float GravityCmS2, float LinearDamping) const
 {
 	const UWorld* World = GetWorld();
 	FVector Target;
@@ -422,11 +423,8 @@ FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, c
 		return Delta.GetSafeNormal();
 	}
 	const double G = GravityCmS2 > 1.f ? static_cast<double>(GravityCmS2) : FMath::Max(1.0, -static_cast<double>(World->GetGravityZ()));
-	const double V2 = static_cast<double>(Speed) * Speed;
-	const double Disc = V2 * V2 - G * (G * D * D + 2.0 * Delta.Z * V2);
 	// Sin alcance (punto demasiado lejos): el ángulo de máximo alcance.
-	const double TanTheta = Disc >= 0.0 ? (V2 - FMath::Sqrt(Disc)) / (G * D) : 1.0;
-	const double Theta = FMath::Atan(TanTheta);
+	const double Theta = TNThrowArc::LaunchPitch(D, Delta.Z, static_cast<double>(Speed), G, static_cast<double>(LinearDamping));
 	return (Flat / D * FMath::Cos(Theta) + FVector(0.0, 0.0, FMath::Sin(Theta))).GetSafeNormal();
 }
 

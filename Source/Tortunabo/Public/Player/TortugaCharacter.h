@@ -1425,9 +1425,10 @@ public:
 	/**
 	 * Velocidad inicial (dirección) para que un lanzamiento que sale de Origin a Speed (cm/s) caiga en el punto que se ve en
 	 * el centro de la pantalla: el primer sitio que corta el rayo de la cámara (o, sin nada, un punto lejano), con el arco
-	 * justo para llegar. Si no llega, el ángulo de máximo alcance. GravityCmS2 <= 0 usa la del mundo. En VR, GetThrowDirection(AimRotation). Vale en el servidor.
+	 * justo para llegar. Si no llega, el ángulo de máximo alcance. GravityCmS2 <= 0 usa la del mundo. LinearDamping (1/s) compensa
+	 * el frenado en el aire de lo lanzado (la caja de la concha lo tiene). En VR, GetThrowDirection(AimRotation). Vale en el servidor.
 	 */
-	FVector GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed, float GravityCmS2 = 0.f) const;
+	FVector GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed, float GravityCmS2 = 0.f, float LinearDamping = 0.f) const;
 
 	/** El punto del mundo que se ve en el centro de la pantalla (primer choque del rayo de la cámara, o uno lejano). Falso en VR. */
 	bool GetCrosshairPoint(FVector& OutPoint) const;
