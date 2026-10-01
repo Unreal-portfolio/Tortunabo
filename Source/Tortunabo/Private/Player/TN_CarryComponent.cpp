@@ -254,10 +254,11 @@ void UTN_CarryComponent::ThrowCarried(const FRotator& AimRotation)
 	}
 
 	// Hacia donde mira la cámara, con el arco bajo de todos los lanzamientos (~25° con la cámara a nivel).
-	const FVector Dir = Self->GetThrowDirection(AimRotation);
 	const float Speed = ThrowSpeed * (bCarriedStruggling ? StruggleThrowMultiplier : 1.f);
 	const FVector Flat = FRotator(0.f, AimRotation.Yaw, 0.f).Vector();
 	const FVector Start = Self->GetActorLocation() + Flat * 70.f + FVector(0.f, 0.f, CarryHeight + 20.f);
+	// Al punto del centro de la pantalla (en VR, hacia la aleta).
+	const FVector Dir = Self->GetThrowDirectionToCrosshair(Start, AimRotation, Speed);
 
 	Release(Carried, Start, Dir * Speed, true, true);
 	if (ThrowSound)

@@ -8,6 +8,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Player/TortugaCharacter.h"
+#include "Camera/CameraComponent.h"
+#include "Player/TN_CarryComponent.h"
 #include "Core/TN_Log.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Player/TN_StaminaComponent.h"
@@ -370,6 +372,53 @@ FVector ATortugaCharacter::GetThrowDirection(const FRotator& AimRotation) const
 	return FRotator(Pitch, AimRotation.Yaw, 0.f).Vector();
 }
 
+bool ATortugaCharacter::UsesCameraThrowAim() const
+{
+	return FollowCamera && !bVRViewActive && !bVRPlayer;
+}
+
+FVector ATortugaCharacter::GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed) const
+{
+	const UWorld* World = GetWorld();
+	if (!UsesCameraThrowAim() || !World || Speed < 1.f)
+	{
+		return GetThrowDirection(AimRotation);
+	}
+
+	// Rayo por el centro de la pantalla: sale de la cámara hacia delante. Su primer choque (menos la propia tortuga y lo que
+	// lleva) es el punto de mira; sin choque, un punto lejano en el mismo rayo.
+	constexpr float AimRange = 8000.f;
+	const FVector CamLoc = FollowCamera->GetComponentLocation();
+	const FVector CamDir = FollowCamera->GetForwardVector();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ThrowCrosshair), false, this);
+	if (const UTN_CarryComponent* Carry = CarryComponent)
+	{
+		if (const AActor* Carried = Carry->GetCarriedTurtle())
+		{
+			Params.AddIgnoredActor(Carried);
+		}
+	}
+	FHitResult Hit;
+	const bool bHit = World->LineTraceSingleByChannel(Hit, CamLoc, CamLoc + CamDir * AimRange, ECC_Visibility, Params);
+	const FVector Target = bHit ? Hit.ImpactPoint : CamLoc + CamDir * AimRange;
+
+	// Tiro parabólico (la gravedad del mundo, con ProjectileGravityScale 1): el ángulo bajo que llega justo al punto.
+	const FVector Delta = Target - Origin;
+	const FVector Flat(Delta.X, Delta.Y, 0.0);
+	const double D = Flat.Size();
+	if (D < 1.0)
+	{
+		return Delta.GetSafeNormal();
+	}
+	const double G = FMath::Max(1.0, -static_cast<double>(World->GetGravityZ()));
+	const double V2 = static_cast<double>(Speed) * Speed;
+	const double Disc = V2 * V2 - G * (G * D * D + 2.0 * Delta.Z * V2);
+	// Sin alcance (punto demasiado lejos): el ángulo de máximo alcance.
+	const double TanTheta = Disc >= 0.0 ? (V2 - FMath::Sqrt(Disc)) / (G * D) : 1.0;
+	const double Theta = FMath::Atan(TanTheta);
+	return (Flat / D * FMath::Cos(Theta) + FVector(0.0, 0.0, FMath::Sin(Theta))).GetSafeNormal();
+}
+
 void ATortugaCharacter::MulticastItemThrowAnim_Implementation()
 {
 	if (GetNetMode() == NM_DedicatedServer)
@@ -388,9 +437,11 @@ void ATortugaCharacter::HandleUseThrowable(const FTN_InventoryItem& EquippedItem
 	const FVector SpawnLocation = GetItemSpawnLocation();
 
 	// ── Dirección de lanzamiento: hacia donde mira la cámara (en VR, la aleta), con el arco bajo de todos los lanzamientos ──
-	const FVector ArcedDirection = GetThrowDirection(GetTurtleAimRotation());
+	// y al punto del centro de la pantalla (en VR, hacia la aleta).
+	const float ThrowSpeedCmS = FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
+	const FVector ArcedDirection = GetThrowDirectionToCrosshair(SpawnLocation, GetTurtleAimRotation(), ThrowSpeedCmS);
 
-	const FVector LaunchVelocity = ArcedDirection * FMath::Max(EquippedItem.ThrowableData.ThrowSpeed, 0.0f);
+	const FVector LaunchVelocity = ArcedDirection * ThrowSpeedCmS;
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = this;
@@ -446,7 +497,7 @@ void ATortugaCharacter::HandleUseInkThrower(const FTN_InventoryItem& EquippedIte
 
 	// Con el mismo arco bajo que el resto de lanzamientos (la tinta también cae con la gravedad).
 	const FVector Origin    = GetItemSpawnLocation();
-	const FVector Direction = GetThrowDirection(GetTurtleAimRotation());
+	const FVector Direction = GetThrowDirectionToCrosshair(Origin, GetTurtleAimRotation(), ConsumedItem.InkData.ThrowSpeed);
 	ATN_InkProjectile::Spawn(this, ConsumedItem.InkData.ProjectileClass,
 		Origin, Direction, ConsumedItem.InkData.ThrowSpeed);
 	MulticastItemThrowAnim();

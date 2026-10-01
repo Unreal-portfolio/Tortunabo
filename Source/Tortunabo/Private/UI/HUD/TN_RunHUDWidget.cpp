@@ -41,6 +41,9 @@
 #include "World/TN_ScoreShells.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Core/TN_InventoryTypes.h"
+#include "Player/TN_CarryComponent.h"
+#include "Player/TN_InventoryComponent.h"
 #include "InputAction.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "World/ProcMap/TN_PathStorm.h"
@@ -596,6 +599,33 @@ void UTN_RunHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 		Invalidate(EInvalidateWidgetReason::Paint);
 	}
 	bShellPaintDirty = bShellsOnScreen;
+	const bool bWantsDot = ShouldShowAimDot();
+	if (bWantsDot != bAimDotShown)
+	{
+		bAimDotShown = bWantsDot;
+		Invalidate(EInvalidateWidgetReason::Paint);
+	}
+}
+
+bool UTN_RunHUDWidget::ShouldShowAimDot() const
+{
+	const APlayerController* PC = GetOwningPlayer();
+	const ATortugaCharacter* Turtle = PC ? Cast<ATortugaCharacter>(PC->GetPawn()) : nullptr;
+	if (!Turtle || PC->ShouldShowMouseCursor() || Turtle->UsesCameraThrowAim() == false)
+	{
+		return false;
+	}
+	if (Turtle->GetCarryComponent() && Turtle->GetCarryComponent()->IsCarrying())
+	{
+		return true;
+	}
+	const UTN_InventoryComponent* Inv = Turtle->GetInventoryComponent();
+	if (!Inv || !Inv->HasEquippedItem())
+	{
+		return false;
+	}
+	const ETN_ItemUseType Use = Inv->GetEquippedItem().UseType;
+	return Use == ETN_ItemUseType::Throwable || Use == ETN_ItemUseType::InkThrower;
 }
 
 void UTN_RunHUDWidget::NativeDestruct()
@@ -1098,8 +1128,21 @@ int32 UTN_RunHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& All
 	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
 	const int32 Layer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-	if (Flights.Num() == 0 && CounterGlow <= 0.f) { return Layer; }
 	const FLinearColor Tint = InWidgetStyle.GetColorAndOpacityTint();
+	int32 DotLayer = Layer;
+	if (bAimDotShown)
+	{
+		// Punto blanco en el centro de la pantalla (con un borde negro para que se vea sobre cualquier fondo).
+		static const FSlateRoundedBoxBrush DotRim(FLinearColor::Black, 8.25f);
+		static const FSlateRoundedBoxBrush Dot(FLinearColor::White, 5.25f);
+		const FVector2f Center = AllottedGeometry.GetLocalSize() * 0.5f;
+		FSlateDrawElement::MakeBox(OutDrawElements, Layer + 1, AllottedGeometry.ToPaintGeometry(FVector2f(16.5f, 16.5f),
+			FSlateLayoutTransform(Center - FVector2f(8.25f, 8.25f))), &DotRim, ESlateDrawEffect::None, FLinearColor::White * Tint);
+		FSlateDrawElement::MakeBox(OutDrawElements, Layer + 2, AllottedGeometry.ToPaintGeometry(FVector2f(10.5f, 10.5f),
+			FSlateLayoutTransform(Center - FVector2f(5.25f, 5.25f))), &Dot, ESlateDrawEffect::None, FLinearColor::White * Tint);
+		DotLayer = Layer + 2;
+	}
+	if (Flights.Num() == 0 && CounterGlow <= 0.f) { return DotLayer; }
 	// Al acabar una grande o una reina, su icono crece desde la concha del contador y se apaga.
 	if (CounterGlow > 0.f && !CounterTarget.IsNearlyZero())
 	{

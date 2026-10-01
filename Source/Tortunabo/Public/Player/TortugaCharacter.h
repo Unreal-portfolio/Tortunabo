@@ -1419,6 +1419,16 @@ public:
 	 */
 	FVector GetThrowDirection(const FRotator& AimRotation) const;
 
+	/** Los lanzamientos van al punto del centro de la pantalla (si no, en VR, siguen a la aleta con GetThrowDirection). */
+	bool UsesCameraThrowAim() const;
+
+	/**
+	 * Velocidad inicial (dirección) para que un lanzamiento que sale de Origin a Speed (cm/s) caiga en el punto que se ve en
+	 * el centro de la pantalla: el primer sitio que corta el rayo de la cámara (o, sin nada, un punto lejano), con el arco
+	 * justo para llegar. Si no llega, el ángulo de máximo alcance. En VR, GetThrowDirection(AimRotation). Vale en el servidor.
+	 */
+	FVector GetThrowDirectionToCrosshair(const FVector& Origin, const FRotator& AimRotation, float Speed) const;
+
 	/** El golpe de brazo de lanzar un objeto, en todas las máquinas (cosmético; lo manda el servidor al lanzarlo). */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastItemThrowAnim();
