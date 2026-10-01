@@ -1,16 +1,20 @@
-// Torreta del buggy: apuntado replicado, calentamiento del coco, munición especial y disparo con retroceso. Todo lo
-// decide el servidor; los clientes solo piden por RPC validada (ATN_Buggy para la conductora sola,
-// ATN_BuggyGunnerPawn para la artillera). Lógica pura en TNRallyTurret (TN_RallyTurretLogic.h).
+// Torreta del buggy: apuntado replicado, calentamiento del coco, munición especial, munición seleccionada, noqueo de la
+// artillera y disparo con retroceso (horizontal y vertical). Todo lo decide el servidor; los clientes solo piden por RPC
+// validada (ATN_Buggy para la conductora sola, ATN_BuggyGunnerPawn para la artillera, o la de esta torreta si la pide la
+// dueña del buggy). Los efectos de cada disparo y las ráfagas de impacto llegan por multicast no fiable. Lógica pura en
+// TNRallyTurret (TN_RallyTurretLogic.h).
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "Rally/TN_RallyVehicle.h"
+#include "Vehicles/TN_RallyProjectile.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
 #include "TN_BuggyTurretComponent.generated.h"
 
 class ATN_Buggy;
-class ATN_RallyProjectile;
+class UNiagaraSystem;
+class USoundBase;
 
 UCLASS(ClassGroup = (Rally), meta = (BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_BuggyTurretComponent : public USceneComponent
@@ -40,22 +44,57 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Rally|Torreta")
 	int32 GetSpecialCharges() const { return SpecialCharges; }
 
+	/** Munición que dispara el botón principal: el coco o la especial cargada. */
+	UFUNCTION(BlueprintPure, Category = "Rally|Torreta")
+	ETNRallyAmmo GetSelectedAmmo() const { return SelectedAmmo; }
+
+	/** Si la artillera está noqueada (la torreta no dispara). */
+	UFUNCTION(BlueprintPure, Category = "Rally|Torreta")
+	bool IsGunnerKnocked() const;
+
+	/** Segundos de noqueo que quedan (0 = despierta). */
+	UFUNCTION(BlueprintPure, Category = "Rally|Torreta")
+	float GetGunnerKnockSecondsLeft() const;
+
 	/** Apuntado relativo al buggy que se ve en esta máquina (el local para la artillera, el replicado para el resto). */
 	FRotator GetDisplayAim() const;
 
 	/** Dirección en mundo del apuntado replicado. */
 	FVector GetAimWorldDirection() const;
 
+	// ── Cualquier máquina ──────────────────────────────────────────────────────
+
+	/**
+	 * Cambia la munición seleccionada a la siguiente (Direction > 0) o a la anterior (Direction < 0) entre las que tiene:
+	 * el coco siempre y la especial si le quedan cargas. En un cliente lo pide al servidor por la artillera local
+	 * (ATN_BuggyGunnerPawn) o, si es la dueña del buggy, por la RPC de esta torreta.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Rally|Torreta")
+	void CycleAmmo(int32 Direction);
+
 	// ── Servidor ───────────────────────────────────────────────────────────────
 
 	/** Apuntado relativo (se limita a -10..+45 de cabeceo). */
 	void SetAimRelative(const FRotator& RelativeAim);
 
-	/** Dispara la munición básica (coco) o la especial hacia WorldDir. False si la cadencia, el calor o las cargas no lo permiten. */
+	/** Dispara la munición básica (coco) o la especial hacia WorldDir. False si la cadencia, el calor, las cargas o el noqueo no lo permiten. */
 	bool TryFire(bool bSpecial, const FVector& WorldDir);
+
+	/** Dispara la munición seleccionada (botón principal) hacia WorldDir. */
+	bool TryFireSelected(const FVector& WorldDir);
+
+	/** Cambia la selección (validado ya el que lo pide). */
+	void ApplyCycle(int32 Direction);
 
 	/** Carga de una caja: sustituye a la que hubiera. */
 	void GiveSpecial(ETNRallyAmmo Ammo, int32 Charges);
+
+	/** Noquea a la artillera Seconds: la torreta no dispara hasta entonces. */
+	void KnockGunner(float Seconds);
+
+	/** Ráfaga cosmética en todas las máquinas (ATN_RallyBurstFX::Broadcast). */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastBurst(ETNRallyBurstKind Kind, FVector_NetQuantize Where, float RadiusCm);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -63,9 +102,39 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Torreta")
 	TSubclassOf<ATN_RallyProjectile> ProjectileClass;
 
+	/** Sonido y fogonazo de cada disparo (sin asset, solo la ráfaga básica del fogonazo). FireSound, si la munición no tiene el suyo. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Efectos")
+	TObjectPtr<USoundBase> FireSound;
+
+	/** Disparo de cada munición; la que falte usa FireSound. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Efectos")
+	TMap<ETNRallyAmmo, TObjectPtr<USoundBase>> FireSoundByAmmo;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Efectos")
+	TObjectPtr<UNiagaraSystem> MuzzleFlashFX;
+
+protected:
+	virtual void BeginPlay() override;
+
 private:
 	ATN_Buggy* GetBuggy() const;
 	void SyncReplicatedState();
+	/** Comprueba bloqueo, noqueo, cadencia, calor y cargas de Ammo. */
+	bool CanFireAmmo(ETNRallyAmmo Ammo, double Now) const;
+	ATN_RallyProjectile* SpawnProjectile(ETNRallyAmmo Ammo, const FVector& Dir, const FVector& Muzzle);
+	void CommitShot(ETNRallyAmmo Ammo, double Now);
+	void ApplyRecoil(ETNRallyAmmo Ammo, const FVector& Dir);
+	/** Color del cañón según la munición seleccionada (en cada máquina). */
+	void ApplySelectedLook();
+
+	UFUNCTION()
+	void OnRep_SelectedAmmo();
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerCycleAmmo(int32 Direction);
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastFired(ETNRallyAmmo Ammo, FVector_NetQuantize Muzzle, FVector_NetQuantizeNormal Dir);
 
 	UPROPERTY(Replicated)
 	float AimYaw = 0.f;
@@ -84,6 +153,13 @@ private:
 
 	UPROPERTY(Replicated)
 	int32 SpecialCharges = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_SelectedAmmo)
+	ETNRallyAmmo SelectedAmmo = ETNRallyAmmo::Coco;
+
+	/** Hora del servidor en que la artillera se despierta (0 = no está noqueada). */
+	UPROPERTY(Replicated)
+	float GunnerKnockEndServerTime = 0.f;
 
 	TNRallyTurret::FHeat HeatState;
 	TNRallyTurret::FSpecial Special;

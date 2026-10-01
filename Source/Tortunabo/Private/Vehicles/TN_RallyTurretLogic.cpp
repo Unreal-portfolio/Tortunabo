@@ -22,6 +22,9 @@ namespace TNRallyTurret
 		case ETNRallyAmmo::Tinta:
 			Spec = { 5000.f, 0.3f, 3.f, 60.f, 0.5f, 2 };
 			break;
+		case ETNRallyAmmo::Ancla:
+			Spec = { 4500.f, 0.5f, 3.f, 200.f, 0.6f, 2 };
+			break;
 		default:
 			break;
 		}
@@ -141,6 +144,51 @@ namespace TNRallyTurret
 	{
 		const FVector Flat = FVector(AimWorldDir.X, AimWorldDir.Y, 0.f).GetSafeNormal();
 		return -Flat * FMath::Max(RecoilCms, 0.f);
+	}
+
+	FRecoilLift RecoilLift(const FVector& LocalAimDir, float RecoilCms, float HalfLengthCm)
+	{
+		FRecoilLift Out;
+		const FVector Flat = FVector(LocalAimDir.X, LocalAimDir.Y, 0.f).GetSafeNormal();
+		const float Forwardness = static_cast<float>(Flat.X);
+		if (FMath::Abs(Forwardness) < KINDA_SMALL_NUMBER || RecoilCms <= 0.f)
+		{
+			return Out;
+		}
+		Out.LiftCms = RecoilCms * RecoilLiftRatio * FMath::Abs(Forwardness);
+		Out.LocalPoint = FVector(FMath::Sign(Forwardness) * FMath::Max(HalfLengthCm, 0.f) * 0.9f, 0.f, 0.f);
+		return Out;
+	}
+
+	TArray<ETNRallyAmmo> AvailableAmmo(const FSpecial& Special)
+	{
+		TArray<ETNRallyAmmo> Out;
+		Out.Add(ETNRallyAmmo::Coco);
+		if (CanFireSpecial(Special))
+		{
+			Out.Add(Special.Ammo);
+		}
+		return Out;
+	}
+
+	ETNRallyAmmo ResolveSelection(ETNRallyAmmo Selected, const FSpecial& Special)
+	{
+		if (!IsSpecial(Selected) || !CanFireSpecial(Special))
+		{
+			return ETNRallyAmmo::Coco;
+		}
+		return Special.Ammo;
+	}
+
+	ETNRallyAmmo CycleAmmo(ETNRallyAmmo Selected, const FSpecial& Special, int32 Direction)
+	{
+		const TArray<ETNRallyAmmo> Options = AvailableAmmo(Special);
+		const ETNRallyAmmo Current = ResolveSelection(Selected, Special);
+		const int32 Index = FMath::Max(0, Options.IndexOfByKey(Current));
+		const int32 Num = Options.Num();
+		// Módulo positivo: un paso hacia atrás desde el primero da el último.
+		const int32 Next = ((Index + Direction) % Num + Num) % Num;
+		return Options[Next];
 	}
 
 	float LobRangeCm(float PitchDeg, float HeightCm, float SpeedCms, float GravityCms2)

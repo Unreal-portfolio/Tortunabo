@@ -26,6 +26,8 @@ namespace TNRallyTurret
 	constexpr float MortarUpCms = 450.f;
 	/** Tinta: mancha la pantalla de las dos ocupantes 3 s. */
 	constexpr float InkSeconds = 3.f;
+	/** Ancla: se engancha al buggy alcanzado y lo frena 2 s (TNRallyCombat::AnchorDragAccel). */
+	constexpr float AnchorSeconds = 2.f;
 
 	/** Velocidad punta del buggy sin charco (cm/s, ~110 km/h con el ajuste de UTN_BuggyData). */
 	constexpr float BuggyTopSpeedCms = 3050.f;
@@ -121,6 +123,39 @@ namespace TNRallyTurret
 
 	/** Cambio de velocidad del retroceso: opuesto a la dirección del disparo, en el plano horizontal, de RecoilCms. */
 	TORTUNABO_API FVector RecoilVelocity(const FVector& AimWorldDir, float RecoilCms);
+
+	/** Fracción del retroceso que levanta el extremo del buggy hacia el que se dispara. */
+	constexpr float RecoilLiftRatio = 0.8f;
+
+	/** Componente vertical del retroceso, en espacio local del buggy. */
+	struct FRecoilLift
+	{
+		/** Cambio de velocidad hacia arriba (cm/s) que se aplica en LocalPoint. */
+		float LiftCms = 0.f;
+		/** Punto de aplicación (cm, local): el morro al disparar hacia delante, la trasera al disparar hacia atrás. */
+		FVector LocalPoint = FVector::ZeroVector;
+	};
+
+	/**
+	 * Levantamiento del retroceso: proporcional a cuánto apunta el disparo hacia delante o hacia atrás (LocalAimDir en
+	 * espacio del buggy). Disparar hacia delante frena (RecoilVelocity) y levanta el morro; hacia atrás, acelera y levanta
+	 * la trasera. Un disparo lateral no levanta.
+	 */
+	TORTUNABO_API FRecoilLift RecoilLift(const FVector& LocalAimDir, float RecoilCms, float HalfLengthCm);
+
+	// ── Munición seleccionada ───────────────────────────────────────────────────
+
+	/** Munición que puede elegir la artillera, en orden de ciclo: el coco siempre y la especial si le quedan cargas. */
+	TORTUNABO_API TArray<ETNRallyAmmo> AvailableAmmo(const FSpecial& Special);
+
+	/**
+	 * Selección válida: el coco se queda; una especial se queda si sigue cargada; si la caja la ha cambiado por otra, pasa
+	 * a la nueva; sin cargas, vuelve al coco.
+	 */
+	TORTUNABO_API ETNRallyAmmo ResolveSelection(ETNRallyAmmo Selected, const FSpecial& Special);
+
+	/** Siguiente munición disponible en el sentido de Direction (positivo, adelante; negativo, atrás; 0, la misma). */
+	TORTUNABO_API ETNRallyAmmo CycleAmmo(ETNRallyAmmo Selected, const FSpecial& Special, int32 Direction);
 
 	// ── Apuntado automático de la conductora sola ───────────────────────────────
 

@@ -1,6 +1,9 @@
 #include "Vehicles/TN_RallyProjectile.h"
 #include "Vehicles/TN_Buggy.h"
+#include "Vehicles/TN_BuggyHealthComponent.h"
 #include "Vehicles/TN_BuggyMath.h"
+#include "Vehicles/TN_BuggyTurretComponent.h"
+#include "Vehicles/TN_RallyAnchor.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -11,6 +14,9 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
+#include "Sound/SoundBase.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -27,6 +33,9 @@ namespace TNRallyFX
 	/** Segundos que el proyectil no choca con su propio buggy al salir del cañón. */
 	constexpr float OwnerIgnoreSeconds = 0.4f;
 
+	/** Envíos por segundo del proyectil: solo lleva la munición y el final; el vuelo lo simula cada cliente. */
+	constexpr float ProjectileNetUpdateFrequency = 20.f;
+
 	float RadiusFor(ETNRallyAmmo Ammo)
 	{
 		switch (Ammo)
@@ -34,19 +43,8 @@ namespace TNRallyFX
 		case ETNRallyAmmo::Burbuja: return 70.f;
 		case ETNRallyAmmo::Mortero: return 28.f;
 		case ETNRallyAmmo::Alga: return 24.f;
+		case ETNRallyAmmo::Ancla: return 26.f;
 		default: return 18.f;
-		}
-	}
-
-	FLinearColor ColorFor(ETNRallyAmmo Ammo)
-	{
-		switch (Ammo)
-		{
-		case ETNRallyAmmo::Alga: return FLinearColor(0.10f, 0.55f, 0.15f);
-		case ETNRallyAmmo::Burbuja: return FLinearColor(0.60f, 0.85f, 1.00f);
-		case ETNRallyAmmo::Mortero: return FLinearColor(0.12f, 0.12f, 0.12f);
-		case ETNRallyAmmo::Tinta: return FLinearColor(0.05f, 0.02f, 0.10f);
-		default: return FLinearColor(0.35f, 0.20f, 0.08f);
 		}
 	}
 
@@ -58,24 +56,22 @@ namespace TNRallyFX
 		case ETNRallyBurstKind::Ink: return FLinearColor(0.05f, 0.02f, 0.10f);
 		case ETNRallyBurstKind::BubblePop: return FLinearColor(0.60f, 0.85f, 1.00f);
 		case ETNRallyBurstKind::Shield: return FLinearColor(0.40f, 0.90f, 1.00f);
+		case ETNRallyBurstKind::Sand: return FLinearColor(0.85f, 0.72f, 0.45f);
+		case ETNRallyBurstKind::MuzzleFlash: return FLinearColor(1.00f, 0.85f, 0.40f);
+		case ETNRallyBurstKind::Sparks: return FLinearColor(1.00f, 0.70f, 0.20f);
 		default: return FLinearColor(0.55f, 0.35f, 0.15f);
 		}
 	}
 
-	void Tint(UStaticMeshComponent* Mesh, const FLinearColor& Color)
+	/** Duración de cada ráfaga (s): el fogonazo y las chispas son más cortos; la nube de arena, más larga. */
+	float BurstSeconds(ETNRallyBurstKind Kind)
 	{
-		if (!Mesh)
+		switch (Kind)
 		{
-			return;
-		}
-		UMaterialInstanceDynamic* Mid = Cast<UMaterialInstanceDynamic>(Mesh->GetMaterial(0));
-		if (!Mid)
-		{
-			Mid = Mesh->CreateDynamicMaterialInstance(0);
-		}
-		if (Mid)
-		{
-			Mid->SetVectorParameterValue(ColorParameter, Color);
+		case ETNRallyBurstKind::MuzzleFlash: return 0.15f;
+		case ETNRallyBurstKind::Sparks: return 0.25f;
+		case ETNRallyBurstKind::Sand: return 1.2f;
+		default: return 0.5f;
 		}
 	}
 
@@ -92,6 +88,48 @@ namespace TNRallyFX
 		Comp->SetCastShadow(false);
 		return Comp;
 	}
+
+	void SpawnTrail(UNiagaraSystem* System, USceneComponent* AttachTo)
+	{
+		if (System && AttachTo && AttachTo->GetNetMode() != NM_DedicatedServer)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAttached(System, AttachTo, NAME_None, FVector::ZeroVector, FRotator::ZeroRotator,
+				EAttachLocation::KeepRelativeOffset, true);
+		}
+	}
+}
+
+namespace TNRallyLook
+{
+	FLinearColor AmmoColor(ETNRallyAmmo Ammo)
+	{
+		switch (Ammo)
+		{
+		case ETNRallyAmmo::Alga: return FLinearColor(0.10f, 0.55f, 0.15f);
+		case ETNRallyAmmo::Burbuja: return FLinearColor(0.60f, 0.85f, 1.00f);
+		case ETNRallyAmmo::Mortero: return FLinearColor(0.12f, 0.12f, 0.12f);
+		case ETNRallyAmmo::Tinta: return FLinearColor(0.05f, 0.02f, 0.10f);
+		case ETNRallyAmmo::Ancla: return FLinearColor(0.45f, 0.47f, 0.50f);
+		default: return FLinearColor(0.35f, 0.20f, 0.08f);
+		}
+	}
+
+	void Tint(UStaticMeshComponent* Mesh, const FLinearColor& Color)
+	{
+		if (!Mesh)
+		{
+			return;
+		}
+		UMaterialInstanceDynamic* Mid = Cast<UMaterialInstanceDynamic>(Mesh->GetMaterial(0));
+		if (!Mid)
+		{
+			Mid = Mesh->CreateDynamicMaterialInstance(0);
+		}
+		if (Mid)
+		{
+			Mid->SetVectorParameterValue(TNRallyFX::ColorParameter, Color);
+		}
+	}
 }
 
 // ── Proyectil ─────────────────────────────────────────────────────────────────
@@ -101,7 +139,10 @@ ATN_RallyProjectile::ATN_RallyProjectile()
 	using namespace TNRallyFX;
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
-	SetReplicatingMovement(true);
+	// Sin movimiento replicado: con él, cada envío devolvía al cliente a la posición del servidor de hace una latencia
+	// (a 60 m/s, varios metros) y el proyectil iba a saltos. Cada cliente simula el vuelo desde LaunchVelocity.
+	SetReplicatingMovement(false);
+	SetNetUpdateFrequency(ProjectileNetUpdateFrequency);
 
 	Sphere = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere"));
 	Sphere->InitSphereRadius(RadiusFor(ETNRallyAmmo::Coco));
@@ -133,6 +174,7 @@ void ATN_RallyProjectile::Init(ETNRallyAmmo InAmmo, const FVector& Velocity, ATN
 {
 	Ammo = InAmmo;
 	Shooter = FiredBy;
+	LaunchVelocity = Velocity;
 	Movement->Velocity = Velocity;
 	Movement->ProjectileGravityScale = TNRallyTurret::SpecFor(Ammo).GravityScale;
 }
@@ -141,6 +183,14 @@ void ATN_RallyProjectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(ATN_RallyProjectile, Ammo, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(ATN_RallyProjectile, LaunchVelocity, COND_InitialOnly);
+}
+
+void ATN_RallyProjectile::StartLocalSimulation()
+{
+	// Las propiedades iniciales llegan antes de BeginPlay: el cliente sale con la misma velocidad que el servidor.
+	Movement->Velocity = LaunchVelocity;
+	Movement->UpdateComponentVelocity();
 }
 
 void ATN_RallyProjectile::BeginPlay()
@@ -149,6 +199,11 @@ void ATN_RallyProjectile::BeginPlay()
 	ApplyLook();
 	Movement->ProjectileGravityScale = TNRallyTurret::SpecFor(Ammo).GravityScale;
 	SetLifeSpan(TNRallyTurret::SpecFor(Ammo).LifeSeconds);
+	if (!HasAuthority())
+	{
+		StartLocalSimulation();
+	}
+	TNRallyFX::SpawnTrail(TrailFX, Sphere);
 	if (Ammo == ETNRallyAmmo::Burbuja)
 	{
 		// Se coge al tocarla: solapa con los buggies en vez de chocar.
@@ -158,11 +213,6 @@ void ATN_RallyProjectile::BeginPlay()
 	if (!Shooter.IsValid())
 	{
 		Shooter = Cast<ATN_Buggy>(GetOwner());
-	}
-	if (!HasAuthority())
-	{
-		UE_LOG(LogTNBuggy, Verbose, TEXT("Réplica de %s (%s) del buggy %s en (%.0f, %.0f, %.0f)"), *GetName(), *UEnum::GetValueAsString(Ammo),
-			*GetNameSafe(GetOwner()), GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
 	}
 	if (ATN_Buggy* ShooterBuggy = Shooter.Get())
 	{
@@ -181,9 +231,9 @@ void ATN_RallyProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (HasAuthority() && !bImpacted)
 	{
 		const FVector Where = GetActorLocation();
-		UE_LOG(LogTNBuggy, Verbose, TEXT("%s sin impacto: acaba en (%.0f, %.0f, %.0f) vel=(%.0f, %.0f, %.0f) gravedad=%.2f simulando=%d"),
+		UE_LOG(LogTNBuggy, Verbose, TEXT("%s sin impacto: acaba en (%.0f, %.0f, %.0f) vel=(%.0f, %.0f, %.0f) gravedad=%.2f"),
 			*UEnum::GetValueAsString(Ammo), Where.X, Where.Y, Where.Z, Movement->Velocity.X, Movement->Velocity.Y, Movement->Velocity.Z,
-			Movement->ProjectileGravityScale, Movement->UpdatedComponent != nullptr ? 1 : 0);
+			Movement->ProjectileGravityScale);
 	}
 	Super::EndPlay(EndPlayReason);
 }
@@ -217,7 +267,7 @@ void ATN_RallyProjectile::ApplyLook()
 	const float Radius = TNRallyFX::RadiusFor(Ammo);
 	Sphere->SetSphereRadius(Radius);
 	Mesh->SetRelativeScale3D(FVector(Radius / TNRallyFX::BasicShapeRadiusCm));
-	TNRallyFX::Tint(Mesh, TNRallyFX::ColorFor(Ammo));
+	TNRallyLook::Tint(Mesh, TNRallyLook::AmmoColor(Ammo));
 }
 
 void ATN_RallyProjectile::OnSphereHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
@@ -229,7 +279,8 @@ void ATN_RallyProjectile::OnSphereHit(UPrimitiveComponent* HitComp, AActor* Othe
 		// La burbuja se queda flotando donde choca hasta que alguien la coge o se acaba su vida.
 		return;
 	}
-	Impact(Cast<ATN_Buggy>(OtherActor), Hit.ImpactPoint);
+	const bool bGunnerHit = OtherComp && OtherComp->ComponentHasTag(UTN_BuggyHealthComponent::GunnerHitboxTag);
+	Impact(Cast<ATN_Buggy>(OtherActor), Hit.ImpactPoint, bGunnerHit);
 }
 
 void ATN_RallyProjectile::OnSphereOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
@@ -243,7 +294,7 @@ void ATN_RallyProjectile::OnSphereOverlap(UPrimitiveComponent* OverlappedComp, A
 	Impact(Buggy, GetActorLocation());
 }
 
-void ATN_RallyProjectile::Impact(ATN_Buggy* HitBuggy, const FVector& Where)
+void ATN_RallyProjectile::Impact(ATN_Buggy* HitBuggy, const FVector& Where, bool bGunnerHit)
 {
 	UWorld* World = GetWorld();
 	if (!HasAuthority() || bImpacted || !World)
@@ -252,65 +303,102 @@ void ATN_RallyProjectile::Impact(ATN_Buggy* HitBuggy, const FVector& Where)
 	}
 	bImpacted = true;
 	const FVector Dir = Movement->Velocity.GetSafeNormal();
-	UE_LOG(LogTNBuggy, Log, TEXT("Impacto de %s en (%.0f, %.0f, %.0f) contra %s"), *UEnum::GetValueAsString(Ammo),
-		Where.X, Where.Y, Where.Z, HitBuggy ? *HitBuggy->GetName() : TEXT("el escenario"));
+	ATN_Buggy* Via = HitBuggy ? HitBuggy : Cast<ATN_Buggy>(GetOwner());
+	UE_LOG(LogTNBuggy, Verbose, TEXT("Impacto de %s en (%.0f, %.0f, %.0f) contra %s%s"), *UEnum::GetValueAsString(Ammo),
+		Where.X, Where.Y, Where.Z, HitBuggy ? *HitBuggy->GetName() : TEXT("el escenario"), bGunnerHit ? TEXT(" (artillera)") : TEXT(""));
 
 	switch (Ammo)
 	{
-	case ETNRallyAmmo::Coco:
-		if (HitBuggy)
-		{
-			HitBuggy->ApplyCocoHit(Dir);
-		}
-		ATN_RallyBurstFX::Spawn(World, ETNRallyBurstKind::CocoHit, Where, 80.f);
-		break;
 	case ETNRallyAmmo::Alga:
-	{
-		// El charco va al suelo bajo el impacto.
-		FVector Ground = Where;
-		FHitResult Down;
-		FCollisionQueryParams Params(FName(TEXT("TNRallyPuddle")), false, this);
-		if (HitBuggy)
-		{
-			Params.AddIgnoredActor(HitBuggy);
-		}
-		if (World->LineTraceSingleByChannel(Down, Where + FVector(0.f, 0.f, 50.f), Where - FVector(0.f, 0.f, 1000.f), ECC_WorldStatic, Params))
-		{
-			Ground = Down.ImpactPoint;
-		}
-		FActorSpawnParameters Spawn;
-		Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		World->SpawnActor<ATN_RallyAlgaPuddle>(ATN_RallyAlgaPuddle::StaticClass(), FTransform(Ground), Spawn);
+		SpawnAlgaPuddle(HitBuggy, Where);
+		HitBuggyWith(HitBuggy, Where, Dir, bGunnerHit);
 		break;
-	}
 	case ETNRallyAmmo::Burbuja:
 		if (HitBuggy)
 		{
 			HitBuggy->GrantShield();
 		}
-		ATN_RallyBurstFX::Spawn(World, ETNRallyBurstKind::BubblePop, Where, 160.f);
+		ATN_RallyBurstFX::Broadcast(Via, ETNRallyBurstKind::BubblePop, Where, 160.f);
 		break;
 	case ETNRallyAmmo::Mortero:
-		for (TActorIterator<ATN_Buggy> It(World); It; ++It)
-		{
-			if (FVector::Dist(It->GetActorLocation(), Where) <= TNRallyTurret::MortarRadiusCm)
-			{
-				It->ApplyMortarBlast();
-			}
-		}
-		ATN_RallyBurstFX::Spawn(World, ETNRallyBurstKind::Explosion, Where, TNRallyTurret::MortarRadiusCm);
+		MortarBlast(HitBuggy, Where, Dir, bGunnerHit);
+		ATN_RallyBurstFX::Broadcast(Via, ETNRallyBurstKind::Explosion, Where, TNRallyTurret::MortarRadiusCm);
 		break;
 	case ETNRallyAmmo::Tinta:
-		if (HitBuggy)
-		{
-			HitBuggy->ApplyInk();
-		}
-		ATN_RallyBurstFX::Spawn(World, ETNRallyBurstKind::Ink, Where, 150.f);
+		HitBuggyWith(HitBuggy, Where, Dir, bGunnerHit);
+		ATN_RallyBurstFX::Broadcast(Via, ETNRallyBurstKind::Ink, Where, 150.f);
+		break;
+	case ETNRallyAmmo::Coco:
+	case ETNRallyAmmo::Ancla:
+		HitBuggyWith(HitBuggy, Where, Dir, bGunnerHit);
+		ATN_RallyBurstFX::Broadcast(Via, ETNRallyBurstKind::CocoHit, Where, 80.f);
 		break;
 	default:
 		break;
 	}
 	Destroy();
+}
+
+void ATN_RallyProjectile::HitBuggyWith(ATN_Buggy* HitBuggy, const FVector& Where, const FVector& Dir, bool bGunnerHit)
+{
+	if (!HitBuggy)
+	{
+		return;
+	}
+	if (UTN_BuggyHealthComponent* Health = HitBuggy->FindComponentByClass<UTN_BuggyHealthComponent>())
+	{
+		Health->ReceiveAmmoHit(Ammo, Where, Dir, bGunnerHit);
+		return;
+	}
+	// Sin componente de vida (un buggy de otra clase): los efectos de siempre, sin daño ni empujón en el punto.
+	switch (Ammo)
+	{
+	case ETNRallyAmmo::Coco: HitBuggy->ApplyCocoHit(Dir); break;
+	case ETNRallyAmmo::Tinta: HitBuggy->ApplyInk(); break;
+	case ETNRallyAmmo::Mortero: HitBuggy->ApplyMortarBlast(); break;
+	case ETNRallyAmmo::Ancla:
+		if (!HitBuggy->TryConsumeShield())
+		{
+			ATN_RallyAnchorTether::Attach(HitBuggy, Where);
+		}
+		break;
+	default: break;
+	}
+}
+
+void ATN_RallyProjectile::SpawnAlgaPuddle(ATN_Buggy* HitBuggy, const FVector& Where)
+{
+	UWorld* World = GetWorld();
+	// El charco va al suelo bajo el impacto.
+	FVector Ground = Where;
+	FHitResult Down;
+	FCollisionQueryParams Params(FName(TEXT("TNRallyPuddle")), false, this);
+	if (HitBuggy)
+	{
+		Params.AddIgnoredActor(HitBuggy);
+	}
+	if (World->LineTraceSingleByChannel(Down, Where + FVector(0.f, 0.f, 50.f), Where - FVector(0.f, 0.f, 1000.f), ECC_WorldStatic, Params))
+	{
+		Ground = Down.ImpactPoint;
+	}
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	World->SpawnActor<ATN_RallyAlgaPuddle>(ATN_RallyAlgaPuddle::StaticClass(), FTransform(Ground), Spawn);
+}
+
+void ATN_RallyProjectile::MortarBlast(ATN_Buggy* HitBuggy, const FVector& Where, const FVector& Dir, bool bGunnerHit)
+{
+	for (TActorIterator<ATN_Buggy> It(GetWorld()); It; ++It)
+	{
+		ATN_Buggy* Buggy = *It;
+		if (FVector::Dist(Buggy->GetActorLocation(), Where) > TNRallyTurret::MortarRadiusCm)
+		{
+			continue;
+		}
+		// El alcanzado recibe el golpe en el punto del impacto; el resto, en su centro. La artillera, solo con impacto directo.
+		const FVector Point = Buggy == HitBuggy ? Where : Buggy->GetActorLocation();
+		HitBuggyWith(Buggy, Point, Dir, bGunnerHit && Buggy == HitBuggy);
+	}
 }
 
 // ── Charco de alga ────────────────────────────────────────────────────────────
@@ -328,13 +416,22 @@ ATN_RallyAlgaPuddle::ATN_RallyAlgaPuddle()
 	const float Scale = TNRallyTurret::AlgaPuddleRadiusCm / BasicShapeRadiusCm;
 	// Disco de 6 m de radio y 4 cm de alto, apoyado en el suelo.
 	Mesh->SetRelativeScale3D(FVector(Scale, Scale, 0.04f));
+
+	static ConstructorHelpers::FObjectFinder<USoundBase> SplashFinder(TEXT("/Game/Audio/Rally/SFX_Impact_Splash.SFX_Impact_Splash"));
+	SplashSound = SplashFinder.Object;
 }
 
 void ATN_RallyAlgaPuddle::BeginPlay()
 {
 	Super::BeginPlay();
 	SetLifeSpan(TNRallyTurret::AlgaPuddleSeconds);
-	TNRallyFX::Tint(Mesh, TNRallyFX::ColorFor(ETNRallyAmmo::Alga));
+	TNRallyLook::Tint(Mesh, TNRallyLook::AmmoColor(ETNRallyAmmo::Alga));
+	// La comprobación de los buggies es del servidor: los clientes no necesitan el Tick.
+	SetActorTickEnabled(HasAuthority());
+	if (SplashSound && GetNetMode() != NM_DedicatedServer)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, SplashSound, GetActorLocation());
+	}
 }
 
 void ATN_RallyAlgaPuddle::Tick(float DeltaSeconds)
@@ -378,17 +475,28 @@ ATN_RallyBurstFX::ATN_RallyBurstFX()
 {
 	using namespace TNRallyFX;
 	PrimaryActorTick.bCanEverTick = true;
-	bReplicates = true;
+	// Cosmética: cada máquina crea la suya (Broadcast). Antes se replicaba un actor por impacto.
+	bReplicates = false;
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(SphereMeshPath);
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> ShapeMaterial(ShapeMaterialPath);
 	Mesh = MakeVisual(this, SphereMesh.Object, ShapeMaterial.Object);
 	RootComponent = Mesh;
+
+	static ConstructorHelpers::FObjectFinder<USoundBase> CocoFinder(TEXT("/Game/Audio/Rally/SFX_Impact_Coco.SFX_Impact_Coco"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> SplashFinder(TEXT("/Game/Audio/Rally/SFX_Impact_Splash.SFX_Impact_Splash"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> BubbleFinder(TEXT("/Game/Audio/Rally/SFX_Impact_Bubble_Pop.SFX_Impact_Bubble_Pop"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> BlastFinder(TEXT("/Game/Audio/Rally/SFX_Buggy_Explode.SFX_Buggy_Explode"));
+	ImpactSounds.Add(ETNRallyBurstKind::CocoHit, CocoFinder.Object);
+	ImpactSounds.Add(ETNRallyBurstKind::Ink, SplashFinder.Object);
+	ImpactSounds.Add(ETNRallyBurstKind::BubblePop, BubbleFinder.Object);
+	ImpactSounds.Add(ETNRallyBurstKind::Shield, BubbleFinder.Object);
+	ImpactSounds.Add(ETNRallyBurstKind::Explosion, BlastFinder.Object);
 }
 
 ATN_RallyBurstFX* ATN_RallyBurstFX::Spawn(UWorld* World, ETNRallyBurstKind InKind, const FVector& Where, float InRadiusCm)
 {
-	if (!World)
+	if (!World || World->GetNetMode() == NM_DedicatedServer)
 	{
 		return nullptr;
 	}
@@ -403,28 +511,33 @@ ATN_RallyBurstFX* ATN_RallyBurstFX::Spawn(UWorld* World, ETNRallyBurstKind InKin
 	return Burst;
 }
 
-void ATN_RallyBurstFX::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void ATN_RallyBurstFX::Broadcast(ATN_Buggy* Via, ETNRallyBurstKind InKind, const FVector& Where, float InRadiusCm)
 {
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME_CONDITION(ATN_RallyBurstFX, Kind, COND_InitialOnly);
-	DOREPLIFETIME_CONDITION(ATN_RallyBurstFX, RadiusCm, COND_InitialOnly);
+	UTN_BuggyTurretComponent* Turret = Via ? Via->GetTurret() : nullptr;
+	if (Turret && Via->HasAuthority())
+	{
+		// El multicast también se ejecuta en el servidor escucha, que crea su ráfaga local.
+		Turret->MulticastBurst(InKind, Where, InRadiusCm);
+		return;
+	}
+	Spawn(Via ? Via->GetWorld() : nullptr, InKind, Where, InRadiusCm);
 }
 
 void ATN_RallyBurstFX::BeginPlay()
 {
 	Super::BeginPlay();
-	SetLifeSpan(0.6f);
+	SetLifeSpan(TNRallyFX::BurstSeconds(Kind) + 0.1f);
 	ApplyLook();
-}
-
-void ATN_RallyBurstFX::OnRep_Look()
-{
-	ApplyLook();
+	// Spawn no crea ráfagas en un servidor dedicado: aquí siempre hay quien escuche.
+	if (const TObjectPtr<USoundBase>* Sound = ImpactSounds.Find(Kind); Sound && *Sound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(this, *Sound, GetActorLocation());
+	}
 }
 
 void ATN_RallyBurstFX::ApplyLook()
 {
-	TNRallyFX::Tint(Mesh, TNRallyFX::ColorFor(Kind));
+	TNRallyLook::Tint(Mesh, TNRallyFX::ColorFor(Kind));
 	Mesh->SetRelativeScale3D(FVector(0.2f * RadiusCm / TNRallyFX::BasicShapeRadiusCm));
 }
 
@@ -432,7 +545,7 @@ void ATN_RallyBurstFX::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	Age += DeltaSeconds;
-	const float Alpha = FMath::Clamp(Age / 0.5f, 0.f, 1.f);
+	const float Alpha = FMath::Clamp(Age / TNRallyFX::BurstSeconds(Kind), 0.f, 1.f);
 	// Crece rápido hasta el radio final y se encoge al final para desaparecer.
 	const float Grow = 1.f - FMath::Square(1.f - Alpha);
 	const float Shrink = Alpha > 0.8f ? 1.f - (Alpha - 0.8f) / 0.2f : 1.f;
