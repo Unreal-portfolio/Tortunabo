@@ -321,6 +321,40 @@ namespace TNBuggyDebug
 			});
 		}));
 
+	FAutoConsoleCommandWithWorldAndArgs CmdDebugTeleport(TEXT("TN.Rally.DebugTeleport"),
+		TEXT("Rally (servidor): TN.Rally.DebugTeleport <dx> <dy> <dz> [espera]: RallyTeleport del buggy del jugador (o el primero) desplazado y su posición 0, 0,1 y 1 s después."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const FVector Offset(FloatArg(Args, 0, 0.f), FloatArg(Args, 1, 0.f), FloatArg(Args, 2, 500.f));
+			AfterGlobal(FloatArg(Args, 3, 0.f), [Offset](UWorld* Alive)
+			{
+				ATN_Buggy* Buggy = FindBuggy(Alive);
+				if (!Buggy || !Buggy->HasAuthority())
+				{
+					UE_LOG(LogTNBuggy, Warning, TEXT("[Humo] TN.Rally.DebugTeleport: no hay buggy en el servidor"));
+					return;
+				}
+				const FVector From = Buggy->GetActorLocation();
+				const FVector To = From + Offset;
+				Buggy->RallyTeleport(FTransform(Buggy->GetActorRotation(), To), 0.f, 0.f);
+				UE_LOG(LogTNBuggy, Log, TEXT("[Humo] teletransporte de %s: de (%.0f, %.0f, %.0f) a (%.0f, %.0f, %.0f); ahora (%.0f, %.0f, %.0f)"),
+					*Buggy->GetName(), From.X, From.Y, From.Z, To.X, To.Y, To.Z, Buggy->GetActorLocation().X, Buggy->GetActorLocation().Y,
+					Buggy->GetActorLocation().Z);
+				TWeakObjectPtr<ATN_Buggy> Weak(Buggy);
+				for (const float Delay : { 0.1f, 1.f })
+				{
+					AfterGlobal(Delay, [Weak, Delay](UWorld*)
+					{
+						if (const ATN_Buggy* Alive = Weak.Get())
+						{
+							const FVector Now = Alive->GetActorLocation();
+							UE_LOG(LogTNBuggy, Log, TEXT("[Humo] a los %.1f s: (%.0f, %.0f, %.0f)"), Delay, Now.X, Now.Y, Now.Z);
+						}
+					});
+				}
+			});
+		}));
+
 	FAutoConsoleCommandWithWorldAndArgs CmdLocalFire(TEXT("TN.Rally.LocalFire"),
 		TEXT("Rally: TN.Rally.LocalFire [especial 0|1] [espera] [veces = 1]: la jugadora local (artillera o conductora sola) pide disparos al servidor por su RPC, uno cada 0,5 s."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)

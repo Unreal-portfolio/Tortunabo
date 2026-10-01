@@ -612,7 +612,9 @@ void ATN_Buggy::RallyTeleport(const FTransform& Where, float LockSeconds, float 
 	{
 		return;
 	}
-	SetActorLocationAndRotation(Where.GetLocation(), Where.Rotator(), false, nullptr, ETeleportType::ResetPhysics);
+	// TeleportPhysics: con ResetPhysics la física de Chaos devuelve el chasis a donde estaba en el siguiente paso (medido con
+	// TN.Rally.DebugTeleport en UE 5.6) y la reaparición no movía el buggy.
+	SetActorLocationAndRotation(Where.GetLocation(), Where.Rotator(), false, nullptr, ETeleportType::TeleportPhysics);
 	USkeletalMeshComponent* Chassis = GetMesh();
 	Chassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
 	Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
