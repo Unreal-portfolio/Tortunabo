@@ -37,6 +37,15 @@ def test_un_mapa_llano_es_valido_y_el_camino_es_la_recta():
     assert abs(r["route_ratio"] - 1.0) < 0.02
 
 
+def test_fuera_del_camino_distingue_lineal_de_laberinto():
+    corridor = flat(-10.0)
+    mid = corridor.top.shape[0] // 2
+    corridor.top[mid - 3:mid + 4, :] = 3.0                  # pasillo de 7 m: solo sobra lo que hay tras inicio y meta
+    assert evaluate(corridor)["off_route_share"] < 0.05
+    open_field = evaluate(flat())                            # campo abierto: casi todo queda lejos del camino
+    assert open_field["off_route_share"] > 0.7
+
+
 def test_un_muro_de_agua_corta_el_mapa():
     m = flat()
     m.top[:, 200:204] = -10.0

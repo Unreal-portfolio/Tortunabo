@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from scipy import sparse, stats
+from scipy import ndimage, sparse, stats
 from scipy.sparse import csgraph
 
 from terrain_vol.validate import DRY_M, WALK_SLOPE_DEG, reachable, slope_stats, wide_ground
@@ -16,6 +16,7 @@ from . import spec
 from .mapa import SurvivalMap, expected_shape
 
 STEEP_DEG = 25.0                      # a partir de aquí una pendiente cuenta como reto en el camino
+OFF_ROUTE_M = 10.0                    # más lejos que esto del camino más corto, el suelo es «fuera del camino»
 _NEIGHBOURS = ((0, 1), (1, 0), (1, 1), (1, -1))
 
 
@@ -61,6 +62,15 @@ def _path_slopes(top: np.ndarray, path: list[tuple[int, int]]) -> list[float]:
             for (i0, j0), (i1, j1) in zip(path, path[1:])]
 
 
+def off_route_share(seen: np.ndarray, path: list[tuple[int, int]]) -> float:
+    """Parte del suelo alcanzable a más de OFF_ROUTE_M del camino más corto: 0 = lineal (todo es camino), cerca de
+    1 = laberinto (ramas, lazos y zonas que no llevan a la meta). Informativa: distingue el estilo de cada generador."""
+    on_path = np.zeros(seen.shape, dtype=bool)
+    on_path[tuple(np.array(path).T)] = True
+    far = ndimage.distance_transform_edt(~on_path) > OFF_ROUTE_M
+    return float((far & seen).sum() / max(seen.sum(), 1))
+
+
 def evaluate(m: SurvivalMap) -> dict:
     """Informe de un mapa. `valid` solo si cumple toda la especificación; `challenge` (informativo) es lo que
     se compara entre dificultades."""
@@ -84,8 +94,9 @@ def evaluate(m: SurvivalMap) -> dict:
         steep = float(np.mean([s > STEEP_DEG for s in _path_slopes(top, path)]))
         r.update(route_m=length, route_ratio=length / max(straight, 1.0), steep_share=steep)
         r["challenge"] = (length / max(straight, 1.0) - 1.0) + 2.0 * steep
+        r["off_route_share"] = off_route_share(seen, path)
     else:
-        r.update(route_m=None, route_ratio=None, steep_share=None, challenge=None)
+        r.update(route_m=None, route_ratio=None, steep_share=None, challenge=None, off_route_share=None)
     r["walkable_share"] = float(seen.sum() / max((top > DRY_M).sum(), 1))
     r["slope_deg"] = slope_stats(top, seen) if seen.any() else None
     r["valid"] = bool(r["shape_ok"] and r["ends_ok"] and r["reached"] and r["wide_path"] and r["triangles_ok"]

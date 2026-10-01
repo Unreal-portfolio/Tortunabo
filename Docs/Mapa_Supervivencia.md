@@ -2,8 +2,8 @@
 
 Supervivencia (#143) deja de usar los chunks del Clásico y pasa a **un mapa nuevo por nivel**, generado entero de
 una vez. Este documento fija cómo debe ser ese mapa y cómo se comparan los dos generadores candidatos: el de
-SkiTemplar (Python, «camino primero», `Scripts/terrain_path/`) y el de Mokius (C++, heightfield de la Carrera,
-`TN_BeachLayout` / `TN_ProcMapTerrain`). Se usará el que cumpla mejor. Las constantes viven en
+SkiTemplar (Python, «camino primero», `Scripts/terrain_path/`, más laberíntico) y el de Mokius (C++, el del modo
+cooperativo: `TNProcMap::GenerateLayout` y `TN_ProcMapTerrain`, más lineal). Se usará el que cumpla mejor. Las constantes viven en
 `Scripts/terrain_survival/spec.py`.
 
 ## Especificación
@@ -21,6 +21,9 @@ SkiTemplar (Python, «camino primero», `Scripts/terrain_path/`) y el de Mokius 
 | Dificultad medible | Correlación de Spearman ≥ 0,5 entre la dificultad pedida y el reto medido |
 
 El «reto» es informativo: `(camino / línea recta − 1) + 2 × (proporción del camino con pendiente > 25°)`.
+También lo es «fuera del camino», que mide lo laberíntico que es un mapa: la parte del suelo alcanzable que queda
+a más de 10 m del camino más corto (0 = lineal; cuanto más alto, más ramas y lazos). No tiene umbral: qué es mejor
+para Supervivencia se decide al comparar.
 
 ## Formato de intercambio
 
