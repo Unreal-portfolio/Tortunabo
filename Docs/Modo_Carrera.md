@@ -2437,7 +2437,9 @@ tortugas: se queda mareado un momento, con pajaritos y sin atacar.
   para verla venir y apartarse corriendo), también siguiendo al blanco: un pegote de 1,6 m con su estela de gotitas, un
   silbido y la sombra dura que crece hasta la mancha. Sobre la tortuga a la que va, un signo de exclamación que parpadea
   cada vez más rápido y se queda fijo cuando la cagada ya cae por su línea (ver «Cagada pintada y aviso»). Al caer, la traza
-  desde arriba da en el techo si lo hay. Quien esté
+  desde arriba da en el techo si lo hay (`ATN_BeachEnemy::TraceDropSurface`: canal de visibilidad, también fortalezas y
+  castillos); la sombra y la cagada que cae van a ese mismo sitio en cada máquina, no a la arena de debajo (#255; igual en
+  la gaviota justiciera). Quien esté
   dentro (2 m por el tamaño + 0,35, antes 2,8 + 0,45, y a menos de 3 m en altura: a cubierto la mancha cae encima) y no vaya
   tirada en plancha en ese momento (`TNBeach::IsDodgingByBellyDive`: en el aire o arrastrándose a 2,5 m/s o más) cae
   derribada (tabla de arriba) con la cagada PINTADA en el caparazón (12 s, ver abajo); gotas, «¡PLOF!» y la mancha en la

@@ -205,6 +205,11 @@ private:
 	float TrailTimer = 0.f;
 	float DropNormalTimer = 0.f;
 	FVector DropNormal = FVector::UpVector;
+	/**
+	 * Dónde cae de verdad la cagada: cuánto queda por encima de la arena del blanco lo primero firme desde arriba (un castillo,
+	 * una fortaleza; 0 en la arena), con la traza del impacto del servidor. Ahí van la sombra y la cagada que cae.
+	 */
+	float DropLift = 0.f;
 
 	/** Dónde soltó la cagada (bajo la cola de la gaviota). */
 	FVector DropStart = FVector::ZeroVector;

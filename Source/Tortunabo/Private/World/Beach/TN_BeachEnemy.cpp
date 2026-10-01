@@ -556,6 +556,41 @@ bool ATN_BeachEnemy::TraceGround(const UObject* WorldContext, const FVector& Whe
 	return false;
 }
 
+bool ATN_BeachEnemy::TraceDropSurface(const UObject* WorldContext, const FVector& Where, float& OutZ, FVector* OutNormal, const AActor* Ignore,
+	float Up, float Down)
+{
+	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	if (!World)
+	{
+		return false;
+	}
+	// Por el canal de visibilidad: lo que se ve (la arena, el decorado y las fortalezas, que son colisión dinámica y una traza
+	// de solo lo estático cruzaba), sin los muros invisibles ni los volúmenes. Las tortugas y sus bolas no paran lo que cae
+	// sobre ellas: lo que importa es dónde están de pie.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BeachDropSurface), false, Ignore);
+	TArray<ATortugaCharacter*> Turtles;
+	GatherTurtles(WorldContext, Turtles);
+	for (const ATortugaCharacter* Turtle : Turtles)
+	{
+		Params.AddIgnoredActor(Turtle);
+		if (const UTN_ShellComponent* Shell = Turtle->GetShellComponent())
+		{
+			Params.AddIgnoredActor(Shell->GetBody());
+		}
+	}
+	FHitResult Hit;
+	if (!World->LineTraceSingleByChannel(Hit, Where + FVector(0.0, 0.0, Up), Where - FVector(0.0, 0.0, Down), ECC_Visibility, Params) || Hit.bStartPenetrating)
+	{
+		return false;
+	}
+	OutZ = static_cast<float>(Hit.ImpactPoint.Z);
+	if (OutNormal)
+	{
+		*OutNormal = Hit.ImpactNormal;
+	}
+	return true;
+}
+
 float ATN_BeachEnemy::LocalViewDistance(const UObject* WorldContext, const FVector& Where)
 {
 	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
