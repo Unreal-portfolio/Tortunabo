@@ -1,6 +1,9 @@
 #include "Rally/TN_RallyPlayerController.h"
 
+#include "Containers/Ticker.h"
 #include "Core/TN_CoopPlayerState.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
 #include "GameFramework/Pawn.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Rally/TN_RallyHUDWidget.h"
@@ -60,6 +63,59 @@ void ATN_RallyPlayerController::SyncCosmeticsToServer()
 	}
 	ServerSyncCosmetics(TNCosmeticsSync::ReadLocalLoadout(*GameInstance));
 }
+
+#if !UE_BUILD_SHIPPING
+void ATN_RallyPlayerController::DebugSendCosmetics(FName SkinId, FName ShellId, FName EyesId)
+{
+	const UMP_GameInstance* GameInstance = Cast<UMP_GameInstance>(GetGameInstance());
+	if (!IsLocalController() || !GameInstance)
+	{
+		return;
+	}
+	FTNCosmeticLoadout Loadout = TNCosmeticsSync::ReadLocalLoadout(*GameInstance);
+	for (const TPair<FName*, FName>& Override : { TPair<FName*, FName>(&Loadout.SkinId, SkinId),
+		TPair<FName*, FName>(&Loadout.ShellId, ShellId), TPair<FName*, FName>(&Loadout.EyesId, EyesId) })
+	{
+		if (!Override.Value.IsNone())
+		{
+			*Override.Key = Override.Value;
+			Loadout.UnlockedSkinIds.AddUnique(Override.Value);
+		}
+	}
+	UE_LOG(LogTNRally, Log, TEXT("[RallyPC] %s manda aspecto de prueba: color=%s caparazón=%s ojos=%s"), *GetNameSafe(this),
+		*Loadout.SkinId.ToString(), *Loadout.ShellId.ToString(), *Loadout.EyesId.ToString());
+	ServerSyncCosmetics(Loadout);
+}
+
+static FAutoConsoleCommandWithWorldAndArgs GTNRallyDebugCosmeticsCommand(
+	TEXT("TN.Rally.DebugCosmetics"),
+	TEXT("Rally: TN.Rally.DebugCosmetics <color> [caparazón] [ojos] [espera]: la jugadora local manda ese aspecto al servidor (filas de DT_Skins; no toca el save)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld*)
+	{
+		const auto Arg = [&Args](int32 Index) { return Args.IsValidIndex(Index) && Args[Index] != TEXT("-") ? FName(*Args[Index]) : NAME_None; };
+		const FName Skin = Arg(0);
+		const FName Shell = Arg(1);
+		const FName Eyes = Arg(2);
+		const float Wait = Args.IsValidIndex(3) ? FCString::Atof(*Args[3]) : 0.f;
+		// Con el ticker del motor: en un cliente, -ExecCmds corre antes de llegar al mapa del servidor.
+		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Skin, Shell, Eyes](float)
+		{
+			for (const FWorldContext& Context : GEngine->GetWorldContexts())
+			{
+				UWorld* World = Context.World();
+				ATN_RallyPlayerController* PC = World && Context.WorldType == EWorldType::Game
+					? Cast<ATN_RallyPlayerController>(World->GetFirstPlayerController()) : nullptr;
+				if (PC)
+				{
+					PC->DebugSendCosmetics(Skin, Shell, Eyes);
+					return false;
+				}
+			}
+			UE_LOG(LogTNRally, Warning, TEXT("TN.Rally.DebugCosmetics: no hay un PlayerController del Rally"));
+			return false;
+		}), FMath::Max(Wait, 0.01f));
+	}));
+#endif
 
 bool ATN_RallyPlayerController::ServerSyncCosmetics_Validate(const FTNCosmeticLoadout& Loadout)
 {

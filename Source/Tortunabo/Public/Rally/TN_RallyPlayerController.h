@@ -18,6 +18,14 @@ class TORTUNABO_API ATN_RallyPlayerController : public APlayerController
 public:
 	ATN_RallyPlayerController();
 
+#if !UE_BUILD_SHIPPING
+	/**
+	 * Depuración (TN.Rally.DebugCosmetics): manda al servidor el aspecto guardado con el color, el caparazón y los ojos
+	 * cambiados (NAME_None = el guardado), como si estuvieran desbloqueados. No toca el save.
+	 */
+	void DebugSendCosmetics(FName SkinId, FName ShellId, FName EyesId);
+#endif
+
 	/** HUD del Rally de este jugador (solo en el jugador local; nullptr en el resto). Lee calor, munición y tinta del buggy. */
 	UFUNCTION(BlueprintPure, Category = "Rally")
 	UTN_RallyHUDWidget* GetRallyHUD() const { return RallyHUD; }
