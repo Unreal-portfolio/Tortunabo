@@ -1,4 +1,6 @@
 #include "VR/TN_VRSubsystem.h"
+#include "Multiplayer/TN_LocalPlayRules.h"
+#include "Multiplayer/TN_LocalPlaySubsystem.h"
 #include "VR/TN_VRRig.h"
 #include "TN_VRInputProcessor.h"
 #include "Core/TN_Log.h"
@@ -145,6 +147,15 @@ UWorld* UTN_VRSubsystem::GetTickableGameObjectWorld() const
 ETNVRMode UTN_VRSubsystem::ResolveMode()
 {
 	using namespace TNVRSubsystemDetail;
+	// Partida local (#311): con más de un jugador en el PC, la pantalla plana (unas gafas son de uno solo).
+	if (const UTN_LocalPlaySubsystem* LocalPlay = GetGameInstance() ? GetGameInstance()->GetSubsystem<UTN_LocalPlaySubsystem>() : nullptr)
+	{
+		if (!TNLocalPlay::AllowsVR(LocalPlay->IsLocalMode(), LocalPlay->GetNumPlayers()))
+		{
+			bTriedEnableHMD = false;
+			return ETNVRMode::Off;
+		}
+	}
 	int32 Choice = CVarTNVRMode.GetValueOnGameThread();
 	if (Choice < 0)
 	{

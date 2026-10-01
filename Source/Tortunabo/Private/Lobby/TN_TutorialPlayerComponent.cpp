@@ -8,6 +8,7 @@
 #include "Player/TN_DebugRpcDecisions.h"
 #include "Core/TN_InventoryTypes.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Multiplayer/TN_LocalPlaySubsystem.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
@@ -344,6 +345,12 @@ void UTN_TutorialPlayerComponent::SaveCompleted(bool bSkipped)
 	{
 		return;
 	}
+	// Partida local (#311): el guardado es del jugador 1; lo que haga un invitado dura la partida.
+	if (!UTN_LocalPlaySubsystem::ShouldSaveFor(GetPC()))
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] %s (invitado de la partida local): sin guardar."), *GetNameSafe(GetPC()));
+		return;
+	}
 	GI->SetTutorialCompleted();
 	UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] %s: apuntado en el guardado local (%s)."), *GetNameSafe(GetPC()),
 		bSkipped ? TEXT("saltado") : TEXT("terminado por la cascada"));
@@ -450,7 +457,8 @@ void UTN_TutorialPlayerComponent::TickLocal(float DeltaTime)
 		{
 			CheckedWorld = World;
 			const UMP_GameInstance* GI = World->GetGameInstance<UMP_GameInstance>();
-			if (GI && !GI->HasCompletedTutorial() && !bInTutorial)
+			// En la partida local (#311) no sale solo: se hace desde el menú de pausa del lobby («Hacer el tutorial»).
+			if (GI && !GI->HasCompletedTutorial() && !bInTutorial && !UTN_LocalPlaySubsystem::IsLocalGame(this))
 			{
 				UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] Primera partida en esta máquina (%s): se pide el tutorial."), *GI->GetTutorialSlotName());
 				Course->EnsureBuilt();
