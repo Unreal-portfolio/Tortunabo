@@ -7,6 +7,7 @@
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
 #include "Rally/TN_RallyLogic.h"
+#include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyTrack.h"
 #include "World/TN_MapVariantLoader.h"
 
@@ -124,6 +125,19 @@ FString ATN_RallyGameState::DescribeStatus() const
 			Entry.Lap, Entry.NextGate,
 			Entry.bFinished ? *FString::Printf(TEXT(" META %.2f s"), Entry.FinishSeconds) : TEXT(""),
 			Entry.bWrongWay ? TEXT(" CONTRAMANO") : TEXT(""), Entry.bRetired ? TEXT(" RETIRADO") : TEXT(""), Entry.Points);
+	}
+	// Plaza y cosméticos replicados de cada jugador (en un cliente, lo que le ha llegado).
+	for (const APlayerState* Player : PlayerArray)
+	{
+		const ATN_RallyPlayerState* Rally = Cast<ATN_RallyPlayerState>(Player);
+		if (!Rally)
+		{
+			continue;
+		}
+		Text += FString::Printf(TEXT("\n  jugador %s: %s equipo %d, color=%s caparazón=%s ojos=%s casco=%s"),
+			*Rally->GetPlayerName(), Rally->IsSeated() ? (Rally->IsGunner() ? TEXT("artillera") : TEXT("conductora")) : TEXT("sin plaza"),
+			Rally->GetRallyTeamIndex(), *Rally->EquippedSkinId.ToString(), *Rally->EquippedShellId.ToString(),
+			*Rally->EquippedEyesId.ToString(), *Rally->EquippedHelmetId.ToString());
 	}
 	return Text;
 }
