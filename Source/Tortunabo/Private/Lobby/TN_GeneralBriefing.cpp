@@ -1,4 +1,5 @@
 #include "Lobby/TN_GeneralBriefing.h"
+#include "Multiplayer/TN_LocalViews.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
 #include "Lobby/TN_LobbyMission.h"
@@ -658,8 +659,8 @@ void ATN_GeneralBriefing::Tick(float DeltaSeconds)
 	if (GetNetMode() == NM_DedicatedServer) { return; }
 
 	// Se gira hacia el jugador local si está cerca y le saluda de vez en cuando (a lo militar).
-	const APlayerController* LocalPC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
-	const APawn* LocalPawn = LocalPC ? LocalPC->GetPawn() : nullptr;
+	// Con la pantalla partida (#311), a la tortuga local más cercana.
+	const APawn* LocalPawn = TNLocalViews::ClosestLocalPawn(GetWorld(), GetActorLocation());
 	float TargetYaw = 0.f;
 	if (LocalPawn)
 	{

@@ -32,6 +32,8 @@ int32 TNLocalViews::NumLocalPlayers(const UWorld* World)
 
 bool TNLocalViews::ClosestCamera(const UWorld* World, const FVector& At, FVector& OutLocation, FRotator* OutRotation, APlayerController** OutController)
 {
+	// Copia: At puede ser la misma variable que OutLocation (se pide «la cámara más cercana a esto» y se escribe encima).
+	const FVector Target = At;
 	TArray<APlayerController*> Controllers;
 	GetLocalControllers(World, Controllers);
 	double Best = TNumericLimits<double>::Max();
@@ -44,7 +46,7 @@ bool TNLocalViews::ClosestCamera(const UWorld* World, const FVector& At, FVector
 			continue;
 		}
 		const FVector Location = Camera->GetCameraLocation();
-		const double Distance = FVector::DistSquared(Location, At);
+		const double Distance = FVector::DistSquared(Location, Target);
 		if (!bFound || Distance < Best)
 		{
 			bFound = true;
