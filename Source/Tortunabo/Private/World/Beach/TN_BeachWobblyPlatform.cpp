@@ -29,6 +29,10 @@ namespace TNBeachWobblyDetail
 	constexpr double RestOverlap = 70.0;
 	/** Semiancho de la brecha en el borde del hoyo. */
 	constexpr double BreachHalfWidth = 120.0;
+	/** Rapidez (1/s) con que un cliente sigue la pose del servidor entre actualizaciones (llegan hasta 15 por segundo). */
+	constexpr float ClientPoseInterpSpeed = 15.f;
+	/** Mientras la pose cambia, el servidor vuelve a despertar la réplica cada tanto (s); se duerme NetWakeSeconds después. */
+	constexpr double PoseWakeInterval = 1.0;
 
 	struct FCraterDims
 	{
@@ -234,7 +238,9 @@ ATN_BeachWobblyPlatform::ATN_BeachWobblyPlatform()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = true;
 	bAlwaysRelevant = true;
-	SetNetUpdateFrequency(2.f);
+	// La pose de la tabla sale hasta 15 veces por segundo mientras cambia (en la ronda, dormida si está quieta).
+	SetNetUpdateFrequency(PoseNetFrequency);
+	SetMinNetUpdateFrequency(PoseNetFrequency);
 
 	CraterMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CraterMesh"));
 	CraterMesh->SetupAttachment(GetRootComponent());
@@ -295,6 +301,39 @@ void ATN_BeachWobblyPlatform::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_BeachWobblyPlatform, BrokenAt);
+	DOREPLIFETIME(ATN_BeachWobblyPlatform, NetRoll);
+	DOREPLIFETIME(ATN_BeachWobblyPlatform, NetPitch);
+	DOREPLIFETIME(ATN_BeachWobblyPlatform, NetSag);
+}
+
+void ATN_BeachWobblyPlatform::ApplyRoundNetProfile()
+{
+	Super::ApplyRoundNetProfile();
+	// La base la deja a 2 Hz (lo quieto que duerme). Despierta, esta se mueve: la pose sale a PoseNetFrequency.
+	SetNetUpdateFrequency(PoseNetFrequency);
+	SetMinNetUpdateFrequency(PoseNetFrequency);
+}
+
+void ATN_BeachWobblyPlatform::PublishPose(double Now)
+{
+	using namespace TNWobblyPlatformNet;
+	const int8 NewRoll = QuantizeRoll(Roll);
+	const int8 NewPitch = QuantizePitch(Pitch);
+	const uint8 NewSag = QuantizeSag(Sag);
+	if (NewRoll == NetRoll && NewPitch == NetPitch && NewSag == NetSag)
+	{
+		return;
+	}
+	NetRoll = NewRoll;
+	NetPitch = NewPitch;
+	NetSag = NewSag;
+	// Dormida (la red de la ronda), un cambio no sale: ForceNetUpdate la despierta y la vuelve a dormir NetWakeSeconds después
+	// del último aviso. Mientras se mueve se avisa cada PoseWakeInterval; entre medias sale sola, a PoseNetFrequency.
+	if (Now >= NextNetWake)
+	{
+		NextNetWake = Now + TNBeachWobblyDetail::PoseWakeInterval;
+		ForceNetUpdate();
+	}
 }
 
 void ATN_BeachWobblyPlatform::ApplySpec()
@@ -457,19 +496,24 @@ void ATN_BeachWobblyPlatform::TickBoard(float DeltaSeconds, double Now)
 		}
 	}
 
-	// Muelle poco amortiguado: se ladea hacia quien está encima, se mece al andar y los aterrizajes la sacuden.
-	const float Dt = FMath::Min(DeltaSeconds, 0.05f);
-	const float Rock = Motion * 2.5f * static_cast<float>(FMath::Sin(Now * 5.5));
-	const float RollTarget = FMath::Clamp(static_cast<float>(SumY) * 4.5f + Rock, -MaxRollDeg, MaxRollDeg);
-	const float PitchTarget = FMath::Clamp(static_cast<float>(SumX) * 1.2f, -2.f, 2.f);
-	RollVel += Kick * 35.f * (SumY >= 0.0 ? 1.f : -1.f);
-	RollVel += (-55.f * (Roll - RollTarget) - 3.5f * RollVel) * Dt;
-	Roll = FMath::Clamp(Roll + RollVel * Dt, -MaxRollDeg * 1.4f, MaxRollDeg * 1.4f);
-	PitchVel += Kick * 8.f * (SumX >= 0.0 ? 1.f : -1.f);
-	PitchVel += (-80.f * (Pitch - PitchTarget) - 6.f * PitchVel) * Dt;
-	Pitch = FMath::Clamp(Pitch + PitchVel * Dt, -3.f, 3.f);
+	// Muelle poco amortiguado: se ladea hacia quien está encima, se mece al andar y los aterrizajes la sacuden. Solo en el
+	// servidor, con las tortugas que ve él: la tabla es base de movimiento y tiene que estar igual en todas las máquinas.
+	if (HasAuthority())
+	{
+		const float Dt = FMath::Min(DeltaSeconds, 0.05f);
+		const float Rock = Motion * 2.5f * static_cast<float>(FMath::Sin(Now * 5.5));
+		const float RollTarget = FMath::Clamp(static_cast<float>(SumY) * 4.5f + Rock, -MaxRollDeg, MaxRollDeg);
+		const float PitchTarget = FMath::Clamp(static_cast<float>(SumX) * 1.2f, -2.f, 2.f);
+		RollVel += Kick * 35.f * (SumY >= 0.0 ? 1.f : -1.f);
+		RollVel += (-55.f * (Roll - RollTarget) - 3.5f * RollVel) * Dt;
+		Roll = FMath::Clamp(Roll + RollVel * Dt, -MaxRollDeg * 1.4f, MaxRollDeg * 1.4f);
+		PitchVel += Kick * 8.f * (SumX >= 0.0 ? 1.f : -1.f);
+		PitchVel += (-80.f * (Pitch - PitchTarget) - 6.f * PitchVel) * Dt;
+		Pitch = FMath::Clamp(Pitch + PitchVel * Dt, -3.f, 3.f);
+	}
 
-	// Grieta: sube con BreakRiders encima y baja despacio si se bajan.
+	// Grieta: sube con BreakRiders encima y baja despacio si se bajan. Cada máquina con las tortugas que ve: en el servidor
+	// decide la rotura; en los clientes solo da crujidos, astillas y el temblor de la malla.
 	if (Count >= BreakRiders)
 	{
 		Crack = FMath::Min(1.f, Crack + DeltaSeconds / FMath::Max(0.1f, CrackSeconds));
@@ -492,10 +536,26 @@ void ATN_BeachWobblyPlatform::TickBoard(float DeltaSeconds, double Now)
 			}
 		}
 	}
+	if (HasAuthority())
+	{
+		Sag = static_cast<float>(Count * 1.5 + Crack * 6.0);
+		PublishPose(Now);
+	}
+	else
+	{
+		// Clientes: la pose del servidor, suavizada entre actualizaciones. Calcularla aquí con las tortugas que ve este
+		// cliente (las demás le llegan con retraso) dejaba la tabla en otro sitio que en el servidor.
+		using namespace TNWobblyPlatformNet;
+		using TNBeachWobblyDetail::ClientPoseInterpSpeed;
+		Roll = FMath::FInterpTo(Roll, DequantizeRoll(NetRoll), DeltaSeconds, ClientPoseInterpSpeed);
+		Pitch = FMath::FInterpTo(Pitch, DequantizePitch(NetPitch), DeltaSeconds, ClientPoseInterpSpeed);
+		Sag = FMath::FInterpTo(Sag, DequantizeSag(NetSag), DeltaSeconds, ClientPoseInterpSpeed);
+	}
+	BoardPivot->SetRelativeLocationAndRotation(FVector(0.0, 0.0, RimHeight - static_cast<double>(Sag)), FRotator(Pitch, 0.f, Roll));
+	// Temblor de la grieta: solo en la malla. Va a 33-41 rad/s con el reloj de cada máquina: en la colisión no coincidiría.
 	const float ShakeRoll = Crack * 1.6f * static_cast<float>(FMath::Sin(Now * 41.0));
 	const float ShakePitch = Crack * 0.7f * static_cast<float>(FMath::Sin(Now * 33.0 + 1.0));
-	const double Sag = Count * 1.5 + Crack * 6.0;
-	BoardPivot->SetRelativeLocationAndRotation(FVector(0.0, 0.0, RimHeight - Sag), FRotator(Pitch + ShakePitch, 0.f, Roll + ShakeRoll));
+	BoardMesh->SetRelativeRotation(FRotator(ShakePitch, 0.f, ShakeRoll));
 
 	if (HasAuthority() && Crack >= 1.f)
 	{

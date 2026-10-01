@@ -3918,9 +3918,9 @@ blanco con reborde de color y bisagras; hasta 300 de ancho) tendida sobre un **h
 redondeada de 90 cm de ancho a 240 de alto, ladera exterior de 30°, pared interior empinada, hoyo de 364 cm de radio arriba y
 una brecha de ~2,4 m por el lado +Y por la que se sale andando del fondo). El hoyo va en la malla del elemento (el terreno no se cava).
 
-- **Tambaleo** (cada máquina con las tortugas que ve encima; la tabla es una base móvil): se ladea 4,5° por tortuga según dónde
-  pise (tope 7°, `MaxRollDeg`), cabecea hasta 2°, se mece al andar y los aterrizajes (caída >250 cm/s) la sacuden; muelle poco
-  amortiguado (~1,2 Hz) y crujidos.
+- **Tambaleo** (la tabla es una base móvil; el muelle lo mueve el servidor y manda la pose en tres bytes hasta 15 veces por
+  segundo, que los clientes siguen suavizada): se ladea 4,5° por tortuga según dónde pise (tope 7°, `MaxRollDeg`), cabecea hasta
+  2°, se mece al andar y los aterrizajes (caída >250 cm/s) la sacuden; muelle poco amortiguado (~1,2 Hz) y crujidos.
 - **Rotura** (servidor): con **2 o más tortugas** a la vez (`BreakRiders`) la grieta sube y en **1,1 s** (`CrackSeconds`) se parte;
   si se bajan, baja a 0,45/s. Al partirse: chasquido, astillas, «¡CRAC!»; las mitades caen (0,5 s) y a los 0,8 s son rampas de
   ~34° de la cresta al fondo. Quien estuviera encima cae al hoyo y sale por la brecha o subiendo por una mitad. **No se recompone

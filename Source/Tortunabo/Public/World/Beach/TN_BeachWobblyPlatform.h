@@ -12,6 +12,51 @@ class UStaticMeshComponent;
 class UTN_BeachTrapSynthComponent;
 
 /**
+ * Red de la plataforma tambaleante (issue #20): la pose de la tabla que calcula el servidor viaja en tres bytes. Pasos
+ * pensados para la tabla más grande (150 cm de semiancho y 434 de semilargo): medio paso de error son 2,6 mm en el borde por
+ * el alabeo, 1 mm en las puntas por el cabeceo y 0,5 mm de hundimiento.
+ */
+namespace TNWobblyPlatformNet
+{
+	/** Alabeo (grados por paso): ±25,4° en un int8 (el muelle llega a ±21° con MaxRollDeg = 15). */
+	constexpr float RollStepDeg = 0.2f;
+	/** Cabeceo (grados por paso): ±3,175° en un int8 (el muelle se queda en ±3°). */
+	constexpr float PitchStepDeg = 0.025f;
+	/** Hundimiento (cm por paso): de 0 a 25,5 cm en un uint8 (ocho tortugas encima y la grieta a punto: 18 cm). */
+	constexpr float SagStepCm = 0.1f;
+
+	inline int8 QuantizeRoll(float Deg)
+	{
+		return static_cast<int8>(FMath::Clamp(FMath::RoundToInt(Deg / RollStepDeg), -127, 127));
+	}
+
+	inline float DequantizeRoll(int8 Quantized)
+	{
+		return static_cast<float>(Quantized) * RollStepDeg;
+	}
+
+	inline int8 QuantizePitch(float Deg)
+	{
+		return static_cast<int8>(FMath::Clamp(FMath::RoundToInt(Deg / PitchStepDeg), -127, 127));
+	}
+
+	inline float DequantizePitch(int8 Quantized)
+	{
+		return static_cast<float>(Quantized) * PitchStepDeg;
+	}
+
+	inline uint8 QuantizeSag(float Cm)
+	{
+		return static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(Cm / SagStepCm), 0, 255));
+	}
+
+	inline float DequantizeSag(uint8 Quantized)
+	{
+		return static_cast<float>(Quantized) * SagStepCm;
+	}
+}
+
+/**
  * Plataforma sobre un hoyo de la arena. El hoyo lo trae el elemento en su malla: como el terreno es fijo y no se cava, es
  * un cráter de arena amontonada alrededor (la que sacaron los niños al cavar) con el fondo a ras del suelo (Z = 0) y una
  * brecha en el lado +Y por la que se sale andando. Medidas con SizeScale = 1 (se ajustan a la huella, 900·SizeScale):
@@ -25,9 +70,12 @@ class UTN_BeachTrapSynthComponent;
  * se quedan como rampas (~34°) de la cresta al fondo; quien estuviera encima cae al hoyo y sale por la brecha o subiendo
  * por una mitad. No se recompone en la ronda (el generador recoloca todo en la siguiente).
  *
- * Red: la tabla es una base móvil (UBoxComponent con nombre estable) que cada máquina inclina con las tortugas que ve
- * encima (ángulos pequeños, como el puente del lobby); la rotura la decide el servidor (BrokenAt, hora del servidor
- * replicada) y cada máquina anima la caída de las mitades desde esa hora.
+ * Red: la tabla es una base móvil (UBoxComponent con nombre estable). Su pose (alabeo, cabeceo y hundimiento) la calcula
+ * el servidor con las tortugas que ve él y la replica en tres bytes (NetRoll, NetPitch y NetSag, TNWobblyPlatformNet) hasta
+ * 15 veces por segundo, solo mientras cambia (despierta la réplica dormida); los clientes la siguen suavizada. El temblor
+ * de la grieta solo está en la malla visual. Antes cada máquina movía el muelle con las tortugas que veía (las demás le
+ * llegan con retraso) y la tabla podía ir hasta 9,8° distinta: 19-25 cm en el borde (issue #20). La rotura la decide el
+ * servidor (BrokenAt, hora del servidor replicada) y cada máquina anima la caída de las mitades desde esa hora.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachWobblyPlatform : public ATN_BeachElement
@@ -58,9 +106,18 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Plataforma", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float CreakVolume = 0.9f;
 
+	/** Veces por segundo que la pose de la tabla puede salir hacia los clientes mientras cambia. */
+	static constexpr float PoseNetFrequency = 15.f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void ApplySpec() override;
+
+	/**
+	 * La red de la ronda (relevancia y dormida al aparecer) y, despierta, PoseNetFrequency sin bajar: con la frecuencia
+	 * adaptativa, tras un rato quieta, tardaría más de un segundo en volver a subir.
+	 */
+	virtual void ApplyRoundNetProfile() override;
 
 	UFUNCTION()
 	void OnRep_Broken();
@@ -68,6 +125,16 @@ protected:
 	/** Hora del servidor en que se partió (< 0 = entera). */
 	UPROPERTY(ReplicatedUsing = OnRep_Broken)
 	float BrokenAt = -1.f;
+
+	/** Pose de la tabla del servidor (TNWobblyPlatformNet): alabeo, cabeceo y hundimiento. */
+	UPROPERTY(Replicated)
+	int8 NetRoll = 0;
+
+	UPROPERTY(Replicated)
+	int8 NetPitch = 0;
+
+	UPROPERTY(Replicated)
+	uint8 NetSag = 0;
 
 	/** Cráter de arena con la brecha. */
 	UPROPERTY(VisibleAnywhere, Category = "Plataforma")
@@ -139,10 +206,18 @@ private:
 	double BoardThick = 24.0;
 	double DropAngleDeg = 33.0;
 
+	/** Servidor: pose cuantizada en NetRoll, NetPitch y NetSag; si ha cambiado, despierta la réplica (una vez por segundo como mucho). */
+	void PublishPose(double Now);
+
 	float Roll = 0.f;
 	float RollVel = 0.f;
 	float Pitch = 0.f;
 	float PitchVel = 0.f;
+	/** Hundimiento de la tabla (cm): servidor, por las tortugas encima y la grieta; clientes, el suyo suavizado. */
+	float Sag = 0.f;
+	/** Servidor: no despierta la réplica otra vez antes de esta hora. */
+	double NextNetWake = 0.0;
+	/** Grieta en esta máquina: en el servidor decide la rotura; en los clientes solo crujidos, astillas y temblor de la malla. */
 	float Crack = 0.f;
 	float CrackCreakTimer = 0.f;
 	bool bBrokenApplied = false;
