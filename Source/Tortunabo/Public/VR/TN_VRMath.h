@@ -286,7 +286,8 @@ namespace TNVRMath
 				Hi = Mid;
 			}
 		}
-		return static_cast<float>(FMath::RadiansToDegrees(Lo));
+		// Una centésima de grado por dentro: al pasar a float el valor del borde puede redondear hacia fuera y dejar de caber.
+		return static_cast<float>(FMath::RadiansToDegrees(Lo) - 0.01);
 	}
 
 	/** Escala del panel para que ocupe HorizontalFovDeg grados de ancho a Distance: el ancho de dibujo pasa a centímetros. */
