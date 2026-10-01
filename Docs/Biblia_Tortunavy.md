@@ -1888,7 +1888,7 @@ El espectador tiene su propia cámara libre o fija (§22.4).
 | Energía sin fin: penalización posterior | por defecto 4 s (`PostBoostExhaustionSeconds`); cada objeto pone la suya | [C] |
 | Durante la penalización | velocidad × 0,75 y gasto × 2 (la recarga no se bloquea) | [C] |
 | Tope de la energía sin fin pedida por un cliente | 15 s (el servidor lo recorta) | [C] `MaxGrantDuration` |
-| Multiplicador de velocidad de la carrera | limitado a 1–4; la aceleración sube con él (`RaceBaseAcceleration × (1 + (m−1)·2)`) | [C] `SetRaceSpeedMultiplier` |
+| Multiplicador de velocidad de la carrera | hasta 2,4 (`MaxSpeedMultiplier`); en cada movimiento guardado (`FTNSavedMove_Turtle`); la aceleración sube con él (`MaxAcceleration × (1 + (m−1)·2)`) | [C] `TNMovementLimits::RaceBoostAcceleration` |
 
 **Cifras derivadas** [calc]:
 
@@ -2932,8 +2932,8 @@ Los nombres valen en inglés, en español o por número. La gaviota justiciera y
 ### 29.10 Límites conocidos
 
 Todo este código se escribió sin compilar (puede haber errores de compilación la primera vez); las cajas no reaparecen ni dicen lo
-que dan; las minas lanzadas solo miran el suelo; el turbo y el protector cambian `MaxWalkSpeed` en cada máquina por su cuenta
-(con latencia alta, corrección de movimiento al empezar o acabar); los efectos se acaban solos al cambiar la ronda; los abortos del
+que dan; las minas lanzadas solo miran el suelo; el turbo y el protector van en la predicción del movimiento
+(issue #22: sin corrección al empezar o acabar); los efectos se acaban solos al cambiar la ronda; los abortos del
 pelícano la sueltan donde estén.
 
 ## 30. Puntuación

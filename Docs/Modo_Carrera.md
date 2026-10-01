@@ -3290,10 +3290,11 @@ nuevo de `DT_Items` sale con peso 1. Los triples de 2 y de 1 uso nunca salen del
   aturdimientos. Los actores de los objetos (`ATN_RaceItemActor`: siempre relevantes, `Track` replicado a 20-30 Hz y suavizado
   en los clientes, reloj del servidor común) y el pelícano (`ATN_BeachEnemy`, plan replicado una vez) se ven igual en todas.
 - **Efectos en la propia tortuga** (`UTN_RaceItemComponent`, componente dinámico replicado que el servidor añade la primera
-  vez, como `UTN_BeachStunComponent`): turbo, protector y vuelo. Cada máquina pone el mismo multiplicador de velocidad en
-  su `UTN_StaminaComponent` (`SetRaceSpeedMultiplier`) a partir del estado replicado, de modo que el dueño, el servidor y los
-  demás usan el mismo `MaxWalkSpeed` (al empezar y acabar el turbo puede haber una pequeña corrección de movimiento de un
-  par de fotogramas por la latencia).
+  vez, como `UTN_BeachStunComponent`): turbo, protector y vuelo. El multiplicador de velocidad va en la predicción del
+  movimiento (issue #22): quien mueve la tortuga lo toma al empezar cada movimiento y lo guarda en `FTNSavedMove_Turtle`
+  (marca `FLAG_Custom_0`); el servidor simula los movimientos marcados con el que él le reconoce
+  (`ResolveOwnerBoostMultiplier`: el de ahora o, recién acabado, el de antes durante un ping más 0,25 s) y
+  `UTN_TurtleMovementComponent` lo aplica a la velocidad y la aceleración. Sin corrección al empezar ni al acabar.
 - **Sonidos** sintetizados (`UTN_RaceItemSynthComponent`, 21 sonidos, sin archivos) y efectos puntuales locales
   (`ATN_RaceBurstFX`); nada en servidor dedicado.
 
@@ -3312,7 +3313,7 @@ nuevo de `DT_Items` sale con peso 1. Los triples de 2 y de 1 uso nunca salen del
 | `TN_RaceItemSynth.h`, `Private/World/Beach/TN_RaceItemSynth.cpp` | Los sonidos sintetizados |
 | `Private/World/Beach/TN_RaceItemArt.h/.cpp` | Mallas e iconos dibujados en código |
 | `Private/World/Beach/TN_RaceItemCommands.cpp` | Comandos de consola (`Docs/Comandos_Prueba.md`) |
-| Cambios mínimos en lo existente | `TN_InventoryTypes.h` (`RaceItem`), `TN_InventoryComponent.*` (resolver malla e icono; `TryReplaceEquippedItem`), `TN_PickupInteractableBase.cpp` (idem), `TortugaCharacter_Interaction.cpp` (rama `RaceItem`), `TortugaCharacter_Knockdown.cpp` y `TN_BeachStun.cpp` (invulnerabilidad), `TN_BeachEnemy.*` (`CanBeHit` y `GetMaxHoldSeconds`, virtual: el seguro de la sujeción es de 6 s y el pelícano taxi lo alarga a 20 s), `TN_StaminaComponent.*` (`SetRaceSpeedMultiplier`), `TN_ProcSearchSpot.*` (`PickLoot` virtual), `TN_BeachLoot.*` y `TN_BeachChest.*` (sorteo por puesto, cajas de objetos) |
+| Cambios mínimos en lo existente | `TN_InventoryTypes.h` (`RaceItem`), `TN_InventoryComponent.*` (resolver malla e icono; `TryReplaceEquippedItem`), `TN_PickupInteractableBase.cpp` (idem), `TortugaCharacter_Interaction.cpp` (rama `RaceItem`), `TortugaCharacter_Knockdown.cpp` y `TN_BeachStun.cpp` (invulnerabilidad), `TN_BeachEnemy.*` (`CanBeHit` y `GetMaxHoldSeconds`, virtual: el seguro de la sujeción es de 6 s y el pelícano taxi lo alarga a 20 s), `TN_StaminaComponent.*` (`GetRaceBoostWalkSpeed`), `TN_TurtleMovementComponent.*` (turbo en `FTNSavedMove_Turtle`), `TN_ProcSearchSpot.*` (`PickLoot` virtual), `TN_BeachLoot.*` y `TN_BeachChest.*` (sorteo por puesto, cajas de objetos) |
 
 ### Probar
 
@@ -3328,8 +3329,8 @@ mirar que las dos ventanas ven lo mismo; `TN.Race.ItemBox 4` y `TN.Race.ItemRank
 - Las cajas de objetos no reaparecen en la ronda y no dicen lo que dan (como en las carreras de karts).
 - `M_ProcFXHard` (material duro de las sombras de aviso, lo crea `Scripts/create_poop_decal.py`) no es imprescindible: sin
   él, la onda del silbato, el rayo y el aviso de la gaviota usan `M_ProcFXSoft`.
-- El turbo y el protector cambian `MaxWalkSpeed` en cada máquina por su cuenta (como el resto de límites de velocidad):
-  con mucha latencia el dueño puede notar una corrección al empezar o acabar.
+- El turbo y el protector van en la predicción del movimiento; si cambian a la vez (un turbo que acaba con el protector
+  puesto), durante un ping el servidor usa el multiplicador nuevo y el dueño el viejo: corrección pequeña.
 - Las minas lanzadas solo miran el suelo, no chocan con el decorado.
 - Los efectos (turbo, protector solar) y los actores lanzados se acaban solos al cambiar la ronda del generador; el pelícano
   dura como mucho 40 s.
