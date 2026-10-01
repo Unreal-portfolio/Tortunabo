@@ -1,5 +1,6 @@
 #include "World/ProcMap/TN_ProcPuzzleActors.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "Art/TN_Art.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
@@ -56,6 +57,9 @@ void ATN_ProcThrowWall::BeginPlay()
 	TNProcActors::Tint(Ramp, FLinearColor(0.5f, 0.33f, 0.16f));
 	ApplyDimensions();
 	RampAlpha = bRampDown ? 1.f : 0.f;
+	// Mallas de arte (Docs/Arte_Assets.md): hijas del cubo de cada uno, con su escala (las medidas del muro y de la rampa).
+	TNArt::ApplyToComponent(Block, TN_ART("ProcMap.Puzzle.ThrowWallBlock"));
+	TNArt::ApplyToComponent(Ramp, TN_ART("ProcMap.Puzzle.ThrowWallRamp"));
 }
 
 void ATN_ProcThrowWall::Setup(float InWidth, float InHeight, float InLength)
@@ -155,6 +159,8 @@ void ATN_ProcSabotageGate::BeginPlay()
 	TNProcActors::Tint(Gate, FLinearColor(0.7f, 0.15f, 0.1f));
 	OnRep_Size();
 	RaiseAlpha = bRaised ? 1.f : 0.f;
+	// Malla de arte (Docs/Arte_Assets.md): hija del cubo, con su escala (las medidas de la compuerta); sube y baja con él.
+	TNArt::ApplyToComponent(Gate, TN_ART("ProcMap.Puzzle.SabotageGate"));
 }
 
 void ATN_ProcSabotageGate::Setup(float InWidth, float InHeight)
@@ -210,6 +216,13 @@ ATN_ProcSwitch::ATN_ProcSwitch()
 	}
 	PromptText = NSLOCTEXT("Tortunabo", "ProcSwitchPrompt", "Pulsar");
 	CooldownSeconds = 1.f;
+}
+
+void ATN_ProcSwitch::BeginPlay()
+{
+	Super::BeginPlay();
+	// Malla de arte (Docs/Arte_Assets.md): hija del cilindro, con su escala.
+	TNArt::ApplyToComponent(Mesh, TN_ART("ProcMap.Puzzle.Switch"));
 }
 
 void ATN_ProcSwitch::SetTarget(AActor* InTarget, float InEffectSeconds)

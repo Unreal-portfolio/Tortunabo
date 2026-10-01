@@ -11,6 +11,7 @@
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcEggNest.h"
 #include "World/ProcMap/TN_ProcStartStructure.h"
+#include "../../Art/TN_ArtPieces.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
 #include "ProceduralMeshComponent.h"
@@ -261,6 +262,8 @@ void ATN_ProcMapGenerator::Clear()
 	}
 	TerrainTiles.Reset();
 
+	// Las mallas de arte de las estructuras (las pone BuildStructures, hijas de StructureMesh) se van con ellas.
+	TNArt::ClearPieceArt(this, TEXT("ProcMapStructures"));
 	if (StructureMesh) { StructureMesh->DestroyComponent(); StructureMesh = nullptr; }
 	if (DecorMesh) { DecorMesh->DestroyComponent(); DecorMesh = nullptr; }
 	if (WaterPlane) { WaterPlane->DestroyComponent(); WaterPlane = nullptr; }
@@ -270,6 +273,15 @@ void ATN_ProcMapGenerator::Clear()
 		if (Comp) { Comp->DestroyComponent(); }
 	}
 	ScatterComponents.Reset();
+	// Gemelos invisibles que guardan la colisión de los objetos macizos con sustituto de arte (TNArt::ApplyToInstances en
+	// BuildFlora). Sin sustitutos no hay ninguno.
+	{
+		TInlineComponentArray<UInstancedStaticMeshComponent*> Instanced(this);
+		for (UInstancedStaticMeshComponent* Comp : Instanced)
+		{
+			if (IsValid(Comp) && TNArt::IsCollisionTwin(Comp)) { Comp->DestroyComponent(); }
+		}
+	}
 	FloraMeshes.Reset();
 
 	for (UPointLightComponent* Light : CaveLights)

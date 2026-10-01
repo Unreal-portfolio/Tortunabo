@@ -145,6 +145,7 @@ public:
 	void SetTarget(AActor* InTarget, float InEffectSeconds);
 
 protected:
+	virtual void BeginPlay() override;
 	virtual void OnInteracted_Implementation(APawn* Interactor) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Switch", meta = (ClampMin = "0.5"))

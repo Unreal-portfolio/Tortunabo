@@ -5,6 +5,7 @@
 #include "TN_ProcMapCaveMeshes.h"
 #include "TN_ProcMapPropMeshes.h"
 #include "TN_ProcMapRockMeshes.h"
+#include "../../Art/TN_ArtPieces.h"
 
 /**
  * Interior y bocas de las cuevas (low-poly de caras planas con color de vértice), según su estilo:
@@ -59,18 +60,29 @@ namespace TNCaveDecor
 		double Side = 1.0;
 	};
 
-	/** Lo que sale de una cueva, por material. */
+	/**
+	 * Lo que sale de una cueva, por material: se añade al final de los buffers de las secciones del mapa (los de
+	 * ATN_ProcMapGenerator::BuildStructures), así cada objeto de la decoración se puede marcar como pieza de arte en ellos.
+	 */
 	struct FTNCaveDecorOut
 	{
-		FTNProcMeshBuffers Solid;   ///< Con colisión: estatua, columnas, pilares, estalagmitas, estelas, peñascos.
-		FTNProcMeshBuffers Detail;  ///< Sin colisión: símbolos, raíces, lianas, huesos, vasijas, musgo, piedras sueltas.
-		FTNProcMeshBuffers Glow;    ///< Emisivo del color del vértice: setas, cristales, ojos, llamas, cielo del lucernario.
-		FTNProcMeshBuffers Ember;   ///< Material de lava: grietas incandescentes.
-		FTNProcMeshBuffers Beam;    ///< Translúcido: haz del lucernario (opacidad en el alfa del vértice).
-		FTNProcMeshBuffers Water;   ///< Pozas.
+		FTNCaveDecorOut(FTNProcMeshBuffers& InSolid, FTNProcMeshBuffers& InDetail, FTNProcMeshBuffers& InGlow, FTNProcMeshBuffers& InEmber,
+			FTNProcMeshBuffers& InBeam, FTNProcMeshBuffers& InWater)
+			: Solid(InSolid), Detail(InDetail), Glow(InGlow), Ember(InEmber), Beam(InBeam), Water(InWater)
+		{
+		}
+
+		FTNProcMeshBuffers& Solid;   ///< Con colisión: estatua, columnas, pilares, estalagmitas, estelas, peñascos.
+		FTNProcMeshBuffers& Detail;  ///< Sin colisión: símbolos, raíces, lianas, huesos, vasijas, musgo, piedras sueltas.
+		FTNProcMeshBuffers& Glow;    ///< Emisivo del color del vértice: setas, cristales, ojos, llamas, cielo del lucernario.
+		FTNProcMeshBuffers& Ember;   ///< Material de lava: grietas incandescentes.
+		FTNProcMeshBuffers& Beam;    ///< Translúcido: haz del lucernario (opacidad en el alfa del vértice).
+		FTNProcMeshBuffers& Water;   ///< Pozas.
 		TArray<FTNCaveLight> Lights;
 		TArray<FVector> Flames;     ///< Antorchas: brasas que suben.
 		TArray<FVector> Motes;      ///< Polvo que flota en el haz del lucernario.
+		/** Registro de las piezas de arte (Docs/Arte_Assets.md) en el que se marca cada objeto; nulo, nada. */
+		TNArt::FPieceLog* Log = nullptr;
 	};
 
 	/** Colores de un estilo. */
@@ -507,6 +519,82 @@ namespace TNCaveDecor
 		}
 	}
 
+	// ── Piezas de arte (Docs/Arte_Assets.md) ─────────────────────────────────────
+	// Las llamadas que llevan varias tiradas del aleatorio en sus argumentos no se tocan (el orden en que se evalúan no
+	// cambia): lo que acaban de añadir se marca después como pieza, con el pivote sacado de lo construido.
+
+	/**
+	 * Marca como la pieza Slot lo que se ha añadido a M desde Verts0/Tris0, sin cambiar nada: saca esa cola y la vuelve a
+	 * poner igual dentro del ámbito de la pieza (los buffers quedan idénticos). PivotOf(Cola) da su pivote.
+	 */
+	template <typename FPivotOf>
+	void TNCaveMarkTail(TNArt::FPieceLog* Log, FName Slot, FTNProcMeshBuffers& M, int32 Verts0, int32 Tris0, FPivotOf&& PivotOf)
+	{
+		if (!Log || M.Tris.Num() <= Tris0) { return; }
+		FTNProcMeshBuffers Tail;
+		const int32 NumV = M.Verts.Num() - Verts0;
+		Tail.Verts.Append(M.Verts.GetData() + Verts0, NumV);
+		Tail.Normals.Append(M.Normals.GetData() + Verts0, NumV);
+		Tail.UVs.Append(M.UVs.GetData() + Verts0, NumV);
+		Tail.Colors.Append(M.Colors.GetData() + Verts0, NumV);
+		Tail.Tris.Append(M.Tris.GetData() + Tris0, M.Tris.Num() - Tris0);
+		const FTransform Pivot = PivotOf(Tail);
+		M.Verts.SetNum(Verts0, EAllowShrinking::No);
+		M.Normals.SetNum(Verts0, EAllowShrinking::No);
+		M.UVs.SetNum(Verts0, EAllowShrinking::No);
+		M.Colors.SetNum(Verts0, EAllowShrinking::No);
+		M.Tris.SetNum(Tris0, EAllowShrinking::No);
+		TNArt::FPieceScope Piece(Log, Slot, Pivot, { &M });
+		M.Verts.Append(Tail.Verts);
+		M.Normals.Append(Tail.Normals);
+		M.UVs.Append(Tail.UVs);
+		M.Colors.Append(Tail.Colors);
+		M.Tris.Append(Tail.Tris);
+	}
+
+	/**
+	 * Pivote de un peñasco (TNProcAddBoulder: hundido 25 en el suelo) sacado de su caja: centro de la base, sin giro; escala 1
+	 * = radio y alto RefSize.
+	 */
+	inline FTransform TNCaveBoulderPivot(const FTNProcMeshBuffers& Tail, double RefSize)
+	{
+		const FBox Box(Tail.Verts);
+		const FVector Half = Box.GetExtent();
+		const double Rxy = 0.5 * (Half.X + Half.Y);
+		return TNArt::PiecePivot(FVector(Box.GetCenter().X, Box.GetCenter().Y, Box.Min.Z + 25.0), 0.0,
+			FVector(Rxy / RefSize, Rxy / RefSize, FMath::Max(1.0, Box.Max.Z - Box.Min.Z) / (1.1 * RefSize)));
+	}
+
+	/** Pivote de una columna de basalto (TNRockHexColumn: enterrada 20) sacado de su caja: pie; escala 1 = radio 36 y 250 de alto. */
+	inline FTransform TNCaveBasaltPivot(const FTNProcMeshBuffers& Tail)
+	{
+		const FBox Box(Tail.Verts);
+		const FVector Half = Box.GetExtent();
+		const double Rxy = 0.5 * (Half.X + Half.Y);
+		return TNArt::PiecePivot(FVector(Box.GetCenter().X, Box.GetCenter().Y, Box.Min.Z + 20.0), 0.0,
+			FVector(Rxy / 36.0, Rxy / 36.0, FMath::Max(1.0, Box.Max.Z - Box.Min.Z - 20.0) / 250.0));
+	}
+
+	/**
+	 * Pivote de un prop copiado con TNPropAppend(Dst, Src, Offset, Yaw, Scale) sacado de dos de sus vértices (Src en sus
+	 * locales y Tail ya colocado): Offset, girado Yaw, con la escala Scale.
+	 */
+	inline FTransform TNCavePropPivot(const FTNProcMeshBuffers& Src, const FTNProcMeshBuffers& Tail, double Scale)
+	{
+		if (Src.Verts.Num() == 0 || Tail.Verts.Num() != Src.Verts.Num()) { return FTransform::Identity; }
+		double YawDeg = 0.0;
+		for (int32 i = 1; i < Src.Verts.Num(); ++i)
+		{
+			const FVector2D Local(Src.Verts[i].X - Src.Verts[0].X, Src.Verts[i].Y - Src.Verts[0].Y);
+			if (Local.SizeSquared() < 1.0) { continue; }
+			const FVector2D Placed(Tail.Verts[i].X - Tail.Verts[0].X, Tail.Verts[i].Y - Tail.Verts[0].Y);
+			YawDeg = FMath::RadiansToDegrees(FMath::Atan2(Placed.Y, Placed.X) - FMath::Atan2(Local.Y, Local.X));
+			break;
+		}
+		const FVector Turned = FRotator(0.0, YawDeg, 0.0).RotateVector(Src.Verts[0]) * Scale;
+		return TNArt::PiecePivot(Tail.Verts[0] - Turned, YawDeg, FVector(Scale));
+	}
+
 	// ── Cueva completa ───────────────────────────────────────────────────────────
 
 	/**
@@ -599,6 +687,9 @@ namespace TNCaveDecor
 					const int32 Crown = Style == ECaveStyle::Temple ? 1 : (Style == ECaveStyle::Jungle ? 2 : (Style == ECaveStyle::Crystal ? 3 : 0));
 					const FLinearColor Eyes = Style == ECaveStyle::Temple || Style == ECaveStyle::Limestone ? FLinearColor(0.35f, 0.9f, 1.f) : Pal.Glow;
 					TNTurtleStatue(Solid, Glow, Seed, Pal.Statue, Pal.Accent, Eyes, Crown, Style == ECaveStyle::Jungle);
+					// Pieza de arte: centro de la base de la estatua, +X hacia donde mira; escala 1 = la de la cámara normal.
+					TNArt::FPieceScope StatuePiece(Out.Log, TN_ART("ProcMap.Cave.TurtleStatue"), TNArt::PiecePivot(Pos, YawOf(Face), FVector(Scale)),
+						{ &Out.Solid, &Out.Glow });
 					TNPropMesh::TNPropAppend(Out.Solid, Solid, Pos, YawOf(Face), Scale);
 					TNPropMesh::TNPropAppend(Out.Glow, Glow, Pos, YawOf(Face), Scale);
 					Reserve(S - 2, S + 2, StatueSide);
@@ -627,6 +718,10 @@ namespace TNCaveDecor
 				const FVector Top = F.At(0.0, Crown - 8.0);
 				constexpr int32 Seg = 10;
 				const FLinearColor Sky(0.92f, 0.96f, 1.f), RimC = Look.Inner * 1.8f;
+				// Pieza de arte (hueco de la clave, haz y claro de hierba con flores): centro del suelo, +X por el túnel; escala 1 =
+				// 10 m del suelo a la clave.
+				TNArt::FPieceScope SkylightPiece(Out.Log, TN_ART("ProcMap.Cave.Skylight"), TNArt::PiecePivot(F.F, YawOf(F.D), FVector(1.0, 1.0, Crown / 1000.0)),
+					{ &Out.Glow, &Out.Detail, &Out.Beam });
 				for (int32 k = 0; k < Seg; ++k)
 				{
 					const double A0 = TNProcMap::TwoPi * k / Seg, A1 = TNProcMap::TwoPi * (k + 1) / Seg;
@@ -680,6 +775,9 @@ namespace TNCaveDecor
 			{
 				const FFrame& F = Fr[S];
 				const double R = FMath::Min(240.0, F.Hw * 0.22);
+				// Pieza de arte (agua y piedras del borde): centro de la poza; escala 1 = radio 240.
+				TNArt::FPieceScope PoolPiece(Out.Log, TN_ART("ProcMap.Cave.Pool"), TNArt::PiecePivot(F.At(Sd * (F.Hw - R - 60.0), 0.0), 0.0, FVector(R / 240.0, R / 240.0, 1.0)),
+					{ &Out.Water, &Out.Solid });
 				TNCavePool(Out.Water, Out.Solid, F.At(Sd * (F.Hw - R - 60.0), 0.0), R, Rng, Pal.Formation * 0.8f);
 				Reserve(S - 1, S + 1, Sd);
 			}
@@ -748,6 +846,9 @@ namespace TNCaveDecor
 					const double H = bChamber ? Rng.Range(170.0, 240.0) : Rng.Range(140.0, 180.0);
 					const FLinearColor Ink = Pal.bGlowPaint ? Pal.Paint : (Style == ECaveStyle::Temple ? Pal.Accent : Pal.Paint);
 					FTNProcMeshBuffers& InkBuf = Pal.bGlowPaint ? Out.Glow : Out.Detail;
+					// Pieza de arte: pie de la estela, +X hacia donde mira su cara; escala 1 = 120 de ancho y 190 de alto.
+					TNArt::FPieceScope StelePiece(Out.Log, TN_ART("ProcMap.Cave.Stele"),
+						TNArt::PiecePivot(WallFloor(bChamber ? 70.0 : 32.0), YawOf(In), FVector(1.0, W / 120.0, H / 190.0)), { &Out.Solid, &InkBuf });
 					TNStele(Out.Solid, InkBuf, WallFloor(bChamber ? 70.0 : 32.0), In, W, H, Rng.Next(), Pal.Statue * 0.95f, Ink);
 					Reserve(s, s, Sd);
 					continue;
@@ -761,7 +862,13 @@ namespace TNCaveDecor
 						if (Style == ECaveStyle::Crystal && Rng.Chance(bChamber ? 0.55 : 0.35))
 						{
 							const double Size = bChamber ? Rng.Range(160.0, 340.0) : Rng.Range(50.0, 90.0);
-							TNCrystalCluster(Out.Glow, WallFloor(bChamber ? Rng.Range(60.0, Band * 0.6) : 25.0), In, Size, Rng, Pal.Glow, bChamber ? &Out.Solid : nullptr);
+							const FVector ClusterBase = WallFloor(bChamber ? Rng.Range(60.0, Band * 0.6) : 25.0);
+							{
+								// Pieza de arte: pie del racimo, +X hacia fuera de la pared; escala 1 = cristal mayor de 200.
+								TNArt::FPieceScope ClusterPiece(Out.Log, TN_ART("ProcMap.Cave.CrystalCluster"), TNArt::PiecePivot(ClusterBase, YawOf(In), FVector(Size / 200.0)),
+									{ &Out.Glow, &Out.Solid });
+								TNCrystalCluster(Out.Glow, ClusterBase, In, Size, Rng, Pal.Glow, bChamber ? &Out.Solid : nullptr);
+							}
 							if (bChamber && GlowLights < 6)
 							{
 								++GlowLights;
@@ -778,6 +885,9 @@ namespace TNCaveDecor
 						{
 							// Columna del suelo a la bóveda.
 							const double Y = F.Hw - Rng.Range(90.0, Band * 0.7);
+							// Pieza de arte: pie de la columna; escala Z 1 = 600 del suelo a donde entra en la bóveda.
+							TNArt::FPieceScope ColumnPiece(Out.Log, TN_ART("ProcMap.Cave.Column"),
+								TNArt::PiecePivot(F.At(Sd * Y, -6.0), 0.0, FVector(1.0, 1.0, (F.RoofZ(Y) + 70.0) / 600.0)), { &Out.Solid });
 							TNCaveColumn(Out.Solid, F.At(Sd * Y, -6.0), F.RoofZ(Y) + 70.0, Rng.Range(40.0, 75.0), Rng.Next(), Pal.Formation * static_cast<float>(Rng.Range(0.9, 1.05)));
 							break;
 						}
@@ -788,6 +898,8 @@ namespace TNCaveDecor
 							{
 								const double H = bChamber ? Rng.Range(70.0, 340.0) : Rng.Range(35.0, 80.0);
 								const FVector P = WallFloor(bChamber ? Rng.Range(40.0, Band) : Rng.Range(15.0, 35.0), Rng.Range(-150.0, 150.0));
+								// Pieza de arte: pie de la estalagmita; escala 1 = 150 de alto.
+								TNArt::FPieceScope StalagmitePiece(Out.Log, TN_ART("ProcMap.Cave.Stalagmite"), TNArt::PiecePivot(P, 0.0, FVector(H / 150.0)), { &Out.Solid });
 								TNStalagmite(Out.Solid, P, H, H * Rng.Range(0.16, 0.24), Rng.Next(), Pal.Formation * static_cast<float>(Rng.Range(0.85, 1.05)));
 							}
 						}
@@ -801,6 +913,9 @@ namespace TNCaveDecor
 								const double Len = FMath::Min(Rng.Range(90.0, 280.0), Z - 260.0);
 								if (Len < 40.0) { continue; }
 								const FVector Top = F.At(Y, Z + 50.0, Rng.Range(-180.0, 180.0));
+								// Pieza de arte: donde nace en la bóveda (50 por dentro de la roca); escala 1 = 230 hasta la punta.
+								TNArt::FPieceScope StalactitePiece(Out.Log, TN_ART("ProcMap.Cave.Stalactite"), TNArt::PiecePivot(Top, 0.0, FVector((Len + 50.0) / 230.0)),
+									{ &Out.Detail });
 								TNProcAddCylinder(Out.Detail, Top, Top - FVector(0.0, 0.0, Len + 50.0), Len * 0.16, 2.0, 6, Pal.Formation * 0.9f);
 							}
 						}
@@ -837,7 +952,13 @@ namespace TNCaveDecor
 						if (Rng.Chance(bChamber ? 0.6 : 0.35))
 						{
 							const double Size = bChamber ? Rng.Range(60.0, 120.0) : Rng.Range(30.0, 50.0);
-							TNGlowMushrooms(Out.Detail, Out.Glow, WallFloor(bChamber ? Rng.Range(50.0, Band * 0.7) : 25.0), Size, Rng, Pal.Glow);
+							const FVector MushroomBase = WallFloor(bChamber ? Rng.Range(50.0, Band * 0.7) : 25.0);
+							{
+								// Pieza de arte: centro del corro de setas; escala 1 = 80 (la seta mayor llega a ese alto).
+								TNArt::FPieceScope MushroomPiece(Out.Log, TN_ART("ProcMap.Cave.GlowMushrooms"), TNArt::PiecePivot(MushroomBase, 0.0, FVector(Size / 80.0)),
+									{ &Out.Detail, &Out.Glow });
+								TNGlowMushrooms(Out.Detail, Out.Glow, MushroomBase, Size, Rng, Pal.Glow);
+							}
 							if (GlowLights < 6 && Rng.Chance(0.45))
 							{
 								++GlowLights;
@@ -856,7 +977,13 @@ namespace TNCaveDecor
 							const double Y = Sd * F.Hw * Rng.Range(0.15, 0.85);
 							const double Z = F.RoofZ(Y);
 							const double Len = FMath::Min(Rng.Range(60.0, 220.0), Z - 260.0);
-							if (Len > 30.0) { TNVine(Out.Detail, F.At(Y, Z + 10.0, Rng.Range(-180.0, 180.0)), Len + 10.0, Rng, FLinearColor(0.2f, 0.34f, 0.12f), FLinearColor(0.22f, 0.5f, 0.16f)); }
+							if (Len > 30.0)
+							{
+								const FVector VineTop = F.At(Y, Z + 10.0, Rng.Range(-180.0, 180.0));
+								// Pieza de arte: donde cuelga de la bóveda; escala 1 = 150 de largo.
+								TNArt::FPieceScope VinePiece(Out.Log, TN_ART("ProcMap.Cave.Vine"), TNArt::PiecePivot(VineTop, 0.0, FVector((Len + 10.0) / 150.0)), { &Out.Detail });
+								TNVine(Out.Detail, VineTop, Len + 10.0, Rng, FLinearColor(0.2f, 0.34f, 0.12f), FLinearColor(0.22f, 0.5f, 0.16f));
+							}
 						}
 						if (Rng.Chance(0.55))
 						{
@@ -879,10 +1006,18 @@ namespace TNCaveDecor
 							// Pilares hasta la bóveda, con antorcha en uno de cada dos.
 							const double Y = F.Hw - 75.0;
 							const bool bBroken = Rng.Chance(0.2);
-							TNTemplePillar(Out.Solid, F.At(Sd * Y, -4.0), F.RoofZ(Y) + 60.0, 32.0, F.D, bBroken, Rng.Next(), Pal.Formation, Pal.Formation * 0.8f);
+							{
+								// Pieza de arte (entero o roto, con su tambor caído): pie del pilar, +X por el túnel; escala Z 1 = 600 hasta la bóveda.
+								TNArt::FPieceScope PillarPiece(Out.Log, bBroken ? TN_ART("ProcMap.Cave.TemplePillarBroken") : TN_ART("ProcMap.Cave.TemplePillar"),
+									TNArt::PiecePivot(F.At(Sd * Y, -4.0), YawOf(F.D), FVector(1.0, 1.0, (F.RoofZ(Y) + 60.0) / 600.0)), { &Out.Solid });
+								TNTemplePillar(Out.Solid, F.At(Sd * Y, -4.0), F.RoofZ(Y) + 60.0, 32.0, F.D, bBroken, Rng.Next(), Pal.Formation, Pal.Formation * 0.8f);
+							}
 							if (!bBroken && TorchLights < 8 && --NextTorch <= 0)
 							{
 								NextTorch = 2;
+								// Pieza de arte: pie del soporte en la pared, +X hacia dentro del túnel.
+								TNArt::FPieceScope TorchPiece(Out.Log, TN_ART("ProcMap.Cave.WallTorch"), TNArt::PiecePivot(F.At(Sd * (Y - 45.0), 170.0), YawOf(In)),
+									{ &Out.Detail, &Out.Glow });
 								const FVector Tip = TNWallTorch(Out.Detail, Out.Glow, F.At(Sd * (Y - 45.0), 170.0), In);
 								Out.Flames.Add(Tip);
 								++TorchLights;
@@ -900,11 +1035,18 @@ namespace TNCaveDecor
 							// Pilastras pegadas a la pared en los pasos, con antorcha.
 							const double Y = F.Hw - 18.0;
 							const double Top = F.RoofZ(Y) + 40.0;
-							Out.Solid.AddBox(F.At(Sd * Y, Top * 0.5 - 4.0), F.D, FVector(34.0, 18.0, Top * 0.5), Pal.Formation);
-							Out.Solid.AddBox(F.At(Sd * Y, Top - 60.0), F.D, FVector(42.0, 24.0, 14.0), Pal.Formation * 0.85f);
+							{
+								// Pieza de arte: pie de la pilastra, +X por el túnel; escala Z 1 = 600 hasta la bóveda.
+								TNArt::FPieceScope PilasterPiece(Out.Log, TN_ART("ProcMap.Cave.Pilaster"), TNArt::PiecePivot(F.At(Sd * Y, -4.0), YawOf(F.D), FVector(1.0, 1.0, Top / 600.0)),
+									{ &Out.Solid });
+								Out.Solid.AddBox(F.At(Sd * Y, Top * 0.5 - 4.0), F.D, FVector(34.0, 18.0, Top * 0.5), Pal.Formation);
+								Out.Solid.AddBox(F.At(Sd * Y, Top - 60.0), F.D, FVector(42.0, 24.0, 14.0), Pal.Formation * 0.85f);
+							}
 							if (TorchLights < 8 && --NextTorch <= 0)
 							{
 								NextTorch = 2;
+								TNArt::FPieceScope TorchPiece(Out.Log, TN_ART("ProcMap.Cave.WallTorch"), TNArt::PiecePivot(F.At(Sd * (Y - 20.0), 165.0), YawOf(In)),
+									{ &Out.Detail, &Out.Glow });
 								const FVector Tip = TNWallTorch(Out.Detail, Out.Glow, F.At(Sd * (Y - 20.0), 165.0), In);
 								Out.Flames.Add(Tip);
 								++TorchLights;
@@ -925,7 +1067,13 @@ namespace TNCaveDecor
 							if (Pick < 0.4) { TNPropMesh::TNPropClayPot(Prop, Rng.RangeInt(0, 2), Rng.Next()); }
 							else if (Pick < 0.75) { TNPropMesh::TNPropAmphora(Prop, Rng.RangeInt(0, 2)); }
 							else { TNPropMesh::TNPropBones(Prop, Rng.RangeInt(0, 1), Rng.Next()); }
+							const int32 PropVerts0 = Out.Detail.Verts.Num();
+							const int32 PropTris0 = Out.Detail.Tris.Num();
 							TNPropMesh::TNPropAppend(Out.Detail, Prop, WallFloor(bChamber ? Rng.Range(50.0, Band * 0.6) : 30.0, Rng.Range(-100.0, 100.0)), Rng.Range(0.0, 360.0), bChamber ? 1.0 : 0.8);
+							// Pieza de arte: pie del objeto, con su giro y su escala (sacados de lo construido).
+							const FName PropSlot = Pick < 0.4 ? TN_ART("ProcMap.Cave.ClayPot") : (Pick < 0.75 ? TN_ART("ProcMap.Cave.Amphora") : TN_ART("ProcMap.Cave.Bones"));
+							TNCaveMarkTail(Out.Log, PropSlot, Out.Detail, PropVerts0, PropTris0,
+								[&Prop, bChamber](const FTNProcMeshBuffers& Tail) { return TNCavePropPivot(Prop, Tail, bChamber ? 1.0 : 0.8); });
 						}
 						break;
 					}
@@ -937,6 +1085,8 @@ namespace TNCaveDecor
 							const FVector B = WallFloor(bChamber ? Rng.Range(40.0, Band * 0.6) : 22.0);
 							const int32 Count = Rng.RangeInt(3, 6);
 							const double Size = bChamber ? Rng.Range(100.0, 260.0) : Rng.Range(40.0, 80.0);
+							// Pieza de arte (el grupo): pie de la esquirla mayor, +X hacia dentro del túnel; escala 1 = 150 de largo.
+							TNArt::FPieceScope ShardsPiece(Out.Log, TN_ART("ProcMap.Cave.ObsidianShards"), TNArt::PiecePivot(B, YawOf(In), FVector(Size / 150.0)), { &Out.Solid });
 							for (int32 c = 0; c < Count; ++c)
 							{
 								const FVector Tilt = (FVector(Rng.Range(-0.35, 0.35), Rng.Range(-0.35, 0.35), 1.0) + In * Rng.Range(0.1, 0.5)).GetSafeNormal();
@@ -951,7 +1101,11 @@ namespace TNCaveDecor
 							const int32 Count = Rng.RangeInt(3, 5);
 							for (int32 c = 0; c < Count; ++c)
 							{
+								const int32 ColVerts0 = Out.Solid.Verts.Num();
+								const int32 ColTris0 = Out.Solid.Tris.Num();
 								TNRockMesh::TNRockHexColumn(Out.Solid, WallFloor(Rng.Range(40.0, Band * 0.7), Rng.Range(-120.0, 120.0)), Rng.Range(26.0, 42.0), Rng.Range(80.0, 260.0), Rng.Next(), FLinearColor(0.12f, 0.11f, 0.12f));
+								// Pieza de arte: pie de la columna (sacado de lo construido).
+								TNCaveMarkTail(Out.Log, TN_ART("ProcMap.Cave.BasaltColumn"), Out.Solid, ColVerts0, ColTris0, [](const FTNProcMeshBuffers& Tail) { return TNCaveBasaltPivot(Tail); });
 							}
 						}
 						break;
@@ -964,8 +1118,13 @@ namespace TNCaveDecor
 					const int32 Count = Rng.RangeInt(1, 3);
 					for (int32 c = 0; c < Count; ++c)
 					{
+						const int32 StoneVerts0 = Out.Detail.Verts.Num();
+						const int32 StoneTris0 = Out.Detail.Tris.Num();
 						TNProcAddBoulder(Out.Detail, WallFloor(Rng.Range(10.0, 60.0), Rng.Range(-180.0, 180.0)), Rng.Range(12.0, 34.0), Rng.Range(12.0, 30.0), Rng.Next(),
 							Look.Inner * static_cast<float>(Rng.Range(1.1, 1.5)));
+						// Pieza de arte: centro de la base de la piedra (sacado de lo construido).
+						TNCaveMarkTail(Out.Log, TN_ART("ProcMap.Cave.LooseStone"), Out.Detail, StoneVerts0, StoneTris0,
+							[](const FTNProcMeshBuffers& Tail) { return TNCaveBoulderPivot(Tail, 25.0); });
 					}
 				}
 			}
@@ -980,7 +1139,11 @@ namespace TNCaveDecor
 			{
 				const double A = TNProcMap::TwoPi * (k + Rng.Range(-0.2, 0.2)) / Rocks;
 				const FVector P = Magma->Center + FVector(FMath::Cos(A), FMath::Sin(A), 0.0) * (Magma->Radius + Rng.Range(50.0, 110.0)) - FVector(0.0, 0.0, 10.0);
+				const int32 RockVerts0 = Out.Solid.Verts.Num();
+				const int32 RockTris0 = Out.Solid.Tris.Num();
 				TNProcAddBoulder(Out.Solid, P, Rng.Range(45.0, 85.0), Rng.Range(40.0, 95.0), Rng.Next(), FLinearColor(0.08f, 0.07f, 0.08f) * static_cast<float>(Rng.Range(0.8, 1.3)));
+				// Pieza de arte: centro de la base de la roca (sacado de lo construido).
+				TNCaveMarkTail(Out.Log, TN_ART("ProcMap.Cave.MagmaRock"), Out.Solid, RockVerts0, RockTris0, [](const FTNProcMeshBuffers& Tail) { return TNCaveBoulderPivot(Tail, 65.0); });
 			}
 			// Coladas: cintas de lava que bajan por la bóveda y la pared del lado del lago hasta el suelo.
 			const int32 Crown = Side / 2;
@@ -1070,6 +1233,10 @@ namespace TNCaveDecor
 					const FVector C = F.F + F.D * (OutSign * 70.0);
 					const double Hx = F.Hw + 120.0;
 					const double Top = F.Cl + 50.0;
+					// Pieza de arte (pilares, dintel, símbolos y cabeza): centro del umbral, +X hacia fuera de la cueva; escala 1 =
+					// 700 del eje a cada pilar y 800 de alto bajo el dintel.
+					TNArt::FPieceScope GatePiece(Out.Log, TN_ART("ProcMap.Cave.TempleGate"), TNArt::PiecePivot(C, YawOf(F.D * OutSign), FVector(1.0, Hx / 700.0, Top / 800.0)),
+						{ &Out.Solid, &Out.Detail, &Out.Glow });
 					for (const double Ps : { -1.0, 1.0 })
 					{
 						TNTemplePillar(Out.Solid, C + F.N * (Ps * Hx) - FVector(0.0, 0.0, 4.0), Top, 40.0, F.D, false, Rng.Next(), Pal.Formation, Pal.Formation * 0.8f);
@@ -1102,7 +1269,10 @@ namespace TNCaveDecor
 						for (int32 c = 0; c < Count; ++c)
 						{
 							const FVector P = F.F + F.D * (OutSign * Rng.Range(40.0, 520.0)) + F.N * (Ps * (F.Hw + Rng.Range(60.0, 170.0)));
+							const int32 ColVerts0 = Out.Solid.Verts.Num();
+							const int32 ColTris0 = Out.Solid.Tris.Num();
 							TNRockMesh::TNRockHexColumn(Out.Solid, P, Rng.Range(28.0, 50.0), Rng.Range(120.0, 480.0), Rng.Next(), FLinearColor(0.12f, 0.11f, 0.12f));
+							TNCaveMarkTail(Out.Log, TN_ART("ProcMap.Cave.BasaltColumn"), Out.Solid, ColVerts0, ColTris0, [](const FTNProcMeshBuffers& Tail) { return TNCaveBasaltPivot(Tail); });
 						}
 					}
 					break;
@@ -1117,7 +1287,11 @@ namespace TNCaveDecor
 						{
 							const double R = Rng.Range(45.0, 95.0);
 							const FVector P = F.F + F.D * (OutSign * Rng.Range(60.0, 480.0)) + F.N * (Ps * (F.Hw + R * 0.9 + 20.0));
+							const int32 RockVerts0 = Out.Solid.Verts.Num();
+							const int32 RockTris0 = Out.Solid.Tris.Num();
 							TNProcAddBoulder(Out.Solid, P, R, R * Rng.Range(0.8, 1.3), Rng.Next(), Look.Outer * static_cast<float>(Rng.Range(0.85, 1.1)));
+							// Pieza de arte: centro de la base del peñasco (sacado de lo construido).
+							TNCaveMarkTail(Out.Log, TN_ART("ProcMap.Cave.MouthBoulder"), Out.Solid, RockVerts0, RockTris0, [](const FTNProcMeshBuffers& Tail) { return TNCaveBoulderPivot(Tail, 70.0); });
 						}
 					}
 					if (Style == ECaveStyle::Jungle || Style == ECaveStyle::Limestone)
@@ -1132,7 +1306,9 @@ namespace TNCaveDecor
 							{
 								const double Len = FMath::Min(Room, Rng.Range(bJungle ? 80.0 : 40.0, bJungle ? 230.0 : 110.0));
 								if (Len < 25.0) { continue; }
-								TNVine(Out.Detail, Top + F.N * Rng.Range(-40.0, 40.0), Len, Rng, bJungle ? FLinearColor(0.2f, 0.34f, 0.12f) : FLinearColor(0.3f, 0.36f, 0.22f),
+								const FVector VineTop = Top + F.N * Rng.Range(-40.0, 40.0);
+								TNArt::FPieceScope VinePiece(Out.Log, TN_ART("ProcMap.Cave.Vine"), TNArt::PiecePivot(VineTop, 0.0, FVector(Len / 150.0)), { &Out.Detail });
+								TNVine(Out.Detail, VineTop, Len, Rng, bJungle ? FLinearColor(0.2f, 0.34f, 0.12f) : FLinearColor(0.3f, 0.36f, 0.22f),
 									bJungle ? FLinearColor(0.22f, 0.52f, 0.16f) : FLinearColor(0.34f, 0.44f, 0.22f));
 							}
 						}
