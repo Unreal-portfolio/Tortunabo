@@ -63,15 +63,30 @@ namespace TNRally
 		/** Cota del agua (water_uu): por debajo, el buggy reaparece. */
 		bool bHasWater = false;
 		double WaterZ = 0.0;
+		/** Eje de la calzada (road_uu, un punto por metro); vacío si el manifest no lo trae. */
+		TArray<FVector> Road;
+		/** closed del manifest: si viene, manda sobre la comparación de start_uu con end_uu. */
+		bool bHasClosed = false;
+		bool bClosed = false;
+		/** laps del manifest (0 = no viene). */
+		int32 Laps = 0;
+		/** start_yaw: rumbo de la salida cuando no es uno de los checkpoints. */
+		bool bHasStartYaw = false;
+		double StartYawDeg = 0.0;
+		/** road_width_m en cm (0 = no viene). */
+		double RoadWidthCm = 0.0;
 	};
 
 	/** Ruta del manifest de una variante (solo editor y PIE: Scripts/ no se empaqueta). */
 	TORTUNABO_API FString VariantManifestPath(FName Variant);
 
-	/** Lee checkpoints_uu, start_uu, end_uu y water_uu. False (con OutError) si el JSON no vale o no hay ni puertas ni salida. */
+	/**
+	 * Lee checkpoints_uu, start_uu, end_uu, water_uu y, si vienen, road_uu, closed, laps, start_yaw y road_width_m. False (con
+	 * OutError) si el JSON no vale o no hay ni puertas ni salida.
+	 */
 	TORTUNABO_API bool ParseTrackManifest(const FString& JsonText, FTrackSource& Out, FString& OutError);
 
-	/** Circuito: salida y meta en el mismo sitio (a menos de 1 m). */
+	/** Circuito: closed del manifest o, si no viene, salida y meta en el mismo sitio (a menos de 1 m). */
 	TORTUNABO_API bool IsCircuit(const FTrackSource& Source);
 
 	/**
@@ -219,6 +234,12 @@ namespace TNRally
 	 */
 	TORTUNABO_API double FindArcInWindow(TFunctionRef<FVector(double)> PositionAt, double Length, bool bClosed, const FVector& Point,
 		double PrevS, double BehindCm, double AheadCm, double StepCm);
+
+	/**
+	 * Eje de la calzada a un punto cada StepCm (siempre el primero y, en punto a punto, el último); en circuito quita el
+	 * último si repite el primero. Para la spline: road_uu trae un punto por metro.
+	 */
+	TORTUNABO_API TArray<FVector> DownsampleRoad(const TArray<FVector>& Road, double StepCm, bool bClosed);
 
 	/** Hueco de la parrilla: X = metros hacia atrás de la salida (cm), Y = desplazamiento lateral (cm, + a la derecha). */
 	TORTUNABO_API FVector2D GridSlotOffset(int32 Slot);

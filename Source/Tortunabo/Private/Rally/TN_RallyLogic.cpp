@@ -78,6 +78,35 @@ namespace TNRally
 		}
 		Out.bHasWater = Root->TryGetNumberField(TEXT("water_uu"), Out.WaterZ);
 
+		const TArray<TSharedPtr<FJsonValue>>* Road = nullptr;
+		if (Root->TryGetArrayField(TEXT("road_uu"), Road) && Road)
+		{
+			Out.Road.Reserve(Road->Num());
+			for (const TSharedPtr<FJsonValue>& Value : *Road)
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Entry = nullptr;
+				FVector Point;
+				if (!Value.IsValid() || !Value->TryGetArray(Entry) || !Entry || !RallyReadVector(*Entry, Point))
+				{
+					OutError = TEXT("road_uu con un punto mal formado");
+					return false;
+				}
+				Out.Road.Add(Point);
+			}
+		}
+		Out.bHasClosed = Root->TryGetBoolField(TEXT("closed"), Out.bClosed);
+		int32 Laps = 0;
+		if (Root->TryGetNumberField(TEXT("laps"), Laps))
+		{
+			Out.Laps = FMath::Max(0, Laps);
+		}
+		Out.bHasStartYaw = Root->TryGetNumberField(TEXT("start_yaw"), Out.StartYawDeg);
+		double RoadWidthM = 0.0;
+		if (Root->TryGetNumberField(TEXT("road_width_m"), RoadWidthM))
+		{
+			Out.RoadWidthCm = FMath::Max(0.0, RoadWidthM * 100.0);
+		}
+
 		if (Out.Checkpoints.Num() == 0 && !Out.bHasStart)
 		{
 			OutError = TEXT("el manifest no trae checkpoints_uu ni start_uu");
@@ -88,6 +117,10 @@ namespace TNRally
 
 	bool IsCircuit(const FTrackSource& Source)
 	{
+		if (Source.bHasClosed)
+		{
+			return Source.bClosed;
+		}
 		return Source.bHasStart && Source.bHasEnd && FVector::Dist(Source.Start, Source.End) < RallySamePointCm;
 	}
 
@@ -99,7 +132,8 @@ namespace TNRally
 		{
 			FGateDef StartGate;
 			StartGate.Location = Source.Start;
-			StartGate.bHasYaw = false;
+			StartGate.bHasYaw = Source.bHasStartYaw;
+			StartGate.YawDeg = Source.StartYawDeg;
 			Gates.Insert(StartGate, 0);
 		}
 		if (!bOutCircuit && Source.bHasEnd && (Gates.Num() == 0 || FVector::Dist2D(Gates.Last().Location, Source.End) > RallyGateMergeCm))
@@ -419,6 +453,47 @@ namespace TNRally
 			if (DistAt(M1) < DistAt(M2)) { High = M2; } else { Low = M1; }
 		}
 		return WrapArc(0.5 * (Low + High), Length, bClosed);
+	}
+
+	TArray<FVector> DownsampleRoad(const TArray<FVector>& Road, double StepCm, bool bClosed)
+	{
+		TArray<FVector> Points;
+		if (Road.Num() == 0)
+		{
+			return Points;
+		}
+		const double Step = FMath::Max(StepCm, 1.0);
+		Points.Add(Road[0]);
+		double Accumulated = 0.0;
+		for (int32 Index = 1; Index < Road.Num(); ++Index)
+		{
+			Accumulated += FVector::Dist(Road[Index - 1], Road[Index]);
+			if (Accumulated >= Step)
+			{
+				Points.Add(Road[Index]);
+				Accumulated = 0.0;
+			}
+		}
+		if (bClosed)
+		{
+			while (Points.Num() > 2 && FVector::Dist(Points.Last(), Points[0]) < 0.5 * Step)
+			{
+				Points.Pop();
+			}
+		}
+		else if (Points.Last() != Road.Last())
+		{
+			// El final exacto de la calzada: si el último punto guardado queda muy cerca, se sustituye.
+			if (Points.Num() > 1 && FVector::Dist(Points.Last(), Road.Last()) < 0.5 * Step)
+			{
+				Points.Last() = Road.Last();
+			}
+			else
+			{
+				Points.Add(Road.Last());
+			}
+		}
+		return Points;
 	}
 
 	FVector2D GridSlotOffset(int32 Slot)

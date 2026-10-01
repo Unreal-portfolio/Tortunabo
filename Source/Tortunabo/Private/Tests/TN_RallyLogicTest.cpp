@@ -328,4 +328,54 @@ bool FTNRallyManifestTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyManifestRoadTest, "Tortunabo.Rally.Logic.ManifestRoad",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyManifestRoadTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRally;
+	// Como E01B_espana_rally: road_uu, closed, laps, start_yaw y road_width_m; salida y meta fuera de checkpoints_uu.
+	FString Json = TEXT("{\"start_uu\":[0,0,0],\"end_uu\":[0,0,0],\"closed\":false,\"laps\":1,\"start_yaw\":90,")
+		TEXT("\"road_width_m\":14,\"checkpoints_uu\":[[0,1000,0,90]],\"road_uu\":[");
+	for (int32 Index = 0; Index <= 20; ++Index)
+	{
+		Json += FString::Printf(TEXT("%s[0,%d,0]"), Index > 0 ? TEXT(",") : TEXT(""), Index * 100);
+	}
+	Json += TEXT("]}");
+	FTrackSource Source;
+	FString Error;
+	TestTrue(TEXT("Se lee"), ParseTrackManifest(Json, Source, Error));
+	TestEqual(TEXT("road_uu: 21 puntos"), Source.Road.Num(), 21);
+	TestEqual(TEXT("laps"), Source.Laps, 1);
+	TestEqual(TEXT("road_width_m en cm"), Source.RoadWidthCm, 1400.0, 1e-6);
+	TestFalse(TEXT("closed: false manda aunque start_uu == end_uu"), IsCircuit(Source));
+	bool bCircuit = true;
+	const TArray<FGateDef> Gates = BuildGateList(Source, bCircuit);
+	TestEqual(TEXT("Punto a punto: salida, checkpoint y meta"), Gates.Num(), 3);
+	if (Gates.Num() > 0)
+	{
+		TestEqual(TEXT("La salida toma start_yaw"), Gates[0].YawDeg, 90.0, 1e-6);
+	}
+
+	const TArray<FVector> Open = DownsampleRoad(Source.Road, 1000.0, false);
+	TestEqual(TEXT("Calzada de 20 m cada 10 m: 3 puntos"), Open.Num(), 3);
+	TestTrue(TEXT("Conserva el final exacto"), Open.Num() == 3 && Open.Last().Equals(FVector(0, 2000, 0)));
+
+	// Cuadrado cerrado de 40 m con el último punto repetido: en circuito se quita.
+	TArray<FVector> Loop;
+	for (int32 Side = 0; Side < 4; ++Side)
+	{
+		for (int32 Step = 0; Step < 10; ++Step)
+		{
+			const double T = Step * 100.0;
+			const FVector Corners[] = { FVector(T, 0, 0), FVector(1000, T, 0), FVector(1000 - T, 1000, 0), FVector(0, 1000 - T, 0) };
+			Loop.Add(Corners[Side]);
+		}
+	}
+	Loop.Add(FVector::ZeroVector);
+	const TArray<FVector> Closed = DownsampleRoad(Loop, 1000.0, true);
+	TestEqual(TEXT("Circuito: 4 esquinas sin repetir la primera"), Closed.Num(), 4);
+	return true;
+}
+
 #endif
