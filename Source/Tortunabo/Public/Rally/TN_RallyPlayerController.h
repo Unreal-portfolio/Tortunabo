@@ -38,6 +38,12 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	/** Jugador local: deja en el log qué peón posee (buggy de conductora o peón de artillera) y con qué roles. */
 	virtual void AcknowledgePossession(APawn* InPawn) override;
+	/**
+	 * Servidor, al desconectarse: el motor destruiría el peón (el buggy de la conductora o el peón de la artillera) antes de
+	 * Logout, y la carrera ya no sabría de qué equipo era. Sentada en un buggy, se deja tal cual: ATN_RallyGameMode::Logout,
+	 * que llega justo después, la saca de su plaza y pasa la artillera al volante o retira el equipo.
+	 */
+	virtual void PawnLeavingGame() override;
 
 private:
 	/** Jugador local: manda al servidor el casco, el color, el caparazón y los ojos de su save (TNCosmeticsSync). */

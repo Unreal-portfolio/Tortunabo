@@ -7,6 +7,7 @@
 //   TN.Rally.DebugQuitAfter <s>               cierra el juego pasados s segundos
 //   TN.Rally.LocalFire [especial] [espera] [veces]   (cliente o anfitrión) la jugadora local pide disparos al servidor
 //   TN.Rally.StatusLater <espera> [veces] [intervalo]  TN.Rally.Status diferido (en un cliente, lo replicado)
+//   TN.Rally.DebugSwapSeats [espera]          (servidor) en cada buggy biplaza, la artillera pasa a conducir y viceversa
 // LocalFire, StatusLater y DebugQuitAfter esperan con el ticker del motor, no con el del mundo: en un cliente, -ExecCmds
 // corre antes de conectarse y el mundo de entonces se destruye al viajar al mapa del servidor.
 
@@ -366,6 +367,35 @@ namespace TNBuggyDebug
 			{
 				AfterGlobal(Wait + 0.5f * Shot, [bSpecial](UWorld* Alive) { LocalFire(Alive, bSpecial); });
 			}
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdDebugSwapSeats(TEXT("TN.Rally.DebugSwapSeats"),
+		TEXT("Rally (servidor): TN.Rally.DebugSwapSeats [espera]: en cada buggy con las dos plazas ocupadas, la artillera pasa a conducir y la conductora a la torreta (para probar la salida de una conductora cliente)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			AfterGlobal(FloatArg(Args, 0, 0.f), [](UWorld* Alive)
+			{
+				if (Alive->GetNetMode() == NM_Client)
+				{
+					UE_LOG(LogTNBuggy, Warning, TEXT("[Humo] TN.Rally.DebugSwapSeats: solo en el servidor"));
+					return;
+				}
+				for (TActorIterator<ATN_Buggy> It(Alive); It; ++It)
+				{
+					AController* Driver = It->GetSeatController(ETNRallySeat::Driver);
+					AController* Gunner = It->GetSeatController(ETNRallySeat::Gunner);
+					if (!Driver || !Gunner)
+					{
+						continue;
+					}
+					// UnseatController pasa la artillera al volante; la antigua conductora ocupa la torreta.
+					It->UnseatController(Driver);
+					const bool bSeated = It->SeatController(Driver, ETNRallySeat::Gunner);
+					UE_LOG(LogTNBuggy, Log, TEXT("[Humo] %s: conduce %s, artillera %s (%s)"), *It->GetName(),
+						*GetNameSafe(It->GetSeatController(ETNRallySeat::Driver)), *GetNameSafe(It->GetSeatController(ETNRallySeat::Gunner)),
+						bSeated ? TEXT("cambio hecho") : TEXT("la torreta no acepta a la antigua conductora"));
+				}
+			});
 		}));
 
 	FAutoConsoleCommandWithWorldAndArgs CmdStatusLater(TEXT("TN.Rally.StatusLater"),

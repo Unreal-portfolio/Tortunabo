@@ -292,6 +292,7 @@ void ATN_Buggy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(ATN_Buggy, GunnerPlayerState);
 	DOREPLIFETIME(ATN_Buggy, GunnerPawn);
 	DOREPLIFETIME(ATN_Buggy, bEngineLockedByRace);
+	DOREPLIFETIME(ATN_Buggy, bWeaponsLockedByRace);
 	DOREPLIFETIME(ATN_Buggy, LockEndServerTime);
 	DOREPLIFETIME(ATN_Buggy, bGhost);
 	DOREPLIFETIME(ATN_Buggy, ShieldEndServerTime);
@@ -581,6 +582,33 @@ bool ATN_Buggy::ConsumeRespawnRequest()
 	return bWas;
 }
 
+bool ATN_Buggy::ConsumeFellOutOfWorld()
+{
+	const bool bWas = bFellOutOfWorld;
+	bFellOutOfWorld = false;
+	return bWas;
+}
+
+void ATN_Buggy::FellOutOfWorld(const UDamageType& DmgType)
+{
+	// AActor::FellOutOfWorld destruiría el buggy (y con él el peón de la artillera) y la carrera perdería el equipo. Chaos lo
+	// llama en cada paso mientras siga bajo el KillZ: se frena la caída y la carrera lo devuelve a la pista.
+	if (!HasAuthority())
+	{
+		return;
+	}
+	if (!bFellOutOfWorld)
+	{
+		UE_LOG(LogTNBuggy, Warning, TEXT("%s: bajo el KillZ (Z %.0f); pide volver a la pista"), *GetName(), GetActorLocation().Z);
+	}
+	bFellOutOfWorld = true;
+	if (USkeletalMeshComponent* Chassis = GetMesh(); Chassis && Chassis->IsSimulatingPhysics())
+	{
+		Chassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+	}
+}
+
 void ATN_Buggy::UpdateCamera(float DeltaSeconds)
 {
 	using namespace TNBuggyDetail;
@@ -669,6 +697,16 @@ void ATN_Buggy::SetEngineLocked(bool bLocked)
 	}
 	bEngineLockedByRace = bLocked;
 	ApplyEngineTorque();
+	ForceNetUpdate();
+}
+
+void ATN_Buggy::SetWeaponsLocked(bool bLocked)
+{
+	if (!HasAuthority() || bWeaponsLockedByRace == bLocked)
+	{
+		return;
+	}
+	bWeaponsLockedByRace = bLocked;
 	ForceNetUpdate();
 }
 

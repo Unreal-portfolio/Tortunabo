@@ -526,4 +526,22 @@ namespace TNRally
 		const float T = static_cast<float>(FMath::Clamp(AngleDeg / 90.0, 0.0, 1.0));
 		return FMath::Lerp(MaxKmh, MinKmh, T);
 	}
+
+	ETeamCleanup DecideTeamCleanup(bool bVehicleValid, bool bOccupied, bool bBeforeStart, bool bRetired)
+	{
+		if (bVehicleValid && bOccupied)
+		{
+			return ETeamCleanup::Keep;
+		}
+		if (bBeforeStart)
+		{
+			return ETeamCleanup::Remove;
+		}
+		return bRetired ? ETeamCleanup::Keep : ETeamCleanup::Retire;
+	}
+
+	bool AreWeaponsLive(bool bRaceRunning, bool bRetired)
+	{
+		return bRaceRunning && !bRetired;
+	}
 }

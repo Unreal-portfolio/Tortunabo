@@ -140,6 +140,12 @@ private:
 	void StartFinishing();
 	void StartResults();
 	void SetAllEnginesLocked(bool bLocked);
+	bool IsRaceRunning() const;
+	bool IsBeforeStart() const;
+	/** Quita (antes de la salida) o retira los equipos sin buggy o con el buggy vacío (TNRally::DecideTeamCleanup). */
+	void CleanupTeams();
+	/** Torretas activas solo en Racing y Finishing y en equipos sin retirar (TNRally::AreWeaponsLive). */
+	void ApplyWeaponLocks();
 
 	void CheckEarlyStarts();
 	void TickProgress();

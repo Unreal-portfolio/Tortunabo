@@ -67,6 +67,8 @@ public:
 	virtual void SetAIDriveInput(float Throttle, float Brake, float Steer, bool bHandbrake) override;
 	virtual void AIFire(const FVector& AimWorldDir, bool bSpecial) override;
 	virtual bool ConsumeRespawnRequest() override;
+	virtual bool ConsumeFellOutOfWorld() override;
+	virtual void SetWeaponsLocked(bool bLocked) override;
 
 	// ── Para el HUD, la carrera y la artillera ──────────────────────────────────
 
@@ -93,6 +95,10 @@ public:
 	/** Si el motor está cortado (semáforo, salida anticipada, reaparición o fin). */
 	UFUNCTION(BlueprintPure, Category = "Rally|Buggy")
 	bool IsEngineLocked() const;
+
+	/** Si la carrera tiene la torreta bloqueada (calentamiento, semáforo, resultados o equipo retirado). */
+	UFUNCTION(BlueprintPure, Category = "Rally|Buggy")
+	bool AreWeaponsLocked() const { return bWeaponsLockedByRace; }
 
 	/** Si el PlayerController local ocupa este buggy (conductora o artillera): para la tinta del HUD. */
 	bool IsOccupiedByLocalPlayer() const;
@@ -139,6 +145,8 @@ public:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void UnPossessed() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	/** Bajo el KillZ no se destruye (AActor lo haría): se queda quieto y pide a la carrera volver a la pista. */
+	virtual void FellOutOfWorld(const UDamageType& DmgType) override;
 
 protected:
 	virtual void BeginPlay() override;
@@ -293,6 +301,10 @@ private:
 	UPROPERTY(Replicated)
 	bool bEngineLockedByRace = false;
 
+	/** Torreta bloqueada por la carrera; fuera del Rally (sin carrera) dispara siempre. */
+	UPROPERTY(Replicated)
+	bool bWeaponsLockedByRace = false;
+
 	/** Horas del servidor en que acaban los efectos (0 = sin efecto). */
 	UPROPERTY(Replicated)
 	float LockEndServerTime = 0.f;
@@ -322,6 +334,7 @@ private:
 	float GhostEndServerTime = 0.f;
 	float PuddleUntilServerTime = 0.f;
 	bool bRespawnRequested = false;
+	bool bFellOutOfWorld = false;
 	bool bSelfRightRequested = false;
 
 	bool bHandbrakeFrictionApplied = false;

@@ -8,6 +8,7 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "Rally/TN_RallyHUDWidget.h"
 #include "Rally/TN_RallyLogic.h"
+#include "Rally/TN_RallyPlayerState.h"
 
 ATN_RallyPlayerController::ATN_RallyPlayerController()
 {
@@ -52,6 +53,18 @@ void ATN_RallyPlayerController::AcknowledgePossession(APawn* InPawn)
 		*GetNameSafe(InPawn ? InPawn->GetClass() : nullptr),
 		InPawn ? *Roles->GetNameStringByValue(InPawn->GetLocalRole()) : TEXT("-"),
 		InPawn ? *Roles->GetNameStringByValue(InPawn->GetRemoteRole()) : TEXT("-"));
+}
+
+void ATN_RallyPlayerController::PawnLeavingGame()
+{
+	const ATN_RallyPlayerState* RallyPlayer = GetPlayerState<ATN_RallyPlayerState>();
+	if (RallyPlayer && RallyPlayer->IsSeated())
+	{
+		UE_LOG(LogTNRally, Log, TEXT("[RallyPC] %s se desconecta sentada en el equipo %d: su peón %s queda para Logout."),
+			*GetNameSafe(this), RallyPlayer->GetRallyTeamIndex(), *GetNameSafe(GetPawn()));
+		return;
+	}
+	Super::PawnLeavingGame();
 }
 
 void ATN_RallyPlayerController::SyncCosmeticsToServer()

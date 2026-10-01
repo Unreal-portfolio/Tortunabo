@@ -251,4 +251,23 @@ namespace TNRally
 
 	/** Velocidad objetivo (km/h) para una curva: ángulo entre la tangente actual y la de más adelante. */
 	TORTUNABO_API float CornerSpeedKmh(const FVector& TangentNow, const FVector& TangentAhead, float MaxKmh, float MinKmh);
+
+	// ---- Equipos y armas ----
+
+	/** Qué hace la carrera con un equipo: seguir, quitarlo (antes de la salida) o retirarlo (ya en marcha). */
+	enum class ETeamCleanup : uint8
+	{
+		Keep,
+		Remove,
+		Retire
+	};
+
+	/**
+	 * Un equipo sin buggy válido o con el buggy vacío (se han ido sus ocupantes) no sigue en carrera: antes de la salida
+	 * se quita y libera su hueco; después se retira. Uno ya retirado se queda como está.
+	 */
+	TORTUNABO_API ETeamCleanup DecideTeamCleanup(bool bVehicleValid, bool bOccupied, bool bBeforeStart, bool bRetired);
+
+	/** La torreta solo dispara con la carrera en marcha (Racing o Finishing) y el equipo sin retirar. */
+	TORTUNABO_API bool AreWeaponsLive(bool bRaceRunning, bool bRetired);
 }

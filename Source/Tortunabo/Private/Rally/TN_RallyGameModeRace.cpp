@@ -34,8 +34,19 @@ void ATN_RallyGameMode::ConsumeRespawnRequests(bool bRacing)
 	for (FTeamRuntime& Team : Teams)
 	{
 		ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get());
+		if (!RallyVehicle)
+		{
+			continue;
+		}
+		// Bajo el KillZ: vuelve a la pista en cualquier fase (al último arco o, antes de la salida, a su hueco).
+		if (RallyVehicle->ConsumeFellOutOfWorld())
+		{
+			RallyVehicle->ConsumeRespawnRequest();
+			RespawnTeam(Team, ERespawnReason::Hazard);
+			continue;
+		}
 		// Se consume siempre: una petición de antes del verde no se guarda para la carrera.
-		if (!RallyVehicle || !RallyVehicle->ConsumeRespawnRequest())
+		if (!RallyVehicle->ConsumeRespawnRequest())
 		{
 			continue;
 		}
@@ -399,10 +410,18 @@ void ATN_RallyGameMode::RebuildStandings()
 	}
 	RefreshSeats();
 	const TNRally::FLapRules Rules = MakeLapRules();
+	// Un equipo sin buggy (retirado por CleanupTeams) no sale en los puestos.
+	TArray<int32> Listed;
 	TArray<TNRally::FStandingKey> Keys;
 	Keys.Reserve(Teams.Num());
-	for (const FTeamRuntime& Team : Teams)
+	for (int32 TeamSlot = 0; TeamSlot < Teams.Num(); ++TeamSlot)
 	{
+		const FTeamRuntime& Team = Teams[TeamSlot];
+		if (!Team.Vehicle.IsValid())
+		{
+			continue;
+		}
+		Listed.Add(TeamSlot);
 		TNRally::FStandingKey Key;
 		Key.Id = Team.TeamIndex;
 		Key.bFinished = Team.bFinished;
@@ -419,7 +438,7 @@ void ATN_RallyGameMode::RebuildStandings()
 	Standings.Reserve(Order.Num());
 	for (int32 Rank = 0; Rank < Order.Num(); ++Rank)
 	{
-		FTeamRuntime& Team = Teams[Order[Rank]];
+		FTeamRuntime& Team = Teams[Listed[Order[Rank]]];
 		Team.Place = Rank + 1;
 		const ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get());
 		const AController* Driver = RallyVehicle ? RallyVehicle->GetSeatController(ETNRallySeat::Driver) : nullptr;

@@ -108,36 +108,82 @@ void ATN_RallyGameMode::HandleStartingNewPlayer_Implementation(APlayerController
 void ATN_RallyGameMode::Logout(AController* Exiting)
 {
 	PendingPlayers.Remove(Cast<APlayerController>(Exiting));
+	// ATN_RallyPlayerController::PawnLeavingGame deja el buggy y el peón de la artillera en su sitio: aquí la jugadora sale de
+	// su plaza (UnPossess) y, si conducía y hay artillera, la artillera pasa al volante. Si el buggy queda vacío, CleanupTeams
+	// quita el equipo (antes de la salida) o lo retira, y destruye el buggy.
 	if (FTeamRuntime* Team = FindTeamByController(Exiting))
 	{
 		const int32 TeamIndex = Team->TeamIndex;
-		APawn* Vehicle = Team->Vehicle.Get();
-		ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
-		if (RallyVehicle)
+		if (ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team->Vehicle.Get()))
 		{
 			RallyVehicle->UnseatController(Exiting);
 		}
-		const bool bEmpty = !RallyVehicle
-			|| (!RallyVehicle->GetSeatController(ETNRallySeat::Driver) && !RallyVehicle->GetSeatController(ETNRallySeat::Gunner));
-		if (bEmpty)
-		{
-			const ETNRallyPhase Phase = GetRallyGameState() ? GetRallyGameState()->Phase : ETNRallyPhase::Warmup;
-			if (Phase == ETNRallyPhase::Warmup || Phase == ETNRallyPhase::Countdown)
-			{
-				if (Vehicle) { Vehicle->Destroy(); }
-				Teams.RemoveAll([TeamIndex](const FTeamRuntime& Entry) { return Entry.TeamIndex == TeamIndex; });
-			}
-			else
-			{
-				Team->bRetired = true;
-				if (RallyVehicle) { RallyVehicle->SetEngineLocked(true); }
-			}
-		}
-		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s se va del equipo %d%s."), *GetNameSafe(Exiting), TeamIndex,
-			bEmpty ? TEXT(" (buggy vacío)") : TEXT(""));
-		RebuildStandings();
+		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] %s se va del equipo %d."), *GetNameSafe(Exiting), TeamIndex);
 	}
+	CleanupTeams();
+	RebuildStandings();
 	Super::Logout(Exiting);
+}
+
+bool ATN_RallyGameMode::IsRaceRunning() const
+{
+	const ATN_RallyGameState* RallyState = GetRallyGameState();
+	return RallyState && (RallyState->Phase == ETNRallyPhase::Racing || RallyState->Phase == ETNRallyPhase::Finishing);
+}
+
+bool ATN_RallyGameMode::IsBeforeStart() const
+{
+	const ATN_RallyGameState* RallyState = GetRallyGameState();
+	return !RallyState || RallyState->Phase == ETNRallyPhase::Warmup || RallyState->Phase == ETNRallyPhase::Countdown;
+}
+
+void ATN_RallyGameMode::CleanupTeams()
+{
+	const bool bBeforeStart = IsBeforeStart();
+	TArray<int32> Removed;
+	for (FTeamRuntime& Team : Teams)
+	{
+		APawn* Vehicle = Team.Vehicle.Get();
+		ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
+		const bool bOccupied = RallyVehicle
+			&& (RallyVehicle->GetSeatController(ETNRallySeat::Driver) || RallyVehicle->GetSeatController(ETNRallySeat::Gunner));
+		const TNRally::ETeamCleanup Action = TNRally::DecideTeamCleanup(RallyVehicle != nullptr, bOccupied, bBeforeStart, Team.bRetired);
+		if (Action == TNRally::ETeamCleanup::Keep)
+		{
+			continue;
+		}
+		if (Action == TNRally::ETeamCleanup::Remove)
+		{
+			Removed.Add(Team.TeamIndex);
+		}
+		else
+		{
+			Team.bRetired = true;
+		}
+		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d %s: %s."), Team.TeamIndex,
+			Action == TNRally::ETeamCleanup::Remove ? TEXT("fuera de la parrilla") : TEXT("retirado"),
+			RallyVehicle ? TEXT("buggy vacío") : TEXT("sin buggy"));
+		if (Vehicle)
+		{
+			Vehicle->Destroy();
+		}
+	}
+	if (Removed.Num() > 0)
+	{
+		Teams.RemoveAll([&Removed](const FTeamRuntime& Team) { return Removed.Contains(Team.TeamIndex); });
+	}
+}
+
+void ATN_RallyGameMode::ApplyWeaponLocks()
+{
+	const bool bRunning = IsRaceRunning();
+	for (const FTeamRuntime& Team : Teams)
+	{
+		if (ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get()))
+		{
+			RallyVehicle->SetWeaponsLocked(!TNRally::AreWeaponsLive(bRunning, Team.bRetired));
+		}
+	}
 }
 
 ATN_RallyGameState* ATN_RallyGameMode::GetRallyGameState() const
@@ -269,6 +315,7 @@ int32 ATN_RallyGameMode::CreateTeam(bool bBot)
 	Team.Arc = Track->FindArcGlobal(Team.PrevLocation);
 	RallyVehicle->SetRallyTeamIndex(Team.TeamIndex);
 	RallyVehicle->SetEngineLocked(true);
+	RallyVehicle->SetWeaponsLocked(true);
 	return Teams.Add(Team);
 }
 
@@ -403,6 +450,7 @@ void ATN_RallyGameMode::Tick(float DeltaSeconds)
 		{
 			EvaluateTeams(EvaluateAccumulator);
 		}
+		CleanupTeams();
 		RebuildStandings();
 		EvaluateAccumulator = 0.0;
 	}
@@ -487,6 +535,7 @@ void ATN_RallyGameMode::StartCountdown()
 	// Motor libre durante el semáforo: quien sale antes del verde vuelve a su hueco con el motor cortado hasta 1 s
 	// después de la salida (CheckEarlyStarts).
 	SetAllEnginesLocked(false);
+	ApplyWeaponLocks();
 	RebuildStandings();
 	RallyState->ForceNetUpdate();
 	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Semáforo: %d buggies, salida a los %.1f s."), Teams.Num(), CountdownSeconds);
@@ -510,6 +559,7 @@ void ATN_RallyGameMode::StartRacing()
 		}
 		Team.OdometerCm = 0.0;
 	}
+	ApplyWeaponLocks();
 	RallyState->ForceNetUpdate();
 	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] ¡Salida!"));
 }
@@ -519,6 +569,7 @@ void ATN_RallyGameMode::StartFinishing()
 	ATN_RallyGameState* RallyState = GetRallyGameState();
 	RallyState->Phase = ETNRallyPhase::Finishing;
 	RallyState->PhaseEndServerTime = static_cast<float>(Now() + FinishGraceSeconds);
+	ApplyWeaponLocks();
 	RallyState->ForceNetUpdate();
 	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Primer buggy en meta: quedan %.0f s."), FinishGraceSeconds);
 }
@@ -536,6 +587,7 @@ void ATN_RallyGameMode::StartResults()
 	RallyState->Phase = ETNRallyPhase::Results;
 	RallyState->PhaseEndServerTime = static_cast<float>(Now() + ResultsSeconds);
 	SetAllEnginesLocked(true);
+	ApplyWeaponLocks();
 	RebuildStandings();
 	RallyState->ForceNetUpdate();
 	UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Resultados.\n%s"), *RallyState->DescribeStatus());

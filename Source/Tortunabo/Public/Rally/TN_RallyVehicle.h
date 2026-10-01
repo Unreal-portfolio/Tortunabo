@@ -83,4 +83,13 @@ public:
 	 * carrera lo consulta en su bucle y hace la reaparición con RallyTeleport. Por defecto, nunca.
 	 */
 	virtual bool ConsumeRespawnRequest() { return false; }
+
+	/**
+	 * Solo servidor: true una sola vez cuando el vehículo ha caído bajo el KillZ del mundo. La carrera lo devuelve a la
+	 * pista (último arco o parrilla) en cualquier fase y sin esperar a la inmunidad de la reaparición.
+	 */
+	virtual bool ConsumeFellOutOfWorld() { return false; }
+
+	/** Solo servidor: bloquea la torreta (calentamiento, semáforo, resultados o equipo retirado). Por defecto, nada. */
+	virtual void SetWeaponsLocked(bool bLocked) {}
 };

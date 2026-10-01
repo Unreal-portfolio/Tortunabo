@@ -79,6 +79,12 @@ bool UTN_BuggyTurretComponent::TryFire(bool bSpecial, const FVector& WorldDir)
 	{
 		return false;
 	}
+	// La carrera bloquea la torreta fuera de Racing y Finishing (ATN_RallyGameMode::ApplyWeaponLocks).
+	if (Buggy->AreWeaponsLocked())
+	{
+		UE_LOG(LogTNBuggy, Verbose, TEXT("%s: torreta bloqueada por la carrera, no dispara"), *Buggy->GetName());
+		return false;
+	}
 	const double Now = World->GetTimeSeconds();
 	const ETNRallyAmmo Ammo = bSpecial ? Special.Ammo : ETNRallyAmmo::Coco;
 	const TNRallyTurret::FAmmoSpec Spec = TNRallyTurret::SpecFor(Ammo);

@@ -378,4 +378,28 @@ bool FTNRallyManifestRoadTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyTeamCleanupTest, "Tortunabo.Rally.Logic.TeamCleanupAndWeapons",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyTeamCleanupTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRally;
+
+	// Args: buggy válido, ocupado, antes de la salida, ya retirado.
+	TestTrue(TEXT("Buggy con ocupantes: sigue"), DecideTeamCleanup(true, true, false, false) == ETeamCleanup::Keep);
+	TestTrue(TEXT("Buggy con ocupantes antes de la salida: sigue"), DecideTeamCleanup(true, true, true, false) == ETeamCleanup::Keep);
+	TestTrue(TEXT("Buggy vacío antes de la salida: fuera de la parrilla"), DecideTeamCleanup(true, false, true, false) == ETeamCleanup::Remove);
+	TestTrue(TEXT("Sin buggy antes de la salida: fuera de la parrilla"), DecideTeamCleanup(false, false, true, false) == ETeamCleanup::Remove);
+	TestTrue(TEXT("Buggy vacío en carrera: retirado"), DecideTeamCleanup(true, false, false, false) == ETeamCleanup::Retire);
+	// El caso de la revisión: la conductora cliente se va, el motor destruye el buggy y el equipo queda sin vehículo.
+	TestTrue(TEXT("Sin buggy en carrera: retirado"), DecideTeamCleanup(false, false, false, false) == ETeamCleanup::Retire);
+	TestTrue(TEXT("Ya retirado: no se repite"), DecideTeamCleanup(false, false, false, true) == ETeamCleanup::Keep);
+
+	TestTrue(TEXT("Torreta activa en carrera"), AreWeaponsLive(true, false));
+	TestFalse(TEXT("Torreta bloqueada fuera de Racing/Finishing"), AreWeaponsLive(false, false));
+	TestFalse(TEXT("Torreta bloqueada en un equipo retirado"), AreWeaponsLive(true, true));
+	return true;
+}
+
 #endif
