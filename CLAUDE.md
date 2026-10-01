@@ -20,7 +20,8 @@ Las decisiones que no estén escritas las toman SkiTemplar o Mokius. Si te falta
 
 - `dev`: la rama de desarrollo hasta el final del juego. Todas las ramas salen de `origin/dev` y todas las PR van hacia `dev`. **Nunca se trabaja sobre `dev`**: toda issue o lote va en su rama y entra por PR, que puede fusionar cualquiera de los tres. Un ruleset de GitHub rechaza el push directo y el forzado.
 - `main`: versión estable. Solo SkiTemplar y Mokius, por PR con la aprobación del otro (o su bypass). Aparte de eso, solo le llegan las copias de `.github/` que necesitan los cron.
-- Rama de trabajo: `feat/<issue>-<slug>` o `fix/<issue>-<slug>`, una por issue. La crea `tablero.py coger`. La rama de un lote lleva el número de su primera issue.
+- **Ramas por lote, no por tarjeta** (decisión en #282): las tarjetas de un lote se hacen y se prueban en la misma rama, `feat|fix/<primera issue>-<slug>`. La crea `tablero.py coger` con la primera tarjeta; las demás entran en ella con `coger <n> --rama <rama del lote>`. Una issue suelta es un lote de uno: su propia rama.
+- **A `dev` solo entra lo que está en Done**: cada tarjeta se revisa (IA) y se prueba en el editor **en la rama de su lote**; con las dos validaciones pasa a Validada; con todo el lote en Validada, a Done; y solo entonces se pide y se fusiona la PR. Nada se fusiona para probarlo después en `dev`.
 - Antes de abrir o actualizar una PR: `git fetch origin && git rebase origin/dev`. Ramas cortas: si una rama vive más de 2-3 días, rebase diario.
 
 ## Tablero: la única lista de tareas
@@ -35,8 +36,8 @@ GitHub Project «Tortunabo · Desarrollo» en vista Kanban: https://github.com/o
 | In progress | Alguien (o su Claude) la está haciendo o la dejó a medias; el asignado es quien está con ella |
 | In review | Terminada: la revisa la IA de otro miembro del equipo (campo Revisor) |
 | Revisiones | La revisión o la prueba encontraron un fallo, comentado en la propia issue |
-| QA editor | Aprobada y fusionada en dev; falta probarla en el editor |
-| Validada | Solo en lotes: aprobada y probada, espera a las demás issues de su lote |
+| QA editor | Solo lo fusionado antes de #282: aprobada y en dev, falta probarla en el editor |
+| Validada | Aprobada y probada en el editor en su rama, sin fusionar: espera al resto de su lote (o a la fusión) |
 | Done | Fusionada en dev, aprobada y probada en el editor; cerrada |
 
 Dos validaciones por issue: **Revisión IA** (`Pendiente` / `Aprobada` / `Cambios pedidos`), que hace el Claude del revisor cruzado y nunca quien escribió el código, y **Editor** (`Sin probar` / `Funciona` / `Falla`), prueba real en el editor de Unreal.
@@ -44,15 +45,15 @@ Dos validaciones por issue: **Revisión IA** (`Pendiente` / `Aprobada` / `Cambio
 Ciclo paso a paso:
 
 1. **Coger** (`coger <n>`): In progress, asignada y rama desde `origin/dev`. `coger` rechaza las issues con bloqueantes abiertas y exige el árbol de trabajo sin cambios en ficheros versionados. Asignado significa «estoy con ella ahora»: si la dejas sin terminar, `soltar <n> --motivo "..."` la devuelve a Ready sin asignado.
-2. **Probar mientras se trabaja** (`editor <n> funciona|falla`): si funciona, Editor = Funciona y la issue no pasará por QA editor; si falla, se queda en In progress con el fallo comentado: no se manda algo que no funciona.
-3. **Entregar** (`revision <n>`): In review con revisor cruzado. Si el autor no la ha probado, va con Editor = Sin probar y el comentario «Sin QA editor». Con Editor = Falla, `revision` la rechaza.
+2. **Probar mientras se trabaja** (`editor <n> funciona|falla`), en la rama del lote: si funciona, Editor = Funciona; si falla, se queda en In progress con el fallo comentado: no se manda algo que no funciona.
+3. **Entregar** (`revision <n>`): In review con revisor cruzado. Si el autor no la ha probado, va con Editor = Sin probar y el comentario «Sin QA editor»: la prueba se hace igualmente en la rama, antes de fusionar. Con Editor = Falla, `revision` la rechaza.
 4. **Revisar** (`ia <n> aprobada|cambios --revisor "<login> (Claude)"`): el campo Revisor pasa a ser quien ha revisado de verdad. Con cambios pasa a Revisiones con el fallo comentado. Lo normal es que el propio revisor lo arregle: la coge con `coger <n> --forzar` (In progress a su nombre) y la vuelve a entregar; la nueva revisión la hace otro.
-5. **Fusionar** en `dev` (cualquiera de los tres, con la revisión IA aprobada y, en un lote, `lote estado` en verde; `gh pr merge` y `sync --aplicar`; lo que se salte el ciclo lo detecta «Avisos del tablero»): Editor = Funciona → Done y se cierra; si no, QA editor, la prueba quien sea (`editor <n> funciona`) → Done.
+5. **Validar y fusionar** (cualquiera de los tres): revisión IA aprobada y `editor <n> funciona` probado en la rama → Validada. Con todas las issues de la PR en Validada (`lote estado <lote>` en verde), pásalas a Done (`estado <n> Done`), fusiona la PR en `dev` (`gh pr merge --merge --delete-branch`) y `sync --aplicar`. Nunca se fusiona una PR con alguna issue sin probar; lo que se salte el ciclo lo detecta «Avisos del tablero».
 6. **Cerrar** (`resumen <n>`): cada issue que llega a Done lleva su comentario **Resumen**.
 
 Una prueba que falla en In review, QA editor o con la issue cerrada la lleva a Revisiones (la reabre si hace falta, con `regresion` si ya funcionaba). Regla única que aplican `ia`, `editor` y `sync`: Done solo con la PR en dev, Revisión IA = Aprobada y Editor = Funciona.
 
-**PR pequeñas y frecuentes a dev.** Un lote de varios bugs puede ir en una PR con `Closes` de todos, siempre con su lote: `lote crear --titulo "…" <n> <n> …` crea una issue temporal `lote` («Lote: …») que depende de cada miembro y la enlaza a la PR con «Refs». Cada miembro se revisa y se prueba por separado y, con las dos validaciones, espera en Validada. La PR del lote no se fusiona hasta que `lote estado <lote>` confirma que todos están en Validada y que ninguno tiene una `decision` pendiente; al fusionarla pasan a Done a la vez y el lote se cierra con un **Resumen** del conjunto.
+**Una rama y una PR por lote.** Las tarjetas que van juntas (un sistema, una tanda de bugs del mismo objeto) se agrupan en un lote desde el principio: una rama, una PR con `Closes` de todas, y `lote crear --titulo "…" <n> <n> …`, que crea la issue temporal `lote` («Lote: …»), depende de cada miembro y la enlaza a la PR con «Refs». Cada miembro se revisa y se prueba por separado en esa rama y, con las dos validaciones, espera en Validada. La PR del lote no se fusiona hasta que `lote estado <lote>` confirma que todos están en Validada y que ninguno tiene una `decision` pendiente; entonces pasan a Done, se fusiona y el lote se cierra con un **Resumen** del conjunto.
 
 **Dependencias**: si una issue no puede empezar hasta que se cierren otras, `bloquear <n> --por <m>` la deja en Bloqueada; `sync --aplicar` la pasa a Ready cuando se cierran todas. En Backlog la dependencia se registra y la issue sigue en Backlog (bloquear no aprueba); al aprobarla con `estado <n> Ready`, si sus bloqueantes siguen abiertas va a Bloqueada.
 

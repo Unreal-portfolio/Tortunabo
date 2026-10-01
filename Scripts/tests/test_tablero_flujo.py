@@ -33,7 +33,8 @@ def test_fusionada_sin_las_dos_validaciones_no_llega_a_done(valores, esperado):
 
 def test_validada_solo_para_miembros_de_un_lote():
     assert flujo.estado_objetivo("In review", LISTA, fusionada=False, en_lote=True) == ("Validada", False)
-    assert flujo.estado_objetivo("In review", LISTA, fusionada=False, en_lote=False) == (None, False)
+    # Una issue suelta también espera en Validada antes de fusionar (#282).
+    assert flujo.estado_objetivo("In review", LISTA, fusionada=False, en_lote=False) == ("Validada", False)
 
 
 @pytest.mark.parametrize("valores", [{}, {"Editor": "Funciona"}, {"Revisión IA": "Aprobada"}])

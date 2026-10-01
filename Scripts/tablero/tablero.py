@@ -190,10 +190,23 @@ def cmd_coger(args: argparse.Namespace) -> None:
     if git("status", "--porcelain", "--untracked-files=no"):
         raise ErrorTablero("Tienes cambios sin guardar en ficheros versionados. Haz commit o stash antes de cambiar de rama.")
     es_bug = any(n["name"] in ("⚠️bug⚠️", "bug") for n in issue["labels"]["nodes"])
-    rama = f"{'fix' if es_bug else 'feat'}/{args.numero}-{slug(issue['title'])}"
+    rama = args.rama or f"{'fix' if es_bug else 'feat'}/{args.numero}-{slug(issue['title'])}"
     gh("issue", "edit", str(args.numero), "--repo", REPO, "--add-assignee", "@me")
     poner_campo(proyecto, args.numero, "Status", "In progress")
     git("fetch", "origin", INTEGRACION)
+    if args.rama:
+        # Las ramas son por lote (#282): la tarjeta se hace en la rama del lote, que se crea con la primera.
+        git("fetch", "origin")
+        locales = git("branch", "--list", rama).strip()
+        remotas = git("branch", "-r", "--list", f"origin/{rama}").strip()
+        if locales:
+            git("switch", rama)
+        elif remotas:
+            git("switch", "-c", rama, "--track", f"origin/{rama}")
+        else:
+            git("switch", "-c", rama, f"origin/{INTEGRACION}")
+        print(f"#{args.numero} asignada a {yo}, en In progress. Rama del lote: {rama}.")
+        return
     git("switch", "-c", rama, f"origin/{INTEGRACION}")
     print(f"#{args.numero} asignada a {yo}, en In progress. Rama nueva: {rama} (desde origin/{INTEGRACION}).")
 
@@ -595,9 +608,10 @@ def avisos_validacion(proyecto: dict, avisos: list) -> None:
 def anadir_comandos_de_flujo(sub: argparse._SubParsersAction) -> None:
     """Comandos que mueven una issue por el ciclo: coger, estado, revisión, validaciones."""
     sub.add_parser("pendiente", help="qué hay para mí ahora").set_defaults(fn=cmd_pendiente)
-    p = sub.add_parser("coger", help="asignarme una issue y crear su rama")
+    p = sub.add_parser("coger", help="asignarme una issue y crear su rama (o entrar en la de su lote con --rama)")
     p.add_argument("numero", type=int)
     p.add_argument("--forzar", action="store_true")
+    p.add_argument("--rama", help="rama del lote en la que se hace esta tarjeta (se crea desde dev si no existe)")
     p.set_defaults(fn=cmd_coger)
     p = sub.add_parser("soltar", help="dejar una issue que tenía en curso: sin asignado y de vuelta a Ready")
     p.add_argument("numero", type=int)
