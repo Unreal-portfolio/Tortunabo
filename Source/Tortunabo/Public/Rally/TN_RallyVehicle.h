@@ -77,4 +77,10 @@ public:
 
 	/** Disparo del piloto IA o de la conductora sola: dirección de apuntado en mundo. */
 	virtual void AIFire(const FVector& AimWorldDir, bool bSpecial) = 0;
+
+	/**
+	 * Solo servidor: true una sola vez cuando una ocupante ha mantenido R (o Y) 1,5 s para pedir la reaparición. La
+	 * carrera lo consulta en su bucle y hace la reaparición con RallyTeleport. Por defecto, nunca.
+	 */
+	virtual bool ConsumeRespawnRequest() { return false; }
 };
