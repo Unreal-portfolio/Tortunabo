@@ -5,8 +5,17 @@
 //   TN.Rally.SpawnTarget [cm] [espera]       (servidor) buggy vacío delante como blanco
 //   TN.Rally.DebugFireAll [espera] [atrás]            dispara una vez cada munición (coco, alga, burbuja, mortero, tinta), 1 s entre una y otra
 //   TN.Rally.DebugQuitAfter <s>               cierra el juego pasados s segundos
+//   TN.Rally.LocalFire [especial] [espera] [veces]   (cliente o anfitrión) la jugadora local pide disparos al servidor
+//   TN.Rally.StatusLater <espera> [veces] [intervalo]  TN.Rally.Status diferido (en un cliente, lo replicado)
+// LocalFire, StatusLater y DebugQuitAfter esperan con el ticker del motor, no con el del mundo: en un cliente, -ExecCmds
+// corre antes de conectarse y el mundo de entonces se destruye al viajar al mapa del servidor.
 
 #include "Vehicles/TN_Buggy.h"
+#include "Containers/Ticker.h"
+#include "Engine/Engine.h"
+#include "Rally/TN_RallyGameState.h"
+#include "Rally/TN_RallyLogic.h"
+#include "Vehicles/TN_BuggyGunnerPawn.h"
 #include "Vehicles/TN_BuggyMath.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
@@ -63,6 +72,59 @@ namespace TNBuggyDebug
 				Action(Alive);
 			}
 		}), FMath::Max(Seconds, 0.01f), false);
+	}
+
+	/** El mundo de juego actual (el del mapa del servidor una vez conectado). */
+	UWorld* CurrentGameWorld()
+	{
+		if (!GEngine)
+		{
+			return nullptr;
+		}
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			if ((Context.WorldType == EWorldType::Game || Context.WorldType == EWorldType::PIE) && Context.World())
+			{
+				return Context.World();
+			}
+		}
+		return nullptr;
+	}
+
+	/** Como After, pero con el ticker del motor: sobrevive al viaje de mapa y actúa en el mundo que haya entonces. */
+	void AfterGlobal(float Seconds, TFunction<void(UWorld*)> Action)
+	{
+		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Action](float)
+		{
+			if (UWorld* World = CurrentGameWorld())
+			{
+				Action(World);
+			}
+			return false;
+		}), FMath::Max(Seconds, 0.01f));
+	}
+
+	/** La jugadora local pide un disparo por el mismo camino que su entrada (RPC al servidor). */
+	void LocalFire(UWorld* World, bool bSpecial)
+	{
+		const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+		if (ATN_BuggyGunnerPawn* Gunner = Cast<ATN_BuggyGunnerPawn>(Pawn))
+		{
+			Gunner->RequestFire(bSpecial);
+			UE_LOG(LogTNBuggy, Log, TEXT("[Humo] la artillera local (%s) pide disparo %s al servidor"), *PC->GetName(),
+				bSpecial ? TEXT("especial") : TEXT("de coco"));
+		}
+		else if (ATN_Buggy* Driver = Cast<ATN_Buggy>(Pawn))
+		{
+			Driver->RequestDriverFire(bSpecial, false);
+			UE_LOG(LogTNBuggy, Log, TEXT("[Humo] la conductora local (%s) pide disparo %s al servidor"), *PC->GetName(),
+				bSpecial ? TEXT("especial") : TEXT("de coco"));
+		}
+		else
+		{
+			UE_LOG(LogTNBuggy, Warning, TEXT("[Humo] TN.Rally.LocalFire: la jugadora local no va en un buggy (peón %s)"), *GetNameSafe(Pawn));
+		}
 	}
 
 	void SpawnBuggy(UWorld* World)
@@ -252,11 +314,43 @@ namespace TNBuggyDebug
 		TEXT("Rally: TN.Rally.DebugQuitAfter <segundos>: cierra el juego pasado ese tiempo (para encadenar la prueba de humo en -ExecCmds)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
-			After(World, FloatArg(Args, 0, 10.f), [](UWorld* Alive)
+			AfterGlobal(FloatArg(Args, 0, 10.f), [](UWorld* Alive)
 			{
 				UE_LOG(LogTNBuggy, Log, TEXT("[Humo] fin"));
 				UKismetSystemLibrary::QuitGame(Alive, Alive->GetFirstPlayerController(), EQuitPreference::Quit, false);
 			});
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdLocalFire(TEXT("TN.Rally.LocalFire"),
+		TEXT("Rally: TN.Rally.LocalFire [especial 0|1] [espera] [veces = 1]: la jugadora local (artillera o conductora sola) pide disparos al servidor por su RPC, uno cada 0,5 s."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const bool bSpecial = FloatArg(Args, 0, 0.f) != 0.f;
+			const float Wait = FloatArg(Args, 1, 0.f);
+			const int32 Shots = FMath::Clamp(static_cast<int32>(FloatArg(Args, 2, 1.f)), 1, 20);
+			for (int32 Shot = 0; Shot < Shots; ++Shot)
+			{
+				AfterGlobal(Wait + 0.5f * Shot, [bSpecial](UWorld* Alive) { LocalFire(Alive, bSpecial); });
+			}
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdStatusLater(TEXT("TN.Rally.StatusLater"),
+		TEXT("Rally: TN.Rally.StatusLater <espera> [veces = 1] [intervalo = 5]: TN.Rally.Status diferido (en un cliente, el estado replicado)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const float Wait = FloatArg(Args, 0, 10.f);
+			const int32 Times = FMath::Clamp(static_cast<int32>(FloatArg(Args, 1, 1.f)), 1, 50);
+			const float Interval = FMath::Max(0.5f, FloatArg(Args, 2, 5.f));
+			for (int32 Index = 0; Index < Times; ++Index)
+			{
+				AfterGlobal(Wait + Interval * Index, [](UWorld* Alive)
+				{
+					const ATN_RallyGameState* RallyState = Alive->GetGameState<ATN_RallyGameState>();
+					const APlayerController* PC = Alive->GetFirstPlayerController();
+					UE_LOG(LogTNRally, Display, TEXT("[Estado %s] peón local %s\n%s"), Alive->GetNetMode() == NM_Client ? TEXT("cliente") : TEXT("servidor"),
+						*GetNameSafe(PC ? PC->GetPawn() : nullptr), RallyState ? *RallyState->DescribeStatus() : TEXT("sin partida de Rally"));
+				});
+			}
 		}));
 }
 

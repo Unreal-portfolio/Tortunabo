@@ -123,6 +123,9 @@ public:
 	/** Disparo de la conductora sola (servidor): apuntado automático hacia delante o hacia atrás. */
 	void DriverFireAuto(bool bSpecial, bool bBackward);
 
+	/** Conductora local sin artillera: pide al servidor un disparo con apuntado automático (entrada y TN.Rally.LocalFire). */
+	void RequestDriverFire(bool bSpecial, bool bBackward);
+
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSelfRight();
 

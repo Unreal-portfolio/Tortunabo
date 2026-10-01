@@ -30,6 +30,9 @@ public:
 	/** Apuntado relativo al buggy que lleva la artillera en esta máquina (cabeceo ya limitado). */
 	FRotator GetLocalAim() const { return LocalAim; }
 
+	/** Artillera local: pide al servidor un disparo con el apuntado de esta máquina (lo usan la entrada y TN.Rally.LocalFire). */
+	void RequestFire(bool bSpecial);
+
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void NotifyControllerChanged() override;

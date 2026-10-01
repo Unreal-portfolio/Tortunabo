@@ -189,13 +189,18 @@ void ATN_BuggyGunnerPawn::OnFireCoco(const FInputActionValue& Value)
 	if (Now - LastFireRequest >= TNRallyTurret::SpecFor(ETNRallyAmmo::Coco).FireInterval)
 	{
 		LastFireRequest = Now;
-		ServerFire(false, static_cast<float>(LocalAim.Yaw), static_cast<float>(LocalAim.Pitch));
+		RequestFire(false);
 	}
 }
 
 void ATN_BuggyGunnerPawn::OnFireSpecial(const FInputActionValue& Value)
 {
-	ServerFire(true, static_cast<float>(LocalAim.Yaw), static_cast<float>(LocalAim.Pitch));
+	RequestFire(true);
+}
+
+void ATN_BuggyGunnerPawn::RequestFire(bool bSpecial)
+{
+	ServerFire(bSpecial, static_cast<float>(LocalAim.Yaw), static_cast<float>(LocalAim.Pitch));
 }
 
 void ATN_BuggyGunnerPawn::OnSelfRightPressed(const FInputActionValue& Value)
@@ -238,7 +243,9 @@ void ATN_BuggyGunnerPawn::ServerFire_Implementation(bool bSpecial, float Yaw, fl
 	}
 	UTN_BuggyTurretComponent* Turret = Buggy->GetTurret();
 	Turret->SetAimRelative(FRotator(Pitch, Yaw, 0.f));
-	Turret->TryFire(bSpecial, Turret->GetAimWorldDirection());
+	const bool bFired = Turret->TryFire(bSpecial, Turret->GetAimWorldDirection());
+	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: la artillera %s pide disparo %s: %s"), *Buggy->GetName(), *GetNameSafe(Controller),
+		bSpecial ? TEXT("especial") : TEXT("de coco"), bFired ? TEXT("sale") : TEXT("rechazado (cadencia, calor o cargas)"));
 }
 
 void ATN_BuggyGunnerPawn::ServerSelfRight_Implementation()

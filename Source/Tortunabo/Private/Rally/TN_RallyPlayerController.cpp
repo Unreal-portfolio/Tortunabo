@@ -1,6 +1,7 @@
 #include "Rally/TN_RallyPlayerController.h"
 
 #include "Core/TN_CoopPlayerState.h"
+#include "GameFramework/Pawn.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Rally/TN_RallyHUDWidget.h"
 #include "Rally/TN_RallyLogic.h"
@@ -38,6 +39,16 @@ void ATN_RallyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
 		RallyHUD = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_RallyPlayerController::AcknowledgePossession(APawn* InPawn)
+{
+	Super::AcknowledgePossession(InPawn);
+	const UEnum* Roles = StaticEnum<ENetRole>();
+	UE_LOG(LogTNRally, Log, TEXT("[RallyPC] %s posee %s (%s): rol local %s, remoto %s"), *GetNameSafe(this), *GetNameSafe(InPawn),
+		*GetNameSafe(InPawn ? InPawn->GetClass() : nullptr),
+		InPawn ? *Roles->GetNameStringByValue(InPawn->GetLocalRole()) : TEXT("-"),
+		InPawn ? *Roles->GetNameStringByValue(InPawn->GetRemoteRole()) : TEXT("-"));
 }
 
 void ATN_RallyPlayerController::SyncCosmeticsToServer()

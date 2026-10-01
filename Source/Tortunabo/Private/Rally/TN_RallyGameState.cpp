@@ -2,6 +2,7 @@
 
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
 #include "Net/UnrealNetwork.h"
@@ -9,6 +10,7 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyTrack.h"
+#include "Rally/TN_RallyVehicle.h"
 #include "World/TN_MapVariantLoader.h"
 
 void ATN_RallyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -120,11 +122,15 @@ FString ATN_RallyGameState::DescribeStatus() const
 	{
 		const FString DriverName = Entry.Driver ? Entry.Driver->GetPlayerName() : TEXT("-");
 		const FString GunnerName = Entry.Gunner ? Entry.Gunner->GetPlayerName() : TEXT("-");
-		Text += FString::Printf(TEXT("\n  %d. equipo %d [%s / %s]%s vuelta %d puerta %d%s%s%s puntos %d"),
+		const ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Entry.Vehicle);
+		const FVector Where = Entry.Vehicle ? Entry.Vehicle->GetActorLocation() : FVector::ZeroVector;
+		const FString Motion = RallyVehicle ? FString::Printf(TEXT(" %.0f km/h en (%.0f, %.0f, %.0f)"),
+			TNRally::CmsToKmh(RallyVehicle->GetForwardSpeedCms()), Where.X, Where.Y, Where.Z) : FString(TEXT(" sin buggy"));
+		Text += FString::Printf(TEXT("\n  %d. equipo %d [%s / %s]%s vuelta %d puerta %d%s%s%s puntos %d%s"),
 			Entry.Place, Entry.TeamIndex, *DriverName, *GunnerName, Entry.bBot ? TEXT(" (IA)") : TEXT(""),
 			Entry.Lap, Entry.NextGate,
 			Entry.bFinished ? *FString::Printf(TEXT(" META %.2f s"), Entry.FinishSeconds) : TEXT(""),
-			Entry.bWrongWay ? TEXT(" CONTRAMANO") : TEXT(""), Entry.bRetired ? TEXT(" RETIRADO") : TEXT(""), Entry.Points);
+			Entry.bWrongWay ? TEXT(" CONTRAMANO") : TEXT(""), Entry.bRetired ? TEXT(" RETIRADO") : TEXT(""), Entry.Points, *Motion);
 	}
 	// Plaza y cosméticos replicados de cada jugador (en un cliente, lo que le ha llegado).
 	for (const APlayerState* Player : PlayerArray)

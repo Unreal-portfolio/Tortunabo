@@ -198,8 +198,8 @@ void ATN_RallyGameMode::EvaluateTeam(FTeamRuntime& Team, double DeltaSeconds)
 	if (bFlipped && !Team.bWasFlipped)
 	{
 		++Team.Flips;
-		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d volcado en el arco %.0f m (%.0f km/h)."), Team.TeamIndex,
-			Team.Arc / 100.0, TNRally::CmsToKmh(Vehicle->GetVelocity().Size()));
+		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d volcado en el arco %.0f m (%.0f km/h) en (%.0f, %.0f, %.0f)."),
+			Team.TeamIndex, Team.Arc / 100.0, TNRally::CmsToKmh(Vehicle->GetVelocity().Size()), Location.X, Location.Y, Location.Z);
 	}
 	Team.bWasFlipped = bFlipped;
 
@@ -273,6 +273,13 @@ void ATN_RallyGameMode::RespawnTeam(FTeamRuntime& Team, ERespawnReason Reason)
 	}
 	const bool bStarted = Team.LastGate != INDEX_NONE;
 	const FTransform Where = bStarted ? Track->GetRespawnTransform(Team.LastGate, Team.TeamIndex) : Team.GridTransform;
+	if (const APawn* Vehicle = Team.Vehicle.Get())
+	{
+		const FVector From = Vehicle->GetActorLocation();
+		const FVector To = Where.GetLocation();
+		UE_LOG(LogTNRally, Verbose, TEXT("[RallyGameMode] Equipo %d: estaba en (%.0f, %.0f, %.0f) a %.0f km/h con arriba.Z %.2f; va a (%.0f, %.0f, %.0f)."),
+			Team.TeamIndex, From.X, From.Y, From.Z, RallyVehicle->GetForwardSpeedCms() * 0.036, Vehicle->GetActorUpVector().Z, To.X, To.Y, To.Z);
+	}
 	RallyVehicle->RallyTeleport(Where, RespawnLockSeconds, RespawnGhostSeconds);
 
 	const double Time = Now();
@@ -338,6 +345,14 @@ void ATN_RallyGameMode::LogRaceStats(bool bTimedOut) const
 		TNRallyGameModeStats::RacesRun, *Variant.ToString(), Finished, Teams.Num(), Respawns[static_cast<uint8>(ERespawnReason::Stuck)], Flips,
 		Respawns[static_cast<uint8>(ERespawnReason::Hazard)], Respawns[static_cast<uint8>(ERespawnReason::OffTrack)],
 		Respawns[static_cast<uint8>(ERespawnReason::Request)], TurnArounds, Winner, bTimedOut ? TEXT(" (tope de tiempo)") : TEXT(""));
+	for (const FTeamRuntime& Team : Teams)
+	{
+		if (!Team.bFinished)
+		{
+			UE_LOG(LogTNRally, Log, TEXT("[RallyStats]   sin llegar: equipo %d con %d puertas, arco %.0f m%s"), Team.TeamIndex,
+				Team.GatesPassed, Team.Arc / 100.0, Team.bRetired ? TEXT(", retirado") : TEXT(""));
+		}
+	}
 }
 
 void ATN_RallyGameMode::RefreshSeats()

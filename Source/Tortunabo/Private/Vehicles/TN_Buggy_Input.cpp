@@ -142,7 +142,7 @@ void ATN_Buggy::OnFireCoco(const FInputActionValue& Value)
 	if (!bGunnerSeated && Now - LastDriverFireRequest >= TNRallyTurret::SpecFor(ETNRallyAmmo::Coco).FireInterval)
 	{
 		LastDriverFireRequest = Now;
-		ServerDriverFire(false, bAimBackward);
+		RequestDriverFire(false, bAimBackward);
 	}
 }
 
@@ -150,8 +150,13 @@ void ATN_Buggy::OnFireSpecial(const FInputActionValue& Value)
 {
 	if (!bGunnerSeated)
 	{
-		ServerDriverFire(true, bAimBackward);
+		RequestDriverFire(true, bAimBackward);
 	}
+}
+
+void ATN_Buggy::RequestDriverFire(bool bSpecial, bool bBackward)
+{
+	ServerDriverFire(bSpecial, bBackward);
 }
 
 void ATN_Buggy::OnFireBackPressed(const FInputActionValue& Value)

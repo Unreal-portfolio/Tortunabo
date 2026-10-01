@@ -159,6 +159,11 @@ void ATN_RallyProjectile::BeginPlay()
 	{
 		Shooter = Cast<ATN_Buggy>(GetOwner());
 	}
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTNBuggy, Verbose, TEXT("Réplica de %s (%s) del buggy %s en (%.0f, %.0f, %.0f)"), *GetName(), *UEnum::GetValueAsString(Ammo),
+			*GetNameSafe(GetOwner()), GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
+	}
 	if (ATN_Buggy* ShooterBuggy = Shooter.Get())
 	{
 		Sphere->IgnoreActorWhenMoving(ShooterBuggy, true);

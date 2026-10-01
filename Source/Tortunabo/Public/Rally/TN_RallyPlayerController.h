@@ -28,6 +28,8 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	/** Jugador local: deja en el log qué peón posee (buggy de conductora o peón de artillera) y con qué roles. */
+	virtual void AcknowledgePossession(APawn* InPawn) override;
 
 private:
 	/** Jugador local: manda al servidor el casco, el color, el caparazón y los ojos de su save (TNCosmeticsSync). */
