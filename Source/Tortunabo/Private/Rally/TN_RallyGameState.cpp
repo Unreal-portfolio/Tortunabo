@@ -7,6 +7,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
+#include "Rally/TN_RallyAmmoBox.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyTrack.h"
@@ -115,9 +116,20 @@ ATN_RallyTrack* ATN_RallyGameState::PrepareTrack(FName InVariant)
 FString ATN_RallyGameState::DescribeStatus() const
 {
 	const UEnum* PhaseEnum = StaticEnum<ETNRallyPhase>();
-	FString Text = FString::Printf(TEXT("Rally: fase %s, variante %s, %s, %d vueltas, %d puertas, %d buggies"),
+	// Cajas de munición en este mundo: propias (autoridad local) y replicadas. Un cliente solo debe tener replicadas (las
+	// relevantes, a menos de NetCullDistance); una propia en un cliente es una caja local duplicada.
+	int32 OwnBoxes = 0;
+	int32 ReplicatedBoxes = 0;
+	if (const UWorld* World = GetWorld())
+	{
+		for (TActorIterator<ATN_RallyAmmoBox> It(World); It; ++It)
+		{
+			++(It->GetLocalRole() == ROLE_Authority ? OwnBoxes : ReplicatedBoxes);
+		}
+	}
+	FString Text = FString::Printf(TEXT("Rally: fase %s, variante %s, %s, %d vueltas, %d puertas, %d buggies, cajas %d propias y %d replicadas"),
 		*PhaseEnum->GetNameStringByValue(static_cast<int64>(Phase)), *Variant.ToString(),
-		bCircuit ? TEXT("circuito") : TEXT("punto a punto"), Laps, NumGates, Standings.Num());
+		bCircuit ? TEXT("circuito") : TEXT("punto a punto"), Laps, NumGates, Standings.Num(), OwnBoxes, ReplicatedBoxes);
 	for (const FTNRallyStanding& Entry : Standings)
 	{
 		const FString DriverName = Entry.Driver ? Entry.Driver->GetPlayerName() : TEXT("-");

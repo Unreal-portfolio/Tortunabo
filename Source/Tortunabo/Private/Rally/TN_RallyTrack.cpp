@@ -152,7 +152,9 @@ bool ATN_RallyTrack::BuildFromGates(const TArray<TNRally::FGateDef>& GateDefs, b
 	}
 	SpawnGates(GateDefs);
 	PlaceBorders();
-	if (HasAuthority())
+	// Las cajas se replican: solo las crea el servidor. La pista no se replica (cada máquina construye la suya), así que en un
+	// cliente HasAuthority() es true y no sirve para distinguirlo.
+	if (GetNetMode() != NM_Client)
 	{
 		SpawnAmmoRows();
 	}
