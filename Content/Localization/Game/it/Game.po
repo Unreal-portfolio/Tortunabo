@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-09-30 18:17\n"
-"PO-Revision-Date: 2026-09-30 18:17\n"
+"POT-Creation-Date: 2026-10-01 15:25\n"
+"PO-Revision-Date: 2026-10-01 15:25\n"
 "Language-Team: \n"
 "Language: it\n"
 "MIME-Version: 1.0\n"
@@ -1043,71 +1043,71 @@ msgid "Mantén para rebuscar en el cofre"
 msgstr "Tieni premuto per frugare nel forziere"
 
 #. Key:	SkippedTitle
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(314)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(314)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(328)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(328)
 msgctxt "TNTutorial,SkippedTitle"
 msgid "Tutorial saltado"
 msgstr "Tutorial saltato"
 
 #. Key:	SkippedText
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(315)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(315)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
 msgctxt "TNTutorial,SkippedText"
 msgid "Lo que no hayas visto te lo cuenta el General Galápago, en la pestaña «Controles»."
 msgstr "Quello che ti sei perso te lo spiega il Generale Testuggine, nella scheda «Comandi»."
 
 #. Key:	DoneTitle
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(319)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(319)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(333)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(333)
 msgctxt "TNTutorial,DoneTitle"
 msgid "¡Tutorial completado!"
 msgstr "Tutorial completato!"
 
 #. Key:	DoneText
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(320)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(320)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
 msgctxt "TNTutorial,DoneText"
 msgid "Ya sabes todo lo que hace una tortuga. ¡Bienvenida al castillo!"
 msgstr "Ormai sai fare tutto ciò che fa una tartaruga. Benvenuta al castello!"
 
 #. Key:	PadMove
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(59)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(59)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(61)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(61)
 msgctxt "TNTutorial,PadMove"
 msgid "Stick izquierdo"
 msgstr "Levetta sinistra"
 
 #. Key:	MouseLook
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(60)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(60)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
 msgctxt "TNTutorial,MouseLook"
 msgid "Ratón"
 msgstr "Mouse"
 
 #. Key:	PadLook
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(60)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(60)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
 msgctxt "TNTutorial,PadLook"
 msgid "Stick derecho"
 msgstr "Levetta destra"
 
 #. Key:	SpaceKey
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
 msgctxt "TNTutorial,SpaceKey"
 msgid "Espacio"
 msgstr "Spazio"
 
 #. Key:	PadTalk
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(69)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(69)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(71)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(71)
 msgctxt "TNTutorial,PadTalk"
 msgid "Cruceta abajo"
 msgstr "D-pad giù"
 
 #. Key:	SkipHint
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(879)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(879)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(893)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(893)
 msgctxt "TNTutorial,SkipHint"
 msgid "¿Ya sabes jugar? {0} > «Saltar el tutorial»."
 msgstr "Sai già giocare? {0} > «Salta il tutorial»."
@@ -1602,156 +1602,163 @@ msgctxt "TNTutorial,Header"
 msgid "TUTORIAL · {0} / {1}"
 msgstr "TUTORIAL · {0} / {1}"
 
+#. Key:	BuildMismatch
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1579)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1579)
+msgctxt "TNRooms,BuildMismatch"
+msgid "Tu versión del juego no es la misma que la del anfitrión. Poneos los dos en la misma versión y volved a intentarlo."
+msgstr "La tua versione del gioco non è la stessa dell’anfitrione. Usate entrambi la stessa versione e riprovate."
+
 #. Key:	ConnectFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1629)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1629)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1637)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1637)
 msgctxt "TNRooms,ConnectFailed"
 msgid "No se ha podido conectar con la sala: puede que el anfitrión se haya ido."
 msgstr "Impossibile connettersi alla stanza: forse l’anfitrione se n’è andato."
 
 #. Key:	HostLeft
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1630)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1630)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1638)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1638)
 msgctxt "TNRooms,HostLeft"
 msgid "Se ha acabado la partida: el anfitrión se ha ido o se ha perdido la conexión."
 msgstr "La partita è finita: l’anfitrione se n’è andato o la connessione è caduta."
 
 #. Key:	ListStale
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1740)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1740)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1748)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1748)
 msgctxt "TNRooms,ListStale"
 msgid "Esa sala ya no está en la lista: actualízala."
 msgstr "Quella stanza non è più nell’elenco: aggiornalo."
 
 #. Key:	ListLocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1748)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1748)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1756)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1756)
 msgctxt "TNRooms,ListLocked"
 msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
 msgstr "«{0}» è chiusa: l’anfitrione non fa entrare nessun altro."
 
 #. Key:	ListFull
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1754)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1754)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1762)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1762)
 msgctxt "TNRooms,ListFull"
 msgid "«{0}» está llena ({1}/{2})."
 msgstr "«{0}» è piena ({1}/{2})."
 
 #. Key:	CodeIncomplete
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1766)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1766)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1774)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1774)
 msgctxt "TNRooms,CodeIncomplete"
 msgid "El código tiene 5 letras y números (nunca lleva O, 0, I, 1 ni L)."
 msgstr "Il codice ha 5 lettere e numeri (mai O, 0, I, 1 né L)."
 
 #. Key:	CodeSearching
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1769)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1769)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1777)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1777)
 msgctxt "TNRooms,CodeSearching"
 msgid "Buscando la sala {0}..."
 msgstr "Cerco la stanza {0}..."
 
 #. Key:	Locked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2003)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2003)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2011)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2011)
 msgctxt "TNRooms,Locked"
 msgid "Sala cerrada: no entra nadie más (los que ya estaban pueden volver)."
 msgstr "Stanza chiusa: non entra più nessuno (chi c’era già può rientrare)."
 
 #. Key:	Unlocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2004)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2004)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2012)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2012)
 msgctxt "TNRooms,Unlocked"
 msgid "Sala abierta: puede entrar gente otra vez."
 msgstr "Stanza aperta: può entrare di nuovo altra gente."
 
 #. Key:	KickReason
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2042)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2042)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2050)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2050)
 msgctxt "TNRooms,KickReason"
 msgid "El anfitrión te ha expulsado de la sala."
 msgstr "L’anfitrione ti ha buttato fuori dalla stanza."
 
 #. Key:	KickedNotice
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2059)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2059)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2067)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2067)
 msgctxt "TNRooms,KickedNotice"
 msgid "El anfitrión te ha expulsado de la sala «{0}»."
 msgstr "L’anfitrione ti ha buttato fuori dalla stanza «{0}»."
 
 #. Key:	CreatingRoom
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(530)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(530)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(533)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(533)
 msgctxt "TNRooms,CreatingRoom"
 msgid "Creando la sala «{0}»..."
 msgstr "Creo la stanza «{0}»..."
 
 #. Key:	NoOnline
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(537)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(537)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(540)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(540)
 msgctxt "TNRooms,NoOnline"
 msgid "No hay conexión con Steam: ábrelo y vuelve a intentarlo."
 msgstr "Nessuna connessione a Steam: aprilo e riprova."
 
 #. Key:	CreateFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(603)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(603)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(606)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(606)
 msgctxt "TNRooms,CreateFailed"
 msgid "No se ha podido crear la sala. ¿Está Steam abierto y conectado?"
 msgstr "Impossibile creare la stanza. Steam è aperto e connesso?"
 
 #. Key:	SearchFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(697)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(697)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(700)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(700)
 msgctxt "TNRooms,SearchFailed"
 msgid "No se ha podido buscar salas. ¿Está Steam abierto y conectado?"
 msgstr "Impossibile cercare stanze. Steam è aperto e connesso?"
 
 #. Key:	CodeNotFound
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(701)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(701)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(704)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(704)
 msgctxt "TNRooms,CodeNotFound"
 msgid "No hay ninguna sala con el código {0}. Revisa el código (con Steam, una sala llena tampoco aparece)."
 msgstr "Non c’è nessuna stanza con il codice {0}. Controlla il codice (con Steam, nemmeno una stanza piena compare)."
 
 #. Key:	CodeLocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(709)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(709)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(712)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(712)
 msgctxt "TNRooms,CodeLocked"
 msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
 msgstr "«{0}» è chiusa: l’anfitrione non fa entrare nessun altro."
 
 #. Key:	CodeFull
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(713)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(713)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(716)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(716)
 msgctxt "TNRooms,CodeFull"
 msgid "«{0}» está llena ({1}/{2})."
 msgstr "«{0}» è piena ({1}/{2})."
 
 #. Key:	NoOpenRooms
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(752)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(752)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(755)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(755)
 msgctxt "TNRooms,NoOpenRooms"
 msgid "No hay partidas públicas abiertas ahora mismo: crea una o entra con un código."
 msgstr "Al momento non ci sono partite pubbliche aperte: creane una o entra con un codice."
 
 #. Key:	JoinGone
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(796)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(796)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(799)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(799)
 msgctxt "TNRooms,JoinGone"
 msgid "Esa sala ya no existe: puede que el anfitrión se haya ido. Actualiza la lista."
 msgstr "Quella stanza non esiste più: forse l’anfitrione se n’è andato. Aggiorna l’elenco."
 
 #. Key:	JoinNoAddress
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(799)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(799)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(802)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(802)
 msgctxt "TNRooms,JoinNoAddress"
 msgid "No se ha podido contactar con el anfitrión de la sala."
 msgstr "Impossibile contattare l’anfitrione della stanza."
 
 #. Key:	Connecting
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(818)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(818)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(821)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(821)
 msgctxt "TNRooms,Connecting"
 msgid "Entrando en «{0}»..."
 msgstr "Entro in «{0}»..."
@@ -3500,15 +3507,15 @@ msgid "La sala está llena: no queda sitio para otra tortuga."
 msgstr "La stanza è piena: non c’è posto per un’altra tartaruga."
 
 #. Key:	EmoteWheelTitle
-#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(579)
-#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(579)
+#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(595)
+#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(595)
 msgctxt "TNHUD,EmoteWheelTitle"
 msgid "EMOTES"
 msgstr "EMOTE"
 
 #. Key:	ChatWheelTitle
-#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(593)
-#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(593)
+#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(609)
+#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(609)
 msgctxt "TNHUD,ChatWheelTitle"
 msgid "FRASES"
 msgstr "FRASI"
@@ -4991,85 +4998,85 @@ msgid "Cargando..."
 msgstr "Caricamento..."
 
 #. Key:	Storm
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1143)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1143)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1154)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1154)
 msgctxt "TNHUD,Storm"
 msgid "¡La tormenta te alcanza! ¡Al agua!   {0}"
 msgstr "La tempesta ti raggiunge! In acqua!   {0}"
 
 #. Key:	Seagull
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1157)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1157)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1168)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1168)
 msgctxt "TNHUD,Seagull"
 msgid "¡Una gaviota te ha marcado! Sal del círculo o métete bajo techo   {0}"
 msgstr "Un gabbiano ti ha marcato! Esci dal cerchio o mettiti al riparo   {0}"
 
 #. Key:	Down
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1170)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1170)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1181)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1181)
 msgctxt "TNHUD,Down"
 msgid "¡Panza arriba!\nUn compañero puede darte la vuelta:  {0} s"
 msgstr "A pancia in su!\nUna compagna può rigirarti:  {0} s"
 
 #. Key:	OutTitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1229)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1229)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1240)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1240)
 msgctxt "TNHUD,OutTitle"
 msgid "¡Fuera de carrera!"
 msgstr "Fuori dalla corsa!"
 
 #. Key:	OutHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1230)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1230)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1241)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1241)
 msgctxt "TNHUD,OutHint"
 msgid "Anima a los demás hasta que lleguen al agua."
 msgstr "Fai il tifo per le altre finché non arrivano in acqua."
 
 #. Key:	PreviewSay
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1429)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1429)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1440)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1440)
 msgctxt "TNHUD,PreviewSay"
 msgid "¡Por aquí, que hay conchas!"
 msgstr "Di qua, ci sono conchiglie!"
 
 #. Key:	WheelHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1654)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1654)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1665)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1665)
 msgctxt "TNHUD,WheelHint"
 msgid "Apunta con el ratón"
 msgstr "Punta con il mouse"
 
 #. Key:	Exhausted
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(385)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(385)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(388)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(388)
 msgctxt "TNHUD,Exhausted"
 msgid "¡SIN ALIENTO!"
 msgstr "SENZA FIATO!"
 
 #. Key:	InHand
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(425)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(425)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(436)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(436)
 msgctxt "TNHUD,InHand"
 msgid "EN LA ALETA"
 msgstr "IN PINNA"
 
 #. Key:	Stored
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(426)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(426)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(437)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(437)
 msgctxt "TNHUD,Stored"
 msgid "EN EL CAPARAZÓN"
 msgstr "NEL GUSCIO"
 
 #. Key:	Reviving
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(522)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(522)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(533)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(533)
 msgctxt "TNHUD,Reviving"
 msgid "Dando la vuelta a tu compañero..."
 msgstr "Stai rigirando la tua compagna..."
 
 #. Key:	ShellGain
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(964)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(964)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(975)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(975)
 msgctxt "TNHUD,ShellGain"
 msgid "+{0}"
 msgstr "+{0}"
@@ -8162,92 +8169,92 @@ msgid "¡Bronce! Te cabe en una aleta, pero es toda tuya."
 msgstr "Bronzo! Ti sta in una pinna, ma è tutto tuo."
 
 #. Key:	ChampionTitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(127)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(127)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(125)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(125)
 msgctxt "TNRace,ChampionTitle"
 msgid "¡CAMPEONA DE LA PLAYA!"
 msgstr "CAMPIONESSA DELLA SPIAGGIA!"
 
 #. Key:	ChampionSubtitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(159)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(159)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(157)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(157)
 msgctxt "TNRace,ChampionSubtitle"
 msgid "¡Se lleva la partida!"
 msgstr "Si porta a casa la partita!"
 
 #. Key:	PlayAgain
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(166)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(166)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(164)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(164)
 msgctxt "TNRace,PlayAgain"
 msgid "Volver a jugar"
 msgstr "Gioca ancora"
 
 #. Key:	ChangeMode
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(167)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(167)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(165)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(165)
 msgctxt "TNRace,ChangeMode"
 msgid "Cambiar de modo"
 msgstr "Cambia modalità"
 
 #. Key:	Quit
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(168)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(168)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(166)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(166)
 msgctxt "TNRace,Quit"
 msgid "Salir"
 msgstr "Esci"
 
 #. Key:	HostDecides
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(181)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(181)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(179)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(179)
 msgctxt "TNRace,HostDecides"
 msgid "Volver a jugar o cambiar de modo lo decide el anfitrión."
 msgstr "Se rigiocare o cambiare modalità lo decide l’anfitrione."
 
 #. Key:	ChampionSubtitleSprint
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(244)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(244)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(242)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(242)
 msgctxt "TNRace,ChampionSubtitleSprint"
 msgid "¡Gana el sprint final y se lleva la partida!"
 msgstr "Vince lo sprint finale e si porta a casa la partita!"
 
 #. Key:	PodiumPlace
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(257)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(257)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(255)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(255)
 msgctxt "TNRace,PodiumPlace"
 msgid "{0}.º {1}"
 msgstr "{0}º {1}"
 
 #. Key:	PreviewHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(263)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(263)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(261)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(261)
 msgctxt "TNRace,PreviewHint"
 msgid "Vista previa: cualquier botón la cierra."
 msgstr "Anteprima: qualsiasi pulsante la chiude."
 
 #. Key:	ChampionSeconds
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(384)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(384)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(382)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(382)
 msgctxt "TNRace,ChampionSeconds"
 msgid "Quedan {0} s"
 msgstr "Mancano {0} s"
 
 #. Key:	Bye
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(535)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(535)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(533)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(533)
 msgctxt "TNRace,Bye"
 msgid "¡Hasta la próxima!"
 msgstr "Alla prossima!"
 
 #. Key:	Going
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(535)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(535)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(533)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(533)
 msgctxt "TNRace,Going"
 msgid "¡Allá vamos!"
 msgstr "Si parte!"
 
 #. Key:	HostOnly
-#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(540)
-#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(540)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(538)
+#: Source/Tortunabo/Private/UI/Race/TN_RaceChampionWidget.cpp(538)
 msgctxt "TNRace,HostOnly"
 msgid "Eso lo decide el anfitrión."
 msgstr "Questo lo decide l’anfitrione."
@@ -8967,29 +8974,29 @@ msgid "¡STRIKE!"
 msgstr "STRIKE!"
 
 #. Key:	LizardBite
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(891)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(891)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(892)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(892)
 msgctxt "TNBeach,LizardBite"
 msgid "¡ÑAM!"
 msgstr "GNAM!"
 
 #. Key:	LizardPrize
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(909)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(909)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(910)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(910)
 msgctxt "TNBeach,LizardPrize"
 msgid "¡UN REGALO!"
 msgstr "UN REGALO!"
 
 #. Key:	MineClick
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(597)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(597)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(589)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(589)
 msgctxt "TNBeach,MineClick"
 msgid "¡clic!"
 msgstr "clic!"
 
 #. Key:	MineBoom
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(612)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(612)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(604)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(604)
 msgctxt "TNBeach,MineBoom"
 msgid "¡BUM!"
 msgstr "BUM!"
@@ -9100,113 +9107,113 @@ msgid "Coger caja"
 msgstr "Prendi la scatola"
 
 #. Key:	ItemBox
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(205)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(205)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(206)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(206)
 msgctxt "TNRace,ItemBox"
 msgid "Caja de objetos"
 msgstr "Scatola oggetti"
 
 #. Key:	ItemCoconut
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(206)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(206)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(207)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(207)
 msgctxt "TNRace,ItemCoconut"
 msgid "Coco turbo"
 msgstr "Cocco turbo"
 
 #. Key:	ItemTripleCoconut
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(207)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(207)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(208)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(208)
 msgctxt "TNRace,ItemTripleCoconut"
 msgid "Triple coco"
 msgstr "Triplo cocco"
 
 #. Key:	ItemTripleCoconut2
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(208)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(208)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(209)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(209)
 msgctxt "TNRace,ItemTripleCoconut2"
 msgid "Triple coco (2)"
 msgstr "Triplo cocco (2)"
 
 #. Key:	ItemTripleCoconut1
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(209)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(209)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(210)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(210)
 msgctxt "TNRace,ItemTripleCoconut1"
 msgid "Triple coco (1)"
 msgstr "Triplo cocco (1)"
 
 #. Key:	ItemGoldenCoconut
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(210)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(210)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(211)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(211)
 msgctxt "TNRace,ItemGoldenCoconut"
 msgid "Coco dorado"
 msgstr "Cocco d’oro"
 
 #. Key:	ItemPelicanTaxi
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(211)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(211)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(212)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(212)
 msgctxt "TNRace,ItemPelicanTaxi"
 msgid "Pelícano taxi"
 msgstr "Pellicano taxi"
 
 #. Key:	ItemSunscreen
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(212)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(212)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(213)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(213)
 msgctxt "TNRace,ItemSunscreen"
 msgid "Protector solar"
 msgstr "Crema solare"
 
 #. Key:	ItemHomingCrab
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(213)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(213)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(214)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(214)
 msgctxt "TNRace,ItemHomingCrab"
 msgid "Cangrejo teledirigido"
 msgstr "Granchio telecomandato"
 
 #. Key:	ItemGullStrike
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(214)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(214)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(215)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(215)
 msgctxt "TNRace,ItemGullStrike"
 msgid "Gaviota justiciera"
 msgstr "Gabbiano giustiziere"
 
 #. Key:	ItemSandMine
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(215)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(215)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(216)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(216)
 msgctxt "TNRace,ItemSandMine"
 msgid "Mina de arena"
 msgstr "Mina di sabbia"
 
 #. Key:	ItemStormCloud
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(216)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(216)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(217)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(217)
 msgctxt "TNRace,ItemStormCloud"
 msgid "Nube de tormenta"
 msgstr "Nuvola temporalesca"
 
 #. Key:	ItemFrisbee
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(217)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(217)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(218)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(218)
 msgctxt "TNRace,ItemFrisbee"
 msgid "Disco volador"
 msgstr "Frisbee"
 
 #. Key:	ItemWhistle
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(218)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(218)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(219)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(219)
 msgctxt "TNRace,ItemWhistle"
 msgid "Silbato del sargento"
 msgstr "Fischietto del sergente"
 
 #. Key:	ItemUnknown
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(219)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(219)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(220)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceItems.cpp(220)
 msgctxt "TNRace,ItemUnknown"
 msgid "Objeto"
 msgstr "Oggetto"
 
 #. Key:	MineBoom
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceMine.cpp(942)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceMine.cpp(942)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceMine.cpp(903)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceMine.cpp(903)
 msgctxt "TNRace,MineBoom"
 msgid "¡BUM!"
 msgstr "BUM!"
@@ -9329,4 +9336,3 @@ msgstr "{0}:{1}"
 msgctxt "Tortunabo,CastleGateName"
 msgid "TORTUNAVY"
 msgstr "TORTUNAVY"
-
