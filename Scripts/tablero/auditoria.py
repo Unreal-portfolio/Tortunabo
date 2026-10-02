@@ -176,11 +176,11 @@ def columna_correcta(issue: dict) -> str | None:
     """Columna que le corresponde según la regla, si es otra y el cambio es solo mover la tarjeta."""
     estado = issue["valores"].get("Status")
     fusionada, en_lote = issue.get("fusionada", False), bool(issue.get("lotes"))
-    if estado == "Validada" and not en_lote and not fusionada:
-        return "In review"  # Validada es solo para lotes: aprobada, a la espera de fusionarse
     if fusionada and not flujo.mueve_por_fusion(estado, con_pr_abierta=False):
         return None
     destino, _ = flujo.estado_objetivo(estado, issue["valores"], fusionada, en_lote)
+    if destino is None and estado == "Validada" and not fusionada:
+        return "In review"  # Validada exige revisión IA aprobada y Editor = Funciona (en un lote o suelta)
     return destino if destino and destino != estado and destino != "Done" else None
 
 
