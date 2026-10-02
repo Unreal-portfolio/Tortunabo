@@ -10,14 +10,14 @@ viven en `Scripts/terrain_survival/spec.py`.
 
 | | Valor |
 |---|---|
-| Tamaño | Unos 200 × 75 m (largo × ancho, proporción mínima 2:1), para que ir de la salida a la meta no lleve más de 5 minutos (Rubi, 02-10; antes 400 × 150 m). El generador hace 200 × 80 m (2 × 5 módulos de 40 m) y el banco mide los 75 m centrales: lo que sobra a los lados es muro del borde |
+| Tamaño | Unos 300 × 110 m (largo × ancho, proporción mínima 2:1), para que ir de la salida a la meta no lleve más de 5 minutos (Rubi, 02-10; antes 400 × 150 m; 200 × 75 m se quedaba corto). El generador hace 300 × 120 m (2 × 5 módulos de 60 m) y el banco mide los 110 m centrales: lo que sobra a los lados es muro del borde |
 | Orientación | La salida en un extremo corto y la meta en el otro, a unos 12 m del borde |
 | Generación | Todo el mapa de una pasada al empezar el nivel (los módulos internos del generador sí valen; los chunks que se encadenan durante la partida no); determinista dada la semilla, igual en todos los jugadores |
 | Trazado | **Más o menos lineal**: el principal avanza siempre hacia la meta, sin pasadas de cruce ni lazos que vuelvan atrás |
 | Bifurcaciones | **Todas terminan en el área de meta o vuelven al principal**: ningún callejón sin salida |
 | Dificultad | Entrada 1–5. El nivel N de la partida pide `min(N, 5)`; más dificultad = más reto medido |
 | Camino | La salida y la meta se unen a pie por suelo seco, pendiente ≤ 45° y **al menos 3 m de ancho**, o **saltando los huecos de salto** del Coop si su salto más largo cabe en el dive (≤ 4 m). Pendiente de registrar en #273 |
-| Malla | ≤ 45 000 triángulos (3 M/km², la densidad de C01) |
+| Malla | ≤ 99 000 triángulos (3 M/km², la densidad de C01) |
 | Tiempo | Generar un nivel tarda ≤ 3 s |
 | Variedad | Dos semillas distintas dan mapas distintos (diferencia RMS normalizada ≥ 0,05) |
 | Dificultad medible | Correlación de Spearman ≥ 0,5 entre la dificultad pedida y el reto medido |
@@ -37,21 +37,22 @@ viven en `Scripts/terrain_survival/spec.py`.
 
 ### Cómo queda el perfil (#273)
 
-- 2 × 5 módulos de 40 m; la ruta de módulos solo avanza (`bMonotonicRoute`), sin cruces, y recorre de 5 a 8 módulos
+- 2 × 5 módulos de 60 m; la ruta de módulos solo avanza (`bMonotonicRoute`), sin cruces, y recorre de 5 a 8 módulos
   según la dificultad, con más sinuosidad, más huecos y más largos, y el camino más estrecho (nunca menos de 3 m).
   El trazador de cada módulo está hecho para módulos de 400 m: `WalkScale` reduce sus pasos, tramos rectos y
-  márgenes. Las ramas usan aún medidas de 400 m y en este tamaño casi no caben: los mapas salen sin bifurcaciones.
+  márgenes. Las ramas usan aún medidas de 400 m y en este tamaño casi no caben: casi todos los mapas salen sin
+  bifurcaciones.
 - Sin biomas de agua (`bWetBiomes`: su suelo son isletas y pasarelas), módulos a alturas parecidas (`LevelSpread`) y
   desniveles en rampa, sin toboganes ni géiseres (`SmoothTransitionMax`), el camino nunca a ras del mar antes de la
   playa (`MinPathZ`) y un margen extra en los bordes largos (`SideMargin`).
 - `GenerateSurvivalLayout` descarta el mapa y prueba la siguiente semilla de una secuencia fija (igual en todas las
-  máquinas) si el camino se pliega sobre sí mismo, se sale de los 75 m centrales o una rama se une con bordillo.
+  máquinas) si el camino se pliega sobre sí mismo, se sale de los 110 m centrales, una rama se une con bordillo o una zanja de hueco toca la salida o la meta.
 - En el editor: `ATN_ProcMapGenerator` con EditorMode = Supervivencia y `EditorSurvivalDifficulty` (1–5). En PIE:
   `LVL_ProcMap?ProcMode=Survival?ProcDifficulty=Easy|Normal|Hard?ProcSeed=N` (dificultad 1, 3 o 5), con las reglas de
   ronda genéricas hasta #274.
-- Banco con 5 semillas × 5 dificultades: 100 % válidos, Spearman 0,71, variedad 0,14-0,19 y 0,1 s por mapa; el
-  camino mide 200-250 m (menos de 2 minutos andando) (`Docs/Mapas/Supervivencia/coop.md`). «Fuera del camino» sale
-  entre 0,29 y 0,63: fuera del camino hay algo de campo abierto, no solo muro.
+- Banco con 5 semillas × 5 dificultades: 100 % válidos, Spearman 0,69, variedad 0,18-0,24 y 0,2 s por mapa; el
+  camino mide 310-425 m (unos 3 minutos andando) (`Docs/Mapas/Supervivencia/coop.md`). «Fuera del camino» sale
+  entre 0,36 y 0,75: fuera del camino hay campo abierto, no solo muro.
 
 ## Banco de métricas
 
@@ -66,7 +67,7 @@ Mide los mapas ya generados con los mismos criterios de transitabilidad que los 
 ### Formato de intercambio
 
 Un `.npz` por mapa (`SurvivalMap` en `mapa.py`) con `top` (cota en metros de lo alto de cada columna, una muestra
-por metro, `[Norte, Este]`, 76 × 201 con la salida al oeste; el agua a −4 m), `start` y `goal` (índices de `top`),
+por metro, `[Norte, Este]`, 111 × 301 con la salida al oeste; el agua a −4 m), `start` y `goal` (índices de `top`),
 `seed`, `difficulty`, `algorithm`, `gen_seconds`, `triangles` (−1 si no se conoce) y `jumps` (opcional: una fila
 por hueco de salto con fila y columna de cada borde y el salto más largo en metros). El export de C++
 (`TN.Survival.Export [carpeta] [semillas]`, por defecto en `Saved/Supervivencia`) escribe ficheros

@@ -28,7 +28,7 @@ def flat(height: float = 3.0) -> SurvivalMap:
 
 def test_la_especificacion_es_alargada():
     assert spec.LENGTH_M / spec.WIDTH_M >= spec.MIN_ASPECT
-    assert spec.MAX_TRIANGLES == 45_000
+    assert spec.MAX_TRIANGLES == 99_000
 
 
 def test_un_mapa_llano_es_valido_y_el_camino_es_la_recta():

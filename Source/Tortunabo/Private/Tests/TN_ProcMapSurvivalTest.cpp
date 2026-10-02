@@ -135,7 +135,8 @@ bool FTNProcMapSurvivalLinearTest::RunTest(const FString& Parameters)
 			if (!TestTrue(Ctx + TEXT(": genera layout"), GenerateSurvivalLayout(Seed, D, L) != 0)) { continue; }
 			TestFalse(Ctx + TEXT(": el camino no se pliega sobre sí mismo"), SurvivalPathFolds(L));
 			TestTrue(Ctx + TEXT(": las ramas se unen sin bordillo"), SurvivalBranchesFlush(L));
-			TestTrue(Ctx + TEXT(": el camino cabe en los 75 m centrales"), SurvivalPathInside(L));
+			TestTrue(Ctx + TEXT(": ninguna zanja toca la salida ni la meta"), SurvivalEndsClear(L));
+			TestTrue(Ctx + TEXT(": el camino cabe en los 110 m centrales"), SurvivalPathInside(L));
 
 			// Sin pasadas de cruce y la ruta de módulos nunca vuelve hacia el sur.
 			TestEqual(Ctx + TEXT(": sin cruces"), L.Crossings.Num(), 0);
