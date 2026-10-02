@@ -100,6 +100,15 @@ def test_fusion_mueve_lo_que_esperaba_la_fusion(estado):
     assert not flujo.mueve_por_fusion(estado, con_pr_abierta=True)
 
 
+def test_done_antes_de_fusionar_se_cierra_solo_con_las_dos_validaciones():
+    """#436: Done antes de fusionar (#282) se cierra al fusionarse, si está revisada y probada."""
+    lista = {"Revisión IA": "Aprobada", "Editor": "Funciona"}
+    assert flujo.cierra_por_fusion("Done", lista, con_pr_abierta=False)
+    assert not flujo.cierra_por_fusion("Done", lista, con_pr_abierta=True)
+    assert not flujo.cierra_por_fusion("Done", {**lista, "Editor": "Sin probar"}, con_pr_abierta=False)
+    assert not flujo.cierra_por_fusion("In progress", lista, con_pr_abierta=False)
+
+
 def test_esta_fusionada_solo_en_dev_y_sin_pr_abierta():
     fusionadas = [{"body": "Closes #7 Closes #8", "headRefName": "fix/7-x", "baseRefName": "dev"},
                   {"body": "Closes #9", "headRefName": "feat/9-x", "baseRefName": "main"}]
