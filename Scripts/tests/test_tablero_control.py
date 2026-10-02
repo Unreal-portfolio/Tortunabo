@@ -368,6 +368,13 @@ def test_solo_cuentan_los_pares_con_conflicto_real():
     assert colisiones.pares(ficheros, lambda a, b: conflicto[(a, b)]) == [(9, 12, ["b.h"]), (12, 15, ["a.cpp"])]
 
 
+def test_con_git_se_comprueban_tambien_los_pares_sin_ficheros_en_comun():
+    # gh corta la lista en 100 ficheros: una PR grande puede chocar fuera de lo que se ve.
+    ficheros = {240: {"a.cpp"}, 320: {"b.cpp"}, 330: {"c.cpp"}}
+    conflicto = {(240, 320): ["Voz.cpp"], (240, 330): [], (320, 330): None}
+    assert colisiones.pares(ficheros, lambda a, b: conflicto[(a, b)]) == [(240, 320, ["Voz.cpp"])]
+
+
 def test_par_de_titulo():
     assert colisiones.par_de_titulo(colisiones.titulo(12, 9)) == (9, 12)
     assert colisiones.par_de_titulo("Otra cosa") is None

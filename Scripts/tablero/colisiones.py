@@ -34,13 +34,14 @@ def pares(ficheros_por_pr: dict[int, set[str]],
           conflicto: Conflicto | None = None) -> list[tuple[int, int, list[str]]]:
     """Pares (a, b) con a < b que chocan, con la lista ordenada de los ficheros en conflicto.
 
-    Sin `conflicto`, cuenta todo fichero en común. Con él, solo los pares en los que devuelve
-    ficheros; si devuelve None (no se pudo comprobar), cuenta los ficheros en común.
+    Sin `conflicto`, cuenta todo fichero en común. Con él, se comprueban todos los pares, también
+    los que no comparten ficheros: la lista de `gh` se corta en 100 ficheros y una PR grande
+    puede chocar fuera de ella. Si devuelve None (no se pudo comprobar), cuenta los ficheros en común.
     """
     resultado = []
     for a, b in combinations(sorted(ficheros_por_pr), 2):
         comunes = ficheros_por_pr[a] & ficheros_por_pr[b]
-        if not comunes:
+        if not comunes and conflicto is None:
             continue
         en_conflicto = conflicto(a, b) if conflicto else None
         ficheros = comunes if en_conflicto is None else set(en_conflicto)
@@ -130,8 +131,14 @@ def resueltas(abiertas: list[dict], prs: set[int], vigentes: set[tuple[int, int]
 
 # --- git ------------------------------------------------------------------------------------------
 
+def _raiz() -> str | None:
+    proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, encoding="utf-8")
+    return proc.stdout.strip() or None if proc.returncode == 0 else None
+
+
 def _git(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8")
+    """git desde la raíz del repo: merge-tree --name-only da las rutas relativas al directorio actual."""
+    return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8", cwd=_raiz())
 
 
 def traer_cabezas(numeros: Iterable[int]) -> bool:
@@ -150,6 +157,8 @@ def traer_cabezas(numeros: Iterable[int]) -> bool:
 def conflicto_git(a: int, b: int) -> list[str] | None:
     """Ficheros en conflicto al mezclar las cabezas de dos PR ([] si se mezclan solas, None si no se sabe)."""
     proc = _git("merge-tree", "--write-tree", "--name-only", "--no-messages", REF_PR.format(a), REF_PR.format(b))
-    if proc.returncode not in (0, 1):
-        return None
-    return [linea for linea in proc.stdout.splitlines()[1:] if linea.strip()] if proc.returncode == 1 else []
+    if proc.returncode == 0:
+        return []
+    ficheros = [linea for linea in proc.stdout.splitlines()[1:] if linea.strip()]
+    # git también sale con 1 si una ref no existe: sin ficheros en conflicto, no se sabe.
+    return ficheros if proc.returncode == 1 and ficheros else None
