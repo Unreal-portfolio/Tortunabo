@@ -11,6 +11,16 @@
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/UI/TN_RallyCopilotTablet.h"
 #include "Voice/ProximityVoiceComponent.h"
+#include "Rally/UI/TN_RallyDashboard.h"
+#include "Vehicles/TN_Buggy.h"
+#include "Vehicles/TN_BuggyGunnerPawn.h"
+#include "VR/TN_VRMode.h"
+
+namespace TNRallyPC
+{
+	/** Cada cuánto se comprueba que el buggy local lleva el salpicadero y el cartel del arco (s). */
+	constexpr float DashboardCheckSeconds = 0.5f;
+}
 
 ATN_RallyPlayerController::ATN_RallyPlayerController()
 {
@@ -31,7 +41,8 @@ void ATN_RallyPlayerController::BeginPlay()
 		RallyHUD = CreateWidget<UTN_RallyHUDWidget>(this, HUDWidgetClass);
 		if (RallyHUD)
 		{
-			RallyHUD->AddToViewport(0);
+			// En VR, al panel del mundo como el resto de la interfaz.
+			TNVR::AddToScreen(RallyHUD, 0);
 		}
 	}
 	// Tableta de copiloto: grande para la artillera, compacta para la conductora sola; elige sola por la plaza.
@@ -47,6 +58,32 @@ void ATN_RallyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
 		RallyHUD = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_RallyPlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	if (!IsLocalController())
+	{
+		return;
+	}
+	DashboardCheckAccumulator += DeltaTime;
+	if (DashboardCheckAccumulator >= TNRallyPC::DashboardCheckSeconds)
+	{
+		DashboardCheckAccumulator = 0.f;
+		UTN_RallyDashboardComponent::AttachTo(FindLocalBuggy(), this);
+	}
+}
+
+ATN_Buggy* ATN_RallyPlayerController::FindLocalBuggy() const
+{
+	APawn* MyPawn = GetPawn();
+	if (ATN_Buggy* Driven = Cast<ATN_Buggy>(MyPawn))
+	{
+		return Driven;
+	}
+	const ATN_BuggyGunnerPawn* Gunner = Cast<ATN_BuggyGunnerPawn>(MyPawn);
+	return Gunner ? Gunner->GetBuggy() : nullptr;
 }
 
 void ATN_RallyPlayerController::OnPossess(APawn* InPawn)

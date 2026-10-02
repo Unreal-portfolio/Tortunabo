@@ -13,6 +13,7 @@
 #include "Vehicles/TN_BuggyGunnerPawn.h"
 #include "Vehicles/TN_BuggyMath.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
+#include "VR/TN_VRMode.h"
 
 namespace TNRallyTabletState
 {
@@ -64,7 +65,8 @@ UTN_RallyCopilotTablet* UTN_RallyCopilotTablet::FindOrCreateFor(APlayerControlle
 	{
 		return nullptr;
 	}
-	Tablet->AddToViewport(TNRallyTabletState::ViewportZOrder);
+	// En VR va al panel del mundo, como el resto de la interfaz.
+	TNVR::AddToScreen(Tablet, TNRallyTabletState::ViewportZOrder);
 	TNRallyTabletState::PruneRegistry();
 	TNRallyTabletState::Registry().Add(TObjectKey<APlayerController>(Player), Tablet);
 	return Tablet;
@@ -192,6 +194,7 @@ void UTN_RallyCopilotTablet::NativeTick(const FGeometry& MyGeometry, float InDel
 	if (View == ETNRallyTabletView::Hidden || !RallyState)
 	{
 		Ahead.Reset();
+		BoxesAhead.Reset();
 		return;
 	}
 	RefreshMarks(*RallyState);
@@ -201,6 +204,8 @@ void UTN_RallyCopilotTablet::NativeTick(const FGeometry& MyGeometry, float InDel
 		Ammo = ReadAmmo(Buggy->GetTurret());
 	}
 	Ahead = bHasArc ? TNRallyPaceNotes::NotesAhead(TrackNotes, MyArcCm, LookAheadCm) : TArray<TNRallyPaceNotes::FNoteAhead>();
+	BoxesAhead = bHasArc ? TNRallyPaceNotes::ArcsAhead(AmmoRowNoteArcs, TrackNotes.LengthCm, TrackNotes.bClosed, MyArcCm, LookAheadCm)
+		: TArray<double>();
 }
 
 // ── Refresco ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -265,6 +270,7 @@ void UTN_RallyCopilotTablet::RefreshTrack(const ATN_RallyGameState& RallyState)
 		if (TrackNotes.IsValid() || NotesTrack.IsValid())
 		{
 			TrackNotes = TNRallyPaceNotes::FTrackNotes();
+			AmmoRowNoteArcs.Reset();
 			NotesTrack.Reset();
 			bHasArc = false;
 		}
@@ -281,6 +287,13 @@ void UTN_RallyCopilotTablet::RefreshTrack(const ATN_RallyGameState& RallyState)
 	NotesTrackLengthCm = Length;
 	bHasArc = false;
 	RefreshMapBounds();
+	// Las filas de cajas, en el eje de las notas (una polilínea de la spline: su longitud difiere unas milésimas).
+	AmmoRowNoteArcs.Reset();
+	const double Scale = Length > 0.f ? TrackNotes.LengthCm / Length : 1.0;
+	for (const double Arc : Track->GetAmmoRowArcs())
+	{
+		AmmoRowNoteArcs.Add(Arc * Scale);
+	}
 }
 
 void UTN_RallyCopilotTablet::RefreshMapBounds()

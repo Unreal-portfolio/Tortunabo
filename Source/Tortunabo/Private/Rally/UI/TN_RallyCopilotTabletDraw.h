@@ -27,8 +27,8 @@ namespace TNRallyTablet
 	inline constexpr float FullBumper = 26.f;
 
 	/** Versión de la conductora sola: arriba a la derecha (libre en el HUD del Rally). */
-	inline const FVector2f CompactSize(360.f, 480.f);
-	inline constexpr float CompactMaxHeightFraction = 0.42f;
+	inline const FVector2f CompactSize(360.f, 560.f);
+	inline constexpr float CompactMaxHeightFraction = 0.5f;
 	inline constexpr float CompactMargin = 32.f;
 	inline constexpr float CompactBumper = 14.f;
 

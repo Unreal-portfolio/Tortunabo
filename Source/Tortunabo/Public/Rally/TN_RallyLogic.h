@@ -233,6 +233,14 @@ namespace TNRally
 	TORTUNABO_API double ForwardArc(double From, double To, double Length, bool bClosed);
 
 	/**
+	 * Arcos de las filas de cajas de munición: a AfterGateCm de cada puerta par (menos la salida) y a mitad del tramo tras
+	 * cada impar; en un punto a punto, ninguna en los últimos NoAmmoBeforeFinishCm. Ordenados por puerta. Igual en todas las
+	 * máquinas (la pista no se replica): la tableta los marca en el perfil (#299) sin mirar las cajas.
+	 */
+	TORTUNABO_API TArray<double> AmmoRowArcs(const TArray<double>& GateArcs, double Length, bool bClosed, double AfterGateCm,
+		double NoAmmoBeforeFinishCm);
+
+	/**
 	 * Arco más cercano a Point buscando solo en [PrevS - Behind, PrevS + Ahead] con muestras cada StepCm y afinado final,
 	 * para que un buggy que pasa por debajo de otro tramo no salte de arco.
 	 */

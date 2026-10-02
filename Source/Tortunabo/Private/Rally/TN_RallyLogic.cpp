@@ -413,6 +413,31 @@ namespace TNRally
 		return bClosed ? WrapArc(To - From, Length, true) : To - From;
 	}
 
+	TArray<double> AmmoRowArcs(const TArray<double>& GateArcs, double Length, bool bClosed, double AfterGateCm,
+		double NoAmmoBeforeFinishCm)
+	{
+		TArray<double> Rows;
+		const int32 Num = GateArcs.Num();
+		for (int32 Index = 0; Index < Num; ++Index)
+		{
+			double Arc = -1.0;
+			if (Index % 2 == 0 && Index != 0)
+			{
+				Arc = GateArcs[Index] + AfterGateCm;
+			}
+			else if (Index % 2 == 1 && (bClosed || Index + 1 < Num))
+			{
+				Arc = GateArcs[Index] + 0.5 * ForwardArc(GateArcs[Index], GateArcs[(Index + 1) % Num], Length, bClosed);
+			}
+			if (Arc < 0.0 || (!bClosed && Length - Arc < NoAmmoBeforeFinishCm))
+			{
+				continue;
+			}
+			Rows.Add(WrapArc(Arc, Length, bClosed));
+		}
+		return Rows;
+	}
+
 	double FindArcInWindow(TFunctionRef<FVector(double)> PositionAt, double Length, bool bClosed, const FVector& Point,
 		double PrevS, double BehindCm, double AheadCm, double StepCm)
 	{

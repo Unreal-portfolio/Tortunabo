@@ -117,6 +117,8 @@ public:
 
 	USplineComponent* GetSpline() const { return Spline; }
 	const TArray<TObjectPtr<ATN_RallyAmmoBox>>& GetAmmoBoxes() const { return AmmoBoxes; }
+	/** Arcos de las filas de cajas (cm de la spline, TNRally::AmmoRowArcs). También en los clientes, que no crean las cajas. */
+	const TArray<double>& GetAmmoRowArcs() const { return AmmoRowArcs; }
 
 	double GetGateArc(int32 GateIndex) const;
 	/** Arco de spline hacia delante de la puerta From a la To (cm). */
@@ -214,6 +216,7 @@ private:
 	TArray<TObjectPtr<ATN_RallyAmmoBox>> AmmoBoxes;
 
 	TArray<double> GateArcs;
+	TArray<double> AmmoRowArcs;
 	bool bClosed = false;
 	bool bBuilt = false;
 	bool bHasWater = false;

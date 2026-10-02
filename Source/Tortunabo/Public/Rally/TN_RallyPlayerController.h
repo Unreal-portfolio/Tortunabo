@@ -11,6 +11,7 @@
 #include "Voice/TN_VoiceRouting.h"
 #include "TN_RallyPlayerController.generated.h"
 
+class ATN_Buggy;
 class UTN_RallyHUDWidget;
 
 UCLASS()
@@ -43,6 +44,8 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	/** Jugador local: pone el salpicadero y el cartel del arco en su buggy (UTN_RallyDashboardComponent). */
+	virtual void PlayerTick(float DeltaTime) override;
 	/** Servidor: el peón nuevo (buggy de la conductora o peón de la artillera) lleva voz por proximidad. */
 	virtual void OnPossess(APawn* InPawn) override;
 	/** Jugador local: deja en el log qué peón posee (buggy de conductora o peón de artillera) y con qué roles. */
@@ -55,6 +58,11 @@ protected:
 	virtual void PawnLeavingGame() override;
 
 private:
+	/** Buggy en que va el jugador: el que conduce o el de su peón de artillera; nullptr si no va en ninguno. */
+	ATN_Buggy* FindLocalBuggy() const;
+
+	float DashboardCheckAccumulator = 0.f;
+
 	/** Jugador local: manda al servidor el casco, el color, el caparazón y los ojos de su save (TNCosmeticsSync). */
 	void SyncCosmeticsToServer();
 

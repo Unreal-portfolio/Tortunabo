@@ -159,6 +159,10 @@ private:
 	void PaintMarks(FTNRallyTabletPainter& Painter, const FTNRallyTabletMapProjection& Projection, bool bSmall) const;
 	void PaintProfile(FTNRallyTabletPainter& Painter, const FBox2D& Area) const;
 	void PaintProfileNotes(FTNRallyTabletPainter& Painter, const FBox2D& Area) const;
+	/** Munición en la tableta compacta (conductora sola): la que dispara, la especial y la próxima caja. */
+	void PaintCompactAmmo(FTNRallyTabletPainter& Painter, const FBox2D& Area) const;
+	/** «Caja a 120 m» (la próxima fila de cajas) o vacío si no hay ninguna en los próximos metros. */
+	FText NextBoxText() const;
 	void PaintNextNote(FTNRallyTabletPainter& Painter, const FBox2D& Area, bool bSmall) const;
 	void PaintAmmo(FTNRallyTabletPainter& Painter, const FBox2D& Area) const;
 	void PaintHeader(FTNRallyTabletPainter& Painter) const;
@@ -177,6 +181,10 @@ private:
 
 	TArray<FTNRallyTabletMark> Marks;
 	TArray<TNRallyPaceNotes::FNoteAhead> Ahead;
+	/** Arcos de las filas de cajas en el eje de las notas (ATN_RallyTrack::GetAmmoRowArcs, reescalados). */
+	TArray<double> AmmoRowNoteArcs;
+	/** Distancias a las filas de cajas de los próximos LookAheadCm (cm), de la más cercana a la más lejana. */
+	TArray<double> BoxesAhead;
 	FTNRallyTabletAmmo Ammo;
 	FLinearColor MyColor = FLinearColor::White;
 	/** Arco del buggy propio en la pista local (cm de la spline) y en el eje de las notas. */

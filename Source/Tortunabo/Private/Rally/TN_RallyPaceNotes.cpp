@@ -403,6 +403,29 @@ namespace TNRallyPaceNotes
 		return Out;
 	}
 
+	TArray<double> ArcsAhead(TConstArrayView<double> ArcsCm, double LengthCm, bool bClosed, double FromArcCm, double RangeCm)
+	{
+		TArray<double> Out;
+		if (LengthCm <= 0.0)
+		{
+			return Out;
+		}
+		for (const double Arc : ArcsCm)
+		{
+			double Distance = Arc - FromArcCm;
+			if (bClosed)
+			{
+				Distance = FMath::Fmod(FMath::Fmod(Distance, LengthCm) + LengthCm, LengthCm);
+			}
+			if (Distance >= 0.0 && Distance <= RangeCm)
+			{
+				Out.Add(Distance);
+			}
+		}
+		Out.Sort();
+		return Out;
+	}
+
 	FText NoteText(const FPaceNote& Note)
 	{
 		FText Base;

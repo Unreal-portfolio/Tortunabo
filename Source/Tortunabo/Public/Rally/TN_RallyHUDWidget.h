@@ -1,7 +1,7 @@
-// HUD del Rally en C++ (WidgetTree construido en código con TN_RaceUIKit): velocidad, turbo, puesto, vuelta y puerta,
-// semáforo (el único temporizador de la salida), contramano, reaparición y su aviso, munición seleccionada con sus cargas,
-// vida del buggy, noqueo de la artillera, punto de mira de la artillera, calor de la torreta, tinta, cuenta atrás de cierre
-// y tabla de resultados. Lee el estado replicado
+// HUD del Rally en C++ (WidgetTree construido en código con TN_RaceUIKit). Para todas: semáforo (el único temporizador de la
+// salida), contramano, reaparición y su aviso, tinta, cuenta atrás de cierre, espectador y tabla de resultados. Solo la
+// artillera: velocidad, turbo, puesto, vuelta y puerta, munición seleccionada con sus cargas, vida del buggy, noqueo, punto
+// de mira y calor de la torreta. La conductora lleva los suyos en el buggy (UTN_RallyDashboardComponent, #299). Lee el estado replicado
 // (ATN_RallyGameState); no coge el ratón ni el teclado.
 #pragma once
 
@@ -58,8 +58,8 @@ private:
 	void BuildResults();
 	void Refresh(const ATN_RallyGameState& RallyState);
 	void RefreshSemaphore(const ATN_RallyGameState& RallyState, double ServerTime);
-	/** Puesto y vuelta (o puerta) de la fila propia. */
-	void RefreshPlace(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine);
+	/** Puesto y vuelta (o puerta) de la fila propia; solo la artillera (la conductora los lleva en el cartel del arco). */
+	void RefreshPlace(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine, bool bVisible);
 	void RefreshStatus(const ATN_RallyGameState& RallyState, double ServerTime, const FTNRallyStanding* Mine);
 	void RefreshResults(const ATN_RallyGameState& RallyState, double ServerTime);
 	void RefreshTurret();
@@ -118,8 +118,6 @@ private:
 	ETNRallyAmmo SelectedAmmo = ETNRallyAmmo::Coco;
 	float Health01 = 1.f;
 	float GunnerKnockSeconds = 0.f;
-	/** El buggy local lleva artillera: entonces la conductora no dispara y su HUD no enseña munición ni calor. */
-	bool bBuggyHasGunner = false;
 	float InkSeconds = 0.f;
 	float BoostCharge = 0.f;
 	bool bBoosting = false;

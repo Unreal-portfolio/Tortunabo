@@ -13,6 +13,7 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyVehicle.h"
+#include "Rally/UI/TN_RallyDashboard.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicles/TN_Buggy.h"
@@ -34,25 +35,6 @@ namespace TNRallyHUD
 	const FLinearColor LightRed(0.95f, 0.16f, 0.12f, 1.f);
 	const FLinearColor LightGreen(0.2f, 0.9f, 0.35f, 1.f);
 	const FLinearColor InkColor(0.03f, 0.02f, 0.06f, 1.f);
-
-	FText PlaceOfTotal(int32 Place, int32 Total)
-	{
-		return FText::Format(NSLOCTEXT("Rally", "PlaceOfTotal", "{0}.º / {1}"), TNLocText::Int(Place), TNLocText::Int(Total));
-	}
-
-	FText RaceTime(float Seconds)
-	{
-		const float Safe = FMath::Max(0.f, Seconds);
-		const int32 Minutes = FMath::FloorToInt(Safe / 60.f);
-		FNumberFormattingOptions Options;
-		Options.UseGrouping = false;
-		Options.MinimumIntegralDigits = 2;
-		Options.MinimumFractionalDigits = 1;
-		Options.MaximumFractionalDigits = 1;
-		Options.RoundingMode = ERoundingMode::ToZero;
-		return FText::Format(NSLOCTEXT("Rally", "RaceTime", "{0}:{1}"), TNLocText::Int(Minutes),
-			FText::AsNumber(Safe - 60.f * Minutes, &Options));
-	}
 
 	FText AmmoName(ETNRallyAmmo Ammo)
 	{
@@ -151,7 +133,6 @@ void UTN_RallyHUDWidget::PullFromLocalBuggy()
 	GunnerKnockSeconds = Turret ? Turret->GetGunnerKnockSecondsLeft() : 0.f;
 	const UTN_BuggyHealthComponent* Health = Buggy ? Buggy->GetHealthComponent() : nullptr;
 	Health01 = Health ? Health->GetHealth01() : 1.f;
-	bBuggyHasGunner = Buggy && Buggy->HasGunner();
 	SetTurretHeat(Turret ? Turret->GetHeat01() : 0.f);
 	SetInkSeconds(Buggy ? Buggy->GetInkSecondsLeft() : 0.f);
 	BoostCharge = Buggy ? Buggy->GetBoost01() : 0.f;
@@ -341,22 +322,24 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 	const ITN_RallyVehicle* Vehicle = Mine ? Cast<ITN_RallyVehicle>(Mine->Vehicle) : nullptr;
 	const bool bRacing = RallyState.Phase == ETNRallyPhase::Racing || RallyState.Phase == ETNRallyPhase::Finishing;
 
-	RefreshPlace(RallyState, Mine);
+	// La conductora no tiene interfaz de pantalla salvo los avisos (semáforo, contramano, reaparición, meta y resultados):
+	// velocidad, turbo y vida van en el salpicadero, y puesto y vuelta en el cartel del arco (UTN_RallyDashboardComponent);
+	// el mapa, las notas y su munición si va sola, en la tableta compacta. La artillera conserva su HUD.
+	const bool bSeatedView = Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results;
+	const bool bGunner = Me && Me->IsGunner();
+	const bool bGunnerView = bSeatedView && bGunner;
+	RefreshPlace(RallyState, Mine, bGunnerView);
 
-	Show(SpeedText, Vehicle != nullptr);
-	Show(SpeedUnitText, Vehicle != nullptr);
-	RefreshBoost(Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results);
-	if (Vehicle)
+	Show(SpeedText, bGunnerView);
+	Show(SpeedUnitText, bGunnerView);
+	RefreshBoost(bGunnerView);
+	if (bGunnerView)
 	{
 		SpeedText->SetText(TNLocText::Int(FMath::RoundToInt(static_cast<float>(TNRally::CmsToKmh(FMath::Abs(Vehicle->GetForwardSpeedCms()))))));
 	}
-	// La conductora va casi sin interfaz (velocidad, turbo, vida, puesto, vuelta y avisos; el mapa y las notas, en la
-	// tableta): munición y calor solo para quien dispara, la artillera o la conductora que va sola.
-	const bool bSeatedView = Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results;
-	const bool bGunner = Me && Me->IsGunner();
-	const bool bShowWeapon = bSeatedView && (bGunner || !bBuggyHasGunner);
+	const bool bShowWeapon = bGunnerView;
 	RefreshAmmo(bShowWeapon);
-	RefreshHealth(bSeatedView);
+	RefreshHealth(bGunnerView);
 	RefreshKnock(bSeatedView && bGunner);
 	HeatLabel->SetText(bTurretOverheated ? NSLOCTEXT("Rally", "TurretOverheated", "¡Torreta sobrecalentada!")
 		: NSLOCTEXT("Rally", "TurretHeat", "Torreta"));
@@ -489,7 +472,7 @@ void UTN_RallyHUDWidget::RefreshResults(const ATN_RallyGameState& RallyState, do
 	const APlayerState* Me = Player ? Player->PlayerState : nullptr;
 	for (const FTNRallyStanding& Entry : RallyState.Standings)
 	{
-		const FText Time = Entry.bFinished ? RaceTime(Entry.FinishSeconds) : NSLOCTEXT("Rally", "NotFinished", "Sin llegar");
+		const FText Time = Entry.bFinished ? TNRallyDashboard::RaceTime(Entry.FinishSeconds) : NSLOCTEXT("Rally", "NotFinished", "Sin llegar");
 		const FText Line = FText::Format(NSLOCTEXT("Rally", "ResultsRow", "{0}.º   {1}   {2}   {3} pts"),
 			TNLocText::Int(Entry.Place), CrewName(Entry), Time, TNLocText::Int(Entry.Points));
 		const bool bMine = Me && (Entry.Driver == Me || Entry.Gunner == Me);
@@ -594,30 +577,15 @@ void UTN_RallyHUDWidget::RefreshKnock(bool bGunner)
 	}
 }
 
-void UTN_RallyHUDWidget::RefreshPlace(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine)
+void UTN_RallyHUDWidget::RefreshPlace(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine, bool bVisible)
 {
 	using namespace TNRallyHUD;
-	Show(PlaceText, Mine != nullptr);
-	Show(LapText, Mine != nullptr);
-	if (!Mine)
+	Show(PlaceText, bVisible && Mine != nullptr);
+	Show(LapText, bVisible && Mine != nullptr);
+	if (!bVisible || !Mine)
 	{
 		return;
 	}
-	PlaceText->SetText(PlaceOfTotal(Mine->Place, RallyState.Standings.Num()));
-	const int32 GateTotal = RallyState.bCircuit ? RallyState.NumGates : FMath::Max(0, RallyState.NumGates - 1);
-	const int32 GateShown = (RallyState.bCircuit && Mine->NextGate == 0) ? (Mine->Lap > 0 ? GateTotal : 0) : Mine->NextGate;
-	const FText Gate = FText::Format(NSLOCTEXT("Rally", "GateOfTotal", "Puerta {0}/{1}"), TNLocText::Int(GateShown), TNLocText::Int(GateTotal));
-	if (Mine->bFinished)
-	{
-		LapText->SetText(FText::Format(NSLOCTEXT("Rally", "FinishedTime", "¡Meta! {0}"), RaceTime(Mine->FinishSeconds)));
-	}
-	else if (RallyState.Laps > 1)
-	{
-		LapText->SetText(FText::Format(NSLOCTEXT("Rally", "LapAndGate", "Vuelta {0}/{1} · {2}"),
-			TNLocText::Int(FMath::Max(1, Mine->Lap)), TNLocText::Int(RallyState.Laps), Gate));
-	}
-	else
-	{
-		LapText->SetText(Gate);
-	}
+	PlaceText->SetText(TNRallyDashboard::PlaceLine(Mine->Place, RallyState.Standings.Num()));
+	LapText->SetText(TNRallyDashboard::LapLine(*Mine, RallyState.Laps, RallyState.NumGates, RallyState.bCircuit));
 }
