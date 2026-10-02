@@ -15,8 +15,8 @@ namespace TNRallyDashboardTest
 {
 	const FIntPoint Screen1080p(1920, 1080);
 	/** Cifras legibles sin esfuerzo con la cámara parada y aún legibles en el peor caso (brazo largo, FOV del turbo). */
-	constexpr float MinGlyphPxAtRest = 20.f;
-	constexpr float MinGlyphPxWorst = 14.f;
+	constexpr float MinGlyphPxAtRest = 24.f;
+	constexpr float MinGlyphPxWorst = 16.f;
 
 	/** Distancia de la cámara al panel: el brazo más lo que el panel queda por delante del pivote (eje X del buggy). */
 	float CameraDistanceCm(const TNRallyDashboard::FPanelLayout& Layout, float ArmCm)

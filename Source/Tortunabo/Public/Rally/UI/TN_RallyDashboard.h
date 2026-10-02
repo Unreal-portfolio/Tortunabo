@@ -1,7 +1,7 @@
 // Interfaz diegética de la conductora del Rally (#299): la conductora no tiene HUD de pantalla salvo los avisos (semáforo,
 // contramano, reaparición y resultados); la velocidad, el turbo y la vida van en el salpicadero del buggy, y el puesto y la
 // vuelta en un cartel del arco antivuelco. Son dos widgets en el mundo (UWidgetComponent) que solo existen en la máquina de
-// las ocupantes (no se replican): los pone ATN_RallyPlayerController en el buggy local. Medidas pensadas para leerse a
+// la conductora (no se replican; a la artillera le taparían la vista): los pone ATN_RallyPlayerController en su buggy. Medidas pensadas para leerse a
 // 1080p con la cámara de persecución (TNRallyDashboard::ProjectedGlyphPx, tests Tortunabo.Rally.Dashboard.*).
 #pragma once
 
@@ -110,6 +110,9 @@ public:
 	 * máquina no pinta o falta algo.
 	 */
 	static UTN_RallyDashboardComponent* AttachTo(ATN_Buggy* Buggy, APlayerController* Player);
+
+	/** Quita los paneles de Buggy en esta máquina (la conductora pasa a artillera). */
+	static void RemoveFrom(ATN_Buggy* Buggy);
 
 	/** Los paneles de este buggy en esta máquina (nullptr si no tiene). */
 	static UTN_RallyDashboardComponent* FindOn(const ATN_Buggy* Buggy);

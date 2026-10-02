@@ -50,7 +50,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	/** Espectador: anterior (A, ←, LB) y siguiente (D, →, RB) sin quitárselas al buggy (UTN_RallyCameraDirector). */
 	virtual void SetupInputComponent() override;
-	/** Jugador local: pone el salpicadero y el cartel del arco en su buggy (UTN_RallyDashboardComponent). */
+	/** Jugador local: pone el salpicadero y el cartel del arco en el buggy que conduce (UTN_RallyDashboardComponent). */
 	virtual void PlayerTick(float DeltaTime) override;
 	/** Servidor: el peón nuevo (buggy de la conductora o peón de la artillera) lleva voz por proximidad. */
 	virtual void OnPossess(APawn* InPawn) override;

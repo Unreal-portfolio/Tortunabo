@@ -105,7 +105,16 @@ void ATN_RallyPlayerController::PlayerTick(float DeltaTime)
 	if (DashboardCheckAccumulator >= TNRallyPC::DashboardCheckSeconds)
 	{
 		DashboardCheckAccumulator = 0.f;
-		UTN_RallyDashboardComponent::AttachTo(FindLocalBuggy(), this);
+		// Solo para la conductora: a la artillera, sentada detrás, los paneles le taparían la vista (y ella tiene su HUD).
+		ATN_Buggy* Driven = Cast<ATN_Buggy>(GetPawn());
+		if (Driven)
+		{
+			UTN_RallyDashboardComponent::AttachTo(Driven, this);
+		}
+		else
+		{
+			UTN_RallyDashboardComponent::RemoveFrom(FindLocalBuggy());
+		}
 	}
 }
 

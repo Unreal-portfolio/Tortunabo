@@ -180,10 +180,11 @@ void UTN_RallyHUDWidget::BuildTree()
 	WrongWayText = MakeText(Tree, NSLOCTEXT("Rally", "WrongWay", "¡CONTRAMANO!"), TEXT("Bold"), 64, TNHUDArt::CoralC);
 	Place(Canvas, WrongWayText, FVector2D(0.5f, 0.42f), FVector2D::ZeroVector);
 	RespawnText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 36, TNHUDArt::SandC);
-	Place(Canvas, RespawnText, FVector2D(0.5f, 0.56f), FVector2D::ZeroVector);
+	// Por encima y por debajo del buggy: en el centro están el salpicadero y el cartel del arco (#299).
+	Place(Canvas, RespawnText, FVector2D(0.5f, 0.36f), FVector2D::ZeroVector);
 	RespawnHintText = MakeText(Tree, NSLOCTEXT("Rally", "RespawnHint", "Mantén R para volver a la pista"), TEXT("Bold"), 30,
 		TNHUDArt::SandLight);
-	Place(Canvas, RespawnHintText, FVector2D(0.5f, 0.64f), FVector2D::ZeroVector);
+	Place(Canvas, RespawnHintText, FVector2D(0.5f, 0.8f), FVector2D::ZeroVector);
 	SpectateText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 34, FLinearColor::White);
 	Place(Canvas, SpectateText, FVector2D(0.5f, 1.f), FVector2D(0.f, -92.f));
 	SpectateHintText = MakeText(Tree, NSLOCTEXT("Rally", "SpectateHint", "A / D · LB / RB: cambiar de vista"), TEXT("Regular"), 24,
@@ -350,7 +351,7 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 	RefreshKnock(bSeatedView && bGunner);
 	HeatLabel->SetText(bTurretOverheated ? NSLOCTEXT("Rally", "TurretOverheated", "¡Torreta sobrecalentada!")
 		: NSLOCTEXT("Rally", "TurretHeat", "Torreta"));
-	Show(Crosshair, Me && Me->IsGunner() && RallyState.Phase != ETNRallyPhase::Results);
+	Show(Crosshair, bGunnerView);
 	Show(HeatBar ? HeatBar->GetParent() : nullptr, bShowWeapon);
 	Show(HeatLabel, bShowWeapon);
 

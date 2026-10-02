@@ -24,25 +24,27 @@ namespace TNRallyDashboard
 
 	FPanelLayout DashLayout()
 	{
-		// Sobre el morro, delante y a la derecha de la conductora: por encima de su cabeza vista desde la cámara.
+		// Sobre el morro, a la derecha (lado de la artillera): desde la cámara de persecución no lo tapan ni la conductora, ni
+		// el cañón de la torreta (en el centro) ni el cartel del arco (a la izquierda).
 		FPanelLayout Layout;
-		Layout.OffsetFromDriverSeat = FVector(85.0, 45.0, 85.0);
+		Layout.OffsetFromDriverSeat = FVector(85.0, 115.0, 80.0);
 		Layout.Rotation = FRotator(15.0, 180.0, 0.0);
-		Layout.DrawSizePx = FIntPoint(480, 240);
-		Layout.CmPerPx = 0.25f;
+		Layout.DrawSizePx = FIntPoint(400, 220);
+		Layout.CmPerPx = 0.3f;
 		Layout.MainFontPx = 128;
 		return Layout;
 	}
 
 	FPanelLayout RollBarLayout()
 	{
-		// En lo alto del arco, detrás de la cabeza de la conductora, mirando a la cámara de persecución.
+		// En lo alto del arco, detrás de la cabeza de la conductora y hacia fuera (a la izquierda del cañón de la torreta),
+		// mirando a la cámara de persecución.
 		FPanelLayout Layout;
-		Layout.OffsetFromDriverSeat = FVector(-45.0, 0.0, 125.0);
+		Layout.OffsetFromDriverSeat = FVector(-45.0, -50.0, 150.0);
 		Layout.Rotation = FRotator(10.0, 180.0, 0.0);
-		Layout.DrawSizePx = FIntPoint(480, 200);
-		Layout.CmPerPx = 0.25f;
-		Layout.MainFontPx = 104;
+		Layout.DrawSizePx = FIntPoint(520, 240);
+		Layout.CmPerPx = 0.3f;
+		Layout.MainFontPx = 100;
 		return Layout;
 	}
 
@@ -149,9 +151,9 @@ void UTN_RallyDashboardWidget::BuildRollBar()
 	TNHUDStyle::StylePanel(Back, TNRallyDashboard::PanelFill, 22.f, FMargin(0.f), TNHUDArt::Gold, 4.f);
 	Fill(Canvas, Back);
 	MainText = MakeText(WidgetTree, FText::GetEmpty(), TEXT("Bold"), Layout.MainFontPx, TNHUDArt::Gold);
-	Place(Canvas, MainText, FVector2D(0.5f, 0.38f), FVector2D::ZeroVector);
-	SubText = MakeText(WidgetTree, FText::GetEmpty(), TEXT("Bold"), 38, FLinearColor::White);
-	Place(Canvas, SubText, FVector2D(0.5f, 0.82f), FVector2D::ZeroVector);
+	Place(Canvas, MainText, FVector2D(0.5f, 0.36f), FVector2D::ZeroVector);
+	SubText = MakeText(WidgetTree, FText::GetEmpty(), TEXT("Bold"), 32, FLinearColor::White);
+	Place(Canvas, SubText, FVector2D(0.5f, 0.84f), FVector2D::ZeroVector);
 }
 
 void UTN_RallyDashboardWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -205,6 +207,14 @@ UTN_RallyDashboardComponent::UTN_RallyDashboardComponent()
 UTN_RallyDashboardComponent* UTN_RallyDashboardComponent::FindOn(const ATN_Buggy* Buggy)
 {
 	return Buggy ? Buggy->FindComponentByClass<UTN_RallyDashboardComponent>() : nullptr;
+}
+
+void UTN_RallyDashboardComponent::RemoveFrom(ATN_Buggy* Buggy)
+{
+	if (UTN_RallyDashboardComponent* Existing = FindOn(Buggy))
+	{
+		Existing->DestroyComponent();
+	}
 }
 
 UTN_RallyDashboardComponent* UTN_RallyDashboardComponent::AttachTo(ATN_Buggy* Buggy, APlayerController* Player)
@@ -264,3 +274,28 @@ void UTN_RallyDashboardComponent::OnUnregister()
 	Panels.Reset();
 	Super::OnUnregister();
 }
+
+#if !UE_BUILD_SHIPPING
+#include "Containers/Ticker.h"
+#include "HAL/IConsoleManager.h"
+#include "UnrealClient.h"
+
+namespace TNRallyDashboardDebug
+{
+	// Comprobación de legibilidad sin editor (#299): captura de pantalla con la interfaz pasado un rato, para mirar el
+	// salpicadero y el cartel del arco a la resolución de la ventana (-RenderOffscreen -ResX=1920 -ResY=1080).
+	FAutoConsoleCommandWithWorldAndArgs CmdShotLater(TEXT("TN.Rally.ShotLater"),
+		TEXT("Rally: TN.Rally.ShotLater <espera> [nombre = RallyShot]: captura de pantalla con la interfaz (Saved/Screenshots)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld*)
+		{
+			const float Wait = Args.IsValidIndex(0) ? FMath::Max(0.1f, FCString::Atof(*Args[0])) : 10.f;
+			const FString Name = Args.IsValidIndex(1) ? Args[1] : FString(TEXT("RallyShot"));
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Name](float)
+			{
+				FScreenshotRequest::RequestScreenshot(Name, true, false);
+				UE_LOG(LogTNRally, Display, TEXT("[RallyDashboard] Captura pedida: %s"), *Name);
+				return false;
+			}), Wait);
+		}));
+}
+#endif
