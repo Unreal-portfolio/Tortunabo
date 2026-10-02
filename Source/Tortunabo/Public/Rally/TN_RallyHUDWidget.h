@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Rally/TN_RallyGameState.h"
+#include "Rally/TN_RallyRespawnHint.h"
 #include "Rally/TN_RallyVehicle.h"
 #include "TN_RallyHUDWidget.generated.h"
 
@@ -73,8 +74,13 @@ private:
 	void RefreshKnock(bool bGunner);
 	/** Espectador (#306): a quién se mira (o el dron) y cómo cambiar, mientras lo lleva UTN_RallyCameraDirector. */
 	void RefreshSpectate(const ATN_RallyGameState& RallyState);
-	/** Aviso «Mantén R…» la primera vez que el buggy local reaparece (LastRespawnServerTime de su fila). */
-	void RefreshRespawnHint(const FTNRallyStanding* Mine, double ServerTime);
+	/**
+	 * Aviso «Mantén R…» mientras el buggy propio está atascado o volcado y aún no reaparece solo (TNRallyRespawnHint): se
+	 * oculta al empezar la reaparición, automática o pedida, y no vuelve justo después.
+	 */
+	void RefreshRespawnHint(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine, double ServerTime, bool bRacing);
+	/** Distancia del buggy al eje de la pista local (cm), o -1 si no hay pista. */
+	float DistanceToTrackAxis(const ATN_RallyGameState& RallyState, const FVector& Location);
 
 	/**
 	 * Buggy del jugador local: el que posee como conductora o el de su peón de artillera; si no, el de su fila de
@@ -125,10 +131,10 @@ private:
 	float InkSeconds = 0.f;
 	float BoostCharge = 0.f;
 	bool bBoosting = false;
-	/** Última reaparición vista en la fila propia (hora del servidor) y fin del aviso en pantalla. */
-	float SeenRespawnServerTime = 0.f;
-	double RespawnHintEndServerTime = 0.0;
-	bool bRespawnHintShown = false;
+	/** Cuenta del aviso de reaparición, hora del servidor de la última comprobación y arco de la pista más cercano (-1 = buscarlo entero). */
+	TNRallyRespawnHint::FState RespawnHintState;
+	double RespawnHintCheckServerTime = -1.0;
+	double RespawnHintArc = -1.0;
 	float TextAccumulator = 1.f;
 	/** Firma de la tabla pintada (para no reconstruir las filas cada fotograma). */
 	uint32 ShownResultsHash = 0;

@@ -16,6 +16,7 @@
 #include "Rally/UI/TN_RallyDashboard.h"
 #include "Rally/TN_RallyCameraDirector.h"
 #include "Rally/TN_RallyPlayerController.h"
+#include "Rally/TN_RallyTrack.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicles/TN_Buggy.h"
@@ -30,8 +31,8 @@ namespace TNRallyHUD
 	/** Último segundo de tinta: fundido. */
 	constexpr float InkFadeSeconds = 1.f;
 	constexpr float TextRefreshSeconds = 0.1f;
-	/** Segundos que se ve el aviso de la primera reaparición. */
-	constexpr double RespawnHintSeconds = 6.0;
+	/** Paso máximo de la cuenta del aviso de reaparición (s): un tirón no lo enseña de golpe. */
+	constexpr double RespawnHintMaxStepSeconds = 0.5;
 
 	const FLinearColor LightOff(0.06f, 0.07f, 0.09f, 0.9f);
 	const FLinearColor LightRed(0.95f, 0.16f, 0.12f, 1.f);
@@ -363,7 +364,7 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 		RespawnText->SetText(FText::Format(NSLOCTEXT("Rally", "Respawning", "Reapareciendo… {0}"), TNLocText::Int(CeilSeconds(RespawnLeft))));
 	}
 
-	RefreshRespawnHint(Mine, ServerTime);
+	RefreshRespawnHint(RallyState, Mine, ServerTime, bRacing);
 	RefreshSpectate(RallyState);
 	RefreshStatus(RallyState, ServerTime, Mine);
 	RefreshResults(RallyState, ServerTime);
@@ -525,20 +526,43 @@ void UTN_RallyHUDWidget::RefreshSpectate(const ATN_RallyGameState& RallyState)
 		: FText::Format(NSLOCTEXT("Rally", "SpectateCrew", "Mirando a {0} ({1}.º)"), CrewName(*Watched), TNLocText::Int(Watched->Place)));
 }
 
-void UTN_RallyHUDWidget::RefreshRespawnHint(const FTNRallyStanding* Mine, double ServerTime)
+void UTN_RallyHUDWidget::RefreshRespawnHint(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine, double ServerTime,
+	bool bRacing)
 {
-	// Una reaparición nueva en la fila propia: la primera que no ha pedido la tortuga enseña cómo pedirla.
-	if (Mine && Mine->LastRespawnServerTime > SeenRespawnServerTime)
+	const APawn* Vehicle = Mine ? Mine->Vehicle.Get() : nullptr;
+	const ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Vehicle);
+	const double Step = RespawnHintCheckServerTime < 0.0 ? 0.0
+		: FMath::Clamp(ServerTime - RespawnHintCheckServerTime, 0.0, TNRallyHUD::RespawnHintMaxStepSeconds);
+	RespawnHintCheckServerTime = ServerTime;
+
+	TNRallyRespawnHint::FInput Input;
+	if (Mine && RallyVehicle)
 	{
-		SeenRespawnServerTime = Mine->LastRespawnServerTime;
-		if (!bRespawnHintShown && Mine->LastRespawnReason != ETNRallyRespawnReason::Request
-			&& Mine->LastRespawnReason != ETNRallyRespawnReason::Destroyed)
+		Input.bRacing = bRacing && !Mine->bFinished && !Mine->bRetired;
+		Input.bRespawning = Mine->RespawnEndServerTime > 0.f && ServerTime < Mine->RespawnEndServerTime;
+		Input.SecondsSinceRespawn = Mine->LastRespawnServerTime > 0.f
+			? FMath::Max(0.f, static_cast<float>(ServerTime - Mine->LastRespawnServerTime)) : -1.f;
+		Input.bFlipped = RallyVehicle->IsFlipped();
+		Input.SpeedCms = static_cast<float>(Vehicle->GetVelocity().Size());
+		// La reaparición teletransporta: el arco cercano se vuelve a buscar en toda la pista.
+		if (Input.bRespawning)
 		{
-			bRespawnHintShown = true;
-			RespawnHintEndServerTime = ServerTime + TNRallyHUD::RespawnHintSeconds;
+			RespawnHintArc = -1.0;
 		}
+		Input.DistanceToAxisCm = DistanceToTrackAxis(RallyState, Vehicle->GetActorLocation());
 	}
-	TNRallyHUD::Show(RespawnHintText, Mine && ServerTime < RespawnHintEndServerTime);
+	TNRallyHUD::Show(RespawnHintText, TNRallyRespawnHint::Update(RespawnHintState, Input, static_cast<float>(Step)));
+}
+
+float UTN_RallyHUDWidget::DistanceToTrackAxis(const ATN_RallyGameState& RallyState, const FVector& Location)
+{
+	const ATN_RallyTrack* Track = RallyState.GetTrack();
+	if (!Track || Track->GetTrackLengthCm() <= 0.f)
+	{
+		return -1.f;
+	}
+	RespawnHintArc = RespawnHintArc < 0.0 ? Track->FindArcGlobal(Location) : Track->FindArcNear(Location, RespawnHintArc);
+	return static_cast<float>(FVector::Dist(Location, Track->GetLocationAtArc(RespawnHintArc)));
 }
 
 void UTN_RallyHUDWidget::RefreshTurret()
