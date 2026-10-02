@@ -225,7 +225,7 @@ def crear_issue_colision(proyecto: dict, pr_a: dict, pr_b: dict, ficheros: list[
     padre, area = objeto_y_area(proyecto, pr_a)
     if padre:
         objetos.colgar(gh, REPO, numero, padre)
-    for campo, valor in {"Status": "Revisiones", "Prioridad": "P1", "Tamaño": "S", "Área": area}.items():
+    for campo, valor in {"Status": "Revisiones", "Prioridad": "P1", "Tamaño": "S", "Área": area, "Fase": "Sin fase"}.items():
         if valor:
             poner_campo(proyecto, numero, campo, valor)
     print(f"#{numero} creada: {titulo}{f' (dentro de #{padre})' if padre else ''}")
