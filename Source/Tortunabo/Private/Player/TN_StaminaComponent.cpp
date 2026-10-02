@@ -238,7 +238,12 @@ void UTN_StaminaComponent::TickStamina(float DeltaTime)
 		TimeSinceSprintStopped = 0.0f;
 		RechargeElapsed = 0.0f;
 
-		if (!bUnlimitedStamina)
+		// Contra una pared (u otro tope que la frena del todo) el sprint sigue pedido pero la tortuga no avanza: no gasta.
+		// El sprint no se quita, para que al despegarse corra sin soltar la tecla.
+		const AActor* Owner = GetOwner();
+		const bool bAdvancing = Owner && Owner->GetVelocity().Size2D() > WalkSpeed * 0.1f;
+
+		if (!bUnlimitedStamina && bAdvancing)
 		{
 			const float DrainMul = bPostBoostPenaltyActive ? PostBoostDrainMultiplier : 1.0f;
 			CurrentStamina = FMath::Max(0.0f, CurrentStamina - (SprintDrainPerSecond * DrainMul * DeltaTime));
