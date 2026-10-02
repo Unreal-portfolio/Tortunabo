@@ -52,6 +52,9 @@ public:
 
 	bool IsRunning() const { return State != EState::Idle; }
 
+	/** Semilla de la sesión en curso o de la última. */
+	int32 GetSeed() const { return Config.Seed; }
+
 	/** Ruta del último informe escrito (vacía si no hay). */
 	const FString& GetLastReportPath() const { return LastReportPath; }
 
