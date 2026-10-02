@@ -163,6 +163,8 @@ namespace TNBeachLayout
 	constexpr int32 MaxDecorAttemptsPerBand = 2000;
 	/** Cofres de sitio especial por ronda (sin los de los rincones), por las ayudas de la dificultad: 18 en 1200 m, 12 en 800 m. */
 	constexpr double ChestsBase = 18.0 * LengthScale;
+	/** Pasadas de PlaceChests como mucho: la segunda y la tercera solo si la primera no llega al cupo. */
+	constexpr int32 ChestSitePasses = 3;
 
 	// ── Relieve fijo ──
 	/** Corredores: caminos naturales más bajos entre las dunas (dos que se separan y se juntan y un tercero en medio). */
@@ -3759,67 +3761,76 @@ namespace TNBeachLayout
 				FVector2D Pos;
 				double Yaw;
 			};
-			TArray<FSite> Sites;
 			const double ChestR = TNBeach::FootprintRadius(ETNBeachElement::TreasureChest);
-			for (int32 i = 0; i < Out.Items.Num(); ++i)
+			// Cada pasada saca huecos nuevos alrededor de las mismas anclas. Solo se repite si faltan cofres: con menos trampas
+			// (Fácil) hay menos conchas y campos de minas, y una pasada no llega al cupo aunque se pidan más (#445).
+			auto CollectSites = [this, ChestR]()
 			{
-				if (!Alive[i]) { continue; }
-				const FItem& It = Out.Items[i];
-				if (It.Element == ETNBeachElement::ClamTrap)
+				TArray<FSite> Sites;
+				for (int32 i = 0; i < Out.Items.Num(); ++i)
 				{
-					// Dos sitios por concha (a un lado y a otro de su espalda).
-					for (const double Side : { -1.0, 1.0 })
+					if (!Alive[i]) { continue; }
+					const FItem& It = Out.Items[i];
+					if (It.Element == ETNBeachElement::ClamTrap)
 					{
-						const double Ang = FMath::DegreesToRadians(Side * Rng.Range(0.0, 35.0));
-						const double Gap = Rng.Range(150.0, 400.0);
-						const FVector2D Dir(FMath::Cos(Ang), FMath::Sin(Ang));
-						Sites.Add(FSite{ It.Pos + Dir * (It.Radius + ChestR + Gap), FMath::RadiansToDegrees(Ang) + 180.0 });
+						// Dos sitios por concha (a un lado y a otro de su espalda).
+						for (const double Side : { -1.0, 1.0 })
+						{
+							const double Ang = FMath::DegreesToRadians(Side * Rng.Range(0.0, 35.0));
+							const double Gap = Rng.Range(150.0, 400.0);
+							const FVector2D Dir(FMath::Cos(Ang), FMath::Sin(Ang));
+							Sites.Add(FSite{ It.Pos + Dir * (It.Radius + ChestR + Gap), FMath::RadiansToDegrees(Ang) + 180.0 });
+						}
+					}
+					else if ((It.Element == ETNBeachElement::SandCastleHuge && It.Role == EItemRole::Castle) || It.Element == ETNBeachElement::RockCluster
+						|| It.Element == ETNBeachElement::ShipSailWreck || It.Element == ETNBeachElement::MossyLog)
+					{
+						// A la espalda (hacia el mar) de los castillos enormes, las rocas grandes, los troncos y los restos de barco:
+						// quien lo rodea, lo ve.
+						const double Gap = Rng.Range(200.0, 500.0);
+						Sites.Add(FSite{ It.Pos + FVector2D(It.Radius + ChestR + Gap, 0.0), 180.0 });
+					}
+					else if (It.Element == ETNBeachElement::BarbedWire && (It.Role == EItemRole::Row || It.Role == EItemRole::DungeonWing))
+					{
+						const double Gap = Rng.Range(250.0, 500.0);
+						Sites.Add(FSite{ It.Pos + FVector2D(It.Radius + ChestR + Gap, 0.0), 180.0 });
+					}
+					else if (It.Element == ETNBeachElement::Catapult || It.Element == ETNBeachElement::Trampoline)
+					{
+						// Pasado el arco de salto de los lanzadores (su zona libre): el premio de saltar, mirando al lanzador.
+						const double Reach = It.Element == ETNBeachElement::Catapult ? CatapultArc : TrampolineArc;
+						const double Gap = Rng.Range(200.0, 600.0);
+						Sites.Add(FSite{ It.Pos + It.Axis() * (It.Radius + 100.0 + Reach + ChestR + Gap), It.Yaw + 180.0 });
 					}
 				}
-				else if ((It.Element == ETNBeachElement::SandCastleHuge && It.Role == EItemRole::Castle) || It.Element == ETNBeachElement::RockCluster
-					|| It.Element == ETNBeachElement::ShipSailWreck || It.Element == ETNBeachElement::MossyLog)
+				for (const FTrench& Trench : Trenches())
 				{
-					// A la espalda (hacia el mar) de los castillos enormes, las rocas grandes, los troncos y los restos de barco:
-					// quien lo rodea, lo ve.
-					const double Gap = Rng.Range(200.0, 500.0);
-					Sites.Add(FSite{ It.Pos + FVector2D(It.Radius + ChestR + Gap, 0.0), 180.0 });
+					for (int32 n = 0; n < 3; ++n)
+					{
+						const int32 k = Rng.RangeInt(0, Trench.Points.Num() - 2);
+						const FVector2D P0 = Trench.Points[k];
+						const FVector2D P1 = Trench.Points[k + 1];
+						FVector2D Normal = FVector2D(P1.Y - P0.Y, P0.X - P1.X).GetSafeNormal();
+						if (Normal.X < 0.0) { Normal = -Normal; }
+						const double Off = Rng.Range(1450.0, 1900.0);
+						Sites.Add(FSite{ (P0 + P1) * 0.5 + Normal * Off, FMath::RadiansToDegrees(FMath::Atan2(-Normal.Y, -Normal.X)) });
+					}
 				}
-				else if (It.Element == ETNBeachElement::BarbedWire && (It.Role == EItemRole::Row || It.Role == EItemRole::DungeonWing))
-				{
-					const double Gap = Rng.Range(250.0, 500.0);
-					Sites.Add(FSite{ It.Pos + FVector2D(It.Radius + ChestR + Gap, 0.0), 180.0 });
-				}
-				else if (It.Element == ETNBeachElement::Catapult || It.Element == ETNBeachElement::Trampoline)
-				{
-					// Pasado el arco de salto de los lanzadores (su zona libre): el premio de saltar, mirando al lanzador.
-					const double Reach = It.Element == ETNBeachElement::Catapult ? CatapultArc : TrampolineArc;
-					const double Gap = Rng.Range(200.0, 600.0);
-					Sites.Add(FSite{ It.Pos + It.Axis() * (It.Radius + 100.0 + Reach + ChestR + Gap), It.Yaw + 180.0 });
-				}
-			}
-			for (const FTrench& Trench : Trenches())
-			{
-				for (int32 n = 0; n < 3; ++n)
-				{
-					const int32 k = Rng.RangeInt(0, Trench.Points.Num() - 2);
-					const FVector2D P0 = Trench.Points[k];
-					const FVector2D P1 = Trench.Points[k + 1];
-					FVector2D Normal = FVector2D(P1.Y - P0.Y, P0.X - P1.X).GetSafeNormal();
-					if (Normal.X < 0.0) { Normal = -Normal; }
-					const double Off = Rng.Range(1450.0, 1900.0);
-					Sites.Add(FSite{ (P0 + P1) * 0.5 + Normal * Off, FMath::RadiansToDegrees(FMath::Atan2(-Normal.Y, -Normal.X)) });
-				}
-			}
-			for (const FVector2D& Center : MinefieldCenters) { Sites.Add(FSite{ Center, 180.0 }); }
-			Rng.Shuffle(Sites);
+				for (const FVector2D& Center : MinefieldCenters) { Sites.Add(FSite{ Center, 180.0 }); }
+				Rng.Shuffle(Sites);
+				return Sites;
+			};
 			const int32 Wanted = Scaled(ChestsBase, Profile.Aids);
 			int32 Made = 0;
-			for (const FSite& Site : Sites)
+			for (int32 Pass = 0; Pass < ChestSitePasses && Made < Wanted; ++Pass)
 			{
-				if (Made >= Wanted) { break; }
-				FItem Chest = Make(ETNBeachElement::TreasureChest, Site.Pos, EItemRole::Chest);
-				Chest.Yaw = Site.Yaw;
-				if (TryAdd(Chest, ItemPad)) { ++Made; }
+				for (const FSite& Site : CollectSites())
+				{
+					if (Made >= Wanted) { break; }
+					FItem Chest = Make(ETNBeachElement::TreasureChest, Site.Pos, EItemRole::Chest);
+					Chest.Yaw = Site.Yaw;
+					if (TryAdd(Chest, ItemPad)) { ++Made; }
+				}
 			}
 		}
 

@@ -947,9 +947,9 @@ bool FTNBeachLayoutDifficultyTest::RunTest(const FString& Parameters)
 		Ratio(E.Hazards, N.Hazards) <= 0.8 && Ratio(H.Hazards, N.Hazards) >= 1.2);
 	TestTrue(FString::Printf(TEXT("ayudas: Fácil x%.2f (>= 1,25), Difícil x%.2f (>= 1)"), Ratio(E.Aids, N.Aids), Ratio(H.Aids, N.Aids)),
 		Ratio(E.Aids, N.Aids) >= 1.25 && Ratio(H.Aids, N.Aids) >= 1.0);
-	// Con 1200 m: Fácil x1,2 y Difícil x1,3 (medido). Con 800 m los sitios donde caben (unos 12 de los 60-90 que salen: tras las
-	// conchas que atrapan, los lanzadores, las trincheras...) limitan los cofres de sitio especial y salen casi los mismos en
-	// las tres dificultades (x0,98 y x1,07): no bajan del 90 % de Normal.
+	// Con 800 m caben pocos cofres por pasada en los sitios especiales (tras las conchas que atrapan, los lanzadores, las
+	// trincheras...), y en Fácil hay menos conchas y campos de minas; PlaceChests repite pasadas mientras falten (#445).
+	// Medido: Fácil x1,38 y Difícil x1,25 (antes de #445, x0,84 y x1,11). No deben bajar del 90 % de Normal.
 	TestTrue(FString::Printf(TEXT("cofres: Fácil x%.2f y Difícil x%.2f, no menos del 90 %% que en Normal"), Ratio(E.Chests, N.Chests), Ratio(H.Chests, N.Chests)),
 		E.Chests * 10 >= N.Chests * 9 && H.Chests * 10 >= N.Chests * 9);
 	return true;
