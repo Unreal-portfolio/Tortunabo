@@ -1,6 +1,7 @@
 #include "Rally/UI/TN_RallyCopilotTablet.h"
 
 #include "Components/InputComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -60,16 +61,100 @@ UTN_RallyCopilotTablet* UTN_RallyCopilotTablet::FindOrCreateFor(APlayerControlle
 	{
 		return Existing;
 	}
+	UTN_RallyCopilotTablet* Tablet = CreateFor(Player);
+	if (Tablet)
+	{
+		Tablet->ShowOnScreen();
+	}
+	return Tablet;
+}
+
+UTN_RallyCopilotTablet* UTN_RallyCopilotTablet::CreateFor(APlayerController* Player)
+{
 	UTN_RallyCopilotTablet* Tablet = CreateWidget<UTN_RallyCopilotTablet>(Player, UTN_RallyCopilotTablet::StaticClass());
 	if (!Tablet)
 	{
 		return nullptr;
 	}
-	// En VR va al panel del mundo, como el resto de la interfaz.
-	TNVR::AddToScreen(Tablet, TNRallyTabletState::ViewportZOrder);
 	TNRallyTabletState::PruneRegistry();
 	TNRallyTabletState::Registry().Add(TObjectKey<APlayerController>(Player), Tablet);
 	return Tablet;
+}
+
+UTN_RallyCopilotTablet* UTN_RallyCopilotTablet::PresentInWorldFor(APlayerController* Player, UWidgetComponent* Host)
+{
+	if (!Player || !Player->IsLocalController() || !IsValid(Host))
+	{
+		return nullptr;
+	}
+	UTN_RallyCopilotTablet* Tablet = FindFor(Player);
+	Tablet = Tablet ? Tablet : CreateFor(Player);
+	if (Tablet)
+	{
+		Tablet->ShowInWorld(*Host);
+	}
+	return Tablet;
+}
+
+UTN_RallyCopilotTablet* UTN_RallyCopilotTablet::PresentOnScreenFor(APlayerController* Player)
+{
+	UTN_RallyCopilotTablet* Tablet = FindFor(Player);
+	if (!Tablet)
+	{
+		return FindOrCreateFor(Player);
+	}
+	Tablet->ShowOnScreen();
+	return Tablet;
+}
+
+bool UTN_RallyCopilotTablet::IsPresented() const
+{
+	if (Presentation == ETNRallyTabletPresentation::Screen)
+	{
+		return TNVR::IsOnScreen(this);
+	}
+	// Con el panel asignado aunque aún no haya construido su widget de Slate; deja de estarlo cuando se destruye.
+	return WorldHost.IsValid();
+}
+
+void UTN_RallyCopilotTablet::ShowOnScreen()
+{
+	if (UWidgetComponent* Host = WorldHost.Get(); Host && Host->GetWidget() == this)
+	{
+		Host->SetWidget(nullptr);
+	}
+	WorldHost.Reset();
+	Presentation = ETNRallyTabletPresentation::Screen;
+	if (!TNVR::IsOnScreen(this))
+	{
+		// En VR va al panel del mundo, como el resto de la interfaz.
+		TNVR::AddToScreen(this, TNRallyTabletState::ViewportZOrder);
+	}
+}
+
+void UTN_RallyCopilotTablet::ShowInWorld(UWidgetComponent& Host)
+{
+	if (WorldHost.Get() == &Host && Host.GetWidget() == this)
+	{
+		return;
+	}
+	// Primero el estado: NativeDestruct (al salir de la pantalla) no debe sacarla del registro.
+	UWidgetComponent* Previous = WorldHost.Get();
+	Presentation = ETNRallyTabletPresentation::World;
+	WorldHost = &Host;
+	if (Previous && Previous != &Host && Previous->GetWidget() == this)
+	{
+		Previous->SetWidget(nullptr);
+	}
+	if (TNVR::IsOnScreen(this))
+	{
+		RemoveFromParent();
+	}
+	if (APlayerController* Player = GetOwningPlayer())
+	{
+		Host.SetOwnerPlayer(Player->GetLocalPlayer());
+	}
+	Host.SetWidget(this);
 }
 
 bool UTN_RallyCopilotTablet::ToggleFor(APlayerController* Player)
@@ -168,12 +253,24 @@ void UTN_RallyCopilotTablet::NativeOnInitialized()
 	SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 
+void UTN_RallyCopilotTablet::NativeConstruct()
+{
+	Super::NativeConstruct();
+	// También al volver de un panel del mundo a la pantalla (o al revés): sigue siendo la tableta de su jugador.
+	if (const APlayerController* Player = GetOwningPlayer())
+	{
+		TNRallyTabletState::Registry().Add(TObjectKey<APlayerController>(Player), this);
+	}
+}
+
 void UTN_RallyCopilotTablet::NativeDestruct()
 {
 	const APlayerController* Player = GetOwningPlayer();
 	const TWeakObjectPtr<UTN_RallyCopilotTablet>* Found = Player
 		? TNRallyTabletState::Registry().Find(TObjectKey<APlayerController>(Player)) : nullptr;
-	if (Found && Found->Get() == this)
+	// Al pasar de la pantalla a un panel del mundo (o al revés) se destruye el widget de Slate anterior: si ya está
+	// puesta en el otro sitio, sigue registrada.
+	if (Found && Found->Get() == this && !IsPresented())
 	{
 		TNRallyTabletState::Registry().Remove(TObjectKey<APlayerController>(Player));
 	}
@@ -350,3 +447,66 @@ void UTN_RallyCopilotTablet::RefreshProgress(const ATN_Buggy& Buggy)
 	// El eje de las notas es una polilínea de la spline: su longitud difiere unas milésimas.
 	MyArcCm = TrackArcCm * (TrackNotes.LengthCm / NotesTrackLengthCm);
 }
+
+#if !UE_BUILD_SHIPPING
+#include "Containers/Ticker.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
+
+namespace TNRallyTabletDebug
+{
+	/** Panel de prueba delante del buggy, mirando a la cámara de persecución (cm, en el espacio del buggy). */
+	const FVector PanelOffset(300.0, 0.0, 170.0);
+	constexpr float PanelCmPerPx = 0.25f;
+
+	APlayerController* FirstLocalPlayer()
+	{
+		for (const FWorldContext& Context : GEngine ? GEngine->GetWorldContexts() : TIndirectArray<FWorldContext>())
+		{
+			UWorld* World = Context.World();
+			if (World && World->IsGameWorld())
+			{
+				return World->GetFirstPlayerController();
+			}
+		}
+		return nullptr;
+	}
+
+	/** Pone la tableta del primer jugador en un panel 3D sobre su peón (#334) o la devuelve a la pantalla. */
+	void HostOnPawn(bool bWorld)
+	{
+		APlayerController* Player = FirstLocalPlayer();
+		APawn* Pawn = Player ? Player->GetPawn() : nullptr;
+		if (!Pawn || !bWorld)
+		{
+			UTN_RallyCopilotTablet::PresentOnScreenFor(Player);
+			return;
+		}
+		UWidgetComponent* Panel = NewObject<UWidgetComponent>(Pawn, TEXT("RallyTabletDebugPanel"), RF_Transient);
+		Panel->SetupAttachment(Pawn->GetRootComponent());
+		Panel->SetRelativeLocationAndRotation(PanelOffset, FRotator(10.0, 180.0, 0.0));
+		Panel->SetRelativeScale3D(FVector(PanelCmPerPx));
+		Panel->SetWidgetSpace(EWidgetSpace::World);
+		Panel->SetDrawSize(FVector2D(TNRallyTabletLayout::DesignSize(ETNRallyTabletView::Compact)));
+		Panel->SetBlendMode(EWidgetBlendMode::Transparent);
+		Panel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Panel->RegisterComponent();
+		const UTN_RallyCopilotTablet* Tablet = UTN_RallyCopilotTablet::PresentInWorldFor(Player, Panel);
+		UE_LOG(LogTemp, Display, TEXT("[RallyTablet] Tableta en un panel del mundo sobre %s: %s"), *GetNameSafe(Pawn),
+			Tablet && Tablet->GetPresentation() == ETNRallyTabletPresentation::World ? TEXT("sí") : TEXT("no"));
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdTabletWorldLater(TEXT("TN.Rally.TabletWorldLater"),
+		TEXT("Rally: TN.Rally.TabletWorldLater <espera> [1 = panel 3D sobre el peón, 0 = pantalla]: presentación de la tableta (#334)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld*)
+		{
+			const float Wait = Args.IsValidIndex(0) ? FMath::Max(0.1f, FCString::Atof(*Args[0])) : 5.f;
+			const bool bWorld = !Args.IsValidIndex(1) || FCString::Atoi(*Args[1]) != 0;
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([bWorld](float)
+			{
+				HostOnPawn(bWorld);
+				return false;
+			}), Wait);
+		}));
+}
+#endif

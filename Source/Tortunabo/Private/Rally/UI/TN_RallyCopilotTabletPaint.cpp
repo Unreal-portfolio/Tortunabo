@@ -302,19 +302,53 @@ int32 UTN_RallyCopilotTablet::NativePaint(const FPaintArgs& Args, const FGeometr
 	{
 		return Layer;
 	}
-	using namespace TNRallyTablet;
 	FTNRallyTabletPainter Painter(OutDrawElements, AllottedGeometry, Layer, InWidgetStyle.GetColorAndOpacityTint().A);
-	if (View == ETNRallyTabletView::Full)
-	{
-		Painter.Fit(FullSize, FullMaxWidthFraction, FullMaxHeightFraction, FVector2f(0.5f, 1.f), FVector2f(0.f, FullBottomMargin));
-		PaintFull(Painter);
-	}
-	else
-	{
-		Painter.Fit(CompactSize, 0.2f, CompactMaxHeightFraction, FVector2f(1.f, 0.f), FVector2f(CompactMargin));
-		PaintCompact(Painter);
-	}
+	Painter.Fit(TNRallyTabletLayout::FitFor(Presentation, View));
+	View == ETNRallyTabletView::Full ? PaintFull(Painter) : PaintCompact(Painter);
 	return Painter.Layer;
+}
+
+// ── Encaje en la pantalla o en un panel del mundo (#334) ───────────────────────────────────────────────────────
+
+FVector2f TNRallyTabletLayout::DesignSize(ETNRallyTabletView View)
+{
+	return View == ETNRallyTabletView::Compact ? TNRallyTablet::CompactSize : TNRallyTablet::FullSize;
+}
+
+TNRallyTabletLayout::FFit TNRallyTabletLayout::FitFor(ETNRallyTabletPresentation Presentation, ETNRallyTabletView View)
+{
+	using namespace TNRallyTablet;
+	FFit Fit;
+	Fit.Design = DesignSize(View);
+	if (Presentation == ETNRallyTabletPresentation::World)
+	{
+		// El panel es la tableta: la ocupa entera, centrada (el dueño del panel le da el tamaño de DesignSize).
+		return Fit;
+	}
+	if (View == ETNRallyTabletView::Compact)
+	{
+		Fit.MaxWidthFraction = CompactMaxWidthFraction;
+		Fit.MaxHeightFraction = CompactMaxHeightFraction;
+		Fit.Anchor = FVector2f(1.f, 0.f);
+		Fit.Margin = FVector2f(CompactMargin);
+		return Fit;
+	}
+	Fit.MaxWidthFraction = FullMaxWidthFraction;
+	Fit.MaxHeightFraction = FullMaxHeightFraction;
+	Fit.Anchor = FVector2f(0.5f, 1.f);
+	Fit.Margin = FVector2f(0.f, FullBottomMargin);
+	return Fit;
+}
+
+TNRallyTabletLayout::FPlacement TNRallyTabletLayout::Place(const FVector2f& LocalSize, const FFit& Fit)
+{
+	FPlacement Placement;
+	const FVector2f Design(FMath::Max(Fit.Design.X, 1.f), FMath::Max(Fit.Design.Y, 1.f));
+	Placement.Scale = FMath::Max(0.1f, FMath::Min(LocalSize.X * Fit.MaxWidthFraction / Design.X,
+		LocalSize.Y * Fit.MaxHeightFraction / Design.Y));
+	const FVector2f Free = LocalSize - Design * Placement.Scale - Fit.Margin * 2.f;
+	Placement.Origin = Fit.Margin + FVector2f(Free.X * Fit.Anchor.X, Free.Y * Fit.Anchor.Y);
+	return Placement;
 }
 
 void UTN_RallyCopilotTablet::PaintFull(FTNRallyTabletPainter& Painter) const

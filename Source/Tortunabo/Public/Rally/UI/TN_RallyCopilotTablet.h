@@ -3,6 +3,8 @@
 // nota en grande para cantarla y la munición. Modo compacto en una esquina para la conductora que va sin artillera.
 // Todo en C++ sin asset UMG: se dibuja en NativePaint con la paleta Tortunavy (TNHUDArt / TNHUDStyle). Solo lee estado
 // replicado (ATN_RallyGameState, la pista local y la torreta), así que vale igual en el servidor y en los clientes.
+// Se presenta en la pantalla (TNVR::AddToScreen: el viewport sin VR, el panel del mundo con VR) o dentro de un
+// UWidgetComponent (#334: tableta en la mano o en el salpicadero), con el mismo dibujo.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -18,6 +20,7 @@ class ATN_RallyGameState;
 class ATN_RallyTrack;
 class UInputComponent;
 class UTN_BuggyTurretComponent;
+class UWidgetComponent;
 struct FTNRallyStanding;
 struct FTNRallyTabletPainter;
 struct FTNRallyTabletMapProjection;
@@ -33,6 +36,46 @@ enum class ETNRallyTabletView : uint8
 	/** Esquina de la conductora sin artillera: mapa pequeño y próxima nota. */
 	Compact
 };
+
+/** Dónde se presenta la tableta (#334). */
+UENUM(BlueprintType)
+enum class ETNRallyTabletPresentation : uint8
+{
+	/** En la pantalla con TNVR::AddToScreen: grande abajo en el centro o compacta en la esquina, como siempre. */
+	Screen,
+	/** Dentro de un UWidgetComponent: la tableta ocupa todo el panel, centrada y a escala. */
+	World
+};
+
+namespace TNRallyTabletLayout
+{
+	/** Cómo se encaja la maqueta de una vista en la geometría del widget (unidades de diseño). */
+	struct FFit
+	{
+		FVector2f Design = FVector2f(1.f, 1.f);
+		float MaxWidthFraction = 1.f;
+		float MaxHeightFraction = 1.f;
+		/** Punto de anclaje (0..1) dentro del espacio libre. */
+		FVector2f Anchor = FVector2f(0.5f, 0.5f);
+		FVector2f Margin = FVector2f::ZeroVector;
+	};
+
+	/** Origen (px locales) y escala de la maqueta encajada. */
+	struct FPlacement
+	{
+		FVector2f Origin = FVector2f::ZeroVector;
+		float Scale = 1.f;
+	};
+
+	/** Maqueta de la vista: grande (Full) o compacta (Compact); Hidden usa la grande. */
+	TORTUNABO_API FVector2f DesignSize(ETNRallyTabletView View);
+
+	/** Encaje de una vista según la presentación: en Screen, el de siempre; en World, todo el panel. */
+	TORTUNABO_API FFit FitFor(ETNRallyTabletPresentation Presentation, ETNRallyTabletView View);
+
+	/** Escala la maqueta sin pasar de las fracciones del widget de LocalSize y la ancla con su margen. */
+	TORTUNABO_API FPlacement Place(const FVector2f& LocalSize, const FFit& Fit);
+}
 
 /** Munición que enseña la tableta; la rellena UTN_RallyCopilotTablet::ReadAmmo a partir de la torreta. */
 USTRUCT(BlueprintType)
@@ -95,6 +138,16 @@ public:
 	 */
 	static void BindToggleKeys(UInputComponent* Input, APawn* Pawn);
 
+	/**
+	 * Presenta la tableta del jugador local Player (creada si no la tenía) dentro de Host (#334): la quita de la pantalla y
+	 * pone en Host el mismo dibujo. El tamaño del panel lo decide quien lo aloja (TNRallyTabletLayout::DesignSize).
+	 * Nullptr si Player no es local o falta Host.
+	 */
+	static UTN_RallyCopilotTablet* PresentInWorldFor(APlayerController* Player, UWidgetComponent* Host);
+
+	/** Devuelve la tableta del jugador a la pantalla (TNVR::AddToScreen) si estaba en un panel del mundo. */
+	static UTN_RallyCopilotTablet* PresentOnScreenFor(APlayerController* Player);
+
 	/** Munición que se enseña. Único punto que lee la torreta: si cambia su API (selección, CycleAmmo), se adapta aquí. */
 	static FTNRallyTabletAmmo ReadAmmo(const UTN_BuggyTurretComponent* Turret);
 
@@ -131,18 +184,32 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Rally|Tableta")
 	FText GetNextNoteText() const;
 
+	UFUNCTION(BlueprintPure, Category = "Rally|Tableta")
+	ETNRallyTabletPresentation GetPresentation() const { return Presentation; }
+
+	/** Panel del mundo que la aloja en la presentación World (nullptr en Screen). */
+	UWidgetComponent* GetWorldHost() const { return WorldHost.Get(); }
+
 	/** Distancia por delante que cubren el perfil y las notas (cm). */
 	UPROPERTY(EditAnywhere, Category = "Rally|Tableta", meta = (ClampMin = "5000"))
 	float LookAheadCm = 40000.f;
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
 		FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 
 private:
+	/** Crea la tableta de Player y la registra, sin ponerla en ningún sitio. */
+	static UTN_RallyCopilotTablet* CreateFor(APlayerController* Player);
+	/** Está puesta ahora en la pantalla o en su panel del mundo. */
+	bool IsPresented() const;
+	void ShowOnScreen();
+	void ShowInWorld(UWidgetComponent& Host);
+
 	// TN_RallyCopilotTablet.cpp: estado que se refresca en NativeTick.
 	const ATN_Buggy* FindLocalBuggy(const ATN_RallyGameState* RallyState) const;
 	const FTNRallyStanding* FindLocalStanding(const ATN_RallyGameState* RallyState) const;
@@ -168,6 +235,9 @@ private:
 	void PaintHeader(FTNRallyTabletPainter& Painter) const;
 
 	ETNRallyTabletView View = ETNRallyTabletView::Hidden;
+	ETNRallyTabletPresentation Presentation = ETNRallyTabletPresentation::Screen;
+	/** Débil: el panel es del actor que lo aloja y la tableta no lo mantiene vivo. */
+	TWeakObjectPtr<UWidgetComponent> WorldHost;
 	bool bOpen = false;
 	bool bCompact = false;
 	bool bAutoRole = true;
