@@ -56,6 +56,7 @@ void ATN_ProcMapGenerator::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_ProcMapGenerator, NetConfig);
+	DOREPLIFETIME_CONDITION(ATN_ProcMapGenerator, Settings, COND_InitialOnly);
 }
 
 void ATN_ProcMapGenerator::BeginPlay()

@@ -189,8 +189,9 @@ public:
 	FOnProcMapGenerated OnMapGenerated;
 
 protected:
-	/** Configuración del mapa (biomas, perfiles, materiales). Opcional: hay valores greybox. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap")
+	/** Configuración del mapa (biomas, perfiles, materiales). Opcional: hay valores greybox. Se replica al entrar:
+	 * un generador creado en ejecución (Supervivencia) solo la recibe en el servidor (SetSettingsIfMissing). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "ProcMap")
 	TObjectPtr<UTN_ProcMapSettings> Settings;
 
 	/** Si ningún GameMode lo pide en X segundos, el servidor genera con los valores de edición. */
