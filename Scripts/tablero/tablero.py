@@ -735,6 +735,8 @@ def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
 
 
 def main() -> int:
+    for flujo_salida in (sys.stdout, sys.stderr):  # la consola de Windows (cp1252) no imprime «→» (#437)
+        flujo_salida.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Tablero de desarrollo de Tortunabo")
     sub = parser.add_subparsers(dest="cmd", required=True)
     anadir_comandos_de_flujo(sub)
