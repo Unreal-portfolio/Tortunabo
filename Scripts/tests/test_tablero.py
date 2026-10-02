@@ -180,3 +180,39 @@ def test_fusion_de_la_pr_de_un_lote_no_da_status_al_lote(monkeypatch):
     cambios, avisos = [], []
     tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
     assert [texto for texto, _ in cambios] == ["#144 → QA editor (PR #166 fusionada en dev)"]
+
+
+def test_issue_en_done_antes_de_fusionar_se_cierra(monkeypatch):
+    """#436: el ciclo de #282 pasa la issue a Done antes de fusionar y `Closes #n` no cierra en dev."""
+    pr = {"number": 279, "baseRefName": "dev", "headRefName": "feat/271-mapa", "body": "Closes #271"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    monkeypatch.setattr(tablero, "tiene_resumen", lambda n: n != 272)
+    validada = {"Status": "Done", "Revisión IA": "Aprobada", "Editor": "Funciona"}
+    proyecto = {"items": {
+        271: {"state": "OPEN", "valores": dict(validada), "labels": {"nodes": [{"name": "tarea"}]}},
+    }}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#271 → Done (PR #279 fusionada en dev; ya estaba en Done: se cierra)"]
+    assert not avisos
+
+    pr["body"] = "Closes #272"
+    proyecto["items"] = {272: {"state": "OPEN", "valores": dict(validada), "labels": {"nodes": [{"name": "tarea"}]}}}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert len(cambios) == 1 and avisos == ["#272 se cierra sin comentario **Resumen**: añádelo con `resumen 272`"]
+
+
+@pytest.mark.parametrize("valores, abiertas", [
+    ({"Status": "Done", "Revisión IA": "Aprobada", "Editor": "Sin probar"}, []),
+    ({"Status": "Done", "Revisión IA": "Pendiente", "Editor": "Funciona"}, []),
+    ({"Status": "Done", "Revisión IA": "Aprobada", "Editor": "Funciona"},
+     [{"number": 300, "body": "Closes #271", "headRefName": "fix/271-otra"}]),
+])
+def test_done_sin_las_dos_validaciones_o_con_pr_abierta_no_se_cierra(monkeypatch, valores, abiertas):
+    pr = {"number": 279, "baseRefName": "dev", "headRefName": "feat/271-mapa", "body": "Closes #271"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    proyecto = {"items": {271: {"state": "OPEN", "valores": valores, "labels": {"nodes": [{"name": "tarea"}]}}}}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, abiertas, cambios, avisos)
+    assert not cambios

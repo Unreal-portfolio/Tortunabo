@@ -443,15 +443,18 @@ def reconciliar_fusiones(proyecto: dict, abiertas: list[dict], cambios: list, av
             if not issue or objetos.es_objeto(issue) or lotes.es_lote(issue) or issue["state"] != "OPEN":
                 continue  # los objetos y los lotes no llevan Status: solo se mueven las issues de trabajo
             actual = issue["valores"].get("Status")
-            if not flujo.mueve_por_fusion(actual, n in con_pr_abierta):
+            cierra_en_done = flujo.cierra_por_fusion(actual, issue["valores"], n in con_pr_abierta)
+            if not cierra_en_done and not flujo.mueve_por_fusion(actual, n in con_pr_abierta):
                 continue
             valores = valores_tras_fusion(issue["valores"])
             destino, cerrar = flujo.estado_objetivo(actual, valores, fusionada=True, en_lote=False)
-            if destino == actual and valores == issue["valores"]:
+            if destino == actual and valores == issue["valores"] and not cerrar:
                 continue
             if cerrar and not tiene_resumen(n):
                 avisos.append(f"#{n} se cierra sin comentario **Resumen**: añádelo con `resumen {n}`")
             motivo = "; revisada y probada: se cierra" if cerrar else ""
+            if cierra_en_done:
+                motivo = "; ya estaba en Done: se cierra"
             cambios.append((f"#{n} → {destino} (PR #{pr['number']} fusionada en {INTEGRACION}{motivo})",
                             lambda n=n: aplicar_fusion(proyecto, n)))
 
