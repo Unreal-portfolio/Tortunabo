@@ -5,6 +5,7 @@
 #include "World/ProcMap/TN_ProcMapAmbientFX.h"
 #include "TN_BeachHermitCrab.generated.h"
 
+class UBoxComponent;
 class UStaticMeshComponent;
 class UTN_BeachCritterSynthComponent;
 
@@ -100,6 +101,10 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> Shadow;
 
+	/** Cuerpo sólido (máquinas con pantalla): la tortuga no lo atraviesa; se apaga mientras rueda (entonces derriba). */
+	UPROPERTY(Transient)
+	TObjectPtr<UBoxComponent> Block;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_BeachCritterSynthComponent> Sound;
 
@@ -177,5 +182,7 @@ private:
 	void EnterDizzy(const FVector& Where, float Yaw);
 
 	void BuildCrab();
+	/** Coloca el cuerpo sólido en la base de la bola y lo apaga mientras rueda. */
+	void PlaceBlock(const FVector& Base, float Yaw, bool bRolling);
 	void PoseCrab(uint8 State, float Age, float DeltaSeconds, bool bStunned, float MoveSpeed);
 };
