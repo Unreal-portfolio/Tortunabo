@@ -4445,6 +4445,8 @@ Caracola de turbante de 2,24 m de diámetro (4 cm reales) con el ermitaño asoma
   últimos 7 m frena y se para al final.
 - **Derriba** a quien toca la bola (1,12 m + 0,7 m del tramo que recorre en ese fotograma, y a menos de 2,2 m en altura), **sin
   pararse**: a todas las que estén en fila. Tabla de §36.2 («¡BOLO!»/«¡STRIKE!»).
+- **Es sólido** cuando no rueda (esperando, metiéndose, asomando, andando o mareado): la tortuga choca con él. Rodando no
+  bloquea: derriba.
 - **Al final** asoma (0,35 s), se sacude la arena, se da la vuelta y **vuelve andando** a lo alto a 2,3 m/s (por la raíz del tamaño).
 - **Red**: los estados son función de su hora (reloj del servidor); la rodada es un camino calculado igual en cada máquina (pasos de
   1/60 s, 14 s como mucho). Los derribos, por el servidor.

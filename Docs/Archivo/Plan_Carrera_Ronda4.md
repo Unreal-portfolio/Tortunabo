@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): las rondas del modo carrera se siguen desde `Docs/Modo_Carrera.md`, `Docs/superpowers/specs/modos/02-Carrera.md` y las issues del tablero.
+
 # Plan de la ronda 4 del modo carrera (y ajustes comunes)
 
 Apuntado el 29-09-2026 con las notas del usuario tras probar las salas, los objetos y la red de 8 (commits 186a7547 a

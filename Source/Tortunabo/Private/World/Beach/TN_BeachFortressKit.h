@@ -692,15 +692,41 @@ namespace TNBeachFortressKit
 		}
 	}
 
-	/** Adornos de una cara vertical (Normal hacia fuera, U a lo largo): conchas y estrellas al azar entre Z0 y Z1. */
+	/** Rectángulo de una cara (U a lo largo, Z de alto) donde no hay pared libre: puerta, ventanas, estandartes. */
+	struct FFaceKeepOut
+	{
+		double U0 = 0.0;
+		double U1 = 0.0;
+		double Z0 = 0.0;
+		double Z1 = 0.0;
+	};
+
+	/**
+	 * Adornos de una cara vertical (Normal hacia fuera, U a lo largo): conchas y estrellas al azar entre Z0 y Z1. Los que
+	 * tocarían un KeepOut (con su radio) se descartan: nada flota delante de un hueco.
+	 */
 	inline void AddFaceShells(FBuffers& Decor, const FVector& Origin, const FVector& Normal, const FVector& Along, double HalfLen, double Z0, double Z1, int32 Count,
-		uint32 Seed)
+		uint32 Seed, const TArray<FFaceKeepOut>& KeepOuts = {})
 	{
 		for (int32 d = 0; d < Count; ++d)
 		{
 			const double U = FMath::Lerp(-HalfLen + 60.0, HalfLen - 60.0, TNBeachTrapKit::Hash01(d, 1, Seed));
 			const double Z = FMath::Lerp(Z0 + 60.0, Z1 - 60.0, TNBeachTrapKit::Hash01(d, 2, Seed));
 			const FVector At = Origin + Along * U + FVector(0.0, 0.0, Z) + Normal * 2.0;
+			const double Reach = d % 3 == 0 ? 70.0 : 60.0;
+			bool bFloating = false;
+			for (const FFaceKeepOut& K : KeepOuts)
+			{
+				if (U + Reach > K.U0 && U - Reach < K.U1 && Z + Reach > K.Z0 && Z - Reach < K.Z1)
+				{
+					bFloating = true;
+					break;
+				}
+			}
+			if (bFloating)
+			{
+				continue;
+			}
 			if (d % 3 == 0)
 			{
 				TNPlaygroundKit::AddStarfish(Decor, At, Normal, FVector::UpVector, 50.0 + 20.0 * TNBeachTrapKit::Hash01(d, 3, Seed), 5.0, TNPlaygroundKit::Rgb(0xFF8A70));
@@ -775,7 +801,13 @@ namespace TNBeachFortressKit
 			const ESide Side = static_cast<ESide>(f);
 			const FVector N = SideNormal(Side);
 			const FVector Along(-N.Y, N.X, 0.0);
-			AddFaceShells(Decor, N * A0, N, Along, A0 - P.TowerInset - P.TowerR, 0.0, Z0, 6 + P.Size * 4, Seed + 101u * static_cast<uint32>(f));
+			// En las caras ±X, la puerta con su arco, la concha de clave y los estandartes ocupan la franja central.
+			TArray<FFaceKeepOut> KeepOuts;
+			if (Side == ESide::PosX || Side == ESide::NegX)
+			{
+				KeepOuts.Add({ -(Gw + 130.0 + 75.0), Gw + 130.0 + 75.0, 0.0, Z0 });
+			}
+			AddFaceShells(Decor, N * A0, N, Along, A0 - P.TowerInset - P.TowerR, 0.0, Z0, 6 + P.Size * 4, Seed + 101u * static_cast<uint32>(f), KeepOuts);
 		}
 
 		// ── Pretil del adarve (por fuera), torres de las esquinas con su cubo y su bandera ──
@@ -856,7 +888,32 @@ namespace TNBeachFortressKit
 				const ESide Side = static_cast<ESide>(f);
 				const FVector N = SideNormal(Side);
 				const FVector Along(-N.Y, N.X, 0.0);
-				AddFaceShells(Decor, N * K, N, Along, K, FaceFrom, Tier.Z, 3 + P.Size * 2, TierSeed + 31u * static_cast<uint32>(f));
+				// Ventanas, puerta de adorno y estandarte de la terraza: sus rectángulos (en U de esa cara) quedan libres.
+				TArray<FFaceKeepOut> KeepOuts;
+				if (Side == ESide::PosX || Side == ESide::NegX)
+				{
+					const double Sx = N.X;
+					if (!(t == 0 && Sx < 0.0))
+					{
+						for (int32 w = 0; w < Windows; ++w)
+						{
+							const double Uw = Sx * (-K + (w + 0.5) * 2.0 * K / Windows);
+							const double HalfWinH = FMath::Min(150.0, 0.3 * FaceH);
+							KeepOuts.Add({ Uw - 90.0, Uw + 90.0, WinZ - HalfWinH, WinZ + HalfWinH });
+						}
+					}
+					if (Sx < 0.0 && t == 0)
+					{
+						const double Ud = K - 180.0;
+						KeepOuts.Add({ Ud - 140.0, Ud + 140.0, FaceFrom, FaceFrom + FMath::Min(340.0, 0.55 * FaceH) + 120.0 });
+					}
+					if (Sx > 0.0)
+					{
+						const double HalfBanner = 0.5 * FMath::Min(220.0, 0.3 * K);
+						KeepOuts.Add({ -HalfBanner, HalfBanner, Tier.Z - FMath::Min(0.7 * FaceH, 600.0) - 30.0, Tier.Z });
+					}
+				}
+				AddFaceShells(Decor, N * K, N, Along, K, FaceFrom, Tier.Z, 3 + P.Size * 2, TierSeed + 31u * static_cast<uint32>(f), KeepOuts);
 			}
 			// Banderines de colores en las esquinas de las terrazas de en medio; banderas de Tortunavy en las de la cima.
 			const bool bSummit = t == P.Tiers.Num() - 1;

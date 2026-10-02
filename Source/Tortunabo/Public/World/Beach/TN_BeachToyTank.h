@@ -14,7 +14,7 @@ class UTN_BeachCritterSynthComponent;
 struct FTNTankShot
 {
 	bool bAlive = false;
-	/** Todavía puede dar (tras el primer bote o tras dar a alguien, ya no). */
+	/** Todavía puede dar (también tras botar en el suelo; tras dar a alguien, ya no). */
 	bool bArmed = false;
 	uint8 Id = 0;
 	int32 Bounces = 0;

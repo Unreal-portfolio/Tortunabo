@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): Level Design Document de mayo de 2026 (chunks procedurales, entrega académica); la referencia de diseño es `Docs/Biblia_Tortunavy.md` y el plan vigente es `Docs/2026-09-29-Plan-Maestro-Modos-y-Mapas.md`.
+
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 

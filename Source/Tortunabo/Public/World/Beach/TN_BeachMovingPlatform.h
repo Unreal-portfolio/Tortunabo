@@ -27,8 +27,9 @@ class UTN_BeachTrapSynthComponent;
  *
  * La plataforma es una base móvil (colisión convexa con nombre estable por red): quien está encima se mueve con ella sin
  * resbalar. Su movimiento es determinista con el reloj del servidor (TNBeachRideKit::ShuttleAlpha + fase por la semilla):
- * cada máquina la coloca igual, sin replicar posiciones. La catapulta de arriba la crea el servidor y la destruye con la
- * torre.
+ * cada máquina la coloca igual, sin replicar posiciones. El ascensor que baja se apoya en quien tenga debajo (no lo
+ * atraviesa) y, cuando se aparta, vuelve a su horario a su velocidad. La catapulta de arriba la crea el servidor y la
+ * destruye con la torre.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachMovingPlatform : public ATN_BeachElement
@@ -103,6 +104,12 @@ private:
 	/** Coloca la plataforma a la hora Now (todas las máquinas). */
 	void PlaceRide(double Now);
 
+	/**
+	 * Ascensor: altura mínima de la cara de arriba de la plataforma (espacio del marco) para no atravesar a quien esté
+	 * debajo de su huella; -infinito si no hay nadie. Cada máquina la calcula con los personajes que ve.
+	 */
+	double LiftFloorUnderneath() const;
+
 	/** Local: cuerdas del ascensor desde la punta de la grúa hasta el borde de la plataforma. */
 	void UpdateRopes();
 
@@ -129,6 +136,14 @@ private:
 	double LiftX = -860.0;
 	double BottomTopZ = 22.0;
 	FVector CraneTipLocal = FVector::ZeroVector;
+
+	/**
+	 * Ascensor: altura a la que se ve (puede quedar por encima de la del reloj si se apoya en alguien), la hora a la que se
+	 * colocó y si está volviendo a su horario tras soltar a quien tenía debajo.
+	 */
+	double LiftZ = -1.0;
+	double LiftPlacedAt = -1.0;
+	bool bLiftCatchingUp = false;
 
 	/** Última posición (0..1) para los sonidos de salida y llegada. */
 	double LastAlpha = -1.0;
