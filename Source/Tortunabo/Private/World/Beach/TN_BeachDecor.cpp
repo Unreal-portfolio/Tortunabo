@@ -1,5 +1,6 @@
 #include "World/Beach/TN_BeachDecor.h"
 #include "TN_BeachDecorKit.h"
+#include "World/Beach/TN_BeachLayout.h"
 #include "../ProcMap/TN_ProcMapRuntimeMesh.h"
 #include "Core/TN_Log.h"
 #include "Camera/PlayerCameraManager.h"
@@ -220,6 +221,26 @@ FTransform TNBeachDecorKit::BodyPlacement(const TNBeachProp::FPropInfo& Info, in
 	const double Sink = FMath::Lerp(static_cast<double>(Info.SinkMin), static_cast<double>(Info.SinkMax), TNBeachProp::Rnd(USeed, 4)) * Size;
 	const FQuat Tilt(FVector(FMath::Cos(TiltDir), FMath::Sin(TiltDir), 0.0), FMath::DegreesToRadians(TiltDeg));
 	return FTransform(Tilt * TNBeachProp::YawQ(Yaw), FVector(0.0, 0.0, -Sink), FVector(static_cast<double>(Size)));
+}
+
+FTransform TNBeachDecorKit::ItemPlacement(const TNBeachLayout::FRoundLayout& Layout, const TNBeachLayout::FItem& Item)
+{
+	const FQuat Yaw = FRotator(0.0, Item.Yaw, 0.0).Quaternion();
+	if (!TNBeachLayout::IsLitter(Item))
+	{
+		return FTransform(Yaw, FVector(Item.Pos.X, Item.Pos.Y, TNBeachLayout::PlacementZ(Item)));
+	}
+	FVector Normal = FVector::UpVector;
+	const double Z = TNBeachLayout::MeshSandZ(Layout, Item.Pos.X, Item.Pos.Y, &Normal);
+	// Sigue la cuesta, con tope: girar la vertical hacia la normal como mucho LitterMaxTilt.
+	const double Angle = FMath::Acos(FMath::Clamp(Normal.Z, -1.0, 1.0));
+	const FVector Axis = FVector::CrossProduct(FVector::UpVector, Normal);
+	FQuat Tilt = FQuat::Identity;
+	if (Axis.SizeSquared() > UE_DOUBLE_KINDA_SMALL_NUMBER)
+	{
+		Tilt = FQuat(Axis.GetSafeNormal(), FMath::Min(Angle, FMath::DegreesToRadians(LitterMaxTilt)));
+	}
+	return FTransform(Tilt * Yaw, FVector(Item.Pos.X, Item.Pos.Y, Z));
 }
 
 void TNBeachDecorKit::TilePlacements(ETNBeachElement Element, int32 Seed, float Size, float Extent, TMap<int32, TArray<FTransform>>& OutByPiece)
