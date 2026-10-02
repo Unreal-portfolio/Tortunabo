@@ -138,6 +138,16 @@ void ATN_ProcMapGenerator::ServerGenerate(int32 InSeed, ETNProcGameMode InMode, 
 	ForceNetUpdate();
 }
 
+void ATN_ProcMapGenerator::ServerGenerateSurvival(int32 InSeed, int32 InSurvivalDifficulty)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	NetConfig.SurvivalDifficulty = FMath::Clamp(InSurvivalDifficulty, TNProcMap::SurvivalMinDifficulty, TNProcMap::SurvivalMaxDifficulty);
+	ServerGenerate(InSeed, ETNProcGameMode::Survival, ETNProcDifficulty::Normal);
+}
+
 void ATN_ProcMapGenerator::GenerateInEditor()
 {
 	UWorld* World = GetWorld();

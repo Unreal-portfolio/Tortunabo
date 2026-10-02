@@ -99,6 +99,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "ProcMap")
 	void ServerGenerate(int32 InSeed, ETNProcGameMode InMode, ETNProcDifficulty InDifficulty);
 
+	/** Servidor: genera el mapa de Supervivencia con esta semilla y dificultad 1–5 (un nivel de la partida, #274). */
+	void ServerGenerateSurvival(int32 InSeed, int32 InSurvivalDifficulty);
+
 	/** Genera con los parámetros de edición. Botón en el panel Details. */
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "ProcMap")
 	void GenerateInEditor();
