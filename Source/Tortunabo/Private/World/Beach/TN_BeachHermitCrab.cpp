@@ -6,6 +6,7 @@
 #include "TN_BeachCritterKit.h"
 #include "TN_BeachCritterMeshes.h"
 #include "TN_BeachEnemyKit.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
@@ -706,6 +707,24 @@ void ATN_BeachHermitCrab::MulticastStrike_Implementation(ATortugaCharacter* Vict
 // Visual
 // ─────────────────────────────────────────────────────────────────────────────
 
+void ATN_BeachHermitCrab::PlaceBlock(const FVector& Base, float Yaw, bool bRolling)
+{
+	if (!Block)
+	{
+		return;
+	}
+	// Mientras rueda no bloquea: la bola derriba a quien pilla (CheckRollHits) y no se para contra nadie.
+	const ECollisionEnabled::Type Wanted = bRolling ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics;
+	if (Block->GetCollisionEnabled() != Wanted)
+	{
+		Block->SetCollisionEnabled(Wanted);
+	}
+	if (!bRolling)
+	{
+		Block->SetWorldLocationAndRotation(Base + FVector(0.0, 0.0, BallRadius * 0.9f), FRotator(0.f, Yaw, 0.f));
+	}
+}
+
 void ATN_BeachHermitCrab::BuildCrab()
 {
 	if (!bHasScreen || BodyRoot)
@@ -724,6 +743,22 @@ void ATN_BeachHermitCrab::BuildCrab()
 		TNBeachCritterMeshes::BuildHermitShell(M, Look, static_cast<uint32>(Pal) * 13u + 5u);
 	});
 	ShellMesh = TNBeachCritterKit::AddPart(this, BodyRoot, ShellM, FVector::ZeroVector);
+
+	// Cuerpo sólido (como el del tanque): sin él, la caracola quieta o andando se atravesaba.
+	Block = NewObject<UBoxComponent>(this, NAME_None, RF_Transient | RF_DuplicateTransient);
+	Block->SetupAttachment(GetRootComponent());
+	Block->SetAbsolute(true, true, true);
+	Block->SetBoxExtent(FVector(BallRadius * 0.85f, BallRadius * 0.85f, BallRadius * 0.9f), false);
+	Block->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Block->SetCollisionObjectType(ECC_Pawn);
+	Block->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Block->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	Block->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+	Block->SetCanEverAffectNavigation(false);
+	Block->SetGenerateOverlapEvents(false);
+	Block->RegisterComponent();
+	Block->SetWorldLocationAndRotation(GetActorLocation() + FVector(0.0, 0.0, BallRadius * 0.9f), FRotator::ZeroRotator);
+	RegisterSolidBlock(Block);
 
 	CrabRoot = TNBeachCritterKit::AddPivot(this, BodyRoot, TNBeachCritterMeshes::HermitAperture());
 	UStaticMesh* HeadM = TNBeachKit::CachedMesh(Key + TEXT("Head"), [&Look](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildHermitHead(M, Look); });
@@ -1004,6 +1039,7 @@ void ATN_BeachHermitCrab::VisualTick(float DeltaSeconds)
 	ShownLoc = Base;
 	ShownYaw = static_cast<float>(Rot.Rotator().Yaw);
 	PrevAge = Age;
+	PlaceBlock(Base, DownYaw, bRolling);
 
 	if (Sound)
 	{
