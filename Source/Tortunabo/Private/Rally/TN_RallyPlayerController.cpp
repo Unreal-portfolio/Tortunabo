@@ -10,6 +10,7 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/UI/TN_RallyCopilotTablet.h"
+#include "Voice/ProximityVoiceComponent.h"
 
 ATN_RallyPlayerController::ATN_RallyPlayerController()
 {
@@ -46,6 +47,27 @@ void ATN_RallyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
 		RallyHUD = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_RallyPlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+	UProximityVoiceComponent::EnsureOn(InPawn);
+}
+
+void ATN_RallyPlayerController::SendVoiceToOwningClient(const TArray<uint8>& CompressedData, int32 SenderSampleRate,
+	AActor* SpeakerActor, bool bIntercom)
+{
+	ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor, bIntercom);
+}
+
+void ATN_RallyPlayerController::ClientReceiveVoice_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate,
+	AActor* SpeakerActor, bool bIntercom)
+{
+	if (UProximityVoiceComponent* Voice = SpeakerActor ? SpeakerActor->FindComponentByClass<UProximityVoiceComponent>() : nullptr)
+	{
+		Voice->PlayRemoteVoice(CompressedData, SenderSampleRate, bIntercom);
+	}
 }
 
 void ATN_RallyPlayerController::AcknowledgePossession(APawn* InPawn)

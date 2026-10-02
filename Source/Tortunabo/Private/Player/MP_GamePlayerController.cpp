@@ -201,15 +201,7 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 		return;
 	}
 
-	UProximityVoiceComponent* ExistingVoice = InPawn->FindComponentByClass<UProximityVoiceComponent>();
-	if (!ExistingVoice)
-	{
-		UProximityVoiceComponent* VoiceComp = NewObject<UProximityVoiceComponent>(InPawn, TEXT("ProximityVoice"));
-		if (VoiceComp)
-		{
-			VoiceComp->RegisterComponent();
-		}
-	}
+	UProximityVoiceComponent::EnsureOn(InPawn);
 
 	// Aplicar cosméticos al pawn recién poseído (server-side, para TODOS los jugadores).
 	// El listen-server no recibe OnRep de su propio PlayerState → aplica directamente.
@@ -289,7 +281,14 @@ void AMP_GamePlayerController::ServerReportProcMapReady_Implementation(int32 Gen
 	}
 }
 
-void AMP_GamePlayerController::ClientReceiveVoice_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor)
+void AMP_GamePlayerController::SendVoiceToOwningClient(const TArray<uint8>& CompressedData, int32 SenderSampleRate,
+	AActor* SpeakerActor, bool bIntercom)
+{
+	ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor, bIntercom);
+}
+
+void AMP_GamePlayerController::ClientReceiveVoice_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate,
+	AActor* SpeakerActor, bool bIntercom)
 {
 	if (!SpeakerActor)
 	{
@@ -298,7 +297,7 @@ void AMP_GamePlayerController::ClientReceiveVoice_Implementation(const TArray<ui
 
 	if (UProximityVoiceComponent* VoiceComp = SpeakerActor->FindComponentByClass<UProximityVoiceComponent>())
 	{
-		VoiceComp->PlayRemoteVoice(CompressedData, SenderSampleRate);
+		VoiceComp->PlayRemoteVoice(CompressedData, SenderSampleRate, bIntercom);
 	}
 }
 

@@ -1,17 +1,20 @@
 // PlayerController del Rally, sin el lobby ni el HUD de la tortuga a pie: crea el HUD del Rally solo en los jugadores
 // locales y manda al servidor los cosméticos guardados (las tortugas sentadas en el buggy los pintan desde el
 // PlayerState). Los controles (conducir, disparar, enderezar y pedir la reaparición) los pone el buggy o la artillera.
+// Voz (#329): la misma voz por proximidad del juego (UProximityVoiceComponent en el peón, «pulsar para hablar» de los
+// ajustes) con interfono entre las dos ocupantes del buggy (ATN_RallyPlayerState::GetVoiceIntercomGroup).
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/TN_CosmeticsSync.h"
+#include "Voice/TN_VoiceRouting.h"
 #include "TN_RallyPlayerController.generated.h"
 
 class UTN_RallyHUDWidget;
 
 UCLASS()
-class TORTUNABO_API ATN_RallyPlayerController : public APlayerController
+class TORTUNABO_API ATN_RallyPlayerController : public APlayerController, public ITN_VoiceListener
 {
 	GENERATED_BODY()
 
@@ -33,9 +36,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally")
 	TSubclassOf<UTN_RallyHUDWidget> HUDWidgetClass;
 
+	// ITN_VoiceListener
+	virtual void SendVoiceToOwningClient(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor,
+		bool bIntercom) override;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	/** Servidor: el peón nuevo (buggy de la conductora o peón de la artillera) lleva voz por proximidad. */
+	virtual void OnPossess(APawn* InPawn) override;
 	/** Jugador local: deja en el log qué peón posee (buggy de conductora o peón de artillera) y con qué roles. */
 	virtual void AcknowledgePossession(APawn* InPawn) override;
 	/**
@@ -52,6 +61,10 @@ private:
 	/** Validado contra DT_Helmets y DT_Skins del servidor (lo mismo que AMP_GamePlayerController). */
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSyncCosmetics(const FTNCosmeticLoadout& Loadout);
+
+	/** Voz de otra tortuga que ha filtrado el servidor (TNVoiceRouting); bIntercom = de su mismo buggy. */
+	UFUNCTION(Client, Unreliable)
+	void ClientReceiveVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor, bool bIntercom);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_RallyHUDWidget> RallyHUD;
