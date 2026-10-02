@@ -1784,7 +1784,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 
 	LatticeSpacing = Spacing;
 	LatticeOrigin = FVector2D(-Margin, -Margin);
-	const int32 QuadsX = FMath::CeilToInt((Layout.WorldSize + 2.0 * Margin) / Spacing / TileQuads) * TileQuads;
+	const int32 QuadsX = FMath::CeilToInt((Layout.WorldSizeX + 2.0 * Margin) / Spacing / TileQuads) * TileQuads;
 	const int32 QuadsY = FMath::CeilToInt((Layout.WorldSize + Margin + Sea) / Spacing / TileQuads) * TileQuads;
 	LatticeNX = QuadsX + 1;
 	LatticeNY = QuadsY + 1;
@@ -3546,15 +3546,16 @@ void ATN_ProcMapGenerator::BuildStructures()
 
 	// ── Límites invisibles del mapa (la costa norte queda abierta hasta el mar) ─
 	const double World = Layout.WorldSize;
+	const double WorldX = Layout.WorldSizeX;
 	const double Tall = 40000.0;
 	double CoastMax = 0.0;
-	for (int32 k = 0; k <= 40; ++k) { CoastMax = FMath::Max(CoastMax, Layout.CoastY(World * k / 40.0)); }
+	for (int32 k = 0; k <= 40; ++k) { CoastMax = FMath::Max(CoastMax, Layout.CoastY(WorldX * k / 40.0)); }
 	struct FWallDef { FVector Center; FVector Extent; };
 	const FWallDef Walls[4] = {
 		{ FVector(-300.0, World * 0.5, 0.0), FVector(300.0, World, Tall) },
-		{ FVector(World + 300.0, World * 0.5, 0.0), FVector(300.0, World, Tall) },
-		{ FVector(World * 0.5, -300.0, 0.0), FVector(World, 300.0, Tall) },
-		{ FVector(World * 0.5, CoastMax + 16000.0, 0.0), FVector(World, 300.0, Tall) } };
+		{ FVector(WorldX + 300.0, World * 0.5, 0.0), FVector(300.0, World, Tall) },
+		{ FVector(WorldX * 0.5, -300.0, 0.0), FVector(WorldX, 300.0, Tall) },
+		{ FVector(WorldX * 0.5, CoastMax + 16000.0, 0.0), FVector(WorldX, 300.0, Tall) } };
 	for (const FWallDef& Def : Walls)
 	{
 		UBoxComponent* Wall = NewObject<UBoxComponent>(this, NAME_None, RF_Transient);

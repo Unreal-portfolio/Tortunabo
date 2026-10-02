@@ -223,7 +223,7 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 	UE_LOG(LogTortunabo, Log,
 		TEXT("[ProcMap] Mapa listo · semilla %d · %s/%s · grid %dx%d · %d módulos en ruta · %d cruces · %d ramas · camino %.2f km (~%.0f min a 5,5 m/s) · layout %.2fs terreno %.2fs resto %.2fs total %.2fs"),
 		NetConfig.Seed, *UEnum::GetValueAsString(NetConfig.Mode), *UEnum::GetValueAsString(NetConfig.Difficulty),
-		Layout.Params.GridSize, Layout.Params.GridSize, Layout.UniqueModulesOnRoute, Layout.Crossings.Num(), Layout.Branches.Num(),
+		Layout.GridW(), Layout.Params.GridSize, Layout.UniqueModulesOnRoute, Layout.Crossings.Num(), Layout.Branches.Num(),
 		Layout.MainLength() / 100000.0, EstimateTraversalMinutes(550.f), T1 - T0, T2 - T1, T4 - T2, T4 - T0);
 
 	OnMapGeneratedNative.Broadcast(BuiltGeneration);
@@ -530,7 +530,7 @@ void ATN_ProcMapGenerator::BuildProgressIndex()
 	}
 
 	ProgressOrigin = FVector2D(-20000.0, -20000.0);
-	ProgressW = FMath::Max(1, FMath::CeilToInt((Layout.WorldSize + 40000.0) / ProgressCell));
+	ProgressW = FMath::Max(1, FMath::CeilToInt((Layout.MaxExtent() + 40000.0) / ProgressCell));
 	ProgressH = ProgressW;
 	ProgressBuckets.Reset();
 	ProgressBuckets.SetNum(ProgressW * ProgressH);

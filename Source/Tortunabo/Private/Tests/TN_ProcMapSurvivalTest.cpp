@@ -1,0 +1,116 @@
+// Mapa de Supervivencia (#273) sobre el generador del Coop: rejilla rectangular, trazado lineal y ramas sin
+// callejones. El Coop no cambia: su huella con las mismas semillas tiene que seguir siendo la de antes.
+// Correr desde Session Frontend (categoría "Tortunabo.ProcMap.Survival") o headless:
+//   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.ProcMap.Survival; Quit" -nullrhi -unattended
+
+#include "Misc/AutomationTest.h"
+#include "World/ProcMap/TN_ProcMapGenerate.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+namespace
+{
+	/** Huella del layout: camino, ramas y elementos redondeados al centímetro. */
+	uint64 LayoutFingerprint(const TNProcMap::FLayout& L)
+	{
+		uint64 H = 1469598103934665603ull;
+		auto Mix = [&H](int64 V)
+		{
+			for (int32 b = 0; b < 8; ++b) { H = (H ^ static_cast<uint64>((V >> (8 * b)) & 0xFF)) * 1099511628211ull; }
+		};
+		auto MixVec = [&Mix](const FVector2D& V) { Mix(FMath::RoundToInt64(V.X)); Mix(FMath::RoundToInt64(V.Y)); };
+		Mix(FMath::RoundToInt64(L.WorldSize));
+		for (const TNProcMap::FRouteStep& St : L.Route) { Mix(St.Module); }
+		for (const TNProcMap::FPathSample& S : L.Main)
+		{
+			MixVec(S.P); Mix(FMath::RoundToInt64(S.Z)); Mix(FMath::RoundToInt64(S.Width)); Mix(S.Flags);
+		}
+		for (const TNProcMap::FBranch& B : L.Branches)
+		{
+			Mix(B.Samples.Num()); Mix(static_cast<int64>(B.Kind)); Mix(B.ForkSample); Mix(B.RejoinSample);
+			for (const TNProcMap::FPathSample& S : B.Samples) { MixVec(S.P); Mix(FMath::RoundToInt64(S.Z)); }
+		}
+		for (const TNProcMap::FFeature& F : L.Features)
+		{
+			Mix(static_cast<int64>(F.Type)); Mix(FMath::RoundToInt64(F.Location.X)); Mix(FMath::RoundToInt64(F.Location.Y));
+			Mix(FMath::RoundToInt64(F.Location.Z));
+		}
+		return H;
+	}
+
+	TNProcMap::FGenParams MakeCoopParams(uint32 Seed, int32 Grid)
+	{
+		TNProcMap::FGenParams P;
+		P.Seed = Seed;
+		P.GridSize = Grid;
+		P.NumCrossings = Grid >= 6 ? 2 : 1;
+		P.NumBranches = 3;
+		P.bRiver = (Seed % 3) == 0;
+		P.Difficulty01 = static_cast<double>(Seed % 5) / 4.0;
+		return P;
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// El Coop no cambia
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNProcMapCoopUnchangedTest,
+	"Tortunabo.ProcMap.Survival.CoopSinCambios",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNProcMapCoopUnchangedTest::RunTest(const FString& Parameters)
+{
+	using namespace TNProcMap;
+	struct FCase { uint32 Seed; int32 Grid; uint64 Expected; };
+	// Huellas tomadas con el generador antes de admitir rejillas rectangulares (dev a1ced1de).
+	const FCase Cases[] = {
+		{ 11u, 3, 0xFD5CBBA920111AD3ull },
+		{ 12u, 3, 0xD8A940E8D5C2E22Dull },
+		{ 21u, 6, 0x787A8D4838D3FD94ull },
+	};
+	for (const FCase& C : Cases)
+	{
+		FLayout L;
+		const FString Ctx = FString::Printf(TEXT("grid %d semilla %u"), C.Grid, C.Seed);
+		if (!TestTrue(Ctx + TEXT(": genera layout"), GenerateLayout(MakeCoopParams(C.Seed, C.Grid), L) && L.bValid)) { continue; }
+		const uint64 Got = LayoutFingerprint(L);
+		AddInfo(FString::Printf(TEXT("%s: huella 0x%016llXull"), *Ctx, Got));
+		TestEqual(Ctx + TEXT(": misma huella que antes"), Got, C.Expected);
+	}
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rejilla rectangular: más largo que ancho, con todo dentro
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNProcMapRectangularGridTest,
+	"Tortunabo.ProcMap.Survival.RejillaRectangular",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNProcMapRectangularGridTest::RunTest(const FString& Parameters)
+{
+	using namespace TNProcMap;
+	for (uint32 Seed = 1; Seed <= 6; ++Seed)
+	{
+		FGenParams P = MakeCoopParams(Seed, 6);
+		P.GridSizeX = 3;
+		FLayout L;
+		const FString Ctx = FString::Printf(TEXT("3x6 semilla %u"), Seed);
+		if (!TestTrue(Ctx + TEXT(": genera layout"), GenerateLayout(P, L) && L.bValid)) { continue; }
+		TestEqual(Ctx + TEXT(": 18 módulos"), L.Modules.Num(), 18);
+		TestEqual(Ctx + TEXT(": ancho de 3 módulos"), L.WorldSizeX, 3.0 * P.ModuleSize);
+		TestEqual(Ctx + TEXT(": largo de 6 módulos"), L.WorldSize, 6.0 * P.ModuleSize);
+		TestEqual(Ctx + TEXT(": acaba en el borde norte"), L.Modules[L.Route.Last().Module].GridCoord.Y, 5);
+		bool bInside = true;
+		for (const FPathSample& S : L.Main)
+		{
+			bInside &= S.P.X >= 0.0 && S.P.X <= L.WorldSizeX && S.P.Y >= 0.0 && S.P.Y <= L.WorldSize;
+		}
+		TestTrue(Ctx + TEXT(": el camino no se sale del mapa"), bInside);
+	}
+	return true;
+}
+
+#endif

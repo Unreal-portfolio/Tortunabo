@@ -10,9 +10,10 @@
  * (TN_ProcMapTerrain.h) y el actor ATN_ProcMapGenerator.
  *
  * Espacio del mapa (local al generador, en cm):
- *   X ∈ [0, WorldSize]  → ancho
+ *   X ∈ [0, WorldSizeX] → ancho
  *   Y ∈ [0, WorldSize]  → avance: la salida está al sur (Y≈0) y la playa y el
  *                          mar abierto al norte (Y≈WorldSize y más allá)
+ *   En el Coop el mapa es cuadrado (WorldSizeX == WorldSize); Supervivencia lo pide alargado (#273).
  *   Z = 0               → nivel del mar (agua de todo el mapa)
  */
 
@@ -68,7 +69,10 @@ namespace TNProcMap
 	{
 		uint32 Seed = 1337;
 
+		/** Módulos en el avance (Y). */
 		int32 GridSize = 6;
+		/** Módulos a lo ancho (X); 0 = GridSize (mapa cuadrado, el del Coop). */
+		int32 GridSizeX = 0;
 		double ModuleSize = 40000.0;
 		/** Resolución del raster de módulos y biomas. */
 		double CellSize = 400.0;
@@ -866,7 +870,10 @@ namespace TNProcMap
 		/** Motivo de fallo o avisos (texto ASCII para el log). */
 		const char* FailReason = "";
 
+		/** Largo del mapa en el avance (Y). */
 		double WorldSize = 0.0;
+		/** Ancho del mapa (X); igual que WorldSize en un mapa cuadrado. */
+		double WorldSizeX = 0.0;
 		int32 RasterW = 0;
 		int32 RasterH = 0;
 		TArray<int16> ModuleOfCell;
@@ -908,6 +915,11 @@ namespace TNProcMap
 
 		// ── Consultas ───────────────────────────────────────────────────────
 
+		/** Módulos a lo ancho (X). */
+		int32 GridW() const { return Params.GridSizeX > 0 ? Params.GridSizeX : Params.GridSize; }
+		/** Lado de las rejillas cuadradas de consulta: cubre el mapa en los dos ejes. */
+		double MaxExtent() const { return FMath::Max(WorldSize, WorldSizeX); }
+
 		int32 CellIndex(int32 X, int32 Y) const { return Y * RasterW + X; }
 		bool CellInside(int32 X, int32 Y) const { return X >= 0 && Y >= 0 && X < RasterW && Y < RasterH; }
 
@@ -924,14 +936,14 @@ namespace TNProcMap
 
 		int32 ModuleAt(const FVector2D& P) const
 		{
-			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSize || P.Y >= WorldSize) { return INDEX_NONE; }
+			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSizeX || P.Y >= WorldSize) { return INDEX_NONE; }
 			const FIntPoint C = CellOf(P);
 			return ModuleOfCell[CellIndex(C.X, C.Y)];
 		}
 
 		double BorderDistAt(const FVector2D& P) const
 		{
-			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSize || P.Y >= WorldSize) { return 0.0; }
+			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSizeX || P.Y >= WorldSize) { return 0.0; }
 			const FIntPoint C = CellOf(P);
 			return BorderDist[CellIndex(C.X, C.Y)];
 		}

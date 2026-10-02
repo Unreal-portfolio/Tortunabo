@@ -508,7 +508,7 @@ namespace TNProcMap
 					const FVector2D C = L.CellCenter(x, y);
 					const double Coast = L.CoastY(C.X);
 					if (C.Y < Coast - Far || C.Y > Coast - Near) { continue; }
-					const double EdgeX = FMath::Min(C.X, L.WorldSize - C.X) - P.MapEdgeClearance;
+					const double EdgeX = FMath::Min(C.X, L.WorldSizeX - C.X) - P.MapEdgeClearance;
 					const double Score = FMath::Min(static_cast<double>(L.ModuleDist[Idx]), EdgeX) + Rng.Range(0.0, 400.0);
 					if (Score > BestScore) { BestScore = Score; BestEnd = C; }
 				}
@@ -636,7 +636,7 @@ namespace TNProcMap
 		// El tope se aplica con un mínimo suave y ondulado para que no deje mesetas de anchura
 		// constante con esquinas (se verían como escalones en el cauce).
 		FSampleGrid Grid;
-		Grid.Build(L.Main, L.WorldSize);
+		Grid.Build(L.Main, L.MaxExtent());
 		const uint32 CapSeed = P.Seed ^ 0xCA9u;
 		for (int32 i = 0; i < NumS; ++i)
 		{
@@ -1112,7 +1112,7 @@ namespace TNProcMap
 				if (k > 0) { Acc += FVector2D::Distance(Pts[k - 1], Pts[k]); }
 				if (Acc < 2500.0 || BranchLen - Acc < 2500.0) { continue; }
 				const FVector2D& Pt = Pts[k];
-				if (Pt.X < P.MapEdgeClearance * 0.7 || Pt.X > L.WorldSize - P.MapEdgeClearance * 0.7 || Pt.Y < P.MapEdgeClearance * 0.7 || Pt.Y > L.CoastY(Pt.X) - 6000.0)
+				if (Pt.X < P.MapEdgeClearance * 0.7 || Pt.X > L.WorldSizeX - P.MapEdgeClearance * 0.7 || Pt.Y < P.MapEdgeClearance * 0.7 || Pt.Y > L.CoastY(Pt.X) - 6000.0)
 				{
 					return false;
 				}
@@ -1303,7 +1303,7 @@ namespace TNProcMap
 			void Build(const FLayout& L, const TArray<FVector2D>& Towers)
 			{
 				const FGenParams& P = L.Params;
-				W = H = FMath::Max(1, FMath::CeilToInt(L.WorldSize / Cell));
+				W = H = FMath::Max(1, FMath::CeilToInt(L.MaxExtent() / Cell));
 				Base.Init(1.0f, W * H);
 				Edge.Init(1e9f, W * H);
 				const double Margin = P.MapEdgeClearance * 0.7 + 1500.0;
@@ -1311,7 +1311,7 @@ namespace TNProcMap
 				{
 					const FVector2D C = Center(Idx);
 					float& B = Base[Idx];
-					if (C.X < Margin || C.X > L.WorldSize - Margin || C.Y < Margin || C.Y > L.CoastY(C.X) - 7500.0) { B = 0.0f; continue; }
+					if (C.X < Margin || C.X > L.WorldSizeX - Margin || C.Y < Margin || C.Y > L.CoastY(C.X) - 7500.0) { B = 0.0f; continue; }
 					const int32 Mod = L.ModuleAt(C);
 					if (Mod == INDEX_NONE || IsCrossingModule(L, Mod) || IsWetBiome(L.Modules[Mod].Biome)) { B = 0.0f; continue; }
 					if (FVector2D::Distance(C, L.StartPoint) < P.StartClearingRadius + 4000.0) { B = 0.0f; continue; }
@@ -2009,7 +2009,7 @@ namespace TNProcMap
 		if (L.Main.Num() < 20) { return; }
 
 		FSampleGrid Grid;
-		Grid.Build(L.Main, L.WorldSize);
+		Grid.Build(L.Main, L.MaxExtent());
 		const double Total = L.MainLength();
 		const uint32 BSeed = P.Seed ^ 0xB4A2Cu;
 		const double TanSlide = FMath::Tan(FMath::DegreesToRadians(P.SlideAngleDeg));
@@ -2158,7 +2158,7 @@ namespace TNProcMap
 			FTrailGrid TrailGrid;
 			TrailGrid.Build(L, Towers);
 			FNetGrid Net;
-			Net.Init(L.WorldSize);
+			Net.Init(L.MaxExtent());
 			for (int32 Id = 0; Id <= L.Branches.Num(); ++Id)
 			{
 				Net.Add(L, Id);
