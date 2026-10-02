@@ -34,6 +34,34 @@ namespace TNBeachCourseTest
 		return TNProcMap::DistPointSegment(Center, Item.EndA(), Item.EndB(), T) <= Radius + Item.Radius;
 	}
 
+	/**
+	 * Lo que un lanzador delante de un obstáculo (rol Launcher) puede pisar con su arco de salto porque es lo que salta:
+	 * castillos con salas y enormes, piezas de las filas y plataformas.
+	 */
+	bool IsJumpTarget(const TNBeachLayout::FItem& Item)
+	{
+		using TNBeachLayout::EItemRole;
+		return Item.Role == EItemRole::Dungeon || Item.Role == EItemRole::Row || Item.Role == EItemRole::Castle
+			|| Item.Element == ETNBeachElement::SandDungeon || Item.Element == ETNBeachElement::SandCastleHuge
+			|| Item.Element == ETNBeachElement::WobblyPlatform || Item.Element == ETNBeachElement::MovingPlatform;
+	}
+
+	/** El arco de salto Zone cruza algo del terreno fijo que se salta: una poza o la cornisa de una cresta. */
+	bool ArcCrossesTerrain(const TNBeachLayout::FItem& Zone)
+	{
+		for (int32 k = 0; k <= 20; ++k)
+		{
+			const FVector2D P = FMath::Lerp(Zone.EndA(), Zone.EndB(), k / 20.0);
+			if (TNBeachLayout::PoolAt(P, 1.0) != INDEX_NONE) { return true; }
+		}
+		for (const FVector2D& Lip : TNBeachLayout::LipSamples())
+		{
+			double T = 0.0;
+			if (TNProcMap::DistPointSegment(Lip, Zone.EndA(), Zone.EndB(), T) <= Zone.Radius + 300.0) { return true; }
+		}
+		return false;
+	}
+
 	/** X mínima y máxima de la huella de un elemento. */
 	void SpanX(const TNBeachLayout::FItem& Item, double& OutMin, double& OutMax)
 	{
@@ -103,6 +131,78 @@ bool FTNBeachCourseSprintTest::RunTest(const FString& Parameters)
 	}
 	AddInfo(FString::Printf(TEXT("Sprint: castillo principal intacto en %d de %d rondas (%d por delante del nido, en %.0f m con radio %.0f m)."),
 		CastlesIntact, Rounds, CastlesAhead, NestCenter.X / 100.0, NestRadius / 100.0));
+	return true;
+}
+
+#endif // WITH_DEV_AUTOMATION_TESTS
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachCourseLaunchersTest,
+	"Tortunabo.Beach.Course.Launchers",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBeachCourseLaunchersTest::RunTest(const FString& Parameters)
+{
+	// #349: ningún lanzador huérfano (el de delante de un obstáculo salta algo: un elemento o el terreno fijo) y el arco de
+	// salto de todos, también los de delante de un obstáculo, libre de todo salvo lo que salta (los pasos de quads cruzan
+	// por debajo y los pulpos nadan bajo algún arco, como en Tortunabo.Beach.Layout.Rules).
+	using namespace TNBeachCourseTest;
+	using TNBeachLayout::FItem;
+	using TNBeachLayout::EItemRole;
+	int32 TotalOrphans = 0;
+	int32 TotalBlocked = 0;
+	int32 TotalAimed = 0;
+	for (const ETNProcDifficulty Difficulty : Difficulties)
+	{
+		for (int32 s = 0; s < NumSeeds; ++s)
+		{
+			const FString Ctx = FString::Printf(TEXT("%s, semilla %d"), DifficultyName(Difficulty), SeedAt(s));
+			TNBeachLayout::FRoundLayout L;
+			TNBeachLayout::GenerateRound(SeedAt(s), Difficulty, L);
+			int32 Orphans = 0;
+			int32 Blocked = 0;
+			FString Where;
+			for (int32 i = 0; i < L.Items.Num(); ++i)
+			{
+				const FItem& It = L.Items[i];
+				if (!TNBeachLayout::RuleOf(It.Element).bLauncher) { continue; }
+				const bool bAimed = It.Role == EItemRole::Launcher;
+				TotalAimed += bAimed ? 1 : 0;
+				const FItem Zone = TNBeachLayout::FBuilder::JumpArcZone(It);
+				bool bJumpsSomething = false;
+				bool bArcFree = true;
+				for (int32 j = 0; j < L.Items.Num(); ++j)
+				{
+					const FItem& Other = L.Items[j];
+					if (j == i || Other.bOverlay || Other.Element == ETNBeachElement::QuadLane || Other.Element == ETNBeachElement::PoolOctopus) { continue; }
+					if (TNBeachLayout::Clearance(Zone, Other) >= -1.0) { continue; }
+					if (bAimed && IsJumpTarget(Other))
+					{
+						bJumpsSomething = true;
+						continue;
+					}
+					bArcFree = false;
+				}
+				if (bAimed && !bJumpsSomething && !ArcCrossesTerrain(Zone))
+				{
+					++Orphans;
+					Where += FString::Printf(TEXT(" huérfano %s (%.0f, %.0f) m;"), *UEnum::GetValueAsString(It.Element), It.Pos.X / 100.0, It.Pos.Y / 100.0);
+				}
+				if (!bArcFree)
+				{
+					++Blocked;
+					Where += FString::Printf(TEXT(" arco pisado %s%s (%.0f, %.0f) m;"), *UEnum::GetValueAsString(It.Element), bAimed ? TEXT(" ante obstáculo") : TEXT(""),
+						It.Pos.X / 100.0, It.Pos.Y / 100.0);
+				}
+			}
+			TestEqual(FString::Printf(TEXT("%s: lanzadores huérfanos (%s)"), *Ctx, *Where.Left(300)), Orphans, 0);
+			TestEqual(FString::Printf(TEXT("%s: arcos de salto pisados (%s)"), *Ctx, *Where.Left(300)), Blocked, 0);
+			TotalOrphans += Orphans;
+			TotalBlocked += Blocked;
+		}
+	}
+	AddInfo(FString::Printf(TEXT("Lanzadores en 72 rondas: %d delante de un obstáculo; %d huérfanos y %d arcos pisados."), TotalAimed, TotalOrphans, TotalBlocked));
 	return true;
 }
 
