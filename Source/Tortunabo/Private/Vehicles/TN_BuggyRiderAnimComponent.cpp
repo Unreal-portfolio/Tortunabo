@@ -1,4 +1,4 @@
-// UTN_BuggyRiderAnimComponent y su lógica pura (TNRiderAnim). Ver TN_BuggyRiderAnimComponent.h.
+// UTN_BuggyRiderAnimComponent (la lógica pura, TNRiderAnim, en TN_BuggyRiderAnimLogic.cpp). Ver TN_BuggyRiderAnimComponent.h.
 
 #include "Vehicles/TN_BuggyRiderAnimComponent.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
@@ -11,112 +11,6 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "ReferenceSkeleton.h"
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Lógica pura
-// ─────────────────────────────────────────────────────────────────────────────
-
-namespace TNRiderAnim
-{
-	namespace
-	{
-		constexpr float MaxFrequencyHz = 30.f;
-		constexpr float MinDampingRatio = 0.05f;
-
-		void ClampToLimit(FSpring& State, float Limit)
-		{
-			if (Limit <= 0.f || FMath::Abs(State.Value) <= Limit)
-			{
-				return;
-			}
-			const float Side = FMath::Sign(State.Value);
-			State.Value = Side * Limit;
-			if (State.Velocity * Side > 0.f)
-			{
-				State.Velocity = 0.f;
-			}
-		}
-	}
-
-	FSpring StepSpring(const FSpring& State, float Target, const FTNRiderSpringTuning& Tuning, float DeltaSeconds)
-	{
-		const float Limit = Tuning.Limit;
-		const float Goal = Limit > 0.f ? FMath::Clamp(Target, -Limit, Limit) : Target;
-		if (!FMath::IsFinite(Goal))
-		{
-			return FSpring();
-		}
-		if (Tuning.FrequencyHz <= KINDA_SMALL_NUMBER)
-		{
-			return FSpring{ Goal, 0.f };
-		}
-		FSpring Out = State;
-		if (!FMath::IsFinite(Out.Value) || !FMath::IsFinite(Out.Velocity))
-		{
-			Out = FSpring();
-		}
-		const float Dt = FMath::Clamp(FMath::IsFinite(DeltaSeconds) ? DeltaSeconds : 0.f, 0.f, MaxStepSeconds);
-		const float Omega = UE_TWO_PI * FMath::Min(Tuning.FrequencyHz, MaxFrequencyHz);
-		const float Zeta = FMath::Max(Tuning.DampingRatio, MinDampingRatio);
-		const int32 Steps = FMath::Max(1, FMath::CeilToInt(Dt / MaxSubstepSeconds));
-		const float H = Dt / static_cast<float>(Steps);
-		for (int32 Step = 0; Step < Steps; ++Step)
-		{
-			// Muelle explícito y amortiguador implícito: el amortiguamiento nunca invierte la velocidad.
-			Out.Velocity = (Out.Velocity + Omega * Omega * (Goal - Out.Value) * H) / (1.f + 2.f * Zeta * Omega * H);
-			Out.Value += Out.Velocity * H;
-			ClampToLimit(Out, Limit);
-		}
-		return Out;
-	}
-
-	FSpring KickSpring(const FSpring& State, float VelocityKick)
-	{
-		FSpring Out = State;
-		if (FMath::IsFinite(VelocityKick))
-		{
-			Out.Velocity += VelocityKick;
-		}
-		return Out;
-	}
-
-	float DeadZone(float Value, float Threshold)
-	{
-		const float Excess = FMath::Abs(Value) - FMath::Max(Threshold, 0.f);
-		return Excess > 0.f ? FMath::Sign(Value) * Excess : 0.f;
-	}
-
-	FTargets ReactionTargets(const FVector& AccelMesh, float Grip01, const FTNRiderReactionTuning& Tuning)
-	{
-		const float Soft = 1.f - FMath::Clamp(Grip01, 0.f, 1.f) * FMath::Clamp(Tuning.GripRigidity, 0.f, 1.f);
-		FTargets Out;
-		// Frenar (aceleración hacia atrás, -Y) lleva la cabeza hacia delante por inercia; acelerar, hacia atrás.
-		Out.HeadPitchDeg = DeadZone(static_cast<float>(-AccelMesh.Y), Tuning.HeadAccelThreshold) * Tuning.HeadDegPerAccel * Soft;
-		// La aceleración centrípeta apunta al interior de la curva: el cuerpo se va hacia el lado contrario.
-		Out.LeanRollDeg = DeadZone(static_cast<float>(-AccelMesh.X), Tuning.LeanAccelThreshold) * Tuning.LeanDegPerAccel * Soft;
-		return Out;
-	}
-
-	float SteerFromYawRate(float YawRateDegPerSec, float ForwardSpeedCms, float WheelbaseCm, float MaxSteerDeg, float MinSpeedCms)
-	{
-		if (FMath::Abs(ForwardSpeedCms) < FMath::Max(MinSpeedCms, 1.f) || MaxSteerDeg <= 0.f || WheelbaseCm <= 0.f)
-		{
-			return 0.f;
-		}
-		const float AngleRad = FMath::Atan(FMath::DegreesToRadians(YawRateDegPerSec) * WheelbaseCm / ForwardSpeedCms);
-		const float Steer = FMath::RadiansToDegrees(AngleRad) / MaxSteerDeg;
-		return FMath::IsFinite(Steer) ? FMath::Clamp(Steer, -1.f, 1.f) : 0.f;
-	}
-
-	bool IsShotSignal(float PrevHeat01, float Heat01, int32 PrevCharges, int32 Charges, bool bSameAmmo, float MinHeatStep)
-	{
-		if (Heat01 - PrevHeat01 >= FMath::Max(MinHeatStep, KINDA_SMALL_NUMBER))
-		{
-			return true;
-		}
-		return Charges < PrevCharges && (bSameAmmo || Charges == 0);
-	}
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pose en el espacio de la malla
@@ -398,7 +292,7 @@ void UTN_BuggyRiderAnimComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	{
 		return;
 	}
-	UpdateShotDetection();
+	UpdateTurretSignals();
 	UpdateChannels(Sample, DeltaTime);
 	ApplyPose();
 }
@@ -412,7 +306,7 @@ void UTN_BuggyRiderAnimComponent::ResetRider()
 {
 	ClearBoneOverrides();
 	RestoreComponentPose();
-	HeadPitch = LeanRoll = Steer = Crouch = Recoil = Grip = TNRiderAnim::FSpring();
+	HeadPitch = LeanRoll = Steer = Crouch = Recoil = Grip = AimYaw = AimPitch = Swap = TNRiderAnim::FSpring();
 	SmoothedAccelWorld = FVector::ZeroVector;
 	bHasPrevSample = false;
 	bWasAirborne = false;
@@ -493,9 +387,9 @@ float UTN_BuggyRiderAnimComponent::ReadSteer01(const FVector& Velocity)
 	return TNRiderAnim::SteerFromYawRate(YawRate, Forward, WheelbaseCm, MaxSteerDeg, MinSteerSpeedCms);
 }
 
-void UTN_BuggyRiderAnimComponent::UpdateShotDetection()
+void UTN_BuggyRiderAnimComponent::UpdateTurretSignals()
 {
-	if (Role != ETNBuggyRiderRole::Gunner || !bAutoDetectShots)
+	if (Role != ETNBuggyRiderRole::Gunner)
 	{
 		return;
 	}
@@ -507,13 +401,20 @@ void UTN_BuggyRiderAnimComponent::UpdateShotDetection()
 	const float Heat = Turret->GetHeat01();
 	const int32 Charges = Turret->GetSpecialCharges();
 	const uint8 Ammo = static_cast<uint8>(Turret->GetSpecialAmmo());
-	if (bHasTurretSample && TNRiderAnim::IsShotSignal(PrevHeat01, Heat, PrevCharges, Charges, Ammo == PrevAmmo, ShotHeatStep))
+	const uint8 Selected = static_cast<uint8>(Turret->GetSelectedAmmo());
+	if (bAutoDetectShots && bHasTurretSample
+		&& TNRiderAnim::IsShotSignal(PrevHeat01, Heat, PrevCharges, Charges, Ammo == PrevAmmo, ShotHeatStep))
 	{
 		NotifyShot(Turret->GetAimWorldDirection());
+	}
+	if (TNRiderAnim::IsAmmoSwapSignal(bHasTurretSample, PrevSelectedAmmo, Selected))
+	{
+		Swap = TNRiderAnim::KickSpring(Swap, SwapKickPerSec);
 	}
 	PrevHeat01 = Heat;
 	PrevCharges = Charges;
 	PrevAmmo = Ammo;
+	PrevSelectedAmmo = Selected;
 	bHasTurretSample = true;
 }
 
@@ -534,7 +435,7 @@ void UTN_BuggyRiderAnimComponent::NotifyShot(FVector WorldDirection)
 		return;
 	}
 	LastShotTime = Now;
-	Recoil = TNRiderAnim::KickSpring(Recoil, RecoilKickCms);
+	Recoil = TNRiderAnim::KickSpring(Recoil, RecoilKickDegPerSec);
 }
 
 void UTN_BuggyRiderAnimComponent::UpdateChannels(const FVehicleSample& Sample, float DeltaTime)
@@ -547,8 +448,25 @@ void UTN_BuggyRiderAnimComponent::UpdateChannels(const FVehicleSample& Sample, f
 	HeadPitch = StepSpring(HeadPitch, Targets.HeadPitchDeg, HeadSpring, DeltaTime);
 	LeanRoll = StepSpring(LeanRoll, Targets.LeanRollDeg, LeanSpring, DeltaTime);
 	Steer = StepSpring(Steer, bGunner ? 0.f : Sample.Steer01 * WheelTurnDeg, SteerSpring, DeltaTime);
-	Recoil = StepSpring(Recoil, 0.f, RecoilSpring, DeltaTime);
+	Recoil = StepSpring(Recoil, 0.f, RecoilDegSpring, DeltaTime);
+	Swap = StepSpring(Swap, 0.f, SwapSpring, DeltaTime);
+	UpdateGunnerAim(DeltaTime);
 	UpdateCrouch(Sample, DeltaTime);
+}
+
+void UTN_BuggyRiderAnimComponent::UpdateGunnerAim(float DeltaTime)
+{
+	const UTN_BuggyTurretComponent* Turret = Role == ETNBuggyRiderRole::Gunner ? GetTurret() : nullptr;
+	TNRiderAnim::FGunnerAim Target;
+	if (Turret)
+	{
+		// El apuntado que se ve en esta máquina: el local en la de la artillera, el replicado en el resto.
+		const FRotator Aim = Turret->GetDisplayAim();
+		Target = TNRiderAnim::GunnerAimTargets(static_cast<float>(Aim.Yaw), static_cast<float>(Aim.Pitch), Turret->IsGunnerKnocked(),
+			GunnerAim);
+	}
+	AimYaw = TNRiderAnim::StepSpring(AimYaw, Target.YawDeg, AimYawSpring, DeltaTime);
+	AimPitch = TNRiderAnim::StepSpring(AimPitch, Target.PitchDeg, AimPitchSpring, DeltaTime);
 }
 
 void UTN_BuggyRiderAnimComponent::UpdateCrouch(const FVehicleSample& Sample, float DeltaTime)
@@ -598,7 +516,7 @@ void UTN_BuggyRiderAnimComponent::ApplyImpactKicks(const FVector& AccelMesh)
 bool UTN_BuggyRiderAnimComponent::IsAtRest() const
 {
 	constexpr float Epsilon = 0.01f;
-	for (const TNRiderAnim::FSpring* Channel : { &HeadPitch, &LeanRoll, &Steer, &Crouch, &Recoil, &Grip })
+	for (const TNRiderAnim::FSpring* Channel : { &HeadPitch, &LeanRoll, &Steer, &Crouch, &Recoil, &Grip, &AimYaw, &AimPitch, &Swap })
 	{
 		if (FMath::Abs(Channel->Value) > Epsilon || FMath::Abs(Channel->Velocity) > Epsilon)
 		{
@@ -610,7 +528,8 @@ bool UTN_BuggyRiderAnimComponent::IsAtRest() const
 
 float UTN_BuggyRiderAnimComponent::HeadPitchWithRecoil() const
 {
-	return HeadPitch.Value + Recoil.Value * RecoilHeadDegPerCm;
+	// Latigazo del retroceso, mirada al cambiar de munición y apuntado (arriba = cabeceo negativo).
+	return HeadPitch.Value + Recoil.Value * RecoilHeadFollow + Swap.Value * SwapHeadDeg - AimPitch.Value;
 }
 
 void UTN_BuggyRiderAnimComponent::ApplyPose()
@@ -670,18 +589,33 @@ void UTN_BuggyRiderAnimComponent::ApplyBonePose(UTN_ProcAnimInstance& Anim)
 	}
 	// Los cm del ajuste pasan a unidades de la malla (ATN_Buggy::FitTurtle la escala).
 	const float ToMesh = 1.f / FMath::Max(0.01f, static_cast<float>(RiderMesh->GetComponentScale().Z));
-	Pose.Translate(B.Hips, TNRiderAnimPose::MeshUp * (-Crouch.Value * CrouchDropCm * ToMesh));
-	Pose.Translate(B.Spine, RecoilDirMesh * (Recoil.Value * ToMesh));
+	using TNRiderAnimPose::MeshUp;
+	Pose.Translate(B.Hips, MeshUp * (-Crouch.Value * CrouchDropCm * ToMesh));
 	Pose.Rotate(B.Spine, TNRiderAnimPose::MeshForward, LeanRoll.Value);
-	// Cabeceo hacia delante = giro negativo sobre su izquierda (+X); se reparte entre el cuello y la cabeza.
+	// Apuntado de la artillera: el torso gira por la columna y el cuello completa el giro (las piernas no se mueven). Un
+	// giro positivo sobre la vertical de la malla lleva su delante (+Y) a su derecha (-X), como la guiñada del buggy.
+	const float TorsoYaw = bDriver ? 0.f : AimYaw.Value * FMath::Clamp(GunnerAim.TorsoShare, 0.f, 1.f);
+	const float NeckYaw = bDriver ? 0.f : AimYaw.Value - TorsoYaw;
+	Pose.Rotate(B.Spine, MeshUp, TorsoYaw);
+	// Retroceso: el torso se echa hacia el lado contrario al disparo (gira hacia RecoilDirMesh) y se desplaza un poco.
+	Pose.Rotate(B.Spine, MeshUp ^ RecoilDirMesh, Recoil.Value);
+	Pose.Translate(B.Spine, RecoilDirMesh * (Recoil.Value * RecoilBackCmPerDeg * ToMesh));
+	Pose.Rotate(B.Neck, MeshUp, NeckYaw);
+	// Su izquierda tras el giro: el eje de los cabeceos del torso y de la cabeza.
+	const FVector Left = FQuat(MeshUp, FMath::DegreesToRadians(TorsoYaw + NeckYaw)).RotateVector(TNRiderAnimPose::MeshLeft);
+	// Agarrada en el aire, se encorva hacia delante (giro negativo sobre su izquierda).
+	Pose.Rotate(B.Spine, Left, bDriver ? 0.f : -Grip.Value * GripHunchDeg);
+	// Cabeceo hacia delante = giro negativo sobre su izquierda; se reparte entre el cuello y la cabeza.
 	const float HeadDeg = HeadPitchWithRecoil();
-	Pose.Rotate(B.Neck, TNRiderAnimPose::MeshLeft, -0.4f * HeadDeg);
-	Pose.Rotate(B.Head, TNRiderAnimPose::MeshLeft, -0.6f * HeadDeg);
-	Pose.Translate(B.Neck, TNRiderAnimPose::MeshUp * (-FMath::Max(Crouch.Value, 0.f) * NeckTuckCm * ToMesh));
-	// Volante: a la derecha (+) sube la mano izquierda y baja la derecha. En el aire, brazos recogidos o agarrados.
+	Pose.Rotate(B.Neck, Left, -0.4f * HeadDeg);
+	Pose.Rotate(B.Head, Left, -0.6f * HeadDeg);
+	Pose.Translate(B.Neck, MeshUp * (-FMath::Max(Crouch.Value, 0.f) * NeckTuckCm * ToMesh));
+	// Volante: a la derecha (+) sube la mano izquierda y baja la derecha. En el aire, brazos recogidos o agarrados. Al
+	// cambiar de munición, la artillera sube y baja el brazo izquierdo (carga la recámara).
 	const float Down = bDriver ? FMath::Max(Crouch.Value, 0.f) * ArmTuckDeg : Grip.Value * GripArmDeg;
 	const float SteerDeg = bDriver ? Steer.Value : 0.f;
-	Pose.RaiseArm(B.LeftArm, B.LeftHand, SteerDeg - Down);
+	const float SwapDeg = bDriver ? 0.f : Swap.Value * SwapArmDeg;
+	Pose.RaiseArm(B.LeftArm, B.LeftHand, SteerDeg - Down + SwapDeg);
 	Pose.RaiseArm(B.RightArm, B.RightHand, -SteerDeg - Down);
 
 	TSet<FName> Written;
@@ -712,11 +646,14 @@ void UTN_BuggyRiderAnimComponent::ApplyComponentPose()
 		BaseRelative = RiderMesh->GetRelativeTransform();
 		bComponentPosed = true;
 	}
-	// Sin huesos que mover, todo el cuerpo se inclina, cabecea (un tercio) y se desplaza en su asiento.
+	// Sin huesos que mover, todo el cuerpo gira (un tercio del apuntado), se inclina, cabecea (un tercio) y se desplaza en
+	// su asiento.
 	const FQuat BaseRotation = BaseRelative.GetRotation();
-	const FQuat Delta = FQuat(TNRiderAnimPose::MeshForward, FMath::DegreesToRadians(LeanRoll.Value))
+	const FQuat Delta = FQuat(TNRiderAnimPose::MeshUp, FMath::DegreesToRadians(AimYaw.Value / 3.f))
+		* FQuat(TNRiderAnimPose::MeshForward, FMath::DegreesToRadians(LeanRoll.Value))
 		* FQuat(TNRiderAnimPose::MeshLeft, FMath::DegreesToRadians(-HeadPitchWithRecoil() / 3.f));
-	const FVector OffsetMesh = TNRiderAnimPose::MeshUp * (-Crouch.Value * CrouchDropCm) + RecoilDirMesh * Recoil.Value;
+	const FVector OffsetMesh = TNRiderAnimPose::MeshUp * (-Crouch.Value * CrouchDropCm)
+		+ RecoilDirMesh * (Recoil.Value * RecoilBackCmPerDeg);
 	RiderMesh->SetRelativeLocationAndRotation(BaseRelative.GetLocation() + BaseRotation.RotateVector(OffsetMesh),
 		(BaseRotation * Delta).GetNormalized());
 }

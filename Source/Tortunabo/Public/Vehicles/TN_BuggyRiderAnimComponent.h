@@ -1,6 +1,7 @@
 // Animación procedural de las tortugas sentadas en el buggy (#305): la conductora gira el volante, da cabezazos al
 // frenar o chocar, echa la cabeza atrás al acelerar, se inclina hacia fuera en las curvas y se encoge en los saltos con
-// rebote al aterrizar; la artillera retrocede al disparar, se agarra en los saltos y se inclina en las curvas.
+// rebote al aterrizar; la artillera gira el cuerpo y la cabeza con el apuntado de la torreta, se echa atrás al disparar,
+// hace un gesto al cambiar de munición, se agarra encogida en los saltos y se inclina en las curvas.
 // Cosmético y local en cada máquina: solo lee datos que ya están replicados (velocidad del chasis, contacto de las
 // ruedas, estado de la torreta). Sin RPC. Lógica pura (muelle-amortiguador y reacciones) en TNRiderAnim.
 #pragma once
@@ -80,6 +81,32 @@ struct TORTUNABO_API FTNRiderReactionTuning
 	float GripRigidity = 0.75f;
 };
 
+/** Cómo sigue la artillera el apuntado de la torreta (grados, relativos al buggy). */
+USTRUCT(BlueprintType)
+struct TORTUNABO_API FTNGunnerAimTuning
+{
+	GENERATED_BODY()
+
+	/** Giro máximo del cuerpo y el cuello juntos hacia cada lado: más allá la torreta gira sola (las piernas no se mueven). */
+	UPROPERTY(EditAnywhere, Category = "Apuntado", meta = (ClampMin = "0", ClampMax = "170"))
+	float MaxYawDeg = 110.f;
+
+	/** Parte del giro que hace el torso (el resto, el cuello). */
+	UPROPERTY(EditAnywhere, Category = "Apuntado", meta = (ClampMin = "0", ClampMax = "1"))
+	float TorsoShare = 0.65f;
+
+	/** Fracción del cabeceo de la torreta que sigue la cabeza. */
+	UPROPERTY(EditAnywhere, Category = "Apuntado", meta = (ClampMin = "0", ClampMax = "1"))
+	float PitchFollow = 0.8f;
+
+	/** Cabeceo máximo de la cabeza hacia arriba y hacia abajo. */
+	UPROPERTY(EditAnywhere, Category = "Apuntado", meta = (ClampMin = "0", ClampMax = "80"))
+	float MaxPitchUpDeg = 35.f;
+
+	UPROPERTY(EditAnywhere, Category = "Apuntado", meta = (ClampMin = "0", ClampMax = "80"))
+	float MaxPitchDownDeg = 10.f;
+};
+
 /** Lógica pura de la animación de las ocupantes (sin mundo ni actores): la prueban Tortunabo.Rally.RiderAnim.*. */
 namespace TNRiderAnim
 {
@@ -135,6 +162,30 @@ namespace TNRiderAnim
 	 */
 	TORTUNABO_API bool IsShotSignal(float PrevHeat01, float Heat01, int32 PrevCharges, int32 Charges, bool bSameAmmo,
 		float MinHeatStep);
+
+	/** Hacia dónde mira la artillera: giro total (+ = derecha) y cabeceo de la cabeza (+ = arriba), en grados. */
+	struct FGunnerAim
+	{
+		float YawDeg = 0.f;
+		float PitchDeg = 0.f;
+	};
+
+	/**
+	 * Objetivo de la artillera para un apuntado relativo al buggy (el de UTN_BuggyTurretComponent::GetDisplayAim): el giro
+	 * se normaliza a [-180, 180] y se limita a ±MaxYawDeg; el cabeceo se escala por PitchFollow y se limita. Un apuntado
+	 * no finito, o la artillera noqueada, mira al frente.
+	 */
+	TORTUNABO_API FGunnerAim GunnerAimTargets(float AimYawDeg, float AimPitchDeg, bool bKnocked, const FTNGunnerAimTuning& Tuning);
+
+	/** Si la munición seleccionada ha cambiado desde la muestra anterior (sin muestra anterior no cuenta). */
+	TORTUNABO_API bool IsAmmoSwapSignal(bool bHasPrev, uint8 PrevAmmo, uint8 Ammo);
+
+	/** Muelles por defecto del retroceso y del gesto de cambio de munición (los del componente; los prueban los tests). */
+	TORTUNABO_API FTNRiderSpringTuning DefaultRecoilSpring();
+	TORTUNABO_API FTNRiderSpringTuning DefaultSwapSpring();
+	/** Sacudidas por defecto: grados/s del retroceso por disparo y 1/s del gesto de cambio de munición. */
+	constexpr float DefaultRecoilKickDegPerSec = 620.f;
+	constexpr float DefaultSwapKickPerSec = 22.f;
 }
 
 /**
@@ -147,8 +198,10 @@ namespace TNRiderAnim
  * gira el componente de la malla entero.
  *
  * Datos: aceleración por diferencias de la velocidad del actor (física replicada), ruedas en el aire por su contacto,
- * dirección por la entrada local (conductora local o IA en el servidor) o, si no la hay, estimada por la guiñada, y
- * disparos por el calor y las cargas replicadas de la torreta (o NotifyShot). No corre en el servidor dedicado.
+ * dirección por la entrada local (conductora local o IA en el servidor) o, si no la hay, estimada por la guiñada,
+ * apuntado por UTN_BuggyTurretComponent::GetDisplayAim (el local en la máquina de la artillera, el replicado en el resto),
+ * cambios de munición por la munición seleccionada replicada y disparos por el calor y las cargas replicadas de la
+ * torreta o por NotifyShot (lo llama el multicast del disparo). No corre en el servidor dedicado.
  */
 UCLASS(ClassGroup = (Rally), meta = (BlueprintSpawnableComponent))
 class TORTUNABO_API UTN_BuggyRiderAnimComponent : public UActorComponent
@@ -213,9 +266,24 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Muelles")
 	FTNRiderSpringTuning CrouchSpring = FTNRiderSpringTuning(5.f, 0.3f, 1.6f);
 
-	/** Retroceso del torso al disparar (cm). */
+	/**
+	 * Retroceso del torso al disparar (grados que se echa hacia atrás). Lento a propósito: con 9 Hz y unos centímetros
+	 * duraba 60 ms y no se veía (#305).
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Muelles")
-	FTNRiderSpringTuning RecoilSpring = FTNRiderSpringTuning(9.f, 0.45f, 25.f);
+	FTNRiderSpringTuning RecoilDegSpring = TNRiderAnim::DefaultRecoilSpring();
+
+	/** Giro de la artillera siguiendo el apuntado (grados, sin límite propio: lo pone GunnerAim). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Muelles")
+	FTNRiderSpringTuning AimYawSpring = FTNRiderSpringTuning(4.f, 0.8f, 0.f);
+
+	/** Cabeceo de la cabeza de la artillera siguiendo el apuntado (grados). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Muelles")
+	FTNRiderSpringTuning AimPitchSpring = FTNRiderSpringTuning(5.f, 0.8f, 0.f);
+
+	/** Gesto de cambio de munición (peso: 1 = del todo). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Muelles")
+	FTNRiderSpringTuning SwapSpring = TNRiderAnim::DefaultSwapSpring();
 
 	/** Agarre de la artillera en el aire (0..1). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Muelles")
@@ -245,19 +313,41 @@ protected:
 
 	/** Cuánto se encoge la artillera en el aire (la conductora, del todo). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "1"))
-	float GunnerAirCrouch = 0.4f;
+	float GunnerAirCrouch = 0.75f;
 
 	/** Grados que bajan los brazos al agarrarse en el aire. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "90"))
-	float GripArmDeg = 25.f;
+	float GripArmDeg = 45.f;
 
-	/** Velocidad (cm/s) que recibe el retroceso del torso con cada disparo. */
-	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0"))
-	float RecoilKickCms = 700.f;
+	/** Grados que se encorva hacia delante agarrada en el aire. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "60"))
+	float GripHunchDeg = 18.f;
 
-	/** Grados de cabeceo hacia delante por cm de retroceso (latigazo de la cabeza). */
+	/** Cómo sigue el apuntado de la torreta (cuerpo, cuello y cabeza). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera")
-	float RecoilHeadDegPerCm = 1.f;
+	FTNGunnerAimTuning GunnerAim;
+
+	/** Velocidad (grados/s) que recibe el retroceso del torso con cada disparo. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0"))
+	float RecoilKickDegPerSec = TNRiderAnim::DefaultRecoilKickDegPerSec;
+
+	/** Centímetros que se desplaza el torso hacia atrás por grado de retroceso. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0"))
+	float RecoilBackCmPerDeg = 0.3f;
+
+	/** Latigazo de la cabeza: grados de cabeceo hacia delante por grado de retroceso del torso. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera")
+	float RecoilHeadFollow = 0.5f;
+
+	/** Gesto de cambio de munición: sacudida (1/s), grados que sube el brazo izquierdo y que baja la cabeza a mirar. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0"))
+	float SwapKickPerSec = TNRiderAnim::DefaultSwapKickPerSec;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "120"))
+	float SwapArmDeg = 70.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "60"))
+	float SwapHeadDeg = 20.f;
 
 	/** Detectar los disparos por el estado replicado de la torreta (vale en todas las máquinas sin llamar a nada). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera")
@@ -315,8 +405,10 @@ private:
 	FVehicleSample SampleVehicle(float DeltaTime);
 	bool IsVehicleAirborne();
 	float ReadSteer01(const FVector& Velocity);
-	void UpdateShotDetection();
+	/** Disparos y cambios de munición por el estado replicado de la torreta. */
+	void UpdateTurretSignals();
 	void UpdateChannels(const FVehicleSample& Sample, float DeltaTime);
+	void UpdateGunnerAim(float DeltaTime);
 	void UpdateCrouch(const FVehicleSample& Sample, float DeltaTime);
 	void ApplyImpactKicks(const FVector& AccelMesh);
 	bool IsAtRest() const;
@@ -352,6 +444,9 @@ private:
 	TNRiderAnim::FSpring Crouch;
 	TNRiderAnim::FSpring Recoil;
 	TNRiderAnim::FSpring Grip;
+	TNRiderAnim::FSpring AimYaw;
+	TNRiderAnim::FSpring AimPitch;
+	TNRiderAnim::FSpring Swap;
 
 	FVector PrevLocation = FVector::ZeroVector;
 	FVector PrevVelocity = FVector::ZeroVector;
@@ -368,5 +463,6 @@ private:
 	float PrevHeat01 = 0.f;
 	int32 PrevCharges = 0;
 	uint8 PrevAmmo = 0;
+	uint8 PrevSelectedAmmo = 0;
 	bool bHasTurretSample = false;
 };

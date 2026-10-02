@@ -208,4 +208,68 @@ bool FTNRiderAnimShotSignalTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRiderAnimGunnerAimTest,
+	"Tortunabo.Rally.RiderAnim.GunnerAim",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRiderAnimGunnerAimTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRiderAnim;
+	const FTNGunnerAimTuning Tuning;
+	const FGunnerAim Front = GunnerAimTargets(0.f, 0.f, false, Tuning);
+	TestEqual(TEXT("al frente: sin giro"), Front.YawDeg, 0.f);
+	TestEqual(TEXT("al frente: sin cabeceo"), Front.PitchDeg, 0.f);
+	TestEqual(TEXT("60° a la derecha: gira 60°"), GunnerAimTargets(60.f, 0.f, false, Tuning).YawDeg, 60.f);
+	TestEqual(TEXT("60° a la izquierda: gira -60°"), GunnerAimTargets(-60.f, 0.f, false, Tuning).YawDeg, -60.f);
+	TestEqual(TEXT("casi detrás por la derecha: se queda en el tope"), GunnerAimTargets(179.f, 0.f, false, Tuning).YawDeg, Tuning.MaxYawDeg);
+	TestEqual(TEXT("casi detrás por la izquierda: tope del otro lado"), GunnerAimTargets(-179.f, 0.f, false, Tuning).YawDeg, -Tuning.MaxYawDeg);
+	TestEqual(TEXT("una guiñada sin normalizar (400°) es 40°"), GunnerAimTargets(400.f, 0.f, false, Tuning).YawDeg, 40.f);
+	TestEqual(TEXT("cabeceo de 20°: la cabeza sigue el 80 %"), GunnerAimTargets(0.f, 20.f, false, Tuning).PitchDeg, 16.f);
+	TestEqual(TEXT("cabeceo de 45° (máximo de la torreta): tope de la cabeza"), GunnerAimTargets(0.f, 45.f, false, Tuning).PitchDeg,
+		Tuning.MaxPitchUpDeg);
+	TestEqual(TEXT("cabeceo de -10°: hacia abajo"), GunnerAimTargets(0.f, -10.f, false, Tuning).PitchDeg, -8.f);
+
+	// Casos negativos: noqueada o con un apuntado roto, mira al frente.
+	const FGunnerAim Knocked = GunnerAimTargets(90.f, 30.f, true, Tuning);
+	TestTrue(TEXT("noqueada no sigue el apuntado"), Knocked.YawDeg == 0.f && Knocked.PitchDeg == 0.f);
+	const float NaN = std::numeric_limits<float>::quiet_NaN();
+	const FGunnerAim Broken = GunnerAimTargets(NaN, 10.f, false, Tuning);
+	TestTrue(TEXT("apuntado no finito: al frente"), Broken.YawDeg == 0.f && Broken.PitchDeg == 0.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRiderAnimGunnerGesturesTest,
+	"Tortunabo.Rally.RiderAnim.GunnerGestures",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRiderAnimGunnerGesturesTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRiderAnimTest;
+	using namespace TNRiderAnim;
+	TestTrue(TEXT("cambia la munición seleccionada: gesto"), IsAmmoSwapSignal(true, 1, 2));
+	TestFalse(TEXT("misma munición: sin gesto"), IsAmmoSwapSignal(true, 2, 2));
+	TestFalse(TEXT("primera muestra (sin anterior): sin gesto"), IsAmmoSwapSignal(false, 0, 3));
+
+	// Retroceso con los valores por defecto: se ve (más de 12° y más de 0,1 s por encima de 5°) y vuelve a reposo.
+	FSpring Recoil = KickSpring(FSpring(), DefaultRecoilKickDegPerSec);
+	float Peak = 0.f;
+	float VisibleSeconds = 0.f;
+	for (int32 Frame = 0; Frame < 60; ++Frame)
+	{
+		Recoil = StepSpring(Recoil, 0.f, DefaultRecoilSpring(), FrameSeconds);
+		Peak = FMath::Max(Peak, Recoil.Value);
+		VisibleSeconds += Recoil.Value > 5.f ? FrameSeconds : 0.f;
+	}
+	TestTrue(FString::Printf(TEXT("el retroceso llega a más de 12° (%.1f)"), Peak), Peak > 12.f);
+	TestTrue(TEXT("el retroceso no pasa de su límite"), Peak <= DefaultRecoilSpring().Limit);
+	TestTrue(FString::Printf(TEXT("el retroceso se ve más de 0,1 s (%.2f)"), VisibleSeconds), VisibleSeconds > 0.1f);
+	TestTrue(TEXT("al segundo del disparo está en reposo"), FMath::Abs(Recoil.Value) < 0.5f);
+
+	// Gesto de cambio de munición: casi completo y breve.
+	const FRun SwapRun = Simulate(KickSpring(FSpring(), DefaultSwapKickPerSec), 0.f, DefaultSwapSpring(), 1.5f);
+	TestTrue(FString::Printf(TEXT("el gesto llega casi a 1 (%.2f)"), SwapRun.MaxValue), SwapRun.MaxValue > 0.7f);
+	TestTrue(TEXT("a los 1,5 s el gesto ha acabado"), FMath::Abs(SwapRun.Final.Value) < 0.05f);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

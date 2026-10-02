@@ -2,6 +2,7 @@
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyGunnerPawn.h"
 #include "Vehicles/TN_BuggyMath.h"
+#include "Vehicles/TN_BuggyRiderAnimComponent.h"
 #include "Vehicles/TN_RallyCombatLogic.h"
 #include "Vehicles/TN_RallyProjectile.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -378,6 +379,12 @@ void UTN_BuggyTurretComponent::MulticastFired_Implementation(ETNRallyAmmo Ammo, 
 	if (!Buggy)
 	{
 		return;
+	}
+	// La artillera se echa atrás en cada máquina en cuanto llega el disparo (si el multicast se pierde, la detecta por el
+	// calor y las cargas replicadas; los dos avisos cuentan una vez).
+	if (UTN_BuggyRiderAnimComponent* Rider = UTN_BuggyRiderAnimComponent::FindForRole(Buggy, ETNBuggyRiderRole::Gunner))
+	{
+		Rider->NotifyShot(FVector(Dir));
 	}
 	const float Recoil = TNRallyTurret::SpecFor(Ammo).RecoilCms;
 	// Solo actúa en la máquina de la conductora local.
