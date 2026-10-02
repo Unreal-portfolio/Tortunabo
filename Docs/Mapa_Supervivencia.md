@@ -86,7 +86,13 @@ Escribe `<nombre>.json`, `<nombre>.md` (resumen y tabla por mapa) y, con `--hoja
 cenital y en perspectiva, en `Docs/Mapas/Supervivencia/`. `referencia` es una línea base mínima (camino sinuoso entre
 muros de ruido) que sirve para validar el banco. Los tests están en `Scripts/tests/test_terrain_survival.py`.
 
-## Siguiente
+## En el juego
 
-1. Adaptar el generador del Coop (#273).
-2. Usar el mapa generado en cada nivel de Supervivencia (#274).
+Supervivencia se juega en `LVL_Run?game=Survival` (#274). `ATN_ChunkManager`, en modo por niveles, no encadena chunks:
+crea un `ATN_ProcMapGenerator` donde empezarían, con la salida del mapa al principio, y genera un mapa por nivel con
+la semilla base + N − 1 y la dificultad `min(N, 5)` (`TNSurvivalLogic::LevelMapDifficulty`). Solo se replica la
+semilla: cada máquina construye el mismo mapa. La semilla base es al azar o la de `?SurvivalSeed=N`.
+
+Se espera en el corral de `LVL_Run`; al empezar la partida y en cada nivel nuevo, `ATN_SurvivalGameMode` lleva a los
+vivos a la salida del mapa en cuanto su suelo tiene colisión, y la tormenta de `LVL_Run` vuelve a su estado inicial
+(#448). La distancia que falta para el desempate se mide por el camino del mapa generado.
