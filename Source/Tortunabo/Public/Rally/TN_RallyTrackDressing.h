@@ -1,12 +1,14 @@
 // Límites y decorado del trazado del Rally (#303): vallas a los dos lados en las curvas y en los tramos con caída (palos y
 // cuerda, sacos terreros, troncos, neumáticos apilados o castillos de arena) con un carril de colisión continuo y poco
-// rozamiento, decorado de playa de la Carrera fuera del corredor (TNBeachDecorKit), público en las curvas y en la meta y
+// rozamiento, decorado de playa de la Carrera fuera del corredor (TNBeachDecorKit), decorado lejano de piezas grandes
+// (castillos, grupos de rocas, palmeras, pedruscos y conchas gigantes) a 15-60 m del borde, público en las curvas y en la meta y
 // los pórticos de /Game/Art/IA/rally en las puertas. Cada máquina lo construye igual a partir del eje de ATN_RallyTrack y
 // de una semilla (como la pista y el decorado de la ronda de la playa): no se replica nada.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Templates/Function.h"
 #include "World/Beach/TN_BeachTypes.h"
 #include "TN_RallyTrackDressing.generated.h"
 
@@ -63,6 +65,46 @@ struct FTNRallyDecorEntry
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rally", meta = (ClampMin = "0.5", ClampMax = "1.6"))
 	float MaxSize = 0.9f;
+};
+
+/** De dónde sale la malla de una pieza del decorado lejano. */
+UENUM(BlueprintType)
+enum class ETNRallyFarDecorSource : uint8
+{
+	/** Receta del decorado de la playa de la Carrera (TNBeachDecorKit), con su colisión simple. */
+	BeachElement UMETA(DisplayName = "Elemento de playa"),
+	/** Palmera del mapa procedural (TNFloraMesh), sin colisión. */
+	Palm UMETA(DisplayName = "Palmera"),
+	/** Malla estática del proyecto (Mesh). */
+	StaticMesh UMETA(DisplayName = "Malla estática")
+};
+
+/** Pieza grande del decorado lejano (#303): se lee a distancia, fuera del corredor. */
+USTRUCT(BlueprintType)
+struct FTNRallyFarDecorEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rally")
+	ETNRallyFarDecorSource Source = ETNRallyFarDecorSource::BeachElement;
+
+	/** Con Source = BeachElement. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rally")
+	ETNBeachElement Element = ETNBeachElement::SandCastleHuge;
+
+	/** Con Source = StaticMesh. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rally")
+	TSoftObjectPtr<UStaticMesh> Mesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rally", meta = (ClampMin = "0"))
+	float Weight = 1.f;
+
+	/** Radio de la huella en planta (cm): la pieza se escala para ocupar ese radio. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rally", meta = (ClampMin = "100"))
+	float MinRadiusCm = 800.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rally", meta = (ClampMin = "100"))
+	float MaxRadiusCm = 1500.f;
 };
 
 /** Reglas puras de los límites y del reparto del decorado (Tortunabo.Rally.Dressing.*): sin mundo, para poder probarlas. */
@@ -195,7 +237,8 @@ namespace TNRallyDressing
 	{
 		Beach,
 		Crab,
-		Spectator
+		Spectator,
+		Far
 	};
 
 	/** Sitio de una pieza del decorado (a la cota del eje: el actor busca el suelo). Entry: índice de la entrada o variante. */
@@ -229,9 +272,49 @@ namespace TNRallyDressing
 		int32 SpectatorVariants = 4;
 	};
 
-	/** Decorado de playa y cangrejos fuera del corredor, sin solaparse; determinista con Seed. */
+	/** Decorado de playa y cangrejos fuera del corredor, sin solaparse entre sí ni con Reserved; determinista con Seed. */
 	TORTUNABO_API TArray<FSpot> PlanDecor(const FTrackData& Track, const FBarrierPlan& Plan, const TArray<FTNRallyDecorEntry>& Entries,
-		const FDecorParams& Params, int32 Seed);
+		const FDecorParams& Params, int32 Seed, const TArray<FSpot>& Reserved = TArray<FSpot>());
+
+	/** Decorado lejano: piezas grandes en una franja separada del borde del corredor, con presupuesto. */
+	struct FFarDecorParams
+	{
+		/** Piezas por kilómetro y lado (antes de descartar las que no caben). */
+		double PerKm = 18.0;
+		/** Hueco entre el borde del corredor (límite o desplazamiento base) y la huella, y franja (más allá) en la que se reparte. */
+		double MinFromEdgeCm = 1500.0;
+		double BandCm = 4500.0;
+		/** Presupuesto: piezas como mucho (cada una son una o dos instancias). */
+		int32 MaxPieces = 160;
+		/** Intentos por hueco del reparto antes de dejarlo vacío. */
+		int32 Attempts = 4;
+		/** Sondas de suelo en el contorno de la huella (a esta fracción del radio) y desnivel máximo entre ellas. */
+		double ProbeRadiusFraction = 0.7;
+		double MaxGroundStepCm = 600.0;
+		/** El agua queda por debajo de WaterZ más este margen. */
+		double WaterMarginCm = 10.0;
+		/** Distancia de dibujado: MinCullCm más CullPerRadius por cm de radio, sin pasar de MaxCullCm. */
+		double MinCullCm = 40000.0;
+		double CullPerRadius = 30.0;
+		double MaxCullCm = 120000.0;
+	};
+
+	/** Suelo firme bajo Probe (planta del punto, cota de referencia en Z): true y su cota; false si no hay suelo. */
+	using FGroundQuery = TFunctionRef<bool(const FVector& Probe, double& OutGroundZ)>;
+
+	/** Distancia mínima (cm) del eje a la huella de una pieza lejana: el borde base del corredor más el hueco. */
+	TORTUNABO_API double FarMinAxisClearanceCm(const FBarrierPlan& Plan, const FFarDecorParams& Params);
+
+	/** Distancia a la que deja de dibujarse una pieza lejana de radio RadiusCm (entre MinCullCm y MaxCullCm). */
+	TORTUNABO_API double FarCullDistanceCm(double RadiusCm, const FFarDecorParams& Params);
+
+	/**
+	 * Piezas grandes lejos de la pista (Kind = Far, Location a la cota del suelo más bajo de su huella): fuera del corredor y
+	 * de cualquier tramo del trazado, sobre suelo firme (Ground) y nunca en el agua, sin solaparse y con como mucho
+	 * MaxPieces; determinista con Seed y el mismo suelo.
+	 */
+	TORTUNABO_API TArray<FSpot> PlanFarDecor(const FTrackData& Track, const FBarrierPlan& Plan, const TArray<FTNRallyFarDecorEntry>& Entries,
+		const FFarDecorParams& Params, int32 Seed, FGroundQuery Ground);
 
 	/** Público mirando a la calzada detrás del límite, en las curvas cerradas y en la meta; determinista con Seed. */
 	TORTUNABO_API TArray<FSpot> PlanSpectators(const FTrackData& Track, const FBarrierPlan& Plan, const FDecorParams& Params, int32 Seed);
@@ -276,6 +359,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Rally|Decorado")
 	int32 GetDecorCount() const { return DecorCount; }
+
+	UFUNCTION(BlueprintPure, Category = "Rally|Decorado")
+	int32 GetFarDecorCount() const { return FarDecorCount; }
 
 	UFUNCTION(BlueprintPure, Category = "Rally|Decorado")
 	int32 GetSpectatorCount() const { return SpectatorCount; }
@@ -374,6 +460,34 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado")
 	TSoftObjectPtr<UMaterialInterface> SpectatorMaterial;
 
+	// ── Decorado lejano (piezas grandes que se leen a distancia) ──
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado lejano")
+	TArray<FTNRallyFarDecorEntry> FarDecorEntries;
+
+	/** Piezas por kilómetro y lado (0 = sin decorado lejano). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado lejano", meta = (ClampMin = "0"))
+	float FarDecorPerKm = 18.f;
+
+	/** Hueco entre el borde del corredor y la huella de la pieza, y franja (más allá) en la que se reparte (cm). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado lejano", meta = (ClampMin = "500"))
+	float FarDecorMinFromEdgeCm = 1500.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado lejano", meta = (ClampMin = "0"))
+	float FarDecorBandCm = 4500.f;
+
+	/** Presupuesto: piezas como mucho en todo el trazado. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado lejano", meta = (ClampMin = "0", ClampMax = "1000"))
+	int32 FarDecorMaxPieces = 160;
+
+	/** Distancia máxima de dibujado (cm). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado lejano", meta = (ClampMin = "10000"))
+	float FarDecorMaxCullCm = 120000.f;
+
+	/** Colisión simple (sin cámara) en las piezas que la traen; las palmeras nunca. Queda lejos de la pista. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Decorado lejano")
+	bool bFarDecorCollision = true;
+
 	// ── Pórticos ──
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Pórticos")
@@ -420,11 +534,23 @@ private:
 	void AddPieceRun(const TArray<FVector>& Points, ETNBeachElement First, ETNBeachElement Second, float Size, int32 RunSeed,
 		FTNRallyDressingBatches& Batches);
 	void AddTireRun(const TArray<FVector>& Points, FTNRallyDressingBatches& Batches);
-	/** Receta de playa: libre (giro, inclinación y hundimiento de su semilla) o alineada con ItemXf (límites). */
+	/**
+	 * Receta de playa: libre (giro, inclinación y hundimiento de su semilla) o alineada con ItemXf (límites). CullCm < 0 = la
+	 * distancia del kit; con bAllowCameraBlock = false, la colisión nunca bloquea la cámara.
+	 */
 	bool AddBeachPiece(ETNBeachElement Element, int32 Seed, float Size, const FTransform& ItemXf, bool bFreePlacement, bool bCollision,
-		FTNRallyDressingBatches& Batches);
+		FTNRallyDressingBatches& Batches, float CullCm = -1.f, bool bAllowCameraBlock = true);
 
-	void AddDecor(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierPlan& Plan, int32 Seed, FTNRallyDressingBatches& Batches);
+	void AddDecor(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierPlan& Plan, int32 Seed,
+		const TArray<TNRallyDressing::FSpot>& Reserved, FTNRallyDressingBatches& Batches);
+
+	// Decorado lejano (TN_RallyTrackDressingFar.cpp).
+	TNRallyDressing::FFarDecorParams MakeFarDecorParams() const;
+	/** Planifica y coloca el decorado lejano; devuelve las piezas colocadas (el decorado cercano no las pisa). */
+	TArray<TNRallyDressing::FSpot> AddFarDecor(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierPlan& Plan, int32 Seed,
+		FTNRallyDressingBatches& Batches);
+	bool AddFarPiece(const FTNRallyFarDecorEntry& Entry, const TNRallyDressing::FSpot& Spot, float CullCm, FTNRallyDressingBatches& Batches);
+	UStaticMesh* GetFarPalmMesh(int32 Variant);
 	void AddSpectators(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierPlan& Plan, int32 Seed,
 		FTNRallyDressingBatches& Batches);
 	UStaticMesh* GetSpectatorMesh(int32 Variant);
@@ -447,6 +573,10 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMesh>> SpectatorMeshes;
 
+	/** Palmeras del decorado lejano (mallas en ejecución, una por variante). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMesh>> FarPalmMeshes;
+
 	/** Puertas que han recibido pórtico (índice de puerta). */
 	TArray<bool> DressedGates;
 
@@ -454,6 +584,7 @@ private:
 	int32 RailSegmentCount = 0;
 	int32 BarrierPieceCount = 0;
 	int32 DecorCount = 0;
+	int32 FarDecorCount = 0;
 	int32 SpectatorCount = 0;
 	int32 GateMeshCount = 0;
 };

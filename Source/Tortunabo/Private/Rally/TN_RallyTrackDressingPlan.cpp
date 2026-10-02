@@ -3,6 +3,7 @@
 #include "Rally/TN_RallyTrackDressing.h"
 
 #include "Rally/TN_RallyTrack.h"
+#include "TN_RallyTrackDressingDetail.h"
 
 namespace TNRallyDressing
 {
@@ -568,16 +569,18 @@ namespace TNRallyDressing
 	}
 
 	TArray<FSpot> PlanDecor(const FTrackData& Track, const FBarrierPlan& Plan, const TArray<FTNRallyDecorEntry>& Entries,
-		const FDecorParams& Params, int32 Seed)
+		const FDecorParams& Params, int32 Seed, const TArray<FSpot>& Reserved)
 	{
-		TArray<FSpot> Spots;
 		if (Track.Samples.Num() < 3)
 		{
-			return Spots;
+			return TArray<FSpot>();
 		}
+		// Lo reservado (el decorado lejano) va delante para que nada lo pise y se quita al final.
+		TArray<FSpot> Spots = Reserved;
 		// Primero lo grande (playa) y después los cangrejos en los huecos que quedan.
 		Detail::AddBeachSpots(Track, Plan, Entries, Params, Seed, Spots);
 		Detail::AddCrabSpots(Track, Plan, Params, Seed, Spots);
+		Spots.RemoveAt(0, Reserved.Num());
 		return Spots;
 	}
 

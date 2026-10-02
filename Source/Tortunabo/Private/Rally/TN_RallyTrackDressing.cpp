@@ -12,57 +12,16 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyTrack.h"
 #include "TN_RallyMeshUtils.h"
+#include "TN_RallyTrackDressingBatches.h"
 #include "UObject/Package.h"
 #include "../World/Beach/TN_BeachDecorKit.h"
 #include "../World/ProcMap/TN_ProcMapFaunaMeshes.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
 
-/** Lo que se va a instanciar, agrupado por malla y forma de dibujarse; al final, un componente HISM por grupo. */
-struct FTNRallyDressingBatches
-{
-	enum class ECollision : uint8
-	{
-		None,
-		Block,
-		BlockCamera,
-		Rail
-	};
-
-	struct FBatch
-	{
-		UStaticMesh* Mesh = nullptr;
-		ECollision Collision = ECollision::None;
-		bool bShadow = true;
-		bool bHidden = false;
-		float CullCm = 0.f;
-		TArray<FTransform> Transforms;
-	};
-
-	TArray<FBatch> Batches;
-
-	/** Instancias del grupo (lo crea si no existe). CullCm 0 = no deja de dibujarse; manda el mayor del grupo. */
-	TArray<FTransform>& Get(UStaticMesh* Mesh, ECollision Collision, bool bShadow, float CullCm, bool bHidden = false)
-	{
-		for (FBatch& Batch : Batches)
-		{
-			if (Batch.Mesh == Mesh && Batch.Collision == Collision && Batch.bShadow == bShadow && Batch.bHidden == bHidden)
-			{
-				Batch.CullCm = (Batch.CullCm <= 0.f || CullCm <= 0.f) ? 0.f : FMath::Max(Batch.CullCm, CullCm);
-				return Batch.Transforms;
-			}
-		}
-		FBatch& Added = Batches.AddDefaulted_GetRef();
-		Added.Mesh = Mesh;
-		Added.Collision = Collision;
-		Added.bShadow = bShadow;
-		Added.bHidden = bHidden;
-		Added.CullCm = CullCm;
-		return Added.Transforms;
-	}
-};
-
 namespace TNRallyDressingActor
 {
+	using namespace TNRallyDressingPlace;
+
 	/** Trazas de suelo: por encima y por debajo de la cota de referencia, y desnivel máximo para darlo por bueno (cm). */
 	constexpr double GroundUpCm = 800.0;
 	constexpr double GroundDownCm = 3000.0;
@@ -100,30 +59,6 @@ namespace TNRallyDressingActor
 			Current.Reset();
 		}
 		return Pieces;
-	}
-
-	/** Caja de la malla girada y escalada (sin trasladar). */
-	FBox PlacedBox(const UStaticMesh* Mesh, const FQuat& Rotation, double Scale)
-	{
-		const FBoxSphereBounds Bounds = Mesh->GetBounds();
-		const FBox Local(Bounds.Origin - Bounds.BoxExtent, Bounds.Origin + Bounds.BoxExtent);
-		return Local.TransformBy(FTransform(Rotation, FVector::ZeroVector, FVector(Scale)));
-	}
-
-	/** Escala uniforme para que la malla girada mida TargetCm en su lado horizontal más largo. */
-	double UniformScaleFor(const UStaticMesh* Mesh, const FQuat& Rotation, double TargetCm)
-	{
-		const FVector Size = PlacedBox(Mesh, Rotation, 1.0).GetSize();
-		const double Widest = FMath::Max(Size.X, Size.Y);
-		return Widest > UE_KINDA_SMALL_NUMBER ? TargetCm / Widest : 1.0;
-	}
-
-	/** Transformación que apoya la malla (centrada en planta) sobre Ground. */
-	FTransform FitUniformOnGround(const UStaticMesh* Mesh, const FVector& Ground, const FQuat& Rotation, double Scale)
-	{
-		const FBox Placed = PlacedBox(Mesh, Rotation, Scale);
-		const FVector Center = Placed.GetCenter();
-		return FTransform(Rotation, Ground - FVector(Center.X, Center.Y, Placed.Min.Z), FVector(Scale));
 	}
 
 	/** Tortuga del público de pie (base en el origen, mirando a +X, ~1,4 m): caparazón, peto, cabeza, brazos en alto y pies. */
@@ -174,6 +109,7 @@ ATN_RallyTrackDressing::ATN_RallyTrackDressing()
 	BarrierStyles = { ETNRallyBarrierStyle::PostRope, ETNRallyBarrierStyle::Sandbags, ETNRallyBarrierStyle::Logs,
 		ETNRallyBarrierStyle::Tires, ETNRallyBarrierStyle::Castles };
 	DecorEntries = TNRallyDressingActor::DefaultDecorEntries();
+	FarDecorEntries = TNRallyDressingFar::DefaultEntries();
 	TireMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Generated/Meshes/Buggy/SM_BuggyTire.SM_BuggyTire")));
 	CrabPropMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Blueprints/Characters/Meshes/MiniCangrejo.MiniCangrejo")));
 	SpectatorMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor")));
@@ -250,7 +186,9 @@ bool ATN_RallyTrackDressing::Build(const TNRallyDressing::FTrackData& InTrack, i
 	const FBarrierPlan Plan = PlanBarriers(Track, ProbeDrops(Track, Base), Params);
 	FTNRallyDressingBatches Batches;
 	AddRails(Track, Plan, Seed, Batches);
-	AddDecor(Track, Plan, Seed, Batches);
+	// Primero lo lejano y grande; el decorado cercano rellena alrededor sin pisarlo.
+	const TArray<FSpot> FarSpots = AddFarDecor(Track, Plan, Seed, Batches);
+	AddDecor(Track, Plan, Seed, FarSpots, Batches);
 	DressedGates.Init(false, Track.Gates.Num());
 	if (bVisuals)
 	{
@@ -258,8 +196,8 @@ bool ATN_RallyTrackDressing::Build(const TNRallyDressing::FTrackData& InTrack, i
 		AddGateMeshes(Track, Batches);
 	}
 	CreateComponents(Batches);
-	UE_LOG(LogTNRally, Log, TEXT("[RallyDressing] Semilla %d: %d tramos de carril, %d piezas de límite, %d de decorado, %d de público y %d pórticos."),
-		Seed, RailSegmentCount, BarrierPieceCount, DecorCount, SpectatorCount, GateMeshCount);
+	UE_LOG(LogTNRally, Log, TEXT("[RallyDressing] Semilla %d: %d tramos de carril, %d piezas de límite, %d de decorado, %d lejanas, %d de público y %d pórticos."),
+		Seed, RailSegmentCount, BarrierPieceCount, DecorCount, FarDecorCount, SpectatorCount, GateMeshCount);
 	return true;
 }
 
@@ -277,6 +215,7 @@ void ATN_RallyTrackDressing::ClearDressing()
 	RailSegmentCount = 0;
 	BarrierPieceCount = 0;
 	DecorCount = 0;
+	FarDecorCount = 0;
 	SpectatorCount = 0;
 	GateMeshCount = 0;
 }
@@ -558,7 +497,7 @@ void ATN_RallyTrackDressing::AddTireRun(const TArray<FVector>& Points, FTNRallyD
 }
 
 bool ATN_RallyTrackDressing::AddBeachPiece(ETNBeachElement Element, int32 Seed, float Size, const FTransform& ItemXf, bool bFreePlacement,
-	bool bCollision, FTNRallyDressingBatches& Batches)
+	bool bCollision, FTNRallyDressingBatches& Batches, float CullCm, bool bAllowCameraBlock)
 {
 	using ECollision = FTNRallyDressingBatches::ECollision;
 	const TNBeachDecorKit::FRecipe Recipe = TNBeachDecorKit::Single(Element, TNBeachDecorKit::VariantOf(Element, Seed));
@@ -570,9 +509,9 @@ bool ATN_RallyTrackDressing::AddBeachPiece(ETNBeachElement Element, int32 Seed, 
 	const FTransform Local = bFreePlacement ? TNBeachDecorKit::BodyPlacement(Recipe.Info, Seed, Clamped)
 		: FTransform(FQuat::Identity, FVector(0.0, 0.0, -Recipe.Info.SinkMin * Clamped), FVector(Clamped));
 	const FTransform BodyXf = Local * ItemXf;
-	const float Cull = TNBeachDecorKit::CullDistanceFor(Element, Clamped);
+	const float Cull = CullCm >= 0.f ? CullCm : TNBeachDecorKit::CullDistanceFor(Element, Clamped);
 	const ECollision Collision = !(bCollision && Recipe.bCollision) ? ECollision::None
-		: (Recipe.Info.bBlocksCamera ? ECollision::BlockCamera : ECollision::Block);
+		: (Recipe.Info.bBlocksCamera && bAllowCameraBlock ? ECollision::BlockCamera : ECollision::Block);
 	Batches.Get(Recipe.Body, Collision, Recipe.Info.bCastShadow, Cull).Add(BodyXf);
 	if (Recipe.Moving && bVisuals)
 	{
@@ -586,11 +525,11 @@ bool ATN_RallyTrackDressing::AddBeachPiece(ETNBeachElement Element, int32 Seed, 
 }
 
 void ATN_RallyTrackDressing::AddDecor(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierPlan& Plan, int32 Seed,
-	FTNRallyDressingBatches& Batches)
+	const TArray<TNRallyDressing::FSpot>& Reserved, FTNRallyDressingBatches& Batches)
 {
 	using namespace TNRallyDressing;
 	UStaticMesh* Crab = bVisuals ? CrabPropMesh.LoadSynchronous() : nullptr;
-	for (const FSpot& Spot : PlanDecor(Track, Plan, DecorEntries, MakeDecorParams(), Seed))
+	for (const FSpot& Spot : PlanDecor(Track, Plan, DecorEntries, MakeDecorParams(), Seed, Reserved))
 	{
 		FVector Ground;
 		if (!TraceGround(Spot.Location, TNRallyDressingActor::DecorGroundUpCm, TNRallyDressingActor::DecorGroundDownCm, Ground) || IsWater(Track, Ground.Z))
