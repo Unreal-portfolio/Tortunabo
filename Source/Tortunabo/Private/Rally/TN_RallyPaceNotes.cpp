@@ -275,7 +275,12 @@ namespace TNRallyPaceNotes
 		OutStepCm = 0.0;
 		OutLengthCm = 0.0;
 		TArray<FVector> Path = Polyline;
-		if (bClosed && Path.Num() >= 2 && !Path.Last().Equals(Path[0], 1.0)) { Path.Add(Path[0]); }
+		if (bClosed && Path.Num() >= 2 && !Path.Last().Equals(Path[0], 1.0))
+		{
+			// Copia antes de añadir: Add(Path[0]) con el array lleno lee el elemento después de realojarlo (assert en DebugGame).
+			const FVector First = Path[0];
+			Path.Add(First);
+		}
 		if (Path.Num() < 2 || StepCm <= 0.0) { return {}; }
 
 		TArray<double> Cumulative;

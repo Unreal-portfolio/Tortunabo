@@ -388,8 +388,11 @@ TArray<FVector> ATN_RallyTrackDressing::RunPoints(const TNRallyDressing::FTrackD
 	}
 	if (Track.bClosed && Run.Num() == Track.Samples.Num() && Points.Num() > 0)
 	{
-		Points.Add(Points[0]);
-		OutGrounded.Add(OutGrounded[0]);
+		// Copias antes de añadir: Add de un elemento del propio array salta el assert de TArray (CheckAddress).
+		const FVector FirstPoint = Points[0];
+		const bool bFirstGrounded = OutGrounded[0];
+		Points.Add(FirstPoint);
+		OutGrounded.Add(bFirstGrounded);
 	}
 	return Points;
 }
