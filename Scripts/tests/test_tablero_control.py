@@ -360,3 +360,36 @@ def test_las_notas_de_la_rutina_no_son_conversacion():
     nota = ("SkiTemplar", "**Rutina:** paso la tarjeta a Ready; estaba en In review sin PR.")
     assert not auditoria.conversacion_pendiente(_charla(nota))
     assert auditoria.conversacion_pendiente(_charla(nota, ("SkiTemplar", "Falta reproducirlo con 4 jugadores.")))
+
+
+def test_solo_cuentan_los_pares_con_conflicto_real():
+    ficheros = {9: {"a.cpp", "b.h"}, 12: {"a.cpp", "b.h"}, 15: {"a.cpp"}}
+    conflicto = {(9, 12): ["b.h"], (9, 15): [], (12, 15): None}
+    assert colisiones.pares(ficheros, lambda a, b: conflicto[(a, b)]) == [(9, 12, ["b.h"]), (12, 15, ["a.cpp"])]
+
+
+def test_par_de_titulo():
+    assert colisiones.par_de_titulo(colisiones.titulo(12, 9)) == (9, 12)
+    assert colisiones.par_de_titulo("Otra cosa") is None
+
+
+def test_resueltas_por_pr_cerrada_o_sin_conflicto():
+    abiertas = [{"number": 100, "title": colisiones.titulo(9, 12)},
+                {"number": 101, "title": colisiones.titulo(9, 15)},
+                {"number": 102, "title": colisiones.titulo(12, 15)},
+                {"number": 103, "title": "Mezclar a mano"}]
+    resultado = colisiones.resueltas(abiertas, prs={9, 12, 15, 20}, vigentes={(9, 12)})
+    assert [n for n, _ in resultado] == [101, 102]
+    resultado = colisiones.resueltas(abiertas, prs={9, 15}, vigentes={(9, 15)})
+    assert resultado[0] == (100, "la PR #12 ya no está abierta")
+    assert [n for n, _ in resultado] == [100, 102]
+
+
+def test_localizacion_se_regenera_en_vez_de_mezclar():
+    antigua, reciente = {"number": 9, "headRefName": "feat/9-a"}, {"number": 12, "headRefName": "fix/12-b"}
+    solo = ["Content/Localization/Game/Game.manifest", "Content/Localization/Game/es-ES/Game.po"]
+    assert colisiones.solo_localizacion(solo)
+    assert not colisiones.solo_localizacion(solo + ["Source/X.cpp"])
+    assert not colisiones.solo_localizacion([])
+    assert "no se mezclan a mano" in colisiones.cuerpo(antigua, reciente, solo, "dev")
+    assert "no se mezclan a mano" not in colisiones.cuerpo(antigua, reciente, ["Source/X.cpp"], "dev")

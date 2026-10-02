@@ -2,7 +2,7 @@
 
 - `resumen` y `decidir`: la memoria del equipo vive en las issues (memoria.py).
 - `auditar`: problemas de organización de las issues de trabajo (auditoria.py).
-- `colisiones`: PR abiertas contra dev que tocan los mismos ficheros (colisiones.py).
+- `colisiones`: PR abiertas contra dev que chocan al mezclarse (colisiones.py).
 - `bloquear`: dependencias nativas de GitHub y estado Bloqueada (bloqueos.py).
 - `lote` y `resumenes`: en control_lotes.py.
 - `asegurar-estados`: añade Bloqueada y Validada al campo Status sin perder valores (estados.py).
@@ -155,20 +155,37 @@ def aplicar_auditoria(proyecto: dict, informe: list[tuple[dict, list[dict]]]) ->
 
 def cmd_colisiones(args: argparse.Namespace) -> None:
     prs = {p["number"]: p for p in prs_abiertas() if p["baseRefName"] == INTEGRACION}
-    pares = colisiones.pares({n: colisiones.ficheros_de_pr(gh, REPO, n) for n in prs})
-    existentes = colisiones.colisiones_abiertas(gh, REPO)
+    con_git = colisiones.traer_cabezas(prs)
+    if not con_git:
+        print("Aviso: no se pudieron descargar las cabezas de las PR; cuento los ficheros en común.\n")
+    pares = colisiones.pares({n: colisiones.ficheros_de_pr(gh, REPO, n) for n in prs},
+                             colisiones.conflicto_git if con_git else None)
+    abiertas = colisiones.colisiones_abiertas(gh, REPO)
+    existentes = {i["title"].strip() for i in abiertas}
     nuevos = [par for par in pares if colisiones.titulo(par[0], par[1]) not in existentes]
-    print(f"## Colisiones entre PR abiertas contra {INTEGRACION} · {len(prs)} PR, {len(pares)} pares, "
-          f"{len(nuevos)} sin issue" + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
+    resueltas = colisiones.resueltas(abiertas, set(prs), {(a, b) for a, b, _ in pares}) if con_git else []
+    print(f"## Colisiones entre PR abiertas contra {INTEGRACION} · {len(prs)} PR, {len(pares)} pares en conflicto, "
+          f"{len(nuevos)} sin issue, {len(resueltas)} issues resueltas"
+          + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
     for a, b, ficheros in pares:
         estado = "nueva" if (a, b, ficheros) in nuevos else "ya tiene issue"
         binarios = "; con binarios: decision" if colisiones.hay_binarios(ficheros) else ""
-        print(f"- PR #{a} y #{b}: {len(ficheros)} ficheros en común ({estado}{binarios})")
-    if args.aplicar and nuevos:
+        localizacion = "; solo localización" if colisiones.solo_localizacion(ficheros) else ""
+        print(f"- PR #{a} y #{b}: {len(ficheros)} ficheros en conflicto ({estado}{binarios}{localizacion})")
+    for numero, motivo in resueltas:
+        print(f"- #{numero} resuelta: {motivo}")
+    if not args.aplicar:
+        return
+    if nuevos:
         objetos.crear_etiqueta_si_falta(gh, REPO, colisiones.ETIQUETA, colisiones.COLOR, colisiones.DESCRIPCION_ETIQUETA)
         proyecto = cargar_proyecto()
         for a, b, ficheros in nuevos:
             crear_issue_colision(proyecto, prs[a], prs[b], ficheros)
+    for numero, motivo in resueltas:
+        comentar(numero, memoria.texto_resumen("dos PR abiertas chocaban al mezclarse",
+                                               f"ya no hace falta mezclarlas: {motivo} (`tablero.py colisiones`)"))
+        gh("issue", "close", str(numero), "--repo", REPO, "--reason", "completed")
+        print(f"#{numero} cerrada: {motivo}")
 
 
 def objeto_y_area(proyecto: dict, pr: dict) -> tuple[int | None, str | None]:
@@ -267,7 +284,7 @@ def anadir_comandos(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--quien", help="quién decide (por defecto, tu login)")
     p.set_defaults(fn=cmd_decidir)
     for nombre, ayuda, fn in (("auditar", "problemas de organización de las issues de trabajo", cmd_auditar),
-                              ("colisiones", "PR abiertas contra dev que tocan los mismos ficheros", cmd_colisiones),
+                              ("colisiones", "PR abiertas contra dev que chocan al mezclarse", cmd_colisiones),
                               ("asegurar-estados", "añadir Bloqueada y Validada a Status sin perder valores",
                                cmd_asegurar_estados)):
         p = sub.add_parser(nombre, help=ayuda)

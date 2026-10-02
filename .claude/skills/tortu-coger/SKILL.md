@@ -17,4 +17,4 @@ El tablero lo mantienes tú, sin esperar a que te lo pidan. Ciclo y estados: «T
 
 ## Issues `colision`
 
-Dos PR abiertas tocan los mismos ficheros. Sigue la issue: rebasa la PR más reciente sobre la rama de la otra (o sobre `dev` si ya está fusionada), mezcla las dos versiones conservando el comportamiento de ambas, compila, prueba y comenta el resultado. Con `.uasset`/`.umap` en común lleva `decision`: no mezcles; decide un aprobador qué versión gana.
+Dos PR abiertas chocan al mezclarse (conflicto real según `git merge-tree`). Sigue la issue: rebasa la PR más reciente sobre la rama de la otra (o sobre `dev` si ya está fusionada), mezcla las dos versiones conservando el comportamiento de ambas, compila, prueba y comenta el resultado. Con `.uasset`/`.umap` en común lleva `decision`: no mezcles; decide un aprobador qué versión gana. Si solo chocan ficheros de `Content/Localization`, no se mezclan: se regeneran tras rebasar. La issue se cierra sola cuando el par deja de chocar.
