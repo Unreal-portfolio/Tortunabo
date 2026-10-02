@@ -12,6 +12,7 @@
 #include "TN_RallyPlayerController.generated.h"
 
 class ATN_Buggy;
+class UTN_RallyCameraDirector;
 class UTN_RallyHUDWidget;
 
 UCLASS()
@@ -37,6 +38,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally")
 	TSubclassOf<UTN_RallyHUDWidget> HUDWidgetClass;
 
+	/** Cámara de llegada, podio y espectador de este jugador (solo en el jugador local; nullptr en el resto). */
+	UTN_RallyCameraDirector* GetCameraDirector() const { return CameraDirector; }
+
 	// ITN_VoiceListener
 	virtual void SendVoiceToOwningClient(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor,
 		bool bIntercom) override;
@@ -44,6 +48,8 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	/** Espectador: anterior (A, ←, LB) y siguiente (D, →, RB) sin quitárselas al buggy (UTN_RallyCameraDirector). */
+	virtual void SetupInputComponent() override;
 	/** Jugador local: pone el salpicadero y el cartel del arco en su buggy (UTN_RallyDashboardComponent). */
 	virtual void PlayerTick(float DeltaTime) override;
 	/** Servidor: el peón nuevo (buggy de la conductora o peón de la artillera) lleva voz por proximidad. */
@@ -76,4 +82,7 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_RallyHUDWidget> RallyHUD;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_RallyCameraDirector> CameraDirector;
 };

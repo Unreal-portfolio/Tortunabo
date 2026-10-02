@@ -14,6 +14,8 @@
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyVehicle.h"
 #include "Rally/UI/TN_RallyDashboard.h"
+#include "Rally/TN_RallyCameraDirector.h"
+#include "Rally/TN_RallyPlayerController.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicles/TN_Buggy.h"
@@ -182,6 +184,11 @@ void UTN_RallyHUDWidget::BuildTree()
 	RespawnHintText = MakeText(Tree, NSLOCTEXT("Rally", "RespawnHint", "Mantén R para volver a la pista"), TEXT("Bold"), 30,
 		TNHUDArt::SandLight);
 	Place(Canvas, RespawnHintText, FVector2D(0.5f, 0.64f), FVector2D::ZeroVector);
+	SpectateText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 34, FLinearColor::White);
+	Place(Canvas, SpectateText, FVector2D(0.5f, 1.f), FVector2D(0.f, -92.f));
+	SpectateHintText = MakeText(Tree, NSLOCTEXT("Rally", "SpectateHint", "A / D · LB / RB: cambiar de vista"), TEXT("Regular"), 24,
+		TNHUDStyle::TextDim);
+	Place(Canvas, SpectateHintText, FVector2D(0.5f, 1.f), FVector2D(0.f, -54.f));
 	Crosshair = MakeText(Tree, TNLocText::Literal(TEXT("+")), TEXT("Bold"), 48, FLinearColor::White);
 	Place(Canvas, Crosshair, FVector2D(0.5f, 0.5f), FVector2D::ZeroVector);
 
@@ -189,7 +196,7 @@ void UTN_RallyHUDWidget::BuildTree()
 
 	BuildResults();
 
-	for (UWidget* Hidden : TArray<UWidget*>{ WrongWayText, RespawnText, RespawnHintText, Crosshair, AmmoText, CenterText, StatusText,
+	for (UWidget* Hidden : TArray<UWidget*>{ SpectateText, SpectateHintText, WrongWayText, RespawnText, RespawnHintText, Crosshair, AmmoText, CenterText, StatusText,
 		ResultsPanel, BoostLabel, BoostBar ? BoostBar->GetParent() : nullptr, HealthLabel, HealthBar ? HealthBar->GetParent() : nullptr,
 		KnockText })
 	{
@@ -325,7 +332,7 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 	// La conductora no tiene interfaz de pantalla salvo los avisos (semáforo, contramano, reaparición, meta y resultados):
 	// velocidad, turbo y vida van en el salpicadero, y puesto y vuelta en el cartel del arco (UTN_RallyDashboardComponent);
 	// el mapa, las notas y su munición si va sola, en la tableta compacta. La artillera conserva su HUD.
-	const bool bSeatedView = Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results;
+	const bool bSeatedView = Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results && !Mine->bFinished;
 	const bool bGunner = Me && Me->IsGunner();
 	const bool bGunnerView = bSeatedView && bGunner;
 	RefreshPlace(RallyState, Mine, bGunnerView);
@@ -356,6 +363,7 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 	}
 
 	RefreshRespawnHint(Mine, ServerTime);
+	RefreshSpectate(RallyState);
 	RefreshStatus(RallyState, ServerTime, Mine);
 	RefreshResults(RallyState, ServerTime);
 }
@@ -495,6 +503,25 @@ void UTN_RallyHUDWidget::RefreshBoost(bool bVisible)
 	BoostBar->SetPercent(FMath::Clamp(BoostCharge, 0.f, 1.f));
 	BoostBar->SetFillColorAndOpacity(bBoosting ? TNHUDArt::Gold : TNHUDArt::Foam);
 	BoostLabel->SetColorAndOpacity(FSlateColor(bBoosting ? TNHUDArt::Gold : TNHUDStyle::TextDim));
+}
+
+void UTN_RallyHUDWidget::RefreshSpectate(const ATN_RallyGameState& RallyState)
+{
+	using namespace TNRallyHUD;
+	const ATN_RallyPlayerController* Player = Cast<ATN_RallyPlayerController>(GetOwningPlayer());
+	const UTN_RallyCameraDirector* Director = Player ? Player->GetCameraDirector() : nullptr;
+	const bool bSpectating = Director && Director->IsSpectating();
+	Show(SpectateText, bSpectating);
+	Show(SpectateHintText, bSpectating);
+	if (!bSpectating)
+	{
+		return;
+	}
+	const int32 Team = Director->GetSpectatedTeam();
+	const FTNRallyStanding* Watched = RallyState.Standings.FindByPredicate([Team](const FTNRallyStanding& Entry) { return Entry.TeamIndex == Team; });
+	SpectateText->SetText(Director->IsDroneView() || !Watched
+		? NSLOCTEXT("Rally", "SpectateDrone", "Dron: siguiendo al líder")
+		: FText::Format(NSLOCTEXT("Rally", "SpectateCrew", "Mirando a {0} ({1}.º)"), CrewName(*Watched), TNLocText::Int(Watched->Place)));
 }
 
 void UTN_RallyHUDWidget::RefreshRespawnHint(const FTNRallyStanding* Mine, double ServerTime)

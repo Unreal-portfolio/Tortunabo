@@ -13,6 +13,7 @@
 class ATN_RallyAIController;
 class ATN_RallyPlayerState;
 class ATN_RallyTrack;
+class ATN_RallyPodium;
 class APlayerController;
 
 namespace TNRallyRace
@@ -139,6 +140,11 @@ private:
 		FVector PrevLocation = FVector::ZeroVector;
 		bool bFinished = false;
 		double FinishSeconds = 0.0;
+		/** Orden de llegada (1 = el primero; 0 sin llegar): su hueco en el podio. */
+		int32 FinishOrder = 0;
+		/** Hora del servidor a la que se aparca en el podio (tras el plano lateral de la llegada) y si ya está aparcado. */
+		double ParkAtTime = 0.0;
+		bool bParked = false;
 		int32 Place = 0;
 		bool bWrongWay = false;
 		double RespawnEndTime = 0.0;
@@ -222,11 +228,23 @@ private:
 	void TurnAround(FTeamRuntime& Team);
 	void RebuildStandings();
 	void RefreshSeats();
+	// TN_RallyGameModePodium.cpp (#306)
+	/** Crea el podio sobre la meta (servidor, al tener pista). */
+	void SpawnPodium();
+	/** Marca la llegada de un equipo: su orden y cuándo se aparca. */
+	void NoteTeamFinished(FTeamRuntime& Team);
+	/** Aparca en el podio los equipos que ya llegaron y cuya hora de aparcar ha pasado. */
+	void ParkFinishedTeams();
+	/** Lleva el buggy a su hueco del podio con el motor, el freno y la torreta bloqueados. */
+	void ParkTeam(FTeamRuntime& Team);
 	/** Una línea [RallyStats] con terminados, reapariciones por motivo, vuelcos y tiempo del ganador (pruebas del piloto IA). */
 	void LogRaceStats(bool bTimedOut) const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ATN_RallyTrack> Track;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ATN_RallyPodium> Podium;
 
 	TArray<FTeamRuntime> Teams;
 	TArray<TWeakObjectPtr<APlayerController>> PendingPlayers;

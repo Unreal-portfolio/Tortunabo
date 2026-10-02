@@ -223,6 +223,7 @@ UTN_RallyDashboardComponent* UTN_RallyDashboardComponent::AttachTo(ATN_Buggy* Bu
 	Dashboard->RegisterComponent();
 	Dashboard->Panels.Add(Dashboard->MakePanel(*Buggy, *Player, ETNRallyDashboardPanel::Dash, TNRallyDashboard::DashLayout()));
 	Dashboard->Panels.Add(Dashboard->MakePanel(*Buggy, *Player, ETNRallyDashboardPanel::RollBar, TNRallyDashboard::RollBarLayout()));
+	UE_LOG(LogTNRally, Log, TEXT("[RallyDashboard] Salpicadero y cartel del arco en %s para %s."), *GetNameSafe(Buggy), *GetNameSafe(Player));
 	return Dashboard;
 }
 

@@ -234,7 +234,9 @@ const ATN_Buggy* UTN_RallyCopilotTablet::FindLocalBuggy(const ATN_RallyGameState
 
 void UTN_RallyCopilotTablet::RefreshView(const ATN_RallyGameState* RallyState)
 {
-	const bool bUsable = RallyState && TrackNotes.IsValid() && RallyState->Phase != ETNRallyPhase::Results;
+	const FTNRallyStanding* Mine = FindLocalStanding(RallyState);
+	// En meta se guarda: la cámara pasa al podio y al espectador (#306).
+	const bool bUsable = RallyState && TrackNotes.IsValid() && RallyState->Phase != ETNRallyPhase::Results && !(Mine && Mine->bFinished);
 	if (!bAutoRole)
 	{
 		View = !bUsable ? ETNRallyTabletView::Hidden
@@ -244,7 +246,6 @@ void UTN_RallyCopilotTablet::RefreshView(const ATN_RallyGameState* RallyState)
 	const APawn* Pawn = GetOwningPlayerPawn();
 	const bool bGunner = Cast<ATN_BuggyGunnerPawn>(Pawn) != nullptr;
 	const ATN_Buggy* Driven = Cast<ATN_Buggy>(Pawn);
-	const FTNRallyStanding* Mine = FindLocalStanding(RallyState);
 	// Conductora sola: su fila no tiene artillera (o, sin fila todavía, el buggy no lleva peón de artillera).
 	const bool bDriverAlone = Driven && (Mine ? Mine->Gunner == nullptr : Driven->GetGunnerPawn() == nullptr);
 	bCompact = !bGunner;

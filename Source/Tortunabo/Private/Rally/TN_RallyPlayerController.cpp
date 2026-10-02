@@ -1,5 +1,6 @@
 #include "Rally/TN_RallyPlayerController.h"
 
+#include "Components/InputComponent.h"
 #include "Containers/Ticker.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Engine/Engine.h"
@@ -12,6 +13,7 @@
 #include "Rally/UI/TN_RallyCopilotTablet.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "Rally/UI/TN_RallyDashboard.h"
+#include "Rally/TN_RallyCameraDirector.h"
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyGunnerPawn.h"
 #include "VR/TN_VRMode.h"
@@ -47,6 +49,12 @@ void ATN_RallyPlayerController::BeginPlay()
 	}
 	// Tableta de copiloto: grande para la artillera, compacta para la conductora sola; elige sola por la plaza.
 	UTN_RallyCopilotTablet::FindOrCreateFor(this);
+	// Cámara de llegada, podio y espectador (#306): solo en esta máquina.
+	if (!CameraDirector)
+	{
+		CameraDirector = NewObject<UTN_RallyCameraDirector>(this, TEXT("RallyCameraDirector"));
+		CameraDirector->RegisterComponent();
+	}
 	SyncCosmeticsToServer();
 }
 
@@ -58,6 +66,32 @@ void ATN_RallyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
 		RallyHUD = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_RallyPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+	if (!InputComponent)
+	{
+		return;
+	}
+	const TPair<FKey, int32> Bindings[] = { { EKeys::A, -1 }, { EKeys::Left, -1 }, { EKeys::Gamepad_LeftShoulder, -1 },
+		{ EKeys::D, 1 }, { EKeys::Right, 1 }, { EKeys::Gamepad_RightShoulder, 1 } };
+	for (const TPair<FKey, int32>& Pair : Bindings)
+	{
+		FInputKeyBinding Binding{ FInputChord(Pair.Key), IE_Pressed };
+		// Sin consumirla: la misma tecla sigue llegando al buggy o a la artillera.
+		Binding.bConsumeInput = false;
+		const int32 Delta = Pair.Value;
+		Binding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Delta]()
+		{
+			if (CameraDirector)
+			{
+				CameraDirector->CycleSpectate(Delta);
+			}
+		});
+		InputComponent->KeyBindings.Add(MoveTemp(Binding));
+	}
 }
 
 void ATN_RallyPlayerController::PlayerTick(float DeltaTime)

@@ -71,6 +71,8 @@ private:
 	void RefreshHealth(bool bVisible);
 	/** «¡Noqueada!» con la cuenta, solo para la artillera mientras dura el noqueo. */
 	void RefreshKnock(bool bGunner);
+	/** Espectador (#306): a quién se mira (o el dron) y cómo cambiar, mientras lo lleva UTN_RallyCameraDirector. */
+	void RefreshSpectate(const ATN_RallyGameState& RallyState);
 	/** Aviso «Mantén R…» la primera vez que el buggy local reaparece (LastRespawnServerTime de su fila). */
 	void RefreshRespawnHint(const FTNRallyStanding* Mine, double ServerTime);
 
@@ -103,6 +105,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UProgressBar> BoostBar;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> BoostLabel;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> RespawnHintText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> SpectateText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> SpectateHintText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Crosshair;
 	UPROPERTY(Transient) TArray<TObjectPtr<UImage>> InkSplats;
 	UPROPERTY(Transient) TObjectPtr<UBorder> ResultsPanel;
