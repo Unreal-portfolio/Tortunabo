@@ -193,6 +193,9 @@ protected:
 	/** true cuando ya transicionamos a InProgress. */
 	bool bMatchStarted = false;
 
+	/** true desde el BeginPlay del GameMode: hasta entonces TryStartMatch no arranca (ver TN_MatchStartRules.h). */
+	bool bStagingBegun = false;
+
 	/** Jugadores actualmente en DBNO con su tiempo de bleedout restante. */
 	TMap<TWeakObjectPtr<APlayerController>, float> DBNOPlayers;
 
