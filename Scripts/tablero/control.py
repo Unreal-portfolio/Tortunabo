@@ -57,14 +57,13 @@ def contexto_prs(nodos: list[dict], proyecto: dict, abiertas: list[dict], fusion
         if nodo["number"] not in lotes_abiertos:
             continue
         pr = next((p["number"] for p in fusionadas if p["baseRefName"] == INTEGRACION
-                   and nodo["number"] in issues_de_pr(p)), None)
+                   and nodo["number"] in issues_de_pr(p, menciones=True)), None)
         for miembro in bloqueos.bloqueantes(nodo):
             if pr and miembro["number"] in contexto:
                 contexto[miembro["number"]]["lote_fusionado"] = pr
     for pr in abiertas:
-        refs = issues_de_pr(pr)
-        trabajo = refs - no_trabajo
-        if lotes.pr_necesita_lote(trabajo, con_lote=bool(refs & lotes_abiertos)):
+        trabajo = issues_de_pr(pr) - no_trabajo
+        if lotes.pr_necesita_lote(trabajo, con_lote=bool(issues_de_pr(pr, menciones=True) & lotes_abiertos)):
             for n in trabajo & contexto.keys():
                 contexto[n]["prs_sin_lote"].append(pr["number"])
     return contexto
