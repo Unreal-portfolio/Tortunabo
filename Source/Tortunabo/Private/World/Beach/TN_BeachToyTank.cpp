@@ -285,12 +285,11 @@ void ATN_BeachToyTank::AdvanceShots(double Now, bool bServer)
 		const float Ground = FMath::Lerp(Shot.GroundFrom, Shot.GroundTo, Progress);
 		if (P.Z - Radius < Ground && Vel.Z < 0.0)
 		{
-			// Bota: pierde fuerza y ya no marea a nadie.
+			// Bota: pierde fuerza, pero sigue mareando a quien pase hasta que da a alguien o se acaba.
 			P.Z = Ground + Radius;
 			Shot.P0 = P;
 			Shot.V0 = FVector(Vel.X * 0.55, Vel.Y * 0.55, -Vel.Z * 0.42);
 			Shot.T0 = Now;
-			Shot.bArmed = false;
 			++Shot.Bounces;
 			if (Shot.Bounces > TNBeachTank::MaxBounces || Shot.V0.SizeSquared() < 80.0 * 80.0)
 			{
