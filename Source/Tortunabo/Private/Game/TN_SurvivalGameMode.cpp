@@ -4,6 +4,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_GameModeSpawnUtils.h"
 #include "World/TN_ChunkManager.h"
+#include "World/TN_StormVolume.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -317,6 +318,12 @@ void ATN_SurvivalGameMode::PollLevelReady()
 
 void ATN_SurvivalGameMode::SendSurvivorsToLevelStart()
 {
+	// Cada nivel sale del mismo sitio: la tormenta de LVL_Run vuelve a empezar con él (#448).
+	for (TActorIterator<ATN_StormVolume> It(GetWorld()); It; ++It)
+	{
+		It->ResetToInitialState();
+	}
+
 	const ATN_ChunkManager* Manager = FindChunkManager();
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
