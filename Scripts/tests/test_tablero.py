@@ -27,8 +27,67 @@ def test_slug_no_termina_en_guion_al_cortar():
 
 
 def test_issues_de_pr_lee_cuerpo_y_rama():
-    pr = {"body": "Arregla el puente.\n\nCloses #19\nRefs #33", "headRefName": "fix/19-puente-tambaleante"}
-    assert tablero.issues_de_pr(pr) == {19, 33}
+    pr = {"body": "Arregla el puente.\n\nCloses #19\nFixes #21\nRefs #33", "headRefName": "fix/20-puente-tambaleante"}
+    assert tablero.issues_de_pr(pr) == {19, 20, 21}
+    assert tablero.issues_de_pr(pr, menciones=True) == {19, 20, 21, 33}
+
+
+def test_issues_de_pr_solo_palabras_completas():
+    pr = {"body": "Ver hotfix #5 y prefs #6; cierra #7", "headRefName": "nube/x"}
+    assert tablero.issues_de_pr(pr, menciones=True) == {7}
+
+
+def _pr_abierta(numero, cuerpo, rama="feat/x"):
+    return {"number": numero, "baseRefName": "dev", "headRefName": rama, "body": cuerpo, "mergeable": "MERGEABLE",
+            "author": {"login": "Mokius"}}
+
+
+def _item(estado, *etiquetas, **valores):
+    return {"state": "OPEN", "valores": {"Status": estado, **valores},
+            "labels": {"nodes": [{"name": e} for e in ("tarea", *etiquetas)]}}
+
+
+def test_refs_no_mueve_la_issue_citada_y_closes_si(monkeypatch):
+    """#356 solo citada con «Refs» no pasa a In review; #12, que la PR cierra, sí."""
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [_pr_abierta(400, "Closes #12\nRefs #356")])
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [])
+    proyecto = {"items": {12: _item("In progress"), 356: _item("Ready")}}
+    cambios, avisos = [], []
+    tablero.reconciliar_prs(proyecto, cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#12 → In review (PR #400)"]
+    assert not avisos
+
+
+def test_pr_abierta_no_mueve_una_issue_con_decision_pendiente(monkeypatch):
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [_pr_abierta(400, "Closes #12")])
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [])
+    proyecto = {"items": {12: _item("Ready", "decision")}}
+    cambios, avisos = [], []
+    tablero.reconciliar_prs(proyecto, cambios, avisos)
+    assert not cambios
+    assert avisos == ["#12 tiene PR abierta (#400) pero espera una decisión (`decision`): no pasa a In review"]
+
+
+def test_refs_en_una_pr_fusionada_no_cuenta_como_fusion(monkeypatch):
+    pr = {"number": 401, "baseRefName": "dev", "headRefName": "feat/x", "body": "Refs #356"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    proyecto = {"items": {356: _item("In review", **{"Revisión IA": "Aprobada", "Editor": "Funciona"})}}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert not cambios
+    assert not tablero.esta_fusionada(356, [pr], [])
+    assert tablero.esta_fusionada(12, [{**pr, "body": "Closes #12"}], [])
+
+
+def test_lote_enlazado_con_refs_se_cierra_al_fusionar(monkeypatch):
+    pr = {"number": 402, "baseRefName": "dev", "headRefName": "feat/440-x", "body": "Closes #440\nRefs #439"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    monkeypatch.setattr(tablero, "tiene_resumen", lambda n: True)
+    lote = {"state": "OPEN", "valores": {}, "labels": {"nodes": [{"name": "lote"}]},
+            "blockedBy": {"nodes": [{"number": 440, "state": "CLOSED"}, {"number": 441, "state": "CLOSED"}]}}
+    cambios, avisos = [], []
+    tablero.reconciliar_lotes({"items": {439: lote}}, cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["lote #439 se cierra: PR #402 fusionada y todos sus miembros cerrados"]
 
 
 def test_issues_de_pr_sin_referencias():

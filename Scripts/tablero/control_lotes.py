@@ -1,4 +1,4 @@
-"""Comandos de lotes (`lote crear`, `lote estado`) y de memoria por objeto (`resumenes`).
+"""Comandos de lotes (`lote crear`, `lote añadir`, `lote estado`) y de memoria por objeto (`resumenes`).
 
 La lógica pura de los lotes vive en lotes.py; aquí solo se habla con GitHub.
 """
@@ -35,25 +35,42 @@ def pr_de_miembros(miembros: list[int]) -> int | None:
     return next(iter(candidatas), None)
 
 
+def pr_del_lote(lote: int) -> int | None:
+    """PR abierta que enlaza el lote con «Refs #lote»; error si hay varias."""
+    candidatas = {p["number"] for p in prs_abiertas() if lote in issues_de_pr(p, menciones=True)}
+    if len(candidatas) > 1:
+        raise ErrorTablero(f"El lote #{lote} está enlazado desde varias PR abiertas ({sorted(candidatas)}).")
+    return next(iter(candidatas), None)
+
+
+def comprobar_de_trabajo(proyecto: dict, miembros: list[int]) -> None:
+    """Error si algún miembro es un objeto o un lote."""
+    ajenas = [n for n in miembros if objetos.es_objeto(proyecto["items"].get(n, {})) or lotes.es_lote(proyecto["items"].get(n, {}))]
+    if ajenas:
+        raise ErrorTablero(f"{', '.join(f'#{n}' for n in ajenas)} no son issues de trabajo (objeto o lote).")
+
+
+def vincular_miembros(lote: int, id_lote: str, miembros: list[int], pr: int | None) -> None:
+    """El lote queda «blocked by» cada miembro, y cada miembro lo dice en un comentario."""
+    for m in miembros:
+        gh("api", "graphql", "-f", f"query={bloqueos.MUTACION}", "-f", f"issue={id_lote}",
+           "-f", f"bloqueante={objetos.leer_issue(gh, REPO, m)['id']}")
+        comentar(m, f"En el lote #{lote}{f' (PR #{pr})' if pr else ''}.")
+
+
 def cmd_lote_crear(args: argparse.Namespace) -> None:
     try:
         miembros = lotes.comprobar_miembros(args.miembros)
     except lotes.ErrorLote as exc:
         raise ErrorTablero(str(exc)) from exc
     proyecto = cargar_proyecto()
-    ajenas = [n for n in miembros if objetos.es_objeto(proyecto["items"].get(n, {})) or lotes.es_lote(proyecto["items"].get(n, {}))]
-    if ajenas:
-        raise ErrorTablero(f"{', '.join(f'#{n}' for n in ajenas)} no son issues de trabajo (objeto o lote).")
+    comprobar_de_trabajo(proyecto, miembros)
     pr = args.pr or pr_de_miembros(miembros)
     objetos.crear_etiqueta_si_falta(gh, REPO, lotes.ETIQUETA, lotes.COLOR, lotes.DESCRIPCION_ETIQUETA)
     url = gh("issue", "create", "--repo", REPO, "--title", lotes.titulo(args.titulo), "--label", lotes.ETIQUETA,
              "--body", lotes.cuerpo(miembros, pr)).strip().splitlines()[-1]
     numero = int(url.rstrip("/").rsplit("/", 1)[-1])
-    id_lote = objetos.leer_issue(gh, REPO, numero)["id"]
-    for m in miembros:
-        gh("api", "graphql", "-f", f"query={bloqueos.MUTACION}", "-f", f"issue={id_lote}",
-           "-f", f"bloqueante={objetos.leer_issue(gh, REPO, m)['id']}")
-        comentar(m, f"En el lote #{numero}{f' (PR #{pr})' if pr else ''}.")
+    vincular_miembros(numero, objetos.leer_issue(gh, REPO, numero)["id"], miembros, pr)
     item_de_issue(proyecto, numero)  # en el tablero sin Status, como los objetos
     if pr:
         cuerpo = json.loads(gh("pr", "view", str(pr), "--repo", REPO, "--json", "body"))["body"] or ""
@@ -61,6 +78,30 @@ def cmd_lote_crear(args: argparse.Namespace) -> None:
             gh("pr", "edit", str(pr), "--repo", REPO, "--body", f"{cuerpo.rstrip()}\n\nRefs #{numero}")
     print(f"Lote #{numero} creado con {', '.join(f'#{m}' for m in miembros)}"
           + (f"; enlazado a la PR #{pr}." if pr else ". Añade «Refs #%d» a la PR del lote." % numero))
+
+
+def cmd_lote_anadir(args: argparse.Namespace) -> None:
+    """Mete issues en un lote ya creado: dependencia, comentario en cada una y casilla en el cuerpo del lote."""
+    datos = json.loads(gh("issue", "view", str(args.lote), "--repo", REPO, "--json", "title,labels,state,body"))
+    if not lotes.es_lote(datos) or datos["state"] != "OPEN":
+        raise ErrorTablero(f"#{args.lote} no es un lote abierto (etiqueta `{lotes.ETIQUETA}`).")
+    lote = objetos.leer_issue(gh, REPO, args.lote)
+    try:
+        nuevos = lotes.miembros_nuevos(args.lote, args.miembros, {b["number"] for b in bloqueos.bloqueantes(lote)})
+    except lotes.ErrorLote as exc:
+        raise ErrorTablero(str(exc)) from exc
+    proyecto = cargar_proyecto()
+    comprobar_de_trabajo(proyecto, nuevos)
+    pr = pr_del_lote(args.lote)
+    vincular_miembros(args.lote, lote["id"], nuevos, pr)
+    gh("issue", "edit", str(args.lote), "--repo", REPO, "--body-file", "-",
+       entrada=lotes.cuerpo_con_miembros(datos["body"] or "", nuevos))
+    lista = ", ".join(f"#{n}" for n in nuevos)
+    print(f"Lote #{args.lote}: añadidas {lista}" + (f"; su PR es la #{pr}." if pr else "; aún sin PR enlazada."))
+    if pr:
+        cierra = issues_de_pr(next(p for p in prs_abiertas() if p["number"] == pr))
+        if faltan := [n for n in nuevos if n not in cierra]:
+            print(f"Aviso: añade «Closes {', '.join(f'#{n}' for n in faltan)}» al cuerpo de la PR #{pr}.")
 
 
 def cmd_lote_estado(args: argparse.Namespace) -> None:
@@ -117,6 +158,10 @@ def anadir_comandos(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--pr", type=int, help="PR del lote (por defecto, la PR abierta que enlaza a los miembros)")
     q.add_argument("miembros", type=int, nargs="+")
     q.set_defaults(fn=cmd_lote_crear)
+    q = acciones.add_parser("añadir", aliases=["anadir"], help="meter issues en un lote ya creado")
+    q.add_argument("lote", type=int)
+    q.add_argument("miembros", type=int, nargs="+")
+    q.set_defaults(fn=cmd_lote_anadir)
     q = acciones.add_parser("estado", help="qué miembros faltan; error si la PR aún no se puede fusionar")
     q.add_argument("numero", type=int)
     q.set_defaults(fn=cmd_lote_estado)

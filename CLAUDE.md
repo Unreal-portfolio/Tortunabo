@@ -53,7 +53,7 @@ Ciclo paso a paso:
 
 Una prueba que falla en In review, QA editor o con la issue cerrada la lleva a Revisiones (la reabre si hace falta, con `regresion` si ya funcionaba). Regla única que aplican `ia`, `editor` y `sync`: Done solo con la PR en dev, Revisión IA = Aprobada y Editor = Funciona.
 
-**Una rama y una PR por lote.** Las tarjetas que van juntas (un sistema, una tanda de bugs del mismo objeto) se agrupan en un lote desde el principio: una rama, una PR con `Closes` de todas, y `lote crear --titulo "…" <n> <n> …`, que crea la issue temporal `lote` («Lote: …»), depende de cada miembro y la enlaza a la PR con «Refs». Cada miembro se revisa y se prueba por separado en esa rama y, con las dos validaciones, espera en Validada. La PR del lote no se fusiona hasta que `lote estado <lote>` confirma que todos están en Validada y que ninguno tiene una `decision` pendiente; entonces pasan a Done, se fusiona y el lote se cierra con un **Resumen** del conjunto.
+**Una rama y una PR por lote.** Las tarjetas que van juntas (un sistema, una tanda de bugs del mismo objeto) se agrupan en un lote desde el principio: una rama, una PR con `Closes` de todas, y `lote crear --titulo "…" <n> <n> …`, que crea la issue temporal `lote` («Lote: …»), depende de cada miembro y la enlaza a la PR con «Refs» (una issue citada con «Refs» no avanza ni cuenta como fusionada: solo `Closes` mueve las issues). Una issue que se suma después entra con `lote añadir <lote> <n>` (y su `Closes` en la PR), no con `bloquear`. Cada miembro se revisa y se prueba por separado en esa rama y, con las dos validaciones, espera en Validada. La PR del lote no se fusiona hasta que `lote estado <lote>` confirma que todos están en Validada y que ninguno tiene una `decision` pendiente; entonces pasan a Done, se fusiona y el lote se cierra con un **Resumen** del conjunto.
 
 **Dependencias**: si una issue no puede empezar hasta que se cierren otras, `bloquear <n> --por <m>` la deja en Bloqueada; `sync --aplicar` la pasa a Ready cuando se cierran todas. En Backlog la dependencia se registra y la issue sigue en Backlog (bloquear no aprueba); al aprobarla con `estado <n> Ready`, si sus bloqueantes siguen abiertas va a Bloqueada.
 
@@ -107,6 +107,7 @@ uv run python Scripts/tablero/tablero.py resumenes <n>         # resúmenes de l
 uv run python Scripts/tablero/tablero.py decidir <n> --texto "<decisión>"
 uv run python Scripts/tablero/tablero.py pedir <n> --texto "<qué pido>" | atendida <n> --nota "<qué he hecho>"
 uv run python Scripts/tablero/tablero.py lote crear --titulo "..." <n> <n> ... | lote estado <lote>
+uv run python Scripts/tablero/tablero.py lote añadir <lote> <n> [<n> ...]   # meter miembros en un lote ya creado
 uv run python Scripts/tablero/tablero.py bloquear <n> --por <m> [--por <k>]   # en Backlog se queda en Backlog
 uv run python Scripts/tablero/tablero.py nueva --titulo "..." --tipo bug|tarea --cuerpo f.md --objeto "<objeto>" --prioridad P1 --tamano S --area Red [--fase F4 --estado Ready]
 uv run python Scripts/tablero/tablero.py objeto "<nombre>" [--area X --descripcion "..." --nuevo] | colgar <hijo> <objeto>

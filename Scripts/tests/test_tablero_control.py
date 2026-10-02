@@ -141,9 +141,23 @@ def test_trivial_mueve_la_tarjeta_y_rellena_el_campo_evidente():
     assert not accion["etiquetar"] and not accion["reabrir"]
 
 
-def test_validada_fuera_de_un_lote_vuelve_a_in_review():
+def test_validada_suelta_aprobada_y_probada_sin_fusionar_no_se_mueve():
+    """#282: una issue suelta también espera en Validada a la fusión."""
     issue = _issue("Validada", con_pr=True, valores={"Revisor": "Mokius", "Revisión IA": "Aprobada", "Editor": "Funciona"})
-    assert auditoria.problemas(issue, AHORA)[0]["valor"] == "In review"
+    assert auditoria.columna_correcta(issue) is None
+    assert auditoria.problemas(issue, AHORA) == []
+
+
+@pytest.mark.parametrize("lotes_, valores", [([], {"Revisión IA": "Pendiente", "Editor": "Funciona"}),
+                                             ([131], {"Revisión IA": "Aprobada", "Editor": "Sin probar"})])
+def test_validada_sin_las_dos_validaciones_vuelve_a_in_review(lotes_, valores):
+    issue = _issue("Validada", con_pr=True, lotes=lotes_, valores={"Revisor": "Mokius", **valores})
+    assert auditoria.columna_correcta(issue) == "In review"
+
+
+def test_validada_con_cambios_pedidos_va_a_revisiones():
+    issue = _issue("Validada", con_pr=True, valores={"Revisor": "Mokius", "Revisión IA": "Cambios pedidos"})
+    assert auditoria.columna_correcta(issue) == "Revisiones"
 
 
 def test_grave_lote_fusionado_sin_validar_va_a_revisiones_con_p0():
