@@ -1,6 +1,8 @@
 #include "Player/TN_TurtleMovementComponent.h"
 #include "Core/TN_Log.h"
 #include "Player/TortugaCharacter.h"
+#include "Player/TN_StaminaComponent.h"
+#include "Player/TN_WadingComponent.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "CollisionQueryParams.h"
 #include "Components/CapsuleComponent.h"
@@ -75,6 +77,20 @@ namespace TNBellySlide
 			SavedBellyTime = 0.f;
 			SavedSlideSerial = 0;
 			SavedCapsuleHalfHeight = 0.f;
+			bSavedWantsToSprint = false;
+		}
+
+		virtual void SetMoveFor(ACharacter* C, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override
+		{
+			Super::SetMoveFor(C, InDeltaTime, NewAccel, ClientData);
+			const UTN_TurtleMovementComponent* TurtleMove = C ? Cast<UTN_TurtleMovementComponent>(C->GetCharacterMovement()) : nullptr;
+			bSavedWantsToSprint = TurtleMove && TurtleMove->InputWantsToSprint();
+		}
+
+		virtual uint8 GetCompressedFlags() const override
+		{
+			// La petición de sprint viaja con el movimiento: el servidor corre en el mismo movimiento que el cliente.
+			return Super::GetCompressedFlags() | (bSavedWantsToSprint ? FLAG_Custom_0 : 0);
 		}
 
 		virtual void SetInitialPosition(ACharacter* C) override
@@ -93,6 +109,10 @@ namespace TNBellySlide
 			// Sobre la tripa cada movimiento cuenta (el tiempo del arrastre y los cambios de fase no se pueden juntar).
 			const FTNSavedMove_Turtle* Other = static_cast<const FTNSavedMove_Turtle*>(NewMove.Get());
 			if (SavedBellyPhase != 0 || (Other && (Other->SavedBellyPhase != 0 || Other->SavedSlideSerial != SavedSlideSerial)))
+			{
+				return false;
+			}
+			if (Other && Other->bSavedWantsToSprint != bSavedWantsToSprint)
 			{
 				return false;
 			}
@@ -124,6 +144,7 @@ namespace TNBellySlide
 		uint8 SavedSlideSerial = 0;
 		/** Semialtura de la cápsula sin escalar al empezar el movimiento. */
 		float SavedCapsuleHalfHeight = 0.f;
+		bool bSavedWantsToSprint = false;
 	};
 
 	class FTNNetworkPredictionData_Client_Turtle : public FNetworkPredictionData_Client_Character
@@ -247,6 +268,12 @@ void UTN_TurtleMovementComponent::ConsumeMoveStartBellyState(uint8& OutPhase, fl
 void UTN_TurtleMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+	// Fuera de una repetición, quien la controla corre con lo que pide ahora (al repetir se quedó lo del último movimiento).
+	if (CharacterOwner && CharacterOwner->IsLocallyControlled() && !CharacterOwner->bClientUpdating)
+	{
+		bWantsToSprint = bInputWantsToSprint;
+	}
+	UpdateMoveWadingMultiplier();
 	bPendingBounce = false;
 	// El movimiento ya se ha guardado (el cliente guarda antes de simular): lo de antes del brinco ya no sirve.
 	bHasPreJumpBelly = false;
@@ -755,9 +782,47 @@ FRotator UTN_TurtleMovementComponent::ComputeOrientToMovementRotation(const FRot
 	return CurrentRotation;
 }
 
+void UTN_TurtleMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
+{
+	Super::UpdateFromCompressedFlags(Flags);
+	bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
+
+	// Servidor: la estamina (gasto, réplica a los demás y animación) corre cuando corre el movimiento del cliente.
+	if (CharacterOwner && CharacterOwner->HasAuthority() && !CharacterOwner->IsLocallyControlled())
+	{
+		if (const ATortugaCharacter* Turtle = GetTurtle())
+		{
+			if (UTN_StaminaComponent* Stamina = Turtle->GetStaminaComponent())
+			{
+				Stamina->SetSprintRequested(bWantsToSprint);
+			}
+		}
+	}
+}
+
+void UTN_TurtleMovementComponent::UpdateMoveWadingMultiplier()
+{
+	MoveWadingMultiplier = 1.f;
+	const ATortugaCharacter* Turtle = GetTurtle();
+	const UTN_WadingComponent* Wading = Turtle ? Turtle->FindComponentByClass<UTN_WadingComponent>() : nullptr;
+	const UCapsuleComponent* Capsule = Turtle ? Turtle->GetCapsuleComponent() : nullptr;
+	if (Wading && Capsule && UpdatedComponent)
+	{
+		const double FeetZ = UpdatedComponent->GetComponentLocation().Z - Capsule->GetScaledCapsuleHalfHeight();
+		MoveWadingMultiplier = Wading->GetSpeedMultiplierAt(FeetZ, IsMovingOnGround());
+	}
+}
+
 float UTN_TurtleMovementComponent::GetMaxSpeed() const
 {
-	const float Base = Super::GetMaxSpeed();
+	float Base = Super::GetMaxSpeed();
+	// Andando (y en el aire, que usa la misma): la de este movimiento, con su sprint y su vadeo (ver SetWantsToSprint).
+	const ATortugaCharacter* Turtle = GetTurtle();
+	const UTN_StaminaComponent* Stamina = Turtle ? Turtle->GetStaminaComponent() : nullptr;
+	if (Stamina && !IsCrouching() && (MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking || MovementMode == MOVE_Falling))
+	{
+		Base = Stamina->ComputeMaxWalkSpeed(Stamina->CanSprint(bWantsToSprint), MoveWadingMultiplier);
+	}
 	if (!IsMovingOnGround())
 	{
 		return Base;

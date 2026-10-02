@@ -101,6 +101,19 @@ public:
 	 */
 	void ConsumeMoveStartBellyState(uint8& OutPhase, float& OutTime, uint8& OutSerial, float& OutCapsuleHalfHeight);
 
+	// ── Sprint y vadeo, predichos ────────────────────────────────────────────
+	// La velocidad máxima andando se calcula en cada paso (GetMaxSpeed) con la petición de sprint de ese movimiento, que el
+	// cliente dueño manda en sus movimientos (FLAG_Custom_0), y con el vadeo de la posición de ese paso. Antes la ponía
+	// UTN_StaminaComponent en MaxWalkSpeed cuando a cada máquina le llegaba el cambio (el sprint por RPC, el vadeo en su Tick
+	// a 10 Hz): el cliente y el servidor andaban a velocidades distintas durante un momento y el servidor lo corregía, que
+	// se veía como temblores al andar (#250).
+
+	/** El jugador pide correr (ATortugaCharacter::RefreshSprintRequest, en la máquina que la controla). */
+	void SetWantsToSprint(bool bWants) { bInputWantsToSprint = bWants; bWantsToSprint = bWants; }
+
+	/** Lo que pide ahora el jugador (lo que se guarda en el movimiento nuevo). */
+	bool InputWantsToSprint() const { return bInputWantsToSprint; }
+
 	// ── UCharacterMovementComponent ──────────────────────────────────────────
 
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
@@ -276,6 +289,9 @@ public:
 	float BellyBodyProbeHeight = 32.f;
 
 protected:
+	/** Servidor (y repetición en el cliente): la petición de sprint del movimiento (FLAG_Custom_0). */
+	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
+
 	virtual void ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations) override;
 	virtual void HandleImpact(const FHitResult& Hit, float TimeSlice = 0.f, const FVector& MoveDelta = FVector::ZeroVector) override;
 	virtual void OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity) override;
@@ -326,6 +342,16 @@ private:
 
 	/** TN.Dive.Debug: línea en pantalla y flechas. */
 	void ShowBellyDebug() const;
+
+	/** Vadeo en la posición de este paso (UpdateCharacterStateBeforeMovement). */
+	void UpdateMoveWadingMultiplier();
+
+	/** Lo que pide el jugador ahora y lo que pedía en el movimiento que se simula (distintos al repetir movimientos). */
+	bool bInputWantsToSprint = false;
+	bool bWantsToSprint = false;
+
+	/** Multiplicador del vadeo en este paso del movimiento (1 = fuera del agua). */
+	float MoveWadingMultiplier = 1.f;
 
 	ETNBellyPhase BellyPhase = ETNBellyPhase::None;
 	float BellyTime = 0.f;

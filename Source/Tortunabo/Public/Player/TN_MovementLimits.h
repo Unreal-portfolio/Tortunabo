@@ -51,6 +51,36 @@ namespace TNMovementLimits
 		return FMath::Max(0.f, FMath::Min(BaseJumpZ * Multiplier, Cap));
 	}
 
+	/** Lo que decide la velocidad máxima andando (UTN_StaminaComponent::ComputeMaxWalkSpeed). */
+	struct FWalkSpeedInputs
+	{
+		float WalkSpeed = 0.f;
+		float SprintSpeed = 0.f;
+		bool bSprinting = false;
+		/** Multiplicador de la penalización tras la estamina ilimitada (1 = ninguna). */
+		float PostBoostMultiplier = 1.f;
+		/** Multiplicador del entorno: el vadeo (1 = ninguno). */
+		float EnvironmentMultiplier = 1.f;
+		/** Turbo de los objetos de carrera (1 = ninguno). */
+		float RaceMultiplier = 1.f;
+		/** El tope que manda (ResolveSpeedCap). */
+		float Cap = NoCap;
+	};
+
+	/**
+	 * Velocidad máxima andando: la de andar o correr, por las penalizaciones y el entorno; con turbo, al menos la de correr
+	 * por el turbo (sin la penalización); y siempre recortada por el tope.
+	 */
+	inline float ResolveWalkSpeed(const FWalkSpeedInputs& In)
+	{
+		float Speed = (In.bSprinting ? In.SprintSpeed : In.WalkSpeed) * In.PostBoostMultiplier * In.EnvironmentMultiplier;
+		if (In.RaceMultiplier > 1.f)
+		{
+			Speed = FMath::Max(Speed, In.SprintSpeed) * In.RaceMultiplier;
+		}
+		return FMath::Min(Speed, In.Cap);
+	}
+
 	/** La escala de gravedad: la menor de las impuestas (el sirope más espeso); sin ninguna, la base. */
 	inline float ResolveGravityScale(float BaseScale, const TMap<FName, float>& Overrides)
 	{

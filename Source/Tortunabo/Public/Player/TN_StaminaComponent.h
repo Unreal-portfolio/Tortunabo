@@ -39,11 +39,23 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/**
-	 * @brief Pide activar o desactivar el sprint. Server-authoritative.
+	 * @brief Pide activar o desactivar el sprint en esta máquina. No va por RPC: la petición del cliente dueño viaja en sus
+	 *        movimientos (UTN_TurtleMovementComponent, predicha), y el servidor la recibe de ellos al mismo tiempo que el
+	 *        movimiento que la usa. Antes llegaba por su RPC a destiempo y cada cambio de velocidad era una corrección.
 	 * @param bRequested true = mantener sprint activo si hay stamina; false = soltar.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Stamina")
 	void SetSprintRequested(bool bRequested);
+
+	/** Con esta petición de sprint, si de verdad corre: hace falta estamina (o tenerla ilimitada). */
+	bool CanSprint(bool bRequested) const;
+
+	/**
+	 * Velocidad máxima andando (cm/s) corriendo o no y con este multiplicador del entorno: penalización tras el boost,
+	 * turbo y el tope que mande (TNMovementLimits::ResolveWalkSpeed). La usa el movimiento en cada paso, con el sprint y el
+	 * vadeo de ese movimiento, para que el cliente y el servidor calculen lo mismo.
+	 */
+	float ComputeMaxWalkSpeed(bool bSprinting, float EnvironmentMultiplier) const;
 
 	/**
 	 * @brief Otorga stamina ilimitada durante DurationSeconds (Barrita Energética / boosts).
@@ -206,10 +218,6 @@ protected:
 	float SprintSpeed = 800.0f;
 
 private:
-	/** @brief Server RPC: confirma el estado de sprint solicitado por el cliente. */
-	UFUNCTION(Server, Reliable)
-	void ServerSetSprintRequested(bool bRequested);
-
 	/** @brief Server RPC: aplica stamina ilimitada del lado servidor. */
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerGrantUnlimitedStamina(float DurationSeconds);
@@ -227,7 +235,7 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_IsSprinting)
 	bool bIsSprinting = false;
 
-	UPROPERTY(Replicated)
+	/** Lo pide cada máquina para sí (el servidor, con lo que traen los movimientos del cliente): no se replica. */
 	bool bSprintRequested = false;
 
 	UPROPERTY(ReplicatedUsing = OnRep_UnlimitedStamina)

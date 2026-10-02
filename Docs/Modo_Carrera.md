@@ -1450,7 +1450,9 @@ del aturdimiento es solo de la malla; la cápsula de su tortuga solo solapa y su
   (`MaxVoiceListeners`). Peor caso con ocho hablando juntos: ~0,5 MB/s de subida del anfitrión (antes ~1,3 MB/s).
   Pendiente: Opus.
 - `UTN_StaminaComponent::SetSprintRequested`: el RPC fiable `ServerSetSprintRequested` iba **en cada fotograma** al moverse
-  (riesgo de desbordar los fiables); ahora solo al cambiar.
+  (riesgo de desbordar los fiables); ahora solo al cambiar. Después (#250) ya no hay RPC: la petición viaja en los
+  movimientos del cliente (`FLAG_Custom_0`) y `UTN_TurtleMovementComponent::GetMaxSpeed` calcula la velocidad en cada paso
+  con ese sprint y con el vadeo de esa posición, igual en el cliente y en el servidor (antes cada cambio era una corrección).
 - Cabeza: `ServerUpdateHeadRotation` iba en cada fotograma con dos floats a 60 Hz; ahora grados enteros (`int8`), como
   mucho 12 veces por segundo y solo si cambia (y una vez por segundo por si se perdió); `ReplicatedHeadYaw/Pitch`, un byte.
 - Tortuga (`ATortugaCharacter`): 60/30 Hz → **30/10 Hz**. `CurrentStamina` solo al dueño; los demás reciben
