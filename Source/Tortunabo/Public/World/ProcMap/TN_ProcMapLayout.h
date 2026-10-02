@@ -95,6 +95,8 @@ namespace TNProcMap
 		double NarrowChance = 0.22;
 		/** Longitud del camino dentro de un módulo / distancia recta entre portales. */
 		double Sinuosity = 1.8;
+		/** Escala de las medidas fijas del trazador dentro de un módulo (pasos, tramos rectos, márgenes); 1 = Coop. */
+		double WalkScale = 1.0;
 		double SampleSpacing = 400.0;
 
 		/** Huecos de salto (salto 2 m corriendo, dive 4 m). */

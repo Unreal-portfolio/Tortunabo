@@ -5,7 +5,7 @@
 
 /**
  * Mapa de Supervivencia (#273, Docs/Mapa_Supervivencia.md): el generador del Coop con un perfil propio. Un mapa
- * alargado de unos 160 × 400 m (2 × 5 módulos de 80 m), la salida al sur y la meta al norte, sin pasadas de cruce,
+ * alargado de unos 80 × 200 m (2 × 5 módulos de 40 m), la salida al sur y la meta al norte, sin pasadas de cruce,
  * poco sinuoso y con la dificultad de entrada 1–5 (el nivel N de la partida pide min(N, 5)). El Coop no cambia.
  */
 
@@ -15,6 +15,8 @@ namespace TNProcMap
 	constexpr int32 SurvivalMaxDifficulty = 5;
 	/** Cota del agua en el formato del banco (WATER_M de Scripts/terrain_vol): el mar del generador está a 0. */
 	constexpr double SurvivalBenchWaterM = -4.0;
+	/** Ancho (cm) de la ventana que mide el banco y en la que debe caber el camino (Scripts/terrain_survival/spec.py). */
+	constexpr double SurvivalWindowWidth = 7500.0;
 
 	/** Parámetros del mapa de Supervivencia para una semilla y una dificultad 1–5 (GenerateLayout los sanea). */
 	inline FGenParams MakeSurvivalParams(uint32 Seed, int32 Difficulty)
@@ -26,7 +28,10 @@ namespace TNProcMap
 		P.Seed = Seed;
 		P.GridSize = 5;
 		P.GridSizeX = 2;
-		P.ModuleSize = 8000.0;
+		P.ModuleSize = 4000.0;
+		// El trazador de cada módulo está hecho para módulos de 400 m: sus pasos y márgenes, a la escala de 40 m
+		// (con un radio de giro que no baje del ancho del camino).
+		P.WalkScale = 0.3;
 		P.CellSize = 200.0;
 		P.SampleSpacing = 200.0;
 
@@ -47,23 +52,23 @@ namespace TNProcMap
 		P.NumBiomeRegions = 2;
 		// Sin isletas ni pasarelas (su suelo son mallas sobre el agua) y el camino lejos de los bordes largos.
 		P.bWetBiomes = false;
-		P.SideMargin = 2200.0;
+		P.SideMargin = 1200.0;
 
 		// El camino nunca baja de 3 m (la especificación); la dificultad lo estrecha y pone más huecos y más largos.
-		P.PathWidthMin = LerpD(700.0, 400.0, T);
-		P.PathWidthMax = LerpD(1600.0, 1000.0, T);
+		P.PathWidthMin = LerpD(650.0, 450.0, T);
+		P.PathWidthMax = LerpD(1100.0, 800.0, T);
 		P.PortalWidthMin = P.PathWidthMin;
 		P.PortalWidthMax = P.PathWidthMax;
 		P.NarrowChance = LerpD(0.1, 0.35, T);
-		P.GapsPerKm = LerpD(8.0, 24.0, T);
+		P.GapsPerKm = LerpD(12.0, 36.0, T);
 		P.GapMax = LerpD(260.0, 390.0, T);
 		P.Difficulty01 = T;
 		P.EggNestEveryNPortals = 2;
-		// La salida y la meta a unos 12 m de los extremos: claro de salida pequeño y la costa unos 12 m pasado el
+		// La salida y la meta a unos 12 m de los extremos: claro de salida pequeño y la costa unos 5 m pasado el
 		// borde norte, para que la orilla quede al final del mapa. SanitizeParams reduce a la mitad los dos en
 		// módulos pequeños, y se aplica una sola vez, en GenerateLayout.
 		P.StartClearingRadius = 1000.0;
-		P.CoastInset = -2400.0;
+		P.CoastInset = -1000.0;
 		return P;
 	}
 
@@ -105,10 +110,10 @@ namespace TNProcMap
 		return true;
 	}
 
-	/** Si el camino principal cabe entero en los 150 m centrales del ancho (lo que se mide y lo que se juega). */
+	/** Si el camino principal cabe entero en los 75 m centrales del ancho (lo que se mide y lo que se juega). */
 	inline bool SurvivalPathInside(const FLayout& L)
 	{
-		const double Margin = 0.5 * (L.WorldSizeX - 15000.0) + 100.0;
+		const double Margin = 0.5 * (L.WorldSizeX - SurvivalWindowWidth) + 100.0;
 		for (const FPathSample& S : L.Main)
 		{
 			if ((S.Flags & PathFlags::Shore) != 0) { continue; }   // la playa final se abre en abanico hasta el agua
@@ -124,7 +129,7 @@ namespace TNProcMap
 	 */
 	inline uint32 GenerateSurvivalLayout(uint32 Seed, int32 Difficulty, FLayout& Out)
 	{
-		for (int32 Attempt = 0; Attempt < 8; ++Attempt)
+		for (int32 Attempt = 0; Attempt < 12; ++Attempt)
 		{
 			const uint32 Try = Seed + static_cast<uint32>(Attempt) * 7919u;
 			if (GenerateLayout(MakeSurvivalParams(Try, Difficulty), Out) && Out.bValid && !SurvivalPathFolds(Out) && SurvivalPathInside(Out)
@@ -134,20 +139,20 @@ namespace TNProcMap
 			}
 		}
 		Out.bValid = false;
-		Out.FailReason = "Supervivencia: sin mapa valido en 8 semillas";
+		Out.FailReason = "Supervivencia: sin mapa valido en 12 semillas";
 		return 0;
 	}
 
 	/**
 	 * Alturas del mapa en el formato del banco (Scripts/terrain_survival/mapa.py): una muestra por metro, filas =
 	 * ancho (X del mapa) y columnas = avance (Y), así que la salida queda al oeste y la meta al este. Una ventana de
-	 * 150 × 400 m centrada en el ancho: lo que sobra a los lados es muro del borde. Los huecos de salto van aparte
+	 * 75 × 200 m centrada en el ancho: lo que sobra a los lados es muro del borde. Los huecos de salto van aparte
 	 * (Jumps): el banco los cruza saltando si el salto más largo cabe en el dive (decisión pendiente en #273).
 	 */
 	struct FSurvivalTop
 	{
-		static constexpr int32 Rows = 151;
-		static constexpr int32 Cols = 401;
+		static constexpr int32 Rows = 76;
+		static constexpr int32 Cols = 201;
 		/** Cota (m) de cada muestra, fila a fila: Top[Row * Cols + Col]. */
 		TArray<float> Top;
 		/** (fila, columna) de la salida y de la meta. */

@@ -28,7 +28,7 @@ def flat(height: float = 3.0) -> SurvivalMap:
 
 def test_la_especificacion_es_alargada():
     assert spec.LENGTH_M / spec.WIDTH_M >= spec.MIN_ASPECT
-    assert spec.MAX_TRIANGLES == 180_000
+    assert spec.MAX_TRIANGLES == 45_000
 
 
 def test_un_mapa_llano_es_valido_y_el_camino_es_la_recta():
@@ -48,7 +48,7 @@ def test_fuera_del_camino_distingue_lineal_de_laberinto():
 
 def test_un_muro_de_agua_corta_el_mapa():
     m = flat()
-    m.top[:, 200:204] = -10.0
+    m.top[:, 100:104] = -10.0
     r = evaluate(m)
     assert not r["reached"] and not r["valid"]
     assert route(m.top, m.top > -3.9, m.start, m.goal) is None
@@ -56,19 +56,19 @@ def test_un_muro_de_agua_corta_el_mapa():
 
 def test_un_paso_estrecho_no_vale_como_camino():
     m = flat()
-    m.top[:, 200:204] = -10.0
+    m.top[:, 100:104] = -10.0
     mid = m.top.shape[0] // 2
-    m.top[mid, 200:204] = 3.0                      # pasarela de 1 m: se anda, pero no cabe el ancho mínimo
+    m.top[mid, 100:104] = 3.0                      # pasarela de 1 m: se anda, pero no cabe el ancho mínimo
     r = evaluate(m)
     assert r["reached"] and not r["wide_path"] and not r["valid"]
 
 
 def gap_map(leap_m: float) -> SurvivalMap:
-    """Llano cortado por una zanja de 3 m (columnas 200-202) que se cruza con un salto de leap_m."""
+    """Llano cortado por una zanja de 3 m (columnas 100-102) que se cruza con un salto de leap_m."""
     m = flat()
-    m.top[:, 200:203] = -20.0
+    m.top[:, 100:103] = -20.0
     mid = m.top.shape[0] // 2
-    m.jumps = np.array([[mid, 198, mid, 204, leap_m]])
+    m.jumps = np.array([[mid, 98, mid, 104, leap_m]])
     return m
 
 

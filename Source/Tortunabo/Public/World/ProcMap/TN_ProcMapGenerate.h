@@ -25,7 +25,7 @@ namespace TNProcMap
 		FGenParams P = In;
 		P.GridSize = FMath::Clamp(P.GridSize, 1, 10);
 		P.GridSizeX = FMath::Clamp(P.GridSizeX, 0, 10);
-		P.ModuleSize = FMath::Clamp(P.ModuleSize, 8000.0, 80000.0);
+		P.ModuleSize = FMath::Clamp(P.ModuleSize, 3000.0, 80000.0);
 		P.CellSize = FMath::Clamp(P.CellSize, 200.0, 1600.0);
 		P.Coverage = FMath::Clamp(P.Coverage, 0.1, 1.0);
 		P.NumCrossings = FMath::Clamp(P.NumCrossings, 0, 8);

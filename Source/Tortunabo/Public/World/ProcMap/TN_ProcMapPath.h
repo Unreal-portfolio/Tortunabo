@@ -34,6 +34,8 @@ namespace TNProcMap
 			double Wavelength = 16000.0;
 			/** Si true, el final puede salir del módulo (tramo de costa). */
 			bool bFreeExit = false;
+			/** Escala de las medidas fijas del caminante (pasos, tramos rectos, márgenes); 1 en el Coop. */
+			double Scale = 1.0;
 		};
 
 		constexpr double WalkStep = 600.0;
@@ -44,48 +46,49 @@ namespace TNProcMap
 		inline double RelaxFactor(const FWalkInput& In, const FVector2D& P)
 		{
 			const double D = FMath::Min(FVector2D::Distance(P, In.Entry), FVector2D::Distance(P, In.Exit));
-			return Saturate(D / PortalRelax);
+			return Saturate(D / (PortalRelax * In.Scale));
 		}
 
 		inline bool Walk(const FLayout& L, const FWalkInput& In, TArray<FVector2D>& Out)
 		{
 			Out.Reset();
-			const FVector2D PostEntry = In.Entry + In.EntryDir * LeadIn;
-			const FVector2D PreExit = In.Exit - In.ExitDir * LeadOut;
+			const FVector2D PostEntry = In.Entry + In.EntryDir * (LeadIn * In.Scale);
+			const FVector2D PreExit = In.Exit - In.ExitDir * (LeadOut * In.Scale);
 			Out.Add(In.Entry);
 			Out.Add(PostEntry);
 
 			FVector2D Pos = PostEntry;
 			double Heading = AngleOf(In.EntryDir);
-			double Traveled = LeadIn;
+			double Traveled = LeadIn * In.Scale;
 			// Fase del meandro: el rumbo deseado oscila como un río (sinuosidad ≈ 1/J0(Amp)).
 			double Phase = static_cast<double>(In.NoiseSeed % 6283u) / 1000.0;
 			const double MaxTurn = FMath::DegreesToRadians(16.0);
-			const double SelfClear = FMath::Max(5200.0, In.Margin * 1.7);
-			const int32 SkipRecent = FMath::CeilToInt(SelfClear * 1.6 / WalkStep);
-			const int32 MaxSteps = FMath::CeilToInt(In.TargetLength * 2.6 / WalkStep) + 60;
+			const double Step = WalkStep * In.Scale;
+			const double SelfClear = FMath::Max(5200.0 * In.Scale, In.Margin * 1.7);
+			const int32 SkipRecent = FMath::CeilToInt(SelfClear * 1.6 / Step);
+			const int32 MaxSteps = FMath::CeilToInt(In.TargetLength * 2.6 / Step) + 60;
 
 			for (int32 It = 0; It < MaxSteps; ++It)
 			{
 				const FVector2D ToT = PreExit - Pos;
 				const double DistT = ToT.Size();
-				if (DistT < WalkStep * 1.5)
+				if (DistT < Step * 1.5)
 				{
 					Out.Add(PreExit);
 					Out.Add(In.Exit);
 					return true;
 				}
 
-				const double Remaining = In.TargetLength - LeadOut - Traveled;
+				const double Remaining = In.TargetLength - LeadOut * In.Scale - Traveled;
 				// Amplitud del meandro: se apaga cuando el presupuesto no da para más que ir recto.
 				const double Slack = Saturate((Remaining - DistT * 1.1) / FMath::Max(1.0, 0.18 * In.TargetLength));
 				const double Amp = In.MeanderAmp * Slack * (0.8 + 0.35 * Noise1(In.NoiseSeed + 11u, Traveled / (In.Wavelength * 2.3)));
 				const double AngT = AngleOf(ToT);
-				const double Wave = FMath::Sin(Phase) + 0.3 * Noise1(In.NoiseSeed, Traveled / 9000.0);
+				const double Wave = FMath::Sin(Phase) + 0.3 * Noise1(In.NoiseSeed, Traveled / (9000.0 * In.Scale));
 				const double Desired = AngT + Amp * Wave;
 				const double ExitPull = 0.2 + 2.8 * (1.0 - Slack);
 				// La longitud de onda varía con ruido para que no quede un zigzag regular.
-				Phase += TwoPi * WalkStep / (In.Wavelength * (0.8 + 0.4 * (0.5 + 0.5 * Noise1(In.NoiseSeed + 29u, Traveled / 30000.0))));
+				Phase += TwoPi * Step / (In.Wavelength * (0.8 + 0.4 * (0.5 + 0.5 * Noise1(In.NoiseSeed + 29u, Traveled / 30000.0))));
 
 				double BestScore = -1e300;
 				double BestHeading = Heading;
@@ -93,7 +96,7 @@ namespace TNProcMap
 				for (int32 k = -3; k <= 3; ++k)
 				{
 					const double Phi = Heading + MaxTurn * (static_cast<double>(k) / 3.0);
-					const FVector2D Next = Pos + DirFromAngle(Phi) * WalkStep;
+					const FVector2D Next = Pos + DirFromAngle(Phi) * Step;
 					const double Relax = RelaxFactor(In, Next);
 
 					const bool bInside = L.ModuleAt(Next) == In.Module;
@@ -131,9 +134,9 @@ namespace TNProcMap
 				if (!bFound) { return false; }
 
 				Heading = BestHeading;
-				Pos = Pos + DirFromAngle(Heading) * WalkStep;
+				Pos = Pos + DirFromAngle(Heading) * Step;
 				Out.Add(Pos);
-				Traveled += WalkStep;
+				Traveled += Step;
 			}
 			return false;
 		}
@@ -152,7 +155,7 @@ namespace TNProcMap
 				Acc[i] = S;
 				const bool bNearEnd = S < 3500.0 || Total - S < 3500.0;
 				if (bNearEnd) { continue; }
-				if (!In.bFreeExit || Total - S > 9000.0)
+				if (!In.bFreeExit || Total - S > 9000.0 * In.Scale)
 				{
 					if (L.ModuleAt(Pts[i]) != In.Module) { return false; }
 					if (L.BorderDistAt(Pts[i]) < MinBorder) { return false; }
@@ -162,7 +165,7 @@ namespace TNProcMap
 			{
 				for (int32 j = i + 2; j < Pts.Num(); j += 2)
 				{
-					if (Acc[j] - Acc[i] < 9000.0) { continue; }
+					if (Acc[j] - Acc[i] < 9000.0 * In.Scale) { continue; }
 					if (FVector2D::DistSquared(Pts[i], Pts[j]) < 3600.0 * 3600.0) { return false; }
 				}
 			}
@@ -196,7 +199,7 @@ namespace TNProcMap
 		{
 			TArray<FVector2D> Ctrl;
 			Ctrl.Add(In.Entry);
-			Ctrl.Add(In.Entry + In.EntryDir * LeadIn);
+			Ctrl.Add(In.Entry + In.EntryDir * (LeadIn * In.Scale));
 			if (bThroughInterior)
 			{
 				// Punto interior con más holgura cerca del punto medio entre portales.
@@ -216,7 +219,7 @@ namespace TNProcMap
 				}
 				Ctrl.Add(Best);
 			}
-			Ctrl.Add(In.Exit - In.ExitDir * LeadOut);
+			Ctrl.Add(In.Exit - In.ExitDir * (LeadOut * In.Scale));
 			Ctrl.Add(In.Exit);
 			return CatmullRom(Ctrl, 12);
 		}
@@ -224,8 +227,8 @@ namespace TNProcMap
 		/** Pasada casi recta (módulos de cruce): cuerda con un ligero arco. */
 		inline TArray<FVector2D> ChordCurve(const FWalkInput& In, FRng& Rng)
 		{
-			const FVector2D A = In.Entry + In.EntryDir * LeadIn;
-			const FVector2D B = In.Exit - In.ExitDir * LeadOut;
+			const FVector2D A = In.Entry + In.EntryDir * (LeadIn * In.Scale);
+			const FVector2D B = In.Exit - In.ExitDir * (LeadOut * In.Scale);
 			const FVector2D Mid = (A + B) * 0.5 + LeftNormal((B - A).GetSafeNormal()) * (FVector2D::Distance(A, B) * Rng.Range(-0.05, 0.05));
 			TArray<FVector2D> Ctrl;
 			Ctrl.Add(In.Entry);
@@ -538,10 +541,11 @@ namespace TNProcMap
 			In.ExitDir = k == NumSteps - 1 ? FVector2D(0.0, 1.0) : L.Portals[Step.ExitPortal].Dir;
 			In.EntryDir = k == 0 ? (In.Exit - In.Entry).GetSafeNormal() : L.Portals[Step.EntryPortal].Dir;
 			In.bFreeExit = k == NumSteps - 1;
-			In.Margin = 3200.0;
+			In.Scale = P.WalkScale;
+			In.Margin = 3200.0 * P.WalkScale;
 			In.NoiseSeed = P.Seed ^ Hash32(static_cast<uint32>(k) * 2654435761u);
 			const double Straight = FVector2D::Distance(In.Entry, In.Exit);
-			In.TargetLength = FMath::Max(Straight * P.Sinuosity * Rng.Range(0.85, 1.15), Straight + LeadIn + LeadOut);
+			In.TargetLength = FMath::Max(Straight * P.Sinuosity * Rng.Range(0.85, 1.15), Straight + LeadIn * P.WalkScale + LeadOut * P.WalkScale);
 			In.MeanderAmp = Rng.Range(1.2, 1.55);
 			// Longitud de onda del meandro grande: una o dos curvas amplias por módulo.
 			In.Wavelength = Rng.Range(0.8, 1.4) * P.ModuleSize;
@@ -561,7 +565,7 @@ namespace TNProcMap
 					FWalkInput Try = In;
 					Try.NoiseSeed = In.NoiseSeed + static_cast<uint32>(Attempt) * 7717u;
 					Try.MeanderAmp = In.MeanderAmp * (1.0 - 0.15 * Attempt);
-					Try.TargetLength = FMath::Max(Straight + LeadIn + LeadOut, In.TargetLength * (1.0 - 0.1 * Attempt));
+					Try.TargetLength = FMath::Max(Straight + LeadIn * P.WalkScale + LeadOut * P.WalkScale, In.TargetLength * (1.0 - 0.1 * Attempt));
 					TArray<FVector2D> Raw;
 					if (Walk(L, Try, Raw))
 					{
