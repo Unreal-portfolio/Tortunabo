@@ -68,7 +68,7 @@ query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
         labels(first: 20) { nodes { name } }
         assignees(first: 5) { nodes { login } }
         parent { number }
-        blockedBy(first: 10) { nodes { number state } }
+        blockedBy(first: 50) { nodes { number state } }
         blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } }
         comments(last: 40) { nodes { body author { login } } }
       }

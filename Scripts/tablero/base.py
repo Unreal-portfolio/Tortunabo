@@ -39,7 +39,7 @@ query($org: String!, $num: Int!, $cursor: String) {
         content { __typename
           ... on Issue { number title state url updatedAt
             assignees(first: 5) { nodes { login } } labels(first: 15) { nodes { name } }
-            blockedBy(first: 10) { nodes { number state } }
+            blockedBy(first: 50) { nodes { number state } }
             blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } } }
           ... on PullRequest { number title state url }
         }
@@ -59,7 +59,7 @@ query($owner: String!, $repo: String!, $num: Int!) {
   repository(owner: $owner, name: $repo) { issue(number: $num) {
     number title state url updatedAt
     assignees(first: 5) { nodes { login } } labels(first: 15) { nodes { name } }
-    blockedBy(first: 10) { nodes { number state } }
+    blockedBy(first: 50) { nodes { number state } }
     blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } }
     projectItems(first: 10) { nodes { id project { number }
       fieldValues(first: 20) { nodes {
