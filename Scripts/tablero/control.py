@@ -52,7 +52,7 @@ def contexto_prs(nodos: list[dict], proyecto: dict, abiertas: list[dict], fusion
         asignados = [a["login"] for a in nodo["assignees"]["nodes"]]
         contexto[n] = {"con_pr": n in con_pr, "fusionada": esta_fusionada(n, fusionadas, abiertas),
                        "revisor_sugerido": elegir_revisor(proyecto, asignados[0]) if asignados else None,
-                       "prs_sin_lote": [], "lote_fusionado": None}
+                       "prs_sin_lote": [], "lote_fusionado": None, "fuera_de_lote": []}
     for nodo in nodos:
         if nodo["number"] not in lotes_abiertos:
             continue
@@ -61,12 +61,24 @@ def contexto_prs(nodos: list[dict], proyecto: dict, abiertas: list[dict], fusion
         for miembro in bloqueos.bloqueantes(nodo):
             if pr and miembro["number"] in contexto:
                 contexto[miembro["number"]]["lote_fusionado"] = pr
+    miembros = {n["number"]: {b["number"] for b in bloqueos.bloqueantes(n)}
+                for n in nodos if n["number"] in lotes_abiertos}
+    marcar_prs_abiertas(contexto, abiertas, miembros, no_trabajo)
+    return contexto
+
+
+def marcar_prs_abiertas(contexto: dict[int, dict], abiertas: list[dict], miembros: dict[int, set[int]],
+                        no_trabajo: set[int]) -> None:
+    """PR que cierran varias issues sin lote, e issues que cierra la PR de un lote sin ser miembros de él."""
     for pr in abiertas:
         trabajo = issues_de_pr(pr) - no_trabajo
-        if lotes.pr_necesita_lote(trabajo, con_lote=bool(issues_de_pr(pr, menciones=True) & lotes_abiertos)):
+        enlazados = {lote: miembros[lote] for lote in issues_de_pr(pr, menciones=True) & miembros.keys()}
+        if lotes.pr_necesita_lote(trabajo, con_lote=bool(enlazados)):
             for n in trabajo & contexto.keys():
                 contexto[n]["prs_sin_lote"].append(pr["number"])
-    return contexto
+        for n, lotes_pr in lotes.fuera_del_lote(trabajo, enlazados).items():
+            if n in contexto:
+                contexto[n]["fuera_de_lote"] += [(pr["number"], lote) for lote in lotes_pr]
 
 
 def issues_auditables(proyecto: dict, ahora: datetime) -> list[dict]:
@@ -225,6 +237,7 @@ def cmd_bloquear(args: argparse.Namespace) -> None:
     """Registra de qué issues depende `numero` (relación nativa «blocked by») y la pasa a Bloqueada.
 
     En Backlog solo registra la dependencia: la issue aún no está aprobada y bloquearla no la aprueba.
+    Un objeto o un lote no llevan Status: solo se registra la dependencia.
     """
     issue = objetos.leer_issue(gh, REPO, args.numero)
     try:
@@ -237,7 +250,13 @@ def cmd_bloquear(args: argparse.Namespace) -> None:
            "-f", f"bloqueante={bloqueante['id']}")
     todas = ", ".join(f"#{m}" for m in sorted({*args.por, *(b["number"] for b in bloqueos.bloqueantes(issue))}))
     proyecto = cargar_proyecto(args.numero)
-    actual = proyecto["items"].get(args.numero, {}).get("valores", {}).get("Status")
+    item = proyecto["items"].get(args.numero, {})
+    if objetos.es_objeto(item) or lotes.es_lote(item):
+        print(f"#{args.numero} es un objeto o un lote: depende de {todas}, "
+              f"sin Status ni etiqueta `{bloqueos.ETIQUETA}`."
+              + (" Para meter miembros en un lote, `lote añadir`." if lotes.es_lote(item) else ""))
+        return
+    actual = item.get("valores", {}).get("Status")
     if bloqueos.estado_tras_bloquear(actual) is None:
         print(f"#{args.numero} sigue en Backlog; depende de {todas}. Al aprobarla pasará a Bloqueada si siguen abiertas.")
         return

@@ -13,7 +13,7 @@ También comprueba la forma de la issue (`problemas_de_formato`): etiqueta de ti
 criterios de aceptación. `nueva` usa la misma función para no crear issues mal formadas.
 
 La detección es pura: `problemas` recibe la issue ya normalizada con el contexto de sus PR
-(`con_pr`, `fusionada`, `lote_fusionado`, `prs_sin_lote`, `revisor_sugerido`).
+(`con_pr`, `fusionada`, `lote_fusionado`, `prs_sin_lote`, `fuera_de_lote`, `revisor_sugerido`).
 """
 
 from __future__ import annotations
@@ -240,6 +240,9 @@ def organizacion_abierta(issue: dict) -> list[dict]:
         lista.append(problema("en Bloqueada sin dependencias registradas (`tablero.py bloquear <n> --por <m>`)"))
     for pr in issue.get("prs_sin_lote", []):
         lista.append(problema(f"su PR #{pr} cierra varias issues sin lote (`tablero.py lote crear`)"))
+    for pr, lote in issue.get("fuera_de_lote", []):
+        lista.append(problema(f"la cierra la PR #{pr} pero no es miembro del lote #{lote} "
+                              f"(`tablero.py lote añadir {lote} {issue['numero']}`)"))
     return lista
 
 
