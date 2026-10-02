@@ -60,11 +60,6 @@ namespace TNBuggyDetail
 	/** Cadera (hueso Hips) de TotugaDemo_Rig a escala 2,5 respecto al origen de la tortuga sentada, ya girada al morro. */
 	const FVector DefaultHipsAboveTurtleOrigin(-1.f, 0.f, 61.4f);
 
-	/** Cañón visible (cm): largo, grosor y desplazamiento a la derecha de la artillera, para no atravesarle la cabeza. */
-	constexpr float BarrelLengthCm = 40.f;
-	constexpr float BarrelDiameterCm = 12.f;
-	constexpr float BarrelSideCm = 26.f;
-
 	/** Cámara de persecución de HellYeah: pivote sobre el centro, cabeceo fijo en mundo, se abre con la velocidad. */
 	const FVector CameraPivotLocal(0.f, 0.f, 120.f);
 	constexpr float CameraPitchDeg = -18.f;
@@ -159,17 +154,24 @@ ATN_Buggy::ATN_Buggy()
 	// Pivote a la altura de la boca (Muzzle_Gunner) sobre el asiento: apuntando al frente, la boca cae en el socket.
 	Turret->SetRelativeLocation(GunnerSeatLocal + FVector(0.f, 0.f, UTN_BuggyTurretComponent::PivotAboveSeatCm));
 
-	// Cañón: tubo junto a la cabeza de la artillera que acaba a la altura de la boca (cilindro básico de 100 cm tumbado
-	// sobre X; excepción aceptada: el modelo de Art/Source no trae torreta).
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> BarrelFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-	TurretBarrel = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TurretBarrel"));
-	TurretBarrel->SetupAttachment(Turret);
-	TurretBarrel->SetStaticMesh(BarrelFinder.Object);
-	TurretBarrel->SetRelativeLocationAndRotation(
-		FVector(UTN_BuggyTurretComponent::MuzzleDistanceCm - BarrelLengthCm * 0.5f, BarrelSideCm, 0.f), FRotator(-90.f, 0.f, 0.f));
-	TurretBarrel->SetRelativeScale3D(FVector(BarrelDiameterCm / 100.f, BarrelDiameterCm / 100.f, BarrelLengthCm / 100.f));
-	TurretBarrel->SetCollisionProfileName(TEXT("NoCollision"));
-	TurretBarrel->SetCastShadow(false);
+	// Torreta con forma propia (#435; el modelo de Art/Source no la trae): las mallas las construye BuildTurretVisuals en
+	// ejecución. Caña y cuerpo cuelgan de la torreta (guiñada y cabeceo); carro y aro, del chasis en el pivote.
+	const FVector TurretPivot = GunnerSeatLocal + FVector(0.f, 0.f, UTN_BuggyTurretComponent::PivotAboveSeatCm);
+	auto MakeTurretPart = [this](const TCHAR* Name, USceneComponent* Parent, const FVector& Location)
+	{
+		UStaticMeshComponent* Part = CreateDefaultSubobject<UStaticMeshComponent>(Name);
+		Part->SetupAttachment(Parent);
+		Part->SetRelativeLocation(Location);
+		Part->SetCollisionProfileName(TEXT("NoCollision"));
+		Part->SetGenerateOverlapEvents(false);
+		return Part;
+	};
+	TurretBarrel = MakeTurretPart(TEXT("TurretBarrel"), Turret, FVector::ZeroVector);
+	TurretBarrel->ComponentTags.Add(UTN_BuggyTurretComponent::TintTag);
+	TurretGun = MakeTurretPart(TEXT("TurretGun"), Turret, FVector::ZeroVector);
+	TurretMount = MakeTurretPart(TEXT("TurretMount"), Chassis, TurretPivot);
+	TurretRing = MakeTurretPart(TEXT("TurretRing"), Chassis, TurretPivot);
+	Turret->SetYawFollower(TurretMount);
 
 	const TCHAR* const SeatNames[] = { TEXT("DriverTurtle"), TEXT("GunnerTurtle") };
 	const FVector SeatLocations[] = { DriverSeatLocal, GunnerSeatLocal };
@@ -294,6 +296,7 @@ void ATN_Buggy::BeginPlay()
 	Super::BeginPlay();
 	ApplyWheelFriction();
 	ApplyTint();
+	BuildTurretVisuals();
 	RefreshSeatVisuals(true);
 	if (HasAuthority())
 	{

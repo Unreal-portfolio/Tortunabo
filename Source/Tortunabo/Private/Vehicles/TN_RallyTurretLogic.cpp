@@ -135,6 +135,13 @@ namespace TNRallyTurret
 		return ClampAim(Local.Rotation());
 	}
 
+	FVector MuzzleWorldLocation(const FVector& PivotWorld, const FRotator& BuggyRotation, const FRotator& RelativeAim, float ForwardCm,
+		float SideCm)
+	{
+		const FQuat World = BuggyRotation.Quaternion() * ClampAim(RelativeAim).Quaternion();
+		return PivotWorld + World.RotateVector(FVector(ForwardCm, SideCm, 0.f));
+	}
+
 	bool CadenceOk(double Now, double LastShot, float Interval, float Tolerance)
 	{
 		return Now - LastShot >= static_cast<double>(Interval) * Tolerance;

@@ -42,6 +42,8 @@ namespace TNTurretDetail
 	}
 }
 
+const FName UTN_BuggyTurretComponent::TintTag(TEXT("TNTurretTint"));
+
 UTN_BuggyTurretComponent::UTN_BuggyTurretComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -234,10 +236,11 @@ void UTN_BuggyTurretComponent::ApplySelectedLook()
 	{
 		return;
 	}
-	// El cañón (TurretBarrel del buggy) cuelga de la torreta: toma el color de la munición seleccionada.
+	// La caña del cañón (TurretBarrel del buggy, con TintTag) cuelga de la torreta: toma el color de la munición seleccionada.
 	for (USceneComponent* Child : GetAttachChildren())
 	{
-		if (UStaticMeshComponent* Barrel = Cast<UStaticMeshComponent>(Child))
+		UStaticMeshComponent* Barrel = Cast<UStaticMeshComponent>(Child);
+		if (Barrel && Barrel->ComponentHasTag(TintTag))
 		{
 			TNRallyLook::Tint(Barrel, TNRallyLook::AmmoColor(SelectedAmmo));
 		}
@@ -286,7 +289,8 @@ bool UTN_BuggyTurretComponent::TryFire(bool bSpecial, const FVector& WorldDir)
 	const FRotator Relative = TNRallyTurret::RelativeAimFromWorld(Buggy->GetActorRotation(), WorldDir);
 	SetAimRelative(Relative);
 	const FVector Dir = TNRallyTurret::AimWorldDirection(Buggy->GetActorRotation(), Relative);
-	const FVector Muzzle = GetComponentLocation() + Dir * MuzzleDistanceCm;
+	const FVector Muzzle = TNRallyTurret::MuzzleWorldLocation(GetComponentLocation(), Buggy->GetActorRotation(), Relative,
+		MuzzleDistanceCm, MuzzleSideCm);
 	if (!SpawnProjectile(Ammo, Dir, Muzzle))
 	{
 		return false;
@@ -424,6 +428,11 @@ void UTN_BuggyTurretComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			bOverheated = TNRallyTurret::IsOverheated(HeatState);
 		}
 	}
-	// La torreta gira con el apuntado que se ve en esta máquina.
-	SetRelativeRotation(GetDisplayAim());
+	// La torreta gira con el apuntado que se ve en esta máquina; su base, solo en guiñada.
+	const FRotator Aim = GetDisplayAim();
+	SetRelativeRotation(Aim);
+	if (USceneComponent* Follower = YawFollower.Get())
+	{
+		Follower->SetRelativeRotation(FRotator(0.f, Aim.Yaw, 0.f));
+	}
 }

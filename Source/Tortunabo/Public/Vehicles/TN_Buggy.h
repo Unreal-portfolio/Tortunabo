@@ -305,6 +305,8 @@ private:
 	void ApplyModelAssets();
 	/** Neumáticos en el eje de su rueda Chaos: suspensión, giro de la dirección y rodadura (solo con pantalla). */
 	void UpdateWheelVisuals();
+	/** Mallas de la torreta (TN_BuggyTurretMesh) construidas en ejecución; nada en el servidor dedicado (#435). */
+	void BuildTurretVisuals();
 	/** Socket de la carrocería relativo al chasis, o Fallback si la malla no lo tiene. */
 	FVector GetBodySocketLocal(FName Socket, const FVector& Fallback) const;
 
@@ -364,9 +366,21 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UTN_BuggyEngineAudioComponent> EngineAudio;
 
-	/** Cañón de la torreta (cilindro básico): gira con el apuntado. */
+	/** Caña y boca del cañón: gira y cabecea con el apuntado y toma el color de la munición (UTN_BuggyTurretComponent::TintTag). */
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UStaticMeshComponent> TurretBarrel;
+
+	/** Cuerpo, escudo y brazo del cañón: giran y cabecean con el apuntado. */
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> TurretGun;
+
+	/** Carro y horquilla de la torreta: solo giran en guiñada (UTN_BuggyTurretComponent::SetYawFollower). */
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> TurretMount;
+
+	/** Aro fijo sobre las barandillas en el que gira el carro. */
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> TurretRing;
 
 	/** Tortugas visuales: 0 = conductora, 1 = artillera. */
 	UPROPERTY(VisibleAnywhere, Category = "Components")

@@ -32,6 +32,13 @@ public:
 	 * asiento, 10 cm por delante del hocico de la artillera). El proyectil sale de ahí.
 	 */
 	static constexpr float MuzzleDistanceCm = 64.58f;
+	/**
+	 * Desplazamiento de la boca a la derecha del eje de apuntado (cm): el cañón va junto a la cabeza de la artillera, que
+	 * ocupa el eje (#435). El proyectil sale de la boca visible (TNRallyTurret::MuzzleWorldLocation).
+	 */
+	static constexpr float MuzzleSideCm = 25.f;
+	/** Etiqueta de las mallas que toman el color de la munición seleccionada (la caña del cañón). */
+	static const FName TintTag;
 
 	UTN_BuggyTurretComponent();
 
@@ -67,6 +74,12 @@ public:
 
 	/** Dirección en mundo del apuntado replicado. */
 	FVector GetAimWorldDirection() const;
+
+	/** Componente que sigue solo la guiñada de la torreta (la base del cañón); va enganchado al chasis en el pivote. */
+	void SetYawFollower(USceneComponent* InFollower) { YawFollower = InFollower; }
+
+	/** Vuelve a teñir las mallas con TintTag (p. ej. tras darles malla en ejecución). */
+	void RefreshSelectedLook() { ApplySelectedLook(); }
 
 	// ── Cualquier máquina ──────────────────────────────────────────────────────
 
@@ -166,6 +179,8 @@ private:
 	/** Hora del servidor en que la artillera se despierta (0 = no está noqueada). */
 	UPROPERTY(Replicated)
 	float GunnerKnockEndServerTime = 0.f;
+
+	TWeakObjectPtr<USceneComponent> YawFollower;
 
 	TNRallyTurret::FHeat HeatState;
 	TNRallyTurret::FSpecial Special;

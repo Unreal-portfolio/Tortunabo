@@ -2,6 +2,10 @@
 // con el estado de cada rueda Chaos (lo que hacía el AnimBP de SKM_Offroad). Todo cosmético salvo la malla de física.
 
 #include "Vehicles/TN_Buggy.h"
+#include "TN_BuggyTurretMesh.h"
+#include "Vehicles/TN_BuggyTurretComponent.h"
+#include "World/ProcMap/TN_ProcMapRuntimeMesh.h"
+#include "UObject/Package.h"
 #include "ChaosVehicleWheel.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -16,6 +20,25 @@ namespace TNBuggyVisuals
 {
 	/** Giro de los neumáticos derechos: la cara exterior mira afuera. */
 	const FQuat RightTireFlip(FRotator(0.f, 180.f, 0.f));
+
+	/** Material de color de vértice de las mallas en ejecución y el de las formas básicas (con el parámetro Color del tinte). */
+	const TCHAR* const VertexColorMaterialPath = TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor");
+	const TCHAR* const VertexColorFallbackPath = TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial");
+	const TCHAR* const TintableMaterialPath = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+
+	using FTurretBuilder = void (*)(TNProcMesh::FTNProcMeshBuffers&);
+
+	/** Pone en Part la malla que construye Build (sin colisión). */
+	void SetTurretMesh(UStaticMeshComponent* Part, FTurretBuilder Build, UMaterialInterface* Material)
+	{
+		if (!Part || !Material)
+		{
+			return;
+		}
+		TNProcMesh::FTNProcMeshBuffers Buffers;
+		Build(Buffers);
+		Part->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(GetTransientPackage(), Buffers, Material));
+	}
 
 	/** Neumático en el eje de su rueda: dirección (guiñada), rodadura (cabeceo) y, en los derechos, media vuelta. */
 	FTransform TireTransform(const FVector& RestLocal, const FVector& SuspensionOffset, float SteerDeg, float SpinDeg, bool bRight)
@@ -128,5 +151,34 @@ void ATN_Buggy::UpdateWheelVisuals()
 		const FVector Suspension = -Wheel->GetSuspensionAxis() * Wheel->GetSuspensionOffset();
 		Tire->SetRelativeTransform(TNBuggyVisuals::TireTransform(TireRestLocal[Index], Suspension, Wheel->GetSteerAngle(),
 			Wheel->GetRotationAngle(), Index % 2 == 1));
+	}
+}
+
+void ATN_Buggy::BuildTurretVisuals()
+{
+	if (Turret)
+	{
+		Turret->SetYawFollower(TurretMount);
+	}
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	using namespace TNBuggyVisuals;
+	UMaterialInterface* VertexColor = LoadObject<UMaterialInterface>(nullptr, VertexColorMaterialPath, nullptr, LOAD_NoWarn);
+	VertexColor = VertexColor ? VertexColor : LoadObject<UMaterialInterface>(nullptr, VertexColorFallbackPath);
+	UMaterialInterface* Tintable = LoadObject<UMaterialInterface>(nullptr, TintableMaterialPath);
+	if (!VertexColor || !Tintable)
+	{
+		UE_LOG(LogTNBuggy, Warning, TEXT("%s: sin materiales para la torreta"), *GetName());
+	}
+	SetTurretMesh(TurretRing, &TNBuggyTurretMesh::BuildRing, VertexColor);
+	SetTurretMesh(TurretMount, &TNBuggyTurretMesh::BuildMount, VertexColor);
+	SetTurretMesh(TurretGun, &TNBuggyTurretMesh::BuildGun, VertexColor);
+	SetTurretMesh(TurretBarrel, &TNBuggyTurretMesh::BuildBarrel, Tintable);
+	// La caña ya tiene malla y material: toma el color de la munición seleccionada.
+	if (Turret)
+	{
+		Turret->RefreshSelectedLook();
 	}
 }

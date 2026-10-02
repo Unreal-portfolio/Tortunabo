@@ -118,6 +118,13 @@ namespace TNRallyTurret
 	/** Apuntado relativo que corresponde a una dirección en mundo (para la IA y la conductora sola). Ya limitado. */
 	TORTUNABO_API FRotator RelativeAimFromWorld(const FRotator& BuggyRotation, const FVector& WorldDir);
 
+	/**
+	 * Boca visible de la torreta en mundo: ForwardCm por delante del pivote en la dirección del apuntado y SideCm a su
+	 * derecha (horizontal en el marco del buggy: el cabeceo no la mueve de lado). El proyectil y el fogonazo salen de ahí.
+	 */
+	TORTUNABO_API FVector MuzzleWorldLocation(const FVector& PivotWorld, const FRotator& BuggyRotation, const FRotator& RelativeAim,
+		float ForwardCm, float SideCm);
+
 	/** Cadencia: true si han pasado al menos Interval × Tolerance segundos (margen para la latencia). */
 	TORTUNABO_API bool CadenceOk(double Now, double LastShot, float Interval, float Tolerance = 0.85f);
 
