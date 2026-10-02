@@ -284,8 +284,8 @@ namespace TNProcMap
 				}
 			}
 		}
-		// Frontera mínima para poder colocar un portal con holgura (~70 m).
-		const int32 MinShared = FMath::Max(6, FMath::RoundToInt(7000.0 / P.CellSize));
+		// Frontera mínima para poder colocar un portal con holgura (~70 m; en módulos pequeños, el 40 % del lado).
+		const int32 MinShared = FMath::Max(6, FMath::RoundToInt(FMath::Min(7000.0, 0.4 * P.ModuleSize) / P.CellSize));
 		for (FModule& M : L.Modules)
 		{
 			for (int32 Other = 0; Other < NumModules; ++Other)

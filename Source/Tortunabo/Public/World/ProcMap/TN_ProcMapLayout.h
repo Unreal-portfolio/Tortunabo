@@ -79,6 +79,8 @@ namespace TNProcMap
 
 		/** Fracción de módulos únicos que recorre el camino principal. */
 		double Coverage = 0.78;
+		/** La ruta de módulos nunca vuelve a una fila más al sur (Supervivencia: el principal avanza hacia la meta). */
+		bool bMonotonicRoute = false;
 		int32 NumCrossings = 2;
 		int32 NumBranches = 12;
 		/** Bifurcaciones en carriles paralelos con puzles (2vs2). */
@@ -948,10 +950,11 @@ namespace TNProcMap
 			return BorderDist[CellIndex(C.X, C.Y)];
 		}
 
-		/** Y de la línea de costa (irregular) para una X dada. */
+		/** Y de la línea de costa (irregular) para una X dada. Ondula ±25 m; en módulos pequeños, a escala. */
 		double CoastY(double X) const
 		{
-			return WorldSize - Params.CoastInset + 2500.0 * Fbm1(Params.Seed ^ 0xC0A57u, X / 30000.0, 3);
+			const double Amp = 2500.0 * FMath::Min(1.0, Params.ModuleSize / 40000.0);
+			return WorldSize - Params.CoastInset + Amp * Fbm1(Params.Seed ^ 0xC0A57u, X / 30000.0, 3);
 		}
 
 		/** Distancia hacia dentro a la que está el muro del borde en un punto del perímetro. */

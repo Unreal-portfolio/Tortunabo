@@ -4,7 +4,7 @@
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.ProcMap.Survival; Quit" -nullrhi -unattended
 
 #include "Misc/AutomationTest.h"
-#include "World/ProcMap/TN_ProcMapGenerate.h"
+#include "World/ProcMap/TN_ProcMapSurvival.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -109,6 +109,102 @@ bool FTNProcMapRectangularGridTest::RunTest(const FString& Parameters)
 			bInside &= S.P.X >= 0.0 && S.P.X <= L.WorldSizeX && S.P.Y >= 0.0 && S.P.Y <= L.WorldSize;
 		}
 		TestTrue(Ctx + TEXT(": el camino no se sale del mapa"), bInside);
+	}
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Supervivencia: lineal y sin callejones
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNProcMapSurvivalLinearTest,
+	"Tortunabo.ProcMap.Survival.LinealSinCallejones",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNProcMapSurvivalLinearTest::RunTest(const FString& Parameters)
+{
+	using namespace TNProcMap;
+	const double Tol = 150.0;
+	int32 BranchesSeen = 0;
+	for (int32 D = SurvivalMinDifficulty; D <= SurvivalMaxDifficulty; ++D)
+	{
+		for (uint32 Seed = 1; Seed <= 8; ++Seed)
+		{
+			FLayout L;
+			const FString Ctx = FString::Printf(TEXT("dificultad %d semilla %u"), D, Seed);
+			if (!TestTrue(Ctx + TEXT(": genera layout"), GenerateLayout(MakeSurvivalParams(Seed, D), L) && L.bValid)) { continue; }
+
+			// Sin pasadas de cruce y la ruta de módulos nunca vuelve hacia el sur.
+			TestEqual(Ctx + TEXT(": sin cruces"), L.Crossings.Num(), 0);
+			bool bForward = true;
+			for (int32 k = 1; k < L.Route.Num(); ++k)
+			{
+				bForward &= L.Modules[L.Route[k].Module].GridCoord.Y >= L.Modules[L.Route[k - 1].Module].GridCoord.Y;
+			}
+			TestTrue(Ctx + TEXT(": el principal avanza hacia la meta"), bForward);
+
+			// Cada rama empieza y acaba en el principal o en otra rama, y todas se alcanzan desde el principal.
+			auto PointOf = [&L](int32 Branch, int32 BranchSample, int32 MainSample)
+			{
+				return Branch == INDEX_NONE ? L.Main[MainSample].P : L.Branches[Branch].Samples[BranchSample].P;
+			};
+			TArray<uint8> Linked;
+			Linked.Init(0, L.Branches.Num());
+			for (int32 b = 0; b < L.Branches.Num(); ++b)
+			{
+				const FBranch& B = L.Branches[b];
+				++BranchesSeen;
+				const FString BCtx = FString::Printf(TEXT("%s rama %d"), *Ctx, b);
+				if (!TestTrue(BCtx + TEXT(": tiene muestras"), B.Samples.Num() >= 2)) { continue; }
+				const double DStart = FVector2D::Distance(B.Samples[0].P, PointOf(B.FromBranch, B.FromSample, B.ForkSample));
+				const double DEnd = FVector2D::Distance(B.Samples.Last().P, PointOf(B.ToBranch, B.ToSample, B.RejoinSample));
+				TestTrue(FString::Printf(TEXT("%s: sale de un camino (a %.0f cm)"), *BCtx, DStart), DStart <= Tol);
+				TestTrue(FString::Printf(TEXT("%s: acaba en un camino, no en un callejón (a %.0f cm)"), *BCtx, DEnd), DEnd <= Tol);
+				Linked[b] = (B.FromBranch == INDEX_NONE || B.ToBranch == INDEX_NONE) ? 1 : 0;
+			}
+			for (int32 Pass = 0; Pass < L.Branches.Num(); ++Pass)
+			{
+				for (int32 b = 0; b < L.Branches.Num(); ++b)
+				{
+					const FBranch& B = L.Branches[b];
+					if (!Linked[b] && ((B.FromBranch != INDEX_NONE && Linked[B.FromBranch]) || (B.ToBranch != INDEX_NONE && Linked[B.ToBranch]))) { Linked[b] = 1; }
+				}
+			}
+			for (int32 b = 0; b < L.Branches.Num(); ++b) { TestTrue(FString::Printf(TEXT("%s rama %d: unida al principal"), *Ctx, b), Linked[b] != 0); }
+		}
+	}
+	AddInfo(FString::Printf(TEXT("%d ramas comprobadas"), BranchesSeen));
+	TestTrue(TEXT("hay ramas que comprobar"), BranchesSeen > 0);
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Perfil de Supervivencia: genera con todas las dificultades
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNProcMapSurvivalGeneratesTest,
+	"Tortunabo.ProcMap.Survival.Genera",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNProcMapSurvivalGeneratesTest::RunTest(const FString& Parameters)
+{
+	using namespace TNProcMap;
+	for (int32 D = SurvivalMinDifficulty; D <= SurvivalMaxDifficulty; ++D)
+	{
+		for (uint32 Seed = 1; Seed <= 10; ++Seed)
+		{
+			FLayout L;
+			const FString Ctx = FString::Printf(TEXT("dificultad %d semilla %u"), D, Seed);
+			const double T0 = FPlatformTime::Seconds();
+			const bool bOk = GenerateLayout(MakeSurvivalParams(Seed, D), L) && L.bValid;
+			const double Secs = FPlatformTime::Seconds() - T0;
+			AddInfo(FString::Printf(TEXT("%s: %s · %.0fx%.0f m · ruta %d · camino %.0f m · ramas %d · huecos %d · %.2f s · %hs"),
+				*Ctx, bOk ? TEXT("ok") : TEXT("FALLA"), L.WorldSizeX / 100.0, L.WorldSize / 100.0, L.Route.Num(),
+				L.MainLength() / 100.0, L.Branches.Num(),
+				static_cast<int32>(L.Features.FilterByPredicate([](const FFeature& F) { return F.Type == EFeature::Gap; }).Num()),
+				Secs, L.FailReason));
+			TestTrue(Ctx + TEXT(": genera layout"), bOk);
+		}
 	}
 	return true;
 }

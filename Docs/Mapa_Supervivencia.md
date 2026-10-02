@@ -10,13 +10,13 @@ viven en `Scripts/terrain_survival/spec.py`.
 
 | | Valor |
 |---|---|
-| Tamaño | Unos 400 × 150 m (largo × ancho, proporción mínima 2:1) |
+| Tamaño | Unos 400 × 150 m (largo × ancho, proporción mínima 2:1). El generador hace 400 × 160 m (2 × 5 módulos de 80 m) y el banco mide los 150 m centrales: lo que sobra a los lados es muro del borde |
 | Orientación | La salida en un extremo corto y la meta en el otro, a unos 12 m del borde |
 | Generación | Todo el mapa de una pasada al empezar el nivel (los módulos internos del generador sí valen; los chunks que se encadenan durante la partida no); determinista dada la semilla, igual en todos los jugadores |
 | Trazado | **Más o menos lineal**: el principal avanza siempre hacia la meta, sin pasadas de cruce ni lazos que vuelvan atrás |
 | Bifurcaciones | **Todas terminan en el área de meta o vuelven al principal**: ningún callejón sin salida |
 | Dificultad | Entrada 1–5. El nivel N de la partida pide `min(N, 5)`; más dificultad = más reto medido |
-| Camino | La salida y la meta se unen a pie por suelo seco, pendiente ≤ 45° y **al menos 3 m de ancho** |
+| Camino | La salida y la meta se unen a pie por suelo seco, pendiente ≤ 45° y **al menos 3 m de ancho**, o **saltando los huecos de salto** del Coop si su salto más largo cabe en el dive (≤ 4 m). Pendiente de registrar en #273 |
 | Malla | ≤ 180 000 triángulos (3 M/km², la densidad de C01) |
 | Tiempo | Generar un nivel tarda ≤ 3 s |
 | Variedad | Dos semillas distintas dan mapas distintos (diferencia RMS normalizada ≥ 0,05) |
@@ -27,26 +27,32 @@ viven en `Scripts/terrain_survival/spec.py`.
 - **Forma**: la rejilla de módulos del Coop es cuadrada (`GridSize`×`GridSize` de `ModuleSize` = 400 m). Supervivencia
   necesita una rejilla rectangular (p. ej. 8×3 módulos de 50 m) o un perfil propio.
 - **Ruta de módulos**: `NumCrossings = 0` y la ruta avanza de la salida a la meta.
+- **Huecos de salto**: se mantienen (zanjas de 1,3-3,9 m en el camino); más y más largos con la dificultad. La trampa
+  mortal al fondo va en #440.
 - **Ramas**: las de dentro de un módulo ya se separan y vuelven a unirse al principal; la red de sendas, que une zonas
   del principal, debe acabar en el principal o en el área de meta. Un test de Automation sobre el layout comprueba que
   ninguna rama termina sin salida.
-- **El Coop no cambia**: todo va en un perfil de Supervivencia.
+- **El Coop no cambia**: todo va en un perfil de Supervivencia (`TNProcMap::MakeSurvivalParams`, `TN_ProcMapSurvival.h`).
+  La rejilla admite ser rectangular (`GridSizeX`, `WorldSizeX`) y un test fija la huella de los layouts del Coop.
 
 ## Banco de métricas
 
 Mide los mapas ya generados con los mismos criterios de transitabilidad que los mapas de Coop
 (`terrain_vol.validate`). La regla de las bifurcaciones se comprueba en C++ sobre el layout, no aquí.
 
-- **Reto** (informativo): `(camino / línea recta − 1) + 2 × (proporción del camino con pendiente > 25°)`.
+- **Reto** (informativo): `(camino / línea recta − 1) + 2 × (proporción del camino con pendiente > 25°) + 0,25 ×
+  (huecos saltados por cada 100 m)`.
 - **Fuera del camino** (informativo): la parte del suelo alcanzable a más de 10 m del camino más corto. En un mapa
   lineal con el borde cerrado es baja. Un campo abierto también la sube, así que solo vale si el borde es infranqueable.
 
 ### Formato de intercambio
 
 Un `.npz` por mapa (`SurvivalMap` en `mapa.py`) con `top` (cota en metros de lo alto de cada columna, una muestra
-por metro, `[Norte, Este]`, 151 × 401 con la salida al oeste), `start` y `goal` (índices de `top`), `seed`,
-`difficulty`, `algorithm`, `gen_seconds` y `triangles` (−1 si no se conoce). El export de C++ escribe ficheros
-`<semilla>_<dificultad>.npz`.
+por metro, `[Norte, Este]`, 151 × 401 con la salida al oeste; el agua a −4 m), `start` y `goal` (índices de `top`),
+`seed`, `difficulty`, `algorithm`, `gen_seconds`, `triangles` (−1 si no se conoce) y `jumps` (opcional: una fila
+por hueco de salto con fila y columna de cada borde y el salto más largo en metros). El export de C++
+(`TN.Survival.Export [carpeta] [semillas]`, por defecto en `Saved/Supervivencia`) escribe ficheros
+`<semilla>_<dificultad>.npz`. La meta del export es el último punto seco del camino, en la playa de llegada.
 
 ### Uso
 

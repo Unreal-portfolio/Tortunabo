@@ -52,6 +52,10 @@ struct TORTUNABO_API FTNProcMapNetConfig
 	UPROPERTY(BlueprintReadOnly, Category = "ProcMap")
 	ETNProcDifficulty Difficulty = ETNProcDifficulty::Normal;
 
+	/** Supervivencia: dificultad 1–5 del nivel (0 = la que corresponde a Difficulty: 1, 3 o 5). */
+	UPROPERTY(BlueprintReadOnly, Category = "ProcMap")
+	int32 SurvivalDifficulty = 0;
+
 	/** Se incrementa en cada (re)generación, p. ej. entre rondas. 0 = sin mapa. */
 	UPROPERTY(BlueprintReadOnly, Category = "ProcMap")
 	int32 Generation = 0;
@@ -201,6 +205,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Editor")
 	ETNProcDifficulty EditorDifficulty = ETNProcDifficulty::Normal;
+
+	/** Dificultad 1–5 del mapa de Supervivencia (con EditorMode = Supervivencia). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Editor", meta = (ClampMin = "1", ClampMax = "5", EditCondition = "EditorMode == ETNProcGameMode::Survival"))
+	int32 EditorSurvivalDifficulty = 1;
 
 	/** Salta la vegetación (iterar rápido sobre la forma del mapa). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Debug")

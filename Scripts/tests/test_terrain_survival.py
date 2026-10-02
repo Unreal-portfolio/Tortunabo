@@ -63,6 +63,35 @@ def test_un_paso_estrecho_no_vale_como_camino():
     assert r["reached"] and not r["wide_path"] and not r["valid"]
 
 
+def gap_map(leap_m: float) -> SurvivalMap:
+    """Llano cortado por una zanja de 3 m (columnas 200-202) que se cruza con un salto de leap_m."""
+    m = flat()
+    m.top[:, 200:203] = -20.0
+    mid = m.top.shape[0] // 2
+    m.jumps = np.array([[mid, 198, mid, 204, leap_m]])
+    return m
+
+
+def test_un_hueco_de_salto_se_cruza_si_cabe_en_el_dive():
+    r = evaluate(gap_map(3.0))
+    assert r["reached"] and r["wide_path"] and r["valid"]
+    assert r["jumps_on_route"] == 1
+    sin_salto = evaluate(flat())
+    assert r["challenge"] > sin_salto["challenge"]                 # cada salto suma reto
+
+
+def test_un_hueco_mas_largo_que_el_dive_corta_el_mapa():
+    r = evaluate(gap_map(spec.MAX_JUMP_M + 0.5))
+    assert not r["reached"] and not r["valid"]
+
+
+def test_formato_npz_guarda_los_huecos(tmp_path):
+    m = gap_map(3.0)
+    m.save(tmp_path / "1_1.npz")
+    back = SurvivalMap.load(tmp_path / "1_1.npz")
+    assert np.array_equal(back.jumps, m.jumps)
+
+
 def test_forma_inicio_y_triangulos_incorrectos_se_detectan():
     m = flat()
     m.top = m.top[:, :-50]

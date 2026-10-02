@@ -28,6 +28,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "HAL/PlatformTime.h"
+#include "World/ProcMap/TN_ProcMapSurvival.h"
 
 ATN_ProcMapGenerator::ATN_ProcMapGenerator()
 {
@@ -151,6 +152,7 @@ void ATN_ProcMapGenerator::GenerateInEditor()
 	NetConfig.Seed = bEditorRandomSeed ? FMath::Rand() : EditorSeed;
 	NetConfig.Mode = EditorMode;
 	NetConfig.Difficulty = EditorDifficulty;
+	NetConfig.SurvivalDifficulty = EditorSurvivalDifficulty;
 	NetConfig.Generation += 1;
 	BuildFromNetConfig();
 }
@@ -240,11 +242,16 @@ bool ATN_ProcMapGenerator::BuildLayout()
 	ActiveProfile = Settings ? Settings->ResolveProfile(NetConfig.Mode, NetConfig.Difficulty)
 		: TN_MakeDefaultProcProfile(NetConfig.Mode, NetConfig.Difficulty);
 
+	// Supervivencia (#273): su propio perfil, alargado y lineal, con la dificultad 1–5 del nivel.
+	const bool bSurvival = NetConfig.Mode == ETNProcGameMode::Survival;
+	const int32 SurvivalDifficulty = NetConfig.SurvivalDifficulty > 0 ? NetConfig.SurvivalDifficulty
+		: 1 + 2 * static_cast<int32>(NetConfig.Difficulty);
+
 	// Reintentos deterministas: todas las máquinas prueban la misma secuencia de semillas.
 	for (int32 Attempt = 0; Attempt < 5; ++Attempt)
 	{
 		const uint32 Seed = static_cast<uint32>(NetConfig.Seed) + static_cast<uint32>(Attempt) * 7919u;
-		if (TNProcMap::GenerateLayout(ActiveProfile.ToGenParams(Seed), Layout))
+		if (TNProcMap::GenerateLayout(bSurvival ? TNProcMap::MakeSurvivalParams(Seed, SurvivalDifficulty) : ActiveProfile.ToGenParams(Seed), Layout))
 		{
 			return true;
 		}

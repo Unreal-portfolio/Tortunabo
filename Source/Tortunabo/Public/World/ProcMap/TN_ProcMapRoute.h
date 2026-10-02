@@ -129,6 +129,7 @@ namespace TNProcMap
 			for (const int32 Nb : S.L->Modules[Cur].Neighbors)
 			{
 				if (S.Visits[Nb] != 0) { continue; }
+				if (S.L->Params.bMonotonicRoute && S.L->Modules[Nb].GridCoord.Y < S.L->Modules[Cur].GridCoord.Y) { continue; }
 				int32 Onward = 0;
 				for (const int32 Nb2 : S.L->Modules[Nb].Neighbors) { if (S.Visits[Nb2] == 0 && Nb2 != Nb) { ++Onward; } }
 				const double Row = S.L->Modules[Nb].GridCoord.Y;

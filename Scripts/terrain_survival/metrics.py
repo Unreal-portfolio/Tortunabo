@@ -10,7 +10,7 @@ import numpy as np
 from scipy import ndimage, sparse, stats
 from scipy.sparse import csgraph
 
-from terrain_vol.validate import DRY_M, WALK_SLOPE_DEG, reachable, slope_stats, wide_ground
+from terrain_vol.validate import DRY_M, WALK_SLOPE_DEG, components, slope_stats, wide_ground
 
 from . import spec
 from .mapa import SurvivalMap, expected_shape
@@ -20,9 +20,44 @@ OFF_ROUTE_M = 10.0                    # más lejos que esto del camino más cort
 _NEIGHBOURS = ((0, 1), (1, 0), (1, 1), (1, -1))
 
 
+Jump = tuple[tuple[int, int], tuple[int, int]]
+
+
+def usable_jumps(m: SurvivalMap) -> list[Jump]:
+    """Huecos de salto que la tortuga cruza: su salto más largo cabe en el dive (spec.MAX_JUMP_M)."""
+    h, w = m.top.shape
+    out = []
+    for r0, c0, r1, c1, leap in np.asarray(m.jumps).reshape(-1, 5):
+        a, b = (int(r0), int(c0)), (int(r1), int(c1))
+        if leap <= spec.MAX_JUMP_M and all(0 <= p[0] < h and 0 <= p[1] < w for p in (a, b)):
+            out.append((a, b))
+    return out
+
+
+def reachable(top: np.ndarray, start: tuple[int, int], jumps: list[Jump] = (), max_slope_deg: float = WALK_SLOPE_DEG,
+              dry_m: float = DRY_M) -> np.ndarray:
+    """Muestras alcanzables desde start a pie (seco, desnivel acotado) o saltando los huecos `jumps`."""
+    dry = top > dry_m
+    if not dry[start]:
+        return np.zeros(top.shape, dtype=bool)
+    labels = components(top, dry, max_slope_deg)
+    links: dict[int, set[int]] = {}
+    for a, b in jumps:
+        if dry[a] and dry[b]:
+            links.setdefault(int(labels[a]), set()).add(int(labels[b]))
+            links.setdefault(int(labels[b]), set()).add(int(labels[a]))
+    seen, queue = {int(labels[start])}, [int(labels[start])]
+    while queue:
+        for nxt in links.get(queue.pop(), ()):
+            if nxt not in seen:
+                seen.add(nxt)
+                queue.append(nxt)
+    return np.isin(labels, list(seen))
+
+
 def route(top: np.ndarray, ok: np.ndarray, start: tuple[int, int], goal: tuple[int, int],
-          max_slope_deg: float = WALK_SLOPE_DEG) -> list[tuple[int, int]] | None:
-    """Camino más corto (longitud 3D) a pie de start a goal por las muestras `ok`; None si no hay."""
+          max_slope_deg: float = WALK_SLOPE_DEG, jumps: list[Jump] = ()) -> list[tuple[int, int]] | None:
+    """Camino más corto (longitud 3D) de start a goal por las muestras `ok`, a pie o saltando `jumps`; None si no hay."""
     h, w = top.shape
     if not (ok[start] and ok[goal]):
         return None
@@ -38,6 +73,11 @@ def route(top: np.ndarray, ok: np.ndarray, start: tuple[int, int], goal: tuple[i
         rows.append(index[a][keep])
         cols.append(index[b][keep])
         dist.append(np.hypot(run, dz[keep]))
+    for a, b in jumps:
+        if ok[a] and ok[b]:
+            rows.append(np.array([index[a]]))
+            cols.append(np.array([index[b]]))
+            dist.append(np.array([math.dist((*a, top[a]), (*b, top[b]))]))
     r, c, d = np.concatenate(rows), np.concatenate(cols), np.concatenate(dist)
     graph = sparse.coo_matrix((d, (r, c)), shape=(h * w, h * w)).tocsr()
     s, g = start[0] * w + start[1], goal[0] * w + goal[1]
@@ -57,9 +97,14 @@ def route_length(top: np.ndarray, path: list[tuple[int, int]]) -> float:
     return float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())
 
 
+def _is_jump(p: tuple[int, int], q: tuple[int, int]) -> bool:
+    return max(abs(p[0] - q[0]), abs(p[1] - q[1])) > 1
+
+
 def _path_slopes(top: np.ndarray, path: list[tuple[int, int]]) -> list[float]:
+    """Pendiente de cada paso a pie (los saltos no son pendiente)."""
     return [math.degrees(math.atan(abs(top[i1, j1] - top[i0, j0]) / math.hypot(i1 - i0, j1 - j0)))
-            for (i0, j0), (i1, j1) in zip(path, path[1:])]
+            for (i0, j0), (i1, j1) in zip(path, path[1:]) if not _is_jump((i0, j0), (i1, j1))]
 
 
 def off_route_share(seen: np.ndarray, path: list[tuple[int, int]]) -> float:
@@ -85,19 +130,22 @@ def evaluate(m: SurvivalMap) -> dict:
     inside = all(0 <= p[0] < h and 0 <= p[1] < w for p in (m.start, m.goal))
     r["ends_ok"] = bool(inside and m.start[1] <= spec.START_MARGIN_M + 2 and m.goal[1] >= w - 1 - spec.START_MARGIN_M - 2
                         and top[m.start] > DRY_M and top[m.goal] > DRY_M)
-    seen = reachable(top, m.start) if r["ends_ok"] else np.zeros(top.shape, dtype=bool)
+    jumps = usable_jumps(m)
+    seen = reachable(top, m.start, jumps) if r["ends_ok"] else np.zeros(top.shape, dtype=bool)
     r["reached"] = bool(r["ends_ok"] and seen[m.goal])
-    path = route(top, wide_ground(top, spec.MIN_PATH_WIDTH_M), m.start, m.goal) if r["ends_ok"] else None
+    path = route(top, wide_ground(top, spec.MIN_PATH_WIDTH_M), m.start, m.goal, jumps=jumps) if r["ends_ok"] else None
     r["wide_path"] = path is not None
     if path:
         length = route_length(top, path)
         straight = float(np.hypot(m.goal[0] - m.start[0], m.goal[1] - m.start[1]))
-        steep = float(np.mean([s > STEEP_DEG for s in _path_slopes(top, path)]))
-        r.update(route_m=length, route_ratio=length / max(straight, 1.0), steep_share=steep)
-        r["challenge"] = (length / max(straight, 1.0) - 1.0) + 2.0 * steep
+        steep = float(np.mean([s > STEEP_DEG for s in _path_slopes(top, path)] or [0.0]))
+        leaps = sum(_is_jump(p, q) for p, q in zip(path, path[1:]))
+        r.update(route_m=length, route_ratio=length / max(straight, 1.0), steep_share=steep, jumps_on_route=leaps)
+        r["challenge"] = (length / max(straight, 1.0) - 1.0) + 2.0 * steep + spec.JUMP_WEIGHT * leaps * 100.0 / length
         r["off_route_share"] = off_route_share(seen, path)
     else:
-        r.update(route_m=None, route_ratio=None, steep_share=None, challenge=None, off_route_share=None)
+        r.update(route_m=None, route_ratio=None, steep_share=None, jumps_on_route=None, challenge=None,
+                 off_route_share=None)
     r["walkable_share"] = float(seen.sum() / max((top > DRY_M).sum(), 1))
     r["slope_deg"] = slope_stats(top, seen) if seen.any() else None
     r["valid"] = bool(r["shape_ok"] and r["ends_ok"] and r["reached"] and r["wide_path"] and r["triangles_ok"]

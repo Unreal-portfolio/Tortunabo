@@ -476,7 +476,8 @@ namespace TNProcMap
 		// Salida: celda del módulo inicial con holgura para el claro, lo más al sur posible.
 		double BestScore = -1e300;
 		FVector2D BestStart = L.Modules[StartModule].Centroid;
-		const double Need = P.StartClearingRadius + 1500.0;
+		// Holgura de 15 m alrededor del claro; en módulos pequeños (Supervivencia), el 10 % del lado.
+		const double Need = P.StartClearingRadius + FMath::Min(1500.0, 0.1 * P.ModuleSize);
 		for (int32 y = 0; y < L.RasterH; ++y)
 		{
 			for (int32 x = 0; x < L.RasterW; ++x)
