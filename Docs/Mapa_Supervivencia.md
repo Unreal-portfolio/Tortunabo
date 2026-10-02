@@ -35,6 +35,22 @@ viven en `Scripts/terrain_survival/spec.py`.
 - **El Coop no cambia**: todo va en un perfil de Supervivencia (`TNProcMap::MakeSurvivalParams`, `TN_ProcMapSurvival.h`).
   La rejilla admite ser rectangular (`GridSizeX`, `WorldSizeX`) y un test fija la huella de los layouts del Coop.
 
+### Cómo queda el perfil (#273)
+
+- 2 × 5 módulos de 80 m; la ruta de módulos solo avanza (`bMonotonicRoute`), sin cruces, y recorre de 5 a 8 módulos
+  según la dificultad, con más sinuosidad, más huecos y más largos, y el camino más estrecho (nunca menos de 3 m).
+- Sin biomas de agua (`bWetBiomes`: su suelo son isletas y pasarelas), módulos a alturas parecidas (`LevelSpread`) y
+  desniveles en rampa, sin toboganes ni géiseres (`SmoothTransitionMax`), el camino nunca a ras del mar antes de la
+  playa (`MinPathZ`) y un margen extra en los bordes largos (`SideMargin`).
+- `GenerateSurvivalLayout` descarta el mapa y prueba la siguiente semilla de una secuencia fija (igual en todas las
+  máquinas) si el camino se pliega sobre sí mismo, se sale de los 150 m centrales o una rama se une con bordillo.
+- En el editor: `ATN_ProcMapGenerator` con EditorMode = Supervivencia y `EditorSurvivalDifficulty` (1–5). En PIE:
+  `LVL_ProcMap?ProcMode=Survival?ProcDifficulty=Easy|Normal|Hard?ProcSeed=N` (dificultad 1, 3 o 5), con las reglas de
+  ronda genéricas hasta #274.
+- Banco con 5 semillas × 5 dificultades: 100 % válidos, Spearman 0,82, variedad 0,21 y menos de 0,8 s por mapa
+  (`Docs/Mapas/Supervivencia/coop.md`). «Fuera del camino» sale alto (0,55-0,84): fuera del camino hay campo
+  abierto, no solo muro.
+
 ## Banco de métricas
 
 Mide los mapas ya generados con los mismos criterios de transitabilidad que los mapas de Coop

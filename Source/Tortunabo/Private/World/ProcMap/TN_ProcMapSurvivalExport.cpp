@@ -96,7 +96,7 @@ namespace
 		using namespace TNProcMap;
 		const double T0 = FPlatformTime::Seconds();
 		FLayout L;
-		if (!GenerateLayout(MakeSurvivalParams(Seed, Difficulty), L) || !L.bValid)
+		if (GenerateSurvivalLayout(Seed, Difficulty, L) == 0)
 		{
 			UE_LOG(LogTortunabo, Warning, TEXT("[Supervivencia] semilla %u dificultad %d: sin mapa (%hs)"), Seed, Difficulty, L.FailReason);
 			return false;
@@ -126,6 +126,10 @@ namespace
 		}
 		Files.Emplace(TEXT("jumps.npy"), MakeNpy(TEXT("<f8"), FString::Printf(TEXT("(%d, 5)"), Top.Jumps.Num()),
 			Jumps.GetData(), Jumps.Num() * sizeof(double)));
+		Files.Emplace(TEXT("path.npy"), MakeNpy(TEXT("<f8"), FString::Printf(TEXT("(%d, 5)"), Top.MainPath.Num() / 5),
+			Top.MainPath.GetData(), Top.MainPath.Num() * sizeof(double)));
+		Files.Emplace(TEXT("branches.npy"), MakeNpy(TEXT("<f8"), FString::Printf(TEXT("(%d, 5)"), Top.BranchPaths.Num() / 5),
+			Top.BranchPaths.GetData(), Top.BranchPaths.Num() * sizeof(double)));
 
 		const FString Path = FPaths::Combine(Folder, FString::Printf(TEXT("%u_%d.npz"), Seed, Difficulty));
 		if (!FFileHelper::SaveArrayToFile(MakeZip(Files), *Path))

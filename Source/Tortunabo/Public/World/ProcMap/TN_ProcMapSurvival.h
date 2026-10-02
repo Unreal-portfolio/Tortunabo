@@ -31,15 +31,23 @@ namespace TNProcMap
 		P.SampleSpacing = 200.0;
 
 		// Más o menos lineal: la ruta avanza hacia la meta, sin cruces ni lazos, y el camino serpentea poco.
-		P.Coverage = 0.6;
+		// Más dificultad = el principal recorre más módulos (de 5 a 8 de 10) y serpentea más.
+		P.Coverage = LerpD(0.5, 0.8, T);
 		P.bMonotonicRoute = true;
 		P.NumCrossings = 0;
-		P.Sinuosity = LerpD(1.15, 1.35, T);
+		P.Sinuosity = LerpD(1.1, 1.5, T);
 		P.NumLanes = 0;
 		P.NumBranches = 1 + D;
 		P.BranchMaxModules = 1;
 		P.bRiver = false;
+		// Módulos a alturas parecidas y sin toboganes ni géiseres entre ellos: los desniveles van en rampa.
+		P.LevelSpread = 0.5;
+		P.SmoothTransitionMax = 4000.0;
+		P.MinPathZ = 150.0;
 		P.NumBiomeRegions = 2;
+		// Sin isletas ni pasarelas (su suelo son mallas sobre el agua) y el camino lejos de los bordes largos.
+		P.bWetBiomes = false;
+		P.SideMargin = 2200.0;
 
 		// El camino nunca baja de 3 m (la especificación); la dificultad lo estrecha y pone más huecos y más largos.
 		P.PathWidthMin = LerpD(700.0, 400.0, T);
@@ -60,6 +68,77 @@ namespace TNProcMap
 	}
 
 	/**
+	 * Si el camino principal se pliega sobre sí mismo: dos tramos que se solapan en planta con más desnivel que
+	 * separación (más de 45°) dejan un escalón entre ellos (en módulos de 80 m el trazador a veces da media vuelta).
+	 * En una curva normal no pasa: el desnivel lo limita la pendiente del camino (MaxPathSlope).
+	 */
+	inline bool SurvivalPathFolds(const FLayout& L)
+	{
+		const TArray<FPathSample>& M = L.Main;
+		for (int32 i = 0; i < M.Num(); ++i)
+		{
+			for (int32 j = i + 1; j < M.Num(); ++j)
+			{
+				const double Apart = FVector2D::Distance(M[i].P, M[j].P);
+				if (Apart < 0.5 * (M[i].Width + M[j].Width) && FMath::Abs(M[i].Z - M[j].Z) > FMath::Max(100.0, Apart)) { return true; }
+			}
+		}
+		return false;
+	}
+
+	/** Si cada rama empieza y acaba a la cota del camino del que sale y al que llega (sin bordillo en la unión). */
+	inline bool SurvivalBranchesFlush(const FLayout& L)
+	{
+		auto ZOf = [&L](int32 Branch, int32 BranchSample, int32 MainSample)
+		{
+			return Branch == INDEX_NONE ? L.Main[MainSample].Z : L.Branches[Branch].Samples[BranchSample].Z;
+		};
+		for (const FBranch& B : L.Branches)
+		{
+			if (B.Samples.Num() < 2) { continue; }
+			if (FMath::Abs(B.Samples[0].Z - ZOf(B.FromBranch, B.FromSample, B.ForkSample)) > 50.0
+				|| FMath::Abs(B.Samples.Last().Z - ZOf(B.ToBranch, B.ToSample, B.RejoinSample)) > 50.0)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Si el camino principal cabe entero en los 150 m centrales del ancho (lo que se mide y lo que se juega). */
+	inline bool SurvivalPathInside(const FLayout& L)
+	{
+		const double Margin = 0.5 * (L.WorldSizeX - 15000.0) + 100.0;
+		for (const FPathSample& S : L.Main)
+		{
+			if ((S.Flags & PathFlags::Shore) != 0) { continue; }   // la playa final se abre en abanico hasta el agua
+			const double Half = 0.5 * S.Width;
+			if (S.P.X - Half < Margin || S.P.X + Half > L.WorldSizeX - Margin) { return false; }
+		}
+		return true;
+	}
+
+	/**
+	 * Genera el mapa de Supervivencia. Si sale un camino plegado, prueba la siguiente semilla de una secuencia fija
+	 * (la misma en todas las máquinas). Devuelve la semilla usada, o 0 si ninguna sirvió.
+	 */
+	inline uint32 GenerateSurvivalLayout(uint32 Seed, int32 Difficulty, FLayout& Out)
+	{
+		for (int32 Attempt = 0; Attempt < 8; ++Attempt)
+		{
+			const uint32 Try = Seed + static_cast<uint32>(Attempt) * 7919u;
+			if (GenerateLayout(MakeSurvivalParams(Try, Difficulty), Out) && Out.bValid && !SurvivalPathFolds(Out) && SurvivalPathInside(Out)
+				&& SurvivalBranchesFlush(Out))
+			{
+				return Try;
+			}
+		}
+		Out.bValid = false;
+		Out.FailReason = "Supervivencia: sin mapa valido en 8 semillas";
+		return 0;
+	}
+
+	/**
 	 * Alturas del mapa en el formato del banco (Scripts/terrain_survival/mapa.py): una muestra por metro, filas =
 	 * ancho (X del mapa) y columnas = avance (Y), así que la salida queda al oeste y la meta al este. Una ventana de
 	 * 150 × 400 m centrada en el ancho: lo que sobra a los lados es muro del borde. Los huecos de salto van aparte
@@ -77,6 +156,10 @@ namespace TNProcMap
 		/** Un hueco de salto: (fila, columna) de un borde y del otro, y el salto más largo para cruzarlo (m). */
 		struct FJump { FIntPoint From; FIntPoint To; double LeapM = 0.0; };
 		TArray<FJump> Jumps;
+		/** Camino principal (diagnóstico): fila, columna, cota (m), ancho (m) y flags de cada muestra. */
+		TArray<double> MainPath;
+		/** Ramas (diagnóstico): rama, fila, columna, cota (m) y ancho (m) de cada muestra. */
+		TArray<double> BranchPaths;
 	};
 
 	/** Salto más largo (cm) para cruzar un hueco: entero en los de borde y de panzazo, entre filas en los de postes. */
@@ -130,6 +213,21 @@ namespace TNProcMap
 			if (L.Main[i].Z > SeaLevel + 30.0 && (L.Main[i].Flags & PathFlags::Gap) == 0) { Goal = L.Main[i].P; break; }
 		}
 		Out.Goal = ToIndex(Goal);
+		Out.MainPath.Reset();
+		for (const FPathSample& S : L.Main)
+		{
+			const FVector2D RC = (S.P - Origin) / Spacing;
+			Out.MainPath.Append({ RC.X, RC.Y, S.Z / 100.0 + SurvivalBenchWaterM, S.Width / 100.0, static_cast<double>(S.Flags) });
+		}
+		Out.BranchPaths.Reset();
+		for (int32 b = 0; b < L.Branches.Num(); ++b)
+		{
+			for (const FPathSample& S : L.Branches[b].Samples)
+			{
+				const FVector2D RC = (S.P - Origin) / Spacing;
+				Out.BranchPaths.Append({ static_cast<double>(b), RC.X, RC.Y, S.Z / 100.0 + SurvivalBenchWaterM, S.Width / 100.0 });
+			}
+		}
 
 		// Huecos de salto: los labios (mallas del actor, no terreno) reducen la zanja al hueco exacto. Se estampan a
 		// la cota del camino, desde el borde del salto hasta pasada la zanja, y el salto va de labio a labio.
@@ -158,7 +256,9 @@ namespace TNProcMap
 					}
 				}
 			}
-			const FVector2D Half = F.Dir * (Inner + 50.0);
+			// Despegue y aterrizaje 2,2 m dentro del labio (mide al menos 3 m): el banco pide 3 m de suelo alrededor
+			// del camino y en un hueco en diagonal la rejilla de 1 m acerca el borde.
+			const FVector2D Half = F.Dir * (Inner + 220.0);
 			Out.Jumps.Add({ ToIndex(C - Half), ToIndex(C + Half), GapLongestLeap(L, F) / 100.0 });
 		}
 	}

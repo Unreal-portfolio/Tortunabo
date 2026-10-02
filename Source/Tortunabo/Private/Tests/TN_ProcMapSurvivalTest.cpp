@@ -132,7 +132,10 @@ bool FTNProcMapSurvivalLinearTest::RunTest(const FString& Parameters)
 		{
 			FLayout L;
 			const FString Ctx = FString::Printf(TEXT("dificultad %d semilla %u"), D, Seed);
-			if (!TestTrue(Ctx + TEXT(": genera layout"), GenerateLayout(MakeSurvivalParams(Seed, D), L) && L.bValid)) { continue; }
+			if (!TestTrue(Ctx + TEXT(": genera layout"), GenerateSurvivalLayout(Seed, D, L) != 0)) { continue; }
+			TestFalse(Ctx + TEXT(": el camino no se pliega sobre sí mismo"), SurvivalPathFolds(L));
+			TestTrue(Ctx + TEXT(": las ramas se unen sin bordillo"), SurvivalBranchesFlush(L));
+			TestTrue(Ctx + TEXT(": el camino cabe en los 150 m centrales"), SurvivalPathInside(L));
 
 			// Sin pasadas de cruce y la ruta de módulos nunca vuelve hacia el sur.
 			TestEqual(Ctx + TEXT(": sin cruces"), L.Crossings.Num(), 0);
@@ -196,8 +199,25 @@ bool FTNProcMapSurvivalGeneratesTest::RunTest(const FString& Parameters)
 			FLayout L;
 			const FString Ctx = FString::Printf(TEXT("dificultad %d semilla %u"), D, Seed);
 			const double T0 = FPlatformTime::Seconds();
-			const bool bOk = GenerateLayout(MakeSurvivalParams(Seed, D), L) && L.bValid;
+			const bool bOk = GenerateSurvivalLayout(Seed, D, L) != 0;
 			const double Secs = FPlatformTime::Seconds() - T0;
+			if (!bOk)
+			{
+				// Por qué se descarta la primera semilla de la secuencia.
+				FLayout Raw;
+				const bool bRaw = GenerateLayout(MakeSurvivalParams(Seed, D), Raw) && Raw.bValid;
+				FString Out;
+				const double Margin = 0.5 * (Raw.WorldSizeX - 15000.0) + 100.0;
+				for (const FPathSample& S : Raw.Main)
+				{
+					if ((S.Flags & PathFlags::Shore) == 0 && (S.P.X - 0.5 * S.Width < Margin || S.P.X + 0.5 * S.Width > Raw.WorldSizeX - Margin))
+					{
+						Out = FString::Printf(TEXT("fuera: x %.0f ancho %.0f flags %u s %.0f/%.0f"), S.P.X, S.Width, S.Flags, S.S, Raw.MainLength());
+						break;
+					}
+				}
+				AddInfo(FString::Printf(TEXT("%s: layout %d · plegado %d · %s"), *Ctx, bRaw, SurvivalPathFolds(Raw), *Out));
+			}
 			AddInfo(FString::Printf(TEXT("%s: %s · %.0fx%.0f m · ruta %d · camino %.0f m · ramas %d · huecos %d · %.2f s · %hs"),
 				*Ctx, bOk ? TEXT("ok") : TEXT("FALLA"), L.WorldSizeX / 100.0, L.WorldSize / 100.0, L.Route.Num(),
 				L.MainLength() / 100.0, L.Branches.Num(),

@@ -246,12 +246,16 @@ bool ATN_ProcMapGenerator::BuildLayout()
 	const bool bSurvival = NetConfig.Mode == ETNProcGameMode::Survival;
 	const int32 SurvivalDifficulty = NetConfig.SurvivalDifficulty > 0 ? NetConfig.SurvivalDifficulty
 		: 1 + 2 * static_cast<int32>(NetConfig.Difficulty);
+	if (bSurvival)
+	{
+		return TNProcMap::GenerateSurvivalLayout(static_cast<uint32>(NetConfig.Seed), SurvivalDifficulty, Layout) != 0;
+	}
 
 	// Reintentos deterministas: todas las máquinas prueban la misma secuencia de semillas.
 	for (int32 Attempt = 0; Attempt < 5; ++Attempt)
 	{
 		const uint32 Seed = static_cast<uint32>(NetConfig.Seed) + static_cast<uint32>(Attempt) * 7919u;
-		if (TNProcMap::GenerateLayout(bSurvival ? TNProcMap::MakeSurvivalParams(Seed, SurvivalDifficulty) : ActiveProfile.ToGenParams(Seed), Layout))
+		if (TNProcMap::GenerateLayout(ActiveProfile.ToGenParams(Seed), Layout))
 		{
 			return true;
 		}

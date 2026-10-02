@@ -933,6 +933,12 @@ namespace TNProcMap
 			}
 		}
 
+		// Supervivencia: el camino no baja al nivel del mar antes de la playa final.
+		if (P.MinPathZ > -1e8)
+		{
+			for (int32 i = 0; i < NumS; ++i) { Z[i] = FMath::Max(Z[i], P.MinPathZ); }
+		}
+
 		// Claro de salida plano y bajada final al mar.
 		const double StartZ = Z[0];
 		for (int32 i = 0; i < NumS; ++i)

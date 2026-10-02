@@ -107,8 +107,12 @@ namespace TNProcMap
 		double MaxStepUp = 120.0;
 
 		double MaxPathSlope = 0.2;
+		/** Cota mínima del camino fuera de la playa final (cm; sin límite por defecto). */
+		double MinPathZ = -1e9;
 		/** Desnivel entre módulos por encima del cual hay géiser (subida) o tobogán (bajada). */
 		double SmoothTransitionMax = 900.0;
+		/** Fracción del rango de nivel de cada bioma que se usa (1 = todo; menos = módulos a alturas parecidas). */
+		double LevelSpread = 1.0;
 		double SlideAngleDeg = 55.0;
 		double ColossalHeightMin = 4000.0;
 		double ColossalHeightMax = 5500.0;
@@ -130,6 +134,10 @@ namespace TNProcMap
 		double WallHeight = 5500.0;
 		/** Distancia mínima del camino al borde del mapa. */
 		double MapEdgeClearance = 9000.0;
+		/** Margen extra solo en los bordes este y oeste (Supervivencia: el mapa es estrecho). */
+		double SideMargin = 0.0;
+		/** Biomas de agua (isletas y pasarelas) permitidos. */
+		bool bWetBiomes = true;
 		/** Distancia de la costa al borde norte del mapa (hacia dentro). */
 		double CoastInset = 6000.0;
 

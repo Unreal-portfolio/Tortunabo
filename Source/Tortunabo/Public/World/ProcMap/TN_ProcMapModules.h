@@ -331,7 +331,7 @@ namespace TNProcMap
 				const int32 Idx = y * W + x;
 				L.ModuleDist[Idx] *= static_cast<float>(P.CellSize);
 				const FVector2D C = L.CellCenter(x, y);
-				const double EdgeSides = FMath::Min(FMath::Min(C.X, L.WorldSizeX - C.X), C.Y) - SideExtra;
+				const double EdgeSides = FMath::Min(FMath::Min(C.X, L.WorldSizeX - C.X) - P.SideMargin, C.Y) - SideExtra;
 				const double EdgeNorth = (L.WorldSize - C.Y) - NorthExtra;
 				const double Edge = FMath::Min(EdgeSides, EdgeNorth);
 				L.BorderDist[Idx] = static_cast<float>(FMath::Min(static_cast<double>(L.ModuleDist[Idx]), Edge));

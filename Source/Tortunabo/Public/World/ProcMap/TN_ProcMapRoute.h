@@ -393,7 +393,10 @@ namespace TNProcMap
 
 		// Bioma por región, sin repetir mientras queden.
 		TArray<int32> Pool;
-		for (int32 b = 0; b < NumBiomes; ++b) { Pool.Add(b); }
+		for (int32 b = 0; b < NumBiomes; ++b)
+		{
+			if (P.bWetBiomes || !IsWetBiome(BiomeFromIndex(b))) { Pool.Add(b); }
+		}
 		Rng.Shuffle(Pool);
 		TArray<ETNProcBiome> RegionBiome;
 		for (int32 r = 0; r < R; ++r) { RegionBiome.Add(BiomeFromIndex(Pool[r % Pool.Num()])); }
@@ -468,7 +471,8 @@ namespace TNProcMap
 		{
 			double Min = 0.0, Max = 0.0;
 			BiomeLevelRange(M.Biome, Min, Max);
-			M.Level = Rng.Range(Min, Max);
+			const double Level = Rng.Range(Min, Max);
+			M.Level = L.Params.LevelSpread >= 1.0 ? Level : Min + (Level - Min) * L.Params.LevelSpread;
 		}
 		if (L.Route.Num() > 0)
 		{
